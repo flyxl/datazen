@@ -32,6 +32,7 @@ use tokio::sync::mpsc;
 
 use crate::connection::port::CancelDisposition;
 use crate::registry::audit::CapabilityVersions;
+use std::collections::BTreeMap;
 
 /// 打开物理资源（物理侧）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,11 +62,40 @@ pub struct OpenedResource {
     pub context: SessionContext,
     /// 非敏感的能力版本。
     pub capabilities: CapabilityVersions,
+    /// Full non-sensitive capability provenance for durable execution records.
+    pub capability_snapshot: CapabilityProvenance,
     /// 不透明资源标识。**不透明**是硬要求：调用方不得从它反推连接串或端点。
     pub resource_id: String,
     /// 该 driver 是否有独立取消路径。false 时只能回 `unsupported`，
     /// 不能靠「先置 CancelRequested 再假装取消」来假装支持。
     pub driver_supports_cancel: bool,
+}
+
+/// Version and confirmed capability evidence captured from the opened provider.
+/// Kept separate from `CapabilityVersions`, which is the smaller audit-log projection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityProvenance {
+    pub driver_id: String,
+    pub driver_version: String,
+    pub protocol_version: u32,
+    pub capability_revision: u64,
+    pub confirmed: BTreeMap<String, String>,
+}
+
+impl CapabilityProvenance {
+    pub fn new(
+        driver_id: impl Into<String>,
+        driver_version: impl Into<String>,
+        protocol_version: u32,
+    ) -> Self {
+        Self {
+            driver_id: driver_id.into(),
+            driver_version: driver_version.into(),
+            protocol_version,
+            capability_revision: 0,
+            confirmed: BTreeMap::new(),
+        }
+    }
 }
 
 /// 在资源上执行一条命令。

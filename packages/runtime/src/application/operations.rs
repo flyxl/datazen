@@ -21,6 +21,7 @@ impl RuntimeConnectionUseCases {
         let action = if matches!(
             request.call.command.as_str(),
             "query"
+                | "explain"
                 | "query_stream"
                 | "get_table_schema"
                 | "list_tables"
@@ -40,6 +41,29 @@ impl RuntimeConnectionUseCases {
         self.authorize(ctx, action.clone()).await?;
         let view = self.session_view(ctx, &request.handle).await?;
         let entry = self.session_entry(ctx, &request.handle)?;
+        // Resolve provenance before accepting the command. If the actor has
+        // already retired this physical resource, fail before creating an
+        // accepted gateway receipt that cannot be admitted to the durable sink.
+        let profile = self.profile(ctx, &view.connection_id).await?;
+        let capability_provenance = self
+            .inner
+            .registry
+            .capability_snapshot(&convert::handle(&request.handle)?)
+            .await
+            .map_err(convert::runtime)?;
+        let capability_snapshot = datazen_platform_api::dto::execution::CapabilitySnapshot {
+            driver_id: capability_provenance.driver_id,
+            driver_version: capability_provenance.driver_version,
+            protocol_version: capability_provenance.protocol_version,
+            capability_revision: datazen_platform_api::id::CapabilityRevision::new(
+                capability_provenance.capability_revision,
+            ),
+            confirmed: capability_provenance
+                .confirmed
+                .into_iter()
+                .map(|(key, value)| (key, serde_json::Value::String(value)))
+                .collect(),
+        };
         let gateway_request = ExecutionRequest::new(
             convert::handle(&request.handle)?,
             request
@@ -61,7 +85,6 @@ impl RuntimeConnectionUseCases {
             .map_err(gateway_error)?;
         let receipt: ExecutionReceipt = convert::json_convert(accepted.receipt.clone())?;
         if !accepted.is_replay() {
-            let profile = self.profile(ctx, &view.connection_id).await?;
             self.inner.sink.admit(
                 ctx.clone(),
                 view.handle.clone(),
@@ -78,7 +101,7 @@ impl RuntimeConnectionUseCases {
                         context_before: view.observed_context.clone(),
                         context_after: view.observed_context,
                         requested_target: view.initial_target,
-                        capability_snapshot: CapabilitySnapshot::new(profile.driver_id, "", 0),
+                        capability_snapshot,
                         executed_at: Timestamp::new(utc_now()),
                     }),
                     artifact_ids: vec![],

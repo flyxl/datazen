@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
-  ExplainResult,
   FavoriteQuery,
   HistorySort,
   MultiQueryResult,
@@ -61,10 +60,6 @@ export const queryCommands = {
       schema: options?.schema ?? null,
     });
   },
-
-  /** `database` is the explain's target; no session switch is involved. */
-  getExplain: (dbSessionId: string, sql: string, database?: string | null) =>
-    invoke<ExplainResult>('get_explain', { dbSessionId, sql, database: database ?? null }),
 
   cancelQuery: (dbSessionId: string, executionId: string) =>
     invoke<void>('cancel_query', { dbSessionId, executionId }),

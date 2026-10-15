@@ -513,7 +513,7 @@ impl ResourceProvider for MysqlResourceProvider {
         if fixed
             && !matches!(
                 call.command.as_str(),
-                "query" | "query_stream" | "execute" | "get_table_schema"
+                "query" | "query_stream" | "execute" | "explain" | "get_table_schema"
             )
         {
             return Err(ResourceError::unsupported(

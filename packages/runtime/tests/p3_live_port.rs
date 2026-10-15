@@ -193,6 +193,11 @@ impl SessionBackend for Backend {
         Ok(OpenedResource {
             context,
             capabilities: datazen_runtime::registry::CapabilityVersions::new("test", "test"),
+            capability_snapshot: datazen_runtime::registry::backend::CapabilityProvenance::new(
+                "test-driver",
+                "2.3.1",
+                7,
+            ),
             resource_id: id,
             driver_supports_cancel: true,
         })

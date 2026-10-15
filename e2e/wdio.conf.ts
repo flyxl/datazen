@@ -462,12 +462,11 @@ export const config: WebdriverIO.Config = {
     // churn connections, and sharing one app process makes a later spec's schema
     // tree time out on state the earlier spec left behind.
     //
-    // `sql-query.ts` is intentionally absent: its SQ-CTX-001 assertion fails on
-    // a pristine checkout too (the database context selector reports the
-    // default database instead of the qualified path's), so including it would
-    // keep this guard permanently red. The Postgres double-quote lint that this
-    // guard exists to protect is covered by unit tests in
-    // `src/windows/connection/__tests__/query.modules.test.tsx`.
+    // The full SQL editor suite (`sql-query.ts`) runs in `db`; this guard stays
+    // focused on the builder's five shared journeys. SQ-CTX-001 now checks that
+    // qualified SQL preserves the observed editor context (CM-13), and fresh
+    // editor cases close their previous fixture tabs instead of exhausting the
+    // connected-editor quota.
     'qb-regression': [
       './specs/journeys/connection-query-journey.ts',
       './specs/journeys/query-edge-journey.ts',

@@ -61,7 +61,9 @@ use crate::connection::{
 };
 
 use crate::registry::audit::{AuditKind, CapabilityVersions, Outcome, RegistryAuditEntry};
-use crate::registry::backend::{OpenResource, ResourceExecution, SessionBackend};
+use crate::registry::backend::{
+    CapabilityProvenance, OpenResource, ResourceExecution, SessionBackend,
+};
 use crate::registry::epoch::RuntimeEpoch;
 use crate::registry::handles::{ExecutionBinding, HandleRegistry};
 use crate::registry::receipt::CancelReceipt;
@@ -116,6 +118,10 @@ pub enum ExecCommand {
     View {
         handle: SessionHandle,
         reply: Reply<SessionView>,
+    },
+    CapabilitySnapshot {
+        handle: SessionHandle,
+        reply: Reply<CapabilityProvenance>,
     },
     Execute {
         request: ExecuteInSessionRequest,
@@ -227,6 +233,7 @@ struct Physical {
     resource_id: String,
     driver_supports_cancel: bool,
     capabilities: CapabilityVersions,
+    capability_snapshot: CapabilityProvenance,
 }
 
 /// 飞行中的执行。跨 `.await` 存活的**全部**数据都在这里，按值携带。
@@ -483,6 +490,9 @@ async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
         ExecCommand::View { handle, reply } => {
             let _ = reply.send(read_view(state, &handle));
         }
+        ExecCommand::CapabilitySnapshot { handle, reply } => {
+            let _ = reply.send(read_capability_snapshot(state, &handle));
+        }
         ExecCommand::ExecuteBound {
             execution_id,
             request,
@@ -526,11 +536,15 @@ async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
 
 async fn handle_exec_while_flying(state: &mut ActorState, msg: ExecCommand) {
     // 只有只读投影可以插空回答；其余一律排队，否则同会话就会出现两条并发执行。
-    if let ExecCommand::View { handle, reply } = msg {
-        let _ = reply.send(read_view(state, &handle));
-        return;
+    match msg {
+        ExecCommand::View { handle, reply } => {
+            let _ = reply.send(read_view(state, &handle));
+        }
+        ExecCommand::CapabilitySnapshot { handle, reply } => {
+            let _ = reply.send(read_capability_snapshot(state, &handle));
+        }
+        other => state.deferred.push_back(other),
     }
-    state.deferred.push_back(msg);
 }
 
 /// actor 退出时的最后收尾：物理资源不能因为「所有句柄都被丢掉」而泄漏。
@@ -605,6 +619,7 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
         resource_id: opened.resource_id.clone(),
         driver_supports_cancel: opened.driver_supports_cancel,
         capabilities: opened.capabilities.clone(),
+        capability_snapshot: opened.capability_snapshot.clone(),
     });
 
     emit(
@@ -631,6 +646,20 @@ fn read_view(state: &ActorState, handle: &SessionHandle) -> Result<SessionView, 
         return Err(RuntimeError::SessionClosed(state.db_session_id.to_string()));
     }
     Ok(state.view.clone())
+}
+
+fn read_capability_snapshot(
+    state: &ActorState,
+    handle: &SessionHandle,
+) -> Result<CapabilityProvenance, RuntimeError> {
+    check_epoch(state, handle)?;
+    match &state.physical {
+        Some(physical) => Ok(physical.capability_snapshot.clone()),
+        None if state.view.state == SessionState::Lost => {
+            Err(RuntimeError::SessionLost(state.db_session_id.to_string()))
+        }
+        None => Err(RuntimeError::SessionClosed(state.db_session_id.to_string())),
+    }
 }
 
 fn check_epoch(state: &ActorState, handle: &SessionHandle) -> Result<(), RuntimeError> {

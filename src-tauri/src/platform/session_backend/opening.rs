@@ -278,6 +278,13 @@ impl DesktopSessionBackend {
                 capabilities.snapshot.protocol_version.to_string(),
                 capabilities.snapshot.driver_version.clone(),
             ),
+            capability_snapshot: CapabilityProvenance {
+                driver_id: capabilities.snapshot.driver_id.clone(),
+                driver_version: capabilities.snapshot.driver_version.clone(),
+                protocol_version: capabilities.snapshot.protocol_version,
+                capability_revision: capabilities.snapshot.capability_revision,
+                confirmed: capabilities.snapshot.confirmed.clone(),
+            },
             resource_id: resource_id.clone(),
             driver_supports_cancel: capabilities
                 .capabilities

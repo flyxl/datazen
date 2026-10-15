@@ -41,10 +41,10 @@ mod types;
 pub use capability_domains::{BackupSupport, DataSupport};
 pub use command::{
     check_command_access, execute_command_definition, execute_command_definition_for,
-    query_command_definition, query_command_definition_for, query_only_command_definitions,
-    query_stream_command_definition, required_access_level, statement_command_definitions,
-    validate_command_input, CommandAccessLevel, CommandCategory, CommandResult,
-    DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec,
+    explain_command_definition, query_command_definition, query_command_definition_for,
+    query_only_command_definitions, query_stream_command_definition, required_access_level,
+    statement_command_definitions, validate_command_input, CommandAccessLevel, CommandCategory,
+    CommandResult, DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec,
 };
 pub use explain_plan::{normalize_mysql_explain_plan, normalize_postgres_explain_plan};
 pub use factory::*;

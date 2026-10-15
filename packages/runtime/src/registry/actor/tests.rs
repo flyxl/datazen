@@ -313,6 +313,7 @@ impl SessionBackend for FakeBackend {
                 contract: "1.0.0".to_owned(),
                 driver_api: "2.3.1".to_owned(),
             },
+            capability_snapshot: CapabilityProvenance::new("test-driver", "2.3.1", 7),
             resource_id: format!("res_{}", request.runtime_epoch),
             driver_supports_cancel: inner.driver_supports_cancel,
         })

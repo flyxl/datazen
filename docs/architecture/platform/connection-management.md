@@ -764,7 +764,11 @@ SessionDirectory 保存组织/owner/worker/runtimeEpoch，不保存连接。dbSe
 
 旧结果编辑：受控对象结果有完整 relation identity + PK/version，可重新授权并乐观写回原目标；任意 SQL 多表/表达式结果默认只读，driver 未证明可写映射时不猜测。临时表结果写回要求原 runtimeBinding 精确有效，否则 SessionLost；相同配置、指纹或用户不能代替原物理会话。
 
-### 12.1 P4 结果消费与上下文隔离（目标设计）
+### 12.1 P4 结果消费与上下文隔离
+
+QueryPanel 的查询与 Explain 共享 pane 所属的固定 session、actor 队列与 observedContext。Explain 使用显式选择支持的 `explain` Command，计划结果随 execution 发布为产物；不调用旧连接管理器，不因重读计划而重投 SQL。PostgreSQL/MySQL 的计划读取使用同一 retained checkout；驱动未声明 session-bound Explain 时明确拒绝。SQLite 驱动原有的 `supports_explain` / `explain()` 是池级接口，不等于固定编辑器 session 上的 Explain 能力；在它仍声明 `statefulSession: unsupported` 时，新 QueryPanel runtime 会拒绝打开固定 session，因此也不会回退到池级 Explain。若要支持 SQLite Explain，应单独实现一次性、明确限时的执行资源：从 ResourceManager 借用一个 SQLite 资源，在同一借用期内执行只规划语句的 `EXPLAIN QUERY PLAN` 并发布结果，然后确认释放；这不要求声称 SQLite 有跨命令固定 session，也不能绕过统一 artifact/provenance 路径。计划只接受单条语句且不启用 ANALYZE，不能将计划中的写入实际执行。
+
+桌面 `ExecutionProjection` 已实现块身份去重、已发布块恢复和 session 事件的 handle 隔离，QueryPanel 的 `runEditorQuery` 通过读取执行状态与产物恢复结果，不重新提交 SQL。恢复时校验返回块的 artifactId 与 chunkIndex，包括用于读取发布元数据的第 0 块；读取失败保留此前的已发布前缀。订阅遇到 `streamResetRequired` 时在序列去重前清除游标并恢复投影，重新订阅不携带旧游标，因此低于旧游标的重置通知也不会被误丢弃。以下为持续适用的消费契约与 P4 验收要求。
 
 客户端按 `(backendId, executionId, artifactId, chunkIndex)` 去重块，按 stream sequence 去重通知；收到 resultChunk 后只读已发布块。读失败不插入空行、不跳过该 index，恢复时先读 getExecution/产物已发布块元数据，再补缺块；streamResetRequired 清除订阅游标并重建投影，不把事件缺失解释成未执行。P3 的读取回执补充 publishedChunkCount 与发布字节前缀，便于重连恢复；最终块数由 finalize 冻结。
 

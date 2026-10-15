@@ -8,9 +8,7 @@
 use std::collections::HashMap;
 
 use super::*;
-use crate::db::{
-    ColumnSchema, DriverCapabilities, DriverError, ExplainResult, TransactionHandle, Value,
-};
+use crate::db::{ColumnSchema, DriverCapabilities, DriverError, TransactionHandle, Value};
 use crate::store::AppSettings;
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::{BeginRace, MockDriverOptions};
@@ -43,42 +41,6 @@ async fn execute_query_respects_result_limit_setting() {
     execute_query_impl(&test.state, conn_id, "SELECT * FROM users".into(), None)
         .await
         .unwrap();
-}
-
-#[tokio::test]
-async fn get_explain_query() {
-    let opts = MockDriverOptions {
-        explain_plan: ExplainResult {
-            plan_text: "Seq Scan".into(),
-            plan_json: None,
-            plan_tree: None,
-            total_cost: Some(1.0),
-            estimated_rows: Some(10),
-        },
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    test.registry
-        .register_test_driver_with_capabilities(
-            "postgres",
-            test.mock.clone(),
-            DriverCapabilities {
-                has_multi_database: false,
-                supports_cancel_query: true,
-                supports_query_execution_cancel: true,
-                supports_explain: true,
-                supports_streaming_results: true,
-                supports_offset: true,
-                has_schema_level: true,
-            },
-        )
-        .await;
-    let (_, conn_id) = test.save_and_connect("explain-cfg").await;
-
-    let plan = get_explain_impl(&test.state, conn_id.clone(), "SELECT 1".into(), None)
-        .await
-        .unwrap();
-    assert_eq!(plan.plan_text, "Seq Scan");
 }
 
 #[tokio::test]
@@ -422,31 +384,6 @@ async fn execute_query_never_switches_for_same_blank_or_absent_pin() {
     }
 
     assert!(test.mock.use_database_calls().is_empty());
-    let config = test
-        .state
-        .connection_manager
-        .get_session_config(&conn_id)
-        .await
-        .unwrap();
-    assert_eq!(config.database.as_deref(), Some("app"));
-}
-
-#[tokio::test]
-async fn get_explain_never_switches_the_session_database() {
-    let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect("explain-db-cfg").await;
-    get_explain_impl(
-        &test.state,
-        conn_id.clone(),
-        "SELECT 1".into(),
-        Some("other".into()),
-    )
-    .await
-    .unwrap();
-    assert!(
-        test.mock.use_database_calls().is_empty(),
-        "get_explain must not switch the session's database"
-    );
     let config = test
         .state
         .connection_manager

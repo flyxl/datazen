@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { DataTable } from '../../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../../components/DataTable/TableHeader';
@@ -36,6 +36,24 @@ export function ResultTableView({
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const [editError, setEditError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
+
+  const canEdit =
+    !safeMode &&
+    !!onCellEdit &&
+    result.source?.writableMapping === 'verified' &&
+    !!result.runtimeBinding;
+  // A visible result outlives its physical session. Do not keep an input alive
+  // across retirement/replacement, or revive it for a newly queried result.
+  useEffect(() => {
+    setEditingCell(null);
+    setEditError(null);
+  }, [
+    canEdit,
+    result.runtimeBinding?.executionId,
+    result.runtimeBinding?.resourceBindingId,
+    result.runtimeBinding?.handle.dbSessionId,
+    result.runtimeBinding?.handle.runtimeEpoch,
+  ]);
 
   const columnDefs = useMemo<ColumnDef[]>(
     () => result.columns.map((c) => ({ id: c.name, name: c.name, type: c.dataType })),
@@ -81,13 +99,13 @@ export function ResultTableView({
       // Safe Mode blocks in-place edit of query results. The row detail panel
       // still opens on double-click so the user can inspect the record.
       onRowDetail?.(row);
-      if (safeMode || !onCellEdit || result.source?.writableMapping !== 'verified' || !result.runtimeBinding) {
+      if (!canEdit) {
         setEditingCell(null);
         return;
       }
       setEditingCell({ row, col });
     },
-    [onRowDetail, onCellEdit, safeMode, result.source, result.runtimeBinding],
+    [onRowDetail, canEdit],
   );
 
   if (isMutationExecution(result)) {
@@ -103,20 +121,30 @@ export function ResultTableView({
       {result.source?.writableMapping === 'verified' && !result.runtimeBinding && (
         <div className="p-2 text-xs text-fg-muted">{t('query.resultEditRequiresRefresh')}</div>
       )}
-      {editError && <div role="alert" className="p-2 text-sm text-red-400">{editError}</div>}
+      {editError && (
+        <div role="alert" className="p-2 text-sm text-red-400">
+          {editError}
+        </div>
+      )}
       <DataTable
         columns={columnDefs}
         rows={result.rows}
         statusBar={statusBar}
         rowHeight={32}
-        editingCell={safeMode ? null : editingCell}
+        editingCell={canEdit ? editingCell : null}
         onCellDoubleClick={handleCellDoubleClick}
         onCellEdit={(row, column, value) => {
-          setEditError(null);
-          void onCellEdit?.(row, column, value).then(() => setEditingCell(null)).catch((error: unknown) => {
+          if (!canEdit) {
             setEditingCell(null);
-            setEditError(error instanceof Error ? error.message : String(error));
-          });
+            return;
+          }
+          setEditError(null);
+          void onCellEdit?.(row, column, value)
+            .then(() => setEditingCell(null))
+            .catch((error: unknown) => {
+              setEditingCell(null);
+              setEditError(error instanceof Error ? error.message : String(error));
+            });
         }}
         onCellEditCancel={() => setEditingCell(null)}
         enableSetNull={false}

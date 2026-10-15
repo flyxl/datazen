@@ -124,6 +124,40 @@ describe('BackendClient against a fake transport', () => {
     });
   });
 
+  for (const [disposition, state] of [
+    ['requested', 'cancelRequested'],
+    ['unsupported', 'running'],
+    ['alreadyFinished', 'succeeded'],
+  ]) {
+    it(`CM-72 preserves ${disposition} as control disposition without inventing an execution effect`, async () => {
+      const fake = createFakeTransport();
+      fake.responses.set('cancelExecution', { executionId: id('exec-7'), disposition, state });
+      const client = createBackendClient('desktop', fake.transport);
+      await expect(client.cancelExecution(id('exec-7'), TOKEN)).resolves.toEqual({
+        executionId: id('exec-7'),
+        disposition,
+        state,
+      });
+    });
+  }
+
+  for (const payload of [
+    { executionId: 'exec-7', accepted: true, state: 'cancelRequested' },
+    { executionId: 'exec-7', disposition: 'Requested', state: 'cancelRequested' },
+    { executionId: 'exec-7', disposition: 'requested', state: 'rolledBack' },
+    { executionId: 'other-execution', disposition: 'requested', state: 'cancelRequested' },
+  ]) {
+    it(`CM-72 rejects a drifted or mismatched cancellation receipt ${JSON.stringify(payload)}`, async () => {
+      const fake = createFakeTransport();
+      fake.responses.set('cancelExecution', payload);
+      const client = createBackendClient('desktop', fake.transport);
+      await expect(client.cancelExecution(id('exec-7'), TOKEN)).rejects.toMatchObject({
+        code: 'ServiceUnavailable',
+      });
+      expect(fake.calls).toHaveLength(1);
+    });
+  }
+
   it('reads a session by handle without adding anything to the payload', async () => {
     const fake = createFakeTransport();
     fake.responses.set('getSession', {});

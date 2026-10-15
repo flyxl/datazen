@@ -547,4 +547,20 @@ mod tests {
         assert!(ManticoreFactory.create().supports_query_execution_cancel());
         assert!(ObOracleFactory.create().supports_query_execution_cancel());
     }
+
+    #[tokio::test]
+    async fn explain_rejects_multiple_statements_before_using_any_connection() {
+        let driver = MysqlDriver::new(false);
+        let handle = ConnectionHandle {
+            id: "absent".into(),
+            pool_id: "absent".into(),
+        };
+        for sql in ["", "SELECT 1; DELETE FROM synthetic_probe"] {
+            let error = driver
+                .explain(&handle, sql)
+                .await
+                .expect_err("one statement required");
+            assert!(matches!(error, DriverError::InvalidConfig(_)));
+        }
+    }
 }

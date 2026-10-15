@@ -11,7 +11,7 @@ impl DesktopSessionBackend {
         let mut input = request.command.input.clone();
         if matches!(
             request.command.command.as_str(),
-            "query" | "execute" | "query_stream"
+            "query" | "execute" | "query_stream" | "explain"
         ) {
             if let Some(params) = input.get("params").cloned() {
                 let sql = input
@@ -38,9 +38,23 @@ impl DesktopSessionBackend {
                 "profile disabled or revision changed".into(),
             ));
         }
+        if request.command.command == "explain" {
+            let driver = self
+                .registry
+                .get(&config.database_type)
+                .await
+                .ok_or(rc::ProviderError::CapabilityUnsupported)?;
+            if !driver
+                .command_definitions()
+                .iter()
+                .any(|definition| definition.id == "explain")
+            {
+                return Err(rc::ProviderError::CapabilityUnsupported);
+            }
+        }
         if matches!(
             request.command.command.as_str(),
-            "query" | "execute" | "query_stream"
+            "query" | "execute" | "query_stream" | "explain"
         ) {
             let sql = input
                 .get("sql")

@@ -33,6 +33,9 @@ import { toQueryExecutionViewModel } from '../../../lib/queryExecutionViewModel'
 import { invalidateSchemaCache } from '../../../lib/schemaCache';
 
 const refreshSchemaMetadata = vi.hoisted(() => vi.fn().mockResolvedValue({ revision: 1 }));
+vi.mock('../../../lib/session/runEditorExplain', () => ({
+  runEditorExplain: (...args: unknown[]) => runExplain(...args),
+}));
 vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
   schemaClient: {
@@ -123,7 +126,6 @@ vi.mock('../../../lib/session/queryPanelSessionRoot', async (importOriginal) => 
 
 vi.mock('../../../commands/query', () => ({
   queryCommands: {
-    getExplain: (...args: Parameters<typeof getExplain>) => getExplain(...args),
     clearQueryHistory: vi.fn().mockResolvedValue(undefined),
     // The favorites panel rescans on open and on window focus. Without these
     // the panel throws an unhandled rejection on every mount, which vitest
@@ -275,7 +277,7 @@ vi.mock('../result-workspace/ResultWorkspace', () => ({
   ),
 }));
 
-const getExplain = vi.hoisted(() => vi.fn());
+const runExplain = vi.hoisted(() => vi.fn());
 const createWidgetFromSql = vi.hoisted(() => vi.fn());
 const saveDashboard = vi.hoisted(() => vi.fn());
 
@@ -1618,7 +1620,7 @@ describe('[tester] query/QueryResultsPane', () => {
 describe('[tester] query/useQueryPanelWorkflows', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    getExplain.mockResolvedValue({ plan: 'Index Scan', raw: 'plan' });
+    runExplain.mockResolvedValue({ plan: 'Index Scan', raw: 'plan' });
     createWidgetFromSql.mockResolvedValue({
       dashboard: { id: 'dash-1', name: 'Board' },
     });
@@ -1668,9 +1670,23 @@ describe('[tester] query/useQueryPanelWorkflows', () => {
     await act(async () => {
       await result.current.handleExplain();
     });
-    expect(getExplain).toHaveBeenCalledWith('sess-1', 'SELECT 1', 'app');
+    expect(runExplain).toHaveBeenCalledWith('p1', 'cfg-1', 'SELECT 1', 'app', null, {});
     expect(result.current.showExplain).toBe(true);
     expect(result.current.explainResult).toEqual({ plan: 'Index Scan', raw: 'plan' });
+  });
+
+  it('routes Explain to the selected split pane session and its explicit context', async () => {
+    const { result } = renderWorkflows({
+      paneId: 'split',
+      schema: 'other',
+      boundPayload: { id: 73 },
+    });
+    await act(async () => {
+      await result.current.handleExplain();
+    });
+    expect(runExplain).toHaveBeenCalledWith('p1::split', 'cfg-1', 'SELECT 1', 'app', 'other', {
+      id: 73,
+    });
   });
 
   it('opens favorite dialog for non-empty SQL', () => {

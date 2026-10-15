@@ -161,6 +161,27 @@ describe('[tester] postgres retained resource journey', () => {
         const many = await run('SELECT generate_series(1, 600) AS n');
         expect(many.rows).toHaveLength(600);
         await run('BEGIN');
+        // Planning must see this retained session's temporary object and must
+        // not apply the DML being planned or switch to another physical backend.
+        const plan = await run(
+          "UPDATE driver_verify_temp SET label = 'planned' WHERE id = 1",
+          undefined,
+          'explain',
+        );
+        const planned = plan.outputs.find(
+          (value) => typeof value === 'object' && value !== null && 'data' in value,
+        ) as { data?: { planText?: string } } | undefined;
+        expect(planned?.data?.planText?.length).toBeGreaterThan(0);
+        const unchanged = await run('SELECT label FROM driver_verify_temp WHERE id = 1');
+        expect(unchanged.rows[0]?.[0]).toBe('retained');
+        const afterPlanIdentity = await run('SELECT pg_backend_pid() AS physical_id');
+        expect(afterPlanIdentity.rows[0]?.[0]).toEqual(first.rows[0]?.[0]);
+        const afterPlanDatabase = await run('SELECT current_database() AS active_database');
+        expect(afterPlanDatabase.rows[0]?.[0]).toBe(profile.database);
+        await run('SELECT 1; DELETE FROM driver_verify_temp', undefined, 'explain', {}, 'failed');
+        const afterRejectedPlan = await run('SELECT label FROM driver_verify_temp WHERE id = 1');
+        expect(afterRejectedPlan.rows[0]?.[0]).toBe('retained');
+
         await run("UPDATE driver_verify_temp SET label = 'rollback' WHERE id = 1");
         await run('ROLLBACK');
         const after = await run('SELECT label FROM driver_verify_temp WHERE id = 1');

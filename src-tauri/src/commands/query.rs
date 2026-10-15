@@ -6,7 +6,7 @@ use super::driver_command::{
 };
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{ExplainResult, MultiQueryResult};
+use crate::db::MultiQueryResult;
 use crate::store::history_db::DEFAULT_HISTORY_PAGE_SIZE;
 use crate::store::{HistoryOrder, QueryHistoryEntry, QueryHistoryFilter, QueryHistoryPage};
 use datazen_driver_api::{QueryExecutionId, QueryStreamCallback, QueryStreamEvent};
@@ -92,42 +92,6 @@ pub(crate) async fn execute_query_stream_impl(
         },
     )
     .await
-}
-
-pub(crate) async fn get_explain_impl(
-    state: &AppState,
-    db_session_id: String,
-    sql: String,
-    database: Option<String>,
-) -> Result<ExplainResult, CommandError> {
-    tracing::debug!(%db_session_id, "get_explain");
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("get_explain")?;
-
-    // The plan must be produced for the caller's target, not for whatever
-    // database the pooled connection defaults to. Rewrite-capable drivers
-    // qualify the SQL inline; there is no session switch to fall back on.
-    let config = state
-        .connection_manager
-        .get_session_config(&db_session_id)
-        .await
-        .cmd_err("get_explain")?;
-    let database = database
-        .as_deref()
-        .map(str::trim)
-        .filter(|db| !db.is_empty())
-        .or(config.database.as_deref());
-    let schema =
-        crate::services::metadata_schema(driver.as_ref(), None, None, config.schema.as_deref());
-    let sql = match driver.qualify_sql_target(&sql, database, schema.as_deref()) {
-        Some(qualified) => qualified,
-        None => sql,
-    };
-
-    driver.explain(&handle, &sql).await.cmd_err("get_explain")
 }
 
 pub(crate) async fn cancel_query_impl(
@@ -348,16 +312,6 @@ pub async fn execute_query_stream(
         },
     )
     .await
-}
-
-#[tauri::command]
-pub async fn get_explain(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    sql: String,
-    database: Option<String>,
-) -> Result<ExplainResult, CommandError> {
-    get_explain_impl(&state, db_session_id, sql, database).await
 }
 
 #[tauri::command]

@@ -340,7 +340,6 @@ pub fn run() {
             crate::commands::delete_favorite_query,
             crate::commands::execute_query,
             crate::commands::execute_query_stream,
-            crate::commands::get_explain,
             crate::commands::get_favorite_queries,
             crate::commands::get_favorites_root,
             crate::commands::get_query_history,

@@ -1151,32 +1151,36 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         sql: &str,
     ) -> Result<ExplainResult, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-
-        let json_sql = format!("EXPLAIN (FORMAT JSON) {sql}");
-        let json_rows = sqlx::query(&json_sql)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-        let plan_json = json_rows.first().and_then(|row| {
-            row.try_get::<serde_json::Value, _>(0).ok().or_else(|| {
-                row.try_get::<String, _>(0)
-                    .ok()
-                    .and_then(|s| serde_json::from_str(&s).ok())
-            })
-        });
-
-        let text_sql = format!("EXPLAIN (FORMAT TEXT) {sql}");
-        let text_rows = sqlx::query(&text_sql)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-        let plan_text: String = text_rows
+        if sql_dump::split_sql_statements(sql).len() != 1 {
+            return Err(DriverError::InvalidConfig(
+                "Explain requires one statement".into(),
+            ));
+        }
+        // query_impl uses the retained checkout when this handle owns one.
+        // Do not fetch from the pool: a fixed session has checked out its only
+        // backend and its temporary objects/transaction belong to that backend.
+        let json_rows = self
+            .query_impl(handle, &format!("EXPLAIN (FORMAT JSON) {sql}"))
+            .await?;
+        let plan_json = json_rows
+            .rows
+            .first()
+            .and_then(|row| row.first())
+            .and_then(|value| match value {
+                Some(Value::Json(json)) => Some(json.clone()),
+                Some(Value::String(text)) => serde_json::from_str(text).ok(),
+                _ => None,
+            });
+        let text_rows = self
+            .query_impl(handle, &format!("EXPLAIN (FORMAT TEXT) {sql}"))
+            .await?;
+        let plan_text = text_rows
+            .rows
             .iter()
-            .map(|r| r.get::<String, _>(0))
+            .filter_map(|row| match row.first() {
+                Some(Some(Value::String(text))) => Some(text.as_str()),
+                _ => None,
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
