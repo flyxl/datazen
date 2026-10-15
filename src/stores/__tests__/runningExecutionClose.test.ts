@@ -187,29 +187,71 @@ describe('settleRunningPanes', () => {
     expect(settlement).toEqual({ settled: false, pending: ['main'] });
   });
 
-  it('does not wait when no request could be delivered: the session close is the cleanup', async () => {
+  it('keeps the pane unsettled when no request could ever be delivered', async () => {
     const requestCancel = vi.fn(async () => false);
     const settlement = await settleRunningPanes(panel, panes, {
       readExec: () => running(),
       requestCancel,
       timeoutMs: 10,
       pollMs: 1,
+      retryMs: 1,
     });
 
+    // A pane that is still running and never got a delivered cancel is exactly
+    // the case nobody may report as "stopped": the caller keeps the tab.
     expect(requestCancel).toHaveBeenCalledWith('main');
+    expect(settlement).toEqual({ settled: false, pending: ['main'] });
+  });
+
+  it('retries an undelivered cancel until the runtime hands back the execution', async () => {
+    // The run is `running` from the click that starts it, but the execution id
+    // only arrives with the acceptance receipt: the first attempts have nothing
+    // to cancel through and must not be read as "nothing left to stop".
+    const exec = new Map([[paneKey('panel-1'), running()]]);
+    const attempts: string[] = [];
+    const settlement = await settleRunningPanes(panel, panes, {
+      readExec: (key) => exec.get(key),
+      requestCancel: async (paneId) => {
+        attempts.push(paneId);
+        if (attempts.length < 3) return false;
+        exec.set(paneKey('panel-1'), idle());
+        return true;
+      },
+      timeoutMs: 200,
+      pollMs: 1,
+      retryMs: 1,
+    });
+
+    expect(attempts.length).toBeGreaterThanOrEqual(3);
     expect(settlement).toEqual({ settled: true, pending: [] });
   });
 
-  it('treats a rejected cancel request as nothing to wait for', async () => {
+  it('treats a throwing cancel as undelivered and retries it', async () => {
+    let calls = 0;
     const settlement = await settleRunningPanes(panel, panes, {
       readExec: () => running(),
       requestCancel: async () => {
+        calls += 1;
         throw new Error('runtime refused');
       },
       timeoutMs: 10,
       pollMs: 1,
+      retryMs: 1,
     });
 
+    expect(calls).toBeGreaterThan(1);
+    expect(settlement).toEqual({ settled: false, pending: ['main'] });
+  });
+
+  it('asks nothing of a pane that finished between the prompt and the cancel', async () => {
+    const requestCancel = vi.fn(async () => true);
+    const settlement = await settleRunningPanes(panel, panes, {
+      readExec: () => idle(),
+      requestCancel,
+      timeoutMs: 10,
+    });
+
+    expect(requestCancel).not.toHaveBeenCalled();
     expect(settlement).toEqual({ settled: true, pending: [] });
   });
 

@@ -31,9 +31,15 @@
  *   would only delay a close that already cleans up, so this returns `settled`
  *   immediately — and the caller decides *before* it gets here whether there is
  *   anything to ask about at all.
+ * * **The handle a cancel needs is not there yet.** A run is `running` from the
+ *   click that starts it, while the execution id only arrives with the runtime's
+ *   acceptance receipt. A canceller that no-ops in that window must not be read
+ *   as "nothing left to stop": the request is retried until the pane stops or the
+ *   deadline passes.
  * * **A cancel was requested and never confirmed.** Nobody can claim the
  *   statement stopped, so the tab must not disappear: this reports `settled:
- *   false` and the caller keeps the tab and says why.
+ *   false` and the caller keeps the tab and says why. That is also the answer
+ *   when no request could ever be delivered while the pane kept running.
  */
 
 import type { Panel } from './panelTypes';
@@ -70,6 +76,16 @@ export const RUNNING_CLOSE_TIMEOUT_MS = 15_000;
 
 /** Poll interval while waiting for the stream to report the terminal state. */
 export const RUNNING_CLOSE_POLL_MS = 50;
+
+/**
+ * How often an undelivered cancel is retried while the pane is still running.
+ *
+ * Long enough not to hammer the IPC while a request keeps being refused, short
+ * enough that the common case — the execution receipt landing a few hundred
+ * milliseconds after the click that started the run — is still cancelled well
+ * inside the deadline.
+ */
+export const RUNNING_CLOSE_RETRY_MS = 250;
 
 let gate: RunningExecutionGate | null = null;
 let closeTimeoutMs = RUNNING_CLOSE_TIMEOUT_MS;
@@ -280,13 +296,16 @@ export interface SettleRunningDeps {
   /**
    * Ask the runtime to stop this pane's statement.
    *
-   * Resolves `false` when no request could be delivered (the session is gone,
-   * the driver refused). There is then nothing to confirm, and the caller's
-   * session close is the cleanup.
+   * Resolves `false` when no request could be delivered *at this moment* — the
+   * session is gone, the driver refused, or the execution handle does not exist
+   * yet. A pane that is still running after a `false` is retried (see
+   * {@link RUNNING_CLOSE_RETRY_MS}) rather than assumed to have stopped.
    */
   requestCancel: (paneId: string) => Promise<boolean>;
   timeoutMs?: number;
   pollMs?: number;
+  /** Retry interval for undelivered cancels; defaults to {@link RUNNING_CLOSE_RETRY_MS}. */
+  retryMs?: number;
 }
 
 export interface RunningPaneSettlement {
@@ -309,24 +328,9 @@ export async function settleRunningPanes(
 ): Promise<RunningPaneSettlement> {
   if (panes.length === 0) return { settled: true, pending: [] };
 
-  const asked: RunningPane[] = [];
-  for (const pane of panes) {
-    let accepted = false;
-    try {
-      accepted = await deps.requestCancel(pane.paneId);
-    } catch {
-      // A failed cancel is not proof the statement is still running, but it is
-      // also not a request anyone can confirm: it is not waited on.
-      accepted = false;
-    }
-    if (accepted) asked.push(pane);
-  }
-  // Nothing was asked to stop, so there is no stop to wait for: the caller's
-  // session close releases the resources on its own.
-  if (asked.length === 0) return { settled: true, pending: [] };
-
-  const deadline = Date.now() + (deps.timeoutMs ?? closeTimeoutMs);
   const pollMs = deps.pollMs ?? RUNNING_CLOSE_POLL_MS;
+  const retryMs = Math.max(pollMs, deps.retryMs ?? RUNNING_CLOSE_RETRY_MS);
+  const deadline = Date.now() + (deps.timeoutMs ?? closeTimeoutMs);
   // A missing entry is finished too: there is no longer anything to observe, and
   // waiting for a state the store has already dropped would time out instead.
   const stillRunning = (pane: RunningPane): boolean => {
@@ -334,11 +338,39 @@ export async function settleRunningPanes(
     return exec ? exec.running : false;
   };
 
+  // Panes that are already over need neither a cancel nor a wait. Only the rest
+  // are tracked, so a tab whose statement finished while the user was reading
+  // the prompt closes without asking the runtime for anything.
+  const unsettled = new Set(panes.filter((pane) => stillRunning(pane)).map((pane) => pane.paneId));
+  if (unsettled.size === 0) return { settled: true, pending: [] };
+
+  const delivered = new Set<string>();
+  let nextAttemptAt = 0;
   for (;;) {
-    const pending = asked.filter(stillRunning);
-    if (pending.length === 0) return { settled: true, pending: [] };
-    if (Date.now() >= deadline) {
-      return { settled: false, pending: pending.map((pane) => pane.paneId) };
+    const now = Date.now();
+    const running = panes.filter((pane) => unsettled.has(pane.paneId) && stillRunning(pane));
+    for (const pane of panes) {
+      if (!stillRunning(pane)) unsettled.delete(pane.paneId);
+    }
+    if (unsettled.size === 0) return { settled: true, pending: [] };
+    if (now >= deadline) return { settled: false, pending: [...unsettled] };
+
+    if (now >= nextAttemptAt) {
+      nextAttemptAt = now + retryMs;
+      for (const pane of running) {
+        if (delivered.has(pane.paneId)) continue;
+        try {
+          // `false` means "no request went out", most often because the runtime
+          // has not handed back the execution id yet. It is not evidence that the
+          // statement stopped, so the pane stays unsettled and the next tick
+          // tries again.
+          if (await deps.requestCancel(pane.paneId)) delivered.add(pane.paneId);
+        } catch {
+          // A throwing cancel is not proof the statement is still running, but it
+          // is also not a request anyone can confirm: retry like an undelivered
+          // one, and let the deadline decide.
+        }
+      }
     }
     await new Promise<void>((resolve) => {
       setTimeout(resolve, pollMs);

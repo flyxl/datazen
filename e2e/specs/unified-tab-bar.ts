@@ -153,6 +153,36 @@ describe('统一 Tab Bar (UTB-001~UTB-008)', () => {
       timeout: 15000,
       timeoutMsg: 'the long-running query never started (stop button never appeared)',
     });
+    // Waiting for *displayed* is not enough: the button is rendered from the
+    // click that starts the run, while it only becomes clickable once the
+    // runtime handed back the execution id. Waiting for the enabled state is
+    // what "there is a statement running that can be stopped" means.
+    await browser.waitUntil(
+      async () =>
+        browser.execute(() => {
+          const btn = document.querySelector('[data-testid="editor-stop-button"]');
+          return btn instanceof HTMLButtonElement && !btn.disabled;
+        }),
+      {
+        timeout: 15000,
+        timeoutMsg: 'the running query never became cancellable (stop button stayed disabled)',
+      },
+    );
+  };
+
+  /** What the app was showing when the close flow did not finish: the failure is
+   * only diagnosable if the state at that moment is in the report. */
+  const closeDiagnostics = async () => {
+    const tabState = await browser.execute(() => ({
+      tabs: document.querySelectorAll('[data-testid="panel-tab-close"]').length,
+      dialog: document.querySelector('[data-testid="confirm-dialog-ok"]') != null,
+      canStop: (() => {
+        const btn = document.querySelector('[data-testid="editor-stop-button"]');
+        return btn instanceof HTMLButtonElement && !btn.disabled;
+      })(),
+      text: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 300),
+    }));
+    return JSON.stringify(tabState);
   };
 
   it('关闭正在执行的 tab 要先确认，确认后先停语句再关闭 (UTB-007)', async () => {
@@ -191,10 +221,15 @@ describe('统一 Tab Bar (UTB-001~UTB-008)', () => {
 
     // The tab can only disappear once the store saw the statement reach a
     // terminal state, which is exactly the order this feature is about.
-    await browser.waitUntil(async () => (await tabCount()) === 0, {
-      timeout: 20000,
-      timeoutMsg: 'the tab did not close after the user confirmed stopping the query',
-    });
+    try {
+      await browser.waitUntil(async () => (await tabCount()) === 0, {
+        timeout: 20000,
+        timeoutMsg: 'the tab did not close after the user confirmed stopping the query',
+      });
+    } catch (error) {
+      const state = await closeDiagnostics();
+      throw new Error(`${(error as Error).message} — app state: ${state}`);
+    }
     expect(
       await browser.execute(
         () => document.querySelector('[data-testid="editor-stop-button"]') == null,
