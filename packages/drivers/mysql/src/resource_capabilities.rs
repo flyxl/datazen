@@ -154,23 +154,31 @@ pub(crate) fn mysql_capability_set(precise_cancel: bool) -> CapabilitySet {
 
 /// The physical cost of one MySQL resource.
 ///
+/// The physical cost of one pooled MySQL resource: the data pool itself.
+///
 /// `MysqlDriver::connect` opens a pool of `effective_max_pool_size()` data
-/// connections plus a separate control pool of one, so the honest number is
-/// the configured pool size plus one — not one. The provider previously
-/// declared `DeclaredConservative { declared_cost: 1 }`, which understated the
-/// real cost by the whole pool and would have let a caller size a budget the
-/// provider then exceeds. `DeclaredConservative` is for third-party SDKs whose
-/// cost is not observable; this driver owns its pool and knows the exact size,
-/// so it reports the bounded figure.
+/// connections. The control connection it holds for `KILL QUERY` and for the
+/// transaction-evidence probe is driver-internal, shared by every resource of one
+/// (connection identity, database) and **not** charged: `KILL QUERY` is
+/// instance-scoped, so billing it per resource would charge the same physical
+/// connection once per resource on that server.
+///
+/// The provider previously declared `DeclaredConservative { declared_cost: 1 }`,
+/// which understated the real cost by the whole pool and would have let a caller
+/// size a budget the provider then exceeds. `DeclaredConservative` is for
+/// third-party SDKs whose cost is not observable; this driver owns its pool and
+/// knows the exact size, so it reports the bounded figure.
 pub(crate) fn mysql_connection_cost(config: &ConnectionConfig) -> ConnectionCostPolicy {
     ConnectionCostPolicy::PoolBounded {
-        max_physical_connections: config
-            .effective_max_pool_size()
-            .saturating_add(CONTROL_POOL_CONNECTIONS),
+        max_physical_connections: config.effective_max_pool_size(),
     }
 }
 
-/// The connection held open alongside the data pool for out-of-band work.
+/// Size of the driver-internal control pool: **one** connection, shared by every
+/// resource of one (connection identity, database) — see
+/// `MysqlDriver::control_pool_key`.
+///
+/// It is not part of any resource's declared cost.
 pub(crate) const CONTROL_POOL_CONNECTIONS: u32 = 1;
 
 /// One driver-wide DDL atomicity value, filed under every migration operation.

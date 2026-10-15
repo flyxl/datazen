@@ -5,7 +5,6 @@
 //! use a type simply does not mention it.
 
 use super::test_support::*;
-use crate::resource_capabilities::CONTROL_POOL_CONNECTIONS;
 use datazen_driver_api::resource::ConnectionCostPolicy;
 use datazen_driver_api::session::{SessionHandleKind, SessionHandleRef};
 
@@ -55,10 +54,13 @@ async fn an_editor_resource_declares_a_retained_physical_session() {
         .expect("describe should succeed");
     assert_eq!(descriptor.session_continuity, SessionContinuity::Fixed);
     assert!(descriptor.session_continuity.is_fixed());
+    // One physical connection, held for the session: the fixed session's pool is
+    // `max_pool_size = 1`, and the driver's shared control connection is not part
+    // of what this resource is charged.
     assert_eq!(
         descriptor.connection_cost_policy,
         ConnectionCostPolicy::PoolBounded {
-            max_physical_connections: 2
+            max_physical_connections: crate::resource::FIXED_SESSION_CONNECTIONS
         }
     );
 }
@@ -120,12 +122,14 @@ fn namespace_shape_rejects_a_schema_level() {
 
 // --- acquire / close ----------------------------------------------------
 
-/// The number of physical connections this provider actually opens for one
-/// resource: the data pool plus the control pool. Derived rather than written
-/// out so a change to the pool arithmetic cannot silently drift from the
-/// assertions below.
-fn pool_size_plus_control() -> u32 {
-    test_config().effective_max_pool_size() + CONTROL_POOL_CONNECTIONS
+/// The number of physical connections this provider charges for one pooled
+/// resource: the data pool. Derived rather than written out so a change to the pool
+/// arithmetic cannot silently drift from the assertions below.
+///
+/// The driver's control connection is deliberately absent: it is shared by every
+/// resource of one (connection identity, database) and never charged.
+fn declared_data_pool_cost() -> u32 {
+    test_config().effective_max_pool_size()
 }
 
 #[tokio::test]
@@ -144,9 +148,9 @@ async fn close_releases_the_budget_exactly_once() {
         CloseDisposition::Closed
     );
     // One grant, one release: the repeated close must not release again. The
-    // granted figure is the pool size plus the control pool, because that is
-    // what the provider really opens.
-    assert_eq!(budget.granted(), vec![pool_size_plus_control()]);
+    // granted figure is the data pool, because that is what a resource is charged
+    // for; the shared control connection is not part of it.
+    assert_eq!(budget.granted(), vec![declared_data_pool_cost()]);
     assert_eq!(budget.released(), 1);
     assert_eq!(fake.read(|wire| wire.disconnect_calls), 1);
 
@@ -174,7 +178,7 @@ async fn a_failed_connect_returns_the_permit() {
         error,
         ResourceError::Driver(DriverError::ConnectionFailed(_))
     ));
-    assert_eq!(budget.granted(), vec![pool_size_plus_control()]);
+    assert_eq!(budget.granted(), vec![declared_data_pool_cost()]);
     assert_eq!(
         budget.released(),
         1,

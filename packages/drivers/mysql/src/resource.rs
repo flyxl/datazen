@@ -40,8 +40,8 @@ use datazen_driver_api::session::{
     SessionState, TransactionObservation, TransactionOptions, TransactionState,
 };
 use datazen_driver_api::{
-    ConnectionHandle, DatabaseDriver, DriverError, QueryExecutionId, SqlTarget, TransactionHandle,
-    Value, PROTOCOL_VERSION,
+    ConnectionConfig, ConnectionHandle, DatabaseDriver, DriverError, QueryExecutionId, SqlTarget,
+    TransactionHandle, Value, PROTOCOL_VERSION,
 };
 
 use crate::mysql::MysqlDriver;
@@ -402,13 +402,11 @@ impl ResourceProvider for MysqlResourceProvider {
             },
             reuse_policy: ReusePolicy::Unknown,
             initialization_requirements: Vec::<InitializationRequirement>::new(),
-            connection_cost_policy: if fixed_purpose(request.purpose) {
-                ConnectionCostPolicy::PoolBounded {
-                    max_physical_connections: 2,
-                }
-            } else {
-                mysql_connection_cost(&request.connection_config)
-            },
+            connection_cost_policy: resource_connection_cost(
+                &request.connection_config,
+                request.purpose,
+                false,
+            ),
         })
     }
 
@@ -425,13 +423,8 @@ impl ResourceProvider for MysqlResourceProvider {
         let fixed = fixed_purpose(request.scope.purpose)
             || request.scope.pin_for_streaming
             || request.scope.holds_open_transaction;
-        let cost = if fixed {
-            ConnectionCostPolicy::PoolBounded {
-                max_physical_connections: 2,
-            }
-        } else {
-            mysql_connection_cost(&request.connection_config)
-        };
+        let cost =
+            resource_connection_cost(&request.connection_config, request.scope.purpose, fixed);
         let ConnectionCostPolicy::PoolBounded {
             max_physical_connections: required,
         } = cost
@@ -446,7 +439,12 @@ impl ResourceProvider for MysqlResourceProvider {
         if request.scope.max_physical_connections < required {
             return Err(ResourceError::BudgetDenied {
                 requested: required,
-                reason: "fixed data session plus independent control connection".into(),
+                reason: format!(
+                    "the scope allows {} physical connection(s); this resource needs {required} for \
+                     its data pool (the cancel-only control connection is driver-internal and not \
+                     charged)",
+                    request.scope.max_physical_connections
+                ),
             });
         }
         if !request.baseline.initialization_requirements.is_empty() {
@@ -1048,3 +1046,32 @@ fn fixed_purpose(purpose: datazen_driver_api::resource::ResourcePurpose) -> bool
             | datazen_driver_api::resource::ResourcePurpose::AgentSession
     )
 }
+
+/// The one place a MySQL resource's physical cost is decided.
+///
+/// `describe_resource` and `acquire_resource` must never disagree: the descriptor's
+/// number is what the host sizes a budget from, and the acquire is what the driver
+/// actually charges. Both call this, so the two answers cannot drift.
+///
+/// A fixed resource (interactive query / agent session / pinned stream / open
+/// transaction) holds exactly **one** physical connection for the session's
+/// lifetime, whatever the configured pool size. A leased resource opens the data
+/// pool, so it is charged the pool bound. Either way the driver-internal control
+/// connection is not charged — it is shared per (connection identity, database)
+/// and never runs user SQL.
+fn resource_connection_cost(
+    config: &ConnectionConfig,
+    purpose: datazen_driver_api::resource::ResourcePurpose,
+    fixed: bool,
+) -> ConnectionCostPolicy {
+    if fixed_purpose(purpose) || fixed {
+        ConnectionCostPolicy::PoolBounded {
+            max_physical_connections: FIXED_SESSION_CONNECTIONS,
+        }
+    } else {
+        mysql_connection_cost(config)
+    }
+}
+
+/// Physical connections a fixed (session-scoped) MySQL resource holds.
+const FIXED_SESSION_CONNECTIONS: u32 = 1;
