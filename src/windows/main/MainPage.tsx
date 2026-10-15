@@ -13,6 +13,7 @@ import { Button } from '../../components/ui/Button';
 import { ConnectionEditorDialogHost } from '../../components/connection/NewConnectionDialog';
 import { ConnectionShareDialogHost } from '../../components/connection/ConnectionShareDialogHost';
 import { ConnectionPage } from '../connection/ConnectionPage';
+import { RunningExecutionCloseHost } from './RunningExecutionCloseHost';
 
 /**
  * Main window entry.
@@ -133,6 +134,7 @@ export function MainPage() {
       <ConnectionPage />
       <ConnectionEditorDialogHost />
       <ConnectionShareDialogHost />
+      <RunningExecutionCloseHost />
     </>
   );
 }

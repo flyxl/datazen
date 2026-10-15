@@ -17,11 +17,43 @@ import type { Panel } from './panelTypes';
  */
 
 /** Best-effort cancel of a pane's still-running execution. Never throws. */
-function cancelPaneExec(panel: Panel, exec: QueryExecState | undefined): void {
-  if (!exec?.running || !exec.executionId) return;
+/**
+ * Whether this panel's driver can cancel a running statement precisely.
+ *
+ * Shared so the close flow can tell "there is nothing to cancel" (the session
+ * close is then the cleanup) from "a cancel was requested and never confirmed".
+ */
+export function canCancelPane(panel: Panel): boolean {
   const capabilities =
     useActiveConnectionStore.getState().connections[panel.connectionId]?.capabilities;
-  if (getCancelCapability(capabilities) !== 'supported') return;
+  return getCancelCapability(capabilities) === 'supported';
+}
+
+/** The slice of the panel store `requestPaneCancel` needs; keeps this module store-agnostic. */
+export interface PaneCancelStore {
+  cancelQuery: (panelId: string, paneId?: string) => Promise<void>;
+  queryExec: Map<string, QueryExecState>;
+}
+
+/**
+ * Ask the runtime to stop one pane's statement, reporting whether the request was
+ * *delivered*: `cancelQuery` folds "no editor session to cancel through" and "the
+ * runtime refused" into `cancelState: 'failed'`, and only an accepted request is
+ * worth waiting for (see `runningExecutionClose`).
+ */
+export async function requestPaneCancel(
+  getStore: () => PaneCancelStore,
+  panelId: string,
+  paneId: string,
+): Promise<boolean> {
+  await getStore().cancelQuery(panelId, paneId);
+  const exec = getStore().queryExec.get(paneKey(panelId, paneId));
+  return exec != null && (exec.cancelState === 'requested' || !exec.running);
+}
+
+function cancelPaneExec(panel: Panel, exec: QueryExecState | undefined): void {
+  if (!exec?.running || !exec.executionId) return;
+  if (!canCancelPane(panel)) return;
   queryCommands.cancelQuery(panel.dbSessionId, exec.executionId).catch(() => {});
 }
 
@@ -38,7 +70,9 @@ export function cancelAndCleanupPaneExec(
   if (!currentExec.has(key)) return currentExec;
   cancelPaneExec(panel, currentExec.get(key));
   // 关闭旅程：同一个 pane key 的编辑器会话随 pane 一并关闭（fire-and-forget）。
-  void getQueryPanelSessionRegistry().remove(key).catch(() => {});
+  void getQueryPanelSessionRegistry()
+    .remove(key)
+    .catch(() => {});
   const nextExec = new Map(currentExec);
   nextExec.delete(key);
   return nextExec;
@@ -59,7 +93,9 @@ export function cancelAndCleanupExec(
     if (panel.type !== 'query') continue;
     for (const key of paneKeysOfPanel(currentExec, panel.id)) {
       cancelPaneExec(panel, currentExec.get(key));
-      void getQueryPanelSessionRegistry().remove(key).catch(() => {});
+      void getQueryPanelSessionRegistry()
+        .remove(key)
+        .catch(() => {});
       nextExec.delete(key);
     }
   }

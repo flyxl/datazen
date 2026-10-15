@@ -8,20 +8,20 @@ DataZen 前端使用 React + TypeScript + Zustand。状态按领域拆分，Taur
 
 当前主要 Store：
 
-| Store | 职责 |
-|---|---|
-| `connectionStore` | 持久化连接配置、分组等 |
-| `activeConnectionStore` | 当前运行连接及 `dbSessionId` |
-| `schemaStore` | database/schema/table/object 元数据 |
-| `tableDataStore` | 表数据、筛选、排序、分页和编辑（按 `panelId` 分片） |
-| `panelStore` | 主工作区 Panel、Query 状态和结果 |
-| `workspaceTabsStore` | 工作区 Tab |
-| `aiStore` | AI 配置/会话相关状态 |
-| `dashboardStore` | Dashboard 状态 |
-| `wappStore` | Workspace App 状态 |
-| `settingsStore` | 应用设置 |
-| `uiStore` | UI 层状态 |
-| `contextMenuStore` | Context Menu 状态 |
+| Store                   | 职责                                                |
+| ----------------------- | --------------------------------------------------- |
+| `connectionStore`       | 持久化连接配置、分组等                              |
+| `activeConnectionStore` | 当前运行连接及 `dbSessionId`                        |
+| `schemaStore`           | database/schema/table/object 元数据                 |
+| `tableDataStore`        | 表数据、筛选、排序、分页和编辑（按 `panelId` 分片） |
+| `panelStore`            | 主工作区 Panel、Query 状态和结果                    |
+| `workspaceTabsStore`    | 工作区 Tab                                          |
+| `aiStore`               | AI 配置/会话相关状态                                |
+| `dashboardStore`        | Dashboard 状态                                      |
+| `wappStore`             | Workspace App 状态                                  |
+| `settingsStore`         | 应用设置                                            |
+| `uiStore`               | UI 层状态                                           |
+| `contextMenuStore`      | Context Menu 状态                                   |
 
 不要在组件中复制这些 Store 已经拥有的领域状态。
 
@@ -54,6 +54,8 @@ React
 ## 3. Panel 与 Query
 
 `panelStore` 是主工作区 Panel 的统一状态入口。Query result 属于 Query Panel execution state，而不是另建一个独立页面级状态源。
+
+关闭一个仍在执行 SQL 的 Panel / Pane 时顺序是硬约束：先询问用户（`src/stores/runningExecutionClose.ts` 的 gate，由 `src/windows/main/RunningExecutionCloseHost.tsx` 承载）→ 取消并等待该语句到达终态 → 才释放会话、摘掉标签页；用户拒绝、或取消请求未被确认时标签页原地保留并给出 `query.session.closeBlocked` 提示。没有可取消的编辑器会话时不进入该流程，既有清理路径即资源释放。
 
 Schema Diff、Data Sync、Data Transfer 是独立子窗口，各自维护自己的流程状态。
 
