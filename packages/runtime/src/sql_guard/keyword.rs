@@ -80,7 +80,7 @@ pub fn sql_main_keyword(sql: &str) -> Option<String> {
 ///
 /// Not the same function as [`super::safety::strip_sql_comments`]: this one is
 /// quote-agnostic on purpose (the tokenizer re-parses string literals itself).
-pub fn strip_sql_comments(sql: &str) -> String {
+pub fn strip_comments_for_tokenize(sql: &str) -> String {
     let mut out = String::with_capacity(sql.len());
     let bytes = sql.as_bytes();
     let mut i = 0;
@@ -107,7 +107,7 @@ pub fn strip_sql_comments(sql: &str) -> String {
 }
 
 pub fn tokenize_sql(sql: &str) -> Vec<String> {
-    let cleaned = strip_sql_comments(sql);
+    let cleaned = strip_comments_for_tokenize(sql);
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut in_single = false;

@@ -1,7 +1,7 @@
 //! MCP permission modes — tool restrictions and lightweight SQL classification.
 
 use datazen_runtime::sql_guard::{
-    find_main_verb_index, sql_main_keyword, strip_sql_comments, tokenize_sql,
+    find_main_verb_index, sql_main_keyword, strip_comments_for_tokenize, tokenize_sql,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -181,7 +181,7 @@ pub fn is_tool_listed(
 }
 
 fn contains_multiple_statements(sql: &str) -> bool {
-    let cleaned = strip_sql_comments(sql);
+    let cleaned = strip_comments_for_tokenize(sql);
     let mut in_single = false;
     let mut in_double = false;
     let mut in_backtick = false;
