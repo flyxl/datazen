@@ -366,12 +366,9 @@ impl PostgresDriver {
     ) -> Result<(), DriverError> {
         let transactional = self.transactions.lock().await.contains_key(&handle.id);
         let target_pool = self.pools.read().await.get(&handle.pool_id).cloned();
-        let control_pool = self
-            .control_pools
-            .read()
-            .await
-            .get(&handle.pool_id)
-            .cloned();
+        // The control connection is shared per (connection identity, database),
+        // so it is reached through this resource's config rather than `pool_id`.
+        let control_pool = self.control_pool_for(handle).await;
         let mut executions = self.query_executions.lock().await;
         if executions.contains_key(execution_id) {
             return Err(DriverError::QueryFailed(format!(

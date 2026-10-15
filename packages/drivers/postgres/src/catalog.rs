@@ -549,15 +549,12 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
     ) -> Result<StructureCapabilities, DriverError> {
         // Capabilities depend only on server version. Read this server-global
-        // fact through the separate control pool so opening the structure
+        // fact through the shared control connection so opening the structure
         // editor cannot stall behind table browsing or query streams that have
         // saturated the user's data pool.
         let pool = self
-            .control_pools
-            .read()
+            .control_pool_for(handle)
             .await
-            .get(&handle.pool_id)
-            .cloned()
             .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
         let row = sqlx::query("SELECT version()")
             .fetch_one(&pool)

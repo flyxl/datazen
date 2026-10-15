@@ -42,8 +42,7 @@ use sqlx::PgPool;
 use crate::postgres::PostgresDriver;
 
 use super::capabilities::{
-    postgres_capability_registry, postgres_namespace_shape, postgres_resource_connection_cost,
-    CONTROL_POOL_CONNECTIONS, POSTGRES_PROVIDER_ID,
+    postgres_capability_registry, postgres_namespace_shape, POSTGRES_PROVIDER_ID,
 };
 use super::observation;
 use super::payload::{decode_command_result, StatementOutput};
@@ -377,19 +376,17 @@ impl PostgresResourceProvider {
             });
         }
 
-        // The cost policy is the single source of truth for the charge. If it
-        // ever stops being a bounded pool, acquisition is refused rather than
-        // guessed at.
+        // The cost policy is the single source of truth for the charge, and one
+        // helper answers it for both the description and this charge. If it ever
+        // stops being a bounded pool, acquisition is refused rather than guessed at.
         let fixed = contract::fixed_purpose(request.scope.purpose)
             || request.scope.pin_for_streaming
             || request.scope.holds_open_transaction;
-        let cost = if fixed {
-            ConnectionCostPolicy::PoolBounded {
-                max_physical_connections: 2,
-            }
-        } else {
-            postgres_resource_connection_cost(&request.connection_config, request.scope.purpose)
-        };
+        let cost = contract::resource_connection_cost(
+            &request.connection_config,
+            request.scope.purpose,
+            fixed,
+        );
         let ConnectionCostPolicy::PoolBounded {
             max_physical_connections: required,
         } = cost
@@ -407,12 +404,10 @@ impl PostgresResourceProvider {
             return Err(ResourceError::BudgetDenied {
                 requested: required,
                 reason: format!(
-                    "the scope allows {} physical connection(s); this resource needs {}: a pool \
-                     of {} plus a control pool of {} connection(s) used for cancellation",
-                    request.scope.max_physical_connections,
-                    required,
-                    required.saturating_sub(CONTROL_POOL_CONNECTIONS),
-                    CONTROL_POOL_CONNECTIONS
+                    "the scope allows {} physical connection(s); this resource needs {} for its \
+                     data pool (the cancel-only control connection is driver-internal and not \
+                     charged)",
+                    request.scope.max_physical_connections, required
                 ),
             });
         }

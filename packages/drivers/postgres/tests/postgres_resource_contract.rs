@@ -65,8 +65,6 @@ mod live_gate;
 
 /// The provider id postgres declares in its capability snapshot.
 const POSTGRES_PROVIDER_ID: &str = "postgresql";
-/// One physical connection is reserved for cancellation, on its own pool.
-const CONTROL_POOL_CONNECTIONS: u32 = 1;
 
 fn factory(driver_id: &str) -> &'static dyn DatabaseDriverFactory {
     iter_driver_factories()
@@ -438,9 +436,9 @@ async fn describe_states_the_real_physical_cost_and_refuses_levels_postgres_has_
         ConnectionCostPolicy::PoolBounded {
             max_physical_connections,
         } => assert_eq!(
-            max_physical_connections,
-            1 + CONTROL_POOL_CONNECTIONS,
-            "an interactive resource retains one backend plus the cancellation control connection"
+            max_physical_connections, 1,
+            "an interactive resource retains one backend; the cancel-only control \
+             connection is driver-internal and is not charged"
         ),
         other => panic!(
             "postgres fixed sessions are bounded by their retained connections, not {other:?}"
@@ -478,18 +476,18 @@ async fn a_scope_that_cannot_pay_for_the_resource_is_denied_before_anything_is_o
     let ledger = Arc::new(BudgetLedger::default());
     let budget: Arc<dyn BudgetPort> = Arc::clone(&ledger) as Arc<dyn BudgetPort>;
 
-    // An interactive resource retains one backend and a control connection. A
-    // scope that names fewer must be refused before the provider opens either.
+    // An interactive resource retains one backend, so a scope that names none
+    // must be refused before the provider opens anything.
     let error = provider
-        .acquire_resource(&acquire_request(&config, interactive_scope(1)), &budget)
+        .acquire_resource(&acquire_request(&config, interactive_scope(0)), &budget)
         .await
-        .expect_err("a scope of 1 cannot pay for the retained backend and control connection");
+        .expect_err("a scope of 0 cannot pay for the retained backend");
 
     match error {
         ResourceError::BudgetDenied { requested, reason } => {
-            assert_eq!(requested, 1 + CONTROL_POOL_CONNECTIONS);
+            assert_eq!(requested, 1);
             assert!(
-                reason.contains("1"),
+                reason.contains("0"),
                 "the reason must name the scope that was refused: {reason}"
             );
         }

@@ -1,6 +1,7 @@
 //! Connection pool and connect-option helpers for PostgreSQL driver.
 
 use crate::postgres::PostgresDriver;
+use crate::resource::capabilities::CONTROL_POOL_CONNECTIONS;
 use datazen_driver_api::*;
 use sqlx::postgres::{PgPoolOptions, PgSslMode};
 use sqlx::{PgPool, Row};
@@ -91,6 +92,38 @@ impl PostgresDriver {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .unwrap_or("postgres")
+    }
+
+    /// Identity of the shared cancel-only control connection.
+    ///
+    /// The cancel itself is database-agnostic — `pg_cancel_backend` names a pid on
+    /// the whole instance — but the **pool is not**: a `PgPool` reconnects with the
+    /// connect options it was built from, so the database is part of its identity.
+    /// Keying without it let a pool built for one database serve a resource on
+    /// another, and in the desktop E2E, where the worker database behind a
+    /// connection is dropped and re-created before every spec file, the reused pool
+    /// then tried to reconnect to a database that no longer existed and took the
+    /// whole acquisition down with it (measured: the two spec files that follow the
+    /// first one failed in their `before all` hook).
+    ///
+    /// So: one control connection per (identity, database), shared by every resource
+    /// that resolves to the same server and database — not one per resource, which
+    /// is the duplicate the resource budget used to charge for. It stays out of the
+    /// declared cost of a resource (see `resource/capabilities.rs`).
+    ///
+    /// The password is excluded too (a secret has no business in a map key); the
+    /// config that carries it is stored per resource and the connection is
+    /// dropped once the last resource of this identity is released.
+    pub(crate) fn control_pool_key(config: &ConnectionConfig) -> String {
+        format!(
+            "pgctl|{}|{}|{}|{}|{:?}|{}",
+            config.id,
+            config.host.as_deref().unwrap_or(DEFAULT_HOST),
+            config.port.unwrap_or(DEFAULT_PORT),
+            config.username.as_deref().unwrap_or(""),
+            config.ssl_mode,
+            Self::resolve_connect_database(config),
+        )
     }
 
     pub(crate) async fn open_pool(
@@ -456,23 +489,102 @@ impl PostgresDriver {
             .await
             .insert(pool_id.clone(), resolved_db);
         let control_opts = build_pg_options(config)?;
-        let control_pool = match Self::open_pool(control_opts, timeout, 1, 0).await {
-            Ok(p) => p,
-            Err(e) => {
-                pool.close().await;
-                return Err(e);
-            }
-        };
-        self.pools.write().await.insert(pool_id.clone(), pool);
-        self.control_pools
-            .write()
+        let control_key = Self::control_pool_key(config);
+        if let Err(error) = self
+            .acquire_control_pool(&control_key, control_opts, timeout)
             .await
-            .insert(pool_id.clone(), control_pool);
+        {
+            // The cancel-only connection is an auxiliary capability, and the
+            // primary path must not depend on it: a resource that cannot cancel is
+            // degraded, not unusable. Failing here instead is how a stale control
+            // pool (bound to a database that has since been dropped) turned into a
+            // refused `DROP TABLE` in the desktop E2E. Resolution is deferred to
+            // `control_pool_for`, which answers `None` and lets cancel degrade.
+            tracing::warn!(
+                %error,
+                "cancel-only control connection unavailable; this resource cannot cancel precisely"
+            );
+        }
+        self.pools.write().await.insert(pool_id.clone(), pool);
 
         Ok(ConnectionHandle {
             id: connection_id,
             pool_id,
         })
+    }
+
+    /// Get-or-create the shared cancel-only control connection for
+    /// `control_key`, adding one reference for the resource being opened.
+    ///
+    /// Held under the write lock across the connect on purpose: two resources
+    /// racing for the same identity must not open two control connections, and
+    /// the wait is bounded by one connection attempt.
+    async fn acquire_control_pool(
+        &self,
+        control_key: &str,
+        opts: sqlx::postgres::PgConnectOptions,
+        timeout: Duration,
+    ) -> Result<(), DriverError> {
+        let mut pools = self.control_pools.write().await;
+        if let Some(entry) = pools.get_mut(control_key) {
+            entry.refs = entry.refs.saturating_add(1);
+            return Ok(());
+        }
+        match Self::open_pool(opts, timeout, CONTROL_POOL_CONNECTIONS, 0).await {
+            Ok(pool) => {
+                pools.insert(
+                    control_key.to_string(),
+                    crate::postgres::ControlPoolEntry { pool, refs: 1 },
+                );
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// The shared control connection serving `handle`'s resource.
+    ///
+    /// Resolved through the resource's config, not through `pool_id`, because one
+    /// control connection serves every resource of a (connection identity,
+    /// database). Callers that need a backend pid (`pg_cancel_backend`) or a
+    /// server-global fact go through here; `None` means this resource has no usable
+    /// control connection, which is a supported state — acquisition never depends on
+    /// it, so cancel degrades instead of refusing the resource.
+    pub(crate) async fn control_pool_for(&self, handle: &ConnectionHandle) -> Option<PgPool> {
+        let key = {
+            let configs = self.connect_configs.read().await;
+            configs.get(&handle.pool_id).map(Self::control_pool_key)
+        }?;
+        self.control_pools
+            .read()
+            .await
+            .get(&key)
+            .map(|entry| entry.pool.clone())
+    }
+
+    /// Drop one reference to the shared control connection for the resource
+    /// `pool_id`, closing the physical connection once the last one is gone.
+    ///
+    /// Must run **before** `connect_configs` forgets the resource: the identity
+    /// key comes from that config.
+    async fn release_control_pool(&self, pool_id: &str) {
+        let key = {
+            let configs = self.connect_configs.read().await;
+            configs.get(pool_id).map(Self::control_pool_key)
+        };
+        let Some(key) = key else {
+            return;
+        };
+        let mut pools = self.control_pools.write().await;
+        let Some(entry) = pools.get_mut(&key) else {
+            return;
+        };
+        entry.refs = entry.refs.saturating_sub(1);
+        if entry.refs == 0 {
+            if let Some(entry) = pools.remove(&key) {
+                entry.pool.close().await;
+            }
+        }
     }
 
     pub(crate) async fn disconnect_impl(
@@ -507,21 +619,16 @@ impl PostgresDriver {
         if let Some(pool) = pool {
             pool.close().await;
         }
-        let control_pool = self
-            .control_pools
-            .read()
-            .await
-            .get(&handle.pool_id)
-            .cloned();
-        if let Some(pool) = control_pool {
-            pool.close().await;
-        }
+        // The control connection is shared by every resource of one connection
+        // identity, so this drops a reference rather than closing it: the last
+        // resource out closes it. Runs while `connect_configs` still holds the
+        // config the identity key is derived from.
+        self.release_control_pool(&handle.pool_id).await;
         self.database_pools
             .write()
             .await
             .retain(|(owner, _), _| owner != &handle.pool_id);
         self.pools.write().await.remove(&handle.pool_id);
-        self.control_pools.write().await.remove(&handle.pool_id);
         self.fixed_sessions.write().await.remove(&handle.id);
         self.fixed_contexts.write().await.remove(&handle.id);
         self.active_databases.write().await.remove(&handle.pool_id);

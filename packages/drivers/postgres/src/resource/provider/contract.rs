@@ -27,8 +27,9 @@ use async_trait::async_trait;
 use datazen_driver_api::capabilities::{CapabilityRegistry, SessionContinuity};
 use datazen_driver_api::namespace::{NamespaceShape, NamespaceTarget};
 use datazen_driver_api::resource::{
-    AcquireResourceRequest, Baseline, BudgetPort, CommandCall, DescribeResourceRequest,
-    ResourceDescriptor, ResourceError, ResourceHandle, ResourceProvider, ResultSink, ReusePolicy,
+    AcquireResourceRequest, Baseline, BudgetPort, CommandCall, ConnectionCostPolicy,
+    DescribeResourceRequest, ResourceDescriptor, ResourceError, ResourceHandle, ResourceProvider,
+    ResultSink, ReusePolicy,
 };
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, ContextChangeDisposition,
@@ -42,6 +43,31 @@ use super::super::capabilities::{
 };
 use super::super::registry::OpenTransaction;
 use super::PostgresResourceProvider;
+
+/// The physical cost of one resource, declared to the budget.
+///
+/// Single source of truth for both `describe_resource` and `acquire_resource`: a
+/// description that disagrees with the charge is how a provider bills for
+/// something it never declared. A fixed session retains exactly one backend; the
+/// cancel-only control connection is driver-internal, shared per (connection
+/// identity, database), and is deliberately **not** charged (see `capabilities.rs`).
+///
+/// `fixed` is the caller's own reading of fixedness — `describe` answers for the
+/// purpose, `acquire` also honours a scope that pins for streaming or holds an
+/// open transaction.
+pub(super) fn resource_connection_cost(
+    config: &datazen_driver_api::ConnectionConfig,
+    purpose: datazen_driver_api::resource::ResourcePurpose,
+    fixed: bool,
+) -> ConnectionCostPolicy {
+    if fixed {
+        ConnectionCostPolicy::PoolBounded {
+            max_physical_connections: 1,
+        }
+    } else {
+        postgres_resource_connection_cost(config, purpose)
+    }
+}
 
 #[async_trait]
 impl ResourceProvider for PostgresResourceProvider {
@@ -88,13 +114,11 @@ impl ResourceProvider for PostgresResourceProvider {
             // declared. `acquire_resource` refuses a non-empty baseline rather
             // than silently skipping it.
             initialization_requirements: Vec::new(),
-            connection_cost_policy: if fixed_purpose(request.purpose) {
-                datazen_driver_api::resource::ConnectionCostPolicy::PoolBounded {
-                    max_physical_connections: 2,
-                }
-            } else {
-                postgres_resource_connection_cost(&request.connection_config, request.purpose)
-            },
+            connection_cost_policy: resource_connection_cost(
+                &request.connection_config,
+                request.purpose,
+                fixed_purpose(request.purpose),
+            ),
             namespace_shape: self.namespace_shape.clone(),
         })
     }

@@ -72,15 +72,9 @@ impl PostgresDriver {
         sqlx::Connection::ping(&mut **connection)
             .await
             .map_err(fixed_observation_error)?;
-        let control = self
-            .control_pools
-            .read()
-            .await
-            .get(&handle.pool_id)
-            .cloned()
-            .ok_or_else(|| {
-                DriverError::ConnectionFailed("SessionLost: control connection unavailable".into())
-            })?;
+        let control = self.control_pool_for(handle).await.ok_or_else(|| {
+            DriverError::ConnectionFailed("SessionLost: control connection unavailable".into())
+        })?;
         let mut observer = control
             .acquire()
             .await
