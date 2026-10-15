@@ -481,8 +481,12 @@ describe('TableStructureEditor branches', () => {
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalled();
     });
+    // estimate_table_rows carries its target through the command input, not the
+    // ExecutionTarget object: the driver's default target requirements mark it
+    // `allows_object: false`, so a relation identity on the target would be
+    // rejected with TargetUnsupported by runtime admission.
     expect(mockExecuteTargetCommand).toHaveBeenCalledWith(
-      { targetArgs: ['conn-1', 'db_b', null, 'users', 'connection-1'] },
+      { targetArgs: ['conn-1', 'db_b', null, undefined, 'connection-1'] },
       expect.objectContaining({
         command: 'estimate_table_rows',
         input: expect.objectContaining({ table: 'users' }),

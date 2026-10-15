@@ -111,7 +111,7 @@ async function fetchEstimatedTableRows(args: {
         args.dbSessionId,
         args.database ?? null,
         args.schema ?? null,
-        args.table,
+        undefined,
         args.connectionId,
       ),
       { command: ESTIMATE_TABLE_ROWS_COMMAND, input },
