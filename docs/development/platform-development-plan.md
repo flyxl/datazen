@@ -1,6 +1,6 @@
 # 连接管理重构与桌面 / Web 多形态开发计划
 
-> 状态：P5 已完成（2026-10-09），P6 可启动；P6 及后续阶段仍为计划。当前基线：`main`，`248200f45`。本文按用户明确要求入库，不记录每日进度。
+> 状态：P5 已完成（2026-10-09），P6 可启动；P6 及后续阶段仍为计划。当前基线：`main`，`f06ad7e5b`。本文按用户明确要求入库，不记录每日进度。
 > 设计依据：[系统概要](../architecture/platform/system-overview.md)、[连接管理详细设计](../architecture/platform/connection-management.md)。
 
 ## 1. 交付目标与实施原则
@@ -144,9 +144,65 @@ QueryPanel Explain 已通过同一 pane 的 `EditorSessionController` 提交 `ex
 
 补充确定性验收：`p4_usecase_journeys` 通过公开 application API 记录候选失败、旧资源继续执行、候选成功建立、旧资源关闭的物理 journal，并交错双编辑器读取 100 轮（200 次），逐次验证数据库和固定 resource；替换后产物/来源保留、旧 runtimeBinding 失效。另以真实 runtime artifact store 验证漏读已发布块→取消→补块/重读去重→原资源显式新读，只提交原命令一次。CM-72 的 unsupported/requested/alreadyFinished 回执与执行效果分离，registry 非敏感能力版本审计通过；前端拒绝旧 `accepted` 回执、无效大小写、无效状态和异 executionId。结果视图在 binding 失效或换 execution 时关闭已打开输入，并在提交入口再检查可写性。补充前端聚焦 17 文件/218 用例、registry audit 11 用例、SQLite 当前 resource 契约 36 用例与最终 typecheck 通过；这些不能替代相同旅程的真实 UI/驱动层验收。
 
-阶段仍未关闭：下述 F 断言仍须逐项映射证据；以上通过结果尚未证明全部连续故障旅程。特别是 §12.1 的实际 UI 丢块/断线→取消→恢复→再次执行，及同一连续旅程中的切库、替代 session、关闭结果视图、临时写回失效，仍需真实故障注入验收。CM-72 的 durable provenance 已从当前 actor 所属物理资源携带完整非敏感能力快照（driverId/version、protocolVersion、capabilityRevision、confirmed evidence），runtime journey 断言了这些字段；真实 UI 跨替换/恢复旅程仍须验收。已存在的单元测试或新 runtime 接线不代表全部验收通过。SQLite 等驱动当前仍声明 statefulSession unsupported/unknown，按 CM-19 明确拒绝固定编辑器 session；不能把单连接池等同于 retained session，后续能力迁移和矩阵验收不能以旧池 Explain 替代。旧管理器还服务于其他阶段的消费者，删除边界须按消费者迁移判断。
+阶段仍未关闭：下述 F 断言仍须逐项映射证据。**本轮已落地**：
+
+- §12.1 的「实际 UI 丢块/断线→取消→恢复→再次执行」已有真实故障注入验收：`e2e/specs/journeys/query-fault-recovery-journey.ts`（PostgreSQL，用独立的第二会话执行 `pg_terminate_backend` 杀掉编辑器正在使用的后端）。同一条连续旅程断言：多批部分结果先落地 → 精确取消（取消成功不显示失败，`errorBeforeKill=false`）→ 断线后失败**必须可见**（错误面板非空 **且** 显式「打开新会话」横幅同时出现，静默结束或两者只出现一个都判红）→ 用户显式开新会话（禁止原 ID 透明重连）→ 同一编辑器再次执行成功，且新后端 `backend_start` 严格晚于被杀后端（证明是替代而不是复用）。实测两次均 `1 passing`、EXIT=0。
+- SQLite Explain 的拒绝边界由驱动 crate 内 `explain_is_pooled_only_and_not_a_declared_session_command` 钉住（`packages/drivers/sqlite/src/lib.rs`）：池级 `supports_explain()` 仍为真，session-bound `explain` Command 未声明，`execute_command` 对它明确返回 `Unsupported`。
+- CM-67 的收口结论见 §17.1 与连接管理 CM-67：H 层已落地并有实测，空闲池在首版真实驱动上恒为空是**能力事实**（全部 path 驱动 `ResetForReuse::Unsupported`）而不是实现缺失，那两条不作为 D 层断言。
+- F 断言不再只有汇总：§8.1 逐条给出证据，本轮补齐 4 个真实 UI 旅程（编辑器会话隔离、结果视图消失不取消、查询故障恢复、查询结果写回边界）与 1 个真实驱动旅程（池键与轮换），全部实测通过。同时确认 CM-35/36/61 的**正向**写法在首版不可达：`WritableMapping::Verified` 要求 `context_before.confidence == Confirmed`，而确认要求驱动声明 `ContextObservation::Full`——**当前没有任何内置驱动声明**（postgres / mysql / sqlite / redis 均 `Partial`，其余 `Unsupported`）。真实 UI 层因此只能断言可达的那一半（只读、替换后仍可阅读），"可写结果在替换后失效"留在组件层。
+- P4 自己引入的旧取消路径已清理：`panelExecCleanup` 不再向旧 `cancel_query` IPC 发取消，改走该 pane 自己的 `EditorSessionController`；`cancel_query` IPC 本体仍留给旧 `execute_query*` 消费者。
+
+**仍未完成**：F 断言的逐项证据映射见 §8.1。除该节列出的三项残余（CM-33 的 F 半、CM-16 的真实 UI 候选失败注入、CM-63 的第二 attach 方）与一条首版能力边界（查询结果写回的正向断言）外，§8 退出门槛列出的 F 断言都有可执行证据。已存在的单元测试或新 runtime 接线不代表全部验收通过——§8.1 的"F 已覆盖"只表示证据存在且实跑通过，适用层与限制逐条列在该节。旧管理器还服务于其他阶段的消费者（Workflow 非 SQL 步骤、Monitor、AI、MCP、迁移三件套、backup/export、旧 `execute_driver_command` 网关），删除边界须按消费者迁移判断。
+
+#### 8.1 P4 F 断言逐项证据映射（2026-10 实测）
+
+把 §8 退出门槛列出的 F 断言逐条落到具体证据。`F 已覆盖` = 真实 UI 层有可执行断言；`组件级` = 组件/单测覆盖但未做真实旅程；`用例无 F` = 连接管理 §16 该条本身不含 F 层断言。四个 Host 旅程与一个驱动旅程（全部实测 `1 passing` / `EXIT=0`，跑测于 2026-10）的运行方式：
+
+```bash
+pnpm e2e:skip-build -- --spec e2e/specs/journeys/editor-session-isolation-journey.ts      # CM-08/09/11/12/17
+pnpm e2e:skip-build -- --spec e2e/specs/journeys/result-view-loss-journey.ts             # CM-64 无消费者
+pnpm e2e:skip-build -- --spec e2e/specs/journeys/query-fault-recovery-journey.ts         # CM-56/64 断线→替代→再执行
+pnpm e2e:skip-build -- --spec e2e/specs/journeys/temporary-result-writeback-journey.ts   # CM-35/36/61 写回能力边界
+pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rotation.ts  # CM-38/67 D 层（或 --suite connection-pool）
+```
+
+| 用例 | F 断言落点 | 证据 | 结论 |
+| --- | --- | --- | --- |
+| CM-08 两个编辑器隔离 | UI 上下文独立、交错读取各自固定 | **新增** `editor-session-isolation-journey`（同一连接两个 tab 各切一库，交错读 5 轮，两个 selector 各保持自己的库）；H：`p4_usecase_journeys::cm08_cm15_cm16_replacement_journal_and_100_interleaved_reads` | F 已覆盖 |
+| CM-09 跨调用临时状态 | 原会话可读、另一会话不可访问 | **新增** 同一旅程（同库 temp 表在自身 tab 读到 42，兄弟 tab 明确报缺失关系且之后仍可用）；D：`packages/drivers/postgres/e2e/retained-resource-journey.ts` | F 已覆盖 |
+| CM-11 USE 失败 / CM-12 成功后失败 | 失败不移动已观察上下文 | **新增** 同一旅程（限定名读取与失败语句后，selector 与 `current_database()` 仍是原库）；E2E `sql-query.ts SQ-CTX-001`。产品已无 `USE` 切换路径，等价断言即 CM-13 形态 | F 已覆盖（等价形态） |
+| CM-13 限定名与补全不切库 | 补全可变、observedContext 不变 | E2E `sql-query.ts` `SQ-CTX-001`（限定名查询后编辑器上下文不变） | F 已覆盖 |
+| CM-15 PG 切 database 替换 | 先成功后替换、旧 ID 不能执行 | E2E `sql-query.ts` `SQ-LIFECYCLE-001`（6 次替换 + 每次 `current_database()`，证明旧资源释放）；单测 `sessionReplacement.test.ts` | F 已覆盖 |
+| CM-16 替换失败保留旧连接 | UI 不显示 B、旧会话仍有效 | 单测 `sessionReplacement.test.ts::leaves the previous handle bound …`；组件 `queryPanelSessionSwitch.test.tsx::prompts a revision conflict and keeps the previous database`；H：`p4_usecase_journeys::replacement_rollback_revision_commit_and_replay` | 组件级（真实 UI 未注入候选失败，见下） |
+| CM-17 手写事务旅程 | UI 同步事务、另一会话不可见 | **新增** 同一旅程（SQL `BEGIN`→`INSERT`→本 tab 读到 1→独立会话读到 0→`ROLLBACK`→两侧 0）；E2E `client-parity.ts`（旧 IPC 三件套）；单测 `TableView.test.tsx` | F 已覆盖 |
+| CM-18 aborted/unknown | 不显示为 none、切库被阻止 | 组件 `query.modules.test.tsx`（unclosed/aborted 对话框）、`sqlTransactionGuard.test.ts`；单测 `pageUnload.test.ts`（页面死亡按事务态回滚）；E2E `table-session-loss-recovery.ts`（`resourceLost`+`unknown` 回执→显式新会话） | F 已覆盖 |
+| CM-21 切库与执行竞态 | 冲突不吞、提示明确 | 组件 `queryPanelSessionSwitch.test.tsx`（revision 冲突保留旧库）、`sessionPrompts.test.ts`；H：`p4_usecase_journeys` | F 已覆盖 |
+| CM-33 多表 tab 共用短操作池 | 编辑器资源/上下文不受表格刷新影响 | 仅 H：`pool_capacity_budget.rs`（池容量与预算台账一致） | **F 未覆盖**（见下） |
+| CM-34 表编辑事务范围 | 暂存/预览/回滚/提交、失败两条同回滚 | E2E `table-edit.ts`（`DE-006~DE-008` 暂存/预览/回滚/提交）；组件 `TableView.test.tsx`（显式事务开关） | F 已覆盖 |
+| CM-35 旧结果正确归属 | 可写映射提交原目标、任意 SQL 只读 | 组件 `ResultTableView.test.tsx`（verified 结果在 binding 刷新前只读）；单测 `executionRecoveryJourney.test.ts`（切库使绑定失效并再次执行）、`metadata.test.ts::isProvenanceCurrent`；E2E `query-artifact-export.ts`；**新增** `temporary-result-writeback-journey.ts`（`SELECT * FROM <单关系>` 的真实结果在替换前后都不可编辑） | F 已覆盖（只读方向；正向在首版不可达，见下） |
+| CM-36 临时对象结果失效 | 关闭 S 后编辑旧结果即 `SessionLost`、结果仍可读 | 组件 `ResultTableView.test.tsx`（标注 CM-36/61：原绑定失效时关闭已打开编辑器且绝不提交过期编辑）；**新增** `temporary-result-writeback-journey.ts`（真实 UI：会话替换后结果仍可阅读、仍不可编辑、无错误面板） | 组件级（正向）+ 真实 UI（可读方向）；正向在首版不可达，见下 |
+| CM-37 缓存竞态与权限隔离 | —（用例标 H） | 前端最接近证据：`metadataCache.test.ts`（乱序读被拒、失效、epoch）、`metadata.test.ts`（按 connection/config/target/dbSession 隔离） | 用例无 F；H 见左 |
+| CM-38 配置修改与凭据轮换 | —（用例标 H/W） | **新增 D**：`packages/drivers/postgres/e2e/connection-pool-rotation.ts`（真实 PG：CAS 轮换后 `get_session` 与 `execute_in_session` 报 `configRevisionMismatch`，`close_session` 仍 `confirmed`，新会话可用且物理后端归零） | 用例无 F；D 本轮补齐 |
+| CM-39 配置禁用/删除 | —（用例标 H/W） | H：`resource_rotation_and_disable.rs::disabling_a_connection_drops_queued_requests_and_records_the_actual_cancellation`；W 属 P7 | 用例无 F |
+| CM-55 事件重复/乱序/超大 revision | 旧事件不覆盖、不重复、缺口重读 | 单测 `sessionJourney.test.ts`（`rebuilds and clears the cursor for stream reset …`、`deduplicates large sequences, retries unread blocks, recovers gaps…`、`rejects a mismatched first chunk…`）、`executionRecoveryJourney.test.ts`、`runEditorQueryArtifacts.test.ts` | F 已覆盖（单测）；超大 Counter 的 W 属 P7 |
+| CM-56 网络掉线与事务 TTL | 掉线不伪恢复、下一执行要求新 session | E2E `table-session-loss-recovery.ts`（杀掉后端→回执→显式新会话→再事务）；**新增** `query-fault-recovery-journey.ts`（流中杀后端→失败可见→替代 session→再执行，新 `backend_start` 严格更新）；TTL/心跳为 H（fake clock） | F 已覆盖（掉线）；TTL 属 H |
+| CM-61 持久化白名单与临时结果恢复 | 普通表重授权可写、临时结果只读 | 组件 `ResultTableView.test.tsx`（CM-36/61 同条）、`metadata.test.ts`（provenance 过期判据）；**新增** `temporary-result-writeback-journey.ts`；白名单本体 H：`p4_usecase_journeys` artifact 旅程 | F 已覆盖（只读方向）；重授权后可写在首版不可达，见下 |
+| CM-63 Attachment、TTL 与竞态 | —（桌面无第二 attach 方） | F 侧仅页面死亡：`pageUnload.test.ts`；attach/TTL/竞态为 H（`directory_attachment_ttl.rs`）与 W1 | 部分（见下） |
+| CM-64 无消费者、截断与有界 drain | 视图消失不取消、返回可读、截断可见 | **新增** `result-view-loss-journey.ts`（切走标签页=视图消失：语句仍在跑→跑完→返回后 300 行恢复且 `data-execution-seq` 不变，证明未重投）；**新增** `query-fault-recovery-journey.ts`；截断文案 E2E `edge-cases.ts`（`query.resultTruncated`）；协议 barrier/配额为 H/D 夹具 | F 已覆盖（无消费者与恢复）；"有界"的量值属 H/D |
+| CM-72 错误、控制回执与能力审计 | 回执/错误码一致、effectOutcome 不被覆盖、失效绑定不提交 | 单测 `packages/backend-client/__tests__/{client,errors}.test.ts`（拒绝旧 `accepted`、大小写与状态、异 executionId）、`ResultTableView.test.tsx`（失效绑定不提交）；**新增** `query-fault-recovery-journey.ts`（替换后按执行状态与产物读取，失败可见且不静默）＋ `temporary-result-writeback-journey.ts`（替换后只读、编辑入口关闭） | F 已覆盖（回执与失效绑定）；durable provenance 的**能力快照字段**（driverId/version、protocolVersion、capabilityRevision、confirmed evidence）由 H `p4_usecase_journeys` 断言——它们在 UI 上没有稳定的 DOM 面，不写一条读不到的快照断言 |
+
+**首版能力边界（不是待办）**
+
+- **查询结果写回的正向断言（CM-35/36/61）在首版对所有发布驱动不可达。** `WritableMapping::Verified` 只在 `context_before.confidence == Confirmed` 时产生（`src-tauri/src/platform/session_backend/execution.rs`），而 `Confirmed` 要求驱动声明 `ContextObservation::Full`（`packages/driver-api/src/capabilities.rs::confirms_context`）。当前没有任何内置驱动声明它：postgres / mysql / sqlite / redis 为 `Partial`，hbase / mongodb / vector 为 `Unsupported`。因此"可写结果在会话替换后失效"没有可触发的真实状态，用真实 UI 写它只会得到一条永远为真的空断言；该断言留在组件层（`ResultTableView.test.tsx`，标注 CM-36/61）。真实 UI 层断言的是可达的那一半（只读、替换后仍可阅读），见 `temporary-result-writeback-journey.ts`。只有某个驱动能确证上下文后，这条正向断言才重新具备 F 层可验证性。
+
+**仍未覆盖的 F 断言（附原因与前置条件）**
+
+- **CM-33（F 半：表格并发刷新不影响编辑器资源/上下文）**：契约的数值半由 H 层 `pool_capacity_budget.rs` 承担。写 UI 半的前置条件是先有一个**可归因**的物理连接观测口：桌面同一个库上同时存在 UI 的旧 `ConnectionManager` 会话与 runtime 会话，`pg_stat_activity` 计数无法区分两者，此时任何"不超过 N"的断言都不可归因。应先让 runtime 暴露只读的池/预算计数（或让 `log_runtime_wiring` 打出在借/非空池数量），再补旅程。本轮未做。
+- **CM-16（真实 UI 的候选失败注入）**：组件级与 H 层 journal 已覆盖"失败保留旧会话"；真实旅程需要在切库过程中让候选连接失败（例如先改错端口再切回），属可做但本轮未做——它与 `edit-delete-connection` 的配置突变夹具重叠，收益低于已完成的 CM-08/09 隔离旅程。
+- **CM-63（另一 attach 方）**：桌面没有第二个 attach 方（无多客户端重附着入口），F 侧只剩页面死亡回滚 = `pageUnload.test.ts`；attach/TTL/竞态归 H 与 W1。
 
 交付：
+
 
 - QueryPanel 每编辑器独立懒 session，复制 tab 不复制 runtime ID。
 - 删除执行前从 SQL 推测已生效上下文的行为，保留补全与浏览推测。
@@ -353,7 +409,7 @@ WDIO 必须使用已注入 driver 的构建；三件套可运行 app 已生成�
 P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖**（①与⑦是本轮补齐的），**CM-64 / CM-67 移交 P3**：它们的实现对象是 P3 的 artifact 结果运行时与 pool / lease 管理器，P2 无法在不越过阶段边界的前提下交付。已落地的是它们各自的 **Host 侧测试夹具**，落在 `packages/runtime/src/connection/testing/`（`#[cfg(any(test, feature = "test-harness"))]`，`cargo test -p datazen-runtime --lib` → `139 passed` / 0 failed，EXIT=0（计数与退出码测于 `5b7c5b49c`）。逐条对照：
 
 - **CM-64（无消费者、截断与有界 drain）**：`testing/barrier/` 下的协议 drain barrier 夹具已可用，`barrier/tests.rs` 内 19 个单测（计数测于 `5b7c5b49c`）覆盖"无消费者时写入阻塞 → FakeClock 越过 drain 期限 → 截断"（`write_without_consumer_blocks_then_truncates_after_the_drain_deadline`）、消费者恢复后不再截断、按执行字节上限独立截断、订阅额度与执行额度分别计数、sink 失败上报。**这是测试夹具而非生产实现**：artifact 配额、unsubscribe 不立即取消 SQL、协议 barrier 的 D 侧断言均未落地。
-- **CM-67（PoolKey 版本和多 database）**：`packages/platform-api/src/ports/budget/pool.rs` 的 `PoolKey` 与 `datazen-runtime` 夹具的 `policy_isolation_key` 已能支撑"换键判据"（`pool_key_equality_covers_all_eight_components` 等单测）。管理器实现**部分**落地，逐个类型的真实状态是：`ResourceManager`（`packages/runtime/src/resource/manager.rs`）与 `SessionRegistry`（`packages/runtime/src/registry/registry.rs`）已是 `datazen-runtime` 导出的**生产类型**；而 `LeaseManager`、`PoolManager`、`ConnectionPool` **在全仓仍无类型定义**，负责发放租约、开关连接池的管理器尚未出现——lease / pool 目前只有数据与 port 层类型（runtime 侧 `LeaseRequest`、`LeaseState`、`LeaseRecord`、`QueuedLease`，platform-api 侧 `PoolAcquireRequest`、`PoolLease`、`DriverPoolBudgetPort`、`InMemoryDriverPoolBudget`），加上 `packages/platform-api/src/ports/budget/coordinator.rs` 的 `BudgetCoordinator` **trait**（port 契约）。因此空闲资源停发并关闭、旧缓存不回填、撤权即时生效、空池元数据受 LRU 约束这四条断言未落地。
+- **CM-67（PoolKey 版本和多 database）**：`packages/platform-api/src/ports/budget/pool.rs` 的 `PoolKey` 与 `datazen-runtime` 夹具的 `policy_isolation_key` 已能支撑"换键判据"（`pool_key_equality_covers_all_eight_components` 等单测）。P2 移交时的状态是"管理器只到数据与 port 层"：`ResourceManager`（`packages/runtime/src/resource/manager.rs`）与 `SessionRegistry`（`packages/runtime/src/registry/registry.rs`）已是生产类型，而 `LeaseManager` / `PoolManager` / `ConnectionPool` 尚无类型定义，只有 `LeaseRequest` / `LeaseState` / `LeaseRecord` / `QueuedLease`、`PoolAcquireRequest` / `PoolLease` / `DriverPoolBudgetPort` / `InMemoryDriverPoolBudget` 与 `BudgetCoordinator` **trait**。**该状态已被 P3 取代**：`LeaseManager` / `PoolManager` / `ConnectionPool` 定义在 `packages/runtime/src/resource/{lease_manager,pool}.rs`，桌面生产路径用的是 `ProductionLeaseManager`（`resource/production.rs`），由 `src-tauri/src/platform/session_backend.rs` 驱动开/执行/归池/关闭/空闲回收；空闲资源停发并关闭、旧缓存不回填、撤权即时生效、空池元数据受 LRU 约束四条的 H 层断言已落地并实测通过（逐条对应与 D 层限制见[连接管理 CM-67](../architecture/platform/connection-management.md#167-补充契约与边界用例)）。
 - **CM-62（命名空间规范化矩阵）**：**「代码侧零覆盖」这个结论是错的，错在检索方法**。原结论用「按用例编号 `CM-62` 检索代码扩展名」得出命中 0；该检索**可复现但无效**——测试函数不按用例编号命名，一律按被断言的行为命名，所以按编号检索必然查不到任何断言。改按行为反查（`canonicalize` / `NamespaceShape` / `validate_requirements` / `TargetResolver` / `TargetConflict`）后，7 步中 **6 步有断言**，分属两个层面，**可达性不同**：
 
   - **driver-api 层：生产可达。** 实现是 `packages/driver-api/src/namespace.rs` 的 `NamespaceShape::canonicalize` 与 `validate_requirements`，单测在 `packages/driver-api/src/namespace_tests.rs`（经 `namespace.rs` 的 `#[path]` 挂为 `namespace::tests`）。②不存在层级非 null → `canonicalize_rejects_a_value_for_a_level_that_does_not_exist`（`NonexistentNamespaceLevel { kind: Schema }`）；③required null → `canonicalize_rejects_a_missing_required_level`（`MissingRequiredNamespaceLevel { kind: Catalog }`），操作级 required / forbidden 由 `requirements_reject_a_missing_required_level`、`requirements_reject_a_forbidden_level` 覆盖；④optional 按操作允许 → `requirements_reject_a_missing_required_level` 的 `is_ok()` 分支；⑤同义 path → `canonicalize_merges_aliases_to_a_fixed_point`（`canonical.path[0] == "sales_main"`）、`canonicalize_appends_driver_specific_path_segments`；⑥冲突 path → `canonicalize_rejects_an_alias_cycle_instead_of_picking_one`（`ResourceError::AliasConflict`，**错误类型不是 CM-62 写的 `TargetConflict`**）。
@@ -362,7 +418,7 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 
   - **`canonicalize` 的生产调用点不止 redis / postgres。** 除 `packages/drivers/redis/src/resource/provider/contract.rs`、`packages/drivers/postgres/src/resource/provider/contract.rs` 与两者的 `provider.rs` 外，还有 `packages/driver-api/src/resource_adapter.rs`（`LegacyResourceAdapter`）以及 sqlite / mysql / mongodb / hbase / vector 各自的 `resource.rs` 或 `resource/provider.rs`。这直接决定 ⑦ 的改造半径：把 `CaseFolding::Unknown` 改成硬拒绝会同时打断这 6 个驱动的生产路径。
 
-  - **application 层：已实现、已断言，但生产不可达。** 实现是 `packages/application/src/target.rs` 的 `TargetResolver::compute` 六步流水线，12 个单测在同文件 `mod tests`（`:336`）。①`empty_field_values_are_rejected_before_anything_else` → `InvalidArgument`（第 1 步 `validate_namespace_target`，`target.rs:100` → `packages/application/src/dto/requests.rs:40`）；②`the_six_steps_run_in_the_documented_order` → `TargetUnsupported` 且信息含 `catalog`，`unknown_operation_or_connection_fails_closed` 覆盖失败关闭；③`a_missing_required_layer_is_target_required_not_a_backfill` → `TargetRequired`；④`session_defaults_apply_only_when_the_command_allows_them`（`execute_in_session` 可补、`query` 不可补）与 `object_identity_is_gated_by_the_command_requirements`（schema 可省）；⑤`a_successful_computation_yields_canonical_identity_only`（别名 `main` 与真名 `app` 落到同一身份）、`the_canonical_target_round_trips_and_carries_no_display_name`（别名不出现在序列化结果里）；⑥`alias_in_the_wrong_slot_is_a_target_conflict` → `ApiErrorCode::TargetConflict`，即 CM-62 所指的那个 `TargetConflict`。**但全仓没有生产代码调用 `compute()`**：唯二两处 `TargetResolver::new` 都在本文件测试内（`target.rs:380`、`:564`），`ApplicationServices` 不构造、`application_services()` 恒为 `None`（`src-tauri/src/platform/adapter.rs:8`、`:80`、`:187`）。
+  - **application 层：已实现、已断言，且已接入生产调用链。** 实现是 `packages/application/src/target.rs` 的 `TargetResolver::compute` 六步流水线，12 个单测在同文件 `mod tests`（`:336`）。①`empty_field_values_are_rejected_before_anything_else` → `InvalidArgument`（第 1 步 `validate_namespace_target`，`target.rs:100` → `packages/application/src/dto/requests.rs:40`）；②`the_six_steps_run_in_the_documented_order` → `TargetUnsupported` 且信息含 `catalog`，`unknown_operation_or_connection_fails_closed` 覆盖失败关闭；③`a_missing_required_layer_is_target_required_not_a_backfill` → `TargetRequired`；④`session_defaults_apply_only_when_the_command_allows_them`（`execute_in_session` 可补、`query` 不可补）与 `object_identity_is_gated_by_the_command_requirements`（schema 可省）；⑤`a_successful_computation_yields_canonical_identity_only`（别名 `main` 与真名 `app` 落到同一身份）、`the_canonical_target_round_trips_and_carries_no_display_name`（别名不出现在序列化结果里）；⑥`alias_in_the_wrong_slot_is_a_target_conflict` → `ApiErrorCode::TargetConflict`，即 CM-62 所指的那个 `TargetConflict`。**该"生产不可达"结论已被后续接线取代**：生产调用点共三处，全部在组装层——`src-tauri/src/platform/target_metadata.rs:51` 的 `resolver()` 构造 `TargetResolver`，`src-tauri/src/platform/adapter.rs:326` 用它在 `PlatformAdapter::inject` 里组装 `ApplicationServices` 并 `set` 出去（`adapter.rs:327-352`），`adapter.rs:567` 在 `resolve_execution_target` 内调用 `compute()`；生产入口是 `execute_at_target`（`src-tauri/src/platform/session_commands.rs:130-138` 先 `compute` 再把规范目标写回请求），另有 `src-tauri/src/commands/table_target.rs:79` 与 `src-tauri/src/workflow/independent_sql.rs:155` 两个调用方。**仍未经过 `compute()` 的是会话打开路径**（`open_session` / `execute_in_session`）：它们的必填层校验由 runtime 自己做（`TargetRequired` / `TargetConflict`，`packages/runtime/src/connection/types.rs`），不是遗漏。
 
   - **⑦大小写别名：已实现，只覆盖已声明的驱动。** `canonicalize` 现在经内部的 `canonical_identifier` 折叠每个进入规范路径的标识符。引号按驱动既有的记录方式识别——引号是字符串的一部分（`"Sales"`），与 `datazen_driver_postgres::resource::observation` 一致——因此**无需改 DTO、无需 `PROTOCOL_VERSION` 升版**；剥离后规范路径仍是裸标识符，由驱动在拼 SQL 时重新加引号。折叠发生在别名查找**之前**、别名结果**之后**，所以 `Sales` / `SALES` 会命中同一条 alias 项。别名解析本身不动（`resolve_alias` 仍是 public）。
 
