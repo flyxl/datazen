@@ -156,14 +156,10 @@ impl ResultSink for RecordingSink {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-/// The control connection is keyed by connection identity **and database**: one
-/// connection per server/user/database, no matter how many resources that
-/// connection holds. The database has to be in the key because a `PgPool`
-/// reconnects with the connect options it was built from — a pool keyed without
-/// it gets reused for a database that may since have been dropped, and then every
-/// resource on the new database fails to open its cancel connection.
+/// Business databases and schemas share one server-wide control identity.
+/// Server, profile and authentication identities remain isolated.
 #[test]
-fn the_control_pool_key_follows_the_server_and_the_database() {
+fn the_control_pool_key_shares_databases_but_isolates_identity() {
     let app_db = config();
     let mut reporting = config();
     reporting.database = Some("reporting".into());
@@ -171,10 +167,10 @@ fn the_control_pool_key_follows_the_server_and_the_database() {
     let mut other_password = config();
     other_password.password = Some("rotated".into());
 
-    assert_ne!(
+    assert_eq!(
         PostgresDriver::control_pool_key(&app_db),
         PostgresDriver::control_pool_key(&reporting),
-        "a pool bound to one database must not serve another"
+        "all business databases share the server-wide control channel"
     );
     assert_eq!(
         PostgresDriver::control_pool_key(&app_db),

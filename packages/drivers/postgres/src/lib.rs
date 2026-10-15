@@ -9,6 +9,7 @@ use datazen_driver_api::*;
 mod admin_commands;
 mod catalog;
 mod connection;
+mod control;
 mod execution;
 mod fixed_session;
 mod migration;

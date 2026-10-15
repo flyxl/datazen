@@ -556,7 +556,7 @@ impl PostgresDriver {
             .control_pool_for(handle)
             .await
             .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
-        let row = sqlx::query("SELECT version()")
+        let row = sqlx::query("SELECT pg_catalog.version()")
             .fetch_one(&pool)
             .await
             .map_err(|error| DriverError::QueryFailed(error.to_string()))?;

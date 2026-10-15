@@ -49,8 +49,8 @@ use super::PostgresResourceProvider;
 /// Single source of truth for both `describe_resource` and `acquire_resource`: a
 /// description that disagrees with the charge is how a provider bills for
 /// something it never declared. A fixed session retains exactly one backend; the
-/// cancel-only control connection is driver-internal, shared per (connection
-/// identity, database), and is deliberately **not** charged (see `capabilities.rs`).
+/// server-wide control connection is charged independently once per identity
+/// through BudgetPort::acquire_control_connection (see `control.rs`).
 ///
 /// `fixed` is the caller's own reading of fixedness — `describe` answers for the
 /// purpose, `acquire` also honours a scope that pins for streaming or holds an
@@ -130,10 +130,6 @@ impl ResourceProvider for PostgresResourceProvider {
     ) -> Result<ResourceHandle, ResourceError> {
         let physical_connections = self.validate_acquisition(request)?;
 
-        let permit = budget
-            .acquire_physical_connections(physical_connections)
-            .await?;
-
         let mut config = request.connection_config.clone();
         if request.target.database.is_some() {
             config.database = request.target.database.clone();
@@ -151,26 +147,44 @@ impl ResourceProvider for PostgresResourceProvider {
         let fixed = fixed_purpose(request.scope.purpose)
             || request.scope.pin_for_streaming
             || request.scope.holds_open_transaction;
-        let opened = if fixed {
-            self.driver.open_fixed_session(&config).await
-        } else {
-            self.driver.connect_impl(&config).await
-        };
-        let connection = match opened {
-            Ok(connection) => connection,
-            Err(error) => {
-                // The connect failed, so the charge is released here and nowhere
-                // else: the caller receives no handle it could close with.
-                if let Err(release_error) = budget.release_physical_connections(&permit).await {
-                    tracing::error!(
-                        driver = POSTGRES_PROVIDER_ID,
-                        error = %release_error,
-                        "failed to release the physical-connection budget after a failed connect"
-                    );
+        let driver = self.driver.clone();
+        let budget_owned = budget.clone();
+        let anchor = request.connection_config.clone();
+        // Dropping the caller does not abort admission halfway through socket
+        // creation. The owned result closes itself if never delivered.
+        let opened = tokio::spawn(async move {
+            let permit = budget_owned
+                .acquire_physical_connections(physical_connections)
+                .await?;
+            let opened = if fixed {
+                driver
+                    .open_fixed_session_with_control(&config, &anchor, Some(budget_owned.clone()))
+                    .await
+            } else {
+                driver
+                    .connect_with_control(&config, &anchor, Some(budget_owned.clone()))
+                    .await
+            };
+            match opened {
+                Ok(connection) => Ok(crate::control::OpenedResource::new(
+                    driver,
+                    connection,
+                    budget_owned,
+                    permit,
+                )),
+                Err(error) => {
+                    budget_owned.release_physical_connections(&permit).await?;
+                    Err(ResourceError::Driver(error))
                 }
-                return Err(ResourceError::Driver(error));
             }
-        };
+        })
+        .await
+        .map_err(|_| {
+            ResourceError::Driver(DriverError::ConnectionFailed(
+                "resource admission task failed".into(),
+            ))
+        })??;
+        let (connection, permit) = opened.deliver().map_err(ResourceError::Driver)?;
 
         Ok(self.register_resource(connection, permit, budget.clone()))
     }

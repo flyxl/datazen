@@ -134,7 +134,12 @@ fn interactive_scope(max_physical_connections: u32) -> ResourceScope {
 fn acquire_request(config: &ConnectionConfig, scope: ResourceScope) -> AcquireResourceRequest {
     AcquireResourceRequest {
         connection_config: config.clone(),
-        target: target(),
+        target: config
+            .database
+            .as_ref()
+            .map_or_else(NamespaceTarget::empty, |database| {
+                NamespaceTarget::empty().with_database(database.clone())
+            }),
         scope,
         identity_scope: IdentityScope::default(),
         baseline: Baseline::new(Vec::new()),
@@ -438,7 +443,7 @@ async fn describe_states_the_real_physical_cost_and_refuses_levels_postgres_has_
         } => assert_eq!(
             max_physical_connections, 1,
             "an interactive resource retains one backend; the cancel-only control \
-             connection is driver-internal and is not charged"
+             connection is independently charged once per identity"
         ),
         other => panic!(
             "postgres fixed sessions are bounded by their retained connections, not {other:?}"
@@ -789,6 +794,11 @@ mod live {
             }
         };
 
+        driver
+            .disconnect(connection)
+            .await
+            .expect("close connectivity probe before budget test");
+
         let ledger = Arc::new(BudgetLedger::default());
         let budget: Arc<dyn BudgetPort> = Arc::clone(&ledger) as Arc<dyn BudgetPort>;
 
@@ -796,7 +806,11 @@ mod live {
             .acquire_resource(&acquire_request(&config, interactive_scope(32)), &budget)
             .await
             .expect("a scope of 32 pays for the pool of 10 plus the control connection");
-        assert_eq!(ledger.acquired().len(), 1, "exactly one charge per acquire");
+        assert_eq!(
+            ledger.acquired(),
+            vec![1, 1],
+            "data and shared control charged independently"
+        );
 
         let execution = datazen_driver_api::QueryExecutionId::new("live-1");
         let sink = RecordingSink::new();
@@ -839,10 +853,8 @@ mod live {
         );
         assert_eq!(
             ledger.released().len(),
-            1,
-            "exactly one release per acquire"
+            2,
+            "data and shared control released after confirmed close"
         );
-
-        let _ = connection;
     }
 }

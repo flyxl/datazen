@@ -374,6 +374,16 @@ pub struct BudgetPermit {
 /// (`connection-management.md` §9.3).
 #[async_trait]
 pub trait BudgetPort: Send + Sync {
+    /// Independently charge one shared control socket. The default uses the
+    /// ordinary physical ledger, never an unmetered compatibility fallback.
+    async fn acquire_control_connection(&self) -> Result<BudgetPermit, ResourceError> {
+        self.acquire_physical_connections(1).await
+    }
+
+    async fn release_control_connection(&self, permit: &BudgetPermit) -> Result<(), ResourceError> {
+        self.release_physical_connections(permit).await
+    }
+
     async fn acquire_physical_connections(
         &self,
         requested: u32,

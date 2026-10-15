@@ -36,32 +36,14 @@ pub struct PostgresDriver {
     /// Exact execution target registry.
     pub(crate) query_executions:
         Mutex<HashMap<QueryExecutionId, crate::execution::PgQueryExecution>>,
-    /// Cancel-only control connections, keyed by **connection identity + database**
-    /// ([`PostgresDriver::control_pool_key`]) rather than by resource: every
-    /// resource that resolves to the same server and database shares one connection
-    /// in here.
-    ///
-    /// These connections are never used to execute user SQL, and they are
-    /// deliberately **not** part of the declared resource cost: `pg_cancel_backend`
-    /// is instance-scoped, so charging a connection per resource would bill the same
-    /// physical connection once per resource on that server. The database stays in
-    /// the key because a pool reconnects with the options it was built from, so a
-    /// pool keyed without it would be reused for a database that may since have been
-    /// dropped.
-    pub(crate) control_pools: RwLock<HashMap<String, ControlPoolEntry>>,
+    /// One independently budgeted control socket per profile/server/auth identity.
+    pub(crate) control_pools: RwLock<HashMap<String, crate::control::ControlPoolEntry>>,
 }
 
 /// A cached pool for one non-active database, plus its LRU stamp.
 pub(crate) struct DatabasePoolEntry {
     pub(crate) pool: PgPool,
     pub(crate) last_used: u64,
-}
-
-/// One shared cancel-only control connection, plus how many live resources rely
-/// on it. The physical connection is closed when the last of them is released.
-pub(crate) struct ControlPoolEntry {
-    pub(crate) pool: PgPool,
-    pub(crate) refs: usize,
 }
 
 impl PostgresDriver {
