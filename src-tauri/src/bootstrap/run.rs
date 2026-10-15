@@ -247,6 +247,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             crate::platform::session_commands::get_platform_identity,
+            crate::platform::session_commands::runtime_observability_snapshot,
             crate::platform::session_commands::issue_submission_token,
             crate::platform::session_commands::open_session,
             crate::platform::session_commands::get_session,

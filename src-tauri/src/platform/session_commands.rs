@@ -413,3 +413,19 @@ pub async fn read_artifact_chunk(
         serde_json::json!({"artifactId":chunk.artifact_id,"chunkIndex":chunk.chunk_index,"totalChunks":if chunk.complete {Some(chunk.published_chunk_count)} else {None},"offset":"0","bytes":bytes,"publishedChunkCount":chunk.published_chunk_count,"publishedByteLength":chunk.published_byte_length,"resultCompleteness":if chunk.complete {"complete"}else{"pending"}}),
     )
 }
+
+/// 只读的池 / 预算观测快照。
+///
+/// 存在的理由不是顺便看看：CM-33 的 F 断言要在真实 UI 上证明「表格并发刷新不为每个
+/// tab 建连接、并发资源不越预算」，而 pg_stat_activity 无法把宿主的旧会话与 runtime
+/// 的会话分开。所以计数必须由 runtime 自己回答，走它自己的台账。
+///
+/// 载荷里没有凭据、没有连接串、没有原始库名：池键只是摘要（见 resource::observability）。
+/// 未实现该端口后端返回 null，不是全零。
+#[tauri::command]
+pub async fn runtime_observability_snapshot(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, ApiError> {
+    let adapter = adapter(&state)?;
+    encode(adapter.runtime()?.observability_snapshot().await)
+}

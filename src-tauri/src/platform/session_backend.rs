@@ -5,6 +5,7 @@ use super::{resource_budget::DesktopResourceBudget, resource_mapping as map};
 use crate::{db::DriverRegistry, store::Store};
 use async_trait::async_trait;
 use datazen_driver_api::{resource as dr, session as ds, QueryExecutionId};
+use datazen_platform_api::ports::budget::BudgetCoordinator as _;
 use datazen_runtime::{
     connection as rc,
     registry::{audit::CapabilityVersions, backend::*},
@@ -234,6 +235,21 @@ impl SessionBackend for DesktopSessionBackend {
     ) -> Result<OpenedResource, rc::ProviderError> {
         self.open_resource(request, command).await
     }
+    /// 只读观测快照：池/台账数字来自租约台账，预算三个数字来自预算协调器。
+    ///
+    /// 两处都只是**读取**：台账被毒化时返回 None（读不到 != 没有资源），预算读不到
+    /// 时同样不给半真半假的报告。
+    async fn observability_snapshot(
+        &self,
+    ) -> Option<datazen_runtime::resource::RuntimeObservabilityReport> {
+        let ledger = self.leases.snapshot()?;
+        let limit = self
+            .budget
+            .with_ledger(|ledger| u64::from(ledger.config().service_physical_connections));
+        let budget = self.budget.snapshot().await.ok()?;
+        Some(ledger.with_budget(limit, budget.in_use.get(), budget.granted_total.get()))
+    }
+
     async fn reclaim_idle_resources(&self) {
         self.retire_idle(self.leases.idle_to_retire(None)).await;
         for id in self.leases.quarantine_to_verify() {

@@ -1,6 +1,9 @@
 //! Async-host lease lifecycle. Physical handles stay in the adapter; this ledger
 //! drives actual opening, execution, cleanup and pool policy decisions.
 use super::{
+    observability::{
+        model_str, pool_key_digest, PoolObservabilityEntry, RuntimeObservabilityReport,
+    },
     DriverCleanVerdict, HostConditionSnapshot, LeasePurpose, LeaseState, PoolKeyGeneration,
     PoolManager, PoolPolicy, ResourceError,
 };
@@ -10,7 +13,7 @@ use crate::{
 };
 use datazen_platform_api::id::{ConnectionId, DbSessionId, OrganizationId, PrincipalId};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{Arc, Mutex},
 };
 
@@ -260,6 +263,89 @@ impl ProductionLeaseManager {
     }
     pub fn state(&self, id: &ResourceId) -> Option<LeaseState> {
         self.state.lock().ok()?.rows.get(id).map(|row| row.state)
+    }
+
+    /// Only-read snapshot of the lease ledger: per pool key in-use / idle /
+    /// closing / quarantined, plus the physical totals.
+    ///
+    /// Every number is derived from the ledger at read time and the pool policy
+    /// is read from the `PoolManager`; this type keeps **no** second counter
+    /// (same rule as `resource/table.rs`). A poisoned lock yields `None` rather
+    /// than a zeroed report, because "cannot read the ledger" and "no resources"
+    /// must not look alike.
+    pub fn snapshot(&self) -> Option<RuntimeObservabilityReport> {
+        let state = self.state.lock().ok()?;
+        let physical_total = state.rows.len() as u64;
+        let mut by_key: BTreeMap<String, (PoolKeyGeneration, Counts)> = BTreeMap::new();
+        for row in state.rows.values() {
+            let (_, counts) = by_key
+                .entry(pool_key_digest(&row.key))
+                .or_insert_with(|| (row.key.clone(), Counts::default()));
+            counts.add(row.state, row.idle_since.is_some());
+        }
+        let mut pools = Vec::with_capacity(by_key.len());
+        let mut totals = Counts::default();
+        for (digest, (key, counts)) in by_key {
+            let settled = state.pools.snapshot(
+                key,
+                counts.idle as usize,
+                counts.issued() as usize,
+                physical_total as usize,
+            );
+            totals.in_use += counts.in_use;
+            totals.idle += counts.idle;
+            totals.closing += counts.closing;
+            totals.quarantined += counts.quarantined;
+            pools.push(PoolObservabilityEntry {
+                pool_key_digest: digest,
+                model: model_str(settled.model),
+                max_idle: settled.max_idle as u64,
+                in_use: counts.in_use,
+                idle: counts.idle,
+                closing: counts.closing,
+                quarantined: counts.quarantined,
+                issued: counts.issued(),
+            });
+        }
+        Some(RuntimeObservabilityReport::from_ledger(
+            pools,
+            physical_total,
+            totals.in_use,
+            totals.idle,
+            totals.closing,
+            totals.quarantined,
+        ))
+    }
+}
+
+/// Per-key lease counts. Folded straight into the report; never stored.
+#[derive(Default)]
+struct Counts {
+    in_use: u64,
+    idle: u64,
+    closing: u64,
+    quarantined: u64,
+}
+
+impl Counts {
+    fn add(&mut self, state: LeaseState, has_idle_since: bool) {
+        match state {
+            // A settled lease waiting for the next request from the same
+            // generation: this is exactly `PoolSnapshot.idle_leases`.
+            LeaseState::Acquired if has_idle_since => self.idle += 1,
+            // `Acquired` without `idle_since` is "just opened, nothing attached
+            // yet"; it still holds a physical slot and budget, so it counts as
+            // in use. `Closed` never remains in the ledger (a confirmed close
+            // removes the row), but folding it here keeps the match exhaustive
+            // without inventing a fifth bucket.
+            LeaseState::Acquired | LeaseState::InUse | LeaseState::Closed => self.in_use += 1,
+            LeaseState::Closing => self.closing += 1,
+            LeaseState::Quarantined => self.quarantined += 1,
+        }
+    }
+
+    const fn issued(&self) -> u64 {
+        self.in_use + self.idle + self.closing + self.quarantined
     }
 }
 impl super::LeaseManager {
