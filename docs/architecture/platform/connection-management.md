@@ -1084,6 +1084,12 @@ CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 
 - 步骤：并发刷新表格，查询编辑器当前库和临时状态。
 - 断言：表格并发资源不超过 2，不为每 tab 建连接；编辑器资源/上下文不变。
 
+**首版执行结果（2026-10）**：断言拆成两半，各落在能看住它的那一层。
+
+- **数值半（并发资源不超过上限）由 H 层承担**：`packages/runtime/tests/pool_capacity_budget.rs`（池容量与预算台账不漂移、无状态键永不驻留、被隔离的租约不占空闲容量）。首版所有发布驱动都声明 `ResetForReuse::Unsupported`，空闲池恒为空（见 CM-67），所以"驻留上限"在真实驱动上没有可触发状态。
+- **「不为每 tab 建连接」与「编辑器资源/上下文不变」由真实 UI 断言**：`e2e/specs/journeys/table-pool-contention-journey.ts`。它逐个打开并刷新表 tab，每次采样都要求物理资源数不越预算、且不超过基线 + 2（一个编辑器 retained session 的余量），最后回到编辑器确认仍能执行且观察上下文未变。
+- **计数必须由 runtime 自己回答**：同一个库上同时存在宿主旧 `ConnectionManager` 的会话与 runtime 的会话，`pg_stat_activity` 分不开两者，外部计数无法归因。因此新增只读口 `runtime_observability_snapshot`：`SessionBackend::observability_snapshot` → `ProductionLeaseManager::snapshot`（`packages/runtime/src/resource/observability.rs`）只**投影**租约台账（每池键在借/空闲/关闭中/隔离 + 台账总数），池策略现取 `PoolManager`，并附预算上限与在用量；**不新建第二本计数**（CM-32 单账铁律）。载荷里没有凭据、连接串或原始库名——池键只是摘要（指纹本身已是 FNV 摘要，再补凭据代与路由代）。未实现该端口后端返回 `null`，不是全零；台账被毒化同样返回 `null`。该口是带默认实现（默认 `None`）的 trait 方法，应用层的装饰器 `ObservedBackend` 必须**显式转发**（`packages/runtime/src/application/backend.rs`）：忘记转发不会编译失败，症状只是"快照永远为 `null`"——本轮就是这样被 E2E 抓住的，并已由 `observed_backend_forwards_the_observability_snapshot` 钉住。
+
 **CM-34 表编辑事务范围（H/D/F）**
 
 - 前置：表有 PK/version，driver 支持该表事务；界面累计两条修改。
