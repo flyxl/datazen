@@ -138,11 +138,8 @@ mod tests {
         );
     }
 
-    /// 模块清单是**封闭**的：名字里的「six」是六个模块时代留下的，
-    /// 清单本身早已按实际模块数增长。断言内容（下面的白名单 + 黑名单）才是这条测试的
-    /// 全部契约，改名与否是措辞问题，不影响它在新增模块时变红的能力。
     #[test]
-    fn the_module_list_is_exactly_the_six_documented_units() {
+    fn the_module_list_is_exactly_the_seven_documented_units() {
         let code = crate_root_code();
         for module in [
             "pub mod capability;",
