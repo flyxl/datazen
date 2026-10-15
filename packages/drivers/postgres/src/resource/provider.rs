@@ -544,7 +544,7 @@ impl PostgresResourceProvider {
             .contains_key(&resource.connection.id)
             && !matches!(
                 call.command.as_str(),
-                "query" | "query_stream" | "execute" | "get_table_schema"
+                "query" | "query_stream" | "execute" | "explain" | "get_table_schema"
             )
         {
             return Err(ResourceError::unsupported(

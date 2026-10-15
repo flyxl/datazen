@@ -1977,28 +1977,28 @@ impl DatabaseDriver for MysqlDriver {
         handle: &ConnectionHandle,
         sql: &str,
     ) -> Result<ExplainResult, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-        let mut conn = pool
-            .acquire()
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-        self.apply_active_database(handle, &mut conn).await?;
-
-        let json_sql = format!("EXPLAIN FORMAT=JSON {sql}");
-        let json_rows = sqlx::query(&json_sql)
-            .fetch_all(&mut *conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        let plan_json = Self::extract_json_from_explain_row(&json_rows);
-
-        let text_sql = format!("EXPLAIN {sql}");
-        let rows = sqlx::query(&text_sql)
-            .fetch_all(&mut *conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-        let (columns, result_rows) = Self::decode_rows(&rows);
+        if split_mysql_statements(sql).len() != 1 {
+            return Err(DriverError::InvalidConfig(
+                "Explain requires one statement".into(),
+            ));
+        }
+        // query() routes retained handles through their pinned checkout. Both
+        // plan formats therefore see the editor's transaction and temp objects.
+        let json_rows = self
+            .query(handle, &format!("EXPLAIN FORMAT=JSON {sql}"))
+            .await?;
+        let plan_json = json_rows
+            .rows
+            .first()
+            .and_then(|row| row.first())
+            .and_then(|value| match value {
+                Some(Value::Json(json)) => Some(json.clone()),
+                Some(Value::String(text)) => serde_json::from_str(text).ok(),
+                _ => None,
+            });
+        let text_rows = self.query(handle, &format!("EXPLAIN {sql}")).await?;
+        let columns = text_rows.columns;
+        let result_rows = text_rows.rows;
         let plan_lines: Vec<String> = if columns.is_empty() {
             Vec::new()
         } else {

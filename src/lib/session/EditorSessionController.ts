@@ -282,7 +282,10 @@ export class EditorSessionController {
       const handle = this.session?.handle ?? null;
       if (!handle) return;
       void this.client
-        .closeSession({ handle, mode: 'requireNoTransaction' })
+        // The owner has gone away and cannot resolve a close rejection. Ask
+        // the runtime to roll back before releasing the original resource;
+        // requireNoTransaction would leak active/aborted/unknown sessions.
+        .closeSession({ handle, mode: 'rollbackAndClose' })
         .catch(() => undefined);
     });
   }

@@ -78,9 +78,29 @@ describe('page-death session release', () => {
     expect(client.closeSession).toHaveBeenCalledTimes(1);
     expect(client.closeSession.mock.calls[0][0]).toMatchObject({
       handle: { dbSessionId: 's1' },
-      mode: 'requireNoTransaction',
+      mode: 'rollbackAndClose',
     });
   });
+
+  for (const transactionState of ['active', 'aborted', 'unknown'] as const) {
+    it(`requests rollback of a dying page's ${transactionState} transaction`, async () => {
+      const { client, facade } = fixture();
+      const current = session('s1');
+      client.openSession.mockResolvedValue({
+        session: { ...current, observedContext: { ...current.observedContext, transactionState } },
+        attachmentToken: 'attach',
+      });
+      const editor = new EditorSessionController(facade, target, owner);
+      await editor.ensureSession();
+
+      window.dispatchEvent(new Event('pagehide'));
+
+      expect(client.closeSession).toHaveBeenCalledExactlyOnceWith({
+        handle: current.handle,
+        mode: 'rollbackAndClose',
+      });
+    });
+  }
 
   it('closes the current handle, not the replaced one, when the page dies', async () => {
     const { client, facade } = fixture();

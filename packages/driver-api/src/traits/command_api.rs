@@ -45,6 +45,25 @@ pub async fn execute_standard_sql_command<D: DatabaseDriver + ?Sized>(
     input: serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
     match command {
+        "explain"
+            if driver
+                .command_definitions()
+                .iter()
+                .any(|definition| definition.id == "explain") =>
+        {
+            // Opt-in is essential: an older driver's pooled explain method
+            // cannot be used as a substitute for a retained editor resource.
+            let (sql, target) = sql_input_with_target(&input, "explain")?;
+            if target.database().is_some() || target.schema().is_some() {
+                return Err(DriverError::InvalidConfig(
+                    "Explain uses the supplied session context".into(),
+                ));
+            }
+            let result = driver.explain(handle, &sql).await?;
+            Ok(CommandResult::new(serde_json::to_value(result).map_err(
+                |_| DriverError::QueryFailed("failed to serialize explain result".into()),
+            )?))
+        }
         "query" => {
             let (sql, target) = sql_input_with_target(&input, "query")?;
             let limit = input
@@ -110,4 +129,27 @@ fn optional_target_field<'a>(input: &'a serde_json::Value, key: &str) -> Option<
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_driver::{MockDriver, MockDriverOptions};
+
+    #[tokio::test]
+    async fn explain_does_not_inherit_a_legacy_pooled_implementation() {
+        let driver = MockDriver::new("mock", MockDriverOptions::default());
+        let handle = ConnectionHandle {
+            id: "session".into(),
+            pool_id: "pool".into(),
+        };
+        let result = execute_standard_sql_command(
+            driver.as_ref(),
+            &handle,
+            "explain",
+            serde_json::json!({"sql":"SELECT 1"}),
+        )
+        .await;
+        assert!(matches!(result, Err(DriverError::Unsupported(_))));
+    }
 }

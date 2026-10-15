@@ -147,7 +147,8 @@ export class ExecutionProjection {
       // zero was already displayed before a disconnect.
       this.onReadPhase?.('artifact-read');
       const first = await this.client.readArtifact({ artifactId, chunkIndex: wireCounter(0n) });
-      if (first.artifactId !== artifactId) throw new Error('Artifact identity mismatch');
+      if (first.artifactId !== artifactId || counterValue(first.chunkIndex) !== 0n)
+        throw new Error('Artifact read returned a different chunk');
       const count = first?.totalChunks ?? first?.publishedChunkCount;
       if (count === undefined || count === null)
         throw new Error('Artifact publication metadata unavailable');
@@ -165,15 +166,19 @@ export class ExecutionProjection {
   async accept(event: EventEnvelope<ConnectionEvent>): Promise<void> {
     if (event.streamId !== this.receipt.streamId) return;
     if (event.executionId && event.executionId !== this.receipt.executionId) return;
+    // A reset invalidates the cursor itself. Its sequence may be below the old
+    // cursor (for example after a stream restart), so handle it before dedupe.
+    // Re-subscribe from the beginning after rebuilding the published projection;
+    // immutable chunk identities keep replayed notifications from duplicating rows.
+    if (event.payload.kind === 'streamResetRequired') {
+      this.sequence = null;
+      await this.recover();
+      return;
+    }
     const next = counterValue(event.sequence);
     if (this.sequence !== null && next <= this.sequence) return;
     if (this.sequence !== null && next !== this.sequence + 1n) await this.recover();
     const payload = event.payload;
-    if (payload.kind === 'streamResetRequired') {
-      await this.recover();
-      this.sequence = next;
-      return;
-    }
     if (payload.kind === 'sessionChanged') {
       if (
         sameHandle(payload.session.handle, this.originalHandle) &&

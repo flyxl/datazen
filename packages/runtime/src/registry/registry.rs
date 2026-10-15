@@ -55,7 +55,7 @@ use crate::registry::actor::{
     spawn_actor, AuditOutbox, ControlCommand, ExecCommand, OpenRequest, SessionActor,
 };
 use crate::registry::audit::{AuditKind, AuditLog, Outcome, RegistryAuditEntry};
-use crate::registry::backend::SessionBackend;
+use crate::registry::backend::{CapabilityProvenance, SessionBackend};
 use crate::registry::epoch::RuntimeEpoch;
 use crate::registry::port::SessionPort;
 use crate::registry::receipt::CancelReceipt;
@@ -777,6 +777,22 @@ impl SessionRegistry {
         record
             .actor
             .exec(|reply| ExecCommand::Execute { request, reply })
+            .await
+    }
+
+    /// Read the capability snapshot captured from the opened physical resource.
+    pub async fn capability_snapshot(
+        &self,
+        handle: &SessionHandle,
+    ) -> Result<CapabilityProvenance, RuntimeError> {
+        self.audit.pump();
+        let record = self.locate(&handle.db_session_id)?;
+        record
+            .actor
+            .exec(|reply| ExecCommand::CapabilitySnapshot {
+                handle: handle.clone(),
+                reply,
+            })
             .await
     }
 }

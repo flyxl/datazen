@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { queryCommands } from '../../../commands/query';
+import { runEditorExplain } from '../../../lib/session/runEditorExplain';
 import { dashboardCommands } from '../../../commands/dashboard';
 import {
   fetchTableSchemaForSqlGeneration,
@@ -10,7 +10,7 @@ import { openDashboardWindow } from '../../../lib/windowManager';
 import { emitCrossWindow } from '../../../lib/crossWindowBus';
 import { createEmptyDashboard } from '../../dashboard/DashboardPanel';
 import { usePanelStore } from '../../../stores/panelStore';
-import { paneArgs } from '../../../stores/paneKeys';
+import { paneArgs, paneKey } from '../../../stores/paneKeys';
 import {
   buildExplainAction,
   buildFixSqlAction,
@@ -267,14 +267,23 @@ export function useQueryPanelWorkflows({
     setExplainError(null);
     setShowExplain(true);
     try {
-      setExplainResult(await queryCommands.getExplain(dbSessionId, sql, selectedDatabase));
+      setExplainResult(
+        await runEditorExplain(
+          paneKey(panelId, paneId),
+          connectionId,
+          sql,
+          selectedDatabase,
+          schema,
+          boundPayload,
+        ),
+      );
     } catch (e) {
       setExplainResult(null);
       setExplainError(e instanceof Error ? e.message : String(e));
     } finally {
       setExplainLoading(false);
     }
-  }, [dbSessionId, selectedDatabase, sql]);
+  }, [panelId, paneId, connectionId, selectedDatabase, schema, sql, boundPayload]);
 
   const handleApplyFixSql = useCallback(
     (nextSql: string) => {

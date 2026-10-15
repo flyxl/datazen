@@ -63,7 +63,7 @@ impl Outcome {
 pub struct CapabilityVersions {
     /// 驱动契约版本（字符串，形如 `1` / `2024-11-01`）。
     pub contract: String,
-    /// driver API crate 版本。
+    /// 驱动包版本。字段名保留为 `driverApi` 以兼容现有审计记录。
     pub driver_api: String,
 }
 
