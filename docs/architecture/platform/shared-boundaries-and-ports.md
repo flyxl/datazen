@@ -39,7 +39,7 @@
 | 包 | 一句话职责 | 拥有的概念 | 明确不拥有 |
 | --- | --- | --- | --- |
 | `packages/platform-api` | 无平台依赖的最底层契约：ID newtype、`RequestContext`、全部 port trait、port 错误 | ID 类型、身份上下文、端口签名 | 任何用例逻辑、任何具体实现、任何 I/O |
-| `packages/application` | 用例编排：目标解析、授权顺序、DTO 校验、错误归一 | 请求/响应 DTO 的应用侧视图、`ApiError`、用例服务 | 会话状态、物理资源、驱动类型分支 |
+| `packages/application` | 用例编排：目标解析、授权顺序、DTO 校验、错误归一、前端桥注入端口 | 请求/响应 DTO 的应用侧视图、`ApiError`、用例服务、前端桥窄端口（`FrontendBridge`）与注入缝隙 | 会话状态、物理资源、驱动类型分支、任何具体传输实现 |
 | `packages/runtime` | 连接运行时：session actor、资源与 lease、预算记账、execution 登记、事件 | `DbSession`、`ResourceLease`、`Execution`、Job 阶段 runtime 状态 | 权限判定来源、持久化介质、网络出口 |
 | `packages/backend-client` | TypeScript 侧传输无关契约：DTO 镜像、client 接口、transport 接口 | `Id`/`Counter`/`Timestamp` 镜像、`BackendClient` 接口、`PlatformServices` 接口 | Tauri/HTTP/fetch 任何具体实现 |
 
@@ -76,6 +76,7 @@ packages/application/src/
 ├── target.rs                 # CanonicalTarget 计算与 targetRequirements 校验（§4.3 六步纯函数）
 ├── identity_policy.rs        # INV-01..INV-03 的判定顺序编排
 ├── sessions.rs               # ConnectionUseCases：连接 §4.1 的 13 个方法签名
+├── frontend_bridge.rs        # FrontendBridge 窄端口 + BridgeInjection 注入缝隙（失败关闭，§7.4）
 └── lib.rs                    # ApplicationServices（§6.2 装配顺序第 7 步）
 
 packages/runtime/src/
@@ -519,9 +520,15 @@ flowchart LR
     APP2 --> PORTS
     PORTS --> INMEM[内存适配]
     PORTS --> DIST[服务端适配]
+    D1 --> FB[frontend_bridge 注入点]
+    W1 --> FB
+    FB --> SLOT[application::frontend_bridge 注入槽]
+    SLOT --> IMPL[FrontendBridge 实现（由各形态提供）]
 ```
 
 `ApplicationServices` 与 `Runtime` 的构造函数签名对两种形态相同，只有传入的 `Arc<dyn …>` 实现不同；不允许为团队形态另写一套用例。
+
+前端桥的**端口与注入缝隙**同属这一层：它实现在 `packages/application::frontend_bridge`，由宿主与未来的服务端组装层共同调用，注入点与错误文案只有一份。注入容器 `BridgeInjection` 只有单个非空字段，`FrontendBridge` 只暴露 `open_session` / `close_session` 两个方法且不含任何传输句柄，因此类型上不存在"半注入"，也拿不到绕过本层的后门。注入一次后不可替换；未注入时 `require_bridge` 返回 `CapabilityUnsupported` 并在文案里指出注入点，**没有**回落到具体传输的分支。
 
 ## 5. RequestContext 的三个构造来源
 

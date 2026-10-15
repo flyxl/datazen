@@ -6,7 +6,7 @@
 //!   **不依赖** Tauri、**不依赖** 任何 HTTP 框架（§2 依赖图：`APP → PA, DAPI`）。
 //!   业务因此可以在没有 Tauri 的测试进程里调用。
 //! * 职责：请求 DTO、用例签名、§4.3 目标计算、身份/授权判定顺序、对外错误形状
-//!   [`ApiError`]。
+//!   [`ApiError`]、前端桥注入端口（[`frontend_bridge`]）。
 //! * 不负责：把端口接上实现、HTTP/Tauri 状态映射、把端口错误翻译成业务错误。
 //!   这些属于组装层（§6.2 第 7 步之后）。
 //!
@@ -15,6 +15,8 @@
 //! | 模块 | 内容 |
 //! |---|---|
 //! | [`error`] | [`ApiError`]、[`ApiErrorCode`]、[`RetryDisposition`] |
+//! | [`frontend_bridge`] | 前端桥窄端口 [`FrontendBridge`](frontend_bridge::FrontendBridge)、
+//!   [`BridgeInjection`](frontend_bridge::BridgeInjection) 与进程级注入缝隙（§7.4 失败关闭） |
 //! | [`dto`] | 用例请求 DTO、持久化记录，以及 platform-api 契约 DTO 的再导出 |
 //! | [`target`] | §4.3 六步目标计算 |
 //! | [`identity_policy`] | §5.1 身份与授权判定顺序 |
@@ -30,6 +32,7 @@
 pub mod capability;
 pub mod dto;
 pub mod error;
+pub mod frontend_bridge;
 pub mod identity_policy;
 pub mod sessions;
 pub mod target;
@@ -135,6 +138,9 @@ mod tests {
         );
     }
 
+    /// 模块清单是**封闭**的：名字里的「six」是六个模块时代留下的，
+    /// 清单本身早已按实际模块数增长。断言内容（下面的白名单 + 黑名单）才是这条测试的
+    /// 全部契约，改名与否是措辞问题，不影响它在新增模块时变红的能力。
     #[test]
     fn the_module_list_is_exactly_the_six_documented_units() {
         let code = crate_root_code();
@@ -142,6 +148,7 @@ mod tests {
             "pub mod capability;",
             "pub mod dto;",
             "pub mod error;",
+            "pub mod frontend_bridge;",
             "pub mod identity_policy;",
             "pub mod sessions;",
             "pub mod target;",
