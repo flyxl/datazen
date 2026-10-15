@@ -11,9 +11,19 @@ impl PostgresDriver {
         &self,
         config: &ConnectionConfig,
     ) -> Result<ConnectionHandle, DriverError> {
+        self.open_fixed_session_with_control(config, config, None)
+            .await
+    }
+
+    pub(crate) async fn open_fixed_session_with_control(
+        &self,
+        config: &ConnectionConfig,
+        anchor: &ConnectionConfig,
+        budget: Option<std::sync::Arc<dyn datazen_driver_api::resource::BudgetPort>>,
+    ) -> Result<ConnectionHandle, DriverError> {
         let mut config = config.clone();
         config.max_pool_size = 1;
-        let handle = self.connect_impl(&config).await?;
+        let handle = self.connect_with_control(&config, anchor, budget).await?;
         let outcome = async {
             let pool = self
                 .pools
@@ -80,12 +90,12 @@ impl PostgresDriver {
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
         // Explicitly invalidate any statistics snapshot retained by the observer.
-        sqlx::query("SELECT pg_stat_clear_snapshot()")
+        sqlx::query("SELECT pg_catalog.pg_stat_clear_snapshot()")
             .execute(&mut *observer)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let state: Option<String> =
-            sqlx::query_scalar("SELECT state FROM pg_stat_activity WHERE pid = $1")
+            sqlx::query_scalar("SELECT state FROM pg_catalog.pg_stat_activity WHERE pid = $1")
                 .bind(pid)
                 .fetch_optional(&mut *observer)
                 .await

@@ -8,13 +8,12 @@ use std::sync::Arc;
 use std::time::Instant;
 
 pub(crate) const PG_BACKEND_PID_SQL: &str = "SELECT pg_backend_pid()";
-pub(crate) const PG_CANCEL_BACKEND_SQL: &str = "SELECT pg_cancel_backend($1)";
+pub(crate) const PG_CANCEL_BACKEND_SQL: &str = "SELECT pg_catalog.pg_cancel_backend($1)";
 
 pub(crate) struct PgQueryExecution {
     pub session_id: String,
     pub(crate) cancel_gate: Arc<tokio::sync::Mutex<()>>,
     pub target_pool: Option<PgPool>,
-    pub control_pool: Option<PgPool>,
     pub backend_pid: Option<i32>,
     pub cancel_requested: bool,
     pub transactional: bool,
@@ -366,9 +365,6 @@ impl PostgresDriver {
     ) -> Result<(), DriverError> {
         let transactional = self.transactions.lock().await.contains_key(&handle.id);
         let target_pool = self.pools.read().await.get(&handle.pool_id).cloned();
-        // The control connection is shared per (connection identity, database),
-        // so it is reached through this resource's config rather than `pool_id`.
-        let control_pool = self.control_pool_for(handle).await;
         let mut executions = self.query_executions.lock().await;
         if executions.contains_key(execution_id) {
             return Err(DriverError::QueryFailed(format!(
@@ -382,7 +378,6 @@ impl PostgresDriver {
                 cancel_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
                 session_id: handle.id.clone(),
                 target_pool,
-                control_pool,
                 backend_pid: self.fixed_sessions.read().await.get(&handle.id).copied(),
                 cancel_requested: false,
                 transactional,
@@ -408,7 +403,7 @@ impl PostgresDriver {
         };
         let _cancel_guard = gate.lock().await;
         let mut executions = self.query_executions.lock().await;
-        let (backend_pid, control_pool) = {
+        let backend_pid = {
             let execution = executions.get_mut(execution_id).ok_or_else(|| {
                 DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
             })?;
@@ -424,12 +419,14 @@ impl PostgresDriver {
             let Some(backend_pid) = execution.backend_pid else {
                 return Ok(());
             };
-            (backend_pid, execution.control_pool.clone())
+            backend_pid
         };
 
         drop(executions);
 
-        let Some(control_pool) = control_pool else {
+        // Resolve at cancellation time: a prepared execution may outlive a
+        // dropped control database and the resulting pool replacement.
+        let Some(control_pool) = self.control_pool_for(handle).await else {
             if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                 execution.cancel_requested = false;
             }

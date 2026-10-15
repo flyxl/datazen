@@ -253,7 +253,10 @@ fn postgres_placeholders_are_dollar_n() {
 #[test]
 fn cancel_sql_targets_one_backend_without_process_scan() {
     assert_eq!(PG_BACKEND_PID_SQL, "SELECT pg_backend_pid()");
-    assert_eq!(PG_CANCEL_BACKEND_SQL, "SELECT pg_cancel_backend($1)");
+    assert_eq!(
+        PG_CANCEL_BACKEND_SQL,
+        "SELECT pg_catalog.pg_cancel_backend($1)"
+    );
     assert!(!PG_CANCEL_BACKEND_SQL.contains("pg_stat_activity"));
 }
 
@@ -353,7 +356,6 @@ async fn transaction_execution_cancel_is_pending_until_target_is_bound() {
             cancel_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
             session_id: handle.id.clone(),
             target_pool: None,
-            control_pool: None,
             backend_pid: None,
             cancel_requested: false,
             transactional: true,
@@ -634,7 +636,6 @@ mod stream_target_pool {
                 cancel_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
                 session_id: handle.id.clone(),
                 target_pool: None,
-                control_pool: None,
                 backend_pid: None,
                 cancel_requested: false,
                 transactional: false,

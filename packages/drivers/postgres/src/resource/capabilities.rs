@@ -36,14 +36,9 @@ pub(crate) const POSTGRES_PROVIDER_ID: &str = "postgresql";
 /// The crate version the capability snapshot was taken at.
 pub(crate) const POSTGRES_DRIVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Size of the driver-internal cancel-only control pool: **one** connection,
-/// shared by every resource of one (connection identity, database)
-/// (`connection.rs:control_pool_key`).
-///
-/// It is not part of any resource's declared cost. `pg_cancel_backend(pid)` is
-/// instance-scoped, so one physical connection serves cancellation for every
-/// resource on that server; billing it per resource would charge the same
-/// connection once per resource.
+/// One shared control connection per profile/server/auth identity, charged
+/// independently through BudgetPort::acquire_control_connection and retained
+/// until the last resource confirms physical closure.
 pub(crate) const CONTROL_POOL_CONNECTIONS: u32 = 1;
 
 /// Metadata commands are short-lived and execute one command at a time, so their
@@ -112,16 +107,8 @@ pub(crate) fn postgres_namespace_shape() -> NamespaceShape {
     }
 }
 
-/// The physical cost of one PostgreSQL resource.
-///
-/// This is the **data pool only**: `connect_impl` opens `effective_max_pool_size()`
-/// data connections, and the cancel-only control connection is deliberately not
-/// charged. Cancelling is instance-scoped (`pg_cancel_backend(pid)`), so the
-/// control connection is shared by every resource of one (connection identity,
-/// database) (`connection.rs:control_pool_key`) — one per server and database,
-/// however many resources that connection holds. Charging it per resource would
-/// bill the same physical connection once per resource; see
-/// `docs/architecture/backend/connection-management.md` §9.3.
+/// Data-pool cost only. The shared control connection is charged separately
+/// once per profile/server/auth identity, regardless of business database count.
 pub(crate) fn postgres_connection_cost(config: &ConnectionConfig) -> ConnectionCostPolicy {
     ConnectionCostPolicy::PoolBounded {
         max_physical_connections: config.effective_max_pool_size(),

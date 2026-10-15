@@ -41,6 +41,31 @@ impl DesktopResourceBudget {
 }
 #[async_trait]
 impl BudgetPort for DesktopResourceBudget {
+    async fn acquire_control_connection(&self) -> Result<BudgetPermit, ResourceError> {
+        let mut claim = self.claim.clone();
+        claim.class = ResourceClass::Control;
+        claim.slots = 1;
+        let record = self
+            .coordinator
+            .acquire_claim_with(&claim, 10_000)
+            .await
+            .map_err(|_| Self::denied(1))?;
+        let id = uuid::Uuid::new_v4().to_string();
+        match self.permits.lock() {
+            Ok(mut permits) => {
+                permits.insert(id.clone(), (1, vec![record]));
+            }
+            Err(_) => {
+                self.coordinator.release_permit(&record, false);
+                return Err(Self::denied(1));
+            }
+        }
+        Ok(BudgetPermit {
+            permit_id: id,
+            physical_connections: 1,
+        })
+    }
+
     async fn acquire_physical_connections(
         &self,
         requested: u32,
@@ -203,6 +228,25 @@ mod tests {
             self.coordinator
                 .with_ledger(|ledger| ledger.shared_used(&self.connection))
         }
+    }
+
+    #[tokio::test]
+    async fn control_uses_its_own_reserved_slot_and_ignores_data_cost() {
+        let fixture = Fixture::new();
+        let scope = fixture.scope(ResourceClass::Metadata, 2);
+        let data = scope.acquire_physical_connections(2).await.unwrap();
+        let control = scope.acquire_control_connection().await.unwrap();
+        assert_eq!(control.physical_connections, 1);
+        assert_eq!(fixture.physical(), 3);
+        assert_eq!(
+            fixture.shared_used(),
+            0,
+            "control uses its reserved class slot"
+        );
+        scope.release_control_connection(&control).await.unwrap();
+        assert_eq!(fixture.physical(), 2);
+        scope.release_physical_connections(&data).await.unwrap();
+        assert_eq!(fixture.physical(), 0);
     }
 
     #[tokio::test]

@@ -72,10 +72,6 @@ fn config() -> ConnectionConfig {
     }
 }
 
-fn target() -> NamespaceTarget {
-    NamespaceTarget::empty().with_database("app_db")
-}
-
 fn interactive_scope(max_physical_connections: u32) -> ResourceScope {
     ResourceScope {
         purpose: ResourcePurpose::InteractiveQuery,
@@ -88,7 +84,12 @@ fn interactive_scope(max_physical_connections: u32) -> ResourceScope {
 fn acquire_request(config: &ConnectionConfig, scope: ResourceScope) -> AcquireResourceRequest {
     AcquireResourceRequest {
         connection_config: config.clone(),
-        target: target(),
+        target: config
+            .database
+            .as_ref()
+            .map_or_else(NamespaceTarget::empty, |database| {
+                NamespaceTarget::empty().with_database(database.clone())
+            }),
         scope,
         identity_scope: IdentityScope::default(),
         baseline: Baseline::new(Vec::new()),
@@ -584,14 +585,10 @@ mod live {
         // The resource is untouched: the permit belongs to the resource, and
         // closing a handle must never be mistaken for closing the resource.
         assert!(!handle.is_closed());
-        // Exactly one acquire, charged at the resource's own pool cost: the
-        // config's effective pool size plus the single control-pool connection
-        // used for cancellation. The `interactive_scope(32)` above is only a
-        // ceiling the charge must fit under, never the charge itself.
-        let expected_charge = config.effective_max_pool_size() + 1;
+        // Fixed data session and shared control are separate physical claims.
         assert_eq!(
             ledger.acquired(),
-            vec![expected_charge],
+            vec![1, 1],
             "the handle close must not have re-acquired a permit either"
         );
         assert!(
@@ -608,8 +605,8 @@ mod live {
         );
         assert_eq!(
             ledger.released().len(),
-            1,
-            "exactly one release per acquire"
+            2,
+            "data and control release after confirmed close"
         );
     }
 }
