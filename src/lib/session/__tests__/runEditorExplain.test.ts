@@ -53,11 +53,11 @@ beforeEach(() => {
 
 it('uses the same pane controller and session command with bind values', async () => {
   await expect(
-    runEditorExplain('p1::split', 'config', 'SELECT :id', 'A', 's', { id: 73 }),
+    runEditorExplain('p1::split', 'cfg-1', 'SELECT :id', 'A', 's', { id: 73 }),
   ).resolves.toEqual({ planText: 'Scan owned_temp' });
   expect(runtime.get).toHaveBeenCalledWith(
     'p1::split',
-    { connectionId: 'config', namespace: { database: 'A', schema: 's' } },
+    { connectionId: 'cfg-1', namespace: { database: 'A', schema: 's' } },
     { kind: 'editor', editorSessionId: 'p1::split' },
   );
   expect(runtime.execute).toHaveBeenCalledExactlyOnceWith({
