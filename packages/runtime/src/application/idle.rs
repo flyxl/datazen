@@ -46,13 +46,27 @@ use crate::connection::DbSessionId;
 const DEFAULT_DEADLINE: Duration = Duration::from_secs(30 * 60);
 const DEFAULT_SCAN_INTERVAL: Duration = Duration::from_secs(3 * 60);
 
+/// 会话**摘掉全部挂载**之后，允许它继续占着物理额度的宽限。
+///
+/// 与资源池的空闲回收同口径（`crate::resource::IDLE_POOL_TTL_SECONDS = 60`）。理由：
+/// 一个没有任何挂载的会话是**死重**——没有任何客户端还能用它，但它仍占着物理许可
+/// （PostgreSQL 元数据一类就是「数据池 + 控制池」两槽），而桌面端口径只有十几槽。
+/// 实测：一次 E2E 里 7 个数据库各自的元数据资源就吃满共享池，第三个 spec 文件再也
+/// 申请不到新资源（`reserved_headroom=0 shared_headroom=1`，申请要 2 槽）。
+///
+/// 宽限只用于抹平「关掉面板又立刻打开」的抖动，不是长期保温：重新挂载会把期限推回
+/// [`IdlePolicy::deadline_ms`]（actor 侧 `set_idle_deadline` 是**替换**语义）。
+pub const DEFAULT_DETACHED_GRACE: Duration = Duration::from_secs(60);
+
 /// 空闲回收策略。
 ///
 /// `deadline == None` 是**配置事实**（本部署不做空闲回收），不是「计数器为 0」：
 /// 两种 `None` 语义不混同，是 [`crate::budget`] / [`crate::resource`] 一直在守的规矩。
+/// `detached_grace == None` 同样是配置事实：摘挂载后不额外收紧期限。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IdlePolicy {
     deadline: Option<Duration>,
+    detached_grace: Option<Duration>,
     scan_interval: Duration,
 }
 
@@ -60,6 +74,7 @@ impl Default for IdlePolicy {
     fn default() -> Self {
         Self {
             deadline: Some(DEFAULT_DEADLINE),
+            detached_grace: Some(DEFAULT_DETACHED_GRACE),
             scan_interval: DEFAULT_SCAN_INTERVAL,
         }
     }
@@ -70,6 +85,7 @@ impl IdlePolicy {
     pub fn disabled() -> Self {
         Self {
             deadline: None,
+            detached_grace: None,
             scan_interval: DEFAULT_SCAN_INTERVAL,
         }
     }
@@ -78,14 +94,37 @@ impl IdlePolicy {
     pub fn with_deadline(deadline: Duration, scan_interval: Duration) -> Self {
         Self {
             deadline: Some(deadline),
+            detached_grace: Some(DEFAULT_DETACHED_GRACE),
             scan_interval,
         }
+    }
+
+    /// 覆盖摘挂载宽限：`None` = 摘掉挂载后不收紧期限（退回「开着的期限一直有效」）。
+    pub fn with_detached_grace(mut self, grace: Option<Duration>) -> Self {
+        self.detached_grace = grace;
+        self
+    }
+
+    /// 只改扫描间隔：期限与摘挂载宽限保持当前值。
+    ///
+    /// 扫描间隔决定「期限到了之后最晚多久被真正回收」。§9.2 的 3 分钟是按 30 分钟期限
+    /// 取的 1/10；一旦摘挂载宽限收到 [`DEFAULT_DETACHED_GRACE`]（60 秒），3 分钟一跳就会
+    /// 让宽限最坏拖到 4 分钟——「已经没人用的会话」继续占着 2 槽物理额度。
+    pub fn with_scan_interval(mut self, scan_interval: Duration) -> Self {
+        self.scan_interval = scan_interval;
+        self
     }
 
     /// 建会话时写入 `OpenRequest.idle_deadline_ms` 的毫秒数；`None` = 不设期限。
     pub fn deadline_ms(&self) -> Option<u64> {
         self.deadline
             .map(|deadline| u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX))
+    }
+
+    /// 摘掉挂载后写入的空闲期限毫秒数；`None` = 不额外收紧。
+    pub fn detached_grace_ms(&self) -> Option<u64> {
+        self.detached_grace
+            .map(|grace| u64::try_from(grace.as_millis()).unwrap_or(u64::MAX))
     }
 
     pub fn scan_interval(&self) -> Duration {
@@ -252,6 +291,31 @@ impl RuntimeConnectionUseCases {
             .await
             .map_err(convert::runtime)
     }
+
+    /// 会话**摘掉挂载**之后，把空闲期限收到「现在 + 摘挂载宽限」。
+    ///
+    /// 方向与 [`Self::refresh_idle_deadline`] 相反：那条只把期限往后推（真实业务活动），
+    /// 这条只往回收紧。§9.2 禁止的是「心跳/扫描把期限往后推」，收紧不在禁令内——恰恰相反，
+    /// 它防的正是「会话只要挂着就永远不回收」那半句：一旦**不挂了**，就不该继续占额度。
+    ///
+    /// 三种 `None` 与刷新一致地分开：策略关闭 ⇒ 不动 registry；会话不在册 / epoch 不匹配 /
+    /// 物理资源已释放 ⇒ 如实返回错误，不把它当成「收紧了」。
+    pub async fn arm_detached_grace(
+        &self,
+        handle: &datazen_platform_api::dto::session::SessionHandle,
+    ) -> Result<Option<u64>, ApiError> {
+        let policy = *lock(&self.inner.idle);
+        let Some(span) = policy.detached_grace_ms() else {
+            return Ok(None);
+        };
+        let at = self.inner.clock.now_ms().saturating_add(span);
+        let internal = convert::handle(handle)?;
+        self.inner
+            .registry
+            .set_idle_deadline(&internal, Some(at))
+            .await
+            .map_err(convert::runtime)
+    }
 }
 
 #[cfg(test)]
@@ -281,5 +345,49 @@ mod tests {
         let policy = IdlePolicy::with_deadline(Duration::from_millis(30), Duration::from_millis(5));
         assert_eq!(policy.deadline_ms(), Some(30));
         assert_eq!(policy.scan_interval(), Duration::from_millis(5));
+    }
+
+    #[test]
+    fn 默认策略给摘挂载宽限一分钟() {
+        let policy = IdlePolicy::default();
+        assert_eq!(
+            policy.detached_grace_ms(),
+            Some(u64::try_from(DEFAULT_DETACHED_GRACE.as_millis()).expect("在 u64 范围内"))
+        );
+    }
+
+    #[test]
+    fn 关闭策略不给摘挂载宽限() {
+        assert_eq!(IdlePolicy::disabled().detached_grace_ms(), None);
+    }
+
+    #[test]
+    fn 摘挂载宽限可单独覆盖() {
+        let tightened = IdlePolicy::default().with_detached_grace(Some(Duration::from_millis(250)));
+        assert_eq!(tightened.detached_grace_ms(), Some(250));
+        assert_eq!(
+            tightened.deadline_ms(),
+            Some(u64::try_from(DEFAULT_DEADLINE.as_millis()).expect("在 u64 范围内")),
+            "只改宽限，不得顺带改正常期限"
+        );
+
+        let off = IdlePolicy::default().with_detached_grace(None);
+        assert_eq!(off.detached_grace_ms(), None);
+        assert!(off.is_enabled(), "关掉摘挂载宽限不得顺带关掉空闲回收");
+    }
+
+    #[test]
+    fn 扫描间隔可单独调短且不动期限() {
+        let policy = IdlePolicy::default().with_scan_interval(Duration::from_secs(15));
+        assert_eq!(policy.scan_interval(), Duration::from_secs(15));
+        assert_eq!(
+            policy.deadline_ms(),
+            Some(u64::try_from(DEFAULT_DEADLINE.as_millis()).expect("在 u64 范围内")),
+            "调扫描节奏不得顺手改业务空闲期限"
+        );
+        assert_eq!(
+            policy.detached_grace_ms(),
+            Some(u64::try_from(DEFAULT_DETACHED_GRACE.as_millis()).expect("在 u64 范围内"))
+        );
     }
 }

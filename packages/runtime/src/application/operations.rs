@@ -372,6 +372,9 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         if let Some(entry) = lock(&self.inner.sessions).get_mut(&request.handle.db_session_id) {
             entry.attached = true;
         }
+        // 重新挂上就是「又有人用了」：把摘挂载宽限推回正常期限，免得刚挂上就被回收。
+        // actor 侧 `set_idle_deadline` 是**替换**语义，所以推回去就真的推回去了。
+        self.refresh_idle_deadline(&request.handle).await?;
         self.session_view(ctx, &request.handle).await
     }
     async fn detach_session(
@@ -387,6 +390,9 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         if let Some(entry) = lock(&self.inner.sessions).get_mut(&request.handle.db_session_id) {
             entry.attached = false;
         }
+        // 摘掉就是「没人用了」：把空闲期限收到摘挂载宽限。到期由回收器驱逐会话并释放
+        // 物理资源——这正是「没有任何客户端的会话不该继续占额度」的落点。只收紧不放开。
+        self.arm_detached_grace(&request.handle).await?;
         self.session_view(ctx, &request.handle).await
     }
     async fn execute_in_session(
