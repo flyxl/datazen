@@ -23,9 +23,9 @@
 ### 1.2 Schema 缓存架构
 
 ```rust
-// src-tauri/src/cache/schema_cache.rs
+// packages/runtime/src/schema_cache/schema_cache.rs（原先在 src-tauri/src/cache/）
 
-use crate::db::*;
+use crate::driver_registry::DriverRegistry;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;

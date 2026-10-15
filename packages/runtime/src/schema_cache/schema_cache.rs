@@ -8,8 +8,10 @@
 //!
 //! When the full schema is cached, the columns tier is also satisfied from it.
 
-use crate::db::registry::DriverRegistry;
-use crate::db::{ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, TableSchema};
+use crate::driver_registry::DriverRegistry;
+use datazen_driver_api::{
+    ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, TableSchema,
+};
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -402,7 +404,7 @@ impl SchemaCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+    use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 
     fn test_handle() -> ConnectionHandle {
         ConnectionHandle {

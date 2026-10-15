@@ -114,6 +114,10 @@ sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgre
 datazen-driver-postgres = { path = "../packages/drivers/postgres" }
 datazen-driver-mysql = { path = "../packages/drivers/mysql" }
 datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
+# Host tests drive `DriverRegistry::register_test_driver*` / `register_test_factory*`, which the
+# registry now exposes from `datazen-runtime` behind `#[cfg(any(test, feature = "test-harness"))]`.
+# Dev-only: `resolver = "2"` keeps this feature out of normal `cargo build` of the host.
+datazen-runtime = { path = "../packages/runtime", features = ["test-harness"] }
 
 [[test]]
 name = "driver_command_ipc"
