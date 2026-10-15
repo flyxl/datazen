@@ -507,10 +507,13 @@ pub(crate) fn test_config() -> ConnectionConfig {
     }
 }
 
+/// A scope that can afford exactly one pooled resource: no headroom, so a test
+/// that accidentally starts charging more than the data pool goes red here rather
+/// than passing on slack.
 pub(crate) fn scope() -> ResourceScope {
     ResourceScope {
         purpose: ResourcePurpose::MetadataInspection,
-        max_physical_connections: test_config().effective_max_pool_size() + 1,
+        max_physical_connections: test_config().effective_max_pool_size(),
         holds_open_transaction: false,
         pin_for_streaming: false,
     }

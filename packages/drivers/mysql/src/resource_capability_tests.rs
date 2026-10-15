@@ -6,6 +6,7 @@
 
 use super::test_support::*;
 use super::ConnectionCostPolicy;
+use crate::mysql::MysqlDriver;
 use crate::resource_capabilities::{
     mysql_capability_set, mysql_connection_cost, CONTROL_POOL_CONNECTIONS,
 };
@@ -303,13 +304,16 @@ async fn reset_always_discards_because_no_baseline_path_is_verified() {
 
 // --- declared cost -------------------------------------------------------
 
-/// CM-30: the cost a provider declares must cover the connections it really
-/// opens. `MysqlDriver::connect` builds a data pool of
-/// `effective_max_pool_size()` plus a separate control pool of one, so a
-/// declared cost of 1 understated the real figure by the entire pool and would
-/// have let a caller size a budget the provider then exceeds.
+/// CM-30: the cost a provider declares must cover the connections it really opens.
+/// `MysqlDriver::connect` builds a data pool of `effective_max_pool_size()`, so a
+/// declared cost of 1 understated the real figure by the entire pool and would have
+/// let a caller size a budget the provider then exceeds.
+///
+/// The driver's control connection is **not** part of that figure: it is shared by
+/// every resource of one (connection identity, database), so charging it per
+/// resource would bill one physical connection once per resource.
 #[test]
-fn the_declared_cost_covers_the_data_pool_and_the_control_pool() {
+fn the_declared_cost_covers_the_data_pool_but_not_the_control_connection() {
     let config = test_config();
     let ConnectionCostPolicy::PoolBounded {
         max_physical_connections,
@@ -319,12 +323,58 @@ fn the_declared_cost_covers_the_data_pool_and_the_control_pool() {
     };
     assert_eq!(
         max_physical_connections,
-        config.effective_max_pool_size() + CONTROL_POOL_CONNECTIONS,
-        "the declared cost must be the data pool plus the control pool"
+        config.effective_max_pool_size(),
+        "the declared cost must be the data pool, and only the data pool"
     );
     assert!(
-        max_physical_connections > 1,
-        "a pool of more than one connection can never honestly cost 1"
+        CONTROL_POOL_CONNECTIONS == 1,
+        "the driver keeps exactly one control connection per identity, and it is not the resource's"
+    );
+    // The proof that the control connection is excluded is that widening the pool
+    // widens the cost by exactly the pool: one more connection would mean the
+    // driver's own one is being billed to the resource.
+    let mut wider = config.clone();
+    wider.max_pool_size = 7;
+    assert_eq!(
+        mysql_connection_cost(&wider),
+        ConnectionCostPolicy::PoolBounded {
+            max_physical_connections: 7
+        },
+        "a resource pays for its data pool, not for the driver's shared control connection"
+    );
+}
+
+/// The control connection is claimed by the driver, not purchased by a resource:
+/// the key must follow the server and the database, and must not be disturbed by a
+/// password (a secret has no business in a map key).
+#[test]
+fn the_control_pool_key_follows_the_server_and_the_database() {
+    let base = test_config();
+    let key = MysqlDriver::control_pool_key(&base);
+
+    let mut other_server = base.clone();
+    other_server.host = Some("elsewhere.example".into());
+    assert_ne!(key, MysqlDriver::control_pool_key(&other_server));
+
+    let mut other_database = base.clone();
+    other_database.database = Some("other_db".into());
+    assert_ne!(
+        key,
+        MysqlDriver::control_pool_key(&other_database),
+        "a pool reconnects with the database it was built from, so the database is part of its identity"
+    );
+
+    let mut other_password = base.clone();
+    other_password.password = Some("a-different-secret".into());
+    assert_eq!(
+        key,
+        MysqlDriver::control_pool_key(&other_password),
+        "the password is not part of the identity and must not leak into the key"
+    );
+
+    assert!(
+        MysqlDriver::control_pool_key(&base).starts_with("myctl|"),
+        "the key must be namespaced to the control pool"
     );
 }
 

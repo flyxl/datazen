@@ -31,13 +31,14 @@ const MYSQL_TABLE_OPTIONS_QUERY: &str =
        ON collation_map.COLLATION_NAME = t.TABLE_COLLATION \
      WHERE t.TABLE_SCHEMA = ? AND t.TABLE_NAME = ?";
 
+use crate::resource_capabilities::CONTROL_POOL_CONNECTIONS;
 use crate::structure;
 use async_trait::async_trait;
 use catalog::{
     dump_mysql_routines, dump_mysql_triggers, extract_named_create_column,
     extract_show_create_table,
 };
-use connection::build_mysql_options;
+use connection::{build_mysql_options, DEFAULT_HOST, DEFAULT_PORT};
 use datazen_driver_api::*;
 use execution::{build_kill_query_sql, MysqlQueryExecution};
 use sql::{apply_mysql_select_limit, split_mysql_statements};
@@ -153,12 +154,137 @@ pub struct MysqlDriver {
     /// Exact execution target registry. The MySQL thread id never leaves the
     /// driver; the host/UI only sees QueryExecutionId.
     pub(crate) query_executions: Mutex<HashMap<QueryExecutionId, MysqlQueryExecution>>,
-    /// Independent control connections used only for KILL QUERY.
-    pub(crate) control_pools: RwLock<HashMap<String, MySqlPool>>,
+    /// Independent control connections used only for out-of-band work
+    /// (`KILL QUERY`, transaction instrumentation), keyed by connection identity
+    /// **and database** rather than by resource: every resource that resolves to
+    /// the same server and database shares one connection in here.
+    ///
+    /// These connections never execute user SQL and are deliberately **not** part
+    /// of a resource's declared cost. `KILL QUERY <thread_id>` is instance-scoped,
+    /// so charging a connection per resource would bill the same physical
+    /// connection once per resource on that server. The database stays in the key
+    /// because a pool reconnects with the options it was built from, so a pool
+    /// keyed without it would be reused for a database that may since have been
+    /// dropped.
+    pub(crate) control_pools: RwLock<HashMap<String, ControlPoolEntry>>,
+    /// Which control-pool identity each resource belongs to, so a release can find
+    /// the shared entry from the handle alone. Removed with the resource.
+    pub(crate) control_keys: RwLock<HashMap<String, String>>,
     pub(crate) is_mariadb: bool,
 }
 
+/// One shared control connection plus the number of resources still holding it.
+pub(crate) struct ControlPoolEntry {
+    pub(crate) pool: MySqlPool,
+    pub(crate) refs: usize,
+}
+
 impl MysqlDriver {
+    /// Identity of the shared control connection.
+    ///
+    /// The `KILL QUERY` itself is database-agnostic — it names a thread id on the
+    /// whole instance — but the **pool is not**: a `MySqlPool` reconnects with the
+    /// connect options it was built from, so the database is part of its identity.
+    /// Keying without it would let a pool built for one database serve a resource on
+    /// another, and a database that has since been dropped would take every later
+    /// acquisition down with it (the PostgreSQL driver learned this from the desktop
+    /// E2E, which re-creates the worker database before every spec file).
+    ///
+    /// The password is excluded (a secret has no business in a map key); the
+    /// connection is dropped once the last resource of this identity is released.
+    pub(crate) fn control_pool_key(config: &ConnectionConfig) -> String {
+        format!(
+            "myctl|{}|{}|{}|{}|{:?}|{}",
+            config.id,
+            config.host.as_deref().unwrap_or(DEFAULT_HOST),
+            config.port.unwrap_or(DEFAULT_PORT),
+            config.username.as_deref().unwrap_or(""),
+            config.ssl_mode,
+            config
+                .database
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or_default(),
+        )
+    }
+
+    /// Get-or-create the shared control connection for this connection identity,
+    /// adding one reference for the resource being opened.
+    ///
+    /// Held under the write lock across the connect on purpose: two resources
+    /// racing for the same identity must not open two control connections, and the
+    /// wait is bounded by one connection attempt.
+    async fn acquire_control_pool(
+        &self,
+        config: &ConnectionConfig,
+        timeout: Duration,
+    ) -> Result<(), DriverError> {
+        let key = Self::control_pool_key(config);
+        let mut pools = self.control_pools.write().await;
+        if let Some(entry) = pools.get_mut(&key) {
+            entry.refs = entry.refs.saturating_add(1);
+            return Ok(());
+        }
+        match Self::open_pool(
+            build_mysql_options(config)?,
+            timeout,
+            CONTROL_POOL_CONNECTIONS,
+            0,
+        )
+        .await
+        {
+            Ok(pool) => {
+                pools.insert(key, ControlPoolEntry { pool, refs: 1 });
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Drop one reference to the shared control connection of `pool_id`, closing
+    /// the physical connection once the last resource is gone.
+    ///
+    /// Also forgets which identity the resource belonged to, so a double release
+    /// cannot decrement a stranger's count.
+    async fn release_control_pool(&self, pool_id: &str) {
+        let key = self.control_keys.write().await.remove(pool_id);
+        let Some(key) = key else {
+            return;
+        };
+        let mut pools = self.control_pools.write().await;
+        let Some(entry) = pools.get_mut(&key) else {
+            return;
+        };
+        entry.refs = entry.refs.saturating_sub(1);
+        if entry.refs == 0 {
+            if let Some(entry) = pools.remove(&key) {
+                entry.pool.close().await;
+            }
+        }
+    }
+
+    /// The shared control connection serving `handle`'s resource.
+    ///
+    /// Resolved through the resource's identity, not through the pool itself,
+    /// because one control connection serves every resource of a (connection
+    /// identity, database). `None` means this resource has no usable control
+    /// connection, which is a supported state — acquisition never depends on it, so
+    /// `KILL QUERY` and the transaction-evidence probe degrade instead of refusing
+    /// the resource.
+    pub(crate) async fn control_pool_for(&self, handle: &ConnectionHandle) -> Option<MySqlPool> {
+        let key = self
+            .control_keys
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned()?;
+        self.control_pools
+            .read()
+            .await
+            .get(&key)
+            .map(|entry| entry.pool.clone())
+    }
+
     pub(crate) fn is_table_not_found_error(err_msg: &str) -> bool {
         let lower = err_msg.to_ascii_lowercase();
         lower.contains("1146")
@@ -175,6 +301,7 @@ impl MysqlDriver {
             fixed_states: RwLock::new(HashMap::new()),
             query_executions: Mutex::new(HashMap::new()),
             control_pools: RwLock::new(HashMap::new()),
+            control_keys: RwLock::new(HashMap::new()),
             is_mariadb,
         }
     }
@@ -936,14 +1063,21 @@ impl DatabaseDriver for MysqlDriver {
 
         let pool_id = uuid::Uuid::new_v4().to_string();
         let connection_id = uuid::Uuid::new_v4().to_string();
-        let control_pool = match Self::open_pool(build_mysql_options(config)?, timeout, 1, 0).await
-        {
-            Ok(p) => p,
-            Err(e) => {
-                pool.close().await;
-                return Err(e);
-            }
-        };
+        self.control_keys
+            .write()
+            .await
+            .insert(pool_id.clone(), Self::control_pool_key(config));
+        if let Err(error) = self.acquire_control_pool(config, timeout).await {
+            // The cancel-only connection is an auxiliary capability, and the
+            // primary path must not depend on it: a resource that cannot cancel is
+            // degraded, not unusable. `control_pool_for` answers `None`, `KILL
+            // QUERY` reports the unavailable control pool, and the MySQL
+            // transaction-evidence probe in `fixed_session` skips the check.
+            tracing::warn!(
+                %error,
+                "cancel-only control connection unavailable; this resource cannot cancel precisely"
+            );
+        }
 
         if let Some(db) = config
             .database
@@ -958,10 +1092,6 @@ impl DatabaseDriver for MysqlDriver {
         }
 
         self.pools.write().await.insert(pool_id.clone(), pool);
-        self.control_pools
-            .write()
-            .await
-            .insert(pool_id.clone(), control_pool);
 
         Ok(ConnectionHandle {
             id: connection_id,
@@ -998,17 +1128,10 @@ impl DatabaseDriver for MysqlDriver {
         if let Some(pool) = pool {
             pool.close().await;
         }
-        let control_pool = self
-            .control_pools
-            .read()
-            .await
-            .get(&handle.pool_id)
-            .cloned();
-        if let Some(pool) = control_pool {
-            pool.close().await;
-        }
+        // The control connection is shared per (connection identity, database), so
+        // this drops one reference: the last resource out closes it.
+        self.release_control_pool(&handle.pool_id).await;
         self.pools.write().await.remove(&handle.pool_id);
-        self.control_pools.write().await.remove(&handle.pool_id);
         Ok(())
     }
 
@@ -1454,12 +1577,9 @@ impl DatabaseDriver for MysqlDriver {
     ) -> Result<(), DriverError> {
         let transactional = self.transactions.lock().await.contains_key(&handle.id);
         let target_pool = self.pools.read().await.get(&handle.pool_id).cloned();
-        let control_pool = self
-            .control_pools
-            .read()
-            .await
-            .get(&handle.pool_id)
-            .cloned();
+        // The control connection is shared per (connection identity, database), so
+        // it is reached through this resource's identity rather than `pool_id`.
+        let control_pool = self.control_pool_for(handle).await;
         let mut executions = self.query_executions.lock().await;
         if executions.contains_key(execution_id) {
             return Err(DriverError::QueryFailed(format!(
