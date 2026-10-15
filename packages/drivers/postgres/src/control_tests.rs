@@ -327,3 +327,32 @@ async fn live_abandoned_admission_closes_data_and_control_before_releasing() {
     assert!(driver.pools.read().await.is_empty());
     assert!(driver.control_pools.read().await.is_empty());
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL: TEST_PG_PORT and TEST_PG_USER"]
+async fn live_failed_initial_control_release_remains_recoverable() {
+    struct FailFirstRelease {
+        ledger: Ledger,
+        failed: std::sync::atomic::AtomicBool,
+    }
+    #[async_trait]
+    impl BudgetPort for FailFirstRelease {
+        async fn acquire_physical_connections(&self, count: u32) -> Result<BudgetPermit, datazen_driver_api::resource::ResourceError> {
+            self.ledger.acquire_physical_connections(count).await
+        }
+        async fn release_physical_connections(&self, permit: &BudgetPermit) -> Result<(), datazen_driver_api::resource::ResourceError> {
+            if !self.failed.swap(true, Ordering::SeqCst) {
+                return Err(datazen_driver_api::resource::ResourceError::Driver(DriverError::SessionLost));
+            }
+            self.ledger.release_physical_connections(permit).await
+        }
+    }
+    let mut missing = config();
+    missing.username = Some("missing_control_role".into());
+    let driver = PostgresDriver::new();
+    let budget = Arc::new(FailFirstRelease { ledger: Ledger::default(), failed: std::sync::atomic::AtomicBool::new(false) });
+    assert!(driver.acquire_control_pool("failed", &missing, &missing, Some(budget.clone())).await.is_err());
+    // Public connect failure returns no handle, so only a fresh acquisition can recover this identity.
+    assert!(driver.acquire_control_pool("retry", &missing, &missing, Some(budget.clone())).await.is_err());
+    assert_eq!(budget.ledger.released.load(Ordering::SeqCst), 1, "retry should recover the retained closed control permit instead of permanently poisoning the identity");
+}
