@@ -255,7 +255,7 @@ async fn live_account_without_maintenance_access_uses_known_business_database() 
 
 #[tokio::test]
 #[ignore = "requires disposable PostgreSQL: TEST_PG_PORT and TEST_PG_USER"]
-async fn live_abandoned_admission_closes_data_and_control_before_releasing() {
+async fn live_abandoned_admission_retries_cleanup_before_releasing() {
     use datazen_driver_api::resource::{
         AcquireResourceRequest, Baseline, IdentityScope, ResourceProvider, ResourcePurpose,
         ResourceScope,
@@ -264,6 +264,8 @@ async fn live_abandoned_admission_closes_data_and_control_before_releasing() {
         ledger: Ledger,
         entered: tokio::sync::Notify,
         proceed: tokio::sync::Notify,
+        failed_control_release: std::sync::atomic::AtomicBool,
+        failed_data_release: std::sync::atomic::AtomicBool,
     }
     #[async_trait]
     impl BudgetPort for BlockingBudget {
@@ -280,10 +282,26 @@ async fn live_abandoned_admission_closes_data_and_control_before_releasing() {
             self.proceed.notified().await;
             self.ledger.acquire_physical_connections(1).await
         }
+        async fn release_control_connection(
+            &self,
+            permit: &BudgetPermit,
+        ) -> Result<(), datazen_driver_api::resource::ResourceError> {
+            if !self.failed_control_release.swap(true, Ordering::SeqCst) {
+                return Err(datazen_driver_api::resource::ResourceError::Driver(
+                    DriverError::SessionLost,
+                ));
+            }
+            self.ledger.release_physical_connections(permit).await
+        }
         async fn release_physical_connections(
             &self,
             permit: &BudgetPermit,
         ) -> Result<(), datazen_driver_api::resource::ResourceError> {
+            if !self.failed_data_release.swap(true, Ordering::SeqCst) {
+                return Err(datazen_driver_api::resource::ResourceError::Driver(
+                    DriverError::SessionLost,
+                ));
+            }
             self.ledger.release_physical_connections(permit).await
         }
     }
@@ -293,6 +311,8 @@ async fn live_abandoned_admission_closes_data_and_control_before_releasing() {
         ledger: Ledger::default(),
         entered: tokio::sync::Notify::new(),
         proceed: tokio::sync::Notify::new(),
+        failed_control_release: std::sync::atomic::AtomicBool::new(false),
+        failed_data_release: std::sync::atomic::AtomicBool::new(false),
     });
     let request = AcquireResourceRequest {
         connection_config: config(),
@@ -324,6 +344,8 @@ async fn live_abandoned_admission_closes_data_and_control_before_releasing() {
     .await
     .expect("abandoned admission eventually confirms and releases both sockets");
     assert_eq!(budget.ledger.charged.load(Ordering::SeqCst), 2);
+    assert!(budget.failed_control_release.load(Ordering::SeqCst));
+    assert!(budget.failed_data_release.load(Ordering::SeqCst));
     assert!(driver.pools.read().await.is_empty());
     assert!(driver.control_pools.read().await.is_empty());
 }
@@ -337,12 +359,20 @@ async fn live_failed_initial_control_release_remains_recoverable() {
     }
     #[async_trait]
     impl BudgetPort for FailFirstRelease {
-        async fn acquire_physical_connections(&self, count: u32) -> Result<BudgetPermit, datazen_driver_api::resource::ResourceError> {
+        async fn acquire_physical_connections(
+            &self,
+            count: u32,
+        ) -> Result<BudgetPermit, datazen_driver_api::resource::ResourceError> {
             self.ledger.acquire_physical_connections(count).await
         }
-        async fn release_physical_connections(&self, permit: &BudgetPermit) -> Result<(), datazen_driver_api::resource::ResourceError> {
+        async fn release_physical_connections(
+            &self,
+            permit: &BudgetPermit,
+        ) -> Result<(), datazen_driver_api::resource::ResourceError> {
             if !self.failed.swap(true, Ordering::SeqCst) {
-                return Err(datazen_driver_api::resource::ResourceError::Driver(DriverError::SessionLost));
+                return Err(datazen_driver_api::resource::ResourceError::Driver(
+                    DriverError::SessionLost,
+                ));
             }
             self.ledger.release_physical_connections(permit).await
         }
@@ -350,9 +380,28 @@ async fn live_failed_initial_control_release_remains_recoverable() {
     let mut missing = config();
     missing.username = Some("missing_control_role".into());
     let driver = PostgresDriver::new();
-    let budget = Arc::new(FailFirstRelease { ledger: Ledger::default(), failed: std::sync::atomic::AtomicBool::new(false) });
-    assert!(driver.acquire_control_pool("failed", &missing, &missing, Some(budget.clone())).await.is_err());
+    let budget = Arc::new(FailFirstRelease {
+        ledger: Ledger::default(),
+        failed: std::sync::atomic::AtomicBool::new(false),
+    });
+    assert!(driver
+        .acquire_control_pool("failed", &missing, &missing, Some(budget.clone()))
+        .await
+        .is_err());
     // Public connect failure returns no handle, so only a fresh acquisition can recover this identity.
-    assert!(driver.acquire_control_pool("retry", &missing, &missing, Some(budget.clone())).await.is_err());
-    assert_eq!(budget.ledger.released.load(Ordering::SeqCst), 1, "retry should recover the retained closed control permit instead of permanently poisoning the identity");
+    assert!(driver
+        .acquire_control_pool("retry", &missing, &missing, Some(budget.clone()))
+        .await
+        .is_err());
+    assert_eq!(
+        budget.ledger.charged.load(Ordering::SeqCst),
+        2,
+        "fresh admission starts only after retained close succeeds"
+    );
+    assert_eq!(
+        budget.ledger.released.load(Ordering::SeqCst),
+        2,
+        "old and freshly failed control attempts both release once"
+    );
+    assert!(driver.control_pools.read().await.is_empty());
 }

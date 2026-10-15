@@ -42,12 +42,15 @@ impl PostgresDriver {
         let key = Self::control_pool_key(config);
         // Serialize creation, replacement and last-close, including their awaits.
         let mut pools = self.control_pools.write().await;
+        if let Some(entry) = pools.get_mut(&key).filter(|entry| entry.closing) {
+            // Failed initial admission has no returned handle to drive close.
+            // Retry its retained close/permit before charging a fresh admission.
+            // Last-owner close retries are safe too: their data pool is already
+            // closed, and its old owner cannot release a replacement's permit.
+            entry.close().await?;
+            pools.remove(&key);
+        }
         if let Some(entry) = pools.get_mut(&key) {
-            if entry.closing {
-                return Err(DriverError::ConnectionFailed(
-                    "shared control closure is pending".into(),
-                ));
-            }
             // Credentials can rotate without entering a map key. New profile
             // material also serves recovery for the registered business targets.
             entry.anchor = anchor.clone();
@@ -253,11 +256,24 @@ impl Drop for OpenedResource {
         let driver = self.driver.clone();
         let budget = self.budget.clone();
         tokio::spawn(async move {
-            if driver.disconnect_impl(connection).await.is_ok() {
-                let _ = budget.release_physical_connections(&permit).await;
-            } else {
-                // Unconfirmed closure must retain the ledger owner too.
-                std::mem::forget(budget);
+            let mut physically_closed = false;
+            let mut backoff = Duration::from_millis(100);
+            loop {
+                if !physically_closed {
+                    physically_closed = driver.disconnect_impl(connection.clone()).await.is_ok();
+                }
+                if physically_closed && budget.release_physical_connections(&permit).await.is_ok() {
+                    break;
+                }
+                // The task owns the cleanup handle and budget across failures.
+                // Cap retry frequency without pretending unconfirmed sockets or
+                // permits were released. Runtime shutdown ends process-local
+                // sockets and this in-process ledger together.
+                tracing::warn!(
+                    "abandoned resource cleanup unconfirmed; retaining permit and retrying"
+                );
+                tokio::time::sleep(backoff).await;
+                backoff = backoff.saturating_mul(2).min(Duration::from_secs(5));
             }
         });
     }
