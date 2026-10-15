@@ -29,7 +29,12 @@ import {
   dropWorkerDatabase,
   seedDefaultPgConnection,
 } from './lib/testDataLifecycle.js';
-import { ensureMainWindowForIpc, ensureSeededPgSessionFresh, invokeBackend } from './helpers.js';
+import {
+  ensureMainWindowForIpc,
+  ensureSeededPgSessionFresh,
+  invokeBackend,
+  releaseHeldSeededSession,
+} from './helpers.js';
 import { browser } from '@wdio/globals';
 
 const WD_PORT = parseInt(process.env.E2E_WD_PORT || '4445', 10);
@@ -562,10 +567,18 @@ export const config: WebdriverIO.Config = {
     } catch (err) {
       console.warn('[e2e-teardown]', err);
     }
-    // Drop the per-worker isolated database.
-    if (_workerDb) {
-      dropWorkerDatabase(_workerDb);
-      _workerDb = undefined;
+    // Release the seeded PG session this spec file held. The next file re-seeds
+    // `conn_e2e_pg` against a brand-new worker database, so the backend can
+    // never hand this session back; leaving it connected held its physical pool
+    // until the idle timeout and starved later spec files (ResourceBusy).
+    try {
+      await releaseHeldSeededSession();
+    } finally {
+      // Drop the per-worker isolated database.
+      if (_workerDb) {
+        dropWorkerDatabase(_workerDb);
+        _workerDb = undefined;
+      }
     }
   },
 };

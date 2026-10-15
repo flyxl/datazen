@@ -339,23 +339,65 @@ export async function expandConnectedConnectionInNavigator(nameFragment?: string
 }
 
 /**
+ * Seeded PG session the harness currently holds a reference to — see the note
+ * on why the probe must never `release_connection` in
+ * `ensureSeededPgSessionFresh`.
+ */
+let heldSeededSessionId: string | null = null;
+
+/**
+ * Disconnect the seeded session this harness holds.
+ *
+ * Called from the per-spec-file `after` hook, before the worker database is
+ * dropped. The next file re-seeds `conn_e2e_pg` against a brand-new database,
+ * so nothing can reuse this session, and without the explicit teardown its
+ * physical pool would stay claimed until the 30-minute idle timeout.
+ *
+ * On failure the id is kept so the next bootstrap retries it: a pool that was
+ * never torn down is exactly what starves later spec files (`ResourceBusy`),
+ * so this fails loudly instead of reporting a clean teardown.
+ */
+export async function releaseHeldSeededSession(): Promise<void> {
+  if (!heldSeededSessionId) return;
+  await invokeBackend('disconnect', { dbSessionId: heldSeededSessionId });
+  heldSeededSessionId = null;
+}
+
+/**
  * Guard against a stale backend session for the seeded PG connection.
  *
  * The whole E2E run reuses ONE Tauri process — and therefore one backend
  * ConnectionManager — across every spec file, while `wdio.conf.ts` replaces
  * the worker database behind `conn_e2e_pg` before each file. Backend `connect`
- * has reuse semantics: while an earlier spec's session is still alive it is
- * handed back as-is, still bound to the old (or a foreign) database. Raw SQL
- * then executes on that stale home database while schema metadata calls hit
- * the freshly seeded one, so DDL never lands where the navigator looks and
- * every `waitForTableInSidebar` / `waitForSchemaTreeLoaded` downstream times
- * out.
+ * only hands back a live session while that session's target still matches the
+ * saved profile (`get_or_connect_session`), so once the worker database
+ * changes it mints a new session rather than returning the previous spec's.
+ * Raw SQL would then execute on a stale home database while schema metadata
+ * calls hit the freshly seeded one, so DDL never lands where the navigator
+ * looks and every `waitForTableInSidebar` / `waitForSchemaTreeLoaded`
+ * downstream times out.
  *
  * Probe `current_database()` on the live session against the connection
  * config's `database` field (re-seeded per spec file); on mismatch — or when
  * the session cannot execute at all — disconnect it and reload the page so
  * the subsequent UI connect performs a real `connect` bound to the current
- * config. Release the probe reference and verify every replacement before returning.
+ * config.
+ *
+ * ## Why the probe keeps its reference
+ *
+ * `ConnectionManager::release` disconnects a session as soon as its refcount
+ * reaches zero. Releasing the probe here therefore destroyed the very session
+ * the workspace card was about to reuse, and the card's own `connect` minted a
+ * session whose id nothing outside the page ever learned. The next spec file's
+ * page reload dropped the only handle to it: three spec files in one worker
+ * left three orphaned pools holding the shared connection budget until the
+ * idle timeout, and later specs failed with `submit/ResourceBusy`.
+ *
+ * Holding the reference keeps the card bound to the id returned here, which is
+ * what makes `releaseHeldSeededSession` able to disconnect it at the file
+ * boundary. A session the backend did *not* hand back is provably unreachable
+ * (its target no longer matches the re-seeded profile), so it is disconnected
+ * here as well.
  */
 export async function ensureSeededPgSessionFresh(): Promise<void> {
   const conns = await invokeBackend<Array<{ id: string; database?: string }>>('get_connections');
@@ -366,6 +408,14 @@ export async function ensureSeededPgSessionFresh(): Promise<void> {
     const rows = parseQueryRows(await executeQuery(id, 'SELECT current_database()'));
     return String(rows[0]?.[0] ?? '');
   };
+  // A different id means the backend refused the held session (this file's
+  // profile points at a fresh worker database). Its only frontend handle died
+  // with the previous page, so release it now instead of leaking its pool.
+  const replaced = heldSeededSessionId;
+  heldSeededSessionId = sessionId;
+  if (replaced && replaced !== sessionId) {
+    await invokeBackend('disconnect', { dbSessionId: replaced });
+  }
   let actual = '';
   try {
     actual = await probe(sessionId);
@@ -373,8 +423,7 @@ export async function ensureSeededPgSessionFresh(): Promise<void> {
     // A dropped home database is a stale session, never a successful bootstrap.
   }
   if (actual === cfg.database) {
-    // connect borrows a reference; the fixture probe must release its own.
-    await invokeBackend('release_connection', { dbSessionId: sessionId });
+    // Keep the reference: see "Why the probe keeps its reference" above.
     return;
   }
   console.warn(`[e2e] stale seeded session; reconnecting ${cfg.id}`);
@@ -382,12 +431,9 @@ export async function ensureSeededPgSessionFresh(): Promise<void> {
   // bootstrap instead of leaving every downstream query on the stale target.
   await invokeBackend('disconnect', { dbSessionId: sessionId });
   const freshSessionId = await connectConfig(cfg.id);
-  try {
-    if ((await probe(freshSessionId)) !== cfg.database) {
-      throw new Error('Seeded PostgreSQL session database does not match its worker fixture');
-    }
-  } finally {
-    await invokeBackend('release_connection', { dbSessionId: freshSessionId });
+  heldSeededSessionId = freshSessionId;
+  if ((await probe(freshSessionId)) !== cfg.database) {
+    throw new Error('Seeded PostgreSQL session database does not match its worker fixture');
   }
   // Flush the frontend's stale handles before reconnecting through the UI.
   await browser.execute(() => location.reload());
