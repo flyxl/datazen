@@ -709,3 +709,62 @@ mod stream_target_pool {
         );
     }
 }
+
+/// 回归：不活跃的库要定期归还连接资源。
+///
+/// 背景：池以前每会话常驻 `min_connections = 2`，且不活跃的库永远不回收——
+/// 实测一个窗口空闲时仍占 17 条后端连接（其中同一个库 6 条）。
+/// 现在会话自身不再常驻连接，浏览过的库在空闲超过 TTL 后整池回收。
+mod inactive_database_reap {
+    use super::*;
+    use crate::connection::POOL_IDLE_TTL;
+    use crate::postgres::DatabasePoolEntry;
+    use sqlx::{postgres::PgPoolOptions, PgPool};
+    use std::time::{Duration, Instant};
+
+    fn lazy_pool() -> PgPool {
+        PgPoolOptions::new()
+            .connect_lazy("postgres://127.0.0.1:1/none")
+            .expect("connect_lazy never dials")
+    }
+
+    fn entry(idle: Duration) -> DatabasePoolEntry {
+        DatabasePoolEntry {
+            pool: lazy_pool(),
+            last_used: Instant::now() - idle,
+        }
+    }
+
+    #[tokio::test]
+    async fn reap_takes_inactive_databases_and_keeps_recent_ones() {
+        let driver = PostgresDriver::new();
+        let pool_id = "test-pool".to_string();
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: pool_id.clone(),
+        };
+        {
+            let mut cache = driver.database_pools.write().await;
+            cache.insert(
+                (pool_id.clone(), "idle_db".into()),
+                entry(POOL_IDLE_TTL + Duration::from_secs(1)),
+            );
+            cache.insert(
+                (pool_id.clone(), "fresh_db".into()),
+                entry(Duration::from_secs(1)),
+            );
+            cache.insert(
+                ("other-pool".into(), "idle_db".into()),
+                entry(POOL_IDLE_TTL + Duration::from_secs(1)),
+            );
+        }
+
+        driver.reap_inactive_databases(&handle).await;
+
+        let cache = driver.database_pools.read().await;
+        assert!(!cache.contains_key(&(pool_id.clone(), "idle_db".into())));
+        assert!(cache.contains_key(&(pool_id.clone(), "fresh_db".into())));
+        // Another handle's pools are none of this handle's business.
+        assert!(cache.contains_key(&("other-pool".into(), "idle_db".into())));
+    }
+}
