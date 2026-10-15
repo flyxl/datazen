@@ -294,7 +294,7 @@ describe('panelStore pane dimension', () => {
     expect(usePanelStore.getState().panels).toHaveLength(1);
   });
 
-  it('closePane cancels a running pane and skips the cancel when unsupported', () => {
+  it('closePane drops the pane state and never falls back to the legacy cancel IPC', () => {
     usePanelStore.getState().addPanel(makeQueryPanel(PANEL_ID));
     usePanelStore.getState().openPane(PANEL_ID, PANE_2);
     usePanelStore.setState((s) => ({
@@ -306,7 +306,14 @@ describe('panelStore pane dimension', () => {
     }));
 
     usePanelStore.getState().closePane(PANEL_ID, PANE_2);
-    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1', 'exec-2');
+    // Cancellation belongs to the running-close guard, which asks the pane's own
+    // controller while it still exists (see `runningExecutionClose`). By the time
+    // this cleanup runs the session is already released, so there is nothing left
+    // to cancel — and the legacy `cancel_query` + panel `dbSessionId` shape could
+    // never address a runtime execution (the id and the handle both belong to the
+    // pane's runtime session). Both halves are pinned: the guard's own tests cover
+    // the cancel, this one forbids the unreachable fallback.
+    expect(mockCancelQuery).not.toHaveBeenCalled();
     expect(execOf(KEY_2)).toBeUndefined();
 
     usePanelStore.getState().addPanel(makeQueryPanel('panel-q-nc', 'cfg-nocancel'));
@@ -321,6 +328,7 @@ describe('panelStore pane dimension', () => {
     mockCancelQuery.mockClear();
 
     usePanelStore.getState().closePane('panel-q-nc', PANE_2);
+    // No cancel capability, no live session, and no legacy fallback either.
     expect(mockCancelQuery).not.toHaveBeenCalled();
     expect(execOf('panel-q-nc::p2')).toBeUndefined();
   });
@@ -355,7 +363,9 @@ describe('panelStore pane dimension', () => {
     usePanelStore.getState().updateSql(PANEL_ID, 'SELECT 3', 'p3');
     usePanelStore.getState().updateSql('panel-q-2', 'SELECT other');
 
-    // Both panes of the removed tab are mid-run and must both be cancelled.
+    // Both panes of the removed tab are mid-run. Removing the tab releases every
+    // one of them; the cancel itself is the running-close guard's job, and the
+    // cleanup path must not re-issue a cancel it cannot deliver.
     usePanelStore.setState((s) => {
       const next = new Map(s.queryExec);
       next.set(KEY_1, {
@@ -373,9 +383,7 @@ describe('panelStore pane dimension', () => {
 
     usePanelStore.getState().removePanel(PANEL_ID);
 
-    expect(mockCancelQuery).toHaveBeenCalledTimes(2);
-    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1', 'exec-1');
-    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1', 'exec-2');
+    expect(mockCancelQuery).not.toHaveBeenCalled();
     // No residue: not the default pane, the second pane, the third pane, nor a
     // prefix of the panel id, and the sibling tab keeps both of its panes.
     const remainingKeys = [...usePanelStore.getState().queryExec.keys()];
@@ -409,7 +417,7 @@ describe('panelStore pane dimension', () => {
     close('cfg-1');
 
     expect(usePanelStore.getState().queryExec.size).toBe(0);
-    expect(mockCancelQuery).toHaveBeenCalledTimes(2);
+    expect(mockCancelQuery).not.toHaveBeenCalled();
   });
 
   it('reset clears the focused pane along with the exec map', () => {
