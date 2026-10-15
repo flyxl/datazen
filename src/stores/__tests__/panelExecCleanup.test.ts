@@ -9,10 +9,15 @@ import type { Panel } from '../panelTypes';
  * connection alive and would resurrect a stale context on re-open.
  */
 
-const cancelQuery = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-vi.mock('../../commands/query', () => ({
-  queryCommands: { cancelQuery: (...args: unknown[]) => cancelQuery(...args) },
-}));
+/**
+ * Per-pane cancel, not per-panel: the runtime execution and the handle it runs
+ * on both belong to the pane's own controller. The assertion records the pane
+ * key the cancel was routed through, so a cancel addressed to the panel (the
+ * legacy `cancel_query` + `panel.dbSessionId` shape) cannot pass as a cancel
+ * addressed to the pane that was actually running.
+ */
+const controllerCancel = vi.hoisted(() => vi.fn((_key: string) => Promise.resolve(null)));
+const controllers = vi.hoisted(() => new Map<string, { cancel: () => Promise<unknown> }>());
 
 const registryRemove = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 /** pane keys the fake session registry reports per panel id. */
@@ -21,8 +26,14 @@ vi.mock('../../lib/session/queryPanelSessionRoot', () => ({
   getQueryPanelSessionRegistry: () => ({
     remove: registryRemove,
     keysOfPanel: (panelId: string) => registryKeys.get(panelId) ?? [],
+    peek: (key: string) => controllers.get(key),
   }),
 }));
+
+/** Register a live controller for `key`; its cancel is recorded by pane key. */
+function withController(key: string): void {
+  controllers.set(key, { cancel: () => controllerCancel(key) });
+}
 
 vi.mock('../activeConnectionStore', () => ({
   useActiveConnectionStore: {
@@ -61,6 +72,7 @@ describe('[tester] query panel close drops the pane editor session', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     registryKeys.clear();
+    controllers.clear();
     registryRemove.mockResolvedValue(undefined);
   });
 
@@ -71,6 +83,9 @@ describe('[tester] query panel close drops the pane editor session', () => {
       [paneKey(panel.id, 'pane-b'), { ...runningExec(), executionId: 'exec-2' }],
     ]);
 
+    withController(paneKey(panel.id));
+    withController(paneKey(panel.id, 'pane-b'));
+
     const next = cancelAndCleanupExec([panel], current);
 
     expect(next.size).toBe(0);
@@ -78,9 +93,9 @@ describe('[tester] query panel close drops the pane editor session', () => {
       paneKey(panel.id),
       paneKey(panel.id, 'pane-b'),
     ]);
-    expect(cancelQuery.mock.calls.map(([, executionId]) => executionId)).toEqual([
-      'exec-1',
-      'exec-2',
+    expect(controllerCancel.mock.calls.map(([key]) => key)).toEqual([
+      paneKey(panel.id),
+      paneKey(panel.id, 'pane-b'),
     ]);
   });
 
@@ -92,12 +107,31 @@ describe('[tester] query panel close drops the pane editor session', () => {
       [paneKey(panel.id, 'pane-b'), runningExec()],
     ]);
 
+    withController(paneKey(panel.id, 'pane-b'));
+
     const next = cancelAndCleanupPaneExec(panel, 'pane-b', current);
 
     expect([...next.keys()]).toEqual([sibling]);
     expect(registryRemove).toHaveBeenCalledTimes(1);
     expect(registryRemove).toHaveBeenCalledWith(paneKey(panel.id, 'pane-b'));
-    expect(cancelQuery).toHaveBeenCalledTimes(1);
+    // The sibling pane's controller is never touched: only the pane being
+    // dropped is asked to stop.
+    expect(controllerCancel.mock.calls.map(([key]) => key)).toEqual([paneKey(panel.id, 'pane-b')]);
+  });
+
+  it('cancels through the pane controller, never through the panel session id', () => {
+    // Regression guard for the migrated path: `sess-1` is the panel's legacy
+    // connection session (the schema tree's), and an execution submitted on the
+    // pane's runtime session can never be found there.
+    const panel = queryPanel('panel-1');
+    const key = paneKey(panel.id);
+    withController(key);
+    controllers.set('sess-1', { cancel: () => controllerCancel('sess-1') });
+    const current = new Map<string, QueryExecState>([[key, runningExec()]]);
+
+    cancelAndCleanupPaneExec(panel, 'main', current);
+
+    expect(controllerCancel.mock.calls.map(([k]) => k)).toEqual([key]);
   });
 
   it('keeps a rejected session close from breaking the tab close', () => {
@@ -128,6 +162,9 @@ describe('[tester] query panel close drops the pane editor session', () => {
       [paneKey(quietPanel.id), runningExec()],
     ]);
 
+    withController(paneKey(tablePanel.id));
+    withController(paneKey(quietPanel.id));
+
     const next = cancelAndCleanupExec([tablePanel, quietPanel], current);
 
     expect(next.size).toBe(0);
@@ -136,7 +173,7 @@ describe('[tester] query panel close drops the pane editor session', () => {
     expect(registryRemove.mock.calls.map(([key]) => key).sort()).toEqual(
       [paneKey(tablePanel.id), paneKey(quietPanel.id)].sort(),
     );
-    expect(cancelQuery).not.toHaveBeenCalled();
+    expect(controllerCancel).not.toHaveBeenCalled();
   });
 
   it('closes a never-executed pane session and returns the same map', () => {
@@ -145,10 +182,12 @@ describe('[tester] query panel close drops the pane editor session', () => {
     const panel = queryPanel('panel-1');
     const current = new Map<string, QueryExecState>();
 
+    withController(paneKey(panel.id));
+
     expect(cancelAndCleanupPaneExec(panel, 'main', current)).toBe(current);
     expect(registryRemove).toHaveBeenCalledTimes(1);
     expect(registryRemove).toHaveBeenCalledWith(paneKey(panel.id));
-    expect(cancelQuery).not.toHaveBeenCalled();
+    expect(controllerCancel).not.toHaveBeenCalled();
   });
 
   it('closes a session the exec table never heard of when the tab goes away', () => {
@@ -169,8 +208,11 @@ describe('[tester] query panel close drops the pane editor session', () => {
     registryKeys.set(panel.id, [key]);
     const current = new Map<string, QueryExecState>([[key, runningExec()]]);
 
+    withController(key);
+
     expect(cancelAndCleanupExec([panel], current).size).toBe(0);
     expect(registryRemove.mock.calls.map(([k]) => k)).toEqual([key]);
-    expect(cancelQuery).toHaveBeenCalledTimes(1);
+    expect(controllerCancel).toHaveBeenCalledTimes(1);
+    expect(controllerCancel.mock.calls.map(([k]) => k)).toEqual([key]);
   });
 });

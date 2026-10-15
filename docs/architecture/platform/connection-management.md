@@ -766,9 +766,9 @@ SessionDirectory 保存组织/owner/worker/runtimeEpoch，不保存连接。dbSe
 
 ### 12.1 P4 结果消费与上下文隔离
 
-QueryPanel 的查询与 Explain 共享 pane 所属的固定 session、actor 队列与 observedContext。Explain 使用显式选择支持的 `explain` Command，计划结果随 execution 发布为产物；不调用旧连接管理器，不因重读计划而重投 SQL。PostgreSQL/MySQL 的计划读取使用同一 retained checkout；驱动未声明 session-bound Explain 时明确拒绝。SQLite 驱动原有的 `supports_explain` / `explain()` 是池级接口，不等于固定编辑器 session 上的 Explain 能力；在它仍声明 `statefulSession: unsupported` 时，新 QueryPanel runtime 会拒绝打开固定 session，因此也不会回退到池级 Explain。若要支持 SQLite Explain，应单独实现一次性、明确限时的执行资源：从 ResourceManager 借用一个 SQLite 资源，在同一借用期内执行只规划语句的 `EXPLAIN QUERY PLAN` 并发布结果，然后确认释放；这不要求声称 SQLite 有跨命令固定 session，也不能绕过统一 artifact/provenance 路径。计划只接受单条语句且不启用 ANALYZE，不能将计划中的写入实际执行。
+QueryPanel 的查询与 Explain 共享 pane 所属的固定 session、actor 队列与 observedContext。Explain 使用显式选择支持的 `explain` Command，计划结果随 execution 发布为产物；不调用旧连接管理器，不因重读计划而重投 SQL。PostgreSQL/MySQL 的计划读取使用同一 retained checkout；驱动未声明 session-bound Explain 时明确拒绝。SQLite 驱动原有的 `supports_explain` / `explain()` 是池级接口，不等于固定编辑器 session 上的 Explain 能力；在它仍声明 `statefulSession: unsupported` 时，新 QueryPanel runtime 会拒绝打开固定 session，因此也不会回退到池级 Explain。若要支持 SQLite Explain，应单独实现一次性、明确限时的执行资源：从 ResourceManager 借用一个 SQLite 资源（即 `execute_at_target` 的目标租约路径），在同一借用期内执行只规划语句的 `EXPLAIN QUERY PLAN` 并发布结果，然后确认释放；这不要求声称 SQLite 有跨命令固定 session，也不能绕过统一 artifact/provenance 路径。该边界由驱动 crate 内的 `explain_is_pooled_only_and_not_a_declared_session_command` 钉住（`packages/drivers/sqlite/src/lib.rs`）：池级 `supports_explain()` 仍为真，而 session-bound `explain` Command 未声明，`execute_command` 对它明确返回 `Unsupported`——为了让 Explain 面板变绿而加声明会立刻让该断言变红。计划只接受单条语句且不启用 ANALYZE，不能将计划中的写入实际执行。
 
-桌面 `ExecutionProjection` 已实现块身份去重、已发布块恢复和 session 事件的 handle 隔离，QueryPanel 的 `runEditorQuery` 通过读取执行状态与产物恢复结果，不重新提交 SQL。恢复时校验返回块的 artifactId 与 chunkIndex，包括用于读取发布元数据的第 0 块；读取失败保留此前的已发布前缀。订阅遇到 `streamResetRequired` 时在序列去重前清除游标并恢复投影，重新订阅不携带旧游标，因此低于旧游标的重置通知也不会被误丢弃。以下为持续适用的消费契约与 P4 验收要求。
+桌面 `ExecutionProjection` 已实现块身份去重、已发布块恢复和 session 事件的 handle 隔离，QueryPanel 的 `runEditorQuery` 通过读取执行状态与产物恢复结果，不重新提交 SQL。恢复时校验返回块的 artifactId 与 chunkIndex，包括用于读取发布元数据的第 0 块；读取失败保留此前的已发布前缀。订阅遇到 `streamResetRequired` 时在序列去重前清除游标并恢复投影，重新订阅不携带旧游标，因此低于旧游标的重置通知也不会被误丢弃。以下为持续适用的消费契约与 P4 验收要求。P4 的真实 UI 连续故障旅程已落地于 `e2e/specs/journeys/query-fault-recovery-journey.ts`：在同一个编辑器里连续走完「多批部分结果 → 精确取消 → 后端被 `pg_terminate_backend` 杀掉 → 失败可见（错误面板 + 显式新会话横幅）→ 用户显式开新会话 → 再次执行成功且 `backend_start` 严格更新」，两次实测 `1 passing`/EXIT=0。
 
 客户端按 `(backendId, executionId, artifactId, chunkIndex)` 去重块，按 stream sequence 去重通知；收到 resultChunk 后只读已发布块。读失败不插入空行、不跳过该 index，恢复时先读 getExecution/产物已发布块元数据，再补缺块；streamResetRequired 清除订阅游标并重建投影，不把事件缺失解释成未执行。P3 的读取回执补充 publishedChunkCount 与发布字节前缀，便于重连恢复；最终块数由 finalize 冻结。
 
@@ -1102,6 +1102,8 @@ CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 
 - 步骤：关闭 S，再尝试编辑旧结果。
 - 断言：SessionLost；不在新 session 建同名对象或写普通表；结果本身按策略仍可阅读。
 
+**首版执行结果（2026-10）**：断言的前半（"可写结果在会话替换后失效"）在本版**没有可触发的真实状态**，因为 `WritableMapping::Verified` 只在 `context_before.confidence == Confirmed` 时产生（`src-tauri/src/platform/session_backend/execution.rs`），而确认要求驱动声明 `ContextObservation::Full`（`packages/driver-api/src/capabilities.rs::confirms_context`）——当前没有任何内置驱动声明它（postgres / mysql / sqlite / redis 为 `Partial`，其余 `Unsupported`）。真实 UI 层因此只断言可达的一半：单关系 `SELECT *` 结果只读、替换会话后仍可阅读且仍不可编辑（`e2e/specs/journeys/temporary-result-writeback-journey.ts`，实测通过）；前半留在组件层（`src/windows/connection/result-workspace/__tests__/ResultTableView.test.tsx`，CM-36/61 同条）。某个驱动能确证上下文后，前半才重新具备 F 层可验证性。
+
 **CM-37 缓存竞态与权限隔离（H）**
 
 - 前置：A 元数据慢读取；刷新 revision；U1/U2 权限范围不同。
@@ -1293,7 +1295,13 @@ CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 
 
 - 前置：database-bound driver，两个 database、共享 DB 账号但不同 policy 的用户；低总预算。
 - 步骤：轮流浏览 A/B；轮换凭据、路由和 ACL；慢缓存结果晚到；推进 idle TTL。
-- 断言：按 database/policy 分 key；总 socket 不越预算；旧 idle 停发并关闭；旧缓存不能回填，撤权即时生效；空 pool 元数据受 LRU 上限约束。
+- 断言（H）：按 database/policy 分 key；总 socket 不越预算；旧 idle 停发并关闭；旧缓存不能回填，撤权即时生效；空 pool 元数据受 LRU 上限约束。
+
+**首版执行结果（2026-10）**：生产类型是 `ProductionLeaseManager`（`packages/runtime/src/resource/production.rs`），由桌面 session backend 持有并驱动开/执行/归池/关闭（`src-tauri/src/platform/session_backend.rs`）；池策略在 `packages/runtime/src/resource/pool.rs`，台账在 `resource/table.rs`。
+
+- **H 层：已实现并验证。** `cargo test -p datazen-runtime --test resource_rotation_and_disable --test pool_capacity_budget --test resource_return_to_pool` → 6 / 8 / 14 passed，0 failed，EXIT=0。逐条对应：分池与容量守恒 `pool_idle_capacity_never_drifts_from_the_budget_ledger`；轮换后旧代 idle 停发并关闭 `a_credential_rotation_retires_the_idle_leases_of_the_previous_generation`；旧代请求被拒 `a_lease_request_pinned_to_retired_material_is_refused`；慢缓存不回填 `a_slow_cache_result_from_the_previous_generation_cannot_backfill_the_new_generation`；撤权即时生效 `disabling_a_connection_drops_queued_requests_and_records_the_actual_cancellation`；空闲 TTL 到期关闭 `an_idle_lease_is_closed_once_the_idle_ttl_expires`。空池元数据 LRU 是 `datazen-runtime` 的 lib 单测 `empty_pool_metadata_stays_within_the_documented_lru_limit`（`packages/runtime/src/resource/journey.rs`；`cargo test -p datazen-runtime --lib` → 509 passed / 0 failed，EXIT=0），不在上面三个集成测试文件里。
+- **D 层：两条断言在首版真实驱动上不可观测，记为发布限制而不是待办。** 全部 path 驱动（含 postgres / mysql / sqlite / redis）一律声明 `ResetForReuse::Unsupported`，宿主归池准入把该声明判为 `DriverResetUnsupported`——不进池、直接关闭（`packages/runtime/src/resource/cleanup.rs`），因此空闲池在真实驱动上**恒为空**，「旧 idle 停发并关闭」与「空 pool 元数据受 LRU 上限约束」没有可触发的状态，用真实驱动写这两条断言只会写出永远为真的空断言。只有某个驱动声明 `ResetForReuse::Verified` 并证明复位基线后，它们才重新具备 D 层可验证性。
+- **D 层仍需验收的部分**：真实驱动上按 database/policy 分池且物理连接数不越预算、轮换/禁用后旧代资源不可再签发。现有 `packages/drivers/{postgres,mysql}/e2e/retained-resource-journey.ts` 覆盖 retained session、真实取消与 retained Explain，**不覆盖轮换**。
 
 **CM-68 候选替换发布与响应丢失（H/W1/WN）**
 
