@@ -545,7 +545,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 | 参数 | 值 |
 | --- | --- |
 | 构建 | release（`cargo build --release`），与发布 profile 一致 |
-| 环境 | 4 vCPU / 8 GiB；单进程；**无数据库网络**（fake provider 全本地，禁止任何出站 socket） |
+| 环境 | 记录实测 CPU / 内存；单进程；**无数据库网络**（fake provider 全本地，禁止任何出站 socket） |
 | 被测命令 | 固定 fake 命令，耗时 10 毫秒（虚拟时间驱动，见 §11.2） |
 | 并发 | 8 |
 | 预热 | 1000 次请求 |

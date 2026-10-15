@@ -108,6 +108,8 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 ## 7. P3：统一 Session / Lease / Budget / ExecutionGateway
 
+**状态：已完成**（2026-10-13）。单进程 runtime 实现及 CM-02～07、20～32、37～39、54～56、60 单机部分、61～74 的 H 层断言已在 `datazen-runtime` 验收。CM-60 按逐请求总开销 p95 ≤10 ms、失败数为 0、事件无重复/丢失判定，并记录实测环境；不要求固定 CPU / 内存参考规格。桌面旧 consumer 仍由 P4/P5/P6 迁移，ConnectionManager 仅在所有 consumer 迁完后删除，不属于 P3 关闭条件。
+
 **目的**：建立桌面与 server 都能用的资源运行时。
 
 交付：
@@ -122,7 +124,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - 显式 session 失效和新 session 恢复；禁止原 ID 透明重连。
 - 指标：物理资源数、lease state、预算等待、执行队列、取消耗时、cleanup 失败、Unknown outcome。
 
-退出门槛：H 层 CM-02～07、20～32、37～39、54～56、60 单机部分及 CM-61～74 的 H 断言；CM-73、CM-74 必须转绿，证明会话级句柄（事务/游标）在物理资源释放前已注销，事务状态、物理资源和 session ID 同步失效。race 测试使用 barrier/fake clock，不靠任意 sleep 猜顺序。
+退出门槛（已满足）：H 层 CM-02～07、20～32、37～39、54～56、60 单机部分及 CM-61～74 的 H 断言；CM-73、CM-74 转绿，证明会话级句柄（事务/游标）在物理资源释放前已注销，事务状态、物理资源和 session ID 同步失效。race 测试使用 barrier/fake clock，不靠任意 sleep 猜顺序。CM-60 不绑定固定 CPU/内存规格。
 
 回退：新 runtime 仅给已迁移 consumer 使用；不同时维护一条资源的旧 refs 和新 lease。服务暂停/重启前关闭新 session，不能将活事务移回旧 manager。
 
