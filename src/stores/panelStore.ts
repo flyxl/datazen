@@ -24,9 +24,10 @@ import {
   cancelAndCleanupPaneExec,
   canCancelPane,
   requestPaneCancel,
+  sessionKeysOfPanel,
 } from './panelExecCleanup';
 import { createRunningCloseGuard } from './runningExecutionClose';
-import { DEFAULT_PANE_ID, paneKey, paneKeysOfPanel } from './paneKeys';
+import { DEFAULT_PANE_ID, paneKey } from './paneKeys';
 import { resolveNextActive, resetPanelIdCounter, type Panel } from './panelTypes';
 import { createPanelCloseNotifier } from './panelCloseNotifier';
 
@@ -303,7 +304,9 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     }
     if (panel.type === 'query') {
       const registry = getQueryPanelSessionRegistry();
-      for (const key of paneKeysOfPanel(initial.queryExec, panelId)) {
+      // 会话注册表才是权威口径：pane 的会话在编辑器挂载时就开好了，按 exec 表枚举
+      // 会漏掉「开过会话但从未执行」的 pane，那正是额度被占满却只剩一个标签页的来源。
+      for (const key of sessionKeysOfPanel(initial.queryExec, panelId)) {
         if (!registry.peek(key)) continue;
         try {
           await registry.remove(key);

@@ -88,6 +88,12 @@ impl DesktopSessionBackend {
         request: CloseResource,
     ) -> Result<CloseResourceOutcome, rc::ProviderError> {
         let resource = self.resource(&request.resource_id).await?;
+        tracing::debug!(
+            source = "resource_lifecycle",
+            resource_id = %request.resource_id,
+            purpose = ?resource.purpose,
+            "resource close requested"
+        );
         if request.registered_handles != 0 {
             // 拒绝关闭必须留痕：额度释放依赖这一条路径，而它在调用方那里是
             // best-effort（`.catch(() => {})`）。不记录的话，「额度没还回去」

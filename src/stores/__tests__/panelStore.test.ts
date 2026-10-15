@@ -13,6 +13,9 @@ const mockExecuteQueryStream = vi.fn().mockResolvedValue(undefined);
 const mockCancelQuery = vi.fn().mockResolvedValue(undefined);
 const mockSessionCancel = vi.fn().mockResolvedValue(undefined);
 const mockRegistryPeek = vi.fn();
+/** Pane keys the fake session registry reports for a panel (editor mounted, maybe never executed). */
+const mockRegistryKeysOfPanel = vi.fn((_panelId: string) => [] as string[]);
+const mockRegistryRemove = vi.fn().mockResolvedValue(undefined);
 
 const activeConnectionState: {
   connections: Record<
@@ -54,7 +57,10 @@ vi.mock('../../commands/query', () => ({
 vi.mock('../../lib/session/queryPanelSessionRoot', () => ({
   getQueryPanelSessionRegistry: () => ({
     peek: (...args: unknown[]) => mockRegistryPeek(...args),
-    remove: vi.fn().mockResolvedValue(undefined),
+    remove: (key: string) => mockRegistryRemove(key),
+    // Pane teardown enumerates the *session registry*, not only the exec table:
+    // a pane that mounted its editor holds a session with no exec row.
+    keysOfPanel: (panelId: string) => mockRegistryKeysOfPanel(panelId),
   }),
 }));
 
@@ -137,6 +143,8 @@ describe('panelStore', () => {
       supportsStreamingResults: true,
     };
     mockRegistryPeek.mockReset().mockReturnValue(undefined);
+    mockRegistryKeysOfPanel.mockReset().mockReturnValue([]);
+    mockRegistryRemove.mockReset().mockResolvedValue(undefined);
     mockSessionCancel.mockReset().mockResolvedValue(undefined);
     const mod = await import('../panelStore');
     usePanelStore = mod.usePanelStore;
@@ -965,6 +973,30 @@ describe('panelStore', () => {
 
     usePanelStore.getState().removePanel(panel.id);
     expect(usePanelStore.getState().queryExec.has(panel.id)).toBe(false);
+  });
+
+  it('removePanel releases a pane session the exec table never heard of', async () => {
+    // 会话在编辑器挂载时就开好，exec 行要等真正执行才有。销毁面板时按 exec 表枚举
+    // 会把这个 pane 整条漏掉：控制器留在注册表里，运行时会话与宿主额度一直被计费。
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Query 1',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(panel);
+    const lazyPane = `${panel.id}:lazy`;
+    mockRegistryKeysOfPanel.mockReturnValue([lazyPane]);
+    mockRegistryPeek.mockReturnValue({ close: vi.fn() });
+
+    await usePanelStore.getState().removePanel(panel.id);
+
+    // 预检（先确认能干净关闭）与随后的清理各枚举一次注册表口径；生产实现里第一次
+    // remove 成功后控制器即从注册表摘除，第二次是空操作，不会多发一次 IPC。
+    const closed = new Set(mockRegistryRemove.mock.calls.map(([key]) => key));
+    expect([...closed].sort()).toEqual([panel.id, lazyPane].sort());
   });
 
   it('closeAllPanels cleans up all queryExec entries', () => {

@@ -309,6 +309,16 @@ impl DesktopSessionBackend {
         // 是为了让「绑定 ⇒ 资源在册」这条不变式在代码里看得见，而不是靠调用顺序）。
         self.bind_live_resource(request.db_session_id.as_str(), &resource_id)
             .await;
+        // 资源开关是额度账的权威流水：额度被占满时，"有没有请求过关闭"与"请求被拒"
+        // 在调用方那里是同一个静默 best-effort，只有这条流水能把两者分开。
+        tracing::debug!(
+            source = "resource_lifecycle",
+            resource_id = %resource_id,
+            connection_id = %request.connection_id,
+            editor = matches!(request.owner, rc::OwnerRef::Editor { .. }),
+            metadata_only,
+            "resource opened"
+        );
         Ok(opened)
     }
 

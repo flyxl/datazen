@@ -7,6 +7,7 @@ import {
   type SessionView,
 } from '@datazen/backend-client';
 import { EditorSessionController } from './EditorSessionController';
+import { isPaneKeyOfPanel } from '../../stores/paneKeys';
 
 /**
  * Per-editor lazy session registry. Each editor/pane owns an independent
@@ -31,6 +32,24 @@ export class QueryPanelSessionRegistry {
 
   peek(key: string): EditorSessionController | undefined {
     return this.controllers.get(key);
+  }
+
+  /**
+   * Every pane key of `panelId` that owns a controller right now.
+   *
+   * Destroying a panel must release sessions by the **registry** it owns, not
+   * by the exec table: a pane opens its session when the editor mounts, so a
+   * pane that was never executed has a controller and no `queryExec` row.
+   * Enumerating only the exec table leaked exactly those sessions — the pane's
+   * runtime session and its host-side connected-editor permit stayed charged
+   * until the window died.
+   */
+  keysOfPanel(panelId: string): string[] {
+    const keys: string[] = [];
+    for (const key of this.controllers.keys()) {
+      if (isPaneKeyOfPanel(key, panelId)) keys.push(key);
+    }
+    return keys;
   }
 
   /** Copy semantics: a new owner ID, a new controller — never the runtime handle. */
@@ -94,7 +113,8 @@ export async function switchDatabaseSession(
       // Confirmation means rollback, never an implicit commit. Wait for the
       // authoritative receipt before requesting a context replacement.
       const receipt = await controller.execute({
-        command: 'platform.rollbackTransaction', input: { defersCommit: true },
+        command: 'platform.rollbackTransaction',
+        input: { defersCommit: true },
       });
       for (;;) {
         const execution = await controller.client.getExecution(receipt.executionId);

@@ -58,8 +58,32 @@ function cancelPaneExec(panel: Panel, exec: QueryExecState | undefined): void {
 }
 
 /**
- * Drop a single pane: cancel its running execution, then delete its state.
- * Returns the same map when the pane has no entry, so no needless re-render.
+ * Every pane key of `panelId` that may own an editor session.
+ *
+ * The union of two sources, because neither alone is complete:
+ *
+ * * the `queryExec` table knows panes that *executed*;
+ * * the session registry knows panes whose editor *mounted* — a pane opens its
+ *   session before it is ever executed, so a never-executed pane holds a
+ *   runtime session (and a host-side connected-editor permit) with no exec row.
+ *
+ * Enumerating only the exec table leaked exactly those sessions: the pane was
+ * destroyed, its controller stayed in the registry, and the quota was charged
+ * until the window died.
+ */
+export function sessionKeysOfPanel(
+  currentExec: Map<string, QueryExecState>,
+  panelId: string,
+): string[] {
+  const keys = new Set<string>(paneKeysOfPanel(currentExec, panelId));
+  for (const key of getQueryPanelSessionRegistry().keysOfPanel(panelId)) keys.add(key);
+  return [...keys];
+}
+
+/**
+ * Drop a single pane: cancel its running execution, release its editor session
+ * (executed or not), then delete its exec state. Returns the same map when the
+ * pane has no exec entry, so no needless re-render.
  */
 export function cancelAndCleanupPaneExec(
   panel: Panel,
@@ -67,22 +91,25 @@ export function cancelAndCleanupPaneExec(
   currentExec: Map<string, QueryExecState>,
 ): Map<string, QueryExecState> {
   const key = paneKey(panel.id, paneId);
-  if (!currentExec.has(key)) return currentExec;
-  cancelPaneExec(panel, currentExec.get(key));
+  const exec = currentExec.get(key);
+  if (exec) cancelPaneExec(panel, exec);
   // 关闭旅程：同一个 pane key 的编辑器会话随 pane 一并关闭（fire-and-forget）。
+  // 这一句不能挂在「有没有 exec 行」上——会话在编辑器挂载时就开好了。
   void getQueryPanelSessionRegistry()
     .remove(key)
     .catch(() => {});
+  if (!exec) return currentExec;
   const nextExec = new Map(currentExec);
   nextExec.delete(key);
   return nextExec;
 }
 
 /**
- * Drop `panelsToRemove` entirely: every pane of every removed query panel is
+ * Drop `panelsToRemove` entirely: every pane of every removed panel is
  * cancelled if still running and deleted, so no exec state — and no SQL or
- * result set — survives the tab that owned it. Non-query panels own no exec
- * state and are skipped.
+ * result set — survives the tab that owned it. Session release runs for every
+ * panel type (a table view owns a session too); exec state only exists for
+ * query panels.
  */
 export function cancelAndCleanupExec(
   panelsToRemove: Panel[],
@@ -90,9 +117,8 @@ export function cancelAndCleanupExec(
 ): Map<string, QueryExecState> {
   const nextExec = new Map(currentExec);
   for (const panel of panelsToRemove) {
-    if (panel.type !== 'query') continue;
-    for (const key of paneKeysOfPanel(currentExec, panel.id)) {
-      cancelPaneExec(panel, currentExec.get(key));
+    for (const key of sessionKeysOfPanel(currentExec, panel.id)) {
+      if (panel.type === 'query') cancelPaneExec(panel, currentExec.get(key));
       void getQueryPanelSessionRegistry()
         .remove(key)
         .catch(() => {});
