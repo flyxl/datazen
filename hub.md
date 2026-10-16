@@ -182,11 +182,11 @@ P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM
 | w4-b8-adapter | **已合并** → `42b064d97` ✅（G1–G5 全绿，`adapter.rs` 867→**651** 行） |
 | w4-redact-url | **已合并** → `e784616e6`（`c5da94a44`）+ `e04bcac59`（文档订正 `677a651c6`）✅ platform-infra 13→14；**B9 已关闭** |
 | w4-panic-gate | **已合并** → `f4a8c69e9`（`b3637eb44`）+ `a917b80fa`（注释收尾 `0c0dcd355`）✅ 门禁测试 25 条 |
-| w4-clock | `6316ec45b` | 第三轮修订完成 → 复验 Tester `e69959ab` **在跑**。四条 finding 都做了**结构性**修正：① 文档同时给出两个命令与实数（含 tests **19** / 加 `grep -v "/tests/"` **12**）+ 逐目录列出被过滤的 7 行 + 分解 1+1+1+2+1+6=12；② **清单从行号改为「文件::函数 / 类型」锚点**，并写明行号会被注释漂移（`clock.rs` 的命中 46→52→**63** 就是实证）；③ `:3` 改实并**重扫本轨全部改动文件**，只剩两处否定式措辞；④「唯一豁免」→「**第二处**同类豁免」，§2.1「明确不拥有」栏收窄，§2.2 模块树把不存在的 `budget.rs` 换成真实 `ports/budget/` 子树并补 `clock.rs`。**未碰 :296**（归我） |
-| w4-test-guards | `5f94a0749`（5 提交） | 第三轮修订完成 → 复验 Tester `c097621b` **在跑**。**结构性指令已做实**：分类改四值（PublicModule / NonPublicModule / KnownNoise / **Unrecognized**），落 Unrecognized 的顶层语句返回 Err、守卫 panic 并**点名语句与行号**；h1/h2/h3 全部转红、h4 不再误报；**端到端**用「生成模块的宏」（`make_mod!();`，文件仍可编译）证明**宏凭空生成的模块不再被静默忽略**；顺带加严顶层私有 `mod x;`（新增 `non_public == ["tests"]`）。application 108→112→**114** |
+| w4-clock | `6316ec45b` | 第三轮复验：**只剩 1 条 low**（§2.2 少列 `ports/mod.rs`），已派回补一行；四条旧 finding 全部核实已修、7 条门禁全绿、未回退。原记录：四条 finding 都做了**结构性**修正：① 文档同时给出两个命令与实数（含 tests **19** / 加 `grep -v "/tests/"` **12**）+ 逐目录列出被过滤的 7 行 + 分解 1+1+1+2+1+6=12；② **清单从行号改为「文件::函数 / 类型」锚点**，并写明行号会被注释漂移（`clock.rs` 的命中 46→52→**63** 就是实证）；③ `:3` 改实并**重扫本轨全部改动文件**，只剩两处否定式措辞；④「唯一豁免」→「**第二处**同类豁免」，§2.1「明确不拥有」栏收窄，§2.2 模块树把不存在的 `budget.rs` 换成真实 `ports/budget/` 子树并补 `clock.rs`。**未碰 :296**（归我） |
+| w4-test-guards | `5f94a0749`（5 提交） | 第四轮复验：**BLOCKER —— 结构性指令未达成**（详见「注意事项 · 解析器仍静默丢弃」）。h1/h2/h3 确已转红、h4 不误报、fail-closed 对 Unrecognized 生效且有自判力；但「一片两 item」的写法仍把 `pub mod` 无声丢掉。**已改令换用 `syn`**，第四轮修订中（5 轮上限）。原记录：**结构性指令已做实**：分类改四值（PublicModule / NonPublicModule / KnownNoise / **Unrecognized**），落 Unrecognized 的顶层语句返回 Err、守卫 panic 并**点名语句与行号**；h1/h2/h3 全部转红、h4 不再误报；**端到端**用「生成模块的宏」（`make_mod!();`，文件仍可编译）证明**宏凭空生成的模块不再被静默忽略**；顺带加严顶层私有 `mod x;`（新增 `non_public == ["tests"]`）。application 108→112→**114** |
 | w4-ownerref | **零改动收尾**；轨树/分支/target 已回收；B6 改判 → B12 |
 
-**集成分支 HEAD = `525312708`，工作区干净。**
+**集成分支 HEAD = `367ae4b02`，工作区干净。**
 
 **合并前预检（clock 与我在同一份平台文档上的改动）**：clock 分支改 `:41` / `:64` / `:565` / `:592`（§2.1 / §2.2 模块树 / §4.7 表 / §4.9 新增），
 我改 `:296` / `:306` / `:326`（§4 开头例外说明 + OwnerRef 偏差段 + §4.2 计数）—— **不重叠**；
@@ -369,3 +369,16 @@ platform-infra **14**（redact 后）· schema-diff **229**（clock 后，待合
   mtime 那条证据一直是对的，错的只是哈希值本身。
 - **每次门禁脚本开头重打一次指纹，而不是照抄台账**：正是这一步抓出了上面的错值。
   指纹、HEAD、工作区 sha 应当由脚本现算并首尾各打一次，台账里的对应值只作对照，不作凭证。
+### 注意事项 · 解析器仍静默丢弃（guards BLOCKER）
+
+- 根因：`declared_modules` 按「行 + 分号」切片段，`classify_root_statement` **只看片段第一个关键字**。
+  花括号结尾的首个 item（struct / fn / impl / macro_rules）使整片变 `KnownNoise`，**后面的 `mod` 被无声丢弃**。
+- 决定性证据：`pub struct Sneaky2 { pub a: u8 } pub mod tenth_unit;` ⇒ **EXIT=0 / 114 passed / GUARD=none**；
+  把 `tenth_unit.rs` 换成 `compile_error!` 后 cargo 报 `packages/application/src/tenth_unit.rs:1:1` ⇒ **rustc 真把它当 crate 模块编译**。
+- 同根因另有两条：F-2 合法单行 item 体内含分号会把守卫**无故搞红**；F-3 masker 吃掉字符串续行的换行，报的行号不是源码行号（src 617 vs masked 614）。
+- **我的决定**：不再调分词器，改用 `syn`（`[dev-dependencies]`，features=["full"]）解析顶层 items —— 手写 Rust 词法已在同一处耗掉三轮。
+
+### 注意事项 · 验证方的证据质量要求（值得复用）
+
+- 造「新增 `pub mod x;`」探针时**必须同时建出那个模块文件**：不建的话 `EXIT=101` 来自 `error[E0583]` 编译失败，**守卫根本没跑**，证据无效。
+- 想证明「模块结构真的变了」，可把模块文件内容换成 `compile_error!("…")`，让 rustc 自己指出该文件被当成模块编译。
