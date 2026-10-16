@@ -289,9 +289,9 @@ Rust 单测，而 CI 里没有任何一步执行它们。`--require-layers=<ids>
 `git status --porcelain` 为空。它放在 job 的**最后一步**，因为它会动工作树——放在这里，
 被强杀也不会污染任何后续步骤。8 个变异约 5s；它失败说明门禁本身失去了鉴别力，比门禁变红更早报警。
 
-**已知未覆盖**：门禁的**判定**只读 crate 依赖闭包；声明边（manifest 里写了什么）只产
+**判定范围**：门禁的 **Cargo 闭包判定**只读 crate 依赖闭包；声明边（manifest 里写了什么）只产
 advisory，见 §2.3.1。`@tauri-apps/api` / `fetch(` / `XMLHttpRequest` 这类前端字面量由
-`shared-boundaries-and-ports.md` §7 记的源码扫描（F-07）负责，不在本门禁内；
+`shared-boundaries-and-ports.md` §7 记的源码扫描（F-07）负责，不属于 Cargo 闭包判定，但由同一门禁执行；
 `packages/backend-client` 的 pnpm 接线（tsconfig paths / include / vite alias）见
 `shared-boundaries-and-ports.md` §2.5，同样不在本门禁内。
 

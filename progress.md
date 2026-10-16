@@ -31,3 +31,9 @@ Current documentation scope cleanup:
 - Removed obsolete source-line/test-count totals from §8.2; corrected the driver-type isolation responsibility comparison.
 - The sole remaining F-01..F-07 range is explicitly historical, limited to the initial Rust dependency path and excluding TS scanning/later rules.
 - `git diff --check`: EXIT=0. Documentation-only; no test rerun.
+
+Final documentation review follow-up:
+- Corrected F-07 to be a non-Cargo source-scan channel executed by the same gate.
+- Labeled §8.2 diagram as a partial initial-rule illustration; complete current coverage remains §2.4.
+- Cross-checked MUTATIONS in platform-arch-selfcheck.mjs: M1–M7 cover F-01..F-07, M8 unclassified; §8.3 now explicitly excludes F-08..F-11 from mutation-proof coverage.
+- `git diff --check`: EXIT=0; only the three requested documentation locations and this ledger changed.
