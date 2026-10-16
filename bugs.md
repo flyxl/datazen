@@ -18,17 +18,17 @@
 
 | # | 缺陷 | 详情文件 | 状态 | 关闭要点 | 归属 |
 | --- | --- | --- | --- | --- | --- |
-| B1 | ai-providers 手写了第二份更弱的日志脱敏 | [bug-ai-providers-redact-endpoint-duplicate.md](bug-ai-providers-redact-endpoint-duplicate.md) | **进行中** | 全仓 `redact_endpoint_for_log` 归零 + `cargo test -p datazen-ai-providers` 通过 | Wave-3 · W3-1 脱敏收敛 |
-| B2 | workspace-apps 复制了宿主的 zip 路径校验 | [bug-workspace-apps-zip-path-duplicate.md](bug-workspace-apps-zip-path-duplicate.md) | **进行中** | `validate_zip_entry_path` / `validate_theme_zip_path` / `MAX_COMPRESSION_RATIO` 的**定义**只剩 `platform-infra` 一处 | Wave-3 · W3-2 路径安全收敛 |
+| B1 | ai-providers 手写了第二份更弱的日志脱敏 | 已删除 | **已关闭** | 全仓旧脱敏函数归零 —— 实测 0 命中（代码 + 文档 + 缺陷文件全查），`cargo test -p datazen-ai-providers` 90/0 | Wave-3 · W3-1，`66e97f69f`，独立验证 PASS |
+| B2 | workspace-apps 复制了宿主的 zip 路径校验 | 已删除 | **已关闭** | 三个符号的**定义**只剩 `platform-infra/src/path_safety.rs` 一处 —— 实测 `:26` / `:29` / `:71`，仓库其余位置 0 处；`zip_path` 字样全仓归零 | Wave-3 · W3-2，`583666808`，独立验证 PASS |
 | B3 | 边界检查在规则有 violation 时仍打印 `ok` | [bug-boundary-summary-line-always-ok.md](bug-boundary-summary-line-always-ok.md) | 开放 · 低 | 变异探针日志中不再出现「`VIOLATION F-11` 与同前缀 `ok F-11` 并存」 | 归预置脚本 `179c6c8b6`，**非下沉轨引入** |
-| B4 | platform-infra 声明了零使用的 `thiserror` | [bug-platform-infra-unused-thiserror.md](bug-platform-infra-unused-thiserror.md) | **进行中** | `packages/platform-infra/src/` 中 `thiserror` 有命中，**或**该依赖行已删 | Wave-3 · W3-2 顺带处理 |
+| B4 | platform-infra 声明了零使用的 `thiserror` | 已删除 | **已关闭** | 该依赖行已删 —— 实测 `packages/platform-infra/` 下 `thiserror` 0 命中，`Cargo.toml` 只剩 `regex` | Wave-3 · W3-2，`583666808`，独立验证 PASS |
 | B5 | application 的模块清单守卫并不封闭 | [bug-application-module-guard-open.md](bug-application-module-guard-open.md) | 开放 · 待实测 | 新增一个 `pub mod` 能让守卫变红（先红一次以证明有效），或测试名如实描述断言强度 | 非 Track C 引入，未排期 |
 | B6 | OwnerRef 契约重复定义 | [bug-owner-ref-duplication.md](bug-owner-ref-duplication.md) | 开放 · 待裁定 | `enum OwnerRef` 只剩 `platform-api/src/context.rs` 一处 | 未排期；**先定契约，再改宿主，顺序不可反** |
 | B7 | schema-diff 直接依赖具体 driver crate | [bug-schema-diff-concrete-driver-deps.md](bug-schema-diff-concrete-driver-deps.md) | 开放 · 从未裁定 | `packages/schema-diff/Cargo.toml` 中不再出现任何 `datazen-driver-{mysql,postgres,sqlite}` | 未排期；动手前须先实测 `driver-api` 能力边界 |
 | B8 | platform/adapter.rs 867 行，超单文件 800 行推荐值 | [bug-platform-adapter-oversized.md](bug-platform-adapter-oversized.md) | 开放 · 需专项 | 该文件 ≤ 800 行，且 `test:platform-arch` 与 `cargo test -p datazen --lib` 全绿 | 需专门变更，**不得在任何下沉轨顺手做** |
-| B9 | URL userinfo 密码含 `/` 时整段凭据原样入日志 | [bug-platform-infra-url-credentials-slash-password.md](bug-platform-infra-url-credentials-slash-password.md) | 开放 · 运行时确认中 | 新增单测覆盖 `https://user:pa/ss@host/v1`，且反证 `https://host/path@x` 不被误改写 | 宿主既有（`7c2151985` 即同正则），`platform-infra` 逐字搬运；不阻断 Wave-3 |
+| B9 | URL userinfo 密码含 `/` 时整段凭据原样入日志 | [bug-platform-infra-url-credentials-slash-password.md](bug-platform-infra-url-credentials-slash-password.md) | 开放 · 已确认 | 新增单测覆盖 `https://user:pa/ss@host/v1`，且反证 `https://host/path@x` 不被误改写 | 宿主既有（`7c2151985` 即同正则），`platform-infra` 逐字搬运；不阻断 Wave-3 |
 
-合计 **9 条**：进行中 3 · 开放 6 · 已关闭 0。
+合计 **9 条**：进行中 0 · 开放 6 · 已关闭 3。
 
 ## 维护纪律
 
@@ -49,4 +49,13 @@
 
 ---
 
-条目数、文件名与状态于集成分支 `59a3209d0` 实测（`wc -l bug-*.md` = 9 个文件）。B1 的关闭条件（全仓 `redact_endpoint_for_log` 归零）与它自己的缺陷文件构成**自指**：该文件自身含 3 处该字面量，因此关闭 B1 时必须先删缺陷文件、再让 W3-1 验证方复跑该门禁。
+条目数、文件名与状态于集成分支 `b58f8583b` 实测（`wc -l bug-*.md` = 6 个文件，B1 / B2 / B4 三份已随关闭删除）。
+
+**关闭次序是「先删缺陷文件、再复跑门禁」，不可颠倒。** B1 / B2 的关闭条件是全仓某个字面量归零，
+而缺陷文件自身就写着那个字面量（`bug-ai-providers-redact-endpoint-duplicate.md` 3 处、
+`bug-workspace-apps-zip-path-duplicate.md` 1 处），不先删则门禁永远命中自己。删完之后只剩本索引里的
+「详情文件」链接与「关闭要点」两处——所以这两处也一并改写：详情列填「已删除」，关闭要点改述实测结论、
+不再写出该字面量。B1 关闭后全仓 0 命中即为实测。
+
+**本索引自身就是同类陷阱的第二个实例**：第一层是缺陷文件含被查字面量，第二层是索引的关闭要点
+照抄了关闭条件。两层都要处理，只删文件不够。
