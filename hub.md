@@ -428,3 +428,13 @@ platform-infra **14**（redact 后）· schema-diff **229**（clock 后，待合
 - **根因是两层漏跑**：该轨 Coder 跑了 `cargo test -p datazen-application` 却没跑 `cargo fmt --all --check`；而**我 R 阶段的 P1–P10 清单里也没有这道检查**，尽管 CI 有、且 b8 轨的报告早就指出 CI 在 `ci.yml:250` 跑它。信息在场，我没纳入。
 - 修复：`cargo fmt --all`（仅 1 文件 / +13 −8，去掉空白后 token 集合不变），复验 application **117/0**、宿主 **1552-0-6**、fmt 检查 **EXIT=0 / 0 diff**。
 - **纪律更新**：凡改 Rust 的轨，简报的门禁清单必须含 `cargo fmt --all -- --check`；R 阶段清单同样加入。
+
+### 整合远端更新 + R2 复跑（九道全绿）
+
+- 远端出现 **GitHub「Update branch」的 `Merge branch 'main'`**（含 PR #66/#67），与本地 fmt 提交分叉。
+  **用 merge 整合，未 force-push**（远端 4 个提交一律保留），零冲突，整合后 head = `dcdd4fec2`。
+- **fmt 已列入清单并全量复跑**（整合带进 main 内容，整棵树变了，必须重测）：
+  N0 fmt EXIT=0（0 diff）· N1 vitest 603/6363 · N2 宿主 1552-0-6 · N3 application 117 ·
+  N4 十 crate PASS · N5 边界 0/0 · N6 panic 门禁 PASS · N7 typecheck 0 错 · N8 site-seo OK。
+  首尾 HEAD `dcdd4fec2`、驱动指纹 `9c7c24ef…`、porcelain 0 均一致。
+- CI run `38922451160` 正在新 head 上重跑。注意上一个失败 run 的 head 其实是 `07b44f9b6`（Update branch 的合并提交），fmt 红在该点同样成立。
