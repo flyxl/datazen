@@ -729,3 +729,68 @@ vitest 与全套 cargo。验证方把这个推理明写出来，而不是悄悄�
 infra 轨已提交 `d24779e2f`（`refactor(platform-infra): 日志脱敏下沉为形态中立基础设施原语`），
 验证方在途。它同样要改 `AGENTS.md` 与 `src-tauri/Cargo.toml`，与本节已并入的两轨重叠——
 正式合并前**仍须重跑一次干跑**。
+
+## Wave-2 C3 infra 轨：交付、干跑与两处裁定
+
+### 交付
+
+提交方 `798513d9` 交付 `d24779e2f4d87b4c889d17160769f829c2d88191`，父提交仍是协调者预置的 `179c6c8b6…`（未 amend）。
+5 文件 +213 / −117：`packages/platform-infra/src/redaction.rs`（1 → 140 行）、
+`src-tauri/src/log_redact.rs`（118 → 8 行薄壳）、`src-tauri/Cargo.toml` +2、
+`AGENTS.md` +1、`progress.md`（新建）。`packages/platform-infra/Cargo.toml` 与
+`shared-boundaries-and-ports.md` 均零改动。
+
+两份**预测与实测吻合**的数字值得记下：宿主 `--lib` 由 **1710 → 1705 passed**，
+差额恰为随实现一同下沉的 5 个脱敏单测（`platform-infra` 侧 5 passed / 0 failed），两侧闭合。
+这两个数是本轨开工前就写进简报的预测值，不是事后追认。
+
+### 合并前干跑（第三次，仍是零冲突）
+
+上一节遗留的未测冲突类就是本轨要碰的 `AGENTS.md` 与 `src-tauri/Cargo.toml`。实测：
+`git merge --no-ff --no-commit feature/platform-infra` → **EXIT=0，冲突 0**，`AGENTS.md` 与
+`shared-boundaries-and-ports.md` 与 `src-tauri/Cargo.toml` 三处均为自动合并。
+合并态依赖行：`Cargo.toml:20` ai-providers、`:29` platform-infra、`:36` workspace-apps，
+三者互不挤占；`AGENTS.md` 目录树 `platform-infra` 落在 `:53`，与 A2 的 `ai-providers`(`:58`) 不冲突。
+
+至此本项目三次干跑、两次真实合并，**预测冲突全部证伪**。这条经验要保留：
+凡预测会有冲突的地方，先花十秒干跑，再谈解决。
+
+### 裁定一：`stash@{0} dzinfra-baseline`
+
+提交方为取门禁基线所建，未自行 drop（`.git stash` 为多轨共享状态，旁边另有 3 条属其它轨），请求协调者裁定。
+**核查后 drop**：逐文件 sha256 比对，stash 的 `AGENTS.md` / `redaction.rs` / `log_redact.rs`
+与提交**完全相同**；唯一差异在 `src-tauri/Cargo.toml`，diff 方向已判明——stash 版多出的正是
+4 行驱动注入与 `default = ["driver-postgres", "driver-mysql", "driver-sqlite", "driver-redis"]`，
+即被纪律禁止入库的驱动噪音；stash 的 `Cargo.lock` 含 4 个 `datazen-driver-*` 条目，同属该类。
+结论：stash 独有的内容没有一样可提交。已 `git stash drop stash@{0}`，`stash@{0..2}` 其余 3 条完好。
+
+### 裁定二：本轨 `Cargo.lock`
+
+沿用上一节自纠后的规则处理：**新成员条目应入库，驱动噪音不得入库**。
+但提交方工作区的 `Cargo.lock` 已被 `resolve-drivers` 注入弄脏，**不能**原样提交。
+正确做法是待本轨合入集成分支后，在集成分支上跑一次 `cargo metadata` 重新生成干净的 lock，
+核对其 diff 只含 `datazen-platform-infra` 新成员条目后单独提交——与 A2/B1 走过的 `514528e30` 同一条路径。
+
+### 合并后收敛面（Wave-3 的输入，实测于集成分支 `d268a7ded`）
+
+建这个 crate 的意义就在于此。实测出两处重复实现，是 Wave-2 合并后必须兑现的收敛：
+
+| # | 重复实现 | 副本 A | 副本 B | 收敛去向 |
+| --- | --- | --- | --- | --- |
+| 1 | 日志脱敏 | `packages/ai-providers/src/protocol/mod.rs:85-104` `redact_endpoint_for_log`（手写切分，零 `Regex`、零 `OnceLock`；测试 `:356-374`） | `platform-infra::redaction` 3 个 pub fn | 删除 ai-providers 私有副本，改调 `datazen_platform_infra::redaction` |
+| 2 | zip 条目路径校验 | `packages/workspace-apps/src/zip_path.rs:24` `validate_zip_entry_path` + `:21` `MAX_COMPRESSION_RATIO`（另有 `:66` `validate_theme_zip_path`） | `src-tauri/src/app_data_archive.rs:159` + `:203` | 两者合并为 `platform-infra::path_safety`，宿主 `app_data_archive.rs:356` 与 `commands/wapps/storage.rs:77` 一并改调 |
+
+副本 1 的私有实现**比形态中立版本弱**（漏 `Bearer`、`?token=`、`password`）——这正是重复实现无边界约束时的典型退化。
+副本 2 的 `zip_path.rs:10` 注释已自行承认「宿主保留自己的副本」，是有意识的欠账。
+
+两处收敛都必须等 infra 合入集成分支后才能开工：当前 infra 工作树的基线 `78038d02b` 既不含 A2 也不含 B1 代码。
+**不得 rebase infra 分支**。A2/B1 提交均未触碰根 `Cargo.toml`、`cargoWorkspace.mjs`、
+`run-platform-crate-tests.mjs`、`check-platform-crate-boundaries.mjs`，因此收敛轨道不会再动那 4 个注册点。
+
+### 验证
+
+全新验证方 `c2d54385` 已派往 detached 工作树 `.worktrees/verify-platform-infra`（detached 于 `d24779e2f`，
+`CARGO_TARGET_DIR=/tmp/dz-target-infra`，codegen 已生成）。该实例被引擎标记为 finished 但**未留下收尾消息**，
+而其任务量不可能在数秒内完成——按纪律不据此判定死亡，已用 `send_message` 唤醒并要求其先自查再续跑。
+**这是第三次遇到「finished 但无收尾消息」**：前两次（A2 R1、B1 的 Testers）最终都证明是活着却已停摆，
+唤回后正常完成。结论固化：**`list_agents` 的 `inactive` 与引擎的 `finished` 都不等于死亡**，一律先 `send_message`。
