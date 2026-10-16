@@ -147,7 +147,7 @@ flowchart TD
 | F-08 | `packages/migration-common` 的 normal + build 工作区依赖只允许自身与 driver-api；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共算法反向依赖领域引擎、runtime 或平台传输，重新形成耦合 |
 | F-09 | `packages/ai-providers`、`packages/workspace-apps` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 与 F-02 同因：这两个包要同时被桌面端与服务端复用，一旦拖进 Tauri 就只能编进桌面进程 |
 | F-10 | `packages/workspace-apps` 不含 `axum`、`actix-web`、`warp`、`tonic` 等 HTTP/传输框架 | 内核里一旦出现传输框架，服务端 HTTP 适配器就得改内核签名，桌面与服务端被迫分叉 |
-
+| F-11 | `packages/platform-infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
 这条不是修辞上的严谨，是实测出来的盲点：`packages/drivers/redis/Cargo.toml:27` 的 `tauri = { version = "2", optional = true }` 与 `src-tauri/Cargo.toml:45` 的 `tauri-plugin-webdriver = { version = "0.2", optional = true }` 都不在解析图里，只读闭包的守卫对它们完全失明。判定方式与告警含义见 §8.2 注 3。
@@ -194,6 +194,36 @@ Wave-2 在此基础上又新增 `packages/ai-providers` 与 `packages/workspace-
 不是 `{ workspace = true }`，因为根 `[workspace.dependencies]` 里没有这一条）；根 `Cargo.toml` 的 `members`
 已含 `packages/workspace-apps`，本次未改动根清单。
 
+#### 2.5.1 公共基础设施层 `packages/platform-infra`（已实现）
+
+根 `Cargo.toml` 的 `members` 新增 `packages/platform-infra`，同样**不**进 `[workspace.dependencies]`
+（它没有任何 `datazen-*` 依赖，加进去只会诱发 `src-tauri` 侧改用 `{ workspace = true }`，
+而新 crate 的依赖必须写在 `# <<driver-dependencies>>` 占位段之外）。
+
+这一层装的是**跨形态、跨领域、与业务无关**的机制原语。本波只落地一项：
+
+**脱敏**（`redaction`）：凭据 / URL / 查询串 / Bearer / `password` 字段的统一清洗。
+此前只有 `src-tauri/src/log_redact.rs` 一份；`packages/ai-providers` 抽取时因跨 crate 不可见，
+在 `protocol/mod.rs` 里手写了第二份更弱的实现（只处理 userinfo 与整段 query，
+漏掉 `Bearer`、`?token=`、`"password":`）。宿主侧退化为同名 `pub use` 薄壳，调用点零改动。
+
+**尚未并入本层的同类项**：zip 条目路径校验与压缩比上限目前有两份**逐字节相同**的实现
+（`src-tauri/src/app_data_archive.rs` 与 `packages/workspace-apps/src/zip_path.rs`），
+各自被自己的测试钉住。它们要等 Wave-2 合并、`packages/workspace-apps` 落到同一棵树上之后
+才能收敛：宿主那份属于 app-data 备份域，不能单独搬走，而合并前 infra 分支里根本看不到内核那份。
+合并后由后续小轨统一，届时 `workspace-apps` 改为引用本层。
+
+**为什么不能靠「当前共享层消费者为 0」来否决一个基础设施 crate。**
+共享层存在的理由就是服务**尚未建出的第二种形态**：本仓库的 `platform-api` / `application` / `runtime`
+同样是在消费者出现之前就落地的。web 版不会去读 `src-tauri/src/log_redact.rs`，
+它只会照着 host 的样子再写一份——而且必然更弱，因为没人看得见 host 那份。
+「现在没人调用」是滞后指标，不能用来否定设计意图。
+
+**为什么它仍然不能叫 `common`。** 本仓库已有一个叫 `migration-common` 的 crate，
+它之所以健康，正因为名字里写着领域、依赖面极窄（504 行，只依赖 `datazen-driver-api`，两个消费者）。
+`platform-infra` 同理：名字点明「平台基础设施」，F-11 用反向 allow-list 钉死
+「它不得依赖任何其它层」——这一条一旦破掉，它就退化成耦合中枢，而这正是要避免的 `common`。
+新加入 `LAYERS` 的层会自动进入 F-11 的禁止集，不需要改规则文件。
 前端侧接线的不是 pnpm workspace：`pnpm-workspace.yaml` 只有 `allowBuilds:`、**没有 `packages:` 通配**，`pnpm-lock.yaml` 也只有根一个 importer，因此 `packages/*` 下的前端包并不通过 pnpm 链接进 `node_modules`。既有 `packages/driver-sdk`、`packages/ui`、`packages/wapp-sdk`、`packages/extension-points` 靠三处显式配置生效，`packages/backend-client` 已同样补齐三处：
 
 1. `tsconfig.json` 的 `compilerOptions.paths` 增加 `@datazen/backend-client` → `./packages/backend-client/src/index.ts`；
