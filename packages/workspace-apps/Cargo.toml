@@ -6,6 +6,7 @@ description = "DataZen workspace-app core — manifest validation, package insta
 license = "GPL-3.0-or-later"
 
 [dependencies]
+datazen-platform-infra = { path = "../platform-infra" }
 regex = "1.13.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

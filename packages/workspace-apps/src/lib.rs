@@ -1,8 +1,9 @@
 //! `datazen-workspace-apps` — Workspace App 形态中立内核（Wave-2 track B1）。
 //!
 //! 本 crate 从宿主 Rust 后端下沉了**与形态无关**的部分：manifest 模式与
-//! 校验规则、包安装（ZIP / 目录）、按 wapp 隔离的键值存储，以及纯 std 的
-//! zip 条目路径守卫。
+//! 校验规则、包安装（ZIP / 目录）、按 wapp 隔离的键值存储。zip 条目路径守卫
+//! （zip-slip 防护）下沉到 `datazen-platform-infra::path_safety`，本 crate 只链接，
+//! 不再自带第二份实现。
 //!
 //! 形态中立的关键约定：**所有入口都把存储根作为参数传入**，内核自身不读取
 //! 任何 ambient 路径、不持有连接、不发网络请求。因此桌面端（本地文件系统
@@ -22,7 +23,6 @@
 pub mod install;
 pub mod manifest;
 pub mod storage;
-pub mod zip_path;
 
 #[cfg(test)]
 mod fixture_tests;
