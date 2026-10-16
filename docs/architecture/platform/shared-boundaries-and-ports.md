@@ -563,6 +563,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 | `SubmissionTokenIssuer` | 进程内 HMAC 密钥 | 服务端签名密钥 + `keyVersion` 轮换 | 同单进程 |
 | `ArtifactStore` | 文件字节经本机路径与授权对话框；Job Core 仅存 Artifact ID 引用（30 天 TTL），不持有字节或保证内容留存 | 服务端存储 + 授权导出 | 同单进程 |
 | `EventSink` | Tauri 事件推送 | SSE | SSE + worker 转发 |
+| `Clock` | `SystemClock`（本机 UTC，定宽毫秒） | 同桌面（服务进程本机 UTC） | 各 worker 读各自本机 UTC；跨节点排序只用 `Timestamp` 字典序，不假设同一时钟 |
 
 ### 4.8 装配形态
 
@@ -589,6 +590,26 @@ flowchart LR
 `ApplicationServices` 与 `Runtime` 的构造函数签名对两种形态相同，只有传入的 `Arc<dyn …>` 实现不同；不允许为团队形态另写一套用例。
 
 前端桥的**端口与注入缝隙**同属这一层：它实现在 `packages/application::frontend_bridge`，由宿主与未来的服务端组装层共同调用，注入点与错误文案只有一份。注入容器 `BridgeInjection` 只有单个非空字段，`FrontendBridge` 只暴露 `open_session` / `close_session` 两个方法且不含任何传输句柄，因此类型上不存在"半注入"，也拿不到绕过本层的后门。注入一次后不可替换；未注入时 `require_bridge` 返回 `CapabilityUnsupported` 并在文案里指出注入点，**没有**回落到具体传输的分支。
+
+### 4.9 时基端口 `Clock`（已实现）
+
+`Clock` 是第 15 个端口 trait，实现在 `packages/platform-api/src/ports/clock.rs`，已接入调用方。它**不在** [概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的 10 行里（该表仍是 10 行，与 §4.2 对 `IdentityResolver` 的口径一致）：时刻不是仓库，是一个原语。
+
+```rust
+// packages/platform-api/src/ports/clock.rs（已实现）
+pub trait Clock: Send + Sync + 'static {
+    fn now(&self) -> Timestamp;      // 定宽 RFC3339（UTC，毫秒）：2026-01-01T00:00:00.000Z
+}
+pub struct SystemClock;              // 生产：全仓唯一读系统时间的实现
+pub struct FixedClock { /* … */ }    // 测试替身：at(ts) / set(ts)，克隆共享同一状态
+```
+
+- **同步方法、不返回 `Result`**：§4.1 的 `#[async_trait]` + `PortError` 约定针对**会等待、会失败**的端口；读一次系统时间两者都不是，所以本端口没有 `Result`——也没有哪个 `PortError` 变体能表示「时钟坏了」。对象安全与 `Arc<dyn Clock>` 注入不变。
+- **只有一种输出形状**：`now()` 一律写成毫秒精度 UTC 的定宽 RFC3339。`Timestamp` 的比较是字符串序，秒级（`…T00:00:00Z`）与毫秒级（`…T00:00:00.000Z`）混在一列会在整秒处翻转字典序（`'.'` < `'Z'`）；本端口只**生产**时刻、不解析时刻，把「谁写什么形状」收口到一处。
+- **实现体为什么在契约层**：时基没有传输差异（不存在「服务端时钟」与「桌面时钟」两种语义），故 `SystemClock` / `FixedClock` 随端口一起提供，与 `ports::budget::pool_ledger` 的进程内参考账本同一处理方式；**带副作用或带传输**的端口实现仍必须留在提供方 crate（§4 开头那条不因此放宽）。
+- **装配（已实现）**：桌面组装根 `src-tauri/src/bootstrap/app_state.rs` 注入的 `SystemJobClock` 现在委托 `SystemClock`（`packages/runtime/src/job/time.rs`），`PortJobClock<C: Clock>` 可把任意时钟接成 `JobClock`；`SchemaDiffHandler::with_clock`、`DataTransferHandler::with_clock` 与 `BoundedPipelineContext::clock` 是同一注入缝隙。固定时钟的可替换性各有断言：`ports/clock.rs`、`runtime/src/job/time.rs`、`schema-diff/src/job/handler.rs`（提交边界时刻）、`data-transfer/src/job/checkpoint.rs`、`data-transfer/src/job/tests/snapshot_paging.rs`（整条有界管道 + 三条提交边界）。
+- **已知限制，未改**：`packages/driver-api/src/sql_dump/dump.rs` 的转储头时间戳仍直调 `chrono::Utc::now()`。driver-api 不得依赖 platform-api：`scripts/check-platform-crate-boundaries.mjs` 的 F-01 以 `allowedLayers: ['driver', 'driver-api']` 反选，补这条边会把 platform-api 推进**每个驱动 crate** 的传递闭包（§2.4 F-01）。该处已就地留注释说明。
+- **已知遗留**：`packages/runtime/src/job/time.rs` 的 `after_seconds` 仍产出秒级形状（chrono 模板 %Y-%m-%dT%H:%M:%SZ）。它只做算术、不读系统时间，不在本次直调清单内，故未改动；同列比较时与毫秒形状同样存在整秒翻转问题，收口前不要把它与 `Clock` 的输出放进同一排序。
 
 ## 5. RequestContext 的三个构造来源
 
