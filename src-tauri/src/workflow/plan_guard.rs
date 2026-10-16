@@ -202,7 +202,7 @@ pub fn check(
             // §7.4 规则 4：不允许降级为「看起来安全」，所以这里是拒绝而不是放行。
             return PlanVerdict::CapabilityUnsupported {
                 detail: format!(
-                    "cannot prove the commit boundary of step '{}' in block '{block_id}': {reason};                      an arbitrary SQL the dialect parser never inspected is not treated as safe",
+                    "cannot prove the commit boundary of step '{}' in block '{block_id}': {reason}; an arbitrary SQL the dialect parser never inspected is not treated as safe",
                     step.step_id()
                 ),
             };
