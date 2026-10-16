@@ -139,7 +139,7 @@ Data Sync 的同族结构门闸和 Data Transfer 的 IR pairing 不应混为一�
 
 ## 6. Driver Registry
 
-`src-tauri/src/db/registry.rs` 负责 Host 侧 Driver Registry；`src-tauri/src/db/mod.rs` re-export Driver API。
+Driver Registry 实现在 `packages/runtime/src/driver_registry/`（`datazen_runtime::driver_registry`），与 SchemaCache 同处共享 runtime 内核；`src-tauri/src/db/mod.rs` 只是 re-export 门面，同时 re-export Driver API 与 `registry` 模块，宿主连接层统一改走 runtime 路径后即删除。
 
 Driver 通过 inventory 在编译期注册。构建时由 registry / build tooling 决定哪些 Driver 被编译进 DataZen。
 
