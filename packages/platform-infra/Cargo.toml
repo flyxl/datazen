@@ -9,9 +9,9 @@ description = "Cross-form platform infrastructure primitives for DataZen: creden
 # platform DAG (enforced by F-11). Add capabilities here before adding a new
 # shared crate for them; do NOT add a crate for them.
 #
-# Declared directly rather than via `{ workspace = true }`: the root
-# [workspace.dependencies] table only carries the seven path crates, so there is
-# no root entry to inherit from — and this crate's dependency list is part of
-# the F-11 boundary review (no datazen-* layer, no platform transport).
+# Declared directly, not inherited from the root [workspace.dependencies] table:
+# that table carries only the seven path crates, so there is no root entry to
+# inherit from — and this crate's dependency list is part of the F-11 boundary
+# review (no datazen-* layer, no platform transport).
 regex = "1.13.1"
 url = "2"
