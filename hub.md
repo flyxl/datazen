@@ -137,6 +137,17 @@ Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量�
   建树脚本 `scripts/new-feature-worktree.sh:516` 自己写明「两者**不是同一个 DB_REGISTRY**」，并要求验证 DB 注册表行为时显式选 all。
   **结论已写进正式文档** `docs/development/worktree-isolation.md` 的「驱动选型」小节（台账销毁后仍可读）。
 
+### P6 剩余（本轮盘点，**非本波任务**）
+
+P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM-50～53** ＋ 辅助任务共享预算 ＋ 原 Workflow 的 query/command 默认目标契约。
+
+- 实测：`grep -rn 'CM-5[0-3]' src/ src-tauri/ packages/ e2e/ test/ scripts/` ⇒ **0 命中**。
+- 实测：代码里以 CM 编号字面标注的有 53 个（CM-01…CM-74 的子集），**不含** CM-50～53。
+- **推断边界（别越过）**：字面量 0 命中 **≠** 覆盖缺失。CM-20/21/27/29/37/39 同样没有字面量，
+  却被计划文档 `:111` 声明为 P3 已覆盖。只能说「这四项没有以 CM 编号登记的断言」，不能说「没实现」。
+- 实测：辅助任务共享预算无代码标识（`共享预算` / `aux_budget` / `auxBudget` 全 0 命中）⇒ 未接线。
+- 结论：**P6 出口门禁未关闭**；共享层迁移不承担它，合并后需另开阶段。
+
 ### Wave-2 收尾（实测）
 
 - 三轨合并：A2 `77be2b19b`、B1 `88a7fdaac`、C3 `d2bb5f4ae`，均零冲突（合并前已 5 次 dry-run 预演）。
