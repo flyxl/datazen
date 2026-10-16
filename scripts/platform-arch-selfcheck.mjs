@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Mutation proof for `check-platform-crate-boundaries.mjs`.
  *
@@ -611,7 +612,7 @@ function main() {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(import.meta.url)) {
   withLock(() => {
     process.exitCode = main();
   });

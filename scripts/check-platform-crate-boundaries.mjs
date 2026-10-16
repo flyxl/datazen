@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
- * Platform crate dependency boundary gate — F-01..F-08 of
+ * Platform crate dependency boundary gate — the rule table in
  * `docs/architecture/platform/shared-boundaries-and-ports.md` §2.4.
  *
  * The requirement this implements (platform-development-plan.md:80):
@@ -296,7 +297,7 @@ export function checkSpecConsistency(specText, rules = RULES) {
     if (row === null) {
       violations.push(
         `${rule.id}: no row found in ${SPEC_PATH} §2.4. The rule table and the spec ` +
-          `have diverged; the guard can no longer claim to implement F-01..F-07.`,
+          `have diverged; the guard can no longer claim to implement the specification.`,
       );
       continue;
     }
@@ -469,7 +470,7 @@ export function checkPlatformCrateBoundaries(options) {
   if (specText === undefined) {
     const specFile = resolve(root, SPEC_PATH);
     if (!existsSync(specFile)) {
-      errors.push(`missing ${SPEC_PATH}; the guard cannot verify it implements F-01..F-07`);
+      errors.push(`missing ${SPEC_PATH}; the guard cannot verify it implements the specification`);
       return { violations, errors, vacuous, advisories, evaluated, summary: 'aborted: no spec' };
     }
     specText = readFileSync(specFile, 'utf8');
@@ -687,7 +688,7 @@ function parseArgs(argv) {
  * The per-rule line used to print `ok` unconditionally, so a run whose
  * `VIOLATION F-11 …` line sat six lines above also printed `ok F-11: …` — the
  * same run contradicting itself, and the last line a reader sees before the
- * `FAIL` summary. Attribution is by prefix because every violation producer in
+ * `FAIL` summary. Attribution includes violations and scan errors, by prefix because every rule diagnostic in
  * this file opens with the rule id (`F-11: …` from the spec cross-check,
  * `F-11  …` from the closure walk and the F-07 source scan).
  *
@@ -696,10 +697,11 @@ function parseArgs(argv) {
  *
  * @param {string} ruleId
  * @param {string[]} violations
+ * @param {string[]} errors
  * @returns {'ok' | 'fail'}
  */
-export function ruleVerdict(ruleId, violations) {
-  const blamed = violations.some(
+export function ruleVerdict(ruleId, violations, errors = []) {
+  const blamed = [...violations, ...errors].some(
     (line) => line.startsWith(`${ruleId}:`) || line.startsWith(`${ruleId} `),
   );
   return blamed ? 'fail' : 'ok';
@@ -749,7 +751,7 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
   for (const line of result.errors) err(`${PREFIX} ERROR    ${line}`);
   for (const rule of result.evaluated) {
     out(
-      `${PREFIX} ${ruleVerdict(rule.rule, result.violations)} ${rule.rule}: ` +
+      `${PREFIX} ${ruleVerdict(rule.rule, result.violations, result.errors)} ${rule.rule}: ` +
         rule.subjects.join(', '),
     );
   }
@@ -759,6 +761,6 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
   return failed === 0 ? 0 : 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(import.meta.url)) {
   process.exitCode = runCli();
 }

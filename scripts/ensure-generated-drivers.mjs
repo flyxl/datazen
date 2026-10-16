@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Ensure gitignored driver codegen files exist.
  *
@@ -18,7 +19,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { resolve, dirname } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { FULLY_GENERATED_MANAGED } from './driver-deinject.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -134,6 +135,6 @@ function main() {
   runEnsureGeneratedDrivers();
 }
 
-if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {
+if (isDirectInvocation(import.meta.url)) {
   main();
 }

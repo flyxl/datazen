@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Run `cargo test` for the platform core crates.
  *
@@ -396,6 +397,6 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(import.meta.url)) {
   process.exitCode = runCli();
 }
