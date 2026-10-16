@@ -1,4 +1,6 @@
-//! 端口契约：15 个 trait，**只有 trait，没有任何具体传输类型**。
+//! 端口契约：15 个 trait，**没有任何具体传输类型**；除两处形态中立、无 I/O 的进程内原语
+//! 实现（[`clock`] 的 `SystemClock` / `FixedClock`、[`budget::pool_ledger`] 的参考账本，
+//! 见 `docs/architecture/platform/shared-boundaries-and-ports.md` §4.9）外，只有 trait。
 //!
 //! 约定（§4.1）：
 //!
