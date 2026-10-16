@@ -307,6 +307,22 @@ jobs:
       - name: Platform crate dependency boundaries (F-01..F-07)
         run: pnpm test:platform-arch
 
+      # 新增共享基础设施 crate 的 panic 门禁。同样落在这里，理由和上面那条一样：
+      # 它要先解析 `cargo metadata` 才能把显式目标目录认成 workspace member，而
+      # frontend job 没有 Rust 工具链；放在 restore 之后，断言的是提交态的清单。
+      #
+      # 与上面那条边界门禁的分工：边界门禁的结论行已被 R 阶段全量回归记录在案，
+      # 因此本轮策略是「只约束新增 crate」（决策 c 方案 3），不追溯既有代码，也不
+      # 改动那条门禁。所以本门禁的范围由脚本里的显式 TARGET_CRATES 列表决定
+      # （当前仅 packages/platform-infra），而不是由 workspace 路径推导。
+      #
+      # 只禁裸 unwrap()：expect("…") 一律放行（AGENTS.md 禁的是「裸」）。#[cfg(test)]
+      # item 与 #[test] / #[tokio::test] 函数按语法整段剔除，不按文件名。目标 crate
+      # 缺失、未分类、或一个 .rs 都没读到，都是 error 而不是 pass——「没读」和「没
+      # 问题」不允许打印成同一行。
+      - name: Shared crate panic policy (PN-01)
+        run: pnpm test:shared-crate-panic
+
       # 计划 :99 的「不同 driver 不共享实现库类型」。F-01 明确放行 driver→driver
       # 边（allowedLayers 含 'driver'），所以上面那道门禁按设计看不见本条；这里补上，
       # 同样不带手写名单——driver 集合由各 crate 源码里是否实现 DatabaseDriver 契约

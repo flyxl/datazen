@@ -25,7 +25,8 @@
  * analysis functions directly.
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { spawnSync } from 'child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { delimiter, dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -116,6 +117,27 @@ describe('findBareUnwraps', () => {
     const src = ['let a = value', '    .unwrap();'].join('\n');
 
     expect(findBareUnwraps(maskRustSource(src)).map((h) => h.line)).toEqual([2]);
+  });
+
+  it('flags the qualified-path form and the raw-identifier spelling', () => {
+    // Both were measured as real std panics by compiling them with rustc 1.90.0:
+    // a qualified-path call *writes its argument in*, and `r#unwrap` is the same
+    // method spelled as a raw identifier.
+    //
+    // The empty-argument rule belongs to the method-call branch only. It exists
+    // to separate `.unwrap()` from `.unwrap_or(…)`, and on the `::` branch the
+    // identifier text already does that — `unwrap` followed by `_` can never
+    // reach the `(`. Extending the rule to `::` was the blind spot; these two
+    // lines fail if it comes back.
+    const src = [
+      'let a = Option::unwrap(y);',
+      'let b = y.r#unwrap();',
+      'let c = Option::unwrap_or(y, 0);',
+      'let d = y.unwrap_or(0);',
+      'let e = y.unwrap_err();',
+    ].join('\n');
+
+    expect(findBareUnwraps(maskRustSource(src)).map((h) => h.line)).toEqual([1, 2]);
   });
 });
 
@@ -372,6 +394,18 @@ function runIn(ws: StubWorkspace, args: readonly string[] = []): CliRun {
   return captureCli(() => runCli({ argv: [`--root=${ws.root}`, ...args], env: envFor(ws) }));
 }
 
+/**
+ * The same run, with the subject list overridden.
+ *
+ * `crateDirs` is the seam `runCli` forwards to `checkSharedCratePanicPolicy`;
+ * overriding it is how the empty-subject-list case reaches a real exit code
+ * instead of an assertion on an internal object.
+ */
+function runWithCrateDirs(ws: StubWorkspace, crateDirs: readonly string[]): CliRun {
+  rmSync(ws.cargoLog, { force: true });
+  return captureCli(() => runCli({ argv: [`--root=${ws.root}`], env: envFor(ws), crateDirs }));
+}
+
 describe('scanCrateSources', () => {
   it('walks the whole src tree and reports file count and path of each finding', () => {
     const root = join(sandbox, 'scan-tree');
@@ -452,19 +486,69 @@ describe('runCli exit codes', () => {
   });
 });
 
+describe('the gate refuses to pass on an empty scan', () => {
+  it('errors when a resolved crate has a src directory with no Rust file in it', () => {
+    // The case that used to print `ok … (0 file(s))` next to PASS. The crate
+    // resolves, the directory exists, and the gate read nothing — which must not
+    // be reportable as clean.
+    const run = runIn(makeWorkspace('empty-src', {}));
+
+    expect(run.code).not.toBe(0);
+    expect(run.stdout).toContain('FAIL');
+    expect(run.stdout).not.toContain('PASS');
+    expect(run.stderr).toContain('0 Rust file(s) read');
+    expect(run.stderr).toContain('refusing to report a clean scan');
+  });
+
+  it('errors when the subject list is empty, so a PASS would describe no code', () => {
+    const run = runWithCrateDirs(clean, []);
+
+    expect(run.code).not.toBe(0);
+    expect(run.stdout).toContain('FAIL');
+    expect(run.stdout).not.toContain('PASS');
+    expect(run.stderr).toContain('TARGET_CRATES is empty');
+  });
+});
+
 describe('the gate stays wired to reality', () => {
-  it('names crate directories that exist in this repository', () => {
-    // Cheap guard on the file's own premise: every fixture above is synthetic,
-    // so a typo in TARGET_CRATES would leave the suite green and the real gate
-    // red (or, worse, scanning nothing).
+  it('actually reads Rust files for every crate the policy names', () => {
+    // Two premises at once, and the second is the one F1 was about: every
+    // fixture above is synthetic, so (a) a typo in TARGET_CRATES would leave the
+    // suite green while the real gate scanned nothing, and (b) asserting that a
+    // `src/` directory *exists* does not assert that anything is in it — a
+    // directory holding no `.rs` is exactly the empty scan this suite now
+    // refuses. So the assertion is on files actually read out of the real tree.
     expect(TARGET_CRATES.length).toBeGreaterThan(0);
+    let total = 0;
     for (const dir of TARGET_CRATES) {
       expect(existsSync(join(REPO_ROOT, dir, 'Cargo.toml'))).toBe(true);
-      expect(existsSync(join(REPO_ROOT, dir, 'src'))).toBe(true);
+      const result = scanCrateSources({ root: REPO_ROOT, crateDir: dir });
+      expect(result.errors).toEqual([]);
+      total += result.files;
     }
+    expect(total).toBeGreaterThan(0);
   });
 
   it('resolves the repo root this file claims to live in', () => {
     expect(existsSync(join(REPO_ROOT, 'scripts/check-shared-crate-panic-policy.mjs'))).toBe(true);
+  });
+
+  it('runs the CLI when the entry path is a symlink instead of silently exiting 0', () => {
+    // The regression this pins: the usual `import.meta.url === 'file://' +
+    // process.argv[1]` guard holds the **realpath** on the left and whatever was
+    // typed on the right, so a symlinked invocation runs nothing, prints
+    // nothing, and exits 0 — the same observable result as a clean pass. Only a
+    // real subprocess can catch that, because in-process `runCli` calls never
+    // consult the guard at all.
+    const link = join(sandbox, 'linked-gate.mjs');
+    symlinkSync(join(REPO_ROOT, 'scripts/check-shared-crate-panic-policy.mjs'), link);
+    const proc = spawnSync(process.execPath, [link, `--root=${clean.root}`], {
+      env: envFor(clean),
+      encoding: 'utf8',
+    });
+
+    expect(proc.status).toBe(0);
+    expect(proc.stdout).toContain('PASS');
+    expect(proc.stdout).toContain('1 crate(s) scanned, 1 file(s)');
   });
 });

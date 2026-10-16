@@ -43,8 +43,9 @@
  * arranged to avoid.
  */
 
-import { existsSync, readFileSync, readdirSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'fs';
 import { join, relative, resolve, sep } from 'path';
+import { pathToFileURL } from 'url';
 
 import { buildWorkspaceIndex, runCargoMetadata } from './lib/cargoWorkspace.mjs';
 import { lineAtOffset } from './lib/scanSourceCode.mjs';
@@ -75,15 +76,30 @@ const TEST_ATTR_RE =
   /#\s*\[\s*(?:cfg\s*\(\s*test\s*\)|test|[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*::test)\s*\]/g;
 
 /**
- * A bare `unwrap()`: a method or qualified-path call with an **empty**
- * argument list.
+ * A bare `unwrap()`: a method or qualified-path call.
  *
  * `unwrap_or(…)`, `unwrap_or_else(…)`, `unwrap_err()` and a `fn unwrap()`
  * *definition* are all left alone, and so is every `expect("…")`. The leading
  * `.`/`::` is what keeps the definition out while staying blind to whitespace
  * and line breaks.
+ *
+ * The two branches carry **different** argument rules, and the asymmetry is
+ * deliberate:
+ *
+ *   * a method call must have an EMPTY argument list. `value.unwrap()` is the
+ *     panic and `value.unwrap_or(0)` is not; both are distinguished by the
+ *     identifier boundary *and* by the parens, so the parens test is what does
+ *     the work here.
+ *   * a qualified-path call does not need it. `Option::unwrap(y)` is the same
+ *     std panic helper with its argument written in, and `unwrap_or` /
+ *     `unwrap_err` are already excluded by the literal text — `unwrap`
+ *     followed by `_` can never reach `\s*\(`. Requiring empty parens there
+ *     was a blind spot, measured by compiling both vectors with rustc.
+ *
+ * `(?:r#)?` covers the raw-identifier spelling `r#unwrap`, which is the same
+ * method.
  */
-const BARE_UNWRAP_RE = /(?:\.|::)\s*unwrap\s*\(\s*\)/g;
+const BARE_UNWRAP_RE = /(?:\.\s*(?:r#)?unwrap\s*\(\s*\)|::\s*(?:r#)?unwrap\s*\()/g;
 
 /** Build output is not authored source. */
 const RUST_SKIP_DIR_NAMES = new Set(['target', 'node_modules', '.git', 'dist']);
@@ -431,6 +447,24 @@ export function checkSharedCratePanicPolicy(options) {
     scanned.push({ name: member.name, dir: member.relDir, files: result.files });
   }
 
+  // The non-empty precondition. Any branch above can decline to read a file
+  // without that being a defect in itself, so every one of them leaves `files`
+  // at 0 — and a gate that prints PASS next to "0 file(s)" is the single failure
+  // mode this script exists to avoid. Resolving a member and reading its sources
+  // are different events; only the second is evidence.
+  if (crateDirs.length === 0) {
+    errors.push(
+      'TARGET_CRATES is empty, so this gate has no subject at all — a PASS here would ' +
+        'describe no code. List the crate(s) this policy applies to.',
+    );
+  } else if (files === 0) {
+    errors.push(
+      '0 Rust file(s) read across ' + scanned.length + ' of ' + crateDirs.length +
+        ' target crate(s) — refusing to report a clean scan. "Nothing was read" and ' +
+        '"nothing was wrong" must never print the same line.',
+    );
+  }
+
   const summary =
     scanned.length + ' crate(s) scanned, ' + files + ' file(s), ' + testItems +
     ' test item(s) excluded, ' + exemptCalls + ' test-exempt unwrap() call(s), ' +
@@ -448,7 +482,12 @@ function parseArgs(argv) {
   return args;
 }
 
-export function runCli({ argv = process.argv.slice(2), env = process.env } = {}) {
+/**
+ * `crateDirs` is not a CLI flag: it is the same seam `checkSharedCratePanicPolicy`
+ * already exposes, forwarded so the suite can drive the *empty subject list*
+ * through the real exit code instead of asserting on an internal object.
+ */
+export function runCli({ argv = process.argv.slice(2), env = process.env, crateDirs = TARGET_CRATES } = {}) {
   const out = (s) => process.stdout.write(s + '\n');
   const err = (s) => process.stderr.write(s + '\n');
 
@@ -467,7 +506,7 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
 
   let result;
   try {
-    result = checkSharedCratePanicPolicy({ ...args, env, log: out, error: err });
+    result = checkSharedCratePanicPolicy({ ...args, env, crateDirs, log: out, error: err });
   } catch (cause) {
     err(PREFIX + ' ' + cause.message);
     return 2;
@@ -490,6 +529,34 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
   return failed === 0 ? 0 : 1;
 }
 
-if (import.meta.url === 'file://' + process.argv[1]) {
+/**
+ * Is this module the process entry point?
+ *
+ * `import.meta.url === 'file://' + process.argv[1]` is the repo's usual spelling
+ * and it is wrong in two ways, each of which makes the CLI body silently not
+ * run — zero output, exit 0, indistinguishable from a clean pass:
+ *
+ *   * `import.meta.url` holds the **realpath** (Node resolves symlinks for the
+ *     main module) while `process.argv[1]` is whatever was typed, so invoking
+ *     the script through a symlink never matches;
+ *   * a path with a space or a non-ASCII byte is percent-encoded in a file URL,
+ *     and string concatenation does not encode it.
+ */
+function isDirectInvocation() {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  let resolved = entry;
+  try {
+    resolved = realpathSync(entry);
+  } catch {
+    // Keep the literal path: an unreadable entry still gets its one comparison.
+  }
+  return (
+    import.meta.url === pathToFileURL(resolved).href ||
+    import.meta.url === pathToFileURL(entry).href
+  );
+}
+
+if (isDirectInvocation()) {
   process.exitCode = runCli();
 }
