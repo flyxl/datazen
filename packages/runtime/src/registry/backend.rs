@@ -272,6 +272,14 @@ pub trait SessionBackend: Send + Sync + 'static {
         &self,
         request: CloseResource,
     ) -> Result<CloseResourceOutcome, crate::connection::ProviderError>;
+
+    /// 只读的池 / 预算观测快照。
+    ///
+    /// 默认 `None`：没实现的后端（测试替身、server 内部实现）不因此失败。实现方
+    /// 只允许**投影**自有台账，不得为了这个口另建计数（CM-32 单账铁律）。
+    async fn observability_snapshot(&self) -> Option<crate::resource::RuntimeObservabilityReport> {
+        None
+    }
 }
 
 /// 宿主侧归池前检查。

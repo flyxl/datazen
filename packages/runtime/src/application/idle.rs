@@ -190,6 +190,15 @@ impl RuntimeConnectionUseCases {
     /// 本方法**不做**任何跳过：registry 的驱逐是全表扫描，本层没有「只驱逐某几个」的接口，
     /// 也没有权限替它加。逐会话的差别只能体现在 `physical.is_none()` / 未设期限 / 未到期
     /// 这三道闸门里，而它们都在 registry 内部，本层不需要重复判断。
+    /// 只读的池 / 预算观测快照（宿主诊断口与 CM-33 的真实 UI 断言都走这一条）。
+    ///
+    /// 快照由后端自有台账投影而来；这里只把端口接到用例面，**不**在应用层重算数字。
+    pub async fn observability_snapshot(
+        &self,
+    ) -> Option<crate::resource::RuntimeObservabilityReport> {
+        self.inner.registry.observability_snapshot().await
+    }
+
     pub async fn reclaim_idle(&self) -> IdleReclamation {
         self.inner.sink.reclaim_expired();
         self.reclaim_receipts().await;

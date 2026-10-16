@@ -349,6 +349,13 @@ impl SessionRegistry {
     pub async fn reclaim_idle_resources(&self) {
         self.backend.reclaim_idle_resources().await;
     }
+
+    /// 只读观测快照，直接转发后端台账；未实现的后端返回 `None`。
+    pub async fn observability_snapshot(
+        &self,
+    ) -> Option<crate::resource::RuntimeObservabilityReport> {
+        self.backend.observability_snapshot().await
+    }
     pub async fn register_session(
         &self,
         request: OpenRequest,

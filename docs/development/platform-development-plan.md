@@ -151,8 +151,15 @@ QueryPanel Explain 已通过同一 pane 的 `EditorSessionController` 提交 `ex
 - CM-67 的收口结论见 §17.1 与连接管理 CM-67：H 层已落地并有实测，空闲池在首版真实驱动上恒为空是**能力事实**（全部 path 驱动 `ResetForReuse::Unsupported`）而不是实现缺失，那两条不作为 D 层断言。
 - F 断言不再只有汇总：§8.1 逐条给出证据，本轮补齐 4 个真实 UI 旅程（编辑器会话隔离、结果视图消失不取消、查询故障恢复、查询结果写回边界）与 1 个真实驱动旅程（池键与轮换），全部实测通过。同时确认 CM-35/36/61 的**正向**写法在首版不可达：`WritableMapping::Verified` 要求 `context_before.confidence == Confirmed`，而确认要求驱动声明 `ContextObservation::Full`——**当前没有任何内置驱动声明**（postgres / mysql / sqlite / redis 均 `Partial`，其余 `Unsupported`）。真实 UI 层因此只能断言可达的那一半（只读、替换后仍可阅读），"可写结果在替换后失效"留在组件层。
 - P4 自己引入的旧取消路径已清理：`panelExecCleanup` 不再向旧 `cancel_query` IPC 发取消，改走该 pane 自己的 `EditorSessionController`；`cancel_query` IPC 本体仍留给旧 `execute_query*` 消费者。
+- CM-33 的 F 半补上了：新增只读观测口 `runtime_observability_snapshot`（runtime 侧 `resource/observability.rs`，经 `SessionBackend::observability_snapshot` 投影自有台账），真实 UI 旅程 `e2e/specs/journeys/table-pool-contention-journey.ts` 用它断言"4 个表 tab 逐个刷新期间物理资源不越预算、不随 tab 数增长，编辑器随后仍可执行且观察上下文不变"。在做它之前，那个数字在外部无法归因——同库上旧 `ConnectionManager` 会话与 runtime 会话在 `pg_stat_activity` 里分不开。
 
-**仍未完成**：F 断言的逐项证据映射见 §8.1。除该节列出的三项残余（CM-33 的 F 半、CM-16 的真实 UI 候选失败注入、CM-63 的第二 attach 方）与一条首版能力边界（查询结果写回的正向断言）外，§8 退出门槛列出的 F 断言都有可执行证据。已存在的单元测试或新 runtime 接线不代表全部验收通过——§8.1 的"F 已覆盖"只表示证据存在且实跑通过，适用层与限制逐条列在该节。旧管理器还服务于其他阶段的消费者（Workflow 非 SQL 步骤、Monitor、AI、MCP、迁移三件套、backup/export、旧 `execute_driver_command` 网关），删除边界须按消费者迁移判断。
+**P4 的关闭条件（本 PR 合并后）**：
+
+1. §8.1 的 F 断言映射完成，且列出的每一类都有明确落点：`F 已覆盖` / `组件级（已定级）` / `桌面不适用（移交 P7）` / `用例无 F` / `首版发布限制`。
+2. 三条残余都已定级（见 §8.1「残余处置」）：CM-16 组件级、CM-63 桌面不适用移交 W1、CM-35/36/61 正向 = 首版不提供查询结果原地写回的产品决定。
+3. 受控 WDIO 子集实测通过（`--suite smoke`、`--suite db`、`--suite connection-pool`）——CI 不跑 E2E，所以关闭证据必须来自本地实跑并逐字记录。
+
+**仍未完成/不属 P4**：旧管理器（`ConnectionManager`）的删除按消费者迁移决定，属 P6/P10；Workflow 非 SQL 步骤、Monitor、AI、MCP、迁移三件套、backup/export、旧 `execute_driver_command` 网关仍在其上。已存在的单元测试或新 runtime 接线不代表全部验收通过——§8.1 的"F 已覆盖"只表示证据存在且实跑通过，适用层与限制逐条列在该节。
 
 #### 8.1 P4 F 断言逐项证据映射（2026-10 实测）
 
@@ -163,6 +170,7 @@ pnpm e2e:skip-build -- --spec e2e/specs/journeys/editor-session-isolation-journe
 pnpm e2e:skip-build -- --spec e2e/specs/journeys/result-view-loss-journey.ts             # CM-64 无消费者
 pnpm e2e:skip-build -- --spec e2e/specs/journeys/query-fault-recovery-journey.ts         # CM-56/64 断线→替代→再执行
 pnpm e2e:skip-build -- --spec e2e/specs/journeys/temporary-result-writeback-journey.ts   # CM-35/36/61 写回能力边界
+pnpm e2e:skip-build -- --spec e2e/specs/journeys/table-pool-contention-journey.ts        # CM-33 表格并发与池计数
 pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rotation.ts  # CM-38/67 D 层（或 --suite connection-pool）
 ```
 
@@ -173,11 +181,11 @@ pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rota
 | CM-11 USE 失败 / CM-12 成功后失败 | 失败不移动已观察上下文 | **新增** 同一旅程（限定名读取与失败语句后，selector 与 `current_database()` 仍是原库）；E2E `sql-query.ts SQ-CTX-001`。产品已无 `USE` 切换路径，等价断言即 CM-13 形态 | F 已覆盖（等价形态） |
 | CM-13 限定名与补全不切库 | 补全可变、observedContext 不变 | E2E `sql-query.ts` `SQ-CTX-001`（限定名查询后编辑器上下文不变） | F 已覆盖 |
 | CM-15 PG 切 database 替换 | 先成功后替换、旧 ID 不能执行 | E2E `sql-query.ts` `SQ-LIFECYCLE-001`（6 次替换 + 每次 `current_database()`，证明旧资源释放）；单测 `sessionReplacement.test.ts` | F 已覆盖 |
-| CM-16 替换失败保留旧连接 | UI 不显示 B、旧会话仍有效 | 单测 `sessionReplacement.test.ts::leaves the previous handle bound …`；组件 `queryPanelSessionSwitch.test.tsx::prompts a revision conflict and keeps the previous database`；H：`p4_usecase_journeys::replacement_rollback_revision_commit_and_replay` | 组件级（真实 UI 未注入候选失败，见下） |
+| CM-16 替换失败保留旧连接 | UI 不显示 B、旧会话仍有效 | 单测 `sessionReplacement.test.ts::leaves the previous handle bound …`；组件 `queryPanelSessionSwitch.test.tsx::prompts a revision conflict and keeps the previous database`；H：`p4_usecase_journeys::replacement_rollback_revision_commit_and_replay` | **组件级（已定级）**：不做真实 UI 候选失败注入，理由见下 |
 | CM-17 手写事务旅程 | UI 同步事务、另一会话不可见 | **新增** 同一旅程（SQL `BEGIN`→`INSERT`→本 tab 读到 1→独立会话读到 0→`ROLLBACK`→两侧 0）；E2E `client-parity.ts`（旧 IPC 三件套）；单测 `TableView.test.tsx` | F 已覆盖 |
 | CM-18 aborted/unknown | 不显示为 none、切库被阻止 | 组件 `query.modules.test.tsx`（unclosed/aborted 对话框）、`sqlTransactionGuard.test.ts`；单测 `pageUnload.test.ts`（页面死亡按事务态回滚）；E2E `table-session-loss-recovery.ts`（`resourceLost`+`unknown` 回执→显式新会话） | F 已覆盖 |
 | CM-21 切库与执行竞态 | 冲突不吞、提示明确 | 组件 `queryPanelSessionSwitch.test.tsx`（revision 冲突保留旧库）、`sessionPrompts.test.ts`；H：`p4_usecase_journeys` | F 已覆盖 |
-| CM-33 多表 tab 共用短操作池 | 编辑器资源/上下文不受表格刷新影响 | 仅 H：`pool_capacity_budget.rs`（池容量与预算台账一致） | **F 未覆盖**（见下） |
+| CM-33 多表 tab 共用短操作池 | 编辑器资源/上下文不受表格刷新影响 | **新增** `table-pool-contention-journey.ts`（真实 UI：4 个表 tab 逐个打开并刷新，每次采样都断言物理资源 ≤ 预算且 ≤ 基线 + 2，编辑器随后仍可执行且观察上下文不变）；计数来自 **新增只读口** `runtime_observability_snapshot`（`packages/runtime/src/resource/observability.rs` + `SessionBackend::observability_snapshot`），因为同库上旧 `ConnectionManager` 会话与 runtime 会话无法用 `pg_stat_activity` 区分；H：`pool_capacity_budget.rs`（池容量与预算台账一致） | F 已覆盖 |
 | CM-34 表编辑事务范围 | 暂存/预览/回滚/提交、失败两条同回滚 | E2E `table-edit.ts`（`DE-006~DE-008` 暂存/预览/回滚/提交）；组件 `TableView.test.tsx`（显式事务开关） | F 已覆盖 |
 | CM-35 旧结果正确归属 | 可写映射提交原目标、任意 SQL 只读 | 组件 `ResultTableView.test.tsx`（verified 结果在 binding 刷新前只读）；单测 `executionRecoveryJourney.test.ts`（切库使绑定失效并再次执行）、`metadata.test.ts::isProvenanceCurrent`；E2E `query-artifact-export.ts`；**新增** `temporary-result-writeback-journey.ts`（`SELECT * FROM <单关系>` 的真实结果在替换前后都不可编辑） | F 已覆盖（只读方向；正向在首版不可达，见下） |
 | CM-36 临时对象结果失效 | 关闭 S 后编辑旧结果即 `SessionLost`、结果仍可读 | 组件 `ResultTableView.test.tsx`（标注 CM-36/61：原绑定失效时关闭已打开编辑器且绝不提交过期编辑）；**新增** `temporary-result-writeback-journey.ts`（真实 UI：会话替换后结果仍可阅读、仍不可编辑、无错误面板） | 组件级（正向）+ 真实 UI（可读方向）；正向在首版不可达，见下 |
@@ -187,7 +195,7 @@ pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rota
 | CM-55 事件重复/乱序/超大 revision | 旧事件不覆盖、不重复、缺口重读 | 单测 `sessionJourney.test.ts`（`rebuilds and clears the cursor for stream reset …`、`deduplicates large sequences, retries unread blocks, recovers gaps…`、`rejects a mismatched first chunk…`）、`executionRecoveryJourney.test.ts`、`runEditorQueryArtifacts.test.ts` | F 已覆盖（单测）；超大 Counter 的 W 属 P7 |
 | CM-56 网络掉线与事务 TTL | 掉线不伪恢复、下一执行要求新 session | E2E `table-session-loss-recovery.ts`（杀掉后端→回执→显式新会话→再事务）；**新增** `query-fault-recovery-journey.ts`（流中杀后端→失败可见→替代 session→再执行，新 `backend_start` 严格更新）；TTL/心跳为 H（fake clock） | F 已覆盖（掉线）；TTL 属 H |
 | CM-61 持久化白名单与临时结果恢复 | 普通表重授权可写、临时结果只读 | 组件 `ResultTableView.test.tsx`（CM-36/61 同条）、`metadata.test.ts`（provenance 过期判据）；**新增** `temporary-result-writeback-journey.ts`；白名单本体 H：`p4_usecase_journeys` artifact 旅程 | F 已覆盖（只读方向）；重授权后可写在首版不可达，见下 |
-| CM-63 Attachment、TTL 与竞态 | —（桌面无第二 attach 方） | F 侧仅页面死亡：`pageUnload.test.ts`；attach/TTL/竞态为 H（`directory_attachment_ttl.rs`）与 W1 | 部分（见下） |
+| CM-63 Attachment、TTL 与竞态 | —（桌面无第二 attach 方） | F 侧仅页面死亡：`pageUnload.test.ts`（页面死亡按活跃/aborted/unknown 事务请求回滚）；attach/TTL/竞态为 H（`directory_attachment_ttl.rs`）与 W1 | **桌面不适用（已定级）**：F 半在桌面没有可触发的第二 attach 方，attach/TTL/竞态移交 W1（P7） |
 | CM-64 无消费者、截断与有界 drain | 视图消失不取消、返回可读、截断可见 | **新增** `result-view-loss-journey.ts`（切走标签页=视图消失：语句仍在跑→跑完→返回后 300 行恢复且 `data-execution-seq` 不变，证明未重投）；**新增** `query-fault-recovery-journey.ts`；截断文案 E2E `edge-cases.ts`（`query.resultTruncated`）；协议 barrier/配额为 H/D 夹具 | F 已覆盖（无消费者与恢复）；"有界"的量值属 H/D |
 | CM-72 错误、控制回执与能力审计 | 回执/错误码一致、effectOutcome 不被覆盖、失效绑定不提交 | 单测 `packages/backend-client/__tests__/{client,errors}.test.ts`（拒绝旧 `accepted`、大小写与状态、异 executionId）、`ResultTableView.test.tsx`（失效绑定不提交）；**新增** `query-fault-recovery-journey.ts`（替换后按执行状态与产物读取，失败可见且不静默）＋ `temporary-result-writeback-journey.ts`（替换后只读、编辑入口关闭） | F 已覆盖（回执与失效绑定）；durable provenance 的**能力快照字段**（driverId/version、protocolVersion、capabilityRevision、confirmed evidence）由 H `p4_usecase_journeys` 断言——它们在 UI 上没有稳定的 DOM 面，不写一条读不到的快照断言 |
 
@@ -195,11 +203,11 @@ pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rota
 
 - **查询结果写回的正向断言（CM-35/36/61）在首版对所有发布驱动不可达。** `WritableMapping::Verified` 只在 `context_before.confidence == Confirmed` 时产生（`src-tauri/src/platform/session_backend/execution.rs`），而 `Confirmed` 要求驱动声明 `ContextObservation::Full`（`packages/driver-api/src/capabilities.rs::confirms_context`）。当前没有任何内置驱动声明它：postgres / mysql / sqlite / redis 为 `Partial`，hbase / mongodb / vector 为 `Unsupported`。因此"可写结果在会话替换后失效"没有可触发的真实状态，用真实 UI 写它只会得到一条永远为真的空断言；该断言留在组件层（`ResultTableView.test.tsx`，标注 CM-36/61）。真实 UI 层断言的是可达的那一半（只读、替换后仍可阅读），见 `temporary-result-writeback-journey.ts`。只有某个驱动能确证上下文后，这条正向断言才重新具备 F 层可验证性。
 
-**仍未覆盖的 F 断言（附原因与前置条件）**
+**残余处置（已定级，不再作为待办）**
 
-- **CM-33（F 半：表格并发刷新不影响编辑器资源/上下文）**：契约的数值半由 H 层 `pool_capacity_budget.rs` 承担。写 UI 半的前置条件是先有一个**可归因**的物理连接观测口：桌面同一个库上同时存在 UI 的旧 `ConnectionManager` 会话与 runtime 会话，`pg_stat_activity` 计数无法区分两者，此时任何"不超过 N"的断言都不可归因。应先让 runtime 暴露只读的池/预算计数（或让 `log_runtime_wiring` 打出在借/非空池数量），再补旅程。本轮未做。
-- **CM-16（真实 UI 的候选失败注入）**：组件级与 H 层 journal 已覆盖"失败保留旧会话"；真实旅程需要在切库过程中让候选连接失败（例如先改错端口再切回），属可做但本轮未做——它与 `edit-delete-connection` 的配置突变夹具重叠，收益低于已完成的 CM-08/09 隔离旅程。
-- **CM-63（另一 attach 方）**：桌面没有第二个 attach 方（无多客户端重附着入口），F 侧只剩页面死亡回滚 = `pageUnload.test.ts`；attach/TTL/竞态归 H 与 W1。
+- **CM-16（真实 UI 的候选失败注入）——组件级定级。** "替换失败保留旧会话"由组件测试（`sessionReplacement.test.ts`、`queryPanelSessionSwitch.test.tsx`）与 H 层物理 journal（`p4_usecase_journeys::replacement_rollback_revision_commit_and_replay`）覆盖。真实 UI 注入需要在切库过程中让候选连接失败（例如先把端口改错再切回），与 `edit-delete-connection` 的配置突变夹具重叠，收益低于已完成的 CM-08/09 隔离旅程；**决定不做**，理由与覆盖范围如上。
+- **CM-63（另一 attach 方）——桌面不适用。** 桌面没有第二个 attach 方，F 侧只剩页面死亡回滚（`pageUnload.test.ts`）；attach / TTL / 竞态属 W1，**移交 P7**。
+- **CM-35/36/61 的正向断言（可写结果在会话替换后失效）——首版发布限制。** 产品决定：**首版不提供查询结果的原地写回**（能力门见上一节）。因此这条正向断言在真实 UI 上不可触发，留在组件层；它不是"未做"，而是"首版不提供该能力"的记录。某驱动确证上下文后需重新评估该决定与断言。
 
 交付：
 
