@@ -148,7 +148,10 @@ export interface MultiQueryResult {
 /** IPC events for `execute_query_stream`. Independent of SQL LIMIT. */
 export type QueryStreamEvent =
   | { type: 'executionStarted'; executionId: string }
-  | { type: 'publishedArtifacts'; artifacts: import('../lib/queryResultArtifacts').QueryResultArtifacts }
+  | {
+      type: 'publishedArtifacts';
+      artifacts: import('../lib/queryResultArtifacts').QueryResultArtifacts;
+    }
   | { type: 'statementStart'; index: number; sql: string; columns: ColumnInfo[] }
   | { type: 'rows'; index: number; rows: (Value | null)[][] }
   | { type: 'statementSnapshot'; index: number; result: StatementResult }
@@ -662,6 +665,30 @@ export interface WorkflowOutput {
   template?: string;
 }
 
+export type WorkflowBlockType = 'sessionBlock' | 'transactionBlock';
+
+/**
+ * Block-level retry. The unit is always the whole block — a block never
+ * resumes from the middle — so there is deliberately no per-step count.
+ */
+export interface WorkflowBlockRetry {
+  block: number;
+}
+
+export interface WorkflowBlock {
+  id: string;
+  type: WorkflowBlockType;
+  /** Block target, level 2 of the step > block > workflow > profile chain. */
+  connection?: string;
+  /** Block target (multi-db connections). */
+  database?: string;
+  /** Run this block concurrently with *other* blocks, never with itself. */
+  parallel?: boolean;
+  steps: WorkflowStep[];
+  /** transactionBlock only. */
+  retry?: WorkflowBlockRetry;
+}
+
 export interface WorkflowDefinition {
   id: string;
   name: string;
@@ -674,6 +701,8 @@ export interface WorkflowDefinition {
   /** Default database inherited by data-operation steps (multi-db connections). */
   database?: string;
   steps: WorkflowStep[];
+  /** v2 resource blocks; each block holds its own steps and target. */
+  blocks?: WorkflowBlock[];
   output?: WorkflowOutput;
   timeoutSecs?: number;
   errorHandling?: ErrorHandlingConfig;
