@@ -56,6 +56,30 @@
 
 Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量回归（R）。**
 
+### Wave-3 W3-2 zip 路径守卫收敛（实测 PASS，独立验证 PASS）
+
+- 合并 `583666808`；验证提交 `58c5df2944f1c1a0a8016cc202af84d4583d4344`，8 文件 +40/−92，
+  `rename packages/{workspace-apps/src/zip_path.rs => platform-infra/src/path_safety.rs} (70%)`。
+  验证树隔离指纹 `ddf8aa83c9c103f7042286f7f458f79710e07433`。
+- 合并后全量门禁（HEAD `d98956480` 实测）：`pnpm typecheck` EXIT=0（`error TS` **0 行**）；`npx vitest run` EXIT=0，
+  **602 文件 / 6335 测试全过**，与基线逐字相同；`test:platform-arch` EXIT=0，`0 violation(s), 0 error(s), 3 advisory(ies)`；
+  `test:platform-crates` EXIT=0，`10 core crate(s) tested`；`cargo test -p datazen --lib` EXIT=0 → **1552 passed / 0 failed / 6 ignored**；
+  platform-infra 10/0、workspace-apps 62/0、ai-providers 90/0。
+- **宿主 1555 → 1552 的 −3 正是本轨删掉的那 3 个宿主纯路径测试**（副本换成 `pub use` 后已无意义），算术自洽；
+  新覆盖落在 platform-infra 的 5 个 `path_safety::tests::*`。这是计数约定问题，不是覆盖缺口。
+- 验证方遗留的 **L5 不是轨道缺陷，是它自己的变异探针残留**：`install/tests.rs:101` 断言 `TempDir` 的父目录不产生
+  落盘文件，而 `TempDir` 直接挂在共享 `$TMPDIR` 下 ⇒ 探针短路守卫后真的往 `$TMPDIR/outside.html` 写了 17 字节，
+  重跑因此多出 1 个 failed。验证方删掉残留后复跑 workspace-apps 62/0、宿主 1552/0、树 sha 回到起点。
+  断言写法本身没错，错在把共享临时目录当自有沙箱 —— 已记 `bug-*.md`。
+- L3/L4 文档失准由 `b58f8583b` 修掉：`shared-boundaries-and-ports.md` 待办段改写为已实现事实、
+  `wapps.md:30` 模块表指向 `path_safety`、`path_safety.rs` 模块头的历史叙述更正。
+- `Cargo.lock` 补提交 `9e634012d`：实测差 **3 行**（`ai-providers` 与 `workspace-apps` 各增 `datazen-platform-infra`，
+  `platform-infra` 去 `thiserror 1.0.69`），前两条边正是 W3-1 / W3-2 合并时漏补的。`cargo metadata --locked` EXIT=0。
+- 台账收尾 `d98956480`：B1 / B2 / B4 各自走「独立验证 → 删缺陷文件 → 改 `bugs.md` 状态」，关闭后再复跑门禁复核；
+  `progress.md` 随合并销毁。
+
+**剩余：全量回归（R 阶段）。**
+
 ### Wave-2 收尾（实测）
 
 - 三轨合并：A2 `77be2b19b`、B1 `88a7fdaac`、C3 `d2bb5f4ae`，均零冲突（合并前已 5 次 dry-run 预演）。
@@ -63,7 +87,7 @@ Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量�
   **602 文件 / 6335 测试全过**；`test:platform-arch` EXIT=0，`0 violation(s), 0 error(s), 3 advisory(ies)`；
   `test:platform-crates` EXIT=0，`10 core crate(s) tested`，含 `datazen-platform-infra`。
 - C3 独立验证 V1–V15 全绿 16/16：crate `cargo test` 5 passed；宿主 `cargo test -p datazen --lib`
-  1705 passed / 0 failed / 6 ignored（基线 1710，下沉 5 个单测）；F-11 变异探针 EXIT=1 并报 `VIOLATION F-11`。
+  1705 passed / 0 failed / 6 ignored（基线 1710）—— **此二数已作废**，见「坑」末两条；同一棵树重测实为 1555；F-11 变异探针 EXIT=1 并报 `VIOLATION F-11`。
   验证方工作树指纹首尾逐字节一致（`cd1ffcdee…`）。
 - **D2 已闭合**：`cargo metadata --locked` EXIT=0；三个新成员在入库 lock 中各命中 1。
   合并后 lock 增量**恰好 +9 行**，唯一新增 `datazen-platform-infra`，删除 0，`source = "git"` 噪音 0 ——
@@ -129,7 +153,7 @@ node scripts/generate-builtin-locales.mjs; echo "LOCALES_EXIT=$?"
 DATAZEN_DRIVERS=all node scripts/resolve-drivers.mjs; echo "RESOLVE_EXIT=$?"
 
 # 驱动指纹 = 门禁可比性凭证（实测应恒为该值）
-shasum -a 256 src-tauri/src/driver_init.rs | cut -c1-16   # 9c7c24ef92dd380f
+shasum -a 256 src-tauri/src/driver_init.rs | cut -c1-16   # abbe22d7f80ea761  ← 实测值，旧记录的 9c7c24ef92dd380f 不可复现，是抄错的
 grep -c '^extern crate datazen_driver_' src-tauri/src/driver_init.rs   # 15
 
 cd "$MAIN" && git rev-parse --short HEAD          # 建树后复核主 checkout 未被动过
@@ -174,8 +198,16 @@ cd "$MAIN" && git rev-parse --short HEAD          # 建树后复核主 checkout 
 - **别把自己的基线命令 `cd` 进别人的工作树**：曾把「集成树基线」误 `cd` 进 W3-2 验证树，与验证方抢同一棵树
   （两方同时改写 `Cargo.lock`）。跨树操作前逐条核对路径变量。
 - **宿主基线数字不可跨树沿用**（实测教训，2026-Wave-3)：台账曾记 P4「真基线 1710」与 Wave-2 后「1705」，
-但两棵树在相同驱动指纹（`9c7c24ef92dd380f` / 15 驱动）下实测均为 **1555**，历史日志里也已找不到 1710 的出处。
+但两棵树在相同驱动指纹（`abbe22d7f80ea761` / 15 驱动）下实测均为 **1555**，历史日志里也已找不到 1710 的出处。
 **1552 与 1555 之差 3，正是 W3-2 删除的 3 个宿主纯路径测试**，算术自洽。
 结论：1710/1705 是 Wave-1 把 sql_guard 迁出宿主前的旧数，**已作废，不得作为门禁**。
 唯一合法基线 = **在本树 checkout 基线 commit 实测**，或用同一驱动指纹的对照树实测；
 跨分支、跨树凭记忆比数字，见下一条。
+- **驱动指纹先查 mtime 再下结论**（实测，2026-Wave-3）：`driver_init.rs` mtime `2026-10-16 10:34:26`
+  **早于全部 Wave-2/Wave-3 提交**（14:54 起），即整个 Wave-2+Wave-3 期间该文件一个字节都没变 —— 1555 与 1552
+  出自同一份驱动配置，基线可比性成立。台账原先记的指纹不可复现，是抄错而不是树漂移，已就地更正。
+- **`.driver-file-stash` 陈旧会让 `resolve-drivers.mjs` 退出码 1 硬失败**（实测，2026-10-16）：本树的 stash 建于
+  HEAD `7f32ba2a6057`，此后 `Cargo.lock` / `Cargo.toml` / `src-tauri/Cargo.toml` 都变过，脚本判 `managed-files-changed`
+  拒绝复用。**这是设计行为不是故障** —— 它挡的正是「旧副本覆盖合并结果」这种静默回滚。此时 `driver_init.rs`
+  保持上一版（仍 15 驱动全集），已跑过的门禁结论继续有效；确需重新生成时按脚本提示先 `git diff` 存盘、
+  再 `rm -rf .driver-file-stash`、再原样重跑。**不要**跑 `--restore`。

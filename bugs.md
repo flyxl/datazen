@@ -27,8 +27,9 @@
 | B7 | schema-diff 直接依赖具体 driver crate | [bug-schema-diff-concrete-driver-deps.md](bug-schema-diff-concrete-driver-deps.md) | 开放 · 从未裁定 | `packages/schema-diff/Cargo.toml` 中不再出现任何 `datazen-driver-{mysql,postgres,sqlite}` | 未排期；动手前须先实测 `driver-api` 能力边界 |
 | B8 | platform/adapter.rs 867 行，超单文件 800 行推荐值 | [bug-platform-adapter-oversized.md](bug-platform-adapter-oversized.md) | 开放 · 需专项 | 该文件 ≤ 800 行，且 `test:platform-arch` 与 `cargo test -p datazen --lib` 全绿 | 需专门变更，**不得在任何下沉轨顺手做** |
 | B9 | URL userinfo 密码含 `/` 时整段凭据原样入日志 | [bug-platform-infra-url-credentials-slash-password.md](bug-platform-infra-url-credentials-slash-password.md) | 开放 · 已确认 | 新增单测覆盖 `https://user:pa/ss@host/v1`，且反证 `https://host/path@x` 不被误改写 | 宿主既有（`7c2151985` 即同正则），`platform-infra` 逐字搬运；不阻断 Wave-3 |
+| B10 | 安装测试把系统共享临时目录当成自己的沙箱 | [bug-workspace-apps-test-asserts-shared-tmpdir.md](bug-workspace-apps-test-asserts-shared-tmpdir.md) | 开放 · 已确认 | `install/tests.rs` 中针对 `TempDir` **直接父目录**的断言归零（按该文件范围检索计 0），改为断言本次测试自建的沙箱顶层；该 crate 测试全绿 | 本次迁移引入（`d57690b29` = Wave-2 · B1），**非宿主既有** |
 
-合计 **9 条**：进行中 0 · 开放 6 · 已关闭 3。
+合计 **10 条**：进行中 0 · 开放 7 · 已关闭 3。
 
 ## 维护纪律
 
@@ -49,7 +50,7 @@
 
 ---
 
-条目数、文件名与状态于集成分支 `b58f8583b` 实测（`wc -l bug-*.md` = 6 个文件，B1 / B2 / B4 三份已随关闭删除）。
+条目数、文件名与状态于本次登记 B10 时实测（`ls bug-*.md` = 7 个文件，B1 / B2 / B4 三份已随关闭删除）。
 
 **关闭次序是「先删缺陷文件、再复跑门禁」，不可颠倒。** B1 / B2 的关闭条件是全仓某个字面量归零，
 而缺陷文件自身就写着那个字面量（`bug-ai-providers-redact-endpoint-duplicate.md` 3 处、
