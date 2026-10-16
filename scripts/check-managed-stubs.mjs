@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Fail if git-tracked managed files look injected.
  * Run on a clean checkout (before resolve-drivers) so CI catches accidental
@@ -8,7 +9,7 @@
  */
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { MANAGED_FILES } from './driver-file-stash.mjs';
 import { fileHasInjection } from './driver-stash-precommit.mjs';
 
@@ -55,6 +56,6 @@ function main() {
   process.exit(checkManagedStubs());
 }
 
-if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {
+if (isDirectInvocation(import.meta.url)) {
   main();
 }

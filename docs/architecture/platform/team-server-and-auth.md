@@ -654,7 +654,7 @@ flowchart LR
 
 ## 12. 出站网络策略
 
-`NetworkProvider` 在**每次实际建连前**执行解析与校验，不信任请求体中的任何地址：
+目标服务端 `NetworkProvider` 在**每次实际建连前**执行解析与校验，不信任请求体中的任何地址。当前端口只实现数据库路由/隧道；AI HTTP 已使用独立可注入的 `datazen_ai_providers::http::HttpClient` 出站边界，服务端需注入默认 `PublicInternet` 或管理员策略（见 [AI 架构](../backend/ai.md#ai-http-出站边界)）：
 
 ```mermaid
 flowchart TD

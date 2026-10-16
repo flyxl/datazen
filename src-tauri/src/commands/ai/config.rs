@@ -74,9 +74,14 @@ pub async fn ai_fetch_remote_models(
         }
     };
 
-    crate::ai::custom::fetch_remote_models(proto, &endpoint, &api_key)
-        .await
-        .cmd_err("ai_fetch_remote_models")
+    crate::ai::custom::fetch_remote_models_with_client(
+        datazen_ai_providers::http::HttpClient::desktop(),
+        proto,
+        &endpoint,
+        &api_key,
+    )
+    .await
+    .cmd_err("ai_fetch_remote_models")
 }
 
 pub(crate) async fn ai_validate_config_impl(

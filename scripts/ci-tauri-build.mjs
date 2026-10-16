@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * ci-tauri-build.mjs — run the Tauri CLI using .driver-features.json.
  *
@@ -19,7 +20,7 @@ import { spawnSync } from 'child_process';
 import { createRequire } from 'module';
 import { tmpdir } from 'os';
 import { resolve, dirname, join, basename } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { stagingMarkerPath } from './pack-ep.mjs';
 import { DEFAULT_REPO, manifestUrlForVariant, normalizeVariant } from './release-variants.mjs';
 
@@ -325,6 +326,6 @@ function main() {
   process.exit(result.status ?? 1);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isDirectInvocation(import.meta.url)) {
   main();
 }

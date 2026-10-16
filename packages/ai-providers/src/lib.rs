@@ -16,6 +16,7 @@
 pub mod anthropic;
 pub mod custom;
 pub mod deepseek;
+pub mod http;
 pub mod ollama;
 pub mod openai;
 pub mod protocol;
