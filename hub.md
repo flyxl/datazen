@@ -178,12 +178,26 @@ P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM
 
 | 轨 | HEAD | 状态 |
 | --- | --- | --- |
-| w4-b3-summary | `aebec3b33` | **READY_FOR_TEST**，已派全新 Tester（自建 detached 树 /tmp/dz-verify-b3） |
-| w4-panic-gate | `a77bbb99e` | **READY_FOR_TEST**，已派全新 Tester |
+| w4-b3-summary | `aebec3b33` | READY_FOR_TEST → Tester `2f07527c`（自建 detached 树 /tmp/dz-verify-b3）**在跑** |
+| w4-panic-gate | `a77bbb99e` | READY_FOR_TEST → Tester `834a9c7d`（/tmp/dz-verify-panic）**在跑** |
+| w4-test-guards | `e9c7ed9a1` | READY_FOR_TEST → Tester `6d74abdf`（/tmp/dz-verify-guards）**在跑** |
 | w4-redact-url | `dd162813d` | 实现已提交，GATE2-5 串行跑中 |
-| w4-test-guards | 2 commits | 进行中 |
 | w4-clock | 未提交 | 进行中 |
+| w4-b8-adapter | 建树完成（`ae430e2b3`） | Coder `9e3be301` 在跑 |
 | w4-ownerref | `bc36cd121` | **零改动收尾**；轨树/分支/target 已回收；B6 改判 → B12 |
+
+三条 Tester 都被要求做**对抗性**验证，共同要求：自己造变异（不照抄提交方）、必须做**负向对照**（在基线上复现缺陷）、
+必须验「测试/门禁是否已失去判别力」，并全程记录首尾 HEAD 与工作区 sha。
+
+- w4-panic-gate 的 Tester 额外被要求攻击**反空扫**：把 `TARGET_CRATES` 指向不存在的 crate / 无 `src/` 的成员，
+  门禁必须 ERROR 而非 PASS；并逐条构造 7 类可能逃过掩码器的裸 `unwrap()`（空格变体、生命周期、`r#"…"#`、
+  `impl` 块、`macro_rules!`、注释之后…）。
+- w4-test-guards 的 Tester 额外被要求证明**新测试仍然抓得住真实的 zip-slip 回归**：
+  在生产代码里制造一次真实越权，测试必须变红；若越权而测试仍绿，即 blocker。
+
+- **B14（新登记）**：w4-test-guards 顺带发现 `install/tests.rs:426` 对 `std::env::temp_dir()` 做**绝对零**断言
+  （同文件 `:369` 是差值形态，那才是对的形状）。与 B10 同类而不同位，故 B10 的关闭条件不覆盖它。
+  **已订正提交方的判断**：把 `:426` 改成差值形态是**纯测试改动**，不必动生产代码。
 
 值得记的三条实测：
 
