@@ -169,7 +169,7 @@ git -C "$MAIN" worktree add -b "$BR" "$WT" "$SHA"   # 提交方
 cd "$WT"
 ln -sfn "$MAIN/node_modules" "$WT/node_modules"     # ① 必须在下面两个生成脚本之前
 node scripts/generate-builtin-locales.mjs          # ②
-DATAZEN_DRIVERS=all node scripts/resolve-drivers.mjs   # ③
+node scripts/resolve-drivers.mjs               # ③ 裸跑即 basic，不需要环境变量
 
 # 驱动指纹 = 跨 worktree 门禁可比性的凭证
 shasum -a 256 src-tauri/src/driver_init.rs | cut -c1-16
@@ -178,17 +178,41 @@ grep -c "^extern crate datazen_driver_" src-tauri/src/driver_init.rs
 cd "$MAIN" && git rev-parse --short HEAD          # 建树后复核主 checkout 未被动过
 ```
 
-### 为什么要 `DATAZEN_DRIVERS=all`
+### 驱动选型：裸跑默认 `basic`，不要改成 `all`
 
 `src-tauri/src/driver_init.rs` 是 codegen 产物，内容随驱动选型而变（实测）：
 
 | 调用方式 | 驱动数 | 文件大小 |
 | --- | --- | --- |
-`node scripts/resolve-drivers.mjs`（裸） | 4 | 807 B |
+`node scripts/resolve-drivers.mjs`（裸跑） | 4 | 807 B |
 `DATAZEN_DRIVERS=all node scripts/resolve-drivers.mjs` | 15 | 1625 B |
 
-跨 worktree 比对测试结果时，驱动集合必须一致，否则「宿主少了几个测试」这类结论毫无意义（见 §4）。
-**判断两棵树的驱动配置是否可比，就比这个文件的哈希**，指纹以命令现算为准，别照抄文档或台账里的值。
+**裸跑就是 `basic`，不需要任何环境变量。** 这是仓库默认值，三处一致：
+
+- `scripts/resolve-drivers.mjs:152-154` —— 无 `--drivers` 且无 `DATAZEN_DRIVERS` 时落到 `basic`；
+- `scripts/new-feature-worktree.sh:3` —— 用 `--drivers=${NEW_WT_DRIVERS:-basic}`；
+- `pnpm tauri:dev` —— 同样走 basic。
+
+所以上面第 、 步原样可用。
+
+跨 worktree 比对测试结果时，是不是该统一用 `all` 才可比？**不需要。** 实测同一提交 `bc36cd121` 下，
+basic（4 驱动 / 807 B）与 all（15 驱动 / 1625 B）各跑一次 `cargo test -p datazen --lib`，结论行**逐字相同**，退出码都是 0：
+
+```
+basic: test result: ok. 1552 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out
+all  : test result: ok. 1552 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out
+```
+
+驱动选型改变的是 `driver_init.rs` 与宿主的可选依赖，**不改变这套单测的用例集合**。
+
+真正的不变量只有一条：**参与同一次比对的树必须用同一种驱动选型**。不满足时，「宿主少了几个测试」
+这类结论才真的毫无意义（见 §4）。判断靠**现算指纹**，别照抄本文或任何台账里的值：
+
+```
+bash
+shasum -a 256 src-tauri/src/driver_init.rs | cut -c1-16
+grep -c "^extern crate datazen_driver_" src-tauri/src/driver_init.rs
+```
 
 ### 三条顺序坑
 

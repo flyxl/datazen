@@ -164,7 +164,7 @@ Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量�
 - worktree 的 `node_modules` 是符号链接 ⇒ 裸 `pnpm run` 退出 1。用 `pnpm --config.verify-deps-before-run=false <script>`。**禁止 `pnpm install`**。
 - `resolve-drivers.mjs` 会按设计弄脏 `src-tauri/Cargo.toml` 和 `Cargo.lock`；merge 前先 `git checkout --` 复位。
 - 各轨独立 `CARGO_TARGET_DIR`（`/tmp/dz-target-*`）；同一目录同一时刻只跑一个 cargo。
-- 建 worktree 用 `NEW_WT_DRIVERS=all`（`new-feature-worktree.sh` 不带该参数时会引导失败）。
+- 建 worktree **不需要**设驱动环境变量：`new-feature-worktree.sh` 默认 `--drivers=basic`，`resolve-drivers.mjs:152-154` 的仓库默认值也是 `basic`。只有确实要全驱动时才设 `NEW_WT_DRIVERS=all`。
 - `git branch -d` 必须**从集成分支 worktree** 执行；从主 checkout 执行会因 HEAD=main 拒绝。
 - 临时文件只放 `/tmp`；长命令输出落 `LOG="$(mktemp -t x).log"`，`echo "EXIT=$?"` 单独一行。
 
@@ -173,7 +173,8 @@ Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量�
 完整配方已提升为正式文档 `docs/development/worktree-isolation.md` §7 —— 台账合并进 main 后即销毁，配方必须仍能从文档读出来。
 台账只留本次的实测补充：
 
-- 用它建过 W3-1 / W3-2 两棵验证树；全驱动指纹 `9c7c24ef92dd380f` / 15 驱动 / 1625 B，订正过程见「坑」末两条。
+- 用它建过 W3-1 / W3-2 两棵验证树与本波 6 条轨；当时指纹是全驱动 `9c7c24ef92dd380f` / 15 驱动 / 1625 B，订正过程见「坑」末两条。
+- **实测：宿主测试对驱动选型不敏感。** 同一提交 `bc36cd121` 下 basic（4 驱动 / 807 B）与 all（15 驱动 / 1625 B）各跑一次 `cargo test -p datazen --lib`，结论行逐字相同：`1552 passed; 0 failed; 6 ignored`，退出码都是 0。跨树比对的真不变量是「同一批树用同一选型」，**不是**「统一用 all」。
 - 验证方另有 `/tmp/dz-bootstrap-verify-tree.sh <路径> <commit> <tag>`（detached 专用），实测可跑；它在系统临时目录，不入库。
 ### Rust 约定
 
