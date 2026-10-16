@@ -13,22 +13,40 @@
 └──────────────────────────┬──────────────────────────────┼──────────────────┘│
                            │ Tauri IPC                    │ datazen://{id}/…  │
 ┌──────────────────────────▼──────────────────────────────▼──────────────┐    │
-│ src-tauri: commands/wapps.rs → wapps/{mod,manifest,install,storage}    │    │
+│ src-tauri: commands/wapps.rs → wapps/{mod, protocol}                   │    │
+│ 内核 packages/workspace-apps = datazen-workspace-apps                   │    │
 │ register_uri_scheme_protocol("datazen") 资产服务 + open 深链             │    │
 │ execute_driver_command（复用，零改动）                                    │    │
 └─────────────────────────────────────────────────────────────────────────┘    │
         ▲ sandbox iframe（opaque origin，@datazen/wapp-sdk 或裸 JS）◄───────────┘
 ```
 
+## 内核下沉（Wave-2 track B1）
+
+后端按 **形态中立 / 形态相关** 切成两层，宿主侧保留一层 re-export 门面：
+
+| 层 | 位置 | 内容 |
+|---|---|---|
+| 内核（形态中立） | `packages/workspace-apps`（crate `datazen-workspace-apps`） | `manifest`（schema + 规则 1–7）、`install`（ZIP / 目录安装）、`storage`（按 wapp 隔离的键值存储）、`zip_path`（zip 条目路径守卫） |
+| 宿主（形态相关） | `src-tauri/src/wapps/` | `protocol`（`datazen://` 协议桥 + IPC）、`WappManager`（启动期扫描 + `.enabled` 标记）、`mod.rs`（门面） |
+| 宿主集成测试 | `src-tauri/src/wapps/integration_tests.rs` | 每个用例都驱动宿主命令层（`commands::wapps::*_impl` + `TestAppState` + `WappManager`），故留在宿主 |
+
+关键约定：
+
+- **存储根参数化**：内核不读取任何 ambient 路径、不持有连接、不发网络请求。桌面端传 `{appData}/wapps`，将来的服务端适配器传自己的存储根，**内核公开函数签名保持不变**（`install_from_zip(zip_path, wapps_dir)` / `install_from_dir(src_dir, wapps_dir)` / `storage_*(wapps_dir, wapp_id, key[, value])`）。
+- **零 HTTP、零桌面壳依赖**：由 `scripts/check-platform-crate-boundaries.mjs` 的 F-09 / F-10 强制。F-10 只禁服务端框架，HTTP *客户端* 是 `packages/ai-providers` 的职责，本内核两者都不引入。
+- 门面在 `src-tauri/src/wapps/mod.rs` 顶层 `pub use datazen_workspace_apps::{install, manifest, storage}` 及扁平名，宿主所有 `crate::wapps::*` 调用点一行未改。
+- 随 wapp installer 下沉而失去唯一调用方的 `src-tauri/src/util/theme_zip.rs` 已按死代码纪律删除；其追加的三条守卫（空名 / NUL / ` -> `）改由 crate 内 `empty_nul_and_symlink_names_are_rejected` 钉住。宿主 `app_data_archive::validate_zip_entry_path` 保留（备份 / 还原归档仍用）。
+
 ## 目录与安装
 
-安装根：`{appData}/wapps/{publisher}.{name}/`（目录名 == manifest.id）。zip/目录两态安装均先进入 `.datazen-staging-*` 临时目录跑完整规则校验再原子改名；同 id 重装自动备份 `{id}.old.bak`。卸载删除整目录——**含 `.storage.json` 用户数据**（确认弹窗已明示）。
+安装根：`{appData}/wapps/{publisher}.{name}/`（目录名 == manifest.id）。该根**不由内核自行推导**：`install_from_zip` / `install_from_dir` / `storage_get` / `storage_set` / `storage_remove` 一律把 `wapps_dir` 作为入参，由桌面端适配器传入 `{appData}/wapps`（详见上文「内核下沉」）。zip/目录两态安装均先进入 `.datazen-staging-*` 临时目录跑完整规则校验再原子改名；同 id 重装自动备份 `{id}.old.bak`。卸载删除整目录——**含 `.storage.json` 用户数据**（确认弹窗已明示）。
 
-源码包位于 [`packages/wapps/`](../../../packages/wapps/)（`community.slate-blue` 纯主题示例、`datazen.playground` 全功能示例），由 Rust `fixture_tests` 与 vitest `wappThemes.test.ts` 双向守护。
+源码包位于 [`packages/wapps/`](../../../packages/wapps/)（`community.slate-blue` 纯主题示例、`datazen.playground` 全功能示例），由内核 crate 的 `fixture_tests` 与 vitest `wappThemes.test.ts` 双向守护。
 
 ## Manifest（apiVersion = 2）
 
-`src-tauri/src/wapps/manifest.rs` 为唯一权威 schema（serde camelCase + deny_unknown_fields）。要点：
+`packages/workspace-apps/src/manifest.rs` 为唯一权威 schema（serde camelCase + deny_unknown_fields）。要点：
 
 - id：`^[a-z0-9][a-z0-9-]{0,30}\.[a-z][a-z0-9-]{1,31}$`
 - `contributes.pages[]`：`{id,title,icon?,showIn?="workspace"}`
@@ -82,7 +100,8 @@ Wapp 主题在 IPC 之后才注入 CSS，首屏无法读取 pack token。`syncWe
 
 ## 测试分层
 
-- Rust：`cargo test -p datazen --lib wapps`（manifest 规则/协议安全/存储隔离/install 真实路径/fixture 与 packages/wapps 守护）
+- Rust 内核：`cargo test -p datazen-workspace-apps`（manifest 规则 / install 真实路径 / 存储隔离 / fixture 与 packages/wapps 双向守护 / zip 路径守卫）
+- Rust 宿主：`cargo test -p datazen --lib wapps`（`datazen://` 协议与协议安全 45 条、命令层 / bootstrap / 安装集成 19 条）
 - Host 单测：桥接语义+安全（wappBridge*.test）、主题管线（themePackApply.wappTheme.test）、壳集成（WappPageShell.bridge）、store、管理页/工作区组件
 - E2E：`e2e/specs/wapps.spec.ts` J1–J5（装→列表→Tab→桥探针→外观→停用卸载），探针经桥 `storage.set` 落盘后磁盘对账（不依赖帧内 WebDriver 自动化）
 

@@ -11,7 +11,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::WAPP_API_VERSION;
+use crate::WAPP_API_VERSION;
 
 /// Total uncompressed package size limit (rule 6).
 pub const MAX_WAPP_UNCOMPRESSED: u64 = 50 * 1024 * 1024;
@@ -201,12 +201,16 @@ pub fn validate_manifest(manifest: &WappManifest, wapp_dir: &Path) -> Result<(),
     }
 
     // Rule 2: API version handshake; mismatch means a newer host is required.
+    //
+    // The message names the host app but not a concrete version: the kernel
+    // cannot know which DataZen build is hosting it, and threading the app
+    // version through here would change this function's signature. The
+    // `env!("CARGO_PKG_VERSION")` this used to interpolate was the *kernel
+    // crate's* version, so it advertised a misleading `>= 0.0.1`.
     if manifest.api_version != WAPP_API_VERSION {
         return Err(format!(
-            "unsupported apiVersion: {} (expected {WAPP_API_VERSION}); \
-             需要更新版本的 DataZen >= {}",
-            manifest.api_version,
-            env!("CARGO_PKG_VERSION")
+            "unsupported apiVersion: {} (expected {WAPP_API_VERSION}); 需要更新版本的 DataZen",
+            manifest.api_version
         ));
     }
 
@@ -325,7 +329,7 @@ pub(crate) fn safe_declared_path(wapp_dir: &Path, declared: &str) -> Result<Path
         return Err("empty declared path".into());
     }
 
-    let rel = crate::app_data_archive::validate_zip_entry_path(declared)
+    let rel = crate::zip_path::validate_zip_entry_path(declared)
         .map_err(|e| format!("unsafe declared path `{declared}`: {e}"))?;
 
     for component in rel.components() {
