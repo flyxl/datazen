@@ -38,11 +38,21 @@
  *     `src/tests.rs`) is a *separate file*; the declaration is skipped here and
  *     the other file is scanned, so its `unwrap()`s are reported;
  *   * `#[cfg(any(test, …))]` is not recognised as a test attribute;
- *   * a qualified path that only *names* a function called `unwrap` reads the
- *     same as one that calls the std helper, so `use foo::unwrap;` turns red.
- *     That is the price of catching `Option::unwrap` in value position
- *     (`.map(Option::unwrap)` panics on the first `None` exactly as a call
- *     does), and it is the direction this guard must err in.
+ *   * a qualified path that only *names* an item called `unwrap` reads the same
+ *     as one that calls the std helper. Measured instances, in ascending
+ *     implausibility: `use foo::unwrap;` (an item), `my::unwrap::<u8>(x)`
+ *     (a generic call), `my::unwrap!(x)` (a **macro**, not a function or a
+ *     method) and the non-generic `Option::<u8>::unwrap::<u8>(y)`. Every one
+ *     turns red, and that is the price of catching `Option::unwrap` in value
+ *     position (`.map(Option::unwrap)` panics on the first `None` exactly as
+ *     a call does). Separating them would take type information this guard does
+ *     not have, and err-red is the direction that gets noticed and fixed.
+ *   * a `#[cfg(test)]` item whose *signature* contains a `{` before the body —
+ *     `fn helper() -> [u8; { 1 }] { … }` — ends its span at that brace, so the
+ *     body is not exempt and its `unwrap()`s are reported. Pre-existing
+ *     behaviour of `itemEnd`, left alone on purpose: a brace inside a function
+ *     signature is vanishingly rare, and a brace-matching rewrite of `itemEnd`
+ *     risks more than this false positive costs.
  *
  * A missed exemption is a false positive, and a false positive gets fixed. A
  * missed violation would be a silent hole, which is the failure this design is
