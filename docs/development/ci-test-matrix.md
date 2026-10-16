@@ -15,7 +15,7 @@
 | driver-api | ✅ | 随构建链接 | `cargo test -p datazen-driver-api --lib` |
 | ai-api | ✅ | 随构建链接 | `cargo test -p datazen-ai-api --lib` |
 | 平台内核 crate（`runtime` / `application` / `platform-api` / `server`） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
-| 平台 crate 架构门禁（F-01..F-07） | ✅ `pnpm test:platform-arch`，附变异自证 `pnpm test:platform-arch:mutations` | ❌ | `pnpm test:platform-arch` |
+| 平台 crate 架构门禁（全部平台边界规则） | ✅ `pnpm test:platform-arch`，附变异自证 `pnpm test:platform-arch:mutations` | ❌ | `pnpm test:platform-arch` |
 | Basic path 驱动 lib | ✅ 四 crate 并行 | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
 | Basic path 驱动集成测试（`tests/`，32 个文件） | ✅ `--tests` 编译并运行；CI 无数据库，live 层在命令里**显式豁免**（见 §2.2） | Basic SKU 内嵌 | `cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests`；live 层**默认严格**（验不到即失败），本地无数据库时加 `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` 声明豁免，`DATAZEN_CONTRACT_REQUIRE_LIVE=1` 压过豁免、强制严格 |
 | 非 basic path 驱动集成测试（19 个文件：sqlserver 11 / clickhouse 3 / duckdb 3 / mongodb 2） | ❌ 未进 PR 矩阵 | **All SKU** 构建时编译链接 | 改这些驱动时本地 `cargo test -p datazen-driver-<id> --tests` |
@@ -234,7 +234,7 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 | Rust | 见下表 | Rust **stable** |
 | 清理 | `driver-file-stash.mjs restore` | 恢复被 inject 的 tracked 文件（`if: always()`） |
 | ai-api | `cargo test -p datazen-ai-api --lib` | 在 restore **之后**执行（不依赖 inject 产物） |
-| 架构门禁 | `pnpm test:platform-arch` | F-01..F-07 crate 依赖闭包检查，**阻塞** |
+| 架构门禁 | `pnpm test:platform-arch` | 全部平台边界规则检查，**阻塞** |
 | 内核 crate 单测 | `pnpm test:platform-crates` | 集合由脚本按 LAYERS 发现 |
 | 门禁自证 | `pnpm test:platform-arch:mutations` | 变异证明，**job 内最后一步** |
 
@@ -263,7 +263,7 @@ pnpm test:platform-crates
 pnpm test:platform-arch:mutations
 ```
 
-### 2.3 平台 crate 架构门禁（F-01..F-07）
+### 2.3 平台 crate 架构门禁（全部平台边界规则）
 
 规则正文见 [shared-boundaries-and-ports.md](../architecture/platform/shared-boundaries-and-ports.md) §2.4，
 执行器是 `scripts/check-platform-crate-boundaries.mjs`。

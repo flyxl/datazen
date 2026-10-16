@@ -25,3 +25,9 @@ Independent verification follow-up:
 - Corrected the stale literal CI step name in shared-boundaries-and-ports.md §8.3 to match ci.yml.
 - `rg` checked docs for equivalent old step-name references: exactly this one literal step-name reference was stale. Other F-01..F-07 prose ranges remain in ci-test-matrix.md and shared-boundaries-and-ports.md, including historical implementation explanations; no code changes in this follow-up.
 - `git diff --check`: EXIT=0. Documentation-only follow-up; no test rerun required.
+
+Current documentation scope cleanup:
+- Replaced current F-01..F-07 gate coverage labels in ci-test-matrix.md and shared-boundaries-and-ports.md with all platform boundary rules / the §2.4 rule table.
+- Removed obsolete source-line/test-count totals from §8.2; corrected the driver-type isolation responsibility comparison.
+- The sole remaining F-01..F-07 range is explicitly historical, limited to the initial Rust dependency path and excluding TS scanning/later rules.
+- `git diff --check`: EXIT=0. Documentation-only; no test rerun.
