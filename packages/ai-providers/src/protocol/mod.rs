@@ -76,6 +76,33 @@ pub(crate) fn normalize_base_url(endpoint: &str) -> String {
     base.to_string()
 }
 
+/// Redact a user-supplied provider endpoint so it is safe to write to logs.
+///
+/// Credentials embedded in the userinfo section (`scheme://user:pass@host`) collapse to
+/// `scheme://***@host`, and the whole query string is replaced by `?[redacted]` — endpoints
+/// are commonly pasted with an API token in the query, so it is dropped wholesale rather
+/// than key by key.
+pub(crate) fn redact_endpoint_for_log(endpoint: &str) -> String {
+    let trimmed = endpoint.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let without_query = match trimmed.split_once('?') {
+        Some((base, _)) => format!("{base}?[redacted]"),
+        None => trimmed.to_string(),
+    };
+    let Some((scheme, rest)) = without_query.split_once("://") else {
+        // No scheme separator: there is no userinfo section to mask.
+        return without_query;
+    };
+    let authority_end = rest.find('/').unwrap_or(rest.len());
+    let (authority, tail) = rest.split_at(authority_end);
+    match authority.split_once('@') {
+        Some((_userinfo, host)) => format!("{scheme}://***@{host}{tail}"),
+        None => without_query,
+    }
+}
+
 /// Convert HTTP status + body to AiError.
 ///
 /// For 429 responses, the `Retry-After` header value is passed via
@@ -293,7 +320,7 @@ pub(crate) fn log_http_error(
 }
 
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 
 #[cfg(test)]
 mod tests {
@@ -323,6 +350,27 @@ mod tests {
             normalize_base_url("https://api.anthropic.com/v1/messages"),
             "https://api.anthropic.com"
         );
+    }
+
+    #[test]
+    fn redact_endpoint_for_log_masks_userinfo_credentials() {
+        assert_eq!(
+            redact_endpoint_for_log("https://alice:hunter2@llm.example/v1"),
+            "https://***@llm.example/v1"
+        );
+        assert_eq!(
+            redact_endpoint_for_log("  http://bob:pw@host:8080/v1?token=abc  "),
+            "http://***@host:8080/v1?[redacted]"
+        );
+    }
+
+    #[test]
+    fn redact_endpoint_for_log_leaves_plain_endpoints_intact() {
+        assert_eq!(
+            redact_endpoint_for_log("https://llm.example/v1"),
+            "https://llm.example/v1"
+        );
+        assert_eq!(redact_endpoint_for_log("   "), "");
     }
 
     #[test]

@@ -791,7 +791,7 @@ mod tests {
 
     #[test]
     fn build_request_body_with_previous_response_id() {
-        use crate::ai::protocol::test_support::protocol_config;
+        use super::super::test_support::protocol_config;
 
         let cfg = protocol_config("http://localhost");
         let req = CompletionRequest {
@@ -828,7 +828,7 @@ mod tests {
 
     #[tokio::test]
     async fn complete_success_parses_output() {
-        use crate::ai::protocol::test_support::{protocol_config, sample_request};
+        use super::super::test_support::{protocol_config, sample_request};
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -870,7 +870,7 @@ mod tests {
 
     #[tokio::test]
     async fn stream_complete_parses_responses_sse() {
-        use crate::ai::protocol::test_support::{collect_stream, protocol_config, sample_request};
+        use super::super::test_support::{collect_stream, protocol_config, sample_request};
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -907,7 +907,7 @@ mod tests {
 
     #[tokio::test]
     async fn probe_success() {
-        use crate::ai::protocol::test_support::protocol_config;
+        use super::super::test_support::protocol_config;
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 

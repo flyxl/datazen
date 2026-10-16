@@ -11,7 +11,6 @@ use super::custom::CustomProvider;
 use super::deepseek::DeepSeekProvider;
 use super::ollama::OllamaProvider;
 use super::openai::OpenAiProvider;
-use crate::store::Store;
 
 pub struct AiProviderRegistry {
     providers: Arc<RwLock<HashMap<AiProviderType, Arc<dyn AiProvider>>>>,
@@ -28,28 +27,39 @@ impl AiProviderRegistry {
         }
     }
 
-    /// Register built-in + external providers and restore the saved config.
+    /// Register built-in + external providers.
     /// Safe to call repeatedly; only the first call does work.
-    pub async fn ensure_registered(&self, store: &Store) {
+    ///
+    /// Returns `true` when this call performed that one-time registration. The
+    /// caller uses the flag to apply persisted config exactly once, preserving the
+    /// pre-split behaviour where registration and config restore were one step.
+    pub async fn ensure_registered(&self) -> bool {
         if self.registered.load(Ordering::Acquire) {
-            return;
+            return false;
         }
         let _guard = self.register_lock.lock().await;
         if self.registered.load(Ordering::Acquire) {
-            return;
+            return false;
         }
 
         let t = std::time::Instant::now();
         register_ai_providers(self).await;
-        if let Some(ai_config) = store.get_ai_config().await {
-            if let Some(provider) = self.get(&ai_config.provider_type).await {
-                if let Err(e) = provider.initialize(&ai_config).await {
-                    tracing::warn!("Failed to initialize saved AI provider: {e}");
-                }
-            }
-        }
         self.registered.store(true, Ordering::Release);
         tracing::info!("[startup] AI providers ready: {:?}", t.elapsed());
+        true
+    }
+
+    /// Re-apply a persisted provider config to the matching provider.
+    ///
+    /// Deliberately separate from [`Self::ensure_registered`]: the caller owns config
+    /// persistence (encrypted store, settings import) and hands the loaded config in, so
+    /// this crate keeps no dependency on any host storage type.
+    pub async fn restore_config(&self, config: &AiProviderConfig) {
+        if let Some(provider) = self.get(&config.provider_type).await {
+            if let Err(e) = provider.initialize(config).await {
+                tracing::warn!("Failed to initialize saved AI provider: {e}");
+            }
+        }
     }
 
     pub async fn register(&self, provider: Arc<dyn AiProvider>) {
@@ -154,8 +164,96 @@ mod tests {
         let all = registry.all_providers().await;
         assert!(all.len() >= 2);
     }
-}
 
+    #[tokio::test]
+    async fn ensure_registered_reports_the_one_time_registration_only_once() {
+        let registry = AiProviderRegistry::new();
+        assert!(registry.ensure_registered().await);
+        assert!(!registry.ensure_registered().await);
+
+        // Built-ins are keyed by provider type, so a repeated registration would be
+        // invisible in the map — the flag is the only observable difference.
+        let types = registry.available_providers().await;
+        assert!(types.len() >= 5);
+        assert!(types.contains(&AiProviderType::Ollama));
+    }
+
+    #[tokio::test]
+    async fn restore_config_initializes_the_matching_provider() {
+        use super::super::protocol::test_support::sample_request;
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(header("Authorization", "Bearer restored-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{"message": {"content": "Restored"}, "finish_reason": "stop"}],
+                "model": "gpt-test"
+            })))
+            .mount(&server)
+            .await;
+
+        let registry = AiProviderRegistry::new();
+        registry.register(Arc::new(OpenAiProvider::new())).await;
+        registry
+            .restore_config(&AiProviderConfig {
+                provider_type: AiProviderType::OpenAi,
+                api_key: Some("restored-key".into()),
+                endpoint: Some(format!("{}/v1", server.uri())),
+                model: "gpt-test".into(),
+                max_tokens: 200_000,
+                extra: serde_json::Value::Null,
+            })
+            .await;
+
+        let provider = registry.get(&AiProviderType::OpenAi).await.unwrap();
+        let resp = provider.complete(&sample_request()).await.unwrap();
+        assert_eq!(resp.content, "Restored");
+    }
+
+    #[tokio::test]
+    async fn restore_config_survives_an_invalid_config() {
+        use super::super::protocol::test_support::sample_request;
+
+        let registry = AiProviderRegistry::new();
+        registry.register(Arc::new(OpenAiProvider::new())).await;
+        // No API key -> initialize() fails -> the failure is logged, not propagated,
+        // and the provider stays uninitialized (same as the pre-split startup path).
+        registry
+            .restore_config(&AiProviderConfig {
+                provider_type: AiProviderType::OpenAi,
+                api_key: None,
+                endpoint: None,
+                model: "gpt-test".into(),
+                max_tokens: 200_000,
+                extra: serde_json::Value::Null,
+            })
+            .await;
+
+        let provider = registry.get(&AiProviderType::OpenAi).await.unwrap();
+        let err = provider.complete(&sample_request()).await.unwrap_err();
+        assert!(matches!(err, AiError::NotConfigured(_)));
+    }
+
+    #[tokio::test]
+    async fn restore_config_ignores_a_provider_type_that_is_not_registered() {
+        let registry = AiProviderRegistry::new();
+        registry
+            .restore_config(&AiProviderConfig {
+                provider_type: AiProviderType::DeepSeek,
+                api_key: Some("sk-test".into()),
+                endpoint: None,
+                model: "deepseek-chat".into(),
+                max_tokens: 200_000,
+                extra: serde_json::Value::Null,
+            })
+            .await;
+
+        assert!(registry.available_providers().await.is_empty());
+    }
+}
 /// Registers built-in AI providers and discovers external providers via `inventory`
 /// into an existing registry (used for deferred / in-place startup warm-up).
 pub async fn register_ai_providers(registry: &AiProviderRegistry) {

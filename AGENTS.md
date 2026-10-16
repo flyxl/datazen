@@ -31,7 +31,7 @@ datazen/
 │   └── extensions/              # 自动生成注册文件（generated.ts / generated-locales.ts / generated-pro.ts）
 ├── src-tauri/                   # Rust 后端
 │   ├── src/
-│   │   ├── ai/                  # AI Provider 实现 / protocol / context
+│   │   ├── ai/                  # AI 门面 / 预算 / 取消 / context / prompt 解析（provider 与 protocol 实现已下沉 packages/ai-providers）
 │   │   ├── commands/            # Tauri IPC 命令
 │   │   ├── db/                  # DriverRegistry 门面（re-export → packages/runtime）
 │   │   ├── mcp/                 # MCP Server/Client
@@ -54,6 +54,7 @@ datazen/
 │   ├── runtime/                  # Rust: 共享内核（driver_registry / schema_cache / sql_guard 等已迁入实现）
 │   ├── backend-client/           # JS: 远端 / 浏览器侧 BackendClient 端口实现
 │   ├── ai-api/                  # Rust: AiProvider trait + 工厂 + 消息/调用协议模型
+│   ├── ai-providers/            # Rust: OpenAI/Anthropic/DeepSeek/Ollama/Custom provider 适配 + wire protocol 实现（纯客户端，不依赖 Tauri）
 │   ├── drivers/                 # path 驱动 crate（测试严格写在各 crate 内）
 │   │   └── <id>/                # Rust `src/` + `tests/`；UI `ui/__tests__/`；E2E `e2e/`
 │   ├── wapps/                   # Workspace Apps 运行时应用与主题源码包（安装测试见其 README）
@@ -110,7 +111,7 @@ DataZen 确立严格正交的四维可扩展架构，依托独立设计系统 `@
 ### AI 模块与 ai-api
 
 - `packages/ai-api` 是 Rust 层的 AI Provider 抽象契约（类比 `driver-api`），定义核心 `AiProvider` trait、请求/流式响应模型与工厂注册。
-- 支持 OpenAI、Anthropic、DeepSeek、Ollama、自定义端点。
+- `packages/ai-providers` 承载具体 provider 适配与 wire protocol 实现：`protocol/{openai_chat,openai_responses,anthropic}.rs` 实现 OpenAI Chat/Responses 与 Anthropic 协议，`{openai,anthropic,deepseek,ollama,custom}.rs` 实现 OpenAI / Anthropic / DeepSeek / Ollama / 自定义端点适配，`registry.rs` 负责注册与配置恢复；宿主 `src-tauri/src/ai/` 只剩门面 re-export、schema context、安全门、prompt 解析、token 预算与取消。`packages/ai-api` 保持纯契约层。
 - `PromptResolver` 优先级：用户覆盖 → 驱动覆盖 → 资源文件 → 编译时英文嵌入。
 - 详情参考 [docs/architecture/backend/ai.md](docs/architecture/backend/ai.md)。
 
