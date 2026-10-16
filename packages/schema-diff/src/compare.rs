@@ -285,26 +285,6 @@ mod tests {
         assert_eq!(diff.removed.len(), 1);
     }
 
-    #[test]
-    fn postgres_int4_integer_not_reported_as_changed() {
-        use datazen_driver_postgres::PostgresTypeNormalizer;
-        let normalizer = PostgresTypeNormalizer;
-        let src = schema(vec![col("id", "int4")]);
-        let tgt = schema(vec![col("id", "integer")]);
-        let diff = diff_table_schemas("users", &src, &tgt, Some(&normalizer));
-        assert!(diff.changed.is_empty(), "int4 vs integer should match");
-    }
-
-    #[test]
-    fn mysql_int_display_width_not_reported_as_changed() {
-        use datazen_driver_mysql::MysqlTypeNormalizer;
-        let normalizer = MysqlTypeNormalizer;
-        let src = schema(vec![col("id", "int(11)")]);
-        let tgt = schema(vec![col("id", "int")]);
-        let diff = diff_table_schemas("users", &src, &tgt, Some(&normalizer));
-        assert!(diff.changed.is_empty(), "int(11) vs int should match");
-    }
-
     fn index(name: &str, columns: &[&str], unique: bool) -> IndexInfo {
         IndexInfo {
             name: name.into(),

@@ -19,3 +19,6 @@ tracing = "0.1"
 sqlparser = { version = "0.59", features = ["visitor"] }
 urlencoding = "2"
 futures-util = "0.3"
+
+[dev-dependencies]
+datazen-schema-diff = { path = "../../schema-diff" }

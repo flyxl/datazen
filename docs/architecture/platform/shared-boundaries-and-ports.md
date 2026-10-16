@@ -142,6 +142,8 @@ flowchart TD
     FE -.只依赖契约.-> PA
 ```
 
+`packages/schema-diff` 的生产路径通过 `datazen-driver-api::create_driver` 查询 inventory registry，再调用驱动提供的 `migration_renderer()`、`migration_capabilities()` 与 `type_normalizer()`；这些契约已覆盖 MySQL、PostgreSQL 和 SQLite 的结构迁移能力，无需在领域包绑定具体驱动。领域包的普通依赖与测试依赖均不包含具体 driver crate。方言 SQL 与真实 normalizer 的集成测试分别位于 `packages/drivers/{mysql,postgres,sqlite}/tests/schema_diff_*.rs`，由各驱动的 dev-dependency 引用领域包并链接自身注册；领域包保留纯逻辑测试与假 renderer 测试。
+
 ### 2.4 禁止的反向依赖（可被门禁直接检查的断言）
 
 | 编号 | 断言 | 违背后果 |
