@@ -26,8 +26,9 @@
 | B6 | OwnerRef 契约重复定义 | [bug-owner-ref-duplication.md](bug-owner-ref-duplication.md) | 开放 · 待裁定 | `enum OwnerRef` 只剩 `platform-api/src/context.rs` 一处 | 未排期；**先定契约，再改宿主，顺序不可反** |
 | B7 | schema-diff 直接依赖具体 driver crate | [bug-schema-diff-concrete-driver-deps.md](bug-schema-diff-concrete-driver-deps.md) | 开放 · 从未裁定 | `packages/schema-diff/Cargo.toml` 中不再出现任何 `datazen-driver-{mysql,postgres,sqlite}` | 未排期；动手前须先实测 `driver-api` 能力边界 |
 | B8 | platform/adapter.rs 867 行，超单文件 800 行推荐值 | [bug-platform-adapter-oversized.md](bug-platform-adapter-oversized.md) | 开放 · 需专项 | 该文件 ≤ 800 行，且 `test:platform-arch` 与 `cargo test -p datazen --lib` 全绿 | 需专门变更，**不得在任何下沉轨顺手做** |
+| B9 | URL userinfo 密码含 `/` 时整段凭据原样入日志 | [bug-platform-infra-url-credentials-slash-password.md](bug-platform-infra-url-credentials-slash-password.md) | 开放 · 运行时确认中 | 新增单测覆盖 `https://user:pa/ss@host/v1`，且反证 `https://host/path@x` 不被误改写 | 宿主既有（`7c2151985` 即同正则），`platform-infra` 逐字搬运；不阻断 Wave-3 |
 
-合计 **8 条**：进行中 3 · 开放 5 · 已关闭 0。
+合计 **9 条**：进行中 3 · 开放 6 · 已关闭 0。
 
 ## 维护纪律
 
@@ -48,4 +49,4 @@
 
 ---
 
-条目数、文件名与状态于集成分支 `cbe6f48c9` 实测（`wc -l bug-*.md` = 8 个文件、225 行）。
+条目数、文件名与状态于集成分支 `59a3209d0` 实测（`wc -l bug-*.md` = 9 个文件）。B1 的关闭条件（全仓 `redact_endpoint_for_log` 归零）与它自己的缺陷文件构成**自指**：该文件自身含 3 处该字面量，因此关闭 B1 时必须先删缺陷文件、再让 W3-1 验证方复跑该门禁。
