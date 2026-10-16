@@ -30,20 +30,33 @@
 //! What this covers, and what it does not:
 //!
 //! * The input has to be a *valid* URL. Characters RFC 3986 forbids in userinfo
-//!   — `/`, `?`, `#` — must be percent-encoded there (`/` as `%2F`).
-//!   Userinfo is identified by parsing, so this function does not reconstruct
-//!   credential intent from malformed input such as
-//!   `scheme://user:pw-with-slash@host`: read per the RFC, that text is a
-//!   host:port followed by a path, not credentials. `https://user:pa%2Fss@host/v1`
-//!   is the valid spelling of the same password, and it is redacted.
+//!   — `/`, `?`, `#` — must be percent-encoded there (`/` as `%2F`). The
+//!   parse step does no intent recovery: `scheme://user:pa/ss@host` is not
+//!   parsed as a password containing a slash — read per the RFC, that text is a
+//!   host:port followed by a path — so `https://user:pa%2Fss@host/v1` is the
+//!   spelling to use, and it is redacted.
+//!
+//!   That is a statement about the parse step, not about the outcome. A run the
+//!   parser rejects is not left alone: the fail-closed fallback below still
+//!   redacts its credential-shaped prefix, so `scheme://user:pa/ss@host` comes
+//!   out as `scheme://***@host`.
 //! * Only absolute `scheme://…` runs are considered. A bare connection string
 //!   with no scheme, or a DSN fragment such as `user:password@host:5432/db`, is
 //!   not a URL; it is left to the `Bearer` / query / JSON-field patterns, none
 //!   of which look at `@`.
 //! * The heuristic fallback runs only when parsing *fails* (an illegal port, for
 //!   instance), and it rewrites a run only when the userinfo segment carries a
-//!   `:`. That separator is what keeps the valid but credential-free
-//!   `https://host/path@x` untouched even on the fallback path.
+//!   `:`. Without that separator, a valid but credential-free run such as
+//!   `https://host/path@x` — or `https://docs.example/page@2.0`, whose path
+//!   merely holds an `@` — is left untouched even on the fallback path.
+//!
+//!   Do not read that separator as protecting `host:port/path@x` shapes: it does
+//!   not. Handed `https://host:8080/path@x` or `https://[::1]:8080/path@x`,
+//!   the fallback would rewrite them to `https://***@x`, because the `:` before
+//!   the port satisfies the guard. Those URLs are safe *today* only because they
+//!   parse, so the fallback is never reached — the protection is the parse gate,
+//!   not the separator. Anything that loosens the gate (running the fallback
+//!   unconditionally, say) would silently rewrite such a valid URL.
 
 use regex::Regex;
 use std::sync::OnceLock;
