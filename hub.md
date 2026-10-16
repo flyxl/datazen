@@ -179,10 +179,10 @@ P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM
 | 轨 | HEAD | 状态 |
 | --- | --- | --- |
 | w4-b3-summary | `aebec3b33` | **已合并** → `80032a558`（G1–G4 全绿）✅ |
-| w4-panic-gate | `a77bbb99e` | **NEEDS_REVISION**（Tester `834a9c7d`）→ 已派回原 Coder 修订 F1/F2/F3 |
-| w4-test-guards | `e9c7ed9a1` | READY_FOR_TEST → Tester `6d74abdf` **在跑** |
+| w4-panic-gate | `fd5ac4591`（4 文件 +1133/-0） | 修订完成（F1 空扫非空前提 / F2 正则两分支 / F3 CI `ci.yml:324` / 顺手修符号链接入口）→ **复验 Tester `1a73708e` 在跑**；负控：改回旧实现恰好 4 条新测试变红 |
+| w4-test-guards | `e9c7ed9a1` | Tester `6d74abdf` **在跑**；已复现诱饵实验两半、生产代码越权后测试变红（非 blocker）；但 **V2 探针矩阵发现新守卫 2 处漏报 + 1 处误报** ⇒ 预计 NEEDS_REVISION |
 | w4-redact-url | `c94cdbad6` | READY_FOR_TEST → Tester `d2776db2` **在跑** |
-| w4-clock | `89ec4e3ad`（7 提交） | 实现完成；platform-api 220 / schema-diff 228 / runtime 611 / data-transfer 225 / 边界 F-01..F-11 PASS 0 violation；剩宿主 `cargo test -p datazen --lib` |
+| w4-clock | `ba7c0f78a`（20 文件） | READY_FOR_TEST → Tester `84ce33a7` **在跑**；platform-api 220 / schema-diff 228 / runtime 611 / data-transfer 226 / 宿主 1552 · 边界 0/0；**有一处行为变更已登记 B17** |
 | w4-b8-adapter | `56e3f2345`（8 提交） | READY_FOR_TEST → Tester `ed5f3dd0` **在跑**；`adapter.rs` 867→**651** 行 |
 | w4-ownerref | `bc36cd121` | **零改动收尾**；轨树/分支/target 已回收；B6 改判 → B12 |
 

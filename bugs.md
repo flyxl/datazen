@@ -34,8 +34,9 @@
 | B14 | 安装测试对系统共享临时目录做**绝对零**断言（跨进程脆弱） | [bug-workspace-apps-inspect-tmpdir-absolute-assert.md](bug-workspace-apps-inspect-tmpdir-absolute-assert.md) | 开放 · 低 | `install/tests.rs` 中针对 `std::env::temp_dir()` 的绝对断言归零（全改差值形态），且该 crate 全绿、结论行连续两次逐字相同 | 既有测试债；Wave-4 · w4-test-guards 顺带发现但**未改**（超出 B10 边界）。与 B10 同类而不同位 |
 | B15 | 门禁逐规则汇总行在规则产出 error 时仍打印 `ok`（B3 的 error 通道孪生） | [bug-boundary-rule-summary-ok-on-error.md](bug-boundary-rule-summary-ok-on-error.md) | 开放 · 待裁定修法 | 构造「扫到文件但扫描中途失败」的运行，汇总行与该规则 ERROR 行不再互相矛盾；正常路径仍 0/0 | 与 B3 同源，**未随 B3 修复一并解决**；现有 8 个变异探针全走 violation 通道，故不被触发 |
 | B16 | 门禁脚本经符号链接路径调用时静默退出 0 且零输出（会被误读为 PASS） | [bug-gate-cli-symlink-silent-exit-0.md](bug-gate-cli-symlink-silent-exit-0.md) | 开放 · 中 | 全仓不再有 `import.meta.url === 'file://' + process.argv[1]` 形式的门禁入口；每个受影响脚本给出「经符号链接调用输出非空」的实测 | 既有仓库约定债（`check-platform-crate-boundaries.mjs:733` 同形），**非本波引入** |
+| B17 | 同一列混用秒级与毫秒级时刻形状，字典序在整秒处翻转（含本波引入的提交边界粒度变更） | [bug-timestamp-shape-mixing.md](bug-timestamp-shape-mixing.md) | 开放 · 中 | 形状收口，或 `Timestamp` 比较不再依赖字符串序；且给出「同一整秒两种写法排序正确」的实测断言 | 由 `Clock` 落地**暴露**的既有债；`after_seconds` + 宿主 `expires_at` 秒级写入点在本波之前就存在 |
 
-合计 **16 条**：进行中 0 · 开放 12 · 已关闭 4。
+合计 **17 条**：进行中 0 · 开放 13 · 已关闭 4。
 
 ## 维护纪律
 
