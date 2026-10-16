@@ -399,6 +399,14 @@ fn inspect_wapp_package_accepts_top_level_folder_and_plain_dirs() {
 #[test]
 fn inspect_wapp_package_rejects_invalid_packages() {
     let _inspect_guard = inspect_tmp_lock();
+    // 前后增量，而不是绝对 0：inspect 的 staging 根由生产代码写死为
+    // `std::env::temp_dir()`，是**全局共享**目录，别处（src-tauri 的 wapps 测试、
+    // GUI 的 registry）都可能留下同前缀的常驻目录。INSPECT_TMP_LOCK 只串行化本
+    // 进程内的测试，对跨进程的常驻目录零保护 —— 绝对 0 会把别人留下的目录算到
+    // 自己头上（实测：$TMPDIR 里放一个 .datazen-inspect-* 即 EXIT=101，left:1 right:0）。
+    // 该前后增量形态对「常驻目录」免疫，对**瞬时并发**目录仍不免疫；彻底解法是给
+    // inspect 的 staging 根一个可注入参数、测试指向自建 TempDir，属独立变更。
+    let before = count_inspect_dirs();
     // Missing path.
     let err = inspect_wapp_package(Path::new("/nonexistent/datazen-inspect.zip")).unwrap_err();
     assert!(err.contains("not found"), "unexpected: {err}");
@@ -432,5 +440,5 @@ fn inspect_wapp_package_rejects_invalid_packages() {
         err.contains("traversal") || err.contains("invalid zip entry"),
         "unexpected: {err}"
     );
-    assert_eq!(count_inspect_dirs(), 0);
+    assert_eq!(count_inspect_dirs(), before);
 }
