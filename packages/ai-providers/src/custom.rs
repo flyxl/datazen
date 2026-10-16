@@ -12,8 +12,12 @@ use tokio::sync::{mpsc, RwLock};
 
 use super::protocol::{self, ProtocolConfig, CONNECT_TIMEOUT};
 
+/// Log-safe endpoint for `fetch_remote_models`. Credential masking lives in
+/// `datazen_platform_infra::redaction` — the single cross-form implementation
+/// (see `packages/platform-infra/src/redaction.rs`); this crate deliberately keeps no
+/// second, weaker copy.
 fn remote_models_log_endpoint(endpoint: &str) -> String {
-    protocol::redact_endpoint_for_log(endpoint)
+    datazen_platform_infra::redaction::redact_url_for_log(endpoint)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
