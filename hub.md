@@ -148,6 +148,32 @@ P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM
 - 实测：辅助任务共享预算无代码标识（`共享预算` / `aux_budget` / `auxBudget` 全 0 命中）⇒ 未接线。
 - 结论：**P6 出口门禁未关闭**；共享层迁移不承担它，合并后需另开阶段。
 
+### Wave-4 合并顺序与验收清单（预置，未执行）
+
+顺序（按冲突面从小到大，先合不碰别人文件的）：
+
+1. `w4-b3-summary` —— 只动 `scripts/check-platform-crate-boundaries.mjs`。
+2. `w4-panic-gate` —— 新脚本 + 新单测，不动既有门禁。
+3. `w4-redact-url` —— `packages/platform-infra/{Cargo.toml,src/redaction.rs}`。
+   （排在 2 之后：panic 门禁要扫的正是这个文件，先合被扫对象再合门禁，门禁的首次运行才看到终态。）
+4. `w4-test-guards` —— 两个 crate 的测试文件，与其它轨零重叠。
+5. `w4-ownerref` —— `platform-api` / `runtime` / `src-tauri/src/platform/handles.rs`。
+6. `w4-b8-adapter`（**尚未建树**）—— 必须等 5 合并后再开，两者同触 `handles.rs`。
+
+每轨合并动作（落实「同一棵工作树不得同时被提交方和验证方使用」）：
+
+- 合前先 `git checkout -- src-tauri/Cargo.toml Cargo.lock` 复位 codegen 脏文件，否则 `git merge` 会拒绝。
+- `git merge --no-ff feature/<track>`，冲突就地解；解完逐轨复跑 `pnpm typecheck` + `npx vitest run` + `node scripts/check-platform-crate-boundaries.mjs`。
+- 6 条全部合完后 `git worktree remove` + `git branch -d`（`branch -d` 必须从集成分支 worktree 执行）。
+- 最后跑 R 阶段全量回归，并**首尾各记一次 HEAD 与工作区 sha**。
+
+合并回 main 前必须做完的收尾（AGENTS.md 硬要求）：
+
+- 删 `hub.md`、`bugs.md` 与全部 `bug-*.md`（当前 8 个缺陷文件 + 2 个台账 = 10 个跟踪文件）。
+- **先删缺陷文件再复跑门禁**：B1/B2 的关闭条件是某字面量归零，缺陷文件自己写着那个字面量，顺序颠倒则门禁永远命中自己。
+- 刷新 `docs/development/platform-development-plan.md:3`（当前写着基线 `f06ad7e5b`，已过时）。
+- 全部结论必须已能从 `docs/` 与代码读出 —— 台账销毁后不可有孤儿结论。
+
 ### Wave-2 收尾（实测）
 
 - 三轨合并：A2 `77be2b19b`、B1 `88a7fdaac`、C3 `d2bb5f4ae`，均零冲突（合并前已 5 次 dry-run 预演）。
