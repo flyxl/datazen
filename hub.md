@@ -794,3 +794,34 @@ infra 轨已提交 `d24779e2f`（`refactor(platform-infra): 日志脱敏下沉�
 而其任务量不可能在数秒内完成——按纪律不据此判定死亡，已用 `send_message` 唤醒并要求其先自查再续跑。
 **这是第三次遇到「finished 但无收尾消息」**：前两次（A2 R1、B1 的 Testers）最终都证明是活着却已停摆，
 唤回后正常完成。结论固化：**`list_agents` 的 `inactive` 与引擎的 `finished` 都不等于死亡**，一律先 `send_message`。
+
+### 裁定二的实测答案（合并前预演得到，非事后追认）
+
+为免「合并后再看」，先在一次性工作树 `.worktrees/lockprobe` 上预演整条路径：
+合入 infra → 提交 → `resolve-drivers` → `git checkout -- src-tauri/Cargo.toml` → `cargo metadata`。
+
+结果：
+
+- 合入 `feature/platform-infra` **冲突 0**（本项目第四次干跑零冲突）。
+- 重新生成后的 `Cargo.lock` 增量 = **恰好 +9 行，只新增 `name = "datazen-platform-infra"` 一个包**，
+  删除 0 条，`datazen-driver-` 与 `source = "git"` 噪音计数 **0**。
+
+这同时解释了提交方报的 **+37 行**与此处 **+9 行**的差额：差额正是它工作区里被
+`resolve-drivers` 注入的驱动噪音。**结论：提交方工作区的 `Cargo.lock` 不可原样入库**（纪律正确）；
+正式做法是待本轨合入集成分支后，在集成分支上跑一次 `cargo metadata` 生成干净 lock，
+核对其 diff 只含 `datazen-platform-infra` 新成员条目后单独提交——与 A2/B1 走过的 `514528e30` 完全同一条路径。
+探针工作树已 `git worktree remove --force` 移除，集成分支 HEAD 与 porcelain 均未被它改动。
+
+### 验证方派发踩坑：超长简报会静默失败
+
+验证方 `c2d54385` 首次派发时被引擎标记为 finished 且**无收尾消息**。按纪律不据此判死，先取只读证据：
+`.worktrees/verify-platform-infra` 的工作区指纹与派发前**逐字节相同**（仍只有建树时的
+` M src-tauri/Cargo.toml` 残差），`/tmp/dzinfraV*` 日志数 **0**，target dir 30 分钟内无新产物——
+说明它**一行命令都没执行**，属根本没启动，而非中途崩溃。
+
+随后 `send_message` 发一条极小探针（要求只回 `PONG` + 一个 `git rev-parse HEAD`），**秒回且 HEAD 正确**，
+证明实例与引擎均可用 ⇒ 病因是**那份一次性塞了 15 道门禁的超长简报**，不是环境或权限。
+改法：**长任务分段派发**，先发「结构性核查（不跑 cargo，数十秒完成）」，回报后再单独发「cargo 门禁段」。
+
+这条与「finished 不等于死亡」是**两个独立**的坑，前者管活性，后者管输入体积，都要写进台账。
+仓里可留的证据：
