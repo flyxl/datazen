@@ -153,7 +153,7 @@ node scripts/generate-builtin-locales.mjs; echo "LOCALES_EXIT=$?"
 DATAZEN_DRIVERS=all node scripts/resolve-drivers.mjs; echo "RESOLVE_EXIT=$?"
 
 # 驱动指纹 = 门禁可比性凭证（实测应恒为该值）
-shasum -a 256 src-tauri/src/driver_init.rs | cut -c1-16   # abbe22d7f80ea761  ← 实测值，旧记录的 9c7c24ef92dd380f 不可复现，是抄错的
+shasum -a 256 src-tauri/src/driver_init.rs | cut -c1-16   # 9c7c24ef92dd380f  ← 实测值，订正过程见「坑」末两条
 grep -c '^extern crate datazen_driver_' src-tauri/src/driver_init.rs   # 15
 
 cd "$MAIN" && git rev-parse --short HEAD          # 建树后复核主 checkout 未被动过
@@ -198,16 +198,23 @@ cd "$MAIN" && git rev-parse --short HEAD          # 建树后复核主 checkout 
 - **别把自己的基线命令 `cd` 进别人的工作树**：曾把「集成树基线」误 `cd` 进 W3-2 验证树，与验证方抢同一棵树
   （两方同时改写 `Cargo.lock`）。跨树操作前逐条核对路径变量。
 - **宿主基线数字不可跨树沿用**（实测教训，2026-Wave-3)：台账曾记 P4「真基线 1710」与 Wave-2 后「1705」，
-但两棵树在相同驱动指纹（`abbe22d7f80ea761` / 15 驱动）下实测均为 **1555**，历史日志里也已找不到 1710 的出处。
+但两棵树在相同驱动指纹（`9c7c24ef92dd380f` / 15 驱动）下实测均为 **1555**，历史日志里也已找不到 1710 的出处。
 **1552 与 1555 之差 3，正是 W3-2 删除的 3 个宿主纯路径测试**，算术自洽。
 结论：1710/1705 是 Wave-1 把 sql_guard 迁出宿主前的旧数，**已作废，不得作为门禁**。
 唯一合法基线 = **在本树 checkout 基线 commit 实测**，或用同一驱动指纹的对照树实测；
 跨分支、跨树凭记忆比数字，见下一条。
 - **驱动指纹先查 mtime 再下结论**（实测，2026-Wave-3）：`driver_init.rs` mtime `2026-10-16 10:34:26`
   **早于全部 Wave-2/Wave-3 提交**（14:54 起），即整个 Wave-2+Wave-3 期间该文件一个字节都没变 —— 1555 与 1552
-  出自同一份驱动配置，基线可比性成立。台账原先记的指纹不可复现，是抄错而不是树漂移，已就地更正。
+  出自同一份驱动配置，基线可比性成立。指纹值本身另有一处订正失误，见下一条。
 - **`.driver-file-stash` 陈旧会让 `resolve-drivers.mjs` 退出码 1 硬失败**（实测，2026-10-16）：本树的 stash 建于
   HEAD `7f32ba2a6057`，此后 `Cargo.lock` / `Cargo.toml` / `src-tauri/Cargo.toml` 都变过，脚本判 `managed-files-changed`
   拒绝复用。**这是设计行为不是故障** —— 它挡的正是「旧副本覆盖合并结果」这种静默回滚。此时 `driver_init.rs`
   保持上一版（仍 15 驱动全集），已跑过的门禁结论继续有效；确需重新生成时按脚本提示先 `git diff` 存盘、
   再 `rm -rf .driver-file-stash`、再原样重跑。**不要**跑 `--restore`。
+- **订正台账里已记的实测值，必须重新实测一次，不能凭上次的印象改写**（实测，2026-Wave-3 R 阶段）：
+  我曾把 `9c7c24ef92dd380f` 判成「不可复现的抄错」，另写 `abbe22d7f80ea761` 当实测值并提交了两次。
+  R 阶段脚本开头重新打指纹，打出的恰是被判死的那个值；`shasum` 与 `openssl dgst` 两条独立路径一致，
+  而 `abbe22d7f80ea761` 在主树（`7d2218d8` / 807 B / bare）与集成树都复现不出。
+  mtime 那条证据一直是对的，错的只是哈希值本身。
+- **每次门禁脚本开头重打一次指纹，而不是照抄台账**：正是这一步抓出了上面的错值。
+  指纹、HEAD、工作区 sha 应当由脚本现算并首尾各打一次，台账里的对应值只作对照，不作凭证。
