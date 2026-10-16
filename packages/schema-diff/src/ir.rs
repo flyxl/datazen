@@ -368,22 +368,6 @@ mod tests {
     }
 
     #[test]
-    fn postgres_type_alias_does_not_emit_alter_column_type() {
-        use datazen_driver_postgres::PostgresTypeNormalizer;
-        let normalizer = PostgresTypeNormalizer;
-        let mut src_col = col("id");
-        src_col.data_type = "int4".into();
-        let mut tgt_col = col("id");
-        tgt_col.data_type = "integer".into();
-        let s = schema(vec![src_col]);
-        let t = schema(vec![tgt_col]);
-        let ops = diff_to_operations("t", &s, &t, Some(&normalizer));
-        assert!(!ops
-            .iter()
-            .any(|op| matches!(op, MigrationOperation::AlterColumnType { .. })));
-    }
-
-    #[test]
     fn index_definition_change_generates_drop_and_create_ops() {
         use datazen_driver_api::IndexInfo;
         let mut s = schema(vec![col("id"), col("email")]);

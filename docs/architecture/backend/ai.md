@@ -101,6 +101,27 @@ pub async fn ensure_ai_ready(&self) {
 `restore_config()` 内部只调用 `AiProvider::initialize()`（纯内存状态，无网络请求），
 失败时记录 warn 并保持 Provider 未初始化，因此调用方无需处理错误分支。
 
+### AI HTTP 出站边界
+
+内置 Provider 与三种共享协议的模型列表、连接测试、普通与流式完成请求统一经
+`datazen_ai_providers::http::HttpClient` 发送。该传输边界与数据库 `NetworkProvider`
+的路由/隧道职责分离；不把 HTTP 请求伪装为数据库路由。
+
+`HttpClient::default()` 使用 `PublicInternet` 策略。每次请求解析全部 A/AAAA 地址，任一地址
+命中私网、环回、链路本地、共享地址或特殊用途范围就拒绝；随后将已批准地址固定到该次
+连接，禁用环境代理和自动重定向，避免代理解析、DNS rebinding 与跨跳绕过。
+地址拒绝与传输错误使用脱敏文案，不回显端点或凭据。每次实际请求新建固定地址的客户端，
+目前以放弃跨请求连接池复用换取 DNS 校验和连接目标严格一致。
+
+Provider/Registry 的 `new()` 及无客户端参数的模型获取均采用受限默认策略。
+桌面宿主通过 `with_http_client` 和 `fetch_remote_models_with_client` 显式采用 `HttpClient::desktop()`，保留用户配置的本地 Ollama、
+私网网关及企业环境代理。桌面同样不自动跟随重定向，并保持 HTTP(S)/userinfo URL 校验；宽松桌面策略由 reqwest/可信环境代理执行目标 DNS，支持仅在代理侧可解析的域名。服务端适配尚未落地；未来适配必须使用
+`AiProviderRegistry::with_http_client(HttpClient::default())`，或通过公开的 `EgressPolicy`
+trait 注入管理员出站策略，并将相同客户端传给 `fetch_remote_models_with_client`。
+模型列表保留 10 秒连接超时与覆盖解析、请求及读体的 30 秒总超时。
+各内置 Provider 也提供 `with_http_client`。策略由部署方构造，不能从用户 AI 配置开启私网。
+外部 inventory Provider 属于可信原生扩展，其自有网络实现需由部署方另行审查。
+
 ### 1.5 AI IPC 命令
 
 | 命令 | 功能 | 流式 |

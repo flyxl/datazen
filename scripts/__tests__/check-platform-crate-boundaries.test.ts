@@ -176,6 +176,10 @@ describe('parseSpecRow', () => {
  * a reader looks for the per-rule story. Measured at bc36cd121.
  */
 describe('ruleVerdict', () => {
+  it('attributes rule scan errors without blaming other rules or prefixes', () => {
+    expect(ruleVerdict('F-07', [], ['F-07: could not scan source'])).toBe('fail');
+    expect(ruleVerdict('F-07', [], ['F-070: another rule', 'F-01: another rule'])).toBe('ok');
+  });
   it('says fail for a rule one of whose violations is attributed to it', () => {
     // Both producer shapes: the closure walk and the F-07 scan open with
     // `<id>  `, the spec cross-check with `<id>: `.

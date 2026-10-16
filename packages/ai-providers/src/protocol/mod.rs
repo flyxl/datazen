@@ -9,8 +9,8 @@ pub mod openai_responses;
 
 use std::time::Duration;
 
+use crate::http::HttpClient;
 use datazen_ai_api::CompletionRequest;
-use reqwest::Client as HttpClient;
 use serde::Serialize;
 
 /// Shared configuration for protocol-level calls.
@@ -27,7 +27,7 @@ pub struct ProtocolConfig {
 impl Default for ProtocolConfig {
     fn default() -> Self {
         Self {
-            http_client: HttpClient::new(),
+            http_client: HttpClient::default(),
             api_base: String::new(),
             api_key: String::new(),
             max_tokens: 4096,
