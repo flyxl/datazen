@@ -31,12 +31,18 @@
  * only what the compiler excludes from the shipped build is exempt, which is the
  * boundary panic-policy.md 2 draws (Tests are exempt).
  *
- * Known limits, stated rather than hidden — both fail **red**, never green:
+ * Known limits, stated rather than hidden — all of them fail **red**, never
+ * green:
  *
  *   * an out-of-line test module (`#[cfg(test)] mod tests;` with the body in
  *     `src/tests.rs`) is a *separate file*; the declaration is skipped here and
  *     the other file is scanned, so its `unwrap()`s are reported;
- *   * `#[cfg(any(test, …))]` is not recognised as a test attribute.
+ *   * `#[cfg(any(test, …))]` is not recognised as a test attribute;
+ *   * a qualified path that only *names* a function called `unwrap` reads the
+ *     same as one that calls the std helper, so `use foo::unwrap;` turns red.
+ *     That is the price of catching `Option::unwrap` in value position
+ *     (`.map(Option::unwrap)` panics on the first `None` exactly as a call
+ *     does), and it is the direction this guard must err in.
  *
  * A missed exemption is a false positive, and a false positive gets fixed. A
  * missed violation would be a silent hole, which is the failure this design is
@@ -83,23 +89,27 @@ const TEST_ATTR_RE =
  * `.`/`::` is what keeps the definition out while staying blind to whitespace
  * and line breaks.
  *
- * The two branches carry **different** argument rules, and the asymmetry is
+ * The two branches carry **different** trailing rules, and the asymmetry is
  * deliberate:
  *
  *   * a method call must have an EMPTY argument list. `value.unwrap()` is the
- *     panic and `value.unwrap_or(0)` is not; both are distinguished by the
- *     identifier boundary *and* by the parens, so the parens test is what does
- *     the work here.
- *   * a qualified-path call does not need it. `Option::unwrap(y)` is the same
- *     std panic helper with its argument written in, and `unwrap_or` /
- *     `unwrap_err` are already excluded by the literal text — `unwrap`
- *     followed by `_` can never reach `\s*\(`. Requiring empty parens there
- *     was a blind spot, measured by compiling both vectors with rustc.
+ *     panic and `value.unwrap_or(0)` is not; the identifier boundary rules out
+ *     the typed relatives and the parens rule out the `_or` family for good
+ *     measure. A method is only ever *called* through a `.`, so this branch has
+ *     no value position to cover.
+ *   * a qualified path needs neither, because `Option::unwrap` is the same std
+ *     panic helper whether it is called or handed over as a value:
+ *     `Option::unwrap(y)` writes its argument in, and `map(Option::unwrap)`
+ *     panics on the first `None` exactly as the call does. So this branch stops
+ *     at the end of the identifier — `(?![A-Za-z0-9_])` is what keeps
+ *     `unwrap_or` / `unwrap_err` / `clippy::unwrap_used` out. Requiring `(`
+ *     here was the blind spot; both shapes were compiled with rustc and panic
+ *     at runtime.
  *
  * `(?:r#)?` covers the raw-identifier spelling `r#unwrap`, which is the same
  * method.
  */
-const BARE_UNWRAP_RE = /(?:\.\s*(?:r#)?unwrap\s*\(\s*\)|::\s*(?:r#)?unwrap\s*\()/g;
+const BARE_UNWRAP_RE = /(?:\.\s*(?:r#)?unwrap\s*\(\s*\)|::\s*(?:r#)?unwrap(?![A-Za-z0-9_]))/g;
 
 /** Build output is not authored source. */
 const RUST_SKIP_DIR_NAMES = new Set(['target', 'node_modules', '.git', 'dist']);

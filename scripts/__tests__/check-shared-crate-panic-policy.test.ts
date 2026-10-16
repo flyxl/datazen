@@ -97,7 +97,7 @@ describe('maskRustSource', () => {
 });
 
 describe('findBareUnwraps', () => {
-  it('flags only the argument-less call, never its typed relatives', () => {
+  it('flags the call and never its typed relatives on the method-call branch', () => {
     const src = [
       'let a = value.unwrap();',
       'let b = value.unwrap_or(0);',
@@ -138,6 +138,36 @@ describe('findBareUnwraps', () => {
     ].join('\n');
 
     expect(findBareUnwraps(maskRustSource(src)).map((h) => h.line)).toEqual([1, 2]);
+  });
+
+  it('flags Option::unwrap in value position, in each spelling released by the call-shape rule', () => {
+    // Found by an independent verifier: requiring `(` after `::unwrap` let every
+    // *value* form through, and a value form is the same panic. `.map(Option::unwrap)`
+    // compiles and exits 101 on the first `None` (measured with rustc 1.90.0; the
+    // panic is raised from `FnOnce` inside `map`, not from our own code), so the
+    // branch stops at the end of the identifier instead. Each spelling is its own
+    // labelled case so a regression names the shape it broke.
+    const forms: ReadonlyArray<readonly [string, string]> = [
+      ['handed to a combinator', 'v.into_iter().map(Option::unwrap).collect::<Vec<u8>>()'],
+      ['bound to a name', 'let f = Option::<u8>::unwrap;'],
+      ['called through its own parentheses', 'let r = (Option::<u8>::unwrap)(o);'],
+      ['turbofish on the type', 'let g = v.iter().map(<Option<u8>>::unwrap);'],
+    ];
+
+    for (const [label, src] of forms) {
+      expect(findBareUnwraps(maskRustSource(src)), label).toHaveLength(1);
+    }
+  });
+
+  it('accepts exactly one documented fail-red cost: a path that merely names unwrap', () => {
+    // Priced, not wanted. `use foo::unwrap;` imports some function called
+    // `unwrap` and never mentions Option; telling it apart from
+    // `Option::unwrap` in value position would take type information this guard
+    // does not have. Erring red here is the direction that gets noticed and
+    // fixed; erring green is the direction that ships a panic. Pinned so the
+    // trade-off is a decision on the record rather than an accident, and it is
+    // written into the script's Known limits too.
+    expect(findBareUnwraps(maskRustSource('use foo::unwrap;'))).toHaveLength(1);
   });
 });
 
@@ -541,6 +571,11 @@ describe('the gate stays wired to reality', () => {
     // real subprocess can catch that, because in-process `runCli` calls never
     // consult the guard at all.
     const link = join(sandbox, 'linked-gate.mjs');
+    // Idempotent on purpose: vitest's `retry: 2` re-runs the body, and a bare
+    // `symlinkSync` fails the second attempt with EEXIST — which replaces the
+    // real "expected '' to contain 'PASS'" signal with a setup error and sends
+    // the next reader hunting the wrong defect.
+    rmSync(link, { force: true });
     symlinkSync(join(REPO_ROOT, 'scripts/check-shared-crate-panic-policy.mjs'), link);
     const proc = spawnSync(process.execPath, [link, `--root=${clean.root}`], {
       env: envFor(clean),
