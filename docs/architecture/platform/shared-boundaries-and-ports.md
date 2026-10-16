@@ -62,6 +62,7 @@ packages/platform-api/src/
 │   ├── event.rs              # EventSink
 │   ├── network.rs            # NetworkProvider
 │   ├── identity.rs           # IdentityResolver
+│   ├── mod.rs                # 子树汇总与 pub use（端口 trait 的 re-export）
 │   ├── clock.rs              # Clock + SystemClock / FixedClock（形态中立的进程内原语，见 §4.9）
 │   └── budget/               # 四个预算端口 + 进程内参考账本
 │       ├── mod.rs            # 子树汇总与 pub use
