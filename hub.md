@@ -170,34 +170,11 @@ Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量�
 
 ### 新建工作树（含目录初始化）
 
-以下为**实测**过的完整配方（用它建过 W3-1 / W3-2 两棵验证树）。`MAIN` 指主 checkout，**只读不写**。
+完整配方已提升为正式文档 `docs/development/worktree-isolation.md` §7 —— 台账合并进 main 后即销毁，配方必须仍能从文档读出来。
+台账只留本次的实测补充：
 
-```bash
-MAIN=/Users/wuxiaolong/code/rust-projects/datazen
-WT="$MAIN/.worktrees/datazen-<tag>"; SHA=<commit>; BR=<branch>
-
-cd "$MAIN" && git rev-parse --short HEAD          # 建树前记录主 checkout 状态
-git -C "$MAIN" worktree add -b "$BR" "$WT" "$SHA"   # 提交方；
-                                                   # 验证方改用 --detach "$SHA"
-cd "$WT"
-ln -sfn "$MAIN/node_modules" "$WT/node_modules"  # 必须在下面两个生成脚本**之前**
-node scripts/generate-builtin-locales.mjs; echo "LOCALES_EXIT=$?"
-DATAZEN_DRIVERS=all node scripts/resolve-drivers.mjs; echo "RESOLVE_EXIT=$?"
-
-# 驱动指纹 = 门禁可比性凭证（实测应恒为该值）
-shasum -a 256 src-tauri/src/driver_init.rs | cut -c1-16   # 9c7c24ef92dd380f  ← 实测值，订正过程见「坑」末两条
-grep -c '^extern crate datazen_driver_' src-tauri/src/driver_init.rs   # 15
-
-cd "$MAIN" && git rev-parse --short HEAD          # 建树后复核主 checkout 未被动过
-```
-
-配套脚本已实测可跑：`/tmp/dz-bootstrap-verify-tree.sh <路径> <commit> <tag>`（验证方专用，detached）。
-
-要点：
-
-- **不要用 `set -e`**：否则生成脚本失败时脚本先死，`EXIT=$?` 永远打不出来 —— 门禁退出码必须能被打出来。
-- 裸 `node scripts/resolve-drivers.mjs` 只注入 4 个驱动（807 B）；跨轨可比必须 `DATAZEN_DRIVERS=all`（15 个，1625 B）。
-- 验证方一律 `--detach` 建树，且**不得**在验证树里 commit/merge/rebase/stash。
+- 用它建过 W3-1 / W3-2 两棵验证树；全驱动指纹 `9c7c24ef92dd380f` / 15 驱动 / 1625 B，订正过程见「坑」末两条。
+- 验证方另有 `/tmp/dz-bootstrap-verify-tree.sh <路径> <commit> <tag>`（detached 专用），实测可跑；它在系统临时目录，不入库。
 ### Rust 约定
 
 - 新 crate 依赖**必须直接声明**，不得用 `{ workspace = true }`（根 `[workspace.dependencies]` 只有 7 条 path 项）。

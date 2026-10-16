@@ -144,3 +144,57 @@ node scripts/resolve-drivers.mjs <相同参数>
 - 禁止在 worktree 内 `git checkout` **他人分支**；需要别人的产物时读对方的 worktree 绝对路径。
 - 临时 worktree 必须在同一会话内清理，并在报告中列出清理命令。
 - 发现分支位置异常时，**先 `git reflog` 再动作**；reflog 是唯一现场，重建会毁掉它。
+
+
+## 7. 新建 worktree 的完整初始化
+
+`git worktree add` 只建立检出，**不产生任何生成物**。跳过下面三步的 worktree 会在第一次
+`cargo` / `cargo fmt` 时以一条与真实故障无关的报错失败：
+
+```text
+error[E0463]: can't find crate for `std`
+error: failed to resolve: use of undeclared crate or module `driver_init`
+```
+
+「找不到 std」不是工具链坏了，是缺 `src-tauri/src/driver_init.rs`（codegen 产物，见 .gitignore）。
+三条命令**顺序不可换**：`node_modules` 的模块解析要先成立，`resolve-drivers.mjs` 才有东西可写。
+
+```bash
+MAIN=/path/to/main-checkout          # 主 checkout：只读，不写
+WT="$MAIN/.worktrees/<name>"; SHA=<commit>; BR=<branch>
+
+cd "$MAIN" && git rev-parse --short HEAD          # 建树前记录主 checkout 位置
+git -C "$MAIN" worktree add -b "$BR" "$WT" "$SHA"   # 提交方
+#                                                    验证方改用 --detach "$SHA"
+cd "$WT"
+ln -sfn "$MAIN/node_modules" "$WT/node_modules"     # ① 必须在下面两个生成脚本之前
+node scripts/generate-builtin-locales.mjs          # ②
+DATAZEN_DRIVERS=all node scripts/resolve-drivers.mjs   # ③
+
+# 驱动指纹 = 跨 worktree 门禁可比性的凭证
+shasum -a 256 src-tauri/src/driver_init.rs | cut -c1-16
+grep -c "^extern crate datazen_driver_" src-tauri/src/driver_init.rs
+
+cd "$MAIN" && git rev-parse --short HEAD          # 建树后复核主 checkout 未被动过
+```
+
+### 为什么要 `DATAZEN_DRIVERS=all`
+
+`src-tauri/src/driver_init.rs` 是 codegen 产物，内容随驱动选型而变（实测）：
+
+| 调用方式 | 驱动数 | 文件大小 |
+| --- | --- | --- |
+`node scripts/resolve-drivers.mjs`（裸） | 4 | 807 B |
+`DATAZEN_DRIVERS=all node scripts/resolve-drivers.mjs` | 15 | 1625 B |
+
+跨 worktree 比对测试结果时，驱动集合必须一致，否则「宿主少了几个测试」这类结论毫无意义（见 §4）。
+**判断两棵树的驱动配置是否可比，就比这个文件的哈希**，指纹以命令现算为准，别照抄文档或台账里的值。
+
+### 三条顺序坑
+
+- **不要用 `set -e` 包住这三步**：生成脚本失败时脚本先死，`EXIT=$?` 永远打不出来，
+  而门禁退出码必须能被拿到。
+- **`resolve-drivers.mjs` 会按设计弄脏 `Cargo.toml`、`src-tauri/Cargo.toml`、`Cargo.lock`**（第 5 节那三个托管清单文件）。
+  要往这棵树上合并的分支，在 `git merge` 前必须 `git checkout --` 复位，否则合并会被拒。
+- **不要用 `pnpm install` 代替 ①**。`node_modules` 是符号链接时裸 `pnpm run` 会以退出码 1 失败
+  （依赖校验认不出链接目标），要写成 `pnpm --config.verify-deps-before-run=false <script>`。
