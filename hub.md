@@ -300,10 +300,13 @@ Track B 的 `[dev-dependencies]` 四行（现 `src-tauri/Cargo.toml:117-120`）�
 重跑 `node scripts/resolve-drivers.mjs`（EXIT=0）。此后 dev-dep 计数为 1，新建的 stash
 与 `HEAD:src-tauri/Cargo.toml` 逐字节相同（diff 退出 0）。G2 随即 EXIT=0。
 
-**顺带暴露的守卫失效（后续候选）**：`stashManagedFiles()`（`scripts/driver-file-stash.mjs:122-129`）
-**本来就设计成**在 stash 已存在时抛 "stash already exists … Run restore first"，
-但它本次**静默退出 0 并复用了陈旧 stash**。守卫形同虚设，是真实的待办，不是环境玄学。
-CI 与全新 clone 不受影响（无陈旧 stash）。裁定项见下方「待裁定」。
+**归因更正（本条上一版结论错误，已撤回）**：曾记为 `stashManagedFiles()`
+（`scripts/driver-file-stash.mjs:122-129`）「守卫形同虚设」。该段守卫逻辑本身**正确**，
+抛错分支完备，从未出错。真实缺陷是它**根本没被调用**：修复前的
+`scripts/resolve-drivers.mjs:1378` 在 stash 已存在时短路为
+`if (allStashed()) { console.log(...) }`，直接跳过 `stashManagedFiles()`。
+所以不是「守卫失效」而是「守卫未执行」。已由 Option A 修复并独立验证通过，
+详见下方「Option A 合并」。CI 与全新 clone 不受影响（无陈旧 stash）。
 
 ### 连带作废：两个验证方的测试数字
 
@@ -394,11 +397,10 @@ G1 的 60 行 `^warning` 以各 crate 末尾的汇总行为主，逐条去重后
 
 ## 待裁定（交用户决策，附位置与实测数字）
 
-1. **是否加固 `stashManagedFiles()`**（`scripts/driver-file-stash.mjs:122-129`）。
-   实测：该守卫**本应抛错却退出 0 并复用陈旧 stash**，本次因此产生 40 条 E0599 的集阻断。
-   选项 A：让守卫真正生效（陈旧即抛错，逼人 `rm -rf`）；选项 B：改为每次从工作区文件读取基线，
-   不依赖 stash。代价 A 最小（约 5 行 + 需要在 bootstrap 流程补一次 restore 调用）；
-   B 更彻底但要重新定义 stash 的用途。
+1. ~~**是否加固 `stashManagedFiles()`**~~ — **已结**，2026-10-16。
+   选项 A（复用点设闸、保留 stash 语义）已实现、已独立验证 PASS 并合并为 `7f32ba2a6`。
+   选项 B（不再依赖 stash）未采纳：会推翻 stash 的备份用途。
+   真正的缺陷点也一并更正为 `resolve-drivers.mjs:1378` 的短路，而非守卫本身。
 2. **`adapter.rs` 867 行**（超 800 行硬限）与登记表命名债
    （P4 的 `packages/runtime/src/registry/` 会话注册表 vs Track B 的 `driver_registry/`；
    `pub struct DriverRegistry` 目前全仓唯一）。
@@ -410,3 +412,86 @@ G1 的 60 行 `^warning` 以各 crate 末尾的汇总行为主，逐条去重后
 三轨全 PASS 并已真合并。**Wave-2（AI 协议与 providers，强制复用四层链，不走 Web-shell 旁路；
 wapps manifest/install/bridge）已解锁**；`store/` 下沉经用户裁定**取消**。
 遗留：各轨 worktree 的未跟踪 `progress.md` 与本文件 `hub.md` **必须在并入 main 时删除**。
+
+## Option A 合并：陈旧 `.driver-file-stash/` 改为硬失败
+
+轨 `feature/stash-staleness`，实现 `9f829d1a9cb94df7ce3f50a8f3ea4a64763ece2e`，
+**独立验证方 `c2de9cb4`（全新实例，未复用实现者）在自己独立的 detached worktree 上 PASS，零阻断缺陷**。
+合并提交 `7f32ba2a6`，5 files +724/−6，零冲突标记。
+
+合并后集成分支门禁（首尾 HEAD 一致 `7f32ba2a6`，期间无人改动）：
+
+| 门禁 | 退出码 | 逐字结论 |
+| --- | --- | --- |
+| `node scripts/resolve-drivers.mjs --drivers=all` | 0 | codegen 正常，仅 `src-tauri/Cargo.toml` 被注入 |
+| `pnpm test:scripts` | 0 | `43 passed (43)` / `760 passed (760)` |
+| `pnpm typecheck` | 0 | `error TS` 计数 0 |
+
+### 反证：修复前的缺陷确实真实（不是断言出来的）
+
+验证方回到真父提交 `d12d98c5`（断言 `resolve-drivers.mjs` 1471 行 / `driver-file-stash.mjs` 321 行，
+零 `StaleDriverFileStashError`），构造同一个陈旧现场后实测：`EXIT=0`、**stderr 0 字节**、
+一个存在于合并提交里的行从工作区消失（`src-tauri/Cargo.toml` 的 sha256 由 `4f7dee48...` 变为 `969b9552...`）。
+修复后同一现场：`EXIT=1`，该行**存活**。修复前错误、修复后正确，两头都有实测。
+
+### 五项遗留的裁定
+
+1. **无旁证旧 stash 硬失败** — **接受**。实测影响面一次性、自愈、零数据丢失：
+   跨升级旧 stash 落 `missing-metadata` → 退出 1 → 报错给出恢复命令 → 按提示重跑退出 0。
+   stash 内容不销毁，工作区文件不动。这是正确的 fail-closed 默认：年龄无法证明就不要猜。
+   代价是升级当天每人第一次跑会看到一次硬失败，已写入提交信息。
+2. **`resolve-drivers.mjs` 现 1622 行**（建议 ≤800）— **接受现状，另开轨道**。
+   该文件修复前已 1471 行，本次 `+154/−3` 是既有债加深而非新引入。其中 **132 行是单块自包含代码**
+   （新行 `1350-1487`：错误类 + `staleStashMessage` + `assertStashReusable`），
+   只依赖 5 行导入，抽成独立模块可零行为变更把文件拉回历史规模。**不阻断本次修复**。
+3. **`__boundaryProbe__.ts` 竞争 — 归因更正，另开轨道**。实现者报的竞争方
+   `scripts/__tests__/driver-init-rustfmt.test.mjs` **实测零引用** `__boundaryProbe__` 或 `packages/ui`。
+   真实竞争方是 `scripts/__tests__/check-module-layers.test.ts` 与 `scripts/__tests__/boundaryMutation.test.ts`，
+   两者都在 `packages/ui/src/__boundaryProbe__.ts` 落探针并删除。该文件 gitignored（`.gitignore:199`），
+   不会被 `git add` 收进去；**四个相关文件均不在 `9f829d1a9` 改动清单内**，本提交在结构上不可能引入它。
+   「既有、超出范围」结论不变，被点名的文件不对。
+4. **`--restore` 不设新鲜度闸门** — **维持原样**。它是在已知坏现场上的显式操作员动作，
+   再加硬闸会堵死唯一的自救通道；`wantsRestoreOnly()` 在 `:1491-1494` 于任何新鲜度判定之前返回。
+   `driver-file-stash.mjs status` 可只读地先拿新鲜度结论。**如实记录的代价**：
+   执意无视警告的操作员仍可通过 `--restore` 拿到旧的静默回滚。这是有意依赖提示而非第二道硬停的取舍。
+5. **文档与 `AGENTS.md` 是否充分** — **充分**。`docs/development/worktree-isolation.md:90-141`
+   每处断言都对着代码核过；恢复命令逐字跑通。原 §5 → §6 重编号**未破坏任何链接**：
+   全仓 4 处文件级引用（`AGENTS.md:76`、`scripts/resolve-drivers.mjs:1439`、
+   `scripts/driver-file-stash.mjs:22`、`scripts/new-feature-worktree.sh:764`）**均不带节号**。
+
+### 验证方对实现者的三处不同意（两处成立，一处已被采纳修文档）
+
+1. `__boundaryProbe__` 归因错误 —— 成立，已按第 3 条更正。
+2. 实现方的 `/private/tmp/stale-stash-repro.mjs` **高估了自己证明的范围**：它在合成临时 git 仓库里
+   以库函数方式调用，从不进入 `main()`，而缺陷恰恰发生在 `main()` 的 catch 自动还原上。
+   作为单元级证据成立，不足以自证缺陷；端到端证明由验证方的真实 CLI 复现补上。
+   **这不是交付缺陷**（代码正确），是证据表述过头。
+3. 文档示例用根 `Cargo.toml`，实测 `--drivers=all` 下真正被重写的是 `src-tauri/Cargo.toml`
+   —— 已在本轮改为后者，并补一句「全 path 驱动时根 `Cargo.toml` diff 为空」。
+
+### 集成方驳回验证方的一条合并清单项
+
+验证方在 merge checklist 中写「按 AGENTS.md 删除 `hub.md`」。**驳回**：`hub.md` 的删除时点是
+**并入 main 的收尾步骤**，不是任何一条 feature 分支合并的步骤。用户明确要求「不能影响主 worktree」，
+并入 main 未执行，本文件是 Wave-2 唯一的跨轨台账，此刻删除等于销毁在途台账。台账在并入 main 前必须存活。
+
+## Wave-2 定案（用户裁定）：A2 + B1 两轨并行
+
+用户裁定：**决策 B 选 B1**（新建 `packages/workspace-apps`）、**决策 A 选 A2**（新建 `packages/ai-providers`），
+AI-3 用例逻辑推到 Wave-3。
+
+| 轨 | 新 crate | 下沉规模 | 宿主 `tauri::` 耦合 |
+| --- | --- | --- | --- |
+| A2 | `packages/ai-providers` | 5,129 LOC（protocol 3,767 + providers/registry 1,362） | **0** |
+| B1 | `packages/workspace-apps` | 3,035 LOC（6 文件下沉） | **0**（protocol.rs 留下） |
+
+**B1 不是纯搬迁**：`src-tauri/src/wapps/protocol.rs`（789）**必须留在宿主**——
+它就是 Tauri `datazen:` URI scheme handler（`:25` `use tauri::{http, Emitter, Manager, Runtime, UriSchemeContext}`、
+`:311` `register_uri_scheme_protocol`），并持有 `ASSET_CSP`（`:45-47`）。
+`protocol_security_tests.rs`（694）测它，同样留下。搬任何一个都会让共享 crate 依赖 tauri，
+正是 Wave-1 要消灭的反向依赖，违反 `INV-S8`。
+
+**两轨并行的唯一已知冲突面**：各自向 `src-tauri/Cargo.toml` 加一行 `[dependencies]`。
+两轨都不改根 `Cargo.toml`、不改 `scripts/lib/cargoWorkspace.mjs` —— 由集成方在派发前**预置**，
+使跨轨合并不可能产生冲突。
+

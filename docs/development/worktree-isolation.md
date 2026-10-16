@@ -93,9 +93,12 @@ git worktree remove --force /tmp/<name>
 
 `.driver-file-stash/` 是 gitignored 的，`git checkout -- .`、`git reset --hard` 都清不掉它。旧实现把「本次会话外层调用者刚建好的 stash」和「上一次会话遗留的 stash」当成同一件事——`allStashed()` 为真就跳过重建。于是这个顺序会静默吃掉别人的合并：
 
-1. 会话 A 在合并之前跑过一次 codegen，留下 stash；
-2. 把别的分支合并进来，`Cargo.toml` 拿到了新内容；
-3. 会话 B 再跑 codegen：跳过重建 stash，以合并前的旧副本为基线重写 `Cargo.toml`，**退出码 0，不报任何错**。
+1. 会话 A 在合并之前跑过一次 codegen（`--drivers=all`），留下 stash；
+2. 把别的分支合并进来，`src-tauri/Cargo.toml` 的 `[dev-dependencies]` 拿到了新内容；
+3. 会话 B 再跑 codegen：跳过重建 stash，以合并前的旧副本为基线重写 `src-tauri/Cargo.toml`，**退出码 0，不报任何错**。
+   被吞掉的是真正被注入的那三个标记段所在的文件。当前 15 个驱动**全是 path 驱动**，
+   根 `Cargo.toml` 不生成 `[patch]`（实测其 diff 为空），所以可见的破坏发生在 `src-tauri/Cargo.toml`；
+   一旦将来引入 git 驱动，根 `Cargo.toml` 同样会被重写。
 
 结果是占位段被填好了、工作区看起来正常，但合并进来的改动被回滚了；`.driver-file-stash/` 不受 git 管辖，任何一次 `git checkout -- .` 都不会把它暴露出来。
 
