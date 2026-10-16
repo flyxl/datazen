@@ -668,3 +668,64 @@ Tester 另用变异探针自证推翻了对 `restore_config` 覆盖不足的怀�
 
 教训：合并冲突预判是推断，「已知冲突类型」写进计划时应当标注为待实测。干跑成本约 10 秒，
 比事后解冲突便宜一个数量级。
+
+## Wave-2 A2/B1 并入集成分支与收轨
+
+### 验证结论
+
+| 轨 | 验证方 | 轮次 | 结论 |
+| --- | --- | --- | --- |
+| B1 workspace-apps | `91db8b14` | 1 | PASS，零缺陷（11 门禁全绿） |
+| A2 ai-providers | `1c1aec4f` | 1 | FAIL，唯一缺陷 DEFECT-1（`AGENTS.md` 结构漂移，纯文档） |
+| A2 修复后 | `95dfb818` | 2 | **PASS，零缺陷** |
+
+A2 第 2 轮的关键推理值得记下来：修复提交 `c274843d1` 的
+`git diff --stat 7beb43d6e c274843d1 -- '*.rs' '*.ts' '*.tsx' '*.json' '*.mjs' '*.toml'`
+**空输出**，即修复零代码变更，于是第 1 轮对代码的 10 道门禁结论**原样继承**，不必重跑 168 秒的
+vitest 与全套 cargo。验证方把这个推理明写出来，而不是悄悄跳过——否则「没跑」和「不必跑」无法区分。
+
+### 合并
+
+| 步骤 | 提交 | 冲突 |
+| --- | --- | --- |
+| merge B1 `feature/workspace-apps` | `88a7fdaac` | 0 |
+| merge A2 `feature/ai-providers` | `77be2b19b` | 0 |
+| 登记新成员 lockfile 条目 | `514528e30` | — |
+
+与上一节干跑预测一致：两次合并均零冲突。合并后集成分支 `514528e30`。
+
+### 合并后门禁（实测逐字结论）
+
+- `pnpm --config.verify-deps-before-run=false typecheck` → EXIT=0，`error TS` 计数 0
+- `npx vitest run` → EXIT=0，`Test Files 602 passed (602)` / `Tests 6335 passed (6335)`
+
+602/6335 与合并前 A2 验证时的数字**逐字相同**，反证这两轨是纯 Rust 下沉、前端一行未动。
+
+### 自纠：Cargo.lock 的禁则过宽
+
+此前台账记的规则是「`Cargo.lock` 绝不提交」，理由是 `resolve-drivers.mjs` 会把它弄脏。
+本次合并后 `Cargo.lock` 出现 `+32 行 0 删除`，实测其内容**只有**两个新 workspace 成员的依赖条目，
+驱动噪音（redis/mysql/postgres/sqlite）**0 处**、`source = "git"` **0 处**。
+
+查仓库自身先例：`f418e2f93 refactor: extract shared migration primitives`（新增 `datazen-migration-common`）
+**当年就提交了 `Cargo.lock`**，diff 里正是 `+name = "datazen-migration-common"`。情形完全同类。
+
+**结论：真正的禁则是「不得提交 `resolve-drivers` 的驱动噪音」，不是「不得提交新成员条目」。**
+已按此提交 `514528e30`。否则 A2 验证方指出的问题会一直留存：`datazen-ai-providers` 从未进入任何
+已提交的 `Cargo.lock`（`c274843d1` / `7beb43d6e` / `265e4dbafc` 三处计数均为 0），
+`cargo metadata --locked` 会失败。CI 目前不被阻断，仅因 `--locked` 只用在 `cargo publish -p datazen-driver-api`。
+
+### 收轨
+
+移除 13 棵工作树、删除 6 条分支（A2 / B1 / A / B / C / stash-staleness），
+删除前逐条验证 `git merge-base --is-ancestor <branch> feature/shared-layer-extraction` 全部为真。
+
+一处值得记的护栏：在主 checkout（HEAD = `main`）执行 `git branch -d` 对 6 条分支**全部 exit=1**。
+这是 git 在正确工作——这些分支并未并入 `main`。**不得用 `-D` 绕过**；正确做法是切到集成分支
+（HEAD 即合并目标）再删，全部 exit=0。全过程主 checkout 仍为 `7c2151985`、porcelain 0 行、HEAD 未切换。
+
+### 剩余
+
+infra 轨已提交 `d24779e2f`（`refactor(platform-infra): 日志脱敏下沉为形态中立基础设施原语`），
+验证方在途。它同样要改 `AGENTS.md` 与 `src-tauri/Cargo.toml`，与本节已并入的两轨重叠——
+正式合并前**仍须重跑一次干跑**。
