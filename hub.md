@@ -179,11 +179,11 @@ P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM
 | 轨 | HEAD | 状态 |
 | --- | --- | --- |
 | w4-b3-summary | `aebec3b33` | **已合并** → `80032a558`（G1–G4 全绿）✅ |
-| w4-panic-gate | `fd5ac4591`（4 文件 +1133/-0） | 修订完成（F1 空扫非空前提 / F2 正则两分支 / F3 CI `ci.yml:324` / 顺手修符号链接入口）→ **复验 Tester `1a73708e` 在跑**；负控：改回旧实现恰好 4 条新测试变红 |
-| w4-test-guards | `e9c7ed9a1` | **NEEDS_REVISION**（Tester `6d74abdf`）→ 已派回原 Coder。核实成立：旧守卫对第 8 个 pub mod 全盲、诱饵实验两半、生产越权后测试变红。**新守卫可被惯用写法静默绕过**（F1：`pub mod x; // 注释` 因 strip_suffix(';') 返回 None 而整行被丢弃）；F2 即 B14，验证方已确定性复现ION |
+| w4-panic-gate | `fd5ac4591`（4 文件 +1133/-0） | **NEEDS_REVISION 第二轮**（Tester `1a73708e`）：三条修复全部复现为真（五种空扫全 ERROR、负控恰好 4 红、符号链接入口修好、CI 在 rust job 第 15/21 步且实测可跑通）→ 已派回原 Coder 第二轮。新 finding：正则 `::` 分支要求紧跟 `(`，把 std 关联函数**当值**用（ `map(Option::unwrap)`）逃过且可编译可 panic |
+| w4-test-guards | `092d36288`（4 提交） | 修订完成 → 复验 Tester `cb5c6703` **在跑**。F1：新增 `code_outside_comments()`（剥行尾 `//`、按嵌套深度跳 `/* */`）、不再按 `#[cfg(test)]` 截断、行规则取「全有或全无」；七类探针全对（含上轮 2 处漏报已转红、1 处误报已转绿）；application 108→**112**（+4 解析器自测）。F2 改为前后增量（ `:443`）。**提交方自曝**：上轮探针用 `git checkout --` 把未提交的修订还原掉、后半段矩阵测的是旧代码，已作废并先提交再重做 |ION |
 | w4-redact-url | `c5da94a44` | 复验 Tester `c73afc1f` **在跑**。上一轮 FAIL 里的两组「残余泄漏」经用户纠正后**判定为误判并已撤回**（那是畸形输入，非合法 URL）；本轮只做两条真问题：F2 文档改事实口径、F3 补只走主路径的编码形态断言（platform-infra 13→14 passed）；负控：删 set_password(None) 后新测试变红并打印 `https://***:pa%2Fss@host/v1` |
-| w4-clock | `ba7c0f78a`（20 文件） | READY_FOR_TEST → Tester `84ce33a7` **在跑**；platform-api 220 / schema-diff 228 / runtime 611 / data-transfer 226 / 宿主 1552 · 边界 0/0；**有一处行为变更已登记 B17** |
-| w4-b8-adapter | `56e3f2345`（**直接父 `ae430e2b3`**，非 bc36cd121） | **独立验证 PASS**（Tester `ed5f3dd0`）；`adapter.rs` 867→**651** 行；生产前 645 行 sha 与基线相同；13 条用例逐条被编译执行（`--list` 证明）；断言锚点 44↔44 多重集相同 |
+| w4-clock | `ba7c0f78a`（20 文件） | **NEEDS_REVISION**（Tester `84ce33a7`）→ 已派回原 Coder。功能面干净（V1 注入缝隙经 3 个独立变异杀死、V4/V5/V7 全绿），问题在「话比事大」：§4.9 :603 的「全仓唯一读系统时间的实现」被全仓 grep 推翻（packages/ 6 处 + src-tauri 40 处）且与同节 :611 自相矛盾；4 处 packages 生产直调漏改造也漏登记；**声称的整秒「行为变更」实测不存在且方向相反** |
+| w4-b8-adapter | `56e3f2345`（直接父 `ae430e2b3`） | **已合并** → `42b064d97`（G1–G5 全绿）✅ `adapter.rs` 867→**651** 行；生产前 645 行 sha 与基线相同；13 条用例经 `--list` 证明被真正装载；断言锚点 44↔44 多重集相同 |
 | w4-ownerref | `bc36cd121` | **零改动收尾**；轨树/分支/target 已回收；B6 改判 → B12 |
 
 协调者对 w4-b8-adapter 的**独立核对**（不经 Tester，我自己实测）：

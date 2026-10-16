@@ -25,11 +25,22 @@
 `after_seconds` 的调用点：`packages/runtime/src/job/repository.rs:629` / `:667`、
 `src-tauri/src/store/app_db/jobs/runtime_ops.rs:269` / `:305` / `:489`。
 
-## 本波引入的一处**行为变更**（提交方已披露，需本条一并跟踪）
+## 本波引入的**粒度**变更（提交方初报为「行为变更」，**独立验证已推翻**）
 
-提交边界 `committed_at` 由秒级变为端口统一的**毫秒级**。唯一受影响的比较是 `plan.rs` 的 `expires_at < now`，
-而 `expires_at` 仍由宿主写秒级 ⇒ 差异只在**同一秒**边界：整秒到期即判过期（更严）。
-**该边界目前无测试覆盖**（提交方未声称有；w4-clock 的独立验证方被要求核实这一点）。
+提交边界 `committed_at` 由秒级变为端口统一的**毫秒级**，这是**形状**变更。但它**不改变** `expires_at < now` 的判定结果。
+
+独立验证实测（走真实 `PlanStore::validate_for_apply` + 逐字字符串比较）：
+
+```
+V3B raw(expires<now): ms_same=false ms_first=false ms_next=true s_same=false s_next=true
+```
+
+同一整秒处，秒级 `expires_at` 的下一位是 `Z`(0x5A)、毫秒级 `now` 的下一位是 `.`(0x2E)，
+`Z` > `.` ⇒ `expires_at > now` ⇒ 判**未过期**；与改造前的秒级比较**逐案相同**。
+⇒ **不存在行为变更，也不会误判未过期为已过期。** 提交方原先「更严（到秒即视为过期）」的描述方向是反的，已要求订正。
+
+**真正的问题是：这个整秒边界目前无任何测试覆盖**（全仓 `expires_at` 无带毫秒字面量；唯一的过期测试 `plan.rs:291` 两侧均秒级、相隔 1 小时）。
+边界语义应由一条**常驻断言**钉死：同一整秒 → 未过期；下一秒 → 过期；毫秒级与秒级两种 `now` 各跑一遍。
 
 ## 危害
 
