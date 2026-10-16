@@ -202,10 +202,16 @@ Wave-2 在此基础上又新增 `packages/ai-providers` 与 `packages/workspace-
 
 这一层装的是**跨形态、跨领域、与业务无关**的机制原语。当前已落地两项：
 
-**脱敏**（`redaction`）：凭据 / URL / 查询串 / Bearer / `password` 字段的统一清洗。
-此前只有 `src-tauri/src/log_redact.rs` 一份；`packages/ai-providers` 抽取时因跨 crate 不可见，
-在 `protocol/mod.rs` 里手写了第二份更弱的实现（只处理 userinfo 与整段 query，
-漏掉 `Bearer`、`?token=`、`"password":`）。宿主侧退化为同名 `pub use` 薄壳，调用点零改动。
+**脱敏**（`redaction`）：三个入口 —— `redact_secrets_for_log` 清洗任意文本、
+`redact_url_for_log` 只清洗 URL、`sql_preview_for_log` 截断 SQL 预览；覆盖面是凭据 userinfo、
+整段查询串、`Bearer`、`password` 字段。本层是唯一实现，实测全仓 19 处调用点都经过它：
+宿主 18 处仍写 `crate::log_redact::*`（`src-tauri/src/log_redact.rs` 已退化为 8 行 `pub use` 薄壳，
+调用点零改动），`packages/ai-providers/src/custom.rs:20` 直接引本层。
+此前只有宿主那一份；Wave-2 抽取 `ai-providers` 时因跨 crate 不可见，它在 `protocol/mod.rs` 里
+手写了第二份更弱的实现（只处理 userinfo 与整段 query，漏掉 `Bearer`、`?token=`、`"password":`）。
+该重复已删除。
+已知限制：`url_credentials_re` 用 `[^/@\s]+` 匹配 userinfo，密码含 `/` 时整条匹配失败、
+凭据原样进日志。这是从宿主原实现逐字继承的，尚未修复。
 
 **路径安全**（`path_safety`）：zip 条目名的 zip-slip 守卫与压缩比上限。此前同样是两份逐字节
 相同的实现（`src-tauri/src/app_data_archive.rs` 与 `packages/workspace-apps/src/zip_path.rs`），

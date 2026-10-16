@@ -1,14 +1,16 @@
 //! Redact secrets before writing them to application logs.
 //!
 //! Why this capability is a cross-form primitive rather than a host-private
-//! helper: the Wave-2 `packages/ai-providers` extraction is the proof. The
-//! host already shipped this exact implementation in `src-tauri/src/log_redact.rs`,
-//! but a crate outside `src-tauri` cannot see a private host module, so that
-//! package hand-wrote a *second* implementation in its `protocol/mod.rs`. That
-//! copy is strictly weaker: it masks URL userinfo and drops the whole query
-//! string, but it never handles `Bearer` headers, nor `"password":` JSON
-//! fields. Two implementations, two different leak surfaces, and the weaker one
-//! lives in a package nobody reviews as security-sensitive.
+//! helper: the `packages/ai-providers` extraction is the proof. The host
+//! already shipped this exact implementation in `src-tauri/src/log_redact.rs`,
+//! but a crate outside `src-tauri` cannot see a private host module, so during
+//! that extraction the package hand-wrote a *second* implementation in its
+//! `protocol/mod.rs`. That copy was strictly weaker: it masked URL userinfo and
+//! dropped the whole query string, but it never handled `Bearer` headers, nor
+//! `"password":` JSON fields. Two implementations meant two different leak
+//! surfaces, and the weaker one lived in a package nobody reviews as
+//! security-sensitive. That duplicate has since been deleted; the functions
+//! below are the only implementation.
 //!
 //! Reimplementing an existing primitive across a visibility boundary is the
 //! default failure mode here, not an exception — the boundary looks like it
@@ -16,6 +18,11 @@
 //! logic, no IO, no transport) get exactly one home that every form links, and
 //! the host keeps a `pub use` thin shell at its original module path so that
 //! every existing `crate::log_redact::` call site stays untouched.
+//!
+//! Known limitation, not yet fixed: `url_credentials_re` matches userinfo as
+//! `[^/@\s]+`, which excludes `/`. A password containing `/` therefore makes the
+//! whole pattern fail to match, and that line is logged with the credential in
+//! clear text. Inherited verbatim from the host implementation.
 
 use regex::Regex;
 use std::sync::OnceLock;
