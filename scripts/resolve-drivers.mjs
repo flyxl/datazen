@@ -38,6 +38,11 @@ import {
   managedReadPath,
   workPath,
   allStashed,
+  evaluateStashFreshness,
+  gitHeadAt,
+  gitManagedFilesChangedBetween,
+  readStashMeta,
+  MANAGED_FILES,
   ROOT as STASH_ROOT,
 } from './driver-file-stash.mjs';
 import { resolvePro } from './resolve-pro.mjs';
@@ -1345,6 +1350,138 @@ export function wantsCodegenOnly(argv = process.argv.slice(2)) {
   return argv.includes('--codegen-only');
 }
 
+/**
+ * Thrown when an existing `.driver-file-stash/` cannot be proven fresh.
+ *
+ * Deliberately raised *before* the try/catch in `main()` that runs
+ * `restoreManagedFiles()`: restoring a stale stash would write the pre-merge
+ * copies straight back over the working tree, which is the very failure this
+ * check exists to stop.
+ */
+export class StaleDriverFileStashError extends Error {
+  /**
+   * @param {string} message
+   * @param {{ stale: boolean, reason: string, changed: string[] }} verdict
+   */
+  constructor(message, verdict) {
+    super(message);
+    this.name = 'StaleDriverFileStashError';
+    this.verdict = verdict;
+  }
+}
+
+/**
+ * Build the operator-facing explanation for a rejected stash. Pure so the test
+ * suite can assert on the wording without a repository.
+ *
+ * @param {{
+ *   reason: string,
+ *   stashHead: string | null,
+ *   currentHead: string | null,
+ *   createdAt: string | null,
+ *   changed: string[],
+ * }} info
+ * @returns {string}
+ */
+export function staleStashMessage({ reason, stashHead, currentHead, createdAt, changed }) {
+  const short = (sha) => (sha ? sha.slice(0, 12) : 'unknown');
+  const when = createdAt ? ' (created at ' + createdAt + ')' : '';
+  let reasonBlock;
+  if (reason === 'missing-metadata') {
+    reasonBlock =
+      '  reason:   missing-metadata\n' +
+      '            This stash predates the freshness sidecar, or\n' +
+      '            .driver-file-stash/.stash-meta.json is missing/unreadable, so its\n' +
+      '            age cannot be proven. Refusing to reuse it is the safe default.';
+  } else if (reason === 'unknown-current-head') {
+    reasonBlock =
+      '  reason:   unknown-current-head\n' +
+      '            The current git HEAD could not be read, so freshness cannot be\n' +
+      '            proven. Refusing to reuse it is the safe default.';
+  } else {
+    reasonBlock =
+      '  reason:   managed-files-changed\n' +
+      '            A managed file differs between the two HEADs. Reusing the stash\n' +
+      '            would re-inject the older copy of it.';
+  }
+  const changedBlock =
+    changed.length > 0
+      ? '\n  Managed files changed since the stash was taken:\n' +
+        changed.map((f) => '    - ' + f).join('\n') +
+        '\n'
+      : '';
+  const managedArgs = MANAGED_FILES.join(' ');
+
+  return [
+    '[resolve-drivers] refusing to reuse a stale .driver-file-stash.',
+    '',
+    '  stash created at HEAD ' + short(stashHead) + when,
+    '  current HEAD is        ' + short(currentHead),
+    reasonBlock,
+    changedBlock,
+    '  Injection reads its baseline from the stash copy (managedReadPath), so reusing',
+    '  this stash would overwrite the current working tree with pre-merge content and',
+    '  exit 0 \u2014 a silent rollback, not an error anyone would notice.',
+    '',
+    'Recovery:',
+    '  # 1. save any uncommitted edits to the managed files first:',
+    '  git diff -- ' + managedArgs + ' > /tmp/managed-files.patch',
+    '  # 2. drop the stale stash and reset the managed files to HEAD',
+    '  rm -rf .driver-file-stash',
+    '  git checkout HEAD -- ' + managedArgs,
+    '  # 3. re-run this script with the same arguments',
+    '  node scripts/resolve-drivers.mjs <same arguments>',
+    '',
+    'Do NOT run `node scripts/driver-file-stash.mjs restore` (or `--restore`) in this',
+    'state: restore copies the stale stash contents back over the working files, which',
+    'overwrites the current merge result with the old pre-merge content.',
+    '',
+    'See docs/development/worktree-isolation.md \u2014 the section on stale .driver-file-stash.',
+  ].join('\n');
+}
+
+/**
+ * Reuse the existing stash only when it is provably fresh; otherwise hard-fail.
+ *
+ * @param {{
+ *   readMeta?: () => ({ head: string | null, createdAt: string | null } | null),
+ *   resolveHead?: () => string | null,
+ *   listChanged?: (fromSha: string, toSha: string) => string[],
+ * }} [deps] injection seam for tests; defaults query the real repository.
+ * @returns {{ stale: boolean, reason: string, changed: string[] }}
+ */
+export function assertStashReusable({
+  readMeta = readStashMeta,
+  resolveHead = () => gitHeadAt(ROOT),
+  listChanged = (fromSha, toSha) => gitManagedFilesChangedBetween(ROOT, fromSha, toSha),
+} = {}) {
+  const meta = readMeta();
+  const stashHead = meta?.head ?? null;
+  const currentHead = resolveHead();
+  const changed =
+    stashHead && currentHead && stashHead !== currentHead
+      ? listChanged(stashHead, currentHead)
+      : [];
+  const verdict = evaluateStashFreshness({
+    stashHead,
+    currentHead,
+    managedFilesChangedBetween: changed,
+  });
+  if (verdict.stale) {
+    throw new StaleDriverFileStashError(
+      staleStashMessage({
+        reason: verdict.reason,
+        stashHead,
+        currentHead,
+        createdAt: meta?.createdAt ?? null,
+        changed: verdict.changed,
+      }),
+      verdict,
+    );
+  }
+  return verdict;
+}
+
 function main() {
   // tauri.conf.json declares `resources/builtin-ep` unconditionally and the
   // directory is gitignored, so tauri-build fails on a clean checkout ("resource
@@ -1372,12 +1509,18 @@ function main() {
   console.log(`[resolve-drivers] resolved drivers: [${resolvedDrivers.join(', ')}]`);
 
   // Stash tracked managed files, then write injected copies at original paths.
-  // Idempotent: if an outer caller already stashed, re-inject over working copies.
+  // Idempotent: if an outer caller already stashed *in this session*, re-inject
+  // over the working copies. A stash left over from an earlier session is not
+  // automatically reusable — .driver-file-stash/ is gitignored, so it survives
+  // `git checkout -- .` / `git reset --hard` while the managed files are reset
+  // or merged; reusing it would silently roll those changes back. Reuse is
+  // therefore gated on assertStashReusable() proving the stash is fresh.
   // Codegen-only never touches Cargo.toml / capabilities.
   if (!codegenOnly) {
     if (allStashed()) {
+      const verdict = assertStashReusable();
       console.log(
-        '[resolve-drivers] stash already present; re-injecting without re-stash',
+        `[resolve-drivers] stash already present and fresh (${verdict.reason}); re-injecting without re-stash`,
       );
     } else {
       stashManagedFiles();
@@ -1467,5 +1610,13 @@ function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main();
+  try {
+    main();
+  } catch (err) {
+    if (err instanceof StaleDriverFileStashError) {
+      console.error(err.message);
+      process.exit(1);
+    }
+    throw err;
+  }
 }
