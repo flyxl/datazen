@@ -105,6 +105,104 @@ mod tests {
         )
     }
 
+    /// 逐行返回去掉注释后的代码。
+    ///
+    /// Rust 的行注释与（可嵌套）块注释都不算模块声明，但**惯用的行尾注释**
+    /// （`pub mod probe; // 说明`）必须被剥掉后仍留下声明本身：漏剥会让声明被静默丢弃。
+    /// 反过来，块注释里的 `pub mod` 示例必须被丢掉，否则守卫会误报。
+    fn code_outside_comments(source: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut block_depth: usize = 0;
+
+        for raw_line in source.lines() {
+            let mut code = String::new();
+            let mut rest = raw_line;
+
+            while !rest.is_empty() {
+                if block_depth > 0 {
+                    match rest.find("*/") {
+                        Some(i) => {
+                            block_depth -= 1;
+                            rest = &rest[i + 2..];
+                        }
+                        None => rest = "",
+                    }
+                    continue;
+                }
+
+                match (rest.find("//"), rest.find("/*")) {
+                    // 行注释先出现：本行的代码到此为止。
+                    (Some(l), Some(b)) if l < b => {
+                        code.push_str(&rest[..l]);
+                        rest = "";
+                    }
+                    (Some(l), None) => {
+                        code.push_str(&rest[..l]);
+                        rest = "";
+                    }
+                    // 块注释先出现：收下它之前的代码，进入块注释状态。
+                    (_, Some(b)) => {
+                        code.push_str(&rest[..b]);
+                        block_depth += 1;
+                        rest = &rest[b + 2..];
+                    }
+                    (None, None) => {
+                        code.push_str(rest);
+                        rest = "";
+                    }
+                }
+            }
+
+            out.push(code);
+        }
+
+        out
+    }
+
+    /// 模块名：非空、无空白、无路径分隔（`r#type` 这类原生标识符仍算合法）。
+    fn is_plain_identifier(name: &str) -> bool {
+        !name.is_empty() && !name.contains(char::is_whitespace) && !name.contains("::")
+    }
+
+    /// 抽出 `pub mod <ident>;` 形态的模块声明。**全文**扫描，排序后返回。
+    ///
+    /// 刻意不做 `split("#[cfg(test)]").next()` 式的整段截断：那会把追加在测试模块
+    /// 之后的声明整段漏掉（实测该形态守卫 EXIT=0）。
+    ///
+    /// 一行的规则是**全有或全无**：只有当行内每条语句都是 `pub mod <ident>` 时才认它。
+    /// 这样既不会漏掉「一行两条声明」，也不会把 `let s = "x; pub mod evil;";` 里的
+    /// 字符串内容当成声明。因此测试模块正文里不得出现「整行都是 pub mod 声明」的行：
+    /// 当前不存在 —— `the_module_parser_*` 自测的探针输入都是数组字面量，行首不是 `pub mod`。
+    fn declared_public_modules(source: &str) -> Vec<String> {
+        let mut declared: Vec<String> = Vec::new();
+
+        for line in code_outside_comments(source) {
+            let mut names: Vec<String> = Vec::new();
+            let mut all_declarations = true;
+            for statement in line.split(';') {
+                let statement = statement.trim();
+                if statement.is_empty() {
+                    continue;
+                }
+                match statement.strip_prefix("pub mod ") {
+                    Some(name) if is_plain_identifier(name.trim()) => {
+                        names.push(name.trim().to_string());
+                    }
+                    _ => {
+                        all_declarations = false;
+                        break;
+                    }
+                }
+            }
+            if all_declarations {
+                declared.extend(names);
+            }
+        }
+
+        declared.sort();
+        declared
+    }
+
     #[test]
     fn the_service_aggregate_follows_the_assembly_order() {
         let code = crate_root_code();
@@ -140,15 +238,10 @@ mod tests {
 
     #[test]
     fn the_module_list_is_exactly_the_seven_documented_units() {
-        let code = crate_root_code();
-        // 断言的是**模块声明的全集**，而不是「7 个必须存在 + 4 个必须不存在」：
-        // 后者对任何未点名的第 8 个 `pub mod` 都是盲的，而本测试的名字声称的是精确集合。
-        let mut declared: Vec<&str> = code
-            .lines()
-            .filter_map(|line| line.trim().strip_prefix("pub mod "))
-            .filter_map(|rest| rest.strip_suffix(';').map(str::trim))
-            .collect();
-        declared.sort_unstable();
+        // 断言的是**模块声明的全集**（全文扫描，含测试模块之后的尾部），
+        // 而不是「7 个必须存在 + 4 个必须不存在」：后者对任何未点名的第 8 个
+        // `pub mod` 都是盲的，而本测试的名字声称的是精确集合。
+        let declared = declared_public_modules(include_str!("lib.rs"));
         assert_eq!(
             declared,
             [
@@ -163,6 +256,72 @@ mod tests {
             "本 crate 的对外模块面是封闭的七单元：多一个或少一个 `pub mod` 都必须在这里显式表态，\
              并同步 lib.rs 顶部的模块表与架构文档"
         );
+    }
+
+    fn parse_modules(lines: &[&str]) -> Vec<String> {
+        declared_public_modules(&lines.join("\n"))
+    }
+
+    /// 解析器自测探针（惯用写法）：行尾注释必须被剥掉，声明不能被静默丢弃。
+    /// 曾经的实现直接 `strip_suffix(';')`，`pub mod probe; // c` 整行返回 None 被丢掉。
+    #[test]
+    fn the_module_parser_sees_through_a_trailing_line_comment() {
+        assert_eq!(parse_modules(&["pub mod probe; // c"]), ["probe"]);
+        assert_eq!(
+            parse_modules(&["pub mod a;", "pub mod b; // 说明"]),
+            ["a", "b"]
+        );
+    }
+
+    /// 解析器自测探针（尾部位置）：追加在 `#[cfg(test)] mod tests` **之后**的声明
+    /// 也必须被看见 —— 曾经用 `split("#[cfg(test)]").next()` 整段截断，尾部新增全漏。
+    #[test]
+    fn the_module_parser_does_not_stop_at_the_test_module() {
+        let source = [
+            "pub mod alpha;",
+            "#[cfg(test)]",
+            "mod tests {",
+            "const S: &str = 'pub mod capability;';",
+            "}",
+            "pub mod omega; // 追在测试模块之后",
+        ];
+        assert_eq!(parse_modules(&source), ["alpha", "omega"]);
+    }
+
+    /// 解析器自测探针（块注释）：块注释里的 `pub mod` 不是声明 ——
+    /// 不剥块注释会让守卫对一个纯注释文件误报（实测该方法曾 EXIT=101）。
+    #[test]
+    fn the_module_parser_ignores_block_comments() {
+        assert!(parse_modules(&["/* pub mod fake; */"]).is_empty());
+        assert_eq!(
+            parse_modules(&["/*", "pub mod fake;", "*/", "pub mod real;"]),
+            ["real"]
+        );
+    }
+
+    /// 解析器自测探针：把解析器**自身的盲区**纳入覆盖。
+    /// 带行尾注释的合成声明必须被识别（最容易被静默丢弃的惯用形态）；
+    /// 一行两条声明也不能漏；而混着别的语句的行、字符串字面量、块注释里的
+    /// `pub mod` 都必须被拒绝 —— 宁可漏认也不能误认。
+    #[test]
+    fn the_module_parser_covers_its_own_blind_spots() {
+        assert_eq!(parse_modules(&["pub mod probe; // c"]), ["probe"]);
+        assert_eq!(
+            parse_modules(&["pub mod alpha; pub mod omega;"]),
+            ["alpha", "omega"]
+        );
+        for non_declaration in [
+            "let s = \"pub mod in_string;\";",
+            "let s = \"x; pub mod evil;\";",
+            "// pub mod commented_out;",
+            "/* pub mod fake; */",
+            "pub mod a b;",
+        ] {
+            assert!(
+                parse_modules(&[non_declaration]).is_empty(),
+                "不应被当成声明：{non_declaration}"
+            );
+        }
     }
 
     /// 真实缺陷：忘了装配能力注册表，于是所有能力取用都变成 no-op 或 panic。
