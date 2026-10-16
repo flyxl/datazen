@@ -1,6 +1,5 @@
 pub mod adapter;
 pub mod artifact_export;
-pub mod bridge;
 mod diagnostics;
 pub mod error;
 pub mod handles;
@@ -16,7 +15,6 @@ pub mod session_commands;
 mod target_metadata;
 
 pub use adapter::{AssemblyState, PlatformAdapter, PlatformEntry};
-pub use bridge::{BridgeInjection, FrontendBridge};
 pub use error::into_command_error;
 pub use handles::{HandleKey, SessionHandleRegistry, SessionScopedHandle};
 pub use identity::{

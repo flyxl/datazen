@@ -21,6 +21,7 @@
 use std::sync::Arc;
 
 use datazen_application::error::{ApiError, ApiErrorCode};
+use datazen_application::frontend_bridge::{self, BridgeInjection, FrontendBridge};
 use datazen_application::ApplicationServices;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::{
@@ -29,7 +30,6 @@ use datazen_platform_api::{
     target::{CanonicalTarget, ExecutionTarget},
 };
 
-use super::bridge::{self, BridgeInjection, FrontendBridge};
 use super::handles::SessionHandleRegistry;
 use super::identity::{DesktopIdentity, OwnerIntent};
 
@@ -198,14 +198,14 @@ impl PlatformAdapter {
         Ok((self.begin_call(), owner))
     }
 
-    /// 注入前端桥。转调 [`bridge::set_bridge_injection`]；重复注入返回 `false`。
+    /// 注入前端桥。转调 [`frontend_bridge::set_bridge_injection`]；重复注入返回 `false`。
     pub fn set_bridge_injection(injection: BridgeInjection) -> bool {
-        bridge::set_bridge_injection(injection)
+        frontend_bridge::set_bridge_injection(injection)
     }
 
     /// 取前端桥；未注入 ⇒ 明确报错（:84 条款二）。
     pub fn require_bridge(&self) -> Result<&'static Arc<dyn FrontendBridge>, ApiError> {
-        bridge::require_bridge()
+        frontend_bridge::require_bridge()
     }
 
     pub fn application_services(&self) -> Option<Arc<ApplicationServices>> {
@@ -806,6 +806,24 @@ mod tests {
             Ok(_) => {}
             Err(err) => assert_eq!(err.code, ApiErrorCode::CapabilityUnsupported),
         }
+    }
+
+    /// 注入点常量必须指向真实符号，否则"可定位"的承诺是假的。
+    ///
+    /// 这条断言随注入缝隙一起搬到了 `packages/application/src/frontend_bridge.rs`，
+    /// 但它校验的是**宿主侧**符号，所以留在 adapter 的用例里：常量在用例层，
+    /// 被指名的 `pub fn set_bridge_injection` 在组装层，两端必须同时可读。
+    #[test]
+    fn injection_point_names_a_real_symbol() {
+        assert_eq!(
+            frontend_bridge::INJECTION_POINT,
+            "crate::platform::adapter::PlatformAdapter::set_bridge_injection"
+        );
+        let adapter_source = crate::platform::production_source(include_str!("adapter.rs"));
+        assert!(
+            adapter_source.contains("pub fn set_bridge_injection"),
+            "INJECTION_POINT 指向的符号必须真实存在于 adapter.rs"
+        );
     }
 
     /// 结构性证据：本模块不含任何 `ConnectionUseCases` 实现，也不出现 `todo!` /

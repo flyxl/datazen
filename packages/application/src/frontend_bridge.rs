@@ -1,4 +1,4 @@
-//! 新 frontend bridge 的注入缝隙（开发计划 :84 条款二 / 概要 §7.4）。
+//! 前端桥注入端口（开发计划 :84 条款二 / 概要 §7.4）。
 //!
 //! ## 条款原文与本文件的对应
 //!
@@ -6,40 +6,41 @@
 //!
 //! "明确报错"在这里被实现为**两段**，都失败关闭：
 //!
-//! 1. **运行期**：[`FrontendBridge::require`] 在未注入时返回固定、可定位的
+//! 1. **运行期**：[`require_bridge`] 在未注入时返回固定、可定位的
 //!    [`ApiErrorCode::CapabilityUnsupported`]，文案里带注入点名字
-//!    （`set_bridge_injection`）和所在文件，绝不回落到"直接走 Tauri"。
+//!    （`set_bridge_injection`）和所在文件，绝不回落到"直接走某个具体传输"。
 //! 2. **类型期**：[`BridgeInjection`] 只有一个非空字段 [`FrontendBridge`]，
 //!    没有"可空桥"这个状态在类型上可表示；`FrontendBridge` 只提供**窄端口**
-//!    （`open_session` / `close_session`），不暴露 Tauri `AppHandle`。
+//!    （`open_session` / `close_session`），不暴露宿主句柄。
 //!
-//! ## 为什么放在 Rust 侧
+//! ## 为什么属于用例层
 //!
-//! `packages/backend-client` 在本 track 的基线提交上**不存在**（概要 §3「契约层已实现」
-//! 对 TS 侧不成立）。因此 TS 侧的 `requireBackendClient(backendId?)` 属于另一条 track。
-//! 本文件只提供 Rust 侧的注入缝隙与失败关闭行为：前端桥接真正落地时，
-//! TS 实现在此处注入，Rust 侧不需要再改语义。
+//! 注入缝隙本身是**端口契约**，不是某一种形态的实现细节。桌面形态由宿主的组装根
+//! （`PlatformAdapter::set_bridge_injection`）注入，服务端形态会有自己的实现；
+//! 但两者调用的必须是同一个 [`set_bridge_injection`]，遵守同一套"未注入即报错"
+//! 的语义。端口落在 `packages/application`，两种形态才不必各自复制一份
+//! `Option<FrontendBridge>` 以及依附于它的静默回落分支。
 //!
 //! ## 为什么不提供 `Option<FrontendBridge>` 直通
 //!
 //! 那样写会得到 `if let Some(b) = bridge { … } else { /* 旧路径 */ }` 的形状，
-//! 即概要 §7.4 明令禁止的 "silent fallback"。本文件只暴露 `require`，
+//! 即概要 §7.4 明令禁止的 "silent fallback"。本文件只暴露 [`require_bridge`]，
 //! 让"未注入"在任何调用点都必须被显式处理。
 
 use std::sync::{Arc, OnceLock};
 
-use datazen_application::error::{ApiError, ApiErrorCode};
+use crate::error::{ApiError, ApiErrorCode};
 
 /// 注入点名称。出现在错误文案里，让报错能直接定位到这一行。
 pub const INJECTION_POINT: &str = "crate::platform::adapter::PlatformAdapter::set_bridge_injection";
 
-/// 前端桥的窄端口。刻意**不**含 `tauri::AppHandle`：桥只应表达"前端语义"，
-/// 拿到 Tauri 句柄就等于拿到绕过本层的后门。
+/// 前端桥的窄端口。刻意**不**含宿主窗口句柄：桥只应表达"前端语义"，
+/// 拿到宿主句柄就等于拿到绕过本层的后门。
 pub trait FrontendBridge: Send + Sync + 'static {
     /// 打开一个会话视图，返回前端可直接消费的 JSON 负载。
     ///
-    /// 实现方**不得**在此处自行拼装 `RequestContext`：身份只由
-    /// [`crate::platform::identity::DesktopIdentity`] 组装。
+    /// 实现方**不得**在此处自行拼装 `RequestContext`：身份由各形态的组装根统一组装
+    /// （桌面形态是宿主侧的 `DesktopIdentity`），本端口只表达前端语义。
     fn open_session(&self, payload: &serde_json::Value) -> Result<serde_json::Value, ApiError>;
 
     /// 关闭会话。`None` 表示由桥自行判定；桌面形态必须实现为幂等。
@@ -119,7 +120,7 @@ pub fn set_bridge_injection(injection: BridgeInjection) -> bool {
 /// 取出前端桥；未注入 ⇒ 明确报错。
 ///
 /// 错误文案包含注入点符号名，可直接定位。**这里没有 `unwrap`、没有默认桥、
-/// 没有 Tauri 直连兜底**。
+/// 没有直连兜底**。
 pub fn require_bridge() -> Result<&'static Arc<dyn FrontendBridge>, ApiError> {
     INJECTION.get()
 }
@@ -139,6 +140,41 @@ pub fn not_injected() -> ApiError {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// 去掉注释后的生产代码。本文件不能依赖宿主的同名助手——那会把用例层
+    /// 重新绑回宿主，端口就又变成宿主的私有实现细节了。规则与宿主一致：
+    /// 在第一个 `#[cfg(test)]` 处截断，只去注释、不动字符串字面量。
+    fn production_source(file_source: &str) -> String {
+        let head = file_source.split("#[cfg(test)]").next().unwrap_or_default();
+        let mut out = String::new();
+        let mut inside_block_comment = false;
+        for line in head.lines() {
+            let trimmed = line.trim_start();
+            if inside_block_comment {
+                if let Some(end) = trimmed.find("*/") {
+                    inside_block_comment = false;
+                    out.push_str(&trimmed[end + 2..]);
+                    out.push('\n');
+                }
+                continue;
+            }
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            if let Some(start) = line.find("/*") {
+                let rest = &line[start + 2..];
+                match rest.find("*/") {
+                    Some(end) => out.push_str(&rest[end + 2..]),
+                    None => inside_block_comment = true,
+                }
+                out.push('\n');
+                continue;
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+        out
+    }
 
     struct RecordingBridge {
         opens: AtomicUsize,
@@ -321,12 +357,12 @@ mod tests {
         );
     }
 
-    /// 类型层证据：注入容器不接受空桥，`FrontendBridge` 也不暴露 Tauri 句柄。
+    /// 类型层证据：注入容器不接受空桥，`FrontendBridge` 也不暴露宿主句柄。
     ///
     /// 扫描的是**去掉注释后**的生产代码——模块文档里必须允许解释"为什么不暴露句柄"。
     #[test]
     fn bridge_trait_has_no_tauri_handle_and_no_optional_bridge_type() {
-        let production = crate::platform::production_source(include_str!("bridge.rs"));
+        let production = production_source(include_str!("frontend_bridge.rs"));
         assert!(
             !production.contains("AppHandle"),
             "桥端口不得暴露 Tauri 句柄，否则等于绕过本层的后门"
@@ -338,20 +374,6 @@ mod tests {
         assert!(
             !production.contains("Option<BridgeInjection>"),
             "注入容器同样不得可空"
-        );
-    }
-
-    /// 注入点常量必须指向真实符号，否则"可定位"的承诺是假的。
-    #[test]
-    fn injection_point_names_a_real_symbol() {
-        assert_eq!(
-            INJECTION_POINT,
-            "crate::platform::adapter::PlatformAdapter::set_bridge_injection"
-        );
-        let adapter_source = crate::platform::production_source(include_str!("adapter.rs"));
-        assert!(
-            adapter_source.contains("pub fn set_bridge_injection"),
-            "INJECTION_POINT 指向的符号必须真实存在于 adapter.rs"
         );
     }
 }
