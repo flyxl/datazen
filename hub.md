@@ -292,6 +292,18 @@ w4-b3-summary 合并后四道门禁（实测，均 EXIT=0）：
 - `git branch -d` 必须**从集成分支 worktree** 执行；从主 checkout 执行会因 HEAD=main 拒绝。
 - 临时文件只放 `/tmp`；长命令输出落 `LOG="$(mktemp -t x).log"`，`echo "EXIT=$?"` 单独一行。
 
+### 两条判据订正（Wave-4 实测得出，都会误导后续轨）
+
+- **不要自己造畸形输入，再把由此产生的行为判成缺陷。** 用户订正：
+  `https://user://@host/v1` **不是合法 URL** —— userinfo 里的 `/` 未按 RFC 3986 百分号编码（应为 `%2F`）。
+  这类串按 RFC 解析出来就是 `host:port` + path，**解析器没错**，脱敏器也不负责还原畸形输入的意图。
+  我的错误：让 redact-url 的验证方造了一批这类输入（还有 `user:12/34@host`、空端口形状），并把由此产生的行为当成 blocker 上报；
+  已向该轨 Coder 撤回（`66e95d25`）。**合法的「密码含斜杠」写法是 `https://user:pa%2Fss@host/v1`。**
+- **「结论行连续两次逐字相同」这条判据本身不成立。** w4-test-guards 的验证方实测：libtest 并行调度会改变逐条 `test …` 行的**输出顺序**，
+  聚合的 `test result:` 行还含 `finished in` 计时字段 —— 差异**不止**计时段。
+  可比的是**计数**（passed / failed / ignored）与**每条判定的 `ok` / `FAILED`**。
+  B10 / B14 的关闭条件原先写成了「逐字相同」，已订正。
+
 ### 新建工作树（含目录初始化）
 
 完整配方已提升为正式文档 `docs/development/worktree-isolation.md` §7 —— 台账合并进 main 后即销毁，配方必须仍能从文档读出来。

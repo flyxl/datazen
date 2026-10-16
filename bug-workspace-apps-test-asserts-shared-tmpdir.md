@@ -49,4 +49,6 @@
 
 - `packages/workspace-apps/src/install/tests.rs` 中，**针对 `TempDir` 直接父目录的断言归零**
 （按文件范围检索计 0 命中；断言目标改为本次测试自建的沙箱顶层目录）。
-- `cargo test -p datazen-workspace-apps` 全绿，且**连续两次运行结论行一致**（排除残留导致的偶然）。
+- `cargo test -p datazen-workspace-apps` 全绿，且**连续两次运行的测试计数与逐条判定一致**。
+
+**判据说明（重要）**：「连续两次逐字相同」这个说法**不成立** —— libtest 并行调度会改变逐条 `test …` 行的**输出顺序**，聚合的 `test result:` 行还含计时字段。可比的是**计数**（passed / failed / ignored）与**每条判定的 `ok` / `FAILED`**。
