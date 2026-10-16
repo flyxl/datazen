@@ -23,14 +23,15 @@
 | B3 | 边界检查在规则有 violation 时仍打印 `ok` | [bug-boundary-summary-line-always-ok.md](bug-boundary-summary-line-always-ok.md) | 开放 · 低 | 变异探针日志中不再出现「`VIOLATION F-11` 与同前缀 `ok F-11` 并存」 | 归预置脚本 `179c6c8b6`，**非下沉轨引入** |
 | B4 | platform-infra 声明了零使用的 `thiserror` | 已删除 | **已关闭** | 该依赖行已删 —— 实测 `packages/platform-infra/` 下 `thiserror` 0 命中，`Cargo.toml` 只剩 `regex` | Wave-3 · W3-2，`583666808`，独立验证 PASS |
 | B5 | application 的模块清单守卫并不封闭 | [bug-application-module-guard-open.md](bug-application-module-guard-open.md) | 开放 · 待实测 | 新增一个 `pub mod` 能让守卫变红（先红一次以证明有效），或测试名如实描述断言强度 | 非 Track C 引入，未排期 |
-| B6 | OwnerRef 契约重复定义 | [bug-owner-ref-duplication.md](bug-owner-ref-duplication.md) | 开放 · 待裁定 | `enum OwnerRef` 只剩 `platform-api/src/context.rs` 一处 | 未排期；**先定契约，再改宿主，顺序不可反** |
+| B6 | ~~OwnerRef 契约重复定义~~ **判据不成立** | 已删除 | **已关闭 · 误判** | 实测 `src-tauri` **从无** `enum OwnerRef` 定义（`handles.rs:36` 是普通 import，`:192` 在 `#[cfg(test)]` 内），宿主 49 处引用**全部**已是契约类型 ⇒ 原判据作废；真问题另立 B12 | 原判据由 Wave-4 · w4-ownerref 实测推翻，协调者独立复核采信 |
 | B7 | schema-diff 直接依赖具体 driver crate | [bug-schema-diff-concrete-driver-deps.md](bug-schema-diff-concrete-driver-deps.md) | 开放 · 从未裁定 | `packages/schema-diff/Cargo.toml` 中不再出现任何 `datazen-driver-{mysql,postgres,sqlite}` | 未排期；动手前须先实测 `driver-api` 能力边界 |
 | B8 | platform/adapter.rs 867 行，超单文件 800 行推荐值 | [bug-platform-adapter-oversized.md](bug-platform-adapter-oversized.md) | 开放 · 需专项 | 该文件 ≤ 800 行，且 `test:platform-arch` 与 `cargo test -p datazen --lib` 全绿 | 需专门变更，**不得在任何下沉轨顺手做** |
 | B9 | URL userinfo 密码含 `/` 时整段凭据原样入日志 | [bug-platform-infra-url-credentials-slash-password.md](bug-platform-infra-url-credentials-slash-password.md) | 开放 · 已确认 | 新增单测覆盖 `https://user:pa/ss@host/v1`，且反证 `https://host/path@x` 不被误改写 | 宿主既有（`7c2151985` 即同正则），`platform-infra` 逐字搬运；不阻断 Wave-3 |
 | B10 | 安装测试把系统共享临时目录当成自己的沙箱 | [bug-workspace-apps-test-asserts-shared-tmpdir.md](bug-workspace-apps-test-asserts-shared-tmpdir.md) | 开放 · 已确认 | `install/tests.rs` 中针对 `TempDir` **直接父目录**的断言归零（按该文件范围检索计 0），改为断言本次测试自建的沙箱顶层；该 crate 测试全绿 | 本次迁移引入（`d57690b29` = Wave-2 · B1），**非宿主既有** |
 | B11 | ai-providers 的 7 个 HTTP 出口绕过 NetworkProvider，SSRF 防护未覆盖 | [bug-ai-providers-reqwest-bypasses-network-provider.md](bug-ai-providers-reqwest-bypasses-network-provider.md) | 开放 · 待裁定 | 裸 `reqwest::Client` 出口归零，或豁免裁定写进 `shared-boundaries-and-ports.md` | 本轮裁定 (d) 方案 1：**现在不改**，另行排期 |
+| B12 | 契约与内核各有一份同名 `OwnerRef`，3 个变体字段集不同且差异承重 | [bug-ownerref-contract-kernel-divergence.md](bug-ownerref-contract-kernel-divergence.md) | 开放 · **需设计裁定** | 两层形状差异被消除，**或**被明确裁定为长期允许并写进平台架构文档 | 既有设计债（三处代码注释已登记），**非下沉引入**；`OwnerRef` 在内核侧冻结中 |
 
-合计 **11 条**：进行中 0 · 开放 8 · 已关闭 3。
+合计 **12 条**：进行中 0 · 开放 8 · 已关闭 4。
 
 ## 维护纪律
 
@@ -51,13 +52,17 @@
 
 ---
 
-条目数、文件名与状态于本次登记 B10 时实测（`ls bug-*.md` = 7 个文件，B1 / B2 / B4 三份已随关闭删除）。
+条目数、文件名与状态于本次改判 B6 / 登记 B12 时实测（`ls bug-*.md` = 8 个文件；索引 12 行；B1 / B2 / B4 / B6 四份已随关闭删除）。
 
 **关闭次序是「先删缺陷文件、再复跑门禁」，不可颠倒。** B1 / B2 的关闭条件是全仓某个字面量归零，
 而缺陷文件自身就写着那个字面量（`bug-ai-providers-redact-endpoint-duplicate.md` 3 处、
 `bug-workspace-apps-zip-path-duplicate.md` 1 处），不先删则门禁永远命中自己。删完之后只剩本索引里的
 「详情文件」链接与「关闭要点」两处——所以这两处也一并改写：详情列填「已删除」，关闭要点改述实测结论、
 不再写出该字面量。B1 关闭后全仓 0 命中即为实测。
+
+**B6 是第一个「判据不成立」型关闭**：不是修好了，而是**原判据经实测不成立**（宿主从来就没有那份重复定义，
+49 处引用早已是契约类型）。此时仍走同一纪律 —— 删缺陷文件、改写关闭要点；**真问题必须另立文件**（真问题成了 B12），
+不得因为「原来那条不成立」就把它一起丢掉。
 
 **本索引自身就是同类陷阱的第二个实例**：第一层是缺陷文件含被查字面量，第二层是索引的关闭要点
 照抄了关闭条件。两层都要处理，只删文件不够。

@@ -304,6 +304,17 @@ packages/runtime/src/connection/
 **类型名的来源声明（本文集中说明一次）**：§4.3–§4.6 签名里出现的类型分两类，不得混为一谈。
 
 - **复用既有文档的既有类型，形状不在本文重定义**：`RequestContext`（[概要 §6.1](system-overview.md#61-应用上下文)）、`OwnerRef`、`ExecutionTarget`、`SessionHandle`、`ConnectionEvent`、`IdempotentOperation`、`SubmissionToken`、`EventEnvelope`、`ExecutionErrorCode`（[连接 §4](connection-management.md#4-dto-与字段定义) 与 [§4.1](connection-management.md#41-服务接口与补充响应)）、`ProfileDraft`、`ProfilePatch`、`JobState`、`ArtifactChunk`（[概要 §6.2 BackendClient 与领域客户端](system-overview.md#62-backendclient-与领域客户端)）、`ApiError`（[概要 §6.3 首版 HTTP 映射](system-overview.md#63-首版-http-映射)、[连接 §13](connection-management.md#13-错误重试和事件)）。其中 `SubmissionToken.idempotencyKey` 的标量类型在本文记作 `IdempotencyKey`，指的就是该字段本身，不是新概念。
+  - **已知偏差（实测，Wave-4 复核）**：上面这份清单里，`OwnerRef` 是**当前唯一**在代码中存在两种不同形状的名字。
+    契约是 `packages/platform-api/src/context.rs` 的 `OwnerRef`，与本表所指的[连接 §4](connection-management.md#4-dto-与字段定义) **逐字段一致**；
+    `packages/runtime/src/connection/types.rs` 另有一份**内核** `OwnerRef`，变体名相同、4 个变体里 3 个字段集不同，
+    serde 属性也不同（契约用 `rename_all_fields`，内核只用 `rename_all`）。
+    内核那份多带的 `organization_id` / `principal_id` / `connection_id` 是**承重**的：
+    `packages/runtime/src/gateway/owner_binding.rs` 的归属闸门靠它做 CM-06 的跨租户 / 跨主体拒绝，
+    `OwnerRef::hash()` 靠它生成 `runtimeEpoch` 指纹。
+    该债已在三处代码注释中登记（`runtime/src/connection/types.rs`、`runtime/src/gateway/owner_binding.rs`、`application/src/identity_policy.rs`），
+    并明确「刻意不去重：合并会改动序列化后的线上字面量」；`packages/runtime/tests/owner_binding.rs` 另有守卫测试钉住内核 `OwnerRef::Job` 的字段表。
+    **按本表，平台文档认的目标形态是契约那一份**，内核那份是偏离目标的内核形态。
+    统一两者属于契约 + CM-06 安全语义变更，需设计裁定，不在共享层迁移范围内。
 - **本文新定义的类型**（这些名字在既有文档中或只被引用而无形体定义（如 `AuthorizationDecision`、`PortError`），或只以字段名/裸 `Counter` 出现（`delegationId`、`afterSequence`、`secretRef`、`credentialRevision`、`policyIsolationKey`、`executionIdentityKey`、`networkRouteRef`）；类型定义随 P1 一起在本包建立，语义仍以既有文档为权威）：§4.1 的 `PortError`；§4.3 的 `ProfileScope`/`ProfileRecord`/`ConfigRevision`/`JobDefinition`/`JobRecord`/`StageRecord`/`JobStateVersion`/`JobFilter`/`RecoveryFilter`/`Checkpoint`（形状即[连接 §4.2](connection-management.md#42-内部记录) 的 `JobCheckpoint`，端口层另起本名）/`CommitBoundary`/`JobClaim`/`WorkerId`/`AuthorizationSubject`/`AuthorizationAction`/`AuthorizationDecision`/`DelegationRef`/`DelegationGrant`/`PolicyIsolationKey`/`PolicyChangeStream`/`ExecutionIdentity`；§4.4 的 `SecretRef`/`SecretPurpose`/`ResolvedCredential`/`CredentialRevision`/`NetworkRouteRef`/`NetworkRouteRevision`/`RoutePlan`/`TunnelSpec`/`TunnelBinding`；§4.5 的 `SessionOwner`/`ReplacementCommit`/`ReplacementOutcome`/`InvalidationReason`/`CloseDisposition`/`BudgetRequest`/`BudgetPermit`/`BudgetPermitSet`/`NodeLease`/`DrainScope`/`DrainStatus`/`ReleaseOutcome`/`BudgetSnapshot`/`SubmissionPresentation`/`VerifiedSubmission`/`KeyVersion`；§4.6 的 `ArtifactSpec`/`ArtifactWriter`/`ChunkPayload`/`ChunkIndex`/`ByteRange`/`ExportSink`/`ExportReceipt`/`RevokeReason`/`EventSubscription`/`EventSequence`。它们是端口契约的私有词汇表，落盘与序列化规则各自写在其方法注释里。
 
 ```rust
