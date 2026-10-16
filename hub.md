@@ -495,3 +495,70 @@ AI-3 用例逻辑推到 Wave-3。
 两轨都不改根 `Cargo.toml`、不改 `scripts/lib/cargoWorkspace.mjs` —— 由集成方在派发前**预置**，
 使跨轨合并不可能产生冲突。
 
+
+## Wave-2 预置基线（协调者亲做，先于两轨存在）
+
+基线提交 **`265e4dbaf`**，取代此前以 `d12d98c57` 为基线的记账。9 个文件 +87/−1：
+
+| 文件 | 改动 |
+| --- | --- |
+| 根 `Cargo.toml` | `members` +2（`packages/ai-providers`、`packages/workspace-apps`，置于 `packages/runtime` 之后） |
+| `scripts/lib/cargoWorkspace.mjs` | `LAYERS` +2（`LAYERS` 现为 15 项） |
+| `scripts/run-platform-crate-tests.mjs` | `TESTED_LAYERS` 多行 +2 |
+| `scripts/check-platform-crate-boundaries.mjs` | `RULES` +22 行，新增 **F-09 / F-10** |
+| `docs/architecture/platform/shared-boundaries-and-ports.md` | §2.4 表新增 F-09 / F-10 两行（`:148`/`:149`）；§2.5 新增 Wave-2 段落（`:176-183`） |
+| 两个新 crate 骨架 | 各 2 个文件（`Cargo.toml` + 4 行 `lib.rs`），依赖已钉死 |
+
+根 `[workspace.dependencies]` 仍只有 7 条 path 条目、**无任何三方 crate**，故两个新 crate 各自直接声明依赖，
+预置**不需要**改根清单的依赖段。
+
+两条新边界规则（文档与代码 `RULES` 同步落盘，`checkSpecConsistency` 只遍历代码 `RULES`，
+只改文档会静默失效）：
+
+- **F-09**（`ai-providers` + `workspace-apps`）：normal + build 依赖闭包不含任何 `tauri*` crate，也不含宿主 `datazen`。
+- **F-10**（**仅** `workspace-apps`）：不含 `axum` / `actix-web` / `warp` / `tonic`。`ai-providers` **故意不是**主体——
+  它带 HTTP *客户端*（`reqwest`）是本职工作；把它纳入 HTTP 禁令会当场制造一条假红。
+
+### 预置基线门禁（8/8 实跑，全绿）
+
+| # | 门禁 | 退出码 | 结论行 |
+| --- | --- | --- | --- |
+| 1 | `cargo build -p datazen-ai-providers -p datazen-workspace-apps` | 0 | 两个新 crate 均可构建 |
+| 2 | `cargo fmt --all -- --check` | 0 | 0 行差异 |
+| 3 | `node scripts/check-platform-crate-boundaries.mjs` | 0 | `ok F-09: datazen-ai-providers, datazen-workspace-apps` / `ok F-10: datazen-workspace-apps` / `PASS — 28 workspace member(s) classified, 9 rule(s) evaluated over 30 crate(s), 1 rule×subject combo(s) vacuous: 0 violation(s), 0 error(s), 3 advisory(ies)` |
+| 4 | `pnpm test:scripts` | 0 | `Test Files 43 passed (43)` / `Tests 760 passed (760)` |
+| 5 | `pnpm test:layers` | 0 | `[check-module-layers] ok (4 rules, 87 files examined, 1 advisory)` |
+| 6 | `pnpm test:platform-crates` | 0 | `PASS — 9 core crate(s) tested`（命令行含两个新 crate） |
+| 7 | `pnpm test:platform-arch` | 0 | 与 #3 同口径 PASS |
+| 8 | `pnpm typecheck` | 0 | `error TS` 计数 0 |
+
+门禁 3 的 `ok F-09` / `ok F-10` 两行是「规则真的被求值」的证据——`1 rule×subject combo(s) vacuous`
+意味着 F-09/F-10 没有落进空转分支。
+
+提交前 `resolve-drivers.mjs` 把 `Cargo.lock` 弄脏，先 `git checkout -- src-tauri/Cargo.lock`，
+再按**显式路径** `git add`（**绝不 `git add -A`**，`Cargo.lock` 永不入库）。
+
+### 两轨工作树（均 `NEW_WT_DRIVERS=all` 引导，落在 `265e4dbaf`）
+
+| 轨 | 工作树 | 分支 | 引导结果 |
+| --- | --- | --- | --- |
+| A2 | `.worktrees/datazen-ai-providers` | `feature/ai-providers` | 「未铺成：0 项 —— 轨道开箱即用」，locales 生成 EXIT=0 |
+| B1 | `.worktrees/datazen-workspace-apps` | `feature/workspace-apps` | 同上 |
+
+主 checkout 全程未动（停在 `@b3faa0e12`）。B1 额外风险：`packages/wapps/`（Wapp 的 JS 源码包）
+**已存在**，与新 crate `packages/workspace-apps/` 是两回事，不得混淆、合并或改作他用。
+
+## Wapp 服务端安装设计结论已落档（不再只存在于对话）
+
+用户两轮追问的答复已改写为文档事实，不再停留在聊天里：
+
+- `docs/architecture/platform/team-server-and-auth.md` §5 RBAC 词表：资源类型新增 **`wapp`**，安装/卸载/启用/停用归 **`write`** verb，
+  读取安装态归 `read`；并写明客户端置灰只是提示、不构成授权。
+- 同文新增 **§15.3 服务端安装与 Wapp 资源地址**，三条实测结论：
+  1. `install_from_zip` / `install_from_dir` / `storage_*` 已按 `wapps_dir` **参数化**，服务端安装只需换存储根目录，
+     隔离口径 `(organizationId, principalId, wappId)` 由 adapter 承担；
+  2. manifest 的自定义资源字段 `backend` 在**安装时即被拒绝**（`Rule 3b: backend plugins are reserved for P2`），
+     全仓 `.backend` 仅命中该拒绝点，**没有需要跨形态搬运的解释器**；P2 若落地必须只在共享内核实现一次；
+  3. 真正随形态变化的是**资源地址不是 schema**：`datazen://` scheme → HTTPS origin，`entry`/`icon`/theme 路径重写属 adapter 职责，
+     内核一旦感知 origin 就不再形态中立（F-10 的存在理由）。
+- 另记 `WappManager` 是进程全局单例、启用态靠 `.enabled` 标记文件，服务端须改为按 `(organizationId, principalId)` 解析。
