@@ -20,25 +20,30 @@
 //! every existing `crate::log_redact::` call site stays untouched.
 //!
 //! URL userinfo is now read from the URL grammar instead of from a character
-//! class. `url::Url::parse` splits the userinfo from the host, so a password
-//! containing `/` is just another character of the password — whereas the
-//! previous `[^/@\s]+` pattern excluded `/`, failed to match such a URL at
-//! all, and logged the credential in clear text. The old pattern survives only
-//! as a fallback for `scheme://…` runs the parser rejects.
+//! class: `url::Url::parse` tells userinfo apart from host, and the redaction
+//! replaces exactly that userinfo, so a password spelled with a percent-encoded
+//! `/` (`%2F`, the RFC 3986 form) is redacted like any other character. The
+//! previous `[^/@\s]+` pattern could not match a run that carried a `/`
+//! before the `@` at all, which is how `scheme://user:pa/ss@host` reached the
+//! log in clear text; the fallback below now admits that `/`.
 //!
-//! Known limitations, measured against `url` 2:
+//! What this covers, and what it does not:
 //!
+//! * The input has to be a *valid* URL. Characters RFC 3986 forbids in userinfo
+//!   — `/`, `?`, `#` — must be percent-encoded there (`/` as `%2F`).
+//!   Userinfo is identified by parsing, so this function does not reconstruct
+//!   credential intent from malformed input such as
+//!   `scheme://user:pw-with-slash@host`: read per the RFC, that text is a
+//!   host:port followed by a path, not credentials. `https://user:pa%2Fss@host/v1`
+//!   is the valid spelling of the same password, and it is redacted.
 //! * Only absolute `scheme://…` runs are considered. A bare connection string
-//!   with no scheme, or a DSN fragment such as `user:pa/ss@host:5432/db`, is
+//!   with no scheme, or a DSN fragment such as `user:password@host:5432/db`, is
 //!   not a URL; it is left to the `Bearer` / query / JSON-field patterns, none
 //!   of which look at `@`.
-//! * Inside a run the parser *rejects*, the fallback rewrites only when it finds
-//!   a `:` between `://` and the last `@`. That separator is what
-//!   distinguishes userinfo from a path that merely precedes an `@`, and
-//!   keeping it is what stops `https://host/path@x` from being rewritten even
-//!   on the fallback path. Consequence: in an unparseable run a bare user *name*
-//!   with no `:` is left as-is; a password cannot be, since `user:password`
-//!   always carries the separator.
+//! * The heuristic fallback runs only when parsing *fails* (an illegal port, for
+//!   instance), and it rewrites a run only when the userinfo segment carries a
+//!   `:`. That separator is what keeps the valid but credential-free
+//!   `https://host/path@x` untouched even on the fallback path.
 
 use regex::Regex;
 use std::sync::OnceLock;
@@ -227,9 +232,13 @@ mod tests {
     /// AC2: a password containing `/` reaches the log redacted.
     #[test]
     fn redacts_password_containing_slash() {
-        // The regression: the parser reads the authority as `user:pa`, rejects
-        // the non-numeric port, and the previous `[^/@\s]+` pattern could not
-        // match the run at all — so the credential went to the log verbatim.
+        // This input is malformed per RFC 3986 — a raw `/` is not allowed in
+        // userinfo — so the parser duly reads the authority as `user:pa` and
+        // rejects the non-numeric port `pa`. The previous `[^/@\s]+` pattern
+        // matched nothing here, which is how the credential reached the log
+        // verbatim; the fallback is deliberately fail-closed and redacts it
+        // anyway. The *valid* spelling of this password is the percent-encoded
+        // `%2F` form covered by `redacts_percent_encoded_password_through_the_parser`.
         let s = "CustomEndpointFailed: https://user:pa/ss@host/v1";
         let out = redact_secrets_for_log(s);
         assert!(!out.contains("pa/ss"), "{out}");
@@ -244,6 +253,23 @@ mod tests {
         let out = redact_secrets_for_log(dsn);
         assert!(!out.contains("pa/ss"), "{out}");
         assert!(out.contains("mysql://***@127.0.0.1:3306/app"), "{out}");
+    }
+
+    /// F3: exercise the *parser* path with real userinfo, so dropping the
+    /// password (not merely replacing the user name) is what makes this pass.
+    ///
+    /// `%2F` and `%40` are RFC 3986's spellings of `/` and `@` inside
+    /// userinfo, so both URLs below are valid, parse with genuine userinfo, and
+    /// never reach the fallback.
+    #[test]
+    fn redacts_percent_encoded_password_through_the_parser() {
+        let slash = redact_url_for_log("https://user:pa%2Fss@host/v1");
+        assert!(!slash.contains("pa%2Fss"), "{slash}");
+        assert_eq!(slash, "https://***@host/v1");
+
+        let at = redact_secrets_for_log("https://user:pa%40ss@host/v1");
+        assert!(!at.contains("pa%40ss"), "{at}");
+        assert_eq!(at, "https://***@host/v1");
     }
 
     /// AC3: a valid URL whose path merely contains `@` is not rewritten.
