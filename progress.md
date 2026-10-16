@@ -34,3 +34,15 @@ Exact conclusions:
 HEAD before/after: 60cc80df7637b5f48b3bdc41a7cc0b10a79f3e8c
 Staged+working diff SHA256 before/after: 69e91afcf2c92aa6a4447098b11538b1d28f55ddf4d1d4c9b68a123ecdffee57
 Status: READY_FOR_TEST (requires fresh independent acceptance).
+
+## IPv6 documentation-prefix correction
+
+Independent acceptance found 3fff::/20 accepted by PublicInternet. Added exact 20-bit rejection plus first/last/in-range and adjacent out-of-range boundary regression. No change to 5f00::/16 or other prefix behavior.
+Command: CARGO_TARGET_DIR=<system temp> cargo test -p datazen-ai-providers
+Exit: 0
+Exact conclusions:
+- test result: ok. 95 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.03s
+- test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.02s
+HEAD before/after: 2bcb4d00aeef8927a862f2f3889a601a4e95382c
+Staged+working diff SHA256 before/after: f4b4cfe91339d98c3e721465b14f2a611c1f77b42538da9ea49bdffbed37f645
+Status: READY_FOR_TEST

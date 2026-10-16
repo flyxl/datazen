@@ -45,6 +45,7 @@ impl EgressPolicy for PublicInternet {
                 // Only global unicast; deny transition, documentation and special ranges.
                 (segments[0] & 0xe000) == 0x2000
                     && segments[0] != 0x2002
+                    && !(segments[0] == 0x3fff && (segments[1] & 0xf000) == 0)
                     && !(segments[0] == 0x2001 && (segments[1] < 0x200 || segments[1] == 0xdb8))
             }
         }
@@ -219,6 +220,26 @@ mod tests {
             );
         }
         for address in ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"] {
+            assert!(PublicInternet.allows(address.parse().unwrap()), "{address}");
+        }
+    }
+    #[test]
+    fn documentation_ipv6_prefix_uses_exact_twenty_bit_boundary() {
+        for address in [
+            "3fff::",
+            "3fff::1",
+            "3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff",
+        ] {
+            assert!(
+                !PublicInternet.allows(address.parse().unwrap()),
+                "{address}"
+            );
+        }
+        for address in [
+            "3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            "3fff:1000::",
+            "3fff:1000::1",
+        ] {
             assert!(PublicInternet.allows(address.parse().unwrap()), "{address}");
         }
     }
