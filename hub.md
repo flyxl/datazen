@@ -103,6 +103,36 @@ Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量�
 - `git branch -d` 必须**从集成分支 worktree** 执行；从主 checkout 执行会因 HEAD=main 拒绝。
 - 临时文件只放 `/tmp`；长命令输出落 `LOG="$(mktemp -t x).log"`，`echo "EXIT=$?"` 单独一行。
 
+### 新建工作树（含目录初始化）
+
+以下为**实测**过的完整配方（用它建过 W3-1 / W3-2 两棵验证树）。`MAIN` 指主 checkout，**只读不写**。
+
+```bash
+MAIN=/Users/wuxiaolong/code/rust-projects/datazen
+WT="$MAIN/.worktrees/datazen-<tag>"; SHA=<commit>; BR=<branch>
+
+cd "$MAIN" && git rev-parse --short HEAD          # 建树前记录主 checkout 状态
+git -C "$MAIN" worktree add -b "$BR" "$WT" "$SHA"   # 提交方；
+                                                   # 验证方改用 --detach "$SHA"
+cd "$WT"
+ln -sfn "$MAIN/node_modules" "$WT/node_modules"  # 必须在下面两个生成脚本**之前**
+node scripts/generate-builtin-locales.mjs; echo "LOCALES_EXIT=$?"
+DATAZEN_DRIVERS=all node scripts/resolve-drivers.mjs; echo "RESOLVE_EXIT=$?"
+
+# 驱动指纹 = 门禁可比性凭证（实测应恒为该值）
+shasum -a 256 src-tauri/src/driver_init.rs | cut -c1-16   # 9c7c24ef92dd380f
+grep -c '^extern crate datazen_driver_' src-tauri/src/driver_init.rs   # 15
+
+cd "$MAIN" && git rev-parse --short HEAD          # 建树后复核主 checkout 未被动过
+```
+
+配套脚本已实测可跑：`/tmp/dz-bootstrap-verify-tree.sh <路径> <commit> <tag>`（验证方专用，detached）。
+
+要点：
+
+- **不要用 `set -e`**：否则生成脚本失败时脚本先死，`EXIT=$?` 永远打不出来 —— 门禁退出码必须能被打出来。
+- 裸 `node scripts/resolve-drivers.mjs` 只注入 4 个驱动（807 B）；跨轨可比必须 `DATAZEN_DRIVERS=all`（15 个，1625 B）。
+- 验证方一律 `--detach` 建树，且**不得**在验证树里 commit/merge/rebase/stash。
 ### Rust 约定
 
 - 新 crate 依赖**必须直接声明**，不得用 `{ workspace = true }`（根 `[workspace.dependencies]` 只有 7 条 path 项）。
@@ -130,3 +160,7 @@ Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量�
   现有 3 条 stash 一律不动。
 - **提交信息不得断言未实际观测过的门禁结果**（踩过一次，只能 amend）。
 - 文档里区分「实测」与「推断」；跨轨分支上的「事实性错误」要先问「合并后是否仍然如此」再判缺陷。
+- **台账内容必须当次提交**：「建立新工作树」那一节曾只停留在工作区未提交，事后全树 `grep` 不到，已丢失并重写。
+  AGENTS.md 说台账可入库随分支流转，前提是真的入库 —— 未提交的台账与对话上下文一样会蒸发。
+- **别把自己的基线命令 `cd` 进别人的工作树**：曾把「集成树基线」误 `cd` 进 W3-2 验证树，与验证方抢同一棵树
+  （两方同时改写 `Cargo.lock`）。跨树操作前逐条核对路径变量。
