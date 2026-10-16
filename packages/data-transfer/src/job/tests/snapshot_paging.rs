@@ -37,6 +37,8 @@ async fn text_keys_transfer_in_bounded_snapshot_pages_but_cannot_resume() {
     let mut checkpoint = InMemoryTransferCheckpoint::new();
     let mappings = columns(&["id", "name"]);
     let refs = mappings.iter().collect::<Vec<_>>();
+    // 固定时钟：提交边界的时刻在断言里被钉死，而不是「某个合理的时间」。
+    let fixed_clock = FixedClock::at("2026-06-07T08:09:10.000Z");
     let mut context = BoundedPipelineContext {
         job: &job,
         table: &inspected,
@@ -56,6 +58,7 @@ async fn text_keys_transfer_in_bounded_snapshot_pages_but_cannot_resume() {
         cancelled: None,
         write_started: None,
         checkpoint: &mut checkpoint,
+        clock: &fixed_clock,
     };
     let result = execute_bounded_table(&mut context)
         .await
@@ -67,6 +70,15 @@ async fn text_keys_transfer_in_bounded_snapshot_pages_but_cannot_resume() {
     );
     assert_eq!(result.progress.committed.get(), 5);
     assert_eq!(result.boundaries.len(), 3);
+    // 每个提交边界都读注入的时钟：换成固定时钟后时刻完全可断言。
+    assert!(
+        result
+            .boundaries
+            .iter()
+            .all(|boundary| boundary.committed_at.as_str() == "2026-06-07T08:09:10.000Z"),
+        "{:?}",
+        result.boundaries
+    );
     assert!(result.max_buffer_bytes <= PIPELINE_INITIAL_BYTES);
     let writes = tgt.state.lock().unwrap().committed.clone();
     assert_eq!(writes.len(), 3);

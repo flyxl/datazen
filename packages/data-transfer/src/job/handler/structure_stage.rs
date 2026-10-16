@@ -62,6 +62,7 @@ impl DataTransferHandler {
                 if result.outcome == Some(TableExecutionOutcome::Committed) {
                     let digest = format!("{:x}", Sha256::digest(item.ddl.as_bytes()));
                     boundaries.push(commit_boundary(
+                        self.clock.as_ref(),
                         spec.stage_id.as_str(),
                         &format!("{}#{:?}#{digest}", item.source_table, item.kind),
                         &digest,
