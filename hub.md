@@ -178,12 +178,27 @@ P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM
 
 | 轨 | HEAD | 状态 |
 | --- | --- | --- |
-| w4-b3-summary | `aebec3b33` | **独立验证 PASS**（Tester `2f07527c`）——见下方验收结论 |
-| w4-panic-gate | `a77bbb99e` | READY_FOR_TEST → Tester `834a9c7d`（/tmp/dz-verify-panic）**在跑** |
+| w4-b3-summary | `aebec3b33` | **已合并** → `80032a558`（G1–G4 全绿）✅ |
+| w4-panic-gate | `a77bbb99e` | **NEEDS_REVISION**（Tester `834a9c7d`）→ 已派回原 Coder 修订 F1/F2/F3 |
 | w4-test-guards | `e9c7ed9a1` | READY_FOR_TEST → Tester `6d74abdf`（/tmp/dz-verify-guards）**在跑** |
+| w4-redact-url | `c94cdbad6` | READY_FOR_TEST → Tester `d2776db2`（/tmp/dz-verify-redact）**在跑** |
 | w4-redact-url | `dd162813d` | 实现已提交，GATE2-5 串行跑中 |
 | w4-clock | 未提交 | 进行中 |
-| w4-b8-adapter | 建树完成（`ae430e2b3`） | Coder `9e3be301` 在跑 |
+| w4-b8-adapter | 建树完成（`ae430e2b3`） | Coder `9e3be301` 在跑（自称三门禁已绿） |
+### ⚠️ 前端测试基线已变：**6335 → 6338**
+
+w4-b3-summary 合并后（`80032a558`）`npx vitest run` 得 `Test Files 602 passed (602)` / `Tests 6338 passed (6338)`。
+**+3 正是该轨在 `scripts/__tests__/check-platform-crate-boundaries.test.ts` 新增的 3 条**（56 → 59）。
+⇒ **R 阶段与后续合并必须用 6338 作基线**；再照 6335 比对会把合法增量误判为「多了测试」。
+
+w4-b3-summary 合并后四道门禁（实测，均 EXIT=0）：
+
+| 门禁 | 退出码 | 逐字结论行 |
+| --- | --- | --- |
+| G1 `node scripts/check-platform-crate-boundaries.mjs` | 0 | `PASS — 29 member(s) classified, 10 rule(s) over 31 crate(s), … 0 violation(s), 0 error(s), 3 advisory(ies)` |
+| G2 `node scripts/platform-arch-selfcheck.mjs` | 0 | `8/8 mutation(s) turned the guard red` + `revert verified` |
+| G3 `pnpm --config.verify-deps-before-run=false typecheck` | 0 | `error TS` 0 行 |
+| G4 `npx vitest run` | 0 | `602 文件 / **6338** 用例全过` |
 | w4-ownerref | `bc36cd121` | **零改动收尾**；轨树/分支/target 已回收；B6 改判 → B12 |
 
 三条 Tester 都被要求做**对抗性**验证，共同要求：自己造变异（不照抄提交方）、必须做**负向对照**（在基线上复现缺陷）、

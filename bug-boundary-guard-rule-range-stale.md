@@ -15,6 +15,14 @@
 | `:299` | `the guard can no longer claim to implement F-01..F-07.` | 实际到 F-11 |
 | `:472` | `the guard cannot verify it implements F-01..F-07` | 实际到 F-11 |
 
+另有一处在**仓库工作流**里（同一次盘点发现）：
+
+| 位置 | 现有文字 | 问题 |
+| --- | --- | --- |
+| `.github/workflows/ci.yml:307` | `name: Platform crate dependency boundaries (F-01..F-07)` | 实际到 F-11；该步跑的是同一个门禁 |
+
+CI 的步名会显示在每次运行的界面上，误导面比脚本注释更大。
+
 后两处是**错误信息**，出问题时打印给排障者，误导性更强。
 
 ## 影响

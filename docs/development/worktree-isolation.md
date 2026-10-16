@@ -229,7 +229,7 @@ shasum -a 256 src-tauri/src/driver_init.rs | cut -c1-16
 grep -c "^extern crate datazen_driver_" src-tauri/src/driver_init.rs
 ```
 
-### 三条顺序坑
+### 顺序坑
 
 - **不要用 `set -e` 包住这三步**：生成脚本失败时脚本先死，`EXIT=$?` 永远打不出来，
   而门禁退出码必须能被拿到。
@@ -237,3 +237,11 @@ grep -c "^extern crate datazen_driver_" src-tauri/src/driver_init.rs
   要往这棵树上合并的分支，在 `git merge` 前必须 `git checkout --` 复位，否则合并会被拒。
 - **不要用 `pnpm install` 代替 ①**。`node_modules` 是符号链接时裸 `pnpm run` 会以退出码 1 失败
   （依赖校验认不出链接目标），要写成 `pnpm --config.verify-deps-before-run=false <script>`。
+- **`node scripts/platform-arch-selfcheck.mjs` 在脏树上直接退出 2。** 它在运行首尾各取一次 `git status --porcelain` 做自证
+  （`scripts/platform-arch-selfcheck.mjs:538` / `:576`），树一脏就不跑。而 `resolve-drivers` 按设计会把托管清单弄脏，
+  ⇒ **在刚建好的 worktree 里直接跑自检必然失败**。先 `git checkout -- Cargo.lock src-tauri/Cargo.toml` 复位再跑。
+  注意 `pnpm test:platform-arch` **不含**这个自检（它只是 `node scripts/check-platform-crate-boundaries.mjs`，见 `package.json:110`），
+  所以这条只影响直接调用自检的人 —— 门禁链本身不受影响（两种状态下门禁结论行逐字相同，只有 advisory 数在 2/3 间浮动）。
+- **删验证树前先 `unlink node_modules` 符号链接。** worktree 里的 `node_modules` 是指向主 checkout 的符号链接；
+  `git worktree remove --force` 与 `rm -rf` 处理符号链接本身通常是安全的，显式先 `unlink` 能彻底排除
+  「透过链接删掉主仓依赖」的可能。删完用 `git worktree list` 复核，并确认主仓 `git status` 仍为空。
