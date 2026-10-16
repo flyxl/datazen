@@ -81,30 +81,39 @@ fn install_from_zip_rejects_traversal_entries() {
         let file = fs::File::create(&zip_path).unwrap();
         let mut zip = ZipWriter::new(file);
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        add_file(&mut zip, "../outside.html", "<html>evil</html>", options);
+        // 两级 `..`：staging 在 `{wapps_root}/.staging-{uuid}`，位于 wapps root 下一层，
+        // 所以两级才真的越出被测的 wapps root，落点就是我们下面给的 `sandbox/outside.html`。
+        add_file(&mut zip, "../../outside.html", "<html>evil</html>", options);
         zip.finish().unwrap();
     }
 
-    let wapps_root = TempDir::new().unwrap();
-    fs::write(wapps_root.path().join("keep.txt"), "unchanged").unwrap();
+    // 本测试自建的沙箱顶层：wapps root 是它的子目录，越界目标就摆在这一层。
+    // 断言因此只盯着本测试自己的目录树，与系统共享临时目录无关。
+    // （原先盯的是 TempDir 路径的上一级目录，也就是**全局共享的 $TMPDIR**：
+    //   别的进程或测试往里丢一个 `outside.html` 就能把这里搞红，
+    //   而它并不能证明「条目没有逃出被安装的 wapps root」。）
+    let sandbox = TempDir::new().unwrap();
+    let wapps_root = sandbox.path().join("root");
+    let escape_target = sandbox.path().join("outside.html");
+    fs::create_dir_all(&wapps_root).unwrap();
+    fs::write(wapps_root.join("keep.txt"), "unchanged").unwrap();
 
-    let err = install_from_zip(&zip_path, wapps_root.path()).unwrap_err();
+    let err = install_from_zip(&zip_path, &wapps_root).unwrap_err();
     assert!(
         err.contains("traversal") || err.contains("invalid zip entry"),
         "unexpected: {err}"
     );
     // Nothing escaped the wapps root and no staging dir remains.
     assert_eq!(
-        fs::read_to_string(wapps_root.path().join("keep.txt")).unwrap(),
+        fs::read_to_string(wapps_root.join("keep.txt")).unwrap(),
         "unchanged"
     );
-    assert!(!wapps_root
-        .path()
-        .parent()
-        .unwrap()
-        .join("outside.html")
-        .exists());
-    assert!(read_staging_dirs(wapps_root.path()).is_empty());
+    assert!(
+        !escape_target.exists(),
+        "越界条目不得落在沙箱顶层：{}",
+        escape_target.display()
+    );
+    assert!(read_staging_dirs(&wapps_root).is_empty());
 }
 
 fn read_staging_dirs(root: &Path) -> Vec<String> {
