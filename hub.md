@@ -110,7 +110,26 @@ Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量�
   代价是 `MAX_COMPRESSION_RATIO` 从「宿主自有的解压炸弹阈值」变成「宿主转出的常量」；
   日后 Web 形态若要自带策略，应改 `platform-infra`，而不是在宿主另立一份。
 
-**Wave-1～Wave-3 与 R 阶段全部完成。剩余：待裁定项与合并回 main（未获授权，不执行）。**
+**Wave-1～Wave-3 与 R 阶段全部完成。用户已就 6 项待裁定项给出结论，Wave-4 进行中；合并回 main 仍未获授权。**
+
+### Wave-4：6 项裁定的落地
+
+| 裁定 | 内容 | 落地轨 |
+| --- | --- | --- |
+| 1 | 建树只要 basic，不要 `all` | 已落地 `38b93e4d4`（纯文档，未跑门禁） |
+| 2 (b) | 方案 1：引入 `url` crate 结构化脱敏 | w4-redact-url |
+| 3 (c) | 方案 3：只门禁新 crate，不追溯旧代码 | w4-panic-gate |
+| 4 (d) | 方案 1：暂不改 `ai-providers` 的 `reqwest` 出口 | 已登记 B11 `8aa15a3d9` |
+| 5 (g) | 做：实现 `Clock` 端口 | w4-clock |
+| 6 | 修 B3 / B5 / B6 / B8 / B10 | w4-b3-summary / w4-test-guards / w4-ownerref / w4-b8-adapter |
+
+- 6 棵轨树均已建好（基线 `feature/shared-layer-extraction` @ `bc36cd121`），
+  初始化核查通过（`node_modules` 符号链接、`driver_init.rs`、`builtinLocales.ts` 就位），工作区干净。
+- **顺序约束**：`w4-ownerref` 必须先于 `w4-b8-adapter` —— 两者同触 `src-tauri/src/platform/handles.rs`。
+- **注意事项（新）：子代理的默认 cwd 是主 checkout，不是轨树。** 派发简报必须要求它们对所有 `bash` 显式传 `workdir`，或一律用绝对路径；
+  首轮 6 个 Coder 里有两份 closing message 就停在「先确认工作目录」这一步。
+- **engine 报 failed 不是死亡证据（第 6 次确认）**：首轮 6 个全报 failed，逐条投一行探针后 5 份回了实质进度
+  （已核实的落点、行数、偏差）。两轮 notification 都是「一轮内同时全死」，属误报形态；重派会白烧配额。
 
 ### Wave-2 收尾（实测）
 

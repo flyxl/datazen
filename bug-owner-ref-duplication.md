@@ -1,11 +1,18 @@
 # BUG · OwnerRef 契约重复定义
 
-**状态**：开放 · 待集成分支裁定
+**状态**：开放 · Wave-4 · w4-ownerref 轨修复中
 
 ## 位置
 
-- `src-tauri/src/platform/handles.rs:192` —— `OwnerRef::Job`
-- `packages/platform-api/src/context.rs` —— `OwnerRef`
+实测 `grep -rn 'enum OwnerRef' src-tauri/ packages/` 只有**两处定义**
+（Wave-4 · w4-ownerref 轨复核）：
+
+- `packages/platform-api/src/context.rs:65` —— 契约侧定义
+- `packages/runtime/src/connection/types.rs:381` —— **共享内核里的第二份定义**
+
+**订正**：本文件原先把宿主侧落点写成 `src-tauri/src/platform/handles.rs:192`，
+那是 `OwnerRef::Job` 的**使用点**（变体匹配），不是定义处。
+该文件是否 import / 再导出此类型，由修复轨自行核实。
 
 ## 说明
 
