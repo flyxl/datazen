@@ -183,7 +183,7 @@ P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM
 | w4-test-guards | `e9c7ed9a1` | **NEEDS_REVISION**（Tester `6d74abdf`）→ 已派回原 Coder。核实成立：旧守卫对第 8 个 pub mod 全盲、诱饵实验两半、生产越权后测试变红。**新守卫可被惯用写法静默绕过**（F1：`pub mod x; // 注释` 因 strip_suffix(';') 返回 None 而整行被丢弃）；F2 即 B14，验证方已确定性复现ION |
 | w4-redact-url | `c5da94a44` | 复验 Tester `c73afc1f` **在跑**。上一轮 FAIL 里的两组「残余泄漏」经用户纠正后**判定为误判并已撤回**（那是畸形输入，非合法 URL）；本轮只做两条真问题：F2 文档改事实口径、F3 补只走主路径的编码形态断言（platform-infra 13→14 passed）；负控：删 set_password(None) 后新测试变红并打印 `https://***:pa%2Fss@host/v1` |
 | w4-clock | `ba7c0f78a`（20 文件） | READY_FOR_TEST → Tester `84ce33a7` **在跑**；platform-api 220 / schema-diff 228 / runtime 611 / data-transfer 226 / 宿主 1552 · 边界 0/0；**有一处行为变更已登记 B17** |
-| w4-b8-adapter | `56e3f2345`（8 提交） | READY_FOR_TEST → Tester `ed5f3dd0` **在跑**；`adapter.rs` 867→**651** 行 |
+| w4-b8-adapter | `56e3f2345`（**直接父 `ae430e2b3`**，非 bc36cd121） | **独立验证 PASS**（Tester `ed5f3dd0`）；`adapter.rs` 867→**651** 行；生产前 645 行 sha 与基线相同；13 条用例逐条被编译执行（`--list` 证明）；断言锚点 44↔44 多重集相同 |
 | w4-ownerref | `bc36cd121` | **零改动收尾**；轨树/分支/target 已回收；B6 改判 → B12 |
 
 协调者对 w4-b8-adapter 的**独立核对**（不经 Tester，我自己实测）：
@@ -191,7 +191,10 @@ P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM
 - 新 `adapter.rs` 前 645 行与基线前 645 行 sha256 **完全相同**（`a2ea4df6a1e1…`）。
 - 去行首尾空白后，基线测试体与新文件仅 **5 行**差异 —— 正是被移除的 `#[cfg(test)]` / `mod tests {` / `}`。
 - `assert` 出现次数 **37→37**，`#[test]` **13→13**。
-- 提交方另给编译实证：`production_source(前一版 adapter.rs) === production_source(当前 adapter.rs)`，18535 字符逐字节相同
+- 提交方另给编译实证：`production_source(前一版 adapter.rs) === production_source(当前 adapter.rs)`。
+  **数字订正（验证方独立复现）**：等式的两个操作数是 **18920 字节 / 18534 字符**，提交方报的「18535」不准（疑为多算一个尾换行）。**等式本身成立** —— 验证方探针实测 `head_len = base_len = 18920`、`equal = true`、`first differing index = None`。
+  **措辞订正**：raw `split("#[cfg(test)]").next()` 的前缀**不是**逐字节不变（基线 23679 字节 / 645 行 → 当前 23833 字节 / 648 行，+154 字节＝新增的 3 行说明注释）。
+  真正逐字节不变的是 `production_source()` 那一层（它去注释）。故应表述为「生产代码字节不变，多出的 3 行注释会被 `production_source` 剥掉」，而不是「拿到的仍是同一段生产字节」。
   ⇒ 同目录扁平命名让 `include_str!("adapter.rs")` 的解析基准不变，**无需改路径**。
 - 同目录已有先例：`live_source.rs:158-160` 用同一 `#[path]` 写法拆出 `live_source_tests.rs`（587 行），
   且从未登记进那两张扫描清单 ⇒ 清单非穷尽由既有先例即已证明。
