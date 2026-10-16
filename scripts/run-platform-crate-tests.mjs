@@ -126,6 +126,7 @@ export const TESTED_LAYERS = Object.freeze([
   'runtime',
   'application',
   'platform-api',
+  'platform-infra',
   'server',
   'ai-providers',
   'workspace-apps',

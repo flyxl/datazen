@@ -5,6 +5,7 @@ members = [
     "packages/driver-api",
     "packages/ai-api",
     "packages/platform-api",
+    "packages/platform-infra",
     "packages/application",
     "packages/runtime",
     "packages/ai-providers",

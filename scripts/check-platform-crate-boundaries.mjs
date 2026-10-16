@@ -209,6 +209,22 @@ const RULES = Object.freeze([
     specCrates: ['axum', 'actix-web', 'warp', 'tonic'],
     note: 'workspace-apps stays transport-neutral so a server adapter needs no breaking change',
   },
+  {
+    id: 'F-11',
+    subjects: ['platform-infra'],
+    subjectsFromSpec: true,
+    // Inverted allow-list on purpose. platform-infra is the shared
+    // infrastructure kernel: redaction, path safety, clock, transport
+    // policy. The moment it may depend on ANY other layer it stops being
+    // a foundation and becomes the coupling hub every form must link,
+    // which is exactly the `common` crate this repo must not grow. A
+    // deny-list would silently permit every layer added from now on.
+    allowedLayers: ['platform-infra'],
+    forbiddenCrates: 'spec',
+    specTokens: ['packages/platform-infra'],
+    specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
+    note: 'the infrastructure kernel depends on no other layer and no platform transport',
+  },
 ]);
 
 /**
