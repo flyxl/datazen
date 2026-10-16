@@ -14,6 +14,9 @@ test-harness = []
 
 [dependencies]
 async-trait = "0.1"
+# 只用于 `SystemClock` 把当前时刻写成定宽 RFC3339（`clock` 特性即 `now` + `std`）。
+# 契约层**不解析**时刻：`Timestamp` 的比较与算术仍由各调用方负责。
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"

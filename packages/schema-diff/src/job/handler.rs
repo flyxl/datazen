@@ -11,6 +11,7 @@ use datazen_platform_api::dto::job::{
     Checkpoint, CommitBoundary, JobDomainResult, JobProgress, JobResultCounter, JobResultItem,
 };
 use datazen_platform_api::id::{ArtifactId, Counter, StageId, Timestamp};
+use datazen_platform_api::ports::{Clock, SystemClock};
 
 use datazen_runtime::job::{
     CancelToken, JobError, JobHandler, RecoveryVerdict, StageOutcome, StageSpec, StageTerminal,
@@ -33,10 +34,15 @@ pub enum HandlerRole {
 /// 构造时携带一次受理的最小上下文：prepare 携带 [`PrepareRequest`]，
 /// apply 携带 [`ApplyRequest`] + planId/selectionRevision。物理资源访问一律
 /// 经 [`SchemaDiffJobBackend`]（§2.3：handler 不持有 live session）。
+///
+/// 时间来源是注入的 [`Clock`]：构造函数默认装配 [`SystemClock`]，
+/// [`Self::with_clock`] 让调用方（含测试）换成别的时钟，提交边界与 plan 过期判定
+/// 都读同一个来源。
 pub struct SchemaDiffHandler<B: SchemaDiffJobBackend> {
     role: HandlerRole,
     backend: Arc<B>,
     plans: Arc<PlanStore>,
+    clock: Arc<dyn Clock>,
     prepare_request: Option<PrepareRequest>,
     apply_request: Option<ApplyRequest>,
     consumed_plan_id: Option<String>,
@@ -49,6 +55,7 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
             role: HandlerRole::Prepare,
             backend,
             plans,
+            clock: Arc::new(SystemClock),
             prepare_request: Some(request),
             apply_request: None,
             consumed_plan_id: None,
@@ -67,6 +74,7 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
             role: HandlerRole::Apply,
             backend,
             plans,
+            clock: Arc::new(SystemClock),
             prepare_request: None,
             apply_request: Some(request),
             consumed_plan_id: Some(consumed_plan_id),
@@ -74,8 +82,14 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
         }
     }
 
-    fn now() -> Timestamp {
-        Timestamp::new(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string())
+    /// 换一个时间源（测试注入固定时钟；装配层接别的 [`Clock`] 实现）。
+    pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    fn now(&self) -> Timestamp {
+        self.clock.now()
     }
 
     fn role_kind(&self) -> &'static str {
@@ -125,7 +139,7 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
             .map(|r| CommitBoundary {
                 stage_id: StageId::new("apply"),
                 stable_target_fingerprint: fingerprint.to_string(),
-                committed_at: Self::now(),
+                committed_at: self.now(),
                 // §4.1 稳定 operation ID：取语句文本的 fnv 前 16 位（deploy 不提供
                 // operation 字段时的稳定推导，顺序无关、可重放核验）。
                 operation_id: Some(format!(
@@ -273,7 +287,7 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
         // 一次性消费 + 版本守卫 + 过期/选择版本校验（§2.1 / CM-41）。
         let stored = match self
             .plans
-            .take_for_apply(plan_id, selection_revision, &Self::now())
+            .take_for_apply(plan_id, selection_revision, &self.now())
         {
             Ok(s) => s,
             Err(e) => return Ok(self.failed_outcome("apply", &e)),
@@ -350,7 +364,7 @@ impl<B: SchemaDiffJobBackend> JobHandler for SchemaDiffHandler<B> {
                 // PlanStore 校验：存在、未过期、版本守卫、选择版本一致（不消费）。
                 match self
                     .plans
-                    .validate_for_apply(plan_id, selection_revision, &Self::now())
+                    .validate_for_apply(plan_id, selection_revision, &self.now())
                 {
                     Ok(()) => Ok(vec![StageSpec {
                         stage_id: StageId::new("apply"),
@@ -449,9 +463,10 @@ mod tests {
     use crate::job::backend::SchemaDiffJobBackend;
     use crate::job::backend::{ApplyRequest, PrepareRequest, PreparedPlan, ReadOnlyVerdict};
     use crate::job::plan::{PlanStore, SchemaDiffFrozenPlan, SchemaDiffPlanError};
-    use crate::types::SchemaDiffPlan;
+    use crate::types::{SchemaDiffPlan, StatementExecResult};
     use datazen_platform_api::dto::job::JobResultItem;
     use datazen_platform_api::id::Counter;
+    use datazen_platform_api::ports::FixedClock;
 
     struct UnusedBackend;
 
@@ -562,6 +577,44 @@ mod tests {
         assert!(!serialized.contains("source-live-session"));
         assert!(!serialized.contains("target-live-session"));
         assert!(!serialized.to_ascii_lowercase().contains("sql"));
+    }
+
+    /// 一次成功 deploy 的提交边界：时间戳只可能来自注入的时钟。
+    fn deploy_once(clock: Arc<dyn Clock>) -> StageOutcome {
+        handler().with_clock(clock).deploy_outcome(
+            SchemaDiffDeployResult {
+                status: DeployStatus::Committed,
+                executed_count: 1,
+                statement_count: 1,
+                errors: Vec::new(),
+                statement_results: vec![StatementExecResult {
+                    index: 0,
+                    sql: "alter table users add column nickname text".into(),
+                    ok: true,
+                    error: None,
+                }],
+            },
+            "sha256:0123456789abcdef",
+        )
+    }
+
+    #[test]
+    fn commit_boundary_timestamps_come_from_the_injected_clock() {
+        let first = deploy_once(Arc::new(FixedClock::at("2026-05-05T00:00:00.000Z")));
+        let second = deploy_once(Arc::new(FixedClock::at("2026-05-05T00:00:05.000Z")));
+
+        assert_eq!(
+            first.commit_boundaries[0].committed_at.as_str(),
+            "2026-05-05T00:00:00.000Z"
+        );
+        assert_eq!(
+            second.commit_boundaries[0].committed_at.as_str(),
+            "2026-05-05T00:00:05.000Z"
+        );
+        assert_ne!(
+            first.commit_boundaries[0].committed_at,
+            second.commit_boundaries[0].committed_at
+        );
     }
 
     #[test]
