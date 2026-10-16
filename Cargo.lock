@@ -1684,6 +1684,7 @@ dependencies = [
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
  "datazen-platform-api",
+ "datazen-platform-infra",
  "datazen-runtime",
  "datazen-schema-diff",
  "datazen-workspace-apps",
@@ -2116,6 +2117,14 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "datazen-platform-infra"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
