@@ -366,6 +366,14 @@ where
 
     let mut out = String::new();
     out.push_str(&format!("-- DataZen backup: {}\n", database));
+    // 这一行仍然直调 `Utc::now()`，是**已记录的已知限制**，不是漏改：
+    // `packages/driver-api` 不依赖 `datazen-platform-api`（后者的 `Clock` 端口在这里用不上），
+    // 而补上这条边会把 platform-api 推进**每一个驱动 crate** 的传递闭包（驱动只经 driver-api
+    // 取契约），直接撞 F-01「驱动依赖闭包不含宿主 / platform crate」——实现在
+    // `scripts/check-platform-crate-boundaries.mjs`（`allowedLayers: ['driver', 'driver-api']`），
+    // 规则表在 `docs/architecture/platform/shared-boundaries-and-ports.md` §2.4。
+    // 时间源注入在本 crate 的公共契约上无处安放：给 `DatabaseDriver` 加时钟参数会改动所有
+    // 驱动与调用方的签名，代价远大于这一行转储头注释，因此**主动保留**直调。
     out.push_str(&format!("-- Date: {}\n", chrono::Utc::now().to_rfc3339()));
     let mut opt_flags = Vec::new();
     if opts.schema_only {
