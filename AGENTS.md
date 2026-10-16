@@ -73,6 +73,8 @@ datazen/
 3. `scripts/resolve-pro.mjs` 控制构建版本：默认 `--edition=community`（纯开源 Fallback）；`--edition=pro`（打包并 stage `@datazen/extension-sql-editor-pro` 到 `src-tauri/resources/builtin-ep/`，运行时经签名验签后动态加载）。
 4. 数据库驱动通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories。
 
+注入前托管清单文件的干净副本会存进 gitignored 的 `.driver-file-stash/`；该 stash 带 `.stash-meta.json` 旁证，复用前判新鲜度，**陈旧时 `resolve-drivers.mjs` 以退出码 1 硬失败并给出恢复命令，而不是静默回滚合并后的清单文件**。此时**不要**跑 `--restore`（它会用合并前的旧副本覆盖当前结果）。详见 [docs/development/worktree-isolation.md](docs/development/worktree-isolation.md)。
+
 ```bash
 pnpm tauri:dev                         # 默认 basic 驱动，Community 版
 pnpm tauri:dev:pro                     # Pro 版开发（注入 SQL Editor Pro）
