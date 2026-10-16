@@ -32,8 +32,9 @@
 | B12 | 契约与内核各有一份同名 `OwnerRef`，3 个变体字段集不同且差异承重 | [bug-ownerref-contract-kernel-divergence.md](bug-ownerref-contract-kernel-divergence.md) | 开放 · **需设计裁定** | 两层形状差异被消除，**或**被明确裁定为长期允许并写进平台架构文档 | 既有设计债（三处代码注释已登记），**非下沉引入**；`OwnerRef` 在内核侧冻结中 |
 | B13 | 边界门禁自身的规则范围描述过时（头写 F-01..F-08、错误信息写 F-01..F-07，实际 11 条） | [bug-boundary-guard-rule-range-stale.md](bug-boundary-guard-rule-range-stale.md) | 开放 · 低 | 文件内不再出现与 `RULES` 条数不符的写死范围，且门禁正常路径仍 0/0 | Wave-4 · w4-b3-summary 顺带发现，**既有描述债** |
 | B14 | 安装测试对系统共享临时目录做**绝对零**断言（跨进程脆弱） | [bug-workspace-apps-inspect-tmpdir-absolute-assert.md](bug-workspace-apps-inspect-tmpdir-absolute-assert.md) | 开放 · 低 | `install/tests.rs` 中针对 `std::env::temp_dir()` 的绝对断言归零（全改差值形态），且该 crate 全绿、结论行连续两次逐字相同 | 既有测试债；Wave-4 · w4-test-guards 顺带发现但**未改**（超出 B10 边界）。与 B10 同类而不同位 |
+| B15 | 门禁逐规则汇总行在规则产出 error 时仍打印 `ok`（B3 的 error 通道孪生） | [bug-boundary-rule-summary-ok-on-error.md](bug-boundary-rule-summary-ok-on-error.md) | 开放 · 待裁定修法 | 构造「扫到文件但扫描中途失败」的运行，汇总行与该规则 ERROR 行不再互相矛盾；正常路径仍 0/0 | 与 B3 同源，**未随 B3 修复一并解决**；现有 8 个变异探针全走 violation 通道，故不被触发 |
 
-合计 **14 条**：进行中 0 · 开放 10 · 已关闭 4。
+合计 **15 条**：进行中 0 · 开放 11 · 已关闭 4。
 
 ## 维护纪律
 

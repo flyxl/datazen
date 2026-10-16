@@ -178,7 +178,7 @@ P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM
 
 | 轨 | HEAD | 状态 |
 | --- | --- | --- |
-| w4-b3-summary | `aebec3b33` | READY_FOR_TEST → Tester `2f07527c`（自建 detached 树 /tmp/dz-verify-b3）**在跑** |
+| w4-b3-summary | `aebec3b33` | **独立验证 PASS**（Tester `2f07527c`）——见下方验收结论 |
 | w4-panic-gate | `a77bbb99e` | READY_FOR_TEST → Tester `834a9c7d`（/tmp/dz-verify-panic）**在跑** |
 | w4-test-guards | `e9c7ed9a1` | READY_FOR_TEST → Tester `6d74abdf`（/tmp/dz-verify-guards）**在跑** |
 | w4-redact-url | `dd162813d` | 实现已提交，GATE2-5 串行跑中 |
