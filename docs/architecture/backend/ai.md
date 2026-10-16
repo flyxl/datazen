@@ -115,9 +115,10 @@ pub async fn ensure_ai_ready(&self) {
 
 Provider/Registry 的 `new()` 及无客户端参数的模型获取均采用受限默认策略。
 桌面宿主通过 `with_http_client` 和 `fetch_remote_models_with_client` 显式采用 `HttpClient::desktop()`，保留用户配置的本地 Ollama、
-私网网关及企业环境代理。桌面同样不自动跟随重定向。服务端适配尚未落地；未来适配必须使用
+私网网关及企业环境代理。桌面同样不自动跟随重定向，并保持 HTTP(S)/userinfo URL 校验；宽松桌面策略由 reqwest/可信环境代理执行目标 DNS，支持仅在代理侧可解析的域名。服务端适配尚未落地；未来适配必须使用
 `AiProviderRegistry::with_http_client(HttpClient::default())`，或通过公开的 `EgressPolicy`
 trait 注入管理员出站策略，并将相同客户端传给 `fetch_remote_models_with_client`。
+模型列表保留 10 秒连接超时与覆盖解析、请求及读体的 30 秒总超时。
 各内置 Provider 也提供 `with_http_client`。策略由部署方构造，不能从用户 AI 配置开启私网。
 外部 inventory Provider 属于可信原生扩展，其自有网络实现需由部署方另行审查。
 

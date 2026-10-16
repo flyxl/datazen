@@ -18,3 +18,19 @@ Rustfmt executed on modified Rust files; git diff --cached --check passes.
 Integration verification still required: existing host tests/build for two desktop constructor call sites. No server adapter exists yet; architecture explicitly documents future service injection. Per-request pinned clients trade connection pool reuse for checked DNS consistency. No .env files read.
 
 Delete this progress.md when accepting/merging the track.
+
+## Independent acceptance corrections
+
+Fixed proxy-only DNS regression: desktop validates HTTP(S)/userinfo URL, then lets reqwest and trusted environment proxy resolve target. Restricted mode retains complete IP validation/pinning/no_proxy.
+Restored remote model listing 10-second connect timeout and 30-second overall deadline including DNS and response body.
+Added subprocess-isolated real proxy regression and real hanging-socket 30-second timeout regression in packages/ai-providers/tests/egress_regressions.rs.
+
+Command: CARGO_TARGET_DIR=<system temp> cargo test -p datazen-ai-providers
+Exit: 0
+Exact conclusions:
+- test result: ok. 94 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.02s
+- test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.02s
+- doc tests: 0 passed, 0 failed
+HEAD before/after: 60cc80df7637b5f48b3bdc41a7cc0b10a79f3e8c
+Staged+working diff SHA256 before/after: 69e91afcf2c92aa6a4447098b11538b1d28f55ddf4d1d4c9b68a123ecdffee57
+Status: READY_FOR_TEST (requires fresh independent acceptance).

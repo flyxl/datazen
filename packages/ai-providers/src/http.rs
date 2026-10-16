@@ -61,6 +61,7 @@ impl EgressPolicy for Desktop {
 pub struct HttpClient {
     policy: Arc<dyn EgressPolicy>,
     environment_proxy: bool,
+    connect_timeout: Duration,
 }
 impl Default for HttpClient {
     fn default() -> Self {
@@ -72,6 +73,7 @@ impl HttpClient {
         Self {
             policy,
             environment_proxy: false,
+            connect_timeout: Duration::from_secs(15),
         }
     }
     /// User-configured local Ollama and private gateways are supported on desktop.
@@ -79,7 +81,12 @@ impl HttpClient {
         Self {
             policy: Arc::new(Desktop),
             environment_proxy: true,
+            connect_timeout: Duration::from_secs(15),
         }
+    }
+    pub fn with_connect_timeout(mut self, timeout: Duration) -> Self {
+        self.connect_timeout = timeout;
+        self
     }
     pub fn get(&self, url: &str) -> RequestBuilder {
         self.request(Method::GET, url)
@@ -91,6 +98,7 @@ impl HttpClient {
         RequestBuilder {
             policy: self.policy.clone(),
             environment_proxy: self.environment_proxy,
+            connect_timeout: self.connect_timeout,
             inner: request_builder_client().request(method, url),
         }
     }
@@ -104,6 +112,7 @@ fn request_builder_client() -> &'static reqwest::Client {
 pub struct RequestBuilder {
     policy: Arc<dyn EgressPolicy>,
     environment_proxy: bool,
+    connect_timeout: Duration,
     inner: reqwest::RequestBuilder,
 }
 impl RequestBuilder {
@@ -123,6 +132,18 @@ impl RequestBuilder {
         let request = self.inner.build().map_err(|_| denied())?;
         let url = request.url();
         validate_url(url)?;
+        let builder = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(self.connect_timeout);
+        // Desktop trusts user-configured proxies, including proxy-side target DNS.
+        if self.environment_proxy {
+            return builder
+                .build()
+                .map_err(|_| denied())?
+                .execute(request)
+                .await
+                .map_err(|_| AiError::RequestFailed("AI HTTP request failed".into()));
+        }
         let host = url.host_str().ok_or_else(denied)?;
         let port = url.port_or_known_default().ok_or_else(denied)?;
         let addresses: Vec<SocketAddr> =
@@ -143,15 +164,8 @@ impl RequestBuilder {
         }
         // A new pool pins this request to the vetted DNS result, without a second lookup.
         // Environment proxies are disabled because their DNS/target selection bypasses this boundary.
-        let builder = reqwest::Client::builder();
-        let builder = if self.environment_proxy {
-            builder
-        } else {
-            builder.no_proxy()
-        };
         let client = builder
-            .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(Duration::from_secs(15))
+            .no_proxy()
             .resolve_to_addrs(host, &addresses)
             .build()
             .map_err(|_| denied())?;

@@ -94,7 +94,7 @@ pub async fn fetch_remote_models_with_client(
         "fetch_remote_models: start"
     );
 
-    let http = http;
+    let http = http.with_connect_timeout(Duration::from_secs(10));
 
     let cfg = ProtocolConfig {
         http_client: http,
@@ -104,12 +104,16 @@ pub async fn fetch_remote_models_with_client(
         max_request_timeout: Duration::from_secs(120),
     };
 
-    match protocol {
-        CustomProtocol::OpenAiCompatible | CustomProtocol::OpenAiResponses => {
-            protocol::openai_chat::fetch_models(&cfg).await
+    tokio::time::timeout(Duration::from_secs(30), async {
+        match protocol {
+            CustomProtocol::OpenAiCompatible | CustomProtocol::OpenAiResponses => {
+                protocol::openai_chat::fetch_models(&cfg).await
+            }
+            CustomProtocol::AnthropicCompatible => protocol::anthropic::fetch_models(&cfg).await,
         }
-        CustomProtocol::AnthropicCompatible => protocol::anthropic::fetch_models(&cfg).await,
-    }
+    })
+    .await
+    .map_err(|_| AiError::RequestFailed("AI model listing timed out".into()))?
 }
 
 // ─── AiProvider implementation ───
