@@ -151,7 +151,9 @@ pub(crate) fn finish_app_state(
         store,
         schema_cache: schema_cache.clone(),
         sync_adapters,
-        ai_registry: Arc::new(crate::ai::AiProviderRegistry::new()),
+        ai_registry: Arc::new(crate::ai::AiProviderRegistry::with_http_client(
+            datazen_ai_providers::http::HttpClient::desktop(),
+        )),
         schema_context_builder: Arc::new(SchemaContextBuilder::new(
             schema_cache,
             connection_manager,

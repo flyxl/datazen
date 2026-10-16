@@ -13,6 +13,7 @@ use super::ollama::OllamaProvider;
 use super::openai::OpenAiProvider;
 
 pub struct AiProviderRegistry {
+    http_client: crate::http::HttpClient,
     providers: Arc<RwLock<HashMap<AiProviderType, Arc<dyn AiProvider>>>>,
     registered: AtomicBool,
     register_lock: Mutex<()>,
@@ -20,7 +21,12 @@ pub struct AiProviderRegistry {
 
 impl AiProviderRegistry {
     pub fn new() -> Self {
+        Self::with_http_client(crate::http::HttpClient::default())
+    }
+
+    pub fn with_http_client(http_client: crate::http::HttpClient) -> Self {
         Self {
+            http_client,
             providers: Arc::new(RwLock::new(HashMap::new())),
             registered: AtomicBool::new(false),
             register_lock: Mutex::new(()),
@@ -106,7 +112,11 @@ mod tests {
     #[tokio::test]
     async fn test_register_and_get() {
         let registry = AiProviderRegistry::new();
-        registry.register(Arc::new(OpenAiProvider::new())).await;
+        registry
+            .register(Arc::new(OpenAiProvider::with_http_client(
+                crate::http::HttpClient::desktop(),
+            )))
+            .await;
 
         let provider = registry.get(&AiProviderType::OpenAi).await;
         assert!(provider.is_some());
@@ -118,8 +128,16 @@ mod tests {
     #[tokio::test]
     async fn test_register_overwrites() {
         let registry = AiProviderRegistry::new();
-        registry.register(Arc::new(OpenAiProvider::new())).await;
-        registry.register(Arc::new(OpenAiProvider::new())).await;
+        registry
+            .register(Arc::new(OpenAiProvider::with_http_client(
+                crate::http::HttpClient::desktop(),
+            )))
+            .await;
+        registry
+            .register(Arc::new(OpenAiProvider::with_http_client(
+                crate::http::HttpClient::desktop(),
+            )))
+            .await;
 
         assert_eq!(registry.available_providers().await.len(), 1);
     }
@@ -127,7 +145,11 @@ mod tests {
     #[tokio::test]
     async fn test_available_providers() {
         let registry = AiProviderRegistry::new();
-        registry.register(Arc::new(OpenAiProvider::new())).await;
+        registry
+            .register(Arc::new(OpenAiProvider::with_http_client(
+                crate::http::HttpClient::desktop(),
+            )))
+            .await;
         registry.register(Arc::new(AnthropicProvider::new())).await;
 
         let types = registry.available_providers().await;
@@ -196,7 +218,11 @@ mod tests {
             .await;
 
         let registry = AiProviderRegistry::new();
-        registry.register(Arc::new(OpenAiProvider::new())).await;
+        registry
+            .register(Arc::new(OpenAiProvider::with_http_client(
+                crate::http::HttpClient::desktop(),
+            )))
+            .await;
         registry
             .restore_config(&AiProviderConfig {
                 provider_type: AiProviderType::OpenAi,
@@ -218,7 +244,11 @@ mod tests {
         use super::super::protocol::test_support::sample_request;
 
         let registry = AiProviderRegistry::new();
-        registry.register(Arc::new(OpenAiProvider::new())).await;
+        registry
+            .register(Arc::new(OpenAiProvider::with_http_client(
+                crate::http::HttpClient::desktop(),
+            )))
+            .await;
         // No API key -> initialize() fails -> the failure is logged, not propagated,
         // and the provider stays uninitialized (same as the pre-split startup path).
         registry
@@ -257,11 +287,31 @@ mod tests {
 /// Registers built-in AI providers and discovers external providers via `inventory`
 /// into an existing registry (used for deferred / in-place startup warm-up).
 pub async fn register_ai_providers(registry: &AiProviderRegistry) {
-    registry.register(Arc::new(OpenAiProvider::new())).await;
-    registry.register(Arc::new(AnthropicProvider::new())).await;
-    registry.register(Arc::new(DeepSeekProvider::new())).await;
-    registry.register(Arc::new(OllamaProvider::new())).await;
-    registry.register(Arc::new(CustomProvider::new())).await;
+    registry
+        .register(Arc::new(OpenAiProvider::with_http_client(
+            registry.http_client.clone(),
+        )))
+        .await;
+    registry
+        .register(Arc::new(AnthropicProvider::with_http_client(
+            registry.http_client.clone(),
+        )))
+        .await;
+    registry
+        .register(Arc::new(DeepSeekProvider::with_http_client(
+            registry.http_client.clone(),
+        )))
+        .await;
+    registry
+        .register(Arc::new(OllamaProvider::with_http_client(
+            registry.http_client.clone(),
+        )))
+        .await;
+    registry
+        .register(Arc::new(CustomProvider::with_http_client(
+            registry.http_client.clone(),
+        )))
+        .await;
 
     for factory in iter_ai_provider_factories() {
         let pv = factory.protocol_version();

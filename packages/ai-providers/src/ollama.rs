@@ -1,11 +1,11 @@
 //! Ollama provider — OpenAI-compatible local endpoint (default `http://127.0.0.1:11434/v1`).
 
+use crate::http::HttpClient;
 use async_trait::async_trait;
 use datazen_ai_api::*;
-use reqwest::Client as HttpClient;
 use tokio::sync::{mpsc, RwLock};
 
-use super::protocol::{self, ProtocolConfig, CONNECT_TIMEOUT};
+use super::protocol::{self, ProtocolConfig};
 
 const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:11434/v1";
 
@@ -22,11 +22,12 @@ struct ProviderState {
 
 impl OllamaProvider {
     pub fn new() -> Self {
+        Self::with_http_client(HttpClient::default())
+    }
+
+    pub fn with_http_client(http_client: HttpClient) -> Self {
         Self {
-            http_client: HttpClient::builder()
-                .connect_timeout(CONNECT_TIMEOUT)
-                .build()
-                .unwrap_or_default(),
+            http_client,
             state: RwLock::new(None),
         }
     }
