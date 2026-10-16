@@ -81,30 +81,39 @@ fn install_from_zip_rejects_traversal_entries() {
         let file = fs::File::create(&zip_path).unwrap();
         let mut zip = ZipWriter::new(file);
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        add_file(&mut zip, "../outside.html", "<html>evil</html>", options);
+        // 两级 `..`：staging 在 `{wapps_root}/.staging-{uuid}`，位于 wapps root 下一层，
+        // 所以两级才真的越出被测的 wapps root，落点就是我们下面给的 `sandbox/outside.html`。
+        add_file(&mut zip, "../../outside.html", "<html>evil</html>", options);
         zip.finish().unwrap();
     }
 
-    let wapps_root = TempDir::new().unwrap();
-    fs::write(wapps_root.path().join("keep.txt"), "unchanged").unwrap();
+    // 本测试自建的沙箱顶层：wapps root 是它的子目录，越界目标就摆在这一层。
+    // 断言因此只盯着本测试自己的目录树，与系统共享临时目录无关。
+    // （原先盯的是 TempDir 路径的上一级目录，也就是**全局共享的 $TMPDIR**：
+    //   别的进程或测试往里丢一个 `outside.html` 就能把这里搞红，
+    //   而它并不能证明「条目没有逃出被安装的 wapps root」。）
+    let sandbox = TempDir::new().unwrap();
+    let wapps_root = sandbox.path().join("root");
+    let escape_target = sandbox.path().join("outside.html");
+    fs::create_dir_all(&wapps_root).unwrap();
+    fs::write(wapps_root.join("keep.txt"), "unchanged").unwrap();
 
-    let err = install_from_zip(&zip_path, wapps_root.path()).unwrap_err();
+    let err = install_from_zip(&zip_path, &wapps_root).unwrap_err();
     assert!(
         err.contains("traversal") || err.contains("invalid zip entry"),
         "unexpected: {err}"
     );
     // Nothing escaped the wapps root and no staging dir remains.
     assert_eq!(
-        fs::read_to_string(wapps_root.path().join("keep.txt")).unwrap(),
+        fs::read_to_string(wapps_root.join("keep.txt")).unwrap(),
         "unchanged"
     );
-    assert!(!wapps_root
-        .path()
-        .parent()
-        .unwrap()
-        .join("outside.html")
-        .exists());
-    assert!(read_staging_dirs(wapps_root.path()).is_empty());
+    assert!(
+        !escape_target.exists(),
+        "越界条目不得落在沙箱顶层：{}",
+        escape_target.display()
+    );
+    assert!(read_staging_dirs(&wapps_root).is_empty());
 }
 
 fn read_staging_dirs(root: &Path) -> Vec<String> {
@@ -390,6 +399,14 @@ fn inspect_wapp_package_accepts_top_level_folder_and_plain_dirs() {
 #[test]
 fn inspect_wapp_package_rejects_invalid_packages() {
     let _inspect_guard = inspect_tmp_lock();
+    // 前后增量，而不是绝对 0：inspect 的 staging 根由生产代码写死为
+    // `std::env::temp_dir()`，是**全局共享**目录，别处（src-tauri 的 wapps 测试、
+    // GUI 的 registry）都可能留下同前缀的常驻目录。INSPECT_TMP_LOCK 只串行化本
+    // 进程内的测试，对跨进程的常驻目录零保护 —— 绝对 0 会把别人留下的目录算到
+    // 自己头上（实测：$TMPDIR 里放一个 .datazen-inspect-* 即 EXIT=101，left:1 right:0）。
+    // 该前后增量形态对「常驻目录」免疫，对**瞬时并发**目录仍不免疫；彻底解法是给
+    // inspect 的 staging 根一个可注入参数、测试指向自建 TempDir，属独立变更。
+    let before = count_inspect_dirs();
     // Missing path.
     let err = inspect_wapp_package(Path::new("/nonexistent/datazen-inspect.zip")).unwrap_err();
     assert!(err.contains("not found"), "unexpected: {err}");
@@ -423,5 +440,5 @@ fn inspect_wapp_package_rejects_invalid_packages() {
         err.contains("traversal") || err.contains("invalid zip entry"),
         "unexpected: {err}"
     );
-    assert_eq!(count_inspect_dirs(), 0);
+    assert_eq!(count_inspect_dirs(), before);
 }
