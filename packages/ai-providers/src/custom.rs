@@ -4,13 +4,13 @@
 
 use std::time::Duration;
 
+use crate::http::HttpClient;
 use async_trait::async_trait;
 use datazen_ai_api::*;
-use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, RwLock};
 
-use super::protocol::{self, ProtocolConfig, CONNECT_TIMEOUT};
+use super::protocol::{self, ProtocolConfig};
 
 /// Log-safe endpoint for `fetch_remote_models`. Credential masking lives in
 /// `datazen_platform_infra::redaction` — the single cross-form implementation
@@ -42,11 +42,12 @@ struct CustomState {
 
 impl CustomProvider {
     pub fn new() -> Self {
+        Self::with_http_client(HttpClient::default())
+    }
+
+    pub fn with_http_client(http_client: HttpClient) -> Self {
         Self {
-            http_client: HttpClient::builder()
-                .connect_timeout(CONNECT_TIMEOUT)
-                .build()
-                .unwrap_or_default(),
+            http_client,
             state: RwLock::new(None),
         }
     }
@@ -77,6 +78,15 @@ pub async fn fetch_remote_models(
     endpoint: &str,
     api_key: &str,
 ) -> Result<Vec<ModelInfo>, AiError> {
+    fetch_remote_models_with_client(HttpClient::default(), protocol, endpoint, api_key).await
+}
+
+pub async fn fetch_remote_models_with_client(
+    http: HttpClient,
+    protocol: CustomProtocol,
+    endpoint: &str,
+    api_key: &str,
+) -> Result<Vec<ModelInfo>, AiError> {
     let safe_endpoint = remote_models_log_endpoint(endpoint);
     tracing::info!(
         protocol = ?protocol,
@@ -84,11 +94,7 @@ pub async fn fetch_remote_models(
         "fetch_remote_models: start"
     );
 
-    let http = HttpClient::builder()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(30))
-        .build()
-        .unwrap_or_default();
+    let http = http.with_connect_timeout(Duration::from_secs(10));
 
     let cfg = ProtocolConfig {
         http_client: http,
@@ -98,12 +104,16 @@ pub async fn fetch_remote_models(
         max_request_timeout: Duration::from_secs(120),
     };
 
-    match protocol {
-        CustomProtocol::OpenAiCompatible | CustomProtocol::OpenAiResponses => {
-            protocol::openai_chat::fetch_models(&cfg).await
+    tokio::time::timeout(Duration::from_secs(30), async {
+        match protocol {
+            CustomProtocol::OpenAiCompatible | CustomProtocol::OpenAiResponses => {
+                protocol::openai_chat::fetch_models(&cfg).await
+            }
+            CustomProtocol::AnthropicCompatible => protocol::anthropic::fetch_models(&cfg).await,
         }
-        CustomProtocol::AnthropicCompatible => protocol::anthropic::fetch_models(&cfg).await,
-    }
+    })
+    .await
+    .map_err(|_| AiError::RequestFailed("AI model listing timed out".into()))?
 }
 
 // ─── AiProvider implementation ───
@@ -148,7 +158,8 @@ impl AiProvider for CustomProvider {
         let proto = Self::parse_protocol(config);
 
         // Try model listing first; fall back to lightweight probe.
-        match fetch_remote_models(proto, endpoint, key).await {
+        match fetch_remote_models_with_client(self.http_client.clone(), proto, endpoint, key).await
+        {
             Ok(_) => Ok(()),
             Err(_) => {
                 let cfg = ProtocolConfig {

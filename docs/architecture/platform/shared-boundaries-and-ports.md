@@ -452,7 +452,7 @@ pub trait SecretProvider: Send + Sync + 'static {
 
 #[async_trait]
 pub trait NetworkProvider: Send + Sync + 'static {
-    /// 端点校验：出站策略检查含 DNS 解析后地址、重定向与隧道目标（[概要 §10](system-overview.md#10-安全和环境差异)）。
+    /// 目标服务端端点校验：出站策略检查含 DNS 解析后地址、重定向与隧道目标（[概要 §10](system-overview.md#10-安全和环境差异)）。
     async fn resolve_route(&self, ctx: &RequestContext, route_ref: NetworkRouteRef)
         -> Result<RoutePlan, PortError>;
     fn revision(&self, route_ref: NetworkRouteRef) -> Result<NetworkRouteRevision, PortError>;
@@ -462,6 +462,10 @@ pub trait NetworkProvider: Send + Sync + 'static {
     async fn release_tunnel(&self, binding: &TunnelBinding) -> Result<(), PortError>;
 }
 ```
+
+当前 `NetworkProvider` 实现数据库路由/隧道，尚无 HTTP 发送端口。AI HTTP 使用
+`datazen_ai_providers::http::HttpClient` 和可注入 `EgressPolicy`，详见 [AI HTTP 出站边界](../backend/ai.md#ai-http-出站边界)。
+默认仅允许公网，桌面宿主显式选择支持私网与环境代理的策略；服务端适配尚未落地。
 
 `SecretProvider` 只认 `SecretRef`，不认 `connectionId`；`connectionId` → `SecretRef` 的映射由 `ProfileRecord` 持有（[连接 §4.1](connection-management.md#41-服务接口与补充响应) 的内部 `ConnectionProfile` 同列 `connectionId` 与 `secretRef`）。因此[团队服务 §10.2 `SecretProvider`](team-server-and-auth.md#102-secretprovider) 的「按 `connectionId` + `credentialRevision` 解析执行身份」在端口层拆成三步：`ProfileRepository::get` 由 `connectionId` 取 `secretRef` 与 `configRevision`，`SecretProvider::resolve(ctx, secret_ref, purpose)` 配 `revision(secret_ref)` 取材料与 `CredentialRevision`，执行身份本身由 `IdentityResolver::resolve` 产出（§4.3）。
 

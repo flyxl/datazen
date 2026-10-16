@@ -1,16 +1,13 @@
 //! Shared helpers for protocol HTTP unit tests (wiremock).
 
+use crate::http::HttpClient;
 use datazen_ai_api::*;
-use reqwest::Client as HttpClient;
 use tokio::sync::mpsc;
 
-use super::{ProtocolConfig, CONNECT_TIMEOUT};
+use super::ProtocolConfig;
 
 pub fn test_http_client() -> HttpClient {
-    HttpClient::builder()
-        .connect_timeout(CONNECT_TIMEOUT)
-        .build()
-        .unwrap()
+    HttpClient::desktop()
 }
 
 pub fn protocol_config(base_uri: &str) -> ProtocolConfig {
