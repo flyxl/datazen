@@ -1,0 +1,412 @@
+# Wave-1 共享层下沉 · 协调者台账
+
+- 基准 commit：6d0a47ce9（feat/p4-f-assertion-mapping-and-lifecycle-journeys 的 HEAD，比 main f06ad7e5b 领先 4 个提交）
+- 集成分支：feature/shared-layer-extraction（只建 ref，未在主检出检出）
+- 主检出状态：仍在 feat/p4-f，含 13 处未提交改动（9 改 + 2 未跟踪文件等），全程未被任何轨道写入。
+
+## 轨道矩阵
+
+| 轨道 | worktree | 范围 | 宿主侧改动面 |
+|---|---|---|---|
+| sql-guard-runtime | .worktrees/datazen-sql-guard-runtime | sql_guard 779 行 + sql_main_keyword → packages/runtime/src/sql_guard/ | 9 个消费者 import + lib.rs 一行 |
+| driver-cache-runtime | .worktrees/datazen-driver-cache-runtime | DriverRegistry 693 + cache 761 → packages/runtime/{driver_registry,schema_cache}/ | 仅 2 个门面 mod.rs，97 个调用点零改动 |
+| frontend-bridge-port | .worktrees/datazen-frontend-bridge-port | bridge.rs 357 → packages/application/src/frontend_bridge.rs | adapter.rs 4 处 + platform/mod.rs 2 行 |
+
+## 冲突面管理
+
+- packages/runtime/src/lib.rs：三轨都会碰。用插入位置隔离（driver-cache 按字母序、sql-guard 放末尾）。冲突由协调者在合流时裁决。
+- packages/runtime/Cargo.toml：预计零改动；若某轨报告需要加依赖，先回协调者。
+- 其余文件零重叠：mcp/permission.rs 归 A，adapter.rs/platform/mod.rs 归 C，db/cache 归 B。
+- 全部轨道禁用清单：packages/runtime/src/{application,registry,resource}/**、src-tauri/src/platform/{session_backend,session_commands}.rs、src-tauri/src/bootstrap/run.rs。
+
+## 环境
+
+- CARGO_TARGET_DIR=/tmp/dz-target-wave1（三轨共享，cargo 自带锁）。
+- 驱动集已按 --drivers=all 重铺 codegen（避免 basic 与 CI 不可比）。
+- 主检出 target/ 已 104G，磁盘余量 204Gi，未新建独立 target 目录。
+
+## 状态
+
+- Wave-1：Coder 已并行派发。
+- Wave-2 候选：AI 模块全量 8,117 行（可下沉候选 protocol+providers 约 3.7k 行）、wapps manifest/bridge 契约约 1.7k 行、store/ 14,122 行。待两条裁定，见下。
+
+## 协调者裁决（Track C 提出）
+
+**冲突 1：`include_str!("bridge.rs")` 编译期引用** — 采纳 A，授权 T3 越界改 2 行。
+
+- 实测：`handles.rs:402` 与 `ipc.rs:311` 以 `include_str!` 读入 bridge.rs 的生产代码，断言「platform 文件不写入 legacy shared slot」。文件一删即 E0463，与「bridge.rs 必须已删除」的验收直接互斥。
+- 实测：另两轨不碰这两个文件（A 只改 `platform/session_backend/execution.rs`，B 只改 `db/` 与 `cache/`），扫描清单为本轨独占，合流无冲突。
+- 授权范围仅四处：两处 `include_str!` 改指 `../../../packages/application/src/frontend_bridge.rs`、handles.rs 的 tuple label 同步改名。断言强度不减，禁止把新旧任一项移出清单。
+
+**冲突 2：tracing 依赖** — 选 B（加依赖），推翻 T3 原打算的 A。
+
+- 实测：`packages/driver-api/Cargo.toml` 已有 `tracing = "0.1"`，且同为纯 trait/命令 API 契约 crate，故「契约 crate 不带 tracing」在本仓不成立。
+- 实测：Wave-1 仅 T3 会改 `Cargo.toml` 与 `Cargo.lock`，A/B 两轨不加依赖。T3 原先把锁文件判为三轨合流热点，属过度保守。
+- 执行：application 加 `tracing = "0.1"`；两行日志留在搬过去的 `set_bridge_injection` 内。理由：挪回宿主调用方后，server 形态直接调 application 的注入函数时该 info 会静默消失——用观测性换一个不存在的冲突不划算。
+
+**附带（不在本轨裁定）**：`handles.rs:192` 的 `OwnerRef::Job` 与 `packages/platform-api/src/context.rs` 的 `OwnerRef` 契约重复，留待集成分支单独裁定。
+
+## 集成后债务（不得遗忘，不得在任一轨道顺手做）
+
+- **`src-tauri/src/platform/adapter.rs` 867 行**（基线 849 行即已超 800 推荐值，Track C 净 +18）。拆分它会牵动 `handles.rs`/`ipc.rs` 的 `include_str!` 扫描白名单与 `bootstrap/app_state.rs`，与各轨「小冲突面」要求正面冲突，因此 Track C 不拆。须在集成分支上作为**专门变更**处理。
+- **`packages/application/src/lib.rs` 的模块清单守卫其实不封闭**（待验证方实测确认）：测试名声称 exactly the seven，实现却是「7 项必须存在 + 4 个特定名字必须不存在」。新增任意第 8 个 `pub mod` 不会让它变红。黑名单四项是迁移前既有设计，**不是 Track C 缺陷**；若实测确认，应作为独立缺陷排期。
+- **`src-tauri/src/platform/handles.rs:192` 的 `OwnerRef::Job` 与 `packages/platform-api/src/context.rs` 的 `OwnerRef` 契约重复**：Wave-1 只记录不改，待集成分支单独裁定。
+- **`docs/development/platform-development-plan.md` §4.7 vs :276 的 ProfileRepository 口径冲突**：见下节裁定项 2。
+
+## Track B 偏差签字（协调者裁定，HEAD = 7c7b6b34）
+
+三条偏差全部接受，但都是**带条件的接受**——条件是验证方必须独立复验，不是采信自证。
+
+- **偏差 1「dev-dependencies 新增 `datazen-runtime` + `test-harness`」：接受。** 已核实 `src-tauri/Cargo.toml:25` 在 `[dependencies]` 中**本已存在** `datazen-runtime = { path = "../packages/runtime" }`。所以这不是新增依赖边，只是给一条既有依赖在 dev 域追加 feature；resolver = "2" 下 dev-dep feature 不进入 normal/build，「生产依赖零新增」成立。**但这是本轨唯一触碰分层契约的动作**，因此验证方必须实测 `cargo tree -e features --edges normal,build` 无 `test-harness`、`--edges dev` 才有，并确认真实生产构建不链接 `connection::testing`。
+- **偏差 2「census 用例 `every_linked_factory_resolves_or_reports_why_not` 留在宿主门面」：接受。** 它断言的对象是「**本二进制里链进来的**每个 inventory factory」，而 factory 只在宿主 dev-deps 上链入，`packages/runtime` 链不到；搬过去不但必红，断言集合还会变空——变成一个永远通过的空断言。
+- **偏差 3「门面除具名项外同时 re-export 底层模块路径」：接受。** 这是保住 14 个 consumer 零改动的唯一办法。协调者已独立复核：`pub struct DriverRegistry` 与 `pub struct SchemaCache` 在全仓**各只有一处定义**（均在 `packages/runtime/`），证明门面是真 re-export 而非复制。代价：门面是临时物，宿主连接层收敛后必须删除。
+
+## Track C 验收：PASS（独立验证方 HEAD = `985e5c65`，merge-base = `6d0a47ce9`）
+
+验证方报告七道门禁**全部实跑、全部绿**，且实测数字与提交方声称**逐字一致**：application 108/0/0、host 1804/0/6、platform-arch 0 violation / 0 error / 3 advisory、platform-crates 7 core crates、fmt 0 行 diff、typecheck exit 0、vitest 601 files / 6315 tests。七道门禁 PRE/POST HEAD 全等 `985e5c65`、PRE/POST `git status --short` 全空，终态仍为 0 行。
+
+**协调者补充的独立证据（验证方未覆盖，不能由它的 PASS 推导）：**
+- 第二个提交 `5022280af` → `985e5c65` 的全量 patch = **1 文件 +1/−4**，恰为授权的 3 行 `///` 删除 + 测试改名 six→seven，**无夹带**。
+- `git diff --name-status -M` 确认 `R080 src-tauri/src/platform/bridge.rs → packages/application/src/frontend_bridge.rs`。
+- 跨轨重叠实测：`packages/runtime/src/lib.rs` **不在 C 的 diff 内** ⇒ C 不与 A/B 争该文件。
+- **此前未记账的依赖面**：C 动了 `packages/application/Cargo.toml` 与 `Cargo.lock`，为随桥同迁的 `tracing::warn!/info!` 补 `tracing` 依赖。`cargo tree -p datazen-application --depth 1 -e normal` = 6 项直连，且 platform-arch 0 violation，故不违反分层契约；记录在案是因为「C 未碰依赖面」这句话此前是不准确的。
+
+**两条观察项，均判非本轨责任、不阻断：**
+- **OBS-1（迁移前既有，低）**：模块清单测试名与注释都称清单「封闭」，实测**不封闭**——验证方做了变异实验：建最小桩文件后新增第 8 个 `pub mod __dz_probe;`，该测试仍报 `1 passed` 变绿。白名单 7 项 + 黑名单 4 项，任何**不叫那 4 个名字**的第 8 个模块静默放行。协调者已比对 base `6d0a47ce9:packages/application/src/lib.rs:139` 的 `the_module_list_is_exactly_the_six_documented_units` **结构完全同构**（同样白名单、同样 4 项黑名单、同一句「封闭」注释），故属迁移前既有设计。处置：**不记本轨欠账**；作为独立改进项另开（断言改为「解析全部 `pub mod X;` 行、集合恰等于这 N 个」，或给 `scripts/check-platform-crate-boundaries.mjs` 加一条边界规则）。
+- **OBS-2（低）**：`src-tauri/src/platform/{handles,ipc}.rs` 的测试改用 `include_str!("../../../packages/application/src/frontend_bridge.rs")`，把宿主 crate 的测试耦合到**另一个 crate 的仓库布局**。非发布型二进制，风险有限，记录在案。
+
+**集成清理清单新增**：`docs/architecture/platform/shared-boundaries-and-ports.md` 的 mermaid `SLOT --> IMPL` 箭头方向读反（实现是被注入**进**槽，语义应为 `IMPL --> SLOT`）。验证方提出，非阻断，一处改写即可。
+
+## 验证树环境事实（两条，集成树同样适用）
+
+1. **`pnpm run` 在验证 worktree 里必须加 `--config.verify-deps-before-run=false`。** 这些 worktree 的 `node_modules` 是指向主检出的**符号链接**，pnpm 12.6.0 在 `run` 前自动做依赖校验，报 `workspace hoist directory is not a real directory` 并 exit 1。**这不是代码缺陷——判定任何 exit 1 之前先排除这条。**
+2. **`src/locales/builtinLocales.ts` 是 gitignored codegen 产物，新 worktree 必须先 `node scripts/generate-builtin-locales.mjs`（exit 0）。** 缺失时 `npx vitest run` 报 `Failed to resolve import "./builtinLocales" from "src/locales/index.ts"`，**145 个测试文件 / 122 个用例失败**——看着像全线崩了，实际只少一个 codegen 文件。集成树跑 vitest 前必须先执行这一步。
+
+## Track B 补强：三个迁移文件逐字节比对（协调者自验，HEAD = `7c7b6b34`）
+
+先前给 Track B 的签字挂了三条条件，其中最弱的一条是「没有逐行证明 SchemaCache 语义未变」。
+本节以 `diff -u` 直接比对 base `6d0a47ce9` 的宿主文件与 B 提交的 runtime 文件，该条件**解除**：
+
+| 文件 | base 行数 → B 行数 | 实际改动 |
+|---|---|---|
+| `src-tauri/src/cache/schema_mutate.rs` → `schema_cache/schema_mutate.rs` | 75 → 75 | **0 行**（完全一致） |
+| `src-tauri/src/cache/schema_cache.rs` → `schema_cache/schema_cache.rs` | 683 → 683 | **10 行**，全部是 `use` 路径 |
+| `src-tauri/src/db/registry.rs` → `driver_registry/registry.rs` | 681 → 612 | 73 行 = 1 处 import 排序 + 移出 69 行普查测试 |
+
+**那 69 行没有丢**：`every_linked_factory_resolves_or_reports_why_not` 连同其完整文档注释
+被逐字搬进宿主门面 `src-tauri/src/db/mod.rs`（12 → 97 行）。留在宿主是正确取舍——该测试遍历
+`iter_driver_factories()` 的宿主链接结果，不是 runtime 单元。门面 re-export 增加
+`ResourceProviderLookup` 正是为此测试所需。
+
+**`#[allow(dead_code)]` 不是本次新增**：与 base 的属性集合逐项相同（`CachedSchema` /
+`db_version` / `registry` 字段三处 base 即已存在）。`self.registry` 在 base 与 B 中均无读取点，
+即该字段自迁移前就是「只存不读」，不存在迁移中丢失使用点的情况。此前把这一点列为可疑项，经查证排除。
+
+## Track A 修复提交复核 + 独立验证已派发（HEAD = `d6b9eb644`）
+
+**修复提交由协调者独立复核**（不采信 Coder 自述）：parent = `7f5c3db8`，即**新增提交、未改写历史**
+（无 amend / rebase / squash）。改动 3 文件 +7/−5，逐行核对恰为：`keyword.rs` 的定义改名 +
+`tokenize_sql` 内调用改名、`sql_guard/mod.rs` 顶层 re-export、宿主 `mcp/permission.rs` 的 import 与
+一处调用。改名后 `strip_comments_for_tokenize` 只在 `keyword.rs`、`strip_sql_comments` 只在
+`safety.rs:33`，全仓不再有同名不同语义的一对。`6d0a47ce9..d6b9eb644` 范围内
+`Cargo.toml` / `Cargo.lock` **零改动**，告警集合 52→52 逐字一致。
+
+**独立验证已派发**：全新 Tester（非 Coder），detached 于 `.worktrees/verify-sql-guard-runtime` @
+`d6b9eb644`。该树已 bootstrap（node_modules 符号链接、`generate-builtin-locales.mjs` exit 0、
+`resolve-drivers.mjs` exit 0、pro-extensions 已复制）。
+
+- **已知基线偏移，不是缺陷**：该树 `git status --short` 会显示 `M src-tauri/Cargo.toml`，
+  那是 `resolve-drivers.mjs` 注入驱动 feature 的 codegen 产物；判定工作区是否被污染须排除这一条。
+
+## 冲突面预测的一处自我更正（不得再引用旧结论）
+
+先前记入本台账的「三对分支 `git merge-tree` 冲突标记数 = 0」**不构成有效证据**：该探针从未被验证过能识别冲突。
+我两次尝试给探针做自测，两次都不成立——第一次重跑的是同一对 A×B，第二次用 B 对 `B~1`（快进，根本不可能冲突）。
+
+**可用的证据只有这些**：
+
+- 文件重叠面（`comm -12`）：A×B 恰 1 个文件（`packages/runtime/src/lib.rs`），A∩C = ∅，B∩C = ∅。
+- 改动锚点互不相干：A 在 `tunnel` 之后追加 `pub mod sql_guard;`（:38）；B 在 `directory` 之后插入
+  `driver_registry`（:21）、在 `resource` 之后插入 `schema_cache`（:35）。
+- 三者合并后 `pub mod` 总数应为 14（base 11 + A 1 + B 2）。
+
+**最终裁定权在集成**：真合并后 `cargo fmt --all -- --check` 与全部门禁在集成树实跑。预测不替代验证。
+
+## 集成基线漂移（协调者实测，动集成树前必读）
+
+**主 worktree 现状**：已切到 `main` @ `f06ad7e5b`，`git status --short` **为空**。
+先前记录的「9 个已改 + 2 个未跟踪」早已进历史（`4addf2ae3` / `c9a6d3637` / `71aa7e3d1` /
+`6d0a47ce9` 四个提交），该风险点**作废**。`main` 落后集成基线 4 个提交——与 Wave-1 无关，**不动它**。
+
+**P4 分支已前移**：`feat/p4-f-assertion-mapping-and-lifecycle-journeys` 现为 `b3faa0e12`，
+超出集成基线 3 个提交（新增 CM-33 只读池/预算观测口、表格并发与池计数旅程、CM-33 收口文档）。
+集成基线 `6d0a47ce9` 因此**已落后**。
+
+**漂移不影响 Wave-1 的合并结论**（实测，非推断）：
+
+- P4 的 13 个改动文件与 A、B、C 三条轨道的文件重叠**各为 0**。
+- P4 的改动清单**不含 `packages/runtime/src/lib.rs`**，即三路之间唯一的那处重叠面未被触及。
+- P4 触及的 `packages/runtime/src/{registry,resource,application}/**`、
+  `src-tauri/src/platform/{session_backend,session_commands}.rs`、
+  `src-tauri/src/bootstrap/run.rs` 正是 Wave-1 全局禁用清单里为 P4 预留的那批路径，两边没有踩脚。
+
+**结论**：合并前应先把集成分支 `--ff-only` 到 `b3faa0e12`（该分支无自有提交，快进安全），
+而不是先合 A/B 再回头处理 P4。**但必须在 A、B 的验证结论到手之后才动集成树。**
+
+**命名提醒（非缺陷，列集成后债务）**：P4 的 `packages/runtime/src/registry/` 是**会话**登记表，
+Track B 的 `packages/runtime/src/driver_registry/` 是**驱动**登记表；同一 crate 内两处注释都用
+「登记表」二字，中文语境下易混。Coder 选 `driver_registry` 而非复用已占用的 `registry`，
+恰好避开了类型撞名——合并后 `pub struct DriverRegistry` 全仓唯一。
+
+## 全仓失效路径字面量：提交方漏报部分（协调者补扫）
+
+`git grep` 全仓命中 7 处、5 类，**提交方只报了第 1 类**。已交验证方独立复扫并出完整清单。
+
+| # | 位置 | 性质 | 裁定 |
+|---|---|---|---|
+| 1 | `docs/architecture/platform/driver-capability-migration.md:13,331,682` | 本轨迁移致失效 | **选项 B（确认）**。该文头部自证是带基线的证据快照（明写「基线：`8592b0fe1`」「宿主侧只读 `src-tauri/src/db/registry.rs`」、`§0`「本文的每一格『当前』结论都来自对代码的逐项核对」）。改路径并重标行号会毁掉它的证据价值。改为**在文首既有的基线说明块内追加一行**：「此后宿主注册表已迁至 `packages/runtime/src/driver_registry/registry.rs`，文中行号仍指基线」。 |
+| 2 | `packages/driver-api/src/capabilities.rs:707` | **活契约 crate 的 doc 注释** | 集成分支清理。原句称 host gate 住在 `src-tauri/src/db/registry.rs`，迁移后定位已不准。 |
+| 3 | `packages/drivers/postgres/src/resource/tests_behaviour.rs:200`、`packages/drivers/redis/src/resource/tests_behaviour.rs:492` | 驱动 crate 内测试注释 | 集成分支清理。 |
+| 4 | `scripts/check-driver-protocol-release.mjs:46,489` | 脚本注释 + **会打到 CI 输出的开发者可见错误串** | 集成分支清理。Wave-1 不动 `scripts/**`，按约定由轨道上报、由集成分支改。 |
+| 5 | `docs/blogs/diagrams/datazen-driver-runtime-architecture.html:6421,6423`、`diagrams/src/datazen-driver-runtime-architecture.json:129` | 已发布博客产物 | **保留不改**。HTML 内是 commit 固定的 GitHub 永久链接，永远可达；改它反而破坏保真度。 |
+| 6 | `docs/architecture/backend/cache.md:621` | 迁移前既有失效 | 集成分支**重写该节**，不是一行能修的：它引用 `cache/invalidation.rs` 与 `InvalidationStrategy`，而 `git grep 'pub struct InvalidationStrategy'` 全仓零命中、该文件也不存在。须按实际失效机制重写。 |
+| 7 | `docs/architecture/backend/drivers.md:25` 写 `PROTOCOL_VERSION = 4`，实际 `packages/driver-api/src/lib.rs` 为 `6` | 迁移前既有陈旧事实 | 集成分支一行订正。 |
+
+以上 7 处**均不阻断 Wave-1**：全为注释 / 文档 / 字符串，零运行时行为影响，且没有一处落在任一轨道的可写范围内。全部转入集成分支清理清单。
+
+## 用户裁定（Wave-2 范围已解锁，原「待裁定」两项作废）
+
+**1. P7 Web shell 含 AI 面板 → 选项 B（含，Wave-2 并行下沉 protocol + providers）。**
+
+后果，不是备注：
+- Wave-2 的 AI 轨从「可后置」升为**并行必做**，且**不能只落 ai-api 契约**。`src/components/ai/AiChatPanel.tsx` / `DiagnosisPanel.tsx` 走的是 `src/commands/ai*` 的 Tauri IPC；要进 Web shell 必须先有非 Tauri 传输路径，选项 (C) 被此裁定排除。
+- 该传输路径必须复用既有分层方向（`platform-api` → `application` → `runtime` → `backend-client`），**不得为 Web shell 单开旁路**。它与 Track C 刚建立的 `frontend_bridge` 端口是同一类问题的两种形态，AI 下沉时若绕过 `backend-client` 层，等于在 Wave-1 刚清干净的分层契约上重新开口子。
+- 规模实测：AI 协议 + providers 约 3.7k / 8,117 LOC。
+
+**2. ProfileRepository 口径 → 选项 A（语义同一 + 双适配器，改 §4.7 措辞）。**
+
+后果：
+- `docs/architecture/platform/shared-boundaries-and-ports.md` §4.7:490 的「同一实现，服务端数据库」要改写为**同一 trait 契约、两套适配器**：桌面 `DesktopProfiles`（`src-tauri/src/platform/repositories.rs:136`，372 行）留在宿主，服务端另走 SQLite 适配器。契约位置不动：`packages/platform-api/src/ports/profile.rs:147`。
+- `store/`（**14,122 行**，AES-256-GCM + 系统钥匙串主密钥，`DATAZEN_KEYRING=file` 时会写 `{appData}/.key` 明文）**不下沉**——这正是选 A 的关键收益，也避免把桌面端 crypto 语义拖进共享层。
+- 因此原 Wave-2 候选里的 `store/` 一轨**取消**，Wave-2 只剩 AI 轨与 wapps 轨（wapps manifest/install/bridge，约 1.7k LOC）。
+
+**未受本裁定影响**：Track C 的 `handles.rs:192` `OwnerRef::Job` 与 `packages/platform-api/src/context.rs` 重复，仍留在「集成后债务」，见上节。
+## Track B 验收：PASS（独立验证方 + 协调者链接级复核）
+
+独立验证方（`3ff90ec2`，detached @ `7c7b6b34`）7/7 门禁**全部实跑**，A–H 全 PASS，无未验证项。
+三条值得留存的强证据：
+
+- **test-harness 不泄漏**：`cargo tree -e features --edges normal,build` 中 `test-harness` 出现 **0** 次；
+  另有链接级铁证——`nm -a` 产出 6,028 个 `datazen_runtime` 符号作阳性对照（证明探针非空转），
+  9 个受 test-harness 控制的符号在 `nm` 与 `strings` 双探针下**全部 0 命中**。
+- **门面是真再导出**：注释掉 `db/mod.rs:18` 后 `cargo check -p datazen` 以 `E0432` 失败（exit 101），
+  还原后 sha256 与变异前逐字节相同。
+- **glob 再导出无遮蔽**：验证方没有止步于 `ambiguous_glob_reexports` 为空（该 lint 查不出「具名 pub use
+  被 glob 静默遮蔽」），而是枚举 `packages/driver-api` 的 301 个公开名，确认门面再导出的 5 个名字
+  **各自零命中**，集合不相交。**这条方法论值得复用。**
+
+### D1：本轨道新引入的编译告警（已复核，修法与验证方所提不同）
+
+`src-tauri/src/cache/mod.rs:12:55` `warning: unused import: schema_mutate`。
+机理：`src-tauri/src/lib.rs:6` 是 `mod cache;`（**私有**），其中的 `pub use` 仅 crate 内可见，
+触发 `unused_imports`；基线是 `pub mod schema_mutate;`，模块声明从不触发该 lint，故为迁移新引入。
+
+**协调者链接级复现**：`touch` 后 `cargo build -p datazen` → `EXIT=0`，`unused import` 计 **16** 条，
+其中落到本轨道改动文件的**仅此 1 条**（新增的 runtime 文件产出 0 条）。CI 无 `-D warnings` 门禁，故非阻断。
+
+**验证方给的修法照抄会炸**：它建议「把 `schema_mutate` 从 L12 再导出列表去掉」。实测删掉**整行**后
+`cargo build -p datazen` 直接 `EXIT=101`——同一行还带着 `schema_cache`，而它**有消费方**：
+全仓唯一引用是 `src-tauri/src/services/schema_metadata/columns.rs:2` 的
+`crate::cache::schema_cache::CachedColumns`。
+
+**正确修法**（协调者已实测）：`pub use datazen_runtime::schema_cache::{schema_cache, schema_mutate};`
+→ `pub use datazen_runtime::schema_cache::schema_cache;`，只摘一个名字。实测 `EXIT=0`、
+`unused import` 16 → **15**、0 条 `schema_mutate` 告警、0 error。并须同步改写该文件第 8 行文档注释
+（现称「`schema_cache` / `schema_mutate` 模块与具名项原样转出」，删后即失准——**文档与代码不一致本身是缺陷**）。
+修复轮已派新实例 `a2446165`（原 Coder 的 id 从未记录，无法续用）。
+
+### 验证方指出的三处提交方口径偏差（报告问题，非代码缺陷）
+
+1. 基线 `db/registry.rs` 实为 **8** 个测试而非 7；`7+10+3=20` 实为 **HEAD runtime** 的计数，归属说反了
+   （守恒结论仍精确成立：宿主 −20 / runtime +20）。
+2. 去重后消费方 **17** 个而非 14（`crate::db::registry` 11 个 + `crate::cache` 8 个）。
+3. 其结构化计数漏掉 `#[tokio::test(start_paused = true)]`——以真实运行计数 509 → 529 = +20 为准。
+
+## Track A 验证方崩溃与改派
+
+`1ba4cb9b` **中途崩溃，未留下任何结论**（无 closing message）。按协议不得退回作者本人自验，
+已改派全新实例 `31a4e36d`。
+
+崩溃后现场核查（结论：**无变异残留，树可直接复用**）：
+
+- HEAD = `d6b9eb644835609cf3b127d2d8d8e35f6f89dfd6`，detached，正确。
+- 唯一脏项 `M src-tauri/Cargo.toml`（+9/−1）是 `resolve-drivers.mjs` 注入驱动 feature 的 **codegen 产物**
+  （环境事实 3），非验证方遗留。
+- `src/locales/builtinLocales.ts`、`src-tauri/src/driver_init.rs` 均**已存在**，无需重新 bootstrap。
+- 作者树 `.worktrees/datazen-sql-guard-runtime` 仅未跟踪 `progress.md`，属正常。
+
+新实例要求过程结论**持续写入 `/tmp/dz-trackA-report.md`**，即使再次崩溃也不丢证据。
+## Track B 收口：D1 已修，轨道关闭（HEAD = `4b068ec99c`）
+
+修复轮由新实例 `a2446165` 完成（Track B 原 Coder 的 id 从未记录，无法续用）。提交 `4b068ec99`
+`fix(cache): 清除迁移引入的 unused re-export 告警`，`HEAD~1` = `7c7b6b345` **完好保留**，
+baseline `6d0a47ce9`，轨道共 **2 个提交**，无 amend/rebase/squash。
+
+**协调者复核**：`git diff --name-status HEAD~1..HEAD` = 仅 `M src-tauri/src/cache/mod.rs`，
+`1 file changed, 3 insertions(+), 3 deletions(-)`。提交内容与我此前**已在链接级验证过**的变体逐字比对：
+
+- 第 12 行（`pub use ... schema_cache;`）——**逐字节一致**，即那道我实测过
+  `EXIT=0` / unused_import 16→15 / 0 schema_mutate 告警 / 0 error 的改法，**验证结论可直接平移**。
+- 第 8–9 行——比我的验证变体多出的部分，**正是任务书要求的文档注释同步修正**：删掉 `schema_mutate`
+  后原句「`schema_cache` / `schema_mutate` 模块与具名项原样转出」已失准，改为只描述
+  `schema_cache` 模块与具名项 `sql_may_mutate_schema` / `SchemaCache`。提交版该文件中
+  `schema_mutate` 出现 **0** 次，文档与代码一致。
+
+4 道门禁由提交方实跑且数字自洽：`cargo build -p datazen` EXIT=0 且 unused_import 16→15；
+`cargo test -p datazen --lib` **1791 passed / 0 failed / 6 ignored**；`cargo test -p datazen-runtime --lib`
+**529 passed / 0 failed**；`cargo fmt --all -- --check` 输出 **0** 行。
+整轨 diff 对 baseline 仍为 **12 files / +141 / −83**（本次修复净增删为 0，与修复前一致，自洽）。
+
+注意：`//! ` 文档注释不含代码块，不产生 doctest；`cargo test --lib` 不跑 doctest，二者均无需额外门禁。
+
+**Track B 至此关闭。** 遗留：其 worktree 的未跟踪 `progress.md` 按纪律在合并收尾时删除。
+
+## 集阻断 G2：40 条 E0599（根因是环境，不是 Track B 的设计）
+
+**症状**（协调者在集成树实跑）：`cargo test -p datazen --lib` EXIT=101，
+`error[E0599]` **40 条完全同构**——`Arc<datazen_runtime::driver_registry::DriverRegistry>`
+上找不到 `register_test_driver` / `register_test_factory` /
+`register_test_driver_with_capabilities`。调用点分布在 6 个宿主测试文件
+（`services/connection_manager/tests/cm04_baseline.rs:250`、
+`commands/cm73_baseline_tests.rs:397`、`commands/cm73_idle_eviction_tests.rs:309`、
+`commands/sync/jobs_contract.rs:102`、`services/connection_manager/tests.rs`、
+`services/db_tools.rs:309`）。
+
+**第一个假设是错的**：曾判为 `resolve-drivers.mjs` 的标记块注入把 Track B 写进
+`[dev-dependencies]` 的内容吞了。已实测排除——两个标记 `# <<driver-dependencies>>` /
+`# <</driver-dependencies>>` 同在 `src-tauri/Cargo.toml:69/:70`（`[dependencies]` 内，
+见 :17 起），`replaceMarkerBlock` 实现（`scripts/resolve-drivers.mjs:1161-1171`）是非贪婪的，
+且脚本全文**没有 `dev-dependencies` 这个字面量**，不会去删它。
+
+**真实机制**：`scripts/driver-file-stash.mjs` 在注入前把被托管文件存进
+`.driver-file-stash/`（gitignored，`.gitignore:61`），`injectCargoToml`
+（`scripts/resolve-drivers.mjs:1180`）随后经 `managedReadPath(relPath)` **从 stash 读基线**。
+集成树 bootstrap 时 `resolve-drivers.mjs` 跑在**合并 Track B 之前**，于是把 pre-B 的
+`src-tauri/Cargo.toml` 冻成了注入基线；此后每次重跑都从这个陈旧基线重新注入，
+Track B 的 `[dev-dependencies]` 四行（现 `src-tauri/Cargo.toml:117-120`）被反复抹掉。
+**一次"代码生成"把一次真实合并静默回滚了。**
+
+**修法**：`rm -rf .driver-file-stash` → `git checkout -- src-tauri/Cargo.toml` →
+重跑 `node scripts/resolve-drivers.mjs`（EXIT=0）。此后 dev-dep 计数为 1，新建的 stash
+与 `HEAD:src-tauri/Cargo.toml` 逐字节相同（diff 退出 0）。G2 随即 EXIT=0。
+
+**顺带暴露的守卫失效（后续候选）**：`stashManagedFiles()`（`scripts/driver-file-stash.mjs:122-129`）
+**本来就设计成**在 stash 已存在时抛 "stash already exists … Run restore first"，
+但它本次**静默退出 0 并复用了陈旧 stash**。守卫形同虚设，是真实的待办，不是环境玄学。
+CI 与全新 clone 不受影响（无陈旧 stash）。裁定项见下方「待裁定」。
+
+### 连带作废：两个验证方的测试数字
+
+Track B 报的 `1791 passed` 与 Track C 报的 `1804 passed` 都是在被污染的树上量的，
+**一并作废**。正确基数不是 STEP 0 的 `6d0a47ce9`，而是 **P4 `b3faa0e12`**
+（P4 给 `packages/runtime` 贡献 **+6** 个 test 属性，1024 → 1030）。
+
+修正后的账（全部实跑自洽）：
+
+| crate | 算式 | 结果 |
+| --- | --- | --- |
+| `datazen`（宿主） | 1811 − 74(A) − 20(B) − 7(C) | **1710** ✓ |
+| `packages/runtime` | 509 + 6(P4) + 74(A) + 20(B) | **609** ✓ |
+| `packages/application` | 101 + 7(C) | **108** ✓ |
+| runtime test 属性普查 | 1030(P4) + 74 + 20 | **1124**（= 1030+74+20，逐项相等）✓ |
+
+## 环境事实（补充三条，续上文「验证树环境事实」）
+
+**（五）陈旧 `.driver-file-stash/` 会静默回滚合并后的清单改动。** 这是本次唯一的
+集阻断。触发条件：bootstrap 的代码生成早于一次会改被托管文件的合并。判别信号是
+「代码错误地指向一个**本该存在却不存在**的 API」，且**只影响 merge 之后**。
+恢复动作：删 stash + `git checkout --` 还原 + 重跑 `resolve-drivers.mjs`。
+
+**（六）`test:platform-arch` 的 advisory 条数不是稳定门禁数字。** 它取决于
+`resolve-drivers.mjs` 注入了哪些驱动；`driver-redis` 被注入时 `tauri-plugin` 进入闭包，
+稳定产出 2 条 advisory（P4 基线副本与集成分支实跑逐条相同）。**只有 violations / errors
+（0 / 0）是稳定判据**，advisory 条数不可用于跨树比对。
+
+**（七）真实验收基线是 P4 `b3faa0e12`，不是 `6d0a47ce9`。** 任何"合并后测试数应当是多少"
+的推算都必须以 P4 为起点，否则差 6。
+
+## 文档债务清理提交 `d40a96f5d`（集成树，15 files / +55 / −89）
+
+把 Wave-1 造成的失效引用与两处比"路径过期"更严重的内容失真一并收口：
+
+- **失效路径改正**：`capabilities.rs:707`、两个 `tests_behaviour.rs`、
+  `live_write_and_ddl.rs`、`check-driver-protocol-release.mjs:46,489`；
+  `AGENTS.md` 删掉已不存在的 `sql_guard/`、把 `db/` 与 `cache/` 标为 re-export 门面、
+  关键模块表指向 `packages/runtime/src/sql_guard/`、补齐目录树缺失的四层、
+  删除**根本不存在**的 `packages/themes/`（实测 `ls` 失败、`git ls-files` 计数 0）。
+- **PROTOCOL_VERSION 断言错误**：实测真值 `packages/driver-api/src/lib.rs:114` 为 **6**
+  （:120 的 MIN 为 1），而 6 处文档 / 注释仍写 4 或 3，已全部改正。
+  `driver-capability-migration.md` 是钉在基线 `8592b0fe1` 的证据快照，
+  **只在其基线说明块追加一条后补注记**，被引用的代码块与行号一律不动。
+- **内容失真（本次实质修复）**：`backend/cache.md` §1.5 整节重写。原节描述的
+  `InvalidationStrategy` / `DdlDetector` / `cache/invalidation.rs` **在仓库中根本不存在**，
+  属凭空叙述。现按代码写成三个彼此独立的机制（读时 TTL / 容量淘汰 / 事件驱动失效），
+  给出三个失效入口的真实调用点、`scope_key` 分片方式与 `generation` 计数构成的并发屏障，
+  并如实记录代价：DDL 走 `clear_connection` 清整个连接，per-table 的
+  `invalidate(.., Some(table))` 在生产中**零调用**（仅单测）。
+- **共享层文档口径**：§4.7 的 `ProfileRepository` 行按已定口径改为
+  「同一端口、另一适配器」；前端桥注入图方向由 `SLOT --> IMPL` 改为 `IMPL --> SLOT`。
+
+已核实**正确故不动**：`backend/ai.md:14`（`AI_PROTOCOL_VERSION` 当前 1 / 最低 1）、
+`src/extensions/generated.ts:41`（`DRIVER_PROTOCOL_VERSION = 1`，是另一枚 TS 常量）。
+**有意保留**：`docs/blogs/diagrams/*.html|json`（提交固定 permalink）、
+`AGENTS.md:301,302` 与 `driver-api/README.md:50` 等泛指表述、
+以及 `packages/runtime/src/lib.rs:20` 与 `driver_registry/mod.rs:3` 两处
+**故意引用旧宿主路径作出处标注**。
+
+## 最终合并门禁（HEAD = `d40a96f5d`，两链首尾 HEAD 与工作区 sha 一致）
+
+Rust 链（`CARGO_TARGET_DIR=/tmp/dz-target-int`）：
+
+| 门禁 | EXIT | 结论 |
+| --- | --- | --- |
+| G1 `cargo build -p datazen` | 0 | `error[E` = 0；`schema_mutate` 提及 **0** 次 |
+| G2 `cargo test -p datazen --lib` | 0 | **1710 passed / 0 failed / 6 ignored** |
+| G3 `cargo test -p datazen-runtime` | 0 | **609 passed** + 40 个集成测试二进制全绿 |
+| G4 `cargo test -p datazen-application` | 0 | **108 passed** / 0 failed |
+| G5 `cargo fmt --all -- --check` | 0 | 输出 **0** 行 |
+
+JS 链：
+
+| 门禁 | EXIT | 结论 |
+| --- | --- | --- |
+| J1 `test:platform-arch` | 0 | 26 members / 7 rules / 27 crates / 0 violations / **0 errors** / 2 advisories |
+| J2 `test:platform-crates` | 0 | 7 core crates，内建 `60 passed` |
+| J3 `typecheck` | 0 | `error TS` **0** 条 |
+| J4 `npx vitest run` | 0 | **601 files / 6315 tests**，0 FAIL |
+
+两链 `HEAD_START = HEAD_END = d40a96f5d857939b3f89e70a798c15bfe57b10d9`，
+`WS_START = WS_END = caefffdf550221cb`，运行期间无人改动。
+G1 的 60 行 `^warning` 以各 crate 末尾的汇总行为主，逐条去重后全是宿主既有
+`unused import`；已用 `git show d40a96f5d --unified=0 -- '*..rs'` 证明本次提交改动的
+14 行 `.rs` **全部是 `///` / `//!` 注释正文**（12 行注释行 + 2 行同一段注释的折行续行），
+**零可执行代码**，故不可能引入新告警。
+
+## 待裁定（交用户决策，附位置与实测数字）
+
+1. **是否加固 `stashManagedFiles()`**（`scripts/driver-file-stash.mjs:122-129`）。
+   实测：该守卫**本应抛错却退出 0 并复用陈旧 stash**，本次因此产生 40 条 E0599 的集阻断。
+   选项 A：让守卫真正生效（陈旧即抛错，逼人 `rm -rf`）；选项 B：改为每次从工作区文件读取基线，
+   不依赖 stash。代价 A 最小（约 5 行 + 需要在 bootstrap 流程补一次 restore 调用）；
+   B 更彻底但要重新定义 stash 的用途。
+2. **`adapter.rs` 867 行**（超 800 行硬限）与登记表命名债
+   （P4 的 `packages/runtime/src/registry/` 会话注册表 vs Track B 的 `driver_registry/`；
+   `pub struct DriverRegistry` 目前全仓唯一）。
+3. `src-tauri/src/platform/handles.rs:192` 的 `OwnerRef::Job` 与
+   `packages/platform-api/src/context.rs` 的重复归属判定。
+
+## Wave-1 收尾状态
+
+三轨全 PASS 并已真合并。**Wave-2（AI 协议与 providers，强制复用四层链，不走 Web-shell 旁路；
+wapps manifest/install/bridge）已解锁**；`store/` 下沉经用户裁定**取消**。
+遗留：各轨 worktree 的未跟踪 `progress.md` 与本文件 `hub.md` **必须在并入 main 时删除**。
