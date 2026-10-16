@@ -200,18 +200,22 @@ Wave-2 在此基础上又新增 `packages/ai-providers` 与 `packages/workspace-
 （它没有任何 `datazen-*` 依赖，加进去只会诱发 `src-tauri` 侧改用 `{ workspace = true }`，
 而新 crate 的依赖必须写在 `# <<driver-dependencies>>` 占位段之外）。
 
-这一层装的是**跨形态、跨领域、与业务无关**的机制原语。本波只落地一项：
+这一层装的是**跨形态、跨领域、与业务无关**的机制原语。当前已落地两项：
 
 **脱敏**（`redaction`）：凭据 / URL / 查询串 / Bearer / `password` 字段的统一清洗。
 此前只有 `src-tauri/src/log_redact.rs` 一份；`packages/ai-providers` 抽取时因跨 crate 不可见，
 在 `protocol/mod.rs` 里手写了第二份更弱的实现（只处理 userinfo 与整段 query，
 漏掉 `Bearer`、`?token=`、`"password":`）。宿主侧退化为同名 `pub use` 薄壳，调用点零改动。
 
-**尚未并入本层的同类项**：zip 条目路径校验与压缩比上限目前有两份**逐字节相同**的实现
-（`src-tauri/src/app_data_archive.rs` 与 `packages/workspace-apps/src/zip_path.rs`），
-各自被自己的测试钉住。它们要等 Wave-2 合并、`packages/workspace-apps` 落到同一棵树上之后
-才能收敛：宿主那份属于 app-data 备份域，不能单独搬走，而合并前 infra 分支里根本看不到内核那份。
-合并后由后续小轨统一，届时 `workspace-apps` 改为引用本层。
+**路径安全**（`path_safety`）：zip 条目名的 zip-slip 守卫与压缩比上限。此前同样是两份逐字节
+相同的实现（`src-tauri/src/app_data_archive.rs` 与 `packages/workspace-apps/src/zip_path.rs`），
+各自被自己的测试钉住，单边改动会让安全检查在另一侧继续按旧规则放行。现已收敛为本层唯一实现：
+`workspace-apps` 的 `install` / `manifest` 与宿主 app-data 备份/恢复都调用它，
+宿主 `src-tauri/src/app_data_archive.rs` 退化为同名 `pub use` 薄壳，调用点零改动。
+守卫是纯 `std`（无 IO、无传输、无形态相关状态），且**比两份原件覆盖面更全**：
+错误分支是两份原件的忠实并集 —— 原件只有 2 条错误串，本层 4 条
+（`invalid zip entry name`、`symlink entry name not allowed` 是原实现就没有的分支）。
+`MAX_COMPRESSION_RATIO = 100` 同居本层，因为压缩炸弹阈值是压缩包自身的属性，不是打开者的属性。
 
 **为什么不能靠「当前共享层消费者为 0」来否决一个基础设施 crate。**
 共享层存在的理由就是服务**尚未建出的第二种形态**：本仓库的 `platform-api` / `application` / `runtime`

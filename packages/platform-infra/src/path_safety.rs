@@ -9,9 +9,10 @@
 //!
 //! Two byte-identical copies used to exist, one per consumer
 //! (`src-tauri/src/app_data_archive.rs` and
-//! `packages/workspace-apps/src/zip_path.rs`). Each documented the other's
-//! existence and neither imported the other, so a one-sided edit left one side
-//! still enforcing the old rules — on a security check that is the worst
+//! `packages/workspace-apps/src/zip_path.rs`). Neither imported the other and
+//! the workspace-apps copy only named the host copy in its header, so the host
+//! side did not even know a second copy existed — a one-sided edit left one
+//! side still enforcing the old rules, which on a security check is the worst
 //! possible failure direction. Exactly one implementation lives here and every
 //! form links it; callers keep their own entry points and error mapping.
 //!

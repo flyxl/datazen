@@ -27,7 +27,7 @@
 
 | 层 | 位置 | 内容 |
 |---|---|---|
-| 内核（形态中立） | `packages/workspace-apps`（crate `datazen-workspace-apps`） | `manifest`（schema + 规则 1–7）、`install`（ZIP / 目录安装）、`storage`（按 wapp 隔离的键值存储）、`zip_path`（zip 条目路径守卫） |
+| 内核（形态中立） | `packages/workspace-apps`（crate `datazen-workspace-apps`） | `manifest`（schema + 规则 1–7）、`install`（ZIP / 目录安装）、`storage`（按 wapp 隔离的键值存储）。zip 条目路径守卫不在本层，见 `packages/platform-infra` 的 `path_safety`，本层 `install` 改为调用它 |
 | 宿主（形态相关） | `src-tauri/src/wapps/` | `protocol`（`datazen://` 协议桥 + IPC）、`WappManager`（启动期扫描 + `.enabled` 标记）、`mod.rs`（门面） |
 | 宿主集成测试 | `src-tauri/src/wapps/integration_tests.rs` | 每个用例都驱动宿主命令层（`commands::wapps::*_impl` + `TestAppState` + `WappManager`），故留在宿主 |
 
