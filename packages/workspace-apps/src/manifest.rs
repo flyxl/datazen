@@ -329,7 +329,7 @@ pub(crate) fn safe_declared_path(wapp_dir: &Path, declared: &str) -> Result<Path
         return Err("empty declared path".into());
     }
 
-    let rel = crate::zip_path::validate_zip_entry_path(declared)
+    let rel = datazen_platform_infra::path_safety::validate_zip_entry_path(declared)
         .map_err(|e| format!("unsafe declared path `{declared}`: {e}"))?;
 
     for component in rel.components() {

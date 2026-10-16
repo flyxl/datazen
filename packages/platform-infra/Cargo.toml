@@ -9,4 +9,3 @@ description = "Cross-form platform infrastructure primitives for DataZen: creden
 # platform DAG (enforced by F-11). Add capabilities here before adding a new
 # shared crate for them; do NOT add a crate for them.
 regex = "1.13.1"
-thiserror = "1"

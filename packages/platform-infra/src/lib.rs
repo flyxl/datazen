@@ -9,4 +9,5 @@
 //! to add needs `platform-api` or anything above it, it does not belong
 //! in this crate.
 
+pub mod path_safety;
 pub mod redaction;

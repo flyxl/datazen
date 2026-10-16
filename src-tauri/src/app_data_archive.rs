@@ -2,10 +2,15 @@
 
 use std::fs::{self, File};
 use std::io::{copy, Read, Write};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path};
 
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
+
+/// Zip-slip guards live in `datazen-platform-infra` (`path_safety.rs`); the
+/// host re-exports them so `crate::app_data_archive::validate_zip_entry_path`
+/// and every in-file caller keep resolving without a second implementation.
+pub use datazen_platform_infra::path_safety::{validate_zip_entry_path, MAX_COMPRESSION_RATIO};
 
 /// True when any path component is the encryption key file `.key`.
 fn has_key_component(rel_path: &Path) -> bool {
@@ -155,52 +160,8 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
     Ok(())
 }
 
-/// Validate a zip entry name; reject absolute paths and `..` components.
-pub fn validate_zip_entry_path(name: &str) -> std::io::Result<PathBuf> {
-    let normalized = name.replace('\\', "/");
-    if normalized.starts_with('/') || normalized.starts_with("//") {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "absolute path in zip entry",
-        ));
-    }
-    // Windows absolute paths like C:/...
-    if normalized.len() >= 2 {
-        let bytes = normalized.as_bytes();
-        if bytes[1] == b':' {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "absolute path in zip entry",
-            ));
-        }
-    }
-
-    let path = PathBuf::from(&normalized);
-    for component in path.components() {
-        match component {
-            Component::ParentDir => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "path traversal in zip entry",
-                ));
-            }
-            Component::RootDir | Component::Prefix(_) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "absolute path in zip entry",
-                ));
-            }
-            Component::CurDir | Component::Normal(_) => {}
-        }
-    }
-    Ok(path)
-}
-
 /// Maximum total uncompressed bytes allowed when extracting app-data ZIP archives.
 pub const MAX_UNCOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
-
-/// Reject when `uncompressed / compressed` exceeds this value (per entry or globally).
-pub const MAX_COMPRESSION_RATIO: u64 = 100;
 
 /// Maximum number of entries in an app-data ZIP archive.
 pub const MAX_ZIP_ENTRIES: usize = 100_000;
@@ -685,15 +646,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_path_traversal_in_zip_entries() {
-        assert!(validate_zip_entry_path("../etc/passwd").is_err());
-        assert!(validate_zip_entry_path("/etc/passwd").is_err());
-        assert!(validate_zip_entry_path("C:/Windows/system.ini").is_err());
-        assert!(validate_zip_entry_path("foo/../../bar").is_err());
-        assert!(validate_zip_entry_path("settings.json").is_ok());
-    }
-
-    #[test]
     fn round_trip_excludes_logs_and_preserves_existing_logs() {
         let source = TempDir::new().unwrap();
         write_file(source.path(), "connections.json", r#"{"connections":[]}"#);
@@ -858,21 +810,6 @@ mod tests {
             fs::read_to_string(target.path().join("settings.json")).unwrap(),
             r#"{"theme":"dark"}"#
         );
-    }
-
-    #[test]
-    fn validate_zip_entry_accepts_nested_and_backslash() {
-        let p = validate_zip_entry_path("contexts\\rules.md").unwrap();
-        assert_eq!(p, PathBuf::from("contexts/rules.md"));
-        assert!(validate_zip_entry_path("a/b/c.json").is_ok());
-        assert!(validate_zip_entry_path("./settings.json").is_ok());
-    }
-
-    #[test]
-    fn validate_zip_entry_rejects_unc_and_prefix() {
-        assert!(validate_zip_entry_path("//server/share").is_err());
-        assert!(validate_zip_entry_path("D:\\secret.txt").is_err());
-        assert!(validate_zip_entry_path("foo/../../../etc/passwd").is_err());
     }
 
     #[test]

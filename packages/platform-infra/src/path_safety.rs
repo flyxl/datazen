@@ -1,19 +1,23 @@
-//! Zip entry-path guards shared by manifest, install and archive extraction.
+//! Zip-slip guards for archive entry names.
 //!
-//! These checks used to live in two host modules — `app_data_archive`
-//! (`validate_zip_entry_path`, `MAX_COMPRESSION_RATIO`) and a thin
-//! `util::theme_zip` wrapper around it. The kernel cannot import host
-//! modules, and the rules these encode (no absolute paths, no `..`
-//! traversal, no symlink-looking names) are part of the package contract the
-//! kernel enforces on every install, so the guards moved here.
+//! Why this capability is a cross-form primitive rather than a host-private
+//! helper: the same rules encode the zip-slip boundary on every form that
+//! accepts an archive — the desktop app-data backup/restore path and the
+//! workspace-app / theme package installer — so the rules are *mechanism*
+//! (path safety), not policy. The guards themselves are pure `std`: no IO, no
+//! transport, no ambient state, nothing form-specific.
 //!
-//! The host keeps `app_data_archive::validate_zip_entry_path` for
-//! app-data backup/restore archives — a separate entry point with its own
-//! tests, and pulling it in would drag host state into the kernel. The
-//! `util::theme_zip` wrapper had no other production caller once the wapp
-//! installer moved, so it was deleted rather than left as dead code; the two
-//! guards it added (empty / NUL / `" -> "` names) are pinned here by
-//! `empty_nul_and_symlink_names_are_rejected`.
+//! Two byte-identical copies used to exist, one per consumer
+//! (`src-tauri/src/app_data_archive.rs` and
+//! `packages/workspace-apps/src/zip_path.rs`). Each documented the other's
+//! existence and neither imported the other, so a one-sided edit left one side
+//! still enforcing the old rules — on a security check that is the worst
+//! possible failure direction. Exactly one implementation lives here and every
+//! form links it; callers keep their own entry points and error mapping.
+//!
+//! `MAX_COMPRESSION_RATIO` belongs here for the same reason: a zip-bomb
+//! threshold is a property of the archive, not of whoever opened it, and two
+//! independent constants drift apart silently.
 
 use std::path::{Component, PathBuf};
 
@@ -104,6 +108,8 @@ mod tests {
             reason("assets/../../outside.html"),
             "path traversal in zip entry"
         );
+        // The drive-letter guard also fires for a Windows-style backslash name.
+        assert_eq!(reason("D:\\secret.txt"), "absolute path in zip entry");
     }
 
     #[test]
@@ -117,8 +123,12 @@ mod tests {
     }
 
     #[test]
+    fn deep_traversal_is_rejected_at_the_first_parent_component() {
+        assert!(validate_zip_entry_path("foo/../../../etc/passwd").is_err());
+    }
+
+    #[test]
     fn ratio_limit_is_the_documented_constant() {
-        // The kernel pins 100:1; the host archive guard keeps the same value.
         assert_eq!(MAX_COMPRESSION_RATIO, 100);
     }
 }
