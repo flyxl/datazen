@@ -28,8 +28,9 @@
 | B8 | platform/adapter.rs 867 行，超单文件 800 行推荐值 | [bug-platform-adapter-oversized.md](bug-platform-adapter-oversized.md) | 开放 · 需专项 | 该文件 ≤ 800 行，且 `test:platform-arch` 与 `cargo test -p datazen --lib` 全绿 | 需专门变更，**不得在任何下沉轨顺手做** |
 | B9 | URL userinfo 密码含 `/` 时整段凭据原样入日志 | [bug-platform-infra-url-credentials-slash-password.md](bug-platform-infra-url-credentials-slash-password.md) | 开放 · 已确认 | 新增单测覆盖 `https://user:pa/ss@host/v1`，且反证 `https://host/path@x` 不被误改写 | 宿主既有（`7c2151985` 即同正则），`platform-infra` 逐字搬运；不阻断 Wave-3 |
 | B10 | 安装测试把系统共享临时目录当成自己的沙箱 | [bug-workspace-apps-test-asserts-shared-tmpdir.md](bug-workspace-apps-test-asserts-shared-tmpdir.md) | 开放 · 已确认 | `install/tests.rs` 中针对 `TempDir` **直接父目录**的断言归零（按该文件范围检索计 0），改为断言本次测试自建的沙箱顶层；该 crate 测试全绿 | 本次迁移引入（`d57690b29` = Wave-2 · B1），**非宿主既有** |
+| B11 | ai-providers 的 7 个 HTTP 出口绕过 NetworkProvider，SSRF 防护未覆盖 | [bug-ai-providers-reqwest-bypasses-network-provider.md](bug-ai-providers-reqwest-bypasses-network-provider.md) | 开放 · 待裁定 | 裸 `reqwest::Client` 出口归零，或豁免裁定写进 `shared-boundaries-and-ports.md` | 本轮裁定 (d) 方案 1：**现在不改**，另行排期 |
 
-合计 **10 条**：进行中 0 · 开放 7 · 已关闭 3。
+合计 **11 条**：进行中 0 · 开放 8 · 已关闭 3。
 
 ## 维护纪律
 
