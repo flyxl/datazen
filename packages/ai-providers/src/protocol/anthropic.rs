@@ -716,10 +716,8 @@ pub async fn probe(cfg: &ProtocolConfig, model: &str) -> Result<(), AiError> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::{collect_stream, protocol_config_anthropic, sample_request};
     use super::*;
-    use crate::ai::protocol::test_support::{
-        collect_stream, protocol_config_anthropic, sample_request,
-    };
     use datazen_ai_api::AiError;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -921,7 +919,7 @@ mod tests {
 
     #[tokio::test]
     async fn complete_retries_on_429_then_succeeds() {
-        use crate::ai::protocol::test_support::{protocol_config_anthropic, sample_request};
+        use super::super::test_support::{protocol_config_anthropic, sample_request};
 
         let server = MockServer::start().await;
 
@@ -953,7 +951,7 @@ mod tests {
 
     #[tokio::test]
     async fn complete_400_returns_sanitized_error() {
-        use crate::ai::protocol::test_support::{protocol_config_anthropic, sample_request};
+        use super::super::test_support::{protocol_config_anthropic, sample_request};
 
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -977,7 +975,7 @@ mod tests {
 
     #[tokio::test]
     async fn stream_complete_retries_on_429_then_succeeds() {
-        use crate::ai::protocol::test_support::{
+        use super::super::test_support::{
             collect_stream, protocol_config_anthropic, sample_request,
         };
 

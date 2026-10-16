@@ -4,7 +4,7 @@
 
 ### 1.1 概述
 
-AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式，通过 `packages/ai-api` 公共 crate 定义统一接口，支持多种 LLM Provider。
+AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式，分两个 Rust crate：`packages/ai-api` 定义统一接口（契约层），`packages/ai-providers` 提供各厂商的 Provider 实现与共享 HTTP 协议（传输层）。宿主 `src-tauri/src/ai/` 只做门面 re-export，并保留确实需要宿主服务的那部分（安全门、Prompt 解析、Schema 上下文、token 预算、取消）。
 
 ### 1.2 架构分层
 
@@ -17,21 +17,32 @@ packages/ai-api/                    # 公共 AI Provider API crate
 │   │                               # ToolDefinition, ToolCall, ToolResult, ModelInfo
 │   └── factory.rs                  # AiProviderFactory + inventory + register_ai_provider!
 
-src-tauri/src/ai/                   # 内置 AI Provider 实现
-├── mod.rs                          # 模块组织 + re-exports
-├── openai.rs                       # OpenAI Provider (Chat Completions API)
-├── anthropic.rs                    # Anthropic Provider (Messages API)
-├── deepseek.rs                     # DeepSeek Provider (Responses API, reasoning 支持)
-├── custom.rs                       # 自定义 Provider (三种协议: Chat/Responses/Anthropic 兼容,
-│                                   #   远程模型列表获取)
-├── registry.rs                     # AiProviderRegistry (动态注册/获取, inventory 发现)
+packages/ai-providers/              # Provider 实现 + 共享 HTTP 协议（传输层，不依赖宿主）
+│   src/
+│   ├── lib.rs                      # 模块组织 + re-exports
+│   ├── openai.rs                   # OpenAI Provider (Chat Completions API)
+│   ├── anthropic.rs                # Anthropic Provider (Messages API)
+│   ├── deepseek.rs                 # DeepSeek Provider (Responses API, reasoning 支持)
+│   ├── ollama.rs                   # Ollama Provider (本地端点)
+│   ├── custom.rs                   # 自定义 Provider (三种协议: Chat/Responses/Anthropic 兼容,
+│   │                               #   远程模型列表获取)
+│   ├── registry.rs                 # AiProviderRegistry (动态注册/获取, inventory 发现)
+│   └── protocol/                   # 共享 HTTP 协议实现
+│       ├── mod.rs                  # ProtocolConfig, timeouts, URL normalization, 端点日志脱敏
+│       ├── openai_chat.rs          # OpenAI Chat Completions API (streaming + non-streaming)
+│       ├── openai_responses.rs     # OpenAI Responses API (DeepSeek/custom Responses 模式)
+│       ├── anthropic.rs            # Anthropic Messages API
+│       └── test_support.rs         # 协议层单测共享的 wiremock 夹具
+
+src-tauri/src/ai/                   # 宿主门面：re-export + 真正需要宿主服务的部分
+├── mod.rs                          # re-export datazen_ai_api / datazen_ai_providers + 本地模块
 ├── context.rs                      # SchemaContextBuilder (DDL 上下文, token 预算控制)
 ├── prompt_resolver.rs              # PromptResolver (资源文件加载 + 用户/驱动覆盖 + 多语言 fallback)
-└── protocol/                       # 共享 HTTP 协议实现
-    ├── mod.rs                      # ProtocolConfig, timeouts, URL normalization
-    ├── openai_chat.rs              # OpenAI Chat Completions API (streaming + non-streaming)
-    ├── openai_responses.rs         # OpenAI Responses API (DeepSeek/custom Responses 模式)
-    └── anthropic.rs                # Anthropic Messages API
+├── safety.rs                       # AiSafetyGate (调用方文本出境分级与工具调用校验)
+├── schema_pipeline.rs              # SchemaContextPipeline (PromptSeed → 系统后缀)
+├── ctx_yaml.rs                     # .ctx.yaml 表分组上下文解析
+├── budget.rs                       # token 预算常量
+└── cancel.rs                       # CancellationRegistry (request_id → CancellationToken)
 ```
 
 ### 1.3 AiProvider Trait
@@ -58,14 +69,37 @@ pub trait AiProvider: Send + Sync {
 
 ### 1.4 Provider 协议层
 
-多个 Provider 共享底层 HTTP 协议实现，避免重复代码：
+多个 Provider 共享底层 HTTP 协议实现，避免重复代码。协议层位于 `packages/ai-providers/src/protocol/`，
+宿主通过 `crate::ai::*` 门面引用（`src-tauri/src/ai/mod.rs` 同时 re-export `datazen_ai_api` 与
+`datazen_ai_providers`），调用方无须改写 import 路径：
 
 | Provider | 协议 | 模块 |
 |----------|------|------|
-| OpenAI | Chat Completions | `protocol/openai_chat.rs` |
-| DeepSeek | Responses API（含 reasoning） | `protocol/openai_responses.rs` |
-| Anthropic | Messages API | `protocol/anthropic.rs` |
+| OpenAI | Chat Completions | `packages/ai-providers/src/protocol/openai_chat.rs` |
+| DeepSeek | Responses API（含 reasoning） | `packages/ai-providers/src/protocol/openai_responses.rs` |
+| Anthropic | Messages API | `packages/ai-providers/src/protocol/anthropic.rs` |
 | Custom | 三选一：Chat / Responses / Anthropic | 对应 protocol 模块 |
+
+`packages/ai-providers` 只依赖 `datazen-ai-api` 与 HTTP 客户端，不依赖 Tauri 与宿主存储：
+Provider 配置的持久化留在宿主。启动时的两步拆成两个方法——
+`AiProviderRegistry::ensure_registered()` 负责内置 Provider 的注册与去重，
+并在**首次**调用时返回 `true`；宿主据此只在该次调用后读取已解密配置并交给
+`AiProviderRegistry::restore_config()`，保证配置恢复与 Provider 注册同样只发生一次：
+
+```rust
+pub async fn ensure_ai_ready(&self) {
+    if self.ai_registry.ensure_registered().await {
+        if let Some(ai_config) = self.store.get_ai_config().await {
+            self.ai_registry.restore_config(&ai_config).await;
+        }
+    }
+    let lang = self.store.get_settings().await.language;
+    self.prompt_resolver.ensure_ready(&lang).await;
+}
+```
+
+`restore_config()` 内部只调用 `AiProvider::initialize()`（纯内存状态，无网络请求），
+失败时记录 warn 并保持 Provider 未初始化，因此调用方无需处理错误分支。
 
 ### 1.5 AI IPC 命令
 

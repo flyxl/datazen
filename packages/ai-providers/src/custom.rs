@@ -13,7 +13,7 @@ use tokio::sync::{mpsc, RwLock};
 use super::protocol::{self, ProtocolConfig, CONNECT_TIMEOUT};
 
 fn remote_models_log_endpoint(endpoint: &str) -> String {
-    crate::log_redact::redact_url_for_log(endpoint)
+    protocol::redact_endpoint_for_log(endpoint)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,7 +120,7 @@ impl AiProvider for CustomProvider {
 
     fn supports_tools(&self) -> bool {
         // Custom providers share Chat / Responses / Anthropic-compatible protocols
-        // that already implement tool calling in `ai/protocol/`.
+        // that already implement tool calling in this crate's `protocol` layer.
         true
     }
 

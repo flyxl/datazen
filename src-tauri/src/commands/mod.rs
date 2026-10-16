@@ -193,7 +193,11 @@ impl AppState {
     /// Lazily register AI providers + load prompt templates.
     /// Does not run during GUI startup — only on first AI / prompt use.
     pub async fn ensure_ai_ready(&self) {
-        self.ai_registry.ensure_registered(&self.store).await;
+        if self.ai_registry.ensure_registered().await {
+            if let Some(ai_config) = self.store.get_ai_config().await {
+                self.ai_registry.restore_config(&ai_config).await;
+            }
+        }
         let lang = self.store.get_settings().await.language;
         self.prompt_resolver.ensure_ready(&lang).await;
     }
