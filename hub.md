@@ -3,7 +3,7 @@
 集成分支 `feature/shared-layer-extraction`（worktree `.worktrees/datazen-shared-layer-extraction`）。
 主 checkout 保持 `main` 不动；**合并到 main 不在本轮范围内**。
 
-缺陷记录按 bug 一文件，根目录 `bug-*.md`，随分支流转。
+缺陷记录按 bug 一文件，根目录 `bug-*.md`，随分支流转；`bugs.md` 是它们的索引（状态、归属、关闭要点）。
 
 ---
 
