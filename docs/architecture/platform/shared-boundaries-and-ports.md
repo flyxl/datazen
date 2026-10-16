@@ -145,6 +145,8 @@ flowchart TD
 | F-06 | `server` 的 normal + build 依赖闭包不含 `tauri*` 与 `datazen` 宿主 crate | server 无法独立构建 |
 | F-07 | `packages/backend-client` 不含 `@tauri-apps/` 前缀、`fetch(`、`XMLHttpRequest` 字面量 | 传输无关契约被具体传输污染 |
 | F-08 | `packages/migration-common` 的 normal + build 工作区依赖只允许自身与 driver-api；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共算法反向依赖领域引擎、runtime 或平台传输，重新形成耦合 |
+| F-09 | `packages/ai-providers`、`packages/workspace-apps` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 与 F-02 同因：这两个包要同时被桌面端与服务端复用，一旦拖进 Tauri 就只能编进桌面进程 |
+| F-10 | `packages/workspace-apps` 不含 `axum`、`actix-web`、`warp`、`tonic` 等 HTTP/传输框架 | 内核里一旦出现传输框架，服务端 HTTP 适配器就得改内核签名，桌面与服务端被迫分叉 |
 
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
@@ -173,6 +175,12 @@ datazen-application = { path = "packages/application" }
 ```
 
 与本文早期草案的差异：`server` **没有**加进 `members`——`server/` 在仓库中不存在，该 crate 属更晚阶段；`packages/runtime` 本就已在基线的 `members` 中，本次未改动这一行，只补 `platform-api` 与 `application` 两条。`packages/backend-client` 是 TypeScript 包，**不得**加入 Cargo `members`（`packages/backend-client/src/__tests__/contracts.test.ts` 有一条断言守住这点）。`packages/drivers/*` 的通配与三个 `exclude`（kiwi / olap / superset）保持原样，驱动注入仍由 `scripts/resolve-drivers.mjs` 写入占位段。
+
+Wave-2 在此基础上又新增 `packages/ai-providers` 与 `packages/workspace-apps` 两个成员
+（AI provider 协议适配实现、Workspace App 形态中立内核），两者的边界分别由 F-09 / F-10 断言。
+`packages/ai-providers` **不在** F-10 的作用域内：它按定义就是一个 HTTP *客户端*适配层
+（依赖 `reqwest` 访问各 provider 的端点），F-10 禁的是服务端框架进入内核，不是禁内核发请求。
+这两个包都只依赖第三方 crate 与既有的 `datazen-ai-api`，因此 `[workspace.dependencies]` 无需新增条目。
 
 前端侧接线的不是 pnpm workspace：`pnpm-workspace.yaml` 只有 `allowBuilds:`、**没有 `packages:` 通配**，`pnpm-lock.yaml` 也只有根一个 importer，因此 `packages/*` 下的前端包并不通过 pnpm 链接进 `node_modules`。既有 `packages/driver-sdk`、`packages/ui`、`packages/wapp-sdk`、`packages/extension-points` 靠三处显式配置生效，`packages/backend-client` 已同样补齐三处：
 

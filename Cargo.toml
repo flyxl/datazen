@@ -7,6 +7,8 @@ members = [
     "packages/platform-api",
     "packages/application",
     "packages/runtime",
+    "packages/ai-providers",
+    "packages/workspace-apps",
     "packages/schema-diff",
     "packages/data-sync",
     "packages/migration-common",

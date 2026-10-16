@@ -187,6 +187,28 @@ const RULES = Object.freeze([
     specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
     note: 'shared migration algorithms cannot depend on domain engines, runtime or transports',
   },
+  {
+    id: 'F-09',
+    subjects: ['ai-providers', 'workspace-apps'],
+    subjectsFromSpec: true,
+    forbiddenLayers: ['host'],
+    forbiddenCrates: ['tauri'],
+    specSubsetOnly: true,
+    specTokens: ['tauri'],
+    note: 'the shared AI / workspace-app cores stay webview-free',
+  },
+  {
+    id: 'F-10',
+    subjects: ['workspace-apps'],
+    subjectsFromSpec: true,
+    forbiddenLayers: [],
+    forbiddenCrates: 'spec',
+    // ai-providers is deliberately NOT a subject: an HTTP *client* (reqwest) is
+    // its job. F-10 forbids server *frameworks* in the kernel, not clients.
+    specTokens: ['axum'],
+    specCrates: ['axum', 'actix-web', 'warp', 'tonic'],
+    note: 'workspace-apps stays transport-neutral so a server adapter needs no breaking change',
+  },
 ]);
 
 /**
