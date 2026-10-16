@@ -19,3 +19,9 @@ Logs:
 - /var/folders/2y/5w1_2qg97r7b9bfv20b4nybh0000gn/T/datazen-typecheck7173.zTDljtCDaY.log
 
 Remaining: coordinator independent verification/integration. Remove this ledger before final delivery.
+
+Independent verification follow-up:
+- Luna reproduced scripts 814 passing tests, typecheck success, and normal gate 0 violations / 0 errors.
+- Corrected the stale literal CI step name in shared-boundaries-and-ports.md §8.3 to match ci.yml.
+- `rg` checked docs for equivalent old step-name references: exactly this one literal step-name reference was stale. Other F-01..F-07 prose ranges remain in ci-test-matrix.md and shared-boundaries-and-ports.md, including historical implementation explanations; no code changes in this follow-up.
+- `git diff --check`: EXIT=0. Documentation-only follow-up; no test rerun required.
