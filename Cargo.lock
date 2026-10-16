@@ -1758,6 +1758,7 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "datazen-ai-api",
+ "datazen-platform-infra",
  "futures-util",
  "reqwest",
  "serde",
@@ -2124,7 +2125,6 @@ name = "datazen-platform-infra"
 version = "0.1.0"
 dependencies = [
  "regex",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2174,6 +2174,7 @@ dependencies = [
 name = "datazen-workspace-apps"
 version = "0.0.1"
 dependencies = [
+ "datazen-platform-infra",
  "regex",
  "serde",
  "serde_json",

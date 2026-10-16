@@ -19,7 +19,7 @@
 | # | 缺陷 | 详情文件 | 状态 | 关闭要点 | 归属 |
 | --- | --- | --- | --- | --- | --- |
 | B1 | ai-providers 手写了第二份更弱的日志脱敏 | 已删除 | **已关闭** | 全仓旧脱敏函数归零 —— 实测 0 命中（代码 + 文档 + 缺陷文件全查），`cargo test -p datazen-ai-providers` 90/0 | Wave-3 · W3-1，`66e97f69f`，独立验证 PASS |
-| B2 | workspace-apps 复制了宿主的 zip 路径校验 | 已删除 | **已关闭** | 三个符号的**定义**只剩 `platform-infra/src/path_safety.rs` 一处 —— 实测 `:26` / `:29` / `:71`，仓库其余位置 0 处；`zip_path` 字样全仓归零 | Wave-3 · W3-2，`583666808`，独立验证 PASS |
+| B2 | workspace-apps 复制了宿主的 zip 路径校验 | 已删除 | **已关闭** | 三个符号的**定义**只剩 `platform-infra/src/path_safety.rs` 一处 —— 实测 `:26` / `:29` / `:71`，仓库其余位置 0 处；`zip_path` 已不再是模块名，字样仅存于本行的历史叙述、文档里的曾在此处说明，以及 `install_from_zip(zip_path, ..)` 的同名形参 | Wave-3 · W3-2，`583666808`，独立验证 PASS |
 | B3 | 边界检查在规则有 violation 时仍打印 `ok` | [bug-boundary-summary-line-always-ok.md](bug-boundary-summary-line-always-ok.md) | 开放 · 低 | 变异探针日志中不再出现「`VIOLATION F-11` 与同前缀 `ok F-11` 并存」 | 归预置脚本 `179c6c8b6`，**非下沉轨引入** |
 | B4 | platform-infra 声明了零使用的 `thiserror` | 已删除 | **已关闭** | 该依赖行已删 —— 实测 `packages/platform-infra/` 下 `thiserror` 0 命中，`Cargo.toml` 只剩 `regex` | Wave-3 · W3-2，`583666808`，独立验证 PASS |
 | B5 | application 的模块清单守卫并不封闭 | [bug-application-module-guard-open.md](bug-application-module-guard-open.md) | 开放 · 待实测 | 新增一个 `pub mod` 能让守卫变红（先红一次以证明有效），或测试名如实描述断言强度 | 非 Track C 引入，未排期 |
