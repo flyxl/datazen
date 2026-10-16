@@ -229,6 +229,7 @@ mod tests {
             name: "Job".into(),
             description: String::new(),
             version: None,
+            blocks: Vec::new(),
             author: None,
             variables: vec![],
             connection: None,

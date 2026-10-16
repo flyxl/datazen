@@ -72,6 +72,40 @@ pub enum WorkflowError {
         code: String,
     },
 
+    /// 定义版本无法分派。**不猜测**：非整数与高于上限的整数都拒绝执行，
+    /// 前者在历史版本里被当作「未声明定义版本」而静默按 v1 跑。
+    #[error("Workflow definition version '{declared}' cannot be dispatched (highest supported: {highest_supported}); declare a supported integer definition version or upgrade DataZen")]
+    UnsupportedDefinitionVersion {
+        declared: String,
+        highest_supported: u32,
+    },
+
+    /// 目标声明互相矛盾——静态拒绝，不在运行期「就近选一个」。
+    #[error("Target conflict for step '{step_id}': {detail}")]
+    TargetConflict { step_id: String, detail: String },
+
+    /// 目标缺失。**不回退到 driver 内置默认**：那会让失败以「relation 不存在」
+    /// 的形式在更晚、更误导的位置才浮现。
+    #[error("Target required for step '{step_id}': {detail}")]
+    TargetRequired { step_id: String, detail: String },
+
+    /// 目标已解析，但该目标不被此操作支持。
+    #[error("Target unsupported for step '{step_id}': {detail}")]
+    TargetUnsupported { step_id: String, detail: String },
+
+    /// 事务块计划预校验未通过。`effectOutcome = notStarted`：
+    /// 不占资源、不建连接、不执行任何一步，也不自动重试。
+    #[error("Unsupported plan (steps: {offending_steps:?}): {detail}")]
+    UnsupportedPlan {
+        offending_steps: Vec<String>,
+        detail: String,
+    },
+
+    /// 驱动不具备判定该计划的能力。与「判定为不安全」是两回事——
+    /// 后者是 UnsupportedPlan，前者是能力缺口，同样拒绝执行。
+    #[error("Capability unsupported: {detail}")]
+    CapabilityUnsupported { detail: String },
+
     #[error("{0}")]
     Validation(String),
 

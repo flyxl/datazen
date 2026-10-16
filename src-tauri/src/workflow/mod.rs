@@ -6,9 +6,12 @@
 pub mod command;
 pub mod command_runtime;
 pub mod error;
+pub mod executable;
 pub mod history;
 mod independent_sql;
 pub(crate) mod migration;
+pub mod plan_guard;
+pub mod target_plan;
 pub mod workflows;
 
 pub use error::WorkflowError;

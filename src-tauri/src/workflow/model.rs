@@ -15,6 +15,11 @@ pub struct WorkflowDefinition {
     pub id: String,
     pub name: String,
     pub description: String,
+    /// 定义格式版本（裸整数字符串）。缺省 = v1（扁平 `steps`，独立 step 语义）。
+    ///
+    /// 这里只负责**存**，判定在 [`super::executable::WorkflowVersion::parse`]：
+    /// 非整数与高于上限的整数都拒绝执行，绝不按低版本猜测解析。
+    #[serde(default)]
     pub version: Option<String>,
     pub author: Option<String>,
     #[serde(default)]
@@ -26,6 +31,10 @@ pub struct WorkflowDefinition {
     #[serde(default)]
     pub database: Option<String>,
     pub steps: Vec<WorkflowStep>,
+    /// v2 资源块。v1 定义里恒为空——解析层把 `steps` 映射为独立 step 序列，
+    /// 而不是把它们塞进块里。
+    #[serde(default)]
+    pub blocks: Vec<WorkflowBlock>,
     pub output: Option<WorkflowOutput>,
     pub timeout_secs: Option<u64>,
     pub error_handling: Option<ErrorHandlingConfig>,
@@ -182,6 +191,67 @@ pub enum WorkflowStep {
         #[serde(default)]
         on_error: Option<ErrorHandlingConfig>,
     },
+}
+
+/// 资源块类型（v2）。块是**资源作用域**的单位，不是 step 的语法糖：
+///
+/// * [`BlockKind::SessionBlock`]：整块共用一份资源，块内可见块内状态，
+///   块结束无条件释放。**没有运行期原子性**。
+/// * [`BlockKind::TransactionBlock`]：整块共用一份资源，并由执行层控制
+///   begin / commit / rollback。是否可执行由 [`super::plan_guard`] 在**任何
+///   写入发生之前**判定。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BlockKind {
+    SessionBlock,
+    TransactionBlock,
+}
+
+impl BlockKind {
+    /// 块内是否有运行期原子性（与「共用资源」是两件事）。
+    pub const fn is_transactional(self) -> bool {
+        matches!(self, BlockKind::TransactionBlock)
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            BlockKind::SessionBlock => "sessionBlock",
+            BlockKind::TransactionBlock => "transactionBlock",
+        }
+    }
+}
+
+/// 块级重试策略（只适用 `transactionBlock`）。
+///
+/// 键名是 `block` 而不是 `times`，因为重试单位只能是整块：块内不允许从中间
+/// 恢复（§3.5）。未知键直接拒绝，避免 `retry: { step: 1 }` 这类写法被静默吞掉。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct BlockRetry {
+    /// 整块重试次数上限。`0` = 不重试（默认）。
+    #[serde(rename = "block", default)]
+    pub block: u32,
+}
+
+/// 一个 v2 资源块。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowBlock {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: BlockKind,
+    /// 块级目标（L2）。缺省继承 Workflow 默认目标（L3）。
+    #[serde(default)]
+    pub connection: Option<String>,
+    /// 块级目标（L2）。缺省继承 Workflow 默认目标（L3）。
+    #[serde(default)]
+    pub database: Option<String>,
+    /// 与其他块并行。`false`（默认）时块按声明顺序串行。
+    #[serde(default)]
+    pub parallel: bool,
+    #[serde(default)]
+    pub steps: Vec<WorkflowStep>,
+    #[serde(default)]
+    pub retry: Option<BlockRetry>,
 }
 
 /// One input group feeding a `merge` step.

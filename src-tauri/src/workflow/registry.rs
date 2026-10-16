@@ -258,6 +258,7 @@ mod tests {
             name: format!("Name {id}"),
             description: "d".into(),
             version: None,
+            blocks: Vec::new(),
             author: None,
             variables: vec![],
             connection: None,
