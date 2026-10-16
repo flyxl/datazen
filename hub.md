@@ -23,7 +23,7 @@
 | Wave-1 | sql_guard、driver_cache + schema_cache、frontend_bridge | 已合并 |
 | Wave-2 A2 | `packages/ai-providers`：OpenAI/Anthropic/DeepSeek/Ollama/Custom provider 适配 | 已合并 |
 | Wave-2 B1 | `packages/workspace-apps`：安装 / manifest / storage / zip 路径 | 已合并 |
-| Wave-2 C3 | `packages/platform-infra`：日志脱敏基础设施 | 验证中 |
+| Wave-2 C3 | `packages/platform-infra`：日志脱敏基础设施 | 已合并 |
 | Wave-3 | 收敛 Wave-2 制造出的重复实现（见 `bug-*.md`） | 未开始 |
 | R | 全部波次合并后的全量回归 | 未开始 |
 
@@ -39,23 +39,29 @@
 
 ## 二、进度
 
-| 轨道 | worktree | 分支 | 状态 |
-| --- | --- | --- | --- |
-| A2 ai-providers | 已拆 | 已删 | 合并完成，门禁全绿 |
-| B1 workspace-apps | 已拆 | 已删 | 合并完成，门禁全绿 |
-| C3 platform-infra | `.worktrees/datazen-platform-infra` | `feature/platform-infra` | **验证 PASS**，待合并 |
-| C3 验证 | `.worktrees/verify-platform-infra` | detached | 已结束（指纹首尾一致） |
+| 轨道 | 分支 | 状态 |
+| --- | --- | --- |
+| A2 ai-providers | 已删 | 合并完成，门禁全绿 |
+| B1 workspace-apps | 已删 | 合并完成，门禁全绿 |
+| C3 platform-infra | 已删 | 独立验证 PASS 16/16，合并完成，门禁全绿 |
 
-### C3 当前状态
+Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量回归（R）。**
 
-- 代码 head `d24779e2f`（父 `179c6c8b6` 预置提交，未 amend），5 文件 +213/−117。
-- **独立验证 PASS，V1–V15 全绿 16/16。** 验证方工作树指纹首尾逐字节一致（`cd1ffcdee…`）。
-  - crate `cargo test` = **5 passed / 0 failed**。
-  - 宿主 `cargo test -p datazen --lib` = **1705 passed / 0 failed / 6 ignored**（基线 1710，下沉 5 个单测）；宿主套件内 `log_redact` 命中 0。
-  - F-11 变异探针：注入改名依赖 → EXIT=1 + `VIOLATION F-11`；还原后文件 sha 与探针前一致。
-- 验证方提的 D2–D6 全部归档：D2→见下节 lock 处置；D3/D4→`bug-*.md`；
-  **D5 作废**（`stash@{0}` 已不是 infra 基线）；D6→收尾删 `progress.md`。
-- 剩余动作：合并 → `pnpm typecheck` + `npx vitest run` → 删 `progress.md` → 拆两棵 worktree → 删分支 → 单独提交 9 行 lock 增量。
+### Wave-2 收尾（实测）
+
+- 三轨合并：A2 `77be2b19b`、B1 `88a7fdaac`、C3 `d2bb5f4ae`，均零冲突（合并前已 5 次 dry-run 预演）。
+- 合并后门禁：`pnpm typecheck` EXIT=0（`error TS` **0 行**）；`npx vitest run` EXIT=0，
+  **602 文件 / 6335 测试全过**；`test:platform-arch` EXIT=0，`0 violation(s), 0 error(s), 3 advisory(ies)`；
+  `test:platform-crates` EXIT=0，`10 core crate(s) tested`，含 `datazen-platform-infra`。
+- C3 独立验证 V1–V15 全绿 16/16：crate `cargo test` 5 passed；宿主 `cargo test -p datazen --lib`
+  1705 passed / 0 failed / 6 ignored（基线 1710，下沉 5 个单测）；F-11 变异探针 EXIT=1 并报 `VIOLATION F-11`。
+  验证方工作树指纹首尾逐字节一致（`cd1ffcdee…`）。
+- **D2 已闭合**：`cargo metadata --locked` EXIT=0；三个新成员在入库 lock 中各命中 1。
+  合并后 lock 增量**恰好 +9 行**，唯一新增 `datazen-platform-infra`，删除 0，`source = "git"` 噪音 0 ——
+  与合并前一次性工作树预演逐字一致。驱动噪音**绝不提交**。
+- 验证方提的 D2–D6：D2 已闭合；D3/D4 → `bug-*.md`；**D5 作废**（`stash@{0}` 已不是 infra 基线）；
+  D6 → 合并回 main 时删 `progress.md`。
+- infra 的编码树与验证树、分支 `/tmp/dz-target-infra` 均已清理。
 
 ### 关键 commit
 
@@ -63,18 +69,16 @@
 | --- | --- |
 | `179c6c8b6` | infra 轨预置：crate 注册 + F-11 边界规则 |
 | `d24779e2f` | C3 交付：日志脱敏下沉 |
-| `514528e30` | Wave-2 lock 增量（A2/B1 新成员） |
+| `77be2b19b` / `88a7fdaac` / `d2bb5f4ae` | A2 / B1 / C3 合入集成分支 |
+| `514528e30` / `38a654673` | Wave-2 lock 增量（A2+B1 / platform-infra） |
 | `f418e2f93` | 先例：迁移原语下沉时同提交了 `Cargo.lock` |
 
-### C3 的 `Cargo.lock` 处置（已实测）
+### Wave-3 起点
 
-提交方工作区的 lock **不可原样入库**（含 4 个 `datazen-driver-*` 驱动噪音）。
-合并后做法：`resolve-drivers` → `git checkout -- src-tauri/Cargo.toml` → `cargo metadata` → 提交。
-合并前已在一次性工作树预演：增量**恰好 +9 行，只新增 `datazen-platform-infra`，删除 0，驱动噪音 0**。
-
-验证方独立实测佐证：在 infra 分支上 `cargo metadata --locked` **EXIT=101**，lock 里三个新包名命中 0。
-该分支自 `78038d02b` 分叉，缺 A2/B1/infra 三个成员；集成分支已有 `514528e30` 落了两者，故合并后只剩 infra 的 9 行。
-归属：该陈旧由预置提交 `179c6c8b6` 与 `265e4dbaf` 带入，**非 C3 轨引入**。
+- 两条必修：`bug-ai-providers-redact-endpoint-duplicate.md`、`bug-workspace-apps-zip-path-duplicate.md`；
+  落点都在 `packages/platform-infra`（`redaction` / 待建的 `path_safety`）。
+- **Wave-3 的工作树必须从本分支 HEAD 起**（现为 `38a654673`）。infra 轨的基点 `78038d02b`
+  不含 A2/B1 代码，在它上面做 Wave-3 会读到 0 命中 —— 那是分支基线假象，不是缺陷。
 
 ---
 
