@@ -385,3 +385,27 @@ platform-infra **14**（redact 后）· schema-diff **229**（clock 后，待合
 
 - 造「新增 `pub mod x;`」探针时**必须同时建出那个模块文件**：不建的话 `EXIT=101` 来自 `error[E0583]` 编译失败，**守卫根本没跑**，证据无效。
 - 想证明「模块结构真的变了」，可把模块文件内容换成 `compile_error!("…")`，让 rustc 自己指出该文件被当成模块编译。
+
+### ✅ Wave-4 合并完成（6/6）
+
+- 集成分支 **HEAD = `f248124e0`**，工作区干净；八次 `--no-ff` 合并、**零冲突**（`shared-boundaries-and-ports.md` 与 `Cargo.lock` 都自动合并成功）。
+- 6 条需合并的轨全部合完（第 7 条 `w4-ownerref` 为零改动），每条各自跑过完整门禁、每次合并后复跑。
+- **主 checkout `7c2151985` / DIRTY=0 全程未被触碰。**
+
+**R 阶段要用的权威基线（在同一最终提交上逐项复测过）**：
+
+| 门禁 | 值 |
+| --- | --- |
+| platform-api | 220 |
+| schema-diff | 229 |
+| runtime | 611 |
+| data-transfer | 226 |
+| application | 117 |
+| workspace-apps | 62 |
+| 宿主 `cargo test -p datazen --lib` | **1552 passed; 0 failed; 6 ignored** |
+| 边界 `check-platform-crate-boundaries.mjs` | 0 violation(s), 0 error(s) |
+| 新门禁 `check-shared-crate-panic-policy.mjs` | PASS |
+| typecheck | `error TS` 0 行 |
+| 前端 `npx vitest run` | **603 文件 / 6363 用例** |
+
+**剩余**：R 阶段全量回归（尚未在最终提交上一次性跑过）；合并回 main（**未获授权**）；台账销毁与收尾清单。
