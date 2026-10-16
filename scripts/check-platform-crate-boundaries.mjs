@@ -681,6 +681,30 @@ function parseArgs(argv) {
   return args;
 }
 
+/**
+ * The verdict word for one evaluated rule's summary line.
+ *
+ * The per-rule line used to print `ok` unconditionally, so a run whose
+ * `VIOLATION F-11 …` line sat six lines above also printed `ok F-11: …` — the
+ * same run contradicting itself, and the last line a reader sees before the
+ * `FAIL` summary. Attribution is by prefix because every violation producer in
+ * this file opens with the rule id (`F-11: …` from the spec cross-check,
+ * `F-11  …` from the closure walk and the F-07 source scan).
+ *
+ * Display only: the exit code still comes from `violations.length +
+ * errors.length`, so this cannot turn a red gate green or the reverse.
+ *
+ * @param {string} ruleId
+ * @param {string[]} violations
+ * @returns {'ok' | 'fail'}
+ */
+export function ruleVerdict(ruleId, violations) {
+  const blamed = violations.some(
+    (line) => line.startsWith(`${ruleId}:`) || line.startsWith(`${ruleId} `),
+  );
+  return blamed ? 'fail' : 'ok';
+}
+
 export function runCli({ argv = process.argv.slice(2), env = process.env } = {}) {
   const out = (s) => process.stdout.write(`${s}\n`);
   const err = (s) => process.stderr.write(`${s}\n`);
@@ -723,7 +747,12 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
   for (const line of result.advisories) out(`${PREFIX} ADVISORY ${line}`);
   for (const line of result.violations) err(`${PREFIX} VIOLATION ${line}`);
   for (const line of result.errors) err(`${PREFIX} ERROR    ${line}`);
-  for (const rule of result.evaluated) out(`${PREFIX} ok ${rule.rule}: ${rule.subjects.join(', ')}`);
+  for (const rule of result.evaluated) {
+    out(
+      `${PREFIX} ${ruleVerdict(rule.rule, result.violations)} ${rule.rule}: ` +
+        rule.subjects.join(', '),
+    );
+  }
 
   const failed = result.violations.length + result.errors.length;
   out(`${PREFIX} ${failed === 0 ? 'PASS' : 'FAIL'} — ${result.summary}`);
