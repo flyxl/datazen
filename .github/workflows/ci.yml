@@ -304,7 +304,7 @@ jobs:
       # 门禁本身不带 crate 名单：清单来自 workspace membership + §2.4 的路径，
       # 新 crate 落到 packages/application / packages/platform-api / server 下就自动入网，
       # 不需要在这里改任何一处列表。列不出来的 member 是 error 不是 pass。
-      - name: Platform crate dependency boundaries (F-01..F-07)
+      - name: Platform crate dependency boundaries
         run: pnpm test:platform-arch
 
       # 新增共享基础设施 crate 的 panic 门禁。同样落在这里，理由和上面那条一样：

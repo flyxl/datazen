@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * driver-file-stash.mjs
  *
@@ -38,7 +39,7 @@ import {
   writeFileSync,
 } from 'fs';
 import { resolve, dirname, relative, basename } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
 import { execFileSync } from 'child_process';
 import { deinjectManagedContent } from './driver-deinject.mjs';
@@ -541,6 +542,6 @@ function main() {
   process.exit(runDriverFileStashCli());
 }
 
-if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {
+if (isDirectInvocation(import.meta.url)) {
   main();
 }

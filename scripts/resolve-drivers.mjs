@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * resolve-drivers.mjs
  *
@@ -30,7 +31,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { resolve, dirname, join, relative } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import {
   stashManagedFiles,
@@ -1609,7 +1610,7 @@ function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isDirectInvocation(import.meta.url)) {
   try {
     main();
   } catch (err) {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * @file Protocol-bump / driver-release atomicity gate.
  *
@@ -639,6 +640,6 @@ export function main(argv = process.argv.slice(2)) {
   return 0;
 }
 
-if (process.argv[1] && import.meta.url === `file://${resolve(process.argv[1])}`) {
+if (isDirectInvocation(import.meta.url)) {
   process.exit(main());
 }

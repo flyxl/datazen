@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Source-layer guard: each named layer must not import from the layers above it.
  *
@@ -39,7 +40,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { resolve, dirname, extname, relative, posix } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { findCodeNeedle, lineAtOffset, scanCode } from './lib/scanSourceCode.mjs';
 import {
   SCAN_EXTENSIONS,
@@ -427,6 +428,6 @@ function parseRequireLayers(argv) {
   return value.length > 0 ? value.split(',').map((s) => s.trim()) : null;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   process.exit(checkModuleLayers({ requireLayers: parseRequireLayers(process.argv.slice(2)) }));
 }

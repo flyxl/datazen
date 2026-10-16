@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * driver-stash-precommit.mjs
  *
@@ -18,7 +19,7 @@
 
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import {
   createDriverFileStash,
@@ -221,7 +222,7 @@ function main() {
 }
 
 const __filename = fileURLToPath(import.meta.url);
-if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {
+if (isDirectInvocation(import.meta.url)) {
   main();
 }
 
