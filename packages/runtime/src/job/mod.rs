@@ -33,4 +33,4 @@ pub use recovery::JobRecoveryVerifier;
 pub use repository::{CancelPollSnapshot, InMemoryJobRepository};
 pub use runtime::{JobResult, JobRuntime, CANCEL_POLL_INTERVAL};
 pub use runtime_repository::JobRuntimeRepository;
-pub use time::{JobClock, SharedClock, SystemJobClock};
+pub use time::{JobClock, PortJobClock, SharedClock, SystemJobClock};
