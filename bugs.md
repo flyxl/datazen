@@ -26,7 +26,7 @@
 | B6 | ~~OwnerRef 契约重复定义~~ **判据不成立** | 已删除 | **已关闭 · 误判** | 实测 `src-tauri` **从无** `enum OwnerRef` 定义（`handles.rs:36` 是普通 import，`:192` 在 `#[cfg(test)]` 内），宿主 49 处引用**全部**已是契约类型 ⇒ 原判据作废；真问题另立 B12 | 原判据由 Wave-4 · w4-ownerref 实测推翻，协调者独立复核采信 |
 | B7 | schema-diff 直接依赖具体 driver crate | [bug-schema-diff-concrete-driver-deps.md](bug-schema-diff-concrete-driver-deps.md) | 开放 · 从未裁定 | `packages/schema-diff/Cargo.toml` 中不再出现任何 `datazen-driver-{mysql,postgres,sqlite}` | 未排期；动手前须先实测 `driver-api` 能力边界 |
 | B8 | platform/adapter.rs 867 行，超单文件 800 行推荐值 | [bug-platform-adapter-oversized.md](bug-platform-adapter-oversized.md) | 开放 · 需专项 | 该文件 ≤ 800 行，且 `test:platform-arch` 与 `cargo test -p datazen --lib` 全绿 | 需专门变更，**不得在任何下沉轨顺手做** |
-| B9 | URL userinfo 密码含 `/` 时整段凭据原样入日志 | [bug-platform-infra-url-credentials-slash-password.md](bug-platform-infra-url-credentials-slash-password.md) | 开放 · 已确认 | 新增单测覆盖 `https://user:pa/ss@host/v1`，且反证 `https://host/path@x` 不被误改写 | 宿主既有（`7c2151985` 即同正则），`platform-infra` 逐字搬运；不阻断 Wave-3 |
+| B9 | URL userinfo 密码含 `/` 时整段凭据原样入日志 | 已删除 | **已关闭** | 实测：代码里已无 `[^/@\s]+`（仅两处注释）；未编码斜杠形态由兜底脱敏、编码形态 `pa%2Fss` / `pa%40ss` 走结构化路径，输出 `assert_eq!` 全等 `https://***@host/v1`；AC3 测试体与 `c94cdbad6` 逐字节相同；platform-infra 14/0、ai-providers 90/0、宿主 1552/0/6、边界 0/0 | Wave-4 · w4-redact-url，`c5da94a44` + 文档订正 `677a651c6`，独立验证 PASS |
 | B10 | 安装测试把系统共享临时目录当成自己的沙箱 | [bug-workspace-apps-test-asserts-shared-tmpdir.md](bug-workspace-apps-test-asserts-shared-tmpdir.md) | 开放 · 已确认 | `install/tests.rs` 中针对 `TempDir` **直接父目录**的断言归零（按该文件范围检索计 0），改为断言本次测试自建的沙箱顶层；该 crate 测试全绿 | 本次迁移引入（`d57690b29` = Wave-2 · B1），**非宿主既有** |
 | B11 | ai-providers 的 7 个 HTTP 出口绕过 NetworkProvider，SSRF 防护未覆盖 | [bug-ai-providers-reqwest-bypasses-network-provider.md](bug-ai-providers-reqwest-bypasses-network-provider.md) | 开放 · 待裁定 | 裸 `reqwest::Client` 出口归零，或豁免裁定写进 `shared-boundaries-and-ports.md` | 本轮裁定 (d) 方案 1：**现在不改**，另行排期 |
 | B12 | 契约与内核各有一份同名 `OwnerRef`，3 个变体字段集不同且差异承重 | [bug-ownerref-contract-kernel-divergence.md](bug-ownerref-contract-kernel-divergence.md) | 开放 · **需设计裁定** | 两层形状差异被消除，**或**被明确裁定为长期允许并写进平台架构文档 | 既有设计债（三处代码注释已登记），**非下沉引入**；`OwnerRef` 在内核侧冻结中 |
@@ -37,7 +37,7 @@
 | B17 | 同一列混用秒级与毫秒级时刻形状，字典序在整秒处翻转（含本波引入的提交边界粒度变更） | [bug-timestamp-shape-mixing.md](bug-timestamp-shape-mixing.md) | 开放 · 中 | 形状收口，或 `Timestamp` 比较不再依赖字符串序；且给出「同一整秒两种写法排序正确」的实测断言 | 由 `Clock` 落地**暴露**的既有债；`after_seconds` + 宿主 `expires_at` 秒级写入点在本波之前就存在 |
 | B18 | `launch` 的 fail-closed 断言只校验「非空主体」，占位主体可溜过 | [bug-launch-failclosed-asserts-only-nonempty.md](bug-launch-failclosed-asserts-only-nonempty.md) | 开放 · 中 | 注入非空占位主体后该断言变红（并给出负控逐字结果） | **既有测试强度缺口，非本波引入**（identity.rs 与测试在本波均未功能改动，基线同样全绿）；与 B5 同一失效模式 |
 
-合计 **18 条**：进行中 0 · 开放 14 · 已关闭 4。
+合计 **18 条**：进行中 0 · 开放 13 · 已关闭 5。
 
 ## 维护纪律
 

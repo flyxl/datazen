@@ -176,43 +176,39 @@ P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM
 
 ### Wave-4 轨内实收报告（滚动更新）
 
-| 轨 | HEAD | 状态 |
+| 轨 | 状态 |
+| --- | --- |
+| w4-b3-summary | **已合并** → `80032a558` ✅（G1–G4 全绿） |
+| w4-b8-adapter | **已合并** → `42b064d97` ✅（G1–G5 全绿，`adapter.rs` 867→**651** 行） |
+| w4-redact-url | **已合并** → `e784616e6`（`c5da94a44`）+ `e04bcac59`（文档订正 `677a651c6`）✅ platform-infra 13→14；**B9 已关闭** |
+| w4-panic-gate | **已合并** → `f4a8c69e9`（`b3637eb44`）+ `a917b80fa`（注释收尾 `0c0dcd355`）✅ 门禁测试 25 条 |
+| w4-clock | `33ca679f5` | **NEEDS_REVISION（第三轮）** → 已派回原 Coder。功能面干净（注入缝隙经 2 组自写探针 + 2 次改坏验证）；4 条 finding 全是「话与事不符」：可复测命令给 12 而实跑 19、两处行号过期、`clock.rs:3` 残留一句全仓话、§4.9 豁免论述与同页冲突 |
+| w4-test-guards | `092d36288` | **NEEDS_REVISION（第三轮）** → 已派回原 Coder。点名的三个子类已修好（含上轮误报转绿），但同类仍有缺口：`#[allow(...)] pub mod x;` / `#[path=…] pub mod x;` / `pub  mod x;`（双空格）**全部逃过**。已下**结构性指令**：解析器**不得静默丢弃**无法分类的语句，一律 fail closed |
+| w4-ownerref | **零改动收尾**；轨树/分支/target 已回收；B6 改判 → B12 |
+
+**集成分支 HEAD = `a917b80fa`，工作区干净。**
+
+### ⚠️ 我犯了两次同一个过程错误（记下来，规矩对我也成立）
+
+**我两次让两个作业在同一棵工作树上并行跑，都污染了 vitest 读数：**
+
+1. `bash-1379`（redact 文档合并）的 vitest 与 `bash-1388`（panic 合并）重叠 ⇒ 该次 `602 文件 / 6338 用例` 是在树被改动期间测的，**不可信**。
+2. 随后又让 `bash-1421`（vitest）与 `bash-1413`（panic 注释合并）重叠 ⇒ 该次 `593 文件 / 6277 用例`、**EXIT=1**，同样**不可信**。
+
+两次都是我自己违反「一棵工作树同一时刻只有一个角色」。**唯一可信的前端读数是 `bash-1388` 的 G6：`603 文件 / 6363 用例`**
+（那次写方只有它，且它自己的合并已完成）。**待办：串行重测一次洁净基线确认该值，据此做 R 阶段。**
+
+### 前端测试基线（滚动更新）
+
+| 时点 | 文件 / 用例 | 可信度 |
 | --- | --- | --- |
-| w4-b3-summary | `aebec3b33` | **已合并** → `80032a558`（G1–G4 全绿）✅ |
-| w4-panic-gate | `fd5ac4591`（4 文件 +1133/-0） | **NEEDS_REVISION 第二轮**（Tester `1a73708e`）：三条修复全部复现为真（五种空扫全 ERROR、负控恰好 4 红、符号链接入口修好、CI 在 rust job 第 15/21 步且实测可跑通）→ 已派回原 Coder 第二轮。新 finding：正则 `::` 分支要求紧跟 `(`，把 std 关联函数**当值**用（ `map(Option::unwrap)`）逃过且可编译可 panic |
-| w4-test-guards | `092d36288`（4 提交） | 修订完成 → 复验 Tester `cb5c6703` **在跑**。F1：新增 `code_outside_comments()`（剥行尾 `//`、按嵌套深度跳 `/* */`）、不再按 `#[cfg(test)]` 截断、行规则取「全有或全无」；七类探针全对（含上轮 2 处漏报已转红、1 处误报已转绿）；application 108→**112**（+4 解析器自测）。F2 改为前后增量（ `:443`）。**提交方自曝**：上轮探针用 `git checkout --` 把未提交的修订还原掉、后半段矩阵测的是旧代码，已作废并先提交再重做 |ION |
-| w4-redact-url | `c5da94a44` | 复验 Tester `c73afc1f` **在跑**。上一轮 FAIL 里的两组「残余泄漏」经用户纠正后**判定为误判并已撤回**（那是畸形输入，非合法 URL）；本轮只做两条真问题：F2 文档改事实口径、F3 补只走主路径的编码形态断言（platform-infra 13→14 passed）；负控：删 set_password(None) 后新测试变红并打印 `https://***:pa%2Fss@host/v1` |
-| w4-clock | `ba7c0f78a`（20 文件） | **NEEDS_REVISION**（Tester `84ce33a7`）→ 已派回原 Coder。功能面干净（V1 注入缝隙经 3 个独立变异杀死、V4/V5/V7 全绿），问题在「话比事大」：§4.9 :603 的「全仓唯一读系统时间的实现」被全仓 grep 推翻（packages/ 6 处 + src-tauri 40 处）且与同节 :611 自相矛盾；4 处 packages 生产直调漏改造也漏登记；**声称的整秒「行为变更」实测不存在且方向相反** |
-| w4-b8-adapter | `56e3f2345`（直接父 `ae430e2b3`） | **已合并** → `42b064d97`（G1–G5 全绿）✅ `adapter.rs` 867→**651** 行；生产前 645 行 sha 与基线相同；13 条用例经 `--list` 证明被真正装载；断言锚点 44↔44 多重集相同 |
-| w4-ownerref | `bc36cd121` | **零改动收尾**；轨树/分支/target 已回收；B6 改判 → B12 |
+| R 阶段（Wave-3 后） | 602 / 6335 | 可信 |
+| 合并 w4-b3-summary 后 | 602 / **6338** | 可信（+3 = 该轨新增测试） |
+| 合并 w4-panic-gate 后 | **603 / 6363** | **当前唯一可信值**（+1 文件 / +25 用例 = 该门禁测试文件） |
+| 被污染的两次读数 | 602/6338、593/6277 | **作废** |
 
-协调者对 w4-b8-adapter 的**独立核对**（不经 Tester，我自己实测）：
-
-- 新 `adapter.rs` 前 645 行与基线前 645 行 sha256 **完全相同**（`a2ea4df6a1e1…`）。
-- 去行首尾空白后，基线测试体与新文件仅 **5 行**差异 —— 正是被移除的 `#[cfg(test)]` / `mod tests {` / `}`。
-- `assert` 出现次数 **37→37**，`#[test]` **13→13**。
-- 提交方另给编译实证：`production_source(前一版 adapter.rs) === production_source(当前 adapter.rs)`。
-  **数字订正（验证方独立复现）**：等式的两个操作数是 **18920 字节 / 18534 字符**，提交方报的「18535」不准（疑为多算一个尾换行）。**等式本身成立** —— 验证方探针实测 `head_len = base_len = 18920`、`equal = true`、`first differing index = None`。
-  **措辞订正**：raw `split("#[cfg(test)]").next()` 的前缀**不是**逐字节不变（基线 23679 字节 / 645 行 → 当前 23833 字节 / 648 行，+154 字节＝新增的 3 行说明注释）。
-  真正逐字节不变的是 `production_source()` 那一层（它去注释）。故应表述为「生产代码字节不变，多出的 3 行注释会被 `production_source` 剥掉」，而不是「拿到的仍是同一段生产字节」。
-  ⇒ 同目录扁平命名让 `include_str!("adapter.rs")` 的解析基准不变，**无需改路径**。
-- 同目录已有先例：`live_source.rs:158-160` 用同一 `#[path]` 写法拆出 `live_source_tests.rs`（587 行），
-  且从未登记进那两张扫描清单 ⇒ 清单非穷尽由既有先例即已证明。
-
-### ⚠️ 前端测试基线已变：**6335 → 6338**
-
-w4-b3-summary 合并后（`80032a558`）`npx vitest run` 得 `Test Files 602 passed (602)` / `Tests 6338 passed (6338)`。
-**+3 正是该轨在 `scripts/__tests__/check-platform-crate-boundaries.test.ts` 新增的 3 条**（56 → 59）。
-⇒ **R 阶段与后续合并必须用 6338 作基线**；再照 6335 比对会把合法增量误判为「多了测试」。
-
-w4-b3-summary 合并后四道门禁（实测，均 EXIT=0）：
-
-| 门禁 | 退出码 | 逐字结论行 |
-| --- | --- | --- |
-| G1 `node scripts/check-platform-crate-boundaries.mjs` | 0 | `PASS — 29 member(s) classified, 10 rule(s) over 31 crate(s), … 0 violation(s), 0 error(s), 3 advisory(ies)` |
-| G2 `node scripts/platform-arch-selfcheck.mjs` | 0 | `8/8 mutation(s) turned the guard red` + `revert verified` |
-| G3 `pnpm --config.verify-deps-before-run=false typecheck` | 0 | `error TS` 0 行 |
-| G4 `npx vitest run` | 0 | `602 文件 / **6338** 用例全过` |
+**每条轨合并后的新基线**（后续合并与 R 阶段都要用）：
+platform-infra **14**（redact 后）· schema-diff **229**（clock 后，待合）· application **112**（guards 后，待合）· 宿主 **1552/0/6** · 前端 **603/6363**。
 
 三条 Tester 都被要求做**对抗性**验证，共同要求：自己造变异（不照抄提交方）、必须做**负向对照**（在基线上复现缺陷）、
 必须验「测试/门禁是否已失去判别力」，并全程记录首尾 HEAD 与工作区 sha。
