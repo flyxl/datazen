@@ -420,3 +420,11 @@ platform-infra **14**（redact 后）· schema-diff **229**（clock 后，待合
   · **P10 i18n-sync-check EXIT=1（936 缺失键）—— 在 main 的独立树上跑同一脚本得到同样的 936，非本波引入**；本 diff 对 src/locales 零改动；该检查按 AGENTS.md 是发布门禁不是合并门禁。已在 PR 正文如实标注为未勾选项。
 - PR 正文按 .github/PULL_REQUEST_TEMPLATE.md 填写；External contracts 项据实核过：两个 PROTOCOL 常量定义零改动（8 处提及全是文档/文案）、MCP fixtures 与 capabilities 未动。
 - 待办：你批准合并后 —— 删 15 个台账文件（先删再跑门禁）、刷新 platform-development-plan.md:3 基线、跑 R 阶段复核。
+
+### CI 失败与我的清单缺口（必须记下来）
+
+- PR #68 的 CI **rust job 第 10 步「Rust formatting」失败**（`cargo fmt --all -- --check`），后续 11 个 Rust 步骤全被跳过 —— 不是测试红，是格式红。
+- 三处 diff 全在 `packages/application/src/lib.rs`（guards 轨新写的 fail-closed 断言的换行/缩进）。**本地 rustfmt 1.8.0（比 CI 的 1.99.1 更旧）同样判红、同样三处 ⇒ 与版本无关。**
+- **根因是两层漏跑**：该轨 Coder 跑了 `cargo test -p datazen-application` 却没跑 `cargo fmt --all --check`；而**我 R 阶段的 P1–P10 清单里也没有这道检查**，尽管 CI 有、且 b8 轨的报告早就指出 CI 在 `ci.yml:250` 跑它。信息在场，我没纳入。
+- 修复：`cargo fmt --all`（仅 1 文件 / +13 −8，去掉空白后 token 集合不变），复验 application **117/0**、宿主 **1552-0-6**、fmt 检查 **EXIT=0 / 0 diff**。
+- **纪律更新**：凡改 Rust 的轨，简报的门禁清单必须含 `cargo fmt --all -- --check`；R 阶段清单同样加入。

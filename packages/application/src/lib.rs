@@ -225,12 +225,13 @@ mod tests {
 
     #[test]
     fn the_module_list_is_exactly_the_seven_documented_units() {
-        let declarations = declared_modules(include_str!("lib.rs")).unwrap_or_else(|unclassified| {
-            panic!(
-                "模块清单守卫 fail closed：crate 顶层出现一条无法归类的语句，\
+        let declarations =
+            declared_modules(include_str!("lib.rs")).unwrap_or_else(|unclassified| {
+                panic!(
+                    "模块清单守卫 fail closed：crate 顶层出现一条无法归类的语句，\
                  请显式表态，而不是让它悄悄改变本 crate 的模块结构。{unclassified}"
-            )
-        });
+                )
+            });
         assert_eq!(
             declarations.public,
             [
@@ -353,8 +354,9 @@ mod tests {
             ("include!(\"mods.rs\");", "include!"),
             ("pub mod a b;", "pub mod a b"),
         ] {
-            let err = declared_modules(source)
-                .expect_err(&format!("这条语句必须 fail closed，而不是被静默丢弃：{source}"));
+            let err = declared_modules(source).expect_err(&format!(
+                "这条语句必须 fail closed，而不是被静默丢弃：{source}"
+            ));
             assert!(
                 err.contains(needle),
                 "错误里必须带上那一条语句原文（{needle}）：{err}"
@@ -392,7 +394,10 @@ mod tests {
                 &["macro_rules! m2 { () => {} } pub mod tenth_unit;"],
                 "macro_rules 之后并排",
             ),
-            (&["mod inner {", "} pub mod tenth_unit;"], "收尾大括号行尾随"),
+            (
+                &["mod inner {", "} pub mod tenth_unit;"],
+                "收尾大括号行尾随",
+            ),
         ];
         for (source, what) in cases {
             assert_eq!(
