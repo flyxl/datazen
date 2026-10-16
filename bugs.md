@@ -30,8 +30,9 @@
 | B10 | 安装测试把系统共享临时目录当成自己的沙箱 | [bug-workspace-apps-test-asserts-shared-tmpdir.md](bug-workspace-apps-test-asserts-shared-tmpdir.md) | 开放 · 已确认 | `install/tests.rs` 中针对 `TempDir` **直接父目录**的断言归零（按该文件范围检索计 0），改为断言本次测试自建的沙箱顶层；该 crate 测试全绿 | 本次迁移引入（`d57690b29` = Wave-2 · B1），**非宿主既有** |
 | B11 | ai-providers 的 7 个 HTTP 出口绕过 NetworkProvider，SSRF 防护未覆盖 | [bug-ai-providers-reqwest-bypasses-network-provider.md](bug-ai-providers-reqwest-bypasses-network-provider.md) | 开放 · 待裁定 | 裸 `reqwest::Client` 出口归零，或豁免裁定写进 `shared-boundaries-and-ports.md` | 本轮裁定 (d) 方案 1：**现在不改**，另行排期 |
 | B12 | 契约与内核各有一份同名 `OwnerRef`，3 个变体字段集不同且差异承重 | [bug-ownerref-contract-kernel-divergence.md](bug-ownerref-contract-kernel-divergence.md) | 开放 · **需设计裁定** | 两层形状差异被消除，**或**被明确裁定为长期允许并写进平台架构文档 | 既有设计债（三处代码注释已登记），**非下沉引入**；`OwnerRef` 在内核侧冻结中 |
+| B13 | 边界门禁自身的规则范围描述过时（头写 F-01..F-08、错误信息写 F-01..F-07，实际 11 条） | [bug-boundary-guard-rule-range-stale.md](bug-boundary-guard-rule-range-stale.md) | 开放 · 低 | 文件内不再出现与 `RULES` 条数不符的写死范围，且门禁正常路径仍 0/0 | Wave-4 · w4-b3-summary 顺带发现，**既有描述债** |
 
-合计 **12 条**：进行中 0 · 开放 8 · 已关闭 4。
+合计 **13 条**：进行中 0 · 开放 9 · 已关闭 4。
 
 ## 维护纪律
 

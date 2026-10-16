@@ -174,6 +174,29 @@ P6 退出门槛（`docs/development/platform-development-plan.md:260`）＝ **CM
 - 刷新 `docs/development/platform-development-plan.md:3`（当前写着基线 `f06ad7e5b`，已过时）。
 - 全部结论必须已能从 `docs/` 与代码读出 —— 台账销毁后不可有孤儿结论。
 
+### Wave-4 轨内实收报告（滚动更新）
+
+| 轨 | HEAD | 状态 |
+| --- | --- | --- |
+| w4-b3-summary | `aebec3b33` | **READY_FOR_TEST**，已派全新 Tester（自建 detached 树 /tmp/dz-verify-b3） |
+| w4-panic-gate | `a77bbb99e` | **READY_FOR_TEST**，已派全新 Tester |
+| w4-redact-url | `dd162813d` | 实现已提交，GATE2-5 串行跑中 |
+| w4-test-guards | 2 commits | 进行中 |
+| w4-clock | 未提交 | 进行中 |
+| w4-ownerref | `bc36cd121` | **零改动收尾**；轨树/分支/target 已回收；B6 改判 → B12 |
+
+值得记的三条实测：
+
+- **`url::Url::parse("https://user:pa/ss@host/v1")` 返回 `Err(InvalidPort)`** —— authority 在密码里的 `/` 处截断，
+  `user:pa` 被读成 host:port。所以「密码含 `/`」这条路径**结构化解析单独解决不了**，必须配兜底正则；
+  兜底正则靠 `:` 分隔符避免误改 `https://host/path@x`。`[^/@\s]+` 已从代码中消失。
+- **B3 长期存活的原因**：既有 `scripts/platform-arch-selfcheck.mjs` 只断言 `VIOLATION <rule>` 存在，
+  **从不断言逐规则行**。w4-b3-summary 补上了这条断言 —— vitest 套件刻意 cargo-free，覆盖不到真实 `runCli` 接线，自检是唯一覆盖点。
+- **B13（新登记）**：边界门禁文件头写 `F-01..F-08`、两条错误信息写 `F-01..F-07`，而 `RULES` 实际 **11 条**。
+  纯描述债（spec 一致性检查按代码里的 `RULES` 遍历，不受影响），正因如此长期存活。
+- **`adapter.rs` 自身是被 `include_str!` 整篇扫描的 fixture**（`:822` / `:833` 自引，`ipc.rs:307`、`handles.rs:406` 也把它读进模块清单）；
+  且实测 `#[cfg(test)]` 起于 `:646` ⇒ **生产代码只有 645 行，本来就达标** —— B8 的正确修法是搬走测试模块，不是拆生产代码。
+
 ### Wave-2 收尾（实测）
 
 - 三轨合并：A2 `77be2b19b`、B1 `88a7fdaac`、C3 `d2bb5f4ae`，均零冲突（合并前已 5 次 dry-run 预演）。
