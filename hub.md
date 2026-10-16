@@ -409,3 +409,14 @@ platform-infra **14**（redact 后）· schema-diff **229**（clock 后，待合
 | 前端 `npx vitest run` | **603 文件 / 6363 用例** |
 
 **剩余**：R 阶段全量回归（尚未在最终提交上一次性跑过）；合并回 main（**未获授权**）；台账销毁与收尾清单。
+
+### PR 已提交 + R 阶段终值（本波收口）
+
+- **PR #68**：https://github.com/flyxl/datazen/pull/68 —— base `main`，head `feature/shared-layer-extraction`，OPEN / MERGEABLE / 非 draft。
+- **R 阶段已在 `dc91d413b` 一次性全跑（十道，首尾 HEAD / 驱动指纹 / 工作区一致）**：
+  P1 vitest 603/6363 EXIT=0 · P2 宿主 1552/0/6 · P3 ai-api 0 passed（结构性：provider 已迁 ai-providers，47 个 #[test]）
+  · P4 site-seo OK · P5 边界 0/0 · P6 panic 门禁 PASS · P7 十 crate 合计 4123 passed / 0 failed
+  · P8 typecheck 0 错 · P9 自检 8/8 变异转红 + revert verified
+  · **P10 i18n-sync-check EXIT=1（936 缺失键）—— 在 main 的独立树上跑同一脚本得到同样的 936，非本波引入**；本 diff 对 src/locales 零改动；该检查按 AGENTS.md 是发布门禁不是合并门禁。已在 PR 正文如实标注为未勾选项。
+- PR 正文按 .github/PULL_REQUEST_TEMPLATE.md 填写；External contracts 项据实核过：两个 PROTOCOL 常量定义零改动（8 处提及全是文档/文案）、MCP fixtures 与 capabilities 未动。
+- 待办：你批准合并后 —— 删 15 个台账文件（先删再跑门禁）、刷新 platform-development-plan.md:3 基线、跑 R 阶段复核。
