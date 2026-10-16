@@ -130,6 +130,12 @@ Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量�
   首轮 6 个 Coder 里有两份 closing message 就停在「先确认工作目录」这一步。
 - **engine 报 failed 不是死亡证据（第 6 次确认）**：首轮 6 个全报 failed，逐条投一行探针后 5 份回了实质进度
   （已核实的落点、行数、偏差）。两轮 notification 都是「一轮内同时全死」，属误报形态；重派会白烧配额。
+- **驱动选型实测（本轮新增）**：6 棵 W4 轨树与主 checkout **全是 basic**（`7d2218d8f07625ff` / 4 / 807 B），
+  唯独**集成分支那棵是 all**（`9c7c24ef92dd380f` / 15 / 1625 B）——历史上按建树脚本的建议设的，是本轮唯一的不一致点。
+  两种选型都实测过：同一提交下 `cargo test -p datazen --lib` 结论行逐字相同（`1552 passed; 0 failed; 6 ignored`），
+  `npx vitest run` 也逐字相同（`602 文件 / 6335 用例`，退出码均 0）。⇒ 受选型影响的只有 DB 注册表本身。
+  建树脚本 `scripts/new-feature-worktree.sh:516` 自己写明「两者**不是同一个 DB_REGISTRY**」，并要求验证 DB 注册表行为时显式选 all。
+  **结论已写进正式文档** `docs/development/worktree-isolation.md` 的「驱动选型」小节（台账销毁后仍可读）。
 
 ### Wave-2 收尾（实测）
 

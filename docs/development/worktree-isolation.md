@@ -178,7 +178,7 @@ grep -c "^extern crate datazen_driver_" src-tauri/src/driver_init.rs
 cd "$MAIN" && git rev-parse --short HEAD          # 建树后复核主 checkout 未被动过
 ```
 
-### 驱动选型：裸跑默认 `basic`，不要改成 `all`
+### 驱动选型：默认 `basic`，只有验证 DB 注册表相关行为时才用 `all`
 
 `src-tauri/src/driver_init.rs` 是 codegen 产物，内容随驱动选型而变（实测）：
 
@@ -187,13 +187,13 @@ cd "$MAIN" && git rev-parse --short HEAD          # 建树后复核主 checkout 
 `node scripts/resolve-drivers.mjs`（裸跑） | 4 | 807 B |
 `DATAZEN_DRIVERS=all node scripts/resolve-drivers.mjs` | 15 | 1625 B |
 
-**裸跑就是 `basic`，不需要任何环境变量。** 这是仓库默认值，三处一致：
+**裸跑就是 `basic`，不需要任何环境变量。** 出处三处：
 
-- `scripts/resolve-drivers.mjs:152-154` —— 无 `--drivers` 且无 `DATAZEN_DRIVERS` 时落到 `basic`；
-- `scripts/new-feature-worktree.sh:3` —— 用 `--drivers=${NEW_WT_DRIVERS:-basic}`；
+- `scripts/resolve-drivers.mjs:152-154` —— 无 `--drivers` 且无 `DATAZEN_DRIVERS` 时落到 `basic`（原话 `// Default: basic (four core path drivers).`）；
+- `scripts/new-feature-worktree.sh:16` / `:203` —— 建树脚本第 1 层 codegen 固定 `--drivers=${NEW_WT_DRIVERS:-basic}`；
 - `pnpm tauri:dev` —— 同样走 basic。
 
-所以上面第 、 步原样可用。
+所以上面第 ③ 步原样可用。
 
 跨 worktree 比对测试结果时，是不是该统一用 `all` 才可比？**不需要。** 实测同一提交 `bc36cd121` 下，
 basic（4 驱动 / 807 B）与 all（15 驱动 / 1625 B）各跑一次 `cargo test -p datazen --lib`，结论行**逐字相同**，退出码都是 0：
@@ -204,6 +204,21 @@ all  : test result: ok. 1552 passed; 0 failed; 6 ignored; 0 measured; 0 filtered
 ```
 
 驱动选型改变的是 `driver_init.rs` 与宿主的可选依赖，**不改变这套单测的用例集合**。
+
+**这条实测的适用范围必须说清**：上面两个数字证明的只是**宿主 Rust 单测**对选型不敏感。
+驱动选型确实会改变前端可见的数据库清单 —— 建树脚本自己在 `scripts/new-feature-worktree.sh:516` 写着：
+
+> 未设置 `NEW_WT_DRIVERS` ⇒ 第 1 层 codegen 固定 `--drivers=basic`（postgres / mysql / sqlite / redis）；
+> 主检出与 CI 通常跑 `--drivers=all`（全部 path 驱动，多出 sqlserver / mongodb / clickhouse 等）。**两者不是同一个 DB_REGISTRY**。
+
+所以：**凡是要验证与 `DB_REGISTRY` / 驱动清单元数据相关的行为（前端 `generated.ts`、`src/extensions/*`、驱动 UI 元数据），
+必须显式选 `all`（`NEW_WT_DRIVERS=all` 建树，或 `DATAZEN_DRIVERS=all node scripts/resolve-drivers.mjs`），假条若用默认 basic，前端可见的数据库清单就是短的。**
+纯 Rust 逻辑 / 契约 / 门禁脚本类的轨用默认 basic 即可。
+
+前端全套同样不敏感（实测）：同一提交 `acc0f1667` 下，basic 树（4 驱动 / 807 B）跑 `npx vitest run` 得
+`Test Files 602 passed (602)` / `Tests 6335 passed (6335)`，与 all 选型下 R 阶段的记录**逐字相同**，退出码 0。
+
+**结论**：宿主 Rust 单测与前端全套对驱动选型都不敏感；受选型影响的只有 DB 注册表本身。
 
 真正的不变量只有一条：**参与同一次比对的树必须用同一种驱动选型**。不满足时，「宿主少了几个测试」
 这类结论才真的毫无意义（见 §4）。判断靠**现算指纹**，别照抄本文或任何台账里的值：
