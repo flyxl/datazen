@@ -641,3 +641,30 @@ A2 Tester 判定 `7beb43d6e` FAIL，**唯一缺陷是 AGENTS.md 的 L34 / L56 / 
 L34 仍称宿主 `ai/` 含 protocol（实测该目录已不存在，余 8 文件），L56 的 packages 树漏列 ai-providers，
 L112 散文只提 ai-api。10 道门禁全绿、B/D/E/F/G 各节全 PASS，测试数 `1710 - 86 = 1624` 精确对账，
 Tester 另用变异探针自证推翻了对 `restore_config` 覆盖不足的怀疑（删掉后 23 个宿主测试失败）。
+
+## Wave-2 合并面实测（干跑，非推断）
+
+合并前用一棵**一次性 detached 工作树** `.worktrees/merge-dryrun` 把三轨按 B1 -> A2 -> infra(pre-seed) 顺序
+依次 `git merge --no-ff --no-commit` 干跑，跑完即 `git worktree remove --force` 删除。
+`feature/shared-layer-extraction` 的 ref 在整个干跑期间**未移动**（仍 `082de2ee6`），主 checkout 未被触碰。
+
+| 合并步骤 | 退出码 | 冲突文件 |
+| --- | --- | --- |
+| B1 workspace-apps -> 集成 | 0 | **0** |
+| A2 ai-providers -> 集成 | 0 | **0** |
+| infra 预置 -> 集成 | 0 | **0** |
+
+**证伪了一条此前写进计划的预判**：我原以为三轨各自往 `src-tauri/Cargo.toml` 加一行会撞车，
+并据此预告过「合并期需要人工和解」。实测 git 自动把它们安放在 `:20`（`datazen-ai-providers`）与
+`:34`（`datazen-workspace-apps`），无冲突标记。同理 `shared-boundaries-and-ports.md`
+（B1 与 infra 预置都改过）也是自动合并——spec 里 `platform-infra` 相关行已在合并结果中就位（4 处命中，
+含 §2.4 F-11 行 `:150`、§2.5.1 `:197`、命名取舍 `:224`）。
+
+**仍未被干跑覆盖的一处**：infra 轨的 redaction 提交尚未产生（Coder 在途，改动中 5 个文件）。
+它要同时碰 `AGENTS.md`（在 `platform-api/` 之后插入 `platform-infra/` 行，落在第 53 行附近）
+与 `src-tauri/Cargo.toml`，而 A2 已在 `AGENTS.md` 第 57 行插入 `ai-providers/`。
+两处插入相距 4 行、diff3 上下文（各 3 行）**看起来不重叠**，但这是推断，不是实测——
+待 Coder 交付 `READY_FOR_TEST` 后必须重跑一次干跑再正式合并。
+
+教训：合并冲突预判是推断，「已知冲突类型」写进计划时应当标注为待实测。干跑成本约 10 秒，
+比事后解冲突便宜一个数量级。
