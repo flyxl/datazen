@@ -78,7 +78,39 @@ Wave-2 三轨全部合入集成分支。**剩余：Wave-3 收敛轨 → 全量�
 - 台账收尾 `d98956480`：B1 / B2 / B4 各自走「独立验证 → 删缺陷文件 → 改 `bugs.md` 状态」，关闭后再复跑门禁复核；
   `progress.md` 随合并销毁。
 
-**剩余：全量回归（R 阶段）。**
+### R 阶段全量回归（实测 PASS，HEAD `576d37a47`）
+
+- 脚本 `/tmp/dz-r-phase-gates.sh`，跑在集成分支 worktree，`CARGO_TARGET_DIR=/tmp/dz-target-int`，每道门禁各自新开日志。
+- **首尾快照一致**：HEAD `576d37a47` → 同值；工作区 sha `da39a3ee…9909` → 同值（空 diff）；
+  脏文件 0 → 0；驱动指纹 `9c7c24ef92dd380f` / 1625 B → 同值。**运行期间无人动过这棵树**（AGENTS.md 硬要求）。
+- 本轮门禁**没有**弄脏 `Cargo.lock`：重写后内容与 `9e634012d` 已提交的增量一致，无差异。
+
+| 门禁 | 命令 | 退出码 | 结论行（实测） |
+| --- | --- | --- | --- |
+| G1 类型 | `pnpm --config.verify-deps-before-run=false typecheck` | 0 | `error TS` 0 行 |
+| G2 前端 | `npx vitest run` | 0 | 602 文件 / 6335 用例全过，与基线逐字一致 |
+| G3 边界 | `node scripts/check-platform-crate-boundaries.mjs` | 0 | 29 member / 10 rule / 31 crate，`0 violation(s), 0 error(s), 3 advisory(ies)` |
+| G4 crate | `node scripts/run-platform-crate-tests.mjs` | 0 | `10 core crate(s) tested`，10 个 crate 全过 |
+| G5 宿主 | `cargo test -p datazen` | 0 | **1552 passed / 0 failed / 6 ignored** |
+| G6 新 crate | `platform-infra` / `workspace-apps` / `ai-providers` | 0 / 0 / 0 | 10/0 · 62/0 · 90/0 |
+
+- G5 的 1552 是 W3-2 之后的**合法基线**（见「坑」中作废 1710/1705 那条），与 W3-2 合并后那次逐字相同。
+- 3 条 advisory **不作门禁**（跨树在 2/3 间浮动）；只有 violation / error 的 0/0 是稳定判据。
+
+### 两条遗留裁定的结论
+
+- **宿主少 3 个纯路径测试，不记缺陷。** 删的是 `app_data_archive.rs` 里与被下沉实现逐字重复的副本，
+  换成 `pub use` 之后它们测的已经是别处的代码。覆盖不止是搬家：宿主仍留两个端到端恶意 zip 测试
+  （`app_data_archive.rs:690 rejects_malicious_zip_on_import`、
+  `wapps/integration_tests.rs:267 malicious_zips_rejected_without_side_effects`），platform-infra 另有 5 个 `path_safety::tests::*`。
+  1555 → 1552 是计数约定变化，不是覆盖缺口。
+- **保留宿主 `pub use` 薄壳。** `app_data_archive.rs:13` 再导出 `validate_zip_entry_path` 与 `MAX_COMPRESSION_RATIO`，
+  而 `commands/wapps/storage.rs:77` 正经由 `crate::app_data_archive::` 调用它 —— 薄壳让调用点零改动，
+  与 `log_redact.rs`（8 行、18 处调用点全未改）同一形态，也保住宿主对外路径稳定。
+  代价是 `MAX_COMPRESSION_RATIO` 从「宿主自有的解压炸弹阈值」变成「宿主转出的常量」；
+  日后 Web 形态若要自带策略，应改 `platform-infra`，而不是在宿主另立一份。
+
+**Wave-1～Wave-3 与 R 阶段全部完成。剩余：待裁定项与合并回 main（未获授权，不执行）。**
 
 ### Wave-2 收尾（实测）
 
