@@ -141,27 +141,28 @@ mod tests {
     #[test]
     fn the_module_list_is_exactly_the_seven_documented_units() {
         let code = crate_root_code();
-        for module in [
-            "pub mod capability;",
-            "pub mod dto;",
-            "pub mod error;",
-            "pub mod frontend_bridge;",
-            "pub mod identity_policy;",
-            "pub mod sessions;",
-            "pub mod target;",
-        ] {
-            assert!(code.contains(module), "缺少模块声明：{module}");
-        }
-        // 这份清单是**封闭**的：多出来的 `pub mod` 必须在这里点名，
-        // 否则「顺手加一个模块」会悄悄扩大本 crate 的对外面。
-        for module in [
-            "pub mod transport;",
-            "pub mod runtime;",
-            "pub mod execution;",
-            "pub mod driver;",
-        ] {
-            assert!(!code.contains(module), "越界模块声明：{module}");
-        }
+        // 断言的是**模块声明的全集**，而不是「7 个必须存在 + 4 个必须不存在」：
+        // 后者对任何未点名的第 8 个 `pub mod` 都是盲的，而本测试的名字声称的是精确集合。
+        let mut declared: Vec<&str> = code
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("pub mod "))
+            .filter_map(|rest| rest.strip_suffix(';').map(str::trim))
+            .collect();
+        declared.sort_unstable();
+        assert_eq!(
+            declared,
+            [
+                "capability",
+                "dto",
+                "error",
+                "frontend_bridge",
+                "identity_policy",
+                "sessions",
+                "target",
+            ],
+            "本 crate 的对外模块面是封闭的七单元：多一个或少一个 `pub mod` 都必须在这里显式表态，\
+             并同步 lib.rs 顶部的模块表与架构文档"
+        );
     }
 
     /// 真实缺陷：忘了装配能力注册表，于是所有能力取用都变成 no-op 或 panic。
