@@ -248,7 +248,7 @@ fn test_harden_comment_strip_interleaved_with_real_sql() {
 
 #[test]
 fn test_tester_shared_risk_fixture_no_drift() {
-    let raw = include_str!("../../../../src/lib/__tests__/fixtures/sqlRiskCases.json");
+    let raw = include_str!("../../../../../src/lib/__tests__/fixtures/sqlRiskCases.json");
     let fixture: JsonValue = serde_json::from_str(raw).expect("risk fixture JSON");
     let cases = fixture["cases"].as_array().expect("cases array");
     for case in cases {

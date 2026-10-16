@@ -1,8 +1,6 @@
 //! SQL safety guards: read-only connections and Safe Mode.
 
-use crate::sql_guard::scanner::{
-    push_separator, skip_dollar_quoted, skip_quoted, split_statements,
-};
+use super::scanner::{push_separator, skip_dollar_quoted, skip_quoted, split_statements};
 
 /// Reject SQL containing null bytes — they can split keywords and bypass
 /// classification (e.g. `DROP\0TABLE t`).
@@ -161,7 +159,7 @@ pub fn check_sql(sql: &str, read_only: bool, safe_mode: bool) -> Result<(), Stri
     let sql = normalize_sql(sql)?;
     for stmt in split_statements(&sql) {
         let stripped = strip_sql_comments(&stmt);
-        let Some(verb) = crate::mcp::permission::sql_main_keyword(&stripped) else {
+        let Some(verb) = super::keyword::sql_main_keyword(&stripped) else {
             continue;
         };
         if read_only && is_write_verb(&verb) {
@@ -207,7 +205,7 @@ pub fn is_write_sql(sql: &str) -> bool {
     };
     split_statements(&sql).iter().any(|stmt| {
         let stripped = strip_sql_comments(stmt);
-        crate::mcp::permission::sql_main_keyword(&stripped)
+        super::keyword::sql_main_keyword(&stripped)
             .map(|verb| is_write_verb(&verb))
             .unwrap_or(false)
     })

@@ -105,7 +105,7 @@ pub(crate) async fn execute_driver_command_with_mode(
     if is_sql_command {
         if let Some(params) = request.input.get("params").cloned() {
             if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
-                let bound_sql = crate::sql_guard::apply_params(sql, &params)
+                let bound_sql = datazen_runtime::sql_guard::apply_params(sql, &params)
                     .map_err(CommandError::Validation)?;
                 request.input["sql"] = serde_json::Value::String(bound_sql);
             }
@@ -119,7 +119,7 @@ pub(crate) async fn execute_driver_command_with_mode(
                     .map(|c| c.read_only)
                     .unwrap_or(false);
                 let safe_mode = state.store.get_settings().await.safe_mode;
-                crate::sql_guard::check_sql(sql, read_only, safe_mode)
+                datazen_runtime::sql_guard::check_sql(sql, read_only, safe_mode)
                     .map_err(CommandError::Validation)?;
             }
         }

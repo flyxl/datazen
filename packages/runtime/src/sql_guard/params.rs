@@ -1,6 +1,6 @@
 //! Parameter binding: v2 occurrence-based binder with legacy payload compatibility.
 
-use crate::sql_guard::scanner::{is_in_non_replaceable, non_replaceable_ranges, skip_quoted};
+use super::scanner::{is_in_non_replaceable, non_replaceable_ranges, skip_quoted};
 use serde_json::Value as JsonValue;
 
 /// Substitute bind placeholders with JSON param values as SQL literals.
