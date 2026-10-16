@@ -110,7 +110,7 @@ packages/drivers/*
 - `MigrationRenderer` / `MigrationCapabilities` / `TypeNormalizer`：Schema Diff 的方言渲染与类型归一化。
 - `SyncSourceAdapter` / `SyncTargetAdapter`：Data Transfer 的异构类型与值转换。
 
-Driver API 当前 `PROTOCOL_VERSION = 3`，最低兼容版本为 1。具体公共依赖边界见 [Driver API Dependency Boundary](backend/drivers.md)。
+Driver API 当前 `PROTOCOL_VERSION = 6`，最低兼容版本为 1。具体公共依赖边界见 [Driver API Dependency Boundary](backend/drivers.md)。
 
 ## 3. 连接与 Session
 

@@ -218,6 +218,6 @@ ConnectionConfig { host: 127.0.0.1, port: <ephemeral>, tunnel_kind: None, ... }
 
 ## 10. 能力位：Rust 侧没有，TS 侧只有一个
 
-- **Rust 契约零隧道概念。** `DatabaseDriver` trait 与 `PROTOCOL_VERSION = 4` 完全不含隧道方法；`packages/drivers/*/src/` 中没有任何驱动读取或声明隧道支持（仅有测试夹具把 `ConnectionConfig` 的五个隧道字段置 `None`）。这与 `supports_offset()` / `supports_explain()` 的模型不同，勿混。
+- **Rust 契约零隧道概念。** `DatabaseDriver` trait 与 `PROTOCOL_VERSION = 6` 完全不含隧道方法；`packages/drivers/*/src/` 中没有任何驱动读取或声明隧道支持（仅有测试夹具把 `ConnectionConfig` 的五个隧道字段置 `None`）。这与 `supports_offset()` / `supports_explain()` 的模型不同，勿混。
 - **`DB_REGISTRY[...].supportsSSH` 是 UI 元数据，不是协议契约。** 它只决定**连接表单是否渲染 SSH 区块**，共三处消费：内联 kind 下拉列表（`ConnectionAdvancedSettings.tsx:53`）、SSH 字段挂载守卫（`:326`、`SshTunnelFields.tsx:28`）、切换驱动时的降级（`useConnectionForm.ts:443`）。取 `false` 的是无 host:port 形态的驱动（sqlite、kiwi）。它**不参与 Rust 契约、不影响隧道运行时**。
 - 设置页的隧道编辑器**硬编码 `supportsSSH: true`**（`TunnelEditDialog.tsx:129`）——保存的 SSH 隧道不受任何驱动开关影响，这与「隧道是宿主层实体」的定位一致。

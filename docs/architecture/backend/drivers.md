@@ -22,7 +22,7 @@ DataZen 的 Driver 是**编译期集成**的数据库实现，不通过运行时
 
 当前 API：
 
-- `PROTOCOL_VERSION = 4`
+- `PROTOCOL_VERSION = 6`
 - `MIN_PROTOCOL_VERSION = 1`
 
 ## 2. DatabaseDriver

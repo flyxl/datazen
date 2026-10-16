@@ -492,7 +492,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 
 | 端口 | 桌面本地 | server 单进程 | 多 worker |
 | --- | --- | --- | --- |
-| `ProfileRepository` | 现有 SQLite + AES-256-GCM 存储（`src-tauri/src/store/`） | 同一实现，服务端数据库 | 同一实现，服务端数据库 |
+| `ProfileRepository` | 现有 SQLite + AES-256-GCM 存储（`src-tauri/src/platform/repositories.rs` 的 `DesktopProfiles` + `src-tauri/src/store/`） | **同一端口、另一适配器**：服务端库上的 SQLite 适配器，不复用宿主的 AES 落盘实现 | 同单进程 |
 | `JobRepository` | AppDb SQLite 已用于 P5 桌面迁移三件套；窗口关闭后任务继续，进程重启只标记恢复状态，不重放 handler | 服务端库，任务独立于连接存活 | 同上 |
 | `PolicyService` | 固定本地组织，全部放行 + `readOnly` 配置 | OIDC 登录会话 + membership | 同单进程 |
 | `IdentityResolver` | 当前桌面登录用户 + 配置中的连接账号 | 数据库侧服务身份 + 委托 | 同单进程 |
@@ -523,7 +523,7 @@ flowchart LR
     D1 --> FB[frontend_bridge 注入点]
     W1 --> FB
     FB --> SLOT[application::frontend_bridge 注入槽]
-    SLOT --> IMPL[FrontendBridge 实现（由各形态提供）]
+    IMPL[FrontendBridge 实现（由各形态提供）] --> SLOT
 ```
 
 `ApplicationServices` 与 `Runtime` 的构造函数签名对两种形态相同，只有传入的 `Arc<dyn …>` 实现不同；不允许为团队形态另写一套用例。

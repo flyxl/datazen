@@ -33,13 +33,12 @@ datazen/
 │   ├── src/
 │   │   ├── ai/                  # AI Provider 实现 / protocol / context
 │   │   ├── commands/            # Tauri IPC 命令
-│   │   ├── db/                  # DriverRegistry
+│   │   ├── db/                  # DriverRegistry 门面（re-export → packages/runtime）
 │   │   ├── mcp/                 # MCP Server/Client
 │   │   ├── workflow/            # YAML Workflow 引擎
 │   │   ├── services/            # ConnectionManager, QueryExecutor, DbTools, Transaction
-│   │   ├── cache/               # SchemaCache
+│   │   ├── cache/               # SchemaCache 门面（re-export → packages/runtime）
 │   │   ├── store/               # AES-256-GCM 加密持久化
-│   │   ├── sql_guard/           # SQL 安全门网与注释剥离扫描
 │   │   ├── schema_diff/         # 方言中立 Migration IR 与 DAG 结构比对
 │   │   ├── data_sync/           # 同族 Data Synchronization（门闸 / 比较 / ChangeSet / 执行）
 │   │   └── data_transfer/       # 异构数据传输引擎与 IR 适配
@@ -50,12 +49,15 @@ datazen/
 │   ├── wapp-sdk/                 # @datazen/wapp-sdk: Workspace App 沙箱应用前端 SDK
 │   ├── driver-sdk/              # @datazen/driver-sdk: 数据库驱动前端元数据/方言/Command SDK
 │   ├── driver-api/              # Rust: DatabaseDriver trait + Command API + inventory 注册
+│   ├── platform-api/             # Rust: 跨形态端口与契约（ProfileRepository / RequestContext / FrontendBridge）
+│   ├── application/              # Rust: 应用层用例与 ApplicationServices（不依赖宿主形态）
+│   ├── runtime/                  # Rust: 共享内核（driver_registry / schema_cache / sql_guard 等已迁入实现）
+│   ├── backend-client/           # JS: 远端 / 浏览器侧 BackendClient 端口实现
 │   ├── ai-api/                  # Rust: AiProvider trait + 工厂 + 消息/调用协议模型
 │   ├── drivers/                 # path 驱动 crate（测试严格写在各 crate 内）
 │   │   └── <id>/                # Rust `src/` + `tests/`；UI `ui/__tests__/`；E2E `e2e/`
 │   ├── wapps/                   # Workspace Apps 运行时应用与主题源码包（安装测试见其 README）
-│   ├── pro-extensions/          # Pro 扩展本地存放/挂载目录（gitignored）；每个子包是独立 git 仓库，需独立 commit/pull/push
-│   └── themes/                  # 旧 v1 ThemePack 存档
+│   └── pro-extensions/          # Pro 扩展本地存放/挂载目录（gitignored）；每个子包是独立 git 仓库，需独立 commit/pull/push
 ├── e2e/                         # Host WebdriverIO E2E（通用 UI / IPC；非驱动方言）
 ├── test/                        # 手工黑盒测试
 ├── docs/                        # 入库文档：features/、architecture/、development/、blogs/
@@ -141,7 +143,7 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 
 | 功能 | 前端入口 | 后端入口 |
 | ---------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| SQL 编辑器 & 风控 | `components/sql-editor/` + `windows/connection/query/` | `sql_guard/` + `services/transaction.rs` + `execute_driver_command` |
+| SQL 编辑器 & 风控 | `components/sql-editor/` + `windows/connection/query/` | `packages/runtime/src/sql_guard/` + `services/transaction.rs` + `execute_driver_command` |
 | 结构比对 (Schema Diff) | `windows/schema-diff/` | `schema_diff/` + `commands/schema_diff.rs`（Driver `SchemaMigrationRenderer`） |
 | 数据传输 (Transfer) | `windows/data-transfer/` | `transfer/` + `data_transfer/` |
 | 数据同步 (Data Sync) | `windows/data-sync/` | `data_sync/` + `commands/sync/` |
