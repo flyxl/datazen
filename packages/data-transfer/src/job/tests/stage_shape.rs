@@ -292,6 +292,36 @@ async fn structure_only_executes_and_records_foreign_keys_after_tables_and_index
     );
 }
 
+/// 结构阶段也走同一个注入缝隙：提交边界的时刻由注入的时钟给定。
+#[tokio::test]
+async fn structure_stage_commit_boundaries_read_the_injected_clock() {
+    let driver = empty_driver();
+    let handler = structure_handler(
+        driver.clone(),
+        vec![
+            ddl_item(DdlPreviewKind::Table, "CREATE TABLE t"),
+            ddl_item(DdlPreviewKind::Index, "CREATE INDEX ix ON t"),
+        ],
+    )
+    .with_clock(Arc::new(FixedClock::at("2026-07-08T09:10:11.000Z")));
+
+    let stages = handler.validate_plan(&frozen_plan_for_apply()).unwrap();
+    let first = handler
+        .run_stage(&stages[0], &datazen_runtime::job::CancelToken::new())
+        .await
+        .unwrap();
+
+    assert_eq!(first.commit_boundaries.len(), 2);
+    assert!(
+        first
+            .commit_boundaries
+            .iter()
+            .all(|boundary| boundary.committed_at.as_str() == "2026-07-08T09:10:11.000Z"),
+        "{:?}",
+        first.commit_boundaries
+    );
+}
+
 #[tokio::test]
 async fn failed_index_is_not_credited_with_its_tables_successful_create() {
     let driver = empty_driver();

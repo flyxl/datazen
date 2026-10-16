@@ -13,6 +13,7 @@ use std::sync::Arc;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 use datazen_platform_api::dto::job::{CommitBoundary, JobProgress};
 use datazen_platform_api::id::Counter;
+use datazen_platform_api::ports::Clock;
 use sha2::{Digest, Sha256};
 
 use crate::error::TransferError;
@@ -51,6 +52,8 @@ pub struct BoundedPipelineContext<'a> {
     pub cancelled: Option<Arc<AtomicBool>>,
     pub write_started: Option<&'a AtomicBool>,
     pub checkpoint: &'a mut dyn TransferResumeCheckpoint,
+    /// 提交边界的时刻来源，由组装层（[`crate::job::handler::DataTransferHandler`]）注入。
+    pub clock: &'a dyn Clock,
 }
 
 pub struct BoundedTableOutcome {
@@ -595,6 +598,7 @@ pub async fn execute_bounded_table(
                 progress.committed =
                     Counter::new(progress.committed.get().saturating_add(affected));
                 boundaries.push(commit_boundary(
+                    context.clock,
                     "data",
                     &format!("{}#b{}", context.table.source_table, batch_index),
                     &payload_digest(&params),

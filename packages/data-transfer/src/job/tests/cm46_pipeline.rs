@@ -57,6 +57,7 @@ async fn cm46_pipeline_byte_accounting_is_bounded_and_counted() {
         cancelled: None,
         write_started: None,
         checkpoint: &mut checkpoint,
+        clock: &SystemClock,
     };
     let outcome = execute_bounded_table(&mut context).await.expect("pipeline");
     assert!(
@@ -137,6 +138,7 @@ async fn cm46_wide_rows_stay_inside_the_pipeline_bound() {
         cancelled: None,
         write_started: None,
         checkpoint: &mut checkpoint,
+        clock: &SystemClock,
     };
     let outcome = execute_bounded_table(&mut context).await.expect("pipeline");
     assert!(
@@ -206,6 +208,7 @@ async fn cm46_oversize_single_value_fails_explicitly() {
         cancelled: None,
         write_started: None,
         checkpoint: &mut checkpoint,
+        clock: &SystemClock,
     };
     let outcome = execute_bounded_table(&mut context).await.expect("pipeline");
     let err = outcome.result.result.error.unwrap_or_default();
@@ -274,6 +277,7 @@ async fn cm46_oversize_json_payload_is_not_charged_sixteen_bytes() {
         cancelled: None,
         write_started: None,
         checkpoint: &mut checkpoint,
+        clock: &SystemClock,
     };
     let outcome = execute_bounded_table(&mut context).await.expect("pipeline");
     let err = outcome.result.result.error.unwrap_or_default();
@@ -346,6 +350,7 @@ async fn cm46_cancel_flag_stops_the_pipeline_before_the_first_write() {
         cancelled: Some(flag),
         write_started: None,
         checkpoint: &mut checkpoint,
+        clock: &SystemClock,
     };
     let error = match execute_bounded_table(&mut context).await {
         Ok(_) => panic!("a cancelled run never succeeds"),
@@ -432,6 +437,7 @@ async fn cm46_cancel_during_transfer_rolls_the_inflight_batch_back() {
             cancelled: Some(cancel_flag),
             write_started: None,
             checkpoint: &mut checkpoint,
+            clock: &SystemClock,
         };
         execute_bounded_table(&mut context).await
     });
@@ -531,6 +537,7 @@ async fn cm46_slow_writer_pauses_source_reader() {
             cancelled: None,
             write_started: None,
             checkpoint: &mut checkpoint,
+            clock: &SystemClock,
         };
         execute_bounded_table(&mut context).await
     });

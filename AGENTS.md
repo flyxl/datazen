@@ -31,15 +31,14 @@ datazen/
 │   └── extensions/              # 自动生成注册文件（generated.ts / generated-locales.ts / generated-pro.ts）
 ├── src-tauri/                   # Rust 后端
 │   ├── src/
-│   │   ├── ai/                  # AI Provider 实现 / protocol / context
+│   │   ├── ai/                  # AI 门面 / 预算 / 取消 / context / prompt 解析（provider 与 protocol 实现已下沉 packages/ai-providers）
 │   │   ├── commands/            # Tauri IPC 命令
-│   │   ├── db/                  # DriverRegistry
+│   │   ├── db/                  # DriverRegistry 门面（re-export → packages/runtime）
 │   │   ├── mcp/                 # MCP Server/Client
 │   │   ├── workflow/            # YAML Workflow 引擎
 │   │   ├── services/            # ConnectionManager, QueryExecutor, DbTools, Transaction
-│   │   ├── cache/               # SchemaCache
+│   │   ├── cache/               # SchemaCache 门面（re-export → packages/runtime）
 │   │   ├── store/               # AES-256-GCM 加密持久化
-│   │   ├── sql_guard/           # SQL 安全门网与注释剥离扫描
 │   │   ├── schema_diff/         # 方言中立 Migration IR 与 DAG 结构比对
 │   │   ├── data_sync/           # 同族 Data Synchronization（门闸 / 比较 / ChangeSet / 执行）
 │   │   └── data_transfer/       # 异构数据传输引擎与 IR 适配
@@ -50,12 +49,17 @@ datazen/
 │   ├── wapp-sdk/                 # @datazen/wapp-sdk: Workspace App 沙箱应用前端 SDK
 │   ├── driver-sdk/              # @datazen/driver-sdk: 数据库驱动前端元数据/方言/Command SDK
 │   ├── driver-api/              # Rust: DatabaseDriver trait + Command API + inventory 注册
+│   ├── platform-api/             # Rust: 跨形态端口与契约（ProfileRepository / RequestContext / FrontendBridge）
+│   ├── platform-infra/           # Rust: 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖
+│   ├── application/              # Rust: 应用层用例与 ApplicationServices（不依赖宿主形态）
+│   ├── runtime/                  # Rust: 共享内核（driver_registry / schema_cache / sql_guard 等已迁入实现）
+│   ├── backend-client/           # JS: 远端 / 浏览器侧 BackendClient 端口实现
 │   ├── ai-api/                  # Rust: AiProvider trait + 工厂 + 消息/调用协议模型
+│   ├── ai-providers/            # Rust: OpenAI/Anthropic/DeepSeek/Ollama/Custom provider 适配 + wire protocol 实现（纯客户端，不依赖 Tauri）
 │   ├── drivers/                 # path 驱动 crate（测试严格写在各 crate 内）
 │   │   └── <id>/                # Rust `src/` + `tests/`；UI `ui/__tests__/`；E2E `e2e/`
 │   ├── wapps/                   # Workspace Apps 运行时应用与主题源码包（安装测试见其 README）
-│   ├── pro-extensions/          # Pro 扩展本地存放/挂载目录（gitignored）；每个子包是独立 git 仓库，需独立 commit/pull/push
-│   └── themes/                  # 旧 v1 ThemePack 存档
+│   └── pro-extensions/          # Pro 扩展本地存放/挂载目录（gitignored）；每个子包是独立 git 仓库，需独立 commit/pull/push
 ├── e2e/                         # Host WebdriverIO E2E（通用 UI / IPC；非驱动方言）
 ├── test/                        # 手工黑盒测试
 ├── docs/                        # 入库文档：features/、architecture/、development/、blogs/
@@ -70,6 +74,8 @@ datazen/
 2. `scripts/resolve-drivers.mjs` 构建前执行驱动选型、克隆 Git driver，并生成 `generated.ts`、`driver_init.rs`、`.driver-features.json`（均 gitignored）。
 3. `scripts/resolve-pro.mjs` 控制构建版本：默认 `--edition=community`（纯开源 Fallback）；`--edition=pro`（打包并 stage `@datazen/extension-sql-editor-pro` 到 `src-tauri/resources/builtin-ep/`，运行时经签名验签后动态加载）。
 4. 数据库驱动通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories。
+
+注入前托管清单文件的干净副本会存进 gitignored 的 `.driver-file-stash/`；该 stash 带 `.stash-meta.json` 旁证，复用前判新鲜度，**陈旧时 `resolve-drivers.mjs` 以退出码 1 硬失败并给出恢复命令，而不是静默回滚合并后的清单文件**。此时**不要**跑 `--restore`（它会用合并前的旧副本覆盖当前结果）。详见 [docs/development/worktree-isolation.md](docs/development/worktree-isolation.md)。
 
 ```bash
 pnpm tauri:dev                         # 默认 basic 驱动，Community 版
@@ -106,7 +112,7 @@ DataZen 确立严格正交的四维可扩展架构，依托独立设计系统 `@
 ### AI 模块与 ai-api
 
 - `packages/ai-api` 是 Rust 层的 AI Provider 抽象契约（类比 `driver-api`），定义核心 `AiProvider` trait、请求/流式响应模型与工厂注册。
-- 支持 OpenAI、Anthropic、DeepSeek、Ollama、自定义端点。
+- `packages/ai-providers` 承载具体 provider 适配与 wire protocol 实现：`protocol/{openai_chat,openai_responses,anthropic}.rs` 实现 OpenAI Chat/Responses 与 Anthropic 协议，`{openai,anthropic,deepseek,ollama,custom}.rs` 实现 OpenAI / Anthropic / DeepSeek / Ollama / 自定义端点适配，`registry.rs` 负责注册与配置恢复；宿主 `src-tauri/src/ai/` 只剩门面 re-export、schema context、安全门、prompt 解析、token 预算与取消。`packages/ai-api` 保持纯契约层。
 - `PromptResolver` 优先级：用户覆盖 → 驱动覆盖 → 资源文件 → 编译时英文嵌入。
 - 详情参考 [docs/architecture/backend/ai.md](docs/architecture/backend/ai.md)。
 
@@ -141,7 +147,7 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 
 | 功能 | 前端入口 | 后端入口 |
 | ---------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| SQL 编辑器 & 风控 | `components/sql-editor/` + `windows/connection/query/` | `sql_guard/` + `services/transaction.rs` + `execute_driver_command` |
+| SQL 编辑器 & 风控 | `components/sql-editor/` + `windows/connection/query/` | `packages/runtime/src/sql_guard/` + `services/transaction.rs` + `execute_driver_command` |
 | 结构比对 (Schema Diff) | `windows/schema-diff/` | `schema_diff/` + `commands/schema_diff.rs`（Driver `SchemaMigrationRenderer`） |
 | 数据传输 (Transfer) | `windows/data-transfer/` | `transfer/` + `data_transfer/` |
 | 数据同步 (Data Sync) | `windows/data-sync/` | `data_sync/` + `commands/sync/` |

@@ -187,6 +187,44 @@ const RULES = Object.freeze([
     specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
     note: 'shared migration algorithms cannot depend on domain engines, runtime or transports',
   },
+  {
+    id: 'F-09',
+    subjects: ['ai-providers', 'workspace-apps'],
+    subjectsFromSpec: true,
+    forbiddenLayers: ['host'],
+    forbiddenCrates: ['tauri'],
+    specSubsetOnly: true,
+    specTokens: ['tauri'],
+    note: 'the shared AI / workspace-app cores stay webview-free',
+  },
+  {
+    id: 'F-10',
+    subjects: ['workspace-apps'],
+    subjectsFromSpec: true,
+    forbiddenLayers: [],
+    forbiddenCrates: 'spec',
+    // ai-providers is deliberately NOT a subject: an HTTP *client* (reqwest) is
+    // its job. F-10 forbids server *frameworks* in the kernel, not clients.
+    specTokens: ['axum'],
+    specCrates: ['axum', 'actix-web', 'warp', 'tonic'],
+    note: 'workspace-apps stays transport-neutral so a server adapter needs no breaking change',
+  },
+  {
+    id: 'F-11',
+    subjects: ['platform-infra'],
+    subjectsFromSpec: true,
+    // Inverted allow-list on purpose. platform-infra is the shared
+    // infrastructure kernel: redaction, path safety, clock, transport
+    // policy. The moment it may depend on ANY other layer it stops being
+    // a foundation and becomes the coupling hub every form must link,
+    // which is exactly the `common` crate this repo must not grow. A
+    // deny-list would silently permit every layer added from now on.
+    allowedLayers: ['platform-infra'],
+    forbiddenCrates: 'spec',
+    specTokens: ['packages/platform-infra'],
+    specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
+    note: 'the infrastructure kernel depends on no other layer and no platform transport',
+  },
 ]);
 
 /**
@@ -643,6 +681,30 @@ function parseArgs(argv) {
   return args;
 }
 
+/**
+ * The verdict word for one evaluated rule's summary line.
+ *
+ * The per-rule line used to print `ok` unconditionally, so a run whose
+ * `VIOLATION F-11 …` line sat six lines above also printed `ok F-11: …` — the
+ * same run contradicting itself, and the last line a reader sees before the
+ * `FAIL` summary. Attribution is by prefix because every violation producer in
+ * this file opens with the rule id (`F-11: …` from the spec cross-check,
+ * `F-11  …` from the closure walk and the F-07 source scan).
+ *
+ * Display only: the exit code still comes from `violations.length +
+ * errors.length`, so this cannot turn a red gate green or the reverse.
+ *
+ * @param {string} ruleId
+ * @param {string[]} violations
+ * @returns {'ok' | 'fail'}
+ */
+export function ruleVerdict(ruleId, violations) {
+  const blamed = violations.some(
+    (line) => line.startsWith(`${ruleId}:`) || line.startsWith(`${ruleId} `),
+  );
+  return blamed ? 'fail' : 'ok';
+}
+
 export function runCli({ argv = process.argv.slice(2), env = process.env } = {}) {
   const out = (s) => process.stdout.write(`${s}\n`);
   const err = (s) => process.stderr.write(`${s}\n`);
@@ -685,7 +747,12 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
   for (const line of result.advisories) out(`${PREFIX} ADVISORY ${line}`);
   for (const line of result.violations) err(`${PREFIX} VIOLATION ${line}`);
   for (const line of result.errors) err(`${PREFIX} ERROR    ${line}`);
-  for (const rule of result.evaluated) out(`${PREFIX} ok ${rule.rule}: ${rule.subjects.join(', ')}`);
+  for (const rule of result.evaluated) {
+    out(
+      `${PREFIX} ${ruleVerdict(rule.rule, result.violations)} ${rule.rule}: ` +
+        rule.subjects.join(', '),
+    );
+  }
 
   const failed = result.violations.length + result.errors.length;
   out(`${PREFIX} ${failed === 0 ? 'PASS' : 'FAIL'} — ${result.summary}`);

@@ -110,6 +110,7 @@
     "test:platform-arch": "node scripts/check-platform-crate-boundaries.mjs",
     "test:platform-crates": "node scripts/run-platform-crate-tests.mjs",
     "test:platform-arch:mutations": "node scripts/platform-arch-selfcheck.mjs",
+    "test:shared-crate-panic": "node scripts/check-shared-crate-panic-policy.mjs",
     "test:i18n-keys": "node scripts/i18n-key-collision-check.mjs",
     "test:version": "node scripts/check-version-consistency.mjs",
     "test:driver-protocol": "node scripts/check-driver-protocol-compat.mjs",

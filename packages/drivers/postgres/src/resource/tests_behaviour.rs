@@ -197,7 +197,8 @@ async fn close_releases_the_budget_exactly_once() {
 /// kept on the provider to make that true.
 ///
 /// The provider instance is memoized for the whole process
-/// (`src-tauri/src/db/registry.rs` holds it in a `OnceLock`), and a headless
+/// (`packages/runtime/src/driver_registry/registry.rs` holds it in a
+/// `OnceLock`), and a headless
 /// `--mcp-stdio` server can close an unbounded number of resources, so the
 /// answer cannot be "a set of keys already closed" — that set is exactly as
 /// large as every key ever issued and never stops growing. The fact rides on

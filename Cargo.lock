@@ -1675,6 +1675,7 @@ dependencies = [
  "cbc 0.1.2",
  "chrono",
  "datazen-ai-api",
+ "datazen-ai-providers",
  "datazen-application",
  "datazen-data-sync",
  "datazen-data-transfer",
@@ -1683,8 +1684,10 @@ dependencies = [
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
  "datazen-platform-api",
+ "datazen-platform-infra",
  "datazen-runtime",
  "datazen-schema-diff",
+ "datazen-workspace-apps",
  "dirs",
  "flate2",
  "futures-util",
@@ -1750,15 +1753,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "datazen-ai-providers"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "datazen-ai-api",
+ "datazen-platform-infra",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wiremock",
+]
+
+[[package]]
 name = "datazen-application"
 version = "0.0.1"
 dependencies = [
  "async-trait",
  "datazen-platform-api",
+ "proc-macro2",
  "serde",
  "serde_json",
+ "syn 2.0.119",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2092,10 +2116,19 @@ name = "datazen-platform-api"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "chrono",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "datazen-platform-infra"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "url",
 ]
 
 [[package]]
@@ -2139,6 +2172,20 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "datazen-workspace-apps"
+version = "0.0.1"
+dependencies = [
+ "datazen-platform-infra",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "uuid",
+ "zip 2.4.2",
 ]
 
 [[package]]

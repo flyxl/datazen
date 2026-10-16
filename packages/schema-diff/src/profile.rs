@@ -158,9 +158,19 @@ impl SchemaDiffProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_platform_api::ports::{Clock, FixedClock};
+
+    /// fixture 的时刻由固定时钟给定：测试不再随真实时间漂移，
+    /// 而时刻本身仍经平台时钟端口取（不新增第二处直接读系统时间）。
+    fn fixed_now() -> DateTime<Utc> {
+        let stamped = FixedClock::at("2026-01-01T00:00:00Z").now();
+        DateTime::parse_from_rfc3339(stamped.as_str())
+            .expect("fixed clock emits RFC3339")
+            .with_timezone(&Utc)
+    }
 
     fn profile() -> SchemaDiffProfile {
-        let now = Utc::now();
+        let now = fixed_now();
         SchemaDiffProfile {
             version: SchemaDiffProfile::CURRENT_VERSION,
             id: "profile-1".into(),

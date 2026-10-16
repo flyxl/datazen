@@ -43,7 +43,7 @@
  *
  * Nothing here invents a handshake. The gate reuses the existing
  * `PROTOCOL_VERSION` / `MIN_PROTOCOL_VERSION` window and the existing host-side
- * check (`src-tauri/src/db/registry.rs`, §5.1 of
+ * check (`packages/runtime/src/driver_registry/registry.rs`, §5.1 of
  * `docs/architecture/platform/driver-capability-migration.md`): a driver whose
  * declared `protocol_version()` falls outside `[MIN, PROTOCOL]` is refused at
  * load. Rule `released-driver-outside-delivered-protocol-window` asserts the
@@ -486,7 +486,7 @@ export function evaluate(options = {}) {
       if (driver.declared >= windowLo && driver.declared <= windowHi) continue;
       violations.push({
         code: 'released-driver-outside-delivered-protocol-window',
-        message: `${LOG_PREFIX} driver '${release.id}' was released in this delivery (${release.locator} ${release.before} -> ${release.after}) but declares protocol_version() = ${driver.declared}${driver.overridden ? ' (hard-coded override)' : ''}, outside the window ${MIN_PROTOCOL_VERSION_SYMBOL} ${windowLo} ..= ${PROTOCOL_VERSION_SYMBOL} ${windowHi} this delivery publishes. The host refuses such a driver at load (src-tauri/src/db/registry.rs), so publishing it now ships a driver that cannot connect.`,
+        message: `${LOG_PREFIX} driver '${release.id}' was released in this delivery (${release.locator} ${release.before} -> ${release.after}) but declares protocol_version() = ${driver.declared}${driver.overridden ? ' (hard-coded override)' : ''}, outside the window ${MIN_PROTOCOL_VERSION_SYMBOL} ${windowLo} ..= ${PROTOCOL_VERSION_SYMBOL} ${windowHi} this delivery publishes. The host refuses such a driver at load (packages/runtime/src/driver_registry/registry.rs), so publishing it now ships a driver that cannot connect.`,
       });
     }
   }

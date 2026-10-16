@@ -399,7 +399,10 @@ mod tests {
             ("identity.rs", include_str!("identity.rs")),
             ("error.rs", include_str!("error.rs")),
             ("handles.rs", include_str!("handles.rs")),
-            ("bridge.rs", include_str!("bridge.rs")),
+            (
+                "frontend_bridge.rs (packages/application)",
+                include_str!("../../../packages/application/src/frontend_bridge.rs"),
+            ),
             ("adapter.rs", include_str!("adapter.rs")),
             ("mod.rs", include_str!("mod.rs")),
         ] {

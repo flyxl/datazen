@@ -638,7 +638,8 @@ async fn write_data_file(
         .map(|c| c.read_only)
         .unwrap_or(false);
     let safe_mode = state.store.get_settings().await.safe_mode;
-    crate::sql_guard::check_sql(&sql, read_only, safe_mode).map_err(CommandError::Validation)?;
+    datazen_runtime::sql_guard::check_sql(&sql, read_only, safe_mode)
+        .map_err(CommandError::Validation)?;
 
     let mut sink = FileSink::create(dest)?;
     if let Some(prefix) = ddl_prefix {

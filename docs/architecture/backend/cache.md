@@ -23,9 +23,9 @@
 ### 1.2 Schema 缓存架构
 
 ```rust
-// src-tauri/src/cache/schema_cache.rs
+// packages/runtime/src/schema_cache/schema_cache.rs（原先在 src-tauri/src/cache/）
 
-use crate::db::*;
+use crate::driver_registry::DriverRegistry;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -617,83 +617,44 @@ impl PostgresDriver {
 
 ### 1.5 缓存失效策略
 
-```rust
-// src-tauri/src/cache/invalidation.rs
+缓存实现位于 `packages/runtime/src/schema_cache/`（`schema_cache.rs` + `schema_mutate.rs`），
+宿主 `src-tauri/src/cache/mod.rs` 只做 re-export 门面。
 
-use super::*;
+失效由三条互相独立的机制叠加，**不是**可配置的策略枚举：
 
-/// 缓存失效策略
-pub enum InvalidationStrategy {
-    /// 时间过期（默认 5 分钟）
-    TimeBased(Duration),
-    /// 事件驱动（DDL 语句执行后）
-    EventDriven,
-    /// 混合模式
-    Hybrid(Duration),
-}
+**1. 读时 TTL（300 秒）。** `SchemaCache::new` 把 `cache_ttl` 固定为
+`Duration::from_secs(300)`（`schema_cache.rs:64`），每次读取命中时以
+`cached_at.elapsed() < cache_ttl` 判定新鲜度（:154 / :166 / :207）。
+该 TTL 不可配置，也不存在 `TimeBased` / `EventDriven` / `Hybrid` 之类的枚举分支。
 
-/// DDL 检测器 - 检测会修改表结构的 SQL
-pub struct DdlDetector;
+**2. 容量驱逐（每桶 1000 张表）。** `max_tables = 1000`（:65），写入前经
+`evict_if_needed`（:322）腾位。注意它取 `map.keys().next()` 删掉**任意一张**，
+**不是 LRU**；容量触顶时淘汰顺序不保证。
 
-impl DdlDetector {
-    /// 检测 SQL 是否为 DDL 语句
-    pub fn is_ddl(sql: &str) -> bool {
-        let sql_upper = sql.trim().to_uppercase();
+**3. 事件驱动失效（DDL / 刷新 / 关闭）。** 三个入口都先 `generation.fetch_add(1)`：
 
-        sql_upper.starts_with("CREATE TABLE")
-            || sql_upper.starts_with("ALTER TABLE")
-            || sql_upper.starts_with("DROP TABLE")
-            || sql_upper.starts_with("CREATE INDEX")
-            || sql_upper.starts_with("DROP INDEX")
-            || sql_upper.starts_with("CREATE VIEW")
-            || sql_upper.starts_with("DROP VIEW")
-    }
+| 入口 | 作用域 | 生产调用点 |
+|------|--------|-----------|
+| `clear_connection(connection_id)` | 整个连接的缓存桶 | `driver_command/execute.rs:189`、`driver_command/streaming.rs:210`（DDL 后） |
+| `invalidate(connection_id, database, None)` | 该库的全部 schema scope | `commands/connection.rs:207`（关库）、`services/schema_metadata.rs:188`（Database 级刷新） |
+| `invalidate_relation(db_session_id, database, schema, table)` | 精确到 `(连接, 库, schema, 表)` | `services/schema_metadata.rs:195`（Relation 级刷新） |
 
-    /// 从 DDL 语句中提取表名
-    pub fn extract_table_name(sql: &str) -> Option<String> {
-        let sql_upper = sql.trim().to_uppercase();
+scope key 由 `scope_key`（:80）构造，形如 `database` 或 `database\u{1}schema`——
+schema 是键的一部分而非装饰，这正是 `invalidate(.., None)` 需要按前缀扫全部 scope 的原因。
 
-        // 简单实现，实际应使用 SQL 解析器
-        if sql_upper.starts_with("ALTER TABLE") || sql_upper.starts_with("DROP TABLE") {
-            let parts: Vec<&str> = sql.split_whitespace().collect();
-            if parts.len() > 2 {
-                let table_name = parts[2].trim_matches('"').trim_matches('`');
-                return Some(table_name.to_string());
-            }
-        }
+DDL 的识别是**前缀启发式**，不是 SQL 解析器：`sql_may_mutate_schema`
+（`schema_mutate.rs:5`）按 `;` 切句、剥掉开头的 `--` 与 `/* */` 注释后，
+对每句做 ASCII 大写前缀匹配，命中 `CREATE` / `ALTER` / `DROP` / `TRUNCATE` /
+`RENAME` / `COMMENT ON` 即判为 DDL。
 
-        None
-    }
-}
+**并发屏障。** 读路径开头取 `generation()`（:111）作为快照，回填前在
+`store_columns_if_current`（:171）复检（:185），不一致就**丢弃这次写入**。
+这样在 DDL 之前发起、DDL 之后才返回的查询，不会把旧结构重新写回缓存。
 
-/// 在查询执行后自动处理缓存失效
-impl QueryExecutor {
-    pub async fn execute_with_cache_invalidation(
-        &self,
-        driver: &Arc<dyn DatabaseDriver>,
-        handle: &ConnectionHandle,
-        sql: &str,
-        connection_id: &str,
-        database: &str,
-    ) -> Result<QueryResult, DriverError> {
-        // 执行 SQL
-        let result = driver.query(handle, sql).await?;
-
-        // 检测是否为 DDL，如果是则使相关缓存失效
-        if DdlDetector::is_ddl(sql) {
-            if let Some(table_name) = DdlDetector::extract_table_name(sql) {
-                tracing::info!("DDL detected, invalidating cache for table: {}", table_name);
-                self.schema_cache.invalidate(connection_id, database, Some(&table_name)).await;
-            } else {
-                // 无法确定具体表，清除整个数据库缓存
-                self.schema_cache.invalidate(connection_id, database, None).await;
-            }
-        }
-
-        Ok(result)
-    }
-}
-```
+**当前实现的代价（如实记录）。** DDL 路径走的是 `clear_connection`，即整会话清空；
+`invalidate(.., Some(table))` 的按表失效能力虽已具备，**生产代码零调用点**（仅单测使用），
+因为并不存在从 DDL 语句中提取表名的实现。因此一次 `ALTER TABLE` 的代价是清空该连接的
+全部缓存，而不是只失效一张表。
 
 ### 1.6 性能对比
 

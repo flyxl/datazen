@@ -1,0 +1,23 @@
+[package]
+name = "datazen-ai-providers"
+version = "0.0.1"
+edition = "2021"
+description = "DataZen AI provider protocol adapters — transport-facing implementations of the datazen-ai-api contracts"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+datazen-ai-api = { path = "../ai-api" }
+datazen-platform-infra = { path = "../platform-infra" }
+async-trait = "0.1"
+futures-util = "0.3"
+reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread", "time"] }
+tracing-subscriber = "0.3"
+wiremock = "0.6"

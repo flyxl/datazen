@@ -62,7 +62,7 @@
 | F10 | 秘密材料本身（密码、token、TLS 私钥、可解密值） | `connections.driverOptions` 的敏感部分 | 只落 `secretRef`；`ProfileView.publicOptions` 不返回秘密 |
 | F11 | 用户绝对路径 | 文件选择、备份工具路径 | 改为 artifact/配置引用（[概要 §10](system-overview.md#10-安全和环境差异)） |
 | F12 | `runtimeEpoch` | `SessionView`、内部记录 | **见下方说明** |
-| F13 | `schemaCache` 内容与 `cacheRevision` | [`cache/schema_cache.rs`](../../../src-tauri/src/cache/schema_cache.rs) | 纯内存缓存，不落盘 |
+| F13 | `schemaCache` 内容与 `cacheRevision` | [`cache/schema_cache.rs`](../../../packages/runtime/src/schema_cache/schema_cache.rs) | 纯内存缓存，不落盘 |
 | F14 | IdP `access_token` / `refresh_token` / 原始 `id_token` 及其可重放副本 | 登录会话行 | 只落服务端生成的会话行与 IdP `sub` 映射（§3.10）；需要调用 IdP 后端接口时按需重新交换（[团队服务 §4.3](team-server-and-auth.md#43-服务端登录会话)） |
 
 关于 F12：`runtimeEpoch` 是"某次 worker 启动的代号"，既不含秘密也确实是数字，但落盘后极易被误读为"可以接续原绑定"的证明。[连接管理 §4.4](connection-management.md#44-可落盘来源与运行时绑定)（不是本文 §4.4「主密钥与团队秘密」）已明确 `configRevision` / `contextRevision` 不能证明物理资源连续性，`runtimeEpoch` 同理。它只用于 owner 校验（[连接 §13.1](connection-management.md#131-幂等键期限与响应分类)），因此不进入任何表列。

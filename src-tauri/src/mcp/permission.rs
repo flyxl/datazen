@@ -1,5 +1,8 @@
 //! MCP permission modes — tool restrictions and lightweight SQL classification.
 
+use datazen_runtime::sql_guard::{
+    find_main_verb_index, sql_main_keyword, strip_comments_for_tokenize, tokenize_sql,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -23,59 +26,6 @@ const READ_ONLY_BLOCKED_TOOLS: &[&str] = &["query", "run_workflow"];
 
 /// Resources that expose executed SQL; omitted from `list_resources` in read-only mode.
 const READ_ONLY_SENSITIVE_RESOURCES: &[&str] = &["datazen://query-history"];
-
-/// First-keyword verbs treated as the main statement after an optional `WITH` clause.
-const MAIN_VERBS: &[&str] = &[
-    "SELECT",
-    "INSERT",
-    "UPDATE",
-    "DELETE",
-    "MERGE",
-    "UPSERT",
-    "REPLACE",
-    "CALL",
-    "EXEC",
-    "EXECUTE",
-    "DO",
-    "SHOW",
-    "DESCRIBE",
-    "DESC",
-    "EXPLAIN",
-    "SET",
-    "USE",
-    "BEGIN",
-    "COMMIT",
-    "ROLLBACK",
-    "SAVEPOINT",
-    "RELEASE",
-    "PREPARE",
-    "DEALLOCATE",
-    "ANALYZE",
-    "VACUUM",
-    "COPY",
-    "LOAD",
-    "UNLOAD",
-    "HANDLER",
-    "OPTIMIZE",
-    "REPAIR",
-    "CHECKSUM",
-    "CHECK",
-    "FLUSH",
-    "RESET",
-    "KILL",
-    "SHUTDOWN",
-    "CREATE",
-    "ALTER",
-    "DROP",
-    "TRUNCATE",
-    "GRANT",
-    "REVOKE",
-    "RENAME",
-    "COMMENT",
-    "LOCK",
-    "UNLOCK",
-    "PURGE",
-];
 
 /// `CREATE` targets blocked in safe-write mode (destructive / admin DDL).
 const SAFE_WRITE_BLOCKED_CREATE_TARGETS: &[&str] = &[
@@ -101,28 +51,11 @@ const SAFE_WRITE_BLOCKED_CREATE_TARGETS: &[&str] = &[
 /// Standalone keywords blocked in safe-write mode.
 const SAFE_WRITE_BLOCKED_KEYWORDS: &[&str] = &["DROP", "TRUNCATE", "ALTER", "GRANT", "REVOKE"];
 
-/// Returns the uppercase main SQL verb (handles leading `WITH` CTEs).
-pub fn sql_main_keyword(sql: &str) -> Option<String> {
-    // Normalise fullwidth characters so that ＤＲＯＰ → DROP before classification.
-    let sql = crate::sql_guard::normalize_fullwidth(sql);
-    let tokens = tokenize_sql(&sql);
-    if tokens.is_empty() {
-        return None;
-    }
-
-    let mut idx = 0;
-    if tokens[idx].eq_ignore_ascii_case("WITH") {
-        idx = skip_with_clause(&tokens)?;
-    }
-
-    Some(tokens[idx].to_uppercase())
-}
-
 /// Returns `Ok(())` when SQL is allowed under the given mode.
 pub fn check_sql_allowed(sql: &str, mode: McpPermissionMode) -> Result<(), String> {
     // Reject null bytes and normalise fullwidth before any classification.
-    crate::sql_guard::reject_null_bytes(sql)?;
-    let sql = crate::sql_guard::normalize_fullwidth(sql);
+    datazen_runtime::sql_guard::reject_null_bytes(sql)?;
+    let sql = datazen_runtime::sql_guard::normalize_fullwidth(sql);
     match mode {
         McpPermissionMode::HighRiskWrite => Ok(()),
         McpPermissionMode::ReadOnly => {
@@ -206,8 +139,8 @@ pub fn check_tool_call(
             if tool_name == "query" {
                 if let Some(args) = arguments {
                     if let Some(sql) = args.get("sql").and_then(|v| v.as_str()) {
-                        crate::sql_guard::reject_null_bytes(sql)?;
-                        let sql = crate::sql_guard::normalize_fullwidth(sql);
+                        datazen_runtime::sql_guard::reject_null_bytes(sql)?;
+                        let sql = datazen_runtime::sql_guard::normalize_fullwidth(sql);
                         check_safe_write_sql(&sql)?;
                     }
                 }
@@ -247,116 +180,8 @@ pub fn is_tool_listed(
     }
 }
 
-fn strip_sql_comments(sql: &str) -> String {
-    let mut out = String::with_capacity(sql.len());
-    let bytes = sql.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'-' && i + 1 < bytes.len() && bytes[i + 1] == b'-' {
-            i += 2;
-            while i < bytes.len() && bytes[i] != b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            i = (i + 2).min(bytes.len());
-            continue;
-        }
-        out.push(bytes[i] as char);
-        i += 1;
-    }
-    out
-}
-
-fn tokenize_sql(sql: &str) -> Vec<String> {
-    let cleaned = strip_sql_comments(sql);
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    let mut in_single = false;
-    let mut in_double = false;
-    let mut in_backtick = false;
-
-    for ch in cleaned.chars() {
-        if in_single {
-            if ch == '\'' {
-                in_single = false;
-            }
-            continue;
-        }
-        if in_double {
-            if ch == '"' {
-                in_double = false;
-            }
-            continue;
-        }
-        if in_backtick {
-            if ch == '`' {
-                in_backtick = false;
-            }
-            continue;
-        }
-
-        match ch {
-            '\'' => in_single = true,
-            '"' => in_double = true,
-            '`' => in_backtick = true,
-            c if c.is_whitespace() || c == ';' || c == ',' => {
-                if !current.is_empty() {
-                    tokens.push(current.clone());
-                    current.clear();
-                }
-            }
-            '(' | ')' => {
-                if !current.is_empty() {
-                    tokens.push(current.clone());
-                    current.clear();
-                }
-                tokens.push(ch.to_string());
-            }
-            _ => current.push(ch),
-        }
-    }
-    if !current.is_empty() {
-        tokens.push(current);
-    }
-    tokens
-}
-
-fn is_main_verb(token: &str) -> bool {
-    MAIN_VERBS.iter().any(|v| v.eq_ignore_ascii_case(token))
-}
-
-fn find_main_verb_index(tokens: &[String]) -> Option<usize> {
-    if tokens.is_empty() {
-        return None;
-    }
-    let mut idx = 0;
-    if tokens[idx].eq_ignore_ascii_case("WITH") {
-        idx = skip_with_clause(tokens)?;
-    }
-    Some(idx)
-}
-
-fn skip_with_clause(tokens: &[String]) -> Option<usize> {
-    let mut paren_depth = 0;
-    for (i, token) in tokens.iter().enumerate().skip(1) {
-        match token.as_str() {
-            "(" => paren_depth += 1,
-            ")" if paren_depth > 0 => paren_depth -= 1,
-            _ if paren_depth == 0 && is_main_verb(token) => return Some(i),
-            _ => {}
-        }
-    }
-    None
-}
-
 fn contains_multiple_statements(sql: &str) -> bool {
-    let cleaned = strip_sql_comments(sql);
+    let cleaned = strip_comments_for_tokenize(sql);
     let mut in_single = false;
     let mut in_double = false;
     let mut in_backtick = false;
@@ -415,37 +240,6 @@ mod tests {
     }
 
     #[test]
-    fn sql_main_keyword_simple_select() {
-        assert_eq!(sql_main_keyword("SELECT 1"), Some("SELECT".to_string()));
-    }
-
-    #[test]
-    fn sql_main_keyword_with_cte_select() {
-        assert_eq!(
-            sql_main_keyword("WITH cte AS (SELECT 1) SELECT * FROM cte"),
-            Some("SELECT".to_string())
-        );
-    }
-
-    #[test]
-    fn sql_main_keyword_with_cte_delete() {
-        assert_eq!(
-            sql_main_keyword(
-                "WITH t AS (SELECT id FROM u) DELETE FROM u WHERE id IN (SELECT id FROM t)"
-            ),
-            Some("DELETE".to_string())
-        );
-    }
-
-    #[test]
-    fn sql_main_keyword_strips_comments() {
-        assert_eq!(
-            sql_main_keyword("-- drop hint\nSELECT 1 /* alter */"),
-            Some("SELECT".to_string())
-        );
-    }
-
-    #[test]
     fn safe_write_allows_insert_update_delete() {
         assert!(
             check_sql_allowed("INSERT INTO t VALUES (1)", McpPermissionMode::SafeWrite).is_ok()
@@ -494,20 +288,6 @@ mod tests {
     }
 
     #[test]
-    fn sql_main_keyword_empty_returns_none() {
-        assert_eq!(sql_main_keyword("   "), None);
-        assert_eq!(sql_main_keyword("-- only comment"), None);
-    }
-
-    #[test]
-    fn sql_main_keyword_respects_quoted_identifiers() {
-        assert_eq!(
-            sql_main_keyword("SELECT `DROP` FROM t"),
-            Some("SELECT".to_string())
-        );
-    }
-
-    #[test]
     fn safe_write_allows_create_temp_table() {
         assert!(check_sql_allowed(
             "CREATE TEMPORARY TABLE t (id INT)",
@@ -533,14 +313,6 @@ mod tests {
     #[test]
     fn safe_write_allows_single_statement_with_trailing_semicolon() {
         assert!(check_sql_allowed("SELECT 1;", McpPermissionMode::SafeWrite).is_ok());
-    }
-
-    #[test]
-    fn sql_main_keyword_block_comment_stripped() {
-        assert_eq!(
-            sql_main_keyword("/* DROP */ SELECT 1"),
-            Some("SELECT".to_string())
-        );
     }
 
     #[test]
@@ -703,18 +475,6 @@ mod tests {
             .cloned();
         assert!(
             check_tool_call("query", McpPermissionMode::SafeWrite, &none, args.as_ref()).is_err()
-        );
-    }
-
-    #[test]
-    fn sql_main_keyword_handles_fullwidth() {
-        assert_eq!(
-            sql_main_keyword("ＤＲＯＰ TABLE t"),
-            Some("DROP".to_string())
-        );
-        assert_eq!(
-            sql_main_keyword("ＳＥＬＥＣＴ 1"),
-            Some("SELECT".to_string())
         );
     }
 

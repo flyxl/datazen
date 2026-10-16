@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 datazen-driver-api = { workspace = true }
 datazen-ai-api = { path = "../packages/ai-api" }
+datazen-ai-providers = { path = "../packages/ai-providers" }
 # Platform adapter (P1, 开发计划 :77)。方向是 host → platform-api / application，
 # 与 F-02 禁止的 application → host 相反，因此不受 crate 边界门禁限制。
 # 两个包都不依赖 Tauri / HTTP，desktop adapter 只在 host 侧引用它们。
@@ -24,10 +25,15 @@ datazen-platform-api = { path = "../packages/platform-api" }
 # P5 JobRuntime 内核（§2/§5）：prepare/apply 经 runtime 受理，desktop 只做适配。
 datazen-runtime = { path = "../packages/runtime" }
 datazen-application = { path = "../packages/application" }
+# 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖（F-11 反向 allow-list 兜底）。
+datazen-platform-infra = { path = "../packages/platform-infra" }
 # 迁移三件套各自以 Job 受理 prepare/apply，host 只做 adapter。
 datazen-schema-diff = { path = "../packages/schema-diff" }
 datazen-data-sync = { path = "../packages/data-sync" }
 datazen-data-transfer = { path = "../packages/data-transfer" }
+# Wave-2 B1：Workspace App 形态中立内核（manifest 规则 / 安装 / 存储）。
+# 零 Tauri、零 HTTP（F-09/F-10 强制），desktop 侧只做本地文件系统适配。
+datazen-workspace-apps = { path = "../packages/workspace-apps" }
 inventory = "0.3"
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon", "devtools"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "process"] }
@@ -114,6 +120,10 @@ sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgre
 datazen-driver-postgres = { path = "../packages/drivers/postgres" }
 datazen-driver-mysql = { path = "../packages/drivers/mysql" }
 datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
+# Host tests drive `DriverRegistry::register_test_driver*` / `register_test_factory*`, which the
+# registry now exposes from `datazen-runtime` behind `#[cfg(any(test, feature = "test-harness"))]`.
+# Dev-only: `resolver = "2"` keeps this feature out of normal `cargo build` of the host.
+datazen-runtime = { path = "../packages/runtime", features = ["test-harness"] }
 
 [[test]]
 name = "driver_command_ipc"

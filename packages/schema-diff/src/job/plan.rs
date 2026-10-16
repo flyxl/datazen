@@ -274,26 +274,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn validate_versions_rejects_unknown_major() {
-        let mut m = meta("p1");
-        m.plan_version = 2;
-        assert!(matches!(
-            m.validate_versions(),
-            Err(SchemaDiffPlanError::VersionIncompatible {
-                got: 2,
-                supported: 1
-            })
-        ));
-    }
-
-    #[test]
-    fn take_for_apply_rejects_expired_and_stale_selection() {
-        let store = PlanStore::new();
-        let stored = StoredPlan {
-            meta: meta("p1"),
+    fn stored_plan(plan_id: &str) -> StoredPlan {
+        StoredPlan {
+            meta: meta(plan_id),
             plan: SchemaDiffPlan {
-                plan_id: Some("p1".into()),
+                plan_id: Some(plan_id.into()),
                 table: "t".into(),
                 tables: vec![],
                 source_dialect: "sqlite".into(),
@@ -310,12 +295,75 @@ mod tests {
                 expected_target_schemas: vec![],
             },
             body_digest: String::new(),
-        };
-        store.insert(stored);
+        }
+    }
+
+    #[test]
+    fn validate_versions_rejects_unknown_major() {
+        let mut m = meta("p1");
+        m.plan_version = 2;
+        assert!(matches!(
+            m.validate_versions(),
+            Err(SchemaDiffPlanError::VersionIncompatible {
+                got: 2,
+                supported: 1
+            })
+        ));
+    }
+
+    #[test]
+    fn take_for_apply_rejects_expired_and_stale_selection() {
+        let store = PlanStore::new();
+        store.insert(stored_plan("p1"));
         let now = Timestamp::new("2026-01-01T02:00:00Z");
         assert!(matches!(
             store.take_for_apply("p1", 3, &now),
             Err(SchemaDiffPlanError::PlanExpired(_))
         ));
+    }
+
+    /// 过期判定是 `expires_at < now` 的**字典序**比较（§4.1）。`now` 从秒级
+    /// `…T01:00:00Z` 换成毫秒级 `…T01:00:00.500Z` **不改变逐案判定**：
+    ///
+    /// * 同一整秒：秒级 `expires_at` 的下一位是 `'Z'`(0x5A)，毫秒级 `now` 的下一位
+    ///   是 `'.'`(0x2E)，`'Z' > '.'` ⇒ `expires_at > now` ⇒ **未过期**（与秒级 now 同）；
+    /// * 下一秒：日期/时分秒前缀已经更大 ⇒ **过期**（与秒级 now 同）。
+    ///
+    /// 因此「now 毫秒化」不是行为变更，更不是「到秒即过期」；要后者必须改 `expires_at`
+    /// 的生产形状（`src-tauri/src/commands/schema_diff/job.rs`）或比较前归一。
+    /// 整秒边界此前无覆盖（`expires_at` 全仓无毫秒字面量）：本断言把两种形状各跑一遍。
+    #[test]
+    fn expiry_verdict_is_unchanged_by_the_second_to_millisecond_shape_switch() {
+        let store = PlanStore::new();
+        store.insert(stored_plan("p-boundary"));
+
+        // 机制本身：同一整秒内，秒级形状排在毫秒级形状**之后**。
+        assert!(
+            Timestamp::new("2026-01-01T01:00:00Z").as_str()
+                > Timestamp::new("2026-01-01T01:00:00.500Z").as_str()
+        );
+
+        for now in [
+            "2026-01-01T01:00:00Z",
+            "2026-01-01T01:00:00.000Z",
+            "2026-01-01T01:00:00.500Z",
+        ] {
+            assert!(
+                store
+                    .validate_for_apply("p-boundary", 3, &Timestamp::new(now))
+                    .is_ok(),
+                "expires_at=…01:00:00Z 与 now={now} 同秒：必须判未过期"
+            );
+        }
+
+        for now in ["2026-01-01T01:00:01Z", "2026-01-01T01:00:01.000Z"] {
+            assert!(
+                matches!(
+                    store.validate_for_apply("p-boundary", 3, &Timestamp::new(now)),
+                    Err(SchemaDiffPlanError::PlanExpired(_))
+                ),
+                "expires_at=…01:00:00Z 已过 now={now}：必须判过期"
+            );
+        }
     }
 }

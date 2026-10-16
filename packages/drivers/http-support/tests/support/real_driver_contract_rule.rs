@@ -38,7 +38,7 @@
 //!   a *branch consumer* as enforcement, so it stays satisfied if someone later
 //!   adds a branch — but no `DatabaseDriver` method observes this capability,
 //!   so nothing outside this test suite can act on it. Closing it means adding
-//!   a public trait method, which is a `PROTOCOL_VERSION` bump (currently 4) and
+//!   a public trait method, which is a `PROTOCOL_VERSION` bump (currently 6) and
 //!   touches every `impl DatabaseDriver` in the workspace. That is a separate,
 //!   larger change and **not** authorised here.
 //! - **Gap B — a partial obligation is announced where nobody can see it.**
