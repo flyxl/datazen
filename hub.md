@@ -562,3 +562,82 @@ AI-3 用例逻辑推到 Wave-3。
   3. 真正随形态变化的是**资源地址不是 schema**：`datazen://` scheme → HTTPS origin，`entry`/`icon`/theme 路径重写属 adapter 职责，
      内核一旦感知 origin 就不再形态中立（F-10 的存在理由）。
 - 另记 `WappManager` 是进程全局单例、启用态靠 `.enabled` 标记文件，服务端须改为按 `(organizationId, principalId)` 解析。
+
+## 公共基础设施层 packages/platform-infra：裁定、证据与预置（Wave-2 第三轨）
+
+### 一、为什么建这个 crate（不再依据「当前消费者数量」）
+
+用户已明确否决过我的推论：共享基础设施的消费者是**尚未建出的形态**（web / server），
+不是当前这棵树。web 版不会去读 `src-tauri/` 里的实现，只能照着 host 再写一份，
+而且必然更弱——因为它看不见 host 代码。**后续所有落点判断一律从目标形态出发。**
+
+这不是推演，本波已有两处实证：
+
+| 事实 | 位置 | 性质 |
+| --- | --- | --- |
+| 脱敏 | A2 新写 `packages/ai-providers/src/protocol/mod.rs:85-104` `redact_endpoint_for_log` | 零 `Regex::new`、零 `OnceLock`，手工切字符串；只处理 userinfo 与整段 query，**漏掉 `Bearer`、`?token=`、`password` 字段** |
+| zip 路径安全 | B1 新写 `packages/workspace-apps/src/zip_path.rs` | 与宿主 `src-tauri/src/app_data_archive.rs` 的 `validate_zip_entry_path` **逐字节相同（各 39 行）**，两份 `pub const MAX_COMPRESSION_RATIO: u64 = 100;` |
+
+两处根因相同：**抽出域代码时看不到原实现，于是复制一份**。抽出动作本身没错，
+错在没有承载原实现的公共位置。B1 Tester 已把后者记为非阻断合并分叉隐患：
+日后任一处改动 `validate_zip_entry_path` 而不同步另一处，两套测试仍各自全绿。
+
+### 二、命名与规则设计
+
+- crate / 目录 / layer id 三者同名 **`platform-infra`**，crate 名 `datazen-platform-infra`。
+  刻意**不叫 common**：本仓库的 `migration-common` 之所以健康，正因为名字点明领域、
+  依赖面极窄（504 行 / 2 个依赖 / 零 trait）。叫 `common` 等于放弃这层唯一有效的自律。
+- 规则 **F-11** 挂在 `scripts/check-platform-crate-boundaries.mjs` 的 `RULES` 末尾，用
+  `allowedLayers: ['platform-infra']` 的**反向 allow-list**：`platform-infra` 不得依赖任何其它层，
+  且**未来任何新加入 `LAYERS` 的层自动进入禁止集，无需改规则文件**。
+  用 deny-list 会静默放行所有后来层——那正是它会退化成耦合中枢的路径。
+  `forbiddenCrates: 'spec'` 加 `specCrates: [tauri, axum, actix-web, warp, tonic, react]`
+  挡住形态/传输依赖。
+- **变异测试实证规则会咬人**：向 `packages/platform-infra/Cargo.toml` 注入
+  `datazen-platform-api = { path = '../platform-api' }` 后 `test:platform-arch` EXIT=1，
+  报 `VIOLATION F-11 datazen-platform-infra (packages/platform-infra/Cargo.toml) -> datazen-platform-api`；
+  `git checkout` 还原后回到 0。规则非空洞：门禁输出含 `ok F-11: datazen-platform-infra`。
+
+### 三、协调者预置提交 179c6c8b6（8 文件 +75/-1）
+
+新 crate 注册是 5 处，本轨全部登记完毕：根 `Cargo.toml` 的 `members`（紧跟 `platform-api`）、
+`scripts/lib/cargoWorkspace.mjs` 的 `LAYERS`、`scripts/run-platform-crate-tests.mjs` 的
+`TESTED_LAYERS`、`scripts/check-platform-crate-boundaries.mjs` 的 F-11、
+`docs/architecture/platform/shared-boundaries-and-ports.md` 的 §2.4 行加新增 §2.5.1。
+不进根 `[workspace.dependencies]`——它没有 `datazen-*` 依赖，加了反而要 `{ workspace = true }`。
+
+**本轮修正了两件事，记在这里免得再犯**：
+
+1. 预置提交最初把「路径安全」也写进 §2.5.1，但实作时已砍掉——已改写为「尚未并入本层的同类项」，
+   并写明它**要等 Wave-2 合并后才能收敛**（本分支看不到 `packages/workspace-apps`，硬做会造出第三份）。
+2. 预置提交的 message 最初写「门禁 … fmt 均 0」，而**当时 fmt 实为 EXIT=1**——
+   缺的是 gitignored 的 codegen 文件 `src-tauri/src/driver_init.rs`，报
+   `failed to resolve mod driver_init`，长得像格式问题。跑 `node scripts/resolve-drivers.mjs`
+   生成后复跑 EXIT=0、零 diff。已 amend 让 message 只陈述实测到的结论。
+   **教训：任何门禁结论不得先写进 message 再去凑。**
+
+### 四、本轨范围与排序约束（★ 合规红线）
+
+本轨 base = `78038d02b`（集成 HEAD），**不含 A2 / B1 任何代码**。因此本轨只能做 `redaction`
+（源头 `src-tauri/src/log_redact.rs` 118 行，宿主内 15 处调用点），`path_safety` 一律不做。
+**不要 rebase 本轨。** A2 / B1 的提交不碰根 `Cargo.toml` 与三个 scripts 文件，预置与二者干净合并。
+
+Wave-2 三轨合并后的第二趟才是本层兑现价值的地方，届时**必须**做：
+删 `ai-providers` 的 `redact_endpoint_for_log` 改引用本层；
+把 `zip_path.rs` 与 `app_data_archive.rs` 的两份 `validate_zip_entry_path` 合成一份，宿主那份也改引用。
+
+### 五、Track C3（infra 轨）工作树
+
+| 项 | 值 |
+| --- | --- |
+| 工作树 | `.worktrees/datazen-platform-infra` |
+| 分支 | `feature/platform-infra` |
+| base | `78038d02b` |
+| 预置 | `179c6c8b6` |
+| CARGO_TARGET_DIR | `/tmp/dz-target-infra` |
+
+同波并行：A2 修复轮（唤醒**原** Coder `4830a53d`，不新建）、C3 新 Coder `798513d9`。
+A2 Tester 判定 `7beb43d6e` FAIL，**唯一缺陷是 AGENTS.md 的 L34 / L56 / L112 文档漂移**：
+L34 仍称宿主 `ai/` 含 protocol（实测该目录已不存在，余 8 文件），L56 的 packages 树漏列 ai-providers，
+L112 散文只提 ai-api。10 道门禁全绿、B/D/E/F/G 各节全 PASS，测试数 `1710 - 86 = 1624` 精确对账，
+Tester 另用变异探针自证推翻了对 `restore_config` 覆盖不足的怀疑（删掉后 23 个宿主测试失败）。
