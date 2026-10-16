@@ -29,7 +29,6 @@ mod tls;
 pub use datazen_data_transfer::transfer;
 mod tray;
 pub mod tunnel;
-mod util;
 mod wapps;
 pub mod workflow;
 

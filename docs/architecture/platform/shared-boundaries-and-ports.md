@@ -152,6 +152,14 @@ flowchart TD
 
 这条不是修辞上的严谨，是实测出来的盲点：`packages/drivers/redis/Cargo.toml:27` 的 `tauri = { version = "2", optional = true }` 与 `src-tauri/Cargo.toml:45` 的 `tauri-plugin-webdriver = { version = "0.2", optional = true }` 都不在解析图里，只读闭包的守卫对它们完全失明。判定方式与告警含义见 §8.2 注 3。
 
+**F-09 / F-10 的两条实现路径，缺一不可。** 一条是依赖闭包：`forbiddenLayers: ['host']` 与
+`forbiddenCrates`（F-09 写死 `['tauri']`，F-10 用 `'spec'` 直接从 §2.4 的表格行里取 crate 名），
+按 `cargo metadata` 的解析图闭包遍历。另一条是**规范一致性**：`specTokens`（F-09 为 `tauri`、F-10 为
+`axum`）校验的是「§2.4 对应行是否仍然点名这个 token」，守卫与规范一旦漂移即报错；它扫的是本文档，
+不是 crate 源码。由此得到两条实操约束：§2.4 表格里的 `tauri` / `axum` 字面量**必须原样保留**（改写成
+「桌面壳」之类的同义词会让守卫误判为漂移）；而 crate 源码里的边界靠依赖闭包保证，注释中出现框架名本身
+不违反本守卫。
+
 ### 2.5 workspace 成员与前端接线（已实现）
 
 根 `Cargo.toml` 的 `members` 实际新增 `packages/platform-api` 与 `packages/application` 两条，`[workspace.dependencies]` 同风格追加两条 path 依赖：
@@ -180,7 +188,11 @@ Wave-2 在此基础上又新增 `packages/ai-providers` 与 `packages/workspace-
 （AI provider 协议适配实现、Workspace App 形态中立内核），两者的边界分别由 F-09 / F-10 断言。
 `packages/ai-providers` **不在** F-10 的作用域内：它按定义就是一个 HTTP *客户端*适配层
 （依赖 `reqwest` 访问各 provider 的端点），F-10 禁的是服务端框架进入内核，不是禁内核发请求。
-这两个包都只依赖第三方 crate 与既有的 `datazen-ai-api`，因此 `[workspace.dependencies]` 无需新增条目。
+这两个包都只依赖第三方 crate（`ai-providers` 另有既有的 `datazen-ai-api`），因此 `[workspace.dependencies]`
+无需新增条目。**接入方式是消费方写显式 `path`**：`src-tauri/Cargo.toml` 顶部以
+`datazen-workspace-apps = { path = "../packages/workspace-apps" }` 引入（与 Wave-1 各平台 crate 同风格，
+不是 `{ workspace = true }`，因为根 `[workspace.dependencies]` 里没有这一条）；根 `Cargo.toml` 的 `members`
+已含 `packages/workspace-apps`，本次未改动根清单。
 
 前端侧接线的不是 pnpm workspace：`pnpm-workspace.yaml` 只有 `allowBuilds:`、**没有 `packages:` 通配**，`pnpm-lock.yaml` 也只有根一个 importer，因此 `packages/*` 下的前端包并不通过 pnpm 链接进 `node_modules`。既有 `packages/driver-sdk`、`packages/ui`、`packages/wapp-sdk`、`packages/extension-points` 靠三处显式配置生效，`packages/backend-client` 已同样补齐三处：
 

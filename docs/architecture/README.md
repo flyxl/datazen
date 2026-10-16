@@ -96,6 +96,12 @@ packages/driver-api
 packages/drivers/*
 ```
 
+上图中 Workspace App 的 `manifest` 规则、安装与存储已下沉为**形态中立内核 crate**
+`packages/workspace-apps`（crate 名 `datazen-workspace-apps`，已登记在根 `Cargo.toml` 的 `members`）。
+宿主 `src-tauri/src/wapps/` 只保留 `datazen://` 协议桥、`WappManager` 与一层 re-export 门面，
+所有 `crate::wapps::*` 调用点不变。该内核零 HTTP、零桌面壳依赖（F-09 / F-10），
+存储根由调用方作为参数传入，桌面端传 `{appData}/wapps`。详见 [wapps.md](backend/wapps.md)。
+
 当前代码没有独立的 Web Server / Domain Service 层；桌面应用直接通过 Tauri IPC 进入 Rust backend。Web 平台化属于未来架构，不应在当前架构文档中描述为已实现能力。
 
 ## 2. Driver 架构
@@ -202,7 +208,7 @@ Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview →
 DataZen 采用四维扩展体系：
 
 - **数据库驱动（Driver）**：编译时注入，基于 `@datazen/driver-sdk` 与 `packages/driver-api`，通过 inventory 注册。承载数据库连接、SQL 方言、DDL 和 Driver Command。
-- **沙箱工作区应用（Wapp）**：基于 `@datazen/wapp-sdk`、`manifest.json`、`datazen://` 协议与沙箱 `<iframe>`，运行目录 `{appData}/wapps/{publisher}.{name}/`，向用户暴露独立工作区页面与外观主题，通过受控 postMessage 桥通信；取数一律走 `execute_driver_command`。详见 [wapps.md](backend/wapps.md)。
+- **沙箱工作区应用（Wapp）**：基于 `@datazen/wapp-sdk`、`manifest.json`、`datazen://` 协议与沙箱 `<iframe>`，运行目录 `{appData}/wapps/{publisher}.{name}/`，向用户暴露独立工作区页面与外观主题，通过受控 postMessage 桥通信；取数一律走 `execute_driver_command`；形态无关的规则/安装/存储在 `packages/workspace-apps`。详见 [wapps.md](backend/wapps.md)。
 - **特权扩展点（Host Extension Points）**：基于 `@datazen/extension-points` 的 `ExtensionPoint<T>` 契约与 CodeMirror Compartment，宿主进程内（In-Process）接入，专用于 SQLEditor 增强等高性能、深交互核心模块。受根目录 **DataZen Plugin, Driver & Extension Linking Exception** 保护，支持独立许可与分发。
 - **外观主题（Theme）**：由 Wapp 以 `contributes.themes[]` 贡献的纯静态资源包（`tokens.css` / `editor.json` / `charts.json` / `icons/`），零代码执行。旧 v1 ThemePack（`packages/themes/`）已存档，`{appData}/themes/` 运行时入口已移除。详见 [wapps.md](backend/wapps.md)「主题应用」与「首屏背景缓存」。
 
