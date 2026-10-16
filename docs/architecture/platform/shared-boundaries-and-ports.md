@@ -600,16 +600,24 @@ flowchart LR
 pub trait Clock: Send + Sync + 'static {
     fn now(&self) -> Timestamp;      // 定宽 RFC3339（UTC，毫秒）：2026-01-01T00:00:00.000Z
 }
-pub struct SystemClock;              // 生产：全仓唯一读系统时间的实现
+pub struct SystemClock;              // 生产：平台包层经本端口读系统时间的唯一实现
 pub struct FixedClock { /* … */ }    // 测试替身：at(ts) / set(ts)，克隆共享同一状态
 ```
 
 - **同步方法、不返回 `Result`**：§4.1 的 `#[async_trait]` + `PortError` 约定针对**会等待、会失败**的端口；读一次系统时间两者都不是，所以本端口没有 `Result`——也没有哪个 `PortError` 变体能表示「时钟坏了」。对象安全与 `Arc<dyn Clock>` 注入不变。
-- **只有一种输出形状**：`now()` 一律写成毫秒精度 UTC 的定宽 RFC3339。`Timestamp` 的比较是字符串序，秒级（`…T00:00:00Z`）与毫秒级（`…T00:00:00.000Z`）混在一列会在整秒处翻转字典序（`'.'` < `'Z'`）；本端口只**生产**时刻、不解析时刻，把「谁写什么形状」收口到一处。
-- **实现体为什么在契约层**：时基没有传输差异（不存在「服务端时钟」与「桌面时钟」两种语义），故 `SystemClock` / `FixedClock` 随端口一起提供，与 `ports::budget::pool_ledger` 的进程内参考账本同一处理方式；**带副作用或带传输**的端口实现仍必须留在提供方 crate（§4 开头那条不因此放宽）。
-- **装配（已实现）**：桌面组装根 `src-tauri/src/bootstrap/app_state.rs` 注入的 `SystemJobClock` 现在委托 `SystemClock`（`packages/runtime/src/job/time.rs`），`PortJobClock<C: Clock>` 可把任意时钟接成 `JobClock`；`SchemaDiffHandler::with_clock`、`DataTransferHandler::with_clock` 与 `BoundedPipelineContext::clock` 是同一注入缝隙。固定时钟的可替换性各有断言：`ports/clock.rs`、`runtime/src/job/time.rs`、`schema-diff/src/job/handler.rs`（提交边界时刻）、`data-transfer/src/job/checkpoint.rs`、`data-transfer/src/job/tests/snapshot_paging.rs`（整条有界管道 + 三条提交边界）。
-- **已知限制，未改**：`packages/driver-api/src/sql_dump/dump.rs` 的转储头时间戳仍直调 `chrono::Utc::now()`。driver-api 不得依赖 platform-api：`scripts/check-platform-crate-boundaries.mjs` 的 F-01 以 `allowedLayers: ['driver', 'driver-api']` 反选，补这条边会把 platform-api 推进**每个驱动 crate** 的传递闭包（§2.4 F-01）。该处已就地留注释说明。
-- **已知遗留**：`packages/runtime/src/job/time.rs` 的 `after_seconds` 仍产出秒级形状（chrono 模板 %Y-%m-%dT%H:%M:%SZ）。它只做算术、不读系统时间，不在本次直调清单内，故未改动；同列比较时与毫秒形状同样存在整秒翻转问题，收口前不要把它与 `Clock` 的输出放进同一排序。
+- **端口只生产一种输出形状**：`now()` 一律写成毫秒精度 UTC 的定宽 RFC3339（`2026-01-01T00:00:00.000Z`）。`Timestamp` 的排序是字符串序，**同一整秒内**用不同精度书写会让字典序与真实先后不一致（`…T00:00:00Z` > `…T00:00:00.500Z`：`'Z'` 0x5A > `'.'` 0x2E），所以「谁写什么形状」必须收口到端口这一处。
+- **实现体为什么在契约层（与 §4 开头规则的关系）**：时基没有传输差异（不存在「服务端时钟」与「桌面时钟」两种语义），故 `SystemClock` / `FixedClock` 随端口一起提供。§4 开头「端口 trait 本身只定义签名，不含任何实现」约束的是**带传输 / 存储 / 副作用的适配器实现**；本条是登记在案的**唯一豁免**，与本节之前的先例 `ports::budget::pool_ledger` 的进程内参考账本同类（§4 开头现已指向本节的豁免说明）。豁免范围严格限定为平台中立、无 I/O 依赖的原语，其余任何端口实现仍必须留在提供方 crate。
+- **装配（已实现）**：桌面组装根 `src-tauri/src/bootstrap/app_state.rs` 注入的 `SystemJobClock` 现在委托 `SystemClock`（`packages/runtime/src/job/time.rs`），`PortJobClock<C: Clock>` 可把任意时钟接成 `JobClock`；`SchemaDiffHandler::with_clock`、`DataTransferHandler::with_clock` 与 `BoundedPipelineContext::clock` 是同一注入缝隙。固定时钟的可替换性各有断言：`ports/clock.rs`、`runtime/src/job/time.rs`、`schema-diff/src/job/handler.rs`（提交边界时刻）、`data-transfer/src/job/checkpoint.rs`、`data-transfer/src/job/tests/snapshot_paging.rs`（整条有界管道 + 三条提交边界）；过期判定的整秒边界另有常驻断言：`schema-diff/src/job/plan.rs` 的 `expiry_verdict_is_unchanged_by_the_second_to_millisecond_shape_switch`。
+- **已知限制与遗留清单（逐条登记，未改造）**：本端口的收口范围是**本轨声明的 5 处直调中的 4 处 + runtime / data-transfer 的装配点**，不是全仓。以 `grep -rnE "Utc::now\(\)|Local::now\(\)|SystemTime::now\(\)" packages --include=*.rs` 复测（本轨修订时共 12 行命中） = 端口自身实现 1 行（`ports/clock.rs:46`）+ 端口单测 1 行 + 本清单的解释注释 1 行 + 基准工具 `runtime/src/bin/cm60-bench/report.rs` 2 行 + 驱动 live 测试（`#[cfg(test)]`）1 行 + **6 处生产直调**（下面 6 条）。
+  1. `packages/driver-api/src/sql_dump/dump.rs:377` —— 驱动公共契约层不得依赖 platform-api（见紧随其后的驱动边界说明）。
+  2. `packages/drivers/redis/src/ops/pubsub.rs:88-93 now_millis()` —— 同一理由的驱动侧直调。
+  3. `packages/runtime/src/application/operations.rs:262-271 utc_now()` —— 产出注册回执的 UTC 字符串，经 `directory::ClockBase::project` 投影，不是 `Timestamp` 直出；收口要把时钟穿过 application 的 operation 构造与宿主装配点，属独立变更。
+  4. `packages/runtime/src/application/tokens.rs:113-118` —— 幂等令牌 `expiresAt`（`now + 86400s` 后投影），与上一条同因。
+  5. `packages/runtime/src/artifact/mod.rs:63-68 now() -> u64` —— 产物记账用的是 **epoch 秒整数**，端口产出的是格式化字符串；接端口要先解析回数值，而契约层刻意不解析时刻（`id.rs` 的 `Timestamp` 约定），改造要先动记账类型。
+  6. `packages/runtime/src/directory/mod.rs:232-251 SystemDirectoryClock::new()` —— **第二份系统时钟**（`Instant` 量经过时间 + `SystemTime` 钉 UTC 起点）。本端口只有 UTC 一个维度，装不下单调维度；收编即契约扩展，不在本次范围。
+- **宿主层不在本端口范围内**：`src-tauri/` 有大量生产直调墙上时钟（`Utc::now` / `Local::now` / `SystemTime::now`）：同一条 grep 在 `src-tauri/src` 下命中 **93 行 / 41 个文件**（排除 `*_tests.rs`、`/tests/`）；验证方按另一口径测得 40 处 / 28 个文件——**数字随口径变化**，故本节只给命令与上面的逐条清单，不写「全仓唯一」这类会被下一次 grep 推翻的话。该层属宿主侧独立变更。
+- **形状切换不改变 `expires_at < now` 的逐案判定（实测 + 常驻断言）**：schema-diff handler 的时间来源由秒级形状换成端口的毫秒形状，**这不是行为变更**（早先的提交说明写成「更严、到秒即过期」，方向是反的，以本节为准）。字典序下：同一整秒内，秒级 `expires_at` 的下一位是 `'Z'`(0x5A)、毫秒级 `now` 的下一位是 `'.'`(0x2E)，`'Z' > '.'` ⇒ `expires_at > now` ⇒ 判**未过期**，与秒级 `now` 逐案相同；下一秒才判过期。常驻断言：`packages/schema-diff/src/job/plan.rs` 的 `expiry_verdict_is_unchanged_by_the_second_to_millisecond_shape_switch`（同一整秒：秒级 / 毫秒级 now 各一遍 → 未过期；下一秒：两种形状各一遍 → 过期）。若要「整秒即过期」，改的是 `expires_at` 的生产形状（`src-tauri/src/commands/schema_diff/job.rs`）或比较前归一，**不是**把 `now` 毫秒化。
+- **已知遗留（形状）**：`packages/runtime/src/job/time.rs:58 after_seconds` 不读系统时间、只做算术，但产出秒级形状（chrono 模板 `%Y-%m-%dT%H:%M:%SZ`），与毫秒形状同列排序存在整秒翻转；收口前不要把它与 `Clock` 的输出放进同一排序。
 
 ## 5. RequestContext 的三个构造来源
 

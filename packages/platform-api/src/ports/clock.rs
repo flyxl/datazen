@@ -37,7 +37,13 @@ pub trait Clock: Send + Sync + 'static {
     fn now(&self) -> Timestamp;
 }
 
-/// 系统时钟：生产路径的唯一时间源。
+/// 系统时钟：平台包层**经 [`Clock`] 端口**读取系统时间的唯一实现。
+///
+/// 措辞刻意收窄——**不是**「全仓唯一读系统时间的实现」：`packages/` 下仍有 6 处
+/// 生产路径直读墙上时钟未收口（driver-api 转储头、runtime 的 application/operations、
+/// application/tokens、artifact、directory 生产时钟、redis 驱动 pubsub），
+/// 宿主 `src-tauri/` 另有约 40 处；逐条登记在
+/// `docs/architecture/platform/shared-boundaries-and-ports.md` §4.9。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SystemClock;
 

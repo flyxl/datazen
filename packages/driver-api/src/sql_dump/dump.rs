@@ -372,6 +372,8 @@ where
     // 取契约），直接撞 F-01「驱动依赖闭包不含宿主 / platform crate」——实现在
     // `scripts/check-platform-crate-boundaries.mjs`（`allowedLayers: ['driver', 'driver-api']`），
     // 规则表在 `docs/architecture/platform/shared-boundaries-and-ports.md` §2.4。
+    // 实测不止撞 F-01：这条边同时撞 F-08（`datazen-migration-common` 只允许
+    // migration-common / driver-api 两层），加边实测共 17 条 violation。
     // 时间源注入在本 crate 的公共契约上无处安放：给 `DatabaseDriver` 加时钟参数会改动所有
     // 驱动与调用方的签名，代价远大于这一行转储头注释，因此**主动保留**直调。
     out.push_str(&format!("-- Date: {}\n", chrono::Utc::now().to_rfc3339()));
