@@ -5,8 +5,9 @@ use schemars::schema_for;
 use serde_json::Value;
 
 use super::server::{
-    DescribeTableInput, ExplainQueryInput, GetSchemaInput, ListDatabasesInput, ListTablesInput,
-    QueryInput, RunWorkflowInput, SearchTablesInput,
+    CloseSessionInput, DescribeTableInput, ExplainQueryInput, GetSchemaInput, ListDatabasesInput,
+    ListTablesInput, OpenSessionInput, QueryInput, RunWorkflowInput, SearchTablesInput,
+    UseSessionInput,
 };
 
 /// Static help metadata for a registered MCP tool.
@@ -83,6 +84,27 @@ const TOOL_HELPS: &[ToolHelp] = &[
             "workflow_id (string, required); variables (object, optional); connection_id (string, optional)",
         example: r#"{"name":"run_workflow","arguments":{"workflow_id":"my-flow","variables":{}}}"#,
     },
+    ToolHelp {
+        name: "open_session",
+        description: "Open a session held for this client and return an opaque client_session_ref. The session is released when this client disconnects or the ttl expires.",
+        parameters:
+            "connection_id (string, required); database (string, required); schema (string, optional); ttl_ms (number, optional, default 300000, max 3600000)",
+        example: r#"{"name":"open_session","arguments":{"connection_id":"<uuid>","database":"app","ttl_ms":600000}}"#,
+    },
+    ToolHelp {
+        name: "use_session",
+        description: "Run one driver command inside a session this client opened, and return its rows.",
+        parameters:
+            "client_session_ref (string, required); command (string, required); input (object, required); timeout_ms (number, optional, default 60000, max 300000)",
+        example: r#"{"name":"use_session","arguments":{"client_session_ref":"<opaque-ref>","command":"query","input":{"sql":"SELECT 1"}}}"#,
+    },
+    ToolHelp {
+        name: "close_session",
+        description: "Close a session this client opened. Idempotent, and never touches another client resources.",
+        parameters:
+            "client_session_ref (string, required); mode (string, optional: requireNoTransaction default, rollbackAndClose)",
+        example: r#"{"name":"close_session","arguments":{"client_session_ref":"<opaque-ref>","mode":"rollbackAndClose"}}"#,
+    },
 ];
 
 /// Lookup static help for a tool name.
@@ -101,6 +123,9 @@ pub fn input_schema_json(tool_name: &str) -> Option<String> {
         "explain_query" => schema_for!(ExplainQueryInput),
         "describe_table" => schema_for!(DescribeTableInput),
         "run_workflow" => schema_for!(RunWorkflowInput),
+        "open_session" => schema_for!(OpenSessionInput),
+        "use_session" => schema_for!(UseSessionInput),
+        "close_session" => schema_for!(CloseSessionInput),
         "list_connections" | "list_workflows" => return None,
         _ => return None,
     };

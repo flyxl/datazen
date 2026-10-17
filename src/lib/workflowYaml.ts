@@ -18,7 +18,9 @@ export function extractWorkflowYaml(text: string): string[] {
 }
 
 function looksLikeWorkflow(yaml: string): boolean {
-  return /\bsteps\s*:/.test(yaml) && (/\bid\s*:/.test(yaml) || /\bname\s*:/.test(yaml));
+  // A v2 definition may carry only `blocks:` — its steps live inside the blocks.
+  const hasBody = /\bsteps\s*:/.test(yaml) || /\bblocks\s*:/.test(yaml);
+  return hasBody && (/\bid\s*:/.test(yaml) || /\bname\s*:/.test(yaml));
 }
 
 /**
@@ -54,10 +56,16 @@ export function validateWorkflowFields(
 ): string | null {
   if (!obj.id || typeof obj.id !== 'string') return 'id';
   if (!obj.name || typeof obj.name !== 'string') return 'name';
-  if (!Array.isArray(obj.steps) || obj.steps.length === 0) return 'steps';
+  // A v2 definition may hold only `blocks`; its steps live inside them. What
+  // makes a definition empty is having neither, not lacking top-level steps.
+  if (!hasEntries(obj.steps) && !hasEntries(obj.blocks)) return 'steps';
   const missing = findStepMissingDatabase(obj, connections);
   if (missing) return missing;
   return null;
+}
+
+function hasEntries(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
 }
 
 /** Minimal connection shape the database rule needs. */
@@ -78,36 +86,59 @@ function findStepMissingDatabase(
   if (!connections || connections.length === 0) return null;
   const byId = new Map(connections.map((c) => [c.id, c]));
   const workflowDatabase = typeof obj.database === 'string' ? obj.database.trim() : '';
-  const steps = obj.steps as Record<string, unknown>[];
+  const workflowConnection = typeof obj.connection === 'string' ? obj.connection.trim() : '';
+  const blocks = Array.isArray(obj.blocks) ? obj.blocks : [];
 
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    if (!step || typeof step !== 'object') continue;
-    const type = step.type;
-    if (type !== 'query' && type !== 'command') continue;
+  // Top-level steps and block steps read the same four-level chain: a block's
+  // own target sits directly above its steps, and the workflow default stays
+  // the fallback below that. A blank value counts as undeclared at either
+  // level, exactly like the backend normalizer.
+  const scopes: { label: string; steps: unknown[]; connection: string; database: string }[] = [];
+  if (Array.isArray(obj.steps)) {
+    scopes.push({
+      label: 'steps',
+      steps: obj.steps,
+      connection: workflowConnection,
+      database: workflowDatabase,
+    });
+  }
+  blocks.forEach((block: unknown, index: number) => {
+    if (!isRecord(block)) return;
+    scopes.push({
+      label: `blocks[${index}].steps`,
+      steps: Array.isArray(block.steps) ? block.steps : [],
+      connection: textOf(block.connection) || workflowConnection,
+      database: textOf(block.database) || workflowDatabase,
+    });
+  });
 
-    const connId =
-      (typeof step.connection === 'string' && step.connection) ||
-      (typeof obj.connection === 'string' && obj.connection) ||
-      '';
-    const conn = byId.get(connId);
-    if (!conn?.requiresExplicitDatabase) continue;
+  for (const scope of scopes) {
+    for (let i = 0; i < scope.steps.length; i++) {
+      const step = scope.steps[i];
+      if (!isRecord(step)) continue;
+      const type = step.type;
+      if (type !== 'query' && type !== 'command') continue;
 
-    // A query step names its target in `database`; a command step carries it
-    // in `input.database`, since `WorkflowStep::Command` has no such field.
-    const stepDatabase =
-      type === 'query'
-        ? typeof step.database === 'string'
-          ? step.database.trim()
-          : ''
-        : typeof (step.input as Record<string, unknown> | undefined)?.database === 'string'
-          ? String((step.input as Record<string, unknown>).database).trim()
-          : '';
+      const connId = textOf(step.connection) || scope.connection;
+      const conn = byId.get(connId);
+      if (!conn?.requiresExplicitDatabase) continue;
 
-    if (stepDatabase || workflowDatabase) continue;
-    return `steps[${i}].database`;
+      // A query step names its target in `database`; a command step carries it
+      // in `input.database`, since `WorkflowStep::Command` has no such field.
+      const stepDatabase =
+        type === 'query'
+          ? textOf(step.database)
+          : textOf(isRecord(step.input) ? step.input.database : undefined);
+
+      if (stepDatabase || scope.database) continue;
+      return `${scope.label}[${i}].database`;
+    }
   }
   return null;
+}
+
+function textOf(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -122,6 +153,69 @@ function isWorkflowVariable(value: unknown): boolean {
 function isWorkflowStep(value: unknown): boolean {
   if (!isRecord(value)) return false;
   return typeof value.id === 'string' && typeof value.type === 'string';
+}
+
+/**
+ * Narrow the v2 `blocks` array. Every rejection here mirrors what the backend
+ * refuses to execute, so a bad block fails in the form instead of mid-run:
+ * unknown block type, empty id, duplicate id, empty steps, non-boolean
+ * `parallel`, or a `retry` that is not `{ block: <non-negative integer> }`.
+ * Deliberately not duplicated here: cross-step target conflicts and plan
+ * safety — those need the resolved connection and a dialect parser.
+ */
+function parseWorkflowBlocks(value: unknown): import('../types').WorkflowBlock[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error('Invalid workflow field: blocks must be an array of block objects');
+  }
+  const seen = new Set<string>();
+  return value.map((raw, index) => {
+    if (!isRecord(raw)) {
+      throw new Error(`Invalid workflow field: blocks[${index}] must be an object`);
+    }
+    if (typeof raw.id !== 'string' || raw.id.trim() === '') {
+      throw new Error(`Invalid workflow field: blocks[${index}].id must be a non-empty string`);
+    }
+    if (seen.has(raw.id)) {
+      throw new Error(`Invalid workflow field: blocks[${index}].id duplicates block '${raw.id}'`);
+    }
+    seen.add(raw.id);
+    if (raw.type !== 'sessionBlock' && raw.type !== 'transactionBlock') {
+      throw new Error(
+        `Invalid workflow field: blocks[${index}].type must be sessionBlock or transactionBlock`,
+      );
+    }
+    if (!Array.isArray(raw.steps) || raw.steps.length === 0 || !raw.steps.every(isWorkflowStep)) {
+      throw new Error(
+        `Invalid workflow field: blocks[${index}].steps must be a non-empty array of step objects`,
+      );
+    }
+    if (raw.parallel !== undefined && typeof raw.parallel !== 'boolean') {
+      throw new Error(`Invalid workflow field: blocks[${index}].parallel must be a boolean`);
+    }
+    const retry = raw.retry;
+    if (retry !== undefined) {
+      if (
+        !isRecord(retry) ||
+        typeof retry.block !== 'number' ||
+        !Number.isInteger(retry.block) ||
+        retry.block < 0
+      ) {
+        throw new Error(
+          `Invalid workflow field: blocks[${index}].retry must be { block: <non-negative integer> }`,
+        );
+      }
+    }
+    return {
+      id: raw.id,
+      type: raw.type,
+      connection: typeof raw.connection === 'string' ? raw.connection : undefined,
+      database: typeof raw.database === 'string' ? raw.database : undefined,
+      parallel: raw.parallel === true,
+      steps: raw.steps as import('../types').WorkflowStep[],
+      retry: isRecord(retry) ? { block: retry.block as number } : undefined,
+    };
+  });
 }
 
 /**
@@ -148,10 +242,14 @@ export function parseValidatedWorkflowDefinition(
     }
   }
 
+  // A v2 definition may declare only `blocks`; v1 requires top-level steps.
+  // `steps: []` alongside `blocks` is a legal v2 no-op, and the
+  // neither-steps-nor-blocks case already failed in `validateWorkflowFields`.
   const steps = obj.steps;
-  if (!Array.isArray(steps) || !steps.every(isWorkflowStep)) {
+  if (steps !== undefined && (!Array.isArray(steps) || !steps.every(isWorkflowStep))) {
     throw new Error('Invalid workflow field: steps must be a non-empty array of step objects');
   }
+  const blocks = parseWorkflowBlocks(obj.blocks);
 
   return {
     id: obj.id as string,
@@ -161,7 +259,9 @@ export function parseValidatedWorkflowDefinition(
     author: typeof obj.author === 'string' ? obj.author : undefined,
     variables: (variables as import('../types').WorkflowVariable[] | undefined) ?? [],
     connection: typeof obj.connection === 'string' ? obj.connection : undefined,
-    steps: steps as import('../types').WorkflowStep[],
+    database: typeof obj.database === 'string' ? obj.database : undefined,
+    steps: (steps ?? []) as import('../types').WorkflowStep[],
+    blocks,
     output: isRecord(obj.output)
       ? (obj.output as unknown as import('../types').WorkflowOutput)
       : undefined,

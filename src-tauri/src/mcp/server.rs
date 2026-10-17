@@ -3,7 +3,13 @@
 use crate::commands::AppState;
 use crate::mcp::allowlist;
 use crate::mcp::permission::McpPermissionMode;
+use crate::mcp::session::McpSessionRegistry;
 use crate::mcp::tool_help;
+use crate::platform::identity::{new_request_id, DesktopIdentity};
+use datazen_application::dto::requests::{CloseMode, CloseSessionRequest};
+use datazen_application::sessions::ConnectionUseCases;
+use datazen_platform_api::context::RequestContext;
+use datazen_platform_api::id::ClientInstanceId;
 use rmcp::ErrorData as McpError;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -17,7 +23,18 @@ pub struct DataZenMcpServer {
     pub(crate) permission_mode: McpPermissionMode,
     /// Non-empty allowlist required — empty means deny-all (secure default).
     pub(crate) allowed_connection_ids: Vec<String>,
+    /// Stateful tool mappings (memory only). Shared across clones: the tool router
+    /// keeps its own clone, and a mapping opened through it must stay visible to
+    /// the server that owns the transport.
+    pub(crate) sessions: Arc<McpSessionRegistry>,
+    /// Backend-generated client instance id (consumer-adapters §4.1). One per MCP
+    /// server instance; never taken from the client.
+    pub(crate) client_instance_id: String,
 }
+
+/// Owner purpose recorded for stateful MCP sessions. Display only — never an
+/// authorization input (summary §5.1(3)).
+pub const MCP_SESSION_PURPOSE: &str = "mcp-stateful-session";
 
 pub const MCP_ALL_TOOLS: &[&str] = &[
     "list_connections",
@@ -30,6 +47,10 @@ pub const MCP_ALL_TOOLS: &[&str] = &[
     "describe_table",
     "list_workflows",
     "run_workflow",
+    // §4.2 stateful protocol: explicit open / use / close.
+    "open_session",
+    "use_session",
+    "close_session",
 ];
 
 impl DataZenMcpServer {
@@ -39,6 +60,62 @@ impl DataZenMcpServer {
             disabled_tools: HashSet::new(),
             permission_mode: McpPermissionMode::default(),
             allowed_connection_ids: Vec::new(),
+            sessions: Arc::new(McpSessionRegistry::new()),
+            client_instance_id: crate::platform::identity::new_client_instance_id().to_string(),
+        }
+    }
+
+    /// Backend-generated client instance id of this MCP server instance.
+    pub(crate) fn client_instance_id(&self) -> &str {
+        &self.client_instance_id
+    }
+
+    /// Call context for this MCP server instance (consumer-adapters §4.1).
+    ///
+    /// Organization and principal stay the desktop launch subject; only
+    /// `clientInstanceId` is this server's own backend-generated id. Another MCP
+    /// client is therefore a different owner at the gateway rather than another
+    /// call from the same desktop instance, which is what makes a stateful session
+    /// unusable by a client that never opened it. `platform::identity` keeps
+    /// assembling the launch identity only and must never take an identity as a
+    /// parameter, so this assembly lives in the adapter that owns the id.
+    pub(crate) fn request_context(&self, identity: &DesktopIdentity) -> RequestContext {
+        RequestContext::new(
+            identity.organization_id().clone(),
+            identity.principal_id().clone(),
+            None,
+            ClientInstanceId::new(self.client_instance_id.to_owned()),
+            new_request_id(),
+            None,
+        )
+    }
+
+    /// Drop every mapping this client opened and close the database sessions
+    /// behind them. Called when the transport goes away: a mapping whose client
+    /// is gone is not a session to keep alive until its TTL runs out.
+    pub(crate) async fn release_sessions(&self) {
+        let bindings = self.sessions.close_client(self.client_instance_id());
+        if bindings.is_empty() {
+            return;
+        }
+        let Ok(adapter) = self.app_state.platform_require() else {
+            return;
+        };
+        let Ok(runtime) = adapter.runtime() else {
+            return;
+        };
+        let context = self.request_context(adapter.identity());
+        // Best effort per session: one failure must not strand the others.
+        for binding in bindings {
+            if let Err(error) = runtime
+                .close_session(
+                    &context,
+                    CloseSessionRequest::new(binding.handle, CloseMode::RequireNoTransaction),
+                )
+                .await
+            {
+                tracing::warn!("[mcp] closing a disconnected session failed: {error}");
+            }
         }
     }
 
@@ -200,10 +277,13 @@ mod tests {
 
     #[test]
     fn mcp_all_tools_list_is_stable() {
-        assert_eq!(MCP_ALL_TOOLS.len(), 10);
+        assert_eq!(MCP_ALL_TOOLS.len(), 13);
         assert!(MCP_ALL_TOOLS.contains(&"list_connections"));
         assert!(MCP_ALL_TOOLS.contains(&"search_tables"));
         assert!(MCP_ALL_TOOLS.contains(&"run_workflow"));
+        assert!(MCP_ALL_TOOLS.contains(&"open_session"));
+        assert!(MCP_ALL_TOOLS.contains(&"use_session"));
+        assert!(MCP_ALL_TOOLS.contains(&"close_session"));
     }
 
     #[test]
@@ -298,6 +378,9 @@ mod tests {
                 .collect::<Vec<_>>(),
         )
     }
+
+    // Stateful session tests; include from extracted block below.
+    include!("server/tests_stateful.rs");
 
     // Remaining integration tests live in server.rs; include from extracted block below.
     include!("server/tests_integration.rs");

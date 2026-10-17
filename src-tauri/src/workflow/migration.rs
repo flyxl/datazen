@@ -633,6 +633,7 @@ mod tests {
             name: "Export".into(),
             description: String::new(),
             version: None,
+            blocks: Vec::new(),
             author: None,
             variables: vec![],
             connection: None,

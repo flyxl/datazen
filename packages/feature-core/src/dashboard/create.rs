@@ -37,6 +37,7 @@ pub fn hidden_sql_workflow(
         name: title.to_string(),
         description: "Dashboard hidden query".into(),
         version: None,
+        blocks: Vec::new(),
         author: None,
         variables: vec![],
         connection: Some(connection_id.to_string()),
