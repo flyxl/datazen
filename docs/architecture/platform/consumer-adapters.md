@@ -40,6 +40,8 @@ metadata 工具只读；写工具仍需执行权限与破坏性确认。模型�
 
 用户显式允许某次 AI 会话使用编辑器状态时，宿主建立内存 grant：grantId、principal、clientInstanceId、AI invocation 范围、目标 session 身份、contextVersion、允许工具/action、到期时间与撤销状态。grantId 不是 attachment token，模型和 Provider 不得到 live session handle。
 
+> 2026-10-17 实现现状：桌面 grant 已落地 `{grantId, clientInstanceId, editorSessionId, connectionId, database, configRevision, editorSessionId 对应的活 SessionHandle, deadline, revoked}`（`packages/feature-core/src/ai/ownership.rs`）；`principal`、AI invocation 范围、允许工具/action 与 contextVersion 的独立记录仍是目标设计，当前以 configRevision + 归属校验覆盖。
+
 共享工具在同一 session actor 队列排队，能观察同一事务和临时对象；不建立第二套事务管理器。开启/提交/回滚用户事务必须有单独明确授权，普通“查询当前状态”授权不包含这些动作。
 
 以下任一条件使 grant 失效：用户撤销、编辑器关闭、session 被替代或丢失、上下文版本变化、登录/权限撤销、TTL 到期。派发前检查 grant；已在途调用按精确 execution 取消能力处理，记录真实效果。失效后拒绝绑定操作，不自动改为独立连接执行；用户重新选择目标或重新授权后才创建新操作。
@@ -122,7 +124,7 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 `execute_driver_command` 仍服务桌面 editor/session IPC；ConnectionManager 仍承载本地 session identity、tunnel 与 P5 repository/job adapter。AI/MCP/Workflow 默认 DB 工具已走共享 ResourceExecutionHost。Monitor 的兼容连接 registry 没有活动调度查询调用，实际调度走共享 MonitorHost/Workflow。
 
-共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，但 driver source 与 backup execution 仍是本地 adapter；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。session/transaction block 已接全局派发前拒绝，可信 WorkflowBlock Job owner/TTL、实际块执行、显式 editor grant、委托调度授权和 native-tool 全预算仍需后续实现与适用层验证。不得将本轮桌面单测通过当作 P6 阶段退出证明。
+共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，但 driver source 与 backup execution 仍是本地 adapter；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。session/transaction block 已接全局派发前拒绝，可信 WorkflowBlock Job owner/TTL、实际块执行、委托调度授权和 native-tool 全预算仍需后续实现与适用层验证；**显式 editor grant 已接桌面 H 层**（grant/revoke/touch IPC、借用不拥有的 in-session 执行、取消回执），真实 UI 旅程与 MCP/Wapp 归属仍待。不得将本轮桌面单测通过当作 P6 阶段退出证明。
 
 ## 9. 验收与故障旅程
 

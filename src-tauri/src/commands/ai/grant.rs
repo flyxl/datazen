@@ -14,8 +14,6 @@ use datazen_feature_core::ai::ownership::{
 use datazen_feature_core::ai::tool_loop::AiToolLoopHost;
 use datazen_feature_core::services::ports::DatabaseToolHost;
 use datazen_feature_core::workflow::command::WorkflowCommandStep;
-use datazen_feature_core::workflow::resource_execution::PreparedExecution;
-use datazen_feature_core::workflow::session_block::RetainedSession;
 use datazen_platform_api::dto::session::SessionHandle;
 use datazen_platform_api::id::{ClientInstanceId, EditorSessionId};
 use std::sync::Arc;
@@ -189,10 +187,15 @@ impl AiRequestHost<'_> {
 
     fn with_attribution(&self, raw: String) -> String {
         let attribution = match &self.claim {
-            AiTargetClaim::Independent => serde_json::json!({ "ownerKind": "independent" }),
-            AiTargetClaim::EditorGrant { grant_id, .. } => serde_json::json!({
-                "ownerKind": "editorGrant",
+            AiTargetClaim::Independent => serde_json::json!({ "kind": "independent" }),
+            AiTargetClaim::EditorGrant {
+                grant_id,
+                editor_session_id,
+                ..
+            } => serde_json::json!({
+                "kind": "editorGrant",
                 "grantId": grant_id,
+                "editorSessionId": editor_session_id,
             }),
         };
         match serde_json::from_str::<serde_json::Value>(&raw) {
@@ -228,66 +231,47 @@ impl AiRequestHost<'_> {
                 AiGrantRejection::SessionGone.code()
             )
         })?;
-        let adapter = self
-            .state
-            .platform_require()
-            .map_err(|error| error.message)?;
-        // The runtime validates that the session belongs to the owner in the
-        // context, so this path must be owner-bound rather than a bare call.
-        let intent = crate::platform::identity::OwnerIntent::Editor {
-            claimed_client_instance_id: ClientInstanceId::new(record.client_instance_id.clone()),
-            editor_session_id: EditorSessionId::new(record.editor_session_id.clone()),
-        };
-        let (call, _owner) = adapter
-            .begin_owned_call(&intent)
-            .map_err(|error| format!("{:?}: {}", error.code, error.message))?;
-        let runtime = adapter.runtime().map_err(|error| error.message)?;
-        let database = input
-            .get("database")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned)
-            .or_else(|| record.database.clone());
-        let schema = input
-            .get("schema")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned);
-        let namespace =
-            datazen_platform_api::target::NamespaceTarget::new(database, None, schema, vec![]);
-        let target = datazen_platform_api::target::ExecutionTarget::new(
-            datazen_platform_api::id::ConnectionId::new(&record.connection_id),
-            namespace,
-        );
-        let canonical = adapter
-            .resolve_execution_target(
-                call.context(),
-                datazen_platform_api::id::Counter::new(record.config_revision),
-                command,
-                &target,
-            )
-            .await
-            .map_err(|error| error.message)?;
-        let prepared = PreparedExecution {
-            runtime,
-            context: call.context().clone(),
-            target: crate::platform::into_execution_target(canonical),
-        };
+        // Bind the tool to the session the grant recorded. Missing database is
+        // filled from the grant so a tool cannot silently retarget itself; a
+        // database the user typed is kept only when it is the granted one.
+        let mut input = input;
+        if let Some(object) = input.as_object_mut() {
+            let requested = object
+                .get("database")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
+            match (requested, record.database.as_deref()) {
+                (Some(requested), Some(granted)) if requested != granted => {
+                    return Err(format!(
+                        "{}: tool target {requested} is outside the granted database {granted}",
+                        AiGrantRejection::SessionGone.code()
+                    ));
+                }
+                (None, Some(granted)) => {
+                    object.insert(
+                        "database".into(),
+                        serde_json::Value::String(granted.to_owned()),
+                    );
+                }
+                _ => {}
+            }
+        }
         let step = WorkflowCommandStep::new(
             "ai-tool",
             command,
             Some(record.connection_id.clone()),
             input,
         );
-        // Execute on the editor's own session; the prepared target must match
-        // exactly, otherwise the shared executor refuses before dispatch.
-        let session = RetainedSession::from_opened(prepared, handle);
-        datazen_feature_core::workflow::resource_execution::execute_with_session(
+        // Borrow the editor's session: execute_with_existing_session never
+        // closes it, so a successful tool call cannot roll back the editor.
+        datazen_feature_core::workflow::resource_execution::execute_with_existing_session(
             self.state,
             &step,
             &record.connection_id,
             None,
             None,
             false,
-            Some(&session),
+            handle,
         )
         .await
         .map_err(|error| format!("aiGrantExecutionFailed: {error}"))

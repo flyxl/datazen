@@ -285,7 +285,8 @@ AI 默认**独立操作**：每个 DB 工具调用经共享 `ResourceExecutionHo
 - 授权表 `AiGrantRegistry`：`issue / verify / verify_claim / touch / revoke / revoke_for_editor_session / purge_expired`。记录含 `client_instance_id`、`editor_session_id`、`owner_fingerprint`、`connection_id`、`database`、`config_revision`、`deadline_ms` 与编辑器活会话句柄 `SessionHandle`。时间全部由调用方注入（`now_ms`），默认 TTL 15 分钟，活动对话经 `touch` 续期。
 - IPC：`ai_grant_editor_session`（经 `OwnerIntent::Editor` 归属校验，claimed client 与本机实例不符即拒绝；再核验句柄指向活会话并钉住配置版本）、`ai_revoke_editor_grant`、`ai_touch_editor_grant`。`ai_chat` / `ai_generate_sql` 增参 `targetClaim`。
 - 执行分流：独立调用走一次性资源；`editorGrant` 调用先 `verify_claim`，失败按 `AiGrantRejection::code()` 明确报错（`aiGrantUnknown` / `aiGrantClientMismatch` / `aiGrantSessionGone` / `aiGrantExpired` / `aiGrantRevoked`），**禁止静默降级为独立操作**；成功则用 `RetainedSession` 绑定编辑器句柄，经 `resource_execution::execute_with_session` 执行，目标与授权记录不一致时在派发前拒绝。
-- 编辑器会话终止时 `revoke_for_editor_session` 撤销该会话的全部授权；不关闭编辑器自己的会话。
-- 结果归属：DB 工具结果 JSON 附 `attribution`：`{ownerKind: "independent" | "editorGrant", grantId?}`，使前端能标出来源、并在撤销后拒绝旧归属的结果。
+- **借用而不拥有**：grant 执行走 `resource_execution::execute_with_existing_session`——只借用编辑器会话句柄，执行器**不关闭也不回滚**该会话。此前用 `RetainedSession` 包装会在 drop 时关闭编辑器会话，已废弃。
+- 工具指定的 `database` 与授权记录不一致时在派发前拒绝；未指定时用授权记录补齐，目标规范化由共享执行器统一完成（因此对象寻址命令如 `get_table_schema` 走同一条 `prepare` 路径）。
+- 结果归属：DB 工具结果 JSON 附 `attribution`：`{kind: "independent" | "editorGrant", grantId?, editorSessionId?}`。这是**面向模型与审计的来源标注**，不回流前端 UI；前端消息上的归属元数据由 `targetClaim` 直接构造。
 
-> 当前限制：`editorGrant` 的执行路径只覆盖 DB 工具（`query` / `explain` / schema 元数据）；MCP 工具仍走各自会话。仅 PG + MySQL 在本轮验证范围内。
+> 当前限制（P6 未关闭）：`revoke_for_editor_session` / `cancel_owner` / `purge_expired` 尚未接入编辑器会话关闭与定期回收的调用点，撤销目前由前端在关闭面板/切 pane 时主动调用；`runtime.get_session` 只校验 org/principal/clientInstanceId 与会话存在，**不校验句柄属于该 editor 或该 connection**，同进程伪造他 pane 句柄仍可能被接受；MCP 工具仍走各自会话；F 层真实 UI 旅程未写。仅 PG + MySQL 在本轮验证范围内。

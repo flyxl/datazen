@@ -93,6 +93,18 @@ pub async fn execute(
     .await
 }
 
+/// How one step binds to a runtime session.
+///
+/// A borrowed session belongs to someone else (for example the user's editor
+/// tab). The executor must never close it: closing a session is the owner's
+/// decision, and a tool call that quietly rolled back the editor's transaction
+/// would be worse than refusing to run.
+enum SessionBinding<'a> {
+    Independent,
+    Borrowed(datazen_platform_api::dto::session::SessionHandle),
+    Retained(&'a super::session_block::RetainedSession),
+}
+
 pub async fn execute_with_session(
     state: &dyn ResourceExecutionHost,
     step: &WorkflowCommandStep,
@@ -101,6 +113,54 @@ pub async fn execute_with_session(
     workflow_deadline: Option<tokio::time::Instant>,
     require_workflow: bool,
     session: Option<&super::session_block::RetainedSession>,
+) -> Result<CommandResult, WorkflowError> {
+    let binding = match session {
+        Some(session) => SessionBinding::Retained(session),
+        None => SessionBinding::Independent,
+    };
+    execute_bound(
+        state,
+        step,
+        connection_id,
+        permission_mode,
+        workflow_deadline,
+        require_workflow,
+        binding,
+    )
+    .await
+}
+
+/// Run one step on a session that the caller owns. The executor borrows the
+/// handle only; it never closes or rolls back that session.
+pub async fn execute_with_existing_session(
+    state: &dyn ResourceExecutionHost,
+    step: &WorkflowCommandStep,
+    connection_id: &str,
+    permission_mode: Option<crate::mcp::permission::McpPermissionMode>,
+    workflow_deadline: Option<tokio::time::Instant>,
+    require_workflow: bool,
+    handle: datazen_platform_api::dto::session::SessionHandle,
+) -> Result<CommandResult, WorkflowError> {
+    execute_bound(
+        state,
+        step,
+        connection_id,
+        permission_mode,
+        workflow_deadline,
+        require_workflow,
+        SessionBinding::Borrowed(handle),
+    )
+    .await
+}
+
+async fn execute_bound(
+    state: &dyn ResourceExecutionHost,
+    step: &WorkflowCommandStep,
+    connection_id: &str,
+    permission_mode: Option<crate::mcp::permission::McpPermissionMode>,
+    workflow_deadline: Option<tokio::time::Instant>,
+    require_workflow: bool,
+    binding: SessionBinding<'_>,
 ) -> Result<CommandResult, WorkflowError> {
     let step_deadline = tokio::time::Instant::now()
         + std::time::Duration::from_secs(step.timeout_secs.unwrap_or(30));
@@ -191,7 +251,7 @@ pub async fn execute_with_session(
         target = target.with_object(ObjectTarget::new("table", table));
     }
 
-    let prepared = if let Some(session) = session {
+    let prepared = if let SessionBinding::Retained(session) = binding {
         if target != session.prepared.target {
             return Err(WorkflowError::Validation(
                 "block command target changed".into(),
@@ -203,6 +263,8 @@ pub async fn execute_with_session(
             target: session.prepared.target.clone(),
         }
     } else {
+        // Independent and borrowed sessions both resolve their target through the
+        // normal preparation path, so canonicalisation happens exactly once.
         before_dispatch(
             deadline,
             state.prepare(connection_id, revision, &step.command, target),
@@ -212,16 +274,21 @@ pub async fn execute_with_session(
     let runtime = prepared.runtime;
     let context = prepared.context;
     let target = prepared.target;
+    let bound_handle = match binding {
+        SessionBinding::Independent => None,
+        SessionBinding::Borrowed(handle) => Some(handle),
+        SessionBinding::Retained(session) => Some(session.handle.clone()),
+    };
     let token = before_dispatch(
         deadline,
         runtime.issue_submission_token(
             &context,
-            if session.is_some() {
+            if bound_handle.is_some() {
                 IdempotentOperation::ExecuteInSession
             } else {
                 IdempotentOperation::ExecuteAtTarget
             },
-            session.map(|s| &s.handle),
+            bound_handle.as_ref(),
         ),
     )
     .await?
@@ -251,12 +318,12 @@ pub async fn execute_with_session(
         }
     }
     let submission = async {
-        if let Some(session) = session {
+        if let Some(handle) = bound_handle.clone() {
             runtime
                 .execute_in_session(
                     &context,
                     datazen_application::dto::requests::ExecuteInSessionRequest::new(
-                        session.handle.clone(),
+                        handle,
                         CommandCall::new(&step.command, command_input),
                         token.idempotency_key,
                     ),
