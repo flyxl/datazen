@@ -804,7 +804,7 @@ v1 定义的映射规则是机械的、无歧义的：
 
 ### 2026-10-17 Workflow v2 派发安全边界
 
-共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺命令/驱动元数据要求的字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。database 要求来自命令的 target requirements 和驱动 has_multi_database 元数据，单库驱动不因 SQL 命令名被强制要求 database；缺元数据明确 CapabilityUnsupported，不猜测其他驱动能力。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
+共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺命令/驱动元数据要求的字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。database 要求保留命令 target requirements 的 Required / Optional / Forbidden 三态；Forbidden 在派发前拒绝已选目标中的 database，且不被驱动 has_multi_database 的通用 SQL 要求覆盖。Optional 才可按该驱动元数据提升为 Required，单库驱动不因 SQL 命令名被强制要求 database；缺元数据明确 CapabilityUnsupported，不猜测其他驱动能力。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
 
 `sessionBlock` 与 `transactionBlock` 当前都在独立步骤执行前失败关闭，不能被旧 executor 静默忽略。前者的前置缺口是受控 Workflow Job 生命周期、经授权的 `OwnerRef::WorkflowBlock { jobId, blockId }` 与 TTL 清理；Runtime application 目前拒绝未获 Job 授权的该 owner，禁止用 `ClientSession` 替代。后者还缺事务计划预检、提交/回滚真实效果与整块重试协议。
 

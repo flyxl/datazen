@@ -12,6 +12,7 @@
 use super::error::WorkflowError;
 use super::executable::{ExecutableStep, TargetDeclaration};
 use super::model::BlockKind;
+use datazen_driver_api::namespace::TargetLevelRequirement;
 
 /// 最终目标来自哪一级。用于错误信息与审计，**不参与**目标身份比较。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,19 +48,43 @@ pub struct ExecutionTarget {
 
 /// 本次操作的目标要求，来自 Command definition 的 `targetRequirements`
 /// （连接管理 §4.3：不使用全驱动统一 required 列表）。
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TargetRequirements {
-    /// 驱动 namespaceShape / 操作要求里 database 层级是 required。
-    pub requires_database: bool,
+    /// Preserve every command-level database constraint, including Forbidden.
+    pub database: TargetLevelRequirement,
+}
+
+impl Default for TargetRequirements {
+    fn default() -> Self {
+        Self::NONE
+    }
 }
 
 impl TargetRequirements {
     pub const DATABASE: Self = Self {
-        requires_database: true,
+        database: TargetLevelRequirement::Required,
     };
     pub const NONE: Self = Self {
-        requires_database: false,
+        database: TargetLevelRequirement::Optional,
     };
+
+    /// A command prohibition wins over the driver's general SQL namespace rule.
+    pub fn from_driver(
+        database: TargetLevelRequirement,
+        multi_database: bool,
+        command: &str,
+    ) -> Self {
+        Self {
+            database: match database {
+                TargetLevelRequirement::Optional
+                    if multi_database && matches!(command, "query" | "execute" | "explain") =>
+                {
+                    TargetLevelRequirement::Required
+                }
+                declared => declared,
+            },
+        }
+    }
 }
 
 /// 同一 connectionId 内切换命名空间的能力，由驱动 namespaceShape 决定
@@ -130,11 +155,21 @@ pub fn resolve(
         });
     };
 
-    if requirements.requires_database && declared.database.is_none() {
+    if requirements.database == TargetLevelRequirement::Required && declared.database.is_none() {
         return Err(WorkflowError::TargetRequired {
             step_id: step_id.to_string(),
             detail: format!(
                 "operation requires a database but the {} level target of '{step_id}' declares only connectionId '{connection_id}'",
+                source.as_str()
+            ),
+        });
+    }
+
+    if requirements.database == TargetLevelRequirement::Forbidden && declared.database.is_some() {
+        return Err(WorkflowError::TargetUnsupported {
+            step_id: step_id.to_string(),
+            detail: format!(
+                "operation forbids a database but the {} level target declares one",
                 source.as_str()
             ),
         });
@@ -194,7 +229,14 @@ pub fn resolve_block_targets(
         }
         // A declared step level must be complete even when it repeats only part
         // of the block identity. Never fill missing fields from the block.
-        resolve(&step.id, &declared, None, &TargetDeclaration::empty(), None, requirements)?;
+        resolve(
+            &step.id,
+            &declared,
+            None,
+            &TargetDeclaration::empty(),
+            None,
+            requirements,
+        )?;
         match (&declared.connection, &declared.database) {
             // 跨连接：换资源就是换块，静态拒绝整块。
             (Some(connection), _) if *connection != block.connection_id => {
@@ -272,6 +314,51 @@ mod tests {
         target.source == source
             && target.connection_id == connection_id
             && target.database.as_deref() == database
+    }
+
+    #[test]
+    fn database_requirement_preserves_required_optional_and_forbidden() {
+        for database in [
+            TargetLevelRequirement::Required,
+            TargetLevelRequirement::Optional,
+            TargetLevelRequirement::Forbidden,
+        ] {
+            for present in [false, true] {
+                let result = resolve(
+                    "s",
+                    &declared(Some("connection"), present.then_some("app")),
+                    None,
+                    &TargetDeclaration::empty(),
+                    None,
+                    TargetRequirements { database },
+                );
+                match (database, present) {
+                    (TargetLevelRequirement::Required, false) => {
+                        assert!(matches!(result, Err(WorkflowError::TargetRequired { .. })))
+                    }
+                    (TargetLevelRequirement::Forbidden, true) => assert!(matches!(
+                        result,
+                        Err(WorkflowError::TargetUnsupported { .. })
+                    )),
+                    _ => assert!(result.is_ok()),
+                }
+            }
+        }
+        for command in ["query", "execute", "explain"] {
+            assert_eq!(
+                TargetRequirements::from_driver(TargetLevelRequirement::Forbidden, true, command)
+                    .database,
+                TargetLevelRequirement::Forbidden
+            );
+            assert_eq!(
+                TargetRequirements::from_driver(TargetLevelRequirement::Optional, true, command),
+                TargetRequirements::DATABASE
+            );
+            assert_eq!(
+                TargetRequirements::from_driver(TargetLevelRequirement::Optional, false, command),
+                TargetRequirements::NONE
+            );
+        }
     }
 
     #[test]

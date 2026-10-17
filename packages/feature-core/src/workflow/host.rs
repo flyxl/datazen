@@ -33,12 +33,11 @@ pub trait WorkflowHost: Send + Sync {
                 connection_id: connection.into(),
             }
         })?;
-        Ok(super::target_plan::TargetRequirements {
-            requires_database: requirements.namespace.database
-                == datazen_driver_api::namespace::TargetLevelRequirement::Required
-                || (matches!(command, "query" | "execute" | "explain")
-                    && driver.has_multi_database()),
-        })
+        Ok(super::target_plan::TargetRequirements::from_driver(
+            requirements.namespace.database,
+            driver.has_multi_database(),
+            command,
+        ))
     }
     /// Must clean candidate resources if cancelled before returning a receipt.
     /// An unconfirmed admission must return SqlUnconfirmed and must not replay.

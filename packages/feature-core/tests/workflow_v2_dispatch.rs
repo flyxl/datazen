@@ -32,13 +32,20 @@ impl WorkflowHost for Host {
     async fn target_requirements(
         &self,
         connection: &str,
-        _: &str,
+        command: &str,
     ) -> Result<datazen_feature_core::workflow::target_plan::TargetRequirements, WorkflowError>
     {
+        use datazen_driver_api::namespace::TargetLevelRequirement;
         Ok(
-            datazen_feature_core::workflow::target_plan::TargetRequirements {
-                requires_database: connection != "single-database",
-            },
+            datazen_feature_core::workflow::target_plan::TargetRequirements::from_driver(
+                if connection == "database-forbidden" {
+                    TargetLevelRequirement::Forbidden
+                } else {
+                    TargetLevelRequirement::Optional
+                },
+                connection != "single-database",
+                command,
+            ),
         )
     }
     async fn connection_name(&self, _: &str) -> Result<String, WorkflowError> {
@@ -256,6 +263,52 @@ async fn acquisition_timeout_cleans_candidate_preserves_unknown_and_dispatches_n
         CLEANED_ACQUISITIONS.load(Ordering::SeqCst),
         cleaned + 2,
         "expired run never starts admission"
+    );
+    assert_eq!(host.0.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn forbidden_database_is_rejected_before_any_admission_and_absence_is_preserved() {
+    let host = Host(AtomicUsize::new(0));
+    for command in ["query", "execute", "explain"] {
+        let mut workflow = definition(Some("2"), None);
+        workflow.steps.push(WorkflowStep::Command {
+            id: "forbidden".into(),
+            command: command.into(),
+            connection: Some("database-forbidden".into()),
+            input: serde_json::json!({"database":"explicit", "sql":"select 1"}),
+            timeout_secs: None,
+            on_error: None,
+        });
+        let error = WorkflowExecutor::execute(&workflow, &host, None, &serde_json::json!({}))
+            .await
+            .expect_err("whole-run preflight rejects forbidden target");
+        assert!(error.contains("forbids a database"), "{error}");
+        assert_eq!(
+            host.0.load(Ordering::SeqCst),
+            0,
+            "even the earlier valid step must not reach admission"
+        );
+        // The explicit connection-only level must not inherit workflow.database.
+        if let WorkflowStep::Command { input, .. } = &mut workflow.steps[1] {
+            input.as_object_mut().expect("input").remove("database");
+        }
+        workflow.steps.remove(0);
+        let result = WorkflowExecutor::execute(&workflow, &host, None, &serde_json::json!({}))
+            .await
+            .expect("absent database accepted by Forbidden");
+        assert!(result.success);
+        host.0.store(0, Ordering::SeqCst);
+    }
+    let mut workflow = definition(Some("2"), Some("sessionBlock"));
+    workflow.steps.clear();
+    workflow.connection = Some("database-forbidden".into());
+    let error = WorkflowExecutor::execute(&workflow, &host, None, &serde_json::json!({}))
+        .await
+        .expect_err("inherited block target also forbidden");
+    assert!(
+        error.contains("forbids a database"),
+        "must reject target before owner validation or block admission: {error}"
     );
     assert_eq!(host.0.load(Ordering::SeqCst), 0);
 }
