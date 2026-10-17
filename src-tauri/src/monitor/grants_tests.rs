@@ -144,6 +144,47 @@ async fn persisted_monitor_grant_drives_real_desktop_policy_and_read_only_target
         )
         .await
         .is_err());
+    // This is the production policy used before Runtime resource admission and
+    // again before physical dispatch, including grants saved before this policy.
+    for sql in [
+        "SELECT nextval('seq')",
+        "SELECT setval('seq', 1)",
+        "SELECT currval('seq')",
+        "SELECT lastval()",
+        "SELECT GET_LOCK('name', 0)",
+        "SELECT RELEASE_LOCK('name')",
+        "SELECT RELEASE_ALL_LOCKS()",
+        "SELECT IS_FREE_LOCK('name')",
+        "SELECT IS_USED_LOCK('name')",
+        "SELECT pg_advisory_unlock_all()",
+    ] {
+        assert!(
+            policy
+                .authorize_target(
+                    &context,
+                    subject.clone(),
+                    AuthorizationAction::Query,
+                    target,
+                    "query",
+                    &serde_json::json!({"sql":sql})
+                )
+                .await
+                .is_err(),
+            "unapproved function passed production policy"
+        );
+    }
+    assert!(policy
+        .authorize_target(
+            &context,
+            subject.clone(),
+            AuthorizationAction::Query,
+            target,
+            "query",
+            &serde_json::json!({"sql":"SELECT COALESCE(AVG(value), 0), COUNT(*) FROM metrics"})
+        )
+        .await
+        .unwrap()
+        .is_allowed());
     let wrong = ExecutionTarget::new(ConnectionId::new("pg"), NamespaceTarget::database("other"));
     assert!(policy
         .authorize_target(

@@ -87,11 +87,12 @@ impl MonitorGrant {
 }
 
 /// Bounded monitor policy: one SELECT/VALUES query, no writable CTE, INTO or row
-/// lock. This supplements the connection SQL guard; it is not MCP's ReadOnly
+/// lock. Function calls use a closed built-in allowlist; unknown, quoted and
+/// schema-qualified functions and table-valued functions fail closed. This supplements the connection SQL guard; it is not MCP's ReadOnly
 /// mode (which deliberately disables all SQL tools).
 pub fn validate_read_only_sql(sql: &str) -> Result<(), String> {
     use sqlparser::{
-        ast::{Query, SetExpr, Statement, Visit, Visitor},
+        ast::{Expr, ObjectNamePart, Query, SetExpr, Statement, TableFactor, Visit, Visitor},
         dialect::GenericDialect,
         parser::Parser,
     };
@@ -110,6 +111,62 @@ pub fn validate_read_only_sql(sql: &str) -> Result<(), String> {
     struct ReadOnly;
     impl Visitor for ReadOnly {
         type Break = ();
+        fn pre_visit_expr(&mut self, expr: &Expr) -> ControlFlow<()> {
+            if let Expr::Function(function) = expr {
+                // Do not infer safety from SELECT or maintain a denylist of
+                // volatile functions: new/UDF/qualified calls must be reviewed.
+                let [ObjectNamePart::Identifier(name)] = function.name.0.as_slice() else {
+                    return ControlFlow::Break(());
+                };
+                if name.quote_style.is_some()
+                    || !matches!(
+                        name.value.to_ascii_lowercase().as_str(),
+                        "count"
+                            | "sum"
+                            | "avg"
+                            | "min"
+                            | "max"
+                            | "abs"
+                            | "round"
+                            | "ceil"
+                            | "ceiling"
+                            | "floor"
+                            | "sqrt"
+                            | "lower"
+                            | "upper"
+                            | "length"
+                            | "char_length"
+                            | "octet_length"
+                            | "trim"
+                            | "ltrim"
+                            | "rtrim"
+                            | "replace"
+                            | "substring"
+                            | "substr"
+                            | "concat"
+                            | "coalesce"
+                            | "nullif"
+                            | "greatest"
+                            | "least"
+                            | "now"
+                            | "current_date"
+                            | "current_timestamp"
+                    )
+                {
+                    return ControlFlow::Break(());
+                }
+            }
+            ControlFlow::Continue(())
+        }
+        fn pre_visit_table_factor(&mut self, table: &TableFactor) -> ControlFlow<()> {
+            // FROM f(...) is not necessarily represented by Expr::Function.
+            match table {
+                TableFactor::Table { args: None, .. }
+                | TableFactor::Derived { .. }
+                | TableFactor::NestedJoin { .. } => ControlFlow::Continue(()),
+                _ => ControlFlow::Break(()),
+            }
+        }
         fn pre_visit_query(&mut self, query: &Query) -> ControlFlow<()> {
             if query.locks.is_empty() && body(&query.body) {
                 ControlFlow::Continue(())
@@ -125,7 +182,7 @@ pub fn validate_read_only_sql(sql: &str) -> Result<(), String> {
         || statements.visit(&mut ReadOnly).is_break()
     {
         return Err(
-            "monitor requires one read-only query without writable CTE, INTO or row locks".into(),
+            "monitor requires one read-only query without writable CTE, INTO, row locks or unapproved functions".into(),
         );
     }
     Ok(())

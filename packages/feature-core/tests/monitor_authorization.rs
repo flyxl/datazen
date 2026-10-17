@@ -257,3 +257,53 @@ fn scheduled_sql_accepts_queries_but_rejects_writes_hidden_in_query_shapes() {
         assert!(validate_read_only_sql(sql).is_err(), "{sql}");
     }
 }
+
+#[test]
+fn scheduled_read_only_queries_use_a_closed_function_policy() {
+    use datazen_feature_core::dashboard::schedule_grant::validate_read_only_sql;
+    for sql in [
+        "SELECT count(*), sum(value), avg(value), min(value), max(value) FROM metrics",
+        "SELECT COALESCE(ROUND(AVG(value), 2), 0) FROM metrics",
+        "SELECT lower(name), upper(name), length(name) FROM metrics",
+        "WITH totals AS (SELECT count(*) n FROM metrics) SELECT n FROM totals",
+        "SELECT count(*) OVER () FROM metrics",
+    ] {
+        assert!(
+            validate_read_only_sql(sql).is_ok(),
+            "allowed query rejected: {sql}"
+        );
+    }
+    for sql in [
+        "SELECT nextval('sequence_name')",
+        "SELECT setval('sequence_name', 42)",
+        "SELECT currval('sequence_name')",
+        "SELECT lastval()",
+        "SELECT pg_catalog.nextval('sequence_name')",
+        r#"SELECT "nextval"('sequence_name')"#,
+        "SELECT GET_LOCK('monitor', 0)",
+        "SELECT RELEASE_LOCK('monitor')",
+        "SELECT RELEASE_ALL_LOCKS()",
+        "SELECT IS_FREE_LOCK('monitor')",
+        "SELECT IS_USED_LOCK('monitor')",
+        "SELECT pg_advisory_lock(1)",
+        "SELECT pg_try_advisory_lock(1)",
+        "SELECT pg_advisory_unlock(1)",
+        "SELECT pg_advisory_unlock_all()",
+        "SELECT pg_advisory_xact_lock(1)",
+        "SELECT pg_try_advisory_xact_lock_shared(1)",
+        "SELECT set_config('application_name', 'changed', false)",
+        "SELECT custom_write()",
+        "SELECT custom.count(*) FROM metrics",
+        r#"SELECT "COUNT"(*) FROM metrics"#,
+        "SELECT * FROM nextval('sequence_name')",
+        "SELECT count(*) FROM metrics WHERE nextval('sequence_name') > 0",
+        "SELECT COALESCE((SELECT GET_LOCK('nested', 0)), 0)",
+        "WITH changed AS (SELECT setval('sequence_name', 42)) SELECT * FROM changed",
+        "SELECT 1 UNION ALL SELECT GET_LOCK('union', 0)",
+    ] {
+        assert!(
+            validate_read_only_sql(sql).is_err(),
+            "unapproved function accepted: {sql}"
+        );
+    }
+}
