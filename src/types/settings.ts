@@ -9,27 +9,11 @@
  */
 import type { Value } from './connection';
 
-export type McpPermissionMode = 'read_only' | 'safe_write' | 'high_risk_write';
-
-/** Configurable SQL beautifier options. */
-export interface SqlFormatOptions {
-  keywordCase: 'upper' | 'lower' | 'preserve';
-  indentStyle: '2spaces' | '4spaces' | 'tab';
-  /** Put AND / OR at the start of the next line instead of the end of the current one. */
-  breakBeforeBooleanOperators: boolean;
-  /** Blank lines inserted between consecutive statements. */
-  linesBetweenQueries: number;
-}
-
-/**
- * Which SQL the Execute action submits when there is no explicit selection.
- * `ask` prompts whenever the script holds more than one statement.
- */
-export type SqlExecutionStrategy =
-  | 'current_statement'
-  | 'entire_script'
-  | 'largest_statement'
-  | 'ask';
+export type {
+  SettingsMcpPermissionMode as McpPermissionMode,
+  SettingsSqlFormatOptions as SqlFormatOptions,
+  SettingsSqlExecutionStrategy as SqlExecutionStrategy,
+} from '@datazen/backend-client';
 
 export type FilterOperator =
   | 'eq'

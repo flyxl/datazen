@@ -116,6 +116,14 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 现有平台设计的 Dashboard 目标来源和调度凭据缺口由 §6 固定；native tool 与 Wapp stateful 能力由 §5/§7 固定。具体驱动不具备相应能力仍必须拒绝，不能由 Host 伪造支持。
 
+### 8.1 当前共享实现与保留边界（2026-10-17）
+
+共享领域实现集中在 `packages/feature-core`，Wapp 协议/路由策略在 `packages/workspace-apps`。本轮补迁 command policy、迁移端点身份算法、Dashboard 创建/归档规则、export 容器规划与迁移结果历史映射；原路径保留薄绑定和兼容导出。逐项源码边界见 [feature-core 残余审计](feature-core.md#final-residual-audit-2026-10-17)。
+
+`execute_driver_command` 仍服务桌面 editor/session IPC；ConnectionManager 仍承载本地 session identity、tunnel 与 P5 repository/job adapter。AI/MCP/Workflow 默认 DB 工具已走共享 ResourceExecutionHost。Monitor 的兼容连接 registry 没有活动调度查询调用，实际调度走共享 MonitorHost/Workflow。
+
+共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，但 driver source 与 backup execution 仍是本地 adapter；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。session/transaction block、owner/TTL、显式 editor grant、委托调度授权和 native-tool 全预算仍需后续实现与适用层验证。不得将本轮桌面单测通过当作 P6 阶段退出证明。
+
 ## 9. 验收与故障旅程
 
 | 旅程 | 必须观察到的结果 | 关联用例 |
@@ -128,3 +136,5 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 | NativeTool 输出背压 → 取消 → 工具部分提交 | 管道/进程回收；保留真实副作用，未知不重跑 | CM-40、54、60 |
 
 Host fake 验证归属与清理；真实 driver 验证共享状态、精确取消和外部效果；Frontend 验证旧事件过滤；W1 验证鉴权与桥，WN 验证调度接管。未运行的层不能记为通过。
+
+恢复 adapter 的当前例外：`restore_sql_file` 已接 Artifact 上传与 `databaseRestoreApply` 受理/单次消费/JobRuntime，而非直接本地路径执行。PostgreSQL/MySQL 的 Gateway 通过固定 Runtime Session / ExecutionGateway 执行受限 SQL 格式并记录真实提交证据；其他驱动明确 Unsupported 至 P10，没有借旧 ConnectionManager 实现恢复。详见 [Job §2.5](data-migration-jobs.md#25-restore-apply-job已接线驱动执行失败关闭)。这不关闭真实驱动恢复验收或 Workflow block/owner/TTL 的其余门槛。

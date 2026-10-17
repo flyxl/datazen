@@ -61,11 +61,8 @@ pub(crate) async fn execute_driver_command_stream_impl(
         CommandError::Validation("command 'query_stream' requires string input 'sql'".into())
     })?;
 
-    if let Some(params) = request.input.get("params").cloned() {
-        let bound_sql = datazen_runtime::sql_guard::apply_params(&sql, &params)
-            .map_err(CommandError::Validation)?;
-        request.input["sql"] = serde_json::Value::String(bound_sql);
-    }
+    datazen_feature_core::services::command_policy::bind_sql_params(&mut request.input)
+        .map_err(CommandError::Validation)?;
     let mut sql = request
         .input
         .get("sql")
@@ -120,7 +117,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
         .await
         .map(|c| c.read_only)
         .unwrap_or(false);
-    let safe_mode = state.store.get_settings().await.safe_mode;
+    let safe_mode = state.store.execution_settings().await.safe_mode;
     datazen_runtime::sql_guard::check_sql(&sql, read_only, safe_mode)
         .map_err(CommandError::Validation)?;
 

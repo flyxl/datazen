@@ -1,3 +1,4 @@
+import type { SharedSettings } from './settings';
 /**
  * `BackendClient` — the typed facade every frontend consumer should hold.
  *
@@ -50,6 +51,9 @@ import type {
 } from './types';
 
 export interface BackendClient {
+  getSettings(): Promise<SharedSettings>;
+  saveSettings(settings: SharedSettings): Promise<SharedSettings>;
+
   /** Which backend this facade is bound to. Never a business-method argument. */
   readonly backendId: string;
   getPlatformIdentity(): Promise<{
@@ -213,6 +217,9 @@ export function createBackendClient(backendId: string, transport: BackendTranspo
 
   return {
     backendId,
+    getSettings: () => guard('getSettings', () => transport.call('getSettings', undefined)),
+    saveSettings: (settings) =>
+      guard('saveSettings', () => transport.call('saveSettings', { settings })),
     getPlatformIdentity: () =>
       guard('getPlatformIdentity', () => transport.call('getPlatformIdentity', undefined)),
     transport,

@@ -49,7 +49,8 @@ pub fn run_mcp_stdio() {
                 .await
                 .expect("Failed to init store"),
         );
-        let prompts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/prompts");
+        let prompts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../packages/feature-core/resources/prompts");
         let app_state = match build_app_state(store, Some(prompts_dir)).await {
             Ok(s) => s,
             Err(e) => {
@@ -296,6 +297,8 @@ pub fn run() {
             crate::commands::get_groups,
             crate::commands::get_log_path,
             crate::commands::get_settings,
+            crate::commands::get_shared_settings,
+            crate::commands::save_shared_settings,
             crate::commands::get_system_ui_language,
             crate::commands::import_connections_at_path,
             crate::commands::import_connections_preview,
@@ -359,6 +362,9 @@ pub fn run() {
             crate::commands::get_driver_commands,
             // ── 导出 ──
             crate::commands::export_tables_stream,
+            crate::commands::file_jobs::get_file_job,
+            crate::commands::file_jobs::cancel_file_job,
+            crate::commands::file_jobs::export_file_job,
             // ── 备份 ──
             crate::commands::backup_database,
             // ── 恢复 ──

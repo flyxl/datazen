@@ -145,4 +145,26 @@ describe('runSqlFileExecution (decision 3+6 unified IPC)', () => {
     await expect(runSqlFileExecution({ ...baseOptions(), onError })).rejects.toThrow('boom');
     expect(onError).toHaveBeenCalledWith('boom');
   });
+  it('does not report success or retry when the restore Job is unsupported', async () => {
+    const failure = new Error('Restore Unsupported: no verified Gateway binding');
+    invokeMock.mockRejectedValue(failure);
+    const onError = vi.fn();
+    const progress = vi.fn();
+    await expect(runSqlFileExecution({ ...baseOptions(), onError, onProgress: progress })).rejects.toThrow('Restore Unsupported');
+    expect(onError).toHaveBeenCalledWith(failure.message);
+    expect(invokeMock.mock.calls.filter(([command]) => command === 'restore_sql_file')).toHaveLength(1);
+    expect(progress.mock.calls.some(([payload]) => payload?.phase === 'done')).toBe(false);
+  });
+
+  it.each(['unknown', 'partiallyApplied', 'rolledBack', 'notStarted'])('preserves structured %s outcomes without retry or success', async (effectOutcome) => {
+    const failure = { code: 'restoreOutcome', message: `Restore failed: ${effectOutcome}; automatic retry is forbidden`, automaticRetryAllowed: false, details: { job: { state: 'failed', effectOutcome } } };
+    invokeMock.mockRejectedValue(failure);
+    const onError = vi.fn();
+    const progress = vi.fn();
+    await expect(runSqlFileExecution({ ...baseOptions(), onError, onProgress: progress })).rejects.toEqual(failure);
+    expect(onError).toHaveBeenCalledWith(failure.message);
+    expect(invokeMock.mock.calls.filter(([command]) => command === 'restore_sql_file')).toHaveLength(1);
+    expect(progress.mock.calls.some(([payload]) => payload?.phase === 'done')).toBe(false);
+  });
+
 });

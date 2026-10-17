@@ -93,6 +93,20 @@ JobState 与 effectOutcome 按 [连接 §10.1.1](connection-management.md#1011-p
 
 启动扫描把旧 Running 终结为 Failed/Unknown，并写入 `pendingVerification`；旧 Queued 以 `notExecuted` / `notDispatchedAfterRestart` 终结为 Failed/NotStarted。后者只是 durable admission 未进入 dispatch 的事实，不是 handler 核验结果；显式 `verify_recovery` 仅接受 PendingVerification，NotExecuted 不能通过 verifier 变成可续跑状态。恢复 verifier 是异步、只读职责，由调用方用新授权的资源提供；host 不自动获取旧 session/lease，也不自动 dispatch。
 
+### 2.5 Restore Apply Job（已接线，驱动执行失败关闭）
+
+`databaseRestoreApply` 已加入 `runtime::job::APPLY_KINDS`：必须携带由 host 生成的 `consumedPlanId`，受理时由现有 durable receipt/plan-consumption 事务保证单次消费。冻结 `RestorePlan` 仅含完整逻辑 target、配置 revision、输入 Artifact ID/字节数/SHA-256 和恢复选项；不含本地路径、SQL 正文、凭据或运行时 session/lease。
+
+桌面 `restore_sql_file` 保留原 IPC 参数与 boolean 成功/取消返回；已受理失败返回结构化 `restoreOutcome` 错误（JobDetails、实际 state/effectOutcome、unsupported 与 `automaticRetryAllowed:false`）。native picker（或既有 webdriver gated override）选中的文件先复制至私有 staging，再以 owner/组织绑定写入 ArtifactStore；上传失败 abort，完整上传才 finalize 与受理 Job。恢复阶段按 RequestContext 再读取 complete Artifact，逐块重查 ACL/TTL，核对 ArtifactMetadata 的不可变目标指纹（连接、命名空间、对象）与冻结 plan.target 一致，再核对长度和 SHA-256，然后要求 `RestoreGateway` 重验 target/revision/能力并提交。Job 通过既有 TargetWriter endpoint 预算派发；输入摘要验证不是数据库写入。
+
+`RestoreApplyJob` 与只读 `FileArtifactJob` 分离。Gateway 必须返回实际执行 ID、提交边界及独立的终态/效果证据；取消不能推断 rolledBack，Unknown 保留 Unknown。恢复 verifier 一律要求人工/驱动核验，不自动重放。安全 domain result 保存稳定 `restoreUnsupported` / `restoreNotAuthorized` / `restoreInvalidInput` 及提交前失败的 `restoreRuntimeUnavailable` / `restoreAdmissionRejected` / `restoreTargetMismatch` / `restoreNotSubmitted` 代码；NotStarted 取消统一为 `restoreCancelledBeforeSubmission`，不伪装输入无效或已经执行；get/cancel file Job 接口可读取/取消恢复 Job，恢复输入不会被当成导出结果。
+
+**生产 SQL 恢复**：PostgreSQL 与 MySQL ResourceProvider 在 capability snapshot 的 `retainedSqlRestoreV1` 键显式声明格式策略（transactionalDdl / implicitCommitDdl）。桌面 Gateway 通过现有 RuntimeConnectionUseCases 打开独立固定 Session，所有 probe、执行、commit/rollback 均进入统一 ExecutionGateway 与既有物理预算，不借用旧 ConnectionHandle。写入前回读数据库/schema、确认无活动事务及 MySQL autocommit，并重查配置版本、授权和 read-only/safe-mode。其他驱动继续 Unsupported，留待 P10。
+
+完整输入先用驱动 scanner 分句，再以 PostgreSQL/MySQL 方言 AST 校验每个限定对象名属于冻结 target（PostgreSQL schema/database、MySQL database，带引号标识保留大小写）；无法解析或核验的 AST 形式整份拒绝。跨目标 CREATE/INSERT/DROP、多对象 DROP 中任一越界，以及跨命名空间 rename 均在任何写入前拒绝。PostgreSQL 连接的 `search_path` 包含所选 schema 与 public，`current_schema` 无法证明名称解析排他；因此恢复要求 CREATE/DROP/INSERT/UPDATE/DELETE 等对象引用显式带冻结 schema，未限定引用整份拒绝（新建 index 名本身由已限定的 table 决定 schema，不是名称查找）。overwrite 生成的 DROP 保留显式 schema。PostgreSQL DROP/TRUNCATE CASCADE 与 ALTER DROP COLUMN/CONSTRAINT 等级联选项同样整份拒绝，避免影响冻结 schema 之外的依赖对象。支持范围：CREATE/ALTER/DROP/INSERT/UPDATE/DELETE/TRUNCATE/COMMENT；拒绝 COPY、客户端命令、SET/USE、嵌入事务控制以及 database/schema/tablespace 操作。unsupported 输入在任何写入前终结 NotStarted。该格式支持 CREATE/INSERT SQL dump（PostgreSQL 对象引用须为显式 schema.object，不接受 database.schema.object 三段名），不支持 pg_dump COPY、mysqldump executable comments 等客户端格式。overwrite 仅对脚本中的 CREATE TABLE/VIEW 生成同名 DROP，不清空脚本以外的对象；overwrite 下的 CREATE MATERIALIZED VIEW 在整份预检阶段拒绝。PostgreSQL 支持 owned single-transaction；MySQL 在完整输入预检阶段拒绝此选项，避免把 DDL 隐式提交说成原子恢复。
+
+每次成功的非事务语句记录真实执行 ID、目标/载荷摘要和提交边界；单事务只在确认 COMMIT 后记录一个边界。失败立即停止；已提交边界保留，传输/提交/回滚不确定为 Unknown。取消独立于效果，回滚使用独立清理令牌，只有成功的自有 ROLLBACK 才报告 RolledBack。旧 path helper 只在 Host 测试编译，不是生产回退。
+
 ## 3. 多端预算、重叠与授权
 
 1. 在取资源前规范化 source/target，逐端校验 read、execute/write 与产物权限；配置 enabled、readOnly 和 delegation 在派发前重新核验。
@@ -253,3 +267,5 @@ H 层验证编排与会计，D 层验证真实数据库副作用和方言，F �
 Core 持久化测试覆盖 AppDb v1→v2 时旧 workflow 保留与 DDL 失败回滚、accept/receipt/plan consumption 原子性与幂等、两个 SQLite repository 竞争同一 plan、Queued 重启转 NotExecuted 且不 dispatch、AppState 重建时 Running 转 PendingVerification、SQLite reopen 后 boundary/checkpoint/progress/artifact/domain result/recovery 读取、显式 async verifier 与不重放 handler、cancel/CAS/stale claim，以及落盘 JSON 不含合成 session token / idempotency key。
 
 三件套宿主准入统一使用 `src-tauri/src/services/migration_endpoint.rs` 的物理位置摘要：实际会话配置中的方言、database、schema、端口、隧道和路由选项参与身份，host/port/schema 缺省由实际驱动声明补齐。Sync 先按执行路径解析所选 database/schema。持久化 connectionId 仅用于预算归属；同一 profile 跨库合法，不同 profile 指向同一物理对象仍拒绝重叠。缺失会话配置或 owner 明确拒绝；SQL 文件输出只建立源数据库身份。摘要不包含配置明文，DNS 别名与本地文件路径别名仍需真实连接层证明。
+
+恢复失败的效果与任务状态独立传递，Failed/Cancelled 不代表无写入；Unknown/PartiallyApplied 原样保留。仅 domain result 为 `restoreUnsupported` 且效果为 NotStarted 时标识 unsupported。所有失败都禁止自动重试，需先查看持久化 Job、核验当前数据库状态并重新规划；不存在自动重放。前端将结构化错误的 message 显示给用户。历史 `restore_database` / `restore_database_with_dialog` 未注册，现有宿主前端统一使用 `restore_sql_file`，旧外部调用者需迁移到该入口，不新增未经授权的 path IPC 兼容别名。

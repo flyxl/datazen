@@ -76,7 +76,23 @@ impl TestAppState {
     /// Build a test state with a resource provider for runtime SQL/ChangeSet
     /// tests. Other tests keep using `with_options` so provider-backed session
     /// behavior is opt-in.
-    pub async fn with_resource_provider(opts: MockDriverOptions) -> Self {
+    pub async fn with_resource_provider(mut opts: MockDriverOptions) -> Self {
+        // This retained-resource fixture supports explain explicitly. Keep the
+        // default legacy MockDriver conservative so unsupported-driver tests
+        // continue to exercise the absence of this capability.
+        if !opts
+            .extra_commands
+            .iter()
+            .any(|command| command.id == "explain")
+        {
+            opts.extra_commands
+                .push(datazen_driver_api::explain_command_definition());
+        }
+        opts.command_results
+            .entry("explain".into())
+            .or_insert_with(|| {
+                serde_json::to_value(&opts.explain_plan).expect("serialize mock explain plan")
+            });
         Self::build(opts, true).await
     }
 

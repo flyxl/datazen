@@ -1,0 +1,287 @@
+//! Durable read-only file jobs: output is published as an owned Artifact, never a client path.
+use crate::error::FeatureError;
+use datazen_platform_api::{
+    context::RequestContext,
+    dto::{
+        artifact::AbortReason,
+        execution::{EffectOutcome, ExecutionErrorCode},
+        job::Checkpoint,
+    },
+    id::{ArtifactId, ExecutionId, StageId},
+    ports::artifact::{ArtifactSpec, ArtifactStore, ChunkPayload},
+};
+use datazen_runtime::job::{
+    CancelToken, FrozenPlan, JobError, JobHandler, RecoveryVerdict, StageOutcome, StageSpec,
+    StageTerminal,
+};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
+use tokio::io::AsyncReadExt;
+
+pub struct FileJobOutput {
+    pub path: PathBuf,
+    pub rows: u64,
+}
+#[async_trait::async_trait]
+pub trait FileJobOperation: Send + Sync {
+    /// The path is allocated and owned by the host, never deserialized from a request.
+    async fn run(&self, cancel: &CancelToken) -> Result<FileJobOutput, FeatureError>;
+}
+pub struct FileArtifactJob {
+    kind: String,
+    context: RequestContext,
+    artifacts: Arc<dyn ArtifactStore>,
+    operation: Arc<dyn FileJobOperation>,
+    output: Mutex<Option<(ArtifactId, u64)>>,
+}
+impl FileArtifactJob {
+    pub fn new(
+        kind: &str,
+        context: RequestContext,
+        artifacts: Arc<dyn ArtifactStore>,
+        operation: Arc<dyn FileJobOperation>,
+    ) -> Self {
+        Self {
+            kind: kind.into(),
+            context,
+            artifacts,
+            operation,
+            output: Mutex::new(None),
+        }
+    }
+    pub fn output(&self) -> Option<(ArtifactId, u64)> {
+        self.output.lock().ok()?.clone()
+    }
+    async fn publish(
+        &self,
+        output: FileJobOutput,
+        cancel: &CancelToken,
+    ) -> Result<ArtifactId, FeatureError> {
+        let mut file = tokio::fs::File::open(&output.path).await?;
+        let spec = ArtifactSpec::new(
+            self.context.organization_id.clone(),
+            self.context.principal_id.clone(),
+            ExecutionId::new(uuid::Uuid::new_v4().to_string()),
+            format!("file-job:{}", self.kind),
+        );
+        let (_, mut writer) = self
+            .artifacts
+            .create(&self.context, spec)
+            .await
+            .map_err(port_error)?;
+        let result = async {
+            let mut buffer = vec![0; 64 * 1024];
+            loop {
+                if cancel.is_cancelled() {
+                    return Err(FeatureError::Validation("fileJobCancelled".into()));
+                }
+                let count = file.read(&mut buffer).await?;
+                if count == 0 {
+                    break;
+                }
+                self.artifacts
+                    .append_chunk(&mut writer, ChunkPayload::new(buffer[..count].to_vec()))
+                    .await
+                    .map_err(port_error)?;
+            }
+            Ok::<(), FeatureError>(())
+        }
+        .await;
+        if let Err(error) = result {
+            let reason = if cancel.is_cancelled() {
+                AbortReason::Cancelled
+            } else {
+                AbortReason::ExecutionFailed
+            };
+            let _ = self.artifacts.abort(writer, reason).await;
+            return Err(error);
+        }
+        let artifact = self.artifacts.finalize(writer).await.map_err(port_error)?;
+        *self
+            .output
+            .lock()
+            .map_err(|_| FeatureError::Internal("file job result unavailable".into()))? =
+            Some((artifact.clone(), output.rows));
+        Ok(artifact)
+    }
+}
+fn port_error(_: datazen_platform_api::PortError) -> FeatureError {
+    FeatureError::Internal("file artifact storage unavailable".into())
+}
+#[async_trait::async_trait]
+impl JobHandler for FileArtifactJob {
+    fn kind(&self) -> &str {
+        &self.kind
+    }
+    fn handler_version(&self) -> u64 {
+        1
+    }
+    fn validate_plan(&self, plan: &FrozenPlan) -> Result<Vec<StageSpec>, JobError> {
+        if plan.kind != self.kind || plan.handler_version != 1 || plan.is_apply {
+            return Err(JobError::PlanProjectionInvalid(
+                "invalid file job plan".into(),
+            ));
+        }
+        Ok(vec![StageSpec {
+            stage_id: StageId::new("produceArtifact"),
+            kind: self.kind.clone(),
+            depends_on: vec![],
+        }])
+    }
+    async fn run_stage(
+        &self,
+        spec: &StageSpec,
+        cancel: &CancelToken,
+    ) -> Result<StageOutcome, JobError> {
+        let result = if cancel.is_cancelled() {
+            Err(FeatureError::Validation("fileJobCancelled".into()))
+        } else {
+            match self.operation.run(cancel).await {
+                Ok(output) => self.publish(output, cancel).await,
+                Err(error) => Err(error),
+            }
+        };
+        let (terminal, artifact_ids, error_code) = match result {
+            Ok(artifact) => (StageTerminal::Succeeded, vec![artifact], None),
+            Err(_) if cancel.is_cancelled() => (
+                StageTerminal::Cancelled,
+                vec![],
+                Some(ExecutionErrorCode::Cancelled),
+            ),
+            Err(_) => (
+                StageTerminal::Failed,
+                vec![],
+                Some(ExecutionErrorCode::HostRejected),
+            ),
+        };
+        Ok(StageOutcome {
+            stage_id: spec.stage_id.clone(),
+            terminal,
+            progress: Default::default(),
+            commit_boundaries: vec![],
+            execution_ids: vec![],
+            artifact_ids,
+            effect_outcome: EffectOutcome::NotStarted,
+            error_code,
+        })
+    }
+    fn verify_recovery(&self, _: &Checkpoint) -> RecoveryVerdict {
+        RecoveryVerdict::Reject {
+            reason: "file jobs are not automatically replayed".into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_platform_api::{
+        dto::artifact::ArtifactLifecycle,
+        id::{ClientInstanceId, Counter, OrganizationId, PrincipalId, RequestId},
+    };
+    use datazen_runtime::artifact::FileArtifactStore;
+    struct Output {
+        path: PathBuf,
+    }
+    #[async_trait::async_trait]
+    impl FileJobOperation for Output {
+        async fn run(&self, _: &CancelToken) -> Result<FileJobOutput, FeatureError> {
+            Ok(FileJobOutput {
+                path: self.path.clone(),
+                rows: 7,
+            })
+        }
+    }
+    fn context(principal: &str) -> RequestContext {
+        RequestContext::new(
+            OrganizationId::new("org"),
+            PrincipalId::new(principal),
+            None,
+            ClientInstanceId::new("client"),
+            RequestId::new("request"),
+            None,
+        )
+    }
+    fn stage() -> StageSpec {
+        StageSpec {
+            stage_id: StageId::new("produceArtifact"),
+            kind: "tableExport".into(),
+            depends_on: vec![],
+        }
+    }
+    #[tokio::test]
+    async fn output_is_finalized_raw_artifact_owned_by_job_principal() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("staged.csv");
+        tokio::fs::write(&path, b"id,name\n1,alice\n")
+            .await
+            .unwrap();
+        let store = Arc::new(FileArtifactStore::open(dir.path().join("artifacts")).unwrap());
+        let job = FileArtifactJob::new(
+            "tableExport",
+            context("alice"),
+            store.clone(),
+            Arc::new(Output { path }),
+        );
+        let result = job.run_stage(&stage(), &CancelToken::new()).await.unwrap();
+        assert_eq!(result.terminal, StageTerminal::Succeeded);
+        let (artifact, rows) = job.output().unwrap();
+        assert_eq!(rows, 7);
+        assert_eq!(result.artifact_ids, vec![artifact.clone()]);
+        assert_eq!(
+            store
+                .describe(&context("alice"), artifact.clone())
+                .await
+                .unwrap()
+                .lifecycle,
+            ArtifactLifecycle::Complete
+        );
+        assert_eq!(
+            store
+                .read_chunk(&context("alice"), artifact.clone(), Counter::ZERO)
+                .await
+                .unwrap()
+                .bytes,
+            b"id,name\n1,alice\n"
+        );
+        assert!(store.describe(&context("bob"), artifact).await.is_err());
+    }
+    #[tokio::test]
+    async fn cancel_before_dispatch_does_not_open_or_publish_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(FileArtifactStore::open(dir.path().join("artifacts")).unwrap());
+        let job = FileArtifactJob::new(
+            "tableExport",
+            context("alice"),
+            store,
+            Arc::new(Output {
+                path: dir.path().join("missing"),
+            }),
+        );
+        let cancel = CancelToken::new();
+        cancel.cancel();
+        let result = job.run_stage(&stage(), &cancel).await.unwrap();
+        assert_eq!(result.terminal, StageTerminal::Cancelled);
+        assert!(result.artifact_ids.is_empty());
+        assert!(job.output().is_none());
+    }
+    #[tokio::test]
+    async fn producer_failure_does_not_claim_a_complete_artifact() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(FileArtifactStore::open(dir.path().join("artifacts")).unwrap());
+        let job = FileArtifactJob::new(
+            "tableExport",
+            context("alice"),
+            store,
+            Arc::new(Output {
+                path: dir.path().join("missing"),
+            }),
+        );
+        let result = job.run_stage(&stage(), &CancelToken::new()).await.unwrap();
+        assert_eq!(result.terminal, StageTerminal::Failed);
+        assert!(result.artifact_ids.is_empty());
+        assert!(job.output().is_none());
+    }
+}

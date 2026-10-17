@@ -117,7 +117,7 @@ impl ConnectionManager {
             effective_config.database = Some(db.to_string());
         }
         effective_config.max_pool_size = crate::store::clamp_connection_pool_size(
-            self.store.get_settings().await.connection_pool_size,
+            self.store.execution_settings().await.connection_pool_size,
         );
         let driver = self
             .driver_for_type(&effective_config.database_type)

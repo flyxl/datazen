@@ -8,6 +8,7 @@ members = [
     "packages/platform-infra",
     "packages/application",
     "packages/runtime",
+    "packages/feature-core",
     "packages/ai-providers",
     "packages/workspace-apps",
     "packages/schema-diff",

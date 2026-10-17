@@ -157,7 +157,7 @@ impl TestAppState {
         let mock = WiremockAi::start().await;
         mock.mount_models_list().await;
 
-        let test = Self::with_options(opts).await;
+        let test = Self::with_resource_provider(opts).await;
         register_ai_providers(&test.state.ai_registry).await;
 
         let cfg = openai_wiremock_config(&mock);

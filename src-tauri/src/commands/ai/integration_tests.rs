@@ -193,7 +193,7 @@ async fn ai_analyze_queries_with_history() {
 
 #[tokio::test]
 async fn execute_db_tool_list_connections() {
-    let test = TestAppState::with_tables().await;
+    let test = TestAppState::with_tables_and_resource_provider().await;
     test.save_connection("tool-cfg").await;
 
     let tool = ToolCall {
@@ -207,7 +207,7 @@ async fn execute_db_tool_list_connections() {
 
 #[tokio::test]
 async fn execute_db_tool_list_tables() {
-    let test = TestAppState::with_tables().await;
+    let test = TestAppState::with_tables_and_resource_provider().await;
     test.save_connection("tables-cfg").await;
 
     let tool = ToolCall {
@@ -575,7 +575,7 @@ async fn execute_db_tool_unknown_returns_error_string() {
 
 #[tokio::test]
 async fn execute_db_tool_get_table_schema() {
-    let test = TestAppState::with_tables().await;
+    let test = TestAppState::with_tables_and_resource_provider().await;
     test.save_connection("schema-tool").await;
 
     let tool = ToolCall {
@@ -680,7 +680,7 @@ async fn build_connections_context_chinese_header() {
 
 #[tokio::test]
 async fn execute_db_tool_list_databases() {
-    let test = TestAppState::with_tables().await;
+    let test = TestAppState::with_tables_and_resource_provider().await;
     test.save_connection("db-tool").await;
     let tool = ToolCall {
         id: "ld".into(),
@@ -1240,6 +1240,11 @@ async fn ai_chat_mcp_and_db_same_round() {
     use std::sync::atomic::Ordering;
 
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
+    // This scenario intentionally exercises unrestricted tool results. The
+    // global execution policy must permit them as well as the model profile.
+    let mut settings = test.state.store.get_settings().await;
+    settings.ai_strict_egress = false;
+    test.state.store.save_settings(settings).await.unwrap();
     let mut ai_settings = test.state.store.get_ai_settings_config().await;
     for profile in &mut ai_settings.profiles {
         profile.safety_gate.data_egress_level = datazen_ai_api::AiDataEgressLevel::Unrestricted;

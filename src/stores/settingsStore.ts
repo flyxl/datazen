@@ -12,8 +12,8 @@ import { applyThemePack, syncWebviewBackgroundFromTokens } from '../lib/themePac
 const DEFAULT_SETTINGS: AppSettings = {
   theme: DEFAULT_THEME_PREFERENCE,
   language: 'en',
-  limitSelectResults: true,
-  queryResultLimit: 1000,
+  limitSelectResults: false,
+  queryResultLimit: 5000,
   editorFontSize: 13,
   editorFontFamily: HOST_DEFAULT_EDITOR_FONT,
   confirmOnDelete: true,
@@ -179,18 +179,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await applyTheme(theme.mode, theme.packId);
       watchSystemTheme(theme.mode);
     }
-    await settingsCommands.saveSettings(next);
-    set({ settings: next });
+    const saved = await settingsCommands.saveSettings(next);
+    const persisted = { ...next, ...(saved ?? {}) };
+    set({ settings: persisted });
 
     if (partial.theme) {
       void emitCrossWindow('datazen:theme-changed', theme.mode);
     }
     if (partial.language) {
-      void import('@tauri-apps/api/core').then(({ invoke }) =>
-        invoke('rebuild_menu', { language: partial.language }).catch(() => {}),
-      );
+      void settingsCommands.syncLanguageMenu?.(partial.language).catch(() => {});
     }
-    void emitCrossWindow('datazen:settings-changed', next);
+    void emitCrossWindow('datazen:settings-changed', persisted);
   },
 }));
 

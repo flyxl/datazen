@@ -28,6 +28,9 @@ impl DesktopSessionBackend {
                 }
             }
         }
+        if matches!(request.command.command.as_str(), "query" | "query_stream") {
+            self.store.execution_settings().await.apply_result_limit(&mut input);
+        }
         let (config, metadata) = self
             .store
             .platform_profile(&resource.connection_id)
@@ -63,7 +66,7 @@ impl DesktopSessionBackend {
             datazen_runtime::sql_guard::check_sql(
                 sql,
                 config.read_only,
-                self.store.get_settings().await.safe_mode,
+                self.store.execution_settings().await.safe_mode,
             )
             .map_err(rc::ProviderError::HostRejected)?;
         }

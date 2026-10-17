@@ -307,12 +307,13 @@ impl FileArtifactStore {
             organization: spec.organization_id,
             owner: spec.owner_principal_id,
             execution: spec.execution_id,
-            fingerprint: spec.target_fingerprint,
+            fingerprint: spec.target_fingerprint.clone(),
             expires: now().saturating_add(spec.ttl_seconds),
             sizes: Vec::new(),
             writer: Some(lease.clone()),
             unpublished_bytes: 0,
             metadata: ArtifactMetadata {
+                target_fingerprint: spec.target_fingerprint,
                 artifact_id: id.clone(),
                 lifecycle: ArtifactLifecycle::Writing,
                 published_chunk_count: Counter::ZERO,
@@ -427,7 +428,12 @@ impl FileArtifactStore {
         id: &ArtifactId,
     ) -> Result<ArtifactMetadata, PortError> {
         let s = self.state.lock().map_err(|_| unavailable())?;
-        Ok(self.visible(&s, ctx, id)?.metadata.clone())
+        let record = self.visible(&s, ctx, id)?;
+        let mut metadata = record.metadata.clone();
+        // The creation record is authoritative, including artifacts written by
+        // older versions before this field was exposed by describe.
+        metadata.target_fingerprint = record.fingerprint.clone();
+        Ok(metadata)
     }
     pub fn finish_sync(
         &self,

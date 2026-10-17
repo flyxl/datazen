@@ -143,6 +143,13 @@ pub(crate) fn finish_app_state(
 
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
+    let platform = crate::platform::PlatformEntry::launch();
+    let schema_source = Arc::new(crate::ai::metadata_source::RuntimeSchemaSource::new(
+        connection_manager.clone(),
+        registry.clone(),
+        store.clone(),
+        platform.clone(),
+    ));
     let state = AppState {
         driver_registry: registry,
         connection_manager: connection_manager.clone(),
@@ -154,10 +161,7 @@ pub(crate) fn finish_app_state(
         ai_registry: Arc::new(crate::ai::AiProviderRegistry::with_http_client(
             datazen_ai_providers::http::HttpClient::desktop(),
         )),
-        schema_context_builder: Arc::new(SchemaContextBuilder::new(
-            schema_cache,
-            connection_manager,
-        )),
+        schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_cache, schema_source)),
         prompt_resolver: Arc::new(crate::ai::PromptResolver::new(&data_dir, prompts_dir)),
         workflow_registry: Arc::new(workflow::WorkflowRegistry::new(app_db, data_dir.clone())),
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
@@ -165,7 +169,7 @@ pub(crate) fn finish_app_state(
         session_transactions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         // 概要 §6.2 第 8 步：身份在启动期组装一次。组装失败时把原因存进
         // PlatformEntry，依赖身份的 IPC 调用会拿到明确错误，而不是静默继续。
-        platform: crate::platform::PlatformEntry::launch(),
+        platform,
         query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
         wapps: wapp_manager,

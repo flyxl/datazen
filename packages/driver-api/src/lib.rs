@@ -17,6 +17,8 @@ pub mod mock_driver;
 pub mod namespace;
 mod query_stream;
 pub mod resource;
+pub mod restore_sql;
+mod restore_sql_target;
 pub mod resource_adapter;
 mod reuse;
 pub mod schema_catalog_commands;

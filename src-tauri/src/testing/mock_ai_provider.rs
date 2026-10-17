@@ -310,7 +310,7 @@ impl TestAppState {
     pub async fn with_mock_ai_options(
         opts: super::mock_driver::MockDriverOptions,
     ) -> (Self, Arc<MockAiProvider>) {
-        let test = Self::with_options(opts).await;
+        let test = Self::with_resource_provider(opts).await;
         // Register real builtins first, then overwrite OpenAI with the mock.
         test.state.ensure_ai_ready().await;
 

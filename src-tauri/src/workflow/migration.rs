@@ -12,12 +12,10 @@ use crate::data_sync::SyncSourceFilter;
 use crate::data_transfer::model::{
     Endpoint as TransferEndpoint, TransferRunOptions, TransferRunSelection,
 };
-use crate::data_transfer::{
-    SqlFileCompression, SqlFileEncoding, SqlFileTarget, TransferJob, TransferRunRequest,
-};
+use crate::data_transfer::{SqlFileTarget, TransferJob, TransferRunRequest};
 use crate::store::MigrationProfileRef;
 use crate::workflow::model::{
-    StepExecutionResult, StepStatus, UnattendedDestructivePolicy, WorkflowMigrationOperation,
+    StepExecutionResult, UnattendedDestructivePolicy, WorkflowMigrationOperation,
 };
 use crate::workflow::workflows::context::WorkflowContext;
 use crate::workflow::WorkflowError;
@@ -28,283 +26,103 @@ struct RuntimeSession {
     schema: Option<String>,
 }
 
-struct MigrationOutcome {
-    result: serde_json::Value,
-    committed: u64,
-    failed: u64,
-    conflicts: u64,
-    cancelled: bool,
-    success: bool,
-    rollback_outcome: &'static str,
-}
-
+pub use datazen_feature_core::workflow::migration::sanitize_variables;
+use datazen_feature_core::workflow::migration::{MigrationHost, MigrationOutcome};
 pub(crate) async fn execute_profile_step(
     state: &AppState,
     step_id: &str,
     operation: WorkflowMigrationOperation,
     profile_id: &str,
     expected_revision: Option<&str>,
-    destructive_policy: UnattendedDestructivePolicy,
-    sql_file_token_variable: Option<&str>,
+    policy: UnattendedDestructivePolicy,
+    token_variable: Option<&str>,
     context: &WorkflowContext,
 ) -> Result<StepExecutionResult, WorkflowError> {
-    match operation {
-        WorkflowMigrationOperation::DataTransfer => {
-            let (profile, reference) =
-                match load_transfer_profile(state, profile_id, expected_revision).await {
-                    Ok(value) => value,
-                    Err(error) => {
-                        return Err(
-                            record_preflight_failure(state, "dataTransfer", None, error).await
-                        );
-                    }
-                };
-            if let Err(error) = ensure_destructive_policy(
-                destructive_policy,
-                profile.write_mode.is_destructive(),
-                "data transfer",
-            ) {
-                return Err(record_preflight_failure(
-                    state,
-                    "dataTransfer",
-                    Some(&reference),
-                    error,
-                )
-                .await);
-            }
-            let run =
-                crate::commands::start_migration_run(state, "dataTransfer", Some(&reference)).await;
-            let result = run_transfer(
-                state,
-                profile,
-                sql_file_token_variable,
-                context,
-                destructive_policy,
-            )
-            .await;
-            return finish_step_run(state, run, step_id, "dataTransfer", result).await;
-        }
-        WorkflowMigrationOperation::DataSync => {
-            let (profile, reference) =
-                match load_sync_profile(state, profile_id, expected_revision).await {
-                    Ok(value) => value,
-                    Err(error) => {
-                        return Err(record_preflight_failure(state, "dataSync", None, error).await);
-                    }
-                };
-            if let Err(error) = ensure_destructive_policy(
-                destructive_policy,
-                profile.options.delete,
-                "data synchronization delete",
-            ) {
-                return Err(
-                    record_preflight_failure(state, "dataSync", Some(&reference), error).await,
-                );
-            }
-            let run =
-                crate::commands::start_migration_run(state, "dataSync", Some(&reference)).await;
-            let result = run_sync(state, profile, destructive_policy).await;
-            return finish_step_run(state, run, step_id, "dataSync", result).await;
-        }
-        WorkflowMigrationOperation::SchemaDiff => {
-            let (profile, reference) =
-                match load_schema_profile(state, profile_id, expected_revision).await {
-                    Ok(value) => value,
-                    Err(error) => {
-                        return Err(
-                            record_preflight_failure(state, "schemaDiff", None, error).await
-                        );
-                    }
-                };
-            if let Err(error) = ensure_destructive_policy(
-                destructive_policy,
-                profile.allow_destructive,
-                "schema diff destructive changes",
-            ) {
-                return Err(
-                    record_preflight_failure(state, "schemaDiff", Some(&reference), error).await,
-                );
-            }
-            let result = run_schema(state, profile, destructive_policy, &reference).await;
-            return match result {
-                Ok(outcome) if outcome.success || outcome.cancelled => Ok(StepExecutionResult {
-                    step_id: step_id.into(),
-                    step_type: "migration".into(),
-                    status: if outcome.cancelled {
-                        StepStatus::Skipped
-                    } else {
-                        StepStatus::Success
-                    },
-                    result: Some(outcome.result),
-                    execution_time_ms: 0,
-                    error: None,
-                    connection_name: None,
-                    sql_executed: None,
-                }),
-                Ok(_) => Err(WorkflowError::Step(
-                    "schemaDiff migration profile execution failed".into(),
-                )),
-                Err(error) => Err(error),
-            };
-        }
+    datazen_feature_core::workflow::migration::execute_profile_step(
+        state,
+        step_id,
+        operation,
+        profile_id,
+        expected_revision,
+        policy,
+        token_variable,
+        context,
+    )
+    .await
+}
+#[async_trait::async_trait]
+impl MigrationHost for AppState {
+    async fn transfer_profiles(&self) -> Vec<datazen_data_transfer::TransferProfile> {
+        self.store.get_transfer_profiles().await
     }
-}
-
-async fn record_preflight_failure(
-    state: &AppState,
-    operation: &str,
-    profile: Option<&MigrationProfileRef>,
-    error: WorkflowError,
-) -> WorkflowError {
-    let run = crate::commands::start_migration_run(state, operation, profile).await;
-    crate::commands::finish_migration_run(state, run, false, false, 0, 1, 0, "unknown").await;
-    error
-}
-
-fn ensure_destructive_policy(
-    policy: UnattendedDestructivePolicy,
-    destructive: bool,
-    operation: &str,
-) -> Result<(), WorkflowError> {
-    if destructive && policy != UnattendedDestructivePolicy::Allow {
-        return Err(WorkflowError::Validation(format!(
-            "unattended destructive policy rejects {operation}; set destructivePolicy to allow explicitly"
-        )));
+    async fn sync_profiles(&self) -> Vec<datazen_data_sync::SyncProfile> {
+        self.store.get_sync_profiles().await
     }
-    Ok(())
-}
-
-async fn finish_step_run(
-    state: &AppState,
-    run: crate::store::MigrationRunRecord,
-    step_id: &str,
-    operation: &str,
-    result: Result<MigrationOutcome, WorkflowError>,
-) -> Result<StepExecutionResult, WorkflowError> {
-    match result {
-        Ok(outcome) => {
-            crate::commands::finish_migration_run(
-                state,
-                run,
-                outcome.success,
-                outcome.cancelled,
-                outcome.committed,
-                outcome.failed,
-                outcome.conflicts,
-                outcome.rollback_outcome,
-            )
-            .await;
-            if !outcome.success && !outcome.cancelled {
-                return Err(WorkflowError::Step(format!(
-                    "{operation} migration profile execution failed"
-                )));
-            }
-            Ok(StepExecutionResult {
-                step_id: step_id.into(),
-                step_type: "migration".into(),
-                status: if outcome.cancelled {
-                    StepStatus::Skipped
-                } else {
-                    StepStatus::Success
-                },
-                result: Some(outcome.result),
-                execution_time_ms: 0,
-                error: None,
-                connection_name: None,
-                sql_executed: None,
-            })
-        }
-        Err(error) => {
-            crate::commands::finish_migration_run(state, run, false, false, 0, 1, 0, "unknown")
-                .await;
-            Err(error)
-        }
+    async fn schema_profiles(&self) -> Vec<datazen_schema_diff::SchemaDiffProfile> {
+        self.store.get_schema_diff_profiles().await
     }
-}
-
-async fn load_transfer_profile(
-    state: &AppState,
-    id: &str,
-    expected_revision: Option<&str>,
-) -> Result<(crate::data_transfer::TransferProfile, MigrationProfileRef), WorkflowError> {
-    let profile = state
-        .store
-        .get_transfer_profiles()
-        .await
-        .into_iter()
-        .find(|profile| profile.id == id)
-        .ok_or_else(|| {
-            WorkflowError::Validation(format!("transfer profile '{id}' was not found"))
-        })?;
-    profile.validate().map_err(WorkflowError::Validation)?;
-    let reference = profile_reference(&profile.id, profile.updated_at.to_rfc3339());
-    validate_profile_reference(state, "dataTransfer", &reference, expected_revision).await?;
-    Ok((profile, reference))
-}
-
-async fn load_sync_profile(
-    state: &AppState,
-    id: &str,
-    expected_revision: Option<&str>,
-) -> Result<(crate::data_sync::SyncProfile, MigrationProfileRef), WorkflowError> {
-    let profile = state
-        .store
-        .get_sync_profiles()
-        .await
-        .into_iter()
-        .find(|profile| profile.id == id)
-        .ok_or_else(|| WorkflowError::Validation(format!("sync profile '{id}' was not found")))?;
-    profile.validate().map_err(WorkflowError::Validation)?;
-    let reference = profile_reference(&profile.id, profile.updated_at.to_rfc3339());
-    validate_profile_reference(state, "dataSync", &reference, expected_revision).await?;
-    Ok((profile, reference))
-}
-
-async fn load_schema_profile(
-    state: &AppState,
-    id: &str,
-    expected_revision: Option<&str>,
-) -> Result<(crate::schema_diff::SchemaDiffProfile, MigrationProfileRef), WorkflowError> {
-    let profile = state
-        .store
-        .get_schema_diff_profiles()
-        .await
-        .into_iter()
-        .find(|profile| profile.id == id)
-        .ok_or_else(|| {
-            WorkflowError::Validation(format!("schema diff profile '{id}' was not found"))
-        })?;
-    profile.validate().map_err(WorkflowError::Validation)?;
-    let reference = profile_reference(&profile.id, profile.updated_at.to_rfc3339());
-    validate_profile_reference(state, "schemaDiff", &reference, expected_revision).await?;
-    Ok((profile, reference))
-}
-
-fn profile_reference(id: &str, revision: String) -> MigrationProfileRef {
-    MigrationProfileRef {
-        id: id.into(),
-        revision,
-    }
-}
-
-async fn validate_profile_reference(
-    state: &AppState,
-    operation: &str,
-    actual: &MigrationProfileRef,
-    expected_revision: Option<&str>,
-) -> Result<(), WorkflowError> {
-    if let Some(revision) = expected_revision {
-        let expected = MigrationProfileRef {
-            id: actual.id.clone(),
-            revision: revision.into(),
-        };
-        crate::commands::validate_migration_profile_ref(state, operation, Some(&expected))
+    async fn validate_reference(
+        &self,
+        operation: &str,
+        reference: Option<&MigrationProfileRef>,
+    ) -> Result<(), String> {
+        crate::commands::validate_migration_profile_ref(self, operation, reference)
             .await
-            .map_err(|error| WorkflowError::Validation(error.to_string()))?;
+            .map_err(|error| error.to_string())
     }
-    crate::commands::validate_migration_profile_ref(state, operation, Some(actual))
-        .await
-        .map_err(|error| WorkflowError::Validation(error.to_string()))
+    async fn start_run(
+        &self,
+        operation: &str,
+        reference: Option<&MigrationProfileRef>,
+    ) -> crate::store::MigrationRunRecord {
+        crate::commands::start_migration_run(self, operation, reference).await
+    }
+    async fn finish_run(
+        &self,
+        run: crate::store::MigrationRunRecord,
+        success: bool,
+        cancelled: bool,
+        committed: u64,
+        failed: u64,
+        conflicts: u64,
+        rollback_outcome: &str,
+    ) {
+        crate::commands::finish_migration_run(
+            self,
+            run,
+            success,
+            cancelled,
+            committed,
+            failed,
+            conflicts,
+            rollback_outcome,
+        )
+        .await;
+    }
+    async fn run_transfer(
+        &self,
+        profile: datazen_data_transfer::TransferProfile,
+        token_variable: Option<&str>,
+        context: &WorkflowContext,
+        policy: UnattendedDestructivePolicy,
+    ) -> Result<MigrationOutcome, WorkflowError> {
+        run_transfer(self, profile, token_variable, context, policy).await
+    }
+    async fn run_sync(
+        &self,
+        profile: datazen_data_sync::SyncProfile,
+        policy: UnattendedDestructivePolicy,
+    ) -> Result<MigrationOutcome, WorkflowError> {
+        run_sync(self, profile, policy).await
+    }
+    async fn run_schema(
+        &self,
+        profile: datazen_schema_diff::SchemaDiffProfile,
+        policy: UnattendedDestructivePolicy,
+        reference: &MigrationProfileRef,
+    ) -> Result<MigrationOutcome, WorkflowError> {
+        run_schema(self, profile, policy, reference).await
+    }
 }
 
 async fn open_session(
@@ -522,30 +340,6 @@ async fn run_transfer(
     operation
 }
 
-fn transfer_migration_outcome(
-    plan_id: String,
-    result: crate::data_transfer::model::TransferExecutionResult,
-) -> MigrationOutcome {
-    let failed = result.tables.iter().filter(|table| !table.success).count() as u64;
-    MigrationOutcome {
-        result: serde_json::json!({
-            "operation": "dataTransfer",
-            "planId": plan_id,
-            "rowsInserted": result.rows_inserted,
-            "tables": result.tables.len(),
-            "partial": result.partial,
-            "cancelled": result.cancelled,
-            "resumeToken": result.resume_token,
-        }),
-        committed: result.rows_inserted,
-        failed,
-        conflicts: 0,
-        cancelled: result.cancelled,
-        success: !result.partial && !result.cancelled && failed == 0,
-        rollback_outcome: crate::commands::transfer_rollback_history_outcome(&result),
-    }
-}
-
 async fn run_sync(
     state: &AppState,
     profile: crate::data_sync::SyncProfile,
@@ -731,61 +525,9 @@ async fn run_schema(
     operation
 }
 
-fn parse_sql_file_encoding(value: &str) -> Result<SqlFileEncoding, WorkflowError> {
-    SqlFileEncoding::parse_profile(value)
-        .map_err(|error| WorkflowError::Validation(error.to_string()))
-}
-
-fn parse_sql_file_compression(value: &str) -> Result<SqlFileCompression, WorkflowError> {
-    SqlFileCompression::parse_profile(value)
-        .map_err(|error| WorkflowError::Validation(error.to_string()))
-}
-
-/// Remove per-run SQL-file tokens before the generic workflow history writer
-/// persists input variables. Profile records never contain these values, and
-/// workflow history must not become a second token store.
-pub(crate) fn sanitize_variables(
-    workflow: &crate::workflow::model::WorkflowDefinition,
-    variables: &serde_json::Value,
-) -> serde_json::Value {
-    let mut sanitized = variables.clone();
-    let Some(values) = sanitized.as_object_mut() else {
-        return sanitized;
-    };
-    for variable in token_variable_names(&workflow.steps) {
-        if values.contains_key(&variable) {
-            values.insert(variable, serde_json::Value::String("[redacted]".into()));
-        }
-    }
-    sanitized
-}
-
-fn token_variable_names(steps: &[crate::workflow::model::WorkflowStep]) -> Vec<String> {
-    let mut names = Vec::new();
-    for step in steps {
-        match step {
-            crate::workflow::model::WorkflowStep::Migration {
-                sql_file_token_variable: Some(variable),
-                ..
-            } => names.push(variable.clone()),
-            crate::workflow::model::WorkflowStep::Condition {
-                then_steps,
-                else_steps,
-                ..
-            } => {
-                names.extend(token_variable_names(then_steps));
-                if let Some(else_steps) = else_steps {
-                    names.extend(token_variable_names(else_steps));
-                }
-            }
-            crate::workflow::model::WorkflowStep::ForEach { steps, .. } => {
-                names.extend(token_variable_names(steps));
-            }
-            _ => {}
-        }
-    }
-    names
-}
+use datazen_feature_core::workflow::migration::{
+    parse_sql_file_compression, parse_sql_file_encoding, transfer_migration_outcome,
+};
 
 #[cfg(test)]
 mod tests {
@@ -793,6 +535,7 @@ mod tests {
     use crate::data_transfer::model::{
         TableExecutionOutcome, TableExecutionResult, TransferExecutionResult, TransferOptions,
     };
+    use crate::data_transfer::{SqlFileCompression, SqlFileEncoding};
     use crate::data_transfer::{TransferMode, TransferProfile, WriteMode};
     use crate::store::MigrationRunFilter;
     use crate::testing::app_state::TestAppState;

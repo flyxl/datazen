@@ -10,3 +10,5 @@ mod settings_extensions_tests;
 mod settings_serde_tests;
 
 mod fixtures;
+
+mod settings_shared_tests;

@@ -100,6 +100,9 @@ pub enum AbortReason {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactMetadata {
+    /// Immutable target binding supplied at creation; empty for legacy metadata.
+    #[serde(default)]
+    pub target_fingerprint: String,
     pub artifact_id: ArtifactId,
     pub lifecycle: ArtifactLifecycle,
     /// 已发布（提交后）的块数。写入期只增不减。

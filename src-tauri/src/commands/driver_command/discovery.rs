@@ -11,10 +11,7 @@ pub(crate) async fn get_connection_commands_impl(
         .get_session(&db_session_id)
         .await
         .cmd_err("get_connection_commands")?;
-    let mut definitions = driver.command_definitions();
-    definitions.retain(|d| !crate::services::schema_metadata::is_metadata_command(&d.id));
-    definitions.extend(crate::services::schema_metadata::command_definitions());
-    Ok(definitions)
+    Ok(datazen_feature_core::services::command_policy::discovery_definitions(driver.as_ref()))
 }
 
 pub(crate) async fn get_driver_type_commands_impl(
@@ -26,8 +23,5 @@ pub(crate) async fn get_driver_type_commands_impl(
         .get(&driver_type)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("Driver not found: {driver_type}")))?;
-    let mut definitions = driver.command_definitions();
-    definitions.retain(|d| !crate::services::schema_metadata::is_metadata_command(&d.id));
-    definitions.extend(crate::services::schema_metadata::command_definitions());
-    Ok(definitions)
+    Ok(datazen_feature_core::services::command_policy::discovery_definitions(driver.as_ref()))
 }

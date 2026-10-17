@@ -1,4 +1,5 @@
 use super::*;
+use crate::db::DriverError;
 
 #[test]
 fn parse_backup_options_recognizes_aliases() {
@@ -36,13 +37,8 @@ fn validate_backup_filter_extension_allows_known() {
     assert!(validate_backup_filter_extension("exe").is_err());
 }
 
-// #37 split the restore commands into `backup_restore.rs`, so the guard has
-// to scan both halves of the module.
-const SOURCE: &str = concat!(
-    include_str!("backup.rs"),
-    "\n",
-    include_str!("backup_restore.rs")
-);
+// Registered IPC signatures now live together in the native backup adapter.
+const SOURCE: &str = include_str!("backup.rs");
 const BOOTSTRAP_RS: &str = include_str!("../bootstrap/run.rs");
 
 #[test]

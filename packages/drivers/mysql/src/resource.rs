@@ -119,8 +119,14 @@ impl MysqlResourceProvider {
         driver_id: &str,
         declared: CapabilitySet,
     ) -> Self {
-        let snapshot =
-            CapabilitySnapshot::new(driver_id, env!("CARGO_PKG_VERSION"), PROTOCOL_VERSION, 0);
+        let mut snapshot =
+            CapabilitySnapshot::new(driver_id, env!("CARGO_PKG_VERSION"), PROTOCOL_VERSION, 1);
+        if driver_id == "mysql" {
+            snapshot.confirmed.insert(
+                datazen_driver_api::restore_sql::CAPABILITY_KEY.into(),
+                datazen_driver_api::restore_sql::IMPLICIT_COMMIT.into(),
+            );
+        }
         let mut capabilities = CapabilityRegistry::new(driver_id.to_string(), snapshot);
         capabilities.capabilities = declared;
         Self {

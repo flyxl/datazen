@@ -269,6 +269,7 @@ mod tests {
 
     fn metadata() -> ArtifactMetadata {
         ArtifactMetadata {
+            target_fingerprint: "target".into(),
             artifact_id: ArtifactId::new("art-1"),
             lifecycle: ArtifactLifecycle::Writing,
             published_chunk_count: Counter::new(2),
@@ -347,6 +348,7 @@ mod tests {
     fn a_writer_never_reuses_an_index_it_already_published() {
         // 已发布块不可覆盖：next_chunk_index 只能前进。
         let mut writer = ArtifactWriter {
+            target_fingerprint: "target".into(),
             artifact_id: ArtifactId::new("art-1"),
             lease_id: LeaseId::new("lease-1"),
             next_chunk_index: Counter::new(3),
@@ -448,6 +450,7 @@ mod tests {
     fn artifact_chunk_is_the_type_the_store_returns() {
         // `ArtifactChunk` 来自 dto 层（跨宿主契约），端口不得另造一份块结构。
         let chunk = ArtifactChunk {
+            target_fingerprint: "target".into(),
             artifact_id: ArtifactId::new("art-1"),
             chunk_index: Counter::new(0),
             total_chunks: None,
@@ -461,6 +464,7 @@ mod tests {
     #[test]
     fn writer_tracks_the_next_chunk_index_so_indices_are_dense() {
         let writer = ArtifactWriter {
+            target_fingerprint: "target".into(),
             artifact_id: ArtifactId::new("art-1"),
             lease_id: LeaseId::new("lease-1"),
             next_chunk_index: Counter::new(4),

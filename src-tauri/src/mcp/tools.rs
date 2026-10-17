@@ -8,56 +8,7 @@ use crate::mcp::tool_help;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router, ErrorData as McpError};
 
-/// Human-readable table description for MCP `describe_table` tool output.
-pub(crate) fn format_table_description(
-    table: &str,
-    schema: &datazen_driver_api::TableSchema,
-) -> String {
-    let mut desc = format!("Table: {table}\n\nColumns:\n");
-    for col in &schema.columns {
-        desc.push_str(&format!(
-            "  - {} {} {}{}\n",
-            col.name,
-            col.data_type,
-            if col.is_primary_key { "PK " } else { "" },
-            if col.nullable { "" } else { "NOT NULL " },
-        ));
-    }
-
-    if !schema.primary_keys.is_empty() {
-        desc.push_str(&format!(
-            "\nPrimary Key: ({})\n",
-            schema.primary_keys.join(", ")
-        ));
-    }
-
-    if !schema.indexes.is_empty() {
-        desc.push_str("\nIndexes:\n");
-        for idx in &schema.indexes {
-            desc.push_str(&format!(
-                "  - {} ({}) {}\n",
-                idx.name,
-                idx.columns.join(", "),
-                if idx.is_unique { "UNIQUE" } else { "" }
-            ));
-        }
-    }
-
-    if !schema.foreign_keys.is_empty() {
-        desc.push_str("\nForeign Keys:\n");
-        for fk in &schema.foreign_keys {
-            desc.push_str(&format!(
-                "  - {} ({}) → {}.{}\n",
-                fk.name,
-                fk.columns.join(", "),
-                fk.referenced_table,
-                fk.referenced_columns.join(", ")
-            ));
-        }
-    }
-
-    desc
-}
+pub(crate) use datazen_feature_core::mcp::describe::format_table_description;
 
 #[tool_router(vis = "pub(crate)")]
 impl DataZenMcpServer {
@@ -89,7 +40,7 @@ impl DataZenMcpServer {
     ) -> Result<String, McpError> {
         self.ensure_allowed("list_databases", &input.connection_id)?;
         crate::services::db_tools::list_databases(
-            &self.app_state.connection_manager,
+            self.app_state.as_ref(),
             &input.connection_id,
         )
         .await
@@ -105,7 +56,7 @@ impl DataZenMcpServer {
     ) -> Result<String, McpError> {
         self.ensure_allowed("list_tables", &input.connection_id)?;
         crate::services::db_tools::list_tables(
-            &self.app_state.connection_manager,
+            self.app_state.as_ref(),
             &input.connection_id,
             input.database.as_deref(),
             input.schema.as_deref(),
@@ -124,7 +75,7 @@ impl DataZenMcpServer {
         self.ensure_allowed("search_tables", &input.connection_id)?;
         let limit = input.limit.unwrap_or(20) as usize;
         crate::services::db_tools::search_tables(
-            &self.app_state.connection_manager,
+            self.app_state.as_ref(),
             &input.connection_id,
             input.database.as_deref(),
             input.schema.as_deref(),
@@ -146,7 +97,7 @@ impl DataZenMcpServer {
         permission::check_sql_allowed(&input.sql, self.permission_mode)
             .map_err(|e| tool_help::tool_error("query", &e))?;
         crate::services::db_tools::query(
-            &self.app_state.connection_manager,
+            self.app_state.as_ref(),
             &input.connection_id,
             &input.sql,
             input.limit,
@@ -166,7 +117,7 @@ impl DataZenMcpServer {
         self.ensure_allowed("get_schema", &input.connection_id)?;
         let tables = vec![input.table.clone()];
         crate::services::db_tools::get_table_schema(
-            &self.app_state.connection_manager,
+            self.app_state.as_ref(),
             &input.connection_id,
             &tables,
             input.database.as_deref(),
@@ -185,7 +136,7 @@ impl DataZenMcpServer {
     ) -> Result<String, McpError> {
         self.ensure_allowed("explain_query", &input.connection_id)?;
         crate::services::db_tools::explain_query(
-            &self.app_state.connection_manager,
+            self.app_state.as_ref(),
             &input.connection_id,
             &input.sql,
         )
@@ -202,7 +153,7 @@ impl DataZenMcpServer {
     ) -> Result<String, McpError> {
         self.ensure_allowed("describe_table", &input.connection_id)?;
         let schema = crate::services::db_tools::get_single_table_schema(
-            &self.app_state.connection_manager,
+            self.app_state.as_ref(),
             &input.connection_id,
             &input.table,
             input.database.as_deref(),
@@ -244,7 +195,7 @@ impl DataZenMcpServer {
 
         let result = crate::workflow::WorkflowExecutor::execute_with_options(
             &workflow,
-            &self.app_state,
+            self.app_state.as_ref(),
             input.connection_id.as_deref(),
             &input.variables,
             crate::workflow::WorkflowExecuteOptions {

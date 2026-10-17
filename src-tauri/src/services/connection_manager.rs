@@ -80,3 +80,9 @@ pub enum ConnectionError {
 #[cfg(test)]
 #[path = "connection_manager/tests.rs"]
 mod tests;
+
+impl ConnectionManager {
+    pub(crate) async fn feature_execution_settings(&self) -> datazen_platform_api::settings::ExecutionSettings {
+        self.store.execution_settings().await
+    }
+}

@@ -4,51 +4,11 @@ use crate::commands::AppState;
 use crate::mcp::permission::McpPermissionMode;
 use crate::workflow::error::WorkflowError;
 use crate::workflow::WorkflowCommandStep;
-use datazen_driver_api::{check_command_access, validate_command_input, CommandResult};
+use datazen_driver_api::CommandResult;
 
-pub fn resolve_connection_id<'a>(
-    step: &'a WorkflowCommandStep,
-    workflow_connection: Option<&'a str>,
-) -> Result<&'a str, WorkflowError> {
-    step.effective_connection(workflow_connection)
-        .ok_or_else(|| WorkflowError::MissingConnection {
-            step_id: step.id.clone(),
-        })
-}
-
-/// Let a command step inherit the workflow-level default database.
-///
-/// A `Command` step has no `database` field of its own (`WorkflowStep::Command`
-/// in `model.rs`); its execution target travels inside `input.database`, which
-/// `command_runtime` later reads. So the workflow default has to be injected
-/// here to give command steps the same inheritance a query step already gets
-/// from `step_database.or(inherited_database)` in `executor.rs`.
-///
-/// A non-empty explicit `input.database` wins, including malformed values that
-/// must be rejected by execution validation rather than silently replaced.
-pub fn inject_inherited_database(
-    mut input: serde_json::Value,
-    workflow_database: &str,
-) -> serde_json::Value {
-    let should_inherit = match input.get("database") {
-        None | Some(serde_json::Value::Null) => true,
-        Some(serde_json::Value::String(database)) => database.trim().is_empty(),
-        // Keep malformed, non-string values intact so the normal input
-        // validator can reject them instead of quietly choosing another DB.
-        Some(_) => false,
-    };
-    if !should_inherit {
-        return input;
-    }
-    // `inject_sql_target_fields` already filters blank/empty values, so a
-    // whitespace-only workflow default is a no-op here.
-    crate::commands::driver_command::inject_sql_target_fields(
-        &mut input,
-        Some(workflow_database),
-        None,
-    );
-    input
-}
+pub use datazen_feature_core::workflow::command_runtime::{
+    inject_inherited_database, resolve_connection_id,
+};
 
 pub async fn execute_command(
     app_state: &AppState,
@@ -87,65 +47,14 @@ pub(super) async fn execute_command_with_deadline(
         }
     }
     let connection_id = resolve_connection_id(step, workflow_connection)?;
-    if matches!(step.command.as_str(), "query" | "execute") {
-        return super::independent_sql::execute(
-            app_state,
-            step,
-            connection_id,
-            permission_mode,
-            workflow_deadline,
-        )
-        .await;
-    }
-    let (_runtime_id, driver, handle) = app_state
-        .connection_manager
-        .resolve_session_for_connection(connection_id)
-        .await
-        .map_err(|e| WorkflowError::ConnectionFailed {
-            connection_id: connection_id.to_string(),
-            message: crate::log_redact::redact_secrets_for_log(&e.to_string()),
-        })?;
-
-    let definition = driver
-        .command_definitions()
-        .into_iter()
-        .find(|definition| definition.id == step.command)
-        .ok_or_else(|| WorkflowError::UnsupportedCommand {
-            command: step.command.clone(),
-            connection_id: connection_id.to_string(),
-        })?;
-    if !definition.metadata.workflow {
-        return Err(WorkflowError::CommandNotInWorkflow {
-            command: step.command.clone(),
-        });
-    }
-    validate_command_input(&definition, &step.input).map_err(|e| WorkflowError::Validation(e))?;
-    check_command_access(
-        &definition,
-        crate::commands::access_level_for_mode(permission_mode),
+    super::independent_sql::execute(
+        app_state,
+        step,
+        connection_id,
+        permission_mode,
+        workflow_deadline,
     )
-    .map_err(|e| WorkflowError::Validation(e))?;
-
-    // Non-SQL driver commands retain their explicit namespace in the input.
-    let mut input = step.input.clone();
-    let database = input
-        .get("database")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
-    let schema = input
-        .get("schema")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
-    crate::commands::driver_command::inject_sql_target_fields(
-        &mut input,
-        database.as_deref(),
-        schema.as_deref(),
-    );
-
-    driver
-        .execute_command(&handle, &step.command, input)
-        .await
-        .map_err(|e| WorkflowError::Driver(e.to_string()))
+    .await
 }
 
 #[cfg(test)]

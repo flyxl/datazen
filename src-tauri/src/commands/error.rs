@@ -23,11 +23,15 @@ pub enum CommandError {
     DataSyncPartiallyApplied(u64),
     DataSyncOutcomeUnknown(String),
     Internal(String),
+    RestoreOutcome(Box<datazen_platform_api::dto::job::JobDetails>),
 }
 
 impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::RestoreOutcome(details) if details.job.effect_outcome == Some(datazen_platform_api::dto::execution::EffectOutcome::NotStarted)
+                && details.domain_results.iter().any(|result| result.result_code == "restoreUnsupported") => write!(f, "Restore Unsupported: no verified retained-resource binding; no database write was submitted; inspect Job {}; automatic retry is forbidden", details.job.job_id.as_str()),
+            Self::RestoreOutcome(details) => write!(f, "Restore ended {:?}, effects {:?}; inspect Job {} before creating a new restore; automatic retry is forbidden", details.job.state, details.job.effect_outcome, details.job.job_id.as_str()),
             Self::DataSyncPartiallyApplied(count) => write!(f, "{count} rows committed before execution stopped; compare current data before continuing"),
             Self::Store(e) => write!(f, "{e}"),
             Self::Connection(e) => write!(f, "{e}"),
@@ -49,6 +53,19 @@ impl std::fmt::Display for CommandError {
 
 impl serde::Serialize for CommandError {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if let Self::RestoreOutcome(details) = self {
+            return serde::Serialize::serialize(
+                &serde_json::json!({
+                    "code": "restoreOutcome",
+                    "message": self.to_string(),
+                    "details": details,
+                    "automaticRetryAllowed": false,
+                    "unsupported": details.job.effect_outcome == Some(datazen_platform_api::dto::execution::EffectOutcome::NotStarted)
+                        && details.domain_results.iter().any(|result| result.result_code == "restoreUnsupported"),
+                }),
+                serializer,
+            );
+        }
         // Redact secrets so IPC payloads never leak credentials (M9/B8).
         let redacted = crate::log_redact::redact_secrets_for_log(&self.to_string());
         serializer.serialize_str(&redacted)
@@ -258,6 +275,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn restore_outcomes_preserve_effects_and_forbid_automatic_retry() {
+        for (state, effect, code, unsupported) in [
+            ("failed", "notStarted", "restoreUnsupported", true),
+            ("failed", "notStarted", "restoreInvalidInput", false),
+            ("failed", "unknown", "restoreExecuted", false),
+            ("failed", "partiallyApplied", "restoreExecuted", false),
+            ("failed", "rolledBack", "restoreExecuted", false),
+            ("cancelled", "completed", "restoreExecuted", false),
+            ("cancelled", "notStarted", "restoreInvalidInput", false),
+        ] {
+            let details = serde_json::from_value(serde_json::json!({
+                "job": {"jobId":"restore-test", "kind":"databaseRestoreApply", "state":state,
+                    "stage":null, "executionIds":[], "artifactIds":[], "createdAt":"2026-10-17T00:00:00.000Z", "updatedAt":"2026-10-17T00:00:00.000Z",
+                    "effectOutcome":effect},
+                "stateVersion":1,
+                "domainResults":[{"stageId":"restoreArtifact", "resultCode":code,
+                    "outcomeCode":effect, "counters":[], "items":[], "artifactIds":[]}]
+            }))
+            .unwrap();
+            let error = CommandError::RestoreOutcome(Box::new(details));
+            let value = serde_json::to_value(&error).unwrap();
+            assert_eq!(value["unsupported"], unsupported);
+            assert_eq!(value["automaticRetryAllowed"], false);
+            assert_eq!(value["details"]["job"]["state"], state);
+            assert_eq!(value["details"]["job"]["effectOutcome"], effect);
+            assert!(value["message"]
+                .as_str()
+                .unwrap()
+                .contains("automatic retry is forbidden"));
+        }
+    }
+
+    #[test]
     fn display_and_serialize_variants() {
         let cases: Vec<CommandError> = vec![
             CommandError::Store(StoreError::ReadError("x".into())),
@@ -349,5 +399,19 @@ mod tests {
             resolve_override_path(None, OVERRIDE_DISABLED_MSG).unwrap(),
             None
         );
+    }
+}
+
+impl From<datazen_feature_core::error::FeatureError> for CommandError {
+    fn from(error: datazen_feature_core::error::FeatureError) -> Self {
+        use datazen_feature_core::error::FeatureError;
+        match error {
+            FeatureError::Ai(error) => Self::Ai(error),
+            FeatureError::Validation(message) => Self::Validation(message),
+            FeatureError::Internal(message) => Self::Internal(message),
+            FeatureError::Driver(error) => Self::from(error),
+            FeatureError::Io(error) => Self::Io(error),
+            FeatureError::Json(error) => Self::Json(error),
+        }
     }
 }

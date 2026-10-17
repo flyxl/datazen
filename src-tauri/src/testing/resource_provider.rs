@@ -132,6 +132,22 @@ impl TestResourceProvider {
         sink: &dyn ResultSink,
     ) -> Result<Vec<StatementResult>, ResourceError> {
         let connection = self.connection(handle)?;
+        // Catalog/schema commands have no SQL input. Dispatch them before
+        // validating the SQL-only command payload, just as the runtime's
+        // production command adapter does.
+        if !matches!(call.command.as_str(), "query" | "query_stream" | "execute") {
+            let result = self
+                .driver
+                .execute_command(&connection, &call.command, call.input.clone())
+                .await?;
+            sink.write_output(serde_json::json!({
+                "kind": "commandResult",
+                "data": result.data,
+            }))
+            .await?;
+            sink.complete().await?;
+            return Ok(Vec::new());
+        }
         let sql = call
             .input
             .get("sql")
@@ -178,17 +194,9 @@ impl TestResourceProvider {
                 }]
             }
             _ => {
-                let result = self
-                    .driver
-                    .execute_command(&connection, &call.command, call.input.clone())
-                    .await?;
-                sink.write_output(serde_json::json!({
-                    "kind": "commandResult",
-                    "data": result.data,
-                }))
-                .await?;
-                sink.complete().await?;
-                return Ok(Vec::new());
+                return Err(ResourceError::SinkRejected {
+                    reason: "unexpected SQL command in test resource provider".into(),
+                })
             }
         };
 

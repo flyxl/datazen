@@ -60,3 +60,19 @@ export function parseSettingsSection(value: string | null | undefined): Settings
   }
   return 'general';
 }
+
+/** Sections currently supplied by native host services. */
+export const DESKTOP_SETTINGS_SECTIONS = new Set<SettingsSection>([
+  'logging',
+  'ai',
+  'prompts',
+  'mcpServer',
+  'mcpClient',
+  'tunnels',
+  'extensions',
+]);
+export function settingsSectionsForBackend(desktop: boolean) {
+  return SETTINGS_SECTIONS.filter(
+    (section) => desktop || !DESKTOP_SETTINGS_SECTIONS.has(section.id),
+  );
+}

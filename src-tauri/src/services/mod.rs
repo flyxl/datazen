@@ -10,3 +10,5 @@ pub use query_executor::{FilterCondition, OrderBy, QueryExecutor, SortCondition}
 pub use schema_scope::metadata_schema;
 
 pub(crate) mod migration_endpoint;
+
+mod feature_ports;

@@ -43,3 +43,6 @@ pub use manifest::{
 };
 #[allow(unused_imports)]
 pub use storage::{storage_get, storage_remove, storage_set};
+
+pub mod manager;
+pub mod protocol;

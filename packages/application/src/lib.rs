@@ -20,6 +20,7 @@
 //! | [`dto`] | 用例请求 DTO、持久化记录，以及 platform-api 契约 DTO 的再导出 |
 //! | [`target`] | §4.3 六步目标计算 |
 //! | [`identity_policy`] | §5.1 身份与授权判定顺序 |
+//! | [`settings`] | 跨形态设置校验与仓储用例 |
 //! | [`sessions`] | [`ConnectionUseCases`](sessions::ConnectionUseCases) 用例面 |
 //! | [`capability`] | 计划第 93 行的可选能力注册与运行时能力降低机制 |
 //!
@@ -35,6 +36,7 @@ pub mod error;
 pub mod frontend_bridge;
 pub mod identity_policy;
 pub mod sessions;
+pub mod settings;
 pub mod target;
 
 use std::sync::Arc;
@@ -241,9 +243,10 @@ mod tests {
                 "frontend_bridge",
                 "identity_policy",
                 "sessions",
+                "settings",
                 "target",
             ],
-            "本 crate 的对外模块面是封闭的七单元：多一个或少一个 `pub mod` 都必须在这里显式表态，\
+            "本 crate 的对外模块面是封闭的八单元：多一个或少一个 `pub mod` 都必须在这里显式表态，\
              并同步 lib.rs 顶部的模块表与架构文档"
         );
         assert_eq!(

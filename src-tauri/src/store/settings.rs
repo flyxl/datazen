@@ -1,6 +1,8 @@
 use crate::dashboard::types::MonitorSettings;
 use crate::mcp::permission::McpPermissionMode;
 use crate::mcp::McpServerConfig;
+use datazen_platform_api::settings::{ExecutionSettings, SharedSettings, UserPreferences};
+pub use datazen_platform_api::settings::{SqlFormatOptions, SqlSnippet};
 use serde::{Deserialize, Serialize};
 
 /// Current first-run journey revision. Bump it only when the journey must be
@@ -165,9 +167,22 @@ pub struct AppSettings {
     /// SQL syntax highlighting color preset ('default' follows the active theme pack).
     #[serde(default)]
     pub sql_syntax_theme: Option<String>,
+    #[serde(default)]
+    pub sql_format_options: SqlFormatOptions,
+    #[serde(default)]
+    pub sql_snippets: Vec<SqlSnippet>,
+    #[serde(default = "default_workflow_step_result_order")]
+    pub workflow_step_result_order: String,
+    /// Preserve future/extension fields when an older desktop writes the file.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
     /// Onboarding wizard state. `None` or `version < 1` → show wizard.
     #[serde(default)]
     pub onboarding: Option<OnboardingState>,
+}
+
+fn default_workflow_step_result_order() -> String {
+    "desc".into()
 }
 
 fn default_sql_execution_strategy() -> String {
@@ -238,7 +253,7 @@ impl Default for AppSettings {
             limit_select_results: false,
             query_result_limit: 5000,
             editor_font_size: 13,
-            editor_font_family: "JetBrains Mono".to_string(),
+            editor_font_family: "Menlo, Monaco, Consolas, \"Courier New\", monospace".to_string(),
             confirm_on_delete: true,
             auto_commit: true,
             safe_mode: true,
@@ -267,7 +282,104 @@ impl Default for AppSettings {
             custom_keymap: std::collections::HashMap::new(),
             sql_execution_strategy: default_sql_execution_strategy(),
             sql_syntax_theme: None,
+            sql_format_options: SqlFormatOptions::default(),
+            sql_snippets: Vec::new(),
+            workflow_step_result_order: default_workflow_step_result_order(),
+            extra: serde_json::Map::new(),
             onboarding: None,
         }
+    }
+}
+
+impl AppSettings {
+    pub fn shared_settings(&self) -> SharedSettings {
+        SharedSettings {
+            preferences: UserPreferences {
+                theme: datazen_platform_api::settings::PortableThemePreference {
+                    mode: self.theme.mode.clone(),
+                    pack_id: self.theme.pack_id.clone(),
+                },
+                language: self.language.clone(),
+                editor_font_size: self.editor_font_size.clone(),
+                editor_font_family: self.editor_font_family.clone(),
+                confirm_on_delete: self.confirm_on_delete.clone(),
+                auto_commit: self.auto_commit.clone(),
+                confirm_dangerous_execution: self.confirm_dangerous_execution.clone(),
+                default_page_size: self.default_page_size.clone(),
+                auto_chart_on_query: self.auto_chart_on_query.clone(),
+                wapp_settings: self.wapp_settings.clone(),
+                editor_completion_quote_policy: self.editor_completion_quote_policy.clone(),
+                editor_completion_include_table_prefix: self
+                    .editor_completion_include_table_prefix
+                    .clone(),
+                enable_fk_prediction: self.enable_fk_prediction.clone(),
+                keymap_preset: self.keymap_preset.clone(),
+                custom_keymap: self.custom_keymap.clone(),
+                sql_execution_strategy: self.sql_execution_strategy.clone(),
+                sql_syntax_theme: self.sql_syntax_theme.clone(),
+                sql_format_options: self.sql_format_options.clone(),
+                sql_snippets: self.sql_snippets.clone(),
+                workflow_step_result_order: self.workflow_step_result_order.clone(),
+            },
+            execution: ExecutionSettings {
+                limit_select_results: self.limit_select_results.clone(),
+                query_result_limit: self.query_result_limit.clone(),
+                safe_mode: self.safe_mode.clone(),
+                connection_pool_size: self.connection_pool_size.clone(),
+                mcp_disabled_tools: self.mcp_disabled_tools.clone(),
+                mcp_permission_mode: match self.mcp_permission_mode {
+                    McpPermissionMode::ReadOnly => "read_only",
+                    McpPermissionMode::SafeWrite => "safe_write",
+                    McpPermissionMode::HighRiskWrite => "high_risk_write",
+                }
+                .into(),
+                mcp_allowed_connection_ids: self.mcp_allowed_connection_ids.clone(),
+                driver_settings: self.driver_settings.clone(),
+                ai_strict_egress: self.ai_strict_egress.clone(),
+            },
+        }
+    }
+    pub fn apply_shared_settings(&mut self, value: SharedSettings) -> Result<(), String> {
+        let mode = match value.execution.mcp_permission_mode.as_str() {
+            "read_only" => McpPermissionMode::ReadOnly,
+            "safe_write" => McpPermissionMode::SafeWrite,
+            "high_risk_write" => McpPermissionMode::HighRiskWrite,
+            _ => return Err("Invalid MCP permission mode".into()),
+        };
+        let execution = value.execution.normalized();
+        self.theme = ThemePreference {
+            mode: value.preferences.theme.mode,
+            pack_id: value.preferences.theme.pack_id,
+        };
+        self.language = value.preferences.language;
+        self.editor_font_size = value.preferences.editor_font_size;
+        self.editor_font_family = value.preferences.editor_font_family;
+        self.confirm_on_delete = value.preferences.confirm_on_delete;
+        self.auto_commit = value.preferences.auto_commit;
+        self.confirm_dangerous_execution = value.preferences.confirm_dangerous_execution;
+        self.default_page_size = value.preferences.default_page_size;
+        self.auto_chart_on_query = value.preferences.auto_chart_on_query;
+        self.wapp_settings = value.preferences.wapp_settings;
+        self.editor_completion_quote_policy = value.preferences.editor_completion_quote_policy;
+        self.editor_completion_include_table_prefix =
+            value.preferences.editor_completion_include_table_prefix;
+        self.enable_fk_prediction = value.preferences.enable_fk_prediction;
+        self.keymap_preset = value.preferences.keymap_preset;
+        self.custom_keymap = value.preferences.custom_keymap;
+        self.sql_execution_strategy = value.preferences.sql_execution_strategy;
+        self.sql_syntax_theme = value.preferences.sql_syntax_theme;
+        self.sql_format_options = value.preferences.sql_format_options;
+        self.sql_snippets = value.preferences.sql_snippets;
+        self.workflow_step_result_order = value.preferences.workflow_step_result_order;
+        self.limit_select_results = execution.limit_select_results;
+        self.query_result_limit = execution.query_result_limit;
+        self.safe_mode = execution.safe_mode;
+        self.connection_pool_size = execution.connection_pool_size;
+        self.mcp_disabled_tools = execution.mcp_disabled_tools;
+        self.mcp_permission_mode = mode;
+        self.mcp_allowed_connection_ids = execution.mcp_allowed_connection_ids;
+        self.driver_settings = execution.driver_settings;
+        self.ai_strict_egress = execution.ai_strict_egress;
+        Ok(())
     }
 }

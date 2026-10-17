@@ -218,7 +218,7 @@ pub(crate) fn postgres_capability_set() -> CapabilitySet {
 /// set that was actually checked against the code below; a snapshot taken
 /// before this module existed carried `0`. `2` added buffered row read/write;
 /// `3` adds fixed interactive/agent sessions and bounded streaming results.
-pub(crate) const POSTGRES_CAPABILITY_REVISION: u64 = 3;
+pub(crate) const POSTGRES_CAPABILITY_REVISION: u64 = 4;
 
 /// The full registry: identity, version, protocol and the declared set.
 pub(crate) fn postgres_capability_registry() -> CapabilityRegistry {
@@ -231,6 +231,10 @@ pub(crate) fn postgres_capability_registry() -> CapabilityRegistry {
     for (capability, evidence) in postgres_capability_evidence() {
         snapshot.confirmed.insert(capability.to_string(), evidence);
     }
+    snapshot.confirmed.insert(
+        datazen_driver_api::restore_sql::CAPABILITY_KEY.into(),
+        datazen_driver_api::restore_sql::TRANSACTIONAL.into(),
+    );
     let mut registry = CapabilityRegistry::new(POSTGRES_PROVIDER_ID, snapshot);
     registry.capabilities = postgres_capability_set();
     registry
