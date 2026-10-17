@@ -31,3 +31,10 @@
 2. 全新 tester（独立 --detach 工作树）验收：契约对拍、CM-53 H 旅程、拒绝路径、变异检查。
 3. F 层旅程（e2e/specs/ai-grant-lifecycle-journey.ts）：尚无，列为遗留。
 4. 合回 feature/p6-remaining 需用户确认。
+
+## 2026-10-17 追加
+- 合并前端轨（6c50d82af）→ be8701ade；合并后实测 vitest 612 files / 6454 tests EXIT=0，typecheck 四步 EXIT=0。
+- a54ba9b64：lint 收口（claim 版 9 参 + dead_code 兼容层）。
+- 0c5bee15c：grant 身份绑定修正（不再从指纹反解 client id；执行改用 begin_owned_call）。
+- 已知 flaky：mcp::server::tests::mcp_tool_handlers_with_mock_driver（Accepted/Unconfirmed），单跑通过；待 tester 判定是否既有。
+- tester agent da485a67 在 0c5bee15c 上验收中。
