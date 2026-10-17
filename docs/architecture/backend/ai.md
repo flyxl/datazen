@@ -274,7 +274,7 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 - `register(request_id, owner_fingerprint)` 在开始时登记、`unregister(request_id, owner_fingerprint)` 在结束时注销；owner 指纹由 `OwnerRef` 的稳定身份构成（桌面为本进程 `clientInstanceId`）。
 - `cancel(request_id, owner_fingerprint) -> CancelReceipt` 返回三态：`marked`（已登记标志并触发 token）、`alreadyFinished`（未注册：已完成 / 已取消 / 从未开始）、`forbidden`（同名请求属于另一个 owner，**不动它**）。伪造的 `request_id` 不能取消别的客户端的流（CM-53）。
 - 两段式取消：先登记标志、再触发 `CancellationToken`；工具循环在轮次开始、流式轮次结束、以及每次工具派发前检查取消。终止 chunk 必须是 `done: true, cancelled: true`——**不得把取消伪装成正常完成**；取消路径不写新历史，只回收本次 AI 自有资源。
-- `cancel_owner(owner_fingerprint)` 用于客户端整体离开时只停自己的流。
+- `cancel_owner(owner_fingerprint)` 用于客户端整体离开时只停自己的流（目前由前端释放链路与 grant 撤销配合使用，尚无后端独立调用点）。
 - 它与长任务机制互不相通，key 也不同（AI 是调用 ID，Job 是 job ID）。AI 调用取消状态只在内存；P5 迁移三件套 Job API 使用 AppDb `DesktopJobHost` 的持久 cancel intent。
 
 **六、显式 editor 会话授权（P6 §14.4 / CM-53）。**
@@ -289,4 +289,7 @@ AI 默认**独立操作**：每个 DB 工具调用经共享 `ResourceExecutionHo
 - 工具指定的 `database` 与授权记录不一致时在派发前拒绝；未指定时用授权记录补齐，目标规范化由共享执行器统一完成（因此对象寻址命令如 `get_table_schema` 走同一条 `prepare` 路径）。
 - 结果归属：DB 工具结果 JSON 附 `attribution`：`{kind: "independent" | "editorGrant", grantId?, editorSessionId?}`。这是**面向模型与审计的来源标注**，不回流前端 UI；前端消息上的归属元数据由 `targetClaim` 直接构造。
 
-> 当前限制（P6 未关闭）：`revoke_for_editor_session` / `cancel_owner` / `purge_expired` 尚未接入编辑器会话关闭与定期回收的调用点，撤销目前由前端在关闭面板/切 pane 时主动调用；`runtime.get_session` 只校验 org/principal/clientInstanceId 与会话存在，**不校验句柄属于该 editor 或该 connection**，同进程伪造他 pane 句柄仍可能被接受；MCP 工具仍走各自会话；F 层真实 UI 旅程未写。仅 PG + MySQL 在本轮验证范围内。
+- **归属校验在 grant 层补齐**（runtime 的 `get_session` 只按 org/principal/clientInstanceId 过滤，同进程两个 pane 在它眼里没有区别）：`verify_session_ownership` 逐项比对 `SessionView.owner` 的 clientInstanceId 与 editorSessionId、会话所在 connectionId、以及 profile 当前 configRevision，任一不符即具名拒绝；非 editor owner（Job/WorkflowBlock/ClientSession）一律拒绝。单测覆盖「同 client 的另一个 pane」「另一 client」「另一连接」「旧 revision」「非 editor owner」五种拒绝。
+- **回收已接线**：`close_session` 在关闭（含关闭被拒）后撤销借用该 db session 的 grant；`platform_update_profile` / `platform_disable_profile` 撤销该连接上的全部 grant（revision 变更使会话失效）；`verify_claim` 与 `issue` 顺带 `purge_expired` 回收过期记录。
+
+> 当前限制（P6 未关闭）：MCP 工具仍走各自会话，AI 的 `editorGrant` 只覆盖 DB 工具；F 层真实 UI 旅程（e2e）尚未编写，§9 那条旅程目前只有 H 层证据。仅 PG + MySQL 在本轮验证范围内。
