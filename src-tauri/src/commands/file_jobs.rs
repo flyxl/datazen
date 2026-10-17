@@ -13,7 +13,7 @@ use datazen_platform_api::{
 use datazen_runtime::job::{EndpointRef, EndpointRole, JobHandler};
 use std::{
     path::PathBuf,
-    sync::{Arc, atomic::AtomicBool},
+    sync::{atomic::AtomicBool, Arc},
 };
 use tauri::{AppHandle, Emitter};
 

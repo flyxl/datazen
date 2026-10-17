@@ -1,7 +1,7 @@
 //! Shared desktop adapter for read-only commands executed through Runtime.
 use crate::{db::DriverRegistry, platform::PlatformEntry, store::Store};
 use datazen_driver_api::{
-    CommandAccessLevel, ConnectionConfig, DatabaseDriver, check_command_access,
+    check_command_access, CommandAccessLevel, ConnectionConfig, DatabaseDriver,
 };
 use datazen_feature_core::workflow::{
     command::WorkflowCommandStep,

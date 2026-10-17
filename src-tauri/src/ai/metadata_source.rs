@@ -1,7 +1,8 @@
 //! Desktop session identity lookup bound to independent Runtime metadata reads.
 use crate::{
-    db::DriverRegistry, platform::PlatformEntry, services::ConnectionManager,
-    services::runtime_command_source::RuntimeCommandSource, store::Store,
+    db::DriverRegistry, platform::PlatformEntry,
+    services::runtime_command_source::RuntimeCommandSource, services::ConnectionManager,
+    store::Store,
 };
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TableInfo, TableSchema};
 use datazen_feature_core::services::ports::SchemaContextSource;

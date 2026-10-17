@@ -1,5 +1,5 @@
 //! Desktop file picker and source/event bindings for the portable export service.
-use super::{AppState, error::CommandError};
+use super::{error::CommandError, AppState};
 use datazen_driver_api::{DatabaseDriver, Value};
 pub use datazen_feature_core::export::*;
 use std::sync::Arc;
