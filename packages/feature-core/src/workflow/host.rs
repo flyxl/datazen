@@ -11,9 +11,41 @@ pub trait WorkflowHost: Send + Sync {
     fn validate_session_block(&self) -> Result<(), WorkflowError> {
         Err(WorkflowError::Validation("sessionBlock requires an authorized WorkflowBlock Job owner and TTL lifecycle; execution is unsupported".into()))
     }
+    /// Metadata-only preflight; never acquires a database resource.
+    async fn target_requirements(
+        &self,
+        connection: &str,
+        command: &str,
+    ) -> Result<super::target_plan::TargetRequirements, WorkflowError> {
+        let resources = self.resources().ok_or_else(|| {
+            WorkflowError::Validation(
+                "CapabilityUnsupported: workflow driver target metadata unavailable".into(),
+            )
+        })?;
+        let (config, _, enabled) = resources.profile(connection).await?;
+        if !enabled {
+            return Err(WorkflowError::Validation("connection disabled".into()));
+        }
+        let driver = resources.driver(&config).await?;
+        let requirements = driver.target_requirements(command).ok_or_else(|| {
+            WorkflowError::UnsupportedCommand {
+                command: command.into(),
+                connection_id: connection.into(),
+            }
+        })?;
+        Ok(super::target_plan::TargetRequirements {
+            requires_database: requirements.namespace.database
+                == datazen_driver_api::namespace::TargetLevelRequirement::Required
+                || (matches!(command, "query" | "execute" | "explain")
+                    && driver.has_multi_database()),
+        })
+    }
+    /// Must clean candidate resources if cancelled before returning a receipt.
+    /// An unconfirmed admission must return SqlUnconfirmed and must not replay.
     async fn open_session_block(
         &self,
         _target: &super::target_plan::ExecutionTarget,
+        _deadline: tokio::time::Instant,
     ) -> Result<super::session_block::RetainedSession, WorkflowError> {
         Err(WorkflowError::Validation(
             "trusted workflow Job session adapter unavailable".into(),

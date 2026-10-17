@@ -204,13 +204,7 @@ pub fn prepare_definition(
                 block,
                 workflow,
                 None,
-                if matches!(&*step, WorkflowStep::Query { .. })
-                    || matches!(&*step, WorkflowStep::Command { command, .. } if matches!(command.as_str(), "query" | "execute" | "explain"))
-                {
-                    super::target_plan::TargetRequirements::DATABASE
-                } else {
-                    super::target_plan::TargetRequirements::NONE
-                },
+                super::target_plan::TargetRequirements::NONE,
             )?;
             // Materialize the complete selected level so legacy per-field
             // inheritance cannot combine identities from separate levels.
@@ -274,7 +268,7 @@ pub fn plan_blocks<'a>(
             &block.target,
             &executable.default_target,
             &block.steps,
-            super::target_plan::TargetRequirements::DATABASE,
+            super::target_plan::TargetRequirements::NONE,
             super::target_plan::NamespaceSwitch::RequiresNewConnection,
         )?;
         host.validate_session_block()?;
@@ -301,7 +295,9 @@ pub(super) async fn execute_blocks(
         let resources = app_state
             .resources()
             .ok_or_else(|| WorkflowError::Validation("sessionBlock runtime unavailable".into()))?;
-        let mut session = app_state.open_session_block(&target).await?;
+        let deadline =
+            tokio::time::Instant::from_std(*start) + std::time::Duration::from_secs(global_timeout);
+        let mut session = acquire_block(app_state, &target, deadline).await?;
         let host = super::session_block::BlockHost {
             parent: app_state,
             resource: resources,
@@ -335,4 +331,109 @@ pub(super) async fn execute_blocks(
         result?;
     }
     Ok(())
+}
+
+/// Dropping timed-out admission is safe only when the trusted adapter keeps its
+/// own candidate cleanup guard. No receipt means the admission result is Unknown.
+pub async fn acquire_block(
+    host: &dyn WorkflowHost,
+    target: &super::target_plan::ExecutionTarget,
+    deadline: tokio::time::Instant,
+) -> Result<RetainedSession, WorkflowError> {
+    if tokio::time::Instant::now() >= deadline {
+        return Err(WorkflowError::GlobalTimeout(0));
+    }
+    let mut session = tokio::time::timeout_at(deadline, host.open_session_block(target, deadline))
+        .await
+        .map_err(|_| WorkflowError::SqlUnconfirmed {
+            execution_id: "unavailable".into(),
+            state: "Unknown".into(),
+            effects: "Unknown".into(),
+            code: "BlockAcquisitionTimeout".into(),
+        })??;
+    if tokio::time::Instant::now() >= deadline {
+        let cleanup = session.close().await;
+        return Err(WorkflowError::Step(format!("block acquisition exceeded workflow deadline; zero steps dispatched; cleanup: {cleanup:?}")));
+    }
+    Ok(session)
+}
+
+pub async fn validate_definition_targets(
+    definition: &super::model::WorkflowDefinition,
+    host: &dyn WorkflowHost,
+) -> Result<(), WorkflowError> {
+    fn collect<'a>(
+        steps: &'a [super::model::WorkflowStep],
+        targets: &mut Vec<&'a super::model::WorkflowStep>,
+    ) {
+        use super::model::WorkflowStep;
+        for step in steps {
+            match step {
+                WorkflowStep::Query { .. } | WorkflowStep::Command { .. } => targets.push(step),
+                WorkflowStep::Condition {
+                    then_steps,
+                    else_steps,
+                    ..
+                } => {
+                    collect(then_steps, targets);
+                    if let Some(other) = else_steps {
+                        collect(other, targets);
+                    }
+                }
+                WorkflowStep::ForEach { steps, .. } => collect(steps, targets),
+                _ => {}
+            }
+        }
+    }
+    let mut targets = Vec::new();
+    collect(&definition.steps, &mut targets);
+    for block in &definition.blocks {
+        collect(&block.steps, &mut targets);
+    }
+    for step in targets {
+        let declared = super::executable::TargetDeclaration::from_step(step);
+        let command = match step {
+            super::model::WorkflowStep::Command { command, .. } => command.as_str(),
+            _ => "query",
+        };
+        let requirements = host
+            .target_requirements(
+                declared.connection.as_deref().ok_or_else(|| {
+                    WorkflowError::Validation("target connection unavailable".into())
+                })?,
+                command,
+            )
+            .await?;
+        super::target_plan::resolve(
+            step.step_id(),
+            &declared,
+            None,
+            &super::executable::TargetDeclaration::empty(),
+            None,
+            requirements,
+        )?;
+    }
+    Ok(())
+}
+
+pub async fn prepare_v2(
+    definition: &super::model::WorkflowDefinition,
+    context: &super::context::WorkflowContext,
+    host: &dyn WorkflowHost,
+    deadline: tokio::time::Instant,
+) -> Result<super::model::WorkflowDefinition, WorkflowError> {
+    let prepared = prepare_definition(definition, context)?;
+    if tokio::time::Instant::now() >= deadline {
+        return Err(WorkflowError::Step(
+            "workflow deadline expired before target preflight; no resource acquired".into(),
+        ));
+    }
+    tokio::time::timeout_at(deadline, validate_definition_targets(&prepared, host))
+        .await
+        .map_err(|_| {
+            WorkflowError::Step(
+                "workflow target metadata preflight timed out; no resource acquired".into(),
+            )
+        })??;
+    Ok(prepared)
 }

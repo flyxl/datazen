@@ -119,8 +119,15 @@ impl WorkflowExecutor {
         let version = super::executable::WorkflowVersion::parse(workflow.version.as_deref())
             .map_err(WorkflowError::into_ipc_string)?;
         let workflow = if version == super::executable::WorkflowVersion::V2 {
-            prepared_definition = super::session_block::prepare_definition(workflow, &context)
-                .map_err(WorkflowError::into_ipc_string)?;
+            prepared_definition = super::session_block::prepare_v2(
+                workflow,
+                &context,
+                app_state,
+                tokio::time::Instant::from_std(start)
+                    + std::time::Duration::from_secs(global_timeout),
+            )
+            .await
+            .map_err(WorkflowError::into_ipc_string)?;
             &prepared_definition
         } else {
             workflow

@@ -224,8 +224,8 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 
 ### 2026-10-17 Workflow v2 派发安全边界
 
-共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
+共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺命令/驱动元数据要求的字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。database 要求来自命令的 target requirements 和驱动 has_multi_database 元数据，单库驱动不因 SQL 命令名被强制要求 database；缺元数据明确 CapabilityUnsupported，不猜测其他驱动能力。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
 
 `sessionBlock` 与 `transactionBlock` 当前都在独立步骤执行前失败关闭，不能被旧 executor 静默忽略。前者的前置缺口是受控 Workflow Job 生命周期、经授权的 `OwnerRef::WorkflowBlock { jobId, blockId }` 与 TTL 清理；Runtime application 目前拒绝未获 Job 授权的该 owner，禁止用 `ClientSession` 替代。后者还缺事务计划预检、提交/回滚真实效果与整块重试协议。
 
-共享 `session_block` 与 `resource_execution::execute_with_session` 已提供串行步骤、固定 Runtime session / ExecutionGateway、终态等待和块末关闭的可复用端口。可信 Job adapter 尚未实现，桌面默认拒绝开启；这些端口不表示 retained session 临时对象可见性、块间/编辑器隔离、失败/取消清理或真实 PostgreSQL/MySQL 旅程已经验收。P6 仍未关闭，后续需在独立验证树完成上述旅程后开放 block 派发。
+共享 `session_block` 与 `resource_execution::execute_with_session` 已提供串行步骤、固定 Runtime session / ExecutionGateway、终态等待和块末关闭的可复用端口。目标元数据预检和块资源获取共用 workflow 截止时间；获取超时零块步骤派发，未拿到回执时保留 Unknown，可信 adapter 必须以候选资源守卫清理被取消的获取，不能自动重试。可信 Job adapter 尚未实现，桌面默认拒绝开启；这些端口不表示 retained session 临时对象可见性、块间/编辑器隔离、失败/取消清理或真实 PostgreSQL/MySQL 旅程已经验收。P6 仍未关闭，后续需在独立验证树完成上述旅程后开放 block 派发。
