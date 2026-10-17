@@ -93,8 +93,9 @@ pub async fn ai_grant_editor_session(
     let adapter = state
         .platform_require()
         .map_err(|error| CommandError::Validation(error.message))?;
+    let claimed_client_instance_id = ClientInstanceId::new(claimed_client_instance_id);
     let intent = crate::platform::identity::OwnerIntent::Editor {
-        claimed_client_instance_id: ClientInstanceId::new(claimed_client_instance_id),
+        claimed_client_instance_id: claimed_client_instance_id.clone(),
         editor_session_id: EditorSessionId::new(editor_session_id.clone()),
     };
     let (call, owner) = adapter.begin_owned_call(&intent).map_err(|error| {
@@ -144,11 +145,9 @@ pub async fn ai_grant_editor_session(
     };
     let record = AiGrantIssue {
         grant_id: uuid::Uuid::new_v4().to_string(),
-        client_instance_id: owner_fingerprint
-            .split(':')
-            .nth(1)
-            .unwrap_or_default()
-            .to_string(),
+        // Take the admitted identity directly; deriving it from the fingerprint
+        // string would silently mis-bind if the fingerprint format changed.
+        client_instance_id: claimed_client_instance_id.as_str().to_string(),
         editor_session_id,
         owner_fingerprint,
         connection_id: connection_id.clone(),
@@ -233,7 +232,15 @@ impl AiRequestHost<'_> {
             .state
             .platform_require()
             .map_err(|error| error.message)?;
-        let call = adapter.begin_call();
+        // The runtime validates that the session belongs to the owner in the
+        // context, so this path must be owner-bound rather than a bare call.
+        let intent = crate::platform::identity::OwnerIntent::Editor {
+            claimed_client_instance_id: ClientInstanceId::new(record.client_instance_id.clone()),
+            editor_session_id: EditorSessionId::new(record.editor_session_id.clone()),
+        };
+        let (call, _owner) = adapter
+            .begin_owned_call(&intent)
+            .map_err(|error| format!("{:?}: {}", error.code, error.message))?;
         let runtime = adapter.runtime().map_err(|error| error.message)?;
         let database = input
             .get("database")
