@@ -1,3 +1,4 @@
+import type { AiTargetClaim, CancelReceipt } from '../../ai/targetClaim';
 import type {
   AiChatMessage,
   AiChatSession,
@@ -124,8 +125,14 @@ export interface AiStore {
     includeSchema?: boolean;
     contextFiles?: string[];
     contextTables?: string[];
+    /** Target this run claims; omitted = independent. */
+    targetClaim?: AiTargetClaim;
   }) => Promise<void>;
   clearChat: () => void;
+  /** Cancel the in-flight chat run; resolves with the host receipt. */
+  cancelChat: (requestId?: string) => Promise<CancelReceipt | null>;
+  /** Called by the session canceller's 8s fallback. */
+  handleCancelTimeout: (requestId: string) => void;
 
   workflowChat: AiChatSession | null;
   initWorkflowChat: () => void;
