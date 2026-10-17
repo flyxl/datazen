@@ -33,6 +33,8 @@ interface StoredMessage {
   reasoning?: string;
   toolCalls?: { id: string; name: string; arguments?: string }[];
   toolCallId?: string;
+  /** The run was stopped by the user; kept so reload does not show it as complete. */
+  cancelled?: boolean;
 }
 
 interface StoredSession {

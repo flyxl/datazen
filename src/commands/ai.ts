@@ -23,6 +23,20 @@ import type {
   StreamErrorPayload,
 } from '../types';
 import { mergeDraftCommandFields } from '../windows/workflow/draftBridge';
+import type {
+  AiGrantReceipt,
+  AiGrantRequest,
+  AiTargetClaim,
+  CancelReceipt,
+} from '../ai/targetClaim';
+
+export type {
+  AiGrantReceipt,
+  AiGrantRequest,
+  AiSessionHandle,
+  AiTargetClaim,
+  CancelReceipt,
+} from '../ai/targetClaim';
 
 export type PromptScenario =
   | 'nl2sql'
@@ -48,6 +62,18 @@ function e2eStubInvoke<T>(cmd: string, args: unknown, real: () => Promise<T>): P
     return Promise.resolve('' as T);
   }
   return real();
+}
+
+/**
+ * Invoke that always reaches the native host.
+ *
+ * New AI runtime-lifecycle commands (grant/revoke/touch) deliberately bypass
+ * the E2E stub capture used by `ai_chat`/`ai_generate_sql`: the stub returns
+ * an empty string for every captured call, which would be an invalid receipt
+ * and must never be mistaken for a granted session.
+ */
+function nativeInvoke<T>(cmd: string, args?: object): Promise<T> {
+  return invoke<T>(cmd, args as Record<string, unknown> | undefined);
 }
 
 export interface PromptInfo {
@@ -104,6 +130,7 @@ export const aiCommands = {
     scenario?: PromptScenario;
     contextFiles?: string[];
     contextTables?: string[];
+    targetClaim?: AiTargetClaim;
   }) => e2eStubInvoke('ai_chat', params, () => invoke<string>('ai_chat', params)),
   parseFilter: (params: {
     dbSessionId: string;
@@ -157,8 +184,21 @@ export const aiCommands = {
     arguments: Record<string, unknown>;
   }) => invoke<string>('mcp_client_call_tool', params),
 
-  /** Cancel a running AI streaming request (FR-01, backend pending). */
-  cancel: (requestId: string) => invoke<boolean>('ai_cancel', { requestId }).catch(() => false),
+  /**
+   * Cancel a running AI streaming request (FR-01).
+   *
+   * Resolves with the host's three-state receipt. Rejections are intentional:
+   * the caller (sessionCancel) decides whether a failed IPC should leave the
+   * run untouched instead of pretending it stopped.
+   */
+  cancel: (requestId: string) => invoke<CancelReceipt>('ai_cancel', { requestId }),
+
+  /** Share an editor pane's runtime session with the AI runtime (P6 §14.4). */
+  grantEditorSession: (params: AiGrantRequest) =>
+    nativeInvoke<AiGrantReceipt>('ai_grant_editor_session', params),
+  revokeEditorGrant: (grantId: string) =>
+    nativeInvoke<boolean>('ai_revoke_editor_grant', { grantId }),
+  touchEditorGrant: (grantId: string) => nativeInvoke<boolean>('ai_touch_editor_grant', { grantId }),
 
   promptList: (driverType?: string) =>
     invoke<PromptInfo[]>('prompt_list', { driverType: driverType ?? null }),

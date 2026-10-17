@@ -1,36 +1,24 @@
 import { create } from 'zustand';
 import { aiCommands, onAiStreamChunk, onAiStreamError, onAiConfigChanged } from '../commands/ai';
 import { redactSensitiveText } from '../lib/aiQueryActions';
-import { extractSqlFromResponse, extractSqlStreaming } from '../lib/extractSql';
 import { normalizeAiProviders } from '../lib/aiProviders';
-import { extractQuestions, parseToolCallQuestions } from '../lib/extractQuestions';
 import type { AiChatMessage } from '../types';
-import { computeSessionKey, loadSessions, saveSessions, touchSession } from './ai/sessions';
+import { computeSessionKey, loadSessions } from './ai/sessions';
 import { initialNl2Sql, type AiStore } from './ai/types';
+import {
+  attributionFor,
+  cancelChat as cancelChatRequest,
+  getStreamRegistry,
+  handleCancelTimeout as applyCancelTimeout,
+  handleStreamChunk as applyStreamChunk,
+  handleStreamError as applyStreamError,
+  registerRequestId,
+  unregisterRequestId,
+} from './ai/streaming';
 import { useSettingsStore } from './settingsStore';
-
-function findMcpToolName(toolCalls?: { name: string }[]): string | null {
-  const mcpCall = toolCalls?.find((tc) => tc.name.startsWith('mcp/'));
-  return mcpCall?.name ?? null;
-}
 
 export type { AiStore } from './ai/types';
 export { initialNl2Sql } from './ai/types';
-
-// ── Session routing helpers (module-level, not in store) ──
-
-/** Maps each active requestId to the session key it belongs to. */
-const requestIdToKey: Record<string, string> = {};
-
-function registerRequestId(requestId: string, key: string): void {
-  requestIdToKey[requestId] = key;
-}
-
-function unregisterRequestId(requestId: string): string | undefined {
-  const key = requestIdToKey[requestId];
-  delete requestIdToKey[requestId];
-  return key;
-}
 
 export const useAiStore = create<AiStore>((set, get) => ({
   config: null,
@@ -414,6 +402,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       streamReasoning: '',
       streamMcpToolName: null,
       requestId: null,
+      attribution: null,
     };
 
     set({ chatSession: session });
@@ -426,6 +415,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     includeSchema = true,
     contextFiles,
     contextTables,
+    targetClaim,
   }) => {
     const { chatSession } = get();
     if (!chatSession) return;
@@ -459,6 +449,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     const requestId = crypto.randomUUID();
     const key = computeSessionKey(undefined, dbSessionId, database);
     registerRequestId(requestId, key);
+    getStreamRegistry().begin(key, requestId);
 
     set({
       chatSession: {
@@ -469,6 +460,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         streamReasoning: '',
         streamMcpToolName: null,
         requestId,
+        attribution: attributionFor(targetClaim),
       },
     });
 
@@ -481,8 +473,10 @@ export const useAiStore = create<AiStore>((set, get) => ({
         includeSchema,
         contextFiles,
         contextTables,
+        targetClaim,
       });
     } catch (e) {
+      getStreamRegistry().settle(requestId, 'error');
       unregisterRequestId(requestId);
       const session = get().chatSession;
       if (session) {
@@ -520,6 +514,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
           streamReasoning: '',
           streamMcpToolName: null,
           requestId: null,
+          attribution: null,
         },
       });
     }
@@ -569,6 +564,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     }
 
     const requestId = crypto.randomUUID();
+    getStreamRegistry().begin('workflow', requestId);
 
     set({
       workflowChat: {
@@ -579,6 +575,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         streamReasoning: '',
         streamMcpToolName: null,
         requestId,
+        attribution: { kind: 'independent' },
       },
     });
 
@@ -594,6 +591,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         contextTables,
       });
     } catch (e) {
+      getStreamRegistry().settle(requestId, 'error');
       const session = get().workflowChat;
       if (session) {
         set({
@@ -629,110 +627,21 @@ export const useAiStore = create<AiStore>((set, get) => ({
           streamReasoning: '',
           streamMcpToolName: null,
           requestId: null,
+          attribution: null,
         },
       });
     }
   },
 
-  // ── Stream handling ──
+  // ── Stream handling (logic in ./ai/streaming) ──
 
-  handleStreamChunk: (payload) => {
-    const { nl2sql, chatSession, workflowChat } = get();
+  handleStreamChunk: (payload) => applyStreamChunk(get, set, payload),
 
-    // ── NL2SQL routing ──
-    if (payload.requestId === nl2sql.requestId) {
-      const accumulated = payload.content
-        ? nl2sql.streamingSql + payload.content
-        : nl2sql.streamingSql;
-      const streamingPreview = extractSqlStreaming(accumulated);
-      set({
-        nl2sql: {
-          ...nl2sql,
-          streamingSql: accumulated,
-          streamingPreview,
-          generatedSql: payload.done ? extractSqlFromResponse(accumulated) : nl2sql.generatedSql,
-          isGenerating: payload.done ? false : nl2sql.isGenerating,
-        },
-      });
-      if (payload.done) {
-        unregisterRequestId(payload.requestId);
-      }
-      return;
-    }
+  /** Cancel the in-flight chat run and surface the host's three-state receipt. */
+  cancelChat: (requestId) => cancelChatRequest(get, set, requestId),
 
-    // ── Chat routing — prefer requestIdToKey for isolated sessions ──
-    const targetSession =
-      chatSession && payload.requestId === chatSession.requestId
-        ? 'chatSession'
-        : workflowChat && payload.requestId === workflowChat.requestId
-          ? 'workflowChat'
-          : null;
-
-    if (targetSession) {
-      const session = (targetSession === 'chatSession' ? chatSession : workflowChat)!;
-      const newContent = (session.streamContent || '') + (payload.content || '');
-      const newReasoning = (session.streamReasoning || '') + (payload.reasoning || '');
-      const mcpToolName = findMcpToolName(payload.toolCalls) ?? session.streamMcpToolName ?? null;
-      if (payload.done) {
-        unregisterRequestId(payload.requestId);
-        const { cleanContent, questions: xmlQuestions } = extractQuestions(newContent);
-        const toolCalls =
-          payload.toolCalls && payload.toolCalls.length > 0 ? payload.toolCalls : undefined;
-
-        let questions = xmlQuestions.length > 0 ? xmlQuestions : undefined;
-        if (!questions && toolCalls) {
-          const tcQuestions = parseToolCallQuestions(toolCalls);
-          if (tcQuestions.length > 0) questions = tcQuestions;
-        }
-
-        const assistantMessage: AiChatMessage = {
-          role: 'assistant',
-          content: cleanContent,
-          reasoning: newReasoning || undefined,
-          questions,
-          toolCalls,
-        };
-        const nextSession = {
-          ...session,
-          messages: [...session.messages, assistantMessage],
-          isStreaming: false,
-          streamContent: '',
-          streamReasoning: '',
-          streamMcpToolName: null,
-          requestId: null,
-        };
-        set({ [targetSession]: nextSession });
-
-        // Persist chat history to localStorage
-        if (targetSession === 'chatSession') {
-          const key = nextSession.sessionKey;
-          const sessions = loadSessions();
-          const updated = touchSession(sessions, key);
-          updated[key] = {
-            ...updated[key],
-            messages: nextSession.messages.map((m) => ({
-              role: m.role as 'user' | 'assistant' | 'tool' | 'system',
-              content: m.content,
-              reasoning: m.reasoning,
-              toolCalls: m.toolCalls,
-              toolCallId: m.toolCallId,
-            })),
-            lastAccess: Date.now(),
-          };
-          saveSessions(updated);
-        }
-      } else {
-        set({
-          [targetSession]: {
-            ...session,
-            streamContent: newContent,
-            streamReasoning: newReasoning,
-            streamMcpToolName: mcpToolName,
-          },
-        });
-      }
-    }
-  },
+  /** 8s fallback from sessionCancel: finalise the UI as cancelled. */
+  handleCancelTimeout: (requestId) => applyCancelTimeout(get, set, requestId),
 
   setupEventListeners: async () => {
     if (!('__TAURI_INTERNALS__' in globalThis)) return () => {};
@@ -740,38 +649,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       get().handleStreamChunk(payload);
     });
     const unError = await onAiStreamError((payload) => {
-      const { nl2sql, chatSession, workflowChat } = get();
-      if (payload.requestId === nl2sql.requestId) {
-        unregisterRequestId(payload.requestId);
-        set((s) => ({
-          nl2sql: { ...s.nl2sql, isGenerating: false },
-          nl2sqlError: payload.error,
-        }));
-      }
-      const errTarget =
-        chatSession && payload.requestId === chatSession.requestId
-          ? 'chatSession'
-          : workflowChat && payload.requestId === workflowChat.requestId
-            ? 'workflowChat'
-            : null;
-      if (errTarget) {
-        unregisterRequestId(payload.requestId);
-        const session = (errTarget === 'chatSession' ? chatSession : workflowChat)!;
-        set({
-          [errTarget]: {
-            ...session,
-            isStreaming: false,
-            streamContent: '',
-            streamReasoning: '',
-            streamMcpToolName: null,
-            requestId: null,
-            messages: [
-              ...session.messages,
-              { role: 'assistant', content: `Error: ${payload.error}` },
-            ],
-          },
-        });
-      }
+      applyStreamError(get, set, payload);
     });
     return () => {
       unChunk();
