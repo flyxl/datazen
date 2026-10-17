@@ -1,40 +1,61 @@
 //! Desktop file picker and source/event bindings for the portable export service.
-use super::{error::CommandError, AppState};
+use super::{AppState, error::CommandError};
 use datazen_driver_api::{DatabaseDriver, Value};
 pub use datazen_feature_core::export::*;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 struct DesktopExportSource {
-    manager: Arc<crate::services::ConnectionManager>,
-    store: Arc<crate::store::Store>,
-    runtime: crate::ai::metadata_source::RuntimeSchemaSource,
+    runtime: crate::services::runtime_command_source::RuntimeCommandSource,
+    registry: Arc<crate::db::DriverRegistry>,
     cancel: datazen_runtime::job::CancelToken,
+}
+impl DesktopExportSource {
+    async fn read_command(
+        &self,
+        session_id: &str,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<serde_json::Value, datazen_feature_core::error::FeatureError> {
+        let operation = self
+            .runtime
+            .read_session_command(session_id, command, input);
+        let cancelled = async {
+            while !self.cancel.is_cancelled() {
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+        };
+        tokio::select! {
+            result = operation => result
+                .map_err(datazen_feature_core::error::FeatureError::Internal),
+            _ = cancelled => Err(datazen_feature_core::error::FeatureError::Validation("fileJobCancelled".into())),
+        }
+    }
 }
 #[async_trait::async_trait]
 impl ExportSource for DesktopExportSource {
     async fn resolve_source(
         &self,
         id: &str,
-    ) -> Result<
-        (
-            Arc<dyn DatabaseDriver>,
-            datazen_driver_api::ConnectionHandle,
-            bool,
-            bool,
-        ),
-        datazen_feature_core::error::FeatureError,
-    > {
-        let (driver, handle) = self.manager.get_session(id).await.map_err(|error| {
-            datazen_feature_core::error::FeatureError::Internal(error.to_string())
-        })?;
-        let config = self.manager.get_session_config(id).await.map_err(|error| {
-            datazen_feature_core::error::FeatureError::Internal(error.to_string())
-        })?;
+    ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), datazen_feature_core::error::FeatureError>
+    {
+        let (_, config, _) = self
+            .runtime
+            .profile_for_session(id)
+            .await
+            .map_err(datazen_feature_core::error::FeatureError::Internal)?;
+        let driver = self
+            .registry
+            .get(&config.database_type)
+            .await
+            .ok_or_else(|| {
+                datazen_feature_core::error::FeatureError::Validation(
+                    "Export driver unavailable".into(),
+                )
+            })?;
         Ok((
             driver,
-            handle,
             config.read_only,
-            self.store.execution_settings().await.safe_mode,
+            self.runtime.execution_safe_mode().await,
         ))
     }
     async fn stream_query(
@@ -49,20 +70,11 @@ impl ExportSource for DesktopExportSource {
                 "fileJobCancelled".into(),
             ));
         }
-        let future = self.runtime.read(
+        let data = self.read_command(
             id,
             "query",
             serde_json::json!({"sql":sql,"database":target.database(),"schema":target.schema()}),
-        );
-        let cancelled = async {
-            loop {
-                if self.cancel.is_cancelled() {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-            }
-        };
-        let data = tokio::select! { result = future => result.map_err(datazen_feature_core::error::FeatureError::Internal)?, _ = cancelled => return Err(datazen_feature_core::error::FeatureError::Validation("fileJobCancelled".into())) };
+        ).await?;
         let result: datazen_driver_api::MultiQueryResult = serde_json::from_value(data)?;
         if result.results.iter().any(|statement| statement.truncated) {
             return Err(datazen_feature_core::error::FeatureError::Validation(
@@ -74,7 +86,6 @@ impl ExportSource for DesktopExportSource {
     }
 }
 struct ExportOperation {
-    manager: Arc<crate::services::ConnectionManager>,
     store: Arc<crate::store::Store>,
     registry: Arc<crate::db::DriverRegistry>,
     platform: crate::platform::PlatformEntry,
@@ -98,14 +109,12 @@ impl datazen_feature_core::file_job::FileJobOperation for ExportOperation {
             format!("export.{}", self.request.data_format.extension())
         });
         let source = DesktopExportSource {
-            manager: self.manager.clone(),
-            store: self.store.clone(),
-            runtime: crate::ai::metadata_source::RuntimeSchemaSource::new(
-                self.manager.clone(),
+            runtime: crate::services::runtime_command_source::RuntimeCommandSource::new(
                 self.registry.clone(),
                 self.store.clone(),
                 self.platform.clone(),
             ),
+            registry: self.registry.clone(),
             cancel: cancel.clone(),
         };
         let events = DesktopExportEvents(self.app.clone());
@@ -153,7 +162,6 @@ pub async fn export_tables_stream(
     let session = request.db_session_id.clone();
     let database = request.database.clone();
     let operation = ExportOperation {
-        manager: state.connection_manager.clone(),
         store: state.store.clone(),
         registry: state.driver_registry.clone(),
         platform: state.platform.clone(),
@@ -188,14 +196,12 @@ mod tests {
             crate::testing::app_state::TestAppState::with_tables_and_resource_provider().await;
         let (_, session) = test.save_and_connect("export-runtime").await;
         let source = DesktopExportSource {
-            manager: test.state.connection_manager.clone(),
-            store: test.state.store.clone(),
-            runtime: crate::ai::metadata_source::RuntimeSchemaSource::new(
-                test.state.connection_manager.clone(),
+            runtime: crate::services::runtime_command_source::RuntimeCommandSource::new(
                 test.state.driver_registry.clone(),
                 test.state.store.clone(),
                 test.state.platform.clone(),
             ),
+            registry: test.state.driver_registry.clone(),
             cancel: datazen_runtime::job::CancelToken::new(),
         };
         let rows = Arc::new(Mutex::new(0usize));

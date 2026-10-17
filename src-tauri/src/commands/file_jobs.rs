@@ -13,7 +13,7 @@ use datazen_platform_api::{
 use datazen_runtime::job::{EndpointRef, EndpointRole, JobHandler};
 use std::{
     path::PathBuf,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 use tauri::{AppHandle, Emitter};
 
@@ -33,12 +33,7 @@ pub(crate) async fn run_output_job(
     let artifacts = adapter
         .artifact_store()
         .map_err(crate::platform::into_command_error)?;
-    let identity = crate::services::migration_endpoint::session_identity(
-        &state.connection_manager,
-        session,
-        database.map(|database| (database, None)),
-    )
-    .await?;
+    let identity = file_job_identity(state, session, database).await?;
     let endpoints = vec![EndpointRef {
         connection_id: identity.connection_id,
         service_key: identity.service_key,
@@ -127,6 +122,46 @@ pub(crate) async fn run_output_job(
         .await
         .map_err(unavailable)?;
     Ok(rows)
+}
+
+async fn file_job_identity(
+    state: &AppState,
+    session: &str,
+    database: Option<&str>,
+) -> Result<datazen_feature_core::services::migration_endpoint::EndpointIdentity, CommandError> {
+    use datazen_feature_core::services::migration_endpoint::{checked_identify, normalized};
+
+    let adapter = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let runtime = adapter
+        .runtime()
+        .map_err(crate::platform::into_command_error)?;
+    let owner = runtime
+        .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(session))
+        .ok_or_else(|| CommandError::Validation("File job session unavailable".into()))?;
+    let (mut config, metadata) = state
+        .store
+        .platform_profile(owner.as_str())
+        .await
+        .filter(|(_, metadata)| metadata.enabled)
+        .ok_or_else(|| CommandError::Validation("File job profile unavailable".into()))?;
+    let driver = state
+        .driver_registry
+        .get(&config.database_type)
+        .await
+        .ok_or_else(|| CommandError::Validation("File job driver unavailable".into()))?;
+    if let Some(database) = database {
+        config.database = normalized(Some(database))
+            .or_else(|| normalized(config.database.as_deref()))
+            .map(str::to_owned);
+        config.schema =
+            crate::services::metadata_schema(driver.as_ref(), None, None, config.schema.as_deref());
+    }
+    config.id = owner.as_str().to_owned();
+    let identity = checked_identify(&config, driver.as_ref())?;
+    let _ = metadata;
+    Ok(identity)
 }
 fn unavailable(_: datazen_platform_api::PortError) -> CommandError {
     CommandError::Internal("file job storage or dispatch unavailable".into())

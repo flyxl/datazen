@@ -1,24 +1,15 @@
 //! Desktop session identity lookup bound to independent Runtime metadata reads.
 use crate::{
-    db::DriverRegistry, platform::PlatformEntry, services::ConnectionManager, store::Store,
+    db::DriverRegistry, platform::PlatformEntry, services::ConnectionManager,
+    services::runtime_command_source::RuntimeCommandSource, store::Store,
 };
-use datazen_driver_api::{
-    ConnectionConfig, ConnectionHandle, DatabaseDriver, TableInfo, TableSchema,
-};
-use datazen_feature_core::{
-    services::ports::SchemaContextSource,
-    workflow::{
-        command::WorkflowCommandStep,
-        error::WorkflowError,
-        resource_execution::{PreparedExecution, ResourceExecutionHost},
-    },
-};
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TableInfo, TableSchema};
+use datazen_feature_core::services::ports::SchemaContextSource;
 use std::sync::Arc;
 pub struct RuntimeSchemaSource {
     sessions: Arc<ConnectionManager>,
     registry: Arc<DriverRegistry>,
-    store: Arc<Store>,
-    platform: PlatformEntry,
+    runtime: RuntimeCommandSource,
 }
 impl RuntimeSchemaSource {
     pub fn new(
@@ -29,9 +20,8 @@ impl RuntimeSchemaSource {
     ) -> Self {
         Self {
             sessions,
-            registry,
-            store,
-            platform,
+            registry: registry.clone(),
+            runtime: RuntimeCommandSource::new(registry, store, platform),
         }
     }
     pub(crate) async fn read(
@@ -40,73 +30,9 @@ impl RuntimeSchemaSource {
         command: &str,
         input: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
-        let config = self
-            .sessions
-            .get_session_config(session_id)
+        self.runtime
+            .read_session_command(session_id, command, input)
             .await
-            .map_err(|error| error.to_string())?;
-        let step = WorkflowCommandStep::new("ai-metadata", command, Some(config.id.clone()), input);
-        datazen_feature_core::workflow::resource_execution::execute(
-            self, &step, &config.id, None, None, false,
-        )
-        .await
-        .map(|result| result.data)
-        .map_err(|error| error.to_string())
-    }
-}
-#[async_trait::async_trait]
-impl ResourceExecutionHost for RuntimeSchemaSource {
-    async fn profile(&self, id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
-        self.store
-            .platform_profile(id)
-            .await
-            .map(|(config, metadata)| (config, metadata.config_revision, metadata.enabled))
-            .ok_or_else(|| WorkflowError::ConnectionFailed {
-                connection_id: id.into(),
-                message: "profile unavailable".into(),
-            })
-    }
-    async fn driver(
-        &self,
-        config: &ConnectionConfig,
-    ) -> Result<Arc<dyn DatabaseDriver>, WorkflowError> {
-        self.registry
-            .get(&config.database_type)
-            .await
-            .ok_or_else(|| WorkflowError::Driver("Driver unavailable".into()))
-    }
-    async fn safe_mode(&self) -> bool {
-        self.store.execution_settings().await.safe_mode
-    }
-    async fn prepare(
-        &self,
-        _id: &str,
-        revision: u64,
-        command: &str,
-        target: datazen_platform_api::target::ExecutionTarget,
-    ) -> Result<PreparedExecution, WorkflowError> {
-        let adapter = self
-            .platform
-            .require()
-            .map_err(|error| WorkflowError::Validation(error.to_string()))?;
-        let call = adapter.begin_call();
-        let runtime = adapter
-            .runtime()
-            .map_err(|error| WorkflowError::Validation(error.to_string()))?;
-        let canonical = adapter
-            .resolve_execution_target(
-                call.context(),
-                datazen_platform_api::id::Counter::new(revision),
-                command,
-                &target,
-            )
-            .await
-            .map_err(|error| WorkflowError::Validation(error.message))?;
-        Ok(PreparedExecution {
-            runtime,
-            context: call.context().clone(),
-            target: crate::platform::into_execution_target(canonical),
-        })
     }
 }
 #[async_trait::async_trait]

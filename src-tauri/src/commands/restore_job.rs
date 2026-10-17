@@ -1,7 +1,7 @@
 //! Native file upload and durable admission for restore apply Jobs.
 use super::{AppState, CommandError};
 use datazen_feature_core::restore_job::{
-    RestoreApplyJob, RestorePlan, UnsupportedRestoreGateway, RESTORE_APPLY_KIND,
+    RESTORE_APPLY_KIND, RestoreApplyJob, RestorePlan, UnsupportedRestoreGateway,
 };
 use datazen_platform_api::{
     context::OwnerRef,
@@ -29,10 +29,15 @@ pub(crate) async fn restore_from_native_file(
     path: PathBuf,
     options: Option<Vec<String>>,
 ) -> Result<(), CommandError> {
-    let owner = state
-        .connection_manager
-        .owner_connection_id(session)
-        .await
+    let adapter = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let runtime = adapter
+        .runtime()
+        .map_err(crate::platform::into_command_error)?;
+    let owner = runtime
+        .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(session))
+        .map(|id| id.as_str().to_owned())
         .ok_or_else(|| {
             CommandError::Validation("Restore session has no owning connection".into())
         })?;

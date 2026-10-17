@@ -275,6 +275,19 @@ impl RuntimeConnectionUseCases {
     pub fn is_registered(&self, id: &crate::connection::DbSessionId) -> bool {
         self.inner.registry.is_registered(id)
     }
+    /// Resolve the persistent profile owning an active runtime session.
+    /// Closed or unknown sessions deliberately have no owner projection.
+    pub fn connection_id_for_session(
+        &self,
+        id: &crate::connection::DbSessionId,
+    ) -> Option<datazen_platform_api::id::ConnectionId> {
+        let sessions = lock(&self.inner.sessions);
+        let entry = sessions.get(id)?;
+        if entry.closed.is_some() || self.inner.directory.resolve(&entry.handle).is_err() {
+            return None;
+        }
+        Some(entry.initial.connection_id.clone())
+    }
     /// 应用层 `sessions` 表里**仍然开着**的行数（只读投影）。
     ///
     /// 与 [`Self::registered_session_ids`] **分列**，因为「registry 摘了但这张表还在」

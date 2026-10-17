@@ -31,15 +31,7 @@ pub trait ExportSource: Send + Sync {
     async fn resolve_source(
         &self,
         session_id: &str,
-    ) -> Result<
-        (
-            Arc<dyn DatabaseDriver>,
-            datazen_driver_api::ConnectionHandle,
-            bool,
-            bool,
-        ),
-        CommandError,
-    >;
+    ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), CommandError>;
     async fn stream_query(
         &self,
         session_id: &str,
@@ -47,11 +39,10 @@ pub trait ExportSource: Send + Sync {
         target: datazen_driver_api::SqlTarget<'_>,
         callback: QueryStreamCallback,
     ) -> Result<(), CommandError> {
-        let (driver, handle, _, _) = self.resolve_source(session_id).await?;
-        driver
-            .query_stream_at(&handle, sql, None, target, callback)
-            .await?;
-        Ok(())
+        let _ = (session_id, sql, target, callback);
+        Err(CommandError::Validation(
+            "export source does not provide query streaming".into(),
+        ))
     }
 }
 pub trait ExportEvents: Send + Sync {
@@ -373,8 +364,7 @@ pub async fn write_data_file(
         request.database_type.as_deref(),
     );
 
-    let (driver, _handle, read_only, safe_mode) =
-        state.resolve_source(&request.db_session_id).await?;
+    let (driver, read_only, safe_mode) = state.resolve_source(&request.db_session_id).await?;
     datazen_runtime::sql_guard::check_sql(&sql, read_only, safe_mode)
         .map_err(CommandError::Validation)?;
 

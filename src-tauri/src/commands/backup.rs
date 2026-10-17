@@ -1,6 +1,6 @@
 //! Native dialogs and local runtime bindings for shared backup/restore services.
-use super::error::{resolve_override_path, CommandError, OVERRIDE_DISABLED_MSG};
 use super::AppState;
+use super::error::{CommandError, OVERRIDE_DISABLED_MSG, resolve_override_path};
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
 pub use datazen_feature_core::backup::parse_restore_options;
 use std::{path::PathBuf, sync::Arc};
@@ -15,13 +15,15 @@ pub(crate) fn validate_backup_filter_extension(extension: &str) -> Result<String
 }
 #[derive(Clone)]
 struct DesktopBackupSource {
-    manager: Arc<crate::services::ConnectionManager>,
+    platform: crate::platform::PlatformEntry,
+    registry: Arc<crate::db::DriverRegistry>,
     store: Arc<crate::store::Store>,
 }
 impl DesktopBackupSource {
     fn new(state: &AppState) -> Self {
         Self {
-            manager: state.connection_manager.clone(),
+            platform: state.platform.clone(),
+            registry: state.driver_registry.clone(),
             store: state.store.clone(),
         }
     }
@@ -35,12 +37,38 @@ impl datazen_feature_core::backup::BackupSource for DesktopBackupSource {
         (Arc<dyn DatabaseDriver>, ConnectionConfig),
         datazen_feature_core::error::FeatureError,
     > {
-        let config = self.manager.get_session_config(id).await.map_err(|error| {
+        let adapter = self.platform.require().map_err(|error| {
             datazen_feature_core::error::FeatureError::Internal(error.to_string())
         })?;
-        let (driver, _) = self.manager.get_session(id).await.map_err(|error| {
+        let runtime = adapter.runtime().map_err(|error| {
             datazen_feature_core::error::FeatureError::Internal(error.to_string())
         })?;
+        let owner = runtime
+            .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(id))
+            .ok_or_else(|| {
+                datazen_feature_core::error::FeatureError::Validation(
+                    "Backup session is unavailable".into(),
+                )
+            })?;
+        let (config, _) = self
+            .store
+            .platform_profile(owner.as_str())
+            .await
+            .filter(|(_, metadata)| metadata.enabled)
+            .ok_or_else(|| {
+                datazen_feature_core::error::FeatureError::Validation(
+                    "Backup profile unavailable".into(),
+                )
+            })?;
+        let driver = self
+            .registry
+            .get(&config.database_type)
+            .await
+            .ok_or_else(|| {
+                datazen_feature_core::error::FeatureError::Validation(
+                    "Backup driver unavailable".into(),
+                )
+            })?;
         Ok((driver, config))
     }
     async fn safe_mode(&self) -> bool {
