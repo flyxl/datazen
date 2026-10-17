@@ -262,6 +262,39 @@ impl AiGrantRegistry {
         revoked
     }
 
+    /// Revoke every grant that borrowed one database session. Closing a session
+    /// must not leave a grant able to outlive the handle it points at.
+    pub async fn revoke_for_session_handle(&self, db_session_id: &str) -> usize {
+        let mut guard = self.inner.lock().await;
+        let mut revoked = 0;
+        for state in guard.values_mut() {
+            let borrowed = state
+                .record
+                .handle
+                .as_ref()
+                .is_some_and(|handle| handle.db_session_id.as_str() == db_session_id);
+            if borrowed && !state.revoked {
+                state.revoked = true;
+                revoked += 1;
+            }
+        }
+        revoked
+    }
+
+    /// Revoke every grant bound to one connection. A profile edit or a session
+    /// teardown on that connection must not leave a grant pointing at it.
+    pub async fn revoke_for_connection(&self, connection_id: &str) -> usize {
+        let mut guard = self.inner.lock().await;
+        let mut revoked = 0;
+        for state in guard.values_mut() {
+            if state.record.connection_id == connection_id && !state.revoked {
+                state.revoked = true;
+                revoked += 1;
+            }
+        }
+        revoked
+    }
+
     /// Drop records whose deadline passed. Revoked records are retained until
     /// their original deadline so a late claim still reports Revoked.
     pub async fn purge_expired(&self, now_ms: i64) -> usize {
@@ -429,6 +462,42 @@ mod tests {
         registry.issue(issue("g1", "client-a", "pane-1"), 5).await;
         assert!(registry.verify("g1", "client-a", "pane-1", 6).await.is_ok());
         assert_eq!(registry.len().await, 1);
+    }
+
+    #[tokio::test]
+    async fn revoke_for_session_handle_only_hits_grants_that_borrowed_it() {
+        use datazen_platform_api::id::{DbSessionId, RuntimeEpoch};
+        let registry = AiGrantRegistry::new(TTL);
+        let mut with_handle = issue("g1", "client-a", "pane-1");
+        with_handle.handle = Some(SessionHandle::new(
+            DbSessionId::new("dbs-1"),
+            RuntimeEpoch::new("1"),
+        ));
+        registry.issue(with_handle, 0).await;
+        registry.issue(issue("g2", "client-a", "pane-2"), 0).await;
+
+        assert_eq!(registry.revoke_for_session_handle("dbs-1").await, 1);
+        assert_eq!(
+            registry.verify("g1", "client-a", "pane-1", 1).await,
+            Err(AiGrantRejection::Revoked)
+        );
+        assert!(registry.verify("g2", "client-a", "pane-2", 1).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn revoke_for_connection_only_hits_that_connection() {
+        let registry = AiGrantRegistry::new(TTL);
+        registry.issue(issue("g1", "client-a", "pane-1"), 0).await;
+        let mut other = issue("g2", "client-a", "pane-2");
+        other.connection_id = "conn-2".into();
+        registry.issue(other, 0).await;
+
+        assert_eq!(registry.revoke_for_connection("conn-1").await, 1);
+        assert_eq!(
+            registry.verify("g1", "client-a", "pane-1", 1).await,
+            Err(AiGrantRejection::Revoked)
+        );
+        assert!(registry.verify("g2", "client-a", "pane-2", 1).await.is_ok());
     }
 
     #[tokio::test]

@@ -32,6 +32,47 @@ pub(crate) fn rejection_message(rejection: AiGrantRejection) -> String {
     format!("{}: grant refused", rejection.code())
 }
 
+/// Verify that a requested editor handle really is the caller's editor session
+/// on the requested connection.
+///
+/// The runtime only filters sessions by organization/principal/client instance,
+/// so two panes of the same desktop process are indistinguishable there. The
+/// grant needs the stricter question answered: is this handle *that* editor, on
+/// *that* connection, at the revision the profile still has?
+pub(crate) fn verify_session_ownership(
+    view: &datazen_platform_api::dto::session::SessionView,
+    claimed_client_instance_id: &str,
+    editor_session_id: &str,
+    connection_id: &str,
+    profile_revision: u64,
+) -> Result<(), AiGrantRejection> {
+    match &view.owner {
+        datazen_platform_api::context::OwnerRef::Editor {
+            client_instance_id,
+            editor_session_id: owner_editor,
+        } => {
+            if client_instance_id.as_str() != claimed_client_instance_id {
+                return Err(AiGrantRejection::ClientMismatch);
+            }
+            if owner_editor.as_str() != editor_session_id {
+                return Err(AiGrantRejection::SessionGone);
+            }
+        }
+        // A session owned by a job/block/opaque client is not an editor session,
+        // so it must never back an editor grant.
+        _ => return Err(AiGrantRejection::SessionGone),
+    }
+    if view.connection_id.as_str() != connection_id {
+        return Err(AiGrantRejection::SessionGone);
+    }
+    if view.config_revision.0 != profile_revision {
+        // The session was opened against an older profile revision; granting it
+        // would execute on stale configuration.
+        return Err(AiGrantRejection::SessionGone);
+    }
+    Ok(())
+}
+
 /// Desktop facade around the portable grant registry.
 #[derive(Clone, Default)]
 pub struct AiGrantService {
@@ -46,6 +87,7 @@ impl AiGrantService {
     }
 
     pub async fn issue(&self, issue: AiGrantIssue, now_ms: i64) -> AiGrantReceipt {
+        self.registry.purge_expired(now_ms).await;
         self.registry.issue(issue, now_ms).await
     }
 
@@ -54,6 +96,8 @@ impl AiGrantService {
         claim: &AiTargetClaim,
         now_ms: i64,
     ) -> Result<Option<datazen_feature_core::ai::ownership::AiGrantRecord>, AiGrantRejection> {
+        // Cheap opportunistic reclamation: every dispatch already pays a lock.
+        self.registry.purge_expired(now_ms).await;
         self.registry.verify_claim(claim, now_ms).await
     }
 
@@ -63,6 +107,20 @@ impl AiGrantService {
 
     pub async fn revoke(&self, grant_id: &str) -> bool {
         self.registry.revoke(grant_id).await
+    }
+
+    /// Reclaim expired records. Called on the same paths that verify claims so
+    /// a desktop left running for days does not accumulate dead grants.
+    pub async fn purge_expired(&self, now_ms: i64) -> usize {
+        self.registry.purge_expired(now_ms).await
+    }
+
+    pub async fn revoke_for_connection(&self, connection_id: &str) -> usize {
+        self.registry.revoke_for_connection(connection_id).await
+    }
+
+    pub async fn revoke_for_session_handle(&self, db_session_id: &str) -> usize {
+        self.registry.revoke_for_session_handle(db_session_id).await
     }
 
     pub async fn revoke_for_editor_session(&self, editor_session_id: &str) -> usize {
@@ -103,7 +161,7 @@ pub async fn ai_grant_editor_session(
         .runtime()
         .map_err(|error| CommandError::Validation(error.message))?;
     // The handle must name a live session, otherwise the grant would outlive it.
-    runtime
+    let view = runtime
         .get_session(call.context(), session_handle.clone())
         .await
         .map_err(|error| {
@@ -129,6 +187,16 @@ pub async fn ai_grant_editor_session(
             AiGrantRejection::SessionGone.code()
         )));
     }
+    // A live session is not enough: it has to be *this* editor's session on this
+    // connection at the current profile revision (CM-53 forged-session rejection).
+    verify_session_ownership(
+        &view,
+        claimed_client_instance_id.as_str(),
+        &editor_session_id,
+        &connection_id,
+        metadata.config_revision,
+    )
+    .map_err(|rejection| CommandError::Validation(rejection_message(rejection)))?;
 
     let owner_fingerprint = match &owner {
         datazen_platform_api::context::OwnerRef::Editor {
@@ -337,5 +405,120 @@ impl AiToolLoopHost for AiRequestHost<'_> {
 
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String {
         AiToolLoopHost::execute_mcp_tool(self.state, server, tool, arguments).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_platform_api::context::OwnerRef;
+    use datazen_platform_api::dto::session::SessionView;
+    use datazen_platform_api::id::{
+        ClientInstanceId, ConnectionId, Counter, DbSessionId, EditorSessionId, RuntimeEpoch,
+    };
+
+    fn view(owner: OwnerRef, connection_id: &str, config_revision: u64) -> SessionView {
+        let namespace = datazen_platform_api::target::NamespaceTarget::new(
+            Some("app".into()),
+            None,
+            None,
+            vec![],
+        );
+        SessionView {
+            handle: datazen_platform_api::dto::session::SessionHandle::new(
+                DbSessionId::new("dbs-1"),
+                RuntimeEpoch::new("1"),
+            ),
+            connection_id: ConnectionId::new(connection_id),
+            config_revision: Counter::new(config_revision),
+            owner,
+            initial_target: datazen_platform_api::target::ExecutionTarget::new(
+                ConnectionId::new(connection_id),
+                namespace.clone(),
+            ),
+            observed_context: datazen_platform_api::dto::session::SessionContext {
+                namespace,
+                search_path: None,
+                effective_identity: None,
+                transaction_state: datazen_platform_api::dto::session::TransactionState::None,
+                autocommit: None,
+                confidence: datazen_platform_api::dto::session::ContextConfidence::Confirmed,
+            },
+            context_revision: Counter::new(1),
+            state: datazen_platform_api::dto::session::SessionState::Ready,
+            attachment_state: datazen_platform_api::dto::session::AttachmentState::Attached,
+            active_execution_id: None,
+            expires_at: None,
+        }
+    }
+
+    fn editor_owner(client: &str, editor: &str) -> OwnerRef {
+        OwnerRef::Editor {
+            client_instance_id: ClientInstanceId::new(client),
+            editor_session_id: EditorSessionId::new(editor),
+        }
+    }
+
+    #[test]
+    fn matching_editor_session_is_accepted() {
+        let session = view(editor_owner("client-a", "pane-1"), "conn-1", 7);
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn another_pane_of_the_same_client_is_rejected() {
+        // The runtime only filters by client instance, so this is exactly the
+        // forgery the grant has to catch by itself (CM-53).
+        let session = view(editor_owner("client-a", "pane-2"), "conn-1", 7);
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Err(AiGrantRejection::SessionGone)
+        );
+    }
+
+    #[test]
+    fn another_client_is_rejected() {
+        let session = view(editor_owner("client-b", "pane-1"), "conn-1", 7);
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Err(AiGrantRejection::ClientMismatch)
+        );
+    }
+
+    #[test]
+    fn session_on_another_connection_is_rejected() {
+        let session = view(editor_owner("client-a", "pane-1"), "conn-2", 7);
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Err(AiGrantRejection::SessionGone)
+        );
+    }
+
+    #[test]
+    fn stale_config_revision_is_rejected() {
+        let session = view(editor_owner("client-a", "pane-1"), "conn-1", 6);
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Err(AiGrantRejection::SessionGone)
+        );
+    }
+
+    #[test]
+    fn non_editor_owned_session_is_rejected() {
+        let session = view(
+            OwnerRef::ClientSession {
+                client_instance_id: ClientInstanceId::new("client-a"),
+                purpose: "mcp".into(),
+            },
+            "conn-1",
+            7,
+        );
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Err(AiGrantRejection::SessionGone)
+        );
     }
 }
