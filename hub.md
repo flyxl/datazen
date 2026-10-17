@@ -38,3 +38,9 @@
 - 0c5bee15c：grant 身份绑定修正（不再从指纹反解 client id；执行改用 begin_owned_call）。
 - 已知 flaky：mcp::server::tests::mcp_tool_handlers_with_mock_driver（Accepted/Unconfirmed），单跑通过；待 tester 判定是否既有。
 - tester agent da485a67 在 0c5bee15c 上验收中。
+
+## 最新状态（tester 验收中）
+- HEAD 9cc1e963c：新增取消终态回归测试（ai::tool_loop 2 例），feature-core 274 passed。
+- 其余门禁（合并树 be8701ade 后实测）：vitest 612/6454 EXIT=0；typecheck 四步 EXIT=0；host 1367 passed/6 ignored；clippy EXIT=0 且新文件零 warning；check-module-layers ok（1 既有 advisory）；check-platform-crate-boundaries PASS。
+- i18n-sync-check：基线 p6-remaining 本就缺 936 键（EXIT=1），本轨新增 4 键 × 8 语言 = +32（合计 968）；发布前须跑 i18n-sync，本轮遵守"开发期只改 en.ts"。
+- F 层 E2E 旅程未写（需 webdriver 构建 + 真实 provider 或 mock 通道），列为遗留。
