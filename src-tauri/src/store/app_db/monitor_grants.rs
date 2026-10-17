@@ -2,6 +2,20 @@ use super::{AppDb, AppDbError};
 use datazen_feature_core::dashboard::schedule_grant::MonitorGrant;
 use rusqlite::{params, OptionalExtension};
 impl AppDb {
+    pub(crate) fn list_monitor_grants(&self) -> Result<Vec<MonitorGrant>, AppDbError> {
+        self.with_conn(|conn| {
+            let mut statement =
+                conn.prepare("SELECT metadata_json FROM monitor_schedule_grants ORDER BY rowid")?;
+            let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+            rows.map(|row| {
+                let json = row?;
+                serde_json::from_str(&json)
+                    .map_err(|_| AppDbError::Other("invalid monitor grant metadata".into()))
+            })
+            .collect()
+        })
+    }
+
     pub(crate) fn monitor_grant(&self, id: &str) -> Result<Option<MonitorGrant>, AppDbError> {
         self.with_conn(|conn| {
             let json: Option<String> = conn

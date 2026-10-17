@@ -112,6 +112,35 @@ pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<
     if interrupted > 0 {
         tracing::info!(interrupted, "interrupted desktop jobs require verification");
     }
+    for grant in state
+        .store
+        .app_db()
+        .list_monitor_grants()
+        .map_err(|_| "monitor job recovery identity lookup failed".to_string())?
+    {
+        let service_ctx = grant.context();
+        let monitor_jobs = state
+            .desktop_job_host
+            .mark_restart_candidates_for_verification(
+                &service_ctx,
+                RecoveryFilter {
+                    kinds: vec!["monitorOccurrence".into()],
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|_| "monitor job recovery scan failed".to_string())?;
+        let interrupted = monitor_jobs
+            .iter()
+            .filter(|job| job.view.pending_verification_reason.is_some())
+            .count();
+        if interrupted > 0 {
+            tracing::info!(
+                interrupted,
+                "interrupted monitor occurrences require verification"
+            );
+        }
+    }
     Ok(())
 }
 

@@ -117,6 +117,11 @@ async fn persisted_monitor_grant_drives_real_desktop_policy_and_read_only_target
         store.app_db().monitor_grant(&grant.id).unwrap().unwrap(),
         grant
     );
+    assert!(store
+        .app_db()
+        .list_monitor_grants()
+        .unwrap()
+        .contains(&grant));
     let delegation = policy.resolve_delegation(&context).await.unwrap();
     assert_eq!(delegation.delegation, grant.delegation());
     let subject = AuthorizationSubject::Delegated(delegation.delegation);
