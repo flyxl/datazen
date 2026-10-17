@@ -267,7 +267,7 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 
 **三、唯一的反向映射：`ai_analyze_queries`。** 它收运行时会话 ID，但**不碰会话**——把该 ID 反查成所属的 `connectionId`，再按连接过滤查询历史。这样「AI 分析这个面板的历史」不会把同名的其它连接的历史混进来。反查失败时退化为不按连接过滤，而不是报错。
 
-**四、AI 的工具调用与 MCP 共用一条取会话路径。** AI DB tools 走 `services/db_tools.rs`，与 MCP 完全相同：拿持久化 `connectionId`、先过连接白名单、再转成运行时会话，且**不释放引用**。因此被 AI 工具访问过的会话同样不会被空闲回收扫掉。
+**四、AI 的独立工具调用与 MCP 共用一条取会话路径；显式授权时改走编辑器会话（见第六点）。** 独立模式下 AI DB tools 走 `services/db_tools.rs`，与 MCP 相同：拿持久化 `connectionId`、先过连接白名单、再转成运行时会话，且**不释放引用**；因此被 AI 工具访问过的会话同样不会被空闲回收扫掉。`editorGrant` 模式下改由 `RetainedSession` 绑定编辑器自己的会话句柄执行，不经过这条「按 connectionId 借会话」的路径。
 
 **五、取消是 AI 自己的注册表，且按 owner 隔离。** AI 侧用一张按「调用 ID + owner 指纹」登记的取消令牌表（`packages/feature-core/src/ai/cancel.rs`，宿主经 `src-tauri/src/ai/cancel.rs` 门面 re-export）：
 
