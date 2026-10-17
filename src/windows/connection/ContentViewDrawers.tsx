@@ -24,6 +24,10 @@ export interface ContentViewDrawersProps {
   aiChatOpen: boolean;
   detailPanelApplicable: boolean;
   dbSessionId: string;
+  /** Persisted connection id; required to grant a shared editor session. */
+  connectionId?: string;
+  /** Stable owner id (pane key) of the active query editor, when there is one. */
+  editorSessionId?: string;
   connectionName: string;
   currentDatabase: string | null;
   databaseType: DatabaseType | undefined;
@@ -60,6 +64,8 @@ export function ContentViewDrawers({
   aiChatOpen,
   detailPanelApplicable,
   dbSessionId,
+  connectionId,
+  editorSessionId,
   connectionName,
   currentDatabase,
   databaseType,
@@ -209,6 +215,8 @@ export function ContentViewDrawers({
           >
             <AiChatPanel
               dbSessionId={dbSessionId}
+              connectionId={connectionId}
+              editorSessionId={editorSessionId}
               database={currentDatabase ?? undefined}
               sqlDialect={databaseType ? DB_REGISTRY[databaseType]?.sqlDialect : undefined}
               onInsertSql={(sql) => {

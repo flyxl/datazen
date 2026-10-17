@@ -12,6 +12,7 @@ const mockAiCommands = {
   diagnoseError: vi.fn(),
   analyzeExplain: vi.fn(),
   chat: vi.fn(),
+  cancel: vi.fn(),
   parseFilter: vi.fn(),
   workflowList: vi.fn(),
   workflowExecute: vi.fn(),
@@ -455,6 +456,123 @@ describe('aiStore', () => {
         toolCalls: [{ id: 'tc-1', name: 'mcp/files/read_file', arguments: '{}' }],
       });
       expect(useAiStore.getState().chatSession!.streamMcpToolName).toBe('mcp/files/read_file');
+    });
+
+    it('records run attribution and forwards the target claim', async () => {
+      useAiStore.getState().initChatSession('db-sess', 'db');
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+
+      await useAiStore.getState().sendChatMessage({
+        content: 'hello',
+        targetClaim: {
+          kind: 'editorGrant',
+          grantId: 'grant-1',
+          claimedClientInstanceId: 'client-1',
+          editorSessionId: 'panel-1',
+        },
+      });
+
+      expect(mockAiCommands.chat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetClaim: {
+            kind: 'editorGrant',
+            grantId: 'grant-1',
+            claimedClientInstanceId: 'client-1',
+            editorSessionId: 'panel-1',
+          },
+        }),
+      );
+      expect(useAiStore.getState().chatSession!.attribution).toEqual({
+        kind: 'editorGrant',
+        grantId: 'grant-1',
+        editorSessionId: 'panel-1',
+      });
+    });
+
+    it('marked cancel drops late chunks and finalises on the terminal chunk', async () => {
+      useAiStore.getState().initChatSession('db-sess', 'db');
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+      await useAiStore.getState().sendChatMessage({ content: 'hello' });
+      const requestId = useAiStore.getState().chatSession!.requestId!;
+
+      mockAiCommands.cancel.mockResolvedValueOnce({ kind: 'marked', requestId });
+      await expect(useAiStore.getState().cancelChat()).resolves.toEqual({
+        kind: 'marked',
+        requestId,
+      });
+
+      // Late non-terminal chunks are dropped while cancelling.
+      useAiStore.getState().handleStreamChunk({
+        requestId,
+        content: 'late token',
+        done: false,
+      });
+      expect(useAiStore.getState().chatSession!.streamContent).toBe('');
+
+      // The backend's terminal chunk ends the run.
+      useAiStore.getState().handleStreamChunk({
+        requestId,
+        content: 'partial',
+        done: true,
+        cancelled: true,
+      });
+      const session = useAiStore.getState().chatSession!;
+      expect(session.isStreaming).toBe(false);
+      expect(session.requestId).toBeNull();
+      expect(session.messages[session.messages.length - 1].cancelled).toBe(true);
+    });
+
+    it('8s cancel fallback finalises the UI as cancelled', async () => {
+      useAiStore.getState().initChatSession('db-sess', 'db');
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+      await useAiStore.getState().sendChatMessage({ content: 'hello' });
+      const requestId = useAiStore.getState().chatSession!.requestId!;
+
+      vi.useFakeTimers();
+      try {
+        mockAiCommands.cancel.mockResolvedValueOnce({ kind: 'marked', requestId });
+        await useAiStore.getState().cancelChat();
+        expect(useAiStore.getState().chatSession!.isStreaming).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(8_000);
+
+        const session = useAiStore.getState().chatSession!;
+        expect(session.isStreaming).toBe(false);
+        expect(session.requestId).toBeNull();
+        expect(session.messages[session.messages.length - 1].cancelled).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('forbidden cancel only warns and leaves the run streaming', async () => {
+      useAiStore.getState().initChatSession('db-sess', 'db');
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+      await useAiStore.getState().sendChatMessage({ content: 'hello' });
+      const requestId = useAiStore.getState().chatSession!.requestId!;
+
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockAiCommands.cancel.mockResolvedValueOnce({ kind: 'forbidden', requestId });
+      const receipt = await useAiStore.getState().cancelChat();
+
+      expect(receipt?.kind).toBe('forbidden');
+      expect(useAiStore.getState().chatSession!.isStreaming).toBe(true);
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it('alreadyFinished cancel does not force a UI transition', async () => {
+      useAiStore.getState().initChatSession('db-sess', 'db');
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+      await useAiStore.getState().sendChatMessage({ content: 'hello' });
+      const requestId = useAiStore.getState().chatSession!.requestId!;
+
+      mockAiCommands.cancel.mockResolvedValueOnce({ kind: 'alreadyFinished', requestId });
+      const receipt = await useAiStore.getState().cancelChat();
+
+      expect(receipt?.kind).toBe('alreadyFinished');
+      expect(useAiStore.getState().chatSession!.isStreaming).toBe(true);
+      expect(useAiStore.getState().chatSession!.requestId).toBe(requestId);
     });
 
     it('setupEventListeners wires chunk and error handlers', async () => {
