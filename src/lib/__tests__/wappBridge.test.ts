@@ -16,7 +16,7 @@ const {
   storageGetMock,
   storageSetMock,
   storageRemoveMock,
-  driverExecuteMock,
+  wappExecuteCommandMock,
   getConnectionsIpcMock,
   connectionStoreState,
   activeConnectionStoreState,
@@ -27,7 +27,7 @@ const {
   storageGetMock: vi.fn(),
   storageSetMock: vi.fn(),
   storageRemoveMock: vi.fn(),
-  driverExecuteMock: vi.fn(),
+  wappExecuteCommandMock: vi.fn(),
   getConnectionsIpcMock: vi.fn(),
   connectionStoreState: {
     current: {
@@ -57,12 +57,13 @@ vi.mock('../../commands/wapps', () => ({
     wappStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
     readWappFile: (...args: unknown[]) => readWappFileMock(...args),
     auditLog: (...args: unknown[]) => auditLogMock(...args),
+    executeDriverCommand: (...args: unknown[]) => wappExecuteCommandMock(...args),
   },
 }));
 
 vi.mock('../../commands/driver', () => ({
   driverCommands: {
-    execute: (...args: unknown[]) => driverExecuteMock(...args),
+    execute: (...args: unknown[]) => wappExecuteCommandMock(...args),
   },
 }));
 
@@ -228,7 +229,7 @@ describe('wappBridge permission gate (deny-by-default)', () => {
     await waitUntil(() => env.sent.length > 0);
 
     expect((env.sent[0].payload as Record<string, unknown>).code).toBe(BRIDGE_ERROR.PERMISSION);
-    expect(driverExecuteMock).not.toHaveBeenCalled();
+    expect(wappExecuteCommandMock).not.toHaveBeenCalled();
     handle.detach();
   });
 
@@ -250,7 +251,7 @@ describe('wappBridge permission gate (deny-by-default)', () => {
     storageGetMock.mockResolvedValue('stored');
     storageSetMock.mockResolvedValue(undefined);
     storageRemoveMock.mockResolvedValue(undefined);
-    driverExecuteMock.mockResolvedValue({ data: { rows: [] } });
+    wappExecuteCommandMock.mockResolvedValue({ data: { rows: [] } });
     notificationInvokeMock.mockResolvedValue(undefined);
 
     const handle = attachBridge(env.iframe, {
@@ -297,12 +298,12 @@ describe('wappBridge permission gate (deny-by-default)', () => {
     expect(storageGetMock).toHaveBeenCalledWith('acme.bill-audit', 'k');
     expect(storageSetMock).toHaveBeenCalledWith('acme.bill-audit', 'k', { x: 1 });
     expect(storageRemoveMock).toHaveBeenCalledWith('acme.bill-audit', 'k');
-    // Driver command maps to execute_driver_command's request shape with the
-    // resolved runtime session id.
-    expect(driverExecuteMock).toHaveBeenCalledWith({
-      dbSessionId: 'live-1',
+    // Wapp commands use an independent runtime target, not the editor session.
+    expect(wappExecuteCommandMock).toHaveBeenCalledWith({
+      wappId: 'acme.bill-audit',
+      connectionId: 'cfg-1',
       command: 'query',
-      input: { sql: 'select 1' },
+      args: { sql: 'select 1' },
     });
     expect(notificationInvokeMock).toHaveBeenCalledWith('plugin:notification|notify', {
       options: { title: 'Hello', body: undefined },
@@ -429,7 +430,7 @@ describe('wappBridge rate limiting & timeout', () => {
   it('rejects the 21st concurrent request with E_RATE_LIMIT and recovers afterwards', async () => {
     seedActiveSession('c');
     let resolveFirst!: (v: unknown) => void;
-    driverExecuteMock.mockImplementation(
+    wappExecuteCommandMock.mockImplementation(
       () =>
         new Promise((resolve) => {
           if (!resolveFirst) resolveFirst = resolve;
@@ -460,12 +461,12 @@ describe('wappBridge rate limiting & timeout', () => {
     const overflow = env.sent.find((m) => m.reqId === 'overflow');
     expect(overflow?.type).toBe('command.invoke.err');
     expect((overflow?.payload as Record<string, unknown>).code).toBe(BRIDGE_ERROR.RATE_LIMIT);
-    expect(driverExecuteMock).toHaveBeenCalledTimes(MAX_INFLIGHT_REQUESTS);
+    expect(wappExecuteCommandMock).toHaveBeenCalledTimes(MAX_INFLIGHT_REQUESTS);
 
     // Capacity frees up once a request settles; new requests are served again.
     resolveFirst({ data: null });
     await flush();
-    driverExecuteMock.mockResolvedValue({ data: 42 });
+    wappExecuteCommandMock.mockResolvedValue({ data: 42 });
     receive(
       request('command.invoke', 'after', { connectionId: 'c', command: 'query' }),
       env.iframe.contentWindow,
@@ -500,7 +501,7 @@ describe('wappBridge rate limiting & timeout', () => {
   it('answers E_TIMEOUT when the host-internal promise exceeds the deadline', async () => {
     seedActiveSession('c');
     vi.useFakeTimers();
-    driverExecuteMock.mockImplementation(() => new Promise(() => undefined));
+    wappExecuteCommandMock.mockImplementation(() => new Promise(() => undefined));
     const handle = attachBridge(env.iframe, {
       wappId: 'p',
       permissions: ['command:invoke'],
@@ -621,7 +622,7 @@ describe('wappBridge context whitelist', () => {
 describe('wappBridge command.invoke error mapping', () => {
   it('maps backend "not found" rejections to E_NOT_FOUND', async () => {
     seedActiveSession('cfg-x');
-    driverExecuteMock.mockRejectedValue('connection not found: cfg-x');
+    wappExecuteCommandMock.mockRejectedValue('connection not found: cfg-x');
     const handle = attachBridge(env.iframe, { wappId: 'p', permissions: ['command:invoke'] });
 
     receive(
@@ -667,7 +668,7 @@ describe('wappBridge command.invoke error mapping', () => {
 
     expect(env.sent[0].type).toBe('command.invoke.err');
     expect((env.sent[0].payload as Record<string, unknown>).code).toBe(BRIDGE_ERROR.PERMISSION);
-    expect(driverExecuteMock).not.toHaveBeenCalled();
+    expect(wappExecuteCommandMock).not.toHaveBeenCalled();
     handle.detach();
   });
 });

@@ -457,6 +457,7 @@ pub fn run() {
             crate::commands::update_hidden_widget_sql,
             // ── Workspace Apps ──
             crate::commands::get_wapp_manifest,
+            crate::commands::execute_wapp_driver_command,
             crate::commands::inspect_wapp_package_with_dialog,
             crate::commands::install_wapp,
             crate::commands::list_wapps,

@@ -62,6 +62,31 @@ impl RuntimeCommandSource {
         .map_err(|error| error.to_string())
     }
 
+    pub(crate) async fn read_target_command(
+        &self,
+        connection_id: &str,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let step = WorkflowCommandStep::new(
+            "wapp-command",
+            command,
+            Some(connection_id.to_owned()),
+            input,
+        );
+        datazen_feature_core::workflow::resource_execution::execute(
+            self,
+            &step,
+            connection_id,
+            Some(crate::mcp::permission::McpPermissionMode::ReadOnly),
+            None,
+            false,
+        )
+        .await
+        .map(|result| result.data)
+        .map_err(|error| error.to_string())
+    }
+
     pub(crate) async fn execution_safe_mode(&self) -> bool {
         self.store.execution_settings().await.safe_mode
     }

@@ -16,7 +16,7 @@ const {
   storageGetMock,
   storageSetMock,
   storageRemoveMock,
-  driverExecuteMock,
+  wappExecuteCommandMock,
   getConnectionsIpcMock,
   connectionStoreState,
   activeConnectionStoreState,
@@ -27,7 +27,7 @@ const {
   storageGetMock: vi.fn(),
   storageSetMock: vi.fn(),
   storageRemoveMock: vi.fn(),
-  driverExecuteMock: vi.fn(),
+  wappExecuteCommandMock: vi.fn(),
   getConnectionsIpcMock: vi.fn(),
   connectionStoreState: {
     current: { connections: [] as unknown[], connectionsLoaded: false, loading: false },
@@ -48,12 +48,13 @@ vi.mock('../../commands/wapps', () => ({
     wappStorageSet: (...args: unknown[]) => storageSetMock(...args),
     wappStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
     auditLog: (...args: unknown[]) => auditLogMock(...args),
+    executeDriverCommand: (...args: unknown[]) => wappExecuteCommandMock(...args),
   },
 }));
 
 vi.mock('../../commands/driver', () => ({
   driverCommands: {
-    execute: (...args: unknown[]) => driverExecuteMock(...args),
+    execute: (...args: unknown[]) => wappExecuteCommandMock(...args),
   },
 }));
 
@@ -245,7 +246,7 @@ describe('bridge security: credential whitelisting', () => {
       `Error: query failed\n    at execute_driver_command (rust${'y'.repeat(
         400,
       )}) secret-frame-token`;
-    driverExecuteMock.mockRejectedValue(bomb);
+    wappExecuteCommandMock.mockRejectedValue(bomb);
     handle = attachBridge(frame.iframe, { wappId: 'p', permissions: ['command:invoke'] });
 
     receive(
@@ -263,7 +264,7 @@ describe('bridge security: credential whitelisting', () => {
 
   it('audit log prefixes [extension:{id}] and never logs argument contents', async () => {
     seedActiveSession('cfg');
-    driverExecuteMock.mockResolvedValue({ data: null });
+    wappExecuteCommandMock.mockResolvedValue({ data: null });
     handle = attachBridge(frame.iframe, {
       wappId: 'acme.bill-audit',
       permissions: ['command:invoke'],
@@ -318,7 +319,7 @@ describe('bridge security: permission gate vs malformed routing', () => {
   it.each([['__proto__'], ['constructor'], ['hasOwnProperty'], ['toString'], ['valueOf']])(
     'denies prototype-chain api type "%s" without reaching any handler',
     async (type) => {
-      driverExecuteMock.mockResolvedValue({ data: 'MUST_NOT_APPEAR' });
+      wappExecuteCommandMock.mockResolvedValue({ data: 'MUST_NOT_APPEAR' });
       storageGetMock.mockResolvedValue('MUST_NOT_APPEAR');
       handle = attachAll();
 
@@ -334,7 +335,7 @@ describe('bridge security: permission gate vs malformed routing', () => {
       // Security property: never ok, never reaches business logic.
       expect(String(sent?.type)).not.toMatch(/\.ok$/);
       expect(JSON.stringify(frame.sent)).not.toContain('MUST_NOT_APPEAR');
-      expect(driverExecuteMock).not.toHaveBeenCalled();
+      expect(wappExecuteCommandMock).not.toHaveBeenCalled();
       expect(storageGetMock).not.toHaveBeenCalled();
       // Own-property routing: prototype members are unknown
       // APIs, not permission failures.
@@ -394,7 +395,7 @@ describe('bridge security: malformed command.invoke payloads', () => {
     const sent = frame.sent.find((m) => m.reqId === reqId)!;
     expect(sent.type).toBe('command.invoke.err');
     expect((sent.payload as { code: string }).code).toBe(BRIDGE_ERROR.BAD_REQUEST);
-    expect(driverExecuteMock).not.toHaveBeenCalled();
+    expect(wappExecuteCommandMock).not.toHaveBeenCalled();
   }
 
   it('rejects a missing payload entirely', async () => {
@@ -422,28 +423,25 @@ describe('bridge security: malformed command.invoke payloads', () => {
 
   it('treats args:null as an empty input object (benign, pinned behavior)', async () => {
     seedActiveSession('c');
-    driverExecuteMock.mockResolvedValue({ data: 'ok' });
+    wappExecuteCommandMock.mockResolvedValue({ data: 'ok' });
     invoke('nullargs', { connectionId: 'c', command: 'query', args: null });
     await waitUntil(() => frame.sent.some((m) => m.reqId === 'nullargs'));
 
-    expect(driverExecuteMock).toHaveBeenCalledWith({
-      dbSessionId: 'live-c',
+    expect(wappExecuteCommandMock).toHaveBeenCalledWith({
+      wappId: 'p',
+      connectionId: 'c',
       command: 'query',
-      input: {},
+      args: {},
     });
     expect(frame.sent.find((m) => m.reqId === 'nullargs')?.type).toBe('command.invoke.ok');
   });
 
-  it('forwards array args verbatim without treating them as key/value maps', async () => {
-    seedActiveSession('c');
-    driverExecuteMock.mockResolvedValue({ data: 'ok' });
+  it('rejects array args because driver commands require an input object', async () => {
+    wappExecuteCommandMock.mockResolvedValue('ok');
     invoke('arrargs', { connectionId: 'c', command: 'query', args: ['a', 'b'] });
     await waitUntil(() => frame.sent.some((m) => m.reqId === 'arrargs'));
-    expect(driverExecuteMock).toHaveBeenCalledWith({
-      dbSessionId: 'live-c',
-      command: 'query',
-      input: ['a', 'b'],
-    });
+    expect(wappExecuteCommandMock).not.toHaveBeenCalled();
+    expect(frame.sent.find((m) => m.reqId === 'arrargs')?.type).toBe('command.invoke.err');
   });
 });
 
@@ -456,7 +454,7 @@ describe('bridge security: prototype pollution containment', () => {
 
   it('passes polluted-key args verbatim to IPC without merging them anywhere', async () => {
     seedActiveSession('c');
-    driverExecuteMock.mockResolvedValue({ data: null });
+    wappExecuteCommandMock.mockResolvedValue({ data: null });
     handle = attachBridge(frame.iframe, { wappId: 'p', permissions: ['command:invoke'] });
 
     // JSON.parse gives `__proto__` own-property semantics (postMessage parity).
@@ -470,9 +468,11 @@ describe('bridge security: prototype pollution containment', () => {
     await flush();
 
     // Forwarded untouched (own properties preserved)…
-    expect(driverExecuteMock).toHaveBeenCalledTimes(1);
-    const forwarded = driverExecuteMock.mock.calls[0][0] as { input: Record<string, unknown> };
-    expect(JSON.stringify(forwarded.input)).toContain('select 1');
+    expect(wappExecuteCommandMock).toHaveBeenCalledTimes(1);
+    const forwarded = wappExecuteCommandMock.mock.calls[0][0] as {
+      args: Record<string, unknown>;
+    };
+    expect(JSON.stringify(forwarded.args)).toContain('select 1');
     // …and Object.prototype was never mutated.
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
     expect(({} as Record<string, unknown>).polluted2).toBeUndefined();

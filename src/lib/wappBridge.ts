@@ -17,7 +17,6 @@ import { invoke } from '@tauri-apps/api/core';
 import type { WappPermission } from '../types/wapp';
 import { WAPP_API_VERSION } from '../types/wapp';
 import { wappCommands } from '../commands/wapps';
-import { driverCommands } from '../commands/driver';
 import { connectionCommands } from '../commands/connection';
 import { resolveWappString } from './wappI18n';
 import { useConnectionStore } from '../stores/connectionStore';
@@ -230,7 +229,13 @@ async function handleCommandInvoke(wappId: string, payload: unknown) {
   const p = (payload ?? {}) as Partial<CommandInvokePayload>;
   const connectionId = asString(p.connectionId);
   const command = asString(p.command);
-  if (!connectionId || !command || (typeof p.args !== 'undefined' && typeof p.args !== 'object')) {
+  if (
+    !connectionId ||
+    !command ||
+    (typeof p.args !== 'undefined' &&
+      p.args !== null &&
+      (typeof p.args !== 'object' || Array.isArray(p.args)))
+  ) {
     throw new BridgeApiError(
       BRIDGE_ERROR.BAD_REQUEST,
       'command.invoke requires {connectionId, command, args?}',
@@ -247,22 +252,14 @@ async function handleCommandInvoke(wappId: string, payload: unknown) {
   // the webview console is not the only durable record.
   console.info(`[wapp:${wappId}] command.invoke ${command} via ${connectionId}`);
   wappCommands.auditLog(wappId, 'command.invoke', `${command} via ${connectionId}`);
-  // Resolve the live db session for the persistent connection id.
-  const entry = useActiveConnectionStore.getState().connections[connectionId];
-  const dbSessionId = asString(entry?.dbSessionId);
-  if (!dbSessionId || entry?.status !== 'connected') {
-    throw new BridgeApiError(
-      BRIDGE_ERROR.NOT_FOUND,
-      `No active DB session for connection '${connectionId}' (connect in the host first)`,
-    );
-  }
   try {
-    const result = await driverCommands.execute({
-      dbSessionId,
+    const result = await wappCommands.executeDriverCommand({
+      wappId,
+      connectionId,
       command,
-      input: (p.args ?? {}) as Record<string, unknown>,
+      args: (p.args ?? {}) as Record<string, unknown>,
     });
-    return { result: result.data };
+    return { result };
   } catch (error) {
     // Unknown connectionId/command surface from the backend as rejection text.
     const message = error instanceof Error ? error.message : String(error ?? '');
