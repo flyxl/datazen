@@ -823,4 +823,6 @@ v1 定义的映射规则是机械的、无歧义的：
 
 JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器的 `StageOwnerPermit`。独立步骤资源使用真实 `OwnerRef::Job`，session block 使用真实 `OwnerRef::WorkflowBlock { jobId, blockId }`；所有 owner/身份均由后端生成，普通 session 请求即使携带有效 Job ID 仍拒绝。Runtime 在资源获取、enqueue 与物理 dispatch 前核验活动 claim/阶段/取消与固定 profile revision。session block 步骤串行共用同一显式目标和物理 session，块末 RollbackAndClose；下一块另取资源。获取期间的 guard 覆盖回执丢失/超时，块截止时间触发独立于 GUI attachment/idle policy 的清理，取消信号传入运行中 SQL 的终态等待。关闭或结果未确认保留 Unknown，不自动重放。
 
-持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown，尚无逐步骤 commit-boundary/domain-result 投影、专用 Workflow Job 控制 UI 或跨重启结果 receipt；真实 PostgreSQL/MySQL 临时对象/外部效果旅程仍须独立验收。`transactionBlock` 继续在 Job admission、任何独立 SQL 和资源获取之前显式拒绝，事务提交/回滚/Unknown 证据与整块重试留待下一切片，P6 未整体关闭。
+持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown；尚无逐步骤 commit-boundary/domain-result 投影、专用 Workflow Job 控制 UI 或跨重启 Workflow receipt，真实 PostgreSQL/MySQL 临时对象/外部效果旅程仍须独立验收。
+
+`transactionBlock` 已支持 PostgreSQL/MySQL 的 Job-owned retained session：显式 `BEGIN`，步骤成功后 `COMMIT`，步骤失败时 `ROLLBACK`；提交或回滚无法确认时保留 Unknown 且不自动重放。SQL 模板在拿资源前完成插值与最终解析验证，每步恰为一条 SELECT/DML。静态校验拒绝 CTE、锁定查询、DDL/隐式提交语句、事务控制语句、table-valued function、未审阅/限定函数与非 Abort 步骤策略；非零整块 retry 拒绝，因为尚无可证明回滚的 retry evidence。P6 尚未整体关闭。

@@ -471,7 +471,9 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 
 JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器的 `StageOwnerPermit`。独立步骤资源使用真实 `OwnerRef::Job`，session block 使用真实 `OwnerRef::WorkflowBlock { jobId, blockId }`；所有 owner/身份均由后端生成，普通 session 请求即使携带有效 Job ID 仍拒绝。Runtime 在资源获取、enqueue 与物理 dispatch 前核验活动 claim/阶段/取消与固定 profile revision。session block 步骤串行共用同一显式目标和物理 session，块末 RollbackAndClose；下一块另取资源。获取期间的 guard 覆盖回执丢失/超时，块截止时间触发独立于 GUI attachment/idle policy 的清理，取消信号传入运行中 SQL 的终态等待。关闭或结果未确认保留 Unknown，不自动重放。
 
-持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown，尚无逐步骤 commit-boundary/domain-result 投影、专用 Workflow Job 控制 UI 或跨重启结果 receipt；真实 PostgreSQL/MySQL 临时对象/外部效果旅程仍须独立验收。`transactionBlock` 继续在 Job admission、任何独立 SQL 和资源获取之前显式拒绝，事务提交/回滚/Unknown 证据与整块重试留待下一切片，P6 未整体关闭。
+持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown；尚无逐步骤 commit-boundary/domain-result 投影、专用 Workflow Job 控制 UI 或跨重启 Workflow receipt，真实 PostgreSQL/MySQL 临时对象/外部效果旅程仍须独立验收。
+
+`transactionBlock` 已支持 PostgreSQL/MySQL 的 Job-owned retained session：显式 `BEGIN`，执行块步骤后 `COMMIT`，步骤失败时 `ROLLBACK`；提交或回滚无法确认时保留 Unknown 且不自动重放。SQL 模板在拿资源前完成插值与最终解析验证，每步恰为一条 SELECT/DML。校验器拒绝 CTE、锁定查询、DDL/隐式提交语句、事务控制语句、table-valued function、未审阅/限定函数及非 Abort 步骤策略。非零整块 retry 暂时拒绝，因为 Runtime 尚无可证明回滚的 retry evidence。Workflow 逐步骤 commit-boundary/domain-result、专用 Job 控制 UI 与跨重启 Workflow receipt 仍待后续切片。
 
 
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）
@@ -484,4 +486,4 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 
 共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
 
-撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。已观察结果保持真实；撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown。此实现仍使用现有短 Runtime execution 和 WidgetRun 落盘，**尚未建立持久 Monitor occurrence Job、跨重启 receipt/接管或 schedule 幂等账本**；不表示 P6 整体退出或真实驱动旅程已经验收。
+撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。每个 grant 版本、dashboard/widget、workflow revision 与 refresh slot 对应一个带稳定幂等键的 `monitorOccurrence` Job；Job 受理后才派发 scheduled workflow，WidgetRun 与有界 JobDomainResult 记录实际结果。启动恢复按持久化 service principal 扫描 occurrence：未派发 Job 标为未启动，运行中 Job 转为待核验，不重放查询。撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown；真实 PostgreSQL/MySQL 驱动旅程仍须独立验收，P6 未整体关闭。

@@ -274,13 +274,18 @@ pub fn plan_blocks<'a>(
     use super::model::WorkflowStep;
     let mut blocks = Vec::new();
     for block in &executable.blocks {
-        if block.kind != super::model::BlockKind::SessionBlock {
-            return Err(WorkflowError::Validation(
-                "transactionBlock execution is unsupported".into(),
-            ));
-        }
-        if block.steps.iter().any(|s| !(matches!(&s.step, WorkflowStep::Query { .. }) || matches!(&s.step, WorkflowStep::Command { command, .. } if matches!(command.as_str(), "query" | "execute" | "explain")))) {
-            return Err(WorkflowError::Validation("sessionBlock currently accepts SQL query/execute/explain steps only".into()));
+        match block.kind {
+            super::model::BlockKind::SessionBlock => {
+                if block.steps.iter().any(|s| {
+                    !(matches!(&s.step, WorkflowStep::Query { .. })
+                        || matches!(&s.step, WorkflowStep::Command { command, .. } if matches!(command.as_str(), "query" | "execute" | "explain")))
+                }) {
+                    return Err(WorkflowError::Validation("sessionBlock currently accepts SQL query/execute/explain steps only".into()));
+                }
+            }
+            super::model::BlockKind::TransactionBlock => {
+                super::transaction_block::validate(block)?;
+            }
         }
         if block.steps.iter().any(|s| matches!(&s.step, WorkflowStep::Command { input, .. } if input.get("schema").is_some_and(|value| !value.is_null()))) {
             return Err(WorkflowError::Validation("block schema overrides are unsupported; use the frozen profile namespace".into()));
@@ -315,6 +320,15 @@ pub(super) async fn execute_blocks(
     options: &super::executor::WorkflowExecuteOptions,
 ) -> Result<(), WorkflowError> {
     for (block, target) in blocks {
+        let steps = if block.kind.is_transactional() {
+            super::transaction_block::resolve_steps(block, context)?
+        } else {
+            block
+                .steps
+                .iter()
+                .map(|s| s.step.clone())
+                .collect::<Vec<_>>()
+        };
         let resources = app_state
             .resources()
             .ok_or_else(|| WorkflowError::Validation("sessionBlock runtime unavailable".into()))?;
@@ -326,11 +340,21 @@ pub(super) async fn execute_blocks(
             resource: resources,
             session: &session,
         };
-        let steps = block
-            .steps
-            .iter()
-            .map(|s| s.step.clone())
-            .collect::<Vec<_>>();
+        if block.kind.is_transactional() {
+            if let Err(error) =
+                super::transaction_block::begin(&host, &block.id, &target, deadline).await
+            {
+                return match session.close().await {
+                    Ok(()) => Err(error),
+                    Err(_) => Err(WorkflowError::SqlUnconfirmed {
+                        execution_id: format!("transactionBlock:{}", block.id),
+                        state: "Unknown".into(),
+                        effects: "Unknown".into(),
+                        code: "TransactionBeginCleanupUnconfirmed".into(),
+                    }),
+                };
+            }
+        }
         let result = super::executor::WorkflowExecutor::execute_steps(
             &steps,
             &host,
@@ -338,12 +362,21 @@ pub(super) async fn execute_blocks(
             target.database.as_deref(),
             context,
             step_results,
-            default_strategy,
+            if block.kind.is_transactional() {
+                &super::model::ErrorStrategy::Abort
+            } else {
+                default_strategy
+            },
             global_timeout,
             start,
             options,
         )
         .await;
+        let result = if block.kind.is_transactional() {
+            super::transaction_block::finish(&host, block, &target, deadline, result).await
+        } else {
+            result
+        };
         let cleanup = session.close().await;
         if let Err(cleanup) = cleanup {
             return Err(WorkflowError::Step(format!(
