@@ -1,4 +1,4 @@
-//! Synthetic trusted-adapter test: production still refuses WorkflowBlock owners.
+//! Acquisition deadline seam; production uses the fenced Workflow Job adapter.
 use datazen_driver_api::{CommandResult, ConnectionConfig, DatabaseDriver};
 use datazen_feature_core::workflow::{
     context::WorkflowContext,
@@ -42,6 +42,7 @@ impl WorkflowHost for Host {
     }
     async fn open_session_block(
         &self,
+        _block_id: &str,
         _: &ExecutionTarget,
         deadline: tokio::time::Instant,
     ) -> Result<RetainedSession, WorkflowError> {

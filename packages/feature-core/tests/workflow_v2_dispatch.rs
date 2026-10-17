@@ -15,6 +15,7 @@ impl Drop for CandidateGuard {
 impl WorkflowHost for Host {
     async fn open_session_block(
         &self,
+        _block_id: &str,
         _: &datazen_feature_core::workflow::target_plan::ExecutionTarget,
         deadline: tokio::time::Instant,
     ) -> Result<datazen_feature_core::workflow::session_block::RetainedSession, WorkflowError> {
@@ -310,5 +311,24 @@ async fn forbidden_database_is_rejected_before_any_admission_and_absence_is_pres
         error.contains("forbids a database"),
         "must reject target before owner validation or block admission: {error}"
     );
+    assert_eq!(host.0.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn block_schema_override_rejects_before_independent_step_dispatch() {
+    let host = Host(AtomicUsize::new(0));
+    let mut workflow = definition(Some("2"), Some("sessionBlock"));
+    workflow.blocks[0].steps.push(WorkflowStep::Command {
+        id: "schema-switch".into(),
+        command: "query".into(),
+        connection: None,
+        input: serde_json::json!({"sql":"select 1","schema":"other"}),
+        timeout_secs: None,
+        on_error: None,
+    });
+    let error = WorkflowExecutor::execute(&workflow, &host, None, &serde_json::json!({}))
+        .await
+        .unwrap_err();
+    assert!(error.contains("schema overrides"));
     assert_eq!(host.0.load(Ordering::SeqCst), 0);
 }

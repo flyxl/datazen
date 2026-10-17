@@ -467,9 +467,11 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 
 共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺命令/驱动元数据要求的字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。database 要求保留命令 target requirements 的 Required / Optional / Forbidden 三态；Forbidden 在派发前拒绝已选目标中的 database，且不被驱动 has_multi_database 的通用 SQL 要求覆盖。Optional 才可按该驱动元数据提升为 Required，单库驱动不因 SQL 命令名被强制要求 database；缺元数据明确 CapabilityUnsupported，不猜测其他驱动能力。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
 
-`sessionBlock` 与 `transactionBlock` 当前都在独立步骤执行前失败关闭，不能被旧 executor 静默忽略。前者的前置缺口是受控 Workflow Job 生命周期、经授权的 `OwnerRef::WorkflowBlock { jobId, blockId }` 与 TTL 清理；Runtime application 目前拒绝未获 Job 授权的该 owner，禁止用 `ClientSession` 替代。后者还缺事务计划预检、提交/回滚真实效果与整块重试协议。
+桌面用户发起的 `workflow_execute` 对含 block 的 v2 定义经 `workflow::job` 执行：先冻结定义和输入、完成整个定义的目标/冲突/命令元数据预检，再由 `DesktopJobHost` 持久受理 `workflowRun` 并经 JobRuntime claim 派发。此切片限定 PostgreSQL/MySQL 的 query/execute/explain 与条件/循环；block 的 schema override 明确拒绝。v1 与无 block 的 v2 独立步骤保持原路径。MCP、旧 Workflow 定时入口及其他默认 host 仍拒绝 blocks，不能借桌面用户身份获得后台授权。
 
-共享 `session_block` 与 `resource_execution::execute_with_session` 已提供串行步骤、固定 Runtime session / ExecutionGateway、终态等待和块末关闭的可复用端口。目标元数据预检和块资源获取共用 workflow 截止时间；获取超时零块步骤派发，未拿到回执时保留 Unknown，可信 adapter 必须以候选资源守卫清理被取消的获取，不能自动重试。可信 Job adapter 尚未实现，桌面默认拒绝开启；这些端口不表示 retained session 临时对象可见性、块间/编辑器隔离、失败/取消清理或真实 PostgreSQL/MySQL 旅程已经验收。P6 仍未关闭，后续需在独立验证树完成上述旅程后开放 block 派发。
+JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器的 `StageOwnerPermit`。独立步骤资源使用真实 `OwnerRef::Job`，session block 使用真实 `OwnerRef::WorkflowBlock { jobId, blockId }`；所有 owner/身份均由后端生成，普通 session 请求即使携带有效 Job ID 仍拒绝。Runtime 在资源获取、enqueue 与物理 dispatch 前核验活动 claim/阶段/取消与固定 profile revision。session block 步骤串行共用同一显式目标和物理 session，块末 RollbackAndClose；下一块另取资源。获取期间的 guard 覆盖回执丢失/超时，块截止时间触发独立于 GUI attachment/idle policy 的清理，取消信号传入运行中 SQL 的终态等待。关闭或结果未确认保留 Unknown，不自动重放。
+
+持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown，尚无逐步骤 commit-boundary/domain-result 投影、专用 Workflow Job 控制 UI 或跨重启结果 receipt；真实 PostgreSQL/MySQL 临时对象/外部效果旅程仍须独立验收。`transactionBlock` 继续在 Job admission、任何独立 SQL 和资源获取之前显式拒绝，事务提交/回滚/Unknown 证据与整块重试留待下一切片，P6 未整体关闭。
 
 
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）

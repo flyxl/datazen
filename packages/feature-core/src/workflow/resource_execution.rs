@@ -12,6 +12,9 @@ pub struct PreparedExecution {
 }
 #[async_trait::async_trait]
 pub trait ResourceExecutionHost: Send + Sync {
+    fn cancellation(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
+        None
+    }
     async fn profile(&self, id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError>;
     async fn driver(
         &self,
@@ -192,7 +195,12 @@ pub async fn execute_with_session(
     }
 
     let prepared = if let Some(session) = session {
-        if target != session.prepared.target {
+        let canonical = before_dispatch(
+            deadline,
+            state.prepare(connection_id, revision, &step.command, target),
+        )
+        .await??;
+        if canonical.target != session.prepared.target {
             return Err(WorkflowError::Validation(
                 "block command target changed".into(),
             ));
@@ -294,13 +302,19 @@ pub async fn execute_with_session(
         effects: effects.to_owned(),
         code,
     };
+    let cancel_flag = state.cancellation();
     let mut timed_out = false;
     let mut poll_deadline = deadline;
     let view = loop {
         // timeout_at polls its inner future first. A ready registry lookup
         // can therefore win even after expiry on every iteration. Enforce the
         // deadline explicitly before polling, including the terminal grace period.
-        let polled = if tokio::time::Instant::now() >= poll_deadline {
+        let polled = if tokio::time::Instant::now() >= poll_deadline
+            || (!timed_out
+                && cancel_flag
+                    .as_ref()
+                    .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::SeqCst)))
+        {
             Err(())
         } else {
             tokio::time::timeout_at(

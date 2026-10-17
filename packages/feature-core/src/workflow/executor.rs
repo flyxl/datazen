@@ -83,8 +83,15 @@ impl WorkflowExecutor {
         variables: &serde_json::Value,
         options: WorkflowExecuteOptions,
     ) -> Result<WorkflowExecutionResult, String> {
-        let start = Instant::now();
         let global_timeout = workflow.timeout_secs.unwrap_or(300);
+        let start = app_state
+            .workflow_deadline()
+            .and_then(|deadline| {
+                deadline
+                    .into_std()
+                    .checked_sub(std::time::Duration::from_secs(global_timeout))
+            })
+            .unwrap_or_else(Instant::now);
         let default_strategy = workflow
             .error_handling
             .as_ref()

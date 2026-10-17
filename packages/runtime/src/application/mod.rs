@@ -72,6 +72,7 @@ struct SessionEntry {
     attached: bool,
     closed: Option<CloseReceipt>,
     closed_at: Option<Instant>,
+    job_permit: Option<crate::job::StageOwnerPermit>,
 }
 struct RuntimeClock(Instant);
 impl RuntimeClock {
@@ -101,7 +102,11 @@ impl Authorizer for BoundAuthorizer {
                 principal_id,
                 ..
             } => organization_id == p.organization_id() && principal_id == p.principal_id(),
-            rt::OwnerRef::ClientSession { .. } => {
+            // Job variants can only be registered by a Runtime-issued stage
+            // permit. Async enqueue/dispatch also verify the live claim fence.
+            rt::OwnerRef::ClientSession { .. }
+            | rt::OwnerRef::WorkflowBlock { .. }
+            | rt::OwnerRef::Job { .. } => {
                 source.organization_id() == Some(p.organization_id())
                     && source.principal_id() == Some(p.principal_id())
             }
@@ -115,6 +120,47 @@ impl Authorizer for BoundAuthorizer {
     }
 }
 impl RuntimeConnectionUseCases {
+    pub(crate) fn bind_job_permit(
+        &self,
+        handle: &SessionHandle,
+        permit: crate::job::StageOwnerPermit,
+    ) -> Result<(), ApiError> {
+        let mut sessions = lock(&self.inner.sessions);
+        let entry = sessions
+            .get_mut(&handle.db_session_id)
+            .ok_or_else(|| ApiError::permission_denied("job session unavailable"))?;
+        if entry.handle != *handle
+            || entry.ctx != *permit.context()
+            || !datazen_platform_api::ports::session_directory::owner_matches_job(
+                &entry.owner,
+                permit.job_id(),
+            )
+        {
+            return Err(ApiError::permission_denied("job session binding rejected"));
+        }
+        entry.job_permit = Some(permit);
+        Ok(())
+    }
+    pub(crate) async fn verify_session_job(
+        &self,
+        ctx: &RequestContext,
+        handle: &SessionHandle,
+    ) -> Result<(), ApiError> {
+        if let Some(permit) = self.session_entry(ctx, handle)?.job_permit {
+            permit.verify_active().await?;
+            let view = self.session_view(ctx, handle).await?;
+            let profile = self.profile(ctx, &view.connection_id).await?;
+            if profile.config_revision.counter().get() != view.config_revision.get() {
+                return Err(ApiError::permission_denied(
+                    "Workflow Job profile revision changed",
+                ));
+            }
+        }
+        Ok(())
+    }
+    pub async fn authorize_workflow_job(&self, ctx: &RequestContext) -> Result<(), ApiError> {
+        self.authorize(ctx, AuthorizationAction::ManageJob).await
+    }
     pub fn new(
         profiles: Arc<dyn ProfileRepository>,
         policy: Arc<dyn PolicyService>,
@@ -353,7 +399,7 @@ impl RuntimeConnectionUseCases {
             })
         }
     }
-    async fn authorize_target(
+    pub(crate) async fn authorize_target(
         &self,
         ctx: &RequestContext,
         action: AuthorizationAction,
@@ -453,6 +499,14 @@ impl RuntimeConnectionUseCases {
             OwnerRef::Editor {
                 editor_session_id, ..
             } => (SourceKind::Editor, editor_session_id.as_str().to_owned()),
+            OwnerRef::Job { job_id, stage_id } => (
+                SourceKind::Job,
+                format!("{}:{}", job_id.as_str(), stage_id.as_str()),
+            ),
+            OwnerRef::WorkflowBlock { job_id, block_id } => (
+                SourceKind::WorkflowBlock,
+                format!("{}:{}", job_id.as_str(), block_id.as_str()),
+            ),
             _ => (
                 SourceKind::ClientSession,
                 ctx.client_instance_id.as_str().to_owned(),
@@ -488,9 +542,20 @@ impl RuntimeConnectionUseCases {
         owner: OwnerRef,
         command: &str,
     ) -> Result<OpenSessionReceipt, ApiError> {
+        let rt_owner = convert::owner(ctx, &target.connection_id, &owner)?;
+        self.create_owned_session(ctx, target, owner, rt_owner, command)
+            .await
+    }
+    pub(crate) async fn create_owned_session(
+        &self,
+        ctx: &RequestContext,
+        target: ExecutionTarget,
+        owner: OwnerRef,
+        rt_owner: rt::OwnerRef,
+        command: &str,
+    ) -> Result<OpenSessionReceipt, ApiError> {
         self.reclaim_session_tombstones();
         let profile = self.profile(ctx, &target.connection_id).await?;
-        let rt_owner = convert::owner(ctx, &target.connection_id, &owner)?;
         let id = DbSessionIdGenerator::new().generate();
         let view = self
             .inner
@@ -564,6 +629,7 @@ impl RuntimeConnectionUseCases {
                 attached: true,
                 closed: None,
                 closed_at: None,
+                job_permit: None,
             },
         );
         Ok(OpenSessionReceipt {

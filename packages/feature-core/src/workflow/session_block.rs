@@ -14,6 +14,7 @@ pub struct RetainedSession {
     pub prepared: PreparedExecution,
     pub handle: SessionHandle,
     closed: bool,
+    job_lease: Option<datazen_runtime::job::JobSessionLease>,
 }
 impl RetainedSession {
     /// Only a trusted Job adapter may construct this after Runtime has accepted
@@ -23,7 +24,23 @@ impl RetainedSession {
             prepared,
             handle,
             closed: false,
+            job_lease: None,
         }
+    }
+    pub fn from_job(
+        prepared: PreparedExecution,
+        lease: datazen_runtime::job::JobSessionLease,
+    ) -> Result<Self, WorkflowError> {
+        let handle = lease
+            .handle()
+            .cloned()
+            .ok_or_else(|| WorkflowError::Validation("job session receipt unavailable".into()))?;
+        Ok(Self {
+            prepared,
+            handle,
+            closed: false,
+            job_lease: Some(lease),
+        })
     }
     pub async fn close(&mut self) -> Result<(), WorkflowError> {
         let receipt = self
@@ -43,6 +60,9 @@ impl RetainedSession {
                 "block close resource release unconfirmed; effects Unknown".into(),
             ));
         }
+        if let Some(lease) = self.job_lease.as_mut() {
+            lease.confirm_closed();
+        }
         Ok(())
     }
 }
@@ -51,7 +71,7 @@ fn api(error: datazen_application::error::ApiError) -> WorkflowError {
 }
 impl Drop for RetainedSession {
     fn drop(&mut self) {
-        if self.closed {
+        if self.closed || self.job_lease.is_some() {
             return;
         }
         let runtime = self.prepared.runtime.clone();
@@ -262,6 +282,9 @@ pub fn plan_blocks<'a>(
         if block.steps.iter().any(|s| !(matches!(&s.step, WorkflowStep::Query { .. }) || matches!(&s.step, WorkflowStep::Command { command, .. } if matches!(command.as_str(), "query" | "execute" | "explain")))) {
             return Err(WorkflowError::Validation("sessionBlock currently accepts SQL query/execute/explain steps only".into()));
         }
+        if block.steps.iter().any(|s| matches!(&s.step, WorkflowStep::Command { input, .. } if input.get("schema").is_some_and(|value| !value.is_null()))) {
+            return Err(WorkflowError::Validation("block schema overrides are unsupported; use the frozen profile namespace".into()));
+        }
         let target = super::target_plan::resolve_block_targets(
             &block.id,
             block.kind,
@@ -297,7 +320,7 @@ pub(super) async fn execute_blocks(
             .ok_or_else(|| WorkflowError::Validation("sessionBlock runtime unavailable".into()))?;
         let deadline =
             tokio::time::Instant::from_std(*start) + std::time::Duration::from_secs(global_timeout);
-        let mut session = acquire_block(app_state, &target, deadline).await?;
+        let mut session = acquire_named_block(app_state, &block.id, &target, deadline).await?;
         let host = super::session_block::BlockHost {
             parent: app_state,
             resource: resources,
@@ -335,22 +358,26 @@ pub(super) async fn execute_blocks(
 
 /// Dropping timed-out admission is safe only when the trusted adapter keeps its
 /// own candidate cleanup guard. No receipt means the admission result is Unknown.
-pub async fn acquire_block(
+pub async fn acquire_named_block(
     host: &dyn WorkflowHost,
+    block_id: &str,
     target: &super::target_plan::ExecutionTarget,
     deadline: tokio::time::Instant,
 ) -> Result<RetainedSession, WorkflowError> {
     if tokio::time::Instant::now() >= deadline {
         return Err(WorkflowError::GlobalTimeout(0));
     }
-    let mut session = tokio::time::timeout_at(deadline, host.open_session_block(target, deadline))
-        .await
-        .map_err(|_| WorkflowError::SqlUnconfirmed {
-            execution_id: "unavailable".into(),
-            state: "Unknown".into(),
-            effects: "Unknown".into(),
-            code: "BlockAcquisitionTimeout".into(),
-        })??;
+    let mut session = tokio::time::timeout_at(
+        deadline,
+        host.open_session_block(block_id, target, deadline),
+    )
+    .await
+    .map_err(|_| WorkflowError::SqlUnconfirmed {
+        execution_id: "unavailable".into(),
+        state: "Unknown".into(),
+        effects: "Unknown".into(),
+        code: "BlockAcquisitionTimeout".into(),
+    })??;
     if tokio::time::Instant::now() >= deadline {
         let cleanup = session.close().await;
         return Err(WorkflowError::Step(format!("block acquisition exceeded workflow deadline; zero steps dispatched; cleanup: {cleanup:?}")));
@@ -436,4 +463,13 @@ pub async fn prepare_v2(
             )
         })??;
     Ok(prepared)
+}
+
+/// Compatibility helper for resource acquisition seam tests.
+pub async fn acquire_block(
+    host: &dyn WorkflowHost,
+    target: &super::target_plan::ExecutionTarget,
+    deadline: tokio::time::Instant,
+) -> Result<RetainedSession, WorkflowError> {
+    acquire_named_block(host, "block", target, deadline).await
 }
