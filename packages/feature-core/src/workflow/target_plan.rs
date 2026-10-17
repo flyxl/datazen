@@ -192,6 +192,9 @@ pub fn resolve_block_targets(
         if !declared.is_declared() {
             continue;
         }
+        // A declared step level must be complete even when it repeats only part
+        // of the block identity. Never fill missing fields from the block.
+        resolve(&step.id, &declared, None, &TargetDeclaration::empty(), None, requirements)?;
         match (&declared.connection, &declared.database) {
             // 跨连接：换资源就是换块，静态拒绝整块。
             (Some(connection), _) if *connection != block.connection_id => {

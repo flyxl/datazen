@@ -248,7 +248,7 @@ pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rota
 
 P5 退出门槛已关闭，P6 前置条件满足，可以启动。
 
-2026-10-17 实施状态：Workflow/AI/MCP/Dashboard/metadata/export/backup 的共享领域代码与 settings 契约已抽入共享 packages；桌面保留 IPC、native/session identity、仓储和既有 P5 job adapter。表导出与数据库备份已接入桌面 Job/Artifact 交付；备份执行仍由现有桌面 driver adapter 提供，恢复作为有副作用的 apply Job 尚未接入。最终残余核对见 [feature-core](../architecture/platform/feature-core.md#final-residual-audit-2026-10-17) 与 [消费者边界 §8.1](../architecture/platform/consumer-adapters.md#81-当前共享实现与保留边界2026-10-17)。这不是 P6 关闭：block/owner/TTL/授权调度/native-tool 预算、恢复 apply Job 及旅程验收仍有阶段工作；本轮提取已在隔离快照复验通过。
+2026-10-17 实施状态：Workflow/AI/MCP/Dashboard/metadata/export/backup 的共享领域代码与 settings 契约已抽入共享 packages；桌面保留 IPC、native/session identity、仓储和既有 P5 job adapter。表导出与数据库备份已接入桌面 Job/Artifact 交付；备份执行仍由现有桌面 driver adapter 提供，恢复已接单次消费的 apply Job，PostgreSQL/MySQL 的受限 SQL 格式走固定 Runtime session / ExecutionGateway。最终残余核对见 [feature-core](../architecture/platform/feature-core.md#final-residual-audit-2026-10-17) 与 [消费者边界 §8.1](../architecture/platform/consumer-adapters.md#81-当前共享实现与保留边界2026-10-17)。这不是 P6 关闭：block 已有派发前失败关闭；可信 WorkflowBlock owner/TTL、实际块执行、授权调度/native-tool 预算及真实驱动旅程验收仍有阶段工作；本轮提取已在隔离快照复验通过。
 
 详细设计：[Workflow 资源模型](../architecture/platform/workflow-resource-model.md) 与 [消费者接入](../architecture/platform/consumer-adapters.md)。共享授权失效后拒绝绑定操作，MCP/Wapp 只释放自有资源，调度目标和服务授权显式保存，原生工具也计入完整预算。
 
@@ -461,3 +461,12 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 | P10 | 驱动能力迁移 §10.2；各消费者退役条件与本计划逐层门槛 |
 
 本表是设计入口，不是完成进度。目标设计、现有实现和实际运行证据分别标明；阶段完成后同步将对应内容改写为事实。
+
+
+### 2026-10-17 Workflow v2 派发安全边界
+
+共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
+
+`sessionBlock` 与 `transactionBlock` 当前都在独立步骤执行前失败关闭，不能被旧 executor 静默忽略。前者的前置缺口是受控 Workflow Job 生命周期、经授权的 `OwnerRef::WorkflowBlock { jobId, blockId }` 与 TTL 清理；Runtime application 目前拒绝未获 Job 授权的该 owner，禁止用 `ClientSession` 替代。后者还缺事务计划预检、提交/回滚真实效果与整块重试协议。
+
+共享 `session_block` 与 `resource_execution::execute_with_session` 已提供串行步骤、固定 Runtime session / ExecutionGateway、终态等待和块末关闭的可复用端口。可信 Job adapter 尚未实现，桌面默认拒绝开启；这些端口不表示 retained session 临时对象可见性、块间/编辑器隔离、失败/取消清理或真实 PostgreSQL/MySQL 旅程已经验收。P6 仍未关闭，后续需在独立验证树完成上述旅程后开放 block 派发。

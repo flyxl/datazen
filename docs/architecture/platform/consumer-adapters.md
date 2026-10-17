@@ -122,7 +122,7 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 `execute_driver_command` 仍服务桌面 editor/session IPC；ConnectionManager 仍承载本地 session identity、tunnel 与 P5 repository/job adapter。AI/MCP/Workflow 默认 DB 工具已走共享 ResourceExecutionHost。Monitor 的兼容连接 registry 没有活动调度查询调用，实际调度走共享 MonitorHost/Workflow。
 
-共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，但 driver source 与 backup execution 仍是本地 adapter；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。session/transaction block、owner/TTL、显式 editor grant、委托调度授权和 native-tool 全预算仍需后续实现与适用层验证。不得将本轮桌面单测通过当作 P6 阶段退出证明。
+共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，但 driver source 与 backup execution 仍是本地 adapter；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。session/transaction block 已接全局派发前拒绝，可信 WorkflowBlock Job owner/TTL、实际块执行、显式 editor grant、委托调度授权和 native-tool 全预算仍需后续实现与适用层验证。不得将本轮桌面单测通过当作 P6 阶段退出证明。
 
 ## 9. 验收与故障旅程
 
@@ -138,3 +138,12 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 Host fake 验证归属与清理；真实 driver 验证共享状态、精确取消和外部效果；Frontend 验证旧事件过滤；W1 验证鉴权与桥，WN 验证调度接管。未运行的层不能记为通过。
 
 恢复 adapter 的当前例外：`restore_sql_file` 已接 Artifact 上传与 `databaseRestoreApply` 受理/单次消费/JobRuntime，而非直接本地路径执行。PostgreSQL/MySQL 的 Gateway 通过固定 Runtime Session / ExecutionGateway 执行受限 SQL 格式并记录真实提交证据；其他驱动明确 Unsupported 至 P10，没有借旧 ConnectionManager 实现恢复。详见 [Job §2.5](data-migration-jobs.md#25-restore-apply-job已接线驱动执行失败关闭)。这不关闭真实驱动恢复验收或 Workflow block/owner/TTL 的其余门槛。
+
+
+### 2026-10-17 Workflow v2 派发安全边界
+
+共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
+
+`sessionBlock` 与 `transactionBlock` 当前都在独立步骤执行前失败关闭，不能被旧 executor 静默忽略。前者的前置缺口是受控 Workflow Job 生命周期、经授权的 `OwnerRef::WorkflowBlock { jobId, blockId }` 与 TTL 清理；Runtime application 目前拒绝未获 Job 授权的该 owner，禁止用 `ClientSession` 替代。后者还缺事务计划预检、提交/回滚真实效果与整块重试协议。
+
+共享 `session_block` 与 `resource_execution::execute_with_session` 已提供串行步骤、固定 Runtime session / ExecutionGateway、终态等待和块末关闭的可复用端口。可信 Job adapter 尚未实现，桌面默认拒绝开启；这些端口不表示 retained session 临时对象可见性、块间/编辑器隔离、失败/取消清理或真实 PostgreSQL/MySQL 旅程已经验收。P6 仍未关闭，后续需在独立验证树完成上述旅程后开放 block 派发。

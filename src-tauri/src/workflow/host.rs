@@ -7,6 +7,12 @@ use datazen_feature_core::workflow::{context::WorkflowContext, host::WorkflowHos
 
 #[async_trait::async_trait]
 impl WorkflowHost for AppState {
+    fn resources(
+        &self,
+    ) -> Option<&dyn datazen_feature_core::workflow::resource_execution::ResourceExecutionHost>
+    {
+        Some(self)
+    }
     async fn connection_name(&self, id: &str) -> Result<String, WorkflowError> {
         self.store
             .platform_profile(id)

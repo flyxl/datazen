@@ -81,6 +81,27 @@ pub async fn execute(
     workflow_deadline: Option<tokio::time::Instant>,
     require_workflow: bool,
 ) -> Result<CommandResult, WorkflowError> {
+    execute_with_session(
+        state,
+        step,
+        connection_id,
+        permission_mode,
+        workflow_deadline,
+        require_workflow,
+        None,
+    )
+    .await
+}
+
+pub async fn execute_with_session(
+    state: &dyn ResourceExecutionHost,
+    step: &WorkflowCommandStep,
+    connection_id: &str,
+    permission_mode: Option<crate::mcp::permission::McpPermissionMode>,
+    workflow_deadline: Option<tokio::time::Instant>,
+    require_workflow: bool,
+    session: Option<&super::session_block::RetainedSession>,
+) -> Result<CommandResult, WorkflowError> {
     let step_deadline = tokio::time::Instant::now()
         + std::time::Duration::from_secs(step.timeout_secs.unwrap_or(30));
     let global_limit = workflow_deadline.is_some_and(|deadline| deadline <= step_deadline);
@@ -170,17 +191,38 @@ pub async fn execute(
         target = target.with_object(ObjectTarget::new("table", table));
     }
 
-    let prepared = before_dispatch(
-        deadline,
-        state.prepare(connection_id, revision, &step.command, target),
-    )
-    .await??;
+    let prepared = if let Some(session) = session {
+        if target != session.prepared.target {
+            return Err(WorkflowError::Validation(
+                "block command target changed".into(),
+            ));
+        }
+        PreparedExecution {
+            runtime: session.prepared.runtime.clone(),
+            context: session.prepared.context.clone(),
+            target: session.prepared.target.clone(),
+        }
+    } else {
+        before_dispatch(
+            deadline,
+            state.prepare(connection_id, revision, &step.command, target),
+        )
+        .await??
+    };
     let runtime = prepared.runtime;
     let context = prepared.context;
     let target = prepared.target;
     let token = before_dispatch(
         deadline,
-        runtime.issue_submission_token(&context, IdempotentOperation::ExecuteAtTarget, None),
+        runtime.issue_submission_token(
+            &context,
+            if session.is_some() {
+                IdempotentOperation::ExecuteInSession
+            } else {
+                IdempotentOperation::ExecuteAtTarget
+            },
+            session.map(|s| &s.handle),
+        ),
     )
     .await?
     .map_err(|error| WorkflowError::Validation(error.to_string()))?;
@@ -208,21 +250,36 @@ pub async fn execute(
             input.remove("schema");
         }
     }
-    let receipt = tokio::time::timeout_at(
-        deadline,
-        runtime.execute_at_target(
-            &context,
-            ExecuteAtTargetRequest::new(
-                target,
-                Counter::new(revision),
-                CommandCall::new(&step.command, command_input),
-                token.idempotency_key,
-            ),
-        ),
-    )
-    .await
-    .map_err(|_| submission_unconfirmed("SubmissionReceiptTimeout".into()))?
-    .map_err(|error| submission_unconfirmed(format!("Submission:{:?}", error.code)))?;
+    let submission = async {
+        if let Some(session) = session {
+            runtime
+                .execute_in_session(
+                    &context,
+                    datazen_application::dto::requests::ExecuteInSessionRequest::new(
+                        session.handle.clone(),
+                        CommandCall::new(&step.command, command_input),
+                        token.idempotency_key,
+                    ),
+                )
+                .await
+        } else {
+            runtime
+                .execute_at_target(
+                    &context,
+                    ExecuteAtTargetRequest::new(
+                        target,
+                        Counter::new(revision),
+                        CommandCall::new(&step.command, command_input),
+                        token.idempotency_key,
+                    ),
+                )
+                .await
+        }
+    };
+    let receipt = tokio::time::timeout_at(deadline, submission)
+        .await
+        .map_err(|_| submission_unconfirmed("SubmissionReceiptTimeout".into()))?
+        .map_err(|error| submission_unconfirmed(format!("Submission:{:?}", error.code)))?;
     let mut cancellation = CancelOnDrop {
         runtime: runtime.clone(),
         context: context.clone(),
