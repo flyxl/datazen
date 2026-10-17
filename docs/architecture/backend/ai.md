@@ -292,4 +292,9 @@ AI 默认**独立操作**：每个 DB 工具调用经共享 `ResourceExecutionHo
 - **归属校验在 grant 层补齐**（runtime 的 `get_session` 只按 org/principal/clientInstanceId 过滤，同进程两个 pane 在它眼里没有区别）：`verify_session_ownership` 逐项比对 `SessionView.owner` 的 clientInstanceId 与 editorSessionId、会话所在 connectionId、以及 profile 当前 configRevision，任一不符即具名拒绝；非 editor owner（Job/WorkflowBlock/ClientSession）一律拒绝。单测覆盖「同 client 的另一个 pane」「另一 client」「另一连接」「旧 revision」「非 editor owner」五种拒绝。
 - **回收已接线**：`close_session` 在关闭（含关闭被拒）后撤销借用该 db session 的 grant；`platform_update_profile` / `platform_disable_profile` 撤销该连接上的全部 grant（revision 变更使会话失效）；`verify_claim` 与 `issue` 顺带 `purge_expired` 回收过期记录。
 
-> 当前限制（P6 未关闭）：MCP 工具仍走各自会话，AI 的 `editorGrant` 只覆盖 DB 工具；F 层真实 UI 旅程（e2e）尚未编写，§9 那条旅程目前只有 H 层证据。仅 PG + MySQL 在本轮验证范围内。
+**七、验收落点。**
+
+- H 层（已跑）：`packages/feature-core/src/ai/ownership.rs` 的 grant 生命周期与三条撤销轴（按 grant / 按连接 / 按借用的 db session）；`ai/cancel.rs` 的 owner 隔离与三态回执；`ai/tool_loop.rs` 的取消终态（`done && cancelled`，且取消后不再派发工具）；`src-tauri/src/commands/ai/grant.rs` 的六条归属拒绝。
+- F 层（已编写、**尚未执行**）：`e2e/specs/ai-grant-lifecycle-journey.ts` 通过真实 IPC 驱动 `open_session → ai_grant_editor_session → touch/revoke → 伪造 client / 他 pane 拒绝 → close_session 后 grant 失效`。它不调用 Provider，因此不依赖 AI 密钥；执行需要 webdriver 构建（`pnpm tauri:build:webdriver`）。
+
+> 当前限制（P6 未关闭）：上述 F 层旅程尚未在 packaged app 上执行，§9 那条旅程目前只有 H 层实测证据；MCP 工具仍走各自会话，`editorGrant` 只覆盖 DB 工具。仅 PG + MySQL 在本轮验证范围内。
