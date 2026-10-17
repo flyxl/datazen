@@ -5,6 +5,7 @@ pub mod prompt_resolver;
 pub mod safety;
 pub use datazen_ai_api::{AiDataEgressLevel, AiSafetyGateConfig};
 pub mod context;
+pub mod ownership;
 pub mod response;
 pub mod schema_pipeline;
 pub mod tool_loop;

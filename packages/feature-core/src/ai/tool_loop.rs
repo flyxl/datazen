@@ -64,7 +64,8 @@ pub async fn run_streaming_tool_loop(
                         content: String::new(),
                         reasoning: None,
                         done: true,
-                        cancelled: false,
+                        // Cancellation is not a normal completion: never report it as one.
+                        cancelled: true,
                         usage: None,
                         tool_calls: None,
                         response_id: None,
@@ -171,6 +172,30 @@ pub async fn run_streaming_tool_loop(
             .map_err(|_| CommandError::Internal("Stream result channel closed".into()))?;
 
         if result.had_error {
+            return Ok(request_id.to_string());
+        }
+
+        // Cancellation can land while the provider stream is still running. The
+        // terminal state must say so instead of continuing into tool dispatch.
+        if request
+            .cancel_token
+            .as_ref()
+            .is_some_and(|token| token.is_cancelled())
+        {
+            tracing::info!(%request_id, "{cmd_label}: cancelled after stream round {}", guard.round);
+            on_chunk(
+                request_id,
+                Ok(StreamChunk {
+                    content: String::new(),
+                    reasoning: None,
+                    done: true,
+                    cancelled: true,
+                    usage: result.usage,
+                    tool_calls: None,
+                    response_id: result.response_id,
+                    egress_summary: None,
+                }),
+            );
             return Ok(request_id.to_string());
         }
 
@@ -334,6 +359,29 @@ pub async fn run_streaming_tool_loop(
 
         // Execute all tools sequentially.
         for (tc, kind) in parallel_db_tcs.iter().chain(sequential_tcs.iter()) {
+            // A tool may be long-running; a cancel that lands mid-round must
+            // stop the remaining dispatch and still report cancellation.
+            if request
+                .cancel_token
+                .as_ref()
+                .is_some_and(|token| token.is_cancelled())
+            {
+                tracing::info!(%request_id, "{cmd_label}: cancelled before tool {}", tc.name);
+                on_chunk(
+                    request_id,
+                    Ok(StreamChunk {
+                        content: String::new(),
+                        reasoning: None,
+                        done: true,
+                        cancelled: true,
+                        usage: result.usage,
+                        tool_calls: None,
+                        response_id: result.response_id,
+                        egress_summary: None,
+                    }),
+                );
+                return Ok(request_id.to_string());
+            }
             let tool_result = match kind {
                 ToolKind::Db(_) => host.execute_db_tool(tc).await,
                 ToolKind::Mcp {

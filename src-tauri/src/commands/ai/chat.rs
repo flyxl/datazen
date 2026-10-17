@@ -96,8 +96,39 @@ pub(crate) async fn run_streaming_tool_loop(
     cmd_label: &str,
     gate: &AiSafetyGateConfig,
 ) -> Result<String, CommandError> {
+    run_streaming_tool_loop_with_claim(
+        provider,
+        state,
+        on_chunk,
+        request_id,
+        request,
+        max_rounds,
+        cmd_label,
+        gate,
+        &datazen_feature_core::ai::ownership::AiTargetClaim::Independent,
+    )
+    .await
+}
+
+pub(crate) async fn run_streaming_tool_loop_with_claim(
+    provider: Arc<dyn AiProvider>,
+    state: &AppState,
+    on_chunk: StreamCallback,
+    request_id: &str,
+    request: CompletionRequest,
+    max_rounds: usize,
+    cmd_label: &str,
+    gate: &AiSafetyGateConfig,
+    claim: &datazen_feature_core::ai::ownership::AiTargetClaim,
+) -> Result<String, CommandError> {
+    // The claim decides which resource each tool may touch; independent and
+    // editor-granted calls never share an execution path.
+    let host = super::AiRequestHost {
+        state,
+        claim: claim.clone(),
+    };
     datazen_feature_core::ai::tool_loop::run_streaming_tool_loop(
-        provider, state, on_chunk, request_id, request, max_rounds, cmd_label, gate,
+        provider, &host, on_chunk, request_id, request, max_rounds, cmd_label, gate,
     )
     .await
     .map_err(Into::into)
@@ -108,6 +139,35 @@ pub(crate) async fn run_streaming_tool_loop(
 pub(crate) async fn ai_chat_impl(
     state: &AppState,
     on_chunk: StreamCallback,
+    db_session_id: Option<String>,
+    database: Option<String>,
+    messages: Vec<ChatMessage>,
+    request_id: String,
+    include_schema: bool,
+    scenario: Option<String>,
+    context_files: Option<Vec<String>>,
+    context_tables: Option<Vec<String>>,
+) -> Result<String, CommandError> {
+    ai_chat_impl_with_claim(
+        state,
+        on_chunk,
+        None,
+        db_session_id,
+        database,
+        messages,
+        request_id,
+        include_schema,
+        scenario,
+        context_files,
+        context_tables,
+    )
+    .await
+}
+
+pub(crate) async fn ai_chat_impl_with_claim(
+    state: &AppState,
+    on_chunk: StreamCallback,
+    target_claim: Option<datazen_feature_core::ai::ownership::AiTargetClaim>,
     db_session_id: Option<String>,
     database: Option<String>,
     messages: Vec<ChatMessage>,
@@ -332,10 +392,16 @@ pub(crate) async fn ai_chat_impl(
     inject_language_hint(&mut request.messages, &lang);
 
     // Register cancel token so `ai_cancel` IPC can interrupt this stream.
-    let cancel_token = state.cancel_registry.register(&request_id).await;
+    let cancel_owner = super::ai_owner_fingerprint(state);
+    let cancel_token = state
+        .cancel_registry
+        .register(&request_id, &cancel_owner)
+        .await;
     request.cancel_token = Some(cancel_token.clone());
 
-    let result = run_streaming_tool_loop(
+    let claim =
+        target_claim.unwrap_or(datazen_feature_core::ai::ownership::AiTargetClaim::Independent);
+    let result = run_streaming_tool_loop_with_claim(
         provider,
         state,
         on_chunk,
@@ -344,11 +410,15 @@ pub(crate) async fn ai_chat_impl(
         10,
         "ai_chat",
         &gate,
+        &claim,
     )
     .await;
 
     // Always unregister — normal completion or cancellation.
-    state.cancel_registry.unregister(&request_id).await;
+    state
+        .cancel_registry
+        .unregister(&request_id, &cancel_owner)
+        .await;
     result
 }
 
@@ -364,10 +434,12 @@ pub async fn ai_chat(
     scenario: Option<String>,
     context_files: Option<Vec<String>>,
     context_tables: Option<Vec<String>>,
+    target_claim: Option<datazen_feature_core::ai::ownership::AiTargetClaim>,
 ) -> Result<String, CommandError> {
-    ai_chat_impl(
+    ai_chat_impl_with_claim(
         &state,
         window_stream_callback(&window),
+        target_claim,
         db_session_id,
         database,
         messages,

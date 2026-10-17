@@ -1,5 +1,6 @@
 //! AI generation and analysis IPC commands.
 
+use super::chat::run_streaming_tool_loop_with_claim;
 use super::chat::{db_tool_definitions, run_streaming_tool_loop};
 use super::util::{
     inject_language_hint, parse_ai_json, resolve_ai, resolve_safety_gate, strip_markdown_fences,
@@ -23,6 +24,35 @@ use uuid::Uuid;
 pub(crate) async fn ai_generate_sql_impl(
     state: &AppState,
     on_chunk: StreamCallback,
+    db_session_id: String,
+    database: String,
+    natural_language: String,
+    request_id: String,
+    current_table: Option<String>,
+    recent_queries: Option<Vec<String>>,
+    context_files: Option<Vec<String>>,
+    context_tables: Option<Vec<String>>,
+) -> Result<String, CommandError> {
+    ai_generate_sql_impl_with_claim(
+        state,
+        on_chunk,
+        None,
+        db_session_id,
+        database,
+        natural_language,
+        request_id,
+        current_table,
+        recent_queries,
+        context_files,
+        context_tables,
+    )
+    .await
+}
+
+pub(crate) async fn ai_generate_sql_impl_with_claim(
+    state: &AppState,
+    on_chunk: StreamCallback,
+    target_claim: Option<datazen_feature_core::ai::ownership::AiTargetClaim>,
     db_session_id: String,
     database: String,
     natural_language: String,
@@ -169,7 +199,11 @@ pub(crate) async fn ai_generate_sql_impl(
     inject_language_hint(&mut request.messages, &lang);
 
     // Register cancel token so `ai_cancel` IPC can interrupt this stream.
-    let cancel_token = state.cancel_registry.register(&request_id).await;
+    let cancel_owner = super::ai_owner_fingerprint(state);
+    let cancel_token = state
+        .cancel_registry
+        .register(&request_id, &cancel_owner)
+        .await;
     request.cancel_token = Some(cancel_token.clone());
 
     tracing::debug!(
@@ -181,9 +215,11 @@ pub(crate) async fn ai_generate_sql_impl(
         "ai_generate_sql: sending to provider (stream)"
     );
 
+    let claim =
+        target_claim.unwrap_or(datazen_feature_core::ai::ownership::AiTargetClaim::Independent);
     let result = if seed.attach_db_tools {
         request.tools = Some(db_tool_definitions());
-        run_streaming_tool_loop(
+        run_streaming_tool_loop_with_claim(
             provider,
             state,
             on_chunk,
@@ -192,6 +228,7 @@ pub(crate) async fn ai_generate_sql_impl(
             10,
             "ai_generate_sql",
             &gate,
+            &claim,
         )
         .await
     } else {
@@ -214,7 +251,10 @@ pub(crate) async fn ai_generate_sql_impl(
     };
 
     // Always unregister — normal completion or cancellation.
-    state.cancel_registry.unregister(&request_id).await;
+    state
+        .cancel_registry
+        .unregister(&request_id, &cancel_owner)
+        .await;
     result
 }
 
@@ -230,10 +270,12 @@ pub async fn ai_generate_sql(
     recent_queries: Option<Vec<String>>,
     context_files: Option<Vec<String>>,
     context_tables: Option<Vec<String>>,
+    target_claim: Option<datazen_feature_core::ai::ownership::AiTargetClaim>,
 ) -> Result<String, CommandError> {
-    ai_generate_sql_impl(
+    ai_generate_sql_impl_with_claim(
         &state,
         window_stream_callback(&window),
+        target_claim,
         db_session_id,
         database,
         natural_language,

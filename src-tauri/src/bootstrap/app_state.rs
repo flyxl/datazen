@@ -174,6 +174,7 @@ pub(crate) fn finish_app_state(
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
         wapps: wapp_manager,
         cancel_registry: crate::ai::CancellationRegistry::default(),
+        ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
         desktop_job_host,
     };
