@@ -194,7 +194,7 @@ mod tests {
     async fn desktop_export_reads_independent_runtime_target() {
         let test =
             crate::testing::app_state::TestAppState::with_tables_and_resource_provider().await;
-        let (_, session) = test.save_and_connect("export-runtime").await;
+        let session = test.save_and_open_runtime_session("export-runtime").await;
         let source = DesktopExportSource {
             runtime: crate::services::runtime_command_source::RuntimeCommandSource::new(
                 test.state.driver_registry.clone(),
@@ -222,11 +222,13 @@ mod tests {
         assert_eq!(*rows.lock().unwrap(), 1);
         assert!(
             test.state
-                .connection_manager
-                .get_session(&session)
-                .await
-                .is_ok(),
-            "export must not close the editor session"
+                .platform_require()
+                .expect("platform is ready")
+                .runtime()
+                .expect("runtime is ready")
+                .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(&session))
+                .is_some(),
+            "export must leave the runtime session open"
         );
     }
 

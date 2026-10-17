@@ -97,8 +97,8 @@ fn driver_err_other_stays_driver() {
 async fn backup_and_restore_roundtrip() {
     use crate::testing::app_state::TestAppState;
 
-    let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect("backup-cfg").await;
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    let conn_id = test.save_and_open_runtime_session("backup-cfg").await;
     let backup_path = test._temp.path().join("backup.sql");
 
     backup_database_to_path(
@@ -149,11 +149,11 @@ async fn backup_database_errors_when_not_connected() {
 async fn restore_database_rejects_read_only_connection() {
     use crate::testing::app_state::TestAppState;
 
-    let test = TestAppState::with_tables().await;
+    let test = TestAppState::with_tables_and_resource_provider().await;
     let mut cfg = test.save_connection("backup-ro").await;
     cfg.read_only = true;
     test.state.store.save_connection(cfg).await.unwrap();
-    let conn_id = test.connect_config("backup-ro").await;
+    let conn_id = test.open_runtime_session("backup-ro").await;
     let backup_path = test._temp.path().join("readonly.sql");
     std::fs::write(&backup_path, "SELECT 1;").unwrap();
 
@@ -174,12 +174,12 @@ async fn restore_database_rejects_read_only_connection() {
 async fn restore_database_rejects_safe_mode() {
     use crate::testing::app_state::TestAppState;
 
-    let test = TestAppState::with_tables().await;
+    let test = TestAppState::with_tables_and_resource_provider().await;
     let mut settings = test.state.store.get_settings().await;
     settings.safe_mode = true;
     test.state.store.save_settings(settings).await.unwrap();
 
-    let (_, conn_id) = test.save_and_connect("backup-safe").await;
+    let conn_id = test.save_and_open_runtime_session("backup-safe").await;
     let backup_path = test._temp.path().join("safe-mode.sql");
     std::fs::write(&backup_path, "SELECT 1;").unwrap();
 

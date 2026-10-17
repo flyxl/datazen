@@ -157,6 +157,52 @@ impl TestAppState {
         let conn_id = self.connect_config(id).await;
         (config, conn_id)
     }
+
+    /// Persist a profile and open a real platform runtime session for command tests.
+    pub async fn save_and_open_runtime_session(&self, id: &str) -> String {
+        self.save_connection(id).await;
+        self.open_runtime_session(id).await
+    }
+
+    /// Open a runtime session for a profile that the test has already persisted.
+    pub async fn open_runtime_session(&self, id: &str) -> String {
+        use datazen_application::{
+            dto::requests::OpenSessionRequest, sessions::ConnectionUseCases,
+        };
+        use datazen_platform_api::{
+            context::OwnerRef,
+            dto::idempotency::IdempotentOperation,
+            id::ConnectionId,
+            target::{ExecutionTarget, NamespaceTarget},
+        };
+
+        let config = self.store.get_connection(id).await.expect("profile exists");
+        let adapter = self.state.platform_require().expect("platform is ready");
+        let call = adapter.begin_call();
+        let runtime = adapter.runtime().expect("runtime is ready");
+        let token = runtime
+            .issue_submission_token(call.context(), IdempotentOperation::OpenSession, None)
+            .await
+            .expect("runtime session token issues");
+        let opened = runtime
+            .open_session(
+                call.context(),
+                OpenSessionRequest::new(
+                    ExecutionTarget::new(
+                        ConnectionId::new(id),
+                        NamespaceTarget::database(config.database.as_deref().unwrap_or("app")),
+                    ),
+                    OwnerRef::ClientSession {
+                        client_instance_id: call.context().client_instance_id.clone(),
+                        purpose: "commandTest".into(),
+                    },
+                    token.idempotency_key,
+                ),
+            )
+            .await
+            .expect("runtime session opens");
+        opened.session.handle.db_session_id.as_str().to_owned()
+    }
 }
 
 pub fn sample_postgres_config(id: &str) -> ConnectionConfig {
