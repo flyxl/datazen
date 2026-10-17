@@ -1,7 +1,7 @@
 //! AI generation and analysis IPC commands.
 
-use super::chat::run_streaming_tool_loop_with_claim;
 use super::chat::db_tool_definitions;
+use super::chat::run_streaming_tool_loop_with_claim;
 use super::util::{
     inject_language_hint, parse_ai_json, resolve_ai, resolve_safety_gate, strip_markdown_fences,
     window_stream_callback, StreamCallback,
