@@ -42,7 +42,9 @@ pub const MAX_QUERY_HISTORY: usize = 1000;
 pub const MAX_WORKFLOW_HISTORY: usize = 100;
 pub const MAX_MIGRATION_RUN_HISTORY: usize = 1000;
 
-pub use datazen_platform_api::dto::migration::{MigrationRunRecord, MigrationRunFilter, MigrationRunPage, MigrationProfileRef};
+pub use datazen_platform_api::dto::migration::{
+    MigrationProfileRef, MigrationRunFilter, MigrationRunPage, MigrationRunRecord,
+};
 
 /// Name of the retired favorites table. Never created again; only read.
 pub const LEGACY_FAVORITES_TABLE: &str = "favorite_queries";

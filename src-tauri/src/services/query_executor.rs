@@ -1,9 +1,9 @@
 pub use datazen_feature_core::services::query_executor::*;
 #[cfg(test)]
 mod host_tests {
-use super::*;
-use std::sync::Arc;
-use crate::db::{Value, ConnectionHandle};
+    use super::*;
+    use crate::db::{ConnectionHandle, Value};
+    use std::sync::Arc;
     #[tokio::test]
     async fn get_table_data_uses_schema_cache_and_returns_total() {
         use crate::cache::SchemaCache;

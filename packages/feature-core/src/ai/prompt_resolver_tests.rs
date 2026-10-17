@@ -1,4 +1,3 @@
-
 use super::*;
 use datazen_driver_api::async_trait;
 use datazen_driver_api::PromptTemplate;

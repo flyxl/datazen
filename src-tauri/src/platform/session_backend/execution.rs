@@ -29,7 +29,10 @@ impl DesktopSessionBackend {
             }
         }
         if matches!(request.command.command.as_str(), "query" | "query_stream") {
-            self.store.execution_settings().await.apply_result_limit(&mut input);
+            self.store
+                .execution_settings()
+                .await
+                .apply_result_limit(&mut input);
         }
         let (config, metadata) = self
             .store

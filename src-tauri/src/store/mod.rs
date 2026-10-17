@@ -439,15 +439,29 @@ mod tests;
 
 #[async_trait::async_trait]
 impl datazen_platform_api::ports::SettingsRepository for Store {
-    async fn read_settings(&self) -> Result<datazen_platform_api::settings::SharedSettings, datazen_platform_api::PortError> {
+    async fn read_settings(
+        &self,
+    ) -> Result<datazen_platform_api::settings::SharedSettings, datazen_platform_api::PortError>
+    {
         Ok(self.get_settings().await.shared_settings())
     }
-    async fn write_settings(&self, settings: datazen_platform_api::settings::SharedSettings) -> Result<datazen_platform_api::settings::SharedSettings, datazen_platform_api::PortError> {
+    async fn write_settings(
+        &self,
+        settings: datazen_platform_api::settings::SharedSettings,
+    ) -> Result<datazen_platform_api::settings::SharedSettings, datazen_platform_api::PortError>
+    {
         // Serialize read/modify/persist to avoid dropping local-only values during a shared write.
         let mut cache = self.cache.write().await;
         let mut next = cache.settings.clone();
-        next.apply_shared_settings(settings).map_err(datazen_platform_api::PortError::BackendUnavailable)?;
-        self.save_json_file("settings.json", &next).await.map_err(|_| datazen_platform_api::PortError::BackendUnavailable("Unable to persist settings".into()))?;
+        next.apply_shared_settings(settings)
+            .map_err(datazen_platform_api::PortError::BackendUnavailable)?;
+        self.save_json_file("settings.json", &next)
+            .await
+            .map_err(|_| {
+                datazen_platform_api::PortError::BackendUnavailable(
+                    "Unable to persist settings".into(),
+                )
+            })?;
         let result = next.shared_settings();
         cache.settings = next;
         Ok(result)

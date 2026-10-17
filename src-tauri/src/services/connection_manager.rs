@@ -82,7 +82,9 @@ pub enum ConnectionError {
 mod tests;
 
 impl ConnectionManager {
-    pub(crate) async fn feature_execution_settings(&self) -> datazen_platform_api::settings::ExecutionSettings {
+    pub(crate) async fn feature_execution_settings(
+        &self,
+    ) -> datazen_platform_api::settings::ExecutionSettings {
         self.store.execution_settings().await
     }
 }
