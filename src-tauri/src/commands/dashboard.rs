@@ -498,3 +498,47 @@ mod tests {
         assert_eq!(runs.len(), 1);
     }
 }
+
+#[tauri::command]
+pub async fn authorize_monitor_widget_schedule(
+    state: State<'_, AppState>,
+    dashboard_id: String,
+    widget_id: String,
+    ttl_secs: u32,
+) -> Result<datazen_feature_core::dashboard::schedule_grant::MonitorGrant, CommandError> {
+    crate::monitor::grants::authorize(&state, &dashboard_id, &widget_id, ttl_secs)
+        .await
+        .map_err(CommandError::Validation)
+}
+#[tauri::command]
+pub async fn revoke_monitor_widget_schedule(
+    state: State<'_, AppState>,
+    dashboard_id: String,
+    widget_id: String,
+) -> Result<(), CommandError> {
+    crate::monitor::grants::revoke(&state, &dashboard_id, &widget_id)
+        .map_err(CommandError::Validation)
+}
+#[tauri::command]
+pub async fn get_monitor_widget_schedule_grant(
+    state: State<'_, AppState>,
+    dashboard_id: String,
+    widget_id: String,
+) -> Result<Option<datazen_feature_core::dashboard::schedule_grant::MonitorGrant>, CommandError> {
+    let call = state
+        .platform_require()
+        .map_err(|_| CommandError::Validation("platform unavailable".into()))?
+        .begin_call();
+    let grant = state
+        .store
+        .app_db()
+        .widget_monitor_grant(&dashboard_id, &widget_id)
+        .map_err(|_| CommandError::Validation("grant lookup failed".into()))?;
+    if grant
+        .as_ref()
+        .is_some_and(|grant| grant.approved_by != call.context().principal_id.as_str())
+    {
+        return Err(CommandError::Validation("grant owner required".into()));
+    }
+    Ok(grant)
+}

@@ -470,3 +470,16 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 `sessionBlock` 与 `transactionBlock` 当前都在独立步骤执行前失败关闭，不能被旧 executor 静默忽略。前者的前置缺口是受控 Workflow Job 生命周期、经授权的 `OwnerRef::WorkflowBlock { jobId, blockId }` 与 TTL 清理；Runtime application 目前拒绝未获 Job 授权的该 owner，禁止用 `ClientSession` 替代。后者还缺事务计划预检、提交/回滚真实效果与整块重试协议。
 
 共享 `session_block` 与 `resource_execution::execute_with_session` 已提供串行步骤、固定 Runtime session / ExecutionGateway、终态等待和块末关闭的可复用端口。目标元数据预检和块资源获取共用 workflow 截止时间；获取超时零块步骤派发，未拿到回执时保留 Unknown，可信 adapter 必须以候选资源守卫清理被取消的获取，不能自动重试。可信 Job adapter 尚未实现，桌面默认拒绝开启；这些端口不表示 retained session 临时对象可见性、块间/编辑器隔离、失败/取消清理或真实 PostgreSQL/MySQL 旅程已经验收。P6 仍未关闭，后续需在独立验证树完成上述旅程后开放 block 派发。
+
+
+#### 桌面 Monitor 定时授权（已实现，2026-10-17）
+
+Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用当前桌面用户上下文；周期 tick 必须取得后端保存的 widget grant，不能因 `connection_id=None`、工作流可运行或桌面用户仍在线而获得授权。用户在报表编辑器中保存 interval 配置后，显式授权一小时或撤销；授权 IPC 仅接受 dashboard/widget ID 与 60～86400 秒有效期，不接受 principal、delegation token 或用户提供的 grant。
+
+后端从当前桌面 RequestContext 取得批准者，并生成独立 service principal / delegation ID。AppDb schema v3 的 `monitor_schedule_grants` 仅保存批准者、服务身份、dashboard/widget/workflow ID、工作流 YAML SHA-256 revision、固定 canonical connection/database/schema 与配置版本、connect/query 动作及命令范围、readOnly、到期时间、撤销状态与版本。不保存 SQL 副本、session、attachment、bearer token、秘密或凭据。新授权取代同 widget 的旧授权；变更 workflow 定义或 profile 配置必须重新授权。
+
+当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI、migration 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。其他驱动和写动作均失败关闭。
+
+共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
+
+撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。已观察结果保持真实；撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown。此实现仍使用现有短 Runtime execution 和 WidgetRun 落盘，**尚未建立持久 Monitor occurrence Job、跨重启 receipt/接管或 schedule 幂等账本**；不表示 P6 整体退出或真实驱动旅程已经验收。

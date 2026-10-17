@@ -163,3 +163,11 @@ export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
 };
 
 export const DEFAULT_REFRESH: RefreshPolicy = { mode: 'manual' };
+
+/** Metadata only; grants are created and checked by the backend. */
+export interface MonitorScheduleGrantSummary {
+  id: string;
+  expiresAt: string;
+  revoked: boolean;
+  workflowRevision: string;
+}

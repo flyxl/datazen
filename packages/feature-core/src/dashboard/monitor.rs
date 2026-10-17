@@ -1,4 +1,5 @@
 //! Dashboard schedule and concurrency lifecycle; native delivery is injected.
+use super::schedule_grant::MonitorGrant;
 use super::types::{Dashboard, DashboardWidget, RefreshMode, WidgetRun};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -64,6 +65,22 @@ pub trait MonitorHost: Send + Sync {
         dashboard_id: &str,
         widget: &DashboardWidget,
     ) -> Result<WidgetRun, String>;
+    /// Backend-held authorization only; never use execute_widget as a fallback.
+    async fn scheduled_authorization(
+        &self,
+        _dashboard_id: &str,
+        _widget: &DashboardWidget,
+    ) -> Result<MonitorGrant, String> {
+        Err("monitor scheduled service grant unavailable".into())
+    }
+    async fn execute_scheduled_widget(
+        &self,
+        _dashboard_id: &str,
+        _widget: &DashboardWidget,
+        _grant: &MonitorGrant,
+    ) -> Result<WidgetRun, String> {
+        Err("monitor scheduled service adapter unavailable".into())
+    }
     async fn deliver_run(&self, dashboard_id: &str, widget: &DashboardWidget, run: &WidgetRun);
 }
 #[derive(Clone)]
@@ -174,6 +191,70 @@ impl MonitorEngine {
         self.host.deliver_run(dashboard_id, widget, &run).await;
         Ok(run)
     }
+    async fn current_scheduled_grant(
+        &self,
+        dashboard_id: &str,
+        widget: &DashboardWidget,
+    ) -> Result<MonitorGrant, String> {
+        let dashboards = self.host.dashboards().await?;
+        let dashboard = dashboards
+            .iter()
+            .find(|dashboard| dashboard.id == dashboard_id)
+            .ok_or("dashboard missing")?;
+        if !dashboard.enabled
+            || dashboard.refresh_paused
+            || !widget.enabled
+            || widget.refresh.mode != RefreshMode::Interval
+            || !dashboard.widgets.iter().any(|current| current == widget)
+        {
+            return Err("monitor schedule disabled or changed".into());
+        }
+        let grant = self
+            .host
+            .scheduled_authorization(dashboard_id, widget)
+            .await?;
+        if grant.dashboard_id != dashboard_id
+            || grant.widget_id != widget.id
+            || grant.workflow_id != widget.workflow_id
+        {
+            return Err("monitor grant scope mismatch".into());
+        }
+        grant
+            .validate(&grant.context(), chrono::Utc::now())
+            .map_err(str::to_owned)?;
+        Ok(grant)
+    }
+    pub async fn tick_scheduled_widget(
+        &self,
+        dashboard_id: &str,
+        widget: &DashboardWidget,
+    ) -> Result<WidgetRun, String> {
+        // Admission freezes approval, workflow revision and explicit target scopes.
+        let frozen = self.current_scheduled_grant(dashboard_id, widget).await?;
+        let sem = self.semaphore.read().await.clone();
+        let _permit = sem
+            .acquire()
+            .await
+            .map_err(|_| "Monitor semaphore closed")?;
+        let lock = self
+            .workflow_locks
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .entry(widget.workflow_id.clone())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone();
+        let _guard = lock.lock().await;
+        if self.current_scheduled_grant(dashboard_id, widget).await? != frozen {
+            return Err("monitor grant changed before dispatch".into());
+        }
+        let run = self
+            .host
+            .execute_scheduled_widget(dashboard_id, widget, &frozen)
+            .await?;
+        // Do not reinterpret an already dispatched result after revoke/disable.
+        self.host.deliver_run(dashboard_id, widget, &run).await;
+        Ok(run)
+    }
     async fn poll(self: &Arc<Self>) {
         for entry in self.schedule.read().await.clone() {
             let key = (entry.dashboard_id.clone(), entry.widget.id.clone());
@@ -198,7 +279,9 @@ impl MonitorEngine {
                     engine: engine.clone(),
                     key: key.clone(),
                 };
-                let result = engine.tick_widget(&entry.dashboard_id, &entry.widget).await;
+                let result = engine
+                    .tick_scheduled_widget(&entry.dashboard_id, &entry.widget)
+                    .await;
                 engine.last_run.write().await.insert(key, Instant::now());
                 if let Err(error) = result {
                     tracing::warn!(%error, "monitor widget execution failed");

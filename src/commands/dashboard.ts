@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
   ChartConfig,
+  MonitorScheduleGrantSummary,
   CreateWidgetResult,
   Dashboard,
   DashboardWorkflowRef,
@@ -20,6 +21,19 @@ function runDashboardWidgetsOnce(dashboard: Dashboard): void {
 }
 
 export const dashboardCommands = {
+  getMonitorScheduleGrant: (dashboardId: string, widgetId: string) =>
+    invoke<MonitorScheduleGrantSummary | null>('get_monitor_widget_schedule_grant', {
+      dashboardId,
+      widgetId,
+    }),
+  authorizeMonitorSchedule: (dashboardId: string, widgetId: string) =>
+    invoke<MonitorScheduleGrantSummary>('authorize_monitor_widget_schedule', {
+      dashboardId,
+      widgetId,
+      ttlSecs: 3600,
+    }),
+  revokeMonitorSchedule: (dashboardId: string, widgetId: string) =>
+    invoke<void>('revoke_monitor_widget_schedule', { dashboardId, widgetId }),
   listDashboards: () => invoke<Dashboard[]>('list_dashboards'),
 
   getDashboard: (id: string) => invoke<Dashboard>('get_dashboard', { id }),

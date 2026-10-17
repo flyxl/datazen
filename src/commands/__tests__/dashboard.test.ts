@@ -26,6 +26,20 @@ describe('dashboardCommands wrappers', () => {
     invokeMock.mockResolvedValue(undefined);
   });
 
+  it('schedule approval sends identifiers and duration only, and revoke sends no identity', async () => {
+    await dashboardCommands.authorizeMonitorSchedule('d', 'w');
+    expect(invokeMock).toHaveBeenCalledWith('authorize_monitor_widget_schedule', {
+      dashboardId: 'd',
+      widgetId: 'w',
+      ttlSecs: 3600,
+    });
+    await dashboardCommands.revokeMonitorSchedule('d', 'w');
+    expect(invokeMock).toHaveBeenCalledWith('revoke_monitor_widget_schedule', {
+      dashboardId: 'd',
+      widgetId: 'w',
+    });
+  });
+
   it('listDashboards invokes list_dashboards without args', async () => {
     const dashboards = [sampleDashboard('d1')];
     invokeMock.mockResolvedValueOnce(dashboards);

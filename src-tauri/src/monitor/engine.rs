@@ -139,6 +139,40 @@ impl MonitorHost for DesktopMonitorHost {
         .await
         .map_err(|error| error.to_string())
     }
+    async fn scheduled_authorization(
+        &self,
+        dashboard_id: &str,
+        widget: &DashboardWidget,
+    ) -> Result<datazen_feature_core::dashboard::schedule_grant::MonitorGrant, String> {
+        let grant = self
+            .store
+            .app_db()
+            .widget_monitor_grant(dashboard_id, &widget.id)
+            .map_err(|_| "monitor grant lookup failed")?
+            .ok_or("explicit schedule authorization required")?;
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+            .ok_or("Monitor app state unavailable")?;
+        super::scheduled::validate(&state, &grant).await?;
+        Ok(grant)
+    }
+    async fn execute_scheduled_widget(
+        &self,
+        dashboard_id: &str,
+        widget: &DashboardWidget,
+        grant: &datazen_feature_core::dashboard::schedule_grant::MonitorGrant,
+    ) -> Result<WidgetRun, String> {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+            .ok_or("Monitor app state unavailable")?;
+        super::scheduled::execute(&state, dashboard_id, widget, grant).await
+    }
     async fn deliver_run(&self, dashboard_id: &str, widget: &DashboardWidget, run: &WidgetRun) {
         let app = self
             .app

@@ -470,7 +470,7 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
             Arc::new(super::super::repositories::DesktopProfiles::new(
                 store.clone(),
             )),
-            Arc::new(super::super::policy::DesktopPolicy),
+            Arc::new(super::super::policy::DesktopPolicy::new(store.clone())),
             backend.clone(),
         ),
     );

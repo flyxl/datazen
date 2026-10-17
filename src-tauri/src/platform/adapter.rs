@@ -263,13 +263,13 @@ impl PlatformAdapter {
         );
         let live = Arc::new(super::live_source::DesktopLiveConnectionSource::new(
             registry.clone(),
-            store,
+            store.clone(),
             backend.clone(),
         ));
         let runtime = Arc::new(
             datazen_runtime::application::RuntimeConnectionUseCases::new(
                 profiles.clone(),
-                Arc::new(super::policy::DesktopPolicy),
+                Arc::new(super::policy::DesktopPolicy::new(store.clone())),
                 backend.clone(),
             ),
         );
