@@ -42,7 +42,7 @@ src-tauri/src/ai/                   # 宿主门面：re-export + 真正需要宿
 ├── schema_pipeline.rs              # SchemaContextPipeline (PromptSeed → 系统后缀)
 ├── ctx_yaml.rs                     # .ctx.yaml 表分组上下文解析
 ├── budget.rs                       # token 预算常量
-└── cancel.rs                       # CancellationRegistry (request_id → CancellationToken)
+└── cancel.rs                       # CancellationRegistry (request_id + owner → CancellationToken)
 ```
 
 ### 1.3 AiProvider Trait
@@ -269,4 +269,23 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 
 **四、AI 的工具调用与 MCP 共用一条取会话路径。** AI DB tools 走 `services/db_tools.rs`，与 MCP 完全相同：拿持久化 `connectionId`、先过连接白名单、再转成运行时会话，且**不释放引用**。因此被 AI 工具访问过的会话同样不会被空闲回收扫掉。
 
-**五、取消是 AI 自己的注册表。** AI 侧用一张按调用 ID 登记的取消令牌表（`ai/cancel.rs`），在开始时登记、结束时注销；取消一个已结束或从未开始的调用不报错，也不产生任何效果。它与长任务机制互不相通，key 也不同（AI 是调用 ID，Job 是 job ID）。AI 调用与仍走兼容旧路径的任务取消状态只在内存；P5 迁移三件套 Job API 使用 AppDb `DesktopJobHost` 的持久 cancel intent，进程重启时保留任务事实但不恢复旧 handler/session。
+**五、取消是 AI 自己的注册表，且按 owner 隔离。** AI 侧用一张按「调用 ID + owner 指纹」登记的取消令牌表（`packages/feature-core/src/ai/cancel.rs`，宿主经 `src-tauri/src/ai/cancel.rs` 门面 re-export）：
+
+- `register(request_id, owner_fingerprint)` 在开始时登记、`unregister(request_id, owner_fingerprint)` 在结束时注销；owner 指纹由 `OwnerRef` 的稳定身份构成（桌面为本进程 `clientInstanceId`）。
+- `cancel(request_id, owner_fingerprint) -> CancelReceipt` 返回三态：`marked`（已登记标志并触发 token）、`alreadyFinished`（未注册：已完成 / 已取消 / 从未开始）、`forbidden`（同名请求属于另一个 owner，**不动它**）。伪造的 `request_id` 不能取消别的客户端的流（CM-53）。
+- 两段式取消：先登记标志、再触发 `CancellationToken`；工具循环在轮次开始、流式轮次结束、以及每次工具派发前检查取消。终止 chunk 必须是 `done: true, cancelled: true`——**不得把取消伪装成正常完成**；取消路径不写新历史，只回收本次 AI 自有资源。
+- `cancel_owner(owner_fingerprint)` 用于客户端整体离开时只停自己的流。
+- 它与长任务机制互不相通，key 也不同（AI 是调用 ID，Job 是 job ID）。AI 调用取消状态只在内存；P5 迁移三件套 Job API 使用 AppDb `DesktopJobHost` 的持久 cancel intent。
+
+**六、显式 editor 会话授权（P6 §14.4 / CM-53）。**
+
+AI 默认**独立操作**：每个 DB 工具调用经共享 `ResourceExecutionHost` → ExecutionGateway 借一次性资源，看不到某个编辑器会话里的临时对象。用户显式授权当前编辑器会话后，工具改在**该编辑器的固定 runtime session** 上执行（同队列、临时对象可见）；授权可撤销，撤销后新调用明确拒绝且编辑器资源仍存活。
+
+- 请求携带 `AiTargetClaim`：`{kind: "independent"}` 或 `{kind: "editorGrant", grantId, claimedClientInstanceId, editorSessionId}`（`packages/feature-core/src/ai/ownership.rs`）。
+- 授权表 `AiGrantRegistry`：`issue / verify / verify_claim / touch / revoke / revoke_for_editor_session / purge_expired`。记录含 `client_instance_id`、`editor_session_id`、`owner_fingerprint`、`connection_id`、`database`、`config_revision`、`deadline_ms` 与编辑器活会话句柄 `SessionHandle`。时间全部由调用方注入（`now_ms`），默认 TTL 15 分钟，活动对话经 `touch` 续期。
+- IPC：`ai_grant_editor_session`（经 `OwnerIntent::Editor` 归属校验，claimed client 与本机实例不符即拒绝；再核验句柄指向活会话并钉住配置版本）、`ai_revoke_editor_grant`、`ai_touch_editor_grant`。`ai_chat` / `ai_generate_sql` 增参 `targetClaim`。
+- 执行分流：独立调用走一次性资源；`editorGrant` 调用先 `verify_claim`，失败按 `AiGrantRejection::code()` 明确报错（`aiGrantUnknown` / `aiGrantClientMismatch` / `aiGrantSessionGone` / `aiGrantExpired` / `aiGrantRevoked`），**禁止静默降级为独立操作**；成功则用 `RetainedSession` 绑定编辑器句柄，经 `resource_execution::execute_with_session` 执行，目标与授权记录不一致时在派发前拒绝。
+- 编辑器会话终止时 `revoke_for_editor_session` 撤销该会话的全部授权；不关闭编辑器自己的会话。
+- 结果归属：DB 工具结果 JSON 附 `attribution`：`{ownerKind: "independent" | "editorGrant", grantId?}`，使前端能标出来源、并在撤销后拒绝旧归属的结果。
+
+> 当前限制：`editorGrant` 的执行路径只覆盖 DB 工具（`query` / `explain` / schema 元数据）；MCP 工具仍走各自会话。仅 PG + MySQL 在本轮验证范围内。

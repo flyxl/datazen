@@ -128,7 +128,7 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 | 旅程 | 必须观察到的结果 | 关联用例 |
 | --- | --- | --- |
-| AI 默认查询 → 授权共享 → 临时对象查询 → 撤销 → 下一次工具 | 共享时同队列可见；撤销后拒绝且编辑器资源仍存活 | CM-53、73、74 |
+| AI 默认查询 → 授权共享 → 临时对象查询 → 撤销 → 下一次工具 | 共享时同队列可见；撤销后拒绝且编辑器资源仍存活 | CM-53、73、74（**H 层已交付**：`packages/feature-core/src/ai/ownership.rs` 的 grant 生命周期 + `src-tauri/src/commands/ai/grant.rs` 的 `ai_grant_editor_session`/`ai_revoke_editor_grant`/`ai_touch_editor_grant`；F 层真实 UI 旅程待补） |
 | MCP A/B 同连接 → A 开事务 → A 断开 → B 继续 | 资源隔离、A 清理完成、B 不被取消 | CM-53、54 |
 | Wapp 请求 → 重载 → 旧响应/取消到达 | 旧 nonce 被拒绝，新实例状态不受影响 | CM-53、55 |
 | schedule 入队 → ACL 撤销 → 派发 | 不取得资源、不写数据库，记录拒绝原因 | CM-59、65、67 |
