@@ -185,3 +185,7 @@ pub(crate) fn finish_app_state(
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state
 }
+
+#[cfg(test)]
+#[path = "workflow_job_tests.rs"]
+mod workflow_job_tests;

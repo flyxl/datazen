@@ -1096,3 +1096,6 @@ async fn published_prefix_disconnect_cancel_recover_missing_chunk_and_execute_ag
 
 #[path = "fixtures/p4_delegation.rs"]
 mod delegation_tests;
+
+#[path = "fixtures/p4_workflow_job.rs"]
+mod workflow_job;

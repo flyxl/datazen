@@ -6,8 +6,11 @@ use datazen_driver_api::CommandResult;
 
 #[async_trait::async_trait]
 pub trait WorkflowHost: Send + Sync {
-    /// Gate the entire run before independent steps dispatch. Current adapters
-    /// have no authorized WorkflowBlock Job owner or block TTL lifecycle.
+    fn workflow_deadline(&self) -> Option<tokio::time::Instant> {
+        None
+    }
+    /// Gate the entire run before independent steps dispatch. Only an adapter
+    /// backed by an accepted Workflow Job and resource TTL may opt in.
     fn validate_session_block(&self) -> Result<(), WorkflowError> {
         Err(WorkflowError::Validation("sessionBlock requires an authorized WorkflowBlock Job owner and TTL lifecycle; execution is unsupported".into()))
     }
@@ -43,6 +46,7 @@ pub trait WorkflowHost: Send + Sync {
     /// An unconfirmed admission must return SqlUnconfirmed and must not replay.
     async fn open_session_block(
         &self,
+        _block_id: &str,
         _target: &super::target_plan::ExecutionTarget,
         _deadline: tokio::time::Instant,
     ) -> Result<super::session_block::RetainedSession, WorkflowError> {
