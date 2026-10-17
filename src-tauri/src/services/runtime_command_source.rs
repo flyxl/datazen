@@ -1,6 +1,8 @@
 //! Shared desktop adapter for read-only commands executed through Runtime.
 use crate::{db::DriverRegistry, platform::PlatformEntry, store::Store};
-use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
+use datazen_driver_api::{
+    CommandAccessLevel, ConnectionConfig, DatabaseDriver, check_command_access,
+};
 use datazen_feature_core::workflow::{
     command::WorkflowCommandStep,
     error::WorkflowError,
@@ -68,6 +70,27 @@ impl RuntimeCommandSource {
         command: &str,
         input: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
+        let (config, _, enabled) = self
+            .profile(connection_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        if !enabled {
+            return Err("Connection profile is disabled".into());
+        }
+        let driver = self
+            .driver(&config)
+            .await
+            .map_err(|error| error.to_string())?;
+        let definition = driver
+            .command_definitions()
+            .into_iter()
+            .chain(datazen_driver_api::schema_catalog_command_definitions())
+            .chain(crate::services::schema_metadata::command_definitions())
+            .find(|definition| definition.id == command)
+            .ok_or_else(|| format!("Unsupported command: {command}"))?;
+        check_command_access(&definition, CommandAccessLevel::Read)
+            .map_err(|_| "Wapps may invoke read-only driver commands".to_owned())?;
+
         let step = WorkflowCommandStep::new(
             "wapp-command",
             command,
@@ -75,10 +98,10 @@ impl RuntimeCommandSource {
             input,
         );
         datazen_feature_core::workflow::resource_execution::execute(
-            self,
+            &WappReadOnlyHost(self),
             &step,
             connection_id,
-            Some(crate::mcp::permission::McpPermissionMode::ReadOnly),
+            Some(crate::mcp::permission::McpPermissionMode::SafeWrite),
             None,
             false,
         )
@@ -89,6 +112,38 @@ impl RuntimeCommandSource {
 
     pub(crate) async fn execution_safe_mode(&self) -> bool {
         self.store.execution_settings().await.safe_mode
+    }
+}
+
+struct WappReadOnlyHost<'a>(&'a RuntimeCommandSource);
+
+#[async_trait::async_trait]
+impl ResourceExecutionHost for WappReadOnlyHost<'_> {
+    async fn profile(&self, id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
+        let (mut config, revision, enabled) = self.0.profile(id).await?;
+        config.read_only = true;
+        Ok((config, revision, enabled))
+    }
+
+    async fn driver(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<Arc<dyn DatabaseDriver>, WorkflowError> {
+        self.0.driver(config).await
+    }
+
+    async fn safe_mode(&self) -> bool {
+        self.0.safe_mode().await
+    }
+
+    async fn prepare(
+        &self,
+        id: &str,
+        revision: u64,
+        command: &str,
+        target: datazen_platform_api::target::ExecutionTarget,
+    ) -> Result<PreparedExecution, WorkflowError> {
+        self.0.prepare(id, revision, command, target).await
     }
 }
 
