@@ -86,6 +86,10 @@ impl datazen_feature_core::ai::tool_loop::AiToolLoopHost for AppState {
         execute_mcp_tool(self, server, tool, arguments).await
     }
 }
+// Short-form entry kept for the existing tests; production IPC calls the
+// claim-aware variant directly.
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_streaming_tool_loop(
     provider: Arc<dyn AiProvider>,
     state: &AppState,
@@ -110,6 +114,7 @@ pub(crate) async fn run_streaming_tool_loop(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_streaming_tool_loop_with_claim(
     provider: Arc<dyn AiProvider>,
     state: &AppState,
@@ -136,6 +141,7 @@ pub(crate) async fn run_streaming_tool_loop_with_claim(
 
 // ─── AI Chat ───
 
+#[allow(dead_code)]
 pub(crate) async fn ai_chat_impl(
     state: &AppState,
     on_chunk: StreamCallback,

@@ -21,6 +21,7 @@ use uuid::Uuid;
 
 // ─── NL2SQL ───
 
+#[allow(dead_code)]
 pub(crate) async fn ai_generate_sql_impl(
     state: &AppState,
     on_chunk: StreamCallback,
