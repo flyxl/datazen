@@ -85,6 +85,7 @@ const aiState = vi.hoisted(() => ({
   initChatSession: vi.fn(),
   sendChatMessage: vi.fn().mockResolvedValue(undefined),
   clearChat: vi.fn(),
+  cancelChat: vi.fn().mockResolvedValue(null),
   settingsConfig: null as {
     activeProfileId: string;
     profiles: {
@@ -156,6 +157,8 @@ describe('AiChatPanel', () => {
       content: 'hello',
       contextFiles: undefined,
       contextTables: undefined,
+      // P6 §14.4: default target is independent unless the user shares a pane.
+      targetClaim: { kind: 'independent' },
     });
   });
 
@@ -518,6 +521,7 @@ describe('AiChatPanel — KV panel context', () => {
       content: 'hello',
       contextFiles: undefined,
       contextTables: undefined,
+      targetClaim: { kind: 'independent' },
     });
   });
 
