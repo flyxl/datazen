@@ -83,6 +83,9 @@ impl ProfileRepository for Profiles {
 }
 struct Policy {
     allow: AtomicBool,
+    delegation: Mutex<Option<DelegationGrant>>,
+    target_checks: AtomicU64,
+    revoke_on_target_check: AtomicU64,
 }
 #[async_trait]
 impl PolicyService for Policy {
@@ -103,9 +106,52 @@ impl PolicyService for Policy {
     async fn verify_delegation(
         &self,
         _: &RequestContext,
-        _: datazen_platform_api::context::DelegationRef,
+        delegation: datazen_platform_api::context::DelegationRef,
     ) -> Result<DelegationGrant, PortError> {
-        unreachable!()
+        let grant = lock(&self.delegation)
+            .clone()
+            .ok_or(PortError::TokenInvalid)?;
+        if grant.delegation != delegation {
+            return Err(PortError::TokenInvalid);
+        }
+        Ok(grant)
+    }
+    async fn resolve_delegation(&self, _: &RequestContext) -> Result<DelegationGrant, PortError> {
+        lock(&self.delegation)
+            .clone()
+            .ok_or(PortError::TokenInvalid)
+    }
+    async fn authorize_target(
+        &self,
+        context: &RequestContext,
+        subject: AuthorizationSubject,
+        action: AuthorizationAction,
+        target: &ExecutionTarget,
+        command: &str,
+        _: &serde_json::Value,
+    ) -> Result<AuthorizationDecision, PortError> {
+        if context.is_delegated() {
+            let check = if command == "open_session" {
+                0
+            } else {
+                self.target_checks.fetch_add(1, Ordering::SeqCst) + 1
+            };
+            if check != 0 && self.revoke_on_target_check.load(Ordering::SeqCst) == check {
+                self.allow.store(false, Ordering::SeqCst);
+            }
+            let grant = lock(&self.delegation)
+                .clone()
+                .ok_or(PortError::TokenInvalid)?;
+            if grant.delegation.scope
+                != format!(
+                    "database:{}",
+                    target.namespace.database.as_deref().unwrap_or_default()
+                )
+            {
+                return Err(PortError::TokenInvalid);
+            }
+        }
+        self.authorize(context, subject, action).await
     }
     fn isolation_key(&self, _: &RequestContext) -> Result<PolicyIsolationKey, PortError> {
         Ok(PolicyIsolationKey::new("test"))
@@ -279,6 +325,9 @@ fn setup() -> (
     });
     let policy = Arc::new(Policy {
         allow: AtomicBool::new(true),
+        delegation: Mutex::new(None),
+        target_checks: AtomicU64::new(0),
+        revoke_on_target_check: AtomicU64::new(0),
     });
     let service = RuntimeConnectionUseCases::new(profiles.clone(), policy.clone(), backend.clone());
     *lock(&backend.sink) = Some(service.result_sink());
@@ -1044,3 +1093,6 @@ async fn published_prefix_disconnect_cancel_recover_missing_chunk_and_execute_ag
     assert_eq!(backend.opened.load(Ordering::SeqCst), 1);
     assert_eq!(lock(&backend.ids).len(), 2);
 }
+
+#[path = "fixtures/p4_delegation.rs"]
+mod delegation_tests;

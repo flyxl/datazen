@@ -76,6 +76,32 @@ pub trait PolicyService: Send + Sync + 'static {
         delegation: DelegationRef,
     ) -> Result<DelegationGrant, PortError>;
 
+    /// Resolve a full grant from trusted backend storage. A context only carries
+    /// an opaque ID; transports cannot supply the authoritative grant facts.
+    async fn resolve_delegation(
+        &self,
+        _ctx: &RequestContext,
+    ) -> Result<DelegationGrant, PortError> {
+        Err(PortError::TokenInvalid)
+    }
+
+    /// Target-aware admission and dispatch policy. Delegated execution requires
+    /// an explicit implementation; generic action authorization is insufficient.
+    async fn authorize_target(
+        &self,
+        ctx: &RequestContext,
+        subject: AuthorizationSubject,
+        action: AuthorizationAction,
+        _target: &crate::target::ExecutionTarget,
+        _command: &str,
+        _input: &serde_json::Value,
+    ) -> Result<AuthorizationDecision, PortError> {
+        if ctx.is_delegated() {
+            return Err(PortError::TokenInvalid);
+        }
+        self.authorize(ctx, subject, action).await
+    }
+
     /// 参与 PoolKey 的策略隔离键；权限撤销必须使键立即变化。
     fn isolation_key(&self, ctx: &RequestContext) -> Result<PolicyIsolationKey, PortError>;
 

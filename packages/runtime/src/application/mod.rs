@@ -300,28 +300,80 @@ impl RuntimeConnectionUseCases {
         ctx: &RequestContext,
         action: AuthorizationAction,
     ) -> Result<(), ApiError> {
-        // Delegations require a verified full grant; absent grants never fall back to caller permissions.
-        if ctx.delegation_id.is_some() {
-            return Err(ApiError::permission_denied(
-                "verified delegation grant required",
-            ));
-        }
+        let subject = self.authorization_subject(ctx, &action).await?;
         let decision = self
             .inner
             .policy
-            .authorize(
-                ctx,
-                AuthorizationSubject::Principal {
-                    principal_id: ctx.principal_id.clone(),
-                },
-                action,
-            )
+            .authorize(ctx, subject, action)
             .await
             .map_err(convert::port)?;
         if decision.is_allowed() {
             Ok(())
         } else {
             Err(ApiError::permission_denied("connection permission denied"))
+        }
+    }
+    async fn authorization_subject(
+        &self,
+        ctx: &RequestContext,
+        action: &AuthorizationAction,
+    ) -> Result<AuthorizationSubject, ApiError> {
+        if let Some(id) = &ctx.delegation_id {
+            let resolved = self
+                .inner
+                .policy
+                .resolve_delegation(ctx)
+                .await
+                .map_err(convert::port)?;
+            let grant = self
+                .inner
+                .policy
+                .verify_delegation(ctx, resolved.delegation.clone())
+                .await
+                .map_err(convert::port)?;
+            let reference = &grant.delegation;
+            let live = chrono::DateTime::parse_from_rfc3339(reference.expires_at.as_str())
+                .is_ok_and(|expiry| expiry > chrono::Utc::now());
+            if grant != resolved
+                || &reference.delegation_id != id
+                || reference.organization_id != ctx.organization_id
+                || reference.principal_id != ctx.principal_id
+                || reference.client_instance_id != ctx.client_instance_id
+                || !live
+                || !grant.actions.contains(action)
+            {
+                return Err(ApiError::permission_denied(
+                    "verified delegation scope required",
+                ));
+            }
+            Ok(AuthorizationSubject::Delegated(grant.delegation))
+        } else {
+            Ok(AuthorizationSubject::Principal {
+                principal_id: ctx.principal_id.clone(),
+            })
+        }
+    }
+    async fn authorize_target(
+        &self,
+        ctx: &RequestContext,
+        action: AuthorizationAction,
+        target: &ExecutionTarget,
+        command: &str,
+        input: &serde_json::Value,
+    ) -> Result<(), ApiError> {
+        let subject = self.authorization_subject(ctx, &action).await?;
+        let decision = self
+            .inner
+            .policy
+            .authorize_target(ctx, subject, action, target, command, input)
+            .await
+            .map_err(convert::port)?;
+        if decision.is_allowed() {
+            Ok(())
+        } else {
+            Err(ApiError::permission_denied(
+                "target delegation scope denied",
+            ))
         }
     }
     async fn profile(

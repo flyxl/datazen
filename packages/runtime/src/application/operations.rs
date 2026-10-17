@@ -40,6 +40,14 @@ impl RuntimeConnectionUseCases {
         };
         self.authorize(ctx, action.clone()).await?;
         let view = self.session_view(ctx, &request.handle).await?;
+        self.authorize_target(
+            ctx,
+            action.clone(),
+            &view.initial_target,
+            &request.call.command,
+            &request.call.input,
+        )
+        .await?;
         let entry = self.session_entry(ctx, &request.handle)?;
         // Resolve provenance before accepting the command. If the actor has
         // already retired this physical resource, fail before creating an
@@ -64,6 +72,9 @@ impl RuntimeConnectionUseCases {
                 .map(|(key, value)| (key, serde_json::Value::String(value)))
                 .collect(),
         };
+        let dispatch_target = view.initial_target.clone();
+        let dispatch_command = request.call.command.clone();
+        let dispatch_input = request.call.input.clone();
         let gateway_request = ExecutionRequest::new(
             convert::handle(&request.handle)?,
             request
@@ -117,7 +128,16 @@ impl RuntimeConnectionUseCases {
             let id = receipt.execution_id.clone();
             tokio::spawn(async move {
                 // The async policy port is checked again immediately before physical dispatch.
-                let result = match service.authorize(&ctx, action).await {
+                let result = match service
+                    .authorize_target(
+                        &ctx,
+                        action,
+                        &dispatch_target,
+                        &dispatch_command,
+                        &dispatch_input,
+                    )
+                    .await
+                {
                     Ok(()) => service
                         .inner
                         .gateway
@@ -176,7 +196,14 @@ impl RuntimeConnectionUseCases {
             IdempotentOperation::ExecuteAtTarget,
             None,
         )?;
-        self.authorize(ctx, AuthorizationAction::Query).await?;
+        self.authorize_target(
+            ctx,
+            AuthorizationAction::Query,
+            &request.target,
+            &request.call.command,
+            &request.call.input,
+        )
+        .await?;
         let profile = self.profile(ctx, &request.target.connection_id).await?;
         if profile.config_revision.counter() != request.expected_config_revision {
             return Err(ApiError::new(
@@ -314,7 +341,14 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         request: OpenSessionRequest,
     ) -> Result<OpenSessionReceipt, ApiError> {
         request.validate()?;
-        self.authorize(ctx, AuthorizationAction::Connect).await?;
+        self.authorize_target(
+            ctx,
+            AuthorizationAction::Connect,
+            &request.initial_target,
+            "open_session",
+            &serde_json::Value::Null,
+        )
+        .await?;
         convert::owner(ctx, &request.initial_target.connection_id, &request.owner)?;
         self.validate_token(
             ctx,
@@ -501,6 +535,11 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         request: SetSessionContextRequest,
     ) -> Result<ContextChangeReceipt, ApiError> {
         request.validate()?;
+        if ctx.is_delegated() {
+            return Err(ApiError::permission_denied(
+                "delegated session targets are immutable",
+            ));
+        }
         self.authorize(ctx, AuthorizationAction::Connect).await?;
         self.validate_token(
             ctx,
@@ -610,7 +649,7 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         request: CloseSessionRequest,
     ) -> Result<CloseReceipt, ApiError> {
         request.validate()?;
-        self.authorize(ctx, AuthorizationAction::Connect).await?;
+        // Owner checks still apply after policy revocation so cleanup remains possible.
         let entry = self.session_entry(ctx, &request.handle)?;
         if let Some(receipt) = entry.closed {
             return Ok(receipt);
