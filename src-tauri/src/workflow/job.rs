@@ -1,5 +1,6 @@
 //! Desktop user-initiated Workflow Jobs. Frozen definitions remain process-local;
-//! the durable plan contains only a digest and versioned recovery metadata.
+//! the durable plan contains a digest, versioned recovery metadata, and the
+//! workflowOwnerBlocks whitelist.
 use super::{WorkflowCommandStep, WorkflowError, WorkflowExecutor};
 use crate::commands::AppState;
 use datazen_application::sessions::ConnectionUseCases;
