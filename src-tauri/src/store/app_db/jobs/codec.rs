@@ -35,6 +35,11 @@ pub(super) fn decode<T: DeserializeOwned>(value: &str) -> Result<T, PortError> {
 pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortError> {
     datazen_runtime::job::project_frozen_plan(kind, payload)
         .map_err(|_| PortError::BackendUnavailable("job plan is invalid".into()))?;
+    if kind == datazen_feature_core::restore_job::RESTORE_APPLY_KIND {
+        let projected = super::restore_projection::project(payload)?;
+        check_plan_size(&projected)?;
+        return Ok(projected);
+    }
     let object = payload
         .as_object()
         .ok_or_else(|| PortError::BackendUnavailable("job plan must be an object".into()))?;
@@ -68,14 +73,19 @@ pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortErr
         projected.insert(key.clone(), value.clone());
     }
     let projected = Value::Object(projected);
-    let bytes = serde_json::to_vec(&projected)
+    check_plan_size(&projected)?;
+    Ok(projected)
+}
+
+fn check_plan_size(projected: &Value) -> Result<(), PortError> {
+    let bytes = serde_json::to_vec(projected)
         .map_err(|_| PortError::BackendUnavailable("job plan could not be encoded".into()))?;
     if bytes.len() > MAX_DURABLE_JOB_PLAN_BYTES {
         return Err(PortError::QuotaExceeded(
             "job plan exceeds the local size limit".into(),
         ));
     }
-    Ok(projected)
+    Ok(())
 }
 
 fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {

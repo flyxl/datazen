@@ -65,7 +65,8 @@ async fn artifact_restore_commits_through_runtime_and_rejects_client_formats_bef
         RequestId::new("restore-test"),
         None,
     );
-    let runtime = restore_apply_support::runtime(config);
+    let lifecycle = Arc::new(restore_apply_support::Lifecycle::default());
+    let runtime = restore_apply_support::runtime(config, lifecycle.clone());
     let gateway = Arc::new(RuntimeRestoreGateway {
         runtime,
         authorization: Arc::new(Authorization),
@@ -81,6 +82,7 @@ async fn artifact_restore_commits_through_runtime_and_rejects_client_formats_bef
         format!("CREATE TABLE {schema}.digest_probe(id int);"),
         format!("CREATE TABLE {schema}.target_probe(id int);"),
         format!("CREATE TABLE {schema}.revision_probe(id int);"),
+        format!("CREATE TABLE {schema}.rollback_probe(id int); INSERT INTO {schema}.missing_relation VALUES(1);"),
     ];
     for (index, script) in scripts.iter().enumerate() {
         let (artifact, mut writer) = artifacts
@@ -202,6 +204,13 @@ async fn artifact_restore_commits_through_runtime_and_rejects_client_formats_bef
             assert_eq!(result.state, JobState::Succeeded);
             assert_eq!(result.effect_outcome, EffectOutcome::Completed);
             assert_eq!(result.progress.committed.get(), 2);
+        } else if index == 6 {
+            assert!(details.commit_boundaries.is_empty());
+            assert!(!details.job.execution_ids.is_empty());
+            assert_eq!(result.state, JobState::Failed);
+            assert_eq!(result.effect_outcome, EffectOutcome::RolledBack);
+            assert_eq!(result.progress.committed.get(), 0);
+            assert_eq!(result.progress.attempted.get(), 2);
         } else {
             assert!(details.commit_boundaries.is_empty());
             assert!(details.job.execution_ids.is_empty());
@@ -210,6 +219,14 @@ async fn artifact_restore_commits_through_runtime_and_rejects_client_formats_bef
             assert_eq!(result.progress.committed.get(), 0);
         }
     }
+    assert_eq!(
+        lifecycle.opened.load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
+    assert_eq!(
+        lifecycle.closed.load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
     let read = driver
         .query(
             &observer,
@@ -226,6 +243,7 @@ async fn artifact_restore_commits_through_runtime_and_rejects_client_formats_bef
         "digest_probe",
         "target_probe",
         "revision_probe",
+        "rollback_probe",
     ] {
         let read = driver
             .query(

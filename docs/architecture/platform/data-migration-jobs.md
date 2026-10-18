@@ -95,7 +95,7 @@ JobState 与 effectOutcome 按 [连接 §10.1.1](connection-management.md#1011-p
 
 ### 2.5 Restore Apply Job（已接线，驱动执行失败关闭）
 
-`databaseRestoreApply` 已加入 `runtime::job::APPLY_KINDS`：必须携带由 host 生成的 `consumedPlanId`，受理时由现有 durable receipt/plan-consumption 事务保证单次消费。冻结 `RestorePlan` 仅含完整逻辑 target、配置 revision、输入 Artifact ID/字节数/SHA-256 和恢复选项；不含本地路径、SQL 正文、凭据或运行时 session/lease。
+`databaseRestoreApply` 已加入 `runtime::job::APPLY_KINDS`：必须携带由 host 生成的 `consumedPlanId`，受理时由现有 durable receipt/plan-consumption 事务保证单次消费。冻结 `RestorePlan` 仅含完整逻辑 target、配置 revision、输入 Artifact ID/字节数/SHA-256 和恢复选项；不含本地路径、SQL 正文、凭据或运行时 session/lease。桌面 SQLite admission 对此 kind 使用独立 typed projection，重新编码并核对完整 payload，拒绝额外/未知嵌套字段，校验 ID、摘要和有界命名空间，并将 consumedPlanId/selectionRevision 分别绑定 planId/configRevision；继续受全局 durable plan 大小限制。
 
 桌面 `restore_sql_file` 保留原 IPC 参数与 boolean 成功/取消返回；已受理失败返回结构化 `restoreOutcome` 错误（JobDetails、实际 state/effectOutcome、unsupported 与 `automaticRetryAllowed:false`）。native picker（或既有 webdriver gated override）选中的文件先复制至私有 staging，再以 owner/组织绑定写入 ArtifactStore；上传失败 abort，完整上传才 finalize 与受理 Job。恢复阶段按 RequestContext 再读取 complete Artifact，逐块重查 ACL/TTL，核对 ArtifactMetadata 的不可变目标指纹（连接、命名空间、对象）与冻结 plan.target 一致，再核对长度和 SHA-256，然后要求 `RestoreGateway` 重验 target/revision/能力并提交。Job 通过既有 TargetWriter endpoint 预算派发；输入摘要验证不是数据库写入。
 
@@ -107,7 +107,7 @@ JobState 与 effectOutcome 按 [连接 §10.1.1](connection-management.md#1011-p
 
 每次成功的非事务语句记录真实执行 ID、目标/载荷摘要和提交边界；单事务只在确认 COMMIT 后记录一个边界。失败立即停止；已提交边界保留，传输/提交/回滚不确定为 Unknown。取消独立于效果，回滚使用独立清理令牌，只有成功的自有 ROLLBACK 才报告 RolledBack。旧 path helper 只在 Host 测试编译，不是生产回退。
 
-PostgreSQL 的 `packages/drivers/postgres/tests/restore_apply_job.rs` 通过安全 live launcher 的 `--test restore_apply_job` 运行。该旅程使用真实 disposable migration fixture、私有 ArtifactStore、JobRuntime 的 TargetWriter 预算与单次 plan 消费，复用桌面委托的 `feature-core::restore_gateway::RuntimeRestoreGateway`，由 Runtime Session / ExecutionGateway 调用真正 PostgreSQL ResourceProvider；断言 COMMIT 执行 ID/摘要边界及独立连接读回两行，并验证 COPY、客户端指令、输入摘要/目标替换和配置 revision 失效在写入前失败。测试宿主的 Profile/Policy/SessionBackend 是驱动测试接缝；不覆盖桌面 picker、Store、DesktopSessionBackend 的接线，也不宣称 MySQL live 恢复已验收。共享 orchestrator 的授权端口在桌面仍重查 Store 的 enabled/revision/readOnly/safeMode 与目标授权。
+PostgreSQL 的 `packages/drivers/postgres/tests/restore_apply_job.rs` 通过安全 live launcher 的 `--test restore_apply_job` 运行。该旅程使用真实 disposable migration fixture、私有 ArtifactStore、JobRuntime 的 TargetWriter 预算与单次 plan 消费，复用桌面委托的 `feature-core::restore_gateway::RuntimeRestoreGateway`，由 Runtime Session / ExecutionGateway 调用真正 PostgreSQL ResourceProvider；断言 COMMIT 执行 ID/摘要边界及独立连接读回两行，并验证 COPY、客户端指令、输入摘要/目标替换和配置 revision 失效在写入前失败；事务内建表后写不存在 relation 的 SQL 失败证明自有 ROLLBACK、无残表和 provider close 完成。测试宿主的 Profile/Policy/SessionBackend 是驱动测试接缝；不覆盖桌面 picker、Store、DesktopSessionBackend 的接线，也不宣称 MySQL live 恢复已验收。共享 orchestrator 的授权端口在桌面仍重查 Store 的 enabled/revision/readOnly/safeMode 与目标授权。
 
 ## 3. 多端预算、重叠与授权
 

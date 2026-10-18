@@ -107,8 +107,14 @@ impl PolicyService for Policy {
     }
 }
 
+#[derive(Default)]
+pub struct Lifecycle {
+    pub opened: AtomicU64,
+    pub closed: AtomicU64,
+}
 pub fn runtime(
     config: datazen_driver_api::ConnectionConfig,
+    lifecycle: Arc<Lifecycle>,
 ) -> Arc<datazen_runtime::application::RuntimeConnectionUseCases> {
     Arc::new(
         datazen_runtime::application::RuntimeConnectionUseCases::new(
@@ -120,6 +126,7 @@ pub fn runtime(
             }),
             Arc::new(Backend {
                 config,
+                lifecycle,
                 provider: datazen_driver_postgres::PostgresResourceProvider::new(Arc::new(
                     datazen_driver_postgres::PostgresDriver::new(),
                 )),
@@ -166,6 +173,7 @@ impl dr::ResultSink for Sink {
     }
 }
 struct Backend {
+    lifecycle: Arc<Lifecycle>,
     config: datazen_driver_api::ConnectionConfig,
     provider: datazen_driver_postgres::PostgresResourceProvider,
     resources: tokio::sync::Mutex<std::collections::HashMap<String, (dr::ResourceHandle, u64)>>,
@@ -201,6 +209,7 @@ impl SessionBackend for Backend {
             .map_err(mapping::error)?;
         let id = uuid::Uuid::new_v4().to_string();
         self.resources.lock().await.insert(id.clone(), (h, 1));
+        self.lifecycle.opened.fetch_add(1, Ordering::SeqCst);
         Ok(OpenedResource {
             context: mapping::context(&observed.context),
             resource_id: id,
@@ -223,8 +232,7 @@ impl SessionBackend for Backend {
                 &dr::CommandCall::new(&r.command.command, r.command.input.clone()),
                 &Sink,
             )
-            .await
-            .map_err(mapping::error)?;
+            .await;
         let context = self
             .provider
             .observe_session(h)
@@ -234,12 +242,21 @@ impl SessionBackend for Backend {
         Ok(ResourceExecution {
             execution_id: r.execution_id,
             stream_id: rt::StreamId::new(uuid::Uuid::new_v4().to_string()),
-            state: if result.completion_status == ds::CompletionStatus::Succeeded {
+            // Match DesktopSessionBackend: a driver SQL error still observes
+            // the original resource and publishes Failed/Unknown. It must not
+            // skip the observation needed for a subsequent owned rollback.
+            state: if result
+                .as_ref()
+                .is_ok_and(|r| r.completion_status == ds::CompletionStatus::Succeeded)
+            {
                 rt::ExecutionState::Succeeded
             } else {
                 rt::ExecutionState::Failed
             },
-            effect_outcome: mapping::effect(result.effect_outcome),
+            effect_outcome: result
+                .as_ref()
+                .map(|r| mapping::effect(r.effect_outcome))
+                .unwrap_or(rt::EffectOutcome::Unknown),
             context_after: mapping::context(&context.context),
             context_revision: *revision,
             handles: vec![],
@@ -275,6 +292,7 @@ impl SessionBackend for Backend {
             .close_resource(&h)
             .await
             .map_err(mapping::error)?;
+        self.lifecycle.closed.fetch_add(1, Ordering::SeqCst);
         Ok(CloseResourceOutcome::Closed)
     }
 }

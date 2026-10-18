@@ -321,6 +321,9 @@ mod tests;
 #[cfg(test)]
 #[path = "app_db_jobs_tests.rs"]
 mod job_tests;
+#[cfg(test)]
+#[path = "app_db_restore_job_tests.rs"]
+mod restore_job_tests;
 
 // Re-exported so the paths `app_db::X` keep resolving for `store/mod.rs`
 // and anything else that names these types through this module.

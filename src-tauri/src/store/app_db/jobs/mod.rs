@@ -5,6 +5,7 @@ mod admission;
 mod codec;
 mod owner;
 mod results;
+mod restore_projection;
 mod runtime_ops;
 mod writes;
 
