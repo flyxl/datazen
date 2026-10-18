@@ -4,7 +4,7 @@
 
 ### 1.1 概述
 
-AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约，`packages/ai-providers` 提供各厂商实现与共享 HTTP 协议。`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、NL2SQL 请求组装、单轮诊断与分析用例、智能过滤、Schema 文档生成、预算、取消和 editor grant 所有权策略。`src-tauri/src/ai/` 保留旧导入路径的门面 re-export，并由 `metadata_source.rs` 把宿主 Runtime / SchemaCache / profile 查询绑定到共享端口；Tauri 命令负责 IPC、Provider/Profile 选择、宿主存储与连接查询、上下文文件读取、事件流和取消接线。
+AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约与 active → default → first 的共享 Profile 选择规则，`packages/ai-providers` 提供各厂商实现、共享 HTTP 协议和现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、NL2SQL 请求组装、单轮诊断与分析用例、智能过滤、Schema 文档生成、预算、取消和 editor grant 所有权策略。`src-tauri/src/ai/` 保留旧导入路径的门面 re-export，并由 `metadata_source.rs` 把宿主 Runtime / SchemaCache / profile 查询绑定到共享端口；Tauri 命令负责 IPC、宿主存储与连接查询、上下文文件读取、事件流和取消接线。
 
 ### 1.2 架构分层
 
@@ -14,7 +14,8 @@ packages/ai-api/                    # 公共 AI Provider API crate
 │   ├── lib.rs                      # AI_PROTOCOL_VERSION（当前 1，最低兼容 1）+ re-exports
 │   ├── traits.rs                   # AiProvider trait (async_trait, Send+Sync)
 │   ├── types.rs                    # AiProviderConfig, ChatMessage, StreamChunk, AiError,
-│   │                               # ToolDefinition, ToolCall, ToolResult, ModelInfo
+│   │                               # ToolDefinition, ToolCall, ToolResult, ModelInfo,
+│   │                               # AiSettingsConfig::selected_profile shared fallback
 │   └── factory.rs                  # AiProviderFactory + inventory + register_ai_provider!
 
 packages/ai-providers/              # Provider 实现 + 共享 HTTP 协议（传输层，不依赖宿主）
@@ -27,6 +28,7 @@ packages/ai-providers/              # Provider 实现 + 共享 HTTP 协议（传
 │   ├── custom.rs                   # 自定义 Provider (三种协议: Chat/Responses/Anthropic 兼容,
 │   │                               #   远程模型列表获取)
 │   ├── registry.rs                 # AiProviderRegistry (动态注册/获取, inventory 发现)
+│   ├── metadata.rs                 # 现有 Provider 的默认 endpoint/protocol 元数据
 │   └── protocol/                   # 共享 HTTP 协议实现
 │       ├── mod.rs                  # ProtocolConfig, timeouts, URL normalization, 端点日志脱敏
 │       ├── openai_chat.rs          # OpenAI Chat Completions API (streaming + non-streaming)
@@ -35,15 +37,15 @@ packages/ai-providers/              # Provider 实现 + 共享 HTTP 协议（传
 │       └── test_support.rs         # 协议层单测共享的 wiremock 夹具
 
 packages/feature-core/src/ai/       # 共享 AI 应用逻辑，不依赖 Tauri
-├── context.rs                      # SchemaContextBuilder (DDL 上下文)
+├── context.rs                      # SchemaContextBuilder (DDL 上下文) + context-file prompt block 格式
 ├── prompt_resolver.rs              # PromptResolver (覆盖、模板与方言提示)
 ├── safety.rs / tool_loop.rs        # 出境分级、工具调用校验与流式循环
 ├── schema_pipeline.rs / ctx_yaml.rs # Schema 上下文预算与 .ctx.yaml 解析
 ├── chat_request.rs / sql_generation.rs # Chat/NL2SQL 请求组装与通用工具定义
-├── single_turn.rs                   # SQL 诊断、EXPLAIN、连接诊断与历史分析
+├── single_turn.rs                   # SQL 诊断、EXPLAIN、连接摘要格式/诊断与历史分析
 ├── filter.rs / schema_doc.rs       # 智能过滤与 Schema 文档生成用例
 ├── budget.rs / cancel.rs           # token 预算与按 owner 隔离的取消
-└── ownership.rs                    # AiGrantRegistry / AiGrantService 与 editor 会话归属校验
+└── ownership.rs                    # AiGrantRegistry / AiGrantService、editor 归属、DB 目标绑定与结果 attribution
 
 src-tauri/src/ai/                   # 兼容门面与桌面适配
 ├── mod.rs                          # re-export AI API、Provider 与共享模块
@@ -55,7 +57,7 @@ src-tauri/src/commands/ai/           # Tauri IPC 与平台接线
 └── config.rs / prompts.rs          # Provider/Profile 持久化与 Prompt 管理 IPC
 ```
 
-Chat 和单轮用例接收宿主已选择的 Provider、语言、driver、schema seed 与安全处理后的输入；共享代码组装 prompt、请求、通用工具声明和结构化响应。连接 Profile、SchemaCache、查询历史、context 文件、Provider 配置/凭据、MCP 工具发现、Tauri 事件、Runtime 工具调用与请求取消仍由 host 提供；共享层不读取本地存储或选择数据库会话。流式生命周期、工具宿主和编辑器授权继续由平台适配器接线。
+Chat 和单轮用例接收宿主已选择的 Provider、语言、driver、schema seed 与安全处理后的输入；共享代码组装 prompt、请求、通用工具声明和结构化响应。共享层也格式化宿主已读取的 context 文件内容与连接诊断摘要；文件/连接配置读取及 egress 脱敏仍由 host 负责。连接 Profile、SchemaCache、查询历史、Provider 配置/凭据、MCP 工具发现、Tauri 事件、Runtime 工具调用与请求取消仍由 host 提供；共享层不读取本地存储或选择数据库会话。流式生命周期和工具宿主继续由平台适配器接线。
 
 ### 1.3 AiProvider Trait
 
@@ -294,7 +296,7 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 AI 默认**独立操作**：每个 DB 工具调用经共享 `ResourceExecutionHost` → ExecutionGateway 借一次性资源，看不到某个编辑器会话里的临时对象。用户显式授权当前编辑器会话后，工具改在**该编辑器的固定 runtime session** 上执行（同队列、临时对象可见）；授权可撤销，撤销后新调用明确拒绝且编辑器资源仍存活。
 
 - 请求携带 `AiTargetClaim`：`{kind: "independent"}` 或 `{kind: "editorGrant", grantId, claimedClientInstanceId, editorSessionId}`（`packages/feature-core/src/ai/ownership.rs`）。
-- 共享授权策略 `packages/feature-core/src/ai/ownership.rs` 提供 `AiGrantRegistry` 与 `AiGrantService`：`issue / verify / verify_claim / touch / revoke / revoke_for_editor_session / purge_expired`。记录含 `client_instance_id`、`editor_session_id`、`owner_fingerprint`、`connection_id`、`database`、`config_revision`、`deadline_ms` 与编辑器活会话句柄 `SessionHandle`。时间全部由调用方注入（`now_ms`），默认 TTL 15 分钟，活动对话经 `touch` 续期。`verify_claim` 先计算本次拒绝原因，再清理过期记录，因此发现过期 grant 的请求仍返回 `aiGrantExpired`，后续请求才会看到记录已回收。
+- 共享授权策略 `packages/feature-core/src/ai/ownership.rs` 提供 `AiGrantRegistry` 与 `AiGrantService`：`issue / verify / verify_claim / touch / revoke / revoke_for_editor_session / purge_expired`，并负责 grant 的 database 目标绑定与结构化 DB tool-result attribution。记录含 `client_instance_id`、`editor_session_id`、`owner_fingerprint`、`connection_id`、`database`、`config_revision`、`deadline_ms` 与编辑器活会话句柄 `SessionHandle`。时间全部由调用方注入（`now_ms`），默认 TTL 15 分钟，活动对话经 `touch` 续期。`verify_claim` 先计算本次拒绝原因，再清理过期记录，因此发现过期 grant 的请求仍返回 `aiGrantExpired`，后续请求才会看到记录已回收。
 - IPC：`ai_grant_editor_session`（经 `OwnerIntent::Editor` 归属校验，claimed client 与本机实例不符即拒绝；再核验句柄指向活会话并钉住配置版本）、`ai_revoke_editor_grant`、`ai_touch_editor_grant`。`ai_chat` / `ai_generate_sql` 增参 `targetClaim`。
 - 执行分流：独立调用走一次性资源；`editorGrant` 调用先 `verify_claim`，失败按 `AiGrantRejection::code()` 明确报错（`aiGrantUnknown` / `aiGrantClientMismatch` / `aiGrantSessionGone` / `aiGrantExpired` / `aiGrantRevoked`），**禁止静默降级为独立操作**；成功则用 `RetainedSession` 绑定编辑器句柄，经 `resource_execution::execute_with_session` 执行，目标与授权记录不一致时在派发前拒绝。
 - **借用而不拥有**：grant 执行走 `resource_execution::execute_with_existing_session`——只借用编辑器会话句柄，执行器**不关闭也不回滚**该会话。此前用 `RetainedSession` 包装会在 drop 时关闭编辑器会话，已废弃。

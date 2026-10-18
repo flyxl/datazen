@@ -40,6 +40,68 @@ pub enum AiTargetClaim {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AiGrantTargetMismatch {
+    pub requested_database: String,
+    pub granted_database: String,
+}
+
+/// Bind a DB tool payload to the database authorized by an editor grant.
+/// A conflicting explicit target is rejected with the existing session-gone code.
+pub fn bind_database_to_grant(
+    input: &mut serde_json::Value,
+    granted_database: Option<&str>,
+) -> Result<(), AiGrantTargetMismatch> {
+    if let Some(object) = input.as_object_mut() {
+        let requested = object
+            .get("database")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        match (requested, granted_database) {
+            (Some(requested), Some(granted)) if requested != granted => {
+                Err(AiGrantTargetMismatch {
+                    requested_database: requested,
+                    granted_database: granted.to_owned(),
+                })
+            }
+            (None, Some(granted)) => {
+                object.insert(
+                    "database".into(),
+                    serde_json::Value::String(granted.to_owned()),
+                );
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    } else {
+        Ok(())
+    }
+}
+
+/// Add the explicit claim identity to a structured DB tool result.
+/// Non-object tool results keep their original representation.
+pub fn attach_tool_attribution(raw: String, claim: &AiTargetClaim) -> String {
+    let attribution = match claim {
+        AiTargetClaim::Independent => serde_json::json!({ "kind": "independent" }),
+        AiTargetClaim::EditorGrant {
+            grant_id,
+            editor_session_id,
+            ..
+        } => serde_json::json!({
+            "kind": "editorGrant",
+            "grantId": grant_id,
+            "editorSessionId": editor_session_id,
+        }),
+    };
+    match serde_json::from_str::<serde_json::Value>(&raw) {
+        Ok(serde_json::Value::Object(mut object)) => {
+            object.insert("attribution".into(), attribution);
+            serde_json::Value::Object(object).to_string()
+        }
+        _ => raw,
+    }
+}
+
 /// What the host hands back to the frontend after a successful grant.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -487,6 +549,56 @@ mod tests {
             client_instance_id: ClientInstanceId::new(client),
             editor_session_id: EditorSessionId::new(editor),
         }
+    }
+
+    #[test]
+    fn granted_database_policy_injects_or_rejects_without_retargeting() {
+        let mut omitted = serde_json::json!({ "sql": "select 1" });
+        bind_database_to_grant(&mut omitted, Some("app")).expect("grant database is injected");
+        assert_eq!(omitted["database"], "app");
+
+        let mut same = serde_json::json!({ "database": "app" });
+        bind_database_to_grant(&mut same, Some("app")).expect("matching target is accepted");
+        assert_eq!(same["database"], "app");
+
+        let mut conflicting = serde_json::json!({ "database": "other" });
+        assert_eq!(
+            bind_database_to_grant(&mut conflicting, Some("app")),
+            Err(AiGrantTargetMismatch {
+                requested_database: "other".into(),
+                granted_database: "app".into(),
+            })
+        );
+        assert_eq!(conflicting["database"], "other");
+
+        let mut unscoped = serde_json::json!({ "database": "other" });
+        bind_database_to_grant(&mut unscoped, None)
+            .expect("an unscoped grant preserves the requested target");
+        assert_eq!(unscoped["database"], "other");
+    }
+
+    #[test]
+    fn attribution_is_added_only_to_structured_tool_results() {
+        let claim = AiTargetClaim::EditorGrant {
+            grant_id: "grant-1".into(),
+            claimed_client_instance_id: "client-1".into(),
+            editor_session_id: "editor-1".into(),
+        };
+        let attributed = attach_tool_attribution(r#"{"rows":[]}"#.into(), &claim);
+        let parsed: serde_json::Value =
+            serde_json::from_str(&attributed).expect("result remains JSON");
+        assert_eq!(parsed["attribution"]["kind"], "editorGrant");
+        assert_eq!(parsed["attribution"]["grantId"], "grant-1");
+        assert_eq!(parsed["attribution"]["editorSessionId"], "editor-1");
+        let independent =
+            attach_tool_attribution(r#"{"rows":[]}"#.into(), &AiTargetClaim::Independent);
+        let parsed: serde_json::Value =
+            serde_json::from_str(&independent).expect("result remains JSON");
+        assert_eq!(parsed["attribution"]["kind"], "independent");
+        assert_eq!(
+            attach_tool_attribution("plain error".into(), &AiTargetClaim::Independent),
+            "plain error"
+        );
     }
 
     #[tokio::test]

@@ -503,22 +503,15 @@ pub(crate) async fn ai_diagnose_connection_impl(
         .await
         .ok_or_else(|| CommandError::NotFound("Connection config not found".into()))?;
 
-    let ssl_str = format!("{:?}", conn_info.ssl_mode);
-    let ssh_str = if conn_info.ssh_tunnel.is_some() {
-        "enabled"
-    } else {
-        "disabled"
-    };
     let conn_summary = redact_for_gate(
-        &format!(
-            "Connection type: {:?}\nHost: {}\nPort: {}\nDatabase: {}\nUsername: {}\nSSL: {}\nSSH Tunnel: {}\nTimeout: {}s",
-            conn_info.database_type,
-            conn_info.host.as_deref().unwrap_or("N/A"),
-            conn_info.port.map(|p| p.to_string()).unwrap_or_else(|| "N/A".into()),
-            conn_info.database.as_deref().unwrap_or("N/A"),
-            conn_info.username.as_deref().unwrap_or("N/A"),
-            ssl_str,
-            ssh_str,
+        &datazen_feature_core::ai::single_turn::format_connection_summary(
+            &format!("{:?}", conn_info.database_type),
+            conn_info.host.as_deref(),
+            conn_info.port,
+            conn_info.database.as_deref(),
+            conn_info.username.as_deref(),
+            &format!("{:?}", conn_info.ssl_mode),
+            conn_info.ssh_tunnel.is_some(),
             conn_info.connection_timeout,
         ),
         &gate,

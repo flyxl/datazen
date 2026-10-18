@@ -152,28 +152,6 @@ impl AiRequestHost<'_> {
         rejection_message(rejection)
     }
 
-    fn with_attribution(&self, raw: String) -> String {
-        let attribution = match &self.claim {
-            AiTargetClaim::Independent => serde_json::json!({ "kind": "independent" }),
-            AiTargetClaim::EditorGrant {
-                grant_id,
-                editor_session_id,
-                ..
-            } => serde_json::json!({
-                "kind": "editorGrant",
-                "grantId": grant_id,
-                "editorSessionId": editor_session_id,
-            }),
-        };
-        match serde_json::from_str::<serde_json::Value>(&raw) {
-            Ok(serde_json::Value::Object(mut object)) => {
-                object.insert("attribution".into(), attribution);
-                serde_json::Value::Object(object).to_string()
-            }
-            _ => raw,
-        }
-    }
-
     async fn execute_in_granted_session(
         &self,
         claim: &AiTargetClaim,
@@ -199,30 +177,20 @@ impl AiRequestHost<'_> {
             )
         })?;
         // Bind the tool to the session the grant recorded. Missing database is
-        // filled from the grant so a tool cannot silently retarget itself; a
-        // database the user typed is kept only when it is the granted one.
+        // filled from the grant and conflicting targets keep the existing refusal code.
         let mut input = input;
-        if let Some(object) = input.as_object_mut() {
-            let requested = object
-                .get("database")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned);
-            match (requested, record.database.as_deref()) {
-                (Some(requested), Some(granted)) if requested != granted => {
-                    return Err(format!(
-                        "{}: tool target {requested} is outside the granted database {granted}",
-                        AiGrantRejection::SessionGone.code()
-                    ));
-                }
-                (None, Some(granted)) => {
-                    object.insert(
-                        "database".into(),
-                        serde_json::Value::String(granted.to_owned()),
-                    );
-                }
-                _ => {}
-            }
-        }
+        datazen_feature_core::ai::ownership::bind_database_to_grant(
+            &mut input,
+            record.database.as_deref(),
+        )
+        .map_err(|mismatch| {
+            format!(
+                "{}: tool target {} is outside the granted database {}",
+                AiGrantRejection::SessionGone.code(),
+                mismatch.requested_database,
+                mismatch.granted_database
+            )
+        })?;
         let step = WorkflowCommandStep::new(
             "ai-tool",
             command,
@@ -299,7 +267,7 @@ impl AiToolLoopHost for AiRequestHost<'_> {
         let raw =
             datazen_feature_core::ai::tools::execute_db_tool(self, self.state.store.as_ref(), call)
                 .await;
-        self.with_attribution(raw)
+        datazen_feature_core::ai::ownership::attach_tool_attribution(raw, &self.claim)
     }
 
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String {

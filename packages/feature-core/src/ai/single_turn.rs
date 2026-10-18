@@ -44,6 +44,29 @@ pub struct QueryCategory {
     pub examples: Vec<String>,
 }
 
+/// Format connection metadata for the shared connection diagnosis prompt.
+/// The host supplies stored values, then applies its configured redaction gate.
+pub fn format_connection_summary(
+    database_type: &str,
+    host: Option<&str>,
+    port: Option<u16>,
+    database: Option<&str>,
+    username: Option<&str>,
+    ssl_mode: &str,
+    ssh_tunnel_enabled: bool,
+    timeout_seconds: u32,
+) -> String {
+    format!(
+        "Connection type: {database_type}\nHost: {}\nPort: {}\nDatabase: {}\nUsername: {}\nSSL: {ssl_mode}\nSSH Tunnel: {}\nTimeout: {timeout_seconds}s",
+        host.unwrap_or("N/A"),
+        port.map(|value| value.to_string())
+            .unwrap_or_else(|| "N/A".into()),
+        database.unwrap_or("N/A"),
+        username.unwrap_or("N/A"),
+        if ssh_tunnel_enabled { "enabled" } else { "disabled" },
+    )
+}
+
 /// Diagnose SQL and database errors using a host-provided schema snapshot.
 pub async fn diagnose_sql_error(
     provider: &dyn AiProvider,
@@ -197,6 +220,27 @@ async fn complete_json<T: serde::de::DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connection_summary_preserves_host_prompt_format() {
+        assert_eq!(
+            format_connection_summary(
+                "PostgreSQL",
+                Some("db.local"),
+                Some(5432),
+                Some("app"),
+                Some("alice"),
+                "Require",
+                true,
+                30,
+            ),
+            "Connection type: PostgreSQL\nHost: db.local\nPort: 5432\nDatabase: app\nUsername: alice\nSSL: Require\nSSH Tunnel: enabled\nTimeout: 30s"
+        );
+        assert_eq!(
+            format_connection_summary("MySQL", None, None, None, None, "Disable", false, 10),
+            "Connection type: MySQL\nHost: N/A\nPort: N/A\nDatabase: N/A\nUsername: N/A\nSSL: Disable\nSSH Tunnel: disabled\nTimeout: 10s"
+        );
+    }
 
     #[test]
     fn query_history_prompt_caps_examples_at_one_hundred() {

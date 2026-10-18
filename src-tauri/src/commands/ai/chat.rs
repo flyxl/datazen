@@ -272,7 +272,7 @@ pub(crate) async fn ai_chat_impl_with_claim(
     } else {
         Vec::new()
     };
-    let request = datazen_feature_core::ai::chat_request::build_chat_request(
+    let mut request = datazen_feature_core::ai::chat_request::build_chat_request(
         state.prompt_resolver.as_ref(),
         datazen_feature_core::ai::chat_request::ChatRequestInput {
             request_id: &request_id,

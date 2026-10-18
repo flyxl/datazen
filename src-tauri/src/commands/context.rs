@@ -187,11 +187,7 @@ pub(crate) async fn read_context_paths(
 
 /// Format file entries as a prompt context block (`[Context: path]\\ncontent`, joined by blank lines).
 pub(crate) fn format_context_block(entries: &[(String, String)]) -> String {
-    entries
-        .iter()
-        .map(|(path, content)| format!("[Context: {path}]\n{content}"))
-        .collect::<Vec<_>>()
-        .join("\n\n")
+    datazen_feature_core::ai::context::format_context_block(entries)
 }
 
 #[tauri::command]

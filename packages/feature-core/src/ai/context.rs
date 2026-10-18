@@ -11,6 +11,32 @@ use datazen_driver_api::TableSchema;
 use datazen_runtime::schema_cache::SchemaCache;
 use std::sync::Arc;
 
+/// Format host-read context-file entries as a stable AI prompt block.
+pub fn format_context_block(entries: &[(String, String)]) -> String {
+    entries
+        .iter()
+        .map(|(path, content)| format!("[Context: {path}]\n{content}"))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+#[cfg(test)]
+mod context_block_tests {
+    use super::format_context_block;
+
+    #[test]
+    fn context_files_keep_order_and_blank_line_separators() {
+        let entries = vec![
+            ("a.sql".into(), "SELECT 1".into()),
+            ("b.md".into(), "# doc".into()),
+        ];
+        assert_eq!(
+            format_context_block(&entries),
+            "[Context: a.sql]\nSELECT 1\n\n[Context: b.md]\n# doc"
+        );
+    }
+}
+
 /// Stable prompt-facing database type string (no Debug quotes).
 pub fn prompt_db_type(driver: &dyn datazen_driver_api::DatabaseDriver) -> String {
     driver.driver_type()
