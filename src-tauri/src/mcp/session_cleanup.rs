@@ -113,7 +113,7 @@ mod tests {
     use crate::{
         mcp::{
             session::SessionBinding,
-            types::{OpenSessionInput, UseSessionInput},
+            types::{CloseSessionInput, OpenSessionInput, UseSessionInput},
         },
         testing::{app_state::TestAppState, mock_driver::MockDriverOptions},
     };
@@ -284,6 +284,39 @@ mod tests {
                 .budget_in_use,
             0
         );
+    }
+
+    #[tokio::test]
+    async fn explicit_close_wakes_idle_ttl_worker_before_client_disconnect() {
+        let test = TestAppState::with_resource_provider(MockDriverOptions::default()).await;
+        test.save_connection("mcp-cleanup").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state))
+            .with_allowed_connections(&["mcp-cleanup".into()]);
+        let binding = open(&server).await;
+        assert!(server.sessions.worker.load(Ordering::Acquire));
+
+        let reply = server
+            .close_session(Parameters(CloseSessionInput {
+                client_session_ref: binding.reference.clone(),
+                mode: None,
+            }))
+            .await
+            .unwrap();
+        assert_eq!(reply, r#"{"closed":true}"#);
+        assert!(server.sessions.is_empty());
+
+        // Model the transport ending after an explicit close. Since no mapping
+        // remains, disconnect cannot add a cleanup record or start another worker.
+        server.release_sessions().await;
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while server.sessions.worker.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("idle worker exits promptly after explicit close");
+        assert!(server.sessions.pending_cleanup().is_empty());
+        assert_released(&server, &binding).await;
     }
 
     #[tokio::test]

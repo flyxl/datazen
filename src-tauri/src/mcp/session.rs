@@ -148,7 +148,13 @@ impl McpSessionRegistry {
         if entries.get(reference)?.client_instance_id != client_instance_id {
             return None;
         }
-        entries.remove(reference)
+        let closed = entries.remove(reference);
+        if closed.is_some() {
+            // A TTL worker may be sleeping until this mapping's original expiry.
+            // Wake it so an empty registry does not retain AppState for that TTL.
+            self.wake.notify_one();
+        }
+        closed
     }
 
     pub(crate) fn revoke(&self, reference: &str, client: &str) {
