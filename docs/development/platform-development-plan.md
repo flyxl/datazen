@@ -473,7 +473,11 @@ JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器�
 
 持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown；尚无逐步骤 commit-boundary/domain-result 投影、专用 Workflow Job 控制 UI 或跨重启 Workflow receipt，真实 PostgreSQL/MySQL 临时对象/外部效果旅程仍须独立验收。
 
-`transactionBlock` 已支持 PostgreSQL/MySQL 的 Job-owned retained session：显式 `BEGIN`，执行块步骤后 `COMMIT`，步骤失败时 `ROLLBACK`；提交或回滚无法确认时保留 Unknown 且不自动重放。SQL 模板在拿资源前完成插值与最终解析验证，每步恰为一条 SELECT/DML。校验器拒绝 CTE、锁定查询、DDL/隐式提交语句、事务控制语句、table-valued function、未审阅/限定函数及非 Abort 步骤策略。非零整块 retry 暂时拒绝，因为 Runtime 尚无可证明回滚的 retry evidence。Workflow 逐步骤 commit-boundary/domain-result、专用 Job 控制 UI 与跨重启 Workflow receipt 仍待后续切片。
+#### 2026-10-18 transactionBlock 临时安全闸门
+
+`transactionBlock` 的共享候选实现保留显式 `BEGIN` / `COMMIT` / `ROLLBACK`、模板最终解析、SELECT/DML 白名单与 Unknown 不重放逻辑，但这些原语不构成驱动整块提交边界证明。生产 driver 尚未实现 `DialectPlanProof`，桌面 Job 也未接入目标 relation/表引擎/触发器范围证明及可持久核验的提交、回滚边界证据。当前桌面 `workflow::job::execute` 因此设置临时安全闸门：含任意 transactionBlock 的整个定义返回 `CapabilityUnsupported`，PostgreSQL/MySQL 均如此，且发生在目标元数据预检、Job admission、独立 SQL 和其他 block 派发之前。此为安全封口，P6 transactionBlock 仍未交付，不是永久取消该目标能力。
+
+重新开启的最小边界是：冻结并插值整块计划和显式目标，以驱动/配置/能力版本及实际 relation 元数据证明窄 SQL 子集的提交边界（MySQL 必须证明涉及表为事务引擎并核对触发器等隐含路径）；将生产证明结论接入全定义 admission 前预检，无法证明的计划返回 `UnsupportedPlan`，缺少能力返回 `CapabilityUnsupported`；Runtime 记录同一 Job-owned session 的 begin/commit/rollback execution、真实终态与 durable commit-boundary/effectOutcome。提交或回滚无法确认保持 Unknown，不自动重放；非零整块 retry 在有可证明回滚证据前继续拒绝。现有 SQL 白名单不得因补驱动证明而放宽。真实 PostgreSQL/MySQL 成功提交、失败完整回滚及未知提交/回滚故障旅程仍须独立验收。
 
 
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）

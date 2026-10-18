@@ -331,6 +331,19 @@ pub(crate) async fn execute(
     definition: &WorkflowDefinition,
     variables: &serde_json::Value,
 ) -> Result<WorkflowExecutionResult, String> {
+    // Temporary safety gate, not a permanent transactionBlock capability policy.
+    // Generic SELECT/DML parsing does not prove a whole-plan commit boundary:
+    // no production driver supplies DialectPlanProof / target-table metadata,
+    // and Job outcomes do not yet record verified commit/rollback boundaries.
+    // Reject the entire definition before target preflight can acquire metadata
+    // resources, before independent steps, and before durable Job admission.
+    if definition
+        .blocks
+        .iter()
+        .any(|block| block.kind.is_transactional())
+    {
+        return Err("CapabilityUnsupported: transactionBlock requires driver-proven whole-plan transaction boundaries and verified commit/rollback evidence".into());
+    }
     let platform = state
         .platform_require()
         .map_err(|_| "platform unavailable")?;

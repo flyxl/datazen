@@ -135,7 +135,7 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 `execute_driver_command` 仍服务桌面 editor/session IPC；ConnectionManager 仍承载本地 session identity、tunnel 与 P5 repository/job adapter。AI/MCP/Workflow 默认 DB 工具已走共享 ResourceExecutionHost。Monitor 的兼容连接 registry 没有活动调度查询调用，实际调度走共享 MonitorHost/Workflow。
 
-共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，但 driver source 与 backup execution 仍是本地 adapter；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。桌面手动 sessionBlock 已接可信 Workflow Job owner/TTL 与 retained Runtime session；transactionBlock 仍全局派发前拒绝，事务效果证据、显式 editor grant、native-tool 全预算与适用层验收仍待后续。不得将本轮桌面单测通过当作 P6 阶段退出证明。
+共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，但 driver source 与 backup execution 仍是本地 adapter；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。桌面手动 sessionBlock 已接可信 Workflow Job owner/TTL 与 retained Runtime session；transactionBlock 因缺生产驱动计划证明与事务效果证据，现由桌面 Job 临时闸门在 admission 前拒绝整个定义（PostgreSQL/MySQL 均拒绝）；这不是 P6 transactionBlock 完成。显式 editor grant、native-tool 全预算与适用层验收仍待后续。不得将本轮桌面单测通过当作 P6 阶段退出证明。
 
 ## 9. 验收与故障旅程
 
@@ -161,4 +161,4 @@ Host fake 验证归属与清理；真实 driver 验证共享状态、精确取�
 
 JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器的 `StageOwnerPermit`。独立步骤资源使用真实 `OwnerRef::Job`，session block 使用真实 `OwnerRef::WorkflowBlock { jobId, blockId }`；所有 owner/身份均由后端生成，普通 session 请求即使携带有效 Job ID 仍拒绝。Runtime 在资源获取、enqueue 与物理 dispatch 前核验活动 claim/阶段/取消与固定 profile revision。session block 步骤串行共用同一显式目标和物理 session，块末 RollbackAndClose；下一块另取资源。获取期间的 guard 覆盖回执丢失/超时，块截止时间触发独立于 GUI attachment/idle policy 的清理，取消信号传入运行中 SQL 的终态等待。关闭或结果未确认保留 Unknown，不自动重放。
 
-持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown，尚无逐步骤 commit-boundary/domain-result 投影、专用 Workflow Job 控制 UI 或跨重启结果 receipt；真实 PostgreSQL/MySQL 临时对象/外部效果旅程仍须独立验收。`transactionBlock` 继续在 Job admission、任何独立 SQL 和资源获取之前显式拒绝，事务提交/回滚/Unknown 证据与整块重试留待下一切片，P6 未整体关闭。
+持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown，尚无逐步骤 commit-boundary/domain-result 投影、专用 Workflow Job 控制 UI 或跨重启结果 receipt；真实 PostgreSQL/MySQL 临时对象/外部效果旅程仍须独立验收。`transactionBlock` 的 GenericDialect SQL 白名单及 BEGIN/COMMIT/ROLLBACK 候选原语不等同于生产驱动的整块提交边界证明。桌面 Job 在目标元数据预检、Job admission、任何独立 SQL 与其他 block 之前临时拒绝含 transactionBlock 的整个定义，返回 `CapabilityUnsupported`（PostgreSQL/MySQL 均如此）。下一最小交付必须接通冻结计划/目标版本、实际 relation 与事务能力元数据的驱动证明，以及 Runtime durable commit/rollback/effectOutcome；MySQL 不能仅凭 DML 形状假定表引擎可回滚。无法证明时仍拒绝，Unknown 不自动重放，事务 SQL 白名单和整块 retry 限制保持。此安全封口不表示 P6 transactionBlock 已完成；完整最小边界见 [Workflow 当前边界](workflow-resource-model.md#2026-10-18-transactionblock-当前边界)。

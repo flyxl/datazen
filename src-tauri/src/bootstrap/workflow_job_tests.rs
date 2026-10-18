@@ -1,12 +1,12 @@
 use super::*;
 use datazen_platform_api::dto::job::JobFilter;
-async fn state() -> (tempfile::TempDir, AppState) {
+async fn state(database_type: &str) -> (tempfile::TempDir, AppState) {
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(Store::init_with_path(temp.path()).await.unwrap());
     let config = crate::db::ConnectionConfig {
         id: "pg".into(),
         name: "synthetic".into(),
-        database_type: "postgresql".into(),
+        database_type: database_type.into(),
         host: None,
         port: None,
         database: Some("app".into()),
@@ -39,9 +39,12 @@ async fn state() -> (tempfile::TempDir, AppState) {
     (temp, state)
 }
 async fn rejected(yaml: &str, code: &str) {
-    let (_temp, state) = state().await;
+    let (_temp, state) = state("postgresql").await;
+    assert_rejected_before_admission(&state, yaml, code).await;
+}
+async fn assert_rejected_before_admission(state: &AppState, yaml: &str, code: &str) {
     let definition: crate::workflow::WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
-    let error = crate::workflow::job::execute(&state, &definition, &serde_json::json!({}))
+    let error = crate::workflow::job::execute(state, &definition, &serde_json::json!({}))
         .await
         .unwrap_err();
     assert!(error.contains(code), "unexpected rejection class");
@@ -62,8 +65,27 @@ async fn rejected(yaml: &str, code: &str) {
     );
 }
 #[tokio::test]
-async fn workflow_transaction_block_rejects_before_job_admission() {
-    rejected("id: wf\nname: Frozen\ndescription: ''\nversion: '2'\nconnection: pg\ndatabase: app\nsteps:\n  - type: query\n    id: independent\n    sql: SELECT 1\nblocks:\n  - type: transactionBlock\n    id: tx\n    steps:\n      - type: query\n        id: write\n        sql: SELECT 2\n","transactionBlock").await;
+async fn workflow_transaction_block_requires_driver_proof_before_job_admission() {
+    // Both profiles are configured, but SQL shape alone is not plan evidence.
+    // In particular, a MySQL DML statement may target a nontransactional table.
+    for database_type in ["postgresql", "mysql"] {
+        let (_temp, state) = state(database_type).await;
+        for sql in [
+            "SELECT 2",
+            "INSERT INTO items(id) VALUES (1)",
+            "UPDATE items SET id = 2",
+            "DELETE FROM items",
+        ] {
+            let yaml = format!("id: wf\nname: Frozen\ndescription: ''\nversion: '2'\nconnection: pg\ndatabase: app\nsteps:\n  - type: query\n    id: independent\n    sql: SELECT 1\nblocks:\n  - type: transactionBlock\n    id: tx\n    steps:\n      - type: query\n        id: write\n        sql: {sql}\n");
+            assert_rejected_before_admission(&state, &yaml, "CapabilityUnsupported: transactionBlock requires driver-proven whole-plan transaction boundaries").await;
+        }
+    }
+}
+#[tokio::test]
+async fn unproven_transaction_block_rejects_entire_definition_before_any_prior_block() {
+    // A valid earlier sessionBlock and independent step must not run before
+    // discovering that a later transactionBlock has no production proof.
+    rejected("id: wf\nname: Frozen\ndescription: ''\nversion: '2'\nconnection: pg\ndatabase: app\nsteps:\n  - type: query\n    id: independent\n    sql: SELECT 1\nblocks:\n  - type: sessionBlock\n    id: prior\n    steps:\n      - type: query\n        id: earlier\n        sql: SELECT 2\n  - type: transactionBlock\n    id: tx\n    steps:\n      - type: command\n        id: write\n        command: execute\n        input:\n          sql: UPDATE items SET id = 3\n", "CapabilityUnsupported: transactionBlock requires driver-proven whole-plan transaction boundaries").await;
 }
 #[tokio::test]
 async fn workflow_conflicting_block_target_rejects_before_job_admission() {
