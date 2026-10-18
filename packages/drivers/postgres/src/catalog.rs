@@ -105,7 +105,7 @@ pub(crate) fn pg_sequence_start(
 }
 
 async fn fetch_pg_table_sequences(
-    pool: &PgPool,
+    connection: &mut sqlx::PgConnection,
     table: &str,
 ) -> Result<Vec<PgSequenceDdl>, DriverError> {
     let rows = sqlx::query(
@@ -140,7 +140,7 @@ async fn fetch_pg_table_sequences(
         "#,
     )
     .bind(table)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -177,6 +177,18 @@ pub(crate) async fn fetch_pg_table_ddl_from_catalog(
     table: &str,
     quote_ident: impl Fn(&str) -> String,
 ) -> Result<String, DriverError> {
+    let mut connection = pool
+        .acquire()
+        .await
+        .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+    fetch_pg_table_ddl_on_connection(&mut connection, table, quote_ident).await
+}
+
+pub(crate) async fn fetch_pg_table_ddl_on_connection(
+    connection: &mut sqlx::PgConnection,
+    table: &str,
+    quote_ident: impl Fn(&str) -> String,
+) -> Result<String, DriverError> {
     let col_rows = sqlx::query(
         r#"
         SELECT
@@ -196,7 +208,7 @@ pub(crate) async fn fetch_pg_table_ddl_from_catalog(
         "#,
     )
     .bind(table)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -228,15 +240,13 @@ pub(crate) async fn fetch_pg_table_ddl_from_catalog(
         "#,
     )
     .bind(table)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
     let pk_columns: Vec<String> = pk_rows.iter().map(|r| r.get("attname")).collect();
 
-    let sequences = fetch_pg_table_sequences(pool, table)
-        .await
-        .unwrap_or_default();
+    let sequences = fetch_pg_table_sequences(connection, table).await?;
     let mut out = String::new();
     for seq in &sequences {
         out.push_str(&build_pg_create_sequence_sql(seq));

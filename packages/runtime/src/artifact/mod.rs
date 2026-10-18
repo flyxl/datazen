@@ -1,6 +1,9 @@
 //! Durable, bounded result storage. Metadata rename is the publication boundary.
 //! Unfinished writers are recovered as truncated; writer capabilities never survive restart.
 mod execution;
+/// Existing aggregate ArtifactStore published-byte quota.
+pub const ARTIFACT_BYTE_QUOTA: u64 = 256 * 1024 * 1024;
+
 use async_trait::async_trait;
 use datazen_platform_api::{
     context::RequestContext,
@@ -173,7 +176,7 @@ impl FileArtifactStore {
                     .iter()
                     .try_fold(0u64, |sum, size| sum.checked_add(*size))
                     == Some(record.metadata.published_byte_size.get())
-                && record.metadata.published_byte_size.get() <= 256 * 1024 * 1024
+                && record.metadata.published_byte_size.get() <= ARTIFACT_BYTE_QUOTA
                 && record.sizes.iter().enumerate().all(|(index, size)| {
                     fs::symlink_metadata(item.path().join(format!("{index}.chunk")))
                         .is_ok_and(|meta| meta.is_file() && meta.len() == *size)
@@ -185,7 +188,7 @@ impl FileArtifactStore {
             if !valid
                 || state.records.len() >= 4096
                 || total.saturating_add(record.metadata.published_byte_size.get())
-                    > 256 * 1024 * 1024
+                    > ARTIFACT_BYTE_QUOTA
             {
                 fs::remove_dir_all(item.path()).map_err(|_| unavailable())?;
                 tracing::warn!("invalid or excess artifact removed during recovery");
@@ -316,7 +319,7 @@ impl FileArtifactStore {
         });
         let size = chunk.bytes.len() as u64;
         if size > 32 * 1024 * 1024
-            || total.saturating_add(size) > 256 * 1024 * 1024
+            || total.saturating_add(size) > ARTIFACT_BYTE_QUOTA
             || record.sizes.len() >= 65536
         {
             return Err(PortError::QuotaExceeded("artifact byte budget".into()));

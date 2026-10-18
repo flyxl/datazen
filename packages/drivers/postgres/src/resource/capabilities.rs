@@ -235,6 +235,10 @@ pub(crate) fn postgres_capability_registry() -> CapabilityRegistry {
         datazen_driver_api::restore_sql::CAPABILITY_KEY.into(),
         datazen_driver_api::restore_sql::TRANSACTIONAL.into(),
     );
+    snapshot.confirmed.insert(
+        datazen_driver_api::sql_dump::stream::BACKUP_CAPABILITY.into(),
+        "bounded retained SQL dump".into(),
+    );
     let mut registry = CapabilityRegistry::new(POSTGRES_PROVIDER_ID, snapshot);
     registry.capabilities = postgres_capability_set();
     registry

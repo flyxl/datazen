@@ -1,5 +1,7 @@
 //! Shared connection application implementation; transports inject repositories, policy and drivers.
 mod backend;
+mod backup;
+pub use backup::{BackupOutput, BackupOutputBinding};
 mod convert;
 mod idle;
 mod live;

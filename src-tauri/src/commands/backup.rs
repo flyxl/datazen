@@ -84,6 +84,7 @@ impl datazen_feature_core::backup::BackupEvents for DesktopBackupEvents {
         let _ = self.0.emit("restore-progress", progress);
     }
 }
+#[cfg(test)]
 async fn backup_database_to_path(
     state: &AppState,
     session_id: String,
@@ -162,14 +163,93 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
             .path()
             .join(format!("backup.{}", self.extension));
         let events = DesktopBackupEvents(self.app.clone());
-        datazen_feature_core::backup::backup_database_to_path(
-            &self.source,
-            self.session_id.clone(),
-            self.database.clone(),
-            output.clone(),
-            self.options.clone(),
-            Some(self.compress),
-            Some(&events),
+        // Validate options before allocating a Runtime resource or opening staging.
+        let options = datazen_feature_core::backup::parse_backup_options(
+            self.options.as_deref().unwrap_or_default(),
+        )?;
+        let unavailable = || {
+            datazen_feature_core::error::FeatureError::Validation("runtimeBackupUnavailable".into())
+        };
+        let adapter = self.source.platform.require().map_err(|_| unavailable())?;
+        let runtime = adapter.runtime().map_err(|_| unavailable())?;
+        let connection = runtime
+            .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(
+                &self.session_id,
+            ))
+            .ok_or_else(unavailable)?;
+        let (config, metadata) = self
+            .source
+            .store
+            .platform_profile(connection.as_str())
+            .await
+            .filter(|(_, metadata)| metadata.enabled)
+            .ok_or_else(unavailable)?;
+        let provider = self
+            .source
+            .registry
+            .resource_provider(&config.database_type)
+            .await
+            .map_err(|_| unavailable())?;
+        if !provider
+            .capabilities()
+            .snapshot
+            .confirmed
+            .contains_key(datazen_driver_api::sql_dump::stream::BACKUP_CAPABILITY)
+        {
+            return Err(datazen_feature_core::error::FeatureError::Validation(
+                "runtimeBackupUnsupported".into(),
+            ));
+        }
+        let driver = self
+            .source
+            .registry
+            .get(&config.database_type)
+            .await
+            .ok_or_else(unavailable)?;
+        let database = self
+            .database
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .or(config.database.clone());
+        let schema =
+            crate::services::metadata_schema(driver.as_ref(), None, None, config.schema.as_deref());
+        let target = datazen_platform_api::target::ExecutionTarget::new(
+            datazen_platform_api::id::ConnectionId::new(connection.as_str()),
+            datazen_platform_api::target::NamespaceTarget::new(database, None, schema, vec![]),
+        );
+        let context = adapter.begin_call().context().clone();
+        let canonical = adapter
+            .resolve_execution_target(
+                &context,
+                datazen_platform_api::id::Counter::new(metadata.config_revision),
+                datazen_driver_api::sql_dump::stream::BACKUP_COMMAND,
+                &target,
+            )
+            .await
+            .map_err(|_| unavailable())?;
+        let namespace = canonical.namespace;
+        let target = datazen_platform_api::target::ExecutionTarget::new(
+            canonical.connection_id,
+            datazen_platform_api::target::NamespaceTarget::new(
+                namespace.database.map(|v| v.as_str().to_owned()),
+                namespace.catalog.map(|v| v.as_str().to_owned()),
+                namespace.schema.map(|v| v.as_str().to_owned()),
+                namespace
+                    .path
+                    .into_iter()
+                    .map(|v| v.as_str().to_owned())
+                    .collect(),
+            ),
+        );
+        datazen_feature_core::backup_gateway::backup_to_path(
+            runtime,
+            &context,
+            target,
+            options,
+            &output,
+            self.compress,
+            Some(Arc::new(events)),
+            cancel,
         )
         .await?;
         if cancel.is_cancelled() {

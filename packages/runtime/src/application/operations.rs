@@ -33,6 +33,7 @@ impl RuntimeConnectionUseCases {
                 | "read_relation_columns"
                 | "read_relation_schema"
                 | "refresh_schema_metadata"
+                | "backup_dump"
         ) {
             AuthorizationAction::Query
         } else {
@@ -50,6 +51,14 @@ impl RuntimeConnectionUseCases {
         )
         .await?;
         let entry = self.session_entry(ctx, &request.handle)?;
+        if request.call.command == "backup_dump"
+            && !lock(&self.inner.sink.2).contains_key(&request.handle)
+        {
+            return Err(ApiError::new(
+                ApiErrorCode::PermissionDenied,
+                "backup output must be bound before admission",
+            ));
+        }
         // Resolve provenance before accepting the command. If the actor has
         // already retired this physical resource, fail before creating an
         // accepted gateway receipt that cannot be admitted to the durable sink.
@@ -122,6 +131,7 @@ impl RuntimeConnectionUseCases {
                     error_code: None,
                     runtime_binding: None,
                 },
+                dispatch_command.clone(),
             );
             let service = self.clone();
             let ctx = ctx.clone();

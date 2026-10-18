@@ -147,7 +147,7 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 `execute_driver_command` 仍服务桌面 editor/session IPC；ConnectionManager 仍承载本地 session identity、tunnel 与 P5 repository/job adapter。AI/MCP/Workflow 默认 DB 工具已走共享 ResourceExecutionHost。Monitor 的兼容连接 registry 没有活动调度查询调用，实际调度走共享 MonitorHost/Workflow。
 
-共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，但 driver source 与 backup execution 仍是本地 adapter；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。桌面手动 sessionBlock 已接可信 Workflow Job owner/TTL 与 retained Runtime session；transactionBlock 已接 PostgreSQL 普通无索引/约束 heap 的 literal DML 锁内证明与 durable phase/commit/rollback 证据；MySQL/MariaDB 仍缺完整目录可见性与安全锁获取证明而默认拒绝。这不是 P6 transactionBlock 整体完成。显式 editor grant、native-tool 全预算与适用层验收仍待后续。不得将本轮桌面单测通过当作 P6 阶段退出证明。
+共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，表导出通过 RuntimeCommandSource 读取，PostgreSQL/MySQL 备份通过专属 Runtime retained session 的 `backup_dump` 流式写 staging/gzip（64 KiB chunk、同步背压），其他驱动失败关闭；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。桌面手动 sessionBlock 已接可信 Workflow Job owner/TTL 与 retained Runtime session；transactionBlock 已接 PostgreSQL 普通无索引/约束 heap 的 literal DML 锁内证明与 durable phase/commit/rollback 证据；MySQL/MariaDB 仍缺完整目录可见性与安全锁获取证明而默认拒绝。这不是 P6 transactionBlock 整体完成。显式 editor grant、native-tool 全预算与适用层验收仍待后续。不得将本轮桌面单测通过当作 P6 阶段退出证明。
 
 ## 9. 验收与故障旅程
 

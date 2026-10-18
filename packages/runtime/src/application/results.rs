@@ -36,6 +36,8 @@ pub struct RuntimeArtifactChunk {
 #[derive(Clone)]
 pub(super) struct ExecutionEntry {
     pub ctx: RequestContext,
+    backup: Option<Arc<super::backup::Binding>>,
+    command: String,
     pub handle: SessionHandle,
     pub stream: StreamId,
     pub view: ExecutionView,
@@ -81,6 +83,7 @@ pub struct RuntimeResultSink(
             Result<Arc<crate::artifact::FileArtifactStore>, datazen_platform_api::error::PortError>,
         >,
     >,
+    pub(super) Arc<Mutex<HashMap<SessionHandle, Arc<super::backup::Binding>>>>,
 );
 impl RuntimeResultSink {
     pub fn with_artifact_store(
@@ -180,6 +183,23 @@ impl RuntimeResultSink {
                 ApiErrorCode::SessionLost,
                 "execution is already settled",
             ));
+        }
+        if entry.command == "backup_dump" {
+            let binding = entry.backup.clone().ok_or_else(|| {
+                ApiError::new(
+                    ApiErrorCode::PermissionDenied,
+                    "backup output was not bound",
+                )
+            })?;
+            if !rows.is_empty() || source.is_some() {
+                return Err(ApiError::invalid_argument(
+                    "backup output must use the typed stream",
+                ));
+            }
+            return binding.write(
+                entry,
+                output.ok_or_else(|| ApiError::invalid_argument("backup output required"))?,
+            );
         }
         let source = match source {
             Some(source) if source.execution_id == *id => source,
@@ -287,10 +307,18 @@ impl RuntimeResultSink {
         handle: SessionHandle,
         stream: StreamId,
         view: ExecutionView,
+        command: String,
     ) {
         self.reclaim_expired();
+        let backup = if command == "backup_dump" {
+            lock(&self.2).get(&handle).cloned()
+        } else {
+            None
+        };
         let mut entry = ExecutionEntry {
             ctx,
+            command,
+            backup,
             handle,
             stream,
             view,
@@ -390,6 +418,7 @@ impl RuntimeResultSink {
                     }
                 }
             }
+            entry.backup = None;
             entry.event(ConnectionEvent::ExecutionChanged {
                 execution: entry.view.clone(),
             });
