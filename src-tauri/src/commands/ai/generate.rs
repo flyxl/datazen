@@ -294,7 +294,7 @@ pub(crate) async fn ai_diagnose_error_impl(
         &safe_error_message,
     )
     .await
-    .map_err(Into::into)
+    .cmd_err("ai_diagnose_error")
 }
 
 #[tauri::command]
@@ -348,7 +348,7 @@ pub(crate) async fn ai_analyze_explain_impl(
         &safe_original_sql,
     )
     .await
-    .map_err(Into::into)
+    .cmd_err("ai_analyze_explain")
 }
 
 #[tauri::command]
@@ -419,7 +419,7 @@ pub(crate) async fn ai_parse_filter_impl(
         &lang,
     )
     .await
-    .map_err(Into::into)
+    .cmd_err("ai_parse_filter")
 }
 
 #[tauri::command]
@@ -458,7 +458,7 @@ pub(crate) async fn ai_generate_schema_doc_impl(
         &lang,
     )
     .await
-    .map_err(Into::into)
+    .cmd_err("ai_generate_schema_doc")
 }
 
 #[tauri::command]
@@ -534,7 +534,7 @@ pub(crate) async fn ai_diagnose_connection_impl(
         &safe_error_message,
     )
     .await
-    .map_err(Into::into)
+    .cmd_err("ai_diagnose_connection")
 }
 
 // ─── Phase 8: Query history analysis ───
@@ -581,7 +581,7 @@ pub(crate) async fn ai_analyze_queries_impl(
         &queries,
     )
     .await
-    .map_err(Into::into)
+    .cmd_err("ai_analyze_queries")
 }
 
 #[tauri::command]
