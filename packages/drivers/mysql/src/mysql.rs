@@ -861,6 +861,26 @@ impl MysqlDriver {
 
 #[async_trait]
 impl DatabaseDriver for MysqlDriver {
+    fn workflow_transaction_plan(
+        &self,
+        _sql: &[String],
+        _namespace: &datazen_driver_api::namespace::NamespaceTarget,
+    ) -> Result<
+        Option<datazen_driver_api::workflow_transaction::WorkflowTransactionPlan>,
+        DriverError,
+    > {
+        // Deliberately no opt-in, even for a literal-only InnoDB-looking plan.
+        // USER_PRIVILEGES / SHOW GRANTS read current account grants, not the
+        // retained connection's effective static global privileges. A GRANT
+        // after connect can therefore advertise SELECT/TRIGGER while this
+        // session still filters trigger/incoming-FK metadata. Empty catalogs
+        // cannot prove absence. MySQL's CAN_ACCESS_TRIGGER witness is internal
+        // and rejects normal SQL clients. See workflow-resource-model §7's
+        // current MySQL proof blocker and MySQL 8.4.7 sql_authorization.cc /
+        // item_create.cc. Do not replace this with a grant-catalog boolean.
+        Ok(None)
+    }
+
     fn supports_bound_writes(&self) -> bool {
         true
     }

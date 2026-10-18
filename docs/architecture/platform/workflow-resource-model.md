@@ -834,3 +834,18 @@ JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器�
 每次 retained dispatch 再核对真实事务状态、已锁定 proof 与冻结 SQL，Runtime 继续核验 profile revision/owner/claim。现有 BEGIN/COMMIT/ROLLBACK 原语与 SQL 白名单、非零整块 retry 拒绝规则保持。Job handler v2 将真实 execution ID、固定 phase、terminal/effect code 写入 bounded `JobDomainResult`，确认 BEGIN + guard + COMMIT 才写 durable `CommitBoundary`，带固定目标/版本/计划摘要及 begin/commit execution 证据；确认 rollback 的块记录 rolledBack，guard 未通过而已 rollback 记录 notStarted。未知提交或回滚保持 unknown，不自动重放；整体失败仍保守 Unknown，不据某个块回滚推断整个 Workflow 原子。证据不含 SQL、变量、credential 或 live session/handle。进程在阶段结果持久化前退出仍需人工核验，尚无跨重启自动恢复/重放。
 
 MySQL/MariaDB 的此合同仍默认 `CapabilityUnsupported`，不表示 P6 transactionBlock 已全部交付。MySQL 8.4 的事务级 MDL 可保护已触达表，但当前安全缺口具体包括：TRIGGERS 的 absence 需要证明当前用户有效 TRIGGER 可见性；入站 FK 可来自当前用户无 SELECT 权限的其他 schema；在未知 table/view 上 SELECT LIMIT 0 取得 MDL 前的对象类型替换与 view 表达式/优化执行路径尚无无副作用证明。仅检查 ENGINE=InnoDB 或空目录结果不足以 opt-in。此外当前 MySQL fixed-session observer 依赖控制连接和 performance_schema 本线程 instrumentation/consumer，缺失时为 Unknown；MariaDB 使用另一观察路径，不能按 MySQL 8.4 范围静默放行。后续须限定实际 server/version、完整目录可见性、无应用代码执行的锁获取、InnoDB/trigger/FK/default/generated 条件及可靠 Active/commit/rollback 观察，再独立 opt-in。真实 PostgreSQL 成功提交、失败回滚、DDL 锁竞态和 unknown commit/rollback 旅程仍须 tester 验收；单测/编译不代替这些旅程。
+
+
+##### MySQL 8.4.7：session-effective 目录可见性仍阻塞 opt-in
+
+MySQL driver 显式实现 `workflow_transaction_plan` 返回 `None`；不因 SQL 为常量/literal DML、目标已限定或目录结果为空而启用。驱动内离线 admission tests 固定此拒绝边界，不等同真实数据库 privilege-race 旅程。PG+MySQL 双驱动 P6 条件仍未关闭。
+
+本轮核对 [MySQL 8.4 MDL 文档](https://dev.mysql.com/doc/refman/8.4/en/metadata-locking.html) 与固定 tag `mysql-8.4.7` 官方源码后，锁入口的判断已收窄：
+
+- `SHOW CREATE TABLE` 不可用作跨语句锁桥：[sql_show.cc 的 mysqld_show_create](https://github.com/mysql/mysql-server/blob/mysql-8.4.7/sql/sql_show.cc) 在结束时将 MDL 回退到进入语句前的 savepoint。
+- `HANDLER OPEN` 强制 base table，但其显式锁允许 FLUSH 关闭/重开；`HANDLER READ` 的事务 MDL 也在语句末回退到 savepoint。[sql_handler.cc](https://github.com/mysql/mysql-server/blob/mysql-8.4.7/sql/sql_handler.cc) 因而不能替代稳定的事务锁证明。
+- `SELECT 1 FROM db.table FORCE INDEX(PRIMARY) LIMIT 0` 是有进一步可行性的受限入口：[sql_view.cc 的 open_and_read_view](https://github.com/mysql/mysql-server/blob/mysql-8.4.7/sql/sql_view.cc) 在读取 view 定义前拒绝非空 index hints，避免将替换成 view 的对象交给表达式执行；成功执行后按事务 MDL 规则保护关系。它要求 base table/PRIMARY，但尚未被实现为可执行 recipe，也未宣称覆盖其他 MySQL 版本、MariaDB 或实库 prepared-statement/DDL 旅程。
+
+剩余权限阻塞具有独立依据：[权限变更生效规则](https://dev.mysql.com/doc/refman/8.4/en/privilege-changes.html) 规定 static global privilege 变更不更新已连接 session；[USER_PRIVILEGES](https://dev.mysql.com/doc/refman/8.4/en/information-schema-user-privileges-table.html) 来自 account grant 数据。[sql_authorization.cc](https://github.com/mysql/mysql-server/blob/mysql-8.4.7/sql/auth/sql_authorization.cc) 的 `fill_schema_user_privileges` 读取当前 `acl_user->access`，`mysql_show_grants` 也查当前 ACL；实际 session 访问检查则使用 security context。因此连接建立后新增全局 SELECT/TRIGGER，grant 目录可能已显示权限，而原 retained session 仍缺有效权限、过滤 trigger 或其他 schema 的 incoming FK。把 grant 目录存在与危险对象目录为空相结合，不能证明完整可见性。
+
+真正检查 session-effective trigger 权限的 `CAN_ACCESS_TRIGGER` 在 [item_create.cc](https://github.com/mysql/mysql-server/blob/mysql-8.4.7/sql/item_create.cc) 以 `SQL_FN_INTERNAL` 注册；`Internal_function_factory` 拒绝普通连接调用。当前 driver/ResourceProvider 合同没有替代的 session-effective catalog visibility witness。后续 opt-in 必须先补足此证明（包括 incoming FK 完整性），再限定真实 server family/version、SQL mode、锁入口及 prepared execute 的 re-open 行为，并在同一锁内核验 InnoDB/PK、无 trigger/FK/default/generated/其他危险元数据与可靠事务观察。不能用当前 grant 表的布尔值充当该 witness。

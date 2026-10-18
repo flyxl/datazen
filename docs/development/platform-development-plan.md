@@ -494,3 +494,6 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
 
 撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。每个 grant 版本、dashboard/widget、workflow revision 与 refresh slot 对应一个带稳定幂等键的 `monitorOccurrence` Job；Job 受理后才派发 scheduled workflow，WidgetRun 与有界 JobDomainResult 记录实际结果。启动恢复按持久化 service principal 扫描 occurrence：未派发 Job 标为未启动，运行中 Job 转为待核验，不重放查询。撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown；真实 PostgreSQL/MySQL 驱动旅程仍须独立验收，P6 未整体关闭。
+
+
+MySQL transaction proof 的后续验收仍开放：本轮已将 driver admission 显式固定为不支持，并以无网络/无凭据测试断言常量、literal DML、FORCE INDEX 锁候选及跨 namespace/危险 SQL 均拿不到 recipe。固定 MySQL 8.4.7 源码显示 index hint 可在读取 view 定义前拒绝 view，但 grant 目录与 retained session 的有效 static global 权限可能不同步；普通客户端又不能调用内部 `CAN_ACCESS_TRIGGER`。缺失的是 session-effective trigger/incoming-FK 完整目录可见性 witness，不能将空目录或 SHOW GRANTS 视为完成证明。详见 [当前 MySQL 阻塞](../architecture/platform/workflow-resource-model.md#mysql-847session-effective-目录可见性仍阻塞-opt-in)。本轮没有启用 MySQL 执行候选，PG+MySQL 双驱动 P6 条件仍未关闭。
