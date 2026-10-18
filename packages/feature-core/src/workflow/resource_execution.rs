@@ -12,6 +12,26 @@ pub struct PreparedExecution {
 }
 #[async_trait::async_trait]
 pub trait ResourceExecutionHost: Send + Sync {
+    async fn validate_retained_execution(
+        &self,
+        _session: &super::session_block::RetainedSession,
+        _step: &WorkflowCommandStep,
+    ) -> Result<(), WorkflowError> {
+        Ok(())
+    }
+    /// Process-local observations; durable adapters project only stable IDs/codes.
+    fn execution_submitted(
+        &self,
+        _step: &WorkflowCommandStep,
+        _id: &datazen_platform_api::id::ExecutionId,
+    ) {
+    }
+    fn execution_finished(
+        &self,
+        _step: &WorkflowCommandStep,
+        _view: &datazen_platform_api::dto::execution::ExecutionView,
+    ) {
+    }
     fn cancellation(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
         None
     }
@@ -258,6 +278,9 @@ pub async fn execute_with_session(
             input.remove("schema");
         }
     }
+    if let Some(session) = session {
+        state.validate_retained_execution(session, step).await?;
+    }
     let submission = async {
         if let Some(session) = session {
             runtime
@@ -288,6 +311,7 @@ pub async fn execute_with_session(
         .await
         .map_err(|_| submission_unconfirmed("SubmissionReceiptTimeout".into()))?
         .map_err(|error| submission_unconfirmed(format!("Submission:{:?}", error.code)))?;
+    state.execution_submitted(step, &receipt.execution_id);
     let mut cancellation = CancelOnDrop {
         runtime: runtime.clone(),
         context: context.clone(),
@@ -378,6 +402,7 @@ pub async fn execute_with_session(
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     };
     cancellation.execution = None;
+    state.execution_finished(step, &view);
     if timed_out || view.state != ExecutionState::Succeeded {
         return Err(WorkflowError::SqlExecution {
             execution_id: receipt.execution_id.as_str().to_owned(),

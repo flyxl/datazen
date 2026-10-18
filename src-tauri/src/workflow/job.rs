@@ -2,6 +2,7 @@
 //! the durable plan contains only a digest and versioned recovery metadata.
 use super::{WorkflowCommandStep, WorkflowError, WorkflowExecutor};
 use crate::commands::AppState;
+use datazen_application::sessions::ConnectionUseCases;
 use datazen_driver_api::{CommandResult, ConnectionConfig, DatabaseDriver};
 use datazen_feature_core::workflow::{
     context::WorkflowContext,
@@ -24,8 +25,12 @@ use datazen_runtime::job::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
+type Proofs = Arc<BTreeMap<String, super::transaction_proof::Proof>>;
+type Evidence = Arc<std::sync::Mutex<super::transaction_evidence::Evidence>>;
 struct Host<'a> {
     state: &'a AppState,
+    proofs: Proofs,
+    evidence: Evidence,
     context: RequestContext,
     revisions: BTreeMap<String, u64>,
     permit: Option<StageOwnerPermit>,
@@ -42,6 +47,90 @@ impl Host<'_> {
 }
 #[async_trait::async_trait]
 impl ResourceExecutionHost for Host<'_> {
+    async fn validate_retained_execution(
+        &self,
+        session: &RetainedSession,
+        step: &WorkflowCommandStep,
+    ) -> Result<(), WorkflowError> {
+        use datazen_platform_api::dto::session::{ContextConfidence, TransactionState};
+        let block = self
+            .evidence
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .block_for(&session.handle);
+        let Some(proof) = block.as_ref().and_then(|block| self.proofs.get(block)) else {
+            return Ok(());
+        };
+        let sql = step.input["sql"]
+            .as_str()
+            .ok_or_else(|| WorkflowError::Validation("transaction SQL unavailable".into()))?;
+        if sql == "ROLLBACK" {
+            return Ok(());
+        } // cleanup remains possible after loss/revocation
+        let view = session
+            .prepared
+            .runtime
+            .get_session(&session.prepared.context, session.handle.clone())
+            .await
+            .map_err(|_| WorkflowError::Validation("transaction observation unavailable".into()))?;
+        let expected = if sql == "BEGIN" {
+            TransactionState::None
+        } else {
+            TransactionState::Active
+        };
+        if view.observed_context.confidence != ContextConfidence::Confirmed
+            || view.observed_context.transaction_state != expected
+            || view.observed_context.namespace.database != proof.namespace.database
+            || view.observed_context.namespace.schema != proof.namespace.schema
+        {
+            return Err(WorkflowError::SqlUnconfirmed {
+                execution_id: "unavailable".into(),
+                state: "Unknown".into(),
+                effects: "Unknown".into(),
+                code: "TransactionStateUnconfirmed".into(),
+            });
+        }
+        if sql != "BEGIN"
+            && sql != "COMMIT"
+            && !proof.recipe.lock_sql.iter().any(|lock| lock == sql)
+            && proof.recipe.metadata_probe_sql != sql
+        {
+            if !self
+                .evidence
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_verified(block.as_deref().unwrap_or_default())
+                || !proof
+                    .recipe
+                    .statements
+                    .iter()
+                    .any(|statement| statement == sql)
+            {
+                return Err(WorkflowError::Validation(
+                    "UnsupportedPlan: transaction statement is outside the locked proof".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn execution_submitted(&self, step: &WorkflowCommandStep, id: &ExecutionId) {
+        self.evidence
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .accepted(step, id);
+    }
+    fn execution_finished(
+        &self,
+        _: &WorkflowCommandStep,
+        view: &datazen_platform_api::dto::execution::ExecutionView,
+    ) {
+        self.evidence
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .finished(view);
+    }
+
     fn cancellation(&self) -> Option<Arc<std::sync::atomic::AtomicBool>> {
         self.cancel.as_ref().map(CancelToken::flag)
     }
@@ -112,6 +201,25 @@ impl ResourceExecutionHost for Host<'_> {
 }
 #[async_trait::async_trait]
 impl WorkflowHost for Host<'_> {
+    async fn verify_transaction_plan(
+        &self,
+        block: &str,
+        session: &RetainedSession,
+        deadline: tokio::time::Instant,
+    ) -> Result<(), WorkflowError> {
+        let proof = self
+            .proofs
+            .get(block)
+            .ok_or_else(|| WorkflowError::CapabilityUnsupported {
+                detail: "frozen transaction proof missing".into(),
+            })?;
+        super::transaction_proof::verify(self, block, proof, session, deadline).await?;
+        self.evidence
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .verified(block);
+        Ok(())
+    }
     fn workflow_deadline(&self) -> Option<tokio::time::Instant> {
         Some(self.deadline)
     }
@@ -162,7 +270,12 @@ impl WorkflowHost for Host<'_> {
             .map_err(|error| {
                 WorkflowError::Validation(format!("block admission: {:?}", error.code))
             })?;
-        RetainedSession::from_job(prepared, lease)
+        let session = RetainedSession::from_job(prepared, lease)?;
+        self.evidence
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .opened(&session.handle, block);
+        Ok(session)
     }
     async fn execute_command(
         &self,
@@ -254,6 +367,8 @@ impl WorkflowHost for Host<'_> {
 }
 struct Handler {
     state: AppState,
+    proofs: Proofs,
+    evidence: Evidence,
     definition: WorkflowDefinition,
     variables: serde_json::Value,
     context: RequestContext,
@@ -267,7 +382,7 @@ impl JobHandler for Handler {
         "workflowRun"
     }
     fn handler_version(&self) -> u64 {
-        1
+        2
     }
     fn validate_plan(&self, _: &FrozenPlan) -> Result<Vec<StageSpec>, JobError> {
         Ok(vec![StageSpec {
@@ -287,6 +402,8 @@ impl JobHandler for Handler {
     ) -> Result<StageOutcome, JobError> {
         let host = Host {
             state: &self.state,
+            proofs: self.proofs.clone(),
+            evidence: self.evidence.clone(),
             context: self.context.clone(),
             revisions: self.revisions.clone(),
             permit: Some(owner),
@@ -298,6 +415,15 @@ impl JobHandler for Handler {
         let success = result.as_ref().is_ok_and(|result| result.success);
         // A failed workflow may already have committed independent writes. Never
         // infer rollback from an error string or a cancellation request.
+        let (boundaries, execution_ids, overflow) = {
+            let journal = self.evidence.lock().unwrap_or_else(|e| e.into_inner());
+            (
+                journal.boundaries(&spec.stage_id, &self.proofs),
+                journal.ids(),
+                journal.overflow,
+            )
+        };
+        let success = success && !overflow;
         let terminal = if success {
             StageTerminal::Succeeded
         } else {
@@ -308,8 +434,8 @@ impl JobHandler for Handler {
             stage_id: spec.stage_id.clone(),
             terminal,
             progress: JobProgress::default(),
-            commit_boundaries: vec![],
-            execution_ids: vec![],
+            commit_boundaries: boundaries,
+            execution_ids,
             artifact_ids: vec![],
             effect_outcome: if success {
                 EffectOutcome::Completed
@@ -318,6 +444,17 @@ impl JobHandler for Handler {
             },
             error_code: None,
         })
+    }
+    fn durable_result(
+        &self,
+        outcome: &StageOutcome,
+    ) -> Option<datazen_platform_api::dto::job::JobDomainResult> {
+        Some(
+            self.evidence
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .durable(&outcome.stage_id, &self.proofs),
+        )
     }
     fn verify_recovery(&self, _: &Checkpoint) -> RecoveryVerdict {
         RecoveryVerdict::RequireManualReview {
@@ -331,19 +468,6 @@ pub(crate) async fn execute(
     definition: &WorkflowDefinition,
     variables: &serde_json::Value,
 ) -> Result<WorkflowExecutionResult, String> {
-    // Temporary safety gate, not a permanent transactionBlock capability policy.
-    // Generic SELECT/DML parsing does not prove a whole-plan commit boundary:
-    // no production driver supplies DialectPlanProof / target-table metadata,
-    // and Job outcomes do not yet record verified commit/rollback boundaries.
-    // Reject the entire definition before target preflight can acquire metadata
-    // resources, before independent steps, and before durable Job admission.
-    if definition
-        .blocks
-        .iter()
-        .any(|block| block.kind.is_transactional())
-    {
-        return Err("CapabilityUnsupported: transactionBlock requires driver-proven whole-plan transaction boundaries and verified commit/rollback evidence".into());
-    }
     let platform = state
         .platform_require()
         .map_err(|_| "platform unavailable")?;
@@ -409,6 +533,8 @@ pub(crate) async fn execute(
     }
     let host = Host {
         state,
+        proofs: Arc::new(BTreeMap::new()),
+        evidence: Arc::new(std::sync::Mutex::new(Default::default())),
         context: ctx.clone(),
         revisions: BTreeMap::new(),
         permit: None,
@@ -417,7 +543,7 @@ pub(crate) async fn execute(
             + std::time::Duration::from_secs(definition.timeout_secs.unwrap_or(300)),
     };
     let deadline = host.deadline;
-    let frozen = datazen_feature_core::workflow::session_block::prepare_v2(
+    let mut frozen = datazen_feature_core::workflow::session_block::prepare_v2(
         definition, &context, &host, deadline,
     )
     .await
@@ -428,6 +554,11 @@ pub(crate) async fn execute(
         .map_err(|e| e.to_string())?;
     datazen_feature_core::workflow::session_block::plan_blocks(&executable, &host)
         .map_err(|e| e.to_string())?;
+    let proofs = Arc::new(
+        super::transaction_proof::freeze(&mut frozen, &context, &host)
+            .await
+            .map_err(|error| error.to_string())?,
+    );
     // Freeze every referenced profile, including independent steps, before Job admission.
     let mut revisions = BTreeMap::new();
     fn connections(steps: &[WorkflowStep], ids: &mut std::collections::BTreeSet<String>) {
@@ -476,10 +607,27 @@ pub(crate) async fn execute(
         }
         revisions.insert(id, revision);
     }
+    if proofs
+        .values()
+        .any(|proof| revisions.get(&proof.connection) != Some(&proof.revision))
+    {
+        return Err(
+            "CapabilityUnsupported: transaction profile changed before Job admission".into(),
+        );
+    }
     use sha2::{Digest, Sha256};
     let digest = format!(
         "{:x}",
-        Sha256::digest(serde_json::to_vec(&frozen).map_err(|_| "Workflow freeze failed")?)
+        Sha256::digest(
+            serde_json::to_vec(&(
+                &frozen,
+                proofs
+                    .values()
+                    .map(|proof| &proof.fingerprint)
+                    .collect::<Vec<_>>()
+            ))
+            .map_err(|_| "Workflow freeze failed")?
+        )
     );
     let id = JobId::new(uuid::Uuid::new_v4().to_string());
     let job = JobDefinition {
@@ -489,7 +637,7 @@ pub(crate) async fn execute(
             job_id: id.clone(),
             stage_id: StageId::new("workflow"),
         },
-        payload: serde_json::json!({"kind":"workflowRun","planVersion":1,"handlerVersion":1,"checkpointVersion":1,"planDigest":digest}),
+        payload: serde_json::json!({"kind":"workflowRun","planVersion":1,"handlerVersion":2,"checkpointVersion":1,"planDigest":digest}),
         created_at: state.desktop_job_host.now(),
     };
     state
@@ -503,6 +651,8 @@ pub(crate) async fn execute(
         .map_err(|_| "Workflow Job admission failed")?;
     let handler = Arc::new(Handler {
         state: state.clone(),
+        proofs,
+        evidence: Arc::new(std::sync::Mutex::new(Default::default())),
         definition: frozen,
         variables: variables.clone(),
         context: ctx.clone(),

@@ -41,6 +41,17 @@ mod structure_defaults_tests {
 pub trait DatabaseDriver: Send + Sync {
     fn driver_type(&self) -> DatabaseType;
 
+    /// Whole-plan proof recipe; None means capability unsupported. Generic SQL
+    /// shape checks cannot opt in. The host must execute locks and probe on the
+    /// same retained transaction before dispatching any effect-bearing statement.
+    fn workflow_transaction_plan(
+        &self,
+        _sql: &[String],
+        _namespace: &crate::namespace::NamespaceTarget,
+    ) -> Result<Option<crate::workflow_transaction::WorkflowTransactionPlan>, DriverError> {
+        Ok(None)
+    }
+
     fn driver_category(&self) -> DriverCategory {
         DriverCategory::Sql
     }

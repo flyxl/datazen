@@ -61,7 +61,7 @@ pub(super) fn validate(block: &ExecutableBlock) -> Result<(), WorkflowError> {
     Ok(())
 }
 
-pub(super) fn resolve_steps(
+pub fn resolve_steps(
     block: &ExecutableBlock,
     context: &super::context::WorkflowContext,
 ) -> Result<Vec<WorkflowStep>, WorkflowError> {

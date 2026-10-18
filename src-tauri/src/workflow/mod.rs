@@ -10,6 +10,8 @@ pub mod history;
 mod independent_sql;
 pub(crate) mod job;
 pub(crate) mod migration;
+mod transaction_evidence;
+mod transaction_proof;
 pub mod workflows;
 
 pub use error::WorkflowError;

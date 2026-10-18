@@ -10,7 +10,7 @@ async fn state(database_type: &str) -> (tempfile::TempDir, AppState) {
         host: None,
         port: None,
         database: Some("app".into()),
-        schema: None,
+        schema: Some("approved".into()),
         username: None,
         password: None,
         ssl_mode: Default::default(),
@@ -65,27 +65,23 @@ async fn assert_rejected_before_admission(state: &AppState, yaml: &str, code: &s
     );
 }
 #[tokio::test]
-async fn workflow_transaction_block_requires_driver_proof_before_job_admission() {
-    // Both profiles are configured, but SQL shape alone is not plan evidence.
-    // In particular, a MySQL DML statement may target a nontransactional table.
-    for database_type in ["postgresql", "mysql"] {
-        let (_temp, state) = state(database_type).await;
-        for sql in [
-            "SELECT 2",
-            "INSERT INTO items(id) VALUES (1)",
-            "UPDATE items SET id = 2",
-            "DELETE FROM items",
-        ] {
-            let yaml = format!("id: wf\nname: Frozen\ndescription: ''\nversion: '2'\nconnection: pg\ndatabase: app\nsteps:\n  - type: query\n    id: independent\n    sql: SELECT 1\nblocks:\n  - type: transactionBlock\n    id: tx\n    steps:\n      - type: query\n        id: write\n        sql: {sql}\n");
-            assert_rejected_before_admission(&state, &yaml, "CapabilityUnsupported: transactionBlock requires driver-proven whole-plan transaction boundaries").await;
-        }
+async fn mysql_transaction_plans_fail_closed_before_job_admission() {
+    let (_temp, state) = state("mysql").await;
+    for sql in [
+        "SELECT 2",
+        "INSERT INTO items(id) VALUES (1)",
+        "UPDATE items SET id = 2",
+        "DELETE FROM items",
+    ] {
+        let yaml = format!("id: wf\nname: Frozen\ndescription: ''\nversion: '2'\nconnection: pg\ndatabase: app\nsteps:\n  - type: query\n    id: independent\n    sql: SELECT 1\nblocks:\n  - type: transactionBlock\n    id: tx\n    steps:\n      - type: query\n        id: write\n        sql: {sql}\n");
+        assert_rejected_before_admission(&state, &yaml, "CapabilityUnsupported").await;
     }
 }
 #[tokio::test]
-async fn unproven_transaction_block_rejects_entire_definition_before_any_prior_block() {
-    // A valid earlier sessionBlock and independent step must not run before
-    // discovering that a later transactionBlock has no production proof.
-    rejected("id: wf\nname: Frozen\ndescription: ''\nversion: '2'\nconnection: pg\ndatabase: app\nsteps:\n  - type: query\n    id: independent\n    sql: SELECT 1\nblocks:\n  - type: sessionBlock\n    id: prior\n    steps:\n      - type: query\n        id: earlier\n        sql: SELECT 2\n  - type: transactionBlock\n    id: tx\n    steps:\n      - type: command\n        id: write\n        command: execute\n        input:\n          sql: UPDATE items SET id = 3\n", "CapabilityUnsupported: transactionBlock requires driver-proven whole-plan transaction boundaries").await;
+async fn unproven_postgres_plan_rejects_before_prior_steps_or_blocks() {
+    // Schema qualification is forbidden in input, even if it looks approved.
+    // The driver binds every accepted bare relation itself after dialect parsing.
+    rejected("id: wf\nname: Frozen\ndescription: ''\nversion: '2'\nconnection: pg\ndatabase: app\nsteps:\n  - type: query\n    id: independent\n    sql: SELECT 1\nblocks:\n  - type: sessionBlock\n    id: prior\n    steps:\n      - type: query\n        id: earlier\n        sql: SELECT 2\n  - type: transactionBlock\n    id: tx\n    steps:\n      - type: command\n        id: write\n        command: execute\n        input:\n          sql: UPDATE other.items SET id = 3\n", "UnsupportedPlan").await;
 }
 #[tokio::test]
 async fn workflow_conflicting_block_target_rejects_before_job_admission() {

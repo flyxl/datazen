@@ -54,6 +54,18 @@ pub trait WorkflowHost: Send + Sync {
             "trusted workflow Job session adapter unavailable".into(),
         ))
     }
+    /// Dynamic whole-plan proof under the retained transaction's metadata locks.
+    /// The default cannot infer transaction safety from a SQL shape allowlist.
+    async fn verify_transaction_plan(
+        &self,
+        _block: &str,
+        _session: &super::session_block::RetainedSession,
+        _deadline: tokio::time::Instant,
+    ) -> Result<(), WorkflowError> {
+        Err(WorkflowError::CapabilityUnsupported {
+            detail: "driver transaction proof unavailable".into(),
+        })
+    }
     fn resources(&self) -> Option<&dyn super::resource_execution::ResourceExecutionHost> {
         None
     }

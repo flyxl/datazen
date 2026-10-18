@@ -25,6 +25,7 @@ mod sync_adapter;
 mod transfer_identity;
 mod type_decode;
 mod type_normalizer;
+mod workflow_transaction;
 pub use migration::{PostgresMigrationCapabilities, PostgresMigrationRenderer};
 pub use postgres::*;
 pub use resource::PostgresResourceProvider;

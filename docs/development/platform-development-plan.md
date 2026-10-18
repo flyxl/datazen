@@ -473,12 +473,15 @@ JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器�
 
 持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown；尚无逐步骤 commit-boundary/domain-result 投影、专用 Workflow Job 控制 UI 或跨重启 Workflow receipt，真实 PostgreSQL/MySQL 临时对象/外部效果旅程仍须独立验收。
 
-#### 2026-10-18 transactionBlock 临时安全闸门
+#### 2026-10-18 transactionBlock 当前实现边界
 
-`transactionBlock` 的共享候选实现保留显式 `BEGIN` / `COMMIT` / `ROLLBACK`、模板最终解析、SELECT/DML 白名单与 Unknown 不重放逻辑，但这些原语不构成驱动整块提交边界证明。生产 driver 尚未实现 `DialectPlanProof`，桌面 Job 也未接入目标 relation/表引擎/触发器范围证明及可持久核验的提交、回滚边界证据。当前桌面 `workflow::job::execute` 因此设置临时安全闸门：含任意 transactionBlock 的整个定义返回 `CapabilityUnsupported`，PostgreSQL/MySQL 均如此，且发生在目标元数据预检、Job admission、独立 SQL 和其他 block 派发之前。此为安全封口，P6 transactionBlock 仍未交付，不是永久取消该目标能力。
+`transactionBlock` 现提供 PostgreSQL 的 `pgLockedPlainHeapLiteralDmlV1` 窄执行路径。`DatabaseDriver::workflow_transaction_plan` 是可选、默认不支持的驱动合同：先用 PostgreSQL 方言 AST 对整块最终插值 SQL 做严格形状检查，并把裸 relation 重写为固定 profile schema 的全限定名称；冻结 connection/database/schema、config revision、driver proof profile/version 与完整计划/guard 摘要，再进行 Job admission。静态不可证明的形状返回 `UnsupportedPlan`，缺能力返回 `CapabilityUnsupported`，发生在任何独立步骤或其他块派发之前。不接受残余模板，因此前序步骤不能改变已冻结事务 SQL。
 
-重新开启的最小边界是：冻结并插值整块计划和显式目标，以驱动/配置/能力版本及实际 relation 元数据证明窄 SQL 子集的提交边界（MySQL 必须证明涉及表为事务引擎并核对触发器等隐含路径）；将生产证明结论接入全定义 admission 前预检，无法证明的计划返回 `UnsupportedPlan`，缺少能力返回 `CapabilityUnsupported`；Runtime 记录同一 Job-owned session 的 begin/commit/rollback execution、真实终态与 durable commit-boundary/effectOutcome。提交或回滚无法确认保持 Unknown，不自动重放；非零整块 retry 在有可证明回滚证据前继续拒绝。现有 SQL 白名单不得因补驱动证明而放宽。真实 PostgreSQL/MySQL 成功提交、失败完整回滚及未知提交/回滚故障旅程仍须独立验收。
+动态目录条件由同一 Job-owned retained Runtime transaction 内的 guard 证明：确认 BEGIN 后事务状态为 Active，按稳定顺序执行 `LOCK TABLE ONLY ... IN SHARE ROW EXCLUSIVE MODE`，再通过 `pg_catalog` 检查目标是普通持久 heap，无分区/继承、RLS、rules、triggers、任何 constraints（包括入站 FK）、indexes、default/generated/identity 列，列类型仅 bool/int2/int4/int8/text/varchar。SQL 子集为 literal INSERT/UPDATE、DELETE 与受限 SELECT；谓词仅 NULL 检查/布尔组合，拒绝函数、重载运算、过程、CTE、子查询、join、输入中的限定 relation、DDL、事务控制、多语句、注释及反斜杠。不承诺支持普通带主键表或任意 DML。目录查询显式限定 pg_catalog 运算符与函数，锁保持到 COMMIT/ROLLBACK，避免目录核验与实际 DML 之间的 DDL 竞态。guard 不通过只回滚该块，绝不派发该块应用 SQL；前序独立步骤/已提交块不受回滚承诺覆盖。
 
+每次 retained dispatch 再核对真实事务状态、已锁定 proof 与冻结 SQL，Runtime 继续核验 profile revision/owner/claim。现有 BEGIN/COMMIT/ROLLBACK 原语与 SQL 白名单、非零整块 retry 拒绝规则保持。Job handler v2 将真实 execution ID、固定 phase、terminal/effect code 写入 bounded `JobDomainResult`，确认 BEGIN + guard + COMMIT 才写 durable `CommitBoundary`，带固定目标/版本/计划摘要及 begin/commit execution 证据；确认 rollback 的块记录 rolledBack，guard 未通过而已 rollback 记录 notStarted。未知提交或回滚保持 unknown，不自动重放；整体失败仍保守 Unknown，不据某个块回滚推断整个 Workflow 原子。证据不含 SQL、变量、credential 或 live session/handle。进程在阶段结果持久化前退出仍需人工核验，尚无跨重启自动恢复/重放。
+
+MySQL/MariaDB 的此合同仍默认 `CapabilityUnsupported`，不表示 P6 transactionBlock 已全部交付。MySQL 8.4 的事务级 MDL 可保护已触达表，但当前安全缺口具体包括：TRIGGERS 的 absence 需要证明当前用户有效 TRIGGER 可见性；入站 FK 可来自当前用户无 SELECT 权限的其他 schema；在未知 table/view 上 SELECT LIMIT 0 取得 MDL 前的对象类型替换与 view 表达式/优化执行路径尚无无副作用证明。仅检查 ENGINE=InnoDB 或空目录结果不足以 opt-in。此外当前 MySQL fixed-session observer 依赖控制连接和 performance_schema 本线程 instrumentation/consumer，缺失时为 Unknown；MariaDB 使用另一观察路径，不能按 MySQL 8.4 范围静默放行。后续须限定实际 server/version、完整目录可见性、无应用代码执行的锁获取、InnoDB/trigger/FK/default/generated 条件及可靠 Active/commit/rollback 观察，再独立 opt-in。真实 PostgreSQL 成功提交、失败回滚、DDL 锁竞态和 unknown commit/rollback 旅程仍须 tester 验收；单测/编译不代替这些旅程。
 
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）
 

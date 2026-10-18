@@ -355,23 +355,35 @@ pub(super) async fn execute_blocks(
                 };
             }
         }
-        let result = super::executor::WorkflowExecutor::execute_steps(
-            &steps,
-            &host,
-            Some(&target.connection_id),
-            target.database.as_deref(),
-            context,
-            step_results,
-            if block.kind.is_transactional() {
-                &super::model::ErrorStrategy::Abort
-            } else {
-                default_strategy
-            },
-            global_timeout,
-            start,
-            options,
-        )
-        .await;
+        let proof = if block.kind.is_transactional() {
+            app_state
+                .verify_transaction_plan(&block.id, &session, deadline)
+                .await
+        } else {
+            Ok(())
+        };
+        let result = match proof {
+            Err(error) => Err(error),
+            Ok(()) => {
+                super::executor::WorkflowExecutor::execute_steps(
+                    &steps,
+                    &host,
+                    Some(&target.connection_id),
+                    target.database.as_deref(),
+                    context,
+                    step_results,
+                    if block.kind.is_transactional() {
+                        &super::model::ErrorStrategy::Abort
+                    } else {
+                        default_strategy
+                    },
+                    global_timeout,
+                    start,
+                    options,
+                )
+                .await
+            }
+        };
         let result = if block.kind.is_transactional() {
             super::transaction_block::finish(&host, block, &target, deadline, result).await
         } else {
