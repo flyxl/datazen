@@ -111,6 +111,8 @@ PostgreSQL 的 `packages/drivers/postgres/tests/restore_apply_job.rs` 通过安�
 
 MySQL 的 `packages/drivers/mysql/tests/restore_apply_job.rs` 使用同一安全 launcher、disposable migration gate、私有 ArtifactStore、JobRuntime 与生产 `RuntimeRestoreGateway`，通过 Runtime Session / ExecutionGateway 调用 factory 注册的真实 MysqlResourceProvider。`IMPLICIT_COMMIT` 配合 `single_transaction=false`：成功 CREATE/INSERT 逐句记录执行 ID、目标和语句摘要边界，独立连接读回两行；LOAD DATA 与 SOURCE 在整份输入预检阶段拒绝，NotStarted 且无表、无执行 ID。另一脚本先建表，再向不存在的表 INSERT，失败立即停止；独立连接证明 DDL 表仍存在、后续 CREATE 未运行，再清理残表。驱动 SQL 错误当前不提供本语句的确定效果证据，因此总体效果保守为 Unknown，同时保留已确认的 CREATE 提交边界及 committed=1，不能宣称跨 DDL/DML 原子性、RolledBack 或确定的 PartiallyApplied。测试宿主替代 Profile/Policy/SessionBackend 接线，不覆盖桌面 picker、Store 与 DesktopSessionBackend。
 
+桌面边界另由 `commands::restore_job::tests` 的 Host 组合旅程核验：原生 picker 之后的生产 `upload_native_input` 将文件复制到私有 staging、分块上传并冻结 owner/组织、target fingerprint、字节数和摘要；源文件随后改写不会改变已上传输入，其他 owner/组织不能读取。旅程使用真实 Store、`PlatformAdapter::inject`、FileArtifactStore、SQLite JobRepository、DesktopJobHost 与 DesktopRestoreGateway，通过实际 DesktopSessionBackend 派发 probe 和 SQL，并检查执行 ID/提交边界、完成状态及重开仓储后的单次 plan 消费；数据库 provider 是专用于宿主接线的 synthetic fixture，不替代驱动 live SQL 证据。空输入及 Store revision/read-only/safe-mode 拒绝也有针对性回归。原生 OS picker、Tauri 事件交付与实际数据库效果仍分别属于 UI/驱动验收范围；该组合旅程不宣称覆盖这些边界。
+
 ## 3. 多端预算、重叠与授权
 
 1. 在取资源前规范化 source/target，逐端校验 read、execute/write 与产物权限；配置 enabled、readOnly 和 delegation 在派发前重新核验。

@@ -1,23 +1,18 @@
 //! Native file upload and durable admission for restore apply Jobs.
+mod input;
 use super::{AppState, CommandError};
 use datazen_feature_core::restore_job::{
     RestoreApplyJob, RestorePlan, UnsupportedRestoreGateway, RESTORE_APPLY_KIND,
 };
 use datazen_platform_api::{
     context::OwnerRef,
-    dto::{
-        artifact::AbortReason,
-        job::{JobDefinition, JobState},
-    },
-    id::{ConnectionId, Counter, ExecutionId, IdempotencyKey, JobId, WorkerId},
-    ports::artifact::{ArtifactSpec, ArtifactStore, ChunkPayload},
+    dto::job::{JobDefinition, JobState},
+    id::{ConnectionId, IdempotencyKey, JobId, WorkerId},
     target::{ExecutionTarget, NamespaceTarget},
 };
 use datazen_runtime::job::{EndpointRef, EndpointRole, JobHandler};
-use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc};
 use tauri::{AppHandle, Emitter};
-use tokio::io::AsyncReadExt;
 
 /// This path is supplied only by the native dialog (webdriver override is gated
 /// by its existing adapter). It is never accepted by the shared Job/Artifact API.
@@ -95,65 +90,15 @@ pub(crate) async fn restore_from_native_file(
     let artifacts = adapter
         .artifact_store()
         .map_err(crate::platform::into_command_error)?;
-    // Copy into a private, host-owned staging directory. The subsequent reader
-    // has no link back to the selected path or a mutable client file.
-    let staging = tempfile::tempdir()?;
-    let staged = staging.path().join("restore-input.sql");
-    tokio::fs::copy(path, &staged).await?;
-    let mut file = tokio::fs::File::open(staged).await?;
-    let (artifact, mut writer) = artifacts
-        .create(
-            &context,
-            ArtifactSpec::new(
-                context.organization_id.clone(),
-                context.principal_id.clone(),
-                ExecutionId::new(uuid::Uuid::new_v4().to_string()),
-                RestorePlan::target_fingerprint(&target),
-            ),
-        )
-        .await
-        .map_err(storage_error)?;
-    let mut hash = Sha256::new();
-    let upload = async {
-        let mut buffer = vec![0; 64 * 1024];
-        let mut bytes = 0u64;
-        loop {
-            let count = file.read(&mut buffer).await?;
-            if count == 0 {
-                break;
-            }
-            bytes += count as u64;
-            hash.update(&buffer[..count]);
-            artifacts
-                .append_chunk(&mut writer, ChunkPayload::new(buffer[..count].to_vec()))
-                .await
-                .map_err(storage_error)?;
-        }
-        if bytes == 0 {
-            return Err(CommandError::Validation("Restore input is empty".into()));
-        }
-        Ok::<u64, CommandError>(bytes)
-    }
-    .await;
-    let bytes = match upload {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            let _ = artifacts.abort(writer, AbortReason::ExecutionFailed).await;
-            return Err(error);
-        }
-    };
-    artifacts.finalize(writer).await.map_err(storage_error)?;
-    let parsed = datazen_feature_core::backup::parse_restore_options(&options);
-    let plan = RestorePlan {
-        plan_id: uuid::Uuid::new_v4().to_string(),
+    let plan = input::upload_native_input(
+        &context,
+        artifacts.clone(),
         target,
-        config_revision: Counter::new(metadata.config_revision),
-        artifact_id: artifact,
-        input_sha256: format!("{:x}", hash.finalize()),
-        input_bytes: Counter::new(bytes),
-        single_transaction: parsed.single_transaction,
-        overwrite: parsed.overwrite,
-    };
+        metadata.config_revision,
+        &path,
+        &options,
+    )
+    .await?;
     let job = JobId::new(format!("restore-{}", uuid::Uuid::new_v4()));
     let host = &state.desktop_job_host;
     let endpoints = vec![EndpointRef {
@@ -257,3 +202,6 @@ fn storage_error(_: datazen_platform_api::PortError) -> CommandError {
         "Restore artifact or Job storage unavailable; inspect Job status before retrying".into(),
     )
 }
+
+#[cfg(test)]
+mod tests;
