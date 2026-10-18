@@ -467,11 +467,11 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 
 共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺命令/驱动元数据要求的字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。database 要求保留命令 target requirements 的 Required / Optional / Forbidden 三态；Forbidden 在派发前拒绝已选目标中的 database，且不被驱动 has_multi_database 的通用 SQL 要求覆盖。Optional 才可按该驱动元数据提升为 Required，单库驱动不因 SQL 命令名被强制要求 database；缺元数据明确 CapabilityUnsupported，不猜测其他驱动能力。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
 
-桌面用户发起的 `workflow_execute` 对含 block 的 v2 定义经 `workflow::job` 执行：先冻结定义和输入、完成整个定义的目标/冲突/命令元数据预检，再由 `DesktopJobHost` 持久受理 `workflowRun` 并经 JobRuntime claim 派发。此切片限定 PostgreSQL/MySQL 的 query/execute/explain 与条件/循环；block 的 schema override 明确拒绝。v1 与无 block 的 v2 独立步骤保持原路径。MCP、旧 Workflow 定时入口及其他默认 host 仍拒绝 blocks，不能借桌面用户身份获得后台授权。
+桌面用户发起的 `workflow_execute` 对含 block 的 v2 定义经 `workflow::job` 执行：先冻结定义和输入、完成整个定义的目标/冲突/命令元数据预检，再由 `DesktopJobHost` 持久受理 `workflowRun` 并经 JobRuntime claim 派发。普通步骤与 sessionBlock 限定 PostgreSQL/MySQL 的 query/execute/explain 与条件/循环；transactionBlock 另按下述 driver proof 合同限制，当前仅 PostgreSQL 窄子集 opt-in。block 的 schema override 明确拒绝。v1 与无 block 的 v2 独立步骤保持原路径。MCP、旧 Workflow 定时入口及其他默认 host 仍拒绝 blocks，不能借桌面用户身份获得后台授权。
 
 JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器的 `StageOwnerPermit`。独立步骤资源使用真实 `OwnerRef::Job`，session block 使用真实 `OwnerRef::WorkflowBlock { jobId, blockId }`；所有 owner/身份均由后端生成，普通 session 请求即使携带有效 Job ID 仍拒绝。Runtime 在资源获取、enqueue 与物理 dispatch 前核验活动 claim/阶段/取消与固定 profile revision。session block 步骤串行共用同一显式目标和物理 session，块末 RollbackAndClose；下一块另取资源。获取期间的 guard 覆盖回执丢失/超时，块截止时间触发独立于 GUI attachment/idle policy 的清理，取消信号传入运行中 SQL 的终态等待。关闭或结果未确认保留 Unknown，不自动重放。
 
-持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown；尚无逐步骤 commit-boundary/domain-result 投影、专用 Workflow Job 控制 UI 或跨重启 Workflow receipt，真实 PostgreSQL/MySQL 临时对象/外部效果旅程仍须独立验收。
+持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown；Job handler v2 已提供有界 runtime phase/ID/state/effect 和已确认事务边界投影，尚无专用 Workflow Job 控制 UI 或跨重启 Workflow receipt；真实驱动临时对象/外部效果旅程仍须独立验收。
 
 #### 2026-10-18 transactionBlock 当前实现边界
 
