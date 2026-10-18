@@ -82,6 +82,37 @@ fn idempotency_key(value: &str) -> IdempotencyKey {
 }
 
 fn monitor_occurrence_definition(job_id: &str, scheduled_at: i64) -> JobDefinition {
+    use sha2::{Digest, Sha256};
+
+    let workflow_revision = format!("sha256:{}", "b".repeat(64));
+    let scopes = json!([{
+        "target": {
+            "connectionId": "connection-1",
+            "namespace": {
+                "database": "db",
+                "catalog": null,
+                "schema": "public",
+                "path": []
+            },
+            "object": null
+        },
+        "configRevision": 1,
+        "command": "query"
+    }]);
+    let identity = json!({
+        "dashboardId": "dashboard-1",
+        "widgetId": "widget-1",
+        "workflowId": "workflow-1",
+        "workflowRevision": workflow_revision,
+        "grantId": "grant-1",
+        "grantVersion": 1,
+        "refreshIntervalSeconds": 60,
+        "scopes": scopes,
+    });
+    let definition_revision = format!(
+        "sha256:{:x}",
+        Sha256::digest(serde_json::to_vec(&identity).expect("revision identity encodes"))
+    );
     JobDefinition {
         job_id: JobId::new(job_id),
         kind: "monitorOccurrence".into(),
@@ -95,29 +126,16 @@ fn monitor_occurrence_definition(job_id: &str, scheduled_at: i64) -> JobDefiniti
             "checkpointVersion": 1,
             "monitorOccurrence": {
                 "scheduleId": "monitor:dashboard-1:widget-1",
-                "definitionRevision": format!("sha256:{}", "a".repeat(64)),
+                "definitionRevision": definition_revision,
                 "scheduledAt": scheduled_at,
                 "refreshIntervalSeconds": 60,
                 "dashboardId": "dashboard-1",
                 "widgetId": "widget-1",
                 "workflowId": "workflow-1",
-                "workflowRevision": format!("sha256:{}", "b".repeat(64)),
+                "workflowRevision": workflow_revision,
                 "grantId": "grant-1",
                 "grantVersion": 1,
-                "scopes": [{
-                    "target": {
-                        "connectionId": "connection-1",
-                        "namespace": {
-                            "database": "db",
-                            "catalog": null,
-                            "schema": "public",
-                            "path": []
-                        },
-                        "object": null
-                    },
-                    "configRevision": 1,
-                    "command": "query"
-                }]
+                "scopes": scopes
             }
         }),
         created_at: Timestamp::new("2025-12-31T23:59:00Z"),

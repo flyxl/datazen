@@ -171,10 +171,75 @@ fn validate_monitor_occurrence(value: &Value) -> bool {
     if object["scheduleId"].as_str() != Some(expected_schedule_id.as_str()) {
         return false;
     }
+    let scheduled_at = object["scheduledAt"].as_i64().unwrap_or_default();
+    let refresh_interval_seconds = object["refreshIntervalSeconds"]
+        .as_u64()
+        .unwrap_or_default();
+    let Ok(refresh_interval_seconds) = i64::try_from(refresh_interval_seconds) else {
+        return false;
+    };
+    if scheduled_at.rem_euclid(refresh_interval_seconds) != 0 {
+        return false;
+    }
     let Some(scopes) = object["scopes"].as_array() else {
         return false;
     };
-    !scopes.is_empty() && scopes.len() <= 128 && scopes.iter().all(validate_monitor_scope)
+    !scopes.is_empty()
+        && scopes.len() <= 128
+        && scopes.iter().all(validate_monitor_scope)
+        && monitor_definition_revision(object, scopes, refresh_interval_seconds)
+            .is_some_and(|revision| object["definitionRevision"].as_str() == Some(&revision))
+}
+
+fn monitor_definition_revision(
+    occurrence: &serde_json::Map<String, Value>,
+    scopes: &[Value],
+    refresh_interval_seconds: i64,
+) -> Option<String> {
+    let mut scopes = scopes.to_vec();
+    scopes.sort_by(|left, right| monitor_scope_sort_key(left).cmp(&monitor_scope_sort_key(right)));
+    let identity = json!({
+        "dashboardId": occurrence["dashboardId"],
+        "widgetId": occurrence["widgetId"],
+        "workflowId": occurrence["workflowId"],
+        "workflowRevision": occurrence["workflowRevision"],
+        "grantId": occurrence["grantId"],
+        "grantVersion": occurrence["grantVersion"],
+        "refreshIntervalSeconds": refresh_interval_seconds,
+        "scopes": scopes,
+    });
+    let bytes = serde_json::to_vec(&identity).ok()?;
+    Some(format!("sha256:{:x}", Sha256::digest(bytes)))
+}
+
+fn monitor_scope_sort_key(scope: &Value) -> (String, String, String, u64) {
+    let target = &scope["target"];
+    let namespace = &target["namespace"];
+    let mut namespace_parts = vec![
+        namespace["database"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+        namespace["catalog"].as_str().unwrap_or_default().to_owned(),
+        namespace["schema"].as_str().unwrap_or_default().to_owned(),
+    ];
+    namespace_parts.extend(
+        namespace["path"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned),
+    );
+    (
+        target["connectionId"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+        namespace_parts.join("/"),
+        scope["command"].as_str().unwrap_or_default().to_owned(),
+        scope["configRevision"].as_u64().unwrap_or_default(),
+    )
 }
 
 fn validate_monitor_scope(value: &Value) -> bool {
@@ -280,37 +345,54 @@ pub(super) fn safe_identifier(text: &str) -> bool {
 mod monitor_occurrence_tests {
     use super::durable_plan;
     use serde_json::json;
+    use sha2::{Digest, Sha256};
 
     fn payload() -> serde_json::Value {
+        let workflow_revision = format!("sha256:{}", "b".repeat(64));
+        let scopes = json!([{
+            "target": {
+                "connectionId": "connection-1",
+                "namespace": {
+                    "database": "db",
+                    "catalog": null,
+                    "schema": "public",
+                    "path": []
+                },
+                "object": null
+            },
+            "configRevision": 1,
+            "command": "query"
+        }]);
+        let identity = json!({
+            "dashboardId": "dashboard-1",
+            "widgetId": "widget-1",
+            "workflowId": "workflow-1",
+            "workflowRevision": workflow_revision,
+            "grantId": "grant-1",
+            "grantVersion": 1,
+            "refreshIntervalSeconds": 60,
+            "scopes": scopes,
+        });
+        let definition_revision = format!(
+            "sha256:{:x}",
+            Sha256::digest(serde_json::to_vec(&identity).expect("revision identity encodes"))
+        );
         json!({
             "planVersion": 1,
             "handlerVersion": 1,
             "checkpointVersion": 1,
             "monitorOccurrence": {
                 "scheduleId": "monitor:dashboard-1:widget-1",
-                "definitionRevision": format!("sha256:{}", "a".repeat(64)),
+                "definitionRevision": definition_revision,
                 "scheduledAt": 1_800,
                 "refreshIntervalSeconds": 60,
                 "dashboardId": "dashboard-1",
                 "widgetId": "widget-1",
                 "workflowId": "workflow-1",
-                "workflowRevision": format!("sha256:{}", "b".repeat(64)),
+                "workflowRevision": workflow_revision,
                 "grantId": "grant-1",
                 "grantVersion": 1,
-                "scopes": [{
-                    "target": {
-                        "connectionId": "connection-1",
-                        "namespace": {
-                            "database": "db",
-                            "catalog": null,
-                            "schema": "public",
-                            "path": []
-                        },
-                        "object": null
-                    },
-                    "configRevision": 1,
-                    "command": "query"
-                }]
+                "scopes": scopes
             }
         })
     }
@@ -331,6 +413,18 @@ mod monitor_occurrence_tests {
         assert!(durable_plan("monitorOccurrence", &with_private_field).is_err());
 
         assert!(durable_plan("schemaDiffApply", &payload()).is_err());
+    }
+
+    #[test]
+    fn monitor_occurrence_rejects_inconsistent_revision_and_schedule_time() {
+        let mut changed_definition = payload();
+        changed_definition["monitorOccurrence"]["workflowRevision"] =
+            json!(format!("sha256:{}", "c".repeat(64)));
+        assert!(durable_plan("monitorOccurrence", &changed_definition).is_err());
+
+        let mut misaligned_timestamp = payload();
+        misaligned_timestamp["monitorOccurrence"]["scheduledAt"] = json!(1_801);
+        assert!(durable_plan("monitorOccurrence", &misaligned_timestamp).is_err());
     }
 
     #[test]
