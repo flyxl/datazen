@@ -50,13 +50,14 @@ pub async fn run(
         .connect(&config)
         .await
         .unwrap_or_else(|_| panic!("isolated fixture unavailable"));
-    assert!(driver
-        .execute(
-            &observer,
-            "CREATE TABLE backup_probe (id INTEGER PRIMARY KEY, payload TEXT)"
-        )
-        .await
-        .is_ok());
+    let create_probe = if postgres {
+        "CREATE TABLE backup_probe (id INTEGER PRIMARY KEY, payload TEXT)"
+    } else {
+        // Oversized-row rejection needs a value above the renderer's byte
+        // budget; MySQL TEXT cannot hold that fixture, whereas LONGTEXT can.
+        "CREATE TABLE backup_probe (id INTEGER PRIMARY KEY, payload LONGTEXT)"
+    };
+    assert!(driver.execute(&observer, create_probe).await.is_ok());
     assert!(driver
         .execute(
             &observer,
@@ -64,6 +65,29 @@ pub async fn run(
         )
         .await
         .is_ok());
+    assert!(driver
+        .execute(
+            &observer,
+            "CREATE TABLE backup_empty_probe (empty_id INTEGER PRIMARY KEY, empty_payload TEXT)"
+        )
+        .await
+        .is_ok());
+    if postgres {
+        assert!(driver
+            .execute(
+                &observer,
+                "CREATE TABLE backup_sequence_probe (id SERIAL PRIMARY KEY)"
+            )
+            .await
+            .is_ok());
+        assert!(driver
+            .execute(
+                &observer,
+                "INSERT INTO backup_sequence_probe DEFAULT VALUES"
+            )
+            .await
+            .is_ok());
+    }
     let lifecycle = Arc::new(host::Lifecycle::default());
     let runtime = host::runtime(config.clone(), provider, lifecycle.clone());
     let ctx = RequestContext::new(
@@ -115,6 +139,20 @@ pub async fn run(
         .read_to_string(&mut dump)
         .unwrap();
     assert!(dump.contains("CREATE TABLE"));
+    assert!(dump.contains("backup_empty_probe"));
+    assert!(dump.contains("empty_id"));
+    assert!(dump.contains("empty_payload"));
+    let insert_columns = format!(
+        "({}, {}) VALUES",
+        driver.quote_ident("id"),
+        driver.quote_ident("payload")
+    );
+    assert!(
+        dump.contains(&insert_columns),
+        "populated table columns retain their order and names"
+    );
+    assert!(!dump.contains("statementMetadata"));
+    assert!(!dump.contains("statementColumns"));
     assert!(dump.contains("INSERT INTO"));
     assert!(dump.contains("bounded backup ✓"));
     let statements = sql_dump::split_sql_statements(&dump);
@@ -123,6 +161,16 @@ pub async fn run(
         .execute(&observer, "DROP TABLE backup_probe")
         .await
         .is_ok());
+    assert!(driver
+        .execute(&observer, "DROP TABLE backup_empty_probe")
+        .await
+        .is_ok());
+    if postgres {
+        assert!(driver
+            .execute(&observer, "DROP TABLE backup_sequence_probe")
+            .await
+            .is_ok());
+    }
     for statement in &statements {
         assert!(
             driver.execute(&observer, statement).await.is_ok(),
@@ -133,6 +181,33 @@ pub async fn run(
         .query(&observer, "SELECT id,payload FROM backup_probe ORDER BY id")
         .await
         .unwrap_or_else(|_| panic!("independent readback failed"));
+    let empty = driver
+        .query(
+            &observer,
+            "SELECT empty_id, empty_payload FROM backup_empty_probe",
+        )
+        .await
+        .unwrap_or_else(|_| panic!("empty fixture readback failed"));
+    assert!(
+        empty.rows.is_empty(),
+        "empty table is restored with its columns"
+    );
+    if postgres {
+        let generated = driver
+            .query(
+                &observer,
+                "INSERT INTO backup_sequence_probe DEFAULT VALUES RETURNING id",
+            )
+            .await
+            .unwrap_or_else(|_| panic!("restored sequence insert failed"));
+        assert!(
+            matches!(
+                generated.rows.first().and_then(|row| row.first()),
+                Some(Some(Value::Integer(2)))
+            ),
+            "restored sequence preserves its next value"
+        );
+    }
     assert_eq!(read.rows.len(), 2);
     assert_eq!(
         read.rows[0][1]

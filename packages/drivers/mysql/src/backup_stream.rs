@@ -13,6 +13,10 @@ struct Source<'a> {
 fn string(row: &[Option<Value>], index: usize) -> Result<String, ResourceError> {
     match row.get(index) {
         Some(Some(Value::String(s))) => Ok(s.clone()),
+        // MySQL exposes some textual SHOW/catalog fields as binary wire types.
+        // Decode only catalog text here; row-data Bytes keep their binary SQL literals.
+        Some(Some(Value::Bytes(bytes))) => String::from_utf8(bytes.clone())
+            .map_err(|_| DriverError::QueryFailed("invalid backup catalog UTF-8".into()).into()),
         _ => Err(DriverError::QueryFailed("invalid backup catalog row".into()).into()),
     }
 }
@@ -69,20 +73,16 @@ impl RetainedBackupSource for Source<'_> {
         ))
     }
     async fn columns(&self, object: &TableInfo) -> Result<Vec<String>, ResourceError> {
-        let relation = sql_dump::qualified_ident(
-            &|n| self.driver.quote_ident(n),
-            Some(self.database),
-            &object.name,
-        );
-        Ok(self
+        // Query actual catalog rows on the retained handle. QueryResult derives
+        // its columns from returned rows, so SELECT ... LIMIT 0 has no metadata.
+        let table = self
             .driver
-            .query(self.handle, &format!("SELECT * FROM {relation} LIMIT 0"))
-            .await?
-            .columns
-            .into_iter()
-            .map(|c| c.name)
-            .collect())
+            .format_sql_literal(&Some(Value::String(object.name.clone())));
+        self.driver.query(self.handle, &format!(
+            "SELECT COLUMN_NAME FROM information_schema.columns WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME={table} ORDER BY ORDINAL_POSITION"
+        )).await?.rows.into_iter().map(|row|string(&row, 0)).collect()
     }
+
     async fn rows(&self, sql: &str, sink: &dyn ResultSink) -> Result<(), ResourceError> {
         self.driver
             .query_to_sink(self.handle, self.execution, sql, None, None, sink)
@@ -231,4 +231,20 @@ pub(crate) async fn dump(
         }
     }
     outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn catalog_text_accepts_mysql_text_and_binary_wire_values() {
+        for value in [
+            Value::String("列_name".into()),
+            Value::Bytes("列_name".as_bytes().to_vec()),
+        ] {
+            assert_eq!(string(&[Some(value)], 0).unwrap(), "列_name");
+        }
+        assert!(string(&[Some(Value::Bytes(vec![0xff]))], 0).is_err());
+        assert!(string(&[None], 0).is_err());
+    }
 }

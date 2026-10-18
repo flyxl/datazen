@@ -90,15 +90,17 @@ impl RetainedBackupSource for Source<'_> {
             object.schema.as_deref(),
             &object.name,
         );
-        Ok(self
-            .driver
-            .query(self.handle, &format!("SELECT * FROM {name} LIMIT 0"))
-            .await?
-            .columns
-            .into_iter()
-            .map(|c| c.name)
-            .collect())
+        // Read catalog rows on this retained resource rather than relying on
+        // metadata from a zero-row QueryResult (which has no decoded columns).
+        let relation = self.driver.format_sql_literal(&Some(Value::String(name)));
+        self.driver.query(self.handle, &format!(
+            "SELECT attname::text FROM pg_attribute WHERE attrelid={relation}::regclass AND attnum>0 AND NOT attisdropped ORDER BY attnum"
+        )).await?.rows.into_iter().map(|row| match row.first() {
+            Some(Some(Value::String(name))) => Ok(name.clone()),
+            _ => Err(DriverError::QueryFailed("invalid backup column catalog row".into()).into()),
+        }).collect()
     }
+
     async fn rows(&self, sql: &str, sink: &dyn ResultSink) -> Result<(), ResourceError> {
         self.driver
             .stream_resource_query(self.handle, self.execution, sql, None, None, sink)

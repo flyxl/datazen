@@ -200,6 +200,9 @@ impl ResultSink for InsertSink<'_> {
     async fn write_statement_summary(&self, _: StatementSummary) -> Result<(), ResourceError> {
         Ok(())
     }
+    async fn write_output(&self, output: serde_json::Value) -> Result<(), ResourceError> {
+        accept_statement_metadata(&output)
+    }
     async fn complete(&self) -> Result<(), ResourceError> {
         Ok(())
     }
@@ -225,12 +228,53 @@ impl ResultSink for DdlSink<'_> {
     async fn write_statement_summary(&self, _: StatementSummary) -> Result<(), ResourceError> {
         Ok(())
     }
+    async fn write_output(&self, output: serde_json::Value) -> Result<(), ResourceError> {
+        accept_statement_metadata(&output)
+    }
     async fn complete(&self) -> Result<(), ResourceError> {
         Ok(())
     }
     async fn fail(&self, _: &str) -> Result<(), ResourceError> {
         Err(DriverError::QueryFailed("backup DDL stream failed".into()).into())
     }
+}
+
+/// Row stream metadata is consumed locally, never included in SQL output.
+/// Unknown output and truncated reads must not become a successful backup.
+fn accept_statement_metadata(output: &serde_json::Value) -> Result<(), ResourceError> {
+    let reject = || ResourceError::SinkRejected {
+        reason: "invalid backup statement metadata".into(),
+    };
+    let object = output.as_object().ok_or_else(reject)?;
+    let known_shape = match output["kind"].as_str() {
+        Some("statementColumns") => object.len() == 3,
+        Some("statementMetadata") => {
+            object.len() == 4 && output["truncated"].as_bool() == Some(false)
+        }
+        _ => false,
+    };
+    if !known_shape
+        || !output["statementIndex"]
+            .as_u64()
+            .is_some_and(|index| index <= u32::MAX as u64)
+        || !output["columns"].is_array()
+    {
+        return Err(reject());
+    }
+    struct Budget(usize);
+    impl std::io::Write for Budget {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(bytes.len());
+            if self.0 > INSERT_BATCH_MAX_BYTES {
+                return Err(std::io::Error::other("backup metadata exceeds budget"));
+            }
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    serde_json::to_writer(Budget(0), output).map_err(|_| reject())
 }
 
 pub fn command_definition() -> DriverCommandDefinition {
@@ -330,6 +374,45 @@ mod tests {
                 .map(|v| v["text"].as_str().unwrap())
                 .collect::<String>(),
             input
+        );
+    }
+    #[tokio::test]
+    async fn row_and_ddl_sinks_consume_only_bounded_complete_statement_metadata() {
+        let driver = crate::mock_driver::MockDriver::new("postgresql", Default::default());
+        let sink = Sink::default();
+        let rows = InsertSink {
+            driver: &*driver,
+            sink: &sink,
+            prefix: "INSERT INTO t (x) VALUES ".into(),
+        };
+        let ddl = DdlSink(&sink);
+        let metadata = serde_json::json!({"kind":"statementMetadata","statementIndex":0,"columns":[],"truncated":false});
+        let columns =
+            serde_json::json!({"kind":"statementColumns","statementIndex":0,"columns":[]});
+        rows.write_output(columns.clone()).await.unwrap();
+        ddl.write_output(columns).await.unwrap();
+        rows.write_output(metadata.clone()).await.unwrap();
+        ddl.write_output(metadata.clone()).await.unwrap();
+        assert!(
+            sink.0.lock().unwrap().is_empty(),
+            "metadata never enters SQL output"
+        );
+        let mut truncated = metadata.clone();
+        truncated["truncated"] = true.into();
+        let mut oversized = metadata.clone();
+        oversized["columns"] = serde_json::json!([{"name":"x".repeat(INSERT_BATCH_MAX_BYTES)}]);
+        for rejected in [
+            truncated,
+            oversized,
+            serde_json::json!({"kind":"unknown"}),
+            serde_json::json!({"kind":"backupChunk","text":"bad"}),
+        ] {
+            assert!(rows.write_output(rejected.clone()).await.is_err());
+            assert!(ddl.write_output(rejected).await.is_err());
+        }
+        assert!(
+            sink.0.lock().unwrap().is_empty(),
+            "rejected output never enters SQL output"
         );
     }
     #[test]
