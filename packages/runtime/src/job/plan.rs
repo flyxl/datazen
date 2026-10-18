@@ -26,11 +26,13 @@ pub struct FrozenPlan {
     pub handler_version: u64,
     pub checkpoint_version: u64,
     pub selection_revision: Option<u64>,
+    pub workflow_owner_blocks: Option<Vec<String>>,
 }
 
 /// 解析并校验计划投影。规则：
 ///
-/// * 三个版本字段必须存在且为整数；未知 major（ != [`SUPPORTED_PLAN_MAJOR`] ）一律拒绝，
+/// * 三个版本字段必须存在且为整数；plan/checkpoint major 仅 v1，
+///   workflowRun handler v2 另要求冻结 block 白名单；其他未知 major 一律拒绝，
 ///   不自动升级、不自动降级（§10.1.1「固定版本与授权不变才继续」）。
 /// * apply 类必须携带非空 `consumedPlanId`，prepare 类不得携带。
 /// * 缺字段或类型错误 → `PlanProjectionInvalid`。
@@ -58,13 +60,23 @@ pub fn project_frozen_plan(kind: &str, payload: &Value) -> Result<FrozenPlan, Jo
     let plan_version = required_u64(payload, "planVersion")?;
     let handler_version = required_u64(payload, "handlerVersion")?;
     let checkpoint_version = required_u64(payload, "checkpointVersion")?;
-    for got in [plan_version, handler_version, checkpoint_version] {
+    for got in [plan_version, checkpoint_version] {
         if got != SUPPORTED_PLAN_MAJOR {
             return Err(JobError::VersionIncompatible {
                 got,
                 supported: SUPPORTED_PLAN_MAJOR,
             });
         }
+    }
+    if handler_version != 1
+        && !(kind == "workflowRun"
+            && handler_version == 2
+            && payload.get("workflowOwnerBlocks").is_some())
+    {
+        return Err(JobError::VersionIncompatible {
+            got: handler_version,
+            supported: SUPPORTED_PLAN_MAJOR,
+        });
     }
     let selection_revision = match payload.get("selectionRevision") {
         None => None,
@@ -80,6 +92,40 @@ pub fn project_frozen_plan(kind: &str, payload: &Value) -> Result<FrozenPlan, Jo
         handler_version,
         checkpoint_version,
         selection_revision,
+        workflow_owner_blocks: match payload.get("workflowOwnerBlocks") {
+            None => None,
+            Some(value) => {
+                if kind != "workflowRun" {
+                    return Err(JobError::PlanProjectionInvalid(
+                        "workflow owner blocks require workflowRun".into(),
+                    ));
+                }
+                let values = value.as_array().filter(|v| v.len() <= 256).ok_or_else(|| {
+                    JobError::PlanProjectionInvalid("invalid workflow owner blocks".into())
+                })?;
+                let mut seen = std::collections::BTreeSet::new();
+                let mut blocks = Vec::new();
+                for value in values {
+                    let id = value
+                        .as_str()
+                        .filter(|s| {
+                            !s.trim().is_empty()
+                                && s.len() <= 512
+                                && !s.chars().any(char::is_control)
+                        })
+                        .ok_or_else(|| {
+                            JobError::PlanProjectionInvalid("invalid workflow block id".into())
+                        })?;
+                    if !seen.insert(id) {
+                        return Err(JobError::PlanProjectionInvalid(
+                            "duplicate workflow block id".into(),
+                        ));
+                    }
+                    blocks.push(id.to_owned());
+                }
+                Some(blocks)
+            }
+        },
     })
 }
 

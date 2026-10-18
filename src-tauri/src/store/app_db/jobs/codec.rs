@@ -58,6 +58,7 @@ pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortErr
                 | "useTransaction"
                 | "requireRollback"
                 | "profileRevisionDigest"
+                | "workflowOwnerBlocks"
         ) {
             return Err(PortError::BackendUnavailable(
                 "job plan contains a field outside the durable projection".into(),
@@ -96,6 +97,7 @@ fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {
                         .is_some_and(|text| !text.is_empty() && text.len() <= 4096)
                 })
         }),
+        "workflowOwnerBlocks" => value.is_array(),
         "recoveryTargets" => validate_recovery_targets(value),
         _ => false,
     };

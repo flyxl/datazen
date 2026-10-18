@@ -15,6 +15,25 @@ use crate::job::runtime_repository::JobRuntimeRepository;
 
 #[async_trait]
 impl JobRuntimeRepository for InMemoryJobRepository {
+    async fn validate_workflow_owner(
+        &self,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        stage: &datazen_platform_api::id::StageId,
+        block: &datazen_platform_api::id::BlockId,
+    ) -> Result<(), PortError> {
+        self.validate_workflow_owner_claim(ctx, claim, stage, block)
+    }
+
+    async fn validate_stage_owner(
+        &self,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        stage: &datazen_platform_api::id::StageId,
+    ) -> Result<(), PortError> {
+        self.validate_owner_claim(ctx, claim, stage)
+    }
+
     async fn cancel_poll(
         &self,
         ctx: &RequestContext,

@@ -269,6 +269,7 @@ async fn cm41_expired_plan_is_rejected_before_any_effect() {
         handler_version: 1,
         checkpoint_version: 1,
         selection_revision: Some(1),
+        workflow_owner_blocks: None,
     };
     let err = handler.validate_plan(&plan).expect_err("expired");
     assert!(err.to_string().contains("expired"), "{err}");
@@ -295,6 +296,7 @@ async fn cm41_selection_revision_mismatch_is_rejected() {
         handler_version: 1,
         checkpoint_version: 1,
         selection_revision: Some(2),
+        workflow_owner_blocks: None,
     };
     let err = handler.validate_plan(&plan).expect_err("stale revision");
     assert!(err.to_string().contains("selection revision"), "{err}");

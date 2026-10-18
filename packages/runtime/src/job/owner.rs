@@ -39,28 +39,49 @@ impl StageOwnerPermit {
         &self.claim.job_id
     }
     pub async fn verify_active(&self) -> Result<(), ApiError> {
-        // Renew is a fenced repository operation, not a check against a caller's
-        // Job DTO. It rejects replaced workers, expired leases and terminal jobs.
         self.repository
-            .renew(&self.claim)
+            .validate_stage_owner(&self.context, &self.claim, &self.stage)
             .await
-            .map_err(|_| ApiError::permission_denied("job claim is no longer authoritative"))?;
-        let job = self
-            .repository
-            .get(&self.context, self.claim.job_id.clone())
-            .await
-            .map_err(|_| ApiError::permission_denied("job unavailable"))?;
-        if job.view.cancel_requested
-            || job.view.state.is_terminal()
-            || !job.stages.iter().any(|s| {
-                s.stage_id == self.stage
-                    && s.claimed_by.as_ref() == Some(&self.claim.worker_id)
-                    && s.finished_at.is_none()
-            })
+            .map_err(|_| ApiError::permission_denied("job stage claim is no longer authoritative"))
+    }
+    pub async fn admit_owner(
+        &self,
+        context: &RequestContext,
+        owner: &OwnerRef,
+    ) -> Result<OwnerRef, ApiError> {
+        if context.organization_id != self.context.organization_id
+            || context.principal_id != self.context.principal_id
+            || context.client_instance_id != self.context.client_instance_id
+            || context.authentication_session_id != self.context.authentication_session_id
+            || context.delegation_id != self.context.delegation_id
         {
-            return Err(ApiError::permission_denied("job stage is no longer active"));
+            return Err(ApiError::permission_denied(
+                "job owner belongs to another context",
+            ));
         }
-        Ok(())
+        match owner {
+            OwnerRef::Job { job_id, stage_id }
+                if job_id == &self.claim.job_id && stage_id == &self.stage =>
+            {
+                self.verify_active().await?
+            }
+            OwnerRef::WorkflowBlock { job_id, block_id } if job_id == &self.claim.job_id => {
+                self.repository
+                    .validate_workflow_owner(context, &self.claim, &self.stage, block_id)
+                    .await
+                    .map_err(|_| {
+                        ApiError::permission_denied(
+                            "block is not in the current frozen workflow claim",
+                        )
+                    })?;
+            }
+            _ => {
+                return Err(ApiError::permission_denied(
+                    "owner is outside the runtime permit",
+                ))
+            }
+        }
+        Ok(owner.clone())
     }
     /// Acquire under a genuine WorkflowBlock owner. No owner or identity comes
     /// from YAML/IPC. An abandoned acquisition is closed by the acquisition task.
@@ -128,6 +149,7 @@ impl StageOwnerPermit {
                 },
             ),
         };
+        let owner = self.admit_owner(&self.context, &owner).await?;
         let ctx = self.context.clone();
         let permit = self.clone();
         let (send, receive) = tokio::sync::oneshot::channel();
@@ -243,3 +265,7 @@ async fn close_owned(
         _ => tracing::warn!("job block resource release unconfirmed; verification required"),
     }
 }
+
+#[cfg(test)]
+#[path = "owner_tests.rs"]
+mod tests;

@@ -133,6 +133,12 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 ### 8.1 当前共享实现与保留边界（2026-10-17）
 
+桌面 Workflow 的真实 `workflow::job::Handler::run_stage_authorized` 继续使用唯一的 `StageOwnerPermit`，不另建 capability 类型。生产 Host 的独立 Job session 与 session/transaction block 获取，在资源绑定前调用 `PlatformAdapter::begin_job_owned_call`；permit 内部获取路径再次校验，Runtime 已绑定会话的后续操作也检查当前 claim。裸 OwnerIntent、错 Job/stage/block、其他 client、过期/被替代 claim 或终态 Job 均拒绝。
+
+所有权校验只读，不调用 `renew`。SQLite schema v4 仅给 claim 增加可空 `claim_client_instance_id`；认领事务写入宿主 RequestContext 的实例，迁移旧记录为 NULL 并保持拒绝。只读查询在当前持久 Job/活动 stage 下核对组织、主体、client、worker、generation、精确 expiry、Running/未取消和未结束阶段，不能把查询 Job 可见性当作 owner 授权，也不伪造在途操作已回滚。
+
+本实现沿用生产执行器的单个 `workflow` Job stage：它运行整份 Workflow，因此多个 blocks/steps 可合法属于同一 stage，不套用另一分支的一 stage 一 block 模型。受理前冻结定义，并把完整 `workflowOwnerBlocks` 白名单与 digest 一并写入同一不可变 Job payload。真实 Handler 在预算/claim 前对照自己的 frozen definition 核验列表完全一致；block gate 每次从当前 claim 对应持久 Job payload 读取声明，而非使用 caller 或旧 process-local map。`workflowRun` 的 handlerVersion=2 仅在该完整声明可解析时受理；缺声明、重复/非法 block、其他 kind 的 handlerVersion=2 和未知版本拒绝，plan/checkpoint 继续 v1。旧运行不恢复进程内 Handler/活 session，不凭持久白名单自动重放。基础设施与生产 handler journey 都需独立 tester 实跑；此接线不表示 P6 整体关闭。
+
 共享领域实现集中在 `packages/feature-core`，Wapp 协议/路由策略在 `packages/workspace-apps`。本轮补迁 command policy、迁移端点身份算法、Dashboard 创建/归档规则、export 容器规划与迁移结果历史映射；原路径保留薄绑定和兼容导出。逐项源码边界见 [feature-core 残余审计](feature-core.md#final-residual-audit-2026-10-17)。
 
 `execute_driver_command` 仍服务桌面 editor/session IPC；ConnectionManager 仍承载本地 session identity、tunnel 与 P5 repository/job adapter。AI/MCP/Workflow 默认 DB 工具已走共享 ResourceExecutionHost。Monitor 的兼容连接 registry 没有活动调度查询调用，实际调度走共享 MonitorHost/Workflow。

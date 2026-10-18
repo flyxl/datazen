@@ -198,6 +198,35 @@ impl PlatformAdapter {
         Ok((self.begin_call(), owner))
     }
 
+    /// Runtime-issued authority is rechecked before any Job resource binding.
+    pub async fn begin_job_owned_call(
+        &self,
+        intent: &OwnerIntent,
+        permit: &datazen_runtime::job::StageOwnerPermit,
+    ) -> Result<(CallScope, datazen_platform_api::context::OwnerRef), ApiError> {
+        let call = self.begin_call();
+        let owner = match intent {
+            OwnerIntent::Job { job_id, stage_id } => datazen_platform_api::context::OwnerRef::Job {
+                job_id: job_id.clone(),
+                stage_id: stage_id.clone(),
+            },
+            OwnerIntent::WorkflowBlock { job_id, block_id } => {
+                datazen_platform_api::context::OwnerRef::WorkflowBlock {
+                    job_id: job_id.clone(),
+                    block_id: block_id.clone(),
+                }
+            }
+            _ => {
+                return Err(ApiError::new(
+                    ApiErrorCode::PermissionDenied,
+                    "invalid Job owner intent",
+                ))
+            }
+        };
+        let owner = permit.admit_owner(call.context(), &owner).await?;
+        Ok((call, owner))
+    }
+
     /// 注入前端桥。转调 [`frontend_bridge::set_bridge_injection`]；重复注入返回 `false`。
     pub fn set_bridge_injection(injection: BridgeInjection) -> bool {
         frontend_bridge::set_bridge_injection(injection)

@@ -10,7 +10,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 pub const APP_DB_FILE: &str = "datazen.sqlite";
-pub const SCHEMA_VERSION: i32 = 3;
+pub const SCHEMA_VERSION: i32 = 4;
 pub const MAX_RUN_ROWS: usize = 500;
 
 const JOB_SCHEMA_V2: &str = r#"
@@ -295,6 +295,10 @@ impl AppDb {
             if current < 3 {
                 tx.execute_batch("CREATE TABLE monitor_schedule_grants (id TEXT PRIMARY KEY NOT NULL, dashboard_id TEXT NOT NULL, widget_id TEXT NOT NULL, metadata_json TEXT NOT NULL); CREATE INDEX idx_monitor_grant_widget ON monitor_schedule_grants(dashboard_id, widget_id);")?;
                 tx.execute("INSERT INTO schema_migrations(version, applied_at) VALUES (3, ?1)", params![Utc::now().to_rfc3339()])?;
+            }
+            if current < 4 {
+                tx.execute_batch("ALTER TABLE jobs ADD COLUMN claim_client_instance_id TEXT;")?;
+                tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (4,?1)", params![Utc::now().to_rfc3339()])?;
             }
             tx.commit()?;
             Ok(())

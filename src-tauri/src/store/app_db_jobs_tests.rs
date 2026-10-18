@@ -747,3 +747,6 @@ impl JobRecoveryVerifier for ConfirmReadOnlyVerifier {
         })
     }
 }
+
+#[path = "app_db_job_owner_tests.rs"]
+mod owner_claims;

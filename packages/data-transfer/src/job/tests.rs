@@ -463,6 +463,7 @@ fn frozen_plan_for_apply() -> datazen_runtime::job::FrozenPlan {
         handler_version: 1,
         checkpoint_version: 1,
         selection_revision: Some(1),
+        workflow_owner_blocks: None,
     }
 }
 

@@ -259,6 +259,18 @@ impl WorkflowHost for Host<'_> {
         let prepared = self
             .prepare(&target.connection_id, revision, "query", declared)
             .await?;
+        self.state
+            .platform_require()
+            .map_err(|e| WorkflowError::Validation(e.to_string()))?
+            .begin_job_owned_call(
+                &crate::platform::OwnerIntent::WorkflowBlock {
+                    job_id: permit.job_id().clone(),
+                    block_id: BlockId::new(block),
+                },
+                permit,
+            )
+            .await
+            .map_err(|e| WorkflowError::Validation(e.message))?;
         let lease = permit
             .open_workflow_block(
                 prepared.runtime.clone(),
@@ -323,6 +335,18 @@ impl WorkflowHost for Host<'_> {
                 ),
             )
             .await?;
+        self.state
+            .platform_require()
+            .map_err(|e| WorkflowError::Validation(e.to_string()))?
+            .begin_job_owned_call(
+                &crate::platform::OwnerIntent::Job {
+                    job_id: permit.job_id().clone(),
+                    stage_id: StageId::new("workflow"),
+                },
+                permit,
+            )
+            .await
+            .map_err(|e| WorkflowError::Validation(e.message))?;
         let lease = permit
             .open_job_session(
                 prepared.runtime.clone(),
@@ -384,7 +408,16 @@ impl JobHandler for Handler {
     fn handler_version(&self) -> u64 {
         2
     }
-    fn validate_plan(&self, _: &FrozenPlan) -> Result<Vec<StageSpec>, JobError> {
+    fn validate_plan(&self, plan: &FrozenPlan) -> Result<Vec<StageSpec>, JobError> {
+        let blocks = self
+            .definition
+            .blocks
+            .iter()
+            .map(|block| block.id.clone())
+            .collect::<Vec<_>>();
+        if plan.workflow_owner_blocks.as_ref() != Some(&blocks) {
+            return Err(JobError::StaleClaim);
+        }
         Ok(vec![StageSpec {
             stage_id: StageId::new("workflow"),
             kind: "workflowRun".into(),
@@ -637,7 +670,7 @@ pub(crate) async fn execute(
             job_id: id.clone(),
             stage_id: StageId::new("workflow"),
         },
-        payload: serde_json::json!({"kind":"workflowRun","planVersion":1,"handlerVersion":2,"checkpointVersion":1,"planDigest":digest}),
+        payload: serde_json::json!({"kind":"workflowRun","planVersion":1,"handlerVersion":2,"checkpointVersion":1,"planDigest":digest,"workflowOwnerBlocks":frozen.blocks.iter().map(|block|block.id.clone()).collect::<Vec<_>>()}),
         created_at: state.desktop_job_host.now(),
     };
     state
@@ -679,3 +712,7 @@ pub(crate) async fn execute(
         .ok_or_else(|| "Workflow Job did not dispatch".to_string())?;
     result
 }
+
+#[cfg(test)]
+#[path = "job_owner_tests.rs"]
+mod owner_tests;
