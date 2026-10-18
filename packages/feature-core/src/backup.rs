@@ -132,6 +132,10 @@ pub async fn backup_database_to_path(
     app: Option<&dyn BackupEvents>,
 ) -> Result<(), CommandError> {
     tracing::info!(%db_session_id, path = %output_path.display(), "backup_database");
+    // Reject unsupported options before opening a driver connection. The driver
+    // owns a connection pool keyed by this handle; a parse error after connect
+    // would otherwise bypass every explicit disconnect path below.
+    let opts = parse_backup_options(options.as_deref().unwrap_or_default())?;
     let (driver, config) = state.resolve_source(&db_session_id).await?;
 
     let dump_handle = driver.connect(&config).await.map_err(|e| {
@@ -144,7 +148,6 @@ pub async fn backup_database_to_path(
         .as_deref()
         .unwrap_or(config.database.as_deref().unwrap_or(""))
         .to_string();
-    let opts = parse_backup_options(&options.unwrap_or_default())?;
 
     let mut on_progress = |progress: DumpProgress| emit_backup_progress(app, progress);
     let out = match driver

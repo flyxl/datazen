@@ -196,6 +196,8 @@ pub struct MockDriver {
     opts: MockDriverOptions,
     /// Monotonic counter so each `connect` returns a distinct session handle id.
     session_seq: AtomicU32,
+    connect_calls: AtomicU32,
+    disconnect_calls: AtomicU32,
     get_columns_calls: AtomicU32,
     get_schema_calls: AtomicU32,
     query_calls: AtomicU32,
@@ -224,6 +226,8 @@ impl MockDriver {
             db_type: db_type.into(),
             opts,
             session_seq: AtomicU32::new(0),
+            connect_calls: AtomicU32::new(0),
+            disconnect_calls: AtomicU32::new(0),
             get_columns_calls: AtomicU32::new(0),
             get_schema_calls: AtomicU32::new(0),
             query_calls: AtomicU32::new(0),
@@ -240,6 +244,14 @@ impl MockDriver {
             table_schemas_by_database: Mutex::new(table_schemas_by_database),
             table_lists_by_database: Mutex::new(table_lists_by_database),
         })
+    }
+
+    pub fn connect_calls(&self) -> u32 {
+        self.connect_calls.load(Ordering::Relaxed)
+    }
+
+    pub fn disconnect_calls(&self) -> u32 {
+        self.disconnect_calls.load(Ordering::Relaxed)
     }
 
     /// Columns visible for `table` in the explicitly requested `database`,
@@ -448,6 +460,7 @@ impl DatabaseDriver for MockDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
+        self.connect_calls.fetch_add(1, Ordering::Relaxed);
         let seq = self.session_seq.fetch_add(1, Ordering::Relaxed) + 1;
         Ok(ConnectionHandle {
             id: format!("mock-{}-{}", config.id, seq),
@@ -463,6 +476,7 @@ impl DatabaseDriver for MockDriver {
     }
 
     async fn disconnect(&self, _handle: ConnectionHandle) -> Result<(), DriverError> {
+        self.disconnect_calls.fetch_add(1, Ordering::Relaxed);
         match &self.opts.disconnect_error {
             Some(message) => Err(DriverError::ConnectionFailed(message.clone())),
             None => Ok(()),

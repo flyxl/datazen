@@ -146,6 +146,30 @@ async fn backup_database_errors_when_not_connected() {
 }
 
 #[tokio::test]
+async fn unsupported_backup_option_is_rejected_before_driver_connection() {
+    use crate::testing::app_state::TestAppState;
+
+    let test = TestAppState::new().await;
+    let path = test._temp.path().join("unsupported-format.dump");
+    let error = backup_database_to_path(
+        &test.state,
+        "missing".into(),
+        None,
+        path.clone(),
+        Some(vec!["format-custom".into()]),
+        None,
+        None,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(error.to_string().contains("format-custom"));
+    assert_eq!(test.mock.connect_calls(), 0);
+    assert_eq!(test.mock.disconnect_calls(), 0);
+    assert!(!path.exists());
+}
+
+#[tokio::test]
 async fn restore_database_rejects_read_only_connection() {
     use crate::testing::app_state::TestAppState;
 
