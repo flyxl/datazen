@@ -307,3 +307,66 @@ fn scheduled_read_only_queries_use_a_closed_function_policy() {
         );
     }
 }
+
+#[test]
+fn scheduled_sql_rejects_qualified_relations_at_every_query_depth() {
+    use datazen_feature_core::dashboard::schedule_grant::validate_read_only_sql;
+    // Qualification is refused regardless of case or quoting, including names
+    // that could match the approved target. No textual namespace comparison.
+    for relation in [
+        "other_schema.secret",
+        "otherdb.secret",
+        "app.secret",
+        "OTHER_SCHEMA.SECRET",
+        r#""other_schema"."secret""#,
+        r#""OtherSchema".secret"#,
+        r#"other_schema."Secret""#,
+        "`otherdb`.`secret`",
+        "`OtherDb`.secret",
+        "otherdb.`Secret`",
+        "catalog.other_schema.secret",
+        r#""catalog"."other_schema"."secret""#,
+        "`catalog`.`otherdb`.`secret`",
+    ] {
+        for sql in [
+            format!("SELECT * FROM {relation}"),
+            format!("SELECT * FROM metrics m JOIN {relation} s ON m.id = s.id"),
+            format!("SELECT * FROM {relation} s JOIN metrics m ON m.id = s.id"),
+            format!("SELECT * FROM (SELECT * FROM {relation}) nested"),
+            format!("SELECT * FROM metrics WHERE EXISTS (SELECT 1 FROM {relation})"),
+            format!("SELECT (SELECT count(*) FROM {relation}) FROM metrics"),
+            format!("WITH hidden AS (SELECT * FROM {relation}) SELECT * FROM hidden"),
+            format!("SELECT * FROM metrics UNION ALL SELECT * FROM {relation}"),
+        ] {
+            assert!(
+                validate_read_only_sql(&sql).is_err(),
+                "qualified relation accepted: {sql}"
+            );
+        }
+    }
+}
+
+#[test]
+fn scheduled_sql_preserves_unqualified_relations_aliases_and_column_qualification() {
+    use datazen_feature_core::dashboard::schedule_grant::validate_read_only_sql;
+    for sql in [
+        "SELECT * FROM metrics",
+        "SELECT m.id FROM metrics AS m",
+        r#"SELECT * FROM "Metrics""#,
+        "SELECT * FROM `Metrics`",
+        // The dot is inside one quoted identifier, not a namespace separator.
+        r#"SELECT * FROM "literal.table""#,
+        "SELECT * FROM `literal.table`",
+        "SELECT m.id FROM metrics m JOIN samples s ON m.id = s.id",
+        "SELECT * FROM (SELECT * FROM metrics) nested",
+        "SELECT * FROM metrics WHERE EXISTS (SELECT 1 FROM samples)",
+        "SELECT (SELECT count(*) FROM samples) FROM metrics",
+        "WITH visible AS (SELECT * FROM metrics) SELECT * FROM visible",
+        "SELECT * FROM metrics UNION ALL SELECT * FROM samples",
+    ] {
+        assert!(
+            validate_read_only_sql(sql).is_ok(),
+            "unqualified relation rejected: {sql}"
+        );
+    }
+}

@@ -88,7 +88,10 @@ impl MonitorGrant {
 
 /// Bounded monitor policy: one SELECT/VALUES query, no writable CTE, INTO or row
 /// lock. Function calls use a closed built-in allowlist; unknown, quoted and
-/// schema-qualified functions and table-valued functions fail closed. This supplements the connection SQL guard; it is not MCP's ReadOnly
+/// schema-qualified functions and table-valued functions fail closed. Relations
+/// must be single identifiers: SQL cannot override the approved target namespace
+/// through schema/database qualification. This supplements the connection SQL
+/// guard; it is not MCP's ReadOnly
 /// mode (which deliberately disables all SQL tools).
 pub fn validate_read_only_sql(sql: &str) -> Result<(), String> {
     use sqlparser::{
@@ -161,9 +164,18 @@ pub fn validate_read_only_sql(sql: &str) -> Result<(), String> {
         fn pre_visit_table_factor(&mut self, table: &TableFactor) -> ControlFlow<()> {
             // FROM f(...) is not necessarily represented by Expr::Function.
             match table {
-                TableFactor::Table { args: None, .. }
-                | TableFactor::Derived { .. }
-                | TableFactor::NestedJoin { .. } => ControlFlow::Continue(()),
+                // The Runtime target grant does not constrain qualified names
+                // embedded in SQL. Without a dialect-aware namespace comparison,
+                // even a qualification that looks like the approved namespace
+                // must fail closed (including quoted and multipart variants).
+                TableFactor::Table {
+                    name, args: None, ..
+                } if matches!(name.0.as_slice(), [ObjectNamePart::Identifier(_)]) => {
+                    ControlFlow::Continue(())
+                }
+                TableFactor::Derived { .. } | TableFactor::NestedJoin { .. } => {
+                    ControlFlow::Continue(())
+                }
                 _ => ControlFlow::Break(()),
             }
         }
@@ -182,7 +194,7 @@ pub fn validate_read_only_sql(sql: &str) -> Result<(), String> {
         || statements.visit(&mut ReadOnly).is_break()
     {
         return Err(
-            "monitor requires one read-only query without writable CTE, INTO, row locks or unapproved functions".into(),
+            "monitor requires one read-only query without writable CTE, INTO, row locks, qualified relations or unapproved functions".into(),
         );
     }
     Ok(())
