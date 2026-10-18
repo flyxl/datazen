@@ -70,6 +70,13 @@ impl MonitorGrant {
             Some(DelegationId::new(&self.id)),
         )
     }
+    /// Exact frozen namespace/command binding shared by scheduled admission and
+    /// target-aware Runtime policy. Connect has no command to execute yet.
+    pub fn scope(&self, target: &ExecutionTarget, command: Option<&str>) -> Option<&MonitorScope> {
+        self.scopes.iter().find(|scope| {
+            &scope.target == target && command.is_none_or(|command| scope.command == command)
+        })
+    }
     pub fn delegation(&self) -> DelegationRef {
         let context = self.context();
         DelegationRef::new(

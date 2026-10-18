@@ -370,3 +370,21 @@ fn scheduled_sql_preserves_unqualified_relations_aliases_and_column_qualificatio
         );
     }
 }
+
+#[test]
+fn frozen_monitor_scope_requires_exact_namespace_and_query_command() {
+    let grant = grant();
+    let target = &grant.scopes[0].target;
+    assert!(grant.scope(target, Some("query")).is_some());
+    assert!(grant.scope(target, None).is_some()); // connection admission
+    assert!(grant.scope(target, Some("execute")).is_none());
+    let mut redirected = target.clone();
+    redirected.namespace.database = Some("other".into());
+    assert!(grant.scope(&redirected, Some("query")).is_none());
+    redirected = target.clone();
+    redirected.namespace.schema = Some("other".into());
+    assert!(grant.scope(&redirected, None).is_none());
+    redirected = target.clone();
+    redirected.connection_id = ConnectionId::new("other");
+    assert!(grant.scope(&redirected, Some("query")).is_none());
+}

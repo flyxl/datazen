@@ -1,5 +1,6 @@
 //! Durable, bounded result storage. Metadata rename is the publication boundary.
 //! Unfinished writers are recovered as truncated; writer capabilities never survive restart.
+mod execution;
 use async_trait::async_trait;
 use datazen_platform_api::{
     context::RequestContext,
@@ -8,6 +9,7 @@ use datazen_platform_api::{
     id::*,
     ports::artifact::*,
 };
+pub(crate) use execution::ExecutionArtifactScope;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -26,6 +28,10 @@ struct Record {
     organization: OrganizationId,
     owner: PrincipalId,
     execution: ExecutionId,
+    #[serde(default)]
+    delegated_execution: bool,
+    #[serde(skip)]
+    execution_scope: Option<ExecutionArtifactScope>,
     fingerprint: String,
     expires: u64,
     metadata: ArtifactMetadata,
@@ -152,6 +158,12 @@ impl FileArtifactStore {
                 tracing::warn!("corrupt artifact metadata removed during recovery");
                 continue;
             };
+            // Delegated result access is a process-local admitted capability.
+            // Neither its scope nor writer may be reconstructed after restart.
+            if record.delegated_execution {
+                fs::remove_dir_all(item.path()).map_err(|_| unavailable())?;
+                continue;
+            }
             let valid = item.file_name().to_str() == Some(record.metadata.artifact_id.as_str())
                 && record.metadata.published_chunk_count.get() == record.sizes.len() as u64
                 && record.sizes.len() <= 65536
@@ -248,7 +260,8 @@ impl FileArtifactStore {
             .records
             .get(id)
             .filter(|r| {
-                r.organization == ctx.organization_id
+                !r.delegated_execution
+                    && r.organization == ctx.organization_id
                     && r.owner == ctx.principal_id
                     && ctx.delegation_id.is_none()
             })
@@ -288,58 +301,7 @@ impl FileArtifactStore {
         {
             return Err(PortError::TokenInvalid);
         }
-        self.expire_at(now())?;
-        let mut state = self.state.lock().map_err(|_| unavailable())?;
-        if state.records.len() >= 4096 {
-            return Err(PortError::QuotaExceeded("artifact count".into()));
-        }
-        let id = ArtifactId::new(
-            crate::directory::DbSessionIdGenerator::new()
-                .generate()
-                .as_str(),
-        );
-        let lease = LeaseId::new(
-            crate::directory::DbSessionIdGenerator::new()
-                .generate()
-                .as_str(),
-        );
-        let record = Record {
-            organization: spec.organization_id,
-            owner: spec.owner_principal_id,
-            execution: spec.execution_id,
-            fingerprint: spec.target_fingerprint.clone(),
-            expires: now().saturating_add(spec.ttl_seconds),
-            sizes: Vec::new(),
-            writer: Some(lease.clone()),
-            unpublished_bytes: 0,
-            metadata: ArtifactMetadata {
-                target_fingerprint: spec.target_fingerprint,
-                artifact_id: id.clone(),
-                lifecycle: ArtifactLifecycle::Writing,
-                published_chunk_count: Counter::ZERO,
-                published_byte_size: Counter::ZERO,
-                total_chunks: None,
-                result_completeness: ResultCompleteness::Pending,
-                truncation_reason: None,
-            },
-        };
-        fs::create_dir(self.dir(&id)).map_err(|_| unavailable())?;
-        private_dir(&self.dir(&id))?;
-        if let Err(error) = self.commit(&record) {
-            let _ = fs::remove_dir_all(self.dir(&id));
-            return Err(error);
-        }
-        state.records.insert(id.clone(), record);
-        Ok((
-            id.clone(),
-            ArtifactWriter {
-                artifact_id: id,
-                lease_id: lease,
-                next_chunk_index: Counter::ZERO,
-                published_chunk_count: Counter::ZERO,
-                published_byte_size: Counter::ZERO,
-            },
-        ))
+        self.create_record(spec, None)
     }
     pub fn append_sync(
         &self,
@@ -476,25 +438,7 @@ impl FileArtifactStore {
     ) -> Result<ArtifactChunk, PortError> {
         let s = self.state.lock().map_err(|_| unavailable())?;
         let r = self.visible(&s, ctx, id)?;
-        if !r.metadata.is_published(index) {
-            return Err(invalid());
-        }
-        let offset = r.sizes.iter().take(index.get() as usize).sum();
-        let bytes = read_block(
-            &self.dir(id).join(format!("{}.chunk", index.get())),
-            r.sizes[index.get() as usize],
-        )?;
-        if bytes.len() as u64 != r.sizes[index.get() as usize] {
-            return Err(unavailable());
-        }
-        Ok(ArtifactChunk {
-            artifact_id: id.clone(),
-            chunk_index: index,
-            total_chunks: r.metadata.total_chunks,
-            offset: Counter::new(offset),
-            bytes,
-            result_completeness: r.metadata.result_completeness,
-        })
+        self.read_record(id, index, r)
     }
     pub fn reclaim_expired_sync(&self) -> Result<Vec<ArtifactId>, PortError> {
         self.expire_at(now())

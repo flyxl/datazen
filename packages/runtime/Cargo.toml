@@ -56,6 +56,7 @@ libc = "0.2"
 # 所以只能靠这条自引用的 dev-dependency 把 feature 打开。
 # 依赖自身不构成环：dev 依赖不参与本 crate 的编译图，crate 仍然只编译一次。
 [dev-dependencies]
+tempfile = "3"
 datazen-runtime = { path = ".", features = ["test-harness"] }
 # CM-32 单账铁律的可执行形状靠**语法树**判，而不是对源码做字面子串匹配。
 # 子串黑名单是开放世界的：`AtomicU64` / `cached_refs` 这类改个名的第二本账一条都命中不了。

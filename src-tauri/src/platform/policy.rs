@@ -90,12 +90,10 @@ impl PolicyService for DesktopPolicy {
         }
         let grant = self.grant(ctx)?;
         let scope = grant
-            .scopes
-            .iter()
-            .find(|scope| {
-                &scope.target == target
-                    && (action == AuthorizationAction::Connect || scope.command == command)
-            })
+            .scope(
+                target,
+                (action != AuthorizationAction::Connect).then_some(command),
+            )
             .ok_or(PortError::TokenInvalid)?;
         let (config, metadata) = self
             .store
