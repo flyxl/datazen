@@ -78,6 +78,35 @@ async fn production_handler_binds_job_and_block_owners_from_durable_claim_withou
         serde_json::json!(["retained"])
     );
     assert_eq!(jobs[0].stages.len(), 1);
+    let digest = jobs[0].definition.payload["planDigest"].as_str().unwrap();
+    assert_eq!(
+        digest.len(),
+        71,
+        "persist the full sha256:<64 lowercase hex> digest"
+    );
+    let hex = digest
+        .strip_prefix("sha256:")
+        .expect("canonical digest prefix");
+    assert!(hex
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)));
+    // The producer conforms to the unchanged repository contract. A raw digest
+    // must still be refused, rather than made admissible by relaxing the codec.
+    let mut raw_digest_job = jobs[0].definition.clone();
+    raw_digest_job.job_id = JobId::new("raw-workflow-digest");
+    raw_digest_job.payload["planDigest"] = serde_json::json!(hex);
+    let rejected = test
+        .state
+        .desktop_job_host
+        .accept(
+            &ctx,
+            raw_digest_job,
+            &IdempotencyKey::new("raw-workflow-digest"),
+        )
+        .await;
+    assert!(
+        matches!(rejected, Err(datazen_platform_api::error::PortError::BackendUnavailable(message)) if message == "job plan field `planDigest` has an unsupported durable value")
+    );
 }
 
 #[tokio::test]

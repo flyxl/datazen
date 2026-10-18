@@ -650,7 +650,7 @@ pub(crate) async fn execute(
     }
     use sha2::{Digest, Sha256};
     let digest = format!(
-        "{:x}",
+        "sha256:{:x}",
         Sha256::digest(
             serde_json::to_vec(&(
                 &frozen,
