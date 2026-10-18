@@ -8,7 +8,8 @@
 //! a named rejection instead of a silent fallback to a different resource: a
 //! forged, expired or revoked grant never degrades into "independent" execution.
 
-use datazen_platform_api::dto::session::SessionHandle;
+use datazen_platform_api::context::OwnerRef;
+use datazen_platform_api::dto::session::{SessionHandle, SessionView};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -65,6 +66,47 @@ pub enum AiGrantRejection {
     Expired,
     /// The grant was explicitly revoked (user toggle, editor close, config change).
     Revoked,
+}
+
+/// Confirm that a runtime handle belongs to the editor requesting a grant,
+/// against the current profile revision.
+///
+/// Runtime session lookup is scoped to the client instance, so it cannot
+/// distinguish two panes in the same desktop process. This policy checks the
+/// editor-session identity as well as the connection and config revision before
+/// the host records a grant.
+pub fn verify_session_ownership(
+    view: &SessionView,
+    claimed_client_instance_id: &str,
+    editor_session_id: &str,
+    connection_id: &str,
+    profile_revision: u64,
+) -> Result<(), AiGrantRejection> {
+    match &view.owner {
+        OwnerRef::Editor {
+            client_instance_id,
+            editor_session_id: owner_editor,
+        } => {
+            if client_instance_id.as_str() != claimed_client_instance_id {
+                return Err(AiGrantRejection::ClientMismatch);
+            }
+            if owner_editor.as_str() != editor_session_id {
+                return Err(AiGrantRejection::SessionGone);
+            }
+        }
+        // A session owned by a job/block/opaque client is not an editor session,
+        // so it must never back an editor grant.
+        _ => return Err(AiGrantRejection::SessionGone),
+    }
+    if view.connection_id.as_str() != connection_id {
+        return Err(AiGrantRejection::SessionGone);
+    }
+    if view.config_revision.0 != profile_revision {
+        // The session was opened against an older profile revision; granting it
+        // would execute on stale configuration.
+        return Err(AiGrantRejection::SessionGone);
+    }
+    Ok(())
 }
 
 impl AiGrantRejection {
@@ -322,9 +364,81 @@ impl AiGrantRegistry {
     }
 }
 
+/// Shared grant lifecycle policy used by host adapters.
+///
+/// The service reclaims expired records on issue and verification, while
+/// preserving `Expired` for the request that discovers its own expiry.
+#[derive(Clone, Default)]
+pub struct AiGrantService {
+    registry: AiGrantRegistry,
+}
+
+impl AiGrantService {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub async fn issue(&self, issue: AiGrantIssue, now_ms: i64) -> AiGrantReceipt {
+        self.registry.purge_expired(now_ms).await;
+        self.registry.issue(issue, now_ms).await
+    }
+
+    pub async fn verify_claim(
+        &self,
+        claim: &AiTargetClaim,
+        now_ms: i64,
+    ) -> Result<Option<AiGrantRecord>, AiGrantRejection> {
+        let result = self.registry.verify_claim(claim, now_ms).await;
+        self.registry.purge_expired(now_ms).await;
+        result
+    }
+
+    pub async fn touch(&self, grant_id: &str, now_ms: i64) -> bool {
+        self.registry.touch(grant_id, now_ms).await
+    }
+
+    pub async fn revoke(&self, grant_id: &str) -> bool {
+        self.registry.revoke(grant_id).await
+    }
+
+    pub async fn purge_expired(&self, now_ms: i64) -> usize {
+        self.registry.purge_expired(now_ms).await
+    }
+
+    pub async fn revoke_for_connection(&self, connection_id: &str) -> usize {
+        self.registry.revoke_for_connection(connection_id).await
+    }
+
+    pub async fn revoke_for_session_handle(&self, db_session_id: &str) -> usize {
+        self.registry.revoke_for_session_handle(db_session_id).await
+    }
+
+    pub async fn revoke_for_editor_session(&self, editor_session_id: &str) -> usize {
+        self.registry
+            .revoke_for_editor_session(editor_session_id)
+            .await
+    }
+
+    pub async fn len(&self) -> usize {
+        self.registry.len().await
+    }
+
+    pub async fn is_empty(&self) -> bool {
+        self.registry.is_empty().await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_platform_api::context::OwnerRef;
+    use datazen_platform_api::dto::session::{
+        AttachmentState, ContextConfidence, SessionContext, SessionState, TransactionState,
+    };
+    use datazen_platform_api::id::{
+        ClientInstanceId, ConnectionId, Counter, DbSessionId, EditorSessionId, RuntimeEpoch,
+    };
+    use datazen_platform_api::target::{ExecutionTarget, NamespaceTarget};
 
     const TTL: i64 = 60_000;
 
@@ -338,6 +452,40 @@ mod tests {
             database: Some("app".into()),
             config_revision: 7,
             handle: None,
+        }
+    }
+
+    fn session_view(owner: OwnerRef, connection_id: &str, config_revision: u64) -> SessionView {
+        let namespace = NamespaceTarget::new(Some("app".into()), None, None, vec![]);
+        SessionView {
+            handle: SessionHandle::new(DbSessionId::new("dbs-1"), RuntimeEpoch::new("1")),
+            connection_id: ConnectionId::new(connection_id),
+            config_revision: Counter::new(config_revision),
+            owner,
+            initial_target: ExecutionTarget::new(
+                ConnectionId::new(connection_id),
+                namespace.clone(),
+            ),
+            observed_context: SessionContext {
+                namespace,
+                search_path: None,
+                effective_identity: None,
+                transaction_state: TransactionState::None,
+                autocommit: None,
+                confidence: ContextConfidence::Confirmed,
+            },
+            context_revision: Counter::new(1),
+            state: SessionState::Ready,
+            attachment_state: AttachmentState::Attached,
+            active_execution_id: None,
+            expires_at: None,
+        }
+    }
+
+    fn editor_owner(client: &str, editor: &str) -> OwnerRef {
+        OwnerRef::Editor {
+            client_instance_id: ClientInstanceId::new(client),
+            editor_session_id: EditorSessionId::new(editor),
         }
     }
 
@@ -512,6 +660,96 @@ mod tests {
         assert_eq!(
             registry.verify("old", "client-a", "pane-1", TTL + 2).await,
             Err(AiGrantRejection::Unknown)
+        );
+    }
+
+    #[tokio::test]
+    async fn service_preserves_expired_rejection_then_reclaims_the_record() {
+        let service = AiGrantService::new();
+        let receipt = service.issue(issue("g1", "client-a", "pane-1"), 0).await;
+        let claim = AiTargetClaim::EditorGrant {
+            grant_id: receipt.grant_id,
+            claimed_client_instance_id: "client-a".into(),
+            editor_session_id: "pane-1".into(),
+        };
+
+        assert_eq!(
+            service.verify_claim(&claim, DEFAULT_GRANT_TTL_MS).await,
+            Err(AiGrantRejection::Expired)
+        );
+        assert!(service.is_empty().await);
+    }
+
+    #[tokio::test]
+    async fn service_reclaims_expired_records_when_issuing_a_grant() {
+        let service = AiGrantService::new();
+        service.issue(issue("old", "client-a", "pane-1"), 0).await;
+        service
+            .issue(issue("new", "client-a", "pane-1"), DEFAULT_GRANT_TTL_MS)
+            .await;
+
+        assert_eq!(service.len().await, 1);
+    }
+
+    #[test]
+    fn matching_editor_session_is_accepted() {
+        let session = session_view(editor_owner("client-a", "pane-1"), "conn-1", 7);
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn another_pane_of_the_same_client_is_rejected() {
+        // Runtime lookup is client-scoped, so the grant policy must distinguish panes.
+        let session = session_view(editor_owner("client-a", "pane-2"), "conn-1", 7);
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Err(AiGrantRejection::SessionGone)
+        );
+    }
+
+    #[test]
+    fn another_client_is_rejected() {
+        let session = session_view(editor_owner("client-b", "pane-1"), "conn-1", 7);
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Err(AiGrantRejection::ClientMismatch)
+        );
+    }
+
+    #[test]
+    fn session_on_another_connection_is_rejected() {
+        let session = session_view(editor_owner("client-a", "pane-1"), "conn-2", 7);
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Err(AiGrantRejection::SessionGone)
+        );
+    }
+
+    #[test]
+    fn stale_config_revision_is_rejected() {
+        let session = session_view(editor_owner("client-a", "pane-1"), "conn-1", 6);
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Err(AiGrantRejection::SessionGone)
+        );
+    }
+
+    #[test]
+    fn non_editor_owned_session_is_rejected() {
+        let session = session_view(
+            OwnerRef::ClientSession {
+                client_instance_id: ClientInstanceId::new("client-a"),
+                purpose: "mcp".into(),
+            },
+            "conn-1",
+            7,
+        );
+        assert_eq!(
+            verify_session_ownership(&session, "client-a", "pane-1", "conn-1", 7),
+            Err(AiGrantRejection::SessionGone)
         );
     }
 }

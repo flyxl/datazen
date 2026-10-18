@@ -4,7 +4,7 @@
 
 ### 1.1 概述
 
-AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式，分两个 Rust crate：`packages/ai-api` 定义统一接口（契约层），`packages/ai-providers` 提供各厂商的 Provider 实现与共享 HTTP 协议（传输层）。宿主 `src-tauri/src/ai/` 只做门面 re-export，并保留确实需要宿主服务的那部分（安全门、Prompt 解析、Schema 上下文、token 预算、取消）。
+AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约，`packages/ai-providers` 提供各厂商实现与共享 HTTP 协议，`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、预算、取消和 editor grant 所有权策略。`src-tauri/src/ai/` 保留旧导入路径的门面 re-export，并由 `metadata_source.rs` 把宿主 Runtime / SchemaCache / profile 查询绑定到共享端口；Tauri 命令只负责 IPC、配置与运行时身份适配。
 
 ### 1.2 架构分层
 
@@ -34,15 +34,17 @@ packages/ai-providers/              # Provider 实现 + 共享 HTTP 协议（传
 │       ├── anthropic.rs            # Anthropic Messages API
 │       └── test_support.rs         # 协议层单测共享的 wiremock 夹具
 
-src-tauri/src/ai/                   # 宿主门面：re-export + 真正需要宿主服务的部分
-├── mod.rs                          # re-export datazen_ai_api / datazen_ai_providers + 本地模块
-├── context.rs                      # SchemaContextBuilder (DDL 上下文, token 预算控制)
-├── prompt_resolver.rs              # PromptResolver (资源文件加载 + 用户/驱动覆盖 + 多语言 fallback)
-├── safety.rs                       # AiSafetyGate (调用方文本出境分级与工具调用校验)
-├── schema_pipeline.rs              # SchemaContextPipeline (PromptSeed → 系统后缀)
-├── ctx_yaml.rs                     # .ctx.yaml 表分组上下文解析
-├── budget.rs                       # token 预算常量
-└── cancel.rs                       # CancellationRegistry (request_id + owner → CancellationToken)
+packages/feature-core/src/ai/       # 共享 AI 应用逻辑，不依赖 Tauri
+├── context.rs                      # SchemaContextBuilder (DDL 上下文)
+├── prompt_resolver.rs              # PromptResolver (覆盖、模板与方言提示)
+├── safety.rs / tool_loop.rs        # 出境分级、工具调用校验与流式循环
+├── schema_pipeline.rs / ctx_yaml.rs # Schema 上下文预算与 .ctx.yaml 解析
+├── budget.rs / cancel.rs           # token 预算与按 owner 隔离的取消
+└── ownership.rs                    # AiGrantRegistry / AiGrantService 与 editor 会话归属校验
+
+src-tauri/src/ai/                   # 兼容门面与桌面适配
+├── mod.rs                          # re-export AI API、Provider 与共享模块
+└── metadata_source.rs              # 将会话到 profile 身份解析和 Runtime 元数据读取绑定到共享端口
 ```
 
 ### 1.3 AiProvider Trait
@@ -282,14 +284,14 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 AI 默认**独立操作**：每个 DB 工具调用经共享 `ResourceExecutionHost` → ExecutionGateway 借一次性资源，看不到某个编辑器会话里的临时对象。用户显式授权当前编辑器会话后，工具改在**该编辑器的固定 runtime session** 上执行（同队列、临时对象可见）；授权可撤销，撤销后新调用明确拒绝且编辑器资源仍存活。
 
 - 请求携带 `AiTargetClaim`：`{kind: "independent"}` 或 `{kind: "editorGrant", grantId, claimedClientInstanceId, editorSessionId}`（`packages/feature-core/src/ai/ownership.rs`）。
-- 授权表 `AiGrantRegistry`：`issue / verify / verify_claim / touch / revoke / revoke_for_editor_session / purge_expired`。记录含 `client_instance_id`、`editor_session_id`、`owner_fingerprint`、`connection_id`、`database`、`config_revision`、`deadline_ms` 与编辑器活会话句柄 `SessionHandle`。时间全部由调用方注入（`now_ms`），默认 TTL 15 分钟，活动对话经 `touch` 续期。
+- 共享授权策略 `packages/feature-core/src/ai/ownership.rs` 提供 `AiGrantRegistry` 与 `AiGrantService`：`issue / verify / verify_claim / touch / revoke / revoke_for_editor_session / purge_expired`。记录含 `client_instance_id`、`editor_session_id`、`owner_fingerprint`、`connection_id`、`database`、`config_revision`、`deadline_ms` 与编辑器活会话句柄 `SessionHandle`。时间全部由调用方注入（`now_ms`），默认 TTL 15 分钟，活动对话经 `touch` 续期。`verify_claim` 先计算本次拒绝原因，再清理过期记录，因此发现过期 grant 的请求仍返回 `aiGrantExpired`，后续请求才会看到记录已回收。
 - IPC：`ai_grant_editor_session`（经 `OwnerIntent::Editor` 归属校验，claimed client 与本机实例不符即拒绝；再核验句柄指向活会话并钉住配置版本）、`ai_revoke_editor_grant`、`ai_touch_editor_grant`。`ai_chat` / `ai_generate_sql` 增参 `targetClaim`。
 - 执行分流：独立调用走一次性资源；`editorGrant` 调用先 `verify_claim`，失败按 `AiGrantRejection::code()` 明确报错（`aiGrantUnknown` / `aiGrantClientMismatch` / `aiGrantSessionGone` / `aiGrantExpired` / `aiGrantRevoked`），**禁止静默降级为独立操作**；成功则用 `RetainedSession` 绑定编辑器句柄，经 `resource_execution::execute_with_session` 执行，目标与授权记录不一致时在派发前拒绝。
 - **借用而不拥有**：grant 执行走 `resource_execution::execute_with_existing_session`——只借用编辑器会话句柄，执行器**不关闭也不回滚**该会话。此前用 `RetainedSession` 包装会在 drop 时关闭编辑器会话，已废弃。
 - 工具指定的 `database` 与授权记录不一致时在派发前拒绝；未指定时用授权记录补齐，目标规范化由共享执行器统一完成（因此对象寻址命令如 `get_table_schema` 走同一条 `prepare` 路径）。
 - 结果归属：DB 工具结果 JSON 附 `attribution`：`{kind: "independent" | "editorGrant", grantId?, editorSessionId?}`。这是**面向模型与审计的来源标注**，不回流前端 UI；前端消息上的归属元数据由 `targetClaim` 直接构造。
 
-- **归属校验在 grant 层补齐**（runtime 的 `get_session` 只按 org/principal/clientInstanceId 过滤，同进程两个 pane 在它眼里没有区别）：`verify_session_ownership` 逐项比对 `SessionView.owner` 的 clientInstanceId 与 editorSessionId、会话所在 connectionId、以及 profile 当前 configRevision，任一不符即具名拒绝；非 editor owner（Job/WorkflowBlock/ClientSession）一律拒绝。单测覆盖「同 client 的另一个 pane」「另一 client」「另一连接」「旧 revision」「非 editor owner」五种拒绝。
+- **归属校验由共享 grant 策略完成**（runtime 的 `get_session` 只按 org/principal/clientInstanceId 过滤，同进程两个 pane 在它眼里没有区别）：`verify_session_ownership` 逐项比对 `SessionView.owner` 的 clientInstanceId 与 editorSessionId、会话所在 connectionId、以及 profile 当前 configRevision，任一不符即具名拒绝；非 editor owner（Job/WorkflowBlock/ClientSession）一律拒绝。Tauri 适配器只读取活 `SessionView` 和 profile revision，再调用该纯策略。单测覆盖「同 client 的另一个 pane」「另一 client」「另一连接」「旧 revision」「非 editor owner」五种拒绝。
 - **回收已接线**：`close_session` 在关闭（含关闭被拒）后撤销借用该 db session 的 grant；`platform_update_profile` / `platform_disable_profile` 撤销该连接上的全部 grant（revision 变更使会话失效）；`verify_claim` 与 `issue` 顺带 `purge_expired` 回收过期记录。
 
 **七、验收落点。**
