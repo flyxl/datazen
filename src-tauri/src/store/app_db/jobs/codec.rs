@@ -43,9 +43,14 @@ pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortErr
     let object = payload
         .as_object()
         .ok_or_else(|| PortError::BackendUnavailable("job plan must be an object".into()))?;
+    if kind == "monitorOccurrence" && !object.contains_key("monitorOccurrence") {
+        return Err(PortError::BackendUnavailable(
+            "monitor occurrence plan is missing its durable identity".into(),
+        ));
+    }
     let mut projected = serde_json::Map::new();
     for (key, value) in object {
-        if !matches!(
+        let common_field = matches!(
             key.as_str(),
             "kind"
                 | "planVersion"
@@ -64,12 +69,14 @@ pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortErr
                 | "requireRollback"
                 | "profileRevisionDigest"
                 | "workflowOwnerBlocks"
-        ) {
+        );
+        let monitor_field = key == "monitorOccurrence" && kind == "monitorOccurrence";
+        if !common_field && !monitor_field {
             return Err(PortError::BackendUnavailable(
                 "job plan contains a field outside the durable projection".into(),
             ));
         }
-        validate_plan_value(key, value)?;
+        validate_plan_value(kind, key, value)?;
         projected.insert(key.clone(), value.clone());
     }
     let projected = Value::Object(projected);
@@ -88,7 +95,7 @@ fn check_plan_size(projected: &Value) -> Result<(), PortError> {
     Ok(())
 }
 
-fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {
+fn validate_plan_value(kind: &str, key: &str, value: &Value) -> Result<(), PortError> {
     let valid = match key {
         "kind" => value.as_str().is_some_and(safe_identifier),
         "consumedPlanId" | "planId" => value.as_str().is_some_and(safe_identifier),
@@ -109,6 +116,7 @@ fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {
         }),
         "workflowOwnerBlocks" => value.is_array(),
         "recoveryTargets" => validate_recovery_targets(value),
+        "monitorOccurrence" => kind == "monitorOccurrence" && validate_monitor_occurrence(value),
         _ => false,
     };
     if valid {
@@ -118,6 +126,112 @@ fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {
             "job plan field `{key}` has an unsupported durable value"
         )))
     }
+}
+
+fn validate_monitor_occurrence(value: &Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    const FIELDS: &[&str] = &[
+        "scheduleId",
+        "definitionRevision",
+        "scheduledAt",
+        "refreshIntervalSeconds",
+        "dashboardId",
+        "widgetId",
+        "workflowId",
+        "workflowRevision",
+        "grantId",
+        "grantVersion",
+        "scopes",
+    ];
+    if !has_exact_keys(object, FIELDS)
+        || !bounded_text(&object["scheduleId"], 1_536)
+        || !safe_digest_text(&object["definitionRevision"])
+        || object["scheduledAt"].as_i64().is_none()
+        || !object["refreshIntervalSeconds"]
+            .as_u64()
+            .is_some_and(|seconds| (1..=31_536_000).contains(&seconds))
+        || !bounded_text(&object["dashboardId"], 512)
+        || !bounded_text(&object["widgetId"], 512)
+        || !bounded_text(&object["workflowId"], 512)
+        || !safe_digest_text(&object["workflowRevision"])
+        || !bounded_text(&object["grantId"], 512)
+        || !object["grantVersion"]
+            .as_u64()
+            .is_some_and(|version| version > 0)
+    {
+        return false;
+    }
+    let expected_schedule_id = format!(
+        "monitor:{}:{}",
+        object["dashboardId"].as_str().unwrap_or_default(),
+        object["widgetId"].as_str().unwrap_or_default()
+    );
+    if object["scheduleId"].as_str() != Some(expected_schedule_id.as_str()) {
+        return false;
+    }
+    let Some(scopes) = object["scopes"].as_array() else {
+        return false;
+    };
+    !scopes.is_empty() && scopes.len() <= 128 && scopes.iter().all(validate_monitor_scope)
+}
+
+fn validate_monitor_scope(value: &Value) -> bool {
+    let Some(scope) = value.as_object() else {
+        return false;
+    };
+    if !has_exact_keys(scope, &["target", "configRevision", "command"])
+        || !scope["configRevision"]
+            .as_u64()
+            .is_some_and(|revision| revision > 0)
+        || scope["command"].as_str() != Some("query")
+    {
+        return false;
+    }
+    let Some(target) = scope["target"].as_object() else {
+        return false;
+    };
+    if !has_exact_keys(target, &["connectionId", "namespace", "object"])
+        || !bounded_text(&target["connectionId"], 512)
+    {
+        return false;
+    }
+    if !target["object"].is_null() {
+        return false;
+    }
+    let Some(namespace) = target["namespace"].as_object() else {
+        return false;
+    };
+    const NAMESPACE_FIELDS: &[&str] = &["database", "catalog", "schema", "path"];
+    if !has_exact_keys(namespace, NAMESPACE_FIELDS) {
+        return false;
+    }
+    let name_is_valid = |value: &Value| value.is_null() || bounded_text(value, 4_096);
+    if !name_is_valid(&namespace["database"])
+        || !name_is_valid(&namespace["catalog"])
+        || !name_is_valid(&namespace["schema"])
+    {
+        return false;
+    }
+    let Some(path) = namespace["path"].as_array() else {
+        return false;
+    };
+    path.len() <= 32 && path.iter().all(|item| bounded_text(item, 4_096))
+}
+
+fn has_exact_keys(object: &serde_json::Map<String, Value>, expected: &[&str]) -> bool {
+    object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
+}
+
+fn bounded_text(value: &Value, max_bytes: usize) -> bool {
+    value.as_str().is_some_and(|text| {
+        !text.is_empty() && text.len() <= max_bytes && !text.chars().any(char::is_control)
+    })
+}
+
+fn safe_digest_text(value: &Value) -> bool {
+    value.as_str().is_some_and(|text| safe_digest(text))
 }
 
 fn safe_digest(text: &str) -> bool {
@@ -160,6 +274,74 @@ pub(super) fn safe_identifier(text: &str) -> bool {
         && text
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
+}
+
+#[cfg(test)]
+mod monitor_occurrence_tests {
+    use super::durable_plan;
+    use serde_json::json;
+
+    fn payload() -> serde_json::Value {
+        json!({
+            "planVersion": 1,
+            "handlerVersion": 1,
+            "checkpointVersion": 1,
+            "monitorOccurrence": {
+                "scheduleId": "monitor:dashboard-1:widget-1",
+                "definitionRevision": format!("sha256:{}", "a".repeat(64)),
+                "scheduledAt": 1_800,
+                "refreshIntervalSeconds": 60,
+                "dashboardId": "dashboard-1",
+                "widgetId": "widget-1",
+                "workflowId": "workflow-1",
+                "workflowRevision": format!("sha256:{}", "b".repeat(64)),
+                "grantId": "grant-1",
+                "grantVersion": 1,
+                "scopes": [{
+                    "target": {
+                        "connectionId": "connection-1",
+                        "namespace": {
+                            "database": "db",
+                            "catalog": null,
+                            "schema": "public",
+                            "path": []
+                        },
+                        "object": null
+                    },
+                    "configRevision": 1,
+                    "command": "query"
+                }]
+            }
+        })
+    }
+
+    #[test]
+    fn monitor_occurrence_is_included_in_a_strict_durable_projection() {
+        let plan = durable_plan("monitorOccurrence", &payload()).expect("monitor plan admitted");
+        assert_eq!(
+            plan["monitorOccurrence"]["scheduleId"],
+            "monitor:dashboard-1:widget-1"
+        );
+    }
+
+    #[test]
+    fn monitor_occurrence_rejects_unknown_fields_and_wrong_job_kind() {
+        let mut with_private_field = payload();
+        with_private_field["monitorOccurrence"]["password"] = json!("must-not-persist");
+        assert!(durable_plan("monitorOccurrence", &with_private_field).is_err());
+
+        assert!(durable_plan("schemaDiffApply", &payload()).is_err());
+    }
+
+    #[test]
+    fn monitor_occurrence_requires_identity_projection() {
+        let mut missing = payload();
+        missing
+            .as_object_mut()
+            .expect("payload object")
+            .remove("monitorOccurrence");
+        assert!(durable_plan("monitorOccurrence", &missing).is_err());
+    }
 }
 
 pub(super) fn request_digest(kind: &str, payload: &Value) -> Result<String, PortError> {

@@ -103,7 +103,7 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 
 共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
 
-撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。已观察结果保持真实；撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown。此实现仍使用现有短 Runtime execution 和 WidgetRun 落盘，**尚未建立持久 Monitor occurrence Job、跨重启 receipt/接管或 schedule 幂等账本**；不表示 P6 整体退出或真实驱动旅程已经验收。
+撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。已观察结果保持真实；撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown。每次周期执行先接受一个 SQLite durable `monitorOccurrence` Job；其严格投影只保存 schedule、定义版本、计划时间、授权身份与只读目标范围，不保存凭据。`scheduleId + definitionRevision + scheduledAt` 派生幂等 receipt，重启或重复 tick 命中已有 receipt 时不再派发查询。启动恢复会将未完成的 Monitor Job 标记为待验证并要求人工复核，不恢复 handler 或重放查询。此闭环已覆盖本地持久化与重复提交；不表示 P6 整体退出或真实 PostgreSQL/MySQL 驱动旅程已经验收。
 
 ## 7. 导出、备份与恢复的环境端口
 

@@ -219,21 +219,31 @@ pub(crate) async fn execute(
     let slot = chrono::Utc::now()
         .timestamp()
         .div_euclid(i64::from(refresh_sec));
+    let scheduled_at = slot
+        .checked_mul(i64::from(refresh_sec))
+        .ok_or("scheduled occurrence timestamp unavailable")?;
+    let refresh_interval_seconds = u64::from(refresh_sec);
     let context = grant.context();
     let requested_job_id = JobId::new(uuid::Uuid::new_v4().to_string());
-    let idempotency_key = occurrence_idempotency_key(grant, slot);
+    let schedule_id = occurrence_schedule_id(dashboard_id, &widget.id);
+    let definition_revision = occurrence_definition_revision(grant, refresh_interval_seconds)?;
+    let idempotency_key =
+        occurrence_idempotency_key(&schedule_id, &definition_revision, scheduled_at);
     let payload = serde_json::json!({
         "planVersion": 1,
         "handlerVersion": 1,
         "checkpointVersion": 1,
         "monitorOccurrence": {
+            "scheduleId": schedule_id,
+            "definitionRevision": definition_revision,
+            "scheduledAt": scheduled_at,
+            "refreshIntervalSeconds": refresh_interval_seconds,
             "dashboardId": dashboard_id,
             "widgetId": widget.id,
             "workflowId": widget.workflow_id,
             "workflowRevision": grant.workflow_revision,
             "grantId": grant.id,
             "grantVersion": grant.revocation_version,
-            "slot": slot,
             "scopes": grant.scopes,
         }
     });
@@ -288,16 +298,55 @@ pub(crate) async fn execute(
     }
 }
 
-fn occurrence_idempotency_key(grant: &MonitorGrant, slot: i64) -> IdempotencyKey {
+fn occurrence_schedule_id(dashboard_id: &str, widget_id: &str) -> String {
+    format!("monitor:{dashboard_id}:{widget_id}")
+}
+
+fn occurrence_definition_revision(
+    grant: &MonitorGrant,
+    refresh_interval_seconds: u64,
+) -> Result<String, String> {
+    let mut scopes = grant.scopes.clone();
+    scopes.sort_by(|left, right| {
+        left.target
+            .connection_id
+            .cmp(&right.target.connection_id)
+            .then_with(|| {
+                left.target
+                    .namespace
+                    .namespace_fingerprint()
+                    .cmp(&right.target.namespace.namespace_fingerprint())
+            })
+            .then_with(|| left.command.cmp(&right.command))
+            .then_with(|| left.config_revision.cmp(&right.config_revision))
+    });
+    let identity = serde_json::json!({
+        "dashboardId": grant.dashboard_id,
+        "widgetId": grant.widget_id,
+        "workflowId": grant.workflow_id,
+        "workflowRevision": grant.workflow_revision,
+        "grantId": grant.id,
+        "grantVersion": grant.revocation_version,
+        "refreshIntervalSeconds": refresh_interval_seconds,
+        "scopes": scopes,
+    });
+    let identity =
+        serde_json::to_vec(&identity).map_err(|_| "scheduled definition revision unavailable")?;
+    Ok(format!("sha256:{:x}", Sha256::digest(identity)))
+}
+
+fn occurrence_idempotency_key(
+    schedule_id: &str,
+    definition_revision: &str,
+    scheduled_at: i64,
+) -> IdempotencyKey {
     let identity = format!(
-        "{}:{}:{}:{}:{}:{}:{}",
-        grant.id,
-        grant.revocation_version,
-        grant.dashboard_id,
-        grant.widget_id,
-        grant.workflow_id,
-        grant.workflow_revision,
-        slot,
+        "{}:{}{}:{}{}",
+        schedule_id.len(),
+        schedule_id,
+        definition_revision.len(),
+        definition_revision,
+        scheduled_at
     );
     IdempotencyKey::new(format!(
         "monitor-occurrence:{:x}",
@@ -559,7 +608,9 @@ async fn wait_for_cancel(cancel: &CancelToken) {
 
 #[cfg(test)]
 mod tests {
-    use super::occurrence_idempotency_key;
+    use super::{
+        occurrence_definition_revision, occurrence_idempotency_key, occurrence_schedule_id,
+    };
     use crate::monitor::grants::revision;
     use datazen_feature_core::dashboard::schedule_grant::MonitorGrant;
 
@@ -583,29 +634,37 @@ mod tests {
     }
 
     #[test]
-    fn occurrence_idempotency_is_stable_per_grant_revision_and_slot() {
+    fn occurrence_idempotency_uses_schedule_definition_and_scheduled_time() {
         let original = grant();
+        let schedule = occurrence_schedule_id(&original.dashboard_id, &original.widget_id);
+        let definition = occurrence_definition_revision(&original, 60).expect("definition hash");
         assert_eq!(
-            occurrence_idempotency_key(&original, 42),
-            occurrence_idempotency_key(&original, 42)
+            occurrence_idempotency_key(&schedule, &definition, 1_800),
+            occurrence_idempotency_key(&schedule, &definition, 1_800)
         );
         assert_ne!(
-            occurrence_idempotency_key(&original, 42),
-            occurrence_idempotency_key(&original, 43)
+            occurrence_idempotency_key(&schedule, &definition, 1_800),
+            occurrence_idempotency_key(&schedule, &definition, 1_860)
         );
 
         let mut revoked = original.clone();
         revoked.revocation_version += 1;
         assert_ne!(
-            occurrence_idempotency_key(&original, 42),
-            occurrence_idempotency_key(&revoked, 42)
+            definition,
+            occurrence_definition_revision(&revoked, 60).expect("revoked definition hash")
         );
 
         let mut changed_workflow = original.clone();
         changed_workflow.workflow_revision = revision("id: changed");
         assert_ne!(
-            occurrence_idempotency_key(&original, 42),
-            occurrence_idempotency_key(&changed_workflow, 42)
+            definition,
+            occurrence_definition_revision(&changed_workflow, 60)
+                .expect("changed workflow definition hash")
+        );
+        assert_ne!(
+            definition,
+            occurrence_definition_revision(&original, 120)
+                .expect("changed schedule definition hash")
         );
     }
 }
