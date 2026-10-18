@@ -150,6 +150,8 @@ async fn retained_recipe_commit_rollback_catalog_race_and_closed_session() {
         sql(&p, &h, &plan.metadata_probe_sql).await,
         "catalog probe failed"
     );
+    // Prove DDL exclusion while application DML has executed but is uncommitted.
+    assert!(sql(&p, &h, &plan.statements[0]).await);
     // lock_timeout is server-side: failure proves incompatible DDL cannot pass
     // the retained relation lock, without a timing-only sleep assertion.
     driver
@@ -171,12 +173,26 @@ async fn retained_recipe_commit_rollback_catalog_race_and_closed_session() {
         )
         .await
         .expect("DDL must fail specifically with lock_not_available (55P03)");
-    assert!(sql(&p, &h, &plan.statements[0]).await);
     assert!(p
         .commit_transaction(&h)
         .await
         .expect("commit observation failed")
         .committed());
+    // The exact same DDL must recover immediately after commit releases locks.
+    driver
+        .execute(
+            &observer,
+            &format!("ALTER TABLE {schema}.items ADD COLUMN extra INTEGER"),
+        )
+        .await
+        .expect("DDL did not recover after commit");
+    driver
+        .execute(
+            &observer,
+            &format!("ALTER TABLE {schema}.items DROP COLUMN extra"),
+        )
+        .await
+        .expect("restore plain heap failed");
     let rows = driver
         .query(&observer, &format!("SELECT id FROM {schema}.items"))
         .await

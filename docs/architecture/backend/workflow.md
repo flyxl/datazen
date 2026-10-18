@@ -246,3 +246,18 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
 
 撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。每个 grant 版本、dashboard/widget、workflow revision 与 refresh slot 对应一个带稳定幂等键的 `monitorOccurrence` Job；Job 受理后才派发原 scheduled workflow，WidgetRun 与有界 JobDomainResult 记录实际结果。启动恢复按持久化 service principal 扫描 occurrence：未派发 Job 标为未启动，运行中 Job 转为待核验，恢复流程不重放查询。撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown；真实 PG/MySQL 驱动旅程仍须独立验收，P6 未整体关闭。
+
+PostgreSQL 的独立实库验收入口为
+`cargo test -p datazen-driver-postgres --test workflow_transaction_evidence`，
+要求进程提供指向一次性测试库的 `MIGRATION_TEST_*` 配置，缺少配置默认失败。
+该测试在 retained transaction 已执行 DML 后验证独立连接 DDL 得到 `55P03`，
+提交后验证相同 DDL 恢复，并验证失败回滚与自有 session 丢失后的 Unknown。
+它不经过桌面 Workflow Job。生产组合旅程另位于
+`packages/drivers/postgres/e2e/workflow-transaction-journey.ts`，使用真实
+`workflow_save` / `workflow_execute` 与独立查询验证提交和失败整块回滚；
+已有 webdriver 构建时可通过
+`pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/workflow-transaction-journey.ts`
+单独运行。新增旅程尚待独立 tester 实跑，不构成验收通过。
+桌面 Job 内 DML 后精确暂停、commit/rollback acknowledgement loss 与不重放的
+真实故障旅程仍未覆盖；终止自有 backend 的 Unknown 证据不能替代 acknowledgement
+loss。MySQL/MariaDB 仍为 `CapabilityUnsupported`，P6 整体门槛未关闭。
