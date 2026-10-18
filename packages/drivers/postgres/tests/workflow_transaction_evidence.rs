@@ -156,16 +156,21 @@ async fn retained_recipe_commit_rollback_catalog_race_and_closed_session() {
         .execute(&observer, "SET lock_timeout = '150ms'")
         .await
         .expect("lock timeout failed");
-    assert!(
-        driver
-            .execute(
-                &observer,
-                &format!("ALTER TABLE {schema}.items ADD COLUMN extra INTEGER")
-            )
-            .await
-            .is_err(),
-        "DDL escaped retained lock"
-    );
+    // DriverError stores query text rather than structured SQLSTATE. Catch the
+    // exact server code inside PostgreSQL: every other error propagates, and
+    // successful DDL raises an uncaught P0001. Only 55P03 makes this DO succeed.
+    driver
+        .execute(
+            &observer,
+            &format!(
+                "DO $proof$ BEGIN \
+                 ALTER TABLE {schema}.items ADD COLUMN extra INTEGER; \
+                 RAISE EXCEPTION 'DDL escaped retained lock'; \
+                 EXCEPTION WHEN SQLSTATE '55P03' THEN NULL; END; $proof$"
+            ),
+        )
+        .await
+        .expect("DDL must fail specifically with lock_not_available (55P03)");
     assert!(sql(&p, &h, &plan.statements[0]).await);
     assert!(p
         .commit_transaction(&h)
