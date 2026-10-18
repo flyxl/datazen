@@ -11,3 +11,5 @@ pub mod workflow;
 pub mod file_job;
 
 pub mod restore_job;
+
+pub mod restore_gateway;

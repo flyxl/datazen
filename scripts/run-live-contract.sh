@@ -11,6 +11,7 @@
 #   scripts/run-live-contract.sh --dry-run       # resolve + report only
 #   scripts/run-live-contract.sh --no-provision  # assume fixture DBs exist
 #   scripts/run-live-contract.sh --crate datazen-driver-postgres
+#   scripts/run-live-contract.sh --crate datazen-driver-postgres --test restore_apply_job
 #
 # AGENTS.md rules this script exists to satisfy without breaking:
 #
@@ -37,11 +38,13 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ALIAS_FILE="$ROOT/scripts/.live-contract.aliases"
 CRATES=("-p" "datazen-driver-postgres" "-p" "datazen-driver-mysql")
+TEST_ARGS=("--tests")
 DRY_RUN=0
 PROVISION=1
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --test) [ $# -ge 2 ] || { echo "--test requires a test target" >&2; exit 2; }; shift; TEST_ARGS=("--test" "$1"); shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --no-provision) PROVISION=0; shift ;;
     --crate) shift; CRATES=("-p" "$1"); shift ;;
@@ -456,7 +459,7 @@ fi
 export DATAZEN_CONTRACT_REQUIRE_LIVE=1
 
 LOG="$(mktemp -t datazen-live-contract).log"
-cargo test "${CRATES[@]}" --tests >"$LOG" 2>&1
+cargo test "${CRATES[@]}" "${TEST_ARGS[@]}" >"$LOG" 2>&1
 STATUS=$?
 
 echo

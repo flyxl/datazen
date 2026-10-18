@@ -107,6 +107,8 @@ JobState 与 effectOutcome 按 [连接 §10.1.1](connection-management.md#1011-p
 
 每次成功的非事务语句记录真实执行 ID、目标/载荷摘要和提交边界；单事务只在确认 COMMIT 后记录一个边界。失败立即停止；已提交边界保留，传输/提交/回滚不确定为 Unknown。取消独立于效果，回滚使用独立清理令牌，只有成功的自有 ROLLBACK 才报告 RolledBack。旧 path helper 只在 Host 测试编译，不是生产回退。
 
+PostgreSQL 的 `packages/drivers/postgres/tests/restore_apply_job.rs` 通过安全 live launcher 的 `--test restore_apply_job` 运行。该旅程使用真实 disposable migration fixture、私有 ArtifactStore、JobRuntime 的 TargetWriter 预算与单次 plan 消费，复用桌面委托的 `feature-core::restore_gateway::RuntimeRestoreGateway`，由 Runtime Session / ExecutionGateway 调用真正 PostgreSQL ResourceProvider；断言 COMMIT 执行 ID/摘要边界及独立连接读回两行，并验证 COPY、客户端指令、输入摘要/目标替换和配置 revision 失效在写入前失败。测试宿主的 Profile/Policy/SessionBackend 是驱动测试接缝；不覆盖桌面 picker、Store、DesktopSessionBackend 的接线，也不宣称 MySQL live 恢复已验收。共享 orchestrator 的授权端口在桌面仍重查 Store 的 enabled/revision/readOnly/safeMode 与目标授权。
+
 ## 3. 多端预算、重叠与授权
 
 1. 在取资源前规范化 source/target，逐端校验 read、execute/write 与产物权限；配置 enabled、readOnly 和 delegation 在派发前重新核验。
