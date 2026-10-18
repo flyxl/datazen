@@ -105,6 +105,29 @@ enum SessionBinding<'a> {
     Retained(&'a super::session_block::RetainedSession),
 }
 
+impl SessionBinding<'_> {
+    /// The operation this binding submits under, plus the handle it owns.
+    ///
+    /// Extracted so "a borrowed session must never degrade into an independent
+    /// execution" is a property a test can pin, rather than a shape that has to
+    /// be re-read from the middle of a long function.
+    fn submission(
+        &self,
+    ) -> (
+        IdempotentOperation,
+        Option<datazen_platform_api::dto::session::SessionHandle>,
+    ) {
+        match self {
+            Self::Independent => (IdempotentOperation::ExecuteAtTarget, None),
+            Self::Borrowed(handle) => (IdempotentOperation::ExecuteInSession, Some(handle.clone())),
+            Self::Retained(session) => (
+                IdempotentOperation::ExecuteInSession,
+                Some(session.handle.clone()),
+            ),
+        }
+    }
+}
+
 pub async fn execute_with_session(
     state: &dyn ResourceExecutionHost,
     step: &WorkflowCommandStep,
@@ -274,22 +297,10 @@ async fn execute_bound(
     let runtime = prepared.runtime;
     let context = prepared.context;
     let target = prepared.target;
-    let bound_handle = match binding {
-        SessionBinding::Independent => None,
-        SessionBinding::Borrowed(handle) => Some(handle),
-        SessionBinding::Retained(session) => Some(session.handle.clone()),
-    };
+    let (submission_operation, bound_handle) = binding.submission();
     let token = before_dispatch(
         deadline,
-        runtime.issue_submission_token(
-            &context,
-            if bound_handle.is_some() {
-                IdempotentOperation::ExecuteInSession
-            } else {
-                IdempotentOperation::ExecuteAtTarget
-            },
-            bound_handle.as_ref(),
-        ),
+        runtime.issue_submission_token(&context, submission_operation, bound_handle.as_ref()),
     )
     .await?
     .map_err(|error| WorkflowError::Validation(error.to_string()))?;
@@ -537,4 +548,42 @@ async fn execute_bound(
         "results": statements.0.into_values().collect::<Vec<_>>(),
         "totalTimeMs": started.elapsed().as_millis() as u64,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_platform_api::dto::session::SessionHandle;
+    use datazen_platform_api::id::{DbSessionId, RuntimeEpoch};
+
+    fn handle(id: &str) -> SessionHandle {
+        SessionHandle::new(DbSessionId::new(id), RuntimeEpoch::new("1"))
+    }
+
+    #[test]
+    fn independent_binding_submits_at_target_without_a_handle() {
+        let (operation, bound) = SessionBinding::Independent.submission();
+        assert_eq!(operation, IdempotentOperation::ExecuteAtTarget);
+        assert!(
+            bound.is_none(),
+            "independent execution must not carry a handle"
+        );
+    }
+
+    #[test]
+    fn borrowed_binding_always_submits_in_session() {
+        // The property that matters: a granted (borrowed) session must never
+        // silently degrade into an independent execution. Downgrading this to
+        // ExecuteAtTarget would still compile and would quietly stop sharing the
+        // editor's session, so it is pinned by an assertion instead.
+        let (operation, bound) = SessionBinding::Borrowed(handle("dbs-1")).submission();
+        assert_eq!(operation, IdempotentOperation::ExecuteInSession);
+        assert_eq!(
+            bound.map(|handle| handle.db_session_id.as_str().to_owned()),
+            Some("dbs-1".to_string())
+        );
+    }
+
+    // Retained (workflow block) submissions are covered end-to-end by
+    // tests/workflow_block_acquisition.rs, which owns a real block session.
 }
