@@ -1,12 +1,17 @@
 pub mod budget;
 pub mod cancel;
+pub mod chat_request;
 pub mod ctx_yaml;
+pub mod filter;
 pub mod prompt_resolver;
 pub mod safety;
 pub use datazen_ai_api::{AiDataEgressLevel, AiSafetyGateConfig};
 pub mod context;
 pub mod ownership;
 pub mod response;
+pub mod schema_doc;
 pub mod schema_pipeline;
+pub mod single_turn;
+pub mod sql_generation;
 pub mod tool_loop;
 pub mod tools;

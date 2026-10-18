@@ -1,16 +1,14 @@
 //! AI chat IPC and tool-loop execution.
 
 use super::util::{
-    build_connections_context, inject_language_hint, resolve_ai, resolve_safety_gate,
-    window_stream_callback, StreamCallback,
+    build_connections_context, resolve_ai, resolve_safety_gate, window_stream_callback,
+    StreamCallback,
 };
 use crate::ai::budget;
 use crate::ai::safety::redact_for_gate;
 use crate::ai::*;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
-use datazen_driver_api::PromptScenario;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{State, WebviewWindow};
 
@@ -184,11 +182,6 @@ pub(crate) async fn ai_chat_impl_with_claim(
     context_tables: Option<Vec<String>>,
 ) -> Result<String, CommandError> {
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
-    let prompt_scenario = if is_workflow {
-        PromptScenario::WorkflowGenerate
-    } else {
-        PromptScenario::Chat
-    };
 
     tracing::info!(
         %request_id,
@@ -206,7 +199,12 @@ pub(crate) async fn ai_chat_impl_with_claim(
     let app_settings = state.store.get_settings().await;
     let gate = resolve_safety_gate(&state).await;
     let lang = app_settings.language;
-    let mut full_messages: Vec<ChatMessage> = Vec::new();
+    let connections_context = if is_workflow {
+        build_connections_context(&state, &lang).await
+    } else {
+        String::new()
+    };
+    let mut schema_prompt: Option<(Arc<dyn datazen_driver_api::DatabaseDriver>, PromptSeed)> = None;
     let mut attach_db_tools = true;
 
     if include_schema {
@@ -229,41 +227,7 @@ pub(crate) async fn ai_chat_impl_with_claim(
                 {
                     Ok(seed) => {
                         attach_db_tools = seed.attach_db_tools;
-                        let db_type = seed.database_type.clone();
-                        let suffix = compose_schema_system_suffix(&seed);
-
-                        let mut vars = HashMap::new();
-                        vars.insert("db_type", db_type.as_str());
-                        vars.insert("schema", "");
-
-                        let connections_ctx = if is_workflow {
-                            build_connections_context(&state, &lang).await
-                        } else {
-                            String::new()
-                        };
-                        vars.insert("connections", connections_ctx.as_str());
-
-                        let base_tpl = state
-                            .prompt_resolver
-                            .resolve(prompt_scenario, Some(driver.as_ref()), &lang)
-                            .await;
-                        let base = crate::ai::prompt_resolver::render_template(&base_tpl, &vars);
-
-                        let desc = if is_workflow {
-                            base
-                        } else if lang.starts_with("zh") {
-                            format!("{base}\n\n用户已连接到 {db_type} 数据库。")
-                        } else {
-                            format!("{base}\n\nThe user is connected to a {db_type} database.")
-                        };
-
-                        full_messages.push(ChatMessage {
-                            role: MessageRole::System,
-                            content: format!("{desc}\n\n{suffix}"),
-                            reasoning: None,
-                            tool_calls: None,
-                            tool_call_id: None,
-                        });
+                        schema_prompt = Some((driver, seed));
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -280,122 +244,55 @@ pub(crate) async fn ai_chat_impl_with_claim(
         }
     }
 
-    if full_messages.is_empty() {
-        if is_workflow {
-            let connections_ctx = build_connections_context(&state, &lang).await;
-            let mut vars = HashMap::new();
-            vars.insert("connections", connections_ctx.as_str());
-            vars.insert("schema", "");
-            vars.insert("db_type", "");
-            let tpl = state
-                .prompt_resolver
-                .resolve(prompt_scenario, None, &lang)
-                .await;
-            let prompt = crate::ai::prompt_resolver::render_template(&tpl, &vars);
-            full_messages.push(ChatMessage {
-                role: MessageRole::System,
-                content: prompt,
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            });
-        } else {
-            let chat_prompt = state
-                .prompt_resolver
-                .resolve(prompt_scenario, None, &lang)
-                .await;
-            full_messages.push(ChatMessage {
-                role: MessageRole::System,
-                content: chat_prompt,
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            });
-        }
-    }
-
-    full_messages.extend(messages.into_iter().map(|mut message| {
-        message.content = redact_for_gate(&message.content, &gate);
-        message
-    }));
-
-    // Inject context files into last user message
+    let mut context_block: Option<String> = None;
     if let Some(ref ctx_files) = context_files {
         if !ctx_files.is_empty() {
             let ctx_dir = crate::commands::context::resolve_context_dir_from_state(&state).await?;
             let entries = crate::commands::context::read_context_paths(&ctx_dir, ctx_files).await?;
             if !entries.is_empty() {
-                if let Some(last_user) = full_messages
-                    .iter_mut()
-                    .rev()
-                    .find(|m| m.role == MessageRole::User)
-                {
-                    let sanitized_entries: Vec<(String, String)> = entries
-                        .into_iter()
-                        .map(|(path, content)| (path, redact_for_gate(&content, &gate)))
-                        .collect();
-                    let context_block =
-                        crate::commands::context::format_context_block(&sanitized_entries);
-                    last_user.content = format!("{context_block}\n\n{}", last_user.content);
-                }
+                let sanitized_entries: Vec<(String, String)> = entries
+                    .into_iter()
+                    .map(|(path, content)| (path, redact_for_gate(&content, &gate)))
+                    .collect();
+                context_block = Some(crate::commands::context::format_context_block(
+                    &sanitized_entries,
+                ));
             }
         }
     }
 
-    let ask_questions_tool = ToolDefinition {
-        name: "ask_questions".into(),
-        description: "Ask the user structured questions to gather information. Use when you need the user to choose between options or provide specific input.".into(),
-        parameters: serde_json::json!({
-            "type": "object",
-            "properties": {
-                "questions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": { "type": "string", "description": "Unique question identifier" },
-                            "prompt": { "type": "string", "description": "The question text" },
-                            "options": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "id": { "type": "string" },
-                                        "label": { "type": "string" }
-                                    },
-                                    "required": ["id", "label"]
-                                },
-                                "description": "Predefined options. Can be empty for free-text input."
-                            },
-                            "allowMultiple": { "type": "boolean", "description": "Allow selecting multiple options", "default": false }
-                        },
-                        "required": ["id", "prompt"]
-                    }
-                }
+    let schema = schema_prompt.as_ref().map(|(driver, seed)| {
+        datazen_feature_core::ai::chat_request::ChatSchemaPrompt {
+            driver: driver.as_ref(),
+            seed,
+        }
+    });
+    let mcp_tools = if provider.supports_tools() {
+        mcp_tool_definitions(state).await
+    } else {
+        Vec::new()
+    };
+    let request = datazen_feature_core::ai::chat_request::build_chat_request(
+        state.prompt_resolver.as_ref(),
+        datazen_feature_core::ai::chat_request::ChatRequestInput {
+            request_id: &request_id,
+            model: &ai_config.model,
+            lang: &lang,
+            scenario: if is_workflow {
+                datazen_feature_core::ai::chat_request::ChatScenario::WorkflowGenerate
+            } else {
+                datazen_feature_core::ai::chat_request::ChatScenario::Chat
             },
-            "required": ["questions"]
-        }),
-    };
-
-    let mut all_tools = vec![ask_questions_tool];
-    if attach_db_tools {
-        all_tools.extend(db_tool_definitions());
-    }
-    if provider.supports_tools() {
-        all_tools.extend(mcp_tool_definitions(state).await);
-    }
-
-    let mut request = CompletionRequest {
-        request_id: request_id.clone(),
-        model: ai_config.model.clone(),
-        messages: full_messages,
-        temperature: Some(0.7),
-        stop: None,
-        tools: Some(all_tools),
-        previous_response_id: None,
-        cancel_token: None,
-    };
-    inject_language_hint(&mut request.messages, &lang);
+            schema,
+            connections_context: &connections_context,
+            messages,
+            context_block: context_block.as_deref(),
+            safety_gate: &gate,
+            attach_db_tools,
+            mcp_tools,
+        },
+    )
+    .await;
 
     // Register cancel token so `ai_cancel` IPC can interrupt this stream.
     let cancel_owner = super::ai_owner_fingerprint(state);

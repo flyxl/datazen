@@ -2,22 +2,18 @@
 
 use super::chat::db_tool_definitions;
 use super::chat::run_streaming_tool_loop_with_claim;
-use super::util::{
-    inject_language_hint, parse_ai_json, resolve_ai, resolve_safety_gate, strip_markdown_fences,
-    window_stream_callback, StreamCallback,
-};
+use super::util::{resolve_ai, resolve_safety_gate, window_stream_callback, StreamCallback};
 use crate::ai::budget;
-use crate::ai::prompt_resolver;
 use crate::ai::safety::redact_for_gate;
 use crate::ai::*;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
-use datazen_driver_api::PromptScenario;
-use serde::Serialize;
-use std::collections::HashMap;
 use tauri::{State, WebviewWindow};
 use tokio::sync::mpsc;
-use uuid::Uuid;
+
+pub use datazen_feature_core::ai::single_turn::{
+    ConnectionDiagnosis, ConnectionSolution, QueryAnalysis, QueryCategory,
+};
 
 // ─── NL2SQL ───
 
@@ -143,61 +139,18 @@ pub(crate) async fn ai_generate_sql_impl_with_claim(
         "ai_generate_sql: schema context built"
     );
 
-    let schema_suffix = compose_schema_system_suffix(&seed);
-    let recent = if recent_queries.is_empty() {
-        String::new()
-    } else {
-        let label = if lang.starts_with("zh") {
-            "近期查询（供风格参考）"
-        } else {
-            "Recent queries (for style reference)"
-        };
-        format!(
-            "\n\n{label}:\n{}",
-            recent_queries
-                .iter()
-                .map(|q| format!("- {}", redact_for_gate(q, &gate)))
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-    };
-    let mut vars = HashMap::new();
-    vars.insert("db_type", seed.database_type.as_str());
-    vars.insert("version", "");
-    vars.insert("schema", schema_suffix.as_str());
-    vars.insert("recent", recent.as_str());
-    let tpl = state
-        .prompt_resolver
-        .resolve(PromptScenario::Nl2Sql, Some(driver_ref.as_ref()), &lang)
-        .await;
-    let system_content = prompt_resolver::render_template(&tpl, &vars);
-
-    let system_msg = ChatMessage {
-        role: MessageRole::System,
-        content: system_content,
-        reasoning: None,
-        tool_calls: None,
-        tool_call_id: None,
-    };
-    let user_msg = ChatMessage {
-        role: MessageRole::User,
-        content: natural_language,
-        reasoning: None,
-        tool_calls: None,
-        tool_call_id: None,
-    };
-
-    let mut request = CompletionRequest {
-        request_id: request_id.clone(),
-        model: ai_config.model.clone(),
-        messages: vec![system_msg, user_msg],
-        temperature: Some(0.0),
-        stop: None,
-        tools: None,
-        previous_response_id: None,
-        cancel_token: None,
-    };
-    inject_language_hint(&mut request.messages, &lang);
+    let mut request = datazen_feature_core::ai::sql_generation::build_sql_generation_request(
+        &request_id,
+        &ai_config.model,
+        state.prompt_resolver.as_ref(),
+        driver_ref.as_ref(),
+        &lang,
+        &seed,
+        natural_language,
+        &recent_queries,
+        &gate,
+    )
+    .await;
 
     // Register cancel token so `ai_cancel` IPC can interrupt this stream.
     let cancel_owner = super::ai_owner_fingerprint(state);
@@ -323,72 +276,25 @@ pub(crate) async fn ai_diagnose_error_impl(
 
     let lang = state.store.get_settings().await.language;
 
-    let (driver_ref, _) = state
+    let (driver, _) = state
         .connection_manager
         .get_session(&db_session_id)
         .await
         .cmd_err("ai_diagnose_error")?;
 
     let safe_schema_ddl = redact_for_gate(&context.schema_ddl, &gate);
-    let mut vars = HashMap::new();
-    vars.insert("db_type", context.database_type.as_str());
-    vars.insert("schema", safe_schema_ddl.as_str());
-    let tpl = state
-        .prompt_resolver
-        .resolve(PromptScenario::Diagnose, Some(driver_ref.as_ref()), &lang)
-        .await;
-    let system_content = prompt_resolver::render_template(&tpl, &vars);
-
-    let mut request = CompletionRequest {
-        request_id: Uuid::new_v4().to_string(),
-        model: ai_config.model.clone(),
-        messages: vec![
-            ChatMessage {
-                role: MessageRole::System,
-                content: system_content,
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-            ChatMessage {
-                role: MessageRole::User,
-                content: format!("SQL:\n```\n{safe_sql}\n```\n\nError:\n{safe_error_message}"),
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ],
-        temperature: Some(0.0),
-
-        stop: None,
-        tools: None,
-        previous_response_id: None,
-        cancel_token: None,
-    };
-    inject_language_hint(&mut request.messages, &lang);
-
-    tracing::debug!(
-        model = %request.model,
-        messages_count = request.messages.len(),
-        "ai_diagnose_error: sending to provider"
-    );
-
-    let response = provider
-        .complete(&request)
-        .await
-        .cmd_err("ai_diagnose_error")?;
-
-    tracing::debug!(
-        response_len = response.content.len(),
-        usage = ?response.usage,
-        "ai_diagnose_error: response received"
-    );
-
-    parse_ai_json::<DiagnosisResult>(
-        &response.content,
-        response.finish_reason.as_deref(),
-        "ai_diagnose_error",
+    datazen_feature_core::ai::single_turn::diagnose_sql_error(
+        provider.as_ref(),
+        &ai_config.model,
+        state.prompt_resolver.as_ref(),
+        driver.as_ref(),
+        &lang,
+        &safe_schema_ddl,
+        &safe_sql,
+        &safe_error_message,
     )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -431,68 +337,18 @@ pub(crate) async fn ai_analyze_explain_impl(
         .await
         .cmd_err("ai_analyze_explain")?;
 
-    let db_type = prompt_db_type(driver.as_ref());
-
     let lang = state.store.get_settings().await.language;
-    let mut vars = HashMap::new();
-    vars.insert("db_type", db_type.as_str());
-    let tpl = state
-        .prompt_resolver
-        .resolve(
-            PromptScenario::ExplainAnalysis,
-            Some(driver.as_ref()),
-            &lang,
-        )
-        .await;
-    let system_content = prompt_resolver::render_template(&tpl, &vars);
-
-    let mut request = CompletionRequest {
-        request_id: Uuid::new_v4().to_string(),
-        model: ai_config.model.clone(),
-        messages: vec![
-            ChatMessage {
-                role: MessageRole::System,
-                content: system_content,
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-            ChatMessage {
-                role: MessageRole::User,
-                content: format!(
-                    "SQL:\n```\n{safe_original_sql}\n```\n\nEXPLAIN output:\n```\n{safe_explain_output}\n```"
-                ),
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ],
-        temperature: Some(0.0),
-
-        stop: None,
-        tools: None,
-        previous_response_id: None,
-        cancel_token: None,
-    };
-    inject_language_hint(&mut request.messages, &lang);
-
-    let response = provider
-        .complete(&request)
-        .await
-        .cmd_err("ai_analyze_explain")?;
-
-    tracing::info!(
-        response_len = response.content.len(),
-        finish_reason = ?response.finish_reason,
-        prompt_tokens = response.usage.prompt_tokens,
-        completion_tokens = response.usage.completion_tokens,
-        "ai_analyze_explain: response received"
-    );
-    parse_ai_json::<ExplainAnalysis>(
-        &response.content,
-        response.finish_reason.as_deref(),
-        "ai_analyze_explain",
+    datazen_feature_core::ai::single_turn::analyze_explain(
+        provider.as_ref(),
+        &ai_config.model,
+        state.prompt_resolver.as_ref(),
+        driver.as_ref(),
+        &lang,
+        &safe_explain_output,
+        &safe_original_sql,
     )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -531,7 +387,6 @@ pub(crate) async fn ai_parse_filter_impl(
         .await
         .cmd_err("ai_parse_filter")?;
 
-    let db_type = prompt_db_type(driver.as_ref());
     let config = state
         .connection_manager
         .get_session_config(&db_session_id)
@@ -553,82 +408,18 @@ pub(crate) async fn ai_parse_filter_impl(
         .await
         .cmd_err("ai_parse_filter")?;
 
-    let columns_ddl = cached
-        .columns
-        .iter()
-        .map(|c| {
-            let nullable = if c.nullable { " NULL" } else { " NOT NULL" };
-            let pk = if c.is_primary_key { " PK" } else { "" };
-            format!("  {} {}{}{}", c.name, c.data_type, nullable, pk)
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
     let lang = state.store.get_settings().await.language;
-    let mut vars = HashMap::new();
-    vars.insert("db_type", db_type.as_str());
-    vars.insert("columns", columns_ddl.as_str());
-    let tpl = state
-        .prompt_resolver
-        .resolve(PromptScenario::NlFilter, Some(driver.as_ref()), &lang)
-        .await;
-    let system_content = prompt_resolver::render_template(&tpl, &vars);
-
-    let mut request = CompletionRequest {
-        request_id: Uuid::new_v4().to_string(),
-        model: ai_config.model.clone(),
-        messages: vec![
-            ChatMessage {
-                role: MessageRole::System,
-                content: system_content,
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-            ChatMessage {
-                role: MessageRole::User,
-                content: natural_language,
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ],
-        temperature: Some(0.0),
-
-        stop: None,
-        tools: None,
-        previous_response_id: None,
-        cancel_token: None,
-    };
-    inject_language_hint(&mut request.messages, &lang);
-
-    let response = provider
-        .complete(&request)
-        .await
-        .cmd_err("ai_parse_filter")?;
-
-    let mut filters: Vec<crate::services::query_executor::FilterCondition> = parse_ai_json(
-        &response.content,
-        response.finish_reason.as_deref(),
-        "ai_parse_filter",
-    )?;
-
-    let valid_columns: std::collections::HashSet<String> =
-        cached.columns.iter().map(|c| c.name.clone()).collect();
-
-    filters.retain(|f| valid_columns.contains(&f.column));
-
-    use crate::services::query_executor::FilterOperator;
-    use datazen_driver_api::Value;
-    for f in &mut filters {
-        match (&f.operator, &f.value) {
-            (FilterOperator::Eq, Value::Null) => f.operator = FilterOperator::IsNull,
-            (FilterOperator::Ne, Value::Null) => f.operator = FilterOperator::IsNotNull,
-            _ => {}
-        }
-    }
-
-    Ok(filters)
+    datazen_feature_core::ai::filter::parse_natural_language_filter(
+        provider.as_ref(),
+        &ai_config.model,
+        state.prompt_resolver.as_ref(),
+        driver.as_ref(),
+        natural_language,
+        &cached.columns,
+        &lang,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -650,155 +441,24 @@ pub(crate) async fn ai_generate_schema_doc_impl(
 ) -> Result<String, CommandError> {
     tracing::info!(%db_session_id, %database, "ai_generate_schema_doc: start");
     let (provider, ai_config) = resolve_ai(&state).await?;
-
-    // Step 1: Get table names only (no column details)
-    let (db_type, all_table_names) = state
-        .schema_context_builder
-        .get_table_names(&db_session_id, &database)
-        .await
-        .cmd_err("ai_generate_schema_doc")?;
-
     let lang = state.store.get_settings().await.language;
-
-    let (driver_ref, _) = state
+    let (driver, _) = state
         .connection_manager
         .get_session(&db_session_id)
         .await
         .cmd_err("ai_generate_schema_doc")?;
-
-    // If few tables, skip the selection step and document all
-    let selected_tables = if all_table_names.len() <= 30 {
-        all_table_names.clone()
-    } else {
-        let table_names_str = all_table_names.join(", ");
-        let mut select_vars = HashMap::new();
-        select_vars.insert("db_type", db_type.as_str());
-        select_vars.insert("table_names", table_names_str.as_str());
-        let select_tpl = state
-            .prompt_resolver
-            .resolve(
-                PromptScenario::SchemaDocSelectTables,
-                Some(driver_ref.as_ref()),
-                &lang,
-            )
-            .await;
-        let select_content = prompt_resolver::render_template(&select_tpl, &select_vars);
-
-        let select_request = CompletionRequest {
-            request_id: Uuid::new_v4().to_string(),
-            model: ai_config.model.clone(),
-            messages: vec![
-                ChatMessage {
-                    role: MessageRole::System,
-                    content: select_content,
-                    reasoning: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                },
-                ChatMessage {
-                    role: MessageRole::User,
-                    content: "Select the important user tables.".into(),
-                    reasoning: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                },
-            ],
-            temperature: Some(0.0),
-
-            stop: None,
-            tools: None,
-            previous_response_id: None,
-            cancel_token: None,
-        };
-
-        let select_response = provider
-            .complete(&select_request)
-            .await
-            .cmd_err("ai_generate_schema_doc[select]")?;
-
-        let raw = strip_markdown_fences(select_response.content.trim());
-        serde_json::from_str::<Vec<String>>(&raw).unwrap_or_else(|_| {
-            // Fallback: filter out obvious system tables
-            all_table_names
-                .iter()
-                .filter(|n| {
-                    !n.starts_with("pg_")
-                        && !n.starts_with("sql_")
-                        && !n.starts_with("sqlite_")
-                        && !n.starts_with("information_schema")
-                })
-                .take(30)
-                .cloned()
-                .collect()
-        })
-    };
-
-    // Step 2: Get detailed schema for selected tables only
-    let context = state
-        .schema_context_builder
-        .build_selective_context(
-            &db_session_id,
-            &database,
-            &selected_tables,
-            budget::SCHEMA_DOC,
-        )
-        .await
-        .cmd_err("ai_generate_schema_doc")?;
-
-    let user_content = if lang.starts_with("zh") {
-        "请为上面的数据库 schema 生成文档。"
-    } else {
-        "Generate documentation for the database schema above."
-    };
-    let mut doc_vars = HashMap::new();
-    doc_vars.insert("db_type", context.database_type.as_str());
-    doc_vars.insert("schema", context.schema_ddl.as_str());
-    let doc_tpl = state
-        .prompt_resolver
-        .resolve(PromptScenario::SchemaDoc, Some(driver_ref.as_ref()), &lang)
-        .await;
-    let doc_system_content = prompt_resolver::render_template(&doc_tpl, &doc_vars);
-
-    let mut request = CompletionRequest {
-        request_id: Uuid::new_v4().to_string(),
-        model: ai_config.model.clone(),
-        messages: vec![
-            ChatMessage {
-                role: MessageRole::System,
-                content: doc_system_content,
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-            ChatMessage {
-                role: MessageRole::User,
-                content: user_content.into(),
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ],
-        temperature: Some(0.3),
-
-        stop: None,
-        tools: None,
-        previous_response_id: None,
-        cancel_token: None,
-    };
-    inject_language_hint(&mut request.messages, &lang);
-
-    let response = provider
-        .complete(&request)
-        .await
-        .cmd_err("ai_generate_schema_doc")?;
-
-    let content = response.content.trim();
-    let stripped = if content.starts_with("```markdown") || content.starts_with("```md") {
-        strip_markdown_fences(content)
-    } else {
-        content.to_string()
-    };
-    Ok(stripped)
+    datazen_feature_core::ai::schema_doc::generate_schema_doc(
+        provider.as_ref(),
+        &ai_config.model,
+        state.schema_context_builder.as_ref(),
+        state.prompt_resolver.as_ref(),
+        driver.as_ref(),
+        &db_session_id,
+        &database,
+        &lang,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -811,22 +471,6 @@ pub async fn ai_generate_schema_doc(
 }
 
 // ─── Phase 8: Connection diagnostics ───
-
-#[derive(Debug, Clone, Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConnectionDiagnosis {
-    pub diagnosis: String,
-    pub possible_causes: Vec<String>,
-    pub solutions: Vec<ConnectionSolution>,
-    pub category: String,
-}
-
-#[derive(Debug, Clone, Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConnectionSolution {
-    pub description: String,
-    pub command: Option<String>,
-}
 
 #[tauri::command]
 pub async fn ai_diagnose_connection(
@@ -881,72 +525,19 @@ pub(crate) async fn ai_diagnose_connection_impl(
     );
 
     let lang = state.store.get_settings().await.language;
-    let conn_diag_prompt = state
-        .prompt_resolver
-        .resolve(PromptScenario::ConnectionDiagnose, None, &lang)
-        .await;
-
-    let mut request = CompletionRequest {
-        request_id: Uuid::new_v4().to_string(),
-        model: ai_config.model.clone(),
-        messages: vec![
-            ChatMessage {
-                role: MessageRole::System,
-                content: conn_diag_prompt,
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-            ChatMessage {
-                role: MessageRole::User,
-                content: format!(
-                    "Connection details:\n{conn_summary}\n\nError:\n{safe_error_message}"
-                ),
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ],
-        temperature: Some(0.0),
-
-        stop: None,
-        tools: None,
-        previous_response_id: None,
-        cancel_token: None,
-    };
-    inject_language_hint(&mut request.messages, &lang);
-
-    let response = provider
-        .complete(&request)
-        .await
-        .cmd_err("ai_diagnose_connection")?;
-
-    parse_ai_json::<ConnectionDiagnosis>(
-        &response.content,
-        response.finish_reason.as_deref(),
-        "ai_diagnose_connection",
+    datazen_feature_core::ai::single_turn::diagnose_connection(
+        provider.as_ref(),
+        &ai_config.model,
+        state.prompt_resolver.as_ref(),
+        &lang,
+        &conn_summary,
+        &safe_error_message,
     )
+    .await
+    .map_err(Into::into)
 }
 
 // ─── Phase 8: Query history analysis ───
-
-#[derive(Debug, Clone, Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueryAnalysis {
-    pub summary: String,
-    pub categories: Vec<QueryCategory>,
-    pub insights: Vec<String>,
-    pub frequent_tables: Vec<String>,
-    pub recommendations: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueryCategory {
-    pub name: String,
-    pub count: usize,
-    pub examples: Vec<String>,
-}
 
 pub(crate) async fn ai_analyze_queries_impl(
     state: &AppState,
@@ -976,60 +567,21 @@ pub(crate) async fn ai_analyze_queries_impl(
         ));
     }
 
-    let queries_text = filtered
+    let queries = filtered
         .iter()
         .take(100)
         .map(|h| redact_for_gate(&h.sql, &gate))
-        .collect::<Vec<_>>()
-        .join("\n---\n");
+        .collect::<Vec<_>>();
 
-    let lang = app_settings.language;
-    let query_summary_prompt = state
-        .prompt_resolver
-        .resolve(PromptScenario::QuerySummary, None, &lang)
-        .await;
-
-    let mut request = CompletionRequest {
-        request_id: Uuid::new_v4().to_string(),
-        model: ai_config.model.clone(),
-        messages: vec![
-            ChatMessage {
-                role: MessageRole::System,
-                content: query_summary_prompt,
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-            ChatMessage {
-                role: MessageRole::User,
-                content: format!(
-                    "Analyze these {} queries:\n\n{queries_text}",
-                    filtered.len().min(100),
-                ),
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ],
-        temperature: Some(0.2),
-
-        stop: None,
-        tools: None,
-        previous_response_id: None,
-        cancel_token: None,
-    };
-    inject_language_hint(&mut request.messages, &lang);
-
-    let response = provider
-        .complete(&request)
-        .await
-        .cmd_err("ai_analyze_queries")?;
-
-    parse_ai_json::<QueryAnalysis>(
-        &response.content,
-        response.finish_reason.as_deref(),
-        "ai_analyze_queries",
+    datazen_feature_core::ai::single_turn::analyze_query_history(
+        provider.as_ref(),
+        &ai_config.model,
+        state.prompt_resolver.as_ref(),
+        &app_settings.language,
+        &queries,
     )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]

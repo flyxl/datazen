@@ -4,7 +4,7 @@
 
 ### 1.1 概述
 
-AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约，`packages/ai-providers` 提供各厂商实现与共享 HTTP 协议，`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、预算、取消和 editor grant 所有权策略。`src-tauri/src/ai/` 保留旧导入路径的门面 re-export，并由 `metadata_source.rs` 把宿主 Runtime / SchemaCache / profile 查询绑定到共享端口；Tauri 命令只负责 IPC、配置与运行时身份适配。
+AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约，`packages/ai-providers` 提供各厂商实现与共享 HTTP 协议。`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、NL2SQL 请求组装、单轮诊断与分析用例、智能过滤、Schema 文档生成、预算、取消和 editor grant 所有权策略。`src-tauri/src/ai/` 保留旧导入路径的门面 re-export，并由 `metadata_source.rs` 把宿主 Runtime / SchemaCache / profile 查询绑定到共享端口；Tauri 命令负责 IPC、Provider/Profile 选择、宿主存储与连接查询、上下文文件读取、事件流和取消接线。
 
 ### 1.2 架构分层
 
@@ -39,13 +39,23 @@ packages/feature-core/src/ai/       # 共享 AI 应用逻辑，不依赖 Tauri
 ├── prompt_resolver.rs              # PromptResolver (覆盖、模板与方言提示)
 ├── safety.rs / tool_loop.rs        # 出境分级、工具调用校验与流式循环
 ├── schema_pipeline.rs / ctx_yaml.rs # Schema 上下文预算与 .ctx.yaml 解析
+├── chat_request.rs / sql_generation.rs # Chat/NL2SQL 请求组装与通用工具定义
+├── single_turn.rs                   # SQL 诊断、EXPLAIN、连接诊断与历史分析
+├── filter.rs / schema_doc.rs       # 智能过滤与 Schema 文档生成用例
 ├── budget.rs / cancel.rs           # token 预算与按 owner 隔离的取消
 └── ownership.rs                    # AiGrantRegistry / AiGrantService 与 editor 会话归属校验
 
 src-tauri/src/ai/                   # 兼容门面与桌面适配
 ├── mod.rs                          # re-export AI API、Provider 与共享模块
 └── metadata_source.rs              # 将会话到 profile 身份解析和 Runtime 元数据读取绑定到共享端口
+
+src-tauri/src/commands/ai/           # Tauri IPC 与平台接线
+├── generate.rs                     # 配置/会话/历史读取、脱敏、流式交付与共享用例调用
+├── chat.rs / grant.rs              # Tauri 事件流、MCP 与 Runtime 工具宿主、editor grant IPC
+└── config.rs / prompts.rs          # Provider/Profile 持久化与 Prompt 管理 IPC
 ```
+
+Chat 和单轮用例接收宿主已选择的 Provider、语言、driver、schema seed 与安全处理后的输入；共享代码组装 prompt、请求、通用工具声明和结构化响应。连接 Profile、SchemaCache、查询历史、context 文件、Provider 配置/凭据、MCP 工具发现、Tauri 事件、Runtime 工具调用与请求取消仍由 host 提供；共享层不读取本地存储或选择数据库会话。流式生命周期、工具宿主和编辑器授权继续由平台适配器接线。
 
 ### 1.3 AiProvider Trait
 
@@ -234,7 +244,7 @@ groups:
 
 普通上下文文件（非 `.ctx.yaml`）仍按原有方式作为文本附加到用户消息。
 
-**解析模块**：`src-tauri/src/ai/ctx_yaml.rs`
+**解析模块**：`packages/feature-core/src/ai/ctx_yaml.rs`（Tauri 侧兼容门面位于 `src-tauri/src/ai/ctx_yaml.rs`）
 
 **前端识别**：`ContextPicker` 中 `.ctx.yaml` 文件使用 `Layers` 图标区分于普通文件。
 
@@ -245,10 +255,10 @@ groups:
 1. **DB tools** — `list_tables`、`search_tables`、`query_db` 等，经 `ConnectionManager` / Driver Command API 执行。
 2. **MCP Client tools** — 来自 Settings 中已连接的外部 MCP Server，qualified name 形如 `mcp/{serverId}/{toolName}`。
 
-实现要点（`commands/ai/mod.rs`）：
+实现要点（Tauri 适配在 `src-tauri/src/commands/ai/chat.rs`，共享工具定义与循环在 `packages/feature-core/src/ai/`）：
 
-- `collect_mcp_tool_definitions()` 从 `McpClientManager` 拉取已连接 server 的 tool schema，转换为 Provider 的 `ToolDefinition`。
-- `run_streaming_tool_loop` 识别 `mcp/` 前缀并调用 `mcp_client_call_tool`；DB tool 与 MCP tool 可在同一轮对话中交替执行。
+- `mcp_tool_definitions()` 从 `McpClientManager` 拉取已连接 server 的 tool schema，转换为 Provider 的 `ToolDefinition`；MCP 连接发现和调用留在 Tauri adapter。
+- `ai/chat_request.rs` 组装通用 Chat 请求与工具定义；`ai/tool_loop.rs` 识别 `mcp/` 前缀并经 `AiToolLoopHost` 调用 MCP，DB tool 与 MCP tool 可在同一轮对话中交替执行。
 - 未连接 MCP Server 时行为与原先一致，仅暴露 DB tools。
 
 配置与连接管理见 [`mcp.md` — MCP Client AI 集成](./mcp.md#mcp-client-ai-集成)。
@@ -260,9 +270,9 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 **一、会话语义（诊断 / NL2SQL / EXPLAIN 分析 / Schema 文档）——只消费已存在的会话，不创建。**
 
 - 这些 IPC 的形参是 `db_session_id`（运行时会话 ID），不是 `connectionId`；命令体内只用 `get_session` / `get_session_config` 查找。这条边界由契约测试直接对源码断言：会话语义命令的形参必须含 `db_session_id` 且**不得**含 `connection_id`，且命令体内不得出现「把名为 `connection_id` 的变量喂给 `get_session`」的写法（`commands/ai/ipc_contract_guards.rs`）。
-- **`ai_chat` 的 schema 上下文是尽力而为，但降级的方向和直觉相反**。`commands/ai/chat.rs:810-813` 用 `if let Ok((driver, _handle)) = state.connection_manager.get_session(conn_id)` 包住整段 schema 上下文构建：会话取不到时这一整块被**静默跳过**——不报错、不记日志、不追加系统消息，而 `attach_db_tools` 保持初值 `true`（`chat.rs:808`），因此 **db tools 照常注入模型**（`chat.rs:979-981`）。也就是说会话失效时的实际后果是「模型拿不到 DDL 上下文」，而不是「失去模型自己查表的能力」。
-  真正会 `warn!` 并把 `attach_db_tools` 置为 `false` 的是 `chat.rs:866-875` 的管线 `Err` 分支。但由于 `SchemaContextPipeline::resolve`（`ai/schema_pipeline.rs:74-128`）在 `:83-87` 吞掉了 `get_table_names` 的错误、在 `:98-107` 吞掉了 `build_selective_context` 的错误，唯一的 `?`（`:111-119`）只存在于 `supports_tools == false` 的分支——而那种情况下 `attach_db_tools` 本来就等于 `supports_tools`，即 `false`。**对支持工具的 provider，这条「告警 + 禁用 db tools」的分支实际不可达。**
-  与之对照，配置语义的诊断命令（`ai_diagnose_connection`）不碰会话，连接配置缺失时直接返回 `CommandError::NotFound`（`commands/ai/generate.rs:813-817`）。
+- **`ai_chat` 的 schema 上下文是尽力而为，但降级的方向和直觉相反**。`src-tauri/src/commands/ai/chat.rs` 用 `if let Ok((driver, _handle)) = state.connection_manager.get_session(conn_id)` 包住 schema 上下文构建：会话取不到时这一整块被静默跳过，不报错、不记日志、不追加 schema system prompt，而 `attach_db_tools` 保持初值 `true`，因此 DB tools 仍会加入模型请求。会话失效时的实际后果是「模型拿不到 DDL 上下文」，不是「失去模型自己查表的能力」。
+- 管线返回 `Err` 时 host 会记录 `warn!` 并把 `attach_db_tools` 置为 `false`。共享 `packages/feature-core/src/ai/schema_pipeline.rs` 会吞掉表名和 pinned schema 的读取错误；仅在 provider 不支持 tools、而 fallback schema 也失败时向 host 返回错误。**对支持 tools 的 provider，这条告警并禁用 DB tools 的分支不可达。**
+- 与之对照，配置语义的诊断命令（`ai_diagnose_connection`）不碰会话，连接配置缺失时返回 `CommandError::NotFound`（`src-tauri/src/commands/ai/generate.rs`）。
 - **目标不切库**。AI 与其他消费方一样把目标 database / schema 随命令传递；宿主不实现生产环境的切库路径。
 
 **二、配置语义（`ai_diagnose_connection`）——收 `connectionId`，读的是落盘配置**，用于「连不上」的故障排查，与已建立会话无关。契约测试同样钉住这一侧。
