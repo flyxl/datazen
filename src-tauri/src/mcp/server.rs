@@ -6,8 +6,6 @@ use crate::mcp::permission::McpPermissionMode;
 use crate::mcp::session::McpSessionRegistry;
 use crate::mcp::tool_help;
 use crate::platform::identity::{new_request_id, DesktopIdentity};
-use datazen_application::dto::requests::{CloseMode, CloseSessionRequest};
-use datazen_application::sessions::ConnectionUseCases;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::id::ClientInstanceId;
 use rmcp::ErrorData as McpError;
@@ -94,29 +92,11 @@ impl DataZenMcpServer {
     /// behind them. Called when the transport goes away: a mapping whose client
     /// is gone is not a session to keep alive until its TTL runs out.
     pub(crate) async fn release_sessions(&self) {
-        let bindings = self.sessions.close_client(self.client_instance_id());
-        if bindings.is_empty() {
-            return;
-        }
-        let Ok(adapter) = self.app_state.platform_require() else {
-            return;
-        };
-        let Ok(runtime) = adapter.runtime() else {
-            return;
-        };
-        let context = self.request_context(adapter.identity());
-        // Best effort per session: one failure must not strand the others.
-        for binding in bindings {
-            if let Err(error) = runtime
-                .close_session(
-                    &context,
-                    CloseSessionRequest::new(binding.handle, CloseMode::RequireNoTransaction),
-                )
-                .await
-            {
-                tracing::warn!("[mcp] closing a disconnected session failed: {error}");
-            }
-        }
+        self.sessions
+            .disconnected
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.sessions.close_client(self.client_instance_id());
+        self.start_session_cleanup();
     }
 
     pub fn with_disabled_tools(mut self, disabled: &[String]) -> Self {

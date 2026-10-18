@@ -140,21 +140,21 @@ MCP 侧只有一个执行类入口会绕过 db tools：`run_workflow` 把 `conne
 
 - **`open_session(connectionId, database, schema?, ttlMs?)`**：`database` 是必填的，不接受「省略即用当前库」——省略会被明确拒绝，而不是回退到 GUI 当前目标。成功后返回 `{"clientSessionRef", "state", "contextRevision", "expiresInMs"}`。
 - **`use_session(clientSessionRef, command, input, timeoutMs?)`**：在映射到的那条会话里跑一个 Driver Command。`query` / `execute` 仍要过 SQL 权限闸（`read_only` 模式下照样被拦），结果行从执行产物（artifact）读出，最多返回 200 行并在 `rowsTruncated` 标记截断。
-- **`close_session(clientSessionRef, mode?)`**：关闭会话并删掉映射。`mode` 取 `requireNoTransaction`（默认）或不回滚就关闭的 `rollbackAndClose`，其他字符串直接拒绝，不会静默降级成「丢弃未提交工作」。
+- **`close_session(clientSessionRef, mode?)`**：关闭会话并删掉映射。`mode` 取 `requireNoTransaction`（默认）或回滚未结束事务后关闭的 `rollbackAndClose`，其他字符串直接拒绝，不会静默降级成「丢弃未提交工作」。
 
-`clientSessionRef` 是**不透明引用**：客户端拿到的 uuid 无法反推 `dbSessionId`、连接或主机进程。`reference → handle` 的映射只存在于 [src-tauri/src/mcp/session.rs](../src-tauri/src/mcp/session.rs) 的内存里，绑定 principal、后端生成的 clientInstanceId、运行句柄、`contextRevision` 与到期时刻；它**不写入** Workflow 定义、执行历史或数据库配置，因此进程退出即全部失效，也不会跨 MCP 进程共享。
+`clientSessionRef` 是**不透明引用**：客户端拿到的 uuid 无法反推 `dbSessionId`、连接或主机进程。`reference → handle` 的映射只存在于 [src-tauri/src/mcp/session.rs](../../../src-tauri/src/mcp/session.rs) 的内存里，绑定 principal、后端生成的 clientInstanceId、运行句柄、`contextRevision` 与到期时刻；它**不写入** Workflow 定义、执行历史或数据库配置，因此进程退出即全部失效，也不会跨 MCP 进程共享。
 
 归属与失效判定有三条硬边界：
 
 1. **clientInstanceId 由后端在 server 启动时生成**（`DataZenMcpServer::new` 调 `new_client_instance_id()`），**绝不取自请求参数**；每个 MCP server 实例一个，调用上下文也由适配器本地组装（组织与主体仍是桌面启动身份）。因此「谁开的会话」不是客户端自称，而是后端记的账。
 2. **引用只在归属它的那个 clientInstanceId 下可用**。`use_session` 先查映射再谈别的：他人持有的引用返回 `SessionLost`，已关闭、已过期的引用同样返回 `SessionLost`——丢失的映射**不会用同一个引用重建**，客户端必须重新 `open_session`。查映射发生在 SQL 闸与网关调用之前，所以 `SessionLost` 这条路径根本不需要连数据库。
-3. **TTL 有上下限**：`sanitize_ttl` 把缺省与显式 0 归一到 300 秒，把超过 3600 秒的请求截到 3600 秒。每次走有状态路径先 `purge_expired` 清掉过期项，避免长驻 server 无限堆积已不可用的引用；真正的数据库会话另有网关自己的时钟负责回收。
+3. **TTL 有上下限**：`sanitize_ttl` 把缺省与显式 0 归一到 300 秒，把超过 3600 秒的请求截到 3600 秒。到期 lookup 和独立 worker 将 binding 撤销为不可访问的 cleanup record，保存原 client owner 与 Runtime handle；不依赖后续工具请求或 Runtime 的空闲回收。
 
 `use_session` 还按映射里记的 `contextRevision` 做乐观并发（`with_expected_context_revision`），即调用方看到的上下文版本一旦被人改过，这次命令会被拒绝而不是默默换目标执行。
 
 `close_session` 是幂等的，而且**对未知、他人、已过期三种情况一律回 `{"closed": false}`**，不区分「从没存在」与「曾经存在」，避免用过期的引用反推服务端状态；网关拒绝关闭时映射**保留**，让客户端可以重试——顺手删掉就等于泄漏了一条再也无法关闭的数据库会话。
 
-客户端断开时，`release_sessions` 按 clientInstanceId 逐个关闭**只属于这个 clientInstanceId** 的会话句柄（`requireNoTransaction`），单个失败只记 `tracing::warn!` 不影响其余。它不会因为「连的是同一个 connectionId」就去关别的消费者正在用的会话——这正是 §9 里 A 断开、B 继续那类场景的前提。
+客户端断开时，`release_sessions` 先禁止该 client 新增有状态请求，并撤销所有归属 binding；在途 open 返回的资源也转入清理，不向已断开的 client 发新引用。每个 client 至多一个 `session_cleanup.rs` worker，以原 owner 对原 Runtime 句柄调用 `RollbackAndClose`。它不会按 connectionId 扫描其他消费者资源。只有 `resourceRelease=Confirmed` 删除 cleanup record；错误、Pending、Quarantined 均保留，按 100ms 起、上限 30s 退避。未知效果不改写为已回滚，不重放应用 SQL。已隔离且无法确认物理释放的 owner 记录保持在进程内，不能宣称已清理；进程退出不持久化这些句柄。显式 close 收到未确认释放时返回 `closed:false, cleanupPending:true` 并转入同一路径。worker 在 binding 和 cleanup record 均为空后退出。
 
-回归测试落在 `src-tauri/src/mcp/server/tests_stateful.rs`（他人引用不可用、未知引用不重建、TTL 过期、关闭被网关拒绝时保留映射、重复关闭幂等、断开只释放自己的映射、归属身份与 Job owner 越权被拒）。
+Runtime-backed TTL、active transaction 断连回滚、预算/registry 释放、其他 client 隔离与未确认关闭 owner 保留测试在 `src-tauri/src/mcp/session_cleanup.rs`。协议回归测试落在 `src-tauri/src/mcp/server/tests_stateful.rs`（他人引用不可用、未知引用不重建、TTL 过期、关闭被网关拒绝时保留映射、重复关闭幂等、断开只释放自己的映射、归属身份与 Job owner 越权被拒）。
 

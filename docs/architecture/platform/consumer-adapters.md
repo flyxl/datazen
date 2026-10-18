@@ -64,6 +64,8 @@ P6 在需要事务/临时对象的工具中提供显式 open/use/close 会话协
 
 use 必须校验客户端归属与映射仍存活；映射丢失返回 SessionLost，不能同 ref 重建。close 幂等且只关闭当前 client 所有资源。客户端断开停止新增请求、取消其短操作并关闭其专属 session；共享 grant 与已接受持久 Job 按各自政策处理，不扫描和关闭同 connectionId 的其他消费者资源。
 
+桌面 MCP 的 TTL 在到期 lookup 与独立定时 worker 中检查：到期或 disconnect 先撤销 client binding，再把原 client owner、Runtime handle 留在适配器内存 cleanup record 中，引用不能重新使用。每个 client 至多一个 cleanup worker；它只对该 client 的句柄调用 `RollbackAndClose`，回滚尚未结束的事务后关闭原资源。只有 `resourceRelease=Confirmed` 才删除 cleanup record；错误、Pending 或 Quarantined 保留记录，并以 100ms 起、最多 30s 的退避重试，不能把未知回滚效果报告为成功，也不重放应用 SQL。Runtime 已隔离但不能确认物理释放时，记录保持隔离待清理；该记录不跨进程持久化。worker 在活 binding 与待清理记录均为空后退出。显式 close 收到未确认释放也转入该清理路径，而非丢弃 owner。
+
 MCP Client 连接外部服务的网络生命周期与数据库 session 分开管理。外部 tool 返回的连接 ID、owner 或 SQL 一律作为不可信输入，不能取得宿主内部资源权限。
 
 ## 5. Wapp 受控桥

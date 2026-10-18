@@ -156,6 +156,28 @@ impl TestResourceProvider {
                 reason: "SQL input unavailable in test resource provider".into(),
             })?;
 
+        // Model transaction-control SQL on this retained resource, including
+        // runtime handle registration/observation for lifecycle regression tests.
+        match sql
+            .trim()
+            .trim_end_matches(';')
+            .trim()
+            .to_ascii_uppercase()
+            .as_str()
+        {
+            "BEGIN" => {
+                self.begin_transaction(handle, &TransactionOptions::default())
+                    .await?;
+            }
+            "COMMIT" => {
+                self.commit_transaction(handle).await?;
+            }
+            "ROLLBACK" => {
+                self.rollback_transaction(handle).await?;
+            }
+            _ => {}
+        }
+
         let statements = match call.command.as_str() {
             "query" | "query_stream" => {
                 self.driver

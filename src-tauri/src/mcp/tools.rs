@@ -271,6 +271,20 @@ impl DataZenMcpServer {
             ttl,
             now,
         );
+        self.sessions.wake.notify_one();
+        self.start_session_cleanup();
+        if self
+            .sessions
+            .disconnected
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            self.sessions.close_client(self.client_instance_id());
+            self.start_session_cleanup();
+            return Err(McpError::invalid_params(
+                "SessionLost: MCP client disconnected",
+                None,
+            ));
+        }
         let expires_in_ms = ttl.as_millis().min(u128::from(u64::MAX)) as u64;
         Ok(json!({
             "clientSessionRef": binding.reference,
@@ -350,7 +364,8 @@ impl DataZenMcpServer {
         let mode = close_mode(input.mode.as_deref())
             .map_err(|reason| tool_help::tool_error(TOOL, &reason))?;
         let call = self.session_call(TOOL)?;
-        call.runtime
+        let receipt = call
+            .runtime
             .close_session(
                 &call.context,
                 CloseSessionRequest::new(binding.handle.clone(), mode),
@@ -359,6 +374,14 @@ impl DataZenMcpServer {
             // The mapping is kept on failure so the client can retry; dropping it
             // here would leak the database session with no way left to close it.
             .map_err(|error| McpError::internal_error(error.to_string(), None))?;
+        if receipt.resource_release
+            != datazen_platform_api::dto::session::ResourceRelease::Confirmed
+        {
+            self.sessions
+                .revoke(&input.client_session_ref, self.client_instance_id());
+            self.start_session_cleanup();
+            return Ok(json!({ "closed": false, "cleanupPending": true }).to_string());
+        }
         self.sessions
             .close(&input.client_session_ref, self.client_instance_id());
         Ok(json!({ "closed": true }).to_string())
@@ -371,11 +394,18 @@ impl DataZenMcpServer {
     /// it, and let IdentityPolicy decide. MCP never carries its own allow rule for
     /// ownership — if the desktop policy rejects the owner, the tool fails.
     fn session_call(&self, tool: &str) -> Result<SessionCall, McpError> {
-        // Expired mappings are dropped here rather than only on the next lookup,
-        // so a long-lived server does not accumulate references nobody can use.
-        // The database session behind one is not this adapter's to keep: the
-        // gateway expires it on its own clock.
+        if self
+            .sessions
+            .disconnected
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Err(McpError::invalid_params(
+                "SessionLost: MCP client disconnected",
+                None,
+            ));
+        }
         self.sessions.purge_expired(Instant::now());
+        self.start_session_cleanup();
         let adapter = self
             .app_state
             .platform_require()
@@ -445,6 +475,26 @@ impl DataZenMcpServer {
             )
             .await
             .map_err(|error| McpError::internal_error(error.to_string(), None))?;
+        // get_session/token issuance await the Runtime. Recheck the adapter lease
+        // immediately before submission so TTL/disconnect cannot lend a stale clone
+        // access after it was revoked while those calls were in flight.
+        self.sessions
+            .lookup(
+                &binding.reference,
+                self.client_instance_id(),
+                Instant::now(),
+            )
+            .map_err(|reason| McpError::invalid_params(reason.client_message(), None))?;
+        if self
+            .sessions
+            .disconnected
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Err(McpError::invalid_params(
+                "SessionLost: MCP client disconnected",
+                None,
+            ));
+        }
         let receipt = call
             .runtime
             .execute_in_session(

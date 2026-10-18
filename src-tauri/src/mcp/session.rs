@@ -76,6 +76,10 @@ impl SessionBinding {
 #[derive(Default)]
 pub struct McpSessionRegistry {
     entries: Mutex<HashMap<String, SessionBinding>>,
+    cleanup: Mutex<HashMap<String, SessionBinding>>,
+    pub(crate) disconnected: std::sync::atomic::AtomicBool,
+    pub(crate) worker: std::sync::atomic::AtomicBool,
+    pub(crate) wake: tokio::sync::Notify,
 }
 
 impl McpSessionRegistry {
@@ -130,7 +134,9 @@ impl McpSessionRegistry {
             return Err(SessionLostReason::ForeignOwner);
         }
         if binding.is_expired_at(now) {
-            entries.remove(reference);
+            if let Some(expired) = entries.remove(reference) {
+                self.retain_cleanup(expired);
+            }
             return Err(SessionLostReason::Unknown);
         }
         Ok(binding.clone())
@@ -145,6 +151,12 @@ impl McpSessionRegistry {
         entries.remove(reference)
     }
 
+    pub(crate) fn revoke(&self, reference: &str, client: &str) {
+        if let Some(binding) = self.close(reference, client) {
+            self.retain_cleanup(binding);
+        }
+    }
+
     /// 回收某个客户端实例的全部映射。
     ///
     /// 只按 clientInstanceId 过滤，不按 connectionId：同一个连接上别的消费者的
@@ -156,13 +168,17 @@ impl McpSessionRegistry {
             .filter(|(_, binding)| binding.client_instance_id == client_instance_id)
             .map(|(reference, _)| reference.clone())
             .collect();
-        owned
+        let bindings: Vec<_> = owned
             .iter()
             .filter_map(|reference| entries.remove(reference))
-            .collect()
+            .collect();
+        for binding in &bindings {
+            self.retain_cleanup(binding.clone());
+        }
+        bindings
     }
 
-    /// 回收已过期映射，把要关掉的真实会话句柄交回调用方。
+    /// 撤销已过期映射并保留 cleanup owner；返回值仅供观测，忽略它不会丢失句柄。
     pub fn purge_expired(&self, now: Instant) -> Vec<SessionBinding> {
         let mut entries = self.entries();
         let expired: Vec<String> = entries
@@ -170,10 +186,45 @@ impl McpSessionRegistry {
             .filter(|(_, binding)| binding.is_expired_at(now))
             .map(|(reference, _)| reference.clone())
             .collect();
-        expired
+        let bindings: Vec<_> = expired
             .iter()
             .filter_map(|reference| entries.remove(reference))
+            .collect();
+        for binding in &bindings {
+            self.retain_cleanup(binding.clone());
+        }
+        bindings
+    }
+
+    fn retain_cleanup(&self, binding: SessionBinding) {
+        self.cleanup
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(binding.reference.clone(), binding);
+        self.wake.notify_one();
+    }
+
+    pub(crate) fn pending_cleanup(&self) -> Vec<SessionBinding> {
+        self.cleanup
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .cloned()
             .collect()
+    }
+
+    pub(crate) fn confirm_cleanup(&self, reference: &str) {
+        self.cleanup
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(reference);
+    }
+
+    pub(crate) fn next_expiry(&self) -> Option<Instant> {
+        self.entries()
+            .values()
+            .map(|binding| binding.expires_at)
+            .min()
     }
 
     pub fn len(&self) -> usize {
@@ -284,7 +335,8 @@ mod tests {
             Err(SessionLostReason::Unknown)
         );
         assert!(registry.is_empty());
-        // lookup 已经回收过，purge 不会再交出同一个句柄。
+        // lookup 已撤销访问，但清理owner仍保留，purge不重复排队。
+        assert_eq!(registry.pending_cleanup(), vec![binding]);
         assert!(registry.purge_expired(after).is_empty());
     }
 
