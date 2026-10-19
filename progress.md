@@ -13,15 +13,17 @@ Integration branch: `feature/p6-restore-apply-evidence`.
 - NativeTool fail-closed kernel: coder commit `2320a3da6`, independent tester accepted. Runtime 6/6, Host 5/5, platform-api/runtime cargo checks and boundary guard passed. Desktop only permits hash-pinned `pg_dump`/`mysqldump --version` probes with zero DB sockets; real database CLI operations, backup/restore and product IPC/UI remain unsupported.
 - MCP cancelled-open ownership repair: coder commit `26f93717b`, independently accepted and integrated as `daae66596`. `cargo test -p datazen --lib mcp::session`: EXIT=0, 17 passed, including cancel/late-acquisition cleanup, disconnect race, and delivered open/idempotent close. `mcp::server::tests`: EXIT=101, 48 passed/2 failed on both this commit and base `1d47a8f75`; identical existing `Runtime session unavailable` failures in prompt/resource tests. MCP tester trees/logs were cleaned after stable HEAD/fingerprint checks.
 - Monitor scheduled desktop PG/MySQL journey: ancestry `d2de58eae` → `25ab384c5` → `8f8b0ee15` → `d439c375c`, integrated as `6a6e8de28`, `a038e13d5`, `80000e3d6`, `3e501172b`. Earlier runs exposed missing required Workflow `description`, cleanup masking, then production occurrence admission rejection due to unprefixed SHA-256 format. Final coder fix accepts exact 64-hex production revision while retaining tagged compatibility and adds bounded stage diagnostics. Independent `pnpm install --frozen-lockfile --offline`, `pnpm tauri:build:webdriver`, PG WDIO and MySQL WDIO all EXIT=0. Each driver journey reported 1 passing, traversed receipt, marker `73129`, duplicate-slot no-dispatch, revoke and a 62-second physical-dispatch observation. Tester HEAD `d439c375c3ece73391eea1c9146fe324bd96bd68` and fingerprint `53a6f114b805d9efbb07ec818fabe8d5c6f982aa6be05488d756038139417c09` stable.
+- MySQL 8.4.7 privilege-cache probe: coder commit `1d70d9220`, independently accepted and integrated as `e7480c68e`. Three transaction-plan refusal tests pass, two probe identity/name tests pass, and the explicitly disabled admin gate fails closed before reading configuration or connecting. This is an offline/probe slice only; no live privilege mutation ran and no production transaction recipe is enabled.
 
 ## In progress
 
-- MySQL `transactionBlock` proof work on `codex/p6-mysql-transaction-block-proof`, commit `1d70d9220`, currently has only a driver-local Oracle MySQL 8.4.7 privilege-cache counterexample probe. Offline checks pass and unsafe admin live operations were not run; production `workflow_transaction_plan` remains `None`. Original tester acceptance is pending.
+- MySQL `transactionBlock` observer safety correction `55121d874` is under repair after tester review found a missing Unknown invalidation in `query_stream_with_execution`; production `workflow_transaction_plan` remains `None`.
+- NativeTool cleanup panic budget correction `b39cc7510` is awaiting independent tester acceptance; it follows the accepted MySQL probe commit.
 
 ## Remaining P6 scope
 
 - MCP owner/TTL cancellation fault path is implemented and accepted as above; external MCP transport/PG/MySQL live integration remains outside this specific acceptance.
-- MySQL transactionBlock remains fail-closed pending a defensible proof; the probe does not enable the production path.
+- MySQL transactionBlock remains fail-closed pending a defensible proof; the accepted probe does not enable the production path.
 - NativeTool database operations and full product IPC/UI remain unsupported; the accepted implementation is a safe kernel/probe slice only.
 - Workflow Job handler exposes durable state and bounded result projection, but no dedicated Workflow Job control UI or cross-restart Workflow receipt exists; determine whether these are required P6 exit items or documented follow-up before closure.
 - Explicit AI editor-session grants/revocation are tracked by the separate AI migration owner; do not modify AI here.
