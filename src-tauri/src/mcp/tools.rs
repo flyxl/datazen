@@ -67,14 +67,18 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ListTablesInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("list_tables", &input.connection_id)?;
-        crate::services::db_tools::list_tables(
-            self.app_state.as_ref(),
+        let output = super::runtime_schema::read_target_command(
+            self,
             &input.connection_id,
-            input.database.as_deref(),
-            input.schema.as_deref(),
+            "list_tables",
+            serde_json::json!({
+                "database": input.database,
+                "schema": input.schema,
+            }),
         )
-        .await
-        .map_err(Self::map_err)
+        .await?;
+        serde_json::to_string_pretty(&datazen_driver_api::parse_tables_from_command(&output))
+            .map_err(|e| Self::map_err(e.to_string()))
     }
 
     #[tool(
@@ -86,16 +90,34 @@ impl DataZenMcpServer {
     ) -> Result<String, McpError> {
         self.ensure_allowed("search_tables", &input.connection_id)?;
         let limit = input.limit.unwrap_or(20) as usize;
-        crate::services::db_tools::search_tables(
-            self.app_state.as_ref(),
+        let output = super::runtime_schema::read_target_command(
+            self,
             &input.connection_id,
-            input.database.as_deref(),
-            input.schema.as_deref(),
-            &input.pattern,
-            limit,
+            "list_tables",
+            serde_json::json!({
+                "database": input.database,
+                "schema": input.schema,
+            }),
         )
-        .await
-        .map_err(Self::map_err)
+        .await?;
+        let tables = datazen_driver_api::parse_tables_from_command(&output);
+        let pattern_lower = input.pattern.to_lowercase();
+        let matched: Vec<_> = tables
+            .iter()
+            .filter(|table| table.name.to_lowercase().contains(&pattern_lower))
+            .take(limit)
+            .collect();
+        let total_matches = tables
+            .iter()
+            .filter(|table| table.name.to_lowercase().contains(&pattern_lower))
+            .count();
+        serde_json::to_string_pretty(&serde_json::json!({
+            "matched": matched,
+            "totalMatches": total_matches,
+            "totalTables": tables.len(),
+            "pattern": input.pattern,
+        }))
+        .map_err(|e| Self::map_err(e.to_string()))
     }
 
     #[tool(
@@ -127,16 +149,19 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<GetSchemaInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("get_schema", &input.connection_id)?;
-        let tables = vec![input.table.clone()];
-        crate::services::db_tools::get_table_schema(
-            self.app_state.as_ref(),
+        let output = super::runtime_schema::read_target_command(
+            self,
             &input.connection_id,
-            &tables,
-            input.database.as_deref(),
-            input.schema.as_deref(),
+            "get_table_schema",
+            serde_json::json!({
+                "database": input.database,
+                "schema": input.schema,
+                "table": input.table,
+            }),
         )
-        .await
-        .map_err(Self::map_err)
+        .await?;
+        serde_json::to_string_pretty(&vec![output["schema"].clone()])
+            .map_err(|e| Self::map_err(e.to_string()))
     }
 
     #[tool(
@@ -164,15 +189,19 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<DescribeTableInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("describe_table", &input.connection_id)?;
-        let schema = crate::services::db_tools::get_single_table_schema(
-            self.app_state.as_ref(),
+        let output = super::runtime_schema::read_target_command(
+            self,
             &input.connection_id,
-            &input.table,
-            input.database.as_deref(),
-            input.schema.as_deref(),
+            "get_table_schema",
+            serde_json::json!({
+                "database": input.database,
+                "schema": input.schema,
+                "table": input.table,
+            }),
         )
-        .await
-        .map_err(Self::map_err)?;
+        .await?;
+        let schema = serde_json::from_value(output["schema"].clone())
+            .map_err(|e| Self::map_err(e.to_string()))?;
 
         Ok(format_table_description(&input.table, &schema))
     }

@@ -9,6 +9,7 @@ mod handler;
 pub mod permission;
 mod prompts;
 mod resources;
+mod runtime_schema;
 mod server;
 pub mod session;
 mod session_cleanup;
