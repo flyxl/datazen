@@ -30,6 +30,23 @@ async fn resolve_ai_requires_saved_config() {
 }
 
 #[tokio::test]
+async fn ai_session_commands_reject_legacy_manager_only_ids() {
+    let (test, _mock) = TestAppState::with_wiremock_ai().await;
+    test.save_connection("runtime-only").await;
+    let legacy_session = test.connect_config("runtime-only").await;
+
+    let error = ai_analyze_explain_impl(
+        &test.state,
+        legacy_session,
+        "Seq Scan on users".into(),
+        "SELECT * FROM users".into(),
+    )
+    .await
+    .expect_err("AI must resolve dbSessionId through Runtime, not the legacy manager");
+    assert!(error.to_string().contains("session unavailable"));
+}
+
+#[tokio::test]
 async fn ai_validate_config_hits_wiremock() {
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     let cfg = crate::testing::ai_wiremock::openai_wiremock_config(&mock);
@@ -39,7 +56,7 @@ async fn ai_validate_config_hits_wiremock() {
 #[tokio::test]
 async fn ai_diagnose_error_returns_parsed_json() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("diag-cfg").await;
+    let (_, conn_id) = test.save_and_connect_runtime("diag-cfg").await;
 
     mock.mount_chat_completion_text(
         r#"{"explanation":"missing column","suggestedSql":"SELECT id FROM users","changes":[]}"#,
@@ -66,7 +83,7 @@ async fn ai_diagnose_error_returns_parsed_json() {
 #[tokio::test]
 async fn ai_analyze_explain_parses_response() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("explain-cfg").await;
+    let (_, conn_id) = test.save_and_connect_runtime("explain-cfg").await;
 
     mock.mount_chat_completion_text(
         r#"{"summary":"Seq scan","bottlenecks":[{"node":"Seq Scan","description":"full scan","severity":"high"}],"suggestions":[{"description":"Add index","sql":"CREATE INDEX ON users(id)","impact":"high"}]}"#,
@@ -90,7 +107,7 @@ async fn ai_analyze_explain_parses_response() {
 #[tokio::test]
 async fn ai_parse_filter_normalizes_null_operators() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("filter-cfg").await;
+    let (_, conn_id) = test.save_and_connect_runtime("filter-cfg").await;
 
     mock.mount_chat_completion_text(
         r#"[{"column":"name","operator":"eq","value":null},{"column":"id","operator":"gt","value":1}]"#,
@@ -116,7 +133,7 @@ async fn ai_parse_filter_normalizes_null_operators() {
 #[tokio::test]
 async fn ai_generate_schema_doc_returns_markdown() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("schema-doc-cfg").await;
+    let (_, conn_id) = test.save_and_connect_runtime("schema-doc-cfg").await;
 
     mock.mount_chat_completion_text("# Users\n\nTable of users.")
         .await;
@@ -161,7 +178,7 @@ async fn ai_analyze_queries_requires_history() {
 #[tokio::test]
 async fn ai_analyze_queries_with_history() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("hist-cfg").await;
+    let (_, conn_id) = test.save_and_connect_runtime("hist-cfg").await;
 
     test.state
         .store
@@ -231,7 +248,7 @@ async fn build_connections_context_lists_saved_configs() {
 #[tokio::test]
 async fn ai_generate_sql_stream_without_tools() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("nl2sql-cfg").await;
+    let (_, conn_id) = test.save_and_connect_runtime("nl2sql-cfg").await;
     mock.mount_chat_stream_text("SELECT 1").await;
 
     let (cb, log) = collecting_stream_callback();
@@ -257,7 +274,7 @@ async fn ai_generate_sql_stream_without_tools() {
 #[tokio::test]
 async fn ai_chat_with_schema_and_stream() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("chat-cfg").await;
+    let (_, conn_id) = test.save_and_connect_runtime("chat-cfg").await;
     mock.mount_chat_stream_text("Hello from AI").await;
 
     let (cb, _log) = collecting_stream_callback();
@@ -416,7 +433,7 @@ fn many_tables_mock_options() -> crate::testing::mock_driver::MockDriverOptions 
 #[tokio::test]
 async fn ai_generate_schema_doc_selects_tables_when_many() {
     let (test, mock) = TestAppState::with_wiremock_ai_options(many_tables_mock_options()).await;
-    let (_, conn_id) = test.save_and_connect("many-tables").await;
+    let (_, conn_id) = test.save_and_connect_runtime("many-tables").await;
 
     mock.mount_chat_completion_text_once(r#"["table_0","table_1"]"#)
         .await;
@@ -431,7 +448,7 @@ async fn ai_generate_schema_doc_selects_tables_when_many() {
 #[tokio::test]
 async fn ai_generate_sql_tool_loop_executes_list_connections() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("tool-loop").await;
+    let (_, conn_id) = test.save_and_connect_runtime("tool-loop").await;
 
     let tool_sse = r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"list_connections","arguments":"{}"}}]}}]}
 
@@ -505,7 +522,7 @@ async fn ai_fetch_remote_models_openai_wiremock() {
 #[tokio::test]
 async fn ai_parse_filter_drops_unknown_columns() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("filter-drop").await;
+    let (_, conn_id) = test.save_and_connect_runtime("filter-drop").await;
 
     mock.mount_chat_completion_text(
         r#"[{"column":"ghost","operator":"eq","value":"x"},{"column":"name","operator":"like","value":"a"}]"#,
@@ -530,7 +547,7 @@ async fn ai_generate_sql_injects_context_file() {
     use crate::commands::context::resolve_context_dir_from_state;
 
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("ctx-sql").await;
+    let (_, conn_id) = test.save_and_connect_runtime("ctx-sql").await;
     let ctx_dir = resolve_context_dir_from_state(&test.state).await.unwrap();
     std::fs::create_dir_all(&ctx_dir).unwrap();
     std::fs::write(ctx_dir.join("notes.md"), "Context hint").unwrap();
@@ -660,7 +677,7 @@ async fn ai_chat_schema_resolve_failure_still_streams() {
 #[tokio::test]
 async fn ai_generate_schema_doc_falls_back_when_selection_invalid() {
     let (test, mock) = TestAppState::with_wiremock_ai_options(many_tables_mock_options()).await;
-    let (_, conn_id) = test.save_and_connect("schema-fallback").await;
+    let (_, conn_id) = test.save_and_connect_runtime("schema-fallback").await;
 
     mock.mount_chat_completion_text_once("not-valid-json").await;
     mock.mount_chat_completion_text_once("# Fallback doc").await;
@@ -695,7 +712,7 @@ async fn execute_db_tool_list_databases() {
 #[tokio::test]
 async fn ai_analyze_queries_all_history() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, _conn_id) = test.save_and_connect("all-hist").await;
+    let (_, _conn_id) = test.save_and_connect_runtime("all-hist").await;
     test.state
         .store
         .add_query_history(crate::store::QueryHistoryEntry {
@@ -725,7 +742,7 @@ async fn ai_analyze_queries_all_history() {
 #[tokio::test]
 async fn ai_generate_sql_pins_current_table() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("pin-table").await;
+    let (_, conn_id) = test.save_and_connect_runtime("pin-table").await;
     mock.mount_chat_stream_text("SELECT * FROM users").await;
 
     let (cb, _) = collecting_stream_callback();
@@ -756,7 +773,7 @@ async fn ai_save_config_impl_persists_wiremock_provider() {
 #[tokio::test]
 async fn ai_generate_schema_doc_strips_markdown_fence() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("md-doc").await;
+    let (_, conn_id) = test.save_and_connect_runtime("md-doc").await;
     mock.mount_chat_completion_text("```markdown\n# Title\n```")
         .await;
 
@@ -939,7 +956,7 @@ async fn workflow_execute_ai_step_with_wiremock() {
 #[tokio::test]
 async fn ai_generate_sql_recent_queries_chinese_label() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("zh-sql").await;
+    let (_, conn_id) = test.save_and_connect_runtime("zh-sql").await;
     let mut settings = test.state.store.get_settings().await;
     settings.language = "zh-CN".into();
     test.state.store.save_settings(settings).await.unwrap();
@@ -965,7 +982,7 @@ async fn ai_generate_sql_recent_queries_chinese_label() {
 #[tokio::test]
 async fn ai_generate_schema_doc_small_schema_single_step() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("small-doc").await;
+    let (_, conn_id) = test.save_and_connect_runtime("small-doc").await;
     mock.mount_chat_completion_text("# Small schema doc").await;
 
     let doc = ai_generate_schema_doc_impl(&test.state, conn_id, "app".into())
@@ -999,7 +1016,7 @@ async fn workflow_execute_missing_id_errors() {
 #[tokio::test]
 async fn ai_chat_connected_english_schema_message() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect("en-chat").await;
+    let (_, conn_id) = test.save_and_connect_runtime("en-chat").await;
     mock.mount_chat_stream_text("Hello").await;
 
     let (cb, _) = collecting_stream_callback();

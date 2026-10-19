@@ -1,8 +1,8 @@
 //! AI chat IPC and tool-loop execution.
 
 use super::util::{
-    build_connections_context, inject_language_hint, resolve_ai, resolve_safety_gate,
-    window_stream_callback, StreamCallback,
+    borrow_runtime_session, build_connections_context, inject_language_hint, resolve_ai,
+    resolve_safety_gate, window_stream_callback, StreamCallback,
 };
 use crate::ai::budget;
 use crate::ai::safety::redact_for_gate;
@@ -146,7 +146,13 @@ pub(crate) async fn ai_chat_impl(
     if include_schema {
         if let Some(ref conn_id) = db_session_id {
             let db = database.as_deref().unwrap_or("");
-            if let Ok((driver, _handle)) = state.connection_manager.get_session(conn_id).await {
+            if let Ok((_session, lease)) = borrow_runtime_session(state, conn_id, "ai_chat").await {
+                let Ok(connection) = lease.connection() else {
+                    return Err(CommandError::Internal(
+                        "ai_chat: runtime connection borrow revoked".into(),
+                    ));
+                };
+                let driver = connection.driver().clone();
                 let pinned = context_tables.clone().unwrap_or_default();
                 let supports_tools = provider.supports_tools();
                 let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
