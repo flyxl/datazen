@@ -54,9 +54,15 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ListDatabasesInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("list_databases", &input.connection_id)?;
-        crate::services::db_tools::list_databases(self.app_state.as_ref(), &input.connection_id)
-            .await
-            .map_err(Self::map_err)
+        let output = super::runtime_schema::read_target_command(
+            self,
+            &input.connection_id,
+            "list_databases",
+            serde_json::json!({}),
+        )
+        .await?;
+        serde_json::to_string_pretty(&datazen_driver_api::parse_databases_from_command(&output))
+            .map_err(|e| Self::map_err(e.to_string()))
     }
 
     #[tool(
@@ -130,15 +136,23 @@ impl DataZenMcpServer {
         self.ensure_allowed("query", &input.connection_id)?;
         permission::check_sql_allowed(&input.sql, self.permission_mode)
             .map_err(|e| tool_help::tool_error("query", &e))?;
-        crate::services::db_tools::query(
-            self.app_state.as_ref(),
+        let mut command_input = serde_json::json!({
+            "sql": input.sql,
+            "limit": crate::services::db_tools::resolve_query_limit(input.limit),
+        });
+        self.app_state
+            .store
+            .execution_settings()
+            .await
+            .apply_result_limit(&mut command_input);
+        let output = super::runtime_schema::read_target_command(
+            self,
             &input.connection_id,
-            &input.sql,
-            input.limit,
-            Some(self.permission_mode),
+            "query",
+            command_input,
         )
-        .await
-        .map_err(Self::map_err)
+        .await?;
+        serde_json::to_string_pretty(&output).map_err(|e| Self::map_err(e.to_string()))
     }
 
     #[tool(
@@ -172,13 +186,14 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ExplainQueryInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("explain_query", &input.connection_id)?;
-        crate::services::db_tools::explain_query(
-            self.app_state.as_ref(),
+        let output = super::runtime_schema::read_target_command(
+            self,
             &input.connection_id,
-            &input.sql,
+            "explain",
+            serde_json::json!({ "sql": input.sql }),
         )
-        .await
-        .map_err(Self::map_err)
+        .await?;
+        serde_json::to_string_pretty(&output).map_err(|e| Self::map_err(e.to_string()))
     }
 
     #[tool(

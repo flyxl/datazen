@@ -110,6 +110,29 @@ impl RuntimeCommandSource {
         .map_err(|error| error.to_string())
     }
 
+    /// Resolve the configured driver for a persisted connection profile.
+    ///
+    /// Callers that execute a command must still use `read_target_command` so
+    /// Runtime performs the authoritative profile, revision and target checks.
+    /// This helper is only for driver metadata needed to render prompts.
+    pub(crate) async fn driver_for_connection(
+        &self,
+        connection_id: &str,
+    ) -> Result<Arc<dyn DatabaseDriver>, String> {
+        let (config, metadata) = self
+            .store
+            .platform_profile(connection_id)
+            .await
+            .ok_or_else(|| "Connection profile unavailable".to_owned())?;
+        if !metadata.enabled {
+            return Err("Connection profile is disabled".to_owned());
+        }
+        self.registry
+            .get(&config.database_type)
+            .await
+            .ok_or_else(|| "Driver unavailable".to_owned())
+    }
+
     pub(crate) async fn execution_safe_mode(&self) -> bool {
         self.store.execution_settings().await.safe_mode
     }
