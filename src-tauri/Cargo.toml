@@ -92,6 +92,7 @@ cbc = "0.1"
 sha2 = "0.10"
 
 tempfile = "3.27.0"
+libc = "0.2"
 
 # macOS 静默 E2E：让 webdriver 构建在 `DATAZEN_E2E_QUIET` 下拒绝进程激活，
 # 避免本地跑测试时抢走开发者焦点（见 `src/e2e_quiet.rs`）。两个 crate 都由

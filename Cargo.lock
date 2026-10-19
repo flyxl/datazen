@@ -1695,6 +1695,7 @@ dependencies = [
  "hmac 0.12.1",
  "inventory",
  "keyring",
+ "libc",
  "objc2",
  "objc2-app-kit",
  "open",

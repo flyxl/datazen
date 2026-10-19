@@ -35,8 +35,32 @@ impl StageOwnerPermit {
     pub fn context(&self) -> &RequestContext {
         &self.context
     }
+    pub fn stage_id(&self) -> &StageId {
+        &self.stage
+    }
     pub fn job_id(&self) -> &datazen_platform_api::id::JobId {
         &self.claim.job_id
+    }
+    pub(crate) async fn verify_native_selection(
+        &self,
+        selection: &datazen_platform_api::ports::native_tool::NativeToolSelection,
+    ) -> Result<(), ApiError> {
+        self.verify_active().await?;
+        let record = self
+            .repository
+            .get(&self.context, self.claim.job_id.clone())
+            .await
+            .map_err(|_| ApiError::permission_denied("native job selection unavailable"))?;
+        let expected = serde_json::to_value(selection)
+            .map_err(|_| ApiError::permission_denied("native tool selection invalid"))?;
+        if record.definition.kind != "nativeToolProbe"
+            || record.definition.payload.get("nativeToolSelection") != Some(&expected)
+        {
+            return Err(ApiError::permission_denied(
+                "native tool differs from the frozen job selection",
+            ));
+        }
+        Ok(())
     }
     pub async fn verify_active(&self) -> Result<(), ApiError> {
         self.repository

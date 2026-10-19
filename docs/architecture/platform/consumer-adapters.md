@@ -135,6 +135,16 @@ PostgreSQL 与 MySQL 的 driver 专属 `tests/monitor_scheduled_query.rs` 现提
 
 服务节点未安装工具、版本不符或服务身份无法访问目标时，在接受/派发校验失败，不能调用浏览器或桌面本地 CLI 代替服务端执行。恢复是外部写任务，取消与进程退出都不证明回滚；unknown 进入核验，不自动重放。
 
+### 2026-10-19 NativeTool kernel 与桌面版本探针（当前实现边界）
+
+`packages/platform-api/src/ports/native_tool.rs` 定义 NativeToolPort；请求只含 toolId/version，不含客户端 executable、argv、env、工作目录或凭据。`packages/runtime/src/native_tool/` 在真实 JobRuntime stage capability 下执行：先核对活动 claim，再校验受信端口给出的进程/DB socket 上限；当前只接受一个有证明的进程，任一未知上限或缺目标均失败关闭。OS 进程名额单独计数，完整声明的 DB socket cost 在 spawn 前通过宿主共享 InProcessBudgetCoordinator 的 Job 类一次原子预留，不能将一个进程记成一个 socket。宿主须在环境级复用同一个 NativeToolRuntime；native handler 的 endpoints 不重复声明该物理预留。有效 owner 在执行中持续重验，撤销/取消只通知原进程，不能启动替代进程。
+
+桌面 `src-tauri/src/platform/native_tool/` **仅实现 POSIX 固定版本探针**：显式部署登记 SHA-256 钉定的 `postgres.pg-dump-version` / `mysql.mysqldump-version` 和对应精确版本行；空注册表拒绝全部请求，不搜索 PATH。唯一 argv 是 `--version`，声明零 DB sockets；数据导出、导入、native backup/restore、任意自定义命令与 Windows adapter 均未启用。请求类型本身无法指定路径。运行前复验部署 binary，验证字节复制到私有临时可执行快照，防止检查后替换路径；生产拒绝脚本，测试仅使用 cfg(test) 合成脚本夹具。工作目录是独立私有目录，stdin 为 null，env_clear 后只设置 LANG/LC_ALL/TZ 常量，不继承 HOME、PGOPTIONS、MYSQL_*、动态加载路径或凭据。
+
+stdout/stderr 同时按 4 KiB 缓冲读取，无无界队列；总输出默认 64 KiB、硬上限 1 MiB，版本 stdout 额外限制 1 KiB，超限即终止。原始输出全部丢弃，只比对受信精确版本行，receipt/Job projection 只记录字节计数、稳定结果码和清理事实。当前探针不生成大输出 Artifact。deadline/取消触发专属 process group 的 TERM、宽限后 KILL，并 wait/reap 主进程；只有组已不存在、管道关闭、临时目录明确删除成功才报告 Confirmed。请求停止等待不丢失进程：provider worker 保留实际 Child/目录，失败后只重试原资源清理。
+
+未确认 cleanup 保留全部 process/socket 预算，确认后才核销；结果中的 Unknown 不因稍后物理释放就改称数据库回滚/成功。每个 Job/stage 只执行一次，重复执行返回原 receipt，换 selection 拒绝；Job 终态与重启恢复都不自动运行 NativeTool，handler 的 recovery 始终要求人工复核。进程退出码不能证明真实数据库效果，通用 kernel 对非零 DB socket 的 fake operation 保守记录 Unknown。此段提供端口/内核与合成进程测试基础，**没有接入产品 IPC/UI、实际 pg_dump/mysqldump 部署登记、真实数据库操作或 native backup/restore 产品路径，也没有完成 P6 全预算及适用层验收**。
+
 ## 8. 接口落地与旧路径删除
 
 P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridge adapter、schedule adapter 与 native tool adapter；名字是职责描述，不假称当前存在这些模块。新增字段与方法先在 contracts/application 注册，再同时更新桌面和团队 adapter。
