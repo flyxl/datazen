@@ -461,3 +461,203 @@ async fn cleanup_observer_panic_retains_both_budgets_until_confirmed_without_rep
     assert_eq!(inner.calls.load(Ordering::Acquire), 2);
     assert_eq!(in_use(&budget).await, 0);
 }
+
+#[tokio::test]
+async fn abandoned_job_waiter_still_cancels_original_invocation_and_retains_cleanup_budgets() {
+    // A stalled provider future models a blocked native pipeline. Real pipe
+    // output limits/reaping are separately tested by the desktop process adapter.
+    let port = fake(Some(2), false, true);
+    let (runtime, budget) = native(port.clone(), 4);
+    let (jobs, repo, _) = job(runtime.clone(), "abandoned-native").await;
+    let jobs = Arc::new(jobs);
+    let caller = jobs.clone();
+    let waiter = tokio::spawn(async move {
+        caller
+            .run(
+                &context(),
+                &JobId::new("abandoned-native"),
+                &WorkerId::new("worker"),
+                &[],
+            )
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while port.calls.load(Ordering::Acquire) != 1 {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap();
+    waiter.abort();
+    assert!(waiter.await.unwrap_err().is_cancelled());
+    assert_eq!(in_use(&budget).await, 2);
+    assert_eq!(runtime.processes.available_permits(), 0);
+    repo.request_cancel(&context(), &JobId::new("abandoned-native"))
+        .unwrap();
+    let persisted = repo
+        .get(&context(), JobId::new("abandoned-native"))
+        .await
+        .unwrap();
+    // Aborting the JobRuntime caller is a failure injection, not product window
+    // unsubscribe: it cannot fabricate a persisted successful Job completion.
+    assert_eq!(persisted.view.state, JobState::Running);
+    assert!(persisted.view.cancel_requested);
+    // The JobRuntime cancel watcher was dropped with its caller. The retained
+    // native owner must independently see revocation and stop the original run.
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let finished = runtime
+                .entries()
+                .values()
+                .any(|entry| entry.result.is_some());
+            if finished {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let receipt = runtime
+        .entries()
+        .values()
+        .find_map(|entry| entry.result.clone())
+        .unwrap();
+    assert_eq!(receipt.effect, EffectOutcome::Unknown);
+    let report = receipt.report.as_ref().unwrap();
+    assert_eq!(report.termination, NativeTermination::Cancelled);
+    assert_eq!(report.cleanup, NativeCleanup::Unconfirmed);
+    assert_eq!(port.calls.load(Ordering::Acquire), 1);
+    assert_eq!(in_use(&budget).await, 2);
+    assert_eq!(runtime.processes.available_permits(), 0);
+    // Neither resubmitting the accepted Job nor a different Job may replay it.
+    assert!(jobs
+        .run(
+            &context(),
+            &JobId::new("abandoned-native"),
+            &WorkerId::new("worker"),
+            &[]
+        )
+        .await
+        .is_err());
+    let (other, _, _) = job(runtime.clone(), "while-abandoned-cleans").await;
+    assert_eq!(
+        other
+            .run(
+                &context(),
+                &JobId::new("while-abandoned-cleans"),
+                &WorkerId::new("worker"),
+                &[]
+            )
+            .await
+            .unwrap()
+            .effect_outcome,
+        EffectOutcome::NotStarted
+    );
+    assert_eq!(port.calls.load(Ordering::Acquire), 1);
+    port.cleanup.store(true, Ordering::Release);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while in_use(&budget).await != 0 || runtime.processes.available_permits() != 1 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let after = runtime
+        .entries()
+        .values()
+        .find_map(|entry| {
+            entry
+                .result
+                .clone()
+                .filter(|result| result.effect == EffectOutcome::Unknown)
+        })
+        .unwrap();
+    assert_eq!(after, receipt); // late cleanup never rewrites effects or replays.
+    assert_eq!(port.calls.load(Ordering::Acquire), 1);
+}
+
+struct RunPanicPort(Arc<FakePort>);
+#[async_trait::async_trait]
+impl NativeToolPort for RunPanicPort {
+    fn resolve(&self, selection: &NativeToolSelection) -> Result<NativeToolResolution, PortError> {
+        self.0.resolve(selection)
+    }
+    async fn run(
+        &self,
+        _: &str,
+        _: NativeToolResolution,
+        _: Arc<AtomicBool>,
+        _: NativeToolLimits,
+    ) -> Result<NativeToolReport, PortError> {
+        self.0.calls.fetch_add(1, Ordering::SeqCst);
+        // A panic cannot promise the pre-spawn Err contract; cleanup is unknown.
+        panic!("synthetic post-start provider panic");
+    }
+    async fn cleanup_status(&self, key: &str) -> NativeCleanup {
+        self.0.cleanup_status(key).await
+    }
+}
+
+#[tokio::test]
+async fn provider_run_panic_is_unknown_and_retains_reservations_until_late_cleanup() {
+    let inner = fake(Some(2), false, false);
+    let (runtime, budget) = native(Arc::new(RunPanicPort(inner.clone())), 4);
+    let (jobs, _, _) = job(runtime.clone(), "run-panic").await;
+    let result = jobs
+        .run(
+            &context(),
+            &JobId::new("run-panic"),
+            &WorkerId::new("worker"),
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.effect_outcome, EffectOutcome::Unknown);
+    assert_eq!(in_use(&budget).await, 2);
+    assert_eq!(runtime.processes.available_permits(), 0);
+    let receipt = runtime
+        .entries()
+        .values()
+        .find_map(|entry| entry.result.clone())
+        .unwrap();
+    assert_eq!(
+        receipt.report.as_ref().unwrap().cleanup,
+        NativeCleanup::Unconfirmed
+    );
+    let (other, _, _) = job(runtime.clone(), "during-run-panic-cleanup").await;
+    assert_eq!(
+        other
+            .run(
+                &context(),
+                &JobId::new("during-run-panic-cleanup"),
+                &WorkerId::new("worker"),
+                &[]
+            )
+            .await
+            .unwrap()
+            .effect_outcome,
+        EffectOutcome::NotStarted
+    );
+    assert_eq!(inner.calls.load(Ordering::Acquire), 1);
+    inner.cleanup.store(true, Ordering::Release);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while in_use(&budget).await != 0 || runtime.processes.available_permits() != 1 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        runtime
+            .entries()
+            .values()
+            .find_map(|entry| entry
+                .result
+                .clone()
+                .filter(|result| result.effect == EffectOutcome::Unknown))
+            .unwrap(),
+        receipt
+    );
+    assert_eq!(inner.calls.load(Ordering::Acquire), 1);
+}

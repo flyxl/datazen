@@ -145,6 +145,8 @@ stdout/stderr 同时按 4 KiB 缓冲读取，无无界队列；总输出默认 6
 
 未确认 cleanup 保留全部 process/socket 预算，确认后才核销；cleanup 状态查询 panic 也按未确认处理，由原 owner task 保留全部名额并继续只查询原资源清理，不因 observer 故障释放进程名额或重放工具；结果中的 Unknown 不因稍后物理释放就改称数据库回滚/成功。每个 Job/stage 只执行一次，重复执行返回原 receipt，换 selection 拒绝；Job 终态与重启恢复都不自动运行 NativeTool，handler 的 recovery 始终要求人工复核。进程退出码不能证明真实数据库效果，通用 kernel 对非零 DB socket 的 fake operation 保守记录 Unknown。此段提供端口/内核与合成进程测试基础，**没有接入产品 IPC/UI、实际 pg_dump/mysqldump 部署登记、真实数据库操作或 native backup/restore 产品路径，也没有完成 P6 全预算及适用层验收**。
 
+Runtime 故障测试另覆盖调用方等待任务被 abort、仓储随后撤销时，原 native owner 仍独立重验 claim 并通知同一在途调用取消；未确认 cleanup 同时保留 process 与完整声明 socket cost，其他 Job 不得 spawn。provider run panic 不能被当作 pre-spawn Err，结果为 Unknown 且同样保留全部预算，延迟 cleanup 确认只释放预算、不改写原 receipt、不重放。这里的 stalled provider/DB socket cost 是合成端口夹具，输出背压/真实 process-group kill/reap 仍是桌面 adapter 的另一层测试；没有把这两层拼称实库组合旅程。故意 abort 整个 JobRuntime 调用还会留下 Running/取消意图的持久 Job，不能声称已完成 durable 终态发布；产品关闭窗口只退订、请求与 Job 运行的独立托管及重启核验仍需实际接入验收。
+
 ## 8. 接口落地与旧路径删除
 
 P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridge adapter、schedule adapter 与 native tool adapter；名字是职责描述，不假称当前存在这些模块。新增字段与方法先在 contracts/application 注册，再同时更新桌面和团队 adapter。
