@@ -542,3 +542,83 @@ pub async fn get_monitor_widget_schedule_grant(
     }
     Ok(grant)
 }
+
+/// Test-only projection: never exposes the service context, scopes, SQL or errors.
+#[cfg(feature = "webdriver")]
+#[tauri::command]
+pub async fn webdriver_monitor_evidence(
+    state: State<'_, AppState>,
+    dashboard_id: String,
+    widget_id: String,
+    tick: bool,
+) -> Result<serde_json::Value, CommandError> {
+    use datazen_platform_api::dto::job::JobFilter;
+    let grant =
+        get_monitor_widget_schedule_grant(state.clone(), dashboard_id.clone(), widget_id.clone())
+            .await?
+            .ok_or_else(|| CommandError::Validation("grant required".into()))?;
+    // Reading an existing receipt after revoke is allowed only for its approver.
+    let mut tick_accepted = false;
+    if tick {
+        let dashboard = store_get_dashboard(&state.store.app_db(), &dashboard_id)
+            .cmd_err("webdriver_monitor_evidence")?;
+        let widget = dashboard
+            .widgets
+            .iter()
+            .find(|widget| widget.id == widget_id)
+            .ok_or_else(|| CommandError::Validation("widget missing".into()))?;
+        tick_accepted = state
+            .monitor_engine
+            .webdriver_scheduled_tick(&dashboard_id, widget)
+            .await
+            .is_ok();
+    }
+    let records = state
+        .desktop_job_host
+        .list(
+            &grant.context(),
+            JobFilter {
+                limit: Some(100),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|_| CommandError::Validation("receipt lookup failed".into()))?;
+    let mut receipts = Vec::new();
+    for record in records {
+        let occurrence = &record.definition.payload["monitorOccurrence"];
+        if record.view.kind != "monitorOccurrence"
+            || occurrence["dashboardId"].as_str() != Some(dashboard_id.as_str())
+            || occurrence["widgetId"].as_str() != Some(widget_id.as_str())
+            || occurrence["grantId"].as_str() != Some(grant.id.as_str())
+        {
+            continue;
+        }
+        let details = state
+            .desktop_job_host
+            .details(&grant.context(), record.view.job_id.clone())
+            .await
+            .map_err(|_| CommandError::Validation("receipt details failed".into()))?;
+        receipts.push(serde_json::json!({
+            "jobId": record.view.job_id, "state": record.view.state,
+            "scheduledAt": occurrence["scheduledAt"],
+            "results": details.domain_results,
+        }));
+    }
+    let physical_dispatches = grant
+        .scopes
+        .iter()
+        .map(|scope| {
+            let id = scope.target.connection_id.as_str();
+            let count = crate::platform::session_backend::webdriver_dispatch::count(id)
+                .ok_or_else(|| {
+                    CommandError::Validation("dedicated fixture counter unavailable".into())
+                })?;
+            Ok(serde_json::json!({ "connectionId": id, "count": count }))
+        })
+        .collect::<Result<Vec<_>, CommandError>>()?;
+    Ok(
+        serde_json::json!({ "tickAccepted": tick_accepted, "receipts": receipts,
+        "physicalDispatches": physical_dispatches }),
+    )
+}

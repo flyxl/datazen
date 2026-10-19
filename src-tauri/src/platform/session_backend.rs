@@ -1,6 +1,8 @@
 mod execution;
 mod opening;
 mod release;
+#[cfg(feature = "webdriver")]
+pub(crate) mod webdriver_dispatch;
 use super::{resource_budget::DesktopResourceBudget, resource_mapping as map};
 use crate::{db::DriverRegistry, store::Store};
 use async_trait::async_trait;

@@ -228,11 +228,15 @@ impl DesktopSessionBackend {
                     .rollback_transaction(&resource.handle)
                     .await
                     .map(|transaction| (None, Some(transaction))),
-                _ => resource
-                    .provider
-                    .execute_on_resource(&resource.handle, &execution, &call, &sink)
-                    .await
-                    .map(|completion| (Some(completion), None)),
+                _ => {
+                    #[cfg(feature = "webdriver")]
+                    super::webdriver_dispatch::dispatch(&resource.connection_id);
+                    resource
+                        .provider
+                        .execute_on_resource(&resource.handle, &execution, &call, &sink)
+                        .await
+                        .map(|completion| (Some(completion), None))
+                }
             }
         };
         resource

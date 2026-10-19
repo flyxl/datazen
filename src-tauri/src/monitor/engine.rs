@@ -99,6 +99,14 @@ impl MonitorEngine {
             crate::tray::sync_tray(&app);
         }
     }
+    #[cfg(feature = "webdriver")]
+    pub(crate) async fn webdriver_scheduled_tick(
+        &self,
+        dashboard_id: &str,
+        widget: &DashboardWidget,
+    ) -> Result<WidgetRun, String> {
+        self.core.tick_scheduled_widget(dashboard_id, widget).await
+    }
     pub async fn tick_widget(
         &self,
         dashboard_id: &str,

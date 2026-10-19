@@ -449,6 +449,8 @@ pub fn run() {
             crate::commands::list_dashboards,
             crate::commands::list_widget_runs,
             crate::commands::run_dashboard_widget,
+            #[cfg(feature = "webdriver")]
+            crate::commands::webdriver_monitor_evidence,
             crate::commands::authorize_monitor_widget_schedule,
             crate::commands::revoke_monitor_widget_schedule,
             crate::commands::get_monitor_widget_schedule_grant,
