@@ -253,46 +253,11 @@ impl DataZenMcpServer {
             .await
             .map_err(|error| McpError::internal_error(error.to_string(), None))?;
 
-        let receipt = call
-            .runtime
-            .open_session(
-                &call.context,
-                OpenSessionRequest::new(target, call.owner.clone(), token.idempotency_key),
-            )
-            .await
-            .map_err(|error| McpError::internal_error(error.to_string(), None))?;
-
-        let now = Instant::now();
-        let binding = self.sessions.open(
-            self.client_instance_id(),
-            &input.connection_id,
-            receipt.session.handle.clone(),
-            receipt.session.context_revision,
-            ttl,
-            now,
-        );
-        self.sessions.wake.notify_one();
-        self.start_session_cleanup();
-        if self
-            .sessions
-            .disconnected
-            .load(std::sync::atomic::Ordering::Acquire)
-        {
-            self.sessions.close_client(self.client_instance_id());
-            self.start_session_cleanup();
-            return Err(McpError::invalid_params(
-                "SessionLost: MCP client disconnected",
-                None,
-            ));
-        }
-        let expires_in_ms = ttl.as_millis().min(u128::from(u64::MAX)) as u64;
-        Ok(json!({
-            "clientSessionRef": binding.reference,
-            "state": receipt.session.state,
-            "contextRevision": receipt.session.context_revision,
-            "expiresInMs": expires_in_ms,
+        let request = OpenSessionRequest::new(target, call.owner.clone(), token.idempotency_key);
+        self.complete_session_open(input.connection_id, ttl, async move {
+            call.runtime.open_session(&call.context, request).await
         })
-        .to_string())
+        .await
     }
 
     /// Stateful protocol step 2: run one command inside a mapping this client owns.

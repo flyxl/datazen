@@ -12,6 +12,7 @@ mod resources;
 mod server;
 pub mod session;
 mod session_cleanup;
+mod session_open;
 pub mod tool_help;
 mod tools;
 mod types;

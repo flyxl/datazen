@@ -259,7 +259,7 @@ P5 退出门槛已关闭，P6 前置条件满足，可以启动。
 - Workflow 独立 step、session block、transaction block 的模型、校验和执行。
 - 明确 connection/namespace 继承、并行分支资源、重试范围、checkpoint 边界。
 - AI 默认独立操作，显式授权当前 editor session 时同队列。
-- MCP client/session owner 与 TTL，Wapp 实例和任务归属。
+- MCP client/session owner 与 TTL，Wapp 实例和任务归属。 MCP 的在途 open 由独立 owner task 与未交付回复 guard 持有，请求取消或断连后的晚到资源转入原 owner 清理；Host Runtime fixture 覆盖该故障路径，PG/MySQL 实库和传输验收仍独立进行。
 - Dashboard/Monitor 独立资源；导出、备份、恢复归 Job/Artifact；原生工具由环境 port 管理。
 - 服务身份/委托权限用于调度，所有入口走 ExecutionGateway。
 
