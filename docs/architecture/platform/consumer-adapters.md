@@ -80,6 +80,14 @@ Web 的 origin/source/nonce 校验和隔离部署以 [团队服务 §15](team-se
 
 实例结束取消它拥有的短 execution 和桥订阅、关闭专属 session。宿主已受理的 Job 可继续，但必须保留 jobId 查询入口；其他 Wapp、编辑器和 MCP 的资源不受影响。
 
+### 桌面 Wapp 实例会话（2026-10-19 当前实现）
+
+`wapp_session` 宿主适配器提供 register/end/open/use/close/receipt；SDK 以 `client.session` 调用。manifest 必须同时声明 `session:stateful` 与 `command:invoke`，每次 open 还需宿主原生确认；拒绝后不申请资源。当前仅接受 PostgreSQL/MySQL，database 必须显式提供，PostgreSQL 还需显式 schema。实例/client ID 由后端生成，只留在宿主桥；沙箱只得到 opaque reference、有效期和有界 execution 结果，不得到 Runtime handle、attachment、身份或凭据。use 仅开放 query/execute，沿现有 Runtime policy、readOnly、Safe Mode 和保留资源提供者执行；不开放 driver 管理命令或任意 platform 命令。
+
+每次 iframe load 轮换宿主 nonce 与后端实例映射；session 请求同时检查 frame source 与当前 nonce。同 requestId/type/payload 共用原 promise，改变输入被拒绝；每个文档最多保留 1024 次请求。卸载与重新加载抑制旧响应，结束旧 backend 实例；disabled/uninstall 撤销该 Wapp 的实例。实例硬期限一小时，每实例最多八个活跃或待清理 session；session 默认五分钟，最多一小时，且受实例期限限制。实例结束或 TTL 到期后不能用原引用重建，也不回退到编辑器 session。
+
+独立 timer 在到期时撤销引用，取消该实例已记录的在途 execution，并对原 owner/handle 调用 RollbackAndClose。只有 resourceRelease=Confirmed 才删除待清理记录，失败/Pending/Quarantined 保留并以 100ms～30s 退避重试；显式 close 返回 pending，不能当作物理释放确认。worker 等待在途 open 的 admission guard 退出，避免结束与资源获取竞态丢失晚到的 handle。结果等待最多 25 秒，未终结时保留 executionId，可在当前实例内用 receipt 查询；行数上限 1000，权限仍由 Runtime 重验。引用、映射与结果索引不跨进程恢复，未知效果不自动重放。Wapp Job/Workflow 入口及通用短命令实例化未由本次实现覆盖；不表示 P6 或真实数据库链路已经验收。
+
 ## 6. Dashboard、Monitor 与调度身份
 
 widget、monitor 和 schedule 定义保存完整稳定目标及其版本，不从 GUI 默认连接取值。手工刷新使用当前用户的短执行；定时执行使用组织内显式登记的服务 principal，不能借用最近登录用户的 cookie、token 或临时 grant。

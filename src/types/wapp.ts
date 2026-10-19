@@ -13,6 +13,7 @@ export const WAPP_API_VERSION = 2;
 export type WappPermission =
   | 'context:connections'
   | 'command:invoke'
+  | 'session:stateful'
   | 'storage:local'
   | 'ui:notify';
 

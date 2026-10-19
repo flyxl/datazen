@@ -122,6 +122,8 @@ pub enum Permission {
     ContextConnections,
     #[serde(rename = "command:invoke")]
     CommandInvoke,
+    #[serde(rename = "session:stateful")]
+    SessionStateful,
     #[serde(rename = "storage:local")]
     StorageLocal,
     #[serde(rename = "ui:notify")]
@@ -133,6 +135,7 @@ impl Permission {
         match self {
             Self::ContextConnections => "context:connections",
             Self::CommandInvoke => "command:invoke",
+            Self::SessionStateful => "session:stateful",
             Self::StorageLocal => "storage:local",
             Self::UiNotify => "ui:notify",
         }

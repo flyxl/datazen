@@ -458,6 +458,7 @@ pub fn run() {
             // ── Workspace Apps ──
             crate::commands::get_wapp_manifest,
             crate::commands::execute_wapp_driver_command,
+            crate::commands::wapp_session,
             crate::commands::inspect_wapp_package_with_dialog,
             crate::commands::install_wapp,
             crate::commands::list_wapps,

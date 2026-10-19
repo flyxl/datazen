@@ -631,6 +631,8 @@ output:
 
 ### 9.3 Wapp
 
+桌面实例绑定会话当前通过 `wapp_session` / SDK `client.session` 实现，权限、审批、TTL、结束清理与保留边界见[消费者接入 §5](consumer-adapters.md#5-wapp-受控桥)。该协议不接受 editor/Job/workflowBlock owner，也不新增 Wapp Workflow Job 入口。
+
 Wapp session 归**实例或 Job**。Wapp 通过受限的 `execute_driver_command` 通道取数，宿主判定它不是 editor；它既不能加入用户的编辑器 session，也不能声称 `workflowBlock` owner。Wapp 触发的 Workflow 运行以该 Wapp 实例身份发起 Job（Job 包裹本身是[P6 目标决策](#51-workflow-执行是否包裹-job)）。
 
 ### 9.4 后台调度与 Dashboard

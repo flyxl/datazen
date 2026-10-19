@@ -179,6 +179,8 @@ impl From<&LoadedWapp> for WappSummary {
 }
 
 mod driver;
+mod sessions;
+pub use sessions::*;
 mod registry;
 mod storage;
 

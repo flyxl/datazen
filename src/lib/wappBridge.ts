@@ -52,6 +52,7 @@ export interface WappRequestEnvelope<P = unknown> {
   ch: string;
   type: string;
   reqId?: string;
+  instanceNonce?: string;
   target: 'host';
   payload?: P;
 }
@@ -136,6 +137,10 @@ const API_ROUTES: Record<string, WappPermission | null> = {
   'context.getConnections': 'context:connections',
   'context.getActiveConnection': 'context:connections',
   'command.invoke': 'command:invoke',
+  'session.open': 'session:stateful',
+  'session.use': 'session:stateful',
+  'session.close': 'session:stateful',
+  'session.receipt': 'session:stateful',
   'storage.get': 'storage:local',
   'storage.set': 'storage:local',
   'storage.remove': 'storage:local',
@@ -351,13 +356,67 @@ export function attachBridge(
   } = opts;
 
   const granted = new Set(permissions);
+  let detached = false;
+  let instance: Promise<string> | undefined;
+  let generation = 0;
+  let instanceNonce = crypto.randomUUID();
+  const sessionRequests = new Map<string, { digest: string; result: Promise<unknown> }>();
+  const endInstance = (id: string) =>
+    invoke('wapp_session', { request: { action: 'end', instanceId: id } }).catch(() => undefined);
+  async function sessionRequest(request: WappRequestEnvelope): Promise<unknown> {
+    if (request.instanceNonce !== instanceNonce)
+      throw new BridgeApiError(
+        BRIDGE_ERROR.PERMISSION,
+        'Wapp instance nonce mismatch; handshake again',
+      );
+    if (!granted.has('command:invoke'))
+      throw new BridgeApiError(BRIDGE_ERROR.PERMISSION, 'session requires command:invoke');
+    const digest = JSON.stringify([request.type, request.payload]);
+    const previous = sessionRequests.get(request.reqId!);
+    if (previous) {
+      if (previous.digest !== digest)
+        throw new BridgeApiError(
+          BRIDGE_ERROR.BAD_REQUEST,
+          'requestId already used with different input',
+        );
+      return previous.result;
+    }
+    if (sessionRequests.size >= 1024)
+      throw new BridgeApiError(
+        BRIDGE_ERROR.RATE_LIMIT,
+        'instance request limit reached; reload the Wapp',
+      );
+    const requestGeneration = generation;
+    const result = (async () => {
+      instance ??= invoke<{ instanceId: string }>('wapp_session', {
+        request: { action: 'register', wappId },
+      }).then(async ({ instanceId }) => {
+        if (detached || generation !== requestGeneration) {
+          await endInstance(instanceId);
+          throw new Error('Wapp instance ended');
+        }
+        return instanceId;
+      });
+      const instanceId = await instance;
+      if (detached || generation !== requestGeneration) throw new Error('Wapp instance ended');
+      const payload = request.payload;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+        throw new BridgeApiError(BRIDGE_ERROR.BAD_REQUEST, 'session requires object input');
+      // Identity/action are host-owned; sandbox fields never override them.
+      return invoke('wapp_session', {
+        request: { ...payload, action: request.type.slice(8), instanceId },
+      });
+    })();
+    sessionRequests.set(request.reqId!, { digest, result });
+    return result;
+  }
   let inflight = 0;
   let lastNotifyAt = Number.NEGATIVE_INFINITY;
   const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
 
   function respond(request: WappRequestEnvelope, response: WappResponseEnvelope): void {
     const contentWindow = iframe.contentWindow;
-    if (!contentWindow) return;
+    if (detached || !contentWindow) return;
     contentWindow.postMessage(
       {
         ...response,
@@ -373,10 +432,16 @@ export function attachBridge(
     request: WappRequestEnvelope,
     handler: () => Promise<unknown>,
   ): Promise<void> {
+    const requestGeneration = generation;
     return new Promise((resolve) => {
       let settled = false;
       const timer = setTimeout(() => {
-        if (settled) return;
+        if (settled || detached || generation !== requestGeneration) {
+          clearTimeout(timer);
+          pendingTimers.delete(timer);
+          resolve();
+          return;
+        }
         settled = true;
         pendingTimers.delete(timer);
         respond(
@@ -391,16 +456,27 @@ export function attachBridge(
         resolve();
       }, timeoutMs);
 
+      pendingTimers.add(timer);
       handler()
         .then((payload) => {
-          if (settled) return;
+          if (settled || detached || generation !== requestGeneration) {
+            clearTimeout(timer);
+            pendingTimers.delete(timer);
+            resolve();
+            return;
+          }
           settled = true;
           clearTimeout(timer);
           pendingTimers.delete(timer);
           respond(request, okEnvelope(request.ch, request.reqId, payload));
         })
         .catch((error: unknown) => {
-          if (settled) return;
+          if (settled || detached || generation !== requestGeneration) {
+            clearTimeout(timer);
+            pendingTimers.delete(timer);
+            resolve();
+            return;
+          }
           settled = true;
           clearTimeout(timer);
           pendingTimers.delete(timer);
@@ -474,6 +550,12 @@ export function attachBridge(
           break;
         case 'context.getActiveConnection':
           await runHandler(request, () => handleGetActiveConnection());
+          break;
+        case 'session.open':
+        case 'session.use':
+        case 'session.close':
+        case 'session.receipt':
+          await runHandler(request, () => sessionRequest(request));
           break;
         case 'command.invoke':
           await runHandler(request, () => handleCommandInvoke(wappId, request.payload));
@@ -567,6 +649,7 @@ export function attachBridge(
           target: 'host',
           payload: {
             apiVersion,
+            instanceNonce,
             locale,
             dark: snapshot.dark,
             tokens: snapshot.tokens,
@@ -577,14 +660,28 @@ export function attachBridge(
       return;
     }
 
-    if (!data.reqId) return; // Requests require an id to be answerable.
+    if (typeof data.reqId !== 'string' || !data.reqId || data.reqId.length > 128) return; // Requests require an id to be answerable.
     void dispatch(data);
   }
 
+  // iframe WindowProxy can survive self-navigation. Rotate backend ownership on every
+  // load, and suppress responses from requests admitted by the previous document.
+  function onFrameLoad() {
+    generation += 1;
+    instanceNonce = crypto.randomUUID();
+    if (instance) void instance.then(endInstance).catch(() => undefined);
+    instance = undefined;
+    sessionRequests.clear();
+  }
+  iframe.addEventListener('load', onFrameLoad);
   window.addEventListener('message', onMessage);
 
   return {
     detach() {
+      detached = true;
+      iframe.removeEventListener('load', onFrameLoad);
+      if (instance) void instance.then(endInstance).catch(() => undefined);
+      sessionRequests.clear();
       window.removeEventListener('message', onMessage);
       for (const timer of pendingTimers) clearTimeout(timer);
       pendingTimers.clear();
