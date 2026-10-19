@@ -31,21 +31,24 @@ pub(crate) async fn get_table_data_impl(
 ) -> Result<TableDataResult, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %table, page, page_size, "get_table_data");
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("get_table_data")?;
+    let resolved =
+        super::driver_command::resolve_command_driver(state, Some(&db_session_id), None).await?;
+    let driver = &resolved.driver;
+    let handle = &resolved.handle;
 
     // The caller's explicit target wins; the session's configured database is
     // only a fallback for callers that pass none. Reading `config.database`
     // unconditionally (the old behavior) silently ignored the request and
     // resolved columns against whatever database the session sat on.
+    let config = resolved
+        .session
+        .as_ref()
+        .ok_or_else(|| CommandError::NotFound("DB session is unavailable".into()))?;
     let config = state
-        .connection_manager
-        .get_session_config(&db_session_id)
+        .store
+        .get_connection(config.connection_id.as_str())
         .await
-        .cmd_err("get_table_data")?;
+        .ok_or_else(|| CommandError::NotFound("connection profile is unavailable".into()))?;
     let database = database
         .as_deref()
         .map(str::trim)
@@ -107,11 +110,10 @@ pub(crate) async fn get_er_data_impl(
 ) -> Result<Vec<TableSchema>, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %database, schema = ?schema, "get_er_data");
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("get_er_data")?;
+    let resolved =
+        super::driver_command::resolve_command_driver(state, Some(&db_session_id), None).await?;
+    let driver = &resolved.driver;
+    let handle = &resolved.handle;
 
     // No session pin and no `USE`: every read below carries its own explicit
     // target, and each table's own schema (from `TableInfo`) is authoritative
