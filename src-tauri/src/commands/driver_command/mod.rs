@@ -17,6 +17,7 @@ pub(crate) use discovery::{get_connection_commands_impl, get_driver_type_command
 #[allow(unused_imports)]
 pub(crate) use execute::{execute_driver_command_impl, execute_driver_command_with_mode};
 pub(crate) use helpers::inject_sql_target_fields;
+pub(crate) use resolve::{resolve_command_driver, ResolvedCommandDriver};
 pub(crate) use streaming::execute_driver_command_stream_impl;
 pub use types::{
     ExecuteDriverCommandRequest, ExecuteDriverCommandStreamOpts, ExecuteDriverCommandStreamRequest,
