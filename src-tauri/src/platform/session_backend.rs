@@ -84,6 +84,12 @@ pub struct DesktopSessionBackend {
     publisher: RwLock<Option<ResultPublisher>>,
 }
 impl DesktopSessionBackend {
+    pub(crate) fn physical_budget(
+        &self,
+    ) -> Arc<datazen_runtime::budget::InProcessBudgetCoordinator> {
+        self.budget.clone()
+    }
+
     pub fn new(registry: Arc<DriverRegistry>, store: Arc<Store>, physical_limit: u32) -> Self {
         Self::new_scoped(
             registry,

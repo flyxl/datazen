@@ -117,6 +117,11 @@ impl Authorizer for BoundAuthorizer {
     }
 }
 impl RuntimeConnectionUseCases {
+    /// Product Job adapters obtain ManageJob authority from the host policy.
+    pub async fn authorize_job(&self, ctx: &RequestContext) -> Result<(), ApiError> {
+        self.authorize(ctx, AuthorizationAction::ManageJob).await
+    }
+
     pub fn new(
         profiles: Arc<dyn ProfileRepository>,
         policy: Arc<dyn PolicyService>,

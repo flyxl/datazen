@@ -112,6 +112,7 @@ pub struct PlatformAdapter {
     /// 确定的时刻**，而不是等某个不可预测的析构点。
     idle_reclaimer: std::sync::Mutex<Option<datazen_runtime::application::IdleReclaimer>>,
     artifacts: std::sync::OnceLock<Arc<datazen_runtime::artifact::FileArtifactStore>>,
+    native: std::sync::OnceLock<Arc<super::native_tool::deployment::NativeDeployment>>,
 }
 
 impl PlatformAdapter {
@@ -129,6 +130,7 @@ impl PlatformAdapter {
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
             artifacts: std::sync::OnceLock::new(),
+            native: std::sync::OnceLock::new(),
         })
     }
 
@@ -146,6 +148,7 @@ impl PlatformAdapter {
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
             artifacts: std::sync::OnceLock::new(),
+            native: std::sync::OnceLock::new(),
         }
     }
 
@@ -159,6 +162,16 @@ impl PlatformAdapter {
             ApiError::new(
                 ApiErrorCode::ServiceUnavailable,
                 "artifact storage is not wired",
+            )
+        })
+    }
+    pub(crate) fn native_tools(
+        &self,
+    ) -> Result<Arc<super::native_tool::deployment::NativeDeployment>, ApiError> {
+        self.native.get().cloned().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "native deployment unavailable",
             )
         })
     }
@@ -250,6 +263,8 @@ impl PlatformAdapter {
             self.identity.organization_id().clone(),
             self.identity.principal_id().clone(),
         ));
+        let native =
+            super::native_tool::deployment::NativeDeployment::from_build(backend.physical_budget());
         let artifacts = Arc::new(
             datazen_runtime::artifact::FileArtifactStore::open(
                 store.data_dir().join("result-artifacts"),
@@ -350,6 +365,14 @@ impl PlatformAdapter {
         self.services.set(services).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "services already injected")
         })?;
+        // Publish only after the matching Runtime backend was fully injected:
+        // no partial retry may bind native jobs to a different physical ledger.
+        match native {
+            Ok(native) => {
+                let _ = self.native.set(native);
+            }
+            Err(_) => tracing::warn!("native deployment rejected; native operations unsupported"),
+        }
         // 空闲回收驱动器：**应用层自己拥有**，宿主不再另挂定时器（这样就不会有
         // 「两个驱动器抢同一张 registry 表」的形状）。放在 services 之后启动，
         // 是为了让「装配已 FullyWired」与「回收器已在跑」不出现反序——反序时

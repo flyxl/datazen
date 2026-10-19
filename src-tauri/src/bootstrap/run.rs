@@ -422,6 +422,12 @@ pub fn run() {
             crate::commands::context_get_dir,
             crate::commands::context_list_files,
             crate::commands::context_read_files,
+            // Deployment-pinned NativeTool probes; no client executable/options.
+            crate::commands::native_tool_choices,
+            crate::commands::native_tool_submit,
+            crate::commands::native_tool_get,
+            crate::commands::native_tool_list_jobs,
+            crate::commands::native_tool_cancel,
             // ── Workflow ──
             crate::commands::workflow_delete,
             crate::commands::workflow_execute,

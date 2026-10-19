@@ -1,5 +1,6 @@
 //! Desktop POSIX version probes only. No native backup/restore/DB command is
 //! enabled: their complete process/socket upper bounds are not established.
+pub(crate) mod deployment;
 #[cfg(unix)]
 mod process;
 use datazen_platform_api::{error::PortError, ports::native_tool::*};

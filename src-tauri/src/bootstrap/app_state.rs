@@ -92,6 +92,24 @@ pub(crate) fn build_desktop_job_host(
 }
 
 pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<(), String> {
+    // Native Jobs use the real desktop identity, unlike historical migration
+    // adapters. Mark only those jobs for inspection; never rebuild a handler.
+    if let Ok(adapter) = state.platform_require() {
+        let context = adapter.begin_call().context().clone();
+        state
+            .desktop_job_host
+            .mark_restart_candidates_for_verification(
+                &context,
+                RecoveryFilter {
+                    kinds: vec!["nativeToolProbe".into()],
+                    older_than: None,
+                    limit: None,
+                },
+            )
+            .await
+            .map_err(|_| "native job recovery scan failed".to_string())?;
+    }
+
     let ctx = RequestContext::new(
         OrganizationId::new("datazen-local"),
         PrincipalId::new("datazen-local-user"),

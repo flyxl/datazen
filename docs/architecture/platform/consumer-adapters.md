@@ -143,9 +143,19 @@ PostgreSQL 与 MySQL 的 driver 专属 `tests/monitor_scheduled_query.rs` 现提
 
 stdout/stderr 同时按 4 KiB 缓冲读取，无无界队列；总输出默认 64 KiB、硬上限 1 MiB，版本 stdout 额外限制 1 KiB，超限即终止。原始输出全部丢弃，只比对受信精确版本行，receipt/Job projection 只记录字节计数、稳定结果码和清理事实。当前探针不生成大输出 Artifact。deadline/取消触发专属 process group 的 TERM、宽限后 KILL，并 wait/reap 主进程；只有组已不存在、管道关闭、临时目录明确删除成功才报告 Confirmed。请求停止等待不丢失进程：provider worker 保留实际 Child/目录，失败后只重试原资源清理。
 
-未确认 cleanup 保留全部 process/socket 预算，确认后才核销；cleanup 状态查询 panic 也按未确认处理，由原 owner task 保留全部名额并继续只查询原资源清理，不因 observer 故障释放进程名额或重放工具；结果中的 Unknown 不因稍后物理释放就改称数据库回滚/成功。每个 Job/stage 只执行一次，重复执行返回原 receipt，换 selection 拒绝；Job 终态与重启恢复都不自动运行 NativeTool，handler 的 recovery 始终要求人工复核。进程退出码不能证明真实数据库效果，通用 kernel 对非零 DB socket 的 fake operation 保守记录 Unknown。此段提供端口/内核与合成进程测试基础，**没有接入产品 IPC/UI、实际 pg_dump/mysqldump 部署登记、真实数据库操作或 native backup/restore 产品路径，也没有完成 P6 全预算及适用层验收**。
+未确认 cleanup 保留全部 process/socket 预算，确认后才核销；cleanup 状态查询 panic 也按未确认处理，由原 owner task 保留全部名额并继续只查询原资源清理，不因 observer 故障释放进程名额或重放工具；结果中的 Unknown 不因稍后物理释放就改称数据库回滚/成功。每个 Job/stage 只执行一次，重复执行返回原 receipt，换 selection 拒绝；Job 终态与重启恢复都不自动运行 NativeTool，handler 的 recovery 始终要求人工复核。进程退出码不能证明真实数据库效果，通用 kernel 对非零 DB socket 的 fake operation 保守记录 Unknown。此段提供端口/内核与合成进程测试基础，**现有构建时登记与探针 Job IPC 接线仍待独立验收；没有产品 UI、已批准的实际 pg_dump/mysqldump 二进制登记、真实数据库操作或 native backup/restore 产品路径，也没有完成 P6 全预算及适用层验收**。
 
 Runtime 故障测试另覆盖调用方等待任务被 abort、仓储随后撤销时，原 native owner 仍独立重验 claim 并通知同一在途调用取消；未确认 cleanup 同时保留 process 与完整声明 socket cost，其他 Job 不得 spawn。provider run panic 不能被当作 pre-spawn Err，结果为 Unknown 且同样保留全部预算，延迟 cleanup 确认只释放预算、不改写原 receipt、不重放。这里的 stalled provider/DB socket cost 是合成端口夹具，输出背压/真实 process-group kill/reap 仍是桌面 adapter 的另一层测试；没有把这两层拼称实库组合旅程。故意 abort 整个 JobRuntime 调用还会留下 Running/取消意图的持久 Job，不能声称已完成 durable 终态发布；产品关闭窗口只退订、请求与 Job 运行的独立托管及重启核验仍需实际接入验收。
+
+### 可信部署登记与探针 Job 产品入口（待独立验收）
+
+`src-tauri/resources/native-tool-probes.json` 是编译进宿主的部署 allowlist，默认 `[]`。只有经过审阅并重建宿主的部署维护者能登记 `versionProbeV1`、工具 ID/版本、绝对二进制路径、64 位小写 SHA-256、精确版本行与完整资源上界；它不从 Settings、IPC、PATH 或运行环境读取登记。最多 32 项、64 KiB，重复/非法记录或二进制校验失败使 native 能力失败关闭，不回落到其他可执行文件。此合同只允许 `postgres.pg-dump-version` / `mysql.mysqldump-version`、固定 `--version`、1 process / 0 DB sockets；非零 DB socket 或未知合同拒绝，不降为零。默认构建没有批准的实际工具，不能用该探针宣称支持 dump/restore。
+
+产品 IPC 是 `native_tool_choices` / `native_tool_submit` / `native_tool_get` / `native_tool_list_jobs` / `native_tool_cancel`。提交 DTO 严格只接收 `selection { toolId, version }` 与 UUID `idempotencyKey`，拒绝未知字段；不接受路径、argv、env、cwd、主体、connection、资源 cost 或凭据。选择列表只返回安全选择、operation 与上界，不返回部署路径或工具输出。调用通过真实桌面 RequestContext 与 ManageJob policy，get/cancel 检查 owner 和 `nativeToolProbe` kind，list 返回至多 100 项。
+
+SQLite durable admission 冻结选择及部署合同摘要（含二进制 SHA、精确版本行、资源 cost），同键不同选择/部署摘要冲突；同键返回既有 Job，只有新受理 Job 才创建独立后台 dispatch，IPC 停止等待不取消 Job。每个宿主环境只保留一个 NativeToolRuntime，物理 coordinator 与桌面 Runtime session 为同一个实例；进程/全部声明 socket 的派发预算、claim 重验、cancel、cleanup 与 Unknown receipt 继续使用既有 kernel，不复制执行器。启动使用当前真实桌面主体把旧 native Jobs 标为待核验，不恢复 handler 或重放。派发异常保留固定 `nativeDispatchUnconfirmed` 核验状态。探针原始 stdout/stderr 丢弃，只保存原有有界 byte-count/effect/cleanup JobDomainResult；没有导出 Artifact，也没有开放真实 DB 操作。
+
+本接线尚未编译或测试。后续验收须分别验证部署拒绝/摘要变更、SQLite 同键与重开、后台 Job 在 IPC 等待结束后完成、owner/kind 隔离、撤销与未确认清理保留预算、共享 Runtime 预算竞争及重启不重放。真实 PostgreSQL/MySQL CLI、各批准版本完整连接上界、Artifact 导出、实际组合背压/取消/reap/cleanup 及 UI 仍未实现或未验收；不构成 P6 关闭。
 
 ## 8. 接口落地与旧路径删除
 
