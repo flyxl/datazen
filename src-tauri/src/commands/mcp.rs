@@ -30,7 +30,6 @@ fn clone_app_state(state: &AppState) -> Arc<AppState> {
     Arc::new(AppState {
         driver_registry: state.driver_registry.clone(),
         connection_manager: state.connection_manager.clone(),
-        monitor_connections: state.monitor_connections.clone(),
         monitor_engine: state.monitor_engine.clone(),
         store: state.store.clone(),
         schema_cache: state.schema_cache.clone(),
@@ -262,6 +261,21 @@ pub async fn mcp_client_call_tool(
 mod tests {
     use super::*;
     use crate::testing::app_state::TestAppState;
+
+    #[tokio::test]
+    async fn cloned_app_state_shares_the_active_monitor_engine() {
+        let test = TestAppState::with_tables().await;
+        let cloned = clone_app_state(&test.state);
+        assert!(Arc::ptr_eq(
+            &cloned.monitor_engine,
+            &test.state.monitor_engine
+        ));
+        assert!(Arc::ptr_eq(&cloned.store, &test.state.store));
+        assert!(Arc::ptr_eq(
+            &cloned.connection_manager,
+            &test.state.connection_manager
+        ));
+    }
 
     /// Serializes every test that touches the process-global MCP_HANDLE:
     /// parallel `reset/start/stop` from sibling tests used to cancel another
