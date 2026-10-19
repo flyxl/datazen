@@ -110,11 +110,18 @@ pub(crate) async fn cancel_query_impl(
         .validate_owner(&execution_id, &db_session_id)
         .await
         .map_err(CommandError::Validation)?;
+    let resolved =
+        super::driver_command::resolve_command_driver(state, Some(&db_session_id), None).await?;
+    let connection_id = resolved
+        .session
+        .as_ref()
+        .map(|session| session.connection_id.as_str().to_owned())
+        .ok_or_else(|| CommandError::NotFound("connection profile is unavailable".into()))?;
     let config = state
-        .connection_manager
-        .get_session_config(&db_session_id)
+        .store
+        .get_connection(&connection_id)
         .await
-        .cmd_err("cancel_query")?;
+        .ok_or_else(|| CommandError::NotFound("connection profile is unavailable".into()))?;
     match state
         .driver_registry
         .get_capabilities(&config.database_type)
@@ -134,14 +141,9 @@ pub(crate) async fn cancel_query_impl(
             ));
         }
     }
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("cancel_query")?;
-
-    driver
-        .cancel_query_with_execution(&handle, &execution_id)
+    resolved
+        .driver
+        .cancel_query_with_execution(&resolved.handle, &execution_id)
         .await
         .cmd_err("cancel_query")
 }
@@ -590,7 +592,7 @@ mod log_hygiene_tests {
             .find("pub(crate) async fn execute_driver_command_stream_impl")
             .expect("fn");
         let end = src[start..]
-            .find("let read_only = state")
+            .find("let read_only =")
             .map(|i| start + i)
             .unwrap_or(start + 8000);
         let chunk = &src[start..end];
