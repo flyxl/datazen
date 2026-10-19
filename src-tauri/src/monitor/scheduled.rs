@@ -205,6 +205,12 @@ pub(crate) async fn execute(
     widget: &DashboardWidget,
     grant: &MonitorGrant,
 ) -> Result<WidgetRun, String> {
+    #[cfg(feature = "webdriver")]
+    super::evidence::note(
+        dashboard_id,
+        &widget.id,
+        super::evidence::Stage::OccurrencePreparing,
+    );
     validate(state, grant).await?;
     if dashboard_id != grant.dashboard_id
         || widget.id != grant.widget_id
@@ -262,11 +268,32 @@ pub(crate) async fn execute(
         .desktop_job_host
         .ensure_endpoint_services(&endpoints)
         .map_err(|_| "monitor job budget unavailable")?;
+    #[cfg(feature = "webdriver")]
+    super::evidence::note(
+        dashboard_id,
+        &widget.id,
+        super::evidence::Stage::JobAdmission,
+    );
     let accepted = state
         .desktop_job_host
         .accept(&context, definition, &idempotency_key)
         .await
-        .map_err(|_| "monitor occurrence admission failed")?;
+        .map_err(|_| {
+            #[cfg(feature = "webdriver")]
+            super::evidence::note(
+                dashboard_id,
+                &widget.id,
+                super::evidence::Stage::AdmissionRejected,
+            );
+            tracing::warn!(
+                stage = "jobAdmission",
+                code = "admissionRejected",
+                "monitor occurrence rejected"
+            );
+            "monitor occurrence admission failed"
+        })?;
+    #[cfg(feature = "webdriver")]
+    super::evidence::note(dashboard_id, &widget.id, super::evidence::Stage::Admitted);
     if accepted.view.job_id != requested_job_id {
         // An idempotency receipt already exists for this scheduled slot. A
         // restart or duplicate tick must never turn it into another query.
@@ -279,6 +306,12 @@ pub(crate) async fn execute(
         widget.clone(),
         grant.clone(),
     ));
+    #[cfg(feature = "webdriver")]
+    super::evidence::note(
+        dashboard_id,
+        &widget.id,
+        super::evidence::Stage::Dispatching,
+    );
     let dispatch = state
         .desktop_job_host
         .dispatch(
@@ -290,11 +323,23 @@ pub(crate) async fn execute(
         )
         .await;
     match handler.take_run() {
-        Some(run) => Ok(run),
-        None => match dispatch {
-            Ok(_) => Err("monitor occurrence has no run receipt".into()),
-            Err(_) => Err("monitor occurrence dispatch failed".into()),
-        },
+        Some(run) => {
+            #[cfg(feature = "webdriver")]
+            super::evidence::note(dashboard_id, &widget.id, super::evidence::Stage::RunReady);
+            Ok(run)
+        }
+        None => {
+            #[cfg(feature = "webdriver")]
+            super::evidence::note(
+                dashboard_id,
+                &widget.id,
+                super::evidence::Stage::DispatchFailed,
+            );
+            match dispatch {
+                Ok(_) => Err("monitor occurrence has no run receipt".into()),
+                Err(_) => Err("monitor occurrence dispatch failed".into()),
+            }
+        }
     }
 }
 

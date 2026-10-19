@@ -619,6 +619,7 @@ pub async fn webdriver_monitor_evidence(
         .collect::<Result<Vec<_>, CommandError>>()?;
     Ok(
         serde_json::json!({ "tickAccepted": tick_accepted, "receipts": receipts,
-        "physicalDispatches": physical_dispatches }),
+        "physicalDispatches": physical_dispatches,
+        "stage": crate::monitor::evidence::stage(&dashboard_id, &widget_id) }),
     )
 }

@@ -155,7 +155,7 @@ fn validate_monitor_occurrence(value: &Value) -> bool {
         || !bounded_text(&object["dashboardId"], 512)
         || !bounded_text(&object["widgetId"], 512)
         || !bounded_text(&object["workflowId"], 512)
-        || !safe_digest_text(&object["workflowRevision"])
+        || !monitor_workflow_revision(&object["workflowRevision"])
         || !bounded_text(&object["grantId"], 512)
         || !object["grantVersion"]
             .as_u64()
@@ -189,6 +189,14 @@ fn validate_monitor_occurrence(value: &Value) -> bool {
         && scopes.iter().all(validate_monitor_scope)
         && monitor_definition_revision(object, scopes, refresh_interval_seconds)
             .is_some_and(|revision| object["definitionRevision"].as_str() == Some(&revision))
+}
+
+// Production grants::revision stores an untagged SHA256. Keep the previous
+// tagged durable form readable, while accepting only an exact digest for grants.
+fn monitor_workflow_revision(value: &Value) -> bool {
+    value.as_str().is_some_and(|text| {
+        (text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit())) || safe_digest(text)
+    })
 }
 
 fn monitor_definition_revision(
@@ -348,7 +356,7 @@ mod monitor_occurrence_tests {
     use sha2::{Digest, Sha256};
 
     fn payload() -> serde_json::Value {
-        let workflow_revision = format!("sha256:{}", "b".repeat(64));
+        let workflow_revision = crate::monitor::grants::revision("id: actual-monitor-workflow");
         let scopes = json!([{
             "target": {
                 "connectionId": "connection-1",
@@ -395,6 +403,24 @@ mod monitor_occurrence_tests {
                 "scopes": scopes
             }
         })
+    }
+
+    #[test]
+    fn workflow_revision_accepts_the_production_digest_without_relaxing_other_text() {
+        let actual = crate::monitor::grants::revision("actual persisted workflow");
+        assert!(super::monitor_workflow_revision(&json!(actual)));
+        assert!(super::monitor_workflow_revision(&json!(format!(
+            "sha256:{}",
+            "a".repeat(64)
+        ))));
+        for invalid in [
+            "a".repeat(63),
+            "a".repeat(65),
+            "g".repeat(64),
+            "workflow-name".into(),
+        ] {
+            assert!(!super::monitor_workflow_revision(&json!(invalid)));
+        }
     }
 
     #[test]

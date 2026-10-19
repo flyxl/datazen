@@ -5,7 +5,7 @@ import { invokeMonitorBackend as call, deleteMonitorDashboard } from '../../../.
 import { withMysqlProfile } from './mysql-profile-fixture.js';
 
 type Receipt = { jobId: string; state: string; scheduledAt: number; results: Array<{ items: Array<{ itemId: string }> }> };
-type Evidence = { tickAccepted: boolean; receipts: Receipt[]; physicalDispatches: Array<{ connectionId: string; count: number }> };
+type Evidence = { stage: string | null; tickAccepted: boolean; receipts: Receipt[]; physicalDispatches: Array<{ connectionId: string; count: number }> };
 
 describe('mysql Monitor scheduled desktop journey', () => {
   it('waits for the timer, reads a physical fixture and rejects duplicate/revoked ticks', async function () {
@@ -60,10 +60,17 @@ describe('mysql Monitor scheduled desktop journey', () => {
           await call('authorize_monitor_widget_schedule', { ...args, ttlSecs: 180 });
           // No manual widget run or controlled tick before this assertion: production timer only.
           let first: Receipt | undefined;
-          await browser.waitUntil(async () => {
-            first = (await evidence()).receipts.find(row => row.state === 'succeeded');
-            return Boolean(first?.results.length);
-          }, { timeout: 65_000, interval: 100 });
+          try {
+            await browser.waitUntil(async () => {
+              first = (await evidence()).receipts.find(row => row.state === 'succeeded');
+              return Boolean(first?.results.length);
+            }, { timeout: 65_000, interval: 100 });
+          } catch {
+            const diagnostic = await evidence();
+            const stages = ['grantChecking', 'grantValidated', 'grantRejected', 'occurrencePreparing', 'jobAdmission', 'admissionRejected', 'admitted', 'dispatching', 'runReady', 'dispatchFailed'];
+            const stage = diagnostic.stage && stages.includes(diagnostic.stage) ? diagnostic.stage : 'notObserved';
+            throw new Error(`Monitor production timer receipt timeout [stage=${stage}; receipts=${diagnostic.receipts.length}]`);
+          }
           if (!first) throw new Error('Production Monitor timer did not produce a durable receipt');
           const runId = first.results[0]?.items[0]?.itemId;
           const run = await call<{ status: string; rows: unknown[][] }>('get_widget_run', { ...args, runId });

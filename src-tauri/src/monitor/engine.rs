@@ -161,6 +161,12 @@ impl MonitorHost for DesktopMonitorHost {
         dashboard_id: &str,
         widget: &DashboardWidget,
     ) -> Result<datazen_feature_core::dashboard::schedule_grant::MonitorGrant, String> {
+        #[cfg(feature = "webdriver")]
+        super::evidence::note(
+            dashboard_id,
+            &widget.id,
+            super::evidence::Stage::GrantChecking,
+        );
         let grant = self
             .store
             .app_db()
@@ -173,7 +179,21 @@ impl MonitorHost for DesktopMonitorHost {
             .unwrap_or_else(|error| error.into_inner())
             .clone()
             .ok_or("Monitor app state unavailable")?;
-        super::scheduled::validate(&state, &grant).await?;
+        if let Err(error) = super::scheduled::validate(&state, &grant).await {
+            #[cfg(feature = "webdriver")]
+            super::evidence::note(
+                dashboard_id,
+                &widget.id,
+                super::evidence::Stage::GrantRejected,
+            );
+            return Err(error);
+        }
+        #[cfg(feature = "webdriver")]
+        super::evidence::note(
+            dashboard_id,
+            &widget.id,
+            super::evidence::Stage::GrantValidated,
+        );
         Ok(grant)
     }
     async fn execute_scheduled_widget(
@@ -265,3 +285,7 @@ mod startup_tests {
         .expect("sync setup must not panic");
     }
 }
+
+#[cfg(test)]
+#[path = "scheduled_timer_tests.rs"]
+mod scheduled_timer_tests;

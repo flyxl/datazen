@@ -3,6 +3,8 @@
 mod channels;
 mod connections;
 mod engine;
+#[cfg(feature = "webdriver")]
+pub(crate) mod evidence;
 pub(crate) mod grants;
 mod scheduled;
 
