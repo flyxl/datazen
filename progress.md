@@ -229,3 +229,19 @@ The earlier pending-test and corrected-assertion notes above are historical. The
 - Retained unchanged caller_owner_fields_cannot_authorize_job_or_block, including both caller-invented Job and WorkflowBlock owner rejection and zero backend opens. All other P4 connection/job/use-case tests, including export binding regressions, remain byte-for-byte unchanged. No protocol/model/production code changes and no replacement Workflow Job API.
 - Scoped rustfmt --check and git diff --check EXIT=0. No test/compile commands run, per instruction. Independent tester must compile the whole p4_usecase_journeys target and verify remaining generic owner/connection/job contracts after export acceptance.
 - Static gate snapshot before/after: HEAD `b22bf28a72ab6ad61fa41b5afea5246e455206de`, tracked diff SHA-256 `9bcf4ffbb9ac4796fae885f80c45ea01c79800cbac3d7d6c3de5de73423787c8` (before this evidence-only append). Logs `/tmp/datazen-p6-runtime-v1-fixtures-fmt.log`, `/tmp/datazen-p6-runtime-v1-fixtures-diff.log`; `RUSTFMT_EXIT=0`, `DIFF_CHECK_EXIT=0`. Source-text comparison: `RETAINED_NEGATIVE_TEST_IDENTICAL=true`; this is a static comparison, not a test run.
+
+## Table export Runtime streaming — independently accepted (2026-10-19)
+
+Coder commit `b22bf28a72ab6ad61fa41b5afea5246e455206de` is integrated as `b17604eeb` in the P6 branch. The original tester validated a detached, clean tree fixed at the coder commit; HEAD and tree fingerprint were stable.
+
+- `cargo test -p datazen-runtime --lib application::export_output::tests`: EXIT=0, 5/5.
+- `cargo test -p datazen --lib commands::export`: EXIT=0, 20/20.
+- `cargo check -p datazen --lib`: EXIT=0, 77 warnings, no errors; this also compiles the Wapp host surface.
+- Wapp production-source scan: zero `ConnectionManager` references.
+- Source review verified bounded one-slot streaming/backpressure, execution-scoped owner/client/target/revision checks, cancellation of the same execution, late-output rejection, and no Done/file delivery after Unknown or unconfirmed cleanup.
+
+No real PG/MySQL large-table export, slow-consumer cancellation, or staging cleanup live journey ran. Those remain explicit P6 acceptance work. The Runtime P4 integration target initially failed on three stale `open_workflow_block` calls; the same failure was reproduced on e87 base. After the separate fixture-only cleanup below, `cargo test -p datazen-runtime --test p4_usecase_journeys export_output` passed 1/1 and the complete target passed 18/18.
+
+## Retired Workflow block-owner Runtime fixtures — independently accepted (2026-10-19)
+
+Coder commit `fb9c1e160974030334dcede7e66abfc59cc743bb` is integrated as `b72a22ca6`. It removes only four P4 fixture cases for the removed Workflow block-owner API; the caller-owner rejection test remains unchanged and passes. Focused export fixture passed 1/1; full P4 journey target passed 18/18. No production, model, IPC or Workflow v1 behavior changed.
