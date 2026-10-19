@@ -130,26 +130,6 @@ impl DataZenMcpServer {
     pub(crate) fn tool_is_registered(&self, name: &str) -> bool {
         Self::tool_router().get(name).is_some()
     }
-
-    pub(crate) async fn resolve_connection(
-        &self,
-        id: &str,
-    ) -> Result<
-        (
-            String,
-            std::sync::Arc<dyn datazen_driver_api::DatabaseDriver>,
-            datazen_driver_api::ConnectionHandle,
-        ),
-        McpError,
-    > {
-        self.ensure_allowed("list_connections", id)?;
-        crate::services::db_tools::resolve_connection_with_id(
-            &self.app_state.connection_manager,
-            id,
-        )
-        .await
-        .map_err(Self::map_err)
-    }
 }
 
 #[cfg(test)]

@@ -2,7 +2,6 @@
 
 use super::server::DataZenMcpServer;
 use super::types::*;
-use crate::ai::budget;
 use crate::ai::prompt_resolver;
 use datazen_driver_api::PromptScenario;
 use rmcp::handler::server::wrapper::Parameters;
@@ -20,22 +19,25 @@ impl DataZenMcpServer {
         &self,
         Parameters(args): Parameters<Nl2SqlArgs>,
     ) -> Result<GetPromptResult, McpError> {
-        let (conn_id, driver, _handle) = self.resolve_connection(&args.connection_id).await?;
+        self.ensure_allowed("nl2sql", &args.connection_id)?;
+        let driver =
+            super::runtime_schema::driver_for_connection(self, &args.connection_id).await?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
         let db = args.database.as_deref().unwrap_or("");
 
-        let context = self
-            .app_state
-            .schema_context_builder
-            .build_sql_context(&conn_id, db, None, &[], budget::FALLBACK_DDL)
-            .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let schema_ddl = super::runtime_schema::schema_context(
+            self,
+            &args.connection_id,
+            db,
+            crate::ai::budget::FALLBACK_DDL,
+        )
+        .await?;
 
         let mut vars = HashMap::new();
         vars.insert("db_type", db_type.as_str());
         vars.insert("version", "");
-        vars.insert("schema", context.schema_ddl.as_str());
+        vars.insert("schema", schema_ddl.as_str());
         vars.insert("recent", "");
         let system = self
             .app_state
@@ -60,7 +62,9 @@ impl DataZenMcpServer {
         &self,
         Parameters(args): Parameters<DiagnoseErrorArgs>,
     ) -> Result<GetPromptResult, McpError> {
-        let (_conn_id, driver, _handle) = self.resolve_connection(&args.connection_id).await?;
+        self.ensure_allowed("diagnose_error", &args.connection_id)?;
+        let driver =
+            super::runtime_schema::driver_for_connection(self, &args.connection_id).await?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
 
@@ -95,15 +99,19 @@ impl DataZenMcpServer {
         &self,
         Parameters(args): Parameters<ExplainPlanArgs>,
     ) -> Result<GetPromptResult, McpError> {
-        let (_conn_id, driver, handle) = self.resolve_connection(&args.connection_id).await?;
+        self.ensure_allowed("explain_plan", &args.connection_id)?;
+        let driver =
+            super::runtime_schema::driver_for_connection(self, &args.connection_id).await?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
 
-        let explain_result = driver
-            .explain(&handle, &args.sql)
-            .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
+        let explain_result = super::runtime_schema::read_target_command(
+            self,
+            &args.connection_id,
+            "explain",
+            serde_json::json!({ "sql": args.sql }),
+        )
+        .await?;
         let explain_text = serde_json::to_string_pretty(&explain_result)
             .unwrap_or_else(|_| "Failed to serialize EXPLAIN output".to_string());
 

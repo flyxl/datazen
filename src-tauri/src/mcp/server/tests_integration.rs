@@ -203,8 +203,8 @@ async fn mcp_prompt_handlers_build_messages() {
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
-    let (config, _db_session_id) = test.save_and_connect("mcp-prompt").await;
-    let connection_id = config.id.clone();
+    let config = test.save_connection("mcp-prompt").await;
+    let connection_id = config.id;
     let server = mcp_server_allowing(Arc::new(test.state), &[connection_id.as_str()]);
 
     let nl2sql = server
