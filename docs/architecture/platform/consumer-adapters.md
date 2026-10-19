@@ -143,7 +143,7 @@ PostgreSQL 与 MySQL 的 driver 专属 `tests/monitor_scheduled_query.rs` 现提
 
 stdout/stderr 同时按 4 KiB 缓冲读取，无无界队列；总输出默认 64 KiB、硬上限 1 MiB，版本 stdout 额外限制 1 KiB，超限即终止。原始输出全部丢弃，只比对受信精确版本行，receipt/Job projection 只记录字节计数、稳定结果码和清理事实。当前探针不生成大输出 Artifact。deadline/取消触发专属 process group 的 TERM、宽限后 KILL，并 wait/reap 主进程；只有组已不存在、管道关闭、临时目录明确删除成功才报告 Confirmed。请求停止等待不丢失进程：provider worker 保留实际 Child/目录，失败后只重试原资源清理。
 
-未确认 cleanup 保留全部 process/socket 预算，确认后才核销；结果中的 Unknown 不因稍后物理释放就改称数据库回滚/成功。每个 Job/stage 只执行一次，重复执行返回原 receipt，换 selection 拒绝；Job 终态与重启恢复都不自动运行 NativeTool，handler 的 recovery 始终要求人工复核。进程退出码不能证明真实数据库效果，通用 kernel 对非零 DB socket 的 fake operation 保守记录 Unknown。此段提供端口/内核与合成进程测试基础，**没有接入产品 IPC/UI、实际 pg_dump/mysqldump 部署登记、真实数据库操作或 native backup/restore 产品路径，也没有完成 P6 全预算及适用层验收**。
+未确认 cleanup 保留全部 process/socket 预算，确认后才核销；cleanup 状态查询 panic 也按未确认处理，由原 owner task 保留全部名额并继续只查询原资源清理，不因 observer 故障释放进程名额或重放工具；结果中的 Unknown 不因稍后物理释放就改称数据库回滚/成功。每个 Job/stage 只执行一次，重复执行返回原 receipt，换 selection 拒绝；Job 终态与重启恢复都不自动运行 NativeTool，handler 的 recovery 始终要求人工复核。进程退出码不能证明真实数据库效果，通用 kernel 对非零 DB socket 的 fake operation 保守记录 Unknown。此段提供端口/内核与合成进程测试基础，**没有接入产品 IPC/UI、实际 pg_dump/mysqldump 部署登记、真实数据库操作或 native backup/restore 产品路径，也没有完成 P6 全预算及适用层验收**。
 
 ## 8. 接口落地与旧路径删除
 

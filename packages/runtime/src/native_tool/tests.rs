@@ -86,7 +86,7 @@ fn fake(sockets: Option<u32>, cleanup: bool, wait: bool) -> Arc<FakePort> {
     })
 }
 fn native(
-    port: Arc<FakePort>,
+    port: Arc<dyn NativeToolPort>,
     cap: u32,
 ) -> (Arc<NativeToolRuntime>, Arc<InProcessBudgetCoordinator>) {
     let budget = Arc::new(InProcessBudgetCoordinator::new(
@@ -354,4 +354,110 @@ fn native_selection_rejects_executable_argv_environment_fields() {
         input[key] = serde_json::json!("untrusted");
         assert!(serde_json::from_value::<NativeToolSelection>(input).is_err());
     }
+}
+
+struct CleanupFaultPort {
+    inner: Arc<FakePort>,
+    polls: AtomicUsize,
+    panic_until_recovered: AtomicBool,
+}
+#[async_trait::async_trait]
+impl NativeToolPort for CleanupFaultPort {
+    fn resolve(&self, selection: &NativeToolSelection) -> Result<NativeToolResolution, PortError> {
+        self.inner.resolve(selection)
+    }
+    async fn run(
+        &self,
+        key: &str,
+        resolution: NativeToolResolution,
+        cancel: Arc<AtomicBool>,
+        limits: NativeToolLimits,
+    ) -> Result<NativeToolReport, PortError> {
+        self.inner.run(key, resolution, cancel, limits).await
+    }
+    async fn cleanup_status(&self, key: &str) -> NativeCleanup {
+        self.polls.fetch_add(1, Ordering::SeqCst);
+        assert!(
+            !self.panic_until_recovered.load(Ordering::Acquire),
+            "synthetic cleanup observer fault"
+        );
+        self.inner.cleanup_status(key).await
+    }
+}
+
+#[tokio::test]
+async fn cleanup_observer_panic_retains_both_budgets_until_confirmed_without_replay() {
+    let inner = fake(Some(2), false, false);
+    let port = Arc::new(CleanupFaultPort {
+        inner: inner.clone(),
+        polls: AtomicUsize::new(0),
+        panic_until_recovered: AtomicBool::new(true),
+    });
+    let (runtime, budget) = native(port.clone(), 4);
+    let (jobs, _, _) = job(runtime.clone(), "cleanup-fault").await;
+    let initial = jobs
+        .run(
+            &context(),
+            &JobId::new("cleanup-fault"),
+            &WorkerId::new("worker"),
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(initial.effect_outcome, EffectOutcome::Unknown);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while port.polls.load(Ordering::Acquire) == 0 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // Let the panic unwind through the observer, before checking its owner.
+    tokio::task::yield_now().await;
+    assert_eq!(runtime.processes.available_permits(), 0);
+    assert_eq!(in_use(&budget).await, 2);
+    let (other, _, _) = job(runtime.clone(), "during-cleanup-fault").await;
+    let denied = other
+        .run(
+            &context(),
+            &JobId::new("during-cleanup-fault"),
+            &WorkerId::new("worker"),
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(denied.effect_outcome, EffectOutcome::NotStarted);
+    assert_eq!(inner.calls.load(Ordering::Acquire), 1);
+    port.panic_until_recovered.store(false, Ordering::Release);
+    inner.cleanup.store(true, Ordering::Release);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while in_use(&budget).await != 0 || runtime.processes.available_permits() != 1 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(port.polls.load(Ordering::Acquire) >= 2);
+    assert_eq!(inner.calls.load(Ordering::Acquire), 1);
+    assert_eq!(
+        runtime
+            .entries()
+            .values()
+            .filter_map(|entry| entry.result.as_ref())
+            .filter(|result| result.effect == EffectOutcome::Unknown)
+            .count(),
+        1
+    );
+    let (after, _, _) = job(runtime, "after-cleanup-confirmed").await;
+    after
+        .run(
+            &context(),
+            &JobId::new("after-cleanup-confirmed"),
+            &WorkerId::new("worker"),
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(inner.calls.load(Ordering::Acquire), 2);
+    assert_eq!(in_use(&budget).await, 0);
 }

@@ -253,7 +253,12 @@ impl NativeToolRuntime {
             // never invoke run again, and never release budgets for unknown cleanup.
             loop {
                 tokio::time::sleep(Duration::from_millis(100)).await;
-                if self.port.cleanup_status(&key).await == NativeCleanup::Confirmed {
+                // Observer failure is not resource release. Keep both reservations
+                // in this owner task and retry only cleanup, never application work.
+                let observed = std::panic::AssertUnwindSafe(self.port.cleanup_status(&key))
+                    .catch_unwind()
+                    .await;
+                if matches!(observed, Ok(NativeCleanup::Confirmed)) {
                     break;
                 }
             }
