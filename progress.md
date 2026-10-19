@@ -18,14 +18,16 @@ Integration branch: `feature/p6-restore-apply-evidence`.
 
 ## In progress
 
-- MySQL `transactionBlock` stream invalidation correction `9b4d5c558` is awaiting independent tester verification. It invalidates the fixed-session observer state before and after acquiring the physical-session lock; production `workflow_transaction_plan` remains `None`.
+- MySQL `transactionBlock` stream invalidation plus proof-contract/whole-plan refusal tests are ready for independent verification at coder commit `c1e744f3b`. This includes the `9b4d5c558` fixed-session observer invalidation before and after acquiring the physical-session lock, plus refusal cases for GRANT/ROLE, backup-lock claims, filtered empty catalogs, FORCE INDEX, and boolean proof prefixes. Production `workflow_transaction_plan` remains `None`; no live privilege mutation ran. The tests do not supply the missing same-retained-handle privilege/catalog/transaction-state witness.
 
 ## Remaining P6 scope
 
 - MCP owner/TTL cancellation fault path is implemented and accepted as above; external MCP transport/PG/MySQL live integration remains outside this specific acceptance.
-- MySQL transactionBlock remains fail-closed pending a defensible proof; the accepted probe does not enable the production path.
-- NativeTool database operations and full product IPC/UI remain unsupported; the accepted implementation is a safe kernel/probe slice only.
-- Workflow Job handler exposes durable state and bounded result projection, but no dedicated Workflow Job control UI or cross-restart Workflow receipt exists; determine whether these are required P6 exit items or documented follow-up before closure.
+- MySQL transactionBlock remains fail-closed pending a defensible same-retained-handle proof; the accepted probe and refusal tests do not enable the production path. PostgreSQL's newly added desktop Job transaction journey and real acknowledgement-loss pause/fault coverage also still need independent acceptance.
+- NativeTool's cleanup-panic budget fix is accepted, and coder is adding caller-abort/cancel/late-cleanup faults. P6 still lacks full-budget and applicable-layer acceptance, product IPC/UI, registered real PG/MySQL tool deployment, and real database/native backup/restore journeys; the current desktop surface is version probes only.
+- Wapp stateful instance sessions are accepted at Host/bridge/SDK layers, but live PostgreSQL/MySQL Wapp SQL and approval UI journeys remain untested; the original Wapp coder is spend-capped, so reuse that agent when available.
+- MCP cancelled-open ownership is accepted at Host Runtime fixture level; external MCP transport and PostgreSQL/MySQL live shared-state journeys remain unverified.
+- Workflow Job handler exposes durable state and bounded result projection; no dedicated Workflow Job control UI or separate cross-restart Workflow result receipt exists. The P6 plan requires `workflow_list_jobs`/`workflow_cancel_job` and durable non-replay semantics, which are implemented, but final acceptance must verify those IPC behaviors and decide from that evidence whether UI/receipt are a blocker or follow-up.
 - Explicit AI editor-session grants/revocation are tracked by the separate AI migration owner; do not modify AI here.
 
 P6 is not closed. Remove this ledger during final acceptance cleanup.
