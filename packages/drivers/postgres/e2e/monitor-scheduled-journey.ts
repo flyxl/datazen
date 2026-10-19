@@ -1,5 +1,7 @@
 import { browser, expect } from '@wdio/globals';
-import { invokeBackend, withSafeModeOff } from '../../../../e2e/helpers.js';
+import { withSafeModeOff } from '../../../../e2e/helpers.js';
+import { withFixtureCleanup } from '../../../../e2e/helpers/fixture-cleanup.js';
+import { invokeMonitorBackend as call, deleteMonitorDashboard } from '../../../../e2e/helpers/monitor-journey.js';
 
 type Receipt = { jobId: string; state: string; scheduledAt: number; results: Array<{ items: Array<{ itemId: string }> }> };
 type Evidence = { tickAccepted: boolean; receipts: Receipt[]; physicalDispatches: Array<{ connectionId: string; count: number }> };
@@ -31,27 +33,22 @@ describe('postgres Monitor scheduled desktop journey', () => {
     if (!saved) throw new Error('Monitor fixture profile creation failed');
     const profile = { id: fixtureId, database: sourceProfile.database };
     const args = { dashboardId: id, widgetId: `${id}_widget` };
-    // Suppress backend error text: driver errors can contain connection details.
-    async function call<T>(command: string, payload: Record<string, unknown>): Promise<T> {
-      try { return await invokeBackend<T>(command, payload); }
-      catch { throw new Error(`Monitor journey command failed: ${command}`); }
-    }
     async function sql(command: string, text: string) {
       const workflowId = `${id}_setup`;
-      await call('workflow_save', { workflow: { id: workflowId, name: workflowId,
-        variables: [], connection: profile?.id, database: profile?.database,
-        steps: [{ id: 'fixture', type: 'command', command, input: { sql: text } }] } });
-      try {
-        const result = await call<{ success: boolean }>('workflow_execute', { workflowId, variables: {}, connectionId: profile?.id });
-        expect(result.success).toBe(true);
-      } finally { await call('workflow_delete', { workflowId }); }
+      await withFixtureCleanup(async () => {
+        await call('workflow_save', { workflow: { id: workflowId, name: workflowId,
+          description: 'Monitor fixture SQL', variables: [], connection: profile.id, database: profile.database,
+          steps: [{ id: 'fixture', type: 'command', command, input: { database: profile.database, sql: text } }] } });
+        const result = await call<{ success: boolean }>('workflow_execute', { workflowId, variables: {}, connectionId: profile.id });
+        if (!result.success) throw new Error('Monitor fixture workflow failed [SQL_EXECUTION_FAILED]');
+      }, [{ label: 'fixture-workflow', run: () => call('workflow_delete', { workflowId }) }]);
     }
     const evidence = (tick = false) => call<Evidence>('webdriver_monitor_evidence', { ...args, tick });
     await withSafeModeOff(async () => {
-      try {
+      await withFixtureCleanup(async () => {
         await sql('execute', `CREATE TABLE ${table} (marker INTEGER)`);
         await sql('execute', `INSERT INTO ${table} VALUES (73129)`);
-        await call('workflow_save', { workflow: { id, name: id, variables: [], connection: profile.id,
+        await call('workflow_save', { workflow: { id, name: id, description: 'Monitor scheduled read', variables: [], connection: profile.id,
           database: profile.database, steps: [{ id: 'read', type: 'command', command: 'query', connection: profile.id, input: { database: profile.database, sql: `SELECT marker FROM ${table}` } }] } });
         // Start near a slot boundary so timer receipt and duplicate tick share
         // the same production 30-second idempotency slot with ample margin.
@@ -99,12 +96,12 @@ describe('postgres Monitor scheduled desktop journey', () => {
           return Date.now() >= first!.scheduledAt * 1000 + 62_000;
         }, { timeout: 65_000, interval: 1000 });
         expect((await call<Array<{ id: string }>>('list_widget_runs', { ...args, limit: 100 })).map(row => row.id)).toEqual([runId]);
-      } finally {
-        await call('delete_dashboard', { id });
-        await call('workflow_delete', { workflowId: id });
-        try { await sql('execute', `DROP TABLE IF EXISTS ${table}`); }
-        finally { await call('delete_connection', { id: fixtureId }); }
-      }
+      }, [
+        { label: 'dashboard', run: () => deleteMonitorDashboard(id) },
+        { label: 'monitor-workflow', run: () => call('workflow_delete', { workflowId: id }) },
+        { label: 'fixture-table', run: () => sql('execute', `DROP TABLE IF EXISTS ${table}`) },
+        { label: 'monitor-profile', run: () => call('delete_connection', { id: fixtureId }) },
+      ]);
     });
   });
 });
