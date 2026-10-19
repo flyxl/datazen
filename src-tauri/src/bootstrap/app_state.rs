@@ -188,14 +188,11 @@ pub(crate) fn finish_app_state(
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
     let platform = crate::platform::PlatformEntry::launch();
-    let schema_source = Arc::new(
-        crate::ai::metadata_source::RuntimeSchemaSource::new_with_legacy(
-            connection_manager.clone(),
-            registry.clone(),
-            store.clone(),
-            platform.clone(),
-        ),
-    );
+    let schema_source = Arc::new(crate::ai::metadata_source::RuntimeSchemaSource::new(
+        registry.clone(),
+        store.clone(),
+        platform.clone(),
+    ));
     let state = AppState {
         driver_registry: registry,
         connection_manager: connection_manager.clone(),

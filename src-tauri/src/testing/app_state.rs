@@ -96,7 +96,7 @@ impl TestAppState {
         Self::build(opts, true).await
     }
 
-    async fn build(opts: MockDriverOptions, with_resource_provider: bool) -> Self {
+    async fn build(opts: MockDriverOptions, _with_resource_provider: bool) -> Self {
         let keyring = super::FileKeyringGuard::set();
         let temp = tempfile::tempdir().expect("tempdir");
         let store = Arc::new(
@@ -109,12 +109,14 @@ impl TestAppState {
         registry
             .register_test_driver("postgres", mock.clone())
             .await;
-        if with_resource_provider {
-            let driver: Arc<dyn DatabaseDriver> = mock.clone();
-            let factory: &'static dyn DatabaseDriverFactory =
-                Box::leak(Box::new(TestMockDriverFactory::new(driver)));
-            registry.register_test_factory("postgres", factory).await;
-        }
+        // Runtime-backed command tests need the same mock provider as the
+        // direct driver path. Register it for every fixture so a test cannot
+        // accidentally create a legacy-only session that the production
+        // command path would reject.
+        let driver: Arc<dyn DatabaseDriver> = mock.clone();
+        let factory: &'static dyn DatabaseDriverFactory =
+            Box::leak(Box::new(TestMockDriverFactory::new(driver)));
+        registry.register_test_factory("postgres", factory).await;
         let state = build_app_state(store.clone(), registry.clone());
         Self {
             _keyring: keyring,
@@ -156,6 +158,15 @@ impl TestAppState {
         let config = self.save_connection(id).await;
         let conn_id = self.connect_config(id).await;
         (config, conn_id)
+    }
+
+    /// Persist a profile and open it through the Runtime session boundary.
+    /// Unlike `save_and_connect`, this helper intentionally does not create a
+    /// legacy ConnectionManager session.
+    pub async fn save_and_connect_runtime(&self, id: &str) -> (ConnectionConfig, String) {
+        let config = self.save_connection(id).await;
+        let session = self.open_runtime_session(id).await;
+        (config, session)
     }
 
     /// Persist a profile and open a real platform runtime session for command tests.

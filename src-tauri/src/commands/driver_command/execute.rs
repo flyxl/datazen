@@ -27,12 +27,15 @@ pub(crate) async fn execute_driver_command_with_mode(
     permission_mode: Option<McpPermissionMode>,
     dialog: Option<&tauri::AppHandle>,
 ) -> Result<CommandResult, CommandError> {
-    let (driver, handle, bound) = resolve_command_driver(
+    let resolved = resolve_command_driver(
         state,
         request.db_session_id.as_ref(),
         request.driver_type.as_ref(),
     )
     .await?;
+    let driver = &resolved.driver;
+    let handle = &resolved.handle;
+    let bound = resolved.bound;
 
     let metadata_command = crate::services::schema_metadata::is_metadata_command(&request.command);
     let definition = datazen_feature_core::services::command_policy::resolve_definition(
@@ -74,12 +77,16 @@ pub(crate) async fn execute_driver_command_with_mode(
             .map_err(CommandError::Validation)?;
         if bound {
             if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
-                let read_only = state
-                    .connection_manager
-                    .get_session_config(&handle.id)
-                    .await
-                    .map(|c| c.read_only)
-                    .unwrap_or(false);
+                let read_only = if let Some(session) = resolved.session.as_ref() {
+                    state
+                        .store
+                        .get_connection(session.connection_id.as_str())
+                        .await
+                        .map(|config| config.read_only)
+                        .unwrap_or(false)
+                } else {
+                    false
+                };
                 let safe_mode = state.store.execution_settings().await.safe_mode;
                 datazen_runtime::sql_guard::check_sql(sql, read_only, safe_mode)
                     .map_err(CommandError::Validation)?;

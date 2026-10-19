@@ -35,8 +35,9 @@ pub(crate) async fn execute_driver_command_stream_impl(
         .filter(|s| !s.is_empty())
         .ok_or_else(|| CommandError::Validation("dbSessionId is required".into()))?;
 
-    let (driver, handle, _bound) =
-        resolve_command_driver(state, request.db_session_id.as_ref(), None).await?;
+    let resolved = resolve_command_driver(state, request.db_session_id.as_ref(), None).await?;
+    let driver = &resolved.driver;
+    let handle = &resolved.handle;
 
     let definition = driver
         .command_definitions()
@@ -111,12 +112,16 @@ pub(crate) async fn execute_driver_command_stream_impl(
         "execute_driver_command_stream sql"
     );
 
-    let read_only = state
-        .connection_manager
-        .get_session_config(&handle.id)
-        .await
-        .map(|c| c.read_only)
-        .unwrap_or(false);
+    let read_only = if let Some(session) = resolved.session.as_ref() {
+        state
+            .store
+            .get_connection(session.connection_id.as_str())
+            .await
+            .map(|config| config.read_only)
+            .unwrap_or(false)
+    } else {
+        false
+    };
     let safe_mode = state.store.execution_settings().await.safe_mode;
     datazen_runtime::sql_guard::check_sql(&sql, read_only, safe_mode)
         .map_err(CommandError::Validation)?;
