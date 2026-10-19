@@ -66,3 +66,80 @@ Initial compile EXIT=101 for an incorrect ApiError import; corrected to applicat
 ### Remaining limits
 
 Independent tester accepted this cancellation/TTL ownership repair at `26f93717b` and the integration cherry-pick is `daae66596`. Evidence covers Host Runtime-backed cancellation, disconnect race, original-owner cleanup, budget return and idempotent close; it does not claim external MCP stdio/client or PostgreSQL/MySQL SQL acceptance. The same two schema-resource/prompt tests fail on baseline and this commit. No AI/provider/driver implementation was changed. Delete this temporary ledger on final integration to main.
+
+
+## Workflow v1 scope reset (2026-10-19, pending independent acceptance)
+
+User direction supersedes prior P6 v2 Workflow work: existing v1 protocol/model, per-step cross-database targets, output/template chaining stay unchanged; replace only underlying connection management. Completed primary agent's pre-existing staged/unstaged rollback in integration worktree `/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/datazen-p6-restore-apply-evidence`, branch `feature/p6-restore-apply-evidence`, original HEAD `5313c362055d37e68a6892ffdf87942270f48245`. No main/other tester trees modified.
+
+Removed P6-only Workflow session/transaction execution, dedicated Workflow Job dispatch/IPC/owner/TTL binding and PG/MySQL transaction-proof API/implementations/tests. Kept baseline Workflow model/executable/YAML/version and existing IPC signatures. Core Workflow directory and host command_runtime/independent_sql are byte-identical to current main after scope reset. Kept scheduler runtime-entry repair, Monitor durable scheduling/authorization/recovery, Wapp/MCP and Restore/Backup/Export. Monitor's fixed flat read-target metadata normalization was extracted from removed session_block into monitor/fixed_targets; scheduled host no longer implements removed WorkflowHost::resources. Generic NativeTool StageOwnerPermit/claim fencing and native process/runtime implementations remain. Existing transfer/schema-diff test literals only remove the deleted FrozenPlan field; no tests were added.
+
+Static work only, no implementation test/compile results claimed:
+- rustfmt --edition 2021 --config skip_children=true applied to modified Rust integration/glue files; EXIT=0. This parsed/formatted source, not a cargo type/link check. Baseline core Workflow files remain exactly as main.
+- git diff --check: EXIT=0. Residual deleted-symbol scan found no production/test references to workflow_transaction, WorkflowTransactionPlan, JobSessionLease, workflowOwnerBlocks, workflow_owner_blocks, validate_workflow_owner, begin_job_owned_call, bind_job_permit, verify_session_job, authorize_workflow_job, workflow_list_jobs/workflow_cancel_job or removed session/transaction helper modules.
+- No changes to model.rs/executable.rs/YAML/IPC version contracts, AI code, scheduler.rs, NativeTool kernel/desktop adapter, Wapp/MCP, Restore/Backup/Export relative to original HEAD. Review patch/stat/file manifest stored under `/tmp/datazen-p6-workflow-v1-rollback*` (no secrets/env contents read).
+- NOT RUN: cargo check/test, driver tests/live suites, pnpm typecheck/build, Vitest, WDIO or other automated gates. Compile/type/link confidence remains unverified. Monitor helper uses the existing baseline TargetDeclaration/target_plan contract; this dependency extraction particularly needs tester review. Historical completed v2 proof reports above are superseded scope history, not current deliverables or acceptance.
+
+Independent acceptance arrangement (not executed here): first focused Host/feature-core/Runtime compilation and existing v1 tests; PG and MySQL driver-local Workflow timeout suites plus v1 cross-DB journey with explicit PG→MySQL and MySQL→PG per-step target changes, first-step scalar/row output consumed by subsequent SQL/condition/foreach templates, legitimate defaults/overrides, failure/timeout without replay of earlier side effects; then existing Monitor timer/authorize/revoke/duplicate occurrence journeys to confirm helper extraction preserves grant scope and scheduling. Keep tester checkout isolated and use webdriver driver injection build. No v2/block/proof acceptance required or claimed. No NativeTool next development until this scope reset is independently reviewed.
+
+Exact changed files at review (D=deleted, M=modified, A=added):
+```
+A	src-tauri/src/monitor/fixed_targets.rs
+D	packages/driver-api/src/workflow_transaction.rs
+D	packages/drivers/mysql/src/workflow_transaction_tests.rs
+D	packages/drivers/postgres/e2e/workflow-transaction-journey.ts
+D	packages/drivers/postgres/src/workflow_transaction.rs
+D	packages/drivers/postgres/tests/workflow_transaction_evidence.rs
+D	packages/feature-core/src/workflow/session_block.rs
+D	packages/feature-core/src/workflow/transaction_block.rs
+D	packages/feature-core/tests/workflow_block_acquisition.rs
+D	packages/feature-core/tests/workflow_v2_dispatch.rs
+D	packages/runtime/src/job/owner_tests.rs
+D	src-tauri/src/bootstrap/workflow_job_tests.rs
+D	src-tauri/src/workflow/job.rs
+D	src-tauri/src/workflow/job_owner_tests.rs
+D	src-tauri/src/workflow/transaction_evidence.rs
+D	src-tauri/src/workflow/transaction_proof.rs
+M	docs/architecture/backend/workflow.md
+M	docs/architecture/platform/consumer-adapters.md
+M	docs/architecture/platform/feature-core.md
+M	docs/architecture/platform/workflow-resource-model.md
+M	docs/development/platform-development-plan.md
+M	packages/data-transfer/src/job/tests.rs
+M	packages/data-transfer/src/job/tests/stage_shape.rs
+M	packages/driver-api/src/lib.rs
+M	packages/driver-api/src/traits.rs
+M	packages/drivers/mysql/src/lib.rs
+M	packages/drivers/mysql/src/mysql.rs
+M	packages/drivers/postgres/src/lib.rs
+M	packages/drivers/postgres/src/postgres.rs
+M	packages/feature-core/src/workflow/executor.rs
+M	packages/feature-core/src/workflow/host.rs
+M	packages/feature-core/src/workflow/mod.rs
+M	packages/feature-core/src/workflow/resource_execution.rs
+M	packages/feature-core/src/workflow/target_plan.rs
+M	packages/runtime/src/application/mod.rs
+M	packages/runtime/src/application/operations.rs
+M	packages/runtime/src/job/memory_runtime_repository.rs
+M	packages/runtime/src/job/mod.rs
+M	packages/runtime/src/job/owner.rs
+M	packages/runtime/src/job/plan.rs
+M	packages/runtime/src/job/repository/owner_claims.rs
+M	packages/runtime/src/job/runtime_repository.rs
+M	packages/schema-diff/tests/job_handler.rs
+M	progress.md
+M	src-tauri/src/bootstrap/app_state.rs
+M	src-tauri/src/bootstrap/run.rs
+M	src-tauri/src/commands/workflow.rs
+M	src-tauri/src/monitor/grants.rs
+M	src-tauri/src/monitor/mod.rs
+M	src-tauri/src/monitor/scheduled.rs
+M	src-tauri/src/platform/adapter.rs
+M	src-tauri/src/store/app_db/jobs/codec.rs
+M	src-tauri/src/store/app_db/jobs/owner.rs
+M	src-tauri/src/store/app_db/jobs/runtime_ops.rs
+M	src-tauri/src/workflow/host.rs
+M	src-tauri/src/workflow/mod.rs
+```
+
+Staging note: explicitly re-adding paths already deleted from the index produced a pathspec rejection. Reconciled by staging remaining tracked changes and the one new Monitor helper, then amending the just-created local commit so the final reviewed commit contains both original rollback and dependency fixes; no files were restored or lost.

@@ -16,6 +16,3 @@ pub mod migration;
 pub mod plan_guard;
 mod results;
 pub mod target_plan;
-
-pub mod session_block;
-pub mod transaction_block;

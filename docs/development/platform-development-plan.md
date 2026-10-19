@@ -248,7 +248,7 @@ pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rota
 
 P5 退出门槛已关闭，P6 前置条件满足，可以启动。
 
-2026-10-17 实施状态：Workflow/AI/MCP/Dashboard/metadata/export/backup 的共享领域代码与 settings 契约已抽入共享 packages；桌面保留 IPC、native/session identity、仓储和既有 P5 job adapter。表导出与数据库备份已接入桌面 Job/Artifact 交付；PostgreSQL/MySQL 备份执行已接专属 Runtime retained session / `backup_dump`，有界 chunk 同步背压写入 staging/gzip，保留 Job/Artifact 交付；其他驱动失败关闭，实库/桌面验收仍须独立核验，恢复已接单次消费的 apply Job，PostgreSQL/MySQL 的受限 SQL 格式走固定 Runtime session / ExecutionGateway。最终残余核对见 [feature-core](../architecture/platform/feature-core.md#final-residual-audit-2026-10-17) 与 [消费者边界 §8.1](../architecture/platform/consumer-adapters.md#81-当前共享实现与保留边界2026-10-17)。这不是 P6 关闭：block 已有派发前失败关闭；可信 WorkflowBlock owner/TTL、实际块执行、授权调度/native-tool 预算及真实驱动旅程验收仍有阶段工作；本轮提取已在隔离快照复验通过。
+2026-10-17 实施状态：Workflow/AI/MCP/Dashboard/metadata/export/backup 的共享领域代码与 settings 契约已抽入共享 packages；桌面保留 IPC、native/session identity、仓储和既有 P5 job adapter。表导出与数据库备份已接入桌面 Job/Artifact 交付；PostgreSQL/MySQL 备份执行已接专属 Runtime retained session / `backup_dump`，有界 chunk 同步背压写入 staging/gzip，保留 Job/Artifact 交付；其他驱动失败关闭，实库/桌面验收仍须独立核验，恢复已接单次消费的 apply Job，PostgreSQL/MySQL 的受限 SQL 格式走固定 Runtime session / ExecutionGateway。最终残余核对见 [feature-core](../architecture/platform/feature-core.md#final-residual-audit-2026-10-17) 与 [消费者边界 §8.1](../architecture/platform/consumer-adapters.md#81-当前共享实现与保留边界2026-10-17)。这不是 P6 关闭：Workflow v1 跨库 Runtime 路由、授权调度/native-tool 预算及真实驱动旅程验收仍有阶段工作；本轮提取已在隔离快照复验通过。
 
 详细设计：[Workflow 资源模型](../architecture/platform/workflow-resource-model.md) 与 [消费者接入](../architecture/platform/consumer-adapters.md)。共享授权失效后拒绝绑定操作，MCP/Wapp 只释放自有资源，调度目标和服务授权显式保存，原生工具也计入完整预算。
 
@@ -256,8 +256,8 @@ P5 退出门槛已关闭，P6 前置条件满足，可以启动。
 
 交付：
 
-- Workflow 独立 step、session block、transaction block 的模型、校验和执行。
-- 明确 connection/namespace 继承、并行分支资源、重试范围、checkpoint 边界。
+- Workflow 保持 v1 独立 step 与既有模型/协议，底层连接派发使用共享 Runtime。session/transaction block 和 Workflow 专用 Job 不在本轮范围。
+- 保持既有 connection/namespace、跨库步骤和 step output/template chaining 语义，验收底层 Runtime 替换不改变目标与结果。
 - AI 默认独立操作，显式授权当前 editor session 时同队列。
 - MCP client/session owner 与 TTL，Wapp 实例和任务归属。 MCP 的在途 open 由独立 owner task 与未交付回复 guard 持有，请求取消或断连后的晚到资源转入原 owner 清理；Host Runtime fixture 覆盖该故障路径，PG/MySQL 实库和传输验收仍独立进行。
 - Dashboard/Monitor 独立资源；导出、备份、恢复归 Job/Artifact；原生工具由环境 port 管理。
@@ -267,7 +267,7 @@ P5 退出门槛已关闭，P6 前置条件满足，可以启动。
 
 回退：旧 Workflow 定义按版本解析，默认独立 step 语义；新 block 格式不交旧 executor。后台任务取消与运行状态通过 Job 查证，不用 GUI 关闭推断。
 
-实施前修正 Workflow §4.2/§6.2：显式目标不完整即拒绝，不回退另一连接；block 冲突检查先于任何目标返回；session block 清理后仍默认不自动重试。退出门槛增加已自动提交一步后失败不重复写入、未知提交不重试、已确认回滚后的受控重试与 block 目标冲突。AI/MCP/Wapp 各入口分别验证 owner、授权、TTL 和 Gateway 拒绝路径。
+Workflow 验收按既有 v1 行为进行：跨连接/跨库逐步派发、前步输出供后步模板使用、错误/超时不重放已确认副作用；不以 block 目标设计扩展本轮协议。其他消费者继续独立验证 owner、授权、TTL 和 Gateway 拒绝路径。
 
 Monitor occurrence 当前状态：周期执行已先受理 SQLite durable `monitorOccurrence` Job，严格投影保存 schedule、定义版本、计划时间、授权身份与只读目标范围；`scheduleId + definitionRevision + scheduledAt` 对应幂等 receipt。SQLite 重开后重复提交返回原 receipt，重复 tick 不再派发；启动恢复将未完成 Job 标记为待验证并要求人工复核，不恢复 handler 或重放查询。已有 codec 身份一致性、SQLite 跨重开 receipt 和变更重放拒绝测试；PG/MySQL 的共享策略/Runtime 查询层现另有 live 证据，但不表示多 worker 接管或完整桌面 Monitor 调度旅程已验收。
 
@@ -467,25 +467,9 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 本表是设计入口，不是完成进度。目标设计、现有实现和实际运行证据分别标明；阶段完成后同步将对应内容改写为事实。
 
 
-### 2026-10-17 Workflow v2 派发安全边界
+### P6 Workflow v1 范围
 
-共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺命令/驱动元数据要求的字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。database 要求保留命令 target requirements 的 Required / Optional / Forbidden 三态；Forbidden 在派发前拒绝已选目标中的 database，且不被驱动 has_multi_database 的通用 SQL 要求覆盖。Optional 才可按该驱动元数据提升为 Required，单库驱动不因 SQL 命令名被强制要求 database；缺元数据明确 CapabilityUnsupported，不猜测其他驱动能力。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
-
-桌面用户发起的 `workflow_execute` 对含 block 的 v2 定义经 `workflow::job` 执行：先冻结定义和输入、完成整个定义的目标/冲突/命令元数据预检，再由 `DesktopJobHost` 持久受理 `workflowRun` 并经 JobRuntime claim 派发。普通步骤与 sessionBlock 限定 PostgreSQL/MySQL 的 query/execute/explain 与条件/循环；transactionBlock 另按下述 driver proof 合同限制，当前仅 PostgreSQL 窄子集 opt-in。block 的 schema override 明确拒绝。v1 与无 block 的 v2 独立步骤保持原路径。MCP、旧 Workflow 定时入口及其他默认 host 仍拒绝 blocks，不能借桌面用户身份获得后台授权。
-
-JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器的 `StageOwnerPermit`。独立步骤资源使用真实 `OwnerRef::Job`，session block 使用真实 `OwnerRef::WorkflowBlock { jobId, blockId }`；所有 owner/身份均由后端生成，普通 session 请求即使携带有效 Job ID 仍拒绝。Runtime 在资源获取、enqueue 与物理 dispatch 前核验活动 claim/阶段/取消与固定 profile revision。session block 步骤串行共用同一显式目标和物理 session，块末 RollbackAndClose；下一块另取资源。获取期间的 guard 覆盖回执丢失/超时，块截止时间触发独立于 GUI attachment/idle policy 的清理，取消信号传入运行中 SQL 的终态等待。关闭或结果未确认保留 Unknown，不自动重放。
-
-持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown；Job handler v2 已提供有界 runtime phase/ID/state/effect 和已确认事务边界投影，尚无专用 Workflow Job 控制 UI 或跨重启 Workflow receipt；真实驱动临时对象/外部效果旅程仍须独立验收。
-
-#### 2026-10-18 transactionBlock 当前实现边界
-
-`transactionBlock` 现提供 PostgreSQL 的 `pgLockedPlainHeapLiteralDmlV1` 窄执行路径。`DatabaseDriver::workflow_transaction_plan` 是可选、默认不支持的驱动合同：先用 PostgreSQL 方言 AST 对整块最终插值 SQL 做严格形状检查，并把裸 relation 重写为固定 profile schema 的全限定名称；冻结 connection/database/schema、config revision、driver proof profile/version 与完整计划/guard 摘要，再进行 Job admission。静态不可证明的形状返回 `UnsupportedPlan`，缺能力返回 `CapabilityUnsupported`，发生在任何独立步骤或其他块派发之前。不接受残余模板，因此前序步骤不能改变已冻结事务 SQL。
-
-动态目录条件由同一 Job-owned retained Runtime transaction 内的 guard 证明：确认 BEGIN 后事务状态为 Active，按稳定顺序执行 `LOCK TABLE ONLY ... IN SHARE ROW EXCLUSIVE MODE`，再通过 `pg_catalog` 检查目标是普通持久 heap，无分区/继承、RLS、rules、triggers、任何 constraints（包括入站 FK）、indexes、default/generated/identity 列，列类型仅 bool/int2/int4/int8/text/varchar。SQL 子集为 literal INSERT/UPDATE、DELETE 与受限 SELECT；谓词仅 NULL 检查/布尔组合，拒绝函数、重载运算、过程、CTE、子查询、join、输入中的限定 relation、DDL、事务控制、多语句、注释及反斜杠。不承诺支持普通带主键表或任意 DML。目录查询显式限定 pg_catalog 运算符与函数，锁保持到 COMMIT/ROLLBACK，避免目录核验与实际 DML 之间的 DDL 竞态。guard 不通过只回滚该块，绝不派发该块应用 SQL；前序独立步骤/已提交块不受回滚承诺覆盖。
-
-每次 retained dispatch 再核对真实事务状态、已锁定 proof 与冻结 SQL，Runtime 继续核验 profile revision/owner/claim。现有 BEGIN/COMMIT/ROLLBACK 原语与 SQL 白名单、非零整块 retry 拒绝规则保持。Job handler v2 将真实 execution ID、固定 phase、terminal/effect code 写入 bounded `JobDomainResult`，确认 BEGIN + guard + COMMIT 才写 durable `CommitBoundary`，带固定目标/版本/计划摘要及 begin/commit execution 证据；确认 rollback 的块记录 rolledBack，guard 未通过而已 rollback 记录 notStarted。未知提交或回滚保持 unknown，不自动重放；整体失败仍保守 Unknown，不据某个块回滚推断整个 Workflow 原子。证据不含 SQL、变量、credential 或 live session/handle。进程在阶段结果持久化前退出仍需人工核验，尚无跨重启自动恢复/重放。
-
-MySQL/MariaDB 的此合同仍默认 `CapabilityUnsupported`，不表示 P6 transactionBlock 已全部交付。MySQL 8.4 的事务级 MDL 可保护已触达表，但当前安全缺口具体包括：TRIGGERS 的 absence 需要证明当前用户有效 TRIGGER 可见性；入站 FK 可来自当前用户无 SELECT 权限的其他 schema；在未知 table/view 上 SELECT LIMIT 0 取得 MDL 前的对象类型替换与 view 表达式/优化执行路径尚无无副作用证明。仅检查 ENGINE=InnoDB 或空目录结果不足以 opt-in。此外当前 MySQL fixed-session observer 依赖控制连接和 performance_schema 本线程 instrumentation/consumer，缺失时为 Unknown；MariaDB 使用另一观察路径，不能按 MySQL 8.4 范围静默放行。后续须限定实际 server/version、完整目录可见性、无应用代码执行的锁获取、InnoDB/trigger/FK/default/generated 条件及可靠 Active/commit/rollback 观察，再独立 opt-in。真实 PostgreSQL 成功提交、失败回滚、DDL 锁竞态和 unknown commit/rollback 旅程仍须 tester 验收；单测/编译不代替这些旅程。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
 
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）
 

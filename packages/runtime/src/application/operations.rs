@@ -40,7 +40,6 @@ impl RuntimeConnectionUseCases {
             AuthorizationAction::Write
         };
         self.authorize(ctx, action.clone()).await?;
-        self.verify_session_job(ctx, &request.handle).await?;
         let view = self.session_view(ctx, &request.handle).await?;
         self.authorize_target(
             ctx,
@@ -140,7 +139,6 @@ impl RuntimeConnectionUseCases {
             tokio::spawn(async move {
                 // The async policy port is checked again immediately before physical dispatch.
                 let authorization = async {
-                    service.verify_session_job(&ctx, &handle).await?;
                     service
                         .authorize_target(
                             &ctx,
@@ -584,11 +582,6 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
             return convert::json_convert(&value);
         }
         let entry = self.session_entry(ctx, &request.handle)?;
-        if entry.job_permit.is_some() {
-            return Err(ApiError::permission_denied(
-                "Workflow Job targets are immutable",
-            ));
-        }
         self.session_view(ctx, &request.handle).await?;
         let desired = ExecutionTarget::new(entry.initial.connection_id.clone(), request.desired);
         let replaced = self
@@ -644,7 +637,6 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
                 attached: true,
                 closed: None,
                 closed_at: None,
-                job_permit: entry.job_permit,
             },
         );
         self.inner.sink.invalidate(&request.handle);

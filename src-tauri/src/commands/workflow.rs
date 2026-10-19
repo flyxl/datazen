@@ -25,35 +25,19 @@ pub(crate) async fn workflow_execute_impl(
     variables: serde_json::Value,
     connection_id: Option<String>,
 ) -> Result<crate::workflow::WorkflowExecutionResult, CommandError> {
-    workflow_execute_bound(state, workflow_id, variables, connection_id, false).await
-}
-async fn workflow_execute_bound(
-    state: &AppState,
-    workflow_id: String,
-    variables: serde_json::Value,
-    connection_id: Option<String>,
-    desktop_user: bool,
-) -> Result<crate::workflow::WorkflowExecutionResult, CommandError> {
     let workflow = state
         .workflow_registry
         .get(&workflow_id)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("Workflow '{workflow_id}' not found")))?;
 
-    let result = if desktop_user
-        && workflow.version.as_deref() == Some("2")
-        && !workflow.blocks.is_empty()
-    {
-        crate::workflow::job::execute(state, &workflow, &variables).await
-    } else {
-        crate::workflow::WorkflowExecutor::execute(
-            &workflow,
-            state,
-            connection_id.as_deref(),
-            &variables,
-        )
-        .await
-    }
+    let result = crate::workflow::WorkflowExecutor::execute(
+        &workflow,
+        state,
+        connection_id.as_deref(),
+        &variables,
+    )
+    .await
     .cmd_err("workflow_execute")?;
 
     // Dashboard-owned hidden workflows must not pollute the user-facing history list.
@@ -79,7 +63,7 @@ pub async fn workflow_execute(
     variables: serde_json::Value,
     connection_id: Option<String>,
 ) -> Result<crate::workflow::WorkflowExecutionResult, CommandError> {
-    workflow_execute_bound(&state, workflow_id, variables, connection_id, true).await
+    workflow_execute_impl(&state, workflow_id, variables, connection_id).await
 }
 
 #[tauri::command]
@@ -198,63 +182,4 @@ pub async fn workflow_history_clear(
         .clear(workflow_id.as_deref())
         .await
         .cmd_err("workflow_history_clear")
-}
-
-/// User-facing Job controls use the desktop RequestContext, never caller identity.
-#[tauri::command]
-pub async fn workflow_list_jobs(
-    state: State<'_, AppState>,
-) -> Result<Vec<datazen_platform_api::dto::job::JobView>, CommandError> {
-    let context = workflow_job_context(&state).await?;
-    state
-        .desktop_job_host
-        .list(
-            &context,
-            datazen_platform_api::dto::job::JobFilter::default(),
-        )
-        .await
-        .map(|jobs| {
-            jobs.into_iter()
-                .filter(|job| job.view.kind == "workflowRun")
-                .map(|job| job.view)
-                .collect()
-        })
-        .map_err(|_| CommandError::Validation("Workflow Job lookup unavailable".into()))
-}
-#[tauri::command]
-pub async fn workflow_cancel_job(
-    state: State<'_, AppState>,
-    job_id: String,
-) -> Result<datazen_platform_api::dto::job::JobView, CommandError> {
-    let context = workflow_job_context(&state).await?;
-    let id = datazen_platform_api::id::JobId::new(job_id);
-    let job = state
-        .desktop_job_host
-        .get(&context, id.clone())
-        .await
-        .map_err(|_| CommandError::Validation("Workflow Job unavailable".into()))?;
-    if job.view.kind != "workflowRun" {
-        return Err(CommandError::Validation("Workflow Job required".into()));
-    }
-    state
-        .desktop_job_host
-        .cancel(&context, &id)
-        .await
-        .map(|job| job.view)
-        .map_err(|_| CommandError::Validation("Workflow Job cancellation unavailable".into()))
-}
-async fn workflow_job_context(
-    state: &AppState,
-) -> Result<datazen_platform_api::context::RequestContext, CommandError> {
-    let platform = state
-        .platform_require()
-        .map_err(|_| CommandError::Validation("platform unavailable".into()))?;
-    let context = platform.begin_call().context().clone();
-    platform
-        .runtime()
-        .map_err(|_| CommandError::Validation("runtime unavailable".into()))?
-        .authorize_workflow_job(&context)
-        .await
-        .map_err(|_| CommandError::Validation("Workflow Job authorization denied".into()))?;
-    Ok(context)
 }

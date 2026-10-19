@@ -157,17 +157,13 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 ### 8.1 当前共享实现与保留边界（2026-10-17）
 
-桌面 Workflow 的真实 `workflow::job::Handler::run_stage_authorized` 继续使用唯一的 `StageOwnerPermit`，不另建 capability 类型。生产 Host 的独立 Job session 与 session/transaction block 获取，在资源绑定前调用 `PlatformAdapter::begin_job_owned_call`；permit 内部获取路径再次校验，Runtime 已绑定会话的后续操作也检查当前 claim。裸 OwnerIntent、错 Job/stage/block、其他 client、过期/被替代 claim 或终态 Job 均拒绝。
-
-所有权校验只读，不调用 `renew`。SQLite schema v4 仅给 claim 增加可空 `claim_client_instance_id`；认领事务写入宿主 RequestContext 的实例，迁移旧记录为 NULL 并保持拒绝。只读查询在当前持久 Job/活动 stage 下核对组织、主体、client、worker、generation、精确 expiry、Running/未取消和未结束阶段，不能把查询 Job 可见性当作 owner 授权，也不伪造在途操作已回滚。
-
-本实现沿用生产执行器的单个 `workflow` Job stage：它运行整份 Workflow，因此多个 blocks/steps 可合法属于同一 stage，不套用另一分支的一 stage 一 block 模型。受理前冻结定义，并把完整 `workflowOwnerBlocks` 白名单与 digest 一并写入同一不可变 Job payload。真实 Handler 在预算/claim 前对照自己的 frozen definition 核验列表完全一致；block gate 每次从当前 claim 对应持久 Job payload 读取声明，而非使用 caller 或旧 process-local map。`workflowRun` 的 handlerVersion=2 仅在该完整声明可解析时受理；缺声明、重复/非法 block、其他 kind 的 handlerVersion=2 和未知版本拒绝，plan/checkpoint 继续 v1。旧运行不恢复进程内 Handler/活 session，不凭持久白名单自动重放。基础设施与生产 handler journey 都需独立 tester 实跑；此接线不表示 P6 整体关闭。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。 NativeTool 继续使用不可序列化的通用 `StageOwnerPermit` 核验活动 Job claim、阶段、实例和取消状态；移除的是 Workflow 专用块/会话绑定，非通用 Job fencing。
 
 共享领域实现集中在 `packages/feature-core`，Wapp 协议/路由策略在 `packages/workspace-apps`。本轮补迁 command policy、迁移端点身份算法、Dashboard 创建/归档规则、export 容器规划与迁移结果历史映射；原路径保留薄绑定和兼容导出。逐项源码边界见 [feature-core 残余审计](feature-core.md#final-residual-audit-2026-10-17)。
 
 `execute_driver_command` 仍服务桌面 editor/session IPC；ConnectionManager 仍承载本地 session identity、tunnel 与 P5 repository/job adapter。AI/MCP/Workflow 默认 DB 工具已走共享 ResourceExecutionHost。Monitor 的兼容连接 registry 没有活动调度查询调用，实际调度走共享 MonitorHost/Workflow。
 
-共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，表导出通过 RuntimeCommandSource 读取，PostgreSQL/MySQL 备份通过专属 Runtime retained session 的 `backup_dump` 流式写 staging/gzip（64 KiB chunk、同步背压），其他驱动失败关闭；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。桌面手动 sessionBlock 已接可信 Workflow Job owner/TTL 与 retained Runtime session；transactionBlock 已接 PostgreSQL 普通无索引/约束 heap 的 literal DML 锁内证明与 durable phase/commit/rollback 证据；MySQL/MariaDB 仍缺完整目录可见性与安全锁获取证明而默认拒绝。这不是 P6 transactionBlock 整体完成。显式 editor grant、native-tool 全预算与适用层验收仍待后续。不得将本轮桌面单测通过当作 P6 阶段退出证明。
+共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，表导出通过 RuntimeCommandSource 读取，PostgreSQL/MySQL 备份通过专属 Runtime retained session 的 `backup_dump` 流式写 staging/gzip（64 KiB chunk、同步背压），其他驱动失败关闭；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。Workflow 本轮保持 v1，仅迁移底层连接管理；块与专用 Workflow Job 不在交付范围。显式 editor grant、native-tool 全预算与适用层验收仍待后续。不得将本轮桌面单测通过当作 P6 阶段退出证明。
 
 ## 9. 验收与故障旅程
 
@@ -182,15 +178,9 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 Host fake 验证归属与清理；真实 driver 验证共享状态、精确取消和外部效果；Frontend 验证旧事件过滤；W1 验证鉴权与桥，WN 验证调度接管。未运行的层不能记为通过。
 
-恢复 adapter 的当前例外：`restore_sql_file` 已接 Artifact 上传与 `databaseRestoreApply` 受理/单次消费/JobRuntime，而非直接本地路径执行。PostgreSQL/MySQL 的 Gateway 通过固定 Runtime Session / ExecutionGateway 执行受限 SQL 格式并记录真实提交证据；其他驱动明确 Unsupported 至 P10，没有借旧 ConnectionManager 实现恢复。详见 [Job §2.5](data-migration-jobs.md#25-restore-apply-job已接线驱动执行失败关闭)。这不关闭真实驱动恢复验收或 Workflow block/owner/TTL 的其余门槛。
+恢复 adapter 的当前例外：`restore_sql_file` 已接 Artifact 上传与 `databaseRestoreApply` 受理/单次消费/JobRuntime，而非直接本地路径执行。PostgreSQL/MySQL 的 Gateway 通过固定 Runtime Session / ExecutionGateway 执行受限 SQL 格式并记录真实提交证据；其他驱动明确 Unsupported 至 P10，没有借旧 ConnectionManager 实现恢复。详见 [Job §2.5](data-migration-jobs.md#25-restore-apply-job已接线驱动执行失败关闭)。这不关闭真实驱动恢复验收或 Workflow v1 跨驱动连接路由的其余验收。
 
 
-### 2026-10-17 Workflow v2 派发安全边界
+### P6 Workflow v1 范围
 
-共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺命令/驱动元数据要求的字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。database 要求保留命令 target requirements 的 Required / Optional / Forbidden 三态；Forbidden 在派发前拒绝已选目标中的 database，且不被驱动 has_multi_database 的通用 SQL 要求覆盖。Optional 才可按该驱动元数据提升为 Required，单库驱动不因 SQL 命令名被强制要求 database；缺元数据明确 CapabilityUnsupported，不猜测其他驱动能力。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
-
-桌面用户发起的 `workflow_execute` 对含 block 的 v2 定义经 `workflow::job` 执行：先冻结定义和输入、完成整个定义的目标/冲突/命令元数据预检，再由 `DesktopJobHost` 持久受理 `workflowRun` 并经 JobRuntime claim 派发。普通步骤与 sessionBlock 限定 PostgreSQL/MySQL 的 query/execute/explain 与条件/循环；transactionBlock 另按下述 driver proof 合同限制，当前仅 PostgreSQL 窄子集 opt-in。block 的 schema override 明确拒绝。v1 与无 block 的 v2 独立步骤保持原路径。MCP、旧 Workflow 定时入口及其他默认 host 仍拒绝 blocks，不能借桌面用户身份获得后台授权。
-
-JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器的 `StageOwnerPermit`。独立步骤资源使用真实 `OwnerRef::Job`，session block 使用真实 `OwnerRef::WorkflowBlock { jobId, blockId }`；所有 owner/身份均由后端生成，普通 session 请求即使携带有效 Job ID 仍拒绝。Runtime 在资源获取、enqueue 与物理 dispatch 前核验活动 claim/阶段/取消与固定 profile revision。session block 步骤串行共用同一显式目标和物理 session，块末 RollbackAndClose；下一块另取资源。获取期间的 guard 覆盖回执丢失/超时，块截止时间触发独立于 GUI attachment/idle policy 的清理，取消信号传入运行中 SQL 的终态等待。关闭或结果未确认保留 Unknown，不自动重放。
-
-持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown，Job handler v2 已提供有界 runtime phase/ID/state/effect 和已确认事务边界投影，尚无专用 Workflow Job 控制 UI 或跨重启结果 receipt；真实驱动临时对象/外部效果旅程仍须独立验收。`transactionBlock` 已由 PostgreSQL driver 的 `pgLockedPlainHeapLiteralDmlV1` 窄合同启用：admission 前以方言 AST 冻结 literal DML 和完整目标/profile/driver proof revision，将 relation 重写到固定 schema；同一 retained transaction BEGIN 后按顺序锁关系，再核验无 triggers/FK/constraints/indexes/default/generated/identity/RLS/继承的普通持久 heap 与内置标量列。每次 DML dispatch 检查 Active、冻结 SQL 和已通过 guard；不支持输入限定名称、函数、重载算术、过程、join/子查询/CTE、DDL 或多语句。静态不支持在 admission 前拒绝；目录 guard 不通过则只 rollback 该块且无该块应用 SQL，不能保证前序独立步骤无效果。Job handler v2 持久投影 runtime phase/ID/state/effect，确认 begin/proof/commit 才生成边界；未知 commit/rollback 不重放。MySQL/MariaDB 仍默认 `CapabilityUnsupported`，具体 catalog 可见性、未知 table/view 触达竞态及事务观察边界见 [Workflow 当前边界](workflow-resource-model.md#2026-10-18-transactionblock-postgresql-窄证明与效果证据)。真实驱动/故障旅程仍须独立验收，P6 未整体关闭。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。

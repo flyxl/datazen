@@ -222,18 +222,9 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 **用户手册（YAML 语法与用法）：** [Workflow 使用手册](../../features/workflow-guide.zh-CN.md)
 
 
-### 2026-10-17 Workflow v2 派发安全边界
+### P6 Workflow v1 范围
 
-共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺命令/驱动元数据要求的字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。database 要求保留命令 target requirements 的 Required / Optional / Forbidden 三态；Forbidden 在派发前拒绝已选目标中的 database，且不被驱动 has_multi_database 的通用 SQL 要求覆盖。Optional 才可按该驱动元数据提升为 Required，单库驱动不因 SQL 命令名被强制要求 database；缺元数据明确 CapabilityUnsupported，不猜测其他驱动能力。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
-
-桌面用户发起的 `workflow_execute` 对含 block 的 v2 定义经 `workflow::job` 执行：先冻结定义和输入、完成整个定义的目标/冲突/命令元数据预检，再由 `DesktopJobHost` 持久受理 `workflowRun` 并经 JobRuntime claim 派发。普通步骤与 sessionBlock 限定 PostgreSQL/MySQL 的 query/execute/explain 与条件/循环；transactionBlock 另按下述 driver proof 合同限制，当前仅 PostgreSQL 窄子集 opt-in。block 的 schema override 明确拒绝。v1 与无 block 的 v2 独立步骤保持原路径。MCP、旧 Workflow 定时入口及其他默认 host 仍拒绝 blocks，不能借桌面用户身份获得后台授权。
-
-JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器的 `StageOwnerPermit`。独立步骤资源使用真实 `OwnerRef::Job`，session block 使用真实 `OwnerRef::WorkflowBlock { jobId, blockId }`；所有 owner/身份均由后端生成，普通 session 请求即使携带有效 Job ID 仍拒绝。Runtime 在资源获取、enqueue 与物理 dispatch 前核验活动 claim/阶段/取消与固定 profile revision。session block 步骤串行共用同一显式目标和物理 session，块末 RollbackAndClose；下一块另取资源。获取期间的 guard 覆盖回执丢失/超时，块截止时间触发独立于 GUI attachment/idle policy 的清理，取消信号传入运行中 SQL 的终态等待。关闭或结果未确认保留 Unknown，不自动重放。
-
-持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown；Job handler v2 已提供有界 runtime phase/ID/state/effect 和已确认事务边界投影，尚无专用 Workflow Job 控制 UI 或跨重启 Workflow receipt；真实驱动临时对象/外部效果旅程仍须独立验收。
-
-`transactionBlock` 当前仅由 PostgreSQL driver 的 `pgLockedPlainHeapLiteralDmlV1` 窄合同显式 opt-in。整块最终 SQL 在 Job admission 前完成严格方言 AST 与固定 namespace/profile/driver proof revision 校验；同一 Job-owned retained transaction 执行 `BEGIN`，先锁定关系并核验 catalog，再执行冻结的 literal DML/受限 SELECT，最后 `COMMIT`；失败走 `ROLLBACK`。只接受无索引、约束、trigger/rule/RLS、继承/分区、default/generated/identity 的普通持久 heap 和已审阅内置标量列；限定输入 relation、函数/过程、join/子查询/CTE、DDL、多语句及非 Abort 步骤策略均拒绝。非零整块 retry 仍拒绝；提交或回滚无法确认时记录 Unknown，不自动重放。MySQL/MariaDB 当前返回 `CapabilityUnsupported`，不能进入该事务执行路径。**PG+MySQL 双驱动 transactionBlock 的 P6 门槛仍未关闭**；完整证明条件与 MySQL 缺口见 [Workflow 当前证明边界](../platform/workflow-resource-model.md#2026-10-18-transactionblock-postgresql-窄证明与效果证据)。
-
+Workflow 保持既有 v1 协议、模型、跨数据库逐步执行及前步 output 供后步模板串联的语义；仅将底层连接管理走 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。本轮不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof。YAML、version model 与既有 IPC 形状不变。scheduler 保留桌面 runtime-entry 修复，Monitor 固定只读授权/独立 occurrence 和其他消费者的 Runtime 接线继续保留。
 
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）
 
@@ -246,18 +237,3 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
 
 撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。每个 grant 版本、dashboard/widget、workflow revision 与 refresh slot 对应一个带稳定幂等键的 `monitorOccurrence` Job；Job 受理后才派发原 scheduled workflow，WidgetRun 与有界 JobDomainResult 记录实际结果。启动恢复按持久化 service principal 扫描 occurrence：未派发 Job 标为未启动，运行中 Job 转为待核验，恢复流程不重放查询。撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown；真实 PG/MySQL 驱动旅程仍须独立验收，P6 未整体关闭。
-
-PostgreSQL 的独立实库验收入口为
-`cargo test -p datazen-driver-postgres --test workflow_transaction_evidence`，
-要求进程提供指向一次性测试库的 `MIGRATION_TEST_*` 配置，缺少配置默认失败。
-该测试在 retained transaction 已执行 DML 后验证独立连接 DDL 得到 `55P03`，
-提交后验证相同 DDL 恢复，并验证失败回滚与自有 session 丢失后的 Unknown。
-它不经过桌面 Workflow Job。生产组合旅程另位于
-`packages/drivers/postgres/e2e/workflow-transaction-journey.ts`，使用真实
-`workflow_save` / `workflow_execute` 与独立查询验证提交和失败整块回滚；
-已有 webdriver 构建时可通过
-`pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/workflow-transaction-journey.ts`
-单独运行。新增旅程尚待独立 tester 实跑，不构成验收通过。
-桌面 Job 内 DML 后精确暂停、commit/rollback acknowledgement loss 与不重放的
-真实故障旅程仍未覆盖；终止自有 backend 的 Unknown 证据不能替代 acknowledgement
-loss。MySQL/MariaDB 仍为 `CapabilityUnsupported`，P6 整体门槛未关闭。

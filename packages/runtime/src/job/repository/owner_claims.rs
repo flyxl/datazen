@@ -40,27 +40,4 @@ impl InMemoryJobRepository {
         self.current_owner_row(&inner, ctx, claim, stage)
             .map(|_| ())
     }
-    pub(in crate::job) fn validate_workflow_owner_claim(
-        &self,
-        ctx: &RequestContext,
-        claim: &JobClaim,
-        stage: &StageId,
-        block: &datazen_platform_api::id::BlockId,
-    ) -> Result<(), PortError> {
-        let inner = lock_inner(&self.inner)?;
-        let row = self.current_owner_row(&inner, ctx, claim, stage)?;
-        let plan = project_frozen_plan(&row.record.definition.kind, &row.record.definition.payload)
-            .map_err(|_| PortError::StaleClaim)?;
-        if plan.kind == "workflowRun"
-            && stage.as_str() == "workflow"
-            && plan
-                .workflow_owner_blocks
-                .as_ref()
-                .is_some_and(|blocks| blocks.iter().any(|id| id == block.as_str()))
-        {
-            Ok(())
-        } else {
-            Err(PortError::StaleClaim)
-        }
-    }
 }

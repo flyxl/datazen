@@ -5,7 +5,6 @@ use datazen_feature_core::{
     workflow::{
         context::WorkflowContext,
         model::{WorkflowDefinition, WorkflowStep},
-        session_block::prepare_definition,
     },
 };
 use datazen_platform_api::{
@@ -105,8 +104,11 @@ pub(crate) async fn authorize(
         .clone()
         .into_executable()
         .map_err(|_| "workflow version invalid")?;
-    let normalized = prepare_definition(&workflow, &WorkflowContext::new(&serde_json::json!({})))
-        .map_err(|_| "explicit workflow targets required")?;
+    let normalized = super::fixed_targets::prepare_definition(
+        &workflow,
+        &WorkflowContext::new(&serde_json::json!({})),
+    )
+    .map_err(|_| "explicit workflow targets required")?;
     let mut scopes = Vec::new();
     for step in &normalized.steps {
         let (command, sql, connection, database, schema) = match step {

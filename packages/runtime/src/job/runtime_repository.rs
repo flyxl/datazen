@@ -31,15 +31,6 @@ pub trait JobRuntimeRepository: JobRepository {
         Err(PortError::StaleClaim)
     }
 
-    async fn validate_workflow_owner(
-        &self,
-        _ctx: &RequestContext,
-        _claim: &JobClaim,
-        _stage: &datazen_platform_api::id::StageId,
-        _block: &datazen_platform_api::id::BlockId,
-    ) -> Result<(), PortError> {
-        Err(PortError::StaleClaim)
-    }
     async fn cancel_poll(
         &self,
         ctx: &RequestContext,

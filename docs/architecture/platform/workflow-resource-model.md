@@ -1,7 +1,7 @@
 # DataZen Workflow 资源模型详细设计（step / session block / transaction block）
 
 > 状态：**目标设计，尚未实现**。基线：2026-09-30，`8592b0fe1`。
-> 第 2 节为 2026-10-02 的历史基线；当前 v2 目标、Job-owned sessionBlock 与 PostgreSQL 窄 transactionBlock 已落地的边界见文末「2026-10-18 transactionBlock PostgreSQL 窄证明与效果证据」。其他章节标明的目标设计仍需逐项验收，MySQL transactionBlock 与 P6 整体尚未完成。
+> P6 当前范围：保持既有 v1 协议与执行语义，仅替换底层连接管理。本文 session/transaction block、Workflow Job 及相关目标设计不属于本轮交付；当前事实见文末「P6 Workflow v1 范围」。
 > **本文是破坏性模型变更，旧 Workflow 定义的行为会变化，迁移路径见第 10.6 节。**
 > 配套文档：[系统概要](system-overview.md#4-模块职责与边界)（§4 Workflow Runtime、§6.4 repositories、§7.3）、[连接管理详细设计](connection-management.md#91-默认资源政策)（§9.1 资源政策、§9.5 资源类别、§11 Workflow 语义、§16.5 验收用例）。
 > 已实现部分见 [Workflow 架构](../backend/workflow.md) 与 [Workflow 使用指南](../../features/workflow-guide.zh-CN.md)。
@@ -817,37 +817,8 @@ v1 定义的映射规则是机械的、无歧义的：
 - **不引入**新的进度、验收清单类文档；本文结论落地后应改写为"已实现"并入 [backend/workflow.md](../backend/workflow.md)。
 
 
-### 2026-10-17 Workflow v2 派发安全边界
+### P6 Workflow v1 范围
 
-共享 `WorkflowExecutor` 在任何步骤派发前执行版本分派和完整 v2 目标预检。v1 保留调用方连接兼容；v2 只接受 step / block / workflow 的完整声明，不从 GUI/MCP 调用参数补连接。显式目标层缺命令/驱动元数据要求的字段、块内跨连接或跨库目标均拒绝，条件和循环内的目标也先检查。database 要求保留命令 target requirements 的 Required / Optional / Forbidden 三态；Forbidden 在派发前拒绝已选目标中的 database，且不被驱动 has_multi_database 的通用 SQL 要求覆盖。Optional 才可按该驱动元数据提升为 Required，单库驱动不因 SQL 命令名被强制要求 database；缺元数据明确 CapabilityUnsupported，不猜测其他驱动能力。目标变量仅取本次运行输入与默认值，不能依赖尚未执行步骤或循环变量来改变资源身份。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
 
-桌面用户发起的 `workflow_execute` 对含 block 的 v2 定义经 `workflow::job` 执行：先冻结定义和输入、完成整个定义的目标/冲突/命令元数据预检，再由 `DesktopJobHost` 持久受理 `workflowRun` 并经 JobRuntime claim 派发。普通步骤与 sessionBlock 限定 PostgreSQL/MySQL 的 query/execute/explain 与条件/循环；transactionBlock 另按下述 driver proof 合同限制，当前仅 PostgreSQL 窄子集 opt-in。block 的 schema override 明确拒绝。v1 与无 block 的 v2 独立步骤保持原路径。MCP、旧 Workflow 定时入口及其他默认 host 仍拒绝 blocks，不能借桌面用户身份获得后台授权。
-
-JobRuntime 在记录活动 stage 后生成不可序列化、无公开构造器的 `StageOwnerPermit`。 当前所有权准入通过生产 Host→adapter gate，并以只读仓储查询验证持久 claim/client/generation/expiry；不调用 renew。完整 block 白名单与定义 digest 同时冻结到 Job payload，block 权限由当前 claim 对应的持久声明限定，旧记录缺实例绑定时拒绝。独立步骤资源使用真实 `OwnerRef::Job`，session block 使用真实 `OwnerRef::WorkflowBlock { jobId, blockId }`；所有 owner/身份均由后端生成，普通 session 请求即使携带有效 Job ID 仍拒绝。Runtime 在资源获取、enqueue 与物理 dispatch 前核验活动 claim/阶段/取消与固定 profile revision。session block 步骤串行共用同一显式目标和物理 session，块末 RollbackAndClose；下一块另取资源。获取期间的 guard 覆盖回执丢失/超时，块截止时间触发独立于 GUI attachment/idle policy 的清理，取消信号传入运行中 SQL 的终态等待。关闭或结果未确认保留 Unknown，不自动重放。
-
-持久 Job plan 只含版本和冻结定义摘要，不落盘 SQL、变量、令牌、session handle 或资源；实时 Workflow 结果仍沿原 IPC 返回；`workflow_list_jobs` / `workflow_cancel_job` 以当前桌面身份查询和取消此类 Job。重启不会恢复 handler 或重放 Workflow。失败结果保守记录 Unknown；Job handler v2 已提供有界 runtime phase/ID/state/effect 和已确认事务边界投影，尚无专用 Workflow Job 控制 UI 或跨重启 Workflow receipt；真实驱动临时对象/外部效果旅程仍须独立验收。
-
-#### 2026-10-18 transactionBlock PostgreSQL 窄证明与效果证据
-
-`transactionBlock` 现提供 PostgreSQL 的 `pgLockedPlainHeapLiteralDmlV1` 窄执行路径。`DatabaseDriver::workflow_transaction_plan` 是可选、默认不支持的驱动合同：先用 PostgreSQL 方言 AST 对整块最终插值 SQL 做严格形状检查，并把裸 relation 重写为固定 profile schema 的全限定名称；冻结 connection/database/schema、config revision、driver proof profile/version 与完整计划/guard 摘要，再进行 Job admission。静态不可证明的形状返回 `UnsupportedPlan`，缺能力返回 `CapabilityUnsupported`，发生在任何独立步骤或其他块派发之前。不接受残余模板，因此前序步骤不能改变已冻结事务 SQL。
-
-动态目录条件由同一 Job-owned retained Runtime transaction 内的 guard 证明：确认 BEGIN 后事务状态为 Active，按稳定顺序执行 `LOCK TABLE ONLY ... IN SHARE ROW EXCLUSIVE MODE`，再通过 `pg_catalog` 检查目标是普通持久 heap，无分区/继承、RLS、rules、triggers、任何 constraints（包括入站 FK）、indexes、default/generated/identity 列，列类型仅 bool/int2/int4/int8/text/varchar。SQL 子集为 literal INSERT/UPDATE、DELETE 与受限 SELECT；谓词仅 NULL 检查/布尔组合，拒绝函数、重载运算、过程、CTE、子查询、join、输入中的限定 relation、DDL、事务控制、多语句、注释及反斜杠。不承诺支持普通带主键表或任意 DML。目录查询显式限定 pg_catalog 运算符与函数，锁保持到 COMMIT/ROLLBACK，避免目录核验与实际 DML 之间的 DDL 竞态。guard 不通过只回滚该块，绝不派发该块应用 SQL；前序独立步骤/已提交块不受回滚承诺覆盖。
-
-每次 retained dispatch 再核对真实事务状态、已锁定 proof 与冻结 SQL，Runtime 继续核验 profile revision/owner/claim。现有 BEGIN/COMMIT/ROLLBACK 原语与 SQL 白名单、非零整块 retry 拒绝规则保持。Job handler v2 将真实 execution ID、固定 phase、terminal/effect code 写入 bounded `JobDomainResult`，确认 BEGIN + guard + COMMIT 才写 durable `CommitBoundary`，带固定目标/版本/计划摘要及 begin/commit execution 证据；确认 rollback 的块记录 rolledBack，guard 未通过而已 rollback 记录 notStarted。未知提交或回滚保持 unknown，不自动重放；整体失败仍保守 Unknown，不据某个块回滚推断整个 Workflow 原子。证据不含 SQL、变量、credential 或 live session/handle。进程在阶段结果持久化前退出仍需人工核验，尚无跨重启自动恢复/重放。
-
-MySQL/MariaDB 的此合同仍默认 `CapabilityUnsupported`，不表示 P6 transactionBlock 已全部交付。MySQL 8.4 的事务级 MDL 可保护已触达表，但当前安全缺口具体包括：TRIGGERS 的 absence 需要证明当前用户有效 TRIGGER 可见性；入站 FK 可来自当前用户无 SELECT 权限的其他 schema；在未知 table/view 上 SELECT LIMIT 0 取得 MDL 前的对象类型替换与 view 表达式/优化执行路径尚无无副作用证明。仅检查 ENGINE=InnoDB 或空目录结果不足以 opt-in。此外当前 MySQL fixed-session observer 依赖控制连接和 performance_schema 本线程 instrumentation/consumer，缺失时为 Unknown；MariaDB 使用另一观察路径，不能按 MySQL 8.4 范围静默放行。后续须限定实际 server/version、完整目录可见性、无应用代码执行的锁获取、InnoDB/trigger/FK/default/generated 条件及可靠 Active/commit/rollback 观察，再独立 opt-in。真实 PostgreSQL 成功提交、失败回滚、DDL 锁竞态和 unknown commit/rollback 旅程仍须 tester 验收；单测/编译不代替这些旅程。
-
-
-##### MySQL 8.4.7：session-effective 目录可见性仍阻塞 opt-in
-
-MySQL driver 显式实现 `workflow_transaction_plan` 返回 `None`；不因 SQL 为常量/literal DML、目标已限定或目录结果为空而启用。驱动内离线 admission tests 固定此拒绝边界，不等同真实数据库 privilege-race 旅程。PG+MySQL 双驱动 P6 条件仍未关闭。
-
-本轮核对 [MySQL 8.4 MDL 文档](https://dev.mysql.com/doc/refman/8.4/en/metadata-locking.html) 与固定 tag `mysql-8.4.7` 官方源码后，锁入口的判断已收窄：
-
-- `SHOW CREATE TABLE` 不可用作跨语句锁桥：[sql_show.cc 的 mysqld_show_create](https://github.com/mysql/mysql-server/blob/mysql-8.4.7/sql/sql_show.cc) 在结束时将 MDL 回退到进入语句前的 savepoint。
-- `HANDLER OPEN` 强制 base table，但其显式锁允许 FLUSH 关闭/重开；`HANDLER READ` 的事务 MDL 也在语句末回退到 savepoint。[sql_handler.cc](https://github.com/mysql/mysql-server/blob/mysql-8.4.7/sql/sql_handler.cc) 因而不能替代稳定的事务锁证明。
-- `SELECT 1 FROM db.table FORCE INDEX(PRIMARY) LIMIT 0` 是有进一步可行性的受限入口：[sql_view.cc 的 open_and_read_view](https://github.com/mysql/mysql-server/blob/mysql-8.4.7/sql/sql_view.cc) 在读取 view 定义前拒绝非空 index hints，避免将替换成 view 的对象交给表达式执行；成功执行后按事务 MDL 规则保护关系。它要求 base table/PRIMARY，但尚未被实现为可执行 recipe，也未宣称覆盖其他 MySQL 版本、MariaDB 或实库 prepared-statement/DDL 旅程。
-
-剩余权限阻塞具有独立依据：[权限变更生效规则](https://dev.mysql.com/doc/refman/8.4/en/privilege-changes.html) 规定 static global privilege 变更不更新已连接 session；[USER_PRIVILEGES](https://dev.mysql.com/doc/refman/8.4/en/information-schema-user-privileges-table.html) 来自 account grant 数据。[sql_authorization.cc](https://github.com/mysql/mysql-server/blob/mysql-8.4.7/sql/auth/sql_authorization.cc) 的 `fill_schema_user_privileges` 读取当前 `acl_user->access`，`mysql_show_grants` 也查当前 ACL；实际 session 访问检查则使用 security context。因此连接建立后新增全局 SELECT/TRIGGER，grant 目录可能已显示权限，而原 retained session 仍缺有效权限、过滤 trigger 或其他 schema 的 incoming FK。把 grant 目录存在与危险对象目录为空相结合，不能证明完整可见性。
-
-真正检查 session-effective trigger 权限的 `CAN_ACCESS_TRIGGER` 在 [item_create.cc](https://github.com/mysql/mysql-server/blob/mysql-8.4.7/sql/item_create.cc) 以 `SQL_FN_INTERNAL` 注册；`Internal_function_factory` 拒绝普通连接调用。当前 driver/ResourceProvider 合同没有替代的 session-effective catalog visibility witness。后续 opt-in 必须先补足此证明（包括 incoming FK 完整性），再限定真实 server family/version、SQL mode、锁入口及 prepared execute 的 re-open 行为，并在同一锁内核验 InnoDB/PK、无 trigger/FK/default/generated/其他危险元数据与可靠事务观察。不能用当前 grant 表的布尔值充当该 witness。
+Workflow scheduler 保留桌面 runtime-entry 修复；Monitor 的固定只读目标授权与独立 occurrence Job、Wapp 实例会话、MCP owner/TTL、Restore/Backup/Export 和 NativeTool 通用 Job fencing 不受此范围收缩影响。跨驱动 v1 旅程须独立验收，未运行的测试不算通过。

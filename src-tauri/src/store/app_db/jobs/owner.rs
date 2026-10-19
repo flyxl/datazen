@@ -45,29 +45,4 @@ impl SqliteJobRepository {
     ) -> Result<(), PortError> {
         self.with_read(|conn| self.current_owner_plan(conn, ctx, claim, stage).map(|_| ()))
     }
-    pub(super) fn validate_workflow_owner_read(
-        &self,
-        ctx: &RequestContext,
-        claim: &JobClaim,
-        stage: &StageId,
-        block: &datazen_platform_api::id::BlockId,
-    ) -> Result<(), PortError> {
-        self.with_read(|conn| {
-            let (kind, payload) = self.current_owner_plan(conn, ctx, claim, stage)?;
-            let payload = serde_json::from_str(&payload).map_err(|_| PortError::StaleClaim)?;
-            let plan = datazen_runtime::job::project_frozen_plan(&kind, &payload)
-                .map_err(|_| PortError::StaleClaim)?;
-            if kind == "workflowRun"
-                && stage.as_str() == "workflow"
-                && plan
-                    .workflow_owner_blocks
-                    .as_ref()
-                    .is_some_and(|blocks| blocks.iter().any(|id| id == block.as_str()))
-            {
-                Ok(())
-            } else {
-                Err(PortError::StaleClaim)
-            }
-        })
-    }
 }

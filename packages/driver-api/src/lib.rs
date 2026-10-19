@@ -39,7 +39,6 @@ mod sync_taxonomy;
 mod traits;
 mod tunnel_types;
 mod types;
-pub mod workflow_transaction;
 
 pub use capability_domains::{BackupSupport, DataSupport};
 pub use command::{

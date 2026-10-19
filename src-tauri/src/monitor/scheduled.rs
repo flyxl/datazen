@@ -122,9 +122,6 @@ impl ResourceExecutionHost for ScheduledWorkflowHost<'_> {
 }
 #[async_trait::async_trait]
 impl WorkflowHost for ScheduledWorkflowHost<'_> {
-    fn resources(&self) -> Option<&dyn ResourceExecutionHost> {
-        Some(self)
-    }
     async fn connection_name(&self, id: &str) -> Result<String, WorkflowError> {
         WorkflowHost::connection_name(self.state, id).await
     }

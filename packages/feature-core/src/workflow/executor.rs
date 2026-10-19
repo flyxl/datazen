@@ -1,4 +1,5 @@
 //! Workflow execution engine.
+//!
 //! Data-operation steps are normalized to Driver Commands and dispatched
 //! through `command_runtime`, while AI and control-flow steps remain generic.
 
@@ -17,6 +18,7 @@ use crate::workflow::model::{
     WorkflowDefinition, WorkflowExecutionResult, WorkflowStep,
 };
 use crate::workflow::WorkflowError;
+
 pub const WORKFLOW_QUERY_ROW_LIMIT: u32 = 1000;
 
 #[derive(Debug, Clone)]
@@ -58,7 +60,9 @@ pub fn database_is_required(
     let named = |v: Option<&str>| v.map(str::trim).filter(|s| !s.is_empty()).is_some();
     !named(resolved_database) && !named(connection_database) && driver_has_multi_database
 }
+
 pub struct WorkflowExecutor;
+
 impl WorkflowExecutor {
     pub async fn execute(
         workflow: &WorkflowDefinition,
@@ -83,15 +87,8 @@ impl WorkflowExecutor {
         variables: &serde_json::Value,
         options: WorkflowExecuteOptions,
     ) -> Result<WorkflowExecutionResult, String> {
+        let start = Instant::now();
         let global_timeout = workflow.timeout_secs.unwrap_or(300);
-        let start = app_state
-            .workflow_deadline()
-            .and_then(|deadline| {
-                deadline
-                    .into_std()
-                    .checked_sub(std::time::Duration::from_secs(global_timeout))
-            })
-            .unwrap_or_else(Instant::now);
         let default_strategy = workflow
             .error_handling
             .as_ref()
@@ -122,69 +119,21 @@ impl WorkflowExecutor {
             }
         }
 
-        let prepared_definition;
-        let version = super::executable::WorkflowVersion::parse(workflow.version.as_deref())
-            .map_err(WorkflowError::into_ipc_string)?;
-        let workflow = if version == super::executable::WorkflowVersion::V2 {
-            prepared_definition = super::session_block::prepare_v2(
-                workflow,
-                &context,
-                app_state,
-                tokio::time::Instant::from_std(start)
-                    + std::time::Duration::from_secs(global_timeout),
-            )
-            .await
-            .map_err(WorkflowError::into_ipc_string)?;
-            &prepared_definition
-        } else {
-            workflow
-        };
-        let executable = workflow
-            .clone()
-            .into_executable()
-            .map_err(WorkflowError::into_ipc_string)?;
-        let blocks = super::session_block::plan_blocks(&executable, app_state)
-            .map_err(WorkflowError::into_ipc_string)?;
-        let workflow_connection = workflow.connection.as_deref().or(
-            if executable.version == super::executable::WorkflowVersion::V1 {
-                connection_id
-            } else {
-                None
-            },
-        );
-        let workflow_database = if version == super::executable::WorkflowVersion::V1 {
-            workflow.database.as_deref()
-        } else {
-            None
-        };
+        let workflow_connection = workflow.connection.as_deref().or(connection_id);
+        let workflow_database = workflow.database.as_deref();
         let mut step_results = Vec::new();
-        let outcome = async {
-            Self::execute_steps(
-                &workflow.steps,
-                app_state,
-                workflow_connection,
-                workflow_database,
-                &mut context,
-                &mut step_results,
-                &default_strategy,
-                global_timeout,
-                &start,
-                &options,
-            )
-            .await?;
-            super::session_block::execute_blocks(
-                blocks,
-                app_state,
-                &mut context,
-                &mut step_results,
-                &default_strategy,
-                global_timeout,
-                &start,
-                &options,
-            )
-            .await?;
-            Ok(())
-        }
+        let outcome = Self::execute_steps(
+            &workflow.steps,
+            app_state,
+            workflow_connection,
+            workflow_database,
+            &mut context,
+            &mut step_results,
+            &default_strategy,
+            global_timeout,
+            &start,
+            &options,
+        )
         .await
         .map_err(WorkflowError::into_ipc_string);
         let total_time_ms = start.elapsed().as_millis() as u64;
@@ -216,7 +165,7 @@ impl WorkflowExecutor {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn execute_steps<'a>(
+    fn execute_steps<'a>(
         steps: &'a [WorkflowStep],
         app_state: &'a dyn WorkflowHost,
         connection_id: Option<&'a str>,

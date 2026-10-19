@@ -558,16 +558,6 @@ impl SqliteJobRepository {
 
 #[async_trait::async_trait]
 impl JobRuntimeRepository for SqliteJobRepository {
-    async fn validate_workflow_owner(
-        &self,
-        ctx: &RequestContext,
-        claim: &JobClaim,
-        stage: &StageId,
-        block: &datazen_platform_api::id::BlockId,
-    ) -> Result<(), PortError> {
-        self.validate_workflow_owner_read(ctx, claim, stage, block)
-    }
-
     async fn validate_stage_owner(
         &self,
         ctx: &RequestContext,

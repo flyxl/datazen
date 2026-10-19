@@ -68,7 +68,6 @@ pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortErr
                 | "useTransaction"
                 | "requireRollback"
                 | "profileRevisionDigest"
-                | "workflowOwnerBlocks"
         );
         let monitor_field = key == "monitorOccurrence" && kind == "monitorOccurrence";
         if !common_field && !monitor_field {
@@ -114,7 +113,6 @@ fn validate_plan_value(kind: &str, key: &str, value: &Value) -> Result<(), PortE
                         .is_some_and(|text| !text.is_empty() && text.len() <= 4096)
                 })
         }),
-        "workflowOwnerBlocks" => value.is_array(),
         "recoveryTargets" => validate_recovery_targets(value),
         "monitorOccurrence" => kind == "monitorOccurrence" && validate_monitor_occurrence(value),
         _ => false,

@@ -64,17 +64,6 @@ impl PostgresDriver {
 
 #[async_trait]
 impl DatabaseDriver for PostgresDriver {
-    fn workflow_transaction_plan(
-        &self,
-        sql: &[String],
-        namespace: &datazen_driver_api::namespace::NamespaceTarget,
-    ) -> Result<
-        Option<datazen_driver_api::workflow_transaction::WorkflowTransactionPlan>,
-        DriverError,
-    > {
-        crate::workflow_transaction::prepare(sql, namespace).map(Some)
-    }
-
     fn supports_bound_writes(&self) -> bool {
         true
     }

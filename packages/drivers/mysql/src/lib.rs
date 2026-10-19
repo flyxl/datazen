@@ -565,6 +565,3 @@ mod tests {
         }
     }
 }
-
-#[cfg(test)]
-mod workflow_transaction_tests;

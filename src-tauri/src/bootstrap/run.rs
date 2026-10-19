@@ -425,8 +425,6 @@ pub fn run() {
             // ── Workflow ──
             crate::commands::workflow_delete,
             crate::commands::workflow_execute,
-            crate::commands::workflow_list_jobs,
-            crate::commands::workflow_cancel_job,
             crate::commands::workflow_get,
             crate::commands::workflow_get_dir,
             crate::commands::workflow_get_yaml,
