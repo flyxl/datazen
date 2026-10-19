@@ -295,6 +295,45 @@ impl RuntimeConnectionUseCases {
         .await
         .map_err(convert::live)
     }
+
+    /// Resolve a runtime-owned session from its public `dbSessionId`.
+    ///
+    /// Callers that receive the legacy scalar session id over an existing IPC
+    /// contract must still resolve it through the runtime's owner and epoch
+    /// checks. This lookup never reconstructs a handle or falls back to a
+    /// persisted connection id.
+    pub async fn get_session_by_id(
+        &self,
+        ctx: &RequestContext,
+        db_session_id: &str,
+    ) -> Result<SessionView, ApiError> {
+        let id = crate::connection::DbSessionId::new(db_session_id);
+        let handle = lock(&self.inner.sessions)
+            .get(&id)
+            .map(|entry| entry.handle.clone())
+            .ok_or_else(|| ApiError::new(ApiErrorCode::SessionNotFound, "session unavailable"))?;
+        self.authorize(ctx, AuthorizationAction::Connect).await?;
+        self.session_view(ctx, &handle).await
+    }
+
+    /// Resolve and borrow a runtime-owned session from its public scalar id.
+    ///
+    /// The returned lease keeps the physical reference borrowed until it is
+    /// dropped, while `SessionView` supplies the authoritative connection and
+    /// observed-context metadata for the caller.
+    pub async fn borrow_live_connection_by_id(
+        &self,
+        ctx: &RequestContext,
+        db_session_id: &str,
+        purpose: LivePurpose,
+    ) -> Result<(SessionView, LiveConnectionLease), ApiError> {
+        let view = self.get_session_by_id(ctx, db_session_id).await?;
+        let lease = self
+            .borrow_live_connection(ctx, &view.handle, purpose)
+            .await?;
+        Ok((view, lease))
+    }
+
     pub async fn subscribe_events_cancellable(
         &self,
         ctx: &RequestContext,
