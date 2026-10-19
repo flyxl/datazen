@@ -11,17 +11,19 @@ Integration branch: `feature/p6-restore-apply-evidence`.
 - Wapp stateful instance sessions: coder commit `b5f94785a`, tester accepted; integrated as `a9c76752a`. Host 2/2, bridge 54/54, SDK 69/69, typecheck equivalents passed. Live PG/MySQL Wapp SQL and approval UI remain untested.
 - Monitor/Workflow scheduler startup reactor fix: coder commit `d3236b4af`, tester accepted; integrated as `7c2902495`. Startup tests 2/2 and PostgreSQL Workflow WDIO journey 1 passing.
 - NativeTool fail-closed kernel: coder commit `2320a3da6`, independent tester accepted. Runtime 6/6, Host 5/5, platform-api/runtime cargo checks and boundary guard passed. Desktop only permits hash-pinned `pg_dump`/`mysqldump --version` probes with zero DB sockets; real database CLI operations, backup/restore and product IPC/UI remain unsupported.
+- MCP cancelled-open ownership repair: coder commit `26f93717b`, independently accepted and integrated as `daae66596`. `cargo test -p datazen --lib mcp::session`: EXIT=0, 17 passed, including cancel/late-acquisition cleanup, disconnect race, and delivered open/idempotent close. `mcp::server::tests`: EXIT=101, 48 passed/2 failed on both this commit and base `1d47a8f75`; identical existing `Runtime session unavailable` failures in prompt/resource tests. MCP tester trees/logs were cleaned after stable HEAD/fingerprint checks.
 
 ## In progress
 
-- Monitor scheduled desktop PG/MySQL journey: coder commit `d2de58eae` is ready for independent tester. It adds webdriver-only scheduled tick/evidence projection and physical dispatch counts. WDIO/live timer journeys have not yet run.
+- Monitor scheduled desktop PG/MySQL journey: `d2de58eae` adds webdriver-only scheduled tick/evidence projection and physical dispatch counts; `25ab384c5` fixes MySQL fixture provisioning; `8f8b0ee15` fixes a missing Workflow `description` fixture and preserves primary failures through cleanup. Those first PG/MySQL runs reached authorization but timed out waiting for a real production timer receipt. Coder fixed a production hash-format mismatch in `d439c375c` and added bounded stage diagnostics. Independent WDIO build, PG and MySQL all EXIT=0; each live journey reported 1 passing and traversed receipt, marker, duplicate-slot no-dispatch, revoke, and the 62-second physical-dispatch observation. Tester HEAD/fingerprint stable. **READY_FOR_INTEGRATION**; cherry-pick the ancestry `d2de58eae` → `25ab384c5` → `8f8b0ee15` → `d439c375c`.
 
 ## Remaining P6 scope
 
-- Monitor desktop scheduled journey tester acceptance.
-- MCP owner/TTL full fault/live acceptance.
-- MySQL transactionBlock remains fail-closed pending a defensible proof.
-- NativeTool database operations and full product IPC/UI remain unsupported; this implementation is a safe kernel/probe slice only.
+- Integrate the independently accepted Monitor desktop scheduled journey (`d439c375c` and its ancestry).
+- MCP owner/TTL cancellation fault path is implemented and accepted as above; external MCP transport/PG/MySQL live integration remains outside this specific acceptance.
+- MySQL transactionBlock remains fail-closed pending a defensible proof. Driver-local security probe `1d70d9220` is in preparation and does not enable the production path.
+- NativeTool database operations and full product IPC/UI remain unsupported; the accepted implementation is a safe kernel/probe slice only.
+- Workflow Job handler exposes durable state and bounded result projection, but no dedicated Workflow Job control UI or cross-restart Workflow receipt exists; determine whether these are required P6 exit items or documented follow-up before closure.
 - Explicit AI editor-session grants/revocation are tracked by the separate AI migration owner; do not modify AI here.
 
 P6 is not closed. Remove this ledger during final acceptance cleanup.
