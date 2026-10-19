@@ -143,3 +143,11 @@ M	src-tauri/src/workflow/mod.rs
 ```
 
 Staging note: explicitly re-adding paths already deleted from the index produced a pathspec rejection. Reconciled by staging remaining tracked changes and the one new Monitor helper, then amending the just-created local commit so the final reviewed commit contains both original rollback and dependency fixes; no files were restored or lost.
+
+## Workflow block zero-step success refusal (2026-10-19, pending tester)
+
+Confirmed tester P2 after v1 scope reset: baseline model/YAML still accepts nonempty blocks while v1 executor would otherwise ignore them and report success (or dispatch an independent prefix). Smallest production change is an 8-line guard at the start of WorkflowExecutor::execute_with_options, before variables/steps/host work: any nonempty blocks returns existing CapabilityUnsupported IPC string, regardless of absent/1/2 version. No model/YAML/version/IPC type changes and no v1 independent execution or output/template chaining body changes.
+
+Added one focused driver-neutral feature-core regression, `packages/feature-core/tests/workflow_block_refusal.rs`, calling the actual executor across 12 combinations: absent/1/2 versions, session/transaction block, empty/present independent prefix. It expects CapabilityUnsupported and zero host calls, covering both false empty success and unwanted prefix effects. No existing test removed or assertion weakened. This test was NOT run/compiled; independent tester must verify it and legitimate v1 PG/MySQL output/target chaining. The core directory now differs from main solely by this execution guard (and new regression), intentionally superseding prior exact-main static comparison.
+
+Only rustfmt --edition 2021 --config skip_children=true for the two changed/new Rust files (EXIT=0) and git diff --check (EXIT=0). No cargo check/test/build, typecheck, WDIO or live DB operation. No env contents read. Integration tree only, base cefdd2301e8de2e3f8ab9d5f944482a844991475. NativeTool branch/tree remains clean at 9a3f3c27d862f1bbc55e1ff6cef37e5fec6e5d16, untouched. No AI implementation changes. No compile or runtime acceptance claimed.

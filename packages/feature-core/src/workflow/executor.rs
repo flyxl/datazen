@@ -87,6 +87,14 @@ impl WorkflowExecutor {
         variables: &serde_json::Value,
         options: WorkflowExecuteOptions,
     ) -> Result<WorkflowExecutionResult, String> {
+        // The existing model can deserialize blocks, but this executor supports
+        // independent steps only. Never silently skip blocks or dispatch a prefix.
+        if !workflow.blocks.is_empty() {
+            return Err(WorkflowError::CapabilityUnsupported {
+                detail: "Workflow blocks are unsupported; use v1 independent steps".into(),
+            }
+            .into_ipc_string());
+        }
         let start = Instant::now();
         let global_timeout = workflow.timeout_secs.unwrap_or(300);
         let default_strategy = workflow
