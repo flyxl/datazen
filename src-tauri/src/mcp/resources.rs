@@ -8,6 +8,7 @@ use crate::mcp::allowlist;
 use crate::mcp::permission;
 #[cfg(test)]
 use crate::mcp::tool_help;
+use datazen_feature_core::ai::context::format_compact_ddl;
 #[cfg(test)]
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
@@ -86,17 +87,46 @@ impl DataZenMcpServer {
                 .ok_or_else(|| McpError::invalid_params("Missing connection ID in URI", None))?;
             let db = parts.get(1).copied().unwrap_or("");
 
-            let (runtime_id, _driver, _handle) = self.resolve_connection(connection_id).await?;
-
-            let context = self
-                .app_state
-                .schema_context_builder
-                .build_sql_context(&runtime_id, db, None, &[], budget::MCP_RESOURCE)
-                .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            self.ensure_allowed("schema_resource", connection_id)?;
+            let table_output = super::runtime_schema::read_target_command(
+                self,
+                connection_id,
+                "list_tables",
+                serde_json::json!({ "database": db, "schema": null }),
+            )
+            .await?;
+            let tables = datazen_driver_api::parse_tables_from_command(&table_output);
+            let mut schema_ddl = Vec::new();
+            let mut token_estimate = 0;
+            for table in tables.iter().take(30) {
+                let output = super::runtime_schema::read_target_command(
+                    self,
+                    connection_id,
+                    "get_table_schema",
+                    serde_json::json!({
+                        "database": db,
+                        "schema": null,
+                        "table": table.name,
+                    }),
+                )
+                .await;
+                let Ok(output) = output else {
+                    continue;
+                };
+                let Ok(schema) = serde_json::from_value(output["schema"].clone()) else {
+                    continue;
+                };
+                let ddl_line = format_compact_ddl(&table.name, &schema);
+                let line_tokens = budget::estimate_tokens(&ddl_line);
+                if token_estimate + line_tokens > budget::MCP_RESOURCE {
+                    break;
+                }
+                token_estimate += line_tokens;
+                schema_ddl.push(ddl_line);
+            }
 
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                context.schema_ddl,
+                schema_ddl.join("\n"),
                 uri,
             )]));
         }

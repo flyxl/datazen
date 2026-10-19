@@ -115,6 +115,66 @@ async fn mcp_tool_handlers_with_mock_driver() {
 }
 
 #[tokio::test]
+async fn mcp_schema_tools_use_runtime_resources_without_connection_manager_session() {
+    use crate::testing::app_state::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("runtime-schema").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["runtime-schema"]);
+
+    let tables = server
+        .list_tables(rmcp::handler::server::wrapper::Parameters(
+            ListTablesInput {
+                connection_id: "runtime-schema".into(),
+                database: Some("app".into()),
+                schema: None,
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(tables.contains("users"));
+
+    let search = server
+        .search_tables(rmcp::handler::server::wrapper::Parameters(
+            SearchTablesInput {
+                connection_id: "runtime-schema".into(),
+                database: Some("app".into()),
+                schema: None,
+                pattern: "user".into(),
+                limit: Some(10),
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(search.contains("users"));
+
+    let schema = server
+        .get_schema(rmcp::handler::server::wrapper::Parameters(GetSchemaInput {
+            connection_id: "runtime-schema".into(),
+            table: "users".into(),
+            database: Some("app".into()),
+            schema: None,
+        }))
+        .await
+        .unwrap();
+    assert!(schema.contains("users"));
+
+    let description = server
+        .describe_table(rmcp::handler::server::wrapper::Parameters(
+            DescribeTableInput {
+                connection_id: "runtime-schema".into(),
+                table: "users".into(),
+                database: Some("app".into()),
+                schema: None,
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(description.contains("Table: users"));
+}
+
+#[tokio::test]
 async fn mcp_search_tables_via_call_tool_inner() {
     use crate::testing::app_state::TestAppState;
     use std::sync::Arc;
@@ -216,7 +276,6 @@ async fn mcp_read_resource_inner_paths() {
 
     let test = TestAppState::with_tables_and_resource_provider().await;
     test.save_connection("res-inner").await;
-    let (_config, _db_session_id) = test.save_and_connect("res-inner").await;
     let server = mcp_server_allowing(Arc::new(test.state), &["res-inner"]);
 
     let conns = server
