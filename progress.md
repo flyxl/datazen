@@ -193,3 +193,19 @@ Exact changed files:
 - src-tauri/src/platform/native_tool/deployment.rs
 - src-tauri/src/store/app_db/jobs/codec.rs
 - progress.md
+
+## NativeTool product admission — independently accepted (2026-10-19)
+
+Integrated after independent review from commit `65daf045ac2dcc2977f146233638797892c4419f` (parent `9a3f3c27d862f1bbc55e1ff6cef37e5fec6e5d16`), now `ae3a75479350186ff8fad491d630db3bc0967d67` on the P6 integration branch. Tester worktree was detached, clean, and held HEAD `65daf045ac2dcc2977f146233638797892c4419f` plus tree SHA `a6bded404d9021eb02090c31b914b31d6041c22b` before/after review.
+
+- `cargo test -p datazen --lib commands::native_tool::tests`: EXIT=0, 4/4.
+- `cargo test -p datazen --lib job_tests`: EXIT=0, 12/12.
+- `cargo test -p datazen-runtime --lib native_tool::tests`: EXIT=0, 9/9.
+- `cargo check -p datazen --lib`: EXIT=0, 77 warnings, no errors.
+- `git diff --check` and `git diff --cached --check`: EXIT=0; NativeTool production paths contain zero `ConnectionManager` references.
+
+Evidence covers exact PG/MySQL probe selection and frozen digest, invalid/default deployment refusal, actual Host/SQLite admission/reopen/idempotent retry without redispatch, ownership/kind isolation, projection validation, and NativeTool cleanup-budget retention. Synthetic executable only; no approved real CLI, real database, or DB socket operation ran. Real `pg_dump`/`mysqldump` jobs remain unsupported and are a P6 follow-up, not accepted by the probe scaffold.
+
+## Workflow v1/block refusal — independent acceptance update (2026-10-19)
+
+The earlier pending-test and corrected-assertion notes above are historical. The original Workflow tester accepted current integration commit `e87a966994c303aa4ea4039a4d1cd7a23f001d35`: `workflow_block_refusal` 1/1 (covers 12 cases with zero host calls), feature-core workflow 69/69, Host workflow 37/37, and v1 backward-compatibility/reuse journeys 1/1 each. The shared executor rejects unsupported blocks before host work. Legacy v1 target override and step-result chaining remain intact. No v2 protocol/model/YAML/IPC changes or new transaction semantics remain in this P6 slice.
