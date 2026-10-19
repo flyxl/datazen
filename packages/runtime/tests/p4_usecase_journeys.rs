@@ -1099,3 +1099,6 @@ mod delegation_tests;
 
 #[path = "fixtures/p4_workflow_job.rs"]
 mod workflow_job;
+
+#[path = "p4_usecase_journeys/export_output.rs"]
+mod export_output;

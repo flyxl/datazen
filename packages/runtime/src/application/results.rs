@@ -37,7 +37,8 @@ pub struct RuntimeArtifactChunk {
 pub(super) struct ExecutionEntry {
     pub ctx: RequestContext,
     backup: Option<Arc<super::backup::Binding>>,
-    command: String,
+    pub(super) export: Option<Arc<super::export_output::Binding>>,
+    pub(super) command: String,
     pub handle: SessionHandle,
     pub stream: StreamId,
     pub view: ExecutionView,
@@ -84,6 +85,7 @@ pub struct RuntimeResultSink(
         >,
     >,
     pub(super) Arc<Mutex<HashMap<SessionHandle, Arc<super::backup::Binding>>>>,
+    pub(super) Arc<Mutex<HashMap<SessionHandle, Arc<super::export_output::Binding>>>>,
 );
 impl RuntimeResultSink {
     pub fn with_artifact_store(
@@ -182,6 +184,12 @@ impl RuntimeResultSink {
             return Err(ApiError::new(
                 ApiErrorCode::SessionLost,
                 "execution is already settled",
+            ));
+        }
+        if entry.export.is_some() {
+            return Err(ApiError::new(
+                ApiErrorCode::PermissionDenied,
+                "export requires awaitable publication",
             ));
         }
         if entry.command == "backup_dump" {
@@ -315,10 +323,12 @@ impl RuntimeResultSink {
         } else {
             None
         };
+        let export = lock(&self.3).get(&handle).cloned();
         let mut entry = ExecutionEntry {
             ctx,
             command,
             backup,
+            export,
             handle,
             stream,
             view,
@@ -419,6 +429,11 @@ impl RuntimeResultSink {
                 }
             }
             entry.backup = None;
+            if entry.view.state != ExecutionState::Succeeded {
+                if let Some(binding) = &entry.export {
+                    binding.revoke();
+                }
+            }
             entry.event(ConnectionEvent::ExecutionChanged {
                 execution: entry.view.clone(),
             });
@@ -428,6 +443,9 @@ impl RuntimeResultSink {
     pub(super) fn invalidate(&self, handle: &SessionHandle) {
         for entry in lock(&self.0).values_mut().filter(|e| &e.handle == handle) {
             entry.view.runtime_binding = None;
+            if let Some(binding) = &entry.export {
+                binding.revoke();
+            }
             entry.event(ConnectionEvent::ExecutionChanged {
                 execution: entry.view.clone(),
             });

@@ -28,7 +28,13 @@ impl DesktopSessionBackend {
                 }
             }
         }
-        if matches!(request.command.command.as_str(), "query" | "query_stream") {
+        let export_output = self
+            .export_output
+            .read()
+            .map_err(|_| rc::ProviderError::ProtocolError("export authority unavailable".into()))?
+            .as_ref()
+            .is_some_and(|authority| authority(&request.execution_id));
+        if !export_output && matches!(request.command.command.as_str(), "query" | "query_stream") {
             self.store
                 .execution_settings()
                 .await
@@ -251,9 +257,9 @@ impl DesktopSessionBackend {
                 // A diagnostic artifact is best-effort. Disk/quota failure must not
                 // hide the independently readable failed execution/errorCode.
                 let _ = publisher(
-                    &request.execution_id,
+                    request.execution_id.clone(),
                     serde_json::json!({"kind":"executionError", "message":crate::platform::diagnostics::safe_message(&error.to_string())}),
-                );
+                ).await;
                 (None, None, true)
             }
         };
@@ -325,7 +331,7 @@ impl DesktopSessionBackend {
                         }
                     }
                 }
-                publisher(&request.execution_id, output)?;
+                publisher(request.execution_id.clone(), output).await?;
             }
         }
         let mut driver_handles = completion

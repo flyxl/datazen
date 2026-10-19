@@ -223,6 +223,11 @@ impl TestResourceProvider {
         };
 
         for (statement_index, statement) in statements.iter().enumerate() {
+            sink.write_output(serde_json::json!({
+                "kind": "statementColumns", "statementIndex": statement_index,
+                "columns": statement.columns,
+            }))
+            .await?;
             sink.write(ResultChunk {
                 statement_index,
                 sql: statement.sql.clone(),

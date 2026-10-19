@@ -17,8 +17,16 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-pub type ResultPublisher =
-    Arc<dyn Fn(&rc::ExecutionId, serde_json::Value) -> Result<(), rc::ProviderError> + Send + Sync>;
+pub type ResultPublisher = Arc<
+    dyn Fn(
+            rc::ExecutionId,
+            serde_json::Value,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<(), rc::ProviderError>> + Send>,
+        > + Send
+        + Sync,
+>;
+pub type ExportOutputAuthority = Arc<dyn Fn(&rc::ExecutionId) -> bool + Send + Sync>;
 
 /// 一条已打开的物理资源。
 ///
@@ -82,6 +90,7 @@ pub struct DesktopSessionBackend {
     /// key 的来源是 `OpenResource::db_session_id`（actor 从 `OpenRequest` 透传）。
     by_session: tokio::sync::RwLock<HashMap<String, String>>,
     publisher: RwLock<Option<ResultPublisher>>,
+    export_output: RwLock<Option<ExportOutputAuthority>>,
 }
 impl DesktopSessionBackend {
     pub(crate) fn physical_budget(
@@ -124,12 +133,22 @@ impl DesktopSessionBackend {
             resources: tokio::sync::RwLock::new(HashMap::new()),
             by_session: tokio::sync::RwLock::new(HashMap::new()),
             publisher: RwLock::new(None),
+            export_output: RwLock::new(None),
         }
     }
     pub fn set_publisher(&self, publisher: ResultPublisher) -> Result<(), rc::ProviderError> {
         *self.publisher.write().map_err(|_| {
             rc::ProviderError::ProtocolError("result publisher unavailable".into())
         })? = Some(publisher);
+        Ok(())
+    }
+    pub fn set_export_output_authority(
+        &self,
+        authority: ExportOutputAuthority,
+    ) -> Result<(), rc::ProviderError> {
+        *self.export_output.write().map_err(|_| {
+            rc::ProviderError::ProtocolError("export authority unavailable".into())
+        })? = Some(authority);
         Ok(())
     }
     async fn resource(&self, id: &str) -> Result<Arc<Resource>, rc::ProviderError> {
@@ -220,9 +239,11 @@ impl dr::ResultSink for Sink {
                 reason: "command output byte limit".into(),
             }
         })?;
-        (self.publisher)(&self.id, output).map_err(|_| dr::ResourceError::SinkRejected {
-            reason: "command output publication failed".into(),
-        })
+        (self.publisher)(self.id.clone(), output)
+            .await
+            .map_err(|_| dr::ResourceError::SinkRejected {
+                reason: "command output publication failed".into(),
+            })
     }
     async fn complete(&self) -> Result<(), dr::ResourceError> {
         Ok(())

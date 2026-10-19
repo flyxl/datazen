@@ -4,32 +4,12 @@ use datazen_driver_api::{DatabaseDriver, Value};
 pub use datazen_feature_core::export::*;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
+mod stream;
 struct DesktopExportSource {
+    platform: crate::platform::PlatformEntry,
     runtime: crate::services::runtime_command_source::RuntimeCommandSource,
     registry: Arc<crate::db::DriverRegistry>,
     cancel: datazen_runtime::job::CancelToken,
-}
-impl DesktopExportSource {
-    async fn read_command(
-        &self,
-        session_id: &str,
-        command: &str,
-        input: serde_json::Value,
-    ) -> Result<serde_json::Value, datazen_feature_core::error::FeatureError> {
-        let operation = self
-            .runtime
-            .read_session_command(session_id, command, input);
-        let cancelled = async {
-            while !self.cancel.is_cancelled() {
-                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-            }
-        };
-        tokio::select! {
-            result = operation => result
-                .map_err(datazen_feature_core::error::FeatureError::Internal),
-            _ = cancelled => Err(datazen_feature_core::error::FeatureError::Validation("fileJobCancelled".into())),
-        }
-    }
 }
 #[async_trait::async_trait]
 impl ExportSource for DesktopExportSource {
@@ -65,24 +45,7 @@ impl ExportSource for DesktopExportSource {
         target: datazen_driver_api::SqlTarget<'_>,
         callback: datazen_driver_api::QueryStreamCallback,
     ) -> Result<(), datazen_feature_core::error::FeatureError> {
-        if self.cancel.is_cancelled() {
-            return Err(datazen_feature_core::error::FeatureError::Validation(
-                "fileJobCancelled".into(),
-            ));
-        }
-        let data = self.read_command(
-            id,
-            "query",
-            serde_json::json!({"sql":sql,"database":target.database(),"schema":target.schema()}),
-        ).await?;
-        let result: datazen_driver_api::MultiQueryResult = serde_json::from_value(data)?;
-        if result.results.iter().any(|statement| statement.truncated) {
-            return Err(datazen_feature_core::error::FeatureError::Validation(
-                "export source result was truncated".into(),
-            ));
-        }
-        datazen_driver_api::emit_multi_query_as_stream(result, &callback);
-        Ok(())
+        self.stream_runtime_query(id, sql, target, callback).await
     }
 }
 struct ExportOperation {
@@ -109,6 +72,7 @@ impl datazen_feature_core::file_job::FileJobOperation for ExportOperation {
             format!("export.{}", self.request.data_format.extension())
         });
         let source = DesktopExportSource {
+            platform: self.platform.clone(),
             runtime: crate::services::runtime_command_source::RuntimeCommandSource::new(
                 self.registry.clone(),
                 self.store.clone(),
@@ -196,6 +160,7 @@ mod tests {
             crate::testing::app_state::TestAppState::with_tables_and_resource_provider().await;
         let session = test.save_and_open_runtime_session("export-runtime").await;
         let source = DesktopExportSource {
+            platform: test.state.platform.clone(),
             runtime: crate::services::runtime_command_source::RuntimeCommandSource::new(
                 test.state.driver_registry.clone(),
                 test.state.store.clone(),

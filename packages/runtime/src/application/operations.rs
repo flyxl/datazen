@@ -58,6 +58,29 @@ impl RuntimeConnectionUseCases {
                 "backup output must be bound before admission",
             ));
         }
+        if matches!(&entry.owner, OwnerRef::ClientSession { purpose, .. } if purpose == "tableExport")
+        {
+            let binding = lock(&self.inner.sink.3)
+                .get(&request.handle)
+                .cloned()
+                .ok_or_else(|| {
+                    ApiError::new(
+                        ApiErrorCode::PermissionDenied,
+                        "export output must be bound",
+                    )
+                })?;
+            let mut submission = lock(&binding.submission);
+            let key = request.idempotency_key.as_str();
+            if request.call.command != "query"
+                || submission.as_ref().is_some_and(|prior| prior != key)
+            {
+                return Err(ApiError::new(
+                    ApiErrorCode::PermissionDenied,
+                    "export permits one query only",
+                ));
+            }
+            *submission = Some(key.to_owned());
+        }
         // Resolve provenance before accepting the command. If the actor has
         // already retired this physical resource, fail before creating an
         // accepted gateway receipt that cannot be admitted to the durable sink.

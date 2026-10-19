@@ -317,18 +317,39 @@ impl PlatformAdapter {
                 "artifact storage already injected",
             )
         })?;
+        let export_sink = sink.clone();
+        backend
+            .set_export_output_authority(Arc::new(move |id| export_sink.has_export_output(id)))
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "export authority unavailable",
+                )
+            })?;
         backend
             .set_publisher(Arc::new(move |id, output| {
-                let result = match output.get("source").cloned() {
-                    Some(source) => serde_json::from_value(source)
-                        .map_err(|_| ApiError::invalid_argument("invalid result source"))
-                        .and_then(|source| sink.publish_statement_output(id, output, source)),
-                    None => sink.publish_output(id, output),
-                };
-                result.map_err(|_| {
-                    datazen_runtime::connection::ProviderError::ProtocolError(
-                        "result publication rejected".into(),
-                    )
+                let sink = sink.clone();
+                Box::pin(async move {
+                    let output = match sink.publish_export_output(&id, output).await {
+                        Ok(None) => return Ok(()),
+                        Ok(Some(output)) => output,
+                        Err(_) => {
+                            return Err(datazen_runtime::connection::ProviderError::ProtocolError(
+                                "export publication rejected".into(),
+                            ))
+                        }
+                    };
+                    let result = match output.get("source").cloned() {
+                        Some(source) => serde_json::from_value(source)
+                            .map_err(|_| ApiError::invalid_argument("invalid result source"))
+                            .and_then(|source| sink.publish_statement_output(&id, output, source)),
+                        None => sink.publish_output(&id, output),
+                    };
+                    result.map_err(|_| {
+                        datazen_runtime::connection::ProviderError::ProtocolError(
+                            "result publication rejected".into(),
+                        )
+                    })
                 })
             }))
             .map_err(|_| {

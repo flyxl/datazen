@@ -1,7 +1,9 @@
 //! Shared connection application implementation; transports inject repositories, policy and drivers.
 mod backend;
 mod backup;
+mod export_output;
 pub use backup::{BackupOutput, BackupOutputBinding};
+pub use export_output::ExportOutputBinding;
 mod convert;
 mod idle;
 mod live;
