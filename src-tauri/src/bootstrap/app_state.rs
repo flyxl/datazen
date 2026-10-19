@@ -192,7 +192,6 @@ pub(crate) fn finish_app_state(
     // Nothing here touches disk or network — window can show immediately.
     let platform = crate::platform::PlatformEntry::launch();
     let schema_source = Arc::new(crate::ai::metadata_source::RuntimeSchemaSource::new(
-        connection_manager.clone(),
         registry.clone(),
         store.clone(),
         platform.clone(),

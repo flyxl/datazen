@@ -1,27 +1,17 @@
 //! Desktop session identity lookup bound to independent Runtime metadata reads.
 use crate::{
     db::DriverRegistry, platform::PlatformEntry,
-    services::runtime_command_source::RuntimeCommandSource, services::ConnectionManager,
-    store::Store,
+    services::runtime_command_source::RuntimeCommandSource, store::Store,
 };
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TableInfo, TableSchema};
 use datazen_feature_core::services::ports::SchemaContextSource;
 use std::sync::Arc;
 pub struct RuntimeSchemaSource {
-    sessions: Arc<ConnectionManager>,
-    registry: Arc<DriverRegistry>,
     runtime: RuntimeCommandSource,
 }
 impl RuntimeSchemaSource {
-    pub fn new(
-        sessions: Arc<ConnectionManager>,
-        registry: Arc<DriverRegistry>,
-        store: Arc<Store>,
-        platform: PlatformEntry,
-    ) -> Self {
+    pub fn new(registry: Arc<DriverRegistry>, store: Arc<Store>, platform: PlatformEntry) -> Self {
         Self {
-            sessions,
-            registry: registry.clone(),
             runtime: RuntimeCommandSource::new(registry, store, platform),
         }
     }
@@ -45,22 +35,15 @@ impl SchemaContextSource for RuntimeSchemaSource {
         Err("The Runtime metadata source does not expose physical session handles".into())
     }
     async fn driver_for_session(&self, id: &str) -> Result<Arc<dyn DatabaseDriver>, String> {
-        let config = self
-            .sessions
-            .get_session_config(id)
-            .await
-            .map_err(|error| error.to_string())?;
-        self.registry
-            .get(&config.database_type)
-            .await
-            .ok_or("Driver unavailable".into())
+        let (owner, _, _) = self.runtime.profile_for_session(id).await?;
+        self.runtime.driver_for_connection(&owner).await
     }
     async fn session_schema(&self, id: &str) -> Option<String> {
-        self.sessions
-            .get_session_config(id)
+        self.runtime
+            .profile_for_session(id)
             .await
             .ok()
-            .and_then(|config| config.schema)
+            .and_then(|(_, config, _)| config.schema)
     }
     async fn tables(
         &self,
