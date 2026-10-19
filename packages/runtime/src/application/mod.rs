@@ -307,12 +307,12 @@ impl RuntimeConnectionUseCases {
         ctx: &RequestContext,
         db_session_id: &str,
     ) -> Result<SessionView, ApiError> {
+        self.authorize(ctx, AuthorizationAction::Connect).await?;
         let id = crate::connection::DbSessionId::new(db_session_id);
         let handle = lock(&self.inner.sessions)
             .get(&id)
             .map(|entry| entry.handle.clone())
             .ok_or_else(|| ApiError::new(ApiErrorCode::SessionNotFound, "session unavailable"))?;
-        self.authorize(ctx, AuthorizationAction::Connect).await?;
         self.session_view(ctx, &handle).await
     }
 
