@@ -171,9 +171,6 @@ pub(crate) fn finish_app_state(
     let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
     let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
     connection_manager.clone().start_cleanup_task();
-    let monitor_connections = Arc::new(crate::monitor::MonitorConnectionRegistry::new(
-        connection_manager.clone(),
-    ));
     let monitor_engine = MonitorEngine::new(store.clone());
 
     let data_dir = store.data_dir().to_path_buf();
@@ -199,7 +196,6 @@ pub(crate) fn finish_app_state(
     let state = AppState {
         driver_registry: registry,
         connection_manager: connection_manager.clone(),
-        monitor_connections,
         monitor_engine: monitor_engine.clone(),
         store,
         schema_cache: schema_cache.clone(),

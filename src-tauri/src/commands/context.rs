@@ -572,7 +572,7 @@ mod tests {
         use crate::commands::AppState;
         use crate::db::DriverRegistry;
         use crate::mcp::client::McpClientManager;
-        use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
+        use crate::monitor::MonitorEngine;
         use crate::services::ConnectionManager;
         use crate::store::Store;
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
@@ -584,8 +584,6 @@ mod tests {
         let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
         let registry = Arc::new(DriverRegistry::new());
         let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
-        let monitor_connections =
-            Arc::new(MonitorConnectionRegistry::new(connection_manager.clone()));
         let monitor_engine = MonitorEngine::new(store.clone());
         let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
         let data_dir = store.data_dir().to_path_buf();
@@ -596,7 +594,6 @@ mod tests {
         let state = AppState {
             driver_registry: registry,
             connection_manager: connection_manager.clone(),
-            monitor_connections,
             monitor_engine,
             store,
             schema_cache: schema_cache.clone(),
@@ -634,7 +631,7 @@ mod tests {
         use crate::commands::AppState;
         use crate::db::DriverRegistry;
         use crate::mcp::client::McpClientManager;
-        use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
+        use crate::monitor::MonitorEngine;
         use crate::services::ConnectionManager;
         use crate::store::{AppSettings, Store};
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
@@ -655,8 +652,6 @@ mod tests {
 
         let registry = Arc::new(DriverRegistry::new());
         let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
-        let monitor_connections =
-            Arc::new(MonitorConnectionRegistry::new(connection_manager.clone()));
         let monitor_engine = MonitorEngine::new(store.clone());
         let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
         let data_dir = store.data_dir().to_path_buf();
@@ -666,7 +661,6 @@ mod tests {
         let state = AppState {
             driver_registry: registry,
             connection_manager: connection_manager.clone(),
-            monitor_connections,
             monitor_engine,
             store: store.clone(),
             schema_cache: schema_cache.clone(),

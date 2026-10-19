@@ -75,7 +75,7 @@ use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
 use crate::db::TransactionHandle;
 use crate::mcp::McpClientManager;
-use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
+use crate::monitor::MonitorEngine;
 use crate::services::ConnectionManager;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
@@ -157,7 +157,6 @@ impl Default for QueryExecutionRegistry {
 pub struct AppState {
     pub driver_registry: Arc<DriverRegistry>,
     pub connection_manager: Arc<ConnectionManager>,
-    pub monitor_connections: Arc<MonitorConnectionRegistry>,
     pub monitor_engine: Arc<MonitorEngine>,
     pub store: Arc<Store>,
     pub schema_cache: Arc<SchemaCache>,
