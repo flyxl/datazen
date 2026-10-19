@@ -5,6 +5,8 @@ use crate::ai::*;
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
 use datazen_ai_api::AiProviderConfig;
+use datazen_platform_api::dto::session::SessionView;
+use datazen_runtime::application::{LiveConnectionLease, LivePurpose};
 use std::sync::Arc;
 use tauri::{Emitter, WebviewWindow};
 
@@ -64,6 +66,58 @@ pub(crate) async fn resolve_ai(
 
 pub(crate) async fn build_connections_context(state: &AppState, lang: &str) -> String {
     datazen_feature_core::ai::response::build_connections_context(state.store.as_ref(), lang).await
+}
+
+/// Resolve an AI command's runtime session and borrow its already-open driver
+/// connection. The IPC contract remains a scalar `dbSessionId`, but ownership,
+/// epoch validation, and physical-resource lifetime are all enforced by the
+/// Runtime rather than by the legacy ConnectionManager.
+pub(crate) async fn borrow_runtime_session(
+    state: &AppState,
+    db_session_id: &str,
+    command: &str,
+) -> Result<(SessionView, LiveConnectionLease), CommandError> {
+    let adapter = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = adapter.begin_call();
+    adapter
+        .runtime()
+        .map_err(crate::platform::into_command_error)?
+        .borrow_live_connection_by_id(call.context(), db_session_id, LivePurpose::Inspection)
+        .await
+        .map_err(crate::platform::into_command_error)
+        .map_err(|error| match error {
+            CommandError::NotFound(message) => {
+                CommandError::NotFound(format!("{command}: {message}"))
+            }
+            other => other,
+        })
+}
+
+/// Resolve only the runtime session view when an AI operation needs owner or
+/// namespace metadata but does not execute a database command.
+pub(crate) async fn runtime_session(
+    state: &AppState,
+    db_session_id: &str,
+    command: &str,
+) -> Result<SessionView, CommandError> {
+    let adapter = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = adapter.begin_call();
+    adapter
+        .runtime()
+        .map_err(crate::platform::into_command_error)?
+        .get_session_by_id(call.context(), db_session_id)
+        .await
+        .map_err(crate::platform::into_command_error)
+        .map_err(|error| match error {
+            CommandError::NotFound(message) => {
+                CommandError::NotFound(format!("{command}: {message}"))
+            }
+            other => other,
+        })
 }
 
 pub(crate) use datazen_feature_core::ai::response::{

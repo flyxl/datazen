@@ -2,8 +2,8 @@
 
 use super::chat::{db_tool_definitions, run_streaming_tool_loop};
 use super::util::{
-    inject_language_hint, parse_ai_json, resolve_ai, resolve_safety_gate, strip_markdown_fences,
-    window_stream_callback, StreamCallback,
+    borrow_runtime_session, inject_language_hint, parse_ai_json, resolve_ai, resolve_safety_gate,
+    runtime_session, strip_markdown_fences, window_stream_callback, StreamCallback,
 };
 use crate::ai::budget;
 use crate::ai::prompt_resolver;
@@ -73,11 +73,13 @@ pub(crate) async fn ai_generate_sql_impl(
 
     let lang = app_settings.language;
 
-    let (driver_ref, _) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("ai_generate_sql")?;
+    let (_session, lease) =
+        borrow_runtime_session(state, &db_session_id, "ai_generate_sql").await?;
+    let driver_ref = lease
+        .connection()
+        .map_err(|error| CommandError::Internal(error.to_string()))?
+        .driver()
+        .clone();
 
     let mut pinned = context_tables.unwrap_or_default();
     for table in ctx_yaml_tables {
@@ -280,11 +282,13 @@ pub(crate) async fn ai_diagnose_error_impl(
 
     let lang = state.store.get_settings().await.language;
 
-    let (driver_ref, _) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("ai_diagnose_error")?;
+    let (_session, lease) =
+        borrow_runtime_session(state, &db_session_id, "ai_diagnose_error").await?;
+    let driver_ref = lease
+        .connection()
+        .map_err(|error| CommandError::Internal(error.to_string()))?
+        .driver()
+        .clone();
 
     let safe_schema_ddl = redact_for_gate(&context.schema_ddl, &gate);
     let mut vars = HashMap::new();
@@ -382,11 +386,13 @@ pub(crate) async fn ai_analyze_explain_impl(
     );
     let (provider, ai_config) = resolve_ai(&state).await?;
 
-    let (driver, _) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("ai_analyze_explain")?;
+    let (_session, lease) =
+        borrow_runtime_session(state, &db_session_id, "ai_analyze_explain").await?;
+    let driver = lease
+        .connection()
+        .map_err(|error| CommandError::Internal(error.to_string()))?
+        .driver()
+        .clone();
 
     let db_type = prompt_db_type(driver.as_ref());
 
@@ -482,20 +488,15 @@ pub(crate) async fn ai_parse_filter_impl(
     let natural_language = redact_for_gate(&natural_language, &gate);
     let (provider, ai_config) = resolve_ai(&state).await?;
 
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("ai_parse_filter")?;
+    let (session, lease) = borrow_runtime_session(state, &db_session_id, "ai_parse_filter").await?;
+    let connection = lease
+        .connection()
+        .map_err(|error| CommandError::Internal(error.to_string()))?;
+    let driver = connection.driver().clone();
+    let handle = connection.handle().clone();
 
     let db_type = prompt_db_type(driver.as_ref());
-    let config = state
-        .connection_manager
-        .get_session_config(&db_session_id)
-        .await
-        .cmd_err("ai_parse_filter")?;
-    let schema =
-        crate::services::metadata_schema(driver.as_ref(), None, None, config.schema.as_deref());
+    let schema = session.observed_context.namespace.schema.clone();
 
     let cached = state
         .schema_cache
@@ -617,11 +618,13 @@ pub(crate) async fn ai_generate_schema_doc_impl(
 
     let lang = state.store.get_settings().await.language;
 
-    let (driver_ref, _) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("ai_generate_schema_doc")?;
+    let (_session, lease) =
+        borrow_runtime_session(state, &db_session_id, "ai_generate_schema_doc").await?;
+    let driver_ref = lease
+        .connection()
+        .map_err(|error| CommandError::Internal(error.to_string()))?
+        .driver()
+        .clone();
 
     // If few tables, skip the selection step and document all
     let selected_tables = if all_table_names.len() <= 30 {
@@ -917,7 +920,10 @@ pub(crate) async fn ai_analyze_queries_impl(
     // The IPC parameter is the runtime dbSessionId; resolve the persisted
     // connection id that owns it so history is filtered by connection.
     let owner_connection_id = if let Some(ref cid) = db_session_id {
-        state.connection_manager.owner_connection_id(cid).await
+        runtime_session(state, cid, "ai_analyze_queries")
+            .await
+            .ok()
+            .map(|session| session.connection_id.as_str().to_owned())
     } else {
         None
     };
