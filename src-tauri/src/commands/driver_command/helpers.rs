@@ -41,30 +41,34 @@ pub(crate) async fn record_sql_command_outcome(
     let Some(db_session_id) = db_session_id else {
         return;
     };
-    // Resolve the persisted connection config that owns this runtime session.
-    let Some(connection_id) = state
-        .connection_manager
-        .owner_connection_id(db_session_id)
-        .await
-    else {
+    let Some(adapter) = state.platform_require().ok() else {
         tracing::warn!(
             db_session_id,
-            "Skipping history: no owning connectionId for this dbSessionId"
+            "Skipping history: runtime unavailable for dbSessionId"
         );
+        return;
+    };
+    let Ok(runtime) = adapter.runtime() else {
+        tracing::warn!(db_session_id, "Skipping history: runtime unavailable");
+        return;
+    };
+    let Some(connection_id) = runtime.connection_id_for_session(
+        &datazen_runtime::connection::DbSessionId::new(db_session_id),
+    ) else {
+        tracing::warn!(db_session_id, "Skipping history: no owning connectionId");
         return;
     };
     // Record the session-active logical database so history can be grouped /
     // filtered per panel context (empty string when the driver is single-db).
     let database = state
-        .connection_manager
-        .get_session_config(db_session_id)
+        .store
+        .get_connection(connection_id.as_str())
         .await
-        .ok()
         .and_then(|config| config.database)
         .unwrap_or_default();
     let entry = crate::store::QueryHistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
-        connection_id,
+        connection_id: connection_id.as_str().to_owned(),
         database,
         schema: None,
         sql: sql.to_string(),

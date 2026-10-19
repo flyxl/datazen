@@ -6,12 +6,13 @@ pub(crate) async fn get_connection_commands_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<Vec<DriverCommandDefinition>, CommandError> {
-    let (driver, _) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("get_connection_commands")?;
-    Ok(datazen_feature_core::services::command_policy::discovery_definitions(driver.as_ref()))
+    let resolved =
+        super::resolve::resolve_command_driver(state, Some(&db_session_id), None).await?;
+    Ok(
+        datazen_feature_core::services::command_policy::discovery_definitions(
+            resolved.driver.as_ref(),
+        ),
+    )
 }
 
 pub(crate) async fn get_driver_type_commands_impl(
