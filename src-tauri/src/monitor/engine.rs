@@ -50,7 +50,7 @@ impl MonitorEngine {
             .app
             .lock()
             .unwrap_or_else(|error| error.into_inner()) = Some(app);
-        self.core.start();
+        start_core_on_desktop_runtime(&self.core);
     }
     pub fn app_handle(&self) -> Option<AppHandle> {
         self.host
@@ -90,7 +90,7 @@ impl MonitorEngine {
             }
         }
         let core = self.core.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             if let Err(error) = core.reload().await {
                 tracing::warn!(%error, "Unable to reload monitor");
             }
@@ -110,6 +110,15 @@ impl MonitorEngine {
             .map_err(DashboardExecuteError::Workflow)
     }
 }
+// Tauri setup/tray callbacks are synchronous and need not have an ambient Tokio
+// context. Enter the desktop-owned runtime only while core.start registers its
+// worker; the shared scheduler remains independent of Tauri.
+fn start_core_on_desktop_runtime(core: &Arc<CoreEngine>) {
+    let runtime = tauri::async_runtime::handle();
+    let _entered = runtime.inner().enter();
+    core.start();
+}
+
 #[async_trait::async_trait]
 impl MonitorHost for DesktopMonitorHost {
     async fn dashboards(&self) -> Result<Vec<Dashboard>, String> {
@@ -205,5 +214,46 @@ impl MonitorHost for DesktopMonitorHost {
         if let Some(app) = app {
             let _ = app.emit("dashboard:run-updated", serde_json::json!({ "dashboardId": dashboard_id, "widgetId": widget.id, "run": run }));
         }
+    }
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+    use std::{sync::mpsc, time::Duration};
+
+    struct StartupHost(mpsc::Sender<()>);
+    #[async_trait::async_trait]
+    impl MonitorHost for StartupHost {
+        async fn dashboards(&self) -> Result<Vec<Dashboard>, String> {
+            self.0.send(()).map_err(|error| error.to_string())?;
+            Ok(Vec::new())
+        }
+        async fn max_concurrent_queries(&self) -> usize {
+            1
+        }
+        async fn execute_widget(&self, _: &str, _: &DashboardWidget) -> Result<WidgetRun, String> {
+            Err("empty startup schedule must not execute widgets".into())
+        }
+        async fn deliver_run(&self, _: &str, _: &DashboardWidget, _: &WidgetRun) {}
+    }
+
+    #[test]
+    fn sync_setup_starts_monitor_without_ambient_tokio_context() {
+        // A fresh synchronous thread reproduces Tauri setup after its preceding
+        // block_on has returned. A #[tokio::test] would mask this regression.
+        std::thread::spawn(|| {
+            assert!(tokio::runtime::Handle::try_current().is_err());
+            let (send, received) = mpsc::channel();
+            let core = CoreEngine::new(Arc::new(StartupHost(send)));
+            start_core_on_desktop_runtime(&core);
+            assert!(tokio::runtime::Handle::try_current().is_err());
+            received
+                .recv_timeout(Duration::from_secs(3))
+                .expect("monitor initial reload ran on the desktop runtime");
+            assert!(!core.is_monitoring_active());
+        })
+        .join()
+        .expect("sync setup must not panic");
     }
 }

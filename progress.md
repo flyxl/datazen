@@ -1,8 +1,10 @@
-# P6 Wapp instance sessions — READY_FOR_TEST
+# P6 integration ledger — active development
+
+This branch is the P6 integration worktree. Per-track details below are temporary acceptance evidence and must be deleted before final integration to main.
 
 Branch: codex/p6-wapp-session-lifecycle; base b9b0e3cb30a6d56fdd6a6bba9333ce32191c8376.
 Worktree: /tmp/datazen-p6-wapp-session (macOS canonical /private/tmp/datazen-p6-wapp-session).
-Coder implementation and local checks only; independent acceptance remains pending.
+Coder implementation was independently accepted at commit `b5f94785aba924ed65fcc4943345b84142e1373e` and cherry-picked here as `a9c76752ada250f7be543937ad91a2e0fa6c70aa`.
 
 ## Confirmed gap and implementation
 
