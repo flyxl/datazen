@@ -65,7 +65,7 @@ async fn nonempty_blocks_refuse_before_empty_success_or_independent_prefix_dispa
                     WorkflowExecutor::execute(&definition, &host, None, &serde_json::json!({}))
                         .await
                         .unwrap_err();
-                assert!(error.contains("CapabilityUnsupported"));
+                assert!(error.starts_with("Capability unsupported: "));
                 assert_eq!(host.0.load(Ordering::SeqCst), 0);
             }
         }
