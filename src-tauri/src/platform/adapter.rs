@@ -672,3 +672,17 @@ impl PlatformEntry {
 #[cfg(test)]
 #[path = "adapter_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+impl PlatformAdapter {
+    pub(crate) fn replace_native_fixture(&mut self, manifest: &str) -> Result<(), ApiError> {
+        let replacement = self
+            .native_tools()?
+            .fixture_manifest(manifest)
+            .map_err(|_| ApiError::invalid_argument("synthetic native deployment rejected"))?;
+        self.native.take();
+        self.native
+            .set(replacement)
+            .map_err(|_| ApiError::invalid_argument("synthetic native fixture unavailable"))
+    }
+}

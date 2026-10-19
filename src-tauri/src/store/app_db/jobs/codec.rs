@@ -53,6 +53,22 @@ pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortErr
             "native selection missing".into(),
         ));
     }
+    if kind == "nativeToolProbe"
+        && !object
+            .get("planDigest")
+            .and_then(Value::as_str)
+            .is_some_and(|digest| {
+                digest.len() == 71
+                    && digest.starts_with("sha256:")
+                    && digest[7..]
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            })
+    {
+        return Err(PortError::BackendUnavailable(
+            "native deployment digest missing or invalid".into(),
+        ));
+    }
     let mut projected = serde_json::Map::new();
     for (key, value) in object {
         let common_field = matches!(

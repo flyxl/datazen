@@ -38,7 +38,12 @@ async fn context(state: &AppState) -> Result<RequestContext, CommandError> {
 pub async fn native_tool_choices(
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::platform::native_tool::deployment::ProbeChoice>, CommandError> {
-    context(&state).await?;
+    choices(&state).await
+}
+async fn choices(
+    state: &AppState,
+) -> Result<Vec<crate::platform::native_tool::deployment::ProbeChoice>, CommandError> {
+    context(state).await?;
     Ok(state
         .platform_require()
         .map_err(|_| denied())?
@@ -141,9 +146,12 @@ pub async fn native_tool_get(
     state: State<'_, AppState>,
     job_id: String,
 ) -> Result<JobDetails, CommandError> {
-    let ctx = context(&state).await?;
+    get(&state, job_id).await
+}
+async fn get(state: &AppState, job_id: String) -> Result<JobDetails, CommandError> {
+    let ctx = context(state).await?;
     let id = JobId::new(job_id);
-    require_native(&state, &ctx, &id).await?;
+    require_native(state, &ctx, &id).await?;
     state
         .desktop_job_host
         .details(&ctx, id)
@@ -154,7 +162,10 @@ pub async fn native_tool_get(
 pub async fn native_tool_list_jobs(
     state: State<'_, AppState>,
 ) -> Result<Vec<JobView>, CommandError> {
-    let ctx = context(&state).await?;
+    list(&state).await
+}
+async fn list(state: &AppState) -> Result<Vec<JobView>, CommandError> {
+    let ctx = context(state).await?;
     Ok(state
         .desktop_job_host
         .list(&ctx, JobFilter::default())
@@ -171,9 +182,12 @@ pub async fn native_tool_cancel(
     state: State<'_, AppState>,
     job_id: String,
 ) -> Result<JobView, CommandError> {
-    let ctx = context(&state).await?;
+    cancel(&state, job_id).await
+}
+async fn cancel(state: &AppState, job_id: String) -> Result<JobView, CommandError> {
+    let ctx = context(state).await?;
     let id = JobId::new(job_id);
-    require_native(&state, &ctx, &id).await?;
+    require_native(state, &ctx, &id).await?;
     state
         .desktop_job_host
         .cancel(&ctx, &id)
@@ -181,3 +195,7 @@ pub async fn native_tool_cancel(
         .map(|record| record.view)
         .map_err(|_| denied())
 }
+
+#[cfg(all(test, unix))]
+#[path = "native_tool_tests.rs"]
+mod tests;

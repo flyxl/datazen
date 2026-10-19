@@ -167,3 +167,29 @@ Five product IPC commands choices/submit/get/list/cancel use host identity + Man
 Static review only: rustfmt --edition 2021 --config skip_children=true on changed Rust files EXIT=0; git diff --check EXIT=0. Corrected a duplicate adapter accessor during static review before commit. No tests added/run, no cargo check/build/test, typecheck, webdriver/WDIO or live execution. Compile/type/link/IPC and behavior all require independent tester review; current boundary is an implementation handoff, NOT acceptance. No AI or Workflow model/executor/target/chaining/scheduler changes. Parent instructed tester scheduling: original Workflow tester finishes first, then NativeTool tester runs one at a time. No other subagent spawned.
 
 Required independent checks: default empty allowlist no process/no admission; strict DTO unknown/private fields, unregistered/changed digest/bad bounds/unknown versions refused; shared-budget same-instance evidence; actual SQLite admission/projected plan/same-key/no replay/reopen; detached dispatch persists terminal receipt after caller disconnect; owner and kind read/cancel isolation; native cancellation and cleanup failures retain budgets and Unknown; restart only marks pending verification. No live approved binary/actual DB/socket count/Artifact export/NativeTool UI/PG-MySQL combined journey proof exists. Real DB-consuming operations remain Unsupported until per-version full bounds and complete production journey are defensible.
+
+## NativeTool product Host/SQLite regression coverage and required digest (2026-10-19, READY_FOR_TEST)
+
+New isolated coder tree `/tmp/datazen-p6-native-product-host-tests`, branch `codex/p6-native-product-host-tests`, base 9a3f3c27d862f1bbc55e1ff6cef37e5fec6e5d16. Product original tree, integration and tester trees unchanged. No tests or compile/build commands executed, per explicit instruction. No env contents read, no UI/real CLI/DB/Workflow/AI work, no protocol types changed.
+
+Added four product-specific Host regressions in commands/native_tool_tests.rs, cfg(all(test, unix)), calling exact command-body helpers rather than generic job APIs alone. Uses actual AppState policy/identity, actual SQLite host/JobRuntime and the existing desktop native process adapter with cfg(test)-only SHA-pinned synthetic POSIX scripts; no pg_dump/mysqldump or DB connection. Scripts only append a fixture-owned marker and print an exact synthetic version. Production default embedded manifest remains empty and production registration source is unchanged.
+
+Coverage authored, NOT executed or accepted:
+1. Both PG/MySQL probe IDs: approved choice projection, actual submit to terminal Job, frozen nativeToolSelection + deployment digest, bounded successful domain receipt, separately opened SQLite store preserving exact payload, immediate and terminal same-key retries returning old Job, physical synthetic marker stays one invocation; changed approved deployment contract under same id/version conflicts on same key without another invocation.
+2. Default/invalid deployment deterministic rejection before admission; nine invalid manifest shapes/contracts/bounds/hash/private fields/tool IDs/duplicate cases. Strict request+selection reject 16 private-field injections, bad UUID and unregistered version; no jobs or marker effects.
+3. Product get/list/cancel enforce real SQLite principal ownership and native kind, not only a policy rejection; foreign/other-kind records stay queued and invisible/uncancellable, owned native queued Job cancels as NotStarted without spawn.
+4. SQLite durable projection rejects thirteen missing/private/wrong-kind/invalid-selection/digest cases before admission, checks all kinds of jobs remain absent.
+
+Tester follow-up found a real source-confirmed validator gap: native selection was required but planDigest only validated when present, and the common digest helper permits short tagged hex. Minimal production fix in jobs/codec.rs requires nativeToolProbe planDigest to exist and exactly match writer format sha256: + 64 lowercase hex; no other Job validator changes. Missing/null/numeric/empty/short/nonhex/uppercase digest regressions begin from a real freeze-generated valid payload. This enforces required canonical projection, not an independent registry attestation: product freeze remains the trusted source of digest consistency, and clients cannot submit planDigest.
+
+Testability changes: thin IPC wrappers delegate unchanged signatures/DTOs to private command bodies; deployment from_build delegates to a private parser; test-only fixture manifest reconstruction reuses the SAME physical budget Arc and appears behind cfg(test), with adapter hook after production source (no structural scanner truncation). No production IPC/settings/env manifest override introduced.
+
+Static only: targeted rustfmt --edition 2021 --config skip_children=true EXIT=0; git diff --check EXIT=0. NOT RUN cargo check/test/build, Host tests, Runtime tests, typecheck, WDIO, live CLI/DB or subprocess fixtures. Thus new test source may still have compile/runtime issues and must be independently verified by the original tester. Intended focused command is cargo test -p datazen --lib commands::native_tool::tests, run by tester only with required driver injection/isolation and safe /tmp log capture.
+
+Exact changed files:
+- src-tauri/src/commands/native_tool.rs
+- src-tauri/src/commands/native_tool_tests.rs (new)
+- src-tauri/src/platform/adapter.rs (cfg(test) hook only)
+- src-tauri/src/platform/native_tool/deployment.rs
+- src-tauri/src/store/app_db/jobs/codec.rs
+- progress.md

@@ -31,6 +31,8 @@ pub(crate) struct NativeDeployment {
     port: Arc<DesktopNativeTools>,
     choices: Vec<ProbeChoice>,
     digests: HashMap<String, String>,
+    #[cfg(test)]
+    budget: Arc<InProcessBudgetCoordinator>,
 }
 fn unavailable() -> PortError {
     PortError::BackendUnavailable("native deployment unavailable or unsupported".into())
@@ -43,6 +45,12 @@ impl NativeDeployment {
         budget: Arc<InProcessBudgetCoordinator>,
     ) -> Result<Arc<Self>, PortError> {
         let manifest = include_str!("../../../resources/native-tool-probes.json");
+        Self::from_manifest(manifest, budget)
+    }
+    fn from_manifest(
+        manifest: &str,
+        budget: Arc<InProcessBudgetCoordinator>,
+    ) -> Result<Arc<Self>, PortError> {
         if manifest.len() > 65_536 {
             return Err(unavailable());
         }
@@ -103,13 +111,20 @@ impl NativeDeployment {
             });
         }
         let port = Arc::new(DesktopNativeTools::new(installations)?);
-        let runtime = NativeToolRuntime::new(port.clone(), budget, 1, NativeToolLimits::default())?;
+        let runtime =
+            NativeToolRuntime::new(port.clone(), budget.clone(), 1, NativeToolLimits::default())?;
         Ok(Arc::new(Self {
             runtime,
             port,
             choices,
             digests,
+            #[cfg(test)]
+            budget,
         }))
+    }
+    #[cfg(test)]
+    pub(crate) fn fixture_manifest(&self, manifest: &str) -> Result<Arc<Self>, PortError> {
+        Self::from_manifest(manifest, self.budget.clone())
     }
     pub(crate) fn choices(&self) -> Vec<ProbeChoice> {
         self.choices
