@@ -226,6 +226,12 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 
 Workflow 保持既有 v1 协议、模型、跨数据库逐步执行及前步 output 供后步模板串联的语义；仅将底层连接管理走 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。本轮不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof。YAML、version model 与既有 IPC 形状不变。scheduler 保留桌面 runtime-entry 修复，Monitor 固定只读授权/独立 occurrence 和其他消费者的 Runtime 接线继续保留。
 
+#### Workflow v1 真实驱动验收
+
+Host 通用旅程 `src-tauri/src/workflow/live_acceptance.rs` 使用真实 PostgreSQL/MySQL inventory factory、桌面 AppState/WorkflowHost 和 Runtime，不以 sqlx 手工串接模拟执行器。两个方向分别执行继承 workflow connection 的 legacy Query，再以 step connection override 执行 Command；前步数值经 `{{steps.seed.rows[0].value}}` 进入后步 SQL，验证最终计算结果。夹具在两个独立测试库建立同名表并写入不同数值，后步同时读取目标库的数值并加上前步结果，以证明目标覆盖实际到达另一个物理数据库；结束时删除夹具表。只使用两库共有的建表/插入/SELECT/删除表语句，不增加驱动方言能力或事务语义。
+
+运行：`scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance`。测试默认 ignored，安全 runner 显式执行，并要求两族独立 `dz_fixture_*` 数据库；缺配置、不可连接或执行失败都会失败，不以跳过计作通过。原 `src-tauri/tests/workflow_tests.rs` 的 TC13 直接调用 sqlx，仅验证手工数据流，不作为 Workflow/Runtime 接线证据。
+
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）
 
 Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用当前桌面用户上下文；周期 tick 必须取得后端保存的 widget grant，不能因 `connection_id=None`、工作流可运行或桌面用户仍在线而获得授权。用户在报表编辑器中保存 interval 配置后，显式授权一小时或撤销；授权 IPC 仅接受 dashboard/widget ID 与 60～86400 秒有效期，不接受 principal、delegation token 或用户提供的 grant。

@@ -9,6 +9,7 @@
 #
 #   scripts/run-live-contract.sh                 # postgres + mysql, strict
 #   scripts/run-live-contract.sh --dry-run       # resolve + report only
+#   scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance
 #   scripts/run-live-contract.sh --no-provision  # assume fixture DBs exist
 #   scripts/run-live-contract.sh --crate datazen-driver-postgres
 #   scripts/run-live-contract.sh --crate datazen-driver-postgres --test restore_apply_job
@@ -44,6 +45,7 @@ PROVISION=1
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --lib-test) [ $# -ge 2 ] || { echo "--lib-test requires a test filter" >&2; exit 2; }; shift; TEST_ARGS=("--lib" "$1" "--" "--ignored" "--test-threads=1" "--nocapture"); shift ;;
     --test) [ $# -ge 2 ] || { echo "--test requires a test target" >&2; exit 2; }; shift; TEST_ARGS=("--test" "$1"); shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --no-provision) PROVISION=0; shift ;;
