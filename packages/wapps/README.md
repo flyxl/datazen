@@ -2,7 +2,7 @@
 
 运行时 Workspace App 应用（UI 页面 + 主题）的**源码包目录**。每个子目录是一个完整、可直接安装的 Workspace App 包，遵循统一插件系统规范（详细设计见 [docs/architecture/backend/wapps.md](../../docs/architecture/backend/wapps.md)）。
 
-> 历史注记：本目录取代 `packages/themes/`（旧 v1 ThemePack 源码树）与 `packages/extensions/`。社区主题 `community.slate-blue` 已按新规范改造为纯主题 wapp；`fixtures/themes/community.fixture-dark` 保留原位，仅服务遗留 theme 模块的单测。
+> 历史注记：本目录取代 `packages/themes/`（旧 v1 ThemePack 源码树）与 `packages/extensions/`。社区主题 `community.slate-blue` 已按新规范改造为纯主题 wapp；`fixtures/themes/community.fixture-dark` 只保留 `tokens.css`，仅服务 theme 模块（`src/lib/themePackApply.ts`）的单测输入。
 
 ## 包结构
 
