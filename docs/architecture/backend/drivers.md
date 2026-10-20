@@ -119,7 +119,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 其余消费者按调用链逐步迁移。
 
-版本：`datazen-driver-api` 0.0.13 → 0.0.15（0.0.14 为 `SqlDialect`，0.0.15 为 `CatalogReader`）；新增契约是 additive，`PROTOCOL_VERSION` 保持 6。契约表登记在 `scripts/lib/driver-protocol-rules.mjs`（`sql-dialect` / `legacy-sql-dialect` / `bound-parameter-limit` / `catalog-reader` / `legacy-catalog-reader`）。
+版本：`datazen-driver-api` 0.0.13 → 0.0.15（0.0.14 为 `SqlDialect`，0.0.15 为 `CatalogReader`）；新增契约带默认适配器实现属 additive，`PROTOCOL_VERSION` 保持 6（2026-10-21 起协议版本冻结于 6，兼容门禁族退役——治理决定见 [driver-capability-migration.md](../platform/driver-capability-migration.md#5-协议版本演进) §5）。
 
 ### 2.5 复用包装器：`ReuseDriver` 必须显式决定每个方法
 
