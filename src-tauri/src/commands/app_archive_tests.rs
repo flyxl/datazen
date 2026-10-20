@@ -1,7 +1,6 @@
 //! Tests for the app-data ZIP archive commands.
 
 use super::*;
-use std::path::Path;
 #[test]
 fn export_options_from_settings_reflects_monitor_flag() {
     use crate::store::AppSettings;

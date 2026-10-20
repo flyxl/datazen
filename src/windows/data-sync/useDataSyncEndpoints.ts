@@ -4,8 +4,10 @@ import { databaseCommands } from '../../commands/database';
 import { useI18n } from '../../hooks/useI18n';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { isSameEndpointIdentity } from '../../lib/endpointIdentity';
 import {
   ensureDedicatedSession,
+  ensureDedicatedSessionForEffect,
   listDatabasesDedicated,
   releaseDedicatedSession,
   type DedicatedSideSession,
@@ -283,7 +285,12 @@ export function useDataSyncEndpoints({
     let cancelled = false;
     (async () => {
       try {
-        const next = await ensureDedicatedSession(sourceSession, sourceId, sourceDatabase);
+        const next = await ensureDedicatedSessionForEffect(
+          sourceSession,
+          sourceId,
+          sourceDatabase,
+          () => !cancelled,
+        );
         if (!cancelled) {
           setSourceSession(next);
           setSourceSessionError('');
@@ -312,7 +319,12 @@ export function useDataSyncEndpoints({
     let cancelled = false;
     (async () => {
       try {
-        const next = await ensureDedicatedSession(targetSession, targetId, targetDatabase);
+        const next = await ensureDedicatedSessionForEffect(
+          targetSession,
+          targetId,
+          targetDatabase,
+          () => !cancelled,
+        );
         if (!cancelled) {
           setTargetSession(next);
           setTargetSessionError('');
@@ -428,16 +440,14 @@ export function useDataSyncEndpoints({
     };
   }, [targetId, targetDatabase, targetConn?.databaseType, targetSession]);
 
-  const isSameEndpoint = useCallback(() => {
-    const norm = (s: string) => s.trim();
-    return (
-      sourceId === targetId &&
-      sourceDatabase !== '' &&
-      targetDatabase !== '' &&
-      sourceDatabase === targetDatabase &&
-      norm(sourceSchema) === norm(targetSchema)
-    );
-  }, [sourceId, targetId, sourceDatabase, targetDatabase, sourceSchema, targetSchema]);
+  const isSameEndpoint = useCallback(
+    () =>
+      isSameEndpointIdentity(
+        { connectionId: sourceId, database: sourceDatabase, schema: sourceSchema },
+        { connectionId: targetId, database: targetDatabase, schema: targetSchema },
+      ),
+    [sourceId, targetId, sourceDatabase, targetDatabase, sourceSchema, targetSchema],
+  );
 
   const handleSwap = useCallback(() => {
     pendingProfileMappingsRef.current = null;

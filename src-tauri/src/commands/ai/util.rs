@@ -1,6 +1,5 @@
 //! Shared helpers for AI command handlers.
 
-use crate::ai::safety::redact_for_gate;
 use crate::ai::*;
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
@@ -166,25 +165,6 @@ pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
 pub(crate) use datazen_feature_core::ai::response::{
     find_first_balanced_json, strip_fences_all, strip_markdown_fences,
 };
-
-/// Emit a task progress event to the frontend.
-///
-/// Used by non-streaming commands to report progress during long-running operations.
-pub(crate) fn emit_task_progress<R: tauri::Runtime>(
-    emitter: &impl Emitter<R>,
-    request_id: &str,
-    phase: &str,
-    message: &str,
-) {
-    let _ = emitter.emit(
-        "ai:task-progress",
-        serde_json::json!({
-            "requestId": request_id,
-            "phase": phase,
-            "message": message,
-        }),
-    );
-}
 
 #[cfg(test)]
 mod tests {

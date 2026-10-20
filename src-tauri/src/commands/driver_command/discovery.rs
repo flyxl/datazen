@@ -1,4 +1,4 @@
-use super::super::error::{CmdExt, CommandError};
+use super::super::error::CommandError;
 use super::super::AppState;
 use datazen_driver_api::DriverCommandDefinition;
 

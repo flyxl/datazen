@@ -26,8 +26,6 @@ pub enum DashboardRunsError {
     NotFound(String),
 }
 
-pub const MAX_RUN_ROWS: usize = 500;
-
 fn parse_status(s: &str) -> Result<WidgetRunStatus, DashboardRunsError> {
     match s {
         "ok" => Ok(WidgetRunStatus::Ok),

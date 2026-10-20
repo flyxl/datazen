@@ -1,5 +1,4 @@
 use datazen_driver_api::{DatabaseObject, ObjectKind};
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::commands::error::CommandError;
@@ -12,13 +11,6 @@ use crate::schema_diff::job::PrepareRequest;
 const TARGET_ID_PREFIX: &str = "obj-";
 const TARGET_EVIDENCE_PREFIX: &str = "recoveryObject:";
 const TARGET_JSON_PREFIX: &str = "recoveryIdentity:";
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct RecoveryTargetEnvelope {
-    pub connection_id: String,
-    pub object_ids: Vec<String>,
-}
 
 pub(super) fn encode_target_id(target: &DatabaseObject) -> Option<String> {
     let json = serde_json::to_vec(target).ok()?;

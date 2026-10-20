@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 
-use super::super::error::{CmdExt, CommandError};
+use super::super::error::CommandError;
 use super::super::AppState;
 use super::apply::generate_data_sync_sql_impl;
 use super::comparison_store::{ComparisonStore, ComparisonTableMetadata};

@@ -2,7 +2,7 @@
 
 use super::dashboards::DashboardWorkflowRef;
 use super::{AppDb, AppDbError};
-use rusqlite::{params, OptionalExtension};
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

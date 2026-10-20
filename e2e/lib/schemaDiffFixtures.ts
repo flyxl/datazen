@@ -29,15 +29,15 @@ export const SCHEMA_DIFF_WIDE_COLUMN_COUNT = 19;
 /** Multi-table batch compare count. */
 export const SCHEMA_DIFF_MULTI_TABLE_COUNT = 10;
 
-export function pgMinimalTargetCreateSql(table: string): string {
+function pgMinimalTargetCreateSql(table: string): string {
   return `CREATE TABLE ${table} (id BIGINT PRIMARY KEY)`;
 }
 
-export function mysqlMinimalTargetCreateSql(table: string): string {
+function mysqlMinimalTargetCreateSql(table: string): string {
   return `CREATE TABLE ${table} (id BIGINT PRIMARY KEY)`;
 }
 
-export function pgSimpleDiffCreateSql(table: string, extraCol: string): string {
+function pgSimpleDiffCreateSql(table: string, extraCol: string): string {
   return `CREATE TABLE ${table} (
     id int PRIMARY KEY,
     name text NOT NULL,
@@ -45,14 +45,14 @@ export function pgSimpleDiffCreateSql(table: string, extraCol: string): string {
   )`;
 }
 
-export function pgSimpleTargetCreateSql(table: string): string {
+function pgSimpleTargetCreateSql(table: string): string {
   return `CREATE TABLE ${table} (
     id int PRIMARY KEY,
     name text NOT NULL
   )`;
 }
 
-export function pgManyColumnsSourceSql(
+function pgManyColumnsSourceSql(
   table: string,
   columnCount = SCHEMA_DIFF_WIDE_COLUMN_COUNT,
 ): string {
@@ -80,32 +80,6 @@ export async function setupPgManyColumnsSourceMinimalTarget(
       await invokeBackend('execute_query', {
         dbSessionId: srcSession,
         sql: pgManyColumnsSourceSql(table),
-      });
-      await invokeBackend('execute_query', {
-        dbSessionId: tgtSession,
-        sql: pgMinimalTargetCreateSql(table),
-      });
-    });
-  } finally {
-    await disconnectBackend(srcSession);
-    await disconnectBackend(tgtSession);
-  }
-}
-
-export async function setupPgWideSourceMinimalTarget(
-  srcConnectionId: string,
-  tgtConnectionId: string,
-  table: string,
-): Promise<void> {
-  const srcSession = await invokeBackend<string>('connect', { connectionId: srcConnectionId });
-  const tgtSession = await invokeBackend<string>('connect', { connectionId: tgtConnectionId });
-  try {
-    await withSafeModeOff(async () => {
-      await dropTableIfExists(srcSession, table);
-      await dropTableIfExists(tgtSession, table);
-      await invokeBackend('execute_query', {
-        dbSessionId: srcSession,
-        sql: pgWideTypesCreateSql(table),
       });
       await invokeBackend('execute_query', {
         dbSessionId: tgtSession,
@@ -383,7 +357,7 @@ export function assertWideColumnCount(actual: number): void {
   expect(actual).toBeGreaterThanOrEqual(SCHEMA_DIFF_WIDE_COLUMN_COUNT - 2);
 }
 
-export function pgEnterpriseStaffCreateSql(table: string): string {
+function pgEnterpriseStaffCreateSql(table: string): string {
   return `CREATE TABLE ${table} (
     org_id VARCHAR(32) NOT NULL,
     emp_no INT NOT NULL,
@@ -454,7 +428,7 @@ export async function setupPgEnterpriseStaffSourceEmptyMysqlTarget(
   }
 }
 
-export function mysqlTenantOrdersCreateSql(table: string): string {
+function mysqlTenantOrdersCreateSql(table: string): string {
   return `CREATE TABLE ${table} (
     tenant_id VARCHAR(32) NOT NULL,
     order_id BIGINT NOT NULL,

@@ -152,9 +152,9 @@ export function dropWorkerDatabase(db: string): void {
 }
 
 /** Seeded in global before hook; never deleted by global teardown. */
-export const KEEP_CONNECTION_IDS = new Set(['conn_e2e_pg']);
+const KEEP_CONNECTION_IDS = new Set(['conn_e2e_pg']);
 
-export function isEphemeralConnection(conn: ConnectionRow): boolean {
+function isEphemeralConnection(conn: ConnectionRow): boolean {
   if (KEEP_CONNECTION_IDS.has(conn.id)) return false;
   const id = conn.id;
   const name = conn.name ?? '';
@@ -165,7 +165,7 @@ export function isEphemeralConnection(conn: ConnectionRow): boolean {
   return false;
 }
 
-export function isEphemeralWorkflow(wf: WorkflowRow): boolean {
+function isEphemeralWorkflow(wf: WorkflowRow): boolean {
   return /^e2e[-_]/i.test(wf.id);
 }
 

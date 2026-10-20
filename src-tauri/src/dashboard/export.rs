@@ -11,7 +11,7 @@ use super::types::Dashboard;
 use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
 use crate::workflow::model::{WorkflowDefinition, WorkflowVisibility};
 
-pub use datazen_feature_core::dashboard::archive::{FORMAT, VERSION};
+pub use datazen_feature_core::dashboard::archive::FORMAT;
 
 #[derive(Debug, Error)]
 pub enum DashboardExportError {

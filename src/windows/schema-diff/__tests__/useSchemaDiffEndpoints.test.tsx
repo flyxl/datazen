@@ -3,7 +3,12 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import type { ConnectionConfig } from '../../../types';
 import { useSchemaDiffEndpoints } from '../useSchemaDiffEndpoints';
-import { ensureDedicatedSession, listDatabasesDedicated } from '../../../lib/dedicatedDbSession';
+import {
+  ensureDedicatedSession,
+  listDatabasesDedicated,
+  releaseDedicatedSession,
+  type DedicatedSideSession,
+} from '../../../lib/dedicatedDbSession';
 import { databaseCommands } from '../../../commands/database';
 
 const { stableT } = vi.hoisted(() => ({
@@ -32,6 +37,22 @@ vi.mock('../../../lib/dedicatedDbSession', () => ({
   listDatabasesDedicated: vi.fn(),
   ensureDedicatedSession: vi.fn(),
   releaseDedicatedSession: vi.fn().mockResolvedValue(undefined),
+  ensureDedicatedSessionForEffect: vi.fn(
+    async (
+      current: DedicatedSideSession | null,
+      connectionId: string,
+      database: string,
+      isCurrent: () => boolean,
+      databaseOverride: string | null = database,
+    ) => {
+      const next = await ensureDedicatedSession(current, connectionId, database, databaseOverride);
+      if (isCurrent()) return next;
+      if (next?.dbSessionId && next.dbSessionId !== current?.dbSessionId) {
+        await releaseDedicatedSession(next.dbSessionId);
+      }
+      return null;
+    },
+  ),
 }));
 
 vi.mock('../../../commands/database', () => ({
@@ -76,7 +97,11 @@ const MOCK_CONNECTIONS: ConnectionConfig[] = [
 describe('useSchemaDiffEndpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(databaseCommands.listCatalog).mockResolvedValue({ database: '', schemas: [], relations: [] });
+    vi.mocked(databaseCommands.listCatalog).mockResolvedValue({
+      database: '',
+      schemas: [],
+      relations: [],
+    });
     urlParamMock.mockReset();
     urlParamMock.mockReturnValue(null);
     vi.mocked(invoke).mockResolvedValue(MOCK_CONNECTIONS);
@@ -278,7 +303,9 @@ describe('useSchemaDiffEndpoints', () => {
 
   it('discovers schemas from the catalog for non-PostgreSQL SQL drivers', async () => {
     vi.mocked(databaseCommands.listCatalog).mockResolvedValue({
-      database: 'datazen_sync_src', schemas: ['app', 'public'], relations: [],
+      database: 'datazen_sync_src',
+      schemas: ['app', 'public'],
+      relations: [],
     });
     const { result } = renderHook(() => useSchemaDiffEndpoints());
 
@@ -306,7 +333,9 @@ describe('useSchemaDiffEndpoints', () => {
       pgConn('pg-tgt', 'PG Tgt', 'datazen_sync_tgt'),
     ]);
     vi.mocked(databaseCommands.listCatalog).mockResolvedValue({
-      database: 'worker_db', schemas: ['e2e_worker_0', 'public'], relations: [],
+      database: 'worker_db',
+      schemas: ['e2e_worker_0', 'public'],
+      relations: [],
     });
 
     const { result } = renderHook(() => useSchemaDiffEndpoints());

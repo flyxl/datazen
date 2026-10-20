@@ -14,10 +14,12 @@ mod checkpoint;
 use checkpoint::retain_live_checkpoints;
 pub(crate) use checkpoint::{TransferCheckpointSession, TransferResumeCheckpoint};
 
-use datazen_driver_api::{iter_driver_factories, DatabaseDriver, TableSchema, PROTOCOL_VERSION};
+use datazen_driver_api::{DatabaseDriver, TableSchema};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+pub(crate) use crate::commands::driver_protocol::driver_protocol_version;
 
 use crate::data_transfer::{
     DdlPreviewItem, TargetTableDependency, TransferError, TransferJob, TransferPreview,
@@ -161,15 +163,6 @@ pub(crate) fn participating_tables(
     job: &TransferJob,
 ) -> impl Iterator<Item = &crate::data_transfer::model::TableMapping> {
     job.tables.iter().filter(|table| table.enabled)
-}
-
-pub(crate) fn driver_protocol_version(driver: &dyn DatabaseDriver) -> u32 {
-    let driver_type = driver.driver_type();
-    iter_driver_factories()
-        .into_iter()
-        .find(|factory| factory.driver_id() == driver_type)
-        .map(|factory| factory.protocol_version())
-        .unwrap_or(PROTOCOL_VERSION)
 }
 
 pub(crate) struct TransferPlanStore {
@@ -547,22 +540,6 @@ pub(crate) fn claim_checkpoint(
     plan_id: &str,
 ) -> Result<(StoredTransferPlan, TransferResumeCheckpoint), TransferError> {
     global_store().claim_checkpoint(token, plan_id)
-}
-
-pub(crate) fn create_checkpoint(
-    plan_id: &str,
-    selected_tables: Vec<String>,
-    completed_tables: Vec<String>,
-) -> Result<String, TransferError> {
-    global_store().create_checkpoint(plan_id, selected_tables, completed_tables)
-}
-
-pub(crate) fn update_checkpoint(
-    token: &str,
-    completed_tables: Vec<String>,
-    finished: bool,
-) -> Result<(), TransferError> {
-    global_store().update_checkpoint(token, completed_tables, finished)
 }
 
 pub(crate) fn invalidate_checkpoint(token: &str) {

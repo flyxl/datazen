@@ -697,20 +697,6 @@ export async function createAndConnectPostgreSQL(
   return finishConnectInWorkspace(mainWindow);
 }
 
-/**
- * Connect to a named connection card (any DB type) from the main window.
- */
-export async function connectToCard(cardName: string) {
-  const mainWindow = await browser.getWindowHandle();
-  await expandAllGroups();
-  const card = await findCardByName(cardName);
-  if (!card) throw new Error(`未找到连接 "${cardName}"`);
-
-  await dblclickConnByExactName(cardName);
-
-  return finishConnectInWorkspace(mainWindow);
-}
-
 // ── SQL / CodeMirror ────────────────────────────────────────────────
 
 type SettingsLike = { safeMode?: boolean } & Record<string, unknown>;
@@ -986,26 +972,6 @@ export async function dismissConfirmDialogIfOpen(timeout = 3000): Promise<void> 
     await browser.keys('Escape');
   }
   await browser.pause(400);
-}
-
-/**
- * Confirm (accept) a Safe-Mode / dangerous-SQL confirm dialog IF it appears, else proceed.
- *
- * Unlike `confirmWebDialog` (which hard-fails when no dialog shows), this tolerates the
- * "safe mode off → dangerous op executes directly with no confirm" path: it waits up to
- * `timeout` for the OK button and clicks it when present, returning immediately otherwise.
- * Use this for tests that must accept the operation when a dialog is shown.
- */
-export async function confirmWebDialogIfOpen(timeout = 5000): Promise<void> {
-  const okBtn = await $('[data-testid="confirm-dialog-ok"]');
-  if (!(await okBtn.isExisting().catch(() => false))) return;
-  try {
-    await okBtn.waitForDisplayed({ timeout });
-  } catch {
-    return;
-  }
-  await okBtn.click();
-  await browser.pause(800);
 }
 
 /**
@@ -1663,15 +1629,10 @@ export async function openQueryTab() {
 // ── schema sidebar ──────────────────────────────────────────────────
 
 /** Sidebar section headers indicating schema tree loaded (en + zh-CN). */
-export const SCHEMA_TREE_SECTION_MARKERS = ['Tables', '表', 'Keys', '键', 'Views', '视图'] as const;
+const SCHEMA_TREE_SECTION_MARKERS = ['Tables', '表', 'Keys', '键', 'Views', '视图'] as const;
 
 export function asideHasSchemaSections(text: string): boolean {
   return SCHEMA_TREE_SECTION_MARKERS.some((marker) => text.includes(marker));
-}
-
-/** True if text looks like a schema tree section header (e.g. "Tables (5)" or "表 (3)"). */
-export function isSchemaSectionLabel(text: string): boolean {
-  return SCHEMA_TREE_SECTION_MARKERS.some((m) => text.startsWith(m));
 }
 
 /** Connection navigator sidebar (not the 40px workspace mode rail). */
@@ -2266,22 +2227,6 @@ export async function openTableFromSidebar(tableName: string) {
   }
 }
 
-/** Switch the active table/view panel to the data sub-tab. */
-export async function switchTablePanelToDataTab() {
-  await browser.execute((label: string) => {
-    const bars = document.querySelectorAll('.border-b.border-edge.bg-surface-alt');
-    for (const bar of bars) {
-      for (const btn of bar.querySelectorAll('button')) {
-        if ((btn.textContent ?? '').trim() === label) {
-          (btn as HTMLElement).click();
-          return;
-        }
-      }
-    }
-  }, t('connWin.data'));
-  await browser.pause(800);
-}
-
 /** Right-click a table/view row in the navigator (keeps search active until menu opens). */
 export async function rightClickTableInSidebar(tableName: string) {
   await dismissWebContextMenu();
@@ -2695,7 +2640,7 @@ export async function backFromSettingsInMainWindow() {
 const TRANSFER_LIMITATIONS_DISMISS_KEY = 'datazen:transfer-limitations-dismissed';
 
 /** Clear "don't show again" pref so limitations dialog appears on next open. */
-export async function clearTransferLimitationsDismissPref() {
+async function clearTransferLimitationsDismissPref() {
   await browser.execute((key: string) => {
     try {
       localStorage.removeItem(key);
@@ -2706,7 +2651,7 @@ export async function clearTransferLimitationsDismissPref() {
 }
 
 /** Close the transfer limitations dialog when it is open (does not check "don't show again"). */
-export async function dismissTransferLimitationsDialogIfOpen() {
+async function dismissTransferLimitationsDialogIfOpen() {
   const dialog = await $('[data-testid="data-transfer-limitations-dialog"]');
   if (!(await dialog.isExisting().catch(() => false))) return;
   if (!(await dialog.isDisplayed().catch(() => false))) return;
@@ -2775,7 +2720,7 @@ export async function openDataTransferWindow(
 
 const SCHEMA_DIFF_LIMITATIONS_DISMISS_KEY = 'datazen:schema-diff-limitations-dismissed';
 
-export async function clearSchemaDiffLimitationsDismissPref() {
+async function clearSchemaDiffLimitationsDismissPref() {
   await browser.execute((key: string) => {
     try {
       localStorage.removeItem(key);
@@ -2785,7 +2730,7 @@ export async function clearSchemaDiffLimitationsDismissPref() {
   }, SCHEMA_DIFF_LIMITATIONS_DISMISS_KEY);
 }
 
-export async function dismissSchemaDiffLimitationsDialogIfOpen() {
+async function dismissSchemaDiffLimitationsDialogIfOpen() {
   const dialog = await $('[data-testid="schema-diff-limitations-dialog"]');
   if (!(await dialog.isExisting().catch(() => false))) return;
   if (!(await dialog.isDisplayed().catch(() => false))) return;

@@ -47,7 +47,6 @@ use crate::schema_diff::types::{
     PlanRequirement, SchemaDiffDeployResult, SchemaDiffPlan,
 };
 use crate::schema_diff::SchemaDiffProfile;
-use crate::services::job_registry::{cancel_job, ensure_job, remove_job};
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::transfer::ddl::build_create_table_ddl;
 use crate::transfer::full_types::fetch_full_column_types;

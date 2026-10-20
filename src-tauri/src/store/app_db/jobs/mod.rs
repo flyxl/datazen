@@ -65,7 +65,3 @@ impl SqliteJobRepository {
         f(&conn)
     }
 }
-
-pub(super) fn now_from_clock(clock: &dyn JobClock) -> datazen_platform_api::id::Timestamp {
-    clock.now()
-}

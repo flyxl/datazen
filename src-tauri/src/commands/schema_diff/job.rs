@@ -15,16 +15,16 @@ use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 
 use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::id::{ClientInstanceId, JobId, OrganizationId, PrincipalId, RequestId};
+use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 use datazen_runtime::job::{EndpointRef, EndpointRole};
 
 use datazen_schema_diff::job::{
     ApplyRequest, PlanStore, PrepareRequest, PreparedPlan, ReadOnlyVerdict, SchemaDiffFrozenPlan,
-    SchemaDiffHandler, SchemaDiffJobBackend, SchemaDiffPlanError, StoredPlan,
+    SchemaDiffJobBackend, SchemaDiffPlanError, StoredPlan,
 };
 use datazen_schema_diff::types::{SchemaDiffDeployResult, SchemaDiffPlan};
 
-use crate::commands::error::{CmdExt, CommandError};
+use crate::commands::error::CommandError;
 use crate::commands::schema_diff::prepare_schema_diff_plan_with_schemas_impl;
 use crate::commands::schema_diff::unified_plan::prepare_schema_unified_plan_impl;
 use crate::AppState;
@@ -120,19 +120,13 @@ async fn current_capability_hash(
 /// 宿主 [`SchemaDiffJobBackend`] 实现。
 pub struct AppStateBackend {
     state: Arc<AppState>,
-    plans: Arc<PlanStore>,
     target_session_id: Option<String>,
 }
 
 impl AppStateBackend {
-    pub fn new(
-        state: Arc<AppState>,
-        plans: Arc<PlanStore>,
-        target_session_id: Option<String>,
-    ) -> Self {
+    pub fn new(state: Arc<AppState>, target_session_id: Option<String>) -> Self {
         Self {
             state,
-            plans,
             target_session_id,
         }
     }
@@ -628,10 +622,7 @@ mod tests {
 }
 
 pub mod desktop;
-pub use desktop::{
-    cancel_schema_diff_job, get_schema_diff_job_details, list_schema_diff_jobs, run_apply_job,
-    run_prepare_job, verify_schema_diff_job_recovery, SchemaDiffJobAccepted, SchemaDiffJobDetails,
-};
+pub use desktop::{cancel_schema_diff_job, run_apply_job, run_prepare_job, SchemaDiffJobAccepted};
 
 /// 旧 IPC 兼容路径：客户端直接携带计划正文时，先注册进 PlanStore 再走 apply Job。
 /// 两种受理（prepare 产物 / 直接携带正文）都满足「只经 JobRuntime」。

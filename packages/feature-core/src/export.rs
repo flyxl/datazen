@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use datazen_driver_api::{DatabaseDriver, QueryStreamCallback, QueryStreamEvent, Value};
+use datazen_driver_api::{DatabaseDriver, QueryStreamCallback, QueryStreamEvent};
 use serde::{Deserialize, Serialize};
 
 use zip::write::SimpleFileOptions;

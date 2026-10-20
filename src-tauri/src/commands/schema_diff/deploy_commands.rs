@@ -3,11 +3,11 @@
 use super::job;
 use super::unified_plan;
 use super::{
-    ensure_job, fetch_schema_object, fetch_target_table_dependency_catalog,
-    fetch_target_table_schema, has_table_drop_statement, plan_has_destructive, remove_job,
-    resolve_reviewed_table_snapshot, run_schema_diff_deploy, validate_target_dependency_catalog,
-    AppState, CmdExt, CommandError, DeployOptions, SchemaDiffDeployResult, SchemaDiffPlan,
-    SqlTarget, State, DESTRUCTIVE_CONFIRM_TOKEN,
+    fetch_schema_object, fetch_target_table_dependency_catalog, fetch_target_table_schema,
+    has_table_drop_statement, plan_has_destructive, resolve_reviewed_table_snapshot,
+    run_schema_diff_deploy, validate_target_dependency_catalog, AppState, CommandError,
+    DeployOptions, SchemaDiffDeployResult, SchemaDiffPlan, SqlTarget, State,
+    DESTRUCTIVE_CONFIRM_TOKEN,
 };
 
 /// Execute a reviewed schema diff plan on the target connection.
@@ -97,7 +97,10 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
     use_transaction: Option<bool>,
     require_rollback: Option<bool>,
     confirm_destructive: Option<String>,
-    job_id: Option<String>,
+    // Legacy client key, kept only for the historical IPC signature: the
+    // window-registry lookup it used to arm is gone (see the `cancelled`
+    // comment below).
+    _job_id: Option<String>,
     target_database: Option<String>,
     target_schema: Option<String>,
     profile: Option<crate::store::MigrationProfileRef>,
@@ -115,7 +118,7 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
     tracing::info!(
         %target_db_session_id,
         statements = plan.statements.len(),
-        ?job_id,
+        ?_job_id,
         "execute_schema_diff_deploy"
     );
 
@@ -371,15 +374,12 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
         return fail_schema_diff_deploy(&state, history_run, error).await;
     }
     let plan = reviewed.plan;
-    let has_external_cancel_flag = cancel_flag.is_some();
-    let cancelled = if let Some(flag) = cancel_flag {
-        Some(flag)
-    } else {
-        match job_id.as_deref() {
-            Some(id) => Some(ensure_job(id).await),
-            None => None,
-        }
-    };
+    // The durable Job path always passes a cancel flag (`run_apply_job` drives
+    // the deploy through the runtime), and the unattended workflow bridge
+    // passes no job id at all, so the legacy window-registry lookup retired
+    // together with the old connection manager: `cancelled` is just the
+    // external flag when present, `None` otherwise.
+    let cancelled = cancel_flag;
 
     let opts = DeployOptions {
         use_transaction: use_transaction.unwrap_or(true),
@@ -395,12 +395,6 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
         SqlTarget::new(effective_target_database, effective_target_schema),
     )
     .await;
-
-    if !has_external_cancel_flag {
-        if let Some(id) = job_id.as_deref() {
-            remove_job(id).await;
-        }
-    }
 
     tracing::info!(
         ?result.status,

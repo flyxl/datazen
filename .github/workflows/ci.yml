@@ -10,9 +10,9 @@ on:
 permissions:
   contents: read
 
-# 同一 PR / ref 连续 push 时，取消仍在跑的旧运行，只保留最新一次。
+# 同一提交重复触发时取消旧 run；不同提交各自完成对应 CI。
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 env:
@@ -20,10 +20,126 @@ env:
   DATAZEN_KEYRING: file
 
 jobs:
+  # Run only the CI half touched by the current commit. Shared build inputs
+  # and scripts deliberately select both jobs; manual runs remain full CI.
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.scope.outputs.frontend }}
+      rust: ${{ steps.scope.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed paths
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CURRENT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+          from pathlib import PurePosixPath
+
+          event = os.environ["EVENT_NAME"]
+          if event == "workflow_dispatch":
+              frontend = rust = True
+          else:
+              current = os.environ["CURRENT_SHA"]
+              commit = subprocess.run(
+                  ["git", "rev-parse", "--verify", f"{current}^{{commit}}"],
+                  check=False,
+                  text=True,
+                  capture_output=True,
+              )
+              parent = subprocess.run(
+                  ["git", "rev-parse", "--verify", f"{current}^"],
+                  check=False,
+                  text=True,
+                  capture_output=True,
+              )
+              if commit.returncode != 0 or parent.returncode != 0:
+                  frontend = rust = True
+                  changed = []
+              else:
+                  current = commit.stdout.strip()
+                  base = parent.stdout.strip()
+                  result = subprocess.run(
+                      ["git", "diff", "--name-only", "--no-renames", base, current],
+                      check=False,
+                      text=True,
+                      capture_output=True,
+                  )
+                  if result.returncode != 0:
+                      # Missing/unavailable history must never make required CI
+                      # checks pass without running either half.
+                      frontend = rust = True
+                      changed = []
+                  else:
+                      changed = result.stdout.splitlines()
+                      frontend = rust = False
+                  frontend_roots = (
+                      "packages/ui/", "packages/driver-sdk/", "packages/backend-client/",
+                      "packages/wapp-sdk/", "packages/extension-points/", "packages/wapps/",
+                  )
+                  shared_roots = (
+                      "scripts/", ".github/workflows/", ".github/actions/",
+                  )
+                  frontend_suffixes = {".ts", ".tsx", ".js", ".jsx", ".css"}
+                  for name in changed:
+                      path = PurePosixPath(name)
+                      parts = path.parts
+                      suffix = path.suffix
+                      if name.startswith("docs/") or suffix == ".md" or name.startswith(".superpowers/"):
+                          pass
+                      elif (
+                          name.startswith(shared_roots)
+                          or name in {
+                              "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml",
+                              "Cargo.toml", "Cargo.lock", "build.rs", "drivers-registry.json",
+                          }
+                      ):
+                          frontend = rust = True
+                      elif name.startswith(("src/", "e2e/", "site/", "test/", "public/", "fixtures/themes/")):
+                          frontend = True
+                      elif name.startswith("src-tauri/") or (
+                          name.startswith("packages/") and suffix in {".rs", ".toml"}
+                      ):
+                          rust = True
+                      elif name.startswith((
+                          "tsconfig", "vite.config.", "vitest", "tailwind.config.",
+                          "postcss.config.",
+                      )) or name in {"index.html", "window.html"}:
+                          frontend = True
+                      elif name.startswith(frontend_roots):
+                          frontend = True
+                      elif (
+                          len(parts) >= 4
+                          and parts[0] == "packages"
+                          and parts[1] == "drivers"
+                          and parts[3] == "ui"
+                      ):
+                          frontend = True
+                      elif name.startswith("packages/") and suffix in frontend_suffixes:
+                          frontend = True
+                      else:
+                          # Unknown package assets/configuration are shared until
+                          # their ownership is made explicit in this classifier.
+                          frontend = rust = True
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"frontend={str(frontend).lower()}\n")
+              output.write(f"rust={str(rust).lower()}\n")
+          PY
+
   # ── 前端段：pnpm → codegen → typecheck → 守卫 → 单测 → site 检查 ──
   # 与 rust job 并行：两者互不依赖（Rust 段不消费 typecheck/单测产物，
   # 前端段不消费 cargo 产物），墙钟时间 = max(前端, Rust) 而非两者之和。
   frontend:
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -163,6 +279,8 @@ jobs:
 
   # ── Rust 段：工具链 → 系统依赖 → rust-cache → 驱动注入 → cargo 测试 ──
   rust:
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -369,11 +487,19 @@ jobs:
       - name: Platform arch guard self-proof (8 mutations)
         run: pnpm test:platform-arch:mutations
 
-  # ── 聚合 job：两段全绿才算 CI 通过。
+  # ── 聚合 job：所有被选中的检查全绿才算 CI 通过。
   # 分支保护的 required status check 盯 `ci` 一个即可，拆分 job 不影响它。
   ci:
-    needs: [frontend, rust]
+    needs: [detect-changes, frontend, rust]
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: All checks passed
-        run: echo "frontend + rust jobs passed"
+      - name: Verify selected checks passed
+        env:
+          CHANGES_RESULT: ${{ needs.detect-changes.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          RUST_RESULT: ${{ needs.rust.result }}
+        run: |
+          test "$CHANGES_RESULT" = "success"
+          test "$FRONTEND_RESULT" = "success" || test "$FRONTEND_RESULT" = "skipped"
+          test "$RUST_RESULT" = "success" || test "$RUST_RESULT" = "skipped"

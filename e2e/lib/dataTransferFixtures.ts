@@ -97,7 +97,7 @@ export function mysqlWideTypesCreateSql(table: string): string {
   )`;
 }
 
-export function pgWideTypesBulkInsertSql(table: string, count: number): string {
+function pgWideTypesBulkInsertSql(table: string, count: number): string {
   return `INSERT INTO ${table} (
     id, small_qty, qty, big_qty, amount, rate, weight, code, label, body,
     meta, payload, active, born, day_time, created_at, updated_at, uid, blob_data
@@ -125,7 +125,7 @@ export function pgWideTypesBulkInsertSql(table: string, count: number): string {
   FROM generate_series(1, ${count}) AS g`;
 }
 
-export function mysqlWideTypesInsertValues(g: number): string {
+function mysqlWideTypesInsertValues(g: number): string {
   const amount = (g * 1.234567).toFixed(6);
   const code = `C${String(g % 10000000).padStart(7, '0')}`;
   return `(${g}, ${g % 32767}, ${g % 1000000}, ${g}, ${amount}, ${g * 0.1}, ${g * 0.01}, '${code}', 'label_${g}', 'body text ${g}', JSON_OBJECT('n', ${g}, 'tag', 'mysql'), JSON_OBJECT('n', ${g}), ${g % 2}, DATE_ADD('2020-01-01', INTERVAL ${g % 365} DAY), ADDTIME('08:30:00', SEC_TO_TIME(${g % 3600})), DATE_ADD('2024-01-01', INTERVAL ${g} MINUTE), DATE_ADD('2024-01-01', INTERVAL ${g} MINUTE), UUID(), UNHEX(LPAD(HEX(${g}), 8, '0')))`;
@@ -133,7 +133,7 @@ export function mysqlWideTypesInsertValues(g: number): string {
 
 const MYSQL_INSERT_COLUMNS = `id, small_qty, qty, big_qty, amount, rate, weight, code, label, body, meta, payload, active, born, day_time, created_at, updated_at, uid, blob_data`;
 
-export async function seedMysqlWideTypes(
+async function seedMysqlWideTypes(
   dbSessionId: string,
   table: string,
   count: number,
@@ -248,7 +248,7 @@ export async function teardownTransferFixture(
   }
 }
 
-export function expectedQtySum(rowCount: number): number {
+function expectedQtySum(rowCount: number): number {
   let sum = 0;
   for (let g = 1; g <= rowCount; g++) {
     sum += g % 1000000;

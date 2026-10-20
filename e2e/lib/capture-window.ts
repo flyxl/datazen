@@ -39,7 +39,7 @@ async function invoke<T = unknown>(cmd: string, args: Record<string, unknown> = 
 }
 
 /** Current window size in physical pixels. */
-export async function outerSize(): Promise<{ width: number; height: number }> {
+async function outerSize(): Promise<{ width: number; height: number }> {
   return invoke<{ width: number; height: number }>('plugin:window|outer_size');
 }
 

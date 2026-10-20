@@ -13,9 +13,7 @@ use crate::commands::AppState;
 use tauri::{State, WebviewWindow};
 use tokio::sync::mpsc;
 
-pub use datazen_feature_core::ai::single_turn::{
-    ConnectionDiagnosis, ConnectionSolution, QueryAnalysis, QueryCategory,
-};
+pub use datazen_feature_core::ai::single_turn::{ConnectionDiagnosis, QueryAnalysis};
 
 // ─── NL2SQL ───
 

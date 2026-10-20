@@ -4,8 +4,6 @@ import type { TableState } from '../tableData/types';
 
 const mockDatabaseCommands = {
   getTableData: vi.fn(),
-  commitRowUpdates: vi.fn(),
-  commitRowDeletes: vi.fn(),
   previewPendingChanges: vi.fn(),
   commitPendingChanges: vi.fn(),
 };
@@ -82,8 +80,6 @@ describe('tableDataStore (panel-scoped)', () => {
     vi.resetModules();
     vi.clearAllMocks();
     mockDatabaseCommands.getTableData.mockResolvedValue(sampleResponse);
-    mockDatabaseCommands.commitRowUpdates.mockResolvedValue(undefined);
-    mockDatabaseCommands.commitRowDeletes.mockResolvedValue(undefined);
     mockDatabaseCommands.previewPendingChanges.mockResolvedValue(samplePlan);
     mockDatabaseCommands.commitPendingChanges.mockResolvedValue({
       planId: samplePlan.planId,
@@ -350,7 +346,6 @@ describe('tableDataStore (panel-scoped)', () => {
   it('stageCellChange stages without committing', async () => {
     await loadTable();
     useTableDataStore.getState().stageCellChange(PANEL, 0, 'name', 'Updated');
-    expect(mockDatabaseCommands.commitRowUpdates).not.toHaveBeenCalled();
     expect(mockDatabaseCommands.previewPendingChanges).not.toHaveBeenCalled();
     expect(loaded().rows[0].name).toBe('Updated');
     expect(loaded().pendingChanges.size).toBe(1);
@@ -538,7 +533,6 @@ describe('tableDataStore (panel-scoped)', () => {
   it('deleteRows selects indices then stages deletes', async () => {
     await loadTable();
     useTableDataStore.getState().deleteRows(PANEL, [1]);
-    expect(mockDatabaseCommands.commitRowDeletes).not.toHaveBeenCalled();
     expect([...loaded().pendingChanges.values()]).toEqual([
       expect.objectContaining({ rowIdentity: { id: 2 }, deleteMarked: true }),
     ]);
