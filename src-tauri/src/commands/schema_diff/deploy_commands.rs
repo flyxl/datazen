@@ -377,8 +377,8 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
     // The durable Job path always passes a cancel flag (`run_apply_job` drives
     // the deploy through the runtime), and the unattended workflow bridge
     // passes no job id at all, so the legacy window-registry lookup retired
-    // together with the ConnectionManager: `cancelled` is just the external
-    // flag when present, `None` otherwise.
+    // together with the old connection manager: `cancelled` is just the
+    // external flag when present, `None` otherwise.
     let cancelled = cancel_flag;
 
     let opts = DeployOptions {

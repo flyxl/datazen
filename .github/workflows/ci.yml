@@ -66,6 +66,7 @@ jobs:
         run: |
           node scripts/check-managed-stubs.mjs
           pnpm test:ids
+          pnpm test:legacy-registry
           pnpm test:layers
           pnpm test:driver-protocol
           pnpm test:boundaries

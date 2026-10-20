@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { databaseCommands } from '../../commands/database';
 import { useI18n } from '../../hooks/useI18n';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
+import { isSameEndpointIdentity } from '../../lib/endpointIdentity';
 import {
   ensureDedicatedSession,
   listDatabasesDedicated,
@@ -170,7 +171,8 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
           cancelled ||
           discoveryOwners.current.sourceId !== sourceId ||
           discoveryOwners.current.connections !== connections
-        ) return;
+        )
+          return;
         clearDiscoveryError('source');
         setSourceDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
@@ -184,9 +186,16 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
           ),
         );
       } catch (error) {
-        if (!cancelled && discoveryOwners.current.sourceId === sourceId && discoveryOwners.current.connections === connections) {
+        if (
+          !cancelled &&
+          discoveryOwners.current.sourceId === sourceId &&
+          discoveryOwners.current.connections === connections
+        ) {
           setSourceDatabases([]);
-          const code = error instanceof ApiError && API_ERROR_CODES.includes(error.code) ? error.code : 'unknown';
+          const code =
+            error instanceof ApiError && API_ERROR_CODES.includes(error.code)
+              ? error.code
+              : 'unknown';
           const message = `databaseDiscovery.source:${code}`;
           discoveryErrors.current.source = message;
           discoveryCallbacks.current.onError?.(message);
@@ -218,7 +227,8 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
           cancelled ||
           discoveryOwners.current.targetId !== targetId ||
           discoveryOwners.current.connections !== connections
-        ) return;
+        )
+          return;
         clearDiscoveryError('target');
         setTargetDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
@@ -232,9 +242,16 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
           ),
         );
       } catch (error) {
-        if (!cancelled && discoveryOwners.current.targetId === targetId && discoveryOwners.current.connections === connections) {
+        if (
+          !cancelled &&
+          discoveryOwners.current.targetId === targetId &&
+          discoveryOwners.current.connections === connections
+        ) {
           setTargetDatabases([]);
-          const code = error instanceof ApiError && API_ERROR_CODES.includes(error.code) ? error.code : 'unknown';
+          const code =
+            error instanceof ApiError && API_ERROR_CODES.includes(error.code)
+              ? error.code
+              : 'unknown';
           const message = `databaseDiscovery.target:${code}`;
           discoveryErrors.current.target = message;
           discoveryCallbacks.current.onError?.(message);
@@ -395,16 +412,14 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
     };
   }, [targetId, targetDatabase, targetConn?.databaseType, targetConn?.schema, targetSession]);
 
-  const isSameEndpoint = useCallback(() => {
-    const norm = (s: string) => s.trim();
-    return (
-      sourceId === targetId &&
-      sourceDatabase !== '' &&
-      targetDatabase !== '' &&
-      sourceDatabase === targetDatabase &&
-      norm(sourceSchema) === norm(targetSchema)
-    );
-  }, [sourceId, targetId, sourceDatabase, targetDatabase, sourceSchema, targetSchema]);
+  const isSameEndpoint = useCallback(
+    () =>
+      isSameEndpointIdentity(
+        { connectionId: sourceId, database: sourceDatabase, schema: sourceSchema },
+        { connectionId: targetId, database: targetDatabase, schema: targetSchema },
+      ),
+    [sourceId, targetId, sourceDatabase, targetDatabase, sourceSchema, targetSchema],
+  );
 
   const handleSwap = useCallback(() => {
     setSourceId(targetId);
@@ -505,8 +520,12 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
         else setTargetSession(next);
         return next?.dbSessionId ?? null;
       } catch (e) {
-        discoveryCallbacks.current.onDiscoveryFailure?.(discoveryFailure(side === 'source' ? 'ensure-source' : 'ensure-target', e));
-        reportError(`${t('schemaDiff.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
+        discoveryCallbacks.current.onDiscoveryFailure?.(
+          discoveryFailure(side === 'source' ? 'ensure-source' : 'ensure-target', e),
+        );
+        reportError(
+          `${t('schemaDiff.connectFailed')} ${e instanceof Error ? e.message : String(e)}`,
+        );
         return null;
       }
     },
