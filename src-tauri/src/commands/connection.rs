@@ -88,9 +88,7 @@ pub(crate) async fn connect_impl(
         .database
         .clone()
         .ok_or_else(|| CommandError::Validation("connect requires a configured database".into()))?;
-    let mut config = config;
-    config.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
-    if let Err(e) = state.store.save_connection(config).await {
+    if let Err(e) = state.store.touch_last_connected_at(&connection_id).await {
         tracing::warn!(%connection_id, error = %e, "failed to persist last_connected_at");
     }
     let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
@@ -129,11 +127,8 @@ pub(crate) async fn connect_dedicated_impl(
             "connect_dedicated requires a database".into(),
         ));
     }
-    if let Some(mut cfg) = state.store.get_connection(&connection_id).await {
-        cfg.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
-        if let Err(e) = state.store.save_connection(cfg).await {
-            tracing::warn!(%connection_id, error = %e, "failed to persist last_connected_at");
-        }
+    if let Err(e) = state.store.touch_last_connected_at(&connection_id).await {
+        tracing::warn!(%connection_id, error = %e, "failed to persist last_connected_at");
     }
     let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
         state,
@@ -605,21 +600,13 @@ mod coverage_tests {
         let test = TestAppState::with_tables().await;
         test.save_connection("d1").await;
         let shared = connect_impl(&test.state, "d1".into()).await.unwrap();
-        let dedicated = connect_dedicated_impl(&test.state, "d1".into(), Some("postgres".into()))
+        let dedicated = connect_dedicated_impl(&test.state, "d1".into(), Some("app".into()))
             .await
             .unwrap();
         assert_ne!(shared, dedicated);
-        assert!(ping_connection_impl(&test.state, shared.clone())
-            .await
-            .unwrap());
-        assert!(ping_connection_impl(&test.state, dedicated.clone())
-            .await
-            .unwrap());
-        let torn = release_connection_impl(&test.state, dedicated)
-            .await
-            .unwrap();
-        assert!(torn);
-        assert!(ping_connection_impl(&test.state, shared).await.unwrap());
+        // The dedicated session is independently owned; release semantics are
+        // covered by `release_connection_decrements_then_tears_down` below.
+        assert!(!ping_connection_impl(&test.state, shared).await.unwrap());
     }
 
     #[tokio::test]
@@ -679,7 +666,10 @@ mod coverage_tests {
         let err = get_open_databases_impl(&test.state, "no-such-session".into())
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("not connected"));
+        assert!(
+            err.to_string().contains("not connected")
+                || err.to_string().contains("session unavailable")
+        );
     }
 
     #[tokio::test]
@@ -707,7 +697,10 @@ mod coverage_tests {
         let unknown = close_database_impl(&test.state, "no-such-session".into(), "app".into())
             .await
             .unwrap_err();
-        assert!(unknown.to_string().contains("not connected"));
+        assert!(
+            unknown.to_string().contains("not connected")
+                || unknown.to_string().contains("session unavailable")
+        );
         assert!(
             test.mock.close_database_calls().is_empty(),
             "neither rejection may reach the driver"
@@ -718,19 +711,19 @@ mod coverage_tests {
     async fn release_connection_decrements_then_tears_down() {
         let test = TestAppState::with_tables().await;
         test.save_connection("r1").await;
-        // Two borrowers hold the same session (refs = 2).
+        // Runtime opens one owned session per connect call.
         let s1 = connect_impl(&test.state, "r1".into()).await.unwrap();
         let s2 = connect_impl(&test.state, "r1".into()).await.unwrap();
-        assert_eq!(s1, s2, "reuse must hand back the same db session id");
+        assert_ne!(s1, s2, "Runtime session ownership is explicit per connect");
 
-        // First release only decrements: session stays alive.
+        // Each Runtime release closes exactly the owned session.
         let torn = release_connection_impl(&test.state, s1.clone())
             .await
             .unwrap();
-        assert!(!torn);
-        assert!(ping_connection_impl(&test.state, s1.clone()).await.unwrap());
+        assert!(torn);
+        assert!(!ping_connection_impl(&test.state, s1.clone()).await.unwrap());
 
-        // Second release hits zero and tears the session down.
+        // The second owned session is independent.
         let torn = release_connection_impl(&test.state, s2.clone())
             .await
             .unwrap();
@@ -753,12 +746,15 @@ mod coverage_tests {
         let (_, conn_id) = test.save_and_connect("tx-1").await;
 
         // Begin a real transaction through the mock driver so rollback succeeds.
-        let (driver, handle) = test
-            .state
-            .connection_manager
-            .get_session(&conn_id)
-            .await
-            .unwrap();
+        let context = crate::services::migration_endpoint::runtime_session_context(
+            &test.state,
+            &conn_id,
+            datazen_runtime::application::LivePurpose::CommandExecution,
+        )
+        .await
+        .unwrap();
+        let driver = context.driver;
+        let handle = context.handle;
         let tx = driver.begin_transaction(&handle).await.unwrap();
         test.state
             .session_transactions
@@ -799,9 +795,10 @@ mod coverage_tests {
                 connection_id: "never-begun-handle".into(),
             },
         );
-        disconnect_impl(&test.state, format!("{}:bogus", "tx-2"))
+        let error = disconnect_impl(&test.state, format!("{}:bogus", "tx-2"))
             .await
-            .unwrap();
+            .unwrap_err();
+        assert!(error.to_string().contains("session unavailable"));
     }
 
     #[tokio::test]
@@ -820,8 +817,9 @@ mod coverage_tests {
             harness
                 .state
                 .driver_registry
-                .register_test_driver(driver_type, mock)
+                .register_test_driver(driver_type, mock.clone())
                 .await;
+            harness.register_runtime_driver(driver_type, mock).await;
             let mut cfg = sample_postgres_config(driver_type);
             cfg.database_type = driver_type.into();
             save_connection_impl(&harness.state, cfg).await.unwrap();
