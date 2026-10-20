@@ -6,6 +6,7 @@ pub use backup::{BackupOutput, BackupOutputBinding};
 pub use export_output::ExportOutputBinding;
 mod convert;
 mod idle;
+mod idle_activity;
 mod live;
 mod operations;
 mod results;
@@ -60,6 +61,7 @@ struct Inner {
     tokens: Mutex<HashMap<String, tokens::IssuedToken>>,
     keyring: TokenKeyring,
     clock: Arc<RuntimeClock>,
+    idle_activity: tokio::sync::Mutex<HashMap<SessionHandle, usize>>,
     /// 出向端口：宿主取活连接的唯一入口。未接线是配置事实，不是故障。
     live: Mutex<LiveConnections>,
     /// 空闲回收策略。`deadline == None` 表示本部署不做空闲回收。
@@ -77,7 +79,13 @@ struct SessionEntry {
     closed: Option<CloseReceipt>,
     closed_at: Option<Instant>,
 }
-struct RuntimeClock(Instant);
+struct RuntimeClock(Arc<dyn MonotonicClock>);
+struct SystemRuntimeClock(Instant);
+impl MonotonicClock for SystemRuntimeClock {
+    fn now_nanos(&self) -> u64 {
+        self.0.elapsed().as_nanos().min(u64::MAX as u128) as u64
+    }
+}
 impl RuntimeClock {
     /// 单调毫秒。与 `OpenRequest::idle_deadline_ms` / `evict_idle_at(at_ms)` 共用同一把
     /// 尺子——两处单位不一致会让「到期」变成一个随机器负载漂移的量。
@@ -87,7 +95,7 @@ impl RuntimeClock {
 }
 impl MonotonicClock for RuntimeClock {
     fn now_nanos(&self) -> u64 {
-        self.0.elapsed().as_nanos().min(u64::MAX as u128) as u64
+        self.0.now_nanos()
     }
 }
 struct BoundAuthorizer;
@@ -129,6 +137,20 @@ impl RuntimeConnectionUseCases {
         policy: Arc<dyn PolicyService>,
         backend: Arc<dyn SessionBackend>,
     ) -> Self {
+        Self::new_with_clock(
+            profiles,
+            policy,
+            backend,
+            Arc::new(SystemRuntimeClock(Instant::now())),
+        )
+    }
+    /// Inject the same monotonic time source for execution timing and idle expiry.
+    pub fn new_with_clock(
+        profiles: Arc<dyn ProfileRepository>,
+        policy: Arc<dyn PolicyService>,
+        backend: Arc<dyn SessionBackend>,
+        clock: Arc<dyn MonotonicClock>,
+    ) -> Self {
         let sink = RuntimeResultSink::default();
         let physical = Arc::new(Mutex::new(HashMap::new()));
         let registry = Arc::new(SessionRegistry::new(
@@ -140,7 +162,7 @@ impl RuntimeConnectionUseCases {
             128,
         ));
         let directory = Arc::new(InMemorySessionDirectory::new());
-        let clock = Arc::new(RuntimeClock(Instant::now()));
+        let clock = Arc::new(RuntimeClock(clock));
         let gateway = Arc::new(ExecutionGateway::new(
             registry.clone(),
             Arc::new(BoundAuthorizer),
@@ -166,6 +188,7 @@ impl RuntimeConnectionUseCases {
                 tokens: Mutex::new(HashMap::new()),
                 keyring: TokenKeyring::single(secret),
                 clock,
+                idle_activity: tokio::sync::Mutex::new(HashMap::new()),
                 live: Mutex::new(LiveConnections::unwired()),
                 idle: Mutex::new(IdlePolicy::default()),
                 target_admissions: Mutex::new(HashMap::new()),

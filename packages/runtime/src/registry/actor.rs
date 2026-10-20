@@ -543,6 +543,11 @@ async fn handle_exec_while_flying(state: &mut ActorState, msg: ExecCommand) {
         ExecCommand::CapabilitySnapshot { handle, reply } => {
             let _ = reply.send(read_capability_snapshot(state, &handle));
         }
+        // An idle scan is observation, never a request to cancel a live command.
+        // Answer now; deferring would let an old scan close a just-finished session.
+        ExecCommand::Evict { reply, .. } => {
+            let _ = reply.send(Ok(None));
+        }
         other => state.deferred.push_back(other),
     }
 }

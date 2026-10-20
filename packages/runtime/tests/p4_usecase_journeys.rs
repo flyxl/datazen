@@ -255,11 +255,15 @@ impl SessionBackend for Backend {
             stream_id: StreamId::new(format!("actual-{}", r.execution_id)),
             state: if cancelled {
                 rt::ExecutionState::Cancelled
+            } else if r.command.command == "fail" {
+                rt::ExecutionState::Failed
             } else {
                 rt::ExecutionState::Succeeded
             },
             effect_outcome: if cancelled || r.command.command == "unknown" {
                 rt::EffectOutcome::Unknown
+            } else if r.command.command == "fail" {
+                rt::EffectOutcome::RolledBack
             } else {
                 rt::EffectOutcome::Completed
             },
@@ -1102,3 +1106,6 @@ mod workflow_job;
 
 #[path = "p4_usecase_journeys/export_output.rs"]
 mod export_output;
+
+#[path = "fixtures/p4_idle_activity.rs"]
+mod idle_activity;
