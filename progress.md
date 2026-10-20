@@ -120,12 +120,28 @@
 1. **§四：备份 + 结构迁移领域化（完成）**——CommandCatalog / SchemaMigration /
    BackupDialect 三个契约均已落地并迁移消费者；带句柄的备份执行入口（dump_database*、
    restore_sql*、recover_restore_statement）按方案明确留给 §五 运行时收敛。
-2. **§五：运行时路径收敛（未开始）**——执行/事务/流式/取消按调用链迁到既有
-   `ResourceProvider`；先贯通一个驱动；`ReuseDriver` 与 Git 驱动纳入验收。
-   起点 参考：`packages/driver-api/src/restore_sql.rs`（retained-restore 契约
-   `prepare` 目前只有驱动测试调用，可顺势改为 `BackupDialect` 扫描器）。
+2. **§五：运行时路径收敛（进行中）**——
+   - [x] 第 1 片（`ca4f8af97`）：postgres 别名（questdb / cloudberry）接入资源契约
+     ——此前 alias factory 无 provider，平台路径 `DriverRegistry::resource_provider`
+     对别名一律 `ResourceProviderMissing` 失败关闭，而 legacy 句柄路径静默服务；
+     `postgres_alias_factory!` 让别名注册表绑定到**别名自己身份**的
+     `PostgresResourceProvider::with_provider_id`（能力快照 revision 4 / epoch 逐 //
+     实例），`create()` 从同一 memoized inner 包 `ReuseDriver`（方言 wrapper 留在
+     driver seam）。`tests/alias_resource_factory.rs` + 收敛后的
+     `every_factory_this_crate_registers_resolves_a_provider_under_its_own_identity`
+     钉住断言；随后 test(postgres) 对齐上游 `777b0d02b` 的 revision 3→4。
+     mysql 系别名（mariadb/doris/starrocks/manticore/ob_oracle）已自带逐一别名的
+     provider（`MysqlResourceProvider::new(driver, id, …)`），此前即在册。
+     宿主回归：`cargo test -p datazen --lib` `1378 passed; 9 ignored`。
+   - [ ] 第 2 片（未开始）：宿主 §6.2(5) 列出的遗留 namespace 调用点收敛
+     （`commands/connection.rs` close_database / `commands/sync` executor 的
+     discard_connection、`restore_job.rs` 的 has_multi_database 等）；先贯通
+     一个驱动的一条完整执行链（acquire → execute → commit/rollback → close）
+     走到 `ResourceProvider`。
 3. **§六：协议升级与清场（未开始）**——删除无消费者的旧方法/适配器；更新
    `drivers.md`、`driver-capability-migration.md`；Git 驱动兼容状态说明。
+   Git 驱动的资源路径兼容结果：未迁移即 `ResourceProviderMissing`（带驱动名），
+   明确失败而非静默——无需额外改动。
 
 ## 工作树基建备忘
 
