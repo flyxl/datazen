@@ -146,6 +146,13 @@
      操作；收敛点应在 runtime 层出需求，而不是宿主直接调用驱动）。
    - [x] 第 2.5 片（`e1035ed87`）：`restore_sql::prepare` 的 scanner 依赖切到
      `BackupDialect`（§四 BackupDialect 的收尾边界），宿主/测试边界包适配器。
+   - [x] 第 2.6 片（`b13848354`，2026-10-21）：`restore_job.rs` 的 multi-database
+     规则改读 `registry.get_capabilities` 的事实行（注册表在注册时自
+     factory+driver 对取一次事实，与 connection info 同源）；测试注册的驱动无
+     事实行时回退驱动实例，不会对库存驱动静默放宽。宿主
+     `cargo test -p datazen --lib` `1378 passed; 9 ignored`。
+     宿主 `has_multi_database()` 直调已清零（workflow `resource_execution.rs` 保留：
+     driver 本就在作用域内做命令目录读取，无第二实例）。
 3. **§六：协议升级与清场（未开始）**——删除无消费者的旧方法/适配器；更新
    `drivers.md`、`driver-capability-migration.md`；Git 驱动兼容状态说明。
    Git 驱动的资源路径兼容结果：未迁移即 `ResourceProviderMissing`（带驱动名），
