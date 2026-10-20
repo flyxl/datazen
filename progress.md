@@ -93,6 +93,27 @@
   （`stream_sql_file_into_session` 增加 `&dyn BackupDialect` 形参，驱动保留
   执行/恢复）；带句柄的 dump/restore 执行入口明确不在契约内，归 §五 收敛。
 - 协议规则登记 `backup-dialect` / `legacy-backup-dialect`；drivers.md §2.8。
+- 追记（`1d5252292`）：`stream_sql_file_into_session` 的 `&dyn BackupDialect`
+  形参撤回——唯一调用点与其传同一 driver 直接造出的适配器，改为在函数体内
+  `LegacyBackupDialect::new(driver)` 推导，恢复参数数量净增（clippy
+  too_many_arguments 新警告消除）。scanner 来源仍是契约。
+
+### 8. §六 起步：clippy 清场 + 协议审计（`1d5252292`，2026-10-21）
+
+- 辨析方法：clippy 全量警告逐条与 `main...HEAD` 变更 hunk 求交，只修本分支
+  造成的警告，不动 main 上既有的（types_eq.rs:27、resource_execution.rs:447/477、
+  plan.rs 各条、get_table_data 13/7 等均核对为既有）。
+- 三处修复：
+  1. `capabilities.rs` 零参包装 `postgres_capability_registry()` 在别名工厂改造
+     （`ca4f8af97`）后仅剩 test 调用者 → 死代码；两个测试改调
+     `postgres_capability_registry_for(POSTGRES_PROVIDER_ID)`，删除包装，
+     保持单一能力快照实现。
+  2. `backup.rs` `stream_sql_file_into_session` 形参撤回（见上）。
+  3. `query_executor.rs::build_select_sql` 因 ` dialect: &dyn SqlDialect`
+     净增 1 参越过 clippy 上限 → 按仓内既有 40 处惯例 `#[allow]`+注释；
+     另删 postgres `tests/restore_sql.rs` 一处测试内重复的死适配器绑定。
+- 实测：postgres 13/14→13（死代码消失）、feature-core 25→23（两个本分支警告
+  消失）；两 crate clippy EXIT=0。
 
 ## 门禁实测（逐字结论，历史轮）
 
@@ -108,6 +129,7 @@
 | `node scripts/check-driver-protocol-compat.mjs --base main` | ok；新增契约均 additive；crate 0.0.13→0.0.17；PROTOCOL 6→6 |
 | `npx vitest run scripts/__tests__/check-driver-protocol-compat.test.ts` | `68 passed`（worktree 经 node_modules 符号链接） |
 | §四 收官轮（SchemaMigration + BackupDialect）逐项复核 | driver-api `371 passed`；schema-diff `148`；data-sync `179`；data-transfer `226`；feature-core `298`；host `1378`；compat gate additive（crate 0.0.13→0.0.19）；vitest pass |
+| §六 起步轮（`1d5252292`） | 触及 crate 批量 clippy EXIT=0；fmt `--all --check` EXIT=0；`cargo test -p datazen-driver-postgres` 全套 ok（lib `207 passed; 5 ignored` + 各集成 ok）；`cargo test -p datazen-feature-core` `308 passed; 0 failed`；compat gate ok（additive only，crate 0.0.13→0.0.19，PROTOCOL 6→6）；协议规则 vitest `68 passed` |
 
 
 
@@ -153,10 +175,19 @@
      `cargo test -p datazen --lib` `1378 passed; 9 ignored`。
      宿主 `has_multi_database()` 直调已清零（workflow `resource_execution.rs` 保留：
      driver 本就在作用域内做命令目录读取，无第二实例）。
-3. **§六：协议升级与清场（未开始）**——删除无消费者的旧方法/适配器；更新
-   `drivers.md`、`driver-capability-migration.md`；Git 驱动兼容状态说明。
-   Git 驱动的资源路径兼容结果：未迁移即 `ResourceProviderMissing`（带驱动名），
-   明确失败而非静默——无需额外改动。
+3. **§六：协议升级与清场（进行中）**——
+   - [x] clippy 清场（`1d5252292`，见 §8）：分支造成的警告清零，既有警告不动。
+   - [x] 协议判定（本轮）：全部分支变更 additive（compat gate 逐条 additive，
+     无 break）；crate 0.0.13→0.0.19 满足 additive bump 规则；
+     `PROTOCOL_VERSION` 6→6、`MIN_PROTOCOL_VERSION` 1→1 无须动；68 条
+     规则单测全绿。Git 驱动兼容状态：未迁移即 `ResourceProviderMissing`
+     （带驱动名），明确失败而非静默——无需额外改动。
+   - [ ] 遗留旧方法消费者逐点核验后再删：`format_sql_literal` /
+     `new_sql_scanner` / `uses_sql_restore_pipeline` / `split_restore_sql`
+     / `type_normalizer` 等 Legacy 转发链仍各有消费点；逐一确认后裁决
+     是否进入删除轮。
+   - [ ] `drivers.md` 与 `driver-capability-migration.md` §6.2(5) 收尾改写。
+   - [ ] 交付时删除本台账（progress.md）。
 
 ## 工作树基建备忘
 
