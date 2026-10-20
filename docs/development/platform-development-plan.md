@@ -487,4 +487,4 @@ Monitor 真实驱动查询层补充：PostgreSQL/MySQL `tests/monitor_scheduled_
 
 
 
-MySQL transaction proof 的后续验收仍开放：本轮已将 driver admission 显式固定为不支持，并以无网络/无凭据测试断言常量、literal DML、FORCE INDEX 锁候选及跨 namespace/危险 SQL 均拿不到 recipe。固定 MySQL 8.4.7 源码显示 index hint 可在读取 view 定义前拒绝 view，但 grant 目录与 retained session 的有效 static global 权限可能不同步；普通客户端又不能调用内部 `CAN_ACCESS_TRIGGER`。缺失的是 session-effective trigger/incoming-FK 完整目录可见性 witness，不能将空目录或 SHOW GRANTS 视为完成证明。详见 [当前 MySQL 阻塞](../architecture/platform/workflow-resource-model.md#mysql-847session-effective-目录可见性仍阻塞-opt-in)。本轮没有启用 MySQL 执行候选，PG+MySQL 双驱动 P6 条件仍未关闭。
+MySQL Workflow transaction proof 不属于当前 P6 退出条件：2026-10-19 用户已明确 Workflow 保持 v1，只迁移底层连接管理，不改协议，也不增加额外事务语义。因此 MySQL `transactionBlock` 保持 fail-closed；现有关于 session-effective 目录可见性的研究仅作未来驱动能力背景，不要求在 P6 补齐或启用。若未来需要该能力，应另行按驱动范围立项和验收。
