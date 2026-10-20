@@ -10,9 +10,9 @@ on:
 permissions:
   contents: read
 
-# 同一 PR / ref 连续 push 时，取消仍在跑的旧运行，只保留最新一次。
+# 同一提交重复触发时取消旧 run；不同提交各自完成对应 CI。
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 env:
@@ -20,8 +20,8 @@ env:
   DATAZEN_KEYRING: file
 
 jobs:
-  # Run only the CI half touched by this change. Shared build inputs and
-  # scripts deliberately select both jobs; manual runs remain full CI.
+  # Run only the CI half touched by the current commit. Shared build inputs
+  # and scripts deliberately select both jobs; manual runs remain full CI.
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
@@ -36,9 +36,7 @@ jobs:
         id: scope
         env:
           EVENT_NAME: ${{ github.event_name }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PUSH_BASE_SHA: ${{ github.event.before }}
-          CURRENT_SHA: ${{ github.sha }}
+          CURRENT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           python3 - <<'PY'
           import os
@@ -49,15 +47,25 @@ jobs:
           if event == "workflow_dispatch":
               frontend = rust = True
           else:
-              base = (
-                  os.environ["PR_BASE_SHA"]
-                  if event == "pull_request"
-                  else os.environ["PUSH_BASE_SHA"]
-              )
               current = os.environ["CURRENT_SHA"]
-              if not base or set(base) == {"0"}:
+              commit = subprocess.run(
+                  ["git", "rev-parse", "--verify", f"{current}^{{commit}}"],
+                  check=False,
+                  text=True,
+                  capture_output=True,
+              )
+              parent = subprocess.run(
+                  ["git", "rev-parse", "--verify", f"{current}^"],
+                  check=False,
+                  text=True,
+                  capture_output=True,
+              )
+              if commit.returncode != 0 or parent.returncode != 0:
                   frontend = rust = True
+                  changed = []
               else:
+                  current = commit.stdout.strip()
+                  base = parent.stdout.strip()
                   result = subprocess.run(
                       ["git", "diff", "--name-only", "--no-renames", base, current],
                       check=False,
