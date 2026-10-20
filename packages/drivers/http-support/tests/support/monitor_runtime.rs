@@ -178,6 +178,7 @@ pub struct Lifecycle {
     pub opened: AtomicU64,
     pub closed: AtomicU64,
     pub executions: AtomicU64,
+    pub execution_ids: std::sync::Mutex<Vec<ExecutionId>>,
 }
 pub struct Host {
     pub runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
@@ -187,7 +188,6 @@ pub struct Host {
     driver: Arc<dyn datazen_driver_api::DatabaseDriver>,
     pub context: RequestContext,
     _artifacts_dir: tempfile::TempDir,
-    pub finished: std::sync::Mutex<Vec<datazen_platform_api::dto::execution::ExecutionView>>,
 }
 pub fn host(
     config: datazen_driver_api::ConnectionConfig,
@@ -232,19 +232,11 @@ pub fn host(
         config,
         driver,
         context,
-        finished: std::sync::Mutex::new(vec![]),
         _artifacts_dir: artifacts_dir,
     }
 }
 #[async_trait]
 impl ResourceExecutionHost for Host {
-    fn execution_finished(
-        &self,
-        _: &datazen_feature_core::workflow::WorkflowCommandStep,
-        view: &datazen_platform_api::dto::execution::ExecutionView,
-    ) {
-        self.finished.lock().unwrap().push(view.clone());
-    }
     async fn profile(
         &self,
         id: &str,
@@ -375,6 +367,11 @@ impl SessionBackend for Backend {
         })
     }
     async fn execute(&self, r: ExecuteOnResource) -> Result<ResourceExecution, rt::ProviderError> {
+        self.lifecycle
+            .execution_ids
+            .lock()
+            .unwrap()
+            .push(r.execution_id.clone());
         let mut resources = self.resources.lock().await;
         let (h, revision) = resources
             .get_mut(&r.resource_id)

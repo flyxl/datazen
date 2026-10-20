@@ -2,6 +2,7 @@
 //! No desktop scheduler, occurrence admission or duplicate-tick receipt is simulated.
 #[path = "monitor_runtime.rs"]
 mod runtime;
+use datazen_application::sessions::ConnectionUseCases as _;
 use datazen_driver_api::{resource::ResourceProvider, ConnectionConfig, DatabaseDriver};
 use datazen_feature_core::{
     dashboard::schedule_grant::{MonitorGrant, MonitorScope},
@@ -107,16 +108,29 @@ pub async fn run(
         let row = &result.data["results"][0]["rows"][0];
         assert_eq!(integer(&row[0]), Some(2));
         assert_eq!(integer(&row[1]), Some(15));
-        let finished = host.finished.lock().unwrap();
-        assert_eq!(finished.len(), 1);
-        assert_eq!(finished[0].state, ExecutionState::Succeeded);
-        assert_eq!(finished[0].effect_outcome, EffectOutcome::Completed);
-        assert!(!finished[0].artifact_ids.is_empty());
-        let artifact = finished[0].artifact_ids[0].clone();
-        let provenance = finished[0].provenance.as_ref().unwrap();
+        let execution_id = host
+            .lifecycle
+            .execution_ids
+            .lock()
+            .unwrap()
+            .first()
+            .cloned()
+            .expect("runtime dispatched the scheduled query");
+        let execution = host
+            .runtime
+            .get_execution(&host.context, execution_id)
+            .await
+            .expect("runtime exposes the terminal scheduled-query receipt");
+        assert_eq!(execution.state, ExecutionState::Succeeded);
+        assert_eq!(execution.effect_outcome, EffectOutcome::Completed);
+        let artifact = execution
+            .artifact_ids
+            .first()
+            .cloned()
+            .expect("scheduled query publishes its result artifact");
+        let provenance = execution.provenance.as_ref().unwrap();
         assert_eq!(provenance.principal_id, host.context.principal_id);
         assert_eq!(provenance.requested_target, target);
-        drop(finished);
         // A separate pooled connection independently observes the fixture, without
         // relying on the ResourceProvider's result sink or Runtime result storage.
         let readback = driver
