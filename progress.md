@@ -115,6 +115,28 @@
 - 实测：postgres 13/14→13（死代码消失）、feature-core 25→23（两个本分支警告
   消失）；两 crate clippy EXIT=0。
 
+### 9. 用户治理裁决：协议版本冻结 6 + 门禁退役（`a82883b44`/`4b6e74495`/`1d218182e`，2026-10-21）
+
+- 用户决定：**协议版本号不用改，保持 6；当前没有外部驱动，仓库内各驱动按
+  最新 trait 实现。**
+- 由此落地两件事：
+  1. `DatabaseDriver::split_restore_sql` 退役（`4b6e74495`）——单一实现在
+     `sql_text::split_restore_sql`，适配器 `LegacyBackupDialect` 直连，
+     `ReuseDriver` 随 trait 方法删除转发；全仓 15 个驱动无一显式声明过
+     该方法，删除对现存实现方零编译影响。
+  2. 驱动协议兼容门禁族整体退役（`a82883b44`）——按用户裁决「维护这表
+     性价比太低」：删 `check-driver-protocol-compat.mjs` /
+     `check-driver-protocol-release.mjs` / 规则表 3 个支撑 lib / 3 个测试
+     文件 / 2 条 npm 脚本 / CI 两步。共享 lib（isDirectInvocation /
+     scanSourceCode / scanTargets / cargoWorkspace）保留给其他门禁。
+- 文档改写落地（`1d218182e`）：`driver-capability-migration.md` §5 重写为
+  已实现事实（版本常量 6/1、runtime/ai/transfer 三个比对点的现行行号、
+  「同一次交付内全树迁移 + 全树编译绿」的替代判据、退役理由与红线「MIN
+  不下调」保留为人工纪律）；`platform-development-plan.md` §6、
+  `system-overview.md`、`shared-boundaries-and-ports.md` 同步收敛。
+- 遗留注意：上表旧轮里 `check-driver-protocol-compat` 的逐字结论仅作历史
+  记录，该命令已不存在。
+
 ## 门禁实测（逐字结论，历史轮）
 
 | 命令 | 结果 |
@@ -130,6 +152,7 @@
 | `npx vitest run scripts/__tests__/check-driver-protocol-compat.test.ts` | `68 passed`（worktree 经 node_modules 符号链接） |
 | §四 收官轮（SchemaMigration + BackupDialect）逐项复核 | driver-api `371 passed`；schema-diff `148`；data-sync `179`；data-transfer `226`；feature-core `298`；host `1378`；compat gate additive（crate 0.0.13→0.0.19）；vitest pass |
 | §六 起步轮（`1d5252292`） | 触及 crate 批量 clippy EXIT=0；fmt `--all --check` EXIT=0；`cargo test -p datazen-driver-postgres` 全套 ok（lib `207 passed; 5 ignored` + 各集成 ok）；`cargo test -p datazen-feature-core` `308 passed; 0 failed`；compat gate ok（additive only，crate 0.0.13→0.0.19，PROTOCOL 6→6）；协议规则 vitest `68 passed` |
+| §六 治理轮（`4b6e74495`） | `cargo test -p datazen-driver-api --lib` `371 passed; 0 failed`；`cargo check` postgres/mysql/sqlite/feature-core/runtime EXIT=0（仅既有警告）；`cargo clippy -p datazen-driver-api` EXIT=0（5 条既有警告，无新增）；`npx vitest run scripts/__tests__` `44 passed / 717 passed`；fmt driver-api 通过 |
 
 
 
