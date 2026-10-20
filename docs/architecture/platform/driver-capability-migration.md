@@ -563,7 +563,7 @@ Err(DriverError::NotSupported(
 2. §5.1 的 9 个操作全部实现，且 `executeOnResource` 不再自行从随机池取连接。
 3. 所属批次的 D 层用例全绿，且 `CM-19` 明确断言「没有把单连接池假装成固定资源」。
 4. `resetResource` 要么返回 `Clean`（通过 CM-26 / CM-69）要么返回 `Discard`，没有第三条静默路径。
-5. 宿主对该驱动的所有 namespace API 调用点已迁移。当前调用点包括 `src-tauri/src/data_transfer/execute/dispatcher.rs:696`（`tgt_driver.discard_connection(tgt_handle)`）、`src-tauri/src/data_sync/execute.rs:196-199`（`executor.discard_connection()`，仅在 `cleanup_error` 已发生时）与 `src-tauri/src/commands/sync/exec.rs:88-93`（同一 executor 的转发实现）、`src-tauri/src/workflow/executor.rs:60`（持有 `driver_has_multi_database: bool`）、`src-tauri/src/bootstrap/run.rs:250,258`（注册 `close_database` / `get_open_databases`）、`src-tauri/src/testing/mock_driver.rs:361-374`（伪造 `close_database` / `open_databases`）。这几处正是 P2 要收敛的宿主侧驱动分支。
+5. 宿主对该驱动的所有 namespace API 调用点已迁移。2026-10-21 实测核对：原列出的 `src-tauri/src/data_transfer/execute/dispatcher.rs`（discard_connection）、`src-tauri/src/data_sync/execute.rs`（cleanup_error 分支）、`src-tauri/src/workflow/executor.rs`（`driver_has_multi_database` 布尔）与 `src-tauri/src/testing/mock_driver.rs`（伪造 `close_database` / `open_databases` 的测试基座）四处已随 P2 前几轮改造消失；仍在册的宿主侧驱动分支为 `src-tauri/src/commands/connection.rs` 的 `close_database` / `get_open_databases`（经 runtime 实借出，按库关池）、`src-tauri/src/commands/sync/exec.rs` 与 `commands/sync/host/executor.rs` 两个执行器的 `discard_connection`（批次作业语义，与批次 2 同步收敛，归 P10）、`src-tauri/src/commands/sync/jobs_cancel_contract.rs` 的 driver 包装转发（契约测试基座，不构成业务分支）。per-database 池关闭在 `ResourceProvider` 契约中没有对应操作（一次 acquire = 一个资源 = 一个连接），收敛前必须在 runtime 层先定义 per-database 关闭的语义，而不是让宿主把驱动直调改头换面。这几处正是 P2 收敛的宿主侧残余，收敛完成才允许删除 adapter。
 
 **删除时机**：adapter 的删除与**宿主侧对应分支的删除**必须同一个提交。只删驱动侧 adapter 而留宿主分支，宿主就会退回到 no-op；只删宿主分支而留驱动侧，则驱动仍可能被旧路径调用。这个原子性与 §5.4 的协议发布门槛是同一条原则的两次应用。
 
