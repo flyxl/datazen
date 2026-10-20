@@ -427,11 +427,14 @@ pub(crate) async fn begin_session_transaction_impl(
             return Ok(());
         }
     }
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("begin_session_transaction")?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &db_session_id,
+        datazen_runtime::application::LivePurpose::CommandExecution,
+    )
+    .await?;
+    let driver = context.driver;
+    let handle = context.handle;
     let tx = match driver.begin_transaction(&handle).await {
         Ok(tx) => tx,
         Err(e) => {
@@ -481,11 +484,13 @@ pub(crate) async fn commit_session_transaction_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<(), CommandError> {
-    let (driver, _) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("commit_session_transaction")?;
+    let driver = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &db_session_id,
+        datazen_runtime::application::LivePurpose::CommandExecution,
+    )
+    .await?
+    .driver;
     let tx = state
         .session_transactions
         .lock()
@@ -502,11 +507,13 @@ pub(crate) async fn rollback_session_transaction_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<(), CommandError> {
-    let (driver, _) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("rollback_session_transaction")?;
+    let driver = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &db_session_id,
+        datazen_runtime::application::LivePurpose::CommandExecution,
+    )
+    .await?
+    .driver;
     let tx = state
         .session_transactions
         .lock()
