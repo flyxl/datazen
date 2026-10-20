@@ -81,23 +81,27 @@ pub(crate) async fn connect_impl(
 ) -> Result<String, CommandError> {
     log_ipc_identity(state, "connect");
     tracing::info!(%connection_id, "connect");
-    let db_session_id = state
-        .connection_manager
-        .get_or_connect_session(&connection_id)
+    let config = state
+        .store
+        .get_connection(&connection_id)
         .await
-        .cmd_err("connect")?;
-
-    if let Some(mut cfg) = state.store.get_connection(&connection_id).await {
-        cfg.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
-        // Best-effort metadata update; failure must not block the connect path.
-        if let Err(e) = state.store.save_connection(cfg).await {
-            tracing::warn!(
-                %connection_id,
-                error = %e,
-                "failed to persist last_connected_at"
-            );
-        }
+        .ok_or_else(|| CommandError::NotFound(format!("connection '{connection_id}' not found")))?;
+    let database = config
+        .database
+        .clone()
+        .ok_or_else(|| CommandError::Validation("connect requires a configured database".into()))?;
+    let mut config = config;
+    config.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
+    if let Err(e) = state.store.save_connection(config).await {
+        tracing::warn!(%connection_id, error = %e, "failed to persist last_connected_at");
     }
+    let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
+        state,
+        &connection_id,
+        &database,
+        "client",
+    )
+    .await?;
 
     tracing::info!(db_session_id = %db_session_id, "connect OK");
     Ok(db_session_id)
@@ -110,12 +114,36 @@ pub(crate) async fn connect_dedicated_impl(
 ) -> Result<String, CommandError> {
     log_ipc_identity(state, "connect_dedicated");
     tracing::info!(%connection_id, database = ?database, "connect_dedicated");
-    let db = database.as_deref();
-    let db_session_id = state
-        .connection_manager
-        .connect_dedicated(&connection_id, db)
-        .await
-        .cmd_err("connect_dedicated")?;
+    let database = match database {
+        Some(database) => database,
+        None => state
+            .store
+            .get_connection(&connection_id)
+            .await
+            .and_then(|config| config.database)
+            .ok_or_else(|| {
+                CommandError::Validation("connect_dedicated requires a database".into())
+            })?,
+    };
+    let database = database.trim();
+    if database.is_empty() {
+        return Err(CommandError::Validation(
+            "connect_dedicated requires a database".into(),
+        ));
+    }
+    if let Some(mut cfg) = state.store.get_connection(&connection_id).await {
+        cfg.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
+        if let Err(e) = state.store.save_connection(cfg).await {
+            tracing::warn!(%connection_id, error = %e, "failed to persist last_connected_at");
+        }
+    }
+    let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
+        state,
+        &connection_id,
+        database,
+        "clientDedicated",
+    )
+    .await?;
 
     if let Some(mut cfg) = state.store.get_connection(&connection_id).await {
         cfg.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
@@ -138,8 +166,15 @@ pub(crate) async fn ping_connection_impl(
     db_session_id: String,
 ) -> Result<bool, CommandError> {
     log_ipc_identity(state, "ping_connection");
-    let alive = state.connection_manager.ping(&db_session_id).await;
-    Ok(alive)
+    Ok(
+        crate::services::migration_endpoint::runtime_session_context(
+            state,
+            &db_session_id,
+            datazen_runtime::application::LivePurpose::Inspection,
+        )
+        .await
+        .is_ok(),
+    )
 }
 
 pub(crate) async fn release_connection_impl(
@@ -148,18 +183,16 @@ pub(crate) async fn release_connection_impl(
 ) -> Result<bool, CommandError> {
     log_ipc_identity(state, "release_connection");
     tracing::info!(%db_session_id, "release_connection");
-    let disconnected = state
-        .connection_manager
-        .release(&db_session_id)
-        .await
-        .cmd_err("release_connection")?;
-    if disconnected {
-        state.schema_cache.clear_connection(&db_session_id).await;
-        tracing::info!(%db_session_id, "release_connection: session torn down (ref=0)");
-    } else {
-        tracing::info!(%db_session_id, "release_connection: ref decremented, session kept alive");
+    match crate::services::migration_endpoint::close_dedicated_session(state, &db_session_id).await
+    {
+        Ok(()) => {
+            state.schema_cache.clear_connection(&db_session_id).await;
+            tracing::info!(%db_session_id, "release_connection: Runtime session closed");
+            Ok(true)
+        }
+        Err(CommandError::NotFound(_)) => Ok(true),
+        Err(error) => Err(error),
     }
-    Ok(disconnected)
 }
 
 /// Close the driver-side connection pool that serves one database of a session.
@@ -185,13 +218,14 @@ pub(crate) async fn close_database_impl(
     }
     tracing::info!(%db_session_id, %database, "close_database");
 
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .map_err(|e| {
-            CommandError::NotFound(format!("DB session {db_session_id} is not connected: {e}"))
-        })?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let driver = context.driver;
+    let handle = context.handle;
 
     // Best-effort: a driver without per-database resources returns `false`, and
     // a failure to close must not leave stale metadata behind.
@@ -222,13 +256,14 @@ pub(crate) async fn get_open_databases_impl(
 ) -> Result<Vec<String>, CommandError> {
     log_ipc_identity(state, "get_open_databases");
     let start = std::time::Instant::now();
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .map_err(|e| {
-            CommandError::NotFound(format!("DB session {db_session_id} is not connected: {e}"))
-        })?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let driver = context.driver;
+    let handle = context.handle;
 
     let mut open = driver
         .open_databases(&handle)
@@ -257,17 +292,20 @@ pub(crate) async fn disconnect_impl(
         .await
         .remove(&db_session_id)
     {
-        if let Ok((driver, _)) = state.connection_manager.get_session(&db_session_id).await {
+        if let Ok(context) = crate::services::migration_endpoint::runtime_session_context(
+            state,
+            &db_session_id,
+            datazen_runtime::application::LivePurpose::CommandExecution,
+        )
+        .await
+        {
+            let driver = context.driver;
             if let Err(e) = driver.rollback(tx).await {
                 tracing::warn!(%db_session_id, error = %e, "rollback session tx on disconnect");
             }
         }
     }
-    state
-        .connection_manager
-        .disconnect(&db_session_id)
-        .await
-        .cmd_err("disconnect")?;
+    crate::services::migration_endpoint::close_dedicated_session(state, &db_session_id).await?;
     state.schema_cache.clear_connection(&db_session_id).await;
     tracing::info!(%db_session_id, "disconnect OK");
     Ok(())
@@ -278,11 +316,13 @@ pub(crate) async fn get_connection_info_impl(
     db_session_id: String,
 ) -> Result<serde_json::Value, CommandError> {
     log_ipc_identity(state, "get_connection_info");
-    let config = state
-        .connection_manager
-        .get_session_config(&db_session_id)
-        .await
-        .cmd_err("get_connection_info")?;
+    let config = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?
+    .config;
 
     let db_type = &config.database_type;
 
