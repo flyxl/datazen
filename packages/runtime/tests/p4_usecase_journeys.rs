@@ -82,6 +82,11 @@ impl ProfileRepository for Profiles {
     }
 }
 struct Policy {
+    wait_check: AtomicU64,
+    wait_count: AtomicU64,
+    wait_entered: tokio::sync::Notify,
+    wait_release: tokio::sync::Notify,
+    wait_deny: AtomicBool,
     allow: AtomicBool,
     delegation: Mutex<Option<DelegationGrant>>,
     target_checks: AtomicU64,
@@ -130,6 +135,18 @@ impl PolicyService for Policy {
         command: &str,
         _: &serde_json::Value,
     ) -> Result<AuthorizationDecision, PortError> {
+        if command != "open_session" && self.wait_check.load(Ordering::SeqCst) != 0 {
+            let check = self.wait_count.fetch_add(1, Ordering::SeqCst) + 1;
+            if check == self.wait_check.load(Ordering::SeqCst) {
+                self.wait_entered.notify_one();
+                self.wait_release.notified().await;
+                if self.wait_deny.load(Ordering::SeqCst) {
+                    return Ok(AuthorizationDecision::Deny {
+                        reason_code: "revoked",
+                    });
+                }
+            }
+        }
         if context.is_delegated() {
             let check = if command == "open_session" {
                 0
@@ -298,7 +315,9 @@ impl SessionBackend for Backend {
                     && self.unknown_commit.load(Ordering::SeqCst))
             {
                 rt::EffectOutcome::Unknown
-            } else if r.command.command == "fail" || r.command.command == "platform.rollbackTransaction" {
+            } else if r.command.command == "fail"
+                || r.command.command == "platform.rollbackTransaction"
+            {
                 rt::EffectOutcome::RolledBack
             } else {
                 rt::EffectOutcome::Completed
@@ -364,6 +383,11 @@ fn setup() -> (
         revision: AtomicU64::new(1),
     });
     let policy = Arc::new(Policy {
+        wait_check: AtomicU64::new(0),
+        wait_count: AtomicU64::new(0),
+        wait_entered: tokio::sync::Notify::new(),
+        wait_release: tokio::sync::Notify::new(),
+        wait_deny: AtomicBool::new(false),
         allow: AtomicBool::new(true),
         delegation: Mutex::new(None),
         target_checks: AtomicU64::new(0),

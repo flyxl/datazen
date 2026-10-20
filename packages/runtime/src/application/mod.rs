@@ -63,7 +63,7 @@ struct Inner {
     tokens: Mutex<HashMap<String, tokens::IssuedToken>>,
     keyring: TokenKeyring,
     clock: Arc<RuntimeClock>,
-    idle_activity: tokio::sync::Mutex<HashMap<SessionHandle, usize>>,
+    idle_activity: tokio::sync::Mutex<HashMap<SessionHandle, idle_activity::ActivityState>>,
     transaction_gates: Mutex<HashMap<SessionHandle, std::sync::Weak<tokio::sync::Mutex<()>>>>,
     transaction_unknown: Mutex<std::collections::HashSet<SessionHandle>>,
     /// 出向端口：宿主取活连接的唯一入口。未接线是配置事实，不是故障。

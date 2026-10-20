@@ -264,3 +264,107 @@ async fn cancelled_execution_renews_idle_only_after_actual_terminal_cleanup() {
     advance(&clock, 2);
     assert_eq!(service.reclaim_idle().await.reclaimed.len(), 1);
 }
+
+#[tokio::test]
+async fn accepted_authorization_wait_holds_resource_then_dispatches() {
+    let (service, backend, clock, policy) = setup_clock();
+    let context = ctx("user", "client");
+    let opened = open(&service, &context, "auth-wait").await;
+    advance(&clock, 80);
+    policy.wait_check.store(2, Ordering::SeqCst);
+    let receipt = execute(&service, &context, &opened.session.handle, "query").await;
+    policy.wait_entered.notified().await;
+    advance(&clock, 100);
+    assert!(service.reclaim_idle().await.reclaimed.is_empty());
+    assert_eq!(backend.closed.load(Ordering::SeqCst), 0);
+    assert!(lock(&backend.ids).is_empty());
+    policy.wait_release.notify_one();
+    terminal(&service, &context, &receipt.execution_id).await;
+    assert_eq!(
+        service
+            .get_execution(&context, receipt.execution_id)
+            .await
+            .unwrap()
+            .state,
+        ExecutionState::Succeeded
+    );
+    advance(&clock, 99);
+    assert!(service.reclaim_idle().await.reclaimed.is_empty());
+    advance(&clock, 2);
+    assert_eq!(service.reclaim_idle().await.reclaimed.len(), 1);
+}
+#[tokio::test]
+async fn rejected_authorization_restores_original_idle_deadline() {
+    let (service, backend, clock, policy) = setup_clock();
+    let context = ctx("user", "client");
+    let opened = open(&service, &context, "auth-reject").await;
+    advance(&clock, 80);
+    policy.wait_check.store(2, Ordering::SeqCst);
+    policy.wait_deny.store(true, Ordering::SeqCst);
+    let receipt = execute(&service, &context, &opened.session.handle, "query").await;
+    policy.wait_entered.notified().await;
+    advance(&clock, 40);
+    assert!(service.reclaim_idle().await.reclaimed.is_empty());
+    policy.wait_release.notify_one();
+    terminal(&service, &context, &receipt.execution_id).await;
+    assert!(lock(&backend.ids).is_empty());
+    assert_eq!(service.reclaim_idle().await.reclaimed.len(), 1);
+}
+#[tokio::test]
+async fn rejected_waiter_does_not_remove_concurrent_business_refresh() {
+    let (service, backend, clock, policy) = setup_clock();
+    let context = ctx("user", "client");
+    let opened = open(&service, &context, "auth-concurrent").await;
+    advance(&clock, 80);
+    policy.wait_check.store(2, Ordering::SeqCst);
+    policy.wait_deny.store(true, Ordering::SeqCst);
+    let rejected = execute(&service, &context, &opened.session.handle, "query").await;
+    policy.wait_entered.notified().await;
+    let running = execute(&service, &context, &opened.session.handle, "hold").await;
+    backend.started.notified().await;
+    advance(&clock, 100);
+    policy.wait_release.notify_one();
+    terminal(&service, &context, &rejected.execution_id).await;
+    assert!(service.reclaim_idle().await.reclaimed.is_empty());
+    backend.release.notify_one();
+    terminal(&service, &context, &running.execution_id).await;
+    advance(&clock, 99);
+    assert!(service.reclaim_idle().await.reclaimed.is_empty());
+    advance(&clock, 2);
+    assert_eq!(service.reclaim_idle().await.reclaimed.len(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn authorization_timeout_releases_hold_without_business_renewal() {
+    let (service, backend, clock, policy) = setup_clock();
+    let context = ctx("user", "client");
+    let opened = open(&service, &context, "auth-timeout").await;
+    policy.wait_check.store(2, Ordering::SeqCst);
+    let receipt = execute(&service, &context, &opened.session.handle, "query").await;
+    policy.wait_entered.notified().await;
+    advance(&clock, 101);
+    assert!(service.reclaim_idle().await.reclaimed.is_empty());
+    tokio::time::advance(Duration::from_secs(31)).await;
+    terminal(&service, &context, &receipt.execution_id).await;
+    assert!(lock(&backend.ids).is_empty());
+    assert_eq!(service.reclaim_idle().await.reclaimed.len(), 1);
+}
+
+#[tokio::test]
+async fn last_rejected_waiter_does_not_extend_completed_business_deadline() {
+    let (service, _, clock, policy) = setup_clock();
+    let context = ctx("user", "client");
+    let opened = open(&service, &context, "auth-last-reject").await;
+    advance(&clock, 80);
+    policy.wait_check.store(2, Ordering::SeqCst);
+    policy.wait_deny.store(true, Ordering::SeqCst);
+    let rejected = execute(&service, &context, &opened.session.handle, "query").await;
+    policy.wait_entered.notified().await;
+    let business = execute(&service, &context, &opened.session.handle, "query").await;
+    terminal(&service, &context, &business.execution_id).await;
+    advance(&clock, 101);
+    assert!(service.reclaim_idle().await.reclaimed.is_empty());
+    policy.wait_release.notify_one();
+    terminal(&service, &context, &rejected.execution_id).await;
+    assert_eq!(service.reclaim_idle().await.reclaimed.len(), 1);
+}

@@ -1,14 +1,25 @@
 //! A dispatch owns an idle hold until its actual background future completes.
 //! Multiple accepted commands share a counted hold; receipt replay has no hold.
 use super::*;
+pub(super) struct ActivityState {
+    count: usize,
+    original_deadline: Option<u64>,
+    last_business_ms: Option<u64>,
+}
 pub(super) struct IdleActivity {
     service: RuntimeConnectionUseCases,
     handle: Option<SessionHandle>,
+    business: bool,
 }
 impl IdleActivity {
+    pub fn business_started(&mut self) {
+        self.business = true;
+    }
     pub async fn finish(mut self) {
         if let Some(handle) = self.handle.take() {
-            self.service.finish_idle_activity(&handle).await;
+            self.service
+                .finish_idle_activity(&handle, self.business)
+                .await;
         }
     }
 }
@@ -18,9 +29,10 @@ impl Drop for IdleActivity {
             return;
         };
         let service = self.service.clone();
+        let business = self.business;
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
-                service.finish_idle_activity(&handle).await;
+                service.finish_idle_activity(&handle, business).await;
             });
         }
     }
@@ -31,41 +43,57 @@ impl RuntimeConnectionUseCases {
         handle: &SessionHandle,
     ) -> Result<IdleActivity, ApiError> {
         let mut activity = self.inner.idle_activity.lock().await;
-        let count = activity.entry(handle.clone()).or_default();
-        if *count == 0 {
-            // Keep the hold even across the actor completion/application finish
-            // handoff, where the registry no longer has an in-flight command.
-            if let Err(error) = self
+        if let Some(state) = activity.get_mut(handle) {
+            state.count += 1;
+        } else {
+            let original_deadline = self
                 .inner
                 .registry
-                .set_idle_deadline(&convert::handle(handle)?, None)
+                .suspend_idle_deadline(&convert::handle(handle)?)
                 .await
-            {
-                activity.remove(handle);
-                return Err(convert::runtime(error));
-            }
+                .map_err(convert::runtime)?;
+            activity.insert(
+                handle.clone(),
+                ActivityState {
+                    count: 1,
+                    original_deadline,
+                    last_business_ms: None,
+                },
+            );
         }
-        *count += 1;
-        let _ = self
-            .inner
-            .directory
-            .touch(handle, Timestamp::new(super::operations::utc_now()))
-            .await;
         Ok(IdleActivity {
             service: self.clone(),
             handle: Some(handle.clone()),
+            business: false,
         })
     }
-    async fn finish_idle_activity(&self, handle: &SessionHandle) {
+    async fn finish_idle_activity(&self, handle: &SessionHandle, business: bool) {
         let mut activity = self.inner.idle_activity.lock().await;
-        let Some(count) = activity.get_mut(handle) else {
+        let Some(state) = activity.get_mut(handle) else {
             return;
         };
-        *count -= 1;
-        if *count != 0 {
+        if business {
+            state.last_business_ms = Some(self.inner.clock.now_ms());
+        }
+        state.count -= 1;
+        if state.count != 0 {
             return;
         }
-        activity.remove(handle);
+        let state = activity.remove(handle).unwrap_or(ActivityState {
+            count: 0,
+            original_deadline: None,
+            last_business_ms: None,
+        });
+        let Some(last_business_ms) = state.last_business_ms else {
+            if let Ok(internal) = convert::handle(handle) {
+                let _ = self
+                    .inner
+                    .registry
+                    .set_idle_deadline(&internal, state.original_deadline)
+                    .await;
+            }
+            return;
+        };
         let _ = self
             .inner
             .directory
@@ -83,7 +111,7 @@ impl RuntimeConnectionUseCases {
         } else {
             policy.deadline_ms()
         };
-        let deadline = span.map(|span| self.inner.clock.now_ms().saturating_add(span));
+        let deadline = span.map(|span| last_business_ms.saturating_add(span));
         if let Ok(internal) = convert::handle(handle) {
             if let Err(error) = self
                 .inner

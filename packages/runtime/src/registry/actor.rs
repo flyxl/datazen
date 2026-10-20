@@ -140,6 +140,7 @@ pub enum ExecCommand {
     SetIdleDeadline {
         handle: SessionHandle,
         deadline_ms: Option<u64>,
+        return_previous: bool,
         reply: Reply<Option<u64>>,
     },
     Close {
@@ -511,9 +512,18 @@ async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
         ExecCommand::SetIdleDeadline {
             handle,
             deadline_ms,
+            return_previous,
             reply,
         } => {
-            let _ = reply.send(set_idle_deadline(state, &handle, deadline_ms));
+            let previous = state.idle_deadline_ms;
+            let result = set_idle_deadline(state, &handle, deadline_ms).map(|current| {
+                if return_previous {
+                    previous
+                } else {
+                    current
+                }
+            });
+            let _ = reply.send(result);
         }
         ExecCommand::Close {
             handle,

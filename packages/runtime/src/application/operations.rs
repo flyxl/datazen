@@ -120,6 +120,7 @@ impl RuntimeConnectionUseCases {
             Self::source(ctx, &entry),
         );
         let fingerprint = gateway_request.fingerprint();
+        let mut activity = self.begin_idle_activity(&request.handle).await?;
         let accepted = self
             .inner
             .gateway
@@ -161,34 +162,37 @@ impl RuntimeConnectionUseCases {
             let id = receipt.execution_id.clone();
             tokio::spawn(async move {
                 // The async policy port is checked again immediately before physical dispatch.
-                let authorization = async {
-                    service
-                        .authorize_target(
-                            &ctx,
-                            action,
-                            &dispatch_target,
-                            &dispatch_command,
-                            &dispatch_input,
-                        )
-                        .await
-                }
-                .await;
+                // Pending authorization owns a bounded hold, not business TTL.
+                let authorization = tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    service.authorize_target(
+                        &ctx,
+                        action,
+                        &dispatch_target,
+                        &dispatch_command,
+                        &dispatch_input,
+                    ),
+                )
+                .await
+                .unwrap_or_else(|_| {
+                    Err(ApiError::new(
+                        ApiErrorCode::PermissionDenied,
+                        "dispatch authorization timed out",
+                    ))
+                });
                 let result = match authorization {
-                    Ok(()) => match service.begin_idle_activity(&handle).await {
-                        Ok(activity) => {
-                            let result = service
-                                .inner
-                                .gateway
-                                .dispatch(&Self::principal(&ctx, &handle), &id)
-                                .await
-                                .map_err(gateway_error);
-                            activity.finish().await;
-                            result
-                        }
-                        Err(error) => Err(error),
-                    },
+                    Ok(()) => {
+                        activity.business_started();
+                        service
+                            .inner
+                            .gateway
+                            .dispatch(&Self::principal(&ctx, &handle), &id)
+                            .await
+                            .map_err(gateway_error)
+                    }
                     Err(error) => Err(error),
                 };
+                activity.finish().await;
                 let resource_lost = result
                     .as_ref()
                     .err()
@@ -222,6 +226,8 @@ impl RuntimeConnectionUseCases {
                         .await;
                 }
             });
+        } else {
+            activity.finish().await;
         }
         Ok(receipt)
     }
