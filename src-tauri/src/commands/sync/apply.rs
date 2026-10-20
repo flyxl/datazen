@@ -676,20 +676,19 @@ pub(crate) async fn generate_data_sync_sql_impl(
     let set = ChangeSet::from_comparison("ui-preview", &comparison, &options);
     set.validate_executable().map_err(CommandError::from)?;
 
-    let tgt_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("generate_data_sync_sql")?;
+    let target_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let tgt_config = target_context.config.clone();
     let family = crate::data_sync::require_data_sync_family(
         &tgt_config.database_type,
         &tgt_config.database_type,
     )?;
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("generate_data_sync_sql")?;
+    let tgt_driver = target_context.driver.clone();
+    let tgt_handle = target_context.handle.clone();
     let target_database_name =
         super::types::resolve_db_name(target_database.as_deref(), tgt_config.database.as_deref());
     let target_schema = metadata_schema(
