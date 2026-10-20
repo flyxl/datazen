@@ -320,129 +320,61 @@ P2 第一轮只交付批次 1；批次 2 与批次 3 连同 `sqlserver` 的语�
 
 ### 5.1 当前版本与最低兼容版本
 
-`packages/driver-api/src/lib.rs` 尾部定义两个常量：
+`packages/driver-api/src/lib.rs` 定义两个常量：
 
 ```rust
-pub const PROTOCOL_VERSION: u32 = 4;   // lib.rs:99
-pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
+pub const PROTOCOL_VERSION: u32 = 6;   // lib.rs:125
+pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:131
 ```
 
-同处文档说明：`version < MIN` 的驱动被拒绝加载；`MIN <= version < PROTOCOL_VERSION` 的驱动以**降级模式**运行，缺失的能力一律按 `false` 处理。**这是 `driver-api` 侧写下的契约承诺；宿主代码当前只打印降级警告，并没有真的把任何能力改写为 `false`（见下方闸门现状）。**
+同处文档说明：`version < MIN` 的驱动被拒绝加载；`MIN <= version < PROTOCOL_VERSION` 的驱动以**降级模式**运行，缺失的能力一律按 `false` 处理。**这是 `driver-api` 侧写下的契约承诺；宿主代码当前只打印降级警告，并没有真的把任何能力改写为 `false`。**
 
 宿主侧闸门有两处，结构相同，但**只拒绝对老版本，不拒绝更新版本**：
 
-- `src-tauri/src/db/registry.rs:126-151`：`pv < MIN_PROTOCOL_VERSION` → `return Err(...)`，拒绝加载（:126-133）；`pv > PROTOCOL_VERSION` → **只有 `tracing::warn!`（:134-140），并不拒绝**，随后照常 `factory.create()` 加载（:154）；`MIN <= pv < PROTOCOL_VERSION` → `warn!` 提示降级（:141-151）后同样照常加载，代码里**没有**把任何 `supports_*` 强制改写为 `false`——降级模式只是打日志，驱动仍按 factory 自己声明的能力运行。
-- `src-tauri/src/ai/registry.rs:170-198`：`pv < MIN_AI_PROTOCOL_VERSION` → `tracing::error!` + `continue`，跳过注册；`pv > AI_PROTOCOL_VERSION` → 同样只 `warn!` 后照常 `registry.register()`；`pv < AI_PROTOCOL_VERSION` → `warn!` 降级提示。
+- `packages/runtime/src/driver_registry/registry.rs:155-181`：`pv < MIN_PROTOCOL_VERSION` → 硬拒绝（`return Err`）；`pv > PROTOCOL_VERSION` → **只有 `tracing::warn!`，并不拒绝**，随后照常加载；`MIN <= pv < PROTOCOL_VERSION` → `warn!` 提示降级后照常加载，代码里**没有**把任何能力强制改写为 `false`——降级模式只是打日志，驱动仍按 factory 自己声明的能力运行。
+- `packages/ai-providers/src/registry.rs:317-341`：`pv < MIN_AI_PROTOCOL_VERSION` → `tracing::error!` + `continue`，跳过注册；`pv > AI_PROTOCOL_VERSION` → 同样只 `warn!` 后照常注册；`pv < AI_PROTOCOL_VERSION` → `warn!` 降级提示。
 
-数据迁移另有独立校验：plan 里携带 `plan.source_driver_protocol` / `plan.target_driver_protocol`，执行时再次核对（`src-tauri/src/commands/data_transfer/exec.rs:125,150,487-488`，取值辅助函数 `plans::driver_protocol_version` 在 `plans.rs:156`）。
+数据迁移另有独立校验：plan 里携带 `plan.source_driver_protocol` / `plan.target_driver_protocol`，执行时再次核对（`src-tauri/src/commands/data_transfer/exec.rs:124,149,486-487`，取值辅助函数 `plans::driver_protocol_version` 在 `plans.rs:166`）。
 
-**闸门现状与 §5.4 目标之间的缺口**：`pv > PROTOCOL_VERSION` 分支今天是「警告后照常加载」，也就是说宿主面对一个声明了更高协议版本的驱动时会静默进入未知兼容态，而 §5.4 要求的是「不静默降级」。P2 必须先在**硬拒绝（返回 `Err`、不 `create()`）**与**加载但标记为不可用并禁止 `execute_driver_command`**之间**二选一**（无论选哪个都不得以「下调 `MIN` 让它落进降级分支」的方式绕过），再把它落成门禁；定案见 §5.4 第 5 条与 [§9](#9-待-p0-验证清单) 待定义 H。**在定案并落成门禁前，不能声称「版本更高的驱动会被拒绝」。**
+**治理决定（2026-10-21）**：仓库当前没有任何外部驱动（path 驱动全部在本仓内，git 驱动以钉死 `ref` 的形式按需引入），协议版本随之**冻结在 6**，`MIN` 停在 1。在这一前提下，「声明更高协议版本的驱动」在当前快照中不可能出现，`pv > PROTOCOL_VERSION` 分支只是警告后照常加载这件事**在冻结期内是空路径**；若未来又出现外部驱动生态，必须先重新定案该分支的处置（硬拒绝或加载并标记不可用，且不得以下调 `MIN` 绕过），再接入外部驱动。
 
 ### 5.2 版本是怎么声明的
 
-`DatabaseDriverFactory` 的 `protocol_version() -> u32` 有默认体，返回 `crate::PROTOCOL_VERSION`。**全部 15 个 path 驱动都没有覆盖它**；唯一覆盖者是 git 驱动 `packages/drivers/superset/src/lib.rs:1197`。
+`DatabaseDriverFactory::protocol_version() -> u32` 有默认体，返回 `crate::PROTOCOL_VERSION`。**本仓内没有一个 path 驱动覆盖它**（2026-10-21 对 16 个 `packages/drivers/*` 目录逐一度量确认）；git 驱动（`drivers-registry.json` 里钉死 `ref` 的条目，如 `kiwi` / `superset`）是否覆盖取决于其自身仓库，本地快照未克隆时不做断言。
 
-这意味着：**驱动只要不显式声明就自动跟随 `driver-api` 的版本**，只要升级 `PROTOCOL_VERSION`，所有 path 驱动同步升版、闸门恒走「当前」分支。代价是**驱动无法为旧宿主做兼容**——这正是必须由 `MIN_PROTOCOL_VERSION` 承接的部分。
+这意味着：**仓库内驱动永远自动跟随 `driver-api` 的协议号**，协议号字段对它们是纯记录项，不是需要各自维护的状态——这正是把版本冻结做落地的结构基础。
 
-### 5.3 哪些改动是 breaking
+### 5.3 契约改动怎么同步迁移（原「哪些改动是 breaking」）
 
-| 改动 | 是否 breaking | 处理 |
+**治理决定（2026-10-21）**：此前维护的驱动协议兼容门禁族——`scripts/check-driver-protocol-compat.mjs`、`scripts/check-driver-protocol-release.mjs`、其规则表 `scripts/lib/driver-protocol-rules.mjs` / `driver-protocol-members.mjs` / `compatMatrix.mjs` / `sourceBreak.mjs` 与三份对应测试——**整体退役删除**，`package.json` 的 `test:driver-protocol` / `test:driver-protocol-release` 两条脚本与 `.github/workflows/ci.yml` 的对应步骤一并移除。理由：在「零外部驱动 + 版本冻结」的现实下，这套逐符号、逐成员的 breaking/additive/source-breaking/cosmetic 四档机检维护成本高于其收益（门禁历史仍可从 git 历史找回）。
+
+契约演进退回朴素约束：**改公共契约 = 同一次交付内全树编译绿，所有仓内驱动与消费方按最新契约一起迁移**。人工判据保留两条（机器不查，靠评审纪律）：
+
+| 改动 | 判据 | 处理 |
 | --- | --- | --- |
-| 新增 trait 方法且带 fail-closed 默认体 | 否 | 不动版本；驱动不改也能编 |
-| 新增 trait 方法**没有**默认体 | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
-| 改能力枚举取值或语义 | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
-| 在**未标 `#[non_exhaustive]`** 的枚举里新增取值 | 是 | 升 `PROTOCOL_VERSION`；下游 `match` 缺臂（E0004），属重编译要求 |
-| 在标了 `#[non_exhaustive]` 的枚举里新增取值 | 否 | 走 `additive`；下游早已被迫写通配臂，新取值被吸收 |
-| 改 DTO 字段的必填性 | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
-| 删除或改写受治理的符号（trait 方法、`const`、`type`、DTO 字段、命令定义） | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
-| 放宽已声明 `unsupported` 的行为 | 否 | 降级模式下按 `false` 处理即安全 |
-| 收紧已声明 `supported` 的行为 | 是 | 视为 breaking，需按 breaking 发布 |
+| 新增 trait 方法且带 fail-closed 默认体 | 现有实现方继续能编译 | 直接交付 |
+| 新增无默认体方法、删除/改写签名、改枚举穷举性 | 现有实现方必须整改 | **同一次提交内**迁移全部仓内实现方与消费者；版本号不动（冻结），`MIN` 不下调 |
 
-判定原则是**「老驱动在新宿主上是否仍能安全运行」**。`capabilities.rs` 里所有新枚举都按 fail-closed 默认（`unknown` / `unsupported`）设计，正是为了让「新增能力」本身不成为 breaking。
+这条判据的第一个应用实时例：`DatabaseDriver::split_restore_sql` 的删除——单一实现在 `sql_text` helper 上，`LegacyBackupDialect` 适配器直连该实现，本仓内没有任何驱动声明过该方法，删除不改变任何现存实现方的编译（各自 impl 块从未声明，默认体消失即无事）。
 
-**这条原则有一个它回答不了的问法。** 上表的六行都在问「老驱动还能不能跑」，但 `#[non_exhaustive]` 这类改动问的是「新的还编不编得出来」——已编好的老驱动照跑不误，答案不在这张表的任何一格里。所以门禁另有第四档 `source-breaking`，它不是本表的补充行，而是不回答本表问题的另一类改动，见 [§5.5](#55-source-breaking老驱动跑得好好的但新的编不出来)。
+### 5.4 「协议升级与驱动发布是原子兼容门槛」（已随生态现状退役）
 
-**升 `PROTOCOL_VERSION` 与升 `MIN` 是两件事，不要混用。** `PROTOCOL_VERSION` 是「宿主现在说的协议」，任何 breaking 改动都必须升它，否则老驱动无从判断自己是不是对新宿主说谎。而 `MIN_PROTOCOL_VERSION` 是「还愿意接受的最后一个老驱动协议」，**它是一个主动放弃老驱动的产品决定，不是 breaking 的机械后果**：本 crate 自己的 `PROTOCOL_VERSION` 已经过 `1 → 4`，`MIN` 始终停在 `1`，这正是「窗口从不被自己悄悄收窄」的含义。若某次 breaking 确实不想再兼容任何老驱动，那是**另外**再升 `MIN`，让宿主在 `pv < MIN` 时明确拒绝，而不是把它当成 breaking 的处理方式。
+这条门槛针对的是「多个 Git 驱动各自独立发版、DataZen 侧钉 ref 升级」的多方发布窗口。当前没有外部驱动生态，窗口不存在；`drivers-registry.json` 钉死 `ref` 的做法保留（可复现构建的前提），但配套的发布原子性机检已随门禁族删除。两条仍然成立的人工红线：
 
-**门禁**：`scripts/check-driver-protocol-compat.mjs`（`pnpm test:driver-protocol`，`.github/workflows/ci.yml:68` 硬门禁）。它对受治理符号的**删除 / 改写**，以及**在以 `;` 结尾的 trait 里新增 `fn` / `const` / `type`**，判为 `breaking` 并要求 `PROTOCOL_VERSION` 上升；并常驻三条断言：`min-protocol-never-lowered`、`protocol-window-non-empty`（`MIN ≤ PROTOCOL`）、`crate-version-advanced`。新增 DTO 字段、带默认体的 trait 方法、以及**已标 `#[non_exhaustive]` 的枚举里的新增取值**走 `additive` / `cosmetic` 判定，不触发协议升级。第四档 `source-breaking` 的触发条件、失败配方与检测边界见 [§5.5](#55-source-breaking老驱动跑得好好的但新的编不出来)。
+1. **不得下调 `MIN_PROTOCOL_VERSION` 来掩盖契约不兼容**——那会把兼容问题变成运行期静默降级。它在三次历史演进中停在 `1`，动它是产品决定，不是技术操作。
+2. Git 驱动接入时，其兼容性核对发生在**接入那一刻**（clone 后一次全树编译绿），而不是每次交付时。
 
-**受治理符号表不只看「声明行有没有被 diff 到」，还看成员。** 门禁先把每个符号解析成 base 与 head 两侧的**跨度**再判定，所以声明行上方插入文档不会误报、改动函数体一定会报；但跨度本身只说明「这个契约被碰过」，不说明「改了哪里」——同一个 `pub enum` 里新增一个取值，逐行 diff 出来的形状与加一行注释完全相同。因此对枚举**按成员比对**：删除或改名一个取值是 breaking，在未标 `#[non_exhaustive]` 的枚举里新增取值同样是 breaking（见上表两行），因为它让老驱动的穷尽 `match` 缺臂。结构体不因此改判——新增公有字段仍是 `additive`——只是把字段名写进报告。这条规则由 `scripts/lib/driver-protocol-members.mjs` 持有，`#[non_exhaustive]` 的例外以 **base ref** 为准：问的是「针对上一版 crate 写的驱动是否早已被迫留了通配臂」。当前 `packages/driver-api` 没有任何枚举标该属性，故该例外在本 crate 内不可达。
+### 5.5 `source-breaking`：老驱动跑得好好的，但新的编不出来（判据保留，机检已退役）
 
-### 5.4 「协议升级与驱动发布是原子兼容门槛」
+四档机检（`additive` / `breaking` / `source-breaking` / `cosmetic`）随门禁族退役。判据本身保留，因为它是 `#[non_exhaustive]`（FOREVER 冻结）这类改动的人工检查点：**线上一个字节都没变**——已经编好的老驱动照常运行，只有**还没编译**的代码编不出来（rustc 在对方仓库里报错）。因此：
 
-这条门槛的落地机制如下。
+- **判 breaking、升 `PROTOCOL_VERSION` 是谎报**：协议号表达的是线上兼容，FOREVER 冻结一个线上比特都没动。
+- 正解是：只动 crate 版本，并在说明里写清楚「以后不能再加字段」与迁移配方。
+- **判 additive 同样是谎报**：它对还没编译的代码承诺「你没事」，而那正是会炸的地方。
 
-**禁止的做法**：宿主遇到驱动行为不兼容时，下调 `MIN_PROTOCOL_VERSION` 让旧驱动继续加载，并在降级模式下把缺失能力当 `false` 用。这会把兼容性问题变成运行期静默降级——正是「新增能力缺失不会 no-op 成功」要禁止的那类问题。当前 `MIN_PROTOCOL_VERSION = 1` 是在 `PROTOCOL_VERSION = 4` 之前三次演进中留下的兼容窗口，它的存在本身不代表可以随时下调。
+在版本冻结期，FOREVER 冻结的实际代价也只落在本仓内穷举构造 `CapabilitySet` 的驱动上：
 
-**正确的做法**：任何 breaking 改动必须让**版本号、驱动实现、驱动发布**三者同一次落地完成，具体为：
-
-1. 在 `packages/driver-api` 改 trait / 枚举 / DTO，同时把 `PROTOCOL_VERSION` 从 N 提到 N+1。
-2. **同一个提交内**把所有受影响的 path 驱动改到能通过新契约的形态（缺失能力显式 `Unsupported`，不得 `Ok(())`）。
-3. path 驱动在**本仓库内**改完即发布，不存在跨仓库同步窗口。
-4. git 驱动在**自己的仓库**里跟进，在 DataZen 侧以 `drivers-registry.json` 的**钉死 `ref`**（`source: "git"` + 指定 `ref`，参见 `olap` 条目 `7096c8737dbe25ab4529e5c3997c9f67309154d9`）提交 DataZen registry PR。钉死 ref 是可复现构建的前提：registry 不指向浮动分支，也不指向未打 tag 的提交。
-5. 宿主升级后，`PROTOCOL_VERSION` 必须 ≥ 全部已发布驱动的 `protocol_version()`。**注意这里的现状是缺口而不是保障**：`registry.rs:134-140` 的 `pv > PROTOCOL_VERSION` 分支目前只是 `tracing::warn!` 然后照常加载，既没有拒绝、也没有把它挡在降级分支之外。要让这条真正成立，P2 必须先在**硬拒绝（返回 `Err`、不 `create()`）**与**加载但标记为不可用并禁止 `execute_driver_command`**之间**二选一并落成门禁**（定案见 [§9](#9-待-p0-验证清单) 待定义 H；闸门现状见 §5.1）——**在定案并落成门禁前，「版本更高的 git 驱动会被拒绝、不静默降级」这句话是不成立的**。
-
-**门禁（已落成）**：`scripts/check-driver-protocol-release.mjs`（`pnpm test:driver-protocol-release`，`.github/workflows/ci.yml:76` 硬门禁，紧随 strict guards 一步、且在 `resolve-drivers` 之前）。它与 [§5.3](#53-哪些改动是-breaking) 那条门禁互不重叠：后者判定契约改动**是否需要**升 `PROTOCOL_VERSION`，本脚本判定**是否真的升了、升了之后这次交付必须跟着发什么**。它只读 `drivers-registry.json` 与各 crate 的 `Cargo.toml`/`lib.rs`，不碰 gitignored codegen，因此无需等驱动注入完成即可运行；`--base=<ref>` 可指定比对基线，默认取 `merge-base(HEAD, origin/main)`。
-
-「一次交付」的发布集按两条可机读的规则判定：path 驱动以 `[package] version` 前进计一次发布，Git 驱动以 `drivers-registry.json` 里钉死 `ref` 的移动计一次发布。**未钉 `ref` 的 Git 驱动（当前 `kiwi` / `superset`）发布决策发生在 clone 时，脚本只把它们列进报告、从不计入发布集**——因为把浮动分支当作「已发布」会把门禁变成永远通过。六条规则全部 fail-closed：
-
-| 规则 | 触发的状态 |
-| --- | --- |
-| `driver-release-state-unreadable` | registry 指向的驱动在基线 ref 或工作区一侧读不到（**读不到不等于没发布**，因此阻断而不是放行） |
-| `protocol-moved-without-driver-release` | `PROTOCOL_VERSION` / `MIN_PROTOCOL_VERSION` 动了，但发布集为空 |
-| `protocol-moved-without-driver-api-release` | 协议号动了，但 `datazen-driver-api` 的 crate 版本没前进 |
-| `driver-released-without-driver-api-release` | 有驱动发布了，但 `datazen-driver-api` 没发——老驱动拿不到新契约 |
-| `released-driver-outside-delivered-protocol-window` | 已发布驱动的 `protocol_version()` 落在本次交付声明的 `MIN..=PROTOCOL` 窗口之外（窗口为空时由 `protocol-window-non-empty` 负责，此处不重复报） |
-| `recompiled-driver-not-released` | 驱动声明的协议号随本次交付上移，却没有跟着发布 |
-
-每条 reject 都逐字点出**哪个驱动、哪个协议数字**不匹配，例如 `driver 'mysql' was released in this delivery (packages/drivers/mysql/Cargo.toml 0.1.0 -> 0.1.1) but declares protocol_version() = 9 (hard-coded override), outside the window MIN_PROTOCOL_VERSION 1 ..= PROTOCOL_VERSION 4 this delivery publishes.` 这条脚本**不新增任何协议协商机制**，只复用既有的 `PROTOCOL_VERSION` / `MIN_PROTOCOL_VERSION` 语义。
-
-**冲突时的判据**：如果某个 breaking 改动无法在本仓库内一次性覆盖全部 path 驱动（例如需要 3 个 git 驱动分别发版），那它**不能**靠下调 `MIN` 蒙混过关，必须先让 DataZen 侧以新 `PROTOCOL_VERSION` 构建、通过 registry 钉 ref 升级全部 git 驱动，最后再打开闸门。在中间状态，宿主应保持 `PROTOCOL_VERSION` 不变、拒绝加载尚未跟进的新能力，而不是接受一个半兼容的组合。
-
-**AI 侧同理**：`AI_PROTOCOL_VERSION` 变更时需要同步更新所有 AI Provider 插件，这条规则在 `AGENTS.md` 中已写明，与本文的驱动协议规则是同一套原子门槛的两次应用。
-
-### 5.5 `source-breaking`：老驱动跑得好好的，但新的编不出来
-
-门禁实际有**四档**判定，不是三档：`additive` / `breaking` / `source-breaking` / `cosmetic`（`scripts/lib/compatMatrix.mjs:24` 的 `COMPAT_MATRIX.classes`）。
-
-第四档不是给三档打补丁。有一类改动**根本不回答 §5.3 的判定原则**——「老驱动在新宿主上是否仍能安全运行」这个问题对它来说是空的。代表物是给受治理 `struct` 加 `#[non_exhaustive]`（下文把这种「以后不能再加字段」的 FOREVER 冻结简称 FOREVER 冻结）。这类改动落地的瞬间：
-
-- 已经**编好**的老驱动**完全正常**。它报告的协议版本没变，宿主不降级、不拒绝，行为一模一样。
-- 任何**还没编**的驱动**立刻编不出来**。`rustc` 报 `error[E0639]`，在对方自己的仓库里。
-
-于是旧的两档都不是「不够精确」，是**错的**：
-
-- **判 `additive` 是撒谎。** `additive` 的定义就是「现有实现方继续能编译」，而 `#[non_exhaustive]` 恰恰是让它们停止编译的那一个属性。它又是唯一会对 out-of-tree 驱动说「你没事，继续走」的那一档——那正是唯一不能发出去的消息。**用一档承诺「你不受影响」的判定，去描述一个会打破你的改动，是在骗下一个人。**
-- **判 `breaking` 会逼出一场根本没发生的线上事故。** `breaking` 的义务是升 `PROTOCOL_VERSION`（`scripts/check-driver-protocol-compat.mjs:702` 的 `breaking-change-requires-protocol-bump`）。但线上一个字节都没动，升它等于向所有驱动宣布一个不存在的线上不兼容，同时对真正会炸的地方——别人仓库里的 `cargo build`——一个字都没说。
-
-所以 `source-breaking` 自己成档：它按 `additive` 的方式动 crate 版本（`COMPAT_MATRIX.classes['source-breaking'].requires = ['crateVersion']`，`scripts/lib/compatMatrix.mjs:69-73`），并额外携带一份显式迁移说明。
-
-#### 边界一：FOREVER 冻结 ≠ 升 `PROTOCOL_VERSION`
-
-两者管的不是同一件事。`PROTOCOL_VERSION` 是宿主与驱动之间**线上**说的协议（`packages/driver-api/src/lib.rs:99`，当前 `4`；`MIN_PROTOCOL_VERSION` 在 `:105`，当前 `1`），它能表达的是一个 `[MIN, PROTOCOL]` 的**版本窗口**：装一个旧驱动，宿主据此知道该怎么对待它。FOREVER 冻结是**源码级**的，协议窗口里没有「你必须重编」这个词汇，也永远不会有——线上一位比特都没动。
-
-把它表达成协议升级，等于**用一台测不到故障的仪器去报告一个只在编译期存在的故障**。因此：改线上语义 → 升 `PROTOCOL_VERSION`；FOREVER 冻结 → 升 crate 版本 + 发迁移配方，**协议号一位都不动**。
-
-#### 边界二：失败配方，以及一个必须为 0 的自查
-
-命中 `source-breaking` 时门禁报 `source-break-requires-out-of-tree-migration`（`scripts/check-driver-protocol-compat.mjs:718`），并把 `scripts/lib/sourceBreak.mjs:44-57` 的 `OUT_OF_TREE_MIGRATION_NOTE` 原样打进失败信息——因为对 out-of-tree 作者来说，**这段门禁输出往往是他编不过之前唯一能看到的东西**。这条没有「已满足」可以 latch（上面两条有）：升 crate 版本不告诉任何人该敲什么代码，所以**配方本身就是违规项**，命中即报。
-
-同一份报告里，`breaking-change-requires-protocol-bump` 的出现次数**必须是 0**。这是防自己搞混的自查项，不是顺带的效果：`CLASS_REQUIRES` 由 `COMPAT_MATRIX.classes[cls].requires` 派生（`scripts/check-driver-protocol-compat.mjs:209`、`:699`），而 `source-breaking` 的 requires 里**没有** `protocol`。哪天这条 token 在一次 FOREVER 冻结提交里出现，就说明判定漏回了 `breaking`，第四档等于白设。
-
-#### 边界三：检测是故意窄的，不要当成「什么都抓」
-
-`SOURCE_BREAKING_ATTRIBUTES`（`scripts/lib/sourceBreak.mjs:82-91`）目前只有一条 `struct` 规则，下面四个边界都是刻意的：
-
-1. **只认整行。** 正则是 `/^\s*#\s*\[\s*non_exhaustive\s*\]\s*$/`（`:86`）。`isCosmeticLine`（`scripts/check-driver-protocol-compat.mjs:285-296`）会先丢掉纯注释行，所以「文档里提到这个属性」不会被误判；但一行 `// TODO: 加 #[non_exhaustive]` 后面确实声明着字段——子串匹配会为这个 TODO 拦下一次门禁，把一次普通字段新增报成 source break。
-2. **只认受治理 span 内的非 cosmetic 新增行。** 改写一行在 diff 里是**删除**，永远在 `breaking` 分支就返回了，压根到不了新增分支（`:533-546`）。所以这一档只能由**纯新增**触发。
-3. **只认 `kind === 'struct'`。** `trait` 的表是空的（`:90`）。
-4. **`#[serde(...)]` 仍然是 `additive`，这是对的。** 它改的是线上写出去的东西，不是能不能编译，归本文档 serde 行管，不由这张表管。**两个排除的理由不能互换**：把它排除的理由是「改线上」，而「在 `enum` 上限制的是**匹配**、不是构造」是 `non_exhaustive` 加在 enum 上时被排除的理由（`:72-75`）。拿后者去论证前者是错的——那会把一个线上问题说成构建问题，正是这张表存在的意义。
-
-#### `CapabilitySet` 的当前位置（当前事实，不是计划）
-
-`packages/driver-api/src/capabilities.rs:282` 的 `pub struct CapabilitySet` **目前没有** `#[non_exhaustive]`，紧邻的 `:281` 是 `#[serde(rename_all = "camelCase")]`。**这是当前状态，不是「待补」。**
-
-之所以现在加这个属性是**一行一处**的改动，但「本仓库内早已全部改完」这句话在 `1434d29e3` 之后**并不成立**，实测的现状是两种形态并存（15 个 path 驱动，逐驱动核对）：
+`packages/driver-api/src/capabilities.rs` 的 `pub struct CapabilitySet` **目前没有** `#[non_exhaustive]`。给它加这个属性是**一行一处**的改动，但「本仓库内早已全部改完」这句话在 `1434d29e3` 之后**并不成立**，实测的现状是两种形态并存（15 个 path 驱动，逐驱动核对）：
 
 | 形态 | 驱动 | 落点 |
 | --- | --- | --- |
@@ -450,7 +382,7 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
 | `CapabilitySet::default()` 加逐字段赋值，12 格全写 | postgres、vector、hbase、mysql、sqlite、mongodb | postgres `src/resource/capabilities.rs`、vector / hbase `src/resource/capabilities.rs`、mysql / sqlite / mongodb `src/resource_capabilities.rs` |
 | `CapabilitySet::default()` 加 **5** 格显式赋值，其余 7 格有意留在 fail-closed 默认值并逐格写明理由 | redis | `src/resource/capabilities.rs:119-189`（理由在 `:129-146`） |
 
-前 8 个正是未迁移驱动：它们还没有 `impl ResourceProvider`，经 `LegacyResourceAdapter` 被宿主包起来，能力集就写在 adapter 那一侧的 `capabilities()` 里。**给 `CapabilitySet` 加 `#[non_exhaustive]` 会立刻打断这 8 个驱动**，代价其实落在本仓库内，而不只在 out-of-tree 驱动上。所以加属性这一步的前提是先把未迁移驱动逐个改形态，或为它们保留穷举式构造的等价路径——在这之前不要把这句描述改写成「早已全部改完」。
+前 8 个正是未迁移驱动：它们还没有 `impl ResourceProvider`，经 `LegacyResourceAdapter` 被宿主包起来，能力集就写在 adapter 那一侧的 `capabilities()` 里。**给 `CapabilitySet` 加 `#[non_exhaustive]` 会立刻打断这 8 个驱动**，代价其实落在本仓库内。所以加属性这一步的前提是先把未迁移驱动逐个改形态，或为它们保留穷举式构造的等价路径——在这之前不要把这句描述改写成「早已全部改完」。
 
 ### 5.6 `supportsBackup`：判据不是「有没有覆写 dump」
 
@@ -679,8 +611,6 @@ P2 新增的 `capabilities.rs` / `resource.rs` / `session.rs` 必须逐条过这
 
 | 门禁 | 命令 | 基线 |
 | --- | --- | --- |
-| 驱动协议兼容 | `pnpm test:driver-protocol` | 干净。`source-breaking` 命中时只应报 `source-break-requires-out-of-tree-migration`；同一次运行里 `breaking-change-requires-protocol-bump` 出现次数**必须为 0**（自查项，见 [§5.5](#55-source-breaking老驱动跑得好好的但新的编不出来)） |
-| 协议号 / 驱动发布原子性 | `pnpm test:driver-protocol-release` | 干净。协议号与 `datazen-driver-api` 版本都没动时应报 `ok (…) driver releases: 0`；一旦 `PROTOCOL_VERSION` 或 `MIN_PROTOCOL_VERSION` 上升，同一次交付必须同时发出对应驱动（path 驱动升 `[package] version`、钉住的 git 驱动移 `ref`），否则报 `protocol-moved-without-driver-release` / `recompiled-driver-not-released` 并**点名具体驱动与协议号**（[§5.4](#54-什么算契约改动) 末段） |
 | 依赖边界 | `pnpm test:boundaries` | 生产代码 0 违规；fixture 2 处已知违规（不是 0 目标值） |
 | 类型 | `pnpm typecheck` | 干净，**含测试文件**（`tsconfig.json` 已不排除 `__tests__/` 与 `*.test.ts(x)`） |
 | 驱动 UI 单测 | `pnpm test:unit:drivers` | 干净 |
