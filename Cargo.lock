@@ -1837,7 +1837,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-api"
-version = "0.0.15"
+version = "0.0.16"
 dependencies = [
  "async-trait",
  "chrono",

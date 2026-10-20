@@ -121,6 +121,32 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 版本：`datazen-driver-api` 0.0.13 → 0.0.15（0.0.14 为 `SqlDialect`，0.0.15 为 `CatalogReader`）；新增契约是 additive，`PROTOCOL_VERSION` 保持 6。契约表登记在 `scripts/lib/driver-protocol-rules.mjs`（`sql-dialect` / `legacy-sql-dialect` / `bound-parameter-limit` / `catalog-reader` / `legacy-catalog-reader`）。
 
+### 2.5 复用包装器：`ReuseDriver` 必须显式决定每个方法
+
+`ReuseDriver` 把内层驱动以另一个 id 呈现（QuestDB / Cloudberry 复用 PostgreSQL 线协议，Doris / StarRocks / Manticore / OceanBase MySQL 模式复用 MySQL）。不变量只有一条：**`DatabaseDriver` 的每个方法都必须在包装器里显式决定**——转发，或有意覆写。不允许某个方法落到 trait 默认体。
+
+原因是默认体为通用驱动而写，静默降级正好抹掉别名引擎的规则：`has_multi_database` 固定返回 `false`、`get_schemas` 返回 `None`、`qualify_sql_target` 返回 `None`、`migration_renderer` 返回 `None`。而同一个包装器却在转发 `open_databases` / `close_database`（按库池操作）——同一驱动出现两份互相矛盾的事实；产品元数据（`questdbMeta.hasMultiDatabase = true`、`defaultPort = 8812`）又是第三份。
+
+已补齐的转发（此前缺失 16 个）：
+
+| 类别 | 方法 |
+| --- | --- |
+| 方言 / 文本 | `quote_ident`、`build_update_statement`、`build_delete_statement` |
+| 目标与端点 | `has_multi_database`、`qualify_sql_target`、`default_host`、`default_port` |
+| 目录 | `get_schemas` |
+| 结构迁移 | `migration_renderer`、`migration_capabilities`、`validate_schema_migration`、`validate_schema_migration_plan` |
+| 执行 / 流式 | `query_stream_with_params`、`query_stream_with_execution_at` |
+| 备份 / 传输 | `render_transfer_identity_sequence_sync_sql` |
+| 提示 | `dialect_notes` |
+
+有意不转发的只有三类，且都在包装器里有注释：
+
+- `driver_type`：别名 id 正是包装器存在的理由。
+- `test_connection`：回写别名的 `server_type`。
+- 精确取消协议：由构造参数门控，并且仍要求内层声明支持。
+
+机械守卫：`packages/driver-api/src/reuse_forwarding_tests.rs` 读取 `traits.rs` 与 `reuse.rs` 的源码，断言 trait 的每个方法都出现在包装器实现中，并带正/反控制用例。`DatabaseDriver` 以后新增方法而包装器不更新，`cargo test -p datazen-driver-api` 直接失败；这条不变量不再依赖评审。
+
 ## 3. Driver Commands
 
 Driver 可以通过 `command_definitions()` 声明 Command，通过 `execute_command()` 执行。
