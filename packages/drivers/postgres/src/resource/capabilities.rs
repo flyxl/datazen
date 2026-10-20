@@ -217,7 +217,8 @@ pub(crate) fn postgres_capability_set() -> CapabilitySet {
 /// snapshot can be told apart from the current declaration. `1` is the first
 /// set that was actually checked against the code below; a snapshot taken
 /// before this module existed carried `0`. `2` added buffered row read/write;
-/// `3` adds fixed interactive/agent sessions and bounded streaming results.
+/// `3` adds fixed interactive/agent sessions and bounded streaming results;
+/// `4` adds transactional SQL restore.
 pub(crate) const POSTGRES_CAPABILITY_REVISION: u64 = 4;
 
 /// The full registry: identity, version, protocol and the declared set.
