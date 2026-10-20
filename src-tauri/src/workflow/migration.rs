@@ -26,6 +26,10 @@ struct RuntimeSession {
     schema: Option<String>,
 }
 
+fn migration_command_error(error: crate::commands::CommandError) -> WorkflowError {
+    WorkflowError::Driver(error.to_string())
+}
+
 pub use datazen_feature_core::workflow::migration::sanitize_variables;
 use datazen_feature_core::workflow::migration::{MigrationHost, MigrationOutcome};
 pub(crate) async fn execute_profile_step(
@@ -132,54 +136,46 @@ async fn open_session(
     schema: Option<&str>,
     label: &str,
 ) -> Result<RuntimeSession, WorkflowError> {
-    let (db_session_id, database) = if let Some(database) =
-        database.filter(|value| !value.trim().is_empty())
-    {
-        let session = state
-            .connection_manager
-            .connect_dedicated(connection_id, Some(database))
+    let configured_database = database
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_owned);
+    let database = match configured_database {
+        Some(database) => database,
+        None => state
+            .store
+            .get_connection(connection_id)
             .await
-            .map_err(|error| WorkflowError::ConnectionFailed {
-                connection_id: connection_id.into(),
-                message: error.to_string(),
-            })?;
-        (session, database.to_string())
-    } else {
-        let (session, _, _) = state
-            .connection_manager
-            .resolve_session_for_connection(connection_id)
-            .await
-            .map_err(|error| WorkflowError::ConnectionFailed {
-                connection_id: connection_id.into(),
-                message: error.to_string(),
-            })?;
-        let config = state
-            .connection_manager
-            .get_session_config(&session)
-            .await
-            .map_err(|error| WorkflowError::Driver(error.to_string()))?;
-        let database = match config.database {
-            Some(database) => database,
-            None => {
-                if let Err(error) = state.connection_manager.release(&session).await {
-                    tracing::warn!(
-                        db_session_id = %session,
-                        %error,
-                        "failed to release workflow migration session after database resolution failed"
-                    );
-                }
-                return Err(WorkflowError::Validation(format!(
-                    "{label} connection has no selected database"
-                )));
-            }
-        };
-        (session, database)
+            .and_then(|config| config.database)
+            .ok_or_else(|| {
+                WorkflowError::Validation(format!("{label} connection has no selected database"))
+            })?,
     };
-    let config = state
-        .connection_manager
-        .get_session_config(&db_session_id)
-        .await
-        .map_err(|error| WorkflowError::Driver(error.to_string()))?;
+    let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
+        state,
+        connection_id,
+        &database,
+        "workflow-migration",
+    )
+    .await
+    .map_err(|error| WorkflowError::ConnectionFailed {
+        connection_id: connection_id.into(),
+        message: error.to_string(),
+    })?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &db_session_id,
+        datazen_runtime::application::LivePurpose::LongLivedHostWork,
+    )
+    .await
+    .map_err(migration_command_error)?;
+    let database = context
+        .view
+        .observed_context
+        .namespace
+        .database
+        .clone()
+        .or(context.config.database.clone())
+        .unwrap_or(database);
     Ok(RuntimeSession {
         db_session_id,
         database,
@@ -187,15 +183,20 @@ async fn open_session(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string)
-            .or(config.schema),
+            .or(context
+                .view
+                .observed_context
+                .namespace
+                .schema
+                .clone()
+                .or(context.config.schema.clone())),
     })
 }
 
 async fn release_session(state: &AppState, session: &RuntimeSession) {
-    if let Err(error) = state
-        .connection_manager
-        .release(&session.db_session_id)
-        .await
+    if let Err(error) =
+        crate::services::migration_endpoint::close_dedicated_session(state, &session.db_session_id)
+            .await
     {
         tracing::warn!(db_session_id = %session.db_session_id, %error, "failed to release workflow migration session");
     }
