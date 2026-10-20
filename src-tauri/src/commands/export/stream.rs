@@ -139,7 +139,10 @@ impl DesktopExportSource {
             .map_err(|_| unavailable())?;
         // Only these ResourceProvider implementations have the audited bounded,
         // awaitable SQL row-stream/drain path. Other drivers are not claimed.
-        if !matches!(config.database_type.as_str(), "postgres" | "mysql") {
+        if !matches!(
+            config.database_type.as_str(),
+            "postgres" | "postgresql" | "mysql"
+        ) {
             return Err(unavailable());
         }
         let adapter = self.platform.require().map_err(|_| unavailable())?;

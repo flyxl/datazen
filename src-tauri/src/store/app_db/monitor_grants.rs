@@ -57,7 +57,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let db = AppDb::open(temp.path()).unwrap();
         db.with_conn(|conn| {
-            conn.execute_batch("DROP TABLE monitor_schedule_grants; DELETE FROM schema_migrations WHERE version=3; INSERT INTO workflows(id,name,definition_yaml,updated_at,created_at) VALUES('saved','Saved','id: saved','','');")?;
+            conn.execute_batch("ALTER TABLE jobs DROP COLUMN claim_client_instance_id; DROP TABLE monitor_schedule_grants; DELETE FROM schema_migrations WHERE version>2; INSERT INTO workflows(id,name,definition_yaml,updated_at,created_at) VALUES('saved','Saved','id: saved','','');")?;
             Ok(())
         }).unwrap();
         drop(db);
@@ -69,7 +69,7 @@ mod tests {
                 conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
                     row.get(0)
                 })?;
-            assert_eq!(version, 3);
+            assert_eq!(version, super::super::SCHEMA_VERSION);
             Ok(())
         })
         .unwrap();

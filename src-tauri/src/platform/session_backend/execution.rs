@@ -122,24 +122,27 @@ impl DesktopSessionBackend {
                 .and_then(crate::commands::result_relation_candidate)
             {
                 if let Some(driver) = self.registry.get(&config.database_type).await {
-                    let handle = datazen_driver_api::ConnectionHandle {
-                        id: resource.handle.resource_key().into(),
-                        pool_id: resource.handle.provider_id().into(),
-                    };
-                    let before = resource
-                        .provider
-                        .observe_session(&resource.handle)
-                        .await
-                        .ok();
-                    match driver
-                        .execute_command(
-                            &handle,
-                            "get_table_schema",
-                            serde_json::json!({"relationSql":candidate.relation_sql}),
-                        )
-                        .await
-                    {
-                        Ok(metadata) => before.map(|before| (before.context, metadata.data)),
+                    match resource.driver_handle() {
+                        Ok(handle) => {
+                            let before = resource
+                                .provider
+                                .observe_session(&resource.handle)
+                                .await
+                                .ok();
+                            match driver
+                                .execute_command(
+                                    &handle,
+                                    "get_table_schema",
+                                    serde_json::json!({"relationSql":candidate.relation_sql}),
+                                )
+                                .await
+                            {
+                                Ok(metadata) => {
+                                    before.map(|before| (before.context, metadata.data))
+                                }
+                                Err(_) => None,
+                            }
+                        }
                         Err(_) => None,
                     }
                 } else {
