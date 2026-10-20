@@ -1,5 +1,5 @@
-use datazen_driver_api::CommandCatalog;
 use super::*;
+use datazen_driver_api::CommandCatalog;
 impl DesktopSessionBackend {
     pub(super) async fn execute_resource(
         &self,
