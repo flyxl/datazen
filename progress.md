@@ -133,11 +133,19 @@
      mysql 系别名（mariadb/doris/starrocks/manticore/ob_oracle）已自带逐一别名的
      provider（`MysqlResourceProvider::new(driver, id, …)`），此前即在册。
      宿主回归：`cargo test -p datazen --lib` `1378 passed; 9 ignored`。
-   - [ ] 第 2 片（未开始）：宿主 §6.2(5) 列出的遗留 namespace 调用点收敛
-     （`commands/connection.rs` close_database / `commands/sync` executor 的
-     discard_connection、`restore_job.rs` 的 has_multi_database 等）；先贯通
-     一个驱动的一条完整执行链（acquire → execute → commit/rollback → close）
-     走到 `ResourceProvider`。
+   - [ ] 第 2 片（进行中）：宿主 §6.2(5) 列出的遗留 namespace 调用点收敛；
+     资源契约贯通复查：平台 `session_backend/execution.rs` 的执行链已在
+     `provider.execute_on_resource` / `provider.begin_transaction` /
+     `commit_transaction` / `rollback_transaction` 上全程收敛（实测确认），
+     metadata 命令经 `provider.connection_handle` 限界借出。§6.2(5) 里
+     `data_transfer/execute/dispatcher.rs`、`data_sync/execute.rs`、
+     `workflow/executor.rs` 三处已不存在于代码中（文档引用过期），仍在册的
+     分支：`commands/connection.rs` close_database / `commands/sync` executor
+     discard_connection / `restore_job.rs` has_multi_database —— 待专轮设计
+     runtime 侧 per-database 关闭语义（ResourceProvider 无 per-database 池
+     操作；收敛点应在 runtime 层出需求，而不是宿主直接调用驱动）。
+   - [x] 第 2.5 片（`e1035ed87`）：`restore_sql::prepare` 的 scanner 依赖切到
+     `BackupDialect`（§四 BackupDialect 的收尾边界），宿主/测试边界包适配器。
 3. **§六：协议升级与清场（未开始）**——删除无消费者的旧方法/适配器；更新
    `drivers.md`、`driver-capability-migration.md`；Git 驱动兼容状态说明。
    Git 驱动的资源路径兼容结果：未迁移即 `ResourceProviderMissing`（带驱动名），
