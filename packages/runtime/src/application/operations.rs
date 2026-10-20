@@ -120,6 +120,7 @@ impl RuntimeConnectionUseCases {
             Self::source(ctx, &entry),
         );
         let fingerprint = gateway_request.fingerprint();
+        let mut activity = self.begin_idle_activity(&request.handle).await?;
         let accepted = self
             .inner
             .gateway
@@ -161,27 +162,37 @@ impl RuntimeConnectionUseCases {
             let id = receipt.execution_id.clone();
             tokio::spawn(async move {
                 // The async policy port is checked again immediately before physical dispatch.
-                let authorization = async {
-                    service
-                        .authorize_target(
-                            &ctx,
-                            action,
-                            &dispatch_target,
-                            &dispatch_command,
-                            &dispatch_input,
-                        )
-                        .await
-                }
-                .await;
+                // Pending authorization owns a bounded hold, not business TTL.
+                let authorization = tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    service.authorize_target(
+                        &ctx,
+                        action,
+                        &dispatch_target,
+                        &dispatch_command,
+                        &dispatch_input,
+                    ),
+                )
+                .await
+                .unwrap_or_else(|_| {
+                    Err(ApiError::new(
+                        ApiErrorCode::PermissionDenied,
+                        "dispatch authorization timed out",
+                    ))
+                });
                 let result = match authorization {
-                    Ok(()) => service
-                        .inner
-                        .gateway
-                        .dispatch(&Self::principal(&ctx, &handle), &id)
-                        .await
-                        .map_err(gateway_error),
+                    Ok(()) => {
+                        activity.business_started();
+                        service
+                            .inner
+                            .gateway
+                            .dispatch(&Self::principal(&ctx, &handle), &id)
+                            .await
+                            .map_err(gateway_error)
+                    }
                     Err(error) => Err(error),
                 };
+                activity.finish().await;
                 let resource_lost = result
                     .as_ref()
                     .err()
@@ -215,6 +226,8 @@ impl RuntimeConnectionUseCases {
                         .await;
                 }
             });
+        } else {
+            activity.finish().await;
         }
         Ok(receipt)
     }
@@ -322,7 +335,7 @@ impl RuntimeConnectionUseCases {
         Ok(receipt)
     }
 }
-fn utc_now() -> String {
+pub(super) fn utc_now() -> String {
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -465,9 +478,7 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         if let Some(entry) = lock(&self.inner.sessions).get_mut(&request.handle.db_session_id) {
             entry.attached = true;
         }
-        // 重新挂上就是「又有人用了」：把摘挂载宽限推回正常期限，免得刚挂上就被回收。
-        // actor 侧 `set_idle_deadline` 是**替换**语义，所以推回去就真的推回去了。
-        self.refresh_idle_deadline(&request.handle).await?;
+        // Attachment proves ownership, not business activity. Preserve the deadline.
         self.session_view(ctx, &request.handle).await
     }
     async fn detach_session(
@@ -760,6 +771,8 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
                 .remove(&convert::handle(&request.handle)?.runtime_epoch.get());
         }
         self.reclaim_session_tombstones();
+        lock(&self.inner.transaction_unknown).remove(&request.handle);
+        lock(&self.inner.transaction_gates).remove(&request.handle);
         self.inner.sink.invalidate(&request.handle);
         Ok(receipt)
     }

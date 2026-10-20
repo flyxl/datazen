@@ -644,6 +644,8 @@ MySQL USE 改变当前会话默认数据库；完整限定对象名不等于切�
 
 额度和 timeout 使用单调时钟判断持续时间；对外 expiresAt 使用 UTC。登录心跳不能刷新 lastBusinessActivity；执行期间不以 idle 判定回收。事务状态 Unknown 按保守事务上限处理。
 
+Runtime 在授权后的新后台 dispatch 开始/完成时记录业务活动；执行持有计数保护直到真实完成，暂停 idle 期限，最后一次完成后按单调时钟重新起算。成功、失败及 Unknown 保留原执行效果；授权拒绝与幂等回执重放不续期。actor 对执行中的 idle scan 立即返回未回收，避免旧扫描在完成后按旧期限关闭会话。getSession/getExecution、订阅、心跳与 attach 不续期；执行中 detach 不打断执行，完成后再采用业务期限与 detached grace 的较短者。
+
 ### 9.3 预算会计
 
 预算覆盖组织、用户、数据库服务、worker 和 Job。占用集合包含 Opening、InUse、Cleaning、idle pool、Quarantined 和 control sockets。归还到 idle pool不释放物理连接预算，只有实际 close 才释放。

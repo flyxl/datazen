@@ -686,10 +686,10 @@ impl OpenSessionUseCase {
 | --- | --- |
 | `driver_registry`（装配入口）、`store`、`schema_cache`、`sync_adapters`（桌面实现） | Runtime connection use cases、SessionRegistry、resource registry 与物理 budget |
 | `schema_context_builder`、`prompt_resolver`、`ai_registry`、`cancel_registry`（Host AI 组装） | Runtime execution gateway 与 owner-bound session lease |
-| `query_executions`、`session_transactions`（Host 命令态；事务句柄 map 尚待迁移） | session 到期、release 与不透明资源生命周期由 Runtime 管理 |
+| `query_executions`（Host 命令态） | session 到期、release、事务控制与句柄账本由 Runtime 管理 |
 | `wapps`、`mcp_client_manager`、`workflow_scheduler`、`workflow_registry`、`workflow_history`、`monitor_*` | profile 持久化仍经桌面 Store；各 consumer 通过 Runtime / feature ports 执行 |
 
-`AppState` 仍是 Tauri command state，不是纯 `ApplicationServices` 容器；P6 移除的是旧 `ConnectionManager`，Host 的 `session_transactions` 与 `query_executions` 尚未整体移入 Runtime。
+`AppState` 仍是 Tauri command state，不是纯 `ApplicationServices` 容器；P6 移除的是旧 `ConnectionManager`，Host 的 `session_transactions` 已删除，兼容事务控制经 Runtime Gateway/actor；`query_executions` 仍为 Host 命令态。
 
 ### 6.2 组装顺序
 
@@ -714,7 +714,7 @@ flowchart TD
 | --- | --- |
 | 原 `services/connection_manager/*` | 已删除；连接 consumer 使用 Runtime session / resource APIs，无兼容 `ConnectionManager` 实现 |
 | 桌面隧道生命周期 | `DesktopSessionBackend` 将 Tunnel 句柄持有在 Runtime physical Resource 中；确认关闭后释放 |
-| `services/transaction.rs`、`AppState.session_transactions` | Host 事务句柄 map 仍存在；其登记表尚未迁入 `SessionRegistry`，不得宣称此边界已经完成 |
+| 原 `AppState.session_transactions` | 已删除；Runtime 串行事务控制复用 ResourceProvider，句柄观测/回收统一归 `SessionRegistry`，Unknown 不自动重发 |
 | AI、MCP、Workflow 与迁移 consumers | 保留 Host 组装与外部契约；需要连接执行的路径经 feature/application Runtime ports |
 | `store/`、`cache/`（`SchemaCache`） | Store 与 DriverRegistry 仍是桌面适配；SchemaCache 保持现有 Host facade |
 

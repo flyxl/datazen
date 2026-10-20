@@ -189,8 +189,7 @@ impl PlatformAdapter {
         &self.identity
     }
 
-    /// owner 作用域的会话级句柄登记表。与 `AppState::session_transactions` 并存、
-    /// 互不读写：见 [`super::handles`] 模块头。
+    /// owner 作用域的 adapter 句柄登记。物理事务句柄由 Runtime actor 管理。
     pub fn handles(&self) -> &Arc<SessionHandleRegistry> {
         &self.handles
     }

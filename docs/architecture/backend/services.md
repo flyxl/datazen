@@ -35,7 +35,7 @@ Runtime 默认会话空闲期限为 30 分钟，默认扫描间隔为 3 分钟�
 
 ### 2.3 事务与隧道边界
 
-事务操作使用 Runtime live session lease；Host 的 AppState.session_transactions 仍保存 driver TransactionHandle，这是独立于已删除 ConnectionManager 的待收口边界。会话到期会通过 Runtime session release 的 rollback-and-close 路径处理物理事务；不得把 Host map 中的旧 handle 当成可在新 session 上重用的事务。
+事务控制已移入 Runtime 的 `session_transaction` / `session_transaction_status`：授权和 owner/epoch 检查之后，同会话控制串行，经 ExecutionGateway 的 `platform.*Transaction` 命令调用既有 ResourceProvider 事务端口，句柄和实际状态归 SessionRegistry actor。Host 不再保存 `AppState.session_transactions` 或 driver TransactionHandle。到期/close 统一走 Runtime 的 rollback-and-close；过期 status 返回 false，旧 commit/rollback 拒绝且不重新派发。Unknown 控制保留 Runtime 围栏，不能重发 begin/commit；调用方取消不放开仍在运行的控制任务。Tauri IPC 的参数、bool/void 返回和 Workflow v1 协议保持不变。
 
 桌面 backend 在建立物理资源前解析保存的隧道配置；隧道 Arc 与 Runtime 物理 Resource 同生共死。池化或 quarantine 会继续持有隧道；仅确认物理资源关闭后才释放该资源及隧道。Driver API 与协议不感知隧道类型，详见 tunnel.md。
 
@@ -82,7 +82,7 @@ Query 是最纯粹的会话消费方，也是这套约定的基准形状：
 - **取消**：按**执行**而不是按会话取消。流式执行分配一个执行 ID，取消时校验发起者与会话一致，不一致直接拒绝——避免一个面板取消另一个面板的查询。
 - **配置目标**：database 随命令 envelope 传递，schema 恒为 `None`（不切库）。目标名的解析交给驱动：能内联限定名的驱动自己改写，不能的驱动由用户写全限定名。**读**命令另有 `closeDatabase`：它关掉当前打开的库并作废 schema 缓存，不是把会话切到别的库。
 
-事务：显式事务操作借用 Runtime live session；Host 目前仍有单独的 `session_transactions` handle map（见 [2.3](#23-事务与隧道边界)），该 map 不负责连接复建。
+事务：显式控制和句柄登记归 Runtime（见 [2.3](#23-事务与隧道边界)）；Host 仅适配原 IPC，不另存事务表。
 
 ## 5. 表与数据导出
 

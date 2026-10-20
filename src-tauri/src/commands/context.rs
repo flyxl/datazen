@@ -606,9 +606,6 @@ mod tests {
             workflow_registry: Arc::new(WorkflowRegistry::new(app_db, data_dir.clone())),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
-            session_transactions: Arc::new(tokio::sync::Mutex::new(
-                std::collections::HashMap::new(),
-            )),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
@@ -677,9 +674,6 @@ mod tests {
             workflow_registry: Arc::new(WorkflowRegistry::new(store.app_db(), data_dir.clone())),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
-            session_transactions: Arc::new(tokio::sync::Mutex::new(
-                std::collections::HashMap::new(),
-            )),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
