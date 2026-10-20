@@ -5,8 +5,9 @@ use datazen_driver_postgres::PostgresDriver;
 #[test]
 fn postgres_restore_preflights_dollar_quotes_overwrite_and_transaction_policy() {
     let driver = PostgresDriver::new();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
     let profile = restore_sql::TRANSACTIONAL;
-    let statements = restore_sql::prepare(&driver,
+    let statements = restore_sql::prepare(&dialect,
         "-- fixture\nCREATE TABLE public.restore_probe(id int); INSERT INTO public.restore_probe VALUES (1); CREATE FUNCTION public.restore_text() RETURNS text LANGUAGE sql AS $$ SELECT 'a;b' $$;",
         profile, true, true, &datazen_driver_api::namespace::NamespaceTarget { database: Some("app".into()), catalog: None, schema: Some("public".into()), path: vec![] }).unwrap();
     assert_eq!(statements.len(), 4);
@@ -24,7 +25,7 @@ fn postgres_restore_preflights_dollar_quotes_overwrite_and_transaction_policy() 
         let script = format!("CREATE TABLE public.restore_probe(id int); {unsupported};");
         assert!(
             restore_sql::prepare(
-                &driver,
+                &dialect,
                 &script,
                 profile,
                 true,
@@ -136,6 +137,7 @@ async fn retained_resource_executes_restore_and_verifies_rows_before_closing() {
         .find(|f| f.driver_id() == "postgresql")
         .unwrap();
     let driver = factory.create();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(driver.as_ref());
     let provider = require_resource_provider(*factory).unwrap();
     let budget = Arc::new(Budget::default());
     let port: Arc<dyn BudgetPort> = budget.clone();
@@ -174,8 +176,9 @@ async fn retained_resource_executes_restore_and_verifies_rows_before_closing() {
     let table = format!("public.restore_probe_{}", uuid::Uuid::new_v4().simple());
     let script = format!("CREATE TABLE {table}(id int PRIMARY KEY); INSERT INTO {table} VALUES(7); INSERT INTO {table} VALUES(8);");
     let profile = provider.capabilities().snapshot.confirmed[restore_sql::CAPABILITY_KEY].clone();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(driver.as_ref());
     let statements = restore_sql::prepare(
-        driver.as_ref(),
+        &dialect,
         &script,
         &profile,
         false,
@@ -242,6 +245,7 @@ async fn retained_resource_executes_restore_and_verifies_rows_before_closing() {
 #[test]
 fn frozen_restore_target_rejects_every_foreign_object_before_returning_any_script() {
     let driver = PostgresDriver::new();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
     let target = datazen_driver_api::namespace::NamespaceTarget {
         database: Some("app".into()),
         catalog: None,
@@ -250,7 +254,7 @@ fn frozen_restore_target_rejects_every_foreign_object_before_returning_any_scrip
     };
     let own = "CREATE TABLE public.probe(id int); INSERT INTO public.probe VALUES(1); DROP TABLE public.probe;";
     assert!(restore_sql::prepare(
-        &driver,
+        &dialect,
         own,
         restore_sql::TRANSACTIONAL,
         false,
@@ -273,7 +277,7 @@ fn frozen_restore_target_rejects_every_foreign_object_before_returning_any_scrip
         let script = format!("CREATE TABLE public.first_probe(id int); {foreign};");
         for overwrite in [false, true] {
             assert!(restore_sql::prepare(
-                &driver,
+                &dialect,
                 &script,
                 restore_sql::TRANSACTIONAL,
                 false,
@@ -288,6 +292,7 @@ fn frozen_restore_target_rejects_every_foreign_object_before_returning_any_scrip
 #[test]
 fn materialized_view_overwrite_is_rejected_during_whole_script_preflight() {
     let driver = PostgresDriver::new();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
     let target = datazen_driver_api::namespace::NamespaceTarget {
         database: Some("app".into()),
         catalog: None,
@@ -296,7 +301,7 @@ fn materialized_view_overwrite_is_rejected_during_whole_script_preflight() {
     };
     let script = "CREATE TABLE public.first_probe(id int); CREATE MATERIALIZED VIEW public.probe AS SELECT 1 AS id;";
     assert!(restore_sql::prepare(
-        &driver,
+        &dialect,
         script,
         restore_sql::TRANSACTIONAL,
         false,
@@ -305,7 +310,7 @@ fn materialized_view_overwrite_is_rejected_during_whole_script_preflight() {
     )
     .is_ok());
     assert!(restore_sql::prepare(
-        &driver,
+        &dialect,
         script,
         restore_sql::TRANSACTIONAL,
         false,
@@ -318,7 +323,7 @@ fn materialized_view_overwrite_is_rejected_during_whole_script_preflight() {
         ..target
     };
     assert!(restore_sql::prepare(
-        &driver,
+        &dialect,
         "CREATE TABLE \"CaseSchema\".probe(id int);",
         restore_sql::TRANSACTIONAL,
         false,
@@ -327,7 +332,7 @@ fn materialized_view_overwrite_is_rejected_during_whole_script_preflight() {
     )
     .is_ok());
     assert!(restore_sql::prepare(
-        &driver,
+        &dialect,
         "CREATE TABLE CaseSchema.probe(id int);",
         restore_sql::TRANSACTIONAL,
         false,
@@ -340,6 +345,7 @@ fn materialized_view_overwrite_is_rejected_during_whole_script_preflight() {
 #[test]
 fn custom_schema_restore_never_uses_public_search_path_fallback() {
     let driver = PostgresDriver::new();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
     let target = datazen_driver_api::namespace::NamespaceTarget {
         database: Some("app".into()),
         catalog: None,
@@ -358,7 +364,7 @@ fn custom_schema_restore_never_uses_public_search_path_fallback() {
         for overwrite in [false, true] {
             let script = format!("CREATE TABLE custom.first_probe(id int); {sql};");
             assert!(restore_sql::prepare(
-                &driver,
+                &dialect,
                 &script,
                 restore_sql::TRANSACTIONAL,
                 false,
@@ -378,7 +384,7 @@ fn custom_schema_restore_never_uses_public_search_path_fallback() {
     ] {
         assert!(
             restore_sql::prepare(
-                &driver,
+                &dialect,
                 sql,
                 restore_sql::TRANSACTIONAL,
                 false,
@@ -390,7 +396,7 @@ fn custom_schema_restore_never_uses_public_search_path_fallback() {
         );
     }
     let prepared = restore_sql::prepare(
-        &driver,
+        &dialect,
         "CREATE TABLE custom.probe(id int);",
         restore_sql::TRANSACTIONAL,
         false,
@@ -404,6 +410,7 @@ fn custom_schema_restore_never_uses_public_search_path_fallback() {
 #[test]
 fn cascading_effects_are_rejected_before_any_script_write() {
     let driver = PostgresDriver::new();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
     let target = datazen_driver_api::namespace::NamespaceTarget {
         database: Some("app".into()),
         catalog: None,
@@ -419,7 +426,7 @@ fn cascading_effects_are_rejected_before_any_script_write() {
     ] {
         let script = format!("CREATE TABLE custom.first_probe(id int); {cascade};");
         assert!(restore_sql::prepare(
-            &driver,
+            &dialect,
             &script,
             restore_sql::TRANSACTIONAL,
             false,
@@ -434,7 +441,7 @@ fn cascading_effects_are_rejected_before_any_script_write() {
         "ALTER TABLE custom.probe DROP COLUMN id RESTRICT",
     ] {
         assert!(restore_sql::prepare(
-            &driver,
+            &dialect,
             restrict,
             restore_sql::TRANSACTIONAL,
             false,
@@ -448,6 +455,7 @@ fn cascading_effects_are_rejected_before_any_script_write() {
 #[test]
 fn postgres_three_part_overwrite_names_are_rejected_before_drop_generation() {
     let driver = PostgresDriver::new();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
     let target = datazen_driver_api::namespace::NamespaceTarget {
         database: Some("app".into()),
         catalog: None,
@@ -461,7 +469,7 @@ fn postgres_three_part_overwrite_names_are_rejected_before_drop_generation() {
             // script, including the old wrongly truncated DROP app.custom.
             assert!(
                 restore_sql::prepare(
-                    &driver,
+                    &dialect,
                     &sql,
                     restore_sql::TRANSACTIONAL,
                     false,
@@ -474,7 +482,7 @@ fn postgres_three_part_overwrite_names_are_rejected_before_drop_generation() {
         }
     }
     let qualified = restore_sql::prepare(
-        &driver,
+        &dialect,
         "CREATE TABLE custom.probe(id int);",
         restore_sql::TRANSACTIONAL,
         false,

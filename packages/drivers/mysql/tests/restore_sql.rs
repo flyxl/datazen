@@ -5,10 +5,11 @@ use datazen_driver_mysql::MysqlDriver;
 #[test]
 fn mysql_restore_preflights_whole_input_and_refuses_false_single_transaction() {
     let driver = MysqlDriver::new(false);
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
     let profile = restore_sql::IMPLICIT_COMMIT;
     let sql = "CREATE TABLE `restore_probe`(id int, value text); INSERT INTO `restore_probe` VALUES(1, 'a;b');";
     let statements = restore_sql::prepare(
-        &driver,
+        &dialect,
         sql,
         profile,
         false,
@@ -24,7 +25,7 @@ fn mysql_restore_preflights_whole_input_and_refuses_false_single_transaction() {
     assert_eq!(statements.len(), 3);
     assert_eq!(statements[0], "DROP TABLE IF EXISTS `restore_probe`");
     assert!(restore_sql::prepare(
-        &driver,
+        &dialect,
         sql,
         profile,
         true,
@@ -47,7 +48,7 @@ fn mysql_restore_preflights_whole_input_and_refuses_false_single_transaction() {
         "CREATE/**/DATABASE other",
     ] {
         assert!(restore_sql::prepare(
-            &driver,
+            &dialect,
             &format!("{sql}{unsupported};"),
             profile,
             false,
@@ -157,6 +158,7 @@ async fn retained_resource_executes_restore_and_verifies_rows_before_closing() {
         .find(|f| f.driver_id() == "mysql")
         .unwrap();
     let driver = factory.create();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(driver.as_ref());
     let provider = require_resource_provider(*factory).unwrap();
     let budget = Arc::new(Budget::default());
     let port: Arc<dyn BudgetPort> = budget.clone();
@@ -195,8 +197,9 @@ async fn retained_resource_executes_restore_and_verifies_rows_before_closing() {
     let table = format!("restore_probe_{}", uuid::Uuid::new_v4().simple());
     let script = format!("CREATE TABLE {table}(id int PRIMARY KEY); INSERT INTO {table} VALUES(7); INSERT INTO {table} VALUES(8);");
     let profile = provider.capabilities().snapshot.confirmed[restore_sql::CAPABILITY_KEY].clone();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(driver.as_ref());
     let statements = restore_sql::prepare(
-        driver.as_ref(),
+        &dialect,
         &script,
         &profile,
         false,
@@ -263,6 +266,7 @@ async fn retained_resource_executes_restore_and_verifies_rows_before_closing() {
 #[test]
 fn frozen_restore_target_rejects_every_foreign_object_before_returning_any_script() {
     let driver = MysqlDriver::new(false);
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
     let target = datazen_driver_api::namespace::NamespaceTarget {
         database: Some("app".into()),
         catalog: None,
@@ -272,7 +276,7 @@ fn frozen_restore_target_rejects_every_foreign_object_before_returning_any_scrip
     let own =
         "CREATE TABLE app.probe(id int); INSERT INTO app.probe VALUES(1); DROP TABLE app.probe;";
     assert!(restore_sql::prepare(
-        &driver,
+        &dialect,
         own,
         restore_sql::IMPLICIT_COMMIT,
         false,
@@ -295,7 +299,7 @@ fn frozen_restore_target_rejects_every_foreign_object_before_returning_any_scrip
         let script = format!("CREATE TABLE app.first_probe(id int); {foreign};");
         for overwrite in [false, true] {
             assert!(restore_sql::prepare(
-                &driver,
+                &dialect,
                 &script,
                 restore_sql::IMPLICIT_COMMIT,
                 false,
