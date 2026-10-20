@@ -29,13 +29,25 @@ pub(crate) async fn runtime_session_context(
     let connection = lease
         .connection()
         .map_err(|error| crate::commands::CommandError::NotFound(error.to_string()))?;
-    let config = state
+    let mut config = state
         .store
         .get_connection(view.connection_id.as_str())
         .await
         .ok_or_else(|| {
             crate::commands::CommandError::NotFound("connection profile is unavailable".into())
         })?;
+    config.database = view
+        .observed_context
+        .namespace
+        .database
+        .clone()
+        .or(config.database);
+    config.schema = view
+        .observed_context
+        .namespace
+        .schema
+        .clone()
+        .or(config.schema);
     Ok(RuntimeSessionContext {
         view,
         driver: std::sync::Arc::clone(connection.driver()),

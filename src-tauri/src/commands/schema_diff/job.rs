@@ -455,11 +455,16 @@ async fn target_schema_from_config(state: &AppState, session: &str) -> Option<St
     let adapter = state.platform_require().ok()?;
     let runtime = adapter.runtime().ok()?;
     let call = adapter.begin_call();
-    runtime
+    let observed = runtime
         .get_session_by_id(call.context(), session)
         .await
         .ok()
-        .and_then(|view| view.observed_context.namespace.schema)
+        .and_then(|view| view.observed_context.namespace.schema);
+    if observed.is_some() {
+        return observed;
+    }
+    let owner = owner_connection_id(state, session).await.ok()?;
+    state.store.get_connection(&owner).await?.schema
 }
 
 pub(super) fn owner_ref(_state_unused: &AppState) -> datazen_platform_api::OwnerRef {
