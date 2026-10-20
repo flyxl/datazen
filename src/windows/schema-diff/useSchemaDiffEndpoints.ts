@@ -8,6 +8,7 @@ import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { isSameEndpointIdentity } from '../../lib/endpointIdentity';
 import {
   ensureDedicatedSession,
+  ensureDedicatedSessionForEffect,
   listDatabasesDedicated,
   releaseDedicatedSession,
   type DedicatedSideSession,
@@ -271,10 +272,11 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
     }
     let cancelled = false;
     (async () => {
-      const next = await ensureDedicatedSession(
+      const next = await ensureDedicatedSessionForEffect(
         sourceSession,
         sourceId,
         sourceDatabase,
+        () => !cancelled,
         sessionDatabaseOverride(sourceConn, sourceDatabase),
       );
       if (!cancelled) setSourceSession(next);
@@ -292,10 +294,11 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
     }
     let cancelled = false;
     (async () => {
-      const next = await ensureDedicatedSession(
+      const next = await ensureDedicatedSessionForEffect(
         targetSession,
         targetId,
         targetDatabase,
+        () => !cancelled,
         sessionDatabaseOverride(targetConn, targetDatabase),
       );
       if (!cancelled) setTargetSession(next);

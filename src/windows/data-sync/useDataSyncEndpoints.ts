@@ -7,6 +7,7 @@ import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { isSameEndpointIdentity } from '../../lib/endpointIdentity';
 import {
   ensureDedicatedSession,
+  ensureDedicatedSessionForEffect,
   listDatabasesDedicated,
   releaseDedicatedSession,
   type DedicatedSideSession,
@@ -284,7 +285,12 @@ export function useDataSyncEndpoints({
     let cancelled = false;
     (async () => {
       try {
-        const next = await ensureDedicatedSession(sourceSession, sourceId, sourceDatabase);
+        const next = await ensureDedicatedSessionForEffect(
+          sourceSession,
+          sourceId,
+          sourceDatabase,
+          () => !cancelled,
+        );
         if (!cancelled) {
           setSourceSession(next);
           setSourceSessionError('');
@@ -313,7 +319,12 @@ export function useDataSyncEndpoints({
     let cancelled = false;
     (async () => {
       try {
-        const next = await ensureDedicatedSession(targetSession, targetId, targetDatabase);
+        const next = await ensureDedicatedSessionForEffect(
+          targetSession,
+          targetId,
+          targetDatabase,
+          () => !cancelled,
+        );
         if (!cancelled) {
           setTargetSession(next);
           setTargetSessionError('');
