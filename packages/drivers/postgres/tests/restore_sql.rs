@@ -137,7 +137,6 @@ async fn retained_resource_executes_restore_and_verifies_rows_before_closing() {
         .find(|f| f.driver_id() == "postgresql")
         .unwrap();
     let driver = factory.create();
-    let dialect = datazen_driver_api::LegacyBackupDialect::new(driver.as_ref());
     let provider = require_resource_provider(*factory).unwrap();
     let budget = Arc::new(Budget::default());
     let port: Arc<dyn BudgetPort> = budget.clone();

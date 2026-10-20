@@ -415,7 +415,6 @@ pub async fn restore_database_from_path(
                 stream_sql_file_into_session(
                     &input_path,
                     driver.as_ref(),
-                    &backup,
                     &restore_handle,
                     &restore_opts,
                     config.read_only,
@@ -480,13 +479,15 @@ const SQL_STREAM_CHUNK: usize = 64 * 1024;
 pub async fn stream_sql_file_into_session(
     path: &std::path::Path,
     driver: &dyn DatabaseDriver,
-    dialect: &dyn BackupDialect,
     handle: &ConnectionHandle,
     opts: &BackupRestoreOptions,
     read_only: bool,
     safe_mode: bool,
     on_progress: &mut (dyn FnMut(DumpProgress) + Send),
 ) -> Result<(), CommandError> {
+    // The scanner source is derived from the driver once, here, so callers
+    // never juggle both the driver and its rule view.
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(driver);
     let gz = path
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("gz"));

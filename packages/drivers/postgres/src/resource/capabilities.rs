@@ -221,15 +221,11 @@ pub(crate) fn postgres_capability_set() -> CapabilitySet {
 /// `4` adds transactional SQL restore.
 pub(crate) const POSTGRES_CAPABILITY_REVISION: u64 = 4;
 
-/// The full registry: identity, version, protocol and the declared set.
-pub(crate) fn postgres_capability_registry() -> CapabilityRegistry {
-    postgres_capability_registry_for(POSTGRES_PROVIDER_ID)
-}
-
 /// Same declarations under a different provider identity, for the reuse
 /// aliases (questdb, cloudberry): the alias owns its own provider instance,
 /// so its capability snapshot and every handle it mints name the database
-/// type the user configured, not the parent pool.
+/// type the user configured, not the parent pool. Called with
+/// [`POSTGRES_PROVIDER_ID`] for the primary provider.
 pub(crate) fn postgres_capability_registry_for(provider_id: &'static str) -> CapabilityRegistry {
     let mut snapshot = CapabilitySnapshot::new(
         provider_id,

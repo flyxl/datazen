@@ -158,6 +158,9 @@ impl QueryExecutor {
         Ok(sql)
     }
 
+    // Routing clause building through the SqlDialect contract added one
+    // parameter past the clippy limit; the argument set is stable otherwise.
+    #[allow(clippy::too_many_arguments)]
     pub fn build_select_sql(
         table_name: &str,
         columns: &[ColumnSchema],
