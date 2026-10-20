@@ -195,15 +195,24 @@ pub async fn execute_data_transfer(
         .as_ref()
         .map_or(0, |tables| tables.len() as u64);
     if let Ok(plan) = plans::peek_plan(&request.plan_id) {
-        run.source_connection_id = state
-            .connection_manager
-            .owner_connection_id(&plan.job.source.db_session_id)
-            .await;
+        run.source_connection_id = crate::services::migration_endpoint::runtime_session_context(
+            &state,
+            &plan.job.source.db_session_id,
+            datazen_runtime::application::LivePurpose::Inspection,
+        )
+        .await
+        .ok()
+        .map(|context| context.view.connection_id.as_str().to_owned());
         if let Some(target) = plan.job.target.as_ref() {
-            run.target_connection_id = state
-                .connection_manager
-                .owner_connection_id(&target.db_session_id)
-                .await;
+            run.target_connection_id =
+                crate::services::migration_endpoint::runtime_session_context(
+                    &state,
+                    &target.db_session_id,
+                    datazen_runtime::application::LivePurpose::Inspection,
+                )
+                .await
+                .ok()
+                .map(|context| context.view.connection_id.as_str().to_owned());
         }
     }
     let write_started = AtomicBool::new(false);

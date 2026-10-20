@@ -213,12 +213,14 @@ async fn mysql_bigint_key_keeps_atomic_table_boundary_resume() {
         .save_connection(source_config)
         .await
         .expect("save MySQL source connection");
-    let source = test
-        .state
-        .connection_manager
-        .get_or_connect_session("transfer-resume-mysql-bigint-source")
-        .await
-        .expect("connect MySQL source");
+    let source = crate::services::migration_endpoint::open_dedicated_session(
+        &test.state,
+        "transfer-resume-mysql-bigint-source",
+        "app",
+        "data-transfer-test",
+    )
+    .await
+    .expect("connect MySQL source");
     let (_, target) = test
         .save_and_connect("transfer-resume-mysql-bigint-target")
         .await;

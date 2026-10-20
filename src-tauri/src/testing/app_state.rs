@@ -174,9 +174,9 @@ impl TestAppState {
     }
 
     pub async fn save_and_connect(&self, id: &str) -> (ConnectionConfig, String) {
-        let config = self.save_connection(id).await;
-        let conn_id = self.connect_config(id).await;
-        (config, conn_id)
+        // Keep the historical fixture name, but make it exercise the Runtime
+        // session boundary used by migrated command paths.
+        self.save_and_connect_runtime(id).await
     }
 
     /// Persist a profile and open it through the Runtime session boundary.
