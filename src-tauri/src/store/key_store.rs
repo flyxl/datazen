@@ -165,17 +165,7 @@ pub fn load_or_create_master_key(data_dir: &Path) -> Result<[u8; 32], StoreError
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-fn decode_key_b64(key_b64: &str) -> Result<[u8; 32], StoreError> {
-    let key_bytes = BASE64
-        .decode(key_b64.trim())
-        .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
-    if key_bytes.len() != 32 {
-        return Err(StoreError::EncryptionError("Invalid key length".into()));
-    }
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&key_bytes);
-    Ok(key)
-}
+use super::key_codec::decode_key_b64;
 
 fn generate_key() -> [u8; 32] {
     let mut key = [0u8; 32];

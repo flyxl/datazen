@@ -6,6 +6,7 @@ mod connections;
 pub(crate) mod favorites;
 mod history;
 pub(crate) mod history_db;
+mod key_codec;
 mod key_store;
 mod models;
 pub(crate) mod platform_profiles;

@@ -8,10 +8,12 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use datazen_driver_api::{iter_driver_factories, DatabaseDriver, TableSchema, PROTOCOL_VERSION};
+use datazen_driver_api::{DatabaseDriver, TableSchema};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+pub(crate) use crate::commands::driver_protocol::driver_protocol_version;
 
 use super::comparison_store::{ComparisonStore, ComparisonTableMetadata};
 use crate::data_sync::{
@@ -70,15 +72,6 @@ pub(crate) fn fingerprint_relations_with_filters(
     let bytes = serde_json::to_vec(&entries)
         .map_err(|error| format!("cannot fingerprint sync schema: {error}"))?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
-}
-
-pub(crate) fn driver_protocol_version(driver: &dyn DatabaseDriver) -> u32 {
-    let driver_type = driver.driver_type();
-    iter_driver_factories()
-        .into_iter()
-        .find(|factory| factory.driver_id() == driver_type)
-        .map(|factory| factory.protocol_version())
-        .unwrap_or(PROTOCOL_VERSION)
 }
 
 pub(crate) fn fingerprint_conflict_policy(policy: ConflictPolicy) -> String {
