@@ -327,8 +327,8 @@ async fn sync_task_crud_and_inspect() {
         .await
         .unwrap();
 
-    let src_conn = test.connect_config("src-cfg").await;
-    let tgt_conn = test.connect_config("tgt-cfg").await;
+    let src_conn = test.open_runtime_session("src-cfg").await;
+    let tgt_conn = test.open_runtime_session("tgt-cfg").await;
 
     let results = super::inspect_data_sync_impl(
         &test.state,
@@ -395,8 +395,8 @@ async fn compare_table_schemas_impl_returns_diff_for_table() {
         .save_connection(sample_postgres_config("tgt"))
         .await
         .unwrap();
-    let src = test.connect_config("src").await;
-    let tgt = test.connect_config("tgt").await;
+    let src = test.open_runtime_session("src").await;
+    let tgt = test.open_runtime_session("tgt").await;
 
     let schema_diff = compare_table_schemas_impl(
         &test.state,
@@ -491,10 +491,10 @@ async fn inspect_data_sync_returns_matched_tables() {
     use crate::testing::app_state::TestAppState;
 
     let test = TestAppState::with_tables().await;
-    test.save_and_connect("src-ins").await;
-    test.save_and_connect("tgt-ins").await;
-    let src = test.connect_config("src-ins").await;
-    let tgt = test.connect_config("tgt-ins").await;
+    test.save_and_connect_runtime("src-ins").await;
+    test.save_and_connect_runtime("tgt-ins").await;
+    let src = test.open_runtime_session("src-ins").await;
+    let tgt = test.open_runtime_session("tgt-ins").await;
     let results = super::inspect_data_sync_impl(&test.state, src, tgt, None, None, None, None, &[])
         .await
         .unwrap();
@@ -508,12 +508,12 @@ async fn compare_data_sync_returns_an_opaque_server_plan() {
     use crate::testing::app_state::TestAppState;
 
     let test = TestAppState::new().await;
-    test.save_and_connect("src-plan").await;
+    test.save_and_connect_runtime("src-plan").await;
     let mut target_config = test.save_connection("tgt-plan").await;
     target_config.host = Some("target.example.invalid".into());
     test.store.save_connection(target_config).await.unwrap();
-    let source = test.connect_config("src-plan").await;
-    let target = test.connect_config("tgt-plan").await;
+    let source = test.open_runtime_session("src-plan").await;
+    let target = test.open_runtime_session("tgt-plan").await;
     let preview = super::compare_data_sync_impl(
         &test.state,
         source,
@@ -540,12 +540,12 @@ async fn execute_data_sync_rejects_when_target_active_database_changes() {
     use crate::testing::app_state::TestAppState;
 
     let test = TestAppState::new().await;
-    test.save_and_connect("src-plan-db").await;
+    test.save_and_connect_runtime("src-plan-db").await;
     let mut target_config = test.save_connection("tgt-plan-db").await;
     target_config.host = Some("target.example.invalid".into());
     test.store.save_connection(target_config).await.unwrap();
-    let source = test.connect_config("src-plan-db").await;
-    let target = test.connect_config("tgt-plan-db").await;
+    let source = test.open_runtime_session("src-plan-db").await;
+    let target = test.open_runtime_session("tgt-plan-db").await;
     let preview = super::compare_data_sync_impl(
         &test.state,
         source,
@@ -599,7 +599,7 @@ async fn execute_data_sync_rejects_read_only_target() {
     cfg.database_type = "postgresql".into();
     cfg.read_only = true;
     test.store.save_connection(cfg).await.unwrap();
-    let id = test.connect_config("ro-tgt").await;
+    let id = test.open_runtime_session("ro-tgt").await;
     let stmt = SqlStatement {
         table: "t".into(),
         operation: ChangeOperation::Insert,
@@ -801,7 +801,7 @@ async fn cancel_data_sync_stops_execute_before_start() {
     let mut cfg = sample_postgres_config("cancel-tgt");
     cfg.database_type = "postgresql".into();
     test.store.save_connection(cfg).await.unwrap();
-    let id = test.connect_config("cancel-tgt").await;
+    let id = test.open_runtime_session("cancel-tgt").await;
     let job = format!("job-{}", uuid::Uuid::new_v4());
     assert!(super::cancel_job(&job).await);
     let stmt = SqlStatement {
@@ -833,12 +833,12 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
         ..rich_mock_options()
     })
     .await;
-    test.save_and_connect("src-cmp").await;
+    test.save_and_connect_runtime("src-cmp").await;
     let mut target_config = test.save_connection("tgt-cmp").await;
     target_config.host = Some("target.example.invalid".into());
     test.store.save_connection(target_config).await.unwrap();
-    let src = test.connect_config("src-cmp").await;
-    let tgt = test.connect_config("tgt-cmp").await;
+    let src = test.open_runtime_session("src-cmp").await;
+    let tgt = test.open_runtime_session("tgt-cmp").await;
     let err = super::compare_data_sync_impl(
         &test.state,
         src,
@@ -895,7 +895,7 @@ async fn generated_binary_preview_uses_the_target_driver_literal_renderer() {
         let mut config = sample_postgres_config(&connection_id);
         config.database_type = database_type.into();
         test.store.save_connection(config).await.unwrap();
-        let target_db_session_id = test.connect_config(&connection_id).await;
+        let target_db_session_id = test.open_runtime_session(&connection_id).await;
 
         let options = SyncOptions::default();
         let mut result = TableResult::matched(
@@ -937,10 +937,10 @@ async fn legacy_apply_rejects_unreviewed_recomparison() {
     use crate::testing::app_state::TestAppState;
 
     let test = TestAppState::with_tables().await;
-    test.save_and_connect("src-ap").await;
-    test.save_and_connect("tgt-ap").await;
-    let src = test.connect_config("src-ap").await;
-    let tgt = test.connect_config("tgt-ap").await;
+    test.save_and_connect_runtime("src-ap").await;
+    test.save_and_connect_runtime("tgt-ap").await;
+    let src = test.open_runtime_session("src-ap").await;
+    let tgt = test.open_runtime_session("tgt-ap").await;
     let err = super::apply_data_sync_impl(
         &test.state,
         src,

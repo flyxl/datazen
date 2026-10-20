@@ -206,14 +206,14 @@ async fn resolve_database(
     // Each endpoint is identified through *its own* driver, because that is what
     // resolves a left-out host/port into the address the run really dials.
     let source_identity = crate::services::migration_endpoint::session_identity(
-        &state.connection_manager,
+        state,
         &job.source.db_session_id,
         Some((&job.source.database, job.source.normalized_schema())),
     )
     .await?;
     let target = job.database_target().map_err(CommandError::from)?;
     let target_identity = crate::services::migration_endpoint::session_identity(
-        &state.connection_manager,
+        state,
         &target.db_session_id,
         Some((&target.database, target.normalized_schema())),
     )
@@ -394,7 +394,7 @@ async fn resolve_sql_file(
     // A SQL-file destination has no connection config of its own, so there is no
     // target identity to reserve against — and therefore no writer endpoint.
     let source_identity = crate::services::migration_endpoint::session_identity(
-        &state.connection_manager,
+        state,
         &job.source.db_session_id,
         Some((&job.source.database, job.source.normalized_schema())),
     )

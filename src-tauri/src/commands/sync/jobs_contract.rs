@@ -98,15 +98,20 @@ pub async fn gated_pair(
     // The target is registered under a *different* db type spelling of the same
     // family, which is what the pairing rule canonicalises (`family_of`).
     let target = MockDriver::new("postgresql", mock_options(target_rows));
+    let target_driver = wrap(target.clone());
     test.registry
-        .register_test_driver("postgresql", wrap(target.clone()))
+        .register_test_driver("postgresql", target_driver.clone())
+        .await;
+    test.register_runtime_driver("postgresql", target_driver)
         .await;
     let mut target_config = sample_postgres_config(&format!("{prefix}-target"));
     target_config.database_type = "postgresql".into();
     target_config.host = Some("target.example.invalid".into());
     test.store.save_connection(target_config).await.unwrap();
-    let (_, source_session) = test.save_and_connect(&format!("{prefix}-source")).await;
-    let target_session = test.connect_config(&format!("{prefix}-target")).await;
+    let (_, source_session) = test
+        .save_and_connect_runtime(&format!("{prefix}-source"))
+        .await;
+    let target_session = test.open_runtime_session(&format!("{prefix}-target")).await;
     Pair {
         test,
         target,
@@ -208,7 +213,7 @@ async fn readonly_target_can_be_compared_but_cannot_be_applied() {
     config.host = Some("target.example.invalid".into());
     config.read_only = true;
     pair.test.store.save_connection(config).await.unwrap();
-    pair.target_session = pair.test.connect_config("readonly-prepare-ro").await;
+    pair.target_session = pair.test.open_runtime_session("readonly-prepare-ro").await;
 
     let preview = compare(&pair, None, None).await.expect("read-only compare");
     assert_eq!(preview.tables[0].insert_count, 1);
@@ -327,7 +332,10 @@ async fn compare_refuses_a_non_database_target_before_any_job_is_submitted() {
         .registry
         .register_test_driver("redis", MockDriver::new("redis", mock_options(&[])))
         .await;
-    let foreign = pair.test.connect_config("non-db-target-foreign").await;
+    let foreign = pair
+        .test
+        .open_runtime_session("non-db-target-foreign")
+        .await;
 
     // The pairing rule runs in the compare pre-flight (apply.rs), above
     // `open_job`, so nothing is accepted and no planId is minted.

@@ -52,39 +52,41 @@ pub(crate) async fn own_sessions(
     source_schema: Option<&str>,
     target_schema: Option<&str>,
 ) -> Result<OwnedSessions, CommandError> {
-    let manager = &state.connection_manager;
     let source_identity = crate::services::migration_endpoint::session_identity(
-        manager,
+        state,
         source_session_id,
         Some((source_database, source_schema)),
     )
     .await?;
     let target_identity = crate::services::migration_endpoint::session_identity(
-        manager,
+        state,
         target_session_id,
         Some((target_database, target_schema)),
     )
     .await?;
 
-    let source_id = manager
-        .connect_dedicated(
-            source_identity.connection_id.as_str(),
-            Some(source_database),
-        )
-        .await
-        .map_err(|_| {
-            CommandError::Validation("could not open a dedicated Data Sync source session".into())
-        })?;
-    let target_id = match manager
-        .connect_dedicated(
-            target_identity.connection_id.as_str(),
-            Some(target_database),
-        )
-        .await
+    let source_id = crate::services::migration_endpoint::open_dedicated_session(
+        state,
+        source_identity.connection_id.as_str(),
+        source_database,
+        "dataSyncSource",
+    )
+    .await
+    .map_err(|_| {
+        CommandError::Validation("could not open a dedicated Data Sync source session".into())
+    })?;
+    let target_id = match crate::services::migration_endpoint::open_dedicated_session(
+        state,
+        target_identity.connection_id.as_str(),
+        target_database,
+        "dataSyncTarget",
+    )
+    .await
     {
         Ok(id) => id,
         Err(_) => {
-            let _ = manager.release(&source_id).await;
+            let _ = crate::services::migration_endpoint::close_dedicated_session(state, &source_id)
+                .await;
             return Err(CommandError::Validation(
                 "could not open a dedicated Data Sync target session".into(),
             ));
@@ -93,13 +95,13 @@ pub(crate) async fn own_sessions(
 
     let pair = async {
         let source_check = crate::services::migration_endpoint::session_identity(
-            manager,
+            state,
             &source_id,
             Some((source_database, source_schema)),
         )
         .await?;
         let target_check = crate::services::migration_endpoint::session_identity(
-            manager,
+            state,
             &target_id,
             Some((target_database, target_schema)),
         )
@@ -115,8 +117,10 @@ pub(crate) async fn own_sessions(
     let (source_identity, target_identity) = match pair {
         Ok(pair) => pair,
         Err(error) => {
-            let _ = manager.release(&source_id).await;
-            let _ = manager.release(&target_id).await;
+            let _ = crate::services::migration_endpoint::close_dedicated_session(state, &source_id)
+                .await;
+            let _ = crate::services::migration_endpoint::close_dedicated_session(state, &target_id)
+                .await;
             return Err(error);
         }
     };
@@ -167,7 +171,10 @@ fn recovery_target(
 
 pub(crate) async fn release_sessions(state: &AppState, sessions: &[String]) {
     for session in sessions {
-        if state.connection_manager.release(session).await.is_err() {
+        if crate::services::migration_endpoint::close_dedicated_session(state, session)
+            .await
+            .is_err()
+        {
             tracing::warn!("Data Sync job-owned session cleanup was not confirmed");
         }
     }
@@ -333,18 +340,31 @@ impl JobRecoveryVerifier for DataSyncRecoveryVerifier {
 
     async fn verify(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         request: &JobRecoveryRequest,
     ) -> Result<JobRecoveryVerification, PortError> {
         if request.details.recovery_targets != self.targets || self.sessions.len() != 2 {
             return Ok(manual_review("reauthorizedEndpointScopeMismatch"));
         }
-        let live = futures_util::future::try_join_all(
-            self.sessions
-                .iter()
-                .map(|id| self.state.connection_manager.get_session(id)),
-        )
-        .await;
+        let runtime = self
+            .state
+            .platform_require()
+            .ok()
+            .and_then(|adapter| adapter.runtime().ok());
+        let live = match runtime {
+            Some(runtime) => {
+                futures_util::future::try_join_all(
+                    self.sessions
+                        .iter()
+                        .map(|id| runtime.get_session_by_id(ctx, id)),
+                )
+                .await
+            }
+            None => Err(datazen_application::error::ApiError::new(
+                datazen_application::error::ApiErrorCode::ServiceUnavailable,
+                "runtime unavailable",
+            )),
+        };
         if live.is_err() {
             return Ok(manual_review("reauthorizedSessionUnavailable"));
         }

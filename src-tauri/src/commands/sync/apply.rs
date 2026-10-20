@@ -267,7 +267,7 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
             target_endpoint,
             HashMap::new(),
             &job_id,
-        ),
+        )?,
     ));
     let endpoints = sessions.endpoints();
     let payload = serde_json::json!({

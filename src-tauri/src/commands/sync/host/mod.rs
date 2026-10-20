@@ -97,7 +97,7 @@ fn invalid(message: impl Into<String>) -> DataSyncError {
 impl HostDataSync {
     pub(crate) fn new(
         runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
-    call_context: datazen_platform_api::context::RequestContext,
+        call_context: datazen_platform_api::context::RequestContext,
         store: Arc<crate::store::Store>,
         adapters: Arc<SyncAdapterRegistry>,
         source: Endpoint,
@@ -271,14 +271,24 @@ impl HostDataSync {
         endpoint: &Endpoint,
         is_source: bool,
     ) -> Result<EndpointSession, DataSyncError> {
-        let (view, lease) = self.runtime
-            .borrow_live_connection_by_id(&self.call_context, db_session_id, LivePurpose::LongLivedHostWork)
+        let (view, lease) = self
+            .runtime
+            .borrow_live_connection_by_id(
+                &self.call_context,
+                db_session_id,
+                LivePurpose::LongLivedHostWork,
+            )
             .await
             .map_err(|error| invalid(format!("cannot open database session: {error}")))?;
-        let connection = lease.connection().map_err(|error| invalid(error.to_string()))?;
+        let connection = lease
+            .connection()
+            .map_err(|error| invalid(error.to_string()))?;
         let driver = Arc::clone(connection.driver());
         let handle = connection.handle().clone();
-        let config = self.store.get_connection(view.connection_id.as_str()).await
+        let config = self
+            .store
+            .get_connection(view.connection_id.as_str())
+            .await
             .ok_or_else(|| invalid("connection profile is no longer available"))?;
         // Family pairing is checked as soon as the second endpoint opens, so
         // the user sees the cross-family explanation before any work happens.

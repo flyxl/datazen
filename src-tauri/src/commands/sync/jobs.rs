@@ -442,7 +442,7 @@ pub(crate) async fn submit_prepare(
     let endpoints = endpoints_for(state, &source, &target).await?;
     let cancelled_before_job = register_window_job(window_job_id.as_deref()).await;
     let (job_id, ctx) = open_job(PREPARE_KIND, window_job_id.as_deref());
-    let host = recording_host(state, source, target, spec.filters.clone(), job_id.as_str());
+    let host = recording_host(state, source, target, spec.filters.clone(), job_id.as_str())?;
     let plan_id = spec.plan_id.clone().unwrap_or_default();
     let idempotency = if plan_id.is_empty() {
         IdempotencyKey::new(format!("data-sync-prepare:{job_id}"))
@@ -600,13 +600,15 @@ pub(crate) fn recording_host(
     target: Endpoint,
     filters: HashMap<String, SyncSourceFilter>,
     job_id: &str,
-) -> Arc<dyn DataSyncHost> {
+) -> Result<Arc<dyn DataSyncHost>, CommandError> {
     let adapter = state
         .platform_require()
-        .expect("platform adapter must be injected for Data Sync jobs");
+        .map_err(crate::platform::into_command_error)?;
     let call = adapter.begin_call();
     let host = HostDataSync::new(
-        adapter.runtime().expect("runtime must be injected for Data Sync jobs"),
+        adapter
+            .runtime()
+            .map_err(crate::platform::into_command_error)?,
         call.context().clone(),
         state.store.clone(),
         state.sync_adapters.clone(),
@@ -614,7 +616,7 @@ pub(crate) fn recording_host(
         target,
         filters,
     );
-    Arc::new(RecordingHost::new(Arc::new(host), job_id))
+    Ok(Arc::new(RecordingHost::new(Arc::new(host), job_id)))
 }
 
 #[cfg(test)]
@@ -624,7 +626,7 @@ async fn endpoint_ref(
     role: EndpointRole,
 ) -> Result<EndpointRef, CommandError> {
     let identity = crate::services::migration_endpoint::session_identity(
-        &state.connection_manager,
+        state,
         &endpoint.connection_id,
         Some((&endpoint.database, endpoint.schema.as_deref())),
     )

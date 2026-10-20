@@ -491,10 +491,4 @@ async fn migration_identity_retains_route_snapshot_and_current_database() {
         .migration_identity_config("missing-session")
         .await
         .is_err());
-    mgr.session_owner_map.write().await.remove(&session);
-    assert!(
-        crate::services::migration_endpoint::session_identity(&mgr, &session, None)
-            .await
-            .is_err()
-    );
 }

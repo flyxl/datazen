@@ -236,13 +236,13 @@ async fn validate_plan_context_sessions(
         ));
     }
     let source_identity = crate::services::migration_endpoint::session_identity(
-        &state.connection_manager,
+        state,
         source_session_id,
         Some((&plan.source_database, plan.source_schema.as_deref())),
     )
     .await?;
     let target_identity = crate::services::migration_endpoint::session_identity(
-        &state.connection_manager,
+        state,
         target_session_id,
         Some((&plan.target_database, plan.target_schema.as_deref())),
     )
@@ -626,7 +626,7 @@ pub(crate) async fn start_data_sync_apply_job_impl(
                 target_endpoint.clone(),
                 HashMap::new(),
                 &job_id,
-            ),
+            )?,
             source_endpoint,
             target_endpoint,
         ),
@@ -871,8 +871,8 @@ mod tests {
             ..rich_mock_options()
         })
         .await;
-        test.save_and_connect("sync-stream-target").await;
-        let target_db_session_id = test.connect_config("sync-stream-target").await;
+        test.save_and_connect_runtime("sync-stream-target").await;
+        let target_db_session_id = test.open_runtime_session("sync-stream-target").await;
 
         let mut options = SyncOptions::default();
         options.conflict_policy = ConflictPolicy::Force;
@@ -1056,8 +1056,8 @@ mod tests {
             ..rich_mock_options()
         })
         .await;
-        test.save_and_connect("sync-preview-target").await;
-        let target_db_session_id = test.connect_config("sync-preview-target").await;
+        test.save_and_connect_runtime("sync-preview-target").await;
+        let target_db_session_id = test.open_runtime_session("sync-preview-target").await;
         let options = SyncOptions::default();
         let rows = (1..=2)
             .map(|key| {

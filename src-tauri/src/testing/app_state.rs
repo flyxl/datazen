@@ -136,6 +136,16 @@ impl TestAppState {
         Self::with_resource_provider(rich_mock_options()).await
     }
 
+    /// Register a Runtime resource factory for a driver spelling introduced by
+    /// a focused fixture (for example `postgresql` versus `postgres`).
+    pub async fn register_runtime_driver(&self, driver_id: &str, driver: Arc<dyn DatabaseDriver>) {
+        let factory: &'static dyn DatabaseDriverFactory =
+            Box::leak(Box::new(TestMockDriverFactory::new(driver)));
+        self.registry
+            .register_test_factory(driver_id, factory)
+            .await;
+    }
+
     pub async fn save_connection(&self, id: &str) -> ConnectionConfig {
         let config = sample_postgres_config(id);
         self.store
