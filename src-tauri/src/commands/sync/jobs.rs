@@ -601,8 +601,14 @@ pub(crate) fn recording_host(
     filters: HashMap<String, SyncSourceFilter>,
     job_id: &str,
 ) -> Arc<dyn DataSyncHost> {
+    let adapter = state
+        .platform_require()
+        .expect("platform adapter must be injected for Data Sync jobs");
+    let call = adapter.begin_call();
     let host = HostDataSync::new(
-        state.connection_manager.clone(),
+        adapter.runtime().expect("runtime must be injected for Data Sync jobs"),
+        call.context().clone(),
+        state.store.clone(),
         state.sync_adapters.clone(),
         source,
         target,
