@@ -245,6 +245,15 @@ No real PG/MySQL large-table export, slow-consumer cancellation, or staging clea
 ## Retired Workflow block-owner Runtime fixtures — independently accepted (2026-10-19)
 
 Coder commit `fb9c1e160974030334dcede7e66abfc59cc743bb` is integrated as `b72a22ca6`. It removes only four P4 fixture cases for the removed Workflow block-owner API; the caller-owner rejection test remains unchanged and passes. Focused export fixture passed 1/1; full P4 journey target passed 18/18. No production, model, IPC or Workflow v1 behavior changed.
+
+## Runtime migration continuation on the P6 integration branch (2026-10-20)
+
+- All remaining migration work in this pass is on `feature/p6-restore-apply-evidence`; stale P6 implementation/test worktrees and branches were removed. The current target worktree is clean after the commit below.
+- Integrated the accepted MCP schema-resource, Monitor registry, AI/Runtime, driver-command, schema-command, query, metadata-fixture, and initial Sync Runtime commits from the former main-side work.
+- `c4e21b894` / `a4f4d0001` / `36cf60c83`: driver commands, schema commands, and query cancellation now borrow Runtime live leases. Focused evidence from the source commits: driver 40/40, schema 34/34, query 30/30, metadata 13 passed + 1 ignored; `cargo check -p datazen --lib` passed on the integration tree after integration.
+- `f3bc71e5c` and `225260b90`: Data Sync Host/job sessions and migration endpoint identity now use Runtime-owned sessions and `LiveConnectionLease`; Schema Diff identity and Data Transfer endpoint identity call the Runtime owner/session boundary instead of `ConnectionManager`.
+- Latest stable compile gate: `cargo check -p datazen --lib` EXIT=0 (83 warnings, no errors). Latest focused migration endpoint test: `cargo test -p datazen --lib services::migration_endpoint::tests` EXIT=0, 1/1.
+- Remaining red evidence is explicit: `commands::schema_diff` was 17 passed/1 failed on the existing D1 legacy full-plan fixture (`postgres` schema-level driver requires an explicit schema); Sync contract tests still have Runtime fixture/owned-session failures and are not accepted. `ConnectionManager` remains in AppState, connection lifecycle IPC, Data Transfer/Sync legacy paths, feature ports, workflow migration, and its own tests; it is not safe to delete yet.
 ## Monitor legacy registry retirement (coder, pending independent review)
 
 - Isolated worktree `/tmp/datazen-p6-monitor-registry-retirement`, branch `codex/p6-monitor-registry-retirement`, base `30b94f1bc9e97ac97a2144bd48a95c9020af69c0`. Export/tester/integration trees untouched.
