@@ -704,11 +704,29 @@ impl SessionRegistry {
             .exec(|reply| ExecCommand::SetIdleDeadline {
                 handle: handle.clone(),
                 deadline_ms,
+                return_previous: false,
                 reply,
             })
             .await;
         self.audit.pump();
         result
+    }
+
+    /// Suspend idle eviction and return the exact prior deadline atomically.
+    pub(crate) async fn suspend_idle_deadline(
+        &self,
+        handle: &SessionHandle,
+    ) -> Result<Option<u64>, RuntimeError> {
+        let record = self.locate(&handle.db_session_id)?;
+        record
+            .actor
+            .exec(|reply| ExecCommand::SetIdleDeadline {
+                handle: handle.clone(),
+                deadline_ms: None,
+                return_previous: true,
+                reply,
+            })
+            .await
     }
 
     /// 关闭会话（登记表侧）。

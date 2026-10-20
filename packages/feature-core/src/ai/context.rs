@@ -11,6 +11,32 @@ use datazen_driver_api::TableSchema;
 use datazen_runtime::schema_cache::SchemaCache;
 use std::sync::Arc;
 
+/// Format host-read context-file entries as a stable AI prompt block.
+pub fn format_context_block(entries: &[(String, String)]) -> String {
+    entries
+        .iter()
+        .map(|(path, content)| format!("[Context: {path}]\n{content}"))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+#[cfg(test)]
+mod context_block_tests {
+    use super::format_context_block;
+
+    #[test]
+    fn context_files_keep_order_and_blank_line_separators() {
+        let entries = vec![
+            ("a.sql".into(), "SELECT 1".into()),
+            ("b.md".into(), "# doc".into()),
+        ];
+        assert_eq!(
+            format_context_block(&entries),
+            "[Context: a.sql]\nSELECT 1\n\n[Context: b.md]\n# doc"
+        );
+    }
+}
+
 /// Stable prompt-facing database type string (no Debug quotes).
 pub fn prompt_db_type(driver: &dyn datazen_driver_api::DatabaseDriver) -> String {
     driver.driver_type()
@@ -18,17 +44,17 @@ pub fn prompt_db_type(driver: &dyn datazen_driver_api::DatabaseDriver) -> String
 
 pub struct SchemaContextBuilder {
     schema_cache: Arc<SchemaCache>,
-    connection_manager: Arc<dyn SchemaContextSource>,
+    schema_source: Arc<dyn SchemaContextSource>,
 }
 
 impl SchemaContextBuilder {
     pub fn new(
         schema_cache: Arc<SchemaCache>,
-        connection_manager: Arc<dyn SchemaContextSource>,
+        schema_source: Arc<dyn SchemaContextSource>,
     ) -> Self {
         Self {
             schema_cache,
-            connection_manager,
+            schema_source,
         }
     }
 
@@ -44,7 +70,7 @@ impl SchemaContextBuilder {
         db_session_id: &str,
         driver: &std::sync::Arc<dyn datazen_driver_api::DatabaseDriver>,
     ) -> Option<String> {
-        let config_schema = self.connection_manager.session_schema(db_session_id).await;
+        let config_schema = self.schema_source.session_schema(db_session_id).await;
         crate::services::schema_scope::metadata_schema(
             driver.as_ref(),
             None,
@@ -60,7 +86,7 @@ impl SchemaContextBuilder {
         database: &str,
     ) -> Result<(String, Vec<String>), String> {
         let driver = self
-            .connection_manager
+            .schema_source
             .driver_for_session(db_session_id)
             .await
             .map_err(|e| e.to_string())?;
@@ -69,7 +95,7 @@ impl SchemaContextBuilder {
         let schema = self.resolve_schema(db_session_id, &driver).await;
 
         let tables = self
-            .connection_manager
+            .schema_source
             .tables(db_session_id, database, schema.as_deref())
             .await
             .map_err(|e| e.to_string())?;
@@ -87,7 +113,7 @@ impl SchemaContextBuilder {
         max_tokens_budget: usize,
     ) -> Result<SqlGenerationContext, String> {
         let driver = self
-            .connection_manager
+            .schema_source
             .driver_for_session(db_session_id)
             .await
             .map_err(|e| e.to_string())?;
@@ -99,7 +125,7 @@ impl SchemaContextBuilder {
 
         for table_name in table_names {
             let schema = self
-                .connection_manager
+                .schema_source
                 .table_schema(
                     &self.schema_cache,
                     db_session_id,
@@ -149,7 +175,7 @@ impl SchemaContextBuilder {
         max_tokens_budget: usize,
     ) -> Result<SqlGenerationContext, String> {
         let driver = self
-            .connection_manager
+            .schema_source
             .driver_for_session(db_session_id)
             .await
             .map_err(|e| e.to_string())?;
@@ -157,7 +183,7 @@ impl SchemaContextBuilder {
         let db_type = prompt_db_type(driver.as_ref());
         let schema = self.resolve_schema(db_session_id, &driver).await;
         let tables = self
-            .connection_manager
+            .schema_source
             .tables(db_session_id, database, schema.as_deref())
             .await
             .map_err(|e| e.to_string())?;
@@ -187,7 +213,7 @@ impl SchemaContextBuilder {
 
         for table_name in &ranked {
             let schema = self
-                .connection_manager
+                .schema_source
                 .table_schema(
                     &self.schema_cache,
                     db_session_id,

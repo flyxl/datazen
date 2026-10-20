@@ -24,16 +24,20 @@ pub(crate) async fn inspect_data_transfer_impl(
     mode: TransferMode,
     mappings: &[TableMapping],
 ) -> Result<Vec<TableInspectResult>, CommandError> {
-    let src_config = state
-        .connection_manager
-        .get_session_config(&source_db_session_id)
-        .await
-        .cmd_err("inspect_data_transfer")?;
-    let tgt_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("inspect_data_transfer")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &source_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let tgt_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
+    let tgt_config = tgt_context.config.clone();
 
     enforce_transfer_pairing(&src_config.database_type, &tgt_config.database_type)
         .map_err(CommandError::from)?;
@@ -41,16 +45,10 @@ pub(crate) async fn inspect_data_transfer_impl(
     let src_db = resolve_db_name(source_database.as_deref(), src_config.database.as_deref());
     let tgt_db = resolve_db_name(target_database.as_deref(), tgt_config.database.as_deref());
 
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("inspect_data_transfer")?;
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("inspect_data_transfer")?;
+    let src_driver = src_context.driver.clone();
+    let src_handle = src_context.handle.clone();
+    let tgt_driver = tgt_context.driver.clone();
+    let tgt_handle = tgt_context.handle.clone();
 
     let source = crate::data_transfer::model::Endpoint {
         db_session_id: source_db_session_id.clone(),
@@ -261,17 +259,16 @@ pub(crate) async fn inspect_sql_file_transfer_impl(
     target_database_type: Option<String>,
     mappings: &[TableMapping],
 ) -> Result<Vec<TableInspectResult>, CommandError> {
-    let src_config = state
-        .connection_manager
-        .get_session_config(&source_db_session_id)
-        .await
-        .cmd_err("inspect_sql_file_transfer")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &source_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
     let src_db = resolve_db_name(source_database.as_deref(), src_config.database.as_deref());
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("inspect_sql_file_transfer")?;
+    let src_driver = src_context.driver.clone();
+    let src_handle = src_context.handle.clone();
     let source = crate::data_transfer::model::Endpoint {
         db_session_id: source_db_session_id.clone(),
         database: src_db.clone(),

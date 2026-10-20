@@ -109,16 +109,20 @@ pub(crate) async fn prepare_schema_diff_plan_with_schemas_impl(
         ));
     }
 
-    let src_config = state
-        .connection_manager
-        .get_session_config(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_diff_plan")?;
-    let tgt_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_diff_plan")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        &state,
+        &source_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let tgt_context = crate::services::migration_endpoint::runtime_session_context(
+        &state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
+    let tgt_config = tgt_context.config.clone();
 
     if tgt_config.read_only {
         return Err(CommandError::Validation(
@@ -139,16 +143,10 @@ pub(crate) async fn prepare_schema_diff_plan_with_schemas_impl(
         ));
     }
 
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_diff_plan")?;
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_diff_plan")?;
+    let src_driver = src_context.driver.clone();
+    let src_handle = src_context.handle.clone();
+    let tgt_driver = tgt_context.driver.clone();
+    let tgt_handle = tgt_context.handle.clone();
     let target_dependency_schema_scope = if uses_schema_scope(&tgt_config.database_type) {
         target_schema_scope.or(tgt_driver.default_schema())
     } else {

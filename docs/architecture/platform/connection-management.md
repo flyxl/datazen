@@ -19,20 +19,21 @@
 
 ## 2. 当前代码定位与替换规则
 
-| 当前文件 | 阅读重点 | 新实现中的去向 |
+| 当前实现入口 | 阅读重点 | 运行时职责 |
 | --- | --- | --- |
-| [connection_manager.rs](../../../src-tauri/src/services/connection_manager.rs) | ActiveSession、owner map、refs | SessionRegistry + ResourceManager |
-| [connections.rs](../../../src-tauri/src/services/connection_manager/connections.rs) | 配置、隧道、driver.connect | 版本化配置解析 + 受预算约束建连 |
-| [sessions.rs](../../../src-tauri/src/services/connection_manager/sessions.rs) | 按配置复用、release、reconnect | 明确 owner 的 session API、显式失效 |
-| [driver_command](../../../src-tauri/src/commands/driver_command/mod.rs) | Command 网关 | adapter 进入统一 ExecutionGateway |
-| [query.rs](../../../src-tauri/src/commands/query.rs) | 会话事务命令与事务句柄 | 在同一 Lease 上管理事务；回滚失败必须上报 |
-| [driver traits](../../../packages/driver-api/src/traits.rs) | connect、query、Command、事务 | 保留领域能力，补 opaque 固定资源契约 |
+| [Runtime session use cases](../../../packages/runtime/src/application/mod.rs) | session 身份、授权、执行与活动期限 | 应用层协调 session actor、directory 与 backend |
+| [Runtime transaction use cases](../../../packages/runtime/src/application/transactions.rs) | begin、commit、rollback 与事务状态 | actor 按 session handle 串行控制并拥有事务句柄 |
+| [DesktopSessionBackend](../../../src-tauri/src/platform/session_backend.rs) | 连接资源的打开、执行与释放 | Runtime resource provider 的桌面实现 |
+| [driver_command](../../../src-tauri/src/commands/driver_command/mod.rs) | Command 网关 | 通过 Runtime ExecutionGateway 执行 |
+| [query.rs](../../../src-tauri/src/commands/query.rs) | 查询与事务 IPC 适配 | 将操作委托给 Runtime，不保存连接或事务句柄 |
+| [connection.rs](../../../src-tauri/src/commands/connection.rs) | connection 与 dbSession 生命周期命令 | 通过 Runtime 管理 session，配置仍由 Store 持久化 |
+| [driver traits](../../../packages/driver-api/src/traits.rs) | connect、query、Command、事务 | 驱动保留领域能力；Runtime 管理物理资源生命周期 |
 | [activeConnectionStore](../../../src/stores/activeConnectionStore.ts) | connectionId 索引的连接状态 | 连接可达性与编辑器 session 状态分开 |
 | [QuerySidebarSection](../../../src/windows/connection/query/QuerySidebarSection.tsx) | SQL 推测上下文 | 仅做补全/浏览推测，实际上下文由后端更新 |
 | [dedicatedDbSession](../../../src/lib/dedicatedDbSession.ts) | 三件套窗口准备/释放 | 明确目标，执行 Lease 归 Job |
-| [workflow command_runtime](../../../src-tauri/src/workflow/command_runtime.rs) | 默认目标与 Command | 按 step/block 范围申请资源 |
+| [workflow command_runtime](../../../src-tauri/src/workflow/command_runtime.rs) | Workflow v1 默认目标与 Command | 独立 step 经 feature-core resource execution 使用 Runtime |
 
-旧 `ConnectionHandle` 有 `id` 与 `pool_id`，不能从名字推断固定物理连接。先做 driver 契约测试，再将 consumer 移到新接口。旧 API 过渡适配禁止把未知连接假称为有状态 session。
+桌面 Host 不再维护第二份 `ConnectionManager`、活动连接表或事务句柄表。Runtime actor 与 lease manager 是物理 session、事务句柄、idle 回收和资源预算的运行时所有者；连接配置仍由 Store 持久化，前端 `connectionId` 与 `dbSessionId` 的用途保持分离。
 
 ## 3. 不可破坏的不变量
 
@@ -618,7 +619,7 @@ MySQL USE 改变当前会话默认数据库；完整限定对象名不等于切�
 | 仪表盘/监控 | 受限短租约 | 驱动声明专用连续资源 |
 | 导出 | Job 阶段固定 | 流/游标/快照结束 |
 | 三件套 | Job 声明多端阶段资源 | 事务、快照、session mode |
-| Workflow | step/block 声明范围 | session/transaction block |
+| Workflow | v1 按 step 执行并继承默认目标 | 前一步结果可作为后续 step 输入 |
 | AI/MCP/Wapp | 目标操作 | 显式受控 session |
 
 ### 9.2 可调初始值
@@ -643,6 +644,8 @@ MySQL USE 改变当前会话默认数据库；完整限定对象名不等于切�
 | 数据缓冲 | 每 pipeline 8 MiB | 按字节背压；超大单值走单独上限/分块 |
 
 额度和 timeout 使用单调时钟判断持续时间；对外 expiresAt 使用 UTC。登录心跳不能刷新 lastBusinessActivity；执行期间不以 idle 判定回收。事务状态 Unknown 按保守事务上限处理。
+
+Runtime 在授权后的新后台 dispatch 开始/完成时记录业务活动；执行持有计数保护直到真实完成，暂停 idle 期限，最后一次完成后按单调时钟重新起算。成功、失败及 Unknown 保留原执行效果；授权拒绝与幂等回执重放不续期。actor 对执行中的 idle scan 立即返回未回收，避免旧扫描在完成后按旧期限关闭会话。getSession/getExecution、订阅、心跳与 attach 不续期；执行中 detach 不打断执行，完成后再采用业务期限与 detached grace 的较短者。
 
 ### 9.3 预算会计
 
@@ -744,13 +747,9 @@ checkpoint 记录稳定键、已确认提交、源一致性证据和映射指纹
 
 ## 11. Workflow / AI / MCP / Wapp
 
-P6 实施采用 [Workflow §5.1](workflow-resource-model.md#51-workflow-执行是否包裹-job) 的统一 Job 包裹：block 资源仍按声明范围独立管理，资源阶段归 job 类，metadata/control 不改变类别；关闭窗口只退订。AI/MCP/Wapp、调度授权与原生工具细节见 [消费者接入](consumer-adapters.md)。
+P6 保持 Workflow v1 的模型、YAML、IPC 与 step 执行语义，只将底层连接管理接到 Runtime。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。step 的显式连接/数据库目标覆盖 Workflow 默认目标；独立 step 的会话状态不泄漏到后续 step，前一步结果仍可通过模板传入下一步。跨数据库流程由各 step 选择自己的连接完成。
 
-Workflow 目标优先级：step 显式目标 → block target → workflow 默认目标 → profile 初始目标。独立 step 每次初始化，USE 只在 step 内生效。session block 同一资源串行、跨 step 保留状态；transaction block runtime 控制 begin/commit/rollback，禁止步骤破坏提交边界。需重连的 database 变更不得进入现有 transaction block。
-
-并行分支各自资源；同 session block 不并行。事务失败重试整个已证实回滚的块。任意 session block 默认不能从中间 checkpoint 恢复。跨端事务不承诺原子性，按幂等/补偿处理。
-
-transaction block 执行前由 driver 校验整个计划是否能保证提交边界。首版优先受控 DML Command；任意 SQL 若无法证明不含手工 COMMIT、autocommit 修改、隐式提交或其他破坏边界的行为，则返回 UnsupportedPlan。不能只用关键词正则宣称安全。session block 可执行原生任意 SQL，但不提供 runtime 管理的整块原子性承诺。
+P6 不引入 Workflow Job 包裹、session/transaction block、block owner 或事务计划证明。相关未来设计见 [Workflow 资源模型](workflow-resource-model.md)，不属于当前 v1 验收范围。AI/MCP/Wapp、调度授权与原生工具细节见 [消费者接入](consumer-adapters.md)。
 
 AI 默认独立目标操作；用户显式授权当前编辑器 session 后，进入同队列并共享真实状态。MCP 显式 session 归客户端/身份、受 TTL 配额控制；Wapp session 归实例或 Job。后台调度用服务身份，不依赖 GUI 当前库或长期保留用户登录。
 
@@ -1088,7 +1087,7 @@ CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 
 
 - **数值半（并发资源不超过上限）由 H 层承担**：`packages/runtime/tests/pool_capacity_budget.rs`（池容量与预算台账不漂移、无状态键永不驻留、被隔离的租约不占空闲容量）。首版所有发布驱动都声明 `ResetForReuse::Unsupported`，空闲池恒为空（见 CM-67），所以"驻留上限"在真实驱动上没有可触发状态。
 - **「不为每 tab 建连接」与「编辑器资源/上下文不变」由真实 UI 断言**：`e2e/specs/journeys/table-pool-contention-journey.ts`。它逐个打开并刷新表 tab，每次采样都要求物理资源数不越预算、且不超过基线 + 2（一个编辑器 retained session 的余量），最后回到编辑器确认仍能执行且观察上下文未变。
-- **计数必须由 runtime 自己回答**：同一个库上同时存在宿主旧 `ConnectionManager` 的会话与 runtime 的会话，`pg_stat_activity` 分不开两者，外部计数无法归因。因此新增只读口 `runtime_observability_snapshot`：`SessionBackend::observability_snapshot` → `ProductionLeaseManager::snapshot`（`packages/runtime/src/resource/observability.rs`）只**投影**租约台账（每池键在借/空闲/关闭中/隔离 + 台账总数），池策略现取 `PoolManager`，并附预算上限与在用量；**不新建第二本计数**（CM-32 单账铁律）。载荷里没有凭据、连接串或原始库名——池键只是摘要（指纹本身已是 FNV 摘要，再补凭据代与路由代）。未实现该端口后端返回 `null`，不是全零；台账被毒化同样返回 `null`。该口是带默认实现（默认 `None`）的 trait 方法，应用层的装饰器 `ObservedBackend` 必须**显式转发**（`packages/runtime/src/application/backend.rs`）：忘记转发不会编译失败，症状只是"快照永远为 `null`"——本轮就是这样被 E2E 抓住的，并已由 `observed_backend_forwards_the_observability_snapshot` 钉住。
+- **计数必须由 Runtime 自己回答**：数据库活动视图无法说明某个连接属于哪个 Runtime pool 或租约状态，因此不能用 `pg_stat_activity` 推算 Runtime 预算。桌面只读口 `runtime_observability_snapshot` 经 `SessionBackend::observability_snapshot` → `ProductionLeaseManager::snapshot`（`packages/runtime/src/resource/observability.rs`）投影 Runtime 租约台账（每池键在借/空闲/关闭中/隔离 + 台账总数），池策略来自 `PoolManager`，并附预算上限与在用量；**不新建第二本计数**（CM-32 单账铁律）。载荷里没有凭据、连接串或原始库名——池键只是摘要（指纹本身已是 FNV 摘要，再补凭据代与路由代）。未实现该端口后端返回 `null`，不是全零；台账被毒化同样返回 `null`。该口是带默认实现（默认 `None`）的 trait 方法，应用层的装饰器 `ObservedBackend` 必须**显式转发**（`packages/runtime/src/application/backend.rs`）：忘记转发不会编译失败，症状只是"快照永远为 `null`"——本轮就是这样被 E2E 抓住的，并已由 `observed_backend_forwards_the_observability_snapshot` 钉住。
 
 **CM-34 表编辑事务范围（H/D/F）**
 
@@ -1190,19 +1189,19 @@ CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 
 - 步骤：生成文件、取消中途文件、重新下载成功文件。
 - 断言：目标连接创建数为 0；未完成产物不伪装成功；下载按 ACL 校验。
 
-**CM-50 Workflow 独立 step（H/D）**
+**CM-50 Workflow v1 step 目标继承与结果串联（H/D，P6）**
 
-- 前置：workflow 默认 A；step1 在自己的 Lease USE B。
-- 步骤：step2 不指定目标；step3 显式目标 C。
-- 断言：step2 使用 A，step3 使用 C；step1 状态不泄漏；资源全部清理。
+- 前置：Workflow 默认目标与显式 step 目标分别配置为 PostgreSQL、MySQL。
+- 步骤：先在默认目标执行 Query 产生结果，再用后续 step 的模板把该值传入显式目标的 Command；反向再执行 MySQL→PostgreSQL。
+- 断言：两个方向均由 Runtime-backed Workflow 路径执行，step 目标覆盖默认目标，模板使用的是前一步结果，目标库返回与来源值匹配的结果；资源全部清理。
 
-**CM-51 Workflow session block（H/D）**
+**CM-51 Workflow session block（H/D，未来目标；不属于 P6 v1）**
 
 - 前置：3 个 step 共用 block，第一步创建临时对象。
 - 步骤：后续写读临时对象；尝试同 block 并行；再启动另一 block。
 - 断言：原 block 同资源连续；并行配置被拒绝；另一 block 独立；block 结束关闭。
 
-**CM-52 Workflow transaction block（H/D）**
+**CM-52 Workflow transaction block（H/D，未来目标；不属于 P6 v1）**
 
 - 前置：事务型目标，2 个写 step；runtime 控制事务。
 - 步骤：第二步失败；尝试用户 COMMIT/跨 connection/隐式提交 DDL；经完整回滚后重试块。

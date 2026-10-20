@@ -32,3 +32,6 @@ pub use workflows::{
 };
 
 mod host;
+
+#[cfg(test)]
+mod live_acceptance;

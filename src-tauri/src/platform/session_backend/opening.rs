@@ -29,6 +29,12 @@ impl DesktopSessionBackend {
                 "profile disabled or revision changed".into(),
             ));
         }
+        // Resolve a persisted tunnel definition before asking the driver to describe the
+        // resource. The Runtime session owns the resulting tunnel lease below, so it remains
+        // alive with pooled resources and with resources quarantined after uncertain close.
+        let config = crate::tunnel::resolve_saved_tunnel(&self.store, config)
+            .await
+            .map_err(|error| map::error(dr::ResourceError::Driver(error)))?;
         let logical = datazen_runtime::resource::LogicalSessionPermit::reserve(
             self.budget.clone(),
             &self.organization,
@@ -179,17 +185,27 @@ impl DesktopSessionBackend {
         } else {
             None
         };
-        let (handle, resource_id, reused) = if let Some(idle) = idle {
+        let (handle, resource_id, reused, tunnel) = if let Some(idle) = idle {
             let held = self.resource(idle.as_str()).await?;
             provider = held.provider.clone();
             baseline = held.baseline.clone();
             budget_scope = held._budget_scope.clone();
-            (held.handle.clone(), idle.as_str().to_owned(), true)
+            (
+                held.handle.clone(),
+                idle.as_str().to_owned(),
+                true,
+                held._tunnel.clone(),
+            )
         } else {
+            let known_hosts_path = self.store.data_dir().join("ssh_known_hosts.json");
+            let (effective_config, tunnel) =
+                crate::tunnel::start_for_connection(config, &known_hosts_path)
+                    .await
+                    .map_err(|error| map::error(dr::ResourceError::Driver(error)))?;
             let handle = provider
                 .acquire_resource(
                     &dr::AcquireResourceRequest {
-                        connection_config: config,
+                        connection_config: effective_config,
                         target,
                         scope: dr::ResourceScope {
                             purpose,
@@ -204,7 +220,12 @@ impl DesktopSessionBackend {
                 )
                 .await
                 .map_err(map::error)?;
-            (handle, uuid::Uuid::new_v4().to_string(), false)
+            (
+                handle,
+                uuid::Uuid::new_v4().to_string(),
+                false,
+                tunnel.map(Arc::new),
+            )
         };
         if !reused {
             if self
@@ -230,6 +251,7 @@ impl DesktopSessionBackend {
                         handle.clone(),
                         baseline.clone(),
                         budget_scope.clone(),
+                        tunnel.clone(),
                         lease_purpose,
                     )
                     .await;
@@ -264,6 +286,7 @@ impl DesktopSessionBackend {
                         handle.clone(),
                         baseline.clone(),
                         budget_scope.clone(),
+                        tunnel.clone(),
                         lease_purpose,
                     )
                     .await;
@@ -306,6 +329,7 @@ impl DesktopSessionBackend {
                 transactions: tokio::sync::Mutex::new(Vec::new()),
                 finalized_transaction: tokio::sync::Mutex::new(None),
                 protocol_drained: std::sync::atomic::AtomicBool::new(observation.protocol_drained),
+                _tunnel: tunnel,
                 _budget_scope: budget_scope,
                 logical: std::sync::Mutex::new(Some(logical)),
                 purpose: lease_purpose,
@@ -337,6 +361,7 @@ impl DesktopSessionBackend {
         handle: dr::ResourceHandle,
         baseline: dr::Baseline,
         budget_scope: Arc<dyn dr::BudgetPort>,
+        tunnel: Option<Arc<crate::tunnel::Tunnel>>,
         purpose: datazen_runtime::resource::LeasePurpose,
     ) {
         self.resources.write().await.insert(
@@ -356,6 +381,7 @@ impl DesktopSessionBackend {
                 transactions: tokio::sync::Mutex::new(Vec::new()),
                 finalized_transaction: tokio::sync::Mutex::new(None),
                 protocol_drained: std::sync::atomic::AtomicBool::new(false),
+                _tunnel: tunnel,
                 _budget_scope: budget_scope,
                 logical: std::sync::Mutex::new(None),
                 purpose,

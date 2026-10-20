@@ -414,6 +414,9 @@ pub fn run() {
             crate::commands::ai_validate_config,
             // ── AI：取消 ──
             crate::commands::ai_cancel,
+            crate::commands::ai_grant_editor_session,
+            crate::commands::ai_revoke_editor_grant,
+            crate::commands::ai_touch_editor_grant,
             // ── Prompt 模板 ──
             crate::commands::prompt_list,
             crate::commands::prompt_remove_override,
@@ -638,7 +641,6 @@ pub fn run() {
                     }
                     let state = app_handle.state::<AppState>();
                     tauri::async_runtime::block_on(async {
-                        state.connection_manager.shutdown().await;
                         state.mcp_client_manager.disconnect_all().await;
                     });
                     // 空闲回收驱动器在此停。它归 runtime 应用层所有，宿主不驱动它，

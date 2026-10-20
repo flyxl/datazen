@@ -119,43 +119,20 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
         "execute_schema_diff_deploy"
     );
 
-    let (driver, handle) = match state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("execute_schema_diff_deploy")
+    let target_context = match crate::services::migration_endpoint::runtime_session_context(
+        &state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::LongLivedHostWork,
+    )
+    .await
     {
         Ok(value) => value,
-        Err(error) => {
-            return fail_schema_diff_deploy(&state, history_run, error).await;
-        }
+        Err(error) => return fail_schema_diff_deploy(&state, history_run, error).await,
     };
-    let config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("execute_schema_diff_deploy");
-    let config = match config {
-        Ok(value) => value,
-        Err(error) => {
-            return fail_schema_diff_deploy(&state, history_run, error).await;
-        }
-    };
-    let owner = match state
-        .connection_manager
-        .owner_connection_id(&target_db_session_id)
-        .await
-    {
-        Some(value) => value,
-        None => {
-            return fail_schema_diff_deploy(
-                &state,
-                history_run,
-                CommandError::Validation("Target connection owner is unavailable".into()),
-            )
-            .await;
-        }
-    };
+    let driver = target_context.driver.clone();
+    let handle = target_context.handle.clone();
+    let config = target_context.config.clone();
+    let owner = target_context.view.connection_id.as_str().to_owned();
     history_run.target_connection_id = Some(owner.clone());
     let persisted = match state.store.get_connection(&owner).await {
         Some(value) => value,

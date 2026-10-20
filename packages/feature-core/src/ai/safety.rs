@@ -345,11 +345,7 @@ pub fn effective_safety_gate(
     policy: &datazen_platform_api::settings::ExecutionSettings,
 ) -> AiSafetyGateConfig {
     let mut gate = settings
-        .profiles
-        .iter()
-        .find(|profile| profile.id == settings.active_profile_id)
-        .or_else(|| settings.profiles.iter().find(|profile| profile.is_default))
-        .or_else(|| settings.profiles.first())
+        .selected_profile()
         .map(|profile| profile.safety_gate.clone())
         .unwrap_or_else(|| AiSafetyGateConfig {
             data_egress_level: AiDataEgressLevel::Unrestricted,

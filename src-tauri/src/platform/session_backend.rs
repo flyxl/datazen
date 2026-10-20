@@ -47,6 +47,9 @@ pub(super) struct Resource {
     transactions: tokio::sync::Mutex<Vec<ds::SessionHandleRef>>,
     finalized_transaction: tokio::sync::Mutex<Option<ds::TransactionObservation>>,
     protocol_drained: std::sync::atomic::AtomicBool,
+    /// Runtime resource lifetime owns the host tunnel. Pool reuse and quarantine keep
+    /// this Arc alive; only confirmed physical-resource removal releases it.
+    _tunnel: Option<Arc<crate::tunnel::Tunnel>>,
     _budget_scope: Arc<dyn dr::BudgetPort>,
     logical: std::sync::Mutex<Option<datazen_runtime::resource::LogicalSessionPermit>>,
     purpose: datazen_runtime::resource::LeasePurpose,

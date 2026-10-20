@@ -40,6 +40,8 @@ metadata 工具只读；写工具仍需执行权限与破坏性确认。模型�
 
 用户显式允许某次 AI 会话使用编辑器状态时，宿主建立内存 grant：grantId、principal、clientInstanceId、AI invocation 范围、目标 session 身份、contextVersion、允许工具/action、到期时间与撤销状态。grantId 不是 attachment token，模型和 Provider 不得到 live session handle。
 
+> 2026-10-17 实现现状：桌面 grant 已落地 `{grantId, clientInstanceId, editorSessionId, connectionId, database, configRevision, editorSessionId 对应的活 SessionHandle, deadline, revoked}`（`packages/feature-core/src/ai/ownership.rs`）；`principal`、AI invocation 范围、允许工具/action 与 contextVersion 的独立记录仍是目标设计，当前以 configRevision + 归属校验覆盖。
+
 共享工具在同一 session actor 队列排队，能观察同一事务和临时对象；不建立第二套事务管理器。开启/提交/回滚用户事务必须有单独明确授权，普通“查询当前状态”授权不包含这些动作。
 
 以下任一条件使 grant 失效：用户撤销、编辑器关闭、session 被替代或丢失、上下文版本变化、登录/权限撤销、TTL 到期。派发前检查 grant；已在途调用按精确 execution 取消能力处理，记录真实效果。失效后拒绝绑定操作，不自动改为独立连接执行；用户重新选择目标或重新授权后才创建新操作。
@@ -171,15 +173,15 @@ Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管
 
 共享领域实现集中在 `packages/feature-core`，Wapp 协议/路由策略在 `packages/workspace-apps`。本轮补迁 command policy、迁移端点身份算法、Dashboard 创建/归档规则、export 容器规划与迁移结果历史映射；原路径保留薄绑定和兼容导出。逐项源码边界见 [feature-core 残余审计](feature-core.md#final-residual-audit-2026-10-17)。
 
-`execute_driver_command` 仍服务桌面 editor/session IPC；ConnectionManager 仍承载本地 session identity、tunnel 与 P5 repository/job adapter。AI/MCP/Workflow 默认 DB 工具已走共享 ResourceExecutionHost。Monitor 已删除无生产调用者的兼容连接 registry 及其 ConnectionManager 装配；实际定时调度与手动 widget 执行保持共享 MonitorHost/Workflow/Runtime 路径。
+`execute_driver_command` 仍服务桌面 editor/session IPC；Runtime 的 `SessionRegistry` 与 `DesktopSessionBackend` 承载本地 session identity、物理资源、预算与隧道生命周期。AI/MCP/Workflow 默认 DB 工具已走共享 Runtime `ResourceExecutionHost`。Monitor 的定时调度与手动 widget 执行保持共享 MonitorHost/Workflow/Runtime 路径。
 
-共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，表导出的 profile 查询沿用 RuntimeCommandSource，但数据不再通过完整 MultiQueryResult 读取：Host 建立专用 `tableExport` Runtime session，并在 query admission 前绑定 owner/authentication/delegation、canonical target 与 config revision。PostgreSQL/MySQL 的 awaitable ResourceProvider 批次经独立容量 1 的进程内输出槽到原 formatter，发送等待不持有 execution 全局锁；单批最多 256 行、编码后最多 2 MiB，formatter 逐批在 blocking pool 执行。仅此 Host capability 可豁免交互查询行数上限，客户端参数不能取得该权限。取消 watcher 撤销 binding、唤醒 producer 并请求取消同一 execution；错误/丢弃等待者走原 Runtime owner 关闭路径，不重放查询。已在执行的同步文件写不可强制中止，但不再交付后续批次或成功发布；只有执行成功且关闭回执确认释放资源才发送 Done，未知清理失败关闭。此实现未改变 ExportSource、format/plan 或 IPC；新增回归源码及 PG/MySQL live 导出/取消尚待独立验证。PostgreSQL/MySQL 备份通过专属 Runtime retained session 的 `backup_dump` 流式写 staging/gzip（64 KiB chunk、同步背压），其他驱动失败关闭；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。Workflow 本轮保持 v1，仅迁移底层连接管理；块与专用 Workflow Job 不在交付范围。显式 editor grant、native-tool 全预算与适用层验收仍待后续。不得将本轮桌面单测通过当作 P6 阶段退出证明。
+共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，表导出的 profile 查询沿用 RuntimeCommandSource，但数据不再通过完整 MultiQueryResult 读取：Host 建立专用 `tableExport` Runtime session，并在 query admission 前绑定 owner/authentication/delegation、canonical target 与 config revision。PostgreSQL/MySQL 的 awaitable ResourceProvider 批次经独立容量 1 的进程内输出槽到原 formatter，发送等待不持有 execution 全局锁；单批最多 256 行、编码后最多 2 MiB，formatter 逐批在 blocking pool 执行。仅此 Host capability 可豁免交互查询行数上限，客户端参数不能取得该权限。取消 watcher 撤销 binding、唤醒 producer 并请求取消同一 execution；错误/丢弃等待者走原 Runtime owner 关闭路径，不重放查询。已在执行的同步文件写不可强制中止，但不再交付后续批次或成功发布；只有执行成功且关闭回执确认释放资源才发送 Done，未知清理失败关闭。此实现未改变 ExportSource、format/plan 或 IPC；新增回归源码及 PG/MySQL live 导出/取消尚待独立验证。PostgreSQL/MySQL 备份通过专属 Runtime retained session 的 `backup_dump` 流式写 staging/gzip（64 KiB chunk、同步背压），其他驱动失败关闭；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。Workflow 本轮保持 v1，仅迁移底层连接管理；块与专用 Workflow Job 不在交付范围。显式 editor grant 已接桌面 H 层：grant/revoke/touch IPC、借用不拥有的 in-session 执行与取消回执已实现；新增的真实 UI 生命周期旅程尚未执行，MCP/Wapp 归属仍待核对。NativeTool 全预算与适用层验收仍待后续。不得将本轮桌面单测通过当作 P6 阶段退出证明。
 
 ## 9. 验收与故障旅程
 
 | 旅程 | 必须观察到的结果 | 关联用例 |
 | --- | --- | --- |
-| AI 默认查询 → 授权共享 → 临时对象查询 → 撤销 → 下一次工具 | 共享时同队列可见；撤销后拒绝且编辑器资源仍存活 | CM-53、73、74 |
+| AI 默认查询 → 授权共享 → 临时对象查询 → 撤销 → 下一次工具 | 共享时同队列可见；撤销后拒绝且编辑器资源仍存活 | CM-53、73、74（**H 层已交付**：`packages/feature-core/src/ai/ownership.rs` 的 grant 生命周期 + `src-tauri/src/commands/ai/grant.rs` 的 `ai_grant_editor_session`/`ai_revoke_editor_grant`/`ai_touch_editor_grant`；F 层真实 UI 旅程待补） |
 | MCP A/B 同连接 → A 开事务 → A 断开 → B 继续 | 资源隔离、A 清理完成、B 不被取消 | CM-53、54 |
 | Wapp 请求 → 重载 → 旧响应/取消到达 | 旧 nonce 被拒绝，新实例状态不受影响 | CM-53、55 |
 | schedule 入队 → ACL 撤销 → 派发 | 不取得资源、不写数据库，记录拒绝原因 | CM-59、65、67 |

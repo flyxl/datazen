@@ -21,13 +21,7 @@ impl Store {
 
         let (settings, active_cfg) = match settings_data {
             Some(mut s) if !s.profiles.is_empty() => {
-                let active = s
-                    .profiles
-                    .iter()
-                    .find(|p| p.id == s.active_profile_id)
-                    .or_else(|| s.profiles.iter().find(|p| p.is_default))
-                    .or_else(|| s.profiles.first())
-                    .cloned();
+                let active = s.selected_profile().cloned();
                 if let Some(ref a) = active {
                     s.active_profile_id = a.id.clone();
                 }
@@ -83,15 +77,7 @@ impl Store {
         &self,
         config: &AiSettingsConfig,
     ) -> Result<(), StoreError> {
-        let active_profile = config
-            .profiles
-            .iter()
-            .find(|p| p.id == config.active_profile_id)
-            .or_else(|| config.profiles.iter().find(|p| p.is_default))
-            .or_else(|| config.profiles.first())
-            .cloned();
-
-        let active_cfg = active_profile.map(|p| AiProviderConfig::from(&p));
+        let active_cfg = config.selected_profile().map(AiProviderConfig::from);
 
         {
             let mut cache = self.cache.write().await;

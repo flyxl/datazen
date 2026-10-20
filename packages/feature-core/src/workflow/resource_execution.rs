@@ -81,6 +81,80 @@ pub async fn execute(
     workflow_deadline: Option<tokio::time::Instant>,
     require_workflow: bool,
 ) -> Result<CommandResult, WorkflowError> {
+    execute_bound(
+        state,
+        step,
+        connection_id,
+        permission_mode,
+        workflow_deadline,
+        require_workflow,
+        SessionBinding::Independent,
+    )
+    .await
+}
+
+/// How one step binds to a runtime session.
+///
+/// A borrowed session belongs to someone else (for example the user's editor
+/// tab). The executor must never close it: closing a session is the owner's
+/// decision, and a tool call that quietly rolled back the editor's transaction
+/// would be worse than refusing to run.
+enum SessionBinding {
+    Independent,
+    Borrowed(datazen_platform_api::dto::session::SessionHandle),
+}
+
+impl SessionBinding {
+    /// The operation this binding submits under, plus the handle it owns.
+    ///
+    /// Extracted so "a borrowed session must never degrade into an independent
+    /// execution" is a property a test can pin, rather than a shape that has to
+    /// be re-read from the middle of a long function.
+    fn submission(
+        &self,
+    ) -> (
+        IdempotentOperation,
+        Option<datazen_platform_api::dto::session::SessionHandle>,
+    ) {
+        match self {
+            Self::Independent => (IdempotentOperation::ExecuteAtTarget, None),
+            Self::Borrowed(handle) => (IdempotentOperation::ExecuteInSession, Some(handle.clone())),
+        }
+    }
+}
+
+/// Run one step on a session that the caller owns. The executor borrows the
+/// handle only; it never closes or rolls back that session.
+pub async fn execute_with_existing_session(
+    state: &dyn ResourceExecutionHost,
+    step: &WorkflowCommandStep,
+    connection_id: &str,
+    permission_mode: Option<crate::mcp::permission::McpPermissionMode>,
+    workflow_deadline: Option<tokio::time::Instant>,
+    require_workflow: bool,
+    handle: datazen_platform_api::dto::session::SessionHandle,
+) -> Result<CommandResult, WorkflowError> {
+    execute_bound(
+        state,
+        step,
+        connection_id,
+        permission_mode,
+        workflow_deadline,
+        require_workflow,
+        SessionBinding::Borrowed(handle),
+    )
+    .await
+}
+
+async fn execute_bound(
+    state: &dyn ResourceExecutionHost,
+    step: &WorkflowCommandStep,
+    connection_id: &str,
+    permission_mode: Option<crate::mcp::permission::McpPermissionMode>,
+    workflow_deadline: Option<tokio::time::Instant>,
+    require_workflow: bool,
+    binding: SessionBinding,
+) -> Result<CommandResult, WorkflowError> {
     let step_deadline = tokio::time::Instant::now()
         + std::time::Duration::from_secs(step.timeout_secs.unwrap_or(30));
     let global_limit = workflow_deadline.is_some_and(|deadline| deadline <= step_deadline);
@@ -178,9 +252,10 @@ pub async fn execute(
     let runtime = prepared.runtime;
     let context = prepared.context;
     let target = prepared.target;
+    let (submission_operation, bound_handle) = binding.submission();
     let token = before_dispatch(
         deadline,
-        runtime.issue_submission_token(&context, IdempotentOperation::ExecuteAtTarget, None),
+        runtime.issue_submission_token(&context, submission_operation, bound_handle.as_ref()),
     )
     .await?
     .map_err(|error| WorkflowError::Validation(error.to_string()))?;
@@ -208,21 +283,36 @@ pub async fn execute(
             input.remove("schema");
         }
     }
-    let receipt = tokio::time::timeout_at(
-        deadline,
-        runtime.execute_at_target(
-            &context,
-            ExecuteAtTargetRequest::new(
-                target,
-                Counter::new(revision),
-                CommandCall::new(&step.command, command_input),
-                token.idempotency_key,
-            ),
-        ),
-    )
-    .await
-    .map_err(|_| submission_unconfirmed("SubmissionReceiptTimeout".into()))?
-    .map_err(|error| submission_unconfirmed(format!("Submission:{:?}", error.code)))?;
+    let submission = async {
+        if let Some(handle) = bound_handle.clone() {
+            runtime
+                .execute_in_session(
+                    &context,
+                    datazen_application::dto::requests::ExecuteInSessionRequest::new(
+                        handle,
+                        CommandCall::new(&step.command, command_input),
+                        token.idempotency_key,
+                    ),
+                )
+                .await
+        } else {
+            runtime
+                .execute_at_target(
+                    &context,
+                    ExecuteAtTargetRequest::new(
+                        target,
+                        Counter::new(revision),
+                        CommandCall::new(&step.command, command_input),
+                        token.idempotency_key,
+                    ),
+                )
+                .await
+        }
+    };
+    let receipt = tokio::time::timeout_at(deadline, submission)
+        .await
+        .map_err(|_| submission_unconfirmed("SubmissionReceiptTimeout".into()))?
+        .map_err(|error| submission_unconfirmed(format!("Submission:{:?}", error.code)))?;
     let mut cancellation = CancelOnDrop {
         runtime: runtime.clone(),
         context: context.clone(),
@@ -413,4 +503,39 @@ pub async fn execute(
         "results": statements.0.into_values().collect::<Vec<_>>(),
         "totalTimeMs": started.elapsed().as_millis() as u64,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_platform_api::dto::session::SessionHandle;
+    use datazen_platform_api::id::{DbSessionId, RuntimeEpoch};
+
+    fn handle(id: &str) -> SessionHandle {
+        SessionHandle::new(DbSessionId::new(id), RuntimeEpoch::new("1"))
+    }
+
+    #[test]
+    fn independent_binding_submits_at_target_without_a_handle() {
+        let (operation, bound) = SessionBinding::Independent.submission();
+        assert_eq!(operation, IdempotentOperation::ExecuteAtTarget);
+        assert!(
+            bound.is_none(),
+            "independent execution must not carry a handle"
+        );
+    }
+
+    #[test]
+    fn borrowed_binding_always_submits_in_session() {
+        // The property that matters: a granted (borrowed) session must never
+        // silently degrade into an independent execution. Downgrading this to
+        // ExecuteAtTarget would still compile and would quietly stop sharing the
+        // editor's session, so it is pinned by an assertion instead.
+        let (operation, bound) = SessionBinding::Borrowed(handle("dbs-1")).submission();
+        assert_eq!(operation, IdempotentOperation::ExecuteInSession);
+        assert_eq!(
+            bound.map(|handle| handle.db_session_id.as_str().to_owned()),
+            Some("dbs-1".to_string())
+        );
+    }
 }

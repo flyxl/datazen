@@ -90,7 +90,7 @@ command 分支（[command_runtime.rs`](../../../src-tauri/src/workflow/command_r
 
 1. `resolve_connection_id(step, workflow_connection)` → `step.effective_connection(workflow_connection)`，缺失报 `MissingConnection { step_id }`；
 2. `inject_inherited_database(input, workflow_database)`：显式非空 `input.database` 优先，空白串按未设置处理，trim，非对象则空操作；
-3. `connection_manager.resolve_session_for_connection(connection_id)` 返回 `(runtime_id, driver, handle)`；该方法内部按 **`session_owner_map` 里 owner == 配置 id** 查找已有会话，找不到则 `connect(connection_id)` 新建（`resolve_session_for_connection` 见 [sessions.rs:92-103](../../../src-tauri/src/services/connection_manager/sessions.rs)，owner 查找与新建在同文件 `get_or_connect_session`，[sessions.rs:8-37](../../../src-tauri/src/services/connection_manager/sessions.rs)）；
+3. Workflow v1 的命令运行时通过共享 Runtime resource execution path 按 `connectionId` 解析 profile 并建立/借用 Runtime session；物理资源由 `DesktopSessionBackend` 打开和关闭，Workflow 不依赖宿主侧共享 `ConnectionManager` 会话；
 4. 在 `driver.command_definitions()` 中查 id，未找到报 `UnsupportedCommand`，`metadata.workflow == false` 报 `CommandNotInWorkflow`；
 5. `validate_command_input` + 按 `permission_mode` 的 `check_command_access`；id 为 `"query"` / `"execute"` 时再过 `sql_guard::check_sql` 与 `mcp::permission::check_sql_allowed`；
 6. `inject_sql_target_fields(&mut input, database, schema)` 后 `driver.execute_command`。
@@ -821,4 +821,4 @@ v1 定义的映射规则是机械的、无歧义的：
 
 Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
 
-Workflow scheduler 保留桌面 runtime-entry 修复；Monitor 的固定只读目标授权与独立 occurrence Job、Wapp 实例会话、MCP owner/TTL、Restore/Backup/Export 和 NativeTool 通用 Job fencing 不受此范围收缩影响。跨驱动 v1 旅程须独立验收，未运行的测试不算通过。
+Workflow scheduler 保留桌面 runtime-entry 修复；Monitor 的固定只读目标授权与独立 occurrence Job、Wapp 实例会话、MCP owner/TTL、Restore/Backup/Export 和 NativeTool 通用 Job fencing 不受此范围收缩影响。跨驱动 v1 旅程须独立验收，未运行的测试不算通过。 Host 通用真实驱动旅程位于 `src-tauri/src/workflow/live_acceptance.rs`，通过安全 live runner 显式运行两个方向的 Query → Command 与前步结果 SQL 模板串联；不把直接 sqlx 查询或 ignored 测试计为 Runtime 接线验收。

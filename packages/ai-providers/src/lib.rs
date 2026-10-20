@@ -17,9 +17,11 @@ pub mod anthropic;
 pub mod custom;
 pub mod deepseek;
 pub mod http;
+pub mod metadata;
 pub mod ollama;
 pub mod openai;
 pub mod protocol;
 pub mod registry;
 
+pub use metadata::provider_defaults;
 pub use registry::{init_ai_providers, register_ai_providers, AiProviderRegistry};

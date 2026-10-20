@@ -29,13 +29,15 @@ pub struct TestAppState {
 /// the tests exercise the real runtime wiring without opening a network
 /// connection.
 struct TestMockDriverFactory {
+    driver_id: &'static str,
     driver: Arc<dyn DatabaseDriver>,
     provider: OnceLock<Arc<dyn ResourceProvider>>,
 }
 
 impl TestMockDriverFactory {
-    fn new(driver: Arc<dyn DatabaseDriver>) -> Self {
+    fn new(driver_id: &'static str, driver: Arc<dyn DatabaseDriver>) -> Self {
         Self {
+            driver_id,
             driver,
             provider: OnceLock::new(),
         }
@@ -48,16 +50,19 @@ impl DatabaseDriverFactory for TestMockDriverFactory {
     }
 
     fn driver_id(&self) -> &'static str {
-        "postgres"
+        self.driver_id
     }
 
     fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
         Some(
             self.provider
                 .get_or_init(|| {
-                    Arc::new(super::resource_provider::TestResourceProvider::new(
-                        Arc::clone(&self.driver),
-                    )) as Arc<dyn ResourceProvider>
+                    Arc::new(
+                        super::resource_provider::TestResourceProvider::new_for_driver(
+                            Arc::clone(&self.driver),
+                            self.driver_id,
+                        ),
+                    ) as Arc<dyn ResourceProvider>
                 })
                 .clone(),
         )
@@ -115,7 +120,7 @@ impl TestAppState {
         // command path would reject.
         let driver: Arc<dyn DatabaseDriver> = mock.clone();
         let factory: &'static dyn DatabaseDriverFactory =
-            Box::leak(Box::new(TestMockDriverFactory::new(driver)));
+            Box::leak(Box::new(TestMockDriverFactory::new("postgres", driver)));
         registry.register_test_factory("postgres", factory).await;
         let state = build_app_state(store.clone(), registry.clone());
         Self {
@@ -136,6 +141,20 @@ impl TestAppState {
         Self::with_resource_provider(rich_mock_options()).await
     }
 
+    /// Register a Runtime resource factory for a driver spelling introduced by
+    /// a focused fixture (for example `postgresql` versus `postgres`).
+    pub async fn register_runtime_driver(
+        &self,
+        driver_id: &'static str,
+        driver: Arc<dyn DatabaseDriver>,
+    ) {
+        let factory: &'static dyn DatabaseDriverFactory =
+            Box::leak(Box::new(TestMockDriverFactory::new(driver_id, driver)));
+        self.registry
+            .register_test_factory(driver_id, factory)
+            .await;
+    }
+
     pub async fn save_connection(&self, id: &str) -> ConnectionConfig {
         let config = sample_postgres_config(id);
         self.store
@@ -145,24 +164,19 @@ impl TestAppState {
         config
     }
 
-    /// Establish (or reuse) the db session for persisted connection config `connection_id`.
+    /// Persisted connection config must exist; establish it as a Runtime session.
     pub async fn connect_config(&self, connection_id: &str) -> String {
-        self.state
-            .connection_manager
-            .get_or_connect_session(connection_id)
-            .await
-            .expect("connect")
+        self.open_runtime_session(connection_id).await
     }
 
     pub async fn save_and_connect(&self, id: &str) -> (ConnectionConfig, String) {
-        let config = self.save_connection(id).await;
-        let conn_id = self.connect_config(id).await;
-        (config, conn_id)
+        // Keep the historical fixture name, but make it exercise the Runtime
+        // session boundary used by migrated command paths.
+        self.save_and_connect_runtime(id).await
     }
 
     /// Persist a profile and open it through the Runtime session boundary.
-    /// Unlike `save_and_connect`, this helper intentionally does not create a
-    /// legacy ConnectionManager session.
+    /// Opens a session through the Runtime boundary used by production paths.
     pub async fn save_and_connect_runtime(&self, id: &str) -> (ConnectionConfig, String) {
         let config = self.save_connection(id).await;
         let session = self.open_runtime_session(id).await;

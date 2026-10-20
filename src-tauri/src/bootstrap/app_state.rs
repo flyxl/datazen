@@ -1,6 +1,5 @@
 //! AppState assembly for GUI and headless MCP entry points.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -10,7 +9,6 @@ use crate::cache::SchemaCache;
 use crate::commands::AppState;
 use crate::db::init_drivers;
 use crate::monitor::MonitorEngine;
-use crate::services::ConnectionManager;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::{mcp, redis_flush_gate, wapps, workflow};
@@ -169,8 +167,6 @@ pub(crate) fn finish_app_state(
     prompts_dir: Option<PathBuf>,
 ) -> AppState {
     let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
-    let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
-    connection_manager.clone().start_cleanup_task();
     let monitor_engine = MonitorEngine::new(store.clone());
 
     let data_dir = store.data_dir().to_path_buf();
@@ -195,7 +191,6 @@ pub(crate) fn finish_app_state(
     ));
     let state = AppState {
         driver_registry: registry,
-        connection_manager: connection_manager.clone(),
         monitor_engine: monitor_engine.clone(),
         store,
         schema_cache: schema_cache.clone(),
@@ -208,7 +203,6 @@ pub(crate) fn finish_app_state(
         workflow_registry: Arc::new(workflow::WorkflowRegistry::new(app_db, data_dir.clone())),
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
-        session_transactions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         // 概要 §6.2 第 8 步：身份在启动期组装一次。组装失败时把原因存进
         // PlatformEntry，依赖身份的 IPC 调用会拿到明确错误，而不是静默继续。
         platform,
@@ -216,6 +210,7 @@ pub(crate) fn finish_app_state(
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
         wapps: wapp_manager,
         cancel_registry: crate::ai::CancellationRegistry::default(),
+        ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
         desktop_job_host,
     };

@@ -66,17 +66,17 @@ steps:
 
 Step 没有指定 `connection` 时继承 Workflow 默认 connection；Step 显式指定时覆盖默认值。这样常见的“一个 connection 执行多个 step”不需要每个 step 重复选择 connection。
 
-### 会话：共享、且不释放
+### 连接与会话
 
-Workflow 的 IPC 用**持久化 `connectionId`** 指定连接（不要求连接的命令可以只给 `driverType`，见 [IPC](#ipc)）。每条 step 执行时用 `resolve_session_for_connection(connectionId)` 取得运行时会话，但**拿到的会话 ID 被直接丢弃**（`let (_runtime_id, driver, handle)`）——它只被当作 driver 句柄用完就扔。
+Workflow IPC 和 YAML 使用持久化 `connectionId`，不会保存或接收 GUI 的 `dbSessionId`。Workflow v1 的每条 step 经 `command_runtime → independent_sql → feature-core resource_execution` 进入共享 Runtime；Runtime 按该 step 的 connection profile 建立或借用自己的 session/resource，并在该次执行完成后按 Runtime 生命周期清理。它不复用编辑器会话，也不通过 Host `ConnectionManager` 管理连接。
 
-由此产生三条已实现的事实：
+当前实现保留以下 v1 行为：
 
-- **与 GUI 共享同一条会话**。同一 `connectionId` 在 GUI 里已连接时，Workflow 走的是那一条，而不是另开一条。好处是上下文一致，代价是无法与主工作区隔离事务状态。
-- **引用只增不减**。该路径不调用 `release`，所以被 Workflow 执行过的会话引用计数常驻 ≥1，永远不满足空闲回收的「计数为 0」条件。会话只会在用户显式断开连接或应用退出时结束。
-- **取显示名也会建会话**。执行器为某个 step 计算展示用的连接名时同样调用 `resolve_session_for_connection`，因此一次纯粹的标签解析就能建立并钉住一条会话。
+- step 未指定 connection 时继承 Workflow 默认 connection；显式指定时覆盖默认值。
+- 跨库 step 按各自 connection profile 执行；上一步结果仍可作为下一步输入。
+- 连接名展示不建立数据库会话。会话过期后，旧 `dbSessionId` 失效，调用方必须显式创建新会话。
 
-唯一会释放的例外是 Workflow 定义迁移（把 YAML 转成内部定义的路径），它在解析完连接后显式归还引用。
+空闲期限只由 Runtime 的实际业务执行活动刷新；状态读取、订阅、attach 等管理操作不延长期限。
 
 ### 目标：不切库
 
@@ -225,6 +225,12 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 ### P6 Workflow v1 范围
 
 Workflow 保持既有 v1 协议、模型、跨数据库逐步执行及前步 output 供后步模板串联的语义；仅将底层连接管理走 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。本轮不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof。YAML、version model 与既有 IPC 形状不变。scheduler 保留桌面 runtime-entry 修复，Monitor 固定只读授权/独立 occurrence 和其他消费者的 Runtime 接线继续保留。
+
+#### Workflow v1 真实驱动验收
+
+Host 通用旅程 `src-tauri/src/workflow/live_acceptance.rs` 使用真实 PostgreSQL/MySQL inventory factory、桌面 AppState/WorkflowHost 和 Runtime，不以 sqlx 手工串接模拟执行器。两个方向分别执行继承 workflow connection 的 legacy Query，再以 step connection override 执行 Command；前步数值经 `{{steps.seed.rows[0].value}}` 进入后步 SQL，验证最终计算结果。夹具在两个独立测试库建立同名表并写入不同数值，后步同时读取目标库的数值并加上前步结果，以证明目标覆盖实际到达另一个物理数据库；结束时删除夹具表。只使用两库共有的建表/插入/SELECT/删除表语句，不增加驱动方言能力或事务语义。
+
+运行：`scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance`。测试默认 ignored，安全 runner 显式执行，并要求两族独立 `dz_fixture_*` 数据库；缺配置、不可连接或执行失败都会失败，不以跳过计作通过。原 `src-tauri/tests/workflow_tests.rs` 的 TC13 直接调用 sqlx，仅验证手工数据流，不作为 Workflow/Runtime 接线证据。
 
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）
 

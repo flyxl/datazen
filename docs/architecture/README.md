@@ -126,13 +126,13 @@ Driver API 当前 `PROTOCOL_VERSION = 6`，最低兼容版本为 1。具体公�
 connectionId
    │
    ▼
-Store → ConnectionManager → 隧道解析 / 本机回环监听 → Driver.connect()
+Store → Platform Runtime → SessionRegistry / DesktopSessionBackend → Driver resource
                                                   │
                                                   ▼
                                              dbSessionId
 ```
 
-`ConnectionManager` 负责 Driver 选择、隧道解析、session 生命周期、引用计数和 idle eviction。Schema Diff / Data Sync / Data Transfer 使用 dedicated session，避免与主工作区共享 database selection、事务等状态。
+Runtime 管理 session 状态、物理资源、预算和空闲回收；DesktopSessionBackend 负责从 Store 解析连接配置、经 DriverRegistry 打开资源，并让隧道跟随物理资源生命周期。会话过期后明确失效，不以同一个 `dbSessionId` 透明重连。Schema Diff / Data Sync / Data Transfer 使用专用 Runtime session，避免与主工作区共享 database selection、事务等状态。
 
 ## 3.1 隧道
 

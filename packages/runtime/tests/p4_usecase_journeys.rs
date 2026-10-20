@@ -82,6 +82,11 @@ impl ProfileRepository for Profiles {
     }
 }
 struct Policy {
+    wait_check: AtomicU64,
+    wait_count: AtomicU64,
+    wait_entered: tokio::sync::Notify,
+    wait_release: tokio::sync::Notify,
+    wait_deny: AtomicBool,
     allow: AtomicBool,
     delegation: Mutex<Option<DelegationGrant>>,
     target_checks: AtomicU64,
@@ -130,6 +135,18 @@ impl PolicyService for Policy {
         command: &str,
         _: &serde_json::Value,
     ) -> Result<AuthorizationDecision, PortError> {
+        if command != "open_session" && self.wait_check.load(Ordering::SeqCst) != 0 {
+            let check = self.wait_count.fetch_add(1, Ordering::SeqCst) + 1;
+            if check == self.wait_check.load(Ordering::SeqCst) {
+                self.wait_entered.notify_one();
+                self.wait_release.notified().await;
+                if self.wait_deny.load(Ordering::SeqCst) {
+                    return Ok(AuthorizationDecision::Deny {
+                        reason_code: "revoked",
+                    });
+                }
+            }
+        }
         if context.is_delegated() {
             let check = if command == "open_session" {
                 0
@@ -170,6 +187,9 @@ enum ResourceEvent {
 #[derive(Default)]
 struct Backend {
     contexts: Mutex<HashMap<String, rt::SessionContext>>,
+    epochs: Mutex<HashMap<String, u64>>,
+    transactions: Mutex<HashMap<String, rt::SessionHandleRef>>,
+    unknown_commit: AtomicBool,
     sink: Mutex<Option<RuntimeResultSink>>,
     ids: Mutex<Vec<ExecutionId>>,
     cancelled: Mutex<Vec<ExecutionId>>,
@@ -193,6 +213,7 @@ impl SessionBackend for Backend {
         lock(&self.journal).push(ResourceEvent::Opened(id.clone(), database));
         let context = rt::SessionContext::new(r.initial_target, "observed-identity");
         lock(&self.contexts).insert(id.clone(), context.clone());
+        lock(&self.epochs).insert(id.clone(), r.runtime_epoch);
         Ok(OpenedResource {
             context,
             capabilities: datazen_runtime::registry::CapabilityVersions::new("7", "2.3.4"),
@@ -242,12 +263,40 @@ impl SessionBackend for Backend {
             self.release.notified().await;
         }
         let mut context = lock(&self.contexts).get(&r.resource_id).cloned().unwrap();
-        if r.command.command == "begin" {
+        if matches!(
+            r.command.command.as_str(),
+            "begin" | "platform.beginTransaction"
+        ) {
             context.transaction_state = rt::TransactionState::Active;
         }
-        if r.command.command == "commit" {
+        if matches!(
+            r.command.command.as_str(),
+            "commit" | "platform.commitTransaction" | "platform.rollbackTransaction"
+        ) {
             context.transaction_state = rt::TransactionState::None;
         }
+        let handles = match r.command.command.as_str() {
+            "platform.beginTransaction" => {
+                let handle = rt::SessionHandleRef::new(
+                    rt::HandleId::new(format!("tx-{}", r.execution_id)),
+                    rt::HandleKind::Transaction,
+                    rt::ResourceId::new(&r.resource_id),
+                    rt::Counter::new(lock(&self.epochs)[&r.resource_id]),
+                );
+                lock(&self.transactions).insert(r.resource_id.clone(), handle.clone());
+                vec![handle]
+            }
+            "platform.commitTransaction" | "platform.rollbackTransaction" => {
+                lock(&self.transactions)
+                    .remove(&r.resource_id)
+                    .map(|mut h| {
+                        h.closed = true;
+                        vec![h]
+                    })
+                    .unwrap_or_default()
+            }
+            _ => vec![],
+        };
         lock(&self.contexts).insert(r.resource_id, context.clone());
         let cancelled = lock(&self.cancelled).contains(&r.execution_id);
         Ok(ResourceExecution {
@@ -255,17 +304,27 @@ impl SessionBackend for Backend {
             stream_id: StreamId::new(format!("actual-{}", r.execution_id)),
             state: if cancelled {
                 rt::ExecutionState::Cancelled
+            } else if r.command.command == "fail" {
+                rt::ExecutionState::Failed
             } else {
                 rt::ExecutionState::Succeeded
             },
-            effect_outcome: if cancelled || r.command.command == "unknown" {
+            effect_outcome: if cancelled
+                || r.command.command == "unknown"
+                || (r.command.command == "platform.commitTransaction"
+                    && self.unknown_commit.load(Ordering::SeqCst))
+            {
                 rt::EffectOutcome::Unknown
+            } else if r.command.command == "fail"
+                || r.command.command == "platform.rollbackTransaction"
+            {
+                rt::EffectOutcome::RolledBack
             } else {
                 rt::EffectOutcome::Completed
             },
             context_after: context,
             context_revision: r.expected_context_revision,
-            handles: Vec::new(),
+            handles,
             cancel_handle: "test-cancel".into(),
         })
     }
@@ -324,6 +383,11 @@ fn setup() -> (
         revision: AtomicU64::new(1),
     });
     let policy = Arc::new(Policy {
+        wait_check: AtomicU64::new(0),
+        wait_count: AtomicU64::new(0),
+        wait_entered: tokio::sync::Notify::new(),
+        wait_release: tokio::sync::Notify::new(),
+        wait_deny: AtomicBool::new(false),
         allow: AtomicBool::new(true),
         delegation: Mutex::new(None),
         target_checks: AtomicU64::new(0),
@@ -1102,3 +1166,8 @@ mod workflow_job;
 
 #[path = "p4_usecase_journeys/export_output.rs"]
 mod export_output;
+
+#[path = "fixtures/p4_idle_activity.rs"]
+mod idle_activity;
+#[path = "fixtures/p4_session_transactions.rs"]
+mod session_transactions;

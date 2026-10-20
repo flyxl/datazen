@@ -31,16 +31,20 @@ pub async fn prepare_schema_view_plan(
             "object_names must not be empty".into(),
         ));
     }
-    let src_config = state
-        .connection_manager
-        .get_session_config(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_view_plan")?;
-    let tgt_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_view_plan")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        &state,
+        &source_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let tgt_context = crate::services::migration_endpoint::runtime_session_context(
+        &state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
+    let tgt_config = tgt_context.config.clone();
     if tgt_config.read_only {
         return Err(CommandError::Validation(
             "Target connection is read-only".into(),
@@ -51,16 +55,10 @@ pub async fn prepare_schema_view_plan(
             "Source and target must identify different database scopes".into(),
         ));
     }
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_view_plan")?;
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_view_plan")?;
+    let src_driver = src_context.driver.clone();
+    let src_handle = src_context.handle.clone();
+    let tgt_driver = tgt_context.driver.clone();
+    let tgt_handle = tgt_context.handle.clone();
     ensure_distinct_schema_scope(
         src_driver.as_ref(),
         &src_handle,
@@ -192,16 +190,20 @@ pub async fn prepare_schema_routine_trigger_plan(
             "object_names must not be empty".into(),
         ));
     }
-    let src_config = state
-        .connection_manager
-        .get_session_config(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_routine_trigger_plan")?;
-    let tgt_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_routine_trigger_plan")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        &state,
+        &source_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let tgt_context = crate::services::migration_endpoint::runtime_session_context(
+        &state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
+    let tgt_config = tgt_context.config.clone();
     if tgt_config.read_only {
         return Err(CommandError::Validation(
             "Target connection is read-only".into(),
@@ -212,16 +214,10 @@ pub async fn prepare_schema_routine_trigger_plan(
             "Source and target must identify different database scopes".into(),
         ));
     }
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_routine_trigger_plan")?;
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_routine_trigger_plan")?;
+    let src_driver = src_context.driver.clone();
+    let src_handle = src_context.handle.clone();
+    let tgt_driver = tgt_context.driver.clone();
+    let tgt_handle = tgt_context.handle.clone();
     ensure_distinct_schema_scope(
         src_driver.as_ref(),
         &src_handle,
@@ -307,16 +303,20 @@ pub async fn prepare_schema_sequence_plan(
             "object_names must not be empty".into(),
         ));
     }
-    let src_config = state
-        .connection_manager
-        .get_session_config(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_sequence_plan")?;
-    let tgt_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_sequence_plan")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        &state,
+        &source_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let tgt_context = crate::services::migration_endpoint::runtime_session_context(
+        &state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
+    let tgt_config = tgt_context.config.clone();
     if tgt_config.read_only {
         return Err(CommandError::Validation(
             "Target connection is read-only".into(),
@@ -327,16 +327,10 @@ pub async fn prepare_schema_sequence_plan(
             "Source and target must identify different database scopes".into(),
         ));
     }
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_sequence_plan")?;
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_sequence_plan")?;
+    let src_driver = src_context.driver.clone();
+    let src_handle = src_context.handle.clone();
+    let tgt_driver = tgt_context.driver.clone();
+    let tgt_handle = tgt_context.handle.clone();
     ensure_distinct_schema_scope(
         src_driver.as_ref(),
         &src_handle,
@@ -432,16 +426,20 @@ pub async fn prepare_schema_type_plan(
             "object_names must not be empty".into(),
         ));
     }
-    let src_config = state
-        .connection_manager
-        .get_session_config(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_type_plan")?;
-    let tgt_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_type_plan")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        &state,
+        &source_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let tgt_context = crate::services::migration_endpoint::runtime_session_context(
+        &state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
+    let tgt_config = tgt_context.config.clone();
     if tgt_config.read_only {
         return Err(CommandError::Validation(
             "Target connection is read-only".into(),
@@ -452,16 +450,10 @@ pub async fn prepare_schema_type_plan(
             "Source and target must identify different database scopes".into(),
         ));
     }
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_type_plan")?;
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_type_plan")?;
+    let src_driver = src_context.driver.clone();
+    let src_handle = src_context.handle.clone();
+    let tgt_driver = tgt_context.driver.clone();
+    let tgt_handle = tgt_context.handle.clone();
     ensure_distinct_schema_scope(
         src_driver.as_ref(),
         &src_handle,

@@ -18,13 +18,17 @@ pub use network_provider::{desktop_network_provider, DesktopTunnelHost, DesktopT
 pub(crate) use http_proxy::verify_upstream as verify_http_proxy_upstream;
 pub(crate) use websocket::verify_upstream as verify_websocket_upstream;
 
+use crate::db::registry::DriverRegistry;
 use crate::db::{
     ConnectionConfig, DriverError, HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig,
 };
 use crate::ssh_tunnel::SshTunnel;
+use crate::store::Store;
 use std::path::Path;
+use std::time::Instant;
+use tokio::time::Duration;
 
-/// Runtime tunnel held by [`crate::services::connection_manager::ActiveSession`].
+/// Runtime-owned tunnel associated with a live connection resource.
 pub enum Tunnel {
     Ssh(SshTunnel),
     HttpProxy(HttpProxyTunnel),
@@ -88,6 +92,126 @@ pub async fn start_for_connection(
         TunnelKind::HttpProxy => start_http_proxy(config).await,
         TunnelKind::WebSocket => start_websocket(config).await,
     }
+}
+
+/// Resolve a persisted tunnel reference without creating a runtime session.
+pub async fn resolve_saved_tunnel(
+    store: &Store,
+    mut config: ConnectionConfig,
+) -> Result<ConnectionConfig, DriverError> {
+    let Some(tunnel_id) = config.tunnel_id.as_ref().filter(|id| !id.is_empty()) else {
+        return Ok(config);
+    };
+    let Some(saved) = store.get_tunnel(tunnel_id).await else {
+        return Err(DriverError::InvalidConfig(format!(
+            "tunnel id '{tunnel_id}' not found"
+        )));
+    };
+    config.tunnel_kind = Some(saved.kind);
+    config.ssh_tunnel = saved.ssh;
+    config.http_proxy_tunnel = saved.http_proxy;
+    config.websocket_tunnel = saved.websocket;
+    Ok(config)
+}
+
+/// Test a connection directly through Store/DriverRegistry, with no db session.
+pub async fn test_connection(
+    store: &Store,
+    registry: &DriverRegistry,
+    config: ConnectionConfig,
+) -> Result<crate::db::ServerInfo, DriverError> {
+    let known_hosts_path = store.data_dir().join("ssh_known_hosts.json");
+    let (effective_config, _tunnel) = start_for_connection(
+        resolve_saved_tunnel(store, config).await?,
+        &known_hosts_path,
+    )
+    .await?;
+    let driver = registry
+        .get(&effective_config.database_type)
+        .await
+        .ok_or_else(|| DriverError::DriverNotFound(effective_config.database_type.clone()))?;
+    driver.test_connection(&effective_config).await
+}
+
+/// Probe a saved tunnel directly, without manufacturing a runtime session id.
+pub async fn test_tunnel(
+    store: &Store,
+    tunnel_id: &str,
+    target_host: &str,
+    target_port: u16,
+) -> Result<Duration, DriverError> {
+    let saved = store
+        .get_tunnel(tunnel_id)
+        .await
+        .ok_or_else(|| DriverError::InvalidConfig(format!("tunnel id '{tunnel_id}' not found")))?;
+    let config = ConnectionConfig {
+        id: format!("__tunnel_test__{tunnel_id}"),
+        name: format!("tunnel test: {tunnel_id}"),
+        database_type: "postgresql".to_string(),
+        host: Some(target_host.to_string()),
+        port: Some(target_port),
+        database: None,
+        schema: None,
+        username: None,
+        password: None,
+        ssl_mode: crate::db::SslMode::default(),
+        connection_timeout: 30,
+        max_pool_size: 10,
+        ssh_tunnel: None,
+        tunnel_kind: None,
+        tunnel_id: Some(tunnel_id.to_string()),
+        http_proxy_tunnel: None,
+        websocket_tunnel: None,
+        color_tag: None,
+        group: None,
+        last_connected_at: None,
+        server_version: None,
+        options: None,
+        read_only: false,
+        pinned: false,
+    };
+    let started = Instant::now();
+    let known_hosts_path = store.data_dir().join("ssh_known_hosts.json");
+    let (_resolved, tunnel) = start_for_connection(
+        resolve_saved_tunnel(store, config).await?,
+        &known_hosts_path,
+    )
+    .await?;
+    let Some(tunnel) = tunnel else {
+        return Err(DriverError::InvalidConfig(format!(
+            "tunnel '{tunnel_id}' resolved to no tunnel configuration"
+        )));
+    };
+    let verified = match saved.kind {
+        TunnelKind::HttpProxy => {
+            verify_http_proxy_upstream(
+                &saved.http_proxy.ok_or_else(|| {
+                    DriverError::InvalidConfig(format!(
+                        "tunnel '{tunnel_id}' has no httpProxy config"
+                    ))
+                })?,
+                target_host,
+                target_port,
+            )
+            .await
+        }
+        TunnelKind::WebSocket => {
+            verify_websocket_upstream(
+                &saved.websocket.ok_or_else(|| {
+                    DriverError::InvalidConfig(format!(
+                        "tunnel '{tunnel_id}' has no websocket config"
+                    ))
+                })?,
+                target_host,
+                target_port,
+            )
+            .await
+        }
+        TunnelKind::Ssh | TunnelKind::None => Ok(()),
+    };
+    drop(tunnel);
+    verified?;
+    Ok(started.elapsed())
 }
 
 async fn start_websocket(

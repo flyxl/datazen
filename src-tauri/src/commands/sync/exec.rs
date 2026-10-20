@@ -191,16 +191,20 @@ async fn validate_plan_context_sessions(
             "target connection was read-only during comparison; return to comparison".into(),
         ));
     }
-    let source_config = state
-        .connection_manager
-        .get_session_config(source_session_id)
-        .await
-        .cmd_err("validate_data_sync_plan")?;
-    let target_config = state
-        .connection_manager
-        .get_session_config(target_session_id)
-        .await
-        .cmd_err("validate_data_sync_plan")?;
+    let source_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        source_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let target_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        target_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let source_config = source_context.config.clone();
+    let target_config = target_context.config.clone();
     if target_config.read_only {
         return Err(CommandError::Validation(
             "target connection is now read-only; return to comparison".into(),
@@ -216,16 +220,10 @@ async fn validate_plan_context_sessions(
         &plan.target_database,
         "target",
     )?;
-    let (source_driver, source_handle) = state
-        .connection_manager
-        .get_session(source_session_id)
-        .await
-        .cmd_err("validate_data_sync_plan")?;
-    let (target_driver, target_handle) = state
-        .connection_manager
-        .get_session(target_session_id)
-        .await
-        .cmd_err("validate_data_sync_plan")?;
+    let source_driver = source_context.driver.clone();
+    let source_handle = source_context.handle.clone();
+    let target_driver = target_context.driver.clone();
+    let target_handle = target_context.handle.clone();
     if source_driver.driver_type() != plan.source_driver_type
         || target_driver.driver_type() != plan.target_driver_type
         || plans::driver_protocol_version(source_driver.as_ref()) != plan.source_driver_protocol
@@ -236,13 +234,13 @@ async fn validate_plan_context_sessions(
         ));
     }
     let source_identity = crate::services::migration_endpoint::session_identity(
-        &state.connection_manager,
+        state,
         source_session_id,
         Some((&plan.source_database, plan.source_schema.as_deref())),
     )
     .await?;
     let target_identity = crate::services::migration_endpoint::session_identity(
-        &state.connection_manager,
+        state,
         target_session_id,
         Some((&plan.target_database, plan.target_schema.as_deref())),
     )
@@ -308,7 +306,7 @@ async fn validate_plan_context_sessions(
     Ok(())
 }
 
-fn validate_active_database(
+pub(super) fn validate_active_database(
     active_database: Option<&str>,
     planned_database: &str,
     side: &str,
@@ -626,7 +624,7 @@ pub(crate) async fn start_data_sync_apply_job_impl(
                 target_endpoint.clone(),
                 HashMap::new(),
                 &job_id,
-            ),
+            )?,
             source_endpoint,
             target_endpoint,
         ),
@@ -823,16 +821,15 @@ pub(crate) async fn execute_data_sync_impl(
     job_id: Option<String>,
     _target_database: Option<String>,
 ) -> Result<ExecutionResult, CommandError> {
-    let config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("execute_data_sync")?;
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("execute_data_sync")?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::CommandExecution,
+    )
+    .await?;
+    let config = context.config;
+    let driver = context.driver;
+    let handle = context.handle;
     let mut executor = LiveExecutor {
         driver,
         handle,
@@ -871,8 +868,8 @@ mod tests {
             ..rich_mock_options()
         })
         .await;
-        test.save_and_connect("sync-stream-target").await;
-        let target_db_session_id = test.connect_config("sync-stream-target").await;
+        test.save_and_connect_runtime("sync-stream-target").await;
+        let target_db_session_id = test.open_runtime_session("sync-stream-target").await;
 
         let mut options = SyncOptions::default();
         options.conflict_policy = ConflictPolicy::Force;
@@ -1056,8 +1053,8 @@ mod tests {
             ..rich_mock_options()
         })
         .await;
-        test.save_and_connect("sync-preview-target").await;
-        let target_db_session_id = test.connect_config("sync-preview-target").await;
+        test.save_and_connect_runtime("sync-preview-target").await;
+        let target_db_session_id = test.open_runtime_session("sync-preview-target").await;
         let options = SyncOptions::default();
         let rows = (1..=2)
             .map(|key| {

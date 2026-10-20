@@ -41,8 +41,8 @@ async fn pg_command_test_sessions(
             .await
             .expect("save fixture connection");
     }
-    let source_session = test.connect_config("source").await;
-    let target_session = test.connect_config("target").await;
+    let source_session = test.open_runtime_session("source").await;
+    let target_session = test.open_runtime_session("target").await;
     (test, source_session, target_session)
 }
 
@@ -376,7 +376,7 @@ async fn d1_legacy_full_plan_path_runs_through_job_runtime() {
         confirm_destructive: None,
         job_id: None,
         target_database: None,
-        target_schema: None,
+        target_schema: Some("public".into()),
         profile: None,
     };
     let accepted = job::run_apply_job(&test.state, &plan_id, revision, apply_request)
