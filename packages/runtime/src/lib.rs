@@ -25,6 +25,7 @@ pub mod gateway;
 pub mod job;
 /// 门禁开销的测量口径（分位数算法 + 逐请求求和）。
 pub mod latency;
+pub mod native_tool;
 /// 会话登记表接缝：`SessionPort` 的**唯一**契约面，Wave 2 的 registry 实现它、gateway 消费它。
 pub mod registry;
 /// 宿主资源台账与生命周期裁决：物理连接表、`PoolKey` 索引、

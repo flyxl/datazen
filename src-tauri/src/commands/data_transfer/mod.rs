@@ -17,7 +17,6 @@ mod tests;
 
 use super::error::CommandError;
 use super::AppState;
-use crate::data_transfer::model::TableExecutionOutcome;
 use crate::data_transfer::{
     classify_transfer_pair as classify_transfer_pair_impl, TableInspectResult,
     TransferExecutionResult, TransferJob, TransferMode, TransferPreview, TransferProfile,
@@ -196,15 +195,24 @@ pub async fn execute_data_transfer(
         .as_ref()
         .map_or(0, |tables| tables.len() as u64);
     if let Ok(plan) = plans::peek_plan(&request.plan_id) {
-        run.source_connection_id = state
-            .connection_manager
-            .owner_connection_id(&plan.job.source.db_session_id)
-            .await;
+        run.source_connection_id = crate::services::migration_endpoint::runtime_session_context(
+            &state,
+            &plan.job.source.db_session_id,
+            datazen_runtime::application::LivePurpose::Inspection,
+        )
+        .await
+        .ok()
+        .map(|context| context.view.connection_id.as_str().to_owned());
         if let Some(target) = plan.job.target.as_ref() {
-            run.target_connection_id = state
-                .connection_manager
-                .owner_connection_id(&target.db_session_id)
-                .await;
+            run.target_connection_id =
+                crate::services::migration_endpoint::runtime_session_context(
+                    &state,
+                    &target.db_session_id,
+                    datazen_runtime::application::LivePurpose::Inspection,
+                )
+                .await
+                .ok()
+                .map(|context| context.view.connection_id.as_str().to_owned());
         }
     }
     let write_started = AtomicBool::new(false);
@@ -258,54 +266,9 @@ pub fn reset_data_transfer_test_commit_ack_loss() -> bool {
     crate::data_transfer::execute::clear_test_commit_ack_loss()
 }
 
-pub(crate) fn transfer_rollback_history_outcome(result: &TransferExecutionResult) -> &'static str {
-    // SQL-file output does not use target database transactions or typed
-    // per-table outcomes. Preserve its existing run-history contract here.
-    if result.tables.iter().all(|table| table.outcome.is_none()) {
-        return if result.partial {
-            "unknown"
-        } else {
-            "notRequired"
-        };
-    }
-
-    if result
-        .tables
-        .iter()
-        .any(|table| table.outcome == Some(TableExecutionOutcome::Unknown))
-    {
-        "unknown"
-    } else if result
-        .tables
-        .iter()
-        .any(|table| table.outcome == Some(TableExecutionOutcome::PartiallyApplied))
-    {
-        "partiallyApplied"
-    } else if result
-        .tables
-        .iter()
-        .any(|table| table.outcome == Some(TableExecutionOutcome::RolledBack))
-    {
-        "rolledBack"
-    } else if result.partial
-        && result
-            .tables
-            .iter()
-            .all(|table| table.outcome == Some(TableExecutionOutcome::NotStarted))
-    {
-        "notStarted"
-    } else {
-        "notRequired"
-    }
-}
-
-pub(crate) fn transfer_error_history_outcome(write_started: bool) -> &'static str {
-    if write_started {
-        "unknown"
-    } else {
-        "notStarted"
-    }
-}
+pub(crate) use datazen_feature_core::workflow::migration::{
+    transfer_error_history_outcome, transfer_rollback_history_outcome,
+};
 
 #[tauri::command]
 pub async fn cancel_data_transfer(

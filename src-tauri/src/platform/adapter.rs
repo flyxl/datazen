@@ -112,6 +112,7 @@ pub struct PlatformAdapter {
     /// 确定的时刻**，而不是等某个不可预测的析构点。
     idle_reclaimer: std::sync::Mutex<Option<datazen_runtime::application::IdleReclaimer>>,
     artifacts: std::sync::OnceLock<Arc<datazen_runtime::artifact::FileArtifactStore>>,
+    native: std::sync::OnceLock<Arc<super::native_tool::deployment::NativeDeployment>>,
 }
 
 impl PlatformAdapter {
@@ -129,6 +130,7 @@ impl PlatformAdapter {
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
             artifacts: std::sync::OnceLock::new(),
+            native: std::sync::OnceLock::new(),
         })
     }
 
@@ -146,6 +148,7 @@ impl PlatformAdapter {
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
             artifacts: std::sync::OnceLock::new(),
+            native: std::sync::OnceLock::new(),
         }
     }
 
@@ -159,6 +162,16 @@ impl PlatformAdapter {
             ApiError::new(
                 ApiErrorCode::ServiceUnavailable,
                 "artifact storage is not wired",
+            )
+        })
+    }
+    pub(crate) fn native_tools(
+        &self,
+    ) -> Result<Arc<super::native_tool::deployment::NativeDeployment>, ApiError> {
+        self.native.get().cloned().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "native deployment unavailable",
             )
         })
     }
@@ -176,8 +189,7 @@ impl PlatformAdapter {
         &self.identity
     }
 
-    /// owner 作用域的会话级句柄登记表。与 `AppState::session_transactions` 并存、
-    /// 互不读写：见 [`super::handles`] 模块头。
+    /// owner 作用域的 adapter 句柄登记。物理事务句柄由 Runtime actor 管理。
     pub fn handles(&self) -> &Arc<SessionHandleRegistry> {
         &self.handles
     }
@@ -250,6 +262,8 @@ impl PlatformAdapter {
             self.identity.organization_id().clone(),
             self.identity.principal_id().clone(),
         ));
+        let native =
+            super::native_tool::deployment::NativeDeployment::from_build(backend.physical_budget());
         let artifacts = Arc::new(
             datazen_runtime::artifact::FileArtifactStore::open(
                 store.data_dir().join("result-artifacts"),
@@ -263,13 +277,13 @@ impl PlatformAdapter {
         );
         let live = Arc::new(super::live_source::DesktopLiveConnectionSource::new(
             registry.clone(),
-            store,
+            store.clone(),
             backend.clone(),
         ));
         let runtime = Arc::new(
             datazen_runtime::application::RuntimeConnectionUseCases::new(
                 profiles.clone(),
-                Arc::new(super::policy::DesktopPolicy),
+                Arc::new(super::policy::DesktopPolicy::new(store.clone())),
                 backend.clone(),
             ),
         );
@@ -302,18 +316,39 @@ impl PlatformAdapter {
                 "artifact storage already injected",
             )
         })?;
+        let export_sink = sink.clone();
+        backend
+            .set_export_output_authority(Arc::new(move |id| export_sink.has_export_output(id)))
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "export authority unavailable",
+                )
+            })?;
         backend
             .set_publisher(Arc::new(move |id, output| {
-                let result = match output.get("source").cloned() {
-                    Some(source) => serde_json::from_value(source)
-                        .map_err(|_| ApiError::invalid_argument("invalid result source"))
-                        .and_then(|source| sink.publish_statement_output(id, output, source)),
-                    None => sink.publish_output(id, output),
-                };
-                result.map_err(|_| {
-                    datazen_runtime::connection::ProviderError::ProtocolError(
-                        "result publication rejected".into(),
-                    )
+                let sink = sink.clone();
+                Box::pin(async move {
+                    let output = match sink.publish_export_output(&id, output).await {
+                        Ok(None) => return Ok(()),
+                        Ok(Some(output)) => output,
+                        Err(_) => {
+                            return Err(datazen_runtime::connection::ProviderError::ProtocolError(
+                                "export publication rejected".into(),
+                            ))
+                        }
+                    };
+                    let result = match output.get("source").cloned() {
+                        Some(source) => serde_json::from_value(source)
+                            .map_err(|_| ApiError::invalid_argument("invalid result source"))
+                            .and_then(|source| sink.publish_statement_output(&id, output, source)),
+                        None => sink.publish_output(&id, output),
+                    };
+                    result.map_err(|_| {
+                        datazen_runtime::connection::ProviderError::ProtocolError(
+                            "result publication rejected".into(),
+                        )
+                    })
                 })
             }))
             .map_err(|_| {
@@ -350,6 +385,14 @@ impl PlatformAdapter {
         self.services.set(services).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "services already injected")
         })?;
+        // Publish only after the matching Runtime backend was fully injected:
+        // no partial retry may bind native jobs to a different physical ledger.
+        match native {
+            Ok(native) => {
+                let _ = self.native.set(native);
+            }
+            Err(_) => tracing::warn!("native deployment rejected; native operations unsupported"),
+        }
         // 空闲回收驱动器：**应用层自己拥有**，宿主不再另挂定时器（这样就不会有
         // 「两个驱动器抢同一张 registry 表」的形状）。放在 services 之后启动，
         // 是为了让「装配已 FullyWired」与「回收器已在跑」不出现反序——反序时
@@ -649,3 +692,17 @@ impl PlatformEntry {
 #[cfg(test)]
 #[path = "adapter_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+impl PlatformAdapter {
+    pub(crate) fn replace_native_fixture(&mut self, manifest: &str) -> Result<(), ApiError> {
+        let replacement = self
+            .native_tools()?
+            .fixture_manifest(manifest)
+            .map_err(|_| ApiError::invalid_argument("synthetic native deployment rejected"))?;
+        self.native.take();
+        self.native
+            .set(replacement)
+            .map_err(|_| ApiError::invalid_argument("synthetic native fixture unavailable"))
+    }
+}

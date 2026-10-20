@@ -23,3 +23,5 @@ pub use cancel::CancellationRegistry;
 pub use context::{prompt_db_type, SchemaContextBuilder};
 pub use prompt_resolver::PromptResolver;
 pub use schema_pipeline::{compose_schema_system_suffix, PromptSeed, SchemaContextPipeline};
+
+pub(crate) mod metadata_source;

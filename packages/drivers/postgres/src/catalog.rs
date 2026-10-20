@@ -105,7 +105,7 @@ pub(crate) fn pg_sequence_start(
 }
 
 async fn fetch_pg_table_sequences(
-    pool: &PgPool,
+    connection: &mut sqlx::PgConnection,
     table: &str,
 ) -> Result<Vec<PgSequenceDdl>, DriverError> {
     let rows = sqlx::query(
@@ -119,9 +119,7 @@ async fn fetch_pg_table_sequences(
           s.seqmax,
           s.seqcache,
           s.seqcycle,
-          a.attname AS owned_column,
-          pgs.last_value,
-          pgs.is_called
+          a.attname AS owned_column
         FROM pg_class tbl
         JOIN pg_depend d
           ON d.refobjid = tbl.oid
@@ -133,47 +131,75 @@ async fn fetch_pg_table_sequences(
         JOIN pg_sequence s ON s.seqrelid = seq_cls.oid
         LEFT JOIN pg_attribute a
           ON a.attrelid = tbl.oid AND a.attnum = d.refobjsubid AND NOT a.attisdropped
-        LEFT JOIN pg_sequences pgs
-          ON pgs.schemaname = ns.nspname AND pgs.sequencename = seq_cls.relname
         WHERE tbl.oid = $1::regclass
         ORDER BY seq_cls.relname
         "#,
     )
     .bind(table)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
-    Ok(rows
-        .iter()
-        .map(|r| {
-            let increment: i64 = r.get("seqincrement");
-            let start: i64 = r.get("seqstart");
-            PgSequenceDdl {
-                qualified_name: r.get("qualified_name"),
-                data_type: r.get("data_type"),
-                increment,
-                min_value: r.get("seqmin"),
-                max_value: r.get("seqmax"),
-                start: pg_sequence_start(
-                    r.try_get::<Option<i64>, _>("last_value").ok().flatten(),
-                    r.try_get::<Option<bool>, _>("is_called").ok().flatten(),
-                    start,
-                    increment,
+    let mut sequences = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let qualified_name: String = row
+            .try_get("qualified_name")
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        // pg_sequences has no is_called column. Read each quoted sequence on
+        // this same retained connection to preserve its actual next-value state.
+        let state = sqlx::query(&format!(
+            "SELECT last_value, is_called FROM {qualified_name}"
+        ))
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let increment: i64 = row.get("seqincrement");
+        let start: i64 = row.get("seqstart");
+        sequences.push(PgSequenceDdl {
+            qualified_name,
+            data_type: row.get("data_type"),
+            increment,
+            min_value: row.get("seqmin"),
+            max_value: row.get("seqmax"),
+            start: pg_sequence_start(
+                Some(
+                    state
+                        .try_get("last_value")
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?,
                 ),
-                cache: r.get("seqcache"),
-                cycle: r.get("seqcycle"),
-                owned_column: r
-                    .try_get::<Option<String>, _>("owned_column")
-                    .ok()
-                    .flatten(),
-            }
-        })
-        .collect())
+                Some(
+                    state
+                        .try_get("is_called")
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?,
+                ),
+                start,
+                increment,
+            ),
+            cache: row.get("seqcache"),
+            cycle: row.get("seqcycle"),
+            owned_column: row
+                .try_get::<Option<String>, _>("owned_column")
+                .ok()
+                .flatten(),
+        });
+    }
+    Ok(sequences)
 }
 
 pub(crate) async fn fetch_pg_table_ddl_from_catalog(
     pool: &PgPool,
+    table: &str,
+    quote_ident: impl Fn(&str) -> String,
+) -> Result<String, DriverError> {
+    let mut connection = pool
+        .acquire()
+        .await
+        .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+    fetch_pg_table_ddl_on_connection(&mut connection, table, quote_ident).await
+}
+
+pub(crate) async fn fetch_pg_table_ddl_on_connection(
+    connection: &mut sqlx::PgConnection,
     table: &str,
     quote_ident: impl Fn(&str) -> String,
 ) -> Result<String, DriverError> {
@@ -196,7 +222,7 @@ pub(crate) async fn fetch_pg_table_ddl_from_catalog(
         "#,
     )
     .bind(table)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -228,15 +254,13 @@ pub(crate) async fn fetch_pg_table_ddl_from_catalog(
         "#,
     )
     .bind(table)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
     let pk_columns: Vec<String> = pk_rows.iter().map(|r| r.get("attname")).collect();
 
-    let sequences = fetch_pg_table_sequences(pool, table)
-        .await
-        .unwrap_or_default();
+    let sequences = fetch_pg_table_sequences(connection, table).await?;
     let mut out = String::new();
     for seq in &sequences {
         out.push_str(&build_pg_create_sequence_sql(seq));

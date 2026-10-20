@@ -51,6 +51,8 @@ export const DESKTOP_BACKEND_ID = 'desktop';
  */
 function toCommandName(method: keyof MethodMap): string {
   const commandOverrides: Partial<Record<keyof MethodMap, string>> = {
+    getSettings: 'get_shared_settings',
+    saveSettings: 'save_shared_settings',
     listConnections: 'platform_list_profiles',
     createConnection: 'platform_create_profile',
     updateConnection: 'platform_update_profile',

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { getVersion } from '@tauri-apps/api/app';
+import { getBackendClient } from '@datazen/backend-client';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
 import { PathInput } from '@datazen/ui';
@@ -36,7 +37,7 @@ import { SqlSnippetsCard } from './SqlSnippetsCard';
 import {
   parseSettingsSection,
   SETTINGS_NAV_GROUPS,
-  SETTINGS_SECTIONS,
+  settingsSectionsForBackend,
   type SettingsSection,
 } from './settingsSections';
 import { useExtension, sqlEditorEnhancedEP } from '@datazen/extension-points';
@@ -69,6 +70,9 @@ export interface SettingsContentProps {
 
 export function SettingsContent({ initialSection, onBack }: Readonly<SettingsContentProps>) {
   useSettings();
+  const backend = getBackendClient();
+  const desktop = backend === null || backend.backendId === 'desktop';
+  const availableSections = settingsSectionsForBackend(desktop);
   const { t } = useI18n();
 
   const storeSettings = useSettingsStore((s) => s.settings);
@@ -90,10 +94,11 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
   const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
+    if (!desktop) return;
     getVersion()
       .then(setAppVersion)
       .catch(() => {});
-  }, []);
+  }, [desktop]);
 
   const languageOptions = useMemo(
     () => [
@@ -107,12 +112,18 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
   );
 
   const [activeSection, setActiveSection] = useState<SettingsSection>(() =>
-    parseSettingsSection(initialSection),
+    availableSections.some((section) => section.id === initialSection)
+      ? parseSettingsSection(initialSection)
+      : 'general',
   );
 
   useEffect(() => {
     if (initialSection !== undefined) {
-      setActiveSection(parseSettingsSection(initialSection));
+      setActiveSection(
+        availableSections.some((section) => section.id === initialSection)
+          ? parseSettingsSection(initialSection)
+          : 'general',
+      );
     }
   }, [initialSection]);
 
@@ -134,6 +145,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
   }, [loadSettings]);
 
   useEffect(() => {
+    if (!desktop) return;
     void settingsCommands
       .getLogPath()
       .then(setDefaultLogPath)
@@ -337,26 +349,28 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
             <div className="px-3 pb-0.5 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
               {t(group.labelKey)}
             </div>
-            {SETTINGS_SECTIONS.filter((sec) => sec.group === group.id).map((sec) => {
-              const isActive = activeSection === sec.id;
-              return (
-                <button
-                  key={sec.id}
-                  type="button"
-                  data-testid={`settings-nav-${sec.id}`}
-                  onClick={() => setActiveSection(sec.id)}
-                  className={cn(
-                    'flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition-colors',
-                    isActive
-                      ? 'bg-accent/15 font-medium text-accent'
-                      : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
-                  )}
-                >
-                  <ThemedIcon id={settingsSectionIconId(sec.id)} className="h-4 w-4 shrink-0" />
-                  {t(sec.labelKey)}
-                </button>
-              );
-            })}
+            {availableSections
+              .filter((sec) => sec.group === group.id)
+              .map((sec) => {
+                const isActive = activeSection === sec.id;
+                return (
+                  <button
+                    key={sec.id}
+                    type="button"
+                    data-testid={`settings-nav-${sec.id}`}
+                    onClick={() => setActiveSection(sec.id)}
+                    className={cn(
+                      'flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition-colors',
+                      isActive
+                        ? 'bg-accent/15 font-medium text-accent'
+                        : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
+                    )}
+                  >
+                    <ThemedIcon id={settingsSectionIconId(sec.id)} className="h-4 w-4 shrink-0" />
+                    {t(sec.labelKey)}
+                  </button>
+                );
+              })}
           </div>
         ))}
       </nav>
@@ -378,10 +392,12 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 />
               </SettingRow>
 
-              <UpdateSection
-                checkOnStartup={settings.checkForUpdatesOnStartup}
-                onCheckOnStartupChange={(v) => updateField('checkForUpdatesOnStartup', v)}
-              />
+              {desktop && (
+                <UpdateSection
+                  checkOnStartup={settings.checkForUpdatesOnStartup}
+                  onCheckOnStartupChange={(v) => updateField('checkForUpdatesOnStartup', v)}
+                />
+              )}
 
               {renderSectionContributions('general')}
 
@@ -649,7 +665,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 onChange={(v) => updateField('confirmDangerousExecution', v)}
               />
 
-              <DataCleanupSection />
+              {desktop && <DataCleanupSection />}
             </>
           )}
 

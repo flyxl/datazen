@@ -17,10 +17,8 @@
 //!   **宿主实现细节**，决定「用哪种开法」，**不参与共享判定**，也不泄漏进来。
 //! * 桌面 `NetworkProvider` 实现在 [`desktop`]：`ensure_tunnel` / `release_tunnel`
 //!   的共享引用语义由它承接（台账 + 持有者名册），物理开法仍是宿主 [`transport`]
-//!   端口的事。此前这里写着「桌面实现不在本轨范围」，**是错的**——新连接路径
-//!   （`platform::session_backend`）把原始 `connection_config` 直接交给
-//!   `acquire_resource`，从不解析隧道引用，于是删掉旧 `ConnectionManager` 就等于
-//!   删掉全部连接路径上的 SSH / HTTP 代理 / WebSocket 隧道解析。
+//!   端口的事。连接配置中的隧道信息必须在资源受理前解析为 `TunnelSpec`；否则
+//!   `acquire_resource` 无法为 SSH / HTTP 代理 / WebSocket 建立对应路由。
 //! * 只**部分**覆盖，**不得**标记为已覆盖。`tunnel/` 关掉的只是隧道那几格：
 //!   「隧道引用正确」（建隧道失败不落账、隧道开成后回滚释放）与
 //!   「隧道不多减引用」（重复释放幂等、`refs` 不低于 0、`close` 至多一次）。

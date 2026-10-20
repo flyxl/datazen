@@ -1,11 +1,18 @@
 //! Shared connection application implementation; transports inject repositories, policy and drivers.
 mod backend;
+mod backup;
+mod export_output;
+pub use backup::{BackupOutput, BackupOutputBinding};
+pub use export_output::ExportOutputBinding;
 mod convert;
 mod idle;
+mod idle_activity;
 mod live;
 mod operations;
 mod results;
 mod tokens;
+mod transactions;
+pub use transactions::SessionTransactionOperation;
 
 pub use idle::{IdlePolicy, IdleReclaimer, IdleReclamation};
 pub use live::{
@@ -56,6 +63,9 @@ struct Inner {
     tokens: Mutex<HashMap<String, tokens::IssuedToken>>,
     keyring: TokenKeyring,
     clock: Arc<RuntimeClock>,
+    idle_activity: tokio::sync::Mutex<HashMap<SessionHandle, idle_activity::ActivityState>>,
+    transaction_gates: Mutex<HashMap<SessionHandle, std::sync::Weak<tokio::sync::Mutex<()>>>>,
+    transaction_unknown: Mutex<std::collections::HashSet<SessionHandle>>,
     /// 出向端口：宿主取活连接的唯一入口。未接线是配置事实，不是故障。
     live: Mutex<LiveConnections>,
     /// 空闲回收策略。`deadline == None` 表示本部署不做空闲回收。
@@ -73,7 +83,13 @@ struct SessionEntry {
     closed: Option<CloseReceipt>,
     closed_at: Option<Instant>,
 }
-struct RuntimeClock(Instant);
+struct RuntimeClock(Arc<dyn MonotonicClock>);
+struct SystemRuntimeClock(Instant);
+impl MonotonicClock for SystemRuntimeClock {
+    fn now_nanos(&self) -> u64 {
+        self.0.elapsed().as_nanos().min(u64::MAX as u128) as u64
+    }
+}
 impl RuntimeClock {
     /// 单调毫秒。与 `OpenRequest::idle_deadline_ms` / `evict_idle_at(at_ms)` 共用同一把
     /// 尺子——两处单位不一致会让「到期」变成一个随机器负载漂移的量。
@@ -83,7 +99,7 @@ impl RuntimeClock {
 }
 impl MonotonicClock for RuntimeClock {
     fn now_nanos(&self) -> u64 {
-        self.0.elapsed().as_nanos().min(u64::MAX as u128) as u64
+        self.0.now_nanos()
     }
 }
 struct BoundAuthorizer;
@@ -115,10 +131,29 @@ impl Authorizer for BoundAuthorizer {
     }
 }
 impl RuntimeConnectionUseCases {
+    /// Product Job adapters obtain ManageJob authority from the host policy.
+    pub async fn authorize_job(&self, ctx: &RequestContext) -> Result<(), ApiError> {
+        self.authorize(ctx, AuthorizationAction::ManageJob).await
+    }
+
     pub fn new(
         profiles: Arc<dyn ProfileRepository>,
         policy: Arc<dyn PolicyService>,
         backend: Arc<dyn SessionBackend>,
+    ) -> Self {
+        Self::new_with_clock(
+            profiles,
+            policy,
+            backend,
+            Arc::new(SystemRuntimeClock(Instant::now())),
+        )
+    }
+    /// Inject the same monotonic time source for execution timing and idle expiry.
+    pub fn new_with_clock(
+        profiles: Arc<dyn ProfileRepository>,
+        policy: Arc<dyn PolicyService>,
+        backend: Arc<dyn SessionBackend>,
+        clock: Arc<dyn MonotonicClock>,
     ) -> Self {
         let sink = RuntimeResultSink::default();
         let physical = Arc::new(Mutex::new(HashMap::new()));
@@ -131,7 +166,7 @@ impl RuntimeConnectionUseCases {
             128,
         ));
         let directory = Arc::new(InMemorySessionDirectory::new());
-        let clock = Arc::new(RuntimeClock(Instant::now()));
+        let clock = Arc::new(RuntimeClock(clock));
         let gateway = Arc::new(ExecutionGateway::new(
             registry.clone(),
             Arc::new(BoundAuthorizer),
@@ -157,6 +192,9 @@ impl RuntimeConnectionUseCases {
                 tokens: Mutex::new(HashMap::new()),
                 keyring: TokenKeyring::single(secret),
                 clock,
+                idle_activity: tokio::sync::Mutex::new(HashMap::new()),
+                transaction_gates: Mutex::new(HashMap::new()),
+                transaction_unknown: Mutex::new(std::collections::HashSet::new()),
                 live: Mutex::new(LiveConnections::unwired()),
                 idle: Mutex::new(IdlePolicy::default()),
                 target_admissions: Mutex::new(HashMap::new()),
@@ -229,6 +267,19 @@ impl RuntimeConnectionUseCases {
     pub fn is_registered(&self, id: &crate::connection::DbSessionId) -> bool {
         self.inner.registry.is_registered(id)
     }
+    /// Resolve the persistent profile owning an active runtime session.
+    /// Closed or unknown sessions deliberately have no owner projection.
+    pub fn connection_id_for_session(
+        &self,
+        id: &crate::connection::DbSessionId,
+    ) -> Option<datazen_platform_api::id::ConnectionId> {
+        let sessions = lock(&self.inner.sessions);
+        let entry = sessions.get(id)?;
+        if entry.closed.is_some() || self.inner.directory.resolve(&entry.handle).is_err() {
+            return None;
+        }
+        Some(entry.initial.connection_id.clone())
+    }
     /// 应用层 `sessions` 表里**仍然开着**的行数（只读投影）。
     ///
     /// 与 [`Self::registered_session_ids`] **分列**，因为「registry 摘了但这张表还在」
@@ -273,6 +324,45 @@ impl RuntimeConnectionUseCases {
         .await
         .map_err(convert::live)
     }
+
+    /// Resolve a runtime-owned session from its public `dbSessionId`.
+    ///
+    /// Callers that receive the legacy scalar session id over an existing IPC
+    /// contract must still resolve it through the runtime's owner and epoch
+    /// checks. This lookup never reconstructs a handle or falls back to a
+    /// persisted connection id.
+    pub async fn get_session_by_id(
+        &self,
+        ctx: &RequestContext,
+        db_session_id: &str,
+    ) -> Result<SessionView, ApiError> {
+        self.authorize(ctx, AuthorizationAction::Connect).await?;
+        let id = crate::connection::DbSessionId::new(db_session_id);
+        let handle = lock(&self.inner.sessions)
+            .get(&id)
+            .map(|entry| entry.handle.clone())
+            .ok_or_else(|| ApiError::new(ApiErrorCode::SessionNotFound, "session unavailable"))?;
+        self.session_view(ctx, &handle).await
+    }
+
+    /// Resolve and borrow a runtime-owned session from its public scalar id.
+    ///
+    /// The returned lease keeps the physical reference borrowed until it is
+    /// dropped, while `SessionView` supplies the authoritative connection and
+    /// observed-context metadata for the caller.
+    pub async fn borrow_live_connection_by_id(
+        &self,
+        ctx: &RequestContext,
+        db_session_id: &str,
+        purpose: LivePurpose,
+    ) -> Result<(SessionView, LiveConnectionLease), ApiError> {
+        let view = self.get_session_by_id(ctx, db_session_id).await?;
+        let lease = self
+            .borrow_live_connection(ctx, &view.handle, purpose)
+            .await?;
+        Ok((view, lease))
+    }
+
     pub async fn subscribe_events_cancellable(
         &self,
         ctx: &RequestContext,
@@ -300,28 +390,80 @@ impl RuntimeConnectionUseCases {
         ctx: &RequestContext,
         action: AuthorizationAction,
     ) -> Result<(), ApiError> {
-        // Delegations require a verified full grant; absent grants never fall back to caller permissions.
-        if ctx.delegation_id.is_some() {
-            return Err(ApiError::permission_denied(
-                "verified delegation grant required",
-            ));
-        }
+        let subject = self.authorization_subject(ctx, &action).await?;
         let decision = self
             .inner
             .policy
-            .authorize(
-                ctx,
-                AuthorizationSubject::Principal {
-                    principal_id: ctx.principal_id.clone(),
-                },
-                action,
-            )
+            .authorize(ctx, subject, action)
             .await
             .map_err(convert::port)?;
         if decision.is_allowed() {
             Ok(())
         } else {
             Err(ApiError::permission_denied("connection permission denied"))
+        }
+    }
+    async fn authorization_subject(
+        &self,
+        ctx: &RequestContext,
+        action: &AuthorizationAction,
+    ) -> Result<AuthorizationSubject, ApiError> {
+        if let Some(id) = &ctx.delegation_id {
+            let resolved = self
+                .inner
+                .policy
+                .resolve_delegation(ctx)
+                .await
+                .map_err(convert::port)?;
+            let grant = self
+                .inner
+                .policy
+                .verify_delegation(ctx, resolved.delegation.clone())
+                .await
+                .map_err(convert::port)?;
+            let reference = &grant.delegation;
+            let live = chrono::DateTime::parse_from_rfc3339(reference.expires_at.as_str())
+                .is_ok_and(|expiry| expiry > chrono::Utc::now());
+            if grant != resolved
+                || &reference.delegation_id != id
+                || reference.organization_id != ctx.organization_id
+                || reference.principal_id != ctx.principal_id
+                || reference.client_instance_id != ctx.client_instance_id
+                || !live
+                || !grant.actions.contains(action)
+            {
+                return Err(ApiError::permission_denied(
+                    "verified delegation scope required",
+                ));
+            }
+            Ok(AuthorizationSubject::Delegated(grant.delegation))
+        } else {
+            Ok(AuthorizationSubject::Principal {
+                principal_id: ctx.principal_id.clone(),
+            })
+        }
+    }
+    pub(crate) async fn authorize_target(
+        &self,
+        ctx: &RequestContext,
+        action: AuthorizationAction,
+        target: &ExecutionTarget,
+        command: &str,
+        input: &serde_json::Value,
+    ) -> Result<(), ApiError> {
+        let subject = self.authorization_subject(ctx, &action).await?;
+        let decision = self
+            .inner
+            .policy
+            .authorize_target(ctx, subject, action, target, command, input)
+            .await
+            .map_err(convert::port)?;
+        if decision.is_allowed() {
+            Ok(())
+        } else {
+            Err(ApiError::permission_denied(
+                "target delegation scope denied",
+            ))
         }
     }
     async fn profile(
@@ -401,6 +543,14 @@ impl RuntimeConnectionUseCases {
             OwnerRef::Editor {
                 editor_session_id, ..
             } => (SourceKind::Editor, editor_session_id.as_str().to_owned()),
+            OwnerRef::Job { job_id, stage_id } => (
+                SourceKind::Job,
+                format!("{}:{}", job_id.as_str(), stage_id.as_str()),
+            ),
+            OwnerRef::WorkflowBlock { job_id, block_id } => (
+                SourceKind::WorkflowBlock,
+                format!("{}:{}", job_id.as_str(), block_id.as_str()),
+            ),
             _ => (
                 SourceKind::ClientSession,
                 ctx.client_instance_id.as_str().to_owned(),
@@ -436,9 +586,9 @@ impl RuntimeConnectionUseCases {
         owner: OwnerRef,
         command: &str,
     ) -> Result<OpenSessionReceipt, ApiError> {
+        let rt_owner = convert::owner(ctx, &target.connection_id, &owner)?;
         self.reclaim_session_tombstones();
         let profile = self.profile(ctx, &target.connection_id).await?;
-        let rt_owner = convert::owner(ctx, &target.connection_id, &owner)?;
         let id = DbSessionIdGenerator::new().generate();
         let view = self
             .inner

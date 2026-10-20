@@ -144,7 +144,39 @@ pub async fn execute_at_target(
     )
 }
 session_command!(set_session_context, SetSessionContextRequest);
-session_command!(close_session, CloseSessionRequest);
+/// Close a session and drop the AI grants that borrowed it.
+///
+/// Not the generic macro: closing an editor session is exactly the moment a
+/// shared AI grant must stop being usable. Reclaim runs even when the close is
+/// rejected, because a failed close leaves the handle just as unusable, and a
+/// grant must never outlive the session it points at.
+#[tauri::command]
+pub async fn close_session(
+    state: State<'_, AppState>,
+    request: CloseSessionRequest,
+) -> Result<serde_json::Value, ApiError> {
+    let adapter = adapter(&state)?;
+    let call = adapter.begin_call();
+    let db_session_id = request.handle.db_session_id.as_str().to_owned();
+    let result = adapter
+        .runtime()?
+        .close_session(call.context(), request)
+        .await;
+    if let Err(error) = &result {
+        tracing::warn!(
+            code = error.code.as_str(),
+            "session close rejected; reclaiming AI grants anyway"
+        );
+    }
+    let revoked = state
+        .ai_grants
+        .revoke_for_session_handle(&db_session_id)
+        .await;
+    if revoked > 0 {
+        tracing::info!(revoked, "AI grants revoked with their editor session");
+    }
+    encode(result?)
+}
 session_command!(attach_session, AttachmentRequest);
 session_command!(detach_session, AttachmentRequest);
 #[tauri::command]
@@ -258,19 +290,28 @@ pub async fn platform_update_profile(
 ) -> Result<serde_json::Value, ApiError> {
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
-    encode(
-        adapter
-            .profiles()?
-            .compare_and_set(
-                call.context(),
-                request.connection_id,
-                request.expected_config_revision,
-                request.patch,
-            )
-            .await
-            .map_err(port_error)?
-            .to_view(),
-    )
+    let connection_id = request.connection_id.clone();
+    let view = adapter
+        .profiles()?
+        .compare_and_set(
+            call.context(),
+            request.connection_id,
+            request.expected_config_revision,
+            request.patch,
+        )
+        .await
+        .map_err(port_error)?
+        .to_view();
+    // A profile edit bumps the config revision, which invalidates every session
+    // on that connection; a grant pinned to the old revision must not survive it.
+    let revoked = state
+        .ai_grants
+        .revoke_for_connection(connection_id.as_str())
+        .await;
+    if revoked > 0 {
+        tracing::info!(revoked, "AI grants revoked by a profile revision change");
+    }
+    encode(view)
 }
 #[tauri::command]
 pub async fn platform_disable_profile(
@@ -279,14 +320,24 @@ pub async fn platform_disable_profile(
 ) -> Result<serde_json::Value, ApiError> {
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
-    encode(
-        adapter
-            .profiles()?
-            .disable(call.context(), request.connection_id)
-            .await
-            .map_err(port_error)?
-            .to_view(),
-    )
+    let connection_id = request.connection_id.clone();
+    let view = adapter
+        .profiles()?
+        .disable(call.context(), request.connection_id)
+        .await
+        .map_err(port_error)?
+        .to_view();
+    let revoked = state
+        .ai_grants
+        .revoke_for_connection(connection_id.as_str())
+        .await;
+    if revoked > 0 {
+        tracing::info!(
+            revoked,
+            "AI grants revoked because the profile was disabled"
+        );
+    }
+    encode(view)
 }
 
 #[derive(Deserialize)]

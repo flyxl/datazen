@@ -49,7 +49,8 @@ pub fn run_mcp_stdio() {
                 .await
                 .expect("Failed to init store"),
         );
-        let prompts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/prompts");
+        let prompts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../packages/feature-core/resources/prompts");
         let app_state = match build_app_state(store, Some(prompts_dir)).await {
             Ok(s) => s,
             Err(e) => {
@@ -296,6 +297,8 @@ pub fn run() {
             crate::commands::get_groups,
             crate::commands::get_log_path,
             crate::commands::get_settings,
+            crate::commands::get_shared_settings,
+            crate::commands::save_shared_settings,
             crate::commands::get_system_ui_language,
             crate::commands::import_connections_at_path,
             crate::commands::import_connections_preview,
@@ -359,6 +362,9 @@ pub fn run() {
             crate::commands::get_driver_commands,
             // ── 导出 ──
             crate::commands::export_tables_stream,
+            crate::commands::file_jobs::get_file_job,
+            crate::commands::file_jobs::cancel_file_job,
+            crate::commands::file_jobs::export_file_job,
             // ── 备份 ──
             crate::commands::backup_database,
             // ── 恢复 ──
@@ -408,6 +414,9 @@ pub fn run() {
             crate::commands::ai_validate_config,
             // ── AI：取消 ──
             crate::commands::ai_cancel,
+            crate::commands::ai_grant_editor_session,
+            crate::commands::ai_revoke_editor_grant,
+            crate::commands::ai_touch_editor_grant,
             // ── Prompt 模板 ──
             crate::commands::prompt_list,
             crate::commands::prompt_remove_override,
@@ -416,6 +425,12 @@ pub fn run() {
             crate::commands::context_get_dir,
             crate::commands::context_list_files,
             crate::commands::context_read_files,
+            // Deployment-pinned NativeTool probes; no client executable/options.
+            crate::commands::native_tool_choices,
+            crate::commands::native_tool_submit,
+            crate::commands::native_tool_get,
+            crate::commands::native_tool_list_jobs,
+            crate::commands::native_tool_cancel,
             // ── Workflow ──
             crate::commands::workflow_delete,
             crate::commands::workflow_execute,
@@ -441,11 +456,18 @@ pub fn run() {
             crate::commands::list_dashboards,
             crate::commands::list_widget_runs,
             crate::commands::run_dashboard_widget,
+            #[cfg(feature = "webdriver")]
+            crate::commands::webdriver_monitor_evidence,
+            crate::commands::authorize_monitor_widget_schedule,
+            crate::commands::revoke_monitor_widget_schedule,
+            crate::commands::get_monitor_widget_schedule_grant,
             crate::commands::save_dashboard,
             crate::commands::set_dashboard_refresh_paused,
             crate::commands::update_hidden_widget_sql,
             // ── Workspace Apps ──
             crate::commands::get_wapp_manifest,
+            crate::commands::execute_wapp_driver_command,
+            crate::commands::wapp_session,
             crate::commands::inspect_wapp_package_with_dialog,
             crate::commands::install_wapp,
             crate::commands::list_wapps,
@@ -619,7 +641,6 @@ pub fn run() {
                     }
                     let state = app_handle.state::<AppState>();
                     tauri::async_runtime::block_on(async {
-                        state.connection_manager.shutdown().await;
                         state.mcp_client_manager.disconnect_all().await;
                     });
                     // 空闲回收驱动器在此停。它归 runtime 应用层所有，宿主不驱动它，

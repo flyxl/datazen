@@ -1,6 +1,8 @@
 mod execution;
 mod opening;
 mod release;
+#[cfg(feature = "webdriver")]
+pub(crate) mod webdriver_dispatch;
 use super::{resource_budget::DesktopResourceBudget, resource_mapping as map};
 use crate::{db::DriverRegistry, store::Store};
 use async_trait::async_trait;
@@ -15,15 +17,22 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-pub type ResultPublisher =
-    Arc<dyn Fn(&rc::ExecutionId, serde_json::Value) -> Result<(), rc::ProviderError> + Send + Sync>;
+pub type ResultPublisher = Arc<
+    dyn Fn(
+            rc::ExecutionId,
+            serde_json::Value,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<(), rc::ProviderError>> + Send>,
+        > + Send
+        + Sync,
+>;
+pub type ExportOutputAuthority = Arc<dyn Fn(&rc::ExecutionId) -> bool + Send + Sync>;
 
 /// 一条已打开的物理资源。
 ///
-/// `pub(super)` 是为了让 [`super::live_source`] 能把 `resource_key` / `provider_id`
-/// 投影成端口要的 `ConnectionHandle`。**只开这两个投影**，不开 `provider`
-/// （那是可执行面）也不开 `handle` 本体（`dr::ResourceHandle` 是可变所有权凭证，
-/// 交出去等于把关闭权交给出向端口的调用方）。
+/// `pub(super)` 让 [`super::live_source`] 通过 provider 的只读借出方法取得驱动句柄。
+/// Runtime 的 `dr::ResourceHandle` 是不透明所有权凭证，不能把它的 resource key / provider id
+/// 误当作驱动自己的 `ConnectionHandle`。
 pub(super) struct Resource {
     provider: Arc<dyn dr::ResourceProvider>,
     handle: dr::ResourceHandle,
@@ -37,6 +46,9 @@ pub(super) struct Resource {
     transactions: tokio::sync::Mutex<Vec<ds::SessionHandleRef>>,
     finalized_transaction: tokio::sync::Mutex<Option<ds::TransactionObservation>>,
     protocol_drained: std::sync::atomic::AtomicBool,
+    /// Runtime resource lifetime owns the host tunnel. Pool reuse and quarantine keep
+    /// this Arc alive; only confirmed physical-resource removal releases it.
+    _tunnel: Option<Arc<crate::tunnel::Tunnel>>,
     _budget_scope: Arc<dyn dr::BudgetPort>,
     logical: std::sync::Mutex<Option<datazen_runtime::resource::LogicalSessionPermit>>,
     purpose: datazen_runtime::resource::LeasePurpose,
@@ -49,14 +61,12 @@ impl Resource {
         self.epoch
     }
 
-    /// 投影出 `ConnectionHandle` 的 `id`。**不是**连接本身，只是路由元数据。
-    pub(super) fn connection_id_of_resource(&self) -> String {
-        self.handle.resource_key().to_owned()
-    }
-
-    /// 投影出 `ConnectionHandle` 的 `pool_id`。
-    pub(super) fn pool_id_of_resource(&self) -> String {
-        self.handle.provider_id().to_owned()
+    /// Borrow the actual driver routing handle retained by this provider.
+    /// This is metadata only; the resource provider keeps close ownership.
+    pub(super) fn driver_handle(
+        &self,
+    ) -> Result<datazen_driver_api::ConnectionHandle, dr::ResourceError> {
+        self.provider.connection_handle(&self.handle)
     }
 }
 
@@ -80,8 +90,15 @@ pub struct DesktopSessionBackend {
     /// key 的来源是 `OpenResource::db_session_id`（actor 从 `OpenRequest` 透传）。
     by_session: tokio::sync::RwLock<HashMap<String, String>>,
     publisher: RwLock<Option<ResultPublisher>>,
+    export_output: RwLock<Option<ExportOutputAuthority>>,
 }
 impl DesktopSessionBackend {
+    pub(crate) fn physical_budget(
+        &self,
+    ) -> Arc<datazen_runtime::budget::InProcessBudgetCoordinator> {
+        self.budget.clone()
+    }
+
     pub fn new(registry: Arc<DriverRegistry>, store: Arc<Store>, physical_limit: u32) -> Self {
         Self::new_scoped(
             registry,
@@ -116,12 +133,22 @@ impl DesktopSessionBackend {
             resources: tokio::sync::RwLock::new(HashMap::new()),
             by_session: tokio::sync::RwLock::new(HashMap::new()),
             publisher: RwLock::new(None),
+            export_output: RwLock::new(None),
         }
     }
     pub fn set_publisher(&self, publisher: ResultPublisher) -> Result<(), rc::ProviderError> {
         *self.publisher.write().map_err(|_| {
             rc::ProviderError::ProtocolError("result publisher unavailable".into())
         })? = Some(publisher);
+        Ok(())
+    }
+    pub fn set_export_output_authority(
+        &self,
+        authority: ExportOutputAuthority,
+    ) -> Result<(), rc::ProviderError> {
+        *self.export_output.write().map_err(|_| {
+            rc::ProviderError::ProtocolError("export authority unavailable".into())
+        })? = Some(authority);
         Ok(())
     }
     async fn resource(&self, id: &str) -> Result<Arc<Resource>, rc::ProviderError> {
@@ -212,9 +239,11 @@ impl dr::ResultSink for Sink {
                 reason: "command output byte limit".into(),
             }
         })?;
-        (self.publisher)(&self.id, output).map_err(|_| dr::ResourceError::SinkRejected {
-            reason: "command output publication failed".into(),
-        })
+        (self.publisher)(self.id.clone(), output)
+            .await
+            .map_err(|_| dr::ResourceError::SinkRejected {
+                reason: "command output publication failed".into(),
+            })
     }
     async fn complete(&self) -> Result<(), dr::ResourceError> {
         Ok(())

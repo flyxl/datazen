@@ -8,7 +8,7 @@ use std::collections::HashMap;
 #[tokio::test]
 async fn schema_commands_with_connected_mock() {
     let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect("schema-cfg").await;
+    let (_, conn_id) = test.save_and_connect_runtime("schema-cfg").await;
 
     let dbs = read_databases(&test.state, conn_id.clone()).await.unwrap();
     assert_eq!(dbs, vec!["app"]);
@@ -87,7 +87,7 @@ async fn get_er_data_errors_when_no_table_metadata_is_readable() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("er-all-fail").await;
+    let (_, conn_id) = test.save_and_connect_runtime("er-all-fail").await;
     // When tables exist but every per-table column read fails, an empty Vec
     // would be rendered as "this database has no tables". Fail loudly instead.
     let err = get_er_data_impl(&test.state, conn_id, "app".into(), None)
@@ -150,7 +150,7 @@ async fn get_table_data_with_query_rows() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("data-cfg").await;
+    let (_, conn_id) = test.save_and_connect_runtime("data-cfg").await;
     let data = get_table_data_impl(
         &test.state,
         conn_id,
@@ -184,7 +184,7 @@ fn col(name: &str) -> crate::db::ColumnSchema {
 #[tokio::test]
 async fn unknown_object_kind_is_validation_error() {
     let test = TestAppState::new().await;
-    let (_, conn_id) = test.save_and_connect("obj-bad-kind").await;
+    let (_, conn_id) = test.save_and_connect_runtime("obj-bad-kind").await;
     let err = get_database_objects_impl(&test.state, conn_id, "invalid_kind".into(), None)
         .await
         .unwrap_err();
@@ -199,7 +199,7 @@ async fn lists_database_objects_returns_empty_when_query_has_no_rows_and_no_colu
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-empty").await;
+    let (_, conn_id) = test.save_and_connect_runtime("obj-empty").await;
     let rows = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
         .await
         .unwrap();
@@ -223,7 +223,7 @@ async fn lists_database_objects_from_name_column() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-list").await;
+    let (_, conn_id) = test.save_and_connect_runtime("obj-list").await;
     let rows = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
         .await
         .unwrap();
@@ -253,7 +253,7 @@ async fn lists_database_objects_preserves_signature_and_trigger_target() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-identity").await;
+    let (_, conn_id) = test.save_and_connect_runtime("obj-identity").await;
     let rows = get_database_objects_impl(&test.state, conn_id, "trigger".into(), None)
         .await
         .unwrap();
@@ -273,7 +273,7 @@ async fn object_ddl_reads_named_or_second_column() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-ddl").await;
+    let (_, conn_id) = test.save_and_connect_runtime("obj-ddl").await;
     let ddl = get_object_ddl_impl(
         &test.state,
         conn_id,
@@ -294,7 +294,7 @@ async fn object_ddl_missing_object_fails_closed() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-missing-ddl").await;
+    let (_, conn_id) = test.save_and_connect_runtime("obj-missing-ddl").await;
     let error = get_object_ddl_with_metadata_impl(
         &test.state,
         conn_id,
@@ -318,7 +318,7 @@ async fn object_catalog_preserves_permission_query_errors() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-permission").await;
+    let (_, conn_id) = test.save_and_connect_runtime("obj-permission").await;
     let error = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
         .await
         .unwrap_err();
@@ -341,7 +341,7 @@ async fn privileges_map_grantee_and_skip_incomplete_rows() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("priv-list").await;
+    let (_, conn_id) = test.save_and_connect_runtime("priv-list").await;
     let grants = get_privileges_impl(&test.state, conn_id).await.unwrap();
     assert_eq!(grants.len(), 1);
     assert_eq!(grants[0].grantee, "alice");
@@ -373,7 +373,7 @@ async fn get_table_data_joins_filters_with_or() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("filter-or").await;
+    let (_, conn_id) = test.save_and_connect_runtime("filter-or").await;
     let data = get_table_data_impl(
         &test.state,
         conn_id,
@@ -406,7 +406,7 @@ async fn get_table_data_joins_filters_with_or() {
 #[tokio::test]
 async fn get_table_data_reads_the_target_database_without_switching() {
     let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect("tdata-pin-db").await;
+    let (_, conn_id) = test.save_and_connect_runtime("tdata-pin-db").await;
     // Sample config pins database = "app"; opening a table that lives in
     // another database must read *that* database (BUG-002) — via the
     // explicit argument, never by re-pointing the shared session.
@@ -434,8 +434,8 @@ async fn get_table_data_reads_the_target_database_without_switching() {
     // per-call.
     let config = test
         .state
-        .connection_manager
-        .get_session_config(&conn_id)
+        .store
+        .get_connection("tdata-pin-db")
         .await
         .unwrap();
     assert_eq!(config.database.as_deref(), Some("app"));
@@ -486,7 +486,7 @@ async fn get_er_data_reads_each_tables_own_schema_and_never_caches_empty() {
     };
     let test = TestAppState::with_options(opts).await;
     // Sample config pins database = "app"; the ER view targets "analytics".
-    let (_, conn_id) = test.save_and_connect("er-pin-db").await;
+    let (_, conn_id) = test.save_and_connect_runtime("er-pin-db").await;
 
     let schemas = get_er_data_impl(&test.state, conn_id.clone(), "analytics".into(), None)
         .await

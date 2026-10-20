@@ -10,9 +10,9 @@
 //! ## 三条判据，缺一条都不算「真的接上了」
 //!
 //! 1. **端口真的被查询**：由 [`RecordingSource`] 的调用计数证明（不是构造计数）。
-//! 2. **借到的是那一份活资源**：`ConnectionHandle.id` 必须等于后端 `open` 时发回的
-//!    `resource_key`、`pool_id` 等于 `provider_id`。这两个字段是从 `dr::ResourceHandle`
-//!    投影来的，因此改动投影代码就会红；从会话句柄另编一个也会红。
+//! 2. **借到的是那一份活资源**：两个 `ConnectionHandle` 路由字段必须与 provider
+//!    `connection_handle()` 返回的句柄一致。测试 provider 返回刻意不同于 Runtime
+//!    `resource_key` / `provider_id` 的字段，确保宿主调用的是经过校验的 provider 接口。
 //! 3. **没有新建物理连接**：借出前后 `acquire_resource` 的调用次数**不变**。
 //!    这是端口契约「实现方不得在此新建物理连接」唯一可测的形式。
 //!
@@ -131,13 +131,12 @@ impl ResourceProvider for CountingProvider {
 
     fn connection_handle(
         &self,
-        _handle: &ResourceHandle,
+        handle: &ResourceHandle,
     ) -> Result<datazen_driver_api::ConnectionHandle, ResourceError> {
-        Err(ResourceError::unsupported(
-            self.provider_id(),
-            "connection_handle",
-            "fixture has no native driver connection",
-        ))
+        Ok(datazen_driver_api::ConnectionHandle {
+            id: format!("driver:{}", handle.resource_key()),
+            pool_id: format!("pool:{}", handle.provider_id()),
+        })
     }
 
     async fn describe_resource(
@@ -393,7 +392,7 @@ async fn seed_profile(store: &crate::store::Store, config: &ConnectionConfig) {
 /// 并且拿回来的就是**后端当初开出来的那一份**活资源。
 ///
 /// 三条判据在这条里同时成立：端口被调用过（计数）、`ConnectionHandle` 的字段
-/// 等于后端发回的 `resource_key` / `provider_id`（身份）、`acquire_resource`
+/// 等于 provider 校验后返回的驱动句柄（身份）、`acquire_resource`
 /// 次数没变（没有新建物理连接）。任何一条不成立都说明接线只是摆设。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn 接线后借出真的走到端口并交回那一份活资源() {
@@ -470,7 +469,7 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
             Arc::new(super::super::repositories::DesktopProfiles::new(
                 store.clone(),
             )),
-            Arc::new(super::super::policy::DesktopPolicy),
+            Arc::new(super::super::policy::DesktopPolicy::new(store.clone())),
             backend.clone(),
         ),
     );
@@ -547,13 +546,13 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
     let lent = lease.connection().expect("fresh borrow must be usable");
     assert_eq!(
         lent.handle().id,
-        format!("conn-1#{}", acquires_after_open - 1),
-        "resource_key 必须等于后端 open 时发回的那个值"
+        format!("driver:conn-1#{}", acquires_after_open - 1),
+        "id 必须由 provider 从它持有的资源句柄解析"
     );
     assert_eq!(
         lent.handle().pool_id,
-        "test-live-provider",
-        "pool_id 必须投影 provider_id，不能另编一个"
+        "pool:test-live-provider",
+        "pool_id 必须由 provider 从它持有的资源句柄解析"
     );
 
     // 判据 3：没有新建物理连接。

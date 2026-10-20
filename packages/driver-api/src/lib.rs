@@ -18,6 +18,8 @@ pub mod namespace;
 mod query_stream;
 pub mod resource;
 pub mod resource_adapter;
+pub mod restore_sql;
+mod restore_sql_target;
 mod reuse;
 pub mod schema_catalog_commands;
 pub mod schema_dependencies;

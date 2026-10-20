@@ -1,10 +1,10 @@
 # Tunnel
 
 > Source of truth: `src-tauri/src/tunnel/`、`src-tauri/src/ssh_tunnel.rs`、
-> `src-tauri/src/services/connection_manager/`、`src-tauri/src/store/tunnels.rs`、
+> `src-tauri/src/platform/session_backend/`、`src-tauri/src/store/tunnels.rs`、
 > `packages/driver-api/src/tunnel_types.rs`。
 
-隧道子系统解决的是「数据库不在本机、也不在可达网段」时的连接问题。**核心设计约束只有一条：驱动零改动。** 隧道不进入 `DatabaseDriver` trait，也不进入 `PROTOCOL_VERSION`——所有复杂度都止步于 `ConnectionManager` 与 driver 之间的地址改写。
+隧道子系统解决的是「数据库不在本机、也不在可达网段」时的连接问题。**核心设计约束只有一条：驱动零改动。** 隧道不进入 `DatabaseDriver` trait，也不进入 `PROTOCOL_VERSION`——桌面 `DesktopSessionBackend` 在 Runtime 打开 Driver resource 前改写地址，并把 Tunnel 句柄保存在该 Runtime resource 上。
 
 用户视角的使用说明见 [Tunnel 使用指南](../../features/tunnel-guide.zh-CN.md)。
 
@@ -17,7 +17,7 @@
         │                              ▲
         │  ① 从 tunnels.json 解引用      │ ④ TCP / 隧道转发
         ▼                              │
-ConnectionManager                    └── 上游（跳板机 / 代理 / 中继）
+DesktopSessionBackend                └── 上游（跳板机 / 代理 / 中继）
         │  ② start_for_connection
         ▼
     本机 127.0.0.1:<随机端口>  ────────►
@@ -98,11 +98,11 @@ config.websocket_tunnel = None;
 
 `SavedTunnel`（`tunnel_types.rs:80`）独立存放于 `tunnels.json`，连接侧只保留 `ConnectionConfig.tunnel_id`。保存连接时若设了 `tunnelId`，前端只写 `tunnelId` 与一个 `tunnelKind` 提示位，三个内联配置字段被主动省略（`src/lib/connectionFormModel.ts:117-136`）。
 
-`resolve_tunnel_ref`（`connection_manager/tunnels.rs:22`）在**每次建连时**把 `tunnel_id` 解引用回内联配置：
+`resolve_saved_tunnel`（`src-tauri/src/tunnel/mod.rs`）在**每次建连时**把 `tunnel_id` 解引用回内联配置：
 
 ```text
 ConnectionConfig { tunnel_id: "prod-bastion", ... }
-   ↓ resolve_tunnel_ref → store.get_tunnel(id)
+   ↓ resolve_saved_tunnel → store.get_tunnel(id)
 ConnectionConfig { tunnel_kind: Ssh, ssh_tunnel: {...}, ... }
    ↓ start_for_connection
 ConnectionConfig { host: 127.0.0.1, port: <ephemeral>, tunnel_kind: None, ... }
@@ -121,19 +121,19 @@ ConnectionConfig { host: 127.0.0.1, port: <ephemeral>, tunnel_kind: None, ... }
 
 读取后由 `load_tunnels_from_disk`（`tunnels.rs:12`）在应用启动时（`store/mod.rs:205`）一次性加载并解密进内存缓存。**解密失败降级为 `None` 并 `warn!`**，不让单条坏记录阻断整份加载。
 
-已知主机校验文件为 `{appData}/ssh_known_hosts.json`（`connection_manager/tunnels.rs:16`），采用 TOFU 策略：首次接受并记录指纹，不匹配则拒绝并回传精确错误（`ssh_tunnel.rs:37-95`）。
+已知主机校验文件为 `{appData}/ssh_known_hosts.json`（`src-tauri/src/tunnel/mod.rs`），采用 TOFU 策略：首次接受并记录指纹，不匹配则拒绝并回传精确错误（`ssh_tunnel.rs:37-95`）。
 
 **凭据绝不下发到渲染进程。** 选择器用 `SavedTunnelSummary`（`tunnel_types.rs:99`），只有 `id` / `name` / `kind`；`summary_serializes_metadata_only` 单测逐个断言 `password` / `passphrase` / `authToken` / `ssh` / `httpProxy` / `websocket` 均不在序列化结果中。删除前的引用方查询用 `TunnelUsage`（`tunnel_types.rs:108`），同样只带连接 id 与名称。
 
 ## 5. 建连路径中的隧道
 
-隧道在**驱动解析之前**启动（`connection_manager/connections.rs:79` 早于 `:86-89`）：驱动从未见过真实 `host:port`。三条启动入口共用同一个 `start_tunnel` 包装：
+隧道在**物理 resource 打开之前**启动（`src-tauri/src/platform/session_backend/opening.rs`）：Driver 从未见过真实 `host:port`。建 session 和独立测试连接共用 `start_for_connection`：
 
 | 入口 | 场景 | 隧道句柄归宿 |
 |---|---|---|
-| `connections.rs:79` | `connect`，建立正式 session | 移入 `ActiveSession` |
-| `sessions.rs:117` | `reconnect`，按原 `dbSessionId` 重建 | 重新建一个新隧道 |
-| `tunnels.rs:45` | `test_connection`，只做驱动连通性测试 | 绑定为 `_tunnel`，函数返回时即 drop |
+| `platform/session_backend/opening.rs` | 建立 Runtime session 的物理 resource | Tunnel Arc 保存在 Runtime Resource；确认关闭后随资源释放 |
+| `tunnel/mod.rs::test_connection` | 独立 Driver 连通性测试，不创建 Runtime session | `_tunnel` 局部持有，函数返回时 drop |
+| `tunnel/mod.rs::test_tunnel` | 只测试隧道本身，不创建 Runtime session | 探测结束后 drop Tunnel |
 
 ## 6. IPC 与探测
 
@@ -153,7 +153,7 @@ ConnectionConfig { host: 127.0.0.1, port: <ephemeral>, tunnel_kind: None, ... }
 
 ### `test_tunnel` 为什么必须存在
 
-`ConnectionManager::test_tunnel`（`connection_manager/tunnels.rs:73`）用一份 `id = __tunnel_test__{id}` 的合成配置走完整链路，其 `database_type` 是占位符且**永不解析 driver**——只有隧道字段和转发目标会进入隧道运行时。探测后立即 `drop(tunnel)`，靠 `Drop`（`cancel()` + `task.abort()`）拆掉转发器，不泄漏监听端口、任务或 SSH 会话。
+`tunnel::test_tunnel`（`src-tauri/src/tunnel/mod.rs`）用一份 `id = __tunnel_test__{id}` 的合成配置走完整链路；它不创建 Runtime session，也不解析数据库 driver——只有隧道字段和转发目标会进入隧道运行时。探测后立即 drop Tunnel，靠 `Drop` 清理转发器、监听端口、任务与 SSH 会话。
 
 返回的是**实测耗时**（`Duration`），不只是布尔值，因为「可用」和「够快」是两个不同的问题。
 
@@ -168,10 +168,10 @@ ConnectionConfig { host: 127.0.0.1, port: <ephemeral>, tunnel_kind: None, ... }
 
 ## 7. 隧道与 session 生命周期
 
-`Tunnel`（`tunnel/mod.rs:25`）枚举持有三种运行时句柄，统一暴露 `local_port()`。它保存在 `ActiveSession.tunnel`（`connection_manager.rs:24-28`），字段注释点明了意图：**「Never read directly — that is the point」**。没有任何显式的 `close_tunnel()` 调用：
+`Tunnel`（`src-tauri/src/tunnel/mod.rs`）枚举持有三种运行时句柄，统一暴露 `local_port()`。它保存在 `DesktopSessionBackend::Resource._tunnel`，不作为可执行句柄暴露给 consumer。没有独立的 `close_tunnel()` 路径：
 
-- `disconnect` 移除 `ActiveSession` → 随值 drop → `Drop` 执行 `cancel()` + `task.abort()`，SSH session 随之释放（`sessions.rs:60-69`）。
-- idle eviction（`cleanup_idle_connections`，每 60s 一次，阈值默认 30 分钟）走同一条 drop 路径，同时刻意保留 `session_owner_map` 条目以维持自动重连（`tunnels.rs:185-188`）。
+- Runtime 确认物理 resource 关闭后移除 `Resource` → Tunnel 随值 drop；资源进入 quarantine 或复用状态时 Tunnel 继续存活。
+- Runtime idle reclamation 默认在 30 分钟 session deadline 后关闭 resource；桌面每 15 秒扫描。过期会话失效，调用方显式建新 session，不保留 owner map 做同 ID 自动重连。
 - **持有即存活**是这个子系统唯一的所有权模型；任何「按需保活/惰性关闭」的想法都需要先引入显式引用计数，目前不存在。
 
 ## 8. 前端

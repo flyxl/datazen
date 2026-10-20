@@ -67,6 +67,7 @@ export const LAYERS = Object.freeze([
   { id: 'host', path: 'src-tauri', kind: 'rust' },
   { id: 'application', path: 'packages/application', kind: 'rust' },
   { id: 'runtime', path: 'packages/runtime', kind: 'rust' },
+  { id: 'feature-core', path: 'packages/feature-core', kind: 'rust' },
   { id: 'workspace-apps', path: 'packages/workspace-apps', kind: 'rust' },
   { id: 'platform-api', path: 'packages/platform-api', kind: 'rust' },
   { id: 'platform-infra', path: 'packages/platform-infra', kind: 'rust' },
@@ -89,7 +90,9 @@ export function layerById(id) {
 
 /** Workspace-relative POSIX path of the directory holding `manifestPath`. */
 export function manifestDir(manifestPath, workspaceRoot) {
-  return relative(workspaceRoot, resolve(join(manifestPath, '..'))).split(sep).join('/');
+  return relative(workspaceRoot, resolve(join(manifestPath, '..')))
+    .split(sep)
+    .join('/');
 }
 
 /**
@@ -167,9 +170,13 @@ export function runCargoMetadata({ cwd, env, log = () => {}, error = console.err
     throw new Error(`\`cargo metadata\` produced unparsable JSON: ${cause.message}`);
   }
   if (!Array.isArray(parsed.packages) || !parsed.resolve?.nodes) {
-    throw new Error('`cargo metadata` returned no `packages`/`resolve` — refusing to guard an unknown graph');
+    throw new Error(
+      '`cargo metadata` returned no `packages`/`resolve` — refusing to guard an unknown graph',
+    );
   }
-  log(`[cargo] ${parsed.packages.length} package(s), ${parsed.resolve.nodes.length} resolve node(s)`);
+  log(
+    `[cargo] ${parsed.packages.length} package(s), ${parsed.resolve.nodes.length} resolve node(s)`,
+  );
   return parsed;
 }
 
@@ -242,7 +249,8 @@ export function normalBuildClosure(index, id) {
     if (!node) continue;
     for (const dep of node.deps ?? []) {
       const kinds = dep.dep_kinds ?? [];
-      const shippable = kinds.length === 0 || kinds.some((k) => k.kind === null || k.kind === 'build');
+      const shippable =
+        kinds.length === 0 || kinds.some((k) => k.kind === null || k.kind === 'build');
       if (shippable) stack.push(dep.pkg);
     }
   }
@@ -360,7 +368,12 @@ export function declaredDependencies(text) {
       if (kindIndex < segments.length - 1) {
         const container = dependencyTableOf(raw.slice(0, kindIndex + 1).join('.'));
         if (container !== null) {
-          found.push({ name: segments[kindIndex + 1], ...container, form: 'table', renamed: false });
+          found.push({
+            name: segments[kindIndex + 1],
+            ...container,
+            form: 'table',
+            renamed: false,
+          });
         }
         open = null;
         continue;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { MonitorScheduleAuthorization } from './MonitorScheduleAuthorization';
 import { X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -21,6 +22,7 @@ import { DEFAULT_CHART_CONFIG } from '../../types/chart';
 
 export interface WidgetEditorDrawerProps {
   open: boolean;
+  dashboardId?: string;
   widget: DashboardWidget | null;
   isNew?: boolean;
   /** When editing a hidden SQL workflow widget */
@@ -83,6 +85,7 @@ function emptyDraft(): DashboardWidget {
 
 export function WidgetEditorDrawer({
   open,
+  dashboardId,
   widget,
   isNew,
   hiddenSql: hiddenSqlProp,
@@ -306,6 +309,18 @@ export function WidgetEditorDrawer({
                 )}
               </div>
             )}
+
+          {dashboardId && widget && !isNew && widget.refresh.mode === 'interval' && (
+            <MonitorScheduleAuthorization
+              dashboardId={dashboardId}
+              widgetId={widget.id}
+              dirty={
+                JSON.stringify(draft) !== JSON.stringify(widget) ||
+                JSON.stringify(hiddenSql) !==
+                  JSON.stringify(hiddenSqlProp ?? { connectionId: '', sql: 'SELECT 1 AS v' })
+              }
+            />
+          )}
 
           <label className="flex items-center gap-2 text-xs text-fg">
             <input

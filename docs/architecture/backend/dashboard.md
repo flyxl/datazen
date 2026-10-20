@@ -30,6 +30,11 @@ Widget.refresh
 
 MonitorEngine 按面板 `refresh_paused` + 组件 `refresh.mode === interval`（≥30s）调度；默认手动刷新。
 
+定时执行先校验后台持有的 widget grant，再将 `monitorOccurrence` 受理为 SQLite durable Job，经共享 JobRuntime/Runtime 派发只读查询。`workflowRevision` 沿用生产 grant 的 64 位裸 SHA256；durable codec 接受该精确格式，并兼容原有 `sha256:` 标记形式。定义版本摘要仍保存为 `sha256:` 摘要，重复 schedule/definition/slot 返回原 receipt，不再执行 SQL。
+
+仅 webdriver 构建提供按当前批准用户/widget 范围读取的阶段诊断：授权检查、occurrence 准备、Job 受理、派发、run 就绪或失败；最多保留 128 个 widget 的固定枚举，不保存或返回 SQL、凭据及底层错误。旅程等待真实 timer receipt，超时输出该固定阶段及 receipt 数量；受控 tick 仅用于真实 timer 首次成功后的重复 slot/撤权断言。
+
+
 ## 前端
 
 | 路径 | 职责 |

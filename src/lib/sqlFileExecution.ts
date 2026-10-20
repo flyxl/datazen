@@ -93,7 +93,9 @@ export async function runSqlFileExecution({
     onProgress?.({ current: 0, total: 0, objectName: '', phase: 'done' }, doneLine);
     return true;
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = e instanceof Error ? e.message
+      : typeof e === 'object' && e !== null && 'code' in e && e.code === 'restoreOutcome'
+        && 'message' in e && typeof e.message === 'string' ? e.message : String(e);
     logPump.push(message);
     logPump.flush();
     onError?.(message);

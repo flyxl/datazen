@@ -21,4 +21,11 @@ urlencoding = "2"
 futures-util = "0.3"
 
 [dev-dependencies]
+flate2 = "1"
 datazen-schema-diff = { path = "../../schema-diff" }
+datazen-feature-core = { path = "../../feature-core" }
+datazen-runtime = { path = "../../runtime" }
+datazen-application = { path = "../../application" }
+datazen-platform-api = { path = "../../platform-api" }
+sha2 = "0.10"
+tempfile = "3"

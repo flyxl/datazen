@@ -148,7 +148,10 @@ export interface MultiQueryResult {
 /** IPC events for `execute_query_stream`. Independent of SQL LIMIT. */
 export type QueryStreamEvent =
   | { type: 'executionStarted'; executionId: string }
-  | { type: 'publishedArtifacts'; artifacts: import('../lib/queryResultArtifacts').QueryResultArtifacts }
+  | {
+      type: 'publishedArtifacts';
+      artifacts: import('../lib/queryResultArtifacts').QueryResultArtifacts;
+    }
   | { type: 'statementStart'; index: number; sql: string; columns: ColumnInfo[] }
   | { type: 'rows'; index: number; rows: (Value | null)[][] }
   | { type: 'statementSnapshot'; index: number; result: StatementResult }
@@ -251,55 +254,22 @@ export interface ContextItem {
   database?: string;
 }
 
-import type { ThemePreference } from './theme';
 import type { MonitorSettings } from './dashboard';
 
-export type McpPermissionMode = 'read_only' | 'safe_write' | 'high_risk_write';
+export type {
+  SettingsMcpPermissionMode as McpPermissionMode,
+  SettingsSqlFormatOptions as SqlFormatOptions,
+  SettingsSqlExecutionStrategy as SqlExecutionStrategy,
+} from '@datazen/backend-client';
 
-/** Configurable SQL beautifier options. */
-export interface SqlFormatOptions {
-  keywordCase: 'upper' | 'lower' | 'preserve';
-  indentStyle: '2spaces' | '4spaces' | 'tab';
-  /** Put AND / OR at the start of the next line instead of the end of the current one. */
-  breakBeforeBooleanOperators: boolean;
-  /** Blank lines inserted between consecutive statements. */
-  linesBetweenQueries: number;
-}
+import type { UserPreferences, ExecutionSettings } from '@datazen/backend-client';
 
-/**
- * Which SQL the Execute action submits when there is no explicit selection.
- * `ask` prompts whenever the script holds more than one statement.
- */
-export type SqlExecutionStrategy =
-  | 'current_statement'
-  | 'entire_script'
-  | 'largest_statement'
-  | 'ask';
-
-export interface AppSettings {
-  theme: ThemePreference;
-  language: string;
-  limitSelectResults: boolean;
-  queryResultLimit: number;
-  editorFontSize: number;
-  editorFontFamily: string;
-  confirmOnDelete: boolean;
-  autoCommit: boolean;
-  /** Require WHERE on UPDATE/DELETE; also block TRUNCATE/DROP. Default true. */
-  safeMode: boolean;
-  /** When Safe Mode is OFF, show a confirm dialog before high-risk/production execution. Default true. */
-  confirmDangerousExecution: boolean;
-  defaultPageSize: number;
-  /** Max DB session pool size (Postgres/MySQL). Default 10; applies on next connect. */
-  connectionPoolSize: number;
+export interface AppSettings extends UserPreferences, ExecutionSettings {
+  sqlSyntaxTheme?: string;
   logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   logPath: string;
   /** When true, GUI may start embedded MCP on launch. Default false. */
   mcpServerEnabled: boolean;
-  mcpDisabledTools: string[];
-  mcpPermissionMode: McpPermissionMode;
-  /** Persistent connection IDs exposed to MCP. Empty = all connections. */
-  mcpAllowedConnectionIds: string[];
   contextDir: string;
   /**
    * Directory holding the favorites, one ULID-named `.sql` file each. Absent or
@@ -309,38 +279,10 @@ export interface AppSettings {
   favoritesRoot?: string;
   /** Check GitHub for app updates on startup (Basic builds only). Default false. */
   checkForUpdatesOnStartup: boolean;
-  /** Switch to chart view after query when the result is chartable. Default false. */
-  autoChartOnQuery: boolean;
   /** Dashboard monitor / tray / retention settings. */
   monitor: MonitorSettings;
-  /** Opaque per-driver settings keyed by driver id (e.g. `"redis"`). */
-  driverSettings: Record<string, unknown>;
-  /** Opaque per-wapp settings keyed by wapp id. Reserved for future workspace app configs. */
-  wappSettings: Record<string, unknown>;
   /** Saved external MCP Client server configs. Runtime connections are separate. */
   mcpClientServers?: McpServerConfig[];
-  /** Strip query result rows before AI requests leave the device. Default true. */
-  aiStrictEgress: boolean;
-  /** Automatically qualify column completions with a table name or alias. Default true. */
-  editorCompletionIncludeTablePrefix?: boolean;
-  /** Infer foreign keys from structure and naming when the schema declares none. */
-  enableFkPrediction?: boolean;
-  /** Identifier quotation policy in SQL autocomplete ('unquoted' | 'always' | 'both'). Default 'unquoted'. */
-  editorCompletionQuotePolicy?: 'unquoted' | 'always' | 'both';
-  /** Keyboard shortcut preset ('default' | 'dbeaver' | 'navicat'). Default 'default'. */
-  keymapPreset?: 'default' | 'dbeaver' | 'navicat';
-  /** User-customized keyboard shortcut overrides keyed by action ID. */
-  customKeymap?: Partial<Record<string, string>>;
-  /** SQL beautifier configuration. */
-  sqlFormatOptions?: SqlFormatOptions;
-  /** Execute-action statement targeting strategy. Default 'current_statement'. */
-  sqlExecutionStrategy?: SqlExecutionStrategy;
-  /** User-defined SQL snippets, merged after the built-in library. */
-  sqlSnippets?: Array<{ id: string; prefix: string; descriptionKey: string; template: string }>;
-  /** SQL syntax highlighting color preset ('default' follows the active theme pack). */
-  sqlSyntaxTheme?: string;
-  /** Workflow result step tabs order: 'desc' = last step first (default), 'asc' = first step first. */
-  workflowStepResultOrder?: 'asc' | 'desc';
   /** Onboarding wizard state. `undefined` or `version < 1` → show wizard. */
   onboarding?: { completed: boolean; version: number };
 }
@@ -518,6 +460,8 @@ export interface AiChatMessage {
   questions?: AiQuestion[];
   toolCalls?: AiToolCall[];
   toolCallId?: string;
+  /** Terminal marker: the run ended because the user cancelled it. */
+  cancelled?: boolean;
 }
 
 export interface AiChatSession {
@@ -531,6 +475,15 @@ export interface AiChatSession {
   /** Qualified MCP tool name (mcp/server/tool) shown during streaming tool execution. */
   streamMcpToolName: string | null;
   requestId: string | null;
+  /**
+   * Non-secret attribution of the last run started from this session: which
+   * target it claimed, and (for a shared run) the grant id. Never the runtime
+   * handle itself.
+   */
+  attribution?:
+    | { kind: 'independent' }
+    | { kind: 'editorGrant'; grantId: string; editorSessionId: string }
+    | null;
 }
 
 export interface StreamChunkPayload {
@@ -538,6 +491,8 @@ export interface StreamChunkPayload {
   content: string;
   reasoning?: string;
   done: boolean;
+  /** `done && cancelled` is the terminal chunk of a cancelled run. */
+  cancelled?: boolean;
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
   toolCalls?: AiToolCall[];
 }
@@ -662,6 +617,30 @@ export interface WorkflowOutput {
   template?: string;
 }
 
+export type WorkflowBlockType = 'sessionBlock' | 'transactionBlock';
+
+/**
+ * Block-level retry. The unit is always the whole block — a block never
+ * resumes from the middle — so there is deliberately no per-step count.
+ */
+export interface WorkflowBlockRetry {
+  block: number;
+}
+
+export interface WorkflowBlock {
+  id: string;
+  type: WorkflowBlockType;
+  /** Block target, level 2 of the step > block > workflow > profile chain. */
+  connection?: string;
+  /** Block target (multi-db connections). */
+  database?: string;
+  /** Run this block concurrently with *other* blocks, never with itself. */
+  parallel?: boolean;
+  steps: WorkflowStep[];
+  /** transactionBlock only. */
+  retry?: WorkflowBlockRetry;
+}
+
 export interface WorkflowDefinition {
   id: string;
   name: string;
@@ -674,6 +653,8 @@ export interface WorkflowDefinition {
   /** Default database inherited by data-operation steps (multi-db connections). */
   database?: string;
   steps: WorkflowStep[];
+  /** v2 resource blocks; each block holds its own steps and target. */
+  blocks?: WorkflowBlock[];
   output?: WorkflowOutput;
   timeoutSecs?: number;
   errorHandling?: ErrorHandlingConfig;

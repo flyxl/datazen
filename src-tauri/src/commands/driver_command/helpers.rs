@@ -1,5 +1,8 @@
 use super::super::AppState;
 use datazen_driver_api::ConnectionHandle;
+pub(crate) use datazen_feature_core::services::command_policy::{
+    inject_sql_target_fields, nonempty, query_rows_affected, sql_from_input,
+};
 
 pub(crate) fn unbound_handle() -> ConnectionHandle {
     ConnectionHandle {
@@ -8,62 +11,18 @@ pub(crate) fn unbound_handle() -> ConnectionHandle {
     }
 }
 
-pub(crate) fn nonempty(value: Option<&String>) -> Option<&str> {
-    value
-        .map(String::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-}
-
 /// SQL SELECT row cap from settings. `None` when the "limit SELECT results"
 /// switch is off — streaming must not invent a cap from batch size.
 pub(crate) async fn query_result_limit_from_settings(state: &AppState) -> Option<u32> {
-    let settings = state.store.get_settings().await;
-    if settings.limit_select_results && settings.query_result_limit > 0 {
-        Some(settings.query_result_limit)
-    } else {
-        None
-    }
+    state.store.execution_settings().await.result_limit()
 }
 
 pub(crate) async fn apply_query_result_limit(state: &AppState, input: &mut serde_json::Value) {
-    if input.get("limit").is_some() {
-        return;
-    }
-    if let Some(limit) = query_result_limit_from_settings(state).await {
-        input["limit"] = serde_json::json!(limit);
-    }
-}
-
-pub(crate) fn sql_from_input(input: &serde_json::Value) -> Option<String> {
-    input
-        .get("sql")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-}
-
-/// F7: copy non-blank envelope targeting fields into the command input object
-/// (no-op for blank values or non-object inputs).
-pub(crate) fn inject_sql_target_fields(
-    input: &mut serde_json::Value,
-    database: Option<&str>,
-    schema: Option<&str>,
-) {
-    let Some(map) = input.as_object_mut() else {
-        return;
-    };
-    let database = database.map(str::trim).filter(|s| !s.is_empty());
-    let schema = schema.map(str::trim).filter(|s| !s.is_empty());
-    if let Some(database) = database {
-        map.insert(
-            "database".into(),
-            serde_json::Value::String(database.into()),
-        );
-    }
-    if let Some(schema) = schema {
-        map.insert("schema".into(), serde_json::Value::String(schema.into()));
-    }
+    state
+        .store
+        .execution_settings()
+        .await
+        .apply_result_limit(input);
 }
 
 /// Persist a query/execute outcome to `{appData}/history.sqlite`.
@@ -82,30 +41,34 @@ pub(crate) async fn record_sql_command_outcome(
     let Some(db_session_id) = db_session_id else {
         return;
     };
-    // Resolve the persisted connection config that owns this runtime session.
-    let Some(connection_id) = state
-        .connection_manager
-        .owner_connection_id(db_session_id)
-        .await
-    else {
+    let Some(adapter) = state.platform_require().ok() else {
         tracing::warn!(
             db_session_id,
-            "Skipping history: no owning connectionId for this dbSessionId"
+            "Skipping history: runtime unavailable for dbSessionId"
         );
+        return;
+    };
+    let Ok(runtime) = adapter.runtime() else {
+        tracing::warn!(db_session_id, "Skipping history: runtime unavailable");
+        return;
+    };
+    let Some(connection_id) = runtime.connection_id_for_session(
+        &datazen_runtime::connection::DbSessionId::new(db_session_id),
+    ) else {
+        tracing::warn!(db_session_id, "Skipping history: no owning connectionId");
         return;
     };
     // Record the session-active logical database so history can be grouped /
     // filtered per panel context (empty string when the driver is single-db).
     let database = state
-        .connection_manager
-        .get_session_config(db_session_id)
+        .store
+        .get_connection(connection_id.as_str())
         .await
-        .ok()
         .and_then(|config| config.database)
         .unwrap_or_default();
     let entry = crate::store::QueryHistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
-        connection_id,
+        connection_id: connection_id.as_str().to_owned(),
         database,
         schema: None,
         sql: sql.to_string(),
@@ -120,17 +83,4 @@ pub(crate) async fn record_sql_command_outcome(
     if let Err(e) = state.store.add_query_history(entry).await {
         tracing::warn!(error = %e, "add_query_history failed");
     }
-}
-
-pub(crate) fn query_rows_affected(data: &serde_json::Value) -> Option<u64> {
-    if let Some(rows) = data.get("rowsAffected").and_then(|v| v.as_u64()) {
-        return Some(rows);
-    }
-    let results = data.get("results")?.as_array()?;
-    Some(
-        results
-            .iter()
-            .filter_map(|r| r.get("rowsAffected").and_then(|v| v.as_u64()))
-            .sum(),
-    )
 }

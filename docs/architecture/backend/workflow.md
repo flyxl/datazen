@@ -66,17 +66,17 @@ steps:
 
 Step 没有指定 `connection` 时继承 Workflow 默认 connection；Step 显式指定时覆盖默认值。这样常见的“一个 connection 执行多个 step”不需要每个 step 重复选择 connection。
 
-### 会话：共享、且不释放
+### 连接与会话
 
-Workflow 的 IPC 用**持久化 `connectionId`** 指定连接（不要求连接的命令可以只给 `driverType`，见 [IPC](#ipc)）。每条 step 执行时用 `resolve_session_for_connection(connectionId)` 取得运行时会话，但**拿到的会话 ID 被直接丢弃**（`let (_runtime_id, driver, handle)`）——它只被当作 driver 句柄用完就扔。
+Workflow IPC 和 YAML 使用持久化 `connectionId`，不会保存或接收 GUI 的 `dbSessionId`。Workflow v1 的每条 step 经 `command_runtime → independent_sql → feature-core resource_execution` 进入共享 Runtime；Runtime 按该 step 的 connection profile 建立或借用自己的 session/resource，并在该次执行完成后按 Runtime 生命周期清理。它不复用编辑器会话，也不通过 Host `ConnectionManager` 管理连接。
 
-由此产生三条已实现的事实：
+当前实现保留以下 v1 行为：
 
-- **与 GUI 共享同一条会话**。同一 `connectionId` 在 GUI 里已连接时，Workflow 走的是那一条，而不是另开一条。好处是上下文一致，代价是无法与主工作区隔离事务状态。
-- **引用只增不减**。该路径不调用 `release`，所以被 Workflow 执行过的会话引用计数常驻 ≥1，永远不满足空闲回收的「计数为 0」条件。会话只会在用户显式断开连接或应用退出时结束。
-- **取显示名也会建会话**。执行器为某个 step 计算展示用的连接名时同样调用 `resolve_session_for_connection`，因此一次纯粹的标签解析就能建立并钉住一条会话。
+- step 未指定 connection 时继承 Workflow 默认 connection；显式指定时覆盖默认值。
+- 跨库 step 按各自 connection profile 执行；上一步结果仍可作为下一步输入。
+- 连接名展示不建立数据库会话。会话过期后，旧 `dbSessionId` 失效，调用方必须显式创建新会话。
 
-唯一会释放的例外是 Workflow 定义迁移（把 YAML 转成内部定义的路径），它在解析完连接后显式归还引用。
+空闲期限只由 Runtime 的实际业务执行活动刷新；状态读取、订阅、attach 等管理操作不延长期限。
 
 ### 目标：不切库
 
@@ -220,3 +220,26 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 - Driver API：`packages/driver-api/src/command.rs`、`traits.rs`
 
 **用户手册（YAML 语法与用法）：** [Workflow 使用手册](../../features/workflow-guide.zh-CN.md)
+
+
+### P6 Workflow v1 范围
+
+Workflow 保持既有 v1 协议、模型、跨数据库逐步执行及前步 output 供后步模板串联的语义；仅将底层连接管理走 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。本轮不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof。YAML、version model 与既有 IPC 形状不变。scheduler 保留桌面 runtime-entry 修复，Monitor 固定只读授权/独立 occurrence 和其他消费者的 Runtime 接线继续保留。
+
+#### Workflow v1 真实驱动验收
+
+Host 通用旅程 `src-tauri/src/workflow/live_acceptance.rs` 使用真实 PostgreSQL/MySQL inventory factory、桌面 AppState/WorkflowHost 和 Runtime，不以 sqlx 手工串接模拟执行器。两个方向分别执行继承 workflow connection 的 legacy Query，再以 step connection override 执行 Command；前步数值经 `{{steps.seed.rows[0].value}}` 进入后步 SQL，验证最终计算结果。夹具在两个独立测试库建立同名表并写入不同数值，后步同时读取目标库的数值并加上前步结果，以证明目标覆盖实际到达另一个物理数据库；结束时删除夹具表。只使用两库共有的建表/插入/SELECT/删除表语句，不增加驱动方言能力或事务语义。
+
+运行：`scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance`。测试默认 ignored，安全 runner 显式执行，并要求两族独立 `dz_fixture_*` 数据库；缺配置、不可连接或执行失败都会失败，不以跳过计作通过。原 `src-tauri/tests/workflow_tests.rs` 的 TC13 直接调用 sqlx，仅验证手工数据流，不作为 Workflow/Runtime 接线证据。
+
+#### 桌面 Monitor 定时授权（已实现，2026-10-17）
+
+Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用当前桌面用户上下文；周期 tick 必须取得后端保存的 widget grant，不能因 `connection_id=None`、工作流可运行或桌面用户仍在线而获得授权。用户在报表编辑器中保存 interval 配置后，显式授权一小时或撤销；授权 IPC 仅接受 dashboard/widget ID 与 60～86400 秒有效期，不接受 principal、delegation token 或用户提供的 grant。
+
+后端从当前桌面 RequestContext 取得批准者，并生成独立 service principal / delegation ID。AppDb schema v3 的 `monitor_schedule_grants` 仅保存批准者、服务身份、dashboard/widget/workflow ID、工作流 YAML SHA-256 revision、固定 canonical connection/database/schema 与配置版本、connect/query 动作及命令范围、readOnly、到期时间、撤销状态与版本。不保存 SQL 副本、session、attachment、bearer token、秘密或凭据。新授权取代同 widget 的旧授权；变更 workflow 定义或 profile 配置必须重新授权。
+
+当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI、migration 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询；函数仅允许明确的内置聚合/数值/文本/空值/时钟函数白名单，未知、带 schema、引号名称及表值函数失败关闭，因此序列推进/状态、命名锁获取/状态/释放和会话配置函数不能借 SELECT 派发），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。其他驱动和写动作均失败关闭。
+
+共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
+
+撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。每个 grant 版本、dashboard/widget、workflow revision 与 refresh slot 对应一个带稳定幂等键的 `monitorOccurrence` Job；Job 受理后才派发原 scheduled workflow，WidgetRun 与有界 JobDomainResult 记录实际结果。启动恢复按持久化 service principal 扫描 occurrence：未派发 Job 标为未启动，运行中 Job 转为待核验，恢复流程不重放查询。撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown；真实 PG/MySQL 驱动旅程仍须独立验收，P6 未整体关闭。

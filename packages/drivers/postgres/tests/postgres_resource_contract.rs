@@ -370,8 +370,17 @@ fn the_provider_identifies_itself_as_this_crate() {
         "an unchanged contract means an unchanged protocol version"
     );
     assert_eq!(
-        registry.snapshot.capability_revision, 3,
-        "the revision advances when the provider adds fixed sessions and streaming results"
+        registry.snapshot.capability_revision, 4,
+        "the revision advances when the provider adds transactional SQL restore"
+    );
+    assert_eq!(
+        registry
+            .snapshot
+            .confirmed
+            .get(datazen_driver_api::restore_sql::CAPABILITY_KEY)
+            .map(String::as_str),
+        Some(datazen_driver_api::restore_sql::TRANSACTIONAL),
+        "revision 4 declares transactional SQL restore"
     );
 }
 

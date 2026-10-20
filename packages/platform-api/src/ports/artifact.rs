@@ -269,6 +269,7 @@ mod tests {
 
     fn metadata() -> ArtifactMetadata {
         ArtifactMetadata {
+            target_fingerprint: "target".into(),
             artifact_id: ArtifactId::new("art-1"),
             lifecycle: ArtifactLifecycle::Writing,
             published_chunk_count: Counter::new(2),

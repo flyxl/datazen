@@ -1,6 +1,5 @@
 //! AppState assembly for GUI and headless MCP entry points.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -10,7 +9,6 @@ use crate::cache::SchemaCache;
 use crate::commands::AppState;
 use crate::db::init_drivers;
 use crate::monitor::MonitorEngine;
-use crate::services::ConnectionManager;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::{mcp, redis_flush_gate, wapps, workflow};
@@ -92,6 +90,24 @@ pub(crate) fn build_desktop_job_host(
 }
 
 pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<(), String> {
+    // Native Jobs use the real desktop identity, unlike historical migration
+    // adapters. Mark only those jobs for inspection; never rebuild a handler.
+    if let Ok(adapter) = state.platform_require() {
+        let context = adapter.begin_call().context().clone();
+        state
+            .desktop_job_host
+            .mark_restart_candidates_for_verification(
+                &context,
+                RecoveryFilter {
+                    kinds: vec!["nativeToolProbe".into()],
+                    older_than: None,
+                    limit: None,
+                },
+            )
+            .await
+            .map_err(|_| "native job recovery scan failed".to_string())?;
+    }
+
     let ctx = RequestContext::new(
         OrganizationId::new("datazen-local"),
         PrincipalId::new("datazen-local-user"),
@@ -112,6 +128,35 @@ pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<
     if interrupted > 0 {
         tracing::info!(interrupted, "interrupted desktop jobs require verification");
     }
+    for grant in state
+        .store
+        .app_db()
+        .list_monitor_grants()
+        .map_err(|_| "monitor job recovery identity lookup failed".to_string())?
+    {
+        let service_ctx = grant.context();
+        let monitor_jobs = state
+            .desktop_job_host
+            .mark_restart_candidates_for_verification(
+                &service_ctx,
+                RecoveryFilter {
+                    kinds: vec!["monitorOccurrence".into()],
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|_| "monitor job recovery scan failed".to_string())?;
+        let interrupted = monitor_jobs
+            .iter()
+            .filter(|job| job.view.pending_verification_reason.is_some())
+            .count();
+        if interrupted > 0 {
+            tracing::info!(
+                interrupted,
+                "interrupted monitor occurrences require verification"
+            );
+        }
+    }
     Ok(())
 }
 
@@ -122,11 +167,6 @@ pub(crate) fn finish_app_state(
     prompts_dir: Option<PathBuf>,
 ) -> AppState {
     let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
-    let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
-    connection_manager.clone().start_cleanup_task();
-    let monitor_connections = Arc::new(crate::monitor::MonitorConnectionRegistry::new(
-        connection_manager.clone(),
-    ));
     let monitor_engine = MonitorEngine::new(store.clone());
 
     let data_dir = store.data_dir().to_path_buf();
@@ -143,10 +183,14 @@ pub(crate) fn finish_app_state(
 
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
+    let platform = crate::platform::PlatformEntry::launch();
+    let schema_source = Arc::new(crate::ai::metadata_source::RuntimeSchemaSource::new(
+        registry.clone(),
+        store.clone(),
+        platform.clone(),
+    ));
     let state = AppState {
         driver_registry: registry,
-        connection_manager: connection_manager.clone(),
-        monitor_connections,
         monitor_engine: monitor_engine.clone(),
         store,
         schema_cache: schema_cache.clone(),
@@ -154,22 +198,19 @@ pub(crate) fn finish_app_state(
         ai_registry: Arc::new(crate::ai::AiProviderRegistry::with_http_client(
             datazen_ai_providers::http::HttpClient::desktop(),
         )),
-        schema_context_builder: Arc::new(SchemaContextBuilder::new(
-            schema_cache,
-            connection_manager,
-        )),
+        schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_cache, schema_source)),
         prompt_resolver: Arc::new(crate::ai::PromptResolver::new(&data_dir, prompts_dir)),
         workflow_registry: Arc::new(workflow::WorkflowRegistry::new(app_db, data_dir.clone())),
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
-        session_transactions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         // 概要 §6.2 第 8 步：身份在启动期组装一次。组装失败时把原因存进
         // PlatformEntry，依赖身份的 IPC 调用会拿到明确错误，而不是静默继续。
-        platform: crate::platform::PlatformEntry::launch(),
+        platform,
         query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
         wapps: wapp_manager,
         cancel_registry: crate::ai::CancellationRegistry::default(),
+        ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
         desktop_job_host,
     };

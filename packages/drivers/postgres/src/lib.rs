@@ -7,6 +7,7 @@ use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::*;
 
 mod admin_commands;
+mod backup_stream;
 mod catalog;
 mod connection;
 mod control;

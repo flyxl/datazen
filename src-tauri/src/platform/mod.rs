@@ -6,6 +6,7 @@ pub mod handles;
 pub mod identity;
 pub mod ipc;
 pub mod live_source;
+pub mod native_tool;
 pub mod policy;
 pub mod repositories;
 pub mod resource_budget;

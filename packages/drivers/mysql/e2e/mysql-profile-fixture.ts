@@ -1,5 +1,6 @@
 import { browser } from '@wdio/globals';
-import { invokeBackend } from '../../../../e2e/helpers.js';
+import { invokeMonitorBackend } from '../../../../e2e/helpers/monitor-journey.js';
+import { withFixtureCleanup } from '../../../../e2e/helpers/fixture-cleanup.js';
 
 type Profile = { id: string; database: string };
 type FixtureResult = { profile?: Profile; created?: boolean; error?: string };
@@ -17,7 +18,7 @@ export async function withMysqlProfile<T>(journey: (profile: Profile) => Promise
   };
   // A unique id can be cleaned after an ambiguous WebDriver/save timeout.
   let owned = true;
-  try {
+  return withFixtureCleanup(async () => {
     const result = await browser.executeAsync(async (id: string, env: typeof environment,
       done: (result: FixtureResult) => void) => {
       const api = window as unknown as { __TAURI_INTERNALS__: {
@@ -57,7 +58,7 @@ export async function withMysqlProfile<T>(journey: (profile: Profile) => Promise
     owned = result.created === true;
     if (!result.profile) throw new Error(result.error || 'MYSQL_FIXTURE_UNAVAILABLE');
     return await journey(result.profile);
-  } finally {
-    if (owned) await invokeBackend('delete_connection', { id: fixtureId });
-  }
+  }, [{ label: 'mysql-source-profile', run: async () => {
+    if (owned) await invokeMonitorBackend('delete_connection', { id: fixtureId });
+  } }]);
 }

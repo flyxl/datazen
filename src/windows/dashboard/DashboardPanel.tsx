@@ -679,6 +679,7 @@ export function DashboardPanel({
       {dashboardMainContent}
 
       <WidgetEditorDrawer
+        dashboardId={dashboardId}
         open={editorOpen}
         widget={editingWidget}
         isNew={isNewWidget}

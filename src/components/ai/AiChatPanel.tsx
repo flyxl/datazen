@@ -18,9 +18,9 @@ import { AiInput } from './AiInput';
 import { AiMessageContent } from './AiMessageContent';
 import { useI18n } from '../../hooks/useI18n';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
+import { useAiEditorGrant } from '../../hooks/useAiEditorGrant';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
-import { aiCommands } from '../../commands/ai';
 import { openDocsWindow, openSettingsWindow } from '../../lib/windowManager';
 import { WorkflowPanel } from './WorkflowPanel';
 import { splitContextItems } from '../../lib/contextItems';
@@ -51,6 +51,13 @@ interface AiChatPanelProps {
   draftRequest?: AiChatDraftRequest | null;
   /** S3-B2: called after the draft has been written into the textarea. */
   onDraftConsumed?: (requestId: string) => void;
+  /** Persisted connection id of the active workspace, for editor-session grants. */
+  connectionId?: string;
+  /**
+   * Stable owner id (pane key) of the editor session this panel may share.
+   * `undefined` when the active tab has no query editor.
+   */
+  editorSessionId?: string;
 }
 
 function formatMcpToolDisplayName(qualifiedName: string): string {
@@ -68,6 +75,8 @@ export function AiChatPanel({
   kvContext,
   draftRequest,
   onDraftConsumed,
+  connectionId,
+  editorSessionId,
 }: AiChatPanelProps) {
   const { t } = useI18n();
   const chatSession = useAiStore((s) => s.chatSession);
@@ -75,6 +84,7 @@ export function AiChatPanel({
   const initChat = useAiStore((s) => s.initChatSession);
   const sendMessage = useAiStore((s) => s.sendChatMessage);
   const clearChat = useAiStore((s) => s.clearChat);
+  const cancelChat = useAiStore((s) => s.cancelChat);
   const settingsConfig = useAiStore((s) => s.settingsConfig);
   const setActiveProfile = useAiStore((s) => s.setActiveProfile);
   const loadConfig = useAiStore((s) => s.loadConfig);
@@ -103,6 +113,14 @@ export function AiChatPanel({
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const { atBottom, unreadCount, jumpToBottom, onScroll, containerRef } = useAutoScroll();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // P6 §14.4: sharing the current editor session is opt-in. Default stays
+  // `independent`; a denied grant shows an error and stays independent.
+  const { canShare, sharing, error: shareError, setSharing, claimForSend } = useAiEditorGrant({
+    connectionId,
+    database,
+    editorSessionId,
+  });
 
   // ── S3-B2: AI draft bridge ──────────────────────────────────────────────
   // Track the last processed draft to avoid re-processing.
@@ -189,17 +207,29 @@ export function AiChatPanel({
       content: composeKvAiMessage(input.trim(), kvContext ?? null),
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
       contextTables: contextTables.length > 0 ? contextTables : undefined,
+      targetClaim: claimForSend(),
     });
     setInput('');
     setContextItems([]);
-  }, [input, chatSession, sendMessage, dbSessionId, database, contextItems, kvContext]);
+  }, [input, chatSession, sendMessage, dbSessionId, database, contextItems, kvContext, claimForSend]);
 
-  // BUG-01: Provide onStop so users can cancel streaming replies.
+  // BUG-01: Provide onStop so users can cancel streaming replies. The store
+  // owns the receipt handling (marked / alreadyFinished / forbidden).
   const handleStop = useCallback(() => {
-    if (chatSession?.requestId) {
-      void aiCommands.cancel(chatSession.requestId);
-    }
+    void cancelChat(chatSession?.requestId ?? undefined);
+  }, [cancelChat, chatSession?.requestId]);
+
+  // Unmount or switching pane/connection: cancel the in-flight run the panel
+  // started, so a hidden stream cannot keep consuming tokens.
+  const requestIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    requestIdRef.current = chatSession?.requestId ?? null;
   }, [chatSession?.requestId]);
+  useEffect(() => {
+    return () => {
+      if (requestIdRef.current) void cancelChat(requestIdRef.current);
+    };
+  }, [cancelChat, dbSessionId, editorSessionId]);
 
   if (!isConfigured) {
     return (
@@ -307,6 +337,47 @@ export function AiChatPanel({
               }))}
             />
           </div>
+        </div>
+      )}
+
+      {tab === 'chat' && (
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-edge/60 px-3 py-1"
+          data-testid="ai-share-editor-row"
+        >
+          <label
+            className={cn(
+              'flex items-center gap-1.5 text-[11px] text-fg-muted',
+              !canShare && 'cursor-not-allowed opacity-60',
+            )}
+            title={canShare ? undefined : t('chat.shareEditor.unavailable')}
+          >
+            <input
+              type="checkbox"
+              role="switch"
+              aria-checked={sharing}
+              className="h-3 w-3"
+              checked={sharing}
+              disabled={!canShare}
+              onChange={(event) => void setSharing(event.target.checked)}
+              data-testid="ai-share-editor-toggle"
+            />
+            <span>{t('chat.shareEditor.label')}</span>
+          </label>
+          {!canShare && (
+            <span className="text-[10px] text-fg-muted/70">
+              {t('chat.shareEditor.unavailable')}
+            </span>
+          )}
+          {shareError && (
+            <span
+              className="text-[10px] text-red-400"
+              role="alert"
+              data-testid="ai-share-editor-error"
+            >
+              {t('chat.shareEditor.error', { error: shareError })}
+            </span>
+          )}
         </div>
       )}
 
@@ -574,6 +645,12 @@ function ChatBubble({
         {!message.content && isStreaming && message.reasoning && (
           <div className="flex items-center gap-1 text-[10px] text-fg-muted mt-1">
             <Spinner size="sm" label={t('chat.thinking')} />
+          </div>
+        )}
+
+        {message.cancelled && (
+          <div className="mt-1 text-[10px] text-fg-muted" data-testid="chat-message-cancelled">
+            {t('chat.cancelled')}
           </div>
         )}
       </div>

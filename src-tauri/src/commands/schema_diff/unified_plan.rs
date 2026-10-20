@@ -124,21 +124,23 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
             "table_names and target_table_names must have the same length".into(),
         ));
     }
-    if normalize_dialect(
-        &state
-            .connection_manager
-            .get_session_config(&source_db_session_id)
-            .await
-            .cmd_err("prepare_schema_unified_plan")?
-            .database_type,
-    ) != normalize_dialect(
-        &state
-            .connection_manager
-            .get_session_config(&target_db_session_id)
-            .await
-            .cmd_err("prepare_schema_unified_plan")?
-            .database_type,
-    ) && source_objects.is_empty()
+    let source_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &source_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let target_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let source_config = source_context.config.clone();
+    let target_config = target_context.config.clone();
+    if normalize_dialect(&source_config.database_type)
+        != normalize_dialect(&target_config.database_type)
+        && source_objects.is_empty()
         && target_objects.is_empty()
     {
         return super::prepare_schema_diff_plan_with_schemas_impl(
@@ -157,16 +159,6 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
         .await;
     }
 
-    let source_config = state
-        .connection_manager
-        .get_session_config(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_unified_plan")?;
-    let target_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_unified_plan")?;
     if target_config.read_only {
         return Err(CommandError::Validation(
             "Target connection is read-only".into(),
@@ -182,16 +174,10 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
         ));
     }
 
-    let (source_driver, source_handle) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_unified_plan")?;
-    let (target_driver, target_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_unified_plan")?;
+    let source_driver = source_context.driver.clone();
+    let source_handle = source_context.handle.clone();
+    let target_driver = target_context.driver.clone();
+    let target_handle = target_context.handle.clone();
     let target_dependency_schema_scope = if uses_schema_scope(&target_config.database_type) {
         target_schema_scope.or(target_driver.default_schema())
     } else {

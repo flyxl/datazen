@@ -240,7 +240,7 @@ impl JobRuntime {
             };
             self.repo.record_stage(ctx, &claim, stage_record).await?;
             let result = self
-                .run_stage_watched(ctx, job_id, handler.clone(), spec, &cancel)
+                .run_stage_watched(ctx, job_id, &claim, handler.clone(), spec, &cancel)
                 .await;
             let outcome = match result {
                 Ok(outcome) => outcome,
@@ -399,6 +399,7 @@ impl JobRuntime {
         &self,
         ctx: &RequestContext,
         job_id: &JobId,
+        claim: &datazen_platform_api::dto::job::JobClaim,
         handler: Arc<dyn crate::job::handler::JobHandler>,
         spec: &StageSpec,
         cancel: &CancelToken,
@@ -413,9 +414,15 @@ impl JobRuntime {
         let handler_for_stage = handler.clone();
         let stage_spec = spec.clone();
         let stage_cancel = cancel.clone();
+        let owner = crate::job::StageOwnerPermit::new(
+            self.repo.clone(),
+            ctx.clone(),
+            claim.clone(),
+            spec.stage_id.clone(),
+        );
         let stage = tokio::spawn(async move {
             handler_for_stage
-                .run_stage(&stage_spec, &stage_cancel)
+                .run_stage_authorized(&stage_spec, &stage_cancel, owner)
                 .await
         });
         // 先 abort 再 await：await 返回之后这条任务确定已经结束，不会在

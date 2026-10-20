@@ -30,55 +30,10 @@ pub enum DashboardExecuteError {
     Store(#[from] crate::dashboard::store::DashboardStoreError),
 }
 
-fn build_error_run(
-    run_id: String,
-    dashboard_id: &str,
-    widget: &DashboardWidget,
-    started_at: DateTime<Utc>,
-    finished_at: DateTime<Utc>,
-    error: &str,
-) -> WidgetRun {
-    WidgetRun {
-        id: run_id,
-        dashboard_id: dashboard_id.to_string(),
-        widget_id: widget.id.clone(),
-        workflow_id: widget.workflow_id.clone(),
-        started_at: started_at.to_rfc3339(),
-        finished_at: finished_at.to_rfc3339(),
-        status: WidgetRunStatus::Error,
-        error: Some(error.to_string()),
-        row_count: 0,
-        columns: Vec::new(),
-        rows: Vec::new(),
-        alert_fired: None,
-        alert_value: None,
-    }
-}
-
-fn build_timeout_run(
-    run_id: String,
-    dashboard_id: &str,
-    widget: &DashboardWidget,
-    started_at: DateTime<Utc>,
-    finished_at: DateTime<Utc>,
-    timeout_sec: u64,
-) -> WidgetRun {
-    WidgetRun {
-        id: run_id,
-        dashboard_id: dashboard_id.to_string(),
-        widget_id: widget.id.clone(),
-        workflow_id: widget.workflow_id.clone(),
-        started_at: started_at.to_rfc3339(),
-        finished_at: finished_at.to_rfc3339(),
-        status: WidgetRunStatus::Timeout,
-        error: Some(format!("Workflow timed out after {timeout_sec}s")),
-        row_count: 0,
-        columns: Vec::new(),
-        rows: Vec::new(),
-        alert_fired: None,
-        alert_value: None,
-    }
-}
+pub use datazen_feature_core::dashboard::execute::{
+    build_error_run, build_timeout_run, extract_table_from_execution, parse_final_output_as_table,
+    parse_step_result_value,
+};
 
 /// Build and persist an error-status run using monitor retention settings.
 #[allow(dead_code)]
@@ -105,99 +60,27 @@ pub(crate) fn persist_error_run(
     Ok(run)
 }
 
-fn cap_rows(
-    columns: Vec<String>,
-    rows: Vec<Vec<serde_json::Value>>,
-) -> (Vec<String>, Vec<Vec<serde_json::Value>>, u32) {
-    let row_count = rows.len() as u32;
-    if rows.len() > MAX_RUN_ROWS {
-        (
-            columns,
-            rows.into_iter().take(MAX_RUN_ROWS).collect(),
-            row_count,
-        )
-    } else {
-        (columns, rows, row_count)
+struct DesktopWidgetHost<'a> {
+    app_state: &'a AppState,
+    app_db: &'a AppDb,
+    settings: &'a AppSettings,
+}
+#[async_trait::async_trait]
+impl datazen_feature_core::dashboard::execute::WidgetExecutionHost for DesktopWidgetHost<'_> {
+    async fn execute_workflow(&self, id: &str) -> Result<WorkflowExecutionResult, String> {
+        let workflow = self
+            .app_state
+            .workflow_registry
+            .get(id)
+            .await
+            .ok_or_else(|| format!("Workflow '{id}' not found"))?;
+        WorkflowExecutor::execute(&workflow, self.app_state, None, &serde_json::json!({})).await
+    }
+    async fn persist_run(&self, run: &WidgetRun) -> Result<(), String> {
+        write_run(self.app_db, run, &load_monitor_settings(self.settings))
+            .map_err(|error| error.to_string())
     }
 }
-
-/// Parse workflow query step JSON or final_output text into tabular data.
-pub fn parse_step_result_value(
-    value: &serde_json::Value,
-) -> Option<(Vec<String>, Vec<Vec<serde_json::Value>>)> {
-    if let Some(cols) = value.get("columns").and_then(|c| c.as_array()) {
-        let col_names: Vec<String> = cols
-            .iter()
-            .filter_map(|c| {
-                c.as_str()
-                    .map(String::from)
-                    .or_else(|| c.get("name").and_then(|n| n.as_str()).map(String::from))
-            })
-            .collect();
-        if let Some(rows_val) = value.get("rows").and_then(|r| r.as_array()) {
-            let rows = rows_objects_to_matrix(&col_names, rows_val);
-            return Some((col_names, rows));
-        }
-    }
-
-    if let Some(rows_val) = value.get("rows").and_then(|r| r.as_array()) {
-        if rows_val.first().and_then(|r| r.as_object()).is_some() {
-            let col_names = rows_val
-                .first()
-                .and_then(|r| r.as_object())
-                .map(|obj| obj.keys().cloned().collect::<Vec<_>>())
-                .unwrap_or_default();
-            let rows = rows_objects_to_matrix(&col_names, rows_val);
-            return Some((col_names, rows));
-        }
-    }
-
-    None
-}
-
-fn rows_objects_to_matrix(
-    col_names: &[String],
-    rows_val: &[serde_json::Value],
-) -> Vec<Vec<serde_json::Value>> {
-    rows_val
-        .iter()
-        .filter_map(|row| {
-            let obj = row.as_object()?;
-            Some(
-                col_names
-                    .iter()
-                    .map(|name| obj.get(name).cloned().unwrap_or(serde_json::Value::Null))
-                    .collect(),
-            )
-        })
-        .collect()
-}
-
-/// Parse workflow final_output string into tabular data.
-pub fn parse_final_output_as_table(
-    output: &str,
-) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
-    let trimmed = output.trim();
-    if trimmed.is_empty() {
-        return Ok((Vec::new(), Vec::new()));
-    }
-
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
-        if let Some(table) = parse_step_result_value(&value) {
-            return Ok(table);
-        }
-    }
-
-    Err("Could not parse workflow output as table".into())
-}
-
-pub fn extract_table_from_execution(
-    result: &WorkflowExecutionResult,
-) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
-    parse_final_output_as_table(&result.final_output)
-}
-
-/// Execute a widget once via WorkflowExecutor (does not write workflow_history).
 pub async fn execute_widget_once(
     app_state: &AppState,
     app_db: &AppDb,
@@ -205,73 +88,17 @@ pub async fn execute_widget_once(
     dashboard_id: &str,
     widget: &DashboardWidget,
 ) -> Result<WidgetRun, DashboardExecuteError> {
-    let started_at = Utc::now();
-    let run_id = Uuid::new_v4().to_string();
-    let timeout_sec = DEFAULT_QUERY_TIMEOUT_SEC;
-
-    let workflow = app_state
-        .workflow_registry
-        .get(&widget.workflow_id)
-        .await
-        .ok_or_else(|| {
-            DashboardExecuteError::Workflow(format!("Workflow '{}' not found", widget.workflow_id))
-        })?;
-
-    let exec_result = tokio::time::timeout(
-        Duration::from_secs(timeout_sec),
-        WorkflowExecutor::execute(&workflow, app_state, None, &serde_json::json!({})),
-    )
-    .await;
-
-    let finished_at = Utc::now();
-
-    let mut run = match exec_result {
-        Ok(Ok(result)) if result.success => match extract_table_from_execution(&result) {
-            Ok((columns, rows)) => {
-                let (columns, rows, row_count) = cap_rows(columns, rows);
-                WidgetRun {
-                    id: run_id,
-                    dashboard_id: dashboard_id.to_string(),
-                    widget_id: widget.id.clone(),
-                    workflow_id: widget.workflow_id.clone(),
-                    started_at: started_at.to_rfc3339(),
-                    finished_at: finished_at.to_rfc3339(),
-                    status: WidgetRunStatus::Ok,
-                    error: None,
-                    row_count,
-                    columns,
-                    rows,
-                    alert_fired: None,
-                    alert_value: None,
-                }
-            }
-            Err(e) => build_error_run(run_id, dashboard_id, widget, started_at, finished_at, &e),
+    datazen_feature_core::dashboard::execute::execute_widget_once(
+        &DesktopWidgetHost {
+            app_state,
+            app_db,
+            settings,
         },
-        Ok(Ok(result)) => build_error_run(
-            run_id,
-            dashboard_id,
-            widget,
-            started_at,
-            finished_at,
-            &result.error.unwrap_or_else(|| "Workflow failed".into()),
-        ),
-        Ok(Err(e)) => build_error_run(run_id, dashboard_id, widget, started_at, finished_at, &e),
-        Err(_elapsed) => build_timeout_run(
-            run_id,
-            dashboard_id,
-            widget,
-            started_at,
-            finished_at,
-            timeout_sec,
-        ),
-    };
-
-    evaluate_run_alert(&mut run, widget);
-
-    let retention = load_monitor_settings(settings);
-    write_run(app_db, &run, &retention)?;
-
-    Ok(run)
+        dashboard_id,
+        widget,
+    )
+    .await
+    .map_err(DashboardExecuteError::Workflow)
 }
 
 #[cfg(test)]

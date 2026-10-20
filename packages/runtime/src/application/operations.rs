@@ -33,6 +33,7 @@ impl RuntimeConnectionUseCases {
                 | "read_relation_columns"
                 | "read_relation_schema"
                 | "refresh_schema_metadata"
+                | "backup_dump"
         ) {
             AuthorizationAction::Query
         } else {
@@ -40,7 +41,46 @@ impl RuntimeConnectionUseCases {
         };
         self.authorize(ctx, action.clone()).await?;
         let view = self.session_view(ctx, &request.handle).await?;
+        self.authorize_target(
+            ctx,
+            action.clone(),
+            &view.initial_target,
+            &request.call.command,
+            &request.call.input,
+        )
+        .await?;
         let entry = self.session_entry(ctx, &request.handle)?;
+        if request.call.command == "backup_dump"
+            && !lock(&self.inner.sink.2).contains_key(&request.handle)
+        {
+            return Err(ApiError::new(
+                ApiErrorCode::PermissionDenied,
+                "backup output must be bound before admission",
+            ));
+        }
+        if matches!(&entry.owner, OwnerRef::ClientSession { purpose, .. } if purpose == "tableExport")
+        {
+            let binding = lock(&self.inner.sink.3)
+                .get(&request.handle)
+                .cloned()
+                .ok_or_else(|| {
+                    ApiError::new(
+                        ApiErrorCode::PermissionDenied,
+                        "export output must be bound",
+                    )
+                })?;
+            let mut submission = lock(&binding.submission);
+            let key = request.idempotency_key.as_str();
+            if request.call.command != "query"
+                || submission.as_ref().is_some_and(|prior| prior != key)
+            {
+                return Err(ApiError::new(
+                    ApiErrorCode::PermissionDenied,
+                    "export permits one query only",
+                ));
+            }
+            *submission = Some(key.to_owned());
+        }
         // Resolve provenance before accepting the command. If the actor has
         // already retired this physical resource, fail before creating an
         // accepted gateway receipt that cannot be admitted to the durable sink.
@@ -64,6 +104,9 @@ impl RuntimeConnectionUseCases {
                 .map(|(key, value)| (key, serde_json::Value::String(value)))
                 .collect(),
         };
+        let dispatch_target = view.initial_target.clone();
+        let dispatch_command = request.call.command.clone();
+        let dispatch_input = request.call.input.clone();
         let gateway_request = ExecutionRequest::new(
             convert::handle(&request.handle)?,
             request
@@ -77,6 +120,7 @@ impl RuntimeConnectionUseCases {
             Self::source(ctx, &entry),
         );
         let fingerprint = gateway_request.fingerprint();
+        let mut activity = self.begin_idle_activity(&request.handle).await?;
         let accepted = self
             .inner
             .gateway
@@ -110,6 +154,7 @@ impl RuntimeConnectionUseCases {
                     error_code: None,
                     runtime_binding: None,
                 },
+                dispatch_command.clone(),
             );
             let service = self.clone();
             let ctx = ctx.clone();
@@ -117,15 +162,37 @@ impl RuntimeConnectionUseCases {
             let id = receipt.execution_id.clone();
             tokio::spawn(async move {
                 // The async policy port is checked again immediately before physical dispatch.
-                let result = match service.authorize(&ctx, action).await {
-                    Ok(()) => service
-                        .inner
-                        .gateway
-                        .dispatch(&Self::principal(&ctx, &handle), &id)
-                        .await
-                        .map_err(gateway_error),
+                // Pending authorization owns a bounded hold, not business TTL.
+                let authorization = tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    service.authorize_target(
+                        &ctx,
+                        action,
+                        &dispatch_target,
+                        &dispatch_command,
+                        &dispatch_input,
+                    ),
+                )
+                .await
+                .unwrap_or_else(|_| {
+                    Err(ApiError::new(
+                        ApiErrorCode::PermissionDenied,
+                        "dispatch authorization timed out",
+                    ))
+                });
+                let result = match authorization {
+                    Ok(()) => {
+                        activity.business_started();
+                        service
+                            .inner
+                            .gateway
+                            .dispatch(&Self::principal(&ctx, &handle), &id)
+                            .await
+                            .map_err(gateway_error)
+                    }
                     Err(error) => Err(error),
                 };
+                activity.finish().await;
                 let resource_lost = result
                     .as_ref()
                     .err()
@@ -159,6 +226,8 @@ impl RuntimeConnectionUseCases {
                         .await;
                 }
             });
+        } else {
+            activity.finish().await;
         }
         Ok(receipt)
     }
@@ -176,7 +245,14 @@ impl RuntimeConnectionUseCases {
             IdempotentOperation::ExecuteAtTarget,
             None,
         )?;
-        self.authorize(ctx, AuthorizationAction::Query).await?;
+        self.authorize_target(
+            ctx,
+            AuthorizationAction::Query,
+            &request.target,
+            &request.call.command,
+            &request.call.input,
+        )
+        .await?;
         let profile = self.profile(ctx, &request.target.connection_id).await?;
         if profile.config_revision.counter() != request.expected_config_revision {
             return Err(ApiError::new(
@@ -259,7 +335,7 @@ impl RuntimeConnectionUseCases {
         Ok(receipt)
     }
 }
-fn utc_now() -> String {
+pub(super) fn utc_now() -> String {
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -314,7 +390,14 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         request: OpenSessionRequest,
     ) -> Result<OpenSessionReceipt, ApiError> {
         request.validate()?;
-        self.authorize(ctx, AuthorizationAction::Connect).await?;
+        self.authorize_target(
+            ctx,
+            AuthorizationAction::Connect,
+            &request.initial_target,
+            "open_session",
+            &serde_json::Value::Null,
+        )
+        .await?;
         convert::owner(ctx, &request.initial_target.connection_id, &request.owner)?;
         self.validate_token(
             ctx,
@@ -395,9 +478,7 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         if let Some(entry) = lock(&self.inner.sessions).get_mut(&request.handle.db_session_id) {
             entry.attached = true;
         }
-        // 重新挂上就是「又有人用了」：把摘挂载宽限推回正常期限，免得刚挂上就被回收。
-        // actor 侧 `set_idle_deadline` 是**替换**语义，所以推回去就真的推回去了。
-        self.refresh_idle_deadline(&request.handle).await?;
+        // Attachment proves ownership, not business activity. Preserve the deadline.
         self.session_view(ctx, &request.handle).await
     }
     async fn detach_session(
@@ -501,6 +582,11 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         request: SetSessionContextRequest,
     ) -> Result<ContextChangeReceipt, ApiError> {
         request.validate()?;
+        if ctx.is_delegated() {
+            return Err(ApiError::permission_denied(
+                "delegated session targets are immutable",
+            ));
+        }
         self.authorize(ctx, AuthorizationAction::Connect).await?;
         self.validate_token(
             ctx,
@@ -610,7 +696,7 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         request: CloseSessionRequest,
     ) -> Result<CloseReceipt, ApiError> {
         request.validate()?;
-        self.authorize(ctx, AuthorizationAction::Connect).await?;
+        // Owner checks still apply after policy revocation so cleanup remains possible.
         let entry = self.session_entry(ctx, &request.handle)?;
         if let Some(receipt) = entry.closed {
             return Ok(receipt);
@@ -685,6 +771,8 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
                 .remove(&convert::handle(&request.handle)?.runtime_epoch.get());
         }
         self.reclaim_session_tombstones();
+        lock(&self.inner.transaction_unknown).remove(&request.handle);
+        lock(&self.inner.transaction_gates).remove(&request.handle);
         self.inner.sink.invalidate(&request.handle);
         Ok(receipt)
     }

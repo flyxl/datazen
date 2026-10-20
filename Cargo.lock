@@ -1683,6 +1683,7 @@ dependencies = [
  "datazen-driver-mysql",
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
+ "datazen-feature-core",
  "datazen-platform-api",
  "datazen-platform-infra",
  "datazen-runtime",
@@ -1694,6 +1695,7 @@ dependencies = [
  "hmac 0.12.1",
  "inventory",
  "keyring",
+ "libc",
  "objc2",
  "objc2-app-kit",
  "open",
@@ -1955,13 +1957,20 @@ version = "0.0.10"
 dependencies = [
  "async-trait",
  "chrono",
+ "datazen-application",
  "datazen-driver-api",
+ "datazen-feature-core",
+ "datazen-platform-api",
+ "datazen-runtime",
  "datazen-schema-diff",
+ "flate2",
  "futures-util",
  "rust_decimal",
  "serde_json",
+ "sha2 0.10.9",
  "sqlparser",
  "sqlx",
+ "tempfile",
  "tokio",
  "tracing",
  "urlencoding",
@@ -1974,13 +1983,20 @@ version = "0.0.10"
 dependencies = [
  "async-trait",
  "chrono",
+ "datazen-application",
  "datazen-driver-api",
+ "datazen-feature-core",
+ "datazen-platform-api",
+ "datazen-runtime",
  "datazen-schema-diff",
+ "flate2",
  "futures-util",
  "rust_decimal",
  "serde_json",
+ "sha2 0.10.9",
  "sqlparser",
  "sqlx",
+ "tempfile",
  "tokio",
  "tracing",
  "uuid",
@@ -2107,6 +2123,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "datazen-feature-core"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "datazen-ai-api",
+ "datazen-application",
+ "datazen-data-sync",
+ "datazen-data-transfer",
+ "datazen-driver-api",
+ "datazen-platform-api",
+ "datazen-platform-infra",
+ "datazen-runtime",
+ "datazen-schema-diff",
+ "flate2",
+ "futures-util",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "sqlparser",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "zip 2.4.2",
+]
+
+[[package]]
 name = "datazen-migration-common"
 version = "0.0.1"
 dependencies = [
@@ -2152,6 +2200,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "syn 2.0.119",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -2184,6 +2233,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 1.0.69",
+ "tracing",
  "uuid",
  "zip 2.4.2",
 ]

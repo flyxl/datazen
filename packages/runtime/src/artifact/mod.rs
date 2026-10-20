@@ -1,5 +1,9 @@
 //! Durable, bounded result storage. Metadata rename is the publication boundary.
 //! Unfinished writers are recovered as truncated; writer capabilities never survive restart.
+mod execution;
+/// Existing aggregate ArtifactStore published-byte quota.
+pub const ARTIFACT_BYTE_QUOTA: u64 = 256 * 1024 * 1024;
+
 use async_trait::async_trait;
 use datazen_platform_api::{
     context::RequestContext,
@@ -8,6 +12,7 @@ use datazen_platform_api::{
     id::*,
     ports::artifact::*,
 };
+pub(crate) use execution::ExecutionArtifactScope;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -26,6 +31,10 @@ struct Record {
     organization: OrganizationId,
     owner: PrincipalId,
     execution: ExecutionId,
+    #[serde(default)]
+    delegated_execution: bool,
+    #[serde(skip)]
+    execution_scope: Option<ExecutionArtifactScope>,
     fingerprint: String,
     expires: u64,
     metadata: ArtifactMetadata,
@@ -152,6 +161,12 @@ impl FileArtifactStore {
                 tracing::warn!("corrupt artifact metadata removed during recovery");
                 continue;
             };
+            // Delegated result access is a process-local admitted capability.
+            // Neither its scope nor writer may be reconstructed after restart.
+            if record.delegated_execution {
+                fs::remove_dir_all(item.path()).map_err(|_| unavailable())?;
+                continue;
+            }
             let valid = item.file_name().to_str() == Some(record.metadata.artifact_id.as_str())
                 && record.metadata.published_chunk_count.get() == record.sizes.len() as u64
                 && record.sizes.len() <= 65536
@@ -161,7 +176,7 @@ impl FileArtifactStore {
                     .iter()
                     .try_fold(0u64, |sum, size| sum.checked_add(*size))
                     == Some(record.metadata.published_byte_size.get())
-                && record.metadata.published_byte_size.get() <= 256 * 1024 * 1024
+                && record.metadata.published_byte_size.get() <= ARTIFACT_BYTE_QUOTA
                 && record.sizes.iter().enumerate().all(|(index, size)| {
                     fs::symlink_metadata(item.path().join(format!("{index}.chunk")))
                         .is_ok_and(|meta| meta.is_file() && meta.len() == *size)
@@ -173,7 +188,7 @@ impl FileArtifactStore {
             if !valid
                 || state.records.len() >= 4096
                 || total.saturating_add(record.metadata.published_byte_size.get())
-                    > 256 * 1024 * 1024
+                    > ARTIFACT_BYTE_QUOTA
             {
                 fs::remove_dir_all(item.path()).map_err(|_| unavailable())?;
                 tracing::warn!("invalid or excess artifact removed during recovery");
@@ -248,7 +263,8 @@ impl FileArtifactStore {
             .records
             .get(id)
             .filter(|r| {
-                r.organization == ctx.organization_id
+                !r.delegated_execution
+                    && r.organization == ctx.organization_id
                     && r.owner == ctx.principal_id
                     && ctx.delegation_id.is_none()
             })
@@ -288,57 +304,7 @@ impl FileArtifactStore {
         {
             return Err(PortError::TokenInvalid);
         }
-        self.expire_at(now())?;
-        let mut state = self.state.lock().map_err(|_| unavailable())?;
-        if state.records.len() >= 4096 {
-            return Err(PortError::QuotaExceeded("artifact count".into()));
-        }
-        let id = ArtifactId::new(
-            crate::directory::DbSessionIdGenerator::new()
-                .generate()
-                .as_str(),
-        );
-        let lease = LeaseId::new(
-            crate::directory::DbSessionIdGenerator::new()
-                .generate()
-                .as_str(),
-        );
-        let record = Record {
-            organization: spec.organization_id,
-            owner: spec.owner_principal_id,
-            execution: spec.execution_id,
-            fingerprint: spec.target_fingerprint,
-            expires: now().saturating_add(spec.ttl_seconds),
-            sizes: Vec::new(),
-            writer: Some(lease.clone()),
-            unpublished_bytes: 0,
-            metadata: ArtifactMetadata {
-                artifact_id: id.clone(),
-                lifecycle: ArtifactLifecycle::Writing,
-                published_chunk_count: Counter::ZERO,
-                published_byte_size: Counter::ZERO,
-                total_chunks: None,
-                result_completeness: ResultCompleteness::Pending,
-                truncation_reason: None,
-            },
-        };
-        fs::create_dir(self.dir(&id)).map_err(|_| unavailable())?;
-        private_dir(&self.dir(&id))?;
-        if let Err(error) = self.commit(&record) {
-            let _ = fs::remove_dir_all(self.dir(&id));
-            return Err(error);
-        }
-        state.records.insert(id.clone(), record);
-        Ok((
-            id.clone(),
-            ArtifactWriter {
-                artifact_id: id,
-                lease_id: lease,
-                next_chunk_index: Counter::ZERO,
-                published_chunk_count: Counter::ZERO,
-                published_byte_size: Counter::ZERO,
-            },
-        ))
+        self.create_record(spec, None)
     }
     pub fn append_sync(
         &self,
@@ -353,7 +319,7 @@ impl FileArtifactStore {
         });
         let size = chunk.bytes.len() as u64;
         if size > 32 * 1024 * 1024
-            || total.saturating_add(size) > 256 * 1024 * 1024
+            || total.saturating_add(size) > ARTIFACT_BYTE_QUOTA
             || record.sizes.len() >= 65536
         {
             return Err(PortError::QuotaExceeded("artifact byte budget".into()));
@@ -427,7 +393,12 @@ impl FileArtifactStore {
         id: &ArtifactId,
     ) -> Result<ArtifactMetadata, PortError> {
         let s = self.state.lock().map_err(|_| unavailable())?;
-        Ok(self.visible(&s, ctx, id)?.metadata.clone())
+        let record = self.visible(&s, ctx, id)?;
+        let mut metadata = record.metadata.clone();
+        // The creation record is authoritative, including artifacts written by
+        // older versions before this field was exposed by describe.
+        metadata.target_fingerprint = record.fingerprint.clone();
+        Ok(metadata)
     }
     pub fn finish_sync(
         &self,
@@ -470,25 +441,7 @@ impl FileArtifactStore {
     ) -> Result<ArtifactChunk, PortError> {
         let s = self.state.lock().map_err(|_| unavailable())?;
         let r = self.visible(&s, ctx, id)?;
-        if !r.metadata.is_published(index) {
-            return Err(invalid());
-        }
-        let offset = r.sizes.iter().take(index.get() as usize).sum();
-        let bytes = read_block(
-            &self.dir(id).join(format!("{}.chunk", index.get())),
-            r.sizes[index.get() as usize],
-        )?;
-        if bytes.len() as u64 != r.sizes[index.get() as usize] {
-            return Err(unavailable());
-        }
-        Ok(ArtifactChunk {
-            artifact_id: id.clone(),
-            chunk_index: index,
-            total_chunks: r.metadata.total_chunks,
-            offset: Counter::new(offset),
-            bytes,
-            result_completeness: r.metadata.result_completeness,
-        })
+        self.read_record(id, index, r)
     }
     pub fn reclaim_expired_sync(&self) -> Result<Vec<ArtifactId>, PortError> {
         self.expire_at(now())

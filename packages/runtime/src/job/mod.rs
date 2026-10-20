@@ -14,6 +14,8 @@ pub mod desktop_host;
 pub mod error;
 pub mod handler;
 mod memory_runtime_repository;
+mod owner;
+pub use owner::StageOwnerPermit;
 pub mod plan;
 pub mod recovery;
 pub mod repository;

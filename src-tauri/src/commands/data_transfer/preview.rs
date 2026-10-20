@@ -79,16 +79,15 @@ async fn preview_sql_file_target(
     .map_err(CommandError::from)?;
     crate::data_transfer::metadata::metadata_relation_ref(&job.source, "")?;
 
-    let src_config = state
-        .connection_manager
-        .get_session_config(&job.source.db_session_id)
-        .await
-        .cmd_err("preview_data_transfer")?;
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&job.source.db_session_id)
-        .await
-        .cmd_err("preview_data_transfer")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &job.source.db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
+    let src_driver = src_context.driver.clone();
+    let src_handle = src_context.handle.clone();
     job.source.schema = crate::services::metadata_schema(
         src_driver.as_ref(),
         job.source.normalized_schema(),
@@ -450,27 +449,24 @@ pub(crate) async fn preview_data_transfer_impl(
         .as_mut()
         .ok_or_else(|| CommandError::Validation("database target is missing".into()))?;
 
-    let src_config = state
-        .connection_manager
-        .get_session_config(&job.source.db_session_id)
-        .await
-        .cmd_err("preview_data_transfer")?;
-    let tgt_config = state
-        .connection_manager
-        .get_session_config(&target.db_session_id)
-        .await
-        .cmd_err("preview_data_transfer")?;
-
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&job.source.db_session_id)
-        .await
-        .cmd_err("preview_data_transfer")?;
-    let (target_driver, target_handle) = state
-        .connection_manager
-        .get_session(&target.db_session_id)
-        .await
-        .cmd_err("preview_data_transfer")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &job.source.db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let tgt_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &target.db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
+    let tgt_config = tgt_context.config.clone();
+    let src_driver = src_context.driver.clone();
+    let src_handle = src_context.handle.clone();
+    let target_driver = tgt_context.driver.clone();
+    let target_handle = tgt_context.handle.clone();
     job.source.schema = crate::services::metadata_schema(
         src_driver.as_ref(),
         job.source.normalized_schema(),

@@ -5,7 +5,12 @@ use serde_json::Value;
 use crate::job::error::JobError;
 
 /// apply 类 Job 的 kind 集合。只有这些 kind 消费 planId（§2.1）。
-pub const APPLY_KINDS: [&str; 3] = ["schemaDiffApply", "dataSyncApply", "dataTransferApply"];
+pub const APPLY_KINDS: [&str; 4] = [
+    "schemaDiffApply",
+    "dataSyncApply",
+    "dataTransferApply",
+    "databaseRestoreApply",
+];
 
 /// 当前运行时支持 freeze 计划的 planVersion major。
 pub const SUPPORTED_PLAN_MAJOR: u64 = 1;

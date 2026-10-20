@@ -54,7 +54,7 @@
     "createUpdaterArtifacts": false,
     "targets": "all",
     "resources": {
-      "resources/prompts": "prompts",
+      "../packages/feature-core/resources/prompts": "prompts",
       "resources/builtin-ep": "builtin-ep"
     },
     "icon": [

@@ -15,6 +15,7 @@ path = "src/lib.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+datazen-feature-core = { path = "../packages/feature-core" }
 datazen-driver-api = { workspace = true }
 datazen-ai-api = { path = "../packages/ai-api" }
 datazen-ai-providers = { path = "../packages/ai-providers" }
@@ -90,7 +91,8 @@ aes = "0.8"
 cbc = "0.1"
 sha2 = "0.10"
 
-tempfile = { version = "3.27.0", optional = true }
+tempfile = "3.27.0"
+libc = "0.2"
 
 # macOS 静默 E2E：让 webdriver 构建在 `DATAZEN_E2E_QUIET` 下拒绝进程激活，
 # 避免本地跑测试时抢走开发者焦点（见 `src/e2e_quiet.rs`）。两个 crate 都由
@@ -107,14 +109,13 @@ objc2-app-kit = { version = "0.3.2", optional = true }
 default = []
 webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen-data-transfer/webdriver"]
 # Enables `datazen::test_harness` for src-tauri/tests/ IPC migration integration tests.
-test-harness = ["dep:tempfile"]
+test-harness = []
 # Driver features — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<driver-features>>
 # <</driver-features>>
 
 
 [dev-dependencies]
-tempfile = "3.27.0"
 wiremock = "0.6"
 sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql"] }
 datazen-driver-postgres = { path = "../packages/drivers/postgres" }

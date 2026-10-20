@@ -28,6 +28,18 @@ impl DesktopSessionBackend {
                 }
             }
         }
+        let export_output = self
+            .export_output
+            .read()
+            .map_err(|_| rc::ProviderError::ProtocolError("export authority unavailable".into()))?
+            .as_ref()
+            .is_some_and(|authority| authority(&request.execution_id));
+        if !export_output && matches!(request.command.command.as_str(), "query" | "query_stream") {
+            self.store
+                .execution_settings()
+                .await
+                .apply_result_limit(&mut input);
+        }
         let (config, metadata) = self
             .store
             .platform_profile(&resource.connection_id)
@@ -63,7 +75,7 @@ impl DesktopSessionBackend {
             datazen_runtime::sql_guard::check_sql(
                 sql,
                 config.read_only,
-                self.store.get_settings().await.safe_mode,
+                self.store.execution_settings().await.safe_mode,
             )
             .map_err(rc::ProviderError::HostRejected)?;
         }
@@ -110,24 +122,27 @@ impl DesktopSessionBackend {
                 .and_then(crate::commands::result_relation_candidate)
             {
                 if let Some(driver) = self.registry.get(&config.database_type).await {
-                    let handle = datazen_driver_api::ConnectionHandle {
-                        id: resource.handle.resource_key().into(),
-                        pool_id: resource.handle.provider_id().into(),
-                    };
-                    let before = resource
-                        .provider
-                        .observe_session(&resource.handle)
-                        .await
-                        .ok();
-                    match driver
-                        .execute_command(
-                            &handle,
-                            "get_table_schema",
-                            serde_json::json!({"relationSql":candidate.relation_sql}),
-                        )
-                        .await
-                    {
-                        Ok(metadata) => before.map(|before| (before.context, metadata.data)),
+                    match resource.driver_handle() {
+                        Ok(handle) => {
+                            let before = resource
+                                .provider
+                                .observe_session(&resource.handle)
+                                .await
+                                .ok();
+                            match driver
+                                .execute_command(
+                                    &handle,
+                                    "get_table_schema",
+                                    serde_json::json!({"relationSql":candidate.relation_sql}),
+                                )
+                                .await
+                            {
+                                Ok(metadata) => {
+                                    before.map(|before| (before.context, metadata.data))
+                                }
+                                Err(_) => None,
+                            }
+                        }
                         Err(_) => None,
                     }
                 } else {
@@ -222,11 +237,15 @@ impl DesktopSessionBackend {
                     .rollback_transaction(&resource.handle)
                     .await
                     .map(|transaction| (None, Some(transaction))),
-                _ => resource
-                    .provider
-                    .execute_on_resource(&resource.handle, &execution, &call, &sink)
-                    .await
-                    .map(|completion| (Some(completion), None)),
+                _ => {
+                    #[cfg(feature = "webdriver")]
+                    super::webdriver_dispatch::dispatch(&resource.connection_id);
+                    resource
+                        .provider
+                        .execute_on_resource(&resource.handle, &execution, &call, &sink)
+                        .await
+                        .map(|completion| (Some(completion), None))
+                }
             }
         };
         resource
@@ -241,9 +260,9 @@ impl DesktopSessionBackend {
                 // A diagnostic artifact is best-effort. Disk/quota failure must not
                 // hide the independently readable failed execution/errorCode.
                 let _ = publisher(
-                    &request.execution_id,
+                    request.execution_id.clone(),
                     serde_json::json!({"kind":"executionError", "message":crate::platform::diagnostics::safe_message(&error.to_string())}),
-                );
+                ).await;
                 (None, None, true)
             }
         };
@@ -315,7 +334,7 @@ impl DesktopSessionBackend {
                         }
                     }
                 }
-                publisher(&request.execution_id, output)?;
+                publisher(request.execution_id.clone(), output).await?;
             }
         }
         let mut driver_handles = completion

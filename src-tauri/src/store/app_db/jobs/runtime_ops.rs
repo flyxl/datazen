@@ -512,9 +512,9 @@ impl SqliteJobRepository {
             ).optional().map_err(db_read_error)?.unwrap_or_else(|| "*".into());
             let changed = tx.execute(
                 "UPDATE jobs SET state='running',state_version=state_version+1,worker_id=?1,claim_stage_id=?2, \
-                 claim_expires_at=?3,claim_generation=?4,updated_at=?5 WHERE job_id=?6 AND organization_id=?7 \
+                 claim_expires_at=?3,claim_generation=?4,updated_at=?5,claim_client_instance_id=?10 WHERE job_id=?6 AND organization_id=?7 \
                  AND owner_principal_id=?8 AND state_version=?9",
-                params![worker.as_str(),stage_id,expiry.as_str(),generation,now.as_str(),job_id.as_str(),ctx.organization_id.as_str(),ctx.principal_id.as_str(),row.4],
+                params![worker.as_str(),stage_id,expiry.as_str(),generation,now.as_str(),job_id.as_str(),ctx.organization_id.as_str(),ctx.principal_id.as_str(),row.4,ctx.client_instance_id.as_str()],
             ).map_err(db_write_error)?;
             if changed != 1 {
                 return Err(PortError::CasConflict {entity:"job",id:job_id.as_str().into()});
@@ -558,6 +558,15 @@ impl SqliteJobRepository {
 
 #[async_trait::async_trait]
 impl JobRuntimeRepository for SqliteJobRepository {
+    async fn validate_stage_owner(
+        &self,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        stage: &StageId,
+    ) -> Result<(), PortError> {
+        self.validate_stage_owner_read(ctx, claim, stage)
+    }
+
     async fn cancel_poll(
         &self,
         ctx: &RequestContext,

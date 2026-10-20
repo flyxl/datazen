@@ -159,6 +159,7 @@ flowchart TD
 | F-09 | `packages/ai-providers`、`packages/workspace-apps` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 与 F-02 同因：这两个包要同时被桌面端与服务端复用，一旦拖进 Tauri 就只能编进桌面进程 |
 | F-10 | `packages/workspace-apps` 不含 `axum`、`actix-web`、`warp`、`tonic` 等 HTTP/传输框架 | 内核里一旦出现传输框架，服务端 HTTP 适配器就得改内核签名，桌面与服务端被迫分叉 |
 | F-11 | `packages/platform-infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
+| F-12 | `packages/feature-core` 的 normal + build 依赖闭包不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`，不依赖桌面宿主层；仅依赖共享 runtime/application/领域包与契约 | Workflow、AI、Monitor 与导出逻辑重新绑定桌面或服务端传输 |
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
 这条不是修辞上的严谨，是实测出来的盲点：`packages/drivers/redis/Cargo.toml:27` 的 `tauri = { version = "2", optional = true }` 与 `src-tauri/Cargo.toml:45` 的 `tauri-plugin-webdriver = { version = "0.2", optional = true }` 都不在解析图里，只读闭包的守卫对它们完全失明。判定方式与告警含义见 §8.2 注 3。
@@ -679,17 +680,16 @@ impl OpenSessionUseCase {
 
 ### 6.1 AppState 的职责拆分
 
-当前 `AppState`（[`src-tauri/src/commands/mod.rs`](../../../src-tauri/src/commands/mod.rs)）集中持有 18 个字段。P1 后按「是否属于平台适配」二分：
+当前 `AppState`（[`src-tauri/src/commands/mod.rs`](../../../src-tauri/src/commands/mod.rs)）仍持有桌面 IPC / UI / Job 所需状态，并通过 `PlatformEntry` 访问已装配 Runtime。P6 已将连接会话与物理资源生命周期移入 Runtime；Host 其余字段仍按下表归属：
 
 | 保留在 Tauri adapter（桌面专属） | 迁入 `packages/application` / `packages/runtime` |
 | --- | --- |
-| `driver_registry`（组装入口，运行时经 port 间接使用） | 连接用例（open / execute / setContext / close / attach / detach） |
-| `store`、`schema_cache`、`sync_adapters`（`store` 作为 `ProfileRepository` 的桌面实现；后两者的端口 §4 未定义，暂不外移） | `ConnectionManager` 的会话生命周期与资源管理 |
-| `schema_context_builder`、`prompt_resolver`（AI 组装） | `QueryExecutionRegistry` → `ExecutionGateway` 的 executionId ↔ 绑定登记 |
-| `ai_registry`、`cancel_registry`（AI 组装） | `session_transactions` 的登记语义 → `SessionRegistry` 的会话级句柄登记 |
-| `wapps`、`mcp_client_manager`、`workflow_scheduler`、`workflow_registry`、`workflow_history`、`monitor_*`（各自消费连接端口） | 连接配置写入（create/update/disable） |
+| `driver_registry`（装配入口）、`store`、`schema_cache`、`sync_adapters`（桌面实现） | Runtime connection use cases、SessionRegistry、resource registry 与物理 budget |
+| `schema_context_builder`、`prompt_resolver`、`ai_registry`、`cancel_registry`（Host AI 组装） | Runtime execution gateway 与 owner-bound session lease |
+| `query_executions`（Host 命令态） | session 到期、release、事务控制与句柄账本由 Runtime 管理 |
+| `wapps`、`mcp_client_manager`、`workflow_scheduler`、`workflow_registry`、`workflow_history`、`monitor_*` | profile 持久化仍经桌面 Store；各 consumer 通过 Runtime / feature ports 执行 |
 
-拆分后 `AppState` 只保留「adapter 自己的状态 + 组装好的 `Arc<ApplicationServices>`」，不再直接持有会话/资源数据结构。
+`AppState` 仍是 Tauri command state，不是纯 `ApplicationServices` 容器；P6 移除的是旧 `ConnectionManager`，Host 的 `session_transactions` 已删除，兼容事务控制经 Runtime Gateway/actor；`query_executions` 仍为 Host 命令态。
 
 ### 6.2 组装顺序
 
@@ -710,14 +710,13 @@ flowchart TD
 
 ### 6.3 保持不动的现有服务与窄适配
 
-| 现有组件 | P1 处理方式 |
+| 现有组件 | 当前实现 |
 | --- | --- |
-| `services/connection_manager.rs`（`ActiveSession`、`ConnectionManager`、`ConnectionError`） | 不删除；由 `connection/adapters.rs` 包裹为过渡实现，逐 consumer 迁移后删除旧路径 |
-| `services/connection_manager/sessions.rs`、`tunnels.rs` | 同上；隧道生命周期通过 `NetworkProvider::ensure_tunnel` 的桌面实现承接 |
-| `services/transaction.rs`（`TransactionHandle`） | 保持数据结构；登记语义改为写入 `SessionRegistry` 的会话级句柄表（[连接 §6.5](connection-management.md#65-会话级资源句柄登记)） |
-| AI（`ai_registry`、`prompt_resolver`、`schema_context_builder`、`cancel_registry`） | 不动；只把「需要连接执行」的部分改为调用 application 用例 |
-| Workflow（`workflow_registry`、`workflow_history`、`workflow_scheduler`、`command_runtime.rs`） | 不动；目标解析改为调用 application 的目标解析 |
-| `store/`、`cache/`（`SchemaCache`） | 不动；`store` 作为 `ProfileRepository` 的桌面实现接入，`SchemaCache` 的端口尚不在 §4 范围内 |
+| 原 `services/connection_manager/*` | 已删除；连接 consumer 使用 Runtime session / resource APIs，无兼容 `ConnectionManager` 实现 |
+| 桌面隧道生命周期 | `DesktopSessionBackend` 将 Tunnel 句柄持有在 Runtime physical Resource 中；确认关闭后释放 |
+| 原 `AppState.session_transactions` | 已删除；Runtime 串行事务控制复用 ResourceProvider，句柄观测/回收统一归 `SessionRegistry`，Unknown 不自动重发 |
+| AI、MCP、Workflow 与迁移 consumers | 保留 Host 组装与外部契约；需要连接执行的路径经 feature/application Runtime ports |
+| `store/`、`cache/`（`SchemaCache`） | Store 与 DriverRegistry 仍是桌面适配；SchemaCache 保持现有 Host facade |
 
 ## 7. BackendClient 与 PlatformServices 注入
 
@@ -1043,3 +1042,7 @@ Rust 不能复用 `scripts/lib/scanSourceCode.mjs` 的 `scanCode`：它是 JS/TS
 - HTTP 路由、认证协议、CSRF、SSE 重连细节（[概要 §10](system-overview.md#10-安全和环境差异)给出要求，细则在 P7）。
 - 迁移三件套、Workflow、AI、MCP、Wapp 的内部重构计划。
 - 任何阶段排期、人员安排或进度记录。
+
+### Restore Apply Job 端口的已实现边界
+
+`feature-core::restore_job::{RestorePlan, RestoreInput, RestoreGateway, RestoreEvidence, RestoreApplyJob}` 是恢复共享用例边界。Artifact 输入没有 path 方法，读取按 RequestContext 授权。Gateway 的 validate 不取得资源，execute 必须经 Runtime/Gateway 取得已计数资源并报告真实副作用；执行后不能用 pre-dispatch rejection 替代 Unknown。`UnsupportedRestoreGateway` 是未提供真实 driver binding 时的明确失败关闭实现，不伪装 driver 支持。桌面仅承担 native picker/staging/upload、session→profile identity、受理和事件映射，旧直接 path restore helper 仅用于测试。共享应用端口不要求新增 server/auth host。

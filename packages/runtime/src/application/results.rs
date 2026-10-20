@@ -36,6 +36,9 @@ pub struct RuntimeArtifactChunk {
 #[derive(Clone)]
 pub(super) struct ExecutionEntry {
     pub ctx: RequestContext,
+    backup: Option<Arc<super::backup::Binding>>,
+    pub(super) export: Option<Arc<super::export_output::Binding>>,
+    pub(super) command: String,
     pub handle: SessionHandle,
     pub stream: StreamId,
     pub view: ExecutionView,
@@ -68,6 +71,8 @@ impl ExecutionEntry {
         self.ctx.organization_id == ctx.organization_id
             && self.ctx.principal_id == ctx.principal_id
             && self.ctx.client_instance_id == ctx.client_instance_id
+            && self.ctx.authentication_session_id == ctx.authentication_session_id
+            && self.ctx.delegation_id == ctx.delegation_id
     }
 }
 /// Host-only publication capability. It accepts only executions already admitted by the use case.
@@ -79,6 +84,8 @@ pub struct RuntimeResultSink(
             Result<Arc<crate::artifact::FileArtifactStore>, datazen_platform_api::error::PortError>,
         >,
     >,
+    pub(super) Arc<Mutex<HashMap<SessionHandle, Arc<super::backup::Binding>>>>,
+    pub(super) Arc<Mutex<HashMap<SessionHandle, Arc<super::export_output::Binding>>>>,
 );
 impl RuntimeResultSink {
     pub fn with_artifact_store(
@@ -179,6 +186,29 @@ impl RuntimeResultSink {
                 "execution is already settled",
             ));
         }
+        if entry.export.is_some() {
+            return Err(ApiError::new(
+                ApiErrorCode::PermissionDenied,
+                "export requires awaitable publication",
+            ));
+        }
+        if entry.command == "backup_dump" {
+            let binding = entry.backup.clone().ok_or_else(|| {
+                ApiError::new(
+                    ApiErrorCode::PermissionDenied,
+                    "backup output was not bound",
+                )
+            })?;
+            if !rows.is_empty() || source.is_some() {
+                return Err(ApiError::invalid_argument(
+                    "backup output must use the typed stream",
+                ));
+            }
+            return binding.write(
+                entry,
+                output.ok_or_else(|| ApiError::invalid_argument("backup output required"))?,
+            );
+        }
         let source = match source {
             Some(source) if source.execution_id == *id => source,
             Some(_) => {
@@ -205,16 +235,17 @@ impl RuntimeResultSink {
                 .as_ref()
                 .map(datazen_platform_api::ports::artifact::provenance_fingerprint)
                 .unwrap_or_else(|| "unobserved".into());
-            let (artifact_id, writer) = store
-                .create_sync(
-                    &entry.ctx,
-                    datazen_platform_api::ports::artifact::ArtifactSpec::new(
-                        entry.ctx.organization_id.clone(),
-                        entry.ctx.principal_id.clone(),
-                        id.clone(),
-                        fingerprint,
-                    ),
-                )
+            let spec = datazen_platform_api::ports::artifact::ArtifactSpec::new(
+                entry.ctx.organization_id.clone(),
+                entry.ctx.principal_id.clone(),
+                id.clone(),
+                fingerprint,
+            );
+            let (artifact_id, writer) =
+                match crate::artifact::ExecutionArtifactScope::admitted(&entry.ctx, id.clone()) {
+                    Some(scope) => store.create_execution_sync(scope, spec),
+                    None => store.create_sync(&entry.ctx, spec),
+                }
                 .map_err(convert::port)?;
             entry.writer = Some(writer);
             entry.view.artifact_ids.push(artifact_id);
@@ -284,10 +315,20 @@ impl RuntimeResultSink {
         handle: SessionHandle,
         stream: StreamId,
         view: ExecutionView,
+        command: String,
     ) {
         self.reclaim_expired();
+        let backup = if command == "backup_dump" {
+            lock(&self.2).get(&handle).cloned()
+        } else {
+            None
+        };
+        let export = lock(&self.3).get(&handle).cloned();
         let mut entry = ExecutionEntry {
             ctx,
+            command,
+            backup,
+            export,
             handle,
             stream,
             view,
@@ -387,6 +428,12 @@ impl RuntimeResultSink {
                     }
                 }
             }
+            entry.backup = None;
+            if entry.view.state != ExecutionState::Succeeded {
+                if let Some(binding) = &entry.export {
+                    binding.revoke();
+                }
+            }
             entry.event(ConnectionEvent::ExecutionChanged {
                 execution: entry.view.clone(),
             });
@@ -396,6 +443,9 @@ impl RuntimeResultSink {
     pub(super) fn invalidate(&self, handle: &SessionHandle) {
         for entry in lock(&self.0).values_mut().filter(|e| &e.handle == handle) {
             entry.view.runtime_binding = None;
+            if let Some(binding) = &entry.export {
+                binding.revoke();
+            }
             entry.event(ConnectionEvent::ExecutionChanged {
                 execution: entry.view.clone(),
             });
@@ -496,13 +546,43 @@ impl RuntimeResultSink {
         artifact: &ArtifactId,
         index: Counter,
     ) -> Result<RuntimeArtifactChunk, ApiError> {
-        // Artifact ACL/TTL live in the durable store, independent of a session or
-        // execution tombstone. Restart recovery therefore preserves readable results.
+        // Ordinary owner artifacts retain durable ACL/TTL across session retirement.
+        // Delegated results additionally require the live admitted binding below.
         let store = self.store()?;
-        let bytes = store
-            .read_sync(ctx, artifact, index)
-            .map_err(convert::port)?;
-        let metadata = store.describe_sync(ctx, artifact).map_err(convert::port)?;
+        let (bytes, metadata) = if ctx.is_delegated() {
+            // Current PolicyService authorization happens in read_artifact_chunk.
+            // Storage access additionally needs this exact live admitted binding.
+            let entries = lock(&self.0);
+            let entry = entries
+                .values()
+                .find(|entry| entry.visible_to(ctx) && entry.view.artifact_ids.contains(artifact))
+                .ok_or_else(|| {
+                    ApiError::new(
+                        ApiErrorCode::NotFound,
+                        "artifact not bound to admitted execution",
+                    )
+                })?;
+            let scope = crate::artifact::ExecutionArtifactScope::admitted(
+                &entry.ctx,
+                entry.view.execution_id.clone(),
+            )
+            .ok_or_else(|| {
+                ApiError::new(
+                    ApiErrorCode::PermissionDenied,
+                    "delegated execution binding required",
+                )
+            })?;
+            store
+                .read_execution_sync(&scope, artifact, index)
+                .map_err(convert::port)?
+        } else {
+            (
+                store
+                    .read_sync(ctx, artifact, index)
+                    .map_err(convert::port)?,
+                store.describe_sync(ctx, artifact).map_err(convert::port)?,
+            )
+        };
         let mut chunk: RuntimeArtifactChunk =
             serde_json::from_slice(&bytes.bytes).map_err(|_| {
                 ApiError::new(ApiErrorCode::ServiceUnavailable, "artifact block invalid")

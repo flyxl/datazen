@@ -228,14 +228,14 @@ pub async fn execute_data_sync(
     if let Some(run) = run.as_mut() {
         run.selected_count = request.selection.rows.len() as u64;
         if let Ok(plan) = plans::peek_plan(&request.plan_id) {
-            run.source_connection_id = state
-                .connection_manager
-                .owner_connection_id(&plan.source_db_session_id)
-                .await;
-            run.target_connection_id = state
-                .connection_manager
-                .owner_connection_id(&plan.target_db_session_id)
-                .await;
+            run.source_connection_id = plan
+                .source_endpoint_identity
+                .as_ref()
+                .map(|identity| identity.connection_id.as_str().to_owned());
+            run.target_connection_id = plan
+                .target_endpoint_identity
+                .as_ref()
+                .map(|identity| identity.connection_id.as_str().to_owned());
         }
     }
     let (response, cancelled) = match crate::commands::history::validate_migration_profile_ref(

@@ -1,9 +1,6 @@
-export type ThemeMode = 'light' | 'dark' | 'system';
-
-export interface ThemePreference {
-  mode: ThemeMode;
-  packId: string | null;
-}
+import type { SettingsThemePreference } from '@datazen/backend-client';
+export type ThemePreference = SettingsThemePreference;
+export type ThemeMode = SettingsThemePreference['mode'];
 
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = {
   mode: 'dark',
@@ -19,8 +16,7 @@ export function normalizeThemePreference(input: unknown): ThemePreference {
   if (input && typeof input === 'object') {
     const obj = input as { mode?: unknown; packId?: unknown };
     if (typeof obj.mode === 'string' && MODES.has(obj.mode as ThemeMode)) {
-      const packId =
-        typeof obj.packId === 'string' && obj.packId.length > 0 ? obj.packId : null;
+      const packId = typeof obj.packId === 'string' && obj.packId.length > 0 ? obj.packId : null;
       return { mode: obj.mode as ThemeMode, packId };
     }
   }

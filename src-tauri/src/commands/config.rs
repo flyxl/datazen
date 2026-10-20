@@ -25,8 +25,12 @@ pub(crate) async fn save_settings_impl(
     state: &AppState,
     mut settings: AppSettings,
 ) -> Result<(), CommandError> {
-    settings.connection_pool_size =
-        crate::store::clamp_connection_pool_size(settings.connection_pool_size);
+    let shared =
+        datazen_application::settings::SettingsService::normalize(settings.shared_settings())
+            .map_err(|error| CommandError::Validation(error.to_string()))?;
+    settings
+        .apply_shared_settings(shared)
+        .map_err(CommandError::Validation)?;
     tracing::debug!(theme_mode = %settings.theme.mode, "save_settings");
     state
         .store
@@ -49,6 +53,40 @@ pub(crate) async fn save_settings_impl(
         crate::tray::sync_tray_async(&app).await;
     }
     Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaveSharedSettingsRequest {
+    pub settings: datazen_platform_api::settings::SharedSettings,
+}
+
+#[tauri::command]
+pub async fn get_shared_settings(
+    state: State<'_, AppState>,
+) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
+    datazen_application::settings::SettingsService::new(state.store.as_ref())
+        .read()
+        .await
+        .map_err(|_| CommandError::Internal("Unable to read settings".into()))
+}
+
+#[tauri::command]
+pub async fn save_shared_settings(
+    state: State<'_, AppState>,
+    request: SaveSharedSettingsRequest,
+) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
+    let saved = datazen_application::settings::SettingsService::new(state.store.as_ref())
+        .save(request.settings)
+        .await
+        .map_err(|error| match error {
+            datazen_application::settings::SettingsError::Validation(message) => {
+                CommandError::Validation(message)
+            }
+            _ => CommandError::Internal("Unable to persist settings".into()),
+        })?;
+    crate::redis_flush_gate::sync_from_settings(&state.store.get_settings().await);
+    Ok(saved)
 }
 
 pub(crate) async fn get_log_path_impl(state: &AppState) -> Result<String, CommandError> {

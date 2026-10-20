@@ -119,8 +119,18 @@ impl MysqlResourceProvider {
         driver_id: &str,
         declared: CapabilitySet,
     ) -> Self {
-        let snapshot =
-            CapabilitySnapshot::new(driver_id, env!("CARGO_PKG_VERSION"), PROTOCOL_VERSION, 0);
+        let mut snapshot =
+            CapabilitySnapshot::new(driver_id, env!("CARGO_PKG_VERSION"), PROTOCOL_VERSION, 1);
+        if driver_id == "mysql" {
+            snapshot.confirmed.insert(
+                datazen_driver_api::sql_dump::stream::BACKUP_CAPABILITY.into(),
+                "bounded retained SQL dump".into(),
+            );
+            snapshot.confirmed.insert(
+                datazen_driver_api::restore_sql::CAPABILITY_KEY.into(),
+                datazen_driver_api::restore_sql::IMPLICIT_COMMIT.into(),
+            );
+        }
         let mut capabilities = CapabilityRegistry::new(driver_id.to_string(), snapshot);
         capabilities.capabilities = declared;
         Self {
@@ -513,7 +523,12 @@ impl ResourceProvider for MysqlResourceProvider {
         if fixed
             && !matches!(
                 call.command.as_str(),
-                "query" | "query_stream" | "execute" | "explain" | "get_table_schema"
+                "query"
+                    | "query_stream"
+                    | "execute"
+                    | "explain"
+                    | "get_table_schema"
+                    | "backup_dump"
             )
         {
             return Err(ResourceError::unsupported(
@@ -540,6 +555,24 @@ impl ResourceProvider for MysqlResourceProvider {
 
         let outcome: Result<ExecutionCompletion, ResourceError> = async {
             let completion = match call.command.as_str() {
+                "backup_dump" => {
+                    if !fixed || self.driver_id != "mysql" {
+                        return Err(ResourceError::unsupported(
+                            &self.driver_id,
+                            "backup_dump",
+                            "retained session required",
+                        ));
+                    }
+                    crate::backup_stream::dump(
+                        &*self.driver,
+                        &connection,
+                        execution_id,
+                        &call.input,
+                        sink,
+                    )
+                    .await?;
+                    self.completion(handle, Vec::new(), EffectOutcome::Completed)
+                }
                 "query" | "query_stream" => {
                     let sql = sql_of(&self.driver_id, &call.input)?;
                     let sql = self.driver.qualified_sql(&sql, sql_target);

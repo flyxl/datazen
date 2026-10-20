@@ -18,6 +18,13 @@ export const wappCommands = {
 
   getWappManifest: (id: string) => invoke<WappManifest>('get_wapp_manifest', { id }),
 
+  executeDriverCommand: (request: {
+    wappId: string;
+    connectionId: string;
+    command: string;
+    args?: Record<string, unknown>;
+  }) => invoke<unknown>('execute_wapp_driver_command', { request }),
+
   /**
    * Native picker + validate-only inspect. Returns `null` when cancelled.
    * The wire-level `overridePath` escape hatch is webdriver/E2E-only.

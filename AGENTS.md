@@ -36,7 +36,7 @@ datazen/
 │   │   ├── db/                  # DriverRegistry 门面（re-export → packages/runtime）
 │   │   ├── mcp/                 # MCP Server/Client
 │   │   ├── workflow/            # YAML Workflow 引擎
-│   │   ├── services/            # ConnectionManager, QueryExecutor, DbTools, Transaction
+│   │   ├── services/            # Host feature adapters, QueryExecutor, DbTools, Transaction
 │   │   ├── cache/               # SchemaCache 门面（re-export → packages/runtime）
 │   │   ├── store/               # AES-256-GCM 加密持久化
 │   │   ├── schema_diff/         # 方言中立 Migration IR 与 DAG 结构比对
@@ -111,8 +111,8 @@ DataZen 确立严格正交的四维可扩展架构，依托独立设计系统 `@
 
 ### AI 模块与 ai-api
 
-- `packages/ai-api` 是 Rust 层的 AI Provider 抽象契约（类比 `driver-api`），定义核心 `AiProvider` trait、请求/流式响应模型与工厂注册。
-- `packages/ai-providers` 承载具体 provider 适配与 wire protocol 实现：`protocol/{openai_chat,openai_responses,anthropic}.rs` 实现 OpenAI Chat/Responses 与 Anthropic 协议，`{openai,anthropic,deepseek,ollama,custom}.rs` 实现 OpenAI / Anthropic / DeepSeek / Ollama / 自定义端点适配，`registry.rs` 负责注册与配置恢复；宿主 `src-tauri/src/ai/` 只剩门面 re-export、schema context、安全门、prompt 解析、token 预算与取消。`packages/ai-api` 保持纯契约层。
+- `packages/ai-api` 是 Rust 层的 AI Provider 抽象契约（类比 `driver-api`），定义核心 `AiProvider` trait、请求/流式响应模型与工厂注册，并统一 active → default → first 的 AI Profile 选择回退规则。
+- `packages/ai-providers` 承载具体 provider 适配与 wire protocol 实现：`protocol/{openai_chat,openai_responses,anthropic}.rs` 实现 OpenAI Chat/Responses 与 Anthropic 协议，`{openai,anthropic,deepseek,ollama,custom}.rs` 实现 OpenAI / Anthropic / DeepSeek / Ollama / 自定义端点适配，`registry.rs` 负责注册与配置恢复，`metadata.rs` 提供现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 承载 Provider-neutral 的 Prompt、Schema、Chat/NL2SQL 请求组装、诊断/分析/过滤/文档生成、安全、预算、取消、工具循环与 ownership policy（包括 grant database 绑定和结果 attribution）；`src-tauri/src/ai/` 仅保留兼容 re-export 与 Runtime/SchemaCache/profile 元数据适配，`commands/ai/` 保留 Tauri IPC、Provider/Profile 配置、仓储/会话读取、输入脱敏、context 文件、MCP/Runtime 工具宿主、事件流和取消接线。
 - `PromptResolver` 优先级：用户覆盖 → 驱动覆盖 → 资源文件 → 编译时英文嵌入。
 - 详情参考 [docs/architecture/backend/ai.md](docs/architecture/backend/ai.md)。
 

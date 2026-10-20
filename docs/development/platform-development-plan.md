@@ -248,16 +248,18 @@ pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rota
 
 P5 退出门槛已关闭，P6 前置条件满足，可以启动。
 
+2026-10-17 实施状态：Workflow/AI/MCP/Dashboard/metadata/export/backup 的共享领域代码与 settings 契约已抽入共享 packages；桌面保留 IPC、native/session identity、仓储和既有 P5 job adapter。表导出与数据库备份已接入桌面 Job/Artifact 交付；PostgreSQL/MySQL 备份执行已接专属 Runtime retained session / `backup_dump`，有界 chunk 同步背压写入 staging/gzip，保留 Job/Artifact 交付；其他驱动失败关闭，实库/桌面验收仍须独立核验，恢复已接单次消费的 apply Job，PostgreSQL/MySQL 的受限 SQL 格式走固定 Runtime session / ExecutionGateway。最终残余核对见 [feature-core](../architecture/platform/feature-core.md#final-residual-audit-2026-10-17) 与 [消费者边界 §8.1](../architecture/platform/consumer-adapters.md#81-当前共享实现与保留边界2026-10-17)。这不是 P6 关闭：Workflow v1 跨库 Runtime 路由、授权调度/native-tool 预算及真实驱动旅程验收仍有阶段工作；本轮提取已在隔离快照复验通过。
+
 详细设计：[Workflow 资源模型](../architecture/platform/workflow-resource-model.md) 与 [消费者接入](../architecture/platform/consumer-adapters.md)。共享授权失效后拒绝绑定操作，MCP/Wapp 只释放自有资源，调度目标和服务授权显式保存，原生工具也计入完整预算。
 
 **目的**：消除 GUI 外入口的隐式目标和共享状态。
 
 交付：
 
-- Workflow 独立 step、session block、transaction block 的模型、校验和执行。
-- 明确 connection/namespace 继承、并行分支资源、重试范围、checkpoint 边界。
+- Workflow 保持 v1 独立 step 与既有模型/协议，底层连接派发使用共享 Runtime。session/transaction block 和 Workflow 专用 Job 不在本轮范围。
+- 保持既有 connection/namespace、跨库步骤和 step output/template chaining 语义，验收底层 Runtime 替换不改变目标与结果。
 - AI 默认独立操作，显式授权当前 editor session 时同队列。
-- MCP client/session owner 与 TTL，Wapp 实例和任务归属。
+- MCP client/session owner 与 TTL，Wapp 实例和任务归属。 MCP 的在途 open 由独立 owner task 与未交付回复 guard 持有，请求取消或断连后的晚到资源转入原 owner 清理；Host Runtime fixture 覆盖该故障路径，PG/MySQL 实库和传输验收仍独立进行。
 - Dashboard/Monitor 独立资源；导出、备份、恢复归 Job/Artifact；原生工具由环境 port 管理。
 - 服务身份/委托权限用于调度，所有入口走 ExecutionGateway。
 
@@ -265,7 +267,13 @@ P5 退出门槛已关闭，P6 前置条件满足，可以启动。
 
 回退：旧 Workflow 定义按版本解析，默认独立 step 语义；新 block 格式不交旧 executor。后台任务取消与运行状态通过 Job 查证，不用 GUI 关闭推断。
 
-实施前修正 Workflow §4.2/§6.2：显式目标不完整即拒绝，不回退另一连接；block 冲突检查先于任何目标返回；session block 清理后仍默认不自动重试。退出门槛增加已自动提交一步后失败不重复写入、未知提交不重试、已确认回滚后的受控重试与 block 目标冲突。AI/MCP/Wapp 各入口分别验证 owner、授权、TTL 和 Gateway 拒绝路径。
+Workflow 验收按既有 v1 行为进行：跨连接/跨库逐步派发、前步输出供后步模板使用、错误/超时不重放已确认副作用；不以 block 目标设计扩展本轮协议。其他消费者继续独立验证 owner、授权、TTL 和 Gateway 拒绝路径。
+
+Monitor occurrence 当前状态：周期执行已先受理 SQLite durable `monitorOccurrence` Job，严格投影保存 schedule、定义版本、计划时间、授权身份与只读目标范围；`scheduleId + definitionRevision + scheduledAt` 对应幂等 receipt。SQLite 重开后重复提交返回原 receipt，重复 tick 不再派发；启动恢复将未完成 Job 标记为待验证并要求人工复核，不恢复 handler 或重放查询。已有 codec 身份一致性、SQLite 跨重开 receipt 和变更重放拒绝测试；PG/MySQL 的共享策略/Runtime 查询层现另有 live 证据，但不表示多 worker 接管或完整桌面 Monitor 调度旅程已验收。
+
+恢复 Apply Job 当前状态：已接受控 Artifact 输入、冻结 target/revision/input digest、单次 plan 消费和 JobRuntime 写预算；SQLite admission 已验证真实 typed payload、拒绝未知/不一致元数据且失败不消费 plan；PostgreSQL/MySQL 已接固定 Runtime Session / ExecutionGateway 的受限 SQL 恢复与提交证据；COPY/客户端指令不在此格式内，其他驱动至 P10 明确 Unsupported/NotStarted。PostgreSQL 已有 driver 专属 live 旅程，复用共享 production RuntimeRestoreGateway/Runtime Session/ExecutionGateway/JobRuntime 并独立读回，覆盖单事务提交、自有 ROLLBACK 与无残表、COPY/客户端格式及冻结输入/目标/revision 拒绝；MySQL 也已有 driver 专属 live 旅程，覆盖非事务 CREATE/INSERT 的逐句提交和独立读回、LOAD DATA/SOURCE 整份拒绝，以及 DDL 后 SQL 失败保留已确认边界并独立证明残表；失败语句效果缺少驱动确定证据时总体保留 Unknown，不宣称跨 DDL/DML 原子性。桌面 picker/Store/DesktopSessionBackend 接线不在这些旅程验收范围，具体边界见 [Job §2.5](../architecture/platform/data-migration-jobs.md#25-restore-apply-job已接线驱动执行失败关闭)。
+
+桌面 Restore 入口边界补充：Host 组合旅程复用生产 staging/upload helper，并使用真实 Store/PlatformAdapter 注入的 ArtifactStore、DesktopSessionBackend 与 SQLite DesktopJobHost，验证冻结文件输入、owner/组织隔离、实际 SQL 派发和提交边界、durable plan 重复消费拒绝，以及 revision/read-only/safe-mode 拒绝。provider 为宿主接线 fixture；原生 picker/Tauri 事件和真实数据库效果没有由该测试冒充覆盖，后者继续由 driver live 旅程负责。
 
 ## 11. P7：单实例团队 Web 服务
 
@@ -457,3 +465,26 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 | P10 | 驱动能力迁移 §10.2；各消费者退役条件与本计划逐层门槛 |
 
 本表是设计入口，不是完成进度。目标设计、现有实现和实际运行证据分别标明；阶段完成后同步将对应内容改写为事实。
+
+
+### P6 Workflow v1 范围
+
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
+
+#### 桌面 Monitor 定时授权（已实现，2026-10-17）
+
+Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用当前桌面用户上下文；周期 tick 必须取得后端保存的 widget grant，不能因 `connection_id=None`、工作流可运行或桌面用户仍在线而获得授权。用户在报表编辑器中保存 interval 配置后，显式授权一小时或撤销；授权 IPC 仅接受 dashboard/widget ID 与 60～86400 秒有效期，不接受 principal、delegation token 或用户提供的 grant。
+
+后端从当前桌面 RequestContext 取得批准者，并生成独立 service principal / delegation ID。AppDb schema v3 的 `monitor_schedule_grants` 仅保存批准者、服务身份、dashboard/widget/workflow ID、工作流 YAML SHA-256 revision、固定 canonical connection/database/schema 与配置版本、connect/query 动作及命令范围、readOnly、到期时间、撤销状态与版本。不保存 SQL 副本、session、attachment、bearer token、秘密或凭据。新授权取代同 widget 的旧授权；变更 workflow 定义或 profile 配置必须重新授权。
+
+当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI、migration 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询；函数仅允许明确的内置聚合/数值/文本/空值/时钟函数白名单，未知、带 schema、引号名称及表值函数失败关闭，因此序列推进/状态、命名锁获取/状态/释放和会话配置函数不能借 SELECT 派发），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。其他驱动和写动作均失败关闭。
+
+共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
+
+撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。每个 grant 版本、dashboard/widget、workflow revision 与 refresh slot 对应一个带稳定幂等键的 `monitorOccurrence` Job；Job 受理后才派发 scheduled workflow，WidgetRun 与有界 JobDomainResult 记录实际结果。启动恢复按持久化 service principal 扫描 occurrence：未派发 Job 标为未启动，运行中 Job 转为待核验，不重放查询。撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown；完整桌面 scheduler / occurrence / 真实驱动链路仍须独立验收，P6 未整体关闭。
+
+Monitor 真实驱动查询层补充：PostgreSQL/MySQL `tests/monitor_scheduled_query.rs` 运行生产只读策略、grant scope、Workflow resource execution 和 Runtime / 真实 Provider，并用独立连接核对结果；它不覆盖 AppState、grant 持久化、SQLite occurrence 或重复 tick receipt。live 旅程发现 SQL 成功但 delegated Artifact 发布失败的 P6 阻塞，已通过只针对 admitted execution 的内部结果 scope 修复；普通 Artifact API 的委托拒绝不变，受限结果不跨重启恢复，隔离/撤权/任意 Artifact/TTL 回归已补齐。详见 [消费者边界 §6](../architecture/platform/consumer-adapters.md#6-dashboardmonitor-与调度身份)。
+
+
+
+MySQL Workflow transaction proof 不属于当前 P6 退出条件：2026-10-19 用户已明确 Workflow 保持 v1，只迁移底层连接管理，不改协议，也不增加额外事务语义。因此 MySQL `transactionBlock` 保持 fail-closed；现有关于 session-effective 目录可见性的研究仅作未来驱动能力背景，不要求在 P6 补齐或启用。若未来需要该能力，应另行按驱动范围立项和验收。

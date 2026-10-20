@@ -8,87 +8,50 @@ Services 是 DataZen backend 中复用性的运行时服务层，不承担 Tauri
 
 | 服务 | 位置 | 职责 |
 |---|---|---|
-| ConnectionManager | `connection_manager.rs` | Driver 选择、连接建立、session 生命周期、引用计数、idle eviction、隧道解析（`resolve_tunnel_ref` / `maybe_start_tunnel`） |
-| QueryExecutor | `query_executor.rs` | 查询执行相关的参数、过滤、排序和执行辅助 |
-| Schema metadata | `schema_metadata.rs` / `schema_metadata/columns.rs` | 精确关系身份读取、列批量读取、缓存刷新 |
-| DbTools | `db_tools.rs` | 数据库工具类复用能力 |
-| JobRegistry | `job_registry.rs` | 长任务/job 生命周期和取消注册 |
-| Transaction | `transaction.rs` | 事务相关运行时辅助 |
+| Runtime sessions/resources | packages/runtime/src/application/, registry/, resource/ | session 状态、owner、空闲期限、物理资源、预算与释放 |
+| DesktopSessionBackend | src-tauri/src/platform/session_backend.rs | Store / DriverRegistry 的桌面适配，打开和关闭 Runtime 物理资源，持有隧道生命周期 |
+| QueryExecutor | src-tauri/src/services/query_executor.rs | 查询参数、过滤、排序和执行辅助 |
+| Schema metadata | src-tauri/src/services/schema_metadata.rs | 精确关系身份、列批量读取与缓存刷新 |
+| DbTools | src-tauri/src/services/db_tools.rs、packages/feature-core/ | 共享 database tools 及 Runtime 执行端口 |
+| JobRegistry | src-tauri/src/services/job_registry.rs | 兼容长任务的进程内生命周期与取消注册 |
+| Transaction | src-tauri/src/services/transaction.rs | Host 事务命令辅助；运行连接由 Runtime 提供 |
 
-## 2. ConnectionManager
+## 2. Runtime 连接与会话生命周期
 
-### 2.1 连接 ID 约定
+### 2.1 ID 与创建
 
-DataZen 明确区分两种 ID，二者不可互换，也不存在双模回退：
+connectionId 标识 Store 中持久化的配置；dbSessionId 标识一次 Runtime session，永不落盘。桌面 PlatformAdapter 组装 RuntimeConnectionUseCases 与 DesktopSessionBackend：Runtime 建立 SessionRegistry 记录，backend 解析 profile、选择 Driver 并打开物理资源。会话 owner 和 connection profile 经 Runtime 的 session / directory API 关联；不再有 Host ConnectionManager 或同 ID 重连映射。
 
-| ID | 含义 | 落盘 | 语义 |
-|---|---|---|---|
-| `connectionId` | 持久化连接配置 ID（原 `configId`） | 写入 `connections.json` / 任务 / profile | 配置、归属、调度 |
-| `dbSessionId` | 运行时数据库 session ID | **永不落盘** | 操作已建立的会话 |
+Store connectionId → Runtime connection use case → SessionRegistry dbSessionId
+                                      → DesktopSessionBackend → Driver resource（可选 tunnel）
 
-```text
-connectionId
-   ↓
-Store
-   ↓
-ConnectionManager
-   ↓
-Driver.connect()
-   ↓
-dbSessionId
-```
+GUI 已连接会话的 Query、Schema 和 Driver Command 使用 dbSessionId。Workflow、MCP、AI database tools 等以配置为入口的路径使用 connectionId，经各自的共享 Runtime execution port 创建或借用资源。
 
-从持久化 ID 到运行时会话只有三个入口（`connection_manager/sessions.rs`、`connection_manager/connections.rs`）：
+### 2.2 自动空闲回收
 
-| 入口 | 行为 | 语义 |
+Runtime 默认会话空闲期限为 30 分钟，默认扫描间隔为 3 分钟；桌面 adapter 将扫描间隔设为 15 秒。真实业务活动顺延期限；心跳、状态读取和事件订阅不应形成永久保活。detach 后采用 60 秒 grace。到期扫描先回收已到期的资源池 / 隔离资源，再通过 SessionRegistry 串行裁决会话；会话到期时在原资源上 rollback-and-close、撤销活连接借用并清理 Runtime 会话登记。关闭不确定时保留隔离及预算状态，不伪称资源已释放。失效的 dbSessionId 返回 SessionLost，调用方必须显式建立新会话，不透明重连。
+
+资源池空闲 TTL 是另一条策略：短操作池 TTL 为 60 秒；只有通过 driver 复位能力验证的资源才允许停放复用。当前 PostgreSQL / MySQL driver 声明 ResetForReuse::Unsupported，归还时关闭资源，因而当前不能依赖池化保温。
+
+### 2.3 事务与隧道边界
+
+事务控制已移入 Runtime 的 `session_transaction` / `session_transaction_status`：授权和 owner/epoch 检查之后，同会话控制串行，经 ExecutionGateway 的 `platform.*Transaction` 命令调用既有 ResourceProvider 事务端口，句柄和实际状态归 SessionRegistry actor。Host 不再保存 `AppState.session_transactions` 或 driver TransactionHandle。到期/close 统一走 Runtime 的 rollback-and-close；过期 status 返回 false，旧 commit/rollback 拒绝且不重新派发。Unknown 控制保留 Runtime 围栏，不能重发 begin/commit；调用方取消不放开仍在运行的控制任务。Tauri IPC 的参数、bool/void 返回和 Workflow v1 协议保持不变。
+
+桌面 backend 在建立物理资源前解析保存的隧道配置；隧道 Arc 与 Runtime 物理 Resource 同生共死。池化或 quarantine 会继续持有隧道；仅确认物理资源关闭后才释放该资源及隧道。Driver API 与协议不感知隧道类型，详见 tunnel.md。
+
+## 3. 消费方边界
+
+| 消费方 | 配置 / 会话入口 | 资源与生命周期 |
 |---|---|---|
-| `get_or_connect_session(connection_id)` | 在 `session_owner_map` 中查找 owner 等于该 `connectionId` 的**任意**现存会话；命中即复用并 +1 引用计数，否则新建物理连接 | 复用优先 |
-| `connect_dedicated(connection_id, database)` | 绕过复用扫描，始终新建物理连接，随后 +1 引用计数 | 需要独立会话或独立 database |
-| `resolve_session_for_connection(connection_id)` | 前两者的组合：先 `get_or_connect_session`，再 `get_session` | 「给我这个 `connectionId` 对应的会话」 |
+| Query、Schema、编辑器 | 已连接会话的 dbSessionId | Runtime session live lease；过期明确失效，不重连旧 ID |
+| DataTable、表导出 | 调用方 session 或专用 export session | Runtime execution / bounded output；session close 按 Runtime 结果确认 |
+| Schema Diff、Data Sync、Data Transfer | 持久化 profile 与 job 的明确端点 | Job adapter 使用专用 Runtime session；Job 生命周期独立于窗口 |
+| Workflow v1 | 配置 connectionId 与既有 step target | 保留 v1 命令与结果传递；底层执行走 Runtime resource path |
+| MCP / AI database tools | 工具参数中的 connectionId | feature-core Runtime execution port；不借用 GUI 的事务 session |
+| Wapp | Bridge 的 connectionId / host 解析出的当前会话 | 执行仍经受控 Driver Command 与 Runtime backend |
+| Monitor | 已保存 grant / workflow target | 共享 Workflow / Runtime scheduler 路径 |
 
-`get_or_connect_session` 对同一 `connectionId` 的所有调用方返回**同一个** `dbSessionId`；调用方之间没有会话隔离，除非显式走 `connect_dedicated`。`resolve_session_for_connection` 返回的运行时会话 ID 会被 Workflow、MCP / AI db tools 的共享路径直接丢弃，**这些路径不调用 `release`**——引用计数只增不减。Data Sync 的 P5 Job 路径为每个任务建立并释放专用会话。
-
-### 2.2 引用计数、释放与 idle eviction
-
-`release(db_session_id)` 递减计数，仅在计数归零时断开；`disconnect(db_session_id)` 立即清除计数、owner 映射并调用 `driver.disconnect`。
-
-后台 `cleanup_idle_connections` 每 60 秒执行一次，只挑「引用计数为 0 且 `last_used` 超过 `idle_timeout`」的会话，`idle_timeout` 默认 1800 秒。该清理**故意不经过 `disconnect()`**：保留 `session_owner_map` 条目才能让 `reconnect()` 以同一个 `dbSessionId` 重建会话。因此被清理的物理连接消失了，`dbSessionId` 在映射上仍然「存在」；后续 `get_session` 未命中会直接 `reconnect`，并把新句柄的 ID 重写为同一个 `dbSessionId`。代价见下一节。
-
-### 2.3 事务句柄不随 idle eviction 回收（已实现的现状）
-
-`AppState.session_transactions` 保存「`dbSessionId` → 事务句柄」映射，它位于 `AppState` 而不在 `ConnectionManager` 内：
-
-- `begin_session_transaction_impl` 用 `get_session` 开启事务并写入该表，**不取引用计数**；
-- `release_connection_impl` 只递减引用，不回滚事务；后台 idle eviction 也只丢物理连接，两者都不碰这张表；
-- 只有 `disconnect_impl` 会先移除并回滚事务句柄再断开。
-
-因此存在一条可达路径：`connect` → `begin_session_transaction` → `release_connection`（计数归零、事务句柄残留）→ 空闲超过 1800 秒被清理 → 对同一 `dbSessionId` 提交 → `get_session` 触发 `reconnect` → 提交落在一条**从未开启该事务**的物理连接上，且提交按成功返回。这条连续旅程目前没有测试覆盖；本节只记录已实现的现状，不预判修复形态。
-
-### 2.4 隧道
-
-连接建立时先解析隧道再创建 driver：配置若带 `tunnel_id`，`resolve_tunnel_ref` 会从 `tunnels.json` 还原为内联的 `tunnel_kind` + 各类隧道参数；随后 `maybe_start_tunnel` 在本机监听回环端口并把 driver 看到的 host/port 改写为该回环地址。四种隧道类型（直连 / SSH / HTTP CONNECT / WebSocket）的差异对 driver 不可见。详见 [tunnel.md](tunnel.md)。
-
-## 3. 消费方的会话获取与目标路径
-
-下表是**已实现的现状**：每个消费方在「创建 / 复用 / 关闭 / 取消 / 配置与目标路径」五个维度上各自做了什么。文档描述的是当前代码行为，不是目标形态。
-
-| 消费方 | 创建 | 复用 | 关闭 | 取消 | 配置与目标路径 |
-|---|---|---|---|---|---|
-| **Query** | 不创建。`execute_query` / `execute_query_stream` / `get_explain` 一律收 `db_session_id` | 与同一 `connectionId` 的所有消费方共享同一条会话 | 不关闭；会话由连接面板的 `release_connection` / `disconnect` 结束 | `QueryExecutionId` + 归属校验（校验 `dbSessionId` 与执行记录一致后才允许取消） | database 随命令 envelope 传递，`schema` 固定为 `None`；不做切库，手写 SQL 落到连接默认库 |
-| **Table / DataTable / 导出** | 不创建。三个入口都只收 `db_session_id` | DataTable 写操作**复用同一 `dbSessionId` 上已存在的事务**，没有才自开一个 | 不关闭。导出同样只消费既有会话 | **导出没有中途取消**：结果里的「已取消」只代表保存对话框被放弃 | DataTable 提交前把 `dbSessionId` 映射回 `connectionId`，与表格记录上的 `connectionId` 不一致即拒绝 |
-| **Schema Diff** | 专用会话由前端 `useSchemaDiffEndpoints` 调 `connectDedicated` 建立；Job prepare/apply 由桌面 adapter 注册至 `DesktopJobHost` | 不与主工作区共享 | UI 卸载释放 UI 持有的会话引用；已接受 Job 的 handler 生命周期独立 | prepare/apply 按 `jobId` 经 `DesktopJobHost` 取消，窗口关闭不是取消信号 | Job 状态、回执与执行边界写入 AppDb；完整计划与 SQL 审阅内容仍为进程内状态 |
-| **Data Sync** | Job 接受前校验用户授权的两端会话，再为任务建立专用 source/target 会话 | 不与主工作区共享 | Job 完成或派发失败后释放任务专用会话；窗口生命周期不释放 Job 正在使用的会话 | prepare/apply 通过 `DesktopJobHost` 持久化 cancel intent | AppDb 持久化 Job projection、回执与结果；行级审阅投影仍为进程内状态，运行时 session 不落盘 |
-| **Data Transfer** | 兼容执行路径仍由前端 `DataTransferWindow` 持有源 / 目标会话；P5 prepare/apply 从 live endpoint 组装 handler | 不与主工作区共享 | 运行时 session 由当前 handler 使用；窗口卸载不取消已受理 Job | P5 命令通过 `AppState.desktop_job_host` 持久 cancel intent；兼容旧 job ID 回退到进程级 registry | 运行时 endpoint 不落盘；Job 保存安全 plan projection / 结果引用，plan body 与 session 仍为内存态 |
-| **Workflow** | `resolve_session_for_connection`（首次执行时建立） | 与 GUI 同一条会话 | **不调用 `release`**：命令运行时与执行器都不释放，引用计数常驻 ≥1，因此这类会话不会被 idle eviction 回收 | 无独立取消通道，失败按 step 的错误策略 abort / skip / fallback | step 显式目标 → block 目标 → workflow 默认目标 → profile 初始目标；目标随命令输入走，**不做切库** |
-| **MCP** | DB tools 收**持久化 `connection_id`**，经 `resolve_connection_with_id` → `resolve_session_for_connection` 建立 | 与 GUI 共享同一个 `ConnectionManager` 实例，MCP 的一次 `query` 可能命中的正是 GUI 查询编辑器正在用的那条会话 | 不释放引用 | 无独立取消通道 | database / schema 全部来自调用参数 → 连接配置回退 → 驱动约定，**从不读会话当前库**；白名单为空时按拒绝一切处理 |
-| **AI 诊断** | 不创建。诊断、NL2SQL、EXPLAIN 分析、Schema 文档都只收 `db_session_id` | AI Chat 的 schema 上下文分支用既有会话；取不到时**静默跳过 DDL 上下文，db tools 仍然注入**（见 [ai.md](./ai.md)） | 不关闭 | AI 侧独立的取消注册表 | 唯一反向的入口是查询历史分析：它把 `dbSessionId` 映射回 `connectionId`，再按连接过滤历史 |
-
-要点：
-
-- **会话创建集中在少数入口**。生产代码里真正新建会话的地方包括连接 IPC（共享 / 专用两种）、Schema Diff 与 Data Transfer 的端点流程、Data Sync Job adapter、Workflow 的命令运行时与执行器，以及 db_tools（MCP 与 AI 共用）；Query、DataTable、导出和 AI 诊断消费调用方提供的 `dbSessionId`。
-- **「三件套」的专用会话由不同层管理**。Schema Diff 与 Data Transfer 的端点会话由前端建立；Data Sync 在 Job adapter 中基于用户已连接端点建立任务专用会话。三者的已接受 Job 均由桌面 Job host 管理，不与主工作区共享事务状态。
-- **共享即钉住**。Workflow 与 MCP 取得会话后不释放引用，使这些会话不再满足 idle eviction 的「计数为 0」条件。
-- **不切库是全局约束**。驱动契约里已经没有 `use_database` 方法；源码中残留的同名符号只有 Mock 驱动测试中恒空的 `use_database_calls()` 回归绊线，以及 MySQL 驱动在**建连时**内部拼 `USE` 语句的细节——两者都不构成命令级切库通道。因此所有消费方的目标都通过命令 envelope 传递。
+所有 session 操作都必须使用 dbSessionId，所有配置归属与调度语义都使用 connectionId。关闭窗口不自动取消已受理的 Job；取消仍以具体 Query / Job / AI operation 的 owner 和句柄为准。
 
 ### 取消维度：五种独立的取消机制
 
@@ -103,9 +66,9 @@ dbSessionId
 
 要点：
 
-- Query 校验会话归属；迁移三件套 DesktopJobHost 通过 Job record 的作用域校验；旧 registry 仍只以 jobId 寻址。
-- Legacy registry 支持先取消再开始；迁移三件套 DesktopJobHost 把 cancel intent 写入 Job record。Job metadata 重启后可读，但不会因此恢复旧运行时资源。
-- 兼容旧 registry 与 AI cancel state 仍只存在内存；Schema Diff、Data Sync、Data Transfer 均接入 AppDb 持久 host。
+- Query 通过 Runtime session 进行 owner 校验；Schema Diff、Data Sync、Data Transfer 的长任务由 DesktopJobHost 持有 cancel intent。
+- MCP / Workflow 通过各自运行时用例执行，不依赖共享 GUI dbSessionId 或旧 ConnectionManager。
+- Host compatibility JobRegistry 与 AI cancel registry 仍是各自独立的进程内状态；它们不是连接生命周期管理器。
 
 ## 4. Query execution
 
@@ -114,12 +77,12 @@ dbSessionId
 Query 是最纯粹的会话消费方，也是这套约定的基准形状：
 
 - **创建**：不创建。执行、EXPLAIN、流式查询的 IPC 形参都是 `dbSessionId`，命令体内只做会话查找。
-- **复用**：无独立策略——用的是调用方给的那条会话；会话若已被空闲回收，会话管理器会用同一个 ID 重建物理连接（见 [2.2](#22-引用计数释放与-idle-eviction)）。
+- **复用**：使用调用方提供的 Runtime session；会话若已被空闲回收，旧 `dbSessionId` 明确返回 `SessionLost`，调用方必须显式打开新 session。
 - **关闭**：不在 Query 层关闭。会话由连接 IPC 释放或断开。
 - **取消**：按**执行**而不是按会话取消。流式执行分配一个执行 ID，取消时校验发起者与会话一致，不一致直接拒绝——避免一个面板取消另一个面板的查询。
 - **配置目标**：database 随命令 envelope 传递，schema 恒为 `None`（不切库）。目标名的解析交给驱动：能内联限定名的驱动自己改写，不能的驱动由用户写全限定名。**读**命令另有 `closeDatabase`：它关掉当前打开的库并作废 schema 缓存，不是把会话切到别的库。
 
-事务：显式事务按会话登记句柄。开启事务**不取引用**，因此它的存亡不受引用计数保护（见 [2.3](#23-事务句柄不随-idle-eviction-回收已实现的现状)）。
+事务：显式控制和句柄登记归 Runtime（见 [2.3](#23-事务与隧道边界)）；Host 仅适配原 IPC，不另存事务表。
 
 ## 5. 表与数据导出
 
@@ -127,12 +90,12 @@ DataTable 的行编辑与数据导出是两条不同的写路径，不要按同�
 
 **行编辑（DataTable 暂存改动的提交）**
 
-- **创建 / 复用**：都只在调用方已建的会话上执行。会话找不到时走同一条透明重建路径。
+- **创建 / 复用**：都在调用方已建的 Runtime session 上执行。会话找不到或已过期时明确失败，不以同一 `dbSessionId` 透明重建。
 - **事务**：预览待提交改动**不**开事务，只读；真正执行改动计划时，若该会话已有显式事务就复用，否则自己开一个。语义不明确的写入（例如无法判定影响行数）一律拒绝，不做「尽力而为」。
 - **写入参数**：UPDATE / DELETE 的 SQL 只包含驱动占位符；列值与主键值通过驱动绑定 API 单独传递。驱动先构造整批语句，确认占位符与绑定执行均受支持后才开启事务。预览中的 SQL 模板不包含数据值。
 - **关闭**：不涉及。
 - **取消**：无独立的取消句柄——粒度是「提交前 / 提交后」，不是执行中途。
-- **配置目标**：提交前复核四件事：改动计划里的表必须属于这条会话的**所属连接**、驱动类型与 database/schema 必须与当前配置一致、连接不得只读、以及结构指纹是否仍然匹配。任一不符即中止，避免把过期界面上的改动写到已经变化的表上。表所属连接是从会话反查出来的（见 [2.1](#21-连接-id-约定)），该反查依赖 owner 映射在空闲回收后仍然保留。
+- **配置目标**：提交前复核四件事：改动计划里的表必须属于这条会话的**所属连接**、驱动类型与 database/schema 必须与当前配置一致、连接不得只读、以及结构指纹是否仍然匹配。任一不符即中止，避免把过期界面上的改动写到已经变化的表上。表所属连接从仍有效的 Runtime session 读取（见 [2.1](#21-连接-id-约定)）；session 到期或丢失时操作应以 `SessionLost` 失败，不保证在回收后继续保留旧 session 的 owner 映射，也不得用同一 `dbSessionId` 透明重建。
 
 **数据导出**
 

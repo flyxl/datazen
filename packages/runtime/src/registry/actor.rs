@@ -140,6 +140,7 @@ pub enum ExecCommand {
     SetIdleDeadline {
         handle: SessionHandle,
         deadline_ms: Option<u64>,
+        return_previous: bool,
         reply: Reply<Option<u64>>,
     },
     Close {
@@ -511,9 +512,18 @@ async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
         ExecCommand::SetIdleDeadline {
             handle,
             deadline_ms,
+            return_previous,
             reply,
         } => {
-            let _ = reply.send(set_idle_deadline(state, &handle, deadline_ms));
+            let previous = state.idle_deadline_ms;
+            let result = set_idle_deadline(state, &handle, deadline_ms).map(|current| {
+                if return_previous {
+                    previous
+                } else {
+                    current
+                }
+            });
+            let _ = reply.send(result);
         }
         ExecCommand::Close {
             handle,
@@ -542,6 +552,11 @@ async fn handle_exec_while_flying(state: &mut ActorState, msg: ExecCommand) {
         }
         ExecCommand::CapabilitySnapshot { handle, reply } => {
             let _ = reply.send(read_capability_snapshot(state, &handle));
+        }
+        // An idle scan is observation, never a request to cancel a live command.
+        // Answer now; deferring would let an old scan close a just-finished session.
+        ExecCommand::Evict { reply, .. } => {
+            let _ = reply.send(Ok(None));
         }
         other => state.deferred.push_back(other),
     }

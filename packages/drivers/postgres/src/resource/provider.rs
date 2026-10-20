@@ -544,7 +544,12 @@ impl PostgresResourceProvider {
             .contains_key(&resource.connection.id)
             && !matches!(
                 call.command.as_str(),
-                "query" | "query_stream" | "execute" | "explain" | "get_table_schema"
+                "query"
+                    | "query_stream"
+                    | "execute"
+                    | "explain"
+                    | "get_table_schema"
+                    | "backup_dump"
             )
         {
             return Err(ResourceError::unsupported(
@@ -574,7 +579,12 @@ impl PostgresResourceProvider {
         // The pre-execution state is a snapshot, deliberately: what the caller
         // sees as "before" is what was true when the statement was sent.
         let context_before = self.context_of(resource).await?;
-        let statement_results = if matches!(call.command.as_str(), "query" | "query_stream") {
+        let statement_results = if call.command == "backup_dump" {
+            self.driver
+                .retained_backup(&resource.connection, execution_id, &call.input, sink)
+                .await?;
+            Vec::new()
+        } else if matches!(call.command.as_str(), "query" | "query_stream") {
             let sql = call.input["sql"].as_str().ok_or_else(|| {
                 ResourceError::Driver(DriverError::InvalidConfig("sql is required".into()))
             })?;

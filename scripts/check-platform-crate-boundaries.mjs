@@ -226,6 +226,30 @@ const RULES = Object.freeze([
     specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
     note: 'the infrastructure kernel depends on no other layer and no platform transport',
   },
+  {
+    id: 'F-12',
+    subjects: ['feature-core'],
+    subjectsFromSpec: true,
+    allowedLayers: [
+      'feature-core',
+      'runtime',
+      'application',
+      'platform-api',
+      'platform-infra',
+      'driver-api',
+      'ai-api',
+      'data-transfer',
+      'data-sync',
+      'schema-diff',
+      'migration-common',
+    ],
+    forbiddenCrates: 'spec',
+    specTokens: ['packages/feature-core'],
+    // Host crates are rejected by allowedLayers. Treating `datazen` as a
+    // family would also reject every permitted `datazen-*` shared crate.
+    specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
+    note: 'portable feature services depend on shared domain/runtime ports, never the desktop or a server transport',
+  },
 ]);
 
 /**
@@ -270,7 +294,8 @@ export function parseSpecRow(row) {
     const token = match[1].trim();
     if (token === '') continue;
     if (/^(packages\/|src-tauri$|server$)/.test(token)) paths.push(token);
-    else if (token.includes('@') || token.includes('(') || token.includes('.')) frontend.push(token);
+    else if (token.includes('@') || token.includes('(') || token.includes('.'))
+      frontend.push(token);
     else crates.push(token);
   }
   return { paths, crates, frontend };
@@ -458,14 +483,20 @@ function resolveSubject(layerId, membersByLayer, root) {
  * }} options
  */
 export function checkPlatformCrateBoundaries(options) {
-  const { root, requireLayers = DEFAULT_REQUIRED_LAYERS, log = () => {}, error = console.error } = options;
+  const {
+    root,
+    requireLayers = DEFAULT_REQUIRED_LAYERS,
+    log = () => {},
+    error = console.error,
+  } = options;
   const violations = [];
   const errors = [];
   const vacuous = [];
   const advisories = [];
   const evaluated = [];
 
-  const metadata = options.metadata ?? runCargoMetadata({ cwd: root, env: options.env, log, error });
+  const metadata =
+    options.metadata ?? runCargoMetadata({ cwd: root, env: options.env, log, error });
   let specText = options.specText;
   if (specText === undefined) {
     const specFile = resolve(root, SPEC_PATH);
@@ -479,7 +510,9 @@ export function checkPlatformCrateBoundaries(options) {
 
   const index = buildWorkspaceIndex(metadata);
   for (const bad of index.unclassified) {
-    errors.push(`unclassified workspace member ${bad.name ?? bad.id} (${bad.relDir ?? '?'}): ${bad.reason}`);
+    errors.push(
+      `unclassified workspace member ${bad.name ?? bad.id} (${bad.relDir ?? '?'}): ${bad.reason}`,
+    );
   }
 
   const membersByLayer = new Map();
@@ -500,7 +533,8 @@ export function checkPlatformCrateBoundaries(options) {
     for (const layerId of rule.subjects) {
       const resolved = resolveSubject(layerId, membersByLayer, root);
       if (!resolved.present) {
-        const what = resolved.kind === 'directory' ? 'has no source directory' : 'has no workspace member';
+        const what =
+          resolved.kind === 'directory' ? 'has no source directory' : 'has no workspace member';
         if (required.has(layerId)) {
           errors.push(
             `${rule.id}: required layer \`${resolved.path}\` ${what}. ` +
@@ -526,7 +560,8 @@ export function checkPlatformCrateBoundaries(options) {
         // check, and conflating the two is what made a clean `backend-client`
         // report itself as "no packages/backend-client yet" in the same run that
         // evaluated it.
-        if (files > 0) evaluated.push({ rule: rule.id, subjects: [`${layer.path}/ (${files} file(s))`] });
+        if (files > 0)
+          evaluated.push({ rule: rule.id, subjects: [`${layer.path}/ (${files} file(s))`] });
         else vacuous.push({ rule: rule.id, layer: layerId, path: layer.path, reason: 'empty' });
       }
       continue;
@@ -546,7 +581,10 @@ export function checkPlatformCrateBoundaries(options) {
       }
     }
 
-    const families = rule.forbiddenCrates === 'spec' ? parseSpecRow(findSpecRow(specText, rule.id) ?? '').crates : rule.forbiddenCrates;
+    const families =
+      rule.forbiddenCrates === 'spec'
+        ? parseSpecRow(findSpecRow(specText, rule.id) ?? '').crates
+        : rule.forbiddenCrates;
     if (subjects.length === 0) continue;
     evaluated.push({ rule: rule.id, subjects: subjects.map((s) => s.name) });
 
@@ -559,7 +597,9 @@ export function checkPlatformCrateBoundaries(options) {
         const viaLayer = forbiddenNames.has(pkg.name);
         const viaFamily = families.some((f) => matchesCrateFamily(pkg.name, f.replace(/\*$/, '')));
         if (!viaLayer && !viaFamily) continue;
-        const why = viaFamily ? 'crate family' : `${pkg.name}'s layer (${nameToLayer.get(pkg.name) ?? 'external'})`;
+        const why = viaFamily
+          ? 'crate family'
+          : `${pkg.name}'s layer (${nameToLayer.get(pkg.name) ?? 'external'})`;
         violations.push(
           `${rule.id}  ${member.name} (${member.relDir}/Cargo.toml) → ${pkg.name} in its ` +
             `normal+build closure [${why}]: ${rule.note}.`,
@@ -678,7 +718,13 @@ function parseArgs(argv) {
     else throw new Error(`unknown argument: ${arg}`);
   }
   const envRequired = process.env.ARCH_GUARD_REQUIRED_LAYERS;
-  if (envRequired) args.requireLayers.push(...envRequired.split(',').map((s) => s.trim()).filter(Boolean));
+  if (envRequired)
+    args.requireLayers.push(
+      ...envRequired
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
   return args;
 }
 
