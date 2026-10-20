@@ -1,7 +1,7 @@
 #[cfg(test)]
 use super::ActiveSession;
 use super::{ConnectionError, ConnectionManager};
-use crate::db::{ConnectionConfig, SslMode, TunnelKind};
+use crate::db::ConnectionConfig;
 use crate::tunnel::Tunnel;
 use std::sync::Arc;
 use std::time::Instant;
@@ -12,8 +12,10 @@ impl ConnectionManager {
         &self,
         config: ConnectionConfig,
     ) -> Result<(ConnectionConfig, Option<Tunnel>), ConnectionError> {
-        let config = self.resolve_tunnel_ref(config).await?;
         let known_hosts_path = self.store.data_dir().join("ssh_known_hosts.json");
+        let config = crate::tunnel::resolve_saved_tunnel(&self.store, config)
+            .await
+            .map_err(ConnectionError::DriverError)?;
         crate::tunnel::start_for_connection(config, &known_hosts_path)
             .await
             .map_err(ConnectionError::DriverError)
@@ -23,19 +25,9 @@ impl ConnectionManager {
         &self,
         mut config: ConnectionConfig,
     ) -> Result<ConnectionConfig, ConnectionError> {
-        let Some(tid) = config.tunnel_id.as_ref().filter(|s| !s.is_empty()) else {
-            return Ok(config);
-        };
-        let Some(saved) = self.store.get_tunnel(tid).await else {
-            return Err(ConnectionError::Internal(format!(
-                "tunnel id '{tid}' not found"
-            )));
-        };
-        config.tunnel_kind = Some(saved.kind);
-        config.ssh_tunnel = saved.ssh;
-        config.http_proxy_tunnel = saved.http_proxy;
-        config.websocket_tunnel = saved.websocket;
-        Ok(config)
+        crate::tunnel::resolve_saved_tunnel(&self.store, config)
+            .await
+            .map_err(ConnectionError::DriverError)
     }
 
     pub async fn test_connection(
@@ -76,85 +68,9 @@ impl ConnectionManager {
         target_host: &str,
         target_port: u16,
     ) -> Result<Duration, ConnectionError> {
-        let Some(saved) = self.store.get_tunnel(tunnel_id).await else {
-            return Err(ConnectionError::Internal(format!(
-                "tunnel id '{tunnel_id}' not found"
-            )));
-        };
-
-        let config = ConnectionConfig {
-            id: format!("__tunnel_test__{tunnel_id}"),
-            name: format!("tunnel test: {tunnel_id}"),
-            // Never dialed: `start_tunnel` only forwards `host`/`port` through
-            // the tunnel and does not resolve a driver here.
-            database_type: "postgresql".to_string(),
-            host: Some(target_host.to_string()),
-            port: Some(target_port),
-            database: None,
-            schema: None,
-            username: None,
-            password: None,
-            ssl_mode: SslMode::default(),
-            connection_timeout: 30,
-            max_pool_size: 10,
-            ssh_tunnel: None,
-            tunnel_kind: None,
-            tunnel_id: Some(tunnel_id.to_string()),
-            http_proxy_tunnel: None,
-            websocket_tunnel: None,
-            color_tag: None,
-            group: None,
-            last_connected_at: None,
-            server_version: None,
-            options: None,
-            read_only: false,
-            pinned: false,
-        };
-
-        let started = Instant::now();
-        let (_resolved, tunnel) = self.start_tunnel(config).await?;
-        let Some(tunnel) = tunnel else {
-            // `tunnelKind = none` (or a tunnel that resolves to nothing) means
-            // nothing was probed; reporting success would be a false positive.
-            return Err(ConnectionError::Internal(format!(
-                "tunnel '{tunnel_id}' resolved to no tunnel configuration"
-            )));
-        };
-
-        let verified: Result<(), ConnectionError> = match saved.kind {
-            TunnelKind::HttpProxy => {
-                let proxy = saved.http_proxy.ok_or_else(|| {
-                    ConnectionError::Internal(format!(
-                        "tunnel '{tunnel_id}' has no httpProxy config"
-                    ))
-                })?;
-                crate::tunnel::verify_http_proxy_upstream(&proxy, target_host, target_port)
-                    .await
-                    .map_err(ConnectionError::DriverError)
-            }
-            TunnelKind::WebSocket => {
-                let websocket = saved.websocket.ok_or_else(|| {
-                    ConnectionError::Internal(format!(
-                        "tunnel '{tunnel_id}' has no websocket config"
-                    ))
-                })?;
-                crate::tunnel::verify_websocket_upstream(&websocket, target_host, target_port)
-                    .await
-                    .map_err(ConnectionError::DriverError)
-            }
-            // `SshTunnel::start` already dials the bastion and authenticates, so
-            // building the tunnel *is* the probe. `None` never reaches here: it
-            // yields no tunnel and we bail out above.
-            TunnelKind::Ssh | TunnelKind::None => Ok(()),
-        };
-
-        let elapsed = started.elapsed();
-        // Dropping the tunnel tears the local forwarder down (see `SshTunnel`'s
-        // `Drop`): the probe is deliberately one-shot and must not leak a
-        // listener, a task or an SSH session.
-        drop(tunnel);
-        verified?;
-        Ok(elapsed)
+        crate::tunnel::test_tunnel(&self.store, tunnel_id, target_host, target_port)
+            .await
+            .map_err(ConnectionError::DriverError)
     }
 
     pub async fn ping(&self, db_session_id: &str) -> bool {

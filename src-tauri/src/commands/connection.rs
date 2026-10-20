@@ -66,9 +66,7 @@ pub(crate) async fn test_connection_impl(
         ssh = ?config.ssh_tunnel.as_ref().map(|s| format!("{}@{}:{}", s.username, s.host, s.port)),
         "test_connection"
     );
-    let result = state
-        .connection_manager
-        .test_connection(&config)
+    let result = crate::tunnel::test_connection(&state.store, &state.driver_registry, config)
         .await
         .cmd_err("test_connection")?;
     tracing::info!(version = %result.server_version, "test_connection OK");
