@@ -57,6 +57,35 @@ export const CONTRACT_RULES = Object.freeze([
     why: 'The trait every driver implements; a signature change is a recompile requirement for the whole fleet.',
   },
   {
+    id: 'sql-dialect',
+    file: 'packages/driver-api/src/dialect.rs',
+    anchor: 'pub trait SqlDialect',
+    kind: 'trait',
+    implementedBy: 'the host SQL builders and, once migrated, every SQL driver',
+    why: 'The narrow text contract a SQL builder consumes instead of the whole driver. Its methods are the quoting, pagination, literal and placeholder rules; a signature change recompiles every consumer that was moved off `DatabaseDriver`, including the shared builders in this crate.',
+  },
+  {
+    id: 'legacy-sql-dialect',
+    // Anchored on the inherent impl, not on `pub struct LegacySqlDialect`:
+    // the struct body is one private borrow field, and governing it would turn
+    // an internal field rename into a contract event. The host constructs this
+    // adapter to keep driving un-migrated consumers, so its constructor is the
+    // real binding point.
+    file: 'packages/driver-api/src/dialect.rs',
+    anchor: "impl<'a, D: DatabaseDriver + ?Sized> LegacySqlDialect<'a, D> {",
+    kind: 'struct',
+    implementedBy: 'the host, wrapping drivers whose call sites have not moved yet',
+    why: 'The one-way adapter from `DatabaseDriver` to `SqlDialect`. Its constructor signature is called at every migrated consumer, so it is the migration seam between the old and new contracts and cannot change silently.',
+  },
+  {
+    id: 'bound-parameter-limit',
+    file: 'packages/driver-api/src/dialect.rs',
+    anchor: 'pub enum BoundParameterLimit',
+    kind: 'enum',
+    implementedBy: 'every SqlDialect implementation, read by batch writers',
+    why: 'The provenance of a statement\'s bound-parameter ceiling. Batch splitting reads the value, and documentation reads whether it can be tuned; adding or renaming a variant changes what a driver is allowed to claim, and an exhaustive match in the host stops compiling without `#[non_exhaustive]`.',
+  },
+  {
     id: 'key-value-driver',
     // Declared in its own module since `traits.rs` was split; `traits.rs` still
     // re-exports it, so the public path never changed.

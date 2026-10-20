@@ -10,6 +10,7 @@ pub use inventory;
 pub mod capabilities;
 pub mod capability_domains;
 pub mod command;
+pub mod dialect;
 mod explain_plan;
 mod factory;
 pub mod filters;
@@ -29,6 +30,7 @@ pub mod schema_object_commands;
 pub mod schema_objects;
 pub mod schema_scope_mapping;
 pub mod session;
+pub mod sql_builder;
 pub mod sql_dump;
 pub mod sql_identifiers;
 pub mod sql_split;
@@ -48,6 +50,7 @@ pub use command::{
     statement_command_definitions, validate_command_input, CommandAccessLevel, CommandCategory,
     CommandResult, DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec,
 };
+pub use dialect::{BoundParameterLimit, LegacySqlDialect, SqlDialect};
 pub use explain_plan::{normalize_mysql_explain_plan, normalize_postgres_explain_plan};
 pub use factory::*;
 pub use query_stream::{

@@ -202,8 +202,9 @@ pub async fn read(
         .ok_or_else(|| CommandError::Validation("Typed table schema result unavailable".into()))?;
     let schema: TableSchema = serde_json::from_value(definition.clone())
         .map_err(|_| CommandError::Validation("Invalid table schema result".into()))?;
-    let quote = |name: &str| driver.quote_ident(name);
-    let literal = |value: &Value| driver.try_format_sql_literal(&Some(value.clone()));
+    // SQL construction depends on the dialect contract only; execution below
+    // still goes through the driver's explicit target path.
+    let dialect = crate::db::LegacySqlDialect::new(driver.as_ref());
     let select = QueryExecutor::build_select_sql(
         &schema.table_name,
         &schema.columns,
@@ -215,12 +216,9 @@ pub async fn read(
                 column: sort.column,
                 descending: sort.descending,
             }),
-        &quote,
-        &literal,
-        &driver.pagination_syntax(
-            u64::from(request.page_size),
-            u64::from(request.page).saturating_mul(u64::from(request.page_size)),
-        ),
+        &dialect,
+        u64::from(request.page_size),
+        u64::from(request.page).saturating_mul(u64::from(request.page_size)),
         request.filter_logic.as_deref(),
     )?;
     let skip_count = request.skip_count.unwrap_or(false) || driver.skip_count_query();
@@ -231,8 +229,7 @@ pub async fn read(
             &schema.table_name,
             &schema.columns,
             &request.filters,
-            &quote,
-            &literal,
+            &dialect,
             request.filter_logic.as_deref(),
         )?;
         format!("{count};\n{select}")

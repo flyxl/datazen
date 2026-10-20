@@ -174,16 +174,19 @@ describe('rule table — every governed contract exists in the tree', () => {
       if (rule.kind === 'trait') {
         expect(declaration, `${rule.id}`).toContain('pub trait');
       } else if (rule.kind === 'struct') {
-        // `pub struct Foo` — the usual anchor. Also `impl Foo {`, the inherent
-        // impl of the same item, for rules whose ABI surface is the
-        // constructor rather than the (private) field list:
-        // `legacy-resource-adapter` anchors on the inherent impl because the
-        // host calls `LegacyResourceAdapter::new` once per un-migrated driver,
-        // and that signature is what the rule exists to watch. It is still a
-        // struct item, and the classifier reads it with struct semantics, so
-        // admitting it here does not weaken the check it is making: a rule
-        // anchored at a trait or an enum is still rejected.
-        expect(declaration, `${rule.id}`).toMatch(/\bpub struct\b|\bimpl \w+ \{/);
+        // `pub struct Foo` — the usual anchor. Also an inherent `impl`, for
+        // rules whose ABI surface is the constructor rather than the (private)
+        // field list: `legacy-resource-adapter` anchors on the inherent impl
+        // because the host calls `LegacyResourceAdapter::new` once per
+        // un-migrated driver, and that signature is what the rule exists to
+        // watch. `legacy-sql-dialect` does the same for a generic adapter, so
+        // the impl form has to admit generic parameters. It is still a struct
+        // item, and the classifier reads it with struct semantics, so admitting
+        // it here does not weaken the check it is making: a rule anchored at a
+        // trait or an enum is still rejected.
+        expect(declaration, `${rule.id}`).toMatch(
+          /\bpub struct\b|\bimpl(?:<[^>]*>)?\s+[A-Za-z_][\w:]*(?:\s*<[^>]*>)?\s*\{/,
+        );
       } else if (rule.kind === 'enum') {
         expect(declaration, `${rule.id}`).toContain('pub enum');
       }
