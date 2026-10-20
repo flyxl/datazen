@@ -101,7 +101,7 @@ mod tests {
     async fn resolve_connection_connects_when_not_in_session() {
         let (_keyring, store, mgr, _) = test_stack().await;
         store.save_connection(sample_config("c1")).await.unwrap();
-        let (driver, handle) = resolve_connection(&mgr, "c1").await.unwrap();
+        let (_, driver, handle) = mgr.resolve_session_for_connection("c1").await.unwrap();
         assert_eq!(driver.driver_type(), "postgres");
         assert!(handle.id.starts_with("mock-c1"));
     }

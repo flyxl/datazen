@@ -215,20 +215,6 @@ impl AiRequestHost<'_> {
 
 #[async_trait::async_trait]
 impl DatabaseToolHost for AiRequestHost<'_> {
-    async fn resolve_session_for_connection(
-        &self,
-        id: &str,
-    ) -> Result<
-        (
-            String,
-            Arc<dyn datazen_driver_api::DatabaseDriver>,
-            datazen_driver_api::ConnectionHandle,
-        ),
-        String,
-    > {
-        DatabaseToolHost::resolve_session_for_connection(self.state, id).await
-    }
-
     async fn get_session_config(
         &self,
         id: &str,
@@ -238,6 +224,13 @@ impl DatabaseToolHost for AiRequestHost<'_> {
 
     async fn execution_settings(&self) -> datazen_platform_api::settings::ExecutionSettings {
         DatabaseToolHost::execution_settings(self.state).await
+    }
+
+    async fn driver_for_connection(
+        &self,
+        id: &str,
+    ) -> Result<Arc<dyn datazen_driver_api::DatabaseDriver>, String> {
+        DatabaseToolHost::driver_for_connection(self.state, id).await
     }
 
     async fn execute_target(

@@ -3,29 +3,19 @@ use datazen_platform_api::settings::ExecutionSettings;
 use std::sync::Arc;
 #[async_trait::async_trait]
 pub trait DatabaseToolHost: Send + Sync {
-    async fn resolve_session_for_connection(
-        &self,
-        connection_id: &str,
-    ) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), String>;
     async fn get_session_config(&self, session_id: &str) -> Result<ConnectionConfig, String>;
     async fn profile_config(&self, id: &str) -> Result<ConnectionConfig, String> {
-        let (session, _, _) = self.resolve_session_for_connection(id).await?;
-        self.get_session_config(&session).await
+        self.get_session_config(id).await
     }
-    async fn driver_for_connection(&self, id: &str) -> Result<Arc<dyn DatabaseDriver>, String> {
-        Ok(self.resolve_session_for_connection(id).await?.1)
-    }
+    async fn driver_for_connection(&self, id: &str) -> Result<Arc<dyn DatabaseDriver>, String>;
     async fn execute_target(
         &self,
         id: &str,
         command: &str,
         input: serde_json::Value,
     ) -> Result<datazen_driver_api::CommandResult, String> {
-        let (_, driver, handle) = self.resolve_session_for_connection(id).await?;
-        driver
-            .execute_command(&handle, command, input)
-            .await
-            .map_err(|error| error.to_string())
+        let _ = (id, command, input);
+        Err("DatabaseToolHost does not support target execution".into())
     }
     async fn execution_settings(&self) -> ExecutionSettings;
 }
@@ -76,12 +66,6 @@ pub trait SchemaContextSource: Send + Sync {
 
 #[async_trait::async_trait]
 impl<T: DatabaseToolHost + ?Sized> DatabaseToolHost for Arc<T> {
-    async fn resolve_session_for_connection(
-        &self,
-        id: &str,
-    ) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-        (**self).resolve_session_for_connection(id).await
-    }
     async fn get_session_config(&self, id: &str) -> Result<ConnectionConfig, String> {
         (**self).get_session_config(id).await
     }

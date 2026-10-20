@@ -8,37 +8,8 @@ use super::{
     schema_scope::metadata_schema,
 };
 use crate::mcp::permission::{self, McpPermissionMode};
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
+use datazen_driver_api::DatabaseDriver;
 use std::sync::Arc;
-
-/// Resolve a live DB session from a persisted **connectionId** (as returned by
-/// `list_connections`). Uses [`ConnectionManager::resolve_session_for_connection`]
-/// to reuse or establish a session internally.
-pub async fn resolve_connection(
-    connection_manager: &dyn DatabaseToolHost,
-    connection_id: &str,
-) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-    let (_db_session_id, driver, handle) =
-        resolve_connection_with_id(connection_manager, connection_id).await?;
-    Ok((driver, handle))
-}
-
-/// Like [`resolve_connection`], but also returns the resolved **dbSessionId**
-/// (which differs from the input connectionId).
-pub async fn resolve_connection_with_id(
-    connection_manager: &dyn DatabaseToolHost,
-    connection_id: &str,
-) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-    connection_manager
-        .resolve_session_for_connection(connection_id)
-        .await
-        .map_err(|e| {
-            format!(
-                "Cannot resolve connection '{connection_id}': {}",
-                datazen_platform_infra::redaction::redact_secrets_for_log(&e.to_string())
-            )
-        })
-}
 
 /// Explicit metadata target for an MCP call.
 ///

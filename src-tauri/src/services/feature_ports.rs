@@ -5,20 +5,31 @@ use datazen_feature_core::services::ports::{
     ConnectionCatalog, DatabaseToolHost, SchemaContextSource,
 };
 use std::sync::Arc;
+
+// Test-only compatibility adapter. Production feature consumers must use
+// AppState's Runtime resource path; this adapter keeps focused ConnectionManager
+// unit fixtures from acquiring a live session and dropping its lease silently.
+#[cfg(test)]
 #[async_trait::async_trait]
 impl DatabaseToolHost for ConnectionManager {
-    async fn resolve_session_for_connection(
-        &self,
-        id: &str,
-    ) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-        self.resolve_session_for_connection(id)
+    async fn profile_config(&self, id: &str) -> Result<ConnectionConfig, String> {
+        let (session_id, _, _) = self
+            .resolve_session_for_connection(id)
             .await
-            .map_err(|error| error.to_string())
+            .map_err(|e| e.to_string())?;
+        self.get_session_config(&session_id)
+            .await
+            .map_err(|e| e.to_string())
     }
     async fn get_session_config(&self, id: &str) -> Result<ConnectionConfig, String> {
-        self.get_session_config(id)
+        self.get_session_config(id).await.map_err(|e| e.to_string())
+    }
+    async fn driver_for_connection(&self, id: &str) -> Result<Arc<dyn DatabaseDriver>, String> {
+        Ok(self
+            .resolve_session_for_connection(id)
             .await
-            .map_err(|error| error.to_string())
+            .map_err(|e| e.to_string())?
+            .1)
     }
     async fn execute_target(
         &self,
@@ -29,9 +40,7 @@ impl DatabaseToolHost for ConnectionManager {
         let (_, driver, handle) = self
             .resolve_session_for_connection(id)
             .await
-            .map_err(|error| error.to_string())?;
-        // The legacy session adapter historically exposes explain through the
-        // driver trait, independently of its advertised command definitions.
+            .map_err(|e| e.to_string())?;
         if command == "explain" {
             let sql = input
                 .get("sql")
@@ -40,15 +49,15 @@ impl DatabaseToolHost for ConnectionManager {
             let result = driver
                 .explain(&handle, sql)
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|e| e.to_string())?;
             return serde_json::to_value(result)
                 .map(datazen_driver_api::CommandResult::new)
-                .map_err(|error| error.to_string());
+                .map_err(|e| e.to_string());
         }
         driver
             .execute_command(&handle, command, input)
             .await
-            .map_err(|error| error.to_string())
+            .map_err(|e| e.to_string())
     }
     async fn execution_settings(&self) -> datazen_platform_api::settings::ExecutionSettings {
         self.feature_execution_settings().await
@@ -80,15 +89,6 @@ impl ConnectionCatalog for Store {
 
 #[async_trait::async_trait]
 impl DatabaseToolHost for crate::commands::AppState {
-    async fn resolve_session_for_connection(
-        &self,
-        id: &str,
-    ) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-        self.connection_manager
-            .resolve_session_for_connection(id)
-            .await
-            .map_err(|error| error.to_string())
-    }
     async fn get_session_config(&self, id: &str) -> Result<ConnectionConfig, String> {
         let adapter = self.platform_require().map_err(|error| error.to_string())?;
         let call = adapter.begin_call();
