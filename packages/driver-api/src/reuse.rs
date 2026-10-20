@@ -749,10 +749,6 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.new_sql_scanner()
     }
 
-    fn split_restore_sql(&self, sql: &str) -> Vec<String> {
-        self.inner.split_restore_sql(sql)
-    }
-
     async fn recover_restore_statement(
         &self,
         handle: &ConnectionHandle,

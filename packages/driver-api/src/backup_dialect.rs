@@ -9,7 +9,9 @@
 //! backup host flow read only this contract.
 //!
 //! [`LegacyBackupDialect`] forwards to the `DatabaseDriver` methods of the
-//! same name, one way. A driver keeps exactly one implementation of each.
+//! same name, one way — except `split_restore_sql`, whose single
+//! implementation is the shared `sql_text` helper, called directly. A
+//! driver keeps exactly one implementation of each rule.
 
 use crate::sql_split::SqlStatementScanner;
 use crate::traits::DatabaseDriver;
@@ -62,7 +64,10 @@ impl<D: DatabaseDriver + ?Sized> BackupDialect for LegacyBackupDialect<'_, D> {
     }
 
     fn split_restore_sql(&self, sql: &str) -> Vec<String> {
-        self.driver.split_restore_sql(sql)
+        // The split rule has no driver-side override: its single implementation
+        // is `sql_text::split_restore_sql`, parameterized by the wrapped
+        // driver's `new_sql_scanner`.
+        crate::traits::sql_text::split_restore_sql(self.driver, sql)
     }
 }
 

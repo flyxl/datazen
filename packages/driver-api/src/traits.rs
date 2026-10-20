@@ -25,7 +25,7 @@ use crate::{
 mod command_api;
 mod key_value;
 mod schema_target;
-mod sql_text;
+pub(crate) mod sql_text;
 mod streaming;
 
 pub use command_api::execute_standard_sql_command;
@@ -1087,11 +1087,6 @@ pub trait DatabaseDriver: Send + Sync {
     /// Override to disable `DELIMITER`, change quote rules, or swap splitters.
     fn new_sql_scanner(&self) -> crate::sql_split::SqlStatementScanner {
         crate::sql_split::SqlStatementScanner::new()
-    }
-
-    /// Split a complete SQL buffer. Default uses [`Self::new_sql_scanner`].
-    fn split_restore_sql(&self, sql: &str) -> Vec<String> {
-        sql_text::split_restore_sql(self, sql)
     }
 
     /// After a restore statement fails: clear an aborted PG transaction,
