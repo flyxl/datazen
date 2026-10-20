@@ -67,6 +67,16 @@ export function tableKey(row: DataSyncTableResult): string {
   return row.sourceTable || row.targetTable;
 }
 
+/**
+ * Composite key of a table pair, used to address the paged comparison
+ * cursors of one table.
+ */
+export function tablePageKey(
+  row: Pick<DataSyncTableResult, 'sourceTable' | 'targetTable'>,
+): string {
+  return `${row.sourceTable}\u0000${row.targetTable}`;
+}
+
 export function summarizeMappings(rows: DataSyncTableResult[]): {
   matched: number;
   incompatible: number;

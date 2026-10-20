@@ -3,7 +3,7 @@ import { MigrationEndpointsBar } from '../../components/migration/MigrationEndpo
 import { cn } from '../../lib/cn';
 import type { SyncPairingResult } from '../../lib/syncPairing';
 
-interface EndpointsBarProps {
+export interface EndpointsBarProps {
   sourceId: string;
   targetId: string;
   sourceDatabase: string;
