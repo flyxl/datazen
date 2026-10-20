@@ -272,3 +272,12 @@ Coder commit `fb9c1e160974030334dcede7e66abfc59cc743bb` is integrated as `b72a22
 - `cargo test -p datazen --lib monitor::` EXIT=0: 5 passed, 0 failed, including startup-without-ambient-runtime, grant validation, scheduled timer admission/dispatch, and occurrence idempotency.
 - `cargo test -p datazen --lib commands::context::tests::test_resolve_context_dir` EXIT=0: 2 passed, 0 failed. These AppState literals compile without the retired registry field.
 - Final production scan for `MonitorConnectionRegistry`, `monitor_connections`, `monitor/connections`, and `connection_registry` returned no matches; `git diff --check` EXIT=0. No scheduler, grants, workflow, dashboard, or Runtime behavior changes were needed after focused validation.
+
+## Runtime migration continuation — 2026-10-20 follow-up
+
+- `919cfa37c`: Sync inspect/prepare/validate/apply paths now resolve live driver/handle/config through Runtime leases. The Sync jobs contract gate passed 7/7 active tests; the non-database target case remains ignored because the test harness has no stable Redis Runtime resource fixture.
+- `9c671ea98`: Sync history metadata now reads stable `EndpointIdentity.connection_id` from the process-local plan instead of asking `ConnectionManager` to recover owners from runtime session ids. `cargo check -p datazen --lib` EXIT=0; opaque-plan focused test 1/1.
+- `0d66b1aa9`: Sync task conflict checks now open task-local Runtime sessions and close them through Runtime. `commands::sync::tests::check_sync_conflicts` passed 4/4; `cargo check -p datazen --lib` EXIT=0.
+- `68c8bd122` and `ef46262e1`: Schema Diff unified planning, source snapshot revalidation, target-object recovery and fingerprinting now borrow Runtime live sessions. Schema Diff focused suite remains 17 passed/1 failed on the existing D1 fixture requiring an explicit PostgreSQL schema; compile gate EXIT=0.
+- `99b7542f4`: Data Transfer SQL-file apply assembly now resolves source config through Runtime. `cargo check -p datazen --lib` EXIT=0; `a_plan_id_serves_at_most_one_apply_job` passed 1/1.
+- Main worktree audit: root `main` is clean with no staged, unstaged, or untracked changes. The P6 differences are committed only on the feature worktree; no main-local change is safe/necessary to drop.
