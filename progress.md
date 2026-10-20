@@ -14,6 +14,9 @@
   - `1b06ab884` fix(reuse): decide on every DatabaseDriver rule in ReuseDriver
   - `3a4a2c982` chore(ledger): record driver-domain refactor progress on this branch
   - `3c6fedf92` refactor(driver-api): extract CommandCatalog and move command descriptions off the driver
+  - `f438ae588` chore(ledger): record CommandCatalog round on this branch
+  - `5f5817aba` refactor(driver-api): extract SchemaMigration and read migration rules off the driver
+  - `64ea54a35` refactor(driver-api): extract BackupDialect for restore-file rules
 
 ## 已完成（对应方案 §六 的 PR 顺序）
 
@@ -68,6 +71,29 @@
   codegen 文件已从主树复制）；协议 compat gate additive（crate 0.0.13→0.0.17，
   PROTOCOL 6→6）；vitest gate `68 passed`。
 
+### 6. SchemaMigration 结构迁移契约（`5f5817aba`，2026-10-21）
+
+- `packages/driver-api/src/schema_migration.rs`：`SchemaMigration`
+  （renderer / capabilities / normalizer / ddl_atomicity /
+  validate_schema_migration_plan / validate_schema_migration，无默认体）
+  + 单向适配器 `LegacySchemaMigration`；crate 0.0.17 → 0.0.18。
+- 已迁移：schema-diff `plan.rs`（2 处 create_driver→规则读取）、`objects.rs`
+  （4 个 object-plan 块）、`deploy.rs` + `transaction.rs`（原子性与两处校验）、
+  data-sync `types_eq.rs`、src-tauri schema_diff 命令
+  （`compare_commands.rs` / `object_plan_commands.rs` / `unified_plan.rs` /
+  `deploy_commands.rs`）；执行渲染出的 DDL 仍走既有资源生命周期。
+- 协议规则登记 `schema-migration` / `legacy-schema-migration`；drivers.md §2.7。
+
+### 7. BackupDialect 备份文件规则契约（`64ea54a35`，2026-10-21）
+
+- `packages/driver-api/src/backup_dialect.rs`：`BackupDialect`
+  （`uses_sql_restore_pipeline` / `new_sql_scanner` / `split_restore_sql`，
+  无默认体）+ 单向适配器 `LegacyBackupDialect`；crate 0.0.18 → 0.0.19。
+- 已迁移：feature-core `backup.rs` 管线路由 + `RestoreSession` 扫描器
+  （`stream_sql_file_into_session` 增加 `&dyn BackupDialect` 形参，驱动保留
+  执行/恢复）；带句柄的 dump/restore 执行入口明确不在契约内，归 §五 收敛。
+- 协议规则登记 `backup-dialect` / `legacy-backup-dialect`；drivers.md §2.8。
+
 ## 门禁实测（逐字结论，历史轮）
 
 | 命令 | 结果 |
@@ -81,6 +107,7 @@
 | `cargo test -p datazen --lib` | `1378 passed; 9 ignored` |
 | `node scripts/check-driver-protocol-compat.mjs --base main` | ok；新增契约均 additive；crate 0.0.13→0.0.17；PROTOCOL 6→6 |
 | `npx vitest run scripts/__tests__/check-driver-protocol-compat.test.ts` | `68 passed`（worktree 经 node_modules 符号链接） |
+| §四 收官轮（SchemaMigration + BackupDialect）逐项复核 | driver-api `371 passed`；schema-diff `148`；data-sync `179`；data-transfer `226`；feature-core `298`；host `1378`；compat gate additive（crate 0.0.13→0.0.19）；vitest pass |
 
 
 
@@ -90,11 +117,13 @@
 
 ## 待办（按方案顺序）
 
-1. **§四：备份 + 结构迁移领域化（剩余）**——`BackupDialect`（dump/restore 的驱动专属规则，
-   共享流程复用现有 `sql_dump`）；`SchemaMigration` 汇总 renderer/normalizer/capabilities；
-   CommandCatalog 已完成。
+1. **§四：备份 + 结构迁移领域化（完成）**——CommandCatalog / SchemaMigration /
+   BackupDialect 三个契约均已落地并迁移消费者；带句柄的备份执行入口（dump_database*、
+   restore_sql*、recover_restore_statement）按方案明确留给 §五 运行时收敛。
 2. **§五：运行时路径收敛（未开始）**——执行/事务/流式/取消按调用链迁到既有
    `ResourceProvider`；先贯通一个驱动；`ReuseDriver` 与 Git 驱动纳入验收。
+   起点 参考：`packages/driver-api/src/restore_sql.rs`（retained-restore 契约
+   `prepare` 目前只有驱动测试调用，可顺势改为 `BackupDialect` 扫描器）。
 3. **§六：协议升级与清场（未开始）**——删除无消费者的旧方法/适配器；更新
    `drivers.md`、`driver-capability-migration.md`；Git 驱动兼容状态说明。
 
