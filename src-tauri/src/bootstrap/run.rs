@@ -414,6 +414,9 @@ pub fn run() {
             crate::commands::ai_validate_config,
             // ── AI：取消 ──
             crate::commands::ai_cancel,
+            crate::commands::ai_grant_editor_session,
+            crate::commands::ai_revoke_editor_grant,
+            crate::commands::ai_touch_editor_grant,
             // ── Prompt 模板 ──
             crate::commands::prompt_list,
             crate::commands::prompt_remove_override,

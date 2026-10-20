@@ -4,7 +4,7 @@
 
 ### 1.1 概述
 
-AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式，分两个 Rust crate：`packages/ai-api` 定义统一接口（契约层），`packages/ai-providers` 提供各厂商的 Provider 实现与共享 HTTP 协议（传输层）。宿主 `src-tauri/src/ai/` 只做门面 re-export，并保留确实需要宿主服务的那部分（安全门、Prompt 解析、Schema 上下文、token 预算、取消）。
+AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约与 active → default → first 的共享 Profile 选择规则，`packages/ai-providers` 提供各厂商实现、共享 HTTP 协议和现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、NL2SQL 请求组装、单轮诊断与分析用例、智能过滤、Schema 文档生成、预算、取消和 editor grant 所有权策略。`src-tauri/src/ai/` 保留旧导入路径的门面 re-export，并由 `metadata_source.rs` 把宿主 Runtime / SchemaCache / profile 查询绑定到共享端口；Tauri 命令负责 IPC、宿主存储与连接查询、上下文文件读取、事件流和取消接线。
 
 ### 1.2 架构分层
 
@@ -14,7 +14,8 @@ packages/ai-api/                    # 公共 AI Provider API crate
 │   ├── lib.rs                      # AI_PROTOCOL_VERSION（当前 1，最低兼容 1）+ re-exports
 │   ├── traits.rs                   # AiProvider trait (async_trait, Send+Sync)
 │   ├── types.rs                    # AiProviderConfig, ChatMessage, StreamChunk, AiError,
-│   │                               # ToolDefinition, ToolCall, ToolResult, ModelInfo
+│   │                               # ToolDefinition, ToolCall, ToolResult, ModelInfo,
+│   │                               # AiSettingsConfig::selected_profile shared fallback
 │   └── factory.rs                  # AiProviderFactory + inventory + register_ai_provider!
 
 packages/ai-providers/              # Provider 实现 + 共享 HTTP 协议（传输层，不依赖宿主）
@@ -27,6 +28,7 @@ packages/ai-providers/              # Provider 实现 + 共享 HTTP 协议（传
 │   ├── custom.rs                   # 自定义 Provider (三种协议: Chat/Responses/Anthropic 兼容,
 │   │                               #   远程模型列表获取)
 │   ├── registry.rs                 # AiProviderRegistry (动态注册/获取, inventory 发现)
+│   ├── metadata.rs                 # 现有 Provider 的默认 endpoint/protocol 元数据
 │   └── protocol/                   # 共享 HTTP 协议实现
 │       ├── mod.rs                  # ProtocolConfig, timeouts, URL normalization, 端点日志脱敏
 │       ├── openai_chat.rs          # OpenAI Chat Completions API (streaming + non-streaming)
@@ -34,16 +36,28 @@ packages/ai-providers/              # Provider 实现 + 共享 HTTP 协议（传
 │       ├── anthropic.rs            # Anthropic Messages API
 │       └── test_support.rs         # 协议层单测共享的 wiremock 夹具
 
-src-tauri/src/ai/                   # 宿主门面：re-export + 真正需要宿主服务的部分
-├── mod.rs                          # re-export datazen_ai_api / datazen_ai_providers + 本地模块
-├── context.rs                      # SchemaContextBuilder (DDL 上下文, token 预算控制)
-├── prompt_resolver.rs              # PromptResolver (资源文件加载 + 用户/驱动覆盖 + 多语言 fallback)
-├── safety.rs                       # AiSafetyGate (调用方文本出境分级与工具调用校验)
-├── schema_pipeline.rs              # SchemaContextPipeline (PromptSeed → 系统后缀)
-├── ctx_yaml.rs                     # .ctx.yaml 表分组上下文解析
-├── budget.rs                       # token 预算常量
-└── cancel.rs                       # CancellationRegistry (request_id → CancellationToken)
+packages/feature-core/src/ai/       # 共享 AI 应用逻辑，不依赖 Tauri
+├── context.rs                      # SchemaContextBuilder (DDL 上下文) + context-file prompt block 格式
+├── prompt_resolver.rs              # PromptResolver (覆盖、模板与方言提示)
+├── safety.rs / tool_loop.rs        # 出境分级、工具调用校验与流式循环
+├── schema_pipeline.rs / ctx_yaml.rs # Schema 上下文预算与 .ctx.yaml 解析
+├── chat_request.rs / sql_generation.rs # Chat/NL2SQL 请求组装与通用工具定义
+├── single_turn.rs                   # SQL 诊断、EXPLAIN、连接摘要格式/诊断与历史分析
+├── filter.rs / schema_doc.rs       # 智能过滤与 Schema 文档生成用例
+├── budget.rs / cancel.rs           # token 预算与按 owner 隔离的取消
+└── ownership.rs                    # AiGrantRegistry / AiGrantService、editor 归属、DB 目标绑定与结果 attribution
+
+src-tauri/src/ai/                   # 兼容门面与桌面适配
+├── mod.rs                          # re-export AI API、Provider 与共享模块
+└── metadata_source.rs              # 将会话到 profile 身份解析和 Runtime 元数据读取绑定到共享端口
+
+src-tauri/src/commands/ai/           # Tauri IPC 与平台接线
+├── generate.rs                     # 配置/会话/历史读取、脱敏、流式交付与共享用例调用
+├── chat.rs / grant.rs              # Tauri 事件流、MCP 与 Runtime 工具宿主、editor grant IPC
+└── config.rs / prompts.rs          # Provider/Profile 持久化与 Prompt 管理 IPC
 ```
+
+Chat 和单轮用例接收宿主已选择的 Provider、语言、driver、schema seed 与安全处理后的输入；共享代码组装 prompt、请求、通用工具声明和结构化响应。共享层也格式化宿主已读取的 context 文件内容与连接诊断摘要；文件/连接配置读取及 egress 脱敏仍由 host 负责。连接 Profile、SchemaCache、查询历史、Provider 配置/凭据、MCP 工具发现、Tauri 事件、Runtime 工具调用与请求取消仍由 host 提供；共享层不读取本地存储或选择数据库会话。流式生命周期和工具宿主继续由平台适配器接线。
 
 ### 1.3 AiProvider Trait
 
@@ -232,7 +246,7 @@ groups:
 
 普通上下文文件（非 `.ctx.yaml`）仍按原有方式作为文本附加到用户消息。
 
-**解析模块**：`src-tauri/src/ai/ctx_yaml.rs`
+**解析模块**：`packages/feature-core/src/ai/ctx_yaml.rs`（Tauri 侧兼容门面位于 `src-tauri/src/ai/ctx_yaml.rs`）
 
 **前端识别**：`ContextPicker` 中 `.ctx.yaml` 文件使用 `Layers` 图标区分于普通文件。
 
@@ -243,10 +257,10 @@ groups:
 1. **DB tools** — `list_tables`、`search_tables`、`query_db` 等，经 `ConnectionManager` / Driver Command API 执行。
 2. **MCP Client tools** — 来自 Settings 中已连接的外部 MCP Server，qualified name 形如 `mcp/{serverId}/{toolName}`。
 
-实现要点（`commands/ai/mod.rs`）：
+实现要点（Tauri 适配在 `src-tauri/src/commands/ai/chat.rs`，共享工具定义与循环在 `packages/feature-core/src/ai/`）：
 
-- `collect_mcp_tool_definitions()` 从 `McpClientManager` 拉取已连接 server 的 tool schema，转换为 Provider 的 `ToolDefinition`。
-- `run_streaming_tool_loop` 识别 `mcp/` 前缀并调用 `mcp_client_call_tool`；DB tool 与 MCP tool 可在同一轮对话中交替执行。
+- `mcp_tool_definitions()` 从 `McpClientManager` 拉取已连接 server 的 tool schema，转换为 Provider 的 `ToolDefinition`；MCP 连接发现和调用留在 Tauri adapter。
+- `ai/chat_request.rs` 组装通用 Chat 请求与工具定义；`ai/tool_loop.rs` 识别 `mcp/` 前缀并经 `AiToolLoopHost` 调用 MCP，DB tool 与 MCP tool 可在同一轮对话中交替执行。
 - 未连接 MCP Server 时行为与原先一致，仅暴露 DB tools。
 
 配置与连接管理见 [`mcp.md` — MCP Client AI 集成](./mcp.md#mcp-client-ai-集成)。
@@ -257,16 +271,45 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 
 **一、会话语义（诊断 / NL2SQL / EXPLAIN 分析 / Schema 文档）——只消费已存在的会话，不创建。**
 
-- 这些 IPC 的形参是 `db_session_id`（运行时会话 ID），不是 `connectionId`；命令体内只用 `get_session` / `get_session_config` 查找。这条边界由契约测试直接对源码断言：会话语义命令的形参必须含 `db_session_id` 且**不得**含 `connection_id`，且命令体内不得出现「把名为 `connection_id` 的变量喂给 `get_session`」的写法（`commands/ai/ipc_contract_guards.rs`）。
-- **`ai_chat` 的 schema 上下文是尽力而为，但降级的方向和直觉相反**。`commands/ai/chat.rs:810-813` 用 `if let Ok((driver, _handle)) = state.connection_manager.get_session(conn_id)` 包住整段 schema 上下文构建：会话取不到时这一整块被**静默跳过**——不报错、不记日志、不追加系统消息，而 `attach_db_tools` 保持初值 `true`（`chat.rs:808`），因此 **db tools 照常注入模型**（`chat.rs:979-981`）。也就是说会话失效时的实际后果是「模型拿不到 DDL 上下文」，而不是「失去模型自己查表的能力」。
-  真正会 `warn!` 并把 `attach_db_tools` 置为 `false` 的是 `chat.rs:866-875` 的管线 `Err` 分支。但由于 `SchemaContextPipeline::resolve`（`ai/schema_pipeline.rs:74-128`）在 `:83-87` 吞掉了 `get_table_names` 的错误、在 `:98-107` 吞掉了 `build_selective_context` 的错误，唯一的 `?`（`:111-119`）只存在于 `supports_tools == false` 的分支——而那种情况下 `attach_db_tools` 本来就等于 `supports_tools`，即 `false`。**对支持工具的 provider，这条「告警 + 禁用 db tools」的分支实际不可达。**
-  与之对照，配置语义的诊断命令（`ai_diagnose_connection`）不碰会话，连接配置缺失时直接返回 `CommandError::NotFound`（`commands/ai/generate.rs:813-817`）。
+- 这些 IPC 的形参是 `db_session_id`（运行时会话 ID），不是 `connectionId`；`ai_chat`、SQL 生成、诊断、过滤与分析通过 Runtime session adapter 获取 live session/driver，不把运行时 ID 当持久化连接 ID。这条边界由契约测试直接对源码断言：会话语义命令的形参必须含 `db_session_id` 且**不得**含 `connection_id`，且命令体内不得出现「把名为 `connection_id` 的变量喂给 `get_session`」的写法（`commands/ai/ipc_contract_guards.rs`）。
+- **`ai_chat` 的 schema 上下文是尽力而为，但降级的方向和直觉相反**。`src-tauri/src/commands/ai/chat.rs` 借用 Runtime live session 后构建 schema 上下文：会话取不到时这一整块被静默跳过，不追加 schema system prompt，而 `attach_db_tools` 保持初值 `true`，因此 DB tools 仍会加入模型请求。会话失效时的实际后果是「模型拿不到 DDL 上下文」，不是「失去模型自己查表的能力」。
+- 管线返回 `Err` 时 host 会记录 `warn!` 并把 `attach_db_tools` 置为 `false`。共享 `packages/feature-core/src/ai/schema_pipeline.rs` 会吞掉表名和 pinned schema 的读取错误；仅在 provider 不支持 tools、而 fallback schema 也失败时向 host 返回错误。**对支持 tools 的 provider，这条告警并禁用 DB tools 的分支不可达。**
+- 与之对照，配置语义的诊断命令（`ai_diagnose_connection`）不碰会话，连接配置缺失时返回 `CommandError::NotFound`（`src-tauri/src/commands/ai/generate.rs`）。
 - **目标不切库**。AI 与其他消费方一样把目标 database / schema 随命令传递；宿主不实现生产环境的切库路径。
 
 **二、配置语义（`ai_diagnose_connection`）——收 `connectionId`，读的是落盘配置**，用于「连不上」的故障排查，与已建立会话无关。契约测试同样钉住这一侧。
 
 **三、唯一的反向映射：`ai_analyze_queries`。** 它收运行时会话 ID，但**不碰会话**——把该 ID 反查成所属的 `connectionId`，再按连接过滤查询历史。这样「AI 分析这个面板的历史」不会把同名的其它连接的历史混进来。反查失败时退化为不按连接过滤，而不是报错。
 
-**四、AI 的工具调用与 MCP 共用一条取会话路径。** AI DB tools 走 `services/db_tools.rs`，与 MCP 完全相同：拿持久化 `connectionId`、先过连接白名单、再转成运行时会话，且**不释放引用**。因此被 AI 工具访问过的会话同样不会被空闲回收扫掉。
+**四、AI 独立工具调用与 MCP 共用 `DatabaseToolHost`，SQL 执行经共享 Runtime 执行器；显式授权时改走编辑器会话（见第六点）。** 当前桌面 adapter 按持久化 `connectionId` 解析 schema metadata 所需的 live session/driver，并把 SQL 命令交给共享 `ResourceExecutionHost`/Runtime。`editorGrant` 模式跳过独立目标执行，直接借用授权记录中的编辑器 session handle；它不会拥有或关闭该会话。
 
-**五、取消是 AI 自己的注册表。** AI 侧用一张按调用 ID 登记的取消令牌表（`ai/cancel.rs`），在开始时登记、结束时注销；取消一个已结束或从未开始的调用不报错，也不产生任何效果。它与长任务机制互不相通，key 也不同（AI 是调用 ID，Job 是 job ID）。AI 调用与仍走兼容旧路径的任务取消状态只在内存；P5 迁移三件套 Job API 使用 AppDb `DesktopJobHost` 的持久 cancel intent，进程重启时保留任务事实但不恢复旧 handler/session。
+**五、取消是 AI 自己的注册表，且按 owner 隔离。** AI 侧用一张按「调用 ID + owner 指纹」登记的取消令牌表（`packages/feature-core/src/ai/cancel.rs`，宿主经 `src-tauri/src/ai/cancel.rs` 门面 re-export）：
+
+- `register(request_id, owner_fingerprint)` 在开始时登记、`unregister(request_id, owner_fingerprint)` 在结束时注销；owner 指纹由 `OwnerRef` 的稳定身份构成（桌面为本进程 `clientInstanceId`）。
+- `cancel(request_id, owner_fingerprint) -> CancelReceipt` 返回三态：`marked`（已登记标志并触发 token）、`alreadyFinished`（未注册：已完成 / 已取消 / 从未开始）、`forbidden`（同名请求属于另一个 owner，**不动它**）。伪造的 `request_id` 不能取消别的客户端的流（CM-53）。
+- 两段式取消：先登记标志、再触发 `CancellationToken`；工具循环在轮次开始、流式轮次结束、以及每次工具派发前检查取消。终止 chunk 必须是 `done: true, cancelled: true`——**不得把取消伪装成正常完成**；取消路径不写新历史，只回收本次 AI 自有资源。
+- `cancel_owner(owner_fingerprint)` 用于客户端整体离开时只停自己的流（目前由前端释放链路与 grant 撤销配合使用，尚无后端独立调用点）。
+- 它与长任务机制互不相通，key 也不同（AI 是调用 ID，Job 是 job ID）。AI 调用取消状态只在内存；P5 迁移三件套 Job API 使用 AppDb `DesktopJobHost` 的持久 cancel intent。
+
+**六、显式 editor 会话授权（P6 §14.4 / CM-53）。**
+
+AI 默认**独立操作**：每个 DB 工具调用经共享 `ResourceExecutionHost` → ExecutionGateway 借一次性资源，看不到某个编辑器会话里的临时对象。用户显式授权当前编辑器会话后，工具改在**该编辑器的固定 runtime session** 上执行（同队列、临时对象可见）；授权可撤销，撤销后新调用明确拒绝且编辑器资源仍存活。
+
+- 请求携带 `AiTargetClaim`：`{kind: "independent"}` 或 `{kind: "editorGrant", grantId, claimedClientInstanceId, editorSessionId}`（`packages/feature-core/src/ai/ownership.rs`）。
+- 共享授权策略 `packages/feature-core/src/ai/ownership.rs` 提供 `AiGrantRegistry` 与 `AiGrantService`：`issue / verify / verify_claim / touch / revoke / revoke_for_editor_session / purge_expired`，并负责 grant 的 database 目标绑定与结构化 DB tool-result attribution。记录含 `client_instance_id`、`editor_session_id`、`owner_fingerprint`、`connection_id`、`database`、`config_revision`、`deadline_ms` 与编辑器活会话句柄 `SessionHandle`。时间全部由调用方注入（`now_ms`），默认 TTL 15 分钟，活动对话经 `touch` 续期。`verify_claim` 先计算本次拒绝原因，再清理过期记录，因此发现过期 grant 的请求仍返回 `aiGrantExpired`，后续请求才会看到记录已回收。
+- IPC：`ai_grant_editor_session`（经 `OwnerIntent::Editor` 归属校验，claimed client 与本机实例不符即拒绝；再核验句柄指向活会话并钉住配置版本）、`ai_revoke_editor_grant`、`ai_touch_editor_grant`。`ai_chat` / `ai_generate_sql` 增参 `targetClaim`。
+- 执行分流：独立调用走一次性 Runtime 资源；`editorGrant` 调用先 `verify_claim`，失败按 `AiGrantRejection::code()` 明确报错（`aiGrantUnknown` / `aiGrantClientMismatch` / `aiGrantSessionGone` / `aiGrantExpired` / `aiGrantRevoked`），**禁止静默降级为独立操作**；成功则经 `resource_execution::execute_with_existing_session` 借用编辑器句柄执行，目标与授权记录不一致时在派发前拒绝。
+- **借用而不拥有**：grant 执行走 `resource_execution::execute_with_existing_session`——只借用编辑器会话句柄，执行器**不关闭也不回滚**该会话。此前用 `RetainedSession` 包装会在 drop 时关闭编辑器会话，已废弃。
+- 工具指定的 `database` 与授权记录不一致时在派发前拒绝；未指定时用授权记录补齐，目标规范化由共享执行器统一完成（因此对象寻址命令如 `get_table_schema` 走同一条 `prepare` 路径）。
+- 结果归属：DB 工具结果 JSON 附 `attribution`：`{kind: "independent" | "editorGrant", grantId?, editorSessionId?}`。这是**面向模型与审计的来源标注**，不回流前端 UI；前端消息上的归属元数据由 `targetClaim` 直接构造。
+
+- **归属校验由共享 grant 策略完成**（runtime 的 `get_session` 只按 org/principal/clientInstanceId 过滤，同进程两个 pane 在它眼里没有区别）：`verify_session_ownership` 逐项比对 `SessionView.owner` 的 clientInstanceId 与 editorSessionId、会话所在 connectionId、以及 profile 当前 configRevision，任一不符即具名拒绝；非 editor owner（Job/WorkflowBlock/ClientSession）一律拒绝。Tauri 适配器只读取活 `SessionView` 和 profile revision，再调用该纯策略。单测覆盖「同 client 的另一个 pane」「另一 client」「另一连接」「旧 revision」「非 editor owner」五种拒绝。
+- **回收已接线**：`close_session` 在关闭（含关闭被拒）后撤销借用该 db session 的 grant；`platform_update_profile` / `platform_disable_profile` 撤销该连接上的全部 grant（revision 变更使会话失效）；`verify_claim` 与 `issue` 顺带 `purge_expired` 回收过期记录。
+
+**七、验收落点。**
+
+- H 层（已跑）：`packages/feature-core/src/ai/ownership.rs` 的 grant 生命周期与三条撤销轴（按 grant / 按连接 / 按借用的 db session）；`ai/cancel.rs` 的 owner 隔离与三态回执；`ai/tool_loop.rs` 的取消终态（`done && cancelled`，且取消后不再派发工具）；`src-tauri/src/commands/ai/grant.rs` 的六条归属拒绝。
+- F 层（已编写、**尚未执行**）：`e2e/specs/ai-grant-lifecycle-journey.ts` 通过真实 IPC 驱动 `open_session → ai_grant_editor_session → touch/revoke → 伪造 client / 他 pane 拒绝 → close_session 后 grant 失效`。它不调用 Provider，因此不依赖 AI 密钥。
+  **发布前必做**：`pnpm tauri:build:webdriver` 后执行该 spec（`pnpm e2e`）。本地 DMG 打包失败不算功能阻塞，以应用启动与 WDIO 结果判定；执行结果须回写本节，把「尚未执行」改成实测结论。在这条跑通之前，CM-53 的 F 层不合格，P6 不关闭。
+
+> 当前限制（P6 未关闭）：上述 F 层旅程尚未在 packaged app 上执行，§9 那条旅程目前只有 H 层实测证据；MCP 工具仍走各自会话，`editorGrant` 只覆盖 DB 工具。仅 PG + MySQL 在本轮验证范围内。

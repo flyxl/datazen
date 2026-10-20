@@ -1,3 +1,4 @@
+mod ai_profile_selection_tests;
 mod atomic_write_tests;
 mod connections_tests;
 mod domain_crud_tests;
