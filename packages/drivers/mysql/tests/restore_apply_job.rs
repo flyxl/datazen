@@ -73,6 +73,9 @@ async fn artifact_restore_records_implicit_commits_and_rejects_client_formats_be
         format!("CREATE TABLE {schema}_load_probe(id int); LOAD DATA INFILE 'fixture' INTO TABLE {schema}_load_probe;"),
         format!("CREATE TABLE {schema}_client_probe(id int); SOURCE fixture.sql;"),
         format!("CREATE TABLE {schema}_failure_probe(id int); INSERT INTO {schema}_missing_relation VALUES(1); CREATE TABLE {schema}_after_failure(id int);"),
+        format!("CREATE TABLE {schema}_digest_probe(id int);"),
+        format!("CREATE TABLE {schema}_target_probe(id int);"),
+        format!("CREATE TABLE {schema}_revision_probe(id int);"),
     ];
     for (index, script) in scripts.iter().enumerate() {
         let (artifact, mut writer) = artifacts
@@ -92,7 +95,7 @@ async fn artifact_restore_records_implicit_commits_and_rejects_client_formats_be
             .await
             .unwrap();
         artifacts.finalize(writer).await.unwrap();
-        let plan = RestorePlan {
+        let mut plan = RestorePlan {
             plan_id: format!("restore-plan-{index}"),
             target: target.clone(),
             config_revision: Counter::new(1),
@@ -102,6 +105,13 @@ async fn artifact_restore_records_implicit_commits_and_rejects_client_formats_be
             single_transaction: false,
             overwrite: false,
         };
+        match index {
+            4 => plan.input_sha256 = "0".repeat(64),
+            5 => plan.target.namespace.database = Some("substituted".into()),
+            6 => plan.config_revision = Counter::new(2),
+            _ => {}
+        }
+        let opened_before = lifecycle.opened.load(std::sync::atomic::Ordering::SeqCst);
         let handler = Arc::new(RestoreApplyJob::new(
             ctx.clone(),
             plan.clone(),
@@ -211,6 +221,12 @@ async fn artifact_restore_records_implicit_commits_and_rejects_client_formats_be
             assert_eq!(result.state, JobState::Failed);
             assert_eq!(result.effect_outcome, EffectOutcome::NotStarted);
             assert_eq!(result.progress.committed.get(), 0);
+            assert_eq!(result.progress.attempted.get(), 0);
+            assert_eq!(
+                lifecycle.opened.load(std::sync::atomic::Ordering::SeqCst),
+                opened_before,
+                "rejected artifact/target/revision must not acquire a Runtime resource"
+            );
         }
     }
     assert_eq!(
@@ -231,7 +247,14 @@ async fn artifact_restore_records_implicit_commits_and_rejects_client_formats_be
     assert_eq!(read.rows.len(), 2);
     assert!(matches!(read.rows[0][0], Some(Value::Integer(7))));
     assert!(matches!(read.rows[1][0], Some(Value::Integer(8))));
-    for name in ["load_probe", "client_probe", "after_failure"] {
+    for name in [
+        "load_probe",
+        "client_probe",
+        "after_failure",
+        "digest_probe",
+        "target_probe",
+        "revision_probe",
+    ] {
         let read = driver.query(&observer, &format!(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '{schema}_{name}'"
         )).await.unwrap_or_else(|_| panic!("rejection readback failed"));
