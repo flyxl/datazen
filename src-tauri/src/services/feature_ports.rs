@@ -6,63 +6,6 @@ use datazen_feature_core::services::ports::{
 };
 use std::sync::Arc;
 
-// Test-only compatibility adapter. Production feature consumers must use
-// AppState's Runtime resource path; this adapter keeps focused ConnectionManager
-// unit fixtures from acquiring a live session and dropping its lease silently.
-#[cfg(test)]
-#[async_trait::async_trait]
-impl DatabaseToolHost for ConnectionManager {
-    async fn profile_config(&self, id: &str) -> Result<ConnectionConfig, String> {
-        let (session_id, _, _) = self
-            .resolve_session_for_connection(id)
-            .await
-            .map_err(|e| e.to_string())?;
-        self.get_session_config(&session_id)
-            .await
-            .map_err(|e| e.to_string())
-    }
-    async fn get_session_config(&self, id: &str) -> Result<ConnectionConfig, String> {
-        self.get_session_config(id).await.map_err(|e| e.to_string())
-    }
-    async fn driver_for_connection(&self, id: &str) -> Result<Arc<dyn DatabaseDriver>, String> {
-        Ok(self
-            .resolve_session_for_connection(id)
-            .await
-            .map_err(|e| e.to_string())?
-            .1)
-    }
-    async fn execute_target(
-        &self,
-        id: &str,
-        command: &str,
-        input: serde_json::Value,
-    ) -> Result<datazen_driver_api::CommandResult, String> {
-        let (_, driver, handle) = self
-            .resolve_session_for_connection(id)
-            .await
-            .map_err(|e| e.to_string())?;
-        if command == "explain" {
-            let sql = input
-                .get("sql")
-                .and_then(serde_json::Value::as_str)
-                .ok_or("Explain requires sql")?;
-            let result = driver
-                .explain(&handle, sql)
-                .await
-                .map_err(|e| e.to_string())?;
-            return serde_json::to_value(result)
-                .map(datazen_driver_api::CommandResult::new)
-                .map_err(|e| e.to_string());
-        }
-        driver
-            .execute_command(&handle, command, input)
-            .await
-            .map_err(|e| e.to_string())
-    }
-    async fn execution_settings(&self) -> datazen_platform_api::settings::ExecutionSettings {
-        self.feature_execution_settings().await
-    }
-}
 #[async_trait::async_trait]
 impl SchemaContextSource for ConnectionManager {
     async fn get_session(
