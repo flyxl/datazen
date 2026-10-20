@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::super::error::{CmdExt, CommandError};
+use super::super::error::CommandError;
 use super::super::AppState;
 use super::helpers::{nonempty, unbound_handle};
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver};

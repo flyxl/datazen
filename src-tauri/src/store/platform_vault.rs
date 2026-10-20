@@ -84,22 +84,6 @@ pub mod macos_security {
         let key = decode_key_b64(&b64)?;
         Ok(Some(key))
     }
-
-    /// Delete key from macOS login keychain via `security` CLI.
-    pub fn delete() -> Result<(), StoreError> {
-        let _ = std::process::Command::new("/usr/bin/security")
-            .args([
-                "delete-generic-password",
-                "-a",
-                VAULT_ACCOUNT,
-                "-s",
-                VAULT_SERVICE,
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-        Ok(())
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -240,12 +224,6 @@ pub mod windows_dpapi {
         let key = decode_key_b64(&b64)?;
         Ok(Some(key))
     }
-
-    pub fn delete() -> Result<(), StoreError> {
-        let path = dpapi_path();
-        let _ = std::fs::remove_file(&path);
-        Ok(())
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -311,21 +289,5 @@ pub fn store_to_vault(key: &[u8; 32]) -> Result<(), StoreError> {
         Err(StoreError::EncryptionError(
             "No platform vault available on this OS".into(),
         ))
-    }
-}
-
-/// Delete key from platform vault (best-effort).
-pub fn delete_from_vault() -> Result<(), StoreError> {
-    #[cfg(target_os = "macos")]
-    {
-        macos_security::delete()
-    }
-    #[cfg(target_os = "windows")]
-    {
-        windows_dpapi::delete()
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        Ok(())
     }
 }

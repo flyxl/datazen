@@ -88,14 +88,4 @@ impl MysqlDriver {
             });
         (query_cost, estimated_rows)
     }
-
-    fn extract_json_from_explain_row(rows: &[sqlx::mysql::MySqlRow]) -> Option<serde_json::Value> {
-        rows.first().and_then(|row| {
-            row.try_get::<serde_json::Value, _>(0).ok().or_else(|| {
-                row.try_get::<String, _>(0)
-                    .ok()
-                    .and_then(|s| serde_json::from_str(&s).ok())
-            })
-        })
-    }
 }

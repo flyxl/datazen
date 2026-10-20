@@ -46,10 +46,6 @@ pub(crate) struct TestResourceProvider {
 }
 
 impl TestResourceProvider {
-    pub(crate) fn new(driver: Arc<dyn DatabaseDriver>) -> Self {
-        Self::new_for_driver(driver, "postgres")
-    }
-
     pub(crate) fn new_for_driver(
         driver: Arc<dyn DatabaseDriver>,
         provider_id: &'static str,

@@ -3,6 +3,9 @@ use super::{error::TransferError, execute::ValueFormatter, model::ColumnMapping}
 use datazen_driver_api::TableSchema;
 use datazen_driver_api::{DatabaseDriver, Value};
 
+/// Test-only single-row convenience over [`bound_insert_batch`]; production callers
+/// go through the batch form directly.
+#[cfg(test)]
 pub fn bound_insert(
     driver: &dyn DatabaseDriver,
     source_table: &str,

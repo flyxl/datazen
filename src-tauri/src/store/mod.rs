@@ -28,7 +28,7 @@ pub use history_db::{
     MigrationRunFilter, MigrationRunPage, MigrationRunRecord, QueryHistoryFilter, QueryHistoryPage,
 };
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
-pub use settings::{clamp_connection_pool_size, AppSettings, OnboardingState};
+pub use settings::{AppSettings, OnboardingState};
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};

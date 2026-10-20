@@ -8,9 +8,6 @@ use crate::dashboard::{
 };
 use crate::monitor::channels::{dispatch_notifications, AlertChannelState};
 use crate::{commands::AppState, store::Store};
-pub use datazen_feature_core::dashboard::monitor::{
-    build_schedule_table, is_widget_refresh_due, should_spawn_widget_tick, ScheduledWidget,
-};
 use datazen_feature_core::dashboard::monitor::{MonitorEngine as CoreEngine, MonitorHost};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};

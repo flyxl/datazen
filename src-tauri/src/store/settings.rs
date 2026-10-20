@@ -213,11 +213,6 @@ fn default_connection_pool_size() -> u32 {
     10
 }
 
-/// Clamp user-facing pool size to a safe range.
-pub fn clamp_connection_pool_size(n: u32) -> u32 {
-    n.clamp(1, 100)
-}
-
 impl AppSettings {
     /// Defaults used on a brand-new installation when `settings.json` is absent.
     ///

@@ -1,14 +1,19 @@
 use super::error::CommandError;
 use super::AppState;
-use crate::db::{BoundSqlStatement, DriverError, Value};
+use crate::db::{BoundSqlStatement, Value};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use tauri::State;
 use uuid::Uuid;
 
+// Legacy row-write payload shapes. `commit_row_updates` / `commit_row_deletes`
+// are registered as IPC commands but always reject ("legacy row writes are
+// disabled"); the fields are kept so old clients still deserialize before the
+// documented rejection, which is why rustc sees them as never-read.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct CellUpdate {
     pub column: String,
     pub value: Option<Value>,
@@ -16,6 +21,7 @@ pub struct CellUpdate {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct RowUpdateBatch {
     pub set_columns: Vec<CellUpdate>,
     pub pk_columns: Vec<CellUpdate>,
@@ -23,6 +29,7 @@ pub struct RowUpdateBatch {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct RowDeleteBatch {
     pub pk_columns: Vec<CellUpdate>,
 }
@@ -200,27 +207,6 @@ pub(super) fn validate_table_context(table: &RowChangeTableContext) -> Result<()
         return Err(CommandError::Validation(
             "Row change context is incomplete; connection, session, driver, database and table are required".into(),
         ));
-    }
-    Ok(())
-}
-
-fn validate_legacy_pk_columns(columns: &[CellUpdate], operation: &str) -> Result<(), CommandError> {
-    if columns.is_empty() {
-        return Err(CommandError::Validation(format!(
-            "{operation} requires primary-key columns"
-        )));
-    }
-    let mut names = HashSet::new();
-    for column in columns {
-        if column.column.trim().is_empty()
-            || column.value.is_none()
-            || matches!(column.value, Some(Value::Null))
-            || !names.insert(column.column.as_str())
-        {
-            return Err(CommandError::Validation(format!(
-                "{operation} requires unique non-NULL primary-key values"
-            )));
-        }
     }
     Ok(())
 }
@@ -640,9 +626,7 @@ pub async fn get_table_data_at_target(
 
 #[path = "result_mapping.rs"]
 mod result_mapping;
-pub(crate) use result_mapping::{
-    result_relation_candidate, verify_result_mapping, ResultRelationCandidate,
-};
+pub(crate) use result_mapping::{result_relation_candidate, verify_result_mapping};
 
 #[path = "result_write.rs"]
 mod result_write;

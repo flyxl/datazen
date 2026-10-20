@@ -26,7 +26,6 @@ pub(crate) use exec::execute_data_transfer_impl;
 pub(crate) use exec::execute_data_transfer_impl_with_write_observer;
 pub(crate) use inspect::{inspect_data_transfer_impl, inspect_sql_file_transfer_impl};
 pub use job_api::*;
-pub(crate) use jobs::cancel_job;
 pub(crate) use preview::preview_data_transfer_impl;
 use tauri::{AppHandle, State};
 
@@ -270,22 +269,29 @@ pub(crate) use datazen_feature_core::workflow::migration::{
     transfer_error_history_outcome, transfer_rollback_history_outcome,
 };
 
+/// P5 Jobs are cancelled through the Job repository: `request_cancel` records
+/// the intent, the runtime's per-stage cancel watcher flips the `CancelToken`
+/// the stage already holds (mid-stage), or the next stage boundary check does
+/// (between stages), and the runtime closes the Job as `Cancelled`.
+pub(crate) async fn cancel_data_transfer_impl(
+    state: &AppState,
+    job_id: &str,
+) -> Result<bool, CommandError> {
+    if job_api::cancel_data_transfer_job(state, job_id).await? {
+        // A P5 Job answers with the recorded request itself, so the caller
+        // learns whether the cancel actually reached the Job.
+        return job_api::job_cancel_requested(state, job_id).await;
+    }
+    // An id this backend never accepted cannot have anything running under it,
+    // so there is nothing to cancel: answer as the frontend contract expects
+    // (`false` = "nothing was cancelled"), never as a fabricated success.
+    Ok(false)
+}
+
 #[tauri::command]
 pub async fn cancel_data_transfer(
     state: State<'_, AppState>,
     job_id: String,
 ) -> Result<bool, CommandError> {
-    // P5 Jobs are cancelled through the Job repository: `request_cancel`
-    // records the intent, the runtime's per-stage cancel watcher flips the
-    // `CancelToken` the stage already holds (mid-stage), or the next stage
-    // boundary check does (between stages), and the runtime closes the Job as
-    // `Cancelled`. The legacy registry only knows
-    // `services::job_registry` jobs, so it stays the fallback for an id this
-    // client never accepted.
-    if job_api::cancel_data_transfer_job(&state, &job_id).await? {
-        // A P5 Job answers with the recorded request itself, so the caller
-        // learns whether the cancel actually reached the Job.
-        return job_api::job_cancel_requested(&state, &job_id).await;
-    }
-    Ok(cancel_job(&job_id).await)
+    cancel_data_transfer_impl(&state, &job_id).await
 }

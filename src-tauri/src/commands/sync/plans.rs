@@ -40,24 +40,6 @@ struct RelationFingerprintEntry {
     source_filter: Option<SyncSourceFilter>,
 }
 
-/// A deterministic identity for the qualified objects participating in a
-/// reviewed comparison.  Endpoint identity is included in the hash so a
-/// client cannot redirect an old plan to another database by changing UI
-/// fields after review.
-pub(crate) fn fingerprint_relations(
-    database: &str,
-    schema: Option<&str>,
-    entries: impl IntoIterator<Item = (String, Option<TableSchema>)>,
-) -> Result<String, String> {
-    fingerprint_relations_with_filters(
-        database,
-        schema,
-        entries
-            .into_iter()
-            .map(|(relation, table_schema)| (relation, table_schema, None)),
-    )
-}
-
 /// Fingerprint the qualified schema plus the structured predicates that were
 /// used for the reviewed comparison. Filter values are part of the plan
 /// identity, so execution cannot silently reuse a plan for another scope.
@@ -797,10 +779,6 @@ pub(crate) fn preview_for_plan(id: &str) -> Result<SyncComparisonPreview, String
 
 pub(crate) fn claim_plan(id: &str) -> Result<StoredSyncPlan, String> {
     global_store().claim(id)
-}
-
-pub(crate) fn load_comparison(plan: &StoredSyncPlan) -> Result<ComparisonResult, String> {
-    plan.comparison.load()
 }
 
 /// Validate a selection against the server-owned comparison without

@@ -1,13 +1,9 @@
 //! Widget execution via WorkflowExecutor for dashboard monitor runs.
 
-use std::time::Duration;
-
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
 
 use crate::commands::AppState;
-use crate::dashboard::alert::evaluate_run_alert;
-use crate::dashboard::runs::{write_run, MAX_RUN_ROWS};
+use crate::dashboard::runs::write_run;
 use crate::dashboard::store::load_monitor_settings;
 use crate::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
 use crate::store::AppDb;

@@ -549,22 +549,6 @@ pub(crate) fn claim_checkpoint(
     global_store().claim_checkpoint(token, plan_id)
 }
 
-pub(crate) fn create_checkpoint(
-    plan_id: &str,
-    selected_tables: Vec<String>,
-    completed_tables: Vec<String>,
-) -> Result<String, TransferError> {
-    global_store().create_checkpoint(plan_id, selected_tables, completed_tables)
-}
-
-pub(crate) fn update_checkpoint(
-    token: &str,
-    completed_tables: Vec<String>,
-    finished: bool,
-) -> Result<(), TransferError> {
-    global_store().update_checkpoint(token, completed_tables, finished)
-}
-
 pub(crate) fn invalidate_checkpoint(token: &str) {
     global_store().invalidate_checkpoint(token)
 }

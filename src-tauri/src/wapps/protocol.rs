@@ -18,8 +18,6 @@
 
 use std::borrow::Cow;
 #[cfg(test)]
-use std::fs;
-#[cfg(test)]
 use std::path::Path;
 
 #[cfg(test)]
@@ -31,7 +29,7 @@ use crate::commands::AppState;
 
 pub use datazen_workspace_apps::protocol::{
     content_type_for, parse_datazen_uri, safe_relative_path, DatazenOutcome, QueryMap,
-    OPEN_COMMAND, WAPPS_OPEN_PAGE_EVENT,
+    WAPPS_OPEN_PAGE_EVENT,
 };
 pub(crate) fn route_datazen_request(
     manager: &WappManager,
