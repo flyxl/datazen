@@ -182,10 +182,17 @@
      `PROTOCOL_VERSION` 6→6、`MIN_PROTOCOL_VERSION` 1→1 无须动；68 条
      规则单测全绿。Git 驱动兼容状态：未迁移即 `ResourceProviderMissing`
      （带驱动名），明确失败而非静默——无需额外改动。
-   - [ ] 遗留旧方法消费者逐点核验后再删：`format_sql_literal` /
-     `new_sql_scanner` / `uses_sql_restore_pipeline` / `split_restore_sql`
-     / `type_normalizer` 等 Legacy 转发链仍各有消费点；逐一确认后裁决
-     是否进入删除轮。
+   - [ ] 遗留旧方法消费者逐点核验后再删（2026-10-21 初核实测）：
+     `uses_sql_restore_pipeline` / `new_sql_scanner` → 仅 feature-core
+     `backup.rs` 两处（均经 LegacyBackupDialect）；`type_normalizer` →
+     4 处（schema-diff plan.rs、data-sync types_eq.rs、data-transfer 测试、
+     host compare_commands.rs，全部经 LegacySchemaMigration）；
+     `format_sql_literal` → 剩 sqlite / http-support 的契约测试与 probe
+     转发，属驱动契约自检；`split_restore_sql` 在 driver-api 外零直接消费者，
+     唯一链条是 BackupDialect 适配器 → `DatabaseDriver::split_restore_sql`
+     默认实现 → `sql_text::split_restore_sql`（driver trait 上的方法现仅存
+     转发一跳，删除需先把契约默认实现直连 sql_text，属后续独立 PR）。
+     `drivers.md` / `driver-capability-migration.md` §6.2(5) 收尾改写后裁决。
    - [ ] `drivers.md` 与 `driver-capability-migration.md` §6.2(5) 收尾改写。
    - [ ] 交付时删除本台账（progress.md）。
 
