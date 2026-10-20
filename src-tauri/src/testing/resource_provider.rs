@@ -47,6 +47,13 @@ pub(crate) struct TestResourceProvider {
 
 impl TestResourceProvider {
     pub(crate) fn new(driver: Arc<dyn DatabaseDriver>) -> Self {
+        Self::new_for_driver(driver, "postgres")
+    }
+
+    pub(crate) fn new_for_driver(
+        driver: Arc<dyn DatabaseDriver>,
+        provider_id: &'static str,
+    ) -> Self {
         let namespace_shape = NamespaceShape {
             levels: vec![
                 NamespaceLevel::present(NamespaceLevelKind::Database, false),
@@ -69,7 +76,7 @@ impl TestResourceProvider {
         };
         let legacy = LegacyResourceAdapter::new(
             Arc::clone(&driver),
-            "postgres",
+            provider_id,
             "test",
             TEST_RESOURCE_EPOCH,
             namespace_shape.clone(),

@@ -2,6 +2,49 @@
 use datazen_feature_core::services::migration_endpoint::{checked_identify, normalized};
 pub(crate) use datazen_feature_core::services::migration_endpoint::{identify, EndpointIdentity};
 
+pub(crate) struct RuntimeSessionContext {
+    pub(crate) view: datazen_platform_api::dto::session::SessionView,
+    pub(crate) driver: std::sync::Arc<dyn datazen_driver_api::DatabaseDriver>,
+    pub(crate) handle: datazen_driver_api::ConnectionHandle,
+    pub(crate) config: crate::db::ConnectionConfig,
+    pub(crate) _lease: datazen_runtime::application::LiveConnectionLease,
+}
+
+pub(crate) async fn runtime_session_context(
+    state: &crate::commands::AppState,
+    db_session_id: &str,
+    purpose: datazen_runtime::application::LivePurpose,
+) -> Result<RuntimeSessionContext, crate::commands::CommandError> {
+    let adapter = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = adapter.begin_call();
+    let runtime = adapter
+        .runtime()
+        .map_err(crate::platform::into_command_error)?;
+    let (view, lease) = runtime
+        .borrow_live_connection_by_id(call.context(), db_session_id, purpose)
+        .await
+        .map_err(crate::platform::into_command_error)?;
+    let connection = lease
+        .connection()
+        .map_err(|error| crate::commands::CommandError::NotFound(error.to_string()))?;
+    let config = state
+        .store
+        .get_connection(view.connection_id.as_str())
+        .await
+        .ok_or_else(|| {
+            crate::commands::CommandError::NotFound("connection profile is unavailable".into())
+        })?;
+    Ok(RuntimeSessionContext {
+        view,
+        driver: std::sync::Arc::clone(connection.driver()),
+        handle: connection.handle().clone(),
+        config,
+        _lease: lease,
+    })
+}
+
 pub(crate) async fn open_dedicated_session(
     state: &crate::commands::AppState,
     connection_id: &str,
@@ -83,30 +126,16 @@ pub(crate) async fn session_identity(
     db_session_id: &str,
     scope: Option<(&str, Option<&str>)>,
 ) -> Result<EndpointIdentity, crate::commands::CommandError> {
-    use crate::commands::CommandError;
-    let adapter = state
-        .platform_require()
-        .map_err(crate::platform::into_command_error)?;
-    let call = adapter.begin_call();
-    let runtime = adapter
-        .runtime()
-        .map_err(crate::platform::into_command_error)?;
-    let (view, lease) = runtime
-        .borrow_live_connection_by_id(
-            call.context(),
-            db_session_id,
-            datazen_runtime::application::LivePurpose::Inspection,
-        )
-        .await
-        .map_err(crate::platform::into_command_error)?;
-    let connection = lease
-        .connection()
-        .map_err(|error| CommandError::Validation(error.to_string()))?;
+    let context = runtime_session_context(
+        state,
+        db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let view = context.view;
     let owner = view.connection_id.as_str().to_owned();
-    let driver = connection.driver();
-    let mut config = state.store.get_connection(&owner).await.ok_or_else(|| {
-        CommandError::Validation("Migration connection owner is unavailable".into())
-    })?;
+    let driver = &context.driver;
+    let mut config = context.config;
     config.database = view
         .observed_context
         .namespace

@@ -29,13 +29,15 @@ pub struct TestAppState {
 /// the tests exercise the real runtime wiring without opening a network
 /// connection.
 struct TestMockDriverFactory {
+    driver_id: &'static str,
     driver: Arc<dyn DatabaseDriver>,
     provider: OnceLock<Arc<dyn ResourceProvider>>,
 }
 
 impl TestMockDriverFactory {
-    fn new(driver: Arc<dyn DatabaseDriver>) -> Self {
+    fn new(driver_id: &'static str, driver: Arc<dyn DatabaseDriver>) -> Self {
         Self {
+            driver_id,
             driver,
             provider: OnceLock::new(),
         }
@@ -48,16 +50,19 @@ impl DatabaseDriverFactory for TestMockDriverFactory {
     }
 
     fn driver_id(&self) -> &'static str {
-        "postgres"
+        self.driver_id
     }
 
     fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
         Some(
             self.provider
                 .get_or_init(|| {
-                    Arc::new(super::resource_provider::TestResourceProvider::new(
-                        Arc::clone(&self.driver),
-                    )) as Arc<dyn ResourceProvider>
+                    Arc::new(
+                        super::resource_provider::TestResourceProvider::new_for_driver(
+                            Arc::clone(&self.driver),
+                            self.driver_id,
+                        ),
+                    ) as Arc<dyn ResourceProvider>
                 })
                 .clone(),
         )
@@ -115,7 +120,7 @@ impl TestAppState {
         // command path would reject.
         let driver: Arc<dyn DatabaseDriver> = mock.clone();
         let factory: &'static dyn DatabaseDriverFactory =
-            Box::leak(Box::new(TestMockDriverFactory::new(driver)));
+            Box::leak(Box::new(TestMockDriverFactory::new("postgres", driver)));
         registry.register_test_factory("postgres", factory).await;
         let state = build_app_state(store.clone(), registry.clone());
         Self {
@@ -138,9 +143,13 @@ impl TestAppState {
 
     /// Register a Runtime resource factory for a driver spelling introduced by
     /// a focused fixture (for example `postgresql` versus `postgres`).
-    pub async fn register_runtime_driver(&self, driver_id: &str, driver: Arc<dyn DatabaseDriver>) {
+    pub async fn register_runtime_driver(
+        &self,
+        driver_id: &'static str,
+        driver: Arc<dyn DatabaseDriver>,
+    ) {
         let factory: &'static dyn DatabaseDriverFactory =
-            Box::leak(Box::new(TestMockDriverFactory::new(driver)));
+            Box::leak(Box::new(TestMockDriverFactory::new(driver_id, driver)));
         self.registry
             .register_test_factory(driver_id, factory)
             .await;
