@@ -5,12 +5,11 @@ import { fileURLToPath } from 'node:url';
 type Browser = WebdriverIO.Browser;
 
 const E2E_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-export const E2E_SCREENSHOT_DIR = path.join(E2E_ROOT, 'screenshots');
+const E2E_SCREENSHOT_DIR = path.join(E2E_ROOT, 'screenshots');
 
 let journeySpec: string | undefined;
 let journeyTest: string | undefined;
 let stepSeq = 0;
-let savedStepCount = 0;
 /** Consecutive-frame dedupe within the active `it()`. */
 let lastDigest: string | null = null;
 /** Cross-`it()` dedupe within the active spec file (`beforeSuite` resets). */
@@ -25,7 +24,7 @@ export function ensureScreenshotRoot(): void {
   fs.mkdirSync(E2E_SCREENSHOT_DIR, { recursive: true });
 }
 
-export function sanitizeScreenshotLabel(label: string): string {
+function sanitizeScreenshotLabel(label: string): string {
   return (
     label
       .replace(/[^\w\u4e00-\u9fff-]+/g, '_')
@@ -35,13 +34,9 @@ export function sanitizeScreenshotLabel(label: string): string {
 }
 
 /** Spec basename without extension, e.g. `main-window`. */
-export function screenshotSpecDir(specFilePath: string | undefined): string {
+function screenshotSpecDir(specFilePath: string | undefined): string {
   const base = specFilePath?.split(/[/\\]/).pop()?.replace(/\.ts$/, '') ?? 'unknown';
   return path.join(E2E_SCREENSHOT_DIR, base);
-}
-
-export function journeyStepsSaved(): number {
-  return savedStepCount;
 }
 
 /** Reset per-spec digest set (wdio `beforeSuite`). */
@@ -54,7 +49,6 @@ export function beginJourneyTest(specFilePath: string | undefined, testTitle: st
   journeySpec = specFilePath;
   journeyTest = testTitle;
   stepSeq = 0;
-  savedStepCount = 0;
   lastDigest = null;
 }
 
@@ -124,6 +118,5 @@ export async function saveJourneyScreenshot(
 
   lastDigest = digest;
   specDigests.add(digest);
-  savedStepCount += 1;
   return out;
 }
