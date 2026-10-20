@@ -1,26 +1,11 @@
 //! owner 作用域的会话级句柄登记（概要 §6.3 的 `SessionRegistry` 登记语义）。
 //!
-//! ## 为什么另起一张表
+//! ## 与 Runtime 资源账本的边界
 //!
-//! `AppState::session_transactions` 的类型是
-//! `Arc<Mutex<HashMap<String, TransactionHandle>>>`：
-//!
-//! * 键只有 `dbSessionId`（一个裸 `String`），**类型上就表达不了 owner**；
-//! * 值是 driver 层的 `TransactionHandle`，同样没有归属字段。
-//!
-//! 开发计划 :84 明令："**不得把新 owner 和权限语义伪映射为旧共享 session**"。
-//! 于是本模块**不写**那张表，也**不**往那张表塞任何 owner 载荷；它另起一张
-//! [`SessionHandleRegistry`]，键是 [`HandleKey`]（owner + `dbSessionId`），
-//! 由调用方在 adapter 层完成归属校验后才允许登记。
-//!
-//! ## 迁移缺口（CM-73 "不改"）
-//!
-//! 旧表继续被既有调用点使用（`commands/connection.rs`、`commands/query.rs`、
-//! `commands/data.rs`、`commands/mcp.rs` 及其测试）。本 track **不改**这些调用点：
-//! 改它们等于在同一次发布里同时改语义与调用面，超出 :77「窄适配」的范围。
-//! 缺口的准确形状是：**同一 `dbSessionId` 在旧表里只有一条记录，在新表里按 owner 有
-//! N 条**。两者并存期间不得互相读取；接线时由后续 track 把调用点整体迁到新表，
-//! 旧表随之删除。
+//! 历史 `AppState::session_transactions` 只按裸 session ID 保存 driver handle，
+//! 现已删除；兼容 IPC 经 Runtime Gateway，实际事务句柄归 session actor。
+//! 本模块保留 adapter 层 owner + session 绑定，不持有物理事务资源，也不替代
+//! Runtime 的授权、事务观测或回收账本。
 //!
 //! ## 选型说明
 //!
@@ -431,7 +416,7 @@ mod tests {
         assert!(!production.contains("session_transactions"));
         assert!(
             commented.contains("session_transactions"),
-            "迁移缺口必须留在文档里，不能连注释一起删掉"
+            "旧槽历史命名保留供审计，不得重新引入 Host 资源权威"
         );
     }
 }

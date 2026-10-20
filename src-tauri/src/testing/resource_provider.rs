@@ -42,7 +42,7 @@ pub(crate) struct TestResourceProvider {
     driver: Arc<dyn DatabaseDriver>,
     namespace_shape: NamespaceShape,
     targets: Mutex<HashMap<String, NamespaceTarget>>,
-    transactions: Mutex<HashMap<String, TransactionHandle>>,
+    transactions: Mutex<HashMap<String, (String, TransactionHandle)>>,
 }
 
 impl TestResourceProvider {
@@ -110,7 +110,7 @@ impl TestResourceProvider {
     fn transaction_observation(&self, handle: &ResourceHandle) -> TransactionObservation {
         lock(&self.transactions)
             .get(handle.resource_key())
-            .map(|transaction| TransactionObservation::begun(transaction.id.clone(), 1))
+            .map(|(id, _)| TransactionObservation::begun(id.clone(), 1))
             .unwrap_or(TransactionObservation {
                 state: TransactionState::Idle,
                 transaction_id: None,
@@ -375,8 +375,11 @@ impl ResourceProvider for TestResourceProvider {
     ) -> Result<TransactionObservation, ResourceError> {
         let connection = self.connection(handle)?;
         let transaction = self.driver.begin_transaction(&connection).await?;
-        let observation = TransactionObservation::begun(transaction.id.clone(), 1);
-        lock(&self.transactions).insert(handle.resource_key().to_string(), transaction);
+        // Runtime handles name transaction lifetimes, even when a legacy mock
+        // driver reuses its own opaque control handle on the same connection.
+        let id = uuid::Uuid::new_v4().to_string();
+        let observation = TransactionObservation::begun(id.clone(), 1);
+        lock(&self.transactions).insert(handle.resource_key().to_string(), (id, transaction));
         Ok(observation)
     }
 
@@ -387,7 +390,7 @@ impl ResourceProvider for TestResourceProvider {
         let transaction = lock(&self.transactions)
             .remove(handle.resource_key())
             .ok_or_else(|| invalid_resource(handle, "commit_transaction"))?;
-        self.driver.commit(transaction).await?;
+        self.driver.commit(transaction.1).await?;
         Ok(TransactionObservation::finished(
             TransactionState::Idle,
             EffectOutcome::Completed,
@@ -402,7 +405,7 @@ impl ResourceProvider for TestResourceProvider {
         let transaction = lock(&self.transactions)
             .remove(handle.resource_key())
             .ok_or_else(|| invalid_resource(handle, "rollback_transaction"))?;
-        self.driver.rollback(transaction).await?;
+        self.driver.rollback(transaction.1).await?;
         Ok(TransactionObservation::finished(
             TransactionState::Idle,
             EffectOutcome::RolledBack,
@@ -432,7 +435,7 @@ impl ResourceProvider for TestResourceProvider {
     ) -> Result<CloseDisposition, ResourceError> {
         let transaction = { lock(&self.transactions).remove(handle.resource_key()) };
         if let Some(transaction) = transaction {
-            self.driver.rollback(transaction).await?;
+            self.driver.rollback(transaction.1).await?;
         }
         let result = self.legacy.close_resource(handle).await?;
         lock(&self.targets).remove(handle.resource_key());
@@ -464,9 +467,9 @@ impl ResourceProvider for TestResourceProvider {
         }
         let transaction = lock(&self.transactions)
             .remove(handle.resource_key())
-            .filter(|transaction| transaction.id == session_handle.handle_id)
+            .filter(|(id, _)| *id == session_handle.handle_id)
             .ok_or_else(|| invalid_resource(handle, "close_handle"))?;
-        self.driver.rollback(transaction).await?;
+        self.driver.rollback(transaction.1).await?;
         Ok(())
     }
 }

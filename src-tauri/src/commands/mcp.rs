@@ -39,7 +39,6 @@ fn clone_app_state(state: &AppState) -> Arc<AppState> {
         workflow_registry: state.workflow_registry.clone(),
         workflow_history: state.workflow_history.clone(),
         mcp_client_manager: state.mcp_client_manager.clone(),
-        session_transactions: state.session_transactions.clone(),
         query_executions: state.query_executions.clone(),
         workflow_scheduler: state.workflow_scheduler.clone(),
         wapps: state.wapps.clone(),

@@ -760,6 +760,8 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
                 .remove(&convert::handle(&request.handle)?.runtime_epoch.get());
         }
         self.reclaim_session_tombstones();
+        lock(&self.inner.transaction_unknown).remove(&request.handle);
+        lock(&self.inner.transaction_gates).remove(&request.handle);
         self.inner.sink.invalidate(&request.handle);
         Ok(receipt)
     }

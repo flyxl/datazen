@@ -527,6 +527,6 @@ Data Sync 任务文件是唯一曾经写入过运行时 `dbSessionId` 的地方�
 | P5 迁移三件套 handler / endpoint session / dispatch future | `DesktopJobHost` 调用方的当前进程任务与 handler | 运行时 session 和 handler 不落盘；AppDb 只保存 Job facts。进程重启将旧 Queued 标成 NotExecuted、旧 Running 标成 PendingVerification，不恢复旧副作用执行 |
 | AI 调用取消令牌 | `ai/cancel.rs` | 按 AI 调用注册 / 注销 |
 | 查询流执行注册表 | `AppState.query_executions` | 按 `QueryExecutionId` 归属校验；未知或已结束的 ID 一律拒绝 |
-| 会话事务句柄 | `AppState.session_transactions` | 键是 `dbSessionId`；只有显式断开才回滚 |
+| 会话事务句柄 | Runtime `SessionRegistry` actor 句柄账本 | 不落盘；到期/close 统一清理，Host 不再另存 handle map |
 
 兼容性的验证落在 `src-tauri/src/store/tests/migration_tests.rs`：一个测试写入带 `sourceDbSessionId` / `targetDbSessionId` 与行偏移的任务，断言保存后磁盘 JSON 中**不含**这两个键、重新加载后两者为空且断点被中和；另一个测试直接喂一段手写的旧 JSON 数组，断言同样被中和、而连接 id 存活。
