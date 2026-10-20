@@ -217,13 +217,22 @@ pub(crate) fn postgres_capability_set() -> CapabilitySet {
 /// snapshot can be told apart from the current declaration. `1` is the first
 /// set that was actually checked against the code below; a snapshot taken
 /// before this module existed carried `0`. `2` added buffered row read/write;
-/// `3` adds fixed interactive/agent sessions and bounded streaming results.
+/// `3` adds fixed interactive/agent sessions and bounded streaming results;
+/// `4` adds transactional SQL restore.
 pub(crate) const POSTGRES_CAPABILITY_REVISION: u64 = 4;
 
 /// The full registry: identity, version, protocol and the declared set.
 pub(crate) fn postgres_capability_registry() -> CapabilityRegistry {
+    postgres_capability_registry_for(POSTGRES_PROVIDER_ID)
+}
+
+/// Same declarations under a different provider identity, for the reuse
+/// aliases (questdb, cloudberry): the alias owns its own provider instance,
+/// so its capability snapshot and every handle it mints name the database
+/// type the user configured, not the parent pool.
+pub(crate) fn postgres_capability_registry_for(provider_id: &'static str) -> CapabilityRegistry {
     let mut snapshot = CapabilitySnapshot::new(
-        POSTGRES_PROVIDER_ID,
+        provider_id,
         POSTGRES_DRIVER_VERSION,
         PROTOCOL_VERSION,
         POSTGRES_CAPABILITY_REVISION,
@@ -239,7 +248,7 @@ pub(crate) fn postgres_capability_registry() -> CapabilityRegistry {
         datazen_driver_api::sql_dump::stream::BACKUP_CAPABILITY.into(),
         "bounded retained SQL dump".into(),
     );
-    let mut registry = CapabilityRegistry::new(POSTGRES_PROVIDER_ID, snapshot);
+    let mut registry = CapabilityRegistry::new(provider_id, snapshot);
     registry.capabilities = postgres_capability_set();
     registry
 }

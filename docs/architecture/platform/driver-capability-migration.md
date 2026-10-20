@@ -143,6 +143,8 @@
 
 **与目标契约的差距**：`changeContext` 必须返回 `RequiresReplacement` 而不是 `Unsupported`——库与 schema 都能换，只是要换一条连接，这是 `requiresReplacement` 的教科书场景。`resetResource` 目前只能整体丢弃（且本驱动连 `discard_connection` 都没实现），要补一个「回滚未决事务 + 恢复 `search_path` 到 baseline」的实现才能给 `resetForReuse: verified`。`executeOnResource` 要求的「不自行再从随机 pool 取连接」目前不成立：`begin_transaction` 之外的路径都是每次 `pool.acquire()`。
 
+**资源契约（2026-10-21 起）**：三个 factory 都解析 provider（`lib.rs` 的 `POSTGRES_PROVIDER` 与 questdb / cloudberry 的 `QUESTDB_PROVIDER` / `CLOUDBERRY_PROVIDER`，由 `postgres_alias_factory!` 宏保证 inner 与 provider 绑定同一个 `PostgresDriver` 实例，`create()` 每次从同一个 inner 包一层 `ReuseDriver`）。questdb / cloudberry 的 provider 经 `PostgresResourceProvider::with_provider_id(inner, "<alias id>")` 以**别名自己的** provider_id 发布：能力快照（revision 4）、每个句柄的 `handle.check` 全部锚在别名身份上；runtime epoch 逐实例递增，别名与父库互不相认。它标记的是实现事实：别名与父库共用同一份资源机制，能力精修（按 questdb 的方言差异收窄某格）仍按本表另行裁决；「别名可以打开平台会话」不再是失败路径。`tests/alias_resource_factory.rs` 与 `tests/postgres_resource_contract.rs`（`every_factory_this_crate_registers_resolves_a_provider_under_its_own_identity`）钉住这些断言。
+
 ### 3.2 MySQL（含 mariadb / doris / starrocks / manticore / ob_oracle 复用）
 
 `packages/drivers/mysql` 一个 crate 注册 **6 个 factory**：`mysql`、`mariadb`、`doris`、`starrocks`、`manticore`、`ob_oracle`（驱动 id 用的是下划线，见 `lib.rs:142`），全部 `supports_query_execution_cancel() -> true`。

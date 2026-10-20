@@ -47,7 +47,6 @@ use datazen_driver_api::session::{
 };
 use datazen_driver_api::{
     iter_driver_factories, require_resource_provider, ConnectionConfig, DatabaseDriverFactory,
-    ResourceProviderMissing,
 };
 // The test binary only links this crate — and therefore only runs the
 // `inventory::submit!` in `lib.rs` that makes any factory findable at all —
@@ -370,8 +369,17 @@ fn the_provider_identifies_itself_as_this_crate() {
         "an unchanged contract means an unchanged protocol version"
     );
     assert_eq!(
-        registry.snapshot.capability_revision, 3,
-        "the revision advances when the provider adds fixed sessions and streaming results"
+        registry.snapshot.capability_revision, 4,
+        "the revision advances when the provider adds transactional SQL restore"
+    );
+    assert_eq!(
+        registry
+            .snapshot
+            .confirmed
+            .get(datazen_driver_api::restore_sql::CAPABILITY_KEY)
+            .map(String::as_str),
+        Some(datazen_driver_api::restore_sql::TRANSACTIONAL),
+        "revision 4 declares transactional SQL restore"
     );
 }
 
@@ -540,31 +548,37 @@ async fn an_unproven_initialization_step_is_refused_rather_than_replayed_or_igno
 // ---------------------------------------------------------------------------
 
 #[test]
-fn the_factories_this_crate_still_registers_without_a_provider_fail_closed() {
-    // questdb and cloudberry share this crate's connection code but have not
-    // been migrated. They must keep saying so through the error, not through
-    // a `None` a caller can mistake for "nothing to do".
-    for driver_id in ["questdb", "cloudberry"] {
+fn every_factory_this_crate_registers_resolves_a_provider_under_its_own_identity() {
+    // questdb and cloudberry now reach the resource contract the same way the
+    // native pool does: a memoized provider bound to the driver instance the
+    // factory hands out, with the alias identity stamped on the provider and
+    // on its capability snapshot — not on the parent pool's identity, which
+    // would let a questdb handle silently address a postgresql resource.
+    let native = require_resource_provider(factory("postgresql")).expect("postgres has a provider");
+    for driver_id in ["postgresql", "questdb", "cloudberry"] {
         let factory = factory(driver_id);
-        assert!(
-            factory.resource_provider().is_none(),
-            "{driver_id} has not been migrated; claiming a provider would be a lie"
+        let provider = factory.resource_provider().unwrap_or_else(|| {
+            panic!(
+                "{driver_id} must resolve a provider: the resource path failed \
+                 closed before the alias migrated, and must not regress"
+            )
+        });
+        assert_eq!(
+            provider.provider_id(),
+            driver_id,
+            "{driver_id}: provider identity must match the factory's driver id"
         );
-        assert!(
-            !factory.resource_capabilities().declares_anything(),
-            "{driver_id} must claim no capability until it has a provider"
+        assert_eq!(provider.capabilities().provider_id, driver_id);
+        assert_eq!(
+            factory.resource_capabilities(),
+            provider.capabilities().capabilities,
+            "{driver_id}: the two declaration paths must not be able to drift apart"
         );
-
-        match require_resource_provider(factory) {
-            Err(ResourceProviderMissing {
-                driver_id: reported,
-            }) => {
-                assert_eq!(
-                    reported, driver_id,
-                    "the error must name the driver that is missing"
-                )
-            }
-            Ok(_) => panic!("{driver_id} must not resolve a provider it never implemented"),
+        if driver_id != "postgresql" {
+            assert!(
+                !std::sync::Arc::ptr_eq(&provider, &native),
+                "{driver_id}: aliases keep their own epoch, not the native pool's"
+            );
         }
     }
 }
