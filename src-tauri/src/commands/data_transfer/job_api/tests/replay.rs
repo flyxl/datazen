@@ -51,14 +51,10 @@ async fn a_repeated_idempotency_key_replays_the_recorded_job() {
     let first_artifacts = first.artifact_ids.clone();
     let first_progress = first.progress;
 
-    test.state
-        .connection_manager
-        .release(&source)
+    crate::services::migration_endpoint::close_dedicated_session(&test.state, &source)
         .await
         .unwrap();
-    test.state
-        .connection_manager
-        .release(&target)
+    crate::services::migration_endpoint::close_dedicated_session(&test.state, &target)
         .await
         .unwrap();
     let mut changed = request.clone();

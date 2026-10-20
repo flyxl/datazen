@@ -195,14 +195,19 @@ async fn mysql_bigint_key_keeps_atomic_table_boundary_resume() {
         .expect("primary key column")
         .data_type = "bigint unsigned".into();
     source_options.columns = source_schema.columns.clone();
+    let mysql_driver = MockDriver::new("mysql", source_options);
     test.registry
-        .register_test_driver("mysql", MockDriver::new("mysql", source_options))
+        .register_test_driver("mysql", mysql_driver.clone())
         .await;
+    test.register_runtime_driver("mysql", mysql_driver).await;
 
     let mut target_options = safe_options();
     target_options.execute_with_params_error = Some("injected target write failure".into());
+    let postgres_driver = MockDriver::new("postgres", target_options);
     test.registry
-        .register_test_driver("postgres", MockDriver::new("postgres", target_options))
+        .register_test_driver("postgres", postgres_driver.clone())
+        .await;
+    test.register_runtime_driver("postgres", postgres_driver)
         .await;
 
     let mut source_config =
