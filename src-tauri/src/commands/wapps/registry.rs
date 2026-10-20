@@ -100,7 +100,9 @@ pub(crate) async fn set_wapp_enabled_impl(
         .map_err(|e| CommandError::Internal(format!("set_wapp_enabled task: {e}")))?
         .map_err(CommandError::Validation)?;
 
-    if !enabled { super::sessions::end_wapp_instances(&id); }
+    if !enabled {
+        super::sessions::end_wapp_instances(&id);
+    }
     tracing::info!(%id, %enabled, "set_wapp_enabled OK");
     Ok(())
 }

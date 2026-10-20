@@ -606,7 +606,9 @@ pub(crate) fn recording_host(
         .expect("platform adapter must be injected for Data Sync jobs");
     let call = adapter.begin_call();
     let host = HostDataSync::new(
-        adapter.runtime().expect("runtime must be injected for Data Sync jobs"),
+        adapter
+            .runtime()
+            .expect("runtime must be injected for Data Sync jobs"),
         call.context().clone(),
         state.store.clone(),
         state.sync_adapters.clone(),

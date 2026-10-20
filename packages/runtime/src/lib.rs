@@ -23,9 +23,9 @@ pub mod gateway;
 /// P5 JobRuntime 内核：接受/幂等 receipt/planId 唯一消费/claim fencing/handler 协议/
 /// 多端原子预算/阶段调度与取消意图/效果结局聚合（data-migration-jobs.md 全文口径）。
 pub mod job;
-pub mod native_tool;
 /// 门禁开销的测量口径（分位数算法 + 逐请求求和）。
 pub mod latency;
+pub mod native_tool;
 /// 会话登记表接缝：`SessionPort` 的**唯一**契约面，Wave 2 的 registry 实现它、gateway 消费它。
 pub mod registry;
 /// 宿主资源台账与生命周期裁决：物理连接表、`PoolKey` 索引、
