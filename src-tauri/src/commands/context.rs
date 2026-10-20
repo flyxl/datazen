@@ -187,11 +187,7 @@ pub(crate) async fn read_context_paths(
 
 /// Format file entries as a prompt context block (`[Context: path]\\ncontent`, joined by blank lines).
 pub(crate) fn format_context_block(entries: &[(String, String)]) -> String {
-    entries
-        .iter()
-        .map(|(path, content)| format!("[Context: {path}]\n{content}"))
-        .collect::<Vec<_>>()
-        .join("\n\n")
+    datazen_feature_core::ai::context::format_context_block(entries)
 }
 
 #[tauri::command]
@@ -614,6 +610,7 @@ mod tests {
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
             cancel_registry: crate::ai::CancellationRegistry::default(),
+            ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
             platform: crate::platform::PlatformEntry::launch(),
@@ -681,6 +678,7 @@ mod tests {
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
             cancel_registry: crate::ai::CancellationRegistry::default(),
+            ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
             platform: crate::platform::PlatformEntry::launch(),

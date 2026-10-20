@@ -172,6 +172,8 @@ pub struct AppState {
     pub workflow_scheduler: Arc<WorkflowScheduler>,
     pub wapps: Arc<WappManager>,
     pub cancel_registry: crate::ai::CancellationRegistry,
+    /// Owner-bound editor-session grants for AI tool execution (P6 §14.4).
+    pub ai_grants: Arc<crate::commands::ai::AiGrantService>,
     /// P5 Wave-1：Schema Diff 的 JobRuntime 基础设施（仓储/预算/计划库）。
     pub schema_diff_jobs: Arc<crate::commands::schema_diff::job::SchemaDiffJobInfra>,
     /// P5 本机持久化 Job facade，所有迁移 Host 共用 `{appData}/datazen.sqlite`。
