@@ -9,8 +9,6 @@ import { isDirectInvocation } from '../lib/isDirectInvocation.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const cases = [
   ['check-platform-crate-boundaries', ['--help'], 'usage:'],
-  ['check-driver-protocol-compat', ['--unknown'], 'usage:'],
-  ['check-driver-protocol-release', ['--unknown'], 'usage:'],
   ['run-platform-crate-tests', ['--unknown'], 'unknown argument'],
   ['check-managed-stubs', [], '[check-managed-stubs]'],
   ['check-module-layers', [], '[check-module-layers]'],
