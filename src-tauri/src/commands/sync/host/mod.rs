@@ -22,6 +22,7 @@ use async_trait::async_trait;
 use datazen_driver_api::{
     DatabaseType, SyncKeyContract, SyncSourceAdapter, SyncTargetAdapter, TableSchema,
 };
+use datazen_runtime::application::{LiveConnectionLease, LivePurpose};
 use datazen_runtime::job::CancelToken;
 
 use crate::data_sync::job::artifact::{ChangeSetArtifact, RelationIdentity};
@@ -34,7 +35,7 @@ use crate::data_sync::{
     require_data_sync_family, DataSyncError, Endpoint, RowChange, SqlStatement, SyncOptions,
     SyncSourceFilter, TableMapping,
 };
-use crate::services::{metadata_schema, ConnectionManager};
+use crate::services::metadata_schema;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 
 use super::super::{resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas};
@@ -68,10 +69,13 @@ struct Slot {
     session: EndpointSession,
     db_type: DatabaseType,
     read_only: bool,
+    _lease: Arc<LiveConnectionLease>,
 }
 
 pub(crate) struct HostDataSync {
-    connections: Arc<ConnectionManager>,
+    runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
+    call_context: datazen_platform_api::context::RequestContext,
+    store: Arc<crate::store::Store>,
     adapters: Arc<SyncAdapterRegistry>,
     source: Endpoint,
     target: Endpoint,
@@ -92,14 +96,18 @@ fn invalid(message: impl Into<String>) -> DataSyncError {
 
 impl HostDataSync {
     pub(crate) fn new(
-        connections: Arc<ConnectionManager>,
+        runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
+    call_context: datazen_platform_api::context::RequestContext,
+        store: Arc<crate::store::Store>,
         adapters: Arc<SyncAdapterRegistry>,
         source: Endpoint,
         target: Endpoint,
         filters: HashMap<String, SyncSourceFilter>,
     ) -> Self {
         Self {
-            connections,
+            runtime,
+            call_context,
+            store,
             adapters,
             source,
             target,
@@ -176,6 +184,7 @@ impl HostDataSync {
                 },
                 db_type: slot.db_type.clone(),
                 read_only: slot.read_only,
+                _lease: slot._lease.clone(),
             })
             .ok_or_else(|| invalid("endpoint session is not owned by this Data Sync Job"))
     }
@@ -252,17 +261,6 @@ impl HostDataSync {
     /// this adapter only retains a driver handle while the stage runs.
     async fn open(&self, endpoint: &Endpoint) -> Result<EndpointSession, DataSyncError> {
         let is_source = self.next_side(endpoint)?;
-        if self
-            .connections
-            .get_session(&endpoint.connection_id)
-            .await
-            .is_err()
-        {
-            return Err(invalid(format!(
-                "cannot open source/target: database session {} is no longer available; reconnect and compare again",
-                endpoint.connection_id
-            )));
-        }
         self.open_locked(&endpoint.connection_id, endpoint, is_source)
             .await
     }
@@ -273,16 +271,15 @@ impl HostDataSync {
         endpoint: &Endpoint,
         is_source: bool,
     ) -> Result<EndpointSession, DataSyncError> {
-        let config = self
-            .connections
-            .get_session_config(db_session_id)
-            .await
-            .map_err(|error| invalid(format!("cannot read connection config: {error}")))?;
-        let (driver, handle) = self
-            .connections
-            .get_session(db_session_id)
+        let (view, lease) = self.runtime
+            .borrow_live_connection_by_id(&self.call_context, db_session_id, LivePurpose::LongLivedHostWork)
             .await
             .map_err(|error| invalid(format!("cannot open database session: {error}")))?;
+        let connection = lease.connection().map_err(|error| invalid(error.to_string()))?;
+        let driver = Arc::clone(connection.driver());
+        let handle = connection.handle().clone();
+        let config = self.store.get_connection(view.connection_id.as_str()).await
+            .ok_or_else(|| invalid("connection profile is no longer available"))?;
         // Family pairing is checked as soon as the second endpoint opens, so
         // the user sees the cross-family explanation before any work happens.
         let peer = {
@@ -333,6 +330,7 @@ impl HostDataSync {
             session: session.clone(),
             db_type: config.database_type.clone(),
             read_only: config.read_only,
+            _lease: Arc::new(lease),
         });
         Ok(session)
     }
