@@ -821,16 +821,15 @@ pub(crate) async fn execute_data_sync_impl(
     job_id: Option<String>,
     _target_database: Option<String>,
 ) -> Result<ExecutionResult, CommandError> {
-    let config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("execute_data_sync")?;
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("execute_data_sync")?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::CommandExecution,
+    )
+    .await?;
+    let config = context.config;
+    let driver = context.driver;
+    let handle = context.handle;
     let mut executor = LiveExecutor {
         driver,
         handle,
