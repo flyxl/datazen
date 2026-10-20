@@ -78,11 +78,13 @@ pub(super) async fn prepare_target_objects(
             ..
         } => target_db_session_id,
     };
-    let config = state
-        .connection_manager
-        .get_session_config(target_session)
-        .await
-        .map_err(|error| CommandError::Validation(error.to_string()))?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        target_session,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let config = context.config;
     let target_schema = match request {
         PrepareRequest::Table { target_schema, .. }
         | PrepareRequest::Unified { target_schema, .. } => target_schema.as_deref(),
@@ -154,16 +156,15 @@ pub(super) async fn fingerprint_targets(
     database: Option<&str>,
     targets: &[DatabaseObject],
 ) -> Result<String, CommandError> {
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(session_id)
-        .await
-        .map_err(|error| CommandError::Validation(error.to_string()))?;
-    let config = state
-        .connection_manager
-        .get_session_config(session_id)
-        .await
-        .map_err(|error| CommandError::Validation(error.to_string()))?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let driver = context.driver;
+    let handle = context.handle;
+    let config = context.config;
     let database = database.or(config.database.as_deref()).unwrap_or_default();
     let driver_type = driver.driver_type();
     let catalog_database = schema_catalog_database(&driver_type, Some(database));
