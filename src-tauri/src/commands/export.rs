@@ -505,3 +505,6 @@ mod tests {
         assert_eq!(*lock_export(&mutex).unwrap(), 800);
     }
 }
+
+#[cfg(test)]
+mod live_acceptance;

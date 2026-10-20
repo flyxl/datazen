@@ -30,10 +30,9 @@ pub type ExportOutputAuthority = Arc<dyn Fn(&rc::ExecutionId) -> bool + Send + S
 
 /// 一条已打开的物理资源。
 ///
-/// `pub(super)` 是为了让 [`super::live_source`] 能把 `resource_key` / `provider_id`
-/// 投影成端口要的 `ConnectionHandle`。**只开这两个投影**，不开 `provider`
-/// （那是可执行面）也不开 `handle` 本体（`dr::ResourceHandle` 是可变所有权凭证，
-/// 交出去等于把关闭权交给出向端口的调用方）。
+/// `pub(super)` 让 [`super::live_source`] 通过 provider 的只读借出方法取得驱动句柄。
+/// Runtime 的 `dr::ResourceHandle` 是不透明所有权凭证，不能把它的 resource key / provider id
+/// 误当作驱动自己的 `ConnectionHandle`。
 pub(super) struct Resource {
     provider: Arc<dyn dr::ResourceProvider>,
     handle: dr::ResourceHandle,
@@ -62,14 +61,12 @@ impl Resource {
         self.epoch
     }
 
-    /// 投影出 `ConnectionHandle` 的 `id`。**不是**连接本身，只是路由元数据。
-    pub(super) fn connection_id_of_resource(&self) -> String {
-        self.handle.resource_key().to_owned()
-    }
-
-    /// 投影出 `ConnectionHandle` 的 `pool_id`。
-    pub(super) fn pool_id_of_resource(&self) -> String {
-        self.handle.provider_id().to_owned()
+    /// Borrow the actual driver routing handle retained by this provider.
+    /// This is metadata only; the resource provider keeps close ownership.
+    pub(super) fn driver_handle(
+        &self,
+    ) -> Result<datazen_driver_api::ConnectionHandle, dr::ResourceError> {
+        self.provider.connection_handle(&self.handle)
     }
 }
 
