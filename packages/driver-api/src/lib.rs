@@ -7,9 +7,9 @@
 pub use async_trait::async_trait;
 pub use inventory;
 
+pub mod backup_dialect;
 pub mod capabilities;
 pub mod capability_domains;
-pub mod backup_dialect;
 pub mod catalog;
 pub mod command;
 pub mod command_catalog;
@@ -48,7 +48,6 @@ mod types;
 pub use backup_dialect::{BackupDialect, LegacyBackupDialect};
 pub use capability_domains::{BackupSupport, DataSupport};
 pub use catalog::{CatalogReader, LegacyCatalogReader};
-pub use command_catalog::{CommandCatalog, LegacyCommandCatalog};
 pub use command::{
     check_command_access, execute_command_definition, execute_command_definition_for,
     explain_command_definition, query_command_definition, query_command_definition_for,
@@ -56,6 +55,7 @@ pub use command::{
     statement_command_definitions, validate_command_input, CommandAccessLevel, CommandCategory,
     CommandResult, DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec,
 };
+pub use command_catalog::{CommandCatalog, LegacyCommandCatalog};
 pub use dialect::{BoundParameterLimit, LegacySqlDialect, SqlDialect};
 pub use explain_plan::{normalize_mysql_explain_plan, normalize_postgres_explain_plan};
 pub use factory::*;

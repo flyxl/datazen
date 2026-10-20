@@ -1,7 +1,7 @@
 //! Shared backup and SQL restore use cases. Paths and progress delivery are supplied by hosts.
 use crate::error::FeatureError as CommandError;
 use datazen_driver_api::{
-    BackupDumpOptions, BackupRestoreOptions, BackupDialect, ConnectionConfig, ConnectionHandle,
+    BackupDialect, BackupDumpOptions, BackupRestoreOptions, ConnectionConfig, ConnectionHandle,
     DatabaseDriver, DriverError, DumpPhase, DumpProgress, RestoreSession, SqlTarget, TableInfo,
     TableType, Utf8ChunkDecoder,
 };

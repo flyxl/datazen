@@ -1,6 +1,5 @@
 //! Dialect-neutral schema migration contracts exposed by the driver API.
 
-use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::schema_objects::ObjectKind;
@@ -1482,10 +1481,7 @@ mod schema_migration_contract_tests {
         assert!(migration.migration_renderer().is_none());
         assert!(migration.migration_capabilities().is_none());
         assert!(migration.type_normalizer().is_none());
-        assert!(matches!(
-            migration.ddl_atomicity(),
-            DdlAtomicity::Unknown
-        ));
+        assert!(matches!(migration.ddl_atomicity(), DdlAtomicity::Unknown));
     }
 
     #[tokio::test]

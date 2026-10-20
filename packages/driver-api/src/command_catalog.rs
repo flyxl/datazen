@@ -66,8 +66,8 @@ impl<D: DatabaseDriver + ?Sized> CommandCatalog for LegacyCommandCatalog<'_, D> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::command::{DriverCommandDefinition, DriverCommandMetadata};
     use crate::mock_driver::{MockDriver, MockDriverOptions};
-    use crate::command::{DriverCommandMetadata, DriverCommandDefinition};
     use std::sync::Arc;
 
     fn mock(extra: Vec<DriverCommandDefinition>) -> Arc<MockDriver> {
@@ -124,7 +124,9 @@ mod tests {
         let driver = mock(vec![extra_definition("workbench_status")]);
         let catalog = LegacyCommandCatalog::new(driver.as_ref());
 
-        let query = catalog.target_requirements("query").expect("query is registered");
+        let query = catalog
+            .target_requirements("query")
+            .expect("query is registered");
         assert!(query.allows_object, "query may address an object target");
 
         let schema = catalog
