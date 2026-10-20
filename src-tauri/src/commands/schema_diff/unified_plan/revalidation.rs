@@ -11,16 +11,15 @@ pub(crate) async fn revalidate_source_snapshot(
     let Some(source) = reviewed.source_snapshot.as_ref() else {
         return Ok(());
     };
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&source.session)
-        .await
-        .cmd_err("execute_schema_diff_deploy")?;
-    let config = state
-        .connection_manager
-        .get_session_config(&source.session)
-        .await
-        .cmd_err("execute_schema_diff_deploy")?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &source.session,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let driver = context.driver;
+    let handle = context.handle;
+    let config = context.config;
     crate::schema_diff::reviewed::validate_source_connection_snapshot(
         source,
         &source.session,
