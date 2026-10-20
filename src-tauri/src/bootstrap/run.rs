@@ -641,7 +641,6 @@ pub fn run() {
                     }
                     let state = app_handle.state::<AppState>();
                     tauri::async_runtime::block_on(async {
-                        state.connection_manager.shutdown().await;
                         state.mcp_client_manager.disconnect_all().await;
                     });
                     // 空闲回收驱动器在此停。它归 runtime 应用层所有，宿主不驱动它，

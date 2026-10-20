@@ -490,7 +490,7 @@ h.clock().advance(Duration::from_secs(24 * 3600));  // 触发 IdempotencyExpired
 
 断言集合：`R2` 上不存在任何 `registered` 事件；`I1`~`I8` 全部成立；恢复流程若被触发，必须以**新 dbSessionId** 出现，旧句柄不被重建（connection-management.md §6.5）。
 
-CM-73/CM-74 的断言只依赖行为（不淘汰仍持有已登记活动句柄的资源、不以同一 dbSessionId 重建），**不依赖遗留管理器中任何函数名**；遗留 `ConnectionManager` 删除后这两条用例必须继续成立。
+CM-73/CM-74 的断言只依赖 Runtime 行为（回收时处理已登记活动句柄、失效后不以同一 dbSessionId 重建），不依赖 Host 管理器函数名；它们由 `packages/runtime/src/connection/testing/harness/` 中的 Runtime 测试覆盖。
 
 ## 10. 真实驱动契约夹具模板
 
@@ -681,5 +681,5 @@ P0 退出门槛要求的三项能力——CM-01/04/07 基线、可复现的 CM-7
 - 驱动 Command API 的完整目录与前端 Command SDK 语义——见 `packages/driver-api` 与 `packages/driver-sdk`。
 - 前端 UI 绑定、Zustand store 与 i18n 文案。
 - 基准结果的结论与性能调优方案；本文只定义如何测量与判定。
-- 遗留 `ConnectionManager` 的迁移步骤与删除计划；CM-73/CM-74 需在其删除后继续成立，这由断言的行为依赖保证，不由本文保证迁移进度。
+- Host `ConnectionManager` 已删除；本篇描述 Runtime fake resource fixtures，不承担连接迁移进度跟踪。
 - 排期、进度台账与缺陷清单（按仓库文档纪律不产出此类文档）。

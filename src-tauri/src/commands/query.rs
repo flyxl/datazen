@@ -417,124 +417,69 @@ pub async fn save_sql_file(
     Ok(true)
 }
 
+async fn runtime_transaction(
+    state: &AppState,
+    session_id: &str,
+    operation: datazen_runtime::application::SessionTransactionOperation,
+) -> Result<(), CommandError> {
+    let platform = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = platform.begin_call();
+    platform
+        .runtime()
+        .map_err(crate::platform::into_command_error)?
+        .session_transaction(call.context(), session_id, operation)
+        .await
+        .map_err(crate::platform::into_command_error)
+}
 pub(crate) async fn begin_session_transaction_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<(), CommandError> {
-    {
-        let txs = state.session_transactions.lock().await;
-        if txs.contains_key(&db_session_id) {
-            return Ok(());
-        }
-    }
-    let context = crate::services::migration_endpoint::runtime_session_context(
+    runtime_transaction(
         state,
         &db_session_id,
-        datazen_runtime::application::LivePurpose::CommandExecution,
+        datazen_runtime::application::SessionTransactionOperation::Begin,
     )
-    .await?;
-    let driver = context.driver;
-    let handle = context.handle;
-    let tx = match driver.begin_transaction(&handle).await {
-        Ok(tx) => tx,
-        Err(e) => {
-            if state
-                .session_transactions
-                .lock()
-                .await
-                .contains_key(&db_session_id)
-            {
-                return Ok(());
-            }
-            return Err(e).cmd_err("begin_session_transaction");
-        }
-    };
-    let mut txs = state.session_transactions.lock().await;
-    if txs.contains_key(&db_session_id) {
-        drop(txs);
-        // Lost the race: another `begin` for this `dbSessionId` registered its
-        // transaction while ours was being opened, so this one must be undone
-        // or the connection carries a second, untracked open transaction whose
-        // writes no commit/rollback will ever reach. If the driver cannot
-        // confirm the rollback, that dangling transaction is real and this
-        // function returning `Ok(())` would be a lie — the caller would go on
-        // to commit the *other* handle and the orphan's locks would stay held.
-        // Same ruling as `services/transaction.rs::rollback` and
-        // `ConnectionManager::disconnect`. The winner's transaction is
-        // untouched: it is already in the map, and this path only ever removes
-        // the handle this call created.
-        driver.rollback(tx).await.map_err(|e| {
-            let err: CommandError = e.into();
-            tracing::error!(
-                cmd = "begin_session_transaction",
-                db_session_id = %db_session_id,
-                error = %err,
-                "Could not roll back the transaction opened by a lost begin race; \
-                 the connection is left with an untracked open transaction",
-            );
-            err
-        })?;
-        return Ok(());
-    }
-    txs.insert(db_session_id, tx);
-    Ok(())
+    .await
 }
-
 pub(crate) async fn commit_session_transaction_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<(), CommandError> {
-    let driver = crate::services::migration_endpoint::runtime_session_context(
+    runtime_transaction(
         state,
         &db_session_id,
-        datazen_runtime::application::LivePurpose::CommandExecution,
+        datazen_runtime::application::SessionTransactionOperation::Commit,
     )
-    .await?
-    .driver;
-    let tx = state
-        .session_transactions
-        .lock()
-        .await
-        .remove(&db_session_id)
-        .ok_or_else(|| CommandError::Validation("No open transaction".into()))?;
-    driver
-        .commit(tx)
-        .await
-        .cmd_err("commit_session_transaction")
+    .await
 }
-
 pub(crate) async fn rollback_session_transaction_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<(), CommandError> {
-    let driver = crate::services::migration_endpoint::runtime_session_context(
+    runtime_transaction(
         state,
         &db_session_id,
-        datazen_runtime::application::LivePurpose::CommandExecution,
+        datazen_runtime::application::SessionTransactionOperation::Rollback,
     )
-    .await?
-    .driver;
-    let tx = state
-        .session_transactions
-        .lock()
-        .await
-        .remove(&db_session_id)
-        .ok_or_else(|| CommandError::Validation("No open transaction".into()))?;
-    driver
-        .rollback(tx)
-        .await
-        .cmd_err("rollback_session_transaction")
+    .await
 }
-
 pub(crate) async fn session_transaction_status_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<bool, CommandError> {
-    Ok(state
-        .session_transactions
-        .lock()
+    let platform = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = platform.begin_call();
+    platform
+        .runtime()
+        .map_err(crate::platform::into_command_error)?
+        .session_transaction_status(call.context(), &db_session_id)
         .await
-        .contains_key(&db_session_id))
+        .map_err(crate::platform::into_command_error)
 }
 
 #[tauri::command]

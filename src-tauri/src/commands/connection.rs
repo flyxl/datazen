@@ -279,25 +279,6 @@ pub(crate) async fn disconnect_impl(
 ) -> Result<(), CommandError> {
     log_ipc_identity(state, "disconnect");
     tracing::info!(%db_session_id, "disconnect (force)");
-    if let Some(tx) = state
-        .session_transactions
-        .lock()
-        .await
-        .remove(&db_session_id)
-    {
-        if let Ok(context) = crate::services::migration_endpoint::runtime_session_context(
-            state,
-            &db_session_id,
-            datazen_runtime::application::LivePurpose::CommandExecution,
-        )
-        .await
-        {
-            let driver = context.driver;
-            if let Err(e) = driver.rollback(tx).await {
-                tracing::warn!(%db_session_id, error = %e, "rollback session tx on disconnect");
-            }
-        }
-    }
     crate::services::migration_endpoint::close_dedicated_session(state, &db_session_id).await?;
     state.schema_cache.clear_connection(&db_session_id).await;
     tracing::info!(%db_session_id, "disconnect OK");
@@ -591,7 +572,6 @@ mod coverage_tests {
     //! driver-category reporting, and the reorder wrapper.
 
     use super::*;
-    use crate::db::TransactionHandle;
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 
@@ -741,64 +721,21 @@ mod coverage_tests {
     }
 
     #[tokio::test]
-    async fn disconnect_rolls_back_open_session_transaction_and_clears_map() {
+    async fn disconnect_rolls_back_runtime_transaction_and_clears_status() {
         let test = TestAppState::with_tables().await;
-        let (_, conn_id) = test.save_and_connect("tx-1").await;
-
-        // Begin a real transaction through the mock driver so rollback succeeds.
-        let context = crate::services::migration_endpoint::runtime_session_context(
-            &test.state,
-            &conn_id,
-            datazen_runtime::application::LivePurpose::CommandExecution,
-        )
-        .await
-        .unwrap();
-        let driver = context.driver;
-        let handle = context.handle;
-        let tx = driver.begin_transaction(&handle).await.unwrap();
-        test.state
-            .session_transactions
-            .lock()
+        let (_, id) = test.save_and_connect("tx-close").await;
+        crate::commands::query::begin_session_transaction_impl(&test.state, id.clone())
             .await
-            .insert(conn_id.clone(), tx);
-
-        disconnect_impl(&test.state, conn_id.clone()).await.unwrap();
+            .unwrap();
+        assert_eq!(test.mock.open_transaction_count(), 1);
+        disconnect_impl(&test.state, id.clone()).await.unwrap();
         assert!(
-            !test
-                .state
-                .session_transactions
-                .lock()
+            !crate::commands::query::session_transaction_status_impl(&test.state, id.clone())
                 .await
-                .contains_key(&conn_id),
-            "disconnect must consume the pending session transaction entry"
+                .unwrap()
         );
-        assert!(
-            !ping_connection_impl(&test.state, conn_id.clone())
-                .await
-                .unwrap(),
-            "disconnect must tear down the session"
-        );
-
-        // Rollback-failure branch: a pending session transaction whose handle
-        // the driver does not know. This is `disconnect_impl`'s own
-        // pre-teardown rollback (`commands/connection.rs:261`), which logs a
-        // warning and continues — a *different* path from
-        // `ConnectionManager::disconnect`, which now reports a driver that
-        // cannot confirm the teardown instead of claiming a clean disconnect.
-        // So this branch still ends in `Ok`, and this comment used to be the
-        // only place recording that.
-        test.save_and_connect("tx-2").await;
-        test.state.session_transactions.lock().await.insert(
-            format!("{}:bogus", "tx-2"),
-            TransactionHandle {
-                id: "never-begun".into(),
-                connection_id: "never-begun-handle".into(),
-            },
-        );
-        let error = disconnect_impl(&test.state, format!("{}:bogus", "tx-2"))
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("session unavailable"));
+        assert_eq!(test.mock.open_transaction_count(), 0);
+        assert!(!ping_connection_impl(&test.state, id).await.unwrap());
     }
 
     #[tokio::test]

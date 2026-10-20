@@ -119,13 +119,16 @@ async fn wapp_driver_command_uses_an_independent_runtime_target() {
     .expect("a permitted read command must execute through Runtime");
 
     assert!(result.is_object());
+    let adapter = test.state.platform_require().expect("platform is ready");
+    let call = adapter.begin_call();
     assert!(
-        test.state
-            .connection_manager
-            .get_session("wapp-runtime")
+        adapter
+            .runtime()
+            .expect("runtime is ready")
+            .get_session_by_id(call.context(), "wapp-runtime")
             .await
             .is_err(),
-        "Wapp invocation must not create or borrow a legacy editor session"
+        "Wapp invocation must not create a persistent editor session"
     );
 }
 

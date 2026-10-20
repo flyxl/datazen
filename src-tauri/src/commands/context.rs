@@ -569,7 +569,6 @@ mod tests {
         use crate::db::DriverRegistry;
         use crate::mcp::client::McpClientManager;
         use crate::monitor::MonitorEngine;
-        use crate::services::ConnectionManager;
         use crate::store::Store;
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
@@ -579,17 +578,21 @@ mod tests {
         std::env::set_var("DATAZEN_KEYRING", "file");
         let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
         let registry = Arc::new(DriverRegistry::new());
-        let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
+        let platform = crate::platform::PlatformEntry::launch();
         let monitor_engine = MonitorEngine::new(store.clone());
         let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
         let data_dir = store.data_dir().to_path_buf();
         let history_db = store.history_db();
         let app_db = store.app_db();
         let desktop_job_host = crate::build_desktop_job_host(app_db.clone());
+        let schema_context_source = Arc::new(crate::ai::metadata_source::RuntimeSchemaSource::new(
+            registry.clone(),
+            store.clone(),
+            platform.clone(),
+        ));
 
         let state = AppState {
             driver_registry: registry,
-            connection_manager: connection_manager.clone(),
             monitor_engine,
             store,
             schema_cache: schema_cache.clone(),
@@ -597,15 +600,12 @@ mod tests {
             ai_registry: Arc::new(AiProviderRegistry::new()),
             schema_context_builder: Arc::new(SchemaContextBuilder::new(
                 schema_cache,
-                connection_manager,
+                schema_context_source,
             )),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
             workflow_registry: Arc::new(WorkflowRegistry::new(app_db, data_dir.clone())),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
-            session_transactions: Arc::new(tokio::sync::Mutex::new(
-                std::collections::HashMap::new(),
-            )),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
@@ -613,7 +613,7 @@ mod tests {
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
-            platform: crate::platform::PlatformEntry::launch(),
+            platform,
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
@@ -629,7 +629,6 @@ mod tests {
         use crate::db::DriverRegistry;
         use crate::mcp::client::McpClientManager;
         use crate::monitor::MonitorEngine;
-        use crate::services::ConnectionManager;
         use crate::store::{AppSettings, Store};
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
@@ -648,16 +647,20 @@ mod tests {
             .unwrap();
 
         let registry = Arc::new(DriverRegistry::new());
-        let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
+        let platform = crate::platform::PlatformEntry::launch();
         let monitor_engine = MonitorEngine::new(store.clone());
         let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
         let data_dir = store.data_dir().to_path_buf();
         let history_db = store.history_db();
         let desktop_job_host = crate::build_desktop_job_host(store.app_db());
+        let schema_context_source = Arc::new(crate::ai::metadata_source::RuntimeSchemaSource::new(
+            registry.clone(),
+            store.clone(),
+            platform.clone(),
+        ));
 
         let state = AppState {
             driver_registry: registry,
-            connection_manager: connection_manager.clone(),
             monitor_engine,
             store: store.clone(),
             schema_cache: schema_cache.clone(),
@@ -665,15 +668,12 @@ mod tests {
             ai_registry: Arc::new(AiProviderRegistry::new()),
             schema_context_builder: Arc::new(SchemaContextBuilder::new(
                 schema_cache,
-                connection_manager,
+                schema_context_source,
             )),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
             workflow_registry: Arc::new(WorkflowRegistry::new(store.app_db(), data_dir.clone())),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
-            session_transactions: Arc::new(tokio::sync::Mutex::new(
-                std::collections::HashMap::new(),
-            )),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
@@ -681,7 +681,7 @@ mod tests {
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
-            platform: crate::platform::PlatformEntry::launch(),
+            platform,
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();

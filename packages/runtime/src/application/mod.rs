@@ -11,6 +11,8 @@ mod live;
 mod operations;
 mod results;
 mod tokens;
+mod transactions;
+pub use transactions::SessionTransactionOperation;
 
 pub use idle::{IdlePolicy, IdleReclaimer, IdleReclamation};
 pub use live::{
@@ -62,6 +64,8 @@ struct Inner {
     keyring: TokenKeyring,
     clock: Arc<RuntimeClock>,
     idle_activity: tokio::sync::Mutex<HashMap<SessionHandle, usize>>,
+    transaction_gates: Mutex<HashMap<SessionHandle, std::sync::Weak<tokio::sync::Mutex<()>>>>,
+    transaction_unknown: Mutex<std::collections::HashSet<SessionHandle>>,
     /// 出向端口：宿主取活连接的唯一入口。未接线是配置事实，不是故障。
     live: Mutex<LiveConnections>,
     /// 空闲回收策略。`deadline == None` 表示本部署不做空闲回收。
@@ -189,6 +193,8 @@ impl RuntimeConnectionUseCases {
                 keyring: TokenKeyring::single(secret),
                 clock,
                 idle_activity: tokio::sync::Mutex::new(HashMap::new()),
+                transaction_gates: Mutex::new(HashMap::new()),
+                transaction_unknown: Mutex::new(std::collections::HashSet::new()),
                 live: Mutex::new(LiveConnections::unwired()),
                 idle: Mutex::new(IdlePolicy::default()),
                 target_admissions: Mutex::new(HashMap::new()),

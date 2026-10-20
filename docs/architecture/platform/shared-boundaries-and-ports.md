@@ -680,17 +680,16 @@ impl OpenSessionUseCase {
 
 ### 6.1 AppState 的职责拆分
 
-当前 `AppState`（[`src-tauri/src/commands/mod.rs`](../../../src-tauri/src/commands/mod.rs)）集中持有 18 个字段。P1 后按「是否属于平台适配」二分：
+当前 `AppState`（[`src-tauri/src/commands/mod.rs`](../../../src-tauri/src/commands/mod.rs)）仍持有桌面 IPC / UI / Job 所需状态，并通过 `PlatformEntry` 访问已装配 Runtime。P6 已将连接会话与物理资源生命周期移入 Runtime；Host 其余字段仍按下表归属：
 
 | 保留在 Tauri adapter（桌面专属） | 迁入 `packages/application` / `packages/runtime` |
 | --- | --- |
-| `driver_registry`（组装入口，运行时经 port 间接使用） | 连接用例（open / execute / setContext / close / attach / detach） |
-| `store`、`schema_cache`、`sync_adapters`（`store` 作为 `ProfileRepository` 的桌面实现；后两者的端口 §4 未定义，暂不外移） | `ConnectionManager` 的会话生命周期与资源管理 |
-| `schema_context_builder`、`prompt_resolver`（AI 组装） | `QueryExecutionRegistry` → `ExecutionGateway` 的 executionId ↔ 绑定登记 |
-| `ai_registry`、`cancel_registry`（AI 组装） | `session_transactions` 的登记语义 → `SessionRegistry` 的会话级句柄登记 |
-| `wapps`、`mcp_client_manager`、`workflow_scheduler`、`workflow_registry`、`workflow_history`、`monitor_*`（各自消费连接端口） | 连接配置写入（create/update/disable） |
+| `driver_registry`（装配入口）、`store`、`schema_cache`、`sync_adapters`（桌面实现） | Runtime connection use cases、SessionRegistry、resource registry 与物理 budget |
+| `schema_context_builder`、`prompt_resolver`、`ai_registry`、`cancel_registry`（Host AI 组装） | Runtime execution gateway 与 owner-bound session lease |
+| `query_executions`（Host 命令态） | session 到期、release、事务控制与句柄账本由 Runtime 管理 |
+| `wapps`、`mcp_client_manager`、`workflow_scheduler`、`workflow_registry`、`workflow_history`、`monitor_*` | profile 持久化仍经桌面 Store；各 consumer 通过 Runtime / feature ports 执行 |
 
-拆分后 `AppState` 只保留「adapter 自己的状态 + 组装好的 `Arc<ApplicationServices>`」，不再直接持有会话/资源数据结构。
+`AppState` 仍是 Tauri command state，不是纯 `ApplicationServices` 容器；P6 移除的是旧 `ConnectionManager`，Host 的 `session_transactions` 已删除，兼容事务控制经 Runtime Gateway/actor；`query_executions` 仍为 Host 命令态。
 
 ### 6.2 组装顺序
 
@@ -711,14 +710,13 @@ flowchart TD
 
 ### 6.3 保持不动的现有服务与窄适配
 
-| 现有组件 | P1 处理方式 |
+| 现有组件 | 当前实现 |
 | --- | --- |
-| `services/connection_manager.rs`（`ActiveSession`、`ConnectionManager`、`ConnectionError`） | 不删除；由 `connection/adapters.rs` 包裹为过渡实现，逐 consumer 迁移后删除旧路径 |
-| `services/connection_manager/sessions.rs`、`tunnels.rs` | 同上；隧道生命周期通过 `NetworkProvider::ensure_tunnel` 的桌面实现承接 |
-| `services/transaction.rs`（`TransactionHandle`） | 保持数据结构；登记语义改为写入 `SessionRegistry` 的会话级句柄表（[连接 §6.5](connection-management.md#65-会话级资源句柄登记)） |
-| AI（`ai_registry`、`prompt_resolver`、`schema_context_builder`、`cancel_registry`） | 不动；只把「需要连接执行」的部分改为调用 application 用例 |
-| Workflow（`workflow_registry`、`workflow_history`、`workflow_scheduler`、`command_runtime.rs`） | 不动；目标解析改为调用 application 的目标解析 |
-| `store/`、`cache/`（`SchemaCache`） | 不动；`store` 作为 `ProfileRepository` 的桌面实现接入，`SchemaCache` 的端口尚不在 §4 范围内 |
+| 原 `services/connection_manager/*` | 已删除；连接 consumer 使用 Runtime session / resource APIs，无兼容 `ConnectionManager` 实现 |
+| 桌面隧道生命周期 | `DesktopSessionBackend` 将 Tunnel 句柄持有在 Runtime physical Resource 中；确认关闭后释放 |
+| 原 `AppState.session_transactions` | 已删除；Runtime 串行事务控制复用 ResourceProvider，句柄观测/回收统一归 `SessionRegistry`，Unknown 不自动重发 |
+| AI、MCP、Workflow 与迁移 consumers | 保留 Host 组装与外部契约；需要连接执行的路径经 feature/application Runtime ports |
+| `store/`、`cache/`（`SchemaCache`） | Store 与 DriverRegistry 仍是桌面适配；SchemaCache 保持现有 Host facade |
 
 ## 7. BackendClient 与 PlatformServices 注入
 

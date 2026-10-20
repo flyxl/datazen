@@ -202,6 +202,10 @@ impl RuntimeConnectionUseCases {
             // 在两次语句之间完成的归还会漏掉作废，持有者就拿着一份「没被作废」的引用去
             // 驱动上打请求。
             let interrupted = live.revoke(&db_session_id);
+            lock(&self.inner.transaction_unknown)
+                .retain(|handle| handle.db_session_id != db_session_id);
+            lock(&self.inner.transaction_gates)
+                .retain(|handle, _| handle.db_session_id != db_session_id);
             let entry = lock(&self.inner.sessions).remove(&db_session_id);
             if let Some(entry) = entry.as_ref() {
                 let _ = self
