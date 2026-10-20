@@ -182,13 +182,10 @@ async function runSessionBootstrap() {
     await seedDefaultPgConnection(browser, _workerDb);
   }
 
-  // The Tauri process (and its ConnectionManager) is reused across spec files,
-  // so the live `conn_e2e_pg` session can still be bound to the previous
-  // worker's database, which `after` just dropped. Backend `connect` hands that
-  // still-alive session back unchanged, so specs that connect through the raw
-  // IPC path (no workspace connect) would run against a database that no longer
-  // exists. Specs that drive the workspace UI already re-bind via their own
-  // connect; this covers the rest.
+  // The Tauri process is reused across spec files, while each file replaces its
+  // worker database. A runtime session may still target the database dropped by
+  // the previous `after` hook. Refreshing the seeded session here also covers
+  // specs that use raw IPC instead of connecting through the workspace UI.
   await ensureSeededPgSessionFresh();
 
   // Reload page so the new language and seeded connections take effect

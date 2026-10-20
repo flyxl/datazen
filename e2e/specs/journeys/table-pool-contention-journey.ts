@@ -20,10 +20,9 @@ import {
  * CM-33 at the real UI layer: table churn must not become "one connection per tab",
  * and the editors must be unaffected by it.
  *
- * Why the count comes from the runtime and not from PostgreSQL: on the same database the
- * host still holds a legacy `ConnectionManager` session next to the runtime's sessions, so
- * `pg_stat_activity` cannot attribute a backend to either side. The runtime answers for its
- * own ledger through `runtime_observability_snapshot`
+ * Why the count comes from the runtime and not from PostgreSQL: `pg_stat_activity` reports
+ * server connections, but not the runtime pool's admission and lease state. The runtime
+ * exposes its own ledger through `runtime_observability_snapshot`
  * (`packages/runtime/src/resource/observability.rs`), and that is what this journey asserts:
  * the physical total stays inside the budget and does not grow with the number of table tabs,
  * while the editor keeps working with the same observed context.

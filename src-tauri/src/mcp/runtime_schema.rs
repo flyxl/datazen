@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 /// Execute a read-only metadata command against a persisted connection profile.
 ///
-/// This deliberately does not resolve a `ConnectionManager` session. The
-/// Runtime command source validates the profile, configuration revision and
-/// canonical target, then acquires and releases an independent resource for
-/// the command under a backend-generated request identity.
+/// This deliberately does not resolve a GUI editor session. The Runtime
+/// command source validates the profile, configuration revision and canonical
+/// target, then acquires and releases an independent resource for the command
+/// under a backend-generated request identity.
 pub(crate) async fn read_target_command(
     server: &DataZenMcpServer,
     connection_id: &str,

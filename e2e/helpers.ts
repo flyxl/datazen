@@ -338,24 +338,18 @@ export async function expandConnectedConnectionInNavigator(nameFragment?: string
   await browser.pause(800);
 }
 
-/**
- * Seeded PG session the harness currently holds a reference to — see the note
- * on why the probe must never `release_connection` in
- * `ensureSeededPgSessionFresh`.
- */
+/** Seeded PostgreSQL runtime session held until the current spec is cleaned up. */
 let heldSeededSessionId: string | null = null;
 
 /**
- * Disconnect the seeded session this harness holds.
+ * Disconnect the seeded runtime session created by the E2E bootstrap.
  *
  * Called from the per-spec-file `after` hook, before the worker database is
- * dropped. The next file re-seeds `conn_e2e_pg` against a brand-new database,
- * so nothing can reuse this session, and without the explicit teardown its
- * physical pool would stay claimed until the 30-minute idle timeout.
+ * dropped. Each file gets a new worker database, so the previous session must
+ * be released before its database is removed.
  *
- * On failure the id is kept so the next bootstrap retries it: a pool that was
- * never torn down is exactly what starves later spec files (`ResourceBusy`),
- * so this fails loudly instead of reporting a clean teardown.
+ * On failure the id is kept so the next bootstrap retries cleanup. A session
+ * that survives teardown can consume runtime capacity and starve later specs.
  */
 export async function releaseHeldSeededSession(): Promise<void> {
   if (!heldSeededSessionId) return;
@@ -364,40 +358,22 @@ export async function releaseHeldSeededSession(): Promise<void> {
 }
 
 /**
- * Guard against a stale backend session for the seeded PG connection.
+ * Ensure the seeded PostgreSQL session targets this spec's worker database.
  *
- * The whole E2E run reuses ONE Tauri process — and therefore one backend
- * ConnectionManager — across every spec file, while `wdio.conf.ts` replaces
- * the worker database behind `conn_e2e_pg` before each file. Backend `connect`
- * only hands back a live session while that session's target still matches the
- * saved profile (`get_or_connect_session`), so once the worker database
- * changes it mints a new session rather than returning the previous spec's.
- * Raw SQL would then execute on a stale home database while schema metadata
- * calls hit the freshly seeded one, so DDL never lands where the navigator
- * looks and every `waitForTableInSidebar` / `waitForSchemaTreeLoaded`
- * downstream times out.
+ * The E2E run reuses one Tauri process while `wdio.conf.ts` replaces the worker
+ * database between spec files. A runtime session can outlive a page reload and
+ * still point at the previous database. Raw IPC queries would then target a
+ * different database from the newly seeded fixture, causing schema and UI
+ * assertions to disagree.
  *
- * Probe `current_database()` on the live session against the connection
- * config's `database` field (re-seeded per spec file); on mismatch — or when
- * the session cannot execute at all — disconnect it and reload the page so
- * the subsequent UI connect performs a real `connect` bound to the current
- * config.
+ * Probe `current_database()` against the connection config's `database` field.
+ * On mismatch, or if the session cannot execute, disconnect it, reconnect to
+ * the current profile, and reload the page before UI assertions continue.
  *
- * ## Why the probe keeps its reference
+ * Keep the returned session id until spec teardown so the harness can release
+ * this exact session even after the page reloads. If reconnecting replaces a
+ * prior session, release the prior id as well.
  *
- * `ConnectionManager::release` disconnects a session as soon as its refcount
- * reaches zero. Releasing the probe here therefore destroyed the very session
- * the workspace card was about to reuse, and the card's own `connect` minted a
- * session whose id nothing outside the page ever learned. The next spec file's
- * page reload dropped the only handle to it: three spec files in one worker
- * left three orphaned pools holding the shared connection budget until the
- * idle timeout, and later specs failed with `submit/ResourceBusy`.
- *
- * Holding the reference keeps the card bound to the id returned here, which is
- * what makes `releaseHeldSeededSession` able to disconnect it at the file
- * boundary. A session the backend did *not* hand back is provably unreachable
- * (its target no longer matches the re-seeded profile), so it is disconnected
- * here as well.
  */
 export async function ensureSeededPgSessionFresh(): Promise<void> {
   const conns = await invokeBackend<Array<{ id: string; database?: string }>>('get_connections');
@@ -408,9 +384,7 @@ export async function ensureSeededPgSessionFresh(): Promise<void> {
     const rows = parseQueryRows(await executeQuery(id, 'SELECT current_database()'));
     return String(rows[0]?.[0] ?? '');
   };
-  // A different id means the backend refused the held session (this file's
-  // profile points at a fresh worker database). Its only frontend handle died
-  // with the previous page, so release it now instead of leaking its pool.
+  // Release the previous session if the refreshed profile now uses another id.
   const replaced = heldSeededSessionId;
   heldSeededSessionId = sessionId;
   if (replaced && replaced !== sessionId) {
@@ -423,7 +397,7 @@ export async function ensureSeededPgSessionFresh(): Promise<void> {
     // A dropped home database is a stale session, never a successful bootstrap.
   }
   if (actual === cfg.database) {
-    // Keep the reference: see "Why the probe keeps its reference" above.
+    // Retain this id so the per-file teardown can release this exact session.
     return;
   }
   console.warn(`[e2e] stale seeded session; reconnecting ${cfg.id}`);

@@ -5,8 +5,8 @@
 //! That proves the handler's own refusals, but a handler that is never reached
 //! passes them too — so every test here enters through the production path
 //! (`compare_data_sync_impl`, `jobs::submit_prepare`, `jobs::submit_apply`,
-//! `exec::start_data_sync_apply_job_impl`) and reaches real drivers through
-//! `ConnectionManager`. The gate chain, the budget reservation, the plan
+//! `exec::start_data_sync_apply_job_impl`) and exercises the configured driver
+//! path through Runtime. The gate chain, the budget reservation, the plan
 //! consumption and the effect-outcome projection are therefore part of what is
 //! asserted, not decoration around it.
 //!

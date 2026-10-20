@@ -2,12 +2,8 @@
 //!
 //! # 这一层补的是哪个洞
 //!
-//! 旧 `ConnectionManager::start_tunnel` 把「`tunnel_id` → 查存档 → 填 SSH/代理段 →
-//! `start_for_connection` → 改写 `host`/`port`」整条链握在自己手里。新连接路径
-//! （`platform::session_backend::open` → `ResourceProvider::acquire_resource` →
-//! `ResourceManager::acquire`）只认 `request.tunnel_spec`，而它此前一直是 `None`
-//! —— 存档里的原始 `connection_config` 从不被解析。于是旧实现一删，
-//! SSH / HTTP 代理 / WebSocket 三种隧道在全部连接路径上一起消失。
+//! Runtime 资源路径通过 `request.tunnel_spec` 描述隧道路由，而物理 SSH / 代理 / WebSocket
+//! 隧道仍由桌面宿主打开。本适配器把 Runtime 的路由与引用契约接到宿主的物理隧道实现。
 //!
 //! # 三层的分工
 //!
@@ -35,8 +31,7 @@
 //! * **不记任何整数计数。** 本文件不存「开过几次 / 还剩几个」。引用账只有一份，在
 //!   `TunnelLedger` 里；本文件只按 [`TunnelSpec`] 存**活着的隧道对象**，
 //!   对象被摘走就是物理拆除（`Drop`）。
-//! * **不建过渡兼容层。** 本文件不保留 `ConnectionManager::start_tunnel` 的旧入口，
-//!   也不在别处挂一条「新旧都走」的分支 —— 隧道解析只有这一条实现。
+//! * **不建过渡兼容层。** 隧道物理开法由本适配器统一提供，不维护并行的会话级入口。
 //! * **不静默降级。** 调用方要了隧道、而路由给出的配置里 `tunnel_kind` 却是 `None`
 //!   时，本文件报开隧道**失败**，而不是悄悄让连接直连真实库主机。
 

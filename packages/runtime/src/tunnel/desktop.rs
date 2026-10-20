@@ -4,10 +4,9 @@
 //!
 //! [`NetworkProvider`]（`datazen_platform_api::ports::network`，**冻结上游**）的四个方法里，
 //! [`ensure_tunnel`] / [`release_tunnel`] 承诺「同一路由/隧道被多处使用时共享同一份引用计数」
-//! 与「引用计数归零才真正拆除、重复释放是幂等的」。这份承诺此前在本仓库里**没有实现方**：
-//! 唯一的隧道生命周期由 `src-tauri` 的旧 `ConnectionManager` 用自己的 `Tunnel` 句柄串起来，
-//! 而新的连接路径（`platform::session_backend`）把原始 `connection_config` 直接交给
-//! `provider.acquire_resource`，**从不解析隧道引用**。本文件补上这一段，且只补这一段。
+//! 与「引用计数归零才真正拆除、重复释放是幂等的」。此前桌面连接路径分别持有隧道句柄，
+//! 没有通过 `NetworkProvider` 统一落实这份共享引用契约。本文件提供 Runtime 侧的共享账，
+//! 物理隧道仍由宿主的 [`TunnelTransport`] 打开和关闭。
 //!
 //! 本模块**不认识** SSH / HTTP 代理 / WebSocket 任何一种隧道：怎么开、开成什么样，
 //! 是 [`TunnelTransport`] 实现方（宿主侧）的事；本模块只管「共享身份 + 引用生命周期」。
@@ -210,8 +209,7 @@ impl NetworkProvider for DesktopNetworkProvider {
         };
 
         // 不变式：`tunneled: true` 只在「本 provider 手上有这条 spec 的活引用」时发出去。
-        // 否则调用方拿到的端点会指向一个随时可能被拆掉的隧道——那正是旧
-        // `ConnectionManager` 关闭单个 session 时误关共享隧道的同类事故。
+        // 否则调用方拿到的端点会指向一个随时可能被拆掉的隧道，影响仍在使用它的其他会话。
         if !self.holds_live_reference(&spec) {
             return Err(PortError::BackendUnavailable(
                 "desktopTunnelReferenceNotHeld".to_owned(),

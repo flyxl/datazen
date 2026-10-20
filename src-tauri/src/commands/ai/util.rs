@@ -69,9 +69,8 @@ pub(crate) async fn build_connections_context(state: &AppState, lang: &str) -> S
 }
 
 /// Resolve an AI command's runtime session and borrow its already-open driver
-/// connection. The IPC contract remains a scalar `dbSessionId`, but ownership,
-/// epoch validation, and physical-resource lifetime are all enforced by the
-/// Runtime rather than by the legacy ConnectionManager.
+/// connection. The IPC contract remains a scalar `dbSessionId`; the Runtime
+/// enforces ownership, epoch validation, and physical-resource lifetime.
 pub(crate) async fn borrow_runtime_session(
     state: &AppState,
     db_session_id: &str,

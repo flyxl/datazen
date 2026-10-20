@@ -53,13 +53,10 @@ export async function requestPaneCancel(
  * Best-effort cancel of a pane's still-running execution, on the **same** path
  * the toolbar stop button uses.
  *
- * The execution id and the handle both belong to the pane's runtime session, so
- * the old `cancel_query` IPC — resolved against the legacy `ConnectionManager`
- * by the panel's `dbSessionId` — could never find that execution: the lookup
- * failed and the rejection was swallowed, leaving "a cancel was attempted"
- * indistinguishable from "no cancel happened" in the close path. Cancelling
- * through the pane's own controller is the only request that can reach the
- * execution the pane is actually running.
+ * The execution id and handle belong to the pane's runtime session. Cancelling
+ * through that pane's controller targets the execution it is actually running;
+ * a best-effort close cleanup must not treat a swallowed cancellation error as
+ * proof that the execution stopped.
  */
 function cancelPaneExec(panel: Panel, exec: QueryExecState | undefined, key: string): void {
   if (!exec?.running || !exec.executionId) return;
