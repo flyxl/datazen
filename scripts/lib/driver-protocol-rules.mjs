@@ -97,6 +97,25 @@ export const CONTRACT_RULES = Object.freeze([
     why: 'The one-way adapter from `DatabaseDriver` to `CatalogReader`. Its constructor signature is called at every migrated catalog consumer, so it is the migration seam and cannot change silently.',
   },
   {
+    id: 'command-catalog',
+    file: 'packages/driver-api/src/command_catalog.rs',
+    anchor: 'pub trait CommandCatalog',
+    kind: 'trait',
+    implementedBy: 'the host command catalogue surfaces; every driver through the trait default',
+    why: 'The pure command-description contract (definitions plus target requirements). Host surfaces that only list or validate commands consume it instead of the whole driver, so a signature change recompiles them without touching `DatabaseDriver`.',
+  },
+  {
+    id: 'legacy-command-catalog',
+    // The inherent impl is the binding point, as in `legacy-sql-dialect` and
+    // `legacy-catalog-reader`: the host constructs this adapter at every
+    // consumer that still holds a driver.
+    file: 'packages/driver-api/src/command_catalog.rs',
+    anchor: "impl<'a, D: DatabaseDriver + ?Sized> LegacyCommandCatalog<'a, D> {",
+    kind: 'struct',
+    implementedBy: 'the host, wrapping drivers at un-migrated call sites',
+    why: 'The one-way adapter from `DatabaseDriver` to `CommandCatalog`. Its constructor signature is called at every migrated command-catalogue consumer, so it is the migration seam and cannot change silently.',
+  },
+  {
     id: 'bound-parameter-limit',
     file: 'packages/driver-api/src/dialect.rs',
     anchor: 'pub enum BoundParameterLimit',

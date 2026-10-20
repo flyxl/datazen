@@ -147,6 +147,12 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 机械守卫：`packages/driver-api/src/reuse_forwarding_tests.rs` 读取 `traits.rs` 与 `reuse.rs` 的源码，断言 trait 的每个方法都出现在包装器实现中，并带正/反控制用例。`DatabaseDriver` 以后新增方法而包装器不更新，`cargo test -p datazen-driver-api` 直接失败；这条不变量不再依赖评审。
 
+### 2.6 命令描述契约：`CommandCatalog`
+
+Driver Command 的"声明"与"执行"分成两个契约。`CommandCatalog`（`packages/driver-api/src/command_catalog.rs`）只包含描述：`command_definitions()`（该驱动暴露哪些命令）与 `target_requirements(command)`（每条命令需要什么目标；未知命令返回 `None`，平台据此在获取资源之前拒绝）。它刻意不包含执行路径——一个只会列出命令的宿主面（目标元数据、workflow 校验、Runtime 只读命令源）依赖 `CommandCatalog`，而不是整个 `DatabaseDriver`；执行继续走 `execute_command` 这一既有的资源生命周期入口。
+
+`LegacyCommandCatalog` 是自 `DatabaseDriver` 到 `CommandCatalog` 的单向适配器，两个方法全部转发，驱动保留且仅保留一份实现。已迁移的调用点：workflow 步骤校验（`resource_execution.rs`）、Runtime 命令源（`runtime_command_source.rs`）、流式查询网关（`streaming.rs`）、平台 `explain` 能力判定（`adapter.rs`、`session_backend/execution.rs`）。
+
 ## 3. Driver Commands
 
 Driver 可以通过 `command_definitions()` 声明 Command，通过 `execute_command()` 执行。
