@@ -68,6 +68,7 @@ vi.mock('../../../lib/schemaDiffLimitationsPrefs', () => ({
 vi.mock('../../../lib/dedicatedDbSession', () => ({
   listDatabasesDedicated: vi.fn().mockResolvedValue({ databases: [] }),
   ensureDedicatedSession: vi.fn().mockResolvedValue(null),
+  ensureDedicatedSessionForEffect: vi.fn().mockResolvedValue(null),
   releaseDedicatedSession: vi.fn().mockResolvedValue(undefined),
 }));
 
