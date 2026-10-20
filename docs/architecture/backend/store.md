@@ -307,7 +307,7 @@ impl Store {
         Ok(())
     }
     
-    /// 解密密码 (供 ConnectionManager 使用)
+    /// 解密连接配置中的数据库密码
     pub fn decrypt_password(&self, encrypted: &str) -> Result<String, StoreError> {
         self.decrypt(encrypted)
     }

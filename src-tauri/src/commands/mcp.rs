@@ -29,7 +29,6 @@ static MCP_HANDLE: Mutex<Option<McpHandle>> = Mutex::const_new(None);
 fn clone_app_state(state: &AppState) -> Arc<AppState> {
     Arc::new(AppState {
         driver_registry: state.driver_registry.clone(),
-        connection_manager: state.connection_manager.clone(),
         monitor_engine: state.monitor_engine.clone(),
         store: state.store.clone(),
         schema_cache: state.schema_cache.clone(),
@@ -272,10 +271,6 @@ mod tests {
             &test.state.monitor_engine
         ));
         assert!(Arc::ptr_eq(&cloned.store, &test.state.store));
-        assert!(Arc::ptr_eq(
-            &cloned.connection_manager,
-            &test.state.connection_manager
-        ));
     }
 
     /// Serializes every test that touches the process-global MCP_HANDLE:

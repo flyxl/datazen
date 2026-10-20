@@ -19,13 +19,13 @@ use std::sync::Arc;
 /// connection config as fallback, and the schema from the caller's argument,
 /// the config, then the driver's own convention — never a session default.
 pub async fn resolve_metadata_target(
-    connection_manager: &dyn DatabaseToolHost,
+    host: &dyn DatabaseToolHost,
     db_session_id: &str,
     driver: &Arc<dyn DatabaseDriver>,
     database: Option<&str>,
     schema: Option<&str>,
 ) -> Result<(String, Option<String>), String> {
-    let config = connection_manager
+    let config = host
         .get_session_config(db_session_id)
         .await
         .map_err(|e| format!("Cannot read session config: {e}"))?;

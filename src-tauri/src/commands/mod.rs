@@ -76,7 +76,6 @@ use crate::db::registry::DriverRegistry;
 use crate::db::TransactionHandle;
 use crate::mcp::McpClientManager;
 use crate::monitor::MonitorEngine;
-use crate::services::ConnectionManager;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::wapps::WappManager;
@@ -156,7 +155,6 @@ impl Default for QueryExecutionRegistry {
 #[derive(Clone)]
 pub struct AppState {
     pub driver_registry: Arc<DriverRegistry>,
-    pub connection_manager: Arc<ConnectionManager>,
     pub monitor_engine: Arc<MonitorEngine>,
     pub store: Arc<Store>,
     pub schema_cache: Arc<SchemaCache>,
@@ -323,20 +321,3 @@ mod tunnel_probe_tests;
 #[cfg(test)]
 #[path = "tunnel_summary_tests.rs"]
 mod tunnel_summary_tests;
-
-// CM-73 baseline evidence. Declared here (not under `services/connection_manager`)
-// because the journey spans the command layer's transaction handling and
-// `mod query` is private to `commands` — reaching it from `services` would
-// require widening production visibility, which the P0 rollback clause forbids.
-// `#[cfg(test)]` only: absent from production builds.
-#[cfg(test)]
-#[path = "cm73_baseline_tests.rs"]
-mod cm73_baseline_tests;
-
-// Companion sweep invariants for the same spec case (CM-73's `- 断言` and
-// `- 基线说明` bullets): reference counting, `release` ordering, and the
-// observable physical-resource chain.
-// Same placement rationale as `cm73_baseline_tests` above.
-#[cfg(test)]
-#[path = "cm73_idle_eviction_tests.rs"]
-mod cm73_idle_eviction_tests;

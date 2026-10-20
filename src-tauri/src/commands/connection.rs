@@ -783,7 +783,7 @@ mod coverage_tests {
         // the driver does not know. This is `disconnect_impl`'s own
         // pre-teardown rollback (`commands/connection.rs:261`), which logs a
         // warning and continues — a *different* path from
-        // `ConnectionManager::disconnect`, which now reports a driver that
+        // Runtime session close reports a driver that
         // cannot confirm the teardown instead of claiming a clean disconnect.
         // So this branch still ends in `Ok`, and this comment used to be the
         // only place recording that.

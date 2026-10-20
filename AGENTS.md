@@ -36,7 +36,7 @@ datazen/
 │   │   ├── db/                  # DriverRegistry 门面（re-export → packages/runtime）
 │   │   ├── mcp/                 # MCP Server/Client
 │   │   ├── workflow/            # YAML Workflow 引擎
-│   │   ├── services/            # ConnectionManager, QueryExecutor, DbTools, Transaction
+│   │   ├── services/            # Host feature adapters, QueryExecutor, DbTools, Transaction
 │   │   ├── cache/               # SchemaCache 门面（re-export → packages/runtime）
 │   │   ├── store/               # AES-256-GCM 加密持久化
 │   │   ├── schema_diff/         # 方言中立 Migration IR 与 DAG 结构比对

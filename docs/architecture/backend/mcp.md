@@ -115,19 +115,19 @@ AI Chat（`ai_chat`）在已连接外部 MCP 时将 MCP 工具与内置 DB tools
 
 ### 1.3 连接 ID（connection_id vs db_session_id）
 
-MCP tools 与 GUI IPC 共用 `ConnectionManager` 语义（详见 [服务层 — 连接 ID 约定](./services.md#21-连接-id-约定)）：
+MCP tools 与 GUI IPC 使用相同的 ID 边界，但走各自的 Runtime session / execution path（详见 [connectionId 与 dbSessionId](../naming.md)）：
 
 - **`connection_id`**：`connections.json` 中的持久化连接 UUID；`list_connections` 返回值；MCP tools / prompts / AI db tools 入参。
 - **`db_session_id`**：GUI `connect` 返回的运行时会话 ID；GUI IPC（`query`、`get_schema` 等）在已连接后传此 ID。
 
 > 历史演进：早期版本 MCP 工具入参叫 `config_id`、运行时句柄叫 `connection_id`。现行为上表术语，且 MCP 侧不保留 `config_id` 兼容别名——旧键会被直接拒绝（见 CHANGELOG 破坏性变更）。
 
-MCP Server 与 GUI 跑在同一个进程里：内嵌 server 启动时复制的是同一份 `AppState`，其中 `ConnectionManager`、会话事务表与查询执行注册表都是**共享的同一个实例**。**无状态工具**在 `src-tauri/src/mcp/` 内不做任何会话管理——不建立连接、不释放引用、不管生命周期，所有取数都落到与 GUI 相同的 [db tools 辅助](services.md) 上。有状态工具（`open_session` / `use_session` / `close_session`）是唯一例外，语义见 [§1.4](#14-有状态会话工具)。
+MCP Server 与 GUI 跑在同一个进程里：内嵌 server 启动时复制 `AppState`，共享 Store、PlatformAdapter、会话事务表与查询执行注册表。DB tools 通过共享 `DatabaseToolHost` 的 Runtime execution path 按 `connectionId` 解析配置并执行；不借用 GUI editor 的 `dbSessionId`，也不使用 Host `ConnectionManager`。有状态工具（`open_session` / `use_session` / `close_session`）由 MCP 自己的 opaque reference 绑定 Runtime session，语义见 [§1.4](#14-有状态会话工具)。
 
 由此得到三条已实现的行为边界：
 
-- **MCP 用持久化 id 入参，用共享会话执行**。每个 DB tool 先过连接白名单，再把 `connection_id` 交给 `resolve_connection_with_id` 转成运行时会话。因为会话是共享的，一次 MCP `query` 命中的很可能正是 GUI 查询编辑器正在用的那条 `dbSessionId`。
-- **引用只增不减**。该取会话路径取得引用后不释放，因此被 MCP 访问过的会话引用计数常驻 ≥1，不会被空闲回收扫掉。
+- **MCP 用持久化 id 入参，经 Runtime 执行**。每个 DB tool 先过连接白名单，再由 `DatabaseToolHost` 使用 Runtime resource execution path 取得执行所需资源；不与 GUI 的编辑器 session 共用事务状态。
+- **资源生命周期归 Runtime**。每次操作的执行资源与显式 MCP session 都由 Runtime owner / session 生命周期管理；到期后明确失效，不以原 `dbSessionId` 透明重连。
 - **目标完全来自显式参数**。database / schema 按「调用方参数 → 连接配置回退 → 驱动约定」的顺序解析，**从不读取会话当前所在的库**——因为 MCP 是「人在工具调用里打字写表名」的入口，借用会话默认库会让同一份提示在不同会话下得到不同结果。
 
 连接白名单是显式配置：白名单为空时按**拒绝一切**处理，不是「空即放行」。被拒绝的调用返回的是明确的权限错误，而不是静默返回空结果。

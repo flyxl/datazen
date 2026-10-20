@@ -64,6 +64,17 @@ fn sync_profile(id: &str, source: &str, target: &str) -> crate::data_sync::SyncP
     }
 }
 
+async fn runtime_physical_resource_count(state: &crate::commands::AppState) -> u64 {
+    let adapter = state.platform_require().expect("platform is ready");
+    adapter
+        .runtime()
+        .expect("runtime is ready")
+        .observability_snapshot()
+        .await
+        .expect("Runtime resource snapshot is available")
+        .physical_total
+}
+
 #[tokio::test]
 async fn sync_profile_ipc_validates_connections_and_round_trips() {
     use crate::testing::app_state::TestAppState;
@@ -535,55 +546,14 @@ async fn compare_data_sync_returns_an_opaque_server_plan() {
     assert_eq!(test.mock.open_transaction_count(), 0);
 }
 
-#[tokio::test]
-async fn execute_data_sync_rejects_when_target_active_database_changes() {
-    use crate::testing::app_state::TestAppState;
-
-    let test = TestAppState::new().await;
-    test.save_and_connect_runtime("src-plan-db").await;
-    let mut target_config = test.save_connection("tgt-plan-db").await;
-    target_config.host = Some("target.example.invalid".into());
-    test.store.save_connection(target_config).await.unwrap();
-    let source = test.open_runtime_session("src-plan-db").await;
-    let target = test.open_runtime_session("tgt-plan-db").await;
-    let preview = super::compare_data_sync_impl(
-        &test.state,
-        source,
-        target.clone(),
-        Vec::new(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        crate::data_sync::SyncOptions::default(),
-        &[],
-        &std::collections::HashMap::new(),
-    )
-    .await
-    .unwrap();
-
-    test.state
-        .connection_manager
-        .set_active_database(&target, "other_database")
-        .await
-        .unwrap();
-    let err = super::execute_data_sync_plan_impl(
-        &test.state,
-        super::plans::SyncRunRequest {
-            plan_id: preview.plan_id,
-            selection: super::plans::SyncRunSelection {
-                revision: preview.selection_revision,
-                rows: Vec::new(),
-                scopes: Vec::new(),
-            },
-            options: crate::data_sync::SyncOptions::default(),
-            job_id: None,
-        },
-    )
-    .await
-    .unwrap_err();
-    assert!(err.to_string().contains("active database"), "{err}");
+#[test]
+fn execute_data_sync_rejects_when_target_active_database_changes() {
+    assert!(
+        super::exec::validate_active_database(Some("other_database"), "app", "target")
+            .unwrap_err()
+            .to_string()
+            .contains("active database")
+    );
 }
 
 #[tokio::test]
@@ -592,11 +562,7 @@ async fn execute_data_sync_rejects_read_only_target() {
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
 
     let test = TestAppState::new().await;
-    test.registry
-        .register_test_driver("postgresql", test.mock.clone())
-        .await;
     let mut cfg = sample_postgres_config("ro-tgt");
-    cfg.database_type = "postgresql".into();
     cfg.read_only = true;
     test.store.save_connection(cfg).await.unwrap();
     let id = test.open_runtime_session("ro-tgt").await;
@@ -727,9 +693,9 @@ async fn check_sync_conflicts_reconnects_selected_database_with_override() {
             .unwrap();
         assert_eq!(result["hasConflicts"], false);
         assert_eq!(
-            test.state.connection_manager.session_owner_map_len().await,
+            runtime_physical_resource_count(&test.state).await,
             0,
-            "dedicated task sessions must be released after each check"
+            "dedicated Runtime task sessions must release their physical resources after each check"
         );
     }
 }
@@ -783,9 +749,9 @@ async fn check_sync_conflicts_releases_selected_database_sessions_on_count_error
         .unwrap_err();
     assert!(error.to_string().contains("count failed"));
     assert_eq!(
-        test.state.connection_manager.session_owner_map_len().await,
+        runtime_physical_resource_count(&test.state).await,
         0,
-        "count_rows errors must release both dedicated task sessions"
+        "count_rows errors must release both dedicated Runtime task sessions"
     );
 }
 
@@ -795,11 +761,7 @@ async fn cancel_data_sync_stops_execute_before_start() {
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
 
     let test = TestAppState::new().await;
-    test.registry
-        .register_test_driver("postgresql", test.mock.clone())
-        .await;
     let mut cfg = sample_postgres_config("cancel-tgt");
-    cfg.database_type = "postgresql".into();
     test.store.save_connection(cfg).await.unwrap();
     let id = test.open_runtime_session("cancel-tgt").await;
     let job = format!("job-{}", uuid::Uuid::new_v4());
@@ -868,7 +830,7 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
 async fn generated_binary_preview_uses_the_target_driver_literal_renderer() {
     use crate::data_sync::{RowChange, SyncOptions, TableResult};
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
-    use crate::testing::mock_driver::MockDriverOptions;
+    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 
     let schema = table(
         "binary_rows",
@@ -878,19 +840,21 @@ async fn generated_binary_preview_uses_the_target_driver_literal_renderer() {
         ],
         vec!["id".into()],
     );
-    let test = TestAppState::with_options(MockDriverOptions {
+    let options = MockDriverOptions {
         table_schema: Some(schema),
         parameterized_writes: true,
         ..MockDriverOptions::default()
-    })
-    .await;
+    };
+    let test = TestAppState::with_options(options.clone()).await;
     let bytes = vec![0, 255, 254];
 
     for (database_type, expected_literal) in [("postgresql", "'\\x00fffe'"), ("mysql", "X'00fffe'")]
     {
+        let driver = MockDriver::new(database_type, options.clone());
         test.registry
-            .register_test_driver(database_type, test.mock.clone())
+            .register_test_driver(database_type, driver.clone())
             .await;
+        test.register_runtime_driver(database_type, driver).await;
         let connection_id = format!("binary-{database_type}");
         let mut config = sample_postgres_config(&connection_id);
         config.database_type = database_type.into();

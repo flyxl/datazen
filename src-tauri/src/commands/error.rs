@@ -4,14 +4,12 @@
 //! so the frontend receives the same format as the previous `Result<T, String>`.
 
 use crate::db::DriverError;
-use crate::services::connection_manager::ConnectionError;
 use crate::store::StoreError;
 use datazen_ai_api::AiError;
 
 #[derive(Debug)]
 pub enum CommandError {
     Store(StoreError),
-    Connection(ConnectionError),
     Driver(DriverError),
     Ai(AiError),
     Io(std::io::Error),
@@ -34,7 +32,6 @@ impl std::fmt::Display for CommandError {
             Self::RestoreOutcome(details) => write!(f, "Restore ended {:?}, effects {:?}; inspect Job {} before creating a new restore; automatic retry is forbidden", details.job.state, details.job.effect_outcome, details.job.job_id.as_str()),
             Self::DataSyncPartiallyApplied(count) => write!(f, "{count} rows committed before execution stopped; compare current data before continuing"),
             Self::Store(e) => write!(f, "{e}"),
-            Self::Connection(e) => write!(f, "{e}"),
             Self::Driver(e) => write!(f, "{e}"),
             Self::Ai(e) => write!(f, "{e}"),
             Self::Io(e) => write!(f, "{e}"),
@@ -75,12 +72,6 @@ impl serde::Serialize for CommandError {
 impl From<StoreError> for CommandError {
     fn from(e: StoreError) -> Self {
         Self::Store(e)
-    }
-}
-
-impl From<ConnectionError> for CommandError {
-    fn from(e: ConnectionError) -> Self {
-        Self::Connection(e)
     }
 }
 
@@ -311,7 +302,6 @@ mod tests {
     fn display_and_serialize_variants() {
         let cases: Vec<CommandError> = vec![
             CommandError::Store(StoreError::ReadError("x".into())),
-            CommandError::Connection(ConnectionError::ConnectionConfigNotFound("c".into())),
             CommandError::Driver(DriverError::QueryFailed("q".into())),
             CommandError::Ai(AiError::NotConfigured("ai".into())),
             CommandError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file")),
@@ -331,7 +321,6 @@ mod tests {
 
     #[test]
     fn from_conversions_work() {
-        let _: CommandError = ConnectionError::DbSessionNotFound("id".into()).into();
         let _: CommandError = DriverError::ConnectionFailed("x".into()).into();
         let _: CommandError = AiError::RequestFailed("fail".into()).into();
         let _: CommandError = std::io::Error::new(std::io::ErrorKind::Other, "io").into();
@@ -345,11 +334,10 @@ mod tests {
 
     #[test]
     fn cmd_ext_logs_and_wraps() {
-        let ok: Result<i32, ConnectionError> = Ok(7);
+        let ok: Result<i32, DriverError> = Ok(7);
         assert_eq!(ok.cmd_err("test_cmd").unwrap(), 7);
 
-        let err: Result<i32, ConnectionError> =
-            Err(ConnectionError::DbSessionNotFound("gone".into()));
+        let err: Result<i32, DriverError> = Err(DriverError::ConnectionFailed("gone".into()));
         assert!(err.cmd_err("test_cmd").is_err());
     }
 

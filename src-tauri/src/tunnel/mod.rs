@@ -28,7 +28,7 @@ use std::path::Path;
 use std::time::Instant;
 use tokio::time::Duration;
 
-/// Runtime tunnel held by [`crate::services::connection_manager::ActiveSession`].
+/// Runtime-owned tunnel associated with a live connection resource.
 pub enum Tunnel {
     Ssh(SshTunnel),
     HttpProxy(HttpProxyTunnel),

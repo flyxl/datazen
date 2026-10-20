@@ -1,28 +1,8 @@
-use super::ConnectionManager;
 use crate::store::Store;
-use datazen_driver_api::{ConnectionConfig, ConnectionHandle, DatabaseDriver};
-use datazen_feature_core::services::ports::{
-    ConnectionCatalog, DatabaseToolHost, SchemaContextSource,
-};
+use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
+use datazen_feature_core::services::ports::{ConnectionCatalog, DatabaseToolHost};
 use std::sync::Arc;
 
-#[async_trait::async_trait]
-impl SchemaContextSource for ConnectionManager {
-    async fn get_session(
-        &self,
-        id: &str,
-    ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-        self.get_session(id)
-            .await
-            .map_err(|error| error.to_string())
-    }
-    async fn session_schema(&self, id: &str) -> Option<String> {
-        self.get_session_config(id)
-            .await
-            .ok()
-            .and_then(|config| config.schema)
-    }
-}
 #[async_trait::async_trait]
 impl ConnectionCatalog for Store {
     async fn get_connections(&self) -> Vec<ConnectionConfig> {

@@ -1,8 +1,9 @@
 //! Desktop implementation of the handler's host port.
 //!
 //! One rule shapes the whole file: a Data Sync Job talks to drivers through
-//! exactly one `ConnectionManager` for its whole lifetime (§9), and the apply
-//! Job keeps exactly one target lease for every batch (§5.3). Everything else
+//! exactly one Runtime session and its live connection lease for its whole
+//! lifetime (§9), and the apply Job keeps exactly one target lease for every
+//! batch (§5.3). Everything else
 //! — relation metadata — is bookkeeping around those two leases. Durable Job
 //! admission owns the physical-endpoint concurrency budget. The cancel bit is
 //! not bookkeeping at all: it is not held here, only handed straight through

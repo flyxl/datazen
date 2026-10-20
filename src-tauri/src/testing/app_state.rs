@@ -164,13 +164,9 @@ impl TestAppState {
         config
     }
 
-    /// Establish (or reuse) the db session for persisted connection config `connection_id`.
+    /// Persisted connection config must exist; establish it as a Runtime session.
     pub async fn connect_config(&self, connection_id: &str) -> String {
-        self.state
-            .connection_manager
-            .get_or_connect_session(connection_id)
-            .await
-            .expect("connect")
+        self.open_runtime_session(connection_id).await
     }
 
     pub async fn save_and_connect(&self, id: &str) -> (ConnectionConfig, String) {
@@ -180,8 +176,7 @@ impl TestAppState {
     }
 
     /// Persist a profile and open it through the Runtime session boundary.
-    /// Unlike `save_and_connect`, this helper intentionally does not create a
-    /// legacy ConnectionManager session.
+    /// Opens a session through the Runtime boundary used by production paths.
     pub async fn save_and_connect_runtime(&self, id: &str) -> (ConnectionConfig, String) {
         let config = self.save_connection(id).await;
         let session = self.open_runtime_session(id).await;

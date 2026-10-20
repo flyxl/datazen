@@ -306,7 +306,7 @@ async fn validate_plan_context_sessions(
     Ok(())
 }
 
-fn validate_active_database(
+pub(super) fn validate_active_database(
     active_database: Option<&str>,
     planned_database: &str,
     side: &str,

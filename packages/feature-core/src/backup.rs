@@ -163,10 +163,9 @@ pub async fn backup_database_to_path(
             // of `e` would replace the real cause of the backup failure with
             // "could not close the backup connection", which is exactly the
             // masking the ordering below prevents. `dump_handle` is consumed
-            // by the call, so the retry problem noted in
-            // `ConnectionManager::disconnect` applies here too — this
-            // connection is not referenced by the session tables at all, it is
-            // a short-lived connection opened only for the dump.
+            // by the call and this short-lived connection is not referenced
+            // by Runtime session state, so there is no later session cleanup
+            // path that can retry this close.
             if let Err(teardown) = driver.disconnect(dump_handle).await {
                 tracing::warn!(
                     cmd = "backup_database",

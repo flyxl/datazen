@@ -460,7 +460,7 @@ pub(crate) async fn begin_session_transaction_impl(
         // function returning `Ok(())` would be a lie — the caller would go on
         // to commit the *other* handle and the orphan's locks would stay held.
         // Same ruling as `services/transaction.rs::rollback` and
-        // `ConnectionManager::disconnect`. The winner's transaction is
+        // Runtime close. The winner's transaction is
         // untouched: it is already in the map, and this path only ever removes
         // the handle this call created.
         driver.rollback(tx).await.map_err(|e| {

@@ -600,7 +600,6 @@ async fn losing_the_begin_race(rollback_fails: bool) -> (TestAppState, SessionTr
 }
 
 #[tokio::test]
-#[ignore = "legacy ConnectionManager race fixture is not applicable to Runtime-owned transaction bookkeeping"]
 async fn begin_session_transaction_reports_a_rollback_it_could_not_confirm() {
     let (test, slot) = losing_the_begin_race(true).await;
     let (_, db_session_id) = test.save_and_connect("begin-race-fail").await;
@@ -624,7 +623,6 @@ async fn begin_session_transaction_reports_a_rollback_it_could_not_confirm() {
 }
 
 #[tokio::test]
-#[ignore = "legacy ConnectionManager race fixture is not applicable to Runtime-owned transaction bookkeeping"]
 async fn begin_session_transaction_is_ok_when_the_losing_rollback_is_confirmed() {
     let (test, slot) = losing_the_begin_race(false).await;
     let (_, db_session_id) = test.save_and_connect("begin-race-ok").await;

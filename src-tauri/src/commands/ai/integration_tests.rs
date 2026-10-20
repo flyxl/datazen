@@ -30,19 +30,18 @@ async fn resolve_ai_requires_saved_config() {
 }
 
 #[tokio::test]
-async fn ai_session_commands_reject_legacy_manager_only_ids() {
+async fn ai_session_commands_reject_unknown_runtime_ids() {
     let (test, _mock) = TestAppState::with_wiremock_ai().await;
     test.save_connection("runtime-only").await;
-    let legacy_session = test.connect_config("runtime-only").await;
 
     let error = ai_analyze_explain_impl(
         &test.state,
-        legacy_session,
+        "unopened-runtime-session".into(),
         "Seq Scan on users".into(),
         "SELECT * FROM users".into(),
     )
     .await
-    .expect_err("AI must resolve dbSessionId through Runtime, not the legacy manager");
+    .expect_err("AI must reject a dbSessionId that Runtime has not opened");
     assert!(error.to_string().contains("session unavailable"));
 }
 

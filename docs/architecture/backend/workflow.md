@@ -66,17 +66,17 @@ steps:
 
 Step 没有指定 `connection` 时继承 Workflow 默认 connection；Step 显式指定时覆盖默认值。这样常见的“一个 connection 执行多个 step”不需要每个 step 重复选择 connection。
 
-### 会话：共享、且不释放
+### 连接与会话
 
-Workflow 的 IPC 用**持久化 `connectionId`** 指定连接（不要求连接的命令可以只给 `driverType`，见 [IPC](#ipc)）。每条 step 执行时用 `resolve_session_for_connection(connectionId)` 取得运行时会话，但**拿到的会话 ID 被直接丢弃**（`let (_runtime_id, driver, handle)`）——它只被当作 driver 句柄用完就扔。
+Workflow IPC 和 YAML 使用持久化 `connectionId`，不会保存或接收 GUI 的 `dbSessionId`。Workflow v1 的每条 step 经 `command_runtime → independent_sql → feature-core resource_execution` 进入共享 Runtime；Runtime 按该 step 的 connection profile 建立或借用自己的 session/resource，并在该次执行完成后按 Runtime 生命周期清理。它不复用编辑器会话，也不通过 Host `ConnectionManager` 管理连接。
 
-由此产生三条已实现的事实：
+当前实现保留以下 v1 行为：
 
-- **与 GUI 共享同一条会话**。同一 `connectionId` 在 GUI 里已连接时，Workflow 走的是那一条，而不是另开一条。好处是上下文一致，代价是无法与主工作区隔离事务状态。
-- **引用只增不减**。该路径不调用 `release`，所以被 Workflow 执行过的会话引用计数常驻 ≥1，永远不满足空闲回收的「计数为 0」条件。会话只会在用户显式断开连接或应用退出时结束。
-- **取显示名也会建会话**。执行器为某个 step 计算展示用的连接名时同样调用 `resolve_session_for_connection`，因此一次纯粹的标签解析就能建立并钉住一条会话。
+- step 未指定 connection 时继承 Workflow 默认 connection；显式指定时覆盖默认值。
+- 跨库 step 按各自 connection profile 执行；上一步结果仍可作为下一步输入。
+- 连接名展示不建立数据库会话。会话过期后，旧 `dbSessionId` 失效，调用方必须显式创建新会话。
 
-唯一会释放的例外是 Workflow 定义迁移（把 YAML 转成内部定义的路径），它在解析完连接后显式归还引用。
+空闲期限只由 Runtime 的实际业务执行活动刷新；状态读取、订阅、attach 等管理操作不延长期限。
 
 ### 目标：不切库
 

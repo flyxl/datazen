@@ -254,7 +254,7 @@ groups:
 
 `ai_chat` 在流式 tool loop 中合并两类工具定义：
 
-1. **DB tools** — `list_tables`、`search_tables`、`query_db` 等，经 `ConnectionManager` / Driver Command API 执行。
+1. **DB tools** — `list_tables`、`search_tables`、`query_db` 等，经共享 Runtime resource execution / Driver Command API 执行。
 2. **MCP Client tools** — 来自 Settings 中已连接的外部 MCP Server，qualified name 形如 `mcp/{serverId}/{toolName}`。
 
 实现要点（Tauri 适配在 `src-tauri/src/commands/ai/chat.rs`，共享工具定义与循环在 `packages/feature-core/src/ai/`）：
