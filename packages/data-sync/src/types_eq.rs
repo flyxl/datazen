@@ -2,9 +2,12 @@
 //!
 //! Host must not invent cross-family conversions (that is Transfer).
 
+use datazen_driver_api::SchemaMigration as _;
+
 pub fn types_equivalent(family: &str, left: &str, right: &str) -> bool {
     if let Some(driver) = datazen_driver_api::create_driver(family) {
-        if let Some(normalizer) = driver.type_normalizer() {
+        let migration = datazen_driver_api::LegacySchemaMigration::new(driver.as_ref());
+        if let Some(normalizer) = migration.type_normalizer() {
             return normalizer.normalize_type(left) == normalizer.normalize_type(right);
         }
     }

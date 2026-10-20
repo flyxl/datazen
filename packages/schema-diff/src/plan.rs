@@ -4,7 +4,7 @@ use super::types::{
     normalize_dialect, resolve_table_for_dialect, ColumnSnapshot, PlanRequirement, PlanStatement,
     RollbackCompleteness, SchemaDiffPlan, StatementRisk, TypeSuggestion,
 };
-use datazen_driver_api::TableSchema;
+use datazen_driver_api::{SchemaMigration, TableSchema};
 use std::collections::{HashMap, HashSet};
 
 /// Optional mapper: (table, source_type_sql, column_name) → native type for target dialect.
@@ -964,11 +964,14 @@ fn plan_single_table(
         });
         return;
     };
+    // Structural-migration rules are read through the narrow migration
+    // contract; the driver's execution surface stays out of planning.
+    let migration = datazen_driver_api::LegacySchemaMigration::new(driver.as_ref());
 
     let normalizer = if opts.cross_dialect {
         None
     } else {
-        driver.type_normalizer()
+        migration.type_normalizer()
     };
     let normalizer_ref = normalizer.as_deref();
     let mut operations = super::ir::diff_to_operations(table, src, tgt, normalizer_ref);
@@ -1139,7 +1142,7 @@ fn plan_single_table(
         adjust_mysql_index_columns(&mut operations, src, tgt, warnings);
     }
 
-    let Some(capabilities) = driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         requirements.push(super::types::PlanRequirement::Unsupported {
             operation: table.to_string(),
             reason: format!(
@@ -1185,7 +1188,7 @@ fn plan_single_table(
             return;
         }
     };
-    let Some(renderer) = driver.migration_renderer() else {
+    let Some(renderer) = migration.migration_renderer() else {
         requirements.push(super::types::PlanRequirement::Unsupported {
             operation: table.to_string(),
             reason: format!(
@@ -1568,7 +1571,8 @@ fn plan_target_only_table(
         warnings.push(format!("Skipped destructive operation {}", operation.key()));
         return;
     }
-    let Some(capabilities) = driver.migration_capabilities() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(driver.as_ref());
+    let Some(capabilities) = migration.migration_capabilities() else {
         requirements.push(PlanRequirement::Unsupported {
             operation: operation.key(),
             reason: format!(
@@ -1833,7 +1837,9 @@ fn render_target_only_tables(
     let Some(driver) = datazen_driver_api::create_driver(target_dialect) else {
         return;
     };
-    let Some(renderer) = driver.migration_renderer() else {
+    let Some(renderer) =
+        datazen_driver_api::LegacySchemaMigration::new(driver.as_ref()).migration_renderer()
+    else {
         for operation in operations {
             requirements.push(PlanRequirement::Unsupported {
                 operation: operation.key(),

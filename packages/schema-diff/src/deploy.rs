@@ -5,7 +5,7 @@ use super::types::{
     StatementRisk,
 };
 use crate::transaction::TransactionScope;
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver, SqlTarget};
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, SchemaMigration, SqlTarget};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug, Clone)]
@@ -226,7 +226,11 @@ pub async fn execute_schema_diff_deploy_at(
     cancelled: Option<std::sync::Arc<AtomicBool>>,
     target: SqlTarget<'_>,
 ) -> SchemaDiffDeployResult {
-    let atomicity = driver.ddl_atomicity();
+    // Migration-private decisions (atomicity and the two validations) are read
+    // through the narrow SchemaMigration contract; execution stays on the
+    // driver's resource lifecycle.
+    let migration = datazen_driver_api::LegacySchemaMigration::new(driver);
+    let atomicity = migration.ddl_atomicity();
     let can_tx = matches!(atomicity, DdlAtomicity::Transactional) && opts.use_transaction;
     let n = plan.statements.len();
 
@@ -277,7 +281,7 @@ pub async fn execute_schema_diff_deploy_at(
         .iter()
         .any(|statement| statement.requires_transaction)
     {
-        let validation = driver
+        let validation = migration
             .validate_schema_migration_plan(handle, target, &plan.expected_target_schemas)
             .await;
         if let Err(error) = validation {
@@ -385,7 +389,7 @@ pub async fn execute_schema_diff_deploy_at(
             .iter()
             .any(|statement| statement.requires_transaction)
     {
-        if let Err(error) = driver.validate_schema_migration(handle, target).await {
+        if let Err(error) = migration.validate_schema_migration(handle, target).await {
             failed = true;
             errors.push(format!("Schema migration validation failed: {error}"));
         }

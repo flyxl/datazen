@@ -10,7 +10,7 @@ use crate::schema_diff::{
 };
 pub(super) use catalog::read_target_object_catalog;
 use catalog::{fetch_object_dependency_snapshot, fetch_object_snapshot};
-use datazen_driver_api::{DatabaseObject, ObjectKind, TableInfo, TableType};
+use datazen_driver_api::{DatabaseObject, ObjectKind, SchemaMigration, TableInfo, TableType};
 pub(super) use revalidation::revalidate_source_snapshot;
 use std::collections::BTreeSet;
 
@@ -508,13 +508,14 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
             .map(|snapshot| snapshot.identity.clone()),
     );
 
-    let Some(renderer) = target_driver.migration_renderer() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(target_driver.as_ref());
+    let Some(renderer) = migration.migration_renderer() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration rendering",
             target_config.database_type
         )));
     };
-    let Some(capabilities) = target_driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration capabilities",
             target_config.database_type

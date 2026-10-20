@@ -153,6 +153,12 @@ Driver Command 的"声明"与"执行"分成两个契约。`CommandCatalog`（`pa
 
 `LegacyCommandCatalog` 是自 `DatabaseDriver` 到 `CommandCatalog` 的单向适配器，两个方法全部转发，驱动保留且仅保留一份实现。已迁移的调用点：workflow 步骤校验（`resource_execution.rs`）、Runtime 命令源（`runtime_command_source.rs`）、流式查询网关（`streaming.rs`）、平台 `explain` 能力判定（`adapter.rs`、`session_backend/execution.rs`）。
 
+### 2.7 结构迁移契约：`SchemaMigration`
+
+Schema Diff 领域消费的结构迁移决策统一收敛到 `SchemaMigration`（`packages/driver-api/src/schema_migration.rs`）：`migration_renderer()` / `migration_capabilities()` / `type_normalizer()` / `ddl_atomicity()`，加上两个部署期校验（`validate_schema_migration_plan`、`validate_schema_migration`）。领域侧（`schema-diff` 的 plan/objects/deploy/transaction、`data-sync` 同族类型等价门、宿主 schema_diff 命令）只读这份窄契约，执行渲染出的 DDL 仍走各自的资源生命周期；`MigrationRenderer` / `MigrationCapabilities` / `TypeNormalizer` 保持驱动专属实现。
+
+`LegacySchemaMigration` 是自 `DatabaseDriver` 到 `SchemaMigration` 的单向适配器，六个方法全部转发。已迁移的调用点通过它读取规则：同族/跨方言结构 plan（`plan.rs`）、对象 plan（`objects.rs`、`object_plan_commands.rs`、`unified_plan.rs`）、部署原子性与校验（`deploy.rs`、`transaction.rs`、`deploy_commands.rs`）、同步类型等价（`types_eq.rs`、`compare_commands.rs`）。
+
 ## 3. Driver Commands
 
 Driver 可以通过 `command_definitions()` 声明 Command，通过 `execute_command()` 执行。

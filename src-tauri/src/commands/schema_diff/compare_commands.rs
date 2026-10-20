@@ -1,5 +1,7 @@
 //! Single-table schema comparison (column-level diff plus DDL preview).
 
+use datazen_driver_api::SchemaMigration as _;
+
 use super::{
     build_create_table_ddl, diff_table_schemas, diff_table_schemas_ir, fetch_full_column_types,
     fetch_target_table_schema, normalize_dialect, resolve_table_for_dialect,
@@ -118,7 +120,11 @@ pub(crate) async fn compare_table_schemas_impl(
     let src_d = normalize_dialect(&src_config.database_type);
     let tgt_d = normalize_dialect(&tgt_config.database_type);
     let normalizer_holder = if src_d == tgt_d {
-        datazen_driver_api::create_driver(&tgt_d).and_then(|d| d.type_normalizer())
+        // Type equivalence is a structural-migration rule; read it through the
+        // narrow SchemaMigration contract instead of the whole driver.
+        datazen_driver_api::create_driver(&tgt_d).and_then(|d| {
+            datazen_driver_api::LegacySchemaMigration::new(d.as_ref()).type_normalizer()
+        })
     } else {
         None
     };

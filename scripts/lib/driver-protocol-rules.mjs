@@ -97,6 +97,25 @@ export const CONTRACT_RULES = Object.freeze([
     why: 'The one-way adapter from `DatabaseDriver` to `CatalogReader`. Its constructor signature is called at every migrated catalog consumer, so it is the migration seam and cannot change silently.',
   },
   {
+    id: 'schema-migration',
+    file: 'packages/driver-api/src/schema_migration.rs',
+    anchor: 'pub trait SchemaMigration',
+    kind: 'trait',
+    implementedBy: 'the schema-diff domain and its host command surfaces; every structural-migration driver once migrated',
+    why: 'The structural-migration contract (renderer, capability gate, type normalizer, DDL atomicity, and the two at-deploy validations). The schema-diff domain consumes it instead of the whole driver, so a signature change recompiles the schema-diff planning and deploy path without touching `DatabaseDriver`.',
+  },
+  {
+    id: 'legacy-schema-migration',
+    // The inherent impl is the binding point, as in the other migration seams:
+    // the schema-diff domain constructs this adapter wherever a
+    // `SchemaMigration` is required but the caller still holds a driver.
+    file: 'packages/driver-api/src/schema_migration.rs',
+    anchor: "impl<'a, D: DatabaseDriver + ?Sized> LegacySchemaMigration<'a, D> {",
+    kind: 'struct',
+    implementedBy: 'the schema-diff domain and host command surfaces at un-migrated call sites',
+    why: 'The one-way adapter from `DatabaseDriver` to `SchemaMigration`. Its constructor is called at every migrated rule read, so it is the migration seam and cannot change silently.',
+  },
+  {
     id: 'command-catalog',
     file: 'packages/driver-api/src/command_catalog.rs',
     anchor: 'pub trait CommandCatalog',

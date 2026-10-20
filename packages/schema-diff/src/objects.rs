@@ -14,7 +14,7 @@ use datazen_driver_api::{
     validate_object_definition_with_identity, validate_sequence_definition_with_identity,
     validate_type_definition_with_identity, validate_view_definition, MigrationCapabilities,
     MigrationRenderer, MigrationRoutine, MigrationSequence, MigrationTrigger, MigrationType,
-    MigrationView, MySqlViewMetadata, ObjectKind,
+    MigrationView, MySqlViewMetadata, ObjectKind, SchemaMigration,
 };
 use std::collections::{BTreeSet, HashMap};
 
@@ -302,7 +302,8 @@ pub fn build_view_migration_plan(
             format!("No registered driver for target database: {target_dialect}"),
         );
     };
-    let Some(renderer) = driver.migration_renderer() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(driver.as_ref());
+    let Some(renderer) = migration.migration_renderer() else {
         return unsupported_plan(
             source_dialect,
             &target_dialect,
@@ -311,7 +312,7 @@ pub fn build_view_migration_plan(
             format!("Driver {target_dialect} does not expose schema migration rendering"),
         );
     };
-    let Some(capabilities) = driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         return unsupported_plan(
             source_dialect,
             &target_dialect,
@@ -555,7 +556,8 @@ pub fn build_routine_trigger_migration_plan(
             format!("No registered driver for target database: {target_dialect}"),
         );
     };
-    let Some(renderer) = driver.migration_renderer() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(driver.as_ref());
+    let Some(renderer) = migration.migration_renderer() else {
         return unsupported_plan(
             source_dialect,
             &target_dialect,
@@ -564,7 +566,7 @@ pub fn build_routine_trigger_migration_plan(
             format!("Driver {target_dialect} does not expose schema migration rendering"),
         );
     };
-    let Some(capabilities) = driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         return unsupported_plan(
             source_dialect,
             &target_dialect,
@@ -867,7 +869,8 @@ pub fn build_sequence_migration_plan(
             format!("No registered driver for target database: {target_dialect}"),
         );
     };
-    let Some(renderer) = driver.migration_renderer() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(driver.as_ref());
+    let Some(renderer) = migration.migration_renderer() else {
         return unsupported_plan(
             source_dialect,
             &target_dialect,
@@ -876,7 +879,7 @@ pub fn build_sequence_migration_plan(
             format!("Driver {target_dialect} does not expose schema migration rendering"),
         );
     };
-    let Some(capabilities) = driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         return unsupported_plan(
             source_dialect,
             &target_dialect,
@@ -1104,7 +1107,8 @@ pub fn build_type_migration_plan(
             format!("No registered driver for target database: {target_dialect}"),
         );
     };
-    let Some(renderer) = driver.migration_renderer() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(driver.as_ref());
+    let Some(renderer) = migration.migration_renderer() else {
         return unsupported_plan(
             source_dialect,
             &target_dialect,
@@ -1113,7 +1117,7 @@ pub fn build_type_migration_plan(
             format!("Driver {target_dialect} does not expose schema migration rendering"),
         );
     };
-    let Some(capabilities) = driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         return unsupported_plan(
             source_dialect,
             &target_dialect,
