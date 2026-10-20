@@ -179,6 +179,24 @@ pub async fn execute_data_transfer(
     request: TransferRunRequest,
     profile: Option<crate::store::MigrationProfileRef>,
 ) -> Result<TransferExecutionResult, CommandError> {
+    // Register before the first await so a cancellation racing the validation
+    // and session checks can still reach this legacy in-process run path.
+    let job_id = request.job_id.clone();
+    if let Some(id) = job_id.as_deref() {
+        jobs::ensure_job(id).await;
+    }
+    let result = execute_data_transfer_inner(state, request, profile).await;
+    if let Some(id) = job_id.as_deref() {
+        jobs::remove_job(id).await;
+    }
+    result
+}
+
+async fn execute_data_transfer_inner(
+    state: State<'_, AppState>,
+    request: TransferRunRequest,
+    profile: Option<crate::store::MigrationProfileRef>,
+) -> Result<TransferExecutionResult, CommandError> {
     crate::commands::history::validate_migration_profile_ref(
         &state,
         "dataTransfer",
@@ -282,10 +300,10 @@ pub(crate) async fn cancel_data_transfer_impl(
         // learns whether the cancel actually reached the Job.
         return job_api::job_cancel_requested(state, job_id).await;
     }
-    // An id this backend never accepted cannot have anything running under it,
-    // so there is nothing to cancel: answer as the frontend contract expects
-    // (`false` = "nothing was cancelled"), never as a fabricated success.
-    Ok(false)
+    // Legacy `execute_data_transfer` runs are not durable Jobs, but the IPC
+    // still accepts them. Cancel a registered in-process run while preserving
+    // `false` for ids neither execution path has registered.
+    Ok(jobs::cancel_registered_job(job_id).await)
 }
 
 #[tauri::command]
