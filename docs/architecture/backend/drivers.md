@@ -159,6 +159,12 @@ Schema Diff 领域消费的结构迁移决策统一收敛到 `SchemaMigration`�
 
 `LegacySchemaMigration` 是自 `DatabaseDriver` 到 `SchemaMigration` 的单向适配器，六个方法全部转发。已迁移的调用点通过它读取规则：同族/跨方言结构 plan（`plan.rs`）、对象 plan（`objects.rs`、`object_plan_commands.rs`、`unified_plan.rs`）、部署原子性与校验（`deploy.rs`、`transaction.rs`、`deploy_commands.rs`）、同步类型等价（`types_eq.rs`、`compare_commands.rs`）。
 
+### 2.8 备份文件规则契约：`BackupDialect`
+
+备份域中真正"纯规则"的部分收敛到 `BackupDialect`（`packages/driver-api/src/backup_dialect.rs`）：`uses_sql_restore_pipeline()`（共享 SQL 恢复管线的路由）、`new_sql_scanner()`（语句扫描器，选择/关闭 `DELIMITER` 处理）、`split_restore_sql()`（整段 SQL 缓冲的切分）。带 `ConnectionHandle` 的执行入口（`dump_database*`、`restore_sql*`、`recover_restore_statement`）不在此契约内，保留在驱动上，待运行时路径收敛（§5 计划）统一处理；共享流程本身继续复用 `sql_dump` 模块。
+
+`LegacyBackupDialect` 是自 `DatabaseDriver` 到 `BackupDialect` 的单向适配器。已迁移的调用点：feature-core 备份流程（`backup.rs` 的管线路由与 `RestoreSession` 扫描器；执行侧恢复循环继续持有驱动）。
+
 ## 3. Driver Commands
 
 Driver 可以通过 `command_definitions()` 声明 Command，通过 `execute_command()` 执行。

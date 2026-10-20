@@ -9,6 +9,7 @@ pub use inventory;
 
 pub mod capabilities;
 pub mod capability_domains;
+pub mod backup_dialect;
 pub mod catalog;
 pub mod command;
 pub mod command_catalog;
@@ -44,6 +45,7 @@ mod traits;
 mod tunnel_types;
 mod types;
 
+pub use backup_dialect::{BackupDialect, LegacyBackupDialect};
 pub use capability_domains::{BackupSupport, DataSupport};
 pub use catalog::{CatalogReader, LegacyCatalogReader};
 pub use command_catalog::{CommandCatalog, LegacyCommandCatalog};

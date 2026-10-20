@@ -97,6 +97,23 @@ export const CONTRACT_RULES = Object.freeze([
     why: 'The one-way adapter from `DatabaseDriver` to `CatalogReader`. Its constructor signature is called at every migrated catalog consumer, so it is the migration seam and cannot change silently.',
   },
   {
+    id: 'backup-dialect',
+    file: 'packages/driver-api/src/backup_dialect.rs',
+    anchor: 'pub trait BackupDialect',
+    kind: 'trait',
+    implementedBy: 'the shared SQL backup pipeline and the backup host flow; every SQL driver once migrated',
+    why: 'The restore-file rule contract (pipeline routing, statement scanner, whole-buffer split). The backup flow reads it instead of the whole driver, so a signature change recompiles the backup domain without touching the handle-bound dump/restore execution entries on `DatabaseDriver`.',
+  },
+  {
+    id: 'legacy-backup-dialect',
+    // The inherent impl is the binding point, as in the other migration seams.
+    file: 'packages/driver-api/src/backup_dialect.rs',
+    anchor: "impl<'a, D: DatabaseDriver + ?Sized> LegacyBackupDialect<'a, D> {",
+    kind: 'struct',
+    implementedBy: 'the backup flow at un-migrated call sites',
+    why: 'The one-way adapter from `DatabaseDriver` to `BackupDialect`. Its constructor is called at the backup domain boundary, so it is the migration seam and cannot change silently.',
+  },
+  {
     id: 'schema-migration',
     file: 'packages/driver-api/src/schema_migration.rs',
     anchor: 'pub trait SchemaMigration',

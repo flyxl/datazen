@@ -1,9 +1,9 @@
 //! Shared backup and SQL restore use cases. Paths and progress delivery are supplied by hosts.
 use crate::error::FeatureError as CommandError;
 use datazen_driver_api::{
-    BackupDumpOptions, BackupRestoreOptions, ConnectionConfig, ConnectionHandle, DatabaseDriver,
-    DriverError, DumpPhase, DumpProgress, RestoreSession, SqlTarget, TableInfo, TableType,
-    Utf8ChunkDecoder,
+    BackupDumpOptions, BackupRestoreOptions, BackupDialect, ConnectionConfig, ConnectionHandle,
+    DatabaseDriver, DriverError, DumpPhase, DumpProgress, RestoreSession, SqlTarget, TableInfo,
+    TableType, Utf8ChunkDecoder,
 };
 use std::{
     io::Read,
@@ -408,10 +408,14 @@ pub async fn restore_database_from_path(
         let mut throttle = ThrottledRestoreProgress::new(app);
         {
             let mut on_progress = |progress: DumpProgress| throttle.emit(progress);
-            if driver.uses_sql_restore_pipeline() {
+            // Restore-file rules are read through the narrow BackupDialect
+            // contract; execution below stays on the driver's lifecycle.
+            let backup = datazen_driver_api::LegacyBackupDialect::new(driver.as_ref());
+            if backup.uses_sql_restore_pipeline() {
                 stream_sql_file_into_session(
                     &input_path,
                     driver.as_ref(),
+                    &backup,
                     &restore_handle,
                     &restore_opts,
                     config.read_only,
@@ -470,9 +474,13 @@ pub async fn restore_database_from_path(
 const SQL_STREAM_CHUNK: usize = 64 * 1024;
 
 /// Read a `.sql` / `.sql.gz` file in chunks and feed the driver's restore pipeline.
+///
+/// The scanner comes from the [`BackupDialect`] rule source; the driver stays
+/// in the loop for statement execution and recovery only.
 pub async fn stream_sql_file_into_session(
     path: &std::path::Path,
     driver: &dyn DatabaseDriver,
+    dialect: &dyn BackupDialect,
     handle: &ConnectionHandle,
     opts: &BackupRestoreOptions,
     read_only: bool,
@@ -504,7 +512,7 @@ pub async fn stream_sql_file_into_session(
         Ok::<(), String>(())
     });
 
-    let mut session = RestoreSession::new(driver, handle, driver.new_sql_scanner(), Some(opts))
+    let mut session = RestoreSession::new(driver, handle, dialect.new_sql_scanner(), Some(opts))
         .with_statement_guard(Box::new(move |stmt| {
             datazen_runtime::sql_guard::check_sql(stmt, read_only, safe_mode)
                 .map_err(DriverError::QueryFailed)
