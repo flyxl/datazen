@@ -101,6 +101,8 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 | `SqlDialect` | `packages/driver-api/src/dialect.rs` | 已提取：`quote_ident`、`pagination_syntax`、`try_format_sql_literal`、`parameter_placeholder`、`max_bound_parameters` |
 | `LegacySqlDialect<'a, D>` | 同上 | 借用适配器：方法逐项转发给 `DatabaseDriver`，是**单向**迁移缝 |
 | 共享 SQL builder | `packages/driver-api/src/sql_builder.rs` | `build_update_sql` / `build_delete_sql` / `build_update_statement` / `build_delete_statement` 只接收 `&dyn SqlDialect` 与调用方显式给出的绑定上限 |
+| `CatalogReader` | `packages/driver-api/src/catalog.rs` | 已提取：`get_databases`、`get_schemas`、`get_tables`、`get_table_schema`、`get_columns`、`get_all_columns`，每次关系读取都带显式 `database` / 可选 `schema` |
+| `LegacyCatalogReader<'a, D>` | 同上 | 借用适配器，同一单向迁移规则 |
 
 规则：
 
@@ -110,9 +112,14 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 - **兼容入口保留。** `format_sql_literal` / `build_*_sql` 仍存在但已标记为 deprecated，仅由旧调用点使用；产品写路径继续使用 `build_*_statement` + `execute_with_params`。`legacy_format_sql_literal` 是这两个 deprecated builder 的兼容渲染入口，新代码不得调用。
 - **能力声明不另起一套。** 本轮只新增文本契约；「是否支持绑定写」「精确取消」「事务」等仍由既有 `CapabilitySet` / `ResourceProvider` 决定，不引入第二个能力集合。
 
-已迁移的消费者：`QueryExecutor::build_select_sql` / `build_count_sql`（宿主读表）接收 `&dyn SqlDialect` 与 `limit`/`offset`；`commands/table_target.rs` 在边界处用 `LegacySqlDialect` 包装驱动。其余消费者按调用链逐步迁移。
+已迁移的消费者：
 
-版本：`datazen-driver-api` 0.0.13 → 0.0.14；新增契约是 additive，`PROTOCOL_VERSION` 保持 6。契约表登记在 `scripts/lib/driver-protocol-rules.mjs`（`sql-dialect` / `legacy-sql-dialect` / `bound-parameter-limit`）。
+- `QueryExecutor::build_select_sql` / `build_count_sql`（宿主读表）接收 `&dyn SqlDialect` 与 `limit`/`offset`；`commands/table_target.rs` 在边界处用 `LegacySqlDialect` 包装驱动。
+- `SchemaCache::get_columns` / `get_table_schema` / `warmup` 只接收 `&dyn CatalogReader`；读表、ER 图、AI 过滤解析与 `read_relation_columns` 在边界处用 `LegacyCatalogReader` 包装驱动。缓存键仍是 session + database + schema + relation，跨目标读取不共享条目。
+
+其余消费者按调用链逐步迁移。
+
+版本：`datazen-driver-api` 0.0.13 → 0.0.15（0.0.14 为 `SqlDialect`，0.0.15 为 `CatalogReader`）；新增契约是 additive，`PROTOCOL_VERSION` 保持 6。契约表登记在 `scripts/lib/driver-protocol-rules.mjs`（`sql-dialect` / `legacy-sql-dialect` / `bound-parameter-limit` / `catalog-reader` / `legacy-catalog-reader`）。
 
 ## 3. Driver Commands
 

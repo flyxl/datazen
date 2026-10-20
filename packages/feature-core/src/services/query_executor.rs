@@ -1,8 +1,8 @@
 //! Query execution helpers and table browsing types.
 
 use datazen_driver_api::{
-    ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, LegacySqlDialect, SqlDialect,
-    SqlTarget, TableDataResult, Value,
+    ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, LegacyCatalogReader,
+    LegacySqlDialect, SqlDialect, SqlTarget, TableDataResult, Value,
 };
 use datazen_runtime::schema_cache::SchemaCache;
 use std::sync::Arc;
@@ -62,9 +62,10 @@ impl QueryExecutor {
         skip_count: bool,
         filter_logic: Option<&str>,
     ) -> Result<TableDataResult, DriverError> {
+        let catalog = LegacyCatalogReader::new(driver.as_ref());
         let cached = self
             .schema_cache
-            .get_columns(db_session_id, database, schema, table, driver, handle)
+            .get_columns(db_session_id, database, schema, table, &catalog, handle)
             .await?;
 
         let dialect = LegacySqlDialect::new(driver.as_ref());

@@ -2,16 +2,14 @@
 //!
 //! Two cache tiers:
 //!   1. **Columns cache** – lightweight (ColumnSchema + PK names).
-//!      Populated by `driver.get_columns()` which skips indexes/FK queries.
+//!      Populated by `catalog.get_columns()` which skips indexes/FK queries.
 //!   2. **Full schema cache** – complete TableSchema including indexes & FK.
-//!      Populated on demand by `driver.get_table_schema()`.
+//!      Populated on demand by `catalog.get_table_schema()`.
 //!
 //! When the full schema is cached, the columns tier is also satisfied from it.
 
 use crate::driver_registry::DriverRegistry;
-use datazen_driver_api::{
-    ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, TableSchema,
-};
+use datazen_driver_api::{CatalogReader, ColumnSchema, ConnectionHandle, DriverError, TableSchema};
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -98,14 +96,14 @@ impl SchemaCache {
 
     /// Fast path: returns columns + PK info only.
     /// Checks full-schema cache first, then columns-only cache,
-    /// finally calls `driver.get_columns()` on cache miss.
+    /// finally calls `catalog.get_columns()` on cache miss.
     pub async fn get_columns(
         &self,
         connection_id: &str,
         database: &str,
         schema: Option<&str>,
         table: &str,
-        driver: &Arc<dyn DatabaseDriver>,
+        catalog: &dyn CatalogReader,
         handle: &ConnectionHandle,
     ) -> Result<CachedColumns, DriverError> {
         let generation = self.generation();
@@ -118,7 +116,7 @@ impl SchemaCache {
         }
 
         tracing::debug!("Columns cache miss: {}.{}", scope, table);
-        let (columns, primary_keys) = driver.get_columns(handle, table, database, schema).await?;
+        let (columns, primary_keys) = catalog.get_columns(handle, table, database, schema).await?;
         let entry = CachedColumns {
             columns,
             primary_keys,
@@ -292,7 +290,7 @@ impl SchemaCache {
         database: &str,
         schema: Option<&str>,
         table: &str,
-        driver: &Arc<dyn DatabaseDriver>,
+        catalog: &dyn CatalogReader,
         handle: &ConnectionHandle,
     ) -> Result<TableSchema, DriverError> {
         let generation = self.generation();
@@ -304,7 +302,7 @@ impl SchemaCache {
         }
 
         tracing::debug!("Schema cache miss: {}", Self::scope_key(database, schema));
-        let table_schema = driver
+        let table_schema = catalog
             .get_table_schema(handle, table, database, schema)
             .await?;
         self.store_table_schema_if_current(
@@ -386,13 +384,13 @@ impl SchemaCache {
         connection_id: &str,
         database: &str,
         schema: Option<&str>,
-        driver: &Arc<dyn DatabaseDriver>,
+        catalog: &dyn CatalogReader,
         handle: &ConnectionHandle,
         tables: &[String],
     ) {
         for table in tables {
             if let Err(error) = self
-                .get_table_schema(connection_id, database, schema, table, driver, handle)
+                .get_table_schema(connection_id, database, schema, table, catalog, handle)
                 .await
             {
                 tracing::warn!(%table, %error, "Warmup skipped");
@@ -405,6 +403,7 @@ impl SchemaCache {
 mod tests {
     use super::*;
     use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
+    use datazen_driver_api::LegacyCatalogReader;
 
     fn test_handle() -> ConnectionHandle {
         ConnectionHandle {
@@ -426,17 +425,17 @@ mod tests {
     #[tokio::test]
     async fn get_columns_fetches_and_caches_on_miss() {
         let (cache, mock, handle) = cache_with_mock().await;
-        let driver = mock.clone() as Arc<dyn DatabaseDriver>;
+        let catalog = LegacyCatalogReader::new(mock.as_ref());
 
         let first = cache
-            .get_columns("conn1", "db1", None, "users", &driver, &handle)
+            .get_columns("conn1", "db1", None, "users", &catalog, &handle)
             .await
             .unwrap();
         assert_eq!(first.table_name, "users");
         assert_eq!(mock.get_columns_calls(), 1);
 
         cache
-            .get_columns("conn1", "db1", None, "users", &driver, &handle)
+            .get_columns("conn1", "db1", None, "users", &catalog, &handle)
             .await
             .unwrap();
         assert_eq!(mock.get_columns_calls(), 1, "second call should hit cache");
@@ -445,10 +444,10 @@ mod tests {
     #[tokio::test]
     async fn get_table_schema_populates_both_cache_tiers() {
         let (cache, mock, handle) = cache_with_mock().await;
-        let driver = mock.clone() as Arc<dyn DatabaseDriver>;
+        let catalog = LegacyCatalogReader::new(mock.as_ref());
 
         let schema = cache
-            .get_table_schema("conn1", "db1", None, "orders", &driver, &handle)
+            .get_table_schema("conn1", "db1", None, "orders", &catalog, &handle)
             .await
             .unwrap();
         assert_eq!(schema.table_name, "orders");
@@ -456,7 +455,7 @@ mod tests {
 
         mock.reset_columns_calls();
         let cols = cache
-            .get_columns("conn1", "db1", None, "orders", &driver, &handle)
+            .get_columns("conn1", "db1", None, "orders", &catalog, &handle)
             .await
             .unwrap();
         assert_eq!(cols.columns.len(), schema.columns.len());
@@ -470,16 +469,16 @@ mod tests {
     #[tokio::test]
     async fn invalidate_table_forces_refetch() {
         let (cache, mock, handle) = cache_with_mock().await;
-        let driver = mock.clone() as Arc<dyn DatabaseDriver>;
+        let catalog = LegacyCatalogReader::new(mock.as_ref());
 
         cache
-            .get_columns("conn1", "db1", None, "users", &driver, &handle)
+            .get_columns("conn1", "db1", None, "users", &catalog, &handle)
             .await
             .unwrap();
         cache.invalidate("conn1", "db1", Some("users")).await;
 
         cache
-            .get_columns("conn1", "db1", None, "users", &driver, &handle)
+            .get_columns("conn1", "db1", None, "users", &catalog, &handle)
             .await
             .unwrap();
         assert_eq!(mock.get_columns_calls(), 2);
@@ -488,20 +487,20 @@ mod tests {
     #[tokio::test]
     async fn invalidate_all_tables_clears_database_cache() {
         let (cache, mock, handle) = cache_with_mock().await;
-        let driver = mock.clone() as Arc<dyn DatabaseDriver>;
+        let catalog = LegacyCatalogReader::new(mock.as_ref());
 
         cache
-            .get_columns("conn1", "db1", None, "users", &driver, &handle)
+            .get_columns("conn1", "db1", None, "users", &catalog, &handle)
             .await
             .unwrap();
         cache
-            .get_columns("conn1", "db1", None, "orders", &driver, &handle)
+            .get_columns("conn1", "db1", None, "orders", &catalog, &handle)
             .await
             .unwrap();
         cache.invalidate("conn1", "db1", None).await;
 
         cache
-            .get_columns("conn1", "db1", None, "users", &driver, &handle)
+            .get_columns("conn1", "db1", None, "users", &catalog, &handle)
             .await
             .unwrap();
         assert!(mock.get_columns_calls() >= 3);
@@ -510,16 +509,16 @@ mod tests {
     #[tokio::test]
     async fn clear_connection_removes_all_databases() {
         let (cache, mock, handle) = cache_with_mock().await;
-        let driver = mock.clone() as Arc<dyn DatabaseDriver>;
+        let catalog = LegacyCatalogReader::new(mock.as_ref());
 
         cache
-            .get_columns("conn1", "db1", None, "users", &driver, &handle)
+            .get_columns("conn1", "db1", None, "users", &catalog, &handle)
             .await
             .unwrap();
         cache.clear_connection("conn1").await;
 
         cache
-            .get_columns("conn1", "db2", None, "users", &driver, &handle)
+            .get_columns("conn1", "db2", None, "users", &catalog, &handle)
             .await
             .unwrap();
         assert_eq!(mock.get_columns_calls(), 2);
@@ -613,7 +612,7 @@ mod tests {
     #[tokio::test]
     async fn column_less_cache_entries_are_treated_as_miss() {
         let (cache, mock, handle) = cache_with_mock().await;
-        let driver = mock.clone() as Arc<dyn DatabaseDriver>;
+        let catalog = LegacyCatalogReader::new(mock.as_ref());
 
         {
             let mut caches = cache.caches.write().await;
@@ -638,7 +637,7 @@ mod tests {
         );
 
         let cols = cache
-            .get_columns("conn1", "db1", None, "users", &driver, &handle)
+            .get_columns("conn1", "db1", None, "users", &catalog, &handle)
             .await
             .unwrap();
         assert_eq!(
@@ -651,9 +650,9 @@ mod tests {
     #[tokio::test]
     async fn invalidation_prevents_an_old_full_schema_read_from_repopulating_cache() {
         let (cache, mock, handle) = cache_with_mock().await;
-        let driver = mock as Arc<dyn DatabaseDriver>;
+        let catalog = LegacyCatalogReader::new(mock.as_ref());
         let old_generation = cache.generation();
-        let old = driver
+        let old = catalog
             .get_table_schema(&handle, "users", "db1", None)
             .await
             .unwrap();

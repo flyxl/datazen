@@ -78,6 +78,25 @@ export const CONTRACT_RULES = Object.freeze([
     why: 'The one-way adapter from `DatabaseDriver` to `SqlDialect`. Its constructor signature is called at every migrated consumer, so it is the migration seam between the old and new contracts and cannot change silently.',
   },
   {
+    id: 'catalog-reader',
+    file: 'packages/driver-api/src/catalog.rs',
+    anchor: 'pub trait CatalogReader',
+    kind: 'trait',
+    implementedBy: 'the host schema cache and metadata adapters; every SQL driver once migrated',
+    why: 'The explicit-target catalog surface (databases, schemas, relations, columns). The schema cache is built on it, so a signature change reaches every cache consumer without touching `DatabaseDriver`.',
+  },
+  {
+    id: 'legacy-catalog-reader',
+    // The inherent impl is the binding point: the host constructs this adapter
+    // wherever a `CatalogReader` is required but the caller still holds a
+    // driver. Structure follows `legacy-sql-dialect` for the same reason.
+    file: 'packages/driver-api/src/catalog.rs',
+    anchor: "impl<'a, D: DatabaseDriver + ?Sized> LegacyCatalogReader<'a, D> {",
+    kind: 'struct',
+    implementedBy: 'the host, wrapping drivers at un-migrated call sites',
+    why: 'The one-way adapter from `DatabaseDriver` to `CatalogReader`. Its constructor signature is called at every migrated catalog consumer, so it is the migration seam and cannot change silently.',
+  },
+  {
     id: 'bound-parameter-limit',
     file: 'packages/driver-api/src/dialect.rs',
     anchor: 'pub enum BoundParameterLimit',

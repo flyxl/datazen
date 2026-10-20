@@ -405,7 +405,7 @@ pub(crate) async fn ai_parse_filter_impl(
             &database,
             schema.as_deref(),
             &table,
-            &driver,
+            &crate::db::LegacyCatalogReader::new(driver.as_ref()),
             &handle,
         )
         .await

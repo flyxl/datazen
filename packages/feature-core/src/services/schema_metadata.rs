@@ -268,7 +268,7 @@ pub async fn execute(
                     &input.relation.database,
                     input.relation.schema.as_deref(),
                     &input.relation.name,
-                    driver,
+                    &datazen_driver_api::LegacyCatalogReader::new(driver.as_ref()),
                     handle,
                 )
                 .await?;
