@@ -90,10 +90,19 @@ impl DatabaseToolHost for crate::commands::AppState {
             .map_err(|error| error.to_string())
     }
     async fn get_session_config(&self, id: &str) -> Result<ConnectionConfig, String> {
-        self.connection_manager
-            .get_session_config(id)
+        let adapter = self.platform_require().map_err(|error| error.to_string())?;
+        let call = adapter.begin_call();
+        let view = adapter
+            .runtime()
+            .map_err(|error| error.to_string())?
+            .get_session_by_id(call.context(), id)
             .await
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        self.store
+            .platform_profile(view.connection_id.as_str())
+            .await
+            .map(|(config, _)| config)
+            .ok_or_else(|| "Profile unavailable".to_string())
     }
     async fn execution_settings(&self) -> datazen_platform_api::settings::ExecutionSettings {
         self.store.execution_settings().await
