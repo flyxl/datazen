@@ -119,3 +119,115 @@ AI/connection/data/backup 相关其余条目均为基线自身的 adapter 依赖
    还会拆散当前由一对 `Mutex` 提供的**单写者原子性**。该理由已写进 `plan_store/port.rs` 的
    模块头，防后续有人「按约定」顺手拆开。
 3. `docs/architecture/backend/services.md` 未提及计划存储，**无需改动**（已核对）。
+
+---
+
+# 第 2 轮（修-测循环）：Tester 覆盖补强 + 三项小修
+
+Tester 的测试提交 `aa0147bfd` 已由协调者 cherry-pick 进本分支（`f866f5b1f`，纯测试 +220/−0）。
+它补上了**检查点侧**的跨组织覆盖：计划侧的隔离此前只被断言了一半，去掉
+`peek_checkpoint` / `claim_checkpoint` 的归属检查不会让任何测试变红，写侧
+（`mark_consumed` / `finish_execution` / `update_checkpoint` / `invalidate_checkpoint` /
+`renew_execution` / `prepare_checkpoint_table`）更是**完全没有护栏**。新增 3 条用例：
+`a_checkpoint_of_another_organization_is_not_found_rather_than_forbidden`、
+`a_foreign_organization_cannot_mutate_the_owners_plan_or_checkpoint`、
+`the_desktop_scope_is_the_only_organization_the_plan_registry_sees`（宿主侧，**无 adapter 依赖**，
+刻意不引入 `env -u USER` 失败）。
+
+## 第 2 轮的两个提交
+
+| # | commit | 内容 |
+| --- | --- | --- |
+| ⑤ | `2f88305ad` | D3（5 条 clippy）+ D4（作用域复用，不再每次访问分配 UUID）+ `port.rs` 模块头补「不拆 trait」的理由 |
+| ⑥ | `866c4e543` | D1（文档措辞收窄）+ `plan_store/mod.rs` 模块头同步 + 台账方法数更正 |
+
+## D1 / D3 / D4 逐条处置
+
+**D1（文档字面为假）**：原文断言「包内没有进程级全局单例」，而包内仍有前置存在的
+`sql_file.rs:36` `static PATHS`（SQL 文件路径登记表）以及两个测试期全局。已把断言收窄到
+**计划存储**，并点名其余登记：
+
+> `packages/data-transfer/src/plan_store/` 定义计划存储端口 `TransferPlanStorePort`，包内实现 `InMemoryTransferPlanStore`（进程内 Mutex + HashMap）。宿主在组装期创建一个实例注入 `AppState.transfer_plans`，调用点按组织作用域访问；**计划存储没有进程级全局单例**（包的其它部分另有各自的进程级登记，例如 SQL 文件路径表 `packages/data-transfer/src/sql_file.rs` 的 `PATHS`）。计划冻结原始 job、驱动协议、结构/范围/映射指纹、预期 DDL 和目标只读状态，并带有效期。存储本身不持久化。
+
+`plan_store/mod.rs` 的模块头同步收窄为「The **plan store** has no process-wide global any more」。
+旧的 `src-tauri/src/commands/data_transfer/plans.rs` 引用（该路径从未存在）保持删除状态 ✅。
+
+**D3（5 条 clippy）**：4× `needless_borrow`（`plan_store/tests.rs` 的 `tester_claimed_chunk` 里
+`store`/`scope` 本来就是引用）与 1× `nonminimal_bool`（`plan_store/memory.rs`
+`!x.is_some_and(|u| u > now)` → `x.is_none_or(|u| u <= now)`，**同一谓词**）已全部清除。
+`cargo clippy -p datazen-data-transfer -p datazen --all-targets` 后，本轨文件
+（`plan_store/**`、`plan_scope.rs`）**零 clippy 命中**（`grep -c plan_store` = 0，`grep -c plan_scope` = 0）。
+
+**D4（每访问一次分配一个 UUID）**：作用域原本每次调用都新建 `RequestContext`（内含
+`RequestId::new(format!("transfer-plan-{}", uuid::Uuid::new_v4()))`）。改为**进程内组装一次并共享**：
+
+```rust
+/// The local request id of the plan registry's request context.
+///
+/// **This id carries no meaning here.** The scope only ever names the
+/// organization; the request id is not an authorization input, is not written
+/// anywhere, and is never compared. It therefore gets a fixed local value
+/// instead of a fresh UUID per access — the plan registry is read on every
+/// plan access, and a UUID per read would be an allocation for nothing.
+const LOCAL_DESKTOP_REQUEST_ID: &str = "transfer-plan-desktop";
+
+/// The one request context the plan registry's scope is derived from.
+///
+/// The desktop is single-tenant, so the context is assembled **once** and
+/// reused for the lifetime of the process.
+fn desktop_context() -> &'static RequestContext {
+    static CONTEXT: OnceLock<RequestContext> = OnceLock::new();
+    CONTEXT.get_or_init(|| {
+        RequestContext::new(
+            OrganizationId::new(LOCAL_ORGANIZATION_ID),
+            PrincipalId::new(LOCAL_DESKTOP_PRINCIPAL),
+            None,
+            ClientInstanceId::new(LOCAL_DESKTOP_CLIENT_INSTANCE),
+            RequestId::new(LOCAL_DESKTOP_REQUEST_ID),
+            None,
+        )
+    })
+}
+
+/// The organization scope of the plan registry.
+///
+/// Returned as a shared reference so that a plan access allocates nothing: the
+/// scope is a constant of the desktop shape, so there is no reason to rebuild
+/// it per call.
+pub(crate) fn desktop_organization_scope() -> &'static OrganizationScope {
+    static SCOPE: OnceLock<OrganizationScope> = OnceLock::new();
+    SCOPE.get_or_init(|| OrganizationScope::from_context(desktop_context()))
+}
+```
+
+调用点随之由 `&plan_scope::desktop_organization_scope()` 改为 `plan_scope::desktop_organization_scope()`
+（返回值已是 `&'static OrganizationScope`），**一次计划访问现在零分配**。
+新增单测 `the_scope_is_reused_so_a_plan_access_allocates_nothing`（断言两次取到同一实例）。
+
+**端口不拆的理由（模块头）**：`plan_store/port.rs` 模块头新增一节，写明检查点侧与计划侧
+**是同一聚合**——`create_checkpoint` / `prepare_checkpoint_table` / `advance_checkpoint_table` /
+`claim_checkpoint` / `update_checkpoint(finished)` / `renew_execution` 都会在**同一次调用**里
+同时改写计划状态与检查点状态；拆 trait 只会把单写者原子性的边界挪到 trait 边界上，
+持久化实现仍然必须两侧都实现。
+
+## 第 2 轮门禁（HEAD `866c4e543`，工作区干净，首尾各记一次 sha 均为该值）
+
+| 命令 | 退出码 | 结论行 |
+| --- | --- | --- |
+| `cargo fmt --all -- --check` | 0 | 无输出 |
+| `cargo clippy -p datazen-data-transfer -p datazen --all-targets` | 0 | 0 error / 431 warning（全为基线既有；本轨文件 0 命中） |
+| `cargo check -p datazen-data-transfer -p datazen --all-targets` | 0 | `Finished` |
+| `cargo check -p datazen --features webdriver --all-targets` | 0 | `Finished` |
+| `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-data-transfer --lib` | 0 | `test result: ok. 248 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out` |
+| `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib` | 0 | `test result: ok. 1270 passed; 0 failed; 9 ignored; 0 measured; 0 filtered out` |
+| `env -u USER … cargo test -p datazen --lib` | 101 | `test result: FAILED. 1028 passed; 242 failed; 9 ignored` |
+
+`env -u USER` 一条**连跑三次**：第 1 次 243 failed，多出的唯一一条是**已知 flake**
+`platform::native_tool::tests::native_desktop_output_overflow_is_bounded_killed_and_reaped`
+（断言 `left: TimedOut` / `right: OutputLimit`，高负载下的超时，与计划存储无关，
+在 `src-tauri/src/platform/native_tool/tests.rs`）；第 2、3 次均 **242 failed**，
+`comm` 与基线 **零新增零消失**。常规 `cargo test -p datazen --lib` 一条里该 flake 通过。
+
+测试计数：data-transfer **248**（与协调者基线一致，含 Tester 的 3 条新用例）；
+host **1270**（协调者基线 1269 + 本轮 D4 新增的 1 条作用域复用单测）。
+
