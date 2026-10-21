@@ -72,17 +72,16 @@ import { getCachedTableSchema } from './lib/schemaCache';
 // Module-level window assignments in store files get tree-shaken by Vite,
 // so the stores must be registered here in the entry module.
 (globalThis as any).__schemaStore = useSchemaStore;
-// `__tableDataStore` is gated on VITE_E2E: the webdriver build sets it (see
-// scripts/e2e-tauri-build.mjs, which every E2E build path goes through), and the
-// E2E suites read the table state through `window.__tableDataStore`. A plain
-// production build must not grow an unconditional global handle, so the gate
-// follows the same flag the `tid()` E2E locators already use.
+// `__tableDataStore` is registered HERE ONLY — the store file must not register it too:
+// two owners race (an imported module body evaluates before the importer's, so a second
+// assignment overwrites the first one with `undefined` in a dev build).
 //
-// The else branch is deliberate: it publishes `undefined` instead of the store, so a
-// production build has no usable handle — while the assignment itself survives
-// tree-shaking and the handle name stays in the bundle. A gate that deleted the whole
-// statement would drop the E2E bridge from the very artifact that has to run it.
-if (import.meta.env.VITE_E2E) {
+// The handle is live in the two builds that need it — the webdriver build (VITE_E2E=1, set
+// by scripts/e2e-tauri-build.mjs, which every E2E build path goes through) and the dev
+// server (DEV=true). A production build publishes `undefined` instead: no usable handle,
+// but the assignment itself survives tree-shaking, so the name stays in the artifact and
+// the bridge does not silently disappear from the bundle that has to run it.
+if (import.meta.env.VITE_E2E || import.meta.env.DEV) {
   (globalThis as unknown as { __tableDataStore?: typeof useTableDataStore }).__tableDataStore =
     useTableDataStore;
 } else {

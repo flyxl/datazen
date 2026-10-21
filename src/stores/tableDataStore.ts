@@ -707,7 +707,3 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     }
   },
 }));
-
-if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>).__tableDataStore = useTableDataStore;
-}
