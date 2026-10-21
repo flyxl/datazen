@@ -78,12 +78,16 @@ export interface OpenForeignKeyTargetInput {
 /**
  * The message of a failed call, whatever the transport threw.
  *
+ * Exported because the trip from the host to the front end is a **contract**:
+ * the `grid.*` classification reads the prefix of this text, so it has to be
+ * the host's own text and not a wrapper's.
+ *
  * The backend client prefixes the message of a failed call with
  * `"<method> failed: "`, and the `grid.*` classification reads the **prefix**
  * of the message — so the original text (the one the host sent, reachable
  * through the cause chain) is the one that is classified and shown.
  */
-function messageOf(error: unknown): string {
+export function hostErrorMessage(error: unknown): string {
   const messages: string[] = [];
   let current: unknown = error;
   for (let depth = 0; depth < 5 && current != null; depth += 1) {
@@ -228,7 +232,7 @@ export async function openForeignKeyTarget(
     });
   } catch (error) {
     // 3. A failed resolution opens no tab: the source tab shows the error.
-    const raw = messageOf(error);
+    const raw = hostErrorMessage(error);
     return { ok: false, error: { code: classifyGridError(raw), raw } };
   }
 
