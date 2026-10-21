@@ -438,6 +438,7 @@ export interface UseGridSelectionResult {
 
 > **〔契约审计修订 2026-10-21〕T1-15 · 05 换来源时必须同批改本册的期望值，不能只换 `GridCell` 里那一行。**
 > 05 把 `data-dt-cell-type` 的来源从 `classifyDataType`（7 族）换成 `resolveCellType`（`CellType`，11 值）时，**必须同一个提交内更新本册的两处期望值**：
+> 〔协调者裁定 6 的分工（本册与 05 的边界，勿越界）〕**05 提供** `resolveCellType` 纯函数（11 个 `CellType` 值）；**本册的 `GridCell` 只透传 `cellType` prop** 并**独占** `data-dt-cell-type` 的 DOM 输出责任（属性名、取值、兜底）；**05 不得改 `GridCell` 内部的类型判定逻辑**，只换传入值的来源。两边以 `CellType` 取值集对齐，交叉引用见 05 §11 第 14 条。
 > ① Step 7 的等价性自测（第 678 行附近，`classifyDataType` 与 `data-dt-cell-type` 一致）；
 > ② §9.2 的组件用例 `emits data-dt-cell-type from classifyDataType`（用例名与断言都要改），以及任何 E2E 里对该属性具体值的硬编码。
 > `timestamp with time zone → datetime` 这类断言会变：**期望值必须按 `resolveCellType` 的实装重新取值，不得沿用 7 族口径推定**（`date` / `time` / `datetime` 在 11 值粒度下互不相等，`bytes` / `text`、`enum` / `uuid` / `unknown` 同理）。只换来源不改断言，结果是断言比对一个已不再产出该值的函数——要么当场红、要么被顺手删掉而**静默丢失覆盖**。

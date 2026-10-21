@@ -141,7 +141,7 @@ DTO：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContex
 
 三条必须复用的纪律：
 
-1. `RowChangePlan` **只有 `updates` 与 `deletes`**，没有 `inserts`——本册因此**不提供新增行**；
+1. `RowChangePlan` **基线只有 `updates` 与 `deletes`**；04 已追加 `inserts: Vec<PlannedStatement>`（`#[serde(default)]`），但**结果网格不使用它**——本册因此**不提供新增行**（也就不存在「插入后定位新行身份」的断言；〔契约审计修订 2026-10-21〕裁定 7 一并核过）；
 2. `execute_row_change_plan_impl` 要求每条语句 `affected == 1`，否则整批失败并报 `CommandError::Validation`——这是本册唯一可信的多行误伤兜底；
 3. `fingerprint` 防「计划开裂」，预览与提交之间暂存改动变化必须拒绝提交，**禁止降级为重算**。
 

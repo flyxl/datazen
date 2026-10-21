@@ -1134,17 +1134,6 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 | `src/lib/gridErrors.ts` | **修改（追加）** | 骨架由 01 建立（今天尚不存在）；本册按三步追加 `grid.filter.*` / `grid.view.*` 码，**禁止整文件覆盖** | +25 | 否 |
 | `src/lib/__tests__/filterOperators.test.ts` | **新增** | 元数据 / 顺序 / 转换用例 | ~180 | 否 |
 | `src/lib/__tests__/namedViews.test.ts` | **新增** | DTO 纯函数用例 | ~120 | 否 |
-| `src/lib/__tests__/filterExpression.test.ts` | `flatten_keeps_plain_chain_in_order` | `a AND b AND c` → 3 条，第 0 条无 `connector`，后两条为 `and`；条件对象与 `filterExpressionToConditions` 的输出**逐字段相等** |
-| 同上 | `flatten_accepts_left_leaning_chain_across_operators` | `(a AND b) OR c` → `[a(and), b, c(or)]`（第 2 条带 `or`，第 1 条无） |
-| 同上 | `flatten_rejects_nested_or_in_right_child` | `a AND (b OR c)` → **`null`**（不是「拍平后」的近似结果） |
-| 同上 | `flatten_rejects_nested_after_and_run` | `a AND (b OR c) AND d` → **`null`** |
-| 同上 | `flatten_never_emits_connector_on_first_item` | 任意成功展开的第 0 条 `connector` 恒为 `undefined`（§7） |
-| 同上 | `flatten_output_conditions_carry_no_connector_by_default` | 快筛走 `parseFilterForApply` 时产出的条件不带 `connector`（§4.7 的归一纪律） |
-| `src/components/__tests__/FilterEditor.test.tsx` | `connector_starts_readonly_and_global_stays_enabled` | 初始 `global`：行首徽标只读、`filter-logic-and` **不** `disabled` |
-| 同上 | `connector_click_disables_global_switch` | 点 `filter-connector-or` → 该行 `aria-pressed` 更新、`filter-logic-and` **变 `disabled`**、出现 `filter-connector-reset` |
-| 同上 | `connector_reset_restores_global_authority` | 点 reset → 全部 `connector` 清除、全局开关恢复可用；并断言「只改连接符时 `filterDraftEqualsApplied` 返回 `false`」（`dirty` 必须被置起） |
-| 同上 | `connector_survives_row_deletion_without_shifting` | 三条条件、给第 3 条设 `or` → 删第 2 条 → 剩下两条的 `data-connector` 仍各自对应（§7 的下标平移风险） |
-| 同上 | `connector_write_preserves_key_order` | 走 UI 设一次连接符后，草稿与已应用两侧 `JSON.stringify` 的键序一致（§4.7 的 `JSON.stringify` 陷阱） |
 | `src/lib/__tests__/gridErrors.test.ts` | **修改（追加）** | 01 已建；本册只增本册前缀用例，**禁止重写整个测试文件** | +30 | 否 |
 | `src/components/filter/FilterValueInput.tsx` | **新增**（从 `FilterEditor.tsx` 搬出） | 单值输入 + IME + 防抖 | ~110 | 否 |
 | `src/components/filter/FilterTokenInput.tsx` | **新增** | token 输入 + IME | ~150 | 否 |
@@ -1362,6 +1351,17 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 
 | 文件 | 用例名 | 断言要点 |
 | --- | --- | --- |
+| `src/lib/__tests__/filterExpression.test.ts` | `flatten_keeps_plain_chain_in_order` | `a AND b AND c` → 3 条，第 0 条无 `connector`，后两条为 `and`；条件对象与 `filterExpressionToConditions` 的输出**逐字段相等** |
+| 同上 | `flatten_accepts_left_leaning_chain_across_operators` | `(a AND b) OR c` → `[a(and), b, c(or)]`（第 2 条带 `or`，第 1 条无） |
+| 同上 | `flatten_rejects_nested_or_in_right_child` | `a AND (b OR c)` → **`null`**（不是「拍平后」的近似结果） |
+| 同上 | `flatten_rejects_nested_after_and_run` | `a AND (b OR c) AND d` → **`null`** |
+| 同上 | `flatten_never_emits_connector_on_first_item` | 任意成功展开的第 0 条 `connector` 恒为 `undefined`（§7） |
+| 同上 | `flatten_output_conditions_carry_no_connector_by_default` | 快筛走 `parseFilterForApply` 时产出的条件不带 `connector`（§4.7 的归一纪律） |
+| `src/components/__tests__/FilterEditor.test.tsx` | `connector_starts_readonly_and_global_stays_enabled` | 初始 `global`：行首徽标只读、`filter-logic-and` **不** `disabled` |
+| 同上 | `connector_click_disables_global_switch` | 点 `filter-connector-or` → 该行 `aria-pressed` 更新、`filter-logic-and` **变 `disabled`**、出现 `filter-connector-reset` |
+| 同上 | `connector_reset_restores_global_authority` | 点 reset → 全部 `connector` 清除、全局开关恢复可用；并断言「只改连接符时 `filterDraftEqualsApplied` 返回 `false`」（`dirty` 必须被置起） |
+| 同上 | `connector_survives_row_deletion_without_shifting` | 三条条件、给第 3 条设 `or` → 删第 2 条 → 剩下两条的 `data-connector` 仍各自对应（§7 的下标平移风险） |
+| 同上 | `connector_write_preserves_key_order` | 走 UI 设一次连接符后，草稿与已应用两侧 `JSON.stringify` 的键序一致（§4.7 的 `JSON.stringify` 陷阱） |
 | `src/lib/__tests__/filterOperators.test.ts` | `existing_operators_keep_relative_order_for_every_cell_type` | 每个 `CellType` 的 `operatorsForColumn` 结果过滤出既有算子子序列后，**逐元素等于** `['eq','ne','gt','lt','gte','lte','like','in','isNull','isNotNull']` 的相应子序列（B2 的证明） |
 | 同上 | `cell_types_match_the_designed_matrix` | 九个 `CellType`（`text` / `enum` / `number` / `bool` / `date` / `time` / `datetime` / `json` / `bytes` / `uuid` / `unknown`）的集合与 §3.5 表逐项相等 |
 | 同上 | `supported_operators_defaults_to_the_shared_nineteen` | `supportedOperatorsForMeta(undefined)` 与 `supportedOperatorsForMeta({})` 都等于 19 个共享算子；`dataGrid.filterOperators` 里不含 `regex` 时结果里没有它 |

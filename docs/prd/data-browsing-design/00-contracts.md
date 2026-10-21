@@ -273,7 +273,7 @@ fn has_multi_database(&self) -> bool;                     // 默认 false
 fn default_schema(&self) -> Option<&'static str>;         // 默认 None
 ```
 
-> **`build_insert_sql` 不存在。** 插入语句目前没有任何驱动侧构造入口，DB-04 必须新增（见第 5 节）。
+> **驱动侧没有任何「拼字符串」的插入构造入口。** 〔契约审计修订 2026-10-21〕R-B：插入接缝是 `build_insert_statement`（返回 `BoundSqlStatement`，值不进 SQL 文本），见第 5 节；早期稿设想的字面量拼接版本不存在、也不会存在。
 
 **数据模型**（`packages/driver-api/src/types.rs`）：
 
@@ -394,7 +394,7 @@ Rust 侧结构体已标 `#[serde(rename_all = "camelCase")]`，前端用 camelCa
 ## 3. 三态写入契约（`Unset` / `NULL` / 值，本次架构改动的核心）
 
 > **〔契约审计修订 2026-10-21〕T2-3 / R-D：本节已按落地形态重写，`CellWrite` 类型不再存在。**
-> 早期稿定义了一个挂在 `driver-api` 上的 `CellWrite` 枚举和 `build_insert_sql(&[(&str, CellWrite)]) -> String` 的拼字符串接缝。实装复核否掉了它：`DatabaseDriver` 已经只有**一条**参数化写路径（`build_update_statement` / `build_delete_statement` / `build_insert_statement` 都返回 `BoundSqlStatement { sql, parameters }`，值**从不拼进 SQL 文本**）。再造一条拼字符串通路等于把值写回 SQL 文本，是安全倒退。
+> 〔契约审计修订 2026-10-21〕早期稿定义过一个挂在 `driver-api` 上的枚举和三态拼字符串接缝。实装复核否掉了它：`DatabaseDriver` 已经只有**一条**参数化写路径（`build_update_statement` / `build_delete_statement` / `build_insert_statement` 都返回 `BoundSqlStatement { sql, parameters }`，值**从不拼进 SQL 文本**）。再造一条拼字符串通路等于把值写回 SQL 文本，是安全倒退。
 > **冻结的形态**：
 > - 驱动方法：`build_insert_statement(&self, table: &str, values: &[(&str, Option<Value>)]) -> Result<BoundSqlStatement, DriverError>`（与 update/delete 同构，见 §5.1）；
 > - **三态由「列是否出现在 `values` 切片里」+ `Option<Value>` 共同承载**：
