@@ -490,6 +490,41 @@ fn validate_filters_rejects_operator_outside_the_whitelist() {
 }
 
 #[test]
+fn overlong_regex_pattern_is_refused() {
+    // A regular expression is handed to the database engine verbatim, so a
+    // pathological pattern can pin a whole backend connection. The length
+    // guard is the fence: this test is the only thing that notices when it is
+    // widened or removed.
+    let pattern = "a".repeat(MAX_REGEX_PATTERN_LENGTH + 1);
+    let filters = vec![condition(
+        "name",
+        FilterOperator::Regex,
+        Value::String(pattern),
+    )];
+    // A dialect operator only reaches the length check on a driver that
+    // declared it.
+    let mut supported = SHARED_FILTER_OPERATORS.to_vec();
+    supported.push(FilterOperator::Regex);
+    let rejection =
+        validate_filters(&supported, &filters).expect_err("an overlong pattern must be refused");
+    let message = rejection.contract_message();
+    assert!(
+        message.starts_with("grid.filter.incomplete: "),
+        "got: {message}"
+    );
+    assert!(message.contains("too long"), "got: {message}");
+    assert!(message.contains("\"name\""), "got: {message}");
+
+    // One character below the limit is still fine.
+    let at_the_limit = vec![condition(
+        "name",
+        FilterOperator::Regex,
+        Value::String("a".repeat(MAX_REGEX_PATTERN_LENGTH)),
+    )];
+    validate_filters(&supported, &at_the_limit).expect("the limit itself is allowed");
+}
+
+#[test]
 fn validate_filters_accepts_the_shared_operators() {
     let filters = vec![
         condition("name", FilterOperator::Eq, Value::String("alice".into())),

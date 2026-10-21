@@ -14,7 +14,7 @@
  * moment it is written rather than the next time somebody remembers.
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { GRID_ERROR_CODES, classifyGridError } from '../gridErrors';
 
@@ -66,11 +66,57 @@ const PRODUCED_MESSAGES: readonly { code: string; message: string }[] = [
 ];
 
 const REPO_ROOT = resolve(__dirname, '../../..');
+const WORKSPACE_MANIFEST = join(REPO_ROOT, 'Cargo.toml');
 
-/** The Rust trees that raise `grid.*` codes. */
-const SCAN_ROOTS = ['packages/feature-core/src', 'src-tauri/src'];
+/**
+ * The Rust trees that may raise a `grid.*` code: every source tree of every
+ * workspace member.
+ *
+ * The list is read from the workspace manifest instead of being written out
+ * here, so a new crate is covered the day it is added — a hand-written list
+ * would rot into the same hole this guard exists to close. A member's `src`
+ * and `tests` directories and its build script are all scanned; the `tests`
+ * directory is where the integration tests live, and a code that only appears
+ * there is still a code the front end has to know.
+ */
+function scanRoots(): string[] {
+  const manifest = readFileSync(WORKSPACE_MANIFEST, 'utf-8');
+  const members = manifest.match(/^members\s*=\s*\[([\s\S]*?)\]/m)?.[1] ?? '';
+  const roots = new Set<string>();
+  for (const quoted of members.match(/"[^"]+"/g) ?? []) {
+    const member = quoted.slice(1, -1);
+    for (const path of expandMember(member)) {
+      for (const directory of ['src', 'tests']) {
+        const full = join(REPO_ROOT, path, directory);
+        if (existsSync(full)) roots.add(full);
+      }
+      const buildScript = join(REPO_ROOT, path, 'build.rs');
+      if (existsSync(buildScript)) roots.add(buildScript);
+    }
+  }
+  return [...roots];
+}
 
-/** A code literal as it appears in a Rust string. */
+/** Expand one workspace member pattern (`packages/drivers/*` is a glob). */
+function expandMember(member: string): string[] {
+  if (!member.endsWith('/*')) return [member];
+  const parent = join(REPO_ROOT, member.slice(0, -1));
+  if (!existsSync(parent)) return [];
+  return readdirSync(parent, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `${member.slice(0, -1)}${entry.name}`);
+}
+
+/**
+ * A code literal as it appears in a Rust string.
+ *
+ * **The scan covers literals only.** A code assembled at run time —
+ * `format!("grid.{}.something", domain)` — has no literal to find, and the
+ * guard does not see it. The repository has no such spelling today (every
+ * `grid.` occurrence outside a literal is in a doc comment), but the boundary
+ * is worth stating: the guard proves that every *literal* code is registered,
+ * not that every possible code is.
+ */
 const CODE_PATTERN = /"grid\.[a-z]+\.[a-zA-Z]+/g;
 
 /**
@@ -87,6 +133,10 @@ const PRODUCER_PENDING: readonly string[] = [
 ];
 
 function rustFiles(root: string): string[] {
+  if (!existsSync(root)) return [];
+  if (!statSync(root).isDirectory()) {
+    return root.endsWith('.rs') ? [root] : [];
+  }
   const found: string[] = [];
   const walk = (directory: string): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -98,7 +148,7 @@ function rustFiles(root: string): string[] {
       if (entry.name.endsWith('.rs')) found.push(full);
     }
   };
-  walk(join(REPO_ROOT, root));
+  walk(root);
   return found;
 }
 
@@ -110,7 +160,7 @@ function rustFiles(root: string): string[] {
  */
 function producedCodes(): Set<string> {
   const codes = new Set<string>();
-  for (const root of SCAN_ROOTS) {
+  for (const root of scanRoots()) {
     for (const file of rustFiles(root)) {
       const source = readFileSync(file, 'utf-8');
       for (const match of source.matchAll(CODE_PATTERN)) {
