@@ -93,7 +93,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 |---|---|---|---|
 | **A** `job-org-scope` | `feature/job-org-scope` / **`5ea292d8a` + `5bde303eb`**（35 改 + 3 新），`READY_FOR_TEST` | `platform-api/dto/job.rs:73 JobDefinition`、`:280 JobFilter` 加 `organization_id`（**必填非 Option**）；`ports/job.rs` 契约补语义；`runtime/job/repository.rs` 的 `InMemoryJobRepository` 按 org 过滤（跨 org 返回"不存在"）；`runtime_repository.rs`/`memory_runtime_repository.rs`/`owner_claims.rs`/`runtime_methods.rs`；宿主 `store/app_db/jobs/`（`admission.rs:146`）加列 + 迁移 + 过滤；`platform/ipc.rs` FROZEN_SIGNATURES 同提交更新 | 桌面单租户**行为完全不变**（1265 条断言不许动）；≥3 条组织隔离单测；跨 org 不泄漏"存在但无权" |
 | **B** `di-dyn` | `feature/di-dyn` / **`d235f7d3`**（9 文件 +215/−45；自验后 amend 过，**以此为准**） | `feature-core/src/workflow/registry.rs:95/103` 去泛型 → `Arc<dyn WorkflowDefinitionStore>`；宿主 `workflow/registry.rs`（`AppDbWorkflowStore` 提可见性 + 构造入口）、`bootstrap/app_state.rs:205`、`commands/mod.rs:78/167`、`dashboard/create.rs:3/11/53/77/124`、`commands/workflow.rs`、`commands/context.rs`；包内测试夹具 `MemoryStore` | 共享包公开签名里**不出现宿主类型参数**；`WorkflowRegistry` 无类型参数；feature-core 仍不依赖宿主 crate；行为不变 |
-| **C** `runtime-naming` | `feature/runtime-naming` / **`a4c54cc0c`**（29 文件 +238/−105，`READY_FOR_TEST`） | `git mv`：`job/desktop_host.rs`→`job/host.rs`（`DesktopJobHost`→`JobHost`）、`tunnel/desktop.rs`→`tunnel/route.rs`（`DesktopNetworkProvider`→`RouteNetworkProvider`、`DesktopRouteCatalog`→`RouteCatalog`）、`tests/tunnel_desktop_network_provider.rs`→`tunnel_route_network_provider.rs`；导出面、`single_counter_audit` 的 `AUDITED` 登记表、宿主/feature-core 引用点、11 份文档 | 三类型名 0 命中；无 `desktop.rs`/`desktop_host.rs`；**断言逐条未改**；历史保留 |
+| **C** `runtime-naming` | `feature/runtime-naming` / **`a4c54cc0c`** + `52225ed04`（Tester 补测）+ `b46db6468`（销毁 progress.md）→ **已合入 `e267fad3f`** | `git mv`：`job/desktop_host.rs`→`job/host.rs`（`DesktopJobHost`→`JobHost`）、`tunnel/desktop.rs`→`tunnel/route.rs`（`DesktopNetworkProvider`→`RouteNetworkProvider`、`DesktopRouteCatalog`→`RouteCatalog`）、`tests/tunnel_desktop_network_provider.rs`→`tunnel_route_network_provider.rs`；导出面、`single_counter_audit` 的 `AUDITED` 登记表、宿主/feature-core 引用点、11 份文档 | 三类型名 0 命中；无 `desktop.rs`/`desktop_host.rs`；**断言逐条未改**；历史保留 |
 
 ### Wave 2 —— **工作树已全部建好并注入热 target**
 
@@ -212,7 +212,7 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 ### 三轨活性（22:50 实测）
 | 轨 | 状态 | 活性证据 |
 |---|---|---|
-| C | 已交付 `a4c54cc0c`，`READY_FOR_TEST` | Tester 复测中（resume 1 次） |
+| C | **已验收 TEST_PASSED → 已合入集成 `e267fad3f`** | Tester `a1f0c68d`（3 次尝试后完成） |
 | B | 已交付 **`d235f7d3`**，`READY_FOR_TEST`，**隔离 target 验证全绿** | Tester `cda75c30` 在独立验证树 `.worktrees/verify-di-dyn` 复测 |
 | A | 已交付 **`5ea292d8a`+`5bde303eb`**，`READY_FOR_TEST`，**隔离 target 验证全绿**（platform-api 224 / runtime 638 / host 1269） | Tester `b285d2f2` 在独立验证树 `.worktrees/verify-job-org-scope` 复测 |
 
@@ -235,6 +235,25 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 | 4 | `JobRuntimeRepository::renew` 无 `ctx` | **接受**，条件：端口注释须明确写"续约由 claim fencing 兜底"，否则后来者会误以为 renew 也有 org 隔离。 |
 | 5 | `RecoveryFilter` 未加组织字段 | **接受**（恢复扫描按 ctx 的组织过滤即组织内）。跨组织恢复扫描需显式 opt-in 类型 → 记入 Wave 4。 |
 | 6 | `persistence-model.md` §4.1 写 SCHEMA_VERSION=3，代码是 4 | 若确为**既有漂移** → 归 Wave 3 文档收口（非阻塞）；若本轨引入 → 缺陷。Tester P7 独立核实。 |
+
+### C 轨验收结论（Tester `a1f0c68d`）
+
+**TEST_PASSED**。取证质量值得记录：**变异自证了新增测试非空洞** —— 删掉 `host.rs` Running 分支的 `persist_recovery` 调用后，它自己补的集成测点红，而既有 host AppState 旅程**保持绿**；机制查明为 SQLite 仓储 `mark_pending_for`（`runtime_ops.rs:228-236`）自己落 verdict JSON，**遮蔽了宿主层的漏调**。这条测试钉住的正是既有测试**结构上测不到**的那半不变量。
+
+| 项 | 结论 | 关键证据 |
+|---|---|---|
+| P0 改名真实性 | 通过 | 无 `as Desktop*` 别名、无 `#[deprecated]`；三旧类型名 + 旧模块路径全仓 0 命中 |
+| P1 历史保留 | 通过 | 三处 `git log --follow` 均为真 rename（R094/R090/R093），历史连续 |
+| P2 机械闸门 | 通过 | 隔离 target 下变异 1（标签→ghost）与变异 2（整条删登记）**双双 EXIT=101 点红**，失败消息逐字为 R6 本因（非顺带红）；每次还原复验 19 passed |
+| P3 行为不变 | 通过 | perl 反替换 + diff：断言计数旧=新（`assert!`24 / `assert_eq!`30 / 13 测试函数）、**断言行逐字节 diff=0**、无新增 `#[ignore]`；`route.rs` +30 行**全为注释**；5 个对外字面码逐字保留 |
+| P4 覆盖补齐 | 完成 | 新增 `packages/runtime/tests/job_host_restart_verification.rs`（201 行 / 1 测试 / 零生产代码） |
+| P5 全量门禁 | 通过 | 隔离 target 下 9 项 EXIT 全 0（runtime 630 / 44 target 全 ok / 13 / host 1265 / feature-core 367 / platform-api 221） |
+| P6 文档 | 通过 | 11 份 diff 逐份核对干净；docs/ 反向 grep 0 残留 |
+
+**C 的缺陷清单处置**：
+- `ENV-01`（共享 target 串产物，环境级）→ **已处置**（隔离 target + 热克隆流程已固化于 §5）。
+- `DOC-01`（progress.md 的 grep 准则只覆盖类型名、漏模块路径名）→ **实质无缺口**（Tester 补扫确认路径名也 0 命中），且 progress.md 已随交付销毁 → **无需行动**。
+- `INFRA-02`（SQLite 双写遮蔽：宿主层漏调 `persist_recovery` 在 host 旅程里测不出）→ 风险已被 `52225ed04` 闭合；**提示归 Wave 3 文档收口**（写进正式文档，提醒后续改 `host.rs` 的人不要依赖 host 测守这条）。
 
 ## 6. 门禁与流程
 
