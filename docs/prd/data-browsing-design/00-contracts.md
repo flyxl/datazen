@@ -640,14 +640,14 @@ CellCoord.rowIndex
 
 | 属性 | 落在哪个元素 | 值 | 语义 | **创建归属** |
 | --- | --- | --- | --- | --- |
-| `data-dt-row` | 行容器（既有） | 行索引 | 行标识 | 既有 |
+| `data-dt-row` | **单元格**（既有） | 行索引 | 行标识 | 既有〔契约审计修订 2026-10-21〕**落点订正**：既有 E2E（`e2e/specs/zz-screenshots.ts` 明确记录「行容器上没有 `data-dt-row`」、`ops-process-server.ts` 按 `[data-dt-row]` 计数）依赖它在**单元格**上；补到行容器会让既有计数翻倍。行容器用 `data-dt-row-view` |
 | `data-dt-col` | 单元格（既有） | 列标识 | 列标识 | 既有 |
 | `data-dt-selected` | 单元格 | `"true"` / 不存在 | 该单元格处于当前选择内 | **01** |
 | `data-dt-surface` | **滚动容器**（网格可视区根） | 固定 `""` | 网格外层锚点；`role="grid"`、`tabIndex={0}`、`aria-rowcount`/`aria-colcount`/`aria-activedescendant` 都挂在这里 | **01**（统一取代 02 的 `data-dt-grid`、03 的 `data-dt-grid-surface`） |
 | `data-dt-row-view` | 行容器 | 行索引 | **roving tabindex 的行级焦点宿主**（`tabIndex={-1}`）。与既有 `data-dt-row` 并存且值相同，**故意不同名**：`data-dt-row` 是数据语义，`data-dt-row-view` 是交互语义，改动其一不得波及另一个 | **01** |
-| `data-dt-selection-rows` | 行容器 | `"true"` / 不存在 | 该行属于当前行选择（`mode === 'row'`） | **01** |
-| `data-dt-selection-cols` | 列头容器 | `"true"` / 不存在 | 该列属于当前列选择 | **01** |
-| `data-dt-selection-cells` | 单元格 | `"true"` / 不存在 | 该单元格属于当前 cell 选择范围 | **01** |
+| `data-dt-selection-rows` | **选区摘要元素** | 数字 | 摘要覆盖的**行数** | **01**〔契约审计修订 2026-10-21〕**语义订正**：原表写「行容器 / `"true"` / 该行属于当前行选择」与 01 §3.7 及 Wave 1 已冻结的 E2E（TC-SEL-002 从摘要元素读 `data-dt-selection-rows="4"`）**同名互斥**。本表按「同名必须同值」纪律改为**摘要计数**。行的成员标记改用 ARIA 原生 `aria-selected`（行容器），不另起名字 |
+| `data-dt-selection-cols` | 选区摘要元素 | 数字 | 摘要覆盖的**列数** | **01**〔契约审计修订 2026-10-21〕同上，改为摘要计数。原语义「该列属于当前列选择」在 01 的模型里**没有生产者**（模式只有 none/cell/row，**无列选择**），故不存在"列成员标记"这种东西 |
+| `data-dt-selection-cells` | 选区摘要元素 | 数字 | 摘要覆盖的**格数** | **01**〔契约审计修订 2026-10-21〕同上，改为摘要计数。**格**的成员标记用 `data-dt-selected="true"`（单元格），行成员标记用 `aria-selected` |
 | `data-dt-active` | 单元格 | `"true"` / 不存在 | 键盘光标所在格〔契约审计修订 2026-10-21〕T1-5：02 已自建并使用（全册 14 次引用），原先总表没有此行，属契约缺口 | 01 建（props 派生）+ 02 用 |
 | `data-dt-cell-type` | 单元格 | 归一化类型名 | 类型感知编辑器与测试（见下方收敛说明） | 01 先用 `classifyDataType`，**05 换成 `resolveCellType`** |
 | `data-dt-editing` | 单元格 | `"true"` / 不存在 | 该单元格正被编辑器占用 | **05**（01 只加样式 hook，不加此属性） |

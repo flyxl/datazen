@@ -430,10 +430,10 @@ export interface UseGridSelectionResult {
 | `data-dt-col` | 列名 | 既有；同上 | 既有（同前） |
 | `data-testid="data-table-cell"` | — | 既有；`DataTable.test.tsx` 依赖 | 既有 |
 | `data-dt-selected` | `"true"` / **不输出** | 该格处于当前选择内 | 本册新增（契约 §4.4） |
-| `data-dt-editing` | `"true"` / **不输出** | 该格正被编辑器占用 | 本册新增（契约 §4.4） |
+| `data-dt-editing` | `"true"` / **不输出** | 该格正被编辑器占用 | **05 建**（契约 §4.4 把创建归属给 05；本册只加样式 hook，**不加**此属性）〔契约审计修订 2026-10-21〕归属订正：原写「本册新增」，与契约冲突 |
 | `data-dt-cell-type` | 本册：`classifyDataType(col.type)`（既有函数，7 个类型族）；**05 合并后**：同一属性的来源升级为 `resolveCellType(col.type)`（`CellType`，11 个值） | 归一化类型名。**收敛口径见下方裁定** | 本册新增（契约 §4.4） |
 | `data-dt-dirty` | `"true"` / 不输出 | 该格有未提交改动 | **不属本册**，由 06 在同一个 `GridCell` 里加 |
-| `data-dt-surface` | `"true"` | 标记虚拟滚动 filler（"空白处"判定的唯一合法依据） | 本册新增 |
+| `data-dt-surface` | 固定 `""` | 标记**网格滚动容器**（网格可视区根），同挂 `role="grid"` / `tabIndex={0}` / `aria-rowcount` / `aria-colcount` / `aria-activedescendant` | 本册新增〔契约审计修订 2026-10-21〕**落点与取值订正**：原写「虚拟滚动 filler / `"true"`」与契约 §4.4 冲突。必须落在**滚动容器**——Wave 1 已冻结的 E2E 把 `Escape` 派发给 `document.querySelector('[data-dt-surface]')`，而只有滚动容器挂 keydown 处理器；filler 挂同名属性会让 `querySelector` 命中歧义 |
 | `data-dt-selection-rows` / `data-dt-selection-cols` / `data-dt-selection-cells` | 数字 | 工具栏摘要的三个计数，供 E2E 逐字断言 | 本册新增 |
 
 > **〔契约审计修订 2026-10-21〕T1-15 · 05 换来源时必须同批改本册的期望值，不能只换 `GridCell` 里那一行。**
@@ -707,7 +707,8 @@ export function isEditableTarget(target: EventTarget | null): boolean;
   - 滚动容器加 `ref={setScrollEl}`（已有）+ `{...surfaceProps}` + `role="grid"` + `tabIndex={0}` + `aria-activedescendant`；
   - `hasCellSelection = gridSelection != null && onGridSelectionChange != null`；
   - 工具栏：`hasCellSelection` 为真且 `mode === 'cell'` 时渲染选区摘要（`data-testid="data-table-selection-summary"` + `data-dt-selection-rows/cols/cells`），文案走 `t('dataTable.selectionSummary', { rows, cols })`；
-  - 删除行按钮与 `Delete` 键在 `mode === 'cell'` 时使用 `rowsCoveredBySelection(...)`（**仍调既有的 `onDeleteRows(rowIndices)`**，于是 `TableView.handleDeleteRows` 的二次确认会自动回显同一个行数）；
+  - **删除行按钮**在 `mode === 'cell'` 时使用 `rowsCoveredBySelection(...)`（**仍调既有的 `onDeleteRows(rowIndices)`**，于是 `TableView.handleDeleteRows` 的二次确认会自动回显同一个行数）；
+  - **但 `Delete` 键不是这条路径**：`Delete` 键在 `mode === 'cell'` 时**不做行删除**（§4.3 已定：cell 模式下 `selectedRows` 恒为空，键位删除整行会误伤）。键位在 `mode === 'row'` 时删选中行；「清空单元格内容」由 02/05 认领。〔契约审计修订 2026-10-21〕**原写「删除行按钮与 `Delete` 键……都使用 `rowsCoveredBySelection`」与 §4.3 正面矛盾**（§4.3 明确要求在 journey 测试里断言 cell 模式下 Delete 什么都不做），本条按「显式操作意图」拆开：按钮＝用户明确点了"删除行"，键位在 cell 模式下没有明确的"删除"意图 |
   - 给 `GridCell` 传 `selected`：由 `isCellSelected` 决定。
 - **为什么**：PRD §11 关键串行点 2 明确"`DataTable` 拆分必须先于 DB-01/02/03 合并，否则单文件超限"。628 行 + 选择 + 键盘 + 剪贴板必然越线，所以本册必须先把菜单这最大的一块搬出去。
 - **自测**：`npx vitest run src/components/DataTable/__tests__/DataTable.test.tsx` 必须**一行不改就全绿**（菜单条目 id 序列是硬断言，搬移出任何顺序变化都会红）；`wc -l` 确认 `DataTable.tsx` ≤ 470，新文件 ≤ 320。
@@ -753,7 +754,7 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 | `src/components/DataTable/VirtualBody.tsx` | 修改 | 改用 `GridCell`、透传选区判定、`data-dt-surface`、**行号槽 `<button>` → `<div role="rowheader">` + 内层 `tabIndex={-1}` 按钮**、行容器加 `role="row"` | 207 → ~185 | 否 |
 | `src/components/DataTable/DataTable.tsx` | 修改 | 3 个新 props、`surfaceProps` 接线、选区摘要、删行降级为行集、菜单外移 | 628 → ~450 | 否（**必须拆分，否则 02/03 必然越线**） |
 | `src/windows/connection/TableView.tsx` | 修改 | 接线 `gridSelection` / `onGridSelectionChange`；替换内联暂存条（**含会话丢失恢复入口**） | **803** → ~713 | **是**（基线已越线；本册的抽取是后续分册的前置条件） |
-| `src/components/DataTable/TableHeader.tsx` | **本册不改**（已核对） | 列序由 `TableData.columns` 过滤后保持原序决定；`data-col-header` 已存在；区域判列只用列名 + `columnOrder`，**无需新增 DOM 属性** | 115（不变） | 否 |
+| `src/components/DataTable/TableHeader.tsx` | **仅加 ARIA 角色**（原写「本册不改」）〔契约审计修订 2026-10-21〕**例外订正**：契约 §4.4 要求 grid / row / gridcell / rowheader / columnheader **原子加齐**——`role="grid"` 的子节点必须是 row/rowgroup，`role="row"` 的子节点必须是 gridcell/rowheader/columnheader；不给表头加 `role="row"`/`role="columnheader"`，网格就留下「grid 里挂着非 row 子节点 + row 里挂着非 cell 子节点」这套**无效 ARIA**。改动由 `gridSemantics` 开关承载（默认关 ⇒ 既有消费者 DOM 逐字不变），**不涉及**排序、列序、`data-col-header` 等既有逻辑 | 列序由 `TableData.columns` 过滤后保持原序决定；`data-col-header` 已存在；区域判列只用列名 + `columnOrder`，**无需新增 DOM 属性** | 115（不变） | 否 |
 | `src/lib/dataTableContextMenu.ts` | 修改 | `BuildDataTableContextMenuArgs` 增加选区相关可选入参 + 新增 `copy-selected-cells` 条目（handler 缺失时不出现） | 398 → ~420 | 否 |
 | `src/locales/en/query.ts` | 修改 | 追加 2 个 `dataTable.*` key（第 8 节） | **442** → ~444 | 否 |
 | `src/stores/tableData/__tests__/gridSelection.test.ts` | **新增** | 纯逻辑单测 | ~220 | 否 |
@@ -887,7 +888,7 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 | `plain click enters cell mode and marks exactly one cell` | `onGridSelectionChange` 收到 `mode:'cell'` 且 anchor=focus=点击格；DOM 中 `[data-dt-selected="true"]` 恰好 1 个 |
 | `shift click extends a rectangle from the anchor` | 点击 `(0,'id')` 后 Shift+点击 `(1,'name')` → 摘要 `2 rows × 2 columns`，选中格 4 个 |
 | `cmd click appends a non-contiguous range` | 主区 1 格 + Cmd+点击另一格 → `extraRanges.length === 1`；两格都带 `data-dt-selected` |
-| `row gutter click switches to row mode and clears the cell anchor` | `onRowSelect` 被调用且参数为 `{multi:false, range:false}`；`onGridSelectionChange` 收到 `mode:'row'` 且 `anchor === null` |
+| `row gutter click switches to row mode and clears the cell anchor` | `onRowSelect` 被调用且参数为 `{multi:false, range:false}`；**行集被成对写入**（`selectedRows` 含被点的行，`mode === 'row'`，`anchor === null`）〔契约审计修订 2026-10-21〕**口径订正**：原写「`onGridSelectionChange` 收到 `mode:'row'`」——若 DataTable 再单独发一份 row 模式选择，消费方会走 `setGridSelection` → `applyGridSelection` 的 row 分支**清空行集**，与 `setRowModeSelection` 的成对写打架（两套真相，违反契约 §4.2「mode 与行集必须成对写」）。**行号槽点击的唯一主人是既有的 `onRowSelect` → `setRowModeSelection`**；只有在消费方**没有**提供 `onRowSelect` 时，DataTable 才自行发一份 `mode:'row'`、**不带几何**（I2 合规）的选择 |
 | `cell mode clears the row selection` | cell 模式断言后，工具栏"已选 N/总行数"的计数不显示（`selectedRows` 为空） |
 | `escape clears the selection` | `fireEvent.keyDown(surface, { key: 'Escape' })` → `mode:'none'`，DOM 无 `data-dt-selected` |
 | `escape is ignored while a cell editor is open` | 传 `editingCell` 后按 Escape → **不**调用 `onGridSelectionChange` |
