@@ -1,120 +1,12 @@
-//! Tests for the filter SQL module.
+//! Tests for the filter SQL module: what a condition renders into, and what
+//! the layer refuses to render.
 //!
 //! They live out of line so the module itself stays readable; the filter
 //! rules are the part of the query executor that has to be read carefully.
 
+use super::test_support::*;
 use super::*;
 use datazen_driver_api::filters::{DIALECT_FILTER_OPERATORS, SHARED_FILTER_OPERATORS};
-use datazen_driver_api::{BoundParameterLimit, DriverError, PaginationSyntax};
-
-/// A dialect that stands on its own: no driver, no connection. It is also
-/// the place where the `LIKE` escaping and the dialect operator are
-/// declared, because those are exactly the two rules a driver owns.
-struct TestDialect {
-    escape_char: Option<char>,
-    escape_clause: Option<&'static str>,
-    dialect_operator: Option<&'static str>,
-}
-
-const PLAIN: TestDialect = TestDialect {
-    escape_char: None,
-    escape_clause: None,
-    dialect_operator: None,
-};
-
-const ESCAPING: TestDialect = TestDialect {
-    escape_char: Some('!'),
-    escape_clause: Some(" ESCAPE '!'"),
-    dialect_operator: None,
-};
-
-const HALF_CONFIGURED: TestDialect = TestDialect {
-    escape_char: Some('!'),
-    escape_clause: None,
-    dialect_operator: None,
-};
-
-const WITH_DIALECT_OPERATOR: TestDialect = TestDialect {
-    escape_char: None,
-    escape_clause: None,
-    dialect_operator: Some("~"),
-};
-
-impl SqlDialect for TestDialect {
-    fn quote_ident(&self, name: &str) -> String {
-        format!("\"{name}\"")
-    }
-
-    fn pagination_syntax(&self, limit: u64, offset: u64) -> PaginationSyntax {
-        PaginationSyntax {
-            clause: format!("LIMIT {limit} OFFSET {offset}"),
-            requires_order_by: false,
-            order_by_fallback: None,
-        }
-    }
-
-    fn try_format_sql_literal(&self, value: &Option<Value>) -> Result<String, DriverError> {
-        Ok(match value {
-            None | Some(Value::Null) => "NULL".to_string(),
-            Some(Value::Bool(flag)) => (if *flag { "TRUE" } else { "FALSE" }).to_string(),
-            Some(Value::Integer(number)) => number.to_string(),
-            Some(Value::Float(number)) => number.to_string(),
-            Some(Value::String(text) | Value::Timestamp(text)) => {
-                format!("'{}'", text.replace('\'', "''"))
-            }
-            Some(Value::Bytes(_)) => "NULL".to_string(),
-            Some(Value::Json(json)) => format!("'{}'", json.to_string().replace('\'', "''")),
-        })
-    }
-
-    fn parameter_placeholder(
-        &self,
-        _index: usize,
-        _data_type: Option<&str>,
-    ) -> Result<String, DriverError> {
-        Err(DriverError::Unsupported(
-            "test dialect has no bound placeholders".into(),
-        ))
-    }
-
-    fn max_bound_parameters(&self) -> BoundParameterLimit {
-        BoundParameterLimit::Dialect(999)
-    }
-
-    fn like_pattern_escape(&self) -> Option<char> {
-        self.escape_char
-    }
-
-    fn like_escape_clause(&self, _escape_char: char) -> Option<&'static str> {
-        self.escape_clause
-    }
-
-    fn filter_operator_sql(
-        &self,
-        _operator: FilterOperator,
-        column_expr: &str,
-        literal: &str,
-    ) -> Option<String> {
-        self.dialect_operator
-            .map(|operator| format!("{column_expr} {operator} {literal}"))
-    }
-}
-
-fn condition(column: &str, operator: FilterOperator, value: Value) -> FilterCondition {
-    FilterCondition {
-        column: column.to_string(),
-        operator,
-        value,
-        connector: None,
-    }
-}
-
-fn rendered(
-    condition: &FilterCondition,
-    dialect: &dyn SqlDialect,
-) -> Result<String, FilterRejection> {
-    format_condition(condition, dialect)
-}
 
 #[test]
 fn legacy_ten_operators_render_byte_identical() {
@@ -381,9 +273,13 @@ fn regex_without_driver_support_is_rejected_with_contract_prefix() {
         rejection,
         FilterRejection::UnsupportedOperator { .. }
     ));
-    assert!(rejection
-        .contract_message()
-        .starts_with("grid.filter.unsupportedOperator: "));
+    let message = rejection.contract_message();
+    assert!(
+        message.starts_with("grid.filter.unsupportedOperator: "),
+        "got: {message}"
+    );
+    assert!(message.contains("'regex'"), "got: {message}");
+    assert!(message.contains("\"name\""), "got: {message}");
 }
 
 #[test]
@@ -400,15 +296,20 @@ fn regex_with_driver_support_uses_driver_sql_verbatim() {
 
 #[test]
 fn incomplete_condition_is_rejected_not_silently_dropped() {
-    let rejection = rendered(
-        &condition("id", FilterOperator::Eq, Value::String(String::new())),
-        &PLAIN,
-    )
-    .expect_err("an incomplete condition must be refused, not skipped");
-    assert!(matches!(rejection, FilterRejection::Incomplete { .. }));
-    assert!(rejection
-        .contract_message()
-        .starts_with("grid.filter.incomplete: "));
+    // Both an empty string and a null value are "no value".
+    for value in [Value::String(String::new()), Value::Null] {
+        let rejection = rendered(&condition("id", FilterOperator::Eq, value), &PLAIN)
+            .expect_err("an incomplete condition must be refused, not skipped");
+        assert!(matches!(rejection, FilterRejection::Incomplete { .. }));
+        let message = rejection.contract_message();
+        assert!(
+            message.starts_with("grid.filter.incomplete: "),
+            "got: {message}"
+        );
+        assert!(message.contains("needs a value"), "got: {message}");
+        assert!(message.contains("\"id\""), "got: {message}");
+        assert!(message.contains("'eq'"), "got: {message}");
+    }
 }
 
 #[test]
@@ -485,6 +386,26 @@ fn literal_arity_mismatch_is_rejected_for_between_and_in() {
         &PLAIN,
     );
     assert!(empty_set.is_err());
+    // The same set operator under its negation, and a range value that names
+    // no bound at all.
+    let empty_negated_set = rendered(
+        &condition(
+            "id",
+            FilterOperator::NotIn,
+            Value::Json(serde_json::json!([])),
+        ),
+        &PLAIN,
+    );
+    assert!(empty_negated_set.is_err());
+    let no_comma = rendered(
+        &condition(
+            "score",
+            FilterOperator::Between,
+            Value::String("only-one".into()),
+        ),
+        &PLAIN,
+    );
+    assert!(no_comma.is_err());
 }
 
 #[test]
@@ -495,6 +416,26 @@ fn like_escape_config_rejects_half_configured_pair() {
         rejection,
         FilterRejection::InvalidEscapeConfiguration { escape_char: '!' }
     ));
+    let message = rejection.contract_message();
+    assert!(
+        message.starts_with("grid.filter.unsupportedOperator: "),
+        "got: {message}"
+    );
+    assert!(message.contains("'!'"), "got: {message}");
+    assert!(message.contains("ESCAPE"), "got: {message}");
+
+    // The same refusal has to happen where the pattern is rendered: a
+    // half-configured pair would otherwise turn an escaped `%` back into a
+    // wildcard and quietly return the wrong rows.
+    let rejection = rendered(
+        &condition(
+            "name",
+            FilterOperator::Contains,
+            Value::String("50%".into()),
+        ),
+        &HALF_CONFIGURED,
+    )
+    .expect_err("the half-configured escape must be refused");
     assert!(rejection
         .contract_message()
         .starts_with("grid.filter.unsupportedOperator: "));
@@ -530,9 +471,19 @@ fn validate_filters_rejects_operator_outside_the_whitelist() {
     )];
     let rejection = validate_filters(SHARED_FILTER_OPERATORS, &filters)
         .expect_err("a dialect operator is not in the shared whitelist");
-    assert!(rejection
-        .contract_message()
-        .starts_with("grid.filter.unsupportedOperator: "));
+    let message = rejection.contract_message();
+    assert!(
+        message.starts_with("grid.filter.unsupportedOperator: "),
+        "got: {message}"
+    );
+    // The message names the operator, the column and an alternative, so the
+    // interface can tell the user what to do next.
+    assert!(message.contains("'regex'"), "got: {message}");
+    assert!(message.contains("\"name\""), "got: {message}");
+    assert!(
+        message.contains("try 'like' or 'contains' instead"),
+        "got: {message}"
+    );
     for operator in DIALECT_FILTER_OPERATORS {
         assert!(!SHARED_FILTER_OPERATORS.contains(operator));
     }
@@ -553,167 +504,73 @@ fn validate_filters_accepts_the_shared_operators() {
 }
 
 #[test]
-fn overlong_regex_pattern_is_refused() {
-    let pattern = "a".repeat(MAX_REGEX_PATTERN_LENGTH + 1);
-    let filters = vec![condition(
-        "name",
-        FilterOperator::Regex,
-        Value::String(pattern),
-    )];
-    // A dialect operator only reaches the length check on a driver that
-    // declared it.
-    let mut supported = SHARED_FILTER_OPERATORS.to_vec();
-    supported.push(FilterOperator::Regex);
-    let rejection =
-        validate_filters(&supported, &filters).expect_err("an overlong pattern must be refused");
-    assert!(rejection
-        .contract_message()
-        .starts_with("grid.filter.incomplete: "));
-}
-
-fn part(sql: &str, connector: Option<FilterConnector>) -> (String, Option<FilterConnector>) {
-    (sql.to_string(), connector)
-}
-
-#[test]
-fn join_filters_all_connectors_equal_is_byte_identical_to_today() {
-    let parts = vec![
-        part("A", Some(FilterConnector::And)),
-        part("B", Some(FilterConnector::And)),
-        part("C", Some(FilterConnector::And)),
-    ];
-    assert_eq!(
-        join_filters(&parts, Some("and")),
-        parts
-            .iter()
-            .map(|(sql, _)| sql.as_str())
-            .collect::<Vec<_>>()
-            .join(" AND ")
-    );
-
-    let parts = vec![part("A", None), part("B", None), part("C", None)];
-    assert_eq!(
-        join_filters(&parts, Some("or")),
-        parts
-            .iter()
-            .map(|(sql, _)| sql.as_str())
-            .collect::<Vec<_>>()
-            .join(" OR ")
-    );
-}
-
-#[test]
-fn join_filters_mixed_parenthesizes_and_runs() {
-    // The connectors are read the way SQL reads them: AND binds stronger
-    // than OR. A mixed list is therefore cut into its maximal AND groups,
-    // and every group that is not a single condition is written out — so the
-    // database cannot group the list differently than the caller meant.
-    assert_eq!(
-        join_filters(
-            &[
-                part("A", None),
-                part("B", Some(FilterConnector::Or)),
-                part("C", Some(FilterConnector::And)),
-            ],
-            Some("and")
-        ),
-        "A OR (B AND C)"
-    );
-    assert_eq!(
-        join_filters(
-            &[
-                part("A", None),
-                part("B", Some(FilterConnector::Or)),
-                part("C", Some(FilterConnector::And)),
-                part("D", Some(FilterConnector::Or)),
-            ],
-            Some("and")
-        ),
-        "A OR (B AND C) OR D"
-    );
-    // A single fragment never gets parentheses.
-    assert_eq!(join_filters(&[part("A", None)], Some("and")), "A");
-    // An AND group that is not sandwiched between ORs keeps the plain
-    // shape, because there is nothing to disambiguate.
-    assert_eq!(
-        join_filters(
-            &[
-                part("A", None),
-                part("B", Some(FilterConnector::And)),
-                part("C", Some(FilterConnector::And)),
-            ],
-            Some("or")
-        ),
-        "A AND B AND C"
-    );
-}
-
-#[test]
-fn join_filters_first_entry_connector_is_ignored() {
-    let with_connector = join_filters(
-        &[
-            part("A", Some(FilterConnector::Or)),
-            part("B", Some(FilterConnector::And)),
-        ],
-        Some("and"),
-    );
-    let without_connector = join_filters(
-        &[part("A", None), part("B", Some(FilterConnector::And))],
-        Some("and"),
-    );
-    assert_eq!(with_connector, without_connector);
-}
-
-#[test]
-fn join_filters_empty_is_empty_string() {
-    assert_eq!(join_filters(&[], Some("and")), "");
-}
-
-#[test]
-fn join_filters_survives_a_dropped_fragment() {
-    // A driver may answer with an empty fragment; the connector has to
-    // travel with the fragment it belongs to, or every connector after the
-    // dropped one shifts by a position.
-    let parts = vec![
-        part("A", None),
-        part("", Some(FilterConnector::Or)),
-        part("C", Some(FilterConnector::And)),
-    ];
-    let kept: Vec<(String, Option<FilterConnector>)> = parts
-        .into_iter()
-        .filter(|(sql, _)| !sql.is_empty())
-        .collect();
-    assert_eq!(join_filters(&kept, Some("and")), "A AND C");
-}
-
-#[test]
-fn render_filter_parts_keeps_fragments_and_connectors_paired() {
-    let filters = vec![
-        FilterCondition {
-            column: "a".into(),
-            operator: FilterOperator::Eq,
-            value: Value::String("1".into()),
-            connector: None,
-        },
-        FilterCondition {
-            column: "b".into(),
-            operator: FilterOperator::Eq,
-            value: Value::String("2".into()),
-            connector: Some(FilterConnector::Or),
-        },
-    ];
-    let parts = render_filter_parts(&filters, &PLAIN).unwrap();
-    assert_eq!(parts.len(), 2);
-    assert_eq!(parts[0].1, None);
-    assert_eq!(parts[1].1, Some(FilterConnector::Or));
-    assert_eq!(parts[0].0, "\"a\" = '1'");
-    assert_eq!(parts[1].0, "\"b\" = '2'");
-}
-
-#[test]
 fn filter_is_complete_forwards_the_shared_predicate() {
     let complete = condition("name", FilterOperator::Eq, Value::String("x".into()));
     let incomplete = condition("name", FilterOperator::Eq, Value::String(String::new()));
     assert!(filter_is_complete(&complete));
     assert!(!filter_is_complete(&incomplete));
+}
+
+#[test]
+fn incomplete_when_the_condition_has_no_column() {
+    // There is no column to name, so the message says what is missing
+    // instead of filling the column slot with an empty pair of quotes.
+    let filters = vec![linked("", FilterOperator::Eq, Value::Integer(1), None)];
+    let rejection = validate_filters(SHARED_FILTER_OPERATORS, &filters)
+        .expect_err("a condition without a column must be refused");
+    let message = rejection.contract_message();
+    assert!(
+        message.starts_with("grid.filter.incomplete: "),
+        "got: {message}"
+    );
+    assert_eq!(
+        message,
+        "grid.filter.incomplete: the condition has no column (operator 'eq')"
+    );
+}
+
+#[test]
+fn the_filter_domain_has_exactly_two_codes() {
+    // The filter domain is a closed set: two codes, and a third one would
+    // need a contract change before the front end could classify it.
+    let rejections = [
+        FilterRejection::UnsupportedOperator {
+            column: "c".into(),
+            operator: FilterOperator::Regex,
+        },
+        FilterRejection::Incomplete {
+            column: "c".into(),
+            operator: FilterOperator::Eq,
+            reason: "needs a value",
+        },
+        FilterRejection::InvalidEscapeConfiguration { escape_char: '!' },
+    ];
+    let prefixes: Vec<String> = rejections
+        .iter()
+        .map(|rejection| {
+            rejection
+                .contract_message()
+                .split(':')
+                .next()
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect();
+    for prefix in &prefixes {
+        assert!(prefix.starts_with("grid.filter."), "got: {prefix}");
+    }
+    assert_eq!(
+        prefixes,
+        vec![
+            "grid.filter.unsupportedOperator".to_string(),
+            "grid.filter.incomplete".to_string(),
+            "grid.filter.unsupportedOperator".to_string(),
+        ]
+    );
+    // The driver's own message travels unchanged — it is not a filter
+    // problem, so it carries no contract prefix.
+    let driver = FilterRejection::Driver {
+        message: "connection refused".into(),
+    };
+    assert_eq!(driver.contract_message(), "connection refused");
 }

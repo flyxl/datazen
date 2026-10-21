@@ -20,6 +20,10 @@ use datazen_driver_api::filters::{FilterCondition, FilterConnector, FilterOperat
 use datazen_driver_api::Value;
 
 #[cfg(test)]
+mod join_tests;
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
 mod tests;
 
 /// The longest pattern a `regex` / `notRegex` condition may carry.
@@ -77,12 +81,22 @@ impl FilterRejection {
                 column,
                 operator,
                 reason,
-            } => format!(
-                "grid.filter.incomplete: column \"{}\" {} (operator '{}')",
-                column,
-                reason,
-                operator.as_str()
-            ),
+            } => {
+                // A condition without a column has no column to name, so the
+                // slot is left out instead of being filled with an empty pair
+                // of quotes.
+                if column.is_empty() {
+                    format!(
+                        "grid.filter.incomplete: the condition {reason} (operator '{}')",
+                        operator.as_str()
+                    )
+                } else {
+                    format!(
+                        "grid.filter.incomplete: column \"{column}\" {reason} (operator '{}')",
+                        operator.as_str()
+                    )
+                }
+            }
             Self::InvalidEscapeConfiguration { escape_char } => format!(
                 "grid.filter.unsupportedOperator: this database declares a LIKE escape character ('{escape_char}') but does not accept an ESCAPE clause, so escaped patterns cannot be rendered"
             ),
