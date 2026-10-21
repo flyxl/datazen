@@ -117,6 +117,16 @@ export interface VirtualBodyProps {
    * column moves the arrow to the next member instead of losing it.
    */
   fkVisibleColumns?: readonly string[];
+  /**
+   * The **full** row records (every column of the table), by row index.
+   *
+   * The positional `rows` carry only the *displayed* columns, so the value of
+   * a hidden foreign-key member is not in them — and a hidden member must not
+   * look like a member without a value: hiding a column moves the arrow, it
+   * does not lose it (07 §7 #14). The owner of the grid has the full records
+   * (`TableState.rows`), so it hands them down.
+   */
+  fkRows?: readonly Record<string, unknown>[];
   /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
   fkResolving?: ReadonlySet<string>;
   /** Follow the foreign key of a cell. */
@@ -573,6 +583,7 @@ export const VirtualBody = memo(function VirtualBody({
   dirtyByRow = null,
   fkIndex,
   fkVisibleColumns,
+  fkRows,
   fkResolving,
   onFkJump,
 }: VirtualBodyProps) {
@@ -608,10 +619,17 @@ export const VirtualBody = memo(function VirtualBody({
   /**
    * The columns whose cell may be followed, per row (DB-07).
    *
-   * A composite key is navigable as a **whole**: one missing member makes the
-   * group unlocatable, because "where a = 1" alone would point at the wrong
-   * parent row. The arrow itself lands on the group's first **visible**
-   * member, so hiding a column moves the arrow instead of losing it.
+   * A composite key is navigable as a **whole**: one member without a value
+   * makes the group unlocatable, because "where a = 1" alone would point at
+   * the wrong parent row. The arrow itself lands on the group's first
+   * **visible** member, so hiding a column moves the arrow instead of losing
+   * it.
+   *
+   * The values come from the **full** row record (`fkRows`): the positional
+   * rows carry only the displayed columns, so a hidden member would look
+   * like a member without a value — and the whole group would lose its
+   * arrow. Without the full records the answer is "unknown", and an unknown
+   * member is treated as a missing one: the grid does not guess.
    */
   const fkNavigableByRow = useMemo(() => {
     const map = new Map<number, ReadonlySet<string>>();
@@ -619,9 +637,14 @@ export const VirtualBody = memo(function VirtualBody({
     const visible = fkVisibleColumns ?? columns.map((column) => column.name);
     const columnIndexes = new Map(columns.map((column, index) => [column.name, index]));
     rows.forEach((row, rowIndex) => {
+      const full = fkRows?.[rowIndex];
       // The values of the foreign-key members of this row, by column name.
       const record: Record<string, unknown> = {};
       for (const columnName of fkIndex.keys()) {
+        if (full) {
+          record[columnName] = full[columnName];
+          continue;
+        }
         const columnIndex = columnIndexes.get(columnName);
         record[columnName] = columnIndex === undefined ? undefined : row[columnIndex];
       }
@@ -639,8 +662,7 @@ export const VirtualBody = memo(function VirtualBody({
       map.set(rowIndex, navigable);
     });
     return map;
-  }, [rows, columns, fkIndex, fkVisibleColumns]);
-
+  }, [rows, columns, fkIndex, fkVisibleColumns, fkRows]);
   return (
     <div
       className="min-w-max"

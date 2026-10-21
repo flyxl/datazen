@@ -578,6 +578,7 @@ export function TableView({
         // callback that follows one.
         fkIndex={fkNavigation.fkIndex}
         fkVisibleColumns={fkNavigation.fkVisibleColumns}
+        fkRows={rows}
         fkResolving={fkNavigation.fkResolving}
         onFkJump={fkNavigation.onFkJump}
         rowHeight={DATA_TABLE_ROW_HEIGHT}

@@ -119,16 +119,27 @@ const COMPOSITE_COLUMNS = [
 interface GridProps {
   rows: Record<string, unknown>[];
   /** The displayed column names, in render order. */
-  visibleColumns?: string[];
+  visibleColumns?: readonly string[];
 
-  /** The columns of the grid. */
-  columns?: { id: string; name: string; type: string }[];
+  /** The columns of the table. */
+  columns?: readonly { id: string; name: string; type: string }[];
 }
 
-/** The grid, wired the way `TableView` wires it. */
+const DEFAULT_VISIBLE_COLUMNS = ['id', 'customer_id'] as const;
+
+/**
+ * The grid, wired the way `TableView` wires it.
+ *
+ * **The shape matters**: `TableView` filters the columns by the user's
+ * choice *first* and hands the grid only the displayed ones, so the grid's
+ * positional rows carry only those columns. A fixture that fed the grid
+ * every column would test a shape that does not exist in production — and
+ * would hide the bug where a hidden foreign-key member looks like a member
+ * without a value (07 §7 #14).
+ */
 function FkGrid({
   rows,
-  visibleColumns = ['id', 'customer_id'],
+  visibleColumns = DEFAULT_VISIBLE_COLUMNS,
   columns = COLUMNS,
 }: GridProps) {
   const navigation = useTableForeignKeyNavigation({
@@ -140,13 +151,24 @@ function FkGrid({
     connectionId: 'conn-1',
     databaseType: 'postgresql',
     rows,
-    displayedColumns: visibleColumns.map((name) => ({ name })),
+    displayedColumns: useMemo(
+      () => visibleColumns.map((name) => ({ name })),
+      [visibleColumns],
+    ),
     rowHeight: 28,
     activeCell: null,
   });
+  // Only the displayed columns reach the grid, exactly like in production.
+  const shownColumns = useMemo(
+    () =>
+      visibleColumns
+        .map((name) => columns.find((column) => column.name === name))
+        .filter((column): column is { id: string; name: string; type: string } => !!column),
+    [visibleColumns, columns],
+  );
   const rowArrays = useMemo(
-    () => rows.map((row) => columns.map((column) => row[column.name] ?? null)),
-    [rows, columns],
+    () => rows.map((row) => shownColumns.map((column) => row[column.name] ?? null)),
+    [rows, shownColumns],
   );
   return (
     <div
@@ -169,10 +191,11 @@ function FkGrid({
         forward
       </button>
       <DataTable
-        columns={columns}
+        columns={shownColumns}
         rows={rowArrays}
         fkIndex={navigation.fkIndex}
         fkVisibleColumns={navigation.fkVisibleColumns}
+        fkRows={rows}
         fkResolving={navigation.fkResolving}
         onFkJump={navigation.onFkJump}
         onScrollElementChange={navigation.onScrollElementChange}
@@ -457,6 +480,24 @@ describe('journey: foreign-key navigation', () => {
     expect(arrowOf(container, 0, 'parent_a')).toBeNull();
   });
 
+  it('keeps the arrow when the second member of the group is hidden', async () => {
+    schemaState.foreignKeys = [COMPOSITE_FOREIGN_KEY];
+    const { container } = render(
+      <FkGrid
+        rows={[{ id: 1, customer_id: 3, parent_a: 1, parent_b: 2 }]}
+        visibleColumns={['id', 'customer_id', 'parent_a']}
+        columns={COMPOSITE_COLUMNS}
+      />,
+    );
+
+    await waitFor(() => expect(arrows(container)).toHaveLength(1));
+    // "parent_b" is hidden and "parent_a" is visible: the arrow stays on the
+    // first **visible** member — the hidden member does not make the group
+    // look incomplete (07 §7 #14).
+    expect(arrowOf(container, 0, 'parent_a')).not.toBeNull();
+    expect(arrowOf(container, 0, 'parent_b')).toBeNull();
+  });
+
   it('has no arrow at all when the whole group is hidden', async () => {
     schemaState.foreignKeys = [COMPOSITE_FOREIGN_KEY];
     const { container } = render(
@@ -467,8 +508,14 @@ describe('journey: foreign-key navigation', () => {
       />,
     );
 
-    await waitFor(() => expect(container.querySelector('[data-dt-fk]')).not.toBeNull());
+    // The grid is rendered …
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="data-table-cell"]')).not.toBeNull(),
+    );
+    // … but no member of the group is on screen, so there is no marker and
+    // no arrow — and nothing failed (07 §7 #14).
     expect(arrows(container)).toHaveLength(0);
+    expect(container.querySelector('[data-dt-fk]')).toBeNull();
   });
 
   it('does not pile up tabs when the user walks A → B → A', async () => {

@@ -135,6 +135,15 @@ export interface DataTableProps {
    * column moves the arrow to the next member instead of losing it.
    */
   fkVisibleColumns?: readonly string[];
+  /**
+   * The **full** row records (every column of the table), by row index.
+   *
+   * The grid's own `rows` carry only the *displayed* columns, so the value of
+   * a hidden foreign-key member is not in them — and a hidden member must not
+   * look like a member without a value (07 §7 #14: hiding a column moves the
+   * arrow, it does not lose it).
+   */
+  fkRows?: readonly Record<string, unknown>[];
   /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
   fkResolving?: ReadonlySet<string>;
   /** Follow the foreign key of a cell (DB-07). */
@@ -234,6 +243,7 @@ export function DataTable({
   onRestoreRow,
   fkIndex,
   fkVisibleColumns,
+  fkRows,
   fkResolving,
   onFkJump,
   statusBar,
@@ -588,6 +598,7 @@ export function DataTable({
               dirtyByRow={dirtyByRow}
               fkIndex={fkIndex}
               fkVisibleColumns={fkVisibleColumns}
+              fkRows={fkRows}
               fkResolving={fkResolving}
               onFkJump={onFkJump}
             />
