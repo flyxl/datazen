@@ -97,7 +97,7 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
 
 > ## 〔合并后校正〕本节路径与签名已变化，语义结论不变
 >
-> - **实现位置**：SQL 生成在 `packages/feature-core/src/services/query_executor.rs`（**755 行**）；`src-tauri/src/services/query_executor.rs` 只剩 **47 行** re-export 门面。因此第 6 节的「目录化拆到 `src-tauri/src/services/query_executor/`」要改成 `packages/feature-core/src/services/query_executor/`，`cargo test -p datazen --lib` **覆盖不到**它，必须加 `cargo test -p datazen-feature-core --lib`。
+> - **实现位置**：SQL 生成在 `packages/feature-core/src/services/query_executor/`（**目录模块**〔契约审计修订 2026-10-22〕Wave 5 已把它从单文件 755 行目录化：`mod.rs` + `tests.rs` + `filter_sql/`；宿主 `src-tauri/src/services/query_executor.rs` 只剩 **47 行** re-export 门面。因此第 6 节的「目录化拆到 `src-tauri/src/services/query_executor/`」要改成 `packages/feature-core/src/services/query_executor/`，`cargo test -p datazen --lib` **覆盖不到**它，必须加 `cargo test -p datazen-feature-core --lib`。
 > - **签名**：`build_select_sql(...) -> Result<String, DriverError>`、`build_count_sql(...) -> Result<String, DriverError>`、`format_condition(condition, &dyn SqlDialect) -> Result<String, DriverError>`——已改用 `&dyn SqlDialect` + `try_format_sql_literal`，不再接受 `qi` / `format_lit` 两个闭包（迁移缝是 `LegacySqlDialect::new(driver.as_ref())`）。
 > - **并发结构有三种现实**，第 2 条只写了第一种：① `QueryExecutor::get_table_data`（`tokio::try_join!`，两条语句）；② `src-tauri/src/commands/table_target.rs::read`——**前端真实浏览入口**，把 count 与 select 拼成 `"{count};\n{select}"` **一次多语句下发**，再按产物 `statementIndex` 归属；③ `driver.skip_count_query()` 为真时只发 select。**`total_rows` 解析在 ② 里还接受 `Value::String` 的 `parse()`**，比 ① 宽。
 > - **`TableDataResult` 构造点有三处**（旧稿写两处）：`feature-core:89`、`feature-core:127`、`table_target.rs:279`——新增 `total_rows_kind` 时**三处都要填**，漏掉第三处会因 `serde(default)` 静默退化成「没取行数」。
