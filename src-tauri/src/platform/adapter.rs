@@ -273,7 +273,13 @@ impl PlatformAdapter {
         // `profiles` / `identities` / `runtime` / `services` 等**一个都装不上**——
         // 缺席的不是「仅身份解析能力」，而是**整个平台装配**。启动装配
         // （`bootstrap/app_state.rs`）对这个错误只 `tracing::error!` 记一条，
-        // 应用不崩，但此后所有依赖平台的调用都会拿到 `CapabilityUnsupported`。
+        // 应用不崩，但此后所有依赖平台的调用都会**失败**：IPC 表面统一是
+        // `NotConfigured`（`platform/error.rs` 把 `ServiceUnavailable` 与
+        // `CapabilityUnsupported` 收敛到同一个码），内部 `ApiError` 码**多数**是
+        // `ServiceUnavailable`——`runtime()` / `profiles()` / `live_source()` /
+        // `artifact_store()` / `identity_resolver()` 这 5 个访问器都是它，
+        // 只有 `require_application_services()` 与 `native_tools()` 是
+        // `CapabilityUnsupported`。
         let identities = Arc::new(
             super::execution_identity::DesktopIdentityResolver::for_desktop(
                 store.clone(),
