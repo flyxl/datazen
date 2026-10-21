@@ -5,6 +5,7 @@ import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { NlFilterInput } from '../../components/ai/NlFilterInput';
 import { TableColumnFilter } from './TableColumnFilter';
 import { useTableDataStore } from '../../stores/tableDataStore';
+import { EMPTY_GRID_SELECTION, type GridSelection } from '../../stores/tableData/gridSelection';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -118,6 +119,9 @@ export function TableView({
       selectRow: (index: number, opts?: { multi?: boolean; range?: boolean }) =>
         store().setRowModeSelection(panelId, index, opts),
       toggleSelectAll: () => store().toggleSelectAll(panelId),
+      // Cell/region selection (DB-01): the store owns the mode, the grid only reports.
+      setGridSelection: (selection: GridSelection) =>
+        store().setGridSelection(panelId, selection),
       deleteRows: (rowIndices: number[]) => store().deleteRows(panelId, rowIndices),
       previewPendingChanges: () => store().previewPendingChanges(panelId),
       commitPendingChanges: () => store().commitPendingChanges(panelId),
@@ -511,6 +515,8 @@ export function TableView({
         onApplyFilters={actions.applyFilters}
         editingCell={!isEditable ? null : editingCell}
         selectedRows={selectedRows}
+        gridSelection={ts?.gridSelection ?? EMPTY_GRID_SELECTION}
+        onGridSelectionChange={actions.setGridSelection}
         loading={loading}
         onSort={actions.setSort}
         onRemoveFilter={actions.removeFilter}

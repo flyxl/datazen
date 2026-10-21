@@ -38,6 +38,7 @@ import * as cmAutocomplete from '@codemirror/autocomplete';
 import * as cmLanguage from '@codemirror/language';
 import * as cmCommands from '@codemirror/commands';
 import { useSchemaStore } from './stores/schemaStore';
+import { useTableDataStore } from './stores/tableDataStore';
 import { getCachedTableSchema } from './lib/schemaCache';
 
 // Expose host shared modules so the dynamically-loaded PRO extension can
@@ -71,6 +72,22 @@ import { getCachedTableSchema } from './lib/schemaCache';
 // Module-level window assignments in store files get tree-shaken by Vite,
 // so the stores must be registered here in the entry module.
 (globalThis as any).__schemaStore = useSchemaStore;
+// `__tableDataStore` is registered HERE ONLY — the store file must not register it too:
+// two owners race (an imported module body evaluates before the importer's, so a second
+// assignment overwrites the first one with `undefined` in a dev build).
+//
+// The handle is live in the two builds that need it — the webdriver build (VITE_E2E=1, set
+// by scripts/e2e-tauri-build.mjs, which every E2E build path goes through) and the dev
+// server (DEV=true). A production build publishes `undefined` instead: no usable handle,
+// but the assignment itself survives tree-shaking, so the name stays in the artifact and
+// the bridge does not silently disappear from the bundle that has to run it.
+if (import.meta.env.VITE_E2E || import.meta.env.DEV) {
+  (globalThis as unknown as { __tableDataStore?: typeof useTableDataStore }).__tableDataStore =
+    useTableDataStore;
+} else {
+  (globalThis as unknown as { __tableDataStore?: typeof useTableDataStore }).__tableDataStore =
+    undefined;
+}
 
 // Seed the shared @datazen/ui i18n engine from the persisted language and
 // keep it in sync (settings changes → setLocale → useI18n re-renders).

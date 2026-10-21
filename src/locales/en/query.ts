@@ -325,6 +325,7 @@ const pack = {
   'dataTable.empty': 'No rows to display',
   'dataTable.emptyHint': 'This query returned no rows.',
   'dataTable.tableLabel': 'Data table',
+  'dataTable.selectionSummary': '{rows} rows × {cols} columns',
   'detail.title': 'Details',
   'detail.show': 'Show detail panel',
   'detail.hide': 'Hide detail panel',
