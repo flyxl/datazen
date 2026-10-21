@@ -102,7 +102,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | 轨 | 分支 | worktree | 热 target |
 |---|---|---|---|
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ✅ 第 3 轮完成 `09e261eb0` → **终验中** |
-| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 复测 **TEST_PASSED** → 第 2 轮小修中（D-E6 回拨淘汰顺序反转 / O-1 端口 put 语义留白） |
+| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 第 2 轮完成 `479239dfb` → **终验中** |
 | **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 2 轮小修中（D1 文档字面为假 / D3 五条 clippy / D4 每访问分配 UUID） |
 | **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 2 轮小修中（D-02 键不含组织 / D-04 措辞 / D-06 文档口径） |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 第 3 轮完成 `e796ae835` → **终验中** |
@@ -659,6 +659,17 @@ D-01 同轮改准（`ServiceUnavailable` **5 个**访问器 vs `CapabilityUnsupp
 **D-04（措辞不同族）**：比较侧越组织是 `"Data Sync comparison storage is unavailable"`，计划侧是 `"sync plan is unknown or has expired; return to comparison"`。两者都不泄漏存在性 ⇒ CM-05 成立。→ **裁决：改 trait doc 对齐实际措辞，不改错误文案**（改文案会牵动"逐字相同"的既有断言，而比较侧本就没有「不存在」这个对照态）。
 **D-05**（owner 租约缓存只增不删，根被删后不回收）→ Wave 4。
 **D-06**（§2/§7「当前进程」对落盘比较不精确、§3.1 未点明默认根）→ 要求顺手改口径。
+
+
+### E 轨第 2 轮（`b22f25b81`）—— D-E6 修法 + 一处**改输入而非改断言**的正确处理
+
+**D-E6**：存储层裁剪谓词 `plans.retain(|_, plan| plan.age() < REVIEWED_PLAN_TTL)` → **`!plan.is_expired()`**（与规则层**同一个** `is_expired()`，同一时间基准、同一 `created_at_ms`）⇒ 回拨时失效条目**先被清掉**、有效计划留下，淘汰顺序随之恢复正确。**一行改动**（+ 注释说明为什么不能按年龄裁）。
+
+**一处连带影响，处理得当**：Tester 的宿主容量用例 `desktop_store_enforces_max_entries_by_evicting_the_oldest` 原用**未来**时间戳 `base + index` 做排序键；D-E6 修好后"未来时间戳"意味着"时钟回拨 ⇒ 已失效"⇒ 条目会被**裁掉**而非参与淘汰排序 ⇒ 该用例**实测变红**。
+E 的处理：把排序键改为**过去**时刻 `base.saturating_sub(130 - index)`（index 越小 ⇒ 冻结越早 ⇒ 越先被淘汰），**断言与意图一字未改**（上限 128、淘汰最旧、`plan-0`/`plan-1` 被裁、`plan-2`…`plan-129` 仍在），并在用例 doc 里写明**为何不能再用未来时间戳做排序键**。
+→ **这是本 initiative 里"改输入而非改断言"的正面样本**：测试失效时先判定是**输入前提**变了还是**断言**变弱，再改前者并留下原因。终验 Tester 被要求独立验证这一点（把排序键改回未来时间戳 ⇒ 应当变红）。
+
+**O-1**：`ReviewedPlanStore::put` 的 trait doc 补写「`put` 按 `scope` 落入**该组织的命名空间**；越组织写入是**丢弃**还是**落入别组织命名空间**，由实现形态决定，但实现必须在自己的文档里写明」—— 端口只声明归属规则，**不替实现方决定**丢弃还是分桶。
 
 
 ## 6. 门禁与流程
