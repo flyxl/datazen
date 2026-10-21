@@ -7,8 +7,8 @@ use super::unified_plan;
 use super::{
     fetch_schema_object, fetch_target_table_dependency_catalog, fetch_target_table_schema,
     has_table_drop_statement, plan_has_destructive, resolve_reviewed_table_snapshot,
-    run_schema_diff_deploy, validate_target_dependency_catalog, AppState, CommandError,
-    DeployOptions, SchemaDiffDeployResult, SchemaDiffPlan, SqlTarget, State,
+    reviewed_scope, run_schema_diff_deploy, validate_target_dependency_catalog, AppState,
+    CommandError, DeployOptions, SchemaDiffDeployResult, SchemaDiffPlan, SqlTarget, State,
     DESTRUCTIVE_CONFIRM_TOKEN,
 };
 
@@ -210,6 +210,8 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
     }
 
     let reviewed = match crate::schema_diff::reviewed::consume(
+        state.schema_diff_reviewed_plans.as_ref(),
+        &reviewed_scope(state)?,
         &plan,
         &target_db_session_id,
         &handle,

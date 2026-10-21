@@ -1,21 +1,80 @@
 //! Short-lived, one-shot backend plans. Client SQL and risk labels never authorize writes.
+//!
+//! # 规则留包，存储走端口
+//!
+//! 本模块保留**评审计划的规则**：身份指纹、目标快照复核、依赖目录比对、计划有效期。
+//! **存储**由 [`ReviewedPlanStore`] 端口抽象，实例由宿主注入。
+//!
+//! 包内**不再持有进程级全局可变状态**：计划不再寄居在某个 `static` 里，
+//! 而是寄居在宿主注入的存储实例中，并按组织作用域隔离——多租户宿主里
+//! A 组织的计划不会被 B 组织读到、顶掉或提前消费掉。
+//!
+//! 端口方法一律带 `scope: &OrganizationScope`；**越组织访问一律按「不存在」处理**
+//! （`None` / `false` / 空），**不得**返回「无权限」错误——那会泄漏「存在但无权」
+//! （CM-05）。作用域类型由 `datazen-platform-api` 提供，本包不自造。
 use super::{
     object_identity::{SchemaObjectDependencySnapshot, SchemaObjectIdentity},
     objects::SchemaObjectSnapshot,
     types::SchemaDiffPlan,
 };
+use async_trait::async_trait;
 use datazen_driver_api::{ConnectionConfig, ConnectionHandle, TableSchema};
-use std::{
-    collections::HashMap,
-    sync::OnceLock,
-    time::{Duration, Instant},
-};
-use tokio::sync::Mutex;
+use datazen_platform_api::ports::scope::OrganizationScope;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[path = "reviewed_catalog.rs"]
 mod catalog;
 pub use catalog::{validate_object_dependency_catalog, validate_table_identity_catalog};
 
+/// 评审计划的有效期。超过即失效，必须重新比对后再部署。
+pub const REVIEWED_PLAN_TTL: Duration = Duration::from_secs(1800);
+
+/// 单个存储实例内保留的评审计划上限。超出时裁剪最旧的一条。
+pub const REVIEWED_PLAN_MAX_ENTRIES: usize = 128;
+
+/// 评审计划存储端口的错误。
+///
+/// 只表达「存储不可用」；**不**表达「越权」——越组织访问一律按「不存在」处理。
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ReviewedPlanStoreError {
+    #[error("reviewed plan store unavailable: {0}")]
+    Unavailable(String),
+}
+
+/// 已评审计划的存储端口。
+///
+/// 行类型是本包的词汇 [`ReviewedPlan`]——端口不另造一份计划结构。
+///
+/// * `put` 冻结一份计划；`get` 读取但不消费；`remove` 消费（取回并删除）。
+/// * 缺失**与**越组织一律返回 `None` / `false`——**不**返回「无权限」错误，
+///   否则会泄漏「存在但无权」（CM-05）。
+/// * `remove` 返回 `false` 表示该计划已被消费，据此保证「一次部署只消费一次」。
+#[async_trait]
+pub trait ReviewedPlanStore: Send + Sync + 'static {
+    /// 冻结（写入）一份已评审计划。
+    async fn put(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+        plan: ReviewedPlan,
+    ) -> Result<(), ReviewedPlanStoreError>;
+
+    /// 读取一份已评审计划（不消费）。缺失或越组织一律返回 `None`。
+    async fn get(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+    ) -> Result<Option<ReviewedPlan>, ReviewedPlanStoreError>;
+
+    /// 消费一份已评审计划（取回并删除）。已被消费返回 `false`。
+    async fn remove(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+    ) -> Result<bool, ReviewedPlanStoreError>;
+}
+
+#[derive(Debug, Clone)]
 pub struct ReviewedPlan {
     pub plan: SchemaDiffPlan,
     pub target_session: String,
@@ -32,9 +91,14 @@ pub struct ReviewedPlan {
     pub has_complete_target_object_catalog: bool,
     pub target_mysql_view_scope_context: Option<super::unified_scope::MySqlViewScopeContext>,
     pub source_snapshot: Option<ReviewedSourceSnapshot>,
-    created: Instant,
+    /// 冻结时刻（Unix 毫秒）。
+    ///
+    /// 用可持久化的墙上时钟而不是单调钟：存储实例可能被换成落盘实现，
+    /// 而有效期规则（[`REVIEWED_PLAN_TTL`]）必须由规则层与存储层读同一份时刻。
+    pub created_at_ms: u64,
 }
 
+#[derive(Debug, Clone)]
 pub struct ReviewedSourceSnapshot {
     pub session: String,
     pub pool: String,
@@ -46,12 +110,19 @@ pub struct ReviewedSourceSnapshot {
     pub table_dependency_catalog: Vec<SchemaObjectDependencySnapshot>,
 }
 
-static PLANS: OnceLock<Mutex<HashMap<String, ReviewedPlan>>> = OnceLock::new();
+impl ReviewedPlan {
+    /// 距冻结时刻过去了多久。
+    pub fn age(&self) -> Duration {
+        Duration::from_millis(now_unix_millis().saturating_sub(self.created_at_ms))
+    }
+}
 
-/// The plan registry lives for the process; `OnceLock` keeps the workspace
-/// MSRV (1.77) unlike `LazyLock` (stable 1.80).
-fn plans() -> &'static Mutex<HashMap<String, ReviewedPlan>> {
-    PLANS.get_or_init(|| Mutex::new(HashMap::new()))
+/// 当前时刻（Unix 毫秒）。系统时钟早于纪元时按 0 处理，不 panic。
+fn now_unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 pub fn identity(config: &ConnectionConfig) -> serde_json::Value {
@@ -83,7 +154,10 @@ pub enum PhysicalDatabaseScope {
     Unknown,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn freeze(
+    store: &dyn ReviewedPlanStore,
+    scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
     handle: &ConnectionHandle,
@@ -91,8 +165,10 @@ pub async fn freeze(
     snapshots: Vec<(String, TableSchema)>,
     target_database_scope: Option<String>,
     target_schema_scope: Option<String>,
-) {
+) -> Result<(), String> {
     freeze_internal(
+        store,
+        scope,
         plan,
         session,
         handle,
@@ -109,10 +185,13 @@ pub async fn freeze(
         None,
         None,
     )
-    .await;
+    .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn freeze_with_dependency_catalog(
+    store: &dyn ReviewedPlanStore,
+    scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
     handle: &ConnectionHandle,
@@ -121,8 +200,10 @@ pub async fn freeze_with_dependency_catalog(
     target_database_scope: Option<String>,
     target_schema_scope: Option<String>,
     dependency_schema_scope: Option<String>,
-) {
+) -> Result<(), String> {
     freeze_internal(
+        store,
+        scope,
         plan,
         session,
         handle,
@@ -139,10 +220,13 @@ pub async fn freeze_with_dependency_catalog(
         None,
         None,
     )
-    .await;
+    .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn freeze_with_objects(
+    store: &dyn ReviewedPlanStore,
+    scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
     handle: &ConnectionHandle,
@@ -151,8 +235,10 @@ pub async fn freeze_with_objects(
     object_snapshots: Vec<SchemaObjectSnapshot>,
     target_database_scope: Option<String>,
     target_schema_scope: Option<String>,
-) {
+) -> Result<(), String> {
     freeze_with_objects_and_mysql_view_context(
+        store,
+        scope,
         plan,
         session,
         handle,
@@ -163,10 +249,13 @@ pub async fn freeze_with_objects(
         target_schema_scope,
         None,
     )
-    .await;
+    .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn freeze_with_objects_and_mysql_view_context(
+    store: &dyn ReviewedPlanStore,
+    scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
     handle: &ConnectionHandle,
@@ -176,8 +265,10 @@ pub async fn freeze_with_objects_and_mysql_view_context(
     target_database_scope: Option<String>,
     target_schema_scope: Option<String>,
     target_mysql_view_scope_context: Option<super::unified_scope::MySqlViewScopeContext>,
-) {
+) -> Result<(), String> {
     freeze_internal(
+        store,
+        scope,
         plan,
         session,
         handle,
@@ -194,12 +285,15 @@ pub async fn freeze_with_objects_and_mysql_view_context(
         None,
         target_mysql_view_scope_context,
     )
-    .await;
+    .await
 }
 
 /// Freeze one unified plan together with its full target object dependency catalog.
 /// Deploy re-reads this catalog before executing any statement.
+#[allow(clippy::too_many_arguments)]
 pub async fn freeze_with_unified_catalog(
+    store: &dyn ReviewedPlanStore,
+    scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
     handle: &ConnectionHandle,
@@ -215,8 +309,10 @@ pub async fn freeze_with_unified_catalog(
     dependency_schema_scope: Option<String>,
     source_snapshot: ReviewedSourceSnapshot,
     target_mysql_view_scope_context: Option<super::unified_scope::MySqlViewScopeContext>,
-) {
+) -> Result<(), String> {
     freeze_internal(
+        store,
+        scope,
         plan,
         session,
         handle,
@@ -233,11 +329,13 @@ pub async fn freeze_with_unified_catalog(
         Some(source_snapshot),
         target_mysql_view_scope_context,
     )
-    .await;
+    .await
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn freeze_internal(
+    store: &dyn ReviewedPlanStore,
+    scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
     handle: &ConnectionHandle,
@@ -253,45 +351,37 @@ async fn freeze_internal(
     target_dependency_schema_scope: Option<String>,
     source_snapshot: Option<ReviewedSourceSnapshot>,
     target_mysql_view_scope_context: Option<super::unified_scope::MySqlViewScopeContext>,
-) {
+) -> Result<(), String> {
     let id = uuid::Uuid::new_v4().to_string();
     plan.plan_id = Some(id.clone());
-    let mut plans = plans().lock().await;
-    plans.retain(|_, p| p.created.elapsed() < Duration::from_secs(1800));
-    // Keep memory bounded even when a window repeatedly prepares a plan.
-    if plans.len() >= 128 {
-        if let Some(oldest) = plans
-            .iter()
-            .min_by_key(|(_, p)| p.created)
-            .map(|(id, _)| id.clone())
-        {
-            plans.remove(&oldest);
-        }
-    }
-    plans.insert(
-        id,
-        ReviewedPlan {
-            plan: plan.clone(),
-            target_session: session,
-            target_pool: handle.pool_id.clone(),
-            target_identity: identity(config),
-            target_database_scope,
-            target_schema_scope,
-            snapshots,
-            has_complete_target_dependency_catalog,
-            target_dependency_schema_scope,
-            object_snapshots,
-            object_dependency_catalog,
-            target_table_identity_catalog,
-            has_complete_target_object_catalog,
-            target_mysql_view_scope_context,
-            source_snapshot,
-            created: Instant::now(),
-        },
-    );
+    let frozen = ReviewedPlan {
+        plan: plan.clone(),
+        target_session: session,
+        target_pool: handle.pool_id.clone(),
+        target_identity: identity(config),
+        target_database_scope,
+        target_schema_scope,
+        snapshots,
+        has_complete_target_dependency_catalog,
+        target_dependency_schema_scope,
+        object_snapshots,
+        object_dependency_catalog,
+        target_table_identity_catalog,
+        has_complete_target_object_catalog,
+        target_mysql_view_scope_context,
+        source_snapshot,
+        created_at_ms: now_unix_millis(),
+    };
+    store
+        .put(scope, &id, frozen)
+        .await
+        .map_err(|error| error.to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn consume(
+    store: &dyn ReviewedPlanStore,
+    scope: &OrganizationScope,
     submitted: &SchemaDiffPlan,
     session: &str,
     handle: &ConnectionHandle,
@@ -303,12 +393,13 @@ pub async fn consume(
         .plan_id
         .as_ref()
         .ok_or("Prepare and review a new plan before deploying")?;
-    let mut plans = plans().lock().await;
-    let frozen = plans
-        .get(id)
+    let frozen = store
+        .get(scope, id)
+        .await
+        .map_err(|error| error.to_string())?
         .ok_or("Plan expired or already executed; compare again")?;
     validate(
-        frozen,
+        &frozen,
         submitted,
         session,
         handle,
@@ -316,9 +407,16 @@ pub async fn consume(
         target_database_scope,
         target_schema_scope,
     )?;
-    plans
-        .remove(id)
-        .ok_or_else(|| "Plan already executed".into())
+    // 校验通过才消费：复核失败**不**烧掉计划，用户改回正确目标后仍能部署。
+    // 并发部署时只有一个 `remove` 会成功，另一个据此判定「已被执行」。
+    if !store
+        .remove(scope, id)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        return Err("Plan already executed".into());
+    }
+    Ok(frozen)
 }
 
 fn validate(
@@ -330,7 +428,7 @@ fn validate(
     target_database_scope: Option<&str>,
     target_schema_scope: Option<&str>,
 ) -> Result<(), String> {
-    if frozen.created.elapsed() >= Duration::from_secs(1800) {
+    if frozen.age() >= REVIEWED_PLAN_TTL {
         return Err("Plan expired; compare again".into());
     }
     if frozen.plan != *submitted {
@@ -522,3 +620,7 @@ pub fn validate_object_snapshot(
 #[cfg(test)]
 #[path = "reviewed_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "reviewed_store_tests.rs"]
+mod store_tests;

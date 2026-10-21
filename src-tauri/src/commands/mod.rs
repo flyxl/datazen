@@ -177,6 +177,12 @@ pub struct AppState {
     pub schema_diff_jobs: Arc<crate::commands::schema_diff::job::SchemaDiffJobInfra>,
     /// P5 本机持久化 Job facade，所有迁移 Host 共用 `{appData}/datazen.sqlite`。
     pub desktop_job_host: Arc<datazen_runtime::job::JobHost>,
+    /// Schema Diff 评审计划的存储实例（宿主在组装期创建并注入）。
+    ///
+    /// 评审计划**不**再寄居在包里的进程级全局变量上：实例由宿主持有，访问按
+    /// 组织作用域隔离——多租户宿主里 A 组织的计划不会被 B 组织读到或顶掉。
+    /// 桌面是单租户，实现见 `commands/schema_diff/reviewed_store.rs`。
+    pub schema_diff_reviewed_plans: Arc<dyn crate::schema_diff::reviewed::ReviewedPlanStore>,
     /// 概要 §6.2 第 8 步的窄适配根：桌面身份 + owner 作用域句柄登记表。
     ///
     /// 事务归属和资源生命周期由 Runtime session actor 管理。取不到 adapter 时用
