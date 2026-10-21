@@ -396,6 +396,29 @@ describe('TableView (new rows)', () => {
     await waitFor(() => expect(screen.queryByTestId('table-insert-degraded')).toBeNull());
   });
 
+  it('drops the notice when a failed load is retried', async () => {
+    renderTable();
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('table-insert-row'));
+    await screen.findByTestId('draft-row-0');
+
+    // The refresh after the commit fails, so the page shows the error banner
+    // with its retry. (The commit itself succeeded, and the new row could not
+    // be located, so the notice is on screen as well.)
+    mockDatabaseCommands.getTableData.mockRejectedValueOnce(new Error('network down'));
+    fireEvent.click(screen.getByTestId('pending-commit'));
+    await waitFor(() => expect(mockDatabaseCommands.commitPendingChanges).toHaveBeenCalled());
+    await screen.findByTestId('table-insert-degraded');
+    const retry = await screen.findByText('common.retry');
+
+    // The retry re-reads the page: the notice of the previous commit is stale
+    // and has to go with it.
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(screen.queryByTestId('table-insert-degraded')).toBeNull());
+  });
+
   it('drops the notice when the page is reloaded', async () => {
     renderTable();
     await waitForTable();

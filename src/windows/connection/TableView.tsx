@@ -113,7 +113,12 @@ export function TableView({
      */
     const invalidateNotice = () => setInsertNotice(null);
     return {
-      load: () => void store().loadTableData({ panelId, ...context }),
+      load: () => {
+        // The "retry" of a failed load re-reads the page, so the notice of the
+        // previous commit is stale — exactly like a plain reload.
+        invalidateNotice();
+        void store().loadTableData({ panelId, ...context });
+      },
       reload: () => {
         invalidateNotice();
         store().reloadPanel(panelId);

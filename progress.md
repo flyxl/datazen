@@ -74,6 +74,15 @@ error TS 计数 = 0
 文案与 testid 都不同，样式可复用。`newRowIndex === null` 时 DOM 与今天逐字相同。
 （契约侧改动：集成分支 `1a0b37cd9`。）
 
+## 第 3 轮
+
+| 编号 | 处理 |
+| --- | --- |
+| IF2-D-1 | 「重试」路径（`actions.load`）也补了 `invalidateNotice()`——之前 8 条路径有、这一条没有。新用例 `drops the notice when a failed load is retried`（**变异验证**：抽掉修复后转红） |
+| IF2-D-3 | 插入条数的断言加了边界：正则 `/(?:^|\D)1 insert\(s\)(?:\D|$)/`（`"11 insert(s)"` / `"21 insert(s)"` 不满足）。**没有**用分隔符形式 `· 1 insert(s) ·`：预览描述把**原始条数**与插值后的词条并排渲染（`1 1 insert(s)`），分隔符形式要么不匹配、要么把断言钉死在那个重复渲染上。另外补了一条与文案无关的断言：**预览里恰好列出 1 条 INSERT 语句**（数 `<code>` 节点） |
+| 词条模板 | `tableData.pendingInserts` 改成 `'{count} insert(s)'`（契约 `ee3409494`；仓库既有约定一律是 `thing(s)`） |
+| E3 两条假钉 | ① store 层那条**改成走生产函数** `pendingChangesForWire`（原来在测试里手抄了一遍 wire 转换）；② backend-client 那条**改成走生产客户端**（`createBackendClient` → transport 调用，断言变更集**逐字**透传）+ 一条**编译期**钉（`InsertMarkedStaysOptional`：镜像里 `insertMarked` 必须保持可选）。依据：backend-client 包**不生产**载荷（转换在宿主的 `pendingChangesForWire` 里），所以在包内断言 fixture 的 JSON 证明不了任何生产性质；宿主侧的真钉由复测的 `insertThreeState.audit.test.ts` 承担 |
+
 ## 待裁定（只报不改，AGENTS.md「发现契约/实装冲突，停下来报告」）
 
 1. **`grid.insert.noWritableColumn` 没有生产者** —— 04 §8 把它列为本册要追加的码，

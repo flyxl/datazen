@@ -315,7 +315,7 @@ const pack = {
   'tableData.draftRowUnsaved': 'New row (not yet saved)',
   'tableData.insertDefault': 'DEFAULT',
   'tableData.insertSetNull': 'Set NULL',
-  'tableData.pendingInserts': '{count} inserts',
+  'tableData.pendingInserts': '{count} insert(s)',
   'tableData.confirmCommitWithInserts':
     'Commit {inserts} inserts, {updates} updates and {deletes} deletes?',
   'tableData.insertFailed': 'Failed to insert rows',

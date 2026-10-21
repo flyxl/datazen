@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { emptyTableState } from '../connectionState';
 import { draftInsertCount, orderedDrafts, withNewDraft } from '../draftInserts';
-import { draftsForWire, hasPendingWork, pendingWorkSignature } from '../pendingChanges';
+import {
+  draftsForWire,
+  hasPendingWork,
+  pendingChangesForWire,
+  pendingWorkSignature,
+} from '../pendingChanges';
 import type { TableState } from '../types';
 import type { TableChangeContext } from '../../../lib/tableChanges';
 
@@ -59,17 +64,15 @@ describe('draft rows (store layer)', () => {
       deleteMarked: false,
     });
 
-    // The host only reads the field when it is there: an insert-free plan must
-    // stay byte-identical, so the key may not appear at all.
-    const payload = JSON.parse(
-      JSON.stringify(
-        Array.from(ts.pendingChanges.values()).map((change) => {
-          const { rowIndex: _rowIndex, ...wire } = change;
-          return wire;
-        }),
-      ),
-    );
-    expect(payload[0]).not.toHaveProperty('insertMarked');
+    // The **production** wire function, not a hand-rolled copy of it: the
+    // property is that the payload of a change without inserts carries no
+    // `insertMarked` key at all, so a production change that always wrote
+    // `insertMarked: false` would turn this red.
+    const wire = pendingChangesForWire(ts.pendingChanges);
+
+    expect(Object.keys(wire[0])).not.toContain('insertMarked');
+    expect(wire[0]).not.toHaveProperty('insertMarked');
+    expect(JSON.parse(JSON.stringify(wire))[0]).not.toHaveProperty('insertMarked');
   });
 
   it('sends the drafts in creation order, not in map order', () => {

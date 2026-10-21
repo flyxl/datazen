@@ -102,6 +102,29 @@ export type TableDataResultParity = Assert<
   Parity<import('../../../src/types').TableDataResult, TableDataResult>
 >;
 
+/**
+ * `true` only when the key `K` of `T` is **optional**.
+ *
+ * The parity assertion above compares the key sets, not their optionality: a
+ * field that is optional on one side and required on the other has the same
+ * keys and stays assignable in both directions. That gap matters here — the
+ * host omits `insertMarked` when it is false, so a mirror that declared the
+ * flag as required would claim a key the wire does not carry.
+ */
+type IsOptional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
+
+/**
+ * The insert flag stays optional in the mirror.
+ *
+ * Fail-closed: making the flag required turns this into `false` and the
+ * program red (the type assertion, not a runtime one — this package builds no
+ * payload of its own, so the runtime half of the property belongs to the
+ * host's `pendingChangesForWire`, which pins it there).
+ */
+export type InsertMarkedStaysOptional = Assert<
+  IsOptional<PendingRowChange, 'insertMarked'>
+>;
+
 /* ------------------------------------------------------------------ */
 /* Fixtures.                                                           */
 /* ------------------------------------------------------------------ */
@@ -229,13 +252,30 @@ describe('table data wire shapes', () => {
     expect(JSON.parse(JSON.stringify(insertFree)).inserts).toEqual([]);
   });
 
-  it('keeps the insert flag out of a change set without inserts', () => {
-    // The byte-identity of an insert-free change set comes from the
-    // `insertMarked` flag, not from the plan: the host omits the flag when it
-    // is false, so the fingerprint of a change set without inserts stays the
-    // one it had before the flag existed.
-    expect(JSON.parse(JSON.stringify(UPDATE_CHANGE))).not.toHaveProperty('insertMarked');
-    expect(JSON.parse(JSON.stringify(INSERT_CHANGE)).insertMarked).toBe(true);
+  it('carries the change set through unchanged, flag included', async () => {
+    // This package builds no payload of its own: the change set travels
+    // **verbatim**, so the host's rule ("omit the flag when it is false") is
+    // what reaches the wire. Asserted on the transport call, not on a
+    // fixture: the previous version of this case asserted the JSON of a
+    // fixture that never carried the flag, which proved nothing.
+    //
+    // The flag's optionality is pinned by the compile-time assertion
+    // `InsertMarkedStaysOptional` above — it is the part of the contract this
+    // package actually owns.
+    const fake = createFakeTransport();
+    fake.responses.set('previewPendingChanges', PLAN);
+
+    const client = createBackendClient('desktop', fake.transport);
+    const request: PreviewPendingChangesRequest = {
+      context: CONTEXT,
+      changes: [UPDATE_CHANGE, INSERT_CHANGE],
+    };
+    await client.previewPendingChanges(request);
+
+    const payload = fake.calls[0].payload as PreviewPendingChangesRequest;
+    expect(payload.changes[0]).toBe(UPDATE_CHANGE);
+    expect(payload.changes[0].insertMarked).toBeUndefined();
+    expect(payload.changes[1].insertMarked).toBe(true);
   });
 
   it('accepts a table read whose row count was not taken', () => {
