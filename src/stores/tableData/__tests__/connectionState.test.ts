@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildTableContext,
-  editKey,
   emptyTableState,
   extractErrorMessage,
   rowsToRecords,
@@ -84,7 +83,6 @@ describe('[tester] tableData/connectionState', () => {
   });
 
   it('utility helpers behave consistently', () => {
-    expect(editKey(2, 'name')).toBe('2:name');
     expect(toCellValue(null)).toBeNull();
     expect(toCellValue('x')).toBe('x');
   });

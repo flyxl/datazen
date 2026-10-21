@@ -2,7 +2,6 @@ import { useCallback, useId, useMemo, useState, type KeyboardEvent } from 'react
 import { tid } from '../../lib/tid';
 import { Download, Trash2 } from 'lucide-react';
 import type { FilterCondition, SortCondition, Value } from '../../types';
-import type { CellEdit } from '../../stores/tableData/types';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
 import { useGridSelection } from '../../hooks/useGridSelection';
@@ -51,7 +50,6 @@ export interface DataTableProps {
   onApplyFilters?: () => void;
 
   editingCell?: { row: number; col: string } | null;
-  editBuffer?: Map<string, CellEdit>;
   onCellDoubleClick?: (row: number, col: string) => void;
   onCellEdit?: (row: number, col: string, value: unknown) => void;
   onCellEditCancel?: () => void;

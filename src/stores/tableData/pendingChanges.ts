@@ -7,8 +7,7 @@ import {
   type PendingInsert,
   type PendingRowChange,
 } from '../../lib/tableChanges';
-import { editKey } from './connectionState';
-import type { CellEdit, TableState } from './types';
+import type { TableState } from './types';
 
 export const AMBIGUOUS_ROW_IDENTITY_ERROR =
   'Row identity is NULL, unstable, or ambiguous; UPDATE/DELETE was not staged.';
@@ -78,27 +77,6 @@ export function findPendingForRow(
   const direct = ts.pendingChanges.get(directKey);
   if (direct) return { key: directKey, change: direct };
   return null;
-}
-
-export function rebuildEditBuffer(ts: TableState): Map<string, CellEdit> {
-  const next = new Map<string, CellEdit>();
-  const pkColumns = ts.columns.filter((column) => column.isPrimaryKey);
-  if (pkColumns.length === 0) return next;
-
-  ts.rows.forEach((row, rowIndex) => {
-    const match = findPendingForRow(ts, rowIndex, row, pkColumns);
-    if (!match || match.change.deleteMarked) return;
-    for (const column of match.change.changedColumns) {
-      next.set(editKey(rowIndex, column), {
-        rowIndex,
-        columnName: column,
-        originalValue: match.change.originalValues[column],
-        newValue: match.change.currentValues[column],
-        pkSnapshot: { ...match.change.rowIdentity },
-      });
-    }
-  });
-  return next;
 }
 
 export function overlayPendingRows(

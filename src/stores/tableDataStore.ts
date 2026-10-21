@@ -41,7 +41,6 @@ import {
   overlayPendingRows,
   pendingChangesForWire,
   pendingWorkSignature,
-  rebuildEditBuffer,
 } from './tableData/pendingChanges';
 import {
   createDraftSlice,
@@ -193,12 +192,6 @@ function commitFetchedPage(
     loading: false,
     loadingRevision: null,
     ...rowIndexSelectionReset(),
-    editBuffer: rebuildEditBuffer({
-      ...current,
-      columns: res.columns,
-      rows: rowsWithPending,
-      rowIdentityAnchors: anchors,
-    }),
     editingCell: null,
     error: duplicateIdentityKeys.length > 0 ? AMBIGUOUS_ROW_IDENTITY_ERROR : null,
   });
@@ -299,7 +292,6 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         rows: [],
         totalRows: 0,
         ...rowIndexSelectionReset(),
-        editBuffer: new Map(),
         editingCell: null,
         // Bump the revision so an in-flight (or late) response can never commit.
         requestRevision: ts.requestRevision + 1,
@@ -530,7 +522,6 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
           draftInsertOrder: [],
           previewPlan: null,
           pendingStatus: 'idle',
-          editBuffer: new Map(),
           editingCell: null,
           highlightedNewRowKey: null,
           error: null,

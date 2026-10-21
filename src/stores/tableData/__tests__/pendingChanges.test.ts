@@ -8,7 +8,6 @@ import {
   overlayPendingRows,
   pendingChangesForWire,
   pendingChangesSignature,
-  rebuildEditBuffer,
   rowIdentityIsUnique,
 } from '../pendingChanges';
 import { emptyTableState } from '../connectionState';
@@ -79,22 +78,6 @@ describe('[tester] tableData/pendingChanges', () => {
     ts.rowIdentityAnchors.set(0, '1');
     const rows = [{ id: 1, name: 'Alice' }];
     expect(overlayPendingRows(ts, rows)).toEqual([{ id: 1, name: 'Bob' }]);
-  });
-
-  it('rebuildEditBuffer skips delete-marked rows', () => {
-    const ts = emptyTableState();
-    ts.columns = pkColumns;
-    ts.rows = [{ id: 1, name: 'Alice' }];
-    ts.pendingChanges.set('1', {
-      rowIndex: 0,
-      rowIdentity: { id: 1 },
-      originalValues: { name: 'Alice' },
-      currentValues: { name: 'Bob' },
-      changedColumns: ['name'],
-      deleteMarked: true,
-    });
-    ts.rowIdentityAnchors.set(0, '1');
-    expect(rebuildEditBuffer(ts).size).toBe(0);
   });
 
   it('pendingChangesSignature and pendingChangesForWire strip rowIndex', () => {

@@ -4,7 +4,7 @@
  *
  * These five actions — `stageCellChange`, `applyColumnToRows`, `stageRowDelete`,
  * `deleteRows` and `rollbackPendingChanges` — are the ones the dirty-cell
- * chapter (DB-06) rewrites: it removes the `editBuffer` write points from them,
+ * chapter (DB-06) rewrites: it drops the second dirty-state cache from them,
  * adds the "undo the delete mark" action next to them, and moves the
  * "next version of a `PendingRowChange`" computation into a pure module.
  *
@@ -24,7 +24,6 @@ import {
   AMBIGUOUS_ROW_IDENTITY_ERROR,
   findPendingForRow,
   hasPendingIdentityCollision,
-  rebuildEditBuffer,
   rowIdentityIsUnique,
 } from './pendingChanges';
 import type { TableState } from './types';
@@ -139,7 +138,6 @@ export function createPendingEditSlice(
       rowIdentityAnchors,
       previewPlan: null,
       pendingStatus: 'idle',
-      editBuffer: rebuildEditBuffer({ ...ts, rows: nextRows, pendingChanges }),
       editingCell: null,
       error: null,
     }));
@@ -197,7 +195,6 @@ export function createPendingEditSlice(
       rowIdentityAnchors,
       previewPlan: null,
       pendingStatus: 'idle',
-      editBuffer: rebuildEditBuffer({ ...ts, pendingChanges }),
       editingCell: null,
       error: null,
     }));
@@ -234,7 +231,6 @@ export function createPendingEditSlice(
         draftInsertOrder: [],
         previewPlan: null,
         pendingStatus: 'idle',
-        editBuffer: new Map(),
         editingCell: null,
         highlightedNewRowKey: null,
         error: null,
