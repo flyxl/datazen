@@ -36,6 +36,8 @@
 | F8 | 探针**回落路径**（clickhouse/duckdb/rqlite/turso）值会进 SQL 文本 | 已知残留 | 这四个驱动现网都硬编码 `foreign_keys: Vec::new()`，走不到 |
 | F9 | 真实 PG / SQL Server / MySQL / SQLite 的外键跳转端到端 | R 回归 | 本环境无 DB；FK2-D1 正是 mock 看不见的那类缺陷 |
 | F10 | i18n 同步：每个非英语 locale 缺 170 key（16 个是本波新增，其余既有） | 发布前 | `node scripts/i18n-sync-check.mjs` 是发布硬门禁 |
+| **F11** | **`grid.selection.*` 三个码登记了却零生产者**（Wave 1 的 `grid-selection`）：越界一律 `clampCellCoord → null`，**从不抛错** | **需要一次显式决定** | 轨 B 新加的门禁 `src/lib/__tests__/gridErrors.registration.test.ts` 把它们列进 `PRODUCER_PENDING`，并加了一条断言：**它们一旦有了生产者，门禁就红**，逼着把 `PRODUCER_PENDING` 删掉。**二选一**：①让选择层改抛错（**行为变更**：静默夹取 → 明确报错，需独立轨 + 复测）；②撤登记并从契约 §8.2 删行。**不能一直挂着**——契约自己写着"只登记有生产者的码" |
+| F12 | `src/lib/gridErrors.ts` 的文件头注释仍写「Every entry here MUST have a real producer」，而 `grid.selection.*` 三条没有 | 协调者（合流后改注释） | 注释要写明 `PRODUCER_PENDING` 这个例外与它自清的机制 |
 
 ## Wave 6 排法（Wave 5 合流后执行）
 
