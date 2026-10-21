@@ -206,6 +206,30 @@ describe('cell/row mode transitions', () => {
   });
 });
 
+describe('frozen shared constants', () => {
+  it('the row-mode constant is frozen like EMPTY_GRID_SELECTION and fails loud on write', () => {
+    // Shape stays exactly the canonical row mode (same identity the three writers store).
+    expect(ROW_MODE_GRID_SELECTION).toEqual({
+      anchor: null,
+      focus: null,
+      extraRanges: [],
+      mode: 'row',
+    });
+    expect(Object.isFrozen(ROW_MODE_GRID_SELECTION)).toBe(true);
+    expect(Object.isFrozen(ROW_MODE_GRID_SELECTION.extraRanges)).toBe(true);
+
+    // `extraRanges` is typed `CellRange[]`, so this compiles — the throw is what protects the
+    // shared reference that every panel stores. Without the freeze it would silently pollute.
+    expect(() =>
+      ROW_MODE_GRID_SELECTION.extraRanges.push({
+        start: coord(0, 'id'),
+        end: coord(0, 'id'),
+      }),
+    ).toThrow(TypeError);
+    expect(ROW_MODE_GRID_SELECTION.extraRanges).toHaveLength(0);
+  });
+});
+
 describe('reconciliation', () => {
   it('clears the selection when a main corner column is hidden', () => {
     const selection = selectionFromAnchorFocus(coord(0, 'name'), coord(1, 'id'), 'cell');

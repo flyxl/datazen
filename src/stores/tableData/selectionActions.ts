@@ -4,6 +4,7 @@ import {
   reconcileGridSelection,
   selectionFromAnchorFocus,
   type CellCoord,
+  type CellRange,
   type GridSelection,
 } from './gridSelection';
 
@@ -17,13 +18,25 @@ export interface SelectionTransitionDeps {
   rowCount: number;
 }
 
-/** Row mode carries no geometry: the row highlight comes from `selectedRows` alone. */
-export const ROW_MODE_GRID_SELECTION: GridSelection = {
+/** Frozen empty range list, same construction as `EMPTY_GRID_SELECTION`'s private array. */
+const ROW_MODE_EXTRA_RANGES: CellRange[] = Object.freeze([]) as unknown as CellRange[];
+
+/**
+ * Row mode carries no geometry: the row highlight comes from `selectedRows` alone.
+ *
+ * Frozen exactly like `EMPTY_GRID_SELECTION` because this single object is stored **by
+ * reference** in every panel's slice (`applyRowModeTransition`, `applyGridSelection`,
+ * `toggleSelectAll`). An unfrozen `extraRanges` would let one stray `.push` leak a range into
+ * every other panel with no error; frozen makes that write fail loud instead of spreading.
+ * The `CellRange[]` type stays mutable on purpose: the runtime throw is the guard, and
+ * narrowing it to `readonly` would ripple through every reader for no added safety.
+ */
+export const ROW_MODE_GRID_SELECTION: GridSelection = Object.freeze({
   anchor: null,
   focus: null,
-  extraRanges: [],
+  extraRanges: ROW_MODE_EXTRA_RANGES,
   mode: 'row',
-};
+});
 
 /**
  * Resolve the displayed column order of a panel, which is what every range comparison uses.
