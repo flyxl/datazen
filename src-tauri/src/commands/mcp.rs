@@ -46,6 +46,7 @@ fn clone_app_state(state: &AppState) -> Arc<AppState> {
         ai_grants: state.ai_grants.clone(),
         schema_diff_jobs: state.schema_diff_jobs.clone(),
         desktop_job_host: state.desktop_job_host.clone(),
+        sync_stores: state.sync_stores.clone(),
         platform: state.platform.clone(),
     })
 }

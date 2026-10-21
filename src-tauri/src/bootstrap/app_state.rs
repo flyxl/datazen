@@ -218,6 +218,9 @@ pub(crate) fn finish_app_state(
         ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
         desktop_job_host,
+        // Data Sync 的存储端口实例在组装期创建一次：宿主决定「实例从哪来」，
+        // 规则与落盘实现留在共享包里。
+        sync_stores: crate::commands::SyncStorePorts::desktop(),
     };
     if let Ok(adapter) = state.platform.require() {
         if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {

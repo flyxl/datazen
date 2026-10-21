@@ -3,7 +3,6 @@
 mod apply;
 mod artifact_view;
 pub(crate) mod compare;
-pub(crate) use datazen_data_sync::comparison_store;
 mod exec;
 #[cfg(test)]
 mod filter_validation_tests;
@@ -62,8 +61,15 @@ pub(crate) async fn execute_data_sync_profile_plan_impl(
     selection_revision: u64,
     options: crate::data_sync::SyncOptions,
 ) -> Result<crate::data_sync::ExecutionResult, CommandError> {
-    let selection = plans::default_profile_selection(&plan_id, selection_revision, &options)
-        .map_err(CommandError::Validation)?;
+    let scope = state.organization_scope();
+    let selection = plans::default_profile_selection(
+        state.sync_stores.plan_store.as_ref(),
+        &scope,
+        &plan_id,
+        selection_revision,
+        &options,
+    )
+    .map_err(CommandError::Validation)?;
     execute_data_sync_plan_impl(
         state,
         plans::SyncRunRequest {
@@ -226,7 +232,8 @@ pub async fn execute_data_sync(
     };
     if let Some(run) = run.as_mut() {
         run.selected_count = request.selection.rows.len() as u64;
-        if let Ok(plan) = plans::peek_plan(&request.plan_id) {
+        let scope = state.organization_scope();
+        if let Ok(plan) = state.sync_stores.plan_store.peek(&scope, &request.plan_id) {
             run.source_connection_id = plan
                 .source_endpoint_identity
                 .as_ref()
@@ -387,9 +394,12 @@ pub async fn compare_data_sync(
 /// page request carries no SQL, credentials or row values from the client.
 #[tauri::command]
 pub fn get_data_sync_comparison_page(
+    state: State<'_, AppState>,
     request: plans::SyncComparisonPageRequest,
 ) -> Result<plans::SyncComparisonPage, CommandError> {
-    plans::get_comparison_page(request).map_err(CommandError::Validation)
+    let scope = state.organization_scope();
+    plans::get_comparison_page(state.sync_stores.plan_store.as_ref(), &scope, request)
+        .map_err(CommandError::Validation)
 }
 
 #[tauri::command]

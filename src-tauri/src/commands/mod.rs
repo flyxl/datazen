@@ -82,6 +82,8 @@ use datazen_application::error::ApiError;
 use datazen_driver_api::QueryExecutionId;
 use datazen_feature_core::ai::context::SchemaContextBuilder;
 use datazen_feature_core::ai::prompt_resolver::PromptResolver;
+use datazen_platform_api::id::OrganizationId;
+use datazen_platform_api::ports::scope::OrganizationScope;
 use datazen_runtime::driver_registry::registry::DriverRegistry;
 use datazen_runtime::schema_cache::SchemaCache;
 use datazen_workspace_apps::manager::WappManager;
@@ -153,6 +155,37 @@ impl Default for QueryExecutionRegistry {
     }
 }
 
+/// Data Sync 的存储端口实例（组装期创建一次，之后只读借用）。
+///
+/// 端口的实现留在共享包里：`datazen_data_sync` 仍然拥有「比较落盘」「计划
+/// 认领」的规则，宿主只决定**实例从哪来**——比较存储的根目录与计划注册表本身。
+/// 端口方法都带 [`OrganizationScope`]，跨组织访问按「不存在」处理。
+#[derive(Clone)]
+pub struct SyncStorePorts {
+    /// 计划注册表端口。签发 / 查看 / 绑定端点身份 / 认领。
+    pub plan_store: Arc<dyn datazen_data_sync::plan_store::SyncPlanStore>,
+    /// 比较存储根端口。决定比较结果写到哪个目录。
+    pub comparison_root: Arc<dyn datazen_data_sync::comparison_store::ComparisonStoreRoot>,
+}
+
+impl SyncStorePorts {
+    /// 桌面形态的默认接线：一个本地根 + 一个进程内计划注册表。
+    ///
+    /// 桌面是单租户：比较存储的根只属于本地组织这一个组织。
+    pub fn desktop() -> Self {
+        let organization = OrganizationId::new(crate::platform::identity::LOCAL_ORGANIZATION_ID);
+        Self {
+            plan_store: Arc::new(datazen_data_sync::plan_store::InMemorySyncPlanStore::new()),
+            comparison_root: Arc::new(
+                datazen_data_sync::comparison_store::LocalComparisonStoreRoot::new(
+                    datazen_data_sync::comparison_store::default_comparison_store_root(),
+                    organization,
+                ),
+            ),
+        }
+    }
+}
+
 /// Shared application state injected into every command handler.
 #[derive(Clone)]
 pub struct AppState {
@@ -177,6 +210,11 @@ pub struct AppState {
     pub schema_diff_jobs: Arc<crate::commands::schema_diff::job::SchemaDiffJobInfra>,
     /// P5 本机持久化 Job facade，所有迁移 Host 共用 `{appData}/datazen.sqlite`。
     pub desktop_job_host: Arc<datazen_runtime::job::JobHost>,
+    /// Data Sync 的存储端口实例：计划注册表 + 比较存储根。
+    ///
+    /// 过去计划注册表是共享包里的 `static STORE`（进程级全局可变状态），
+    /// 现在由组装点创建实例并注入。
+    pub sync_stores: SyncStorePorts,
     /// 概要 §6.2 第 8 步的窄适配根：桌面身份 + owner 作用域句柄登记表。
     ///
     /// 事务归属和资源生命周期由 Runtime session actor 管理。取不到 adapter 时用
@@ -191,6 +229,30 @@ impl AppState {
     /// `is_some()` 判断把失败吞成默认行为。
     pub fn platform_require(&self) -> Result<&Arc<crate::platform::PlatformAdapter>, ApiError> {
         self.platform.require()
+    }
+
+    /// 本次调用的**组织作用域**。
+    ///
+    /// 作用域只表达组织维度，且只能由 adapter 组装的身份上下文推导（INV-01）：
+    /// [`OrganizationScope::from_context`]。桌面是单租户——组织维度是进程常量
+    /// `LOCAL_ORGANIZATION_ID`，与「主体是谁」无关。
+    ///
+    /// 因此桌面身份组装失败（拿不到当前登录用户）时**不**让存储访问整体失效：
+    /// 变的是主体，不是「哪个组织」。此时按同一个常量给出作用域，端口侧的
+    /// 跨组织判定（越权访问按「不存在」处理）依然成立。
+    pub fn organization_scope(&self) -> OrganizationScope {
+        match self.platform_require() {
+            Ok(adapter) => OrganizationScope::from_context(adapter.begin_call().context()),
+            Err(error) => {
+                tracing::warn!(
+                    code = ?error.code,
+                    "桌面身份不可用：组织作用域沿用本地组织常量"
+                );
+                OrganizationScope::new(OrganizationId::new(
+                    crate::platform::identity::LOCAL_ORGANIZATION_ID,
+                ))
+            }
+        }
     }
 
     /// Lazily register AI providers + load prompt templates.

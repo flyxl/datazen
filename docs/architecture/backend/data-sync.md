@@ -64,6 +64,19 @@ DELETE 默认不选。
 
 Preview 生成 SQL 展示文本；真正 Execute 使用参数化 SQL，不把 Preview literal SQL 当作执行 SQL。
 
+### 3.1 存储端口边界
+
+Data Sync 的两处存储都是**端口**：规则与实现留在共享包内，宿主在组装期注入实例。
+
+| 端口 | 包内实现 | 宿主注入什么 |
+|---|---|---|
+| `plan_store::SyncPlanStore` | `plan_store::InMemorySyncPlanStore` | 计划注册表实例 |
+| `comparison_store::ComparisonStoreRoot` | `comparison_store::LocalComparisonStoreRoot` | 比较存储的根目录 |
+
+比较结果的落盘实现（私有目录、帧式行文件、索引校验、崩溃回收）留在 `packages/data-sync/src/comparison_store/`：本地文件系统是形态中立的，搬进宿主只会让第二个形态再抄一遍；宿主注入的只有**存储根从哪来**。
+
+计划注册表过去是包内的 `static STORE`（进程级全局可变状态），现由 `AppState.sync_stores` 持有的实例承担。端口方法都带 `datazen_platform_api::ports::scope::OrganizationScope`：越组织访问按「**不存在**」处理（CM-05），端口返回与「计划不存在」完全一样的措辞，不返回「无权限」。桌面是单租户——组织维度是进程常量 `LOCAL_ORGANIZATION_ID`。
+
 ## 4. Execute
 
 ```text
