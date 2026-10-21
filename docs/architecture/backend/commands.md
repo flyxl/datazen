@@ -8,17 +8,17 @@ Commands 是 React 前端进入 Rust backend 的 IPC 边界。Command 层负责�
 
 `src-tauri/src/commands/mod.rs` 下包含：
 
-- connection / config / context
-- query / data / schema / structure
-- driver_command
+- connection / connection_import / config / context
+- query / data / data_session / schema / sample
+- driver_command / driver_protocol
 - schema_diff
 - sync
 - data_transfer
 - workflow
 - dashboard
-- AI / MCP
-- history / export / backup
-- wapps / theme / window
+- AI / MCP / native_tool
+- history / export / backup / restore_job / file_jobs / app_archive
+- wapps / theme / window / dialog / tunnel / clipboard
 
 具体目录结构以 `src-tauri/src/commands/` 为准。
 
@@ -65,7 +65,7 @@ Command 的参数名携带语义，不是随意的命名。`connection_id` 是�
 - Data Transfer：`commands/data_transfer/`
 - AI：`commands/ai/`
 
-这些 command 不应把产品流程重新实现一遍；比较、计划、映射和执行等领域逻辑分别位于 `schema_diff/`、`data_sync/`、`data_transfer/` 等模块。
+这些 command 不应把产品流程重新实现一遍；比较、计划、映射和执行等领域逻辑分别位于 `packages/schema-diff/`、`packages/data-sync/`、`packages/data-transfer/` 等模块。
 
 ## 5. Driver Command
 

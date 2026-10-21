@@ -49,7 +49,7 @@
 **核心问题：为什么同时存在 `connectionId` 和 `dbSessionId`？**
 
 - 持久化连接配置与运行时连接会话的区别
-- `ConnectionManager` 如何管理连接池
+- Runtime 如何管理会话、物理资源与空闲回收
 - 连接建立、复用、断开和异常清理
 - 前端状态与后端资源的对应关系
 - Workflow、MCP 为什么只接受 `connectionId`

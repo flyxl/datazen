@@ -105,7 +105,7 @@ Commands 层不应该实现某种数据库的具体语法。它解决的是“�
 
 ### 第三步：找到会话与 Driver
 
-`ConnectionManager` 根据 `dbSessionId` 找到当前会话对应的连接句柄和数据库 Driver。
+Runtime 的 `SessionRegistry` 根据 `dbSessionId` 找到会话记录、owner 与资源绑定；`DesktopSessionBackend` 持有对应的物理连接句柄和隧道。
 
 连接句柄保留在 Rust 进程中，前端只能看到一个不透明的会话 ID。这避免了 UI 状态与底层连接池直接耦合，也让后端可以统一处理连接复用、断开和资源清理。
 
@@ -144,7 +144,7 @@ Tauri IPC + Channel
     ↓
 Commands 层：校验、限流、错误与历史
     ↓
-ConnectionManager：解析运行时会话
+Runtime：解析运行时会话
     ↓
 Driver Command Runtime：发现并校验命令
     ↓
@@ -169,7 +169,7 @@ Commands 接受来自前端的 IPC 调用，完成参数校验、日志记录、
 
 Services 提供可被多个入口复用的核心能力，例如：
 
-- `ConnectionManager` 管理连接与运行时会话；
+- `Runtime` 管理连接、会话、物理资源与空闲回收；
 - `QueryExecutor` 处理表格数据分页、筛选和排序；
 - `DbTools` 为 AI、MCP 等调用者提供更高层的数据库工具。
 

@@ -27,15 +27,16 @@ steps:
 
 ## 模块分层
 
-`src-tauri/src/workflow/` 将注册、上下文、条件、执行和历史拆开：
+共享执行语义位于 `packages/feature-core/src/workflow/`，宿主 `src-tauri/src/workflow/` 只保留 YAML 仓储、桌面历史和 Runtime 接线：
 
-- `registry.rs`：加载、保存、删除 YAML；
-- `model.rs` / `command.rs`：Definition 与 Step 类型；
-- `context.rs`：模板变量、路径和循环上下文；
-- `conditions.rs`：Condition 表达式；
-- `executor.rs`：步骤编排、超时和错误策略；
-- `command_runtime.rs`：连接解析、Command discovery 和 Driver 执行；
-- `history.rs`：执行历史持久化。
+- `packages/feature-core/src/workflow/model.rs` / `command.rs`：Definition 与 Step 类型；
+- `packages/feature-core/src/workflow/context.rs`：模板变量、路径和循环上下文；
+- `packages/feature-core/src/workflow/conditions.rs`：Condition 表达式；
+- `packages/feature-core/src/workflow/executor.rs`：步骤编排、超时和错误策略；
+- `packages/feature-core/src/workflow/resource_execution.rs`：独立 Runtime 资源执行；
+- `src-tauri/src/workflow/registry.rs`：加载、保存、删除 YAML；
+- `src-tauri/src/workflow/command_runtime.rs`：桌面连接解析、Command discovery 和 Driver 执行；
+- `src-tauri/src/workflow/history.rs`：执行历史持久化。
 
 `workflows.rs` 只是兼容 facade，新代码应依赖拆分后的模块。
 

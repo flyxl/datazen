@@ -2,7 +2,7 @@
 
 DataZen ships a **Basic** SKU with four core drivers (`postgres`, `mysql`, `sqlite`, `redis`). Additional database engines live as **path drivers** under `packages/drivers/` and are listed in [`drivers-registry.json`](../../drivers-registry.json) at the repo root.
 
-This document covers the four optional engines called out in the P2 roadmap: **MongoDB**, **ClickHouse**, **DuckDB**, and **SQL Server**. Git-based drivers (Kiwi, OLAP, Superset) are documented in [independent driver development](independent-driver-development.en.md).
+This document covers the four optional engines maintained as path drivers: **MongoDB**, **ClickHouse**, **DuckDB**, and **SQL Server**. Git-based drivers (Kiwi, OLAP, Superset) are documented in [independent driver development](independent-driver-development.en.md).
 
 ## Inventory (2026-08-21)
 
@@ -98,6 +98,10 @@ Frontend dialect helpers (`src/lib/sqlDialects/extra.ts`) exist for formatting a
 - **Query / EXPLAIN:** supported
 - **Admin commands:** create/drop database, schema, user (`admin_commands.rs`)
 - **Export:** standard Host export path; transaction prefix uses `BEGIN TRANSACTION` via dialect-aware export helper
+- **Schema Diff:** the driver implements `MigrationRenderer` / `MigrationCapabilities` / `TypeNormalizer`. IDENTITY rebuilds, routines/triggers/sequences/user-defined types, cross-schema object DDL and object/index features that cannot be proven safe fail closed before execution.
+- **Data Sync:** same-family only. Comparison and parameterized writes use the driver's key/ordering rules; identity values are written under a session-scoped `IDENTITY_INSERT` that is cleaned up on table switch, failure, cancellation and before commit. Text/`uniqueidentifier`/`rowversion` keys whose ordering cannot be proven are rejected.
+- **Data Transfer:** SQL Server works as source and target, including identity cleanup on the target, 2100-parameter chunking and SQL-file identity wrapping derived from the actual target catalog. Unsupported types, unrepresentable collations and incomplete structure are rejected in preflight.
+- **Live evidence:** optional live journeys live in `packages/drivers/sqlserver/e2e/` (see its README); they require `E2E_SQLSERVER_*` and are not part of default `pnpm e2e`.
 
 ## Gaps and follow-ups (driver crate scope)
 

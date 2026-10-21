@@ -17,7 +17,7 @@ Data Sync 用于**同族数据库的行级差异同步**。它与 Schema Diff、
 当前 Data Sync 要求：
 
 1. Source/Target 属于相同 normalized family。
-2. V1 同步 family 为 MySQL/MariaDB 和 PostgreSQL。
+2. V1 同步 family 为 MySQL/MariaDB、PostgreSQL 和 SQL Server（`mssql` 归一化为 `sqlserver`）；SQL Server 额外要求 identity 属性一致，且 identity 列必须属于主键。
 3. 列名、类型、nullable 等结构满足 `types_eq`。
 4. Primary key 集合及顺序一致。
 5. 禁止同连接、同 database、同 schema 自同步。

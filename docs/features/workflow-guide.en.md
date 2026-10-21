@@ -714,7 +714,7 @@ On failure, `final_output` from completed steps and an `error` field may still b
 
 ### 12.3 AI generation
 
-Chat uses prompt: `resources/prompts/{lang}/workflow_generate.txt`.  
+Chat uses prompt: `packages/feature-core/resources/prompts/workflow_generate.md`.
 Output must be **snake_case** YAML inside a \`\`\`yaml fence.
 
 ### 12.4 MCP
@@ -901,7 +901,7 @@ output:
 | `src-tauri/src/workflow/workflows.rs` | Model, execute, templates, conditions |
 | `scripts/test-cross-db-workflow.yaml` | Cross-DB sample |
 | `src-tauri/tests/workflow_tests.rs` | Integration tests |
-| `src-tauri/resources/prompts/*/workflow_generate.txt` | AI generation rules |
+| `packages/feature-core/resources/prompts/workflow_generate.md` | AI generation rules |
 | `e2e/specs/workflow*.ts` | UI E2E |
 
 ### 15.5 Corrections vs older docs

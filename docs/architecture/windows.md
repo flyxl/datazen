@@ -37,7 +37,7 @@
 ### 1.1 首次启动旅程（OnboardingWizard）
 
 `src/windows/onboarding/`，只在首次安装时由 Rust 创建独立 `onboarding` OS 窗口
-（`?window=onboarding`，见 `bootstrap.rs` + `commands/window.rs`）；此时主窗口尚未创建，
+（`?window=onboarding`，见 `bootstrap/run.rs` + `commands/window.rs`）；此时主窗口尚未创建，
 两者永不共存。完成后端 `onboarding_complete` 关闭向导窗并创建主窗口。
 
 ```
@@ -123,7 +123,13 @@ function openWindow(label: string, options: OpenWindowOptions) {
 `src/lib/windowKind.ts` 用 URL 参数 `window` 区分：
 
 ```typescript
-export type WindowKind = 'main' | 'data-sync' | 'data-transfer' | 'schema-diff' | 'backup';
+export type WindowKind =
+  | 'main'
+  | 'onboarding'
+  | 'data-sync'
+  | 'data-transfer'
+  | 'schema-diff'
+  | 'backup';
 
 /** Legacy sub-window kinds that now route to the unified main shell. */
 const LEGACY_MAIN_ALIASES = new Set([
