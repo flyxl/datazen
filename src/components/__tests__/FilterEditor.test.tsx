@@ -540,6 +540,37 @@ describe('FilterEditor operators and completeness', () => {
     expect(props.onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: ['open'] }));
   });
 
+  it('converges the operator when the column changes to one that cannot take it', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'name', operator: 'contains', value: 'a' }],
+    });
+    expandFirstChip();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: 'id' } });
+    expect(props.onChange).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({ column: 'id', operator: 'eq', value: 'a' }),
+    );
+  });
+
+  it('reads a comma separated value of an older draft as a token list', () => {
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'in', value: 'paid, open' }],
+    });
+    expandFirstChip();
+    expect(screen.getAllByTestId('filter-token')).toHaveLength(2);
+  });
+
+  it('reads a comma separated value of an older draft as the two bounds', () => {
+    renderTyped({
+      draftFilters: [{ column: 'id', operator: 'between', value: '10,20' }],
+    });
+    expandFirstChip();
+    const inputs = screen.getAllByTestId('filter-value') as HTMLInputElement[];
+    expect(inputs[0].value).toBe('10');
+    expect(inputs[1].value).toBe('20');
+  });
+
   it('hints that LIKE ignores case only when the driver says so', () => {
     renderTyped({
       draftFilters: [{ column: 'name', operator: 'like', value: '' }],
