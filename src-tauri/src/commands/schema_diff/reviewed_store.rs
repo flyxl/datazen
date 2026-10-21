@@ -248,6 +248,39 @@ mod tests {
         assert!(visible.is_none(), "别的组织写入的计划不得对本组织可见");
     }
 
+    /// 桌面**丢弃**越组织写入：别的组织写的计划**根本没有进存储**。
+    ///
+    /// 上一条（`desktop_store_drops_writes_from_other_organizations`）只断言
+    /// 「本组织读不到」——包内实现按组织分桶时，本组织本来就读不到，因此那条
+    /// 断言**分不清**「越组织写入被丢弃」与「落进了别的组织桶」。
+    ///
+    /// 本条断言**写入方自己**也读不到 ⇒ 越组织写入确实**没有落数据**
+    /// （桌面单租户收窄承重）。若宿主把收窄改成「只要有身份就承认任何组织」，
+    /// 本条会红。
+    #[tokio::test]
+    async fn desktop_store_discards_cross_organization_writes_entirely() {
+        let store = DesktopReviewedPlanStore::new(OrganizationId::new("datazen-desktop-local"));
+        let owner = scope("datazen-desktop-local");
+        let other = scope("other-org");
+        store
+            .put(&other, "plan-1", plan("plan-1"))
+            .await
+            .expect("put plan");
+
+        // 写入方自己**也**读不到：越组织写入被丢弃，不是「落进别的桶」。
+        let visible_to_writer = store.get(&other, "plan-1").await.expect("read plan");
+        assert!(
+            visible_to_writer.is_none(),
+            "越组织写入必须被丢弃（不得落进别的组织桶），实际读到了 {visible_to_writer:?}"
+        );
+        // 本组织同样读不到。
+        let visible_to_owner = store.get(&owner, "plan-1").await.expect("read plan");
+        assert!(
+            visible_to_owner.is_none(),
+            "别的组织写入的计划不得对本组织可见"
+        );
+    }
+
     /// 桌面身份不可用时，存储不承认任何组织：一切访问按「不存在」处理。
     #[tokio::test]
     async fn desktop_store_without_identity_denies_every_organization() {
