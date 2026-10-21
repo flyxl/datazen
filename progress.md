@@ -153,12 +153,26 @@
 | §四 收官轮（SchemaMigration + BackupDialect）逐项复核 | driver-api `371 passed`；schema-diff `148`；data-sync `179`；data-transfer `226`；feature-core `298`；host `1378`；compat gate additive（crate 0.0.13→0.0.19）；vitest pass |
 | §六 起步轮（`1d5252292`） | 触及 crate 批量 clippy EXIT=0；fmt `--all --check` EXIT=0；`cargo test -p datazen-driver-postgres` 全套 ok（lib `207 passed; 5 ignored` + 各集成 ok）；`cargo test -p datazen-feature-core` `308 passed; 0 failed`；compat gate ok（additive only，crate 0.0.13→0.0.19，PROTOCOL 6→6）；协议规则 vitest `68 passed` |
 | §六 治理轮（`4b6e74495`） | `cargo test -p datazen-driver-api --lib` `371 passed; 0 failed`；`cargo check` postgres/mysql/sqlite/feature-core/runtime EXIT=0（仅既有警告）；`cargo clippy -p datazen-driver-api` EXIT=0（5 条既有警告，无新增）；`npx vitest run scripts/__tests__` `44 passed / 717 passed`；fmt driver-api 通过 |
+| §五 第 2.7 片（池维护用例，`0e7f2a9d5`/`86f951d21`/`853816217`） | `cargo fmt --all -- --check` EXIT=0；`cargo check --workspace --all-targets` EXIT=0（**全树绿**）；`cargo clippy --workspace --all-targets` EXIT=0（833 条既有风格警告，本分支新增 0）；`cargo test -p datazen --lib` `1382 passed; 0 failed; 9 ignored`；`cargo test -p datazen-runtime --lib` `626 passed; 0 failed`；`cargo test -p datazen-driver-api --lib` `371 passed; 0 failed`；`cargo test -p datazen-feature-core --lib` `298 passed; 0 failed`；`DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres` 全套 EXIT=0；`tsc --noEmit -p tsconfig.json` EXIT=0（0 error）；`vitest run` `611 passed / 6362 passed` |
 
+未在本工作树跑过的门禁：驱动 live E2E（需要真实数据库环境；live 门禁在无
+`MIGRATION_TEST_DATABASE` 时默认失败，需显式 `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`
+才允许记为「未验证」）、`pnpm tauri:build:webdriver`（WDIO 构建）。
 
+worktree 基建补充（learned 2026-10-21）：`pnpm typecheck` 在 worktree 跑不了
+——`pnpm` 要求 workspace hoist 目录是真实目录，worktree 的 `node_modules` 是指向
+主树的符号链接，报 `workspace hoist directory is not a real directory`。改用
+`./node_modules/.bin/tsc --noEmit -p tsconfig.json` 等价跑类型门禁；且 worktree
+还需从主树复制 gitignored 的前端 codegen（`src/extensions/generated.ts` /
+`generated-pro.ts` / `generated-locales.ts`、`src/locales/builtinLocales.ts`），
+否则报 `Cannot find module '../../extensions/generated'`。
 
-未在本工作树跑过的门禁：完整 `cargo test -p datazen --lib`（worktree 缺 gitignored codegen
-`src-tauri/src/driver_init.rs`，需先跑 `node scripts/resolve-drivers.mjs`）、
-`pnpm typecheck`（worktree 无 node_modules）、驱动 live E2E。
+上游同步（2026-10-21）：main 已前进 3 个提交（`777b0d02b` postgres 能力
+revision 3→4、`aa849d68f` 平台 artifact 测试夹具字段清理、`f3090469b` 合并），
+本分支 `git merge main` 无冲突并入。其中 `aa849d68f` 修的是**本分支基底就存在**
+的 `datazen-platform-api` lib 测试编译错（`ArtifactWriter` 已删
+`target_fingerprint` 字段但测试夹具仍赋值）——它是 `cargo check --workspace
+--all-targets` 唯一的红点，与本重构无关；并入后全树 EXIT=0。
 
 ## 待办（按方案顺序）
 
@@ -178,17 +192,20 @@
      mysql 系别名（mariadb/doris/starrocks/manticore/ob_oracle）已自带逐一别名的
      provider（`MysqlResourceProvider::new(driver, id, …)`），此前即在册。
      宿主回归：`cargo test -p datazen --lib` `1378 passed; 9 ignored`。
-   - [ ] 第 2 片（进行中）：宿主 §6.2(5) 列出的遗留 namespace 调用点收敛；
-     资源契约贯通复查：平台 `session_backend/execution.rs` 的执行链已在
-     `provider.execute_on_resource` / `provider.begin_transaction` /
-     `commit_transaction` / `rollback_transaction` 上全程收敛（实测确认），
-     metadata 命令经 `provider.connection_handle` 限界借出。§6.2(5) 里
-     `data_transfer/execute/dispatcher.rs`、`data_sync/execute.rs`、
-     `workflow/executor.rs` 三处已不存在于代码中（文档引用过期），仍在册的
-     分支：`commands/connection.rs` close_database / `commands/sync` executor
-     discard_connection / `restore_job.rs` has_multi_database —— 待专轮设计
-     runtime 侧 per-database 关闭语义（ResourceProvider 无 per-database 池
-     操作；收敛点应在 runtime 层出需求，而不是宿主直接调用驱动）。
+   - [x] 第 2.7 片（`0e7f2a9d5` / `86f951d21` / `853816217`，2026-10-21）：
+     per-database 池维护收敛到 runtime 会话层。宿主
+     `commands/connection.rs` 的 `close_database_impl` /
+     `get_open_databases_impl` 不再取 driver、不再取 handle：宿主只报
+     「会话 + 库名」，`RuntimeConnectionUseCases::close_database` /
+     `open_databases`（`packages/runtime/src/application/mod.rs`，租约
+     `LivePurpose::Inspection`）调用驱动并把裁决带回
+     `schema_cache.invalidate`。语义分层：空库名在用例边界拒
+     （`InvalidArgument`）；驱动级失败 → `ServiceUnavailable`（脱敏文案，
+     原始驱动错误不进 `ApiError::message`）→ 宿主降级 `false` 且 schema
+     cache 照常失效；会话级拒绝（未知/死亡会话、无权限）同步传播，不再被
+     宿主吞成 `Ok(false)`。§6.2(5) 文档已同步收尾（`853816217`）。
+     宿主残余分支因此只剩两处 sync 批次执行器的 `discard_connection`
+     与契约测试基座包装转发。
    - [x] 第 2.5 片（`e1035ed87`）：`restore_sql::prepare` 的 scanner 依赖切到
      `BackupDialect`（§四 BackupDialect 的收尾边界），宿主/测试边界包适配器。
    - [x] 第 2.6 片（`b13848354`，2026-10-21）：`restore_job.rs` 的 multi-database
