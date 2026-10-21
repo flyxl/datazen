@@ -552,8 +552,14 @@ export interface GridSelection {
 
    ```ts
    // 落在 src/stores/tableData/gridSelection.ts（01 创建），纯函数
-   export function rowsCoveredBySelection(state: GridSelection): ReadonlySet<number>;
+   export type GridSelectionState = GridSelection & {
+     /** 既有行选择集合。row 模式下它就是返回值本身；其余模式只读，绝不写回。 */
+     selectedRows: ReadonlySet<number>;
+   };
+   export function rowsCoveredBySelection(state: GridSelectionState): ReadonlySet<number>;
    ```
+
+   > **〔落地校正 2026-10-21，Wave 1 `grid-selection`〕** 冻结签名原写单参 `GridSelection`，但 row 模式要「原样返回既有的 `selectedRows` 同一引用」（见 §4.2 第 3 条与下方裁定表），而 `GridSelection` 里没有这个字段。实装因此退化成 `GridSelection & { selectedRows?: ReadonlySet<number> }`——**可选**会让按冻结签名调用的 row 模式静默返回空集，是把契约违反藏进类型系统的典型写法。故这里把 `selectedRows` 定为**必填**：调用方必须显式交出当前行选择集合，row 模式才有意义。参数个数仍为一个，冻结性不受影响。
 
    **本节是唯一权威形状，已冻结。** 各分册此前出现过三种互斥写法，全部以本节为准：
 
@@ -588,8 +594,8 @@ CellCoord.rowIndex
 **推论（必须落地，这是一个既有缺陷，不是新功能）**：既然 `rowIndex` 会整体平移，那么**重新取数的每一条路径都必须清空全部按 `rowIndex` 记账的选择状态**，否则界面会把「新页的第 3 行」当成「刚才选中的第 3 行」。
 
 - 「全部选择状态」包括**两套**：新增的 `gridSelection`，以及既有的 `selectedRows` 与 `lastSelectedIndex`。只清前者而留下后者，等于保留了最危险的那一套。
-- 「重新取数的路径」指：`setPage` / `setPageSize` / `setSort` / `setFilters` / `applyFilters` / `clearFilters`（它们都经 `patchPanelForReload`），以及 `commitFetchedPage` 与 `invalidateCachedData`。
-- **实现要求**：重置必须写在 `patchPanelForReload` / `commitFetchedPage` / `invalidateCachedData` 这三处**收敛点**里，**不要**让六个 action 各自记得清——那正是缺陷当初产生的方式。
+- 「重新取数的路径」指：`setPage` / `setPageSize` / `setSort` / `setFilters` / `applyFilters` / `clearFilters`（它们都经 `patchPanelForReload`），以及 `commitFetchedPage`、`invalidateCachedData`，以及**取数失败**（`loadTableData` 的 catch 分支——失败同样让旧 `rowIndex` 失去意义，用户看到的是错误态，旧选择却还挂着）。
+- **实现要求**：重置必须写在 `patchPanelForReload` / `commitFetchedPage` / `invalidateCachedData` / `loadTableData` 失败分支这**四处收敛点**里，**不要**让六个 action 各自记得清——那正是缺陷当初产生的方式。
 - **必须有的测试**：`setPage` / `setSort` / `applyFilters` 各一条用例，断言调用后 `selectedRows` 为空、`lastSelectedIndex` 为 `null`、`gridSelection.mode === 'none'`。
 - 本项由 **DB-01（分册 01）** 负责，03 的 U-1 独立复现了同一结论，两册结论一致。
 
@@ -602,6 +608,9 @@ CellCoord.rowIndex
 | `commitFetchedPage`（取数成功提交页数据） | 已清空 | **未清空** |
 | `invalidateCachedData`（缓存失效） | 已清空 | **未清空** |
 | `patchPanelForReload`（`setPage` / `setPageSize` / `setSort` / `setFilters` / `applyFilters` / `clearFilters` 全部经此） | **未清空** | **未清空** |
+| `loadTableData` 失败分支（直接 `reloadPanel` 报错） | **未清空** | **未清空** |
+
+> **〔落地校正 2026-10-21，Wave 1 `grid-selection`〕** 原表只有三处收敛点，实装与测试暴露了**第四个窗口**：`reloadPanel` 直接失败时走的是 `loadTableData` 的 `catch`，它只写 `loading`/`error`，把 `selectedRows` / `lastSelectedIndex` / `gridSelection` 全留着。用户看到的是错误态，界面却仍高亮着一批指向不存在数据的行。故失败分支并入同一收敛口径，成为第四处收敛点（不是「范围外的新功能」，是同一缺陷的第四个入口）。
 
 据此可知三条各自为真的事实，请勿再当作互相矛盾：
 
