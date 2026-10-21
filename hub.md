@@ -21,7 +21,7 @@
 
 | 轨道 | 波次 | 状态 | 提交 | 门禁实测 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| `grid-selection` | 1 | **测试中**（Tester `7037c93a`） | `9435810ba` / `5b406b05b` / `305cc725f` | vitest 617 文件 / 6473 例通过；typecheck EXIT=0；TableView 803→**640**、tableDataStore 729→**706** | 编码代理自报；待 Tester 独立复测 |
+| `grid-selection` | 1 | **第 2 轮复测**（Tester `7ebdb8e9`） | `9435810ba` / `5b406b05b` / `305cc725f` / `35cde046e` / `2c511db2e` / `7e8ecdcbc` / `afb21edff` | 第 1 轮 TEST_FAILED（4 缺陷）；修复后 624 文件 / 6550 例通过、typecheck EXIT=0、TableView **642**、tableDataStore **712** | 缺陷循环第 2 轮 |
 | `insert-backend` | 1 | **测试中**（Tester `e104b765`） | `93032e47c` / `2562908fb` / `2d0bf5664` | driver-api 377 passed；host 1395 passed / 9 ignored；data.rs 757 行 | 编码代理自报；待 Tester 独立复测 |
 
 ## 协调者裁定记录
@@ -57,3 +57,30 @@
 | f | W-3 行身份键集 == `CachedColumns.primary_keys` 的漏列检查 | 未做（只做空/NULL 守卫） | 属 Step 3，记入 Wave 2 |
 
 另需在合流前**回写**：`src/lib/tableChanges.ts` 的 TS 镜像（`inserts` / `insertMarked` / `operation: 'insert'`）——本轨按任务未改，Wave 2 `insert-frontend` 第一件事。
+
+## grid-selection 缺陷循环记录
+
+**第 1 轮（Tester `7037c93a`）→ TEST_FAILED，4 缺陷**
+
+| ID | 级别 | 缺陷 | 裁定 |
+| --- | --- | --- | --- |
+| GS-D1 | P1 | 拖拽中 Escape 不结束会话，`pointerUp` 复活已取消选区（Escape 分支未清 `sessionRef`） | 立即修 |
+| GS-D2 | P2 | IME 组合期 Escape 清空选区；`isComposingEvent` 不存在 | 立即修，并把 `gridEventGuards.ts` 由 Wave 2 **提前**到本轨外提 |
+| GS-D3 | P2 | 裸 `reloadPanel` 失败不清三件套（§7 #19） | **同意扩大范围**：失败窗口是同一缺陷的第四个入口，契约已同步为「四处收敛点」 |
+| GS-D4 | P1 | row 模式不可达：`applyRowModeTransition` 生产零调用者，行号槽走 `selectRow` 只写 `selectedRows` | 本轨必修（01 Step 4 的交付内容） |
+
+**第 1 轮还改了 3 处契约**（协调者直接改，不等实现让步）：
+
+1. §8.2 补登记 `grid.selection.*` 三码（42 → 45）；
+2. §4.2.1 `rowsCoveredBySelection` 的 `GridSelectionState.selectedRows` 由可选改**必填**（可选会让 row 模式静默返回空集）；
+3. §4 新增第四条不变式：**`mode` 是行集唯一权威，写入必须成对**（`none` → 三件一起清；`cell`/`row` → 清空 `selectedRows`，行集只能由 `applyRowModeTransition` / `setRowModeSelection` 与 mode 成对写入；「只改 mode 保留行集」非法）。
+
+**第 2 轮**：Tester `7ebdb8e9` 复测中（重点：考题是否被改、4 修复能否被独立新用例重现、并发失败不得误清新选择、`applyGridSelection` 新语义是否提前破坏 03/04/05 的调用面）。
+
+## 待 Wave 2 承接的债（本轨明确不做）
+
+| 债 | 承接轨 |
+| --- | --- |
+| `TableView.test.tsx` 的冻结 store mock 无 `setRowModeSelection` | Wave 2 加行号槽用例前必须先补 mock（本轨无权改该文件） |
+| `[data-dt-surface]` / `[data-dt-selected]` / `role="rowheader"` / 选区摘要 testid | Wave 2 `grid-cell`（E2E `table-cell-selection.ts` 的 `surfaceWired` 守卫会在接线后自动激活） |
+| `gridEventGuards.ts` 已有，但 DataTable 尚未消费 | Wave 2 `grid-cell` |
