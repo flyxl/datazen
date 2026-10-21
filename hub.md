@@ -101,7 +101,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 
 | 轨 | 分支 | worktree | 热 target |
 |---|---|---|---|
-| D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ❌ Tester **TEST_FAILED**（1 阻塞行为回归）→ 第 1 轮修复中 |
+| D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | 🔄 第 1 轮修复完成 `a0ea3d1f0` → 复测中 |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 已交付 `33416cb72` → Tester `0da32120` 复测中 |
 | **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | 🔄 data-transfer 侧（`plan_store` 端口化 + **激活 40 个孤儿测试**） |
 | **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | 🔄 data-sync 侧（`plan_store` + `comparison_store` 端口化 + 删门面） |
@@ -425,6 +425,10 @@ D-01 / D-03 / D-04 / D-05 全处置，并 cherry-pick 复测 Tester 的 `0d3feff
 
 → **裁决：启动期确定一次 → 存进 `AppState` → 请求期直接取**（协调者早已倾向此形态，现由 Tester 实测背书）。**并要求把 Tester 的表征用例反转** —— `the_ipc_scope_is_unavailable_when_the_platform_adapter_failed_to_assemble` 断言的是**坏的**行为，修好后必须反转为"adapter 不可用时 IPC 作用域仍可用"，这是本轮修复的核心不变量。
 **自验特别项**：`env -u USER` 下那 6 条必须恢复；其余 243 条是改造前既有的 adapter 依赖，**不是本轨责任，不得去动**。
+
+**D 轨第 1 轮修复完成（`a0ea3d1f0`）**：`organization_scope()` 改为直接返回 `AppState` 里**启动期算好的**字段（装配点 `finish_app_state` 填 `local_organization_scope()`），不再走 `platform_require()`；**表征用例已反转为断言"adapter 失败时作用域仍然可用"**，并写明"任何将来把作用域来源改回『请求期解析身份』的改动，都会先把它弄红"。
+**自验结果与 Tester 的差分实验精确吻合**：`env -u USER` 失败数 **248 → 242，恰好那 6 条恢复**（连跑两次清单逐字相同），剩余 242 条的失败信息里「组织作用域」**零命中** —— 证明修复只影响它引入的那 6 条，没有顺带改变别的。
+D-02 采纳"不改语义、只在三处契约注释写清"；D-03 台账口径改准为「6 条 = 1 条元组改写 + 5 条只补 `&scope` 参数」。
 
 **D-02（非阻塞·语义歧义）**：跨组织删除 workflow 返回 `Ok(())`（符合"删除不存在的 id 不是错误"的既有契约，数据也没被删），但调用方会读成"删除成功"。→ **裁决：不改语义，只在 trait 契约里写清**（改成 `NotFound` 会让"删除本就不存在的 id"也变成错误，那是改变既有行为，不该由端口化顺带引入）。
 
