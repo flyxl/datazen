@@ -253,8 +253,11 @@ async fn a_cross_organization_write_under_a_foreign_claim_is_rejected() {
 /// * 因此续约唯一的拒绝理由是：行不存在（`NotFound`）、行上没有 claim、
 ///   worker 不匹配、generation 不匹配、租约已过期（都是 `StaleClaim`）。
 ///
-/// 组织边界由**写入路径**兜底：所有写入都经 `check_claim`，那里比对 `ctx` 的组织，
-/// 越组织写按 `StaleClaim` 拒绝（见上面那条用例）。
+/// 组织边界由**写入路径**兜底，而写入路径有三种形态：**claim 作用域**经 `check_claim`
+/// （比对 `ctx` 的组织与主体），越组织写按 `StaleClaim` 拒绝；**ctx 作用域**（取消 /
+/// 确认未开始 / 标记失败 / 待核验 / 恢复结论 / 认领 / 外部产物 / 恢复结果持久化）没有
+/// claim 可比，用显式组织谓词过滤，越组织时受影响行数为 0、按 `NotFound` 处理；
+/// **受理**按 `ctx` 盖章组织。`renew` 自身只凭 claim 判定，不做组织比对。
 ///
 /// 这条用例把这些**事实**钉住：将来若给 claim 加上组织维度、或让续约自己比组织，
 /// 这条用例会先变红，提示同步更新端口契约与文档里的因果链。

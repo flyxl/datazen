@@ -459,8 +459,9 @@ async fn a_plan_consumed_in_one_organization_does_not_block_another() {
 ///   无论持有者属于哪个组织。
 ///
 /// 后果边界（这是它可以只按「措辞」而不是「漏洞」记的原因）：续约只能**延长租约**，
-/// 不能改 worker / generation / 状态，也读不到别的组织的数据——所有写入都走
-/// `check_claim`，那里拿 `ctx` 的组织与行归属逐条比对，越组织按 `StaleClaim` 拒绝。
+/// 不能改 worker / generation / 状态，也读不到别的组织的数据——claim 作用域的写入走
+/// `check_claim`（那里拿 `ctx` 的组织比对，越组织按 `StaleClaim` 拒绝）；ctx 作用域的
+/// 写入没有 claim 可比，用行内的组织归属过滤，越组织按 `NotFound` 处理。
 /// 今天也没有任何 IPC 命令接受客户端送来的 claim（`renew` 只在进程内被调用）。
 ///
 /// 这条用例把上面这些**事实**钉住：将来若给 claim 加上组织维度、或让续约自己比组织，

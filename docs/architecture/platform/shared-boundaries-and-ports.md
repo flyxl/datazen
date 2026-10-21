@@ -411,7 +411,11 @@ P5 落地：上述 worker 写入端口携带 `JobClaim`；claim 含 jobId、stag
 - `get` / `list_recoverable` 按 `ctx` 的组织过滤。
 - 跨组织访问按**读路径 / 写路径**分别处理，两个实现（内存 / SQLite）形状一致：
   - **读路径**（`get` / `list` / `list_recoverable`）按「**不存在**」处理（`NotFound` / 空列表），不返回「无权限」之类的错误，也不泄漏「存在但无权」（CM-05，与 `ProfileRepository` 的 `ProfileScope` 同口径）。
-  - **写路径**（`record_stage` / `record_commit_boundary` / `compare_and_set_state` / `save_checkpoint` / `record_progress` / `record_artifacts` / `record_domain_result` / `finish`）由 **claim fencing** 兜底：claim 只在「按 `ctx` 组织核对过的行」上铸出，因此越组织的写入按 `StaleClaim` 拒绝（**不是** `NotFound`）。
+  - **写路径有三种形态**，越组织的拒绝形状**不同**，不可混为一谈：
+    - **claim 作用域**（`record_stage` / `record_commit_boundary` / `compare_and_set_state` / `save_checkpoint` / `record_progress` / `record_artifacts` / `record_domain_result` / `finish`）由 **claim fencing** 兜底：claim 只在「按 `ctx` 组织核对过的行」上铸出，因此越组织的写入按 `StaleClaim` 拒绝（**不是** `NotFound`）。
+    - **ctx 作用域**（取消 / 确认未开始 / 标记失败 / 待核验 / 恢复结论 / 认领 / 外部产物 / 恢复结果持久化）没有 claim 可比，用**显式组织谓词**过滤，越组织时受影响行数为 0，按 `NotFound` 处理。
+    - **受理**没有 claim 可比，按 `ctx` **盖章**组织（INV-01）—— 调用方在定义里自报的组织值不作数。
+  - `renew` 自身不属于上面任何一种：它只凭 claim 判定，**不做组织比对**（`JobClaim` 不携带组织维度，因此「跨组织续约」在本路径上不可表达）。
 - 幂等回执按 `(organizationId, principalId, idempotencyKey)` 作用域：同一个键在另一个组织不是重放。
 
 桌面是单租户：所有请求上下文都来自同一个本地组织，因此这些约束不改变任何桌面行为；它们是为 web 形态（多组织）准备的隔离边界。

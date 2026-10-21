@@ -742,7 +742,7 @@ impl JobRepository for InMemoryJobRepository {
     /// * **claim 作用域**（阶段登记、提交边界、状态 CAS、checkpoint、进度、产物、
     ///   域结果、终态）：经 `check_claim`，那里比对 `ctx` 的**组织**（本实现不比主体），
     ///   越组织写按 `StaleClaim` 拒绝；
-    /// * **ctx 作用域**（取消、确认未开始、标记失败、待核验、恢复结论）：没有 claim
+    /// * **ctx 作用域**（取消、确认未开始、标记失败、待核验、恢复结论、认领、外部产物、恢复结果持久化）：没有 claim
     ///   可比，用**行内的组织归属**过滤，越组织时按 `NotFound` 处理；
     /// * **受理**：没有 claim 可比，按 `ctx` **盖章**组织（INV-01）。
     ///
