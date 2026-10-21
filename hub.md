@@ -102,7 +102,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | 轨 | 分支 | worktree | 热 target |
 |---|---|---|---|
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | 🔄 第 1 轮修复完成 `a0ea3d1f0` → 复测中 |
-| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 1 轮修复中（D-E1 时钟回拨失效开放 / D-E2 文档说谎 / D-E3 同义反复 / D-E4 deny-all 无用例） |
+| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 第 1 轮修复完成 `9a4a1585e` → 复测中 |
 | **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | 🔄 data-transfer 侧（`plan_store` 端口化 + **激活 40 个孤儿测试**） |
 | **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | 🔄 data-sync 侧（`plan_store` + `comparison_store` 端口化 + 删门面） |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 第 1 轮小修完成 `d54812172` → 事实准确性复测中 |
@@ -365,6 +365,13 @@ D1–D5 全部处置，并 cherry-pick 上一轮 Tester 的三笔测试提交（
 且 `desktop_reviewed_plan_store` 的 Err 分支**不 panic、不让装配失败**，返回 **deny-all**（`acknowledges()` 恒 false ⇒ put/get/remove 全按「不存在」拒绝）—— 兜底方向**最保守**，**不构成越权泄漏**。
 ⇒ **判定非阻塞**：本轨引入的 `platform_require()` 依赖是**冗余依赖**，不是新的失效面。
 **但 Tester 指出形状不一致**：同一份组织身份被取用了两次、用了两种时机（作用域 per-request 报错 / 存储启动期 deny-all），adapter 不可用时两者不一致。→ **裁决：本轮不做**，等另一轨（作用域改启动期确定 + `AppState` 加字段）合流后收口，**避免 AppState 上出现两个平行的组织字段**。
+
+### E 轨第 1 轮修复（`f3564a306`）—— 两处设计判断被接受
+
+- **D-E1 钳制放在规则层（`is_expired()`）而非 `age()` 内**。理由成立：两个谓词语义确实不同 —— `age()` 是**纯年龄**（供存储层裁剪与排序），`is_expired()` 是**有效性判定**（含回拨钳制）。若把钳制塞进 `age()`，回拨条目会被**裁掉**（而非判过期），且容量用例会依赖毫秒竞态。差异已写进 `age()` 的 doc。
+  → 已要求 Tester 额外判定一个组合风险：**回拨场景下**存储层按 `age() < TTL` 裁剪（回拨条目 `age()`=0 ⇒ 不被裁）而规则层判它**已过期** ⇒ 条目留在存储里但**永远不可消费** ⇒ 是否构成**存储泄漏**。
+- **D-E3 的解法比要求更好**：存储实现 `InMemoryReviewedPlanStore` **从宿主移进包内**（按 `(organization_id, plan_id)` 分桶），3 条包内隔离用例因此能打**生产实现**而非替身；宿主在其上叠加单租户收窄。先例：`packages/platform-api/src/ports/budget/pool_ledger.rs`（包内提供形态中立的进程内原语）。
+  包行数：生产 606 → 854（+248）、测试 816 → 1729（+913）—— 包**没有被掏空**。
 
 ### E 轨交付（编码代理 `33416cb72`）—— 交付，待 Tester 复测
 
