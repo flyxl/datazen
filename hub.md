@@ -22,7 +22,7 @@
 | 轨道 | 波次 | 状态 | 提交 | 门禁实测 | 备注 |
 | --- | --- | --- | --- | --- | --- |
 | `grid-selection` | 1 | **测试中**（Tester `7037c93a`） | `9435810ba` / `5b406b05b` / `305cc725f` | vitest 617 文件 / 6473 例通过；typecheck EXIT=0；TableView 803→**640**、tableDataStore 729→**706** | 编码代理自报；待 Tester 独立复测 |
-| `insert-backend` | 1 | 编码中 | — | — | 驱动契约 + 宿主 + 测试 |
+| `insert-backend` | 1 | **测试中**（Tester `e104b765`） | `93032e47c` / `2562908fb` / `2d0bf5664` | driver-api 377 passed；host 1395 passed / 9 ignored；data.rs 757 行 | 编码代理自报；待 Tester 独立复测 |
 
 ## 协调者裁定记录
 
@@ -42,3 +42,18 @@
 2. **`query_executor` 目录化归属冻结给 08**（`packages/feature-core/src/services/query_executor/`），其他轨不得动。
 3. **`00-contracts.md` 是唯一契约源**：坐标系、`CellWrite` 三态、驱动新增方法签名、42 个错误码、行数账本都在那里。
 4. 同一 worktree 不得同时被提交方与验证方使用（AGENTS.md）。
+
+## 待裁定（等 Testers 结论后统一处理，勿提前改文档）
+
+`insert-backend` 报的 6 处「与分册不符」，需在 Tester 判定后逐条定性（可接受 = 范围外 / 会返工 = 假完成），并把**定性结论回写**到 `04-insert.md` 与 `00-contracts.md`：
+
+| 事项 | 分册要求 | 实际实现 | 倾向 |
+| --- | --- | --- | --- |
+| a | `CellWrite` 三态 + `build_insert_sql(&[(&str, CellWrite)]) -> String` | `build_insert_statement(table, &[(&str, Option<Value>)]) -> Result<BoundSqlStatement>`，与 update/delete 同一绑定参数 seam | **可接受**：主干已统一为绑定参数，回退到拼字符串会破坏参数化写路径 |
+| b | `PendingRowInsert` + `canonicalize_inserts` + preview 第 4 参数 | 复用 `PendingRowChange.insert_marked`（`false` 不序列化 → 无插入的计划指纹逐字节不变），IPC 不变 | **可接受**：换来向后兼容，代价是 DTO 语义承载两个概念 |
+| c | V-1..V-8 列元数据校验（draft 唯一/未知列/NOT NULL 无默认/schema 不可用/自增 warning） | 未做（本链路无列元数据入口） | **判会返工**：`grid.insert.unknownColumn` 等 4 个码因此无生产者，需后续轨补 |
+| d | Step 6 RETURNING 回填 + 降级刷新 | 只有契约默认 `None` + 转发，宿主未调用 | 可接受（本轨未要求），Wave 2 前端须按「无回填」降级 |
+| e | INSERT `affected == 0` 记 warning | 从严：`affected == 1`，否则失败回滚 | 需裁定：严格更好，但会让「0 行插入的幂等场景」变失败 |
+| f | W-3 行身份键集 == `CachedColumns.primary_keys` 的漏列检查 | 未做（只做空/NULL 守卫） | 属 Step 3，记入 Wave 2 |
+
+另需在合流前**回写**：`src/lib/tableChanges.ts` 的 TS 镜像（`inserts` / `insertMarked` / `operation: 'insert'`）——本轨按任务未改，Wave 2 `insert-frontend` 第一件事。
