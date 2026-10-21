@@ -13,7 +13,11 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TableState } from '../tableData/types';
-import { EMPTY_GRID_SELECTION, selectionFromAnchorFocus } from '../tableData/gridSelection';
+import {
+  EMPTY_GRID_SELECTION,
+  selectionFromAnchorFocus,
+  type GridSelection,
+} from '../tableData/gridSelection';
 
 const mockDatabaseCommands = {
   getTableData: vi.fn(),
@@ -197,6 +201,26 @@ describe('tableDataStore selection reset on re-fetch', () => {
     useTableDataStore.getState().setRowModeSelection(PANEL, null);
 
     expectSelectionCleared();
+  });
+
+  it('setGridSelection cannot create row mode with geometry through the public API', async () => {
+    await loadTable();
+    useTableDataStore.getState().selectRow(PANEL, 1);
+    const dirtyRow: GridSelection = {
+      anchor: { rowIndex: 0, columnName: 'id' },
+      focus: { rowIndex: 1, columnName: 'name' },
+      extraRanges: [],
+      mode: 'row',
+    };
+
+    useTableDataStore.getState().setGridSelection(PANEL, dirtyRow);
+
+    const selection = loaded().gridSelection;
+    expect(selection.mode).toBe('row');
+    expect(selection.anchor).toBeNull();
+    expect(selection.focus).toBeNull();
+    expect(selection.extraRanges).toEqual([]);
+    expect(loaded().selectedRows.size).toBe(0);
   });
 
   it('deleteRows keeps a cell selection intact and does not park rows in the row set', async () => {

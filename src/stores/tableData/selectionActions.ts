@@ -105,14 +105,28 @@ export function applyRowModeTransition(
 }
 
 /**
- * Store a selection computed elsewhere. The row set is *always* derived from the mode here:
- * `none` means no selection at all (so a stale whole-row highlight cannot survive), while
- * `cell` and `row` both arrive without a row list — a plain `GridSelection` has no room for
- * one — so the row set is emptied and any row selection must be written through
- * {@link applyRowModeTransition} / `setRowModeSelection`, which patch mode and rows together.
+ * Store a selection computed elsewhere, normalising it instead of trusting the caller.
+ *
+ * Two rules are enforced here because this is the public `setGridSelection` entry point
+ * (00-contracts §4, I2):
+ * - `selectedRows` is derived from the mode, never carried in: a plain `GridSelection` has no
+ *   row list, so `cell`/`row` empty it and row selections must go through
+ *   {@link applyRowModeTransition} / `setRowModeSelection`, which patch mode and rows together.
+ *   (`row` + empty rows is legal; there is deliberately no fallback to `none`.)
+ * - geometry is derived from the mode too: only `cell` may carry `anchor`/`focus`/`extraRanges`.
+ *   A caller passing `{ mode: 'row', anchor, focus }` would otherwise persist an illegal
+ *   "row mode with geometry" state that I2 forbids — so `row` is replaced by the canonical
+ *   {@link ROW_MODE_GRID_SELECTION} and `none` by the full clear.
  */
 export function applyGridSelection(_ts: TableState, selection: GridSelection): Partial<TableState> {
   if (selection.mode === 'none') return applyClearGridSelection(_ts);
+  if (selection.mode === 'row') {
+    return {
+      gridSelection: ROW_MODE_GRID_SELECTION,
+      selectedRows: new Set(),
+      lastSelectedIndex: null,
+    };
+  }
   return { gridSelection: selection, selectedRows: new Set(), lastSelectedIndex: null };
 }
 

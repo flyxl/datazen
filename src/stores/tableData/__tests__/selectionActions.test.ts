@@ -143,6 +143,49 @@ describe('cell/row mode transitions', () => {
     expect(withRow.lastSelectedIndex).toBeNull();
   });
 
+  it('normalises row mode: caller geometry is dropped and no rows are invented (I2)', () => {
+    // The public `setGridSelection` must not be able to create "row mode + geometry".
+    const dirtyRow: GridSelection = {
+      anchor: coord(0, 'id'),
+      focus: coord(2, 'name'),
+      extraRanges: [{ start: coord(0, 'note'), end: coord(1, 'note') }],
+      mode: 'row',
+    };
+
+    const next = applyGridSelection(
+      tableState({ selectedRows: new Set([1]), lastSelectedIndex: 1 }),
+      dirtyRow,
+    );
+
+    expect(next.gridSelection).toBe(ROW_MODE_GRID_SELECTION);
+    expect(next.gridSelection?.anchor).toBeNull();
+    expect(next.gridSelection?.focus).toBeNull();
+    expect(next.gridSelection?.extraRanges).toEqual([]);
+    // Rows stay empty: normalisation must not smuggle the old row set in.
+    expect(next.selectedRows).toEqual(new Set());
+    expect(next.lastSelectedIndex).toBeNull();
+  });
+
+  it('normalises none mode: geometry, rows and the anchor all get cleared (I2)', () => {
+    const dirtyNone: GridSelection = {
+      anchor: coord(1, 'name'),
+      focus: coord(1, 'name'),
+      extraRanges: [],
+      mode: 'none',
+    };
+
+    const next = applyGridSelection(
+      tableState({ selectedRows: new Set([0]), lastSelectedIndex: 0 }),
+      dirtyNone,
+    );
+
+    expect(next).toEqual({
+      gridSelection: EMPTY_GRID_SELECTION,
+      selectedRows: new Set(),
+      lastSelectedIndex: null,
+    });
+  });
+
   it('setting the empty selection is the same transition as clearing (hook Escape path)', () => {
     const next = applyGridSelection(
       tableState({ selectedRows: new Set([2]), lastSelectedIndex: 2 }),
