@@ -223,6 +223,82 @@ async fn finish_app_state_wires_core_services() {
     assert_eq!(state.store.data_dir(), temp.path());
 }
 
+/// The workflow registry writes through the store the assembly root injects,
+/// while `workflow_get_yaml` reads `state.store.app_db()` directly. Both must
+/// be the *same* `AppDb`: were the assembly root to inject a second instance,
+/// a workflow saved through the registry would be invisible to the command
+/// that fetches its YAML. This pins that the injected store and
+/// `store.app_db()` are one instance, plus the seed → save → list journey.
+#[tokio::test]
+async fn finish_app_state_shares_one_app_db_between_the_registry_and_the_store() {
+    use crate::store::WorkflowVisibility as DbVisibility;
+    use crate::transfer::adapter_registry::SyncAdapterRegistry;
+    use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowVisibility};
+    use datazen_runtime::driver_registry::registry::DriverRegistry;
+
+    let temp = tempfile::tempdir().unwrap();
+    let store = Arc::new(
+        Store::init_with_path(temp.path())
+            .await
+            .expect("store init"),
+    );
+    let state = finish_app_state(
+        store.clone(),
+        Arc::new(DriverRegistry::new()),
+        Arc::new(SyncAdapterRegistry::new()),
+        None,
+    );
+
+    // Save through the registry, exactly like the `workflow_save` command.
+    let definition = WorkflowDefinition {
+        database: None,
+        id: "shared-app-db".into(),
+        name: "Shared App Db".into(),
+        description: "d".into(),
+        version: None,
+        author: None,
+        variables: Vec::new(),
+        connection: None,
+        steps: Vec::new(),
+        output: None,
+        timeout_secs: None,
+        error_handling: None,
+        schedule: None,
+        blocks: Vec::new(),
+        visibility: WorkflowVisibility::User,
+    };
+    state
+        .workflow_registry
+        .save_workflow(&definition)
+        .await
+        .expect("save through the registry");
+
+    // Read through `state.store.app_db()`, exactly like `workflow_get_yaml`.
+    let record = state
+        .store
+        .app_db()
+        .get_workflow("shared-app-db")
+        .expect("the registry must write into the store's own app db");
+    assert_eq!(record.id, "shared-app-db");
+    assert_eq!(record.name, "Shared App Db");
+    assert!(!record.definition_yaml.is_empty());
+
+    // The builtin seeding journey reaches the same app db.
+    let listed = state.workflow_registry.list().await;
+    assert!(
+        listed.len() >= 3,
+        "expected the host's builtin workflows, got {}",
+        listed.len()
+    );
+    let stored = state
+        .store
+        .app_db()
+        .list_workflows(Some(DbVisibility::User))
+        .expect("list through the store's own app db");
+    assert!(stored.iter().any(|row| row.id == "shared-app-db"));
+    assert!(stored.iter().any(|row| row.id == "builtin-hello-query"));
+}
+
 /// [tester] `finish_app_state` wires wapp manager and driver registry shells.
 #[tokio::test]
 async fn test_tester_finish_app_state_initializes_wapps_and_registry() {

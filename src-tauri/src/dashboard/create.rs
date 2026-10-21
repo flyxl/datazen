@@ -116,14 +116,19 @@ pub async fn create_widget_from_workflow(
 mod tests {
     use super::*;
     use crate::store::{AppDb, WorkflowRecord};
+    use crate::workflow::registry::AppDbWorkflowStore;
     use chrono::Utc;
     use datazen_feature_core::dashboard::store::save_dashboard;
     use datazen_feature_core::dashboard::types::DashboardLayout;
     use datazen_feature_core::workflow::model::WorkflowStep;
+    use std::sync::Arc;
 
     async fn setup() -> (std::sync::Arc<AppDb>, WorkflowRegistry, Dashboard) {
         let db = AppDb::open_in_memory().unwrap();
-        let registry = WorkflowRegistry::new(db.clone(), std::path::PathBuf::from("/tmp"));
+        let registry = WorkflowRegistry::new(
+            Arc::new(AppDbWorkflowStore::new(db.clone())),
+            std::path::PathBuf::from("/tmp"),
+        );
         let dash = Dashboard {
             id: "d1".into(),
             name: "Board".into(),

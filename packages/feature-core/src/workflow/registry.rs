@@ -3,11 +3,14 @@
 //!
 //! The rules live here so every host agrees on them. The host owns only the
 //! rows: it implements [`WorkflowDefinitionStore`] over its own persistence
-//! and hands the store to [`WorkflowRegistry`].
+//! and hands the store to [`WorkflowRegistry`] as an
+//! `Arc<dyn WorkflowDefinitionStore>`, so the host's persistence type never
+//! enters this crate's signatures.
 
 use super::model::{WorkflowDefinition, WorkflowListItem, WorkflowVisibility};
 use chrono::Utc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// A saved workflow as the registry stores it.
@@ -31,7 +34,9 @@ pub struct WorkflowDefinitionRecord {
 /// The host implements this over its own store (the desktop host binds it to
 /// the local SQLite database). Everything the registry *decides* — which
 /// workflows a user sees, how a definition is encoded, what a saved workflow
-/// looks like — stays in this crate.
+/// looks like — stays in this crate. The registry holds the store as a trait
+/// object, so the host's implementation type stays out of the shared
+/// signatures and the host picks the implementation at assembly time.
 pub trait WorkflowDefinitionStore: Send + Sync {
     /// One saved workflow, or `None` when the id is unknown.
     fn get_workflow(&self, id: &str) -> Result<Option<WorkflowDefinitionRecord>, String>;
@@ -92,18 +97,26 @@ pub fn list_item_for(definition: &WorkflowDefinition) -> WorkflowListItem {
 /// The saved workflows of one environment.
 ///
 /// The registry owns the rules; the store owns the rows.
-pub struct WorkflowRegistry<S: WorkflowDefinitionStore> {
-    store: S,
+///
+/// The store is held as a trait object on purpose: the registry must not
+/// name the host's persistence type, so a host can bind any
+/// [`WorkflowDefinitionStore`] implementation without the shared crate's
+/// signatures changing.
+pub struct WorkflowRegistry {
+    store: Arc<dyn WorkflowDefinitionStore>,
     /// The builtin definitions the host ships, as `(label, yaml)`.
     builtins: Vec<(&'static str, &'static str)>,
     seeded: AtomicBool,
     seed_lock: Mutex<()>,
 }
 
-impl<S: WorkflowDefinitionStore> WorkflowRegistry<S> {
+impl WorkflowRegistry {
     /// A registry over `store`, seeding `builtins` when the environment has
     /// no user-visible workflow yet.
-    pub fn new(store: S, builtins: Vec<(&'static str, &'static str)>) -> Self {
+    pub fn new(
+        store: Arc<dyn WorkflowDefinitionStore>,
+        builtins: Vec<(&'static str, &'static str)>,
+    ) -> Self {
         Self {
             store,
             builtins,
@@ -113,8 +126,8 @@ impl<S: WorkflowDefinitionStore> WorkflowRegistry<S> {
     }
 
     /// The store this registry reads and writes through.
-    pub fn store(&self) -> &S {
-        &self.store
+    pub fn store(&self) -> &dyn WorkflowDefinitionStore {
+        self.store.as_ref()
     }
 
     async fn ensure_seeded(&self) -> Result<(), String> {
@@ -386,7 +399,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_list_excludes_dashboard_hidden_workflows() {
-        let registry = WorkflowRegistry::new(MemoryStore::default(), Vec::new());
+        let registry = WorkflowRegistry::new(Arc::new(MemoryStore::default()), Vec::new());
         registry
             .save(&definition("user-1", WorkflowVisibility::User))
             .await
@@ -404,7 +417,7 @@ mod tests {
 
     #[tokio::test]
     async fn saving_keeps_the_creation_time_of_an_existing_workflow() {
-        let registry = WorkflowRegistry::new(MemoryStore::default(), Vec::new());
+        let registry = WorkflowRegistry::new(Arc::new(MemoryStore::default()), Vec::new());
         registry
             .save(&definition("kept", WorkflowVisibility::User))
             .await
@@ -431,29 +444,31 @@ mod tests {
     #[tokio::test]
     async fn the_builtin_workflows_are_seeded_once() {
         let yaml = "id: builtin\nname: Builtin\ndescription: d\nsteps: []\n";
-        let registry = WorkflowRegistry::new(MemoryStore::default(), vec![("builtin", yaml)]);
+        let store = Arc::new(MemoryStore::default());
+        let registry = WorkflowRegistry::new(store.clone(), vec![("builtin", yaml)]);
         registry.list().await;
-        assert_eq!(registry.store().records().len(), 1);
+        assert_eq!(store.records().len(), 1);
 
         // A second call must not seed again.
         registry.list().await;
-        assert_eq!(registry.store().records().len(), 1);
+        assert_eq!(store.records().len(), 1);
     }
 
     #[tokio::test]
     async fn a_dashboard_builtin_is_published_as_a_user_workflow() {
         let yaml =
             "id: builtin\nname: Builtin\ndescription: d\nsteps: []\nvisibility: dashboardHidden\n";
-        let registry = WorkflowRegistry::new(MemoryStore::default(), vec![("builtin", yaml)]);
+        let store = Arc::new(MemoryStore::default());
+        let registry = WorkflowRegistry::new(store.clone(), vec![("builtin", yaml)]);
         registry.list().await;
-        let records = registry.store().records();
+        let records = store.records();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].visibility, WorkflowVisibility::User);
     }
 
     #[tokio::test]
     async fn yaml_round_trips_through_the_registry() {
-        let registry = WorkflowRegistry::new(MemoryStore::default(), Vec::new());
+        let registry = WorkflowRegistry::new(Arc::new(MemoryStore::default()), Vec::new());
         let definition = definition("yaml-1", WorkflowVisibility::User);
         let yaml = encode_definition(&definition).expect("encode");
         let saved = registry.save_yaml(&yaml).await.expect("save yaml");
@@ -466,7 +481,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_yaml_names_the_problem() {
-        let registry = WorkflowRegistry::new(MemoryStore::default(), Vec::new());
+        let registry = WorkflowRegistry::new(Arc::new(MemoryStore::default()), Vec::new());
         let error = registry.save_yaml("not: [valid").await.unwrap_err();
         assert!(error.starts_with("Invalid workflow YAML:"));
     }

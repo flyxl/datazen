@@ -64,7 +64,7 @@
 `version` 字段在**全仓库范围内只被写入，从未被读取**：
 
 - 没有任何按版本分派的解析代码（无 `match version`、无 `CURRENT_VERSION` 比较，三个内建 YAML 也未设置该字段）；
-- 生产代码写入点只有 `packages/feature-core/src/dashboard/create.rs:39` 的 `version: None` 字面量；其余 10 处全在测试代码内（`workflow/host.rs:127/168/203`、`workflow/registry.rs:184`、`workflow/migration.rs:433`、`commands/dashboard.rs:460`、`commands/ai/integration_tests.rs:372/923/1057/1106`），其中仅 `integration_tests.rs:372` 写 `Some("1")`，同样无人读取。
+- 生产代码写入点只有 `packages/feature-core/src/dashboard/create.rs:39` 的 `version: None` 字面量；其余 13 处全在测试代码内（宿主侧 `workflow/host.rs:128/169/204`、`workflow/registry.rs:190`、`workflow/migration.rs:433`、`commands/dashboard.rs:463`、`commands/ai/integration_tests.rs:373/924/1058/1107`；共享包侧 `packages/feature-core/src/workflow/registry.rs:361`、`packages/feature-core/src/workflow/scheduler.rs:223`、`packages/feature-core/src/dashboard/archive.rs:185`），其中仅 `integration_tests.rs:373` 写 `Some("1")`，同样无人读取。
 
 对比：仓库中其他"定义版本"确有实现——`packages/schema-diff/src/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。Workflow 是这些带 `CURRENT_VERSION` 校验的定义中唯一未校验的一个；另需注意 `store/settings.rs:15` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）。
 
