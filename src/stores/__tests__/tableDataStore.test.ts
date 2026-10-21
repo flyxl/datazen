@@ -219,6 +219,37 @@ describe('tableDataStore (panel-scoped)', () => {
     );
   });
 
+  it('keeps the "do not count" mode across a re-read', async () => {
+    // The setting is a promise about every read, not only about the first
+    // one: a filter change must not quietly bring the count back.
+    const { useSettingsStore } = await import('../settingsStore');
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, rowCountMode: 'none' },
+    }));
+    try {
+      await loadTable();
+      mockDatabaseCommands.getTableData.mockClear();
+      useTableDataStore.getState().setPage(PANEL, 1);
+      await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+      expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+        expect.objectContaining({ countStrategy: 'unsupported' }),
+      );
+    } finally {
+      useSettingsStore.setState((state) => ({
+        settings: { ...state.settings, rowCountMode: 'auto' },
+      }));
+    }
+  });
+
+  it('leaves the strategy to the driver in the automatic mode', async () => {
+    // Without a size to weigh, the automatic mode has no opinion: the driver
+    // declares what it can do.
+    await loadTable();
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ countStrategy: undefined }),
+    );
+  });
+
   it('asks for no order at all when the panel overrides the default order', async () => {
     await loadTable();
     mockDatabaseCommands.getTableData.mockClear();

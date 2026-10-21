@@ -17,7 +17,13 @@ import {
 } from '../lib/tableChanges';
 import { useSettingsStore } from './settingsStore';
 import { resolveDefaultTableSort } from '../lib/defaultSort';
-import { DEFAULT_TABLE_SORT, type DefaultTableSort } from '../types/settings';
+import { resolveCountStrategy } from '../lib/rowCountStrategy';
+import {
+  DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD,
+  DEFAULT_ROW_COUNT_MODE,
+  DEFAULT_TABLE_SORT,
+  type DefaultTableSort,
+} from '../types/settings';
 import type { TableState } from './tableData/types';
 import { cloneFilters, filterDraftEqualsApplied, isCompleteFilter } from './tableData/filterUtils';
 import {
@@ -199,6 +205,25 @@ function targetOf(context: TableChangeContext): TableTarget {
   };
 }
 
+/**
+ * The count strategy a read asks for when the caller did not say.
+ *
+ * The panel's first read computes the strategy from the setting **and** the
+ * size the catalog knows; the reads that follow it (a filter change, a manual
+ * reload) only have the setting, and the setting is enough: "do not count"
+ * has to stay "do not count" across a re-read, and "always exact" has to stay
+ * exact. In the automatic mode there is nothing to add here — the driver
+ * decides, and the host's own rule still wins on top of it (an estimate never
+ * survives a filter).
+ */
+function countStrategyFromSettings(): CountStrategy | undefined {
+  const settings = useSettingsStore.getState().settings;
+  return resolveCountStrategy({
+    mode: settings.rowCountMode ?? DEFAULT_ROW_COUNT_MODE,
+    threshold: settings.rowCountEstimateThreshold ?? DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD,
+  });
+}
+
 /** Apply a successful page fetch to the panel slice, unless it was superseded meanwhile. */
 function commitFetchedPage(
   get: Getter,
@@ -311,7 +336,9 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         sorts: order.sorts,
         skipCount,
         filterLogic,
-        countStrategy,
+        // The caller's strategy wins; without one the setting decides, so that
+        // "do not count" survives a re-read.
+        countStrategy: countStrategy ?? countStrategyFromSettings(),
         defaultOrderColumns: order.defaultOrderColumns,
         database: context.database,
         // The table's own schema, not a guess: without it the host falls back
