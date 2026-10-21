@@ -276,7 +276,13 @@ async fn execute_sql_file_target(
             "source schema changed since preview; return to comparison".into(),
         ));
     }
-    let claimed = plans::claim_plan(&request.plan_id).map_err(CommandError::from)?;
+    let claimed = state
+        .transfer_plans
+        .claim(
+            &super::plan_scope::desktop_organization_scope(),
+            &request.plan_id,
+        )
+        .map_err(CommandError::from)?;
     let immutable_structure = claimed.sql_file_structure.clone();
     let mut job = claimed.job;
     apply_selection(&mut job, &request.selection);

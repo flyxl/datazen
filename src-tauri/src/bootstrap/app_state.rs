@@ -218,6 +218,11 @@ pub(crate) fn finish_app_state(
         ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
         desktop_job_host,
+        // Data Transfer 的计划/检查点存储：宿主在组装期创建一个实例并注入。
+        // 包内不再有进程级全局，存储的生命周期到这里为止。
+        transfer_plans: Arc::new(
+            crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+        ),
     };
     if let Ok(adapter) = state.platform.require() {
         if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {

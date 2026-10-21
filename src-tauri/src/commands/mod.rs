@@ -177,6 +177,12 @@ pub struct AppState {
     pub schema_diff_jobs: Arc<crate::commands::schema_diff::job::SchemaDiffJobInfra>,
     /// P5 本机持久化 Job facade，所有迁移 Host 共用 `{appData}/datazen.sqlite`。
     pub desktop_job_host: Arc<datazen_runtime::job::JobHost>,
+    /// Data Transfer 的不可变计划与恢复检查点存储端口。
+    ///
+    /// 端口契约与 HashMap 实现都在 `datazen-data-transfer` 包内；宿主只负责在
+    /// 组装期创建**一个**实例并注入，调用点按组织作用域访问它。这样存储的
+    /// 生命周期由宿主决定，而不是包内的一个进程级全局。
+    pub transfer_plans: Arc<dyn crate::data_transfer::plan_store::TransferPlanStorePort>,
     /// 概要 §6.2 第 8 步的窄适配根：桌面身份 + owner 作用域句柄登记表。
     ///
     /// 事务归属和资源生命周期由 Runtime session actor 管理。取不到 adapter 时用

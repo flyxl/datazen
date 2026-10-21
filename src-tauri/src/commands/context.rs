@@ -621,6 +621,9 @@ mod tests {
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
+            transfer_plans: Arc::new(
+                crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+            ),
             platform,
         };
 
@@ -697,6 +700,9 @@ mod tests {
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
+            transfer_plans: Arc::new(
+                crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+            ),
             platform,
         };
 
