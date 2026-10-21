@@ -213,7 +213,7 @@ async fn execute_data_transfer_inner(
         .map_or(0, |tables| tables.len() as u64);
     if let Ok(plan) = state
         .transfer_plans
-        .peek(&plan_scope::desktop_organization_scope(), &request.plan_id)
+        .peek(plan_scope::desktop_organization_scope(), &request.plan_id)
     {
         run.source_connection_id = crate::services::migration_endpoint::runtime_session_context(
             &state,

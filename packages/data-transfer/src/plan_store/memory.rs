@@ -584,9 +584,9 @@ impl TransferPlanStorePort for InMemoryTransferPlanStore {
             return Err(unknown_plan());
         }
         if plan.expires_at <= Instant::now()
-            && !plan
+            && plan
                 .active_until
-                .is_some_and(|until| until > Instant::now())
+                .is_none_or(|until| until <= Instant::now())
         {
             return Err(TransferError::validation(
                 "transfer plan has expired; return to preview",

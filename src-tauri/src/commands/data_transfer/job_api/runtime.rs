@@ -330,7 +330,7 @@ pub(crate) async fn drive(
                 if let Some(plan_id) = plan.plan_id.as_deref() {
                     transfer_plans
                         .mark_consumed(
-                            &super::super::plan_scope::desktop_organization_scope(),
+                            super::super::plan_scope::desktop_organization_scope(),
                             plan_id,
                         )
                         .map_err(CommandError::from)?;

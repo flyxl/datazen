@@ -44,7 +44,7 @@ fn plan_store() -> Arc<dyn TransferPlanStorePort> {
 }
 
 /// The scope the desktop plan registry is keyed by.
-fn plan_scope() -> datazen_platform_api::ports::scope::OrganizationScope {
+fn plan_scope() -> &'static datazen_platform_api::ports::scope::OrganizationScope {
     crate::commands::data_transfer::plan_scope::desktop_organization_scope()
 }
 
@@ -342,7 +342,7 @@ fn plan_digest_is_stable_and_covers_the_revision() {
     let scope = plan_scope();
     let mut first = store
         .issue(
-            &scope,
+            scope,
             PlanIssueRequest::new(
                 job("src-session", "tgt-session"),
                 &preview(),
@@ -354,16 +354,16 @@ fn plan_digest_is_stable_and_covers_the_revision() {
             ),
         )
         .expect("plan issue");
-    let digest = plan_digest(&store.peek_any(&scope, &first).expect("plan peek")).expect("digest");
+    let digest = plan_digest(&store.peek_any(scope, &first).expect("plan peek")).expect("digest");
     assert!(digest.starts_with("sha256:"), "unexpected digest: {digest}");
     assert_eq!(
         digest,
-        plan_digest(&store.peek_any(&scope, &first).expect("plan peek")).expect("digest"),
+        plan_digest(&store.peek_any(scope, &first).expect("plan peek")).expect("digest"),
         "the digest of one stored plan must be stable"
     );
     first = store
         .issue(
-            &scope,
+            scope,
             PlanIssueRequest::new(
                 job("src-session", "tgt-session"),
                 &preview(),
@@ -375,8 +375,7 @@ fn plan_digest_is_stable_and_covers_the_revision() {
             ),
         )
         .expect("plan issue");
-    let redigest =
-        plan_digest(&store.peek_any(&scope, &first).expect("plan peek")).expect("digest");
+    let redigest = plan_digest(&store.peek_any(scope, &first).expect("plan peek")).expect("digest");
     assert_ne!(
         digest, redigest,
         "a re-issued plan is a different review and must not share a digest"
@@ -390,7 +389,7 @@ fn a_plan_id_serves_at_most_one_apply_job() {
     let scope = plan_scope();
     let plan_id = store
         .issue(
-            &scope,
+            scope,
             PlanIssueRequest::new(
                 job("src-session", "tgt-session"),
                 &preview(),
@@ -403,26 +402,26 @@ fn a_plan_id_serves_at_most_one_apply_job() {
         )
         .expect("plan issue");
     assert_eq!(
-        availability_of(store.peek_any(&scope, &plan_id).expect("peek").state),
+        availability_of(store.peek_any(scope, &plan_id).expect("peek").state),
         PlanAvailability::Available
     );
 
-    store.claim(&scope, &plan_id).expect("claim");
+    store.claim(scope, &plan_id).expect("claim");
     assert!(
-        store.peek(&scope, &plan_id).is_err(),
+        store.peek(scope, &plan_id).is_err(),
         "a claimed plan is no longer previewable"
     );
     assert_eq!(
-        availability_of(store.peek_any(&scope, &plan_id).expect("peek").state),
+        availability_of(store.peek_any(scope, &plan_id).expect("peek").state),
         PlanAvailability::Claimed
     );
 
-    store.mark_consumed(&scope, &plan_id).expect("consume");
-    let consumed = store.peek_any(&scope, &plan_id).expect("peek");
+    store.mark_consumed(scope, &plan_id).expect("consume");
+    let consumed = store.peek_any(scope, &plan_id).expect("peek");
     assert_eq!(availability_of(consumed.state), PlanAvailability::Consumed);
-    assert!(store.peek(&scope, &plan_id).is_err());
+    assert!(store.peek(scope, &plan_id).is_err());
     assert!(
-        store.peek_any(&scope, "no-such-plan").is_err(),
+        store.peek_any(scope, "no-such-plan").is_err(),
         "an unknown plan id must not resolve"
     );
     assert_eq!(
@@ -777,7 +776,7 @@ async fn an_apply_job_claims_the_plan_and_refuses_the_legacy_manager() {
     let state = test
         .state
         .transfer_plans
-        .peek_any(&plan_scope(), &plan_id)
+        .peek_any(plan_scope(), &plan_id)
         .expect("the plan stays readable")
         .state;
     assert!(
@@ -823,7 +822,7 @@ fn the_desktop_scope_is_the_only_organization_the_plan_registry_sees() {
     let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
     let plan_id = store
         .issue(
-            &scope,
+            scope,
             PlanIssueRequest::new(
                 job("p5dt-scope-source", "p5dt-scope-target"),
                 &preview(),
@@ -858,7 +857,7 @@ fn the_desktop_scope_is_the_only_organization_the_plan_registry_sees() {
     );
 
     // The desktop's own organization still sees it.
-    assert!(store.peek(&scope, &plan_id).is_ok());
+    assert!(store.peek(scope, &plan_id).is_ok());
 }
 
 /// Two apply Jobs racing for one planId: the registry's claim decides the winner

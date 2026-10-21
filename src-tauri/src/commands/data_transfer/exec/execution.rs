@@ -52,13 +52,13 @@ pub(crate) async fn execute_data_transfer_impl_with_write_observer(
     let (plan, checkpoint) = match request.resume_token.as_deref() {
         Some(token) => state
             .transfer_plans
-            .peek_checkpoint(&scope, token, &request.plan_id)
+            .peek_checkpoint(scope, token, &request.plan_id)
             .map(|(plan, checkpoint)| (plan, Some(checkpoint)))
             .map_err(CommandError::from)?,
         None => (
             state
                 .transfer_plans
-                .peek(&scope, &request.plan_id)
+                .peek(scope, &request.plan_id)
                 .map_err(CommandError::from)?,
             None,
         ),
@@ -139,7 +139,7 @@ pub(crate) async fn execute_data_transfer_impl_with_write_observer(
         Ok(context) => context,
         Err(error) => {
             if let Some(token) = request.resume_token.as_deref() {
-                state.transfer_plans.invalidate_checkpoint(&scope, token);
+                state.transfer_plans.invalidate_checkpoint(scope, token);
             }
             return Err(error);
         }
@@ -160,13 +160,13 @@ pub(crate) async fn execute_data_transfer_impl_with_write_observer(
     let (claimed, claimed_checkpoint) = match request.resume_token.as_deref() {
         Some(token) => state
             .transfer_plans
-            .claim_checkpoint(&scope, token, &request.plan_id)
+            .claim_checkpoint(scope, token, &request.plan_id)
             .map(|(plan, checkpoint)| (plan, Some(checkpoint)))
             .map_err(CommandError::from)?,
         None => (
             state
                 .transfer_plans
-                .claim(&scope, &request.plan_id)
+                .claim(scope, &request.plan_id)
                 .map_err(CommandError::from)?,
             None,
         ),
@@ -193,7 +193,7 @@ pub(crate) async fn execute_data_transfer_impl_with_write_observer(
         .unwrap_or_default();
     let mut checkpoint_session = TransferCheckpointSession::new(
         state.transfer_plans.clone(),
-        scope,
+        scope.clone(),
         request.plan_id.clone(),
         selected_source_tables(&job, &effective_selection),
         prior_completed.clone(),

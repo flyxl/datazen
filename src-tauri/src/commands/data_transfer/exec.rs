@@ -279,7 +279,7 @@ async fn execute_sql_file_target(
     let claimed = state
         .transfer_plans
         .claim(
-            &super::plan_scope::desktop_organization_scope(),
+            super::plan_scope::desktop_organization_scope(),
             &request.plan_id,
         )
         .map_err(CommandError::from)?;

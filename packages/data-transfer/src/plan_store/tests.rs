@@ -994,18 +994,18 @@ fn tester_claimed_chunk(
         block_reason: None,
     };
     let plan_id = issue_plan(
-        &store,
-        &scope,
+        store,
+        scope,
         job(),
         &preview,
         driver.as_ref(),
         driver.as_ref(),
         Duration::from_secs(60),
     );
-    store.claim(&scope, &plan_id).unwrap();
+    store.claim(scope, &plan_id).unwrap();
     let token = store
         .start_chunk_checkpoint(
-            &scope,
+            scope,
             &plan_id,
             vec!["users".into()],
             Vec::new(),

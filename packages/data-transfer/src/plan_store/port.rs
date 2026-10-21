@@ -27,6 +27,28 @@
 //! Keeping the port synchronous makes that transition one non-interruptible
 //! step: an `async` signature would allow an unrelated `await` to sit between
 //! the check and the write.
+//!
+//! ## Why the trait is **not** split into a plan half and a checkpoint half
+//!
+//! The checkpoint side and the plan side are **one aggregate**, and the split
+//! would break the single-writer atomicity they share. Every checkpoint
+//! operation also rewrites the *plan's* state in the same call:
+//! `create_checkpoint` mints a token **and** extends the plan's lease,
+//! `prepare_checkpoint_table` / `advance_checkpoint_table` renew the plan's
+//! lease **and** move the checkpoint's cursor, `claim_checkpoint` flips the
+//! plan to `Executing` **and** takes the token in flight,
+//! `update_checkpoint(finished)` consumes the plan **and** retires the token,
+//! and `renew_execution` extends both. An implementation therefore has to
+//! serialize those writes against each other, no matter how the trait is cut
+//! up — splitting it would only move the boundary that the atomicity depends
+//! on, and would let a future implementor satisfy one half while the other
+//! half quietly drops the plan-state half of the write.
+//!
+//! (The "split by aggregate, do not merge traits" rule of platform-api §4.2
+//! governs the *platform-api* port family — `#[async_trait]`, `PortError`,
+//! platform ID newtypes. This is a **domain package** port: synchronous,
+//! `TransferError`, opaque `String` ids. It is outside that family, and its
+//! methods all belong to the same aggregate root anyway.)
 
 use std::collections::HashMap;
 use std::time::Duration;

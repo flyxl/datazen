@@ -161,7 +161,7 @@ pub(crate) async fn prepare_data_transfer_job_impl(
     // Re-read the plan from the store: the review is served from the authoritative
     // record, never from anything the caller kept on the client side.
     let plan = state.transfer_plans.peek(
-        &super::plan_scope::desktop_organization_scope(),
+        super::plan_scope::desktop_organization_scope(),
         &review.plan_id,
     )?;
     let digest = plan_digest(&plan)?;
@@ -341,7 +341,7 @@ pub(crate) async fn admit_apply(
     // `peek_plan_any` also returns claimed/consumed plans, so the refusal can name
     // the real reason ("already consumed") instead of a misleading "unknown plan".
     let plan = state.transfer_plans.peek_any(
-        &super::plan_scope::desktop_organization_scope(),
+        super::plan_scope::desktop_organization_scope(),
         &request.plan_id,
     )?;
     scope::enforce_same_backend_scope(&plan.job, Some(&request.backend_scope))?;
@@ -439,7 +439,7 @@ pub(crate) async fn admit_apply(
         }),
         runtime::Admission::Accepted(accepted) => {
             if let Err(error) = state.transfer_plans.claim(
-                &super::plan_scope::desktop_organization_scope(),
+                super::plan_scope::desktop_organization_scope(),
                 &request.plan_id,
             ) {
                 state
