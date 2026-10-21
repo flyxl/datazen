@@ -17,16 +17,37 @@ export type GridErrorCode =
   | 'unknown'
   | 'grid.selection.invalid'
   | 'grid.selection.outOfBounds'
-  | 'grid.selection.stale';
+  | 'grid.selection.stale'
+  | 'grid.commit.stalePlan'
+  | 'grid.commit.affectedMismatch'
+  | 'grid.commit.conflictingIntents'
+  | 'grid.cell.noRowIdentity'
+  | 'grid.cell.ambiguousIdentity'
+  | 'grid.cell.readOnly'
+  | 'grid.insert.unknownColumn'
+  | 'grid.insert.returningUnavailable';
 
 /**
  * Prefix registry. Entries are full message prefixes (`grid.<domain>.<reason>`); the
  * classifier does longest-prefix matching, so appenders do not have to keep an order.
+ *
+ * Every entry here MUST have a real producer in the back end, otherwise the front end
+ * branches on a prefix that can never arrive. See `docs/prd/data-browsing-design/00-contracts.md`
+ * §8.2 for the producer inventory (`grid.selection.*` currently has none: out-of-bounds
+ * coordinates are clamped to `null` instead of raising).
  */
 export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.selection.invalid',
   'grid.selection.outOfBounds',
   'grid.selection.stale',
+  'grid.commit.stalePlan',
+  'grid.commit.affectedMismatch',
+  'grid.commit.conflictingIntents',
+  'grid.cell.noRowIdentity',
+  'grid.cell.ambiguousIdentity',
+  'grid.cell.readOnly',
+  'grid.insert.unknownColumn',
+  'grid.insert.returningUnavailable',
 ];
 
 /** Every grid message starts with this namespace; useful for cheap pre-checks. */
