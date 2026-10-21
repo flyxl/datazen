@@ -24,13 +24,16 @@ export function PendingPlanDialog({
   if (!plan) return null;
   const inserts = plan.inserts ?? [];
   const statements = [...inserts, ...plan.updates, ...plan.deletes];
+  /**
+   * The counts are rendered **once**: the wording already carries the number
+   * (`{count} insert(s)`), so prefixing the raw count would read "1 1
+   * insert(s)".
+   */
   const description = [
     plan.table.table,
-    ...(inserts.length > 0
-      ? [`${inserts.length} ${t('tableData.pendingInserts', { count: inserts.length })}`]
-      : []),
-    `${plan.updates.length} ${t('tableData.pendingUpdates', { count: plan.updates.length })}`,
-    `${plan.deletes.length} ${t('tableData.pendingDeletes', { count: plan.deletes.length })}`,
+    ...(inserts.length > 0 ? [t('tableData.pendingInserts', { count: inserts.length })] : []),
+    t('tableData.pendingUpdates', { count: plan.updates.length }),
+    t('tableData.pendingDeletes', { count: plan.deletes.length }),
   ].join(' · ');
   return (
     <Dialog

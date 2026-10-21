@@ -83,6 +83,13 @@ error TS 计数 = 0
 | 词条模板 | `tableData.pendingInserts` 改成 `'{count} insert(s)'`（契约 `ee3409494`；仓库既有约定一律是 `thing(s)`） |
 | E3 两条假钉 | ① store 层那条**改成走生产函数** `pendingChangesForWire`（原来在测试里手抄了一遍 wire 转换）；② backend-client 那条**改成走生产客户端**（`createBackendClient` → transport 调用，断言变更集**逐字**透传）+ 一条**编译期**钉（`InsertMarkedStaysOptional`：镜像里 `insertMarked` 必须保持可选）。依据：backend-client 包**不生产**载荷（转换在宿主的 `pendingChangesForWire` 里），所以在包内断言 fixture 的 JSON 证明不了任何生产性质；宿主侧的真钉由复测的 `insertThreeState.audit.test.ts` 承担 |
 
+## 第 4 轮（本轨收尾）
+
+| 编号 | 处理 |
+| --- | --- |
+| IF3-D-1 | 预览描述的条数**只渲染一次**（三段一起改：inserts / updates / deletes）。改后逐字文本：`users · 1 insert(s) · 0 updates · 0 deletes`。回归锁：新增 `src/windows/connection/__tests__/PendingPlanDialog.test.tsx`（2 例，逐字断言描述文本，**用真实 i18n**）。E2E 的条数断言改成**分隔符形式** `toContain('· 1 insert(s) ·')`——重复形态消失后它逐字匹配，且不再依赖重复渲染 |
+| IF3-D-2 | 桌面镜像的 `insertMarked` 补**编译期**钉：`src/lib/__tests__/tableChanges.test.ts` 的 `export type InsertMarkedStaysOptional = Assert<IsOptional<PendingRowChange, 'insertMarked'>>`。变异验证：把 `insertMarked?` 改成必填 → `tsc` EXIT=2，`TS2344: Type 'false' does not satisfy the constraint 'true'`（桌面侧与 backend-client 侧**同时**报）→ 还原 EXIT=0、`git diff` 为空 |
+
 ## 待裁定（只报不改，AGENTS.md「发现契约/实装冲突，停下来报告」）
 
 1. **`grid.insert.noWritableColumn` 没有生产者** —— 04 §8 把它列为本册要追加的码，

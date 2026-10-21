@@ -426,11 +426,10 @@ describe('新增行 INSERT (TC-INS-001~007)', () => {
     // says "INSERT INTO".
     expect(previewText).toContain('INSERT INTO');
     // The plan lists exactly one insert — the count is asserted, not implied.
-    // The description renders the raw count next to the interpolated string,
-    // so the segment reads "1 1 insert(s)"; the boundary in the pattern is
-    // what makes the assertion about **one** insert: "11 insert(s)" and
-    // "21 insert(s)" must not satisfy it.
-    expect(previewText).toMatch(/(?:^|\D)1 insert\(s\)(?:\D|$)/);
+    // The description renders the count once ("1 insert(s)"), and the
+    // separators around it make the segment unambiguous: "11 insert(s)" and
+    // "21 insert(s)" cannot satisfy this.
+    expect(previewText).toContain('· 1 insert(s) ·');
     // And the preview really lists one INSERT statement (the fingerprint is a
     // <code> element too, so the statements are counted, not guessed).
     const insertStatements = await browser.execute(() => {

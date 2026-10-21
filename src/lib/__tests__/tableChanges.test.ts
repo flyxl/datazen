@@ -8,8 +8,36 @@ import {
   rowIdentityKey,
   tableChangeContextKey,
   valuesEqual,
+  type PendingRowChange,
   type RowChangePlan,
 } from '../tableChanges';
+
+/**
+ * `true` only when the key `K` of `T` is **optional**.
+ *
+ * The parity assertion in `packages/backend-client/__tests__/tableData.test.ts`
+ * compares the key **sets**, not their optionality: a field that is optional
+ * on one side and required on the other has the same keys and stays assignable
+ * in both directions. That gap matters here — the host omits `insertMarked`
+ * when it is false, so a mirror that declared the flag as required would
+ * claim a key the wire does not carry, and no other assertion would notice.
+ */
+type IsOptional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
+
+/** Fails to compile when the checked condition is not `true`. */
+type Assert<T extends true> = T;
+
+/**
+ * The insert flag stays optional in the **desktop** mirror.
+ *
+ * Fail-closed: making the flag required turns this into `false` and the
+ * program red (the type assertion, not a runtime one — the runtime half of
+ * the property is pinned by `pendingChangesForWire`, which is exercised in
+ * `src/stores/tableData/__tests__/`).
+ */
+export type InsertMarkedStaysOptional = Assert<
+  IsOptional<PendingRowChange, 'insertMarked'>
+>;
 
 const primaryKey = (name: string) => ({
   name,
