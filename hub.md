@@ -192,3 +192,19 @@
 3. 每条冻结契约登记**生产者 + 消费方**；§8.2 加「生产者」列，空着就是未实现。
 4. 行数只允许脚本产出，文档引用账本。
 5. **新 Rust 逻辑三问门禁**（G-4）：desktop/web 都要？能否端口注入而非吃 `AppState`？宿主只剩「取值→校验→转发→映射错误」？有一问答不上就落 feature-core。
+
+## `insert-backend` 第 2 轮交付（含架构搬迁，复测中）
+
+| commit | 内容 |
+| --- | --- |
+| `a970584a9` | 固化 Tester 20 例（未改动） |
+| `7841b589c` | **分层搬迁**：`packages/feature-core/src/data_browsing/{change_set,insert_plan,row_identity,write_exec,mod,tests}.rs`；`src-tauri/commands/data.rs` **761→263**、`data_session.rs` **删除（333→0）**、新增宿主端口 `data/table_columns.rs`(132) |
+| `497e9de11` | IB-D3：MySQL 空列 `INSERT INTO t () VALUES ()`；新增 `packages/drivers/mysql/tests/insert_defaults.rs` |
+| `9bc3f613a` | TS 镜像 `inserts?` / `insertMarked?` / `operation:'insert'` |
+
+自报：FC 321 / HOST 1406(9 ignored) / API 382 / MYSQL 188 / SQLITE 5 / MYSQL_DEFAULTS 2，`FMT_EXIT=0`、`TSC_EXIT=0`。
+自证：反向依赖 grep 0 命中；宿主内已无 `build_row_change_plan`/`execute_plan`/`changes_fingerprint` 定义；DTO 块与搬迁前**逐字节相同**、13 条 serde 属性未改、36 个基线用例 assert 行零变化、指纹逐字节用例仍在。
+
+**待复测验证的关键风险**：`data_session.rs` 整文件删除——事务归属（`manual_handle` 校验 / `defersCommit`）、错误文案是否在 `write_exec.rs` 里**等价**存在；测试搬家有没有丢断言（`data/tests.rs` 1203→396，迁出的必须逐条在 feature-core 重现）。
+
+**V-3 已知缺口**：`ColumnSchema` 无 generated/identity 标记，无法判定"不可写列"，`grid.insert.noWritableColumn` 本轮不做（不臆造规则）。
