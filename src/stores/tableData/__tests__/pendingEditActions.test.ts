@@ -72,6 +72,8 @@ const STORE_ACTIONS = [
   'removePanel',
   'reset',
   'rollbackPendingChanges',
+  // DB-07: the first-frame seed of a tab that was opened by a foreign-key jump.
+  'seedPanel',
   'selectRow',
   'setDetailRow',
   'setDraftValue',

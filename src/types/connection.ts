@@ -153,6 +153,69 @@ export interface TableSchema {
 
 export type Value = string | number | boolean | null | Record<string, unknown> | unknown[];
 
+/**
+ * The referenced side of a foreign key, as the host resolved it (DB-07).
+ *
+ * The host is the only authority on where the target lives: the driver's
+ * `referenced_table` differs per driver (PostgreSQL prefixes the schema, MySQL
+ * and SQLite do not), so the front end must never split that string itself.
+ *
+ * Field-for-field identical to the port's `ForeignKeyTargetRef`
+ * (`packages/backend-client/src/types/tableData.ts`) — the port is the cross-shape
+ * contract, this file is the host-side mirror of it.
+ */
+export interface ForeignKeyTargetRef {
+  /** Target database. */
+  database: string;
+  /** Target namespace; `null` when the driver has no schema level. */
+  schema: string | null;
+  /** Target table. */
+  table: string;
+  /** The referenced columns, in the same order as the local columns. */
+  columns: string[];
+  /** The type names of `columns`, in the same order. */
+  dataTypes: string[];
+  /** The effective primary key of the target table. */
+  primaryKeys: string[];
+  /** The referenced columns are covered by a primary key or a unique index. */
+  unique: boolean;
+  /** The candidate limit that was actually applied. */
+  candidateLimit: number;
+}
+
+/**
+ * The result of resolving a foreign key (DB-07).
+ *
+ * `exists: false` means the target table is readable but the referenced row is
+ * gone — a successful answer, not an error.
+ */
+export interface ForeignKeyTargetResolution {
+  target: ForeignKeyTargetRef;
+  exists: boolean;
+  candidates: (Value | null)[][];
+  truncated: boolean;
+}
+
+/**
+ * The request of a foreign-key resolution (DB-07).
+ *
+ * Field-for-field identical to the port's `ResolveForeignKeyTargetsRequest`.
+ */
+export interface ResolveForeignKeyTargetsRequest {
+  dbSessionId: string;
+  database?: string | null;
+  schema?: string | null;
+  table: string;
+  qualifiedTable?: string | null;
+  /** The local columns of the foreign key, in pairing order. */
+  columns: string[];
+  /** Disambiguates two constraints over the same columns. */
+  constraintName?: string | null;
+  /** The local column values, positionally paired with `columns`. */
+  values: Value[];
+  limit?: number;
+}
+
 export interface ColumnInfo {
   name: string;
   dataType: string;

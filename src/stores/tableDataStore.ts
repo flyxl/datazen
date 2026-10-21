@@ -46,6 +46,10 @@ import {
   createDraftSlice,
   type DraftStoreSlice,
 } from './tableData/draftInserts';
+import {
+  createPanelSeedSlice,
+  type PanelSeedSlice,
+} from './tableData/panelSeed';
 import { locateInsertedRow } from './tableData/insertLocation';
 
 // ── Store ─────────────────────────────────────────────────────────
@@ -58,7 +62,11 @@ export interface LoadTableDataParams extends TableTarget {
 }
 
 /** Every action is scoped to one table/view panel, like `panelStore`'s queryExec map. */
-interface TableDataStore extends SelectionStoreSlice, DraftStoreSlice, PendingEditStoreSlice {
+interface TableDataStore
+  extends SelectionStoreSlice,
+    DraftStoreSlice,
+    PendingEditStoreSlice,
+    PanelSeedSlice {
   byPanel: Map<string, TableState>;
 
   loadTableData: (params: LoadTableDataParams) => Promise<void>;
@@ -420,6 +428,15 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     (panelId, updater) => patchPanel(get, set, panelId, updater),
     (panelId) => get().byPanel.get(panelId),
   ),
+
+  // The first-frame seed of a panel (a foreign-key jump) lives in
+  // `tableData/panelSeed`; the store only wires it. It writes the whole slice
+  // because the panel may not have one yet — that is the whole point of it.
+  ...createPanelSeedSlice((panelId, state) => {
+    const next = new Map(get().byPanel);
+    next.set(panelId, state);
+    set({ byPanel: next });
+  }),
 
   clearHighlightedNewRow: (panelId) => {
     patchPanel(get, set, panelId, (ts) =>
