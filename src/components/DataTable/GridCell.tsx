@@ -136,9 +136,12 @@ export const GridCell = memo(function GridCell({
       {...(active ? { 'data-dt-active': 'true' } : {})}
       {...(cellType ? { 'data-dt-cell-type': cellType } : {})}
       {...(dirty ? { 'data-dt-dirty': 'true' } : {})}
-      // The cell belongs to a foreign key. The **value** of the attribute is the
-      // marker; the target itself is in the tooltip (00-contracts §4.4).
-      {...(fk ? { 'data-dt-fk': 'true' } : {})}
+      // The cell belongs to a foreign key, and the **value** of the attribute
+      // is the target it points at: `customers.id`, or `sales.parents.(x, y)`
+      // for a composite key (00-contracts §4.4). The target comes from the
+      // table's own metadata, so the marker is there even when the group is
+      // incomplete — the cell belongs to the key either way.
+      {...(fk ? { 'data-dt-fk': fk.targetLabel } : {})}
       aria-selected={gridSemantics && selected ? 'true' : undefined}
       aria-label={dirty ? dirtyAriaLabel : fkTitle ?? undefined}
       title={dirty ? dirtyTooltip : fkTitle ?? undefined}

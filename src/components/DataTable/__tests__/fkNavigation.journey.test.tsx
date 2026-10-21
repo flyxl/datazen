@@ -158,7 +158,9 @@ function FkGrid({
         <div data-testid="fk-breadcrumb">{navigation.breadcrumb.origin.sourceTable}</div>
       )}
       {navigation.error && (
-        <div data-testid="fk-error">{navigation.error.code}</div>
+        <div data-testid="fk-error">
+          {navigation.error.code}|{navigation.error.raw}
+        </div>
       )}
       <button type="button" data-testid="fk-back" onClick={navigation.onBack}>
         back
@@ -329,6 +331,26 @@ describe('journey: foreign-key navigation', () => {
     expect(useFkNavigationStore.getState().back).toHaveLength(1);
   });
 
+  it('keeps the member marker on a cell whose group is incomplete', async () => {
+    schemaState.foreignKeys = [COMPOSITE_FOREIGN_KEY];
+    const { container } = render(
+      <FkGrid
+        rows={[{ id: 1, customer_id: 3, parent_a: 1, parent_b: null }]}
+        visibleColumns={['id', 'customer_id', 'parent_a', 'parent_b']}
+        columns={COMPOSITE_COLUMNS}
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelector('[data-dt-fk]')).not.toBeNull());
+    // The cell still belongs to the key — the marker names the target — but
+    // the group is incomplete, so there is nothing to follow and no arrow.
+    const marked = container
+      .querySelector('[data-dt-row="0"][data-dt-col="parent_a"]')
+      ?.getAttribute('data-dt-fk');
+    expect(marked).toBe('parents.(x, y)');
+    expect(arrows(container)).toHaveLength(0);
+  });
+
   it('refuses a jump whose group has a missing member, without asking the host', async () => {
     const { container } = render(
       <FkGrid rows={[{ id: 1, customer_id: 7 }, { id: 2, customer_id: null }]} />,
@@ -369,9 +391,11 @@ describe('journey: foreign-key navigation', () => {
     fireEvent.click(arrows(container)[0]);
 
     await waitFor(() => expect(container.querySelector('[data-testid="fk-error"]')).not.toBeNull());
-    expect(container.querySelector('[data-testid="fk-error"]')?.textContent).toBe(
-      'grid.fk.targetUnresolved',
-    );
+    const failure = container.querySelector('[data-testid="fk-error"]')?.textContent ?? '';
+    // The classified code…
+    expect(failure).toContain('grid.fk.targetUnresolved');
+    // …and the host's own message, prefix and all: the round trip keeps it.
+    expect(failure).toContain('grid.fk.targetUnresolved: the referenced table is gone');
     expect(usePanelStore.getState().panels).toHaveLength(1);
   });
 

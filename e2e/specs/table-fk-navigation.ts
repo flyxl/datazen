@@ -21,9 +21,11 @@ import {
  * - `[data-dt-fk-click="true"]`  — the jump entry of a cell (GridCell; the
  *                                  attribute is "true" or absent, and it only
  *                                  exists on a cell that may be followed);
- * - `[data-dt-fk="true"]`        — a cell that belongs to a foreign key
- *                                  (GridCell; the marker of the **member**,
- *                                  not of the arrow);
+ * - `[data-dt-fk="<target>"]`   — a cell that belongs to a foreign key; the
+ *                                  **value** is the referenced target
+ *                                  (`customers.id`, or `sales.parents.(x, y)`
+ *                                  for a composite key — 00-contracts §4.4);
+ *                                  it marks the **member**, not the arrow;
  * - `[data-dt-row]` / `[data-dt-col]` — the coordinates of a cell
  *                                  (00-contracts §4.4);
  * - `[data-dt-surface]`          — the scroll container of the grid
@@ -392,12 +394,13 @@ describe('外键跳转与返回栈 (DB-07)', () => {
     // Row 1 has no value in the key column: there is nothing to follow.
     const nullCell = await arrowOf(1, 'customer_id');
     expect(nullCell?.found).toBe(false);
-    // The cell is still marked as a member of the key.
+    // The cell is still marked as a member of the key, and the marker names
+    // the target it points at.
     const marked = await browser.execute(() => {
       const cell = document.querySelector('[data-dt-row="1"][data-dt-col="customer_id"]');
       return cell?.getAttribute('data-dt-fk') ?? null;
     });
-    expect(marked).toBe('true');
+    expect(marked).toBe('cust_no');
 
     const before = await tabCount();
     await $('[data-dt-row="1"][data-dt-col="customer_id"]').click();

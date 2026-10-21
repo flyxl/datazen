@@ -37,10 +37,17 @@ function renderCell(overrides: Partial<React.ComponentProps<typeof GridCell>> = 
 }
 
 describe('GridCell foreign-key entry', () => {
-  it('marks a member of a foreign key with data-dt-fk', () => {
+  it('marks a member of a foreign key with the target it points at', () => {
     const { cell } = renderCell({ fk: fk({ navigable: false }) });
 
-    expect(cell.getAttribute('data-dt-fk')).toBe('true');
+    // The **value** of the attribute is the referenced target (00-contracts §4.4).
+    expect(cell.getAttribute('data-dt-fk')).toBe('customers.id');
+  });
+
+  it('names the table and the columns of a composite target', () => {
+    const { cell } = renderCell({ fk: fk({ targetLabel: 'sales.parents.(x, y)' }) });
+
+    expect(cell.getAttribute('data-dt-fk')).toBe('sales.parents.(x, y)');
   });
 
   it('leaves a column that is not a member without the marker', () => {
