@@ -15,6 +15,31 @@ impl DatabaseDriver for MysqlDriver {
         true
     }
 
+    /// MySQL has no `DEFAULT VALUES`; an all-default row is spelled with an
+    /// empty column/value list. Non-empty inserts keep the shared
+    /// parameterized rendering (backtick identifiers, positional `?`).
+    fn build_insert_statement(
+        &self,
+        table: &str,
+        values: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        if !values.is_empty() {
+            return datazen_driver_api::sql_builder::build_insert_statement(
+                &datazen_driver_api::LegacySqlDialect::new(self),
+                self.max_bound_parameters(),
+                table,
+                values,
+            );
+        }
+        Ok(BoundSqlStatement {
+            sql: format!(
+                "INSERT INTO {} () VALUES ()",
+                MysqlDriver::quote_identifier(table)
+            ),
+            parameters: Vec::new(),
+        })
+    }
+
     fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
         Some(SqlLiteralDialect::MySql)
     }
