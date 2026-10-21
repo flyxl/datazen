@@ -1,7 +1,7 @@
 import { useCallback, useId, useMemo, useState, type KeyboardEvent } from 'react';
 import { tid } from '../../lib/tid';
 import { Download, Trash2 } from 'lucide-react';
-import type { DatabaseType, FilterCondition, SortCondition } from '../../types';
+import type { FilterCondition, SortCondition } from '../../types';
 import type { CellEdit } from '../../stores/tableData/types';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
@@ -14,26 +14,12 @@ import {
   type GridSelection,
 } from '../../stores/tableData/gridSelection';
 import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
-import {
-  buildDataTableContextMenuItems,
-  formatRowAsSqlInsert,
-  formatRowAsSqlUpdate,
-  formatRowsAsSqlInsert,
-  formatRowsAsSqlUpdate,
-  resolveDataTableCellFromEvent,
-  resolveDataTableHeaderColFromEvent,
-  rowToNamedRecord,
-  serializeDataTableColumnValues,
-  serializeDataTableRowsAsCsv,
-  serializeDataTableRowsAsJson,
-  serializeDataTableRowsAsTsv,
-} from '../../lib/dataTableContextMenu';
-import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
 import { Pagination } from './Pagination';
 import { TableHeader, type ColumnDef } from './TableHeader';
 import { VirtualBody } from './VirtualBody';
+import { useDataTableContextMenu } from './useDataTableContextMenu';
 import { DataExportDialog } from './DataExportDialog';
 import { cn } from '../../lib/cn';
 import { Spinner } from '../ui/Spinner';
@@ -302,231 +288,24 @@ export function DataTable({
   const deleteRowIndices = coveredRows ?? Array.from(selectedRows).sort((a, b) => a - b);
   const deleteRowCount = coveredRows?.length ?? selectedRows.size;
 
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const hit = resolveDataTableCellFromEvent(e.target);
-      const hitHeaderCol = !hit ? resolveDataTableHeaderColFromEvent(e.target) : null;
-      const effectiveColName = hit ? hit.columnName : hitHeaderCol;
-      const effectiveColIdx = effectiveColName ? columnNames.indexOf(effectiveColName) : -1;
-      const hitRow = hit ? rows[hit.rowIndex] : undefined;
-      const hitColIdx = hit ? columnNames.indexOf(hit.columnName) : -1;
-      const hitCellValue = hitRow && hitColIdx >= 0 ? (hitRow[hitColIdx] ?? null) : undefined;
-
-      const fromProp = getContextCellText?.() ?? '';
-      const fromSelection = window.getSelection()?.toString() ?? '';
-      const cellTextForCopy =
-        hitCellValue !== undefined
-          ? hitCellValue == null
-            ? ''
-            : String(hitCellValue)
-          : fromProp || fromSelection;
-
-      const selectedIndices = Array.from(selectedRows).sort((a, b) => a - b);
-      const selectedDataRows = selectedIndices
-        .map((i) => rows[i])
-        .filter((r): r is unknown[] => Array.isArray(r));
-      const hasSelectedRows = selectedDataRows.length > 0;
-      const hasCellContext = hit != null && Array.isArray(hitRow);
-      /**
-       * The right-click landed inside a selection of more than one row: the menu
-       * must act on the whole selection, not just the clicked row, so every
-       * single-row / single-cell action is dropped below.
-       */
-      const multiRowSelection =
-        hasCellContext && hit != null && selectedRows.size > 1 && selectedRows.has(hit.rowIndex);
-      /** Row the cell-scoped actions operate on; null in selection mode. */
-      const actionRow = hasCellContext && hitRow && !multiRowSelection ? hitRow : null;
-      /** Rows the selection-scoped actions operate on. */
-      const selectionRowActions = multiRowSelection || !hasCellContext ? selectedDataRows : [];
-      const canFilterByValue = !loading && hasCellContext && !!onAddFilter && !!hit;
-      const setNullAllowed = enableSetNull ?? !!onCellEdit;
-      const canSetNull = hasCellContext && setNullAllowed && !!onCellEdit && !!hit;
-      const deleteIndices = hasSelectedRows ? selectedIndices : hit != null ? [hit.rowIndex] : [];
-      const canDelete =
-        !!onDeleteRows && (primaryKeyColumns?.length ?? 0) > 0 && deleteIndices.length > 0;
-
-      const csvRows = actionRow ? [actionRow] : selectedDataRows;
-      const canCopyCsv = csvRows.length > 0;
-
-      const copyText = (text: string) => {
-        void navigator.clipboard.writeText(text);
-      };
-
-      void showNativeContextMenu(
-        buildDataTableContextMenuItems({
-          labels: {
-            copy: t('common.copy'),
-            copyRow: t('dataTable.copyRow'),
-            moreActions: t('dataTable.moreActions'),
-            copyAsJson: t('dataTable.copyAsJson'),
-            copyAsSqlInsert: t('dataTable.copyAsSqlInsert'),
-            copyAsUpdate: t('dataTable.copyAsUpdate'),
-            copyAsCsv: t('dataTable.copyAsCsv'),
-            copyColumnName: t('dataTable.copyColumnName'),
-            copyColumnData: t('dataTable.copyColumnData'),
-            setNull: t('dataTable.setNull'),
-            filterByValue: t('dataTable.filterByValue'),
-            copySelectedRows:
-              selectedRows.size > 1
-                ? `${t('common.copy')} ${t('export.selectedRows')} (${selectedRows.size})`
-                : `${t('common.copy')} ${t('export.selectedRows')}`,
-            deleteRow:
-              deleteIndices.length > 1
-                ? `${t('dataTable.deleteRow')} (${deleteIndices.length})`
-                : t('dataTable.deleteRow'),
-            export:
-              selectedRows.size > 0
-                ? `${t('export.export')} (${t('export.selectedRows')} ${selectedRows.size})`
-                : t('export.export'),
-          },
-          handlers: {
-            onCopy:
-              hasCellContext && !multiRowSelection
-                ? () => {
-                    copyText(cellTextForCopy);
-                  }
-                : undefined,
-            onCopyRow: actionRow
-              ? () => {
-                  copyText(serializeDataTableRowsAsTsv([actionRow]));
-                }
-              : undefined,
-            onCopyAsJson: actionRow
-              ? () => {
-                  copyText(JSON.stringify(rowToNamedRecord(columnNames, actionRow), null, 2));
-                }
-              : selectionRowActions.length > 0
-                ? () => {
-                    copyText(serializeDataTableRowsAsJson(columnNames, selectionRowActions));
-                  }
-                : undefined,
-            onCopyAsSqlInsert: actionRow
-              ? () => {
-                  copyText(
-                    formatRowAsSqlInsert(
-                      exportTableName || 'table',
-                      columnNames,
-                      actionRow,
-                      databaseType as DatabaseType,
-                    ),
-                  );
-                }
-              : selectionRowActions.length > 0
-                ? () => {
-                    copyText(
-                      formatRowsAsSqlInsert(
-                        exportTableName || 'table',
-                        columnNames,
-                        selectionRowActions,
-                        databaseType as DatabaseType,
-                      ),
-                    );
-                  }
-                : undefined,
-            onCopyAsUpdate: actionRow
-              ? () => {
-                  copyText(
-                    formatRowAsSqlUpdate(
-                      exportTableName || 'table',
-                      columnNames,
-                      actionRow,
-                      primaryKeyColumns,
-                      databaseType as DatabaseType,
-                    ),
-                  );
-                }
-              : selectionRowActions.length > 0
-                ? () => {
-                    copyText(
-                      formatRowsAsSqlUpdate(
-                        exportTableName || 'table',
-                        columnNames,
-                        selectionRowActions,
-                        primaryKeyColumns,
-                        databaseType as DatabaseType,
-                      ),
-                    );
-                  }
-                : undefined,
-            onCopyAsCsv: canCopyCsv
-              ? () => {
-                  copyText(serializeDataTableRowsAsCsv(columnNames, csvRows));
-                }
-              : undefined,
-            onCopyColumnName: effectiveColName
-              ? () => {
-                  copyText(effectiveColName);
-                }
-              : undefined,
-            onCopyColumnData:
-              effectiveColIdx >= 0
-                ? () => {
-                    copyText(serializeDataTableColumnValues(effectiveColIdx, rows));
-                  }
-                : undefined,
-            onSetNull:
-              canSetNull && !multiRowSelection && hit
-                ? () => {
-                    onCellEdit?.(hit.rowIndex, hit.columnName, null);
-                  }
-                : undefined,
-            onFilterByValue:
-              canFilterByValue && hit
-                ? () => {
-                    onAddFilter?.({
-                      column: hit.columnName,
-                      operator: 'eq',
-                      value: hitCellValue == null ? '' : String(hitCellValue),
-                    });
-                  }
-                : undefined,
-            onCopySelectedRows: hasSelectedRows
-              ? () => {
-                  copyText(serializeDataTableRowsAsTsv(selectedDataRows));
-                }
-              : undefined,
-            onDeleteRow: canDelete
-              ? () => {
-                  onDeleteRows?.(deleteIndices);
-                }
-              : undefined,
-            onExport: exportEnabled
-              ? () => {
-                  setExportOpen(true);
-                }
-              : undefined,
-          },
-          hasCellContext,
-          hasHeaderContext: !!hitHeaderCol,
-          hasSelectedRows,
-          multiRowSelection,
-          exportEnabled,
-          canFilterByValue,
-          canSetNull,
-          canDelete,
-        }),
-        { x: e.clientX, y: e.clientY },
-      );
-    },
-    [
-      columnNames,
-      exportEnabled,
-      exportTableName,
-      getContextCellText,
-      onAddFilter,
-      onCellEdit,
-      enableSetNull,
-      onDeleteRows,
-      primaryKeyColumns,
-      rows,
-      selectedRows,
-      t,
-      loading,
-    ],
-  );
+  const handleExport = useCallback(() => setExportOpen(true), []);
+  const { onContextMenu } = useDataTableContextMenu({
+    columnNames,
+    rows,
+    selectedRows,
+    loading,
+    exportTableName,
+    exportEnabled,
+    databaseType,
+    primaryKeyColumns,
+    enableSetNull,
+    getContextCellText,
+    onAddFilter,
+    onCellEdit,
+    onDeleteRows,
+    onExport: handleExport,
+    t,
+  });
 
   const hasPagination =
     page != null && pageSize != null && totalRows != null && onPageChange && onPageSizeChange;
@@ -662,7 +441,7 @@ export function DataTable({
         className="min-h-0 flex-1 overflow-auto"
         aria-busy={loading}
         aria-label={t('dataTable.tableLabel')}
-        onContextMenu={handleContextMenu}
+        onContextMenu={onContextMenu}
         {...surfaceDomProps}
         {...(hasCellSelection ? surfaceProps : {})}
       >
