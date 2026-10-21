@@ -165,7 +165,7 @@ Driver 仓库
 
 当前 Driver Resolver 从选中的 Driver 集合生成 gitignored 的 `src/extensions/generated.ts`。前端贡献与 Rust Driver 属于同一构建时选择。当这些文件缺失时，`pnpm install` / `pnpm build` 会自动运行 `--codegen-only`。
 
-添加前端功能时，遵循 registry 中现有外部 Driver（如 Kiwi、OLAP、Superset）使用的结构和约定，并**严格遵守下文的依赖边界契约**（规范全文见 [驱动 ↔ 宿主解耦契约](driver-api-dependency-boundary.md)「Part 2」）。
+添加前端功能时，遵循 registry 中现有外部 Driver（如 Kiwi、Superset）使用的结构和约定，并**严格遵守下文的依赖边界契约**（规范全文见 [驱动 ↔ 宿主解耦契约](driver-api-dependency-boundary.md)「Part 2」）。
 
 ### 6.1 前端依赖边界（允许 import 面）
 

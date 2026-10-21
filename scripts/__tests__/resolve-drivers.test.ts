@@ -18,7 +18,6 @@ const registry = {
   mongodb: { source: 'path' },
   kiwi: { source: 'git' },
   superset: { source: 'git' },
-  olap: { source: 'git' },
 } as const;
 
 describe('resolveDrivers', () => {

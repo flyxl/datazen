@@ -59,12 +59,12 @@
 
 ### 1.3 「17 个 path 驱动」这一表述与代码事实的出入
 
-任务口径说「17 个 path 驱动」，代码核对结果是 **15 个**。差的 2 个来源是：
+任务口径说「17 个 path 驱动」，代码核对结果是 **15 个 path 驱动 + 2 个 git 驱动**。差别来源是：
 
 - `packages/drivers/kiwi`（crate `datazen-plugin-kiwi`）与 `packages/drivers/superset`（`register_driver!`，`DriverCategory::Sql`）在工作区里存在，但 registry 里是 `source: "git"`，不是 path；它们被根 `Cargo.toml` 的 `exclude` 排除在 workspace 之外，是 `resolve-drivers.mjs` 克隆后注入的。
-- `packages/drivers/olap` 同为 `source: "git"`（registry 钉 `ref` = `7096c8737dbe25ab4529e5c3997c9f67309154d9`），但**当前工作区里没有该目录**，未克隆。
+- 原先第三个 git 驱动 `packages/drivers/olap`（Presto / Trino）已随驱动下线删除，registry、workspace `exclude`、前端 driver 配置与构建脚本中的引用一并移除。
 
-所以「17」= 15 个 path 驱动 + 2 个恰好在本地可见的 git 驱动。本文后续所有矩阵、批次、协议章节都只覆盖 15 个 path 驱动；git 驱动在 [§5](#5-协议版本演进) 单独说明升级机制，但不在能力矩阵内——它们的 `describeResource` 只能在自己的仓库里实现。
+本文后续所有矩阵、批次、协议章节都只覆盖 15 个 path 驱动；两个 git 驱动在 [§5](#5-协议版本演进) 单独说明升级机制，但不在能力矩阵内——它们现已各自实现 `datazen-driver-api` 0.0.20 的 `ResourceProvider`（工厂与 provider memoize、12 格能力集与证据、单层可选 `Database` 命名空间形状），实现与测试仍只存在于各自仓库。
 
 ## 2. 能力现状总矩阵
 
@@ -421,7 +421,7 @@ async fn dump_database_with_progress(
 
 **先说覆盖范围。** 这是对 **git 跟踪的 15 个 path 驱动**做的**静态源码普查**——读 `packages/drivers/<id>/ui/meta.ts` 与 Rust 源码。它**不是**运行时枚举，因此**与链接期注册无关**：`iter_driver_factories()`（`packages/driver-api/src/factory.rs:87`）确实只能枚举被链接进二进制的 crate，但那约束的是「运行时能拿到几个 factory」，不约束这份文档读了几个目录。mongodb 不在默认 basic 构建里，它的源码却在仓库中，普查照样覆盖它。**不要**据此把「未链接」当作本表的盲区。
 
-**真正没覆盖的是 registry 里 3 个 `source: "git"` 的驱动**（kiwi / olap / superset）：它们由 `resolve-drivers.mjs` 在构建时克隆到 `packages/drivers/<id>/`，落在 `.gitignore` 的 `/packages/drivers/*` 之下，**未克隆时目录根本不存在**，静态普查无从读到。它们的 `supportsBackup` 取值**本文未核查**，不要默认它们落进下面任一栏。见 [§1.3](#13-17-个-path-驱动这一表述与代码事实的出入)。
+**真正没覆盖的是 registry 里 2 个 `source: "git"` 的驱动**（kiwi / superset）：它们由 `resolve-drivers.mjs` 在构建时克隆到 `packages/drivers/<id>/`，落在 `.gitignore` 的 `/packages/drivers/*` 之下，**未克隆时目录根本不存在**，静态普查无从读到。它们的 `supportsBackup` 取值**本文未核查**，不要默认它们落进下面任一栏。见 [§1.3](#13-17-个-path-驱动这一表述与代码事实的出入)。
 
 15 个 path 驱动带这个字段（`http-support` 不带，它不是驱动，见 [§1.2](#12-http-support共享-helper-crate不是驱动)）。两个方向：
 
@@ -716,7 +716,7 @@ P2 完成时，上表所有章节都应转为「已实现」：§2.1 不再有�
 
 - **不定义 `capabilities.rs` / `resource.rs` / `session.rs` 的具体 API 形状。** §5.1 的 9 个操作、§4 的 DTO 字段、§5.2 的能力枚举都由连接管理定义；本文只说明它们对现有 trait 的映射关系，不新增方法、不新增类型、不重命名。
 - **不设计 Host 侧运行时。** 连接池、Tokio actor、channel、semaphore、`PoolKey`、`BudgetPort` 的实现、Lease/Attachment 状态机、结果流与背压策略属于 Host 连接运行时（P3 及之后），不在本文范围。本文只在 §8.2 说明驱动如何配合预算计数。
-- **不覆盖 git 驱动（kiwi / olap / superset）的能力矩阵。** 它们在 `drivers-registry.json` 里是 `source: "git"`，不在 workspace 内，`describeResource` 只能由各自仓库实现。本文只在 §1.3 记录它们的存在与计数差异，在 §5.4 记录它们的版本升级机制（钉 ref 升级）。
+- **不覆盖 git 驱动（kiwi / superset）的能力矩阵。** 它们在 `drivers-registry.json` 里是 `source: "git"`，不在 workspace 内，`describeResource` 只能由各自仓库实现。本文只在 §1.3 记录它们的存在与计数差异，在 §5.4 记录它们的版本升级机制（钉 ref 升级）。
 - **不覆盖前端 UI 与 i18n 的驱动能力呈现。** 能力如何在 UI 上呈现、降级路径如何标注，属于前端设计与宿主绑定层（见独立驱动开发指南 §6），本文只规定「必须标注降级、不得呈现为成功」这条行为要求。
 - **不排期、不列进度、不列缺陷清单。** 按 `AGENTS.md` 文档纪律，本文是一次性设计产物；落地后改写为已实现事实并入对应架构文档。
 - **不重新评估 `AGENTS.md` 中已有的驱动选型、双版本构建、四维扩展体系与测试落点规则**，只引用。

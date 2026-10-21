@@ -220,7 +220,7 @@ describe('[tester] validate() variant matrix is exhaustive for this build', () =
     // `getDriverValidator('sqlserver')` is `undefined` by construction — is expected, not a
     // defect. `toEqual` on both sides made the result depend on which drivers the build
     // happened to select, so declaring a validator could only ever move the failure between
-    // builds. Registering a validator for a form with no row (a new superset/olap/kiwi
+    // builds. Registering a validator for a form with no row (a new superset/kiwi
     // validator) still goes red under `--drivers=all`.
     const undeclared = validatorsInBuild.filter((form) => !declared.includes(form));
     expect(

@@ -29,7 +29,6 @@ pub fn map_database_type(raw: &str) -> Option<&'static str> {
         "cloudberry" => "cloudberry",
         "ob_oracle" | "oceanbase-oracle" | "oceanbase_oracle" => "ob_oracle",
         "kiwi" => "kiwi",
-        "presto" | "prestosql" | "trino" | "olap" => "presto",
         "superset" => "superset",
         _ => return None,
     })

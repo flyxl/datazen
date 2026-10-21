@@ -180,7 +180,7 @@ This is important for debugging because driver UI code runs in the real Datazen 
 
 The current driver resolver generates `src/extensions/generated.ts` (gitignored) from the selected driver set. Frontend contributions are therefore part of the same build-time selection as the Rust driver. `pnpm install` / `pnpm build` run `--codegen-only` when those files are missing.
 
-When adding frontend functionality, follow the structure and conventions used by existing external drivers in the registry, such as Kiwi, OLAP, and Superset, and **strictly obey the dependency boundary contract below** (full specification: [Driver ↔ Host Dependency Boundaries](driver-api-dependency-boundary.md), "Part 2").
+When adding frontend functionality, follow the structure and conventions used by existing external drivers in the registry, such as Kiwi and Superset, and **strictly obey the dependency boundary contract below** (full specification: [Driver ↔ Host Dependency Boundaries](driver-api-dependency-boundary.md), "Part 2").
 
 ### 6.1 Frontend dependency boundary (the allowed import surface)
 

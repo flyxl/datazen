@@ -26,7 +26,6 @@ export default defineConfig({
     exclude: [
       '**/node_modules/**',
       'packages/drivers/kiwi/**',
-      'packages/drivers/olap/**',
       'packages/drivers/superset/**',
     ],
   },
