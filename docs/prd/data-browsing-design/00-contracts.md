@@ -548,6 +548,13 @@ export interface GridSelection {
 
    行级操作在 `mode === 'cell'` 且用户未显式选择整行时，其作用域**必须**在 UI 上说清（例如「将删除区域覆盖的 12 行」），不能让用户以为只删了当前行。
 
+   > **〔落地校正 2026-10-21，Wave 1 `grid-selection`〕`mode` 是行集的唯一权威，写入必须成对。**
+   > 实装时发现一个必须写成硬约定的派生规则：`applyGridSelection(gridSelection)` 只能拿到裸的 `GridSelection`（里面没有行列表），所以它必须按 `mode` 派生行集——
+   > - `mode === 'none'` → **等同清空**：`gridSelection` + `selectedRows` + `lastSelectedIndex` 三件一起清。否则 `Escape`/点空白只清区域、整行高亮残留（这是实测缺陷 GS-D4 的附加面）。
+   > - `mode === 'cell'` / `'row'` → **清空 `selectedRows`**，行集只能由 `applyRowModeTransition`（`selectRow` / 全选）与 `setRowModeSelection(panelId, rowIndex | null)` 这一对动作**和 mode 一起写入**。
+   >
+   > 推论（下游分册必须遵守）：**「只改 mode、保留行集」不是合法操作**。若 04/05/03 需要这类语义，必须走 `setRowModeSelection`，不得直接 `setGridSelection({mode:'row', …})` 绕过行集写入——绕过就会重新造出「`mode: 'row'` 但 `selectedRows` 为空」的不一致态。同理，`toggleSelectAll` 也必须切到 `row` 模式，否则全选会留下「`mode: 'none'` + 非空 `selectedRows`」。
+
    #### 4.2.1 `rowsCoveredBySelection` 的冻结签名（**唯一合法形状**）
 
    ```ts
