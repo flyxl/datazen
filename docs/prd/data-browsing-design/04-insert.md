@@ -688,6 +688,7 @@ export interface TableState {
 | `tableData.draftRowUnsaved` | `New row (not yet saved)` | 草稿行 `aria-label` |
 | `tableData.insertDefault` | `DEFAULT` | 草稿格里「不写」的占位符（该列不在 `changed_columns` 里） |
 | `tableData.insertSetNull` | `Set NULL` | 右键菜单项（与 05 共用，本册先落 key） |
+| `tableData.pendingUpdates` / `tableData.pendingDeletes` | `{count} updates` / `{count} deletes` | **既有**词条（**不是**本册新增），被 `TablePendingChangesBar` 也用着〔契约审计修订 2026-10-21〕**风格待统一**：`count=1` 时读作 "1 updates" / "1 deletes"（语法不对）。本册**只**新增 inserts 段并统一为 `insert(s)`；updates/deletes 段因属既有词条、影响面跨到 Wave 1/2 的待提交栏，**本批不动**，留作后续统一（统一时三段一起改） | 待提交计数分段 |
 | `tableData.pendingInserts` | `{count} insert(s)` | 待提交计数分段〔契约审计修订 2026-10-21〕**措辞订正**：原 `{count} inserts` 会渲染成 "1 inserts"。本仓库**没有** `_one`/`_other` 复数机制，既有约定是 `thing(s)`（`{count} new message(s)` / `Exported {count} connection(s)` / `Used by {count} connection(s)`），故按同一约定改写 |
 | `tableData.confirmCommitWithInserts` | `Commit {inserts} inserts, {updates} updates and {deletes} deletes?` | 确认文案（插入为 0 时继续用既有 `tableData.confirmCommit`） |
 | `tableData.insertFailed` | `Failed to insert rows` | 提交失败兜底 |
