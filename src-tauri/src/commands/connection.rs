@@ -102,9 +102,10 @@ pub(crate) async fn get_connections_impl(
 
 pub(crate) async fn save_connection_impl(
     state: &AppState,
-    mut config: ConnectionConfig,
+    config: ConnectionConfig,
     clear_missing_credentials: bool,
 ) -> Result<(), CommandError> {
+    let mut config = config;
     tracing::info!(id = %config.id, name = %config.name, "save_connection");
     if !clear_missing_credentials {
         if let Some(saved) = state.store.get_connection(&config.id).await {
