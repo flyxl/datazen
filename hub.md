@@ -471,6 +471,20 @@ Tester 补的 8 条用例才把它们钉死。**这条已作为后续所有轨�
 - `G-08`（native_tool 既有 flake 出现 2 次 vs 基线 0 次，Fisher p≈0.49）→ 接受为既有 flake。
 - `G-09`（端口已实现但**无调用方**；`runtime/src/connection/types.rs:460` 的 `PoolKeyInputs::execution_identity_key` 仍是裸 `String`）→ 接受，记 Wave 4（**web 多租户要真正用上它，需要 runtime 从 `IdentityResolver` 取键**，runtime 改动本轨是禁区）。
 
+### IPC 表面检查点（只有 C+B 合流时做，趁早）
+
+在四轨落地**之前**对集成分支做一次 IPC 表面核对（早查比晚查便宜）：
+
+- `#[tauri::command]`：**247 → 247**，**命令名集合零差异**；**233/247 签名完全一致**。
+- 14 处差异，分类清楚：
+  | 类别 | 数量 | 内容 |
+  |---|---|---|
+  | 纯类型路径拼写 | 12 | `crate::services::query_executor::FilterCondition` → `datazen_feature_core::…`（门面删除、同类型）；`crate::db::TableDataResult` → `datazen_driver_api::…`；`crate::schema_objects::DatabaseObject` → 本地 import；`crate::data_sync::plan_store::SyncComparisonPreview` 等。**JSON payload 不变** |
+  | 类型重命名（serde 属性不变） | 2 | `HistoryListItem` → `WorkflowRunListItem`、`HistoryEntry` → `WorkflowRunRecord`；有 feature-core 测试钉住 JSON 键名（含 `skillId`/`skillName` 旧别名） |
+  | **有意的载荷变更** | 2 | `connect` / `connect_dedicated`：`String`（dbSessionId）→ `ConnectionSessionRef { connectionId, dbSessionId }` —— **评审项 ③**，前端 `src/commands/connection.ts` 已同步 |
+
+**没有任何命令的参数列表或载荷被顺带改动。** 四轨全部落地后必须**重跑**这次核对；若出现上表三类之外的差异，即为夹带。
+
 ## 6. 门禁与流程
 
 ### 每轨 coder 自验 + tester 独立复跑
