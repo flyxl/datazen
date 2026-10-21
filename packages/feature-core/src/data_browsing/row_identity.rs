@@ -49,8 +49,9 @@ pub fn validate_identity_shape(
 
 /// Cheap shape checks that need no catalog: empty or NULL identities.
 ///
-/// Runs before the schema read so an empty identity is reported as such even
-/// when the catalog itself is unreachable.
+/// Runs after the schema port read, before any SQL is generated: the plan needs
+/// [`CachedColumns`] for the primary-key-set guard, so the pure shape checks
+/// share the same pass rather than adding a second traversal.
 pub fn validate_identity_shapes(changes: &[PendingRowChange]) -> Result<(), FeatureError> {
     for change in changes {
         if change.insert_marked {
@@ -140,8 +141,18 @@ pub fn validate_written_columns(
     if unknown.is_empty() {
         return Ok(());
     }
+    // `grid.insert.unknownColumn` is an insert-domain code: it tells the grid
+    // editor that a draft cell names no column. UPDATE/DELETE have no draft, so
+    // they get a plain validation refusal instead of borrowing an insert code.
+    if operation == "INSERT" {
+        return Err(FeatureError::Validation(format!(
+            "grid.insert.unknownColumn: {operation} writes column(s) that do not exist on '{}': {}",
+            table.table,
+            unknown.join(", ")
+        )));
+    }
     Err(FeatureError::Validation(format!(
-        "grid.insert.unknownColumn: {operation} writes column(s) that do not exist on '{}': {}",
+        "{operation} writes column(s) that do not exist on '{}': {}",
         table.table,
         unknown.join(", ")
     )))

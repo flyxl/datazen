@@ -162,6 +162,10 @@ async fn insert_rolls_back_the_whole_batch_on_failure() {
     .unwrap_err();
 
     assert!(error.to_string().contains("affected 2 rows"));
+    assert!(
+        error.to_string().contains("grid.commit.affectedMismatch: "),
+        "got: {error}"
+    );
     assert_eq!(test.mock.commit_calls(), 0);
     assert_eq!(test.mock.open_transaction_count(), 0);
 }

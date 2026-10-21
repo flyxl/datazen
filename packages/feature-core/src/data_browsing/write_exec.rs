@@ -274,9 +274,9 @@ pub async fn execute_plan(
                 })?;
             if affected != 1 {
                 return Err(FeatureError::Validation(if operation == "insert" {
-                    format!("INSERT affected {affected} rows; refusing ambiguous write")
+                    format!("grid.commit.affectedMismatch: INSERT affected {affected} rows; refusing ambiguous write")
                 } else {
-                    format!("Row identity affected {affected} rows; refusing ambiguous write")
+                    format!("grid.commit.affectedMismatch: Row identity affected {affected} rows; refusing ambiguous write")
                 }));
             }
             statements.push(RowCommitStatementResult {

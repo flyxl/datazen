@@ -69,6 +69,23 @@ pub async fn preview_changes(
     Ok(plan)
 }
 
+/// The shared half of the "the context still matches the connection" rule.
+///
+/// A host reads these facts from its own profile store; only this layer knows
+/// that a driver-type drift invalidates the plan, so a second transport cannot
+/// forget the check.
+pub fn validate_connection_facts(
+    facts: &ConnectionFacts,
+    table: &RowChangeTableContext,
+) -> Result<(), FeatureError> {
+    if facts.database_type != table.driver_type {
+        return Err(FeatureError::Validation(
+            "Table connection context changed".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Validate a confirmed plan against current facts and execute it.
 ///
 /// The client-provided SQL/summary fields are display-only; the plan is rebuilt
@@ -85,6 +102,7 @@ pub async fn commit_changes(
     context: datazen_platform_api::context::RequestContext,
 ) -> Result<CommitPendingChangesResponse, FeatureError> {
     validate_table_context(&request.plan.table)?;
+    validate_connection_facts(facts, &request.plan.table)?;
     if request.plan.config_revision != Some(Counter::new(facts.config_revision)) {
         return Err(FeatureError::Validation(
             "Connection configuration changed; preview the changes again".into(),
@@ -123,7 +141,6 @@ pub async fn commit_changes(
         &request.fingerprint,
         &loaded,
     )?;
-    let _ = facts.database_type.as_str();
     execute_plan(driver, &plan, manual_handle, runtime, context).await
 }
 

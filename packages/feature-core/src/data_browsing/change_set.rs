@@ -273,6 +273,14 @@ pub fn build_row_change_plan(
         } else {
             "UPDATE"
         };
+        // A delete and a staged column write are contradictory intents: the
+        // row is going away, so silently dropping the writes would tell the
+        // user their edit was applied when it never ran.
+        if change.delete_marked && !change.changed_columns.is_empty() {
+            return Err(FeatureError::Validation(
+                "grid.commit.conflictingIntents: a row marked for delete cannot also carry column writes; unmark the deletion or clear the staged updates".into(),
+            ));
+        }
         row_identity::validate_written_columns(operation, change, &table, columns)?;
         if !change.insert_marked {
             row_identity::validate_identity_against_primary_key(
@@ -349,13 +357,6 @@ pub fn build_row_change_plan(
         };
 
         if change.delete_marked {
-            if !change.changed_columns.is_empty() {
-                warnings.push(ChangeWarning {
-                    code: "delete-suppresses-update".into(),
-                    message: "A deleted row's staged updates will not be executed".into(),
-                    severity: "warning".into(),
-                });
-            }
             deletes.push(statement);
         } else {
             updates.push(statement);
@@ -455,7 +456,8 @@ pub fn validate_immutable_plan(
     }
     if plan.fingerprint != fingerprint {
         return Err(FeatureError::Validation(
-            "Row change plan fingerprint does not match the confirmed plan".into(),
+            "grid.commit.stalePlan: Row change plan fingerprint does not match the confirmed plan"
+                .into(),
         ));
     }
     // Rebuild all SQL from the immutable change metadata. The client-provided
@@ -464,7 +466,7 @@ pub fn validate_immutable_plan(
         build_row_change_plan(driver, plan.table.clone(), &plan_changes(plan), columns)?;
     if rebuilt.fingerprint != fingerprint {
         return Err(FeatureError::Validation(
-            "Row change plan fingerprint is stale or was modified".into(),
+            "grid.commit.stalePlan: Row change plan fingerprint is stale or was modified".into(),
         ));
     }
     rebuilt.plan_id = plan.plan_id.clone();

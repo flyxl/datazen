@@ -9,6 +9,7 @@ use super::change_set::{
     build_row_change_plan, canonicalize_changes, changes_fingerprint, plan_changes,
     validate_immutable_plan, PendingRowChange, RowChangePlan, RowChangeTableContext,
 };
+use super::{validate_connection_facts, ConnectionFacts};
 use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{ColumnSchema, Value};
 use datazen_runtime::schema_cache::CachedColumns;
@@ -731,4 +732,125 @@ fn rebuild_from_plan_metadata_matches_the_original_fingerprint() {
     .unwrap();
     assert_eq!(validated.fingerprint, plan.fingerprint);
     assert_eq!(validated.plan_id, plan.plan_id);
+}
+
+// ---------------------------------------------------------------------------
+// Round 2: error codes are part of the contract
+// ---------------------------------------------------------------------------
+
+#[test]
+fn update_writing_an_unknown_column_gets_plain_validation_not_the_insert_code() {
+    let columns = users_columns();
+    let table = table_context("v2-update-unknown", "v2-update-unknown-session");
+    let mut change = update_change(1, "Alice", "Updated");
+    change.changed_columns = vec!["nmae".into()];
+    change
+        .current_values
+        .insert("nmae".into(), Some(Value::String("Ada".into())));
+
+    let message = plan_for(table, &[change], &columns)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        !message.contains("grid.insert.unknownColumn"),
+        "got: {message}"
+    );
+    assert!(
+        message.contains("UPDATE writes column(s) that do not exist"),
+        "got: {message}"
+    );
+    assert!(message.contains("nmae"), "got: {message}");
+}
+
+#[test]
+fn delete_carrying_column_writes_is_refused_with_conflicting_intents() {
+    let columns = users_columns();
+    let table = table_context("d7-delete-write", "d7-delete-write-session");
+    let mut change = delete_change(4);
+    change.changed_columns = vec!["name".into()];
+    change
+        .current_values
+        .insert("name".into(), Some(Value::String("Ada".into())));
+
+    let message = plan_for(table, &[change], &columns)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.starts_with("grid.commit.conflictingIntents: "),
+        "got: {message}"
+    );
+}
+
+#[test]
+fn a_clean_delete_still_plans() {
+    let columns = users_columns();
+    let plan = plan_for(
+        table_context("d7-clean-delete", "d7-clean-delete-session"),
+        &[delete_change(4)],
+        &columns,
+    )
+    .unwrap();
+
+    assert_eq!(plan.deletes.len(), 1);
+    assert!(
+        !warning_codes(&plan).contains(&"delete-suppresses-update"),
+        "the suppressing warning is gone: {:?}",
+        warning_codes(&plan)
+    );
+}
+
+#[test]
+fn stale_plan_fingerprint_carries_the_contract_prefix() {
+    let columns = users_columns();
+    let plan = plan_for(
+        table_context("stale-prefix", "stale-prefix-session"),
+        &[insert_change(&[(
+            "name",
+            Some(Value::String("Ada".into())),
+        )])],
+        &columns,
+    )
+    .unwrap();
+
+    let mut tampered = plan.clone();
+    tampered.inserts[0]
+        .current_values
+        .insert("name".into(), Some(Value::String("Mallory".into())));
+
+    let message = validate_immutable_plan(
+        driver().as_ref(),
+        &tampered.table.db_session_id,
+        &tampered,
+        &plan.fingerprint,
+        &columns,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        message.starts_with("grid.commit.stalePlan: "),
+        "got: {message}"
+    );
+    assert!(message.contains("stale or was modified"), "got: {message}");
+}
+
+#[test]
+fn connection_facts_with_a_different_driver_type_are_refused() {
+    let facts = ConnectionFacts {
+        database_type: "mysql".into(),
+        read_only: false,
+        database: Some("app".into()),
+        schema: None,
+        config_revision: 1,
+    };
+    let table = table_context("facts-drift", "facts-drift-session");
+    let message = validate_connection_facts(&facts, &table)
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("context changed"), "got: {message}");
+
+    let matching = ConnectionFacts {
+        database_type: "postgres".into(),
+        ..facts
+    };
+    assert!(validate_connection_facts(&matching, &table).is_ok());
 }
