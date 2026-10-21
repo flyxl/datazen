@@ -88,6 +88,7 @@ const STORE_ACTIONS = [
   'stageRowDelete',
   'startEdit',
   'toggleSelectAll',
+  'unstageRowDelete',
   'updateFilter',
 ];
 

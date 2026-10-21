@@ -18,7 +18,7 @@
  * previous write), and `reload` re-reads the page.
  */
 import { t } from '../../locales/t';
-import { buildRowIdentity, rowIdentityKey, valuesEqual } from '../../lib/tableChanges';
+import { buildRowIdentity, rowIdentityKey } from '../../lib/tableChanges';
 import { toCellValue } from './connectionState';
 import {
   AMBIGUOUS_ROW_IDENTITY_ERROR,
@@ -26,6 +26,7 @@ import {
   hasPendingIdentityCollision,
   rowIdentityIsUnique,
 } from './pendingChanges';
+import { computeStageResult, computeUnstageDeleteResult } from './stageEdit';
 import type { TableState } from './types';
 
 export interface PendingEditStoreSlice {
@@ -37,6 +38,8 @@ export interface PendingEditStoreSlice {
   stageRowDelete: (panelId: string, rowIndices: number | number[]) => void;
   /** Delete rows: the selection semantics first, then the delete mark. */
   deleteRows: (panelId: string, rowIndices: number[]) => void;
+  /** Undo the delete mark of one row. */
+  unstageRowDelete: (panelId: string, rowIndex: number) => void;
   /** Drop every staged change and re-read the page. */
   rollbackPendingChanges: (panelId: string) => void;
 }
@@ -99,32 +102,24 @@ export function createPendingEditSlice(
       patch(panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
       return;
     }
-    const originalValues = { ...(existing?.originalValues ?? {}) };
-    const currentValues = { ...(existing?.currentValues ?? {}) };
-    let changedColumns = [...(existing?.changedColumns ?? [])];
-
-    if (valuesEqual(originalValue, currentValue)) {
-      delete originalValues[col];
-      delete currentValues[col];
-      changedColumns = changedColumns.filter((column) => column !== col);
-    } else {
-      originalValues[col] = originalValue;
-      currentValues[col] = currentValue;
-      if (!changedColumns.includes(col)) changedColumns.push(col);
-    }
+    // The "next version of the row's staged change" is a pure computation
+    // (DB-06 §5 Step 3): it lives in `tableData/stageEdit` so the rule
+    // "reverting the only changed column unstages the row" is testable on its
+    // own and shared with the delete-mark undo.
+    const staged = computeStageResult({
+      existing,
+      column: col,
+      originalValue,
+      currentValue,
+      rowIdentity: identity,
+      rowIndex: row,
+    });
 
     const pendingChanges = new Map(ts.pendingChanges);
-    if (changedColumns.length === 0 && !existing?.deleteMarked) {
+    if (staged.change === null) {
       pendingChanges.delete(key);
     } else {
-      pendingChanges.set(key, {
-        rowIndex: row,
-        rowIdentity: { ...identity },
-        originalValues,
-        currentValues,
-        changedColumns,
-        deleteMarked: existing?.deleteMarked ?? false,
-      });
+      pendingChanges.set(key, staged.change);
     }
 
     const nextRows = [...ts.rows];
@@ -208,6 +203,35 @@ export function createPendingEditSlice(
     },
 
     stageRowDelete,
+
+    unstageRowDelete: (panelId, rowIndex) => {
+      const ts = read(panelId);
+      if (!ts) return;
+      const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
+      if (pkCols.length === 0) {
+        patch(panelId, () => ({ error: t('tableData.noPrimaryKey') }));
+        return;
+      }
+      const row = ts.rows[rowIndex];
+      if (!row) return;
+      // The row identity is resolved by the existing lookup, never by the row
+      // number (00-contracts §4.3): the row index is only a hint.
+      const match = findPendingForRow(ts, rowIndex, row, pkCols);
+      if (!match) return;
+
+      const next = computeUnstageDeleteResult(match.change);
+      const pendingChanges = new Map(ts.pendingChanges);
+      if (next === null) pendingChanges.delete(match.key);
+      else pendingChanges.set(match.key, next);
+
+      patch(panelId, () => ({
+        pendingChanges,
+        previewPlan: null,
+        pendingStatus: 'idle',
+        editingCell: null,
+        error: null,
+      }));
+    },
 
     deleteRows: (panelId, rowIndices) => {
       const ts = read(panelId);
