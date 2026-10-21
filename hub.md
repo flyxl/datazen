@@ -651,6 +651,16 @@ git worktree remove --force .worktrees/verify-<track>   # 验证树用完即删
 5. **删台账**：`progress.md`（各轨已随分支合入，合流后逐一删除）与 `hub.md` 必须在交付提交里消失。
 6. 合入 `main` → push → `gh pr create --base main`（或本 initiative 的 PR）→ 清理全部 worktree 与分支 → 释放磁盘。
 
+## 7.5 流程失误记录：Tester 被派进了编码代理的树
+
+**失误**：F1/F2 的 Tester 的 `cwd` 我直接指向了**编码代理自己的工作树**（图它已有热 target，免去再克隆 11G），违反了 AGENTS.md「同一棵工作树不得同时被提交方和验证方使用」。
+**实测后果**：
+- **F1 树**：表面 2 个 " M"，实为 Tester 用 `git checkout --` 还原后 **git 的 stat 缓存未刷新**；`git update-index --refresh` 后**完全干净**，`diff` 为空。**无污染**。
+- **F2 树**：78 行**真实**测试新增（`comparison_store/tests.rs` +38、`commands/sync/tests.rs` +40），是 Tester 写的跨组织覆盖，**有价值**，但必须**作为 F2 交付的一部分审阅**（ Tester 会在报告里说明这些用例的断言与是否削弱既有断言），不能被无声扫进合并。
+- 无探针/残留文件（grep `zz_|probe|mutation` 无命中）。
+**教训**：热 target 的复用**不值得**违反工作树隔离 —— 隔离的价值是"提交方不会把验证方的变异收进去"，而这次正是一次"验证方与提交方共树"，只是**恰好**因为提交方已结束而没出事。下次给 Tester 建**独立**工作树（`git worktree add --detach` + `cp -c` 克隆热 target，6 秒）。
+
+
 ## 8. Wave 4：后续 backlog（**不在本 initiative 目标内，勿顺手做**）
 
 | 项 | 实测落点 | 说明 |
