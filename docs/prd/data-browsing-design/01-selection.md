@@ -187,7 +187,7 @@ export interface GridSelection {
 | I3 | `mode === 'cell'` ⇒ `anchor !== null && focus !== null` |
 | I4 | 所有 `CellRange` 在进入状态前都必须经过 `normalizeCellRange`：`start.rowIndex ≤ end.rowIndex`，且 `start.columnName` 在 `columnOrder` 中的下标 `≤ end.columnName` 的下标（**用列序而非列名字典序**） |
 | I5 | 每个 `CellCoord.columnName` 都能在当前 `columnOrder` 中查到；列被隐藏时由 `reconcileGridSelection` 收敛（见第 7 节） |
-| I6 | `mode === 'cell'` 时 `TableState.selectedRows` 必须为空集（契约 §4.2 第 2 条）；`mode === 'row'` 时 `selectedRows` / `lastSelectedIndex` 的写入**只允许**经既有 `selectRow` / `toggleSelectAll` |
+| I6 | `mode === 'cell'` 时 `TableState.selectedRows` 必须为空集（契约 §4.2 第 2 条）；`mode === 'row'` 时 `selectedRows` / `lastSelectedIndex` 的写入**只允许**经 `selectRow` / `toggleSelectAll` / **`setRowModeSelection(panelId, rowIndex \| null, opts?)`**（契约 §4 的成对写入口，03/06 需要「按显式行集进 row 模式」时用它，不要自己拼 patch） |
 | I7 | `GridSelection` 只由 store 写入；`DataTable` / `VirtualBody` / `GridCell` 一律**只读消费**，不自持副本、不从 DOM 反推 |
 
 ### 3.3 `gridSelection.ts` 的纯函数（全部**新增**）

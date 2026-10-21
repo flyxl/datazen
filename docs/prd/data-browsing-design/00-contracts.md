@@ -547,7 +547,7 @@ export interface GridSelection {
 >
 > 另：`deleteRows` 这类**不改变选择语义**的动作**不得**写 `selectedRows` / `lastSelectedIndex`（删除定位由 `rowIdentityAnchors` 承担）；要保留「删后仍选中」的视觉，必须走 `setRowModeSelection` 与 mode 成对写入。实测偏差 GS2-D2 即此类。
 >
-> 推论（下游分册必须遵守）：**「只改 mode、保留行集」不是合法操作**。若 04/05/03 需要这类语义，必须走 `setRowModeSelection`，不得直接 `setGridSelection({mode:'row', …})` 绕过行集写入——绕过就会重新造出「`mode: 'row'` 但 `selectedRows` 为空」的不一致态。同理，`toggleSelectAll` 也必须切到 `row` 模式，否则全选会留下「`mode: 'none'` + 非空 `selectedRows`」。
+> 推论（下游分册必须遵守）：**「只改 mode、保留行集」不是合法操作**。若 04/05/03 需要这类语义，必须走 `setRowModeSelection`，不得直接 `setGridSelection({mode:'row', …})` 绕过行集写入——绕过会得到「`mode: 'row'` + **空**行集」（这个状态本身合法，但**语义是「一行都没选」而不是「选了那几行」**，行级操作会静默作用 0 行）。同理，`mode:'row'`/`none` 时 `anchor`/`focus` 必须为 `null`（I2），`applyGridSelection` 应把几何一并归一化，不能让调用方塞进来。同理，`toggleSelectAll` 也必须切到 `row` 模式，否则全选会留下「`mode: 'none'` + 非空 `selectedRows`」。
 
    #### 4.2.1 `rowsCoveredBySelection` 的冻结签名（**唯一合法形状**）
 
