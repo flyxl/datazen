@@ -398,6 +398,11 @@ mod tests {
     /// 写 130 条、每次至多裁剪 1 条 ⇒ 恰好保留最新的 128 条：
     /// `plan-0` / `plan-1` 被裁掉，`plan-2` 起仍在。若上限被改成更小的数，
     /// 「plan-2 仍在」这条断言会红。
+    ///
+    /// 冻结时刻必须落在**过去**：落在**未来**的时间戳意味着「系统时钟相对冻结
+    /// 时刻被回拨过」⇒ 条目按规则层判**已失效** ⇒ 存储层会先把它**裁掉**
+    /// （`is_expired()`），而不是拿它参与淘汰排序。排序键改用过去的时刻后，
+    /// 淘汰顺序与断言完全不变（index 越小 ⇒ 冻结越早 ⇒ 越先被淘汰）。
     #[tokio::test]
     async fn desktop_store_enforces_max_entries_by_evicting_the_oldest() {
         let store = DesktopReviewedPlanStore::new(OrganizationId::new("datazen-desktop-local"));
@@ -405,7 +410,7 @@ mod tests {
         let base = now_ms();
         for index in 0..130u64 {
             let mut entry = plan(&format!("plan-{index}"));
-            entry.created_at_ms = base + index;
+            entry.created_at_ms = base.saturating_sub(130 - index);
             store
                 .put(&owner, &format!("plan-{index}"), entry)
                 .await

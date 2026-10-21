@@ -70,6 +70,9 @@ pub enum ReviewedPlanStoreError {
 #[async_trait]
 pub trait ReviewedPlanStore: Send + Sync + 'static {
     /// 冻结（写入）一份已评审计划。
+    ///
+    /// `put` 按 `scope` 落入**该组织的命名空间**；越组织写入是**丢弃**还是**落入
+    /// 别组织命名空间**，由实现形态决定，但实现必须在自己的文档里写明。
     async fn put(
         &self,
         scope: &OrganizationScope,
@@ -110,8 +113,8 @@ struct PlanKey {
 /// * 条目按 `(organization_id, plan_id)` 分桶：**不同组织的计划互不可见**——
 ///   越组织访问按「不存在」处理（`get` → `None`、`remove` → `false`），
 ///   **不**返回「无权限」错误（CM-05）。
-/// * 写入时裁剪**已过期**的条目（[`REVIEWED_PLAN_TTL`]），并把条目数压到
-///   [`REVIEWED_PLAN_MAX_ENTRIES`] 以内（超出时裁剪最旧的一条）。
+/// * 写入时裁剪**已失效**的条目（判定用规则层同一个 [`ReviewedPlan::is_expired`]），
+///   并把条目数压到 [`REVIEWED_PLAN_MAX_ENTRIES`] 以内（超出时裁剪最旧的一条）。
 ///   上限是**整个实例**的（跨组织合计），不是每组织各一份——内存必须有界。
 /// * 读取**不**按有效期过滤：过期判定属于规则层（[`validate`] 由
 ///   `consume` 调用），存储层只负责存取。
@@ -153,7 +156,11 @@ impl ReviewedPlanStore for InMemoryReviewedPlanStore {
         plan: ReviewedPlan,
     ) -> Result<(), ReviewedPlanStoreError> {
         let mut plans = self.plans.lock().await;
-        plans.retain(|_, plan| plan.age() < REVIEWED_PLAN_TTL);
+        // 裁剪**已失效**的条目（判定与规则层同一个 `is_expired`）：失效条目对
+        // 规则层来说本来就不可用，留着只是占位。按「年龄」裁剪会在**系统时钟
+        // 回拨**时失效——回拨条目的年龄恒为 0，裁不掉；而且此时刚冻结的、仍然
+        // 有效的计划 `created_at_ms` 反而**更小**，淘汰时会被**先**淘汰掉。
+        plans.retain(|_, plan| !plan.is_expired());
         // Keep memory bounded even when a window repeatedly prepares a plan.
         if plans.len() >= REVIEWED_PLAN_MAX_ENTRIES {
             if let Some(oldest) = plans

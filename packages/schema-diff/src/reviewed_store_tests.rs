@@ -711,6 +711,68 @@ async fn reviewed_plan_clock_forward_jump_expires_the_plan() {
     );
 }
 
+/// 回拨场景下的淘汰顺序：刚冻结的**有效**计划不会被淘汰，已失效的条目会被清掉。
+///
+/// 模拟：系统时钟回拨 1 小时。回拨**前**冻结的条目，其 `created_at_ms` 相对
+/// 「现在」落在**未来** ⇒ 规则层判**已失效**（`now < created_at_ms` ⇒ 时间基准
+/// 不可信）；回拨**后**新冻结的那条 `created_at_ms` = 现在 ⇒ 仍然**有效**。
+///
+/// 修复前：存储层按**年龄**裁剪（回拨条目的年龄恒为 0 ⇒ **裁不掉**它们），
+/// 淘汰时按 `created_at_ms` 取最小 ⇒ 刚冻结的有效计划 `created_at_ms` 反而**更小**
+/// ⇒ **先被淘汰**；回拨前已失效的条目反而留下。修复后：裁剪改用 `is_expired()`
+/// ⇒ 失效条目先被清掉，有效计划留下。
+#[tokio::test]
+async fn in_memory_store_clears_invalid_entries_before_evicting_valid_ones_after_clock_rollback() {
+    let store = InMemoryReviewedPlanStore::new();
+    let scope = scope("org-a");
+    let now = now_ms();
+    // 回拨**前**冻结 ⇒ 相对回拨后的「现在」落在未来 ⇒ 已失效。
+    let rolled_back = now + 60 * 60 * 1000;
+    for index in 0..REVIEWED_PLAN_MAX_ENTRIES as u64 {
+        let id = format!("stale-{index}");
+        store
+            .put(&scope, &id, reviewed_plan(&id, rolled_back))
+            .await
+            .expect("put stale plan");
+    }
+    // 回拨**后**新冻结 ⇒ 有效。
+    store
+        .put(&scope, "fresh", reviewed_plan("fresh", now))
+        .await
+        .expect("put fresh plan");
+    // 再写一条触发淘汰。
+    store
+        .put(&scope, "trigger", reviewed_plan("trigger", now))
+        .await
+        .expect("put trigger plan");
+
+    assert!(
+        store
+            .get(&scope, "fresh")
+            .await
+            .expect("read plan")
+            .is_some(),
+        "回拨后刚冻结的有效计划不得被淘汰"
+    );
+    assert!(
+        store
+            .get(&scope, "trigger")
+            .await
+            .expect("read plan")
+            .is_some(),
+        "触发淘汰的有效计划必须留下"
+    );
+    assert!(
+        store
+            .get(&scope, "stale-0")
+            .await
+            .expect("read plan")
+            .is_none(),
+        "已失效的条目必须被清掉"
+    );
+    assert_eq!(store.len().await, 2, "失效条目被清掉后，存储里只剩有效条目");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 一次性消费：get 与 remove 之间存在竞态窗口
 // ─────────────────────────────────────────────────────────────────────────────
