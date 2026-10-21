@@ -46,7 +46,7 @@ SQL 文件支持 UTF-8、UTF-8 BOM、UTF-16 LE/BE，以及 none/gzip 压缩。�
   → 执行 / Result
 ```
 
-`packages/data-transfer/src/plan_store/` 定义计划存储端口 `TransferPlanStorePort`，包内实现 `InMemoryTransferPlanStore`（进程内 Mutex + HashMap）。宿主在组装期创建一个实例注入 `AppState.transfer_plans`，调用点按组织作用域访问；包内没有进程级全局单例。计划冻结原始 job、驱动协议、结构/范围/映射指纹、预期 DDL 和目标只读状态，并带有效期。存储本身不持久化。
+`packages/data-transfer/src/plan_store/` 定义计划存储端口 `TransferPlanStorePort`，包内实现 `InMemoryTransferPlanStore`（进程内 Mutex + HashMap）。宿主在组装期创建一个实例注入 `AppState.transfer_plans`，调用点按组织作用域访问；**计划存储没有进程级全局单例**（包的其它部分另有各自的进程级登记，例如 SQL 文件路径表 `packages/data-transfer/src/sql_file.rs` 的 `PATHS`）。计划冻结原始 job、驱动协议、结构/范围/映射指纹、预期 DDL 和目标只读状态，并带有效期。存储本身不持久化。
 
 peek 不消耗计划；claim 原子将 available 转为 executing 并建立活动执行占用。计划消费后不因失败重新变为 available，避免未知提交结果触发重复执行。执行请求引用 planId，selection 只允许缩小 sourceTables 集合；运行选项只开放破坏性确认，不允许客户端替换冻结映射与 SQL。
 

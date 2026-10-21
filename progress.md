@@ -109,7 +109,13 @@ AI/connection/data/backup 相关其余条目均为基线自身的 adapter 依赖
    二者是两套独立命名空间（Job 仓储 vs 计划存储），当前不冲突，但同一形态里"一个组织两个 id"
    是隐患。本轨按任务书要求以 `LOCAL_ORGANIZATION_ID` 为权威源，**未**改动 Job 身份
    （会牵动 Job 仓储的既有数据，超出本轨范围）。
-2. **端口 trait 有 16 个方法**，一次性覆盖 plan + checkpoint 两侧。后续若要接持久化实现，
-   拆成 `TransferPlanStorePort` / `TransferCheckpointStorePort` 两个 trait 更贴合
-   platform-api "按聚合拆、不合并 trait"的约定；当前未拆是为了让宿主只注入一个实例。
+2. **端口 trait 有 17 个方法**（协调者/Tester 实测：`port.rs` 的 trait 方法 17 个；第 18 行命中是
+   `PlanIssueRequest::new`，非 trait 方法），一次性覆盖 plan + checkpoint 两侧。
+   **P0-5 裁定（协调者已接受）：17 个方法不拆。** 理由：platform-api §4.2 的「按聚合拆、
+   不合并 trait」只管 platform-api 端口族（`#[async_trait]` + `PortError` + platform ID newtype），
+   `TransferPlanStorePort` 是**领域包端口**（无 `#[async_trait]`、返回 `TransferError`、裸 `String`
+   id）→ 不在所辖族内；且规则目的是「免得实现方被迫实现**不相关**方法」，而这 17 个是**同一
+   聚合根**（计划 + 执行租约 + 恢复检查点）上的操作，拆开后持久化实现**仍必须同时实现两个**，
+   还会拆散当前由一对 `Mutex` 提供的**单写者原子性**。该理由已写进 `plan_store/port.rs` 的
+   模块头，防后续有人「按约定」顺手拆开。
 3. `docs/architecture/backend/services.md` 未提及计划存储，**无需改动**（已核对）。

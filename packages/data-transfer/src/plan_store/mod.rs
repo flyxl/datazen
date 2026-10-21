@@ -8,10 +8,11 @@
 //! ## Storage is a port, not a global
 //!
 //! The registry itself is a port ([`TransferPlanStorePort`]): the host creates
-//! one instance during assembly and injects it. There is **no** process-wide
-//! global store in this package any more — a plan lives in the instance the
-//! host handed to the call site, so the storage lifetime is the host's
-//! decision rather than the package's.
+//! one instance during assembly and injects it. The **plan store** has no
+//! process-wide global any more — a plan lives in the instance the host handed
+//! to the call site, so the storage lifetime is the host's decision rather
+//! than the package's. (Other parts of the package keep their own process-wide
+//! registries, e.g. the SQL file path table in `crate::sql_file`.)
 //!
 //! The rules (pairing, fingerprints, single-use consumption, resume semantics,
 //! commit boundaries) stay in this package; only the storage is a port. The
