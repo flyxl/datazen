@@ -3,6 +3,73 @@ use super::AppState;
 use crate::db::{ConnectionConfig, DriverCategory, ServerInfo};
 use tauri::State;
 
+fn redact_connection_secrets(config: &mut ConnectionConfig) {
+    config.password = None;
+    if let Some(ssh) = config.ssh_tunnel.as_mut() {
+        redact_ssh_secrets(ssh);
+    }
+    if let Some(proxy) = config.http_proxy_tunnel.as_mut() {
+        proxy.password = None;
+        proxy.headers = None;
+    }
+    if let Some(websocket) = config.websocket_tunnel.as_mut() {
+        websocket.auth_token = None;
+        websocket.headers = None;
+    }
+}
+
+fn redact_ssh_secrets(ssh: &mut crate::db::SshTunnelConfig) {
+    ssh.password = None;
+    ssh.passphrase = None;
+    if let Some(jump) = ssh.jump.as_deref_mut() {
+        redact_ssh_secrets(jump);
+    }
+}
+
+fn merge_missing_connection_secrets(config: &mut ConnectionConfig, saved: ConnectionConfig) {
+    if config.password.is_none() {
+        config.password = saved.password;
+    }
+    if let (Some(current), Some(previous)) = (config.ssh_tunnel.as_mut(), saved.ssh_tunnel) {
+        merge_missing_ssh_secrets(current, previous);
+    }
+    if let (Some(current), Some(previous)) =
+        (config.http_proxy_tunnel.as_mut(), saved.http_proxy_tunnel)
+    {
+        if current.password.is_none() {
+            current.password = previous.password;
+        }
+        if current.headers.is_none() {
+            current.headers = previous.headers;
+        }
+    }
+    if let (Some(current), Some(previous)) =
+        (config.websocket_tunnel.as_mut(), saved.websocket_tunnel)
+    {
+        if current.auth_token.is_none() {
+            current.auth_token = previous.auth_token;
+        }
+        if current.headers.is_none() {
+            current.headers = previous.headers;
+        }
+    }
+}
+
+fn merge_missing_ssh_secrets(
+    current: &mut crate::db::SshTunnelConfig,
+    saved: crate::db::SshTunnelConfig,
+) {
+    if current.password.is_none() {
+        current.password = saved.password;
+    }
+    if current.passphrase.is_none() {
+        current.passphrase = saved.passphrase;
+    }
+    if let (Some(current_jump), Some(saved_jump)) = (current.jump.as_deref_mut(), saved.jump) {
+        merge_missing_ssh_secrets(current_jump, *saved_jump);
+    }
+}
+
 /// 概要 §6.2 第 8 步：把本次 IPC 调用组装出的身份记进结构化日志。
 ///
 /// 刻意**不**接收也不返回任何身份参数、也不改变控制流 —— 既有 IPC 外观原样保留
@@ -25,7 +92,10 @@ fn log_ipc_identity(state: &AppState, command: &'static str) {
 pub(crate) async fn get_connections_impl(
     state: &AppState,
 ) -> Result<Vec<ConnectionConfig>, CommandError> {
-    let list = state.store.get_connections().await;
+    let mut list = state.store.get_connections().await;
+    for config in &mut list {
+        redact_connection_secrets(config);
+    }
     tracing::debug!(count = list.len(), "get_connections");
     Ok(list)
 }
@@ -33,13 +103,41 @@ pub(crate) async fn get_connections_impl(
 pub(crate) async fn save_connection_impl(
     state: &AppState,
     config: ConnectionConfig,
+    clear_missing_credentials: bool,
 ) -> Result<(), CommandError> {
+    let mut config = config;
     tracing::info!(id = %config.id, name = %config.name, "save_connection");
+    if !clear_missing_credentials {
+        if let Some(saved) = state.store.get_connection(&config.id).await {
+            merge_missing_connection_secrets(&mut config, saved);
+        }
+    }
     state
         .store
         .save_connection(config)
         .await
         .cmd_err("save_connection")
+}
+
+pub(crate) async fn duplicate_connection_impl(
+    state: &AppState,
+    source_id: String,
+    new_id: String,
+    new_name: String,
+) -> Result<(), CommandError> {
+    let mut config = state
+        .store
+        .get_connection(&source_id)
+        .await
+        .ok_or_else(|| CommandError::NotFound(format!("connection '{source_id}' not found")))?;
+    config.id = new_id;
+    config.name = new_name;
+    config.last_connected_at = None;
+    state
+        .store
+        .save_connection(config)
+        .await
+        .cmd_err("duplicate_connection")
 }
 
 pub(crate) async fn delete_connection_impl(
@@ -58,6 +156,10 @@ pub(crate) async fn test_connection_impl(
     state: &AppState,
     config: ConnectionConfig,
 ) -> Result<ServerInfo, CommandError> {
+    let mut config = config;
+    if let Some(saved) = state.store.get_connection(&config.id).await {
+        merge_missing_connection_secrets(&mut config, saved);
+    }
     tracing::info!(
         name = %config.name,
         host = ?config.host,
@@ -338,8 +440,19 @@ pub async fn get_connections(
 pub async fn save_connection(
     state: State<'_, AppState>,
     config: ConnectionConfig,
+    clear_missing_credentials: Option<bool>,
 ) -> Result<(), CommandError> {
-    save_connection_impl(&state, config).await
+    save_connection_impl(&state, config, clear_missing_credentials.unwrap_or(false)).await
+}
+
+#[tauri::command]
+pub async fn duplicate_connection(
+    state: State<'_, AppState>,
+    source_id: String,
+    new_id: String,
+    new_name: String,
+) -> Result<(), CommandError> {
+    duplicate_connection_impl(&state, source_id, new_id, new_name).await
 }
 
 #[tauri::command]
@@ -446,6 +559,7 @@ pub async fn get_available_drivers(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::{HttpProxyTunnelConfig, SshTunnelConfig, WebSocketTunnelConfig};
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
 
     #[tokio::test]
@@ -459,10 +573,196 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_connections_redacts_credentials_and_save_preserves_or_clears_them() {
+        let test = TestAppState::new().await;
+        let mut config = sample_postgres_config("secret-profile");
+        config.password = Some("db-password-marker".into());
+        config.ssh_tunnel = Some(SshTunnelConfig {
+            enabled: true,
+            host: "ssh.example.com".into(),
+            port: 22,
+            username: "ssh-user".into(),
+            auth_method: "password".into(),
+            password: Some("ssh-password-marker".into()),
+            private_key_path: None,
+            passphrase: Some("ssh-passphrase-marker".into()),
+            jump: Some(Box::new(SshTunnelConfig {
+                enabled: true,
+                host: "jump.example.com".into(),
+                port: 22,
+                username: "jump-user".into(),
+                auth_method: "password".into(),
+                password: Some("jump-password-marker".into()),
+                private_key_path: None,
+                passphrase: None,
+                jump: None,
+            })),
+        });
+        config.http_proxy_tunnel = Some(HttpProxyTunnelConfig {
+            enabled: true,
+            host: "proxy.example.com".into(),
+            port: 8080,
+            scheme: "https".into(),
+            username: Some("proxy-user".into()),
+            password: Some("proxy-password-marker".into()),
+            headers: Some([("Authorization".into(), "proxy-header-marker".into())].into()),
+            connect_timeout_secs: 30,
+        });
+        config.websocket_tunnel = Some(WebSocketTunnelConfig {
+            enabled: true,
+            url: "wss://relay.example.com/tunnel".into(),
+            auth_token: Some("ws-token-marker".into()),
+            headers: Some([("Authorization".into(), "ws-header-marker".into())].into()),
+            connect_timeout_secs: 30,
+            ping_interval_secs: 30,
+            mode: "datazen_v1".into(),
+        });
+        save_connection_impl(&test.state, config, false)
+            .await
+            .unwrap();
+
+        let projected = get_connections_impl(&test.state).await.unwrap();
+        let wire = serde_json::to_string(&projected).unwrap();
+        for secret in [
+            "db-password-marker",
+            "ssh-password-marker",
+            "ssh-passphrase-marker",
+            "jump-password-marker",
+            "proxy-password-marker",
+            "proxy-header-marker",
+            "ws-token-marker",
+            "ws-header-marker",
+        ] {
+            assert!(!wire.contains(secret), "IPC leaked {secret}");
+        }
+        assert!(projected[0].password.is_none());
+
+        let mut edit = projected[0].clone();
+        edit.name = "Edited profile".into();
+        save_connection_impl(&test.state, edit.clone(), false)
+            .await
+            .unwrap();
+        let saved = test.store.get_connection(&edit.id).await.unwrap();
+        assert_eq!(saved.password.as_deref(), Some("db-password-marker"));
+        assert_eq!(
+            saved
+                .ssh_tunnel
+                .as_ref()
+                .and_then(|ssh| ssh.password.as_deref()),
+            Some("ssh-password-marker")
+        );
+        assert_eq!(
+            saved
+                .ssh_tunnel
+                .as_ref()
+                .and_then(|ssh| ssh.passphrase.as_deref()),
+            Some("ssh-passphrase-marker")
+        );
+        assert_eq!(
+            saved
+                .ssh_tunnel
+                .as_ref()
+                .and_then(|ssh| ssh.jump.as_ref())
+                .and_then(|jump| jump.password.as_deref()),
+            Some("jump-password-marker")
+        );
+        assert_eq!(
+            saved
+                .http_proxy_tunnel
+                .as_ref()
+                .and_then(|proxy| proxy.password.as_deref()),
+            Some("proxy-password-marker")
+        );
+        assert_eq!(
+            saved
+                .http_proxy_tunnel
+                .as_ref()
+                .and_then(|proxy| proxy.headers.as_ref())
+                .and_then(|headers| headers.get("Authorization"))
+                .map(String::as_str),
+            Some("proxy-header-marker")
+        );
+        assert_eq!(
+            saved
+                .websocket_tunnel
+                .as_ref()
+                .and_then(|ws| ws.auth_token.as_deref()),
+            Some("ws-token-marker")
+        );
+        assert_eq!(
+            saved
+                .websocket_tunnel
+                .as_ref()
+                .and_then(|ws| ws.headers.as_ref())
+                .and_then(|headers| headers.get("Authorization"))
+                .map(String::as_str),
+            Some("ws-header-marker")
+        );
+
+        save_connection_impl(&test.state, edit, true).await.unwrap();
+        let cleared = test.store.get_connection("secret-profile").await.unwrap();
+        assert!(cleared.password.is_none());
+        assert!(cleared.ssh_tunnel.as_ref().unwrap().password.is_none());
+        assert!(cleared.ssh_tunnel.as_ref().unwrap().passphrase.is_none());
+        assert!(cleared
+            .ssh_tunnel
+            .as_ref()
+            .unwrap()
+            .jump
+            .as_ref()
+            .unwrap()
+            .password
+            .is_none());
+        assert!(cleared
+            .http_proxy_tunnel
+            .as_ref()
+            .unwrap()
+            .password
+            .is_none());
+        assert!(cleared
+            .http_proxy_tunnel
+            .as_ref()
+            .unwrap()
+            .headers
+            .is_none());
+        assert!(cleared
+            .websocket_tunnel
+            .as_ref()
+            .unwrap()
+            .auth_token
+            .is_none());
+        assert!(cleared.websocket_tunnel.as_ref().unwrap().headers.is_none());
+    }
+
+    #[tokio::test]
+    async fn duplicate_connection_copies_credentials_without_returning_them() {
+        let test = TestAppState::new().await;
+        let mut source = sample_postgres_config("source-profile");
+        source.password = Some("duplicate-secret-marker".into());
+        test.store.save_connection(source).await.unwrap();
+
+        duplicate_connection_impl(
+            &test.state,
+            "source-profile".into(),
+            "copied-profile".into(),
+            "Copied profile".into(),
+        )
+        .await
+        .unwrap();
+
+        let copied = test.store.get_connection("copied-profile").await.unwrap();
+        assert_eq!(copied.name, "Copied profile");
+        assert_eq!(copied.password.as_deref(), Some("duplicate-secret-marker"));
+        let wire =
+            serde_json::to_string(&get_connections_impl(&test.state).await.unwrap()).unwrap();
+        assert!(!wire.contains("duplicate-secret-marker"));
+    }
+
+    #[tokio::test]
     async fn save_and_delete_connection() {
         let test = TestAppState::new().await;
         let cfg = sample_postgres_config("del-me");
-        save_connection_impl(&test.state, cfg).await.unwrap();
+        save_connection_impl(&test.state, cfg, false).await.unwrap();
         delete_connection_impl(&test.state, "del-me".into())
             .await
             .unwrap();
@@ -759,7 +1059,9 @@ mod coverage_tests {
             harness.register_runtime_driver(driver_type, mock).await;
             let mut cfg = sample_postgres_config(driver_type);
             cfg.database_type = driver_type.into();
-            save_connection_impl(&harness.state, cfg).await.unwrap();
+            save_connection_impl(&harness.state, cfg, false)
+                .await
+                .unwrap();
 
             let conn_id = connect_impl(&harness.state, driver_type.into())
                 .await
@@ -782,7 +1084,7 @@ mod coverage_tests {
         // the store path the wrapper delegates to.
         let test = TestAppState::new().await;
         for id in ["a", "b", "c"] {
-            save_connection_impl(&test.state, sample_postgres_config(id))
+            save_connection_impl(&test.state, sample_postgres_config(id), false)
                 .await
                 .unwrap();
         }

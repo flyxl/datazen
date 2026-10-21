@@ -1,5 +1,6 @@
 //! SQL safety guards: read-only connections and Safe Mode.
 
+use super::keyword::{find_main_verb_index, tokenize_sql};
 use super::scanner::{push_separator, skip_dollar_quoted, skip_quoted, split_statements};
 
 /// Reject SQL containing null bytes — they can split keywords and bypass
@@ -123,6 +124,151 @@ fn is_write_verb(verb: &str) -> bool {
     WRITE_VERBS.iter().any(|v| v.eq_ignore_ascii_case(verb))
 }
 
+fn matching_close_paren(tokens: &[String], open: usize) -> Option<usize> {
+    let mut depth: usize = 0;
+    for (index, token) in tokens.iter().enumerate().skip(open) {
+        match token.as_str() {
+            "(" => depth += 1,
+            ")" => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Detect data-modifying CTE bodies, including multiple CTEs and PostgreSQL's
+/// optional `MATERIALIZED` modifiers. Scanning every `AS (...)` also finds a
+/// nested `WITH` inside a subquery; a valid SQL column alias cannot be followed
+/// directly by a parenthesized expression.
+fn has_data_modifying_cte(tokens: &[String]) -> bool {
+    for (index, token) in tokens.iter().enumerate() {
+        if !token.eq_ignore_ascii_case("AS") {
+            continue;
+        }
+        let mut open = index + 1;
+        if tokens
+            .get(open)
+            .is_some_and(|token| token.eq_ignore_ascii_case("NOT"))
+        {
+            open += 1;
+            if tokens
+                .get(open)
+                .is_some_and(|token| token.eq_ignore_ascii_case("MATERIALIZED"))
+            {
+                open += 1;
+            }
+        } else if tokens
+            .get(open)
+            .is_some_and(|token| token.eq_ignore_ascii_case("MATERIALIZED"))
+        {
+            open += 1;
+        }
+        if tokens.get(open).map(String::as_str) != Some("(") {
+            continue;
+        }
+        let Some(close) = matching_close_paren(tokens, open) else {
+            continue;
+        };
+        let body = &tokens[open + 1..close];
+        let Some(main) = find_main_verb_index(body) else {
+            continue;
+        };
+        if is_write_verb(&body[main]) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Returns the statement executed by `EXPLAIN ANALYZE`, accounting for both
+/// the shorthand and PostgreSQL's parenthesized option syntax. `ANALYZE FALSE`
+/// is an ordinary plan and must not be treated as executing the query.
+fn explain_analyze_statement(tokens: &[String]) -> Option<&[String]> {
+    if !tokens.first()?.eq_ignore_ascii_case("EXPLAIN") {
+        return None;
+    }
+
+    if tokens.get(1).map(String::as_str) == Some("(") {
+        let close = matching_close_paren(tokens, 1)?;
+        let options = &tokens[2..close];
+        let analyze = options
+            .iter()
+            .position(|token| token.eq_ignore_ascii_case("ANALYZE"))?;
+        let mut value = analyze + 1;
+        if options.get(value).map(String::as_str) == Some("=") {
+            value += 1;
+        }
+        if options.get(value).is_some_and(|token| {
+            ["FALSE", "OFF", "NO", "0"]
+                .iter()
+                .any(|false_value| token.eq_ignore_ascii_case(false_value))
+        }) {
+            return None;
+        }
+        return Some(&tokens[close + 1..]);
+    }
+
+    if !tokens
+        .get(1)
+        .is_some_and(|token| token.eq_ignore_ascii_case("ANALYZE"))
+    {
+        return None;
+    }
+    let mut statement = 2;
+    if tokens.get(statement).map(String::as_str) == Some("=") {
+        statement += 1;
+    }
+    if tokens.get(statement).is_some_and(|token| {
+        ["TRUE", "FALSE", "ON", "OFF", "YES", "NO", "1", "0"]
+            .iter()
+            .any(|value| token.eq_ignore_ascii_case(value))
+    }) {
+        if tokens.get(statement).is_some_and(|token| {
+            ["FALSE", "OFF", "NO", "0"]
+                .iter()
+                .any(|false_value| token.eq_ignore_ascii_case(false_value))
+        }) {
+            return None;
+        }
+        statement += 1;
+    }
+    Some(&tokens[statement..])
+}
+
+fn has_write_operation(tokens: &[String]) -> bool {
+    let has_main_write = find_main_verb_index(tokens)
+        .and_then(|index| tokens.get(index))
+        .is_some_and(|verb| is_write_verb(verb));
+    has_main_write || has_data_modifying_cte(tokens) || has_select_into(tokens)
+}
+
+fn has_select_into(tokens: &[String]) -> bool {
+    let mut select_depths = Vec::new();
+    let mut depth: usize = 0;
+    for token in tokens {
+        match token.as_str() {
+            "(" => depth += 1,
+            ")" => depth = depth.saturating_sub(1),
+            _ if token.eq_ignore_ascii_case("SELECT") => {
+                select_depths.resize(select_depths.len().max(depth + 1), false);
+                select_depths[depth] = true;
+            }
+            _ if token.eq_ignore_ascii_case("INTO")
+                && select_depths.get(depth).copied().unwrap_or(false) =>
+            {
+                return true;
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// True when a `/* … */` block comment in `sql` contains a write verb.
 fn comment_hides_write_verb(sql: &str) -> bool {
     let chars: Vec<char> = sql.chars().collect();
@@ -159,13 +305,29 @@ pub fn check_sql(sql: &str, read_only: bool, safe_mode: bool) -> Result<(), Stri
     let sql = normalize_sql(sql)?;
     for stmt in split_statements(&sql) {
         let stripped = strip_sql_comments(&stmt);
-        let Some(verb) = super::keyword::sql_main_keyword(&stripped) else {
+        let tokens = tokenize_sql(&stripped);
+        let Some(main_index) = find_main_verb_index(&tokens) else {
+            continue;
+        };
+        let Some(verb) = tokens.get(main_index).map(|verb| verb.to_uppercase()) else {
             continue;
         };
         if read_only && is_write_verb(&verb) {
             return Err(format!(
                 "Connection is read-only; '{verb}' statements are not allowed"
             ));
+        }
+        if read_only {
+            let executable = if verb.eq_ignore_ascii_case("EXPLAIN") {
+                explain_analyze_statement(&tokens)
+            } else {
+                Some(tokens.as_slice())
+            };
+            if executable.is_some_and(has_write_operation) {
+                return Err(
+                    "Connection is read-only; data-modifying statements are not allowed".into(),
+                );
+            }
         }
         if safe_mode
             && SAFE_MODE_BLOCKED
@@ -205,9 +367,8 @@ pub fn is_write_sql(sql: &str) -> bool {
     };
     split_statements(&sql).iter().any(|stmt| {
         let stripped = strip_sql_comments(stmt);
-        super::keyword::sql_main_keyword(&stripped)
-            .map(|verb| is_write_verb(&verb))
-            .unwrap_or(false)
+        let tokens = tokenize_sql(&stripped);
+        has_write_operation(&tokens)
     })
 }
 

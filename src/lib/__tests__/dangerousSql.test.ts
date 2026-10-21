@@ -168,14 +168,27 @@ describe('classifyRisk', () => {
     expect(a.statements[0].classification).toBe('unknown');
   });
 
-  it('classifies SELECT INTO / EXPLAIN ANALYZE as may-write but not strict-write', () => {
+  it('distinguishes executable writes inside CTEs and EXPLAIN ANALYZE', () => {
     const into = classifyRisk('SELECT a INTO b FROM c');
     expect(into.classification).toBe('mutation');
-    expect(into.statements[0].strictWrite).toBe(false);
+    expect(into.statements[0].strictWrite).toBe(true);
     expect(into.hasHighRisk).toBe(false);
-    const ea = classifyRisk('EXPLAIN ANALYZE DELETE FROM t');
-    expect(ea.classification).toBe('mutation');
-    expect(ea.statements[0].strictWrite).toBe(false);
+
+    const cte = classifyRisk('WITH del AS (DELETE FROM t RETURNING *) SELECT * FROM del');
+    expect(cte.statements[0].verb).toBe('SELECT');
+    expect(cte.statements[0].strictWrite).toBe(true);
+
+    const analyzedDelete = classifyRisk('EXPLAIN ANALYZE DELETE FROM t');
+    expect(analyzedDelete.classification).toBe('mutation');
+    expect(analyzedDelete.statements[0].strictWrite).toBe(true);
+
+    const analyzedSelect = classifyRisk('EXPLAIN (ANALYZE TRUE, FORMAT JSON) SELECT * FROM t');
+    expect(analyzedSelect.classification).toBe('mutation');
+    expect(analyzedSelect.statements[0].strictWrite).toBe(false);
+
+    const planOnly = classifyRisk('EXPLAIN (ANALYZE FALSE) DELETE FROM t');
+    expect(planOnly.statements[0].strictWrite).toBe(false);
+    expect(planOnly.classification).toBe('read');
   });
 
   it('returns empty assessment for empty / whitespace-only input', () => {

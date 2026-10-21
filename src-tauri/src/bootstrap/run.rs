@@ -274,6 +274,7 @@ pub fn run() {
             crate::commands::connect_dedicated,
             crate::commands::delete_connection,
             crate::commands::disconnect,
+            crate::commands::duplicate_connection,
             crate::commands::get_available_drivers,
             crate::commands::get_connection_info,
             crate::commands::get_connections,

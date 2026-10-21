@@ -13,6 +13,49 @@ fn read_only_allows_select() {
 }
 
 #[test]
+fn read_only_blocks_data_modifying_ctes() {
+    for sql in [
+        "WITH del AS (DELETE FROM t RETURNING *) SELECT * FROM del",
+        "WITH c AS (SELECT 1), del AS NOT MATERIALIZED (DELETE FROM t RETURNING *) SELECT * FROM c",
+        "SELECT * FROM (WITH del AS (DELETE FROM t RETURNING *) SELECT * FROM del) q",
+    ] {
+        let error = check_sql(sql, true, false).unwrap_err();
+        assert!(
+            error.contains("read-only"),
+            "expected read-only block for {sql}: {error}"
+        );
+    }
+    assert!(check_sql("WITH c AS (SELECT 'DELETE') SELECT * FROM c", true, false).is_ok());
+}
+
+#[test]
+fn read_only_blocks_select_into_but_allows_read_only_explain() {
+    assert!(check_sql("SELECT a INTO b FROM c", true, false).is_err());
+    assert!(check_sql("EXPLAIN ANALYZE SELECT a INTO b FROM c", true, false).is_err());
+    assert!(check_sql("EXPLAIN SELECT a INTO b FROM c", true, false).is_ok());
+}
+
+#[test]
+fn read_only_checks_the_statement_executed_by_explain_analyze() {
+    assert!(check_sql("EXPLAIN ANALYZE DELETE FROM t", true, false).is_err());
+    assert!(check_sql(
+        "EXPLAIN (ANALYZE TRUE, FORMAT JSON) DELETE FROM t",
+        true,
+        false
+    )
+    .is_err());
+    assert!(check_sql(
+        "EXPLAIN ANALYZE WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d",
+        true,
+        false
+    )
+    .is_err());
+    assert!(check_sql("EXPLAIN ANALYZE SELECT * FROM t", true, false).is_ok());
+    assert!(check_sql("EXPLAIN (ANALYZE FALSE) DELETE FROM t", true, false).is_ok());
+    assert!(check_sql("EXPLAIN DELETE FROM t", true, false).is_ok());
+}
+
+#[test]
 fn safe_mode_blocks_update_without_where() {
     let err = check_sql("UPDATE users SET name = 'x'", false, true).unwrap_err();
     assert!(err.contains("WHERE"));
@@ -281,7 +324,10 @@ fn test_tester_bind_then_guard_blocks_no_where_after_binding() {
     let bound = apply_params("UPDATE t SET x = ?", &params).unwrap();
     assert_eq!(bound, "UPDATE t SET x = 'v'");
     let err = check_sql(&bound, false, true).unwrap_err();
-    assert!(err.contains("WHERE"), "bound UPDATE without WHERE must be blocked: {err}");
+    assert!(
+        err.contains("WHERE"),
+        "bound UPDATE without WHERE must be blocked: {err}"
+    );
 }
 
 #[test]
@@ -295,7 +341,10 @@ fn test_tester_bind_then_guard_shared_by_execute_and_stream_paths() {
     assert_eq!(bound, "DELETE FROM t WHERE id = 1");
     // read_only blocks DELETE on both the execute and the stream path after binding.
     let err = check_sql(&bound, true, false).unwrap_err();
-    assert!(err.contains("read-only"), "bound DELETE must stay blocked read-only: {err}");
+    assert!(
+        err.contains("read-only"),
+        "bound DELETE must stay blocked read-only: {err}"
+    );
     // The same bound SQL is allowed when guards are off, so the block is strictly
     // the guard, never the binder.
     assert!(check_sql(&bound, false, false).is_ok());
@@ -303,8 +352,7 @@ fn test_tester_bind_then_guard_shared_by_execute_and_stream_paths() {
 
 #[test]
 fn test_tester_safe_mode_blocks_where_hidden_in_block_comment() {
-    let err =
-        check_sql("UPDATE t SET x = 1 /* WHERE g */", false, true).unwrap_err();
+    let err = check_sql("UPDATE t SET x = 1 /* WHERE g */", false, true).unwrap_err();
     assert!(
         err.contains("WHERE"),
         "block-comment WHERE must not bypass Safe Mode: {err}"

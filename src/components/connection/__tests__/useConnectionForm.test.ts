@@ -149,6 +149,32 @@ describe('useConnectionForm', () => {
     expect(previewConfig(result.current, 'c1').group).toBe('开发环境');
   });
 
+  it('passes the explicit blank-credential clear choice when saving an edit', async () => {
+    const { result } = renderHook(() =>
+      useConnectionForm({
+        editId: 'c1',
+        existingConnections: [
+          {
+            id: 'c1',
+            name: 'Local database',
+            databaseType: 'postgresql',
+            host: '127.0.0.1',
+            port: 5432,
+            sslMode: 'prefer',
+          },
+        ],
+      }),
+    );
+
+    act(() => result.current.setClearStoredCredentials?.(true));
+    await act(async () => result.current.onSave());
+
+    expect(saveConnectionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'c1', password: undefined }),
+      true,
+    );
+  });
+
   it('detects formVariant from DB_REGISTRY', () => {
     const { result, rerender } = renderHook(() => useConnectionForm());
 
