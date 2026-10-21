@@ -116,8 +116,24 @@
 
 | 在跑 | 角色 | 跑完后做什么 |
 | --- | --- | --- |
-| `94a74ec3` | `grid-selection` Coder（修 GS2-D1/D2） | **只收结果，不派复测** |
+| `94a74ec3` | `grid-selection` Coder（修 GS2-D1/D2） | ✅ 已交付 `8e4075059`，**复测按暂停令挂起** |
 | `36973778` | `insert-backend` Coder（修 IB-D1..D5） | **只收结果，不派复测** |
 | `efc3921d` | 契约审计（T1 全册冻结物 / T2 跨册引用 / T3 数字） | 出了结论再统一决定 |
 
 **暂停的原因**：本轨已 4 次因「契约写错」返工，若继续「修完就复测」的循环，等于在错误的契约上反复验证。审计结论可能会**改动验收标准本身**，此时推进复测就是白跑。审计完成后按结论重排：先改契约 → 再让两个 Coder 对齐 → 最后一次性复测。
+
+### `grid-selection` 第 3 轮交付（复测挂起，未验证）
+
+| commit | 内容 |
+| --- | --- |
+| `3aa80b32c` | 固化第 2 轮 Tester 的 23 例（3 文件 / 571 行，零改动） |
+| `5e1ce0419` | GS2-D2：`deleteRows` 不再写行集（712 → 713 行），删除定位仍归 `rowIdentityAnchors` |
+| `8e4075059` | GS2-D1：`GridSelectionState.selectedRows` 改**必填**、去 `?? EMPTY_ROW_SET` 兜底、类型改名；5 处调用点由 tsc 指路修完 |
+
+自报：627 文件 / 6575 例通过、typecheck EXIT=0、`TableView 642`、`tableDataStore 713`。
+自证：裸 `GridSelection` 调用 → `TS2345`（探针文件已删、未进提交）。
+对 Tester 测试的改动已披露 diff：只给参数补 `selectedRows` 字段，断言与期望值零改动（符合我的授权口径）。
+
+**未验证**——按暂停令等契约审计结论，审计可能改动验收标准本身。
+
+遗留（待我决定）：`src/stores/__tests__/tableDataStore.test.ts:533` 的用例名「deleteRows selects indices then stages deletes」已过时（断言只查 `pendingChanges`，仍绿）；属冻结历史测试，改名与否等合流时一并处理。
