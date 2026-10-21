@@ -1,7 +1,12 @@
 //! Dialect-neutral schema migration contracts exposed by the driver API.
 
+use std::sync::Arc;
+
 use crate::schema_objects::ObjectKind;
 use crate::schema_scope_mapping::{SchemaObjectScopeDependency, SchemaObjectScopeMapping};
+use crate::sql_target::SqlTarget;
+use crate::traits::DatabaseDriver;
+use crate::types::{ConnectionHandle, DdlAtomicity, DriverError, TableSchema};
 use crate::{CheckConstraint, ColumnSchema, ForeignKeyInfo, IndexInfo, TableOptions};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1332,6 +1337,167 @@ fn collapse_ws(raw: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .to_ascii_uppercase()
+}
+
+/// The structural-migration contract a schema-diff surface consumes.
+///
+/// A driver's migration decisions — renderer, capability gate, type
+/// normalizer and DDL atomicity, plus the two at-deploy validations — live
+/// behind this one narrow contract. The schema-diff domain stays
+/// dialect-neutral and asks only for these rules instead of the whole
+/// [`DatabaseDriver`](crate::DatabaseDriver); rendering SQL remains the
+/// driver's job through [`MigrationRenderer`], and execution of the rendered
+/// statements keeps the existing resource lifecycle.
+///
+/// The trait has no default bodies on purpose: a driver implements each rule
+/// once, and [`LegacySchemaMigration`] forwards to the legacy
+/// [`DatabaseDriver`](crate::DatabaseDriver) methods one-way during the
+/// migration window.
+#[async_trait::async_trait]
+pub trait SchemaMigration: Send + Sync {
+    /// Dialect-specific renderer the domain drives with dialect-neutral
+    /// operations.
+    fn migration_renderer(&self) -> Option<Arc<dyn MigrationRenderer>>;
+
+    /// Capability gate for each dialect-neutral migration operation.
+    fn migration_capabilities(&self) -> Option<Arc<dyn MigrationCapabilities>>;
+
+    /// Type-string normalizer used when comparing across dialects.
+    fn type_normalizer(&self) -> Option<Arc<dyn TypeNormalizer>>;
+
+    /// Whether multi-statement DDL can be wrapped in a single transaction.
+    fn ddl_atomicity(&self) -> DdlAtomicity;
+
+    /// Validate that target catalog snapshots used to prepare an atomic
+    /// schema migration still match before the host executes its first write.
+    async fn validate_schema_migration_plan(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+        expected_target_schemas: &[TableSchema],
+    ) -> Result<(), DriverError>;
+
+    /// Validate driver-specific invariants before committing a reviewed
+    /// schema migration.
+    async fn validate_schema_migration(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+    ) -> Result<(), DriverError>;
+}
+
+/// Borrowing adapter from an existing
+/// [`DatabaseDriver`](crate::DatabaseDriver) to [`SchemaMigration`].
+///
+/// One-way, like [`LegacySqlDialect`](crate::dialect::LegacySqlDialect) and the
+/// other migration seams: every method forwards to the driver method of the
+/// same name, so a driver override keeps working and there is exactly one
+/// implementation of each rule.
+#[derive(Debug, Clone, Copy)]
+pub struct LegacySchemaMigration<'a, D: DatabaseDriver + ?Sized> {
+    driver: &'a D,
+}
+
+impl<'a, D: DatabaseDriver + ?Sized> LegacySchemaMigration<'a, D> {
+    pub fn new(driver: &'a D) -> Self {
+        Self { driver }
+    }
+
+    /// The wrapped driver, for callers at the boundary that still need a
+    /// driver-only rule.
+    pub fn driver(&self) -> &'a D {
+        self.driver
+    }
+}
+
+#[async_trait::async_trait]
+impl<D: DatabaseDriver + ?Sized> SchemaMigration for LegacySchemaMigration<'_, D> {
+    fn migration_renderer(&self) -> Option<Arc<dyn MigrationRenderer>> {
+        self.driver.migration_renderer()
+    }
+
+    fn migration_capabilities(&self) -> Option<Arc<dyn MigrationCapabilities>> {
+        self.driver.migration_capabilities()
+    }
+
+    fn type_normalizer(&self) -> Option<Arc<dyn TypeNormalizer>> {
+        self.driver.type_normalizer()
+    }
+
+    fn ddl_atomicity(&self) -> DdlAtomicity {
+        self.driver.ddl_atomicity()
+    }
+
+    async fn validate_schema_migration_plan(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+        expected_target_schemas: &[TableSchema],
+    ) -> Result<(), DriverError> {
+        self.driver
+            .validate_schema_migration_plan(handle, target, expected_target_schemas)
+            .await
+    }
+
+    async fn validate_schema_migration(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+    ) -> Result<(), DriverError> {
+        self.driver.validate_schema_migration(handle, target).await
+    }
+}
+
+#[cfg(test)]
+mod schema_migration_contract_tests {
+    use super::*;
+    use crate::mock_driver::{MockDriver, MockDriverOptions};
+    use std::sync::Arc;
+
+    fn assert_send_sync<T: Send + Sync + ?Sized>() {}
+
+    fn handle() -> ConnectionHandle {
+        ConnectionHandle {
+            id: "h1".into(),
+            pool_id: "p1".into(),
+        }
+    }
+
+    fn mock() -> Arc<MockDriver> {
+        MockDriver::new("postgres", MockDriverOptions::default())
+    }
+
+    #[test]
+    fn contract_is_object_safe_and_thread_safe() {
+        assert_send_sync::<dyn SchemaMigration>();
+    }
+
+    #[test]
+    fn reads_migration_rules_through_the_contract_without_the_driver() {
+        let driver = mock();
+        let migration: &dyn SchemaMigration = &LegacySchemaMigration::new(driver.as_ref());
+        // The default mock declares no migration extension, so every rule must
+        // read as the documented default posture through the adapter.
+        assert!(migration.migration_renderer().is_none());
+        assert!(migration.migration_capabilities().is_none());
+        assert!(migration.type_normalizer().is_none());
+        assert!(matches!(migration.ddl_atomicity(), DdlAtomicity::Unknown));
+    }
+
+    #[tokio::test]
+    async fn validation_rules_forward_to_the_driver_not_the_contract_default() {
+        let driver = mock();
+        let migration: &dyn SchemaMigration = &LegacySchemaMigration::new(driver.as_ref());
+        let handle = handle();
+        migration
+            .validate_schema_migration_plan(&handle, SqlTarget::new(Some("db"), None), &[])
+            .await
+            .expect("plan validation must forward the shared Ok path");
+        migration
+            .validate_schema_migration(&handle, SqlTarget::new(Some("db"), None))
+            .await
+            .expect("migration validation must forward the shared Ok path");
+    }
 }
 
 #[cfg(test)]

@@ -23,9 +23,19 @@ const { mockReadColumns } = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
-  schemaClient: { readColumns: mockReadColumns },
+vi.mock('../../lib/session/targetCommand', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/session/targetCommand')>()),
+  metadataScopeKey: async (dbSessionId: string, connectionId?: string) =>
+    `${connectionId ?? 'missing-owner'}:${dbSessionId}`,
+  executeTargetCommand: async (
+    target: import('@datazen/backend-client').ExecutionTarget,
+    call: import('@datazen/backend-client').CommandCall,
+  ) => {
+    if (call.command !== 'read_relation_columns')
+      throw new Error(`Unexpected command: ${call.command}`);
+    const input = call.input as { relations: RelationRef[] };
+    return mockReadColumns(target.connectionId, input.relations);
+  },
 }));
 
 vi.mock('../../commands/database', () => ({
@@ -34,6 +44,17 @@ vi.mock('../../commands/database', () => ({
     listTables: vi
       .fn()
       .mockResolvedValue([{ name: 'users', tableType: 'TABLE', schema: 'public', rowCount: null }]),
+    listCatalog: async (_dbSessionId: string, database: string) => ({
+      database,
+      schemas: ['public'],
+      relations: [
+        {
+          ref: { database, schema: 'public', name: 'users' },
+          kind: 'table',
+          rowCount: null,
+        },
+      ],
+    }),
   },
 }));
 

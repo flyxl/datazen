@@ -1,6 +1,6 @@
 # DataZen 持久化模型、可落盘白名单与 Schema 迁移详细设计
 
-> 状态：本文 §3/§5 面向 P7 团队服务 PostgreSQL 管理库，仍属目标设计；§4.1 描述桌面文件与 SQLite 的当前事实，其中 `{appData}/datazen.sqlite` Job 表已在 P5 Core 升为 schema v2。本文其他服务端 schema/迁移内容不代表已经实现。
+> 状态：本文 §3/§5 面向 P7 团队服务 PostgreSQL 管理库，仍属目标设计；§4.1 描述桌面文件与 SQLite 的当前事实，其中 `{appData}/datazen.sqlite` Job 表已在 P5 Core 升为 schema v2，桌面 Monitor grant 元数据在 P6 升为 schema v3。本文其他服务端 schema/迁移内容不代表已经实现。
 > 读者：负责《分阶段开发计划》P1（抽取共享应用边界与持久化白名单）和 P7（服务端 ProfileRepository / JobRepository / Audit / ArtifactStore 与 schema migration）的实现者。本文定义**存什么、存在哪、谁来写、怎么迁**；DTO 形状、会话状态机、错误码取值以[连接管理详细设计](connection-management.md)为权威。
 > 配套：[系统概要](system-overview.md)、[连接管理详细设计](connection-management.md)、[共享应用边界与端口详细设计](shared-boundaries-and-ports.md)、[团队 Web 服务详细设计](team-server-and-auth.md)、[分阶段开发计划](../../development/platform-development-plan.md)。
 > 现状盘点来源：[持久化存储（现状）](../backend/store.md)、[`src-tauri/src/store/`](../../../src-tauri/src/store/mod.rs)。这些是**已实现事实**；本文其余章节为目标设计。
@@ -62,7 +62,7 @@
 | F10 | 秘密材料本身（密码、token、TLS 私钥、可解密值） | `connections.driverOptions` 的敏感部分 | 只落 `secretRef`；`ProfileView.publicOptions` 不返回秘密 |
 | F11 | 用户绝对路径 | 文件选择、备份工具路径 | 改为 artifact/配置引用（[概要 §10](system-overview.md#10-安全和环境差异)） |
 | F12 | `runtimeEpoch` | `SessionView`、内部记录 | **见下方说明** |
-| F13 | `schemaCache` 内容与 `cacheRevision` | [`cache/schema_cache.rs`](../../../src-tauri/src/cache/schema_cache.rs) | 纯内存缓存，不落盘 |
+| F13 | `schemaCache` 内容与 `cacheRevision` | [`cache/schema_cache.rs`](../../../packages/runtime/src/schema_cache/schema_cache.rs) | 纯内存缓存，不落盘 |
 | F14 | IdP `access_token` / `refresh_token` / 原始 `id_token` 及其可重放副本 | 登录会话行 | 只落服务端生成的会话行与 IdP `sub` 映射（§3.10）；需要调用 IdP 后端接口时按需重新交换（[团队服务 §4.3](team-server-and-auth.md#43-服务端登录会话)） |
 
 关于 F12：`runtimeEpoch` 是"某次 worker 启动的代号"，既不含秘密也确实是数字，但落盘后极易被误读为"可以接续原绑定"的证明。[连接管理 §4.4](connection-management.md#44-可落盘来源与运行时绑定)（不是本文 §4.4「主密钥与团队秘密」）已明确 `configRevision` / `contextRevision` 不能证明物理资源连续性，`runtimeEpoch` 同理。它只用于 owner 校验（[连接 §13.1](connection-management.md#131-幂等键期限与响应分类)），因此不进入任何表列。
@@ -476,7 +476,7 @@ CREATE TABLE schema_migration_history (
 
 | 位置 | 表 | 版本常量 | 记录形态 |
 | --- | --- | --- | --- |
-| [`store/app_db.rs`](../../../src-tauri/src/store/app_db.rs) | `schema_migrations` | `SCHEMA_VERSION: i32 = 1` | `(version INTEGER PRIMARY KEY, applied_at TEXT)`，只记版本 |
+| [`store/app_db.rs`](../../../src-tauri/src/store/app_db.rs) | `schema_migrations` | `SCHEMA_VERSION: i32 = 3` | `(version INTEGER PRIMARY KEY, applied_at TEXT)`，只记版本 |
 | [`store/history_db/schema.rs`](../../../src-tauri/src/store/history_db/schema.rs) | `schema_version` | 环形 v1→v4 | `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`，只记版本 |
 | 服务端管理库（本文） | `schema_migration_history` | 内嵌于二进制 | 版本 + 文件名 + 校验和 + 耗时 |
 
@@ -589,11 +589,11 @@ expiredHeld 的 `amount - returned_amount` 继续计入 reserved；TTL 到期、
 | `{appData}/settings.json` / `tunnels.json` / `groups.json` | 应用设置、隧道、分组 | 同上（仅凭据字段） | [`store/mod.rs`](../../../src-tauri/src/store/mod.rs) `load_all()` |
 | `{appData}/ai_config.enc` | AI Provider 配置 | 整体密文 | [`store/ai_config.rs`](../../../src-tauri/src/store/ai_config.rs) |
 | `{appData}/history.sqlite` | `query_history`、`workflow_history`、`migration_run_history`（WAL，`PRAGMA foreign_keys = ON`） | **明文**（SQL 文本、错误信息按明文存） | [`store/history_db.rs`](../../../src-tauri/src/store/history_db.rs) |
-| `{appData}/datazen.sqlite` | `schema_migrations`、`workflows`、`dashboards`、`widgets`、`widget_runs`、`widget_latest_run`；v2 增加 `jobs`、`job_idempotency_receipts`、`job_stages`、`job_commit_boundaries`、`job_checkpoints`、`job_result_details`、`job_domain_results`、`job_artifact_refs` | 明文；Job plan/result 是受限 DTO 投影 | [`store/app_db.rs`](../../../src-tauri/src/store/app_db.rs)、[`store/app_db/jobs/`](../../../src-tauri/src/store/app_db/jobs/) |
+| `{appData}/datazen.sqlite` | `schema_migrations`、`workflows`、`dashboards`、`widgets`、`widget_runs`、`widget_latest_run`；v2 增加 `jobs`、`job_idempotency_receipts`、`job_stages`、`job_commit_boundaries`、`job_checkpoints`、`job_result_details`、`job_domain_results`、`job_artifact_refs`；v3 增加 `monitor_schedule_grants` | 明文；Job plan/result 是受限 DTO 投影 | [`store/app_db.rs`](../../../src-tauri/src/store/app_db.rs)、[`store/app_db/jobs/`](../../../src-tauri/src/store/app_db/jobs/) |
 | `{appData}/favorites/**/*.sql` | 收藏 SQL（含 front-matter） | 无 | [`store/favorites/`](../../../src-tauri/src/store/mod.rs) |
 | `{appData}/.key` | AES-256 主密钥（仅 file 后端） | base64 明文文件 | [`store/key_store.rs`](../../../src-tauri/src/store/key_store.rs) |
 
-桌面 AppDb 当前 `SCHEMA_VERSION` 为 2。打开既有 v1 数据库时，保留原 workflows/dashboard 数据，并在一个 SQLite `Immediate` 事务内创建全部 Job v2 表及索引、登记 migration version 2；任一 v2 DDL/登记失败会回滚该迁移事务。Job accept 在一个事务内写 Job、幂等 receipt、consumed plan ID 与初始结果行。SQLite job rows 保存白名单化 plan（最大 1 MiB）、安全进度、状态/error code、commit boundaries、checkpoints、bounded domain results 与 recovery verdict；不保存 `dbSessionId`、session/lease/cursor、worker closure、token、password、任意 SQL 或 driver 自由格式错误文本。运行时 worker/claim 字段属于本机 Job 调度 fencing，不会重建外部资源句柄。
+桌面 AppDb 当前 `SCHEMA_VERSION` 为 3；v3 在同一迁移事务中增加 `monitor_schedule_grants`，保存后端签发的调度身份/批准者、固定 workflow revision 和 target/action/readOnly scope、expiry/revocation metadata，绝不存 session/delegation token 或凭据。打开既有 v1 数据库时，保留原 workflows/dashboard 数据，并在一个 SQLite `Immediate` 事务内创建全部 Job v2 表及索引、登记 migration version 2；任一 v2 DDL/登记失败会回滚该迁移事务。Job accept 在一个事务内写 Job、幂等 receipt、consumed plan ID 与初始结果行。SQLite job rows 保存白名单化 plan（最大 1 MiB）、安全进度、状态/error code、commit boundaries、checkpoints、bounded domain results 与 recovery verdict；不保存 `dbSessionId`、session/lease/cursor、worker closure、token、password、任意 SQL 或 driver 自由格式错误文本。运行时 worker/claim 字段属于本机 Job 调度 fencing，不会重建外部资源句柄。
 
 `job_artifact_refs` 只保存 Artifact ID 与创建/过期时间，不存产物字节；引用 TTL 当前固定为 30 天。Artifact 内容由独立存储管理，AppDb 的引用 TTL 不延长或保证内容留存；调用者读取产物时仍须检查产物是否存在并重新授权。结果 DTO 可保留已过期 Artifact ID 供审计/详情展示，但不能据此宣称字节可下载。
 

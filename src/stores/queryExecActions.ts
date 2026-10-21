@@ -1,4 +1,5 @@
-import { queryCommands } from '../commands/query';
+import { runEditorQuery } from '../lib/session/runEditorQuery';
+import { ApiError } from '@datazen/backend-client';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { applyQueryStreamEvent } from '../lib/queryStream';
 import { resolvePostQueryViewMode } from '../lib/chart/postQueryView';
@@ -36,6 +37,7 @@ export interface QueryExecState {
   chartConfig?: ChartConfig;
   resultViewMode?: 'table' | 'chart';
   executionId: string | null;
+  publishedArtifacts?: import('../lib/queryResultArtifacts').QueryResultArtifacts;
   streamRunId?: number;
   resultDetailRowIndex: number | null;
 }
@@ -59,6 +61,12 @@ export function emptyQueryExecState(): QueryExecState {
 }
 
 function extractError(e: unknown): string {
+  // 额度耗尽不是「忙」：重试与等待都不会腾出空位。宿主把这类拒绝收敛成一条不含
+  // 细节的通用文案（`connection runtime operation failed`），只有 code 能区分
+  // 它，所以这里必须换成一句用户能照做的说明，否则用户只知道「执行失败」。
+  if (e instanceof ApiError && e.code === 'SessionQuotaExceeded') {
+    return t('query.session.editorQuotaExceeded');
+  }
   if (typeof e === 'string') return e;
   if (e instanceof Error) return e.message;
   return t('common.executionFailed');
@@ -137,6 +145,7 @@ export async function runStreamingQuery(
   schema?: string | null,
   /** Bound values use this same execution-handle stream. */
   params?: BindParams,
+  connectionId?: string,
 ): Promise<void> {
   const runId = ++streamRunCounter;
   const currentExec = getExec().get(paneKey);
@@ -165,12 +174,9 @@ export async function runStreamingQuery(
   };
 
   try {
-    const streamOptions = {
-      database: database ?? null,
-      schema: schema ?? null,
-      ...(params && Object.keys(params).length > 0 ? { params } : {}),
-    };
-    await queryCommands.executeQueryStream(dbSessionId, sql, onEvent, streamOptions);
+    if (!connectionId)
+      throw new Error('A persistent connection owner is required for query execution');
+    await runEditorQuery(paneKey, connectionId, sql, database, schema, params, onEvent);
     const exec = getExec().get(paneKey);
     if (exec && exec.streamRunId === runId) {
       const viewMode = resolvePostQueryViewMode(exec.results[0]);
@@ -200,6 +206,17 @@ export async function runBoundQuery(
   database?: string | null,
   /** Panel's PG-family schema target — drivers inline it when supported. */
   schema?: string | null,
+  connectionId?: string,
 ): Promise<void> {
-  await runStreamingQuery(paneKey, dbSessionId, sql, getExec, setExec, database, schema, params);
+  await runStreamingQuery(
+    paneKey,
+    dbSessionId,
+    sql,
+    getExec,
+    setExec,
+    database,
+    schema,
+    params,
+    connectionId,
+  );
 }

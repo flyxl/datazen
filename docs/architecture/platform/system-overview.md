@@ -27,15 +27,14 @@
 | 当前入口 | 已确认事实 | 目标改造 |
 | --- | --- | --- |
 | [AppState](../../../src-tauri/src/commands/mod.rs) | 聚合连接、事务、任务、AI、Workflow 等服务 | 组装留在 host，应用服务只接收必要依赖 |
-| [ConnectionManager](../../../src-tauri/src/services/connection_manager.rs) | 管理 handle、配置、隧道、引用计数 | 拆分 Profile、Session、Lease、Budget |
-| [session 实现](../../../src-tauri/src/services/connection_manager/sessions.rs) | 按 connectionId 复用 session；物理连接缺失时 `get_session` 会以同一 `dbSessionId` 重连。空闲清理保留 owner 映射；它没有同步清理 `AppState.session_transactions`，可能留下指向已关闭物理会话的事务句柄，详见 [tunnels.rs](../../../src-tauri/src/services/connection_manager/tunnels.rs)、[query.rs](../../../src-tauri/src/commands/query.rs) 与 [AppState](../../../src-tauri/src/commands/mod.rs)。 | 按明确生命周期使失效会话返回 `SessionLost`，禁止透明重建；活动事务回收须先回滚并清理事务状态，结果不确定时报告 `OutcomeUnknown`。用 CM-73 覆盖该连续旅程 |
+| [Runtime session registry](../../../packages/runtime/src/registry/registry.rs) + [desktop session backend](../../../src-tauri/src/platform/session_backend.rs) | 管理 dbSessionId、owner、生命周期与物理资源；过期会话明确失效，不以同一 ID 透明重连 | 统一预算、资源释放与会话状态；到期关闭前回滚事务，关闭不确定时保留隔离状态 |
 | [Driver API](../../../packages/driver-api/src/traits.rs) | 提供 DatabaseDriver、Command、迁移等能力 | 增加固定执行资源契约、可选能力接口 |
 | [Factory](../../../packages/driver-api/src/factory.rs) | inventory 编译期注册 | 桌面与 server 使用同一注册入口 |
 | [前端 Command SDK](../../../packages/driver-sdk/src/ipc/driverCommands.ts) | 直接导入 Tauri invoke/Channel | 注入传输无关 BackendClient |
 | [Workflow Command runtime](../../../src-tauri/src/workflow/command_runtime.rs) | 解析 connectionId，传递目标 database/schema | 明确 step/session/transaction 三种资源范围 |
 | [dedicatedDbSession](../../../src/lib/dedicatedDbSession.ts) | 三件套准备会话由前端创建、释放 | 执行资源由后端 Job 持有 |
 
-Driver 公共类型继续遵守[驱动依赖边界](../../development/driver-api-dependency-boundary.md)。基线 `packages/driver-api/src/lib.rs` 的 `PROTOCOL_VERSION` 为 4、最低版本为 1；实现时重新核对，不能从旧架构说明复制版本数字。
+Driver 公共类型继续遵守[驱动依赖边界](../../development/driver-api-dependency-boundary.md)。基线 `packages/driver-api/src/lib.rs` 的 `PROTOCOL_VERSION` 为 6、最低版本为 1；实现时重新核对，不能从旧架构说明复制版本数字。
 
 ## 3. 系统架构
 
@@ -304,7 +303,7 @@ DriverFactory 注册 descriptor、配置 schema、Command schema、资源 provid
 
 普通新增驱动只改变驱动包、选型/注册、schema、UI、文案与该驱动测试。新语义确实超出既有能力时才扩展公共契约，更新版本并迁移所有实现；不通过宿主数据库名称分支绕过。
 
-「更新版本」分两种，不能混：只有改动驱动与宿主**线上**说的内容才动 `PROTOCOL_VERSION`；给公共契约加 FOREVER 冻结（如 `#[non_exhaustive]`，「以后不能再加字段」）只动 crate 版本并附一份迁移配方，不动协议号。此时线上一个字节都没变——升协议号等于宣布一场不存在的线上事故，而真正会断的是别人的 `cargo build`；已经编好的老驱动仍然照常加载。四档判定与配方原文见 [driver-capability-migration.md §5.5](./driver-capability-migration.md#55-source-breaking老驱动跑得好好的但新的编不出来)。
+「更新版本」分两种，不能混：只有改动驱动与宿主**线上**说的内容才动 `PROTOCOL_VERSION`；给公共契约加 FOREVER 冻结（如 `#[non_exhaustive]`，「以后不能再加字段」）只动 crate 版本并附一份迁移配方，不动协议号。此时线上一个字节都没变——升协议号等于宣布一场不存在的线上事故，而真正会断的是别人的 `cargo build`；已经编好的老驱动仍然照常加载。治理决定（2026-10-21）：仓库无外部驱动，`PROTOCOL_VERSION` 冻结在 6、`MIN` 停在 1，逐符号四档机检已随门禁族退役；判据保留为人工纪律，见 [driver-capability-migration.md §5.5](./driver-capability-migration.md#55-source-breaking老驱动跑得好好的但新的编不出来)。
 
 保留 inventory 编译期注册。原生同进程驱动属于可信代码。管理员升级发布包/镜像，worker drain 后切换；独立 driver runner 是后续隔离方案，需版本化 RPC，不能把 Rust trait 当作稳定动态 ABI。
 

@@ -41,10 +41,11 @@
 //!
 //! ## 与其它模块的分工
 //!
-//! * `connection/**` 是冻结的会话面：会话状态、句柄登记、`PoolKeyInputs`/`PoolKeyFingerprint`
-//!   都在那里，本模块**只用不重定义**。
-//! * `registry/**` 是尚未落地的会话层接缝，冻结；资源层的租约/句柄/预算许可**不得**浮到会话面，
-//!   会话面只会看到 `RuntimeError::BudgetExhausted`（见 `registry/mod.rs` 的边界声明）。
+//! * `connection/**` 定义共享会话、执行、错误与驱动端口契约，也提供测试夹具；本模块复用这些
+//!   类型，不在资源层重定义。
+//! * `registry/**` 实现会话 actor、会话状态和会话级句柄登记；本模块管理物理资源、租约及资源级句柄。
+//!   资源层的租约/预算许可不进入 `SessionView`，跨层拒绝折叠为 `RuntimeError`（见
+//!   `registry/mod.rs` 的边界声明）。
 //! * 物理端口 [`cleanup::PhysicalTransport`] 是本模块自己定义的**注入式**驱动侧接缝：
 //!   `connection/port.rs` 只冻结了 DTO 与 `BudgetPort`，并没有资源操作端口。
 //! * `budget/**` 是物理占用的**唯一记账方**：开新连接前先拿到许可、关闭被确认后才核销
@@ -57,7 +58,11 @@ mod generation;
 mod lease;
 mod lease_manager;
 mod manager;
+mod observability;
 mod pool;
+mod production;
+pub use observability::{PoolObservabilityEntry, RuntimeObservabilityReport};
+pub use production::{LogicalSessionPermit, ProductionLeaseManager};
 mod publication;
 mod replacement;
 mod rotation;

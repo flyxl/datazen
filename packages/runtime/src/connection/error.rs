@@ -88,6 +88,13 @@ pub enum ProviderError {
     /// 预算不足 / 队列已满，可重试。
     #[error("resource busy: {0}")]
     ResourceBusy(&'static str),
+    /// 额度已耗尽：同时连接的编辑器数或逻辑 session 数达上限。
+    ///
+    /// 与 [`ProviderError::ResourceBusy`] 的区别是**等待不会释放**：没有别的请求
+    /// 正在占用它，只能由调用方回收自己的旧 session 或由用户关闭编辑器。因此它不
+    /// 进有界忙碌重试，必须让调用方看见可处置的原因。
+    #[error("quota exceeded: {0}")]
+    QuotaExceeded(&'static str),
     #[error("session not found: {0}")]
     SessionNotFound(String),
     #[error("session lost: {0}")]
@@ -126,6 +133,7 @@ impl ProviderError {
             ProviderError::TargetRequired(_) => ApiErrorCode::TargetRequired,
             ProviderError::TargetConflict(_) => ApiErrorCode::TargetConflict,
             ProviderError::ResourceBusy(_) => ApiErrorCode::ResourceBusy,
+            ProviderError::QuotaExceeded(_) => ApiErrorCode::SessionQuotaExceeded,
             ProviderError::SessionNotFound(_) => ApiErrorCode::SessionNotFound,
             ProviderError::SessionLost(_) => ApiErrorCode::SessionLost,
             ProviderError::RuntimeEpochMismatch(_) => ApiErrorCode::RuntimeEpochMismatch,
@@ -229,7 +237,11 @@ impl RuntimeError {
     /// 与 [`ProviderError::api_code`] 同一个方向：**端口/运行时报事实，用层把事实判定成
     /// 对外拒绝**。三处映射表（`ProviderError` / 本方法 / 未来用例层的兜底）必须给出
     /// 一致的调用者动作，否则同一事实会以两种码出现在同一页面上。
-    pub const fn api_code(&self) -> Option<ApiErrorCode> {
+    ///
+    /// 不是 `const fn`：`BudgetExhausted` 的原因在**数据**里（`"sessionQuota"` 等
+    /// tag），而 const 求值不能比较 `str`。把 tag 提升成变体是另一条路，但那要让
+    /// 每个预算拒绝的构造点都改签名；这里只需要一个运行期判定。
+    pub fn api_code(&self) -> Option<ApiErrorCode> {
         match self {
             // 「失效或不存在 → 读终态，显式建立新会话」：`Closed` 与 `Lost` 在这里
             // 塌缩成同一个对外码，但它们的内部判定依据不同，不能合并变体。
@@ -239,6 +251,10 @@ impl RuntimeError {
             // 「旧运行时/上下文请求 → 读取新状态，不自动执行旧写入」。
             // 注意不是 `ConfigRevisionMismatch`：那张码属于 `ProfileRepository::compare_and_set` 的 CAS。
             Self::ContextRevisionMismatch { .. } => Some(ApiErrorCode::ContextConflict),
+            // 额度耗尽与「忙」的分野在**等待能否解决**：`sessionQuota` 是本人已把
+            // 额度用满（同时连接的编辑器数 / 逻辑 session 数），排队等不出空位，
+            // 只能由调用方回收或用户关闭编辑器；其余预算拒绝仍是有界的忙碌。
+            Self::BudgetExhausted("sessionQuota") => Some(ApiErrorCode::SessionQuotaExceeded),
             Self::BudgetExhausted(_) => Some(ApiErrorCode::ResourceBusy),
             Self::CloseRejected(_) => Some(ApiErrorCode::TransactionResolutionRequired),
             Self::CancelFailed(_) | Self::InvariantBroken(_) => None,
@@ -364,6 +380,16 @@ mod tests {
             ProviderError::UnsupportedPlan.api_code(),
             Some(ApiErrorCode::UnsupportedPlan)
         );
+        // 额度耗尽必须与「忙」分开上线路由：等待解决不了它，调用方需要看到可处置
+        // 的原因（回收旧 session / 关闭编辑器），而不是一个可以无限重试的 resourceBusy。
+        assert_eq!(
+            ProviderError::QuotaExceeded("connectedEditors").api_code(),
+            Some(ApiErrorCode::SessionQuotaExceeded)
+        );
+        assert_eq!(
+            ProviderError::ResourceBusy("admission").api_code(),
+            Some(ApiErrorCode::ResourceBusy)
+        );
     }
 
     #[test]
@@ -472,6 +498,10 @@ mod tests {
             (
                 RuntimeError::BudgetExhausted("orgQuota"),
                 ApiErrorCode::ResourceBusy,
+            ),
+            (
+                RuntimeError::BudgetExhausted("sessionQuota"),
+                ApiErrorCode::SessionQuotaExceeded,
             ),
             (
                 RuntimeError::CloseRejected("activeTransaction"),

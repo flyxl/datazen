@@ -16,6 +16,12 @@ async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
+tracing = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# 测试期解析器：模块清单守卫用 syn 取 crate 顶层 items，而不是手写词法分析。
+# 只用 include_str!("lib.rs")，不触碰被测代码；dev-dependency 不进 normal/build 闭包。
+syn = { version = "2", features = ["full"] }
+# span-locations 让 syn 的 span 带上真实源码位置，fail-closed 诊断才能点名精确行号。
+proc-macro2 = { version = "1", features = ["span-locations"] }

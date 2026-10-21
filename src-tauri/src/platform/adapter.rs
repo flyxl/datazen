@@ -21,11 +21,16 @@
 use std::sync::Arc;
 
 use datazen_application::error::{ApiError, ApiErrorCode};
+use datazen_application::frontend_bridge::{self, BridgeInjection, FrontendBridge};
 use datazen_application::ApplicationServices;
+use datazen_driver_api::CommandCatalog;
 use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::id::RequestId;
+use datazen_platform_api::{
+    id::{Counter, RequestId},
+    ports::profile::ProfileRepository,
+    target::{CanonicalTarget, ExecutionTarget},
+};
 
-use super::bridge::{self, BridgeInjection, FrontendBridge};
 use super::handles::SessionHandleRegistry;
 use super::identity::{DesktopIdentity, OwnerIntent};
 
@@ -89,6 +94,9 @@ pub struct PlatformAdapter {
     services: std::sync::OnceLock<Arc<ApplicationServices>>,
     runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
     profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
+    driver_registry: std::sync::OnceLock<Arc<crate::db::DriverRegistry>>,
+    target_metadata: std::sync::OnceLock<super::target_metadata::TargetMetadataCache>,
+    target_metadata_gate: std::sync::Mutex<()>,
     /// 出向端口适配器。未接线是配置事实（`None`），不是故障。
     ///
     /// 单独存一份是为了让「接线用的那个实例」与「将来要查询绑定的那个实例」
@@ -104,6 +112,8 @@ pub struct PlatformAdapter {
     /// 漏了显式 `stop`，任务也不会泄漏——这里仍显式停，是为了让停止**发生在一个
     /// 确定的时刻**，而不是等某个不可预测的析构点。
     idle_reclaimer: std::sync::Mutex<Option<datazen_runtime::application::IdleReclaimer>>,
+    artifacts: std::sync::OnceLock<Arc<datazen_runtime::artifact::FileArtifactStore>>,
+    native: std::sync::OnceLock<Arc<super::native_tool::deployment::NativeDeployment>>,
 }
 
 impl PlatformAdapter {
@@ -115,8 +125,13 @@ impl PlatformAdapter {
             services: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
+            driver_registry: std::sync::OnceLock::new(),
+            target_metadata: std::sync::OnceLock::new(),
+            target_metadata_gate: std::sync::Mutex::new(()),
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
+            artifacts: std::sync::OnceLock::new(),
+            native: std::sync::OnceLock::new(),
         })
     }
 
@@ -128,11 +143,39 @@ impl PlatformAdapter {
             services: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
+            driver_registry: std::sync::OnceLock::new(),
+            target_metadata: std::sync::OnceLock::new(),
+            target_metadata_gate: std::sync::Mutex::new(()),
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
+            artifacts: std::sync::OnceLock::new(),
+            native: std::sync::OnceLock::new(),
         }
     }
 
+    /// Host export adapters retain the same store used by result publication.
+    /// Save-dialog paths become owner-bound expiring capabilities in this store;
+    /// frontend request paths are never accepted as an ExportSink.
+    pub(crate) fn artifact_store(
+        &self,
+    ) -> Result<Arc<datazen_runtime::artifact::FileArtifactStore>, ApiError> {
+        self.artifacts.get().cloned().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "artifact storage is not wired",
+            )
+        })
+    }
+    pub(crate) fn native_tools(
+        &self,
+    ) -> Result<Arc<super::native_tool::deployment::NativeDeployment>, ApiError> {
+        self.native.get().cloned().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "native deployment unavailable",
+            )
+        })
+    }
     pub fn assembly_state(&self) -> AssemblyState {
         if self.services.get().is_some() {
             AssemblyState::FullyWired
@@ -147,8 +190,7 @@ impl PlatformAdapter {
         &self.identity
     }
 
-    /// owner 作用域的会话级句柄登记表。与 `AppState::session_transactions` 并存、
-    /// 互不读写：见 [`super::handles`] 模块头。
+    /// owner 作用域的 adapter 句柄登记。物理事务句柄由 Runtime actor 管理。
     pub fn handles(&self) -> &Arc<SessionHandleRegistry> {
         &self.handles
     }
@@ -169,14 +211,14 @@ impl PlatformAdapter {
         Ok((self.begin_call(), owner))
     }
 
-    /// 注入前端桥。转调 [`bridge::set_bridge_injection`]；重复注入返回 `false`。
+    /// 注入前端桥。转调 [`frontend_bridge::set_bridge_injection`]；重复注入返回 `false`。
     pub fn set_bridge_injection(injection: BridgeInjection) -> bool {
-        bridge::set_bridge_injection(injection)
+        frontend_bridge::set_bridge_injection(injection)
     }
 
     /// 取前端桥；未注入 ⇒ 明确报错（:84 条款二）。
     pub fn require_bridge(&self) -> Result<&'static Arc<dyn FrontendBridge>, ApiError> {
-        bridge::require_bridge()
+        frontend_bridge::require_bridge()
     }
 
     pub fn application_services(&self) -> Option<Arc<ApplicationServices>> {
@@ -214,22 +256,47 @@ impl PlatformAdapter {
             return Ok(());
         }
         let profiles = Arc::new(super::repositories::DesktopProfiles::new(store.clone()));
-        let backend = Arc::new(super::session_backend::DesktopSessionBackend::new(
+        let backend = Arc::new(super::session_backend::DesktopSessionBackend::new_scoped(
             registry.clone(),
             store.clone(),
-            32,
+            16,
+            self.identity.organization_id().clone(),
+            self.identity.principal_id().clone(),
         ));
+        let native =
+            super::native_tool::deployment::NativeDeployment::from_build(backend.physical_budget());
+        let artifacts = Arc::new(
+            datazen_runtime::artifact::FileArtifactStore::open(
+                store.data_dir().join("result-artifacts"),
+            )
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "artifact storage initialization failed",
+                )
+            })?,
+        );
         let live = Arc::new(super::live_source::DesktopLiveConnectionSource::new(
-            registry,
-            store,
+            registry.clone(),
+            store.clone(),
             backend.clone(),
         ));
         let runtime = Arc::new(
             datazen_runtime::application::RuntimeConnectionUseCases::new(
                 profiles.clone(),
-                Arc::new(super::policy::DesktopPolicy),
+                Arc::new(super::policy::DesktopPolicy::new(store.clone())),
                 backend.clone(),
             ),
+        );
+        // 桌面口径的回收节奏：业务空闲期限仍是 §9.2 的 30 分钟，但扫描要更勤。
+        // `arm_detached_grace` 把「摘掉挂载的会话」的期限收到 60 秒
+        // （`IdlePolicy::DEFAULT_DETACHED_GRACE`），而默认扫描间隔是 3 分钟——宽限最坏会被
+        // 拖到 4 分钟，等于「已经没人用的会话」继续占着 2 槽物理额度（PostgreSQL 元数据一类
+        // 就是数据池 + 控制池）。15 秒一跳让宽限名副其实，也让 §9.2 的 30 分钟期限到期后
+        // 不再多留最多 3 分钟。
+        runtime.with_idle_policy(
+            datazen_runtime::application::IdlePolicy::default()
+                .with_scan_interval(std::time::Duration::from_secs(15)),
         );
         // 出向端口在此接线。放在 `runtime` 构造之后、`services` 之前：端口是**宿主
         // 装配期**决定的事（与 `RuntimeConnectionUseCases::new` 的三个业务依赖分开），
@@ -243,12 +310,46 @@ impl PlatformAdapter {
             )
         })?;
         let sink = runtime.result_sink();
+        sink.with_artifact_store(artifacts.clone())?;
+        self.artifacts.set(artifacts).map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::ContextConflict,
+                "artifact storage already injected",
+            )
+        })?;
+        let export_sink = sink.clone();
+        backend
+            .set_export_output_authority(Arc::new(move |id| export_sink.has_export_output(id)))
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "export authority unavailable",
+                )
+            })?;
         backend
             .set_publisher(Arc::new(move |id, output| {
-                sink.publish_output(id, output).map_err(|_| {
-                    datazen_runtime::connection::ProviderError::ProtocolError(
-                        "result publication rejected".into(),
-                    )
+                let sink = sink.clone();
+                Box::pin(async move {
+                    let output = match sink.publish_export_output(&id, output).await {
+                        Ok(None) => return Ok(()),
+                        Ok(Some(output)) => output,
+                        Err(_) => {
+                            return Err(datazen_runtime::connection::ProviderError::ProtocolError(
+                                "export publication rejected".into(),
+                            ))
+                        }
+                    };
+                    let result = match output.get("source").cloned() {
+                        Some(source) => serde_json::from_value(source)
+                            .map_err(|_| ApiError::invalid_argument("invalid result source"))
+                            .and_then(|source| sink.publish_statement_output(&id, output, source)),
+                        None => sink.publish_output(&id, output),
+                    };
+                    result.map_err(|_| {
+                        datazen_runtime::connection::ProviderError::ProtocolError(
+                            "result publication rejected".into(),
+                        )
+                    })
                 })
             }))
             .map_err(|_| {
@@ -257,14 +358,8 @@ impl PlatformAdapter {
                     "result publisher unavailable",
                 )
             })?;
-        // The shared runtime validates namespace using each real provider. The legacy
-        // standalone resolver has no resource-scoped driver metadata and stays fail-closed.
-        let target = datazen_application::target::TargetResolver::new(
-            Arc::new(|_| None),
-            Arc::new(|_, _| None),
-            Arc::new(|_| None),
-            Arc::new(|_| None),
-        );
+        let target_metadata = Arc::new(std::sync::RwLock::new(std::collections::HashMap::new()));
+        let target = super::target_metadata::resolver(target_metadata.clone());
         let services = Arc::new(ApplicationServices::new(
             target,
             datazen_application::identity_policy::IdentityPolicy::new(),
@@ -276,9 +371,29 @@ impl PlatformAdapter {
         self.profiles.set(profiles).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "profiles already injected")
         })?;
+        self.driver_registry.set(registry).map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::ContextConflict,
+                "driver registry already injected",
+            )
+        })?;
+        self.target_metadata.set(target_metadata).map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::ContextConflict,
+                "target metadata already injected",
+            )
+        })?;
         self.services.set(services).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "services already injected")
         })?;
+        // Publish only after the matching Runtime backend was fully injected:
+        // no partial retry may bind native jobs to a different physical ledger.
+        match native {
+            Ok(native) => {
+                let _ = self.native.set(native);
+            }
+            Err(_) => tracing::warn!("native deployment rejected; native operations unsupported"),
+        }
         // 空闲回收驱动器：**应用层自己拥有**，宿主不再另挂定时器（这样就不会有
         // 「两个驱动器抢同一张 registry 表」的形状）。放在 services 之后启动，
         // 是为了让「装配已 FullyWired」与「回收器已在跑」不出现反序——反序时
@@ -399,6 +514,120 @@ impl PlatformAdapter {
             .cloned()
             .ok_or_else(|| ApiError::new(ApiErrorCode::ServiceUnavailable, "profiles not injected"))
     }
+
+    /// Resolve an explicit execution target against the connection's actual driver metadata.
+    /// The caller passes the returned canonical namespace to the runtime so the validated target
+    /// is the one used to open the resource and derive its pool identity.
+    pub async fn resolve_execution_target(
+        &self,
+        ctx: &RequestContext,
+        expected_config_revision: Counter,
+        command: &str,
+        target: &ExecutionTarget,
+    ) -> Result<CanonicalTarget, ApiError> {
+        let profile = self
+            .profiles()?
+            .get(ctx, target.connection_id.clone())
+            .await
+            .map_err(|_| ApiError::new(ApiErrorCode::ServiceUnavailable, "profile lookup failed"))?
+            .ok_or_else(|| ApiError::new(ApiErrorCode::NotFound, "profile unavailable"))?;
+        if !profile.enabled {
+            return Err(ApiError::new(ApiErrorCode::NotFound, "profile unavailable"));
+        }
+        if profile.config_revision.counter() != expected_config_revision {
+            return Err(ApiError::new(
+                ApiErrorCode::ConfigRevisionMismatch,
+                "connection configuration changed",
+            ));
+        }
+
+        let registry = self.driver_registry.get().cloned().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "driver registry not injected",
+            )
+        })?;
+        let driver = registry
+            .get_sql_driver_by_name(&profile.driver_id)
+            .await
+            .ok_or_else(|| {
+                ApiError::new(
+                    ApiErrorCode::TargetUnsupported,
+                    "connection driver unavailable",
+                )
+            })?;
+        let provider = registry
+            .resource_provider(&profile.driver_id)
+            .await
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::TargetUnsupported,
+                    "connection driver has no namespace metadata provider",
+                )
+            })?;
+
+        let shape = super::target_metadata::namespace_shape(provider.namespace_shape());
+        // Description only: the command catalogue is listed here, never executed.
+        let catalog = crate::db::LegacyCommandCatalog::new(driver.as_ref());
+        let mut commands = std::collections::HashMap::new();
+        for definition in catalog.command_definitions() {
+            if let Some(requirements) = catalog.target_requirements(&definition.id) {
+                commands.insert(
+                    definition.id,
+                    super::target_metadata::command_requirements(requirements),
+                );
+            }
+        }
+        for (command, requirements) in super::target_metadata::host_metadata_command_requirements()
+        {
+            commands.insert(
+                command.into(),
+                super::target_metadata::command_requirements(requirements),
+            );
+        }
+        let cache = self.target_metadata.get().cloned().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "target metadata not injected",
+            )
+        })?;
+        let _metadata_scope = self.target_metadata_gate.lock().map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "target metadata unavailable",
+            )
+        })?;
+        cache
+            .write()
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "target metadata unavailable",
+                )
+            })?
+            .insert(
+                target.connection_id.clone(),
+                super::target_metadata::ConnectionTargetMetadata { shape, commands },
+            );
+
+        let resolved = self.require_application_services()?.target.compute(
+            command,
+            &target.connection_id,
+            &target.namespace,
+            target.object.as_ref(),
+            &datazen_application::target::TargetSource::Request,
+        );
+        cache
+            .write()
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "target metadata unavailable",
+                )
+            })?
+            .remove(&target.connection_id);
+        resolved
+    }
 }
 
 /// `PlatformAdapter` 在 `AppState` 里的落位（§6.2 第 8 步 → 第 9 步 `state.manage`）。
@@ -460,207 +689,23 @@ impl PlatformEntry {
     }
 }
 
+// 用例搬出本文件：adapter.rs 同时被 `include_str!` 当成整篇文本扫描，生产半边必须自己就落在
+// 800 行以内。`#[path]` 让 `super::` 与 `include_str!("adapter.rs")` 的解析基准都不变，
+// 扫描到的仍是同一段生产代码。
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use datazen_platform_api::id::{ClientInstanceId, EditorSessionId, JobId, StageId};
+#[path = "adapter_tests.rs"]
+mod tests;
 
-    fn adapter() -> PlatformAdapter {
-        PlatformAdapter::with_identity(
-            DesktopIdentity::new_launch("datazen-desktop-local", "alice", "client-1")
-                .expect("固定输入应当组装成功"),
-        )
-    }
-
-    #[test]
-    fn assembly_state_is_derived_from_injection_not_hand_kept() {
-        let adapter = adapter();
-        // 这条断言读的是 OnceLock 推导结果，不是常量，因此注入逻辑写错时会失败。
-        assert_eq!(adapter.assembly_state(), AssemblyState::IdentityReady);
-        let missing: Vec<&str> = adapter
-            .assembly_state()
-            .missing_steps()
-            .iter()
-            .map(|(name, _)| *name)
-            .collect();
-        assert_eq!(
-            missing,
-            vec!["§6.2-6 Runtime", "§6.2-7 ApplicationServices"],
-            "缺哪两步必须可枚举，否则调用方无法定位"
-        );
-        // 每条缺步记录的目标状态必须比当前状态靠后，否则"补齐到哪"是错的。
-        for (_, after) in AssemblyState::IdentityReady.missing_steps() {
-            assert_ne!(*after, AssemblyState::IdentityReady);
-        }
-        assert!(AssemblyState::FullyWired.missing_steps().is_empty());
-        // 组装状态与注入事实必须一致：此刻未注入，就取不到应用服务。
-        assert!(adapter.application_services().is_none());
-        assert_eq!(adapter.identity().principal_id().as_str(), "alice");
-        assert!(adapter.handles().is_empty());
-    }
-
-    #[test]
-    fn launch_without_a_deterministic_desktop_user_fails_closed() {
-        // `new_launch` 依赖运行环境变量；这里只断言它要么成功、要么明确失败，
-        // 绝不返回占位主体。
-        match PlatformAdapter::new_launch("client-x") {
-            Ok(adapter) => assert!(!adapter.identity().principal_id().as_str().is_empty()),
-            Err(err) => assert_eq!(err.code, ApiErrorCode::Unauthenticated),
-        }
-    }
-
-    #[test]
-    fn failed_entry_returns_the_original_error_not_a_placeholder_adapter() {
-        // 组装失败时，依赖身份的调用必须拿到**原始**原因。
-        // 如果这里退化成一个占位 adapter，调用方会以为身份已就绪，
-        // 然后把未知主体当成已知主体写进日志/审计 —— 那是 :84 禁止的伪映射。
-        let original = ApiError::new(
-            ApiErrorCode::Unauthenticated,
-            "test: 桌面用户不可解析，身份未组装",
-        );
-        let entry = PlatformEntry::failed(original.clone());
-        assert!(!entry.is_ready());
-        let err = entry.require().expect_err("失败的 entry 必须报错");
-        assert_eq!(err.code, ApiErrorCode::Unauthenticated);
-        assert_eq!(err.message, original.message);
-        // 失败时不得凭空造出一个 adapter。
-        assert!(PlatformEntry::failed(original.clone()).require().is_err());
-    }
-
-    #[test]
-    fn ready_entry_hands_back_the_same_adapter() {
-        let adapter = adapter();
-        let entry = PlatformEntry::ready(adapter);
-        assert!(entry.is_ready());
-        let recovered = entry.require().expect("成功的 entry 必须给出 adapter");
-        assert_eq!(recovered.identity().principal_id().as_str(), "alice");
-    }
-
-    #[test]
-    fn each_call_gets_a_fresh_request_id_and_a_stable_principal() {
-        let adapter = adapter();
-        let a = adapter.begin_call();
-        let b = adapter.begin_call();
-        assert_ne!(a.request_id(), b.request_id());
-        assert_eq!(a.context().principal_id.as_str(), "alice");
-        assert_eq!(b.context().principal_id.as_str(), "alice");
-        assert_eq!(a.context().client_instance_id.as_str(), "client-1");
-    }
-
-    #[test]
-    fn owned_call_rejects_a_foreign_editor_owner_before_any_use_case_runs() {
-        let adapter = adapter();
-        let err = adapter
-            .begin_owned_call(&OwnerIntent::Editor {
-                claimed_client_instance_id: ClientInstanceId::new("client-other"),
-                editor_session_id: EditorSessionId::new("tab-1"),
-            })
-            .err()
-            .expect("跨实例 editor owner 必须被拒");
-        assert_eq!(err.code, ApiErrorCode::PermissionDenied);
-    }
-
-    #[test]
-    fn owned_call_accepts_the_current_instance_editor_owner() {
-        let adapter = adapter();
-        let (scope, owner) = adapter
-            .begin_owned_call(&OwnerIntent::Editor {
-                claimed_client_instance_id: ClientInstanceId::new("client-1"),
-                editor_session_id: EditorSessionId::new("tab-1"),
-            })
-            .expect("同实例 editor owner 应通过");
-        assert!(matches!(
-            owner,
-            datazen_platform_api::context::OwnerRef::Editor { .. }
-        ));
-        assert_eq!(scope.context().client_instance_id.as_str(), "client-1");
-    }
-
-    #[test]
-    fn owned_call_fails_closed_for_job_owners() {
-        let adapter = adapter();
-        let err = adapter
-            .begin_owned_call(&OwnerIntent::Job {
-                job_id: JobId::new("job-1"),
-                stage_id: StageId::new("stage-1"),
-            })
-            .err()
-            .expect("job owner 必须失败关闭");
-        assert_eq!(err.code, ApiErrorCode::CapabilityUnsupported);
-    }
-
-    #[test]
-    fn application_services_is_absent_and_the_failure_explains_why() {
-        let adapter = adapter();
-        assert!(
-            adapter.application_services().is_none(),
-            "inject() 之前不得凭空造出 ApplicationServices"
-        );
-        let err = adapter
-            .require_application_services()
-            .err()
-            .expect("未注入必须报错");
-        assert_eq!(err.code, ApiErrorCode::CapabilityUnsupported);
-        // 报错必须说明未注入这件事，否则调用方无法定位是启动装配漏了哪一步。
-        for needle in ["§6.2", "未注入", "inject", "不得改走旧共享 session"] {
-            assert!(
-                err.message.contains(needle),
-                "报错缺少「{needle}」：{}",
-                err.message
-            );
-        }
-    }
-
-    /// 窄适配的核心约束：**不得回落**。`require_*` 失败时不能偷偷给旧路径开门。
-    #[test]
-    fn failing_requirements_never_fall_back_to_the_legacy_path() {
-        let adapter = adapter();
-        // 三个 require_* 在未注入 / 未接线时的行为都必须是 Err，而不是"尽力而为"。
-        assert!(adapter.require_application_services().is_err());
-        // 桥在测试进程里可能被其它用例注入，两种结果都必须成功，
-        // 关键是**没有第三条"回落"分支**。
-        match adapter.require_bridge() {
-            Ok(_) => {}
-            Err(err) => assert_eq!(err.code, ApiErrorCode::CapabilityUnsupported),
-        }
-    }
-
-    /// 结构性证据：本模块不含任何 `ConnectionUseCases` 实现，也不出现 `todo!` /
-    /// `unimplemented!` / `unreachable!` 之类会把半成品伪装成完成的写法。
-    #[test]
-    fn no_shell_implementation_of_the_thirteen_use_cases_exists() {
-        let source = include_str!("adapter.rs");
-        let production = source.split("#[cfg(test)]").next().unwrap_or_default();
-        assert!(
-            !production.contains("impl ConnectionUseCases"),
-            "本 track 不实现 13 个用例：实现就得编造 revision / epoch / 幂等值"
-        );
-        for forbidden in ["todo!", "unimplemented!", "TODO", "FIXME"] {
-            assert!(
-                !production.contains(forbidden),
-                "adapter.rs 生产路径不得出现 {forbidden}"
-            );
-        }
-    }
-
-    /// :84 条款一的**语义**证据：`ProfileView` 的默认 revision 就是常量 0。
-    /// 这正是"伪映射"会落进去的洞：把常量 0 当成真实版本号填进去，
-    /// `ConfigRevisionMismatch` 判定会永久失效。本测试把这个事实钉住。
-    #[test]
-    fn profile_view_defaults_are_placeholders_and_must_not_be_used_on_the_desktop_path() {
-        use datazen_platform_api::dto::profile::ProfileView;
-        use datazen_platform_api::id::{ConnectionId, Counter};
-
-        let view = ProfileView::new(ConnectionId::new("c-1"), "本地", "postgres");
-        // 没有任何真实版本源时，唯一能拿到的就是 ZERO —— 一个编造值。
-        assert_eq!(view.config_revision, Counter::ZERO);
-        assert_eq!(view.credential_revision, Counter::ZERO);
-        // 两个 revision 因此永远相等 ⇒ 版本不一致判定不可用。
-        assert_eq!(view.config_revision, view.credential_revision);
-        assert!(view.enabled);
-        let real = view
-            .with_config_revision(Counter::new(7))
-            .with_credential_revision(Counter::new(3));
-        assert_ne!(real.config_revision, real.credential_revision);
+#[cfg(test)]
+impl PlatformAdapter {
+    pub(crate) fn replace_native_fixture(&mut self, manifest: &str) -> Result<(), ApiError> {
+        let replacement = self
+            .native_tools()?
+            .fixture_manifest(manifest)
+            .map_err(|_| ApiError::invalid_argument("synthetic native deployment rejected"))?;
+        self.native.take();
+        self.native
+            .set(replacement)
+            .map_err(|_| ApiError::invalid_argument("synthetic native fixture unavailable"))
     }
 }

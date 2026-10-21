@@ -1,19 +1,21 @@
 pub mod adapter;
-pub mod bridge;
+pub mod artifact_export;
+mod diagnostics;
 pub mod error;
 pub mod handles;
 pub mod identity;
 pub mod ipc;
 pub mod live_source;
+pub mod native_tool;
 pub mod policy;
 pub mod repositories;
 pub mod resource_budget;
 pub mod resource_mapping;
 pub mod session_backend;
 pub mod session_commands;
+mod target_metadata;
 
 pub use adapter::{AssemblyState, PlatformAdapter, PlatformEntry};
-pub use bridge::{BridgeInjection, FrontendBridge};
 pub use error::into_command_error;
 pub use handles::{HandleKey, SessionHandleRegistry, SessionScopedHandle};
 pub use identity::{
@@ -21,6 +23,7 @@ pub use identity::{
 };
 pub use ipc::{IpcCallScope, IPC_SESSION_PURPOSE};
 pub use live_source::DesktopLiveConnectionSource;
+pub(crate) use target_metadata::into_execution_target;
 
 /// 结构性测试的公共取样器：抽掉**注释**与 `#[cfg(test)]` 之后的部分。
 ///

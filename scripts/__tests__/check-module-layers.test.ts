@@ -39,9 +39,10 @@ function run() {
  * only under the full suite while passing in isolation: they assert on global
  * properties of whatever the scan happened to see.
  *
- * The lock is re-entrant, so this would also be safe around a `run()` already
- * nested in `withTempSourceFile(s)`; it is used here only at the three call sites
- * that hold no lock of their own.
+ * The lock is deliberately not re-entrant (a nested acquisition against its own
+ * pid spins the full timeout; see the `clientVerdict` note below), so it is used
+ * here only at the call sites that hold no lock of their own, and each wrapped
+ * section acquires it exactly once.
  */
 function runLocked() {
   return withProbeLock(() => run());
@@ -706,8 +707,14 @@ describe('checkModuleLayers watches the same file set as the driver boundary gua
         forbiddenPackages: ['@tauri-apps/'],
         blocking: false,
       };
-      expect(withTempRule(rule, run).code).toBe(0);
-      expect(withTempRule(rule, () => runRequired(['__probe-absent-advisory'])).code).toBe(2);
+      // Both scans judge the *global* tree verdict, so they must not observe
+      // another worker's planted probe (see runLocked above). The lock is
+      // deliberately not re-entrant, hence one acquisition around the two
+      // plain (unlocked) scans rather than wrapping each one.
+      withProbeLock(() => {
+        expect(withTempRule(rule, run).code).toBe(0);
+        expect(withTempRule(rule, () => runRequired(['__probe-absent-advisory'])).code).toBe(2);
+      });
     });
 
     it('still reports a real subject as clean', () => {

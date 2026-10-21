@@ -3,7 +3,12 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import type { ConnectionConfig } from '../../../types';
 import { useSchemaDiffEndpoints } from '../useSchemaDiffEndpoints';
-import { ensureDedicatedSession, listDatabasesDedicated } from '../../../lib/dedicatedDbSession';
+import {
+  ensureDedicatedSession,
+  listDatabasesDedicated,
+  releaseDedicatedSession,
+  type DedicatedSideSession,
+} from '../../../lib/dedicatedDbSession';
 import { databaseCommands } from '../../../commands/database';
 
 const { stableT } = vi.hoisted(() => ({
@@ -32,11 +37,27 @@ vi.mock('../../../lib/dedicatedDbSession', () => ({
   listDatabasesDedicated: vi.fn(),
   ensureDedicatedSession: vi.fn(),
   releaseDedicatedSession: vi.fn().mockResolvedValue(undefined),
+  ensureDedicatedSessionForEffect: vi.fn(
+    async (
+      current: DedicatedSideSession | null,
+      connectionId: string,
+      database: string,
+      isCurrent: () => boolean,
+      databaseOverride: string | null = database,
+    ) => {
+      const next = await ensureDedicatedSession(current, connectionId, database, databaseOverride);
+      if (isCurrent()) return next;
+      if (next?.dbSessionId && next.dbSessionId !== current?.dbSessionId) {
+        await releaseDedicatedSession(next.dbSessionId);
+      }
+      return null;
+    },
+  ),
 }));
 
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
-    listTables: vi.fn().mockResolvedValue([]),
+    listCatalog: vi.fn().mockResolvedValue({ database: '', schemas: [], relations: [] }),
   },
 }));
 
@@ -76,6 +97,11 @@ const MOCK_CONNECTIONS: ConnectionConfig[] = [
 describe('useSchemaDiffEndpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(databaseCommands.listCatalog).mockResolvedValue({
+      database: '',
+      schemas: [],
+      relations: [],
+    });
     urlParamMock.mockReset();
     urlParamMock.mockReturnValue(null);
     vi.mocked(invoke).mockResolvedValue(MOCK_CONNECTIONS);
@@ -275,11 +301,12 @@ describe('useSchemaDiffEndpoints', () => {
     });
   });
 
-  it('discovers schemas through table metadata for non-PostgreSQL SQL drivers', async () => {
-    vi.mocked(databaseCommands.listTables).mockResolvedValue([
-      { name: 'users', schema: 'public', tableType: 'table' },
-      { name: 'users', schema: 'app', tableType: 'table' },
-    ]);
+  it('discovers schemas from the catalog for non-PostgreSQL SQL drivers', async () => {
+    vi.mocked(databaseCommands.listCatalog).mockResolvedValue({
+      database: 'datazen_sync_src',
+      schemas: ['app', 'public'],
+      relations: [],
+    });
     const { result } = renderHook(() => useSchemaDiffEndpoints());
 
     await waitFor(() => expect(result.current.connections).toHaveLength(3));
@@ -292,21 +319,24 @@ describe('useSchemaDiffEndpoints', () => {
     await waitFor(() => {
       expect(result.current.sourceSchemas).toEqual(['app', 'public']);
     });
-    expect(databaseCommands.listTables).toHaveBeenCalledWith(
+    expect(databaseCommands.listCatalog).toHaveBeenCalledWith(
       'session-mysql-tgt',
       'datazen_sync_src',
+      null,
+      'mysql-tgt',
     );
   });
 
-  it('prefers the configured connection schema over an empty public schema marker', async () => {
+  it('prefers the configured connection schema when the catalog has empty schemas', async () => {
     vi.mocked(invoke).mockResolvedValue([
       pgConn('pg-src', 'PG Src', 'worker_db', 'e2e_worker_0'),
       pgConn('pg-tgt', 'PG Tgt', 'datazen_sync_tgt'),
     ]);
-    vi.mocked(databaseCommands.listTables).mockResolvedValue([
-      { name: '', schema: 'public', tableType: 'systemTable' },
-      { name: 'e2e_contract_conn', schema: 'e2e_worker_0', tableType: 'table' },
-    ]);
+    vi.mocked(databaseCommands.listCatalog).mockResolvedValue({
+      database: 'worker_db',
+      schemas: ['e2e_worker_0', 'public'],
+      relations: [],
+    });
 
     const { result } = renderHook(() => useSchemaDiffEndpoints());
     await waitFor(() => expect(result.current.connections).toHaveLength(2));

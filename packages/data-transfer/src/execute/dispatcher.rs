@@ -1,4 +1,5 @@
 use super::*;
+use datazen_driver_api::{LegacySqlDialect, SqlDialect};
 
 pub async fn execute_transfer_data_with_resume_checkpoint(
     src_driver: &dyn DatabaseDriver,
@@ -99,7 +100,10 @@ pub async fn execute_transfer_data_with_resume_checkpoint(
             continue;
         }
 
-        let max_parameters = tgt_driver.max_bound_parameters();
+        // 绑参上限来自 SqlDialect 契约；旧驱动 API 只报数字，取 limit() 保持一致。
+        let max_parameters = LegacySqlDialect::new(tgt_driver)
+            .max_bound_parameters()
+            .limit();
         let max_batch_rows = max_parameters / columns.len();
         if max_batch_rows == 0 {
             tables_out.push(TableExecutionResult::database(
@@ -166,7 +170,8 @@ pub async fn execute_transfer_data_with_resume_checkpoint(
             src_quote,
             &src_family,
             |index, data_type| {
-                src_driver
+                // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+                LegacySqlDialect::new(src_driver)
                     .parameter_placeholder(index, data_type)
                     .map_err(|error| TransferError::unsupported(error.to_string()))
             },
@@ -197,7 +202,7 @@ pub async fn execute_transfer_data_with_resume_checkpoint(
         source_scope.append_to(&mut base_sql);
 
         // Resolve capability and scan once before any destructive target operation.
-        if let Err(error) = tgt_driver.parameter_placeholder(1, None) {
+        if let Err(error) = LegacySqlDialect::new(tgt_driver).parameter_placeholder(1, None) {
             tables_out.push(TableExecutionResult::database(
                 &table.source_table,
                 &table.target_table,

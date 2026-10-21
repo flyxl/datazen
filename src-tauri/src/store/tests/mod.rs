@@ -1,3 +1,4 @@
+mod ai_profile_selection_tests;
 mod atomic_write_tests;
 mod connections_tests;
 mod domain_crud_tests;
@@ -10,3 +11,5 @@ mod settings_extensions_tests;
 mod settings_serde_tests;
 
 mod fixtures;
+
+mod settings_shared_tests;

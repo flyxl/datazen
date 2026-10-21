@@ -636,7 +636,8 @@ pub struct PromptTemplate {
 }
 
 /// Options for driver-native SQL database dumps.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BackupDumpOptions {
     pub schema_only: bool,
     pub data_only: bool,
@@ -684,6 +685,10 @@ pub struct BackupRestoreOptions {
 
 #[derive(Debug, Error)]
 pub enum DriverError {
+    /// A retained physical session disappeared; never silently reconnect it.
+    #[error("Database session lost")]
+    SessionLost,
+
     #[error("Connection failed: {0}")]
     ConnectionFailed(String),
 

@@ -54,15 +54,14 @@ vi.mock('../../../lib/databaseTypes', () => ({
   escapeIdent: (ident: string) => ident,
 }));
 
-const queryCommandsMock = vi.hoisted(() => ({
-  sessionTransactionStatus: vi.fn().mockResolvedValue(false),
-  beginSessionTransaction: vi.fn().mockResolvedValue(undefined),
-  commitSessionTransaction: vi.fn().mockResolvedValue(undefined),
-  rollbackSessionTransaction: vi.fn().mockResolvedValue(undefined),
+const tableController = vi.hoisted(() => ({
+  snapshot: { state: 'ready' },
+  refresh: vi.fn().mockResolvedValue({ state: 'ready', observedContext: { transactionState: 'none' } }),
+  execute: vi.fn().mockResolvedValue({ executionId: 'table-tx' }),
+  getExecution: vi.fn().mockResolvedValue({ state: 'succeeded' }),
 }));
-
-vi.mock('../../../commands/query', () => ({
-  queryCommands: queryCommandsMock,
+vi.mock('../../../lib/session/tableSession', () => ({
+  tableSessionController: vi.fn().mockResolvedValue(tableController),
 }));
 
 vi.mock('../../../commands/database', () => ({
@@ -287,11 +286,11 @@ describe('TableView', () => {
   it('starts a manual transaction from the table toolbar', async () => {
     renderTable();
 
-    await vi.waitFor(() => expect(queryCommandsMock.sessionTransactionStatus).toHaveBeenCalled());
+    await vi.waitFor(() => expect(tableController.refresh).toHaveBeenCalled());
     fireEvent.click(screen.getByTestId('table-tx-begin'));
 
     await vi.waitFor(() =>
-      expect(queryCommandsMock.beginSessionTransaction).toHaveBeenCalledWith('c1'),
+      expect(tableController.execute).toHaveBeenCalledWith({ command: 'platform.beginTransaction', input: { defersCommit: true } }),
     );
   });
 

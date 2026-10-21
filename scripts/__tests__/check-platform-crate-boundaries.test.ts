@@ -24,6 +24,7 @@ import {
   checkPlatformCrateBoundaries,
   checkSpecConsistency,
   parseSpecRow,
+  ruleVerdict,
 } from '../check-platform-crate-boundaries.mjs';
 import { classifyMemberDir, declaredDependencies, matchesCrateFamily } from '../lib/cargoWorkspace.mjs';
 
@@ -166,6 +167,33 @@ describe('parseSpecRow', () => {
   });
 });
 
+/**
+ * The per-rule summary line's verdict word.
+ *
+ * B3: the loop that printed one summary line per evaluated rule hardcoded
+ * `ok`, so a run could print `VIOLATION F-11  …` and `ok F-11: …` a few lines
+ * apart and still exit 1 — the output contradicting itself at exactly the point
+ * a reader looks for the per-rule story. Measured at bc36cd121.
+ */
+describe('ruleVerdict', () => {
+  it('attributes rule scan errors without blaming other rules or prefixes', () => {
+    expect(ruleVerdict('F-07', [], ['F-07: could not scan source'])).toBe('fail');
+    expect(ruleVerdict('F-07', [], ['F-070: another rule', 'F-01: another rule'])).toBe('ok');
+  });
+  it('says fail for a rule one of whose violations is attributed to it', () => {
+    // Both producer shapes: the closure walk and the F-07 scan open with
+    // `<id>  `, the spec cross-check with `<id>: `.
+    expect(ruleVerdict('F-11', ['F-11  datazen-platform-infra (packages/platform-infra/Cargo.toml) → x'])).toBe('fail');
+    expect(ruleVerdict('F-11', ['F-11: subjects disagree with §2.4'])).toBe('fail');
+  });
+
+  it('says ok for a rule with no violation of its own', () => {
+    expect(ruleVerdict('F-11', [])).toBe('ok');
+    // Another rule being red must not smear onto this one.
+    expect(ruleVerdict('F-11', ['F-01  datazen-driver-redis → datazen', 'F-11x: not a rule id'])).toBe('ok');
+  });
+});
+
 describe('checkSpecConsistency', () => {
   it('accepts the real §2.4 table', () => {
     expect(checkSpecConsistency(SPEC)).toEqual([]);
@@ -206,6 +234,20 @@ describe('checkPlatformCrateBoundaries', () => {
     const result = run(fixture(CORE, clean));
     expect(result.violations).toEqual([]);
     expect(result.errors).toEqual([]);
+  });
+
+  it('marks the rule that carries the violation as fail, and no other', () => {
+    // The two halves of B3 joined up: every producer must open its violation
+    // with the rule id, and the summary line must read that prefix. Before the
+    // fix this run printed `VIOLATION F-01 …` and `ok F-01: …` in the same
+    // output, so the per-rule line disagreed with the line above it.
+    const result = run(fixture(CORE, { ...clean, 'datazen-driver-redis': ['datazen'] }));
+    expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.violations.every((line) => line.startsWith('F-01'))).toBe(true);
+    expect(ruleVerdict('F-01', result.violations)).toBe('fail');
+    // F-02 is evaluated in the same run and is clean, so the tally is not a
+    // blanket fail the moment anything is red.
+    expect(ruleVerdict('F-02', result.violations)).toBe('ok');
   });
 
   it('F-01: a driver reaching the host crate is a violation', () => {

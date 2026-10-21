@@ -1,6 +1,6 @@
 [package]
 name = "datazen-driver-sqlite"
-version = "0.0.9"
+version = "0.0.10"
 edition = "2021"
 description = "DataZen sqlite database driver"
 license = "GPL-3.0-or-later"
@@ -25,3 +25,4 @@ libsqlite3-sys = "=0.30.1"
 
 [dev-dependencies]
 datazen-data-transfer = { path = "../../data-transfer" }
+datazen-schema-diff = { path = "../../schema-diff" }

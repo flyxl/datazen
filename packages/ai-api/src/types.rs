@@ -174,6 +174,73 @@ pub struct AiSettingsConfig {
     pub profiles: Vec<AiModelProfile>,
 }
 
+impl AiSettingsConfig {
+    /// Resolve the selected model profile using the shared fallback order:
+    /// active id, explicitly default profile, then the first configured one.
+    pub fn selected_profile(&self) -> Option<&AiModelProfile> {
+        self.profiles
+            .iter()
+            .find(|profile| profile.id == self.active_profile_id)
+            .or_else(|| self.profiles.iter().find(|profile| profile.is_default))
+            .or_else(|| self.profiles.first())
+    }
+}
+
+#[cfg(test)]
+mod ai_settings_config_tests {
+    use super::*;
+
+    fn profile(id: &str, is_default: bool) -> AiModelProfile {
+        AiModelProfile {
+            id: id.into(),
+            name: id.into(),
+            provider_type: AiProviderType::OpenAi,
+            api_key: None,
+            endpoint: None,
+            model: "model".into(),
+            max_tokens: 1_000,
+            extra: serde_json::Value::Null,
+            safety_gate: AiSafetyGateConfig::default(),
+            is_default,
+        }
+    }
+
+    #[test]
+    fn selected_profile_prefers_active_then_default_then_first() {
+        let config = AiSettingsConfig {
+            active_profile_id: "active".into(),
+            profiles: vec![
+                profile("first", false),
+                profile("default", true),
+                profile("active", false),
+            ],
+        };
+        assert_eq!(
+            config.selected_profile().map(|value| value.id.as_str()),
+            Some("active")
+        );
+
+        let config = AiSettingsConfig {
+            active_profile_id: "missing".into(),
+            profiles: vec![profile("first", false), profile("default", true)],
+        };
+        assert_eq!(
+            config.selected_profile().map(|value| value.id.as_str()),
+            Some("default")
+        );
+
+        let config = AiSettingsConfig {
+            active_profile_id: "missing".into(),
+            profiles: vec![profile("first", false), profile("second", false)],
+        };
+        assert_eq!(
+            config.selected_profile().map(|value| value.id.as_str()),
+            Some("first")
+        );
+        assert!(AiSettingsConfig::default().selected_profile().is_none());
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelInfo {

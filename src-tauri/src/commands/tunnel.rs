@@ -84,9 +84,7 @@ pub(crate) async fn test_tunnel_impl(
     target_host: String,
     target_port: u16,
 ) -> Result<u64, CommandError> {
-    let elapsed = state
-        .connection_manager
-        .test_tunnel(&id, &target_host, target_port)
+    let elapsed = crate::tunnel::test_tunnel(&state.store, &id, &target_host, target_port)
         .await
         .cmd_err("test_tunnel")?;
     let elapsed_ms = elapsed.as_millis() as u64;

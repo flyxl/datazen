@@ -13,7 +13,12 @@ import { useSchemaStore, useConnectionSchemaField } from '../../stores/schemaSto
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
-import { usePanelStore, type ViewPanel } from '../../stores/panelStore';
+import {
+  paneKey,
+  resolveFocusedPaneId,
+  usePanelStore,
+  type ViewPanel,
+} from '../../stores/panelStore';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { ContentToolbar } from './ContentToolbar';
 import { PanelTabBar } from './PanelTabBar';
@@ -92,6 +97,16 @@ export function ContentView({
   const focusedPaneId = usePanelStore((s) => s.focusedPaneId);
 
   const activePanel = allPanels.find((p) => p.id === activePanelId) ?? null;
+
+  // The editor session an AI chat run may claim: the active query pane's
+  // stable owner id. `undefined` for non-query tabs (nothing to share).
+  const editorSessionId = useMemo(
+    () =>
+      activePanel?.type === 'query'
+        ? paneKey(activePanel.id, resolveFocusedPaneId(focusedPaneId))
+        : undefined,
+    [activePanel, focusedPaneId],
+  );
 
   const savedConnections = useConnectionStore((s) => s.connections);
   const currentDatabase = useConnectionSchemaField(
@@ -574,7 +589,6 @@ export function ContentView({
               onOpenErDiagram={handlers.handleOpenErDiagram}
               onClosePanel={handlers.handleClosePanel}
               onRefresh={handlers.handleRefresh}
-              resolveTableSchema={resolveTableSchema}
               onUpdatePanelData={(id, data) =>
                 storeUpdatePanel(id, data as Parameters<typeof storeUpdatePanel>[1])
               }
@@ -590,6 +604,8 @@ export function ContentView({
           aiChatOpen={aiChatOpen}
           detailPanelApplicable={detailPanelApplicable}
           dbSessionId={dbSessionId}
+          connectionId={connectionId}
+          editorSessionId={editorSessionId}
           connectionName={connectionName}
           currentDatabase={currentDatabase}
           databaseType={databaseType}

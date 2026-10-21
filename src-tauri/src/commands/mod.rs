@@ -10,21 +10,26 @@ mod connection_import;
 mod context;
 mod dashboard;
 mod data;
+mod data_session;
 mod data_transfer;
-mod dialog;
+pub(crate) mod dialog;
 pub(crate) mod driver_command;
+pub(crate) mod driver_protocol;
 mod encryption_key;
 mod error;
 mod export;
 mod file;
+pub(crate) mod file_jobs;
 mod history;
 pub mod mcp;
+mod native_tool;
 mod query;
 pub(crate) mod query_favorites;
+mod restore_gateway;
+mod restore_job;
 mod sample;
 mod schema;
 pub mod schema_diff;
-mod structure;
 mod sync;
 mod theme;
 mod tunnel;
@@ -53,12 +58,12 @@ pub use export::*;
 pub use file::*;
 pub use history::*;
 pub use mcp::*;
+pub use native_tool::*;
 pub use query::*;
 pub use query_favorites::*;
 pub use sample::*;
 pub use schema::*;
 pub use schema_diff::*;
-pub use structure::*;
 pub use sync::*;
 pub use theme::*;
 pub use tunnel::*;
@@ -69,10 +74,8 @@ pub use workflow::*;
 use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
 use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
-use crate::db::TransactionHandle;
 use crate::mcp::McpClientManager;
-use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
-use crate::services::ConnectionManager;
+use crate::monitor::MonitorEngine;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::wapps::WappManager;
@@ -152,8 +155,6 @@ impl Default for QueryExecutionRegistry {
 #[derive(Clone)]
 pub struct AppState {
     pub driver_registry: Arc<DriverRegistry>,
-    pub connection_manager: Arc<ConnectionManager>,
-    pub monitor_connections: Arc<MonitorConnectionRegistry>,
     pub monitor_engine: Arc<MonitorEngine>,
     pub store: Arc<Store>,
     pub schema_cache: Arc<SchemaCache>,
@@ -164,20 +165,19 @@ pub struct AppState {
     pub workflow_registry: Arc<WorkflowRegistry>,
     pub workflow_history: Arc<WorkflowHistoryManager>,
     pub mcp_client_manager: Arc<McpClientManager>,
-    pub session_transactions: Arc<tokio::sync::Mutex<HashMap<String, TransactionHandle>>>,
     pub query_executions: Arc<QueryExecutionRegistry>,
     pub workflow_scheduler: Arc<WorkflowScheduler>,
     pub wapps: Arc<WappManager>,
     pub cancel_registry: crate::ai::CancellationRegistry,
+    /// Owner-bound editor-session grants for AI tool execution (P6 §14.4).
+    pub ai_grants: Arc<crate::commands::ai::AiGrantService>,
     /// P5 Wave-1：Schema Diff 的 JobRuntime 基础设施（仓储/预算/计划库）。
     pub schema_diff_jobs: Arc<crate::commands::schema_diff::job::SchemaDiffJobInfra>,
     /// P5 本机持久化 Job facade，所有迁移 Host 共用 `{appData}/datazen.sqlite`。
     pub desktop_job_host: Arc<datazen_runtime::job::DesktopJobHost>,
     /// 概要 §6.2 第 8 步的窄适配根：桌面身份 + owner 作用域句柄登记表。
     ///
-    /// 与 `session_transactions` **并存但互不读写**：后者是旧共享槽（键只有
-    /// `dbSessionId`，表达不了 owner），本字段不往它里面塞任何 owner / 权限信息
-    /// （开发计划 :84 禁止的伪映射）。取不到 adapter 时用
+    /// 事务归属和资源生命周期由 Runtime session actor 管理。取不到 adapter 时用
     /// `AppState::platform_require()`，它返回明确错误而不是 `Option` 兜底。
     pub platform: crate::platform::PlatformEntry,
 }
@@ -194,7 +194,11 @@ impl AppState {
     /// Lazily register AI providers + load prompt templates.
     /// Does not run during GUI startup — only on first AI / prompt use.
     pub async fn ensure_ai_ready(&self) {
-        self.ai_registry.ensure_registered(&self.store).await;
+        if self.ai_registry.ensure_registered().await {
+            if let Some(ai_config) = self.store.get_ai_config().await {
+                self.ai_registry.restore_config(&ai_config).await;
+            }
+        }
         let lang = self.store.get_settings().await.language;
         self.prompt_resolver.ensure_ready(&lang).await;
     }
@@ -314,20 +318,3 @@ mod tunnel_probe_tests;
 #[cfg(test)]
 #[path = "tunnel_summary_tests.rs"]
 mod tunnel_summary_tests;
-
-// CM-73 baseline evidence. Declared here (not under `services/connection_manager`)
-// because the journey spans the command layer's transaction handling and
-// `mod query` is private to `commands` — reaching it from `services` would
-// require widening production visibility, which the P0 rollback clause forbids.
-// `#[cfg(test)]` only: absent from production builds.
-#[cfg(test)]
-#[path = "cm73_baseline_tests.rs"]
-mod cm73_baseline_tests;
-
-// Companion sweep invariants for the same spec case (CM-73's `- 断言` and
-// `- 基线说明` bullets): reference counting, `release` ordering, and the
-// observable physical-resource chain.
-// Same placement rationale as `cm73_baseline_tests` above.
-#[cfg(test)]
-#[path = "cm73_idle_eviction_tests.rs"]
-mod cm73_idle_eviction_tests;

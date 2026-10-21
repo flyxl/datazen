@@ -30,10 +30,9 @@ async fn release_task_endpoint(state: &AppState, endpoint: &ResolvedTaskEndpoint
     if !endpoint.dedicated {
         return;
     }
-    if let Err(error) = state
-        .connection_manager
-        .release(&endpoint.db_session_id)
-        .await
+    if let Err(error) =
+        crate::services::migration_endpoint::close_dedicated_session(state, &endpoint.db_session_id)
+            .await
     {
         tracing::warn!(
             db_session_id = %endpoint.db_session_id,
@@ -47,7 +46,9 @@ async fn release_task_session_if_dedicated(state: &AppState, db_session_id: &str
     if !dedicated {
         return;
     }
-    if let Err(error) = state.connection_manager.release(db_session_id).await {
+    if let Err(error) =
+        crate::services::migration_endpoint::close_dedicated_session(state, db_session_id).await
+    {
         tracing::warn!(
             db_session_id,
             %error,
@@ -58,8 +59,8 @@ async fn release_task_session_if_dedicated(state: &AppState, db_session_id: &str
 
 /// Resolve a persisted task endpoint from its stable connection id. A task's
 /// runtime session ids are intentionally ignored: they are process-local and
-/// may refer to a different database after restart. The connection manager
-/// reuses a live session or safely establishes one from the stored config.
+/// may refer to a different database after restart. Runtime opens a dedicated
+/// session from the stored config for this check.
 async fn resolve_task_endpoint(
     state: &AppState,
     connection_id: &str,
@@ -74,50 +75,55 @@ async fn resolve_task_endpoint(
         )));
     }
 
-    let requested_database = database.filter(|value| !value.trim().is_empty());
-    let (db_session_id, driver, handle, dedicated) = if let Some(database) = requested_database {
-        // A persisted task may select a catalog other than the connection's
-        // default. Reusing the connection's mutable session would leave
-        // PostgreSQL attached to the wrong database, so always establish a
-        // dedicated session with the saved override for this case.
-        let db_session_id = state
-            .connection_manager
-            .connect_dedicated(connection_id, Some(database))
-            .await
-            .cmd_err("check_sync_conflicts")?;
-        let (driver, handle) = match state
-            .connection_manager
-            .get_session(&db_session_id)
-            .await
-            .cmd_err("check_sync_conflicts")
-        {
-            Ok(session) => session,
-            Err(error) => {
-                release_task_session_if_dedicated(state, &db_session_id, true).await;
-                return Err(error);
-            }
-        };
-        (db_session_id, driver, handle, true)
-    } else {
-        let (db_session_id, driver, handle) = state
-            .connection_manager
-            .resolve_session_for_connection(connection_id)
-            .await
-            .cmd_err("check_sync_conflicts")?;
-        (db_session_id, driver, handle, false)
-    };
     let config = state
-        .connection_manager
-        .get_session_config(&db_session_id)
+        .store
+        .get_connection(connection_id)
         .await
-        .cmd_err("check_sync_conflicts");
-    let config = match config {
-        Ok(config) => config,
+        .ok_or_else(|| CommandError::NotFound(format!("connection '{connection_id}' not found")))?;
+    let requested_database = database
+        .filter(|value| !value.trim().is_empty())
+        .or(config.database.as_deref())
+        .ok_or_else(|| {
+            CommandError::Validation(format!(
+                "Sync task is missing its {label} database; reopen the task and choose a database"
+            ))
+        })?;
+    let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
+        state,
+        connection_id,
+        requested_database,
+        "syncTask",
+    )
+    .await
+    .map_err(|_| {
+        CommandError::Validation(format!(
+            "could not open the persisted Sync task {label} session"
+        ))
+    })?;
+    let context = match crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await
+    {
+        Ok(context) => context,
         Err(error) => {
-            release_task_session_if_dedicated(state, &db_session_id, dedicated).await;
+            release_task_session_if_dedicated(state, &db_session_id, true).await;
             return Err(error);
         }
     };
+    let mut config = context.config;
+    config.database = context
+        .view
+        .observed_context
+        .namespace
+        .database
+        .clone()
+        .or(config.database);
+    let driver = context.driver;
+    let handle = context.handle;
+    let dedicated = true;
 
     // Keep database/schema explicit in the count and in the validation error.
     // A persisted task may outlive an edited connection config; silently

@@ -11,7 +11,7 @@
  * exists.
  */
 
-export type MetadataIdentityBinder = (dbSessionId: string, connectionId: string) => void;
+export type MetadataIdentityBinder = (dbSessionId: string, connectionId: string, scope?: string) => void;
 
 let binder: MetadataIdentityBinder | null = null;
 
@@ -24,6 +24,6 @@ export function registerMetadataIdentityBinder(next: MetadataIdentityBinder): ()
 }
 
 /** Forward a newly observed (session, config) pair to the schema store. */
-export function bindSessionMetadataIdentity(dbSessionId: string, connectionId: string): void {
-  binder?.(dbSessionId, connectionId);
+export function bindSessionMetadataIdentity(dbSessionId: string, connectionId: string, scope?: string): void {
+  binder?.(dbSessionId, connectionId, scope);
 }

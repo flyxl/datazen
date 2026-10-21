@@ -1,344 +1,40 @@
-//! Shared database tool helpers used by both ai_chat tool execution and MCP Server tools.
-
-pub const MCP_QUERY_DEFAULT_LIMIT: u32 = 100;
-pub const MCP_QUERY_MAX_LIMIT: u32 = 50_000;
-
-use crate::mcp::permission::{self, McpPermissionMode};
-use crate::services::{metadata_schema, ConnectionManager};
-use crate::store::Store;
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
-use std::sync::Arc;
-
-/// Resolve a live DB session from a persisted **connectionId** (as returned by
-/// `list_connections`). Uses [`ConnectionManager::resolve_session_for_connection`]
-/// to reuse or establish a session internally.
-pub async fn resolve_connection(
-    connection_manager: &ConnectionManager,
-    connection_id: &str,
-) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-    let (_db_session_id, driver, handle) =
-        resolve_connection_with_id(connection_manager, connection_id).await?;
-    Ok((driver, handle))
-}
-
-/// Like [`resolve_connection`], but also returns the resolved **dbSessionId**
-/// (which differs from the input connectionId).
-pub async fn resolve_connection_with_id(
-    connection_manager: &ConnectionManager,
-    connection_id: &str,
-) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-    connection_manager
-        .resolve_session_for_connection(connection_id)
-        .await
-        .map_err(|e| {
-            format!(
-                "Cannot resolve connection '{connection_id}': {}",
-                crate::log_redact::redact_secrets_for_log(&e.to_string())
-            )
-        })
-}
-
-/// Explicit metadata target for an MCP call.
-///
-/// The MCP surface is the one place where a table/database name is typed by a
-/// human rather than walked from the object tree, so it has no schema to hand
-/// down. It resolves the database from the caller's argument with the
-/// connection config as fallback, and the schema from the caller's argument,
-/// the config, then the driver's own convention — never a session default.
-pub async fn resolve_metadata_target(
-    connection_manager: &ConnectionManager,
-    db_session_id: &str,
-    driver: &Arc<dyn DatabaseDriver>,
-    database: Option<&str>,
-    schema: Option<&str>,
-) -> Result<(String, Option<String>), String> {
-    let config = connection_manager
-        .get_session_config(db_session_id)
-        .await
-        .map_err(|e| format!("Cannot read session config: {e}"))?;
-    let database = database
-        .map(str::trim)
-        .filter(|db| !db.is_empty())
-        .or(config.database.as_deref())
-        .unwrap_or("")
-        .to_string();
-    let schema = metadata_schema(driver.as_ref(), schema, None, config.schema.as_deref());
-    Ok((database, schema))
-}
-
-/// List all configured connections as a JSON string.
-pub async fn list_connections(store: &Store) -> Result<String, String> {
-    let connections = store.get_connections().await;
-    let result: Vec<serde_json::Value> = connections
-        .iter()
-        .map(|c| {
-            serde_json::json!({
-                "id": c.id,
-                "name": c.name,
-                "databaseType": c.database_type,
-                "host": c.host,
-                "database": c.database,
-            })
-        })
-        .collect();
-    serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
-}
-
-/// List all databases for the connection identified by a connectionId.
-pub async fn list_databases(
-    connection_manager: &ConnectionManager,
-    connection_id: &str,
-) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
-    let dbs = driver
-        .get_databases(&handle)
-        .await
-        .map_err(|e| format!("Error listing databases: {e}"))?;
-    serde_json::to_string_pretty(&dbs).map_err(|e| format!("Error: {e}"))
-}
-
-/// List all tables in a database for the connection identified by a connectionId.
-pub async fn list_tables(
-    connection_manager: &ConnectionManager,
-    connection_id: &str,
-    database: Option<&str>,
-    schema: Option<&str>,
-) -> Result<String, String> {
-    let (db_session_id, driver, handle) =
-        resolve_connection_with_id(connection_manager, connection_id).await?;
-    let (database, schema) = resolve_metadata_target(
-        connection_manager,
-        &db_session_id,
-        &driver,
-        database,
-        schema,
-    )
-    .await?;
-    let tables = driver
-        .get_tables(&handle, &database, schema.as_deref())
-        .await
-        .map_err(|e| format!("Error listing tables: {e}"))?;
-    serde_json::to_string_pretty(&tables).map_err(|e| format!("Error: {e}"))
-}
-
-/// Search tables by keyword pattern in a database (case-insensitive substring match).
-/// Returns at most `limit` matching table names.
-pub async fn search_tables(
-    connection_manager: &ConnectionManager,
-    connection_id: &str,
-    database: Option<&str>,
-    schema: Option<&str>,
-    pattern: &str,
-    limit: usize,
-) -> Result<String, String> {
-    let (db_session_id, driver, handle) =
-        resolve_connection_with_id(connection_manager, connection_id).await?;
-    let (database, schema) = resolve_metadata_target(
-        connection_manager,
-        &db_session_id,
-        &driver,
-        database,
-        schema,
-    )
-    .await?;
-    let all_tables = driver
-        .get_tables(&handle, &database, schema.as_deref())
-        .await
-        .map_err(|e| format!("Error listing tables: {e}"))?;
-
-    let pattern_lower = pattern.to_lowercase();
-    let matched: Vec<&datazen_driver_api::TableInfo> = all_tables
-        .iter()
-        .filter(|t| t.name.to_lowercase().contains(&pattern_lower))
-        .take(limit)
-        .collect();
-
-    let total_matches = all_tables
-        .iter()
-        .filter(|t| t.name.to_lowercase().contains(&pattern_lower))
-        .count();
-
-    let result = serde_json::json!({
-        "matched": matched,
-        "totalMatches": total_matches,
-        "totalTables": all_tables.len(),
-        "pattern": pattern,
-    });
-    serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
-}
-
-/// Get detailed schema for one or more tables for the connection identified by a connectionId.
-pub async fn get_table_schema(
-    connection_manager: &ConnectionManager,
-    connection_id: &str,
-    tables: &[String],
-    database: Option<&str>,
-    schema: Option<&str>,
-) -> Result<String, String> {
-    let (db_session_id, driver, handle) =
-        resolve_connection_with_id(connection_manager, connection_id).await?;
-    let (database, schema) = resolve_metadata_target(
-        connection_manager,
-        &db_session_id,
-        &driver,
-        database,
-        schema,
-    )
-    .await?;
-    let mut results = Vec::new();
-    for table in tables {
-        match driver
-            .get_table_schema(&handle, table, &database, schema.as_deref())
-            .await
-        {
-            Ok(schema) => results.push(serde_json::to_value(&schema).unwrap_or_default()),
-            Err(e) => results.push(serde_json::json!({"table": table, "error": e.to_string()})),
-        }
-    }
-    serde_json::to_string_pretty(&results).map_err(|e| format!("Error: {e}"))
-}
-
-/// Get a single table's schema for the connection identified by a connectionId.
-pub async fn get_single_table_schema(
-    connection_manager: &ConnectionManager,
-    connection_id: &str,
-    table: &str,
-    database: Option<&str>,
-    schema: Option<&str>,
-) -> Result<datazen_driver_api::TableSchema, String> {
-    let (db_session_id, driver, handle) =
-        resolve_connection_with_id(connection_manager, connection_id).await?;
-    let (database, schema) = resolve_metadata_target(
-        connection_manager,
-        &db_session_id,
-        &driver,
-        database,
-        schema,
-    )
-    .await?;
-    driver
-        .get_table_schema(&handle, table, &database, schema.as_deref())
-        .await
-        .map_err(|e| format!("Error getting schema: {e}"))
-}
-
-/// Resolve MCP query row limit: default 100 when omitted, hard cap 50_000.
-pub fn resolve_query_limit(limit: Option<u32>) -> Option<u32> {
-    let resolved = limit.unwrap_or(MCP_QUERY_DEFAULT_LIMIT);
-    Some(resolved.min(MCP_QUERY_MAX_LIMIT))
-}
-
-/// Execute a SQL query for the connection identified by a connectionId.
-/// When `permission_mode` is `Some`, SQL is checked against MCP permission rules.
-pub async fn query(
-    connection_manager: &ConnectionManager,
-    connection_id: &str,
-    sql: &str,
-    limit: Option<u32>,
-    permission_mode: Option<McpPermissionMode>,
-) -> Result<String, String> {
-    if let Some(mode) = permission_mode {
-        permission::check_sql_allowed(sql, mode)?;
-    }
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
-    let limit = resolve_query_limit(limit);
-    let result = driver
-        .query_multi(&handle, sql, limit)
-        .await
-        .map_err(|e| format!("Error executing query: {e}"))?;
-    serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
-}
-
-/// Run EXPLAIN on a SQL query for the connection identified by a connectionId.
-pub async fn explain_query(
-    connection_manager: &ConnectionManager,
-    connection_id: &str,
-    sql: &str,
-) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
-    let result = driver
-        .explain(&handle, sql)
-        .await
-        .map_err(|e| format!("Error running EXPLAIN: {e}"))?;
-    serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
-}
-
+pub use datazen_feature_core::services::db_tools::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::registry::DriverRegistry;
-    use crate::db::{ConnectionConfig, SslMode, TableInfo, TableType};
+    use crate::db::{TableInfo, TableType};
     use crate::mcp::permission::McpPermissionMode;
-    use crate::store::Store;
-    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+    use crate::testing::{app_state::TestAppState, mock_driver::MockDriverOptions};
 
-    async fn test_stack() -> (
-        crate::testing::FileKeyringGuard,
-        Arc<Store>,
-        Arc<ConnectionManager>,
-        Arc<MockDriver>,
-    ) {
-        let keyring = crate::testing::FileKeyringGuard::set();
-        let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
-        let registry = Arc::new(DriverRegistry::new());
-        let mock = MockDriver::new(
-            "postgres",
-            MockDriverOptions {
-                databases: vec!["app".into(), "test".into()],
-                tables: vec![TableInfo {
-                    name: "users".into(),
-                    schema: Some("public".into()),
-                    table_type: TableType::Table,
-                    row_count: Some(10),
-                }],
-                explain_plan: crate::db::ExplainResult {
-                    plan_text: "Seq Scan".into(),
-                    plan_json: None,
-                    plan_tree: None,
-                    total_cost: Some(1.0),
-                    estimated_rows: Some(100),
-                },
-                server_version: "PostgreSQL 16".into(),
-                count_total: 42,
-                query_rows: vec![vec![Some(crate::db::Value::Integer(1))]],
-                ..Default::default()
+    fn options_with_tables(databases: Vec<String>, tables: Vec<TableInfo>) -> MockDriverOptions {
+        MockDriverOptions {
+            databases,
+            tables,
+            explain_plan: crate::db::ExplainResult {
+                plan_text: "Seq Scan".into(),
+                plan_json: None,
+                plan_tree: None,
+                total_cost: Some(1.0),
+                estimated_rows: Some(100),
             },
-        );
-        registry
-            .register_test_driver("postgres", mock.clone())
-            .await;
-        let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
-        (keyring, store, mgr, mock)
+            server_version: "PostgreSQL 16".into(),
+            count_total: 42,
+            query_rows: vec![vec![Some(crate::db::Value::Integer(1))]],
+            ..Default::default()
+        }
     }
 
-    fn sample_config(id: &str) -> ConnectionConfig {
-        ConnectionConfig {
-            id: id.into(),
-            name: "Test DB".into(),
-            database_type: "postgres".into(),
-            host: Some("localhost".into()),
-            port: Some(5432),
-            database: Some("app".into()),
-            schema: None,
-            username: Some("user".into()),
-            password: None,
-            ssl_mode: SslMode::Prefer,
-            connection_timeout: 30,
-            max_pool_size: 10,
-            ssh_tunnel: None,
-            tunnel_kind: None,
-            tunnel_id: None,
-            http_proxy_tunnel: None,
-            websocket_tunnel: None,
-            color_tag: None,
-            group: None,
-            last_connected_at: None,
-            server_version: None,
-            options: None,
-            read_only: false,
-            pinned: false,
-        }
+    async fn test_stack() -> TestAppState {
+        TestAppState::with_resource_provider(options_with_tables(
+            vec!["app".into(), "test".into()],
+            vec![TableInfo {
+                name: "users".into(),
+                schema: Some("public".into()),
+                table_type: TableType::Table,
+                row_count: Some(10),
+            }],
+        ))
+        .await
     }
 
     #[test]
@@ -350,44 +46,60 @@ mod tests {
 
     #[tokio::test]
     async fn list_connections_serializes_saved_configs() {
-        let (_keyring, store, _, _) = test_stack().await;
-        store.save_connection(sample_config("c1")).await.unwrap();
-        let json = list_connections(&store).await.unwrap();
+        let test = test_stack().await;
+        test.save_connection("c1").await;
+        let json = list_connections(&test.store).await.unwrap();
         assert!(json.contains("\"id\": \"c1\""));
-        assert!(json.contains("Test DB"));
+        assert!(json.contains("Test c1"));
     }
 
     #[tokio::test]
-    async fn resolve_connection_connects_when_not_in_session() {
-        let (_keyring, store, mgr, _) = test_stack().await;
-        store.save_connection(sample_config("c1")).await.unwrap();
-        let (driver, handle) = resolve_connection(&mgr, "c1").await.unwrap();
+    async fn database_tool_host_resolves_driver_and_executes_through_runtime() {
+        let test = test_stack().await;
+        test.save_connection("c1").await;
+        let driver =
+            datazen_feature_core::services::ports::DatabaseToolHost::driver_for_connection(
+                &test.state,
+                "c1",
+            )
+            .await
+            .unwrap();
         assert_eq!(driver.driver_type(), "postgres");
-        assert!(handle.id.starts_with("mock-c1"));
+        let result = datazen_feature_core::services::ports::DatabaseToolHost::execute_target(
+            &test.state,
+            "c1",
+            "list_databases",
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert!(result.data.to_string().contains("app"));
     }
 
     #[tokio::test]
     async fn list_databases_returns_json() {
-        let (_keyring, store, mgr, _) = test_stack().await;
-        store.save_connection(sample_config("c1")).await.unwrap();
-        let json = list_databases(&mgr, "c1").await.unwrap();
+        let test = test_stack().await;
+        test.save_connection("c1").await;
+        let json = list_databases(&test.state, "c1").await.unwrap();
         assert!(json.contains("app"));
         assert!(json.contains("test"));
     }
 
     #[tokio::test]
     async fn list_tables_returns_json() {
-        let (_keyring, store, mgr, _) = test_stack().await;
-        store.save_connection(sample_config("c1")).await.unwrap();
-        let json = list_tables(&mgr, "c1", Some("app"), None).await.unwrap();
+        let test = test_stack().await;
+        test.save_connection("c1").await;
+        let json = list_tables(&test.state, "c1", Some("app"), None)
+            .await
+            .unwrap();
         assert!(json.contains("users"));
     }
 
     #[tokio::test]
     async fn get_table_schema_returns_pretty_json() {
-        let (_keyring, store, mgr, _) = test_stack().await;
-        store.save_connection(sample_config("c1")).await.unwrap();
-        let json = get_table_schema(&mgr, "c1", &["users".into()], Some("app"), None)
+        let test = test_stack().await;
+        test.save_connection("c1").await;
+        let json = get_table_schema(&test.state, "c1", &["users".into()], Some("app"), None)
             .await
             .unwrap();
         assert!(json.contains("users"));
@@ -396,21 +108,21 @@ mod tests {
 
     #[tokio::test]
     async fn query_executes_without_permission_gate() {
-        let (_keyring, store, mgr, mock) = test_stack().await;
-        store.save_connection(sample_config("c1")).await.unwrap();
-        let json = query(&mgr, "c1", "SELECT * FROM users", Some(10), None)
+        let test = test_stack().await;
+        test.save_connection("c1").await;
+        let json = query(&test.state, "c1", "SELECT * FROM users", Some(10), None)
             .await
             .unwrap();
         assert!(json.contains("1"));
-        assert!(mock.query_calls() >= 1);
+        assert!(test.mock.query_calls() >= 1);
     }
 
     #[tokio::test]
     async fn query_blocks_sql_in_read_only_permission_mode() {
-        let (_keyring, store, mgr, _) = test_stack().await;
-        store.save_connection(sample_config("c1")).await.unwrap();
+        let test = test_stack().await;
+        test.save_connection("c1").await;
         let err = query(
-            &mgr,
+            &test.state,
             "c1",
             "SELECT 1",
             None,
@@ -423,58 +135,47 @@ mod tests {
 
     #[tokio::test]
     async fn explain_query_returns_plan_json() {
-        let (_keyring, store, mgr, _) = test_stack().await;
-        store.save_connection(sample_config("c1")).await.unwrap();
-        let json = explain_query(&mgr, "c1", "SELECT 1").await.unwrap();
+        let test = test_stack().await;
+        test.save_connection("c1").await;
+        let json = explain_query(&test.state, "c1", "SELECT 1").await.unwrap();
         assert!(json.contains("Seq Scan"));
     }
 
     #[tokio::test]
     async fn search_tables_filters_by_pattern() {
-        let keyring = crate::testing::FileKeyringGuard::set();
-        let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
-        let registry = Arc::new(DriverRegistry::new());
-        let mock = MockDriver::new(
-            "postgres",
-            MockDriverOptions {
-                databases: vec!["app".into()],
-                tables: vec![
-                    TableInfo {
-                        name: "users".into(),
-                        schema: Some("public".into()),
-                        table_type: TableType::Table,
-                        row_count: Some(10),
-                    },
-                    TableInfo {
-                        name: "user_roles".into(),
-                        schema: Some("public".into()),
-                        table_type: TableType::Table,
-                        row_count: Some(5),
-                    },
-                    TableInfo {
-                        name: "orders".into(),
-                        schema: Some("public".into()),
-                        table_type: TableType::Table,
-                        row_count: Some(100),
-                    },
-                    TableInfo {
-                        name: "products".into(),
-                        schema: Some("public".into()),
-                        table_type: TableType::Table,
-                        row_count: Some(50),
-                    },
-                ],
-                ..Default::default()
-            },
-        );
-        registry
-            .register_test_driver("postgres", mock.clone())
-            .await;
-        let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
-        store.save_connection(sample_config("c1")).await.unwrap();
+        let test = TestAppState::with_resource_provider(options_with_tables(
+            vec!["app".into()],
+            vec![
+                TableInfo {
+                    name: "users".into(),
+                    schema: Some("public".into()),
+                    table_type: TableType::Table,
+                    row_count: Some(10),
+                },
+                TableInfo {
+                    name: "user_roles".into(),
+                    schema: Some("public".into()),
+                    table_type: TableType::Table,
+                    row_count: Some(5),
+                },
+                TableInfo {
+                    name: "orders".into(),
+                    schema: Some("public".into()),
+                    table_type: TableType::Table,
+                    row_count: Some(100),
+                },
+                TableInfo {
+                    name: "products".into(),
+                    schema: Some("public".into()),
+                    table_type: TableType::Table,
+                    row_count: Some(50),
+                },
+            ],
+        ))
+        .await;
+        test.save_connection("c1").await;
 
-        let json = search_tables(&mgr, "c1", Some("app"), None, "user", 20)
+        let json = search_tables(&test.state, "c1", Some("app"), None, "user", 20)
             .await
             .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -484,108 +185,80 @@ mod tests {
         let matched = parsed["matched"].as_array().unwrap();
         assert_eq!(matched.len(), 2);
 
-        let json_limited = search_tables(&mgr, "c1", Some("app"), None, "user", 1)
+        let json_limited = search_tables(&test.state, "c1", Some("app"), None, "user", 1)
             .await
             .unwrap();
         let parsed_limited: serde_json::Value = serde_json::from_str(&json_limited).unwrap();
         assert_eq!(parsed_limited["matched"].as_array().unwrap().len(), 1);
         assert_eq!(parsed_limited["totalMatches"].as_u64(), Some(2));
-
-        let _ = keyring;
     }
 
     #[tokio::test]
     async fn search_tables_case_insensitive() {
-        let keyring = crate::testing::FileKeyringGuard::set();
-        let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
-        let registry = Arc::new(DriverRegistry::new());
-        let mock = MockDriver::new(
-            "postgres",
-            MockDriverOptions {
-                databases: vec!["app".into()],
-                tables: vec![
-                    TableInfo {
-                        name: "UserAccounts".into(),
-                        schema: None,
-                        table_type: TableType::Table,
-                        row_count: None,
-                    },
-                    TableInfo {
-                        name: "order_items".into(),
-                        schema: None,
-                        table_type: TableType::Table,
-                        row_count: None,
-                    },
-                ],
-                ..Default::default()
-            },
-        );
-        registry
-            .register_test_driver("postgres", mock.clone())
-            .await;
-        let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
-        store.save_connection(sample_config("c1")).await.unwrap();
+        let test = TestAppState::with_resource_provider(options_with_tables(
+            vec!["app".into()],
+            vec![
+                TableInfo {
+                    name: "UserAccounts".into(),
+                    schema: None,
+                    table_type: TableType::Table,
+                    row_count: None,
+                },
+                TableInfo {
+                    name: "order_items".into(),
+                    schema: None,
+                    table_type: TableType::Table,
+                    row_count: None,
+                },
+            ],
+        ))
+        .await;
+        test.save_connection("c1").await;
 
-        let json = search_tables(&mgr, "c1", Some("app"), None, "USER", 20)
+        let json = search_tables(&test.state, "c1", Some("app"), None, "USER", 20)
             .await
             .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["totalMatches"].as_u64(), Some(1));
         assert_eq!(parsed["matched"][0]["name"].as_str(), Some("UserAccounts"));
-
-        let _ = keyring;
     }
 
     #[tokio::test]
     async fn search_tables_empty_pattern_returns_all() {
-        let keyring = crate::testing::FileKeyringGuard::set();
-        let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
-        let registry = Arc::new(DriverRegistry::new());
-        let mock = MockDriver::new(
-            "postgres",
-            MockDriverOptions {
-                databases: vec!["app".into()],
-                tables: vec![
-                    TableInfo {
-                        name: "a".into(),
-                        schema: None,
-                        table_type: TableType::Table,
-                        row_count: None,
-                    },
-                    TableInfo {
-                        name: "b".into(),
-                        schema: None,
-                        table_type: TableType::Table,
-                        row_count: None,
-                    },
-                ],
-                ..Default::default()
-            },
-        );
-        registry
-            .register_test_driver("postgres", mock.clone())
-            .await;
-        let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
-        store.save_connection(sample_config("c1")).await.unwrap();
+        let test = TestAppState::with_resource_provider(options_with_tables(
+            vec!["app".into()],
+            vec![
+                TableInfo {
+                    name: "a".into(),
+                    schema: None,
+                    table_type: TableType::Table,
+                    row_count: None,
+                },
+                TableInfo {
+                    name: "b".into(),
+                    schema: None,
+                    table_type: TableType::Table,
+                    row_count: None,
+                },
+            ],
+        ))
+        .await;
+        test.save_connection("c1").await;
 
-        let json = search_tables(&mgr, "c1", Some("app"), None, "", 20)
+        let json = search_tables(&test.state, "c1", Some("app"), None, "", 20)
             .await
             .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["totalMatches"].as_u64(), Some(2));
         assert_eq!(parsed["matched"].as_array().unwrap().len(), 2);
-
-        let _ = keyring;
     }
 
     #[tokio::test]
     async fn search_tables_no_match() {
-        let (_keyring, store, mgr, _) = test_stack().await;
-        store.save_connection(sample_config("c1")).await.unwrap();
+        let test = test_stack().await;
+        test.save_connection("c1").await;
 
-        let json = search_tables(&mgr, "c1", Some("app"), None, "nonexistent_xyz", 20)
+        let json = search_tables(&test.state, "c1", Some("app"), None, "nonexistent_xyz", 20)
             .await
             .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();

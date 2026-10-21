@@ -122,29 +122,29 @@ pub fn list_objects_sql(db_type: &str, kind: ObjectKind) -> Option<String> {
                 .into(),
         ),
         ("mysql", ObjectKind::Function) => Some(
-            "SELECT ROUTINE_SCHEMA AS `schema`, ROUTINE_NAME AS name \
+            "SELECT NULL AS `schema`, ROUTINE_NAME AS name \
              FROM information_schema.ROUTINES \
              WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_TYPE = 'FUNCTION' \
              ORDER BY 1, 2"
                 .into(),
         ),
         ("mysql", ObjectKind::Procedure) => Some(
-            "SELECT ROUTINE_SCHEMA AS `schema`, ROUTINE_NAME AS name \
+            "SELECT NULL AS `schema`, ROUTINE_NAME AS name \
              FROM information_schema.ROUTINES \
              WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_TYPE = 'PROCEDURE' \
              ORDER BY 1, 2"
                 .into(),
         ),
         ("mysql", ObjectKind::Trigger) => Some(
-            "SELECT TRIGGER_SCHEMA AS `schema`, TRIGGER_NAME AS name, \
-                    EVENT_OBJECT_SCHEMA AS target_schema, EVENT_OBJECT_TABLE AS target_name \
+            "SELECT NULL AS `schema`, TRIGGER_NAME AS name, \
+                    NULL AS target_schema, EVENT_OBJECT_TABLE AS target_name \
              FROM information_schema.TRIGGERS \
              WHERE TRIGGER_SCHEMA = DATABASE() \
              ORDER BY 1, 2, 4"
                 .into(),
         ),
         ("mysql", ObjectKind::View) => Some(
-            "SELECT TABLE_SCHEMA AS `schema`, TABLE_NAME AS name \
+            "SELECT NULL AS `schema`, TABLE_NAME AS name \
              FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() \
              ORDER BY 1, 2"
                 .into(),
@@ -223,6 +223,9 @@ pub fn list_objects_sql(db_type: &str, kind: ObjectKind) -> Option<String> {
     }
 }
 
+/// MySQL's *_SCHEMA columns identify databases, not a separate namespace
+/// schema. Its object-list SELECTs therefore expose null schema/target_schema;
+/// the caller keeps database ownership in the independent database target.
 /// Build an object-list query for a specific database when the dialect needs
 /// an explicit catalog filter. PostgreSQL chooses the database through
 /// `query_at`; MySQL exposes all catalogs through `information_schema`, so its

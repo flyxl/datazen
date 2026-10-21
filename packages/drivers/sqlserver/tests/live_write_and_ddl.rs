@@ -1823,7 +1823,7 @@ async fn two_handles_do_not_share_a_transaction() {
 /// This test **observes and reports** whether the driver rejects a write,
 /// because the guard lives in the host, not in the driver — there is no
 /// `read_only` reference anywhere under `packages/drivers/sqlserver/src/`
-/// (the host enforces it in `src-tauri/src/sql_guard/safety.rs`
+/// (the host enforces it in `packages/runtime/src/sql_guard/safety.rs`
 /// `check_sql(sql, read_only, safe_mode)`), so the driver-level expectation is
 /// "writes still go through"; anything else is reported, not asserted.
 #[tokio::test]
@@ -1873,7 +1873,7 @@ async fn read_only_config_is_not_enforced_by_the_driver() {
                 "⚠️  FINDING (host-layer guard, not a driver bug): ConnectionConfig.read_only = \
                  true was accepted and a write succeeded ({rows} row). SqlServerDriver never \
                  reads `config.read_only`; the host enforces read-only in \
-                 src-tauri/src/sql_guard/safety.rs::check_sql."
+                 packages/runtime/src/sql_guard/safety.rs::check_sql."
             ),
             Err(error) => eprintln!("ℹ️  a write was rejected under read_only = true: {error}"),
         }

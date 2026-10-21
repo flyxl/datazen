@@ -342,7 +342,7 @@ organization
 | --- | --- | --- |
 | `subjectType` | `user` / `serviceAccount` / `delegated` | 服务身份与委托身份有独立 ACL 记录 |
 | 权限 | `read` / `execute` / `write` / `cancel` / `download` / `subscribe` / `admin` | 逐 action 判定，不做「全权限」通配 |
-| 资源类型 | `connection` / `session` / `execution` / `job` / `artifact` / `stream` | 会话与执行按 owner 继承，不单独授权 |
+| 资源类型 | `connection` / `session` / `execution` / `job` / `artifact` / `stream` / `wapp` | 会话与执行按 owner 继承，不单独授权；`wapp` 的安装、卸载、启用、停用一律归 `write` verb，读取安装态归 `read`，客户端置灰只是提示，不构成授权 |
 
 首版内置固定角色（**不可由管理员自定义**）：`orgAdmin`、`orgMember`、`connectionOwner`、`connectionViewer`、`jobOperator`、`auditor`；首版不做策略语言，因此也不建 `roles` 表，6 个取值由 `memberships.role_id` 的 CHECK 表达。这些授权数据落在管理库的 `memberships` / `acl_entries` / `permission_versions`，表结构与保留策略以 [持久化模型 §3.10 认证与授权表](persistence-model.md#310-认证与授权表) 为权威。
 
@@ -654,7 +654,7 @@ flowchart LR
 
 ## 12. 出站网络策略
 
-`NetworkProvider` 在**每次实际建连前**执行解析与校验，不信任请求体中的任何地址：
+目标服务端 `NetworkProvider` 在**每次实际建连前**执行解析与校验，不信任请求体中的任何地址。当前端口只实现数据库路由/隧道；AI HTTP 已使用独立可注入的 `datazen_ai_providers::http::HttpClient` 出站边界，服务端需注入默认 `PublicInternet` 或管理员策略（见 [AI 架构](../backend/ai.md#ai-http-出站边界)）：
 
 ```mermaid
 flowchart TD
@@ -757,6 +757,26 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 
 - **Web server 不加载桌面 native EP**，也不把 EP 包下发到浏览器执行；团队版若需要同等能力，必须走显式授权的服务端 API（§6.4 的 `delegationId` 路径）。
 - **Theme 只分发静态资源**（manifest、`tokens.css`、编辑器/图表 JSON、图标），经 schema 校验后发布；Web CSP 禁止脚本执行；主题不能调用 backend、不能访问 secret。
+
+---
+
+### 15.3 服务端安装与 Wapp 资源地址
+
+桌面把 Wapp 包当**本机文件**处理：`install_from_zip` / `install_from_dir` 先落到 `{wapps_dir}/.staging-{uuid}`，全量校验（`api_version` 必须等于 `WAPP_API_VERSION`、路径段不得以点开头、解压比不得超过 `MAX_COMPRESSION_RATIO`、主题条目走白名单）后原子 rename 到 `{wapps_dir}/{publisher}.{name}`；升级走「先 `fs::rename(dest, &backup)` → 再换入 → 失败回滚」。`wapps_dir` 是**参数**而非全局路径，`storage_*` 系列同样以 `wapps_dir` 定位 `{wapps_dir}/{id}/.storage.json`。
+
+由此得到三条由代码保证、而非由约定保证的事实：
+
+1. **服务端安装不需要改写内核逻辑，只需要换一个存储根目录。** 安装、校验、回滚、存储读写已全部按 `wapps_dir` 参数化，adapter 传入不同的 `wapps_dir` 即可。唯一必须由 adapter 承担的是**隔离口径**：桌面是单机单用户，服务端必须把根目录切到 `(organizationId, principalId, wappId)` 三元组之下，否则同组织内不同用户会共享 `storage:local` 数据。
+2. **「插件自定义资源 schema」在服务端没有需要翻译的对象。** manifest 中承载自定义资源的字段是 `backend`，而该字段在**安装时即被显式拒绝**（`src-tauri/src/wapps/manifest.rs`，注释 `Rule 3b: backend plugins are reserved for P2`，错误文本为「manifest.backend is not supported by this host; 需要更新版本的 DataZen」）。全仓检索 `.backend` 只命中这一处拒绝点，没有任何解释器消费它。因此 v1 不存在需要跨形态搬运的自定义资源 schema；P2 若要落地，必须**只在共享内核实现一次**，再由桌面 adapter 与服务端 adapter 分别供给运行环境，不得为服务端另写一份解释器。
+3. **真正随形态变化的是资源地址，不是 schema。** 桌面用 `datazen://` 自定义 scheme 承载 iframe 入口与静态资源，并用 `ASSET_CSP` 锁死来源（`connect-src 'none'` 等，见 `src-tauri/src/wapps/protocol.rs`）。Web 侧静态资源必须改由 HTTPS origin 提供，`WappManifest` 的 `entry` / `icon` / theme 资源路径需按目标 origin 重写。这一步是 **adapter 的职责**，必须留在 adapter：内核一旦开始感知 origin 就不再形态中立，服务端接入时即构成破坏性变更（见[共享边界 F-10](./shared-boundaries-and-ports.md)）。
+
+另有两处进程级状态在服务端必须重新定义归属，不能沿用桌面形态：`WappManager` 当前是启动时从 `AppState` 装载的**进程全局单例**，启用态由包目录内的 `.enabled` 标记文件记录；服务端须改为按 `(organizationId, principalId)` 解析，且安装类操作先过 §5 RBAC 词表中的 `wapp` 资源 ACL（`write` verb）再落盘。
+
+由此确定 Web 端「安装插件」入口的权限口径：
+
+- 入口是否可见、是否可点是**客户端提示**，不是授权；服务端必须独立判定 `wapp` 资源上的 `write`，未授权按 §7 统一 404（INV-S3）。
+- 安装包来源仍受 §12 `NetworkProvider` 的 SSRF 约束；安装过程**不在服务端自动解压执行**，包体先落 §11 `ArtifactStore`（配额、TTL、扩展名白名单、不接受服务器绝对路径），解压与校验由内核在目标 `wapps_dir` 内完成。
+- 卸载或撤权即刻关闭该 Wapp 的桥接订阅（§15.1 末条），并连带作废其存储根目录的读权限。
 
 ---
 

@@ -3,6 +3,8 @@
 mod access;
 mod admission;
 mod codec;
+mod owner;
+mod restore_projection;
 mod results;
 mod runtime_ops;
 mod writes;
@@ -62,8 +64,4 @@ impl SqliteJobRepository {
         })?;
         f(&conn)
     }
-}
-
-pub(super) fn now_from_clock(clock: &dyn JobClock) -> datazen_platform_api::id::Timestamp {
-    clock.now()
 }

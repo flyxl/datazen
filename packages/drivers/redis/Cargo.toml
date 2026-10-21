@@ -1,6 +1,6 @@
 [package]
 name = "datazen-driver-redis"
-version = "0.0.9"
+version = "0.0.10"
 edition = "2021"
 description = "DataZen redis database driver"
 license = "GPL-3.0-or-later"

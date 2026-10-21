@@ -60,20 +60,22 @@ impl SessionFacts {
 /// issued against that session in the meantime, which is exactly what makes the
 /// result [`ObservationConfidence::Confirmed`].
 pub(crate) async fn read_pinned_session(
-    transactions: &tokio::sync::Mutex<HashMap<String, PoolConnection<Postgres>>>,
+    transactions: &tokio::sync::Mutex<
+        HashMap<String, std::sync::Arc<tokio::sync::Mutex<PoolConnection<Postgres>>>>,
+    >,
     connection_id: &str,
 ) -> Result<SessionFacts, ResourceError> {
-    let mut guard = transactions.lock().await;
-    let connection =
-        guard
-            .get_mut(connection_id)
-            .ok_or_else(|| ResourceError::InvalidResourceState {
-                resource_key: connection_id.to_string(),
-                operation: "observe_session".to_string(),
-                state: "no transaction is open on this session, so there is no pinned \
-                    connection to read"
-                    .to_string(),
-            })?;
+    let pinned = transactions
+        .lock()
+        .await
+        .get(connection_id)
+        .cloned()
+        .ok_or_else(|| ResourceError::InvalidResourceState {
+            resource_key: connection_id.into(),
+            operation: "observe_session".into(),
+            state: "SessionLost".into(),
+        })?;
+    let mut connection = pinned.lock().await;
     fetch_facts(&mut **connection).await
 }
 

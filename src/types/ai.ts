@@ -118,6 +118,8 @@ export interface AiChatMessage {
   questions?: AiQuestion[];
   toolCalls?: AiToolCall[];
   toolCallId?: string;
+  /** Terminal marker: the run ended because the user cancelled it. */
+  cancelled?: boolean;
 }
 
 export interface AiChatSession {
@@ -131,6 +133,11 @@ export interface AiChatSession {
   /** Qualified MCP tool name (mcp/server/tool) shown during streaming tool execution. */
   streamMcpToolName: string | null;
   requestId: string | null;
+  /** Non-secret attribution of the last run started from this session. */
+  attribution?:
+    | { kind: 'independent' }
+    | { kind: 'editorGrant'; grantId: string; editorSessionId: string }
+    | null;
 }
 
 export interface StreamChunkPayload {
@@ -138,6 +145,8 @@ export interface StreamChunkPayload {
   content: string;
   reasoning?: string;
   done: boolean;
+  /** `done && cancelled` is the terminal chunk of a cancelled run. */
+  cancelled?: boolean;
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
   toolCalls?: AiToolCall[];
 }

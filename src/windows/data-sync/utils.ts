@@ -16,3 +16,13 @@ export function pickDefaultSchema(schemas: string[], previous?: string): string 
 }
 
 export type SyncState = 'idle' | 'inspecting' | 'comparing' | 'compared' | 'executing' | 'unknown' | 'done';
+
+/** Whether the current state carries a reviewable comparison result. */
+export function isComparedSyncState(syncState: SyncState): boolean {
+  return (
+    syncState === 'compared' ||
+    syncState === 'executing' ||
+    syncState === 'unknown' ||
+    syncState === 'done'
+  );
+}

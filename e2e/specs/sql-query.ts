@@ -5,11 +5,12 @@ import {
   clickCardConnectButton,
   closeExtraWindows,
   setEditorContent,
-  openQueryTab,
+  openQueryTab as createQueryTab,
   openConnectionsWorkspace,
   expandConnectedConnectionInNavigator,
   waitForConnectionToolbar,
   executeSQL,
+  executeSQLChecked,
   emitCrossWindowEvent,
   invokeBackend,
   setSafeMode,
@@ -27,6 +28,28 @@ describe('SQL 查询模块（编辑器、执行、结果、历史与收藏）', 
   let mainWindow: string;
   const queryConnectionId = 'e2e_pg_sql_query';
   const queryConnectionName = 'E2E-PostgreSQL-查询';
+
+  async function openQueryTab(): Promise<void> {
+    // These cases need a fresh editor, not every previous case's retained
+    // physical session. Close through the real UI and wait for release before
+    // opening the next one; retaining six live tabs correctly hits the default
+    // five-connected-editors quota and masks later execution assertions.
+    for (;;) {
+      const count = await $$('[data-testid="panel-tab-close"]').length;
+      if (count === 0) break;
+      await browser.execute(() => {
+        document.querySelector<HTMLButtonElement>('[data-testid="panel-tab-close"]')?.click();
+      });
+      await browser.waitUntil(
+        async () => (await $$('[data-testid="panel-tab-close"]').length) < count,
+        {
+          timeout: 10000,
+          timeoutMsg: 'Previous SQL fixture tab did not close and release its session',
+        },
+      );
+    }
+    await createQueryTab();
+  }
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
@@ -137,21 +160,74 @@ describe('SQL 查询模块（编辑器、执行、结果、历史与收藏）', 
     }
   });
 
-  it('SQ-CTX-001: SQL 带完整库路径时应同步执行栏选择框', async () => {
-    const dbName = process.env.E2E_PG_DB || 'postgres';
-    // Context is synchronized by QueryPanel's execution path, not by merely
-    // replacing CodeMirror text. Execute the qualified statement so the test
-    // observes the same state transition as a user action.
-    await executeSQL(`SELECT * FROM ${dbName}.pg_catalog.pg_tables LIMIT 1`);
-    // Query execution may replace the toolbar subtree while the context is
-    // being synchronized. Re-query it after the async transition instead of
-    // using an element handle captured before execution.
+  it('SQ-CTX-001: 限定名查询不改变编辑器已观察的上下文', async () => {
+    await executeSQL('SELECT 1 AS context_probe');
+    const initialDatabase = await $('[data-testid="query-context-database"]').getValue();
+    expect(initialDatabase).not.toBe('');
+    // A qualifier selects an object for this statement. It must not be
+    // interpreted as USE/changeContext before execution (CM-13).
+    await executeSQL('SELECT * FROM pg_catalog.pg_tables LIMIT 1');
     const bar = await $('[data-testid="query-context-selectors"]');
     await bar.waitForDisplayed({ timeout: 10000 });
-    // Searchable combobox shows selected value in the input's value attribute
     const dbInput = await bar.$('[data-testid="query-context-database"]');
-    const text = (await dbInput.getValue()) || (await bar.getText());
-    expect(text).toContain(dbName);
+    expect(await dbInput.getValue()).toBe(initialDatabase);
+  });
+
+  it('SQ-LIFECYCLE-001: repeated database replacement releases the previous editor resource', async () => {
+    await openQueryTab();
+    await executeSQLChecked('SELECT current_database() AS lifecycle_probe');
+    const initial = await $('[data-testid="query-context-database"]').getValue();
+    expect(initial).not.toBe('');
+    await $('[data-testid="query-context-database"]').click();
+    const listedDatabases = await browser.execute(() =>
+      Array.from(document.querySelectorAll('[role="option"]'))
+        .map((option) => option.textContent?.trim() ?? '')
+        .filter(Boolean),
+    );
+    const alternate = [process.env.E2E_PG_DB, 'goecoride', 'datazen_demo', 'postgres'].find(
+      (candidate) => candidate && candidate !== initial && listedDatabases.includes(candidate),
+    );
+    await browser.keys('Escape');
+    if (!alternate)
+      throw new Error(`No second connectable database was listed: ${listedDatabases.join(', ')}`);
+
+    // Replacing a context opens a new runtime session before the controller
+    // releases the old one. Six live replacements exceed the host's default
+    // five-editor budget if any retired resource is left charged.
+    for (let iteration = 0; iteration < 6; iteration += 1) {
+      const next = iteration % 2 === 0 ? alternate : initial;
+      await $('[data-testid="query-context-database"]').click();
+      await $('[data-testid="query-context-database"]').setValue(next);
+      await browser.waitUntil(
+        async () =>
+          browser.execute(
+            (expected: string) =>
+              Array.from(document.querySelectorAll('[role="option"]')).some(
+                (option) => option.textContent?.trim() === expected,
+              ),
+            next,
+          ),
+        {
+          timeout: 5000,
+          timeoutMsg: `Database option ${next} was not available`,
+        },
+      );
+      await browser.keys('Enter');
+      await browser.waitUntil(
+        async () => (await $('[data-testid="query-context-database"]').getValue()) === next,
+        {
+          timeout: 15000,
+          timeoutMsg: `Editor did not finish switching to database ${next}`,
+        },
+      );
+      // Searchable Select can keep focus in the input after a filtered choice.
+      await browser.keys('Escape');
+      await browser.waitUntil(
+        async () => !(await $('[data-testid="select-listbox"]').isExisting()),
+        { timeout: 2000, timeoutMsg: 'Database selector did not close after selection' },
+      );
+      await executeSQLChecked('SELECT current_database() AS lifecycle_probe');
+    }
   });
 
   it('应显示执行快捷键提示 (SQ-001)', async () => {
@@ -205,8 +281,21 @@ describe('SQL 查询模块（编辑器、执行、结果、历史与收藏）', 
   it('应能输入 SQL 并执行查询 (SQ-001, SQ-002)', async () => {
     await openQueryTab();
     await executeSQL('SELECT 1 AS test_col');
-    const body = await $('body').getText();
-    expect(body.includes('test_col') || body.includes(`1 ${t('common.rows')}`)).toBe(true);
+    const table = $('[data-testid="result-workspace-table"]');
+    await table.waitForDisplayed({ timeout: 15000 });
+    const result = await browser.execute(() => {
+      const root = document.querySelector('[data-testid="result-workspace-table"]');
+      return {
+        headers: Array.from(root?.querySelectorAll('[data-col-header]') ?? []).map((node) =>
+          node.getAttribute('data-col-header'),
+        ),
+        cells: Array.from(root?.querySelectorAll('[data-testid="data-table-cell"]') ?? []).map(
+          (node) => node.textContent?.trim(),
+        ),
+      };
+    });
+    expect(result.headers).toContain('test_col');
+    expect(result.cells).toEqual(['1']);
   });
 
   it('流式查询超过一批的结果不应被批大小截断', async () => {

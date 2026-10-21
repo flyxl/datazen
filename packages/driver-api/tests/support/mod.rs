@@ -96,6 +96,7 @@ impl BudgetPort for AllowanceBudget {
 
 pub struct CollectingSink {
     pub chunks: std::sync::Mutex<Vec<ResultChunk>>,
+    pub outputs: std::sync::Mutex<Vec<serde_json::Value>>,
     pub completed: AtomicUsize,
     pub failed: AtomicUsize,
 }
@@ -104,6 +105,7 @@ impl CollectingSink {
     pub fn new() -> Self {
         Self {
             chunks: std::sync::Mutex::new(Vec::new()),
+            outputs: std::sync::Mutex::new(Vec::new()),
             completed: AtomicUsize::new(0),
             failed: AtomicUsize::new(0),
         }
@@ -126,6 +128,17 @@ impl ResultSink for CollectingSink {
                 reason: "collector lock poisoned".into(),
             })?;
         chunks.push(chunk);
+        Ok(())
+    }
+
+    async fn write_output(&self, output: serde_json::Value) -> Result<(), ResourceError> {
+        let mut outputs = self
+            .outputs
+            .lock()
+            .map_err(|_| ResourceError::SinkRejected {
+                reason: "collector output lock poisoned".into(),
+            })?;
+        outputs.push(output);
         Ok(())
     }
 
@@ -289,6 +302,17 @@ impl ResourceProvider for FakeProvider {
 
     fn namespace_shape(&self) -> &NamespaceShape {
         &self.shape
+    }
+
+    fn connection_handle(
+        &self,
+        _handle: &ResourceHandle,
+    ) -> Result<datazen_driver_api::ConnectionHandle, ResourceError> {
+        Err(ResourceError::unsupported(
+            self.provider_id(),
+            "connection_handle",
+            "fixture has no native driver connection",
+        ))
     }
 
     async fn describe_resource(

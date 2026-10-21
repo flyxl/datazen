@@ -1,4 +1,5 @@
 use super::*;
+use datazen_driver_api::{LegacySqlDialect, SqlDialect};
 use sha2::{Digest, Sha256};
 
 /// Accept only exact declared primary-key order. A column flag fallback is
@@ -222,7 +223,8 @@ pub(crate) fn build_page_for_context(
         limit,
         quote,
         |index, data_type| {
-            driver
+            // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+            LegacySqlDialect::new(driver)
                 .parameter_placeholder(index, data_type)
                 .map_err(|error| TransferError::unsupported(error.to_string()))
         },
@@ -271,7 +273,12 @@ pub(crate) fn build_snapshot_offset_page(
             .join(", "),
     );
     sql.push(' ');
-    sql.push_str(&driver.pagination_syntax(u64::from(limit), offset).clause);
+    // 分页子句来自 SqlDialect 契约，旧驱动 API 逐条转发。
+    sql.push_str(
+        &LegacySqlDialect::new(driver)
+            .pagination_syntax(u64::from(limit), offset)
+            .clause,
+    );
     Ok((sql, scope.count_params.clone()))
 }
 

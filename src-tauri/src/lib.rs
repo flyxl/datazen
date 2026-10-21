@@ -21,7 +21,6 @@ mod redis_flush_gate;
 pub use datazen_schema_diff as schema_diff;
 mod schema_objects;
 mod services;
-mod sql_guard;
 mod ssh_known_hosts;
 pub mod ssh_tunnel;
 mod store;
@@ -30,7 +29,6 @@ mod tls;
 pub use datazen_data_transfer::transfer;
 mod tray;
 pub mod tunnel;
-mod util;
 mod wapps;
 pub mod workflow;
 

@@ -67,8 +67,7 @@ fn cm31_alias_configs_sharing_one_service_are_still_rejected() {
 /// 同名对象落在**同一台服务器的不同库**上必须放行。
 ///
 /// 这是本轨 D1 缺陷的反向断言：`connect_dedicated` 只覆盖 `effective_config.database`，
-/// `effective_config.id` 仍是同一条持久化连接 id（见
-/// `services/connection_manager/connections.rs`），因此「同一 connectionId」不等于
+/// `effective_config.id` 仍是同一条持久化连接 id，因此「同一 connectionId」不等于
 /// 「同一物理端点」。把它当重叠键会让合法的跨库搬运被一句事实错误的
 /// EndpointOverlap 拒绝——这类键只能把 accept 变成 reject，永远不能把 reject 变回
 /// accept，即对真实自覆盖零增益。

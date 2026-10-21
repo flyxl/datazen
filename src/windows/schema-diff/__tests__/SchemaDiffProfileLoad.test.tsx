@@ -304,7 +304,9 @@ describe('SchemaDiffWindow profile loading', () => {
     await waitFor(() =>
       expect(screen.getByTestId('schema-diff-objects-panel')).toBeInTheDocument(),
     );
-    expect(databaseCommands.listTables).toHaveBeenCalledWith('source-session', 'profile-db');
+    expect(databaseCommands.listTables).toHaveBeenCalledWith(
+      'source-session', 'profile-db', 'public', 'profile-source',
+    );
     expect(screen.getByTestId('schema-diff-table-row')).toHaveAttribute(
       'data-table-name',
       'public.users',

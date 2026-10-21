@@ -7,6 +7,7 @@
 mod dump;
 mod parser;
 mod restore;
+pub mod stream;
 
 #[cfg(test)]
 mod tests;

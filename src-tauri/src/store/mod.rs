@@ -6,6 +6,7 @@ mod connections;
 pub(crate) mod favorites;
 mod history;
 pub(crate) mod history_db;
+mod key_codec;
 mod key_store;
 mod models;
 pub(crate) mod platform_profiles;
@@ -28,7 +29,7 @@ pub use history_db::{
     MigrationRunFilter, MigrationRunPage, MigrationRunRecord, QueryHistoryFilter, QueryHistoryPage,
 };
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
-pub use settings::{clamp_connection_pool_size, AppSettings, OnboardingState};
+pub use settings::{AppSettings, OnboardingState};
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -403,6 +404,10 @@ impl Store {
         cache.settings.clone()
     }
 
+    pub async fn execution_settings(&self) -> datazen_platform_api::settings::ExecutionSettings {
+        self.cache.read().await.settings.shared_settings().execution
+    }
+
     /// Synchronous settings snapshot for sync contexts (e.g. tray).
     /// Uses `try_read()` to avoid `block_on` which panics when nested in a
     /// Tokio runtime. Falls back to `AppSettings::default_for_first_run()` if
@@ -432,3 +437,34 @@ impl Store {
 
 #[cfg(test)]
 mod tests;
+
+#[async_trait::async_trait]
+impl datazen_platform_api::ports::SettingsRepository for Store {
+    async fn read_settings(
+        &self,
+    ) -> Result<datazen_platform_api::settings::SharedSettings, datazen_platform_api::PortError>
+    {
+        Ok(self.get_settings().await.shared_settings())
+    }
+    async fn write_settings(
+        &self,
+        settings: datazen_platform_api::settings::SharedSettings,
+    ) -> Result<datazen_platform_api::settings::SharedSettings, datazen_platform_api::PortError>
+    {
+        // Serialize read/modify/persist to avoid dropping local-only values during a shared write.
+        let mut cache = self.cache.write().await;
+        let mut next = cache.settings.clone();
+        next.apply_shared_settings(settings)
+            .map_err(datazen_platform_api::PortError::BackendUnavailable)?;
+        self.save_json_file("settings.json", &next)
+            .await
+            .map_err(|_| {
+                datazen_platform_api::PortError::BackendUnavailable(
+                    "Unable to persist settings".into(),
+                )
+            })?;
+        let result = next.shared_settings();
+        cache.settings = next;
+        Ok(result)
+    }
+}

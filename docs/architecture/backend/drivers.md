@@ -22,7 +22,7 @@ DataZen 的 Driver 是**编译期集成**的数据库实现，不通过运行时
 
 当前 API：
 
-- `PROTOCOL_VERSION = 4`
+- `PROTOCOL_VERSION = 6`
 - `MIN_PROTOCOL_VERSION = 1`
 
 ## 2. DatabaseDriver
@@ -92,6 +92,90 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 | 服务端拒绝的写法 | `FETCH NEXT 0 ROWS ONLY`（10744）、缺少 `ORDER BY` 的 `OFFSET/FETCH`（102）。分页控件对 0 行页给出诊断而不是丢弃子句 |
 | 平台限制 | Azure SQL Database：`BACKUP`/`RESTORE` 40510、`msdb` 跨库名 40515、`CREATE LOGIN` 需 master（5001）、serverless 自动暂停首次登录 40613（需退避重试） |
 
+### 2.4 领域契约：`SqlDialect` 与共享 SQL builder
+
+`DatabaseDriver` 正在收敛为「驱动入口」，SQL 文本规则已先拆成窄契约，运行时执行仍走 `ResourceProvider`。
+
+| 契约 | 位置 | 现状 |
+| --- | --- | --- |
+| `SqlDialect` | `packages/driver-api/src/dialect.rs` | 已提取：`quote_ident`、`pagination_syntax`、`try_format_sql_literal`、`parameter_placeholder`、`max_bound_parameters` |
+| `LegacySqlDialect<'a, D>` | 同上 | 借用适配器：方法逐项转发给 `DatabaseDriver`，是**单向**迁移缝 |
+| 共享 SQL builder | `packages/driver-api/src/sql_builder.rs` | `build_update_sql` / `build_delete_sql` / `build_update_statement` / `build_delete_statement` 只接收 `&dyn SqlDialect` 与调用方显式给出的绑定上限 |
+| `CatalogReader` | `packages/driver-api/src/catalog.rs` | 已提取：`get_databases`、`get_schemas`、`get_tables`、`get_table_schema`、`get_columns`、`get_all_columns`，每次关系读取都带显式 `database` / 可选 `schema` |
+| `LegacyCatalogReader<'a, D>` | 同上 | 借用适配器，同一单向迁移规则 |
+
+规则：
+
+- **单向委托。** 消费者 → `SqlDialect` / `LegacySqlDialect` → 驱动方法。驱动默认方法不再互相转发；`DatabaseDriver` 的 `build_*` 默认实现委托给共享 builder，旧 override 继续生效。
+- **纯文本规则。** `SqlDialect` 的方法不得获取资源、连接或会话状态。共享 builder 因此无需连接池即可生成 SQL，测试可用独立 dialect 实现，不必造驱动。
+- **绑定上限有来源。** `BoundParameterLimit` 区分 `Dialect`（方言语法常量）、`Runtime`（服务器或绑定实现限制）与 `Declared`（旧 API 无法区分来源时的声明）。批量写入只读 `limit()`，文档与诊断读来源。
+- **兼容入口保留。** `format_sql_literal` / `build_*_sql` 仍存在但已标记为 deprecated，仅由旧调用点使用；产品写路径继续使用 `build_*_statement` + `execute_with_params`。`legacy_format_sql_literal` 是这两个 deprecated builder 的兼容渲染入口，新代码不得调用。
+- **能力声明不另起一套。** 本轮只新增文本契约；「是否支持绑定写」「精确取消」「事务」等仍由既有 `CapabilitySet` / `ResourceProvider` 决定，不引入第二个能力集合。
+- **旧 trait 方法在被新契约取代后仍然保留。** 借用适配器（`LegacySqlDialect` / `LegacyCatalogReader` / `LegacyCommandCatalog` / `LegacySchemaMigration` / `LegacyBackupDialect`）正是**委托给这些旧方法**的，删掉它们等于删掉契约的委托目标，新契约会失去唯一实现——那会变成两份实现或互相转发，违反「同一项行为只有一个实际实现」。因此可删的旧方法只有一种：**driver-api 之外零消费者，且契约侧已有自有实现**。`DatabaseDriver::split_restore_sql` 即按此退役（`BackupDialect` 的实现改为直连 `sql_text::split_restore_sql`，全仓 15 个驱动无一显式声明过该方法，删除对现存实现方零编译影响）；`uses_sql_restore_pipeline` / `new_sql_scanner` / `type_normalizer` / `format_sql_literal` 等仍是被适配器委托的方法，**保留**。
+
+已迁移的消费者：
+
+方言规则（`SqlDialect`）——`quote_ident` / `pagination_syntax` / `try_format_sql_literal` / `parameter_placeholder` / `max_bound_parameters` 全部经 `LegacySqlDialect`：
+
+- `QueryExecutor::build_select_sql` / `build_count_sql`（宿主读表）接收 `&dyn SqlDialect` 与 `limit`/`offset`；`commands/table_target.rs` 在边界处用 `LegacySqlDialect` 包装驱动。
+- 数据迁移写入路径：`data-transfer` 的绑参上限 / 占位符 / 分页子句 / 字面量（`writer.rs`、`dispatcher.rs`、`resume.rs`、`resume/fingerprint.rs`、`job/pipeline.rs`、`job/handler.rs`、`sql_file.rs`），宿主 `data_transfer/preview.rs`、`data_transfer/exec/execution.rs`，feature-core `export/format.rs`（`emit_insert_batch` 形参即是 `&dyn SqlDialect`）；`bound_insert*` 因同时需要驱动专属的显式自增子句而保留驱动形参。
+- 结果编辑校验与同步批读：`commands/result_write.rs` 的 UPDATE 前置 SELECT、`sync/keyset_source.rs`、`sync/host/select.rs`（形参已收窄为 `&dyn SqlDialect`）、`sync/host/statements.rs`、`sync/apply.rs`、`sync/filter_validation.rs`。
+- 驱动专属的规则（`quote_char` / `transfer_explicit_identity_insert_clause` / `supports_offset` / `driver_type`）不在此契约内，仍在驱动上显式调用。
+- 同步 IR 适配器的 `SyncTargetAdapter::quote_ident` 是另一个契约（SQL Server 用 `[x]`、ClickHouse 用反引号，与驱动方言的有意分歧），不得并入。
+
+目录读取（`CatalogReader`）——`get_databases` / `get_schemas` / `get_tables` / `get_table_schema` / `get_columns` / `get_all_columns` 全部经 `LegacyCatalogReader`：
+
+- `SchemaCache::get_columns` / `get_table_schema` / `warmup` 只接收 `&dyn CatalogReader`；读表、ER 图、AI 过滤解析与 `read_relation_columns` 在边界处用 `LegacyCatalogReader` 包装驱动。缓存键仍是 session + database + schema + relation，跨目标读取不共享条目。
+- Schema Diff 目录读取：`schema_diff` 的 plan / compare / unified plan / dependencies / recovery 与 `feature-core` `schema_metadata.rs` 的 `list_catalog` / `read_relation_schema`（driver 形参同时承载 `driver_type()`、外键目录可见性等驱动专属规则，适配器在函数内构造）。
+
+其余消费者按调用链逐步迁移；收窄函数形参（如 `fetch_target_table_schema`）留待其调用方迁完后统一做。
+
+版本：`datazen-driver-api` 0.0.13 → 0.0.20——0.0.14 `SqlDialect`、0.0.15 `CatalogReader`、0.0.16 `ReuseDriver` 显式转发补齐、0.0.17 `CommandCatalog`、0.0.18 `SchemaMigration`、0.0.19 `BackupDialect`、0.0.20 退役 `DatabaseDriver::split_restore_sql`（唯一一次 trait 表面删除，故单独记一版）。新契约本身都是 additive（新 trait + 适配器），`PROTOCOL_VERSION` 保持 6（2026-10-21 起协议版本冻结于 6，兼容门禁族退役——治理决定见 [driver-capability-migration.md](../platform/driver-capability-migration.md#5-协议版本演进) §5）；crate 版本记录的是**本仓库**的 trait 表面变化，仓库内各驱动按最新 trait 实现即可。
+
+### 2.5 复用包装器：`ReuseDriver` 必须显式决定每个方法
+
+`ReuseDriver` 把内层驱动以另一个 id 呈现（QuestDB / Cloudberry 复用 PostgreSQL 线协议，Doris / StarRocks / Manticore / OceanBase MySQL 模式复用 MySQL）。不变量只有一条：**`DatabaseDriver` 的每个方法都必须在包装器里显式决定**——转发，或有意覆写。不允许某个方法落到 trait 默认体。
+
+原因是默认体为通用驱动而写，静默降级正好抹掉别名引擎的规则：`has_multi_database` 固定返回 `false`、`get_schemas` 返回 `None`、`qualify_sql_target` 返回 `None`、`migration_renderer` 返回 `None`。而同一个包装器却在转发 `open_databases` / `close_database`（按库池操作）——同一驱动出现两份互相矛盾的事实；产品元数据（`questdbMeta.hasMultiDatabase = true`、`defaultPort = 8812`）又是第三份。
+
+已补齐的转发（此前缺失 16 个）：
+
+| 类别 | 方法 |
+| --- | --- |
+| 方言 / 文本 | `quote_ident`、`build_update_statement`、`build_delete_statement` |
+| 目标与端点 | `has_multi_database`、`qualify_sql_target`、`default_host`、`default_port` |
+| 目录 | `get_schemas` |
+| 结构迁移 | `migration_renderer`、`migration_capabilities`、`validate_schema_migration`、`validate_schema_migration_plan` |
+| 执行 / 流式 | `query_stream_with_params`、`query_stream_with_execution_at` |
+| 备份 / 传输 | `render_transfer_identity_sequence_sync_sql` |
+| 提示 | `dialect_notes` |
+
+有意不转发的只有三类，且都在包装器里有注释：
+
+- `driver_type`：别名 id 正是包装器存在的理由。
+- `test_connection`：回写别名的 `server_type`。
+- 精确取消协议：由构造参数门控，并且仍要求内层声明支持。
+
+机械守卫：`packages/driver-api/src/reuse_forwarding_tests.rs` 读取 `traits.rs` 与 `reuse.rs` 的源码，断言 trait 的每个方法都出现在包装器实现中，并带正/反控制用例。`DatabaseDriver` 以后新增方法而包装器不更新，`cargo test -p datazen-driver-api` 直接失败；这条不变量不再依赖评审。
+
+### 2.6 命令描述契约：`CommandCatalog`
+
+Driver Command 的"声明"与"执行"分成两个契约。`CommandCatalog`（`packages/driver-api/src/command_catalog.rs`）只包含描述：`command_definitions()`（该驱动暴露哪些命令）与 `target_requirements(command)`（每条命令需要什么目标；未知命令返回 `None`，平台据此在获取资源之前拒绝）。它刻意不包含执行路径——一个只会列出命令的宿主面（目标元数据、workflow 校验、Runtime 只读命令源）依赖 `CommandCatalog`，而不是整个 `DatabaseDriver`；执行继续走 `execute_command` 这一既有的资源生命周期入口。
+
+`LegacyCommandCatalog` 是自 `DatabaseDriver` 到 `CommandCatalog` 的单向适配器，两个方法全部转发，驱动保留且仅保留一份实现。已迁移的调用点：workflow 步骤校验（`resource_execution.rs`）、Runtime 命令源（`runtime_command_source.rs`）、流式查询网关（`streaming.rs`）、平台 `explain` 能力判定（`adapter.rs`、`session_backend/execution.rs`）。
+
+### 2.7 结构迁移契约：`SchemaMigration`
+
+Schema Diff 领域消费的结构迁移决策统一收敛到 `SchemaMigration`（`packages/driver-api/src/schema_migration.rs`）：`migration_renderer()` / `migration_capabilities()` / `type_normalizer()` / `ddl_atomicity()`，加上两个部署期校验（`validate_schema_migration_plan`、`validate_schema_migration`）。领域侧（`schema-diff` 的 plan/objects/deploy/transaction、`data-sync` 同族类型等价门、宿主 schema_diff 命令）只读这份窄契约，执行渲染出的 DDL 仍走各自的资源生命周期；`MigrationRenderer` / `MigrationCapabilities` / `TypeNormalizer` 保持驱动专属实现。
+
+`LegacySchemaMigration` 是自 `DatabaseDriver` 到 `SchemaMigration` 的单向适配器，六个方法全部转发。已迁移的调用点通过它读取规则：同族/跨方言结构 plan（`plan.rs`）、对象 plan（`objects.rs`、`object_plan_commands.rs`、`unified_plan.rs`）、部署原子性与校验（`deploy.rs`、`transaction.rs`、`deploy_commands.rs`）、同步类型等价（`types_eq.rs`、`compare_commands.rs`）。
+
+### 2.8 备份文件规则契约：`BackupDialect`
+
+备份域中真正"纯规则"的部分收敛到 `BackupDialect`（`packages/driver-api/src/backup_dialect.rs`）：`uses_sql_restore_pipeline()`（共享 SQL 恢复管线的路由）、`new_sql_scanner()`（语句扫描器，选择/关闭 `DELIMITER` 处理）、`split_restore_sql()`（整段 SQL 缓冲的切分）。带 `ConnectionHandle` 的执行入口（`dump_database*`、`restore_sql*`、`recover_restore_statement`）不在此契约内，保留在驱动上，待运行时路径收敛（§5 计划）统一处理；共享流程本身继续复用 `sql_dump` 模块。
+
+`LegacyBackupDialect` 是自 `DatabaseDriver` 到 `BackupDialect` 的单向适配器。已迁移的调用点：feature-core 备份流程（`backup.rs` 的管线路由与 `RestoreSession` 扫描器；执行侧恢复循环继续持有驱动）、retained-restore 预检 `restore_sql::prepare`（scanner 取自 `BackupDialect`，feature-core `restore_gateway.rs` 与 postgres/mysql 驱动的 `restore_sql` 集成测试在边界包适配器）。
+
 ## 3. Driver Commands
 
 Driver 可以通过 `command_definitions()` 声明 Command，通过 `execute_command()` 执行。
@@ -139,7 +223,7 @@ Data Sync 的同族结构门闸和 Data Transfer 的 IR pairing 不应混为一�
 
 ## 6. Driver Registry
 
-`src-tauri/src/db/registry.rs` 负责 Host 侧 Driver Registry；`src-tauri/src/db/mod.rs` re-export Driver API。
+Driver Registry 实现在 `packages/runtime/src/driver_registry/`（`datazen_runtime::driver_registry`），与 SchemaCache 同处共享 runtime 内核；`src-tauri/src/db/mod.rs` 只是 re-export 门面，同时 re-export Driver API 与 `registry` 模块，宿主连接层统一改走 runtime 路径后即删除。
 
 Driver 通过 inventory 在编译期注册。构建时由 registry / build tooling 决定哪些 Driver 被编译进 DataZen。
 

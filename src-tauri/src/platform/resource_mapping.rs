@@ -67,7 +67,14 @@ pub fn state(state: ds::ExecutionState) -> rc::ExecutionState {
 pub fn error(error: ResourceError) -> rc::ProviderError {
     match error {
         ResourceError::OperationNotSupported { .. } => rc::ProviderError::CapabilityUnsupported,
-        ResourceError::BudgetDenied { .. } => {
+        ResourceError::BudgetDenied { requested, .. } => {
+            // Provider reason strings may contain identifiers; never log them.
+            tracing::warn!(
+                source = "provider_budget",
+                category = "unknown",
+                requested,
+                "resource admission refused"
+            );
             rc::ProviderError::ResourceBusy("physical connection budget")
         }
         ResourceError::MissingRequiredNamespaceLevel { .. } => {
@@ -96,6 +103,9 @@ pub fn error(error: ResourceError) -> rc::ProviderError {
         }
         ResourceError::SinkRejected { .. } => {
             rc::ProviderError::ProtocolError("result delivery failed".into())
+        }
+        ResourceError::Driver(datazen_driver_api::DriverError::SessionLost) => {
+            rc::ProviderError::ResourceLost("retained physical session lost".into())
         }
         ResourceError::Driver(_) => rc::ProviderError::SqlError("driver execution failed".into()),
     }

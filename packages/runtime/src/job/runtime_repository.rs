@@ -22,6 +22,15 @@ use datazen_platform_api::ports::job::JobRepository;
 /// Operations consumed by `JobRuntime` and the desktop Job host.
 #[async_trait]
 pub trait JobRuntimeRepository: JobRepository {
+    async fn validate_stage_owner(
+        &self,
+        _ctx: &RequestContext,
+        _claim: &JobClaim,
+        _stage: &datazen_platform_api::id::StageId,
+    ) -> Result<(), PortError> {
+        Err(PortError::StaleClaim)
+    }
+
     async fn cancel_poll(
         &self,
         ctx: &RequestContext,

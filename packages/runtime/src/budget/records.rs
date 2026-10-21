@@ -248,6 +248,7 @@ pub struct SessionRecord {
     pub connection_id: ConnectionId,
     /// `None` = `New`：没有 socket，**只**计逻辑。
     pub occupancy: Option<datazen_platform_api::ports::budget::PhysicalOccupancy>,
+    pub connected_editor: bool,
 }
 
 /// 供 `sessions.rs` 复用的物理额度读取。
@@ -256,6 +257,13 @@ pub(crate) fn physical_of(ledger: &BudgetLedger, connection_id: &ConnectionId) -
         .services
         .get(connection_id)
         .map_or(0, |service| service.physical)
+        .saturating_add(
+            ledger
+                .permits
+                .values()
+                .filter(|record| record.connection_id == *connection_id)
+                .count() as u32,
+        )
 }
 
 /// 供 `sessions.rs` 复用的已连接读取。

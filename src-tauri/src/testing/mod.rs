@@ -3,6 +3,9 @@ pub use datazen_driver_api::mock_driver;
 #[cfg(any(test, feature = "test-harness"))]
 pub mod app_state;
 
+#[cfg(any(test, feature = "test-harness"))]
+pub(crate) mod resource_provider;
+
 #[cfg(test)]
 pub mod mock_ai_provider;
 

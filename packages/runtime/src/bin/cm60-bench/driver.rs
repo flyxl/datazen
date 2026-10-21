@@ -210,20 +210,36 @@ impl FakeDriverPort {
         inject_failure_every: u64,
     ) -> (Arc<Self>, Arc<DriverJournal>) {
         let journal = Arc::new(DriverJournal::default());
-        (
-            Arc::new(Self {
-                inner: Mutex::new(DriverState {
-                    view,
-                    outstanding: 0,
-                }),
-                journal: Arc::clone(&journal),
-                fake_command,
-                next_execution: AtomicU64::new(1),
-                prefix: prefix.to_owned(),
-                inject_failure_every,
+        let port = Self::new_with_journal(
+            view,
+            fake_command,
+            prefix,
+            inject_failure_every,
+            Arc::clone(&journal),
+        );
+        (port, journal)
+    }
+
+    /// 造一个使用共享诊断账本的端口。分段 benchmark 的各会话仍共用一次故障序号、
+    /// 调用计数和往返样本，避免每段重置全局对账。
+    pub fn new_with_journal(
+        view: SessionView,
+        fake_command: Duration,
+        prefix: &str,
+        inject_failure_every: u64,
+        journal: Arc<DriverJournal>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            inner: Mutex::new(DriverState {
+                view,
+                outstanding: 0,
             }),
             journal,
-        )
+            fake_command,
+            next_execution: AtomicU64::new(1),
+            prefix: prefix.to_owned(),
+            inject_failure_every,
+        })
     }
 
     /// 尚未收到终态事件的执行数。

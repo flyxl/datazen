@@ -58,6 +58,13 @@ impl ResourceProvider for RedisResourceProvider {
         &self.namespace_shape
     }
 
+    fn connection_handle(
+        &self,
+        handle: &ResourceHandle,
+    ) -> Result<datazen_driver_api::ConnectionHandle, ResourceError> {
+        Ok(self.resource_of(handle, "connection_handle")?.connection)
+    }
+
     async fn describe_resource(
         &self,
         request: &DescribeResourceRequest,

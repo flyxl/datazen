@@ -75,9 +75,9 @@ const MIGRATION_OPERATIONS: [&str; 33] = [
 /// that stops advertising precise cancellation stops claiming the cell with it.
 pub(crate) fn mysql_capability_set(precise_cancel: bool) -> CapabilitySet {
     let mut capabilities = CapabilitySet::default();
-    // A transaction only pins a connection temporarily, and §2.1 事实二 forbids
-    // any driver from claiming a stateful session on that basis.
-    capabilities.stateful_session = Availability::Unsupported;
+    // Interactive/agent resources retain a real physical checkout for their
+    // entire lifetime, including the interval between transactions.
+    capabilities.stateful_session = Availability::Supported;
     // `USE` switches the database on the live connection
     // (`MysqlDriver::build_use_database_sql`), so the switch itself is in place;
     // `change_context` still degrades to `RequiresReplacement` whenever the
@@ -90,7 +90,7 @@ pub(crate) fn mysql_capability_set(precise_cancel: bool) -> CapabilitySet {
     capabilities.transaction_observation = TransactionObservationCap::Partial;
     // The driver issues no prepared-statement / temporary-table / user-variable
     // handles to the host, so there is nothing to report.
-    capabilities.session_scoped_handles = SessionScopedHandleSupport::Unsupported;
+    capabilities.session_scoped_handles = SessionScopedHandleSupport::Supported;
     // No verified path back to an initialization baseline: a pool of size one
     // is not evidence of reset (§6.1 / CM-19), so `reset_resource` always
     // answers `Discard`.
@@ -119,23 +119,11 @@ pub(crate) fn mysql_capability_set(precise_cancel: bool) -> CapabilitySet {
     };
     capabilities.ddl_atomicity = ddl_atomicity_support(DdlAtomicity::AutoCommitPerStatement);
 
-    // `rowRead` / `rowWrite` / `streamingResults`, measured rather than assumed.
-    //
-    // `rowRead` and `rowWrite` hold: `resource.rs:429` routes `query` to
-    // `query_multi_at` and `resource.rs:452` routes `execute` to
-    // `execute_at`, the same two entry points the read and write paths of this
-    // crate use, and `execute_at`'s `rows_affected` is carried into the chunk at
-    // `resource.rs:460` rather than invented on this side.
-    //
-    // `streamingResults` does NOT hold, which is what keeps this off
-    // `StreamingReadWrite`. `resource.rs:441` writes the chunk with
-    // `rows: statement.rows.clone()`: the rows are *cloned out of an
-    // already-materialized* `StatementResult` whose `rows` is a fully built
-    // `Vec` (`driver-api/src/types.rs:301`). Awaiting the sink write is real
-    // backpressure, but only between statements — the last row of statement 0
-    // was already in memory before its first byte was handed over, so no
-    // caller can pull incrementally. `BufferedReadWrite` says exactly that.
-    capabilities.data = DataSupport::BufferedReadWrite;
+    // resource_stream.rs consumes SQLx rows on the physical checkout and
+    // awaits each sink batch (first row immediately, then <=256 rows / 1 MiB).
+    // Statement completions retain metadata only; rejection cancels and drains
+    // the same connection before it may be observed or executed again.
+    capabilities.data = DataSupport::StreamingReadWrite;
 
     // Declared, and left at `BackupSupport::Unknown`, on purpose.
     //
@@ -166,23 +154,31 @@ pub(crate) fn mysql_capability_set(precise_cancel: bool) -> CapabilitySet {
 
 /// The physical cost of one MySQL resource.
 ///
+/// The physical cost of one pooled MySQL resource: the data pool itself.
+///
 /// `MysqlDriver::connect` opens a pool of `effective_max_pool_size()` data
-/// connections plus a separate control pool of one, so the honest number is
-/// the configured pool size plus one — not one. The provider previously
-/// declared `DeclaredConservative { declared_cost: 1 }`, which understated the
-/// real cost by the whole pool and would have let a caller size a budget the
-/// provider then exceeds. `DeclaredConservative` is for third-party SDKs whose
-/// cost is not observable; this driver owns its pool and knows the exact size,
-/// so it reports the bounded figure.
+/// connections. The control connection it holds for `KILL QUERY` and for the
+/// transaction-evidence probe is driver-internal, shared by every resource of one
+/// (connection identity, database) and **not** charged: `KILL QUERY` is
+/// instance-scoped, so billing it per resource would charge the same physical
+/// connection once per resource on that server.
+///
+/// The provider previously declared `DeclaredConservative { declared_cost: 1 }`,
+/// which understated the real cost by the whole pool and would have let a caller
+/// size a budget the provider then exceeds. `DeclaredConservative` is for
+/// third-party SDKs whose cost is not observable; this driver owns its pool and
+/// knows the exact size, so it reports the bounded figure.
 pub(crate) fn mysql_connection_cost(config: &ConnectionConfig) -> ConnectionCostPolicy {
     ConnectionCostPolicy::PoolBounded {
-        max_physical_connections: config
-            .effective_max_pool_size()
-            .saturating_add(CONTROL_POOL_CONNECTIONS),
+        max_physical_connections: config.effective_max_pool_size(),
     }
 }
 
-/// The connection held open alongside the data pool for out-of-band work.
+/// Size of the driver-internal control pool: **one** connection, shared by every
+/// resource of one (connection identity, database) — see
+/// `MysqlDriver::control_pool_key`.
+///
+/// It is not part of any resource's declared cost.
 pub(crate) const CONTROL_POOL_CONNECTIONS: u32 = 1;
 
 /// One driver-wide DDL atomicity value, filed under every migration operation.

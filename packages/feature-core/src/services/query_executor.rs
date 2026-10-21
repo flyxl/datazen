@@ -1,0 +1,755 @@
+//! Query execution helpers and table browsing types.
+
+use datazen_driver_api::{
+    ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, LegacyCatalogReader,
+    LegacySqlDialect, SqlDialect, SqlTarget, TableDataResult, Value,
+};
+use datazen_runtime::schema_cache::SchemaCache;
+use std::sync::Arc;
+
+pub use datazen_driver_api::filters::{FilterCondition, FilterOperator};
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SortCondition {
+    pub column: String,
+    #[serde(default)]
+    pub descending: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct OrderBy {
+    pub column: String,
+    pub descending: bool,
+}
+
+/// Executes queries with optional schema cache integration.
+pub struct QueryExecutor {
+    pub schema_cache: Arc<SchemaCache>,
+}
+
+impl QueryExecutor {
+    pub fn new(schema_cache: Arc<SchemaCache>) -> Self {
+        Self { schema_cache }
+    }
+
+    #[allow(dead_code)]
+    pub async fn execute_query(
+        &self,
+        driver: &Arc<dyn DatabaseDriver>,
+        handle: &ConnectionHandle,
+        sql: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
+    ) -> Result<datazen_driver_api::QueryResult, DriverError> {
+        driver
+            .query_at(handle, sql, SqlTarget::new(database, schema))
+            .await
+    }
+
+    pub async fn get_table_data(
+        &self,
+        driver: &Arc<dyn DatabaseDriver>,
+        handle: &ConnectionHandle,
+        db_session_id: &str,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+        page: u32,
+        page_size: u32,
+        filters: Option<Vec<FilterCondition>>,
+        order_by: Option<OrderBy>,
+        skip_count: bool,
+        filter_logic: Option<&str>,
+    ) -> Result<TableDataResult, DriverError> {
+        let catalog = LegacyCatalogReader::new(driver.as_ref());
+        let cached = self
+            .schema_cache
+            .get_columns(db_session_id, database, schema, table, &catalog, handle)
+            .await?;
+
+        let dialect = LegacySqlDialect::new(driver.as_ref());
+
+        let data_sql = Self::build_select_sql(
+            &cached.table_name,
+            &cached.columns,
+            filters.clone(),
+            order_by,
+            &dialect,
+            page_size as u64,
+            (page as u64).saturating_mul(page_size as u64),
+            filter_logic,
+        )?;
+
+        let target = SqlTarget::new(Some(database), schema);
+
+        if skip_count {
+            tracing::debug!(%table, "query_executor: skip_count, SELECT only");
+            let result = driver.query_at(handle, &data_sql, target).await?;
+            return Ok(TableDataResult {
+                columns: cached.columns,
+                rows: result.rows,
+                total_rows: None,
+                page,
+                page_size,
+            });
+        }
+
+        let count_sql = Self::build_count_sql(
+            &cached.table_name,
+            &cached.columns,
+            &filters,
+            &dialect,
+            filter_logic,
+        )?;
+        tracing::info!(%table, "query_executor: count query");
+        tracing::debug!(
+            %table,
+            count_sql = %datazen_platform_infra::redaction::sql_preview_for_log(&count_sql),
+            "query_executor: count sql"
+        );
+
+        let (count_res, data_res) = tokio::try_join!(
+            driver.query_at(handle, &count_sql, target),
+            driver.query_at(handle, &data_sql, target),
+        )?;
+
+        let total_rows = count_res
+            .rows
+            .first()
+            .and_then(|row| row.first())
+            .and_then(|cell| cell.as_ref())
+            .and_then(|v| match v {
+                Value::Integer(n) => Some(*n),
+                _ => None,
+            });
+
+        Ok(TableDataResult {
+            columns: cached.columns,
+            rows: data_res.rows,
+            total_rows,
+            page,
+            page_size,
+        })
+    }
+
+    pub fn build_count_sql(
+        table_name: &str,
+        columns: &[ColumnSchema],
+        filters: &Option<Vec<FilterCondition>>,
+        dialect: &dyn SqlDialect,
+        filter_logic: Option<&str>,
+    ) -> Result<String, DriverError> {
+        let _ = columns;
+        let mut sql = format!("SELECT COUNT(*) FROM {}", dialect.quote_ident(table_name));
+
+        if let Some(conditions) = filters {
+            let parts: Vec<String> = conditions
+                .iter()
+                .map(|c| Self::format_condition(c, dialect))
+                .collect::<Result<_, _>>()?;
+            let parts: Vec<String> = parts.into_iter().filter(|s| !s.is_empty()).collect();
+            if !parts.is_empty() {
+                sql.push_str(" WHERE ");
+                sql.push_str(&parts.join(filter_join(filter_logic)));
+            }
+        }
+
+        Ok(sql)
+    }
+
+    // Routing clause building through the SqlDialect contract added one
+    // parameter past the clippy limit; the argument set is stable otherwise.
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_select_sql(
+        table_name: &str,
+        columns: &[ColumnSchema],
+        filters: Option<Vec<FilterCondition>>,
+        order_by: Option<OrderBy>,
+        dialect: &dyn SqlDialect,
+        limit: u64,
+        offset: u64,
+        filter_logic: Option<&str>,
+    ) -> Result<String, DriverError> {
+        let qi = |name: &str| dialect.quote_ident(name);
+        let pagination = dialect.pagination_syntax(limit, offset);
+
+        let mut sql = String::new();
+        sql.push_str("SELECT ");
+        if columns.is_empty() {
+            sql.push('*');
+        } else {
+            sql.push_str(
+                &columns
+                    .iter()
+                    .map(|c| qi(&c.name))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+        }
+
+        sql.push_str(&format!(" FROM {}", qi(table_name)));
+
+        if let Some(conditions) = filters {
+            let parts: Vec<String> = conditions
+                .iter()
+                .map(|c| Self::format_condition(c, dialect))
+                .collect::<Result<_, _>>()?;
+            let parts: Vec<String> = parts.into_iter().filter(|s| !s.is_empty()).collect();
+            if !parts.is_empty() {
+                sql.push_str(" WHERE ");
+                sql.push_str(&parts.join(filter_join(filter_logic)));
+            }
+        }
+
+        let mut has_order_by = false;
+        if let Some(order) = order_by {
+            sql.push_str(&format!(
+                " ORDER BY {} {}",
+                qi(&order.column),
+                if order.descending { "DESC" } else { "ASC" }
+            ));
+            has_order_by = true;
+        } else {
+            let pk_cols: Vec<&str> = columns
+                .iter()
+                .filter(|c| c.is_primary_key)
+                .map(|c| c.name.as_str())
+                .collect();
+            let order_cols = if pk_cols.is_empty() {
+                columns
+                    .first()
+                    .map(|c| vec![c.name.as_str()])
+                    .unwrap_or_default()
+            } else {
+                pk_cols
+            };
+            if !order_cols.is_empty() {
+                let parts: Vec<String> = order_cols
+                    .iter()
+                    .map(|c| format!("{} ASC", qi(c)))
+                    .collect();
+                sql.push_str(&format!(" ORDER BY {}", parts.join(", ")));
+                has_order_by = true;
+            }
+        }
+
+        // Dialects whose pagination clause is only legal after `ORDER BY`
+        // (T-SQL `OFFSET … FETCH`) supply their own neutral ordering. Gated on
+        // `requires_order_by` so a dialect that merely offers a fallback is not
+        // forced into an ordering it did not ask for.
+        if !has_order_by && pagination.requires_order_by {
+            if let Some(fallback) = pagination.order_by_fallback {
+                sql.push_str(&format!(" ORDER BY {fallback}"));
+            }
+        }
+
+        // The clause belongs to the dialect: `LIMIT … OFFSET …` on PostgreSQL,
+        // `OFFSET … ROWS FETCH NEXT … ROWS ONLY` on SQL Server.
+        if !pagination.clause.is_empty() {
+            sql.push(' ');
+            sql.push_str(&pagination.clause);
+        }
+        Ok(sql)
+    }
+
+    fn format_condition(
+        condition: &FilterCondition,
+        dialect: &dyn SqlDialect,
+    ) -> Result<String, DriverError> {
+        // Incomplete filters (e.g. just-added eq with empty value) must not enter SQL.
+        // Otherwise drivers cast '' onto integer PKs and the whole table load fails.
+        if !Self::filter_is_complete(condition) {
+            return Ok(String::new());
+        }
+
+        let format_lit = |value: &Value| dialect.try_format_sql_literal(&Some(value.clone()));
+        let col = dialect.quote_ident(&condition.column);
+        let sql = match condition.operator {
+            FilterOperator::Eq => format!("{col} = {}", format_lit(&condition.value)?),
+            FilterOperator::Ne => format!("{col} != {}", format_lit(&condition.value)?),
+            FilterOperator::Gt => format!("{col} > {}", format_lit(&condition.value)?),
+            FilterOperator::Lt => format!("{col} < {}", format_lit(&condition.value)?),
+            FilterOperator::Gte => format!("{col} >= {}", format_lit(&condition.value)?),
+            FilterOperator::Lte => format!("{col} <= {}", format_lit(&condition.value)?),
+            FilterOperator::Like => format!("{col} LIKE {}", format_lit(&condition.value)?),
+            FilterOperator::In => match &condition.value {
+                Value::Json(serde_json::Value::Array(arr)) => {
+                    let parts: Vec<String> = arr
+                        .iter()
+                        .map(|j| format_lit(&Value::Json(j.clone())))
+                        .collect::<Result<_, _>>()?;
+                    format!("{col} IN ({})", parts.join(", "))
+                }
+                Value::String(s) => {
+                    let parts: Vec<String> = s
+                        .split(',')
+                        .map(|p| p.trim())
+                        .filter(|p| !p.is_empty())
+                        .map(|p| format_lit(&Value::String(p.to_string())))
+                        .collect::<Result<_, _>>()?;
+                    if parts.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{col} IN ({})", parts.join(", "))
+                    }
+                }
+                _ => String::new(),
+            },
+            FilterOperator::IsNull => format!("{col} IS NULL"),
+            FilterOperator::IsNotNull => format!("{col} IS NOT NULL"),
+        };
+        Ok(sql)
+    }
+
+    /// Filters that still need a value (just added / cleared) are ignored until complete.
+    fn filter_is_complete(condition: &FilterCondition) -> bool {
+        match condition.operator {
+            FilterOperator::IsNull | FilterOperator::IsNotNull => !condition.column.is_empty(),
+            FilterOperator::In => {
+                if condition.column.is_empty() {
+                    return false;
+                }
+                match &condition.value {
+                    Value::Json(serde_json::Value::Array(arr)) => !arr.is_empty(),
+                    Value::String(s) => s.split(',').any(|p| !p.trim().is_empty()),
+                    Value::Null => false,
+                    _ => true,
+                }
+            }
+            _ => {
+                if condition.column.is_empty() {
+                    return false;
+                }
+                match &condition.value {
+                    Value::Null => false,
+                    Value::String(s) if s.is_empty() => false,
+                    _ => true,
+                }
+            }
+        }
+    }
+}
+
+fn filter_join(logic: Option<&str>) -> &'static str {
+    match logic {
+        Some(s) if s.eq_ignore_ascii_case("or") => " OR ",
+        _ => " AND ",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_driver_api::{BoundParameterLimit, PaginationSyntax};
+
+    #[derive(Clone, Copy)]
+    enum TestPaging {
+        LimitOffset,
+        LimitOnly,
+        Tsql,
+    }
+
+    /// A dialect that stands on its own: no driver, no connection, which is the
+    /// point of the narrowed contract.
+    struct TestDialect {
+        paging: TestPaging,
+    }
+
+    const DEFAULT: TestDialect = TestDialect {
+        paging: TestPaging::LimitOffset,
+    };
+    const LIMIT_ONLY: TestDialect = TestDialect {
+        paging: TestPaging::LimitOnly,
+    };
+    const TSQL: TestDialect = TestDialect {
+        paging: TestPaging::Tsql,
+    };
+
+    impl SqlDialect for TestDialect {
+        fn quote_ident(&self, name: &str) -> String {
+            format!("\"{name}\"")
+        }
+
+        fn pagination_syntax(&self, limit: u64, offset: u64) -> PaginationSyntax {
+            match self.paging {
+                TestPaging::LimitOffset => PaginationSyntax {
+                    clause: format!("LIMIT {limit} OFFSET {offset}"),
+                    requires_order_by: false,
+                    order_by_fallback: None,
+                },
+                TestPaging::LimitOnly => PaginationSyntax {
+                    clause: format!("LIMIT {limit}"),
+                    requires_order_by: false,
+                    order_by_fallback: None,
+                },
+                TestPaging::Tsql => PaginationSyntax {
+                    clause: format!("OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"),
+                    requires_order_by: true,
+                    order_by_fallback: Some("(SELECT NULL)"),
+                },
+            }
+        }
+
+        fn try_format_sql_literal(&self, value: &Option<Value>) -> Result<String, DriverError> {
+            Ok(match value {
+                None | Some(Value::Null) => "NULL".to_string(),
+                Some(Value::Bool(b)) => (if *b { "TRUE" } else { "FALSE" }).to_string(),
+                Some(Value::Integer(i)) => i.to_string(),
+                Some(Value::Float(f)) => f.to_string(),
+                Some(Value::String(s) | Value::Timestamp(s)) => {
+                    format!("'{}'", s.replace('\'', "''"))
+                }
+                Some(Value::Bytes(_)) => "NULL".to_string(),
+                Some(Value::Json(v)) => format!("'{}'", v.to_string().replace('\'', "''")),
+            })
+        }
+
+        fn parameter_placeholder(
+            &self,
+            _index: usize,
+            _data_type: Option<&str>,
+        ) -> Result<String, DriverError> {
+            Err(DriverError::Unsupported(
+                "test dialect has no bound placeholders".into(),
+            ))
+        }
+
+        fn max_bound_parameters(&self) -> BoundParameterLimit {
+            BoundParameterLimit::Dialect(999)
+        }
+    }
+
+    fn make_column(name: &str, is_pk: bool) -> ColumnSchema {
+        ColumnSchema {
+            name: name.to_string(),
+            data_type: "text".to_string(),
+            nullable: true,
+            default_value: None,
+            comment: None,
+            is_primary_key: is_pk,
+            is_auto_increment: false,
+        }
+    }
+
+    /// Regression for the SQL Server `LIMIT` failure: the host must emit the
+    /// dialect's clause verbatim and add an `ORDER BY` when the read is unordered
+    /// (`SELECT *` with no columns), because T-SQL `OFFSET … FETCH` requires one.
+    #[test]
+    fn tsql_pagination_emits_offset_fetch_and_never_limit() {
+        let sql = QueryExecutor::build_select_sql("events", &[], None, None, &TSQL, 25, 75, None)
+            .unwrap();
+        assert!(
+            sql.contains("OFFSET 75 ROWS FETCH NEXT 25 ROWS ONLY"),
+            "expected T-SQL paging clause, got: {sql}"
+        );
+        assert!(
+            sql.contains("ORDER BY (SELECT NULL)"),
+            "unordered read must get the dialect's ORDER BY fallback, got: {sql}"
+        );
+        assert!(!sql.contains("LIMIT"), "T-SQL has no LIMIT; got: {sql}");
+    }
+
+    /// A table read that already orders by PK must not receive a second ORDER BY.
+    #[test]
+    fn tsql_pagination_keeps_pk_order_without_fallback() {
+        let columns = vec![make_column("id", true)];
+        let sql =
+            QueryExecutor::build_select_sql("orders", &columns, None, None, &TSQL, 50, 0, None)
+                .unwrap();
+        assert!(sql.contains("ORDER BY \"id\" ASC"), "got: {sql}");
+        assert!(!sql.contains("(SELECT NULL)"), "got: {sql}");
+        assert!(
+            sql.contains("OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY"),
+            "got: {sql}"
+        );
+        assert!(!sql.contains("LIMIT"), "got: {sql}");
+    }
+
+    #[test]
+    fn no_explicit_sort_uses_primary_key_order() {
+        let columns = vec![
+            make_column("id", true),
+            make_column("name", false),
+            make_column("email", false),
+        ];
+        let sql =
+            QueryExecutor::build_select_sql("orders", &columns, None, None, &DEFAULT, 50, 0, None)
+                .unwrap();
+        assert!(
+            sql.contains("ORDER BY \"id\" ASC"),
+            "Expected default ORDER BY primary key, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn no_explicit_sort_composite_pk_uses_all_pk_columns() {
+        let columns = vec![
+            make_column("order_id", true),
+            make_column("product_id", true),
+            make_column("quantity", false),
+        ];
+        let sql = QueryExecutor::build_select_sql(
+            "order_items",
+            &columns,
+            None,
+            None,
+            &DEFAULT,
+            50,
+            0,
+            None,
+        )
+        .unwrap();
+        assert!(
+            sql.contains("ORDER BY \"order_id\" ASC, \"product_id\" ASC"),
+            "Expected composite PK ordering, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn explicit_sort_overrides_default_pk_order() {
+        let columns = vec![make_column("id", true), make_column("name", false)];
+        let order = OrderBy {
+            column: "name".to_string(),
+            descending: true,
+        };
+        let sql = QueryExecutor::build_select_sql(
+            "users",
+            &columns,
+            None,
+            Some(order),
+            &DEFAULT,
+            50,
+            0,
+            None,
+        )
+        .unwrap();
+        assert!(
+            sql.contains("ORDER BY \"name\" DESC"),
+            "Expected explicit ORDER BY, got: {sql}"
+        );
+        assert!(
+            !sql.contains("\"id\" ASC"),
+            "Should not contain default PK ordering when explicit sort is given, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn no_pk_no_explicit_sort_still_has_order_by_first_column() {
+        let columns = vec![make_column("col_a", false), make_column("col_b", false)];
+        let sql = QueryExecutor::build_select_sql(
+            "no_pk_table",
+            &columns,
+            None,
+            None,
+            &DEFAULT,
+            50,
+            0,
+            None,
+        )
+        .unwrap();
+        assert!(
+            sql.contains("ORDER BY \"col_a\" ASC"),
+            "Expected fallback ORDER BY first column, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn filter_literals_use_dialect_formatter() {
+        let columns = vec![make_column("flag", false)];
+        let filters = vec![FilterCondition {
+            column: "flag".into(),
+            operator: FilterOperator::Eq,
+            value: Value::Bool(true),
+        }];
+        let sql = QueryExecutor::build_select_sql(
+            "t",
+            &columns,
+            Some(filters),
+            None,
+            &DEFAULT,
+            10,
+            0,
+            None,
+        )
+        .unwrap();
+        assert!(
+            sql.contains("WHERE \"flag\" = TRUE"),
+            "Expected dialect-style TRUE literal, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn build_count_sql_with_eq_filter() {
+        let columns = vec![make_column("status", false)];
+        let filters = vec![FilterCondition {
+            column: "status".into(),
+            operator: FilterOperator::Eq,
+            value: Value::String("active".into()),
+        }];
+        let sql = QueryExecutor::build_count_sql("users", &columns, &Some(filters), &DEFAULT, None)
+            .unwrap();
+        assert!(sql.contains("WHERE \"status\" = 'active'"));
+    }
+
+    #[test]
+    fn build_select_sql_joins_filters_with_or() {
+        let columns = vec![make_column("status", false), make_column("role", false)];
+        let filters = vec![
+            FilterCondition {
+                column: "status".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String("active".into()),
+            },
+            FilterCondition {
+                column: "role".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String("admin".into()),
+            },
+        ];
+        let sql = QueryExecutor::build_select_sql(
+            "users",
+            &columns,
+            Some(filters),
+            None,
+            &DEFAULT,
+            10,
+            0,
+            Some("or"),
+        )
+        .unwrap();
+        assert!(
+            sql.contains("WHERE \"status\" = 'active' OR \"role\" = 'admin'"),
+            "got: {sql}"
+        );
+    }
+
+    #[test]
+    fn build_count_sql_joins_filters_with_or() {
+        let columns = vec![make_column("status", false), make_column("role", false)];
+        let filters = vec![
+            FilterCondition {
+                column: "status".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String("active".into()),
+            },
+            FilterCondition {
+                column: "role".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String("admin".into()),
+            },
+        ];
+        let sql =
+            QueryExecutor::build_count_sql("users", &columns, &Some(filters), &DEFAULT, Some("OR"))
+                .unwrap();
+        assert!(
+            sql.contains("WHERE \"status\" = 'active' OR \"role\" = 'admin'"),
+            "got: {sql}"
+        );
+    }
+
+    #[test]
+    fn filter_join_defaults_to_and() {
+        assert_eq!(filter_join(None), " AND ");
+        assert_eq!(filter_join(Some("and")), " AND ");
+        assert_eq!(filter_join(Some("or")), " OR ");
+    }
+
+    #[test]
+    fn build_select_sql_without_offset_when_unsupported() {
+        let columns = vec![make_column("id", true)];
+        let sql = QueryExecutor::build_select_sql(
+            "users",
+            &columns,
+            None,
+            None,
+            &LIMIT_ONLY,
+            25,
+            0,
+            None,
+        )
+        .unwrap();
+        assert!(sql.contains("LIMIT 25"));
+        assert!(!sql.contains("OFFSET"));
+    }
+
+    #[test]
+    fn format_condition_in_and_is_null() {
+        let in_filter = FilterCondition {
+            column: "id".into(),
+            operator: FilterOperator::In,
+            value: Value::Json(serde_json::json!([1, 2, 3])),
+        };
+        let null_filter = FilterCondition {
+            column: "deleted_at".into(),
+            operator: FilterOperator::IsNull,
+            value: Value::Null,
+        };
+        assert_eq!(
+            QueryExecutor::format_condition(&in_filter, &DEFAULT).unwrap(),
+            "\"id\" IN ('1', '2', '3')"
+        );
+        assert_eq!(
+            QueryExecutor::format_condition(&null_filter, &DEFAULT).unwrap(),
+            "\"deleted_at\" IS NULL"
+        );
+    }
+
+    #[test]
+    fn incomplete_eq_filter_is_skipped() {
+        let columns = vec![make_column("id", true), make_column("name", false)];
+        let filters = vec![FilterCondition {
+            column: "id".into(),
+            operator: FilterOperator::Eq,
+            value: Value::String(String::new()),
+        }];
+        let sql = QueryExecutor::build_select_sql(
+            "users",
+            &columns,
+            Some(filters),
+            None,
+            &DEFAULT,
+            50,
+            0,
+            None,
+        )
+        .unwrap();
+        assert!(
+            !sql.contains("WHERE"),
+            "empty eq value must not produce WHERE, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn complete_filters_kept_while_incomplete_skipped() {
+        let columns = vec![make_column("id", true), make_column("name", false)];
+        let filters = vec![
+            FilterCondition {
+                column: "id".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String(String::new()),
+            },
+            FilterCondition {
+                column: "name".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String("alice".into()),
+            },
+        ];
+        let sql = QueryExecutor::build_select_sql(
+            "users",
+            &columns,
+            Some(filters),
+            None,
+            &DEFAULT,
+            50,
+            0,
+            Some("and"),
+        )
+        .unwrap();
+        assert!(
+            sql.contains("WHERE \"name\" = 'alice'"),
+            "expected only complete filter in WHERE, got: {sql}"
+        );
+        assert!(!sql.contains("\"id\" ="));
+    }
+}

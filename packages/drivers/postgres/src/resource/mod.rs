@@ -18,7 +18,7 @@
 //! [`ResourceError`](datazen_driver_api::resource::ResourceError), and a fact
 //! the server did not give is never invented.
 
-mod capabilities;
+pub(crate) mod capabilities;
 mod observation;
 mod payload;
 mod provider;

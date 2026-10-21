@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
 import type { DatabaseType } from '../../types';
 
 vi.mock('../../locales/t', () => ({
@@ -11,6 +11,11 @@ const mockAddFavoriteQuery = vi.fn().mockResolvedValue(undefined);
 const mockDeleteFavoriteQuery = vi.fn().mockResolvedValue(undefined);
 const mockExecuteQueryStream = vi.fn().mockResolvedValue(undefined);
 const mockCancelQuery = vi.fn().mockResolvedValue(undefined);
+const mockSessionCancel = vi.fn().mockResolvedValue(undefined);
+const mockRegistryPeek = vi.fn();
+/** Pane keys the fake session registry reports for a panel (editor mounted, maybe never executed). */
+const mockRegistryKeysOfPanel = vi.fn((_panelId: string) => [] as string[]);
+const mockRegistryRemove = vi.fn().mockResolvedValue(undefined);
 
 const activeConnectionState: {
   connections: Record<
@@ -49,6 +54,33 @@ vi.mock('../../commands/query', () => ({
   },
 }));
 
+vi.mock('../../lib/session/queryPanelSessionRoot', () => ({
+  getQueryPanelSessionRegistry: () => ({
+    peek: (...args: unknown[]) => mockRegistryPeek(...args),
+    remove: (key: string) => mockRegistryRemove(key),
+    // Pane teardown enumerates the *session registry*, not only the exec table:
+    // a pane that mounted its editor holds a session with no exec row.
+    keysOfPanel: (panelId: string) => mockRegistryKeysOfPanel(panelId),
+  }),
+}));
+
+vi.mock('../../lib/session/runEditorQuery', () => ({
+  runEditorQuery: (
+    _paneKey: string,
+    connectionId: string,
+    sql: string,
+    database: string | null | undefined,
+    schema: string | null | undefined,
+    params: Record<string, string | number | boolean | null> | undefined,
+    onEvent: (event: unknown) => void,
+  ) =>
+    mockExecuteQueryStream(connectionId, sql, onEvent, {
+      database: database ?? null,
+      schema: schema ?? null,
+      ...(params ? { params } : {}),
+    }),
+}));
+
 vi.mock('../../stores/activeConnectionStore', () => ({
   useActiveConnectionStore: {
     getState: () => activeConnectionState,
@@ -59,6 +91,9 @@ describe('panelStore', () => {
   let usePanelStore: typeof import('../panelStore').usePanelStore;
   let nextPanelId: typeof import('../panelStore').nextPanelId;
   let useSchemaStore: typeof import('../schemaStore').useSchemaStore;
+  let setRunningExecutionGate: typeof import('../runningExecutionClose').setRunningExecutionGate;
+  let setRunningCloseTimeoutMs: typeof import('../runningExecutionClose').setRunningCloseTimeoutMs;
+  let runningCloseTimeoutMs: number;
   type Panel = import('../panelStore').Panel;
   type TablePanel = import('../panelStore').TablePanel;
 
@@ -107,12 +142,27 @@ describe('panelStore', () => {
       supportsExplain: true,
       supportsStreamingResults: true,
     };
+    mockRegistryPeek.mockReset().mockReturnValue(undefined);
+    mockRegistryKeysOfPanel.mockReset().mockReturnValue([]);
+    mockRegistryRemove.mockReset().mockResolvedValue(undefined);
+    mockSessionCancel.mockReset().mockResolvedValue(undefined);
     const mod = await import('../panelStore');
     usePanelStore = mod.usePanelStore;
     nextPanelId = mod.nextPanelId;
     const schemaMod = await import('../schemaStore');
     useSchemaStore = schemaMod.useSchemaStore;
+    const closeMod = await import('../runningExecutionClose');
+    setRunningExecutionGate = closeMod.setRunningExecutionGate;
+    setRunningCloseTimeoutMs = closeMod.setRunningCloseTimeoutMs;
+    runningCloseTimeoutMs = closeMod.RUNNING_CLOSE_TIMEOUT_MS;
+    setRunningExecutionGate(null);
+    setRunningCloseTimeoutMs(runningCloseTimeoutMs);
     usePanelStore.setState({ panels: [], activePanelId: null, queryExec: new Map() });
+  });
+
+  afterEach(() => {
+    setRunningExecutionGate(null);
+    setRunningCloseTimeoutMs(runningCloseTimeoutMs);
   });
 
   /** Seed schemaStore with a currentDatabase for a runtime session id. */
@@ -146,7 +196,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT DATABASE()',
       expect.any(Function),
       { database: 'db_b', schema: null },
@@ -172,7 +222,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM t_afi_installment_payment',
       expect.any(Function),
       { database: 'tradingdb', schema: null },
@@ -194,12 +244,10 @@ describe('panelStore', () => {
 
     await usePanelStore.getState().executeQuery(panel.id);
 
-    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
-      'SELECT 1',
-      expect.any(Function),
-      { database: null, schema: null },
-    );
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith('cfg-1', 'SELECT 1', expect.any(Function), {
+      database: null,
+      schema: null,
+    });
   });
 
   it('executeQuery forwards the currentSchema of the panel session (PG)', async () => {
@@ -218,7 +266,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM users',
       expect.any(Function),
       { database: 'db_b', schema: 'sales' },
@@ -260,7 +308,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM afi_id_loan_t_afi_installment_order',
       expect.any(Function),
       { database: '558:presto_afi_data/hive/snap', schema: null },
@@ -302,7 +350,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order',
       expect.any(Function),
       { database: '558:presto_afi_data/hive/snap', schema: null },
@@ -344,7 +392,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM afi_id_loan_t_afi_installment_order',
       expect.any(Function),
       { database: '558:presto_afi_data/hive/snap', schema: null },
@@ -386,7 +434,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order',
       expect.any(Function),
       { database: '558/hive/snap', schema: null },
@@ -430,7 +478,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM afi_id_loan_t_afi_installment_order',
       expect.any(Function),
       { database: '558/hive/snap', schema: null },
@@ -927,6 +975,30 @@ describe('panelStore', () => {
     expect(usePanelStore.getState().queryExec.has(panel.id)).toBe(false);
   });
 
+  it('removePanel releases a pane session the exec table never heard of', async () => {
+    // 会话在编辑器挂载时就开好，exec 行要等真正执行才有。销毁面板时按 exec 表枚举
+    // 会把这个 pane 整条漏掉：控制器留在注册表里，运行时会话与宿主额度一直被计费。
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Query 1',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(panel);
+    const lazyPane = `${panel.id}:lazy`;
+    mockRegistryKeysOfPanel.mockReturnValue([lazyPane]);
+    mockRegistryPeek.mockReturnValue({ close: vi.fn() });
+
+    await usePanelStore.getState().removePanel(panel.id);
+
+    // 预检（先确认能干净关闭）与随后的清理各枚举一次注册表口径；生产实现里第一次
+    // remove 成功后控制器即从注册表摘除，第二次是空操作，不会多发一次 IPC。
+    const closed = new Set(mockRegistryRemove.mock.calls.map(([key]) => key));
+    expect([...closed].sort()).toEqual([panel.id, lazyPane].sort());
+  });
+
   it('closeAllPanels cleans up all queryExec entries', () => {
     const q1: Panel = {
       ...base,
@@ -1026,6 +1098,26 @@ describe('panelStore', () => {
     };
   }
 
+  /** Seed the pane's exec entry as a statement that is still in flight. */
+  function seedRunning(panelId: string) {
+    usePanelStore.setState((s) => ({
+      queryExec: new Map(s.queryExec).set(panelId, {
+        ...s.queryExec.get(panelId)!,
+        running: true,
+        executionId: 'exec-test',
+      }),
+    }));
+  }
+
+  /** What the execution stream does once the statement is over. */
+  function finishRunning(panelId: string) {
+    usePanelStore.setState((s) => {
+      const current = s.queryExec.get(panelId);
+      if (!current) return s;
+      return { queryExec: new Map(s.queryExec).set(panelId, { ...current, running: false }) };
+    });
+  }
+
   it('loadHistory calls IPC and sets queryHistory', async () => {
     const history = [
       {
@@ -1115,6 +1207,7 @@ describe('panelStore', () => {
   // ── cancelQuery ────────────────────────────────────────────────
 
   it('requests cancellation without claiming the query already stopped', async () => {
+    mockRegistryPeek.mockReturnValue({ cancel: mockSessionCancel });
     const panel = makeQueryPanel('Q1');
     usePanelStore.getState().addPanel(panel);
     usePanelStore.setState((s) => ({
@@ -1127,7 +1220,8 @@ describe('panelStore', () => {
 
     await usePanelStore.getState().cancelQuery(panel.id);
 
-    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1', 'exec-test');
+    expect(mockRegistryPeek).toHaveBeenCalledWith(panel.id);
+    expect(mockSessionCancel).toHaveBeenCalledOnce();
     const exec = usePanelStore.getState().queryExec.get(panel.id)!;
     expect(exec.running).toBe(true);
     expect(exec.cancelState).toBe('requested');
@@ -1154,7 +1248,8 @@ describe('panelStore', () => {
   });
 
   it('keeps a running query when the cancel command fails', async () => {
-    mockCancelQuery.mockRejectedValueOnce(new Error('permission denied'));
+    mockRegistryPeek.mockReturnValue({ cancel: mockSessionCancel });
+    mockSessionCancel.mockRejectedValueOnce(new Error('permission denied'));
     const panel = makeQueryPanel('Q1');
     usePanelStore.getState().addPanel(panel);
     usePanelStore.setState((s) => ({
@@ -1167,7 +1262,8 @@ describe('panelStore', () => {
 
     await usePanelStore.getState().cancelQuery(panel.id);
 
-    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1', 'exec-test');
+    expect(mockRegistryPeek).toHaveBeenCalledWith(panel.id);
+    expect(mockSessionCancel).toHaveBeenCalledOnce();
     expect(usePanelStore.getState().queryExec.get(panel.id)).toMatchObject({
       running: true,
       cancelState: 'failed',
@@ -1176,21 +1272,61 @@ describe('panelStore', () => {
     });
   });
 
-  it('only attempts cancellation when closing a supported running query panel', () => {
+  it('stops a running query and waits for it before closing the tab', async () => {
+    mockRegistryPeek.mockReturnValue({ cancel: mockSessionCancel });
     const panel = makeQueryPanel('Q1');
     usePanelStore.getState().addPanel(panel);
-    usePanelStore.setState((s) => ({
-      queryExec: new Map(s.queryExec).set(panel.id, {
-        ...s.queryExec.get(panel.id)!,
-        running: true,
-        executionId: 'exec-test',
-      }),
-    }));
+    seedRunning(panel.id);
 
-    usePanelStore.getState().removePanel(panel.id);
+    const closing = usePanelStore.getState().removePanel(panel.id);
 
-    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1', 'exec-test');
+    // The tab is still there: nothing is dropped before the statement is over.
+    expect(usePanelStore.getState().panels.some((p) => p.id === panel.id)).toBe(true);
+    // The cancel is the runtime one (the session's own cancel), not the legacy
+    // per-session command that used to fire after the session was already gone.
+    // It is requested a microtask later: the gate is asked before anything moves.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockSessionCancel).toHaveBeenCalledOnce();
+    expect(mockCancelQuery).not.toHaveBeenCalled();
+
+    // The execution stream reports the terminal state.
+    finishRunning(panel.id);
+    await closing;
+
+    expect(usePanelStore.getState().panels.some((p) => p.id === panel.id)).toBe(false);
     expect(usePanelStore.getState().queryExec.has(panel.id)).toBe(false);
+  });
+
+  it('leaves a running tab completely untouched when the user declines to close it', async () => {
+    mockRegistryPeek.mockReturnValue({ cancel: mockSessionCancel });
+    setRunningExecutionGate(async () => false);
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    seedRunning(panel.id);
+    const before = usePanelStore.getState().queryExec.get(panel.id);
+
+    await usePanelStore.getState().removePanel(panel.id);
+
+    expect(usePanelStore.getState().panels.some((p) => p.id === panel.id)).toBe(true);
+    expect(usePanelStore.getState().queryExec.get(panel.id)).toEqual(before);
+    expect(mockSessionCancel).not.toHaveBeenCalled();
+  });
+
+  it('keeps the tab and says why when a requested cancel is never confirmed', async () => {
+    mockRegistryPeek.mockReturnValue({ cancel: mockSessionCancel });
+    setRunningCloseTimeoutMs(20);
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    seedRunning(panel.id);
+
+    await usePanelStore.getState().removePanel(panel.id);
+
+    expect(mockSessionCancel).toHaveBeenCalledOnce();
+    expect(usePanelStore.getState().panels.some((p) => p.id === panel.id)).toBe(true);
+    expect(usePanelStore.getState().queryExec.get(panel.id)).toMatchObject({
+      running: true,
+      error: 'query.session.closeBlocked',
+    });
   });
 
   it('does not attempt cancellation when closing with unknown capability', () => {

@@ -42,6 +42,23 @@ Host 不直接拼接 PostgreSQL/MySQL/SQLite 的 DDL。方言实现位于 Driver
 | `packages/schema-diff/src/types.rs` | Snapshot、Diff、Plan DTO |
 | `src-tauri/src/commands/schema_diff/` | Tauri IPC 与桌面 Job adapter |
 
+Host 侧 `src-tauri/src/commands/schema_diff.rs` 只是模块门面（模块声明 + re-export），
+命令按职责拆到同目录下的子模块：
+
+| 文件 | 职责 |
+|---|---|
+| `src-tauri/src/commands/schema_diff.rs` | 门面：模块声明、命令 re-export、共享 helper 导入 |
+| `src-tauri/src/commands/schema_diff/object_scope.rs` | schema scope 门闸与 schema 对象选择 |
+| `src-tauri/src/commands/schema_diff/profile_commands.rs` | Schema Diff profile 的增删查 |
+| `src-tauri/src/commands/schema_diff/dependency_catalog.rs` | 目标库外键依赖目录读取与复核 |
+| `src-tauri/src/commands/schema_diff/plan_commands.rs` | 表级迁移计划生成 |
+| `src-tauri/src/commands/schema_diff/object_plan_commands.rs` | 视图 / 存储过程 / 序列 / 类型计划生成 |
+| `src-tauri/src/commands/schema_diff/deploy_commands.rs` | 迁移计划执行与取消 |
+| `src-tauri/src/commands/schema_diff/compare_commands.rs` | 单表列级差异比较 |
+
+`src-tauri/src/commands/schema_diff/job.rs` 与 `unified_plan.rs` 保持各自的子树
+（桌面 Job adapter、统一计划与依赖目录复核）。
+
 Driver API 中的 `MigrationRenderer` 负责把操作转换为 `MigrationStatement`；`MigrationCapabilities` 描述是否支持某操作、是否需要 rebuild、DDL 是否事务化；`TypeNormalizer` 用于跨 Driver 类型别名比较。
 
 ## 3. Diff 方向

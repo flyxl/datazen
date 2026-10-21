@@ -42,10 +42,9 @@
 //!
 //! ## `ConnectionHandle` 从哪来
 //!
-//! 从 backend 那一行 [`Resource`] 里的 `dr::ResourceHandle` 投影而来
-//! （`resource_key` / `provider_id`），不是从会话句柄编一个。编一个 id 会让下游
-//! driver command 拿到一个**谁都对不上**的连接标识，而那是静默错：错误只在生产
-//! 环境的某次查询上才出现。
+//! 从 backend 那一行 [`Resource`] 调用 provider 的 `connection_handle()` 取得。Runtime 的
+//! `dr::ResourceHandle` 是不透明的所有权凭证，`resource_key` 和 `provider_id` 不能直接
+//! 充当驱动自己的池路由字段；provider 负责验证资源仍然存活并返回它实际持有的句柄。
 //!
 //! ## 反向索引由谁填
 //!
@@ -59,7 +58,6 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use datazen_driver_api::ConnectionHandle;
 use datazen_runtime::application::{
     LiveConnection, LiveConnectionError, LiveConnectionRequest, LiveConnectionSource,
 };
@@ -142,14 +140,13 @@ impl LiveConnectionSource for DesktopLiveConnectionSource {
             ))
         })?;
 
-        // 4. connection handle 从资源本身投影，不从会话句柄编。
-        Ok(LiveConnection::new(
-            driver,
-            ConnectionHandle {
-                id: resource.connection_id_of_resource(),
-                pool_id: resource.pool_id_of_resource(),
-            },
-        ))
+        // 4. Provider validates the live resource and lends its actual driver handle.
+        let handle = resource.driver_handle().map_err(|_| {
+            LiveConnectionError::Refused(
+                "the runtime resource provider cannot lend its live driver handle".into(),
+            )
+        })?;
+        Ok(LiveConnection::new(driver, handle))
     }
 }
 

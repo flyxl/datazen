@@ -50,13 +50,16 @@ export const DESKTOP_BACKEND_ID = 'desktop';
  * this is a naming convention and not a lookup table.
  */
 function toCommandName(method: keyof MethodMap): string {
-  const profileCommands: Partial<Record<keyof MethodMap, string>> = {
+  const commandOverrides: Partial<Record<keyof MethodMap, string>> = {
+    getSettings: 'get_shared_settings',
+    saveSettings: 'save_shared_settings',
     listConnections: 'platform_list_profiles',
     createConnection: 'platform_create_profile',
     updateConnection: 'platform_update_profile',
     disableConnection: 'platform_disable_profile',
+    readArtifact: 'read_artifact_chunk',
   };
-  if (profileCommands[method]) return profileCommands[method];
+  if (commandOverrides[method]) return commandOverrides[method];
   return method.includes('_')
     ? method
     : method.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);

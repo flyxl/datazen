@@ -155,6 +155,16 @@ pub trait JobHandler: Send + Sync {
         cancel: &CancelToken,
     ) -> Result<StageOutcome, JobError>;
 
+    /// Runtime-issued owner capability. Existing handlers do not need resource owners.
+    async fn run_stage_authorized(
+        &self,
+        spec: &StageSpec,
+        cancel: &CancelToken,
+        _owner: crate::job::StageOwnerPermit,
+    ) -> Result<StageOutcome, JobError> {
+        self.run_stage(spec, cancel).await
+    }
+
     /// 依据 checkpoint 给出恢复裁决。不能核验的副作用 → RequireManualReview；
     /// 版本不兼容 → Reject；**未知提交不自动重跑**。
     fn verify_recovery(&self, checkpoint: &Checkpoint) -> RecoveryVerdict;

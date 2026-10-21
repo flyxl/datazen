@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * with-driver-inject.mjs — resolve-drivers once, run command, restore stash.
  *
@@ -18,7 +19,7 @@
 
 import { execSync, spawnSync } from 'child_process';
 import { resolve, dirname } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { stashExists } from './driver-file-stash.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -222,6 +223,6 @@ function main() {
   process.exit(result.status);
 }
 
-if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {
+if (isDirectInvocation(import.meta.url)) {
   main();
 }

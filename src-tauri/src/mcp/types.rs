@@ -106,6 +106,48 @@ pub struct DiagnoseErrorArgs {
     pub error: String,
 }
 
+/// Stateful tool input: open a session on an explicit target (summary §4.2).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct OpenSessionInput {
+    /// Persistent connection id (from list_connections).
+    pub connection_id: String,
+    /// Explicit database to open the session at. Required on purpose: the GUI
+    /// active target is never consulted, and a driver default is not an
+    /// explicit target.
+    pub database: String,
+    /// Explicit schema, when the driver has one.
+    pub schema: Option<String>,
+    /// Requested mapping lifetime in milliseconds (default 300000, capped at 3600000).
+    #[serde(default)]
+    pub ttl_ms: Option<u64>,
+}
+
+/// Stateful tool input: run one command inside a mapping this client opened.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct UseSessionInput {
+    /// Opaque reference returned by open_session.
+    pub client_session_ref: String,
+    /// Driver command name (for example `query`, `execute`, `list_tables`).
+    pub command: String,
+    /// Command input object.
+    #[serde(default)]
+    pub input: serde_json::Value,
+    /// Milliseconds to wait for a terminal state (default 60000, capped at 300000).
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+/// Stateful tool input: close one mapping this client opened.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CloseSessionInput {
+    /// Opaque reference returned by open_session.
+    pub client_session_ref: String,
+    /// `requireNoTransaction` (default) or `rollbackAndClose`. Anything else is rejected:
+    /// closing must never discard uncommitted work on a guess.
+    #[serde(default)]
+    pub mode: Option<String>,
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExplainPlanArgs {
     /// Persistent connection id

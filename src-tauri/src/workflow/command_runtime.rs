@@ -4,49 +4,11 @@ use crate::commands::AppState;
 use crate::mcp::permission::McpPermissionMode;
 use crate::workflow::error::WorkflowError;
 use crate::workflow::WorkflowCommandStep;
-use datazen_driver_api::{check_command_access, validate_command_input, CommandResult};
+use datazen_driver_api::CommandResult;
 
-pub fn resolve_connection_id<'a>(
-    step: &'a WorkflowCommandStep,
-    workflow_connection: Option<&'a str>,
-) -> Result<&'a str, WorkflowError> {
-    step.effective_connection(workflow_connection)
-        .ok_or_else(|| WorkflowError::MissingConnection {
-            step_id: step.id.clone(),
-        })
-}
-
-/// Let a command step inherit the workflow-level default database.
-///
-/// A `Command` step has no `database` field of its own (`WorkflowStep::Command`
-/// in `model.rs`); its execution target travels inside `input.database`, which
-/// `command_runtime` later reads. So the workflow default has to be injected
-/// here to give command steps the same inheritance a query step already gets
-/// from `step_database.or(inherited_database)` in `executor.rs`.
-///
-/// Precedence mirrors the query branch: an explicit, non-blank
-/// `input.database` always wins; a blank one is treated as unset.
-pub fn inject_inherited_database(
-    mut input: serde_json::Value,
-    workflow_database: &str,
-) -> serde_json::Value {
-    let already_set = input
-        .get("database")
-        .and_then(|v| v.as_str())
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
-    if already_set {
-        return input;
-    }
-    // `inject_sql_target_fields` already filters blank/empty values, so a
-    // whitespace-only workflow default is a no-op here.
-    crate::commands::driver_command::inject_sql_target_fields(
-        &mut input,
-        Some(workflow_database),
-        None,
-    );
-    input
-}
+pub use datazen_feature_core::workflow::command_runtime::{
+    inject_inherited_database, resolve_connection_id,
+};
 
 pub async fn execute_command(
     app_state: &AppState,
@@ -62,80 +24,37 @@ pub async fn execute_command_with_mode(
     workflow_connection: Option<&str>,
     permission_mode: Option<McpPermissionMode>,
 ) -> Result<CommandResult, WorkflowError> {
-    let connection_id = resolve_connection_id(step, workflow_connection)?;
-    let (_runtime_id, driver, handle) = app_state
-        .connection_manager
-        .resolve_session_for_connection(connection_id)
-        .await
-        .map_err(|e| WorkflowError::ConnectionFailed {
-            connection_id: connection_id.to_string(),
-            message: crate::log_redact::redact_secrets_for_log(&e.to_string()),
-        })?;
+    execute_command_with_deadline(app_state, step, workflow_connection, permission_mode, None).await
+}
 
-    let definition = driver
-        .command_definitions()
-        .into_iter()
-        .find(|definition| definition.id == step.command)
-        .ok_or_else(|| WorkflowError::UnsupportedCommand {
-            command: step.command.clone(),
-            connection_id: connection_id.to_string(),
-        })?;
-    if !definition.metadata.workflow {
-        return Err(WorkflowError::CommandNotInWorkflow {
-            command: step.command.clone(),
-        });
-    }
-    validate_command_input(&definition, &step.input).map_err(|e| WorkflowError::Validation(e))?;
-    check_command_access(
-        &definition,
-        crate::commands::access_level_for_mode(permission_mode),
-    )
-    .map_err(|e| WorkflowError::Validation(e))?;
-
-    if matches!(definition.id.as_str(), "query" | "execute") {
-        if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
-            let read_only = app_state
-                .connection_manager
-                .get_session_config(&handle.id)
-                .await
-                .map(|c| c.read_only)
-                .unwrap_or(false);
-            let safe_mode = app_state.store.get_settings().await.safe_mode;
-            crate::sql_guard::check_sql(sql, read_only, safe_mode)
-                .map_err(WorkflowError::Validation)?;
-        }
-        if let Some(mode) = permission_mode {
-            if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
-                crate::mcp::permission::check_sql_allowed(sql, mode)
-                    .map_err(WorkflowError::Validation)?;
+pub(super) async fn execute_command_with_deadline(
+    app_state: &AppState,
+    step: &WorkflowCommandStep,
+    workflow_connection: Option<&str>,
+    permission_mode: Option<McpPermissionMode>,
+    workflow_deadline: Option<tokio::time::Instant>,
+) -> Result<CommandResult, WorkflowError> {
+    // Validate explicit namespace input before resolving or opening a resource.
+    // Null/absent fields inherit the workflow policy; malformed explicit fields
+    // must not silently execute against the connection's configured namespace.
+    for field in ["database", "schema"] {
+        if let Some(value) = step.input.get(field) {
+            if !value.is_null() && !value.as_str().is_some_and(|name| !name.trim().is_empty()) {
+                return Err(WorkflowError::Validation(format!(
+                    "explicit {field} must be a non-empty string"
+                )));
             }
         }
     }
-
-    // Legacy SQL workflows can select a database per step. There is no session
-    // switch any more: the target travels with the command input so drivers
-    // that can qualify SQL inline (`qualify_sql_target`) rewrite unqualified
-    // relations to the step's database instead of the adapter re-pointing the
-    // shared pooled connection.
-    let mut input = step.input.clone();
-    let database = input
-        .get("database")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
-    let schema = input
-        .get("schema")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
-    crate::commands::driver_command::inject_sql_target_fields(
-        &mut input,
-        database.as_deref(),
-        schema.as_deref(),
-    );
-
-    driver
-        .execute_command(&handle, &step.command, input)
-        .await
-        .map_err(|e| WorkflowError::Driver(e.to_string()))
+    let connection_id = resolve_connection_id(step, workflow_connection)?;
+    super::independent_sql::execute(
+        app_state,
+        step,
+        connection_id,
+        permission_mode,
+        workflow_deadline,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -185,7 +104,10 @@ mod tests {
 
     #[tokio::test]
     async fn inherited_connection_executes_query_command() {
-        let test = crate::testing::app_state::TestAppState::new().await;
+        let test = crate::testing::app_state::TestAppState::with_resource_provider(
+            crate::testing::mock_driver::MockDriverOptions::default(),
+        )
+        .await;
         test.save_connection("wf-inherit").await;
         let step = WorkflowCommandStep::new(
             "q1",
@@ -201,7 +123,10 @@ mod tests {
 
     #[tokio::test]
     async fn legacy_query_normalization_executes_through_command_runtime() {
-        let test = crate::testing::app_state::TestAppState::new().await;
+        let test = crate::testing::app_state::TestAppState::with_resource_provider(
+            crate::testing::mock_driver::MockDriverOptions::default(),
+        )
+        .await;
         test.save_connection("wf-legacy").await;
         let step = WorkflowCommandStep::from_legacy_query(
             "users",

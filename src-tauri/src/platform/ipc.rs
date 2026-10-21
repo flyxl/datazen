@@ -128,12 +128,13 @@ mod tests {
     ///
     /// 开发计划 :77 要求"保留现有 IPC 外观"。这类要求靠人读 diff 是守不住的：
     /// 加一个参数、改一个返回类型，名字和数量都不变，CI 也不会报。
-    /// 所以把 14 个 `#[tauri::command]` 与 13 个 `*_impl` 的完整签名钉在这里，
+    /// 所以把 15 个 `#[tauri::command]` 与 14 个 `*_impl` 的完整签名钉在这里，
     /// 任何人动外观都会让这个测试变红。
     const FROZEN_SIGNATURES: &[&str] = &[
         "pub async fn get_connections( state: State<'_, AppState>, ) -> Result<Vec<ConnectionConfig>, CommandError>",
-        "pub async fn save_connection( state: State<'_, AppState>, config: ConnectionConfig, ) -> Result<(), CommandError>",
+        "pub async fn save_connection( state: State<'_, AppState>, config: ConnectionConfig, clear_missing_credentials: Option<bool>, ) -> Result<(), CommandError>",
         "pub async fn delete_connection(state: State<'_, AppState>, id: String) -> Result<(), CommandError>",
+        "pub async fn duplicate_connection( state: State<'_, AppState>, source_id: String, new_id: String, new_name: String, ) -> Result<(), CommandError>",
         "pub async fn test_connection( state: State<'_, AppState>, config: ConnectionConfig, ) -> Result<ServerInfo, CommandError>",
         "pub async fn connect( state: State<'_, AppState>, connection_id: String, ) -> Result<String, CommandError>",
         "pub async fn connect_dedicated( state: State<'_, AppState>, connection_id: String, database: Option<String>, ) -> Result<String, CommandError>",
@@ -146,8 +147,9 @@ mod tests {
         "pub async fn reorder_connections( state: State<'_, AppState>, ordered_ids: Vec<String>, ) -> Result<(), CommandError>",
         "pub async fn get_available_drivers( state: State<'_, AppState>, ) -> Result<Vec<String>, CommandError>",
         "pub(crate) async fn get_connections_impl( state: &AppState, ) -> Result<Vec<ConnectionConfig>, CommandError>",
-        "pub(crate) async fn save_connection_impl( state: &AppState, config: ConnectionConfig, ) -> Result<(), CommandError>",
+        "pub(crate) async fn save_connection_impl( state: &AppState, config: ConnectionConfig, clear_missing_credentials: bool, ) -> Result<(), CommandError>",
         "pub(crate) async fn delete_connection_impl( state: &AppState, id: String, ) -> Result<(), CommandError>",
+        "pub(crate) async fn duplicate_connection_impl( state: &AppState, source_id: String, new_id: String, new_name: String, ) -> Result<(), CommandError>",
         "pub(crate) async fn test_connection_impl( state: &AppState, config: ConnectionConfig, ) -> Result<ServerInfo, CommandError>",
         "pub(crate) async fn connect_impl( state: &AppState, connection_id: String, ) -> Result<String, CommandError>",
         "pub(crate) async fn connect_dedicated_impl( state: &AppState, connection_id: String, database: Option<String>, ) -> Result<String, CommandError>",
@@ -254,18 +256,18 @@ mod tests {
     }
 
     #[test]
-    fn the_command_count_is_exactly_fourteen() {
+    fn the_command_count_is_exactly_fifteen() {
         // 冻结表也可能被"改到和新代码一致"而失去意义，所以单独钉住命令数量，
         // 并且只数生产代码里的 `#[tauri::command]`。
         let production = super::super::production_source(CONNECTION_COMMANDS);
         assert_eq!(
             production.matches("#[tauri::command]").count(),
-            14,
+            15,
             "connection.rs 对外暴露的 Tauri 命令数量变了"
         );
         assert_eq!(
             production.matches("pub(crate) async fn ").count(),
-            13,
+            14,
             "connection.rs 的 *_impl 数量变了"
         );
     }
@@ -308,7 +310,7 @@ mod tests {
             include_str!("ipc.rs"),
             include_str!("identity.rs"),
             include_str!("handles.rs"),
-            include_str!("bridge.rs"),
+            include_str!("../../../packages/application/src/frontend_bridge.rs"),
             include_str!("../commands/mod.rs"),
             include_str!("../bootstrap/app_state.rs"),
         ];

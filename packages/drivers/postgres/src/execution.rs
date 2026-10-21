@@ -8,12 +8,12 @@ use std::sync::Arc;
 use std::time::Instant;
 
 pub(crate) const PG_BACKEND_PID_SQL: &str = "SELECT pg_backend_pid()";
-pub(crate) const PG_CANCEL_BACKEND_SQL: &str = "SELECT pg_cancel_backend($1)";
+pub(crate) const PG_CANCEL_BACKEND_SQL: &str = "SELECT pg_catalog.pg_cancel_backend($1)";
 
 pub(crate) struct PgQueryExecution {
     pub session_id: String,
+    pub(crate) cancel_gate: Arc<tokio::sync::Mutex<()>>,
     pub target_pool: Option<PgPool>,
-    pub control_pool: Option<PgPool>,
     pub backend_pid: Option<i32>,
     pub cancel_requested: bool,
     pub transactional: bool,
@@ -105,11 +105,30 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
+        let gate = {
+            let executions = self.query_executions.lock().await;
+            match executions.get(execution_id) {
+                Some(execution) if execution.session_id == handle.id => {
+                    execution.cancel_gate.clone()
+                }
+                Some(_) => return Err(DriverError::QueryExecutionSessionMismatch),
+                None => return Ok(()),
+            }
+        };
+        // Keep the original connection occupied until its cancellation completes.
+        // Other executions never wait on this gate.
+        let _cancel_guard = gate.lock().await;
         let mut executions = self.query_executions.lock().await;
         if let Some(execution) = executions.get(execution_id) {
             if execution.session_id != handle.id {
                 return Err(DriverError::QueryExecutionSessionMismatch);
             }
+        }
+        if executions
+            .get(execution_id)
+            .is_some_and(|execution| !Arc::ptr_eq(&execution.cancel_gate, &gate))
+        {
+            return Ok(());
         }
         executions.remove(execution_id);
         Ok(())
@@ -136,22 +155,29 @@ impl PostgresDriver {
 
         let result: Result<(), DriverError> = async {
             if transactional {
-                let mut txs = self.transactions.lock().await;
-                let conn = txs.get_mut(&handle.id).ok_or_else(|| {
-                    DriverError::Unsupported(
-                        "transaction execution connection is no longer available".into(),
-                    )
-                })?;
+                let pinned = self
+                    .transactions
+                    .lock()
+                    .await
+                    .get(&handle.id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        DriverError::Unsupported(
+                            "transaction execution connection is no longer available".into(),
+                        )
+                    })?;
+                let mut conn = pinned.lock().await;
                 if self.is_cancel_requested(handle, execution_id).await? {
                     Err(DriverError::QueryCancelled)
                 } else {
-                    let pid_row = sqlx::query(PG_BACKEND_PID_SQL)
-                        .fetch_one(&mut **conn)
-                        .await
-                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                    let backend_pid = pid_row
-                        .try_get::<i32, _>(0)
-                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    let backend_pid =
+                        match self.fixed_sessions.read().await.get(&handle.id).copied() {
+                            Some(pid) => pid,
+                            None => sqlx::query_scalar(PG_BACKEND_PID_SQL)
+                                .fetch_one(&mut **conn)
+                                .await
+                                .map_err(|e| DriverError::QueryFailed(e.to_string()))?,
+                        };
                     if self
                         .bind_backend_pid(handle, execution_id, backend_pid)
                         .await?
@@ -339,12 +365,6 @@ impl PostgresDriver {
     ) -> Result<(), DriverError> {
         let transactional = self.transactions.lock().await.contains_key(&handle.id);
         let target_pool = self.pools.read().await.get(&handle.pool_id).cloned();
-        let control_pool = self
-            .control_pools
-            .read()
-            .await
-            .get(&handle.pool_id)
-            .cloned();
         let mut executions = self.query_executions.lock().await;
         if executions.contains_key(execution_id) {
             return Err(DriverError::QueryFailed(format!(
@@ -355,10 +375,10 @@ impl PostgresDriver {
         executions.insert(
             execution_id.clone(),
             PgQueryExecution {
+                cancel_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
                 session_id: handle.id.clone(),
                 target_pool,
-                control_pool,
-                backend_pid: None,
+                backend_pid: self.fixed_sessions.read().await.get(&handle.id).copied(),
                 cancel_requested: false,
                 transactional,
             },
@@ -371,23 +391,43 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
+        let gate = {
+            let executions = self.query_executions.lock().await;
+            let execution = executions.get(execution_id).ok_or_else(|| {
+                DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+            })?;
+            if execution.session_id != handle.id {
+                return Err(DriverError::QueryExecutionSessionMismatch);
+            }
+            execution.cancel_gate.clone()
+        };
+        let _cancel_guard = gate.lock().await;
         let mut executions = self.query_executions.lock().await;
-        let (backend_pid, control_pool) = {
+        let backend_pid = {
             let execution = executions.get_mut(execution_id).ok_or_else(|| {
                 DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
             })?;
             if execution.session_id != handle.id {
                 return Err(DriverError::QueryExecutionSessionMismatch);
             }
+            if !std::sync::Arc::ptr_eq(&execution.cancel_gate, &gate) {
+                return Err(DriverError::QueryExecutionNotFound(
+                    execution_id.as_str().into(),
+                ));
+            }
             execution.cancel_requested = true;
             let Some(backend_pid) = execution.backend_pid else {
                 return Ok(());
             };
-            (backend_pid, execution.control_pool.clone())
+            backend_pid
         };
 
-        let Some(control_pool) = control_pool else {
-            if let Some(execution) = executions.get_mut(execution_id) {
+        drop(executions);
+
+        // Resolve at cancellation time: a prepared execution may outlive a
+        // dropped control database and the resulting pool replacement.
+        let Some(control_pool) = self.control_pool_for(handle).await else {
+            if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                 execution.cancel_requested = false;
             }
             return Err(DriverError::ConnectionFailed(
@@ -397,7 +437,7 @@ impl PostgresDriver {
         let mut conn = match control_pool.acquire().await {
             Ok(conn) => conn,
             Err(error) => {
-                if let Some(execution) = executions.get_mut(execution_id) {
+                if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                     execution.cancel_requested = false;
                 }
                 return Err(DriverError::ConnectionFailed(error.to_string()));
@@ -411,14 +451,16 @@ impl PostgresDriver {
             Ok(row) => match row.try_get(0) {
                 Ok(cancelled) => cancelled,
                 Err(error) => {
-                    if let Some(execution) = executions.get_mut(execution_id) {
+                    if let Some(execution) =
+                        self.query_executions.lock().await.get_mut(execution_id)
+                    {
                         execution.cancel_requested = false;
                     }
                     return Err(DriverError::QueryFailed(error.to_string()));
                 }
             },
             Err(error) => {
-                if let Some(execution) = executions.get_mut(execution_id) {
+                if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                     execution.cancel_requested = false;
                 }
                 return Err(DriverError::QueryFailed(error.to_string()));
@@ -427,7 +469,7 @@ impl PostgresDriver {
         if cancelled {
             Ok(())
         } else {
-            if let Some(execution) = executions.get_mut(execution_id) {
+            if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                 execution.cancel_requested = false;
             }
             Err(DriverError::QueryExecutionNotFound(format!(
@@ -469,8 +511,10 @@ impl PostgresDriver {
         pool: &PgPool,
     ) -> Result<QueryResult, DriverError> {
         {
-            let mut txs = self.transactions.lock().await;
-            if let Some(conn) = txs.get_mut(&handle.id) {
+            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+            if let Some(pinned) = pinned {
+                let mut conn = pinned.lock().await;
                 let start = Instant::now();
                 let rows = sqlx::query(sql)
                     .fetch_all(&mut **conn)
@@ -561,8 +605,10 @@ impl PostgresDriver {
         let total_start = Instant::now();
         let mut results = Vec::with_capacity(statements.len());
 
-        let mut txs = self.transactions.lock().await;
-        if let Some(conn) = txs.get_mut(&handle.id) {
+        let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+        if let Some(pinned) = pinned {
+            let mut conn = pinned.lock().await;
             for stmt in &statements {
                 let (effective_sql, applied_limit) = apply_select_limit(stmt, limit);
                 let trimmed_upper = effective_sql.trim().to_ascii_uppercase();
@@ -625,7 +671,6 @@ impl PostgresDriver {
                 total_time_ms: total_start.elapsed().as_millis() as u64,
             });
         }
-        drop(txs);
 
         for stmt in &statements {
             let (effective_sql, applied_limit) = apply_select_limit(stmt, limit);
@@ -737,8 +782,10 @@ impl PostgresDriver {
 
         let total_start = Instant::now();
         {
-            let mut txs = self.transactions.lock().await;
-            if let Some(conn) = txs.get_mut(&handle.id) {
+            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+            if let Some(pinned) = pinned {
+                let mut conn = pinned.lock().await;
                 for (index, stmt) in statements.iter().enumerate() {
                     Self::stream_one_statement(&mut **conn, stmt, limit, index, &on_event).await?;
                 }
@@ -797,8 +844,10 @@ impl PostgresDriver {
         pool: &PgPool,
     ) -> Result<QueryResult, DriverError> {
         {
-            let mut txs = self.transactions.lock().await;
-            if let Some(conn) = txs.get_mut(&handle.id) {
+            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+            if let Some(pinned) = pinned {
+                let mut conn = pinned.lock().await;
                 let start = Instant::now();
                 let rows = Self::bind_values(sqlx::query(sql), params)
                     .fetch_all(&mut **conn)
@@ -866,8 +915,10 @@ impl PostgresDriver {
         pool: &PgPool,
     ) -> Result<u64, DriverError> {
         {
-            let mut txs = self.transactions.lock().await;
-            if let Some(conn) = txs.get_mut(&handle.id) {
+            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+            if let Some(pinned) = pinned {
+                let mut conn = pinned.lock().await;
                 let result = sqlx::query(sql)
                     .execute(&mut **conn)
                     .await
@@ -891,8 +942,10 @@ impl PostgresDriver {
         params: &[Value],
     ) -> Result<u64, DriverError> {
         {
-            let mut txs = self.transactions.lock().await;
-            if let Some(conn) = txs.get_mut(&handle.id) {
+            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+            if let Some(pinned) = pinned {
+                let mut conn = pinned.lock().await;
                 let result = Self::bind_values(sqlx::query(sql), params)
                     .execute(&mut **conn)
                     .await
@@ -916,13 +969,30 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
-        let mut txs = self.transactions.lock().await;
+        let txs = self.transactions.lock().await;
+        if self.fixed_sessions.read().await.contains_key(&handle.id) {
+            let pinned = txs
+                .get(&handle.id)
+                .cloned()
+                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            drop(txs);
+            let mut conn = pinned.lock().await;
+            sqlx::query("BEGIN")
+                .execute(&mut **conn)
+                .await
+                .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+            return Ok(TransactionHandle {
+                id: format!("fixed_tx_{}", uuid::Uuid::new_v4()),
+                connection_id: handle.id.clone(),
+            });
+        }
         if txs.contains_key(&handle.id) {
             return Err(DriverError::TransactionError(
                 "A transaction is already open on this connection".into(),
             ));
         }
 
+        drop(txs);
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
         // A transaction takes one connection from the handle's own database
@@ -939,7 +1009,10 @@ impl PostgresDriver {
             .await
             .map_err(|e| DriverError::TransactionError(e.to_string()))?;
 
-        txs.insert(handle.id.clone(), conn);
+        self.transactions.lock().await.insert(
+            handle.id.clone(),
+            std::sync::Arc::new(tokio::sync::Mutex::new(conn)),
+        );
         Ok(TransactionHandle {
             id: format!("pg_tx_{}", uuid::Uuid::new_v4()),
             connection_id: handle.id.clone(),
@@ -950,13 +1023,30 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
-        let mut txs = self.transactions.lock().await;
+        let txs = self.transactions.lock().await;
+        if self.fixed_sessions.read().await.contains_key(&handle.id) {
+            let pinned = txs
+                .get(&handle.id)
+                .cloned()
+                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            drop(txs);
+            let mut conn = pinned.lock().await;
+            sqlx::query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                .execute(&mut **conn)
+                .await
+                .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+            return Ok(TransactionHandle {
+                id: format!("fixed_tx_{}", uuid::Uuid::new_v4()),
+                connection_id: handle.id.clone(),
+            });
+        }
         if txs.contains_key(&handle.id) {
             return Err(DriverError::TransactionError(
                 "A transaction is already open on this connection".into(),
             ));
         }
 
+        drop(txs);
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
         let mut conn = pool
@@ -970,7 +1060,10 @@ impl PostgresDriver {
             .await
             .map_err(|e| DriverError::TransactionError(e.to_string()))?;
 
-        txs.insert(handle.id.clone(), conn);
+        self.transactions.lock().await.insert(
+            handle.id.clone(),
+            std::sync::Arc::new(tokio::sync::Mutex::new(conn)),
+        );
         Ok(TransactionHandle {
             id: format!("pg_snapshot_{}", uuid::Uuid::new_v4()),
             connection_id: handle.id.clone(),
@@ -978,7 +1071,27 @@ impl PostgresDriver {
     }
 
     pub(crate) async fn commit_impl(&self, tx: TransactionHandle) -> Result<(), DriverError> {
-        let mut conn = self
+        if self
+            .fixed_sessions
+            .read()
+            .await
+            .contains_key(&tx.connection_id)
+        {
+            let pinned = self
+                .transactions
+                .lock()
+                .await
+                .get(&tx.connection_id)
+                .cloned()
+                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            let mut conn = pinned.lock().await;
+            sqlx::query("COMMIT")
+                .execute(&mut **conn)
+                .await
+                .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+            return Ok(());
+        }
+        let pinned = self
             .transactions
             .lock()
             .await
@@ -986,16 +1099,37 @@ impl PostgresDriver {
             .ok_or_else(|| {
                 DriverError::TransactionError("Transaction not found or already ended".into())
             })?;
+        let mut conn = pinned.lock().await;
 
         sqlx::query("COMMIT")
-            .execute(&mut *conn)
+            .execute(&mut **conn)
             .await
             .map_err(|e| DriverError::TransactionError(e.to_string()))?;
         Ok(())
     }
 
     pub(crate) async fn rollback_impl(&self, tx: TransactionHandle) -> Result<(), DriverError> {
-        let mut conn = self
+        if self
+            .fixed_sessions
+            .read()
+            .await
+            .contains_key(&tx.connection_id)
+        {
+            let pinned = self
+                .transactions
+                .lock()
+                .await
+                .get(&tx.connection_id)
+                .cloned()
+                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            let mut conn = pinned.lock().await;
+            sqlx::query("ROLLBACK")
+                .execute(&mut **conn)
+                .await
+                .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+            return Ok(());
+        }
+        let pinned = self
             .transactions
             .lock()
             .await
@@ -1003,9 +1137,10 @@ impl PostgresDriver {
             .ok_or_else(|| {
                 DriverError::TransactionError("Transaction not found or already ended".into())
             })?;
+        let mut conn = pinned.lock().await;
 
         sqlx::query("ROLLBACK")
-            .execute(&mut *conn)
+            .execute(&mut **conn)
             .await
             .map_err(|e| DriverError::TransactionError(e.to_string()))?;
         Ok(())
@@ -1016,32 +1151,36 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         sql: &str,
     ) -> Result<ExplainResult, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-
-        let json_sql = format!("EXPLAIN (FORMAT JSON) {sql}");
-        let json_rows = sqlx::query(&json_sql)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-        let plan_json = json_rows.first().and_then(|row| {
-            row.try_get::<serde_json::Value, _>(0).ok().or_else(|| {
-                row.try_get::<String, _>(0)
-                    .ok()
-                    .and_then(|s| serde_json::from_str(&s).ok())
-            })
-        });
-
-        let text_sql = format!("EXPLAIN (FORMAT TEXT) {sql}");
-        let text_rows = sqlx::query(&text_sql)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-        let plan_text: String = text_rows
+        if sql_dump::split_sql_statements(sql).len() != 1 {
+            return Err(DriverError::InvalidConfig(
+                "Explain requires one statement".into(),
+            ));
+        }
+        // query_impl uses the retained checkout when this handle owns one.
+        // Do not fetch from the pool: a fixed session has checked out its only
+        // backend and its temporary objects/transaction belong to that backend.
+        let json_rows = self
+            .query_impl(handle, &format!("EXPLAIN (FORMAT JSON) {sql}"))
+            .await?;
+        let plan_json = json_rows
+            .rows
+            .first()
+            .and_then(|row| row.first())
+            .and_then(|value| match value {
+                Some(Value::Json(json)) => Some(json.clone()),
+                Some(Value::String(text)) => serde_json::from_str(text).ok(),
+                _ => None,
+            });
+        let text_rows = self
+            .query_impl(handle, &format!("EXPLAIN (FORMAT TEXT) {sql}"))
+            .await?;
+        let plan_text = text_rows
+            .rows
             .iter()
-            .map(|r| r.get::<String, _>(0))
+            .filter_map(|row| match row.first() {
+                Some(Some(Value::String(text))) => Some(text.as_str()),
+                _ => None,
+            })
             .collect::<Vec<_>>()
             .join("\n");
 

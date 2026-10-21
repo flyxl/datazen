@@ -1,8 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
-import { ApiError, defaultRetryDisposition, deserializeApiError } from '../src/index';
+import {
+  API_ERROR_CODES,
+  ApiError,
+  defaultRetryDisposition,
+  deserializeApiError,
+} from '../src/index';
 
 describe('deserializeApiError', () => {
+  for (const code of API_ERROR_CODES) {
+    it(`CM-72 preserves canonical and Rust wire casing for ${code}`, () => {
+      for (const wireCode of [code, `${code[0].toLowerCase()}${code.slice(1)}`]) {
+        const error = deserializeApiError({
+          code: wireCode,
+          message: 'sanitized refusal',
+          requestId: 'r',
+        });
+        expect(error.code).toBe(code);
+        expect(error.toPayload().code).toBe(code);
+        expect(error.requestId).toBe('r');
+      }
+      expect(
+        deserializeApiError({ code: code.toUpperCase(), message: 'invalid casing' }).code,
+      ).toBe('ServiceUnavailable');
+    });
+  }
+
   it('reads a well-formed §6.3 payload verbatim', () => {
     const error = deserializeApiError({
       code: 'SessionQuotaExceeded',

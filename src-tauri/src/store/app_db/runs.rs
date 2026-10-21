@@ -3,7 +3,7 @@
 
 use super::{AppDb, AppDbError};
 use chrono::Utc;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 /// Rows kept per widget. `dashboard::runs` declares a constant of the same name

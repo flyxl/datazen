@@ -140,8 +140,6 @@ describe('导出和导入 (EI-001~EI-006)', () => {
 
   // ── 导出对话框 ─────────────────────────────────────────────────
 
-  it.skip('右键表名应显示导出数据与导出 (EI-001) — SKIPPED: table node context menu no longer includes export (use DataTable toolbar)', async () => {});
-
   it('点击工具栏导出应打开导出对话框 (EI-001 → toolbar)', async () => {
     await openTableExportDialog();
   });
@@ -158,10 +156,6 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     expect(body).toContain(t('export.range'));
     expect(body).toMatch(new RegExp(`${t('export.currentPage')}|${t('export.entireTable')}`));
   });
-
-  it.skip('导出对话框应显示列选择 (EI-002) — SKIPPED: DataExportDialog has no column checkboxes', async () => {});
-
-  it.skip('导出对话框应显示列名 (EI-002) — SKIPPED: DataExportDialog has no column checkboxes', async () => {});
 
   it('导出对话框应显示导出摘要 (EI-002a)', async () => {
     await openTableExportDialog();
@@ -224,16 +218,6 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     expect(body).toContain('SQL INSERT');
   });
 
-  it.skip('点击取消全选应取消所有列 (EI-002c) — SKIPPED: DataExportDialog has no column checkboxes', async () => {});
-
-  it.skip('无列选中时导出按钮应禁用 (EI-002c) — SKIPPED: DataExportDialog has no column checkboxes', async () => {});
-
-  it.skip('点击全选应恢复所有列 (EI-002c) — SKIPPED: DataExportDialog has no column checkboxes', async () => {});
-
-  it.skip('取消单个列后摘要应更新为 2 列 (EI-002d) — SKIPPED: DataExportDialog has no column checkboxes', async () => {});
-
-  it.skip('恢复列选择后导出按钮应可用 (EI-002d) — SKIPPED: DataExportDialog has no column checkboxes', async () => {});
-
   it('点击取消应关闭导出对话框 (EI-003)', async () => {
     await openTableExportDialog();
     await browser.execute(
@@ -291,27 +275,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     await browser.pause(500);
   });
 
-  it.skip('Schema 树右键应显示批量导出选项 (EI-BE-002) — SKIPPED: table node context menu no longer includes batch export (use conn toolbar)', async () => {});
-
   // ── 导入对话框（仅 Schema 树原生菜单可开，不可 DOM 断言）────────
-
-  it.skip('右键表名应显示导入选项 (EI-004) — SKIPPED: native OS menu not DOM-assertable', async () => {});
-
-  it.skip('点击导入选项应打开导入对话框 (EI-004) — SKIPPED: Import only via native OS menu', async () => {});
-
-  it.skip('导入对话框应显示文件选择 (EI-005) — SKIPPED: Import dialog not openable without native menu', async () => {});
-
-  it.skip('导入对话框应显示目标表输入框 (EI-005a) — SKIPPED: Import dialog not openable without native menu', async () => {});
-
-  it.skip('导入对话框目标表应预填充为当前表名 (EI-005a) — SKIPPED: Import dialog not openable without native menu', async () => {});
-
-  it.skip('导入对话框应显示导入和取消按钮 (EI-005b) — SKIPPED: Import dialog not openable without native menu', async () => {});
-
-  it.skip('无文件时导入按钮应禁用 (EI-005b) — SKIPPED: Import dialog not openable without native menu', async () => {});
-
-  it.skip('导入对话框应显示文件格式提示 (EI-005c) — SKIPPED: Import dialog not openable without native menu', async () => {});
-
-  it.skip('点击取消应关闭导入对话框 (EI-006) — SKIPPED: Import dialog not openable without native menu', async () => {});
 
   it('EI-007: CSV 导出应通过注入对话框落盘', async () => {
     await openTableExportDialog();

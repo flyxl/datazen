@@ -1,34 +1,90 @@
 import {
   ApiError,
-  type BackendClient, type CommandCall, type ExecutionReceipt,
-  type ExecutionTarget, type NamespaceTarget, type OwnerRef, type SessionHandle,
+  type BackendClient,
+  type CommandCall,
+  type ExecutionReceipt,
+  type ExecutionTarget,
+  type NamespaceTarget,
+  type OwnerRef,
+  type SessionHandle,
   type SessionView,
-  type CloseMode, type CloseReceipt, type CancelReceipt,
+  type CloseMode,
+  type CloseReceipt,
+  type CancelReceipt,
 } from '@datazen/backend-client';
 import { counterValue, sameHandle } from './counters';
+import { registerPageUnloadCloser } from './pageUnload';
 
 /** One instance per editor/pane. Runtime handles never leave this in-memory owner. */
 export class EditorSessionController {
+  private latestTarget: ExecutionTarget;
   private session: SessionView | null = null;
   private opening: Promise<SessionView> | null = null;
   private tail: Promise<unknown> = Promise.resolve();
   private attachmentToken: string | null = null;
   private execution: ExecutionReceipt | null = null;
   private listeners = new Set<() => void>();
+  private unregisterPageCloser: (() => void) | null = null;
 
   constructor(
     readonly client: BackendClient,
     readonly initialTarget: ExecutionTarget,
     readonly owner: OwnerRef,
-  ) {}
+  ) {
+    this.latestTarget = initialTarget;
+  }
 
-  get snapshot(): SessionView | null { return this.session; }
-  get activeExecution(): ExecutionReceipt | null { return this.execution; }
+  get snapshot(): SessionView | null {
+    return this.session;
+  }
+  /** Project a lost resource without replacing its handle or execution receipt. */
+  markSessionLost(handle: SessionHandle | null = this.session?.handle ?? null): void {
+    if (!handle || !this.session || !sameHandle(handle, this.session.handle)) return;
+    this.session = {
+      ...this.session,
+      state: 'lost',
+      observedContext: {
+        ...this.session.observedContext,
+        transactionState: 'unknown',
+      },
+    };
+    this.publish();
+  }
+  acceptSessionError(
+    error: unknown,
+    handle: SessionHandle | null = this.session?.handle ?? null,
+  ): boolean {
+    if (
+      !(error instanceof ApiError) ||
+      !['SessionLost', 'SessionNotFound', 'RuntimeEpochMismatch'].includes(error.code)
+    )
+      return false;
+    this.markSessionLost(handle);
+    return true;
+  }
+  async getExecution(executionId: ExecutionReceipt['executionId']) {
+    const handle = this.session?.handle ?? null;
+    try {
+      const view = await this.client.getExecution(executionId);
+      if (view.errorCode === 'resourceLost') this.markSessionLost(handle);
+      return view;
+    } catch (error) {
+      this.acceptSessionError(error, handle);
+      throw error;
+    }
+  }
+  get activeExecution(): ExecutionReceipt | null {
+    return this.execution;
+  }
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
-    return () => { this.listeners.delete(listener); };
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
-  private publish(): void { for (const listener of this.listeners) listener(); }
+  private publish(): void {
+    for (const listener of this.listeners) listener();
+  }
   private serial<T>(operation: () => Promise<T>): Promise<T> {
     const next = this.tail.then(operation, operation);
     this.tail = next.catch(() => undefined);
@@ -36,7 +92,8 @@ export class EditorSessionController {
   }
   private token(operation: string) {
     return this.client.issueSubmissionToken(operation, this.session?.handle ?? null, {
-      connectionId: this.initialTarget.connectionId, owner: this.owner,
+      connectionId: this.initialTarget.connectionId,
+      owner: this.owner,
     });
   }
 
@@ -50,14 +107,27 @@ export class EditorSessionController {
     if (!this.opening) {
       this.opening = (async () => {
         const token = await this.token('openSession');
-        const receipt = await this.client.openSession({
-          initialTarget: this.initialTarget, owner: this.owner, idempotencyKey: token.idempotencyKey,
-        }, token);
+        const receipt = await this.client.openSession(
+          {
+            initialTarget: this.latestTarget,
+            owner: this.owner,
+            idempotencyKey: token.idempotencyKey,
+          },
+          token,
+        );
         this.session = receipt.session;
+        if (receipt.session.observedContext.confidence === 'confirmed')
+          this.latestTarget = {
+            ...this.latestTarget,
+            namespace: receipt.session.observedContext.namespace,
+          };
         this.attachmentToken = receipt.attachmentToken;
+        this.armPageCloser();
         this.publish();
         return receipt.session;
-      })().finally(() => { this.opening = null; });
+      })().finally(() => {
+        this.opening = null;
+      });
     }
     return this.opening;
   }
@@ -65,14 +135,24 @@ export class EditorSessionController {
   execute(call: CommandCall): Promise<ExecutionReceipt> {
     return this.serial(async () => {
       const session = await this.ensureSession();
-      const token = await this.token('executeInSession');
-      const receipt = await this.client.executeInSession({
-        handle: session.handle, expectedContextRevision: session.contextRevision,
-        call, idempotencyKey: token.idempotencyKey,
-      }, token);
-      this.execution = receipt;
-      this.publish();
-      return receipt;
+      try {
+        const token = await this.token('executeInSession');
+        const receipt = await this.client.executeInSession(
+          {
+            handle: session.handle,
+            expectedContextRevision: session.contextRevision,
+            call,
+            idempotencyKey: token.idempotencyKey,
+          },
+          token,
+        );
+        this.execution = receipt;
+        this.publish();
+        return receipt;
+      } catch (error) {
+        this.acceptSessionError(error, session.handle);
+        throw error;
+      }
     });
   }
 
@@ -97,12 +177,22 @@ export class EditorSessionController {
       const session = await this.ensureSession();
       const previousHandle = session.handle;
       const token = await this.token('setSessionContext');
-      const receipt = await this.client.setSessionContext({
-        handle: session.handle, expectedContextRevision: session.contextRevision,
-        desired, idempotencyKey: token.idempotencyKey,
-      }, token);
+      const receipt = await this.client.setSessionContext(
+        {
+          handle: session.handle,
+          expectedContextRevision: session.contextRevision,
+          desired,
+          idempotencyKey: token.idempotencyKey,
+        },
+        token,
+      );
       // Failed revision/transaction/replacement leaves the previous handle intact.
       this.session = receipt.session;
+      if (receipt.session.observedContext.confidence === 'confirmed')
+        this.latestTarget = {
+          ...this.latestTarget,
+          namespace: receipt.session.observedContext.namespace,
+        };
       if (receipt.attachmentToken !== null) this.attachmentToken = receipt.attachmentToken;
       // The tracked execution belonged to the handle we just gave up; it can no
       // longer be cancelled through this controller. Its results stay readable
@@ -137,14 +227,25 @@ export class EditorSessionController {
   async refresh(): Promise<SessionView | null> {
     const handle = this.session?.handle;
     if (!handle) return null;
-    const view = await this.client.getSession(handle);
+    let view: SessionView;
+    try {
+      view = await this.client.getSession(handle);
+    } catch (error) {
+      this.acceptSessionError(error, handle);
+      throw error;
+    }
     this.acceptSession(view);
     return this.session;
   }
   acceptSession(view: SessionView): boolean {
     if (!this.session || !sameHandle(view.handle, this.session.handle)) return false;
-    if (counterValue(view.contextRevision) < counterValue(this.session.contextRevision)) return false;
+    // A later stale observation cannot revive a handle declared lost.
+    if (this.session.state === 'lost' && !['lost', 'closed'].includes(view.state)) return false;
+    if (counterValue(view.contextRevision) < counterValue(this.session.contextRevision))
+      return false;
     this.session = view;
+    if (view.observedContext.confidence === 'confirmed')
+      this.latestTarget = { ...this.latestTarget, namespace: view.observedContext.namespace };
     this.publish();
     return true;
   }
@@ -160,22 +261,56 @@ export class EditorSessionController {
       const receipt = await this.client.closeSession({ handle: this.session.handle, mode });
       this.session = { ...this.session, state: receipt.state };
       this.attachmentToken = null;
+      this.disarmPageCloser();
       this.publish();
       return receipt;
     });
   }
+
+  /**
+   * Make sure the session this page opened is released even if the page dies
+   * without closing it (reload, navigation, a torn-down browser context).
+   *
+   * Registered once per controller and aimed at whatever handle is current at
+   * page death, so a replacement or `openNewSession` needs no re-registration.
+   * The close is fired directly rather than through [`Self::serial`]: the queue
+   * may be waiting on a command whose reply will never arrive during teardown.
+   */
+  private armPageCloser(): void {
+    if (this.unregisterPageCloser) return;
+    this.unregisterPageCloser = registerPageUnloadCloser(() => {
+      const handle = this.session?.handle ?? null;
+      if (!handle) return;
+      void this.client
+        // The owner has gone away and cannot resolve a close rejection. Ask
+        // the runtime to roll back before releasing the original resource;
+        // requireNoTransaction would leak active/aborted/unknown sessions.
+        .closeSession({ handle, mode: 'rollbackAndClose' })
+        .catch(() => undefined);
+    });
+  }
+  private disarmPageCloser(): void {
+    this.unregisterPageCloser?.();
+    this.unregisterPageCloser = null;
+  }
   async detach(): Promise<void> {
     if (this.session && this.attachmentToken) {
-      this.acceptSession(await this.client.detachSession({
-        handle: this.session.handle, attachmentToken: this.attachmentToken,
-      }));
+      this.acceptSession(
+        await this.client.detachSession({
+          handle: this.session.handle,
+          attachmentToken: this.attachmentToken,
+        }),
+      );
     }
   }
   async attach(): Promise<void> {
     if (this.session && this.attachmentToken) {
-      this.acceptSession(await this.client.attachSession({
-        handle: this.session.handle, attachmentToken: this.attachmentToken,
-      }));
+      this.acceptSession(
+        await this.client.attachSession({
+          handle: this.session.handle,
+          attachmentToken: this.attachmentToken,
+        }),
+      );
     }
   }
   openNewSession(): Promise<SessionView> {
@@ -191,22 +326,29 @@ export class EditorSessionController {
     });
   }
   clone(owner: OwnerRef): EditorSessionController {
-    if (owner.kind === 'editor' && this.owner.kind === 'editor' &&
-        owner.editorSessionId === this.owner.editorSessionId) {
+    if (
+      owner.kind === 'editor' &&
+      this.owner.kind === 'editor' &&
+      owner.editorSessionId === this.owner.editorSessionId
+    ) {
       throw new Error('Cloned editors require a distinct owner ID');
     }
-    return new EditorSessionController(this.client, this.initialTarget, owner);
+    return new EditorSessionController(this.client, this.latestTarget, owner);
   }
 }
 
 /** Uses the host-issued client identity; editorSessionId is the pane's stable local owner ID. */
 export async function createEditorSessionController(
-  client: BackendClient, initialTarget: ExecutionTarget, editorSessionId: string,
+  client: BackendClient,
+  initialTarget: ExecutionTarget,
+  editorSessionId: string,
 ): Promise<EditorSessionController> {
   const identity = await client.getPlatformIdentity();
-  if (!identity.clientInstanceId || !editorSessionId) throw new Error('Missing editor owner identity');
+  if (!identity.clientInstanceId || !editorSessionId)
+    throw new Error('Missing editor owner identity');
   return new EditorSessionController(client, initialTarget, {
-    kind: 'editor', clientInstanceId: identity.clientInstanceId as import('@datazen/backend-client').Id,
+    kind: 'editor',
+    clientInstanceId: identity.clientInstanceId as import('@datazen/backend-client').Id,
     editorSessionId: editorSessionId as import('@datazen/backend-client').Id,
   });
 }

@@ -1,7 +1,7 @@
 # DataZen Workflow 资源模型详细设计（step / session block / transaction block）
 
 > 状态：**目标设计，尚未实现**。基线：2026-09-30，`8592b0fe1`。
-> 本文描述的 step / session block / transaction block 三种执行单元、目标继承链、Job 归属与版本兼容边界，在当前代码中**均不存在**；现状见第 2 节，落地顺序见 [开发计划 §10](../../development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务)。
+> P6 当前范围：保持既有 v1 协议与执行语义，仅替换底层连接管理。本文 session/transaction block、Workflow Job 及相关目标设计不属于本轮交付；当前事实见文末「P6 Workflow v1 范围」。
 > **本文是破坏性模型变更，旧 Workflow 定义的行为会变化，迁移路径见第 10.6 节。**
 > 配套文档：[系统概要](system-overview.md#4-模块职责与边界)（§4 Workflow Runtime、§6.4 repositories、§7.3）、[连接管理详细设计](connection-management.md#91-默认资源政策)（§9.1 资源政策、§9.5 资源类别、§11 Workflow 语义、§16.5 验收用例）。
 > 已实现部分见 [Workflow 架构](../backend/workflow.md) 与 [Workflow 使用指南](../../features/workflow-guide.zh-CN.md)。
@@ -90,7 +90,7 @@ command 分支（[command_runtime.rs`](../../../src-tauri/src/workflow/command_r
 
 1. `resolve_connection_id(step, workflow_connection)` → `step.effective_connection(workflow_connection)`，缺失报 `MissingConnection { step_id }`；
 2. `inject_inherited_database(input, workflow_database)`：显式非空 `input.database` 优先，空白串按未设置处理，trim，非对象则空操作；
-3. `connection_manager.resolve_session_for_connection(connection_id)` 返回 `(runtime_id, driver, handle)`；该方法内部按 **`session_owner_map` 里 owner == 配置 id** 查找已有会话，找不到则 `connect(connection_id)` 新建（`resolve_session_for_connection` 见 [sessions.rs:92-103](../../../src-tauri/src/services/connection_manager/sessions.rs)，owner 查找与新建在同文件 `get_or_connect_session`，[sessions.rs:8-37](../../../src-tauri/src/services/connection_manager/sessions.rs)）；
+3. Workflow v1 的命令运行时通过共享 Runtime resource execution path 按 `connectionId` 解析 profile 并建立/借用 Runtime session；物理资源由 `DesktopSessionBackend` 打开和关闭，Workflow 不依赖宿主侧共享 `ConnectionManager` 会话；
 4. 在 `driver.command_definitions()` 中查 id，未找到报 `UnsupportedCommand`，`metadata.workflow == false` 报 `CommandNotInWorkflow`；
 5. `validate_command_input` + 按 `permission_mode` 的 `check_command_access`；id 为 `"query"` / `"execute"` 时再过 `sql_guard::check_sql` 与 `mcp::permission::check_sql_allowed`；
 6. `inject_sql_target_fields(&mut input, database, schema)` 后 `driver.execute_command`。
@@ -631,6 +631,8 @@ output:
 
 ### 9.3 Wapp
 
+桌面实例绑定会话当前通过 `wapp_session` / SDK `client.session` 实现，权限、审批、TTL、结束清理与保留边界见[消费者接入 §5](consumer-adapters.md#5-wapp-受控桥)。该协议不接受 editor/Job/workflowBlock owner，也不新增 Wapp Workflow Job 入口。
+
 Wapp session 归**实例或 Job**。Wapp 通过受限的 `execute_driver_command` 通道取数，宿主判定它不是 editor；它既不能加入用户的编辑器 session，也不能声称 `workflowBlock` owner。Wapp 触发的 Workflow 运行以该 Wapp 实例身份发起 Job（Job 包裹本身是[P6 目标决策](#51-workflow-执行是否包裹-job)）。
 
 ### 9.4 后台调度与 Dashboard
@@ -640,6 +642,19 @@ Wapp session 归**实例或 Job**。Wapp 通过受限的 `execute_driver_command
 - 所有辅助任务（导出、备份、恢复）共享同一预算，不污染编辑器资源（[开发计划 §10](../../development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务)）。
 
 ---
+
+
+#### 桌面 Monitor 定时授权（已实现，2026-10-17）
+
+Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用当前桌面用户上下文；周期 tick 必须取得后端保存的 widget grant，不能因 `connection_id=None`、工作流可运行或桌面用户仍在线而获得授权。用户在报表编辑器中保存 interval 配置后，显式授权一小时或撤销；授权 IPC 仅接受 dashboard/widget ID 与 60～86400 秒有效期，不接受 principal、delegation token 或用户提供的 grant。
+
+后端从当前桌面 RequestContext 取得批准者，并生成独立 service principal / delegation ID。AppDb schema v3 的 `monitor_schedule_grants` 仅保存批准者、服务身份、dashboard/widget/workflow ID、工作流 YAML SHA-256 revision、固定 canonical connection/database/schema 与配置版本、connect/query 动作及命令范围、readOnly、到期时间、撤销状态与版本。不保存 SQL 副本、session、attachment、bearer token、秘密或凭据。新授权取代同 widget 的旧授权；变更 workflow 定义或 profile 配置必须重新授权。
+
+当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI、migration 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询；函数仅允许明确的内置聚合/数值/文本/空值/时钟函数白名单，未知、带 schema、引号名称及表值函数失败关闭，因此序列推进/状态、命名锁获取/状态/释放和会话配置函数不能借 SELECT 派发），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。其他驱动和写动作均失败关闭。
+
+共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
+
+撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。已观察结果保持真实；撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown。此实现仍使用现有短 Runtime execution 和 WidgetRun 落盘，**尚未建立持久 Monitor occurrence Job、跨重启 receipt/接管或 schedule 幂等账本**；不表示 P6 整体退出或真实驱动旅程已经验收。
 
 ## 10. 版本与兼容边界
 
@@ -800,3 +815,10 @@ v1 定义的映射规则是机械的、无歧义的：
 - **不处理** Workflow 与三件套 profile 的复用关系、`migration` step 在 block 内的定位（[§12](#12-待-p0-验证清单) 第 1/5 条）。
 - **不承诺** session block 的中间恢复能力，也不为跨端事务提供原子性。
 - **不引入**新的进度、验收清单类文档；本文结论落地后应改写为"已实现"并入 [backend/workflow.md](../backend/workflow.md)。
+
+
+### P6 Workflow v1 范围
+
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
+
+Workflow scheduler 保留桌面 runtime-entry 修复；Monitor 的固定只读目标授权与独立 occurrence Job、Wapp 实例会话、MCP owner/TTL、Restore/Backup/Export 和 NativeTool 通用 Job fencing 不受此范围收缩影响。跨驱动 v1 旅程须独立验收，未运行的测试不算通过。 Host 通用真实驱动旅程位于 `src-tauri/src/workflow/live_acceptance.rs`，通过安全 live runner 显式运行两个方向的 Query → Command 与前步结果 SQL 模板串联；不把直接 sqlx 查询或 ignored 测试计为 Runtime 接线验收。

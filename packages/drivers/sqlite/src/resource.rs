@@ -316,6 +316,13 @@ impl ResourceProvider for SqliteResourceProvider {
         &self.namespace_shape
     }
 
+    fn connection_handle(
+        &self,
+        handle: &ResourceHandle,
+    ) -> Result<ConnectionHandle, ResourceError> {
+        self.connection_of(handle, "connection_handle")
+    }
+
     async fn describe_resource(
         &self,
         request: &DescribeResourceRequest,

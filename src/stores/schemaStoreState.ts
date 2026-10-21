@@ -9,6 +9,7 @@ export interface ConnectionSchemaState {
   /** Bumped when the session's connection identity (config revision) changes;
    *  invalidates older per-relation provenance. */
   metadataRevision: number;
+  metadataScopeKey?: string;
   currentDatabase: string | null;
   /** PG-family current schema — sent as the `schema` envelope field. */
   currentSchema: string | null;

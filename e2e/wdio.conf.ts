@@ -29,7 +29,12 @@ import {
   dropWorkerDatabase,
   seedDefaultPgConnection,
 } from './lib/testDataLifecycle.js';
-import { ensureMainWindowForIpc, ensureSeededPgSessionFresh, invokeBackend } from './helpers.js';
+import {
+  ensureMainWindowForIpc,
+  ensureSeededPgSessionFresh,
+  invokeBackend,
+  releaseHeldSeededSession,
+} from './helpers.js';
 import { browser } from '@wdio/globals';
 
 const WD_PORT = parseInt(process.env.E2E_WD_PORT || '4445', 10);
@@ -177,13 +182,10 @@ async function runSessionBootstrap() {
     await seedDefaultPgConnection(browser, _workerDb);
   }
 
-  // The Tauri process (and its ConnectionManager) is reused across spec files,
-  // so the live `conn_e2e_pg` session can still be bound to the previous
-  // worker's database, which `after` just dropped. Backend `connect` hands that
-  // still-alive session back unchanged, so specs that connect through the raw
-  // IPC path (no workspace connect) would run against a database that no longer
-  // exists. Specs that drive the workspace UI already re-bind via their own
-  // connect; this covers the rest.
+  // The Tauri process is reused across spec files, while each file replaces its
+  // worker database. A runtime session may still target the database dropped by
+  // the previous `after` hook. Refreshing the seeded session here also covers
+  // specs that use raw IPC instead of connecting through the workspace UI.
   await ensureSeededPgSessionFresh();
 
   // Reload page so the new language and seeded connections take effect
@@ -328,6 +330,11 @@ export const config: WebdriverIO.Config = {
       '../packages/drivers/mysql/e2e/schema-tree-objects.ts',
       '../packages/drivers/postgres/e2e/schema-tree-objects.ts',
     ],
+    // Driver-owned CM-38/CM-67 journey: per-target pooling, exact physical
+    // accounting, and config-revision rotation on a real PostgreSQL server
+    // (`pnpm e2e:skip-build -- --suite connection-pool`). Not part of the
+    // default full run, which only globs `./specs/**`.
+    'connection-pool': ['../packages/drivers/postgres/e2e/connection-pool-rotation.ts'],
     // Host-owned SQL editor gestures: Mod+D, multi-cursor, rectangular
     // selection (`pnpm e2e:sql-editor-prod`). Both specs are Community
     // behaviour, so this suite runs on any build. The Pro-only counterparts
@@ -457,12 +464,11 @@ export const config: WebdriverIO.Config = {
     // churn connections, and sharing one app process makes a later spec's schema
     // tree time out on state the earlier spec left behind.
     //
-    // `sql-query.ts` is intentionally absent: its SQ-CTX-001 assertion fails on
-    // a pristine checkout too (the database context selector reports the
-    // default database instead of the qualified path's), so including it would
-    // keep this guard permanently red. The Postgres double-quote lint that this
-    // guard exists to protect is covered by unit tests in
-    // `src/windows/connection/__tests__/query.modules.test.tsx`.
+    // The full SQL editor suite (`sql-query.ts`) runs in `db`; this guard stays
+    // focused on the builder's five shared journeys. SQ-CTX-001 now checks that
+    // qualified SQL preserves the observed editor context (CM-13), and fresh
+    // editor cases close their previous fixture tabs instead of exhausting the
+    // connected-editor quota.
     'qb-regression': [
       './specs/journeys/connection-query-journey.ts',
       './specs/journeys/query-edge-journey.ts',
@@ -562,10 +568,18 @@ export const config: WebdriverIO.Config = {
     } catch (err) {
       console.warn('[e2e-teardown]', err);
     }
-    // Drop the per-worker isolated database.
-    if (_workerDb) {
-      dropWorkerDatabase(_workerDb);
-      _workerDb = undefined;
+    // Release the seeded PG session this spec file held. The next file re-seeds
+    // `conn_e2e_pg` against a brand-new worker database, so the backend can
+    // never hand this session back; leaving it connected held its physical pool
+    // until the idle timeout and starved later spec files (ResourceBusy).
+    try {
+      await releaseHeldSeededSession();
+    } finally {
+      // Drop the per-worker isolated database.
+      if (_workerDb) {
+        dropWorkerDatabase(_workerDb);
+        _workerDb = undefined;
+      }
     }
   },
 };

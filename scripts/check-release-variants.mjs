@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Release-variant consistency guard.
  *
@@ -25,7 +26,7 @@
  */
 import { existsSync, readFileSync } from 'fs';
 import { dirname, resolve } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { parse as parseYaml } from 'yaml';
 import {
   VARIANT_NAMES,
@@ -276,6 +277,6 @@ export function checkReleaseVariants(root = ROOT, log = console.log) {
   return 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   process.exit(checkReleaseVariants());
 }

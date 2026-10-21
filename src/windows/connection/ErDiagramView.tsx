@@ -51,7 +51,7 @@ interface ErDiagramViewProps {
   database: string;
   /**
    * Schema to read the diagram's tables from. Captured from the panel that was
-   * active when the diagram was opened; `null` lets the host/driver decide.
+   * active when the diagram was opened; `null` requests all catalog schemas.
    */
   schema?: string | null;
   focusTable?: string;

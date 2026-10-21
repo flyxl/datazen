@@ -20,7 +20,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 
 use crate::outcome::{BenchRun, RoundOutcome, Verdict};
-use crate::plan::{BenchPlan, GATE_P95_NANOS, SPEC_FAKE_COMMAND, SPEC_MEMORY_BYTES, SPEC_VCPUS};
+use crate::plan::{BenchPlan, GATE_P95_NANOS, SPEC_FAKE_COMMAND};
 
 /// 产物根目录，相对仓库根。`--out` 可覆盖。
 const DEFAULT_ARTIFACT_DIR: &str = "target/bench";
@@ -32,9 +32,6 @@ const TIMESTAMP_FALLBACK: &str = "00000000";
 /// 机器与运行方式。**这是重跑三段之一**：不记环境，重跑就等于重猜。
 #[derive(Debug, Clone, Serialize)]
 pub struct Environment {
-    /// 判据指定的可复现性锚点（4 vCPU / 8 GiB）。
-    pub criterion_vcpus: u32,
-    pub criterion_memory_bytes: u64,
     /// **声明值**（命令行注入），不是探测值——所以字段名就叫 declared：
     /// 产物里写着一个数，不等于这个数被测量过。调用方不填就是 0（未声明）。
     pub declared_vcpus: u32,
@@ -188,8 +185,6 @@ pub fn timestamp() -> String {
 /// 内存没有进程内探针，只能保持声明形态，并在 `notes` 里说明。
 pub fn environment(declared_vcpus: u32, declared_memory_bytes: u64) -> Environment {
     Environment {
-        criterion_vcpus: SPEC_VCPUS,
-        criterion_memory_bytes: SPEC_MEMORY_BYTES,
         declared_vcpus,
         declared_memory_bytes,
         detected_parallelism: std::thread::available_parallelism()
@@ -401,10 +396,8 @@ mod tests {
     }
 
     #[test]
-    fn spec_anchors_are_recorded_verbatim_not_converted() {
+    fn declared_environment_is_recorded_without_fixed_machine_criteria() {
         let env = environment(8, 17_179_869_184);
-        assert_eq!(env.criterion_vcpus, 4);
-        assert_eq!(env.criterion_memory_bytes, 8 * 1024 * 1024 * 1024);
         assert_eq!(env.declared_vcpus, 8);
         assert_eq!(env.declared_memory_bytes, 17_179_869_184);
         // 唯一真正探测出来的那个数：探不到时是 None，绝不是 0（0 会被读成「探测到 0 核」）。
@@ -412,14 +405,6 @@ mod tests {
             env.detected_parallelism.is_none_or(|n| n > 0),
             "探测到的并行度要么是 None，要么是正数"
         );
-    }
-
-    #[test]
-    fn a_faster_box_is_still_recorded_as_a_deviation() {
-        let env = environment(8, 17_179_869_184);
-        let deviates = env.declared_vcpus != env.criterion_vcpus
-            || env.declared_memory_bytes != env.criterion_memory_bytes;
-        assert!(deviates, "8 vCPU / 16 GiB 必须被判为偏离 4 vCPU / 8 GiB");
     }
 
     #[test]

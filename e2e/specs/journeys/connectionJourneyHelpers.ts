@@ -8,12 +8,12 @@ import {
 import { t } from '../../i18n.js';
 import { seedDefaultPgConnection } from '../../lib/testDataLifecycle.js';
 
-export interface JourneyConnection {
+interface JourneyConnection {
   id: string;
   name: string;
 }
 
-export interface PostgresFormOptions {
+interface PostgresFormOptions {
   host?: string;
   port?: string;
   database?: string;

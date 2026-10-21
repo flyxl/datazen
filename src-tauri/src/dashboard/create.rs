@@ -1,86 +1,52 @@
-//! Create dashboard widgets from SQL or existing workflows.
-
-use uuid::Uuid;
-
-use super::store::{get_dashboard, save_dashboard, DashboardStoreError};
-use super::types::{
-    ChartConfig, Dashboard, DashboardWidget, RefreshMode, RefreshPolicy, ViewMode, WidgetLayout,
-};
+//! Desktop repository bindings for portable dashboard creation use cases.
+use super::types::{ChartConfig, Dashboard, ViewMode};
 use crate::store::{AppDb, WorkflowVisibility};
-use crate::workflow::model::{
-    WorkflowDefinition, WorkflowStep, WorkflowVisibility as WfVisibility,
+use crate::workflow::{
+    model::{WorkflowDefinition, WorkflowVisibility as WfVisibility},
+    WorkflowRegistry,
 };
-use crate::workflow::WorkflowRegistry;
-
-#[derive(Debug, thiserror::Error)]
-pub enum CreateWidgetError {
-    #[error("store error: {0}")]
-    Store(#[from] DashboardStoreError),
-
-    #[error("validation: {0}")]
-    Validation(String),
-
-    #[error("workflow error: {0}")]
-    Workflow(String),
+pub use datazen_feature_core::dashboard::create::{CreateWidgetError, CreateWidgetResult};
+struct DesktopCreationHost<'a> {
+    app_db: &'a AppDb,
+    registry: Option<&'a WorkflowRegistry>,
 }
-
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateWidgetResult {
-    pub dashboard: Dashboard,
-    pub widget: DashboardWidget,
-}
-
-fn default_chart_config() -> ChartConfig {
-    ChartConfig::default()
-}
-
-fn next_widget_layout(dashboard: &Dashboard) -> WidgetLayout {
-    let max_y = dashboard
-        .widgets
-        .iter()
-        .map(|w| w.layout.y + w.layout.h)
-        .max()
-        .unwrap_or(0);
-    WidgetLayout {
-        x: 0,
-        y: max_y,
-        w: 6,
-        h: 4,
+#[async_trait::async_trait]
+impl datazen_feature_core::dashboard::create::WidgetCreationHost for DesktopCreationHost<'_> {
+    fn dashboard(&self, id: &str) -> Result<Dashboard, String> {
+        super::store::get_dashboard(self.app_db, id).map_err(|error| error.to_string())
+    }
+    fn save_dashboard(&self, dashboard: Dashboard) -> Result<(), String> {
+        super::store::save_dashboard(self.app_db, dashboard)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+    fn workflow_summary(&self, id: &str) -> Result<(String, WfVisibility), String> {
+        let record = self
+            .app_db
+            .get_workflow(id)
+            .map_err(|error| error.to_string())?;
+        Ok((
+            record.name,
+            match record.visibility {
+                WorkflowVisibility::User => WfVisibility::User,
+                WorkflowVisibility::DashboardHidden => WfVisibility::DashboardHidden,
+            },
+        ))
+    }
+    async fn workflow(&self, id: &str) -> Option<WorkflowDefinition> {
+        match self.registry {
+            Some(registry) => registry.get(id).await,
+            None => None,
+        }
+    }
+    async fn save_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), String> {
+        self.registry
+            .ok_or("Workflow repository unavailable")?
+            .save_workflow(workflow)
+            .await
+            .map(|_| ())
     }
 }
-
-fn hidden_sql_workflow(
-    workflow_id: &str,
-    title: &str,
-    connection_id: &str,
-    sql: &str,
-) -> WorkflowDefinition {
-    WorkflowDefinition {
-        database: None,
-        id: workflow_id.to_string(),
-        name: title.to_string(),
-        description: "Dashboard hidden query".into(),
-        version: None,
-        author: None,
-        variables: vec![],
-        connection: Some(connection_id.to_string()),
-        steps: vec![WorkflowStep::Query {
-            id: "q1".into(),
-            sql: sql.to_string(),
-            connection: None,
-            database: None,
-            timeout_secs: Some(60),
-            on_error: None,
-        }],
-        output: None,
-        timeout_secs: Some(60),
-        error_handling: None,
-        schedule: None,
-        visibility: WfVisibility::DashboardHidden,
-    }
-}
-
 pub async fn create_widget_from_sql(
     app_db: &AppDb,
     registry: &WorkflowRegistry,
@@ -91,48 +57,20 @@ pub async fn create_widget_from_sql(
     view_mode: ViewMode,
     chart_config: Option<ChartConfig>,
 ) -> Result<CreateWidgetResult, CreateWidgetError> {
-    if connection_id.trim().is_empty() {
-        return Err(CreateWidgetError::Validation(
-            "connectionId is required".into(),
-        ));
-    }
-    if sql.trim().is_empty() {
-        return Err(CreateWidgetError::Validation("sql is required".into()));
-    }
-
-    let mut dashboard = get_dashboard(app_db, dashboard_id)?;
-    let widget_title = title.unwrap_or_else(|| "SQL Widget".into());
-    let workflow_id = format!("dash-wf-{}", Uuid::new_v4());
-    let widget_id = Uuid::new_v4().to_string();
-
-    let def = hidden_sql_workflow(&workflow_id, &widget_title, connection_id, sql);
-    registry
-        .save_workflow(&def)
-        .await
-        .map_err(CreateWidgetError::Workflow)?;
-
-    let widget = DashboardWidget {
-        id: widget_id,
-        title: widget_title,
-        workflow_id,
-        view_mode,
-        chart_config: chart_config.or(Some(default_chart_config())),
-        layout: next_widget_layout(&dashboard),
-        refresh: RefreshPolicy {
-            mode: RefreshMode::Manual,
-            refresh_sec: None,
+    datazen_feature_core::dashboard::create::create_widget_from_sql(
+        &DesktopCreationHost {
+            app_db,
+            registry: Some(registry),
         },
-        alert: None,
-        enabled: true,
-    };
-
-    dashboard.widgets.push(widget.clone());
-    save_dashboard(app_db, dashboard.clone())?;
-
-    Ok(CreateWidgetResult { dashboard, widget })
+        dashboard_id,
+        connection_id,
+        sql,
+        title,
+        view_mode,
+        chart_config,
+    )
+    .await
 }
-
-/// Update SQL + connection on a dashboard-owned hidden workflow.
 pub async fn update_hidden_workflow_sql(
     app_db: &AppDb,
     registry: &WorkflowRegistry,
@@ -140,51 +78,17 @@ pub async fn update_hidden_workflow_sql(
     connection_id: &str,
     sql: &str,
 ) -> Result<(), CreateWidgetError> {
-    if connection_id.trim().is_empty() {
-        return Err(CreateWidgetError::Validation(
-            "connectionId is required".into(),
-        ));
-    }
-    if sql.trim().is_empty() {
-        return Err(CreateWidgetError::Validation("sql is required".into()));
-    }
-
-    let record = app_db
-        .get_workflow(workflow_id)
-        .map_err(|e| CreateWidgetError::Validation(e.to_string()))?;
-    if record.visibility != WorkflowVisibility::DashboardHidden {
-        return Err(CreateWidgetError::Validation(
-            "Workflow is not dashboard-hidden".into(),
-        ));
-    }
-
-    let mut def = registry.get(workflow_id).await.ok_or_else(|| {
-        CreateWidgetError::Workflow(format!("Workflow '{workflow_id}' not found"))
-    })?;
-
-    def.connection = Some(connection_id.to_string());
-    let mut updated = false;
-    for step in &mut def.steps {
-        if let WorkflowStep::Query { sql: step_sql, .. } = step {
-            *step_sql = sql.to_string();
-            updated = true;
-            break;
-        }
-    }
-    if !updated {
-        return Err(CreateWidgetError::Validation(
-            "Hidden workflow has no query step".into(),
-        ));
-    }
-
-    registry
-        .save_workflow(&def)
-        .await
-        .map_err(CreateWidgetError::Workflow)?;
-
-    Ok(())
+    datazen_feature_core::dashboard::create::update_hidden_workflow_sql(
+        &DesktopCreationHost {
+            app_db,
+            registry: Some(registry),
+        },
+        workflow_id,
+        connection_id,
+        sql,
+    )
+    .await
 }
-
 pub async fn create_widget_from_workflow(
     app_db: &AppDb,
     dashboard_id: &str,
@@ -193,44 +97,18 @@ pub async fn create_widget_from_workflow(
     view_mode: ViewMode,
     chart_config: Option<ChartConfig>,
 ) -> Result<CreateWidgetResult, CreateWidgetError> {
-    if workflow_id.trim().is_empty() {
-        return Err(CreateWidgetError::Validation(
-            "workflow_id is required".into(),
-        ));
-    }
-
-    let record = app_db
-        .get_workflow(workflow_id)
-        .map_err(|e| CreateWidgetError::Validation(e.to_string()))?;
-    if record.visibility == WorkflowVisibility::DashboardHidden {
-        return Err(CreateWidgetError::Validation(
-            "Cannot bind a dashboard-hidden workflow directly; use SQL add instead".into(),
-        ));
-    }
-
-    let mut dashboard = get_dashboard(app_db, dashboard_id)?;
-    let widget_title = title.unwrap_or_else(|| record.name.clone());
-    let widget_id = Uuid::new_v4().to_string();
-
-    let widget = DashboardWidget {
-        id: widget_id,
-        title: widget_title,
-        workflow_id: workflow_id.to_string(),
-        view_mode,
-        chart_config: chart_config.or(Some(default_chart_config())),
-        layout: next_widget_layout(&dashboard),
-        refresh: RefreshPolicy {
-            mode: RefreshMode::Manual,
-            refresh_sec: None,
+    datazen_feature_core::dashboard::create::create_widget_from_workflow(
+        &DesktopCreationHost {
+            app_db,
+            registry: None,
         },
-        alert: None,
-        enabled: true,
-    };
-
-    dashboard.widgets.push(widget.clone());
-    save_dashboard(app_db, dashboard.clone())?;
-
-    Ok(CreateWidgetResult { dashboard, widget })
+        dashboard_id,
+        workflow_id,
+        title,
+        view_mode,
+        chart_config,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -239,6 +117,7 @@ mod tests {
     use crate::dashboard::store::save_dashboard;
     use crate::dashboard::types::DashboardLayout;
     use crate::store::{AppDb, WorkflowRecord};
+    use crate::workflow::WorkflowStep;
     use chrono::Utc;
 
     async fn setup() -> (std::sync::Arc<AppDb>, WorkflowRegistry, Dashboard) {

@@ -10,11 +10,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use datazen_driver_api::{
-    ConnectionHandle, DatabaseDriver, SyncSourceAdapter, SyncTargetAdapter, TableSchema, Value,
+    ConnectionHandle, DatabaseDriver, LegacySqlDialect, SqlDialect, SyncSourceAdapter,
+    SyncTargetAdapter, TableSchema, Value,
 };
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{Checkpoint, JobProgress};
 use datazen_platform_api::id::{ArtifactId, StageId};
+use datazen_platform_api::ports::{Clock, SystemClock};
 
 use async_trait::async_trait;
 
@@ -156,6 +158,8 @@ pub struct DataTransferHandler {
     pub(super) endpoints: TransferEndpoints,
     registry: SyncAdapterRegistry,
     database_structure: Option<Vec<DdlPreviewItem>>,
+    /// 提交边界的时刻来源：默认系统时钟，[`Self::with_clock`] 可注入别的实现。
+    pub(super) clock: Arc<dyn Clock>,
 }
 
 impl DataTransferHandler {
@@ -174,6 +178,7 @@ impl DataTransferHandler {
             endpoints,
             registry: SyncAdapterRegistry::new(),
             database_structure: None,
+            clock: Arc::new(SystemClock),
         }
     }
 
@@ -194,7 +199,14 @@ impl DataTransferHandler {
             endpoints,
             registry: SyncAdapterRegistry::new(),
             database_structure,
+            clock: Arc::new(SystemClock),
         }
+    }
+
+    /// 注入时间源：提交边界的 committedAt 随它变化（测试用固定时钟）。
+    pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
+        self.clock = clock;
+        self
     }
 
     /// 冻结体裁定的恢复政策（§7）。runtime 落 checkpoint 时写死的是它自己的默认值，
@@ -517,6 +529,8 @@ impl DataTransferHandler {
                         .iter()
                         .find(|m| m.source_table == table.source_table);
                     let src_family_quote = source_driver.quote_char();
+                    // 占位符语法来自 SqlDialect 契约，旧驱动 API 逐条转发。
+                    let src_dialect = LegacySqlDialect::new(source_driver.as_ref());
                     let source_scope = match crate::recordset::build_source_scope(
                         &src_schema,
                         mapping.and_then(|m| m.source_filter.as_ref()),
@@ -524,7 +538,7 @@ impl DataTransferHandler {
                         src_family_quote,
                         source_type,
                         |index, data_type| {
-                            source_driver
+                            src_dialect
                                 .parameter_placeholder(index, data_type)
                                 .map_err(|e| TransferError::unsupported(e.to_string()))
                         },
@@ -575,6 +589,7 @@ impl DataTransferHandler {
                         cancelled: Some(cancel.flag()),
                         write_started: None,
                         checkpoint: &mut checkpoint,
+                        clock: self.clock.as_ref(),
                     };
                     match execute_bounded_table(&mut context).await {
                         Ok(o) => {

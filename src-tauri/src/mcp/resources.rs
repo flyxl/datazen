@@ -86,18 +86,17 @@ impl DataZenMcpServer {
                 .ok_or_else(|| McpError::invalid_params("Missing connection ID in URI", None))?;
             let db = parts.get(1).copied().unwrap_or("");
 
-            let (runtime_id, _driver, _handle) = self.resolve_connection(connection_id).await?;
-
-            let context = self
-                .app_state
-                .schema_context_builder
-                .build_sql_context(&runtime_id, db, None, &[], budget::MCP_RESOURCE)
-                .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            self.ensure_allowed("schema_resource", connection_id)?;
+            let schema_ddl = super::runtime_schema::schema_context(
+                self,
+                connection_id,
+                db,
+                budget::MCP_RESOURCE,
+            )
+            .await?;
 
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                context.schema_ddl,
-                uri,
+                schema_ddl, uri,
             )]));
         }
 

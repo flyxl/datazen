@@ -201,7 +201,7 @@ export async function expandAllGroups() {
 export const E2E_PG_CONN_NAME = '本地 PostgreSQL';
 
 /** Persisted config id of the seeded PG connection (see testDataLifecycle). */
-const E2E_PG_CONNECTION_ID = 'conn_e2e_pg';
+export const E2E_PG_CONNECTION_ID = 'conn_e2e_pg';
 
 /**
  * Double-click a connection item in the new grouped list to open it.
@@ -338,52 +338,80 @@ export async function expandConnectedConnectionInNavigator(nameFragment?: string
   await browser.pause(800);
 }
 
+/** Seeded PostgreSQL runtime session held until the current spec is cleaned up. */
+let heldSeededSessionId: string | null = null;
+
 /**
- * Guard against a stale backend session for the seeded PG connection.
+ * Disconnect the seeded runtime session created by the E2E bootstrap.
  *
- * The whole E2E run reuses ONE Tauri process — and therefore one backend
- * ConnectionManager — across every spec file, while `wdio.conf.ts` replaces
- * the worker database behind `conn_e2e_pg` before each file. Backend `connect`
- * has reuse semantics: while an earlier spec's session is still alive it is
- * handed back as-is, still bound to the old (or a foreign) database. Raw SQL
- * then executes on that stale home database while schema metadata calls hit
- * the freshly seeded one, so DDL never lands where the navigator looks and
- * every `waitForTableInSidebar` / `waitForSchemaTreeLoaded` downstream times
- * out.
+ * Called from the per-spec-file `after` hook, before the worker database is
+ * dropped. Each file gets a new worker database, so the previous session must
+ * be released before its database is removed.
  *
- * Probe `current_database()` on the live session against the connection
- * config's `database` field (re-seeded per spec file); on mismatch — or when
- * the session cannot execute at all — disconnect it and reload the page so
- * the subsequent UI connect performs a real `connect` bound to the current
- * config. The healthy path costs two IPC round-trips and touches nothing.
+ * On failure the id is kept so the next bootstrap retries cleanup. A session
+ * that survives teardown can consume runtime capacity and starve later specs.
+ */
+export async function releaseHeldSeededSession(): Promise<void> {
+  if (!heldSeededSessionId) return;
+  await invokeBackend('disconnect', { dbSessionId: heldSeededSessionId });
+  heldSeededSessionId = null;
+}
+
+/**
+ * Ensure the seeded PostgreSQL session targets this spec's worker database.
+ *
+ * The E2E run reuses one Tauri process while `wdio.conf.ts` replaces the worker
+ * database between spec files. A runtime session can outlive a page reload and
+ * still point at the previous database. Raw IPC queries would then target a
+ * different database from the newly seeded fixture, causing schema and UI
+ * assertions to disagree.
+ *
+ * Probe `current_database()` against the connection config's `database` field.
+ * On mismatch, or if the session cannot execute, disconnect it, reconnect to
+ * the current profile, and reload the page before UI assertions continue.
+ *
+ * Keep the returned session id until spec teardown so the harness can release
+ * this exact session even after the page reloads. If reconnecting replaces a
+ * prior session, release the prior id as well.
+ *
  */
 export async function ensureSeededPgSessionFresh(): Promise<void> {
-  try {
-    const conns = await invokeBackend<Array<{ id: string; database?: string }>>('get_connections');
-    const cfg = conns.find((c) => c.id === E2E_PG_CONNECTION_ID);
-    if (!cfg?.database) return;
-    const sessionId = await connectConfig(cfg.id);
-    let actual = '';
-    try {
-      const rows = parseQueryRows(await executeQuery(sessionId, 'SELECT current_database()'));
-      actual = String(rows[0]?.[0] ?? '');
-    } catch {
-      // The session cannot run anything (its home database was dropped) — stale.
-      actual = '';
-    }
-    if (actual === cfg.database) return;
-    console.warn(
-      `[e2e] stale session for ${cfg.id}: current_database()=${actual || '<broken>'}` +
-        ` vs config database=${cfg.database}; forcing reconnect`,
-    );
-    await disconnectBackend(sessionId);
-    // The frontend still holds the dead session id — reload so the connect
-    // click below issues a fresh `connect` against the current config.
-    await browser.url('tauri://localhost');
-    await browser.pause(1500);
-  } catch (err) {
-    console.warn('[e2e] stale-session probe skipped:', err);
+  const conns = await invokeBackend<Array<{ id: string; database?: string }>>('get_connections');
+  const cfg = conns.find((c) => c.id === E2E_PG_CONNECTION_ID);
+  if (!cfg?.database) return;
+  const sessionId = await connectConfig(cfg.id);
+  const probe = async (id: string): Promise<string> => {
+    const rows = parseQueryRows(await executeQuery(id, 'SELECT current_database()'));
+    return String(rows[0]?.[0] ?? '');
+  };
+  // Release the previous session if the refreshed profile now uses another id.
+  const replaced = heldSeededSessionId;
+  heldSeededSessionId = sessionId;
+  if (replaced && replaced !== sessionId) {
+    await invokeBackend('disconnect', { dbSessionId: replaced });
   }
+  let actual = '';
+  try {
+    actual = await probe(sessionId);
+  } catch {
+    // A dropped home database is a stale session, never a successful bootstrap.
+  }
+  if (actual === cfg.database) {
+    // Retain this id so the per-file teardown can release this exact session.
+    return;
+  }
+  console.warn(`[e2e] stale seeded session; reconnecting ${cfg.id}`);
+  // Do not use the best-effort cleanup helper: a refused disconnect must fail
+  // bootstrap instead of leaving every downstream query on the stale target.
+  await invokeBackend('disconnect', { dbSessionId: sessionId });
+  const freshSessionId = await connectConfig(cfg.id);
+  heldSeededSessionId = freshSessionId;
+  if ((await probe(freshSessionId)) !== cfg.database) {
+    throw new Error('Seeded PostgreSQL session database does not match its worker fixture');
+  }
+  // Flush the frontend's stale handles before reconnecting through the UI.
+  await browser.execute(() => location.reload());
+  await browser.pause(1500);
 }
 
 /** Double-click seeded PG connection and wait for toolbar in the unified main window. */
@@ -669,20 +697,6 @@ export async function createAndConnectPostgreSQL(
   return finishConnectInWorkspace(mainWindow);
 }
 
-/**
- * Connect to a named connection card (any DB type) from the main window.
- */
-export async function connectToCard(cardName: string) {
-  const mainWindow = await browser.getWindowHandle();
-  await expandAllGroups();
-  const card = await findCardByName(cardName);
-  if (!card) throw new Error(`未找到连接 "${cardName}"`);
-
-  await dblclickConnByExactName(cardName);
-
-  return finishConnectInWorkspace(mainWindow);
-}
-
 // ── SQL / CodeMirror ────────────────────────────────────────────────
 
 type SettingsLike = { safeMode?: boolean } & Record<string, unknown>;
@@ -727,7 +741,17 @@ async function invokeSettings<T>(cmd: string, args: Record<string, unknown> = {}
           ).__TAURI_INTERNALS__
             ?.invoke(c, JSON.parse(a))
             .then((r) => done({ __result: r }))
-            .catch((e: unknown) => done({ __error: String(e) }));
+            .catch((e: unknown) => {
+              // Only carry the structured public code/message. Backend errors
+              // can contain credential-bearing details; do not serialize them.
+              const value =
+                e && typeof e === 'object' ? (e as { code?: unknown; message?: unknown }) : null;
+              done({
+                __error: value
+                  ? `${typeof value.code === 'string' ? value.code : 'IPC_ERROR'}: ${typeof value.message === 'string' ? value.message : 'Backend request failed'}`
+                  : String(e),
+              });
+            });
         },
         cmd,
         JSON.stringify(args),
@@ -948,26 +972,6 @@ export async function dismissConfirmDialogIfOpen(timeout = 3000): Promise<void> 
     await browser.keys('Escape');
   }
   await browser.pause(400);
-}
-
-/**
- * Confirm (accept) a Safe-Mode / dangerous-SQL confirm dialog IF it appears, else proceed.
- *
- * Unlike `confirmWebDialog` (which hard-fails when no dialog shows), this tolerates the
- * "safe mode off → dangerous op executes directly with no confirm" path: it waits up to
- * `timeout` for the OK button and clicks it when present, returning immediately otherwise.
- * Use this for tests that must accept the operation when a dialog is shown.
- */
-export async function confirmWebDialogIfOpen(timeout = 5000): Promise<void> {
-  const okBtn = await $('[data-testid="confirm-dialog-ok"]');
-  if (!(await okBtn.isExisting().catch(() => false))) return;
-  try {
-    await okBtn.waitForDisplayed({ timeout });
-  } catch {
-    return;
-  }
-  await okBtn.click();
-  await browser.pause(800);
 }
 
 /**
@@ -1411,10 +1415,14 @@ export async function typeAtSelections(text: string) {
 
 /** Execute SQL in the currently active query tab and wait for completion. */
 export async function executeSQL(sql: string) {
+  return executeSQLWithCompletion(sql, false);
+}
+
+async function executeSQLWithCompletion(sql: string, requireCompletion: boolean) {
   if (sqlBlockedBySafeMode(sql)) {
-    return withSafeModeOff(() => executeSqlInEditor(sql));
+    return withSafeModeOff(() => executeSqlInEditor(sql, requireCompletion));
   }
-  return executeSqlInEditor(sql);
+  return executeSqlInEditor(sql, requireCompletion);
 }
 
 /**
@@ -1423,7 +1431,7 @@ export async function executeSQL(sql: string) {
  * confusing downstream timeouts.
  */
 export async function executeSQLChecked(sql: string) {
-  await executeSQL(sql);
+  await executeSQLWithCompletion(sql, true);
   // The regular executeSQL swallows errors; re-read the result panel for
   // any SQL error text that appeared after execution.
   const errorText = await browser.execute(() => {
@@ -1454,7 +1462,7 @@ export async function executeSQLChecked(sql: string) {
   }
 }
 
-async function executeSqlInEditor(sql: string) {
+async function executeSqlInEditor(sql: string, requireCompletion = false) {
   await setEditorContent(sql);
   // Stable E2E locator (vite-gated data-testid, see src/lib/tid.ts) — survives i18n switching.
   const execBtn = await $('[data-testid="editor-execute-button"]');
@@ -1492,6 +1500,9 @@ async function executeSqlInEditor(sql: string) {
       const blockedMsg = await $('[data-testid="result-message-ok"]');
       if ((await blockedMsg.isExisting()) && (await blockedMsg.isDisplayed().catch(() => false))) {
         await blockedMsg.click();
+        if (requireCompletion) {
+          throw new Error('Checked SQL was rejected by a result-message dialog before completion');
+        }
         await browser.pause(200);
         return true;
       }
@@ -1524,6 +1535,9 @@ async function executeSqlInEditor(sql: string) {
       if ((await stop.isExisting()) && (await stop.isDisplayed().catch(() => false))) {
         return false;
       }
+      // Checked fixture DDL must observe the gate's completion counter. Old
+      // duration/row labels or an idle button cannot prove this SQL completed.
+      if (requireCompletion) return false;
       const curTotal = await browser.execute(() => {
         const spans = Array.from(document.querySelectorAll('span'));
         return (
@@ -1615,15 +1629,10 @@ export async function openQueryTab() {
 // ── schema sidebar ──────────────────────────────────────────────────
 
 /** Sidebar section headers indicating schema tree loaded (en + zh-CN). */
-export const SCHEMA_TREE_SECTION_MARKERS = ['Tables', '表', 'Keys', '键', 'Views', '视图'] as const;
+const SCHEMA_TREE_SECTION_MARKERS = ['Tables', '表', 'Keys', '键', 'Views', '视图'] as const;
 
 export function asideHasSchemaSections(text: string): boolean {
   return SCHEMA_TREE_SECTION_MARKERS.some((marker) => text.includes(marker));
-}
-
-/** True if text looks like a schema tree section header (e.g. "Tables (5)" or "表 (3)"). */
-export function isSchemaSectionLabel(text: string): boolean {
-  return SCHEMA_TREE_SECTION_MARKERS.some((m) => text.startsWith(m));
 }
 
 /** Connection navigator sidebar (not the 40px workspace mode rail). */
@@ -1722,7 +1731,11 @@ export async function closeDataExportDialogIfOpen() {
 }
 
 /** Wait until the connection navigator lists at least one table entry. */
-export async function waitForSchemaTreeLoaded(timeout = 20000) {
+export async function waitForSchemaTreeLoaded(
+  timeout = 20000,
+  schemaName?: string,
+  dbName?: string,
+) {
   // The connection click and schema loading are separate async operations.
   // Expand once before polling for the actual table row; repeatedly clicking
   // the connection card can only re-select it and makes the race worse.
@@ -1740,7 +1753,7 @@ export async function waitForSchemaTreeLoaded(timeout = 20000) {
           await clickNavigatorRefresh(5000).catch(() => {});
           await expandConnectedConnectionInNavigator().catch(() => {});
         }
-        await expandSchemaTableCategory();
+        await expandSchemaTableCategory(schemaName, dbName);
         await browser.pause(500);
         pass++;
         return false;
@@ -1771,6 +1784,68 @@ export async function expandSchemaTableCategory(schemaName?: string, dbName?: st
  */
 export async function expandSchemaCategory(catId: string, schemaName?: string, dbName?: string) {
   const targetSchema = schemaName || process.env.E2E_WORKER_SCHEMA || 'public';
+  if (dbName !== undefined) {
+    const advance = async () =>
+      browser.execute(
+        (database: string, schema: string, category: string) => {
+          const nav =
+            document.querySelector('[data-testid="connection-navigator-aside"]') ??
+            Array.from(document.querySelectorAll('aside')).find((aside) =>
+              aside.querySelector('[data-conn-item]'),
+            );
+          const rows = Array.from(
+            nav?.querySelectorAll<HTMLElement>('[data-testid="schema-tree-node"]') ?? [],
+          );
+          const db = rows.find(
+            (row) => row.dataset.treeNode === 'db' && row.dataset.dbName === database,
+          );
+          if (!db) return { databasePresent: false, ready: false };
+          const children = (parent: HTMLElement, candidates: HTMLElement[]) => {
+            const start = candidates.indexOf(parent) + 1;
+            const level = Number(parent.getAttribute('aria-level'));
+            let end = start;
+            while (
+              end < candidates.length &&
+              Number(candidates[end].getAttribute('aria-level')) > level
+            )
+              end++;
+            return candidates.slice(start, end);
+          };
+          if (db.getAttribute('aria-expanded') !== 'true') {
+            db.click();
+            return { databasePresent: true, ready: false };
+          }
+          const dbChildren = children(db, rows);
+          const schemas = dbChildren.filter((row) => row.dataset.treeNode === 'schema');
+          const schemaRow = schemas.find((row) => row.dataset.schemaName === schema);
+          if (schemas.length > 0 && !schemaRow) return { databasePresent: true, ready: false };
+          if (schemaRow && schemaRow.getAttribute('aria-expanded') !== 'true') {
+            schemaRow.click();
+            return { databasePresent: true, ready: false };
+          }
+          const scope = schemaRow ? children(schemaRow, dbChildren) : dbChildren;
+          const categoryRow = scope.find(
+            (row) => row.dataset.treeNode === 'category' && row.dataset.catId === category,
+          );
+          if (!categoryRow) return { databasePresent: true, ready: false };
+          if (categoryRow.getAttribute('aria-expanded') !== 'true') {
+            categoryRow.click();
+            return { databasePresent: true, ready: false };
+          }
+          return { databasePresent: true, ready: true };
+        },
+        dbName,
+        targetSchema,
+        catId,
+      );
+    if (!(await advance()).databasePresent)
+      throw new Error('Navigator expansion: target_database_present=false');
+    await browser.waitUntil(async () => (await advance()).ready, {
+      timeout: 10000,
+      timeoutMsg: 'Navigator expansion: target_branch_ready=false',
+    });
+    return;
+  }
 
   // Step 1: expand the db node, then wait for either schema children or
   // the category rows to appear directly under the db.
@@ -1785,7 +1860,7 @@ export async function expandSchemaCategory(catId: string, schemaName?: string, d
       document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="db"]'),
     );
     const targetDb = db
-      ? dbs.find((el) => (el.getAttribute('data-db-name') || el.textContent || '').includes(db))
+      ? dbs.find((el) => el.getAttribute('data-db-name') === db)
       : (dbs.find((el) =>
           (el.getAttribute('data-db-name') || el.textContent || '').includes('datazen_e2e'),
         ) ?? dbs[0]);
@@ -1900,8 +1975,9 @@ export async function waitForTableInSidebar(
   tableName: string,
   timeout = 20000,
   schemaName?: string,
+  dbName?: string,
 ) {
-  await waitForSchemaTreeLoaded();
+  await waitForSchemaTreeLoaded(timeout, schemaName, dbName);
   await setNavigatorSearch(tableName);
   let scrollPass = 0;
   try {
@@ -1917,7 +1993,7 @@ export async function waitForTableInSidebar(
             await clickNavigatorRefresh(5000).catch(() => {});
           }
           await expandConnectedConnectionInNavigator();
-          await expandSchemaTableCategory(schemaName);
+          await expandSchemaTableCategory(schemaName, dbName);
           await setNavigatorSearch(tableName);
           await scrollSchemaTree(scrollPass);
           scrollPass++;
@@ -2149,22 +2225,6 @@ export async function openTableFromSidebar(tableName: string) {
   } finally {
     await setNavigatorSearch('');
   }
-}
-
-/** Switch the active table/view panel to the data sub-tab. */
-export async function switchTablePanelToDataTab() {
-  await browser.execute((label: string) => {
-    const bars = document.querySelectorAll('.border-b.border-edge.bg-surface-alt');
-    for (const bar of bars) {
-      for (const btn of bar.querySelectorAll('button')) {
-        if ((btn.textContent ?? '').trim() === label) {
-          (btn as HTMLElement).click();
-          return;
-        }
-      }
-    }
-  }, t('connWin.data'));
-  await browser.pause(800);
 }
 
 /** Right-click a table/view row in the navigator (keeps search active until menu opens). */
@@ -2580,7 +2640,7 @@ export async function backFromSettingsInMainWindow() {
 const TRANSFER_LIMITATIONS_DISMISS_KEY = 'datazen:transfer-limitations-dismissed';
 
 /** Clear "don't show again" pref so limitations dialog appears on next open. */
-export async function clearTransferLimitationsDismissPref() {
+async function clearTransferLimitationsDismissPref() {
   await browser.execute((key: string) => {
     try {
       localStorage.removeItem(key);
@@ -2591,7 +2651,7 @@ export async function clearTransferLimitationsDismissPref() {
 }
 
 /** Close the transfer limitations dialog when it is open (does not check "don't show again"). */
-export async function dismissTransferLimitationsDialogIfOpen() {
+async function dismissTransferLimitationsDialogIfOpen() {
   const dialog = await $('[data-testid="data-transfer-limitations-dialog"]');
   if (!(await dialog.isExisting().catch(() => false))) return;
   if (!(await dialog.isDisplayed().catch(() => false))) return;
@@ -2660,7 +2720,7 @@ export async function openDataTransferWindow(
 
 const SCHEMA_DIFF_LIMITATIONS_DISMISS_KEY = 'datazen:schema-diff-limitations-dismissed';
 
-export async function clearSchemaDiffLimitationsDismissPref() {
+async function clearSchemaDiffLimitationsDismissPref() {
   await browser.execute((key: string) => {
     try {
       localStorage.removeItem(key);
@@ -2670,7 +2730,7 @@ export async function clearSchemaDiffLimitationsDismissPref() {
   }, SCHEMA_DIFF_LIMITATIONS_DISMISS_KEY);
 }
 
-export async function dismissSchemaDiffLimitationsDialogIfOpen() {
+async function dismissSchemaDiffLimitationsDialogIfOpen() {
   const dialog = await $('[data-testid="schema-diff-limitations-dialog"]');
   if (!(await dialog.isExisting().catch(() => false))) return;
   if (!(await dialog.isDisplayed().catch(() => false))) return;

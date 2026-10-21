@@ -153,6 +153,7 @@ export function useConnectionContextMenu({
         void (async () => {
           const tableSchema = await fetchTableSchemaForSqlGeneration({
             dbSessionId: ctx.dbSessionId,
+            connectionId: ctx.connectionId,
             tableName: name,
             schema,
             database,

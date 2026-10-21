@@ -1,5 +1,13 @@
-import { ApiError, type BackendClient, type ExecutionTarget, type NamespaceTarget, type OwnerRef, type SessionView } from '@datazen/backend-client';
+import {
+  ApiError,
+  type BackendClient,
+  type ExecutionTarget,
+  type NamespaceTarget,
+  type OwnerRef,
+  type SessionView,
+} from '@datazen/backend-client';
 import { EditorSessionController } from './EditorSessionController';
+import { isPaneKeyOfPanel } from '../../stores/paneKeys';
 
 /**
  * Per-editor lazy session registry. Each editor/pane owns an independent
@@ -26,8 +34,34 @@ export class QueryPanelSessionRegistry {
     return this.controllers.get(key);
   }
 
+  /**
+   * Every pane key of `panelId` that owns a controller right now.
+   *
+   * Destroying a panel must release sessions by the **registry** it owns, not
+   * by the exec table: a pane opens its session when the editor mounts, so a
+   * pane that was never executed has a controller and no `queryExec` row.
+   * Enumerating only the exec table leaked exactly those sessions — the pane's
+   * runtime session and its host-side connected-editor permit stayed charged
+   * until the window died.
+   */
+  keysOfPanel(panelId: string): string[] {
+    const keys: string[] = [];
+    for (const key of this.controllers.keys()) {
+      if (isPaneKeyOfPanel(key, panelId)) keys.push(key);
+    }
+    return keys;
+  }
+
   /** Copy semantics: a new owner ID, a new controller — never the runtime handle. */
-  duplicate(_sourceKey: string, targetKey: string, target: ExecutionTarget, owner: OwnerRef): EditorSessionController {
+  duplicate(
+    _sourceKey: string,
+    targetKey: string,
+    target: ExecutionTarget,
+    owner: OwnerRef,
+  ): EditorSessionController {
+    if (this.controllers.has(targetKey)) {
+      throw new ApiError('ContextConflict', 'The destination pane already owns a session.');
+    }
     const fresh = new EditorSessionController(this.client, target, owner);
     this.controllers.set(targetKey, fresh);
     return fresh;
@@ -35,10 +69,12 @@ export class QueryPanelSessionRegistry {
 
   async remove(key: string): Promise<void> {
     const controller = this.controllers.get(key);
-    this.controllers.delete(key);
-    if (controller) {
-      try { await controller.close('requireNoTransaction'); } catch { /* session may already be gone */ }
-    }
+    if (!controller) return;
+    // Keep ownership reachable when the backend refuses to close an active
+    // transaction. A failed close must not turn the session into an orphan.
+    await controller.close('requireNoTransaction');
+    // A concurrent replacement owns the key now; never remove its controller.
+    if (this.controllers.get(key) === controller) this.controllers.delete(key);
   }
 }
 
@@ -62,14 +98,33 @@ export interface DatabaseSwitchOptions {
  * with the latest expectedContextRevision. Failed revision / transaction /
  * replacement leaves the previous runtime handle intact.
  */
-export async function switchDatabaseSession(options: DatabaseSwitchOptions): Promise<DatabaseSwitchResult> {
+export async function switchDatabaseSession(
+  options: DatabaseSwitchOptions,
+): Promise<DatabaseSwitchResult> {
   const { controller, desired } = options;
   try {
-    const current = await controller.refresh() ?? controller.snapshot;
+    const current = (await controller.refresh()) ?? controller.snapshot;
     const txState = current?.observedContext?.transactionState;
-    if (txState === 'active' || txState === 'unknown') {
-      const ok = options.confirmTransaction ? await options.confirmTransaction(current as SessionView) : false;
+    if (txState === 'active' || txState === 'aborted' || txState === 'unknown') {
+      const ok = options.confirmTransaction
+        ? await options.confirmTransaction(current as SessionView)
+        : false;
       if (!ok) return { status: 'cancelled' };
+      // Confirmation means rollback, never an implicit commit. Wait for the
+      // authoritative receipt before requesting a context replacement.
+      const receipt = await controller.execute({
+        command: 'platform.rollbackTransaction',
+        input: { defersCommit: true },
+      });
+      for (;;) {
+        const execution = await controller.client.getExecution(receipt.executionId);
+        if (execution.state === 'succeeded') break;
+        if (execution.state === 'failed' || execution.state === 'cancelled') {
+          throw new Error(execution.errorCode ?? 'Rollback outcome unavailable');
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      await controller.refresh();
     }
     try {
       const session = await controller.setContext(desired);

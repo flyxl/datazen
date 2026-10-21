@@ -1,3 +1,10 @@
+import { QueryArtifactExport } from '../../../components/query/QueryArtifactExport';
+import type { QueryResultArtifacts } from '../../../lib/queryResultArtifacts';
+import {
+  editorOwnerForPane,
+  getQueryPanelSessionRegistry,
+  queryPanelExecutionTarget,
+} from '../../../lib/session/queryPanelSessionRoot';
 import { useCallback, useEffect, useState } from 'react';
 import { Download, Gauge, Pin } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
@@ -9,7 +16,6 @@ import { ExplainPanel } from '../../../components/ai/ExplainPanel';
 import { ResultWorkspace } from '../result-workspace';
 import { AddToDashboardDialog } from '../../dashboard/AddToDashboardDialog';
 import { DataExportDialog } from '../../../components/DataTable/DataExportDialog';
-import { queryCommands } from '../../../commands/query';
 import { isAbortedTransactionError } from '../../../lib/sqlTransactionGuard';
 import { useI18n } from '../../../hooks/useI18n';
 import { cn } from '../../../lib/cn';
@@ -22,21 +28,70 @@ import { Spinner } from '../../../components/ui/Spinner';
 
 export interface UseQueryTransactionOptions {
   dbSessionId: string;
+  paneKey?: string;
+  connectionId?: string;
+  database?: string | null;
+  schema?: string | null;
 }
 
-export function useQueryTransaction({ dbSessionId }: UseQueryTransactionOptions) {
+export function useQueryTransaction({
+  dbSessionId: _dbSessionId,
+  paneKey,
+  connectionId,
+  database,
+  schema,
+}: UseQueryTransactionOptions) {
   const [inTransaction, setInTransaction] = useState(false);
   const [txBusy, setTxBusy] = useState(false);
   const [txAbortedOpen, setTxAbortedOpen] = useState(false);
   const [txAbortedDetail, setTxAbortedDetail] = useState<string | null>(null);
 
+  const ownedController = useCallback(async () => {
+    if (!paneKey || !connectionId) return null;
+    return getQueryPanelSessionRegistry().get(
+      paneKey,
+      queryPanelExecutionTarget(connectionId, database, schema),
+      await editorOwnerForPane(paneKey),
+    );
+  }, [paneKey, connectionId, database, schema]);
+
+  const readTxStatus = useCallback(async () => {
+    const controller = await ownedController();
+    if (!controller) throw new Error('Query transaction requires a persistent connection owner');
+    const session = await controller.refresh();
+    const state = session?.observedContext?.transactionState;
+    return state === 'active' || state === 'aborted' || state === 'unknown';
+  }, [ownedController]);
+
+  const transaction = useCallback(
+    async (operation: 'begin' | 'commit' | 'rollback') => {
+      const controller = await ownedController();
+      if (!controller) throw new Error('Query transaction requires a persistent connection owner');
+      const receipt = await controller.execute({
+        command: `platform.${operation}Transaction`,
+        input: { defersCommit: true },
+      });
+      for (;;) {
+        const execution = await controller.client.getExecution(receipt.executionId);
+        if (execution.state === 'succeeded') break;
+        if (execution.state === 'failed' || execution.state === 'cancelled') {
+          throw new Error(execution.errorCode ?? 'Transaction outcome unavailable');
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      await controller.refresh();
+    },
+    [ownedController],
+  );
+
   const refreshTxStatus = useCallback(async () => {
     try {
-      setInTransaction(await queryCommands.sessionTransactionStatus(dbSessionId));
-    } catch {
-      setInTransaction(false);
+      setInTransaction(await readTxStatus());
+    } catch (error) {
+      // Preserve the last observed state: a transport error does not prove rollback.
+      setTxAbortedDetail(error instanceof Error ? error.message : String(error));
     }
-  }, [dbSessionId]);
+  }, [readTxStatus]);
 
   useEffect(() => {
     void refreshTxStatus();
@@ -45,66 +100,67 @@ export function useQueryTransaction({ dbSessionId }: UseQueryTransactionOptions)
   const handleBeginTx = useCallback(async () => {
     setTxBusy(true);
     try {
-      await queryCommands.beginSessionTransaction(dbSessionId);
+      await transaction('begin');
       await refreshTxStatus();
     } catch (e) {
-      console.warn(e);
+      setTxAbortedDetail(e instanceof Error ? e.message : String(e));
+      setTxAbortedOpen(true);
     } finally {
       setTxBusy(false);
     }
-  }, [dbSessionId, refreshTxStatus]);
+  }, [transaction, refreshTxStatus]);
 
   const handleCommitTx = useCallback(async () => {
     setTxBusy(true);
     try {
-      await queryCommands.commitSessionTransaction(dbSessionId);
+      await transaction('commit');
       await refreshTxStatus();
     } catch (e) {
-      console.warn(e);
+      setTxAbortedDetail(e instanceof Error ? e.message : String(e));
+      setTxAbortedOpen(true);
     } finally {
       setTxBusy(false);
     }
-  }, [dbSessionId, refreshTxStatus]);
+  }, [transaction, refreshTxStatus]);
 
   const handleRollbackTx = useCallback(async () => {
     setTxBusy(true);
     try {
-      await queryCommands.rollbackSessionTransaction(dbSessionId);
+      await transaction('rollback');
       await refreshTxStatus();
     } catch (e) {
-      console.warn(e);
+      setTxAbortedDetail(e instanceof Error ? e.message : String(e));
+      setTxAbortedOpen(true);
     } finally {
       setTxBusy(false);
     }
-  }, [dbSessionId, refreshTxStatus]);
+  }, [transaction, refreshTxStatus]);
 
   const maybeOfferAbortedDialog = useCallback(
     async (error: string | null | undefined) => {
       await refreshTxStatus();
-      const stillInTx = await queryCommands
-        .sessionTransactionStatus(dbSessionId)
-        .catch(() => false);
+      const stillInTx = await readTxStatus().catch(() => true);
       if (stillInTx || isAbortedTransactionError(error)) {
         setTxAbortedDetail(error ?? null);
         setTxAbortedOpen(true);
       }
     },
-    [dbSessionId, refreshTxStatus],
+    [readTxStatus, refreshTxStatus],
   );
 
   const handleAbortedRollback = useCallback(async () => {
     setTxBusy(true);
     try {
-      await queryCommands.rollbackSessionTransaction(dbSessionId);
+      await transaction('rollback');
       await refreshTxStatus();
-    } catch (e) {
-      console.warn(e);
-    } finally {
-      setTxBusy(false);
       setTxAbortedOpen(false);
       setTxAbortedDetail(null);
+    } catch (e) {
+      setTxAbortedDetail(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTxBusy(false);
     }
-  }, [dbSessionId, refreshTxStatus]);
+  }, [transaction, refreshTxStatus]);
 
   const handleAbortedSkip = useCallback(() => {
     setTxAbortedOpen(false);
@@ -262,6 +318,8 @@ export function FavoriteNameDialog({
 }
 
 export interface QueryResultsPaneProps {
+  publishedArtifacts?: QueryResultArtifacts;
+  onCellEdit?: (row: number, column: string, value: unknown) => Promise<void>;
   dbSessionId: string;
   databaseType?: string;
   sql: string;
@@ -301,6 +359,8 @@ export interface QueryResultsPaneProps {
 }
 
 export function QueryResultsPane({
+  publishedArtifacts,
+  onCellEdit,
   dbSessionId,
   databaseType,
   sql,
@@ -359,6 +419,7 @@ export function QueryResultsPane({
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col">
+        {publishedArtifacts && <QueryArtifactExport key={publishedArtifacts.executionId} artifacts={publishedArtifacts} />}
         {showExplain && !running && (
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-0 border-b border-edge bg-surface-alt px-1">
@@ -516,6 +577,7 @@ export function QueryResultsPane({
                 )}
                 <ResultWorkspace
                   result={activeResult}
+                  onCellEdit={running ? undefined : onCellEdit}
                   view={running ? 'table' : resultViewMode}
                   chartConfig={chartConfig}
                   rowDetailIndex={resultDetailRowIndex}

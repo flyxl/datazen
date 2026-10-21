@@ -56,6 +56,7 @@ interface RequestEnvelope<P = unknown> {
   ch: typeof BRIDGE_CHANNEL;
   type: string;
   reqId?: string;
+  instanceNonce?: string;
   target: 'host';
   payload?: P;
 }
@@ -102,6 +103,7 @@ export interface NotifyRequest {
 /** Resolved handshake state reported by the host in `host.ready`. */
 export interface HostContext {
   apiVersion: number;
+  instanceNonce?: string;
   locale: string;
   dark: boolean;
   tokens: Record<string, string>;
@@ -125,6 +127,23 @@ export interface WappClient {
   /** Driver Command API passthrough; result shape depends on the command. */
   readonly command: {
     invoke(request: CommandInvokeRequest): Promise<unknown>;
+  };
+
+  /** Explicitly approved, instance-owned sessions; references expire and are never persisted. */
+  readonly session: {
+    open(request: {
+      connectionId: string;
+      database: string;
+      schema?: string;
+      ttlMs?: number;
+    }): Promise<{ reference: string; expiresInMs: number }>;
+    use(request: {
+      reference: string;
+      command: 'query' | 'execute';
+      input: Record<string, unknown>;
+    }): Promise<unknown>;
+    close(reference: string): Promise<unknown>;
+    receipt(executionId: string): Promise<unknown>;
   };
 
   /** Host-side per-wapp KV storage (host requires `storage:local`). */
@@ -245,6 +264,9 @@ export function createClient(options: CreateClientOptions = {}): WappClient {
       return;
     }
     context = {
+      ...(typeof payload.instanceNonce === 'string'
+        ? { instanceNonce: payload.instanceNonce }
+        : {}),
       apiVersion: Number(payload.apiVersion),
       locale: typeof payload.locale === 'string' ? payload.locale : '',
       dark: payload.dark === true,
@@ -321,6 +343,7 @@ export function createClient(options: CreateClientOptions = {}): WappClient {
         ch: BRIDGE_CHANNEL,
         type,
         reqId,
+        ...(context?.instanceNonce ? { instanceNonce: context.instanceNonce } : {}),
         target: 'host',
         ...(payload === undefined ? {} : { payload }),
       });
@@ -388,6 +411,13 @@ export function createClient(options: CreateClientOptions = {}): WappClient {
         // Host answers `{result: <execute_driver_command data>}`.
         return request<{ result?: unknown }>('command.invoke', req).then((r) => r?.result);
       },
+    },
+
+    session: {
+      open: (req) => request('session.open', req),
+      use: (req) => request('session.use', req),
+      close: (reference) => request('session.close', { reference }),
+      receipt: (executionId) => request('session.receipt', { executionId }),
     },
 
     storage: {

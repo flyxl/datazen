@@ -241,6 +241,14 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-013)', () => {
     await erView.waitForDisplayed({ timeout: 15000 });
     const reactFlow = await erView.$('[data-testid="er-diagram-flow"]');
     await expect(reactFlow).toBeDisplayed();
+    // The GUI must load relation definitions through its target-owned metadata
+    // path, including columns; an empty canvas is not a successful ER load.
+    const owner = await $(`.react-flow__node[data-id="${PRED_OWNER}"]`);
+    const member = await $(`.react-flow__node[data-id="${PRED_MEMBER}"]`);
+    await owner.waitForExist({ timeout: 15000 });
+    await member.waitForExist({ timeout: 15000 });
+    expect(await owner.getText()).toContain('label');
+    expect(await member.getText()).toContain(PRED_COLUMN);
     await captureJourneyStep('er-canvas-visible', 0, true);
   });
 

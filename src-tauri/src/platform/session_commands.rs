@@ -47,6 +47,12 @@ pub struct ExecutionRequest {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CancelExecutionRequest {
+    pub execution_id: ExecutionId,
+    pub submission_token: datazen_platform_api::dto::idempotency::SubmissionToken,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenRequest {
     pub operation: IdempotentOperation,
     pub handle: Option<datazen_platform_api::dto::session::SessionHandle>,
@@ -96,15 +102,81 @@ macro_rules! session_command {
         ) -> Result<serde_json::Value, ApiError> {
             let adapter = adapter(&state)?;
             let call = adapter.begin_call();
-            encode(adapter.runtime()?.$name(call.context(), request).await?)
+            let result = adapter.runtime()?.$name(call.context(), request).await;
+            if let Err(error) = &result {
+                // 会话命令曾经完全静默：被拒的请求在日志里不留一行，一次「执行失败」
+                // 只能靠猜是哪个命令、哪一类原因。`code` 是分类而非细节（消息本身
+                // 已脱敏），可以安全落日志，也是报告问题时唯一的锚点。
+                tracing::warn!(
+                    command = stringify!($name),
+                    code = error.code.as_str(),
+                    "session command rejected"
+                );
+            }
+            encode(result?)
         }
     };
 }
 session_command!(open_session, OpenSessionRequest);
 session_command!(execute_in_session, ExecuteInSessionRequest);
-session_command!(execute_at_target, ExecuteAtTargetRequest);
+#[tauri::command]
+pub async fn execute_at_target(
+    state: State<'_, AppState>,
+    mut request: ExecuteAtTargetRequest,
+) -> Result<serde_json::Value, ApiError> {
+    request.validate()?;
+    let adapter = adapter(&state)?;
+    let call = adapter.begin_call();
+    let canonical = adapter
+        .resolve_execution_target(
+            call.context(),
+            request.expected_config_revision,
+            &request.call.command,
+            &request.target,
+        )
+        .await?;
+    request.target = super::into_execution_target(canonical);
+    encode(
+        adapter
+            .runtime()?
+            .execute_at_target(call.context(), request)
+            .await?,
+    )
+}
 session_command!(set_session_context, SetSessionContextRequest);
-session_command!(close_session, CloseSessionRequest);
+/// Close a session and drop the AI grants that borrowed it.
+///
+/// Not the generic macro: closing an editor session is exactly the moment a
+/// shared AI grant must stop being usable. Reclaim runs even when the close is
+/// rejected, because a failed close leaves the handle just as unusable, and a
+/// grant must never outlive the session it points at.
+#[tauri::command]
+pub async fn close_session(
+    state: State<'_, AppState>,
+    request: CloseSessionRequest,
+) -> Result<serde_json::Value, ApiError> {
+    let adapter = adapter(&state)?;
+    let call = adapter.begin_call();
+    let db_session_id = request.handle.db_session_id.as_str().to_owned();
+    let result = adapter
+        .runtime()?
+        .close_session(call.context(), request)
+        .await;
+    if let Err(error) = &result {
+        tracing::warn!(
+            code = error.code.as_str(),
+            "session close rejected; reclaiming AI grants anyway"
+        );
+    }
+    let revoked = state
+        .ai_grants
+        .revoke_for_session_handle(&db_session_id)
+        .await;
+    if revoked > 0 {
+        tracing::info!(revoked, "AI grants revoked with their editor session");
+    }
+    encode(result?)
+}
 session_command!(attach_session, AttachmentRequest);
 session_command!(detach_session, AttachmentRequest);
 #[tauri::command]
@@ -138,10 +210,15 @@ pub async fn get_execution(
 #[tauri::command]
 pub async fn cancel_execution(
     state: State<'_, AppState>,
-    request: ExecutionRequest,
+    request: CancelExecutionRequest,
 ) -> Result<serde_json::Value, ApiError> {
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
+    adapter.runtime()?.validate_cancel_submission(
+        call.context(),
+        &request.submission_token.idempotency_key,
+        &request.execution_id,
+    )?;
     encode(
         adapter
             .runtime()?
@@ -213,19 +290,28 @@ pub async fn platform_update_profile(
 ) -> Result<serde_json::Value, ApiError> {
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
-    encode(
-        adapter
-            .profiles()?
-            .compare_and_set(
-                call.context(),
-                request.connection_id,
-                request.expected_config_revision,
-                request.patch,
-            )
-            .await
-            .map_err(port_error)?
-            .to_view(),
-    )
+    let connection_id = request.connection_id.clone();
+    let view = adapter
+        .profiles()?
+        .compare_and_set(
+            call.context(),
+            request.connection_id,
+            request.expected_config_revision,
+            request.patch,
+        )
+        .await
+        .map_err(port_error)?
+        .to_view();
+    // A profile edit bumps the config revision, which invalidates every session
+    // on that connection; a grant pinned to the old revision must not survive it.
+    let revoked = state
+        .ai_grants
+        .revoke_for_connection(connection_id.as_str())
+        .await;
+    if revoked > 0 {
+        tracing::info!(revoked, "AI grants revoked by a profile revision change");
+    }
+    encode(view)
 }
 #[tauri::command]
 pub async fn platform_disable_profile(
@@ -234,14 +320,24 @@ pub async fn platform_disable_profile(
 ) -> Result<serde_json::Value, ApiError> {
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
-    encode(
-        adapter
-            .profiles()?
-            .disable(call.context(), request.connection_id)
-            .await
-            .map_err(port_error)?
-            .to_view(),
-    )
+    let connection_id = request.connection_id.clone();
+    let view = adapter
+        .profiles()?
+        .disable(call.context(), request.connection_id)
+        .await
+        .map_err(port_error)?
+        .to_view();
+    let revoked = state
+        .ai_grants
+        .revoke_for_connection(connection_id.as_str())
+        .await;
+    if revoked > 0 {
+        tracing::info!(
+            revoked,
+            "AI grants revoked because the profile was disabled"
+        );
+    }
+    encode(view)
 }
 
 #[derive(Deserialize)]
@@ -367,4 +463,20 @@ pub async fn read_artifact_chunk(
     Ok(
         serde_json::json!({"artifactId":chunk.artifact_id,"chunkIndex":chunk.chunk_index,"totalChunks":if chunk.complete {Some(chunk.published_chunk_count)} else {None},"offset":"0","bytes":bytes,"publishedChunkCount":chunk.published_chunk_count,"publishedByteLength":chunk.published_byte_length,"resultCompleteness":if chunk.complete {"complete"}else{"pending"}}),
     )
+}
+
+/// 只读的池 / 预算观测快照。
+///
+/// 存在的理由不是顺便看看：CM-33 的 F 断言要在真实 UI 上证明「表格并发刷新不为每个
+/// tab 建连接、并发资源不越预算」，而 pg_stat_activity 无法把宿主的旧会话与 runtime
+/// 的会话分开。所以计数必须由 runtime 自己回答，走它自己的台账。
+///
+/// 载荷里没有凭据、没有连接串、没有原始库名：池键只是摘要（见 resource::observability）。
+/// 未实现该端口后端返回 null，不是全零。
+#[tauri::command]
+pub async fn runtime_observability_snapshot(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, ApiError> {
+    let adapter = adapter(&state)?;
+    encode(adapter.runtime()?.observability_snapshot().await)
 }

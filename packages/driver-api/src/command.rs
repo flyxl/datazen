@@ -274,6 +274,24 @@ pub fn query_command_definition() -> DriverCommandDefinition {
     }
 }
 
+/// Build the session-bound SQL `explain` command definition.
+/// Drivers opt in only when `explain` uses the supplied retained session.
+pub fn explain_command_definition() -> DriverCommandDefinition {
+    DriverCommandDefinition {
+        id: "explain".into(),
+        name: "Explain".into(),
+        description: Some("Plan one statement on this session without ANALYZE".into()),
+        input_schema: serde_json::json!({
+            "type": "object", "required": ["sql"],
+            "properties": {"sql": {"type": "string"}, "params": {"type": "object"}},
+            "additionalProperties": false
+        }),
+        output_schema: Some(serde_json::json!({"type":"object", "required":["planText"]})),
+        permissions: vec!["driver.query".into()],
+        metadata: DriverCommandMetadata::new(CommandCategory::Query, CommandAccessLevel::Read),
+    }
+}
+
 /// Build the standard SQL `execute` command definition.
 pub fn execute_command_definition() -> DriverCommandDefinition {
     let mut properties = sql_target_input_schema_properties();
@@ -411,6 +429,17 @@ pub fn check_command_access(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explain_command_declares_read_access_and_requires_sql() {
+        let definition = explain_command_definition();
+        assert_eq!(required_access_level(&definition), CommandAccessLevel::Read);
+        assert!(
+            validate_command_input(&definition, &serde_json::json!({"sql":"SELECT 1"})).is_ok()
+        );
+        assert!(validate_command_input(&definition, &serde_json::json!({})).is_err());
+        assert_eq!(definition.input_schema["additionalProperties"], false);
+    }
 
     #[test]
     fn standard_query_definition_is_schema_driven() {

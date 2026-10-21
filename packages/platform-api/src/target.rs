@@ -13,13 +13,12 @@
 //! ResourceManager、权限检查、缓存与执行必须使用同一份 `CanonicalTarget`。
 //! 用不同类型承载两者，就是让「用展示名做身份比较」在编译期就不可能发生。
 //!
-//! ## P2 待补
-//!
-//! `TargetNamespaceShape` 与 `TargetRequirements` 的具体字段、canonical ID 折叠规则、别名表、
-//! 大小写策略与 `pathSegments` 顺序语义属 P2（见 shared-boundaries §「本文不覆盖什么」）。
-//! 本模块只落地 §4.3 明确枚举的字段，驱动注册数据待 P2 补齐。
+//! Driver metadata is represented here without depending on a concrete driver crate. The host
+//! adapts the selected connection's registered shape and command requirements into these types;
+//! the application resolver validates and canonicalizes the submitted target.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::id::ConnectionId;
 
@@ -55,34 +54,81 @@ impl TargetNamespaceLayer {
 
 /// 本次请求所使用的命名空间形状：声明**哪些层必填**、哪些层存在但可省。
 ///
-/// **本类型不是 `ResourceDescriptor` 登记的那个形状。** 那个是
-/// `datazen_driver_api::namespace::NamespaceShape`，即
-/// `ResourceDescriptor::namespace_shape` 字段的类型
-/// （`packages/driver-api/src/resource.rs`）。两套词汇表达的概念相邻，但**刻意不合并**：
-///
-/// | | 本类型（platform-api） | `driver-api::namespace::NamespaceShape` |
-/// |---|---|---|
-/// | 层级枚举 | `TargetNamespaceLayer`：database / catalog / schema / **path** | `NamespaceLevelKind`：database / catalog / schema（**无 path**） |
-/// | 形状表示 | 两个集合 `required` / `optional` | `levels: Vec<NamespaceLevel>`，每层自带 `exists` + `required` |
-/// | 额外信息 | 无 | `path_segments` / `case_rules` / `canonical_id_rules` / `aliases` |
-/// | 行为 | 仅 `declares()` / `is_required()` 两个谓词 | `canonicalize()` / `resolve_alias()`，且 `canonicalize()` 返回 `CanonicalTarget` |
-///
-/// 合并要么丢字段（`case_rules` / `aliases` 在本类型里没有落点），要么改变线上 JSON，
-/// 属于行为变更而非类型去重。故此处只声称 platform/runtime 之间的一份定义。
+/// The driver API has its own `NamespaceShape` because it also owns driver validation behavior.
+/// The host maps every declared level, path segment, case rule, canonical-ID rule, and alias into
+/// this transport type before the application resolver runs.
 ///
 /// `packages/runtime` 不持有副本：它通过 `pub use datazen_platform_api::target::TargetNamespaceShape`
 /// 把这一份直接暴露出去，因此平台侧与 runtime 侧永远编译成同一个类型。
 ///
-/// `runtime` 侧的副本原先在本文件基础上多了一个 `#[serde(default)]`。删掉它会**收窄**线上
-/// 的报文接受域：`{"required":["database"]}` 今天在 runtime 能反序列化，删掉就会开始拒绝
-/// 那样的报文 —— 一个没有对应收益的破坏性变更。因此这里刻意保持宽松（ruling #2）。
-/// `required` 不加 `default`：省略必填层必须被判 `TargetRequired`，放过它才是真缺陷。
+/// The runtime re-exports this type directly. `required` stays mandatory in serialized requests;
+/// optional metadata fields default so older payloads remain readable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TargetNamespaceShape {
     pub required: Vec<TargetNamespaceLayer>,
     #[serde(default)]
     pub optional: Vec<TargetNamespaceLayer>,
+    #[serde(default)]
+    pub path_segments: Vec<TargetNamespacePathSegment>,
+    #[serde(default)]
+    pub case_rules: TargetCaseRules,
+    #[serde(default)]
+    pub canonical_id_rules: TargetCanonicalIdRules,
+    #[serde(default)]
+    pub aliases: BTreeMap<String, String>,
+}
+
+/// Driver 声明的规范 namespace identity segment 位置和语义。`position` 从零开始。
+/// 这是 identity 组成元数据，不会把数据库层级自动转换成额外的请求 `path` 层。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetNamespacePathSegment {
+    pub position: usize,
+    pub kind: TargetNamespaceLayer,
+    pub meaning: String,
+}
+
+/// 标识符大小写折叠规则。`Unknown` 保留调用方写法，不自行猜测数据库规则。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TargetCaseFolding {
+    Lowercases,
+    Preserved,
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetCaseRules {
+    #[serde(default)]
+    pub unquoted: TargetCaseFolding,
+    #[serde(default)]
+    pub quoted: TargetCaseFolding,
+}
+
+/// Driver 生成规范身份时声明的比较规则。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetCanonicalIdRules {
+    pub case_sensitive: bool,
+    pub delimiter: String,
+}
+
+impl Default for TargetCanonicalIdRules {
+    fn default() -> Self {
+        Self {
+            case_sensitive: false,
+            delimiter: ".".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum TargetCanonicalizationError {
+    #[error("namespace alias chain is cyclic")]
+    AliasConflict,
 }
 
 impl TargetNamespaceShape {
@@ -93,6 +139,10 @@ impl TargetNamespaceShape {
         Self {
             required: required.into_iter().collect(),
             optional: optional.into_iter().collect(),
+            path_segments: Vec::new(),
+            case_rules: TargetCaseRules::default(),
+            canonical_id_rules: TargetCanonicalIdRules::default(),
+            aliases: BTreeMap::new(),
         }
     }
 
@@ -113,6 +163,42 @@ impl TargetNamespaceShape {
 
     pub fn is_required(&self, layer: TargetNamespaceLayer) -> bool {
         self.required.contains(&layer)
+    }
+
+    /// Resolve an identifier using the driver's aliases and case rules. Quoted identifiers keep
+    /// the driver's quoted-case semantics, including doubled quotes.
+    pub fn canonicalize_identifier(
+        &self,
+        raw: &str,
+    ) -> Result<String, TargetCanonicalizationError> {
+        let quoted = raw
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'));
+        let rule = if quoted.is_some() {
+            self.case_rules.quoted
+        } else {
+            self.case_rules.unquoted
+        };
+        let fold = |value: &str| {
+            let bare = value
+                .strip_prefix('"')
+                .and_then(|text| text.strip_suffix('"'))
+                .unwrap_or(value)
+                .replace("\"\"", "\"");
+            match rule {
+                TargetCaseFolding::Lowercases => bare.to_lowercase(),
+                TargetCaseFolding::Preserved | TargetCaseFolding::Unknown => bare,
+            }
+        };
+
+        let mut current = fold(raw);
+        for _ in 0..=self.aliases.len() {
+            match self.aliases.get(&current) {
+                Some(next) if *next != current => current = next.clone(),
+                _ => return Ok(fold(&current)),
+            }
+        }
+        Err(TargetCanonicalizationError::AliasConflict)
     }
 }
 
@@ -140,8 +226,8 @@ impl LayerRequirement {
 ///
 /// 与 [`TargetNamespaceShape`] **必须同时校验**，不能用一个全驱动 required 列表代替操作需求（§4.3）。
 ///
-/// `Default` 是「全部层级可省、不允许对象」的占位值：它对命名空间形状不作任何额外要求，
-/// 因此不会掩盖错误。真实取值由 Command definition 在注册时给出（P2）。
+/// `Default` is a permissive namespace-only rule. Registered drivers provide concrete values per
+/// command; an absent command requirement is treated as unsupported by the application resolver.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TargetRequirements {
@@ -151,6 +237,9 @@ pub struct TargetRequirements {
     pub path: LayerRequirement,
     /// 本操作是否接受对象身份。对象操作必须传完整身份，不得把未指定 schema 猜成 `public`/`dbo`。
     pub allows_object: bool,
+    /// 本操作是否必须提供完整对象身份。
+    #[serde(default)]
+    pub requires_object: bool,
     /// 是否允许使用该 session **已确认**的默认值。`executeInSession` 只有显式允许时才能用。
     pub allows_session_defaults: bool,
 }
@@ -534,7 +623,14 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_value(&shape).expect("serialize"),
-            json!({"required": ["database"], "optional": ["schema"]})
+            json!({
+                "required": ["database"],
+                "optional": ["schema"],
+                "pathSegments": [],
+                "caseRules": {"unquoted": "unknown", "quoted": "unknown"},
+                "canonicalIdRules": {"caseSensitive": false, "delimiter": "."},
+                "aliases": {}
+            })
         );
 
         // 往返：把上面那份字面量**再读回来**并要求完全相等。

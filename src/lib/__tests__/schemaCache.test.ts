@@ -4,21 +4,34 @@ import type { TableSchema } from '../../types';
 const mockGetTableSchema = vi.fn();
 const mockExecuteQuery = vi.fn();
 
-vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
-  schemaClient: {
-    readSchema: async (session: string, ref: import('@datazen/driver-sdk').RelationRef) => ({
-      value: {
-        ref,
-        definition: await mockGetTableSchema(session, ref.name, ref.database, ref.schema),
-      },
-    }),
-  },
-}));
-
-vi.mock('../../commands/query', () => ({
-  queryCommands: {
-    executeQuery: (...args: unknown[]) => mockExecuteQuery(...args),
+vi.mock('../session/targetCommand', () => ({
+  metadataScopeKey: async (dbSessionId: string) => `scope:${dbSessionId}`,
+  metadataTarget: (
+    dbSessionId: string,
+    database: string | null,
+    schema: string | null,
+    table?: string,
+  ) => ({
+    connectionId: dbSessionId,
+    namespace: { database, schema, catalog: null, path: [] },
+    object: table ? { kind: 'relation', name: table, signature: null } : null,
+  }),
+  readTargetSchema: (...args: unknown[]) => mockGetTableSchema(...args),
+  executeTargetCommand: async (
+    target: import('@datazen/backend-client').ExecutionTarget,
+    call: import('@datazen/backend-client').CommandCall,
+    responseKind?: string,
+  ) => {
+    if (responseKind !== 'rows') throw new Error('Unexpected schema cache command');
+    const input = call.input as { sql: string };
+    const result = (await mockExecuteQuery(
+      target.connectionId,
+      input.sql,
+      undefined,
+      target.namespace.database,
+      target.namespace.schema,
+    )) as { results?: Array<{ rows?: unknown[][] }> };
+    return result.results?.flatMap((item) => item.rows ?? []) ?? [];
   },
 }));
 
@@ -55,7 +68,7 @@ describe('schemaCache', () => {
     expect(r1).toBe(schema);
     expect(r2).toBe(schema);
     expect(mockGetTableSchema).toHaveBeenCalledTimes(1);
-    expect(mockGetTableSchema).toHaveBeenCalledWith('conn-1', 'users', 'app', null);
+    expect(mockGetTableSchema).toHaveBeenCalledWith('conn-1', 'users', 'app', null, undefined);
   });
 
   it('refetches after TTL expires', async () => {
@@ -135,8 +148,22 @@ describe('schemaCache', () => {
     expect(fromApp.columns[0]?.name).toBe('id');
     expect(fromAnalytics.columns[0]?.name).toBe('uid');
     expect(mockGetTableSchema).toHaveBeenCalledTimes(2);
-    expect(mockGetTableSchema).toHaveBeenNthCalledWith(1, 'conn-1', 'users', 'app', null);
-    expect(mockGetTableSchema).toHaveBeenNthCalledWith(2, 'conn-1', 'users', 'analytics', null);
+    expect(mockGetTableSchema).toHaveBeenNthCalledWith(
+      1,
+      'conn-1',
+      'users',
+      'app',
+      null,
+      undefined,
+    );
+    expect(mockGetTableSchema).toHaveBeenNthCalledWith(
+      2,
+      'conn-1',
+      'users',
+      'analytics',
+      null,
+      undefined,
+    );
 
     mockGetTableSchema.mockClear();
     await getCachedTableSchema('conn-1', 'users', 'app');
@@ -301,6 +328,7 @@ describe('schemaCache inflight / error / immutable', () => {
         }),
       );
     const old = getCachedTableSchema('conn-1', 'users', 'app', 'public');
+    await vi.waitFor(() => expect(mockGetTableSchema).toHaveBeenCalledOnce());
     invalidateSchemaCache('conn-1', 'users');
     const fresh = getCachedTableSchema('conn-1', 'users', 'app', 'public');
     resolveOld({ ...fullSchema, columns: [{ name: 'old', dataType: 'int', nullable: false }] });
@@ -323,6 +351,7 @@ describe('schemaCache inflight / error / immutable', () => {
       .mockResolvedValueOnce(fullSchema);
     const old = getCachedTableSchema('conn-1', 'users', 'app');
     const failed = expect(old).rejects.toThrow('stale failure');
+    await vi.waitFor(() => expect(mockGetTableSchema).toHaveBeenCalledOnce());
     invalidateSchemaCache('conn-1');
     rejectOld(new Error('stale failure'));
     await failed;

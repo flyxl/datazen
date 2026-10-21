@@ -704,7 +704,7 @@ impl ProtocolCompatibility {
 
 /// A protocol gate decision that is not `Current`.
 ///
-/// The host gate itself (`src-tauri/src/db/registry.rs`) lives outside
+/// The host gate itself (`packages/runtime/src/driver_registry/registry.rs`) lives outside
 /// `packages/driver-api`; this error only states that the driver is outside the
 /// window this crate can honour. It exists so that no code path can quietly
 /// lower `MIN_PROTOCOL_VERSION` or drop capabilities to make an

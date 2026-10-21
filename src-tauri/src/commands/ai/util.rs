@@ -1,41 +1,15 @@
 //! Shared helpers for AI command handlers.
 
-use crate::ai::safety::redact_for_gate;
 use crate::ai::*;
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
 use datazen_ai_api::AiProviderConfig;
+use datazen_platform_api::dto::session::SessionView;
+use datazen_runtime::application::{LiveConnectionLease, LivePurpose};
 use std::sync::Arc;
 use tauri::{Emitter, WebviewWindow};
 
-pub(crate) fn language_hint(lang: &str) -> String {
-    let lang_name = match lang {
-        "zh-CN" => "Chinese (Simplified)",
-        "zh-TW" => "Chinese (Traditional)",
-        "en" => "English",
-        "ja" => "Japanese",
-        "ko" => "Korean",
-        "es" => "Spanish",
-        "fr" => "French",
-        "de" => "German",
-        "ru" => "Russian",
-        "pt-BR" => "Portuguese (Brazil)",
-        other if other.starts_with("zh") => "Chinese (Simplified)",
-        other if other.starts_with("en") => "English",
-        _ => lang,
-    };
-    format!(
-        "\n\nIMPORTANT LANGUAGE REQUIREMENT:\nThe application's active display language is set to {lang_name}.\nRegardless of the language used in system instructions or user input, all your natural language responses, explanations, summaries, descriptions, and free-text fields (including string values in JSON responses) MUST be written in {lang_name}. Technical identifiers, SQL syntax, and JSON keys must remain unchanged."
-    )
-}
-
-pub(crate) fn inject_language_hint(messages: &mut [ChatMessage], lang: &str) {
-    if let Some(sys) = messages.iter_mut().find(|m| m.role == MessageRole::System) {
-        if !sys.content.contains("IMPORTANT LANGUAGE REQUIREMENT") {
-            sys.content.push_str(&language_hint(lang));
-        }
-    }
-}
+pub(crate) use datazen_feature_core::ai::response::{inject_language_hint, language_hint};
 
 /// Delivers streaming chunks to the UI (or test collector).
 pub(crate) type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send + Sync>;
@@ -52,18 +26,10 @@ pub(crate) fn window_stream_callback(window: &WebviewWindow) -> StreamCallback {
 /// Falls back to a relaxed gate (credentials only) when no profile is found,
 /// matching the previous `ai_strict_egress = false` default behavior.
 pub(crate) async fn resolve_safety_gate(state: &AppState) -> AiSafetyGateConfig {
-    let settings = state.store.get_ai_settings_config().await;
-    settings
-        .profiles
-        .iter()
-        .find(|p| p.id == settings.active_profile_id)
-        .or_else(|| settings.profiles.iter().find(|p| p.is_default))
-        .or_else(|| settings.profiles.first())
-        .map(|p| p.safety_gate.clone())
-        .unwrap_or_else(|| AiSafetyGateConfig {
-            data_egress_level: AiDataEgressLevel::Unrestricted,
-            ..AiSafetyGateConfig::default()
-        })
+    crate::ai::safety::effective_safety_gate(
+        &state.store.get_ai_settings_config().await,
+        &state.store.execution_settings().await,
+    )
 }
 
 pub(crate) async fn resolve_ai(
@@ -98,204 +64,69 @@ pub(crate) async fn resolve_ai(
 }
 
 pub(crate) async fn build_connections_context(state: &AppState, lang: &str) -> String {
-    let conns = state.store.get_connections().await;
-    if conns.is_empty() {
-        return String::new();
-    }
-    let mut lines = Vec::new();
-    let header = if lang.starts_with("zh") {
-        "用户有以下可用的数据库连接："
-    } else {
-        "The user has the following database connections available:"
-    };
-    lines.push(header.to_string());
-    for c in &conns {
-        lines.push(format!(
-            "- \"{}\" ({:?}) — id: {}",
-            c.name, c.database_type, c.id
-        ));
-    }
-    lines.join("\n")
+    datazen_feature_core::ai::response::build_connections_context(state.store.as_ref(), lang).await
 }
 
-#[allow(dead_code)]
-pub(crate) fn truncate_str(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
+/// Resolve an AI command's runtime session and borrow its already-open driver
+/// connection. The IPC contract remains a scalar `dbSessionId`; the Runtime
+/// enforces ownership, epoch validation, and physical-resource lifetime.
+pub(crate) async fn borrow_runtime_session(
+    state: &AppState,
+    db_session_id: &str,
+    command: &str,
+) -> Result<(SessionView, LiveConnectionLease), CommandError> {
+    let adapter = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = adapter.begin_call();
+    adapter
+        .runtime()
+        .map_err(crate::platform::into_command_error)?
+        .borrow_live_connection_by_id(call.context(), db_session_id, LivePurpose::Inspection)
+        .await
+        .map_err(crate::platform::into_command_error)
+        .map_err(|error| match error {
+            CommandError::NotFound(message) => {
+                CommandError::NotFound(format!("{command}: {message}"))
+            }
+            other => other,
+        })
 }
 
+/// Resolve only the runtime session view when an AI operation needs owner or
+/// namespace metadata but does not execute a database command.
+pub(crate) async fn runtime_session(
+    state: &AppState,
+    db_session_id: &str,
+    command: &str,
+) -> Result<SessionView, CommandError> {
+    let adapter = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = adapter.begin_call();
+    adapter
+        .runtime()
+        .map_err(crate::platform::into_command_error)?
+        .get_session_by_id(call.context(), db_session_id)
+        .await
+        .map_err(crate::platform::into_command_error)
+        .map_err(|error| match error {
+            CommandError::NotFound(message) => {
+                CommandError::NotFound(format!("{command}: {message}"))
+            }
+            other => other,
+        })
+}
+
+pub(crate) use datazen_feature_core::ai::response::{
+    extract_json_boundary, repair_json, truncate_str,
+};
 pub(crate) fn parse_ai_json<T: serde::de::DeserializeOwned>(
     raw: &str,
     finish_reason: Option<&str>,
     cmd: &str,
 ) -> Result<T, CommandError> {
-    // Step 1: Strip all markdown fences
-    let content = strip_fences_all(raw);
-    if content.trim().is_empty() {
-        tracing::error!(cmd, "LLM returned empty response");
-        return Err(CommandError::Internal("LLM returned empty response".into()));
-    }
-
-    // Step 2: Try direct parse
-    if let Ok(val) = serde_json::from_str::<T>(&content) {
-        return Ok(val);
-    }
-
-    // Step 3: Try balanced JSON extraction
-    if let Some(extracted) = find_first_balanced_json(&content) {
-        if let Ok(val) = serde_json::from_str::<T>(extracted) {
-            tracing::debug!(cmd, "Parsed JSON via balanced extraction");
-            return Ok(val);
-        }
-        // Step 3b: Try repairing common JSON issues (trailing commas, etc.)
-        if let Some(repaired) = repair_json(extracted) {
-            if let Ok(val) = serde_json::from_str::<T>(&repaired) {
-                tracing::debug!(cmd, "Parsed JSON after repair");
-                return Ok(val);
-            }
-        }
-    }
-
-    // Step 4: Try legacy boundary extraction (backward compat)
-    if let Some(extracted) = extract_json_boundary(&content) {
-        if let Ok(val) = serde_json::from_str::<T>(extracted) {
-            tracing::debug!(cmd, "Parsed JSON via legacy boundary extraction");
-            return Ok(val);
-        }
-    }
-
-    // Step 5: All parse attempts failed — diagnostic error
-    let Err(err) = serde_json::from_str::<serde_json::Value>(&content) else {
-        return Err(CommandError::Internal(
-            "AI response JSON structure does not match the expected schema.".into(),
-        ));
-    };
-    tracing::error!(
-        cmd,
-        content_len = content.len(),
-        content_redacted = redact_for_gate(&content, &AiSafetyGateConfig::default()) != content,
-        ?finish_reason,
-        "JSON parse failed: {err}"
-    );
-    let is_truncated = matches!(finish_reason, Some("length") | Some("max_tokens"));
-    if is_truncated {
-        Err(CommandError::Internal(
-            "AI response was truncated due to max_tokens limit. \
-             Please increase the \"Max Tokens\" setting in AI configuration."
-                .into(),
-        ))
-    } else {
-        Err(CommandError::Internal(format!(
-            "Failed to parse AI response. The model may have returned an invalid format. \
-             Try again or increase Max Tokens in settings. (detail: {err})"
-        )))
-    }
-}
-
-/// Attempt to repair common JSON formatting issues from LLM output.
-///
-/// Currently handles: trailing commas before `}` or `]`.
-fn repair_json(s: &str) -> Option<String> {
-    let mut result = s.to_string();
-    let mut changed = false;
-
-    // Remove trailing commas before closing braces/brackets
-    // Use a simple byte-scan approach
-    let bytes = result.as_bytes();
-    let mut fixed = Vec::with_capacity(bytes.len());
-    let mut in_string = false;
-    let mut escape = false;
-
-    for i in 0..bytes.len() {
-        let ch = bytes[i];
-        if escape {
-            escape = false;
-            fixed.push(ch);
-            continue;
-        }
-        if ch == b'\\' && in_string {
-            escape = true;
-            fixed.push(ch);
-            continue;
-        }
-        if ch == b'"' {
-            in_string = !in_string;
-            fixed.push(ch);
-            continue;
-        }
-        if in_string {
-            fixed.push(ch);
-            continue;
-        }
-        // Check for trailing comma: comma followed by optional whitespace and then `}` or `]`
-        if ch == b',' {
-            let rest = &s[i + 1..];
-            let trimmed = rest.trim_start();
-            if trimmed.starts_with('}') || trimmed.starts_with(']') {
-                changed = true;
-                // Skip the comma
-                continue;
-            }
-        }
-        fixed.push(ch);
-    }
-
-    if changed {
-        result = String::from_utf8(fixed).ok()?;
-        Some(result)
-    } else {
-        None
-    }
-}
-
-/// Extract the first complete JSON object `{...}` or array `[...]` from text
-/// that may contain trailing non-JSON content (e.g. model reasoning).
-pub(crate) fn extract_json_boundary(s: &str) -> Option<&str> {
-    let trimmed = s.trim();
-    let (open, close) = if trimmed.starts_with('{') {
-        ('{', '}')
-    } else if trimmed.starts_with('[') {
-        ('[', ']')
-    } else {
-        return None;
-    };
-
-    let mut depth = 0i32;
-    let mut in_string = false;
-    let mut escape_next = false;
-
-    for (i, ch) in trimmed.char_indices() {
-        if escape_next {
-            escape_next = false;
-            continue;
-        }
-        if ch == '\\' && in_string {
-            escape_next = true;
-            continue;
-        }
-        if ch == '"' {
-            in_string = !in_string;
-            continue;
-        }
-        if in_string {
-            continue;
-        }
-        if ch == open {
-            depth += 1;
-        } else if ch == close {
-            depth -= 1;
-            if depth == 0 {
-                return Some(&trimmed[..=i]);
-            }
-        }
-    }
-    None
+    datazen_feature_core::ai::response::parse_ai_json(raw, finish_reason, cmd).map_err(Into::into)
 }
 
 pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
@@ -331,128 +162,9 @@ pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
     }
 }
 
-pub(crate) fn strip_markdown_fences(s: &str) -> String {
-    let trimmed = s.trim();
-    if let Some(rest) = trimmed.strip_prefix("```") {
-        let body = rest
-            .strip_prefix("json")
-            .or_else(|| rest.strip_prefix("JSON"))
-            .unwrap_or(rest);
-        if let Some(end) = body.rfind("```") {
-            return body[..end].trim().to_string();
-        }
-    }
-    trimmed.to_string()
-}
-
-/// Strip ALL markdown fence blocks from text, returning only the inner content.
-///
-/// Handles multiple fenced blocks and mixed content (text between fences).
-pub(crate) fn strip_fences_all(s: &str) -> String {
-    let mut result = String::new();
-    let mut remaining = s.trim();
-
-    while !remaining.is_empty() {
-        if let Some(fence_start) = remaining.find("```") {
-            // Append any text before the fence
-            result.push_str(&remaining[..fence_start]);
-            let after_fence = &remaining[fence_start + 3..];
-            // Skip language tag line
-            if let Some(newline) = after_fence.find('\n') {
-                let after_lang = &after_fence[newline + 1..];
-                // Find closing fence
-                if let Some(close) = after_lang.find("```") {
-                    result.push_str(after_lang[..close].trim());
-                    remaining = after_fence[newline + 1 + close + 3..].trim_start();
-                } else {
-                    // No closing fence — take the rest as content
-                    result.push_str(after_lang.trim());
-                    break;
-                }
-            } else {
-                // Single line with ``` — treat as plain text
-                result.push_str("```");
-                break;
-            }
-        } else {
-            result.push_str(remaining);
-            break;
-        }
-    }
-
-    result.trim().to_string()
-}
-
-/// Find the first balanced JSON object `{...}` or array `[...]` in arbitrary text.
-///
-/// This scans for the first `{` or `[` character, then walks the text tracking
-/// brace/bracket depth while respecting string boundaries, to locate the
-/// complete JSON structure.  Returns the extracted JSON slice, or `None` if
-/// no balanced JSON is found.
-pub(crate) fn find_first_balanced_json(s: &str) -> Option<&str> {
-    let bytes = s.as_bytes();
-    let len = bytes.len();
-
-    for start in 0..len {
-        let open = match bytes[start] {
-            b'{' => b'}',
-            b'[' => b']',
-            _ => continue,
-        };
-        let mut depth = 1i32;
-        let mut in_string = false;
-        let mut escape = false;
-
-        for i in (start + 1)..len {
-            let ch = bytes[i];
-            if escape {
-                escape = false;
-                continue;
-            }
-            if ch == b'\\' && in_string {
-                escape = true;
-                continue;
-            }
-            if ch == b'"' {
-                in_string = !in_string;
-                continue;
-            }
-            if in_string {
-                continue;
-            }
-            match ch {
-                b if b == bytes[start] => depth += 1,
-                b if b == open => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some(&s[start..=i]);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    None
-}
-
-/// Emit a task progress event to the frontend.
-///
-/// Used by non-streaming commands to report progress during long-running operations.
-pub(crate) fn emit_task_progress<R: tauri::Runtime>(
-    emitter: &impl Emitter<R>,
-    request_id: &str,
-    phase: &str,
-    message: &str,
-) {
-    let _ = emitter.emit(
-        "ai:task-progress",
-        serde_json::json!({
-            "requestId": request_id,
-            "phase": phase,
-            "message": message,
-        }),
-    );
-}
+pub(crate) use datazen_feature_core::ai::response::{
+    find_first_balanced_json, strip_fences_all, strip_markdown_fences,
+};
 
 #[cfg(test)]
 mod tests {

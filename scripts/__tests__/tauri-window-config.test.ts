@@ -7,11 +7,16 @@ interface WindowConfig {
   [key: string]: unknown;
 }
 
-function readWindows(filename: string): WindowConfig[] {
-  const config = JSON.parse(
+function readAppConfig(filename: string): {
+  app: { windows: WindowConfig[]; security: { csp: Record<string, string> } };
+} {
+  return JSON.parse(
     readFileSync(new URL(`../../src-tauri/${filename}`, import.meta.url), 'utf8'),
-  ) as { app: { windows: WindowConfig[] } };
-  return config.app.windows;
+  ) as { app: { windows: WindowConfig[]; security: { csp: Record<string, string> } } };
+}
+
+function readWindows(filename: string): WindowConfig[] {
+  return readAppConfig(filename).app.windows;
 }
 
 describe('Tauri platform window replacement', () => {
@@ -25,6 +30,15 @@ describe('Tauri platform window replacement', () => {
   it('has no statically defined windows (created programmatically)', () => {
     const baseWindows = readWindows('tauri.conf.json');
     expect(baseWindows).toHaveLength(0);
+  });
+
+  it('limits renderer connections to local Tauri IPC and asset origins', () => {
+    const connectSrc = readAppConfig('tauri.conf.json').app.security.csp['connect-src'];
+    expect(connectSrc).toContain('ipc:');
+    expect(connectSrc).toContain('http://ipc.localhost');
+    expect(connectSrc).toContain('asset://localhost');
+    expect(connectSrc.split(/\s+/)).not.toContain('https:');
+    expect(connectSrc.split(/\s+/)).not.toContain('http:');
   });
 
   it.each([['macos'], ['windows']] as const)(

@@ -52,6 +52,7 @@ export function reduceQueryExecutionState(
       return {
         ...exec,
         running: true,
+        publishedArtifacts: undefined,
         error: null,
         cancelState: 'idle',
         cancelError: null,

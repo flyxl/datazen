@@ -10,9 +10,9 @@
 //! 5. 宿主重建 **R2** 走恢复路径 —— 台账上 R2 不得出现任何 `registered` 句柄事件，
 //!    恢复出来的 `dbSessionId` 必须是**新的**。
 //!
-//! 整段编排是**行为驱动**的：没有 sleep、没有 `ConnectionManager`、没有真实线程，
-//! 顺序完全由 journal 的 `seq` 表达。将来把 `ConnectionManager` 删掉，这些断言
-//! 一条都不需要改 —— 它们看的是台账，不是实现。
+//! 整段编排是**行为驱动**的：没有 sleep、没有 Host 连接管理器、没有真实线程，
+//! 顺序完全由 journal 的 `seq` 表达。断言看的是 Runtime 台账，因此不依赖具体 Host
+//! adapter 的连接管理实现。
 //!
 //! 反例（宿主把旧句柄搬到 R2 上复用）由 [`FakeHarness::assert_no_handle_reuse`]
 //! 负责判负，负向用例在 `tests.rs` 里显式造出来，不靠「相信正例不会出错」。

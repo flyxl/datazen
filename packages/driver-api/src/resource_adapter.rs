@@ -300,6 +300,13 @@ impl ResourceProvider for LegacyResourceAdapter {
         &self.namespace_shape
     }
 
+    fn connection_handle(
+        &self,
+        handle: &ResourceHandle,
+    ) -> Result<ConnectionHandle, ResourceError> {
+        self.connection_of(handle, "connection_handle")
+    }
+
     async fn describe_resource(
         &self,
         request: &DescribeResourceRequest,
@@ -357,38 +364,42 @@ impl ResourceProvider for LegacyResourceAdapter {
     /// The completion is truthful but coarse: a legacy `CommandResult` is one
     /// opaque JSON payload with no per-statement observation, no context
     /// read-back and no protocol-drain signal, so those stay unknown/empty
-    /// rather than being reconstructed. Callers that need the payload itself
-    /// keep using `DatabaseDriver::execute_command`, which is unchanged.
+    /// rather than being reconstructed. The original payload is delivered as
+    /// typed `commandResult` output; the sink must explicitly accept it, and
+    /// sink rejection propagates instead of silently discarding the output.
     async fn execute_on_resource(
         &self,
         handle: &ResourceHandle,
         _execution_id: &QueryExecutionId,
         call: &CommandCall,
-        _sink: &dyn ResultSink,
+        sink: &dyn ResultSink,
     ) -> Result<ExecutionCompletion, ResourceError> {
         let connection = self.connection_of(handle, "execute_on_resource")?;
-        self.driver
+        let output = self
+            .driver
             .execute_command(&connection, &call.command, call.input.clone())
             .await
-            .map(|_| ExecutionCompletion {
-                completion_status: CompletionStatus::Succeeded,
-                effect_outcome: EffectOutcome::Completed,
-                statement_results: Vec::new(),
-                context_before: SessionContext::unobserved(),
-                context_after: SessionContext::unobserved(),
-                transaction_observation: TransactionObservation {
-                    state: TransactionState::Unknown,
-                    transaction_id: None,
-                    effect: None,
-                    revision: 0,
-                },
-                // This path registers no session-scoped handle, so the
-                // truthful list is empty (`connection-management.md` §6.5).
-                session_handles: Vec::<SessionHandleRef>::new(),
-                protocol_drained: true,
-                resource_health: ResourceHealth::Unknown,
-            })
-            .map_err(ResourceError::Driver)
+            .map_err(ResourceError::Driver)?;
+        sink.write_output(serde_json::json!({ "kind": "commandResult", "data": output.data }))
+            .await?;
+        Ok(ExecutionCompletion {
+            completion_status: CompletionStatus::Succeeded,
+            effect_outcome: EffectOutcome::Completed,
+            statement_results: Vec::new(),
+            context_before: SessionContext::unobserved(),
+            context_after: SessionContext::unobserved(),
+            transaction_observation: TransactionObservation {
+                state: TransactionState::Unknown,
+                transaction_id: None,
+                effect: None,
+                revision: 0,
+            },
+            // This path registers no session-scoped handle, so the
+            // truthful list is empty (`connection-management.md` §6.5).
+            session_handles: Vec::<SessionHandleRef>::new(),
+            protocol_drained: true,
+            resource_health: ResourceHealth::Unknown,
+        })
     }
 
     /// The legacy driver has no read-back API. Returning the acquisition target

@@ -14,6 +14,7 @@ use crate::data_sync::{
     ComparisonResult, ConflictPolicy, DataSyncError, Endpoint, SyncOptions, SyncSourceFilter,
     TableChangeSet, TableMapping, TableMappingStatus, TableResult,
 };
+use crate::db::{LegacySqlDialect, SqlDialect};
 use crate::services::metadata_schema;
 use futures_util::FutureExt;
 use std::collections::HashMap;
@@ -88,16 +89,20 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
     source_filters: HashMap<String, SyncSourceFilter>,
     mapping_overrides: Option<Vec<TableMapping>>,
 ) -> Result<datazen_platform_api::dto::job::JobView, CommandError> {
-    let source_config = state
-        .connection_manager
-        .get_session_config(&source_db_session_id)
-        .await
-        .cmd_err("start_data_sync_prepare_job")?;
-    let target_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("start_data_sync_prepare_job")?;
+    let source_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &source_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let target_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let source_config = source_context.config.clone();
+    let target_config = target_context.config.clone();
     let source_database_name = super::types::resolve_db_name(
         source_database.as_deref(),
         source_config.database.as_deref(),
@@ -110,16 +115,8 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
         &source_config.database_type,
         &target_config.database_type,
     )?;
-    let (source_driver, _) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("start_data_sync_prepare_job")?;
-    let (target_driver, _) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("start_data_sync_prepare_job")?;
+    let source_driver = source_context.driver.clone();
+    let target_driver = target_context.driver.clone();
     let source_schema_name = metadata_schema(
         source_driver.as_ref(),
         source_schema.as_deref(),
@@ -145,16 +142,6 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
     .await?;
     let mapping_overrides = mapping_overrides.unwrap_or_default();
     let preflight = async {
-        let (source_driver, _) = state
-            .connection_manager
-            .get_session(&sessions.source_id)
-            .await
-            .cmd_err("start_data_sync_prepare_job")?;
-        let (target_driver, _) = state
-            .connection_manager
-            .get_session(&sessions.target_id)
-            .await
-            .cmd_err("start_data_sync_prepare_job")?;
         let inspected = inspect_data_sync_impl(
             state,
             sessions.source_id.clone(),
@@ -267,7 +254,7 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
             target_endpoint,
             HashMap::new(),
             &job_id,
-        ),
+        )?,
     ));
     let endpoints = sessions.endpoints();
     let payload = serde_json::json!({
@@ -402,16 +389,22 @@ async fn finish_async_prepare_preview(
             .unwrap_or(usize::MAX)
     });
     let comparison = ComparisonStore::from_comparison(rebuilt).map_err(CommandError::Validation)?;
-    let (source_driver, source_handle) = state
-        .connection_manager
-        .get_session(source_job_session_id)
-        .await
-        .cmd_err("finish_data_sync_prepare_job")?;
-    let (target_driver, target_handle) = state
-        .connection_manager
-        .get_session(target_job_session_id)
-        .await
-        .cmd_err("finish_data_sync_prepare_job")?;
+    let source_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        source_job_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let target_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        target_job_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let source_driver = source_context.driver.clone();
+    let source_handle = source_context.handle.clone();
+    let target_driver = target_context.driver.clone();
+    let target_handle = target_context.handle.clone();
     let mut source_entries = Vec::new();
     let mut target_entries = Vec::new();
     for table in comparison
@@ -684,20 +677,21 @@ pub(crate) async fn generate_data_sync_sql_impl(
     let set = ChangeSet::from_comparison("ui-preview", &comparison, &options);
     set.validate_executable().map_err(CommandError::from)?;
 
-    let tgt_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("generate_data_sync_sql")?;
+    let target_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let tgt_config = target_context.config.clone();
     let family = crate::data_sync::require_data_sync_family(
         &tgt_config.database_type,
         &tgt_config.database_type,
     )?;
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("generate_data_sync_sql")?;
+    let tgt_driver = target_context.driver.clone();
+    // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+    let dialect = LegacySqlDialect::new(tgt_driver.as_ref());
+    let tgt_handle = target_context.handle.clone();
     let target_database_name =
         super::types::resolve_db_name(target_database.as_deref(), tgt_config.database.as_deref());
     let target_schema = metadata_schema(
@@ -789,7 +783,7 @@ pub(crate) async fn generate_data_sync_sql_impl(
             &column_types,
             |name| preview_target.quote_ident(name),
             |index, data_type| {
-                tgt_driver
+                dialect
                     .parameter_placeholder(index, data_type)
                     .map_err(|error| DataSyncError::validation(error.to_string()))
             },

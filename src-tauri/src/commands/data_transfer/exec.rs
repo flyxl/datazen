@@ -34,16 +34,15 @@ pub(super) async fn load_sql_source_snapshot(
     ),
     CommandError,
 > {
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&job.source.db_session_id)
-        .await
-        .cmd_err("data_transfer_sql_file")?;
-    let config = state
-        .connection_manager
-        .get_session_config(&job.source.db_session_id)
-        .await
-        .cmd_err("data_transfer_sql_file")?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &job.source.db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let driver = context.driver.clone();
+    let handle = context.handle.clone();
+    let config = context.config.clone();
     let mut source = job.source.clone();
     source.schema = crate::services::metadata_schema(
         driver.as_ref(),
@@ -153,11 +152,13 @@ async fn execute_sql_file_target(
             "SQL file target dialect contract changed since preview; return to preview".into(),
         ));
     }
-    let src_config = state
-        .connection_manager
-        .get_session_config(&plan.job.source.db_session_id)
-        .await
-        .cmd_err("execute_data_transfer")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &plan.job.source.db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
     let adapters = if let Some(target_type) = plan
         .job
         .sql_file_target
@@ -454,16 +455,20 @@ pub(super) async fn validate_plan_context(
             "source filter or recordset changed since preview; return to comparison".into(),
         ));
     }
-    let src_config = state
-        .connection_manager
-        .get_session_config(&plan.job.source.db_session_id)
-        .await
-        .cmd_err("execute_data_transfer")?;
-    let tgt_config = state
-        .connection_manager
-        .get_session_config(&target.db_session_id)
-        .await
-        .cmd_err("execute_data_transfer")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &plan.job.source.db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let tgt_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &target.db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
+    let tgt_config = tgt_context.config.clone();
 
     if tgt_config.read_only {
         return Err(CommandError::Validation(
@@ -471,16 +476,10 @@ pub(super) async fn validate_plan_context(
         ));
     }
 
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&plan.job.source.db_session_id)
-        .await
-        .cmd_err("execute_data_transfer")?;
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_session(&target.db_session_id)
-        .await
-        .cmd_err("execute_data_transfer")?;
+    let src_driver = src_context.driver.clone();
+    let src_handle = src_context.handle.clone();
+    let tgt_driver = tgt_context.driver.clone();
+    let tgt_handle = tgt_context.handle.clone();
 
     if src_driver.driver_type() != plan.source_driver_type
         || tgt_driver.driver_type() != plan.target_driver_type

@@ -2,7 +2,7 @@
 
 use super::super::error::CommandError;
 use crate::data_sync::{quote_ident_sql, DataSyncError, SyncSourceFilter};
-use crate::db::TableSchema;
+use crate::db::{LegacySqlDialect, SqlDialect, TableSchema};
 use datazen_driver_api::{DatabaseDriver, SyncKeyContract, SyncSourceAdapter};
 
 fn sqlserver_filter_type_uses_collation(data_type: &str) -> Option<bool> {
@@ -234,6 +234,8 @@ pub(crate) fn validate_filter_endpoints(
                     "{source_table}: {side} driver cannot order sync tuple range: {error}"
                 ))
             })?;
+        // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+        let dialect = LegacySqlDialect::new(driver);
         filter
             .build_where_typed_with_key_order(
                 driver.quote_char(),
@@ -261,7 +263,7 @@ pub(crate) fn validate_filter_endpoints(
                         .map(|candidate| candidate.data_type.clone())
                 },
                 |index, data_type| {
-                    driver
+                    dialect
                         .parameter_placeholder(index, data_type)
                         .map_err(|error| DataSyncError::validation(error.to_string()))
                 },

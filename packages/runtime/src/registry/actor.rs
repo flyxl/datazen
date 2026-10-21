@@ -61,7 +61,9 @@ use crate::connection::{
 };
 
 use crate::registry::audit::{AuditKind, CapabilityVersions, Outcome, RegistryAuditEntry};
-use crate::registry::backend::{OpenResource, ResourceExecution, SessionBackend};
+use crate::registry::backend::{
+    CapabilityProvenance, OpenResource, ResourceExecution, SessionBackend,
+};
 use crate::registry::epoch::RuntimeEpoch;
 use crate::registry::handles::{ExecutionBinding, HandleRegistry};
 use crate::registry::receipt::CancelReceipt;
@@ -117,6 +119,10 @@ pub enum ExecCommand {
         handle: SessionHandle,
         reply: Reply<SessionView>,
     },
+    CapabilitySnapshot {
+        handle: SessionHandle,
+        reply: Reply<CapabilityProvenance>,
+    },
     Execute {
         request: ExecuteInSessionRequest,
         reply: Reply<ExecutionReceipt>,
@@ -134,6 +140,7 @@ pub enum ExecCommand {
     SetIdleDeadline {
         handle: SessionHandle,
         deadline_ms: Option<u64>,
+        return_previous: bool,
         reply: Reply<Option<u64>>,
     },
     Close {
@@ -227,6 +234,7 @@ struct Physical {
     resource_id: String,
     driver_supports_cancel: bool,
     capabilities: CapabilityVersions,
+    capability_snapshot: CapabilityProvenance,
 }
 
 /// 飞行中的执行。跨 `.await` 存活的**全部**数据都在这里，按值携带。
@@ -483,6 +491,9 @@ async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
         ExecCommand::View { handle, reply } => {
             let _ = reply.send(read_view(state, &handle));
         }
+        ExecCommand::CapabilitySnapshot { handle, reply } => {
+            let _ = reply.send(read_capability_snapshot(state, &handle));
+        }
         ExecCommand::ExecuteBound {
             execution_id,
             request,
@@ -501,9 +512,18 @@ async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
         ExecCommand::SetIdleDeadline {
             handle,
             deadline_ms,
+            return_previous,
             reply,
         } => {
-            let _ = reply.send(set_idle_deadline(state, &handle, deadline_ms));
+            let previous = state.idle_deadline_ms;
+            let result = set_idle_deadline(state, &handle, deadline_ms).map(|current| {
+                if return_previous {
+                    previous
+                } else {
+                    current
+                }
+            });
+            let _ = reply.send(result);
         }
         ExecCommand::Close {
             handle,
@@ -526,11 +546,20 @@ async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
 
 async fn handle_exec_while_flying(state: &mut ActorState, msg: ExecCommand) {
     // 只有只读投影可以插空回答；其余一律排队，否则同会话就会出现两条并发执行。
-    if let ExecCommand::View { handle, reply } = msg {
-        let _ = reply.send(read_view(state, &handle));
-        return;
+    match msg {
+        ExecCommand::View { handle, reply } => {
+            let _ = reply.send(read_view(state, &handle));
+        }
+        ExecCommand::CapabilitySnapshot { handle, reply } => {
+            let _ = reply.send(read_capability_snapshot(state, &handle));
+        }
+        // An idle scan is observation, never a request to cancel a live command.
+        // Answer now; deferring would let an old scan close a just-finished session.
+        ExecCommand::Evict { reply, .. } => {
+            let _ = reply.send(Ok(None));
+        }
+        other => state.deferred.push_back(other),
     }
-    state.deferred.push_back(msg);
 }
 
 /// actor 退出时的最后收尾：物理资源不能因为「所有句柄都被丢掉」而泄漏。
@@ -568,7 +597,7 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
 
     let opened = match opened {
         Ok(opened) => opened,
-        Err(_cause) => {
+        Err(cause) => {
             state.view.state = SessionState::New;
             emit(
                 state,
@@ -580,6 +609,17 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
                 },
             );
             // 登记失败不得返回成功，也不得留下半开的记录。
+            // An admission budget refusal is retryable before execution.
+            // Preserve its classification: UnknownSession would become
+            // SessionNotFound and prevent the caller's bounded busy retry.
+            if matches!(cause, ProviderError::ResourceBusy(_)) {
+                return Err(RuntimeError::BudgetExhausted("resourceOpenBusy"));
+            }
+            // 额度耗尽不是「忙」：空位要靠回收旧 session 或用户关闭编辑器腾出来，
+            // 所以它带着自己的原因码上线，不进调用方的有界忙碌重试。
+            if matches!(cause, ProviderError::QuotaExceeded(_)) {
+                return Err(RuntimeError::BudgetExhausted("sessionQuota"));
+            }
             return Err(RuntimeError::UnknownSession(
                 request.db_session_id.to_string(),
             ));
@@ -594,6 +634,7 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
         resource_id: opened.resource_id.clone(),
         driver_supports_cancel: opened.driver_supports_cancel,
         capabilities: opened.capabilities.clone(),
+        capability_snapshot: opened.capability_snapshot.clone(),
     });
 
     emit(
@@ -620,6 +661,20 @@ fn read_view(state: &ActorState, handle: &SessionHandle) -> Result<SessionView, 
         return Err(RuntimeError::SessionClosed(state.db_session_id.to_string()));
     }
     Ok(state.view.clone())
+}
+
+fn read_capability_snapshot(
+    state: &ActorState,
+    handle: &SessionHandle,
+) -> Result<CapabilityProvenance, RuntimeError> {
+    check_epoch(state, handle)?;
+    match &state.physical {
+        Some(physical) => Ok(physical.capability_snapshot.clone()),
+        None if state.view.state == SessionState::Lost => {
+            Err(RuntimeError::SessionLost(state.db_session_id.to_string()))
+        }
+        None => Err(RuntimeError::SessionClosed(state.db_session_id.to_string())),
+    }
 }
 
 fn check_epoch(state: &ActorState, handle: &SessionHandle) -> Result<(), RuntimeError> {

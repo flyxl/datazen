@@ -49,6 +49,25 @@ export async function ensureDedicatedSession(
   return { connectionId, database, dbSessionId };
 }
 
+/**
+ * Acquire or reuse the session for a React effect and release a newly-created
+ * session if that effect no longer owns the result when the request completes.
+ */
+export async function ensureDedicatedSessionForEffect(
+  current: DedicatedSideSession | null,
+  connectionId: string,
+  database: string,
+  isCurrent: () => boolean,
+  databaseOverride: string | null = database,
+): Promise<DedicatedSideSession | null> {
+  const next = await ensureDedicatedSession(current, connectionId, database, databaseOverride);
+  if (isCurrent()) return next;
+  if (next?.dbSessionId && next.dbSessionId !== current?.dbSessionId) {
+    await releaseDedicatedSession(next.dbSessionId);
+  }
+  return null;
+}
+
 /** List databases using a short-lived dedicated session (released after listing). */
 export async function listDatabasesDedicated(
   connectionId: string,
@@ -60,7 +79,7 @@ export async function listDatabasesDedicated(
   );
   try {
     const { databaseCommands } = await import('../commands/database');
-    const databases = await databaseCommands.getDatabases(dbSessionId);
+    const databases = await databaseCommands.getDatabases(dbSessionId, connectionId);
     return { databases, dbSessionId: null };
   } finally {
     await releaseDedicatedSession(dbSessionId);

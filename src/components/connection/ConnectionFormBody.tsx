@@ -94,6 +94,21 @@ export function ConnectionFormBody({
         )}
       </div>
 
+      {form.isEditing && form.setClearStoredCredentials && (
+        <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-fg-secondary">
+          <input
+            type="checkbox"
+            checked={form.clearStoredCredentials ?? false}
+            onChange={(event) => form.setClearStoredCredentials?.(event.target.checked)}
+            className="mt-0.5 accent-accent"
+          />
+          <span>
+            <span className="block text-fg">{t('newConn.clearStoredCredentials')}</span>
+            <span>{t('newConn.clearStoredCredentialsHint')}</span>
+          </span>
+        </label>
+      )}
+
       <ConnectionAdvancedSettings form={form} groupOptions={groupOptions} variant={variant} />
 
       <div ref={form.testResultRef}>

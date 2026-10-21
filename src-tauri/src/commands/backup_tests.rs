@@ -1,4 +1,5 @@
 use super::*;
+use crate::db::DriverError;
 
 #[test]
 fn parse_backup_options_recognizes_aliases() {
@@ -36,13 +37,8 @@ fn validate_backup_filter_extension_allows_known() {
     assert!(validate_backup_filter_extension("exe").is_err());
 }
 
-// #37 split the restore commands into `backup_restore.rs`, so the guard has
-// to scan both halves of the module.
-const SOURCE: &str = concat!(
-    include_str!("backup.rs"),
-    "\n",
-    include_str!("backup_restore.rs")
-);
+// Registered IPC signatures now live together in the native backup adapter.
+const SOURCE: &str = include_str!("backup.rs");
 const BOOTSTRAP_RS: &str = include_str!("../bootstrap/run.rs");
 
 #[test]
@@ -101,8 +97,8 @@ fn driver_err_other_stays_driver() {
 async fn backup_and_restore_roundtrip() {
     use crate::testing::app_state::TestAppState;
 
-    let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect("backup-cfg").await;
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    let conn_id = test.save_and_open_runtime_session("backup-cfg").await;
     let backup_path = test._temp.path().join("backup.sql");
 
     backup_database_to_path(
@@ -150,14 +146,38 @@ async fn backup_database_errors_when_not_connected() {
 }
 
 #[tokio::test]
+async fn unsupported_backup_option_is_rejected_before_driver_connection() {
+    use crate::testing::app_state::TestAppState;
+
+    let test = TestAppState::new().await;
+    let path = test._temp.path().join("unsupported-format.dump");
+    let error = backup_database_to_path(
+        &test.state,
+        "missing".into(),
+        None,
+        path.clone(),
+        Some(vec!["format-custom".into()]),
+        None,
+        None,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(error.to_string().contains("format-custom"));
+    assert_eq!(test.mock.connect_calls(), 0);
+    assert_eq!(test.mock.disconnect_calls(), 0);
+    assert!(!path.exists());
+}
+
+#[tokio::test]
 async fn restore_database_rejects_read_only_connection() {
     use crate::testing::app_state::TestAppState;
 
-    let test = TestAppState::with_tables().await;
+    let test = TestAppState::with_tables_and_resource_provider().await;
     let mut cfg = test.save_connection("backup-ro").await;
     cfg.read_only = true;
     test.state.store.save_connection(cfg).await.unwrap();
-    let conn_id = test.connect_config("backup-ro").await;
+    let conn_id = test.open_runtime_session("backup-ro").await;
     let backup_path = test._temp.path().join("readonly.sql");
     std::fs::write(&backup_path, "SELECT 1;").unwrap();
 
@@ -178,12 +198,12 @@ async fn restore_database_rejects_read_only_connection() {
 async fn restore_database_rejects_safe_mode() {
     use crate::testing::app_state::TestAppState;
 
-    let test = TestAppState::with_tables().await;
+    let test = TestAppState::with_tables_and_resource_provider().await;
     let mut settings = test.state.store.get_settings().await;
     settings.safe_mode = true;
     test.state.store.save_settings(settings).await.unwrap();
 
-    let (_, conn_id) = test.save_and_connect("backup-safe").await;
+    let conn_id = test.save_and_open_runtime_session("backup-safe").await;
     let backup_path = test._temp.path().join("safe-mode.sql");
     std::fs::write(&backup_path, "SELECT 1;").unwrap();
 

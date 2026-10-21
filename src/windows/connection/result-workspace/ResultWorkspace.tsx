@@ -14,6 +14,7 @@ import { resolveResultWorkspaceView, type ResultWorkspaceView } from './resultWo
 export interface ResultWorkspaceProps {
   /** The active statement only; selecting a statement remains a caller concern. */
   result?: StatementResult | null;
+  onCellEdit?: (row: number, column: string, value: unknown) => Promise<void>;
   view: ResultWorkspaceView;
   chartConfig?: ChartConfig | null;
   rowDetailIndex?: number | null;
@@ -42,6 +43,7 @@ export interface ResultWorkspaceProps {
  */
 export function ResultWorkspace({
   result,
+  onCellEdit,
   view,
   chartConfig,
   rowDetailIndex = null,
@@ -151,6 +153,7 @@ export function ResultWorkspace({
       {resolution.view === 'table' ? (
         <ResultTableView
           result={result}
+          onCellEdit={onCellEdit}
           rowDetailIndex={rowDetailIndex}
           onRowDetail={handleRowDetail}
           dataExportCapability={dataExportCapability}

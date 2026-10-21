@@ -54,6 +54,7 @@ import { MappingGateNotice } from './MappingGateNotice';
 import { SqlCodeBlock } from '../../components/SqlCodeBlock';
 import {
   ensureDedicatedSession,
+  ensureDedicatedSessionForEffect,
   listDatabasesDedicated,
   releaseDedicatedSession,
   type DedicatedSideSession,
@@ -360,7 +361,12 @@ export function DataTransferWindow() {
     }
     let cancelled = false;
     (async () => {
-      const next = await ensureDedicatedSession(sourceSession, sourceId, sourceDatabase);
+      const next = await ensureDedicatedSessionForEffect(
+        sourceSession,
+        sourceId,
+        sourceDatabase,
+        () => !cancelled,
+      );
       if (!cancelled) setSourceSession(next);
     })();
     return () => {
@@ -408,7 +414,12 @@ export function DataTransferWindow() {
     }
     let cancelled = false;
     (async () => {
-      const next = await ensureDedicatedSession(targetSession, targetId, targetDatabase);
+      const next = await ensureDedicatedSessionForEffect(
+        targetSession,
+        targetId,
+        targetDatabase,
+        () => !cancelled,
+      );
       if (!cancelled) setTargetSession(next);
     })();
     return () => {

@@ -1,26 +1,74 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { BackendClient, SessionView, ExecutionReceipt, ExecutionView, EventEnvelope, ConnectionEvent, ArtifactChunk, OwnerRef, ExecutionTarget } from '@datazen/backend-client';
+import type {
+  BackendClient,
+  SessionView,
+  ExecutionReceipt,
+  ExecutionView,
+  EventEnvelope,
+  ConnectionEvent,
+  ArtifactChunk,
+  OwnerRef,
+  ExecutionTarget,
+} from '@datazen/backend-client';
 import { EditorSessionController } from '../EditorSessionController';
 import { ExecutionProjection } from '../ExecutionProjection';
 
-const target = { connectionId: 'c', namespace: { database: 'A', catalog: null, schema: null, path: [] }, object: null } as unknown as ExecutionTarget;
+const target = {
+  connectionId: 'c',
+  namespace: { database: 'A', catalog: null, schema: null, path: [] },
+  object: null,
+} as unknown as ExecutionTarget;
 const owner = { kind: 'editor', clientInstanceId: 'client', editorSessionId: 'editor' } as OwnerRef;
 function session(id = 's', revision = '1'): SessionView {
-  return { handle: { dbSessionId: id, runtimeEpoch: 'epoch' }, connectionId: 'c', configRevision: '1', owner,
-    initialTarget: target, contextRevision: revision, state: 'ready', attachmentState: 'attached', activeExecutionId: null,
-    expiresAt: null, observedContext: { namespace: target.namespace, searchPath: [], effectiveIdentity: 'user',
-      transactionState: 'none', autocommit: true, confidence: 'confirmed' } } as unknown as SessionView;
+  return {
+    handle: { dbSessionId: id, runtimeEpoch: 'epoch' },
+    connectionId: 'c',
+    configRevision: '1',
+    owner,
+    initialTarget: target,
+    contextRevision: revision,
+    state: 'ready',
+    attachmentState: 'attached',
+    activeExecutionId: null,
+    expiresAt: null,
+    observedContext: {
+      namespace: target.namespace,
+      searchPath: [],
+      effectiveIdentity: 'user',
+      transactionState: 'none',
+      autocommit: true,
+      confidence: 'confirmed',
+    },
+  } as unknown as SessionView;
 }
 function fixture() {
   let next = 0;
   const client = {
-    backendId: 'desktop', issueSubmissionToken: vi.fn(async () => ({ idempotencyKey: 'token', expiresAt: 999 })),
+    backendId: 'desktop',
+    issueSubmissionToken: vi.fn(async () => ({ idempotencyKey: 'token', expiresAt: 999 })),
     openSession: vi.fn(async () => ({ session: session(`s${++next}`), attachmentToken: 'attach' })),
-    executeInSession: vi.fn(async () => ({ executionId: `e${next}`, streamId: 'stream', state: 'queued' })),
-    setSessionContext: vi.fn(async () => ({ session: session('replacement', '2'), replacedSessionId: 's1', attachmentToken: 'new' })),
+    executeInSession: vi.fn(async () => ({
+      executionId: `e${next}`,
+      streamId: 'stream',
+      state: 'queued',
+    })),
+    setSessionContext: vi.fn(async () => ({
+      session: session('replacement', '2'),
+      replacedSessionId: 's1',
+      attachmentToken: 'new',
+    })),
     getSession: vi.fn(async () => session('s1', '2')),
-    closeSession: vi.fn(async () => ({ dbSessionId: 's1', state: 'closed', effectOutcome: 'unknown', resourceRelease: 'quarantined' })),
-    cancelExecution: vi.fn(async () => ({ executionId: 'e1', disposition: 'requested', state: 'cancelRequested' })),
+    closeSession: vi.fn(async () => ({
+      dbSessionId: 's1',
+      state: 'closed',
+      effectOutcome: 'unknown',
+      resourceRelease: 'quarantined',
+    })),
+    cancelExecution: vi.fn(async () => ({
+      executionId: 'e1',
+      disposition: 'requested',
+      state: 'cancelRequested',
+    })),
   };
   return { client, facade: client as unknown as BackendClient };
 }
@@ -36,10 +84,15 @@ describe('editor session journey', () => {
     expect(clone.snapshot).toBeNull();
     expect(() => editor.clone(owner)).toThrow('distinct owner');
     await editor.execute({ command: 'query', input: { sql: 'BEGIN' } });
-    editor.acceptSession({ ...session('s1', '2'), observedContext: { ...session().observedContext, transactionState: 'unknown' } });
+    editor.acceptSession({
+      ...session('s1', '2'),
+      observedContext: { ...session().observedContext, transactionState: 'unknown' },
+    });
     expect(editor.snapshot?.observedContext.transactionState).toBe('unknown');
     client.setSessionContext.mockRejectedValueOnce(new Error('ContextConflict'));
-    await expect(editor.setContext({ ...target.namespace, database: 'B' })).rejects.toThrow('ContextConflict');
+    await expect(editor.setContext({ ...target.namespace, database: 'B' })).rejects.toThrow(
+      'ContextConflict',
+    );
     expect(editor.snapshot?.handle.dbSessionId).toBe('s1');
     await editor.setContext({ ...target.namespace, database: 'B' });
     expect(editor.acceptSession(session('s1', '999'))).toBe(false);
@@ -52,26 +105,149 @@ describe('editor session journey', () => {
 });
 
 function execution(): ExecutionView {
-  return { executionId: 'e', state: 'cancelled', effectOutcome: 'unknown', provenance: { requestedTarget: target },
-    artifactIds: ['a'], resultCompleteness: 'truncated', truncationReason: 'cancelled', errorCode: 'cancelled',
-    runtimeBinding: { handle: session().handle, resourceBindingId: 'r', executionId: 'e' } } as unknown as ExecutionView;
+  return {
+    executionId: 'e',
+    state: 'cancelled',
+    effectOutcome: 'unknown',
+    provenance: { requestedTarget: target },
+    artifactIds: ['a'],
+    resultCompleteness: 'truncated',
+    truncationReason: 'cancelled',
+    errorCode: 'cancelled',
+    runtimeBinding: { handle: session().handle, resourceBindingId: 'r', executionId: 'e' },
+  } as unknown as ExecutionView;
 }
 function event(sequence: string, index: string): EventEnvelope<ConnectionEvent> {
-  return { streamId: 'stream', sequence, executionId: 'e', runtimeEpoch: 'epoch', jobId: null,
-    sessionHandle: session().handle, contextRevision: '1', payload: { kind: 'resultChunk', artifactId: 'a', chunkIndex: index,
-      source: { executionId: 'e', statementIndex: 0, context: session().observedContext, relation: target, writableMapping: 'verified' } } } as unknown as EventEnvelope<ConnectionEvent>;
+  return {
+    streamId: 'stream',
+    sequence,
+    executionId: 'e',
+    runtimeEpoch: 'epoch',
+    jobId: null,
+    sessionHandle: session().handle,
+    contextRevision: '1',
+    payload: {
+      kind: 'resultChunk',
+      artifactId: 'a',
+      chunkIndex: index,
+      source: {
+        executionId: 'e',
+        statementIndex: 0,
+        context: session().observedContext,
+        relation: target,
+        writableMapping: 'verified',
+      },
+    },
+  } as unknown as EventEnvelope<ConnectionEvent>;
 }
 describe('result recovery journey', () => {
+  for (const resetSequence of ['1', '101']) {
+    it(`rebuilds and clears the cursor for stream reset ${resetSequence}`, async () => {
+      const readArtifact = vi.fn(
+        async (request: { chunkIndex: unknown }) =>
+          ({
+            artifactId: 'a',
+            chunkIndex: request.chunkIndex,
+            totalChunks: '1',
+            offset: '0',
+            bytes: new Uint8Array([1]),
+            resultCompleteness: 'truncated',
+          }) as unknown as ArtifactChunk,
+      );
+      const getExecution = vi.fn(async () => execution());
+      const subscribeEvents = vi.fn(() => ({
+        [Symbol.asyncIterator]: async function* () {
+          /* already terminal */
+        },
+        close: vi.fn(async () => undefined),
+      }));
+      const facade = {
+        backendId: 'desktop',
+        readArtifact,
+        getExecution,
+        subscribeEvents,
+      } as unknown as BackendClient;
+      const projection = new ExecutionProjection(
+        facade,
+        { executionId: 'e', streamId: 'stream', state: 'queued' } as ExecutionReceipt,
+        session().handle,
+      );
+      await projection.accept(event('100', '0'));
+      await projection.accept({
+        ...event(resetSequence, '0'),
+        payload: { kind: 'streamResetRequired', reason: 'cursor unavailable' },
+      });
+      expect(getExecution).toHaveBeenCalledTimes(1);
+      expect(projection.chunks).toHaveLength(1);
+      await projection.consume();
+      expect(subscribeEvents).toHaveBeenCalledWith({ streamId: 'stream', afterSequence: null });
+      expect(projection.chunks).toHaveLength(1);
+      await projection.dispose();
+    });
+  }
+
+  it('rejects a mismatched first chunk without poisoning the recoverable prefix', async () => {
+    const readArtifact = vi
+      .fn()
+      .mockResolvedValueOnce({
+        artifactId: 'a',
+        chunkIndex: '1',
+        totalChunks: '1',
+        bytes: new Uint8Array([1]),
+      })
+      .mockResolvedValueOnce({
+        artifactId: 'a',
+        chunkIndex: '0',
+        totalChunks: '1',
+        bytes: new Uint8Array([2]),
+      });
+    const facade = {
+      backendId: 'desktop',
+      readArtifact,
+      getExecution: vi.fn(async () => execution()),
+    } as unknown as BackendClient;
+    const projection = new ExecutionProjection(
+      facade,
+      { executionId: 'e', streamId: 'stream', state: 'queued' } as ExecutionReceipt,
+      session().handle,
+    );
+    await expect(projection.recover()).rejects.toThrow('different chunk');
+    expect(projection.chunks).toHaveLength(0);
+    await projection.recover();
+    expect(projection.chunks).toHaveLength(1);
+    expect(projection.chunks[0].chunk.chunkIndex).toBe('0');
+    await projection.dispose();
+  });
+
   it('deduplicates large sequences, retries unread blocks, recovers gaps, and keeps old target', async () => {
     let fail = true;
     const readArtifact = vi.fn(async (request: { chunkIndex: unknown }) => {
-      if (String(request.chunkIndex) === '1' && fail) { fail = false; throw new Error('disconnected'); }
-      return { artifactId: 'a', chunkIndex: request.chunkIndex, totalChunks: null, publishedChunkCount: '3',
-        offset: '0', bytes: new Uint8Array([1]), resultCompleteness: 'truncated' } as unknown as ArtifactChunk;
+      if (String(request.chunkIndex) === '1' && fail) {
+        fail = false;
+        throw new Error('disconnected');
+      }
+      return {
+        artifactId: 'a',
+        chunkIndex: request.chunkIndex,
+        totalChunks: null,
+        publishedChunkCount: '3',
+        offset: '0',
+        bytes: new Uint8Array([1]),
+        resultCompleteness: 'truncated',
+      } as unknown as ArtifactChunk;
     });
     const cancelExecution = vi.fn();
-    const facade = { backendId: 'desktop', readArtifact, getExecution: vi.fn(async () => execution()), cancelExecution } as unknown as BackendClient;
-    const projection = new ExecutionProjection(facade, { executionId: 'e', streamId: 'stream', state: 'queued' } as ExecutionReceipt, session().handle);
+    const facade = {
+      backendId: 'desktop',
+      readArtifact,
+      getExecution: vi.fn(async () => execution()),
+      cancelExecution,
+    } as unknown as BackendClient;
+    const projection = new ExecutionProjection(
+      facade,
+      { executionId: 'e', streamId: 'stream', state: 'queued' } as ExecutionReceipt,
+      session().handle,
+    );
     await projection.accept(event('9007199254740993', '0'));
     await projection.accept(event('9007199254740993', '0'));
     expect(readArtifact).toHaveBeenCalledTimes(1);

@@ -19,6 +19,16 @@
   "tools": [
     {
       "inputProperties": [
+        "client_session_ref",
+        "mode"
+      ],
+      "name": "close_session",
+      "requiredInputProperties": [
+        "client_session_ref"
+      ]
+    },
+    {
+      "inputProperties": [
         "connection_id",
         "database",
         "schema",
@@ -83,6 +93,19 @@
     {
       "inputProperties": [
         "connection_id",
+        "database",
+        "schema",
+        "ttl_ms"
+      ],
+      "name": "open_session",
+      "requiredInputProperties": [
+        "connection_id",
+        "database"
+      ]
+    },
+    {
+      "inputProperties": [
+        "connection_id",
         "limit",
         "sql"
       ],
@@ -115,6 +138,19 @@
       "requiredInputProperties": [
         "connection_id",
         "pattern"
+      ]
+    },
+    {
+      "inputProperties": [
+        "client_session_ref",
+        "command",
+        "input",
+        "timeout_ms"
+      ],
+      "name": "use_session",
+      "requiredInputProperties": [
+        "client_session_ref",
+        "command"
       ]
     }
   ]

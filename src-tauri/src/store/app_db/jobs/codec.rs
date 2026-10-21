@@ -15,13 +15,6 @@ use sha2::{Digest, Sha256};
 
 use super::MAX_DURABLE_JOB_PLAN_BYTES;
 
-pub(super) fn map_db_error(error: crate::store::AppDbError) -> PortError {
-    match error {
-        crate::store::AppDbError::NotFound(id) => PortError::NotFound(id),
-        _ => PortError::BackendUnavailable("local job database operation failed".into()),
-    }
-}
-
 pub(super) fn encode<T: Serialize>(value: &T) -> Result<String, PortError> {
     serde_json::to_string(value)
         .map_err(|_| PortError::BackendUnavailable("job data could not be encoded".into()))
@@ -35,12 +28,43 @@ pub(super) fn decode<T: DeserializeOwned>(value: &str) -> Result<T, PortError> {
 pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortError> {
     datazen_runtime::job::project_frozen_plan(kind, payload)
         .map_err(|_| PortError::BackendUnavailable("job plan is invalid".into()))?;
+    if kind == datazen_feature_core::restore_job::RESTORE_APPLY_KIND {
+        let projected = super::restore_projection::project(payload)?;
+        check_plan_size(&projected)?;
+        return Ok(projected);
+    }
     let object = payload
         .as_object()
         .ok_or_else(|| PortError::BackendUnavailable("job plan must be an object".into()))?;
+    if kind == "monitorOccurrence" && !object.contains_key("monitorOccurrence") {
+        return Err(PortError::BackendUnavailable(
+            "monitor occurrence plan is missing its durable identity".into(),
+        ));
+    }
+    if kind == "nativeToolProbe" && !object.contains_key("nativeToolSelection") {
+        return Err(PortError::BackendUnavailable(
+            "native selection missing".into(),
+        ));
+    }
+    if kind == "nativeToolProbe"
+        && !object
+            .get("planDigest")
+            .and_then(Value::as_str)
+            .is_some_and(|digest| {
+                digest.len() == 71
+                    && digest.starts_with("sha256:")
+                    && digest[7..]
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            })
+    {
+        return Err(PortError::BackendUnavailable(
+            "native deployment digest missing or invalid".into(),
+        ));
+    }
     let mut projected = serde_json::Map::new();
     for (key, value) in object {
-        if !matches!(
+        let common_field = matches!(
             key.as_str(),
             "kind"
                 | "planVersion"
@@ -58,26 +82,34 @@ pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortErr
                 | "useTransaction"
                 | "requireRollback"
                 | "profileRevisionDigest"
-        ) {
+        );
+        let monitor_field = key == "monitorOccurrence" && kind == "monitorOccurrence";
+        let native_field = key == "nativeToolSelection" && kind == "nativeToolProbe";
+        if !common_field && !monitor_field && !native_field {
             return Err(PortError::BackendUnavailable(
                 "job plan contains a field outside the durable projection".into(),
             ));
         }
-        validate_plan_value(key, value)?;
+        validate_plan_value(kind, key, value)?;
         projected.insert(key.clone(), value.clone());
     }
     let projected = Value::Object(projected);
-    let bytes = serde_json::to_vec(&projected)
+    check_plan_size(&projected)?;
+    Ok(projected)
+}
+
+fn check_plan_size(projected: &Value) -> Result<(), PortError> {
+    let bytes = serde_json::to_vec(projected)
         .map_err(|_| PortError::BackendUnavailable("job plan could not be encoded".into()))?;
     if bytes.len() > MAX_DURABLE_JOB_PLAN_BYTES {
         return Err(PortError::QuotaExceeded(
             "job plan exceeds the local size limit".into(),
         ));
     }
-    Ok(projected)
+    Ok(())
 }
 
-fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {
+fn validate_plan_value(kind: &str, key: &str, value: &Value) -> Result<(), PortError> {
     let valid = match key {
         "kind" => value.as_str().is_some_and(safe_identifier),
         "consumedPlanId" | "planId" => value.as_str().is_some_and(safe_identifier),
@@ -96,7 +128,9 @@ fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {
                         .is_some_and(|text| !text.is_empty() && text.len() <= 4096)
                 })
         }),
+        "nativeToolSelection" => kind == "nativeToolProbe" && validate_native_selection(value),
         "recoveryTargets" => validate_recovery_targets(value),
+        "monitorOccurrence" => kind == "monitorOccurrence" && validate_monitor_occurrence(value),
         _ => false,
     };
     if valid {
@@ -106,6 +140,199 @@ fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {
             "job plan field `{key}` has an unsupported durable value"
         )))
     }
+}
+
+fn validate_native_selection(value: &Value) -> bool {
+    let Ok(selection) = serde_json::from_value::<
+        datazen_platform_api::ports::native_tool::NativeToolSelection,
+    >(value.clone()) else {
+        return false;
+    };
+    matches!(
+        selection.tool_id.as_str(),
+        "postgres.pg-dump-version" | "mysql.mysqldump-version"
+    ) && !selection.version.is_empty()
+        && selection.version.len() <= 128
+        && !selection.version.chars().any(char::is_control)
+}
+
+fn validate_monitor_occurrence(value: &Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    const FIELDS: &[&str] = &[
+        "scheduleId",
+        "definitionRevision",
+        "scheduledAt",
+        "refreshIntervalSeconds",
+        "dashboardId",
+        "widgetId",
+        "workflowId",
+        "workflowRevision",
+        "grantId",
+        "grantVersion",
+        "scopes",
+    ];
+    if !has_exact_keys(object, FIELDS)
+        || !bounded_text(&object["scheduleId"], 1_536)
+        || !safe_digest_text(&object["definitionRevision"])
+        || object["scheduledAt"].as_i64().is_none()
+        || !object["refreshIntervalSeconds"]
+            .as_u64()
+            .is_some_and(|seconds| (1..=31_536_000).contains(&seconds))
+        || !bounded_text(&object["dashboardId"], 512)
+        || !bounded_text(&object["widgetId"], 512)
+        || !bounded_text(&object["workflowId"], 512)
+        || !monitor_workflow_revision(&object["workflowRevision"])
+        || !bounded_text(&object["grantId"], 512)
+        || !object["grantVersion"]
+            .as_u64()
+            .is_some_and(|version| version > 0)
+    {
+        return false;
+    }
+    let expected_schedule_id = format!(
+        "monitor:{}:{}",
+        object["dashboardId"].as_str().unwrap_or_default(),
+        object["widgetId"].as_str().unwrap_or_default()
+    );
+    if object["scheduleId"].as_str() != Some(expected_schedule_id.as_str()) {
+        return false;
+    }
+    let scheduled_at = object["scheduledAt"].as_i64().unwrap_or_default();
+    let refresh_interval_seconds = object["refreshIntervalSeconds"]
+        .as_u64()
+        .unwrap_or_default();
+    let Ok(refresh_interval_seconds) = i64::try_from(refresh_interval_seconds) else {
+        return false;
+    };
+    if scheduled_at.rem_euclid(refresh_interval_seconds) != 0 {
+        return false;
+    }
+    let Some(scopes) = object["scopes"].as_array() else {
+        return false;
+    };
+    !scopes.is_empty()
+        && scopes.len() <= 128
+        && scopes.iter().all(validate_monitor_scope)
+        && monitor_definition_revision(object, scopes, refresh_interval_seconds)
+            .is_some_and(|revision| object["definitionRevision"].as_str() == Some(&revision))
+}
+
+// Production grants::revision stores an untagged SHA256. Keep the previous
+// tagged durable form readable, while accepting only an exact digest for grants.
+fn monitor_workflow_revision(value: &Value) -> bool {
+    value.as_str().is_some_and(|text| {
+        (text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit())) || safe_digest(text)
+    })
+}
+
+fn monitor_definition_revision(
+    occurrence: &serde_json::Map<String, Value>,
+    scopes: &[Value],
+    refresh_interval_seconds: i64,
+) -> Option<String> {
+    let mut scopes = scopes.to_vec();
+    scopes.sort_by(|left, right| monitor_scope_sort_key(left).cmp(&monitor_scope_sort_key(right)));
+    let identity = json!({
+        "dashboardId": occurrence["dashboardId"],
+        "widgetId": occurrence["widgetId"],
+        "workflowId": occurrence["workflowId"],
+        "workflowRevision": occurrence["workflowRevision"],
+        "grantId": occurrence["grantId"],
+        "grantVersion": occurrence["grantVersion"],
+        "refreshIntervalSeconds": refresh_interval_seconds,
+        "scopes": scopes,
+    });
+    let bytes = serde_json::to_vec(&identity).ok()?;
+    Some(format!("sha256:{:x}", Sha256::digest(bytes)))
+}
+
+fn monitor_scope_sort_key(scope: &Value) -> (String, String, String, u64) {
+    let target = &scope["target"];
+    let namespace = &target["namespace"];
+    let mut namespace_parts = vec![
+        namespace["database"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+        namespace["catalog"].as_str().unwrap_or_default().to_owned(),
+        namespace["schema"].as_str().unwrap_or_default().to_owned(),
+    ];
+    namespace_parts.extend(
+        namespace["path"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned),
+    );
+    (
+        target["connectionId"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+        namespace_parts.join("/"),
+        scope["command"].as_str().unwrap_or_default().to_owned(),
+        scope["configRevision"].as_u64().unwrap_or_default(),
+    )
+}
+
+fn validate_monitor_scope(value: &Value) -> bool {
+    let Some(scope) = value.as_object() else {
+        return false;
+    };
+    if !has_exact_keys(scope, &["target", "configRevision", "command"])
+        || !scope["configRevision"]
+            .as_u64()
+            .is_some_and(|revision| revision > 0)
+        || scope["command"].as_str() != Some("query")
+    {
+        return false;
+    }
+    let Some(target) = scope["target"].as_object() else {
+        return false;
+    };
+    if !has_exact_keys(target, &["connectionId", "namespace", "object"])
+        || !bounded_text(&target["connectionId"], 512)
+    {
+        return false;
+    }
+    if !target["object"].is_null() {
+        return false;
+    }
+    let Some(namespace) = target["namespace"].as_object() else {
+        return false;
+    };
+    const NAMESPACE_FIELDS: &[&str] = &["database", "catalog", "schema", "path"];
+    if !has_exact_keys(namespace, NAMESPACE_FIELDS) {
+        return false;
+    }
+    let name_is_valid = |value: &Value| value.is_null() || bounded_text(value, 4_096);
+    if !name_is_valid(&namespace["database"])
+        || !name_is_valid(&namespace["catalog"])
+        || !name_is_valid(&namespace["schema"])
+    {
+        return false;
+    }
+    let Some(path) = namespace["path"].as_array() else {
+        return false;
+    };
+    path.len() <= 32 && path.iter().all(|item| bounded_text(item, 4_096))
+}
+
+fn has_exact_keys(object: &serde_json::Map<String, Value>, expected: &[&str]) -> bool {
+    object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
+}
+
+fn bounded_text(value: &Value, max_bytes: usize) -> bool {
+    value.as_str().is_some_and(|text| {
+        !text.is_empty() && text.len() <= max_bytes && !text.chars().any(char::is_control)
+    })
+}
+
+fn safe_digest_text(value: &Value) -> bool {
+    value.as_str().is_some_and(|text| safe_digest(text))
 }
 
 fn safe_digest(text: &str) -> bool {
@@ -148,6 +375,121 @@ pub(super) fn safe_identifier(text: &str) -> bool {
         && text
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
+}
+
+#[cfg(test)]
+mod monitor_occurrence_tests {
+    use super::durable_plan;
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+
+    fn payload() -> serde_json::Value {
+        let workflow_revision = crate::monitor::grants::revision("id: actual-monitor-workflow");
+        let scopes = json!([{
+            "target": {
+                "connectionId": "connection-1",
+                "namespace": {
+                    "database": "db",
+                    "catalog": null,
+                    "schema": "public",
+                    "path": []
+                },
+                "object": null
+            },
+            "configRevision": 1,
+            "command": "query"
+        }]);
+        let identity = json!({
+            "dashboardId": "dashboard-1",
+            "widgetId": "widget-1",
+            "workflowId": "workflow-1",
+            "workflowRevision": workflow_revision,
+            "grantId": "grant-1",
+            "grantVersion": 1,
+            "refreshIntervalSeconds": 60,
+            "scopes": scopes,
+        });
+        let definition_revision = format!(
+            "sha256:{:x}",
+            Sha256::digest(serde_json::to_vec(&identity).expect("revision identity encodes"))
+        );
+        json!({
+            "planVersion": 1,
+            "handlerVersion": 1,
+            "checkpointVersion": 1,
+            "monitorOccurrence": {
+                "scheduleId": "monitor:dashboard-1:widget-1",
+                "definitionRevision": definition_revision,
+                "scheduledAt": 1_800,
+                "refreshIntervalSeconds": 60,
+                "dashboardId": "dashboard-1",
+                "widgetId": "widget-1",
+                "workflowId": "workflow-1",
+                "workflowRevision": workflow_revision,
+                "grantId": "grant-1",
+                "grantVersion": 1,
+                "scopes": scopes
+            }
+        })
+    }
+
+    #[test]
+    fn workflow_revision_accepts_the_production_digest_without_relaxing_other_text() {
+        let actual = crate::monitor::grants::revision("actual persisted workflow");
+        assert!(super::monitor_workflow_revision(&json!(actual)));
+        assert!(super::monitor_workflow_revision(&json!(format!(
+            "sha256:{}",
+            "a".repeat(64)
+        ))));
+        for invalid in [
+            "a".repeat(63),
+            "a".repeat(65),
+            "g".repeat(64),
+            "workflow-name".into(),
+        ] {
+            assert!(!super::monitor_workflow_revision(&json!(invalid)));
+        }
+    }
+
+    #[test]
+    fn monitor_occurrence_is_included_in_a_strict_durable_projection() {
+        let plan = durable_plan("monitorOccurrence", &payload()).expect("monitor plan admitted");
+        assert_eq!(
+            plan["monitorOccurrence"]["scheduleId"],
+            "monitor:dashboard-1:widget-1"
+        );
+    }
+
+    #[test]
+    fn monitor_occurrence_rejects_unknown_fields_and_wrong_job_kind() {
+        let mut with_private_field = payload();
+        with_private_field["monitorOccurrence"]["password"] = json!("must-not-persist");
+        assert!(durable_plan("monitorOccurrence", &with_private_field).is_err());
+
+        assert!(durable_plan("schemaDiffApply", &payload()).is_err());
+    }
+
+    #[test]
+    fn monitor_occurrence_rejects_inconsistent_revision_and_schedule_time() {
+        let mut changed_definition = payload();
+        changed_definition["monitorOccurrence"]["workflowRevision"] =
+            json!(format!("sha256:{}", "c".repeat(64)));
+        assert!(durable_plan("monitorOccurrence", &changed_definition).is_err());
+
+        let mut misaligned_timestamp = payload();
+        misaligned_timestamp["monitorOccurrence"]["scheduledAt"] = json!(1_801);
+        assert!(durable_plan("monitorOccurrence", &misaligned_timestamp).is_err());
+    }
+
+    #[test]
+    fn monitor_occurrence_requires_identity_projection() {
+        let mut missing = payload();
+        missing
+            .as_object_mut()
+            .expect("payload object")
+            .remove("monitorOccurrence");
+        assert!(durable_plan("monitorOccurrence", &missing).is_err());
+    }
 }
 
 pub(super) fn request_digest(kind: &str, payload: &Value) -> Result<String, PortError> {

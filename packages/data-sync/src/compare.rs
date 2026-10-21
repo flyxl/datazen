@@ -218,8 +218,12 @@ fn validate_page_with_source<S: RowPageSource>(
     Ok(())
 }
 
+// Test-only source used by the `validate_page` unit tests; production code
+// calls `validate_page_with_source` with a real page source directly.
+#[cfg(test)]
 struct RawPageSource;
 
+#[cfg(test)]
 #[async_trait]
 impl RowPageSource for RawPageSource {
     async fn next_page(&mut self, _: Option<&[Value]>, _: u32) -> Result<Vec<Row>, DataSyncError> {
@@ -235,6 +239,7 @@ impl RowPageSource for RawPageSource {
     }
 }
 
+#[cfg(test)]
 fn validate_page(
     page: &[Row],
     pk_indexes: &[usize],

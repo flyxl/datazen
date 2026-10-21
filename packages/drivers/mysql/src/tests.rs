@@ -624,6 +624,7 @@ async fn mariadb_transaction_execution_cancel_is_pending_until_target_is_bound()
     driver.query_executions.lock().await.insert(
         execution_id.clone(),
         MysqlQueryExecution {
+            cancel_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
             session_id: handle.id.clone(),
             target_pool: None,
             control_pool: None,

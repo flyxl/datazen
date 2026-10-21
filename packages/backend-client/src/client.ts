@@ -1,3 +1,4 @@
+import type { SharedSettings } from './settings';
 /**
  * `BackendClient` — the typed facade every frontend consumer should hold.
  *
@@ -50,9 +51,16 @@ import type {
 } from './types';
 
 export interface BackendClient {
+  getSettings(): Promise<SharedSettings>;
+  saveSettings(settings: SharedSettings): Promise<SharedSettings>;
+
   /** Which backend this facade is bound to. Never a business-method argument. */
   readonly backendId: string;
-  getPlatformIdentity(): Promise<{ clientInstanceId: string; organizationId: string; principalId: string }>;
+  getPlatformIdentity(): Promise<{
+    clientInstanceId: string;
+    organizationId: string;
+    principalId: string;
+  }>;
 
   /**
    * The binding this facade delegates to.
@@ -148,7 +156,11 @@ export interface BackendClient {
   ): Promise<JobView>;
 
   readArtifact(request: ArtifactReadRequest): Promise<ArtifactChunk>;
-  issueSubmissionToken(operation: string, handle: SessionHandle | null, scope?: { connectionId: string; owner: OwnerRef }): Promise<SubmissionToken>;
+  issueSubmissionToken(
+    operation: string,
+    handle: SessionHandle | null,
+    scope?: { connectionId: string; owner: OwnerRef },
+  ): Promise<SubmissionToken>;
 }
 
 /**
@@ -205,7 +217,11 @@ export function createBackendClient(backendId: string, transport: BackendTranspo
 
   return {
     backendId,
-    getPlatformIdentity: () => guard('getPlatformIdentity', () => transport.call('getPlatformIdentity', undefined)),
+    getSettings: () => guard('getSettings', () => transport.call('getSettings', undefined)),
+    saveSettings: (settings) =>
+      guard('saveSettings', () => transport.call('saveSettings', { settings })),
+    getPlatformIdentity: () =>
+      guard('getPlatformIdentity', () => transport.call('getPlatformIdentity', undefined)),
     transport,
 
     listConnections: () =>
@@ -256,10 +272,16 @@ export function createBackendClient(backendId: string, transport: BackendTranspo
     getExecution: (executionId) =>
       guard('getExecution', () => transport.call('getExecution', { executionId })),
 
-    cancelExecution: (executionId, submissionToken) =>
-      guard('cancelExecution', () =>
+    cancelExecution: async (executionId, submissionToken) => {
+      const raw = await guard('cancelExecution', () =>
         transport.call('cancelExecution', { executionId, submissionToken }),
-      ),
+      );
+      const receipt = parseCancelReceipt(raw);
+      if (receipt.executionId !== executionId) {
+        throw new ApiError('ServiceUnavailable', 'Cancel receipt belongs to another execution.');
+      }
+      return receipt;
+    },
 
     subscribeEvents: (request) => {
       const { subscribe } = transport;

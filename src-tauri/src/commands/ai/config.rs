@@ -18,16 +18,6 @@ pub struct ProviderListItem {
     pub default_protocol: String,
 }
 
-pub(crate) fn provider_defaults(pt: AiProviderType) -> (&'static str, &'static str) {
-    match pt {
-        AiProviderType::OpenAi => ("https://api.openai.com/v1", "open_ai_compatible"),
-        AiProviderType::Anthropic => ("https://api.anthropic.com", "anthropic_compatible"),
-        AiProviderType::DeepSeek => ("https://api.deepseek.com", "open_ai_responses"),
-        AiProviderType::Ollama => ("http://127.0.0.1:11434/v1", "open_ai_compatible"),
-        AiProviderType::Custom => ("", "open_ai_compatible"),
-    }
-}
-
 pub(crate) async fn ai_get_providers_impl(
     state: &AppState,
 ) -> Result<Vec<ProviderListItem>, CommandError> {
@@ -74,9 +64,14 @@ pub async fn ai_fetch_remote_models(
         }
     };
 
-    crate::ai::custom::fetch_remote_models(proto, &endpoint, &api_key)
-        .await
-        .cmd_err("ai_fetch_remote_models")
+    crate::ai::custom::fetch_remote_models_with_client(
+        datazen_ai_providers::http::HttpClient::desktop(),
+        proto,
+        &endpoint,
+        &api_key,
+    )
+    .await
+    .cmd_err("ai_fetch_remote_models")
 }
 
 pub(crate) async fn ai_validate_config_impl(
@@ -193,13 +188,7 @@ pub(crate) async fn ai_save_settings_config_impl(
     config: AiSettingsConfig,
 ) -> Result<(), CommandError> {
     state.ensure_ai_ready().await;
-    if let Some(profile) = config
-        .profiles
-        .iter()
-        .find(|p| p.id == config.active_profile_id)
-        .or_else(|| config.profiles.iter().find(|p| p.is_default))
-        .or_else(|| config.profiles.first())
-    {
+    if let Some(profile) = config.selected_profile() {
         let provider_config = AiProviderConfig::from(profile);
         if let Some(provider) = state.ai_registry.get(&provider_config.provider_type).await {
             let _ = provider.initialize(&provider_config).await;

@@ -18,32 +18,30 @@ pub(crate) async fn inspect_data_sync_impl(
     target_schema: Option<String>,
     mappings: &[TableMapping],
 ) -> Result<Vec<TableResult>, CommandError> {
-    let src_config = state
-        .connection_manager
-        .get_session_config(&source_db_session_id)
-        .await
-        .cmd_err("inspect_data_sync")?;
-    let tgt_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("inspect_data_sync")?;
+    let src_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &source_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let tgt_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let src_config = src_context.config.clone();
+    let tgt_config = tgt_context.config.clone();
 
     require_data_sync_family(&src_config.database_type, &tgt_config.database_type)?;
 
     let src_db = resolve_db_name(source_database.as_deref(), src_config.database.as_deref());
     let tgt_db = resolve_db_name(target_database.as_deref(), tgt_config.database.as_deref());
 
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("inspect_data_sync")?;
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("inspect_data_sync")?;
+    let src_driver = src_context.driver.clone();
+    let src_handle = src_context.handle.clone();
+    let tgt_driver = tgt_context.driver.clone();
+    let tgt_handle = tgt_context.handle.clone();
 
     let source_schema = metadata_schema(
         src_driver.as_ref(),

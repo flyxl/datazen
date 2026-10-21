@@ -21,7 +21,7 @@ use datazen_driver_api::namespace::{
     CanonicalIdRules, CaseFolding, CaseRules, NamespaceLevel, NamespaceLevelKind,
     NamespacePathSegment, NamespaceShape,
 };
-use datazen_driver_api::resource::ConnectionCostPolicy;
+use datazen_driver_api::resource::{ConnectionCostPolicy, ResourcePurpose};
 use datazen_driver_api::ConnectionConfig;
 use datazen_driver_api::PROTOCOL_VERSION;
 
@@ -36,10 +36,32 @@ pub(crate) const POSTGRES_PROVIDER_ID: &str = "postgresql";
 /// The crate version the capability snapshot was taken at.
 pub(crate) const POSTGRES_DRIVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// `connection.rs:424-436` opens a **second** pool with `max_connections = 1`
-/// for the sole purpose of issuing `pg_cancel_backend`. A cancel therefore
-/// costs one physical connection beyond the data pool, always.
+/// One shared control connection per profile/server/auth identity, charged
+/// independently through BudgetPort::acquire_control_connection and retained
+/// until the last resource confirms physical closure.
 pub(crate) const CONTROL_POOL_CONNECTIONS: u32 = 1;
+
+/// Metadata commands are short-lived and execute one command at a time, so their
+/// data pool is intentionally bounded to one connection. Cancellation uses the
+/// shared driver-internal control connection above and is not charged here.
+pub(crate) const METADATA_POOL_CONNECTIONS: u32 = 1;
+
+pub(crate) fn postgres_metadata_connection_cost() -> ConnectionCostPolicy {
+    ConnectionCostPolicy::PoolBounded {
+        max_physical_connections: METADATA_POOL_CONNECTIONS,
+    }
+}
+
+pub(crate) fn postgres_resource_connection_cost(
+    config: &ConnectionConfig,
+    purpose: ResourcePurpose,
+) -> ConnectionCostPolicy {
+    if purpose == ResourcePurpose::MetadataInspection {
+        postgres_metadata_connection_cost()
+    } else {
+        postgres_connection_cost(config)
+    }
+}
 
 /// The namespace shape PostgreSQL really has.
 ///
@@ -85,17 +107,11 @@ pub(crate) fn postgres_namespace_shape() -> NamespaceShape {
     }
 }
 
-/// The physical cost of one PostgreSQL resource.
-///
-/// `connect_impl` opens `effective_max_pool_size()` data connections plus one
-/// control connection, so the honest number is the configured pool size plus
-/// one — not the configured pool size. Reporting the smaller number would let a
-/// caller size a budget that the provider then exceeds.
+/// Data-pool cost only. The shared control connection is charged separately
+/// once per profile/server/auth identity, regardless of business database count.
 pub(crate) fn postgres_connection_cost(config: &ConnectionConfig) -> ConnectionCostPolicy {
     ConnectionCostPolicy::PoolBounded {
-        max_physical_connections: config
-            .effective_max_pool_size()
-            .saturating_add(CONTROL_POOL_CONNECTIONS),
+        max_physical_connections: config.effective_max_pool_size(),
     }
 }
 
@@ -103,16 +119,16 @@ pub(crate) fn postgres_connection_cost(config: &ConnectionConfig) -> ConnectionC
 ///
 /// | Capability | Declared | Why |
 /// |---|---|---|
-/// | `stateful_session` | `Unsupported` | the driver holds a `PgPool`; any statement can move a leased backend. Plan line 101 forbids opening an unproven `statefulSession`. |
+/// | `stateful_session` | `Supported` | interactive/agent acquisition checks out and retains one physical backend until explicit close. |
 /// | `namespace_switch` | `RequiresReplacement` | cross-database work selects another pool (`execution.rs:30-42`); nothing switches the attached database in place. |
 /// | `context_observation` | `Partial` | a pinned transaction is read on its own `PoolConnection`; a leased read names one backend, and `search_path` can be changed by a statement on that same backend. |
 /// | `transaction_observation` | `Full` | `begin_transaction_impl` pins a real `PoolConnection` (`execution.rs:915-947`) and the commit/rollback path reports the server's answer. |
 /// | `session_scoped_handles` | `Supported` | the transaction handle is registered in `transactions` and dropped on commit/rollback/close. |
 /// | `reset_for_reuse` | `Unsupported` | there is no verified baseline replay; `reset_resource` returns `Discard`. |
-/// | `precise_cancel` | `Supported` | `pg_cancel_backend(<pid of that execution only>)` on a separate control pool (`execution.rs:369-437`). |
+/// | `precise_cancel` | `Supported` | `pg_cancel_backend(<pid of that execution only>)` on the shared driver-internal control connection (`execution.rs:369-437`). |
 /// | `snapshots` | `Unsupported` | `begin_read_snapshot_impl` exists but a per-table/per-database/coordinated guarantee is unverified. |
 /// | `transactions.isolation_levels` | empty | `begin_transaction_impl` sends a bare `BEGIN`, so it cannot honour a named level. |
-/// | `data` | `BufferedReadWrite` | `query` and `execute` both reach the sink carrying real rows, but every row is materialized before the first one is handed over, so `streamingResults` is not declared. Citations are on the field. |
+/// | `data` | `StreamingReadWrite` | resource_stream.rs publishes bounded batches through an awaitable sink; execute preserves rowsAffected. |
 /// | `backup` | empty | the provider contract carries no backup surface at all; the driver's real dump/restore live on the legacy `ConnectionHandle` path. Citations are on the field. |
 pub(crate) fn postgres_capability_set() -> CapabilitySet {
     // Declared cell by cell rather than through one exhaustive struct
@@ -127,7 +143,7 @@ pub(crate) fn postgres_capability_set() -> CapabilitySet {
     // contract requires this shape, not a one-line `..Default::default()`.
     let mut capabilities = CapabilitySet::default();
 
-    capabilities.stateful_session = Availability::Unsupported;
+    capabilities.stateful_session = Availability::Supported;
     capabilities.namespace_switch = NamespaceSwitch::RequiresReplacement;
     capabilities.context_observation = ContextObservation::Partial;
     capabilities.transaction_observation = TransactionObservation::Full;
@@ -154,44 +170,11 @@ pub(crate) fn postgres_capability_set() -> CapabilitySet {
     // absent key — the caller then asks, instead of assuming.
     capabilities.ddl_atomicity = DdlAtomicitySupport::default();
 
-    // `BufferedReadWrite` is a *deliberate under-claim*, and each half of
-    // it is cited so the next reader does not have to re-derive it.
-    //
-    // `rowRead` holds. `ResourceProvider::execute_on_resource` →
-    // `resource/provider.rs:414-437` (`run_command`) awaits the whole
-    // `CommandResult` and only then calls `decode_command_result`
-    // (`resource/payload.rs:41`), which walks the statements of the
-    // `MultiQueryResult` the `query` command produced and writes one
-    // `ResultChunk` per statement to the `ResultSink`. `query` itself
-    // dispatches to `driver-api/src/traits.rs:1127` `query_multi_at`,
-    // so the rows that reach the sink are rows the server actually sent.
-    //
-    // `rowWrite` holds. The sibling arm at `traits.rs:1139` calls
-    // `execute_at` and returns its `rowsAffected`, and
-    // `payload.rs:27-33` refuses any payload that is not exactly
-    // `{"rowsAffected": n}` — so the number cannot be invented locally.
-    //
-    // `streamingResults` does NOT hold, which is why this is not
-    // `StreamingReadWrite`. `traits.rs:1133` serializes the finished
-    // `MultiQueryResult`, whose `StatementResult.rows` is a fully
-    // materialized `Vec<Vec<Option<Value>>>` (`driver-api/src/types.rs:301`),
-    // so the first byte can only be handed to the sink after the last
-    // row has been read. `run_command` says so itself when it sets
-    // `protocol_drained: true` with the comment "Every row was buffered
-    // and handed to the sink; the connection will not be read again for
-    // this execution."
-    //
-    // The driver does have a real streaming path — `query_stream_impl`
-    // in `execution.rs:693`, reached through `DatabaseDriver`'s
-    // `query_stream_with_execution` — but that is the legacy
-    // `ConnectionHandle` API, not this contract, so it is not evidence
-    // for anything `execute_on_resource` can do. Declaring
-    // `StreamingReadWrite` on the strength of it would be a lie about
-    // the provider; leaving this at `Unknown` would be a lie in the
-    // other direction, since two of the three axes are proven. Under-
-    // claiming is the safe error here: `Default` is fail-closed, so an
-    // undeclared axis rejects instead of pretending.
-    capabilities.data = DataSupport::BufferedReadWrite;
+    // resource_stream.rs consumes SQLx rows on the physical checkout and
+    // awaits each sink batch (first row immediately, then <=256 rows / 1 MiB).
+    // Statement completions retain metadata only; rejection cancels and drains
+    // the same connection before it may be observed or executed again.
+    capabilities.data = DataSupport::StreamingReadWrite;
 
     // Left empty on purpose, and for a different reason than `data` above:
     // PostgreSQL can genuinely be dumped and restored, but not through
@@ -233,14 +216,19 @@ pub(crate) fn postgres_capability_set() -> CapabilitySet {
 /// Bumped whenever [`postgres_capability_set`] changes meaning, so a cached
 /// snapshot can be told apart from the current declaration. `1` is the first
 /// set that was actually checked against the code below; a snapshot taken
-/// before this module existed carried `0`. `2` declared `data` (rowRead and
-/// rowWrite proven, streamingResults not) — `backup` stayed empty across both.
-pub(crate) const POSTGRES_CAPABILITY_REVISION: u64 = 2;
+/// before this module existed carried `0`. `2` added buffered row read/write;
+/// `3` adds fixed interactive/agent sessions and bounded streaming results;
+/// `4` adds transactional SQL restore.
+pub(crate) const POSTGRES_CAPABILITY_REVISION: u64 = 4;
 
-/// The full registry: identity, version, protocol and the declared set.
-pub(crate) fn postgres_capability_registry() -> CapabilityRegistry {
+/// Same declarations under a different provider identity, for the reuse
+/// aliases (questdb, cloudberry): the alias owns its own provider instance,
+/// so its capability snapshot and every handle it mints name the database
+/// type the user configured, not the parent pool. Called with
+/// [`POSTGRES_PROVIDER_ID`] for the primary provider.
+pub(crate) fn postgres_capability_registry_for(provider_id: &'static str) -> CapabilityRegistry {
     let mut snapshot = CapabilitySnapshot::new(
-        POSTGRES_PROVIDER_ID,
+        provider_id,
         POSTGRES_DRIVER_VERSION,
         PROTOCOL_VERSION,
         POSTGRES_CAPABILITY_REVISION,
@@ -248,7 +236,15 @@ pub(crate) fn postgres_capability_registry() -> CapabilityRegistry {
     for (capability, evidence) in postgres_capability_evidence() {
         snapshot.confirmed.insert(capability.to_string(), evidence);
     }
-    let mut registry = CapabilityRegistry::new(POSTGRES_PROVIDER_ID, snapshot);
+    snapshot.confirmed.insert(
+        datazen_driver_api::restore_sql::CAPABILITY_KEY.into(),
+        datazen_driver_api::restore_sql::TRANSACTIONAL.into(),
+    );
+    snapshot.confirmed.insert(
+        datazen_driver_api::sql_dump::stream::BACKUP_CAPABILITY.into(),
+        "bounded retained SQL dump".into(),
+    );
+    let mut registry = CapabilityRegistry::new(provider_id, snapshot);
     registry.capabilities = postgres_capability_set();
     registry
 }
@@ -260,8 +256,9 @@ fn postgres_capability_evidence() -> Vec<(&'static str, String)> {
         (
             "preciseCancel",
             "src/execution.rs cancel_query_with_execution_impl: SELECT pg_cancel_backend($1) \
-             with that execution's backend pid, issued on the dedicated control pool \
-             (src/connection.rs opens it with max_connections = 1)"
+             with that execution's backend pid, issued on the shared driver-internal control \
+             connection (src/connection.rs opens one per connection identity and database, \
+             max_connections = 1, and never charges it to the resource budget)"
                 .to_string(),
         ),
         (
@@ -290,8 +287,7 @@ fn postgres_capability_evidence() -> Vec<(&'static str, String)> {
         ),
         (
             "statefulSession",
-            "declined: the driver holds a PgPool and a leased backend can be changed by \
-             any statement; plan line 101 forbids opening an unproven statefulSession"
+            "src/fixed_session.rs open_fixed_session retains a physical checkout until disconnect; transaction finish never returns a fixed checkout"
                 .to_string(),
         ),
         (
@@ -302,18 +298,18 @@ fn postgres_capability_evidence() -> Vec<(&'static str, String)> {
         ),
         (
             "connectionCostPolicy",
-            "effective_max_pool_size() data connections + 1 control connection".to_string(),
+            concat!(
+                "the declared cost is the data pool only: InteractiveQuery and AgentSession ",
+                "retain one data connection, MetadataInspection uses one data connection, and ",
+                "other pooled resources use effective_max_pool_size. The cancel-only control ",
+                "connection is driver-internal, shared per connection identity and database, and ",
+                "is not charged",
+            )
+            .to_string(),
         ),
         (
             "data",
-            "rowRead: src/resource/provider.rs run_command -> payload.rs:41 \
-             decode_command_result replays the MultiQueryResult from \
-             driver-api/src/traits.rs:1127 query_multi_at; rowWrite: traits.rs:1139 \
-             execute_at, whose rowsAffected is the only shape payload.rs:27 accepts; \
-             streamingResults withheld because traits.rs:1133 serializes a fully \
-             materialized Vec<Vec<Option<Value>>> (driver-api/src/types.rs:301) before \
-             any chunk reaches the sink, as run_command's protocol_drained comment \
-             ('Every row was buffered') states"
+            "rowRead and streamingResults: resource_stream.rs emits bounded batches directly from the physical connection into ResultSink; rowWrite: execute_at retains bound parameters and reports affected rows"
                 .to_string(),
         ),
         (

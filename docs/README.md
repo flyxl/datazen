@@ -25,6 +25,7 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 - [Data Transfer](features/data-transfer-guide.zh-CN.md)
 - [Ops Dashboard](features/ops-dashboard-guide.zh-CN.md) / [English](features/ops-dashboard-guide.en.md)
 - [Tunnel](features/tunnel-guide.zh-CN.md)
+- [Published query result export](features/published-result-export.md)
 - [Query Builder](features/query-builder.md)（SQL Editor Pro 能力）
 
 功能文档描述当前 main 已实现的行为；如果某能力尚未实现，不在这里记录未来计划。

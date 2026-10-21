@@ -386,16 +386,15 @@ async fn tc07_timeout_behavior() {
     pg_pool.close().await;
 }
 
-// ─── TC-08: Connection Reuse (get_or_connect) ───────────────────────────────
+// ─── TC-08: Connection Variable Reference ───────────────────────────────────
 
 #[test]
-fn tc08_connection_reuse_logic() {
-    // ConnectionManager.get_or_connect is tested via the module's internal tests
-    // Here we verify the WorkflowDefinition can reference connection variables
+fn tc08_connection_variable_reference() {
+    // Verify multiple workflow steps can reference the same connection variable.
     let yaml = r#"
-id: reuse-test
-name: Reuse
-description: Connection reuse test
+id: connection-variable-test
+name: Connection Variable
+description: Connection variable reference
 variables:
   - name: db
     type: connection

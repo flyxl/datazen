@@ -76,6 +76,7 @@ impl DataTransferHandler {
                     Ok(res) => {
                         let digest = artifact_digest(destination)?;
                         let boundary = commit_boundary(
+                            self.clock.as_ref(),
                             spec.stage_id.as_str(),
                             "artifact",
                             &digest,

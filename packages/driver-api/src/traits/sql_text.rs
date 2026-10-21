@@ -11,7 +11,7 @@
 
 use super::DatabaseDriver;
 use crate::sql_target::SqlTarget;
-use crate::types::{BoundSqlStatement, DriverError, PaginationSyntax, SqlLiteralDialect, Value};
+use crate::types::{DriverError, PaginationSyntax, SqlLiteralDialect, Value};
 
 /// Lowercase hexadecimal encoding used by the default literal formatter.
 ///
@@ -136,163 +136,6 @@ pub(crate) fn format_sql_literal_for_dialect(
     }
 }
 
-/// Historical, infallible ANSI-style formatter kept for source compatibility.
-/// Product code must call `try_format_sql_literal` through the driver trait.
-pub(crate) fn format_sql_literal(value: &Option<Value>) -> String {
-    match value {
-        None | Some(Value::Null) => "NULL".to_string(),
-        Some(Value::Bool(true)) => "TRUE".to_string(),
-        Some(Value::Bool(false)) => "FALSE".to_string(),
-        Some(Value::Integer(i)) => i.to_string(),
-        Some(Value::Float(f)) => f.to_string(),
-        Some(Value::String(s) | Value::Timestamp(s)) => {
-            format!("'{}'", s.replace('\'', "''"))
-        }
-        Some(Value::Bytes(b)) => format!("X'{}'", bytes_to_hex(b)),
-        Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
-    }
-}
-
-pub(crate) fn build_update_sql<D: DatabaseDriver + ?Sized>(
-    driver: &D,
-    table: &str,
-    set_columns: &[(&str, Option<Value>)],
-    pk_columns: &[(&str, Option<Value>)],
-) -> String {
-    let set_clauses: Vec<String> = set_columns
-        .iter()
-        .map(|(col, val)| {
-            format!(
-                "{} = {}",
-                driver.quote_ident(col),
-                driver.format_sql_literal(val)
-            )
-        })
-        .collect();
-    let where_clauses: Vec<String> = pk_columns
-        .iter()
-        .map(|(col, val)| match val {
-            None | Some(Value::Null) => format!("{} IS NULL", driver.quote_ident(col)),
-            Some(v) => format!(
-                "{} = {}",
-                driver.quote_ident(col),
-                driver.format_sql_literal(&Some(v.clone()))
-            ),
-        })
-        .collect();
-    format!(
-        "UPDATE {} SET {} WHERE {}",
-        driver.quote_ident(table),
-        set_clauses.join(", "),
-        where_clauses.join(" AND ")
-    )
-}
-
-pub(crate) fn build_update_statement<D: DatabaseDriver + ?Sized>(
-    driver: &D,
-    table: &str,
-    set_columns: &[(&str, Option<Value>)],
-    pk_columns: &[(&str, Option<Value>)],
-) -> Result<BoundSqlStatement, DriverError> {
-    if !driver.supports_bound_writes() {
-        return Err(DriverError::Unsupported(
-            "parameterized row writes are not supported".into(),
-        ));
-    }
-    let mut parameters = Vec::new();
-    let mut bind = |value: &Option<Value>| -> Result<String, DriverError> {
-        let placeholder = driver.parameter_placeholder(parameters.len() + 1, None)?;
-        parameters.push(value.clone().unwrap_or(Value::Null));
-        Ok(placeholder)
-    };
-
-    let mut set_clauses = Vec::with_capacity(set_columns.len());
-    for (column, value) in set_columns {
-        set_clauses.push(format!("{} = {}", driver.quote_ident(column), bind(value)?));
-    }
-    let mut where_clauses = Vec::with_capacity(pk_columns.len());
-    for (column, value) in pk_columns {
-        let quoted = driver.quote_ident(column);
-        if value
-            .as_ref()
-            .map_or(true, |value| matches!(value, Value::Null))
-        {
-            where_clauses.push(format!("{quoted} IS NULL"));
-        } else {
-            where_clauses.push(format!("{quoted} = {}", bind(value)?));
-        }
-    }
-
-    Ok(BoundSqlStatement {
-        sql: format!(
-            "UPDATE {} SET {} WHERE {}",
-            driver.quote_ident(table),
-            set_clauses.join(", "),
-            where_clauses.join(" AND ")
-        ),
-        parameters,
-    })
-}
-
-pub(crate) fn build_delete_statement<D: DatabaseDriver + ?Sized>(
-    driver: &D,
-    table: &str,
-    pk_columns: &[(&str, Option<Value>)],
-) -> Result<BoundSqlStatement, DriverError> {
-    if !driver.supports_bound_writes() {
-        return Err(DriverError::Unsupported(
-            "parameterized row writes are not supported".into(),
-        ));
-    }
-    let mut parameters = Vec::new();
-    let mut where_clauses = Vec::with_capacity(pk_columns.len());
-    for (column, value) in pk_columns {
-        let quoted = driver.quote_ident(column);
-        if value
-            .as_ref()
-            .map_or(true, |value| matches!(value, Value::Null))
-        {
-            where_clauses.push(format!("{quoted} IS NULL"));
-        } else {
-            let placeholder = driver.parameter_placeholder(parameters.len() + 1, None)?;
-            parameters.push(value.clone().unwrap_or(Value::Null));
-            where_clauses.push(format!("{quoted} = {placeholder}"));
-        }
-    }
-
-    Ok(BoundSqlStatement {
-        sql: format!(
-            "DELETE FROM {} WHERE {}",
-            driver.quote_ident(table),
-            where_clauses.join(" AND ")
-        ),
-        parameters,
-    })
-}
-
-pub(crate) fn build_delete_sql<D: DatabaseDriver + ?Sized>(
-    driver: &D,
-    table: &str,
-    pk_columns: &[(&str, Option<Value>)],
-) -> String {
-    let where_clauses: Vec<String> = pk_columns
-        .iter()
-        .map(|(col, val)| match val {
-            None | Some(Value::Null) => format!("{} IS NULL", driver.quote_ident(col)),
-            Some(v) => format!(
-                "{} = {}",
-                driver.quote_ident(col),
-                driver.format_sql_literal(&Some(v.clone()))
-            ),
-        })
-        .collect();
-    format!(
-        "DELETE FROM {} WHERE {}",
-        driver.quote_ident(table),
-        where_clauses.join(" AND ")
-    )
-}
-
 pub(crate) fn qualified_sql<D: DatabaseDriver + ?Sized>(
     driver: &D,
     sql: &str,
@@ -413,7 +256,7 @@ mod tests {
     #[test]
     fn legacy_generic_literal_formatter_does_not_double_backslashes() {
         assert_eq!(
-            format_sql_literal(&Some(Value::String("a\\b".into()))),
+            crate::sql_builder::format_sql_literal_ansi(&Some(Value::String("a\\b".into()))),
             "'a\\b'"
         );
     }

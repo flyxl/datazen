@@ -55,7 +55,7 @@ use crate::registry::actor::{
     spawn_actor, AuditOutbox, ControlCommand, ExecCommand, OpenRequest, SessionActor,
 };
 use crate::registry::audit::{AuditKind, AuditLog, Outcome, RegistryAuditEntry};
-use crate::registry::backend::SessionBackend;
+use crate::registry::backend::{CapabilityProvenance, SessionBackend};
 use crate::registry::epoch::RuntimeEpoch;
 use crate::registry::port::SessionPort;
 use crate::registry::receipt::CancelReceipt;
@@ -151,6 +151,13 @@ impl QuotaLedger {
         let previous = self.outstanding.fetch_add(1, Ordering::SeqCst);
         if previous >= self.limit {
             self.outstanding.fetch_sub(1, Ordering::SeqCst);
+            tracing::warn!(
+                source = "registry_quota",
+                category = "session_limit",
+                used = previous,
+                cap = self.limit,
+                "resource admission refused"
+            );
             return Err(RuntimeError::BudgetExhausted("sessionQuota"));
         }
         Ok(())
@@ -339,9 +346,26 @@ impl SessionRegistry {
     ///
     /// 顺序不可调换：先占 id、再占额度、再打开物理资源，只有拿到投影之后才放进
     /// 可见表。任何一步失败都**不留痕**——没有表项、没有半开额度、没有占位。
+    pub async fn reclaim_idle_resources(&self) {
+        self.backend.reclaim_idle_resources().await;
+    }
+
+    /// 只读观测快照，直接转发后端台账；未实现的后端返回 `None`。
+    pub async fn observability_snapshot(
+        &self,
+    ) -> Option<crate::resource::RuntimeObservabilityReport> {
+        self.backend.observability_snapshot().await
+    }
     pub async fn register_session(
         &self,
         request: OpenRequest,
+    ) -> Result<SessionView, RuntimeError> {
+        self.register_session_for_command(request, "").await
+    }
+    pub async fn register_session_for_command(
+        &self,
+        request: OpenRequest,
+        command: &str,
     ) -> Result<SessionView, RuntimeError> {
         self.audit.pump();
         let db_session_id = request.db_session_id.clone();
@@ -356,7 +380,7 @@ impl SessionRegistry {
             opening.push(db_session_id.clone());
         }
 
-        match self.open_and_publish(request, worker_id).await {
+        match self.open_and_publish(request, worker_id, command).await {
             Ok(view) => {
                 self.release_opening(&db_session_id);
                 self.audit.pump();
@@ -373,6 +397,7 @@ impl SessionRegistry {
         &self,
         request: OpenRequest,
         worker_id: WorkerId,
+        command: &str,
     ) -> Result<SessionView, RuntimeError> {
         let db_session_id = request.db_session_id.clone();
         self.quota.try_reserve()?;
@@ -384,7 +409,10 @@ impl SessionRegistry {
         let actor = spawn_actor(
             request,
             runtime_epoch,
-            Arc::clone(&self.backend),
+            Arc::new(super::intent::CommandBackend {
+                inner: self.backend.clone(),
+                command: command.to_owned(),
+            }),
             self.outbox.clone(),
         );
 
@@ -676,11 +704,29 @@ impl SessionRegistry {
             .exec(|reply| ExecCommand::SetIdleDeadline {
                 handle: handle.clone(),
                 deadline_ms,
+                return_previous: false,
                 reply,
             })
             .await;
         self.audit.pump();
         result
+    }
+
+    /// Suspend idle eviction and return the exact prior deadline atomically.
+    pub(crate) async fn suspend_idle_deadline(
+        &self,
+        handle: &SessionHandle,
+    ) -> Result<Option<u64>, RuntimeError> {
+        let record = self.locate(&handle.db_session_id)?;
+        record
+            .actor
+            .exec(|reply| ExecCommand::SetIdleDeadline {
+                handle: handle.clone(),
+                deadline_ms: None,
+                return_previous: true,
+                reply,
+            })
+            .await
     }
 
     /// 关闭会话（登记表侧）。
@@ -756,6 +802,22 @@ impl SessionRegistry {
         record
             .actor
             .exec(|reply| ExecCommand::Execute { request, reply })
+            .await
+    }
+
+    /// Read the capability snapshot captured from the opened physical resource.
+    pub async fn capability_snapshot(
+        &self,
+        handle: &SessionHandle,
+    ) -> Result<CapabilityProvenance, RuntimeError> {
+        self.audit.pump();
+        let record = self.locate(&handle.db_session_id)?;
+        record
+            .actor
+            .exec(|reply| ExecCommand::CapabilitySnapshot {
+                handle: handle.clone(),
+                reply,
+            })
             .await
     }
 }

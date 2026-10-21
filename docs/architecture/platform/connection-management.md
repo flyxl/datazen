@@ -19,20 +19,21 @@
 
 ## 2. 当前代码定位与替换规则
 
-| 当前文件 | 阅读重点 | 新实现中的去向 |
+| 当前实现入口 | 阅读重点 | 运行时职责 |
 | --- | --- | --- |
-| [connection_manager.rs](../../../src-tauri/src/services/connection_manager.rs) | ActiveSession、owner map、refs | SessionRegistry + ResourceManager |
-| [connections.rs](../../../src-tauri/src/services/connection_manager/connections.rs) | 配置、隧道、driver.connect | 版本化配置解析 + 受预算约束建连 |
-| [sessions.rs](../../../src-tauri/src/services/connection_manager/sessions.rs) | 按配置复用、release、reconnect | 明确 owner 的 session API、显式失效 |
-| [driver_command](../../../src-tauri/src/commands/driver_command/mod.rs) | Command 网关 | adapter 进入统一 ExecutionGateway |
-| [query.rs](../../../src-tauri/src/commands/query.rs) | 会话事务命令与事务句柄 | 在同一 Lease 上管理事务；回滚失败必须上报 |
-| [driver traits](../../../packages/driver-api/src/traits.rs) | connect、query、Command、事务 | 保留领域能力，补 opaque 固定资源契约 |
+| [Runtime session use cases](../../../packages/runtime/src/application/mod.rs) | session 身份、授权、执行与活动期限 | 应用层协调 session actor、directory 与 backend |
+| [Runtime transaction use cases](../../../packages/runtime/src/application/transactions.rs) | begin、commit、rollback 与事务状态 | actor 按 session handle 串行控制并拥有事务句柄 |
+| [DesktopSessionBackend](../../../src-tauri/src/platform/session_backend.rs) | 连接资源的打开、执行与释放 | Runtime resource provider 的桌面实现 |
+| [driver_command](../../../src-tauri/src/commands/driver_command/mod.rs) | Command 网关 | 通过 Runtime ExecutionGateway 执行 |
+| [query.rs](../../../src-tauri/src/commands/query.rs) | 查询与事务 IPC 适配 | 将操作委托给 Runtime，不保存连接或事务句柄 |
+| [connection.rs](../../../src-tauri/src/commands/connection.rs) | connection 与 dbSession 生命周期命令 | 通过 Runtime 管理 session，配置仍由 Store 持久化 |
+| [driver traits](../../../packages/driver-api/src/traits.rs) | connect、query、Command、事务 | 驱动保留领域能力；Runtime 管理物理资源生命周期 |
 | [activeConnectionStore](../../../src/stores/activeConnectionStore.ts) | connectionId 索引的连接状态 | 连接可达性与编辑器 session 状态分开 |
 | [QuerySidebarSection](../../../src/windows/connection/query/QuerySidebarSection.tsx) | SQL 推测上下文 | 仅做补全/浏览推测，实际上下文由后端更新 |
 | [dedicatedDbSession](../../../src/lib/dedicatedDbSession.ts) | 三件套窗口准备/释放 | 明确目标，执行 Lease 归 Job |
-| [workflow command_runtime](../../../src-tauri/src/workflow/command_runtime.rs) | 默认目标与 Command | 按 step/block 范围申请资源 |
+| [workflow command_runtime](../../../src-tauri/src/workflow/command_runtime.rs) | Workflow v1 默认目标与 Command | 独立 step 经 feature-core resource execution 使用 Runtime |
 
-旧 `ConnectionHandle` 有 `id` 与 `pool_id`，不能从名字推断固定物理连接。先做 driver 契约测试，再将 consumer 移到新接口。旧 API 过渡适配禁止把未知连接假称为有状态 session。
+桌面 Host 不再维护第二份 `ConnectionManager`、活动连接表或事务句柄表。Runtime actor 与 lease manager 是物理 session、事务句柄、idle 回收和资源预算的运行时所有者；连接配置仍由 Store 持久化，前端 `connectionId` 与 `dbSessionId` 的用途保持分离。
 
 ## 3. 不可破坏的不变量
 
@@ -415,6 +416,8 @@ ResourceDescriptor 必须包含 providerId、resourceKey、sessionContinuity、r
 
 ExecutionCompletion 必须包含 completionStatus、effectOutcome、statementResults、contextBefore/after、transactionObservation、sessionHandles、protocolDrained、resourceHealth。`sessionHandles` 是本次执行交出的会话级句柄（§6.5）：driver 必须如实返回，没有则为空数组，runtime 只对已登记项负责终态后的句柄生命周期，宿主不直接消费句柄。SessionObservation 的 unknown 字段不能填入 initialTarget 假充确认。ResultSink 提供带字节大小的异步写入/完成/失败方法，写入等待表示背压；不暴露 Tokio channel 类型。
 
+行批次通过 `ResultSink::write(ResultChunk)` 交付，`rows_affected` 为 `None`。MySQL/PostgreSQL 的 ResourceProvider SQL 查询、流式查询和 execute ACK 路径均由驱动在成功语句结束时通过 `write_statement_summary(StatementSummary)` 发布一次语句总计，包含零行与无结果行语句；有结果行时先写行批次，再写摘要。摘要默认经 `write_output` 以 `kind: statementSummary` 发布，不能接收 typed output 的 sink 明确拒绝。尚未迁移的缓冲驱动仍可能通过 `ResultChunk.rows_affected` 携带整条语句的最终值，不得按批次累加；Host 暂时把其空行旧形态归一化为摘要，并保留未知总计 `None`。空行块不能用作心跳或中间批次。P10 迁移其余驱动后，Host 删除该兼容归一化。Runtime 的 Artifact `output` 保留摘要，前端按 statementIndex 更新总计而不追加结果行。该增量方法有默认实现，未变更协议版本。
+
 `BudgetPort` 返回 opaque 许可，并支持按实际物理连接申请/释放。SQLx 驱动必须约束内部 pool 的真实建连；仅在 acquire 时计数会漏掉 idle 连接。第三方 SDK 无法统计实际 socket 时声明保守资源成本/硬上限，或在严格服务端预算模式拒绝该能力，不能报告精确值。
 
 ### 5.2 能力粒度
@@ -616,7 +619,7 @@ MySQL USE 改变当前会话默认数据库；完整限定对象名不等于切�
 | 仪表盘/监控 | 受限短租约 | 驱动声明专用连续资源 |
 | 导出 | Job 阶段固定 | 流/游标/快照结束 |
 | 三件套 | Job 声明多端阶段资源 | 事务、快照、session mode |
-| Workflow | step/block 声明范围 | session/transaction block |
+| Workflow | v1 按 step 执行并继承默认目标 | 前一步结果可作为后续 step 输入 |
 | AI/MCP/Wapp | 目标操作 | 显式受控 session |
 
 ### 9.2 可调初始值
@@ -642,11 +645,20 @@ MySQL USE 改变当前会话默认数据库；完整限定对象名不等于切�
 
 额度和 timeout 使用单调时钟判断持续时间；对外 expiresAt 使用 UTC。登录心跳不能刷新 lastBusinessActivity；执行期间不以 idle 判定回收。事务状态 Unknown 按保守事务上限处理。
 
+Runtime 在授权后的新后台 dispatch 开始/完成时记录业务活动；执行持有计数保护直到真实完成，暂停 idle 期限，最后一次完成后按单调时钟重新起算。成功、失败及 Unknown 保留原执行效果；授权拒绝与幂等回执重放不续期。actor 对执行中的 idle scan 立即返回未回收，避免旧扫描在完成后按旧期限关闭会话。getSession/getExecution、订阅、心跳与 attach 不续期；执行中 detach 不打断执行，完成后再采用业务期限与 detached grace 的较短者。
+
 ### 9.3 预算会计
 
 预算覆盖组织、用户、数据库服务、worker 和 Job。占用集合包含 Opening、InUse、Cleaning、idle pool、Quarantined 和 control sockets。归还到 idle pool不释放物理连接预算，只有实际 close 才释放。
 
-cancel 所需控制连接预留在同一预算内，不能在满池时无限额外建连。多 profile 指向同一服务需 driver 服务身份与管理员资源组辅助聚合；无法可靠识别时使用显式配置组，不能声称自动精确识别。
+cancel 所需控制连接预留在同一预算内，不能在满池时无限额外建连。
+
+PostgreSQL 已实现按同一 profile、server endpoint、登录身份和 SSL 模式共享一个 control pool，业务 database/schema 不参与共享键。数据资源声明和申请只覆盖 data pool；`BudgetPort::acquire_control_connection` 独立申请一个物理名额，桌面适配器使用 `ResourceClass::Control`。共享登记保留首次申请的 budget Arc 与 permit，最后一个资源确认 pool close 后才释放；取消关闭可按同一登记重试。N 个单连接数据资源因此占用 N+1 个物理名额。兼容 BudgetPort 默认实现也走普通物理预算，不能免费建连。
+
+控制连接优先使用原始 profile 的 database，目标业务 database 不覆盖它。原锚点不可连接时，驱动先确认旧 pool 关闭，再依次尝试 `postgres` 与仍登记的业务 database；无维护库权限时允许回退到可访问业务库，不要求额外数据库权限。替换沿用同一 control permit，任何时刻最多一个 control pool 的物理连接存活。取消在发送时解析当前共享 pool，避免执行登记持有过期 pool。控制通道仅执行取消、会话观测和服务器信息等内建短查询，用户 SQL 始终使用 data resource。
+
+资源准入在独立任务中完成；调用者取消等待后，未交付的已打开资源会自行关闭，并在确认后释放许可，避免半途取消遗留未记账 socket。关闭或预算释放暂时失败时，清理任务继续持有连接标识和 budget/permit，以 100ms 起步、上限 5 秒的指数退避重试，直到确认完成。首次准入失败遗留的 control closing 登记由后续同身份准入先重试关闭与释放，确认后才能重新申请，避免没有已返回句柄可驱动清理时永久阻塞该身份。
+多 profile 指向同一服务需 driver 服务身份与管理员资源组辅助聚合；无法可靠识别时使用显式配置组，不能声称自动精确识别。
 
 多 worker 使用节点额度或全局 permit。失去协调器续约停止新建连接；旧额度在确认 worker 隔离/连接关闭之前不重新分配，以免网络分区超额。
 
@@ -735,13 +747,9 @@ checkpoint 记录稳定键、已确认提交、源一致性证据和映射指纹
 
 ## 11. Workflow / AI / MCP / Wapp
 
-P6 实施采用 [Workflow §5.1](workflow-resource-model.md#51-workflow-执行是否包裹-job) 的统一 Job 包裹：block 资源仍按声明范围独立管理，资源阶段归 job 类，metadata/control 不改变类别；关闭窗口只退订。AI/MCP/Wapp、调度授权与原生工具细节见 [消费者接入](consumer-adapters.md)。
+P6 保持 Workflow v1 的模型、YAML、IPC 与 step 执行语义，只将底层连接管理接到 Runtime。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。step 的显式连接/数据库目标覆盖 Workflow 默认目标；独立 step 的会话状态不泄漏到后续 step，前一步结果仍可通过模板传入下一步。跨数据库流程由各 step 选择自己的连接完成。
 
-Workflow 目标优先级：step 显式目标 → block target → workflow 默认目标 → profile 初始目标。独立 step 每次初始化，USE 只在 step 内生效。session block 同一资源串行、跨 step 保留状态；transaction block runtime 控制 begin/commit/rollback，禁止步骤破坏提交边界。需重连的 database 变更不得进入现有 transaction block。
-
-并行分支各自资源；同 session block 不并行。事务失败重试整个已证实回滚的块。任意 session block 默认不能从中间 checkpoint 恢复。跨端事务不承诺原子性，按幂等/补偿处理。
-
-transaction block 执行前由 driver 校验整个计划是否能保证提交边界。首版优先受控 DML Command；任意 SQL 若无法证明不含手工 COMMIT、autocommit 修改、隐式提交或其他破坏边界的行为，则返回 UnsupportedPlan。不能只用关键词正则宣称安全。session block 可执行原生任意 SQL，但不提供 runtime 管理的整块原子性承诺。
+P6 不引入 Workflow Job 包裹、session/transaction block、block owner 或事务计划证明。相关未来设计见 [Workflow 资源模型](workflow-resource-model.md)，不属于当前 v1 验收范围。AI/MCP/Wapp、调度授权与原生工具细节见 [消费者接入](consumer-adapters.md)。
 
 AI 默认独立目标操作；用户显式授权当前编辑器 session 后，进入同队列并共享真实状态。MCP 显式 session 归客户端/身份、受 TTL 配额控制；Wapp session 归实例或 Job。后台调度用服务身份，不依赖 GUI 当前库或长期保留用户登录。
 
@@ -755,7 +763,11 @@ SessionDirectory 保存组织/owner/worker/runtimeEpoch，不保存连接。dbSe
 
 旧结果编辑：受控对象结果有完整 relation identity + PK/version，可重新授权并乐观写回原目标；任意 SQL 多表/表达式结果默认只读，driver 未证明可写映射时不猜测。临时表结果写回要求原 runtimeBinding 精确有效，否则 SessionLost；相同配置、指纹或用户不能代替原物理会话。
 
-### 12.1 P4 结果消费与上下文隔离（目标设计）
+### 12.1 P4 结果消费与上下文隔离
+
+QueryPanel 的查询与 Explain 共享 pane 所属的固定 session、actor 队列与 observedContext。Explain 使用显式选择支持的 `explain` Command，计划结果随 execution 发布为产物；不调用旧连接管理器，不因重读计划而重投 SQL。PostgreSQL/MySQL 的计划读取使用同一 retained checkout；驱动未声明 session-bound Explain 时明确拒绝。SQLite 驱动原有的 `supports_explain` / `explain()` 是池级接口，不等于固定编辑器 session 上的 Explain 能力；在它仍声明 `statefulSession: unsupported` 时，新 QueryPanel runtime 会拒绝打开固定 session，因此也不会回退到池级 Explain。若要支持 SQLite Explain，应单独实现一次性、明确限时的执行资源：从 ResourceManager 借用一个 SQLite 资源（即 `execute_at_target` 的目标租约路径），在同一借用期内执行只规划语句的 `EXPLAIN QUERY PLAN` 并发布结果，然后确认释放；这不要求声称 SQLite 有跨命令固定 session，也不能绕过统一 artifact/provenance 路径。该边界由驱动 crate 内的 `explain_is_pooled_only_and_not_a_declared_session_command` 钉住（`packages/drivers/sqlite/src/lib.rs`）：池级 `supports_explain()` 仍为真，而 session-bound `explain` Command 未声明，`execute_command` 对它明确返回 `Unsupported`——为了让 Explain 面板变绿而加声明会立刻让该断言变红。计划只接受单条语句且不启用 ANALYZE，不能将计划中的写入实际执行。
+
+桌面 `ExecutionProjection` 已实现块身份去重、已发布块恢复和 session 事件的 handle 隔离，QueryPanel 的 `runEditorQuery` 通过读取执行状态与产物恢复结果，不重新提交 SQL。恢复时校验返回块的 artifactId 与 chunkIndex，包括用于读取发布元数据的第 0 块；读取失败保留此前的已发布前缀。订阅遇到 `streamResetRequired` 时在序列去重前清除游标并恢复投影，重新订阅不携带旧游标，因此低于旧游标的重置通知也不会被误丢弃。以下为持续适用的消费契约与 P4 验收要求。P4 的真实 UI 连续故障旅程已落地于 `e2e/specs/journeys/query-fault-recovery-journey.ts`：在同一个编辑器里连续走完「多批部分结果 → 精确取消 → 后端被 `pg_terminate_backend` 杀掉 → 失败可见（错误面板 + 显式新会话横幅）→ 用户显式开新会话 → 再次执行成功且 `backend_start` 严格更新」，两次实测 `1 passing`/EXIT=0。
 
 客户端按 `(backendId, executionId, artifactId, chunkIndex)` 去重块，按 stream sequence 去重通知；收到 resultChunk 后只读已发布块。读失败不插入空行、不跳过该 index，恢复时先读 getExecution/产物已发布块元数据，再补缺块；streamResetRequired 清除订阅游标并重建投影，不把事件缺失解释成未执行。P3 的读取回执补充 publishedChunkCount 与发布字节前缀，便于重连恢复；最终块数由 finalize 冻结。
 
@@ -857,7 +869,7 @@ WDIO 使用 `pnpm tauri:build:webdriver` 或经检查的 E2E wrapper，不能裸
 
 H 是部署无关 runtime 契约，F 是前端契约，D 是真实驱动协议；W 再分 W1（单实例 HTTP/SSE）与 WN（多 worker）。CM-57/58 的故障路由和 CM-60 多 worker 部分属于 WN/P9；CM-54/55/56 的 H/F 部分在 P3/P4 必须验收，不能推迟到 Web。单进程 SessionDirectory 实现同一 port，P9 替换路由基础设施。
 
-CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固定 fake command 10 ms，以并发 8 预热 1000 请求；每轮采集 10000 个获准且未排队的请求，运行 5 轮。附加耗时从 gateway 完成鉴权/参数校验开始到派发 driver，以及 driver completion 到 receipt/event 状态登记完成的两段单调时间之和，不包含 fake SQL、预算/actor 排队、网络传输。采用 nearest-rank p95（排序后第 ceil(0.95*N) 项），每轮均须 ≤10 ms；排队请求另报等待分位数，不删失败样本，失败数单列。阶段归属：按开发计划各阶段退出门槛的原文，CM-60 的 H 断言属 P3（§7 含「60 单机部分」）、W1 断言属 P7（§11 含「60 单实例部分」）、WN 部分属 P9（§13 含「CM-57～60 的 WN 部分」）；本节只定义三处共用的测量口径与 harness，不替代任何一处阶段的达标判定。服务端侧另有一张阶段映射表（`team-server-and-auth.md` §16.1 的 CM-60 行，按「单实例部分 / 跨节点部分归 P9」分列），与本处一致；两处均以开发计划退出门槛原文为准。
+CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 10 ms，以并发 8 预热 1000 请求；每轮采集 10000 个获准且未排队的请求，运行 5 轮。记录实际运行环境，但不要求固定 CPU/内存规格。附加耗时从 gateway 完成鉴权/参数校验开始到派发 driver，以及 driver completion 到 receipt/event 状态登记完成的两段单调时间之和，不包含 fake SQL、预算/actor 排队、网络传输。采用 nearest-rank p95（排序后第 ceil(0.95*N) 项），每轮均须 ≤10 ms；排队请求另报等待分位数，不删失败样本，失败数单列。阶段归属：按开发计划各阶段退出门槛的原文，CM-60 的 H 断言属 P3（§7 含「60 单机部分」）、W1 断言属 P7（§11 含「60 单实例部分」）、WN 部分属 P9（§13 含「CM-57～60 的 WN 部分」）；本节只定义三处共用的测量口径与 harness，不替代任何一处阶段的达标判定。服务端侧另有一张阶段映射表（`team-server-and-auth.md` §16.1 的 CM-60 行，按「单实例部分 / 跨节点部分归 P9」分列），与本处一致；两处均以开发计划退出门槛原文为准。
 
 事件断言限单次存活订阅、缓冲未溢出的 sequence 连续性；重连允许重放重复原始事件，但投影后无重复行/状态遗漏。journal 在每次建连/关闭/permit 变化时断言额度，无随机采样盲区。注入连接持有、慢 consumer 和 drain 的压力部分另运行（`cargo test -p datazen-runtime --test cm60_pressure_drain`），不混入非排队延迟样本；保存环境、构建参数、原始计时与 journal 作为 CI artifact（落到 `target/bench/cm60-raw-<ts>.json` 与 `cm60-summary-<ts>.json`，格式与判定式见 fake-runtime-fixtures §11.5–§11.6），不新增仓库评审记录。
 
@@ -1071,6 +1083,12 @@ CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固�
 - 步骤：并发刷新表格，查询编辑器当前库和临时状态。
 - 断言：表格并发资源不超过 2，不为每 tab 建连接；编辑器资源/上下文不变。
 
+**首版执行结果（2026-10）**：断言拆成两半，各落在能看住它的那一层。
+
+- **数值半（并发资源不超过上限）由 H 层承担**：`packages/runtime/tests/pool_capacity_budget.rs`（池容量与预算台账不漂移、无状态键永不驻留、被隔离的租约不占空闲容量）。首版所有发布驱动都声明 `ResetForReuse::Unsupported`，空闲池恒为空（见 CM-67），所以"驻留上限"在真实驱动上没有可触发状态。
+- **「不为每 tab 建连接」与「编辑器资源/上下文不变」由真实 UI 断言**：`e2e/specs/journeys/table-pool-contention-journey.ts`。它逐个打开并刷新表 tab，每次采样都要求物理资源数不越预算、且不超过基线 + 2（一个编辑器 retained session 的余量），最后回到编辑器确认仍能执行且观察上下文未变。
+- **计数必须由 Runtime 自己回答**：数据库活动视图无法说明某个连接属于哪个 Runtime pool 或租约状态，因此不能用 `pg_stat_activity` 推算 Runtime 预算。桌面只读口 `runtime_observability_snapshot` 经 `SessionBackend::observability_snapshot` → `ProductionLeaseManager::snapshot`（`packages/runtime/src/resource/observability.rs`）投影 Runtime 租约台账（每池键在借/空闲/关闭中/隔离 + 台账总数），池策略来自 `PoolManager`，并附预算上限与在用量；**不新建第二本计数**（CM-32 单账铁律）。载荷里没有凭据、连接串或原始库名——池键只是摘要（指纹本身已是 FNV 摘要，再补凭据代与路由代）。未实现该端口后端返回 `null`，不是全零；台账被毒化同样返回 `null`。该口是带默认实现（默认 `None`）的 trait 方法，应用层的装饰器 `ObservedBackend` 必须**显式转发**（`packages/runtime/src/application/backend.rs`）：忘记转发不会编译失败，症状只是"快照永远为 `null`"——本轮就是这样被 E2E 抓住的，并已由 `observed_backend_forwards_the_observability_snapshot` 钉住。
+
 **CM-34 表编辑事务范围（H/D/F）**
 
 - 前置：表有 PK/version，driver 支持该表事务；界面累计两条修改。
@@ -1088,6 +1106,8 @@ CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固�
 - 前置：结果来自临时表和 session S。
 - 步骤：关闭 S，再尝试编辑旧结果。
 - 断言：SessionLost；不在新 session 建同名对象或写普通表；结果本身按策略仍可阅读。
+
+**首版执行结果（2026-10）**：断言的前半（"可写结果在会话替换后失效"）在本版**没有可触发的真实状态**，因为 `WritableMapping::Verified` 只在 `context_before.confidence == Confirmed` 时产生（`src-tauri/src/platform/session_backend/execution.rs`），而确认要求驱动声明 `ContextObservation::Full`（`packages/driver-api/src/capabilities.rs::confirms_context`）——当前没有任何内置驱动声明它（postgres / mysql / sqlite / redis 为 `Partial`，其余 `Unsupported`）。真实 UI 层因此只断言可达的一半：单关系 `SELECT *` 结果只读、替换会话后仍可阅读且仍不可编辑（`e2e/specs/journeys/temporary-result-writeback-journey.ts`，实测通过）；前半留在组件层（`src/windows/connection/result-workspace/__tests__/ResultTableView.test.tsx`，CM-36/61 同条）。某个驱动能确证上下文后，前半才重新具备 F 层可验证性。
 
 **CM-37 缓存竞态与权限隔离（H）**
 
@@ -1169,19 +1189,19 @@ CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固�
 - 步骤：生成文件、取消中途文件、重新下载成功文件。
 - 断言：目标连接创建数为 0；未完成产物不伪装成功；下载按 ACL 校验。
 
-**CM-50 Workflow 独立 step（H/D）**
+**CM-50 Workflow v1 step 目标继承与结果串联（H/D，P6）**
 
-- 前置：workflow 默认 A；step1 在自己的 Lease USE B。
-- 步骤：step2 不指定目标；step3 显式目标 C。
-- 断言：step2 使用 A，step3 使用 C；step1 状态不泄漏；资源全部清理。
+- 前置：Workflow 默认目标与显式 step 目标分别配置为 PostgreSQL、MySQL。
+- 步骤：先在默认目标执行 Query 产生结果，再用后续 step 的模板把该值传入显式目标的 Command；反向再执行 MySQL→PostgreSQL。
+- 断言：两个方向均由 Runtime-backed Workflow 路径执行，step 目标覆盖默认目标，模板使用的是前一步结果，目标库返回与来源值匹配的结果；资源全部清理。
 
-**CM-51 Workflow session block（H/D）**
+**CM-51 Workflow session block（H/D，未来目标；不属于 P6 v1）**
 
 - 前置：3 个 step 共用 block，第一步创建临时对象。
 - 步骤：后续写读临时对象；尝试同 block 并行；再启动另一 block。
 - 断言：原 block 同资源连续；并行配置被拒绝；另一 block 独立；block 结束关闭。
 
-**CM-52 Workflow transaction block（H/D）**
+**CM-52 Workflow transaction block（H/D，未来目标；不属于 P6 v1）**
 
 - 前置：事务型目标，2 个写 step；runtime 控制事务。
 - 步骤：第二步失败；尝试用户 COMMIT/跨 connection/隐式提交 DDL；经完整回滚后重试块。
@@ -1236,7 +1256,7 @@ CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固�
 - 前置：总额度 20、控制预留 2；100 用户逻辑 session、短请求 fake 固定耗时 10 ms、队列上限 32。
 - 步骤：提交 1000 次操作与取消，两个 worker 分配额度；将一个 worker drain；全部完成后关池。
 - 断言：每次资源 journal 变化点真实资源不超过总额度；普通资源不侵占预留；拒绝/等待有界；drain 不接新资源；结束后非保留资源、任务、取消句柄和许可均归零。
-- 性能门槛：单机 fake 基准（4 vCPU/8 GiB、预热后 5 轮）非排队网关附加耗时 p95≤10 ms，事件重复/丢失数为 0；记录实测环境。它是 runtime 回归指标，不是远程数据库 SQL 延迟 SLA。阶段归属见 §15.3 与开发计划各阶段退出门槛：H 断言属 P3、W1 断言属 P7、WN 部分属 P9。
+- 性能门槛：单机 fake 基准（标准负载计划、预热后 5 轮）非排队网关附加耗时 p95≤10 ms，事件重复/丢失数为 0；记录实测环境；不要求固定 CPU/内存规格。它是 runtime 回归指标，不是远程数据库 SQL 延迟 SLA。阶段归属见 §15.3 与开发计划各阶段退出门槛：H 断言属 P3、W1 断言属 P7、WN 部分属 P9。
 
 ### 16.7 补充契约与边界用例
 
@@ -1280,7 +1300,13 @@ CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固�
 
 - 前置：database-bound driver，两个 database、共享 DB 账号但不同 policy 的用户；低总预算。
 - 步骤：轮流浏览 A/B；轮换凭据、路由和 ACL；慢缓存结果晚到；推进 idle TTL。
-- 断言：按 database/policy 分 key；总 socket 不越预算；旧 idle 停发并关闭；旧缓存不能回填，撤权即时生效；空 pool 元数据受 LRU 上限约束。
+- 断言（H）：按 database/policy 分 key；总 socket 不越预算；旧 idle 停发并关闭；旧缓存不能回填，撤权即时生效；空 pool 元数据受 LRU 上限约束。
+
+**首版执行结果（2026-10）**：生产类型是 `ProductionLeaseManager`（`packages/runtime/src/resource/production.rs`），由桌面 session backend 持有并驱动开/执行/归池/关闭（`src-tauri/src/platform/session_backend.rs`）；池策略在 `packages/runtime/src/resource/pool.rs`，台账在 `resource/table.rs`。
+
+- **H 层：已实现并验证。** `cargo test -p datazen-runtime --test resource_rotation_and_disable --test pool_capacity_budget --test resource_return_to_pool` → 6 / 8 / 14 passed，0 failed，EXIT=0。逐条对应：分池与容量守恒 `pool_idle_capacity_never_drifts_from_the_budget_ledger`；轮换后旧代 idle 停发并关闭 `a_credential_rotation_retires_the_idle_leases_of_the_previous_generation`；旧代请求被拒 `a_lease_request_pinned_to_retired_material_is_refused`；慢缓存不回填 `a_slow_cache_result_from_the_previous_generation_cannot_backfill_the_new_generation`；撤权即时生效 `disabling_a_connection_drops_queued_requests_and_records_the_actual_cancellation`；空闲 TTL 到期关闭 `an_idle_lease_is_closed_once_the_idle_ttl_expires`。空池元数据 LRU 是 `datazen-runtime` 的 lib 单测 `empty_pool_metadata_stays_within_the_documented_lru_limit`（`packages/runtime/src/resource/journey.rs`；`cargo test -p datazen-runtime --lib` → 509 passed / 0 failed，EXIT=0），不在上面三个集成测试文件里。
+- **D 层：两条断言在首版真实驱动上不可观测，记为发布限制而不是待办。** 全部 path 驱动（含 postgres / mysql / sqlite / redis）一律声明 `ResetForReuse::Unsupported`，宿主归池准入把该声明判为 `DriverResetUnsupported`——不进池、直接关闭（`packages/runtime/src/resource/cleanup.rs`），因此空闲池在真实驱动上**恒为空**，「旧 idle 停发并关闭」与「空 pool 元数据受 LRU 上限约束」没有可触发的状态，用真实驱动写这两条断言只会写出永远为真的空断言。只有某个驱动声明 `ResetForReuse::Verified` 并证明复位基线后，它们才重新具备 D 层可验证性。
+- **D 层仍需验收的部分**：真实驱动上按 database/policy 分池且物理连接数不越预算、轮换/禁用后旧代资源不可再签发。现有 `packages/drivers/{postgres,mysql}/e2e/retained-resource-journey.ts` 覆盖 retained session、真实取消与 retained Explain，**不覆盖轮换**。
 
 **CM-68 候选替换发布与响应丢失（H/W1/WN）**
 

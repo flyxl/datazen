@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { emptyQueryExecState, runBoundQuery, runStreamingQuery } from '../queryExecActions';
+import { ApiError } from '@datazen/backend-client';
+import { t } from '../../locales/t';
+import {
+  emptyQueryExecState,
+  runBoundQuery as runBoundQueryImpl,
+  runStreamingQuery as runStreamingQueryImpl,
+} from '../queryExecActions';
 import { useTableDataStore } from '../tableDataStore';
 
-const mockExecuteQuery = vi.fn();
-const mockExecuteQueryStream = vi.fn();
+const mockRunEditorQuery = vi.fn();
 const mockEmitCrossWindow = vi.fn();
 const mockGetTableData = vi.fn();
 
@@ -13,27 +18,68 @@ vi.mock('../../commands/database', () => ({
   },
 }));
 
-vi.mock('../../commands/query', () => ({
-  queryCommands: {
-    executeQuery: (...args: unknown[]) => mockExecuteQuery(...args),
-    executeQueryStream: (...args: unknown[]) => mockExecuteQueryStream(...args),
-  },
+vi.mock('../../lib/session/runEditorQuery', () => ({
+  runEditorQuery: (...args: unknown[]) => mockRunEditorQuery(...args),
 }));
 
 vi.mock('../../lib/crossWindowBus', () => ({
   emitCrossWindow: (...args: unknown[]) => mockEmitCrossWindow(...args),
 }));
 
+function runBoundQuery(
+  paneKey: string,
+  dbSessionId: string,
+  sql: string,
+  params: Record<string, string | number | boolean | null>,
+  getExec: () => Map<string, ReturnType<typeof emptyQueryExecState>>,
+  setExec: (exec: Map<string, ReturnType<typeof emptyQueryExecState>>) => void,
+  database?: string | null,
+  schema?: string | null,
+) {
+  return runBoundQueryImpl(
+    paneKey,
+    dbSessionId,
+    sql,
+    params,
+    getExec,
+    setExec,
+    database,
+    schema,
+    'cfg-1',
+  );
+}
+
+function runStreamingQuery(
+  paneKey: string,
+  dbSessionId: string,
+  sql: string,
+  getExec: () => Map<string, ReturnType<typeof emptyQueryExecState>>,
+  setExec: (exec: Map<string, ReturnType<typeof emptyQueryExecState>>) => void,
+  database?: string | null,
+  schema?: string | null,
+  params?: Record<string, string | number | boolean | null>,
+) {
+  return runStreamingQueryImpl(
+    paneKey,
+    dbSessionId,
+    sql,
+    getExec,
+    setExec,
+    database,
+    schema,
+    params,
+    'cfg-1',
+  );
+}
+
 describe('queryExecActions schema refresh', () => {
   beforeEach(() => {
-    mockExecuteQuery.mockReset();
-    mockExecuteQueryStream.mockReset();
-    mockExecuteQueryStream.mockImplementation(async (...args: unknown[]) =>
-      (args[2] as (event: unknown) => void)({
-        type: 'done',
-        totalTimeMs: 5,
-      }),
-    );
+    mockRunEditorQuery.mockReset();
+    mockRunEditorQuery.mockImplementation(async (...args: unknown[]) => {
+      const onEvent = args[6] as (event: unknown) => void;
+      onEvent({ type: 'executionStarted', executionId: 'exec-1' });
+      onEvent({ type: 'done', totalTimeMs: 5 });
+    });
     mockEmitCrossWindow.mockReset();
     mockEmitCrossWindow.mockResolvedValue(undefined);
   });
@@ -54,7 +100,7 @@ describe('queryExecActions schema refresh', () => {
   });
 
   it('does not emit refresh after failed bound query', async () => {
-    mockExecuteQueryStream.mockRejectedValueOnce(new Error('permission denied'));
+    mockRunEditorQuery.mockRejectedValueOnce(new Error('permission denied'));
     let exec = new Map([['panel-1', emptyQueryExecState()]]);
     const getExec = () => exec;
     const setExec = (next: Map<string, ReturnType<typeof emptyQueryExecState>>) => {
@@ -80,11 +126,11 @@ describe('queryExecActions schema refresh', () => {
   });
 
   it('emits refresh after successful streaming DDL query', async () => {
-    mockExecuteQueryStream.mockImplementationOnce(
-      async (_connId: string, _sql: string, onEvent: (event: unknown) => void) => {
-        onEvent({ type: 'done', totalTimeMs: 5 });
-      },
-    );
+    mockRunEditorQuery.mockImplementationOnce(async (...args: unknown[]) => {
+      const onEvent = args[6] as (event: unknown) => void;
+      onEvent({ type: 'executionStarted', executionId: 'exec-1' });
+      onEvent({ type: 'done', totalTimeMs: 5 });
+    });
     let exec = new Map([['panel-1', emptyQueryExecState()]]);
     const getExec = () => exec;
     const setExec = (next: Map<string, ReturnType<typeof emptyQueryExecState>>) => {
@@ -100,7 +146,7 @@ describe('queryExecActions schema refresh', () => {
   });
 
   it('does not emit refresh when streaming throws', async () => {
-    mockExecuteQueryStream.mockRejectedValueOnce(new Error('syntax error'));
+    mockRunEditorQuery.mockRejectedValueOnce(new Error('syntax error'));
     let exec = new Map([['panel-1', emptyQueryExecState()]]);
     const getExec = () => exec;
     const setExec = (next: Map<string, ReturnType<typeof emptyQueryExecState>>) => {
@@ -111,6 +157,25 @@ describe('queryExecActions schema refresh', () => {
 
     expect(mockEmitCrossWindow).not.toHaveBeenCalled();
     expect(exec.get('panel-1')?.error).toBe('syntax error');
+  });
+
+  it('turns an editor-session quota refusal into an actionable message', async () => {
+    // 宿主把额度型拒绝收敛成一句不含细节的通用文案；只有 code 能区分它。
+    // 用户需要看到「该怎么做」，而不是又一个 connection runtime operation failed。
+    mockRunEditorQuery.mockRejectedValueOnce(
+      new ApiError('SessionQuotaExceeded', 'connection runtime operation failed'),
+    );
+    let exec = new Map([['panel-1', emptyQueryExecState()]]);
+    const getExec = () => exec;
+    const setExec = (next: Map<string, ReturnType<typeof emptyQueryExecState>>) => {
+      exec = next;
+    };
+
+    await runStreamingQuery('panel-1', 'conn-1', 'SELECT 1', getExec, setExec);
+
+    expect(exec.get('panel-1')?.error).toBe(t('query.session.editorQuotaExceeded'));
+    expect(exec.get('panel-1')?.error).not.toContain('connection runtime operation failed');
+    expect(exec.get('panel-1')?.running).toBe(false);
   });
 
   async function seedCachedTableRows(dbSessionId: string) {
@@ -174,7 +239,7 @@ describe('queryExecActions schema refresh', () => {
 
   it('does not invalidate cached table data when the write fails', async () => {
     await seedCachedTableRows('s-fail');
-    mockExecuteQueryStream.mockRejectedValueOnce(new Error('constraint violated'));
+    mockRunEditorQuery.mockRejectedValueOnce(new Error('constraint violated'));
     let exec = new Map([['panel-1', emptyQueryExecState()]]);
     await runStreamingQuery(
       'panel-1',
@@ -191,8 +256,7 @@ describe('queryExecActions schema refresh', () => {
 
 describe('queryExecActions carries the panel database', () => {
   beforeEach(() => {
-    mockExecuteQuery.mockReset();
-    mockExecuteQueryStream.mockReset();
+    mockRunEditorQuery.mockReset();
     mockEmitCrossWindow.mockReset();
     mockEmitCrossWindow.mockResolvedValue(undefined);
   });
@@ -207,7 +271,7 @@ describe('queryExecActions carries the panel database', () => {
     };
   }
 
-  it('runBoundQuery forwards params and database to executeQueryStream', async () => {
+  it('runBoundQuery forwards owner, params and database to the editor session', async () => {
     const { getExec, setExec } = makeExecContext();
 
     await runBoundQuery(
@@ -221,69 +285,81 @@ describe('queryExecActions carries the panel database', () => {
       'sales',
     );
 
-    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'conn-1',
+    expect(mockRunEditorQuery).toHaveBeenCalledWith(
+      'panel-1',
+      'cfg-1',
       'SELECT * FROM users',
+      'db_b',
+      'sales',
+      { id: 7 },
       expect.any(Function),
-      { database: 'db_b', schema: 'sales', params: { id: 7 } },
     );
   });
 
-  it('runBoundQuery normalizes a missing database to null', async () => {
+  it('runBoundQuery forwards an unpinned namespace to the editor session', async () => {
     const { getExec, setExec } = makeExecContext();
 
     await runBoundQuery('panel-1', 'conn-1', 'SELECT 1', {}, getExec, setExec);
 
-    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'conn-1',
+    expect(mockRunEditorQuery).toHaveBeenCalledWith(
+      'panel-1',
+      'cfg-1',
       'SELECT 1',
+      undefined,
+      undefined,
+      {},
       expect.any(Function),
-      { database: null, schema: null },
     );
   });
 
   it('runStreamingQuery forwards database via stream options', async () => {
-    mockExecuteQueryStream.mockImplementationOnce(
-      async (_connId: string, _sql: string, onEvent: (event: unknown) => void) => {
-        onEvent({ type: 'done', totalTimeMs: 5 });
-      },
-    );
+    mockRunEditorQuery.mockImplementationOnce(async (...args: unknown[]) => {
+      const onEvent = args[6] as (event: unknown) => void;
+      onEvent({ type: 'executionStarted', executionId: 'exec-1' });
+      onEvent({ type: 'done', totalTimeMs: 5 });
+    });
     const { getExec, setExec } = makeExecContext();
 
     await runStreamingQuery('panel-1', 'conn-1', 'SELECT 1', getExec, setExec, 'analytics');
 
-    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'conn-1',
+    expect(mockRunEditorQuery).toHaveBeenCalledWith(
+      'panel-1',
+      'cfg-1',
       'SELECT 1',
+      'analytics',
+      undefined,
+      undefined,
       expect.any(Function),
-      { database: 'analytics', schema: null },
     );
   });
 
-  it('runStreamingQuery normalizes a missing database to null', async () => {
-    mockExecuteQueryStream.mockImplementationOnce(
-      async (_connId: string, _sql: string, onEvent: (event: unknown) => void) => {
-        onEvent({ type: 'done', totalTimeMs: 5 });
-      },
-    );
+  it('runStreamingQuery forwards an unpinned namespace to the editor session', async () => {
+    mockRunEditorQuery.mockImplementationOnce(async (...args: unknown[]) => {
+      const onEvent = args[6] as (event: unknown) => void;
+      onEvent({ type: 'executionStarted', executionId: 'exec-1' });
+      onEvent({ type: 'done', totalTimeMs: 5 });
+    });
     const { getExec, setExec } = makeExecContext();
 
     await runStreamingQuery('panel-1', 'conn-1', 'SELECT 1', getExec, setExec);
 
-    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'conn-1',
+    expect(mockRunEditorQuery).toHaveBeenCalledWith(
+      'panel-1',
+      'cfg-1',
       'SELECT 1',
+      undefined,
+      undefined,
+      undefined,
       expect.any(Function),
-      { database: null, schema: null },
     );
   });
 
   it('runStreamingQuery forwards the schema target via stream options', async () => {
-    mockExecuteQueryStream.mockImplementationOnce(
-      async (_connId: string, _sql: string, onEvent: (event: unknown) => void) => {
-        onEvent({ type: 'done', totalTimeMs: 5 });
-      },
-    );
+    mockRunEditorQuery.mockImplementationOnce(async (...args: unknown[]) => {
+      const onEvent = args[6] as (event: unknown) => void;
+      onEvent({ type: 'executionStarted', executionId: 'exec-1' });
+      onEvent({ type: 'done', totalTimeMs: 5 });
+    });
     const { getExec, setExec } = makeExecContext();
 
     await runStreamingQuery(
@@ -296,19 +372,21 @@ describe('queryExecActions carries the panel database', () => {
       'sales',
     );
 
-    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'conn-1',
+    expect(mockRunEditorQuery).toHaveBeenCalledWith(
+      'panel-1',
+      'cfg-1',
       'SELECT 1',
+      'analytics',
+      'sales',
+      undefined,
       expect.any(Function),
-      { database: 'analytics', schema: 'sales' },
     );
   });
 });
 
 describe('queryExecActions cancellation terminal semantics', () => {
   beforeEach(() => {
-    mockExecuteQuery.mockReset();
-    mockExecuteQueryStream.mockReset();
+    mockRunEditorQuery.mockReset();
     mockEmitCrossWindow.mockReset();
     mockEmitCrossWindow.mockResolvedValue(undefined);
   });
@@ -343,7 +421,7 @@ describe('queryExecActions cancellation terminal semantics', () => {
 
   it('waits for a streaming promise before reporting cancellation', async () => {
     const gate = deferred();
-    mockExecuteQueryStream.mockImplementationOnce(async () => gate.promise);
+    mockRunEditorQuery.mockImplementationOnce(async () => gate.promise);
     const context = makeExecContext();
     const run = runStreamingQuery(
       'panel-1',
@@ -369,8 +447,8 @@ describe('queryExecActions cancellation terminal semantics', () => {
 
   it('stores executionId only for the active stream and clears it on completion', async () => {
     const gate = deferred();
-    mockExecuteQueryStream.mockImplementationOnce(async (...args: unknown[]) => {
-      const onEvent = args[2] as (event: unknown) => void;
+    mockRunEditorQuery.mockImplementationOnce(async (...args: unknown[]) => {
+      const onEvent = args[6] as (event: unknown) => void;
       onEvent({ type: 'executionStarted', executionId: 'exec-1' });
       await gate.promise;
       onEvent({ type: 'done', totalTimeMs: 5 });
@@ -393,7 +471,7 @@ describe('queryExecActions cancellation terminal semantics', () => {
 
   it('reports success when a requested cancellation does not terminate the query', async () => {
     const gate = deferred();
-    mockExecuteQueryStream.mockImplementationOnce(async () => gate.promise);
+    mockRunEditorQuery.mockImplementationOnce(async () => gate.promise);
     const context = makeExecContext();
     const run = runStreamingQuery(
       'panel-1',
@@ -417,7 +495,7 @@ describe('queryExecActions cancellation terminal semantics', () => {
 
   it('does not call a failed cancel request a confirmed cancellation', async () => {
     const gate = deferred();
-    mockExecuteQueryStream.mockImplementationOnce(async () => gate.promise);
+    mockRunEditorQuery.mockImplementationOnce(async () => gate.promise);
     const context = makeExecContext();
     const run = runBoundQuery(
       'panel-1',

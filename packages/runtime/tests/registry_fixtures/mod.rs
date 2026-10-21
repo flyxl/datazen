@@ -42,9 +42,9 @@ use datazen_runtime::connection::{
 use datazen_runtime::directory::SessionHandle as DirectoryHandle;
 use datazen_runtime::registry::actor::OpenRequest;
 use datazen_runtime::registry::backend::{
-    CancelOnResource, CloseResource, CloseResourceOutcome, ExecuteOnResource, FinalizeHandles,
-    HandleFinalization, OpenResource, OpenedResource, ResourceCancel, ResourceExecution,
-    SessionBackend,
+    CancelOnResource, CapabilityProvenance, CloseResource, CloseResourceOutcome, ExecuteOnResource,
+    FinalizeHandles, HandleFinalization, OpenResource, OpenedResource, ResourceCancel,
+    ResourceExecution, SessionBackend,
 };
 use datazen_runtime::registry::{CancelDisposition, CapabilityVersions, SessionRegistry};
 
@@ -384,6 +384,7 @@ impl SessionBackend for ScriptedBackend {
                 contract: "1.0.0".to_owned(),
                 driver_api: "2.3.1".to_owned(),
             },
+            capability_snapshot: CapabilityProvenance::new("test-driver", "2.3.1", 7),
             resource_id: format!("res_{}", request.runtime_epoch),
             driver_supports_cancel: state.driver_supports_cancel,
         })
@@ -529,13 +530,13 @@ pub fn execution_id(seq: u64) -> ExecutionId {
     ExecutionId::new(format!("exec_{}_{}", EPOCH, seq))
 }
 
-/// 造一条句柄引用。
+/// 造一条绑定到首个已登记会话世代的句柄引用。
 pub fn handle_ref(handle_id: &str, resource_id: &str) -> SessionHandleRef {
     SessionHandleRef::new(
         HandleId::new(handle_id),
         HandleKind::Transaction,
         ResourceId::new(resource_id),
-        Counter(EPOCH),
+        Counter(FIRST_SESSION_EPOCH),
     )
 }
 

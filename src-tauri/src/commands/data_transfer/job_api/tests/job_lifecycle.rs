@@ -11,11 +11,11 @@ use super::super::cancel::{cancel_data_transfer_job, job_cancel_requested};
 use super::super::runtime::{now_timestamp, request_context, PREPARE_KIND};
 use super::*;
 
-/// A cancel must land on the Job repository, not on a local registry. The P5
-/// runtime reads `view.cancel_requested` and nothing else, and
-/// `services::job_registry` never heard of these Job ids, so a cancel that
-/// skipped the repository was lost: the Job kept running while the caller had
-/// been told it stopped.
+/// A cancel must land on the Job repository, not on a local registry: the P5
+/// runtime reads `view.cancel_requested` and nothing else, so a cancel that
+/// never touched the repository silently left the Job running. The IPC command
+/// keeps that guarantee and answers `false` for ids the repository does not
+/// know (see `cancel_command_answers_false_for_unknown_ids`).
 #[tokio::test]
 async fn a_cancel_request_lands_on_the_job_repository() {
     let test = TestAppState::with_options(mock_options()).await;
@@ -81,18 +81,37 @@ async fn a_cancel_request_lands_on_the_job_repository() {
         "a Job that already finished has no cancel in effect"
     );
 
-    // An id this client never accepted belongs to the legacy registry path.
+    // An id this backend never accepted is a Job-path refusal, not an error:
+    // the repository answers `false` and has nothing to record, and the IPC
+    // command on top of it also answers `false` ("nothing was cancelled").
     assert!(
         !cancel_data_transfer_job(&test.state, "transfer-apply-not-a-job")
             .await
             .expect("an unknown Job id is not an error"),
-        "an unknown Job id must be refused so the caller can fall back"
+        "an unknown Job id must be refused, not fabricated into a cancel"
     );
     assert!(
         !job_cancel_requested(&test.state, "transfer-apply-not-a-job")
             .await
             .expect("an unknown Job id is not an error"),
         "an unknown Job id has no recorded cancel"
+    );
+}
+
+/// The IPC cancel command must answer through the durable Job path and, for an
+/// id this backend never accepted, honestly report that nothing was cancelled —
+/// the never-`Ok(true)` shape that historically let a cancel look acknowledged
+/// while the legacy registry had nothing registered under that id.
+#[tokio::test]
+async fn cancel_command_answers_false_for_unknown_ids() {
+    let test = TestAppState::with_options(mock_options()).await;
+    let unknown = "transfer-cancel-never-accepted";
+    let answered = crate::commands::data_transfer::cancel_data_transfer_impl(&test.state, unknown)
+        .await
+        .expect("an unknown job id must not be a transport error");
+    assert!(
+        !answered,
+        "false means nothing was cancelled so the caller must not treat it as success"
     );
 }
 

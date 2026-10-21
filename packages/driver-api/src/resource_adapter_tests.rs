@@ -156,11 +156,11 @@ impl DatabaseDriver for LegacyFake {
     async fn execute_command(
         &self,
         _: &ConnectionHandle,
-        _: &str,
-        _: serde_json::Value,
+        command: &str,
+        input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
         Ok(CommandResult {
-            data: serde_json::json!({ "rows": [] }),
+            data: serde_json::json!({ "command": command, "input": input }),
         })
     }
 }
@@ -654,53 +654,8 @@ async fn a_namespace_level_this_database_lacks_is_rejected_before_connecting() {
     assert_eq!(budget.acquired.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
-#[tokio::test]
-async fn execution_forwards_the_exact_command_pair_and_fabricates_no_observation() {
-    let provider = adapter(LegacyFake::new());
-    let budget = Arc::new(CountingBudget::default());
-    let handle = provider
-        .acquire_resource(&acquire_request(), &port(&budget))
-        .await
-        .expect("acquire succeeds");
-
-    let completion = provider
-        .execute_on_resource(
-            &handle,
-            &QueryExecutionId::new("exec-1"),
-            &CommandCall::new("query", serde_json::json!({ "sql": "select 1" })),
-            &DiscardSink,
-        )
-        .await
-        .expect("execute succeeds");
-
-    assert_eq!(completion.completion_status, CompletionStatus::Succeeded);
-    assert!(completion.statement_results.is_empty());
-    assert!(completion.session_handles.is_empty());
-    assert_eq!(completion.context_before, SessionContext::unobserved());
-    assert_eq!(completion.context_after, SessionContext::unobserved());
-    assert_eq!(
-        completion.transaction_observation.state,
-        TransactionState::Unknown
-    );
-}
-
-/// A sink that records nothing: the legacy path produces no chunks.
-struct DiscardSink;
-
-#[async_trait]
-impl ResultSink for DiscardSink {
-    async fn write(&self, _: ResultChunk) -> Result<(), ResourceError> {
-        Ok(())
-    }
-
-    async fn complete(&self) -> Result<(), ResourceError> {
-        Ok(())
-    }
-
-    async fn fail(&self, _: &str) -> Result<(), ResourceError> {
-        Ok(())
-    }
-}
+// Output contract cases share the same fake and admission helpers.
+include!("resource_adapter_output_tests.rs");
 
 #[test]
 fn the_caps_the_adapter_claims_are_only_the_ones_it_can_honour() {

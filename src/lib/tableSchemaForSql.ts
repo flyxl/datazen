@@ -1,6 +1,6 @@
-import { schemaClient } from '@datazen/driver-sdk';
 import { capabilitiesForDbSession, relationSchemaFor } from './driverCapabilities';
 import { getCachedTableSchema } from './schemaCache';
+import { executeTargetCommand, metadataTarget } from './session/targetCommand';
 import { formatTableIdentifier, generateTableSql, type GeneratedSqlType } from './sqlGenerator';
 import type { TableSchema } from '../types';
 
@@ -16,13 +16,14 @@ export function buildPseudoTableSchema(tableName: string, colNames: string[]): T
 
 export async function fetchTableSchemaForSqlGeneration(args: {
   dbSessionId: string;
+  connectionId: string;
   tableName: string;
   schema?: string | null;
   database: string;
   databaseType: string;
   columnMap?: Record<string, string[]>;
 }): Promise<TableSchema | null> {
-  const { dbSessionId, tableName, schema, database, columnMap } = args;
+  const { dbSessionId, connectionId, tableName, schema, database, columnMap } = args;
   const relation = {
     database,
     schema: relationSchemaFor(capabilitiesForDbSession(dbSessionId), schema),
@@ -34,13 +35,17 @@ export async function fetchTableSchemaForSqlGeneration(args: {
       tableName,
       database,
       relation.schema,
+      connectionId,
     );
     if (tableSchema.columns.length > 0) return { ...tableSchema, tableName };
   } catch {
     // Drivers may support columns without full structure metadata.
   }
   try {
-    const response = await schemaClient.readColumns(dbSessionId, [relation]);
+    const response = (await executeTargetCommand(
+      metadataTarget(dbSessionId, database, relation.schema, tableName, connectionId),
+      { command: 'read_relation_columns', input: { relations: [relation] } },
+    )) as import('@datazen/driver-sdk').ReadColumnsOutput;
     const row = response.results.find(
       (row) =>
         row.status === 'ok' &&

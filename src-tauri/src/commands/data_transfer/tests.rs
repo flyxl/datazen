@@ -831,8 +831,7 @@ async fn test_tester_changed_driver_contract_fails_before_execution() {
 }
 
 #[tokio::test]
-async fn test_tester_read_only_change_fails_before_target_write() {
-    use crate::db::ConnectionHandle;
+async fn test_tester_connection_policy_change_fails_before_target_write() {
     use crate::testing::app_state::TestAppState;
 
     let test = TestAppState::with_options(transfer_plan_test_options()).await;
@@ -843,29 +842,16 @@ async fn test_tester_read_only_change_fails_before_target_write() {
         .unwrap();
     let query_calls_before = test.mock.query_calls();
 
-    test.state
-        .connection_manager
-        .disconnect(&target)
-        .await
-        .unwrap();
     let mut read_only_config = test
         .store
         .get_connection("transfer-plan-ro-tgt")
         .await
         .expect("target config");
     read_only_config.read_only = true;
-    test.state
-        .connection_manager
-        .insert_test_session(
-            &target,
-            "transfer-plan-ro-tgt",
-            read_only_config,
-            ConnectionHandle {
-                id: target.clone(),
-                pool_id: "pool-transfer-plan-ro-tgt".into(),
-            },
-        )
-        .await;
+    test.store
+        .save_connection(read_only_config)
+        .await
+        .expect("save read-only target config");
 
     let err = super::execute_data_transfer_impl(
         &test.state,
@@ -879,7 +865,10 @@ async fn test_tester_read_only_change_fails_before_target_write() {
     )
     .await
     .expect_err("a target becoming read-only must fail closed");
-    assert!(err.to_string().contains("read-only"), "{err}");
+    assert!(
+        err.to_string().contains("connection configuration changed"),
+        "a Runtime session whose persisted connection policy changed must fail closed: {err}"
+    );
     assert_eq!(
         test.mock.query_calls(),
         query_calls_before,

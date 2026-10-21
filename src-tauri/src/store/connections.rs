@@ -190,6 +190,27 @@ impl Store {
         self.persist_connections_locked(&snapshot).await
     }
 
+    /// Update connection activity metadata without advancing the Runtime
+    /// configuration revision. Activity timestamps are observational metadata;
+    /// treating them as a connection change invalidates every live session
+    /// immediately after `connect` returns.
+    pub async fn touch_last_connected_at(&self, id: &str) -> Result<(), StoreError> {
+        let _guard = self.write_lock.lock().await;
+        {
+            let mut cache = self.cache.write().await;
+            if let Some(config) = cache.connections.iter_mut().find(|config| config.id == id) {
+                config.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
+            } else {
+                return Ok(());
+            }
+        }
+        let snapshot = {
+            let cache = self.cache.read().await;
+            cache.connections.clone()
+        };
+        self.persist_connections_locked(&snapshot).await
+    }
+
     pub async fn delete_connection(&self, id: &str) -> Result<(), StoreError> {
         {
             let mut cache = self.cache.write().await;

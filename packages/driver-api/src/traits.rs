@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::dialect::LegacySqlDialect;
 use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
 use crate::schema_migration::{MigrationCapabilities, MigrationRenderer, TypeNormalizer};
 use crate::sql_target::SqlTarget;
@@ -24,7 +25,7 @@ use crate::{
 mod command_api;
 mod key_value;
 mod schema_target;
-mod sql_text;
+pub(crate) mod sql_text;
 mod streaming;
 
 pub use command_api::execute_standard_sql_command;
@@ -164,7 +165,7 @@ pub trait DatabaseDriver: Send + Sync {
     /// Legacy best-effort SQL literal formatter. New code should use
     /// [`Self::try_format_sql_literal`], which requires an explicit dialect.
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
-        sql_text::format_sql_literal(value)
+        crate::sql_builder::format_sql_literal_ansi(value)
     }
 
     /// The literal grammar this driver can safely render for SQL artifacts.
@@ -187,12 +188,17 @@ pub trait DatabaseDriver: Send + Sync {
         set_columns: &[(&str, Option<Value>)],
         pk_columns: &[(&str, Option<Value>)],
     ) -> String {
-        sql_text::build_update_sql(self, table, set_columns, pk_columns)
+        crate::sql_builder::build_update_sql(
+            &LegacySqlDialect::new(self),
+            table,
+            set_columns,
+            pk_columns,
+        )
     }
 
     /// Build `DELETE FROM … WHERE pk…` for row-level deletes (mirrors `build_update_sql`).
     fn build_delete_sql(&self, table: &str, pk_columns: &[(&str, Option<Value>)]) -> String {
-        sql_text::build_delete_sql(self, table, pk_columns)
+        crate::sql_builder::build_delete_sql(&LegacySqlDialect::new(self), table, pk_columns)
     }
 
     /// Build an UPDATE with driver placeholders and values kept out of SQL.
@@ -202,7 +208,18 @@ pub trait DatabaseDriver: Send + Sync {
         set_columns: &[(&str, Option<Value>)],
         pk_columns: &[(&str, Option<Value>)],
     ) -> Result<BoundSqlStatement, DriverError> {
-        sql_text::build_update_statement(self, table, set_columns, pk_columns)
+        if !self.supports_bound_writes() {
+            return Err(DriverError::Unsupported(
+                "parameterized row writes are not supported".into(),
+            ));
+        }
+        crate::sql_builder::build_update_statement(
+            &LegacySqlDialect::new(self),
+            self.max_bound_parameters(),
+            table,
+            set_columns,
+            pk_columns,
+        )
     }
 
     /// Build a DELETE with driver placeholders and values kept out of SQL.
@@ -211,7 +228,17 @@ pub trait DatabaseDriver: Send + Sync {
         table: &str,
         pk_columns: &[(&str, Option<Value>)],
     ) -> Result<BoundSqlStatement, DriverError> {
-        sql_text::build_delete_statement(self, table, pk_columns)
+        if !self.supports_bound_writes() {
+            return Err(DriverError::Unsupported(
+                "parameterized row writes are not supported".into(),
+            ));
+        }
+        crate::sql_builder::build_delete_statement(
+            &LegacySqlDialect::new(self),
+            self.max_bound_parameters(),
+            table,
+            pk_columns,
+        )
     }
 
     /// The host this driver dials when the connection config leaves `host` unset.
@@ -239,6 +266,42 @@ pub trait DatabaseDriver: Send + Sync {
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError>;
 
+    /// Open and retain one physical session. A lost session must never be
+    /// transparently replaced under this handle. The provider budgets sockets.
+    async fn connect_fixed_session(
+        &self,
+        _config: &ConnectionConfig,
+    ) -> Result<ConnectionHandle, DriverError> {
+        Err(DriverError::Unsupported("fixed physical sessions".into()))
+    }
+
+    /// Read server state on the retained session (or its independent control
+    /// connection), after the user protocol has drained.
+    async fn observe_fixed_session(
+        &self,
+        _handle: &ConnectionHandle,
+    ) -> Result<crate::session::SessionContext, DriverError> {
+        Err(DriverError::Unsupported("fixed session observation".into()))
+    }
+
+    /// Incrementally deliver SQL rows with awaitable sink backpressure. The
+    /// returned statements contain metadata, never a duplicate row buffer.
+    async fn query_to_sink(
+        &self,
+        _handle: &ConnectionHandle,
+        _execution_id: &QueryExecutionId,
+        _sql: &str,
+        _limit: Option<u32>,
+        _parameters: Option<&[Value]>,
+        _sink: &dyn crate::resource::ResultSink,
+    ) -> Result<Vec<StatementResult>, crate::resource::ResourceError> {
+        Err(crate::resource::ResourceError::unsupported(
+            self.driver_type(),
+            "query_to_sink",
+            "incremental result delivery is unsupported",
+        ))
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError>;
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError>;
@@ -263,6 +326,16 @@ pub trait DatabaseDriver: Send + Sync {
         database: &str,
         schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError>;
+
+    /// Complete schema names, including empty schemas, when the driver can
+    /// enumerate them. None lets catalog adapters retain relation-derived names.
+    async fn get_schemas(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<Option<Vec<String>>, DriverError> {
+        Ok(None)
+    }
 
     async fn get_table_schema(
         &self,
@@ -536,6 +609,36 @@ pub trait DatabaseDriver: Send + Sync {
         let mut defs = vec![query_command_definition(), execute_command_definition()];
         defs.extend(schema_catalog_command_definitions());
         defs
+    }
+
+    /// Return target requirements for a command exposed by this driver.
+    ///
+    /// Drivers may override this when a custom command has stricter target semantics. The
+    /// default uses explicit rules for object-addressed commands and a conservative namespace-only
+    /// rule for other registered commands. An unregistered command returns `None` so the platform
+    /// can reject it before acquiring a resource.
+    fn target_requirements(
+        &self,
+        command: &str,
+    ) -> Option<crate::namespace::CommandTargetRequirements> {
+        if !self
+            .command_definitions()
+            .iter()
+            .any(|definition| definition.id == command)
+        {
+            return None;
+        }
+
+        let mut requirements = crate::namespace::CommandTargetRequirements::default();
+        match command {
+            "query" | "query_stream" => requirements.allows_object = true,
+            "get_table_schema" | "get_object_ddl" | "get_object_dependencies" => {
+                requirements.allows_object = true;
+                requirements.requires_object = true;
+            }
+            _ => {}
+        }
+        Some(requirements)
     }
 
     /// Execute a driver command.
@@ -984,11 +1087,6 @@ pub trait DatabaseDriver: Send + Sync {
     /// Override to disable `DELIMITER`, change quote rules, or swap splitters.
     fn new_sql_scanner(&self) -> crate::sql_split::SqlStatementScanner {
         crate::sql_split::SqlStatementScanner::new()
-    }
-
-    /// Split a complete SQL buffer. Default uses [`Self::new_sql_scanner`].
-    fn split_restore_sql(&self, sql: &str) -> Vec<String> {
-        sql_text::split_restore_sql(self, sql)
     }
 
     /// After a restore statement fails: clear an aborted PG transaction,

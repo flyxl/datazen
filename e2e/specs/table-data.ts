@@ -1,5 +1,6 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
+import { closeWorkspacePanels } from '../lib/testDataLifecycle.js';
 import {
   connectSeededPgInWorkspace,
   closeExtraWindows,
@@ -63,6 +64,9 @@ describe('表数据视图 (TD-001~TD-008)', () => {
       // best-effort cleanup
     }
     await closeExtraWindows(mainWindow);
+    // A spec boundary must release retained query/table sessions before the
+    // next journey needs metadata capacity in this same application process.
+    await closeWorkspacePanels(browser);
   });
 
   // ── 数据加载 ───────────────────────────────────────────────────
@@ -264,10 +268,10 @@ describe('表数据视图 (TD-001~TD-008)', () => {
   it('TC-TABLE-009: 空表应显示空状态而非崩溃', async () => {
     const emptyTable = '_e2e_empty_table';
     await openQueryTab();
-    await executeSQL(`DROP TABLE IF EXISTS ${emptyTable}`);
-    await executeSQL(`CREATE TABLE ${emptyTable} (id SERIAL PRIMARY KEY, name TEXT)`);
+    await executeSQLChecked(`DROP TABLE IF EXISTS ${emptyTable}`);
+    await executeSQLChecked(`CREATE TABLE ${emptyTable} (id SERIAL PRIMARY KEY, name TEXT)`);
     await clickNavigatorRefresh();
-    await browser.pause(1500);
+    await waitForTableInSidebar(emptyTable);
     await clickTableInSidebar(emptyTable);
     await browser.pause(1500);
     await switchSubTab('data');

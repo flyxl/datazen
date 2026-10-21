@@ -1,6 +1,14 @@
+import type { TargetCommandPhaseHook } from './targetCommandPhase';
 import type {
-  ArtifactChunk, BackendClient, ConnectionEvent, EventEnvelope, ExecutionReceipt,
-  ExecutionView, RuntimeResultBinding, SessionHandle, StatementResultSource,
+  ArtifactChunk,
+  BackendClient,
+  ConnectionEvent,
+  EventEnvelope,
+  ExecutionReceipt,
+  ExecutionView,
+  RuntimeResultBinding,
+  SessionHandle,
+  StatementResultSource,
 } from '@datazen/backend-client';
 import { counterValue, sameHandle, wireCounter } from './counters';
 
@@ -27,83 +35,129 @@ export class ExecutionProjection {
     readonly client: BackendClient,
     readonly receipt: ExecutionReceipt,
     readonly originalHandle: SessionHandle | null,
-    private readonly onSession?: (event: Extract<ConnectionEvent, { kind: 'sessionChanged' }>) => void,
+    private readonly onSession?: (
+      event: Extract<ConnectionEvent, { kind: 'sessionChanged' }>,
+    ) => void,
+    private readonly onReadPhase?: TargetCommandPhaseHook,
   ) {}
 
   get chunks(): readonly PublishedResultChunk[] {
     return [...this.chunksByKey.values()].sort((a, b) => {
-      if (a.chunk.artifactId !== b.chunk.artifactId) return a.chunk.artifactId.localeCompare(b.chunk.artifactId);
-      const x = counterValue(a.chunk.chunkIndex), y = counterValue(b.chunk.chunkIndex);
+      if (a.chunk.artifactId !== b.chunk.artifactId)
+        return a.chunk.artifactId.localeCompare(b.chunk.artifactId);
+      const x = counterValue(a.chunk.chunkIndex),
+        y = counterValue(b.chunk.chunkIndex);
       return x < y ? -1 : x > y ? 1 : 0;
     });
   }
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
-    return () => { this.listeners.delete(listener); };
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
-  private publish(): void { for (const listener of this.listeners) listener(); }
+  private publish(): void {
+    for (const listener of this.listeners) listener();
+  }
   private key(artifactId: string, index: bigint): string {
-    return JSON.stringify([this.client.backendId, this.receipt.executionId, artifactId, index.toString()]);
+    return JSON.stringify([
+      this.client.backendId,
+      this.receipt.executionId,
+      artifactId,
+      index.toString(),
+    ]);
   }
   writableBinding(currentHandle: SessionHandle | null): RuntimeResultBinding | null {
     const binding = this.view?.runtimeBinding;
-    return binding && binding.executionId === this.receipt.executionId &&
-      sameHandle(binding.handle, this.originalHandle) && sameHandle(binding.handle, currentHandle)
-      ? binding : null;
+    return binding &&
+      binding.executionId === this.receipt.executionId &&
+      sameHandle(binding.handle, this.originalHandle) &&
+      sameHandle(binding.handle, currentHandle)
+      ? binding
+      : null;
   }
   invalidateRuntimeBinding(): void {
     this.runtimeInvalidated = true;
     if (this.view) this.view = { ...this.view, runtimeBinding: null };
     this.publish();
   }
-  private published(chunk: ArtifactChunk, source: StatementResultSource | null): PublishedResultChunk {
+  private published(
+    chunk: ArtifactChunk,
+    source: StatementResultSource | null,
+  ): PublishedResultChunk {
     let payload: unknown = null;
-    try { payload = JSON.parse(new TextDecoder().decode(chunk.bytes)); } catch { /* Binary artifacts stay opaque. */ }
+    try {
+      payload = JSON.parse(new TextDecoder().decode(chunk.bytes));
+    } catch {
+      /* Binary artifacts stay opaque. */
+    }
     if (!source && payload && typeof payload === 'object' && 'source' in payload) {
       const candidate = (payload as { source: unknown }).source;
-      if (candidate && typeof candidate === 'object' && 'executionId' in candidate &&
-          candidate.executionId === this.receipt.executionId && 'statementIndex' in candidate &&
-          typeof candidate.statementIndex === 'number' && 'writableMapping' in candidate &&
-          ['verified', 'readOnly'].includes(String(candidate.writableMapping))) {
+      if (
+        candidate &&
+        typeof candidate === 'object' &&
+        'executionId' in candidate &&
+        candidate.executionId === this.receipt.executionId &&
+        'statementIndex' in candidate &&
+        typeof candidate.statementIndex === 'number' &&
+        'writableMapping' in candidate &&
+        ['verified', 'readOnly'].includes(String(candidate.writableMapping))
+      ) {
         source = candidate as StatementResultSource;
       }
     }
     return { chunk, source, payload };
   }
-  private async read(artifactId: string, index: bigint, source: StatementResultSource | null): Promise<void> {
+  private async read(
+    artifactId: string,
+    index: bigint,
+    source: StatementResultSource | null,
+  ): Promise<void> {
     const key = this.key(artifactId, index);
     if (this.chunksByKey.has(key)) return;
     const existing = this.reads.get(key);
     if (existing) return existing;
     const read = (async () => {
-      const chunk = await this.client.readArtifact({ artifactId: artifactId as ArtifactChunk['artifactId'], chunkIndex: wireCounter(index) });
+      this.onReadPhase?.('artifact-read');
+      const chunk = await this.client.readArtifact({
+        artifactId: artifactId as ArtifactChunk['artifactId'],
+        chunkIndex: wireCounter(index),
+      });
       if (chunk.artifactId !== artifactId || counterValue(chunk.chunkIndex) !== index) {
         throw new Error('Artifact read returned a different chunk');
       }
       this.chunksByKey.set(key, this.published(chunk, source));
       this.publish();
-    })().finally(() => { this.reads.delete(key); });
+    })().finally(() => {
+      this.reads.delete(key);
+    });
     this.reads.set(key, read);
     return read;
   }
 
   async recover(): Promise<void> {
+    this.onReadPhase?.('execution-view');
     const view = await this.client.getExecution(this.receipt.executionId);
-    if (view.executionId !== this.receipt.executionId) throw new Error('Execution identity mismatch');
+    if (view.executionId !== this.receipt.executionId)
+      throw new Error('Execution identity mismatch');
     this.view = this.runtimeInvalidated ? { ...view, runtimeBinding: null } : view;
     this.publish();
     for (const artifactId of view.artifactIds) {
       // Publication grows while writing: fetch fresh metadata even when chunk
       // zero was already displayed before a disconnect.
+      this.onReadPhase?.('artifact-read');
       const first = await this.client.readArtifact({ artifactId, chunkIndex: wireCounter(0n) });
-      if (first.artifactId !== artifactId) throw new Error('Artifact identity mismatch');
+      if (first.artifactId !== artifactId || counterValue(first.chunkIndex) !== 0n)
+        throw new Error('Artifact read returned a different chunk');
       const count = first?.totalChunks ?? first?.publishedChunkCount;
-      if (count === undefined || count === null) throw new Error('Artifact publication metadata unavailable');
+      if (count === undefined || count === null)
+        throw new Error('Artifact publication metadata unavailable');
       if (counterValue(count) > 0n) {
         const key = this.key(artifactId, 0n);
         if (!this.chunksByKey.has(key)) this.chunksByKey.set(key, this.published(first, null));
       }
-      for (let index = 1n; index < counterValue(count); index++) await this.read(artifactId, index, null);
+      for (let index = 1n; index < counterValue(count); index++)
+        await this.read(artifactId, index, null);
     }
     this.error = null;
     this.publish();
@@ -112,21 +166,30 @@ export class ExecutionProjection {
   async accept(event: EventEnvelope<ConnectionEvent>): Promise<void> {
     if (event.streamId !== this.receipt.streamId) return;
     if (event.executionId && event.executionId !== this.receipt.executionId) return;
-    const next = counterValue(event.sequence);
-    if (this.sequence !== null && next <= this.sequence) return;
-    if (this.sequence !== null && next !== this.sequence + 1n) await this.recover();
-    const payload = event.payload;
-    if (payload.kind === 'streamResetRequired') {
+    // A reset invalidates the cursor itself. Its sequence may be below the old
+    // cursor (for example after a stream restart), so handle it before dedupe.
+    // Re-subscribe from the beginning after rebuilding the published projection;
+    // immutable chunk identities keep replayed notifications from duplicating rows.
+    if (event.payload.kind === 'streamResetRequired') {
       this.sequence = null;
       await this.recover();
       return;
     }
+    const next = counterValue(event.sequence);
+    if (this.sequence !== null && next <= this.sequence) return;
+    if (this.sequence !== null && next !== this.sequence + 1n) await this.recover();
+    const payload = event.payload;
     if (payload.kind === 'sessionChanged') {
-      if (sameHandle(payload.session.handle, this.originalHandle) &&
-          sameHandle(event.sessionHandle, this.originalHandle)) this.onSession?.(payload);
+      if (
+        sameHandle(payload.session.handle, this.originalHandle) &&
+        sameHandle(event.sessionHandle, this.originalHandle)
+      )
+        this.onSession?.(payload);
     } else if (payload.kind === 'executionChanged') {
       if (payload.execution.executionId !== this.receipt.executionId) return;
-      this.view = this.runtimeInvalidated ? { ...payload.execution, runtimeBinding: null } : payload.execution;
+      this.view = this.runtimeInvalidated
+        ? { ...payload.execution, runtimeBinding: null }
+        : payload.execution;
       this.publish();
     } else if (payload.kind === 'resultChunk') {
       if (payload.source.executionId !== this.receipt.executionId) return;
@@ -142,7 +205,8 @@ export class ExecutionProjection {
     await stopping;
     if (generation !== this.generation) return;
     const stream = this.client.subscribeEvents({
-      streamId: this.receipt.streamId, afterSequence: this.sequence === null ? null : wireCounter(this.sequence),
+      streamId: this.receipt.streamId,
+      afterSequence: this.sequence === null ? null : wireCounter(this.sequence),
     });
     const iterator = stream[Symbol.asyncIterator]();
     this.iterator = iterator;
@@ -151,17 +215,36 @@ export class ExecutionProjection {
     try {
       while (generation === this.generation) {
         const item = await iterator.next();
-        if (item.done || generation !== this.generation) break;
+        if (generation !== this.generation) break;
+        if (item.done) {
+          await this.recover();
+          resetRequested =
+            this.view !== null && !['succeeded', 'failed', 'cancelled'].includes(this.view.state);
+          break;
+        }
         await this.accept(item.value);
-        if (item.value.payload.kind === 'streamResetRequired') { resetRequested = true; break; }
+        if (item.value.payload.kind === 'streamResetRequired') {
+          resetRequested = true;
+          break;
+        }
       }
     } catch (error) {
-      if (generation === this.generation) { this.error = error; this.publish(); }
+      if (generation === this.generation) {
+        this.error = error;
+        this.publish();
+      }
     } finally {
-      if (this.iterator === iterator) { this.iterator = null; this.stopStream = null; }
+      if (this.iterator === iterator) {
+        this.iterator = null;
+        this.stopStream = null;
+      }
       await iterator.return?.();
     }
-    if (resetRequested && generation === this.generation) await this.consume();
+    if (resetRequested && generation === this.generation) {
+      // A disconnected consumer can recover without spinning on a closing transport.
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      if (generation === this.generation) await this.consume();
+    }
   }
   async reconnect(): Promise<void> {
     await this.unsubscribe();

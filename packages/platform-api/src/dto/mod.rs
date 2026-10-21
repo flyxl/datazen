@@ -17,3 +17,5 @@ pub mod idempotency;
 pub mod job;
 pub mod profile;
 pub mod session;
+
+pub mod migration;

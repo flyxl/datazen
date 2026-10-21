@@ -47,7 +47,6 @@ use datazen_driver_api::session::{
 };
 use datazen_driver_api::{
     iter_driver_factories, require_resource_provider, ConnectionConfig, DatabaseDriverFactory,
-    ResourceProviderMissing,
 };
 // The test binary only links this crate — and therefore only runs the
 // `inventory::submit!` in `lib.rs` that makes any factory findable at all —
@@ -65,8 +64,6 @@ mod live_gate;
 
 /// The provider id postgres declares in its capability snapshot.
 const POSTGRES_PROVIDER_ID: &str = "postgresql";
-/// One physical connection is reserved for cancellation, on its own pool.
-const CONTROL_POOL_CONNECTIONS: u32 = 1;
 
 fn factory(driver_id: &str) -> &'static dyn DatabaseDriverFactory {
     iter_driver_factories()
@@ -136,7 +133,12 @@ fn interactive_scope(max_physical_connections: u32) -> ResourceScope {
 fn acquire_request(config: &ConnectionConfig, scope: ResourceScope) -> AcquireResourceRequest {
     AcquireResourceRequest {
         connection_config: config.clone(),
-        target: target(),
+        target: config
+            .database
+            .as_ref()
+            .map_or_else(NamespaceTarget::empty, |database| {
+                NamespaceTarget::empty().with_database(database.clone())
+            }),
         scope,
         identity_scope: IdentityScope::default(),
         baseline: Baseline::new(Vec::new()),
@@ -277,6 +279,8 @@ impl ResultSink for UnreachableSink {
 struct RecordingSink {
     chunks: Mutex<u32>,
     completed: Mutex<bool>,
+    // Includes statementSummary and column metadata; never counted as row chunks.
+    outputs: Mutex<Vec<serde_json::Value>>,
 }
 
 impl RecordingSink {
@@ -298,6 +302,14 @@ impl ResultSink for RecordingSink {
     async fn write(&self, _chunk: ResultChunk) -> Result<(), ResourceError> {
         let mut chunks = self.chunks.lock().unwrap_or_else(|p| p.into_inner());
         *chunks += 1;
+        Ok(())
+    }
+
+    async fn write_output(&self, output: serde_json::Value) -> Result<(), ResourceError> {
+        self.outputs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(output);
         Ok(())
     }
 
@@ -356,9 +368,18 @@ fn the_provider_identifies_itself_as_this_crate() {
         datazen_driver_api::PROTOCOL_VERSION,
         "an unchanged contract means an unchanged protocol version"
     );
-    assert!(
-        registry.snapshot.capability_revision > 0,
-        "a declared capability set must carry a revision so a stale snapshot is detectable"
+    assert_eq!(
+        registry.snapshot.capability_revision, 4,
+        "the revision advances when the provider adds transactional SQL restore"
+    );
+    assert_eq!(
+        registry
+            .snapshot
+            .confirmed
+            .get(datazen_driver_api::restore_sql::CAPABILITY_KEY)
+            .map(String::as_str),
+        Some(datazen_driver_api::restore_sql::TRANSACTIONAL),
+        "revision 4 declares transactional SQL restore"
     );
 }
 
@@ -386,12 +407,11 @@ fn the_factory_and_the_provider_declare_the_same_capabilities() {
 // 3. A resource is acquired for a real price, and nothing unproven is replayed.
 // ---------------------------------------------------------------------------
 
-/// A resource here is a leased pool slot, so switching the target namespace
-/// needs a different resource. `SessionContinuity::Fixed` plus
-/// `NamespaceSwitch::InPlace` is the shape that would make a caller believe a
-/// `SET` had been applied; neither is declared.
+/// Interactive queries retain a fixed backend, but PostgreSQL cannot switch
+/// the attached database in place. Fixed session continuity does not imply an
+/// in-place namespace change.
 #[tokio::test]
-async fn a_descriptor_refuses_to_claim_a_fixed_session() {
+async fn a_fixed_interactive_session_still_requires_replacement_to_switch_database() {
     let config = config();
     let provider = require_resource_provider(postgres()).expect("postgres has a provider");
 
@@ -400,9 +420,9 @@ async fn a_descriptor_refuses_to_claim_a_fixed_session() {
         .await
         .expect("describe needs no server");
 
-    assert_eq!(descriptor.session_continuity, SessionContinuity::Leased);
-    assert!(!descriptor.session_continuity.is_fixed());
-    assert!(!descriptor.is_fixed_session());
+    assert_eq!(descriptor.session_continuity, SessionContinuity::Fixed);
+    assert!(descriptor.session_continuity.is_fixed());
+    assert!(descriptor.is_fixed_session());
     assert_eq!(
         require_resource_provider(postgres())
             .expect("postgres has a provider")
@@ -429,14 +449,16 @@ async fn describe_states_the_real_physical_cost_and_refuses_levels_postgres_has_
         ConnectionCostPolicy::PoolBounded {
             max_physical_connections,
         } => assert_eq!(
-            max_physical_connections,
-            config.effective_max_pool_size() + CONTROL_POOL_CONNECTIONS,
-            "the declared cost must include the control connection used for cancellation"
+            max_physical_connections, 1,
+            "an interactive resource retains one backend; the cancel-only control \
+             connection is independently charged once per identity"
         ),
-        other => panic!("postgres pools are bounded by the pool size, not {other:?}"),
+        other => panic!(
+            "postgres fixed sessions are bounded by their retained connections, not {other:?}"
+        ),
     }
-    assert_eq!(descriptor.session_continuity, SessionContinuity::Leased);
-    assert!(!descriptor.is_fixed_session());
+    assert_eq!(descriptor.session_continuity, SessionContinuity::Fixed);
+    assert!(descriptor.is_fixed_session());
     assert!(
         descriptor.initialization_requirements.is_empty(),
         "no unproven initialization is replayed on acquire"
@@ -467,21 +489,18 @@ async fn a_scope_that_cannot_pay_for_the_resource_is_denied_before_anything_is_o
     let ledger = Arc::new(BudgetLedger::default());
     let budget: Arc<dyn BudgetPort> = Arc::clone(&ledger) as Arc<dyn BudgetPort>;
 
-    // The provider needs the data pool plus the control connection. A scope
-    // that names fewer must be told so instead of being quietly satisfied.
+    // An interactive resource retains one backend, so a scope that names none
+    // must be refused before the provider opens anything.
     let error = provider
-        .acquire_resource(&acquire_request(&config, interactive_scope(2)), &budget)
+        .acquire_resource(&acquire_request(&config, interactive_scope(0)), &budget)
         .await
-        .expect_err("a scope of 2 cannot pay for a pool of 10 plus a control connection");
+        .expect_err("a scope of 0 cannot pay for the retained backend");
 
     match error {
         ResourceError::BudgetDenied { requested, reason } => {
-            assert_eq!(
-                requested,
-                config.effective_max_pool_size() + CONTROL_POOL_CONNECTIONS
-            );
+            assert_eq!(requested, 1);
             assert!(
-                reason.contains("2"),
+                reason.contains("0"),
                 "the reason must name the scope that was refused: {reason}"
             );
         }
@@ -529,31 +548,37 @@ async fn an_unproven_initialization_step_is_refused_rather_than_replayed_or_igno
 // ---------------------------------------------------------------------------
 
 #[test]
-fn the_factories_this_crate_still_registers_without_a_provider_fail_closed() {
-    // questdb and cloudberry share this crate's connection code but have not
-    // been migrated. They must keep saying so through the error, not through
-    // a `None` a caller can mistake for "nothing to do".
-    for driver_id in ["questdb", "cloudberry"] {
+fn every_factory_this_crate_registers_resolves_a_provider_under_its_own_identity() {
+    // questdb and cloudberry now reach the resource contract the same way the
+    // native pool does: a memoized provider bound to the driver instance the
+    // factory hands out, with the alias identity stamped on the provider and
+    // on its capability snapshot — not on the parent pool's identity, which
+    // would let a questdb handle silently address a postgresql resource.
+    let native = require_resource_provider(factory("postgresql")).expect("postgres has a provider");
+    for driver_id in ["postgresql", "questdb", "cloudberry"] {
         let factory = factory(driver_id);
-        assert!(
-            factory.resource_provider().is_none(),
-            "{driver_id} has not been migrated; claiming a provider would be a lie"
+        let provider = factory.resource_provider().unwrap_or_else(|| {
+            panic!(
+                "{driver_id} must resolve a provider: the resource path failed \
+                 closed before the alias migrated, and must not regress"
+            )
+        });
+        assert_eq!(
+            provider.provider_id(),
+            driver_id,
+            "{driver_id}: provider identity must match the factory's driver id"
         );
-        assert!(
-            !factory.resource_capabilities().declares_anything(),
-            "{driver_id} must claim no capability until it has a provider"
+        assert_eq!(provider.capabilities().provider_id, driver_id);
+        assert_eq!(
+            factory.resource_capabilities(),
+            provider.capabilities().capabilities,
+            "{driver_id}: the two declaration paths must not be able to drift apart"
         );
-
-        match require_resource_provider(factory) {
-            Err(ResourceProviderMissing {
-                driver_id: reported,
-            }) => {
-                assert_eq!(
-                    reported, driver_id,
-                    "the error must name the driver that is missing"
-                )
-            }
-            Ok(_) => panic!("{driver_id} must not resolve a provider it never implemented"),
+        if driver_id != "postgresql" {
+            assert!(
+                !std::sync::Arc::ptr_eq(&provider, &native),
+                "{driver_id}: aliases keep their own epoch, not the native pool's"
+            );
         }
     }
 }
@@ -783,6 +808,11 @@ mod live {
             }
         };
 
+        driver
+            .disconnect(connection)
+            .await
+            .expect("close connectivity probe before budget test");
+
         let ledger = Arc::new(BudgetLedger::default());
         let budget: Arc<dyn BudgetPort> = Arc::clone(&ledger) as Arc<dyn BudgetPort>;
 
@@ -790,7 +820,11 @@ mod live {
             .acquire_resource(&acquire_request(&config, interactive_scope(32)), &budget)
             .await
             .expect("a scope of 32 pays for the pool of 10 plus the control connection");
-        assert_eq!(ledger.acquired().len(), 1, "exactly one charge per acquire");
+        assert_eq!(
+            ledger.acquired(),
+            vec![1, 1],
+            "data and shared control charged independently"
+        );
 
         let execution = datazen_driver_api::QueryExecutionId::new("live-1");
         let sink = RecordingSink::new();
@@ -833,10 +867,8 @@ mod live {
         );
         assert_eq!(
             ledger.released().len(),
-            1,
-            "exactly one release per acquire"
+            2,
+            "data and shared control released after confirmed close"
         );
-
-        let _ = connection;
     }
 }

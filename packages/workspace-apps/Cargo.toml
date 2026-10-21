@@ -1,0 +1,19 @@
+[package]
+name = "datazen-workspace-apps"
+version = "0.0.1"
+edition = "2021"
+description = "DataZen workspace-app core — manifest validation, package install and local storage, transport-neutral"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+datazen-platform-infra = { path = "../platform-infra" }
+tracing = "0.1"
+regex = "1.13.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

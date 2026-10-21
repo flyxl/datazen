@@ -9,7 +9,11 @@ mod handler;
 pub mod permission;
 mod prompts;
 mod resources;
+mod runtime_schema;
 mod server;
+pub mod session;
+mod session_cleanup;
+mod session_open;
 pub mod tool_help;
 mod tools;
 mod types;
@@ -52,11 +56,15 @@ pub async fn start_mcp_transport<R, W>(
         .with_disabled_tools(&settings.mcp_disabled_tools)
         .with_permission_mode(settings.mcp_permission_mode)
         .with_allowed_connections(&settings.mcp_allowed_connection_ids);
+    // `serve` consumes the server, so keep a handle for the disconnect cleanup below.
+    // The clone shares the session registry (an `Arc`), so closing through it closes
+    // exactly the mappings the served instance opened.
+    let served = server.clone();
 
     use rmcp::ServiceExt;
 
     tracing::info!("[mcp] starting MCP Server");
-    match server.serve((reader, writer)).await {
+    match served.serve((reader, writer)).await {
         Ok(service) => {
             tracing::info!("[mcp] MCP Server initialized");
             let ct = service.cancellation_token();
@@ -66,6 +74,11 @@ pub async fn start_mcp_transport<R, W>(
             });
             let reason = service.waiting().await;
             cancel_task.abort();
+            // §4.2: on disconnect this client stops receiving requests, so the
+            // sessions it opened must go with it. Scope is the client instance id,
+            // never the connection id — another consumer on the same connection keeps
+            // running.
+            server.release_sessions().await;
             tracing::info!("[mcp] MCP Server shut down: {reason:?}");
         }
         Err(e) => {

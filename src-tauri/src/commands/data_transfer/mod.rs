@@ -17,7 +17,6 @@ mod tests;
 
 use super::error::CommandError;
 use super::AppState;
-use crate::data_transfer::model::TableExecutionOutcome;
 use crate::data_transfer::{
     classify_transfer_pair as classify_transfer_pair_impl, TableInspectResult,
     TransferExecutionResult, TransferJob, TransferMode, TransferPreview, TransferProfile,
@@ -27,7 +26,6 @@ pub(crate) use exec::execute_data_transfer_impl;
 pub(crate) use exec::execute_data_transfer_impl_with_write_observer;
 pub(crate) use inspect::{inspect_data_transfer_impl, inspect_sql_file_transfer_impl};
 pub use job_api::*;
-pub(crate) use jobs::cancel_job;
 pub(crate) use preview::preview_data_transfer_impl;
 use tauri::{AppHandle, State};
 
@@ -181,6 +179,24 @@ pub async fn execute_data_transfer(
     request: TransferRunRequest,
     profile: Option<crate::store::MigrationProfileRef>,
 ) -> Result<TransferExecutionResult, CommandError> {
+    // Register before the first await so a cancellation racing the validation
+    // and session checks can still reach this legacy in-process run path.
+    let job_id = request.job_id.clone();
+    if let Some(id) = job_id.as_deref() {
+        jobs::ensure_job(id).await;
+    }
+    let result = execute_data_transfer_inner(state, request, profile).await;
+    if let Some(id) = job_id.as_deref() {
+        jobs::remove_job(id).await;
+    }
+    result
+}
+
+async fn execute_data_transfer_inner(
+    state: State<'_, AppState>,
+    request: TransferRunRequest,
+    profile: Option<crate::store::MigrationProfileRef>,
+) -> Result<TransferExecutionResult, CommandError> {
     crate::commands::history::validate_migration_profile_ref(
         &state,
         "dataTransfer",
@@ -196,15 +212,24 @@ pub async fn execute_data_transfer(
         .as_ref()
         .map_or(0, |tables| tables.len() as u64);
     if let Ok(plan) = plans::peek_plan(&request.plan_id) {
-        run.source_connection_id = state
-            .connection_manager
-            .owner_connection_id(&plan.job.source.db_session_id)
-            .await;
+        run.source_connection_id = crate::services::migration_endpoint::runtime_session_context(
+            &state,
+            &plan.job.source.db_session_id,
+            datazen_runtime::application::LivePurpose::Inspection,
+        )
+        .await
+        .ok()
+        .map(|context| context.view.connection_id.as_str().to_owned());
         if let Some(target) = plan.job.target.as_ref() {
-            run.target_connection_id = state
-                .connection_manager
-                .owner_connection_id(&target.db_session_id)
-                .await;
+            run.target_connection_id =
+                crate::services::migration_endpoint::runtime_session_context(
+                    &state,
+                    &target.db_session_id,
+                    datazen_runtime::application::LivePurpose::Inspection,
+                )
+                .await
+                .ok()
+                .map(|context| context.view.connection_id.as_str().to_owned());
         }
     }
     let write_started = AtomicBool::new(false);
@@ -258,53 +283,27 @@ pub fn reset_data_transfer_test_commit_ack_loss() -> bool {
     crate::data_transfer::execute::clear_test_commit_ack_loss()
 }
 
-pub(crate) fn transfer_rollback_history_outcome(result: &TransferExecutionResult) -> &'static str {
-    // SQL-file output does not use target database transactions or typed
-    // per-table outcomes. Preserve its existing run-history contract here.
-    if result.tables.iter().all(|table| table.outcome.is_none()) {
-        return if result.partial {
-            "unknown"
-        } else {
-            "notRequired"
-        };
-    }
+pub(crate) use datazen_feature_core::workflow::migration::{
+    transfer_error_history_outcome, transfer_rollback_history_outcome,
+};
 
-    if result
-        .tables
-        .iter()
-        .any(|table| table.outcome == Some(TableExecutionOutcome::Unknown))
-    {
-        "unknown"
-    } else if result
-        .tables
-        .iter()
-        .any(|table| table.outcome == Some(TableExecutionOutcome::PartiallyApplied))
-    {
-        "partiallyApplied"
-    } else if result
-        .tables
-        .iter()
-        .any(|table| table.outcome == Some(TableExecutionOutcome::RolledBack))
-    {
-        "rolledBack"
-    } else if result.partial
-        && result
-            .tables
-            .iter()
-            .all(|table| table.outcome == Some(TableExecutionOutcome::NotStarted))
-    {
-        "notStarted"
-    } else {
-        "notRequired"
+/// P5 Jobs are cancelled through the Job repository: `request_cancel` records
+/// the intent, the runtime's per-stage cancel watcher flips the `CancelToken`
+/// the stage already holds (mid-stage), or the next stage boundary check does
+/// (between stages), and the runtime closes the Job as `Cancelled`.
+pub(crate) async fn cancel_data_transfer_impl(
+    state: &AppState,
+    job_id: &str,
+) -> Result<bool, CommandError> {
+    if job_api::cancel_data_transfer_job(state, job_id).await? {
+        // A P5 Job answers with the recorded request itself, so the caller
+        // learns whether the cancel actually reached the Job.
+        return job_api::job_cancel_requested(state, job_id).await;
     }
-}
-
-pub(crate) fn transfer_error_history_outcome(write_started: bool) -> &'static str {
-    if write_started {
-        "unknown"
-    } else {
-        "notStarted"
-    }
+    // Legacy `execute_data_transfer` runs are not durable Jobs, but the IPC
+    // still accepts them. Cancel a registered in-process run while preserving
+    // `false` for ids neither execution path has registered.
+    Ok(jobs::cancel_registered_job(job_id).await)
 }
 
 #[tauri::command]
@@ -312,17 +311,5 @@ pub async fn cancel_data_transfer(
     state: State<'_, AppState>,
     job_id: String,
 ) -> Result<bool, CommandError> {
-    // P5 Jobs are cancelled through the Job repository: `request_cancel`
-    // records the intent, the runtime's per-stage cancel watcher flips the
-    // `CancelToken` the stage already holds (mid-stage), or the next stage
-    // boundary check does (between stages), and the runtime closes the Job as
-    // `Cancelled`. The legacy registry only knows
-    // `services::job_registry` jobs, so it stays the fallback for an id this
-    // client never accepted.
-    if job_api::cancel_data_transfer_job(&state, &job_id).await? {
-        // A P5 Job answers with the recorded request itself, so the caller
-        // learns whether the cancel actually reached the Job.
-        return job_api::job_cancel_requested(&state, &job_id).await;
-    }
-    Ok(cancel_job(&job_id).await)
+    cancel_data_transfer_impl(&state, &job_id).await
 }

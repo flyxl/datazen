@@ -17,8 +17,14 @@ async function waitForE2EConnectDelay(connectionId: string): Promise<void> {
 export const connectionCommands = {
   getConnections: () => invoke<ConnectionConfig[]>('get_connections'),
 
-  saveConnection: (config: ConnectionConfig) =>
-    invoke<void>('save_connection', { config: toIpcConnectionConfig(config) }),
+  saveConnection: (config: ConnectionConfig, clearMissingCredentials = false) =>
+    invoke<void>('save_connection', {
+      config: toIpcConnectionConfig(config),
+      clearMissingCredentials,
+    }),
+
+  duplicateConnection: (sourceId: string, newId: string, newName: string) =>
+    invoke<void>('duplicate_connection', { sourceId, newId, newName }),
 
   deleteConnection: (id: string) => invoke<void>('delete_connection', { id }),
 

@@ -152,9 +152,9 @@ export function dropWorkerDatabase(db: string): void {
 }
 
 /** Seeded in global before hook; never deleted by global teardown. */
-export const KEEP_CONNECTION_IDS = new Set(['conn_e2e_pg']);
+const KEEP_CONNECTION_IDS = new Set(['conn_e2e_pg']);
 
-export function isEphemeralConnection(conn: ConnectionRow): boolean {
+function isEphemeralConnection(conn: ConnectionRow): boolean {
   if (KEEP_CONNECTION_IDS.has(conn.id)) return false;
   const id = conn.id;
   const name = conn.name ?? '';
@@ -165,7 +165,7 @@ export function isEphemeralConnection(conn: ConnectionRow): boolean {
   return false;
 }
 
-export function isEphemeralWorkflow(wf: WorkflowRow): boolean {
+function isEphemeralWorkflow(wf: WorkflowRow): boolean {
   return /^e2e[-_]/i.test(wf.id);
 }
 
@@ -297,8 +297,38 @@ export async function seedDefaultPgConnection(browser: Browser, workerDb?: strin
   );
 }
 
+/** Close fixture-owned panels and await their runtime close receipts. */
+export async function closeWorkspacePanels(browser: Browser): Promise<void> {
+  // The app process survives WDIO workers, but page navigation discards its
+  // in-memory editor registry. Close the actual tabs before navigating so each
+  // owned runtime session gets its close receipt instead of leaking its budget
+  // into the next spec. removePanel awaits query/table controller.close before
+  // removing the tab from the DOM, so disappearance is the completion signal.
+  const handles = await browser.getWindowHandles();
+  if (handles[0]) await browser.switchToWindow(handles[0]);
+  for (;;) {
+    const tabs = await browser.$$('[data-testid="panel-tab"]');
+    if (tabs.length === 0) break;
+    const tab = tabs[0];
+    const close = await tab.$('[data-testid="panel-tab-close"]');
+    await close.scrollIntoView({ block: 'center' });
+    // The button is revealed on hover; invoke its ordinary click handler
+    // directly rather than relying on opacity/geometry under quiet WebKit.
+    await browser.execute((element) => (element as unknown as HTMLElement).click(), close);
+    await browser.waitUntil(
+      async () => (await browser.$$('[data-testid="panel-tab"]')).length < tabs.length,
+      {
+        timeout: 15000,
+        interval: 100,
+        timeoutMsg: 'Fixture teardown could not close an owned query/table session',
+      },
+    );
+  }
+}
+
 /** Remove connections / workflows / query history created during the suite. */
 export async function cleanupAppDataViaIpc(browser: Browser): Promise<void> {
+  await closeWorkspacePanels(browser);
   try {
     await browser.url('tauri://localhost');
     await browser.pause(300);

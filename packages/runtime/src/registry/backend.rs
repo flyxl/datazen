@@ -32,6 +32,7 @@ use tokio::sync::mpsc;
 
 use crate::connection::port::CancelDisposition;
 use crate::registry::audit::CapabilityVersions;
+use std::collections::BTreeMap;
 
 /// 打开物理资源（物理侧）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,11 +62,40 @@ pub struct OpenedResource {
     pub context: SessionContext,
     /// 非敏感的能力版本。
     pub capabilities: CapabilityVersions,
+    /// Full non-sensitive capability provenance for durable execution records.
+    pub capability_snapshot: CapabilityProvenance,
     /// 不透明资源标识。**不透明**是硬要求：调用方不得从它反推连接串或端点。
     pub resource_id: String,
     /// 该 driver 是否有独立取消路径。false 时只能回 `unsupported`，
     /// 不能靠「先置 CancelRequested 再假装取消」来假装支持。
     pub driver_supports_cancel: bool,
+}
+
+/// Version and confirmed capability evidence captured from the opened provider.
+/// Kept separate from `CapabilityVersions`, which is the smaller audit-log projection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityProvenance {
+    pub driver_id: String,
+    pub driver_version: String,
+    pub protocol_version: u32,
+    pub capability_revision: u64,
+    pub confirmed: BTreeMap<String, String>,
+}
+
+impl CapabilityProvenance {
+    pub fn new(
+        driver_id: impl Into<String>,
+        driver_version: impl Into<String>,
+        protocol_version: u32,
+    ) -> Self {
+        Self {
+            driver_id: driver_id.into(),
+            driver_version: driver_version.into(),
+            protocol_version,
+            capability_revision: 0,
+            confirmed: BTreeMap::new(),
+        }
+    }
 }
 
 /// 在资源上执行一条命令。
@@ -185,6 +215,8 @@ pub struct CloseResource {
 pub enum CloseResourceOutcome {
     /// 已确认关闭。
     Closed,
+    /// Logical lease released into a verified pool; physical budget remains charged.
+    ReturnedToPool,
     /// 无法确认（`SessionLost` / `OutcomeUnknown` 路径）。
     Undecidable { reason: &'static str },
 }
@@ -205,6 +237,18 @@ pub trait SessionBackend: Send + Sync + 'static {
     ) -> Result<OpenedResource, crate::connection::ProviderError>;
 
     /// 在资源上执行。
+    /// Host-authenticated opening intent for a one-command explicit-target lease.
+    /// Implementations that cannot distinguish intent retain their ordinary open contract.
+    async fn open_for_command(
+        &self,
+        request: OpenResource,
+        _command: &str,
+    ) -> Result<OpenedResource, crate::connection::ProviderError> {
+        self.open(request).await
+    }
+
+    async fn reclaim_idle_resources(&self) {}
+
     async fn execute(
         &self,
         request: ExecuteOnResource,
@@ -228,6 +272,14 @@ pub trait SessionBackend: Send + Sync + 'static {
         &self,
         request: CloseResource,
     ) -> Result<CloseResourceOutcome, crate::connection::ProviderError>;
+
+    /// 只读的池 / 预算观测快照。
+    ///
+    /// 默认 `None`：没实现的后端（测试替身、server 内部实现）不因此失败。实现方
+    /// 只允许**投影**自有台账，不得为了这个口另建计数（CM-32 单账铁律）。
+    async fn observability_snapshot(&self) -> Option<crate::resource::RuntimeObservabilityReport> {
+        None
+    }
 }
 
 /// 宿主侧归池前检查。

@@ -22,6 +22,17 @@ pub async fn cancel_job(job_id: &str) -> bool {
     true
 }
 
+/// Cancel a job only when its execution path has already registered it.
+/// Unlike `cancel_job`, this never creates an entry for an unknown id.
+pub async fn cancel_registered_job(job_id: &str) -> bool {
+    let flag = JOBS.lock().await.get(job_id).cloned();
+    let Some(flag) = flag else {
+        return false;
+    };
+    flag.store(true, Ordering::SeqCst);
+    true
+}
+
 pub async fn remove_job(job_id: &str) {
     JOBS.lock().await.remove(job_id);
 }

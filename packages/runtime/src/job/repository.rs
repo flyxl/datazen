@@ -31,6 +31,7 @@ use crate::job::plan::project_frozen_plan;
 use crate::job::time::{after_seconds, JobClock};
 use datazen_platform_api::ports::job::JobRepository;
 
+mod owner_claims;
 mod runtime_methods;
 
 /// 单个 Job 的可变行。
@@ -38,6 +39,7 @@ mod runtime_methods;
 struct JobRow {
     record: JobRecord,
     claim: Option<JobClaim>,
+    claim_context: Option<RequestContext>,
     cancel_requested_at: Option<Timestamp>,
 }
 
@@ -448,6 +450,7 @@ impl JobRepository for InMemoryJobRepository {
             JobRow {
                 record: record.clone(),
                 claim: None,
+                claim_context: None,
                 cancel_requested_at: None,
             },
         );
@@ -642,6 +645,7 @@ impl JobRepository for InMemoryJobRepository {
             expires_at,
         };
         row.claim = Some(claim.clone());
+        row.claim_context = Some(ctx.clone());
         row.record.view.state = JobState::Running;
         row.record.view.updated_at = self.clock.now();
         row.record.state_version = JobStateVersion::new(row.record.state_version.get() + 1);

@@ -9,13 +9,14 @@
 //!
 //! Both directions are asserted here:
 //!
-//! * **Declared unsupported ⇒ refused.** Each of the five guards postgres does
+//! * **Declared unsupported ⇒ refused.** Each of the four guards postgres does
 //!   not satisfy is called on the real registry and must fail, naming the
 //!   capability that was asked for.
-//! * **Declared supported ⇒ real.** `precise_cancel`, `transaction_observation`
-//!   and `session_scoped_handles` are asserted `Supported` *and* checked
-//!   against the driver calls that back them, so "supported" cannot become a
-//!   free-form claim.
+//! * **Declared supported ⇒ real.** `stateful_session` and `data` are checked
+//!   against the fixed-session and streaming paths; `precise_cancel`,
+//!   `transaction_observation` and `session_scoped_handles` are covered by the
+//!   provider's execution and transaction contract tests, so "supported"
+//!   cannot become a free-form claim.
 //!
 //! Everything here is offline: no server is contacted.
 //!
@@ -81,16 +82,18 @@ fn provider_is_the_one_this_crate_exports() {
 }
 
 #[test]
-fn a_stateful_session_is_refused_with_an_error_not_an_empty_session() {
+fn a_fixed_purpose_stateful_session_is_declared_and_accepted() {
     let provider = require_resource_provider(postgres()).expect("postgres has a provider");
     let registry = provider.capabilities();
 
-    let error: CapabilityError = registry
+    assert_eq!(
+        registry.capabilities.stateful_session,
+        Availability::Supported,
+        "interactive and agent resources keep a fixed physical backend"
+    );
+    registry
         .require_stateful_session()
-        .expect_err("postgres resources are leased, not a pinned stateful session");
-
-    assert_eq!(error.capability, "statefulSession");
-    assert_eq!(error.provider_id, POSTGRES_PROVIDER_ID);
+        .expect("the provider has fixed-session acquisition paths");
 }
 
 #[test]
@@ -98,15 +101,10 @@ fn every_declared_unsupported_capability_is_refused_by_its_own_guard() {
     let provider = require_resource_provider(postgres()).expect("postgres has a provider");
     let registry: &CapabilityRegistry = provider.capabilities();
 
-    // (capability name as the registry spells it, the guard, the reason it is
-    // not declared). Each guard is called on a value postgres does not
-    // implement, and each must come back as an error.
+    // (capability name as the registry spells it, the guard, the reason the
+    // capability is not available). Each guard is called on a value postgres
+    // does not implement, and each must come back as an error.
     let refusals: Vec<(&str, Result<(), CapabilityError>, &str)> = vec![
-        (
-            "statefulSession",
-            registry.require_stateful_session(),
-            "a resource is a leased pool slot, not a fixed session",
-        ),
         (
             "contextObservation",
             registry.require_context_observation(),
@@ -148,6 +146,10 @@ fn what_postgres_declares_is_what_the_code_does() {
     let capabilities = &registry.capabilities;
 
     // Declared and backed by this crate's execution/transaction code.
+    registry
+        .require_stateful_session()
+        .expect("interactive and agent resources retain one physical backend");
+    assert_eq!(capabilities.stateful_session, Availability::Supported);
     assert_eq!(
         capabilities.precise_cancel,
         PreciseCancelSupport::Supported,
@@ -184,7 +186,6 @@ fn what_postgres_declares_is_what_the_code_does() {
     // Declared unsupported: the table above already showed each guard refuses.
     assert_eq!(capabilities.reset_for_reuse, ResetForReuse::Unsupported);
     assert_eq!(capabilities.snapshots, SnapshotSupport::Unsupported);
-    assert_eq!(capabilities.stateful_session, Availability::Unsupported);
 }
 
 // ---------------------------------------------------------------------------
@@ -223,8 +224,8 @@ fn every_cell_of_the_capability_grid_is_asserted_rather_than_inherited() {
 
     assert_eq!(
         capabilities.stateful_session,
-        Availability::Unsupported,
-        "a pooled backend can move under a leased session"
+        Availability::Supported,
+        "interactive and agent purposes use fixed sessions; other purposes may be leased"
     );
     assert_eq!(
         capabilities.namespace_switch,
@@ -261,12 +262,10 @@ fn every_cell_of_the_capability_grid_is_asserted_rather_than_inherited() {
         Some(1),
         "the map keyed by connection id holds exactly one pinned connection"
     );
-    // Deliberately not `StreamingReadWrite`: the driver buffers every row
-    // before the sink sees the first byte, so only two of the three axes hold.
     assert_eq!(
         capabilities.data,
-        DataSupport::BufferedReadWrite,
-        "rowRead and rowWrite are proven through this provider; streamingResults is not"
+        DataSupport::StreamingReadWrite,
+        "row reads stream through bounded batches and writes preserve affected-row counts"
     );
 
     // --- the five cells that coincide with `Default`, pinned anyway ---

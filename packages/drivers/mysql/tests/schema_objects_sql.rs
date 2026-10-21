@@ -48,7 +48,11 @@ fn routines_and_triggers_preserve_identity_and_mysql_has_no_sequences() {
 fn view_queries_return_view_body_metadata_contract() {
     let list = list_objects_sql("mysql", ObjectKind::View).unwrap();
     assert!(list.contains("information_schema.VIEWS"));
-    assert!(list.contains("TABLE_SCHEMA AS `schema`"));
+    // MySQL's `*_SCHEMA` columns identify databases, not a separate namespace
+    // schema, so the list projects a null schema and the caller keeps database
+    // ownership in the independent target. The `schema` *field name* is still
+    // what the shared object-list parser consumes (see the alias contract test).
+    assert!(list.contains("NULL AS `schema`"));
     let ddl = object_ddl_sql("mysql", ObjectKind::View, "active_users", None).unwrap();
     assert!(ddl.contains("VIEW_DEFINITION AS ddl"));
     assert!(ddl.contains("TABLE_SCHEMA AS view_schema"));

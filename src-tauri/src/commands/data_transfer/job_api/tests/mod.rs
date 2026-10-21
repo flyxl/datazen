@@ -667,29 +667,37 @@ async fn a_sql_file_job_from_a_foreign_backend_is_still_refused() {
 async fn one_saved_connection_two_databases_is_not_a_self_overlap() {
     let test = TestAppState::with_options(mock_options()).await;
     test.save_connection("pg-local").await;
-    let source = test
-        .state
-        .connection_manager
-        .connect_dedicated("pg-local", Some("staging"))
-        .await
-        .expect("a dedicated session on staging");
-    let target = test
-        .state
-        .connection_manager
-        .connect_dedicated("pg-local", Some("prod"))
-        .await
-        .expect("a dedicated session on prod");
+    let source = crate::services::migration_endpoint::open_dedicated_session(
+        &test.state,
+        "pg-local",
+        "staging",
+        "data-transfer-test",
+    )
+    .await
+    .expect("a dedicated session on staging");
+    let target = crate::services::migration_endpoint::open_dedicated_session(
+        &test.state,
+        "pg-local",
+        "prod",
+        "data-transfer-test",
+    )
+    .await
+    .expect("a dedicated session on prod");
     assert_ne!(
         source, target,
         "each dedicated session must get its own dbSessionId, or this job is not the scenario"
     );
     for session in [&source, &target] {
         assert_eq!(
-            test.state
-                .connection_manager
-                .owner_connection_id(session)
-                .await
-                .as_deref(),
+            crate::services::migration_endpoint::runtime_session_context(
+                &test.state,
+                session,
+                datazen_runtime::application::LivePurpose::Inspection,
+            )
+            .await
+            .ok()
+            .map(|context| context.view.connection_id.as_str().to_owned())
+            .as_deref(),
             Some("pg-local"),
             "both endpoints must belong to the ONE saved connection, or the overlap is not reproduced"
         );

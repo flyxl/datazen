@@ -18,6 +18,11 @@ import type {
 } from '../../../../src/types';
 
 export interface ConnectionFormState {
+  /** Edit state controls the credential-preservation hint in the host form. */
+  isEditing?: boolean;
+  /** Clear stored secrets that are blank when this connection is saved. */
+  clearStoredCredentials?: boolean;
+  setClearStoredCredentials?: (value: boolean) => void;
   name: string;
   setName: Dispatch<SetStateAction<string>>;
   databaseType: DatabaseType;

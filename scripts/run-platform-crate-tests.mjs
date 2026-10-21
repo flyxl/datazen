@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Run `cargo test` for the platform core crates.
  *
@@ -122,7 +123,19 @@ export const PREFIX = '[platform-crate-tests]';
  * Layers whose crates must be unit-tested in CI. A crate appears here by
  * virtue of the directory it lives in, not by its name.
  */
-export const TESTED_LAYERS = Object.freeze(['runtime', 'application', 'platform-api', 'server', 'schema-diff', 'migration-common', 'data-sync', 'data-transfer']);
+export const TESTED_LAYERS = Object.freeze([
+  'runtime',
+  'application',
+  'platform-api',
+  'platform-infra',
+  'server',
+  'ai-providers',
+  'workspace-apps',
+  'schema-diff',
+  'migration-common',
+  'data-sync',
+  'data-transfer',
+]);
 
 /**
  * Cargo target selectors that must also be tested, per crate, **on top of `--lib`**.
@@ -384,6 +397,6 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(import.meta.url)) {
   process.exitCode = runCli();
 }

@@ -10,7 +10,9 @@ use crate::schema_diff::{
 };
 pub(super) use catalog::read_target_object_catalog;
 use catalog::{fetch_object_dependency_snapshot, fetch_object_snapshot};
-use datazen_driver_api::{DatabaseObject, ObjectKind, TableInfo, TableType};
+use datazen_driver_api::{
+    CatalogReader, DatabaseObject, ObjectKind, SchemaMigration, TableInfo, TableType,
+};
 pub(super) use revalidation::revalidate_source_snapshot;
 use std::collections::BTreeSet;
 
@@ -124,21 +126,23 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
             "table_names and target_table_names must have the same length".into(),
         ));
     }
-    if normalize_dialect(
-        &state
-            .connection_manager
-            .get_session_config(&source_db_session_id)
-            .await
-            .cmd_err("prepare_schema_unified_plan")?
-            .database_type,
-    ) != normalize_dialect(
-        &state
-            .connection_manager
-            .get_session_config(&target_db_session_id)
-            .await
-            .cmd_err("prepare_schema_unified_plan")?
-            .database_type,
-    ) && source_objects.is_empty()
+    let source_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &source_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let target_context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        &target_db_session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let source_config = source_context.config.clone();
+    let target_config = target_context.config.clone();
+    if normalize_dialect(&source_config.database_type)
+        != normalize_dialect(&target_config.database_type)
+        && source_objects.is_empty()
         && target_objects.is_empty()
     {
         return super::prepare_schema_diff_plan_with_schemas_impl(
@@ -157,16 +161,6 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
         .await;
     }
 
-    let source_config = state
-        .connection_manager
-        .get_session_config(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_unified_plan")?;
-    let target_config = state
-        .connection_manager
-        .get_session_config(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_unified_plan")?;
     if target_config.read_only {
         return Err(CommandError::Validation(
             "Target connection is read-only".into(),
@@ -182,16 +176,13 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
         ));
     }
 
-    let (source_driver, source_handle) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("prepare_schema_unified_plan")?;
-    let (target_driver, target_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("prepare_schema_unified_plan")?;
+    let source_driver = source_context.driver.clone();
+    let source_handle = source_context.handle.clone();
+    let target_driver = target_context.driver.clone();
+    let target_handle = target_context.handle.clone();
+    // 表结构读取走窄契约，而不是整块驱动。
+    let source_catalog_reader = crate::db::LegacyCatalogReader::new(source_driver.as_ref());
+    let target_catalog_reader = crate::db::LegacyCatalogReader::new(target_driver.as_ref());
     let target_dependency_schema_scope = if uses_schema_scope(&target_config.database_type) {
         target_schema_scope.or(target_driver.default_schema())
     } else {
@@ -272,7 +263,7 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
             target_table,
             target_schema.as_deref(),
         );
-        let source_schema_snapshot = source_driver
+        let source_schema_snapshot = source_catalog_reader
             .get_table_schema(
                 &source_handle,
                 &source_table,
@@ -409,7 +400,7 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
             table,
             target_schema.as_deref(),
         );
-        let snapshot = target_driver
+        let snapshot = target_catalog_reader
             .get_table_schema(
                 &target_handle,
                 &table,
@@ -522,13 +513,14 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
             .map(|snapshot| snapshot.identity.clone()),
     );
 
-    let Some(renderer) = target_driver.migration_renderer() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(target_driver.as_ref());
+    let Some(renderer) = migration.migration_renderer() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration rendering",
             target_config.database_type
         )));
     };
-    let Some(capabilities) = target_driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration capabilities",
             target_config.database_type
@@ -705,7 +697,9 @@ pub(super) async fn read_target_table_identities(
     schema_scope: Option<&str>,
 ) -> Result<Vec<SchemaObjectIdentity>, CommandError> {
     let metadata_database = super::schema_catalog_database(dialect, Some(database));
-    let tables = driver
+    // 表清单读取走窄契约，而不是整块驱动。
+    let catalog = crate::db::LegacyCatalogReader::new(driver);
+    let tables = catalog
         .get_tables(handle, metadata_database, None)
         .await
         .map_err(CommandError::Driver)?;

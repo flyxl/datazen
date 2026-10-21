@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Mutation proof for `check-platform-crate-boundaries.mjs`.
  *
@@ -524,6 +525,29 @@ function runMutation(mutation) {
         why: `guard exited ${code} but never named ${mutation.rule}/${mutation.crate}`,
       };
     }
+    // B3: the per-rule summary line must agree with the violation printed above
+    // it. Before the fix this loop's own output read `VIOLATION F-01 …` next to
+    // `ok F-01: …`, so a red run told two stories about the same rule. This is
+    // the only assertion that reaches the real `runCli` display path — the
+    // cargo-free vitest suite can only exercise the attribution helper, not the
+    // line it is spliced into. The `unclassified` probe reports an ERROR, not a
+    // rule violation, so it has no per-rule line to check.
+    if (mutation.rule !== 'unclassified') {
+      const perRule = stdout
+        .split('\n')
+        .filter((l) => l.includes(` ${mutation.rule}:`) && / (ok|fail) /.test(l));
+      const wanted = `fail ${mutation.rule}:`;
+      if (perRule.length === 0 || !perRule.every((l) => l.includes(wanted))) {
+        return {
+          ok: false,
+          code,
+          why:
+            `the per-rule summary line disagrees with the violation: expected ` +
+            `\`${wanted}\` and nothing else, got ${perRule.length ? perRule.join(' | ') : 'no per-rule line at all'}`,
+        };
+      }
+    }
+
     const line = stdout
       .split('\n')
       .find((l) => /VIOLATION |ERROR /.test(l) && l.includes(mutation.crate));
@@ -588,7 +612,7 @@ function main() {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(import.meta.url)) {
   withLock(() => {
     process.exitCode = main();
   });

@@ -27,24 +27,52 @@ use async_trait::async_trait;
 use datazen_driver_api::capabilities::{CapabilityRegistry, SessionContinuity};
 use datazen_driver_api::namespace::{NamespaceShape, NamespaceTarget};
 use datazen_driver_api::resource::{
-    AcquireResourceRequest, Baseline, BudgetPort, CommandCall, DescribeResourceRequest,
-    ResourceDescriptor, ResourceError, ResourceHandle, ResourceProvider, ResultSink, ReusePolicy,
+    AcquireResourceRequest, Baseline, BudgetPort, CommandCall, ConnectionCostPolicy,
+    DescribeResourceRequest, ResourceDescriptor, ResourceError, ResourceHandle, ResourceProvider,
+    ResultSink, ReusePolicy,
 };
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, ContextChangeDisposition,
-    ExecutionCompletion, ResetDisposition, ResourceHealth, SessionHandleKind, SessionHandleRef,
-    SessionObservation, SessionState, TransactionObservation, TransactionOptions,
+    ExecutionCompletion, ExecutionState, ResetDisposition, ResourceHealth, SessionHandleKind,
+    SessionHandleRef, SessionObservation, SessionState, TransactionObservation, TransactionOptions,
 };
 use datazen_driver_api::{DriverError, QueryExecutionId};
 
-use super::super::capabilities::{postgres_connection_cost, POSTGRES_PROVIDER_ID};
+use super::super::capabilities::{
+    postgres_resource_connection_cost, METADATA_POOL_CONNECTIONS, POSTGRES_PROVIDER_ID,
+};
 use super::super::registry::OpenTransaction;
 use super::PostgresResourceProvider;
+
+/// The physical cost of one resource, declared to the budget.
+///
+/// Single source of truth for both `describe_resource` and `acquire_resource`: a
+/// description that disagrees with the charge is how a provider bills for
+/// something it never declared. A fixed session retains exactly one backend; the
+/// server-wide control connection is charged independently once per identity
+/// through BudgetPort::acquire_control_connection (see `control.rs`).
+///
+/// `fixed` is the caller's own reading of fixedness — `describe` answers for the
+/// purpose, `acquire` also honours a scope that pins for streaming or holds an
+/// open transaction.
+pub(super) fn resource_connection_cost(
+    config: &datazen_driver_api::ConnectionConfig,
+    purpose: datazen_driver_api::resource::ResourcePurpose,
+    fixed: bool,
+) -> ConnectionCostPolicy {
+    if fixed {
+        ConnectionCostPolicy::PoolBounded {
+            max_physical_connections: 1,
+        }
+    } else {
+        postgres_resource_connection_cost(config, purpose)
+    }
+}
 
 #[async_trait]
 impl ResourceProvider for PostgresResourceProvider {
     fn provider_id(&self) -> &str {
-        POSTGRES_PROVIDER_ID
+        self.provider_id
     }
 
     fn capabilities(&self) -> &CapabilityRegistry {
@@ -53,6 +81,13 @@ impl ResourceProvider for PostgresResourceProvider {
 
     fn namespace_shape(&self) -> &NamespaceShape {
         &self.namespace_shape
+    }
+
+    fn connection_handle(
+        &self,
+        handle: &ResourceHandle,
+    ) -> Result<datazen_driver_api::ConnectionHandle, ResourceError> {
+        Ok(self.resource_of(handle, "connection_handle")?.connection)
     }
 
     async fn describe_resource(
@@ -69,13 +104,21 @@ impl ResourceProvider for PostgresResourceProvider {
             // A pool lends a backend per statement. That is not a fixed
             // session, and claiming `Fixed` here is what would let a caller
             // pin assumptions the driver cannot keep.
-            session_continuity: SessionContinuity::Leased,
+            session_continuity: if fixed_purpose(request.purpose) {
+                SessionContinuity::Fixed
+            } else {
+                SessionContinuity::Leased
+            },
             reuse_policy: ReusePolicy::SingleUse,
             // No initialization protocol is proven for this driver, so none is
             // declared. `acquire_resource` refuses a non-empty baseline rather
             // than silently skipping it.
             initialization_requirements: Vec::new(),
-            connection_cost_policy: postgres_connection_cost(&request.connection_config),
+            connection_cost_policy: resource_connection_cost(
+                &request.connection_config,
+                request.purpose,
+                fixed_purpose(request.purpose),
+            ),
             namespace_shape: self.namespace_shape.clone(),
         })
     }
@@ -87,25 +130,61 @@ impl ResourceProvider for PostgresResourceProvider {
     ) -> Result<ResourceHandle, ResourceError> {
         let physical_connections = self.validate_acquisition(request)?;
 
-        let permit = budget
-            .acquire_physical_connections(physical_connections)
-            .await?;
-
-        let connection = match self.driver.connect_impl(&request.connection_config).await {
-            Ok(connection) => connection,
-            Err(error) => {
-                // The connect failed, so the charge is released here and nowhere
-                // else: the caller receives no handle it could close with.
-                if let Err(release_error) = budget.release_physical_connections(&permit).await {
-                    tracing::error!(
-                        driver = POSTGRES_PROVIDER_ID,
-                        error = %release_error,
-                        "failed to release the physical-connection budget after a failed connect"
-                    );
+        let mut config = request.connection_config.clone();
+        if request.target.database.is_some() {
+            config.database = request.target.database.clone();
+        }
+        if request.target.schema.is_some() {
+            config.schema = request.target.schema.clone();
+        }
+        if request.scope.purpose
+            == datazen_driver_api::resource::ResourcePurpose::MetadataInspection
+        {
+            // Catalog reads are sequential and short-lived. Keep the actual
+            // pool bound equal to the metadata cost declared to the budget.
+            config.max_pool_size = METADATA_POOL_CONNECTIONS;
+        }
+        let fixed = fixed_purpose(request.scope.purpose)
+            || request.scope.pin_for_streaming
+            || request.scope.holds_open_transaction;
+        let driver = self.driver.clone();
+        let budget_owned = budget.clone();
+        let anchor = request.connection_config.clone();
+        // Dropping the caller does not abort admission halfway through socket
+        // creation. The owned result closes itself if never delivered.
+        let opened = tokio::spawn(async move {
+            let permit = budget_owned
+                .acquire_physical_connections(physical_connections)
+                .await?;
+            let opened = if fixed {
+                driver
+                    .open_fixed_session_with_control(&config, &anchor, Some(budget_owned.clone()))
+                    .await
+            } else {
+                driver
+                    .connect_with_control(&config, &anchor, Some(budget_owned.clone()))
+                    .await
+            };
+            match opened {
+                Ok(connection) => Ok(crate::control::OpenedResource::new(
+                    driver,
+                    connection,
+                    budget_owned,
+                    permit,
+                )),
+                Err(error) => {
+                    budget_owned.release_physical_connections(&permit).await?;
+                    Err(ResourceError::Driver(error))
                 }
-                return Err(ResourceError::Driver(error));
             }
-        };
+        })
+        .await
+        .map_err(|_| {
+            ResourceError::Driver(DriverError::ConnectionFailed(
+                "resource admission task failed".into(),
+            ))
+        })??;
+        let (connection, permit) = opened.deliver().map_err(ResourceError::Driver)?;
 
         Ok(self.register_resource(connection, permit, budget.clone()))
     }
@@ -128,7 +207,9 @@ impl ResourceProvider for PostgresResourceProvider {
             .await
             .map_err(ResourceError::Driver)?;
 
-        let outcome = self.run_command(handle, &resource, call, sink).await;
+        let outcome = self
+            .run_command(handle, &resource, call, execution_id, sink)
+            .await;
         // Either way the registration goes away: after this call the execution
         // is no longer running, and a later cancel must report that honestly
         // instead of replaying a stale registration.
@@ -146,11 +227,31 @@ impl ResourceProvider for PostgresResourceProvider {
     ) -> Result<SessionObservation, ResourceError> {
         let resource = self.resource_of(handle, "observe_session")?;
         let context = self.context_of(&resource).await?;
+        let resource = if self
+            .driver
+            .fixed_sessions
+            .read()
+            .await
+            .contains_key(&resource.connection.id)
+        {
+            self.reconcile_transaction(handle, context.transaction_state)?
+        } else {
+            resource
+        };
         let revision = self.bump_revision(handle);
         // The observation was taken before the revision moved, so restate it
         // under the new revision: a caller comparing two observations must see
         // them as different.
         let mut transaction = self.transaction_observation_of(&resource);
+        if self
+            .driver
+            .fixed_sessions
+            .read()
+            .await
+            .contains_key(&resource.connection.id)
+        {
+            transaction.state = context.transaction_state;
+        }
         transaction.revision = revision;
 
         Ok(SessionObservation {
@@ -291,10 +392,12 @@ impl ResourceProvider for PostgresResourceProvider {
         Ok(CancelReceipt {
             execution_id: execution_id.clone(),
             disposition,
-            // The driver does not publish an execution's state after a cancel
-            // *request*, and a request is not a terminal event. `None` is the
-            // honest value; a plausible `Cancelled` here would be a lie.
-            state: None,
+            // Acceptance records the control request, not the SQL outcome.
+            // Only execution completion can establish a terminal state; an
+            // unregistered execution still has no state known to this provider.
+            state: disposition
+                .is_accepted()
+                .then_some(ExecutionState::CancelRequested),
         })
     }
 
@@ -318,55 +421,52 @@ impl ResourceProvider for PostgresResourceProvider {
     ) -> Result<CloseDisposition, ResourceError> {
         handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
 
+        if handle.is_closed() {
+            return Ok(CloseDisposition::Closed);
+        }
+        // Cancellation drops the gate, allowing close-only verification to
+        // retry the same retained physical resource. Concurrent closes cannot
+        // release the same permit twice.
+        let Ok(_close_guard) = self.close_gate.try_lock() else {
+            return Ok(CloseDisposition::CloseUnconfirmed);
+        };
         let resource = {
             let mut registry = self.lock();
-            match registry.live.remove(handle.resource_key()) {
-                Some(resource) => resource,
-                // A confirmed close is idempotent, and its budget was already
-                // released — releasing twice would be the bug. The fact rides
-                // on the handle, so this holds for the life of the process
-                // without the provider retaining a key per confirmed close.
-                None if handle.is_closed() => {
-                    return Ok(CloseDisposition::Closed);
-                }
-                None => {
-                    return Err(ResourceError::InvalidResourceState {
-                        resource_key: handle.resource_key().to_string(),
-                        operation: "close_resource".to_string(),
-                        state: "this provider instance holds no open resource with this key: it \
-                                was never acquired here, a previous close of it was not \
-                                confirmed, or the handle belongs to another provider instance"
-                            .to_string(),
-                    });
-                }
-            }
+            let resource = registry
+                .live
+                .get_mut(handle.resource_key())
+                .ok_or_else(|| ResourceError::InvalidResourceState {
+                    resource_key: handle.resource_key().to_string(),
+                    operation: "close_resource".to_string(),
+                    state: "resource is not held by this provider and closure is unconfirmed"
+                        .to_string(),
+                })?;
+            // Persist before awaiting; cancellation is not evidence of closure
+            // or of a resolved transaction outcome.
+            resource.close_started = true;
+            resource.snapshot()
         };
-
-        match self.driver.disconnect_impl(resource.connection).await {
-            Ok(()) => {
-                handle.mark_closed();
-                // The connections are really gone, so the charge is really
-                // recoverable. Released here and nowhere else.
-                resource
-                    .budget
-                    .release_physical_connections(&resource.permit)
-                    .await?;
-                Ok(CloseDisposition::Closed)
-            }
-            Err(error) => {
-                // The pools may or may not be gone. The budget is **not**
-                // released and the handle is not marked closed, so the leak is
-                // visible instead of being reported as a clean close.
-                tracing::warn!(
-                    driver = POSTGRES_PROVIDER_ID,
-                    resource_key = %handle.resource_key(),
-                    error = %error,
-                    "close could not be confirmed; the physical-connection budget is not \
-                     released and a retry is refused"
-                );
-                Ok(CloseDisposition::CloseUnconfirmed)
-            }
+        if self
+            .driver
+            .disconnect_impl(resource.connection)
+            .await
+            .is_err()
+        {
+            tracing::warn!(
+                driver = POSTGRES_PROVIDER_ID,
+                "disconnect failed during close; resource and budget permit are retained"
+            );
+            return Ok(CloseDisposition::CloseUnconfirmed);
         }
+        resource
+            .budget
+            .release_physical_connections(&resource.permit)
+            .await?;
+        // Both physical closure and accounting are confirmed. No transaction
+        // result is inferred from best-effort ROLLBACK during disconnect.
+        handle.mark_closed();
+        self.lock().live.remove(handle.resource_key());
+        Ok(CloseDisposition::Closed)
     }
 
     async fn close_handle(
@@ -448,4 +548,12 @@ impl ResourceProvider for PostgresResourceProvider {
                 ResourceError::Driver(error)
             })
     }
+}
+
+pub(super) fn fixed_purpose(purpose: datazen_driver_api::resource::ResourcePurpose) -> bool {
+    matches!(
+        purpose,
+        datazen_driver_api::resource::ResourcePurpose::InteractiveQuery
+            | datazen_driver_api::resource::ResourcePurpose::AgentSession
+    )
 }

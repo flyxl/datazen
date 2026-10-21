@@ -105,7 +105,7 @@ pub(crate) fn pg_sequence_start(
 }
 
 async fn fetch_pg_table_sequences(
-    pool: &PgPool,
+    connection: &mut sqlx::PgConnection,
     table: &str,
 ) -> Result<Vec<PgSequenceDdl>, DriverError> {
     let rows = sqlx::query(
@@ -119,9 +119,7 @@ async fn fetch_pg_table_sequences(
           s.seqmax,
           s.seqcache,
           s.seqcycle,
-          a.attname AS owned_column,
-          pgs.last_value,
-          pgs.is_called
+          a.attname AS owned_column
         FROM pg_class tbl
         JOIN pg_depend d
           ON d.refobjid = tbl.oid
@@ -133,47 +131,75 @@ async fn fetch_pg_table_sequences(
         JOIN pg_sequence s ON s.seqrelid = seq_cls.oid
         LEFT JOIN pg_attribute a
           ON a.attrelid = tbl.oid AND a.attnum = d.refobjsubid AND NOT a.attisdropped
-        LEFT JOIN pg_sequences pgs
-          ON pgs.schemaname = ns.nspname AND pgs.sequencename = seq_cls.relname
         WHERE tbl.oid = $1::regclass
         ORDER BY seq_cls.relname
         "#,
     )
     .bind(table)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
-    Ok(rows
-        .iter()
-        .map(|r| {
-            let increment: i64 = r.get("seqincrement");
-            let start: i64 = r.get("seqstart");
-            PgSequenceDdl {
-                qualified_name: r.get("qualified_name"),
-                data_type: r.get("data_type"),
-                increment,
-                min_value: r.get("seqmin"),
-                max_value: r.get("seqmax"),
-                start: pg_sequence_start(
-                    r.try_get::<Option<i64>, _>("last_value").ok().flatten(),
-                    r.try_get::<Option<bool>, _>("is_called").ok().flatten(),
-                    start,
-                    increment,
+    let mut sequences = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let qualified_name: String = row
+            .try_get("qualified_name")
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        // pg_sequences has no is_called column. Read each quoted sequence on
+        // this same retained connection to preserve its actual next-value state.
+        let state = sqlx::query(&format!(
+            "SELECT last_value, is_called FROM {qualified_name}"
+        ))
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let increment: i64 = row.get("seqincrement");
+        let start: i64 = row.get("seqstart");
+        sequences.push(PgSequenceDdl {
+            qualified_name,
+            data_type: row.get("data_type"),
+            increment,
+            min_value: row.get("seqmin"),
+            max_value: row.get("seqmax"),
+            start: pg_sequence_start(
+                Some(
+                    state
+                        .try_get("last_value")
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?,
                 ),
-                cache: r.get("seqcache"),
-                cycle: r.get("seqcycle"),
-                owned_column: r
-                    .try_get::<Option<String>, _>("owned_column")
-                    .ok()
-                    .flatten(),
-            }
-        })
-        .collect())
+                Some(
+                    state
+                        .try_get("is_called")
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?,
+                ),
+                start,
+                increment,
+            ),
+            cache: row.get("seqcache"),
+            cycle: row.get("seqcycle"),
+            owned_column: row
+                .try_get::<Option<String>, _>("owned_column")
+                .ok()
+                .flatten(),
+        });
+    }
+    Ok(sequences)
 }
 
 pub(crate) async fn fetch_pg_table_ddl_from_catalog(
     pool: &PgPool,
+    table: &str,
+    quote_ident: impl Fn(&str) -> String,
+) -> Result<String, DriverError> {
+    let mut connection = pool
+        .acquire()
+        .await
+        .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+    fetch_pg_table_ddl_on_connection(&mut connection, table, quote_ident).await
+}
+
+pub(crate) async fn fetch_pg_table_ddl_on_connection(
+    connection: &mut sqlx::PgConnection,
     table: &str,
     quote_ident: impl Fn(&str) -> String,
 ) -> Result<String, DriverError> {
@@ -196,7 +222,7 @@ pub(crate) async fn fetch_pg_table_ddl_from_catalog(
         "#,
     )
     .bind(table)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -228,15 +254,13 @@ pub(crate) async fn fetch_pg_table_ddl_from_catalog(
         "#,
     )
     .bind(table)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
     let pk_columns: Vec<String> = pk_rows.iter().map(|r| r.get("attname")).collect();
 
-    let sequences = fetch_pg_table_sequences(pool, table)
-        .await
-        .unwrap_or_default();
+    let sequences = fetch_pg_table_sequences(connection, table).await?;
     let mut out = String::new();
     for seq in &sequences {
         out.push_str(&build_pg_create_sequence_sql(seq));
@@ -379,7 +403,7 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
         command: &str,
-        input: serde_json::Value,
+        mut input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
         if command == "drop_database" {
             // PostgreSQL cannot drop the currently-open database, nor one that still
@@ -391,9 +415,142 @@ impl PostgresDriver {
             Err(DriverError::Unsupported(_)) => {}
             other => return other,
         }
-        if let Some(result) =
-            try_execute_schema_catalog_command(self, handle, command, input.clone()).await?
+        if command == "get_table_schema" {
+            if let Some(raw) = input.get("relationSql").and_then(serde_json::Value::as_str) {
+                let parsed = sqlparser::parser::Parser::parse_sql(
+                    &sqlparser::dialect::PostgreSqlDialect {},
+                    &format!("SELECT * FROM {raw}"),
+                )
+                .map_err(|_| DriverError::InvalidConfig("invalid relation identifier".into()))?;
+                let [sqlparser::ast::Statement::Query(query)] = parsed.as_slice() else {
+                    return Err(DriverError::InvalidConfig(
+                        "one relation is required".into(),
+                    ));
+                };
+                let sqlparser::ast::SetExpr::Select(select) = &*query.body else {
+                    return Err(DriverError::InvalidConfig(
+                        "one relation is required".into(),
+                    ));
+                };
+                let [relation] = select.from.as_slice() else {
+                    return Err(DriverError::InvalidConfig(
+                        "one relation is required".into(),
+                    ));
+                };
+                let sqlparser::ast::TableFactor::Table { name, .. } = &relation.relation else {
+                    return Err(DriverError::InvalidConfig(
+                        "one named relation is required".into(),
+                    ));
+                };
+                let parts = name
+                    .0
+                    .iter()
+                    .map(|part| {
+                        part.as_ident()
+                            .map(|ident| {
+                                if ident.quote_style.is_none() {
+                                    ident.value.to_lowercase()
+                                } else {
+                                    ident.value.clone()
+                                }
+                            })
+                            .ok_or_else(|| {
+                                DriverError::InvalidConfig("named relation is required".into())
+                            })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                if input
+                    .get("database")
+                    .and_then(serde_json::Value::as_str)
+                    .is_none()
+                {
+                    let context = self.read_fixed_session(handle).await?;
+                    input["database"] =
+                        serde_json::json!(context.namespace.database.ok_or_else(|| {
+                            DriverError::InvalidConfig("database is required".into())
+                        })?);
+                }
+                match parts.as_slice() {
+                    [table] => {
+                        input["table"] = serde_json::json!(table);
+                        input["schema"] = serde_json::Value::Null;
+                    }
+                    [schema, table] => {
+                        input["table"] = serde_json::json!(table);
+                        input["schema"] = serde_json::json!(schema);
+                    }
+                    [database, schema, table] => {
+                        input["database"] = serde_json::json!(database);
+                        input["table"] = serde_json::json!(table);
+                        input["schema"] = serde_json::json!(schema);
+                    }
+                    _ => {
+                        return Err(DriverError::InvalidConfig(
+                            "unsupported relation namespace".into(),
+                        ))
+                    }
+                }
+            }
+        }
+        let raw_relation_result = if command == "get_table_schema"
+            && input.get("relationSql").is_some()
+            && self.fixed_sessions.read().await.contains_key(&handle.id)
         {
+            let database = input["database"]
+                .as_str()
+                .ok_or_else(|| DriverError::InvalidConfig("database is required".into()))?;
+            self.ensure_transaction_reaches(handle, SqlTarget::new(Some(database), None))
+                .await?;
+            let table = input["table"]
+                .as_str()
+                .ok_or_else(|| DriverError::InvalidConfig("table is required".into()))?;
+            let schema = input.get("schema").and_then(serde_json::Value::as_str);
+            let pinned = self
+                .transactions
+                .lock()
+                .await
+                .get(&handle.id)
+                .cloned()
+                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            let mut conn = pinned.lock().await;
+            let schema = self
+                .table_schema_exact_on_connection(&mut **conn, table, schema)
+                .await?;
+            Some(CommandResult::new(serde_json::json!({"schema": schema})))
+        } else {
+            None
+        };
+        if let Some(mut result) = match raw_relation_result {
+            Some(result) => Some(result),
+            None => {
+                try_execute_schema_catalog_command(self, handle, command, input.clone()).await?
+            }
+        } {
+            if command == "get_table_schema"
+                && self.fixed_sessions.read().await.contains_key(&handle.id)
+            {
+                let table = input["table"]
+                    .as_str()
+                    .ok_or_else(|| DriverError::InvalidConfig("table is required".into()))?;
+                let schema = input.get("schema").and_then(serde_json::Value::as_str);
+                let (schema, table) = if input.get("relationSql").is_some() {
+                    (schema, table)
+                } else {
+                    crate::sql::resolve_pg_table_schema(table, schema)
+                };
+                let relation = crate::sql::pg_regclass_name(schema, table);
+                let pinned = self
+                    .transactions
+                    .lock()
+                    .await
+                    .get(&handle.id)
+                    .cloned()
+                    .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+                let mut conn = pinned.lock().await;
+                let row = sqlx::query("SELECT current_database() AS database, n.nspname::text AS schema, c.relname::text AS table, c.relpersistence = 't' AS session_scoped FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.oid = to_regclass($1)")
+                    .bind(relation).fetch_one(&mut **conn).await.map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                result.data["resolvedTarget"] = serde_json::json!({ "database": row.try_get::<String,_>("database").map_err(|e| DriverError::QueryFailed(e.to_string()))?, "catalog": null, "schema": row.try_get::<String,_>("schema").map_err(|e| DriverError::QueryFailed(e.to_string()))?, "table": row.try_get::<String,_>("table").map_err(|e| DriverError::QueryFailed(e.to_string()))?, "path": [], "sessionScoped": row.try_get::<bool,_>("session_scoped").map_err(|e| DriverError::QueryFailed(e.to_string()))? });
+            }
             return Ok(result);
         }
         if is_schema_object_command(command) {
@@ -415,8 +572,20 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<StructureCapabilities, DriverError> {
-        let info = self.get_server_info(handle).await?;
-        Ok(caps_for_version(&info.server_version))
+        // Capabilities depend only on server version. Read this server-global
+        // fact through the shared control connection so opening the structure
+        // editor cannot stall behind table browsing or query streams that have
+        // saturated the user's data pool.
+        let pool = self
+            .control_pool_for(handle)
+            .await
+            .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+        let row = sqlx::query("SELECT pg_catalog.version()")
+            .fetch_one(&pool)
+            .await
+            .map_err(|error| DriverError::QueryFailed(error.to_string()))?;
+        let version: String = row.try_get(0).unwrap_or_default();
+        Ok(caps_for_version(&version))
     }
 
     pub(crate) async fn plan_structure_changes_impl(

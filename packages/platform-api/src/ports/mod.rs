@@ -1,4 +1,6 @@
-//! 端口契约：14 个 trait，**只有 trait，没有任何具体传输类型**。
+//! 端口契约：17 个 trait，**没有任何具体传输类型**；除两处形态中立、无 I/O 的进程内原语
+//! 实现（[`clock`] 的 `SystemClock` / `FixedClock`、[`budget::pool_ledger`] 的参考账本，
+//! 见 `docs/architecture/platform/shared-boundaries-and-ports.md` §4.9）外，只有 trait。
 //!
 //! 约定（§4.1）：
 //!
@@ -11,9 +13,12 @@
 //! * 每个端口文件自带它的**私有词汇表**（§2.4），私有词汇不出现在 DTO 里。
 //! * `PortError::ArtifactExpired` 是端口层取值，HTTP 映射是 server host 的职责。
 //!
-//! 14 个 trait = [概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的 10 行 +
+//! 17 个 trait = [概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的 10 行 +
 //! 本文新增的 `IdentityResolver` + P2 新增的三个物理预算端口
-//! （`DriverPoolBudgetPort` / `ControlResourcePort` / `ClusterNodeBudgetPort`，见 [`budget`]）。
+//! （`DriverPoolBudgetPort` / `ControlResourcePort` / `ClusterNodeBudgetPort`，见 [`budget`]）
+//! + SettingsRepository（跨形态设置仓储）
+//! + NativeToolPort（受控原生版本探针与清理事实）
+//! + 时基端口 `Clock`（见 [`clock`]；§6.4 也没有这一行——时刻不是仓库，是一个原语）。
 //! §6.4 的「repositories」是一张表，**不是一个合并 trait**：落库面按聚合拆成
 //! `ProfileRepository` 与 `JobRepository` 两个 trait，实现方不必实现与自己无关的方法
 //! （§4.2 不合并 trait）；同一原则下，P2 的物理预算也**没有**并进 `BudgetCoordinator`
@@ -24,9 +29,11 @@
 
 pub mod artifact;
 pub mod budget;
+pub mod clock;
 pub mod event;
 pub mod identity;
 pub mod job;
+pub mod native_tool;
 pub mod network;
 pub mod policy;
 pub mod profile;
@@ -38,6 +45,7 @@ pub use artifact::ArtifactStore;
 pub use budget::{
     BudgetCoordinator, ClusterNodeBudgetPort, ControlResourcePort, DriverPoolBudgetPort,
 };
+pub use clock::{Clock, FixedClock, SystemClock};
 pub use event::EventSink;
 pub use identity::IdentityResolver;
 pub use job::JobRepository;
@@ -47,3 +55,6 @@ pub use profile::ProfileRepository;
 pub use secret::SecretProvider;
 pub use session_directory::SessionDirectory;
 pub use token::SubmissionTokenIssuer;
+
+pub mod settings;
+pub use settings::SettingsRepository;

@@ -1,3 +1,7 @@
+import { useTableDataStore } from './tableDataStore';
+import { invoke } from '@tauri-apps/api/core';
+import { tableSessionKey } from '../lib/session/tableSession';
+import { getQueryPanelSessionRegistry } from '../lib/session/queryPanelSessionRoot';
 import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
 import { t } from '../locales/t';
@@ -15,10 +19,19 @@ import {
   runBoundQuery,
 } from './queryExecActions';
 import { panelTargetDatabase, panelTargetSchema } from './panelQueryContext';
-import { cancelAndCleanupExec, cancelAndCleanupPaneExec } from './panelExecCleanup';
+import {
+  cancelAndCleanupExec,
+  cancelAndCleanupPaneExec,
+  canCancelPane,
+  requestPaneCancel,
+  sessionKeysOfPanel,
+} from './panelExecCleanup';
+import { createRunningCloseGuard } from './runningExecutionClose';
 import { DEFAULT_PANE_ID, paneKey } from './paneKeys';
 import { resolveNextActive, resetPanelIdCounter, type Panel } from './panelTypes';
 import { createPanelCloseNotifier } from './panelCloseNotifier';
+
+const resultWriteInflight = new Set<string>();
 
 export type { QueryExecState, BindParams };
 export { EMPTY_QUERY_EXEC, emptyQueryExecState } from './queryExecActions';
@@ -175,7 +188,7 @@ interface PanelActions {
     col: string,
     value: unknown,
     paneId?: string,
-  ) => void;
+  ) => Promise<void>;
   setChartConfig: (panelId: string, config: ChartConfig, paneId?: string) => void;
   setResultViewMode: (panelId: string, mode: 'table' | 'chart', paneId?: string) => void;
 
@@ -264,35 +277,65 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     }));
   },
 
-  removePanel: (panelId) => {
+  removePanel: async (panelId) => {
+    const initial = get();
+    const panel = initial.panels.find((p) => p.id === panelId);
+    if (!panel) return;
+    // 关闭顺序见 `runningExecutionClose`：先问用户 → 停掉语句并等终态 → 才释放会话与标签页。
+    const guard = askBeforeClosingRunningPanes({ panel, panelId });
+    if (guard !== true && !(await guard)) return;
+    if (panel.type === 'table' || panel.type === 'view') {
+      const registry = getQueryPanelSessionRegistry();
+      const key = tableSessionKey(panelId);
+      if (registry.peek(key)) {
+        try {
+          await registry.remove(key);
+        } catch {
+          useTableDataStore.setState((state) => {
+            const previous = state.byPanel.get(panelId);
+            if (!previous) return state;
+            const byPanel = new Map(state.byPanel);
+            byPanel.set(panelId, { ...previous, error: t('query.session.closeBlocked') });
+            return { byPanel };
+          });
+          return; // keep the tab and its transaction controls reachable
+        }
+      }
+    }
+    if (panel.type === 'query') {
+      const registry = getQueryPanelSessionRegistry();
+      // 会话注册表才是权威口径：pane 的会话在编辑器挂载时就开好了，按 exec 表枚举
+      // 会漏掉「开过会话但从未执行」的 pane，那正是额度被占满却只剩一个标签页的来源。
+      for (const key of sessionKeysOfPanel(initial.queryExec, panelId)) {
+        if (!registry.peek(key)) continue;
+        try {
+          await registry.remove(key);
+        } catch {
+          set((state) => ({
+            queryExec: patchExec(state.queryExec, key, { error: t('query.session.closeBlocked') }),
+          }));
+          return;
+        }
+      }
+    }
     const { panels, activePanelId, queryExec } = get();
-    const panel = panels.find((p) => p.id === panelId);
-    const nextExec = panel ? cancelAndCleanupExec([panel], queryExec) : queryExec;
-    const nextActive = resolveNextActive(panels, panelId, activePanelId);
-    const nextPanels = panels.filter((p) => p.id !== panelId);
-    set((s) => ({
+    const current = panels.find((item) => item.id === panelId);
+    const nextExec = current ? cancelAndCleanupExec([current], queryExec) : queryExec;
+    const nextPanels = panels.filter((item) => item.id !== panelId);
+    set((state) => ({
       panels: nextPanels,
       queryExec: nextExec,
-      ...syncPaneFocus(s, nextPanels, nextActive),
+      ...syncPaneFocus(state, nextPanels, resolveNextActive(panels, panelId, activePanelId)),
     }));
   },
 
   removeAllForConnection: (connectionId) => {
-    const { panels, activePanelId, queryExec } = get();
-    const toRemove = panels.filter((p) => p.connectionId === connectionId);
-    const remaining = panels.filter((p) => p.connectionId !== connectionId);
-    const nextExec = cancelAndCleanupExec(toRemove, queryExec);
-    const activeStillExists = remaining.some((p) => p.id === activePanelId);
-    const nextActive = activeStillExists ? activePanelId : (remaining.at(-1)?.id ?? null);
-    set((s) => ({
-      panels: remaining,
-      queryExec: nextExec,
-      ...syncPaneFocus(s, remaining, nextActive),
-    }));
+    for (const panel of get().panels.filter((item) => item.connectionId === connectionId))
+      void get().removePanel(panel.id);
   },
 
   removePanelsForRelation: (connectionId, tableName, database) => {
-    const { panels, activePanelId, queryExec } = get();
+    const { panels } = get();
     const targetDb = database?.trim() || undefined;
     const toRemove = panels.filter((p) => {
       if (p.connectionId !== connectionId) return false;
@@ -308,23 +351,11 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
       }
       return false;
     });
-    if (toRemove.length === 0) return;
-    const remaining = panels.filter((p) => !toRemove.some((r) => r.id === p.id));
-    const nextExec = cancelAndCleanupExec(toRemove, queryExec);
-    const activeStillExists = remaining.some((p) => p.id === activePanelId);
-    set((s) => ({
-      panels: remaining,
-      queryExec: nextExec,
-      ...syncPaneFocus(
-        s,
-        remaining,
-        activeStillExists ? activePanelId : (remaining.at(-1)?.id ?? null),
-      ),
-    }));
+    for (const panel of toRemove) void get().removePanel(panel.id);
   },
 
   removePanelsForDatabase: (connectionId, database, sessionDatabase) => {
-    const { panels, activePanelId, queryExec } = get();
+    const { panels } = get();
     const targetDb = database.trim();
     if (!targetDb) return;
     const sessionDb = sessionDatabase?.trim() || undefined;
@@ -351,19 +382,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
           return false;
       }
     });
-    if (toRemove.length === 0) return;
-    const remaining = panels.filter((p) => !toRemove.some((r) => r.id === p.id));
-    const nextExec = cancelAndCleanupExec(toRemove, queryExec);
-    const activeStillExists = remaining.some((p) => p.id === activePanelId);
-    set((s) => ({
-      panels: remaining,
-      queryExec: nextExec,
-      ...syncPaneFocus(
-        s,
-        remaining,
-        activeStillExists ? activePanelId : (remaining.at(-1)?.id ?? null),
-      ),
-    }));
+    for (const panel of toRemove) void get().removePanel(panel.id);
   },
 
   setActivePanel: (panelId) => {
@@ -379,53 +398,21 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   },
 
   closeOtherPanels: (panelId) => {
-    const { panels, queryExec } = get();
-    const toRemove = panels.filter((p) => p.id !== panelId);
-    const nextExec = cancelAndCleanupExec(toRemove, queryExec);
-    const kept = panels.filter((p) => p.id === panelId);
-    set((s) => ({
-      panels: kept,
-      queryExec: nextExec,
-      ...syncPaneFocus(s, kept, panelId),
-    }));
+    for (const panel of get().panels.filter((item) => item.id !== panelId))
+      void get().removePanel(panel.id);
   },
-
   closeAllPanels: () => {
-    const { panels, queryExec } = get();
-    const nextExec = cancelAndCleanupExec(panels, queryExec);
-    set((s) => ({ panels: [], queryExec: nextExec, ...syncPaneFocus(s, [], null) }));
+    for (const panel of get().panels) void get().removePanel(panel.id);
   },
-
   closePanelsToTheRight: (panelId) => {
-    set((s) => {
-      const idx = s.panels.findIndex((p) => p.id === panelId);
-      if (idx < 0) return s;
-      const kept = s.panels.slice(0, idx + 1);
-      const removed = s.panels.slice(idx + 1);
-      const nextExec = cancelAndCleanupExec(removed, s.queryExec);
-      const activeStillExists = kept.some((p) => p.id === s.activePanelId);
-      return {
-        panels: kept,
-        queryExec: nextExec,
-        ...syncPaneFocus(s, kept, activeStillExists ? s.activePanelId : panelId),
-      };
-    });
+    const panels = get().panels;
+    const index = panels.findIndex((panel) => panel.id === panelId);
+    if (index >= 0) for (const panel of panels.slice(index + 1)) void get().removePanel(panel.id);
   },
-
   closePanelsToTheLeft: (panelId) => {
-    set((s) => {
-      const idx = s.panels.findIndex((p) => p.id === panelId);
-      if (idx < 0) return s;
-      const kept = s.panels.slice(idx);
-      const removed = s.panels.slice(0, idx);
-      const nextExec = cancelAndCleanupExec(removed, s.queryExec);
-      const activeStillExists = kept.some((p) => p.id === s.activePanelId);
-      return {
-        panels: kept,
-        queryExec: nextExec,
-        ...syncPaneFocus(s, kept, activeStillExists ? s.activePanelId : panelId),
-      };
-    });
+    const panels = get().panels;
+    const index = panels.findIndex((panel) => panel.id === panelId);
+    if (index >= 0) for (const panel of panels.slice(0, index)) void get().removePanel(panel.id);
   },
 
   // ── Panes ─────────────────────────────────────────────────────
@@ -451,9 +438,24 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     });
   },
 
-  closePane: (panelId, paneId) => {
+  closePane: async (panelId, paneId) => {
     const panel = get().panels.find((p) => p.id === panelId);
     if (!panel || panel.type !== 'query') return;
+    const key = paneKey(panelId, paneId);
+    // 与整屏关闭同一条顺序：先确认 → 停掉语句并等终态 → 才释放会话与摘掉面板。
+    const guard = askBeforeClosingRunningPanes({ panel, panelId, paneId });
+    if (guard !== true && !(await guard)) return;
+    const registry = getQueryPanelSessionRegistry();
+    if (registry.peek(key)) {
+      try {
+        await registry.remove(key);
+      } catch {
+        set((state) => ({
+          queryExec: patchExec(state.queryExec, key, { error: t('query.session.closeBlocked') }),
+        }));
+        return;
+      }
+    }
     const nextExec = cancelAndCleanupPaneExec(panel, paneId, get().queryExec);
     set((s) => {
       // A closed pane cannot stay focused, but only *its own* tab loses focus:
@@ -503,6 +505,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         setExec,
         panelTargetDatabase(panel, sql),
         panelTargetSchema(panel),
+        panel.connectionId,
       );
     } else {
       await runStreamingQuery(
@@ -513,6 +516,8 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         setExec,
         panelTargetDatabase(panel, sql),
         panelTargetSchema(panel),
+        undefined,
+        panel.connectionId,
       );
     }
     await get().loadHistory(panel.connectionId);
@@ -537,6 +542,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         setExec,
         panelTargetDatabase(panel, sql),
         panelTargetSchema(panel),
+        panel.connectionId,
       );
     } else {
       await runStreamingQuery(
@@ -547,6 +553,8 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         setExec,
         panelTargetDatabase(panel, sql),
         panelTargetSchema(panel),
+        undefined,
+        panel.connectionId,
       );
     }
     await get().loadHistory(panel.connectionId);
@@ -578,7 +586,9 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     });
 
     try {
-      await queryCommands.cancelQuery(panel.dbSessionId, exec.executionId);
+      const controller = getQueryPanelSessionRegistry().peek(key);
+      if (!controller) throw new Error('Editor session unavailable');
+      await controller.cancel();
     } catch {
       set((s) => {
         const current = s.queryExec.get(key);
@@ -619,11 +629,43 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     }));
   },
 
-  updateResultCell: (panelId, resultIdx, row, col, value, paneId) => {
+  updateResultCell: async (panelId, resultIdx, row, col, value, paneId) => {
     const key = paneKey(panelId, paneId);
     const exec = get().queryExec.get(key);
     if (!exec) return;
-    const results = exec.results.map((r, ri) => {
+    const original = exec.results[resultIdx];
+    if (!original?.runtimeBinding || original.source?.writableMapping !== 'verified')
+      throw new Error('Result is read-only; execute the query again');
+    const columnIndex = original.columns.findIndex((column) => column.name === col);
+    if (columnIndex < 0 || !original.rows[row]) throw new Error('Result cell unavailable');
+    if (JSON.stringify(original.rows[row][columnIndex]) === JSON.stringify(value)) return;
+    if (resultWriteInflight.has(key)) throw new Error('A result edit is already in progress');
+    resultWriteInflight.add(key);
+    try {
+      await invoke('commit_query_result_cell', {
+        request: {
+          binding: original.runtimeBinding,
+          statementIndex: original.source.statementIndex,
+          rowIndex: row,
+          column: col,
+          value,
+        },
+      });
+    } catch (error) {
+      set((state) => ({
+        queryExec: patchExec(state.queryExec, key, {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      }));
+      throw error;
+    } finally {
+      resultWriteInflight.delete(key);
+    }
+    // Retained artifacts are immutable. This edited snapshot requires a fresh
+    // explicit query before another edit; never replay arbitrary original SQL.
+    const current = get().queryExec.get(key);
+    if (!current || current.results[resultIdx]?.runtimeBinding !== original.runtimeBinding) return;
+    const results = current.results.map((r, ri) => {
       if (ri !== resultIdx) return r;
       const colIdx = r.columns.findIndex((c) => c.name === col);
       if (colIdx === -1) return r;
@@ -633,7 +675,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         next[colIdx] = value as Value;
         return next;
       });
-      return { ...r, rows };
+      return { ...r, rows, runtimeBinding: null };
     });
     set((s) => ({ queryExec: patchExec(s.queryExec, key, { results }) }));
   },
@@ -726,3 +768,26 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
 // `panelCloseNotifier`). Re-exported so the view layer registers against the
 // notifier for the store it actually renders, without importing the store.
 export const { onPanelClosed } = createPanelCloseNotifier(usePanelStore);
+
+/**
+ * Ask before closing something that is still running.
+ *
+ * The conversation itself lives in `runningExecutionClose`; this only wires it to
+ * this store's state, so the rules are testable without a store and the store
+ * keeps no copy of them.
+ */
+const askBeforeClosingRunningPanes = createRunningCloseGuard({
+  queryExec: () => usePanelStore.getState().queryExec,
+  hasSession: (panelId, paneId) =>
+    getQueryPanelSessionRegistry().peek(paneKey(panelId, paneId)) != null,
+  canCancel: canCancelPane,
+  cancelPane: (panelId, paneId) =>
+    requestPaneCancel(() => usePanelStore.getState(), panelId, paneId),
+  markBlocked: (panelId, paneId) => {
+    usePanelStore.setState((state) => ({
+      queryExec: patchExec(state.queryExec, paneKey(panelId, paneId), {
+        error: t('query.session.closeBlocked'),
+      }),
+    }));
+  },
+});

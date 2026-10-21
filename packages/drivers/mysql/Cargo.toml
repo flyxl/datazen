@@ -1,6 +1,6 @@
 [package]
 name = "datazen-driver-mysql"
-version = "0.0.9"
+version = "0.0.10"
 edition = "2021"
 description = "DataZen mysql database driver"
 license = "GPL-3.0-or-later"
@@ -19,3 +19,13 @@ tracing = "0.1"
 sqlparser = { version = "0.59", features = ["visitor"] }
 urlencoding = "2"
 futures-util = "0.3"
+
+[dev-dependencies]
+flate2 = "1"
+datazen-schema-diff = { path = "../../schema-diff" }
+datazen-feature-core = { path = "../../feature-core" }
+datazen-runtime = { path = "../../runtime" }
+datazen-application = { path = "../../application" }
+datazen-platform-api = { path = "../../platform-api" }
+sha2 = "0.10"
+tempfile = "3"

@@ -1,6 +1,6 @@
 //! Builds a fully wired [`AppState`] for command integration tests.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::commands::AppState;
 use crate::db::registry::DriverRegistry;
@@ -8,6 +8,8 @@ use crate::db::{ConnectionConfig, SslMode, TableInfo, TableType};
 use crate::store::Store;
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
+use datazen_driver_api::resource::ResourceProvider;
+use datazen_driver_api::{DatabaseDriver, DatabaseDriverFactory};
 
 /// Temp store + mock postgres driver + keyring guard for command tests.
 pub struct TestAppState {
@@ -19,12 +21,87 @@ pub struct TestAppState {
     pub registry: Arc<DriverRegistry>,
 }
 
+/// Supplies the same test driver through the runtime resource contract.
+///
+/// Runtime SQL and ChangeSet paths open short-lived resources through a
+/// `DatabaseDriverFactory`; registering only a `MockDriver` is not enough for
+/// those paths. Keep the adapter and command driver backed by the same mock so
+/// the tests exercise the real runtime wiring without opening a network
+/// connection.
+struct TestMockDriverFactory {
+    driver_id: &'static str,
+    driver: Arc<dyn DatabaseDriver>,
+    provider: OnceLock<Arc<dyn ResourceProvider>>,
+}
+
+impl TestMockDriverFactory {
+    fn new(driver_id: &'static str, driver: Arc<dyn DatabaseDriver>) -> Self {
+        Self {
+            driver_id,
+            driver,
+            provider: OnceLock::new(),
+        }
+    }
+}
+
+impl DatabaseDriverFactory for TestMockDriverFactory {
+    fn create(&self) -> Arc<dyn DatabaseDriver> {
+        Arc::clone(&self.driver)
+    }
+
+    fn driver_id(&self) -> &'static str {
+        self.driver_id
+    }
+
+    fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
+        Some(
+            self.provider
+                .get_or_init(|| {
+                    Arc::new(
+                        super::resource_provider::TestResourceProvider::new_for_driver(
+                            Arc::clone(&self.driver),
+                            self.driver_id,
+                        ),
+                    ) as Arc<dyn ResourceProvider>
+                })
+                .clone(),
+        )
+    }
+}
+
 impl TestAppState {
     pub async fn new() -> Self {
         Self::with_options(MockDriverOptions::default()).await
     }
 
     pub async fn with_options(opts: MockDriverOptions) -> Self {
+        Self::build(opts, false).await
+    }
+
+    /// Build a test state with a resource provider for runtime SQL/ChangeSet
+    /// tests. Other tests keep using `with_options` so provider-backed session
+    /// behavior is opt-in.
+    pub async fn with_resource_provider(mut opts: MockDriverOptions) -> Self {
+        // This retained-resource fixture supports explain explicitly. Keep the
+        // default legacy MockDriver conservative so unsupported-driver tests
+        // continue to exercise the absence of this capability.
+        if !opts
+            .extra_commands
+            .iter()
+            .any(|command| command.id == "explain")
+        {
+            opts.extra_commands
+                .push(datazen_driver_api::explain_command_definition());
+        }
+        opts.command_results
+            .entry("explain".into())
+            .or_insert_with(|| {
+                serde_json::to_value(&opts.explain_plan).expect("serialize mock explain plan")
+            });
+        Self::build(opts, true).await
+    }
+
+    async fn build(opts: MockDriverOptions, _with_resource_provider: bool) -> Self {
         let keyring = super::FileKeyringGuard::set();
         let temp = tempfile::tempdir().expect("tempdir");
         let store = Arc::new(
@@ -37,6 +114,14 @@ impl TestAppState {
         registry
             .register_test_driver("postgres", mock.clone())
             .await;
+        // Runtime-backed command tests need the same mock provider as the
+        // direct driver path. Register it for every fixture so a test cannot
+        // accidentally create a legacy-only session that the production
+        // command path would reject.
+        let driver: Arc<dyn DatabaseDriver> = mock.clone();
+        let factory: &'static dyn DatabaseDriverFactory =
+            Box::leak(Box::new(TestMockDriverFactory::new("postgres", driver)));
+        registry.register_test_factory("postgres", factory).await;
         let state = build_app_state(store.clone(), registry.clone());
         Self {
             _keyring: keyring,
@@ -52,6 +137,24 @@ impl TestAppState {
         Self::with_options(rich_mock_options()).await
     }
 
+    pub async fn with_tables_and_resource_provider() -> Self {
+        Self::with_resource_provider(rich_mock_options()).await
+    }
+
+    /// Register a Runtime resource factory for a driver spelling introduced by
+    /// a focused fixture (for example `postgresql` versus `postgres`).
+    pub async fn register_runtime_driver(
+        &self,
+        driver_id: &'static str,
+        driver: Arc<dyn DatabaseDriver>,
+    ) {
+        let factory: &'static dyn DatabaseDriverFactory =
+            Box::leak(Box::new(TestMockDriverFactory::new(driver_id, driver)));
+        self.registry
+            .register_test_factory(driver_id, factory)
+            .await;
+    }
+
     pub async fn save_connection(&self, id: &str) -> ConnectionConfig {
         let config = sample_postgres_config(id);
         self.store
@@ -61,19 +164,69 @@ impl TestAppState {
         config
     }
 
-    /// Establish (or reuse) the db session for persisted connection config `connection_id`.
+    /// Persisted connection config must exist; establish it as a Runtime session.
     pub async fn connect_config(&self, connection_id: &str) -> String {
-        self.state
-            .connection_manager
-            .get_or_connect_session(connection_id)
-            .await
-            .expect("connect")
+        self.open_runtime_session(connection_id).await
     }
 
     pub async fn save_and_connect(&self, id: &str) -> (ConnectionConfig, String) {
+        // Keep the historical fixture name, but make it exercise the Runtime
+        // session boundary used by migrated command paths.
+        self.save_and_connect_runtime(id).await
+    }
+
+    /// Persist a profile and open it through the Runtime session boundary.
+    /// Opens a session through the Runtime boundary used by production paths.
+    pub async fn save_and_connect_runtime(&self, id: &str) -> (ConnectionConfig, String) {
         let config = self.save_connection(id).await;
-        let conn_id = self.connect_config(id).await;
-        (config, conn_id)
+        let session = self.open_runtime_session(id).await;
+        (config, session)
+    }
+
+    /// Persist a profile and open a real platform runtime session for command tests.
+    pub async fn save_and_open_runtime_session(&self, id: &str) -> String {
+        self.save_connection(id).await;
+        self.open_runtime_session(id).await
+    }
+
+    /// Open a runtime session for a profile that the test has already persisted.
+    pub async fn open_runtime_session(&self, id: &str) -> String {
+        use datazen_application::{
+            dto::requests::OpenSessionRequest, sessions::ConnectionUseCases,
+        };
+        use datazen_platform_api::{
+            context::OwnerRef,
+            dto::idempotency::IdempotentOperation,
+            id::ConnectionId,
+            target::{ExecutionTarget, NamespaceTarget},
+        };
+
+        let config = self.store.get_connection(id).await.expect("profile exists");
+        let adapter = self.state.platform_require().expect("platform is ready");
+        let call = adapter.begin_call();
+        let runtime = adapter.runtime().expect("runtime is ready");
+        let token = runtime
+            .issue_submission_token(call.context(), IdempotentOperation::OpenSession, None)
+            .await
+            .expect("runtime session token issues");
+        let opened = runtime
+            .open_session(
+                call.context(),
+                OpenSessionRequest::new(
+                    ExecutionTarget::new(
+                        ConnectionId::new(id),
+                        NamespaceTarget::database(config.database.as_deref().unwrap_or("app")),
+                    ),
+                    OwnerRef::ClientSession {
+                        client_instance_id: call.context().client_instance_id.clone(),
+                        purpose: "commandTest".into(),
+                    },
+                    token.idempotency_key,
+                ),
+            )
+            .await
+            .expect("runtime session opens");
+        opened.session.handle.db_session_id.as_str().to_owned()
     }
 }
 

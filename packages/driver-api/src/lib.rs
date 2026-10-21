@@ -7,9 +7,13 @@
 pub use async_trait::async_trait;
 pub use inventory;
 
+pub mod backup_dialect;
 pub mod capabilities;
 pub mod capability_domains;
+pub mod catalog;
 pub mod command;
+pub mod command_catalog;
+pub mod dialect;
 mod explain_plan;
 mod factory;
 pub mod filters;
@@ -18,6 +22,8 @@ pub mod namespace;
 mod query_stream;
 pub mod resource;
 pub mod resource_adapter;
+pub mod restore_sql;
+mod restore_sql_target;
 mod reuse;
 pub mod schema_catalog_commands;
 pub mod schema_dependencies;
@@ -27,6 +33,7 @@ pub mod schema_object_commands;
 pub mod schema_objects;
 pub mod schema_scope_mapping;
 pub mod session;
+pub mod sql_builder;
 pub mod sql_dump;
 pub mod sql_identifiers;
 pub mod sql_split;
@@ -38,14 +45,18 @@ mod traits;
 mod tunnel_types;
 mod types;
 
+pub use backup_dialect::{BackupDialect, LegacyBackupDialect};
 pub use capability_domains::{BackupSupport, DataSupport};
+pub use catalog::{CatalogReader, LegacyCatalogReader};
 pub use command::{
     check_command_access, execute_command_definition, execute_command_definition_for,
-    query_command_definition, query_command_definition_for, query_only_command_definitions,
-    query_stream_command_definition, required_access_level, statement_command_definitions,
-    validate_command_input, CommandAccessLevel, CommandCategory, CommandResult,
-    DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec,
+    explain_command_definition, query_command_definition, query_command_definition_for,
+    query_only_command_definitions, query_stream_command_definition, required_access_level,
+    statement_command_definitions, validate_command_input, CommandAccessLevel, CommandCategory,
+    CommandResult, DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec,
 };
+pub use command_catalog::{CommandCatalog, LegacyCommandCatalog};
+pub use dialect::{BoundParameterLimit, LegacySqlDialect, SqlDialect};
 pub use explain_plan::{normalize_mysql_explain_plan, normalize_postgres_explain_plan};
 pub use factory::*;
 pub use query_stream::{
@@ -63,10 +74,10 @@ pub use schema_migration::{
     format_type, migration_object_kind, parse_type_parts, split_sequence_definition,
     validate_check_expression, validate_migration_identifier, validate_object_definition,
     validate_object_definition_with_identity, validate_sequence_definition_with_identity,
-    validate_type_definition_with_identity, validate_view_definition, MigrationCapabilities,
-    MigrationColumn, MigrationOperation, MigrationRenderer, MigrationRequirement, MigrationRisk,
-    MigrationRoutine, MigrationSequence, MigrationStatement, MigrationTrigger, MigrationType,
-    MigrationView, TypeNormalizer,
+    validate_type_definition_with_identity, validate_view_definition, LegacySchemaMigration,
+    MigrationCapabilities, MigrationColumn, MigrationOperation, MigrationRenderer,
+    MigrationRequirement, MigrationRisk, MigrationRoutine, MigrationSequence, MigrationStatement,
+    MigrationTrigger, MigrationType, MigrationView, SchemaMigration, TypeNormalizer,
 };
 pub use schema_object_commands::{
     execute_schema_object_command, extract_object_ddl_checked, is_schema_object_command,
@@ -104,10 +115,14 @@ pub use types::*;
 /// per-handle close). Every impl — in-tree and out-of-tree — has to spell out
 /// what it does with a session-scoped handle, so this is a source break.
 ///
+/// 5 → 6: `ResourceProvider` gained the required `connection_handle` method for
+/// Host metadata adapters. Implementations must return only a validated,
+/// already-held connection, so this is a source break.
+///
 /// [`MIN_PROTOCOL_VERSION`] deliberately stayed at 1: raising it is a product
 /// decision about which old plugins keep loading, not a consequence of this
 /// break, and `driver-capability-migration.md` keeps the two apart.
-pub const PROTOCOL_VERSION: u32 = 5;
+pub const PROTOCOL_VERSION: u32 = 6;
 
 /// Minimum protocol version the host still supports.
 ///

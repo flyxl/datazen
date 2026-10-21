@@ -23,6 +23,8 @@ type QueryResultPayload = {
   data?: unknown;
 };
 
+type TableReadResult = { rows?: unknown[][] };
+
 type ObjectDdlRequest = {
   dbSessionId: string;
   kind: string;
@@ -172,18 +174,10 @@ async function expandSchemaObjectCategory(
     await categoryNode.click();
   }
   await browser.waitUntil(
-    async () =>
-      browser.execute((key: string) => {
-        const tree = document.querySelector('[data-testid="navigator-tree"]');
-        const categoryNode = Array.from(
-          tree?.querySelectorAll<HTMLElement>('[data-tree-node="category"]') ?? [],
-        ).find((candidate) => candidate.getAttribute('data-cat-key') === key);
-        const count = Number(categoryNode?.lastElementChild?.textContent?.trim());
-        return Number.isFinite(count) && count > 0;
-      }, categoryKey),
+    async () => (await categoryNode.getAttribute('aria-expanded')) === 'true',
     {
-      timeout: 15000,
-      timeoutMsg: `UI did not load PostgreSQL objects for category ${categoryKey}`,
+      timeout: 10000,
+      timeoutMsg: 'UI did not expand PostgreSQL object category',
       interval: 100,
     },
   );
@@ -198,6 +192,85 @@ describe('PostgreSQL Schema Tree objects', () => {
 
   after(async () => {
     await closeExtraWindows(mainWindow);
+  });
+
+  it('reads a table by explicit target through platform metadata', async () => {
+    const stamp = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const schema = `e2e_target_${stamp}`;
+    const table = 'target_rows';
+    const connectionId = `e2e-target-read-${stamp}`;
+    const connectionName = `E2E PostgreSQL target read ${stamp}`;
+    const database = process.env.E2E_PG_DB || process.env.PG_DATABASE || 'postgres';
+    let dbSessionId: string | undefined;
+    let connectionSaved = false;
+    let schemaCreated = false;
+
+    try {
+      await invokeBackend('save_connection', {
+        config: {
+          id: connectionId,
+          name: connectionName,
+          databaseType: 'postgresql',
+          host: process.env.E2E_PG_HOST || process.env.PG_HOST || '127.0.0.1',
+          port: Number(process.env.E2E_PG_PORT || process.env.PG_PORT) || 5432,
+          username: process.env.E2E_PG_USER || process.env.PG_USER || 'postgres',
+          password: process.env.E2E_PG_PASSWORD || process.env.PG_PASSWORD || '',
+          database,
+          group: 'E2E Schema Tree',
+          sslMode: 'disable',
+          options: {},
+        },
+      });
+      connectionSaved = true;
+      dbSessionId = await connectConfig(connectionId);
+
+      const qualifiedTable = `${quoteIdent(schema)}.${quoteIdent(table)}`;
+      await executeSql(dbSessionId, `CREATE SCHEMA ${quoteIdent(schema)}`);
+      schemaCreated = true;
+      await executeSql(
+        dbSessionId,
+        `CREATE TABLE ${qualifiedTable} (id integer PRIMARY KEY, label text NOT NULL)`,
+      );
+      await executeSql(
+        dbSessionId,
+        `INSERT INTO ${qualifiedTable} (id, label) VALUES (1, 'P2-TARGET-001')`,
+      );
+
+      const result = await invokeBackend<TableReadResult>('get_table_data_at_target', {
+        request: {
+          manualHandle: null,
+          context: {
+            connectionId,
+            dbSessionId,
+            driverType: 'postgresql',
+            database,
+            schema,
+            table,
+          },
+          page: 0,
+          pageSize: 20,
+          filters: null,
+          sorts: null,
+          skipCount: false,
+          filterLogic: null,
+        },
+      });
+
+      expect(JSON.stringify(result.rows ?? [])).toContain('P2-TARGET-001');
+    } finally {
+      if (dbSessionId) {
+        if (schemaCreated) {
+          await executeSql(
+            dbSessionId,
+            `DROP SCHEMA IF EXISTS ${quoteIdent(schema)} CASCADE`,
+          ).catch(() => undefined);
+        }
+        await disconnectBackend(dbSessionId);
+      }
+      if (connectionSaved) {
+        await invokeBackend('delete_connection', { id: connectionId }).catch(() => undefined);
+      }
+    }
   });
 
   it('creates, browses, opens definitions, and removes an isolated object schema', async () => {

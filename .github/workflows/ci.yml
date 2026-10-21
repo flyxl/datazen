@@ -8,11 +8,12 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
-# 同一 PR / ref 连续 push 时，取消仍在跑的旧运行，只保留最新一次。
+# 同一提交重复触发时取消旧 run；不同提交各自完成对应 CI。
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 env:
@@ -20,10 +21,41 @@ env:
   DATAZEN_KEYRING: file
 
 jobs:
+  # Run only the CI half changed since the last successful run for this PR or
+  # branch. A first run checks the whole PR/push range; manual runs stay full.
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.scope.outputs.frontend }}
+      rust: ${{ steps.scope.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Test CI scope resolver
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.test_ci_scope
+
+      - name: Classify changes since previous CI run
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CURRENT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          EVENT_BEFORE: ${{ github.event.before || '' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/ci_scope.py
+
   # ── 前端段：pnpm → codegen → typecheck → 守卫 → 单测 → site 检查 ──
   # 与 rust job 并行：两者互不依赖（Rust 段不消费 typecheck/单测产物，
   # 前端段不消费 cargo 产物），墙钟时间 = max(前端, Rust) 而非两者之和。
   frontend:
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -55,28 +87,23 @@ jobs:
       - name: TypeScript typecheck
         run: pnpm typecheck
 
-      # 6 个严格守卫合并为一步：任何失败立即停止（fail-fast），
+      # 5 个严格守卫合并为一步：任何失败立即停止（fail-fast），
       # 输出清晰标注哪条命令失败。省掉 5 次 shell launch 开销。
       #
       # version / ci-docs / guardrails 三条已移到 release.yml 的 pre-release-guards
       # （理由见该 job 注释）：它们只在发布这一刻才有意义，不该让每个 PR 都付这
       # 几次 shell launch，也不该让版本号或文档矩阵的短暂不一致拦住与它无关的
       # 功能 PR。per-PR 门禁只保留"改错了就必须在合并前发现"的那几条。
-      - name: All strict guards (stubs, IDs, layers, driver-protocol, boundaries, i18n keys)
+      # driver-protocol 门禁已于 2026-10-21 退役：仓库已无外部驱动，协议版本
+      # 冻结于 6（治理决定见 docs/architecture/platform/
+      # driver-capability-migration.md §5）。
+      - name: All strict guards (stubs, IDs, layers, boundaries, i18n keys)
         run: |
           node scripts/check-managed-stubs.mjs
           pnpm test:ids
           pnpm test:layers
-          pnpm test:driver-protocol
           pnpm test:boundaries
           pnpm test:i18n-keys
-
-      # 协议号与驱动发布的原子性门禁。放在 strict guards 之后、resolve-drivers
-      # 之前：它只读 drivers-registry.json 与各 crate 的 Cargo.toml，不碰
-      # gitignored codegen，因此无需等驱动注入完成。它需要完整历史（上一步的
-      # fetch-depth: 0）才能读出基线 ref 上的 manifest 与 protocol 数字。
-      - name: Protocol number / driver release atomicity
-        run: pnpm test:driver-protocol-release
 
       - name: Frontend unit tests
         # No Pro here, and no Pro opt-out. `packages/pro-extensions/**` is a
@@ -163,6 +190,8 @@ jobs:
 
   # ── Rust 段：工具链 → 系统依赖 → rust-cache → 驱动注入 → cargo 测试 ──
   rust:
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -304,8 +333,24 @@ jobs:
       # 门禁本身不带 crate 名单：清单来自 workspace membership + §2.4 的路径，
       # 新 crate 落到 packages/application / packages/platform-api / server 下就自动入网，
       # 不需要在这里改任何一处列表。列不出来的 member 是 error 不是 pass。
-      - name: Platform crate dependency boundaries (F-01..F-07)
+      - name: Platform crate dependency boundaries
         run: pnpm test:platform-arch
+
+      # 新增共享基础设施 crate 的 panic 门禁。同样落在这里，理由和上面那条一样：
+      # 它要先解析 `cargo metadata` 才能把显式目标目录认成 workspace member，而
+      # frontend job 没有 Rust 工具链；放在 restore 之后，断言的是提交态的清单。
+      #
+      # 与上面那条边界门禁的分工：边界门禁的结论行已被 R 阶段全量回归记录在案，
+      # 因此本轮策略是「只约束新增 crate」（决策 c 方案 3），不追溯既有代码，也不
+      # 改动那条门禁。所以本门禁的范围由脚本里的显式 TARGET_CRATES 列表决定
+      # （当前仅 packages/platform-infra），而不是由 workspace 路径推导。
+      #
+      # 只禁裸 unwrap()：expect("…") 一律放行（AGENTS.md 禁的是「裸」）。#[cfg(test)]
+      # item 与 #[test] / #[tokio::test] 函数按语法整段剔除，不按文件名。目标 crate
+      # 缺失、未分类、或一个 .rs 都没读到，都是 error 而不是 pass——「没读」和「没
+      # 问题」不允许打印成同一行。
+      - name: Shared crate panic policy (PN-01)
+        run: pnpm test:shared-crate-panic
 
       # 计划 :99 的「不同 driver 不共享实现库类型」。F-01 明确放行 driver→driver
       # 边（allowedLayers 含 'driver'），所以上面那道门禁按设计看不见本条；这里补上，
@@ -353,11 +398,19 @@ jobs:
       - name: Platform arch guard self-proof (8 mutations)
         run: pnpm test:platform-arch:mutations
 
-  # ── 聚合 job：两段全绿才算 CI 通过。
+  # ── 聚合 job：所有被选中的检查全绿才算 CI 通过。
   # 分支保护的 required status check 盯 `ci` 一个即可，拆分 job 不影响它。
   ci:
-    needs: [frontend, rust]
+    needs: [detect-changes, frontend, rust]
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: All checks passed
-        run: echo "frontend + rust jobs passed"
+      - name: Verify selected checks passed
+        env:
+          CHANGES_RESULT: ${{ needs.detect-changes.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          RUST_RESULT: ${{ needs.rust.result }}
+        run: |
+          test "$CHANGES_RESULT" = "success"
+          test "$FRONTEND_RESULT" = "success" || test "$FRONTEND_RESULT" = "skipped"
+          test "$RUST_RESULT" = "success" || test "$RUST_RESULT" = "skipped"

@@ -206,6 +206,12 @@ impl BudgetLedger {
                 });
             }
         }
+        if self.physical(&claim.connection_id) >= self.config.service_physical_connections {
+            return AdmitOutcome::Busy(DenialReason::PhysicalExhausted {
+                connection_id: claim.connection_id.clone(),
+                cap: self.config.service_physical_connections,
+            });
+        }
         let quota = self.config.service_quota;
         let capacity = self.config.capacity_of(claim.class);
         let Some(mut service) = self.services.remove(&claim.connection_id) else {
@@ -254,15 +260,14 @@ impl BudgetLedger {
         claims: &[BudgetClaim],
         now_ms: u64,
     ) -> Result<Vec<PermitRecord>, DenialReason> {
-        let backup: BTreeMap<ConnectionId, ServiceState> = claims
+        let backup: BTreeMap<ConnectionId, Option<ServiceState>> = claims
             .iter()
             .map(|claim| claim.connection_id.clone())
             .collect::<BTreeSet<_>>()
             .into_iter()
-            .filter_map(|id| {
-                self.services
-                    .get(&id)
-                    .map(|state| (id.clone(), state.clone()))
+            .map(|id| {
+                let state = self.services.get(&id).cloned();
+                (id, state)
             })
             .collect();
         let permits_before = self.permits.clone();
@@ -272,7 +277,15 @@ impl BudgetLedger {
             match self.try_admit(claim, now_ms) {
                 AdmitOutcome::Granted(record) => granted.push(record),
                 AdmitOutcome::Busy(reason) | AdmitOutcome::Denied(reason) => {
-                    self.services = backup;
+                    // Restore only this batch's services. Other connections
+                    // retain their class occupancy, queues, and session state.
+                    for (id, prior) in backup {
+                        if let Some(state) = prior {
+                            self.services.insert(id, state);
+                        } else {
+                            self.services.remove(&id);
+                        }
+                    }
                     self.permits = permits_before;
                     self.granted_total = granted_before;
                     return Err(reason);
@@ -415,6 +428,16 @@ impl BudgetLedger {
             self.consumed_total = self.consumed_total.saturating_add(1);
         } else {
             self.returned_total = self.returned_total.saturating_add(1);
+        }
+        if self.retired.len() >= 4096 {
+            if let Some(old) = self
+                .retired
+                .iter()
+                .min_by_key(|(_, retirement)| retirement.released_at_ms)
+                .map(|(id, _)| id.clone())
+            {
+                self.retired.remove(&old);
+            }
         }
         self.retired.insert(
             record.permit_id.clone(),

@@ -10,8 +10,8 @@ use super::helpers::{
 use super::resolve::resolve_command_driver;
 use super::types::{ExecuteDriverCommandStreamOpts, ExecuteDriverCommandStreamRequest};
 use datazen_driver_api::{
-    check_command_access, validate_command_input, CommandAccessLevel, QueryExecutionId,
-    QueryStreamCallback, QueryStreamEvent,
+    check_command_access, validate_command_input, CommandAccessLevel, CommandCatalog,
+    QueryExecutionId, QueryStreamCallback, QueryStreamEvent,
 };
 
 pub(crate) async fn execute_driver_command_stream_impl(
@@ -35,10 +35,12 @@ pub(crate) async fn execute_driver_command_stream_impl(
         .filter(|s| !s.is_empty())
         .ok_or_else(|| CommandError::Validation("dbSessionId is required".into()))?;
 
-    let (driver, handle, _bound) =
-        resolve_command_driver(state, request.db_session_id.as_ref(), None).await?;
+    let resolved = resolve_command_driver(state, request.db_session_id.as_ref(), None).await?;
+    let driver = &resolved.driver;
+    let handle = &resolved.handle;
 
-    let definition = driver
+    let catalog = crate::db::LegacyCommandCatalog::new(driver.as_ref());
+    let definition = catalog
         .command_definitions()
         .into_iter()
         .find(|definition| definition.id == request.command)
@@ -57,15 +59,14 @@ pub(crate) async fn execute_driver_command_stream_impl(
     check_command_access(&definition, CommandAccessLevel::Read)
         .map_err(CommandError::Validation)?;
 
-    let sql = sql_from_input(&request.input).ok_or_else(|| {
+    // Presence-only validation: the actual string is re-read below after
+    // `bind_sql_params` has mutated `request.input` in place.
+    sql_from_input(&request.input).ok_or_else(|| {
         CommandError::Validation("command 'query_stream' requires string input 'sql'".into())
     })?;
 
-    if let Some(params) = request.input.get("params").cloned() {
-        let bound_sql =
-            crate::sql_guard::apply_params(&sql, &params).map_err(CommandError::Validation)?;
-        request.input["sql"] = serde_json::Value::String(bound_sql);
-    }
+    datazen_feature_core::services::command_policy::bind_sql_params(&mut request.input)
+        .map_err(CommandError::Validation)?;
     let mut sql = request
         .input
         .get("sql")
@@ -114,14 +115,19 @@ pub(crate) async fn execute_driver_command_stream_impl(
         "execute_driver_command_stream sql"
     );
 
-    let read_only = state
-        .connection_manager
-        .get_session_config(&handle.id)
-        .await
-        .map(|c| c.read_only)
-        .unwrap_or(false);
-    let safe_mode = state.store.get_settings().await.safe_mode;
-    crate::sql_guard::check_sql(&sql, read_only, safe_mode).map_err(CommandError::Validation)?;
+    let read_only = if let Some(session) = resolved.session.as_ref() {
+        state
+            .store
+            .get_connection(session.connection_id.as_str())
+            .await
+            .map(|config| config.read_only)
+            .unwrap_or(false)
+    } else {
+        false
+    };
+    let safe_mode = state.store.execution_settings().await.safe_mode;
+    datazen_runtime::sql_guard::check_sql(&sql, read_only, safe_mode)
+        .map_err(CommandError::Validation)?;
 
     // Every stream gets a fresh opaque execution identity. The driver's
     // prepare hook registers a pending entry before the started event is

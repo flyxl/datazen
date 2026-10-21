@@ -3,6 +3,7 @@ import { DB_REGISTRY } from '../../../lib/databaseTypes';
 import { connectionCommands } from '../../../commands/connection';
 import { databaseCommands } from '../../../commands/database';
 import { useSchemaStore } from '../../../stores/schemaStore';
+import { useActiveConnectionStore } from '../../../stores/activeConnectionStore';
 import type { LoadForConnectionOptions } from '../../../stores/schemaStoreHelpers';
 import type { ConnectionConfig, DatabaseObject, TableInfo } from '../../../types';
 import type { ConnectionEntry } from '../../../stores/activeConnectionStore';
@@ -66,7 +67,15 @@ export function useNavigatorDbState(
     async (dbSessionId: string, dbName: string) => {
       const tableKey = `${dbSessionId}::${dbName}`;
       try {
-        const all = await databaseCommands.listTables(dbSessionId, dbName);
+        const owner = Object.values(useActiveConnectionStore.getState().connections).find(
+          (connection) => connection.dbSessionId === dbSessionId,
+        );
+        const all = await databaseCommands.listTables(
+          dbSessionId,
+          dbName,
+          null,
+          owner?.connectionId,
+        );
         setDbTablesMap((prev) => ({ ...prev, [tableKey]: all }));
         // Background cache fills stay neutral: the pointer is owned by the
         // user's last tree click, not by whichever fan-out finishes last.

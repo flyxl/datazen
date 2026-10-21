@@ -1,12 +1,5 @@
 use super::*;
 
-const SOURCE: &str = concat!(
-    include_str!("mod.rs"),
-    "\n",
-    include_str!("registry.rs"),
-    "\n",
-    include_str!("storage.rs")
-);
 const BOOTSTRAP_RS: &str = include_str!("../../bootstrap/run.rs");
 
 #[test]
@@ -96,6 +89,64 @@ async fn install_zip(test: &TestAppState, path: &Path) -> WappSummary {
     install_wapp_from_path_impl(&test.state, path.to_string_lossy().to_string())
         .await
         .unwrap()
+}
+
+#[tokio::test]
+async fn wapp_driver_command_uses_an_independent_runtime_target() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    let zip_path = test._temp.path().join("wapp-runtime.zip");
+    write_demo_zip(&zip_path);
+    install_zip(&test, &zip_path).await;
+    test.save_connection("wapp-runtime").await;
+
+    let result = execute_wapp_driver_command_impl(
+        &test.state,
+        WappDriverCommandRequest {
+            wapp_id: "acme.demo".into(),
+            connection_id: "wapp-runtime".into(),
+            command: "query".into(),
+            args: json!({"sql": "SELECT * FROM users", "database": "app"}),
+        },
+    )
+    .await
+    .expect("a permitted read command must execute through Runtime");
+
+    assert!(result.is_object());
+    let adapter = test.state.platform_require().expect("platform is ready");
+    let call = adapter.begin_call();
+    assert!(
+        adapter
+            .runtime()
+            .expect("runtime is ready")
+            .get_session_by_id(call.context(), "wapp-runtime")
+            .await
+            .is_err(),
+        "Wapp invocation must not create a persistent editor session"
+    );
+}
+
+#[tokio::test]
+async fn disabled_wapp_cannot_invoke_driver_commands() {
+    let test = TestAppState::new().await;
+    let zip_path = test._temp.path().join("wapp-disabled.zip");
+    write_demo_zip(&zip_path);
+    install_zip(&test, &zip_path).await;
+    set_wapp_enabled_impl(&test.state, "acme.demo".into(), false)
+        .await
+        .unwrap();
+
+    let error = execute_wapp_driver_command_impl(
+        &test.state,
+        WappDriverCommandRequest {
+            wapp_id: "acme.demo".into(),
+            connection_id: "not-used".into(),
+            command: "query".into(),
+            args: json!({"sql": "SELECT 1"}),
+        },
+    )
+    .await
+    .expect_err("disabled Wapp must be denied before runtime access");
+    assert!(error.to_string().contains("disabled"));
 }
 
 #[tokio::test]

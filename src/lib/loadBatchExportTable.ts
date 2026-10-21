@@ -1,3 +1,4 @@
+import { metadataTarget } from './session/targetCommand';
 import { databaseCommands } from '../commands/database';
 import type {
   ColumnSchema,
@@ -27,6 +28,9 @@ export interface LoadBatchExportTableDeps {
   ) => Promise<string>;
   getTableData: (params: {
     dbSessionId: string;
+    database: string;
+    schema: string | null;
+    driverType: string;
     table: string;
     page: number;
     pageSize: number;
@@ -47,7 +51,13 @@ export interface LoadBatchExportTableDeps {
 const defaultDeps: LoadBatchExportTableDeps = {
   getSchema: getCachedTableSchema,
   getDdl: getCachedDDL,
-  getTableData: databaseCommands.getTableData,
+  getTableData: (params) => {
+    const target = metadataTarget(params.dbSessionId, params.database, params.schema, params.table);
+    return databaseCommands.getTableData({ ...params, context: {
+      connectionId: target.connectionId, dbSessionId: params.dbSessionId, database: params.database,
+      schema: params.schema, driverType: params.driverType, table: params.table,
+    } });
+  },
   getDialect: (databaseType) => getSqlDialect(databaseType as DatabaseType),
   getRelationSchema: (dbSessionId, tableName) =>
     useSchemaStore.getState().schemaOfRelation(tableName, dbSessionId),
@@ -107,6 +117,9 @@ async function loadAllRows(
   tableName: string,
   pageSize: number,
   maxRows: number,
+  database: string,
+  schema: string | null,
+  driverType: string,
   getTableData: LoadBatchExportTableDeps['getTableData'],
 ): Promise<Record<string, unknown>[]> {
   const allRows: Record<string, unknown>[] = [];
@@ -115,7 +128,7 @@ async function loadAllRows(
 
   while (allRows.length < maxRows) {
     const res = await getTableData({
-      dbSessionId: dbSessionId,
+      dbSessionId, database, schema, driverType,
       table: tableName,
       page,
       pageSize,
@@ -183,7 +196,7 @@ export async function loadBatchExportTableData(params: {
     deps.getDialect,
   );
   const rows = includeRows
-    ? await loadAllRows(dbSessionId, tableName, pageSize, maxRows, deps.getTableData)
+    ? await loadAllRows(dbSessionId, tableName, pageSize, maxRows, database, deps.getRelationSchema(dbSessionId, tableName), databaseType ?? '', deps.getTableData)
     : [];
 
   return {

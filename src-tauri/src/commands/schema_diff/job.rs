@@ -15,16 +15,16 @@ use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 
 use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::id::{ClientInstanceId, JobId, OrganizationId, PrincipalId, RequestId};
+use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 use datazen_runtime::job::{EndpointRef, EndpointRole};
 
 use datazen_schema_diff::job::{
     ApplyRequest, PlanStore, PrepareRequest, PreparedPlan, ReadOnlyVerdict, SchemaDiffFrozenPlan,
-    SchemaDiffHandler, SchemaDiffJobBackend, SchemaDiffPlanError, StoredPlan,
+    SchemaDiffJobBackend, SchemaDiffPlanError, StoredPlan,
 };
 use datazen_schema_diff::types::{SchemaDiffDeployResult, SchemaDiffPlan};
 
-use crate::commands::error::{CmdExt, CommandError};
+use crate::commands::error::CommandError;
 use crate::commands::schema_diff::prepare_schema_diff_plan_with_schemas_impl;
 use crate::commands::schema_diff::unified_plan::prepare_schema_unified_plan_impl;
 use crate::AppState;
@@ -77,10 +77,15 @@ fn target_session_id(request: &PrepareRequest) -> String {
 }
 
 async fn owner_connection_id(state: &AppState, session_id: &str) -> Result<String, CommandError> {
-    state
-        .connection_manager
-        .owner_connection_id(session_id)
-        .await
+    let adapter = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let runtime = adapter
+        .runtime()
+        .map_err(crate::platform::into_command_error)?;
+    runtime
+        .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(session_id))
+        .map(|id| id.to_string())
         .ok_or_else(|| CommandError::Validation("Migration connection owner is unavailable".into()))
 }
 
@@ -98,22 +103,11 @@ async fn current_capability_hash(
     state: &AppState,
     target_db_session_id: &str,
 ) -> Result<String, CommandError> {
-    let config = state
-        .connection_manager
-        .get_session_config(target_db_session_id)
-        .await
-        .cmd_err("current_capability_hash")?;
-    let owner = state
-        .connection_manager
-        .owner_connection_id(target_db_session_id)
-        .await;
-    let read_only = match owner.as_ref() {
-        Some(owner) => {
-            let persisted = state.store.get_connection(owner).await;
-            config.read_only || persisted.as_ref().map(|p| p.read_only).unwrap_or(false)
-        }
-        None => config.read_only,
-    };
+    let owner = owner_connection_id(state, target_db_session_id).await?;
+    let config = state.store.get_connection(&owner).await.ok_or_else(|| {
+        CommandError::Validation("Migration connection owner is unavailable".into())
+    })?;
+    let read_only = config.read_only;
     Ok(fnv_hex_of_json(&serde_json::json!({
         "databaseType": config.database_type,
         "database": config.database,
@@ -126,19 +120,13 @@ async fn current_capability_hash(
 /// 宿主 [`SchemaDiffJobBackend`] 实现。
 pub struct AppStateBackend {
     state: Arc<AppState>,
-    plans: Arc<PlanStore>,
     target_session_id: Option<String>,
 }
 
 impl AppStateBackend {
-    pub fn new(
-        state: Arc<AppState>,
-        plans: Arc<PlanStore>,
-        target_session_id: Option<String>,
-    ) -> Self {
+    pub fn new(state: Arc<AppState>, target_session_id: Option<String>) -> Self {
         Self {
             state,
-            plans,
             target_session_id,
         }
     }
@@ -449,21 +437,28 @@ pub(super) fn prepare_payload() -> serde_json::Value {
 }
 
 async fn target_database_from_config(state: &AppState, session: &str) -> Option<String> {
+    let owner = owner_connection_id(state, session).await.ok()?;
     state
-        .connection_manager
-        .get_session_config(session)
+        .store
+        .get_connection(&owner)
         .await
-        .ok()
         .and_then(|c| c.database)
 }
 
 async fn target_schema_from_config(state: &AppState, session: &str) -> Option<String> {
-    state
-        .connection_manager
-        .get_session_config(session)
+    let adapter = state.platform_require().ok()?;
+    let runtime = adapter.runtime().ok()?;
+    let call = adapter.begin_call();
+    let observed = runtime
+        .get_session_by_id(call.context(), session)
         .await
         .ok()
-        .and_then(|c| c.schema)
+        .and_then(|view| view.observed_context.namespace.schema);
+    if observed.is_some() {
+        return observed;
+    }
+    let owner = owner_connection_id(state, session).await.ok()?;
+    state.store.get_connection(&owner).await?.schema
 }
 
 pub(super) fn owner_ref(_state_unused: &AppState) -> datazen_platform_api::OwnerRef {
@@ -481,12 +476,8 @@ pub(super) async fn endpoints_from_session_pair(
 ) -> Result<Vec<EndpointRef>, CommandError> {
     let mut out = Vec::new();
     if let Some(session) = source_session {
-        let identity = crate::services::migration_endpoint::session_identity(
-            &state.connection_manager,
-            session,
-            None,
-        )
-        .await?;
+        let identity =
+            crate::services::migration_endpoint::session_identity(state, session, None).await?;
         out.push(EndpointRef {
             connection_id: identity.connection_id,
             service_key: identity.service_key,
@@ -494,12 +485,8 @@ pub(super) async fn endpoints_from_session_pair(
             role: EndpointRole::SourceReader,
         });
     }
-    let identity = crate::services::migration_endpoint::session_identity(
-        &state.connection_manager,
-        target_session,
-        None,
-    )
-    .await?;
+    let identity =
+        crate::services::migration_endpoint::session_identity(state, target_session, None).await?;
     out.push(EndpointRef {
         connection_id: identity.connection_id,
         service_key: identity.service_key,
@@ -635,10 +622,7 @@ mod tests {
 }
 
 pub mod desktop;
-pub use desktop::{
-    cancel_schema_diff_job, get_schema_diff_job_details, list_schema_diff_jobs, run_apply_job,
-    run_prepare_job, verify_schema_diff_job_recovery, SchemaDiffJobAccepted, SchemaDiffJobDetails,
-};
+pub use desktop::{cancel_schema_diff_job, run_apply_job, run_prepare_job, SchemaDiffJobAccepted};
 
 /// 旧 IPC 兼容路径：客户端直接携带计划正文时，先注册进 PlanStore 再走 apply Job。
 /// 两种受理（prepare 产物 / 直接携带正文）都满足「只经 JobRuntime」。

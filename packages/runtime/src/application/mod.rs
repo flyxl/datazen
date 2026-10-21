@@ -1,11 +1,18 @@
 //! Shared connection application implementation; transports inject repositories, policy and drivers.
 mod backend;
+mod backup;
+mod export_output;
+pub use backup::{BackupOutput, BackupOutputBinding};
+pub use export_output::ExportOutputBinding;
 mod convert;
 mod idle;
+mod idle_activity;
 mod live;
 mod operations;
 mod results;
 mod tokens;
+mod transactions;
+pub use transactions::SessionTransactionOperation;
 
 pub use idle::{IdlePolicy, IdleReclaimer, IdleReclamation};
 pub use live::{
@@ -56,10 +63,14 @@ struct Inner {
     tokens: Mutex<HashMap<String, tokens::IssuedToken>>,
     keyring: TokenKeyring,
     clock: Arc<RuntimeClock>,
+    idle_activity: tokio::sync::Mutex<HashMap<SessionHandle, idle_activity::ActivityState>>,
+    transaction_gates: Mutex<HashMap<SessionHandle, std::sync::Weak<tokio::sync::Mutex<()>>>>,
+    transaction_unknown: Mutex<std::collections::HashSet<SessionHandle>>,
     /// 出向端口：宿主取活连接的唯一入口。未接线是配置事实，不是故障。
     live: Mutex<LiveConnections>,
     /// 空闲回收策略。`deadline == None` 表示本部署不做空闲回收。
     idle: Mutex<IdlePolicy>,
+    target_admissions: Mutex<HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>,
     receipts: tokio::sync::Mutex<HashMap<String, (serde_json::Value, serde_json::Value)>>,
 }
 #[derive(Clone)]
@@ -70,8 +81,15 @@ struct SessionEntry {
     handle: SessionHandle,
     attached: bool,
     closed: Option<CloseReceipt>,
+    closed_at: Option<Instant>,
 }
-struct RuntimeClock(Instant);
+struct RuntimeClock(Arc<dyn MonotonicClock>);
+struct SystemRuntimeClock(Instant);
+impl MonotonicClock for SystemRuntimeClock {
+    fn now_nanos(&self) -> u64 {
+        self.0.elapsed().as_nanos().min(u64::MAX as u128) as u64
+    }
+}
 impl RuntimeClock {
     /// 单调毫秒。与 `OpenRequest::idle_deadline_ms` / `evict_idle_at(at_ms)` 共用同一把
     /// 尺子——两处单位不一致会让「到期」变成一个随机器负载漂移的量。
@@ -81,7 +99,7 @@ impl RuntimeClock {
 }
 impl MonotonicClock for RuntimeClock {
     fn now_nanos(&self) -> u64 {
-        self.0.elapsed().as_nanos().min(u64::MAX as u128) as u64
+        self.0.now_nanos()
     }
 }
 struct BoundAuthorizer;
@@ -113,10 +131,29 @@ impl Authorizer for BoundAuthorizer {
     }
 }
 impl RuntimeConnectionUseCases {
+    /// Product Job adapters obtain ManageJob authority from the host policy.
+    pub async fn authorize_job(&self, ctx: &RequestContext) -> Result<(), ApiError> {
+        self.authorize(ctx, AuthorizationAction::ManageJob).await
+    }
+
     pub fn new(
         profiles: Arc<dyn ProfileRepository>,
         policy: Arc<dyn PolicyService>,
         backend: Arc<dyn SessionBackend>,
+    ) -> Self {
+        Self::new_with_clock(
+            profiles,
+            policy,
+            backend,
+            Arc::new(SystemRuntimeClock(Instant::now())),
+        )
+    }
+    /// Inject the same monotonic time source for execution timing and idle expiry.
+    pub fn new_with_clock(
+        profiles: Arc<dyn ProfileRepository>,
+        policy: Arc<dyn PolicyService>,
+        backend: Arc<dyn SessionBackend>,
+        clock: Arc<dyn MonotonicClock>,
     ) -> Self {
         let sink = RuntimeResultSink::default();
         let physical = Arc::new(Mutex::new(HashMap::new()));
@@ -129,7 +166,7 @@ impl RuntimeConnectionUseCases {
             128,
         ));
         let directory = Arc::new(InMemorySessionDirectory::new());
-        let clock = Arc::new(RuntimeClock(Instant::now()));
+        let clock = Arc::new(RuntimeClock(clock));
         let gateway = Arc::new(ExecutionGateway::new(
             registry.clone(),
             Arc::new(BoundAuthorizer),
@@ -155,8 +192,12 @@ impl RuntimeConnectionUseCases {
                 tokens: Mutex::new(HashMap::new()),
                 keyring: TokenKeyring::single(secret),
                 clock,
+                idle_activity: tokio::sync::Mutex::new(HashMap::new()),
+                transaction_gates: Mutex::new(HashMap::new()),
+                transaction_unknown: Mutex::new(std::collections::HashSet::new()),
                 live: Mutex::new(LiveConnections::unwired()),
                 idle: Mutex::new(IdlePolicy::default()),
+                target_admissions: Mutex::new(HashMap::new()),
                 receipts: tokio::sync::Mutex::new(HashMap::new()),
             }),
         }
@@ -201,6 +242,23 @@ impl RuntimeConnectionUseCases {
     pub fn live_connection_rows(&self) -> usize {
         lock(&self.inner.live).rows()
     }
+    fn reclaim_session_tombstones(&self) {
+        let mut sessions = lock(&self.inner.sessions);
+        sessions.retain(|_, entry| {
+            entry
+                .closed_at
+                .is_none_or(|at| at.elapsed().as_secs() <= 86400)
+        });
+        let mut closed: Vec<_> = sessions
+            .iter()
+            .filter_map(|(id, entry)| entry.closed_at.map(|at| (id.clone(), at)))
+            .collect();
+        closed.sort_by_key(|(_, at)| *at);
+        let excess = closed.len().saturating_sub(4095);
+        for (id, _) in closed.into_iter().take(excess) {
+            sessions.remove(&id);
+        }
+    }
     /// registry 在册会话 id（只读投影）。异常路径「没留下登记行」就靠它断言。
     pub fn registered_session_ids(&self) -> Vec<crate::connection::DbSessionId> {
         self.inner.registry.registered_ids()
@@ -208,6 +266,19 @@ impl RuntimeConnectionUseCases {
     /// registry 是否仍登记着这个会话。
     pub fn is_registered(&self, id: &crate::connection::DbSessionId) -> bool {
         self.inner.registry.is_registered(id)
+    }
+    /// Resolve the persistent profile owning an active runtime session.
+    /// Closed or unknown sessions deliberately have no owner projection.
+    pub fn connection_id_for_session(
+        &self,
+        id: &crate::connection::DbSessionId,
+    ) -> Option<datazen_platform_api::id::ConnectionId> {
+        let sessions = lock(&self.inner.sessions);
+        let entry = sessions.get(id)?;
+        if entry.closed.is_some() || self.inner.directory.resolve(&entry.handle).is_err() {
+            return None;
+        }
+        Some(entry.initial.connection_id.clone())
     }
     /// 应用层 `sessions` 表里**仍然开着**的行数（只读投影）。
     ///
@@ -253,6 +324,118 @@ impl RuntimeConnectionUseCases {
         .await
         .map_err(convert::live)
     }
+
+    /// Resolve a runtime-owned session from its public `dbSessionId`.
+    ///
+    /// Callers that receive the legacy scalar session id over an existing IPC
+    /// contract must still resolve it through the runtime's owner and epoch
+    /// checks. This lookup never reconstructs a handle or falls back to a
+    /// persisted connection id.
+    pub async fn get_session_by_id(
+        &self,
+        ctx: &RequestContext,
+        db_session_id: &str,
+    ) -> Result<SessionView, ApiError> {
+        self.authorize(ctx, AuthorizationAction::Connect).await?;
+        let id = crate::connection::DbSessionId::new(db_session_id);
+        let handle = lock(&self.inner.sessions)
+            .get(&id)
+            .map(|entry| entry.handle.clone())
+            .ok_or_else(|| ApiError::new(ApiErrorCode::SessionNotFound, "session unavailable"))?;
+        self.session_view(ctx, &handle).await
+    }
+
+    /// Resolve and borrow a runtime-owned session from its public scalar id.
+    ///
+    /// The returned lease keeps the physical reference borrowed until it is
+    /// dropped, while `SessionView` supplies the authoritative connection and
+    /// observed-context metadata for the caller.
+    pub async fn borrow_live_connection_by_id(
+        &self,
+        ctx: &RequestContext,
+        db_session_id: &str,
+        purpose: LivePurpose,
+    ) -> Result<(SessionView, LiveConnectionLease), ApiError> {
+        let view = self.get_session_by_id(ctx, db_session_id).await?;
+        let lease = self
+            .borrow_live_connection(ctx, &view.handle, purpose)
+            .await?;
+        Ok((view, lease))
+    }
+
+    /// Drivers that hold a pool per browsed database: close that pool.
+    ///
+    /// The demand for per-database pool maintenance is raised **here**, in the
+    /// runtime session layer, not by the host reaching into a driver trait. The
+    /// host names the session and the database; the runtime leases the live
+    /// connection under [`LivePurpose::Inspection`] (same purpose the
+    /// read-path uses), calls the driver, and the host only carries the
+    /// verdict to its cache invalidation. Drivers without a per-database
+    /// resource keep the trait's `Ok(false)`: nothing to close is a normal
+    /// outcome, not an error.
+    ///
+    /// The session's own database is the exception the driver decides: it is
+    /// genuinely open even though it cannot be closed individually
+    /// ([`DatabaseDriver::close_database`] documents the rule), so the
+    /// runtime forwards the name verbatim and reports the verdict.
+    pub async fn close_database(
+        &self,
+        ctx: &RequestContext,
+        db_session_id: &str,
+        database: &str,
+    ) -> Result<bool, ApiError> {
+        let database = database.trim();
+        if database.is_empty() {
+            return Err(ApiError::new(
+                ApiErrorCode::InvalidArgument,
+                "close_database requires a non-empty database name",
+            ));
+        }
+        let (_, lease) = self
+            .borrow_live_connection_by_id(ctx, db_session_id, LivePurpose::Inspection)
+            .await?;
+        let connection = lease.connection().map_err(convert::live)?;
+        connection
+            .driver()
+            .close_database(connection.handle(), database)
+            .await
+            .map_err(|_| {
+                // ApiError 的 message 是脱敏文案：driver 原始错误不进入它。
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "driver pool maintenance failed",
+                )
+            })
+    }
+
+    /// Databases this session currently holds an open resource for.
+    ///
+    /// The read counterpart of [`Self::close_database`]: pools the driver
+    /// opened itself, reported as viewed through this session's handle. A
+    /// driver with no per-database resource reports an empty list, which the
+    /// caller renders as "no marker" rather than as an error.
+    pub async fn open_databases(
+        &self,
+        ctx: &RequestContext,
+        db_session_id: &str,
+    ) -> Result<Vec<String>, ApiError> {
+        let (_, lease) = self
+            .borrow_live_connection_by_id(ctx, db_session_id, LivePurpose::Inspection)
+            .await?;
+        let connection = lease.connection().map_err(convert::live)?;
+        connection
+            .driver()
+            .open_databases(connection.handle())
+            .await
+            .map_err(|_| {
+                // ApiError 的 message 是脱敏文案：driver 原始错误不进入它。
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "driver pool maintenance failed",
+                )
+            })
+    }
+
     pub async fn subscribe_events_cancellable(
         &self,
         ctx: &RequestContext,
@@ -280,28 +463,80 @@ impl RuntimeConnectionUseCases {
         ctx: &RequestContext,
         action: AuthorizationAction,
     ) -> Result<(), ApiError> {
-        // Delegations require a verified full grant; absent grants never fall back to caller permissions.
-        if ctx.delegation_id.is_some() {
-            return Err(ApiError::permission_denied(
-                "verified delegation grant required",
-            ));
-        }
+        let subject = self.authorization_subject(ctx, &action).await?;
         let decision = self
             .inner
             .policy
-            .authorize(
-                ctx,
-                AuthorizationSubject::Principal {
-                    principal_id: ctx.principal_id.clone(),
-                },
-                action,
-            )
+            .authorize(ctx, subject, action)
             .await
             .map_err(convert::port)?;
         if decision.is_allowed() {
             Ok(())
         } else {
             Err(ApiError::permission_denied("connection permission denied"))
+        }
+    }
+    async fn authorization_subject(
+        &self,
+        ctx: &RequestContext,
+        action: &AuthorizationAction,
+    ) -> Result<AuthorizationSubject, ApiError> {
+        if let Some(id) = &ctx.delegation_id {
+            let resolved = self
+                .inner
+                .policy
+                .resolve_delegation(ctx)
+                .await
+                .map_err(convert::port)?;
+            let grant = self
+                .inner
+                .policy
+                .verify_delegation(ctx, resolved.delegation.clone())
+                .await
+                .map_err(convert::port)?;
+            let reference = &grant.delegation;
+            let live = chrono::DateTime::parse_from_rfc3339(reference.expires_at.as_str())
+                .is_ok_and(|expiry| expiry > chrono::Utc::now());
+            if grant != resolved
+                || &reference.delegation_id != id
+                || reference.organization_id != ctx.organization_id
+                || reference.principal_id != ctx.principal_id
+                || reference.client_instance_id != ctx.client_instance_id
+                || !live
+                || !grant.actions.contains(action)
+            {
+                return Err(ApiError::permission_denied(
+                    "verified delegation scope required",
+                ));
+            }
+            Ok(AuthorizationSubject::Delegated(grant.delegation))
+        } else {
+            Ok(AuthorizationSubject::Principal {
+                principal_id: ctx.principal_id.clone(),
+            })
+        }
+    }
+    pub(crate) async fn authorize_target(
+        &self,
+        ctx: &RequestContext,
+        action: AuthorizationAction,
+        target: &ExecutionTarget,
+        command: &str,
+        input: &serde_json::Value,
+    ) -> Result<(), ApiError> {
+        let subject = self.authorization_subject(ctx, &action).await?;
+        let decision = self
+            .inner
+            .policy
+            .authorize_target(ctx, subject, action, target, command, input)
+            .await
+            .map_err(convert::port)?;
+        if decision.is_allowed() {
+            Ok(())
+        } else {
+            Err(ApiError::permission_denied(
+                "target delegation scope denied",
+            ))
         }
     }
     async fn profile(
@@ -381,6 +616,14 @@ impl RuntimeConnectionUseCases {
             OwnerRef::Editor {
                 editor_session_id, ..
             } => (SourceKind::Editor, editor_session_id.as_str().to_owned()),
+            OwnerRef::Job { job_id, stage_id } => (
+                SourceKind::Job,
+                format!("{}:{}", job_id.as_str(), stage_id.as_str()),
+            ),
+            OwnerRef::WorkflowBlock { job_id, block_id } => (
+                SourceKind::WorkflowBlock,
+                format!("{}:{}", job_id.as_str(), block_id.as_str()),
+            ),
             _ => (
                 SourceKind::ClientSession,
                 ctx.client_instance_id.as_str().to_owned(),
@@ -406,24 +649,40 @@ impl RuntimeConnectionUseCases {
         target: ExecutionTarget,
         owner: OwnerRef,
     ) -> Result<OpenSessionReceipt, ApiError> {
-        let profile = self.profile(ctx, &target.connection_id).await?;
+        self.create_session_for_command(ctx, target, owner, "")
+            .await
+    }
+    async fn create_session_for_command(
+        &self,
+        ctx: &RequestContext,
+        target: ExecutionTarget,
+        owner: OwnerRef,
+        command: &str,
+    ) -> Result<OpenSessionReceipt, ApiError> {
         let rt_owner = convert::owner(ctx, &target.connection_id, &owner)?;
+        self.reclaim_session_tombstones();
+        let profile = self.profile(ctx, &target.connection_id).await?;
         let id = DbSessionIdGenerator::new().generate();
         let view = self
             .inner
             .registry
-            .register_session(crate::registry::OpenRequest {
-                db_session_id: id.clone(),
-                worker_id: WorkerId::new("local-runtime"),
-                connection_id: target.connection_id.clone(),
-                config_revision: rt::ConfigRevision::new(profile.config_revision.counter().get()),
-                owner: rt_owner,
-                initial_target: convert::target(&target)?,
-                expires_at: Timestamp::new(""),
-                // 绝对单调毫秒，与 `reclaim_idle` 的 `at_ms` 同尺。`None` 表示本部署
-                // 不做空闲回收（配置事实），不是「忘了配」。
-                idle_deadline_ms: self.idle_deadline_ms(),
-            })
+            .register_session_for_command(
+                crate::registry::OpenRequest {
+                    db_session_id: id.clone(),
+                    worker_id: WorkerId::new("local-runtime"),
+                    connection_id: target.connection_id.clone(),
+                    config_revision: rt::ConfigRevision::new(
+                        profile.config_revision.counter().get(),
+                    ),
+                    owner: rt_owner,
+                    initial_target: convert::target(&target)?,
+                    expires_at: Timestamp::new(""),
+                    // 绝对单调毫秒，与 `reclaim_idle` 的 `at_ms` 同尺。`None` 表示本部署
+                    // 不做空闲回收（配置事实），不是「忘了配」。
+                    idle_deadline_ms: self.idle_deadline_ms(),
+                },
+                command,
+            )
             .await
             .map_err(convert::runtime)?;
         let handle = convert::public_handle(&view.handle);
@@ -475,6 +734,7 @@ impl RuntimeConnectionUseCases {
                 handle: handle.clone(),
                 attached: true,
                 closed: None,
+                closed_at: None,
             },
         );
         Ok(OpenSessionReceipt {

@@ -6,8 +6,10 @@ use sqlx::Row;
 pub fn mysql_admin_command_definitions() -> Vec<DriverCommandDefinition> {
     let mut cmds = vec![
         query_command_definition(),
+        explain_command_definition(),
         execute_command_definition(),
         query_stream_command_definition(),
+        datazen_driver_api::sql_dump::stream::command_definition(),
     ];
 
     cmds.push(DriverCommandDefinition {

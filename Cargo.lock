@@ -1675,6 +1675,7 @@ dependencies = [
  "cbc 0.1.2",
  "chrono",
  "datazen-ai-api",
+ "datazen-ai-providers",
  "datazen-application",
  "datazen-data-sync",
  "datazen-data-transfer",
@@ -1682,15 +1683,19 @@ dependencies = [
  "datazen-driver-mysql",
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
+ "datazen-feature-core",
  "datazen-platform-api",
+ "datazen-platform-infra",
  "datazen-runtime",
  "datazen-schema-diff",
+ "datazen-workspace-apps",
  "dirs",
  "flate2",
  "futures-util",
  "hmac 0.12.1",
  "inventory",
  "keyring",
+ "libc",
  "objc2",
  "objc2-app-kit",
  "open",
@@ -1750,15 +1755,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "datazen-ai-providers"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "datazen-ai-api",
+ "datazen-platform-infra",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wiremock",
+]
+
+[[package]]
 name = "datazen-application"
 version = "0.0.1"
 dependencies = [
  "async-trait",
  "datazen-platform-api",
+ "proc-macro2",
  "serde",
  "serde_json",
+ "syn 2.0.119",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1811,7 +1837,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-api"
-version = "0.0.11"
+version = "0.0.20"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1826,7 +1852,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-clickhouse"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
@@ -1842,7 +1868,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-duckdb"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
@@ -1857,7 +1883,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-elasticsearch"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
@@ -1873,7 +1899,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-hbase"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
@@ -1899,7 +1925,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-influxdb"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
@@ -1913,7 +1939,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-mongodb"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
@@ -1927,16 +1953,24 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-mysql"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "chrono",
+ "datazen-application",
  "datazen-driver-api",
+ "datazen-feature-core",
+ "datazen-platform-api",
+ "datazen-runtime",
+ "datazen-schema-diff",
+ "flate2",
  "futures-util",
  "rust_decimal",
  "serde_json",
+ "sha2 0.10.9",
  "sqlparser",
  "sqlx",
+ "tempfile",
  "tokio",
  "tracing",
  "urlencoding",
@@ -1945,16 +1979,24 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-postgres"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "chrono",
+ "datazen-application",
  "datazen-driver-api",
+ "datazen-feature-core",
+ "datazen-platform-api",
+ "datazen-runtime",
+ "datazen-schema-diff",
+ "flate2",
  "futures-util",
  "rust_decimal",
  "serde_json",
+ "sha2 0.10.9",
  "sqlparser",
  "sqlx",
+ "tempfile",
  "tokio",
  "tracing",
  "uuid",
@@ -1962,7 +2004,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-redis"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1984,7 +2026,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-rqlite"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "datazen-data-transfer",
@@ -1999,13 +2041,14 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-sqlite"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
  "datazen-data-transfer",
  "datazen-driver-api",
+ "datazen-schema-diff",
  "futures-util",
  "libsqlite3-sys",
  "same-file",
@@ -2019,7 +2062,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-sqlserver"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
@@ -2036,7 +2079,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-turso"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "datazen-data-transfer",
@@ -2051,7 +2094,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-vector"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
@@ -2066,7 +2109,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-victoriametrics"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
@@ -2077,6 +2120,38 @@ dependencies = [
  "tracing",
  "urlencoding",
  "uuid",
+]
+
+[[package]]
+name = "datazen-feature-core"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "datazen-ai-api",
+ "datazen-application",
+ "datazen-data-sync",
+ "datazen-data-transfer",
+ "datazen-driver-api",
+ "datazen-platform-api",
+ "datazen-platform-infra",
+ "datazen-runtime",
+ "datazen-schema-diff",
+ "flate2",
+ "futures-util",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "sqlparser",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -2092,10 +2167,19 @@ name = "datazen-platform-api"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "chrono",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "datazen-platform-infra"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "url",
 ]
 
 [[package]]
@@ -2111,10 +2195,12 @@ dependencies = [
  "futures-util",
  "hmac 0.12.1",
  "indexmap 2.14.0",
+ "libc",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "syn 2.0.119",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -2127,9 +2213,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "datazen-driver-api",
- "datazen-driver-mysql",
- "datazen-driver-postgres",
- "datazen-driver-sqlite",
  "datazen-platform-api",
  "datazen-runtime",
  "serde",
@@ -2138,6 +2221,21 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "datazen-workspace-apps"
+version = "0.0.1"
+dependencies = [
+ "datazen-platform-infra",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tracing",
+ "uuid",
+ "zip 2.4.2",
 ]
 
 [[package]]

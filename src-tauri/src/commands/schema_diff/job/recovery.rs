@@ -1,5 +1,4 @@
 use datazen_driver_api::{DatabaseObject, ObjectKind};
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::commands::error::CommandError;
@@ -7,18 +6,12 @@ use crate::commands::schema_diff::{
     fetch_schema_object, is_table_missing_error, list_schema_objects, schema_catalog_database,
 };
 use crate::commands::AppState;
+use crate::db::{CatalogReader, LegacyCatalogReader};
 use crate::schema_diff::job::PrepareRequest;
 
 const TARGET_ID_PREFIX: &str = "obj-";
 const TARGET_EVIDENCE_PREFIX: &str = "recoveryObject:";
 const TARGET_JSON_PREFIX: &str = "recoveryIdentity:";
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct RecoveryTargetEnvelope {
-    pub connection_id: String,
-    pub object_ids: Vec<String>,
-}
 
 pub(super) fn encode_target_id(target: &DatabaseObject) -> Option<String> {
     let json = serde_json::to_vec(target).ok()?;
@@ -78,11 +71,13 @@ pub(super) async fn prepare_target_objects(
             ..
         } => target_db_session_id,
     };
-    let config = state
-        .connection_manager
-        .get_session_config(target_session)
-        .await
-        .map_err(|error| CommandError::Validation(error.to_string()))?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        target_session,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let config = context.config;
     let target_schema = match request {
         PrepareRequest::Table { target_schema, .. }
         | PrepareRequest::Unified { target_schema, .. } => target_schema.as_deref(),
@@ -154,23 +149,24 @@ pub(super) async fn fingerprint_targets(
     database: Option<&str>,
     targets: &[DatabaseObject],
 ) -> Result<String, CommandError> {
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(session_id)
-        .await
-        .map_err(|error| CommandError::Validation(error.to_string()))?;
-    let config = state
-        .connection_manager
-        .get_session_config(session_id)
-        .await
-        .map_err(|error| CommandError::Validation(error.to_string()))?;
+    let context = crate::services::migration_endpoint::runtime_session_context(
+        state,
+        session_id,
+        datazen_runtime::application::LivePurpose::Inspection,
+    )
+    .await?;
+    let driver = context.driver;
+    let handle = context.handle;
+    let config = context.config;
     let database = database.or(config.database.as_deref()).unwrap_or_default();
     let driver_type = driver.driver_type();
     let catalog_database = schema_catalog_database(&driver_type, Some(database));
+    // 表结构读取走窄契约；`driver_type()` 仍是驱动专属规则。
+    let catalog = LegacyCatalogReader::new(driver.as_ref());
     let mut entries = Vec::with_capacity(targets.len());
     for target in targets {
         if ObjectKind::parse(&target.kind) == Some(ObjectKind::Table) {
-            let snapshot = match driver
+            let snapshot = match catalog
                 .get_table_schema(
                     &handle,
                     &target.name,

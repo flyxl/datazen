@@ -111,4 +111,49 @@ mod tests {
         );
         assert_eq!(first.provider_id(), factory.driver_id());
     }
+
+    /// CM-19 / P4 Explain boundary. The pooled `supports_explain()` is real
+    /// (`SqliteDriver::explain` exists and stays advertised), but the
+    /// session-bound `explain` **Command** is opt-in: `execute_standard_sql_command`
+    /// only routes `explain` to the driver when the driver declares the command,
+    /// so an older driver's pooled method can never stand in for a retained
+    /// editor resource.
+    ///
+    /// This pins the *command surface*: if someone declares `explain` here to make
+    /// the Explain panel go green, this test turns red instead of silently
+    /// planning on a one-shot pool connection while the driver still reports
+    /// `stateful_session = Unsupported`.
+    #[tokio::test]
+    async fn explain_is_pooled_only_and_not_a_declared_session_command() {
+        let factory = SqliteFactory;
+        assert!(
+            factory.supports_explain(),
+            "the pooled capability is real and must stay honest: this test pins the command surface, not the existence of `SqliteDriver::explain`"
+        );
+
+        let driver = factory.create();
+        let ids: Vec<String> = driver
+            .command_definitions()
+            .into_iter()
+            .map(|definition| definition.id)
+            .collect();
+        assert!(
+            !ids.iter().any(|id| id == "explain"),
+            "sqlite declares stateful_session = Unsupported, so it must not advertise the \
+             session-bound `explain` Command; declared commands: {ids:?}"
+        );
+
+        let handle = ConnectionHandle {
+            id: "session".into(),
+            pool_id: "pool".into(),
+        };
+        let error = driver
+            .execute_command(&handle, "explain", serde_json::json!({"sql": "SELECT 1"}))
+            .await
+            .expect_err("an undeclared `explain` must be refused, not answered from the pool");
+        assert!(
+            matches!(error, DriverError::Unsupported(_)),
+            "expected Unsupported for an undeclared command, got {error:?}"
+        );
+    }
 }

@@ -9,8 +9,7 @@ use super::resolve::resolve_command_driver;
 use super::types::ExecuteDriverCommandRequest;
 use crate::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
-    check_command_access, is_schema_catalog_command, schema_catalog_command_definitions,
-    validate_command_input, CommandResult, DriverSaveDialogSpec,
+    check_command_access, validate_command_input, CommandResult, DriverSaveDialogSpec,
 };
 
 pub(crate) async fn execute_driver_command_impl(
@@ -28,59 +27,30 @@ pub(crate) async fn execute_driver_command_with_mode(
     permission_mode: Option<McpPermissionMode>,
     dialog: Option<&tauri::AppHandle>,
 ) -> Result<CommandResult, CommandError> {
-    let (driver, handle, bound) = resolve_command_driver(
+    let resolved = resolve_command_driver(
         state,
         request.db_session_id.as_ref(),
         request.driver_type.as_ref(),
     )
     .await?;
+    let driver = &resolved.driver;
+    let handle = &resolved.handle;
+    let bound = resolved.bound;
 
     let metadata_command = crate::services::schema_metadata::is_metadata_command(&request.command);
-    let mut definitions = driver.command_definitions();
-    if metadata_command {
-        if request.database.is_some() || request.schema.is_some() {
-            return Err(CommandError::Validation(
-                "Metadata targets must be supplied inside input".into(),
-            ));
-        }
-        definitions.retain(|d| !crate::services::schema_metadata::is_metadata_command(&d.id));
-        definitions.extend(crate::services::schema_metadata::command_definitions());
-    }
-    // Safety guard: if a driver forgot to extend schema_catalog_command_definitions,
-    // inject only the missing catalog definitions so navigation/browsing is never broken.
-    if is_schema_catalog_command(&request.command) {
-        for def in schema_catalog_command_definitions() {
-            if !definitions.iter().any(|d| d.id == def.id) {
-                definitions.push(def);
-            }
-        }
-    }
-
-    let definition = definitions
-        .into_iter()
-        .find(|definition| definition.id == request.command)
-        .ok_or_else(|| {
-            CommandError::Validation(format!("Unsupported driver command: {}", request.command))
-        })?;
-
-    if !bound && definition.metadata.requires_connection {
-        return Err(CommandError::Validation(format!(
-            "Command '{}' requires a connection",
-            request.command
-        )));
-    }
-
-    // Save-dialog commands are interactive-only: the host thin shell pops the
-    // native dialog after execution, which is impossible headless (MCP /
-    // workflow / internal reuse). Reject before doing any work.
-    if definition.metadata.save_dialog.is_some() {
-        if permission_mode.is_some() || dialog.is_none() {
-            return Err(CommandError::Validation(format!(
-                "Command '{}' requires an interactive session to show its save dialog",
-                request.command
-            )));
-        }
-    }
+    let definition = datazen_feature_core::services::command_policy::resolve_definition(
+        driver.as_ref(),
+        &request.command,
+        request.database.is_some() || request.schema.is_some(),
+    )
+    .map_err(CommandError::Validation)?;
+    datazen_feature_core::services::command_policy::validate_invocation(
+        &definition,
+        bound,
+        permission_mode,
+        dialog.is_some(),
+    )
+    .map_err(CommandError::Validation)?;
 
     let is_sql_command = matches!(definition.id.as_str(), "query" | "execute");
     if definition.id == "query" {
@@ -103,23 +73,22 @@ pub(crate) async fn execute_driver_command_with_mode(
         .map_err(CommandError::Validation)?;
 
     if is_sql_command {
-        if let Some(params) = request.input.get("params").cloned() {
-            if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
-                let bound_sql = crate::sql_guard::apply_params(sql, &params)
-                    .map_err(CommandError::Validation)?;
-                request.input["sql"] = serde_json::Value::String(bound_sql);
-            }
-        }
+        datazen_feature_core::services::command_policy::bind_sql_params(&mut request.input)
+            .map_err(CommandError::Validation)?;
         if bound {
             if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
-                let read_only = state
-                    .connection_manager
-                    .get_session_config(&handle.id)
-                    .await
-                    .map(|c| c.read_only)
-                    .unwrap_or(false);
-                let safe_mode = state.store.get_settings().await.safe_mode;
-                crate::sql_guard::check_sql(sql, read_only, safe_mode)
+                let read_only = if let Some(session) = resolved.session.as_ref() {
+                    state
+                        .store
+                        .get_connection(session.connection_id.as_str())
+                        .await
+                        .map(|config| config.read_only)
+                        .unwrap_or(false)
+                } else {
+                    false
+                };
+                let safe_mode = state.store.execution_settings().await.safe_mode;
+                datazen_runtime::sql_guard::check_sql(sql, read_only, safe_mode)
                     .map_err(CommandError::Validation)?;
             }
         }
