@@ -128,10 +128,10 @@
 | `cargo check -p datazen-platform-api -p datazen --all-targets` | **0** | `Finished dev profile` |
 | `cargo check -p datazen --features webdriver --all-targets` | **0** | `Finished dev profile` |
 | `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-platform-api --lib` | **0** | `test result: ok. 224 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out` |
-| `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib` | **0** | `test result: ok. 1282 passed; 0 failed; 9 ignored; 0 measured; 0 filtered out` |
+| `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib` | **0** | `test result: ok. 1290 passed; 0 failed; 9 ignored; 0 measured; 0 filtered out` |
 
 **基线校正（实测，非推断）**：任务简报写 host 基线 **1269**，本树实测基线是 **1266 passed; 0 failed; 9 ignored**
-（`git stash push -u` 后在 `HEAD=65dac1e2c` 上实测，EXIT=0）。改后 1282 = **1266 + 16**，正好等于本轨新增的 16 条用例，
+（`git stash push -u` 后在 `HEAD=65dac1e2c` 上实测，EXIT=0）。复测轮后的 1290 = **1266 + 16（本轨）+ 8（复测轮补）**，
 既有 1266 条一条未动、零失败。platform-api 基线 224 与改后一致（该 crate 本轨未改）。
 
 ### 5.1 既有 flake：本轨一度把它从"跑不出来"推到"2/3 概率出来"，已修掉
@@ -149,15 +149,37 @@
 | 基线 `65dac1e2c` | 只跑 `platform::live_source` 家族 x5 | **4/5** | live_source 家族自身互撞（与本轨无关，独立可复现） |
 | 本轨首版 | 整包 x6 | **4/6** | 3× live_source + 1× native_tool |
 | 本轨首版 | 整包 `--skip platform::execution_identity` x6 | **0/6** | ——（证明是本轨用例把窗口撑大的） |
-| 本轨本次 | 整包 x8 | 2/8 | 2× `native_tool::…overflow…reaped`（**仅**简报已列的那条） |
+| 本轨 16 条版 | 整包 x8 | 2/8 | 2× `native_tool::…overflow…reaped`（**仅**简报已列的那条） |
 
 结论与处置：live_source 那条竞态是 `hub.md` §8 已登记的既有缺陷（Wave 4 修），但**本轨一度把它
-从"整包跑不出来"推到"整包跑 2/3 概率出来"**，不能留给别人背。因此提交 `a0733c5b1` 把用例改成
+从「整包跑不出来」推到「整包跑 2/3 概率出来」**，不能留给别人背。因此提交 `a0733c5b1` 把用例改成
 零 I/O（大部分走替身；只有「凭据轮换」与「安装级稳定」两条需要真 Store，且共用同一份
 `OnceCell`，全模块只建一次）。改后整包 8 次跑只剩简报已列的 `native_tool` 既有 flake
 （单跑 3/3 绿），live_source 竞态不再在整包跑里出现——**失败画像与基线一致**。
 
 **未改 `live_source_tests.rs`**（范围外，且那是 Wave 4 的项）；本轨只保证自己不再触发它。
+
+### 5.1.1 复测轮（24 条用例）后的失败画像与基线对照
+
+复测轮补了 8 条用例（模块 16 → 24），真 Store 仍是模块内那一份（`OnceCell`）。同一方法重测
+（基线树用 `git worktree add --detach` + 独立克隆的 target，跑完已删除）：
+
+| 树 | 跑法 | 跑次 | 失败数 | 失败集合 |
+| --- | --- | --- | --- | --- |
+| **本轨** `487c6dd4b` | 整包 | **36** | **3** | 全部 `platform::live_source::tests::*`：`open_databases_reports_the_driver_pool_list_verbatim` ×2、`close_database_routes_the_session_pool_demand_to_the_driver` ×1、另有 1 次同时挂该家族 3 条用例 |
+| 本轨 | 整包 `--skip platform::execution_identity` | 12 | 0 | —— |
+| **基线** `65dac1e2c` | 整包 | **42** | **1** | `platform::live_source::tests::open_databases_reports_the_driver_pool_list_verbatim` ×1 |
+
+判读（实测，非推断）：
+
+- 失败集合**只有** `platform::live_source::tests::*`，且**基线树自己也会挂**（1/42）；Tester 也独立观察到
+  `--skip` 身份模块时同样出这条竞态。因此这是**既有的进程级 env 竞态**（`DesktopUserGuard` 在 Drop 时
+  把 `DATAZEN_DESKTOP_USER` 还原成「之前没有」，把并行跑的兄弟用例的桌面主体读歪），
+  **不是本轨引入的缺陷**。
+- 本轨 3/36（≈8%）与基线 1/42（≈2%）的差距在**噪声内**（Fisher 精确检验 p≈0.3，不显著）。本轨**首版**的
+  4/6（≈67%）才是真正被放大过的形态，已由 `a0733c5b1` 的零 I/O 化压回噪声带。
+- **未改 `live_source_tests.rs`**（范围外，`hub.md` §8 已排期 Wave 4）。要彻底消除，修法就是台账里写的那条：
+  把 env 写入收进**进程内串行守卫**（约 10 行）——协调者若要，本轨可另起一笔**独立提交**供其取舍。
 
 ### 5.2 本轨最有价值的一条教训：正常路径用例钉不住「少一个环节」的性质
 
@@ -199,7 +221,7 @@ M10 多连接失败关闭 / M11 派生盐来自主密钥 / M12 子钥域分离�
 | 5 | `MonitorDelegationScope` 与 `DesktopPolicy` 各查一次授权单 | 一次授权单读两次（`verify_delegation` + `authorized_target`） | 正确性优先，未做缓存；若成为热点再合并 |
 | 6 | 派生盐取宿主 **AES 主密钥** | 同源但已做域分离（HMAC 子钥），AES 与身份派生不使用同一把密钥。**主密钥轮换 ⇒ 全部身份键变化、连接池整体失效；当前仓库无主密钥轮换路径**（`key_store.rs` 只有 load-or-create） | 保留。**该约束已写进永久文档**（共享边界 §4.3 一条 + 实现文件模块注释），不再只存在于本台账（G-05） |
 | 7 | 身份解析端口已接线但**尚无调用方**（本实现目前「备而不用」） | `packages/runtime/**` 禁改，runtime 的 `PoolKeyInputs::execution_identity_key`（`packages/runtime/src/connection/types.rs:460`）仍是裸 `String`；本轨只把端口实现出来并接线，未改 runtime。**web 多租户形态要真正用上它，需要 runtime 从 `IdentityResolver` 取键** | 后续 initiative（runtime 改动本轨是禁区）。协调者已记进 Wave 4（G-09） |
-| 8 | `live_source::tests::*` 的进程级 env 竞态仍在 | 既有缺陷（`hub.md` §8），本轨已不再触发；基线树独立复现 4/5 | 仍归 Wave 4（协调者已排期「优先级高」） |
+| 8 | `live_source::tests::*` 的进程级 env 竞态仍在 | 既有缺陷（`hub.md` §8）。**基线树自己也会挂**（整包 1/42），本轨整包 3/36，差距在噪声内（Fisher p≈0.3）；本轨首版的 4/6 才是被放大过的形态，已由 `a0733c5b1` 压回噪声带 | 仍归 Wave 4（协调者已排期「优先级高」）。修法 = 把 env 写入收进进程内串行守卫（约 10 行）；本轨可另起独立提交供取舍 |
 | 9 | 「主密钥取不到 ⇒ 失败关闭」这条性质**不可测** | `Store.encryption_key` 恒为 `[u8;32]`，`master_key_bytes` 不可能失败 ⇒ 兜底分支**不可达**，变异实测 24 条全绿 | **接受为结构性满足**：代码里**没有**任何常量盐兜底分支（不是「有兜底但测不到」，是**根本没有兜底**）。⚠️ 这条性质**没有被测试钉住**，后人若加一条「取不到就退回常量盐」的兜底，**没有任何用例会红**——改这块必须跑变异 |
 
 ---
@@ -207,7 +229,8 @@ M10 多连接失败关闭 / M11 派生盐来自主密钥 / M12 子钥域分离�
 ## 7. 门禁首尾指纹
 
 - 开工前：`HEAD=65dac1e2cf79fe7099b57988ca4ecfc7095e2ee1`，工作区 sha（`git diff HEAD` + 未跟踪文件清单）= `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`（空树）
-- 收尾（门禁跑完前后各记一次，两次一致）：`HEAD=a0733c5b13d15d781010448bed2752edeae692bb`，工作区 sha = `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`（空树，`git status --porcelain` 0 条目）
+- 第一轮收尾：`HEAD=a0733c5b13d15d781010448bed2752edeae692bb`，工作区 sha 同上（空树）
+- 复测轮收尾（门禁跑完前后各记一次，两次一致）：`HEAD=487c6dd4b…`，工作区 sha = `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`（空树，`git status --porcelain` 0 条目）
 
 ---
 
@@ -217,3 +240,6 @@ M10 多连接失败关闭 / M11 派生盐来自主密钥 / M12 子钥域分离�
 | --- | --- |
 | `c42f43d7f` | 实现 `IdentityResolver` 端口的桌面形态 + 接线 + 15 条用例 + 3 份文档 |
 | `a0733c5b1` | 把用例改成零 I/O（修掉本轨对既有 env 竞态的放大），用例数 15 → 16 |
+| `b4abf9de8` | 台账：门禁实测、基线校正、既有 flake 影响面分析 |
+| `91408c59d` | **cherry-pick 自 Tester 的 `5186fb522`**：补 8 条首版没钉住的性质，用例 16 → 24（只动测试文件，生产零改动） |
+| `487c6dd4b` | 复测轮 4 项要修：G-02 失败半径注释改写、G-05 主密钥轮换约束、G-06 消息编码与域标签、G-07 三份文档同口径；并把 G-04 教训落成永久事实（§4.3 引用块 + 实现文件模块头） |
