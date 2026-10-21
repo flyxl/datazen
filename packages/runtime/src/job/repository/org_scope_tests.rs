@@ -8,7 +8,7 @@
 //! * 幂等回执按 `(组织, 主体, 键)` 作用域：同一个键在另一个组织不是重放。
 use super::*;
 
-use datazen_platform_api::dto::job::{JobFilter, JobState};
+use datazen_platform_api::dto::job::{JobClaim, JobFilter, JobState};
 use datazen_platform_api::id::{
     ClientInstanceId, IdempotencyKey, OrganizationId, PrincipalId, RequestId,
 };
@@ -440,5 +440,70 @@ async fn a_plan_consumed_in_one_organization_does_not_block_another() {
     assert!(
         matches!(error, PortError::PlanAlreadyConsumed(_)),
         "同组织内 planId 仍只消费一次：{error:?}"
+    );
+}
+
+/// **续约路径本身没有组织维度**——端口契约里「越组织的续约只能按 `StaleClaim` 失败」
+/// 这句话因此是**推断**，不是代码强制的不变量。
+///
+/// 事实（实测，不是推断）：
+///
+/// * `renew` 的签名里没有 `RequestContext`，实现里也**没有任何组织比对**
+///   （内存实现只按 `claim.job_id` 定位行，SQLite 侧 `renew_claim` 的 SQL
+///   只有 `WHERE job_id=?1`）；
+/// * `JobClaim` **不带组织字段**，所以「一次越组织的续约」在 API 上根本无法表达——
+///   持有同一个 claim 的调用方与铸出它的调用方，在续约路径上**不可区分**；
+/// * 因此续约唯一的拒绝理由是：行不存在（`NotFound`）、行上没有 claim、
+///   worker 不匹配、generation 不匹配、租约已过期（都是 `StaleClaim`）。
+///   也就是说，**只要拿到一个 worker 与 generation 都对得上的 claim，续约就会成功**，
+///   无论持有者属于哪个组织。
+///
+/// 后果边界（这是它可以只按「措辞」而不是「漏洞」记的原因）：续约只能**延长租约**，
+/// 不能改 worker / generation / 状态，也读不到别的组织的数据——所有写入都走
+/// `check_claim`，那里拿 `ctx` 的组织与行归属逐条比对，越组织按 `StaleClaim` 拒绝。
+/// 今天也没有任何 IPC 命令接受客户端送来的 claim（`renew` 只在进程内被调用）。
+///
+/// 这条用例把上面这些**事实**钉住：将来若给 claim 加上组织维度、或让续约自己比组织，
+/// 这条用例会先变红，提示同步更新端口契约与文档里的因果链。
+#[tokio::test]
+async fn the_renewal_path_carries_no_organization_dimension() {
+    let repo = repository();
+    let org_a = organization_context("org-a");
+    repo.accept(
+        &org_a,
+        definition("job-a", "org-a"),
+        &IdempotencyKey::new("key-a"),
+    )
+    .await
+    .expect("accept a");
+    let claim = repo
+        .claim(&org_a, JobId::new("job-a"), WorkerId::new("w-1"))
+        .await
+        .expect("claim in the owning organization");
+
+    // claim 不带组织：这份「从别处拿到的」续约凭证与铸出它的那份在续约路径上无法区分。
+    let carried_elsewhere = JobClaim {
+        job_id: claim.job_id.clone(),
+        stage_id: claim.stage_id.clone(),
+        worker_id: claim.worker_id.clone(),
+        claimed_at: claim.claimed_at.clone(),
+        claim_generation: claim.claim_generation.clone(),
+        expires_at: claim.expires_at.clone(),
+    };
+    let renewed = repo
+        .renew(&carried_elsewhere)
+        .await
+        .expect("续约只凭 claim 本身：worker 与 generation 对得上就成立");
+    assert_eq!(renewed.job_id, claim.job_id);
+    assert_eq!(renewed.claim_generation, claim.claim_generation);
+
+    // 真正被拒的是**对不上**的 claim（这才是续约唯一的拒绝理由）。
+    let wrong_worker = JobClaim {
+        worker_id: WorkerId::new("not-the-owner"),
+        ..carried_elsewhere
+    };
+    assert!(
+        matches!(repo.renew(&wrong_worker).await, Err(PortError::StaleClaim)),
+        "worker 对不上的续约按旧 claim 拒绝"
     );
 }

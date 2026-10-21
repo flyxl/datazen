@@ -342,8 +342,11 @@ mod tests {
     #[test]
     fn listing_filters_are_recoverable_state_not_runtime_cursors() {
         // 过滤器里的 `after` 是 `Counter` 序号，不是持久化游标。
+        // 组织先绑到局部变量：字面量里因此看得出「组织从哪来」，
+        // 而不是把组织内联成常量（`store::job_filter_scope_tests` 的两条守卫按此约定）。
+        let organization = OrganizationId::new("org-1");
         let filter = JobFilter {
-            organization_id: OrganizationId::new("org-1"),
+            organization_id: organization,
             states: vec![JobState::Running],
             owner: Some(OwnerRef::Job {
                 job_id: JId::new("job-1"),

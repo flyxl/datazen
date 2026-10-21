@@ -206,3 +206,116 @@ fn every_job_filter_literal_declares_the_organization_dimension() {
         offenders.join("\n")
     );
 }
+
+/// 取字面量**顶层** `organization_id` 字段的值表达式。
+///
+/// 顶层 = 花括号深度 1；`owner: Some(OwnerRef::Job { .. })` 这类嵌套结构里的字段
+/// 不算。返回 `None` 表示这个字面量没有这个字段（由上一条守卫负责）。
+///
+/// 全程按**字节**切片：字面量里可能出现非 ASCII 的字符串，逐字节推进时
+/// `&str` 的切片会落在非字符边界上而 panic。
+fn organization_id_value(literal: &str) -> Option<String> {
+    let bytes = literal.as_bytes();
+    let needle = b"organization_id";
+    let mut depth = 0usize;
+    let mut index = 0usize;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            _ => {}
+        }
+        if depth == 1 && bytes[index..].starts_with(needle) {
+            let mut cursor = index + needle.len();
+            while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+                cursor += 1;
+            }
+            if cursor >= bytes.len() || bytes[cursor] != b':' {
+                index += 1;
+                continue;
+            }
+            let value_start = cursor + 1;
+            // 值表达式一直读到该字段的逗号：按括号深度配平，`()`/`[]`/`{}` 都要算。
+            let mut value_depth = 0usize;
+            let mut end = bytes.len();
+            for offset in value_start..bytes.len() {
+                match bytes[offset] {
+                    b'(' | b'[' | b'{' => value_depth += 1,
+                    b')' | b']' | b'}' => value_depth = value_depth.saturating_sub(1),
+                    b',' if value_depth == 0 => {
+                        end = offset;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            return Some(
+                String::from_utf8_lossy(&bytes[value_start..end])
+                    .trim()
+                    .to_string(),
+            );
+        }
+        index += 1;
+    }
+    None
+}
+
+/// 值表达式里是否含**字符串字面量**。
+///
+/// 内联字符串是「硬编码常量」的可判定形态：`OrganizationId::new("org-1")` 这种
+/// 写法把组织钉死在一个常量上，与请求上下文脱钩。
+fn contains_string_literal(expression: &str) -> bool {
+    expression.as_bytes().contains(&b'"')
+}
+
+/// 组织维度必须**跟着请求上下文走**，不得内联硬编码成常量。
+///
+/// 上一条守卫只钉「字段在不在」，挡不住「字段在、值是常量」这一类夹带：
+/// 把 `ctx.organization_id.clone()` 换成 `OrganizationId::new("某个组织")`，
+/// 字段名照样在，上一条守卫照样绿，但列举过滤器的组织已经与调用上下文脱钩。
+///
+/// 后果不是泄漏（`list` 会拿 `filter.organization_id` 与 `ctx` 的组织再比一次，
+/// 不一致就是空列表），而是**静默列举不出东西**：调用点看不出任何异常，
+/// 结果永远是空的。因此这条守卫把「不得内联常量」钉死。
+///
+/// 约定：确需固定组织的**测试夹具**，先把组织绑到局部变量再使用
+/// （`let org = OrganizationId::new("org-1");`，然后 `organization_id: org`），
+/// 这样「常量」与「从上下文取」在字面量里仍然可区分。
+#[test]
+fn every_job_filter_literal_takes_the_organization_from_the_context() {
+    let root = repository_root();
+    let mut literals = 0usize;
+    let mut offenders: Vec<String> = Vec::new();
+    for file in rust_sources(&root) {
+        let relative = file.strip_prefix(&root).unwrap_or(&file);
+        if relative == Path::new(SELF) {
+            continue;
+        }
+        let Ok(source) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+        let stripped = strip_comments(&source);
+        for (line, literal) in job_filter_literals(&stripped) {
+            let Some(value) = organization_id_value(&literal) else {
+                continue;
+            };
+            literals += 1;
+            if contains_string_literal(&value) {
+                offenders.push(format!(
+                    "{}:{line}  organization_id: {value}",
+                    relative.display()
+                ));
+            }
+        }
+    }
+    assert!(
+        literals >= 5,
+        "扫描必须真的找到带组织维度的 JobFilter 字面量，否则这条守卫是空的（找到 {literals} 个）"
+    );
+    assert!(
+        offenders.is_empty(),
+        "JobFilter 的组织维度必须取自请求上下文，不得内联硬编码成常量；\
+         下面这些字面量把组织钉死在字符串常量上（列举会静默返回空列表）：\n{}",
+        offenders.join("\n")
+    );
+}
