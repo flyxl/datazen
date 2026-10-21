@@ -479,10 +479,12 @@ pub(crate) async fn submit_apply(
     spec: ApplySpec,
     window_job_id: Option<String>,
 ) -> Result<SyncJobOutcome, CommandError> {
-    let (source_session_id, target_session_id) =
-        crate::data_sync::plan_store::peek_plan(&spec.plan_id)
-            .map(|plan| (plan.source_db_session_id, plan.target_db_session_id))
-            .unwrap_or_default();
+    let (source_session_id, target_session_id) = state
+        .sync_stores
+        .plan_store
+        .peek(&state.organization_scope(), &spec.plan_id)
+        .map(|plan| (plan.source_db_session_id, plan.target_db_session_id))
+        .unwrap_or_default();
     let selection = state::confirmed_selection(&spec.plan_id).ok_or_else(|| {
         CommandError::Validation("reviewed selection is unavailable; compare again".into())
     })?;

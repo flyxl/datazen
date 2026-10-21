@@ -222,7 +222,7 @@ async fn test_tester_mutation_operation_counts_include_insert_update_delete_and_
 
 #[test]
 fn test_tester_inline_page_bounds_and_writer_state_errors_cleanup() {
-    let inline = ComparisonStore::from_comparison(comparison(8)).unwrap();
+    let inline = comparison_store_from(comparison(8)).unwrap();
     assert!(inline.bytes() > 0);
     assert!(inline.path().is_none());
     assert!(inline.directory().is_none());

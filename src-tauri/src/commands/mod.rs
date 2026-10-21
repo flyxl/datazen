@@ -154,6 +154,37 @@ impl Default for QueryExecutionRegistry {
     }
 }
 
+/// Data Sync 的存储端口实例（组装期创建一次，之后只读借用）。
+///
+/// 端口的实现留在共享包里：`datazen_data_sync` 仍然拥有「比较落盘」「计划
+/// 认领」的规则，宿主只决定**实例从哪来**——比较存储的根目录与计划注册表本身。
+/// 端口方法都带 [`OrganizationScope`]，跨组织访问按「不存在」处理。
+#[derive(Clone)]
+pub struct SyncStorePorts {
+    /// 计划注册表端口。签发 / 查看 / 绑定端点身份 / 认领。
+    pub plan_store: Arc<dyn datazen_data_sync::plan_store::SyncPlanStore>,
+    /// 比较存储根端口。决定比较结果写到哪个目录。
+    pub comparison_root: Arc<dyn datazen_data_sync::comparison_store::ComparisonStoreRoot>,
+}
+
+impl SyncStorePorts {
+    /// 桌面形态的默认接线：一个本地根 + 一个进程内计划注册表。
+    ///
+    /// 桌面是单租户：比较存储的根只属于本地组织这一个组织。
+    pub fn desktop() -> Self {
+        let organization = OrganizationId::new(crate::platform::identity::LOCAL_ORGANIZATION_ID);
+        Self {
+            plan_store: Arc::new(datazen_data_sync::plan_store::InMemorySyncPlanStore::new()),
+            comparison_root: Arc::new(
+                datazen_data_sync::comparison_store::LocalComparisonStoreRoot::new(
+                    datazen_data_sync::comparison_store::default_comparison_store_root(),
+                    organization,
+                ),
+            ),
+        }
+    }
+}
+
 /// Shared application state injected into every command handler.
 #[derive(Clone)]
 pub struct AppState {
@@ -184,6 +215,11 @@ pub struct AppState {
     /// 组织作用域隔离——多租户宿主里 A 组织的计划不会被 B 组织读到或顶掉。
     /// 桌面是单租户，实现见 `commands/schema_diff/reviewed_store.rs`。
     pub schema_diff_reviewed_plans: Arc<dyn crate::schema_diff::reviewed::ReviewedPlanStore>,
+    /// Data Sync 的存储端口实例：计划注册表 + 比较存储根。
+    ///
+    /// 过去计划注册表是共享包里的 `static STORE`（进程级全局可变状态），
+    /// 现在由组装点创建实例并注入。
+    pub sync_stores: SyncStorePorts,
     /// 概要 §6.2 第 8 步的窄适配根：桌面身份 + owner 作用域句柄登记表。
     ///
     /// 事务归属和资源生命周期由 Runtime session actor 管理。取不到 adapter 时用
@@ -222,6 +258,7 @@ impl AppState {
     /// 按请求解析组织，那一步是可以失败的。桌面形态不会失败。
     pub fn organization_scope(&self) -> Result<OrganizationScope, CommandError> {
         Ok(self.organization_scope.clone())
+
     }
 
     /// Lazily register AI providers + load prompt templates.

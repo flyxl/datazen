@@ -624,6 +624,7 @@ mod tests {
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
             schema_diff_reviewed_plans,
+            sync_stores: crate::commands::SyncStorePorts::desktop(),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
         };
@@ -704,6 +705,7 @@ mod tests {
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
             schema_diff_reviewed_plans,
+            sync_stores: crate::commands::SyncStorePorts::desktop(),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
         };

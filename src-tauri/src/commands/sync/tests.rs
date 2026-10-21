@@ -75,6 +75,45 @@ async fn runtime_physical_resource_count(state: &crate::commands::AppState) -> u
         .physical_total
 }
 
+/// 组装点的接线不变式：**宿主自己的组织作用域必须被自己注入的比较存储根承认**，
+/// 且该根只承认这一个组织。
+///
+/// 这条断言把「端口」与「宿主接线」缝在一起：端口实现按组织判定是对的（包内有
+/// 断言），但如果组装期把根绑到了别的组织、或者宿主的作用域算出了别的组织，
+/// 比较存储会整体失败关闭。桌面是单租户，但「跨组织按不存在处理」这条契约在
+/// 宿主这一侧也必须真的成立，不能只靠端口实现单方面保证。
+#[tokio::test]
+async fn desktop_sync_store_ports_admit_only_the_local_organization() {
+    use datazen_platform_api::id::OrganizationId;
+    use datazen_platform_api::ports::scope::OrganizationScope;
+
+    let test = crate::testing::app_state::TestAppState::new().await;
+    let scope = test.state.organization_scope();
+    assert_eq!(
+        scope.organization_id().as_str(),
+        crate::platform::identity::LOCAL_ORGANIZATION_ID,
+        "桌面是单租户：组织维度是进程常量"
+    );
+    assert!(
+        test.state
+            .sync_stores
+            .comparison_root
+            .root_for(&scope)
+            .is_some(),
+        "宿主注入的比较存储根必须承认宿主自己的作用域"
+    );
+
+    let foreign = OrganizationScope::new(OrganizationId::new("datazen-other-organization"));
+    assert!(
+        test.state
+            .sync_stores
+            .comparison_root
+            .root_for(&foreign)
+            .is_none(),
+        "宿主注入的比较存储根不得承认别的组织"
+    );
+}
+
 #[tokio::test]
 async fn sync_profile_ipc_validates_connections_and_round_trips() {
     use crate::testing::app_state::TestAppState;

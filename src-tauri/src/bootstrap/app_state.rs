@@ -227,6 +227,9 @@ pub(crate) fn finish_app_state(
         // 与「当前 OS 用户名能不能取到」无关。请求期直接取这份值（INV-01）。
         organization_scope: crate::platform::local_organization_scope(),
         schema_diff_reviewed_plans,
+        // Data Sync 的存储端口实例在组装期创建一次：宿主决定「实例从哪来」，
+        // 规则与落盘实现留在共享包里。
+        sync_stores: crate::commands::SyncStorePorts::desktop(),
     };
     if let Ok(adapter) = state.platform.require() {
         if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {
