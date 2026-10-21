@@ -226,7 +226,7 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 |---|---|---|
 | C | **已验收 TEST_PASSED → 已合入集成 `e267fad3f`** | Tester `a1f0c68d`（3 次尝试后完成） |
 | B | **已验收 TEST_PASSED → 已合入 `056b35834`** | Tester `cda75c30` |
-| A | **TEST_FAILED**（1 阻塞 + 2 文档）→ **已 resume 原编码代理修复（第 1 轮）** | Tester `b285d2f2`：组织维度**逐方法核实贯通**（内存/SQLite 错误形状完全一致），8 组变异验证证明新断言有效 |
+| A | 第 1 轮修复完成 `951f5ef68`（D1–D5 全处置）→ **全新 Tester 复测中** `64877b2a`（验证树 `verify-job-org-scope-v2`） | 上一轮 Tester `b285d2f2`：组织维度逐方法核实贯通，8 组变异证明新断言有效 |
 
 ### 环境
 - `export CARGO_TARGET_DIR=/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/.shared-target`（三轨共用；会打印 `Blocking waiting for file lock` —— **正常，等它**，禁止各轨改 target 目录）
@@ -318,6 +318,25 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 1. **门禁必须含 `cargo check -p datazen --features webdriver --all-targets`** —— A 轨的阻塞缺陷 D1 正是"默认门禁不编译 feature 分支"造成的，这条现在是四轨的必跑项。
 2. **A 轨待合入会带来 7 个文件的机械重叠**（`packages/schema-diff/tests/job_handler.rs`、`packages/data-transfer/src/job/tests/kernel_cancel.rs`、`commands/data_transfer/job_api/{queries,runtime}.rs`、`commands/data_transfer/job_api/tests/job_lifecycle.rs`、`commands/schema_diff/job/desktop.rs`、`commands/sync/jobs.rs`）—— A 在这些文件上只是「补 `organization_id` 字段」。E/F 两轨已被告知：**不要改这些文件的 job 相关部分**，若非改不可必须保持增量并在报告中点名，便于合流解冲突。
 3. **F 轨的强制约束**（防"把解耦做成搬家"）：`comparison_store/disk.rs`（494 行、32 处 `std::fs`）**留在包内**，端口只收「存储根/实例」注入；`SyncPlanStore`/`TransferPlanStore` 的 `static STORE` 改成宿主注入的实例，HashMap 实现本身留在包内。**判定标准：`packages/data-{sync,transfer}` 改动前后总行数基本不变。**
+
+### A 轨修-测第 1 轮（编码代理 `951f5ef68`）
+
+D1–D5 全部处置，并 cherry-pick 上一轮 Tester 的三笔测试提交（`d522efeba` / `d87569b0e` / `78d0cc128`）。自验全绿，**含新增的 `cargo check -p datazen --features webdriver --all-targets` → EXIT=0**。
+
+| 项 | 处置 | 要点 |
+|---|---|---|
+| D1（阻塞） | `src-tauri/src/commands/dashboard.rs` 的 feature 门控 `JobFilter` 字面量改为显式 6 字段 | **根因已固化为守卫**：`d87569b0e` 全仓扫描，任何缺 `organization_id` 的 `JobFilter` 字面量即报错并给出行号 —— feature 门控分支再也藏不住 |
+| D2 | `ports/job.rs` 与 `shared-boundaries-and-ports.md` 两处措辞拆成「**读路径按不存在** / **写路径由 claim fencing 兜底按 StaleClaim**」 | 两处同步；端口 trait 内各方法的行级注释本就是读路径口径，未改 |
+| D3 | `renew` 的组织兜底：端口契约 + SQLite `renew_claim` + 内存 `renew` 三处补注释 | 均出现「claim fencing」字样，并注明**续约自身不做组织比对** |
+| D4 | `admission.rs` 盖章行注明「SQLite 侧是防御性冗余，承重处在 INSERT 绑定」；内存侧镜像注明承重 | 选注释而非加断言，理由：**可观测不变量已由既有 host 用例** `admission_stamps_the_context_organization_onto_the_persisted_row` 钉住（它伪造 `definition.organization_id = "forged-org"` 并断言落库列 == ctx 组织）；`admit_job` 私有且 `definition` 在返回路径上被 `read_record` 重建 → **该行本身黑盒不可观测**，再加断言只能测实现细节 |
+| D5 | `git rm progress.md` | 台账已销毁 |
+
+**复测（全新 Tester `64877b2a`）的重点**：
+1. **守卫是否非空洞** —— 变异验证：删掉某处 `JobFilter` 的 `organization_id` → 必须失败且给对行号；**把 `organization_id` 改成常量 → 也必须失败**（若守卫只查"字段存在"不查"值来自上下文"，它挡不住"绕过隔离"这一类夹带）；以及守卫自身有无易绕过手法。
+2. **D3 的注释是不是事实陈述** —— 注释现在声称「`renew` 自身不做组织比对，由 claim fencing 兜底」。必须核对 SQLite `renew_claim` 的 SQL **真的没有** `organization_id` 条件、且 claim 真的只在按 ctx 组织核对过的行上铸出。**若因果链有一环不成立，这是"文档说谎"，比措辞瑕疵严重。**
+3. D4 的注释与变异结果是否一致（删掉盖章行后既有 host 用例是否仍通过 —— 上一轮 Tester 说会通过，若这次变红则上一轮结论错、注释就是错的）。
+4. 三笔 cherry-pick 的测试提交**在 cherry-pick 途中未被削弱**（原提交在 `track/a-tester-commits`，已随 A cherry-pick 完成而删除锚定分支，但 A 分支内已含其内容，原始对象仍在 git 对象库中直到 gc）。
+5. 组织隔离完整性未被修复破坏（内存/SQLite 错误形状仍完全一致、`list` 双条件过滤仍在）。
 
 ## 6. 门禁与流程
 
