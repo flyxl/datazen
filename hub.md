@@ -21,7 +21,7 @@
 
 | 轨道 | 波次 | 状态 | 提交 | 门禁实测 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| `grid-selection` | 1 | **第 2 轮复测**（原 Tester `7037c93a` 唤醒） | `9435810ba` / `5b406b05b` / `305cc725f` / `35cde046e` / `2c511db2e` / `7e8ecdcbc` / `afb21edff` | 第 1 轮 TEST_FAILED（4 缺陷）；修复后 624 文件 / 6550 例通过、typecheck EXIT=0、TableView **642**、tableDataStore **712** | 缺陷循环第 2 轮 |
+| `grid-selection` | 1 | **第 3 轮修复中** | `afb21edff` + 本轮新增 | 第 2 轮 TEST_FAILED（2 新问题，4 缺陷全闭环）；6533 例中 1 红 = GS2-D2 | 缺陷循环第 3 轮 |
 | `insert-backend` | 1 | **测试中**（Tester `e104b765`） | `93032e47c` / `2562908fb` / `2d0bf5664` | driver-api 377 passed；host 1395 passed / 9 ignored；data.rs 757 行 | 编码代理自报；待 Tester 独立复测 |
 
 ## 协调者裁定记录
@@ -92,3 +92,20 @@
 - 例外：原 Tester 实例不可恢复（会话丢失）时才新起。
 - 协调者已按此取消过一次新实例（`7ebdb8e9` 第 2 轮复测），并删除它留下的 4 个未完成测试文件。
 - 编码代理侧同理沿用「resume 原 Coder」，两条规则合起来即：**一条轨只有一对 coder/tester，贯穿它的全部修复循环。**
+
+## grid-selection 第 2 轮结论（原 Tester 唤醒，考题 60 例未被改）
+
+**4 个缺陷全部闭环**（D1/D2/D3/D4 用全新用例逐条转绿，`git diff 35cde046e..HEAD -- <7 个测试文件>` = 0 行）。判失败只剩 2 条**由新契约引出**的问题：
+
+| ID | 级别 | 问题 | 裁定 |
+| --- | --- | --- | --- |
+| GS2-D1 | P3 | §4.2.1 要求 `selectedRows` **必填**且类型名 `GridSelectionState`，实装仍是 `GridSelectionWithRows` + `selectedRows?` + `?? EMPTY_ROW_SET` 兜底 → 按冻结签名传裸 `GridSelection` 时 typecheck 全绿、row 模式静默返回空集 | 必改（字段必填 + 改名 + 去兜底 + 让 tsc 指路改调用点） |
+| GS2-D2 | P2 | `deleteRows` 直接写 `selectedRows`，与 cell 选区并存 → 违反「mode 是行集唯一权威」 | 必改（删除不改变选择语义，行集由 `rowIdentityAnchors` 承担） |
+
+**Tester 提出的一条待裁定，我已拍板并写进契约**：`mode:'row'` + **空**行集是**合法**状态（反选到 0 行、再点已选行取消都会产生）；契约禁止的是「`none`/`cell` + **非空**行集」。不要为「空行集」加退回 `none` 的逻辑——那会让「取消最后一行后 Shift 连选」失去锚点。契约提交 `ab8d0ffd7`。
+
+**Tester 的另一条方法论值得记**：它为 GS2-D1 故意**不写** `@ts-expect-error` 红测，理由是那会让 `pnpm typecheck` 变红成 TS2578，与真实构建错误不可区分。改为「源码行 + 现行编译通过」作证据，并要求编码代理自证「裸调用必报 TS 错误」后还原。
+
+## 契约与实现反复校正的顺序（教训）
+
+本轨已出现 3 次「Tester 报偏差 → 复盘发现是契约错 → 改契约 → 再让实现对齐」：错误码闭集缺口、`rowsCoveredBySelection` 签名、row 模式空行集。**根因是分册写契约时没跑过真实调用面**。Wave 2 起，凡涉及跨册签名冻结，先在本轨写一个最小调用点再冻。
