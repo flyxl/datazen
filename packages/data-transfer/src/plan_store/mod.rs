@@ -23,6 +23,9 @@ mod checkpoint;
 mod memory;
 mod port;
 
+#[cfg(test)]
+mod tests;
+
 pub use checkpoint::{TransferCheckpointSession, TransferResumeCheckpoint};
 pub use memory::InMemoryTransferPlanStore;
 pub use port::{PlanIssueRequest, TransferPlanStorePort};
