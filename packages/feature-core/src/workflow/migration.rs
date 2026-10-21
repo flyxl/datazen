@@ -6,8 +6,8 @@ use super::{
         StepExecutionResult, StepStatus, UnattendedDestructivePolicy, WorkflowMigrationOperation,
     },
 };
-use datazen_data_sync::model::TableMapping as SyncTableMapping;
-use datazen_data_sync::{SyncOptions, SyncProfile, SyncSourceFilter};
+use datazen_data_sync::api::SyncComparisonRequest;
+use datazen_data_sync::{SyncProfile, SyncSourceFilter};
 use datazen_data_transfer::model::Endpoint as TransferEndpoint;
 use datazen_data_transfer::{SqlFileTarget, TransferJob, TransferProfile};
 use datazen_platform_api::dto::migration::{MigrationProfileRef, MigrationRunRecord};
@@ -94,7 +94,10 @@ pub trait MigrationRunner: Send + Sync {
     ) -> Result<MigrationOutcome, WorkflowError>;
 
     /// Compare and apply a data sync plan built from the profile.
-    async fn run_sync(&self, request: SyncStepRequest) -> Result<MigrationOutcome, WorkflowError>;
+    async fn run_sync(
+        &self,
+        request: SyncComparisonRequest,
+    ) -> Result<MigrationOutcome, WorkflowError>;
 
     /// Plan and deploy a schema diff built from the profile.
     async fn run_schema(
@@ -103,22 +106,6 @@ pub trait MigrationRunner: Send + Sync {
         reference: &MigrationProfileRef,
         destructive_policy: UnattendedDestructivePolicy,
     ) -> Result<MigrationOutcome, WorkflowError>;
-}
-
-/// Everything a data sync step needs, built from the profile and the opened
-/// sessions.
-#[derive(Debug, Clone)]
-pub struct SyncStepRequest {
-    pub source_db_session_id: String,
-    pub target_db_session_id: String,
-    pub source_database: String,
-    pub target_database: String,
-    pub source_schema: Option<String>,
-    pub target_schema: Option<String>,
-    pub tables: Vec<String>,
-    pub mappings: Vec<SyncTableMapping>,
-    pub filters: std::collections::HashMap<String, SyncSourceFilter>,
-    pub options: SyncOptions,
 }
 
 /// Everything a schema diff step needs, built from the profile and the opened
@@ -303,17 +290,18 @@ pub async fn run_sync_step(
             })
             .collect();
         runner
-            .run_sync(SyncStepRequest {
+            .run_sync(SyncComparisonRequest {
                 source_db_session_id: source.db_session_id.clone(),
                 target_db_session_id: target.db_session_id.clone(),
-                source_database: source.database.clone(),
-                target_database: target.database.clone(),
+                tables,
+                job_id: None,
+                source_database: Some(source.database.clone()),
+                target_database: Some(target.database.clone()),
                 source_schema: profile.source_schema.clone().or(source.schema.clone()),
                 target_schema: profile.target_schema.clone().or(target.schema.clone()),
-                tables,
-                mappings: profile.tables.clone(),
-                filters,
                 options: profile.options.clone(),
+                mappings: profile.tables.clone(),
+                source_filters: filters,
             })
             .await
     }

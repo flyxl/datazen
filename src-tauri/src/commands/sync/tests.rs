@@ -527,17 +527,19 @@ async fn compare_data_sync_returns_an_opaque_server_plan() {
     let target = test.open_runtime_session("tgt-plan").await;
     let preview = super::compare_data_sync_impl(
         &test.state,
-        source,
-        target,
-        Vec::new(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        crate::data_sync::SyncOptions::default(),
-        &[],
-        &std::collections::HashMap::new(),
+        crate::data_sync::api::SyncComparisonRequest {
+            source_db_session_id: source,
+            target_db_session_id: target,
+            tables: Vec::new(),
+            job_id: None,
+            source_database: None,
+            target_database: None,
+            source_schema: None,
+            target_schema: None,
+            options: crate::data_sync::SyncOptions::default(),
+            mappings: Vec::new(),
+            source_filters: std::collections::HashMap::new(),
+        },
     )
     .await
     .unwrap();
@@ -803,17 +805,19 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
     let tgt = test.open_runtime_session("tgt-cmp").await;
     let err = super::compare_data_sync_impl(
         &test.state,
-        src,
-        tgt,
-        vec!["users".into()],
-        None,
-        None,
-        None,
-        None,
-        None,
-        crate::data_sync::SyncOptions::default(),
-        &[],
-        &std::collections::HashMap::new(),
+        crate::data_sync::api::SyncComparisonRequest {
+            source_db_session_id: src,
+            target_db_session_id: tgt,
+            tables: vec!["users".into()],
+            job_id: None,
+            source_database: None,
+            target_database: None,
+            source_schema: None,
+            target_schema: None,
+            options: crate::data_sync::SyncOptions::default(),
+            mappings: Vec::new(),
+            source_filters: std::collections::HashMap::new(),
+        },
     )
     .await
     .unwrap_err();

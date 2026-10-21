@@ -7,6 +7,7 @@ use super::super::AppState;
 use super::artifact_view;
 use super::comparison_store::ComparisonStore;
 use super::inspect::inspect_data_sync_impl;
+use crate::data_sync::api::SyncComparisonRequest;
 use crate::data_sync::job::PrepareSpec;
 use crate::data_sync::plan_store as plans;
 use crate::data_sync::{
@@ -32,34 +33,26 @@ use uuid::Uuid;
 /// ChangeSet is attributed to.
 pub(crate) async fn compare_data_sync_impl(
     state: &AppState,
-    source_db_session_id: String,
-    target_db_session_id: String,
-    tables: Vec<String>,
-    job_id: Option<String>,
-    source_database: Option<String>,
-    target_database: Option<String>,
-    source_schema: Option<String>,
-    target_schema: Option<String>,
-    options: SyncOptions,
-    mappings: &[TableMapping],
-    source_filters: &HashMap<String, SyncSourceFilter>,
+    request: SyncComparisonRequest,
 ) -> Result<plans::SyncComparisonPreview, CommandError> {
-    let job_id = job_id
+    let job_id = request
+        .job_id
+        .clone()
         .filter(|id| !id.trim().is_empty())
         .unwrap_or_else(|| format!("data-sync-{}", Uuid::new_v4()));
     let accepted = start_data_sync_prepare_job_impl(
         state,
-        source_db_session_id,
-        target_db_session_id,
-        tables,
+        request.source_db_session_id,
+        request.target_db_session_id,
+        request.tables,
         job_id,
-        source_database,
-        target_database,
-        source_schema,
-        target_schema,
-        options,
-        source_filters.clone(),
-        Some(mappings.to_vec()),
+        request.source_database,
+        request.target_database,
+        request.source_schema,
+        request.target_schema,
+        request.options,
+        request.source_filters,
+        Some(request.mappings),
     )
     .await?;
     let finished = super::jobs::wait_for_durable_terminal(state, accepted.job_id.as_str()).await?;
