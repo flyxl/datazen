@@ -498,7 +498,7 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 
 ### 3.11 后端契约影响
 
-**零。** 本册不新增 / 不修改任何 `driver-api` trait 方法、DTO、IPC 命令；不涉及 `CellWrite`；不改 `PROTOCOL_VERSION`。数据库之间的差异与本册无关（选择是纯 UI 概念），因此**不存在**任何 `if (dbType === 'mysql')` 式的宿主分支需要写——这正是"零硬编码"在本册的表现形式。
+**零。** 本册不新增 / 不修改任何 `driver-api` trait 方法、DTO、IPC 命令；不涉及三态写入（`Unset`/`NULL`/值）的实现；不改 `PROTOCOL_VERSION`。数据库之间的差异与本册无关（选择是纯 UI 概念），因此**不存在**任何 `if (dbType === 'mysql')` 式的宿主分支需要写——这正是"零硬编码"在本册的表现形式。
 
 ---
 

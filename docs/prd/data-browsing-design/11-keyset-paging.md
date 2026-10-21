@@ -234,7 +234,7 @@ pub struct PagePagingInfo {
 /// `Bytes` 又能读成 `Json`，字符串既可能是 `String` 也可能是 `Timestamp`。游标要经过
 /// 「Rust → 前端 → Rust」两跳，untagged 会在第二跳把 `Json` 读成 `Bytes`，于是谓词从
 /// `'{"a":1}'` 变成 `X'7b226131...'`，**键集边界悄悄算错**。带标签的形态与 00 契约
-/// 第 3.2 节 `CellWrite` 的 `tag = "kind", content = "value"` 是同一手法。
+/// `00` 契约里带标签枚举的 `tag = "kind", content = "value"` 是同一手法。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind", content = "value")]
 pub enum CursorValue {
@@ -276,7 +276,8 @@ pub struct TableDataResult {
 ### 3.3 宿主内部类型（新增，位置见第 6 节）
 
 ```rust
-// src-tauri/src/services/table_paging.rs（新增）
+// packages/feature-core/src/services/table_paging.rs（新增）
+// 〔契约审计修订 2026-10-21〕T0-10 / R-A：原稿落 `src-tauri/src/services/table_paging.rs`。全序判定与游标提取是纯函数，落共享层；`src-tauri` 只留命令壳。
 /// 一次读请求生效的排序规格——**它就是最终写进 ORDER BY 的东西**，
 /// 不允许任何下游再自己算一遍（否则文档一改、代码一改就漂移）。
 #[derive(Debug, Clone, PartialEq)]
@@ -564,10 +565,10 @@ export function nextRequestCursor(
 
 ### Step 3 · 宿主的排序规格与全序判定（仍未接线）
 
-改：`src-tauri/src/services/table_paging.rs`（新增），`src-tauri/src/services/mod.rs`（导出）。
+改：`packages/feature-core/src/services/table_paging.rs`（新增），`packages/feature-core/src/services/mod.rs`（导出）。〔契约审计修订 2026-10-21〕T0-10：路径改落 feature-core。
 加：`OrderSpec` / `OrderSource` / `KeysetDecision` / `keyset_decision` / `cursor_from_row`（从结果集末行按 `order_columns` 取键值，返回 `Option<Vec<CursorValue>>`）。
 为什么：把「什么算稳定全序」「哪里取边界」变成**纯函数**，可以脱离数据库与 IPC 单测；这是本册最容易写错、也最该被测死的部分。
-自测：`cargo test -p datazen --lib`——`keyset_decision_*` 表驱动用例（第 9 节 H1~H6）。
+自测：`cargo test -p datazen-feature-core --lib`——`keyset_decision_*` 表驱动用例（第 9 节 H1~H6）。
 
 ### Step 4 · 宿主的 SQL 组装（仍不改变默认行为）
 
@@ -619,14 +620,14 @@ export function nextRequestCursor(
 | --- | --- | --- | --- | --- |
 | `packages/driver-api/src/keyset.rs` | **新增** | 公开类型 + `lexicographic_seek_predicate` + 用例 | ~200（含 ~90 行测试） | 否 |
 | `packages/driver-api/src/lib.rs` | 修改 | 加 `pub mod keyset;` | +1 | 否 |
-| `packages/driver-api/src/traits.rs` | 修改 | 两个方法（逐字契约） | +22 | 否（现 1062 行，**已超限**，见下） |
-| `packages/driver-api/src/reuse.rs` | 修改 | 转发两个能力位 + 转发用例 | +16 | **是（现 1159 行，已超限）**，见下 |
-| `packages/driver-api/src/types.rs` | 修改 | `TableDataResult` 加可选 `paging` | +4 | 否（现 958 行，**已超限**，见下） |
+| `packages/driver-api/src/traits.rs` | 修改 | 两个方法（逐字契约） | +22 | 否（实测 **1160** 行，`wc -l` 2026-10-21，**已超限**，见下；〔契约审计修订 2026-10-21〕N5：旧稿 1062） |
+| `packages/driver-api/src/reuse.rs` | 修改 | 转发两个能力位 + 转发用例 | +16 | **是**（实测 **1344** 行，`wc -l` 2026-10-21，已超限；〔契约审计修订 2026-10-21〕N5：旧稿 1159），见下 |
+| `packages/driver-api/src/types.rs` | 修改 | `TableDataResult` 加可选 `paging` | +4 | 否（实测 **963** 行，`wc -l` 2026-10-21，**已超限**，见下；〔契约审计修订 2026-10-21〕N5：旧稿 958） |
 | `packages/driver-api/src/mock_driver.rs` | 修改 | `MockDriverOptions` 加 `supports_keyset_pagination` / `keyset_predicate_returns_none`；`MockDriver` 覆盖两个方法 | +30 | 否（文件较大，需自查） |
-| `src-tauri/src/services/table_paging.rs` | **新增** | `OrderSpec` / `keyset_decision` / `cursor_from_row` + 用例 | ~230（含 ~110 行测试） | 否 |
-| `src-tauri/src/services/table_read_sql.rs` | **新增** | SQL 文本层（搬迁既有 5 个函数 + 新增 `build_paged_select_sql` + 既有/新增用例） | ~620（含 ~300 行测试） | **接近**：若超 800，再把 `format_condition` / `filter_is_complete` / `filter_join` 拆到 `table_filter_sql.rs` |
-| `src-tauri/src/services/query_executor/mod.rs`（合并时已由 08 目录化） | 修改 | 只留编排：`get_table_data`（薄包装）+ 新增 `get_table_data_page` | **~340（08 目录化后）** → 搬迁 `table_read_sql` → **~150** → 加键集 **~240** | 拆分后**不再触及** |
-| `src-tauri/src/services/mod.rs` | 修改 | 导出两个新模块 | +4 | 否 |
+| `packages/feature-core/src/services/table_paging.rs` | **新增** | `OrderSpec` / `keyset_decision` / `cursor_from_row` + 用例（〔契约审计修订 2026-10-21〕T0-10） | ~230（含 ~110 行测试） | 否 |
+| `packages/feature-core/src/services/query_executor/table_read_sql.rs` | **新增** | SQL 文本层（搬迁既有 5 个函数 + 新增 `build_paged_select_sql` + 既有/新增用例）（〔契约审计修订 2026-10-21〕T2-11：**`table_read_sql` 一个字节都不进 `src-tauri`**） | ~620（含 ~300 行测试） | **接近**：若超 800，再把 `format_condition` / `filter_is_complete` / `filter_join` 拆到 `table_filter_sql.rs` |
+| `packages/feature-core/src/services/query_executor/mod.rs`（合并时已由 08 目录化） | 修改 | 只留编排：`get_table_data`（薄包装）+ 新增 `get_table_data_page` | **~340（08 目录化后）** → 搬迁 `table_read_sql` → **~150** → 加键集 **~240** | 拆分后**不再触及** |
+| `packages/feature-core/src/services/mod.rs` | 修改 | 导出两个新模块（〔契约审计修订 2026-10-21〕T0-10：原写 `src-tauri` 侧） | +4 | 否 |
 | `src-tauri/src/commands/schema.rs` | 修改 | IPC 接可选 `after_key`、回填 `paging` | +40 | 否（现 385 行） |
 | `src/types/index.ts` | 修改 | 前端镜像类型 | +35 | 否 |
 | `src/lib/keysetPaging.ts` | **新增** | 纯函数：栈、签名、失效、锚定 | ~180 | 否 |

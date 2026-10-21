@@ -34,7 +34,7 @@
 
 | 编号 | 命令 | 期望 |
 | --- | --- | --- |
-| A1 | `cargo test -p datazen --lib` | 全绿；其中 `services::filter_sql` 与 `services::query_executor` 的筛选用例必须包含 legacy 10 算子的 `assert_eq!` 全串断言（不是 `contains`） |
+| A1 | `cargo test -p datazen-feature-core --lib` + `cargo test -p datazen --lib` | 均全绿；其中 `services::filter_sql` 与 `services::query_executor` 的筛选用例必须包含 legacy 10 算子的 `assert_eq!` 全串断言（〔契约审计修订 2026-10-21〕T0-5：这两处都在 `feature-core`）（不是 `contains`） |
 | A2 | `cargo test -p datazen-driver-api --lib` | 全绿；含「三个新 trait 方法的默认实现 == 今天的行为」用例 |
 | A3 | `npx vitest run` | 全绿；`src/lib/__tests__/filterOperators.test.ts`、`src/components/__tests__/FilterEditor.test.tsx`、`src/components/__tests__/FilterEditorJourney.test.tsx`、`src/lib/__tests__/namedViews.test.ts`、`src/lib/__tests__/gridErrors.test.ts`、`src/stores/__tests__/tableDataStore.test.ts` 全部通过 |
 | A4 | `pnpm typecheck` | 干净。**测试文件参与类型检查**，所以新测试里的 mock 必须用精确类型（`satisfies` / `Pick<>` / `as unknown as X`），禁止 `any` |
@@ -217,11 +217,17 @@ fn like_is_case_insensitive(&self) -> bool {
 
 **已确认的签名局限（诚实记录）**：`filter_operator_sql` 只有一个 `literal: &str`，**表达不了 `In`/`NotIn`（N 个字面量）与 `Between`/`NotBetween`（2 个字面量）**。因此本册的落地口径是：**只有单字面量算子会询问驱动**（Like 家族 + 3 个方言算子），多字面量算子恒由宿主渲染。若将来要驱动渲染多值算子，必须扩展签名并在提升 `PROTOCOL_VERSION` 时一并处理（记 Q-7）。
 
-### 3.3 Rust：宿主渲染与校验模块（`src-tauri/src/services/query_executor/filter_sql.rs`，新增）
+### 3.3 Rust：渲染与校验模块（`packages/feature-core/src/services/query_executor/filter_sql.rs`，新增）
 
-把筛选相关逻辑从 `query_executor` 的生产文件里抽出，既解决 **755**/800 行的上限问题（〔合并后校正〕旧稿 811），又让「纯字符串生成」可以脱离 `QueryExecutor` 单测。
+> **〔契约审计修订 2026-10-21〕T0-5 / N4 / R-A**：本节原稿把新模块落在 `src-tauri/src/services/query_executor/filter_sql.rs`。**落点错了**，且行数也已过时：宿主 `src-tauri/src/services/query_executor.rs` 今天实测 **47** 行（**只剩门面**），实现已在 `packages/feature-core/src/services/query_executor.rs`（实测 **755** 行，`wc -l` 2026-10-21）。因此：
+> - 新模块落 **`packages/feature-core/src/services/query_executor/filter_sql.rs`**，与 755 行的实现同址（它就是要把它拆小）；
+> - 自查命令随之改为 `cargo test -p datazen-feature-core --lib`（`services::filter_sql` 与 `services::query_executor` 的筛选用例都在这个 crate）；
+> - `src-tauri` 侧**不新增** `services/` 文件；若需要给命令层用，只经 `query_executor` 门面转发（门面 47 行，加一行 re-export 即可）。
+> 旧稿「811 行」与「755 行」的关系也在此说清：811 → 拆分后 **47（宿主门面）+ 755（feature-core 实现）**，不是「811 改成 755」。
 
-**与分册 09 的拆分形态合并（重要，避免两条分支各拆一次同一个文件）**：分册 09 已规划把 `src-tauri/src/services/query_executor.rs` **目录化**为 `query_executor/mod.rs`（生产代码）+ `query_executor/tests.rs`（整块测试）。本册沿用同一形态，只在其下新增 `filter_sql.rs` 子模块：
+把筛选相关逻辑从 `query_executor` 的生产文件里抽出，既解决 **755**/800 行的上限问题（〔契约审计修订 2026-10-21〕N4：老口径 811 = 47 宿主门面 + 755 共享实现），又让「纯字符串生成」可以脱离 `QueryExecutor` 单测。
+
+**与分册 09 的拆分形态合并（重要，避免两条分支各拆一次同一个文件）**：分册 09 已规划把 `packages/feature-core/src/services/query_executor.rs` **目录化**为 `query_executor/mod.rs`（生产代码）+ `query_executor/tests.rs`（整块测试）。（〔契约审计修订 2026-10-21〕T0-5/N4：目录化的对象在 feature-core，不在 `src-tauri`。）本册沿用同一形态，只在其下新增 `filter_sql.rs` 子模块：
 
 - **目录化归属冻结给 08**（契约 §9.1 已登记）：提交序为 01 → 02 → 03 → 05 → 06 → 04 → **08 → 09** → 10 → 07 → 11，08 必然先于 09 落地。因此**只有一种合法形态**：08 完成 `query_executor.rs → query_executor/{mod.rs,tests.rs}` 并同时新增 `filter_sql.rs`；09 合并时该目录**必然已存在**，09 只改 `mod.rs` 里的 `build_select_sql` / `get_table_data` 并往 `tests.rs` 补用例，**不做搬迁**。原先「谁先合并谁做」的说法会让 09 在 rebase 时撞上一整块搬迁 diff，必须消除。
 - **`QueryExecutor::filter_is_complete` 保留为一行转发**（`fn filter_is_complete(c: &FilterCondition) -> bool { filter_sql::filter_is_complete(c) }`）。理由：分册 09 已在文档里点名「复用 `QueryExecutor::filter_is_complete`」作为 `has_effective_filters` 的唯一判定，保留这个符号路径可以让 09 的引用继续成立，且保证两侧真的是**同一个谓词**。
@@ -673,6 +679,8 @@ export const EXAMPLE_FILTER_TREE: FilterNode = {
 
 ### 3.7 命名视图 DTO（TS：`src/lib/namedViews.ts`（新增）；Rust：`src-tauri/src/store/named_views.rs`（新增））
 
+> **〔契约审计修订 2026-10-21〕T0-12 / R-A 例外说明**：本节把 store 层与命令层都留在 `src-tauri`，**这是有意的，不是漏改**。R-A 的规则是「新增 Rust 逻辑默认落 `feature-core`，`src-tauri` 只做 command 适配」，而命名视图的持久化只有两个消费方：① 桌面端 `Store`（`src-tauri/src/store/`，`{appData}/named_views.json`，AES/原子写/唯一临时路径都在那里）；② 同一进程内的 IPC 命令。**web 形态没有 `{appData}` 可写、也没有 `Store`**，把 store 层搬进 `feature-core` 只会得到一个「在 web 里必然不可用的 trait 实现」，而不是共享收益。因此：**DTO + 持久化 + 门面留 host**，命令层保持薄壳。若将来 web 端要支持命名视图，必须先有跨形态的存储端口（`platform-api` 级的 repository），那是独立契约改动，不在本册。
+
 ```ts
 /** 视图作用域：持久化连接 id + 库 + 模式 + 表。 */
 export interface NamedViewScope {
@@ -832,6 +840,16 @@ pub(crate) async fn delete_named_view_impl(state: &AppState, id: &str) -> Result
 | `list_named_views` | `scope?: NamedViewScope`（`Option` + `#[serde(default)]`） | 全部（或该 scope 的）视图，按 `isDefault` 优先、再按 `name` 字典序 | 省略 scope = 返回全部（给「视图管理 / 导入导出」用） |
 | `save_named_view` | `view`（`id` 可空串） | 落盘后的记录（含铸造的 id 与时间戳） | 返回记录而不是 `()`：前端必须用返回值替换本地临时对象，否则改名/新建后本地 id 与后端不一致 |
 | `delete_named_view` | `id` | 删除后的剩余列表 | 幂等，删不存在 = `Ok`（与 `delete_sync_profile` 的「retain 后整体写盘」一致） |
+
+> **〔契约审计修订 2026-10-21〕R-E**：三条新命令**必须同批补 web 通路**（`MethodMap` + `BackendClient` + 前端封装），每命令四元组：
+
+| 命令名 | `MethodMap` 条目（`packages/backend-client/src/transport.ts`） | `BackendClient` 方法 | 前端封装文件 |
+| --- | --- | --- | --- |
+| `list_named_views` | `list_named_views: { params: { scope?: NamedViewScope }; result: NamedView[] }` | `listNamedViews(params)` | `src/commands/database.ts` |
+| `save_named_view` | `save_named_view: { params: { view: NamedView }; result: NamedView }` | `saveNamedView(params)` | `src/commands/database.ts` |
+| `delete_named_view` | `delete_named_view: { params: { id: string }; result: NamedView[] }` | `deleteNamedView(params)` | `src/commands/database.ts` |
+
+本批**不裁定** desktop-only。注意这三条命令的**实现**确实依赖桌面 `Store`（见 §3.7 的 T0-12 说明），但那约束的是「web 端调不通时的行为」，不是「可以省掉 `MethodMap`」——省掉会让 `backend-client` 在编译期就与命令清单脱节，而 `MethodMap` 正是唯一能静态暴露这种脱节的地方。
 
 **前端封装（`src/commands/database.ts`，修改）**：`databaseCommands.listNamedViews(scope?)` / `saveNamedView(view)` / `deleteNamedView(id)`，用 `invoke('list_named_views', { scope })` 等（IPC 命名：前端 camelCase、Rust snake_case，Tauri 自动映射）。
 
@@ -996,17 +1014,17 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 为什么：把「支持什么」与「怎么渲染」变成驱动声明，宿主不按库名分支（零硬编码）。 后两个是**必须成对判定**的一对（§3.3.1 规则 2）：只覆盖其中一个会让宿主无法判定驱动给的配置是否合法——宿主**永不猜测方言**。
 自测：用 `MockDriver`（未覆盖这五个方法）断言默认值 = `SHARED_FILTER_OPERATORS` / `None` / `false` / `None` / `None`；这条用例就是「不写代码的驱动行为不变」的证明。再加一条**配对约束**用例：覆写 `like_pattern_escape` 返回 `Some(c)` 而 `like_escape_clause` 仍为默认 `None` 时，`like_escape_config` 必须返回 `Err(FilterRejection::UnsupportedOperator)`（§3.3.1 规则 2），而不是「当作不转义」。
 
-### Step 3 · 抽出 `filter_sql` 子模块（`src-tauri/src/services/query_executor/filter_sql.rs` 新增；`query_executor` 目录化，`query_executor/mod.rs`、`services/mod.rs` 修改）
+### Step 3 · 抽出 `filter_sql` 子模块（`packages/feature-core/src/services/query_executor/filter_sql.rs` 新增；`query_executor` 目录化，`query_executor/mod.rs`、`packages/feature-core/src/services/mod.rs` 修改）〔契约审计修订 2026-10-21〕T0-5：路径改落 feature-core，`src-tauri/src/services/mod.rs` 本步不动
 
 改：把 `format_condition` / `filter_is_complete` / `filter_join` 搬到新子模块，加上 §3.3 的 19 算子渲染与 `Result` 化；`build_select_sql` / `build_count_sql` 改为 `Result<String, FilterRejection>`；新增 §3.6.2 的 **`join_filters`**（`filter_join` 原样保留为全局回落）；两处的 `parts` 改成 **`Vec<(String, Option<FilterConnector>)>`** 配对结构，并在**丢弃空片段之前**把 `c.connector` 一起带出；`get_table_data` 把 `FilterRejection` 映射为 `DriverError::NotSupported(contract_message())`；`services/mod.rs` 增 `pub(crate) use query_executor::filter_sql::{join_filters, validate_filters, FilterRejection};`。
-为什么：`query_executor.rs` 今天 **755** 行，本册的 match 分支与校验逻辑必然突破 800 行上限（§6 有拆分方案）；同时让纯字符串生成可以脱离数据库单测。**与分册 09 的拆分形态已对齐，且归属唯一裁定给本册**（§3.3、契约 §9.1：提交序上 08 早于 09，因此 `query_executor.rs → query_executor/` 目录化由**本册 Step 3** 完成，09 只改 `mod.rs` / 往 `tests.rs` 补用例）。原先「谁先合并谁做」的说法已废止——它把正确性押在不可知的时序上，会让 09 在 rebase 时撞上一整块搬迁 diff。
+为什么：`packages/feature-core/src/services/query_executor.rs` 今天 **755** 行（`wc -l` 2026-10-21；宿主门面另有 47 行，本册不动它），本册的 match 分支与校验逻辑必然突破 800 行上限（§6 有拆分方案）；同时让纯字符串生成可以脱离数据库单测。**与分册 09 的拆分形态已对齐，且归属唯一裁定给本册**（§3.3、契约 §9.1：提交序上 08 早于 09，因此 `query_executor.rs → query_executor/` 目录化由**本册 Step 3** 完成，09 只改 `mod.rs` / 往 `tests.rs` 补用例）。原先「谁先合并谁做」的说法已废止——它把正确性押在不可知的时序上，会让 09 在 rebase 时撞上一整块搬迁 diff。
 ⚠️ **不要删 `.filter(|s| !s.is_empty())`**：`format_condition` 改成 `Result` 之后，不支持的算子已被 Step 4/5 的 `validate_filters` 前置拒绝，**正常路径不再产生空片段**——这正是它看起来「该清理」的原因。但它仍是唯一一道防御：驱动可以通过 `filter_operator_sql` 返回 `Some(String::new())`（`Option` 的 `Some` 包着空串是合法载荷，表示「不产出片段」）。删掉过滤就会拼出 `WHERE  AND …` 的坏 SQL。**正确做法是保留过滤，并让连接符跟着片段一起走**，这样即使发生丢弃也不会错位（§3.6.2）。
 自测：把 §2.2 里与筛选直接相关的既有用例**连断言文本一起**搬进 `filter_sql` 的测试模块，再补 §9 的 19 算子用例；保留 `QueryExecutor::filter_is_complete` 转发并加一条「转发与 `filter_sql::filter_is_complete` 同结果」的用例（分册 09 依赖这个谓词唯一）；`cargo test -p datazen --lib`。
 
 ### Step 4 · IPC 前置校验（`src-tauri/src/commands/schema.rs`）
 
 改：`get_table_data_impl` 在取会话之后、建 SQL 之前插入
-`filter_sql::validate_filters(driver.supported_filter_operators(), filters.as_deref().unwrap_or_default()).map_err(|r| CommandError::Validation(r.contract_message()))?;`
+`feature_core::services::query_executor::filter_sql::validate_filters(driver.supported_filter_operators(), filters.as_deref().unwrap_or_default()).map_err(|r| CommandError::Validation(r.contract_message()))?;`
 为什么：失败在 COST 之前；错误类型是明确的 `Validation`，与契约 §8.2 前缀一致。
 自测：在 `src-tauri/src/commands/schema/tests.rs` 加「不完整筛选返回 `grid.filter.incomplete` 前缀」「白名单外算子返回 `grid.filter.unsupportedOperator` 前缀」，断言消息**以该前缀开头**（用 `starts_with`，不写行号）。
 
@@ -1094,9 +1112,10 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 | --- | --- | --- | --- | --- |
 | `packages/driver-api/src/filters.rs` | 修改 | 22 变体 + 3 常量 + 辅助方法 + **`FilterConnector` 枚举与 `FilterCondition.connector`**（§3.6） | +105 / −2 | 否（< 150） |
 | `packages/driver-api/src/traits.rs` | 修改 | **五个**带默认实现的新方法（含 `like_pattern_escape` / `like_escape_clause` 这一对，§3.3.1） | +55 | 否（trait 文件本就很大，但 +35 不改变量级） |
-| `src-tauri/src/services/query_executor/filter_sql.rs` | **新增** | 19 算子渲染 + 转义 + 校验 + 拒绝类型 + **`join_filters` 逐条连接符拼接**（含单测） | ~440 | 否 |
+| `packages/feature-core/src/services/query_executor/filter_sql.rs` | **新增** | 19 算子渲染 + 转义 + 校验 + 拒绝类型 + **`join_filters` 逐条连接符拼接**（含单测）（〔契约审计修订 2026-10-21〕T0-5：原写 `src-tauri/src/services/...`，与下一行的 feature-core 目录化自相矛盾，已归一） | ~440 | 否 |
 | `packages/feature-core/src/services/query_executor.rs` → `query_executor/{mod.rs,tests.rs}` | **目录化 + 修改** | **拆出**筛选渲染到 `filter_sql.rs` 子模块；`build_select_sql` / `build_count_sql` 把 `DriverError` 换成 `FilterRejection`（已经是 `Result`）；`get_table_data` 兜底校验；`filter_is_complete` 保留一行转发 | 搬运 + −150 / +60 | **是**：现状 **755** 行（〔合并后校正〕旧稿 811；落点在 `packages/feature-core`，宿主 47 行门面）。目录化（同时搬走整块测试）后生产文件约 340 行，本册与 09 的净增都装得下。若不拆，本册**必然**突破 800。**拆分形态必须与 09 一致**（§3.3） ⚠️ **给 09 的移交说明**：`build_select_sql` 的 `parts` 是 §3.6.2 的配对结构 `Vec<(String, Option<FilterConnector>)>`，09 改排序时必须沿用，**不得改回 `Vec<String>`**（会重新引入连接符错位）。 |
-| `src-tauri/src/services/mod.rs` | 修改 | `pub(crate) use query_executor::filter_sql::{join_filters, validate_filters, FilterRejection};` | +2 | 否 |
+| `packages/feature-core/src/services/mod.rs` | 修改 | `pub use query_executor::filter_sql::{join_filters, validate_filters, FilterRejection};`（〔契约审计修订 2026-10-21〕T0-5：原写 `src-tauri` 侧 `services/mod.rs`） | +2 | 否 |
+| `src-tauri/src/services/query_executor.rs`（**47 行门面**） | **不改** | 门面已存在；本册不新增 `src-tauri` 服务文件 | 0 | 否 |
 | `src-tauri/src/commands/schema.rs` | 修改 | `get_table_data_impl` 前置 `validate_filters` | +18 | 否 |
 | `src-tauri/src/commands/schema/tests.rs` | 修改 | 前缀断言用例 | +45 | 否 |
 | `src-tauri/src/store/named_views.rs` | **新增** | DTO + 校验 + 门面 CRUD | ~190 | 否 |
@@ -1154,10 +1173,10 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 
 **四个必须盯 800 行的文件（其中两个是与分册 09 的共用热文件）**：
 
-1. `src-tauri/src/services/query_executor.rs`（811）：**必须目录化**，拆出 `filter_sql.rs` 子模块与整块测试；形态与 09 一致（§3.3）。
-2. `src/components/FilterEditor.tsx`（558）：拆出 `src/components/filter/*` 子组件后约 330。
-3. `src/windows/connection/TableView.tsx`（770）：**本册与 09 合计必超 800**，必须在合并前抽 `TableFilterToolbar.tsx`（Q-13）。
-4. `src/stores/tableDataStore.ts`（722）：本册与 09 合计约 764，余量仅约 36 行；再叠加 DB-02 的快捷键或 DB-11 的多列排序就必须先抽 `fetchedPage.ts`。
+1. `packages/feature-core/src/services/query_executor.rs`（实测 **755**，`wc -l` 2026-10-21；宿主门面 `src-tauri/src/services/query_executor.rs` 另有 **47** 行，合起来是老口径的 811）：**必须目录化**，拆出 `filter_sql.rs` 子模块与整块测试；形态与 09 一致（§3.3）。〔契约审计修订 2026-10-21〕N4：旧稿只写 811，落点也写错在 `src-tauri`。
+2. `src/components/FilterEditor.tsx`（实测 **558**，`wc -l` 2026-10-21）：拆出 `src/components/filter/*` 子组件后约 330。〔契约审计修订 2026-10-21〕N4：这个数**本来就对**，本次不动，仅补实测日期。
+3. `src/windows/connection/TableView.tsx`（实测 **803**，`wc -l` 2026-10-21；〔契约审计修订 2026-10-21〕N4：旧稿 770，已**越线**）：**本册与 09 合计必超 800**，必须在合并前抽 `TableFilterToolbar.tsx`（Q-13）。
+4. `src/stores/tableDataStore.ts`（实测 **729**，`wc -l` 2026-10-21；〔契约审计修订 2026-10-21〕N4：旧稿 722）：本册与 09 合计约 771，余量仅约 29 行；再叠加 DB-02 的快捷键或 DB-11 的多列排序就必须先抽 `fetchedPage.ts`。
 
 ---
 
@@ -1277,7 +1296,7 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 | `default_filter_operator_sql_is_none` | 对 `Regex`/`NotRegex`/`JsonContains` 逐个断言 `is_none()` |
 | `default_like_is_case_sensitive_flag_is_false` | `!mock.like_is_case_insensitive()` |
 
-**`src-tauri/src/services/query_executor/filter_sql.rs`（`#[cfg(test)] mod tests`）**
+**`packages/feature-core/src/services/query_executor/filter_sql.rs`（`#[cfg(test)] mod tests`）**
 
 | 用例名 | 断言要点 |
 | --- | --- |

@@ -280,7 +280,8 @@ pub struct TableDataResult {
 **为什么用「新增字段」而不是把 `total_rows` 改成带 kind 的结构**：`TableDataResult` 是既有 IPC DTO，契约 §2 R1 禁止改既有字段的类型与名字；而 `total_rows_kind` 缺省 `None` 恰好表达「本次没取行数」，与今天 `total_rows: None` 的语义严格对齐。〔合并后校正〕构造点**有三处**：`QueryExecutor::get_table_data` 的两个 `Ok(TableDataResult { .. })`，加上 `src-tauri/src/commands/table_target.rs` 里 `read` 的返回处——**三处都要填 `total_rows_kind`**，第三处漏填会因 `serde(default)` 静默退化成 `None`（=「没取行数」），不报错。
 
 ```rust
-// src-tauri/src/services/table_browsing.rs（新增文件：纯函数，便于单测，避免撑爆 query_executor.rs）
+// packages/feature-core/src/services/table_browsing.rs（新增文件：纯函数，便于单测，避免撑爆 query_executor.rs）
+// 〔契约审计修订 2026-10-21〕T0-6 / R-A：原稿落 `src-tauri/src/services/table_browsing.rs`。两个函数都是纯函数（只吃 `&dyn DatabaseDriver` 与请求参数），按 R-A 必须落共享层，否则 web 端拿不到同一套策略判定。
 use datazen_driver_api::{ColumnSchema, CountStrategy, DatabaseDriver, FilterCondition};
 
 /// 本次请求实际采用的行数策略。优先级：调用方显式要求 > 驱动声明 > 安全降级。
@@ -376,6 +377,14 @@ pub async fn estimate_table_rows(
 // 另有 pub(crate) async fn estimate_table_rows_impl(...)，参数同构，
 // 供集成测试直接调用（与 get_table_data_impl / get_table_data 的既有分层一致）。
 ```
+
+> **〔契约审计修订 2026-10-21〕R-E**：`estimate_table_rows` 是新增 IPC 命令，**必须同批补 web 通路**。四元组：
+
+| 命令名 | `MethodMap` 条目（`packages/backend-client/src/transport.ts`） | `BackendClient` 方法 | 前端封装文件 |
+| --- | --- | --- | --- |
+| `estimate_table_rows` | `estimate_table_rows: { params: { dbSessionId: string; table: string; database?: string; schema?: string }; result: number \| null }` | `estimateTableRows(params)` | `src/commands/database.ts` |
+
+本批**不裁定** desktop-only；命令壳仍在 `src-tauri/src/commands/schema.rs`（取值 → 校验 → 转发 `feature-core` 的 `estimate_table_rows_impl` → 映射 `CommandError`）。
 
 **`estimate_table_rows` 的返回语义**：`Ok(None)` = 无法估算（驱动没实现 `count_estimate_sql`、语句为空、**或返回了 NULL/非整数/负数这类不可用值**）；`Err` 只在会话不存在、目标解析失败等宿主层问题出现。**「估不出来」绝不是一个错误**，也**不是**「在命令内部偷偷改跑 COUNT」——那是调用方的决定（前端拿到 `None` 要么保持「未知」，要么显式改用 `countStrategy: 'exact'` 重取）。
 
@@ -617,12 +626,14 @@ estimateTableRows: (
 
 ### Step 0（**已由 08 完成，本册只补用例**）：`query_executor/` 的测试模块
 
+> **〔契约审计修订 2026-10-21〕T0-7**：本节原稿的路径全部指向 `src-tauri/src/services/query_executor*`。**目录化对象在共享层**：`packages/feature-core/src/services/query_executor.rs`（实测 **755** 行，`wc -l` 2026-10-21）→ `query_executor/{mod.rs,tests.rs}`；`src-tauri/src/services/query_executor.rs` 今天只剩 **47** 行门面，**本册不碰它**。测试命令也改为 `cargo test -p datazen-feature-core --lib query_executor`。
+
 > **本 Step 在本册合并时已经不存在了。** `query_executor.rs → query_executor/{mod.rs,tests.rs}` 的目录化**归属冻结给 08**（契约 §9.1；提交序 01 → 02 → 03 → 05 → 06 → 04 → **08 → 09** → 10 → 07 → 11，08 必然先落地）。本册合并时该目录必然已存在，因此**不需要 Step 0**，只需确认 `mod.rs` 末尾的 `#[cfg(test)] mod tests;` 仍在，并往 `tests.rs` 补本册用例。下面保留搬迁形态的描述，仅供回读 08 的产出结构。
 
-- **改哪个文件**：`src-tauri/src/services/query_executor.rs` → 目录模块 `src-tauri/src/services/query_executor/mod.rs` + 新增 `src-tauri/src/services/query_executor/tests.rs`；`src-tauri/src/services/mod.rs` 的 `mod query_executor;` 声明不变（目录模块对声明透明）。
+- **改哪个文件**：`packages/feature-core/src/services/query_executor.rs` → 目录模块 `packages/feature-core/src/services/query_executor/mod.rs` + 新增 `packages/feature-core/src/services/query_executor/tests.rs`；`packages/feature-core/src/services/mod.rs` 的 `mod query_executor;` 声明不变（目录模块对声明透明）。`src-tauri/src/services/query_executor.rs`（47 行门面）**不改**。
 - **加什么符号**：`mod.rs` 末尾保留 `#[cfg(test)] mod tests;`；测试体原样搬到 `tests.rs`，只把 `use super::*;` 改为 `use super::*;`（同层级引用，符号路径不变）。
 - **为什么**：该文件当前 **755** 行，其中约 415 行是测试；本册在 `get_table_data` / `build_select_sql` 上净增约 30~40 行生产代码，不拆分**必然越过 800 行红线**（第 6 节有账）。
-- **怎么自测**：`cargo test -p datazen --lib query_executor` 必须与原样全绿、用例数不变（这是纯搬运，任何一条由红转绿或消失都说明搬错了）。
+- **怎么自测**：`cargo test -p datazen-feature-core --lib query_executor` 必须与原样全绿、用例数不变（这是纯搬运，任何一条由红转绿或消失都说明搬错了）。
 
 ### Step 1：契约层——类型 + 4 个带默认实现的方法 + `ReuseDriver` 转发 + mock 扩展
 
@@ -635,7 +646,7 @@ estimateTableRows: (
 
 ### Step 2：等价性 + 新语义测试（先写测试，允许先红）
 
-- **改哪个文件**：`src-tauri/src/services/query_executor/tests.rs`（Step 0 拆出来的那份）。
+- **改哪个文件**：`packages/feature-core/src/services/query_executor/tests.rs`（Step 0 拆出来的那份）。
 - **加什么符号**：四条等价性用例 + 一条新语义用例（见 §9 A 组），外加一条「不一致时输出 `tracing::debug!`」的可观测性用例（可用既有 `tracing` 测试工具或直接断言纯函数返回的告警标记，避免为测试引入新依赖）。
 - **为什么**：契约 §5.4 的合入条件 ② 明确要求「四条既有路径各一条测试 + 一条『列标志与 `primary_keys` 不一致时按 `primary_keys` 排序』的测试来钉住新语义」。先把**旧行为的期望 SQL 字符串**（`ORDER BY "id" ASC` / `ORDER BY "order_id" ASC, "product_id" ASC` / `ORDER BY "col_a" ASC`）写成断言，再在 Step 3 改造输入来源，才能证明「不是改完再补一个迎合实现的测试」。
 - **怎么自测**：
@@ -644,7 +655,7 @@ estimateTableRows: (
 
 ### Step 3：宿主把主键输入来源切换为 `CachedColumns.primary_keys`（**行为变更步骤**）
 
-- **改哪个文件**：`src-tauri/src/services/query_executor/mod.rs`（`build_select_sql` 新增 `default_order: &[String]` 参数并删掉内部的 `is_primary_key` 推导；`get_table_data` 新增 `count_strategy`、`default_order_columns` 两个参数，并在开头用 `cached.primary_keys` 调 `resolve_default_order` 与 `resolve_count_strategy`，同时输出 §3.2 要求的不一致告警）、新增 `src-tauri/src/services/table_browsing.rs`、`src-tauri/src/services/mod.rs`（导出新模块）。
+- **改哪个文件**：`packages/feature-core/src/services/query_executor/mod.rs`（`build_select_sql` 新增 `default_order: &[String]` 参数并删掉内部的 `is_primary_key` 推导；`get_table_data` 新增 `count_strategy`、`default_order_columns` 两个参数，并在开头用 `cached.primary_keys` 调 `resolve_default_order` 与 `resolve_count_strategy`，同时输出 §3.2 要求的不一致告警）、新增 `src-tauri/src/services/table_browsing.rs`、`src-tauri/src/services/mod.rs`（导出新模块）。
 - **加什么符号**：`resolve_default_order`、`resolve_count_strategy`、`QueryExecutor::estimate_row_count`、`table_browsing::pk_sources_disagree`（或等价的告警判定函数）。
 - **为什么**：这是本册的行为中枢——「谁来排」（宿主写死 → 驱动声明）与「主键从哪来」（列标志 → 归一化主键表）两件事都在这一步落地。把纯决策逻辑放在新文件里，`query_executor/mod.rs` 只留调用点（第 6 节有行数账）。
 - **提交与说明（契约 §5.4 合入条件 ①，不可省略）**：提交信息必须显式写出这是一次行为变更，并在 PR 描述里附上影响面表（= §1.1 的表），包含「树内 15 个 path 驱动经核实列标志与 `primary_keys` 一致」「git 驱动不在树内、依靠 `tracing::debug!` 告警发现不一致」两条结论。**禁止**把这次变更描述成「纯重构，行为不变」。
@@ -716,7 +727,7 @@ estimateTableRows: (
 | ~~`packages/feature-core/src/services/query_executor.rs`~~ | **目录化归属冻结给 08**（契约 §9.2；提交序 08 早于 09） | 本册合并时 `query_executor/` 目录**必然已存在**，本册**不做搬迁**，只改 `mod.rs` 与 `tests.rs` | 0（搬迁由 08 完成） | **拆除红线风险**：现状 **755** 行，**由 08 完成**目录化后生产文件约 340 行，本册净增 30~40 后仍在 380 行以内 |
 | `src-tauri/src/services/query_executor/mod.rs` | 修改 | `build_select_sql` 新增 `default_order` 参数并删除内部主键推导；`get_table_data` 新增两个参数、改用 `cached.primary_keys` 调 `resolve_default_order`（**行为变更，见 §1.1**）、接 `resolve_count_strategy`、补 `total_rows_kind`；新增 `estimate_row_count` 与估算分支的并发结构 | +55 / -25 | 否（约 370 行） |
 | `src-tauri/src/services/query_executor/tests.rs` | 修改（**搬迁已由 08 完成**，本册只补用例） | 四条等价性用例 + 一条新语义用例 + 三态与并发用例 | 新增约 150（不含 08 搬出的约 460） | 否 |
-| `src-tauri/src/services/table_browsing.rs` | **新增** | `resolve_count_strategy` / `resolve_default_order` 两个纯函数 + 单测 | ~120（含测试） | 否 |
+| `packages/feature-core/src/services/table_browsing.rs` | **新增** | `resolve_count_strategy` / `resolve_default_order` 两个纯函数 + 单测（〔契约审计修订 2026-10-21〕T0-6：原写 `src-tauri/src/services/`） | ~120（含测试） | 否 |
 | `src-tauri/src/services/mod.rs` | 修改 | 导出新模块 | +2 | 否 |
 | `src-tauri/src/commands/schema.rs` | 修改 | `get_table_data_impl` 两个新可选入参；新增 `estimate_table_rows_impl` / `estimate_table_rows` | +70 | 否（约 455 行） |
 | `src-tauri/src/commands/schema/tests.rs` | 修改 | 新增三态与估算命令的用例 | +120 | 否 |
@@ -852,7 +863,7 @@ estimateTableRows: (
 | `allow_first_column_fallback_order_defaults_to_true` | 默认 `true` |
 | `reuse_driver_forwards_browsing_strategy_methods` | 包裹一个「估算 + 主键降 + 有估算语句」的假驱动，断言 4 个方法**全部**转发到 inner（照既有 `reuse_driver_forwards_structure_methods` 的写法） |
 
-**C 组：三态执行与降级 — `src-tauri/src/services/table_browsing.rs` + `query_executor/tests.rs`**
+**C 组：三态执行与降级 — `packages/feature-core/src/services/table_browsing.rs` + `query_executor/tests.rs`**
 
 | 用例名 | 断言要点 |
 | --- | --- |

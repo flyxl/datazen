@@ -21,7 +21,7 @@
 | # | 验收点 | 命令 / 期望输出 |
 | --- | --- | --- |
 | A1 | 纯逻辑正确（含复合键与空值） | `npx vitest run src/lib/__tests__/fkNavigation.test.ts src/stores/__tests__/fkNavigationStore.test.ts` → 末尾 `Test Files 2 passed`、`Tests N passed`、**无** `FAIL` 行，退出码 `0` |
-| A2 | Rust 命令契约正确 | `cargo test -p datazen --lib commands::fk_navigation` → `test result: ok.`，且**没有** `FAILED`；命令用例覆盖复合键定位、空列、探测失败、候选上限 |
+| A2 | Rust 判定契约正确 | `cargo test -p datazen-feature-core --lib fk_navigation` + `cargo test -p datazen --lib commands::fk_navigation` → 均 `test result: ok.`，且**没有** `FAILED`；命令用例覆盖复合键定位、空列、探测失败、候选上限 |
 | A3 | 单元格 DOM 与交互 | `npx vitest run src/components/DataTable/__tests__/GridCell.fkArrow.test.tsx` → 全绿；断言 `[data-dt-fk="true"]` 只出现在 FK 组成员格上、NULL 格无箭头 |
 | A4 | 连续旅程（状态机全过程） | `npx vitest run src/components/DataTable/__tests__/fkNavigation.journey.test.tsx` → 全绿；三条 journey（单列跳转 / 返回栈 / 循环引用）逐步断言 |
 | A5 | 真实鼠标与真实取数 | `pnpm e2e:minimal` 后 `e2e/specs/table-fk-navigation.ts` 全通过（TC-FK-001~006，含复合 FK 种子数据） |
@@ -107,7 +107,13 @@
 
 ## 3. 数据结构与接口设计
 
-### 3.1 Rust：新增 IPC 命令的 DTO（本地文件 `src-tauri/src/commands/fk_navigation.rs`，**新增**）
+### 3.1 Rust：IPC 命令的 DTO 与判定逻辑（**分层落点见修订块**）
+
+> **〔契约审计修订 2026-10-21〕T0-4 / R-A**：本节原稿把 DTO **与全部判定逻辑**都放进 `src-tauri/src/commands/fk_navigation.rs`（原估 ~240 行）。**逻辑落点错了**：`find_fk`、目标库/表解析、`unique` 判定、探测与候选值组装都是纯业务逻辑，不依赖 Tauri 运行时，按 R-A 必须落 `packages/feature-core`。
+> - **DTO 留 host 合法**：`ResolveFkTargetsRequest` / `FkTargetRef` / `FkTargetResolution` 放 `src-tauri/src/commands/fk_navigation.rs`（≈60 行，含 `#[tauri::command]` 壳）；
+> - **逻辑进共享层**：`resolve_foreign_key_targets_impl`、`find_fk` 及下面第 1~9 步全部判定落 `packages/feature-core/src/services/fk_navigation.rs`（≈180 行）。句柄经 `feature-core::services::ports::DatabaseToolHost`（`driver_for_connection` / `execute_target`）注入；取数用 `feature-core` 侧的 `QueryExecutor`（见 08 的 T0-5 与 N4：`query_executor` 拆成宿主门面 + 共享实现），**不需要**把 `AppState` 传进 `feature-core`；
+> - 命令壳只做「取值 → 必要校验（`dbSessionId` 存在、请求形状完整）→ 转发 → 映射 `CommandError`」，**判定一行都不留**。
+> - **迁移时必须一并上提的工具**：`embedded_schema_of` 今天是宿主 `src-tauri/src/commands/schema.rs:13` 的**私有 `fn`**（实测未 `pub`）。判定逻辑进 `feature-core` 后拿不到它，因此本册落地时要么把它提升为共享 helper（推荐，`feature-core` 侧一份实现 + 宿主 `use`），要么在 `feature-core` 里重写——**严禁两边各留一份**（这是 Step 3「`embedded_schema_of` 复制一份必然漂移」那条纪律的反面）。会话与句柄走 `DatabaseToolHost` / `SchemaContextSource`（`get_session` / `get_session_config` / `driver_for_session` 已在 `packages/feature-core/src/services/ports.rs`），不需要 `AppState`。
 
 ```rust
 // 宿主惯例（已核实）：`commands/schema.rs` 从 `crate::db` 引 `TableSchema` / `TableDataResult`，
@@ -597,8 +603,8 @@ GraphCell 箭头 onClick
 
 ### Step 1 · 新增 Rust 命令模块
 
-- **文件**：`src-tauri/src/commands/fk_navigation.rs`（新增）。
-- **新增符号**：`ResolveFkTargetsRequest`、`FkTargetRef`、`FkTargetResolution`、`resolve_foreign_key_targets_impl`、`#[tauri::command] async fn resolve_foreign_key_targets`。
+- **文件**：`packages/feature-core/src/services/fk_navigation.rs`（**新增，纯逻辑**）+ `src-tauri/src/commands/fk_navigation.rs`（**新增，DTO + 命令壳**）+ `packages/feature-core/src/services/mod.rs`（登记）。〔契约审计修订 2026-10-21〕T0-4：原稿只写宿主单个文件。
+- **新增符号**：宿主侧 `ResolveFkTargetsRequest`、`FkTargetRef`、`FkTargetResolution`、`#[tauri::command] async fn resolve_foreign_key_targets`；共享层 `resolve_foreign_key_targets_impl(host: &dyn DatabaseToolHost, request: ResolveFkTargetsRequest) -> Result<FkTargetResolution, CommandError>`、`find_fk`、`resolve_unique_flag`。
 - **实现要点**（顺序固定）：
   1. `columns.len() != values.len()` 或任一为空 ⇒ `grid.fk.shapeMismatch`；`values` 含 `Value::Null` ⇒ `grid.fk.valueNull`；
   2. 解析源表定位：`get_session` → `get_session_config` → `database` / `metadata_schema(driver, schema, embedded_schema_of(qualified_table.unwrap_or(table)), config.schema)`（与 `get_table_data_impl` 逐字同序）；
@@ -610,20 +616,27 @@ GraphCell 箭头 onClick
   8. 候选值：`limit = request.limit.unwrap_or(50).clamp(1, 200)`，同一次调用改为 `page_size = limit`、`skip_count = true`；`truncated = rows.len() as u32 == limit`（多取一条更准：用 `limit + 1` 探测后再截断）；
   9. `exists = probe_rows.is_empty() == false`。
 - **零硬编码/纪律**：不做任何库名/驱动 id 判断；生产路径**不使用** `unwrap()` / `expect()`，一律 `ok_or_else` / `map_err`；错误文本不回显列值。
-- **自测**：`cargo test -p datazen --lib commands::fk_navigation`（Step 3 写用例）。
+- **自测**：`cargo test -p datazen-feature-core --lib fk_navigation`（Step 3 写用例）。〔契约审计修订 2026-10-21〕T0-4：用例随逻辑落共享层。
 
 ### Step 2 · 注册命令与复用私有 helper
 
 - **文件**：`src-tauri/src/commands/fk_navigation.rs`（本文件内 `#[tauri::command]`）、`src-tauri/src/commands/mod.rs`（`pub mod fk_navigation;` + `pub use fk_navigation::*;`）、`src-tauri/src/bootstrap/run.rs`（`tauri::generate_handler![…]` 增加 `crate::commands::resolve_foreign_key_targets`）、`src-tauri/src/commands/schema.rs`（把 `embedded_schema_of` 从 `fn` 提升为 `pub(crate) fn`，**只加可见性、不改实现**）。
 - **为什么**：`generate_handler!` 是显式清单（已核实），漏登记 ⇒ 前端 `invoke` 直接 `command not found`，且不会有编译错误；`embedded_schema_of` 的语义已经过测试，复制一份必然漂移。
 - **自测**：`cargo build -p datazen` 通过；`cargo test -p datazen --lib bootstrap` （既有 registration-contract 测试会检查 handler 清单形态）；前端 `invoke` 冒烟放到 Step 14 的 journey 测试里（用 mock 的 invoke 层断言命令名逐字为 `resolve_foreign_key_targets`）。
+- **web 通路（R-E，缺一不可）**：〔契约审计修订 2026-10-21〕R-E：新增 IPC 命令**必须同批补 web 通路**，否则 desktop 能调、web 端 `backend-client` 调不到。四元组：
+
+| 命令名 | `MethodMap` 条目（`packages/backend-client/src/transport.ts`） | `BackendClient` 方法 | 前端封装文件 |
+| --- | --- | --- | --- |
+| `resolve_foreign_key_targets` | `resolve_foreign_key_targets: { params: { request: ResolveFkTargetsParams }; result: FkTargetResolution }` | `resolveForeignKeyTargets(params)` | `src/commands/database.ts`（Step 4） |
+
+本批**不裁定** desktop-only；若将来要裁定，必须由 `00` 给出判定规则，而不是某一册自行省略 `MethodMap`。
 
 ### Step 3 · Rust 单测
 
-- **文件**：`src-tauri/src/commands/fk_navigation/tests.rs`（新增）+ 在 `fk_navigation.rs` 末尾加 `#[cfg(test)] mod tests;`（与 `schema.rs` 的既有范式一致）。
+- **文件**：`packages/feature-core/src/services/fk_navigation.rs` 末尾的 `#[cfg(test)] mod tests`（或同目录 `tests.rs`）+ `src-tauri/src/commands/fk_navigation/tests.rs`（**只留**命令壳形状与错误映射用例）。〔契约审计修订 2026-10-21〕T0-4：判定用例随逻辑落共享层。
 - **新增符号**：`use super::*; use crate::testing::app_state::TestAppState; use crate::testing::mock_driver::MockDriverOptions;` + 第 9 节的用例。
 - **怎么造复合外键**：`MockDriverOptions { table_schema: Some(TableSchema { foreign_keys: vec![ForeignKeyInfo { columns: vec!["a","b"], referenced_table: "parents", referenced_columns: vec!["x","y"], .. }], indexes: vec![IndexInfo { is_unique: true, columns: vec!["x","y"], .. }], .. }), query_rows: vec![…], ..Default::default() }`——`MockDriver::get_table_schema` 会把 `opts.table_schema` 原样返回（已核实），**无需改 `driver-api`**。
-- **自测**：`cargo test -p datazen --lib commands::fk_navigation` 全绿。
+- **自测**：`cargo test -p datazen-feature-core --lib fk_navigation` + `cargo test -p datazen --lib commands::fk_navigation` 均全绿。
 
 ### Step 4 · 前端 IPC 与 DTO
 
@@ -720,8 +733,10 @@ GraphCell 箭头 onClick
 
 | 文件 | 新增/修改 | 职责 | 预估行数 | 是否触及 800 行上限 |
 | --- | --- | --- | --- | --- |
-| `src-tauri/src/commands/fk_navigation.rs` | **新增** | 新命令 DTO + `resolve_foreign_key_targets_impl` + handler | ~240 | 否 |
-| `src-tauri/src/commands/fk_navigation/tests.rs` | **新增** | Rust 单测（复合键定位、探测、上限、错误前缀） | ~260 | 否 |
+| `src-tauri/src/commands/fk_navigation.rs` | **新增** | **DTO + `#[tauri::command]` 壳**（取值 → 校验 → 转发 → 映射 `CommandError`）（〔契约审计修订 2026-10-21〕T0-4） | ~60 | 否 |
+| `packages/feature-core/src/services/fk_navigation.rs` | **新增** | `resolve_foreign_key_targets_impl` + `find_fk` + `unique` 判定（第 1~9 步全部逻辑）；句柄经 `DatabaseToolHost` 注入 | ~180 | 否 |
+| `src-tauri/src/commands/fk_navigation/tests.rs` | **新增** | 命令壳单测（IPC 形状、错误映射） | ~40 | 否 |
+| `packages/feature-core/src/services/fk_navigation.rs`（`#[cfg(test)]`） | **新增** | 判定单测（复合键定位、探测、上限、错误前缀） | ~260 | 否 |
 | `src-tauri/src/commands/mod.rs` | 修改 | 登记模块与再导出 | +2 | 否 |
 | `src-tauri/src/commands/schema.rs` | 修改 | `embedded_schema_of` 提为 `pub(crate)`（仅可见性） | 0（385 → 385） | 否 |
 | `src-tauri/src/bootstrap/run.rs` | 修改 | `generate_handler!` 登记新命令 | +1 | 否 |
@@ -823,9 +838,9 @@ GraphCell 箭头 onClick
 
 ## 9. 测试清单
 
-### 9.1 Rust 单测（`src-tauri/src/commands/fk_navigation/tests.rs`，**新增**）
+### 9.1 Rust 单测（`packages/feature-core/src/services/fk_navigation.rs` 的 `#[cfg(test)]`，**新增**；命令壳用例在 `src-tauri/src/commands/fk_navigation/tests.rs`）
 
-命令：`cargo test -p datazen --lib commands::fk_navigation`
+命令：`cargo test -p datazen-feature-core --lib fk_navigation`（判定）+ `cargo test -p datazen --lib commands::fk_navigation`（壳）
 
 | 用例名 | 断言要点 |
 | --- | --- |

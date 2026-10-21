@@ -8,11 +8,11 @@
 > | --- | --- | --- |
 > | 可写判定 | `packages/driver-api` 的 `ResultRelationCandidate` + 宿主 `src-tauri/src/commands/result_mapping.rs::result_relation_candidate`，**只接受** `SELECT * FROM ident[.ident[.ident]] [LIMIT n [OFFSET m]]` | 一套更宽的「来源信息证明可写回」协议 |
 > | 验证 | `verify_result_mapping` 要求列名**逐个相等**且表有主键，产出 `writableMapping: 'verified'` | 驱动声明 `result_origin` + 宿主判定层 |
-> | 写回 | 前端 `src/stores/panelStore.ts::updateResultCell` 要求 `runtimeBinding` + `source.writableMapping === 'verified'`，调 `commit_query_result_cell`（`src-tauri/src/commands/result_write.rs`），载体 `ResultCellWrite { binding, statementIndex, rowIndex, column, value }` | `CellWrite` 三态 |
+> | 写回 | 前端 `src/stores/panelStore.ts::updateResultCell` 要求 `runtimeBinding` + `source.writableMapping === 'verified'`，调 `commit_query_result_cell`（`src-tauri/src/commands/result_write.rs`），载体 `ResultCellWrite { binding, statementIndex, rowIndex, column, value }`（**只有「写这个值」一个态**） | 三态写意图（「不写 / 写 NULL / 写值」） |
 > | 失效 | 写入成功后 binding 失效，UI 提示 `query.resultEditRequiresRefresh` | 仅「重取数清空选择」 |
 > | 只读原因 | `ResultTableView.tsx` 的 `canEdit = !safeMode && !!onCellEdit && writableMapping === 'verified' && !!runtimeBinding` | 按原因分类的可读文案矩阵 |
 >
-> **因此**：本册的 §3 驱动契约、§5 Step 1–6 大部分是**未采用的历史方案**，不要照着实现；真正需要做的是 §4 的**只读原因文案**与 §6 的边界清单。**`CellWrite` 在代码中不存在，结果网格写回用的是 `ResultCellWrite`（契约不同）**。
+> **因此**：本册的 §3 驱动契约、§5 Step 1–6 大部分是**未采用的历史方案**，不要照着实现；真正需要做的是 §4 的**只读原因文案**与 §6 的边界清单。**代码里没有任何三态写入类型**（`00` §3〔落地校正〕：三态由「列清单成员关系 + `Option<Value>`」承载），结果网格写回用的是 `ResultCellWrite`（契约不同，且**没有**三态）。
 
 > **状态**：目标设计中的**剩余部分**（按原因分类的只读文案矩阵与边界用例）未实现；已实现部分以上表为准。
 
@@ -21,14 +21,14 @@
 已实现的部分不要重做；真正还缺的是下面四件，都是小改动：
 
 1. **只读原因文案矩阵**（§4）：今天 `canEdit === false` 时界面不给原因或只给一句泛化文案。需要按 `safeMode` / `writableMapping !== 'verified'` / 无 `runtimeBinding` / 表达式或 JOIN 来源 / 无主键 五类给出可读原因，走 `query.*` 领域包。
-2. **编辑器通路对齐**（§5 的残留）：`ResultTableView` 的 `onCellEdit` 已是 `Promise<void>` 写回，本册原设计的 `onCellWrite(CellWrite)` 与之**形状不同**，落地时要么适配、要么废弃本册该段。
+2. **编辑器通路对齐**（§5 的残留）：`ResultTableView` 的 `onCellEdit` 已是 `Promise<void>` 写回，本册原设计的 `onCellWrite(<三态值>)`（该命名已随 R-D 校准废弃）与之**形状不同**，落地时要么适配、要么废弃本册该段。
 3. **边界用例**（§6）：`SELECT *` 带 `LIMIT/OFFSET` 可写、带别名/表达式/`JOIN` 拒绝、无主键拒绝、写成功后 binding 失效且再编辑要求刷新——这些是**回归矩阵**，不是新功能。
 4. **与 07/11 的交界**：结果网格**不做** FK 跳转与键集分页（本册 §7 已声明），别在实现时顺手加。
 
-> **依赖**：`00-contracts.md`（§1.4 计划/提交链路与 `fingerprint`/`affected == 1`、§3 `CellWrite` 三态、§4.3 选择状态永不参与写操作定位、§8 错误前缀机制、第 10 节写作模板）；`01-selection.md`（选择与写路径解耦、重取数清空选择）；分册 04（行身份）；`05-editors.md`（编辑态与输入法）；`06-dirty-cells.md`（脏单元格呈现与提交入口）。
+> **依赖**：`00-contracts.md`（§1.4 计划/提交链路与 `fingerprint`/`affected == 1`、§3 三态写入语义（〔落地校正〕）、§4.5 写路径 W-1…W-6、§4.3 选择状态永不参与写操作定位、§8 错误前缀机制、第 10 节写作模板）；`01-selection.md`（选择与写路径解耦、重取数清空选择）；分册 04（行身份）；`05-editors.md`（编辑态与输入法）；`06-dirty-cells.md`（脏单元格呈现与提交入口）。
 > **被谁依赖**：`12-testing.md`（本册新增的表驱动负例进入回归矩阵）；后续任何「查询结果集内写入」能力（批量粘贴、结果集批注、AI 生成变更）都必须先经过本册的判定层。
 > **预估人日**：3.5 人日（判定层与驱动契约 1.5 / 前端只读化与原因解释 1.0 / 测试 1.0）。
-> **不包含**：INSERT 新增行；结果网格内的删除；跨行批量写入（`applyColumnToRows` 语义）；视图与物化视图的可写性；唯一键/伪主键定位；`CellWrite` 在查询结果链路上的完整落地（**属分册 04**，`CellWrite` 是 04 的落地契约）；驱动侧的 SQL 文本解析；事务语义变更。
+> **不包含**：INSERT 新增行；结果网格内的删除；跨行批量写入（`applyColumnToRows` 语义）；视图与物化视图的可写性；唯一键/伪主键定位；三态写意图在查询结果链路上的落地（**不需要**：结果网格只有「写这个值」一个态，三态属 04 的插入/更新链路）；驱动侧的 SQL 文本解析；事务语义变更。
 
 ---
 
@@ -145,22 +145,24 @@ DTO：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContex
 2. `execute_row_change_plan_impl` 要求每条语句 `affected == 1`，否则整批失败并报 `CommandError::Validation`——这是本册唯一可信的多行误伤兜底；
 3. `fingerprint` 防「计划开裂」，预览与提交之间暂存改动变化必须拒绝提交，**禁止降级为重算**。
 
-### 2.7 既有的 `CellWrite` 三态（`00-contracts.md` §3）
+### 2.7 既有的三态写入语义（`00-contracts.md` §3〔落地校正〕+ §4.5）
 
-`CellWrite` 定义为 `Null` / `Value(Value)` / `Unset`，Rust 侧位于 `packages/driver-api/src/types.rs`（实测 **958 行，已超 800**），前端镜像位于 `src/lib/tableChanges.ts`（实测 **227 行**），并配 `cellWriteNull` / `cellWriteValue` / `cellWriteUnset` 构造器；「是否真的改动」一律复用 `valuesEqual`。
+> **〔契约审计修订 2026-10-21〕R-D / N5**：本节原文写了一个「三态枚举」并给了它在 `types.rs` 的行数。**该类型不存在**（Rust 与前端都没有，也不会新增）：三态由「列名是否在 `columns` 切片里」+ `Option<Value>` 承载，前端对应 `changedColumns` 成员关系 + `currentValues: Record<string, Value | null>`。行数也已过时：`packages/driver-api/src/types.rs` 实测 **963** 行、`src/lib/tableChanges.ts` 实测 **228** 行（`wc -l`，2026-10-21）。
 
-**本册的取舍**：查询结果链路的**写意图表达**复用 `CellWrite`，但本册不落地 `06-dirty-cells` 的完整脏标记/提交 UI——本册只保证「不可写回时不可能产生任何写意图，可写回时写意图只经计划管线落地」。
+查询结果链路真正落地的载体是 **`ResultCellWrite { binding, statementIndex, rowIndex, column, value }`**（`src-tauri/src/commands/result_write.rs` + `src/stores/panelStore.ts::updateResultCell`），它**没有**三态：值只能是「写这个值」。因此本册结论更简单——**结果网格链路的写意图只有一个态**，不需要任何三态表达；「是否真的改动」复用 `valuesEqual`。
+
+**本册的取舍**：本册不落地 `06-dirty-cells` 的完整脏标记/提交 UI——本册只保证「不可写回时不可能产生任何写意图，可写回时写意图只经既有 `commit_query_result_cell` 落地」。
 
 ### 2.8 规模体检（决定新代码放哪里）
 
 | 文件 | 实测行数 | 结论 |
 | --- | --- | --- |
 | `src/stores/panelStore.ts` | 728 | **接近上限**，本册只能在其上加最小接线，新逻辑必须另起文件 |
-| `packages/driver-api/src/types.rs` | 958 | **已超限**，新增类型不得继续堆在这里 |
-| `packages/driver-api/src/traits.rs` | 1062 | **已超限**，只允许追加带默认实现的方法 |
+| `packages/driver-api/src/types.rs` | **963**（`wc -l` 2026-10-21） | **已超限**，新增类型不得继续堆在这里 |
+| `packages/driver-api/src/traits.rs` | **1160**（`wc -l` 2026-10-21；〔契约审计修订 2026-10-21〕N5：旧稿 1062） | **已超限**，只允许追加带默认实现的方法 |
 | `src-tauri/src/commands/data.rs` | **640** | 已目录化（`#[path]` 子模块），接近但未越 800；新命令仍应另起模块 |
 | `src/windows/connection/ContentViewDrawers.tsx` | 228 | 有余量 |
-| `src/locales/en/query.ts` | 424 | 有余量 |
+| `src/locales/en/query.ts` | **442**（`wc -l` 2026-10-21） | 有余量（〔契约审计修订 2026-10-21〕N3：旧稿把 **424** 写在 `src/locales/en/query.ts` 名下，而 `src/commands/query.ts` 实测只有 **141** 行；本册多处把两者混为一谈，已逐处校正） |
 
 ---
 
@@ -281,7 +283,7 @@ pub struct ResultOriginDetail {
 | `deduplicated` / `aggregated` / `set_operation` / `has_derived_source` | 四个独立的一票否决位 | 任一置位 → 只读 |
 | `columns` | 逐列来源 | 长度不匹配或含重复 `column` → 整体降级只读 |
 
-**`ResultOrigin` 采用 `tag = "kind"` + `content = "detail"`**，理由与 `CellWrite` 相同：不要两层 `untagged`，否则 `{"detail": null}` 类输入无法判定。
+**`ResultOrigin` 采用 `tag = "kind"` + `content = "detail"`**，理由与 `00` §3 冻结的带标签枚举形态相同：不要两层 `untagged`，否则 `{"detail": null}` 类输入无法判定。
 
 ### 3.2 新增 trait 方法（带默认实现）
 
@@ -312,10 +314,10 @@ fn describe_result_origin(
 
 ### 3.3 宿主判定层（Rust，纯函数）
 
-**落点**：新增文件 `src-tauri/src/services/result_edit.rs`，并在 `src-tauri/src/services/mod.rs` 登记。
+**落点**：新增文件 `packages/feature-core/src/services/result_edit.rs`，并在 `packages/feature-core/src/services/mod.rs` 登记。〔契约审计修订 2026-10-21〕T0-8：原稿落 `src-tauri/src/services/`，判��层是纯函数，按 R-A 落共享层。
 
 ```rust
-// 新增：src-tauri/src/services/result_edit.rs
+// 新增：packages/feature-core/src/services/result_edit.rs（〔契约审计修订 2026-10-21〕T0-8）
 
 /// 判定结论中「不可写回」的原因码。前端据此选 i18n 文案，
 /// 不把任何面向用户的字符串放进 IPC。
@@ -553,6 +555,8 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 4. **别名会让文本解析定位错列**：`SELECT id AS order_id` 时按结果列名写回会写成 `SET order_id = ...`（错列或不存在）；`FROM orders o` 时按解析出的 token 写回会写成 `SET ... UPDATE o`（错表名）。
 5. **正确的位置在驱动**：只有驱动持有 prepared statement / statement handle 的元数据，能给出权威的列来源。因此本册把这件事**定义为驱动契约**，并让默认实现明说「不知道」。
 
+> **〔契约审计修订 2026-10-21〕T2-5**：本节结论不变（宿主**不做** SQL 文本解析），但要补一条落地纪律——**不新增任何独立的「解析模块」**。今天唯一在解析 `SELECT * FROM ident[.ident[.ident]] [LIMIT/OFFSET]` 的代码是宿主 `src-tauri/src/commands/result_mapping.rs`（`result_relation_candidate` + `verify_result_mapping`，已被 `commit_query_result_cell` 生产使用）；需要扩展识别能力时**扩展这个既有文件**（或它迁移到 `feature-core` 后的对应文件，迁移是否发生见 Step 3 的登记与 §11 Q-8），不要新建第二个 parser —— 两个 parser 对同一句 SQL 给出不同答案，比一个不完整的 parser 危险得多。
+
 ### 3.8 为什么不能靠「用户说这是单表查询」
 
 1. 用户对「单表」的判断基于**他看到的 SQL 文本**，而文本可能含 JOIN、CTE、视图展开——用户认为的「一张表」与数据库眼里的行来源不是一回事。
@@ -642,16 +646,27 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 - **为什么**：可写回性的全部原始输入只能来自驱动（§3.7、§3.8）。默认返回不可判定保证零回归。
 - **怎么自测**：`cargo test -p datazen-driver-api --lib result_origin` —— 断言默认实现返回 `Undeterminable(NotImplemented)`；断言语义化往返（serde）不丢字段；断言 `{"kind":"undeterminable","detail":"notImplemented"}` 能正确反序列化。
 
-### Step 2 · 宿主判定层 + 表驱动测试
+### Step 2 · 判定层 + 表驱动测试（落共享层）
 
-- **改哪个文件**：新增 `src-tauri/src/services/result_edit.rs`；改 `src-tauri/src/services/mod.rs`。
+> **〔契约审计修订 2026-10-21〕T0-8 / R-A**：本节原稿把判定层落在 `src-tauri/src/services/result_edit.rs`。**落点错了**：`evaluate_result_editability` 是纯函数（无 IO、无 Tauri 类型），按 R-A 分层规则必须落 `packages/feature-core`，否则 web 端拿不到同一套判定。改落 `packages/feature-core/src/services/result_edit.rs`（`services/` 下已有 `db_tools.rs` / `ai/tools.rs` 等先例），`src-tauri` 侧只在命令壳里 `use`。
+
+- **改哪个文件**：新增 `packages/feature-core/src/services/result_edit.rs`；改 `packages/feature-core/src/services/mod.rs`（登记模块与再导出）；`src-tauri` 侧**不新增**服务文件。
 - **加什么符号**：`evaluate_result_editability`、`ResultEditability`、`GridReadOnlyReason`、`IdentityColumn`。
 - **为什么**：判定必须是**一个纯函数**——可测、可复现、无 IO，才能穷举所有形态。判定放在服务层而非命令层，命令只做桥接。
-- **怎么自测**：`cargo test -p datazen --lib result_edit` —— 表驱动负例逐条（见 §9），每条断言 `reason` 精确值；正向用例断言 `identity_columns` 是「结果列名 → 源列名」而非结果列名重复。
+- **怎么自测**：`cargo test -p datazen-feature-core --lib result_edit` —— 表驱动负例逐条（见 §9），每条断言 `reason` 精确值；正向用例断言 `identity_columns` 是「结果列名 → 源列名」而非结果列名重复。
 
 ### Step 3 · IPC 命令 + 错误前缀
 
-- **改哪个文件**：新增 `src-tauri/src/commands/result_origin.rs`；改 `src-tauri/src/commands/mod.rs`；改 `src/commands/query.ts`（前端 wrapper）。
+> **〔契约审计修订 2026-10-21〕T0-9 / R-A / R-E**：命令壳留 `src-tauri`（`#[tauri::command]` 只做「取值 → 必要校验 → 转发 feature-core → 映射 `CommandError`」），**判定与渲染逻辑一律进 `packages/feature-core`**。**迁移边界登记（需协调者裁定，见 §11 Q-4）**：既有的 `src-tauri/src/commands/result_mapping.rs`（`result_relation_candidate` / `verify_result_mapping`，SQL 文本解析 + 列名逐对比较）**是否随本册迁进 feature-core 尚未裁定**——它既被 `commit_query_result_cell` 使用，也被结果集来源判定使用，迁移会牵动 04/10 的共同入口；本批**不动它**，只登记（见 §11 Q-8）。
+
+- **改哪个文件**：新增 `src-tauri/src/commands/result_origin.rs`（**薄壳**）；改 `src-tauri/src/commands/mod.rs`；改 `src/commands/query.ts`（前端 wrapper，现 **141** 行）；**并按 R-E 同时补 web 通路**：`packages/backend-client/src/transport.ts` 的 `MethodMap` + `BackendClient` 接口 + `src/commands/query.ts` 的封装。
+- **每个新命令的四元组（R-E，缺一不可）**：
+
+| 命令名 | `MethodMap` 条目（`packages/backend-client/src/transport.ts`） | `BackendClient` 方法 | 前端封装文件 |
+| --- | --- | --- | --- |
+| `resolve_result_origin` | `resolve_result_origin: { params: ResolveResultOriginRequest; result: ResultOrigin }` | `resolveResultOrigin(req)` | `src/commands/query.ts` |
+| `preview_result_cell_change` | `preview_result_cell_change: { params: ResultCellChangeRequest; result: ResultCellChangePreview }` | `previewResultCellChange(req)` | `src/commands/query.ts` |
+
 - **加什么符号**：`resolve_result_origin`、`preview_result_cell_change`、`ResultCellChangeRequest`；前端 `resolveResultOrigin`、`previewResultCellChange`。
 - **为什么**：宿主必须在**生成 SQL 之前**做一次权威校验（§3.4 铁律）；错误前缀让前端能识别而不需要 `CommandError` 带 `code`。
 - **怎么自测**：Rust 单测断言 `row_identity` 为空 / 含 `None` / `row_count != 1` / 键集合不一致 四种输入均返回 `CommandError::Validation` 且消息以对应前缀开头；断言这四种情况下**没有**任何 SQL 被渲染。
@@ -683,7 +698,7 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 
 ### Step 7 · i18n
 
-- **改哪个文件**：`src/locales/en/query.ts`（424 行，有余量）。**不改 `en.ts`**（它只有一行再导出，改它无效），不动其他语言，不新建域名。
+- **改哪个文件**：`src/locales/en/query.ts`（实测 **442** 行，`wc -l` 2026-10-21，有余量）。〔契约审计修订 2026-10-21〕N3：旧稿误写 424。**不改 `en.ts`**（它只有一行再导出，改它无效），不动其他语言，不新建域名。
 - **加什么符号**：见 §8 的 key 清单（全部为 `query.` 前缀的点号扁平 key）。
 - **为什么**：原因必须是人能看懂的话，而不是一个灰按钮。
 - **怎么自测**：`pnpm typecheck`；人工检查每个 `GridReadOnlyReason` 都有对应 key。
@@ -710,17 +725,17 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 | `packages/driver-api/src/result_origin.rs` | **新增** | 结果来源契约类型（`ResultOrigin` 及配套枚举/结构体） | ~150 | 否（新文件） |
 | `packages/driver-api/src/lib.rs` | 修改 | 登记新模块与再导出 | ~3 | 否（远低于上限） |
 | `packages/driver-api/src/traits.rs` | 修改 | 追加 `describe_result_origin` 默认实现 | ~15 | **已 1062 行，本就超限**；本次仅追加带默认实现的方法，不加剧问题，拆分另立任务 |
-| `src-tauri/src/services/result_edit.rs` | **新增** | 纯函数判定层 + 单测 | ~260（含 `#[cfg(test)]`） | 否（新文件） |
-| `src-tauri/src/services/mod.rs` | 修改 | 登记 `result_edit` | ~2 | 否 |
-| `src-tauri/src/commands/result_origin.rs` | **新增** | `resolve_result_origin` / `preview_result_cell_change` + 写前校验 | ~220（含单测） | 否（新文件） |
+| `packages/feature-core/src/services/result_edit.rs` | **新增** | 纯函数判定层 + 单测（〔契约审计修订 2026-10-21〕T0-8：原写 `src-tauri/src/services/`） | ~260（含 `#[cfg(test)]`） | 否（新文件） |
+| `packages/feature-core/src/services/mod.rs` | 修改 | 登记 `result_edit` | ~2 | 否 |
+| `src-tauri/src/commands/result_origin.rs` | **新增** | **只做命令壳**（取值 → 校验 → 转发 feature-core → 映射 `CommandError`）；写前校验逻辑在 feature-core（〔契约审计修订 2026-10-21〕T0-9） | ~60 | 否（新文件） |
 | `src-tauri/src/commands/mod.rs` | 修改 | 登记新命令模块 | ~2 | 否 |
-| `src/commands/query.ts` | 修改 | 两个 IPC wrapper | ~25 | 否 |
+| `src/commands/query.ts` | 修改 | 两个 IPC wrapper（实测 **141** 行，`wc -l` 2026-10-21） | ~25 | 否 |
 | `src/lib/resultEditability.ts` | **新增** | 前端镜像类型 + `resolveGridEditability` + 文案 key 映射 | ~180 | 否（新文件） |
 | `src/lib/gridErrors.ts` | **修改（追加）** | 01 已建骨架；本册按契约 §8.1 三步追加 6 个只读原因码，**禁止整文件覆盖** | +20 | 否 |
 | `src/stores/panelResultEdit.ts` | **新增** | 判定缓存与结果网格编辑状态切片 | ~140 | 否（新文件） |
 | `src/stores/panelStore.ts` | 修改 | 最小接线（暴露切片入口 / 复用既有 `updateResultCell`） | **≤ 7** | 〔合并后校正〕**实测 793 行 → 只剩 7 行余量**；超过 7 行即视为失败，须先把它拆出（例如 `resultEdit` 切片）再接线 |
 | `src/windows/connection/ContentViewDrawers.tsx` | 修改 | `handleDetailFieldEdit` 的 `query` 分支改为判定驱动；只读出口 | ~55 | 否（实测 228 行） |
-| `src/locales/en/query.ts` | 修改 | 追加只读原因与错误文案 key | ~30 | 否（实测 424 行） |
+| `src/locales/en/query.ts` | 修改 | 追加只读原因与错误文案 key | ~30 | 否（实测 **442** 行，`wc -l` 2026-10-21；〔契约审计修订 2026-10-21〕N3：旧稿写 424） |
 | `src/lib/__tests__/resultEditability.test.ts` | **新增** | 行级合并判定单测 | ~140 | 否 |
 | `src/lib/__tests__/gridErrors.test.ts` | **修改（追加）** | 01 已建；本册只增本册前缀的断言用例，**禁止重写整个测试文件** | +30 | 否 |
 | `src/windows/connection/__tests__/ContentViewDrawers.resultReadOnly.test.tsx` | **新增** | 只读时禁止编辑的组件测试 | ~160 | 否 |
@@ -926,3 +941,4 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 | **Q-5** | **判定结果要不要缓存、缓存多久？** | 建议：**内存缓存，仅用于渲染**；任何写回前必须复验。缓存随结果集替换、SQL 重新执行、结果 tab 切换、面板关闭失效；不落盘、不跨会话复用 |
 | **Q-6** | **`WHERE` 里的子查询是否真的安全？** 本册按「列来源未受影响」判为不置位 `has_derived_source` | 建议保持当前结论（B-5），但要求驱动在文档中明确其子查询检测范围，并在负例表里各留一条 `WHERE` 子查询的正向用例，防止驱动实现者把「任何子查询」都置位导致过度只读 |
 | **Q-7** | **只读原因用哪种呈现？** 单元格级 tooltip / 结果网格顶部一次性横幅 / 状态栏提示 | 建议：**单元格 hover tooltip + 首次进入只读结果时的一次性轻量提示**，不用模态。理由：原因需要「可发现但不可打扰」；模态会打断「连续执行多条 SQL」的主流程 |
+| **Q-8** | **`result_mapping.rs` 要不要迁进 `packages/feature-core`？**（〔契约审计修订 2026-10-21〕T0-9 登记）它是宿主里唯一在解析 `SELECT *` 并比对列来源的模块，被 `commit_query_result_cell`（10）与结果集来源判定共同使用。 | **建议：本批只登记、不迁**。迁移会同时改动 04/10 的实现入口与测试落点（`cargo test -p datazen --lib result_mapping` → `-p datazen-feature-core`），而在本册剩余范围内（只读文案矩阵）它一行都不用改——为一次零收益的搬迁冒跨册风险不划算。若协调者决定「所有 SQL 形态判定都必须进共享层」，则把它与 04 的 `change_set.rs` 一起迁，并保证 `MethodMap` / `BackendClient` 通路同步（R-E）。 |

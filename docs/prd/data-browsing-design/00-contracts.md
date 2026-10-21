@@ -20,7 +20,7 @@
 | **变更计划 / plan** | 提交前由后端生成的、带 `fingerprint` 的不可变计划，类型是 `RowChangePlan` |
 | **行身份 / row identity** | 由原值快照构成的行主键标识（`RowIdentity`），是写操作的唯一定位依据；UI 行号只是临时锚点 |
 | **单元坐标 / cell coord** | `(rowIndex, columnName)`。注意是**列名**不是列下标——本项目网格的行数据是位置数组，列下标会随 `visibleColumns` 变化而失去稳定含义 |
-| **写意图 / CellWrite** | 本册第 3 节定义的三态写入意图：写 NULL、写具体值、不写（交给数据库默认值） |
+| **写意图三态** | 本册第 3 节定义：写 NULL、写具体值、不写（`Unset`）。**没有对应类型**——三态由「列是否在切片/键里」+ `Option<Value>` 承载（交给数据库默认值） |
 | **能力声明 / capability** | 驱动通过元数据或 trait 方法声明「我支持什么」，宿主据此开合 UI 插槽，绝不在宿主里按驱动名硬编码 |
 
 **两个必须分清的概念**（混用会导致严重缺陷）：
@@ -390,17 +390,22 @@ Rust 侧结构体已标 `#[serde(rename_all = "camelCase")]`，前端用 camelCa
 
 ---
 
-## 3. `CellWrite` 三态契约（本次架构改动的核心）
+## 3. 三态写入契约（`Unset` / `NULL` / 值，本次架构改动的核心）
 
-> **〔落地校正 2026-10-21，Wave 1 `insert-backend`〕本节的三态语义保留，但 `CellWrite` 这个新类型不进 `driver-api`。**
-> 实装复核了主干的写路径演进：`DatabaseDriver` 已经只有**一条**参数化写路径——`build_update_statement` / `build_delete_statement` 返回 `BoundSqlStatement { sql, parameters }`，值**从不拼进 SQL 文本**。在这种情况下再造一个 `build_insert_sql(&[(&str, CellWrite)]) -> String` 的拼字符串接缝，等于给同一件事开第二条通路，且这条通路会把值写回 SQL 文本。
-> **因此冻结的落地形态是**：
-> - 驱动方法名为 `build_insert_statement(&self, table: &str, columns: &[(&str, Option<Value>)]) -> Result<BoundSqlStatement, DriverError>`（与 update/delete 同构，见 §5.1）；
-> - **三态由两件事共同承载**：列**是否出现在 `columns` 切片里** = `Unset`（不写，用库默认）；出现且 `Some(Value::Null)` = 写 `NULL`；出现且 `Some(v)` = 写 `v`；
-> - `changed_columns` 的语义不变（§3.4 的派生规则仍然有效），只是它不再由 `CellWrite` 数组物化而来。
-> 下游分册（03 的粘贴矩阵、05 的 NULL/DEFAULT 快捷项）按**这个形态**编码，**不要**再引用 `CellWrite` 类型；`00-contracts` 里凡写 `CellWrite` 的位置一律按本节替换。
+> **〔契约审计修订 2026-10-21〕T2-3 / R-D：本节已按落地形态重写，`CellWrite` 类型不再存在。**
+> 早期稿定义了一个挂在 `driver-api` 上的 `CellWrite` 枚举和 `build_insert_sql(&[(&str, CellWrite)]) -> String` 的拼字符串接缝。实装复核否掉了它：`DatabaseDriver` 已经只有**一条**参数化写路径（`build_update_statement` / `build_delete_statement` / `build_insert_statement` 都返回 `BoundSqlStatement { sql, parameters }`，值**从不拼进 SQL 文本**）。再造一条拼字符串通路等于把值写回 SQL 文本，是安全倒退。
+> **冻结的形态**：
+> - 驱动方法：`build_insert_statement(&self, table: &str, values: &[(&str, Option<Value>)]) -> Result<BoundSqlStatement, DriverError>`（与 update/delete 同构，见 §5.1）；
+> - **三态由「列是否出现在 `values` 切片里」+ `Option<Value>` 共同承载**：
+>   | 意图 | 编码 |
+>   | --- | --- |
+>   | `Unset`（不动这列 / 让库填默认） | 列**不出现**在切片里 |
+>   | 写 `NULL` | 出现，且值为 `Some(Value::Null)` |
+>   | 写具体值 | 出现，且值为 `Some(v)` |
+> - **不引入任何新 Rust 类型、不引入任何新 TS 类型**：TS 侧沿用既有的 `value?: Value`（`undefined` = 不写，`null` = 写 NULL），列存在性由 `changed_columns` 表达。
+> 下游分册（03 的粘贴矩阵、05 的 NULL/DEFAULT 快捷项）一律按此编码。
 
-### 3.1 为什么必须引入
+### 3.1 为什么必须区分三态
 
 今天的写路径用 `Option<Value>` 表达「要不要写这一列」：
 
@@ -408,7 +413,7 @@ Rust 侧结构体已标 `#[serde(rename_all = "camelCase")]`，前端用 camelCa
 pub struct CellUpdate { pub column: String, pub value: Option<Value> }
 ```
 
-`Option<Value>` 只有两态，而 SQL 写入真实需要**三态**，因此今天存在无法表达的语义空洞：
+`Option<Value>` 只有两态，而 SQL 写入真实需要**三态**，因此存在无法表达的语义空洞：
 
 | 用户意图 | SQL 语义 | 今天能否表达 |
 | --- | --- | --- |
@@ -416,84 +421,54 @@ pub struct CellUpdate { pub column: String, pub value: Option<Value> }
 | 把这一列写成某个值 | `SET c = 'x'` | ✅ `Some(Value::String("x"))` |
 | **不动这一列**（UPDATE）/ **让数据库填默认值**（INSERT） | 该列不出现在语句里 | ❌ **无法表达** |
 
-后果（都是今天可复现的）：
+后果（都是可复现的）：
 
 1. **INSERT 无法省略列**：想插一行、让自增主键与带 `DEFAULT` 的列自己填值，做不到——只能被迫给所有列显式赋值，于是自增列、生成列、`DEFAULT now()` 全部失效或报错。
 2. **`None` 与 `Some(Value::Null)` 语义重合**：读代码的人无法判断「没写」还是「写 NULL」，`changed_columns` 与实际写入列在边界情况下可能不一致。
 3. **UPDATE 的空值歧义**：把一列从有值改为 NULL 与「这一列没被改动」在数据结构上只差一个 `Option` 包装，任何一处丢包都会静默变成「不改这一列」。
 
-### 3.2 Rust 定义（新增，放在 `packages/driver-api/src/types.rs`）
+### 3.2 编码规则（唯一权威）
 
-```rust
-/// 一次列写入的意图。三态是刻意的：`Null` 与 `Unset` 在 SQL 里是两件不同的事。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", tag = "kind", content = "value")]
-pub enum CellWrite {
-    /// 该列出现在语句中，写入 SQL NULL：`SET c = NULL` / `INSERT ... VALUES (NULL)`。
-    Null,
-    /// 该列出现在语句中，写入此值。
-    Value(Value),
-    /// 该列**不出现在语句中**：
-    /// - UPDATE：这一列不被触碰。
-    /// - INSERT：由数据库自己填（DEFAULT / 自增 / 生成列 / 触发器）。
-    Unset,
-}
-```
+| 层 | `Unset` | `NULL` | 值 |
+| --- | --- | --- | --- |
+| 前端 `PendingRowChange.changed_columns`（`Record<string, Value>`） | **键不存在** | 键存在、值为 `null` | 键存在、值为具体值 |
+| 前端编辑意图（05） | `undefined` | `null` | 值 |
+| 宿主 `RowChangePlan` 的 `set_columns` / `values` 切片 | 不出现在切片里 | `Some(Value::Null)` | `Some(v)` |
+| 生成的 SQL | 该列不进 `SET` / 不进列清单 | `SET c = ?`，绑定 `NULL` | `SET c = ?`，绑定 `v` |
 
-**线上形态**（前端与 Rust 之间、宿主与驱动之间相同）：
+**禁止**用「补 `NULL` 凑齐列」的方式绕过 `Unset`——那正是自增列失效的根因。
 
-```json
-{ "kind": "null" }
-{ "kind": "value", "value": 42 }
-{ "kind": "unset" }
-```
-
-> `tag = "kind"` + `content = "value"` 生成的就是上面这种 `{ kind, value }` 形状。**不要**改用 `untagged`：`Value` 本身已经是 untagged 枚举，两层 untagged 会让 `{"value": null}` 这类输入无法判定，反序列化会静默选错分支。
-
-### 3.3 前端镜像定义（新增，放在 `src/lib/tableChanges.ts`）
-
-```ts
-export type CellWrite =
-  | { kind: 'null' }
-  | { kind: 'value'; value: Value }
-  | { kind: 'unset' };
-
-/** 便捷构造器，避免各处手写字面量（也方便以后加字段）。 */
-export const cellWriteNull = (): CellWrite => ({ kind: 'null' });
-export const cellWriteValue = (value: Value): CellWrite => ({ kind: 'value', value });
-export const cellWriteUnset = (): CellWrite => ({ kind: 'unset' });
-```
-
-### 3.4 从 `CellWrite` 派生 `changed_columns` 的规则
+### 3.3 从三态派生 `changed_columns` 的规则
 
 `changed_columns` 是「本次语句要写的列」的权威列表，**必须**由写意图派生，而不是反过来：
 
-| `CellWrite` | 是否进入语句列清单 | 是否计入 `changed_columns` | 是否算「有改动」 |
+| 意图 | 是否进入语句列清单 | 是否计入 `changed_columns` | 是否算「有改动」 |
 | --- | --- | --- | --- |
 | `Unset` | 否 | **否** | 否 |
-| `Null` | 是 | 是 | 是（且当前值与 `null` 不等时才真正是改动） |
-| `Value(v)` | 是 | 是 | 是（且 `v` 与原值不相等时才真正是改动） |
+| `NULL` | 是 | 是 | 是（且当前值不是 `null` 时才真正是改动） |
+| 值 `v` | 是 | 是 | 是（且 `v` 与原值不相等时才真正是改动） |
 
 判定「是否真的改动」一律复用既有的 `valuesEqual`（`src/lib/tableChanges.ts`）与后端的等价比较逻辑，**禁止**用 `===` 或 `JSON.stringify` 另写一份（`valuesEqual` 内部就是稳定的 JSON 序列化比较，专为 `NaN` / 对象键序这类情况设计）。
 
-### 3.5 各驱动默认实现的语义要求
+### 3.4 各驱动默认实现的语义要求
 
-新增的 `build_insert_sql`（第 5 节）默认实现必须遵守：
+`build_insert_statement`（第 5 节）默认实现必须遵守：
 
-1. **只列 `Null` 与 `Value` 的列**，`Unset` 的列完全不出现在列清单与 `VALUES` 中。
-2. **一列都没有时**（全部 `Unset`）默认产出 `INSERT INTO t DEFAULT VALUES`。
-   > 这是**不通用**的写法，因此这是「默认实现」而非「唯一实现」：MySQL 不支持 `DEFAULT VALUES`，须由 MySQL 驱动覆盖为 `INSERT INTO t () VALUES ()`。这类方言差异**属于驱动**，不得在宿主里按驱动名分支。
-3. **不得**为了「凑齐列」而给 `Unset` 列补 `NULL` —— 那正是今天自增列失效的原因。
+1. **切片里只出现要写的列**；`Unset` 的列完全不出现在列清单与 `VALUES` 中。
+2. **切片为空时**默认产出 `INSERT INTO t DEFAULT VALUES`。
+   > 这是**不通用**的写法，因此是「默认实现」而非「唯一实现」：MySQL 不支持 `DEFAULT VALUES`，须由 MySQL 驱动覆盖为 ``INSERT INTO `t` () VALUES ()``（已实装并有 `packages/drivers/mysql/tests/insert_defaults.rs` 覆盖）。这类方言差异**属于驱动**，不得在宿主里按驱动名分支。
+3. **不得**为了「凑齐列」而给 `Unset` 列补 `NULL`。
 4. 自增 / 生成列在 INSERT 时**必须**是 `Unset`，除非用户显式填了值。
 
-### 3.6 校验规则（宿主必须拒绝的组合）
+### 3.5 校验规则（宿主必须拒绝的组合）
 
 | 组合 | 期望行为 |
 | --- | --- |
-| `Value(v)`，而该列是生成列（`is_auto_increment` 或有 `default_value` 的只读列）且用户未显式改 | 应保持 `Unset`；若确实显式改了则允许，交由数据库报错 |
+| 值写在生成列（`is_auto_increment` 或只读）上且用户未显式改 | 应保持 `Unset`；若确实显式改了则允许，交由数据库报错 |
 | 一行的所有列都是 `Unset` 且 `delete_marked == false` | 该行无实际改动，**不得**进入计划（空语句会污染影响行数校验） |
 | `delete_marked == true` 同时又给出非 `Unset` 列写入 | 拒绝，报 `grid.commit.conflictingIntents`〔契约审计修订 2026-10-21〕T1-12：**代码侧尚未实现**——`build_row_change_plan` 只校验"changed_columns 里的列必须有 current_values"，`delete_marked` 行直接走 delete 分支、列写入被**静默丢弃**。本行是契约要求，02/04/06 必须补校验，且拒绝发生在 SQL 生成之前 |
-| 主键列出现在 `Unset` 中，而该行是 UPDATE | 合法：主键列本来就不该改；行定位走 `row_identity`，与写入列无关 |
+| 新增行（`insert_marked == true`）同时携带 `row_identity` / `original_values` | 拒绝，报 `grid.commit.conflictingIntents`（`insert-backend` 已实装） |
+| 主键列是 `Unset` 而该行是 UPDATE | 合法：主键列本来就不该改；行定位走 `row_identity`，与写入列无关 |
 
 ---
 
@@ -768,9 +743,9 @@ CellCoord.rowIndex
 fn build_insert_statement(
     &self,
     table: &str,
-    columns: &[(&str, Option<Value>)],
+    values: &[(&str, Option<Value>)],   // 〔契约审计修订 2026-10-21〕参数名与实装对齐（原写 columns）
 ) -> Result<BoundSqlStatement, DriverError> {
-    sql_builder::build_insert_statement(&LegacySqlDialect::new(self), self.max_bound_parameters(), table, columns)
+    sql_builder::build_insert_statement(&LegacySqlDialect::new(self), self.max_bound_parameters(), table, values)
 }
 
 /// 方言的新增行主键回填子句；`None` 表示该方言无法回填。
@@ -1323,7 +1298,7 @@ desktop 与 web 共用同一套 domain service。任何**新增**的 Rust 业务
 
 **引用副本的精度要求（分两档，写分册时必须遵守）**：分册可以在自己的正文里重述契约定义，但按用途分两档：
 
-- **落地该契约的分册**（如 04 是 `CellWrite` 的落地册）：其正文里的定义必须与契约**逐字一致，包括文档注释**。注释里往往带着落地必需的细节——`CellWrite::Unset` 的注释写明了「INSERT 时由数据库自己填（DEFAULT / 自增 / 生成列 / 触发器）」，这正是 INSERT 分册必须让读者看到的信息，压掉它就等于丢掉了语义。
+- **落地该契约的分册**（如 04 是插入三态的落地册）：其正文里的定义必须与契约**逐字一致，包括文档注释**。注释里往往带着落地必需的细节——`Unset` 的注释写明了「INSERT 时由数据库自己填（DEFAULT / 自增 / 生成列 / 触发器）」，这正是 INSERT 分册必须让读者看到的信息，压掉它就等于丢掉了语义。
 - **仅消费该契约的分册**：可以压掉注释，但**变体集合、声明顺序、字段类型必须完全一致**，并且必须标注「照抄契约 §X，本册不改」。
 
 自查方式：对同名代码块做逐字比对（见总纲 §8 的一致性纪律）。

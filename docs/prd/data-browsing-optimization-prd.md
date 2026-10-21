@@ -161,7 +161,7 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 | ID | 缺陷 | 证据 | 影响 |
 |---|---|---|---|
 | D-1 | 网格无「已修改」标记 | `DataTableProps.editBuffer` 声明后未被解构；`stageCellChange` 直接改写 `rows`，视觉上与已提交值无差别 | 用户无法分辨哪些值尚未落库，误以为已生效 |
-| D-2 | 无 INSERT 通路 | `RowChangePlan` 只有 `updates`/`deletes`；driver trait 无 `build_insert_sql` | 「造数据」场景必须切到 SQL 编辑器 |
+| D-2 | 无 INSERT 通路 | `RowChangePlan` 只有 `updates`/`deletes`；driver trait 无插入 builder（本批新增 `build_insert_statement`） | 「造数据」场景必须切到 SQL 编辑器 |
 | D-3 | 无剪贴板入口 | `DataTable` 无 `onPaste`；`TableView` 无 paste 绑定 | 外部批量数据无法进入网格 |
 | D-4 | 编辑器非类型感知 | `EditableCell.coerceAndCommit` 仅强转子串；布尔要手打 `true`，日期无选择器，枚举无下拉，JSON 需整行文本 | 输入错误率高，错误推迟到提交时报 |
 | D-5 | 无外键跳转 | `DataTable` / `TableView` 内无外键引用；FK 信息只在 `ForeignKeysView` / ER 图 | 关联排查要手抄 ID 再开新标签页 |
@@ -346,7 +346,7 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 | C-13 | `⌘+S` 提交 / `⌘+⇧+P` 预览 / `⌘+⇧+Delete` 丢弃 | ✅ | 🟡 | P0 | 有按钮，无快捷键 |
 | C-14 | `⌘+Z`/`⌘+⇧+Z` 撤销重做变更 | ✅［文档］ | 🟡 | P1 | 有全量 `rollbackPendingChanges`，无单步撤销 |
 | C-15 | 布尔开关 / 日期选择器 / 枚举下拉 | 🟡［存疑］ | ❌ | P0 | TablePlus 文档只明确日期选择器与 JSON 美化；枚举/布尔未记载，**按「应有」立项而非「对标」** |
-| C-16 | Set Value：`EMPTY`/`NULL`/`DEFAULT`/`NOW()`/`CURRENT_TIMESTAMP` | ✅ | 🟡 | P0 | 仅 `Set NULL`；三态区分需 DB-04 的 `CellWrite` |
+| C-16 | Set Value：`EMPTY`/`NULL`/`DEFAULT`/`NOW()`/`CURRENT_TIMESTAMP` | ✅ | 🟡 | P0 | 仅 `Set NULL`；三态区分需 DB-04 的写列清单语义（`changed_columns` 成员关系 + `Option<Value>`；〔契约审计修订 2026-10-21〕R-D 不引入新类型） |
 | C-17 | 从文件加载值到二进制列 | ✅ | ❌ | P2 | |
 | C-18 | 多行同字段批量编辑 | ✅ | 🟡 | P0 | 仅抽屉多选路径，网格内不可 |
 | C-19 | Quick Look（中键 / `⌘+Return` / 右键） | ✅ | 🟡 | P0 | 仅中键且限抽屉内，无 `⌘+Return`、无网格右键入口 |
@@ -613,8 +613,8 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 - 前端 `src/lib/tableChanges.ts`：
   ```ts
   export interface PendingInsert {
-    draftId: string;                        // 仅 UI 关联用
-    values: Record<string, CellWrite>;      // 未填列不出现
+    draftId: string;                        // 仅 UI 关联用，不上线
+    values: Record<string, Value | null>;   // 未填列不出现（键不存在 = 不写）；null = 写 SQL NULL
   }
   export interface RowChangePlan {
     /* …既有字段… */
@@ -623,13 +623,12 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
   ```
 - 驱动契约 `packages/driver-api`：
   ```rust
-  /// Build `INSERT INTO … (cols) VALUES (…)` for a single-row insert.
-  fn build_insert_sql(&self, table: &str, columns: &[(String, CellWrite)]) -> String {
-      sql_text::build_insert_sql(self, table, columns)
-  }
+  /// 构造单行插入；值与 SQL 文本分离（与 build_update_statement / build_delete_statement 同构）。
+  fn build_insert_statement(&self, table: &str, columns: &[(&str, Option<Value>)])
+      -> Result<BoundSqlStatement, DriverError>;
   ```
-  默认实现与 `build_update_sql` 同址（`traits/sql_text.rs`）；方言特权由驱动覆盖（MySQL、SQL Server、ClickHouse 的批量语义，MongoDB/Redis 走 `execute_command`）。
-- 提交实现 `src-tauri/src/commands/data.rs`：`inserts` 进入同一事务循环；`RowCommitStatementResult.operation` 增加 `"insert"`。
+  〔契约审计修订 2026-10-21〕T2-3 / R-D：**不新增三态类型**——列不在 `columns` 切片里 = 不写（用库默认），`None` = 写 SQL `NULL`。默认实现与 `build_update_statement` 同址（`packages/driver-api/src/sql_builder.rs`），超 `max_bound_parameters()` 在返回 SQL 前失败；方言差异由驱动覆盖（MySQL 的空列清单形式、SQL Server 的 `OUTPUT INSERTED.*` 内联），MongoDB/Redis 走 `execute_command`。
+- 提交实现 `packages/feature-core/src/data_browsing/write_exec.rs`（计划与校验在 `change_set.rs`）：`inserts` 进入同一事务循环；`src-tauri` 只留命令壳；`RowCommitStatementResult.operation` 增加 `"insert"`。〔契约审计修订 2026-10-21〕R-A。
 - 前端 store 新增 `addDraftRow` / `updateDraftRow` / `removeDraftRow` / `duplicateDraftRow`；`VirtualBody` 渲染草稿行（`data-testid="draft-row-N"`）。
 - 驱动专属测试落在各自 crate：至少 postgres / mysql / sqlite / sqlserver，断言 `NULL` vs `DEFAULT` vs 空串三者的 SQL 差异。
 
@@ -640,7 +639,7 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 - 自增主键列不需用户填值；提交后新行可见。
 - 无主键表：`+ 行` 可用，既有行的编辑/删除仍明确禁用。
 
-**风险**：`DEFAULT` 与「用户显式输入的空串」必须可区分（`Option<Value>` 表达不了三态）→ 引入 `enum CellWrite { Value(Value), Null, Default }`。这是本方案唯一的破坏性契约变更，必须一次改完并同步所有驱动（`PROTOCOL_VERSION` 是否变更按 `driver-api` 判定，若涉及则所有插件同步发版）。
+**风险**：`DEFAULT` 与「用户显式输入的空串」必须可区分。**不需要新类型**：写列清单的成员关系承载「写 / 不写」，`Option<Value>` 内部承载「NULL / 值」，因此 `DEFAULT`（列不出现）、`NULL`（`None`）、空串（`Some(Value::String(""))`）三者天然可分。〔契约审计修订 2026-10-21〕R-D：方案曾提出引入三态枚举，落地后确认**不需要**——枚举与既有的 `changed_columns` 语义重复，且会让每条写路径多一次翻译。因为只**新增**带默认实现的方法、不改任何既有签名与 DTO 字段，`PROTOCOL_VERSION` **不提升**。
 
 ---
 
@@ -682,7 +681,7 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 - 枚举列下拉可搜索；无元数据时显示「加载候选值」按钮，且未点击前不发任何查询。
 - 日期列选择器与手输互不破坏；时区列显示时区标识。
 - JSON 列非法输入阻止提交并提示。
-- `DEFAULT` 与 `EMPTY` 可区分并各自正确落库（依赖 DB-04 的 `CellWrite`）。
+- `DEFAULT` 与 `EMPTY` 可区分并各自正确落库（依赖 DB-04 的写列清单语义：列不出现 = DEFAULT，`Some("")` = 空串）。
 
 **测试落点**：`src/lib/__tests__/cellEditorKind.test.ts`（覆盖 19 个驱动的代表性类型名）、`src/components/DataTable/editors/__tests__/*.test.tsx`；方言特化只放 `packages/drivers/<id>/ui/__tests__/`。
 
@@ -891,8 +890,8 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 
 | 新增/变更 | 签名 | 默认实现 | 需覆盖的驱动 |
 |---|---|---|---|
-| INSERT 构造 | `fn build_insert_sql(&self, table: &str, columns: &[(String, CellWrite)]) -> String` | `sql_text::build_insert_sql` | MySQL / SQL Server / ClickHouse / NoSQL（走 `execute_command`） |
-| 三态单元格写入 | `enum CellWrite { Value(Value), Null, Default }` | 类型定义 | 全部（`PROTOCOL_VERSION` 若变更需同步所有插件） |
+| INSERT 构造 | `fn build_insert_statement(&self, table: &str, columns: &[(&str, Option<Value>)]) -> Result<BoundSqlStatement, DriverError>`（〔契约审计修订 2026-10-21〕T2-3 / R-D：值与 SQL 文本分离，**不新增类型**） | `sql_builder::build_insert_statement` | MySQL / SQL Server / ClickHouse / NoSQL（走 `execute_command`） |
+| 新增行主键回填 | `fn insert_returning_clause(&self, columns: &[&str]) -> Option<String>` | `None` | PG / SQLite（`RETURNING`）、SQL Server（内联 `OUTPUT` + 返回 `Some("")`） |
 | 筛选运算符方言 | `fn filter_operator_sql(&self, op: FilterOperator) -> Option<FilterSqlSpelling>` | ANSI 映射 | PG（`ILIKE`/`~`）、MySQL（`REGEXP`）、SQLite（无 regex → `None`） |
 | 行数统计 | `fn count_strategy(&self) -> CountStrategy` + `async fn estimate_row_count(...)` | `Exact` / `None` | PG、MySQL、SQL Server、SQLite；OLAP/Kiwi/Superset 维持 `None` |
 | 分页策略 | `fn pagination_strategy(&self) -> PaginationStrategy`（Offset / Keyset / DriverDefined） | `Offset` | DB-18 就绪后按驱动声明 |
@@ -941,6 +940,7 @@ src/lib/
 - **只读连接/驱动**：粘贴、`Set Value`、`+ 行`、删除一律不可用（复用 `TableView` 的 `isEditable` 判定链）。
 - **Safe Mode**：结果网格的现有行为同步到 DB-14；「本地视图编辑」与「写回数据库」必须视觉可分。
 - **凭据与数据**：新错误文案走现有 `CommandError` 脱敏管线；日志不得打印单元格值（可能含 PII）。
+- **新增 IPC 命令必须同时补 web 通路**〔契约审计修订 2026-10-21〕：本批次新增的任何 IPC 命令（`estimate_table_rows`、`resolve_foreign_key_targets`、`list_named_views` / `save_named_view` / `delete_named_view` 等）在落地时必须同批补齐三处 web 侧接线——`packages/backend-client/src/transport.ts` 的 `MethodMap` 条目、`BackendClient` 接口方法、以及前端命令封装文件（`src/commands/*.ts`）——使 **web 与 desktop 走同一条命令通路**。本批不裁定 desktop-only；若将来要裁定某个命令仅限桌面，必须先由 `00-contracts.md` 给出判定规则，而不是在实现里省略 `MethodMap`（省略会让 `backend-client` 在编译期就与命令清单脱节）。
 
 ---
 
@@ -951,7 +951,7 @@ src/lib/
 | 纯逻辑单测 | `useGridSelection`、`dataTableClipboard`、`cellEditorKind`、`foreignKeyNavigation`、`filterExpression` 新运算符 | `npx vitest run`（须过 `pnpm typecheck`，测试文件参与类型检查） |
 | 组件单测 | 选择旅程、键盘旅程（含 IME 与残缺中间态）、dirty 高亮、草稿行、估算分页器 | `npx vitest run` |
 | Host Rust 单测 | 运算符 SQL 生成矩阵、INSERT 计划、提交顺序与回滚、`affected != 1` 拒绝、三态行数 | `cargo test -p datazen --lib` |
-| 驱动契约测试 | `build_insert_sql` 三态、`filter_operator_sql` 方言、`estimate_row_count` | `cargo test -p datazen-driver-<id>` |
+| 驱动契约测试 | `build_insert_statement` 三态（不写 / NULL / 值）、`filter_operator_sql` 方言、`estimate_row_count` | `cargo test -p datazen-driver-<id>` |
 | 驱动 UI 单测 | 方言特化编辑器/渲染 | `pnpm test:unit:drivers` |
 | Host E2E | `table-cell-selection`、`table-keyboard`、`table-clipboard`、`table-insert-row`、`table-fk-navigation`、`table-saved-views`、`table-no-pk`、`query-result-edit`；扩展 `table-filter`、`table-edit`、`table-batch-ops` | `pnpm e2e:minimal`（驱动注入参数变更后必须用 `pnpm tauri:build:webdriver` 构建） |
 | 契约矩阵 | 跨库 journeys（插入/编辑/提交/筛选） | `pnpm e2e:contract:matrix` |
@@ -999,7 +999,7 @@ src/lib/
 
 **关键串行点**
 
-1. `CellWrite` 三态契约（DB-04）触及所有驱动，必须一次改完并同步 `PROTOCOL_VERSION`，不能分两批。
+1. DB-04 的插入契约（`build_insert_statement` / `insert_returning_clause`）只**新增带默认实现的方法**，不改既有签名与 DTO 字段，因此 `PROTOCOL_VERSION` **不提升**；钉在旧 `ref` 的 git 驱动会在 MySQL 协议族上遇到「一列都不写 → `DEFAULT VALUES`」的语法错误，发布说明里提示刷新驱动 `ref` 即可（〔契约审计修订 2026-10-21〕R-D：旧稿把它列为破坏性契约变更，落地后确认不是）。
 2. `DataTable` 拆分必须先于 DB-01/02/03 合并，否则单文件超限。
 3. DB-09 与 DB-18 应合并评估：只做估算而不拆默认排序，等于把 §4.12 的负债留在原地。
 
@@ -1011,7 +1011,7 @@ src/lib/
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
-| `CellWrite` 三态破坏驱动契约 | 全部插件需同步发版 | 单独发版窗口；先在 4 个主力驱动验证；`PROTOCOL_VERSION` 变更走既定流程 |
+| 驱动未覆盖插入 builder（旧 `ref` 的 git 驱动） | MySQL 协议族上「一列都不写」的插入报语法错误 | 只新增带默认实现的方法，`PROTOCOL_VERSION` 不变；发布说明登记「建议刷新 git 驱动 `ref`」；先在 4 个主力驱动验证（〔契约审计修订 2026-10-21〕R-D）|
 | 区域选择与现有行选择语义冲突 | 删除/导出范围出错（危险） | 选择态单一来源 + 派生 `selectedRows`；删除行做二次确认并回显范围 |
 | 粘贴造成误写 | 数据损坏 | 一律进 `pendingChanges`（不直接执行）；提交前预览 SQL + 指纹；非法格阻止提交 |
 | `Raw SQL` 筛选成为注入面 | 安全 | 强制 `sql_guard`；仅 WHERE 片段；拒绝多语句；E2E 覆盖注入用例 |

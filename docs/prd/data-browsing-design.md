@@ -28,7 +28,7 @@
 | `connectionId` 与 `dbSessionId` 的区别 | [architecture/naming.md](../architecture/naming.md) |
 | 测试怎么写、门禁怎么跑 | [12-testing.md](data-browsing-design/12-testing.md) |
 
-**开始写代码之前必须先读**：[00-contracts.md](data-browsing-design/00-contracts.md)。它是本目录所有分册的**唯一契约源**——单元格坐标系、`CellWrite` 三态、驱动新增方法签名、IPC 变更、错误码，全部在那里冻结。分册只讲「怎么实现」，不讲「契约长什么样」。
+**开始写代码之前必须先读**：[00-contracts.md](data-browsing-design/00-contracts.md)。它是本目录所有分册的**唯一契约源**——单元格坐标系、三态写入（`Unset`/`NULL`/值）、驱动新增方法签名、IPC 变更、错误码，全部在那里冻结。分册只讲「怎么实现」，不讲「契约长什么样」。
 
 ---
 
@@ -40,7 +40,7 @@
 | 01 | [单元格与区域选择模型](data-browsing-design/01-selection.md) | DB-01 | 坐标系、锚点、区域、非连续选择、三种模式跃迁、`role="grid"` 骨架与 `rowheader` 改造 | 00 | 4.0 |
 | 02 | [键盘导航与快捷键](data-browsing-design/02-keyboard.md) | DB-02 | 方向键/Home/End/PageUp/Down/Tab/Enter 导航与编辑进入 | 00, 01 | 2.5 |
 | 03 | [剪贴板复制与粘贴](data-browsing-design/03-clipboard.md) | DB-03 | TSV 复制、批量粘贴、与暂存改动合并 | 00, 01 | 5.5 |
-| 04 | [新增行 `INSERT`](data-browsing-design/04-insert.md) | DB-04 | `CellWrite` 三态落地、插入语句构造、主键回填与降级 | 00 | 4.0 |
+| 04 | [新增行 `INSERT`](data-browsing-design/04-insert.md) | DB-04 | 三态写入落地（`build_insert_statement`）、插入语句构造、主键回填与降级 | 00 | 4.0 |
 | 05 | [类型感知编辑器与 Set Value](data-browsing-design/05-editors.md) | DB-05 | 按列类型选编辑器、NULL/默认值、长文本与 JSON 编辑 | 00, 01 | 8 |
 | 06 | [待提交单元格高亮](data-browsing-design/06-dirty-cells.md) | DB-06 | 脏单元格标记、行级汇总、提交后清理 | 00, 01 | 2.5 |
 | 07 | [外键跳转与返回栈](data-browsing-design/07-fk-navigation.md) | DB-07 | 外键值跳转到被引用表、面包屑与返回栈 | 00, 01 | 4.5 |
@@ -62,7 +62,7 @@
 
 不要试图一次读完 12 份分册（连同 00 契约册，目录内共 13 个文件；「12 份分册」沿用历史口径，指 01–12）。
 
-**第 1 步（半天）**：读本总纲 → 读 [00-contracts.md](data-browsing-design/00-contracts.md) 全文 → 读 [12-testing.md](data-browsing-design/12-testing.md) 的「测试分层与落点」与「通用测试约定」两节。此时你应该能回答：`CellWrite` 为什么必须是三态？`data-dt-col` 存的是列名还是列下标？为什么写路径不能直接用行号拼 `WHERE`？
+**第 1 步（半天）**：读本总纲 → 读 [00-contracts.md](data-browsing-design/00-contracts.md) 全文 → 读 [12-testing.md](data-browsing-design/12-testing.md) 的「测试分层与落点」与「通用测试约定」两节。此时你应该能回答：为什么写入必须是三态？`data-dt-col` 存的是列名还是列下标？为什么写路径不能直接用行号拼 `WHERE`？
 
 **第 2 步（半天）**：打开 `src/components/DataTable/` 与 `src/stores/tableData/` 两个目录，对着 [00-contracts.md](data-browsing-design/00-contracts.md) 第 1 节把真实代码读一遍，确认文档描述与代码一致。**若发现不一致，以代码为准，并把不一致记进对应分册的「未决问题」**——文档腐烂是常态，你的职责是把它修准。
 
@@ -86,7 +86,7 @@
   │                ├─ 06 脏单元格高亮 ┼┐
   │                └─ 07 外键跳转     │
   │                                  │
-  ├─ 04 新增行 INSERT（只依赖契约里的 CellWrite） ─┘
+  ├─ 04 新增行 INSERT（只依赖契约里的三态写入 + build_insert_statement） ─┘
   │                                                 │
   ├─ 08 筛选（只依赖契约里的算子契约）              │
   │    └─ 09 行数/排序（**硬顺序**：08 的 query_executor/ 目录化必须先落地）
@@ -107,7 +107,7 @@
 
 | 序 | 提交信息 | 内容 | 验收门禁 |
 | --- | --- | --- | --- |
-| 1 | `feat(driver-api): add CellWrite and insert builders` | 契约与默认实现 + 单元测试，**不含任何 UI** | `cargo test -p datazen --lib`、`cargo test -p datazen-driver-api` |
+| 1 | `feat(driver-api): add build_insert_statement and insert_returning_clause` | 契约与默认实现 + 单元测试，**不含任何 UI** | `cargo test -p datazen --lib`、`cargo test -p datazen-driver-api` |
 | 2 | `feat(grid): add cell selection model` | 分册 01 | `npx vitest run`、`pnpm typecheck` |
 | 3 | `feat(grid): add keyboard navigation` | 分册 02 | 同上 + 分册 02 的 journey 测试 |
 | 4 | `feat(grid): add clipboard support` | 分册 03 | 同上 |
@@ -120,7 +120,7 @@
 | 11 | `feat(grid): add foreign key navigation` | 分册 07 | 上述 |
 | 12 | `feat(grid): add keyset pagination` | 分册 11 | 上述 + 契约矩阵 |
 
-**为什么第 1 条必须先落地**：`CellWrite` 会改到驱动的 trait 契约。先让它独立进入主干，后面所有 UI 提交才有稳定地基；否则 UI 提交与契约变更纠缠在一起，回滚任何一个都会带倒另一个。
+**为什么第 1 条必须先落地**：新增的插入接缝会改到驱动的 trait 契约（`build_insert_statement` 是**新增方法 + 默认实现**，不破坏既有驱动）。先让它独立进入主干，后面所有 UI 提交才有稳定地基；否则 UI 提交与契约变更纠缠在一起，回滚任何一个都会带倒另一个。
 
 **为什么不把 01~06 合成一个提交**：它们分别对应六种可独立失效的交互（选择、键盘、剪贴板、编辑器、脏标记、跳转），合成后一旦出现回归，定位范围会从「一个交互」膨胀到「六个交互」。
 

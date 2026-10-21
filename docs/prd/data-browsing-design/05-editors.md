@@ -2,13 +2,26 @@
 
 > **状态**：目标设计，**未实现**（本文所有「新增」符号在 `feature/data-browsing-prd` 基线上都不存在）。
 >
-> **依赖**：`00-contracts.md`（权威契约：`CellWrite` 三态、坐标系、`DataGridCapabilities`、错误码、模板）与 `01-selection.md`（选择模型）。〔合并后校正〕**01 尚未落地**：`src/stores/tableData/gridSelection.ts`、`src/hooks/useGridSelection.ts`、`src/components/DataTable/GridCell.tsx`、`src/lib/gridEventGuards.ts` 在合并后的工作树里**都不存在**（`DataTable/` 下只有 `CellRenderer.tsx`）；`01-selection.md` 只交付了设计与契约，代码待 01 实现。因此本册应读作「**01 落地后**消费这三者」：本册只**消费**它们，**不自行另立**任何区域运算、焦点移动、编辑器 DOM 属性或 IME 判定：键盘进出编辑器复用 `moveCellFocus` / `selectionFromAnchorFocus`，提交时机复用 `src/lib/gridEventGuards.ts` 的 `isComposingEvent`，`data-dt-editing` / `data-dt-cell-type` 由 01 的 `GridCell` 输出、本册只提供取值与编辑器本体。另依赖 DB-04 落地的 `src/lib/tableChanges.ts` 里的 `CellWrite` 前端镜像（契约册 §3.3）。**若 01 与本册不能同时开工，本册必须自带最小选择桩并在切换时删除**——不要在 01 之前发明第二套选择模型。
+> **依赖**：`00-contracts.md`（权威契约：三态写入语义〔§3〔落地校正〕+ §4.5 W-1…W-6〕、坐标系、`DataGridCapabilities`、错误码、模板）与 `01-selection.md`（选择模型）。〔合并后校正〕**01 尚未落地**：`src/stores/tableData/gridSelection.ts`、`src/hooks/useGridSelection.ts`、`src/components/DataTable/GridCell.tsx`、`src/lib/gridEventGuards.ts` 在合并后的工作树里**都不存在**（`DataTable/` 下只有 `CellRenderer.tsx`）；`01-selection.md` 只交付了设计与契约，代码待 01 实现。因此本册应读作「**01 落地后**消费这三者」：本册只**消费**它们，**不自行另立**任何区域运算、焦点移动、编辑器 DOM 属性或 IME 判定：键盘进出编辑器复用 `moveCellFocus` / `selectionFromAnchorFocus`，提交时机复用 `src/lib/gridEventGuards.ts` 的 `isComposingEvent`，`data-dt-editing` / `data-dt-cell-type` 由 01 的 `GridCell` 输出、本册只提供取值与编辑器本体。另依赖 DB-04 落地的 `src/lib/tableChanges.ts` 里的三态载体（`changedColumns` + `currentValues: Record<string, Value | null>`，见 `00` §3）。**若 01 与本册不能同时开工，本册必须自带最小选择桩并在切换时删除**——不要在 01 之前发明第二套选择模型。
 >
 > **被谁依赖**：**10（DB-14 查询结果网格可编辑）**为主；另被 03（粘贴走本册的 `coerceValue`）、06（待提交高亮复用 `data-dt-cell-type` 与写意图）、13（DB-13 特殊类型可视化复用 `CellType`，P1）依赖。
 >
 > **预估人日**：8 人日（归一化 + 错误码 1.5；编辑器族 3；store/菜单/接线 1.5；单测 + 组件 + journey + E2E 2）。不含 DB-04 的 Rust 侧工作。
 >
-> **本文档不包含什么**：不设计区域选择与焦点移动（01/02）；不做剪贴板（03）；不做新增行与 `build_insert_sql`（04）；不做 dirty 高亮的视觉（06）；不做 JSON 树 / BLOB hex / 图片预览（13，本册只定义 JSON 的**文本**编辑与二进制「不可就地编辑」的处置）；不改任何 Rust 代码、IPC 命令、`driver-api` trait；不新增驱动能力位以外的后端契约。
+> **〔契约审计修订 2026-10-21〕R-D 批量命名校正（本册全文）**：契约里**不存在**三态枚举类型，三态由「写列清单的成员关系 + `Option<Value>`」承载，前端由「`changedColumns` 成员关系 + `currentValues: Record<string, Value | null>`」承载。因此本册把原先围绕那个类型的一整套命名改成不依赖它的名字，语义一一对应、行为不变。下表用 `{Write}` 标记**被废弃的名字片段**（该标识符已不存在，本册新稿不再出现它）：
+>
+> | 旧名（原稿，`{Write}` = 已废弃片段） | 新名（本册） | 说明 |
+> | --- | --- | --- |
+> | `stageCell{Write}` / `stageCell{Write}.ts` | `stageCellValue` / `stageCellValue.ts` | 入参从包装对象改为 `value: Value \| null \| undefined`（`undefined` = 删键 = 不写） |
+> | `normalizeCell{Write}` | `normalizeEditValue` | 归一化「UI 原始输入 → 三态值」，不再产出包装对象 |
+> | `onCell{Write}` | `onCellValue` | `GridCell` / `CellRenderer` / `DataTable` 的同名回调整体改名 |
+> | 三态枚举的 `::Null` / `::Value(v)` / `::Unset` 写法 | `null` / 值 / `undefined`（或「不写」） | 表格与清单里逐处替换 |
+> | `tableDataStore.cell{Write}.test.ts` | `tableDataStore.cellValue.test.ts` | 测试文件名 |
+> | 「契约册 §8.4 的写路径纪律」 | 「`00` §4.5 的写路径纪律 W-1/W-2」 | §8.4 是 PRD 的安全边界（不采集单元格值），不是写路径纪律（T2-9 的引用错位） |
+>
+> 这些改名只影响**文档内的符号名**，不影响任何已冻结的契约签名；实现时以本册新名为准。
+
+> **本文档不包含什么**：不设计区域选择与焦点移动（01/02）；不做剪贴板（03）；不做新增行（04）；不做 dirty 高亮的视觉（06）；不做 JSON 树 / BLOB hex / 图片预览（13，本册只定义 JSON 的**文本**编辑与二进制「不可就地编辑」的处置）；不改任何 Rust 代码、IPC 命令、`driver-api` trait；不新增驱动能力位以外的后端契约。
 
 ---
 
@@ -25,7 +38,7 @@
 | A3 | `npx vitest run src/lib/__tests__/gridErrors.test.ts` | `classifyGridError('grid.cell.readOnly: …') === 'grid.cell.readOnly'`；未知前缀返回 `'unknown'`；`Test Files 1 passed` |
 | A4 | `npx vitest run src/lib/__tests__/dataTypeColors.test.ts` | **既有用例零改动通过**（证明与 `classifyDataType` 对齐后渲染分类未回归） |
 | A5 | `npx vitest run src/components/DataTable/editors` | 组件与 journey 用例全绿，其中 IME 用例断言「组合期间按 Enter 不提交」 |
-| A6 | `npx vitest run src/stores/__tests__/tableDataStore.cellWrite.test.ts` | 三态映射用例全绿：`unset` 不落地计划、`null` 与 `''` 可区分 |
+| A6 | `npx vitest run src/stores/__tests__/tableDataStore.cellValue.test.ts` | 三态映射用例全绿：`unset` 不落地计划、`null` 与 `''` 可区分 |
 | A7 | `pnpm typecheck` | 退出码 0（含测试文件；无 `any` 新增） |
 | A8 | `npx vitest run --coverage` | 覆盖率门禁不下降：`src/lib/**`、`src/components/DataTable/**` 行/函数 ≥ 80%、分支 ≥ 75%（门禁来自 `vitest.config.ts` 的 `coverage.thresholds`） |
 | A9 | `pnpm e2e:skip-build -- --spec e2e/specs/table-editors.ts` | 新 spec 全绿；断言用 `data-dt-cell-type` / `data-dt-editing` 定位，不用几何坐标 |
@@ -94,7 +107,7 @@
 | 同上 | `columnDefs`、`primaryKeyColumns`、`enableSetNull`、`onCellEdit` 的传参 | `ColumnDef` 只带 `id`/`name`/`type: c.dataType`；`primaryKeyColumns={columns.filter(c => c.isPrimaryKey).map(c => c.name)}`；`enableSetNull={isEditable}`；`onCellEdit={isEditable ? handleCellEdit : undefined}` |
 | `src/windows/connection/PanelContentRenderer.tsx` | `SqlPanelContent`、`panelIsReadOnly` | `panelIsReadOnly = panelDbMeta?.readOnly === true \|\| savedConnection?.readOnly === true`；表格面板把它作为 `readOnly` 下传 |
 | 同上 | **视图面板挂载点的硬编码** | 视图面板（`ViewPanel`）挂 `TableView` 时写死 `readOnly={true}` → 视图今天不可编辑，但其**原因与「连接只读」无法区分**（`TableView` 拿不到 `tableType`） |
-| `src/windows/connection/result-workspace/ResultTableView.tsx` | `ResultTableView`、`canEdit`、`safeMode` | 〔合并后校正〕**结果网格已经不是只读网格**：`canEdit = !safeMode && !!onCellEdit && result.source?.writableMapping === 'verified' && !!result.runtimeBinding`；`editingCell={canEdit ? editingCell : null}`；`onCellEdit` 是 `(row, column, value) => Promise<void>`，失败时**保留编辑态并回显错误**（`query.resultEditRequiresRefresh` 等），不再「只关闭编辑器」。仍然成立的是：**不传** `selectedRows` / `onRowSelect` / `onSelectAll` / `onDeleteRows` ⇒ `hasSelection === false`，`enableSetNull={false}` 未变。写回链路归 10-result-grid（`ResultCellWrite` + `commit_query_result_cell`），本册只负责「编辑器本体与 `data-dt-cell-type` 取值」，**不要**在这里接 `CellWrite` |
+| `src/windows/connection/result-workspace/ResultTableView.tsx` | `ResultTableView`、`canEdit`、`safeMode` | 〔合并后校正〕**结果网格已经不是只读网格**：`canEdit = !safeMode && !!onCellEdit && result.source?.writableMapping === 'verified' && !!result.runtimeBinding`；`editingCell={canEdit ? editingCell : null}`；`onCellEdit` 是 `(row, column, value) => Promise<void>`，失败时**保留编辑态并回显错误**（`query.resultEditRequiresRefresh` 等），不再「只关闭编辑器」。仍然成立的是：**不传** `selectedRows` / `onRowSelect` / `onSelectAll` / `onDeleteRows` ⇒ `hasSelection === false`，`enableSetNull={false}` 未变。写回链路归 10-result-grid（`ResultCellWrite` + `commit_query_result_cell`），本册只负责「编辑器本体与 `data-dt-cell-type` 取值」，**不要**在这里接写入链路 |
 | `src/hooks/useKeyboardShortcuts.ts` | `ShortcutDef`、`matchShortcut`、`useKeyboardShortcuts` | 修饰键精确匹配；`'table'` 作用域在焦点位于 `input`/`textarea`/`isContentEditable` 时被跳过；命中即 `preventDefault()` 并 `return`（只执行第一个） |
 | `src/commands/query.ts` | `queryCommands.executeQuery` | 既有前端查询封装：`(dbSessionId, sql, params?, database?, schema?)`，`command: 'query'`——枚举候选值取数可复用，无需新 IPC |
 | `src/lib/databaseTypes.ts` | `DB_REGISTRY`、`escapeIdent` | 注册表由 `generated.ts` 的 `DRIVER_DB_ENTRIES` 合并；`escapeIdent(name, dbType)` 按 `DB_REGISTRY[dbType].quoteChar` 引号化（`` ` ``、`"`、`[` 三分支） |
@@ -137,23 +150,15 @@
 
 ### 3.2 Rust 侧（本册不改，引用契约）
 
-```rust
-// packages/driver-api/src/types.rs（新增，契约册 §3.2 已冻结，DB-04 落地；本册只消费）
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", tag = "kind", content = "value")]
-pub enum CellWrite {
-    /// 该列出现在语句中，写入 SQL NULL：`SET c = NULL` / `INSERT ... VALUES (NULL)`。
-    Null,
-    /// 该列出现在语句中，写入此值。
-    Value(Value),
-    /// 该列**不出现在语句中**：
-    /// - UPDATE：这一列不被触碰。
-    /// - INSERT：由数据库自己填（DEFAULT / 自增 / 生成列 / 触发器）。
-    Unset,
-}
-```
+> **〔契约审计修订 2026-10-21〕T2-9 / R-D**：本节原文贴了一个 Rust 三态枚举，并声称「在 `packages/driver-api/src/types.rs` 新增、契约 §3.2 已冻结」。**该类型不落地**（见 `00-contracts.md` §3〔落地校正〕与 §4.5）：真实写缝 `build_update_statement` / `build_delete_statement` / `build_insert_statement` 的入参都是 `&[(&str, Option<Value>)]`，三态由「列名是否在这个切片里」+ `Option<Value>` 承载。本册因此**不新增任何 Rust 类型、不改 `types.rs`**，只消费 `PendingRowChange` 的 `changedColumns` + `currentValues`。
 
-线上形态：`{"kind":"null"}` / `{"kind":"value","value":42}` / `{"kind":"unset"}`。
+三态在三个层面的唯一编码（与 `00` §3 一致，不得另立一套）：
+
+| 意图 | `PendingRowChange`（前端与线上） | 驱动入参 | SQL 结果 |
+| --- | --- | --- | --- |
+| 写值 | `col ∈ changedColumns` 且 `currentValues[col] = Some(v)` | `(col, Some(v))` | `SET c = <占位符>` / `VALUES (<占位符>)`，值走 `parameters` |
+| 写 `NULL` | `col ∈ changedColumns` 且 `currentValues[col] = None` | `(col, None)` | 同上，绑定 `Value::Null` |
+| 不写 | `col ∉ changedColumns` | 列名**不出现** | UPDATE 不触碰该列；INSERT 由库填 `DEFAULT` / 自增 / 生成列 / 触发器 |
 
 ### 3.3 前端类型归一化（新增 `src/lib/cellTypes.ts`）
 
@@ -301,7 +306,7 @@ export interface DatabaseTypeMeta {
 
 ```ts
 import type { CellType } from './cellTypes';
-import type { CellWrite, Value } from './tableChanges';   // CellWrite 见契约册 §3.3
+import type { Value } from './tableChanges';   // 三态直接用 `Value | null | undefined`（见 `00` §3）
 
 /** 控件族。沿用 PRD DB-05 的命名，新增 'time'/'datetime' 由 TemporalValueInput 的 kind 表达，不另立控件。 */
 export type CellEditorKind =
@@ -331,7 +336,7 @@ export type CellValueErrorReason =
   | 'tooLarge' | 'notEditable';
 
 export type CoerceResult =
-  | { readonly ok: true; readonly write: CellWrite }
+  | { readonly ok: true; readonly value: Value | null | undefined }
   | { readonly ok: false; readonly reason: CellValueErrorReason };
 
 export interface CoerceInput {
@@ -366,40 +371,40 @@ export function coerceValue(input: CoerceInput): CoerceResult;
 | `text` | 代码点数 > `INLINE_TEXT_MAX_CODE_POINTS` | `longText` | 弹层 `textarea` |
 | `text` / `uuid` / `unknown` | 其余 | `text` | 单行输入（`uuid` 加软校验） |
 
-### 3.6 `CellWrite` 的 UI 映射（本册与契约册 §3 的接合点）
+### 3.6 三态写入意图的 UI 映射（本册与 `00` §4.5 的接合点）
 
-**三个语义操作**（右键 Set Value 子菜单、`⌥+Return` 同一入口）：
+> **〔契约审计修订 2026-10-21〕R-D**：本节原文以三态枚举的变体名（`Null` / `Value` / `Unset`）作为「UI 操作 → 意图」的中介。该类型不存在，前端用**同一套三态取值**表达：`undefined` = 不写、`null` = 写 SQL `NULL`、其余 = 写值。**三个语义操作**（右键 Set Value 子菜单、`⌥+Return` 同一入口）：
 
-| UI 操作 | i18n key | `CellWrite` | UPDATE 行的真实语义 | INSERT 草稿行的真实语义 | 允许条件 |
+| UI 操作 | i18n key | 写入意图 | UPDATE 行的真实语义 | INSERT 草稿行的真实语义 | 允许条件 |
 | --- | --- | --- | --- | --- | --- |
-| **Set NULL** | 复用既有 `'dataTable.setNull'` | `{ kind: 'null' }` | `SET c = NULL` | `VALUES (NULL)` | 列 `nullable === true` |
-| **Set column default** | `'cellEditor.setDefault'` | `{ kind: 'unset' }` | 该列**不进语句**（= 撤销该格改动） | 该列不进列清单，由数据库填 `DEFAULT`/自增/生成列/触发器 | 始终可用 |
-| **Set empty string** | `'cellEditor.setEmpty'` | `{ kind: 'value', value: '' }` | `SET c = ''` | `VALUES ('')` | 在该格可编辑时始终可用 |
-| **Revert this cell**（UPDATE 专用别名） | `'cellEditor.revertCell'` | `{ kind: 'unset' }` | 同上（撤销该格改动） | — | 仅 UPDATE |
+| **Set NULL** | 复用既有 `'dataTable.setNull'` | `null` | `SET c = NULL` | 该列进列清单、值为 `NULL` | 列 `nullable === true` |
+| **Set column default** | `'cellEditor.setDefault'` | `undefined`（删掉该键） | 该列**不进语句**（= 撤销该格改动） | 该列不进列清单，由数据库填 `DEFAULT`/自增/生成列/触发器 | 始终可用 |
+| **Set empty string** | `'cellEditor.setEmpty'` | `''` | `SET c = ''` | `VALUES ('')` | 在该格可编辑时始终可用 |
+| **Revert this cell**（UPDATE 专用别名） | `'cellEditor.revertCell'` | `undefined` | 同上（撤销该格改动） | — | 仅 UPDATE |
 | **Load candidate values** | `'cellEditor.loadCandidates'` | 不写入（只填候选） | — | — | `cellType === 'enum'` 且无候选 |
 
-**为什么 UPDATE 下不能叫「Set DEFAULT」**：`CellWrite::Unset` 在 UPDATE 里只是「这一列不出现在 `SET` 里」，它**不会**重新应用 DDL 默认值（那需要 `SET c = DEFAULT` 这个 SQL 表达式，三态契约表达不了）。所以：
+**为什么 UPDATE 下不能叫「Set DEFAULT」**：「不写」在 UPDATE 里只是「这一列不出现在 `SET` 里」，它**不会**重新应用 DDL 默认值（那需要 `SET c = DEFAULT` 这个 SQL 表达式，当前三态表达不了）。所以：
 - UPDATE 行的菜单项文案是 **Revert this cell**（在 UPDATE 语境下 `setDefault` 与 `revertCell` 是同一件事，UI 只显示一个，避免两个入口一个语义）；
 - 只有 INSERT 草稿行显示 **Set column default**；
-- 两个 key 都必须存在（同一 `CellWrite` 两种语境），由 `rowKind: 'update' | 'insert'` 选择显示哪个。
+- 两个 key 都必须存在（同一「不写」意图在两种语境），由 `rowKind: 'update' | 'insert'` 选择显示哪个。
 
-**`NOW()` / `CURRENT_TIMESTAMP` 不作为本册交付项**：它们是 SQL 表达式，`CellWrite` 的三个变体都表达不了；若用 `{ kind: 'value', value: 'CURRENT_TIMESTAMP' }` 提交，会把**字面字符串**写进库（静默数据损坏）。因此本册**隐藏**这两个入口（R4：能力缺失时隐藏而不是渲染一个点了报错的按钮），是否给 `CellWrite` 增加 `Expression(String)` 变体见 §11 未决 #1。
+**`NOW()` / `CURRENT_TIMESTAMP` 不作为本册交付项**：它们是 SQL 表达式，三态表达不了；若把字符串 `'CURRENT_TIMESTAMP'` 当值提交，会把**字面字符串**写进库（静默数据损坏）。因此本册**隐藏**这两个入口（R4：能力缺失时隐藏而不是渲染一个点了报错的按钮），是否给契约新增「表达式写入」这一类意图见 §11 未决 #1。
 
-**归一化规则（防御性）**：编辑器与菜单产出的 `CellWrite` 必须先过 `normalizeCellWrite`：
+**归一化规则（防御性）**：编辑器与菜单产出的意图必须先过 `normalizeEditValue`：
 ```ts
-/** 新增于 src/lib/tableChanges.ts：Value 类型允许 null，但三态里 null 必须走 'null' 分支。 */
-export function normalizeCellWrite(write: CellWrite): CellWrite;  // {kind:'value', value:null} → {kind:'null'}
+/** 新增于 src/lib/tableChanges.ts：把「值为 null」的写入折叠成「写 NULL」，不允许 undefined 混进值域。 */
+export function normalizeEditValue(value: unknown): Value | null | undefined;  // undefined → 不写；null → 写 NULL；其余按列类型 coerce
 ```
 
 **与既有 store 表示的投影**（前端暂存不需要新字段，`pendingChanges` 已经能表达三态）：
 
-| `CellWrite` | `PendingRowChange` 里的投影 | 判定 |
+| 写入意图 | `PendingRowChange` 里的投影 | 判定 |
 | --- | --- | --- |
-| `Null` | `col ∈ changedColumns` 且 `currentValues[col] === null` | 契约册 §3.4 |
-| `Value(v)` | `col ∈ changedColumns` 且 `currentValues[col]` 与 `v` 用 `valuesEqual` 相等 | 同上 |
-| `Unset` | `col ∉ changedColumns`；同时 `rows[row][col]` 恢复为 `originalValues[col]` | 同上 |
+| 写 `NULL`（`null`） | `col ∈ changedColumns` 且 `currentValues[col] === null` | `00` §3 的三态表 |
+| 写值（`v`） | `col ∈ changedColumns` 且 `currentValues[col]` 与 `v` 用 `valuesEqual` 相等 | 同上 |
+| 不写（`undefined`） | `col ∉ changedColumns`；同时 `rows[row][col]` 恢复为 `originalValues[col]` | 同上 |
 
-> 这正是「UPDATE 的空值歧义」在**前端**不成立的原因：`col ∈ changedColumns` 已经区分了「写 NULL」与「不改这一列」。歧义只存在于线上的 `CellUpdate.value: Option<Value>`，DB-04 负责在那里改。
+> 这正是「UPDATE 的空值歧义」在**前端**不成立的原因：`col ∈ changedColumns` 已经区分了「写 NULL」与「不改这一列」。歧义只存在于「列清单 + `Option<Value>`」与旧 `CellUpdate.value: Option<Value>` 的混用处，`00` §4.5 负责在那里改。
 
 ### 3.7 只读判定（新增 `resolveCellEditable`，置于 `src/lib/cellEditorKind.ts`）
 
@@ -461,13 +466,13 @@ export function resolveCellEditable(input: CellEditabilityInput): CellEditabilit
 
 **与既有判定链的关系（不重复、不冲突）**：
 - `TableView` 的 `isEditable`（连接级）继续有效，`resolveCellEditable` 只是把它细化为**可解释的原因**；
-- `stageCellChange` 里的无主键 / 行身份唯一性校验**一行都不删**——它是最后一道防线（契约册 §8.4 的写路径纪律），`resolveCellEditable` 只是把它**提前**成 UI 层的可见原因；
+- `stageCellChange` 里的无主键 / 行身份唯一性校验**一行都不删**——它是最后一道防线（`00` §4.5 的写路径纪律 W-1/W-2），`resolveCellEditable` 只是把它**提前**成 UI 层的可见原因；
 - 视图不可编辑由挂载点既有事实保证（`PanelContentRenderer` 视图面板写死 `readOnly={true}`）；DB-05 新增可选 prop `readOnlyReason` 把原因从「连接只读」区分为「视图」，不改任何既有行为。
 
 ### 3.8 编辑器组件的公共契约（新增 `src/components/DataTable/editors/`）
 
 ```ts
-/** 所有类型编辑器的统一出口。emits CellWrite，而不是「值」。 */
+/** 所有类型编辑器的统一出口。emits 三态写入意图（`Value | null | undefined`），而不是裸文本。 */
 export interface CellEditorProps {
   readonly columnName: string;
   readonly dataType: string | undefined;
@@ -475,8 +480,8 @@ export interface CellEditorProps {
   readonly kind: CellEditorKind;
   readonly originalValue: unknown;
   readonly nullable: boolean;
-  /** 提交（已过校验）。调用方负责 normalizeCellWrite 与写意图落地。 */
-  readonly onCommit: (write: CellWrite) => void;
+  /** 提交（已过校验）。调用方负责 normalizeEditValue 与写意图落地。 */
+  readonly onCommit: (value: Value | null | undefined) => void;
   readonly onCancel: () => void;
   /** 提交后请求把焦点右移/左移一格；无选择模型时调用方忽略。 */
   readonly onCommitAndMove?: (direction: 'next' | 'prev') => void;
@@ -487,7 +492,7 @@ export interface CellEditorProps {
 }
 ```
 
-`onCommit` 的实参类型是 `CellWrite` 而不是 `unknown`：这是本册最关键的接口决定——**类型系统保证三态不会在组件边界丢失**。
+`onCommit` 的实参类型是 `Value | null | undefined` 而不是 `unknown`：这是本册最关键的接口决定——**类型系统保证三态不会在组件边界丢失**（`undefined` = 不写，不是「没传」）。
 
 ### 3.9 宿主暴露给网格的两个入口（新增）
 
@@ -508,7 +513,7 @@ export type EditorNavigationGuard =
 export function resolveEditorBeforeNavigation(panelId: string): EditorNavigationGuard;
 ```
 
-调用关系（明确归属，避免重复实现）：01 的双击 → `requestEdit`；02 的 `Enter` → `requestEdit`、`Tab` → 先提交再 `moveCellFocus` + `setGridSelection` + 对新格 `requestEdit`；03 的粘贴 → 直接 `coerceValue` + `stageCellWrite`（不开编辑器）；07 的前缀进导航与 09/11 的翻页排序 → 先 `resolveEditorBeforeNavigation`。
+调用关系（明确归属，避免重复实现）：01 的双击 → `requestEdit`；02 的 `Enter` → `requestEdit`、`Tab` → 先提交再 `moveCellFocus` + `setGridSelection` + 对新格 `requestEdit`；03 的粘贴 → 直接 `coerceValue` + `stageCellValue`（不开编辑器）；07 的前缀进导航与 09/11 的翻页排序 → 先 `resolveEditorBeforeNavigation`。
 
 ---
 
@@ -530,8 +535,8 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | --- | --- | --- |
 | 双击单元格（既有 `onCellDoubleClick`） | `resolveCellEditable(...).editable === true` | `startEdit(row, col)`；同时把选择模型设为 `cell` 模式并把焦点设到该格（由 01 的 API 完成） |
 | 焦点格上按 `Enter` | 同上 | 与双击同一条路径（DB-02 调用本册暴露的 `requestEdit(coord)`，不自己开编辑器） |
-| Set Value 菜单 / `⌥+Return` | 该格可编辑（`unset` 项额外要求存在待提交改动或是 INSERT 草稿行） | **不开编辑器**，直接落地 `CellWrite`（快速路径） |
-| 粘贴（DB-03） | 目标格可编辑 | 走 `coerceValue` → `stageCellWrite`；**不逐个开编辑器** |
+| Set Value 菜单 / `⌥+Return` | 该格可编辑（「Set column default」项额外要求存在待提交改动或是 INSERT 草稿行） | **不开编辑器**，直接落地写入意图（快速路径） |
+| 粘贴（DB-03） | 目标格可编辑 | 走 `coerceValue` → `stageCellValue`；**不逐个开编辑器** |
 | 不可编辑的格被双击 | `editable === false` | 不进入编辑；显示 `grid.cell.readOnly` + **该格的具体原因文案**（第 8 节 key），并将 `data-dt-readonly="<reason>"` 暴露给测试 |
 
 ### 4.3 状态内行为
@@ -553,7 +558,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 
 | 退出动作 | 触发 | 行为 |
 | --- | --- | --- |
-| 提交 | `Enter`（非组合期） | `coerceValue` → 合法：`onCommit(normalizeCellWrite(write))`；非法：**留在编辑态** + 行内错误 + 不写 store |
+| 提交 | `Enter`（非组合期） | `coerceValue` → 合法：`onCommit(normalizeEditValue(write))`；非法：**留在编辑态** + 行内错误 + 不写 store |
 | 取消 | `Escape`（非组合期） | 丢弃草稿，`onCancel()` → `cancelEdit()`，不写 store |
 | 提交并右移 | `Tab` | 与提交同路径；成功后调 `onCommitAndMove('next')`，挂载点用 01 的纯函数 `moveCellFocus(...)` 算出下一格、`actions.setGridSelection(...)` 写回选择，再对新格调本册的 `requestEdit(coord)`（可编辑才开编辑器）。**本册不自己算列序，也不自己改 `editingCell` 之外的坐标** |
 | 提交并左移 | `Shift+Tab` | 同上，方向 `'prev'` |
@@ -562,14 +567,14 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | 编辑中的行被卸载（翻页/筛选/排序/刷新） | 导航类动作 | 导航前先 `resolveEditorBeforeNavigation()`：合法则提交，非法则**中止导航**并保留编辑器与行内错误（禁止静默丢弃用户的键入） |
 | 行被卸载（防御） | React 卸载编辑器 | `useEffect` cleanup **只清本地状态，绝不提交**（卸载期提交等于静默写入一个用户没确认的值）；若确有未提交草稿，记一条 i18n 文案 `'cellEditor.discardedUncommitted'` 供调用方提示 |
 | 能力被撤销 | `isEditable` 变假（既有 effect） | 既有行为：`actions.cancelEdit()`——保持 |
-| 外部写操作关掉编辑器 | `stageCellChange`/`stageCellWrite` 结束时 `editingCell: null`（既有） | 保持；编辑器不得因此再提交一次（`done` 语义保留） |
+| 外部写操作关掉编辑器 | `stageCellChange`/`stageCellValue` 结束时 `editingCell: null`（既有） | 保持；编辑器不得因此再提交一次（`done` 语义保留） |
 
 ### 4.5 性能契约（大表滚动不得因编辑器而卡顿）
 
 1. **同时存在的编辑器恒为 0 或 1 个**：只有 `editingCell` 命中的那一格渲染 `CellEditorHost`，其余格仍是纯文本 `CellRenderer`。虚拟滚动下可视行约为「视口高度 / 行高 + 12 行 overscan」，因此新增的 DOM 成本是一个编辑器，不是一个列表。
 2. **草稿文本只存在编辑器内部**：击键只重渲编辑器本身，不写 `TableState`、不触发 `VirtualBody` 重渲（`TableState` 每次变更都会让整个面板重算 `rows` 与 `editBuffer`）。
 3. **类型归一化按列做一次**：在 `TableView`/`DataTable` 用 `useMemo` 把 `columns` 算成 `ReadonlyMap<string, CellType>`，单元格只读 map，**不在渲染期**调 `resolveCellType`（否则每帧 × 行数 × 列数）。
-4. **`memo` 必须真的生效**：`VirtualBody` 里 `onCommit={(v) => …}` 的内联箭头原本击穿了 `CellRenderer` 的 `memo`；**01 的 Step 8 已把这条纪律写进 `GridCell`（回调必须稳定引用透传，禁止在 `columns.map` 里写内联箭头）**，本册只需保证新增的 `onCellWrite` / `rowIndex` / `columnName` 同样是稳定 props，不再引入新的内联箭头。
+4. **`memo` 必须真的生效**：`VirtualBody` 里 `onCommit={(v) => …}` 的内联箭头原本击穿了 `CellRenderer` 的 `memo`；**01 的 Step 8 已把这条纪律写进 `GridCell`（回调必须稳定引用透传，禁止在 `columns.map` 里写内联箭头）**，本册只需保证新增的 `onCellValue` / `rowIndex` / `columnName` 同样是稳定 props，不再引入新的内联箭头。
 5. **禁止在渲染期做大值序列化**：字节数组（`Value::Bytes` 线上是 JSON 数字数组）与超长文本不得在渲染路径上 `JSON.stringify`；编辑器只用 `value.length` 级别的元数据。
 6. **候选值有硬上限**：`LIMIT 200`，超限显示截断提示；候选列表不做逐项监听器，搜索走 `Select` 既有的 `searchable` 过滤。
 7. **不做全局监听**：编辑器不注册 `window` 级 `keydown`/`mousemove`（既有 `useKeyboardShortcuts` 已是全局单例，且 `'table'` 作用域在输入框内自动跳过），避免每开一次编辑器多一个监听器。
@@ -582,7 +587,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 
 ### Step 0 · 前置门禁
 
-确认 ① `src/lib/tableChanges.ts` 已有契约册 §3.3 的 `CellWrite` / `cellWriteNull` / `cellWriteValue` / `cellWriteUnset`（由 DB-04 的「提交 1」落地）；② 01 的三件已落下：`src/stores/tableData/gridSelection.ts`、`src/hooks/useGridSelection.ts`、`src/components/DataTable/GridCell.tsx`；③ `src/lib/gridEventGuards.ts` 已导出 `isComposingEvent` / `isEditableTarget`（01 新增，本册的 IME 与失焦判定直接复用，**不得另写一份**）。
+确认 ① `src/lib/tableChanges.ts` 的 `PendingRowChange` 已能表达三态（`changedColumns` 成员关系 + `currentValues: Record<string, Value | null>`；本册**不需要**任何三态类型，见 `00` §3）；② 01 的三件已落下：`src/stores/tableData/gridSelection.ts`、`src/hooks/useGridSelection.ts`、`src/components/DataTable/GridCell.tsx`；③ `src/lib/gridEventGuards.ts` 已导出 `isComposingEvent` / `isEditableTarget`（01 新增，本册的 IME 与失焦判定直接复用，**不得另写一份**）。
 **为什么**：这三者是**冻结契约**，本册只消费。**自测**：`npx vitest run src/lib/__tests__/tableChanges.test.ts`（DB-04 的用例）绿；`gridSelection.ts` 导出 `CellCoord` / `CellRange` / `GridSelection` / `EMPTY_GRID_SELECTION` / `normalizeCellRange` / `rowsCoveredBySelection` / `moveCellFocus` / `selectionFromAnchorFocus`；`GridCell.tsx` 导出 `GridCell` / `GridCellProps`；`gridEventGuards.ts` 导出那两个函数（§11 未决 #10 列出本册消费的完整清单）。
 
 ### Step 1 · `src/lib/cellTypes.ts`（**新增**）
@@ -593,7 +598,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 ### Step 2 · `src/lib/cellEditorKind.ts`（**新增**）
 
 `CellEditorKind`、`CellEditorKindInput`、`resolveCellEditorKind`、阈值常量、`CellValueErrorReason`、`CoerceResult`、`coerceValue`、`CellReadOnlyReason`、`CellEditabilityInput`、`CellEditability`、`resolveCellEditable`。
-**为什么**：控件分派、值强制转换、可编辑性三件事共享同一份类型判断，且必须可脱离 React 单测。**自测**：`npx vitest run src/lib/__tests__/cellEditorKind.test.ts`（含 `Number('')`/`Number(' ')`/`Number('0x10')`/`Number('١٢')`/`NaN`/`Infinity` 全部被拒；`coerceValue` 返回 `CellWrite` 三态；`resolveCellEditable` 十种原因各有用例）。
+**为什么**：控件分派、值强制转换、可编辑性三件事共享同一份类型判断，且必须可脱离 React 单测。**自测**：`npx vitest run src/lib/__tests__/cellEditorKind.test.ts`（含 `Number('')`/`Number(' ')`/`Number('0x10')`/`Number('١٢')`/`NaN`/`Infinity` 全部被拒；`coerceValue` 返回 `Value | null | undefined` 三态；`resolveCellEditable` 十种原因各有用例）。
 
 ### Step 3 · `src/lib/gridErrors.ts`（**本册合并时该文件应已由 01 建立；按契约 §8.1 三步追加 `grid.cell.*` 码，禁止整文件重写**）
 
@@ -622,24 +627,24 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 `DataTableContextMenuLabels` 加 `setValue`/`setDefault`/`setEmpty`/`revertCell`/`loadCandidates`；`Handlers` 加 `onSetValue?: (id: SetValueActionId) => void`、`onLoadCandidates?: () => void`；`BuildDataTableContextMenuArgs` 加 `setValue?: { canNull: boolean; canEmpty: boolean; rowKind: 'update' | 'insert'; hasPending: boolean }`；`buildDataTableContextMenuItems` 在 `setValue` 存在时输出 `submenu('set-value', …)`；**`onSetValue` 未提供时保持今天的 `more-actions` + `set-null` 布局不变**。
 **为什么**：既有测试断言 `set-null` 在 `more-actions` 内、`enableSetNull` 为假时不出现——新入口不能顺手改掉旧行为（旧调用方如结果网格仍需旧菜单）。**自测**：既有 `dataTableContextMenu.test.ts`、`DataTable.test.tsx` 零改动通过；新增用例断言两条分支各自的菜单形状。
 
-### Step 8 · `src/stores/tableData/stageCellWrite.ts`（**新增**，纯函数）+ `src/stores/tableDataStore.ts`（**修改**）
+### Step 8 · `src/stores/tableData/stageCellValue.ts`（**新增**，纯函数）+ `src/stores/tableDataStore.ts`（**修改**）
 
-新增 action `stageCellWrite(panelId, row, col, write: CellWrite)`；`stageCellChange` 改为 `stageCellWrite(..., cellWriteValue(toCellValue(value)))` 的薄壳；`TableState` 增 `enumCandidates: Map<string, readonly string[]>` 与 `setEnumCandidates`/`clearEnumCandidates`。
-**为什么**：三态必须有一个入口，同时 `stageCellChange` 的既有语义不能变（`applyColumnToRows` 与既有测试都依赖它）；把纯逻辑放到新文件是为了**不让 `tableDataStore.ts` 越过 800 行**（它今天 **729** 行，01 的 Step 3/4 把选择转移搬走后约 707 行）。**自测**：`npx vitest run src/stores/__tests__/tableDataStore.cellWrite.test.ts` + 既有 `tableDataStore.test.ts` 零改动通过。
+新增 action `stageCellValue(panelId, row, col, value: Value | null | undefined)`（`undefined` = 删键 = 不写）；`stageCellChange` 改为 `stageCellValue(..., toCellValue(value))` 的薄壳；`TableState` 增 `enumCandidates: Map<string, readonly string[]>` 与 `setEnumCandidates`/`clearEnumCandidates`。
+**为什么**：三态必须有一个入口，同时 `stageCellChange` 的既有语义不能变（`applyColumnToRows` 与既有测试都依赖它）；把纯逻辑放到新文件是为了**不让 `tableDataStore.ts` 越过 800 行**（它今天 **729** 行，01 的 Step 3/4 把选择转移搬走后约 707 行）。**自测**：`npx vitest run src/stores/__tests__/tableDataStore.cellValue.test.ts` + 既有 `tableDataStore.test.ts` 零改动通过。
 
 ### Step 9 · `src/components/DataTable/GridCell.tsx`（**01 新增，本册扩展**）+ `CellRenderer.tsx`（**修改**）
 
-`GridCellProps` 增可选 `cellType?: CellType`、`editorKind?: CellEditorKind`、`editable?: boolean`、`readOnlyReason?: CellReadOnlyReason | null`、`onCellWrite?: (write: CellWrite) => void`，并把「哪一格正在编辑」的判定与 `data-dt-editing` 交给 01 契约里已冻结、但**尚未落地**的输出方式；`CellRendererProps` 同样增这几个字段，且其 `isEditing` 分支由 `<EditableCell>` 换成 `<CellEditorHost>`。
-**为什么**：`data-dt-*` 的 DOM 契约由 01 收敛在 `GridCell`（契约册 §4.4 + 01 §3.7），本册只做**加法**，不动它的取值语义；编辑器分派只依赖 props 里的 `cellType`，**不依赖属性字符串**，因此两册可以各自演进（粒度统一见 §11 未决 #14）。**本册不改 `VirtualBody.tsx`**：它已由 01 的 Step 8 改为渲染 `GridCell` 并保证回调稳定，本册只需保证新增 props 稳定透传。**自测**：`npx vitest run src/components/DataTable`（既有 `VirtualBody.test.tsx`、`CellRenderer.*.test.tsx` 断言零改动通过；01 的 `GridCell.test.tsx` 保持通过）+ 新增断言 `onCellWrite` 收到 `CellWrite`。
+`GridCellProps` 增可选 `cellType?: CellType`、`editorKind?: CellEditorKind`、`editable?: boolean`、`readOnlyReason?: CellReadOnlyReason | null`、`onCellValue?: (value: Value | null | undefined) => void`，并把「哪一格正在编辑」的判定与 `data-dt-editing` 交给 01 契约里已冻结、但**尚未落地**的输出方式；`CellRendererProps` 同样增这几个字段，且其 `isEditing` 分支由 `<EditableCell>` 换成 `<CellEditorHost>`。
+**为什么**：`data-dt-*` 的 DOM 契约由 01 收敛在 `GridCell`（契约册 §4.4 + 01 §3.7），本册只做**加法**，不动它的取值语义；编辑器分派只依赖 props 里的 `cellType`，**不依赖属性字符串**，因此两册可以各自演进（粒度统一见 §11 未决 #14）。**本册不改 `VirtualBody.tsx`**：它已由 01 的 Step 8 改为渲染 `GridCell` 并保证回调稳定，本册只需保证新增 props 稳定透传。**自测**：`npx vitest run src/components/DataTable`（既有 `VirtualBody.test.tsx`、`CellRenderer.*.test.tsx` 断言零改动通过；01 的 `GridCell.test.tsx` 保持通过）+ 新增断言 `onCellValue` 收到三态值（含 `undefined` = 不写）。
 
 ### Step 10 · `DataTable.tsx`（**修改**）
 
-`DataTableProps` 增可选 `onCellWrite?: (row: number, col: string, write: CellWrite) => void`、`cellTypes?: ReadonlyMap<string, CellType>`、`cellEditability?: (row: number, col: string) => CellEditability`、`readOnlyReason?: CellReadOnlyReason`、`setValueHandlers?: { onSetValue; onLoadCandidates }`、`enumCandidates?: ReadonlyMap<string, readonly string[]>`；全部**稳定引用**透传给 `GridCell`（经 `VirtualBody`）与右键菜单构造（`onSetValue` 存在时菜单走 `set-value` 子菜单，否则保持既有 `more-actions` 形状）。
-**为什么**：容器只做组合与透传，判断逻辑留在纯函数里。**自测**：`npx vitest run src/components/DataTable/__tests__/DataTable.test.tsx` 既有用例零改动通过；新增用例断言 `onCellWrite` 收到 `CellWrite`。
+`DataTableProps` 增可选 `onCellValue?: (row: number, col: string, value: Value | null | undefined) => void`、`cellTypes?: ReadonlyMap<string, CellType>`、`cellEditability?: (row: number, col: string) => CellEditability`、`readOnlyReason?: CellReadOnlyReason`、`setValueHandlers?: { onSetValue; onLoadCandidates }`、`enumCandidates?: ReadonlyMap<string, readonly string[]>`；全部**稳定引用**透传给 `GridCell`（经 `VirtualBody`）与右键菜单构造（`onSetValue` 存在时菜单走 `set-value` 子菜单，否则保持既有 `more-actions` 形状）。
+**为什么**：容器只做组合与透传，判断逻辑留在纯函数里。**自测**：`npx vitest run src/components/DataTable/__tests__/DataTable.test.tsx` 既有用例零改动通过；新增用例断言 `onCellValue` 收到三态值（含 `undefined` = 不写）。
 
 ### Step 11 · `src/windows/connection/tableEditing.ts`（**新增**，纯逻辑
 
-把 `TableState` + 列元数据算成 `columnCellTypes` / `resolveCellEditable` 的输入 / 候选值 provider 工厂）+ `src/windows/connection/TableView.tsx`（**修改**）：接上面新增的 props，注入 `onCellWrite` → `actions.stageCellWrite`、`loadCandidates` → `queryCommands.executeQuery(buildDistinctCandidatesSql(...))`、导航前 `resolveEditorBeforeNavigation()`；`PanelContentRenderer.tsx`（**修改**）给视图面板传 `readOnlyReason="view"`。
+把 `TableState` + 列元数据算成 `columnCellTypes` / `resolveCellEditable` 的输入 / 候选值 provider 工厂）+ `src/windows/connection/TableView.tsx`（**修改**）：接上面新增的 props，注入 `onCellValue` → `actions.stageCellValue`、`loadCandidates` → `queryCommands.executeQuery(buildDistinctCandidatesSql(...))`、导航前 `resolveEditorBeforeNavigation()`；`PanelContentRenderer.tsx`（**修改**）给视图面板传 `readOnlyReason="view"`。
 **为什么**：`TableView.tsx` 原本已 **803** 行（已越线），接线逻辑必须落在独立模块；01 的 Step 10 抽出 `TablePendingChangesBar` 后约 713 行（不是旧稿的 660），本册只净增接线部分。**与 01 的收敛点对齐**：`setPage` / `setPageSize` / `setSort` / `applyFilters` / `commitFetchedPage` / `invalidateCachedData` 都会把 `gridSelection` 与 `selectedRows` 重置（01 §4.3 的收敛点），因此这些路径必须**先** `resolveEditorBeforeNavigation()`（合法提交、非法中止导航），否则会出现「编辑器还开着、但它的焦点格已不在选择里」的不一致状态。**自测**：`npx vitest run src/windows/connection/__tests__/TableView.test.tsx`（既有用例零改动通过）+ 新用例：无主键表双击不调 `startEdit` 且给出原因文案；`readOnly` + `view` 时原因为 `view`；翻页时若有非法草稿则导航被中止。
 
 ### Step 12 · i18n + CHANGELOG + 收尾
@@ -659,7 +664,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | `src/lib/dataTypeColors.ts` | 修改 | 既有 API 不变，内部改为投影单一路径 | 56 → 60 | 否 |
 | `src/lib/databaseMeta.ts` | 修改 | 增 `DatabaseTypeMeta.cellTypes?: CellTypeHints` | 211 → 218 | 否 |
 | `src/lib/dataTableContextMenu.ts` | 修改 | 增 Set Value 子菜单参数与纯构造 | 398 → 450 | 否（离红线尚远） |
-| `src/lib/tableChanges.ts` | 修改 | 增 `normalizeCellWrite`（`CellWrite` 本体由 DB-04 加） | **228** → 237 | 否 |
+| `src/lib/tableChanges.ts` | 修改 | 增 `normalizeEditValue`（三态本体是 `Value \| null \| undefined`，不需要新类型） | **228** → 237 | 否 |
 | `src/components/DataTable/EditableCell.tsx` | 修改（**瘦身**） | 退化为兼容壳：再导出 `toEditString` 与 `CellEditorHost` | 119 → **30** | 否（**本册通过拆分把它从 119 行降到壳层**） |
 | `src/components/DataTable/editors/toEditString.ts` | 新增 | 值→编辑文本（含对象 JSON 化） | 30 | 否 |
 | `src/components/DataTable/editors/CellEditorHost.tsx` | 新增 | 按 `CellEditorKind` 分派 + 键盘/IME/blur 状态机 | 170 | 否（>200 需再拆） |
@@ -672,22 +677,22 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | `src/components/DataTable/editors/LongTextCellEditor.tsx` | 新增 | 弹层多行（超阈值文本） | 100 | 否 |
 | `src/components/DataTable/editors/BinaryCellEditor.tsx` | 新增 | 只读提示 + 尺寸（不编辑） | 60 | 否 |
 | `src/components/DataTable/editors/setValueMenu.ts` | 新增 | Set Value 菜单项的纯构造与禁用规则 | 120 | 否 |
-| `src/components/DataTable/GridCell.tsx` | 修改（**01 新增**） | 只做加法：透传 `cellType` / `editorKind` / `editable` / `readOnlyReason` / `onCellWrite`；`data-dt-*` 的取值语义不动 | ~90 → ~115 | 否 |
-| `src/components/DataTable/CellRenderer.tsx` | 修改 | `isEditing` 分支由 `EditableCell` 改为 `CellEditorHost`；接 `cellType`/`editorKind`/`onCellWrite`，保留既有渲染分支 | 72 → 115 | 否 |
+| `src/components/DataTable/GridCell.tsx` | 修改（**01 新增**） | 只做加法：透传 `cellType` / `editorKind` / `editable` / `readOnlyReason` / `onCellValue`；`data-dt-*` 的取值语义不动 | ~90 → ~115 | 否 |
+| `src/components/DataTable/CellRenderer.tsx` | 修改 | `isEditing` 分支由 `EditableCell` 改为 `CellEditorHost`；接 `cellType`/`editorKind`/`onCellValue`，保留既有渲染分支 | 72 → 115 | 否 |
 | `src/components/DataTable/VirtualBody.tsx` | **本册不改** | 01 的 Step 8 已改用 `GridCell` 并保证回调稳定（`data-dt-surface` 等一并落地） | 207 → ~188（01 的改动） | 否 |
 | `src/components/DataTable/DataTable.tsx` | 修改 | 新 props 透传 + 菜单接线 | 628 → ~495 | **不再触红线**：01 的 Step 9 先把右键菜单搬到 `useDataTableContextMenu.ts` 并降到 ~450，本册在**它的基线上**再加 ~45 |
 | `src/windows/connection/tableEditing.ts` | 新增 | 面板级纯逻辑：列类型映射、可编辑性输入、候选值 provider 工厂 | 150 | 否 |
-| `src/windows/connection/TableView.tsx` | 修改 | 注入 `onCellWrite` / `loadCandidates` / 导航前解析编辑器 | **803** → ~738 | **接近**：01 的 Step 10 先抽出 `TablePendingChangesBar` 降到 ~713，本册净增 ≤ 25；新增逻辑一律放 `tableEditing.ts`。旧稿的「不再触红线」建立在 770 基线上，前提已不存在 |
+| `src/windows/connection/TableView.tsx` | 修改 | 注入 `onCellValue` / `loadCandidates` / 导航前解析编辑器 | **803** → ~738 | **接近**：01 的 Step 10 先抽出 `TablePendingChangesBar` 降到 ~713，本册净增 ≤ 25；新增逻辑一律放 `tableEditing.ts`。旧稿的「不再触红线」建立在 770 基线上，前提已不存在 |
 | `src/stores/tableData/types.ts` | 修改 | `TableState.enumCandidates` 字段 + 缺省值 | 55 → 62 | 否 |
 | `src/components/DataTable/TableHeader.tsx` | 不变（仅消费） | `ColumnDef` 不扩字段：列元数据经 `cellTypes`/`cellEditability` 回调传入，避免把 `ColumnSchema` 塞进组件层 | — | 否 |
-| `src/stores/tableData/stageCellWrite.ts` | 新增 | 三态写入的纯逻辑（投影进 `PendingRowChange`） | 130 | 否 |
-| `src/stores/tableDataStore.ts` | 修改 | 加 `stageCellWrite` 动作 + `enumCandidates` 缓存；`stageCellChange` 变薄壳 | **729** → ~757 | **接近**：01 的 Step 3/4 先把选择转移搬到 `src/stores/tableData/selectionActions.ts`（净减到 ~707），本册在**它的基线上**净增约 50；纯逻辑放 `stageCellWrite.ts` 就是为了守住这条线 |
+| `src/stores/tableData/stageCellValue.ts` | 新增 | 三态写入的纯逻辑（投影进 `PendingRowChange`） | 130 | 否 |
+| `src/stores/tableDataStore.ts` | 修改 | 加 `stageCellValue` 动作 + `enumCandidates` 缓存；`stageCellChange` 变薄壳 | **729** → ~757 | **接近**：01 的 Step 3/4 先把选择转移搬到 `src/stores/tableData/selectionActions.ts`（净减到 ~707），本册在**它的基线上**净增约 50；纯逻辑放 `stageCellValue.ts` 就是为了守住这条线 |
 | `src/windows/connection/PanelContentRenderer.tsx` | 修改 | 视图面板传 `readOnlyReason="view"` | 558 → 562 | 否 |
 | `packages/drivers/<id>/ui/meta.ts` | 可选修改 | 声明 `cellTypes` 覆盖（sqlserver 的 `timestamp`/`rowversion`、mysql 的 `tinyint(1)`） | +5~15/驱动 | 否 |
 | `src/locales/en/query.ts` | 修改 | 第 8 节新增 key（**只改英文侧**） | +34 条 | 否 |
 | 测试：`src/lib/__tests__/cellTypes.test.ts`、`cellEditorKind.test.ts`、`gridErrors.test.ts`、`cellEditorCandidates.test.ts`、`dataTypeColors.parity.test.ts` | 新增 | 纯逻辑单测（含表驱动） | ~450 合计 | 否 |
 | 测试：`src/components/DataTable/editors/__tests__/*.test.tsx`、`src/components/DataTable/__tests__/cellEditor.journey.test.tsx` | 新增 | 每类编辑器组件测试 + 连续旅程 | ~420 合计 | 否 |
-| 测试：`src/stores/__tests__/tableDataStore.cellWrite.test.ts`、`src/windows/connection/__tests__/TableView.editors.test.tsx` | 新增 | 三态映射 + 只读原因 | ~220 合计 | 否 |
+| 测试：`src/stores/__tests__/tableDataStore.cellValue.test.ts`、`src/windows/connection/__tests__/TableView.editors.test.tsx` | 新增 | 三态映射 + 只读原因 | ~220 合计 | 否 |
 | `e2e/specs/table-editors.ts` | 新增 | 类型化编辑器 E2E | ~180 | 否 |
 | `e2e/specs/table-edit.ts` | 修改 | 既有编辑旅程扩展（三态菜单） | +40 | 否 |
 
@@ -700,7 +705,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | # | 场景 | 期望行为 |
 | --- | --- | --- |
 | 1 | **值为 NULL** | 编辑器显示空 + 占位提示；不改动直接退出（Enter/blur）→ **不提交**（`coerceValue` 对「原文等于原值」返回无改动，调用方不落 `pendingChanges`）；要写 NULL 用 Set NULL 菜单 |
-| 2 | **空字符串 vs NULL** | 二者互不等价：`GetCellText === ''` 在可空列上解释为 **NULL**（保留今天的行为）；**空串只能**由「Set empty string」产生，或由用户在输入框里输入后经 JSON/数值校验不适用时……不成立——因此实现上：文本编辑器为空 → `Null`，`''` 一律走菜单/粘贴；`{kind:'value', value:null}` 必须经 `normalizeCellWrite` 折叠为 `{kind:'null'}` |
+| 2 | **空字符串 vs NULL** | 二者互不等价：`GetCellText === ''` 在可空列上解释为 **NULL**（保留今天的行为）；**空串只能**由「Set empty string」产生，或由用户在输入框里输入后经 JSON/数值校验不适用时……不成立——因此实现上：文本编辑器为空 → `Null`，`''` 一律走菜单/粘贴；`{kind:'value', value:null}` 必须经 `normalizeEditValue` 折叠为 `{kind:'null'}` |
 | 3 | 非空列的编辑器被清空 | 不允许提交：`coerceValue` 返回 `emptyNotNull`，行内文案 `'cellEditor.notNull'`，编辑器保持打开；**不得**静默转成 `''` 或 `NULL` |
 | 4 | **超长文本** | 代码点数 > `INLINE_TEXT_MAX_CODE_POINTS`(200) → `longText`（弹层 textarea，双击直接进弹层）；内存字节 > `CELL_EDIT_MAX_BYTES`(64 KiB) → 只读 + `largeValue` 原因（契约册没有大值加载入口，见 §11 未决 #6） |
 | 5 | **含换行的文本** | 单行 input 会把换行显示为空白但值里仍带 `\n`（危险）；因此含 `\n`/`\r` 的值一律走 `longText` 弹层（`valueCodePoints` 之外再加一条 `hasLineBreak` 判定），并在弹层里原样保留换行 |
@@ -715,9 +720,9 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | 14 | **翻页/筛选/排序导致编辑中的行被卸载** | 导航前 `resolveEditorBeforeNavigation()`：合法提交、非法中止导航；组件卸载的 cleanup **只清本地状态，不提交**，必要时提示 `'cellEditor.discardedUncommitted'` |
 | 15 | `bytes` 列被赋值 | 不进入编辑态（`binaryColumn`）；`CellRenderer` 的兜底分支仍会 `JSON.stringify` 字节数组——本册不改这条渲染口径，但要求新增编辑器路径不得 `JSON.stringify` 大字节数组（避免几次「打开设置」就把 UI 卡住） |
 | 16 | 空表 / 单行 | 无行数据时不存在编辑器路径；单行表不受影响（`rowIdentityAnchors` 仍按行身份） |
-| 17 | 无主键表 | 双击不进入编辑，原因 `noPrimaryKey`；`stageCellWrite` 内部的无主键防线**保留**（双保险） |
-| 18 | 暂存改动冲突 | 目标行身份与既有暂存冲突时 `resolveCellEditable` 的 `rowIdentityUnique` 为假 → `ambiguousRowIdentity`；`stageCellWrite` 仍会返回 `AMBIGUOUS_ROW_IDENTITY_ERROR`（不改） |
-| 19 | 结果网格（只关闭编辑器） | `ResultTableView` 的 `onCellEdit={() => setEditingCell(null)}` 语义在 DB-05 后依然成立：当父级不提供 `onCellWrite` 时，`CellEditorHost` 走「提交即关闭、不落 store」的兼容分支（DB-14 再改成真正可编辑） |
+| 17 | 无主键表 | 双击不进入编辑，原因 `noPrimaryKey`；`stageCellValue` 内部的无主键防线**保留**（双保险） |
+| 18 | 暂存改动冲突 | 目标行身份与既有暂存冲突时 `resolveCellEditable` 的 `rowIdentityUnique` 为假 → `ambiguousRowIdentity`；`stageCellValue` 仍会返回 `AMBIGUOUS_ROW_IDENTITY_ERROR`（不改） |
+| 19 | 结果网格（只关闭编辑器） | `ResultTableView` 的 `onCellEdit={() => setEditingCell(null)}` 语义在 DB-05 后依然成立：当父级不提供 `onCellValue` 时，`CellEditorHost` 走「提交即关闭、不落 store」的兼容分支（DB-14 再改成真正可编辑） |
 | 20 | 枚举列无候选值 | 打开编辑器**不发任何查询**；`Select` 只显示「加载候选值」按钮；加载失败 → `'cellEditor.candidatesFailed'`，不改变单元格值 |
 | 21 | 数值列收到字符串（PG `money`/`numeric` 的字符串形态） | `cellType` 由类型串决定，但强制转换以**输入文本**为准：`money` 归 `text`（默认表序 23 之后再定，见 §11 未决 #8），不做金额解析 |
 | 22 | `tinyint(1)`（MySQL 布尔别名） | 共享表判 `number`；**只有驱动声明覆盖**（`{match:'exact',pattern:'tinyint(1)',cellType:'bool'}`）才变 `bool`。未声明时是数字输入——可接受、可解释，且不牺牲零硬编码 |
@@ -795,7 +800,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | --- | --- |
 | `editors/__tests__/CellEditorHost.component.test.tsx` | `does not commit while an IME composition is active`（`compositionstart` → `change('日本語')` → `keyDown Enter`（`isComposing: true`）→ 断言 `onCommit` **未**调用 → `compositionend` → `keyDown Enter` → `onCommit` 调用**一次**；判定走 01 的 `isComposingEvent`，因此两种形态各写一条：`e.isComposing` 与 `e.nativeEvent.isComposing`）；`does not cancel the editor when Escape ends a composition`；`does not commit when focus moves into an editor-owned portal`（模拟焦点进入挂在 `body` 上的弹层节点）；`does not commit when the context menu steals focus`；`commits once on blur` |
 | `editors/__tests__/NumberCellEditor.test.tsx` | 非法输入标红且 `onCommit` 不触发；合法输入提交 `{kind:'value',value:42}` |
-| `editors/__tests__/BooleanCellEditor.test.tsx` | 可空列三项（NULL/true/false）各自产出对应 `CellWrite`；非空列 Checkbox 两态 |
+| `editors/__tests__/BooleanCellEditor.test.tsx` | 可空列三项（NULL/true/false）各自产出对应意图（`null` / `true` / `false`）；非空列 Checkbox 两态 |
 | `editors/__tests__/EnumCellEditor.test.tsx` | 打开时**不发** `loadCandidates`；点击后才调用一次；候选写入后可在下拉中搜索并选中 |
 | `editors/__tests__/TemporalCellEditor.test.tsx` | `date`/`time`/`datetime` 三种 kind 产出规范串；带 zone 的列走文本编辑器 |
 | `editors/__tests__/JsonCellEditor.test.tsx` | 非法 JSON 阻止提交并显示行内错误；格式化/压缩按钮不改变语义 |
@@ -805,12 +810,12 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 
 ### 9.3 三态映射（store）
 
-`src/stores/__tests__/tableDataStore.cellWrite.test.ts`：
-- `stageCellWrite with Null stores null and lists the column as changed`；
-- `stageCellWrite with Value stores the value and lists the column`；
-- `stageCellWrite with Unset removes the column change and restores the original row value`；
-- `stageCellWrite with Unset on a row without pending changes is a no-op and never creates an all-unset entry`（断言 `pendingChanges.size === 0`，对应契约册 §3.6）；
-- `stageCellChange keeps today's behaviour bit for bit`（与 `stageCellWrite(..., cellWriteValue(value))` 结果一致）；
+`src/stores/__tests__/tableDataStore.cellValue.test.ts`：
+- `stageCellValue with null stores null and lists the column as changed`；
+- `stageCellValue with a value stores the value and lists the column`；
+- `stageCellValue with undefined removes the column change and restores the original row value`；
+- `stageCellValue with undefined on a row without pending changes is a no-op and never creates an entry with an empty changedColumns`（断言 `pendingChanges.size === 0`，对应 `00` §3 的「不写」语义）；
+- `stageCellChange keeps today's behaviour bit for bit`（与 `stageCellValue(..., value)` 结果一致）；
 - `empty string and null produce different pending values`。
 
 ### 9.4 E2E（`e2e/specs/table-editors.ts`，新增）
@@ -836,7 +841,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | # | 错误做法 | 正确做法 | 后果 |
 | --- | --- | --- | --- |
 | 1 | 在新编辑器里再写一遍 `type.includes('int')` 之类的子串判断 | 一律经 `resolveCellType` / `resolveCellEditorKind`；类型规则只存在于 `cellTypes.ts` 与驱动 `meta.ts` | `point` 被判成数字、`datetime` 被 `date` 抢走；第 4 处、第 5 处分派互相漂移（宿主今天已有 4 处） |
-| 2 | 用 `null` 表达「不写这一列」，或在输入框里用空串表达 NULL | 三态用 `CellWrite`；`{kind:'value',value:null}` 必须经 `normalizeCellWrite` 折叠为 `{kind:'null'}` | 用户「把一列改成 NULL」在某个 `.filter(Boolean)` 之后静默变成「这一列没改动」，提交后数据库里还是旧值 |
+| 2 | 用 `null` 表达「不写这一列」，或在输入框里用空串表达 NULL | 三态直接用 `Value \| null \| undefined`；`undefined` 才是「不写」，`null` 必须经 `normalizeEditValue` 保持「写 NULL」 | 用户「把一列改成 NULL」在某个 `.filter(Boolean)` 之后静默变成「这一列没改动」，提交后数据库里还是旧值 |
 | 3 | 打开 JSON/日期编辑器时顺手拉一次枚举候选值或分区信息 | 只在用户显式点击「加载候选值」时发**一次** `SELECT DISTINCT … LIMIT 200` | 大表上每次双击都触发一次全表 DISTINCT，网格「点一下就卡」 |
 | 4 | 日期用 `new Date(text).toISOString()` 归一化 | 无 zone 的库文本是墙钟，原样透传；带 zone 的列 v1 只给文本编辑器 | 每格时间戳整体平移本地 UTC 偏移并凭空多出一个 `Z`（`formatTimestamp` 的注释已记录过这个缺陷） |
 | 5 | 沿用「`JSON.parse` 失败就把原文当值提交」 | 非法 JSON **阻止提交**并给行内错误 | 隐性数据损坏：JSON 列里被写进一段非 JSON 文本，直到下游解析才炸 |
@@ -844,7 +849,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | 7 | 只判 `e.isComposing`，或自己再写一份判定 | **复用 01 的 `isComposingEvent(e)`**（它已同时兼容 `e.isComposing` 与 `e.nativeEvent.isComposing`），**再加**本地 `compositionstart/end` 维护的 ref 供 `blur` 使用；不得在 `CellEditorHost` 里另写一份 `isComposing` 判定 | 中文/日文输入法选词那一下 `Enter` 被当成提交，写进半成品文本（`EditableCell` 今天正是如此）；两份判定漂移后其中一条路径必然漏判 |
 | 8 | 直接 `Number(raw)` 或 `parseFloat(raw)` | 先用 ASCII 数字正则前置校验，再 `Number()`，整数列再 `Number.isInteger` | `Number('')===0`、`Number(' ')===0`、`Number('0x10')===16`、`Number('١٢')===12` 全部静默写入错误数值 |
 | 9 | 把 `Unset` 在 UPDATE 语境下也叫「Set DEFAULT」 | UPDATE 显示 **Revert this cell**（撤销该格改动），INSERT 才显示 **Use column default** | `Unset` 不会重新应用 DDL 默认值；文案错误会让用户以为「恢复默认值」，实际只是撤销 |
-| 10 | 顺手把 `stageCellChange` 的 `value: unknown` 改成 `CellWrite` | 新增 `stageCellWrite`，`stageCellChange` 变薄壳（行为逐字节不变） | `applyColumnToRows`、DB-03 粘贴、既有 store 测试全线连带改动，一次提交同时改两条写路径 |
+| 10 | 顺手把 `stageCellChange` 的 `value: unknown` 改成三态类型 | 新增 `stageCellValue`，`stageCellChange` 变薄壳（行为逐字节不变） | `applyColumnToRows`、DB-03 粘贴、既有 store 测试全线连带改动，一次提交同时改两条写路径 |
 | 11 | 让编辑器自己实现「Tab 到下一格」/ 自己维护焦点 | 提交后调 `onCommitAndMove`，焦点与区域一律走 01 的 `gridSelection.ts` + `useGridSelection.ts` | 出现第二份焦点真相，Shift 连选/翻页后两套状态必然打架（契约册 §4.2 明令） |
 | 12 | 用行下标拼写操作定位 | 走 `rowIdentityAnchors` → `pendingChanges` → `rowIdentity`（契约册 §4.3） | 翻页/筛选后 `rowIndex` 含义整体平移，可能改到**另一行**（TablePlus 出过无 WHERE UPDATE 的同类事故） |
 
@@ -854,7 +859,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 
 | # | 问题 | 建议选项 |
 | --- | --- | --- |
-| 1 | `NOW()` / `CURRENT_TIMESTAMP` 快捷项无法用冻结的 `CellWrite` 三态表达（`Value('CURRENT_TIMESTAMP')` 会写入字面字符串） | 建议 **v1 隐藏这两个入口**（R4：能力缺失就隐藏），并在契约册 §3 记一条待办：是否新增 `CellWrite::Expression(String)` + 驱动侧渲染。备选：插入调用方本地墙钟文本，并在 UI 上明确标为「值」 |
+| 1 | `NOW()` / `CURRENT_TIMESTAMP` 快捷项无法用冻结的三态表达（把字符串 `'CURRENT_TIMESTAMP'` 当值会写入字面字符串） | 建议 **v1 隐藏这两个入口**（R4：能力缺失就隐藏），并在 `00` 记一条待办：是否新增「表达式写入」这一类意图 + 驱动侧渲染。备选：插入调用方本地墙钟文本，并在 UI 上明确标为「值」 |
 | 2 | 可空布尔列的三态控件：3 项 `Select` vs `Checkbox` + 修饰键/菜单置 NULL | 建议 **3 项 `Select`**（零歧义、可键盘操作、复用既有 primitives）；`Checkbox` 只在非空列用 |
 | 3 | 带时区列（`timestamptz` / `datetimeoffset`）：v1 只给文本编辑器 vs 给选择器并在写回时拼回原 offset | 建议 **v1 只给文本编辑器**（选择器会静默改瞬时）；若产品坚持要选择器，必须新增「保留原 offset」的显式行为与其单测，并把 `TemporalValueInput` 的 zone 支持作为独立条目排期 |
 | 4 | 方言陷阱（SQL Server `timestamp`/`rowversion`、MySQL `tinyint(1)`、ClickHouse `FixedString`）靠共享表还是靠驱动 `cellTypes` 覆盖 | 建议 **共享表负责通用 SQL 名，驱动覆盖负责方言陷阱**；本册必须为 sqlserver 的 `timestamp` 与 mysql 的 `tinyint(1)` 各写**一条驱动 hints 的单测**（不需要真驱动） |
