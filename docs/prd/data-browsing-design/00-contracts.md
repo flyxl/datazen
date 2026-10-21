@@ -1095,17 +1095,21 @@ export interface DataGridCapabilities {
 | 44 | `grid.selection.invalid` | 01 | 选区状态自相矛盾（锚点与焦点不匹配、区间倒置未归一） | 说明选区已重置，并提示重新选择 |
 | 45 | `grid.selection.stale` | 01 | 选区引用的行列在重取数/改列后已失效 | 说明选择已被清空，需重新选择 |
 
-> **⚠ 生产者盘点（2026-10-21，Wave 1 收尾实测，第 4 轮补齐后更新）**：本节现有 **44 行**（编号 10 的 `duplicateDraft` 已按 IB3-D4 删除、编号留空），其中 **8 个码**有真实 throw 点：
-> - `grid.commit.stalePlan`（7 处：`config_revision` / 库 / schema / 会话 / 执行前配置漂移 + 2 条指纹）
+> **⚠ 生产者盘点（2026-10-21，Wave 1 收尾实测，第 5 轮补齐后更新）**：本节现有 **44 行**（编号 10 的 `duplicateDraft` 已按 IB3-D4 删除、编号留空），其中 **8 个码**有真实 throw 点，合计 **27 处**：
+> - `grid.commit.stalePlan`（**9** 处：`change_set` 3（会话不同 / 指纹不符 / 指纹过期）、`mod.rs` 3（`config_revision` / 库 / schema）、`write_exec` 3（自有会话目标未确认 / 手工事务漂移 / 执行前配置变更））
 > - `grid.commit.affectedMismatch`（3 处：INSERT / 行身份 / 驱动未上报）
 > - `grid.commit.conflictingIntents`（3 处：删除+列写入、新增行被标记删除、计划内身份冲突）
 > - `grid.cell.noRowIdentity`（6 处：空身份 / NULL / 缺列 / 多列）
 > - `grid.cell.ambiguousIdentity`（2 处：重复主键身份 / 身份碰撞）
 > - `grid.cell.readOnly`（2 处：连接只读 / 表无主键）
 > - `grid.insert.unknownColumn`（1 处：草稿引用不存在的列，仅 INSERT 域）
-> - `grid.insert.returningUnavailable`（`ChangeWarning.code`，结构化字段而非文案前缀）
+> - `grid.insert.returningUnavailable`（1 处，`ChangeWarning.code`，结构化字段而非文案前缀）
+>
+> **前端必须登记这 8 个码**：`src/lib/gridErrors.ts` 的 `GRID_ERROR_CODES` 若不含它们，`classifyGridError` 一律返回 `unknown`，前端无法按码分支——**Rust 侧贴了码而 TS 侧没登记，等于白贴**。登记是纯追加（该文件的 doc 注释要求「later tracks append their own domain only」），合流后统一做。
 >
 > 例外说明：`validate_connection_facts` 的「Table connection context changed」**故意不带码**——它校验的是「请求与连接 profile 不一致」，属调用方错误，不是计划过期；不要把它并进 `stalePlan`。
+>
+> 另一处**同族但属他册**：`src-tauri/src/commands/table_target.rs` 的「Manual table session target changed」是**结果集写回**（10 分册）的同类判定，本批未动，10 分册落地时统一到 `stalePlan`。
 >
 > 其余是**声明**，不是事实。合入任何一册前必须回答：「本册要用的码，现在有没有生产者？」没有就当场补，或把该行改成「未实现」。前端 `src/` 目前**零处**按 `grid.*` 字符串分支——码表再全，没有生产者也等于没有契约。
 >
