@@ -172,6 +172,31 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.skip_count_query()
     }
 
+    fn count_strategy(&self) -> CountStrategy {
+        self.inner.count_strategy()
+    }
+
+    fn count_estimate_sql(
+        &self,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Option<String> {
+        self.inner.count_estimate_sql(database, schema, table)
+    }
+
+    fn default_order_columns(
+        &self,
+        columns: &[ColumnSchema],
+        primary_keys: &[String],
+    ) -> Vec<String> {
+        self.inner.default_order_columns(columns, primary_keys)
+    }
+
+    fn allow_first_column_fallback_order(&self) -> bool {
+        self.inner.allow_first_column_fallback_order()
+    }
+
     fn supports_offset(&self) -> bool {
         self.inner.supports_offset()
     }

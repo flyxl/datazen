@@ -529,12 +529,40 @@ pub struct ExplainResult {
     pub estimated_rows: Option<i64>,
 }
 
+/// How trustworthy the row count of a table read is.
+///
+/// The count used to be a boolean ("the host asked for it" / "the host did
+/// not"), which cannot say *how* the number was obtained. A driver that can
+/// only offer a catalog estimate and a driver that cannot count at all are
+/// both "no exact count", and the UI has to render them differently: one
+/// shows "≈ 1.2M rows", the other shows "row count unavailable".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CountStrategy {
+    /// `SELECT COUNT(*)` is trustworthy and cheap enough.
+    Exact,
+    /// Only an estimate is available (a catalog statistic, say); the UI has
+    /// to present it as "about N rows".
+    Estimated,
+    /// No row count at all.
+    Unsupported,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableDataResult {
     pub columns: Vec<ColumnSchema>,
     pub rows: Vec<Vec<Option<Value>>>,
     pub total_rows: Option<i64>,
+    /// How much the `total_rows` of this response may be trusted.
+    ///
+    /// `None` means "this response carries no fresh row count" — the caller
+    /// asked to reuse the cached one, or the backend is older than this
+    /// field — and the caller keeps the value it already had. It is not the
+    /// same as `Some(Unsupported)`, which says "the count was attempted and
+    /// this database cannot provide one".
+    #[serde(default)]
+    pub total_rows_kind: Option<CountStrategy>,
     pub page: u32,
     pub page_size: u32,
 }

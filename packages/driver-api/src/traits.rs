@@ -29,6 +29,7 @@ mod schema_target;
 pub(crate) mod sql_text;
 mod streaming;
 
+pub mod browsing;
 pub mod filter_contract;
 
 pub use command_api::execute_standard_sql_command;
@@ -91,6 +92,35 @@ pub trait DatabaseDriver: Send + Sync {
 
     fn skip_count_query(&self) -> bool {
         false
+    }
+
+    /// How trustworthy this driver's row count is. See [`browsing::count_strategy`].
+    fn count_strategy(&self) -> CountStrategy {
+        browsing::count_strategy(self.skip_count_query())
+    }
+
+    /// The estimate statement, if any. See [`browsing::count_estimate_sql`].
+    fn count_estimate_sql(
+        &self,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Option<String> {
+        browsing::count_estimate_sql(database, schema, table)
+    }
+
+    /// The default ordering columns. See [`browsing::default_order_columns`].
+    fn default_order_columns(
+        &self,
+        columns: &[ColumnSchema],
+        primary_keys: &[String],
+    ) -> Vec<String> {
+        browsing::default_order_columns(columns, primary_keys)
+    }
+
+    /// Whether the first-column fallback is allowed. See [`browsing`].
+    fn allow_first_column_fallback_order(&self) -> bool {
+        browsing::allow_first_column_fallback_order()
     }
 
     /// Whether the driver's SQL dialect supports `OFFSET` in pagination.

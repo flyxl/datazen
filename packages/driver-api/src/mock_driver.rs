@@ -14,11 +14,16 @@ use crate::{
     DriverCommandDefinition, SchemaScope, SqlLiteralDialect,
 };
 use crate::{
-    ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType,
-    DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult, ServerInfo,
-    StatementResult, StructureChangePlan, StructureChangeRequest, TableInfo, TableSchema,
-    TransactionHandle, Value,
+    ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, CountStrategy, DatabaseDriver,
+    DatabaseType, DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult,
+    ServerInfo, StatementResult, StructureChangePlan, StructureChangeRequest, TableInfo,
+    TableSchema, TransactionHandle, Value,
 };
+
+/// The column the mock's estimate statement selects. The mock answers a
+/// statement that mentions it with the configured estimate, so a test can tell
+/// the estimate statement apart from the count and from the data statement.
+pub const ESTIMATE_COLUMN: &str = "estimated_row_count";
 
 /// Models "another task registered its own transaction for the same
 /// `dbSessionId` while this one was being opened".
@@ -142,6 +147,27 @@ pub struct MockDriverOptions {
     /// pure equality read (`… = ?1`, no `>` seek) is filtered, so a test opts
     /// in exactly for the keyed-read shape it needs to prove.
     pub filter_rows_by_key_equality: bool,
+    /// Whether this mock skips the row count, the way a driver that cannot
+    /// count at all does. The default (`false`) keeps the exact count.
+    pub skip_count_query: bool,
+    /// The row count the mock's **estimate** statement reports. `None` (the
+    /// default) models a driver without an estimate statement; `Some(n)` makes
+    /// the mock answer an estimate of `n` rows, and a negative value models
+    /// an estimate that is not usable.
+    pub count_estimate_rows: Option<i64>,
+    /// The error the mock's estimate statement fails with. `None` (the
+    /// default) lets the estimate succeed.
+    pub count_estimate_error: Option<String>,
+    /// The row-count strategy this mock declares. `None` (the default) lets
+    /// the trait's own default derive it from [`Self::skip_count_query`].
+    pub count_strategy: Option<CountStrategy>,
+    /// The error the mock's `COUNT(*)` statement fails with. `None` (the
+    /// default) lets the count succeed.
+    pub count_error: Option<String>,
+    /// The value the mock's `COUNT(*)` statement reports. `None` (the
+    /// default) reports [`Self::count_total`] as an integer; a value of
+    /// another shape models a count that did not come back as a number.
+    pub count_total_value: Option<Value>,
 }
 
 impl Default for MockDriverOptions {
@@ -192,6 +218,12 @@ impl Default for MockDriverOptions {
             default_schema: None,
             open_databases: Vec::new(),
             filter_rows_by_key_equality: false,
+            skip_count_query: false,
+            count_estimate_rows: None,
+            count_estimate_error: None,
+            count_strategy: None,
+            count_error: None,
+            count_total_value: None,
         }
     }
 }
@@ -455,6 +487,27 @@ impl DatabaseDriver for MockDriver {
         self.opts.default_schema
     }
 
+    fn skip_count_query(&self) -> bool {
+        self.opts.skip_count_query
+    }
+
+    fn count_strategy(&self) -> CountStrategy {
+        self.opts
+            .count_strategy
+            .unwrap_or_else(|| crate::traits::browsing::count_strategy(self.opts.skip_count_query))
+    }
+
+    fn count_estimate_sql(
+        &self,
+        _database: &str,
+        _schema: Option<&str>,
+        table: &str,
+    ) -> Option<String> {
+        self.opts
+            .count_estimate_rows
+            .map(|_| format!("SELECT {ESTIMATE_COLUMN} FROM {}", self.quote_ident(table)))
+    }
+
     async fn close_database(
         &self,
         _handle: &ConnectionHandle,
@@ -631,14 +684,41 @@ impl DatabaseDriver for MockDriver {
         if let Some(msg) = &self.opts.query_error {
             return Err(DriverError::QueryFailed(msg.clone()));
         }
+        // The estimate statement is answered on its own, so a test can tell it
+        // apart from the count and from the data statement — and can make it
+        // fail without taking the data statement down with it.
+        if sql.contains(ESTIMATE_COLUMN) {
+            if let Some(msg) = &self.opts.count_estimate_error {
+                return Err(DriverError::QueryFailed(msg.clone()));
+            }
+            let estimate = self.opts.count_estimate_rows.unwrap_or_default();
+            return Ok(QueryResult {
+                columns: vec![ColumnInfo {
+                    name: ESTIMATE_COLUMN.into(),
+                    data_type: "bigint".into(),
+                    nullable: true,
+                }],
+                rows: vec![vec![Some(Value::Integer(estimate))]],
+                rows_affected: None,
+                execution_time_ms: 0,
+            });
+        }
         if sql.contains("COUNT(*)") {
+            if let Some(msg) = &self.opts.count_error {
+                return Err(DriverError::QueryFailed(msg.clone()));
+            }
+            let value = self
+                .opts
+                .count_total_value
+                .clone()
+                .unwrap_or(Value::Integer(self.opts.count_total));
             return Ok(QueryResult {
                 columns: vec![ColumnInfo {
                     name: "count".into(),
                     data_type: "bigint".into(),
                     nullable: false,
                 }],
-                rows: vec![vec![Some(Value::Integer(self.opts.count_total))]],
+                rows: vec![vec![Some(value)]],
                 rows_affected: None,
                 execution_time_ms: 0,
             });

@@ -58,6 +58,8 @@ async fn schema_commands_with_connected_mock() {
         None,
         None,
         None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -160,6 +162,8 @@ async fn get_table_data_with_query_rows() {
         None,
         None,
         Some(true),
+        None,
+        None,
         None,
         None,
         None,
@@ -399,6 +403,8 @@ async fn get_table_data_joins_filters_with_or() {
         Some("or".into()),
         None,
         None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -423,6 +429,8 @@ async fn get_table_data_reads_the_target_database_without_switching() {
         Some(true),
         None,
         Some("analytics".into()),
+        None,
+        None,
         None,
     )
     .await
@@ -658,6 +666,8 @@ async fn get_table_data_rejects_incomplete_filter_with_prefix() {
         Some("and".into()),
         None,
         None,
+        None,
+        None,
     )
     .await
     .expect_err("an incomplete filter must be refused");
@@ -710,6 +720,8 @@ async fn get_table_data_rejects_unsupported_operator_with_prefix() {
         None,
         Some(true),
         Some("and".into()),
+        None,
+        None,
         None,
         None,
     )

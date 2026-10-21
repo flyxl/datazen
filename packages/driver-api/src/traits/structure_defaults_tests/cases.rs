@@ -551,3 +551,122 @@ mod filter_defaults {
             .contains(&FilterOperator::Regex));
     }
 }
+
+/// The browsing half of the contract: a driver that overrides nothing must
+/// keep the behaviour it had before the count strategy and the default order
+/// existed — an exact count, no estimate, the primary key (or the first
+/// column) as the order.
+mod browsing_defaults {
+    use super::*;
+    use crate::mock_driver::{MockDriver, MockDriverOptions};
+    use crate::types::CountStrategy;
+    use std::sync::Arc;
+
+    fn mock(options: MockDriverOptions) -> Arc<MockDriver> {
+        MockDriver::new("sqlite", options)
+    }
+
+    fn column(name: &str, is_primary_key: bool) -> ColumnSchema {
+        ColumnSchema {
+            name: name.to_string(),
+            data_type: "text".to_string(),
+            nullable: true,
+            default_value: None,
+            comment: None,
+            is_primary_key,
+            is_auto_increment: false,
+        }
+    }
+
+    #[test]
+    fn count_strategy_defaults_to_exact_when_skip_count_query_is_false() {
+        let driver = mock(MockDriverOptions::default());
+        assert_eq!(driver.count_strategy(), CountStrategy::Exact);
+    }
+
+    #[test]
+    fn count_strategy_defaults_to_unsupported_when_skip_count_query_is_true() {
+        // The compatibility argument of the whole contract: a driver that
+        // skips the count keeps skipping it, and every other driver keeps
+        // counting exactly.
+        let driver = mock(MockDriverOptions {
+            skip_count_query: true,
+            ..Default::default()
+        });
+        assert!(driver.skip_count_query());
+        assert_eq!(driver.count_strategy(), CountStrategy::Unsupported);
+    }
+
+    #[test]
+    fn count_estimate_sql_defaults_to_none() {
+        let driver = mock(MockDriverOptions::default());
+        assert_eq!(driver.count_estimate_sql("app", None, "orders"), None);
+        assert_eq!(
+            driver.count_estimate_sql("app", Some("public"), "orders"),
+            None
+        );
+    }
+
+    #[test]
+    fn default_order_columns_prefers_the_primary_keys_argument() {
+        // The primary keys arrive normalised, so a column without the flag
+        // still orders by the real key.
+        let driver = mock(MockDriverOptions::default());
+        let columns = vec![column("col_a", false), column("col_b", false)];
+        assert_eq!(
+            driver.default_order_columns(&columns, &["id".to_string()]),
+            vec!["id".to_string()]
+        );
+    }
+
+    #[test]
+    fn default_order_columns_falls_back_to_the_first_column() {
+        let driver = mock(MockDriverOptions::default());
+        let columns = vec![column("col_a", false), column("col_b", false)];
+        assert_eq!(
+            driver.default_order_columns(&columns, &[]),
+            vec!["col_a".to_string()]
+        );
+    }
+
+    #[test]
+    fn default_order_is_empty_when_columns_are_empty() {
+        let driver = mock(MockDriverOptions::default());
+        assert!(driver.default_order_columns(&[], &[]).is_empty());
+    }
+
+    #[test]
+    fn allow_first_column_fallback_order_defaults_to_true() {
+        assert!(mock(MockDriverOptions::default()).allow_first_column_fallback_order());
+    }
+
+    /// The wrapper must not lose the wrapped driver's rules: a reuse alias
+    /// that quietly fell back to the trait default would drop the estimate
+    /// and the default order of the engine it stands in for.
+    #[test]
+    fn reuse_driver_forwards_browsing_strategy_methods() {
+        use crate::ReuseDriver;
+
+        let inner = mock(MockDriverOptions {
+            skip_count_query: false,
+            count_estimate_rows: Some(4242),
+            ..Default::default()
+        });
+        let wrapper = ReuseDriver::new(inner.clone(), "alias");
+        assert_eq!(wrapper.count_strategy(), inner.count_strategy());
+        assert_eq!(
+            wrapper.count_estimate_sql("app", Some("public"), "orders"),
+            inner.count_estimate_sql("app", Some("public"), "orders")
+        );
+        let columns = vec![column("id", true)];
+        let primary_keys = vec!["id".to_string()];
+        assert_eq!(
+            wrapper.default_order_columns(&columns, &primary_keys),
+            inner.default_order_columns(&columns, &primary_keys)
+        );
+        assert_eq!(
+            wrapper.allow_first_column_fallback_order(),
+            inner.allow_first_column_fallback_order()
+        );
+    }
+}

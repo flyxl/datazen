@@ -265,15 +265,11 @@ describe('audit: the transport change does not touch the capability path', () =>
     setBackendClient(DESKTOP_BACKEND_ID, client);
     selectBackend(DESKTOP_BACKEND_ID);
 
-    // `estimateTableRows` is declared "notImplemented" by the desktop.
+    // The named views are still declared "notImplemented" by the desktop:
+    // they are the browser form factor's gap, not the row count's.
     let caught: unknown = null;
     try {
-      await client.estimateTableRows({
-        dbSessionId: 'session-1',
-        table: 'users',
-        database: 'app',
-        schema: null,
-      });
+      await client.listNamedViews({});
     } catch (error) {
       caught = error;
     }
@@ -285,5 +281,32 @@ describe('audit: the transport change does not touch the capability path', () =>
     // The capability refusal never went through the wire, so it has no cause
     // chain — and the transport change did not give it one.
     expect((apiError as { cause?: unknown }).cause).toBeUndefined();
+  });
+
+  it('lets the row count estimate reach the host again', async () => {
+    const client = createBackendClient(
+      DESKTOP_BACKEND_ID,
+      createDesktopBackendTransport(),
+    );
+    setBackendClient(DESKTOP_BACKEND_ID, client);
+    selectBackend(DESKTOP_BACKEND_ID);
+
+    // 09 registered `estimate_table_rows`, so the desktop no longer declares
+    // the method unsupported and the call reaches the wire.
+    mockInvoke.mockResolvedValue(null);
+    await expect(
+      client.estimateTableRows({
+        dbSessionId: 'session-1',
+        table: 'users',
+        database: 'app',
+        schema: null,
+      }),
+    ).resolves.toBeNull();
+    expect(mockInvoke).toHaveBeenCalledWith('estimate_table_rows', {
+      dbSessionId: 'session-1',
+      table: 'users',
+      database: 'app',
+      schema: null,
+    });
   });
 });
