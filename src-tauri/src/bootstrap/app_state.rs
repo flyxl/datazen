@@ -218,6 +218,9 @@ pub(crate) fn finish_app_state(
         ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
         desktop_job_host,
+        // 组织作用域在**启动期**确定一次：桌面是单租户，组织的值是安装级常量，
+        // 与「当前 OS 用户名能不能取到」无关。请求期直接取这份值（INV-01）。
+        organization_scope: crate::platform::local_organization_scope(),
     };
     if let Ok(adapter) = state.platform.require() {
         if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {

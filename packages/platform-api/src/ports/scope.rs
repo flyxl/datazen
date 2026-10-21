@@ -6,8 +6,11 @@
 //!
 //! 规则（承自 §4.1 的端口约定）：
 //!
-//! * 作用域**只能由 adapter 构造**。身份来自 [`crate::context::RequestContext`]，
-//!   而请求上下文只能由 adapter 构造（INV-01）——任何请求体字段都不得覆盖组织身份。
+//! * 作用域**只能由可信来源构造**：adapter 组装的请求上下文
+//!   （[`OrganizationScope::from_context`]），或宿主形态的**安装级常量**——
+//!   桌面是单租户，它的组织 id 是一个进程常量，与「当前 OS 用户名能不能取到」
+//!   无关。两种来源都**不是**请求体字段：**任何请求体字段都不得覆盖组织身份**
+//!   （INV-01）。
 //! * **越组织访问一律按「不存在」处理**（返回 `None` / 空列表），不返回「无权限」
 //!   ——后者会泄漏「存在但无权」（CM-05）。
 //! * 作用域**只表达组织维度**。连接档案的可见性是另一回事，见
@@ -37,8 +40,12 @@ pub struct OrganizationScope {
 }
 
 impl OrganizationScope {
-    /// 直接以组织 id 构造作用域。优先用 [`Self::from_context`]，除非调用方
-    /// 已经持有可信的组织身份。
+    /// 直接以组织 id 构造作用域。
+    ///
+    /// 只在调用方已经持有**可信的组织身份**时用：宿主形态的安装级常量
+    /// （桌面单租户），或别的已解析好的组织身份。请求体字段**不得**流到这里
+    /// （INV-01）——那等于让调用方指定组织，租户边界随之失效。
+    /// 其余情况优先用 [`Self::from_context`]。
     pub fn new(organization_id: OrganizationId) -> Self {
         Self { organization_id }
     }
@@ -46,7 +53,8 @@ impl OrganizationScope {
     /// 从请求上下文取作用域。
     ///
     /// 身份只能来自 adapter 构造的上下文（INV-01），因此本方法**不接受**任何
-    /// 请求体字段作为入参。
+    /// 请求体字段作为入参。宿主形态若不经过 adapter（例如桌面用安装级常量
+    /// 直接构造），见 [`Self::new`]。
     pub fn from_context(ctx: &RequestContext) -> Self {
         Self::new(ctx.organization_id.clone())
     }

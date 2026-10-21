@@ -692,6 +692,33 @@ impl OpenSessionUseCase {
 }
 ```
 
+### 5.2 组织作用域的来源（已实现）
+
+按组织限定的读写用 `OrganizationScope`（`platform-api::ports::scope`）表达**组织维度**；
+它只表达组织，不表达主体（主体是 `principalId` 的事）。作用域的来源按形态分：
+
+| 形态 | 组织作用域从哪来 | 与 adapter 组装的关系 |
+| --- | --- | --- |
+| 桌面本地 | **安装级常量**：进程常量 `LOCAL_ORGANIZATION_ID`（`src-tauri/src/platform/identity.rs`）——一份 app data 就是一个组织 | **不依赖** adapter 是否组装成功 |
+| HTTP / server | 认证会话解析出的组织（§5 的 `RequestContext.organizationId`） | 由 adapter 组装的请求上下文提供 |
+| 后台 Job / 子执行 | 发起 Job 的组织，逐阶段继承 | 同上 |
+
+桌面的取值是**安装级**的：它在**启动期确定一次**并存进 `AppState.organization_scope`，
+请求期直接取（`AppState::organization_scope()`）。由此得到三条结论：
+
+- **组织身份不可用 ≠ 组织边界不可用**。「取不到当前 OS 用户名」只让 `principalId` 拿不到
+  （`principalId` 仍依赖 adapter 组装成功），**不影响**组织作用域——按组织限定的功能
+  （仪表板 / workflow 等）不会因此整体不可用。
+- **IPC 路径与后台路径必须看到同一个组织**：两者都取同一个安装级常量
+  （`local_organization_scope()`），不得各自解析、各自缓存不同的值。
+- 任何请求体字段都不得覆盖组织身份（INV-01）：作用域**不是** IPC 参数。
+
+按组织限定的**存储端口**（共享 feature 层的 `DashboardStore` / `DashboardRunStore` /
+`WorkflowDefinitionStore`）每个方法都带 `scope: &OrganizationScope`：多租户宿主因此能在
+**同一个存储实现**上区分「本组织的数据」与「别的组织的数据」，不必退化成
+「每个组织一个存储实例」；越组织访问一律按「不存在」处理（空列表 / `None` / `NotFound`），
+**不返回**「无权限」类错误——后者会泄漏「存在但无权」（CM-05）。
+
 ## 6. Tauri adapter 组装根（目标设计，未随 P1 实现）
 
 ### 6.1 AppState 的职责拆分

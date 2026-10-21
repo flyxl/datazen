@@ -25,3 +25,8 @@ mod host;
 
 #[cfg(test)]
 mod live_acceptance;
+
+// 长期文档 `docs/architecture/platform/workflow-resource-model.md` 的引用新鲜度守卫。
+#[cfg(test)]
+#[path = "doc_reference_tests.rs"]
+mod doc_reference_tests;

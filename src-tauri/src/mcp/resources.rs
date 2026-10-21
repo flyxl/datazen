@@ -41,7 +41,9 @@ impl DataZenMcpServer {
         }
 
         if uri == "datazen://workflows" {
-            let workflows = self.app_state.workflow_registry.list().await;
+            // MCP 读的是桌面自己那一个组织的数据。
+            let scope = crate::platform::local_organization_scope();
+            let workflows = self.app_state.workflow_registry.list(&scope).await;
             let json = serde_json::to_string_pretty(&workflows)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(

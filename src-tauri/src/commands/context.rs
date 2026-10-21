@@ -622,6 +622,7 @@ mod tests {
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
             platform,
+            organization_scope: crate::platform::local_organization_scope(),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
@@ -698,6 +699,7 @@ mod tests {
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
             platform,
+            organization_scope: crate::platform::local_organization_scope(),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
