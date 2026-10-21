@@ -26,3 +26,15 @@ if (typeof Range !== 'undefined' && !Range.prototype.getClientRects) {
     [Symbol.iterator]: function* () {},
   });
 }
+
+// jsdom does not implement scrollIntoView either. Components that scroll an
+// element into view (the filter editor does so after a filter was added) call
+// it from a requestAnimationFrame callback, and the missing method turns into
+// a TypeError that vitest reports as an *unhandled* error — every test passes,
+// yet the run exits 1. Whether the callback fires before or after the suite
+// ends is a timing question, so the failure showed up in some full runs and
+// not in others. The stub is a no-op: jsdom has no layout, so there is
+// nothing to scroll.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
