@@ -438,6 +438,11 @@ impl Store {
 #[cfg(test)]
 mod tests;
 
+/// `JobFilter` 的组织维度必填在全仓的落点守卫（源码扫描，见文件头注释）。
+#[cfg(test)]
+#[path = "job_filter_scope_tests.rs"]
+mod job_filter_scope_tests;
+
 #[async_trait::async_trait]
 impl datazen_platform_api::ports::SettingsRepository for Store {
     async fn read_settings(
