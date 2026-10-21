@@ -111,6 +111,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 - **绑定上限有来源。** `BoundParameterLimit` 区分 `Dialect`（方言语法常量）、`Runtime`（服务器或绑定实现限制）与 `Declared`（旧 API 无法区分来源时的声明）。批量写入只读 `limit()`，文档与诊断读来源。
 - **兼容入口保留。** `format_sql_literal` / `build_*_sql` 仍存在但已标记为 deprecated，仅由旧调用点使用；产品写路径继续使用 `build_*_statement` + `execute_with_params`。`legacy_format_sql_literal` 是这两个 deprecated builder 的兼容渲染入口，新代码不得调用。
 - **能力声明不另起一套。** 本轮只新增文本契约；「是否支持绑定写」「精确取消」「事务」等仍由既有 `CapabilitySet` / `ResourceProvider` 决定，不引入第二个能力集合。
+- **旧 trait 方法在被新契约取代后仍然保留。** 借用适配器（`LegacySqlDialect` / `LegacyCatalogReader` / `LegacyCommandCatalog` / `LegacySchemaMigration` / `LegacyBackupDialect`）正是**委托给这些旧方法**的，删掉它们等于删掉契约的委托目标，新契约会失去唯一实现——那会变成两份实现或互相转发，违反「同一项行为只有一个实际实现」。因此可删的旧方法只有一种：**driver-api 之外零消费者，且契约侧已有自有实现**。`DatabaseDriver::split_restore_sql` 即按此退役（`BackupDialect` 的实现改为直连 `sql_text::split_restore_sql`，全仓 15 个驱动无一显式声明过该方法，删除对现存实现方零编译影响）；`uses_sql_restore_pipeline` / `new_sql_scanner` / `type_normalizer` / `format_sql_literal` 等仍是被适配器委托的方法，**保留**。
 
 已迁移的消费者：
 
@@ -119,7 +120,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 其余消费者按调用链逐步迁移。
 
-版本：`datazen-driver-api` 0.0.13 → 0.0.15（0.0.14 为 `SqlDialect`，0.0.15 为 `CatalogReader`）；新增契约带默认适配器实现属 additive，`PROTOCOL_VERSION` 保持 6（2026-10-21 起协议版本冻结于 6，兼容门禁族退役——治理决定见 [driver-capability-migration.md](../platform/driver-capability-migration.md#5-协议版本演进) §5）。
+版本：`datazen-driver-api` 0.0.13 → 0.0.20——0.0.14 `SqlDialect`、0.0.15 `CatalogReader`、0.0.16 `ReuseDriver` 显式转发补齐、0.0.17 `CommandCatalog`、0.0.18 `SchemaMigration`、0.0.19 `BackupDialect`、0.0.20 退役 `DatabaseDriver::split_restore_sql`（唯一一次 trait 表面删除，故单独记一版）。新契约本身都是 additive（新 trait + 适配器），`PROTOCOL_VERSION` 保持 6（2026-10-21 起协议版本冻结于 6，兼容门禁族退役——治理决定见 [driver-capability-migration.md](../platform/driver-capability-migration.md#5-协议版本演进) §5）；crate 版本记录的是**本仓库**的 trait 表面变化，仓库内各驱动按最新 trait 实现即可。
 
 ### 2.5 复用包装器：`ReuseDriver` 必须显式决定每个方法
 
