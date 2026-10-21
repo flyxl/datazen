@@ -103,7 +103,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 |---|---|---|---|
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ✅ 第 3 轮完成 `09e261eb0` → **终验中** |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 第 1 轮修复完成 `9a4a1585e` → 复测中 |
-| **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ✅ 已交付 `431b6d23c` → Tester 复测中 |
+| **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 2 轮小修中（D1 文档字面为假 / D3 五条 clippy / D4 每访问分配 UUID） |
 | **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | ✅ 已交付 `dd8c9a0d7` → Tester 复测中 |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 复测 **TEST_PASSED** → 第 3 轮小修中（D-01 注释夸大 / D-02 引用块夸大） |
 
@@ -603,6 +603,19 @@ Tester 用**探针实测**推翻了 G-04 引用块里的一句话：「去掉其
 **D-03（测试覆盖缺口，Tester 已补）**：文档把域标签**字面值**写成事实，却无用例钉住 —— 改一个字面量，**24 条旧用例全绿**。Tester 补 5 条（域标签字面值、消息编码字节布局**手写不复用被测函数**、无长度前缀的**反事实撞车**、**黄金值**由 Python `hmac` + Node `crypto` 两套独立实现算出并互校、主密钥一换全部身份键都变）。
 
 **G 的失败画像对照**（20 vs 20 次**交替**跑以均衡负载）：本树 2/20 失败 vs 基线 2/20 失败，**Fisher p = 1.0000**；两个 flake 家族**各自都会在对方缺席时出现**（`native_tool` 那条挂基线树、`live_source` 那条挂本树）⇒ 都是既有竞态、非本轨引入。
+
+
+### F1 轨验证（Tester `c677ce15`）—— TEST_PASSED，挖出一条**覆盖空洞**
+
+**核心结论**：端口化**真的**把存储抽象出去了 —— 进程级全局清零（`grep "static STORE\|global_store"` 0 命中）、`InMemoryTransferPlanStore` 留在包内且宿主**确实用注入实例**（未另写一份）、跨组织语义正确且**逐字**不可区分（跨组织与未知 id 走**同一个 `unknown_plan()`** 函数 ⇒ 错误文案与类型都逐字相同，**不是**"都退化成同一泛化错误"）、一次性消费与不可变性在**双层**独立承重（包内 store 的 `claim` 守卫 + 宿主 admission 的 `plan.state` 检查，各自有专属用例钉住；删掉任一层另一层仍拦得住）。
+**19 条孤儿测试真的第一次被编译并全绿**；4 处编译期修复经**反向实验**证明**零行为变更**（改回原样只报 `E0425`/`E0574`/`E0599` 名字解析错误，**无任何语义错误**）。IPC 表面 **274 条命令签名逐字节未变**；`env -u USER` 相对基线 **242 == 242**（双向 `comm` 差集为空）。
+
+**D5（覆盖空洞，Tester 已补）**：变异 4（删 `peek_checkpoint`/`claim_checkpoint` 的**组织检查**）→ **0 红**；写侧收窄**完全无测试**。**生产代码是对的，但这两条性质一条用例都没钉住** —— 又是"测试全绿 ≠ 性质被钉住"的一个实例，这次是**零覆盖**而非弱化。Tester 补 3 条（2 包内 + 1 宿主，宿主那条**刻意 adapter-free**，因其第一版用 `TestAppState` 实测会多出 1 条 `env -u USER` 失败，已重写复核）。
+
+**P0-5 裁定（协调者接受）：17 个方法不拆。** 理由：platform-api §4.2 的「按聚合拆、不合并 trait」只管 platform-api 端口族（`#[async_trait]` + `PortError` + platform ID newtype），`TransferPlanStorePort` 是**领域包端口**（三条约定一条不走）→ 不在所辖族内；且规则目的是「免得实现方被迫实现**不相关**方法」，而这 17 个是**同一聚合根**（计划 + 执行租约 + 恢复检查点）上的操作 —— 拆开后持久化实现**仍必须同时实现两个**（目的未达成），还会**拆散当前由一对 `Mutex` 提供的单写者原子性**（`claim_checkpoint` 要改另一个 trait 拥有的状态）。要求在 `port.rs` 模块头写明这一点，防后续有人"按约定"顺手拆开。
+
+**F1 的待办**：D1（文档"包内没有进程级全局单例"**字面为假** —— `sql_file.rs:36 static PATHS` 是前置存在的真全局；应把措辞**收窄到"计划存储"**）、D3（本轨新增 5 条 clippy 警告：4× `needless_borrow` + 1× `nonminimal_bool`；更严 CI 会红）、D4（`desktop_organization_scope()` 每次访问都 `Uuid::new_v4()` 分配一个 request id）。
+**台账数字更正**：端口 trait 是 **17** 个方法，不是编码代理自述的 16。
 
 
 ## 6. 门禁与流程
