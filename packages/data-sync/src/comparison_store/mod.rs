@@ -11,7 +11,7 @@
 //!
 //! 落盘实现留在本包（本地文件系统是形态中立的），**宿主注入的只有存储根**：
 //! [`ComparisonStoreRoot`] 决定比较结果写到哪个目录，并按
-//! [`OrganizationScope`] 把越组织访问当作「不存在」。见 [`port`]。
+//! [`OrganizationScope`] 把越组织访问当作「不可用」。见 [`port`]。
 
 use crate::{ComparisonResult, DataSyncError, RowChange, RowChangeSink, TableResult};
 use datazen_platform_api::ports::scope::OrganizationScope;
@@ -98,7 +98,7 @@ pub struct ComparisonTableMetadata {
 
 /// 解析作用域下的存储根。
 ///
-/// 越组织访问按「不存在」处理：这里**不**返回「无权限」，因为那会泄漏
+/// 越组织访问按「不可用」处理：这里**不**返回「无权限」，因为那会泄漏
 /// 「存在但无权」（CM-05）。
 fn resolve_store_root(
     root: &dyn ComparisonStoreRoot,
@@ -189,7 +189,7 @@ struct StreamingTable {
 impl StreamingComparisonStoreWriter {
     /// 用宿主注入的存储根创建写入器。
     ///
-    /// 越组织访问按「不存在」处理：根解析不出来即失败，绝不落到别的目录。
+    /// 越组织访问按「不可用」处理：根解析不出来即失败，绝不落到别的目录。
     pub fn new(root: &dyn ComparisonStoreRoot, scope: &OrganizationScope) -> Result<Self, String> {
         let root = ensure_private_store_root(&resolve_store_root(root, scope)?)
             .map_err(|error| format!("cannot prepare Data Sync comparison store root: {error}"))?;
@@ -588,7 +588,7 @@ impl RowChangeSink for StreamingComparisonStoreWriter {
 impl ComparisonStore {
     /// 用宿主注入的存储根构造比较存储。
     ///
-    /// 越组织访问按「不存在」处理：根解析不出来即失败，内联与落盘两条路径
+    /// 越组织访问按「不可用」处理：根解析不出来即失败，内联与落盘两条路径
     /// 一致地失败关闭，绝不把别的组织的比较结果落到当前目录。
     pub fn from_comparison(
         comparison: ComparisonResult,

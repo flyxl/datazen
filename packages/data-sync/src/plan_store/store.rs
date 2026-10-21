@@ -14,6 +14,13 @@
 //! 越组织访问按「**不存在**」处理（CM-05）：端口方法返回与「计划不存在」完全
 //! 一样的错误，**不**返回「无权限」——后者会泄漏「存在但无权」。
 //!
+//! ## 组织维度进键
+//!
+//! 注册表的键是 **(组织, 计划 id)**，不是裸的计划 id。这样「按组织分区」是
+//! **结构**而不是约定：两个组织用同一个 `plan_id` 各自签发时，谁也覆盖不了谁，
+//! 也不需要靠「读出来再比一次 value 上的组织字段」来维持隔离。即便有人绕过
+//! 那道比较，键本身也已经把两个组织的计划分到了不同格子里。
+//!
 //! ## 认领语义
 //!
 //! `claim` 在写入开始前把计划从注册表里摘走。被认领的计划**即使事务结果未知也
@@ -24,10 +31,21 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use datazen_driver_api::DatabaseDriver;
+use datazen_platform_api::id::OrganizationId;
 use datazen_platform_api::migration::EndpointIdentity;
 use datazen_platform_api::ports::scope::OrganizationScope;
 
 use super::{StoredSyncPlan, SyncComparisonPreview, SyncOptions, SYNC_PLAN_TTL};
+
+/// 计划注册表的键：**组织 + 计划 id**。
+///
+/// 组织维度进键，是为了让「按组织分区」成为结构而不是约定。
+type PlanKey = (OrganizationId, String);
+
+/// 取某个作用域下某个计划 id 的键。
+fn plan_key(scope: &OrganizationScope, id: &str) -> PlanKey {
+    (scope.organization_id().clone(), id.to_string())
+}
 
 /// 一次「签发计划」的请求。
 ///
@@ -58,6 +76,17 @@ pub struct SyncPlanIssue {
 /// 「不存在」处理。端口不抛「无权限」错误。
 pub trait SyncPlanStore: Send + Sync {
     /// 签发一份不可变计划并返回摘要预览。
+    ///
+    /// §2.1：compare 命令在 `dataSyncPrepare` Job 存在**之前**就铸好了计划 id，
+    /// 好让预览与冻结的 ChangeSet 指向同一份计划；调用方也可以不带 id，由存储
+    /// 铸造一个。
+    ///
+    /// **同一个 (组织, 计划 id) 只能签发一次**：重复签发被拒绝，而不是覆盖既有
+    /// 计划。计划 id 是「一份不可变计划」的身份，覆盖会让已在审阅中的计划凭空
+    /// 消失。已过期的同名计划不占这个名额——过期项在签发前先被清掉。
+    ///
+    /// 另一个组织用**同一个**计划 id 签发是**允许**的：键带组织维度，两个组织
+    /// 各占各的格子，谁也覆盖不了谁。
     fn issue(
         &self,
         scope: &OrganizationScope,
@@ -83,8 +112,10 @@ pub trait SyncPlanStore: Send + Sync {
 }
 
 /// 进程内实现：Mutex + HashMap，带有效期。
+///
+/// 键是 **(组织, 计划 id)**，见模块头的「组织维度进键」。
 pub struct InMemorySyncPlanStore {
-    plans: Mutex<HashMap<String, StoredSyncPlan>>,
+    plans: Mutex<HashMap<PlanKey, StoredSyncPlan>>,
 }
 
 impl InMemorySyncPlanStore {
@@ -96,7 +127,7 @@ impl InMemorySyncPlanStore {
 
     /// 计划注册表（仅供包内测试断言过期回收）。
     #[cfg(test)]
-    pub(crate) fn plans(&self) -> &Mutex<HashMap<String, StoredSyncPlan>> {
+    pub(crate) fn plans(&self) -> &Mutex<HashMap<PlanKey, StoredSyncPlan>> {
         &self.plans
     }
 }
@@ -154,8 +185,15 @@ impl SyncPlanStore for InMemorySyncPlanStore {
             .lock()
             .map_err(|_| "sync plan registry is unavailable".to_string())?;
         let now = Instant::now();
+        // 先清掉过期项：过期的同名计划不占「一个 id 一份计划」的名额。
         plans.retain(|_, existing| existing.expires_at > now);
-        plans.insert(id.clone(), plan);
+        let key = plan_key(scope, &id);
+        if plans.contains_key(&key) {
+            // 同一个 (组织, 计划 id) 只能有一份计划。覆盖会让已在审阅中的计划
+            // 凭空消失，因此这里明确拒绝。
+            return Err("sync plan id is already issued; return to comparison".into());
+        }
+        plans.insert(key, plan);
         Ok(SyncComparisonPreview {
             contract_version: super::SYNC_COMPARISON_CONTRACT_VERSION,
             plan_id: id,
@@ -170,15 +208,18 @@ impl SyncPlanStore for InMemorySyncPlanStore {
             .plans
             .lock()
             .map_err(|_| "sync plan registry is unavailable".to_string())?;
-        let Some(plan) = plans.get(id) else {
+        let key = plan_key(scope, id);
+        let Some(plan) = plans.get(&key) else {
+            // 越组织访问落到的是另一个键，与「不存在」是同一条路径。
             return Err(unknown_plan_message());
         };
-        if plan.organization_id != *scope.organization_id() {
-            // 越组织访问按「不存在」处理，不泄漏「存在但无权」。
+        if plan.organization_id != key.0 {
+            // 键里已经带了组织，这里是第二道防线：值与键必须一致，
+            // 否则按「不存在」处理，不泄漏「存在但无权」。
             return Err(unknown_plan_message());
         }
         if plan.expires_at <= Instant::now() {
-            plans.remove(id);
+            plans.remove(&key);
             return Err("sync plan has expired; return to comparison".into());
         }
         Ok(plan.clone())
@@ -195,8 +236,9 @@ impl SyncPlanStore for InMemorySyncPlanStore {
             .plans
             .lock()
             .map_err(|_| "sync plan registry is unavailable".to_string())?;
-        let plan = plans.get_mut(id).ok_or_else(unknown_plan_message)?;
-        if plan.organization_id != *scope.organization_id() {
+        let key = plan_key(scope, id);
+        let plan = plans.get_mut(&key).ok_or_else(unknown_plan_message)?;
+        if plan.organization_id != key.0 {
             return Err(unknown_plan_message());
         }
         plan.source_endpoint_identity = Some(source);
@@ -209,14 +251,15 @@ impl SyncPlanStore for InMemorySyncPlanStore {
             .plans
             .lock()
             .map_err(|_| "sync plan registry is unavailable".to_string())?;
-        let Some(plan) = plans.get(id) else {
+        let key = plan_key(scope, id);
+        let Some(plan) = plans.get(&key) else {
+            // 跨组织的计划对当前组织**不存在**，因此不能被摘走。
             return Err(unknown_plan_message());
         };
-        if plan.organization_id != *scope.organization_id() {
-            // 跨组织的计划**不能**被摘走：它对当前组织而言不存在。
+        if plan.organization_id != key.0 {
             return Err(unknown_plan_message());
         }
-        let plan = plans.remove(id).ok_or_else(unknown_plan_message)?;
+        let plan = plans.remove(&key).ok_or_else(unknown_plan_message)?;
         if plan.expires_at <= Instant::now() {
             return Err("sync plan has expired; return to comparison".into());
         }
@@ -304,28 +347,38 @@ mod tests {
         comparison: ComparisonResult,
         plan_id: Option<String>,
     ) -> SyncComparisonPreview {
-        store
-            .issue(
-                &test_scope(),
-                source,
-                target,
-                SyncPlanIssue {
-                    plan_id,
-                    selection_revision: 1,
-                    source_db_session_id: "source-session".into(),
-                    target_db_session_id: "target-session".into(),
-                    source_database: "source-db".into(),
-                    target_database: "target-db".into(),
-                    source_schema: None,
-                    target_schema: None,
-                    source_schema_fingerprint: "source-fingerprint".into(),
-                    target_schema_fingerprint: "target-fingerprint".into(),
-                    comparison: comparison_store(comparison),
-                    options: SyncOptions::default(),
-                    target_read_only_at_preview: false,
-                },
-            )
-            .unwrap()
+        issue_in(store, &test_scope(), source, target, comparison, plan_id).expect("签发应当成功")
+    }
+
+    /// 在**指定作用域**下签发计划。跨组织用例需要自己指定作用域。
+    fn issue_in(
+        store: &InMemorySyncPlanStore,
+        scope: &OrganizationScope,
+        source: &MockDriver,
+        target: &MockDriver,
+        comparison: ComparisonResult,
+        plan_id: Option<String>,
+    ) -> Result<SyncComparisonPreview, String> {
+        store.issue(
+            scope,
+            source,
+            target,
+            SyncPlanIssue {
+                plan_id,
+                selection_revision: 1,
+                source_db_session_id: "source-session".into(),
+                target_db_session_id: "target-session".into(),
+                source_database: "source-db".into(),
+                target_database: "target-db".into(),
+                source_schema: None,
+                target_schema: None,
+                source_schema_fingerprint: "source-fingerprint".into(),
+                target_schema_fingerprint: "target-fingerprint".into(),
+                comparison: comparison_store(comparison),
+                options: SyncOptions::default(),
+                target_read_only_at_preview: false,
+            },
+        )
     }
 
     #[test]
@@ -611,7 +664,7 @@ mod tests {
             .plans()
             .lock()
             .unwrap()
-            .get_mut(&preview.plan_id)
+            .get_mut(&plan_key(&test_scope(), &preview.plan_id))
             .unwrap()
             .expires_at = Instant::now() - Duration::from_secs(1);
         assert!(store.peek(&test_scope(), &preview.plan_id).is_err());
@@ -669,6 +722,78 @@ mod tests {
             .is_err());
         // 越组织的认领不能把计划摘走：它对当前组织依然可见。
         assert!(store.peek(&test_scope(), &preview.plan_id).is_ok());
+    }
+
+    /// D-02：注册表的键**带组织维度**，因此两个组织用**同一个**计划 id 各自
+    /// 签发时，谁也覆盖不了谁。
+    ///
+    /// 旧实现的键只有计划 id：第二个组织用同一个 id 签发会**无条件覆盖**另一个
+    /// 组织的计划，对方那份计划被凭空销毁。键改成 (组织, 计划 id) 之后，
+    /// 「按组织分区」是**结构**而不是「读出来再比一次 value 上的字段」的约定。
+    #[test]
+    fn two_organizations_issue_the_same_plan_id_without_overwriting_each_other() {
+        let source = MockDriver::new("postgres", MockDriverOptions::default());
+        let target = MockDriver::new("postgres", MockDriverOptions::default());
+        let store = InMemorySyncPlanStore::new();
+        let shared_id = "shared-plan-id".to_string();
+
+        let mine = issue(
+            &store,
+            &source,
+            &target,
+            comparison(),
+            Some(shared_id.clone()),
+        );
+        let theirs = issue_in(
+            &store,
+            &other_scope(),
+            &source,
+            &target,
+            comparison(),
+            Some(shared_id.clone()),
+        )
+        .expect("另一个组织用同一个计划 id 签发必须成功——它占的是另一个格子");
+
+        assert_eq!(mine.plan_id, theirs.plan_id);
+        // 两份计划各自可见、互不覆盖。
+        assert!(store.peek(&test_scope(), &shared_id).is_ok());
+        assert!(store.peek(&other_scope(), &shared_id).is_ok());
+        // 各自认领自己的那份：认领一个不影响另一个。
+        assert!(store.claim(&test_scope(), &shared_id).is_ok());
+        assert!(store.peek(&other_scope(), &shared_id).is_ok());
+    }
+
+    /// 一个 (组织, 计划 id) 只能有一份计划：重复签发被**拒绝**，而不是覆盖。
+    ///
+    /// 计划 id 是「一份不可变计划」的身份；覆盖会让已在审阅中的计划凭空消失。
+    #[test]
+    fn a_second_issue_under_the_same_plan_id_is_refused_instead_of_overwriting() {
+        let source = MockDriver::new("postgres", MockDriverOptions::default());
+        let target = MockDriver::new("postgres", MockDriverOptions::default());
+        let store = InMemorySyncPlanStore::new();
+        let shared_id = "one-plan-id".to_string();
+
+        let first = issue(
+            &store,
+            &source,
+            &target,
+            comparison(),
+            Some(shared_id.clone()),
+        );
+        let second = issue_in(
+            &store,
+            &test_scope(),
+            &source,
+            &target,
+            comparison(),
+            Some(shared_id.clone()),
+        );
+        assert!(second.is_err(), "同一个 (组织, 计划 id) 不得签发两次");
+        // 拒绝之后，原计划**仍在**：不是被覆盖。
+        let plan = store
+            .peek(&test_scope(), &shared_id)
+            .expect("被拒绝的重复签发不得销毁原计划");
+        assert_eq!(plan.selection_revision, first.selection_revision);
     }
 
     fn endpoint_identity(connection_id: &str) -> EndpointIdentity {

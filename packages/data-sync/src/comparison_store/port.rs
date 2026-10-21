@@ -11,7 +11,7 @@
 //! 因此本端口**只收根与作用域**：
 //!
 //! * **根**：比较结果写到哪个目录，由宿主在组装期注入；
-//! * **作用域**：越组织访问按「不存在」处理（CM-05），绝不返回「无权限」。
+//! * **作用域**：越组织访问按「**不可用**」处理（CM-05），绝不返回「无权限」。
 //!
 //! 其余语义（写入、分页读取、索引校验、崩溃回收）全部留在包内。
 
@@ -23,12 +23,14 @@ use datazen_platform_api::ports::scope::OrganizationScope;
 /// 比较存储根的端口。
 ///
 /// 端口只回答一个问题：**某个组织可用的比较存储根是哪个目录**。
-/// 越组织访问一律按「不存在」处理——返回 `None`，而不是「无权限」错误，
+/// 越组织访问一律按「**不可用**」处理——返回 `None`，而不是「无权限」错误，
 /// 以免泄漏「存在但无权」（CM-05）。
 pub trait ComparisonStoreRoot: Send + Sync {
     /// 取该作用域下的比较存储根。
     ///
-    /// 越组织访问返回 `None`；调用方据此按「不存在」处理。
+    /// 越组织访问返回 `None`；调用方据此按「**不可用**」处理（错误文案是
+    /// `"Data Sync comparison storage is unavailable"`）。比较侧没有「不存在」
+    /// 这个对照态——它本来就不是一个可按 id 寻址的资源。
     fn root_for(&self, scope: &OrganizationScope) -> Option<PathBuf>;
 }
 
@@ -100,7 +102,7 @@ mod tests {
         );
     }
 
-    /// CM-05：越组织访问按「不存在」处理，不返回「无权限」。
+    /// CM-05：越组织访问按「不可用」处理，不返回「无权限」。
     #[test]
     fn another_organization_gets_no_root_instead_of_a_permission_error() {
         let root = LocalComparisonStoreRoot::new(
