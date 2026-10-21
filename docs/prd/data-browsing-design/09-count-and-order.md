@@ -28,7 +28,9 @@
 
 | 项 | 内容 |
 | --- | --- |
-| **变更** | 无显式排序时，主键列的来源从「`columns` 上的 `is_primary_key` 标志」改为「`CachedColumns.primary_keys`」 |
+| **变更 1** | 无显式排序时，主键列的来源从「`columns` 上的 `is_primary_key` 标志」改为「`CachedColumns.primary_keys`」 |
+| **变更 2**〔契约审计修订 2026-10-22〕**原稿漏记** | **驱动声明 `Estimated` 时，行数从「精确 COUNT」变成「估算」**（PostgreSQL 走 `pg_class.reltuples`）。**树内 15 个 path 驱动「行数路径全部不变」这句话不成立**——postgres 是树内驱动，它的行数口径**变了**。⇒ **后端轨不得单独上线**（见下面的发布耦合） |
+| **变更 3**〔契约审计修订 2026-10-22〕**原稿漏记** | 驱动声明 `skip_count_query() == true` 时，响应多出 `total_rows_kind: Some(Unsupported)`（此前**无此字段**）。影响面限于不在树内的 git 驱动（kiwi / superset） |
 | **为什么** | `CachedColumns.primary_keys` 已在缓存层经过 `TableSchema::effective_primary_keys()` 归一化（优先 `primary_keys` 字段）；而今天的 `build_select_sql` **完全没读它**，只遍历列标志。于是「驱动填了 `primary_keys` 却没在列上打 `is_primary_key` 标志」的表会**找不到主键、退化成按第一列排序** —— 这是既有隐患，本册修正它 |
 | **影响面（会变）** | ①「`primary_keys` 非空、但对应列未打 `is_primary_key` 标志」的表：从 `ORDER BY <第一列> ASC` 变为 `ORDER BY <真实主键> ASC`（结果集顺序与分页稳定性同时改变）；② 由 ① 派生：这类表不再出现「无主键、按首列排序」的提示（它现在真的有主键了） |
 | **影响面（不会变）** | 列标志与 `primary_keys` 一致的驱动（**树内 15 个 path 驱动经代码核实均属此类**：postgres 的 `get_columns_impl` 用 `pk_names.contains(&name)` 同时产出列标志与主键表；其余驱动走 `traits::streaming::get_columns` 默认实现，其 `pks` 直接来自 `TableSchema::effective_primary_keys()`）；有主键且列标志齐全的表；显式排序路径；**全部行数路径**（`count_strategy` / `count_estimate_sql` 与排序无关） |
@@ -637,6 +639,8 @@ estimateTableRows: (
 
 ### Step 1：契约层——类型 + 4 个带默认实现的方法 + `ReuseDriver` 转发 + mock
 
+> 〔契约审计修订 2026-10-22〕**发布耦合（两侧必须同批上线；复测已量化后果）**：只上后端轨 ⇒ ①PG 的行数**从精确变估算**，而**前端没有任何组件读 `totalRowsKind`**（`Pagination.tsx` 仍是 `totalPages = max(1, ceil(totalRows / pageSize))`）⇒ 估算值与精确值**同形渲染**（PRD §4.1 硬约束 1 / 验收 A4 被违反，UI 上看不出「≈」）；②估算不可用（PG 对从未 ANALYZE 的表给 `reltuples = -1`）⇒ `total_rows = None` ⇒ store 保留 0 ⇒ 网格显示「0 行」且**只能看第 1 页**。⇒ **后端轨不得单独上线。**
+>
 > 〔契约审计修订 2026-10-22〕**发布耦合（两侧必须同批上线）**：本册让 PostgreSQL 声明 `Estimated`，而**前端的三态渲染**（`≈`、tooltip、稳定性提示、"精确统计"入口）属 Step 6/8/9。**只上前端轨、不上前端渲染** ⇒ PG 网格会把**估算值按精确值的形状渲染**（分册 A4 明确禁止）。两者在同一个集成分支上 ⇒ 合流后同时生效；但**任何一侧单独上线都是回归**。
 >
 > 〔契约审计修订 2026-10-22〕**`has_effective_filters` 的口径已变**：分册写「所有条件都被 `filter_is_complete` 判为不完整 ⇒ false」，但 **08 落地后不完整的条件是整条查询被拒绝**（`filter_sql::render_filter_parts` 返回 `Err`），「所有条件都不完整 ⇒ 不产生 WHERE」这个状态**已不存在**。实现改为「**所有**条件都完整 ⇒ 有生效筛选」，并**复用 `filter_is_complete`**（不另写一套），因此不会与 `build_count_sql` 的实际 SQL 漂移。
