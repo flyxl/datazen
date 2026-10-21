@@ -239,10 +239,7 @@ export function TableView({
     return columns.filter((c) => set.has(c.name));
   }, [columns, visibleColumns]);
 
-  /**
-   * The foreign-key navigation of this tab (DB-07): the arrows, the jump, the
-   * breadcrumb, the keyboard and the viewport.
-   */
+  /** The foreign-key navigation of this tab (DB-07): arrows, jump, breadcrumb, keyboard, viewport. */
   const fkNavigation = useTableForeignKeyNavigation({
     panelId,
     dbSessionId,
@@ -574,8 +571,7 @@ export function TableView({
         highlightedRow={detailRowIndex ?? highlightedNewRowIndex}
         dirtyByRow={dirtyIndex.byRowIndex}
         onRestoreRow={actions.unstageRowDelete}
-        // The foreign-key jump (DB-07): the arrows of the table and the
-        // callback that follows one.
+        // The foreign-key jump (DB-07): the arrows and the callback.
         fkIndex={fkNavigation.fkIndex}
         fkVisibleColumns={fkNavigation.fkVisibleColumns}
         fkRows={rows}
