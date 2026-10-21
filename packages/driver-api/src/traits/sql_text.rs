@@ -260,4 +260,81 @@ mod tests {
             "'a\\b'"
         );
     }
+
+    fn parameterized_mock(
+        extra: impl FnOnce(&mut MockDriverOptions),
+    ) -> std::sync::Arc<MockDriver> {
+        let mut options = MockDriverOptions::default();
+        options.parameterized_writes = true;
+        extra(&mut options);
+        MockDriver::new("sqlite", options)
+    }
+
+    #[test]
+    fn parameterized_insert_distinguishes_null_from_an_unwritten_column() {
+        let driver = parameterized_mock(|_| {});
+        let insert = driver
+            .build_insert_statement(
+                "rows",
+                &[
+                    ("name", Some(Value::String("O'Brien".into()))),
+                    ("note", None),
+                ],
+            )
+            .unwrap();
+
+        // `id` is absent: it is Unset (DEFAULT), not NULL.
+        assert_eq!(
+            insert.sql,
+            "INSERT INTO \"rows\" (\"name\", \"note\") VALUES (?1, ?2)"
+        );
+        assert_eq!(insert.parameters.len(), 2);
+        assert!(matches!(&insert.parameters[0], Value::String(value) if value == "O'Brien"));
+        assert!(matches!(&insert.parameters[1], Value::Null));
+        assert!(!insert.sql.contains("id"));
+    }
+
+    #[test]
+    fn parameterized_insert_of_only_defaults_uses_default_values() {
+        let driver = parameterized_mock(|_| {});
+        let insert = driver.build_insert_statement("rows", &[]).unwrap();
+        assert_eq!(insert.sql, "INSERT INTO \"rows\" DEFAULT VALUES");
+        assert!(insert.parameters.is_empty());
+    }
+
+    #[test]
+    fn parameterized_insert_refuses_drivers_without_binding_support() {
+        let driver = MockDriver::new("sqlite", MockDriverOptions::default());
+        let result = driver.build_insert_statement("rows", &[("name", None)]);
+        assert!(matches!(result, Err(DriverError::Unsupported(_))));
+        // The returning seam defaults to "cannot backfill", so the host takes
+        // the degradation path instead of guessing a primary key.
+        assert_eq!(driver.insert_returning_clause(&["id"]), None);
+    }
+
+    #[test]
+    fn reuse_driver_forwards_insert_builders() {
+        let options = MockDriverOptions {
+            parameterized_writes: true,
+            insert_returning_clause: Some("RETURNING \"id\"".into()),
+            ..MockDriverOptions::default()
+        };
+        let inner: std::sync::Arc<dyn DatabaseDriver> = MockDriver::new("postgres", options);
+        let wrapper = crate::ReuseDriver::new(inner.clone(), "questdb");
+        let columns: &[(&str, Option<Value>)] =
+            &[("name", Some(Value::String("a".into()))), ("note", None)];
+
+        let direct = inner.build_insert_statement("rows", columns).unwrap();
+        let forwarded = wrapper.build_insert_statement("rows", columns).unwrap();
+        assert_eq!(forwarded.sql, direct.sql);
+        assert_eq!(forwarded.parameters.len(), direct.parameters.len());
+        assert!(forwarded
+            .sql
+            .starts_with("INSERT INTO \"rows\" (\"name\", \"note\")"));
+        assert_eq!(
+            wrapper.insert_returning_clause(&["id"]),
+            Some("RETURNING \"id\"".into()),
+            "a wrapper that stops forwarding hides the inner driver's RETURNING support"
+        );
+    }
 }

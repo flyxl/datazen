@@ -1,7 +1,36 @@
-//! Table ChangeSets own a short session and never join an editor transaction.
-use super::{data::*, AppState, CommandError};
-use crate::platform::into_command_error;
+//! Execution and transaction ownership for a table ChangeSet.
+//!
+//! Execution order is fixed: new rows first (a child row may reference a
+//! parent inserted in the same batch), then updates, then deletes — all inside
+//! one transaction. The Desktop host and a future web host both call this
+//! function with handles they obtained from their own platform adapter, so the
+//! transaction rules cannot drift between transports.
+
+/// The owned session opened with a namespace that is not the plan's, so the
+/// plan no longer applies. The caller's only safe move is to preview again.
+pub(crate) fn stale_table_target_error() -> FeatureError {
+    FeatureError::Validation(
+        "grid.commit.stalePlan: Table target could not be confirmed on its owned session; preview the changes again"
+            .into(),
+    )
+}
+
+/// The caller's manual transaction drifted away from the plan (target changed,
+/// or the transaction is gone). Same user action as any stale plan.
+pub(crate) fn stale_manual_target_error() -> FeatureError {
+    FeatureError::Validation(
+        "grid.commit.stalePlan: Manual table transaction target changed or is no longer active; preview the changes and commit again"
+            .into(),
+    )
+}
+
+use super::change_set::{
+    bound_statement_for_plan, CommitPendingChangesResponse, RowChangePlan, RowCommitStatementResult,
+};
+use super::insert_plan::bound_insert_statement_for_plan;
+use crate::error::FeatureError;
 use datazen_application::{dto::requests::*, sessions::ConnectionUseCases};
+use datazen_driver_api::DatabaseDriver;
 use datazen_platform_api::{
     context::{OwnerRef, RequestContext},
     dto::{idempotency::IdempotentOperation, session::SessionHandle},
@@ -46,16 +75,16 @@ impl TableSession {
         &self,
         command: &str,
         input: serde_json::Value,
-    ) -> Result<Option<u64>, CommandError> {
+    ) -> Result<Option<u64>, FeatureError> {
         let handle = self
             .handle
             .as_ref()
-            .ok_or_else(|| CommandError::Internal("table session closed".into()))?;
+            .ok_or_else(|| FeatureError::Internal("table session closed".into()))?;
         let session = self
             .runtime
             .get_session(&self.context, handle.clone())
             .await
-            .map_err(into_command_error)?;
+            .map_err(FeatureError::from)?;
         let token = self
             .runtime
             .issue_submission_token(
@@ -64,7 +93,7 @@ impl TableSession {
                 Some(handle),
             )
             .await
-            .map_err(into_command_error)?;
+            .map_err(FeatureError::from)?;
         let receipt = self
             .runtime
             .execute_in_session(
@@ -80,20 +109,20 @@ impl TableSession {
                 },
             )
             .await
-            .map_err(into_command_error)?;
+            .map_err(FeatureError::from)?;
         let view = loop {
             let view = self
                 .runtime
                 .get_execution(&self.context, receipt.execution_id.clone())
                 .await
-                .map_err(into_command_error)?;
+                .map_err(FeatureError::from)?;
             if view.state.is_terminal() {
                 break view;
             }
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         };
         if view.state != datazen_platform_api::dto::execution::ExecutionState::Succeeded {
-            return Err(CommandError::Validation(format!(
+            return Err(FeatureError::Validation(format!(
                 "Table execution failed: {:?}; effect outcome: {:?}",
                 view.error_code, view.effect_outcome
             )));
@@ -107,7 +136,7 @@ impl TableSession {
                     datazen_platform_api::id::Counter::ZERO,
                 )
                 .await
-                .map_err(into_command_error)?;
+                .map_err(FeatureError::from)?;
             for index in 0..first.published_chunk_count.get() {
                 let chunk = self
                     .runtime
@@ -117,7 +146,7 @@ impl TableSession {
                         datazen_platform_api::id::Counter::new(index),
                     )
                     .await
-                    .map_err(into_command_error)?;
+                    .map_err(FeatureError::from)?;
                 if let Some(affected) = chunk
                     .output
                     .as_ref()
@@ -132,18 +161,26 @@ impl TableSession {
     }
 }
 
-pub(super) async fn execute_plan(
-    state: &AppState,
-    driver: &dyn crate::db::DatabaseDriver,
+pub async fn execute_plan(
+    driver: &dyn DatabaseDriver,
     plan: &RowChangePlan,
     manual_handle: Option<SessionHandle>,
-) -> Result<CommitPendingChangesResponse, CommandError> {
+    runtime: Arc<RuntimeConnectionUseCases>,
+    context: RequestContext,
+) -> Result<CommitPendingChangesResponse, FeatureError> {
+    // Execution order is fixed: new rows first (a child row may reference a
+    // parent inserted in the same batch), then updates, then deletes. All three
+    // share the transaction opened below.
     let mut writes = Vec::new();
-    for (delete, changes) in [(false, &plan.updates), (true, &plan.deletes)] {
+    for change in &plan.inserts {
+        let statement = bound_insert_statement_for_plan(driver, &plan.table.table, change)?;
+        writes.push(("insert", change, statement));
+    }
+    for (operation, changes) in [("update", &plan.updates), ("delete", &plan.deletes)] {
         for change in changes {
             let statement =
-                super::data::bound_statement_for_plan(driver, &plan.table.table, change, delete)?;
-            writes.push((delete, change, statement));
+                bound_statement_for_plan(driver, &plan.table.table, change, operation == "delete")?;
+            writes.push((operation, change, statement));
         }
     }
     if writes.is_empty() {
@@ -154,15 +191,14 @@ pub(super) async fn execute_plan(
             affected_rows: 0,
         });
     }
-    let adapter = state.platform_require().map_err(into_command_error)?;
-    let context = adapter.begin_call().context().clone();
-    let runtime = adapter.runtime().map_err(into_command_error)?;
+    // The host owns platform access: it passes the runtime engine and request
+    // context in, so this module never touches Tauri or the desktop adapter.
     let manual = manual_handle.is_some();
     let opened = if let Some(handle) = manual_handle {
         let view = runtime
             .get_session(&context, handle)
             .await
-            .map_err(into_command_error)?;
+            .map_err(FeatureError::from)?;
         if view.connection_id.as_str() != plan.table.connection_id
             || view.observed_context.namespace.database != plan.table.database
             || view.observed_context.namespace.schema != plan.table.schema
@@ -171,16 +207,14 @@ pub(super) async fn execute_plan(
                 datazen_platform_api::dto::session::TransactionState::Active
             )
         {
-            return Err(CommandError::Validation(
-                "Manual table transaction target changed or transaction not active".into(),
-            ));
+            return Err(stale_manual_target_error());
         }
         view
     } else {
         let token = runtime
             .issue_submission_token(&context, IdempotentOperation::OpenSession, None)
             .await
-            .map_err(into_command_error)?;
+            .map_err(FeatureError::from)?;
         runtime
             .open_session(
                 &context,
@@ -202,7 +236,7 @@ pub(super) async fn execute_plan(
                 },
             )
             .await
-            .map_err(into_command_error)?
+            .map_err(FeatureError::from)?
             .session
     };
     let mut session = TableSession {
@@ -220,16 +254,14 @@ pub(super) async fn execute_plan(
         if manual {
             session.handle = None;
         }
-        return Err(CommandError::Validation(
-            "Table target could not be confirmed on its owned session".into(),
-        ));
+        return Err(stale_table_target_error());
     }
     if plan.config_revision != Some(opened.config_revision) {
         if manual {
             session.handle = None;
         }
-        return Err(CommandError::Validation(
-            "Connection configuration changed before execution; preview again".into(),
+        return Err(FeatureError::Validation(
+            "grid.commit.stalePlan: Connection configuration changed before execution; preview again".into(),
         ));
     }
     let result = async {
@@ -242,7 +274,7 @@ pub(super) async fn execute_plan(
                 .await?;
         }
         let mut statements = Vec::new();
-        for (delete, change, statement) in writes {
+        for (operation, change, statement) in writes {
             let affected = session
                 .execute(
                     "execute",
@@ -252,15 +284,19 @@ pub(super) async fn execute_plan(
                 )
                 .await?
                 .ok_or_else(|| {
-                    CommandError::Validation("Driver did not report affected rows".into())
+                    FeatureError::Validation("grid.commit.affectedMismatch: Driver did not report affected rows".into())
                 })?;
             if affected != 1 {
-                return Err(CommandError::Validation(format!(
-                    "Row identity affected {affected} rows; refusing ambiguous write"
-                )));
+                return Err(FeatureError::Validation(if operation == "insert" {
+                    format!("grid.commit.affectedMismatch: INSERT affected {affected} rows; refusing ambiguous write")
+                } else {
+                    format!("grid.commit.affectedMismatch: Row identity affected {affected} rows; refusing ambiguous write")
+                }));
             }
             statements.push(RowCommitStatementResult {
-                operation: if delete { "delete" } else { "update" }.into(),
+                // An inserted row's identity is only known after a returning
+                // clause backfills it; without one the host does not guess.
+                operation: operation.into(),
                 row_identity: change.row_identity.clone(),
                 affected_rows: affected,
             });
@@ -291,7 +327,7 @@ pub(super) async fn execute_plan(
         .handle
         .as_ref()
         .cloned()
-        .ok_or_else(|| CommandError::Internal("table session missing".into()))?;
+        .ok_or_else(|| FeatureError::Internal("table session missing".into()))?;
     let closed = session
         .runtime
         .close_session(
@@ -310,8 +346,8 @@ pub(super) async fn execute_plan(
     }
     match (result, closed) {
         (Ok(response), Ok(_)) => Ok(response),
-        (Ok(_), Err(error)) => Err(CommandError::Validation(format!("Changes committed; session cleanup failed: {:?}. Reload before further edits.", error.code))),
+        (Ok(_), Err(error)) => Err(FeatureError::Validation(format!("Changes committed; session cleanup failed: {:?}. Reload before further edits.", error.code))),
         (Err(error), Ok(_)) => Err(error),
-        (Err(error), Err(_)) => Err(CommandError::Validation(format!("{error}; rollback could not be confirmed. Reload and verify the target before retrying."))),
+        (Err(error), Err(_)) => Err(FeatureError::Validation(format!("{error}; rollback could not be confirmed. Reload and verify the target before retrying."))),
     }
 }

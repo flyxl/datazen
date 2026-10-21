@@ -241,6 +241,44 @@ pub trait DatabaseDriver: Send + Sync {
         )
     }
 
+    /// Build an INSERT with driver placeholders and values kept out of SQL.
+    ///
+    /// `values` is the exact write list: a column that must keep the database
+    /// default (auto-increment, generated, `DEFAULT now()`, a trigger) is
+    /// simply absent, while `None` writes SQL `NULL`. An empty list is a legal
+    /// one-row insert of defaults and renders `INSERT INTO t DEFAULT VALUES`;
+    /// dialects that spell that differently override this method.
+    fn build_insert_statement(
+        &self,
+        table: &str,
+        values: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        if !self.supports_bound_writes() {
+            return Err(DriverError::Unsupported(
+                "parameterized row writes are not supported".into(),
+            ));
+        }
+        crate::sql_builder::build_insert_statement(
+            &LegacySqlDialect::new(self),
+            self.max_bound_parameters(),
+            table,
+            values,
+        )
+    }
+
+    /// Dialect clause that makes a new row's primary key available, or `None`
+    /// when this dialect cannot return it.
+    ///
+    /// The host appends `Some(clause)` to the insert and reads the returned row.
+    /// `Some("")` is the "already inlined" signal: the driver's
+    /// [`Self::build_insert_statement`] placed the clause itself (T-SQL
+    /// `OUTPUT INSERTED.*` cannot follow `VALUES`), so the host must not append
+    /// anything — not even a space — and must read through the query path.
+    /// `None` means the host must not guess: it refreshes the page afterwards.
+    fn insert_returning_clause(&self, _columns: &[&str]) -> Option<String> {
+        None
+    }
+
     /// The host this driver dials when the connection config leaves `host` unset.
     ///
     /// `connect` resolves that default internally, so a config that omits
