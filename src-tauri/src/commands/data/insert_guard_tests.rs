@@ -445,3 +445,84 @@ async fn plan_without_inserts_has_no_returning_warning() {
         warning_codes(&plan)
     );
 }
+
+// ---------------------------------------------------------------------------
+// [tester round-2] W-3 failure modes the shipped suite leaves open.
+//
+// The guard must refuse when it cannot learn the primary key, not silently
+// skip. The shipped test covers the read-error path; the "context carries no
+// database" path is a different branch of the host catalog adapter and was
+// uncovered. (The "driver reported no columns" branch is unreachable with the
+// current mock fixture: `MockDriver::get_table_columns` appends a `note`
+// column, so the adapter never sees an empty list — reported, not worked
+// around here.)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_context_without_a_database_is_refused_before_any_catalog_read() {
+    let mut options = rich_mock_options();
+    options.execute_rows_affected = 1;
+    options.parameterized_writes = true;
+    let test = TestAppState::with_resource_provider(options).await;
+    let (_, conn_id) = test.save_and_connect("w3-no-database").await;
+
+    let mut target = context("w3-no-database", &conn_id, "users");
+    target.database = None;
+
+    let error = preview_pending_changes_impl(
+        &test.state,
+        target,
+        vec![update(&[("id", 1)], "name", "Ada")],
+    )
+    .await
+    .unwrap_err();
+
+    let message = error.to_string();
+    assert!(
+        message.contains("Table schema unavailable for 'users'"),
+        "got: {message}"
+    );
+    assert!(message.contains("carries no database"), "got: {message}");
+    assert!(
+        message.contains("primary key cannot be verified"),
+        "got: {message}"
+    );
+    assert_eq!(
+        test.mock.get_columns_calls(),
+        0,
+        "no catalog read may be attempted without a database"
+    );
+}
+
+#[tokio::test]
+async fn an_empty_catalog_answer_is_refused_instead_of_skipping_the_guard() {
+    let mut options = rich_mock_options();
+    options.execute_rows_affected = 1;
+    options.parameterized_writes = true;
+    // A per-database column tier that answers "no columns" for this table: the
+    // mock returns an empty list instead of falling back to a default fixture.
+    options
+        .columns_by_database
+        .insert("app".into(), std::collections::HashMap::new());
+    let test = TestAppState::with_resource_provider(options).await;
+    let (_, conn_id) = test.save_and_connect("w3-empty-columns").await;
+
+    let error = preview_pending_changes_impl(
+        &test.state,
+        context("w3-empty-columns", &conn_id, "users"),
+        vec![update(&[("id", 1)], "name", "Ada")],
+    )
+    .await
+    .unwrap_err();
+
+    let message = error.to_string();
+    assert!(
+        message.contains("Table schema unavailable for 'users'"),
+        "got: {message}"
+    );
+    assert!(message.contains("reported no columns"), "got: {message}");
+    assert!(
+        message.contains("primary key cannot be verified"),
+        "got: {message}"
+    );
+}
