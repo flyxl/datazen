@@ -2,7 +2,7 @@
 
 DataZen ships a **Basic** SKU with four core drivers (`postgres`, `mysql`, `sqlite`, `redis`). Additional database engines live as **path drivers** under `packages/drivers/` and are listed in [`drivers-registry.json`](../../drivers-registry.json) at the repo root.
 
-This document covers the four optional engines maintained as path drivers: **MongoDB**, **ClickHouse**, **DuckDB**, and **SQL Server**. Git-based drivers (Kiwi, OLAP, Superset) are documented in [independent driver development](independent-driver-development.en.md).
+This document covers the four optional engines maintained as path drivers: **MongoDB**, **ClickHouse**, **DuckDB**, and **SQL Server**. Git-based drivers (Kiwi, Superset) are documented in [independent driver development](independent-driver-development.en.md).
 
 ## Inventory (2026-08-21)
 
@@ -43,7 +43,7 @@ Release SKUs (see [packaging.md](packaging.md) and GitHub release notes):
 | SKU | Drivers |
 |-----|---------|
 | **Basic** | postgres, mysql, sqlite, redis |
-| **All** | all path drivers (includes the four above; **excludes** Kiwi / OLAP / Superset) |
+| **All** | all path drivers (includes the four above; **excludes** Kiwi / Superset) |
 | **Akulaku** | Basic + mongodb + kiwi + superset (Windows / macOS only) |
 
 ## What the Host expects (zero hardcoding)

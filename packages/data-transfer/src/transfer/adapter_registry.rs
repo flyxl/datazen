@@ -163,10 +163,6 @@ mod tests {
             "hbase",
             #[cfg(feature = "driver-vector")]
             "vector",
-            #[cfg(feature = "driver-olap")]
-            "trino",
-            #[cfg(feature = "driver-olap")]
-            "presto",
         ] {
             assert!(
                 registry.ensure_type(&db.to_string()).is_ok(),

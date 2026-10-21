@@ -20,6 +20,21 @@
 
 `PROTOCOL_VERSION` 保持 **6**（2026-10-21 起冻结；兼容门禁族一并退役），详见 [driver-capability-migration.md](docs/architecture/platform/driver-capability-migration.md) §5。
 
+### 🗑️ 移除（Removed）
+
+**`olap` 驱动删除。** `drivers-registry.json` 不再声明 `olap`，`driver-olap` Cargo feature、Presto/Trino 连接类型映射、`sync_taxonomy` 中的 `presto → trino` 归一化以及前端 Presto/Trino 方言配置一并移除。已保存的 `olap` 连接不会再解析到驱动；需要访问 Presto/Trino 的用户应改用通用的 HTTP/SQL 驱动或重新接入独立驱动。仓库内不再保留该驱动的构建入口或测试夹具。
+
+### 🔧 变更（Changed）
+
+**git 驱动 `kiwi` / `superset` 对齐 `datazen-driver-api` 0.0.20。** 两者此前只实现 `DatabaseDriver`，宿主通过 `require_resource_provider` 拿到的是 `ResourceProviderMissing`。现在两者都提供真实的 `ResourceProvider`：
+
+- 工厂与 provider 各自 memoize 同一个驱动实例，避免每次查找都新建 provider、导致已签发的 handle 被 epoch 检查拒绝；
+- 补齐 `CapabilitySet` 的 12 个能力格与逐格证据：`namespace_switch = PerRequest`、`data = BufferedReadWrite`，事务/快照/会话句柄/重置均明确拒绝，`precise_cancel` 保持 `Unknown`，Superset 备份明确 `Unsupported`、Kiwi 备份保持 `Unknown`；
+- 命名空间形状声明为单个**可选** `Database` 层，`Schema`/`Catalog` 目标按名拒绝，不静默丢弃；
+- 补齐 `TableSchema` 新增的 `check_constraints` / `table_options` 字段，Superset 自定义 schema 树的缓存桥接改为显式传入 `dbSessionId`。
+
+`kiwi` 与 `superset` 仍是独立 git 仓库，改动已在各自仓库提交并推送；`drivers-registry.json` 的两条 `source: "git"` 条目跟随 `main`，无需改 pin。
+
 ---
 
 ## [0.2.3] - 2026-09-30

@@ -52,7 +52,7 @@ const VITEST = join('node_modules', 'vitest', 'vitest.mjs');
 
 /**
  * Widest driver set CI can run without credentials. `all` expands to every
- * registered *path* driver only — git drivers (kiwi, superset, olap) are
+ * registered *path* driver only — git drivers (kiwi, superset) are
  * excluded by resolve-drivers, so no clone and no deploy key is required.
  */
 export const DEFAULT_DRIVER_SET = 'all';

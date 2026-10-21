@@ -5,8 +5,8 @@ set -euo pipefail
 # ./scripts/sync-repos.sh [--commit-message "msg"]
 #
 # Syncs local changes to external driver GitHub repositories:
-#   - packages/drivers/kiwi  → github.com/flyxl/datazen-driver-kiwi
-#   - packages/drivers/olap    → github.com/flyxl/datazen-plugin-olap
+#   - packages/drivers/kiwi     → github.com/flyxl/datazen-driver-kiwi
+#   - packages/drivers/superset → github.com/flyxl/datazen-driver-superset
 #
 # Driver API source of truth: packages/driver-api in this monorepo, published
 # to crates.io as datazen-driver-api (no separate git mirror to sync).
@@ -80,7 +80,7 @@ update_cargo_lock() {
   (
     cd "$ROOT"
     cargo update -p datazen-plugin-kiwi 2>/dev/null || true
-    cargo update -p datazen-plugin-olap 2>/dev/null || true
+    cargo update -p datazen-plugin-superset 2>/dev/null || true
   )
 
   local lock_diff
@@ -100,7 +100,7 @@ echo "  DataZen Repository Sync"
 echo "═══════════════════════════════════════"
 echo ""
 
-for driver in kiwi olap; do
+for driver in kiwi superset; do
   sync_driver "$driver"
 done
 echo ""
