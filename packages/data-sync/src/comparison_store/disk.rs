@@ -266,10 +266,10 @@ fn validate_operation_counts(directory: &Path, table: &DiskTable) -> Result<(), 
         let change: RowChange = serde_json::from_slice(&payload)
             .map_err(|error| format!("cannot decode Data Sync comparison row: {error}"))?;
         match change.operation {
-            crate::data_sync::ChangeOperation::Insert => insert_count += 1,
-            crate::data_sync::ChangeOperation::Update => update_count += 1,
-            crate::data_sync::ChangeOperation::Delete => delete_count += 1,
-            crate::data_sync::ChangeOperation::Unchanged => {
+            crate::ChangeOperation::Insert => insert_count += 1,
+            crate::ChangeOperation::Update => update_count += 1,
+            crate::ChangeOperation::Delete => delete_count += 1,
+            crate::ChangeOperation::Unchanged => {
                 unchanged_row_count = unchanged_row_count
                     .checked_add(1)
                     .ok_or_else(|| "Data Sync unchanged row count overflowed".to_string())?;

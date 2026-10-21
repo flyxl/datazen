@@ -6,6 +6,7 @@
 pub mod apply_loop;
 pub mod changeset;
 pub mod compare;
+pub mod comparison_store;
 pub mod error;
 pub mod execute;
 pub mod filter;
@@ -17,6 +18,7 @@ pub mod legacy;
 pub mod mapping;
 pub mod model;
 pub mod pairing;
+pub mod plan_store;
 pub mod profile;
 mod recordset;
 pub use datazen_migration_common::recordset_bounds;

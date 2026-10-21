@@ -1,7 +1,7 @@
 use super::*;
 #[path = "tester_recovery_tests.rs"]
 mod tester_recovery_tests;
-use crate::data_sync::{
+use crate::{
     compare_table_pages_to_sink, ChangeOperation, RowChange, SliceRowSource, SyncOptions,
     SyncSourceFilter, TableResult,
 };

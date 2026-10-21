@@ -1801,12 +1801,15 @@ dependencies = [
  "datazen-migration-common",
  "datazen-platform-api",
  "datazen-runtime",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

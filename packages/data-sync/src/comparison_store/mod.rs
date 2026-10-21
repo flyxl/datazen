@@ -7,7 +7,7 @@
 //! framed row files. Page reads therefore seek directly to the requested table
 //! and row range without deserializing the complete comparison.
 
-use crate::data_sync::{ComparisonResult, DataSyncError, RowChange, RowChangeSink, TableResult};
+use crate::{ComparisonResult, DataSyncError, RowChange, RowChangeSink, TableResult};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{self, Seek, Write};
@@ -18,17 +18,17 @@ use std::time::Duration;
 
 #[cfg(test)]
 use datazen_driver_api::Value;
-#[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
-
-#[cfg(unix)]
+// The permission assertions in the module tests read the mode through this
+// trait; the production build has no use for it.
+#[cfg(test)]
 use std::os::unix::fs::PermissionsExt;
 
 /// Comparisons at or below this serialized size remain inline.
-pub(crate) const COMPARISON_MEMORY_LIMIT: usize = 8 * 1024 * 1024;
+pub const COMPARISON_MEMORY_LIMIT: usize = 8 * 1024 * 1024;
 /// Full SQL/execute compatibility loads are intentionally bounded. Normal
 /// review pages use the indexed path and do not require this limit.
-pub(crate) const COMPARISON_FULL_LOAD_LIMIT: u64 = 64 * 1024 * 1024;
+pub const COMPARISON_FULL_LOAD_LIMIT: u64 = 64 * 1024 * 1024;
 
 const DISK_FORMAT_VERSION: u32 = 1;
 const MANIFEST_FILE: &str = "manifest.json";
@@ -57,7 +57,8 @@ enum Storage {
 struct Inner {
     storage: Storage,
     manifest_cache: ManifestCache,
-    #[cfg(test)]
+    /// Counts full reloads of the comparison. The paged review path must
+    /// never trigger one; the counter makes that observable from the host.
     full_load_calls: AtomicUsize,
 }
 
@@ -77,13 +78,13 @@ impl Drop for Inner {
 
 /// Metadata required to render summaries without loading any row payloads.
 #[derive(Debug, Clone)]
-pub(crate) struct ComparisonTableMetadata {
-    pub(crate) table: TableResult,
-    pub(crate) row_count: usize,
-    pub(crate) unchanged_count: usize,
-    pub(crate) insert_count: usize,
-    pub(crate) update_count: usize,
-    pub(crate) delete_count: usize,
+pub struct ComparisonTableMetadata {
+    pub table: TableResult,
+    pub row_count: usize,
+    pub unchanged_count: usize,
+    pub insert_count: usize,
+    pub update_count: usize,
+    pub delete_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,14 +125,14 @@ struct DiskManifest {
 /// directory owner and it is removed when the last plan/operation reference
 /// drops.
 #[derive(Clone, Debug)]
-pub(crate) struct ComparisonStore {
+pub struct ComparisonStore {
     inner: Arc<Inner>,
 }
 
 /// Incremental writer used by the live comparison path. It owns one framed
 /// row file per table and only keeps manifest metadata in memory. Dropping an
 /// unfinished writer removes its private directory.
-pub(crate) struct StreamingComparisonStoreWriter {
+pub struct StreamingComparisonStoreWriter {
     root: PathBuf,
     owner: Arc<OwnerLease>,
     directory: Option<PathBuf>,
@@ -165,7 +166,7 @@ struct StreamingTable {
 }
 
 impl StreamingComparisonStoreWriter {
-    pub(crate) fn new() -> Result<Self, String> {
+    pub fn new() -> Result<Self, String> {
         let root = ensure_private_store_root(&comparison_store_directory())
             .map_err(|error| format!("cannot prepare Data Sync comparison store root: {error}"))?;
         let owner = current_process_owner(&root)?;
@@ -214,7 +215,7 @@ impl StreamingComparisonStoreWriter {
         }
     }
 
-    pub(crate) fn add_table(&mut self, mut table: TableResult) -> Result<(), String> {
+    pub fn add_table(&mut self, mut table: TableResult) -> Result<(), String> {
         let unchanged_count = table.unchanged_count;
         let rows = std::mem::take(&mut table.rows);
         self.begin_table(table)?;
@@ -225,7 +226,7 @@ impl StreamingComparisonStoreWriter {
         self.finish_table(unchanged_count)
     }
 
-    pub(crate) fn begin_table(&mut self, mut table: TableResult) -> Result<(), String> {
+    pub fn begin_table(&mut self, mut table: TableResult) -> Result<(), String> {
         if let Some(error) = &self.failed {
             return Err(error.clone());
         }
@@ -273,7 +274,7 @@ impl StreamingComparisonStoreWriter {
         Ok(())
     }
 
-    pub(crate) fn finish_table(&mut self, unchanged_count: usize) -> Result<(), String> {
+    pub fn finish_table(&mut self, unchanged_count: usize) -> Result<(), String> {
         if let Some(error) = &self.failed {
             return Err(error.clone());
         }
@@ -311,7 +312,7 @@ impl StreamingComparisonStoreWriter {
         result
     }
 
-    pub(crate) fn finish(mut self) -> Result<ComparisonStore, String> {
+    pub fn finish(mut self) -> Result<ComparisonStore, String> {
         if let Some(error) = self.failed.take() {
             return Err(error);
         }
@@ -407,7 +408,6 @@ impl StreamingComparisonStoreWriter {
                             bytes,
                             owner: self.owner.clone(),
                         },
-                        #[cfg(test)]
                         full_load_calls: AtomicUsize::new(0),
                     }),
                 })
@@ -434,7 +434,7 @@ impl StreamingComparisonStoreWriter {
         if let Some(error) = &self.failed {
             return Err(DataSyncError::validation(error.clone()));
         }
-        if change.operation == crate::data_sync::ChangeOperation::Unchanged && !preserve_unchanged {
+        if change.operation == crate::ChangeOperation::Unchanged && !preserve_unchanged {
             let error =
                 "unchanged rows must not be written to the Data Sync comparison index".to_string();
             self.abort_storage(error.clone());
@@ -490,22 +490,22 @@ impl StreamingComparisonStoreWriter {
                 .checked_add(1)
                 .ok_or_else(|| "Data Sync comparison row count overflowed".to_string())?;
             match change.operation {
-                crate::data_sync::ChangeOperation::Insert => {
+                crate::ChangeOperation::Insert => {
                     table.insert_count = table.insert_count.checked_add(1).ok_or_else(|| {
                         "Data Sync comparison insert count overflowed".to_string()
                     })?;
                 }
-                crate::data_sync::ChangeOperation::Update => {
+                crate::ChangeOperation::Update => {
                     table.update_count = table.update_count.checked_add(1).ok_or_else(|| {
                         "Data Sync comparison update count overflowed".to_string()
                     })?;
                 }
-                crate::data_sync::ChangeOperation::Delete => {
+                crate::ChangeOperation::Delete => {
                     table.delete_count = table.delete_count.checked_add(1).ok_or_else(|| {
                         "Data Sync comparison delete count overflowed".to_string()
                     })?;
                 }
-                crate::data_sync::ChangeOperation::Unchanged => {
+                crate::ChangeOperation::Unchanged => {
                     table.unchanged_row_count = table
                         .unchanged_row_count
                         .checked_add(1)
@@ -562,7 +562,7 @@ impl RowChangeSink for StreamingComparisonStoreWriter {
 }
 
 impl ComparisonStore {
-    pub(crate) fn from_comparison(comparison: ComparisonResult) -> Result<Self, String> {
+    pub fn from_comparison(comparison: ComparisonResult) -> Result<Self, String> {
         let mut probe = SizeProbe::new(COMPARISON_MEMORY_LIMIT);
         serde_json::to_writer(&mut probe, &comparison)
             .map_err(|error| format!("cannot serialize Data Sync comparison: {error}"))?;
@@ -576,7 +576,6 @@ impl ComparisonStore {
             inner: Arc::new(Inner {
                 manifest_cache: ManifestCache::default(),
                 storage,
-                #[cfg(test)]
                 full_load_calls: AtomicUsize::new(0),
             }),
         })
@@ -585,8 +584,7 @@ impl ComparisonStore {
     /// Reload the complete comparison for SQL generation and execution. This
     /// is intentionally separate from `load_table_page`, whose page contract
     /// never calls this method.
-    pub(crate) fn load(&self) -> Result<ComparisonResult, String> {
-        #[cfg(test)]
+    pub fn load(&self) -> Result<ComparisonResult, String> {
         self.inner.full_load_calls.fetch_add(1, Ordering::Relaxed);
 
         match &self.inner.storage {
@@ -622,7 +620,7 @@ impl ComparisonStore {
     }
 
     /// Return table metadata and counts without deserializing row payloads.
-    pub(crate) fn summaries(&self) -> Result<Vec<ComparisonTableMetadata>, String> {
+    pub fn summaries(&self) -> Result<Vec<ComparisonTableMetadata>, String> {
         match &self.inner.storage {
             Storage::Inline(comparison) => {
                 Ok(comparison.tables.iter().map(metadata_from_table).collect())
@@ -644,7 +642,7 @@ impl ComparisonStore {
 
     /// Read only one table's requested row range. The file-backed path opens
     /// exactly the selected table file and seeks to each indexed row frame.
-    pub(crate) fn load_table_page(
+    pub fn load_table_page(
         &self,
         source_table: &str,
         target_table: &str,
@@ -692,13 +690,13 @@ impl ComparisonStore {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn is_spilled(&self) -> bool {
+    /// Whether the comparison spilled to disk instead of staying inline.
+    pub fn is_spilled(&self) -> bool {
         matches!(self.inner.storage, Storage::File { .. })
     }
 
     #[cfg(test)]
-    pub(crate) fn path(&self) -> Option<PathBuf> {
+    pub fn path(&self) -> Option<PathBuf> {
         match &self.inner.storage {
             Storage::Inline(_) => None,
             Storage::File { manifest, .. } => Some(manifest.clone()),
@@ -706,7 +704,7 @@ impl ComparisonStore {
     }
 
     #[cfg(test)]
-    pub(crate) fn directory(&self) -> Option<PathBuf> {
+    pub fn directory(&self) -> Option<PathBuf> {
         match &self.inner.storage {
             Storage::Inline(_) => None,
             Storage::File { directory, .. } => Some(directory.clone()),
@@ -714,19 +712,18 @@ impl ComparisonStore {
     }
 
     #[cfg(test)]
-    pub(crate) fn bytes(&self) -> usize {
+    pub fn bytes(&self) -> usize {
         match &self.inner.storage {
             Storage::Inline(comparison) => serde_json::to_vec(comparison).unwrap().len(),
             Storage::File { bytes, .. } => *bytes as usize,
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn full_load_calls(&self) -> usize {
+    /// How many times the comparison was fully loaded into memory.
+    pub fn full_load_calls(&self) -> usize {
         self.inner.full_load_calls.load(Ordering::Relaxed)
     }
 }
 
 #[cfg(test)]
-#[path = "comparison_store/tests.rs"]
 mod tests;

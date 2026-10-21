@@ -3,7 +3,7 @@
 mod apply;
 mod artifact_view;
 pub(crate) mod compare;
-mod comparison_store;
+pub(crate) use datazen_data_sync::comparison_store;
 mod exec;
 mod filter_validation;
 #[cfg(test)]

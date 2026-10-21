@@ -188,7 +188,7 @@ async fn test_tester_mutation_operation_counts_include_insert_update_delete_and_
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))
         .unwrap();
-    crate::data_sync::RowChangeSink::push(&mut writer, inserted_row(1))
+    crate::RowChangeSink::push(&mut writer, inserted_row(1))
         .await
         .unwrap();
     writer
@@ -207,9 +207,7 @@ async fn test_tester_mutation_operation_counts_include_insert_update_delete_and_
             &options,
         ))
         .unwrap();
-    crate::data_sync::RowChangeSink::unchanged(&mut writer)
-        .await
-        .unwrap();
+    crate::RowChangeSink::unchanged(&mut writer).await.unwrap();
     writer.finish_table(1).unwrap();
     let store = writer.finish().unwrap();
 
