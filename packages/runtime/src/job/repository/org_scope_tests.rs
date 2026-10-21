@@ -289,3 +289,93 @@ async fn the_state_of_a_job_is_isolated_from_another_organization() {
     );
     assert!(!record.view.cancel_requested);
 }
+
+#[tokio::test]
+async fn an_already_admitted_job_identity_is_refused_instead_of_overwritten() {
+    // 受理一个**已被占用的 jobId** 不再静默覆盖既有行。
+    // 覆盖不是无害的：它会把既有行连同它的落库归属一起顶掉。
+    let repo = repository();
+    let ctx = organization_context("org-a");
+    repo.accept(
+        &ctx,
+        definition("job-a", "org-a"),
+        &IdempotencyKey::new("key-a"),
+    )
+    .await
+    .expect("accept a");
+
+    // 另一个幂等键 + 同一个 jobId → 拒绝，不得覆盖。
+    let error = repo
+        .accept(
+            &ctx,
+            definition("job-a", "org-a"),
+            &IdempotencyKey::new("key-b"),
+        )
+        .await
+        .expect_err("an occupied job identity must be refused");
+    assert!(
+        matches!(error, PortError::BackendUnavailable(_)),
+        "重复 jobId 按后端不可用拒绝（与 SQLite 主键冲突同口径）：{error:?}"
+    );
+
+    // 既有行原封不动：状态、归属与受理时刻都还是第一次那一条。
+    let record = repo
+        .get(&ctx, JobId::new("job-a"))
+        .await
+        .expect("read back");
+    assert_eq!(record.view.job_id, JobId::new("job-a"));
+    assert_eq!(record.view.state, JobState::Queued);
+    assert_eq!(
+        record.definition.organization_id,
+        OrganizationId::new("org-a"),
+        "被拒绝的受理不得改动既有行的落库归属"
+    );
+}
+
+#[tokio::test]
+async fn another_organization_cannot_take_over_an_admitted_job_identity() {
+    // 跨组织的 jobId 顶替是「覆盖」语义最危险的形态：它同时抹掉受害组织的行。
+    let repo = repository();
+    let org_a = organization_context("org-a");
+    let org_b = organization_context("org-b");
+    repo.accept(
+        &org_a,
+        definition("job-a", "org-a"),
+        &IdempotencyKey::new("key-a"),
+    )
+    .await
+    .expect("accept a");
+
+    let error = repo
+        .accept(
+            &org_b,
+            definition("job-a", "org-b"),
+            &IdempotencyKey::new("key-b"),
+        )
+        .await
+        .expect_err("a foreign organization must not take over an admitted job identity");
+    assert!(
+        matches!(error, PortError::BackendUnavailable(_)),
+        "跨组织顶替按后端不可用拒绝：{error:?}"
+    );
+
+    // 受害组织的行仍在，且仍属于它自己。
+    let record = repo
+        .get(&org_a, JobId::new("job-a"))
+        .await
+        .expect("read back");
+    assert_eq!(
+        record.definition.organization_id,
+        OrganizationId::new("org-a"),
+        "越组织的受理不得顶掉本组织的行"
+    );
+    // 顶替者自己也读不到受害组织的行。
+    let error = repo
+        .get(&org_b, JobId::new("job-a"))
+        .await
+        .expect_err("the takeover attempt must not make the row readable");
+    assert!(
+        matches!(error, PortError::NotFound(_)),
+        "越组织读取按「不存在」处理：{error:?}"
+    );
+}
