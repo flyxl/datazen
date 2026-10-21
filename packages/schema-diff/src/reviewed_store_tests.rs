@@ -786,3 +786,158 @@ async fn reviewed_plan_failed_validation_does_not_burn_the_plan() {
         "校验失败后计划必须仍可消费"
     );
 }
+
+/// 端口的 `get` 与 `remove` 是两次调用，中间存在竞态窗口。
+///
+/// 实现必须用**取出的那一份**做校验，并把**同一份**返回给部署方：
+/// 若实现改成「校验之后再取一次」，就会校验到另一份内容，部署方拿到的
+/// 也就不是复核过的那份计划。
+///
+/// 替身：第一次读返回真实计划，之后的读返回**被篡改**的副本。
+struct SecondReadTamperedStore {
+    plans: Mutex<HashMap<(String, String), ReviewedPlan>>,
+    reads: Mutex<HashMap<(String, String), usize>>,
+}
+
+impl Default for SecondReadTamperedStore {
+    fn default() -> Self {
+        Self {
+            plans: Mutex::new(HashMap::new()),
+            reads: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl ReviewedPlanStore for SecondReadTamperedStore {
+    async fn put(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+        plan: ReviewedPlan,
+    ) -> Result<(), ReviewedPlanStoreError> {
+        self.plans.lock().await.insert(
+            (
+                scope.organization_id().as_str().to_owned(),
+                plan_id.to_owned(),
+            ),
+            plan,
+        );
+        Ok(())
+    }
+
+    async fn get(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+    ) -> Result<Option<ReviewedPlan>, ReviewedPlanStoreError> {
+        let key = (
+            scope.organization_id().as_str().to_owned(),
+            plan_id.to_owned(),
+        );
+        let attempt = {
+            let mut reads = self.reads.lock().await;
+            let counter = reads.entry(key.clone()).or_insert(0);
+            *counter += 1;
+            *counter
+        };
+        let mut found = self.plans.lock().await.get(&key).cloned();
+        if attempt >= 2 {
+            if let Some(plan) = found.as_mut() {
+                plan.plan
+                    .warnings
+                    .push("tampered after the first read".into());
+            }
+        }
+        Ok(found)
+    }
+
+    async fn remove(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+    ) -> Result<bool, ReviewedPlanStoreError> {
+        Ok(self
+            .plans
+            .lock()
+            .await
+            .remove(&(
+                scope.organization_id().as_str().to_owned(),
+                plan_id.to_owned(),
+            ))
+            .is_some())
+    }
+}
+
+/// `consume` 校验的必须是它**取出的那一份**，返回给部署方的也必须是同一份。
+#[tokio::test]
+async fn reviewed_plan_consume_validates_the_copy_it_read() {
+    let store = SecondReadTamperedStore::default();
+    let scope = scope("org-a");
+    let cfg = config();
+    let handle = handle();
+    let mut frozen = plan();
+    freeze(
+        &store,
+        &scope,
+        &mut frozen,
+        "session".into(),
+        &handle,
+        &cfg,
+        vec![],
+        cfg.database.clone(),
+        Some("public".into()),
+    )
+    .await
+    .expect("freeze plan");
+
+    let consumed = consume(
+        &store,
+        &scope,
+        &frozen,
+        "session",
+        &handle,
+        &cfg,
+        cfg.database.as_deref(),
+        Some("public"),
+    )
+    .await
+    .expect("consume 必须校验它取出的那一份");
+    assert!(
+        consumed.plan == frozen,
+        "返回给部署方的必须是复核过的那一份计划"
+    );
+
+    // 替身生效：第二次读取确实返回了被篡改的副本。
+    // 用另一条计划，避免受上面那次消费（已删除条目）影响。
+    let mut other = plan();
+    freeze(
+        &store,
+        &scope,
+        &mut other,
+        "session".into(),
+        &handle,
+        &cfg,
+        vec![],
+        cfg.database.clone(),
+        Some("public".into()),
+    )
+    .await
+    .expect("freeze another plan");
+    let other_id = other.plan_id.clone().expect("frozen plan carries its id");
+    let first = store
+        .get(&scope, &other_id)
+        .await
+        .expect("read plan")
+        .expect("plan present");
+    let second = store
+        .get(&scope, &other_id)
+        .await
+        .expect("read plan")
+        .expect("plan present");
+    assert!(first.plan == other, "第一次读取必须返回真实计划");
+    assert!(
+        second.plan != other,
+        "替身第二次读取必须返回被篡改的副本，否则本用例不承重"
+    );
+}
