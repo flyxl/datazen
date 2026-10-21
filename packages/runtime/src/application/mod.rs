@@ -363,6 +363,79 @@ impl RuntimeConnectionUseCases {
         Ok((view, lease))
     }
 
+    /// Drivers that hold a pool per browsed database: close that pool.
+    ///
+    /// The demand for per-database pool maintenance is raised **here**, in the
+    /// runtime session layer, not by the host reaching into a driver trait. The
+    /// host names the session and the database; the runtime leases the live
+    /// connection under [`LivePurpose::Inspection`] (same purpose the
+    /// read-path uses), calls the driver, and the host only carries the
+    /// verdict to its cache invalidation. Drivers without a per-database
+    /// resource keep the trait's `Ok(false)`: nothing to close is a normal
+    /// outcome, not an error.
+    ///
+    /// The session's own database is the exception the driver decides: it is
+    /// genuinely open even though it cannot be closed individually
+    /// ([`DatabaseDriver::close_database`] documents the rule), so the
+    /// runtime forwards the name verbatim and reports the verdict.
+    pub async fn close_database(
+        &self,
+        ctx: &RequestContext,
+        db_session_id: &str,
+        database: &str,
+    ) -> Result<bool, ApiError> {
+        let database = database.trim();
+        if database.is_empty() {
+            return Err(ApiError::new(
+                ApiErrorCode::InvalidArgument,
+                "close_database requires a non-empty database name",
+            ));
+        }
+        let (_, lease) = self
+            .borrow_live_connection_by_id(ctx, db_session_id, LivePurpose::Inspection)
+            .await?;
+        let connection = lease.connection().map_err(convert::live)?;
+        connection
+            .driver()
+            .close_database(connection.handle(), database)
+            .await
+            .map_err(|_| {
+                // ApiError 的 message 是脱敏文案：driver 原始错误不进入它。
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "driver pool maintenance failed",
+                )
+            })
+    }
+
+    /// Databases this session currently holds an open resource for.
+    ///
+    /// The read counterpart of [`Self::close_database`]: pools the driver
+    /// opened itself, reported as viewed through this session's handle. A
+    /// driver with no per-database resource reports an empty list, which the
+    /// caller renders as "no marker" rather than as an error.
+    pub async fn open_databases(
+        &self,
+        ctx: &RequestContext,
+        db_session_id: &str,
+    ) -> Result<Vec<String>, ApiError> {
+        let (_, lease) = self
+            .borrow_live_connection_by_id(ctx, db_session_id, LivePurpose::Inspection)
+            .await?;
+        let connection = lease.connection().map_err(convert::live)?;
+        connection
+            .driver()
+            .open_databases(connection.handle())
+            .await
+            .map_err(|_| {
+                // ApiError 的 message 是脱敏文案：driver 原始错误不进入它。
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "driver pool maintenance failed",
+                )
+            })
+    }
+
     pub async fn subscribe_events_cancellable(
         &self,
         ctx: &RequestContext,
