@@ -91,7 +91,7 @@ interface ConnectionStore {
 
   fetchConnections: () => Promise<void>;
   fetchGroups: () => Promise<void>;
-  saveConnection: (config: ConnectionConfig) => Promise<void>;
+  saveConnection: (config: ConnectionConfig, clearMissingCredentials?: boolean) => Promise<void>;
   duplicateConnection: (id: string) => Promise<void>;
   deleteConnection: (id: string) => Promise<void>;
   testConnection: (config: ConnectionConfig) => Promise<ServerInfo>;
@@ -136,10 +136,10 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     }
   },
 
-  saveConnection: async (config) => {
+  saveConnection: async (config, clearMissingCredentials) => {
     set({ loading: true, error: null });
     try {
-      await connectionCommands.saveConnection(config);
+      await connectionCommands.saveConnection(config, clearMissingCredentials);
       await get().fetchConnections();
       await get().fetchGroups();
       void emitCrossWindow(EVENT_CONNECTIONS_CHANGED);
@@ -155,13 +155,22 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     const { connections } = get();
     const source = connections.find((c) => c.id === id);
     if (!source) return;
-    const copy: ConnectionConfig = {
-      ...source,
-      id: `conn_${Math.random().toString(36).slice(2, 10)}`,
-      name: `${source.name} (${t('conn.copyName')})`,
-      lastConnectedAt: undefined,
-    };
-    await get().saveConnection(copy);
+    set({ loading: true, error: null });
+    try {
+      await connectionCommands.duplicateConnection(
+        id,
+        `conn_${Math.random().toString(36).slice(2, 10)}`,
+        `${source.name} (${t('conn.copyName')})`,
+      );
+      await get().fetchConnections();
+      await get().fetchGroups();
+      void emitCrossWindow(EVENT_CONNECTIONS_CHANGED);
+    } catch (e) {
+      set({
+        loading: false,
+        error: e instanceof Error ? e.message : t('connStore.saveFailed'),
+      });
+    }
   },
 
   deleteConnection: async (id) => {

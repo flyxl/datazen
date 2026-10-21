@@ -58,6 +58,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}): Conne
   const [schema, setSchema] = useState('default');
   const [username, setUsername] = useState('postgres');
   const [password, setPassword] = useState('');
+  const [clearStoredCredentials, setClearStoredCredentials] = useState(false);
+  useEffect(() => setClearStoredCredentials(false), [editId]);
   const [sslMode, setSslMode] = useState<SslMode>('prefer');
   const [group, setGroupState] = useState<string>(() =>
     coerceConnectionGroup(defaultGroup ?? PRESET_GROUPS.development),
@@ -695,7 +697,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}): Conne
 
   async function onSave() {
     if (!validate()) return;
-    await saveConnection(buildIpcConfig());
+    await saveConnection(buildIpcConfig(), clearStoredCredentials);
     onAfterSave?.();
   }
 
@@ -710,6 +712,9 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}): Conne
 
   return {
     ...tunnel,
+    isEditing: Boolean(editId),
+    clearStoredCredentials,
+    setClearStoredCredentials,
     name,
     setName,
     databaseType,

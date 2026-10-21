@@ -22,28 +22,20 @@
         "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' data: asset: tauri: blob: datazen:",
         "font-src": "'self' blob: data:",
-        "connect-src": "'self' https: http: ipc: http://ipc.localhost asset://localhost blob:"
+        "connect-src": "'self' ipc: http://ipc.localhost asset://localhost"
       },
-      "dangerousDisableAssetCspModification": [
-        "style-src"
-      ],
+      "dangerousDisableAssetCspModification": ["style-src"],
       "assetProtocol": {
         "enable": true,
-        "scope": [
-          "$RESOURCE/builtin-ep/**/*"
-        ]
+        "scope": ["$RESOURCE/builtin-ep/**/*"]
       },
-      "capabilities": [
-        "default"
-      ]
+      "capabilities": ["default"]
     }
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ1MkEwQTg1QUVBMTJEMzAKUldRd0xhR3VoUW9xMVVVczZGRkhtNEliWnNzUnBYUFNvVXMrcGJpcUJKM2JpdWRiRWh0dkExUEUK",
-      "endpoints": [
-        "https://github.com/flyxl/datazen/releases/latest/download/latest.json"
-      ],
+      "endpoints": ["https://github.com/flyxl/datazen/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"
       }

@@ -4,6 +4,7 @@ import type { ConnectionConfig } from '../../types';
 const mockConnectionCommands = {
   getConnections: vi.fn(),
   saveConnection: vi.fn(),
+  duplicateConnection: vi.fn(),
   deleteConnection: vi.fn(),
   testConnection: vi.fn(),
   getGroups: vi.fn(),
@@ -132,18 +133,20 @@ describe('connectionStore actions', () => {
 
   it('duplicateConnection creates a copy', async () => {
     useConnectionStore.setState({ connections: [makeConn({ id: 'orig', name: 'Original' })] });
-    mockConnectionCommands.saveConnection.mockResolvedValue(undefined);
+    mockConnectionCommands.duplicateConnection.mockResolvedValue(undefined);
     mockConnectionCommands.getConnections.mockResolvedValue([]);
     mockConnectionCommands.getGroups.mockResolvedValue([]);
     await useConnectionStore.getState().duplicateConnection('orig');
-    expect(mockConnectionCommands.saveConnection).toHaveBeenCalledWith(
-      expect.objectContaining({ name: expect.stringContaining('Original') }),
+    expect(mockConnectionCommands.duplicateConnection).toHaveBeenCalledWith(
+      'orig',
+      expect.stringMatching(/^conn_/),
+      expect.stringContaining('Original'),
     );
   });
 
   it('duplicateConnection no-ops when source missing', async () => {
     await useConnectionStore.getState().duplicateConnection('missing');
-    expect(mockConnectionCommands.saveConnection).not.toHaveBeenCalled();
+    expect(mockConnectionCommands.duplicateConnection).not.toHaveBeenCalled();
   });
 
   it('deleteConnection success and error', async () => {

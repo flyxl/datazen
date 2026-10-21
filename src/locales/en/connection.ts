@@ -90,6 +90,9 @@ const pack = {
   'newConn.databaseIndex': 'Database index',
   'newConn.username': 'Username',
   'newConn.password': 'Password',
+  'newConn.clearStoredCredentials': 'Clear saved credentials left blank',
+  'newConn.clearStoredCredentialsHint':
+    'Blank fields keep their saved values unless this is checked.',
   'newConn.group': 'Group',
   'newConn.noGroup': 'No Group',
   'newConn.colorTag': 'Color Tag',
