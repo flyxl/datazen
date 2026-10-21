@@ -19,10 +19,12 @@ import {
   parseFilterForApply,
   type FilterExpression,
 } from '../../lib/filterExpression';
-import { extractErrorMessage } from '../../stores/tableData/connectionState';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
-import { tableSessionController } from '../../lib/session/tableSession';
+import {
+  TablePendingChangesBar,
+  TableTransactionControls,
+} from './TablePendingChangesBar';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { DatabaseType, FilterCondition, SortCondition } from '../../types';
 import { Spinner } from '../../components/ui/Spinner';
@@ -131,86 +133,8 @@ export function TableView({
   const [readOnlyTipVisible, setReadOnlyTipVisible] = useState(false);
   const readOnlyTipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Manual transaction toggle: when on, ChangeSet commits join this open
-  // transaction; otherwise each commit runs as its own short transaction.
-  const [inTx, setInTx] = useState(false);
-  const [txBusy, setTxBusy] = useState(false);
-  const [txLost, setTxLost] = useState(false);
-  const [txError, setTxError] = useState<string | null>(null);
-  const refreshTxStatus = useCallback(async () => {
-    try {
-      const controller = await tableSessionController(panelId, context);
-      const snapshot = await controller.refresh();
-      setTxLost(snapshot?.state === 'lost' || snapshot?.state === 'closed');
-      const state = snapshot?.observedContext.transactionState;
-      setInTx(state === 'active' || state === 'aborted' || state === 'unknown');
-    } catch (error) {
-      const controller = await tableSessionController(panelId, context);
-      setTxLost(controller.snapshot?.state === 'lost' || controller.snapshot?.state === 'closed');
-      setTxError(extractErrorMessage(error, t('query.session.disconnected')));
-    }
-  }, [panelId, context, t]);
-  useEffect(() => {
-    void refreshTxStatus();
-  }, [refreshTxStatus]);
-  const executeTableTransaction = useCallback(async (operation: 'begin' | 'commit' | 'rollback') => {
-    const controller = await tableSessionController(panelId, context);
-    try {
-      const receipt = await controller.execute({ command: `platform.${operation}Transaction`, input: { defersCommit: true } });
-      for (;;) {
-        const execution = await controller.getExecution(receipt.executionId);
-        if (execution.state === 'succeeded') break;
-        if (execution.state === 'failed' || execution.state === 'cancelled') throw new Error(`${execution.errorCode ?? 'Transaction outcome unavailable'}; effect: ${execution.effectOutcome}`);
-        await new Promise<void>((resolve) => setTimeout(resolve, 50));
-      }
-      await controller.refresh();
-    } catch (error) {
-      if (!controller.acceptSessionError(error) && controller.snapshot?.state !== 'lost') {
-        // Observe resource loss after a terminal execution failure, while
-        // preserving the original transaction error and its effect outcome.
-        await controller.refresh().catch(() => undefined);
-      }
-      setTxLost(controller.snapshot?.state === 'lost' || controller.snapshot?.state === 'closed');
-      throw error;
-    }
-  }, [panelId, context]);
-  const handleBeginTx = useCallback(async () => {
-    setTxBusy(true);
-    setTxError(null);
-    try {
-      await executeTableTransaction('begin');
-      await refreshTxStatus();
-    } catch (e) {
-      setTxError(extractErrorMessage(e, t('tableData.txBeginFailed')));
-    } finally {
-      setTxBusy(false);
-    }
-  }, [executeTableTransaction, refreshTxStatus, t]);
-  const handleCommitTx = useCallback(async () => {
-    setTxBusy(true);
-    setTxError(null);
-    try {
-      await executeTableTransaction('commit');
-      await refreshTxStatus();
-    } catch (e) {
-      setTxError(extractErrorMessage(e, t('tableData.txCommitFailed')));
-    } finally {
-      setTxBusy(false);
-    }
-  }, [executeTableTransaction, refreshTxStatus, t]);
-  const handleRollbackTx = useCallback(async () => {
-    setTxBusy(true);
-    setTxError(null);
-    try {
-      await executeTableTransaction('rollback');
-      await refreshTxStatus();
-      actions.reload();
-    } catch (e) {
-      setTxError(extractErrorMessage(e, t('tableData.txRollbackFailed')));
-    } finally {
-      setTxBusy(false);
-    }
-  }, [actions, executeTableTransaction, refreshTxStatus, t]);
+  // Manual transaction state, controls and pending-change actions live in
+  // `TablePendingChangesBar`; this component keeps only the ChangeSet handlers.
 
   useEffect(() => {
     return () => {
@@ -550,109 +474,22 @@ export function TableView({
           {t('tableData.readOnlyEditDisabled')}
         </div>
       )}
-      {txError && (
-        <div data-testid="table-transaction-error" className="border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400">
-          {txError}
-          {txLost && <button className="ml-3 underline" data-testid="table-session-open-new" onClick={() => {
-            void tableSessionController(panelId, context).then((controller) => controller.openNewSession())
-              .then(() => { setTxLost(false); setInTx(false); setTxError(null); actions.reload(); })
-              .catch((error: unknown) => setTxError(extractErrorMessage(error, t('query.session.disconnected'))));
-          }}>{t('query.session.openNew')}</button>}
-        </div>
-      )}
-      {isEditable && (
-        <div
-          className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-1 text-xs text-fg-muted"
-          data-testid="table-tx-controls"
-        >
-          <span className={cn(inTx ? 'text-accent' : 'text-fg-muted')}>
-            {inTx ? t('tableData.inManualTx') : t('tableData.shortTxDefault')}
-          </span>
-          {!inTx ? (
-            <button
-              type="button"
-              className="text-accent hover:underline disabled:opacity-50"
-              onClick={() => void handleBeginTx()}
-              disabled={txBusy || loading}
-              data-testid="table-tx-begin"
-            >
-              {t('tableData.beginTx')}
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="text-accent hover:underline disabled:opacity-50"
-                onClick={() => void handleCommitTx()}
-                disabled={txBusy || loading}
-                data-testid="table-tx-commit"
-              >
-                {t('tableData.commitTx')}
-              </button>
-              <button
-                type="button"
-                className="text-accent hover:underline disabled:opacity-50"
-                onClick={() => void handleRollbackTx()}
-                disabled={txBusy || loading}
-                data-testid="table-tx-rollback"
-              >
-                {t('tableData.rollbackTx')}
-              </button>
-            </>
-          )}
-          {inTx && <span className="ml-auto text-warning">{t('tableData.txManualHint')}</span>}
-        </div>
-      )}
-      {pendingChanges.size > 0 && (
-        <div
-          className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs"
-          aria-busy={pendingBusy}
-          data-testid="pending-changes-bar"
-        >
-          <span className="font-medium text-amber-300">
-            {t('tableData.pendingChanges', { count: pendingChanges.size })}
-          </span>
-          {pendingUpdateCount > 0 && (
-            <span className="text-fg-muted">
-              {t('tableData.pendingUpdates', { count: pendingUpdateCount })}
-            </span>
-          )}
-          {pendingDeleteCount > 0 && (
-            <span className="text-fg-muted">
-              {t('tableData.pendingDeletes', { count: pendingDeleteCount })}
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={pendingBusy}
-              onClick={() => void handlePreviewPendingChanges()}
-              data-testid="pending-preview"
-            >
-              {t('tableData.preview')}
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={pendingBusy}
-              onClick={() => void handleCommitPendingChanges()}
-              data-testid="pending-commit"
-            >
-              {t('tableData.commit')}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={pendingBusy}
-              onClick={() => actions.rollbackPendingChanges()}
-              data-testid="pending-rollback"
-            >
-              {t('tableData.rollback')}
-            </Button>
-          </div>
-        </div>
-      )}
+      <TableTransactionControls
+        panelId={panelId}
+        context={context}
+        isEditable={isEditable}
+        loading={loading}
+        onReload={actions.reload}
+      />
+      <TablePendingChangesBar
+        pendingCount={pendingChanges.size}
+        updateCount={pendingUpdateCount}
+        deleteCount={pendingDeleteCount}
+        busy={pendingBusy}
+        onPreview={() => void handlePreviewPendingChanges()}
+        onCommit={() => void handleCommitPendingChanges()}
+        onRollback={actions.rollbackPendingChanges}
+      />
       <DataTable
         columns={columnDefs}
         rows={rowArrays}
