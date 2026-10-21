@@ -287,7 +287,7 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 - `cancel(request_id, owner_fingerprint) -> CancelReceipt` 返回三态：`marked`（已登记标志并触发 token）、`alreadyFinished`（未注册：已完成 / 已取消 / 从未开始）、`forbidden`（同名请求属于另一个 owner，**不动它**）。伪造的 `request_id` 不能取消别的客户端的流（CM-53）。
 - 两段式取消：先登记标志、再触发 `CancellationToken`；工具循环在轮次开始、流式轮次结束、以及每次工具派发前检查取消。终止 chunk 必须是 `done: true, cancelled: true`——**不得把取消伪装成正常完成**；取消路径不写新历史，只回收本次 AI 自有资源。
 - `cancel_owner(owner_fingerprint)` 用于客户端整体离开时只停自己的流（目前由前端释放链路与 grant 撤销配合使用，尚无后端独立调用点）。
-- 它与长任务机制互不相通，key 也不同（AI 是调用 ID，Job 是 job ID）。AI 调用取消状态只在内存；P5 迁移三件套 Job API 使用 AppDb `DesktopJobHost` 的持久 cancel intent。
+- 它与长任务机制互不相通，key 也不同（AI 是调用 ID，Job 是 job ID）。AI 调用取消状态只在内存；P5 迁移三件套 Job API 使用 AppDb `JobHost` 的持久 cancel intent。
 
 **六、显式 editor 会话授权（P6 §14.4 / CM-53）。**
 

@@ -1,8 +1,12 @@
-//! Public desktop facade over the durable job repository and runtime.
+//! Host-side facade over the durable job repository and runtime.
+//!
+//! 「宿主侧的 durable job repository 与 runtime 之上的作业宿主」—— 名字表达的是**职责**
+//! （谁承接 durable accept / dispatch / cancel / recovery），而不是**形态**：本内核
+//! 不依赖任何具体形态，它只是宿主接线时用的那一层。
 //!
 //! Accepting a job never schedules it. Callers may dispatch only after the
 //! repository has committed the job and its idempotency receipt. On process
-//! reopen, [`DesktopJobHost::mark_restart_candidates_for_verification`] marks
+//! reopen, [`JobHost::mark_restart_candidates_for_verification`] marks
 //! old running jobs for inspection and never invokes a handler.
 
 use std::panic::AssertUnwindSafe;
@@ -27,14 +31,14 @@ use crate::job::runtime::{JobResult, JobRuntime};
 use crate::job::runtime_repository::JobRuntimeRepository;
 use crate::job::time::JobClock;
 
-/// Shared, transport-neutral API for desktop job adapters.
-pub struct DesktopJobHost {
+/// Shared, transport-neutral API for host-side job adapters.
+pub struct JobHost {
     repository: Arc<dyn JobRuntimeRepository>,
     ledger: Arc<Mutex<BudgetLedger>>,
     clock: Arc<dyn JobClock>,
 }
 
-impl DesktopJobHost {
+impl JobHost {
     pub fn new(
         repository: Arc<dyn JobRuntimeRepository>,
         ledger: Arc<Mutex<BudgetLedger>>,

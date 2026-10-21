@@ -5,6 +5,7 @@ use super::types::{
 use crate::workflow::model::{
     WorkflowDefinition, WorkflowStep, WorkflowVisibility as WfVisibility,
 };
+use datazen_platform_api::ports::scope::OrganizationScope;
 use uuid::Uuid;
 pub fn default_chart_config() -> ChartConfig {
     ChartConfig::default()
@@ -76,16 +77,33 @@ pub struct CreateWidgetResult {
     pub widget: DashboardWidget,
 }
 
+/// 仪表板 widget 创建需要的宿主能力。
+///
+/// 每个方法都带一个 [`OrganizationScope`]：widget 与它引用的 workflow 都属于
+/// 某个组织，宿主据此拒绝别的组织的数据（CM-05）。
 #[async_trait::async_trait]
 pub trait WidgetCreationHost: Send + Sync {
-    fn dashboard(&self, id: &str) -> Result<Dashboard, String>;
-    fn save_dashboard(&self, dashboard: Dashboard) -> Result<(), String>;
-    fn workflow_summary(&self, id: &str) -> Result<(String, WfVisibility), String>;
-    async fn workflow(&self, id: &str) -> Option<WorkflowDefinition>;
-    async fn save_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), String>;
+    fn dashboard(&self, scope: &OrganizationScope, id: &str) -> Result<Dashboard, String>;
+    fn save_dashboard(&self, scope: &OrganizationScope, dashboard: Dashboard)
+        -> Result<(), String>;
+    fn workflow_summary(
+        &self,
+        scope: &OrganizationScope,
+        id: &str,
+    ) -> Result<(String, WfVisibility), String>;
+    async fn workflow(&self, scope: &OrganizationScope, id: &str) -> Option<WorkflowDefinition>;
+    async fn save_workflow(
+        &self,
+        scope: &OrganizationScope,
+        workflow: &WorkflowDefinition,
+    ) -> Result<(), String>;
 }
 
+// 组织作用域是边界参数，不参与「这组入参讲的是同一件事」的语义；
+// 参数个数因此超过 clippy 的阈值——显式标注，不靠改写语义来凑数。
+#[allow(clippy::too_many_arguments)]
 pub async fn create_widget_from_sql(
+    scope: &OrganizationScope,
     host: &dyn WidgetCreationHost,
     dashboard_id: &str,
     connection_id: &str,
@@ -104,14 +122,14 @@ pub async fn create_widget_from_sql(
     }
 
     let mut dashboard = host
-        .dashboard(dashboard_id)
+        .dashboard(scope, dashboard_id)
         .map_err(CreateWidgetError::Store)?;
     let widget_title = title.unwrap_or_else(|| "SQL Widget".into());
     let workflow_id = format!("dash-wf-{}", Uuid::new_v4());
     let widget_id = Uuid::new_v4().to_string();
 
     let def = hidden_sql_workflow(&workflow_id, &widget_title, connection_id, sql);
-    host.save_workflow(&def)
+    host.save_workflow(scope, &def)
         .await
         .map_err(CreateWidgetError::Workflow)?;
 
@@ -131,7 +149,7 @@ pub async fn create_widget_from_sql(
     };
 
     dashboard.widgets.push(widget.clone());
-    host.save_dashboard(dashboard.clone())
+    host.save_dashboard(scope, dashboard.clone())
         .map_err(CreateWidgetError::Store)?;
 
     Ok(CreateWidgetResult { dashboard, widget })
@@ -139,6 +157,7 @@ pub async fn create_widget_from_sql(
 
 /// Update SQL + connection on a dashboard-owned hidden workflow.
 pub async fn update_hidden_workflow_sql(
+    scope: &OrganizationScope,
     host: &dyn WidgetCreationHost,
     workflow_id: &str,
     connection_id: &str,
@@ -154,7 +173,7 @@ pub async fn update_hidden_workflow_sql(
     }
 
     let record = host
-        .workflow_summary(workflow_id)
+        .workflow_summary(scope, workflow_id)
         .map_err(|e| CreateWidgetError::Validation(e.to_string()))?;
     if record.1 != WfVisibility::DashboardHidden {
         return Err(CreateWidgetError::Validation(
@@ -162,7 +181,7 @@ pub async fn update_hidden_workflow_sql(
         ));
     }
 
-    let mut def = host.workflow(workflow_id).await.ok_or_else(|| {
+    let mut def = host.workflow(scope, workflow_id).await.ok_or_else(|| {
         CreateWidgetError::Workflow(format!("Workflow '{workflow_id}' not found"))
     })?;
 
@@ -181,7 +200,7 @@ pub async fn update_hidden_workflow_sql(
         ));
     }
 
-    host.save_workflow(&def)
+    host.save_workflow(scope, &def)
         .await
         .map_err(CreateWidgetError::Workflow)?;
 
@@ -189,6 +208,7 @@ pub async fn update_hidden_workflow_sql(
 }
 
 pub async fn create_widget_from_workflow(
+    scope: &OrganizationScope,
     host: &dyn WidgetCreationHost,
     dashboard_id: &str,
     workflow_id: &str,
@@ -203,7 +223,7 @@ pub async fn create_widget_from_workflow(
     }
 
     let record = host
-        .workflow_summary(workflow_id)
+        .workflow_summary(scope, workflow_id)
         .map_err(|e| CreateWidgetError::Validation(e.to_string()))?;
     if record.1 == WfVisibility::DashboardHidden {
         return Err(CreateWidgetError::Validation(
@@ -212,7 +232,7 @@ pub async fn create_widget_from_workflow(
     }
 
     let mut dashboard = host
-        .dashboard(dashboard_id)
+        .dashboard(scope, dashboard_id)
         .map_err(CreateWidgetError::Store)?;
     let widget_title = title.unwrap_or_else(|| record.0.clone());
     let widget_id = Uuid::new_v4().to_string();
@@ -233,7 +253,7 @@ pub async fn create_widget_from_workflow(
     };
 
     dashboard.widgets.push(widget.clone());
-    host.save_dashboard(dashboard.clone())
+    host.save_dashboard(scope, dashboard.clone())
         .map_err(CreateWidgetError::Store)?;
 
     Ok(CreateWidgetResult { dashboard, widget })

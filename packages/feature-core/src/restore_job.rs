@@ -654,6 +654,7 @@ mod tests {
         let repository = InMemoryJobRepository::new(clock.clone(), 60);
         let definition = |id: &str| JobDefinition {
             job_id: JobId::new(id),
+            organization_id: context("alice").organization_id,
             kind: RESTORE_APPLY_KIND.into(),
             owner: OwnerRef::ClientSession {
                 client_instance_id: ClientInstanceId::new("client"),
@@ -685,12 +686,12 @@ mod tests {
     async fn durable_restore_job_records_unsupported_under_target_writer_budget() {
         use datazen_runtime::{
             budget::{ledger::BudgetLedger, quotas::BudgetConfig},
-            job::{DesktopJobHost, EndpointRef, EndpointRole},
+            job::{EndpointRef, EndpointRole, JobHost},
         };
         let (_dir, store, plan) = input().await;
         let clock = Arc::new(SystemJobClock);
         let repository = Arc::new(InMemoryJobRepository::new(clock.clone(), 60));
-        let host = DesktopJobHost::new(
+        let host = JobHost::new(
             repository,
             Arc::new(Mutex::new(BudgetLedger::new(
                 BudgetConfig::desktop_default(),
@@ -710,6 +711,7 @@ mod tests {
             &context,
             JobDefinition {
                 job_id: job_id.clone(),
+                organization_id: context.organization_id.clone(),
                 kind: RESTORE_APPLY_KIND.into(),
                 owner: OwnerRef::ClientSession {
                     client_instance_id: context.client_instance_id.clone(),

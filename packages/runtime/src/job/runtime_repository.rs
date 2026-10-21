@@ -20,6 +20,10 @@ use datazen_platform_api::id::ArtifactId;
 use datazen_platform_api::ports::job::JobRepository;
 
 /// Operations consumed by `JobRuntime` and the desktop Job host.
+///
+/// 这些方法都在 `JobRepository` 之上追加运行时需要的能力，**每一个都必须按
+/// `ctx` 的组织隔离**：读到的行必须属于当前组织，越组织按「不存在 / 空」处理；
+/// 写入必须先过 claim fencing（含组织核对），否则按「旧 claim」拒绝。
 #[async_trait]
 pub trait JobRuntimeRepository: JobRepository {
     async fn validate_stage_owner(

@@ -46,6 +46,7 @@ pub(crate) async fn run_output_job(
     let job = JobId::new(format!("{kind}-{}", uuid::Uuid::new_v4()));
     let record = host.accept(&context, JobDefinition {
         job_id: job.clone(), kind: kind.into(),
+        organization_id: context.organization_id.clone(),
         owner: OwnerRef::ClientSession { client_instance_id: context.client_instance_id.clone(), purpose: kind.into() },
         payload: serde_json::json!({"planVersion":1,"handlerVersion":1,"checkpointVersion":1,"fileExtension":destination.extension().and_then(|value| value.to_str()).unwrap_or("bin").to_ascii_lowercase()}),
         created_at: host.now(),

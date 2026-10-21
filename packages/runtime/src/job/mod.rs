@@ -10,9 +10,9 @@
 //! * 持久化路径排除运行时句柄；事件载荷只含状态/引用（§2.3）。
 
 pub mod budget;
-pub mod desktop_host;
 pub mod error;
 pub mod handler;
+pub mod host;
 mod memory_runtime_repository;
 mod owner;
 pub use owner::StageOwnerPermit;
@@ -24,12 +24,12 @@ pub mod runtime_repository;
 pub mod time;
 
 pub use budget::{detect_endpoint_overlap, EndpointRef, EndpointRole, MultiEndpointPermits};
-pub use desktop_host::DesktopJobHost;
 pub use error::JobError;
 pub use handler::{
     CancelToken, HandlerRegistry, JobHandler, RecoveryVerdict, StageOutcome, StageSpec,
     StageTerminal,
 };
+pub use host::JobHost;
 pub use plan::{project_frozen_plan, FrozenPlan, APPLY_KINDS, SUPPORTED_PLAN_MAJOR};
 pub use recovery::JobRecoveryVerifier;
 pub use repository::{CancelPollSnapshot, InMemoryJobRepository};

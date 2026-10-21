@@ -67,7 +67,7 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
     .unwrap();
     test.state
         .workflow_registry
-        .save_workflow(&workflow)
+        .save_workflow(&crate::platform::local_organization_scope(), &workflow)
         .await
         .unwrap();
     let now = chrono::Utc::now().to_rfc3339();
@@ -91,6 +91,7 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
         enabled: true,
     };
     save_dashboard(
+        &crate::platform::local_organization_scope(),
         &*test.store.app_db(),
         Dashboard {
             id: "timer-dashboard".into(),
@@ -131,8 +132,11 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
                 .list(
                     &grant.context(),
                     JobFilter {
+                        organization_id: grant.context().organization_id.clone(),
                         limit: Some(10),
-                        ..Default::default()
+                        states: Vec::new(),
+                        owner: None,
+                        after: None,
                     },
                 )
                 .await
@@ -161,6 +165,7 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
         .unwrap();
     let run_id = &details.domain_results[0].items[0].item_id;
     let run = datazen_feature_core::dashboard::runs::get_run(
+        &crate::platform::local_organization_scope(),
         &*test.store.app_db(),
         "timer-dashboard",
         &widget.id,
@@ -197,7 +202,16 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
     assert_eq!(
         test.state
             .desktop_job_host
-            .list(&grant.context(), JobFilter::default())
+            .list(
+                &grant.context(),
+                JobFilter {
+                    organization_id: grant.context().organization_id.clone(),
+                    states: Vec::new(),
+                    owner: None,
+                    after: None,
+                    limit: None,
+                },
+            )
             .await
             .unwrap()
             .len(),

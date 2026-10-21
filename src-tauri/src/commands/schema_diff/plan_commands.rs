@@ -3,9 +3,10 @@
 use super::job;
 use super::{
     ensure_distinct_schema_scope, fetch_target_table_dependency_catalog, fetch_target_table_schema,
-    is_source_unbounded_text, normalize_dialect, resolve_profile_table, schema_catalog_database,
-    schema_catalog_scope, uses_schema_scope, AppState, CmdExt, ColumnTypeOverride, CommandError,
-    PlanOptions, SchemaDiffPlan, State, SyncSourceAdapter, SyncTargetAdapter,
+    is_source_unbounded_text, normalize_dialect, resolve_profile_table, reviewed_scope,
+    schema_catalog_database, schema_catalog_scope, uses_schema_scope, AppState, CmdExt,
+    ColumnTypeOverride, CommandError, PlanOptions, SchemaDiffPlan, State, SyncSourceAdapter,
+    SyncTargetAdapter,
 };
 use datazen_driver_api::{CatalogReader, LegacyCatalogReader};
 use std::collections::HashSet;
@@ -398,6 +399,8 @@ pub(crate) async fn prepare_schema_diff_plan_with_schemas_impl(
 
     if has_complete_target_dependency_catalog {
         crate::schema_diff::reviewed::freeze_with_dependency_catalog(
+            state.schema_diff_reviewed_plans.as_ref(),
+            &reviewed_scope(state)?,
             &mut plan,
             target_db_session_id,
             &tgt_handle,
@@ -407,9 +410,12 @@ pub(crate) async fn prepare_schema_diff_plan_with_schemas_impl(
             target_schema_scope.map(str::to_owned),
             target_dependency_schema_scope.map(str::to_owned),
         )
-        .await;
+        .await
+        .map_err(CommandError::Validation)?;
     } else {
         crate::schema_diff::reviewed::freeze(
+            state.schema_diff_reviewed_plans.as_ref(),
+            &reviewed_scope(state)?,
             &mut plan,
             target_db_session_id,
             &tgt_handle,
@@ -418,7 +424,8 @@ pub(crate) async fn prepare_schema_diff_plan_with_schemas_impl(
             schema_catalog_scope(&tgt_config.database_type, tgt_config.database.as_deref()),
             target_schema_scope.map(str::to_owned),
         )
-        .await;
+        .await
+        .map_err(CommandError::Validation)?;
     }
 
     tracing::info!(

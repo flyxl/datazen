@@ -7,6 +7,7 @@
 
 use super::records::WidgetRunRecord;
 use super::types::{MonitorSettings, RunIndexEntry, WidgetRun, WidgetRunStatus};
+use datazen_platform_api::ports::scope::OrganizationScope;
 
 /// Why a dashboard run operation failed.
 #[derive(Debug, thiserror::Error)]
@@ -25,10 +26,17 @@ pub enum DashboardRunsError {
 ///
 /// The desktop host implements this over its SQLite store; another host may
 /// implement it over its own persistence.
+///
+/// ## 组织作用域
+///
+/// 每个方法都带一个 [`OrganizationScope`]：运行记录与仪表板、widget 一样属于
+/// 某个组织。越组织访问一律按「不存在」处理（空列表 / `NotFound`），
+/// **不得**返回「无权限」类错误（CM-05）。
 pub trait DashboardRunStore: Send + Sync {
     /// Store a run row and apply the retention policy.
     fn write_run_row(
         &self,
+        scope: &OrganizationScope,
         run: WidgetRunRecord,
         retention_count: u32,
         retention_days: u32,
@@ -37,12 +45,17 @@ pub trait DashboardRunStore: Send + Sync {
     /// The stored run rows of a widget, newest first.
     fn list_run_rows(
         &self,
+        scope: &OrganizationScope,
         widget_id: &str,
         limit: u32,
     ) -> Result<Vec<WidgetRunRecord>, DashboardRunsError>;
 
     /// One stored run row.
-    fn run_row(&self, run_id: &str) -> Result<WidgetRunRecord, DashboardRunsError>;
+    fn run_row(
+        &self,
+        scope: &OrganizationScope,
+        run_id: &str,
+    ) -> Result<WidgetRunRecord, DashboardRunsError>;
 }
 
 /// Read the stored spelling of a run status.
@@ -113,12 +126,14 @@ pub fn run_from_record(record: &WidgetRunRecord) -> Result<WidgetRun, DashboardR
 
 /// Store a run and apply the retention policy of the monitor settings.
 pub fn write_run(
+    scope: &OrganizationScope,
     store: &dyn DashboardRunStore,
     run: &WidgetRun,
     retention: &MonitorSettings,
 ) -> Result<(), DashboardRunsError> {
     let record = run_to_record(run)?;
     store.write_run_row(
+        scope,
         record,
         retention.run_retention_count,
         retention.run_retention_days,
@@ -127,12 +142,13 @@ pub fn write_run(
 
 /// The run index of a widget.
 pub fn list_run_index(
+    scope: &OrganizationScope,
     store: &dyn DashboardRunStore,
     _dashboard_id: &str,
     widget_id: &str,
     limit: usize,
 ) -> Result<Vec<RunIndexEntry>, DashboardRunsError> {
-    let records = store.list_run_rows(widget_id, limit as u32)?;
+    let records = store.list_run_rows(scope, widget_id, limit as u32)?;
     Ok(records
         .into_iter()
         .map(|record| RunIndexEntry {
@@ -147,14 +163,16 @@ pub fn list_run_index(
 /// One run of a widget.
 ///
 /// A run that belongs to another widget is not found: a widget never sees
-/// the runs of its neighbours.
+/// the runs of its neighbours. A run of another **organization** is not found
+/// either — the scope is the organization boundary (CM-05).
 pub fn get_run(
+    scope: &OrganizationScope,
     store: &dyn DashboardRunStore,
     _dashboard_id: &str,
     widget_id: &str,
     run_id: &str,
 ) -> Result<WidgetRun, DashboardRunsError> {
-    let record = store.run_row(run_id)?;
+    let record = store.run_row(scope, run_id)?;
     if record.widget_id != widget_id {
         return Err(DashboardRunsError::NotFound(run_id.to_string()));
     }
@@ -164,10 +182,12 @@ pub fn get_run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_platform_api::id::OrganizationId;
     use std::sync::Mutex;
 
+    /// 一个**按组织分区**的内存运行存储：多个组织的运行记录并存于同一份数据。
     struct MemoryRunStore {
-        rows: Mutex<Vec<WidgetRunRecord>>,
+        rows: Mutex<Vec<(OrganizationId, WidgetRunRecord)>>,
     }
 
     impl MemoryRunStore {
@@ -178,18 +198,28 @@ mod tests {
         }
     }
 
+    /// 某个组织的作用域。
+    fn scope_of(organization: &str) -> OrganizationScope {
+        OrganizationScope::new(OrganizationId::new(organization))
+    }
+
     impl DashboardRunStore for MemoryRunStore {
         fn write_run_row(
             &self,
+            scope: &OrganizationScope,
             run: WidgetRunRecord,
             _retention_count: u32,
             _retention_days: u32,
         ) -> Result<(), DashboardRunsError> {
-            self.rows.lock().unwrap().push(run);
+            self.rows
+                .lock()
+                .unwrap()
+                .push((scope.organization_id().clone(), run));
             Ok(())
         }
         fn list_run_rows(
             &self,
+            scope: &OrganizationScope,
             widget_id: &str,
             limit: u32,
         ) -> Result<Vec<WidgetRunRecord>, DashboardRunsError> {
@@ -198,18 +228,24 @@ mod tests {
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|row| row.widget_id == widget_id)
+                .filter(|(owner, row)| {
+                    owner == scope.organization_id() && row.widget_id == widget_id
+                })
                 .take(limit as usize)
-                .cloned()
+                .map(|(_, row)| row.clone())
                 .collect())
         }
-        fn run_row(&self, run_id: &str) -> Result<WidgetRunRecord, DashboardRunsError> {
+        fn run_row(
+            &self,
+            scope: &OrganizationScope,
+            run_id: &str,
+        ) -> Result<WidgetRunRecord, DashboardRunsError> {
             self.rows
                 .lock()
                 .unwrap()
                 .iter()
-                .find(|row| row.id == run_id)
-                .cloned()
+                .find(|(owner, row)| owner == scope.organization_id() && row.id == run_id)
+                .map(|(_, row)| row.clone())
                 .ok_or_else(|| DashboardRunsError::NotFound(run_id.to_string()))
         }
     }
@@ -235,9 +271,10 @@ mod tests {
     #[test]
     fn write_run_roundtrip() {
         let store = MemoryRunStore::new();
+        let scope = scope_of("org-a");
         let run = sample_run("run-7", "w1");
-        write_run(&store, &run, &MonitorSettings::default()).unwrap();
-        let loaded = get_run(&store, "d1", "w1", "run-7").unwrap();
+        write_run(&scope, &store, &run, &MonitorSettings::default()).unwrap();
+        let loaded = get_run(&scope, &store, "d1", "w1", "run-7").unwrap();
         assert_eq!(loaded.id, run.id);
         assert_eq!(loaded.columns, run.columns);
     }
@@ -245,15 +282,17 @@ mod tests {
     #[test]
     fn list_run_index_returns_entries() {
         let store = MemoryRunStore::new();
+        let scope = scope_of("org-a");
         for index in 0..3 {
             write_run(
+                &scope,
                 &store,
                 &sample_run(&format!("run-{index}"), "w1"),
                 &MonitorSettings::default(),
             )
             .unwrap();
         }
-        let index = list_run_index(&store, "d1", "w1", 10).unwrap();
+        let index = list_run_index(&scope, &store, "d1", "w1", 10).unwrap();
         assert_eq!(index.len(), 3);
         assert_eq!(index[0].status, WidgetRunStatus::Ok);
     }
@@ -261,14 +300,16 @@ mod tests {
     #[test]
     fn a_run_of_another_widget_is_not_found() {
         let store = MemoryRunStore::new();
+        let scope = scope_of("org-a");
         write_run(
+            &scope,
             &store,
             &sample_run("run-1", "w1"),
             &MonitorSettings::default(),
         )
         .unwrap();
         assert!(matches!(
-            get_run(&store, "d1", "w2", "run-1"),
+            get_run(&scope, &store, "d1", "w2", "run-1"),
             Err(DashboardRunsError::NotFound(_))
         ));
     }
@@ -283,5 +324,59 @@ mod tests {
             assert_eq!(parse_status(status_str(status)).unwrap(), status);
         }
         assert!(parse_status("nope").is_err());
+    }
+
+    // ─── 组织隔离 ───
+
+    /// 别的组织的运行记录读不到：索引为空、单条 `NotFound`（CM-05）。
+    #[test]
+    fn the_runs_of_another_organization_are_not_found() {
+        let store = MemoryRunStore::new();
+        let owner = scope_of("org-a");
+        let other = scope_of("org-b");
+        write_run(
+            &owner,
+            &store,
+            &sample_run("run-1", "w1"),
+            &MonitorSettings::default(),
+        )
+        .unwrap();
+
+        assert!(list_run_index(&other, &store, "d1", "w1", 10)
+            .unwrap()
+            .is_empty());
+        assert!(matches!(
+            get_run(&other, &store, "d1", "w1", "run-1"),
+            Err(DashboardRunsError::NotFound(_))
+        ));
+    }
+
+    /// 两个组织的运行记录互不可见。
+    #[test]
+    fn two_organizations_keep_their_own_runs_apart() {
+        let store = MemoryRunStore::new();
+        let a = scope_of("org-a");
+        let b = scope_of("org-b");
+        write_run(
+            &a,
+            &store,
+            &sample_run("run-a", "w1"),
+            &MonitorSettings::default(),
+        )
+        .unwrap();
+        write_run(
+            &b,
+            &store,
+            &sample_run("run-b", "w1"),
+            &MonitorSettings::default(),
+        )
+        .unwrap();
+
+        let index_a = list_run_index(&a, &store, "d1", "w1", 10).unwrap();
+        let index_b = list_run_index(&b, &store, "d1", "w1", 10).unwrap();
+        assert_eq!(index_a.len(), 1);
+        assert_eq!(index_b.len(), 1);
+        assert_eq!(index_a[0].id, "run-a");
+        assert_eq!(index_b[0].id, "run-b");
     }
 }

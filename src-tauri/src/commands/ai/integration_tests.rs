@@ -364,7 +364,11 @@ async fn workflow_save_list_get_delete() {
     use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let test = TestAppState::new().await;
-    test.state.workflow_registry.load_all().await.unwrap();
+    test.state
+        .workflow_registry
+        .load_all(&crate::platform::local_organization_scope())
+        .await
+        .unwrap();
     let wf = WorkflowDefinition {
         database: None,
         id: "test-wf".into(),
@@ -390,7 +394,7 @@ async fn workflow_save_list_get_delete() {
 
     test.state
         .workflow_registry
-        .save_workflow(&wf)
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
         .await
         .unwrap();
     let list = workflow_list_impl(&test.state).await.unwrap();
@@ -399,14 +403,14 @@ async fn workflow_save_list_get_delete() {
     let loaded = test
         .state
         .workflow_registry
-        .get("test-wf")
+        .get(&crate::platform::local_organization_scope(), "test-wf")
         .await
         .expect("workflow");
     assert_eq!(loaded.name, "Test Workflow");
 
     test.state
         .workflow_registry
-        .delete_workflow("test-wf")
+        .delete_workflow(&crate::platform::local_organization_scope(), "test-wf")
         .await
         .unwrap();
     let remaining = workflow_list_impl(&test.state).await.unwrap();
@@ -913,7 +917,11 @@ async fn workflow_execute_ai_step_with_wiremock() {
     use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
-    test.state.workflow_registry.load_all().await.unwrap();
+    test.state
+        .workflow_registry
+        .load_all(&crate::platform::local_organization_scope())
+        .await
+        .unwrap();
     mock.mount_chat_completion_text("workflow output").await;
 
     let wf = WorkflowDefinition {
@@ -940,7 +948,7 @@ async fn workflow_execute_ai_step_with_wiremock() {
     };
     test.state
         .workflow_registry
-        .save_workflow(&wf)
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
         .await
         .unwrap();
 
@@ -1047,7 +1055,11 @@ async fn workflow_history_clear_after_execute() {
     use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
-    test.state.workflow_registry.load_all().await.unwrap();
+    test.state
+        .workflow_registry
+        .load_all(&crate::platform::local_organization_scope())
+        .await
+        .unwrap();
     mock.mount_chat_completion_text("done").await;
 
     let wf = WorkflowDefinition {
@@ -1074,7 +1086,7 @@ async fn workflow_history_clear_after_execute() {
     };
     test.state
         .workflow_registry
-        .save_workflow(&wf)
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
         .await
         .unwrap();
     workflow_execute_impl(&test.state, "hist-wf".into(), serde_json::json!({}), None)
@@ -1096,7 +1108,11 @@ async fn dashboard_hidden_workflow_execute_skips_history() {
     };
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
-    test.state.workflow_registry.load_all().await.unwrap();
+    test.state
+        .workflow_registry
+        .load_all(&crate::platform::local_organization_scope())
+        .await
+        .unwrap();
     mock.mount_chat_completion_text("done").await;
 
     let wf = WorkflowDefinition {
@@ -1123,7 +1139,7 @@ async fn dashboard_hidden_workflow_execute_skips_history() {
     };
     test.state
         .workflow_registry
-        .save_workflow(&wf)
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
         .await
         .unwrap();
     workflow_execute_impl(

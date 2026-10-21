@@ -569,7 +569,7 @@ mod tests {
         use crate::store::Store;
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::history::WorkflowHistoryManager;
-        use crate::workflow::registry::WorkflowRegistry;
+        use crate::workflow::registry::{AppDbWorkflowStore, WorkflowRegistry};
         use datazen_ai_providers::AiProviderRegistry;
         use datazen_feature_core::ai::context::SchemaContextBuilder;
         use datazen_feature_core::ai::prompt_resolver::PromptResolver;
@@ -593,6 +593,8 @@ mod tests {
             store.clone(),
             platform.clone(),
         ));
+        let schema_diff_reviewed_plans =
+            crate::commands::schema_diff::reviewed_store::desktop_reviewed_plan_store(&platform);
 
         let state = AppState {
             driver_registry: registry,
@@ -606,7 +608,10 @@ mod tests {
                 schema_context_source,
             )),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
-            workflow_registry: Arc::new(WorkflowRegistry::new(app_db, data_dir.clone())),
+            workflow_registry: Arc::new(WorkflowRegistry::new(
+                Arc::new(AppDbWorkflowStore::new(app_db)),
+                data_dir.clone(),
+            )),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
@@ -618,7 +623,13 @@ mod tests {
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
+            schema_diff_reviewed_plans,
+            sync_stores: crate::commands::SyncStorePorts::desktop(),
+            transfer_plans: Arc::new(
+                crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+            ),
             platform,
+            organization_scope: crate::platform::local_organization_scope(),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
@@ -634,7 +645,7 @@ mod tests {
         use crate::store::{AppSettings, Store};
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::history::WorkflowHistoryManager;
-        use crate::workflow::registry::WorkflowRegistry;
+        use crate::workflow::registry::{AppDbWorkflowStore, WorkflowRegistry};
         use datazen_ai_providers::AiProviderRegistry;
         use datazen_feature_core::ai::context::SchemaContextBuilder;
         use datazen_feature_core::ai::prompt_resolver::PromptResolver;
@@ -666,6 +677,8 @@ mod tests {
             store.clone(),
             platform.clone(),
         ));
+        let schema_diff_reviewed_plans =
+            crate::commands::schema_diff::reviewed_store::desktop_reviewed_plan_store(&platform);
 
         let state = AppState {
             driver_registry: registry,
@@ -679,7 +692,10 @@ mod tests {
                 schema_context_source,
             )),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
-            workflow_registry: Arc::new(WorkflowRegistry::new(store.app_db(), data_dir.clone())),
+            workflow_registry: Arc::new(WorkflowRegistry::new(
+                Arc::new(AppDbWorkflowStore::new(store.app_db())),
+                data_dir.clone(),
+            )),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
@@ -691,7 +707,13 @@ mod tests {
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
+            schema_diff_reviewed_plans,
+            sync_stores: crate::commands::SyncStorePorts::desktop(),
+            transfer_plans: Arc::new(
+                crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+            ),
             platform,
+            organization_scope: crate::platform::local_organization_scope(),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();

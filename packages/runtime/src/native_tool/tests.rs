@@ -118,6 +118,7 @@ async fn job_with_selection(
         &context(),
         JobDefinition {
             job_id: JobId::new(id),
+            organization_id: context().organization_id,
             kind: "nativeToolProbe".into(),
             owner: OwnerRef::ClientSession {
                 client_instance_id: context().client_instance_id,

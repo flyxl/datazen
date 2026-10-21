@@ -53,8 +53,9 @@ fn disk_table_from_table(index: usize, table: &TableResult, offsets: Vec<RowOffs
 pub(super) fn write_indexed_store(
     comparison: &ComparisonResult,
     serialized_size: usize,
+    store_root: &Path,
 ) -> Result<Storage, String> {
-    let root = ensure_private_store_root(&comparison_store_directory())
+    let root = ensure_private_store_root(store_root)
         .map_err(|error| format!("cannot prepare Data Sync comparison store root: {error}"))?;
     let owner = current_process_owner(&root)?;
     scavenge_stale_stores(&root);

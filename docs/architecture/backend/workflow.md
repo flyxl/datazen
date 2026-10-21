@@ -22,6 +22,7 @@ packages/feature-core/src/workflow/
 ├── migration.rs         # 迁移 step 的共享策略
 ├── plan_guard.rs        # 计划与目标守卫
 ├── scheduler.rs         # 到期判定与 in-flight 生命周期
+├── registry.rs          # 保存的 workflow 规则；宿主以 Arc<dyn WorkflowDefinitionStore> 注入存储
 └── host.rs              # 宿主端口
 
 src-tauri/src/workflow/
