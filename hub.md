@@ -394,3 +394,52 @@ export const GRID_ERROR_CODES = ['grid.selection.invalid', 'grid.selection.outOf
 | `grid.selection` | 01 | 3（`gridErrors.ts` 已登记但**零生产者**：越界一律 `clampCellCoord → null`） |
 
 **Wave 1 交付时的真实状态**：44 码里 8 个有生产者（25 处 throw 点），36 个是声明。04/06 域只剩 1 个缺口。这份清单要作为 Wave 2/3 各册开工前的输入——**每册开工先确认自己要消费的码在不在生产者清单里**。
+
+# ================= Wave 1 收尾报告 =================
+
+## 终态
+
+| 轨 | 最终 HEAD | 提交数 | 复测轮次 | 判定 |
+| --- | --- | --- | --- | --- |
+| `grid-selection` | `137820dc1` | 14 | 5 轮（每轮**唤醒原 Tester**） | **TEST_PASSED**，0 条本轨缺陷 |
+| `insert-backend` | `b8b47b787` | 13 | 5 轮（每轮**唤醒原 Tester**） | **TEST_PASSED + 合并就绪**，阻塞项无 |
+
+## 合流预演结论
+
+在临时 worktree（`/tmp/dz-merge-dryrun`）上预演合流：
+- `grid-selection` → 自动合并顺利，**0 冲突**；
+- 再合 `insert-backend` → **0 冲突**；
+- 总计 32 个文件、+5920 / −625 行。
+
+两轨改动文件交集为空（`comm -12` 返回空），是 Wave 1 分轨时就定下的「前端选区 vs 后端插入」切法带来的干净合流。
+
+## 本批的三个"当时看不出来"的发现
+
+### 1. 45 个错误码里只有 5 个真的会被抛出
+契约 §8.2 是一张 45 行的闭集表，写得很完整。复测逐条扫字符串字面量后发现：**只有 5 个码有真实 throw 点**，其余是声明。
+
+后果很具体：`grid.selection.*` 三码**零生产者**（越界一律 `clampCellCoord → null`，从不抛错）；前端 `src/` 里**零处**按 `grid.*` 分支。
+
+**处理**：Wave 1 内把本册的码补到 8 个有生产者、27 处 throw 点（`stalePlan` 9 / `affectedMismatch` 3 / `conflictingIntents` 3 / `noRowIdentity` 6 / `ambiguousIdentity` 2 / `readOnly` 2 / `unknownColumn` 1 / `returningUnavailable` 1），并把〔生产者盘点〕写进契约表前。**剩余 36 个码是声明这件事，必须随契约一起交付**，否则下一个读契约的人会以为它们已经存在。
+
+### 2. Rust 侧贴了码，TS 侧没登记 ⇒ 等于白贴
+`src/lib/gridErrors.ts` 的 `GRID_ERROR_CODES` 只注册了 3 个 selection 码。合流后 `classifyGridError` 对新增的 8 个码一律返回 `unknown`。
+
+**两个轨各自全绿、文件交集为空、合并零冲突——所有静态检查都放过了它。** 这是语义接不上，不是代码冲突。已在 `hub.md` 记为合流必查项，由协调者在合流后统一追加（该文件的 doc 注释要求「later tracks append their own domain only」）。
+
+### 3. 静默丢弃比报错更坏
+`delete_marked` + 列写入原本只发一条 warning，然后**把列写入扔掉**。用户以为改了，实际没改，且没有任何报错。改为拒绝后，错误文案直接指示「取消删除标记，或清空暂存的修改」。
+
+同类的还有 `deleteRows` 曾把行集写进 cell 模式的选择状态——**删除不改变选择语义**，却改了选择状态。两条都属于"看起来成功、实际不是用户以为的那件事"。
+
+## 已登记的文档缺陷
+
+`docs/bugs/TEST-INFRA-001-concurrent-probe-file-race.md`——两个脚本测试对同一组仓库内临时探针文件有冲突的文件系统假设（`boundaryMutation` 临时创建/删除，`driver-init-rustfmt` 整仓 `cpSync` 撞上删除窗口而 ENOENT），**偶发把与本改动无关的门禁跑红**，失败信息指向一个毫不相干的文件。已核实复现，本轮明确不修，登记进 `docs/bugs/` 并在 `docs/README.md` 索引。
+
+## 合流后必做
+
+1. `feature/data-browsing-prd` ← `feature/grid-selection` ← `feature/insert-backend`
+2. **`src/lib/gridErrors.ts` 追加 8 个码**（不追加则前端认不出）
+3. 全量健全性校验（前端 vitest + typecheck；Rust 四包 `--lib` + 各 `--test`；`cargo fmt --check`）
+4. 删两个 feature 分支与 worktree；删两轨 `progress.md`（如有）
+5. 派 Wave 2：`grid-cell`（唯一前端轨）+ `web-transport`（只碰 backend-client，可并行）
