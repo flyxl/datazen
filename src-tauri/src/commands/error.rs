@@ -405,3 +405,27 @@ impl From<datazen_feature_core::error::FeatureError> for CommandError {
         }
     }
 }
+
+/// Map a foreign-key navigation rejection onto the IPC envelope.
+///
+/// The `grid.fk.*` codes are a **prefix of the message**: the front end
+/// classifies on that prefix and then shows the reason behind it, so the code
+/// must stay the first thing in the string. A session failure is not a
+/// navigation rule failure and therefore carries no grid prefix.
+impl From<datazen_feature_core::services::fk_navigation::FkNavigationError> for CommandError {
+    fn from(error: datazen_feature_core::services::fk_navigation::FkNavigationError) -> Self {
+        use datazen_feature_core::services::fk_navigation::FkNavigationError;
+        use datazen_feature_core::services::ports::FkSessionError;
+        match error {
+            FkNavigationError::Coded { code, message } => {
+                Self::Validation(format!("{code}: {message}"))
+            }
+            FkNavigationError::Session(FkSessionError::NotFound(message)) => {
+                Self::NotFound(message)
+            }
+            FkNavigationError::Session(FkSessionError::Unavailable(message)) => {
+                Self::Internal(message)
+            }
+        }
+    }
+}

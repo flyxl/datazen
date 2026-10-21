@@ -99,13 +99,15 @@ const FLAT_ARGUMENT_METHODS: ReadonlySet<keyof MethodMap> = new Set<keyof Method
  * caller gets an explicit `CapabilityUnsupported` — with the method name and
  * the backend — instead of Tauri's bare "command not found".
  *
- * The names are the Rust commands of 07/08/09, which are not registered in
- * `src-tauri/src/bootstrap/run.rs` yet. That file registers exactly five
+ * The names are the Rust commands of 08/09, which are not registered in
+ * `src-tauri/src/bootstrap/run.rs` yet. That file registers exactly six
  * table-data commands: `get_table_data`, `get_table_data_at_target`,
- * `commit_query_result_cell`, `commit_pending_changes` and
- * `preview_pending_changes`. `src/platform/__tests__/tauriBackendTransport.tableData.test.ts`
+ * `commit_query_result_cell`, `commit_pending_changes`,
+ * `preview_pending_changes` and `resolve_foreign_key_targets`.
+ * `src/platform/__tests__/tauriBackendTransport.tableData.test.ts`
  * cross-checks this list against that registration, so the day one of these
- * commands is registered, the test fails and asks for this entry to go.
+ * commands is registered, the test fails and asks for this entry to go —
+ * which is what happened to `resolve_foreign_key_targets` when 07 landed.
  *
  * `notImplemented` — not `capability`: the desktop *can* serve these methods
  * and does not yet. A browser build's named views are a different fact (a
@@ -113,7 +115,6 @@ const FLAT_ARGUMENT_METHODS: ReadonlySet<keyof MethodMap> = new Set<keyof Method
  */
 const DESKTOP_UNSUPPORTED_METHODS: Partial<Record<keyof MethodMap, UnsupportedMethodKind>> = {
   estimateTableRows: 'notImplemented',
-  resolveForeignKeyTargets: 'notImplemented',
   listNamedViews: 'notImplemented',
   saveNamedView: 'notImplemented',
   deleteNamedView: 'notImplemented',

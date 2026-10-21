@@ -1,5 +1,6 @@
 pub mod command_policy;
 pub mod db_tools;
+pub mod fk_navigation;
 pub mod migration_endpoint;
 pub mod ports;
 pub mod query_executor;
