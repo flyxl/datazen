@@ -540,3 +540,114 @@ async fn zero_affected_rows_is_treated_as_a_mismatch_not_as_success() {
     assert!(error.contains("affected 0 rows"), "got: {error}");
     assert_eq!(test.mock.commit_calls(), 0);
 }
+
+// ---------------------------------------------------------------------------
+// [tester round-5] IB4-D3: the two "session target drifted from the plan"
+// refusals now carry `grid.commit.stalePlan`. Both constructors are
+// `pub(crate)` to feature-core, so these reach the real branches through the
+// command instead of calling them directly.
+// ---------------------------------------------------------------------------
+
+/// A manual transaction whose session no longer matches the plan's target.
+#[tokio::test]
+async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
+    let mut options = insert_capable_options();
+    options.execute_rows_affected = 1;
+    let test = TestAppState::with_resource_provider(options).await;
+    let mut config = crate::testing::app_state::sample_postgres_config("r5-manual-drift");
+    config.database = None;
+    test.store.save_connection(config).await.unwrap();
+    let conn_id = test.connect_config("r5-manual-drift").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        RowChangeTableContext {
+            database: Some("other_db".into()),
+            ..table_context("r5-manual-drift", &conn_id)
+        },
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+
+    crate::commands::begin_session_transaction_impl(&test.state, conn_id.clone())
+        .await
+        .unwrap();
+    let platform = test.state.platform_require().unwrap();
+    let scope = platform.begin_call();
+    let runtime = platform.runtime().unwrap();
+    let handle = runtime
+        .get_session_by_id(scope.context(), &conn_id)
+        .await
+        .unwrap()
+        .handle;
+
+    let error = commit_pending_changes_with_handle(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+        Some(handle),
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.starts_with("grid.commit.stalePlan: "), "got: {error}");
+    assert!(
+        error.contains("Manual table transaction target changed"),
+        "the original description must survive, got: {error}"
+    );
+    assert!(
+        error.contains("preview the changes and commit again"),
+        "got: {error}"
+    );
+    assert_eq!(test.mock.commit_calls(), 0);
+}
+
+/// The owned path must not over-reject: when the driver really opens its
+/// session on the plan's target, the new stale-plan guard has to stand aside
+/// and the write must go through.
+///
+/// (`write_exec::stale_table_target_error` itself needs a driver whose
+/// `use_database` is a no-op or whose namespace is case-normalised — the mock
+/// echoes what it was asked for, so that branch is only covered by the crate's
+/// own unit test on the constructor.)
+#[tokio::test]
+async fn an_owned_session_that_honours_the_plan_target_still_writes() {
+    let mut options = insert_capable_options();
+    options.execute_rows_affected = 1;
+    let test = TestAppState::with_resource_provider(options).await;
+    let mut config = crate::testing::app_state::sample_postgres_config("r5-owned-ok");
+    config.database = None;
+    test.store.save_connection(config).await.unwrap();
+    let conn_id = test.connect_config("r5-owned-ok").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        RowChangeTableContext {
+            database: Some("other_db".into()),
+            ..table_context("r5-owned-ok", &conn_id)
+        },
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+
+    let response = commit_pending_changes_with_handle(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+        None,
+    )
+    .await
+    .expect("the target matched, so the write must not be refused");
+
+    assert_eq!(response.affected_rows, 1);
+    assert_eq!(test.mock.execute_with_params_calls(), 1);
+    assert_eq!(test.mock.commit_calls(), 1);
+    assert_eq!(test.mock.open_transaction_count(), 0);
+}
