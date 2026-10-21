@@ -103,7 +103,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 |---|---|---|---|
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ❌ Tester **TEST_FAILED**（1 阻塞行为回归）→ 第 1 轮修复中 |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 已交付 `33416cb72` → Tester `0da32120` 复测中 |
-| F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | 🔄 代理中断（第 1 次死亡），**已 resume**；发现 1,042 行孤儿测试 |
+| F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | 🔄 代理第 2 次死亡，**已再次 resume**；侦察已完成、即将开工 |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 1 轮小修中 |
 
 **派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖。**已执行**（四树均推进到 `65dac1e2c` = C + B + `OrganizationScope`）。
@@ -435,7 +435,7 @@ D-01 / D-03 / D-04 / D-05 全处置，并 cherry-pick 复测 Tester 的 `0d3feff
 
 ### F 轨：代理中断 → resume + 一条重量级先存发现
 
-F 轨代理在探索阶段中断（死亡 1/3）。工作树**零提交零改动**（未丢编辑）→ 按纪律 resume 原实例（保留它的侦察上下文，优于换新实例）。
+F 轨代理**两次**在探索阶段中断（死亡 2/3）。两次都是**零提交零改动**（未丢编辑）→ 按纪律 resume 原实例（保留它的侦察上下文，优于换新实例）。第二次中断发生在它说完"图景已完整、准备开始实现 `comparison_store` 存储根注入"之后。已要求它**分 5 个小步提交**（comparison_store 注入 → SyncPlanStore 端口化 → TransferPlanStore 端口化 → 孤儿测试接入 → 文档+台账），便于合流时按需解冲突。
 
 **它侦察到、并由协调者独立核实的一条重量级先存缺陷**：
 ```
