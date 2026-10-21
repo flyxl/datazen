@@ -28,6 +28,11 @@ pub(super) enum ProbeStatement {
 
 impl ProbeStatement {
     /// The statement text, whichever shape it has.
+    ///
+    /// Only the test module reads the statement back; the production path
+    /// destructures the enum. `#[cfg(test)]` keeps the accessor from turning
+    /// into a dead-code warning in a normal library build.
+    #[cfg(test)]
     pub(super) fn sql(&self) -> &str {
         match self {
             Self::Bound { sql, .. } | Self::Inlined { sql } => sql,
