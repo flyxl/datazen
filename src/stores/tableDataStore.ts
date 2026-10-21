@@ -242,12 +242,18 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       });
       commitFetchedPage(get, set, panelId, context, requestRevision, res);
     } catch (e) {
+      // Fourth convergence point (00-contracts §4 needs the sync): a *failed* fetch must
+      // drop row-indexed selection exactly like a successful one. `patchPanelForReload`
+      // already covers the six transition actions, but a bare `reloadPanel` / toolbar
+      // refresh / post-commit reload has no such transition, so without this the old rows
+      // stay highlighted under an error banner for a page the user can no longer see.
       patchPanel(get, set, panelId, (ts) =>
         ts.requestRevision === requestRevision && ts.loadingRevision === requestRevision
           ? {
               loading: false,
               loadingRevision: null,
               error: extractErrorMessage(e, t('tableData.loadFailed')),
+              ...rowIndexSelectionReset(),
             }
           : {},
       );
