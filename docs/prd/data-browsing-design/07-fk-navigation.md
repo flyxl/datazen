@@ -224,10 +224,10 @@ pub(crate) async fn resolve_foreign_key_targets_impl(
 
 | 前缀 | 触发条件 | 说明文本要求 |
 | --- | --- | --- |
-| `grid.fk.shapeMismatch` | `columns.len() != values.len()`；或某侧长度为 0；或 `ForeignKeyInfo.columns.len() != referenced_columns.len()` | 说清"外键的两侧列数不一致"，**不回显值本身** |
-| `grid.fk.unknownConstraint` | 源表 `foreign_keys` 里找不到该 `constraint_name`，也找不到有序 `columns` 精确匹配的约束（表结构在会话期间变了） | 提示"源表外键已变化，请刷新结构后重试" |
+| `grid.fk.shapeMismatch` |〔契约审计修订 2026-10-21〕**边界明确**：①请求的 `columns.len() != values.len()`、任一侧为空、约束两侧列数不等、请求列序 ≠ 约束列序；②**目标表存在但没有该被引用列**（与 ① 同族：形状对不上） | `columns.len() != values.len()`；或某侧长度为 0；或 `ForeignKeyInfo.columns.len() != referenced_columns.len()` | 说清"外键的两侧列数不一致"，**不回显值本身** |
+| `grid.fk.unknownConstraint` | 源表 `foreign_keys` 里找不到该 `constraint_name`，也找不到有序 `columns` 精确匹配的约束（表结构在会话期间变了）〔契约审计修订 2026-10-21〕**查找口径统一**：一律「**先按 `constraint_name` 精确匹配；未命中再按有序 `columns` 精确匹配回落**」——§3.4 的 TS `findForeignKey` 与 §3.1 的 Rust `find_fk` 是**同一种**行为，不是"给了名字就只按名字找"。两端必须一致 | 提示"源表外键已变化，请刷新结构后重试" |
 | `grid.fk.valueNull` | `values` 中任一位为 `Value::Null`（前端本应拦下，后端做纵深防御） | 说明复合键部分列为 NULL 时无法等值定位 |
-| `grid.fk.targetUnresolved` | 目标表元数据读不到：`driver.get_table_schema` 失败（表已删除 / 无元数据权限 / 跨库不可见） | 附**已脱敏**的驱动说明；前端显示前缀分类结论 + 原文 |
+| `grid.fk.targetUnresolved` | 目标表元数据读不到：`driver.get_table_schema` 失败（表已删除 / 无元数据权限 / 跨库不可见）〔契约审计修订 2026-10-21〕**与 shapeMismatch 的分界**：目标元数据**读不到或为空** ⇒ `targetUnresolved`；目标表**读到了但没有该被引用列** ⇒ `shapeMismatch`（消息点名列名）。另：**源表 FK 元数据读不到**同样归 `unknownConstraint`（消息写明"不可读"而非"没有这个约束"）——五码是**闭集**，没有第 6 个码可分配 | 附**已脱敏**的驱动说明；前端显示前缀分类结论 + 原文 |
 | `grid.fk.probeFailed` | 目标表元数据可读，但存在性探测 SELECT 失败（行级权限、连接中断等） | 同上 |
 
 **不使用 `CmdExt::cmd_err` 来加前缀**：`cmd_err(cmd)` 只写脱敏日志并原样返回错误，不会给消息加 `grid.*`。正确写法是先拿到 `DriverError`，用 `CommandError::Validation(format!("grid.fk.targetUnresolved: {}", …))` 包装，再交给 `CmdExt::cmd_err("resolve_foreign_key_targets")` 记录日志（`CommandError::Serialize` 会二次脱敏，前缀是纯文本、不受影响）。
@@ -613,7 +613,7 @@ GraphCell 箭头 onClick
   5. 计算 `unique`：`TableSchema::effective_primary_keys()` 与 `referenced_columns` **集合相等且长度相等** ⇒ true；否则遍历 `indexes`，存在 `is_unique || is_primary` 且 `columns` 与 `referenced_columns` 集合相等且长度相等 ⇒ true；
   6. 构造等值筛选（`FilterCondition { column: referenced_columns[i].clone(), operator: FilterOperator::Eq, value: values[i].clone() }`，`filter_logic = Some("and")`）；
   7. 探测存在性：`QueryExecutor::new(state.schema_cache.clone()).get_table_data(&driver, &handle, &db_session_id, &target_database, target_schema.as_deref(), &target_table, 0, 1, Some(filters.clone()), None, true, Some("and"))`——**`skip_count = true`**，即 `WHERE … LIMIT 1`，不 `COUNT(*)`；`Err` ⇒ `grid.fk.probeFailed`；
-  8. 候选值：`limit = request.limit.unwrap_or(50).clamp(1, 200)`，同一次调用改为 `page_size = limit`、`skip_count = true`；`truncated = rows.len() as u32 == limit`（多取一条更准：用 `limit + 1` 探测后再截断）；
+  8. 候选值：`limit = request.limit.unwrap_or(50).clamp(1, 200)`，同一次调用改为 `page_size = limit`、`skip_count = true`；`truncated = rows.len() as u32 > limit`〔契约审计修订 2026-10-21〕**判据订正**：原稿写「行数 == 上限 ⇒ 已截断」，与同一节的「用 limit + 1 探测后再截断」**自相矛盾**——用 limit+1 探测时，`rows.len() == limit` 表示「**恰好** limit 行、并没有被截断」，`== limit` 永远判不出真截断（只命中一行时还会误报「已截断」）。**准确判据是「行数**超过**上限」**（`> limit`）**，与 DTO 注释「候选是否被上限截断」一致（多取一条更准：用 `limit + 1` 探测后再截断）；
   9. `exists = probe_rows.is_empty() == false`。
 - **零硬编码/纪律**：不做任何库名/驱动 id 判断；生产路径**不使用** `unwrap()` / `expect()`，一律 `ok_or_else` / `map_err`；错误文本不回显列值。
 - **自测**：`cargo test -p datazen-feature-core --lib fk_navigation`（Step 3 写用例）。〔契约审计修订 2026-10-21〕T0-4：用例随逻辑落共享层。
