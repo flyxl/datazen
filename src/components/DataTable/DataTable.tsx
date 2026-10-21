@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
 import { tid } from '../../lib/tid';
 import { Download, Trash2 } from 'lucide-react';
-import type { FilterCondition, FilterOperator, SortCondition, Value } from '../../types';
+import type { CountStrategy, FilterCondition, FilterOperator, SortCondition, Value } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
 import { useGridSelection } from '../../hooks/useGridSelection';
@@ -18,6 +18,8 @@ import type { FkGroupAffordance } from '../../lib/fkNavigation';
 import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
 import { Pagination } from './Pagination';
+import { DefaultOrderSelect } from './DefaultOrderSelect';
+import type { DefaultOrderOverride } from '../../lib/defaultSort';
 import { TableHeader, type ColumnDef } from './TableHeader';
 import { VirtualBody, type DraftRowViewModel } from './VirtualBody';
 import { useDataTableContextMenu } from './useDataTableContextMenu';
@@ -35,6 +37,24 @@ export interface DataTableProps {
   pageSize?: number;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (size: number) => void;
+  /**
+   * How much the row count may be trusted: exact, estimated or unavailable.
+   *
+   * The grid renders the state the back end reported, never a guess of its
+   * own — an estimate is shown as "about N" and a database that cannot count
+   * says so instead of showing zero.
+   */
+  totalRowsKind?: CountStrategy | null;
+  /** Ask for the exact count. Offered in the estimated state only. */
+  onCountExact?: () => void;
+  /** An exact count is being fetched right now. */
+  counting?: boolean;
+  /** No order is in force: rows across pages may repeat or be skipped. */
+  unstablePaging?: boolean;
+  /** The panel's temporary override of the global default order. */
+  defaultOrderOverride?: DefaultOrderOverride;
+  /** Change the panel's temporary override of the global default order. */
+  onDefaultOrderOverrideChange?: (value: DefaultOrderOverride) => void;
 
   sorts?: SortCondition[];
   onSort?: (sort: SortCondition) => void;
@@ -233,6 +253,12 @@ export function DataTable({
   onApplyFilters,
   onPageChange,
   onPageSizeChange,
+  totalRowsKind,
+  onCountExact,
+  counting,
+  unstablePaging,
+  defaultOrderOverride,
+  onDefaultOrderOverrideChange,
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
@@ -642,6 +668,21 @@ export function DataTable({
           onPageChange={onPageChange}
           onPageSizeChange={onPageSizeChange}
           loading={loading}
+          totalRowsKind={totalRowsKind}
+          rowCount={rows.length}
+          hasMore={rows.length === pageSize}
+          onCountExact={onCountExact}
+          counting={counting}
+          unstablePaging={unstablePaging}
+          footerExtras={
+            onDefaultOrderOverrideChange ? (
+              <DefaultOrderSelect
+                value={defaultOrderOverride ?? 'inherit'}
+                onChange={onDefaultOrderOverrideChange}
+                primaryKeyCount={primaryKeyColumns?.length ?? 0}
+              />
+            ) : undefined
+          }
         />
       )}
 

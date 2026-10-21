@@ -124,6 +124,8 @@ export function ContentView({
   const tableColumns = tableSlice?.columns ?? NO_COLUMNS;
   const tableRows = tableSlice?.rows ?? NO_ROWS;
   const totalRows = tableSlice?.totalRows ?? 0;
+  /** How much the row count may be trusted: exact, estimated or unavailable. */
+  const totalRowsKind = tableSlice?.totalRowsKind ?? 'exact';
   const selectedRows = tableSlice?.selectedRows ?? NO_SELECTION;
   const tableName =
     activePanel?.type === 'table'
@@ -625,6 +627,7 @@ export function ContentView({
           tableName={tableName ?? ''}
           columnCount={tableColumns.length}
           totalRows={totalRows}
+          totalRowsKind={totalRowsKind}
           statusBarSlot={kvSlots.statusBar}
         />
       )}

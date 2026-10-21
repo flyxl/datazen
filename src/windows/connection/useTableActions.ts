@@ -1,12 +1,20 @@
 import { useMemo } from 'react';
 import { useTableDataStore } from '../../stores/tableDataStore';
+import { useSchemaStore } from '../../stores/schemaStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import type { GridSelection } from '../../stores/tableData/gridSelection';
 import type {
   CommitPendingChangesResult,
   RowChangePlan,
   TableChangeContext,
 } from '../../lib/tableChanges';
-import type { FilterCondition, SortCondition } from '../../types';
+import type { CountStrategy, FilterCondition, SortCondition } from '../../types';
+import { resolveCountStrategy } from '../../lib/rowCountStrategy';
+import {
+  DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD,
+  DEFAULT_ROW_COUNT_MODE,
+} from '../../types/settings';
+import type { DefaultOrderOverride } from '../../lib/defaultSort';
 
 /**
  * Panel-scoped action binders: every store call is namespaced by this tab's id.
@@ -23,6 +31,10 @@ import type { FilterCondition, SortCondition } from '../../types';
 export interface TableActions {
   load: () => void;
   reload: () => void;
+  /** Ask for the exact row count — the answer to an estimated one. */
+  countExact: () => void;
+  /** Change the panel's temporary override of the default order. */
+  setDefaultOrderOverride: (override: DefaultOrderOverride) => void;
   setSort: (sort: SortCondition) => void;
   removeFilter: (index: number) => void;
   clearFilters: () => void;
@@ -65,6 +77,41 @@ export interface UseTableActionsOptions {
 }
 
 /**
+ * The row count the catalog already knows for this table, if any.
+ *
+ * It is a *prior*, not a fact: the `auto` mode weighs it against the
+ * threshold, and the driver's own answer still wins when the prior is
+ * missing.
+ */
+function catalogRowCount(context: TableChangeContext): number | undefined {
+  const tables = useSchemaStore.getState().getConnectionSchema(context.dbSessionId)?.tables;
+  if (!tables) return undefined;
+  const match = tables.find(
+    (info) =>
+      info.name === context.table &&
+      (!context.schema || !info.schema || info.schema === context.schema),
+  );
+  return match?.rowCount ?? undefined;
+}
+
+/**
+ * The count strategy a read asks for, given the user's setting.
+ *
+ * The `auto` mode weighs the size the catalog already knows; without that
+ * number it has no opinion, and the driver's own declaration decides. The
+ * mapping lives in `lib/rowCountStrategy`; the store only passes the answer
+ * through.
+ */
+function countStrategyFor(context: TableChangeContext): CountStrategy | undefined {
+  const settings = useSettingsStore.getState().settings;
+  return resolveCountStrategy({
+    mode: settings.rowCountMode ?? DEFAULT_ROW_COUNT_MODE,
+    threshold: settings.rowCountEstimateThreshold ?? DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD,
+    knownRowCount: catalogRowCount(context),
+  });
+}
+
+/**
  * The panel's action table, memoised on the panel id and the load target.
  *
  * `invalidateNotice` has to be stable (the caller owns it), otherwise the
@@ -83,11 +130,26 @@ export function useTableActions({
         // The "retry" of a failed load re-reads the page, so the notice of the
         // previous commit is stale — exactly like a plain reload.
         invalidateNotice();
-        void store().loadTableData({ panelId, ...context });
+        void store().loadTableData({
+          panelId,
+          ...context,
+          countStrategy: countStrategyFor(context),
+        });
       },
       reload: () => {
         invalidateNotice();
         store().reloadPanel(panelId);
+      },
+      countExact: () => {
+        // The exact count is a **full** re-read, not a paged one: the estimate
+        // is replaced by the real number, which means the count has to run
+        // again.
+        invalidateNotice();
+        store().reloadPanel(panelId, { skipCount: false, countStrategy: 'exact' });
+      },
+      setDefaultOrderOverride: (override) => {
+        invalidateNotice();
+        store().setDefaultOrderOverride(panelId, override);
       },
       setSort: (sort: SortCondition) => {
         invalidateNotice();

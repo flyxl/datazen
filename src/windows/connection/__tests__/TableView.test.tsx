@@ -13,14 +13,25 @@ vi.mock('../../../hooks/useConfirmDialog', () => ({
   useConfirmDialog: () => [vi.fn().mockResolvedValue(false), null],
 }));
 
-const settingsState = vi.hoisted(() => ({ confirmOnDelete: false, safeMode: false }));
+const settingsState = vi.hoisted(() => ({
+  confirmOnDelete: false,
+  safeMode: false,
+  rowCountMode: 'auto' as const,
+  rowCountEstimateThreshold: 200000,
+  defaultTableSort: 'primaryKeyAsc' as const,
+}));
 const connectionsState = vi.hoisted(() => ({
   connections: [] as { id: string; name: string; readOnly?: boolean }[],
 }));
 
 vi.mock('../../../stores/settingsStore', () => ({
-  useSettingsStore: (sel: (s: { settings: typeof settingsState }) => unknown) =>
-    sel({ settings: settingsState }),
+  // The store is read both as a hook and as a plain snapshot (the read path
+  // asks for the count strategy outside of React), so the mock carries both.
+  useSettingsStore: Object.assign(
+    (sel: (s: { settings: typeof settingsState }) => unknown) =>
+      sel({ settings: settingsState }),
+    { getState: () => ({ settings: settingsState }) },
+  ),
 }));
 
 vi.mock('../../../stores/connectionStore', async (importOriginal) => {

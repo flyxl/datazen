@@ -16,6 +16,8 @@ import {
   type TableChangeContext,
 } from '../lib/tableChanges';
 import { useSettingsStore } from './settingsStore';
+import { resolveDefaultTableSort } from '../lib/defaultSort';
+import { DEFAULT_TABLE_SORT, type DefaultTableSort } from '../types/settings';
 import type { TableState } from './tableData/types';
 import { cloneFilters, filterDraftEqualsApplied, isCompleteFilter } from './tableData/filterUtils';
 import {
@@ -162,16 +164,22 @@ function patchPanelForReload(
  * primary key cannot be expressed by the one-column sort channel at all, so
  * the descending override is left to the interface, which explains why it is
  * greyed out there.
+ *
+ * The panel's temporary override beats the global setting; the global setting
+ * beats the driver's own default, which is what every read asked for before
+ * the setting existed.
  */
 function orderRequest(
   override: TableState['defaultOrderOverride'],
   columns: ColumnSchema[],
   sorts: SortCondition[],
+  setting: DefaultTableSort,
 ): { defaultOrderColumns?: string[]; sorts: SortCondition[] } {
-  if (override === 'none') {
+  const order = resolveDefaultTableSort(override, setting);
+  if (order === 'none') {
     return { defaultOrderColumns: [], sorts };
   }
-  if (override === 'primaryKeyDesc' && sorts.length === 0) {
+  if (order === 'primaryKeyDesc' && sorts.length === 0) {
     const keyColumns = columns.filter((column) => column.isPrimaryKey);
     if (keyColumns.length === 1) {
       return { sorts: [{ column: keyColumns[0].name, descending: true }] };
@@ -277,7 +285,12 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     set({ byPanel: states });
 
     try {
-      const order = orderRequest(existing.defaultOrderOverride, existing.columns, sorts);
+      const order = orderRequest(
+        existing.defaultOrderOverride,
+        existing.columns,
+        sorts,
+        useSettingsStore.getState().settings.defaultTableSort ?? DEFAULT_TABLE_SORT,
+      );
       const res = await databaseCommands.getTableData({
         context,
         manualHandle: tableManualHandle(panelId),

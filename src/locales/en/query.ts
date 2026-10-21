@@ -371,6 +371,31 @@ const pack = {
   'pagination.next': 'Next',
   'pagination.page': 'Page',
   'pagination.pageOf': '',
+  // The three states of a row count. The "about" sign is part of the text,
+  // not a decoration: an estimate must never look like a fact.
+  'pagination.rowCountEstimated': '≈ {count}',
+  'pagination.rowCountUnknown': '—',
+  'pagination.rowsUnknown': 'Row count unavailable',
+  'pagination.estimateTooltip':
+    'Estimated row count — the real number may differ. Use Count for the exact value.',
+  'pagination.countExact': 'Count',
+  'pagination.counting': 'Counting…',
+  'pagination.pageOnly': 'Page {page}',
+  'pagination.unstablePaging':
+    'No sort order is set — rows across pages may repeat or be skipped.',
+  'pagination.estimatedLessThanActual':
+    'This page is empty. The real row count may be lower than the estimate — use Count to check.',
+  // The default order of a table read, and the panel's temporary override.
+  'defaultSort.noPrimaryKey': 'No primary key — ordering by the first column.',
+  'defaultSort.custom': 'Custom order',
+  'defaultSort.panelLabel': 'Sort',
+  'defaultSort.inherit': 'Follow setting',
+  'defaultSort.primaryKeyAsc': 'Primary key ↑',
+  'defaultSort.primaryKeyDesc': 'Primary key ↓',
+  'defaultSort.primaryKeyDescUnavailable':
+    'Descending by a composite primary key is not supported yet.',
+  'defaultSort.none': 'Do not sort',
+  'grid.count.estimateUnavailable': 'This database cannot estimate row counts.',
   'filter.filter': 'Filter',
   'filter.remove': 'Remove filter',
   'filter.clear': 'Clear',
