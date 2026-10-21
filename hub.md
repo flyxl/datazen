@@ -101,12 +101,24 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 
 | 轨 | 分支 | worktree | 热 target |
 |---|---|---|---|
-| D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G |
-| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G |
-| F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G |
-| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G |
+| D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ⏳ 已派发 `9b9f1166` |
+| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ⏳ 已派发 `e90711bf` |
+| F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ⏳ 已派发 `29467fd8` |
+| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ⏳ 已派发 `e035cc8f` |
 
-**派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖（合并改变了 `packages/*` 源码），然后才派发。
+**派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖。**已执行**（四树均推进到 `65dac1e2c` = C + B + `OrganizationScope`）。
+
+### Wave 2 的共用前置：`OrganizationScope`（协调者已先行落地 `65dac1e2c`）
+
+四轨都需要「按组织限定存储访问」的作用域。**若让四轨各造各的，会得到四套并行的租户边界机制** —— 那比不做更糟。因此协调者先在契约层落了一个共用词汇：
+
+`packages/platform-api/src/ports/scope.rs` → `OrganizationScope { organization_id }`，带 `from_context(ctx)`。
+- 身份**只能**由 adapter 构造的 `RequestContext` 派生（INV-01），不接受任何请求体字段。
+- 越组织访问一律按「**不存在**」处理，不返回「无权限」（CM-05，避免泄漏"存在但无权"）。
+- **不复用** `ProfileScope` —— 后者限定的是「某组织的连接档案」，语义不同；两个作用域并存是刻意的。
+- **不要求桌面 SQLite 加 organization_id 列**：桌面是单租户，它的实现**只承认自己那一个组织**，传别的组织的 scope 按「不存在」处理。这让隔离成为**真实的**而不是名义上的，且 schema 不变。
+
+四轨简报里都写明：**用这个类型，不要自己造**。
 
 
 #### D `featurecore-org-scope`（依赖 B）
@@ -300,6 +312,12 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 - `D8`（`accept` 重复 jobId 新行为合并前**零覆盖** —— 整段删掉 630 条 runtime 用例仍全绿）→ **已由 Tester 的 `f6c089372` 补上**。
 
 **Tester 对 A 自述的校正（已采信）**：`accept` 从"静默覆盖"改报错**接受**。改前确实是裸 `inner.jobs.insert()` 覆盖整行、且**根本没有组织概念** —— 覆盖之所以变成"跨组织顶替入口"是**本轨引入组织维度后的必要收口**，不是无关收紧。且 `InMemoryJobRepository` 在**生产代码里只以 `#[cfg(test)]` 出现**（桌面走 SQLite，其重复 jobId 改前就已报错）→ **桌面行为零变化**。
+
+### Wave 2 派发时补进各轨简报的三条纪律
+
+1. **门禁必须含 `cargo check -p datazen --features webdriver --all-targets`** —— A 轨的阻塞缺陷 D1 正是"默认门禁不编译 feature 分支"造成的，这条现在是四轨的必跑项。
+2. **A 轨待合入会带来 7 个文件的机械重叠**（`packages/schema-diff/tests/job_handler.rs`、`packages/data-transfer/src/job/tests/kernel_cancel.rs`、`commands/data_transfer/job_api/{queries,runtime}.rs`、`commands/data_transfer/job_api/tests/job_lifecycle.rs`、`commands/schema_diff/job/desktop.rs`、`commands/sync/jobs.rs`）—— A 在这些文件上只是「补 `organization_id` 字段」。E/F 两轨已被告知：**不要改这些文件的 job 相关部分**，若非改不可必须保持增量并在报告中点名，便于合流解冲突。
+3. **F 轨的强制约束**（防"把解耦做成搬家"）：`comparison_store/disk.rs`（494 行、32 处 `std::fs`）**留在包内**，端口只收「存储根/实例」注入；`SyncPlanStore`/`TransferPlanStore` 的 `static STORE` 改成宿主注入的实例，HashMap 实现本身留在包内。**判定标准：`packages/data-{sync,transfer}` 改动前后总行数基本不变。**
 
 ## 6. 门禁与流程
 
