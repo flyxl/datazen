@@ -345,3 +345,52 @@ comm -12 <(diff --name-only base..grid-selection) <(diff --name-only base..inser
 1. `insert-backend` 已把 `inserts` / `insertMarked` / `operation:'insert'` 镜像进桌面 TS（`src/lib/tableChanges.ts`），但 **`packages/backend-client` 没有**——`web-transport` 要照抄形状，不要重新设计；
 2. `grid-selection` 的 `deleteRows` **不再写行集**，`applyGridSelection` 已按 mode 归一化几何；`insert-frontend` 若要在删除后保留选中视觉，**必须走 `setRowModeSelection`**，不能自己拼 patch；
 3. 45 码里现在有 8 个有生产者；`grid-cell` 若要消费某个码，先确认它在生产者清单里，否则前端分支永不触发。
+
+## 已确认的合流风险：8 个新码在前端**没有被登记**
+
+Tester 的 IB4-D7 是对的，我实地看了 `feature/grid-selection` 的 `src/lib/gridErrors.ts`：
+
+```ts
+export type GridErrorCode =
+  | 'unknown'
+  | 'grid.selection.invalid'
+  | 'grid.selection.outOfBounds'
+  | 'grid.selection.stale';
+export const GRID_ERROR_CODES = ['grid.selection.invalid', 'grid.selection.outOfBounds', 'grid.selection.stale'];
+```
+
+**只有 3 个 selection 码。** 而 `insert-backend` 现在产出 8 个码：
+
+| 码 | 生产者数 |
+| --- | --- |
+| `grid.commit.stalePlan` | 7（本轮 +2） |
+| `grid.commit.affectedMismatch` | 3 |
+| `grid.commit.conflictingIntents` | 3 |
+| `grid.cell.noRowIdentity` | 6 |
+| `grid.cell.ambiguousIdentity` | 2 |
+| `grid.cell.readOnly` | 2 |
+| `grid.insert.unknownColumn` | 1 |
+| `grid.insert.returningUnavailable` | 1（warning 码） |
+
+后果：`classifyGridError` 对这 8 个码一律返回 `unknown` ⇒ **前端无法按码分支**。Rust 侧刚把码补齐，TS 注册表没跟上，等于白补一半。
+
+**处理方式（合流后立即做，我亲自做）**：在 `src/lib/gridErrors.ts` 追加 8 个成员 + `GRID_ERROR_CODES` 条目 + `gridErrors.test.ts` 的对应用例。这是纯登记（skeleton 的 doc 注释明确要求「later tracks append their own domain only」），不新增分类逻辑。
+
+**为什么不由两轨之一做**：`gridErrors.ts` 只在 `grid-selection` 分支上存在，在 `insert-backend` 分支上 append 会凭空创建同名文件、合流时产生 add/add 冲突。合流后一次性登记，语义与顺序都正确。
+
+## 零生产者终盘（44 行码表，10 号已删）
+
+| 域 | 归属 | 码数 |
+| --- | --- | --- |
+| `grid.insert` | 04 | **1**（`noWritableColumn`，需 `ColumnSchema` 加 generated 标记） |
+| `grid.cell` | 05 | 1（`invalidValue`） |
+| `grid.clipboard` | 03 | 3 |
+| `grid.paste` | 03 | 10 |
+| `grid.fk` | 07 | 5 |
+| `grid.filter` / `grid.view` | 08 | 2 / 2 |
+| `grid.count` | 09 | 1 |
+| `grid.result` | 10 | 5 |
+| `grid.paging` | 11 | 3 |
+| `grid.selection` | 01 | 3（`gridErrors.ts` 已登记但**零生产者**：越界一律 `clampCellCoord → null`） |
+
+**Wave 1 交付时的真实状态**：44 码里 8 个有生产者（25 处 throw 点），36 个是声明。04/06 域只剩 1 个缺口。这份清单要作为 Wave 2/3 各册开工前的输入——**每册开工先确认自己要消费的码在不在生产者清单里**。
