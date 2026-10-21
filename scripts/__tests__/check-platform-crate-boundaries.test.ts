@@ -27,6 +27,7 @@ import {
   ruleVerdict,
 } from '../check-platform-crate-boundaries.mjs';
 import { classifyMemberDir, declaredDependencies, matchesCrateFamily } from '../lib/cargoWorkspace.mjs';
+import { withProbeLock } from './boundaryMutation';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const SPEC = readFileSync(join(REPO_ROOT, SPEC_PATH), 'utf8');
@@ -97,7 +98,15 @@ function layerIdOf(dir: string): string {
 }
 
 function run(metadata: object, specText = SPEC) {
-  return checkPlatformCrateBoundaries({ root: REPO_ROOT, metadata, specText });
+  // The lock is not optional here. `root: REPO_ROOT` makes the F-07 rule
+  // scan the *real* `packages/backend-client/src`, and a guard test running in
+  // parallel plants a throwaway probe in that very subtree — a probe that
+  // contains `@tauri-apps/` on purpose, because that is what proves the rule
+  // is armed. Without the lock this run can see that probe and report an
+  // F-07 violation that belongs to nobody.
+  return withProbeLock(() =>
+    checkPlatformCrateBoundaries({ root: REPO_ROOT, metadata, specText }),
+  );
 }
 
 describe('classifyMemberDir', () => {
@@ -414,11 +423,14 @@ describe('checkPlatformCrateBoundaries', () => {
   });
 
   it('--require-layers turns a vacuous rule into an error', () => {
-    const result = checkPlatformCrateBoundaries({
-      root: REPO_ROOT,
-      metadata: fixture(CORE, clean),
-      requireLayers: ['server'],
-    });
+    // Same reason as `run`: a real-root scan must not overlap a probe.
+    const result = withProbeLock(() =>
+      checkPlatformCrateBoundaries({
+        root: REPO_ROOT,
+        metadata: fixture(CORE, clean),
+        requireLayers: ['server'],
+      }),
+    );
     expect(result.errors.join('\n')).toContain('server');
   });
 });

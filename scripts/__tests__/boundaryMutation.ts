@@ -107,6 +107,20 @@ const PROBE_PREFIXES = ['__boundaryProbe__', '__uiBoundaryProbe__'];
 /** The subtree a probe can land in. Everything here is a throwaway test file. */
 const PROBE_ROOT = 'packages/ui';
 
+/**
+ * Every subtree a probe can land in, and therefore every subtree the sweep
+ * has to cover.
+ *
+ * The sweep is what recovers from a hard kill: a killed process gets no
+ * `finally`, so the probe it planted stays in the tree — and a probe left in
+ * `packages/backend-client/src` is not merely untidy. The F-07 guard scans
+ * that subtree for transport literals, and a probe contains one *by
+ * construction*, so a leftover probe turns the guard permanently red and
+ * points at a file nobody wrote. Covering every probe root is what keeps
+ * "a killed run leaves debris" from becoming "the guard is broken".
+ */
+const PROBE_ROOTS = [PROBE_ROOT, 'packages/backend-client/src'];
+
 /** Synchronous sleep — the lock must not be awaited away inside a sync test. */
 function sleepSync(ms: number) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -202,15 +216,28 @@ export function sweepStaleProbes(root: string = join(REPO_ROOT, PROBE_ROOT)): st
 }
 
 /**
- * Run `fn` with exclusive access to the real `packages/ui/` tree.
+ * Run `fn` with exclusive access to the real tree the probes live in.
  *
  * Self-healing: a lock left by a killed run is detected and taken over rather
  * than waited out, and the probes that run left behind are swept before this
  * run starts.
  *
+ * The lock is not only for the probers. A probe is a file in the working tree,
+ * so a test that *reads* the tree — copying it, or scanning it for a rule —
+ * has to hold the same lock, or it can observe a probe that is about to be
+ * deleted (a vanished file) or a probe that is deliberately violating
+ * (a finding nobody planted). Both were real failures, and both looked like
+ * the reader's own bug.
  */
 export function withProbeLock<T>(fn: () => T): T {
-  return withProbeLockAt(LOCK_DIR, join(REPO_ROOT, PROBE_ROOT), fn);
+  return withProbeLockAt(
+    LOCK_DIR,
+    join(REPO_ROOT, PROBE_ROOT),
+    fn,
+    LOCK_TIMEOUT_MS,
+    LOCK_OWNER_GRACE_MS,
+    PROBE_ROOTS.slice(1).map((root) => join(REPO_ROOT, root)),
+  );
 }
 
 /**
@@ -223,6 +250,7 @@ export function withProbeLock<T>(fn: () => T): T {
  *
  * @param {number} [timeoutMs] how long to wait for a *live* holder before failing
  * @param {number} [ownerGraceMs] how long an ownerless lock is left alone
+ * @param {readonly string[]} [extraSweepRoots] further roots to sweep for debris
  */
 export function withProbeLockAt<T>(
   lockDir: string,
@@ -230,6 +258,7 @@ export function withProbeLockAt<T>(
   fn: () => T,
   timeoutMs: number = LOCK_TIMEOUT_MS,
   ownerGraceMs: number = LOCK_OWNER_GRACE_MS,
+  extraSweepRoots: readonly string[] = [],
 ): T {
   mkdirSync(dirname(lockDir), { recursive: true });
   const deadline = Date.now() + timeoutMs;
@@ -265,6 +294,7 @@ export function withProbeLockAt<T>(
       JSON.stringify({ pid: process.pid, at: Date.now() }),
     );
     sweepStaleProbes(probeRoot);
+    for (const extraRoot of extraSweepRoots) sweepStaleProbes(extraRoot);
     return fn();
   } finally {
     rmSync(lockDir, { recursive: true, force: true });
