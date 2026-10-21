@@ -379,3 +379,66 @@ async fn another_organization_cannot_take_over_an_admitted_job_identity() {
         "越组织读取按「不存在」处理：{error:?}"
     );
 }
+
+#[tokio::test]
+async fn a_plan_consumed_in_one_organization_does_not_block_another() {
+    // 已消费 planId 按 (组织, planId) 唯一，与 SQLite 的
+    // `UNIQUE (organization_id, consumed_plan_id)` 同口径：
+    // 同一个 planId 在另一个组织不是「已被消费」。
+    let repo = repository();
+    let org_a = organization_context("org-a");
+    let org_b = organization_context("org-b");
+    let apply = |job_id: &str, organization: &str| JobDefinition {
+        job_id: JobId::new(job_id),
+        organization_id: OrganizationId::new(organization),
+        kind: "schemaDiffApply".into(),
+        owner: OwnerRef::ClientSession {
+            client_instance_id: ClientInstanceId::new("client-1"),
+            purpose: "migration".into(),
+        },
+        payload: serde_json::json!({
+            "consumedPlanId": "plan-shared",
+            "planVersion": 1,
+            "handlerVersion": 1,
+            "checkpointVersion": 1,
+        }),
+        created_at: Timestamp::new("2026-01-01T00:00:00Z"),
+    };
+
+    repo.accept(
+        &org_a,
+        apply("job-a", "org-a"),
+        &IdempotencyKey::new("key-a"),
+    )
+    .await
+    .expect("accept a");
+
+    // 另一个组织用同一个 planId 受理：不得被「已消费」挡住。
+    let second = repo
+        .accept(
+            &org_b,
+            apply("job-b", "org-b"),
+            &IdempotencyKey::new("key-b"),
+        )
+        .await
+        .expect("accept b");
+    assert_eq!(
+        second.definition.organization_id,
+        OrganizationId::new("org-b"),
+        "第二个受理落库在它自己的组织里"
+    );
+
+    // 但同一个组织内仍然只能消费一次。
+    let error = repo
+        .accept(
+            &org_a,
+            apply("job-c", "org-a"),
+            &IdempotencyKey::new("key-c"),
+        )
+        .await
+        .expect_err("the plan must stay consumed inside its organization");
+    assert!(
+        matches!(error, PortError::PlanAlreadyConsumed(_)),
+        "同组织内 planId 仍只消费一次：{error:?}"
+    );
+}
