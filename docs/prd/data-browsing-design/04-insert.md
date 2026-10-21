@@ -2,6 +2,11 @@
 
 > **状态**：目标设计，**未实现**（本册只冻结设计，不改代码）。
 > **依赖**：`00-contracts.md` —— §1.4（提交链路与五个必须记住的事实）、§3（`CellWrite` 三态契约与校验表）、§5.1（`build_insert_sql` / `insert_returning_clause` 最终签名，已冻结）、§8（错误前缀机制 `grid.<域>.<原因>: `）。
+> **〔落地校正 2026-10-21，Wave 1 `insert-backend` 已实装 Rust 侧〕本册 §3.1 / §3.2 / §5.1 里的 `CellWrite` 枚举与 `fn build_insert_sql(&self, table: &str, columns: &[(&str, CellWrite)]) -> String` **不落地**。主干写路径已经统一为「值不进 SQL 文本」的参数化 seam，再造一个拼字符串的插入接缝等于开第二条通路。**实际形态以 `00-contracts.md` §3 的〔落地校正〕与 §5.1 为准**：
+> - 驱动方法：`build_insert_statement(&self, table: &str, columns: &[(&str, Option<Value>)]) -> Result<BoundSqlStatement, DriverError>`（与 `build_update_statement` / `build_delete_statement` 同构，`ReuseDriver` 逐方法转发）；
+> - **三态由两件事承载**：列不在 `columns` 切片里 = `Unset`（不写，用库默认）；出现且 `Some(Value::Null)` = 写 `NULL`；出现且 `Some(v)` = 写 `v`。`changed_columns` 的派生规则（§3.4）仍然有效；
+> - 往下读 §3.1/§3.2 时请一律按本节替换类型与签名；凡出现 `CellWrite` 的位置都读成「列是否在切片里 + `Option<Value>`」。
+> **实装已确认的额外事实**（分册原稿未写，按代码为准）：`insert_returning_clause` 只有契约默认 `None` + `ReuseDriver`/`MockDriver` 转发，**宿主尚未调用**，因此插入结果的 `row_identity` 恒为空、也没有真正的 RETURNING 回填；`RowChangePlan` 的插入行用 `PendingRowChange.insert_marked` 承载（`#[serde(default, skip_serializing_if = "is_false")]`，`false` 时不进 JSON，故**不含插入的旧计划指纹逐字节不变**），而不是新增 `PendingRowInsert` 类型与 `preview` 的第 4 个参数——IPC 形状未变。
 > **被谁依赖**：`10-result-grid.md`（DB-14 查询结果网格可编辑，依赖 01/02/03/**04**/05/06 全部就位）。`03-clipboard.md` 的 `Paste rows` 无区域路径复用本册 INSERT 管线。
 > **预估人日**：4.0 人日（拆分 `data.rs` 0.5 / `driver-api` 契约与默认实现 0.5 / 宿主计划与执行 1.0 / 驱动回填覆盖 0.5 / 前端 store 与 UI 1.0 / 测试 0.5）。
 > **不包含**：类型感知编辑器与 `Set Value`（NULL / DEFAULT / NOW() 快捷项，属 05）；粘贴矩阵生成新增行计划（属 03，只复用本册管线）；多行 `VALUES` 批量拼接（宿主只产出单行语句，批量语义归驱动覆盖）；`LAST_INSERT_ID()` 类「插入后再查一次」的回填（契约 §5.1 没有该入口，见 §11 Q-2）；无主键表的 UPDATE/DELETE（仍然禁止，本册只放开 INSERT）。

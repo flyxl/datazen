@@ -386,6 +386,14 @@ Rust 侧结构体已标 `#[serde(rename_all = "camelCase")]`，前端用 camelCa
 
 ## 3. `CellWrite` 三态契约（本次架构改动的核心）
 
+> **〔落地校正 2026-10-21，Wave 1 `insert-backend`〕本节的三态语义保留，但 `CellWrite` 这个新类型不进 `driver-api`。**
+> 实装复核了主干的写路径演进：`DatabaseDriver` 已经只有**一条**参数化写路径——`build_update_statement` / `build_delete_statement` 返回 `BoundSqlStatement { sql, parameters }`，值**从不拼进 SQL 文本**。在这种情况下再造一个 `build_insert_sql(&[(&str, CellWrite)]) -> String` 的拼字符串接缝，等于给同一件事开第二条通路，且这条通路会把值写回 SQL 文本。
+> **因此冻结的落地形态是**：
+> - 驱动方法名为 `build_insert_statement(&self, table: &str, columns: &[(&str, Option<Value>)]) -> Result<BoundSqlStatement, DriverError>`（与 update/delete 同构，见 §5.1）；
+> - **三态由两件事共同承载**：列**是否出现在 `columns` 切片里** = `Unset`（不写，用库默认）；出现且 `Some(Value::Null)` = 写 `NULL`；出现且 `Some(v)` = 写 `v`；
+> - `changed_columns` 的语义不变（§3.4 的派生规则仍然有效），只是它不再由 `CellWrite` 数组物化而来。
+> 下游分册（03 的粘贴矩阵、05 的 NULL/DEFAULT 快捷项）按**这个形态**编码，**不要**再引用 `CellWrite` 类型；`00-contracts` 里凡写 `CellWrite` 的位置一律按本节替换。
+
 ### 3.1 为什么必须引入
 
 今天的写路径用 `Option<Value>` 表达「要不要写这一列」：
@@ -746,9 +754,17 @@ CellCoord.rowIndex
 
 ```rust
 // packages/driver-api/src/traits.rs
-/// 构造一条插入语句。`Unset` 的列不进语句（见第 3.5 节语义要求）。
-fn build_insert_sql(&self, table: &str, columns: &[(&str, CellWrite)]) -> String {
-    sql_text::build_insert_sql(self, table, columns)
+// 〔落地校正 2026-10-21〕签名以本节为准，§3 的 CellWrite 不进 driver-api：
+// 列不在切片里 = Unset（用库默认）；Some(Value::Null) = 写 NULL；Some(v) = 写 v。
+/// 构造一条插入语句，值与 SQL 文本分离（与 build_update_statement / build_delete_statement 同构）。
+/// 空切片 → 全列走库默认（PostgreSQL/SQLite/SQL Server: `DEFAULT VALUES`；
+/// MySQL 不支持该语法，由 MySQL 驱动覆盖为 `INSERT INTO t () VALUES ()`，见 §3.5）。
+fn build_insert_statement(
+    &self,
+    table: &str,
+    columns: &[(&str, Option<Value>)],
+) -> Result<BoundSqlStatement, DriverError> {
+    sql_builder::build_insert_statement(&LegacySqlDialect::new(self), self.max_bound_parameters(), table, columns)
 }
 
 /// 方言的新增行主键回填子句；`None` 表示该方言无法回填。
@@ -1132,7 +1148,7 @@ export interface DataGridCapabilities {
   │    ├─ 03-clipboard DB-03 剪贴板复制/粘贴
   │    ├─ 05-editors   DB-05 类型化编辑器与 Set Value
   │    └─ 06-dirty     DB-06 待提交单元格高亮
-  ├─ 04-insert         DB-04 新增行 INSERT（依赖 3.2 的 CellWrite）
+  ├─ 04-insert         DB-04 新增行 INSERT（依赖 5.1 的 build_insert_statement；三态见 §3 落地校正）
   ├─ 07-fk-navigation  DB-07 外键跳转与返回栈（依赖 01）
   ├─ 08-filters        DB-08 筛选能力与命名视图（依赖 5.2）
   ├─ 09-count-and-order DB-09 行数三态与默认排序（依赖 5.3/5.4）
@@ -1143,7 +1159,7 @@ export interface DataGridCapabilities {
 
 **推荐提交切分**（每一条都是可独立合并、可独立回滚的原子提交）：
 
-1. `feat(driver-api): add CellWrite and insert builders with default impls`（仅契约与默认实现 + 单测）
+1. `feat(driver-api): add build_insert_statement and insert_returning_clause with default impls`（仅契约与默认实现 + 单测）
 2. `feat(grid): add cell selection model`（01）
 3. `feat(grid): add keyboard navigation`（02）
 4. `feat(grid): add clipboard support`（03）
