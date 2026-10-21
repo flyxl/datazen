@@ -226,7 +226,7 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 |---|---|---|
 | C | **已验收 TEST_PASSED → 已合入集成 `e267fad3f`** | Tester `a1f0c68d`（3 次尝试后完成） |
 | B | **已验收 TEST_PASSED → 已合入 `056b35834`** | Tester `cda75c30` |
-| A | 复测 **TEST_PASSED** → **第 2 轮修复中**（D-01 文档说谎 + D-03/04/05 守卫精度） | Tester `64877b2a`：D1 已修复复验；发现注释里有**代码不保证的不变量** |
+| A | 第 2 轮修复完成 `643d1e2bb`（D-01/03/04/05 全处置）→ **收尾中**（清两条新增 clippy warning）→ 全新 Tester 终复测 | Tester `64877b2a`：D1 已修复复验；发现注释里有**代码不保证的不变量** |
 
 ### 环境
 - `export CARGO_TARGET_DIR=/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/.shared-target`（三轨共用；会打印 `Blocking waiting for file lock` —— **正常，等它**，禁止各轨改 target 目录）
@@ -397,6 +397,22 @@ Tester 用探针实测推翻：`**JobClaim`（`platform-api/src/dto/job.rs:276-2
 2. **`WidgetCreationHost` 也加了 scope**（超出任务书三个 trait）→ **接受**。理由成立：它能读写已存仪表板与 workflow，不带 scope 就是绕过三个 trait 的**越权旁路**。
 3. **内置 workflow 播种由全局 `AtomicBool` 改为按组织 `HashSet<OrganizationId>`** → **接受**。全局标志会让多租户下第二个组织永远拿不到内置 workflow；代价是"播种次数"语义变为"每组织一次"，这是多租户正确性的必要代价。
 4. **基线 1269 vs 实测 1266** → **协调者台账已更正**（D 与 G 两轨独立双证为 1266）。
+
+### A 轨修-测第 2 轮（编码代理 `643d1e2bb`）
+
+D-01 / D-03 / D-04 / D-05 全处置，并 cherry-pick 复测 Tester 的 `0d3fefff1`（`d9ad4abe6`）。自验全绿（platform-api 224 / runtime 642 / host 1276）。
+
+**D-01 的改写是本轮最关键的产出** —— 三处 `renew` 注释统一为事实陈述：
+> 续约只凭 claim 自身（`job_id` + `worker` + `claim_generation` + 租约）判定，**续约路径本身不做组织比对**；`JobClaim` 不携带组织维度，因此「跨组织续约」在本路径上**不可表达** —— 持有者与铸出者在续约路径上不可区分。唯一的拒绝理由是：行不存在、行上没有 claim、worker 不符、generation 不符、租约过期。
+> 组织边界由**写入路径**兜底：所有写入都经 `check_claim`，那里比对 `ctx` 的组织，越组织写按 `StaleClaim` 拒绝。
+
+**守卫精度三条的修法（值得记，因为都是"守卫会假红"的问题）**：
+- D-03：`SCANNED_ROOTS` 补 `src-tauri/tests`（该目录确有 5 个会被 `cargo check --all-targets` 编译的集成测试目标）。
+- D-04：词法器重写为 `mask_comments_and_literals` —— 认识生命周期撇号（`'a` / `'_` / `'static`，与字符字面量区分）、原始字符串 `r"..."`/`r#"..."#`、嵌套块注释；并**新增**把字符串/字符的**内容**抹成空格（否则字符串里的 `JobFilter {` 会造假字面量、字符串里的 `{` 会打乱花括号配平）。
+- D-05：识别器改为 `job_filter_literal_spans`，跳过 `->` 返回类型与 `struct`/`impl`/`enum`/`trait`/`union` 位置；识别在**等字节长的掩码**上跑、报告再回原文取真实内容（所以报告能显示真实常量而不是空白）；非空洞断言改按**真实字面量**计数（阈值 8，实测 14）。
+- **5 条自检**跑的是**同一条扫描路径**（`scan_source`），不是另写一份近似实现：能红（缺字段 / 内联常量）、不假红（合规源码含各种词法陷阱）、不漏报（词法器失衡后）、扫描根非空。
+
+**收尾项**：cherry-pick 进来的 Tester 文件带 2 条 clippy warning（`clone_on_copy`、`needless_range_loop`）。协调者已核实 **CI 没有 `-D warnings`**（`.github/workflows/ci.yml` 与 `scripts/ci-local.sh`），故不会让 CI 红；但它们是**本分支新增**而非既有噪音 → 裁决让 A 修。**A 的顾虑「改验证文件容易被读成篡改验证」不成立** —— 文件 cherry-pick 进分支后就是分支代码；真正要防的是改断言，已写进约束（只做这两处、逐字回报 diff）。
 
 ## 6. 门禁与流程
 
