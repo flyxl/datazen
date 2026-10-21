@@ -1,7 +1,7 @@
 # P2 阶段：path 驱动的资源能力现状清点、迁移批次与协议版本演进
 
-> **状态：目标设计，尚未实现。**
-> 本文清点的是当前代码事实，描述的是 P2 应当如何迁移到目标契约；两者之间尚未落地的部分全部标注为待办，不得当作已实现能力。
+> **状态：历史基线清点；P2 的契约骨架已落地。**
+> 本文 §1–§9 的矩阵与「当前」取值是对基线 `8592b0fe1` 的快照，用于解释迁移批次与协议版本演进，**不再代表当前代码状态**。基线之后 `packages/driver-api/src/{resource,session,capabilities}.rs` 已落地 `ResourceProvider` / `SessionHandleRef` / 能力注册表，`PROTOCOL_VERSION` 已升到 6；仍未落地的只有本文标为「待 P0 验证」的条目与 §9 的拒绝断言，它们不得当作已实现能力。
 >
 > - 基线：`8592b0fe1`（2026-09-30）。
 > - 代码核对时的工作区 HEAD 为 `e544e0699`（2026-09-30 21:08）。`8592b0fe1` 是 HEAD 的祖先，两者相差 4 个提交；`git diff --stat 8592b0fe1..HEAD -- packages/drivers packages/driver-api` 输出为空，因此本文的全部代码结论对两个基线一致。
@@ -11,7 +11,7 @@
 
 ## 0. 阅读须知：本文「当前」列的证据来源
 
-本文的每一格「当前」结论都来自对代码的逐项核对，不是推断。核对范围是 `packages/driver-api/**` 与 `packages/drivers/<id>/**` 在上述基线下的实现，宿主侧只读 `src-tauri/src/db/registry.rs`、`src-tauri/src/ai/registry.rs` 与 `data_transfer` 的版本闸门。
+本文的每一格「当前」结论都来自对代码的逐项核对，不是推断。核对范围是 `packages/driver-api/**` 与 `packages/drivers/<id>/**` 在上述基线下的实现，宿主侧只读 `packages/runtime/src/driver_registry/registry.rs`、`packages/ai-providers/src/registry.rs` 与 `data_transfer` 的版本闸门（基线时分别是 `src-tauri/src/db/registry.rs` 与 `src-tauri/src/ai/registry.rs`）。
 
 三条硬规则：
 
@@ -19,7 +19,7 @@
 2. **能力取驱动当前返回的行为，不是引擎上限。** §5.2 的 `sessionScopedHandles` 问的是 driver 是否返回事务/游标/服务端预处理句柄；Redis 引擎支持 MULTI、DuckDB 引擎支持快照，都不改变「驱动当前返回 `unsupported`」这个事实。引擎能力与驱动能力必须分别记录。
 3. **枚举值必须与连接管理 §5.2 逐字一致**（`supported` / `unsupported` / `unknown` / `inPlace` / `requiresReplacement` / `full` / `partial` / `verified` / `perTable` / `perDatabase` / `coordinated`）。本文不新增、不合并、不改名任何取值。
 
-矩阵列数说明：连接管理 §5.2 的表格列出 10 条具名能力，第 11 列 `namespaceShape` 来自 §5.1 对 `ResourceDescriptor` 的必填字段要求（`ResourceDescriptor` 必须包含 `namespaceShape`）。因此矩阵是 **15 个驱动 × 11 列 = 165 格**。§5.1 的 9 个契约操作与 §5.2 的能力枚举在 `packages/driver-api` 中**都还不存在**（`resource.rs` / `session.rs` / `capabilities.rs` 是拟新增文件），本文的所有「当前」值都是从现有 trait 方法的具体实现反推出来的，这也是 P2 的起点形态。
+矩阵列数说明：连接管理 §5.2 的表格列出 10 条具名能力，第 11 列 `namespaceShape` 来自 §5.1 对 `ResourceDescriptor` 的必填字段要求（`ResourceDescriptor` 必须包含 `namespaceShape`）。因此矩阵是 **15 个驱动 × 11 列 = 165 格**。本节写作时 §5.1 的 9 个契约操作与 §5.2 的能力枚举在 `packages/driver-api` 中**尚不存在**（`resource.rs` / `session.rs` / `capabilities.rs` 当时是拟新增文件），因此矩阵的「当前」值是从 trait 方法实现反推的 P2 起点形态；这些文件现已落地，矩阵本身仍按基线快照阅读。
 
 ## 1. 驱动清单
 
@@ -506,7 +506,7 @@ Err(DriverError::NotSupported(
    - `src-tauri/src/commands/sync/jobs_cancel_contract.rs:306-316` 的
      driver 包装转发（契约测试基座，不构成业务分支）。
 
-   早期盘点列出的 `packages/data-transfer/execute/dispatcher.rs`、
+   早期盘点列出的 `packages/data-transfer/src/execute/dispatcher.rs`、
    `packages/data-sync/src/execute.rs`、workflow `executor.rs` 布尔与
    testing mock 基座四处已随 P2 前几轮改造消失（它们本在 packages 侧，
    非宿主 crate）；`src-tauri/src/commands/restore_job.rs:66-68` 的
@@ -646,7 +646,7 @@ P2 新增的 `capabilities.rs` / `resource.rs` / `session.rs` 必须逐条过这
 - **E. DuckDB 引擎事务能力接不接。** 引擎支持、驱动未暴露；不接就必须保证拒绝是显式的。
 - **F. `http-support` 是否满足「不共享实现库类型」。** 本文 §1.2 给出了「共享 HTTP 管道不构成共享后端类型」的读法，但这必须写成明确规则并加边界测试，否则批次 0 的 `pnpm test:boundaries` 判不出结果。
 - **G. `sessionScopedHandles` 的 D 层断言缺位。** 连接管理 §16 里涉及 `sessionHandles` 的只有 CM-74，标记是（H/F），**没有 D 层用例**；§7.2 因此无法兑现「M 层与 D 层各有一条断言」。P2 需先定这条 D 层用例的形态（示例：在真实服务端执行一条会返回服务端预处理语句或游标的语句，断言 `ExecutionCompletion.sessionHandles` 要么是空数组、要么是已登记句柄），再落到驱动 crate 内。**在此之前该格不得声称「D 层已验证」。**
-- **H. 高于宿主的协议版本当前不会被拒绝。** `src-tauri/src/db/registry.rs:134-140` 与 `src-tauri/src/ai/registry.rs:179-186` 都是「`warn!` 后照常加载」，而 §5.4 要求的是显式拒绝。P0/P2 需要定：改成硬拒绝（返回 `Err`、不 `create()`），还是保留加载但把驱动标记为不可用并禁止 `execute_driver_command`；同时要确定「驱动版本 > 宿主版本」与「降级模式」是否互斥（若不互斥，就存在一条能同时进入未知兼容态和降级提示的路径）。**在规则定案前，§5.4 第 5 条只能当作目标，不能当作现状。**
+- **H. 高于宿主的协议版本当前不会被拒绝。** 当前为 `packages/runtime/src/driver_registry/registry.rs` 与 `packages/ai-providers/src/registry.rs` 的同名闸门（基线位置：`src-tauri/src/db/registry.rs:134-140` 与 `src-tauri/src/ai/registry.rs:179-186`） 都是「`warn!` 后照常加载」，而 §5.4 要求的是显式拒绝。P0/P2 需要定：改成硬拒绝（返回 `Err`、不 `create()`），还是保留加载但把驱动标记为不可用并禁止 `execute_driver_command`；同时要确定「驱动版本 > 宿主版本」与「降级模式」是否互斥（若不互斥，就存在一条能同时进入未知兼容态和降级提示的路径）。**在规则定案前，§5.4 第 5 条只能当作目标，不能当作现状。**
 
 ## 10. 验收映射表
 

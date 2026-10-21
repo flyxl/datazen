@@ -54,7 +54,7 @@ Preview 包含：
 
 目标为 read-only、表映射不兼容、自覆盖等情况时 Execute 会被阻止。
 
-跨方言结构通过 `src-tauri/src/transfer/` 的 IR adapter 转换，目标 DDL 由 target adapter 生成。数据值同样在 IR 路径中转换。
+跨方言结构通过 `packages/data-transfer/src/transfer/` 的 IR adapter 转换，目标 DDL 由 target adapter 生成。数据值同样在 IR 路径中转换。
 
 ## 结构阶段覆盖范围
 

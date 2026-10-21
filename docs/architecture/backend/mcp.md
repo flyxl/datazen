@@ -4,16 +4,18 @@
 
 ### 1.1 MCP Server
 
-DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。
+DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。共享的工具/资源/提示词逻辑位于 `packages/feature-core/src/mcp/`；`src-tauri/src/mcp/` 负责宿主传输、认证、权限、会话与 Runtime 接线。
 
 ```
+packages/feature-core/src/mcp/   # 共享 tool/resource/prompt 逻辑与权限策略
 src-tauri/src/mcp/
 ├── mod.rs          # 启动/停止与 stdio 传输装配（含断连清理）
 ├── auth.rs         # stdio 本地 token 认证（`mcp.token` + `DATAZEN_MCP_TOKEN`）
 ├── allowlist.rs    # 连接白名单（空 = 拒绝一切）
 ├── permission.rs   # 三档权限 + SQL/工具/资源门控
 ├── server.rs       # MCP Server 实例与工具清单 `MCP_ALL_TOOLS`
-├── tools.rs        # 工具实现（含 workflow 与有状态会话工具）
+├── server/         # 有状态会话等 Server 测试
+├── tools.rs        # 工具实现的宿主绑定（含 workflow 与有状态会话工具）
 ├── tool_help.rs    # 工具说明、参数示例与输入 schema
 ├── types.rs        # 工具入参 DTO（snake_case）
 ├── handler.rs      # `call_tool` 门控：注册表 → 权限 → 路由
@@ -27,7 +29,7 @@ src-tauri/src/mcp/
 
 `permission.rs` 只保留 MCP 专属的权限策略（三档模式、白名单、工具/资源门控）。SQL 主关键字分类（`sql_main_keyword`、`tokenize_sql`、`find_main_verb_index`）与注释剥离等**与传输无关**的 SQL 判读能力已下沉到共享层 `packages/runtime/src/sql_guard/`，宿主直接复用，未来服务端入口共用同一份实现。
 
-Workflow 引擎本身在 [`workflow` 模块](./workflow.md)（若尚未拆文档，见 `src-tauri/src/workflow/`），MCP 仅通过 Tools/Resources 暴露。
+Workflow 引擎本身见 [`workflow` 模块](./workflow.md)，MCP 仅通过 Tools/Resources 暴露。
 
 **信任模型（Settings → MCP Server）：**
 

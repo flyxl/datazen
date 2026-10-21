@@ -2,7 +2,7 @@
 
 User-facing guides (also shown in the in-app **使用说明** / User Guide window):
 
-- Chinese: [schema-diff-guide.md](schema-diff-guide.zh-CN.md)
+- Chinese: [schema-diff-guide.zh-CN.md](schema-diff-guide.zh-CN.md)
 - English: [schema-diff-guide.en.md](schema-diff-guide.en.md)
 
 Architecture: [architecture/backend/schema-diff.md](../architecture/backend/schema-diff.md).

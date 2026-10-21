@@ -6,18 +6,37 @@
 
 ## 模块结构
 
+Workflow 的执行语义与宿主绑定分开：共享执行器位于 `packages/feature-core/src/workflow/`，宿主目录只保留 YAML 仓储、桌面历史、scheduler runtime entry 和 Runtime 接线。
+
 ```text
-src-tauri/src/workflow/
-├── mod.rs               # 模块出口
-├── workflows.rs         # 对外兼容 facade / re-export
+packages/feature-core/src/workflow/
+├── mod.rs               # 共享模块出口
 ├── model.rs             # WorkflowDefinition / WorkflowStep 等数据模型
-├── registry.rs          # YAML workflow 注册、加载、保存、删除
+├── executor.rs          # WorkflowExecutor：步骤编排、错误策略、超时
 ├── context.rs           # 模板解析、路径解析、循环上下文
 ├── conditions.rs        # Condition 表达式求值
-├── executor.rs          # WorkflowExecutor：步骤编排、错误策略、超时
+├── data_step.rs         # Merge / Transform 等数据处理步骤
 ├── command.rs           # Workflow Command Step 数据结构
-├── command_runtime.rs   # Connection 解析、Command discovery、Driver command 执行
-└── history.rs           # 执行历史持久化
+├── command_runtime.rs   # 共享 Command 执行规则
+├── resource_execution.rs# 独立 Runtime 资源执行与授权目标
+├── migration.rs         # 迁移 step 的共享策略
+├── plan_guard.rs        # 计划与目标守卫
+├── scheduler.rs         # 到期判定与 in-flight 生命周期
+└── host.rs              # 宿主端口
+
+src-tauri/src/workflow/
+├── mod.rs               # 模块出口
+├── workflows.rs         # 对外兼容 facade（#[path] 挂 context/executor 并 re-export）
+├── model.rs             # 共享模型 re-export
+├── executor.rs          # 共享执行器 re-export + 宿主集成测试
+├── registry.rs          # YAML workflow 注册、加载、保存、删除
+├── command_runtime.rs   # 桌面 connection 解析与 Driver command 执行
+├── independent_sql.rs   # 桌面身份/目标绑定 → feature-core resource_execution
+├── scheduler.rs         # 桌面 scheduler 适配
+├── history.rs           # 执行历史持久化
+├── migration.rs         # 桌面迁移 step 适配（profile 仓储/历史/专用会话）
+├── host.rs              # 宿主 Runtime/Store 绑定
+└── live_acceptance.rs   # 真实 PostgreSQL/MySQL 跨库验收（ignored）
 ```
 
 `workflows.rs` 保留为兼容 facade；新的业务代码应直接依赖拆分后的模块，而不要继续向 `workflows.rs` 堆积实现。
@@ -214,9 +233,9 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 
 ## 入口
 
-- IPC：`commands/ai/mod.rs` → `workflow_*` / `workflow_history_*`；以及 Driver Command IPC
+- IPC：`src-tauri/src/commands/workflow.rs` 的 `workflow_*` / `workflow_history_*`；以及 Driver Command IPC
 - GUI：`WorkflowPanel` / `WorkflowPage`
-- MCP：`list_workflows` / `run_workflow`、`datazen://workflows`（实现位于 `mcp/server.rs`）
+- MCP：`list_workflows` / `run_workflow`、`datazen://workflows`（工具清单在 `mcp/server.rs`，执行在 `mcp/tools.rs`）
 - Driver API：`packages/driver-api/src/command.rs`、`traits.rs`
 
 **用户手册（YAML 语法与用法）：** [Workflow 使用手册](../../features/workflow-guide.zh-CN.md)

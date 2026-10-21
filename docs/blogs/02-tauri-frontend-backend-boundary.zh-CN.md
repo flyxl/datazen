@@ -80,7 +80,7 @@ Rust 端承担“拥有资源”和“决定是否执行”的职责。所有需
 
 ### 1. 资源生命周期
 
-`ConnectionManager` 管理运行时数据库会话，连接池、驱动实例和活动数据库都属于 Rust 的资源。前端只能通过 `connect`、`disconnect`、`ping_connection` 等命令操作生命周期。
+`Runtime` 管理运行时数据库会话，连接池、驱动资源和会话预算都属于 Rust 的资源；`DesktopSessionBackend` 负责把 Runtime session 接到 Store 配置和具体 Driver。前端只能通过 `connect`、`disconnect`、`ping_connection` 等命令操作生命周期。
 
 连接配置则由 `Store` 持久化。这样可以把“用户保存了什么”和“当前进程建立了什么”分开建模，也避免页面卸载时意外销毁连接池。
 
@@ -297,7 +297,7 @@ state.connection_manager
 2. **命令封装**：`src/commands/query.ts` 调用 `driverCommands.executeStream`，统一构造 `query_stream` 请求。
 3. **创建 Channel**：`src/commands/driver.ts` 创建 `Channel<QueryStreamEvent>`，把事件回调交给结果状态管理器。
 4. **Tauri 反序列化**：Rust 将 camelCase 参数映射到 `ExecuteDriverCommandStreamRequest`。
-5. **会话校验**：`ConnectionManager` 验证 `dbSessionId`，必要时根据 `database` 切换活动数据库。
+5. **会话校验**：Runtime 校验 `dbSessionId` 与 owner；database 随命令目标传递，不切换会话的活动库。
 6. **命令校验**：Driver Command Runtime 查找 `query_stream` 定义，验证 SQL 输入和读权限。
 7. **驱动执行**：Driver 建立查询上下文，按批次读取行，并通过回调发出事件。
 8. **前端消费**：React Store 追加行批次，DataTable 虚拟渲染可见区域。

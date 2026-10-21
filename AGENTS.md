@@ -10,7 +10,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 - **包管理**：pnpm（前端）、Cargo workspace（Rust）
 - **状态管理**：Zustand
 - **设计系统**：`@datazen/ui` 纯 React 基础视图组件库（宿主与插件共享）
-- **测试**：Vitest（Host 单元）、驱动 crate 内单测/E2E、WebdriverIO（Host E2E）、手工黑盒（`test/`）
+- **测试**：Vitest（Host 单元）、驱动 crate 内单测/E2E、WebdriverIO（Host E2E）
 - **AI**：多 Provider（OpenAI / Anthropic / DeepSeek / Ollama / Custom）、MCP Server/Client
 - **运行模式**：GUI 桌面应用 或 无头 MCP stdio 服务器（`--mcp-stdio`）
 - **发行版本**：Community 社区版（纯开源净室版）/ Pro 增强版（通过特权扩展点注入高级功能）
@@ -31,18 +31,21 @@ datazen/
 │   └── extensions/              # 自动生成注册文件（generated.ts / generated-locales.ts / generated-pro.ts）
 ├── src-tauri/                   # Rust 后端
 │   ├── src/
-│   │   ├── ai/                  # AI 门面 / 预算 / 取消 / context / prompt 解析（provider 与 protocol 实现已下沉 packages/ai-providers）
+│   │   ├── ai/                  # AI 兼容门面 + 宿主 Runtime/SchemaCache/profile 适配
+│   │   ├── bootstrap/           # AppState、启动与关停装配
 │   │   ├── commands/            # Tauri IPC 命令
+│   │   ├── dashboard/           # Dashboard 宿主存储与执行适配
 │   │   ├── db/                  # DriverRegistry 门面（re-export → packages/runtime）
-│   │   ├── mcp/                 # MCP Server/Client
-│   │   ├── workflow/            # YAML Workflow 引擎
-│   │   ├── services/            # Host feature adapters, QueryExecutor, DbTools, Transaction
+│   │   ├── mcp/                 # MCP Server/Client 宿主传输与权限
+│   │   ├── monitor/             # MonitorEngine、授权与 occurrence
+│   │   ├── platform/            # PlatformAdapter、DesktopSessionBackend、身份/策略/仓储
+│   │   ├── services/            # QueryExecutor、Schema metadata、DbTools、JobRegistry
 │   │   ├── cache/               # SchemaCache 门面（re-export → packages/runtime）
 │   │   ├── store/               # AES-256-GCM 加密持久化
-│   │   ├── schema_diff/         # 方言中立 Migration IR 与 DAG 结构比对
-│   │   ├── data_sync/           # 同族 Data Synchronization（门闸 / 比较 / ChangeSet / 执行）
-│   │   └── data_transfer/       # 异构数据传输引擎与 IR 适配
-│   └── resources/               # 菜单翻译、Prompt 模板
+│   │   ├── tunnel/ + ssh_tunnel.rs  # 隧道装配
+│   │   ├── wapps/               # Wapp 协议桥与管理器
+│   │   └── workflow/            # YAML Workflow 宿主适配与历史
+│   └── resources/               # 菜单翻译、内置 Workflow 模板、原生工具探针
 ├── packages/
 │   ├── ui/                      # @datazen/ui: 纯 React 基础组件设计系统（Button, Dialog, Select 等）
 │   ├── extension-points/        # @datazen/extension-points: 特权扩展点 (EP) 契约与注册表
@@ -52,7 +55,10 @@ datazen/
 │   ├── platform-api/             # Rust: 跨形态端口与契约（ProfileRepository / RequestContext / FrontendBridge）
 │   ├── platform-infra/           # Rust: 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖
 │   ├── application/              # Rust: 应用层用例与 ApplicationServices（不依赖宿主形态）
-│   ├── runtime/                  # Rust: 共享内核（driver_registry / schema_cache / sql_guard 等已迁入实现）
+│   ├── runtime/                  # Rust: 共享内核（session / resource / job / gateway / schema_cache / sql_guard）
+│   ├── feature-core/             # Rust: 共享 feature（Workflow / AI / MCP / Dashboard / 导出 / 备份恢复）
+│   ├── schema-diff/ data-sync/ data-transfer/ migration-common/  # 迁移三件套与共享迁移边界
+│   ├── workspace-apps/           # Rust: Wapp manifest / 安装 / 存储
 │   ├── backend-client/           # JS: 远端 / 浏览器侧 BackendClient 端口实现
 │   ├── ai-api/                  # Rust: AiProvider trait + 工厂 + 消息/调用协议模型
 │   ├── ai-providers/            # Rust: OpenAI/Anthropic/DeepSeek/Ollama/Custom provider 适配 + wire protocol 实现（纯客户端，不依赖 Tauri）
@@ -61,8 +67,7 @@ datazen/
 │   ├── wapps/                   # Workspace Apps 运行时应用与主题源码包（安装测试见其 README）
 │   └── pro-extensions/          # Pro 扩展本地存放/挂载目录（gitignored）；每个子包是独立 git 仓库，需独立 commit/pull/push
 ├── e2e/                         # Host WebdriverIO E2E（通用 UI / IPC；非驱动方言）
-├── test/                        # 手工黑盒测试
-├── docs/                        # 入库文档：features/、architecture/、development/、blogs/
+├── docs/                        # 入库文档：features/、architecture/、development/、blogs/、bugs/
 └── posts/                       # 推广与发布文案本地存档（gitignored，不提交）
 ```
 
@@ -103,7 +108,8 @@ DataZen 确立严格正交的四维可扩展架构，依托独立设计系统 `@
 2. **Theme (外观主题)**：纯静态资源包（`manifest.json`, `tokens.css`, `editor.json`, `charts.json`, `icons/`），零代码执行，安全沙箱级最高。
 3. **EP (特权扩展点 / Host Extension Points)**：主进程特权插槽，基于 `@datazen/extension-points`。专用于 SQLEditor Pro 增强、高级图表等对键入延迟（<5ms）和 CodeMirror Compartment 深度集成有严苛要求的核心扩展。宿主默认内置纯净基础版（Fallback）。受根目录 `LICENSE` 的 **DataZen Plugin, Driver & Extension Linking Exception** 保护，允许扩展模块使用独立许可证发布，免除 GPL-3.0 传染。
 4. **Workspace App (工作区应用)**：独立全屏 iframe 沙箱应用，运行目录 `{appData}/wapps/{publisher}.{name}/`，基于 `@datazen/wapp-sdk`，通过 `window.postMessage` 受控桥与宿主通信，取数一律走 `execute_driver_command`。
-5. **@datazen/ui (公共设计系统)**：`packages/ui/`，纯 React 基础视图组件（Button, Input, Select, Dialog, Tabs, Badge, Label, cn），与宿主业务 Store 和 IPC 严格解耦。宿主 `src/components/ui/` 和驱动 UI 统一复用。
+
+`@datazen/ui`（`packages/ui/`）不是第五维扩展，而是四维共享的纯 React 基础视图组件库（Button, Input, Select, Dialog, Tabs, Badge, Label, cn），与宿主业务 Store 和 IPC 严格解耦；宿主 `src/components/ui/` 和驱动 UI 统一复用。
 
 ### Driver Command API 与统一执行网关
 
@@ -127,7 +133,7 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 ## 前端约定
 
 - **零硬编码**：数据库行为差异全部通过 `DB_REGISTRY` + `DatabaseTypeMeta` 元数据驱动。
-- **主工作区 Page**：`main` 内用 `*Page` 导航（`WelcomePage` / `ConnectionPage` / `SettingsPage` 等）；Settings / 新建连接为 main 内嵌；Docs 跳转官网。独立子窗口仅限 `backup` / `data-sync` / `schema-diff` / `data-transfer`。详见 [docs/architecture/windows.md](docs/architecture/windows.md)。
+- **主工作区 Page**：`main` 内用 `*Page` 导航（`WelcomePage` / `ConnectionPage` / `SettingsPage` 等）；Settings / 新建连接为 main 内嵌；Docs 跳转官网。独立子窗口仅限 `onboarding` / `backup` / `data-sync` / `schema-diff` / `data-transfer`。详见 [docs/architecture/windows.md](docs/architecture/windows.md)。
 - **IPC 命名**：前端 camelCase，Rust snake_case；Tauri 自动双向映射。
 - **右键菜单**：统一使用 Web Context Menu，禁止 Tauri 原生 `Menu.popup()`。
 - **主题与色彩**：全站通用 `--color-accent-*` 语义 Token；DataTable 单元格类型色使用 `--dt-*` token + `src/lib/dataTypeColors.ts`。
@@ -147,15 +153,15 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 
 | 功能 | 前端入口 | 后端入口 |
 | ---------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| SQL 编辑器 & 风控 | `components/sql-editor/` + `windows/connection/query/` | `packages/runtime/src/sql_guard/` + `services/transaction.rs` + `execute_driver_command` |
-| 结构比对 (Schema Diff) | `windows/schema-diff/` | `schema_diff/` + `commands/schema_diff.rs`（Driver `SchemaMigrationRenderer`） |
-| 数据传输 (Transfer) | `windows/data-transfer/` | `transfer/` + `data_transfer/` |
-| 数据同步 (Data Sync) | `windows/data-sync/` | `data_sync/` + `commands/sync/` |
+| SQL 编辑器 & 风控 | `components/sql-editor/` + `windows/connection/query/` | `packages/runtime/src/sql_guard/` + Runtime session transaction + `execute_driver_command` |
+| 结构比对 (Schema Diff) | `windows/schema-diff/` | `packages/schema-diff/` + `commands/schema_diff.rs`（Driver `MigrationRenderer`） |
+| 数据传输 (Transfer) | `windows/data-transfer/` | `packages/data-transfer/` + `commands/data_transfer/` |
+| 数据同步 (Data Sync) | `windows/data-sync/` | `packages/data-sync/` + `commands/sync/` |
 | 图表可视化 | `components/chart/` + `lib/chart/` | — |
 | ER 图 | `windows/connection/ErDiagramView.tsx` + `er/` | `commands/schema.rs → get_er_data` |
 | 数据与结构导出 | `DataTable/DataExportDialog.tsx` + `BatchExportDialog.tsx` | `commands/export.rs` |
-| AI Chat & 诊断 | `components/ai/AiChatPanel.tsx` + `DiagnosisPanel.tsx` | `commands/ai/` + `ai/` |
-| Workflows | `windows/workflow/WorkflowPage.tsx` | `workflow/executor.rs` / `workflow/command_runtime.rs` |
+| AI Chat & 诊断 | `components/ai/AiChatPanel.tsx` + `DiagnosisPanel.tsx` | `commands/ai/` + `packages/feature-core/src/ai/` |
+| Workflows | `windows/workflow/WorkflowPage.tsx` | `packages/feature-core/src/workflow/` + `workflow/` 宿主适配 |
 | 权限与管理命令 | `PrivilegeView.tsx` + `Create*Dialog.tsx` | `execute_driver_command` + Driver `admin_commands` |
 | Schema 对象树 | 连接树 routines/triggers 等 | `execute_driver_command`（`list_objects` / `get_object_ddl`） |
 | Redis 深度运维 | `packages/drivers/redis/ui/*` | `execute_command` / `execute_driver_command` |
@@ -232,8 +238,8 @@ cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust �
 
 ### 文档维护纪律
 
-- 仓库只维护三类文档：功能使用（`docs/features/`）、代码架构（`docs/architecture/`）、开发流程（`docs/development/`）。索引见 [docs/README.md](docs/README.md)。
-- **不新增** PRD、设计稿、原型图、实施规范、开发进度、Bug List、评审记录类文档；这些是一次性过程产物，已交付即失效。唯一例外是并行开发期间的进度台账（分支根目录 `progress.md` / 集成分支根目录 `hub.md`）——见上文「进度台账：开发期间允许，交付即销毁」：开发期间它存在于分支而非 `docs/`，**验收合并时必须删除**，因而同样满足「已交付即失效」。
+- 仓库只维护三类长期文档：功能使用（`docs/features/`）、代码架构（`docs/architecture/`）、开发流程（`docs/development/`）；另有公开发布的 `docs/blogs/`，以及仅记录**已核实复现、本轮明确不修**缺陷的 `docs/bugs/`。索引见 [docs/README.md](docs/README.md)。
+- **不新增** PRD、设计稿、原型图、实施规范、开发进度、Bug List、评审记录类文档；这些是一次性过程产物，已交付即失效。缺陷结论优先变成代码、测试与正式文档；只有核实复现且明确不修的缺陷才按 `docs/bugs/` 的单文件规则登记。唯一例外是并行开发期间的进度台账（分支根目录 `progress.md` / 集成分支根目录 `hub.md`）——见上文「进度台账：开发期间允许，交付即销毁」：开发期间它存在于分支而非 `docs/`，**验收合并时必须删除**，因而同样满足「已交付即失效」。
 - 用户明确要求并已入库的 [桌面 / Web 平台演进设计](docs/README.md) 是本纪律的窄范围例外；其中标为「目标设计」的概要、详细设计和开发计划只在该明确授权范围内维护，落地后逐节改写为已实现事实。该例外不授权新增其他方案、评审记录或进度文档。
 - 同样属窄范围例外的还有 [数据浏览竞品对标 PRD](docs/prd/data-browsing-optimization-prd.md) 与其 [技术设计分册](docs/prd/data-browsing-design.md)：它们是**按用户明确要求保存的一次性方案**，在 `feature/data-browsing-prd` 分支上随功能开发维护；**方案落地后必须逐节改写为「已实现事实」并入 `docs/architecture/` 与 `docs/features/`，并删除 `docs/prd/` 整个目录**。该例外不授权新增其他 PRD、评审记录或进度文档，也不允许把分册长期留存在 `main` 上。
 - 需要长期留存的设计结论，**改写为「已实现」的事实**并入对应架构文档，而不是保留方案原文。

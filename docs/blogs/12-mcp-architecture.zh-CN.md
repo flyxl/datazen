@@ -4,13 +4,13 @@
 
 ## Server 与 Client
 
-DataZen 作为 MCP Server 暴露 Tools、Resources 和 Prompts；作为 MCP Client 连接外部 Server，取得工具并供 AI Chat 使用。两者都位于 `src-tauri/src/mcp/`，但共享的是 Host 的服务和 Command Runtime，而不是相互耦合实现。
+DataZen 作为 MCP Server 暴露 Tools、Resources 和 Prompts；作为 MCP Client 连接外部 Server，取得工具并供 AI Chat 使用。共享工具/资源逻辑位于 `packages/feature-core/src/mcp/`，宿主 `src-tauri/src/mcp/` 负责 Server/Client 的传输、会话、权限与 Runtime 接线；两者共享 Host 的服务和 Command Runtime，而不是相互耦合实现。
 
-Server 工具包括 `list_connections`、`list_databases`、`list_tables`、`search_tables`、`query`、`get_schema`、`explain_query`、`describe_table`、`list_workflows` 和 `run_workflow`。
+Server 工具包括 `list_connections`、`list_databases`、`list_tables`、`search_tables`、`query`、`get_schema`、`explain_query`、`describe_table`、`list_workflows`、`run_workflow`，以及有状态协议的 `open_session` / `use_session` / `close_session`。
 
 ## 为什么 MCP 使用 connectionId
 
-MCP 请求可能来自独立的 stdio 进程，没有 GUI 面板，因此使用可持久化的 `connection_id`。Server 通过 `db_tools::resolve_connection` 按需调用 `ConnectionManager`，获得运行时会话后再进入 Driver Command Runtime。
+MCP 请求可能来自独立的 stdio 进程，没有 GUI 面板，因此使用可持久化的 `connection_id`。Server 把 `connection_id` 交给共享的 AI/MCP database tools 与 Runtime execution port，由 Runtime 按需创建或借用独立 session，再进入 Driver Command Runtime；它不复用 GUI 的 `dbSessionId`，也不依赖已打开的窗口。
 
 GUI 的 SQL IPC 仍然使用 `dbSessionId`。两种入口在协议层不同，在执行核心处汇合。
 

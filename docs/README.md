@@ -1,6 +1,6 @@
 # DataZen 文档索引
 
-DataZen 文档只保留两类长期有效内容：**当前功能使用文档**和**当前代码架构/开发文档**。开发过程中的 PRD、进度、Bug List、UI Review、临时 Backlog 等不作为仓库文档长期维护。
+DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`）、**代码架构**（`architecture/`）和**开发流程**（`development/`）。`blogs/` 是面向公开发布的架构文章；开发过程中的 PRD、进度、UI Review、临时 Backlog 和未核实缺陷不作为仓库文档长期维护。
 
 ## 文档结构
 
@@ -10,12 +10,16 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 | [architecture/](architecture/) | 与 main 分支代码对应的架构说明 | 贡献者 / AI 助手 |
 | [development/](development/) | 开发、测试、发布、驱动开发流程 | 贡献者 |
 | [blogs/](blogs/) | 面向公开发布的架构文章 | 开发者 / 用户 |
-| [bugs/](bugs/) | **已知但未修复**的缺陷：现象、影响面、链路实测、修复前置条件 | 贡献者 / AI 助手 |
+| [bugs/](bugs/) | **已核实复现、且明确不在当轮修复**的缺陷：现象、影响面、链路实测、修复前置条件 | 贡献者 / AI 助手 |
 
 不在仓库内的目录：
 
 - `posts/` — 推广与发布文案（Product Hunt / V2EX / 头条 / 各版本发布说明）。已在 `.gitignore` 中，属一次性对外物料，不参与构建、不被 CI 校验。
-- 本地开发台账（子代理进度、缺陷清单）不落仓库：结论直接写进代码、测试与 `docs/` 正式文档。例外是**已核实复现、且本轮明确不修**的缺陷，按上表的 `bugs/` 单独记录——它写的是可逐行核验的代码事实，不是过程产物。
+- 本地开发台账（子代理进度、缺陷清单）不落仓库：结论直接写进代码、测试与 `docs/` 正式文档。`bugs/` 只接受已核实复现、且本轮明确不修的缺陷——它写的是可逐行核验的代码事实，不是过程产物。
+
+当前已知缺陷：
+
+- [SE-PROD-011 列拖放不可达](bugs/SE-PROD-011-column-drag-drop-unreachable.md)：SQL Editor Pro 消费端已实现列负载，宿主未提供可拖拽列节点且适配层丢弃列信息；潜伏，不影响现有功能。
 
 ## 功能文档
 
@@ -65,9 +69,9 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 - [Windows](architecture/windows.md)
 - [Testing](architecture/testing.md)
 
-### 桌面 / Web 平台演进设计（待实现）
+### 桌面 / Web 平台演进设计（部分已实现，未落地部分为目标设计）
 
-以下文档按用户明确要求保存，是本次设计交付的范围例外。它们标明基线和目标状态，不代表当前 main 已支持团队 Web；落地后应改写为实现事实与开发流程。
+以下文档按用户明确要求保存，是本次设计交付的范围例外。它们标明基线和目标状态；P1（共享边界）、P3（Runtime 会话/资源/网关）、P4（桌面会话迁移）、P5（JobRuntime 与迁移三件套）已落地，P6（Workflow / AI / MCP / Wapp 等消费者迁移）进行中，P7–P10（团队 Web / 多实例协调 / 全驱动发布验收）仍为目标设计。已落地部分以各架构文档与代码为准。
 
 概要、契约与计划：
 
@@ -90,6 +94,7 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 - [团队服务部署、升级与恢复流程](development/team-service-operations.md)：配置与健康检查、发布兼容、备份一致性、恢复隔离与演练。
 - [Workflow 资源模型详细设计](architecture/platform/workflow-resource-model.md)：step / session block / transaction block 三种执行单元、目标继承链、Session/Lease/Budget 集成与版本兼容边界。
 - [团队 Web 服务与认证详细设计](architecture/platform/team-server-and-auth.md)：server crate 形态、中间件链、OIDC/CSRF/RBAC、SSE 回放与错误到 HTTP 的映射。
+- [共享 feature 服务边界](architecture/platform/feature-core.md)：`packages/feature-core` 中 Workflow / AI / MCP / Dashboard / 导出 / 备份恢复的共享实现与宿主绑定。
 
 ### 数据浏览竞品对标与优化方案（一次性方案，范围例外）
 
@@ -115,6 +120,8 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 - [External Contract Policy](development/external-contract-policy.md)
 - [Panic Policy](development/panic-policy.md)
 - [Interaction & Testing Principles](development/interaction-and-testing-principles.md)
+- [Verification Methodology](development/verification-methodology.md)
+- [Worktree Isolation](development/worktree-isolation.md)
 - [Wapp Development](development/wapp-development.zh-CN.md)（中文）
 - [SQL Editor Pro Development](development/sql-editor-pro-development.zh-CN.md)（中文）
 - [Packaging](development/packaging.md)

@@ -45,7 +45,7 @@
 
 | 维度 | 现有 `MockDriver` | 本文 fake resource provider |
 | --- | --- | --- |
-| 落点 | `src-tauri/src/testing/mock_driver.rs`（已存在） | `packages/runtime/src/connection/testing/`（已落地） |
+| 落点 | `packages/driver-api/src/mock_driver.rs`（`MockDriver` / `MockDriverOptions`） | `packages/runtime/src/connection/testing/`（已落地） |
 | 抽象层 | `datazen_driver_api::DatabaseDriver` | connection-management.md §5.1 资源级端口 |
 | 典型调用 | 测试直接 `driver.query(&handle, ...)` | runtime actor / 执行网关 |
 | 能表达的句柄 | `ConnectionHandle` / `TransactionHandle`（`packages/driver-api/src/types.rs`） | `ResourceHandle` + §6.5 `SessionHandleRef` |
@@ -68,7 +68,7 @@
 | `.../testing/ids.rs` | 可预测 ID 生成与强制碰撞 | `FakeIds`、`FakeIdScope` |
 | `.../testing/fixtures.rs` | 固定实体（组织/用户/profile/命名空间 A、B） | `fixtures()` 常量与 `install_fixtures` |
 | `.../testing/commands.rs` | 会话级句柄 fake 命令定义 | `session_handle_command_definitions()` |
-| `src/bin/cm60-bench/` | CM-60 基准入口（§11） | **已实现**：独立的 bin target，不在 `testing/` 下（§11.6 要求基准不得与功能测试共用入口） |
+| `packages/runtime/src/bin/cm60-bench/` | CM-60 基准入口（§11） | **已实现**：独立的 bin target，不在 `testing/` 下（§11.6 要求基准不得与功能测试共用入口） |
 
 `cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`packages/runtime/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
 
@@ -580,7 +580,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 | 产物 | 内容 | 落点 |
 | --- | --- | --- |
-| 原始计时 | 每请求两段纳秒值、轮次、并发度 | `target/bench/cm60-raw-<ts>.json`（由 `src/bin/cm60-bench` 输出） |
+| 原始计时 | 每请求两段纳秒值、轮次、并发度 | `target/bench/cm60-raw-<ts>.json`（由 `packages/runtime/src/bin/cm60-bench` 输出） |
 | 环境记录 | CPU 核数、内存、OS、编译器版本 | 同上文件 `environment` 段 |
 | 构建参数 | profile、features、依赖锁文件摘要 | 同上文件 `build` 段 |
 | journal | 资源/permit/句柄全量 journal 摘要 | 同上文件 `journal` 段 |

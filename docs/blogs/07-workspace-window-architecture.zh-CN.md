@@ -37,7 +37,7 @@ Rust 的 `create_sub_window` 负责真正创建原生窗口，设置尺寸、透
 
 全局 `ErrorBoundary` 防止一个未处理 React 错误让整个窗口白屏。独立窗口还可以在自己的边界内显示 Reload/Dismiss，而不会影响主工作区的连接和查询。
 
-隔离的另一面是资源归属：子窗口若打开专用数据库会话，应在关闭时释放；主窗口的共享会话则由 active connection Store 和 ConnectionManager 共同管理。窗口模型不能替代会话生命周期模型。
+隔离的另一面是资源归属：子窗口或长任务若打开专用 Runtime session，应在关闭/完成时释放；主工作区的会话则由 active connection Store 记录 `dbSessionId`，实际资源与回收归 Runtime 管理。窗口模型不能替代会话生命周期模型。
 
 ## 取舍
 
