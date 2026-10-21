@@ -22,6 +22,21 @@
 
 use datazen_driver_api::DatabaseDriver;
 
+/// The schema embedded in a qualified table reference (`sales.orders` → `sales`).
+///
+/// Metadata callers may pass either an explicit `schema` argument or a
+/// qualified `table`; the driver resolves the embedded form itself, so the host
+/// must not shadow it with a fallback default.
+///
+/// Shared with the host so exactly one implementation exists: a second copy in
+/// a host module is how "the table is in `public`" and "the table is in
+/// `sales`" drift apart.
+pub fn embedded_schema_of(table: &str) -> Option<&str> {
+    let (prefix, _) = table.rsplit_once('.')?;
+    let prefix = prefix.trim().trim_matches('"');
+    (!prefix.is_empty()).then_some(prefix)
+}
+
 /// The schema argument to use for a metadata call.
 ///
 /// Priority: `explicit` → `table_schema` → `config_schema` → the driver's

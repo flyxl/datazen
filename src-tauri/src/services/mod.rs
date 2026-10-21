@@ -6,7 +6,7 @@ pub mod schema_metadata;
 pub mod schema_scope;
 
 pub use query_executor::{FilterCondition, OrderBy, QueryExecutor, SortCondition};
-pub use schema_scope::metadata_schema;
+pub use schema_scope::{embedded_schema_of, metadata_schema};
 
 pub(crate) mod migration_endpoint;
 

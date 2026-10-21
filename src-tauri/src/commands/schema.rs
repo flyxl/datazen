@@ -1,20 +1,11 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::db::{TableDataResult, TableSchema};
-use crate::services::{metadata_schema, FilterCondition, OrderBy, QueryExecutor, SortCondition};
+use crate::services::{
+    embedded_schema_of, metadata_schema, FilterCondition, OrderBy, QueryExecutor, SortCondition,
+};
 use std::time::Instant;
 use tauri::State;
-
-/// The schema embedded in a qualified table reference (`sales.orders` → `sales`).
-///
-/// Metadata callers may pass either an explicit `schema` argument or a
-/// qualified `table`; the driver resolves the embedded form itself, so the host
-/// must not shadow it with a fallback default.
-fn embedded_schema_of(table: &str) -> Option<&str> {
-    let (prefix, _) = table.rsplit_once('.')?;
-    let prefix = prefix.trim().trim_matches('"');
-    (!prefix.is_empty()).then_some(prefix)
-}
 
 pub(crate) async fn get_table_data_impl(
     state: &AppState,
