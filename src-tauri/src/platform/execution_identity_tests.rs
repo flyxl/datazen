@@ -1521,3 +1521,80 @@ fn 主密钥一换全部身份键都变() {
         "主密钥一换，身份键必须全变（否则一次轮换不会打空连接池，文档就是错的）"
     );
 }
+
+// ---------------------------------------------------------------------------
+// 复测轮补：把 D-02 的分类落成可执行断言
+// ---------------------------------------------------------------------------
+
+/// **换域标签只改键的「值」，不改键的「关系」**——D-02 那条分类的可执行版本。
+///
+/// 共享边界 §4.3 与实现文件模块头都写着这条分类：
+/// 「**进 HMAC 输入的那些**（域标签、长度前缀、子钥域分离、派生盐的来源）：改它们 ⇒
+/// **每个正常路径调用的身份键值都变** ⇒ 等价于一次**全量身份键轮换**；
+/// 正常路径用例断言的**关系**（同输入同键、跨组织不同键、委托 ≠ 本人）**不变**。」
+///
+/// 这条用**同一把派生盐、同一组输入**，只把域标签换掉，然后分别断言：
+///
+/// * **值**变 —— 域标签确实进了 HMAC 输入（不是摆设），换掉它就是一次全量轮换；
+/// * **关系**不变 —— 同输入同键 / 跨组织不同键 / 委托 ≠ 本人 三条照旧成立。
+///
+/// 用例写的是**关系**，所以这条分类对用例来说是「看不见」的：只有把「值」与
+/// 「关系」分开断言，才能把分类本身钉住。
+#[test]
+fn 换域标签只改键的值不改键的关系() {
+    let derivation = test_derivation_key();
+    let org = OrganizationId::new("org-a");
+    let org_b = OrganizationId::new("org-b");
+    let conn = ConnectionId::new("conn-1");
+    let iso = PolicyIsolationKey::new("iso-1");
+    let alternative_domain = b"datazen.execution-identity.key.v2";
+
+    let key = |domain: &[u8], organization: &OrganizationId| {
+        derivation
+            .mac(
+                domain,
+                &[organization.as_str(), conn.as_str(), iso.as_str()],
+            )
+            .expect("身份键")
+    };
+
+    // 1. 值变：换域标签 ⇒ 同一组输入的身份键**值**不同。
+    let current = key(IDENTITY_KEY_DOMAIN, &org);
+    let alternative = key(alternative_domain, &org);
+    assert_ne!(
+        current, alternative,
+        "域标签进 HMAC 输入 ⇒ 换域标签必须让身份键的值变（等价于一次全量身份键轮换）"
+    );
+
+    // 2. 关系不变：同输入同键。
+    assert_eq!(
+        alternative,
+        key(alternative_domain, &org),
+        "换域标签之后「同输入同键」这条关系必须仍然成立"
+    );
+
+    // 3. 关系不变：跨组织不同键。
+    assert_ne!(
+        alternative,
+        key(alternative_domain, &org_b),
+        "换域标签之后「跨组织不同键」这条关系必须仍然成立"
+    );
+
+    // 4. 关系不变：委托身份 ≠ 本人身份。
+    let delegated = derivation
+        .mac(
+            DELEGATION_KEY_DOMAIN,
+            &[
+                org.as_str(),
+                conn.as_str(),
+                iso.as_str(),
+                "del-1",
+                "scope-1",
+            ],
+        )
+        .expect("委托身份键");
+    assert_ne!(
+        alternative, delegated,
+        "换域标签之后「委托身份 ≠ 本人身份」这条关系必须仍然成立"
+    );
+}
