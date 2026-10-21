@@ -7,7 +7,7 @@ use crate::{
 use serde_json::{json, Value as JsonValue};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 enum QueryReply {
     Error,
@@ -24,49 +24,54 @@ struct TrackingDriver {
     queried_sql: Mutex<Vec<String>>,
     query_databases: Mutex<Vec<Option<String>>>,
     replies: Mutex<VecDeque<QueryReply>>,
+    /// The DDL schema scopes the command asked the driver to resolve.
+    resolved_scope: Arc<Mutex<Vec<Option<String>>>>,
 }
 
 /// Minimal dialect provider for the routing tests: the shared command asks
 /// the driver for its SQL, and these tests only assert *where* the query ran.
 struct RoutingTestSql {
     db_type: String,
+    /// The schema scope the command resolved for the DDL lookup.
+    resolved_scope: Arc<Mutex<Vec<Option<String>>>>,
 }
 
 impl crate::schema_object_sql::SchemaObjectSql for RoutingTestSql {
-    fn list_objects_sql(&self, kind: ObjectKind) -> Option<String> {
-        crate::schema_objects::list_objects_sql(&self.db_type, kind)
-            .or_else(|| Some("SELECT 'routing-test' AS name".to_string()))
+    fn list_objects_sql(&self, _kind: ObjectKind) -> Option<String> {
+        Some("SELECT 'routing-test' AS name".to_string())
     }
 
     fn object_ddl_sql(
         &self,
-        request: &crate::schema_object_sql::ObjectDdlRequest<'_>,
+        _request: &crate::schema_object_sql::ObjectDdlRequest<'_>,
     ) -> Option<String> {
-        crate::schema_objects::object_ddl_sql_with_metadata(
-            &self.db_type,
-            request.kind,
-            request.name,
-            request.schema,
-        )
-        .or_else(|| Some("SELECT 'routing-test' AS ddl".to_string()))
+        Some("SELECT 'routing-test' AS ddl".to_string())
     }
 
     fn list_privileges_sql(&self) -> Option<String> {
-        crate::schema_objects::list_privileges_sql(&self.db_type)
+        Some(
+            "SELECT 'routing-test' AS grantee, '*' AS schema, '*' AS name, 'ALL' AS privilege"
+                .to_string(),
+        )
     }
 
-    /// MySQL folds the catalog into the schema slot, exactly like the shared
-    /// fallback does for the families that have not published a provider.
+    /// MySQL folds the catalog into the schema slot, exactly like the MySQL
+    /// driver does; the resolved scope is recorded for the routing test.
     fn ddl_schema_scope<'a>(
         &self,
         schema: Option<&'a str>,
         database: Option<&'a str>,
     ) -> Option<&'a str> {
-        if crate::schema_objects::dialect_family(&self.db_type) == "mysql" {
+        let resolved = if crate::schema_objects::dialect_family(&self.db_type) == "mysql" {
             schema.or(database)
         } else {
             schema
-        }
+        };
+        self.resolved_scope
+            .lock()
+            .unwrap()
+            .push(resolved.map(str::to_string));
+        resolved
     }
 }
 
@@ -82,6 +87,7 @@ impl TrackingDriver {
             queried_sql: Mutex::new(Vec::new()),
             query_databases: Mutex::new(Vec::new()),
             replies: Mutex::new(replies.into_iter().collect()),
+            resolved_scope: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -109,6 +115,7 @@ impl DatabaseDriver for TrackingDriver {
     ) -> Option<std::sync::Arc<dyn crate::schema_object_sql::SchemaObjectSql>> {
         Some(std::sync::Arc::new(RoutingTestSql {
             db_type: self.db_type.clone(),
+            resolved_scope: self.resolved_scope.clone(),
         }))
     }
 
@@ -387,9 +394,11 @@ async fn mysql_object_ddl_uses_database_when_schema_metadata_is_absent() {
     .await
     .unwrap();
 
+    // The SQL text itself is the MySQL driver's business; the shared command
+    // only has to hand the selected database to the driver's dialect scope.
     assert_eq!(
-        driver.queried_sql(),
-        vec!["SHOW CREATE PROCEDURE `target_db`.`refresh_cache`"]
+        *driver.resolved_scope.lock().unwrap(),
+        vec![Some("target_db".to_string())]
     );
 }
 

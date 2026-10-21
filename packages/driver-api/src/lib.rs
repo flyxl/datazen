@@ -84,10 +84,7 @@ pub use schema_object_commands::{
     execute_schema_object_command, extract_object_ddl_checked, is_schema_object_command,
     schema_object_command_definitions,
 };
-pub use schema_objects::{
-    dialect_family, list_objects_sql, list_privileges_sql, mysql_show_create_view_sql,
-    object_ddl_sql, object_ddl_sql_with_metadata, DatabaseObject, ObjectKind, PrivilegeGrant,
-};
+pub use schema_objects::{dialect_family, DatabaseObject, ObjectKind, PrivilegeGrant};
 pub use schema_scope_mapping::{
     MySqlViewMetadata, SchemaObjectScopeDependency, SchemaObjectScopeMapping,
 };

@@ -24,10 +24,7 @@ use crate::schema_dependencies::{
     SchemaObjectDependencies, SequenceDependencyUsageKind, MYSQL_DEPENDENCY_GRANTS_SQL,
     MYSQL_UDF_CATALOG_SQL,
 };
-use crate::schema_objects::{
-    list_objects_sql_for_database, list_privileges_sql, object_ddl_sql_with_metadata,
-    DatabaseObject, ObjectKind, PrivilegeGrant,
-};
+use crate::schema_objects::{DatabaseObject, ObjectKind, PrivilegeGrant};
 use crate::sql_target::SqlTarget;
 use crate::traits::DatabaseDriver;
 use crate::types::{ColumnInfo, DriverError, QueryResult, Value};
@@ -283,11 +280,11 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
                     ));
                 }
             };
-            // The dialect SQL belongs to the driver; the shared tables are
-            // the fallback for dialects that have not published a provider.
+            // The dialect SQL belongs to the driver: a driver without a
+            // provider exposes no schema objects.
             let sql = match driver.schema_object_sql() {
                 Some(provider) => provider.list_objects_sql_for_database(parsed, database),
-                None => list_objects_sql_for_database(db_type, parsed, database),
+                None => None,
             };
             let Some(sql) = sql else {
                 return Ok(CommandResult::new(json!({ "objects": [] })));
@@ -320,9 +317,6 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
             let provider = driver.schema_object_sql();
             let object_schema = match provider.as_ref() {
                 Some(provider) => provider.ddl_schema_scope(schema, database),
-                None if crate::schema_objects::dialect_family(db_type) == "mysql" => {
-                    schema.or(database)
-                }
                 None => schema,
             };
             let ddl_request = crate::schema_object_sql::ObjectDdlRequest {
@@ -335,7 +329,7 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
             };
             let sql = match provider.as_ref() {
                 Some(provider) => provider.object_ddl_sql(&ddl_request),
-                None => object_ddl_sql_with_metadata(db_type, parsed, name, object_schema),
+                None => None,
             };
             let Some(sql) = sql else {
                 return Err(DriverError::InvalidConfig(
@@ -349,14 +343,6 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
                     provider.view_metadata_sql(name, object_schema)
                 }
                 Some(_) => None,
-                None if parsed == ObjectKind::View
-                    && crate::schema_objects::dialect_family(db_type) == "mysql" =>
-                {
-                    Some(crate::schema_objects::mysql_show_create_view_sql(
-                        name,
-                        object_schema,
-                    ))
-                }
                 None => None,
             };
             let view_metadata = if let Some(view_metadata_sql) = view_metadata_sql {
@@ -382,7 +368,7 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
         "list_privileges" => {
             let sql = match driver.schema_object_sql() {
                 Some(provider) => provider.list_privileges_sql(),
-                None => list_privileges_sql(db_type),
+                None => None,
             };
             let Some(sql) = sql else {
                 return Ok(CommandResult::new(json!({ "grants": [] })));

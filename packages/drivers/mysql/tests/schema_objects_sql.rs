@@ -4,56 +4,83 @@ use datazen_driver_api::schema_dependencies::{
     mysql_table_dependencies_sql, view_dependencies_sql,
 };
 use datazen_driver_api::schema_object_commands::parse_object_list;
-use datazen_driver_api::schema_objects::{
-    list_objects_sql, list_privileges_sql, mysql_show_create_view_sql, object_ddl_sql, ObjectKind,
-};
+use datazen_driver_api::schema_object_sql::{ObjectDdlRequest, SchemaObjectSql};
+use datazen_driver_api::schema_objects::ObjectKind;
+use datazen_driver_mysql::MysqlSchemaObjectSql;
+
+/// The dialect SQL now lives in the driver crate, so the test reads it from
+/// the driver's own provider instead of the removed shared tables.
+fn list_objects_sql(kind: ObjectKind) -> Option<String> {
+    MysqlSchemaObjectSql.list_objects_sql(kind)
+}
+
+fn object_ddl_sql(kind: ObjectKind, name: &str, schema: Option<&str>) -> Option<String> {
+    MysqlSchemaObjectSql.object_ddl_sql(&ObjectDdlRequest {
+        kind,
+        name,
+        schema,
+        signature: None,
+        target_schema: None,
+        target_name: None,
+    })
+}
+
+fn list_privileges_sql() -> Option<String> {
+    MysqlSchemaObjectSql.list_privileges_sql()
+}
+
+fn mysql_show_create_view_sql(name: &str, schema: Option<&str>) -> String {
+    MysqlSchemaObjectSql
+        .view_metadata_sql(name, schema)
+        .expect("MySQL view metadata SQL")
+}
 use datazen_driver_api::{ColumnInfo, QueryResult, Value};
 
 #[test]
 fn procedure_list_uses_information_schema() {
-    let sql = list_objects_sql("mysql", ObjectKind::Procedure).unwrap();
+    let sql = list_objects_sql(ObjectKind::Procedure).unwrap();
     assert!(sql.contains("information_schema.ROUTINES"));
     assert!(sql.contains("ROUTINE_TYPE = 'PROCEDURE'"));
 }
 
 #[test]
 fn list_and_ddl_cover_all_kinds() {
-    assert!(list_objects_sql("mysql", ObjectKind::Function)
+    assert!(list_objects_sql(ObjectKind::Function)
         .unwrap()
         .contains("FUNCTION"));
-    assert!(list_objects_sql("mysql", ObjectKind::Trigger)
+    assert!(list_objects_sql(ObjectKind::Trigger)
         .unwrap()
         .contains("information_schema.TRIGGERS"));
-    assert!(object_ddl_sql("mysql", ObjectKind::Procedure, "p", None)
+    assert!(object_ddl_sql(ObjectKind::Procedure, "p", None)
         .unwrap()
         .contains("SHOW CREATE PROCEDURE"));
-    assert!(object_ddl_sql("mysql", ObjectKind::Trigger, "t", None)
+    assert!(object_ddl_sql(ObjectKind::Trigger, "t", None)
         .unwrap()
         .contains("SHOW CREATE TRIGGER"));
 }
 
 #[test]
 fn routines_and_triggers_preserve_identity_and_mysql_has_no_sequences() {
-    let functions = list_objects_sql("mysql", ObjectKind::Function).unwrap();
+    let functions = list_objects_sql(ObjectKind::Function).unwrap();
     assert!(functions.contains("ROUTINE_TYPE = 'FUNCTION'"));
-    let triggers = list_objects_sql("mysql", ObjectKind::Trigger).unwrap();
+    let triggers = list_objects_sql(ObjectKind::Trigger).unwrap();
     assert!(triggers.contains("EVENT_OBJECT_TABLE AS target_name"));
-    let ddl = object_ddl_sql("mysql", ObjectKind::Function, "f`n", Some("db`name")).unwrap();
+    let ddl = object_ddl_sql(ObjectKind::Function, "f`n", Some("db`name")).unwrap();
     assert!(ddl.contains("SHOW CREATE FUNCTION `db``name`.`f``n`"));
-    assert!(list_objects_sql("mysql", ObjectKind::Sequence).is_none());
-    assert!(object_ddl_sql("mysql", ObjectKind::Sequence, "seq", None).is_none());
+    assert!(list_objects_sql(ObjectKind::Sequence).is_none());
+    assert!(object_ddl_sql(ObjectKind::Sequence, "seq", None).is_none());
 }
 
 #[test]
 fn view_queries_return_view_body_metadata_contract() {
-    let list = list_objects_sql("mysql", ObjectKind::View).unwrap();
+    let list = list_objects_sql(ObjectKind::View).unwrap();
     assert!(list.contains("information_schema.VIEWS"));
     // MySQL's `*_SCHEMA` columns identify databases, not a separate namespace
     // schema, so the list projects a null schema and the caller keeps database
     // ownership in the independent target. The `schema` *field name* is still
     // what the shared object-list parser consumes (see the alias contract test).
     assert!(list.contains("NULL AS `schema`"));
-    let ddl = object_ddl_sql("mysql", ObjectKind::View, "active_users", None).unwrap();
+    let ddl = object_ddl_sql(ObjectKind::View, "active_users", None).unwrap();
     assert!(ddl.contains("VIEW_DEFINITION AS ddl"));
     assert!(ddl.contains("TABLE_SCHEMA AS view_schema"));
     assert!(ddl.contains("DEFINER AS view_definer"));
@@ -76,7 +103,7 @@ fn object_lists_quote_reserved_schema_alias_and_preserve_parser_contract() {
         ObjectKind::Trigger,
         ObjectKind::View,
     ] {
-        let sql = list_objects_sql("mysql", kind).unwrap();
+        let sql = list_objects_sql(kind).unwrap();
         assert!(
             sql.contains("AS `schema`"),
             "{kind:?} list must retain the `schema` result name with MySQL quoting: {sql}"
@@ -149,13 +176,13 @@ fn table_dependency_catalog_proves_selected_fk_metadata_before_emitting_edges() 
 
 #[test]
 fn ddl_quotes_backtick_in_ident() {
-    let sql = object_ddl_sql("mysql", ObjectKind::Function, "foo`bar", None).unwrap();
+    let sql = object_ddl_sql(ObjectKind::Function, "foo`bar", None).unwrap();
     assert!(sql.contains("`foo``bar`"));
 }
 
 #[test]
 fn privilege_sql_avoids_reserved_schema_alias() {
-    let mysql = list_privileges_sql("mariadb").unwrap();
+    let mysql = list_privileges_sql().unwrap();
     assert!(mysql.contains("TABLE_PRIVILEGES"));
     assert!(
         mysql.contains("USER_PRIVILEGES"),
@@ -168,5 +195,59 @@ fn privilege_sql_avoids_reserved_schema_alias() {
     assert!(
         !mysql.contains("AS schema,"),
         "bare AS schema breaks MySQL 1064"
+    );
+}
+
+#[test]
+fn object_catalog_can_target_a_database_without_using_connection_default() {
+    let sql = MysqlSchemaObjectSql
+        .list_objects_sql_for_database(ObjectKind::Procedure, Some("manual'catalog"))
+        .unwrap();
+    assert!(sql.contains("ROUTINE_SCHEMA = 'manual''catalog'"));
+    assert!(!sql.contains("DATABASE()"));
+
+    let default_sql = MysqlSchemaObjectSql
+        .list_objects_sql_for_database(ObjectKind::Function, None)
+        .unwrap();
+    assert!(default_sql.contains("ROUTINE_SCHEMA = DATABASE()"));
+}
+
+#[test]
+fn trigger_catalog_includes_attached_relation() {
+    let list = list_objects_sql(ObjectKind::Trigger).unwrap();
+    assert!(list.contains("information_schema.TRIGGERS"));
+    assert!(list.contains("target_name"));
+}
+
+#[test]
+fn unsupported_sequence_families_fail_closed() {
+    assert!(list_objects_sql(ObjectKind::Sequence).is_none());
+    assert!(object_ddl_sql(ObjectKind::Sequence, "seq", None).is_none());
+}
+
+#[test]
+fn every_listed_kind_has_ddl() {
+    assert!(object_ddl_sql(ObjectKind::Table, "users", None).is_some());
+    assert!(object_ddl_sql(ObjectKind::View, "active_users", Some("public")).is_some());
+}
+
+#[test]
+fn procedure_ddl_targets_the_selected_database() {
+    // MySQL folds the catalog into the schema slot, so a DDL lookup without
+    // schema metadata still names the selected database.
+    let ddl = MysqlSchemaObjectSql
+        .object_ddl_sql(&datazen_driver_api::schema_object_sql::ObjectDdlRequest {
+            kind: ObjectKind::Procedure,
+            name: "refresh_cache",
+            schema: None,
+            signature: None,
+            target_schema: None,
+            target_name: None,
+        })
+        .unwrap();
+    assert_eq!(ddl, "SHOW CREATE PROCEDURE `refresh_cache`");
+    assert_eq!(
+        MysqlSchemaObjectSql.ddl_schema_scope(None, Some("target_db")),
+        Some("target_db")
     );
 }

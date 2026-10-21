@@ -25,6 +25,7 @@ mod migration;
 mod mysql;
 mod resource;
 mod resource_capabilities;
+mod schema_object_sql;
 mod schema_scope_mapping;
 mod sql_target;
 mod structure;
@@ -34,6 +35,7 @@ pub use migration::{MysqlMigrationCapabilities, MysqlMigrationRenderer};
 pub use mysql::*;
 use resource::MysqlResourceProvider;
 use resource_capabilities::mysql_capability_set;
+pub use schema_object_sql::MysqlSchemaObjectSql;
 pub use sync_adapter::MysqlSyncAdapter;
 pub use type_normalizer::MysqlTypeNormalizer;
 
