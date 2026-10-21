@@ -125,7 +125,7 @@ fn is_write_verb(verb: &str) -> bool {
 }
 
 fn matching_close_paren(tokens: &[String], open: usize) -> Option<usize> {
-    let mut depth = 0;
+    let mut depth: usize = 0;
     for (index, token) in tokens.iter().enumerate().skip(open) {
         match token.as_str() {
             "(" => depth += 1,
@@ -249,7 +249,7 @@ fn has_write_operation(tokens: &[String]) -> bool {
 
 fn has_select_into(tokens: &[String]) -> bool {
     let mut select_depths = Vec::new();
-    let mut depth = 0;
+    let mut depth: usize = 0;
     for token in tokens {
         match token.as_str() {
             "(" => depth += 1,
