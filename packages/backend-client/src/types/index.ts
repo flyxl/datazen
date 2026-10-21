@@ -9,6 +9,8 @@
 export type { Counter, Id, Timestamp } from './identity';
 export { toCounter, toId, toTimestamp } from './identity';
 
+export type { CountStrategy } from './tableData';
+
 export type {
   AttachmentRequest,
   AttachmentState,

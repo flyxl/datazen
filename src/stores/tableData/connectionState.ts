@@ -37,6 +37,10 @@ export function emptyTableState(context: TableChangeContext | null = null): Tabl
     columns: [],
     rows: [],
     totalRows: 0,
+    // A panel that has never read a row has no count to doubt yet: the
+    // first response says how much of it may be trusted.
+    totalRowsKind: 'exact',
+    defaultOrderOverride: 'inherit',
     page: 0,
     pageSize: 50,
     filters: [],

@@ -1,3 +1,4 @@
+import type { CountStrategy } from '@datazen/backend-client';
 import type { ColumnSchema, FilterCondition, SortCondition } from '../../types';
 import type {
   PendingInsert,
@@ -18,6 +19,21 @@ export interface TableState {
   columns: ColumnSchema[];
   rows: Record<string, unknown>[];
   totalRows: number;
+  /**
+   * How much `totalRows` may be trusted.
+   *
+   * The three states are the whole point of the count contract: an exact
+   * number, an estimate that has to be shown as "about N rows", and "this
+   * database cannot say". A response that carries no kind keeps the value
+   * this panel already had — that is what a paged re-read sends.
+   */
+  totalRowsKind: CountStrategy;
+  /**
+   * The panel's temporary override of the default order. `inherit` follows
+   * the global setting; the other values are this panel's own choice and are
+   * not persisted.
+   */
+  defaultOrderOverride: 'inherit' | 'primaryKeyAsc' | 'primaryKeyDesc' | 'none';
   page: number;
   pageSize: number;
   /** Applied filters used by queries. */

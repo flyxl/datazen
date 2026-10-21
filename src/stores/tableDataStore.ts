@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { tableManualHandle } from '../lib/session/tableSession';
 import { databaseCommands } from '../commands/database';
 import { t } from '../locales/t';
-import type { DatabaseType, FilterCondition, SortCondition } from '../types';
+import type { CountStrategy } from '@datazen/backend-client';
+import type { ColumnSchema, DatabaseType, FilterCondition, SortCondition } from '../types';
 import { DB_REGISTRY } from '../lib/databaseTypes';
 import {
   buildRowIdentity,
@@ -59,6 +60,11 @@ export interface LoadTableDataParams extends TableTarget {
   panelId: string;
   /** Reuse the cached total instead of running COUNT(*) (pagination/sort re-reads). */
   skipCount?: boolean;
+  /**
+   * The row-count strategy to ask the host for. Omitted means "the host
+   * decides" — which is what the driver declares.
+   */
+  countStrategy?: CountStrategy;
 }
 
 /** Every action is scoped to one table/view panel, like `panelStore`'s queryExec map. */
@@ -71,7 +77,7 @@ interface TableDataStore
 
   loadTableData: (params: LoadTableDataParams) => Promise<void>;
   /** Re-run the load a panel last performed, keeping its page/filters/sorts. */
-  reloadPanel: (panelId: string, opts?: { skipCount?: boolean }) => void;
+  reloadPanel: (panelId: string, opts?: { skipCount?: boolean; countStrategy?: CountStrategy }) => void;
   /** Drop a panel's slice entirely — called when the tab closes. */
   removePanel: (panelId: string) => void;
   /**
@@ -94,6 +100,11 @@ interface TableDataStore
   setFilterPanelOpen: (panelId: string, open: boolean) => void;
   setVisibleColumns: (panelId: string, columns: string[] | null) => void;
   setSort: (panelId: string, sort: SortCondition) => void;
+  /** Change the panel's temporary default-order override. */
+  setDefaultOrderOverride: (
+    panelId: string,
+    override: TableState['defaultOrderOverride'],
+  ) => void;
   setDetailRow: (panelId: string, index: number | null) => void;
 
   startEdit: (panelId: string, row: number, col: string) => void;
@@ -140,6 +151,33 @@ function patchPanelForReload(
     highlightedNewRowKey: null,
     requestRevision: ts.requestRevision + 1,
   }));
+}
+
+/**
+ * The order a request asks for.
+ *
+ * The request's `defaultOrderColumns` carries column names but no direction,
+ * so "the primary key, descending" is an **explicit sort** rather than a
+ * default order. An explicit sort the user made always wins; a composite
+ * primary key cannot be expressed by the one-column sort channel at all, so
+ * the descending override is left to the interface, which explains why it is
+ * greyed out there.
+ */
+function orderRequest(
+  override: TableState['defaultOrderOverride'],
+  columns: ColumnSchema[],
+  sorts: SortCondition[],
+): { defaultOrderColumns?: string[]; sorts: SortCondition[] } {
+  if (override === 'none') {
+    return { defaultOrderColumns: [], sorts };
+  }
+  if (override === 'primaryKeyDesc' && sorts.length === 0) {
+    const keyColumns = columns.filter((column) => column.isPrimaryKey);
+    if (keyColumns.length === 1) {
+      return { sorts: [{ column: keyColumns[0].name, descending: true }] };
+    }
+  }
+  return { sorts };
 }
 
 function targetOf(context: TableChangeContext): TableTarget {
@@ -193,6 +231,10 @@ function commitFetchedPage(
       sanitizedVisible && sanitizedVisible.length === res.columns.length ? null : sanitizedVisible,
     rows: rowsWithPending,
     totalRows: res.totalRows ?? current.totalRows,
+    // A response that carries no kind says nothing about the count — the
+    // panel keeps the value it had. Only a kind that is actually reported
+    // replaces it.
+    totalRowsKind: res.totalRowsKind ?? current.totalRowsKind,
     page: res.page,
     pageSize: res.pageSize,
     context,
@@ -209,7 +251,7 @@ function commitFetchedPage(
 export const useTableDataStore = create<TableDataStore>((set, get) => ({
   byPanel: new Map(),
 
-  loadTableData: async ({ panelId, skipCount, ...target }) => {
+  loadTableData: async ({ panelId, skipCount, countStrategy, ...target }) => {
     const context = buildTableContext(target);
     const existing = get().byPanel.get(panelId) ?? emptyTableState(context);
     const requestRevision = existing.requestRevision;
@@ -235,6 +277,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     set({ byPanel: states });
 
     try {
+      const order = orderRequest(existing.defaultOrderOverride, existing.columns, sorts);
       const res = await databaseCommands.getTableData({
         context,
         manualHandle: tableManualHandle(panelId),
@@ -243,9 +286,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         page,
         pageSize,
         filters: filters.filter(isCompleteFilter),
-        sorts,
+        sorts: order.sorts,
         skipCount,
         filterLogic,
+        countStrategy,
+        defaultOrderColumns: order.defaultOrderColumns,
         database: context.database,
         // The table's own schema, not a guess: without it the host falls back
         // to the connection default and a table outside it reads as missing.
@@ -274,7 +319,12 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   reloadPanel: (panelId, opts) => {
     const context = get().byPanel.get(panelId)?.context;
     if (!context) return;
-    void get().loadTableData({ panelId, ...targetOf(context), skipCount: opts?.skipCount });
+    void get().loadTableData({
+      panelId,
+      ...targetOf(context),
+      skipCount: opts?.skipCount,
+      countStrategy: opts?.countStrategy,
+    });
   },
 
   removePanel: (panelId) => {
@@ -398,6 +448,17 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   setSort: (panelId, sort) => {
     patchPanelForReload(get, set, panelId, () => ({ sorts: [sort], page: 0 }));
+    get().reloadPanel(panelId, { skipCount: true });
+  },
+
+  setDefaultOrderOverride: (panelId, override) => {
+    patchPanelForReload(get, set, panelId, () => ({
+      defaultOrderOverride: override,
+      // The override replaces the default order, so an explicit sort the
+      // user made is no longer the only ordering in force.
+      sorts: [],
+      page: 0,
+    }));
     get().reloadPanel(panelId, { skipCount: true });
   },
 
