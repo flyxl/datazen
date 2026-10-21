@@ -282,7 +282,10 @@ pub mod test_harness {
         get_connections_impl(state).await.map_err(|e| e.to_string())
     }
 
-    pub async fn connect(state: &AppState, connection_id: String) -> Result<String, String> {
+    pub async fn connect(
+        state: &AppState,
+        connection_id: String,
+    ) -> Result<crate::commands::connection::ConnectionSessionRef, String> {
         connect_impl(state, connection_id)
             .await
             .map_err(|e| e.to_string())

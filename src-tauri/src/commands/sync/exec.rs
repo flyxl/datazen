@@ -601,12 +601,12 @@ pub(crate) async fn start_data_sync_apply_job_impl(
         .unwrap_or_else(|| format!("data-sync-{}", uuid::Uuid::new_v4()));
     let requested_job_id = job_id.clone();
     let source_endpoint = crate::data_sync::Endpoint {
-        connection_id: sessions.source_id.clone(),
+        db_session_id: sessions.source_id.clone(),
         database: plan.source_database.clone(),
         schema: plan.source_schema.clone(),
     };
     let target_endpoint = crate::data_sync::Endpoint {
-        connection_id: sessions.target_id.clone(),
+        db_session_id: sessions.target_id.clone(),
         database: plan.target_database.clone(),
         schema: plan.target_schema.clone(),
     };

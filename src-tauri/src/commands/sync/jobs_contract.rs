@@ -237,12 +237,12 @@ async fn prepare_job_freezes_a_change_set_and_closes_both_snapshots() {
     let pair = diff_pair("prepare-freeze").await;
     let spec = PrepareSpec {
         source: Endpoint {
-            connection_id: pair.source_session.clone(),
+            db_session_id: pair.source_session.clone(),
             database: "app".into(),
             schema: None,
         },
         target: Endpoint {
-            connection_id: pair.target_session.clone(),
+            db_session_id: pair.target_session.clone(),
             database: "app".into(),
             schema: None,
         },

@@ -229,12 +229,12 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
 
     let plan_id = Uuid::new_v4().to_string();
     let source_endpoint = Endpoint {
-        connection_id: sessions.source_id.clone(),
+        db_session_id: sessions.source_id.clone(),
         database: source_database_name.clone(),
         schema: source_schema_name.clone(),
     };
     let target_endpoint = Endpoint {
-        connection_id: sessions.target_id.clone(),
+        db_session_id: sessions.target_id.clone(),
         database: target_database_name.clone(),
         schema: target_schema_name.clone(),
     };

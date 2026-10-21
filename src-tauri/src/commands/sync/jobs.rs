@@ -627,7 +627,7 @@ async fn endpoint_ref(
 ) -> Result<EndpointRef, CommandError> {
     let identity = crate::services::migration_endpoint::session_identity(
         state,
-        &endpoint.connection_id,
+        &endpoint.db_session_id,
         Some((&endpoint.database, endpoint.schema.as_deref())),
     )
     .await?;

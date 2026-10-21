@@ -213,7 +213,7 @@ describe('BackupWindow connection list', () => {
           ];
         }
         if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-        if (cmd === 'connect') return 'live-1';
+        if (cmd === 'connect') return { connectionId: "pg-1", dbSessionId: "live-1" };
         if (cmd === 'get_connection_info') return { serverVersion: '16' };
         if (args?.request?.command === 'list_databases')
           return { data: { databases: ['app', 'postgres'] } };
@@ -281,7 +281,7 @@ describe('BackupWindow connection list', () => {
           ];
         }
         if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-        if (cmd === 'connect') return 'live-1';
+        if (cmd === 'connect') return { connectionId: "pg-1", dbSessionId: "live-1" };
         if (cmd === 'get_connection_info') return { serverVersion: '16' };
         if (args?.request?.command === 'list_databases')
           return { data: { databases: ['app', 'postgres'] } };
@@ -374,7 +374,7 @@ describe('BackupWindow backup flow', () => {
       async (cmd: string, args?: { request?: { command?: string } }) => {
         if (cmd === 'get_connections') return pgOnlyConnections();
         if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-        if (cmd === 'connect') return 'live-1';
+        if (cmd === 'connect') return { connectionId: "pg-1", dbSessionId: "live-1" };
         if (cmd === 'get_connection_info') return { serverVersion: '16' };
         if (args?.request?.command === 'list_databases')
           return { data: { databases: ['app', 'postgres'] } };
@@ -527,7 +527,7 @@ describe('BackupWindow backup flow', () => {
       async (cmd: string, args?: { request?: { command?: string } }) => {
         if (cmd === 'get_connections') return pgOnlyConnections();
         if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-        if (cmd === 'connect') return 'live-1';
+        if (cmd === 'connect') return { connectionId: "pg-1", dbSessionId: "live-1" };
         if (cmd === 'get_connection_info') return { serverVersion: '16' };
         if (args?.request?.command === 'list_databases')
           return { data: { databases: ['app', 'postgres'] } };

@@ -27,7 +27,8 @@ async fn discovers_commands_from_connection_and_executes_query() {
     let connection_id = conns[0].id.clone();
     let db_session_id = connect(&test.state, connection_id)
         .await
-        .expect("connect should return a runtime dbSessionId");
+        .expect("connect should return a runtime dbSessionId")
+        .db_session_id;
 
     let definitions = get_connection_commands(&test.state, db_session_id.clone())
         .await
