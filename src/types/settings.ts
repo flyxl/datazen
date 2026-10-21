@@ -1,39 +1,13 @@
 /**
- * App settings and filter/sort types.
+ * App settings types.
  *
  * NOTE: this module has no importers. `AppSettings` — the type the app
- * actually uses — lives in `./index`, and every declaration still here is a
- * duplicate of one there too. The `AppSettings` copy this branch extended has
- * been deleted; removing the remaining `connection.ts` / `settings.ts`
- * duplication is a separate cleanup.
+ * actually uses — lives in `./index`, and the filter and sort types that used
+ * to be duplicated here now live there too, in one place. The remaining
+ * `connection.ts` / `settings.ts` duplication is a separate cleanup.
  */
-import type { Value } from './connection';
-
 export type {
   SettingsMcpPermissionMode as McpPermissionMode,
   SettingsSqlFormatOptions as SqlFormatOptions,
   SettingsSqlExecutionStrategy as SqlExecutionStrategy,
 } from '@datazen/backend-client';
-
-export type FilterOperator =
-  | 'eq'
-  | 'ne'
-  | 'gt'
-  | 'lt'
-  | 'gte'
-  | 'lte'
-  | 'like'
-  | 'in'
-  | 'isNull'
-  | 'isNotNull';
-
-export interface FilterCondition {
-  column: string;
-  operator: FilterOperator;
-  value?: Value;
-}
-
-export interface SortCondition {
-  column: string;
-  descending: boolean;
-}
