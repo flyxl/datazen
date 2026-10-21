@@ -228,7 +228,9 @@ impl DataZenMcpServer {
         description = "List all available user-defined workflows. Workflows are reusable AI automations combining prompts and database operations."
     )]
     pub(crate) async fn list_workflows(&self) -> Result<String, McpError> {
-        let workflows = self.app_state.workflow_registry.list().await;
+        // MCP 读的是桌面自己那一个组织的数据。
+        let scope = crate::platform::local_organization_scope();
+        let workflows = self.app_state.workflow_registry.list(&scope).await;
         serde_json::to_string_pretty(&workflows)
             .map_err(|e| McpError::internal_error(e.to_string(), None))
     }
@@ -243,7 +245,10 @@ impl DataZenMcpServer {
         let workflow = self
             .app_state
             .workflow_registry
-            .get(&input.workflow_id)
+            .get(
+                &crate::platform::local_organization_scope(),
+                &input.workflow_id,
+            )
             .await
             .ok_or_else(|| {
                 tool_help::tool_error(

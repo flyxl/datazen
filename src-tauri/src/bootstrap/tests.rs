@@ -269,7 +269,7 @@ async fn finish_app_state_shares_one_app_db_between_the_registry_and_the_store()
     };
     state
         .workflow_registry
-        .save_workflow(&definition)
+        .save_workflow(&crate::platform::local_organization_scope(), &definition)
         .await
         .expect("save through the registry");
 
@@ -284,7 +284,10 @@ async fn finish_app_state_shares_one_app_db_between_the_registry_and_the_store()
     assert!(!record.definition_yaml.is_empty());
 
     // The builtin seeding journey reaches the same app db.
-    let listed = state.workflow_registry.list().await;
+    let listed = state
+        .workflow_registry
+        .list(&crate::platform::local_organization_scope())
+        .await;
     assert!(
         listed.len() >= 3,
         "expected the host's builtin workflows, got {}",

@@ -6,22 +6,35 @@ use datazen_feature_core::dashboard::types::{ChartConfig, Dashboard, ViewMode};
 use datazen_feature_core::workflow::model::{
     WorkflowDefinition, WorkflowVisibility as WfVisibility,
 };
+use datazen_platform_api::ports::scope::OrganizationScope;
 struct DesktopCreationHost<'a> {
     app_db: &'a AppDb,
     registry: Option<&'a WorkflowRegistry>,
 }
 #[async_trait::async_trait]
 impl datazen_feature_core::dashboard::create::WidgetCreationHost for DesktopCreationHost<'_> {
-    fn dashboard(&self, id: &str) -> Result<Dashboard, String> {
-        datazen_feature_core::dashboard::store::get_dashboard(self.app_db, id)
+    fn dashboard(&self, scope: &OrganizationScope, id: &str) -> Result<Dashboard, String> {
+        datazen_feature_core::dashboard::store::get_dashboard(scope, self.app_db, id)
             .map_err(|error| error.to_string())
     }
-    fn save_dashboard(&self, dashboard: Dashboard) -> Result<(), String> {
-        datazen_feature_core::dashboard::store::save_dashboard(self.app_db, dashboard)
+    fn save_dashboard(
+        &self,
+        scope: &OrganizationScope,
+        dashboard: Dashboard,
+    ) -> Result<(), String> {
+        datazen_feature_core::dashboard::store::save_dashboard(scope, self.app_db, dashboard)
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
-    fn workflow_summary(&self, id: &str) -> Result<(String, WfVisibility), String> {
+    fn workflow_summary(
+        &self,
+        scope: &OrganizationScope,
+        id: &str,
+    ) -> Result<(String, WfVisibility), String> {
+        // 桌面是单租户：别的组织的工作流对本组织**不存在**（CM-05）。
+        if !crate::platform::scope::is_local_scope(scope) {
+            return Err(format!("Workflow '{id}' not found"));
+        }
         let record = self
             .app_db
             .get_workflow(id)
@@ -34,21 +47,28 @@ impl datazen_feature_core::dashboard::create::WidgetCreationHost for DesktopCrea
             },
         ))
     }
-    async fn workflow(&self, id: &str) -> Option<WorkflowDefinition> {
+    async fn workflow(&self, scope: &OrganizationScope, id: &str) -> Option<WorkflowDefinition> {
         match self.registry {
-            Some(registry) => registry.get(id).await,
+            Some(registry) => registry.get(scope, id).await,
             None => None,
         }
     }
-    async fn save_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), String> {
+    async fn save_workflow(
+        &self,
+        scope: &OrganizationScope,
+        workflow: &WorkflowDefinition,
+    ) -> Result<(), String> {
         self.registry
             .ok_or("Workflow repository unavailable")?
-            .save_workflow(workflow)
+            .save_workflow(scope, workflow)
             .await
             .map(|_| ())
     }
 }
+// 组织作用域是边界参数，不参与「这组入参讲的是同一件事」的语义。
+#[allow(clippy::too_many_arguments)]
 pub async fn create_widget_from_sql(
+    scope: &OrganizationScope,
     app_db: &AppDb,
     registry: &WorkflowRegistry,
     dashboard_id: &str,
@@ -59,6 +79,7 @@ pub async fn create_widget_from_sql(
     chart_config: Option<ChartConfig>,
 ) -> Result<CreateWidgetResult, CreateWidgetError> {
     datazen_feature_core::dashboard::create::create_widget_from_sql(
+        scope,
         &DesktopCreationHost {
             app_db,
             registry: Some(registry),
@@ -73,6 +94,7 @@ pub async fn create_widget_from_sql(
     .await
 }
 pub async fn update_hidden_workflow_sql(
+    scope: &OrganizationScope,
     app_db: &AppDb,
     registry: &WorkflowRegistry,
     workflow_id: &str,
@@ -80,6 +102,7 @@ pub async fn update_hidden_workflow_sql(
     sql: &str,
 ) -> Result<(), CreateWidgetError> {
     datazen_feature_core::dashboard::create::update_hidden_workflow_sql(
+        scope,
         &DesktopCreationHost {
             app_db,
             registry: Some(registry),
@@ -91,6 +114,7 @@ pub async fn update_hidden_workflow_sql(
     .await
 }
 pub async fn create_widget_from_workflow(
+    scope: &OrganizationScope,
     app_db: &AppDb,
     dashboard_id: &str,
     workflow_id: &str,
@@ -99,6 +123,7 @@ pub async fn create_widget_from_workflow(
     chart_config: Option<ChartConfig>,
 ) -> Result<CreateWidgetResult, CreateWidgetError> {
     datazen_feature_core::dashboard::create::create_widget_from_workflow(
+        scope,
         &DesktopCreationHost {
             app_db,
             registry: None,
@@ -142,7 +167,12 @@ mod tests {
             enabled: true,
             refresh_paused: false,
         };
-        save_dashboard(&*db, dash.clone()).unwrap();
+        save_dashboard(
+            &crate::platform::local_organization_scope(),
+            &*db,
+            dash.clone(),
+        )
+        .unwrap();
         (db, registry, dash)
     }
 
@@ -150,6 +180,7 @@ mod tests {
     async fn create_widget_from_sql_adds_hidden_workflow() {
         let (db, registry, dash) = setup().await;
         let result = create_widget_from_sql(
+            &crate::platform::local_organization_scope(),
             &db,
             &registry,
             &dash.id,
@@ -172,6 +203,7 @@ mod tests {
     async fn update_hidden_workflow_sql_updates_query() {
         let (db, registry, dash) = setup().await;
         let created = create_widget_from_sql(
+            &crate::platform::local_organization_scope(),
             &db,
             &registry,
             &dash.id,
@@ -185,6 +217,7 @@ mod tests {
         .unwrap();
 
         update_hidden_workflow_sql(
+            &crate::platform::local_organization_scope(),
             &db,
             &registry,
             &created.widget.workflow_id,
@@ -194,7 +227,13 @@ mod tests {
         .await
         .unwrap();
 
-        let wf = registry.get(&created.widget.workflow_id).await.unwrap();
+        let wf = registry
+            .get(
+                &crate::platform::local_organization_scope(),
+                &created.widget.workflow_id,
+            )
+            .await
+            .unwrap();
         assert_eq!(wf.connection.as_deref(), Some("cfg-2"));
         match &wf.steps[0] {
             WorkflowStep::Query { sql, .. } => assert_eq!(sql, "SELECT 2 AS v"),
@@ -218,9 +257,16 @@ mod tests {
         })
         .unwrap();
 
-        let err = update_hidden_workflow_sql(&db, &registry, "user-wf", "cfg", "SELECT 2")
-            .await
-            .unwrap_err();
+        let err = update_hidden_workflow_sql(
+            &crate::platform::local_organization_scope(),
+            &db,
+            &registry,
+            "user-wf",
+            "cfg",
+            "SELECT 2",
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, CreateWidgetError::Validation(_)));
     }
 
@@ -238,9 +284,17 @@ mod tests {
         })
         .unwrap();
 
-        let err = create_widget_from_workflow(&db, &dash.id, "hidden", None, ViewMode::Table, None)
-            .await
-            .unwrap_err();
+        let err = create_widget_from_workflow(
+            &crate::platform::local_organization_scope(),
+            &db,
+            &dash.id,
+            "hidden",
+            None,
+            ViewMode::Table,
+            None,
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, CreateWidgetError::Validation(_)));
     }
 }

@@ -11,6 +11,7 @@ pub mod policy;
 pub mod repositories;
 pub mod resource_budget;
 pub mod resource_mapping;
+pub mod scope;
 pub mod session_backend;
 pub mod session_commands;
 mod target_metadata;
@@ -23,6 +24,7 @@ pub use identity::{
 };
 pub use ipc::{IpcCallScope, IPC_SESSION_PURPOSE};
 pub use live_source::DesktopLiveConnectionSource;
+pub use scope::{is_local_scope, local_organization_scope};
 pub(crate) use target_metadata::into_execution_target;
 
 /// 结构性测试的公共取样器：抽掉**注释**与 `#[cfg(test)]` 之后的部分。

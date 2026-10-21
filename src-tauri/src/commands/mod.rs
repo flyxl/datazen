@@ -82,6 +82,7 @@ use datazen_application::error::ApiError;
 use datazen_driver_api::QueryExecutionId;
 use datazen_feature_core::ai::context::SchemaContextBuilder;
 use datazen_feature_core::ai::prompt_resolver::PromptResolver;
+use datazen_platform_api::ports::scope::OrganizationScope;
 use datazen_runtime::driver_registry::registry::DriverRegistry;
 use datazen_runtime::schema_cache::SchemaCache;
 use datazen_workspace_apps::manager::WappManager;
@@ -191,6 +192,20 @@ impl AppState {
     /// `is_some()` 判断把失败吞成默认行为。
     pub fn platform_require(&self) -> Result<&Arc<crate::platform::PlatformAdapter>, ApiError> {
         self.platform.require()
+    }
+
+    /// 本次 IPC 调用的**组织作用域**。
+    ///
+    /// 身份只来自 adapter 组装的请求上下文（INV-01）：作用域的组织 id 由
+    /// `DesktopIdentity` 决定，命令参数里没有任何字段能覆盖它。
+    /// 桌面是单租户，因此这个作用域永远是桌面自己那一个组织。
+    pub fn organization_scope(&self) -> Result<OrganizationScope, CommandError> {
+        let adapter = self
+            .platform_require()
+            .map_err(|error| CommandError::Internal(error.message))?;
+        Ok(OrganizationScope::from_context(
+            adapter.begin_call().context(),
+        ))
     }
 
     /// Lazily register AI providers + load prompt templates.

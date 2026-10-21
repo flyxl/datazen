@@ -15,7 +15,8 @@ use tauri::State;
 pub(crate) async fn workflow_list_impl(
     state: &AppState,
 ) -> Result<Vec<WorkflowListItem>, CommandError> {
-    Ok(state.workflow_registry.list().await)
+    let scope = state.organization_scope()?;
+    Ok(state.workflow_registry.list(&scope).await)
 }
 
 #[tauri::command]
@@ -31,9 +32,10 @@ pub(crate) async fn workflow_execute_impl(
     variables: serde_json::Value,
     connection_id: Option<String>,
 ) -> Result<WorkflowExecutionResult, CommandError> {
+    let scope = state.organization_scope()?;
     let workflow = state
         .workflow_registry
-        .get(&workflow_id)
+        .get(&scope, &workflow_id)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("Workflow '{workflow_id}' not found")))?;
 
@@ -71,9 +73,10 @@ pub async fn workflow_save(
     state: State<'_, AppState>,
     workflow: WorkflowDefinition,
 ) -> Result<(), CommandError> {
+    let scope = state.organization_scope()?;
     state
         .workflow_registry
-        .save_workflow(&workflow)
+        .save_workflow(&scope, &workflow)
         .await
         .map_err(CommandError::Internal)
 }
@@ -83,9 +86,10 @@ pub async fn workflow_save_yaml(
     state: State<'_, AppState>,
     yaml: String,
 ) -> Result<WorkflowDefinition, CommandError> {
+    let scope = state.organization_scope()?;
     state
         .workflow_registry
-        .save_workflow_yaml(&yaml)
+        .save_workflow_yaml(&scope, &yaml)
         .await
         .map_err(CommandError::Validation)
 }
@@ -95,6 +99,13 @@ pub async fn workflow_get_yaml(
     state: State<'_, AppState>,
     workflow_id: String,
 ) -> Result<String, CommandError> {
+    let scope = state.organization_scope()?;
+    // 桌面是单租户：别的组织的工作流对本组织**不存在**（CM-05）。
+    if !crate::platform::scope::is_local_scope(&scope) {
+        return Err(CommandError::NotFound(format!(
+            "Workflow '{workflow_id}' not found"
+        )));
+    }
     let record = state
         .store
         .app_db()
@@ -113,18 +124,20 @@ pub async fn workflow_delete(
     state: State<'_, AppState>,
     workflow_id: String,
 ) -> Result<(), CommandError> {
+    let scope = state.organization_scope()?;
     state
         .workflow_registry
-        .delete_workflow(&workflow_id)
+        .delete_workflow(&scope, &workflow_id)
         .await
         .map_err(|msg| CommandError::Validation(msg))
 }
 
 #[tauri::command]
 pub async fn workflow_reload(state: State<'_, AppState>) -> Result<(), CommandError> {
+    let scope = state.organization_scope()?;
     state
         .workflow_registry
-        .load_all()
+        .load_all(&scope)
         .await
         .map_err(CommandError::Internal)
 }
@@ -143,9 +156,10 @@ pub async fn workflow_get(
     state: State<'_, AppState>,
     workflow_id: String,
 ) -> Result<WorkflowDefinition, CommandError> {
+    let scope = state.organization_scope()?;
     state
         .workflow_registry
-        .get(&workflow_id)
+        .get(&scope, &workflow_id)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("Workflow '{workflow_id}' not found")))
 }

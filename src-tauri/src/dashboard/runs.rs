@@ -3,10 +3,17 @@
 //! The desktop host keeps the run rows in its SQLite store; the rules that
 //! decide what a run looks like live in
 //! `datazen_feature_core::dashboard::runs`.
+//!
+//! ## 组织作用域
+//!
+//! 桌面是**单租户**：实现只承认自己那一个组织——别的组织的作用域按「不存在」
+//! 处理（空列表 / NotFound），不返回「无权限」类错误（CM-05）。
 
+use crate::platform::scope::is_local_scope;
 use crate::store::{AppDb, AppDbError};
 use datazen_feature_core::dashboard::records::WidgetRunRecord;
 use datazen_feature_core::dashboard::runs::{DashboardRunStore, DashboardRunsError};
+use datazen_platform_api::ports::scope::OrganizationScope;
 
 fn run_error(error: AppDbError) -> DashboardRunsError {
     DashboardRunsError::Db(error.to_string())
@@ -15,23 +22,38 @@ fn run_error(error: AppDbError) -> DashboardRunsError {
 impl DashboardRunStore for AppDb {
     fn write_run_row(
         &self,
+        scope: &OrganizationScope,
         run: WidgetRunRecord,
         retention_count: u32,
         retention_days: u32,
     ) -> Result<(), DashboardRunsError> {
+        if !is_local_scope(scope) {
+            return Err(DashboardRunsError::NotFound(run.id.clone()));
+        }
         self.write_run(run, retention_count, retention_days)
             .map_err(run_error)
     }
 
     fn list_run_rows(
         &self,
+        scope: &OrganizationScope,
         widget_id: &str,
         limit: u32,
     ) -> Result<Vec<WidgetRunRecord>, DashboardRunsError> {
+        if !is_local_scope(scope) {
+            return Ok(Vec::new());
+        }
         self.list_run_index(widget_id, limit).map_err(run_error)
     }
 
-    fn run_row(&self, run_id: &str) -> Result<WidgetRunRecord, DashboardRunsError> {
+    fn run_row(
+        &self,
+        scope: &OrganizationScope,
+        run_id: &str,
+    ) -> Result<WidgetRunRecord, DashboardRunsError> {
+        if !is_local_scope(scope) {
+            return Err(DashboardRunsError::NotFound(run_id.to_string()));
+        }
         self.get_run(run_id).map_err(run_error)
     }
 }
@@ -41,6 +63,7 @@ mod tests {
     use super::*;
     use datazen_feature_core::dashboard::runs::{get_run, list_run_index, write_run};
     use datazen_feature_core::dashboard::types::{MonitorSettings, WidgetRun, WidgetRunStatus};
+    use datazen_platform_api::id::OrganizationId;
 
     fn open_db() -> std::sync::Arc<AppDb> {
         let db = AppDb::open_in_memory().unwrap();
@@ -107,13 +130,23 @@ mod tests {
         }
     }
 
+    /// 桌面自己的组织作用域。
+    fn local_scope() -> OrganizationScope {
+        crate::platform::local_organization_scope()
+    }
+
+    /// 别的组织的作用域。
+    fn foreign_scope() -> OrganizationScope {
+        OrganizationScope::new(OrganizationId::new("another-organization"))
+    }
+
     #[test]
     fn write_run_roundtrip() {
         let db = open_db();
         let settings = MonitorSettings::default();
         let run = sample_run(7);
-        write_run(&*db, &run, &settings).unwrap();
-        let loaded = get_run(&*db, "d1", "w1", "run-7").unwrap();
+        write_run(&local_scope(), &*db, &run, &settings).unwrap();
+        let loaded = get_run(&local_scope(), &*db, "d1", "w1", "run-7").unwrap();
         assert_eq!(loaded.id, run.id);
         assert_eq!(loaded.columns, run.columns);
     }
@@ -126,9 +159,25 @@ mod tests {
             ..MonitorSettings::default()
         };
         for i in 0..3 {
-            write_run(&*db, &sample_run(i), &settings).unwrap();
+            write_run(&local_scope(), &*db, &sample_run(i), &settings).unwrap();
         }
-        let idx = list_run_index(&*db, "d1", "w1", 10).unwrap();
+        let idx = list_run_index(&local_scope(), &*db, "d1", "w1", 10).unwrap();
         assert_eq!(idx.len(), 3);
+    }
+
+    /// 别的组织读不到本组织的运行记录（CM-05：按「不存在」处理，不是「无权限」）。
+    #[test]
+    fn the_runs_of_another_organization_are_not_found() {
+        let db = open_db();
+        let settings = MonitorSettings::default();
+        write_run(&local_scope(), &*db, &sample_run(7), &settings).unwrap();
+
+        assert!(list_run_index(&foreign_scope(), &*db, "d1", "w1", 10)
+            .unwrap()
+            .is_empty());
+        assert!(matches!(
+            get_run(&foreign_scope(), &*db, "d1", "w1", "run-7"),
+            Err(DashboardRunsError::NotFound(_))
+        ));
     }
 }

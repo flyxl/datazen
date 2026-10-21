@@ -188,7 +188,12 @@ impl WidgetExecutionHost for ScheduledWidgetHost<'_> {
         .await
     }
     async fn persist_run(&self, run: &WidgetRun) -> Result<(), String> {
+        // 运行记录落在授予它的那个组织里：作用域取自 grant 自带的请求上下文。
+        let scope = datazen_platform_api::ports::scope::OrganizationScope::from_context(
+            &self.grant.context(),
+        );
         datazen_feature_core::dashboard::runs::write_run(
+            &scope,
             &*self.state.store.app_db(),
             run,
             &crate::dashboard::store::load_monitor_settings(&self.state.store.get_settings().await),
