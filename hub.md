@@ -134,6 +134,51 @@ A 给 `JobDefinition` 加 `organization_id` 后，构造点扩散到了任务书
 后果：A 与 C 在 `packages/feature-core/src/restore_job.rs` 上**必然冲突**（C 改了那里的 `JobHost` 标识符，A 改了那里的 `JobDefinition` 构造）。按 `C → A` 顺序合，冲突是机械的（在已改名的标识符上加字段）。
 合流后必须由 Tester 独立复验 A，重点确认这些连带点**没有夹带逻辑改动**。
 
+## Wave 2 简报要点（侦察已完成，派发时直接用，勿重复摸底）
+
+> 以下全部是**实测行号与行数**，非推断。派发前仍要求各自核实（代码可能已因 Wave 1 合流而漂移）。
+
+### 共同样板：org 作用域该长什么样
+照 `packages/platform-api/src/ports/profile.rs:24-40` 抄，不要自创：
+- `ProfileScope { organization_id }`，`ProfileScope::from_context(&RequestContext)`（注释：「身份只能来自 adapter 构造的上下文（INV-01）」）
+- 越权语义：**返回 `None`/空而不是错误**，不泄漏「存在但无权」（CM-05），见同文件 `:20-22` 注释
+
+### 轨 D — feature-core 三个存储 trait 加 org 作用域
+- `DashboardStore`：`packages/feature-core/src/dashboard/store.rs:35-76`，**10 个方法**（`list_dashboard_rows` / `dashboard_row` / `upsert_dashboard_row` / `delete_dashboard_row` / `set_dashboard_refresh_paused` / `list_widget_rows` / `widget_row` / `upsert_widget_row` / `delete_widget_row` / `find_workflow_refs`）
+- 包内自由函数（规则层，签名也要带 scope）：`:209 list_dashboards`、`:220 get_dashboard`、`:234 save_dashboard`、`:266 delete_dashboard`、`:272 set_dashboard_refresh_paused`、`:280 find_workflow_refs`、`:288 assign_import_id`
+- `DashboardRunStore`：`packages/feature-core/src/dashboard/runs.rs:28`
+- `WorkflowDefinitionStore`：`packages/feature-core/src/workflow/registry.rs:35`（4 方法；`WorkflowRegistry` 的公开方法 `get/list/list_definitions/save/save_yaml/delete/load_all/ensure_loaded` 在 `:188-280`，都需要把 scope 传下去）
+- **宿主实现点**：`src-tauri/src/dashboard/store.rs:24`（`impl DashboardStore for AppDb`）、`src-tauri/src/dashboard/runs.rs:15`、`src-tauri/src/workflow/registry.rs:39`（`impl WorkflowDefinitionStore for AppDbWorkflowStore`）
+- **宿主调用点**：`src-tauri/src/monitor/engine.rs:10,63,67`、`src-tauri/src/dashboard/export.rs:10,24`、`src-tauri/src/dashboard/execute.rs:24`、`src-tauri/src/commands/dashboard.rs`
+- 桌面单租户：org 恒为同一个值，**行为必须不变**（现有 host 单测 1265 条断言不许动）
+- 依赖：**B 先合**（`WorkflowRegistry` 已变 `Arc<dyn>`，D 再改签名，避免同一文件两轮冲突）
+
+### 轨 E — schema-diff reviewed 进程全局 → 端口
+- `packages/schema-diff/src/reviewed.rs`（524 行）。**病灶在 `:49 static PLANS: OnceLock<Mutex<HashMap<String, ReviewedPlan>>>` + `:53 fn plans()`**
+- 公共入口：`:57 identity`、`:63 validate_source_connection_snapshot`、`:364 same_endpoint`、`:387 physical_database_scope`、`:451 validate_snapshot`、`:501 validate_object_snapshot`（`:324 validate`、`:358 normalized_scope` 是私有）
+- 类型：`:19 ReviewedPlan`、`:38 ReviewedSourceSnapshot`
+- **宿主调用点全在** `src-tauri/src/commands/schema_diff/`：`object_plan_commands.rs:54,150,214,279,328,403,452,527`、`unified_plan/revalidation.rs:9,23`
+- 文件头注释声称「registry lives for the process」—— 这条**就是要在 web 多租户下被打破的语义**，改造时同步改写。
+
+### 轨 F — 迁移三件套的 plan_store / comparison_store → 端口
+- `packages/data-sync/src/plan_store/mod.rs`（**2,025 行**）：`:505 SyncPlanStore { plans: Mutex<HashMap<..>> }`、**`:674-675 static STORE: OnceLock<SyncPlanStore>`**、`issue_plan` 在其后
+- `packages/data-transfer/src/plan_store/mod.rs`（541 行）：`:166 TransferPlanStore { plans, checkpoints }`、**`:440-441 static STORE`**
+- `packages/data-sync/src/comparison_store/`：`disk.rs` 494、`mod.rs` 729（`:48-50` 已收 `root/directory/manifest: PathBuf`）、`recovery.rs` 462、`manifest_cache.rs` 97、测试 890+326
+- 残留转发门面：`src-tauri/src/commands/sync/mod.rs:6 pub(crate) use datazen_data_sync::comparison_store;`（本轨顺手删）
+- 宿主调用点：`commands/data_transfer/{exec.rs:14,preview.rs:427,832,job_api/mod.rs:58,job_api/assembly.rs:22}`、`commands/sync/{exec.rs:16,859,host/state.rs:26,mod.rs:32}`
+- ⚠️ 见上文「F 轨强制约束」：**fs 实现留在包内，只把「存储根」与「实例」改成宿主注入**；判定标准是包行数基本不变。
+
+### 轨 G — 实现 IdentityResolver（桌面）
+- 端口：`packages/platform-api/src/ports/identity.rs`，`ExecutionIdentity { organization_id, connection_id, execution_identity_key, policy_isolation_key, credential_revision }`；两个方法 `resolve(&ctx, &ExecutionTarget)` / `resolve_delegation(&ctx, DelegationRef)`
+- 端口自带 5 条单测（`:71-190`）钉住了语义，可当验收依据：身份键**不得由客户端传入的 principal 派生**；轮换凭据只动 `credential_revision` 不动 key；`resolve` 与 `resolve_delegation` 是两条路径不是个 flag
+- **桌面可用原料**（都在宿主，不用新建）：
+  - `src-tauri/src/platform/identity.rs:66 DesktopIdentity` → `organization_id():127`、`principal_id():131`、`client_instance_id():135`、`request_context():111`、`next_request_context():123`
+  - `src-tauri/src/platform/repositories.rs:279 impl SecretProvider for DesktopProfiles` → `revision(secret):358` 是 `credential_revision` 的来源
+  - `src-tauri/src/platform/policy.rs` → `PolicyService::isolation_key(ctx)` 是 `policy_isolation_key` 的来源
+  - `packages/platform-api/src/id.rs`：`ExecutionIdentityKey` / `PolicyIsolationKey` / `CredentialRevision` 的 newtype
+- 关键约束（端口注释原文）：「同一 `(organization, connection, isolation)` 必须稳定返回同一 `execution_identity_key`，否则会话连续性（INV-02）与池复用都不成立」→ 必须是**确定性派生**（HMAC/哈希），不能随机；且**不得**把凭据材料放进身份键（端口的测试会检查 debug 输出不含 password/material 字样）
+- 依赖：A（org 词汇）。与 E/F 无文件交集。
+
 ## 合流记录
 
 （每轨合入后追加：轨 → commit → 门禁数字 → 冲突处理。）
