@@ -62,6 +62,9 @@ GC-D1 我给了两个子判据：「产物里 grep ≥ 1（证明接线存在）
 | D11 | `src/stores/panelStore.ts` 已 **797/800**（余量 3 行），轨 B 净增 +4 | Wave 3 `insert-frontend` 第一件事（与 D1 一起） | 拆分该 store。**本轨不得再增长（保持 ≤797）** |
 | D12 | `TEST-INFRA-001` 修好后**必须从 `docs/bugs/` 删除**（含 `docs/README.md` 索引行） | 协调者（合流收尾时） | `docs/bugs/` 只收"已核实复现、**本轮明确不修**"的缺陷——修好了就必须删，否则是过期文档 |
 | D14 | `aria-rowcount` 的**取值语义契约里没写**（轨 A 改成了「数据行 + 表头行 + 状态行」，状态行是瞬态的） | 01 / 05 定 ARIA 契约时 | 不是缺陷（§4.4 只要求"挂这个属性"）；但取值口径必须写进契约，否则下一册会各自发明算法 |
+| D15 | `parseRegisteredCommands` 的**去注释顺序**有边界：块注释剥离先于行注释，若 `//` 注释里含 `/*` 且其后任意位置有 `*/`，会吃掉中间的真实条目（Tester 已构造复现）。**当前不是 live**（run.rs 块内无 `/*`），但这是"靠文件当前内容侥幸"而非机制保证 | 下一个碰 `src/platform/__tests__/tauriBackendTransport.tableData.test.ts` 的轨 | 修法：行注释剥离放到块注释之前，或用一次词法扫描同时处理（成本 1 行） |
+| D16 | 解析器把 `#[cfg(feature = "…")]` 门控的条目**视为已注册**（run.rs 现有 6 个这样的条目，全是 webdriver/测试专用；9 条表数据命令当前无一在 cfg 之下）。这是**未言明的语义选择** | 同上 | 端口应当覆盖产品全集 ⇒ 视为已注册**大概是对的**，但必须在注释里点明，否则 07/08/09 把命令注册在 feature 之下时会让人困惑 |
+| D17 | 新门禁 `scripts/__tests__/probe-exclusion.test.ts` **硬编码 3 个 tsconfig 路径**，而不是从"所有 tsconfig"推导 | 下一个新增 tsconfig 的轨 | 将来新增一个能看见探针的 tsconfig，门禁**不会发现**。当前其余 program（`tsconfig.scripts.json` / `pack-ep` / `e2e`）都不覆盖探针根，所以当前是闭合的 |
 | D13 | 探针路径的 `exclude` 目前只在 3 个 tsconfig 里；若将来新增带 `include` 的 tsconfig，**必须同步加 exclude** | 新增 tsconfig 的那个轨 | 门禁 `scripts/__tests__/probe-exclusion.test.ts` 断言的是"当前这三个都含 exclude"，**不覆盖将来新增的配置**——新增 tsconfig 时要主动加 |
 | D5 | 10 分册的 `src-tauri/src/commands/table_target.rs:55`「Manual table session target changed」与 `stalePlan` 同族 | 10 轨 | 10 落地时统一到 `grid.commit.stalePlan` |
 | D6 | `grid.insert.noWritableColumn`（04/06 域唯一零生产者码） | 06 或 04 后续轮 | 需 `ColumnSchema` 有 generated/identity 标记才能做准；保守版（全列 Unset 且无 `default_value`/`is_auto_increment` 可依赖 → 拒绝）可先做 |
