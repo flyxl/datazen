@@ -53,6 +53,17 @@ pub struct PendingRowChange {
     pub current_values: BTreeMap<String, Option<Value>>,
     pub changed_columns: Vec<String>,
     pub delete_marked: bool,
+    /// Marks this entry as a **new row draft** rather than a change to an
+    /// existing row. Such a row has no identity yet, so it skips the primary-key
+    /// checks the other entries must pass: `changed_columns` is the exact
+    /// INSERT column list and a column absent from it keeps the database
+    /// default (auto-increment, generated, `DEFAULT now()`). `None` in
+    /// `current_values` still means SQL `NULL`, so the three intents
+    /// (value / NULL / default) survive the trip. It is never serialized as
+    /// `false`, which keeps fingerprints of insert-free plans byte-identical
+    /// to the previous payload.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub insert_marked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +97,12 @@ pub struct RowChangePlan {
     pub table: RowChangeTableContext,
     pub updates: Vec<PlannedStatement>,
     pub deletes: Vec<PlannedStatement>,
+    /// New-row statements in **request order** — the user's visual draft order,
+    /// which is also the execution order. Never re-sorted: insert order decides
+    /// auto-increment allocation. `#[serde(default)]` only keeps clients that do
+    /// not send the field deserializable; serialization always emits it.
+    #[serde(default)]
+    pub inserts: Vec<PlannedStatement>,
     pub warnings: Vec<ChangeWarning>,
 }
 
@@ -118,7 +135,16 @@ fn canonicalize_changes(
     changes: &[PendingRowChange],
 ) -> Result<Vec<PendingRowChange>, CommandError> {
     let mut canonical = Vec::with_capacity(changes.len());
+    // New rows have no identity yet, so they cannot be sorted or keyed. They
+    // keep request order (execution order) and land after the identity-sorted
+    // changes; canonicalizing the rebuilt plan produces the same partition, so
+    // fingerprints stay reconstructible.
+    let mut inserts = Vec::new();
     for change in changes {
+        if change.insert_marked {
+            inserts.push(insert_plan::canonicalize_insert(change)?);
+            continue;
+        }
         let _ = identity_key(&change.row_identity)?;
         let mut normalized = change.clone();
         normalized.changed_columns.sort();
@@ -161,6 +187,7 @@ fn canonicalize_changes(
             ));
         }
     }
+    canonical.extend(inserts);
     Ok(canonical)
 }
 
@@ -215,6 +242,10 @@ fn changes_fingerprint(
     table: &RowChangeTableContext,
     changes: &[PendingRowChange],
 ) -> Result<String, CommandError> {
+    // Inserts are part of `changes` (marked by `insert_marked`), so their
+    // written values, NULL-vs-unwritten distinction and relative order are all
+    // covered. The marker itself only serializes when true (`is_false`), which
+    // keeps insert-free fingerprints byte-identical to the pre-INSERT payload.
     #[derive(Serialize)]
     struct FingerprintPayload<'a> {
         table: &'a RowChangeTableContext,
@@ -224,6 +255,11 @@ fn changes_fingerprint(
     let payload = FingerprintPayload { table, changes };
     let bytes = serde_json::to_vec(&payload).map_err(CommandError::Json)?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+/// serde helper for [`PendingRowChange::insert_marked`].
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 fn value_summary(value: &Option<Value>) -> String {
@@ -240,19 +276,75 @@ fn value_summary(value: &Option<Value>) -> String {
     }
 }
 
+/// Reject a row change that cannot address exactly one existing row, before any
+/// SQL is generated.
+///
+/// `build_update_statement` / `build_delete_statement` happily render an empty
+/// `WHERE`, which would touch every row in the table. `identity_key` also
+/// rejects these, but it reports one generic message; this guard names the
+/// operation and the offending columns so the refusal is diagnosable.
+fn validate_row_identity(operation: &str, change: &PendingRowChange) -> Result<(), CommandError> {
+    if change.row_identity.is_empty() {
+        return Err(CommandError::Validation(format!(
+            "{operation} requires the table's primary-key identity; the row identity is empty, so no column can locate the row"
+        )));
+    }
+    let null_columns: Vec<&str> = change
+        .row_identity
+        .iter()
+        .filter(|(_, value)| {
+            value
+                .as_ref()
+                .map_or(true, |value| matches!(value, Value::Null))
+        })
+        .map(|(column, _)| column.as_str())
+        .collect();
+    if !null_columns.is_empty() {
+        return Err(CommandError::Validation(format!(
+            "{operation} row identity has NULL primary-key values: {}; a NULL cannot address one row",
+            null_columns.join(", ")
+        )));
+    }
+    Ok(())
+}
+
 fn build_row_change_plan(
     driver: &dyn crate::db::DatabaseDriver,
     table: RowChangeTableContext,
     changes: &[PendingRowChange],
 ) -> Result<RowChangePlan, CommandError> {
     validate_table_context(&table)?;
+    for change in changes {
+        if change.insert_marked {
+            // A new row has no identity to validate; a delete mark on it is a
+            // contradictory intent instead.
+            continue;
+        }
+        validate_row_identity(
+            if change.delete_marked {
+                "DELETE"
+            } else {
+                "UPDATE"
+            },
+            change,
+        )?;
+    }
     let canonical = canonicalize_changes(changes)?;
     let fingerprint = changes_fingerprint(&table, &canonical)?;
     let mut updates = Vec::new();
     let mut deletes = Vec::new();
+    let mut inserts = Vec::new();
     let mut warnings = Vec::new();
 
     for change in canonical {
+        if change.insert_marked {
+            inserts.push(insert_plan::planned_insert_statement(
+                driver,
+                &table.table,
+                &change,
+            )?);
+            continue;
+        }
         let pk_columns: Vec<(&str, Option<Value>)> = change
             .row_identity
             .iter()
@@ -327,6 +419,14 @@ fn build_row_change_plan(
         });
     }
 
+    if !inserts.is_empty() {
+        warnings.push(ChangeWarning {
+            code: "insert-rows".into(),
+            message: format!("{} new row(s) will be inserted", inserts.len()),
+            severity: "info".into(),
+        });
+    }
+
     Ok(RowChangePlan {
         plan_id: Uuid::new_v4().to_string(),
         fingerprint,
@@ -334,6 +434,7 @@ fn build_row_change_plan(
         table,
         updates,
         deletes,
+        inserts,
         warnings,
     })
 }
@@ -347,6 +448,7 @@ fn plan_changes(plan: &RowChangePlan) -> Vec<PendingRowChange> {
             current_values: statement.current_values.clone(),
             changed_columns: statement.changed_columns.clone(),
             delete_marked: false,
+            insert_marked: false,
         })
         .chain(plan.deletes.iter().map(|statement| PendingRowChange {
             row_identity: statement.row_identity.clone(),
@@ -354,6 +456,17 @@ fn plan_changes(plan: &RowChangePlan) -> Vec<PendingRowChange> {
             current_values: statement.current_values.clone(),
             changed_columns: statement.changed_columns.clone(),
             delete_marked: true,
+            insert_marked: false,
+        }))
+        .chain(plan.inserts.iter().map(|statement| PendingRowChange {
+            // A new row's identity is only known after execution; the plan
+            // never carries one, so the rebuild must not invent it either.
+            row_identity: BTreeMap::new(),
+            original_values: statement.original_values.clone(),
+            current_values: statement.current_values.clone(),
+            changed_columns: statement.changed_columns.clone(),
+            delete_marked: false,
+            insert_marked: true,
         }))
         .collect()
 }
@@ -608,6 +721,10 @@ pub async fn commit_row_deletes(
 ) -> Result<(), CommandError> {
     commit_row_deletes_impl(&state, db_session_id, table, deletes).await
 }
+
+#[path = "data/insert_plan.rs"]
+mod insert_plan;
+pub(crate) use insert_plan::bound_insert_statement_for_plan;
 
 #[cfg(test)]
 #[path = "data/tests.rs"]

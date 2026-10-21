@@ -25,6 +25,7 @@ fn update_change(id: i64, original: &str, current: &str) -> PendingRowChange {
         current_values: BTreeMap::from([("name".into(), Some(Value::String(current.into())))]),
         changed_columns: vec!["name".into()],
         delete_marked: false,
+        insert_marked: false,
     }
 }
 
@@ -35,6 +36,7 @@ fn delete_change(id: i64) -> PendingRowChange {
         current_values: BTreeMap::new(),
         changed_columns: Vec::new(),
         delete_marked: true,
+        insert_marked: false,
     }
 }
 
@@ -55,6 +57,7 @@ fn composite_update_change(tenant_id: i64, id: i64, next_id: Option<i64>) -> Pen
         current_values,
         changed_columns,
         delete_marked: false,
+        insert_marked: false,
     }
 }
 
@@ -168,6 +171,7 @@ async fn preview_rejects_changes_without_primary_key_identity() {
             )]),
             changed_columns: vec!["name".into()],
             delete_marked: false,
+            insert_marked: false,
         }],
     )
     .await
@@ -187,6 +191,7 @@ fn canonicalize_rejects_null_and_duplicate_composite_identities() {
         current_values: BTreeMap::from([("name".into(), Some(Value::String("Updated".into())))]),
         changed_columns: vec!["name".into()],
         delete_marked: false,
+        insert_marked: false,
     };
     let error = canonicalize_changes(&[null_identity]).unwrap_err();
     assert!(error.to_string().contains("non-NULL"));
@@ -470,4 +475,323 @@ async fn commit_row_deletes_rejects_legacy_write_before_pk_validation() {
     .await
     .unwrap_err();
     assert_legacy_write_disabled(err);
+}
+
+fn insert_change(values: &[(&str, Option<Value>)]) -> PendingRowChange {
+    PendingRowChange {
+        row_identity: BTreeMap::new(),
+        original_values: BTreeMap::new(),
+        current_values: values
+            .iter()
+            .map(|(column, value)| ((*column).to_string(), value.clone()))
+            .collect(),
+        changed_columns: values
+            .iter()
+            .map(|(column, _)| (*column).to_string())
+            .collect(),
+        delete_marked: false,
+        insert_marked: true,
+    }
+}
+
+fn insert_capable_options() -> crate::testing::mock_driver::MockDriverOptions {
+    let mut options = crate::testing::app_state::rich_mock_options();
+    options.execute_rows_affected = 1;
+    options.parameterized_writes = true;
+    options
+}
+
+#[tokio::test]
+async fn insert_preview_builds_statement_with_only_written_columns() {
+    let test = with_parameterized_driver().await;
+    let (_, conn_id) = test.save_and_connect("insert-preview").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("insert-preview", &conn_id),
+        vec![insert_change(&[
+            ("name", Some(Value::String("Ada".into()))),
+            ("note", None),
+        ])],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(plan.inserts.len(), 1);
+    assert_eq!(plan.updates.len(), 0);
+    assert_eq!(plan.deletes.len(), 0);
+    let statement = &plan.inserts[0];
+    assert!(statement.row_identity.is_empty());
+    assert!(statement.original_values.is_empty());
+    assert_eq!(statement.changed_columns, vec!["name", "note"]);
+    assert_eq!(
+        statement.sql_template,
+        "INSERT INTO \"users\" (\"name\", \"note\") VALUES (?1, ?2)"
+    );
+    assert!(statement
+        .parameter_summary
+        .iter()
+        .any(|line| line == "INSERT name=\"Ada\""));
+    assert!(statement
+        .parameter_summary
+        .iter()
+        .any(|line| line == "INSERT note=NULL"));
+    assert!(!crate::commands::session_transaction_status_impl(
+        &test.state,
+        plan.table.db_session_id.clone()
+    )
+    .await
+    .unwrap());
+}
+
+#[tokio::test]
+async fn insert_all_unset_row_is_a_default_values_statement() {
+    let test = with_parameterized_driver().await;
+    let (_, conn_id) = test.save_and_connect("insert-defaults").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("insert-defaults", &conn_id),
+        vec![insert_change(&[])],
+    )
+    .await
+    .unwrap();
+
+    // An all-Unset new row is legal (DEFAULT VALUES), not "no change" to drop.
+    assert_eq!(plan.inserts.len(), 1);
+    assert_eq!(
+        plan.inserts[0].sql_template,
+        "INSERT INTO \"users\" DEFAULT VALUES"
+    );
+    assert!(plan.inserts[0].changed_columns.is_empty());
+}
+
+#[tokio::test]
+async fn insert_plan_keeps_request_order_between_rows() {
+    let test = with_parameterized_driver().await;
+    let (_, conn_id) = test.save_and_connect("insert-order").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("insert-order", &conn_id),
+        vec![
+            insert_change(&[("name", Some(Value::String("first".into())))]),
+            insert_change(&[("name", Some(Value::String("second".into())))]),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let names: Vec<String> = plan
+        .inserts
+        .iter()
+        .map(|statement| match statement.current_values.get("name") {
+            Some(Some(Value::String(name))) => name.clone(),
+            other => panic!("expected string name, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(names, vec!["first", "second"]);
+}
+
+#[tokio::test]
+async fn insert_fingerprint_is_reconstructible_from_the_plan_alone() {
+    let test = with_parameterized_driver().await;
+    let (_, conn_id) = test.save_and_connect("insert-fingerprint").await;
+    let context = table_context("insert-fingerprint", &conn_id);
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        context.clone(),
+        vec![
+            insert_change(&[("name", Some(Value::String("Ada".into()))), ("note", None)]),
+            update_change(1, "Alice", "Updated"),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let rebuilt = canonicalize_changes(&plan_changes(&plan)).unwrap();
+    assert_eq!(
+        changes_fingerprint(&plan.table, &rebuilt).unwrap(),
+        plan.fingerprint,
+        "the fingerprint must be reproducible from RowChangePlan alone"
+    );
+
+    let other = preview_pending_changes_impl(
+        &test.state,
+        context,
+        vec![insert_change(&[(
+            "name",
+            Some(Value::String("Grace".into())),
+        )])],
+    )
+    .await
+    .unwrap();
+    assert_ne!(other.fingerprint, plan.fingerprint);
+}
+
+#[tokio::test]
+async fn reject_empty_identity_for_update_and_delete() {
+    let test = with_parameterized_driver().await;
+    let (_, conn_id) = test.save_and_connect("reject-empty-identity").await;
+
+    let mut update = update_change(1, "Alice", "Updated");
+    update.row_identity = BTreeMap::new();
+    let error = preview_pending_changes_impl(
+        &test.state,
+        table_context("reject-empty-identity", &conn_id),
+        vec![update],
+    )
+    .await
+    .unwrap_err();
+    let message = error.to_string();
+    assert!(message.contains("UPDATE requires"));
+    assert!(message.contains("primary-key"));
+
+    let mut delete = delete_change(1);
+    delete.row_identity = BTreeMap::new();
+    let error = preview_pending_changes_impl(
+        &test.state,
+        table_context("reject-empty-identity", &conn_id),
+        vec![delete],
+    )
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("DELETE requires"));
+}
+
+#[tokio::test]
+async fn reject_null_identity_column_names_the_column() {
+    let test = with_parameterized_driver().await;
+    let (_, conn_id) = test.save_and_connect("reject-null-identity").await;
+    let mut update = update_change(1, "Alice", "Updated");
+    update.row_identity.insert("tenant".into(), None);
+
+    let error = preview_pending_changes_impl(
+        &test.state,
+        table_context("reject-null-identity", &conn_id),
+        vec![update],
+    )
+    .await
+    .unwrap_err();
+    let message = error.to_string();
+    assert!(message.contains("NULL primary-key values: tenant"));
+}
+
+#[tokio::test]
+async fn insert_rejects_a_delete_marker_on_a_new_row() {
+    let test = with_parameterized_driver().await;
+    let (_, conn_id) = test.save_and_connect("insert-conflict").await;
+    let mut change = insert_change(&[("name", Some(Value::String("Ada".into())))]);
+    change.delete_marked = true;
+
+    let error = preview_pending_changes_impl(
+        &test.state,
+        table_context("insert-conflict", &conn_id),
+        vec![change],
+    )
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("conflictingIntents"));
+}
+
+#[tokio::test]
+async fn commit_executes_insert_only_plan_instead_of_returning_empty_success() {
+    let test = TestAppState::with_resource_provider(insert_capable_options()).await;
+    let (_, conn_id) = test.save_and_connect("insert-only").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("insert-only", &conn_id),
+        vec![insert_change(&[(
+            "name",
+            Some(Value::String("Ada".into())),
+        )])],
+    )
+    .await
+    .unwrap();
+
+    let response = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(response.affected_rows, 1);
+    assert_eq!(response.statements.len(), 1);
+    assert_eq!(response.statements[0].operation, "insert");
+    assert!(response.statements[0].row_identity.is_empty());
+    // One bound execution, one commit: the plan was not "successfully" skipped.
+    assert_eq!(test.mock.execute_with_params_calls(), 1);
+    assert_eq!(test.mock.commit_calls(), 1);
+    assert_eq!(test.mock.open_transaction_count(), 0);
+}
+
+#[tokio::test]
+async fn insert_and_update_share_one_transaction_and_one_commit() {
+    let test = TestAppState::with_resource_provider(insert_capable_options()).await;
+    let (_, conn_id) = test.save_and_connect("insert-and-update").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("insert-and-update", &conn_id),
+        vec![
+            insert_change(&[("name", Some(Value::String("Ada".into())))]),
+            update_change(1, "Alice", "Updated"),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let response = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(response.affected_rows, 2);
+    assert_eq!(response.statements.len(), 2);
+    // inserts → updates: the new row is written before the existing one.
+    assert_eq!(response.statements[0].operation, "insert");
+    assert_eq!(response.statements[1].operation, "update");
+    assert_eq!(test.mock.execute_with_params_calls(), 2);
+    assert_eq!(test.mock.commit_calls(), 1);
+    assert_eq!(test.mock.open_transaction_count(), 0);
+}
+
+#[tokio::test]
+async fn insert_rolls_back_the_whole_batch_on_failure() {
+    let mut options = insert_capable_options();
+    options.execute_rows_affected = 2;
+    let test = TestAppState::with_resource_provider(options).await;
+    let (_, conn_id) = test.save_and_connect("insert-rollback").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("insert-rollback", &conn_id),
+        vec![
+            insert_change(&[("name", Some(Value::String("Ada".into())))]),
+            update_change(1, "Alice", "Updated"),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err();
+
+    assert!(error.to_string().contains("affected 2 rows"));
+    assert_eq!(test.mock.commit_calls(), 0);
+    assert_eq!(test.mock.open_transaction_count(), 0);
 }

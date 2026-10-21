@@ -138,12 +138,24 @@ pub(super) async fn execute_plan(
     plan: &RowChangePlan,
     manual_handle: Option<SessionHandle>,
 ) -> Result<CommitPendingChangesResponse, CommandError> {
+    // Execution order is fixed: new rows first (a child row may reference a
+    // parent inserted in the same batch), then updates, then deletes. All three
+    // share the transaction opened below.
     let mut writes = Vec::new();
-    for (delete, changes) in [(false, &plan.updates), (true, &plan.deletes)] {
+    for change in &plan.inserts {
+        let statement =
+            super::data::bound_insert_statement_for_plan(driver, &plan.table.table, change)?;
+        writes.push(("insert", change, statement));
+    }
+    for (operation, changes) in [("update", &plan.updates), ("delete", &plan.deletes)] {
         for change in changes {
-            let statement =
-                super::data::bound_statement_for_plan(driver, &plan.table.table, change, delete)?;
-            writes.push((delete, change, statement));
+            let statement = super::data::bound_statement_for_plan(
+                driver,
+                &plan.table.table,
+                change,
+                operation == "delete",
+            )?;
+            writes.push((operation, change, statement));
         }
     }
     if writes.is_empty() {
@@ -242,7 +254,7 @@ pub(super) async fn execute_plan(
                 .await?;
         }
         let mut statements = Vec::new();
-        for (delete, change, statement) in writes {
+        for (operation, change, statement) in writes {
             let affected = session
                 .execute(
                     "execute",
@@ -255,12 +267,16 @@ pub(super) async fn execute_plan(
                     CommandError::Validation("Driver did not report affected rows".into())
                 })?;
             if affected != 1 {
-                return Err(CommandError::Validation(format!(
-                    "Row identity affected {affected} rows; refusing ambiguous write"
-                )));
+                return Err(CommandError::Validation(if operation == "insert" {
+                    format!("INSERT affected {affected} rows; refusing ambiguous write")
+                } else {
+                    format!("Row identity affected {affected} rows; refusing ambiguous write")
+                }));
             }
             statements.push(RowCommitStatementResult {
-                operation: if delete { "delete" } else { "update" }.into(),
+                // An inserted row's identity is only known after a returning
+                // clause backfills it; without one the host does not guess.
+                operation: operation.into(),
                 row_identity: change.row_identity.clone(),
                 affected_rows: affected,
             });
