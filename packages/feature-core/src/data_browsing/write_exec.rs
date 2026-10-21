@@ -6,6 +6,24 @@
 //! function with handles they obtained from their own platform adapter, so the
 //! transaction rules cannot drift between transports.
 
+/// The owned session opened with a namespace that is not the plan's, so the
+/// plan no longer applies. The caller's only safe move is to preview again.
+pub(crate) fn stale_table_target_error() -> FeatureError {
+    FeatureError::Validation(
+        "grid.commit.stalePlan: Table target could not be confirmed on its owned session; preview the changes again"
+            .into(),
+    )
+}
+
+/// The caller's manual transaction drifted away from the plan (target changed,
+/// or the transaction is gone). Same user action as any stale plan.
+pub(crate) fn stale_manual_target_error() -> FeatureError {
+    FeatureError::Validation(
+        "grid.commit.stalePlan: Manual table transaction target changed or is no longer active; preview the changes and commit again"
+            .into(),
+    )
+}
+
 use super::change_set::{
     bound_statement_for_plan, CommitPendingChangesResponse, RowChangePlan, RowCommitStatementResult,
 };
@@ -189,9 +207,7 @@ pub async fn execute_plan(
                 datazen_platform_api::dto::session::TransactionState::Active
             )
         {
-            return Err(FeatureError::Validation(
-                "Manual table transaction target changed or transaction not active".into(),
-            ));
+            return Err(stale_manual_target_error());
         }
         view
     } else {
@@ -238,9 +254,7 @@ pub async fn execute_plan(
         if manual {
             session.handle = None;
         }
-        return Err(FeatureError::Validation(
-            "Table target could not be confirmed on its owned session".into(),
-        ));
+        return Err(stale_table_target_error());
     }
     if plan.config_revision != Some(opened.config_revision) {
         if manual {

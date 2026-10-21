@@ -15,8 +15,8 @@ use datazen_feature_core::data_browsing::{
 use tauri::State;
 
 pub use datazen_feature_core::data_browsing::{
-    ChangeWarning, CommitPendingChangesRequest, CommitPendingChangesResponse, PendingRowChange,
-    PlannedStatement, RowChangePlan, RowChangeTableContext, RowCommitStatementResult,
+    CommitPendingChangesRequest, CommitPendingChangesResponse, PendingRowChange, RowChangePlan,
+    RowChangeTableContext,
 };
 
 // Legacy row-write payload shapes. `commit_row_updates` / `commit_row_deletes`

@@ -922,3 +922,34 @@ fn a_table_without_a_primary_key_carries_the_cell_read_only_code() {
     );
     assert!(message.contains("reports none"), "got: {message}");
 }
+
+#[test]
+fn an_unconfirmed_session_target_is_coded_as_a_stale_plan() {
+    let message = super::write_exec::stale_table_target_error().to_string();
+    assert!(
+        message.starts_with("grid.commit.stalePlan: "),
+        "got: {message}"
+    );
+    assert!(
+        message.contains("Table target could not be confirmed on its owned session"),
+        "the original description must survive, got: {message}"
+    );
+    assert!(message.contains("preview"), "got: {message}");
+}
+
+#[test]
+fn a_drifted_manual_transaction_is_coded_as_a_stale_plan() {
+    let message = super::write_exec::stale_manual_target_error().to_string();
+    assert!(
+        message.starts_with("grid.commit.stalePlan: "),
+        "got: {message}"
+    );
+    assert!(
+        message.contains("Manual table transaction target changed"),
+        "the original description must survive, got: {message}"
+    );
+    assert!(
+        message.contains("preview") && message.contains("commit again"),
+        "got: {message}"
+    );
+}
