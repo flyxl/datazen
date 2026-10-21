@@ -103,7 +103,8 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 |---|---|---|---|
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ❌ Tester **TEST_FAILED**（1 阻塞行为回归）→ 第 1 轮修复中 |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 已交付 `33416cb72` → Tester `0da32120` 复测中 |
-| F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | 🔄 代理第 2 次死亡，**已再次 resume**；侦察已完成、即将开工 |
+| **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | 🔄 data-transfer 侧（`plan_store` 端口化 + **激活 40 个孤儿测试**） |
+| **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | 🔄 data-sync 侧（`plan_store` + `comparison_store` 端口化 + 删门面） |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 1 轮小修中 |
 
 **派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖。**已执行**（四树均推进到 `65dac1e2c` = C + B + `OrganizationScope`）。
@@ -435,7 +436,17 @@ D-01 / D-03 / D-04 / D-05 全处置，并 cherry-pick 复测 Tester 的 `0d3feff
 
 ### F 轨：代理中断 → resume + 一条重量级先存发现
 
-F 轨代理**两次**在探索阶段中断（死亡 2/3）。两次都是**零提交零改动**（未丢编辑）→ 按纪律 resume 原实例（保留它的侦察上下文，优于换新实例）。第二次中断发生在它说完"图景已完整、准备开始实现 `comparison_store` 存储根注入"之后。已要求它**分 5 个小步提交**（comparison_store 注入 → SyncPlanStore 端口化 → TransferPlanStore 端口化 → 孤儿测试接入 → 文档+台账），便于合流时按需解冲突。
+F 轨代理**三次**在探索阶段中断（死亡 3/3），**每次都是零提交零改动** —— 模式很清楚：每次都完成侦察、然后在动笔前死掉。这不是运气问题，是**任务颗粒度太大**（3 个存储 + 40 个孤儿测试 + 宿主接线 + 6 条门禁 + 文档全压在一个上下文里）。
+
+**处置：按文件冲突面把 F 拆成两条并行轨**（skill 的接管思路，但按拆分而非换代理）：
+| 轨 | 分支 | 文件面 | 任务 |
+|---|---|---|---|
+| **F1** | `feature/migration-store-ports` | `packages/data-transfer/src/plan_store/**` + `src-tauri/src/commands/data_transfer/**` | `TransferPlanStore` 端口化 + 静态全局 → 注入实例 + **激活 40 个孤儿测试** |
+| **F2** | `feature/sync-store-ports` | `packages/data-sync/src/{plan_store,comparison_store}/**` + `src-tauri/src/commands/sync/**` | `SyncPlanStore` + `comparison_store` 端口化 + 静态全局 → 注入实例 + 删转发门面 |
+
+两者文件面**完全不相交**（`packages/data-transfer` vs `packages/data-sync`；`commands/data_transfer` vs `commands/sync`）→ 可完全并行。两条轨都要求**分 3 步提交**，便于合流时按需解冲突。
+
+**这个拆分也顺带解掉了一个我原先没注意到的冲突面**：F 轨与 A 轨的 5 个文件重叠全在 **data-transfer 侧**（`commands/data_transfer/job_api/{queries,runtime}.rs`、`job_api/tests/job_lifecycle.rs`、`data-transfer/src/job/tests/kernel_cancel.rs`）与 **sync 侧**（`commands/sync/jobs.rs`）—— 拆开后 F1 只碰 data-transfer 侧、F2 只碰 sync 侧，各自与 A 轨的重叠面缩小到 3 个和 1 个文件。
 
 **它侦察到、并由协调者独立核实的一条重量级先存缺陷**：
 ```
