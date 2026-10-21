@@ -114,20 +114,14 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
     let target_only_table_names = target_only_table_names.unwrap_or_default();
     let source_objects = source_objects.unwrap_or_default();
     let target_objects = target_objects.unwrap_or_default();
-    if table_names.is_empty()
-        && target_only_table_names.is_empty()
-        && source_objects.is_empty()
-        && target_objects.is_empty()
-    {
-        return Err(CommandError::Validation(
-            "Select at least one table or schema object before preparing a unified plan".into(),
-        ));
-    }
-    if table_names.len() != target_table_names.len() {
-        return Err(CommandError::Validation(
-            "table_names and target_table_names must have the same length".into(),
-        ));
-    }
+    crate::schema_diff::plan_request::validate_plan_selection(
+        &table_names,
+        &target_table_names,
+        &target_only_table_names,
+        &source_objects,
+        &target_objects,
+    )
+    .map_err(|error| CommandError::Validation(error.to_string()))?;
     let source_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &source_db_session_id,

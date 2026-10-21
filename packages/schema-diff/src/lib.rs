@@ -13,6 +13,7 @@ mod operation_dependencies;
 mod operation_dependency_references;
 pub mod operations;
 pub mod plan;
+pub mod plan_request;
 pub mod profile;
 pub mod reviewed;
 pub mod transaction;
