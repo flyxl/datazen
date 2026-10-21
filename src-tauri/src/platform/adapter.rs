@@ -268,7 +268,12 @@ impl PlatformAdapter {
         // 跨重启稳定，客户端拿不到就算不出身份键。
         //
         // 取不到主密钥就**不**接线：这里失败关闭，而不是换一个可预测的常量盐。
-        // 装配失败由 `inject` 的调用方记录（启动不中断，但身份解析能力明确缺席）。
+        //
+        // **失败半径要说准**：下面这个 `?` 让 `inject` **整体**返回 `Err`，于是
+        // `profiles` / `identities` / `runtime` / `services` 等**一个都装不上**——
+        // 缺席的不是「仅身份解析能力」，而是**整个平台装配**。启动装配
+        // （`bootstrap/app_state.rs`）对这个错误只 `tracing::error!` 记一条，
+        // 应用不崩，但此后所有依赖平台的调用都会拿到 `CapabilityUnsupported`。
         let identities = Arc::new(
             super::execution_identity::DesktopIdentityResolver::for_desktop(
                 store.clone(),
