@@ -3,18 +3,18 @@ use aes_gcm::{Aes256Gcm, Key, Nonce};
 use argon2::Argon2;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 
-use super::super::error::{CmdExt, CommandError};
-use crate::db::ConnectionConfig;
+use crate::error::FeatureError;
+use datazen_driver_api::ConnectionConfig;
 
-pub fn derive_argon2_key(password: &str, salt: &[u8]) -> Result<[u8; 32], CommandError> {
+pub fn derive_argon2_key(password: &str, salt: &[u8]) -> Result<[u8; 32], FeatureError> {
     let mut key = [0u8; 32];
     Argon2::default()
         .hash_password_into(password.as_bytes(), salt, &mut key)
-        .map_err(|e| CommandError::Internal(format!("Key derivation failed: {e}")))?;
+        .map_err(|e| FeatureError::Internal(format!("Key derivation failed: {e}")))?;
     Ok(key)
 }
 
-pub fn encrypt_field(plaintext: &str, key: &[u8; 32]) -> Result<String, CommandError> {
+pub fn encrypt_field(plaintext: &str, key: &[u8; 32]) -> Result<String, FeatureError> {
     let cipher_key = Key::<Aes256Gcm>::from_slice(key);
     let cipher = Aes256Gcm::new(cipher_key);
     let mut nonce_bytes = [0u8; 12];
@@ -22,18 +22,18 @@ pub fn encrypt_field(plaintext: &str, key: &[u8; 32]) -> Result<String, CommandE
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
         .encrypt(nonce, plaintext.as_bytes())
-        .map_err(|e| CommandError::Internal(format!("Encryption failed: {e}")))?;
+        .map_err(|e| FeatureError::Internal(format!("Encryption failed: {e}")))?;
     let mut combined = nonce_bytes.to_vec();
     combined.extend(ciphertext);
     Ok(BASE64.encode(combined))
 }
 
-pub fn decrypt_field(encrypted: &str, key: &[u8; 32]) -> Result<String, CommandError> {
+pub fn decrypt_field(encrypted: &str, key: &[u8; 32]) -> Result<String, FeatureError> {
     let combined = BASE64
         .decode(encrypted)
-        .map_err(|e| CommandError::Internal(format!("Base64 decode failed: {e}")))?;
+        .map_err(|e| FeatureError::Internal(format!("Base64 decode failed: {e}")))?;
     if combined.len() < 12 {
-        return Err(CommandError::Validation("Invalid encrypted data".into()));
+        return Err(FeatureError::Validation("Invalid encrypted data".into()));
     }
     let (nonce_bytes, ciphertext) = combined.split_at(12);
     let nonce = Nonce::from_slice(nonce_bytes);
@@ -41,9 +41,9 @@ pub fn decrypt_field(encrypted: &str, key: &[u8; 32]) -> Result<String, CommandE
     let cipher = Aes256Gcm::new(cipher_key);
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|_| CommandError::Internal("Decryption failed: wrong password".into()))?;
+        .map_err(|_| FeatureError::Internal("Decryption failed: wrong password".into()))?;
     String::from_utf8(plaintext)
-        .map_err(|e| CommandError::Internal(format!("UTF-8 decode failed: {e}")))
+        .map_err(|e| FeatureError::Internal(format!("UTF-8 decode failed: {e}")))
 }
 
 /// Legacy pretty-JSON export (field-level AES). Kept so older files still round-trip in tests.
@@ -52,7 +52,7 @@ pub fn build_encrypted_export(
     connections: &[ConnectionConfig],
     groups: &[String],
     password: &str,
-) -> Result<String, CommandError> {
+) -> Result<String, FeatureError> {
     let mut salt = [0u8; 16];
     rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut salt);
     let key = derive_argon2_key(password, &salt)?;
@@ -90,13 +90,14 @@ pub fn build_encrypted_export(
         "groups": groups,
     });
 
-    serde_json::to_string_pretty(&export_data).cmd_err("build_encrypted_export")
+    serde_json::to_string_pretty(&export_data)
+        .map_err(|error| FeatureError::Internal(format!("build_encrypted_export: {error}")))
 }
 
 pub fn decrypt_datazen_fields(
     data: &mut serde_json::Value,
     password: &str,
-) -> Result<(), CommandError> {
+) -> Result<(), FeatureError> {
     let is_encrypted = data
         .get("encrypted")
         .and_then(|v| v.as_bool())
@@ -107,7 +108,7 @@ pub fn decrypt_datazen_fields(
     let salt_b64 = data.get("salt").and_then(|v| v.as_str()).unwrap_or("");
     let salt = BASE64
         .decode(salt_b64)
-        .map_err(|e| CommandError::Internal(format!("Base64 decode failed: {e}")))?;
+        .map_err(|e| FeatureError::Internal(format!("Base64 decode failed: {e}")))?;
     let key = derive_argon2_key(password, &salt)?;
 
     if let Some(conns) = data.get_mut("connections").and_then(|v| v.as_array_mut()) {
@@ -149,10 +150,11 @@ pub fn decrypt_datazen_fields(
 pub fn parse(
     content: &str,
     password: &str,
-) -> Result<(Vec<ConnectionConfig>, Vec<String>), CommandError> {
-    let mut data: serde_json::Value = serde_json::from_str(content).cmd_err("datazen parse")?;
+) -> Result<(Vec<ConnectionConfig>, Vec<String>), FeatureError> {
+    let mut data: serde_json::Value = serde_json::from_str(content)
+        .map_err(|error| FeatureError::Internal(format!("datazen parse: {error}")))?;
     if data.get("connections").is_none() {
-        return Err(CommandError::Validation(
+        return Err(FeatureError::Validation(
             "Invalid import file: missing 'connections' field".into(),
         ));
     }
@@ -160,9 +162,9 @@ pub fn parse(
     let connections: Vec<ConnectionConfig> = serde_json::from_value(
         data.get("connections")
             .cloned()
-            .ok_or_else(|| CommandError::Validation("missing connections".into()))?,
+            .ok_or_else(|| FeatureError::Validation("missing connections".into()))?,
     )
-    .cmd_err("datazen connections")?;
+    .map_err(|error| FeatureError::Internal(format!("datazen connections: {error}")))?;
     let groups: Vec<String> = data
         .get("groups")
         .and_then(|v| serde_json::from_value(v.clone()).ok())

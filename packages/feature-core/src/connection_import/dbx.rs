@@ -4,35 +4,35 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha256;
 
-use super::super::error::CommandError;
 use super::map::{base_connection, map_database_type};
 use super::{ImportFormat, ParsedImport};
-use crate::db::SshTunnelConfig;
+use crate::error::FeatureError;
+use datazen_driver_api::SshTunnelConfig;
 
 const PBKDF2_ITERS: u32 = 100_000;
 
-fn decrypt_dbx_envelope(content: &str, passphrase: &str) -> Result<String, CommandError> {
+fn decrypt_dbx_envelope(content: &str, passphrase: &str) -> Result<String, FeatureError> {
     let envelope: serde_json::Value =
-        serde_json::from_str(content).map_err(|e| CommandError::Validation(e.to_string()))?;
+        serde_json::from_str(content).map_err(|e| FeatureError::Validation(e.to_string()))?;
     let salt = BASE64
         .decode(envelope.get("salt").and_then(|v| v.as_str()).unwrap_or(""))
-        .map_err(|e| CommandError::Internal(format!("DBX salt: {e}")))?;
+        .map_err(|e| FeatureError::Internal(format!("DBX salt: {e}")))?;
     let iv = BASE64
         .decode(envelope.get("iv").and_then(|v| v.as_str()).unwrap_or(""))
-        .map_err(|e| CommandError::Internal(format!("DBX iv: {e}")))?;
+        .map_err(|e| FeatureError::Internal(format!("DBX iv: {e}")))?;
     let data = BASE64
         .decode(envelope.get("data").and_then(|v| v.as_str()).unwrap_or(""))
-        .map_err(|e| CommandError::Internal(format!("DBX data: {e}")))?;
+        .map_err(|e| FeatureError::Internal(format!("DBX data: {e}")))?;
     if iv.len() != 12 {
-        return Err(CommandError::Validation("Invalid DBX iv length".into()));
+        return Err(FeatureError::Validation("Invalid DBX iv length".into()));
     }
     let mut key = [0u8; 32];
     pbkdf2_hmac::<Sha256>(passphrase.as_bytes(), &salt, PBKDF2_ITERS, &mut key);
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
     let plaintext = cipher
         .decrypt(Nonce::from_slice(&iv), data.as_ref())
-        .map_err(|_| CommandError::Internal("DBX decryption failed: wrong passphrase".into()))?;
-    String::from_utf8(plaintext).map_err(|e| CommandError::Internal(format!("DBX UTF-8: {e}")))
+        .map_err(|_| FeatureError::Internal("DBX decryption failed: wrong passphrase".into()))?;
+    String::from_utf8(plaintext).map_err(|e| FeatureError::Internal(format!("DBX UTF-8: {e}")))
 }
 
 fn map_ssh(conn: &serde_json::Value) -> Option<SshTunnelConfig> {
@@ -91,7 +91,9 @@ fn map_ssh(conn: &serde_json::Value) -> Option<SshTunnelConfig> {
     None
 }
 
-fn map_connections(list: &[serde_json::Value]) -> (Vec<crate::db::ConnectionConfig>, Vec<String>) {
+fn map_connections(
+    list: &[serde_json::Value],
+) -> (Vec<datazen_driver_api::ConnectionConfig>, Vec<String>) {
     let mut connections = Vec::new();
     let mut skipped = Vec::new();
     for raw in list {
@@ -154,22 +156,22 @@ fn map_connections(list: &[serde_json::Value]) -> (Vec<crate::db::ConnectionConf
 
 fn extract_connection_array(
     value: &serde_json::Value,
-) -> Result<Vec<serde_json::Value>, CommandError> {
+) -> Result<Vec<serde_json::Value>, FeatureError> {
     if let Some(arr) = value.as_array() {
         return Ok(arr.clone());
     }
     if let Some(arr) = value.get("connections").and_then(|v| v.as_array()) {
         return Ok(arr.clone());
     }
-    Err(CommandError::Validation(
+    Err(FeatureError::Validation(
         "DBX import: missing connections array".into(),
     ))
 }
 
-pub fn parse_encrypted(content: &str, passphrase: &str) -> Result<ParsedImport, CommandError> {
+pub fn parse_encrypted(content: &str, passphrase: &str) -> Result<ParsedImport, FeatureError> {
     let plain = decrypt_dbx_envelope(content, passphrase)?;
     let value: serde_json::Value =
-        serde_json::from_str(&plain).map_err(|e| CommandError::Validation(e.to_string()))?;
+        serde_json::from_str(&plain).map_err(|e| FeatureError::Validation(e.to_string()))?;
     let list = extract_connection_array(&value)?;
     let (connections, skipped) = map_connections(&list);
     let groups = value
@@ -185,13 +187,13 @@ pub fn parse_encrypted(content: &str, passphrase: &str) -> Result<ParsedImport, 
     })
 }
 
-pub fn parse_plain(content: &str) -> Result<ParsedImport, CommandError> {
+pub fn parse_plain(content: &str) -> Result<ParsedImport, FeatureError> {
     let value: serde_json::Value =
-        serde_json::from_str(content).map_err(|e| CommandError::Validation(e.to_string()))?;
+        serde_json::from_str(content).map_err(|e| FeatureError::Validation(e.to_string()))?;
     parse_plain_value(value)
 }
 
-pub fn parse_plain_value(value: serde_json::Value) -> Result<ParsedImport, CommandError> {
+pub fn parse_plain_value(value: serde_json::Value) -> Result<ParsedImport, FeatureError> {
     let list = extract_connection_array(&value)?;
     let (connections, skipped) = map_connections(&list);
     let groups = value
@@ -250,12 +252,12 @@ fn apply_secret(obj: &mut serde_json::Value, key: &str, secret: &str) {
     }
 }
 
-fn snapshot_sqlite_path(src: &std::path::Path) -> Result<std::path::PathBuf, CommandError> {
+fn snapshot_sqlite_path(src: &std::path::Path) -> Result<std::path::PathBuf, FeatureError> {
     let dir = std::env::temp_dir().join(format!("datazen-dbx-import-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir)
-        .map_err(|e| CommandError::Internal(format!("DBX snapshot dir: {e}")))?;
+        .map_err(|e| FeatureError::Internal(format!("DBX snapshot dir: {e}")))?;
     let dest = dir.join("dbx.db");
-    std::fs::copy(src, &dest).map_err(|e| CommandError::Internal(format!("DBX copy: {e}")))?;
+    std::fs::copy(src, &dest).map_err(|e| FeatureError::Internal(format!("DBX copy: {e}")))?;
     for suffix in ["-wal", "-shm"] {
         let mut sidecar = src.as_os_str().to_os_string();
         sidecar.push(suffix);
@@ -270,7 +272,7 @@ fn snapshot_sqlite_path(src: &std::path::Path) -> Result<std::path::PathBuf, Com
 }
 
 /// Live DBX `dbx.db` (SQLite): `connections.config_json` + `connection_secrets`.
-pub fn parse_sqlite(path: &std::path::Path) -> Result<ParsedImport, CommandError> {
+pub fn parse_sqlite(path: &std::path::Path) -> Result<ParsedImport, FeatureError> {
     let snapshot = snapshot_sqlite_path(path)?;
     let result = parse_sqlite_file(&snapshot);
     if let Some(parent) = snapshot.parent() {
@@ -279,10 +281,10 @@ pub fn parse_sqlite(path: &std::path::Path) -> Result<ParsedImport, CommandError
     result
 }
 
-fn parse_sqlite_file(path: &std::path::Path) -> Result<ParsedImport, CommandError> {
+fn parse_sqlite_file(path: &std::path::Path) -> Result<ParsedImport, FeatureError> {
     let conn =
         rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(|e| CommandError::Validation(format!("Cannot open DBX database: {e}")))?;
+            .map_err(|e| FeatureError::Validation(format!("Cannot open DBX database: {e}")))?;
 
     let mut secrets: std::collections::HashMap<String, Vec<(String, String)>> =
         std::collections::HashMap::new();
@@ -304,18 +306,18 @@ fn parse_sqlite_file(path: &std::path::Path) -> Result<ParsedImport, CommandErro
 
     let mut stmt = conn
         .prepare("SELECT id, config_json FROM connections")
-        .map_err(|e| CommandError::Validation(format!("DBX connections table: {e}")))?;
+        .map_err(|e| FeatureError::Validation(format!("DBX connections table: {e}")))?;
     let rows = stmt
         .query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })
-        .map_err(|e| CommandError::Validation(format!("DBX query: {e}")))?;
+        .map_err(|e| FeatureError::Validation(format!("DBX query: {e}")))?;
 
     let mut list = Vec::new();
     for row in rows {
-        let (id, json) = row.map_err(|e| CommandError::Validation(format!("DBX row: {e}")))?;
+        let (id, json) = row.map_err(|e| FeatureError::Validation(format!("DBX row: {e}")))?;
         let mut value: serde_json::Value = serde_json::from_str(&json)
-            .map_err(|e| CommandError::Validation(format!("DBX config_json: {e}")))?;
+            .map_err(|e| FeatureError::Validation(format!("DBX config_json: {e}")))?;
         if let Some(obj) = value.as_object_mut() {
             obj.entry("id".to_string())
                 .or_insert_with(|| serde_json::Value::String(id.clone()));

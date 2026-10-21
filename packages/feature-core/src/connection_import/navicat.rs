@@ -1,10 +1,10 @@
 //! Navicat `.ncx` connection export import.
 
-use super::super::error::CommandError;
 use super::{ImportFormat, ParsedImport};
-use crate::db::{ConnectionConfig, SshTunnelConfig, SslMode};
+use crate::error::FeatureError;
 use aes::Aes128;
 use cbc::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
+use datazen_driver_api::{ConnectionConfig, SshTunnelConfig, SslMode};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -367,7 +367,7 @@ fn is_connection_candidate(tag: &str, values: &HashMap<String, String>) -> bool 
         && (!type_v.is_empty() || !host.is_empty() || !file.is_empty())
 }
 
-pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
+pub fn parse(xml: &str) -> Result<ParsedImport, FeatureError> {
     static CONN_RE: OnceLock<Regex> = OnceLock::new();
     let conn_re = CONN_RE.get_or_init(|| {
         Regex::new(
@@ -567,7 +567,7 @@ pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
     }
 
     if connections.is_empty() {
-        return Err(CommandError::Validation(
+        return Err(FeatureError::Validation(
             "No supported Navicat connections found in .ncx".into(),
         ));
     }

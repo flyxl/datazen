@@ -1,11 +1,11 @@
 //! DBeaver `data-sources.json` (+ optional sibling `credentials-config.json`) import.
 
-use super::super::error::CommandError;
 use super::{ImportFormat, ParsedImport};
-use crate::db::{ConnectionConfig, SslMode};
+use crate::error::FeatureError;
 use aes::Aes128;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use cbc::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
+use datazen_driver_api::{ConnectionConfig, SslMode};
 use regex::Regex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -416,7 +416,7 @@ fn build_from_entry(
 fn parse_data_sources_value(
     data_sources: &Value,
     credentials: &HashMap<String, (String, String)>,
-) -> Result<ParsedImport, CommandError> {
+) -> Result<ParsedImport, FeatureError> {
     let root = extract_connections_root(data_sources).unwrap_or(data_sources);
     let mut connections = Vec::new();
     let mut groups = Vec::new();
@@ -443,7 +443,7 @@ fn parse_data_sources_value(
             })
             .collect()
     } else {
-        return Err(CommandError::Validation(
+        return Err(FeatureError::Validation(
             "Invalid DBeaver data-sources.json: missing connections".into(),
         ));
     };
@@ -473,7 +473,7 @@ fn parse_data_sources_value(
     }
 
     if connections.is_empty() {
-        return Err(CommandError::Validation(
+        return Err(FeatureError::Validation(
             "No supported DBeaver connections found".into(),
         ));
     }
@@ -486,19 +486,19 @@ fn parse_data_sources_value(
     })
 }
 
-pub fn parse_json(path: &Path, text: &str) -> Result<ParsedImport, CommandError> {
+pub fn parse_json(path: &Path, text: &str) -> Result<ParsedImport, FeatureError> {
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
     if file_name == "credentials-config.json" {
-        return Err(CommandError::Validation(
+        return Err(FeatureError::Validation(
             "Select DBeaver data-sources.json (credentials-config.json is loaded automatically when present in the same folder)".into(),
         ));
     }
 
-    let v: Value = serde_json::from_str(text).map_err(CommandError::Json)?;
+    let v: Value = serde_json::from_str(text).map_err(FeatureError::Json)?;
 
     let (data_sources, mut credentials) =
         if v.get("format").and_then(|x| x.as_str()) == Some("dbeaver-import") {
@@ -506,11 +506,11 @@ pub fn parse_json(path: &Path, text: &str) -> Result<ParsedImport, CommandError>
                 .get("dataSources")
                 .and_then(|x| x.as_str())
                 .ok_or_else(|| {
-                    CommandError::Validation(
+                    FeatureError::Validation(
                         "Invalid dbeaver-import payload: missing dataSources".into(),
                     )
                 })?;
-            let ds: Value = serde_json::from_str(ds_text).map_err(CommandError::Json)?;
+            let ds: Value = serde_json::from_str(ds_text).map_err(FeatureError::Json)?;
             let mut creds = HashMap::new();
             if let Some(b64) = v.get("credentialsBase64").and_then(|x| x.as_str()) {
                 if let Ok(bytes) = BASE64.decode(b64) {
@@ -529,7 +529,7 @@ pub fn parse_json(path: &Path, text: &str) -> Result<ParsedImport, CommandError>
     parse_data_sources_value(&data_sources, &credentials)
 }
 
-pub fn parse_xml(xml: &str) -> Result<ParsedImport, CommandError> {
+pub fn parse_xml(xml: &str) -> Result<ParsedImport, FeatureError> {
     static CONN_RE: OnceLock<Regex> = OnceLock::new();
     let conn_re = CONN_RE.get_or_init(|| Regex::new(r#"(?is)<connection\b([^>]*?)/?>"#).unwrap());
     static ATTR_RE: OnceLock<Regex> = OnceLock::new();
@@ -717,7 +717,7 @@ pub fn parse_xml(xml: &str) -> Result<ParsedImport, CommandError> {
     }
 
     if connections.is_empty() {
-        return Err(CommandError::Validation(
+        return Err(FeatureError::Validation(
             "No supported DBeaver connections found in XML".into(),
         ));
     }

@@ -170,7 +170,9 @@ fn build_encrypted_connections_export(
     password: &str,
 ) -> Result<Vec<u8>, CommandError> {
     validate_share_password(password)?;
-    build_tableplus_export(connections, password)
+    // The shared feature answers with its own error type; the host maps it
+    // onto the IPC error shape.
+    build_tableplus_export(connections, password).map_err(CommandError::from)
 }
 
 /// Materialize `tunnel_id` references into the inline tunnel fields the export

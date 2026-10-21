@@ -7,7 +7,7 @@
 | 安全措施 | 实现方式 | 位置 |
 |----------|----------|------|
 | **密码加密存储** | AES-256-GCM；主密钥在 OS 钥匙串或 `{appData}/.key`（见 `key_store`） | `Store::encrypt/decrypt` + `src-tauri/src/store/key_store.rs` |
-| **密码派生** | Argon2id KDF（替代双轮 SHA-256），用于连接导入/导出文件与敏感字段的字段级加密 | `src-tauri/src/commands/connection_import/datazen.rs::derive_argon2_key` |
+| **密码派生** | Argon2id KDF（替代双轮 SHA-256），用于连接导入/导出文件与敏感字段的字段级加密 | `packages/feature-core/src/connection_import/datazen.rs::derive_argon2_key` |
 | **AI Key 加密** | 随 Store 整体 AES-256-GCM 加密 | `src-tauri/src/store/ai_config.rs`（`ai_config.enc`） |
 | **连接池管理** | sqlx 连接池 + 超时清理 | 各数据库驱动 |
 | **空闲会话与资源回收** | Runtime 默认 30 分钟会话期限；桌面每 15 秒扫描，detached grace 为 60 秒；到期显式关闭而不透明重连 | `packages/runtime/src/application/idle.rs`、`src-tauri/src/platform/adapter.rs` |
@@ -38,11 +38,11 @@ encrypted → base64 解码 → 分离 nonce(前12字节) + ciphertext → 解�
 使用 Argon2id（`argon2` crate v0.5）进行密码派生，取代之前的双轮 SHA-256：
 
 ```rust
-pub fn derive_argon2_key(password: &str, salt: &[u8]) -> Result<[u8; 32], CommandError> {
+pub fn derive_argon2_key(password: &str, salt: &[u8]) -> Result<[u8; 32], FeatureError> {
     let mut key = [0u8; 32];
     Argon2::default()
         .hash_password_into(password.as_bytes(), salt, &mut key)
-        .map_err(|e| CommandError::Internal(format!("Key derivation failed: {e}")))?;
+        .map_err(|e| FeatureError::Internal(format!("Key derivation failed: {e}")))?;
     Ok(key)
 }
 ```

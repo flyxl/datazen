@@ -1,8 +1,8 @@
 //! DataGrip `dataSources.xml` import (JDBC URL based).
 
-use super::super::error::CommandError;
 use super::{ImportFormat, ParsedImport};
-use crate::db::{ConnectionConfig, SslMode};
+use crate::error::FeatureError;
+use datazen_driver_api::{ConnectionConfig, SslMode};
 use regex::Regex;
 use std::sync::OnceLock;
 
@@ -279,7 +279,7 @@ fn child_text(block: &str, tag: &str) -> String {
         .unwrap_or_default()
 }
 
-pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
+pub fn parse(xml: &str) -> Result<ParsedImport, FeatureError> {
     static BLOCK_RE: OnceLock<Regex> = OnceLock::new();
     let block_re = BLOCK_RE
         .get_or_init(|| Regex::new(r"(?is)<data-source\b([^>]*)>(.*?)</data-source>").unwrap());
@@ -404,12 +404,12 @@ pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
     }
 
     if connections.is_empty() && skipped.is_empty() {
-        return Err(CommandError::Validation(
+        return Err(FeatureError::Validation(
             "No DataGrip data-source entries found in XML".into(),
         ));
     }
     if connections.is_empty() {
-        return Err(CommandError::Validation(
+        return Err(FeatureError::Validation(
             "No supported DataGrip connections found (unsupported JDBC drivers were skipped)"
                 .into(),
         ));

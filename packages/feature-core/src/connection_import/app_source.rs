@@ -1,6 +1,6 @@
 //! Locate competitor app connection files at well-known data / install paths.
 
-use super::super::error::CommandError;
+use crate::error::FeatureError;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -14,14 +14,14 @@ pub enum ImportApp {
 }
 
 impl ImportApp {
-    pub fn parse(raw: &str) -> Result<Self, CommandError> {
+    pub fn parse(raw: &str) -> Result<Self, FeatureError> {
         match raw.trim().to_ascii_lowercase().as_str() {
             "dbx" => Ok(Self::Dbx),
             "navicat" => Ok(Self::Navicat),
             "datagrip" => Ok(Self::DataGrip),
             "dbeaver" => Ok(Self::DBeaver),
             "tableplus" => Ok(Self::TablePlus),
-            other => Err(CommandError::Validation(format!(
+            other => Err(FeatureError::Validation(format!(
                 "Unknown import source: {other}"
             ))),
         }
@@ -372,7 +372,7 @@ pub fn resolve_import_files(
     app: ImportApp,
     custom_path: Option<&Path>,
     ctx: &PathContext,
-) -> Result<Vec<PathBuf>, CommandError> {
+) -> Result<Vec<PathBuf>, FeatureError> {
     if let Some(raw) = custom_path.filter(|p| !p.as_os_str().is_empty()) {
         if raw.is_file() {
             let found = collect_under(app, raw);
@@ -397,7 +397,7 @@ pub fn resolve_import_files(
                 return Ok(found);
             }
         }
-        return Err(CommandError::Validation(format!(
+        return Err(FeatureError::Validation(format!(
             "No {} connection files found at {}. Specify the data directory, install path, or an exported file.",
             app.label(),
             raw.display()
@@ -405,7 +405,7 @@ pub fn resolve_import_files(
     }
     let found = collect_defaults(app, ctx);
     if found.is_empty() {
-        return Err(CommandError::Validation(format!(
+        return Err(FeatureError::Validation(format!(
             "Could not find {} connection files at the default location. Enter the data directory, install path, or an exported file.",
             app.label()
         )));

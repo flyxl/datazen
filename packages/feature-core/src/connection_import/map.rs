@@ -1,4 +1,4 @@
-use crate::db::{ConnectionConfig, SshTunnelConfig, SslMode};
+use datazen_driver_api::{ConnectionConfig, SshTunnelConfig, SslMode};
 use uuid::Uuid;
 
 /// Map foreign DB type ids to DataZen `database_type` strings.

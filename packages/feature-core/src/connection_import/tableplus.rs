@@ -1,9 +1,9 @@
 //! TablePlus `.tableplusconnection` (RNCryptor v3 JSON array) import.
 
-use super::super::error::CommandError;
 use super::rncryptor;
 use super::{ImportFormat, ParsedImport};
-use crate::db::{ConnectionConfig, SshTunnelConfig, SslMode};
+use crate::error::FeatureError;
+use datazen_driver_api::{ConnectionConfig, SshTunnelConfig, SslMode};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -129,9 +129,9 @@ fn is_file_type(db_type: &str) -> bool {
 pub fn export_connections(
     connections: &[ConnectionConfig],
     password: &str,
-) -> Result<Vec<u8>, CommandError> {
+) -> Result<Vec<u8>, FeatureError> {
     if password.trim().is_empty() {
-        return Err(CommandError::Validation(
+        return Err(FeatureError::Validation(
             "Password is required for TablePlus export".into(),
         ));
     }
@@ -140,7 +140,7 @@ pub fn export_connections(
         .map(connection_to_tableplus_json)
         .collect();
     let json = serde_json::to_vec(&items)
-        .map_err(|e| CommandError::Internal(format!("TablePlus export JSON failed: {e}")))?;
+        .map_err(|e| FeatureError::Internal(format!("TablePlus export JSON failed: {e}")))?;
     rncryptor::encrypt_password(&json, password)
 }
 
@@ -198,14 +198,14 @@ pub fn parse(
     bytes: &[u8],
     password: &str,
     format_label: &str,
-) -> Result<ParsedImport, CommandError> {
+) -> Result<ParsedImport, FeatureError> {
     let plain = rncryptor::decrypt_password(bytes, password, format_label)?;
     let text = String::from_utf8(plain).map_err(|e| {
-        CommandError::Validation(format!("{format_label} payload is not UTF-8: {e}"))
+        FeatureError::Validation(format!("{format_label} payload is not UTF-8: {e}"))
     })?;
 
     let items: Vec<TablePlusConnection> = serde_json::from_str(&text).map_err(|e| {
-        CommandError::Validation(format!("Invalid {format_label} JSON after decrypt: {e}"))
+        FeatureError::Validation(format!("Invalid {format_label} JSON after decrypt: {e}"))
     })?;
     from_items(items)
 }
@@ -266,10 +266,10 @@ impl<'a> XmlCursor<'a> {
         self.s[self.i..].starts_with(tag)
     }
 
-    fn take_until(&mut self, needle: &str) -> Result<&'a str, CommandError> {
+    fn take_until(&mut self, needle: &str) -> Result<&'a str, FeatureError> {
         let rest = &self.s[self.i..];
         let Some(pos) = rest.find(needle) else {
-            return Err(CommandError::Validation(
+            return Err(FeatureError::Validation(
                 "Invalid TablePlus plist: unterminated tag".into(),
             ));
         };
@@ -278,7 +278,7 @@ impl<'a> XmlCursor<'a> {
         Ok(out)
     }
 
-    fn parse_value(&mut self) -> Result<serde_json::Value, CommandError> {
+    fn parse_value(&mut self) -> Result<serde_json::Value, FeatureError> {
         self.skip_misc();
         if self.starts_with("<true") {
             let _ = self.take_until(">")?;
@@ -370,7 +370,7 @@ impl<'a> XmlCursor<'a> {
             }
             return Ok(value);
         }
-        Err(CommandError::Validation(
+        Err(FeatureError::Validation(
             "Invalid TablePlus plist structure".into(),
         ))
     }
@@ -400,7 +400,7 @@ fn flatten_plist_connections(value: serde_json::Value) -> Vec<serde_json::Value>
 fn plist_xml_from_bytes(
     bytes: &[u8],
     path: Option<&std::path::Path>,
-) -> Result<String, CommandError> {
+) -> Result<String, FeatureError> {
     if bytes.starts_with(b"bplist") {
         #[cfg(target_os = "macos")]
         if let Some(path) = path {
@@ -408,25 +408,25 @@ fn plist_xml_from_bytes(
                 .args(["-convert", "xml1", "-o", "-", "--"])
                 .arg(path)
                 .output()
-                .map_err(|e| CommandError::Internal(format!("plutil: {e}")))?;
+                .map_err(|e| FeatureError::Internal(format!("plutil: {e}")))?;
             if out.status.success() {
                 return String::from_utf8(out.stdout)
-                    .map_err(|e| CommandError::Validation(format!("TablePlus plist UTF-8: {e}")));
+                    .map_err(|e| FeatureError::Validation(format!("TablePlus plist UTF-8: {e}")));
             }
         }
-        return Err(CommandError::Validation(
+        return Err(FeatureError::Validation(
             "Binary TablePlus Connections.plist is not supported on this platform. Export .tableplusconnection or convert the plist to XML.".into(),
         ));
     }
     String::from_utf8(bytes.to_vec())
-        .map_err(|e| CommandError::Validation(format!("TablePlus plist UTF-8: {e}")))
+        .map_err(|e| FeatureError::Validation(format!("TablePlus plist UTF-8: {e}")))
 }
 
 /// Live TablePlus `Connections.plist` (XML, or binary on macOS via plutil).
 pub fn parse_plist(
     bytes: &[u8],
     path: Option<&std::path::Path>,
-) -> Result<ParsedImport, CommandError> {
+) -> Result<ParsedImport, FeatureError> {
     let text = plist_xml_from_bytes(bytes, path)?;
     let mut cur = XmlCursor::new(&text);
     cur.skip_misc();
@@ -442,7 +442,7 @@ pub fn parse_plist(
     from_items(items)
 }
 
-fn from_items(items: Vec<TablePlusConnection>) -> Result<ParsedImport, CommandError> {
+fn from_items(items: Vec<TablePlusConnection>) -> Result<ParsedImport, FeatureError> {
     let mut connections = Vec::new();
     let mut skipped = Vec::new();
 
@@ -575,7 +575,7 @@ fn from_items(items: Vec<TablePlusConnection>) -> Result<ParsedImport, CommandEr
     }
 
     if connections.is_empty() {
-        return Err(CommandError::Validation(
+        return Err(FeatureError::Validation(
             "No supported TablePlus connections found".into(),
         ));
     }
@@ -591,7 +591,7 @@ fn from_items(items: Vec<TablePlusConnection>) -> Result<ParsedImport, CommandEr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::connection_import::rncryptor;
+    use crate::connection_import::rncryptor;
 
     #[test]
     fn decrypt_and_map() {

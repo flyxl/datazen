@@ -1,6 +1,6 @@
 //! RNCryptor v3 password-based decrypt (TablePlus `.tableplusconnection`).
 
-use super::super::error::CommandError;
+use crate::error::FeatureError;
 use aes::Aes256;
 use cbc::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
 use hmac::{Hmac, Mac};
@@ -17,25 +17,25 @@ pub fn decrypt_password(
     data: &[u8],
     password: &str,
     format_label: &str,
-) -> Result<Vec<u8>, CommandError> {
+) -> Result<Vec<u8>, FeatureError> {
     if password.is_empty() {
-        return Err(CommandError::Validation(format!(
+        return Err(FeatureError::Validation(format!(
             "Password is required for {format_label} import"
         )));
     }
     if data.len() < 66 {
-        return Err(CommandError::Validation(format!(
+        return Err(FeatureError::Validation(format!(
             "Invalid {format_label} file: too short"
         )));
     }
     if data[0] != 0x03 {
-        return Err(CommandError::Validation(format!(
+        return Err(FeatureError::Validation(format!(
             "Invalid {format_label} file: unsupported RNCryptor version \
              (if this is a legacy DataZen .json export, import the .json file instead)"
         )));
     }
     if data[1] != 0x01 {
-        return Err(CommandError::Validation(format!(
+        return Err(FeatureError::Validation(format!(
             "Invalid {format_label} file: expected password-based encryption"
         )));
     }
@@ -53,10 +53,10 @@ pub fn decrypt_password(
     pbkdf2_hmac::<Sha1>(password.as_bytes(), hmac_salt, PBKDF2_ITERS, &mut hmac_key);
 
     let mut mac =
-        HmacSha256::new_from_slice(&hmac_key).map_err(|e| CommandError::Internal(e.to_string()))?;
+        HmacSha256::new_from_slice(&hmac_key).map_err(|e| FeatureError::Internal(e.to_string()))?;
     mac.update(header_and_cipher);
     mac.verify_slice(hmac).map_err(|_| {
-        CommandError::Validation(format!(
+        FeatureError::Validation(format!(
             "{format_label} decryption failed: wrong password or corrupt file. \
              Use the same password as export. Legacy DataZen exports used \
              password-protected .json (not .datazenconnection)."
@@ -65,10 +65,10 @@ pub fn decrypt_password(
 
     let mut buf = ciphertext.to_vec();
     let plain = Aes256CbcDec::new_from_slices(&enc_key, iv)
-        .map_err(|e| CommandError::Internal(format!("AES init failed: {e}")))?
+        .map_err(|e| FeatureError::Internal(format!("AES init failed: {e}")))?
         .decrypt_padded_mut::<Pkcs7>(&mut buf)
         .map_err(|_| {
-            CommandError::Validation(format!(
+            FeatureError::Validation(format!(
                 "{format_label} decryption failed: wrong password or corrupt file"
             ))
         })?;
@@ -76,14 +76,14 @@ pub fn decrypt_password(
 }
 
 /// Encrypt plaintext with RNCryptor v3 (TablePlus `.tableplusconnection`).
-pub fn encrypt_password(plaintext: &[u8], password: &str) -> Result<Vec<u8>, CommandError> {
+pub fn encrypt_password(plaintext: &[u8], password: &str) -> Result<Vec<u8>, FeatureError> {
     use cbc::cipher::BlockEncryptMut;
     use rand::RngCore;
 
     type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 
     if password.is_empty() {
-        return Err(CommandError::Validation("Password is required".into()));
+        return Err(FeatureError::Validation("Password is required".into()));
     }
 
     let mut enc_salt = [0u8; 8];
@@ -104,9 +104,9 @@ pub fn encrypt_password(plaintext: &[u8], password: &str) -> Result<Vec<u8>, Com
     let pad_len = 16 - (buf.len() % 16);
     buf.extend(std::iter::repeat(0u8).take(pad_len));
     let cipher_len = Aes256CbcEnc::new_from_slices(&enc_key, &iv)
-        .map_err(|e| CommandError::Internal(format!("AES init failed: {e}")))?
+        .map_err(|e| FeatureError::Internal(format!("AES init failed: {e}")))?
         .encrypt_padded_mut::<Pkcs7>(&mut buf, plaintext.len())
-        .map_err(|e| CommandError::Internal(format!("AES encrypt failed: {e}")))?
+        .map_err(|e| FeatureError::Internal(format!("AES encrypt failed: {e}")))?
         .len();
     buf.truncate(cipher_len);
 
@@ -119,7 +119,7 @@ pub fn encrypt_password(plaintext: &[u8], password: &str) -> Result<Vec<u8>, Com
     out.extend_from_slice(&buf);
 
     let mut mac =
-        HmacSha256::new_from_slice(&hmac_key).map_err(|e| CommandError::Internal(e.to_string()))?;
+        HmacSha256::new_from_slice(&hmac_key).map_err(|e| FeatureError::Internal(e.to_string()))?;
     mac.update(&out);
     out.extend_from_slice(&mac.finalize().into_bytes());
     Ok(out)
