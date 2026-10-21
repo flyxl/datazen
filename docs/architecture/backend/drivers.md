@@ -71,7 +71,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 | `requires_order_by` | 该子句是否要求语句已有 `ORDER BY` |
 | `order_by_fallback` | 调用方未指定排序时用于占位的排序表达式 |
 
-- 默认实现输出 `LIMIT {n} OFFSET {m}`；驱动声明 `supports_offset() == false`（`olap`、`superset`）时自动退化为 `LIMIT {n}`。
+- 默认实现输出 `LIMIT {n} OFFSET {m}`；驱动声明 `supports_offset() == false`（`superset`）时自动退化为 `LIMIT {n}`。
 - `requires_order_by == true` 时，Host 仅在**调用方没有排序**时补 `order_by_fallback`；用户显式排序优先，不叠加兜底排序。
 - 调用点：`src-tauri/src/services/query_executor.rs::build_select_sql`、`packages/data-transfer/src/execute.rs`、`packages/data-sync/src/keyset.rs`、`src-tauri/src/commands/sync/keyset_source.rs`。`data_transfer` 仍以 `supports_offset()` 作为翻页循环的终止条件（不能 OFFSET 的引擎不继续翻页），不参与 SQL 拼接。
 - 设置项 `limitSelectResults` 不生成 SQL：它把 `limit` 传给驱动命令，由驱动截断结果集（SQL Server 的做法见 §2.3）。

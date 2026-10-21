@@ -424,12 +424,12 @@ export function rustIdentOf(packageName) {
 /**
  * Registered **path** driver directories, as workspace-relative POSIX paths.
  *
- * Git drivers are deliberately not part of this. `kiwi`, `olap` and `superset`
+ * Git drivers are deliberately not part of this. `kiwi` and `superset`
  * have no `path` and no Cargo manifest in a clean tree — they are cloned into
  * `packages/drivers/<id>/` at build time and are not workspace members, so
  * there is nothing for cargo to report and nothing for this guard to compare.
  * They are named in the header as a known blind spot rather than silently
- * skipped, because a guard that quietly drops a third of its subject set is the
+ * skipped, because a guard that quietly drops part of its subject set is the
  * failure mode this file was written to avoid.
  *
  * @param {object} parsed `drivers-registry.json`

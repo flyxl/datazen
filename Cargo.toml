@@ -19,7 +19,6 @@ members = [
 ]
 exclude = [
     "packages/drivers/kiwi",
-    "packages/drivers/olap",
     "packages/drivers/superset",
 ]
 

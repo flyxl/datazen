@@ -194,7 +194,7 @@ datazen-platform-api = { path = "packages/platform-api" }
 datazen-application = { path = "packages/application" }
 ```
 
-与本文早期草案的差异：`server` **没有**加进 `members`——`server/` 在仓库中不存在，该 crate 属更晚阶段；`packages/runtime` 本就已在基线的 `members` 中，本次未改动这一行，只补 `platform-api` 与 `application` 两条。`packages/backend-client` 是 TypeScript 包，**不得**加入 Cargo `members`（`scripts/__tests__/check-platform-crate-boundaries.test.ts` 的 fixture 断言 `backend-client` 不在 cargo members 中）。`packages/drivers/*` 的通配与三个 `exclude`（kiwi / olap / superset）保持原样，驱动注入仍由 `scripts/resolve-drivers.mjs` 写入占位段。
+与本文早期草案的差异：`server` **没有**加进 `members`——`server/` 在仓库中不存在，该 crate 属更晚阶段；`packages/runtime` 本就已在基线的 `members` 中，本次未改动这一行，只补 `platform-api` 与 `application` 两条。`packages/backend-client` 是 TypeScript 包，**不得**加入 Cargo `members`（`scripts/__tests__/check-platform-crate-boundaries.test.ts` 的 fixture 断言 `backend-client` 不在 cargo members 中）。`packages/drivers/*` 的通配与两个 `exclude`（kiwi / superset）保持原样，驱动注入仍由 `scripts/resolve-drivers.mjs` 写入占位段。
 
 Wave-2 在此基础上又新增 `packages/ai-providers` 与 `packages/workspace-apps` 两个成员
 （AI provider 协议适配实现、Workspace App 形态中立内核），两者的边界分别由 F-09 / F-10 断言。
@@ -910,7 +910,7 @@ driver 集合**不是手写名单**：由每个 crate 自己的源码里有没�
 
 真空态与 §8.2 同形：`reason:'absent'`（目录不在）与 `reason:'empty'`（目录在但没有可读的 `.rs`）分开报。两者本身不改写退出码，由上面那轮注册表互校把"注册了却读不到"提升成 error。
 
-已知盲区：**git driver 不覆盖**。它们由 `resolve-drivers.mjs` 克隆到 `packages/drivers/<id>/`、不是 Cargo member，cargo 侧无从枚举；要守得换成一条以 `drivers-registry.json` 的 `git` 条目为起点的扫描，那是另一个守卫的事。本守卫对它们只做到"不误伤"：实测 3 个 git driver（kiwi / olap / superset）连 `src-tauri/src/driver_init.rs` 都不注入，不构成 driver→driver 边。
+已知盲区：**git driver 不覆盖**。它们由 `resolve-drivers.mjs` 克隆到 `packages/drivers/<id>/`、不是 Cargo member，cargo 侧无从枚举；要守得换成一条以 `drivers-registry.json` 的 `git` 条目为起点的扫描，那是另一个守卫的事。本守卫对它们只做到"不误伤"：实测 2 个 git driver（kiwi / superset）连 `src-tauri/src/driver_init.rs` 都不注入，不构成 driver→driver 边。
 
 变异自证（每次都先 `grep` 确认注入生效再跑，回退后再跑一次确认恢复绿）：注入 `use datazen_driver_redis::…` → EXIT=1；注入 `datazen-driver-redis = { path = … }` → EXIT=1 且**只有 T-01 报**；注入 `#[path = "../../redis/src/…"]` → EXIT=1 且**只有 T-03 报**。三种"必须保持绿"的合法形态实测 EXIT=0：`use datazen_driver_api::…`、`use datazen_driver_http_support::…`、名字更长的前缀相似 crate、`#[path]` 指向自己 crate、raw string 里写着自己的 crate 名。
 

@@ -271,7 +271,7 @@ Journey 用小数据集保证 UI 路径稳定；类型与 apply 闭环见 `SYNC-
 `e2e/run.mjs` 因此默认给应用注入 `DATAZEN_KEYRING=file`，主密钥改落该次 data dir 的 `.key`；
 E2E 本就不该读写开发者真实钥匙串。需要显式覆盖时设 `DATAZEN_KEYRING=keyring` 退回原行为。
 
-无数据库时，仅 UI/设置类 spec（如 `settings.ts`、`i18n-*`、部分 `path-ipc-hardening`）仍可能通过；依赖真实连接的 suite 会失败。需要 Kiwi / OLAP 等插件驱动的 spec 必须用默认 `pnpm e2e`（全部插件）构建。
+无数据库时，仅 UI/设置类 spec（如 `settings.ts`、`i18n-*`、部分 `path-ipc-hardening`）仍可能通过；依赖真实连接的 suite 会失败。需要 Kiwi / Superset 等插件驱动的 spec 必须用默认 `pnpm e2e`（全部插件）构建。
 
 ### 静默模式（`DATAZEN_E2E_QUIET`）
 

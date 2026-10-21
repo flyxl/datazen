@@ -520,7 +520,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 ### 10.3 每类驱动的差异维度
 
-`packages/drivers/` 下现有目录：clickhouse、duckdb、elasticsearch、hbase、http-support、influxdb、kiwi、mongodb、mysql、postgres、redis、rqlite、sqlite、sqlserver、superset、turso、vector、victoriametrics（其中 kiwi、superset 不在 Cargo workspace 成员内，olap 被 workspace `exclude`）。**各驱动的具体能力本文不预设结论**，必须由各驱动自己的能力声明与测试确认；夹具模板只要求每个驱动回答同一组问题并在测试中固化：
+`packages/drivers/` 下现有目录：clickhouse、duckdb、elasticsearch、hbase、http-support、influxdb、kiwi、mongodb、mysql、postgres、redis、rqlite、sqlite、sqlserver、superset、turso、vector、victoriametrics（其中 kiwi、superset 不在 Cargo workspace 成员内，被 workspace `exclude`）。**各驱动的具体能力本文不预设结论**，必须由各驱动自己的能力声明与测试确认；夹具模板只要求每个驱动回答同一组问题并在测试中固化：
 
 | 维度 | 驱动需声明 | 测试形态 |
 | --- | --- | --- |

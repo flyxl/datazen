@@ -475,7 +475,7 @@ if [ "$_drv_ok" = 1 ]; then
   ok "generated.ts / driver_init.rs / .driver-features.json / generated-pro.ts / capabilities/default.json（--drivers=${DRIVERS}）；${_drv_fact}"
 
   if [ -z "$_drv_git" ]; then
-    ok "驱动集内无 git 驱动：预设 basic / all 只展开 path 驱动；git 驱动（kiwi、olap、superset）需显式列举，如 NEW_WT_DRIVERS=basic,kiwi"
+    ok "驱动集内无 git 驱动：预设 basic / all 只展开 path 驱动；git 驱动（kiwi、superset）需显式列举，如 NEW_WT_DRIVERS=basic,kiwi"
   else
     _drv_git_missing=""
     for _g in $(printf '%s' "$_drv_git" | tr ',' ' '); do
