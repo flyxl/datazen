@@ -299,3 +299,16 @@
 Tester 全量首跑遇到 `scripts/__tests__/driver-init-rustfmt.test.mjs` 失败：`ENOENT … packages/ui/src/__boundaryProbe__.ts`——该 probe 文件由 `scripts/__tests__/boundaryMutation.ts` **并发植入/删除**，属脚本测试之间的竞态。单跑该文件 8 passed、全量复跑全绿。
 
 **这是既有缺陷，与本批任何轨无关**，但它会周期性把别人的门禁弄红（本批已踩到一次）。登记：`docs/bugs/` 候选——「脚本测试用共享 probe 路径导致并发竞态」。合流后的健全性校验如果再次踩到，就按 `docs/bugs/` 单文件规则登记。
+
+## 两条轨的第 4 轮（收尾）已下发
+
+| 轨 | HEAD | 本轮内容 | 复测代理 |
+| --- | --- | --- | --- |
+| `insert-backend` | `df51994b4` | 10 处既有拒绝点贴契约码（stalePlan ×5 / affectedMismatch ×1 / cell 三码 ×10）。自报「只加前缀，判定零改动」 | `e104b765` |
+| `grid-selection` | `3c7edb6bf` | `applyGridSelection` 按 mode 归一化几何（堵住「row + 非 null 几何」的公开 API 洞） | `7037c93a` |
+
+**协调者自己的改动**：`3c7edb6bf` 只把 `tableDataStore.test.ts:533` 的用例名从 `deleteRows selects indices then stages deletes` 改成 `...from explicit indices without touching the row set`——行集写入移除后旧名字已失真，而「名字说谎的测试」比没测试更坏。断言零改动，单文件 40 例 EXIT=0。
+
+**我要求两个 Tester 本轮各盯一个易漏点**：
+- `insert-backend`：「只改字符串」这条自述要从 diff 层与用例层双向证；且要给出**零生产者终盘清单**（码 → 归属 → 状态），写进合流报告。
+- `grid-selection`：`applyGridSelection` 现在返回**共享常量** `ROW_MODE_GRID_SELECTION`，要查它会不会被 mutate 污染全局；这比「跑绿」重要——归一化很容易顺手把 `cell` 合法几何也清掉。
