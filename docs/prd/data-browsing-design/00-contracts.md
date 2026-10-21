@@ -1047,11 +1047,11 @@ export interface DataGridCapabilities {
 
 | # | 错误码 | 归属分册 | 触发条件 | 用户可见文案要求 |
 | --- | --- | --- | --- | --- |
-| 1 | `grid.cell.readOnly` | 05 | 连接级只读 / 无主键表 / 生成列 | 说明不可编辑的**具体原因**，禁止只显示「不可编辑」 |
+| 1 | `grid.cell.readOnly` | 05 / 04 | 连接级只读 / 无主键表 / 生成列〔契约审计修订 2026-10-21〕IB4-D6：04 的 `mod.rs`（连接只读）与 `row_identity.rs`（表无主键）也在生产，非 05 独占 | 说明不可编辑的**具体原因**，禁止只显示「不可编辑」 |
 | 2 | `grid.cell.invalidValue` | 05 | 类型化编辑器解析失败 | 说明期望类型与收到的值 |
-| 3 | `grid.cell.ambiguousIdentity` | 03 | 一页内出现重复行身份键 | 说明该页无法安全定位，请缩小范围 |
+| 3 | `grid.cell.ambiguousIdentity` | 03 / 04 | 一页内出现重复行身份键〔契约审计修订 2026-10-21〕IB4-D6：04 的 `change_set::canonicalize_changes` 也在生产 | 说明该页无法安全定位，请缩小范围 |
 | 4 | `grid.cell.noRowIdentity` | 03 / 04 | 目标行的行身份**无法唯一定位一行**：身份为空、身份含 NULL、缺主键列、**多出非主键列**——W-3 要求身份列集与主键全集逐字相等，任一不满足都归本码〔契约审计修订 2026-10-21〕IB3-D3：前端动作相同（重建行身份），故不为此再拆新码 | 说明该行不可写入，并指出缺/多的列名 |
-| 5 | `grid.commit.stalePlan` | 04 / 06 | `fingerprint` 不匹配；**或**计划与当前上下文不再一致（驱动类型 / `config_revision` / 库 / schema / 会话漂移，或执行前配置变更）〔契约审计修订 2026-10-21〕IB3-D1：六条「后端唯一可知、语义等于计划失效」的拒绝统一到本码，前端才能统一走「重新预览」 | 说明计划已过期，要求重新预览 |
+| 5 | `grid.commit.stalePlan` | 04 / 06 | `fingerprint` 不匹配；**或**计划与当前上下文不再一致（`config_revision` / 库 / schema / 会话漂移，或执行前配置变更；**不含「请求里的 driver_type 与连接 profile 不一致」**——那属调用方错误，由 `validate_connection_facts` 以普通 `Validation` 拒绝、不带码，见下方〔生产者盘点〕的例外说明）〔契约审计修订 2026-10-21〕IB3-D1：六条「后端唯一可知、语义等于计划失效」的拒绝统一到本码，前端才能统一走「重新预览」 | 说明计划已过期，要求重新预览 |
 | 6 | `grid.commit.affectedMismatch` | 04 / 06 | 影响行数 ≠ 1（**INSERT 不豁免**，见 C-5） | 说明「预期影响 1 行、实际 N 行，已回滚/未提交」 |
 | 7 | `grid.commit.conflictingIntents` | 04 | 同一行既标记删除又有列写入；**或**新增行同时被标记删除〔契约审计修订 2026-10-21〕C-6 / **两条均已实装**：后者在 `data_browsing/insert_plan.rs`，前者在 `change_set.rs`（D7 修复） | 说明冲突并指出是同一行 |
 | 8 | `grid.insert.noWritableColumn` | 04 | 一行的所有列都是 `Unset`、且无默认值可依赖 | 提示至少填一列 |
@@ -1093,7 +1093,7 @@ export interface DataGridCapabilities {
 | 44 | `grid.selection.invalid` | 01 | 选区状态自相矛盾（锚点与焦点不匹配、区间倒置未归一） | 说明选区已重置，并提示重新选择 |
 | 45 | `grid.selection.stale` | 01 | 选区引用的行列在重取数/改列后已失效 | 说明选择已被清空，需重新选择 |
 
-> **⚠ 生产者盘点（2026-10-21，Wave 1 收尾实测，Wave 1 第 4 轮补齐后更新）**：本节 45 行里目前有 **8 个码**有真实 throw 点：
+> **⚠ 生产者盘点（2026-10-21，Wave 1 收尾实测，第 4 轮补齐后更新）**：本节现有 **44 行**（编号 10 的 `duplicateDraft` 已按 IB3-D4 删除、编号留空），其中 **8 个码**有真实 throw 点：
 > - `grid.commit.stalePlan`（7 处：`config_revision` / 库 / schema / 会话 / 执行前配置漂移 + 2 条指纹）
 > - `grid.commit.affectedMismatch`（3 处：INSERT / 行身份 / 驱动未上报）
 > - `grid.commit.conflictingIntents`（3 处：删除+列写入、新增行被标记删除、计划内身份冲突）
