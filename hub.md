@@ -104,7 +104,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ❌ Tester **TEST_FAILED**（1 阻塞行为回归）→ 第 1 轮修复中 |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 已交付 `33416cb72` → Tester `0da32120` 复测中 |
 | F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | 🔄 代理中断（第 1 次死亡），**已 resume**；发现 1,042 行孤儿测试 |
-| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 已交付 `b4abf9de8` → Tester 复测中 |
+| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 1 轮小修中 |
 
 **派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖。**已执行**（四树均推进到 `65dac1e2c` = C + B + `OrganizationScope`）。
 
@@ -449,6 +449,27 @@ packages/data-transfer/src/plan_store/mod.rs:13  → 只声明了 `mod checkpoin
 → **已作为 F 轨的验收标准追加**：必须把孤儿测试接进模块树并跑通；**若暴露出真实缺陷，不得删改断言来让它变绿**（那 40 个测试从未跑过，激活后红是"暴露先存缺陷"，不是本轨引入）。同时它也是**本轨的交付价值**（把 40 个从未运行的测试激活）。
 
 **顺带同步了一条跨轨形态风险**：D 轨被判定出的行为回归（IPC 命令作用域 per-request 依赖 `platform_require()` → adapter 不可用时功能整体不可用）已写进 F 的简报，要求它**主动规避**并把 `env -u USER` 差分自验列入门禁。
+
+### G 轨复测（Tester `58447892`）—— TEST_PASSED，15 个变异里 14 个按预期变红
+
+**★ 本 initiative 至今最可迁移的一条教训（G-04）**：
+Tester 用**首版的 16 条用例**跑 5 个变异（M5 长度前缀 / M9 跨组织委托显式检查 / M10 授权单多连接失败关闭 / M11 派生盐来自宿主主密钥 / M12 子钥域分离）—— **全部全绿**。
+即：这 5 条性质**首版用例一条都没钉住**；"测试全绿"≠"性质被钉住"。因为这类实现里，一旦少一个环节（把长度前缀去掉），**正常路径的行为完全不变**，正常路径用例照绿。**只有变异能暴露它。**
+Tester 补的 8 条用例才把它们钉死。**这条已作为后续所有轨的验收提醒** —— 每个 Tester 简报里都点名要求做变异验证，本 initiative 的多个真实缺陷（A 的 D-01 文档说谎、D 轨的 D-01 行为回归、G 轨的 G-04）**都是变异而非普通用例抓到的**。
+
+**G 轨其余实测结论**：
+- 三条性质**全部靠变异证伪**：去掉 `organization_id`/`connection_id`/`policy_isolation_key` → 各自变红；本人与委托共用域标签 → 变红；装配改用常量盐 → 变红；子钥不做域分离 → 变红；principal 进入派生输入 → 变红。**不含材料**已用输入集合追证（`ProfileRecord` 不含连接串与明文密码，只有 `secret_ref`）+ 身份键串不含主密钥/子钥 base64。
+- 委托路径**不转调** `resolve`（源码结构断言钉住，改成转调 → 3 条红）；域标签不同**且**委托多绑定 `delegation_id` + scope ⇒ **构造上不可能**等于本人身份（不是"通常不同"）；`resolve` 在委托上下文拒绝（去掉 → 红）；校验不过**不降级**（改成回落本人 → 红）。
+- 失败画像独立复现：基线树 24 次整包 → 1 次失败（live_source 既有竞态）；本树 24 次 → 2 次失败（均为 native_tool 既有 flake，基线/本树单跑都 10/10 绿）；`--skip` 身份模块时本树同样出 live_source 竞态 ⇒ **非本轨放大**。
+- 端口 `platform-api/src/ports/identity.rs` **一字未改**（diff 为空）。
+
+**G 的缺陷处置**：
+- `G-01`（台账仍列 `IdentityResolver` 为未实现）→ **协调者已改**。
+- `G-02`（`adapter.rs` 注释**误述失败半径**：写"仅身份能力缺席"，实际 `?` 让整个 `PlatformAdapter::inject` 失败）→ **要求修**（与 A 轨 D-01 同类：注释描述了代码不保证的行为）。
+- `G-03`（"主密钥取不到 ⇒ 失败关闭"**不可测**：该路径不可达、兜底分支不存在，变异实测 24 条全绿）→ 接受为**结构性满足**，但要求在台账写明"未被测试钉住"。
+- `G-05` / `G-06` / `G-07`（主密钥轮换 ⇒ 身份键全变、消息编码与长度前缀、域标签取值、`resolve` 拒绝委托上下文在另两份文档未写）→ **要求补文档**（这些是"后来者最容易无意改坏"的地方：长度前缀看着像冗余）。
+- `G-08`（native_tool 既有 flake 出现 2 次 vs 基线 0 次，Fisher p≈0.49）→ 接受为既有 flake。
+- `G-09`（端口已实现但**无调用方**；`runtime/src/connection/types.rs:460` 的 `PoolKeyInputs::execution_identity_key` 仍是裸 `String`）→ 接受，记 Wave 4（**web 多租户要真正用上它，需要 runtime 从 `IdentityResolver` 取键**，runtime 改动本轨是禁区）。
 
 ## 6. 门禁与流程
 
