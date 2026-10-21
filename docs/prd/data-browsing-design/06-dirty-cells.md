@@ -25,7 +25,7 @@
 | A3 | `npx vitest run src/stores/__tests__/tableDataStore.dirty.test.ts` | 全绿；必须包含 `journey: edit → highlight → edit back → clean` 与 `journey: stage on page 1 → next page → back` 两条用例 |
 | A4 | `npx vitest run` | `Test Files` 全绿、`Tests` 中无 failed；无 `FAIL` 行 |
 | A5 | `pnpm typecheck` | 退出码 0，无 `error TS` 行 |
-| A6 | `grep -rn "editBuffer\|rebuildEditBuffer\|CellEdit" src/` | **空输出**（死 prop 与派生缓存均已删除） |
+| A6 | `grep -rnE "\beditBuffer\b\|\brebuildEditBuffer\b\|\bCellEdit\b" src/` | **空输出**（死 prop 与派生缓存均已删除）〔契约审计修订 2026-10-21〕**门禁命令订正**：原稿写 `grep -rn "editBuffer\|rebuildEditBuffer\|CellEdit" src/`，**在任何状态下都不可能为空**——`onCellEdit` / `onCellEditCancel` / `onDraftCellEdit` / `onDraftCellEditStart` / `onDraftCellEditCancel` 这批**活的编辑回调**都含子串 `CellEdit`（实测 `grep -rn "CellEdit" src/` 命中 **143** 处，其中真正属于第二真源的只有 3 个符号）。**词边界是必需的**：`\b` 让 `\bCellEdit\b` 不匹配 `onCellEdit`（`n` 与 `C` 之间无词边界）、`\beditBuffer\b` 不匹配 `rebuildEditBuffer`。**本册要删的是那三个符号，不是那批回调** |
 | A7 | `pnpm e2e --spec e2e/specs/table-dirty-cells.ts` | 亮色 / 暗色 / 第三方主题（`slate-blue`）三种情况下 `[data-dt-dirty="true"]` 均 `isDisplayed()` 为真 |
 | A8 | 人工（长输出纪律见 `AGENTS.md`：重定向到系统临时目录再 `tail`） | 同一行改 3 格 → 面板计数显示 `3 cells changed`（不是 1），网格上恰好 3 个格子带 `data-dt-dirty="true"` |
 
@@ -138,6 +138,8 @@
 2. `src/lib/kvSlotState.ts`（Redis 槽位）的 `getDirty()` / `setDirty()` —— 宣称「no unsaved edits」但那是 KV 编辑器自己的状态机，`src/lib/__tests__/kvSlotState.test.ts` 覆盖。
 
 `grep -rn "data-dt-dirty\|data-dt-selected\|data-dt-editing\|data-dt-cell-type" src/ e2e/` → **零命中**：00 契约 4.4 定义的四个属性今天一个都不存在。已有的只有 `data-dt-row` / `data-dt-col` / `data-col-header`。
+
+> 〔契约审计修订 2026-10-21〕**本条现状事实已过期**：Wave 2 的 `grid-cell` 轨已把 **`data-dt-selected`**（`GridCell.tsx`，选中格 `"true"`、未选中**不输出属性**）与 **`data-dt-cell-type`**（`GridCell.tsx`，列类型名）落到 DOM 上（当前该 grep 命中 **34** 处，含这两个属性的实现与用例）。**仍然不存在**的是 `data-dt-dirty`（本册要做）与 `data-dt-editing`（创建归属在 05 分册）。本册的脏态属性名 `data-dt-dirty` **不得**与已存在的两个混淆。
 
 ### 2.7 真源结论（本册最重要的判断）
 
@@ -468,7 +470,7 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
   - `src/components/DataTable/DataTable.tsx`：删 `DataTableProps.editBuffer` 与 `import type { CellEdit }`。
   - `src/stores/tableData/__tests__/pendingChanges.test.ts`：删 `rebuildEditBuffer skips delete-marked rows`。
 - **为什么**：真源只能一个（2.7 节）。**死 prop 必须一起删**，否则下一个人看到 `editBuffer` 会以为只是「没接上」，再写一次 `rebuildEditBuffer` —— PRD 的原始方案正是这么写的，这就是风险来源。
-- **自测**：`pnpm typecheck` 退出码 0；`grep -rn "editBuffer\|rebuildEditBuffer\|CellEdit" src/` 空输出；`npx vitest run src/stores/__tests__/tableDataStore.test.ts src/stores/tableData/__tests__/pendingChanges.test.ts` 全绿。
+- **自测**：`pnpm typecheck` 退出码 0；`grep -rnE "\beditBuffer\b\|\brebuildEditBuffer\b\|\bCellEdit\b" src/` 空输出（**词边界版**，见 A6 的订正）；`npx vitest run src/stores/__tests__/tableDataStore.test.ts src/stores/tableData/__tests__/pendingChanges.test.ts` 全绿。
 
 ### Step 3 · `tableDataStore` 新增 `unstageRowDelete`
 
