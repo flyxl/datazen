@@ -27,6 +27,12 @@ import {
   type TableTarget,
 } from './tableData/connectionState';
 import {
+  createSelectionSlice,
+  panelColumnOrder,
+  rowIndexSelectionReset,
+  type SelectionStoreSlice,
+} from './tableData/selectionActions';
+import {
   AMBIGUOUS_ROW_IDENTITY_ERROR,
   findPendingForRow,
   hasPendingIdentityCollision,
@@ -47,7 +53,7 @@ export interface LoadTableDataParams extends TableTarget {
 }
 
 /** Every action is scoped to one table/view panel, like `panelStore`'s queryExec map. */
-interface TableDataStore {
+interface TableDataStore extends SelectionStoreSlice {
   byPanel: Map<string, TableState>;
 
   loadTableData: (params: LoadTableDataParams) => Promise<void>;
@@ -79,8 +85,6 @@ interface TableDataStore {
 
   startEdit: (panelId: string, row: number, col: string) => void;
   cancelEdit: (panelId: string) => void;
-  selectRow: (panelId: string, index: number, opts?: { multi?: boolean; range?: boolean }) => void;
-  toggleSelectAll: (panelId: string) => void;
   stageCellChange: (panelId: string, row: number, col: string, value: unknown) => void;
   applyColumnToRows: (panelId: string, col: string, value: unknown, rows: number[]) => void;
   stageRowDelete: (panelId: string, rowIndices: number | number[]) => void;
@@ -116,6 +120,7 @@ function patchPanelForReload(
 ): void {
   patchPanel(get, set, panelId, (ts) => ({
     ...updater(ts),
+    ...rowIndexSelectionReset(),
     requestRevision: ts.requestRevision + 1,
   }));
 }
@@ -177,7 +182,7 @@ function commitFetchedPage(
     rowIdentityAnchors: anchors,
     loading: false,
     loadingRevision: null,
-    selectedRows: new Set(),
+    ...rowIndexSelectionReset(),
     editBuffer: rebuildEditBuffer({
       ...current,
       columns: res.columns,
@@ -237,12 +242,18 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       });
       commitFetchedPage(get, set, panelId, context, requestRevision, res);
     } catch (e) {
+      // Fourth convergence point (00-contracts §4 needs the sync): a *failed* fetch must
+      // drop row-indexed selection exactly like a successful one. `patchPanelForReload`
+      // already covers the six transition actions, but a bare `reloadPanel` / toolbar
+      // refresh / post-commit reload has no such transition, so without this the old rows
+      // stay highlighted under an error banner for a page the user can no longer see.
       patchPanel(get, set, panelId, (ts) =>
         ts.requestRevision === requestRevision && ts.loadingRevision === requestRevision
           ? {
               loading: false,
               loadingRevision: null,
               error: extractErrorMessage(e, t('tableData.loadFailed')),
+              ...rowIndexSelectionReset(),
             }
           : {},
       );
@@ -275,7 +286,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         columns: [],
         rows: [],
         totalRows: 0,
-        selectedRows: new Set(),
+        ...rowIndexSelectionReset(),
         editBuffer: new Map(),
         editingCell: null,
         // Bump the revision so an in-flight (or late) response can never commit.
@@ -368,6 +379,9 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   setVisibleColumns: (panelId, columns) => {
     patchPanel(get, set, panelId, () => ({ visibleColumns: columns }));
+    const ts = get().byPanel.get(panelId);
+    // Hiding a column must converge the selection now, or hidden cells stay "selected".
+    if (ts) get().reconcileGridSelectionForColumns(panelId, panelColumnOrder(ts));
   },
 
   setSort: (panelId, sort) => {
@@ -387,39 +401,8 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     patchPanel(get, set, panelId, () => ({ editingCell: null }));
   },
 
-  selectRow: (panelId, index, opts) => {
-    patchPanel(get, set, panelId, (ts) => {
-      if (opts?.range && ts.lastSelectedIndex !== null) {
-        const lo = Math.min(ts.lastSelectedIndex, index);
-        const hi = Math.max(ts.lastSelectedIndex, index);
-        const next = new Set(ts.selectedRows);
-        for (let i = lo; i <= hi; i += 1) next.add(i);
-        return { selectedRows: next, lastSelectedIndex: index };
-      }
-      if (opts?.multi) {
-        const next = new Set(ts.selectedRows);
-        if (next.has(index)) next.delete(index);
-        else next.add(index);
-        return { selectedRows: next, lastSelectedIndex: index };
-      }
-      // Plain click: select the row, or — when it already is the only selected
-      // row — clear the selection, so a second click undoes the first.
-      if (!opts?.range && ts.selectedRows.size === 1 && ts.selectedRows.has(index)) {
-        return { selectedRows: new Set(), lastSelectedIndex: null };
-      }
-      return { selectedRows: new Set([index]), lastSelectedIndex: index };
-    });
-  },
-
-  toggleSelectAll: (panelId) => {
-    patchPanel(get, set, panelId, (ts) => {
-      const allSelected = ts.selectedRows.size === ts.rows.length && ts.rows.length > 0;
-      if (allSelected) return { selectedRows: new Set(), lastSelectedIndex: null };
-      const next = new Set<number>();
-      for (let i = 0; i < ts.rows.length; i += 1) next.add(i);
-      return { selectedRows: next, lastSelectedIndex: null };
-    });
-  },
+  // Whole-row + cell selection actions live in `tableData/selectionActions`.
+  ...createSelectionSlice((panelId, updater) => patchPanel(get, set, panelId, updater)),
 
   stageCellChange: (panelId, row, col, value) => {
     const ts = get().byPanel.get(panelId);
@@ -581,10 +564,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     if (!ts) return;
     const unique = [...new Set(rowIndices.filter((i) => Number.isInteger(i) && i >= 0))];
     if (unique.length === 0) return;
-    patchPanel(get, set, panelId, () => ({
-      selectedRows: new Set(unique),
-      lastSelectedIndex: unique[unique.length - 1] ?? null,
-    }));
+    // Deleting does not change the selection semantics (00-contracts §4, GS2-D2): the row
+    // set is owned by `mode`, so a `cell` selection must stay `cell` + empty rows while the
+    // delete scope lives in the derived selector, and row identity is carried by
+    // `rowIdentityAnchors` inside `stageRowDelete`. Writing `selectedRows` here would park
+    // two sources of truth on top of each other ("region highlighted" + "rows selected").
     get().stageRowDelete(panelId, unique);
   },
 

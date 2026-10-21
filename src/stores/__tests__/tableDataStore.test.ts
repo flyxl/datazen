@@ -530,7 +530,7 @@ describe('tableDataStore (panel-scoped)', () => {
     expect(loaded().rows.map((row) => row.name)).toEqual(['Same', 'Same']);
   });
 
-  it('deleteRows selects indices then stages deletes', async () => {
+  it('deleteRows stages deletes from explicit indices without touching the row set', async () => {
     await loadTable();
     useTableDataStore.getState().deleteRows(PANEL, [1]);
     expect([...loaded().pendingChanges.values()]).toEqual([

@@ -5,6 +5,7 @@ import type {
   RowChangePlan,
   TableChangeContext,
 } from '../../lib/tableChanges';
+import type { GridSelection } from './gridSelection';
 
 export interface CellEdit {
   rowIndex: number;
@@ -42,6 +43,8 @@ export interface TableState {
   pendingStatus: PendingStatus;
   selectedRows: Set<number>;
   lastSelectedIndex: number | null;
+  /** Cell/region selection. The store is the only writer; `none` is the default. */
+  gridSelection: GridSelection;
   editingCell: { row: number; col: string } | null;
   /** Row highlighted by the detail drawer. */
   detailRowIndex: number | null;
