@@ -1,36 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Columns3, Filter, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
+import { Columns3, ShieldAlert } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
-import { NlFilterInput } from '../../components/ai/NlFilterInput';
 import { TableColumnFilter } from './TableColumnFilter';
 import { useTableDataStore } from '../../stores/tableDataStore';
-import { EMPTY_GRID_SELECTION, type GridSelection } from '../../stores/tableData/gridSelection';
+import { EMPTY_GRID_SELECTION } from '../../stores/tableData/gridSelection';
 import { hasPendingWork } from '../../stores/tableData/pendingChanges';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
-import { cn } from '../../lib/cn';
 import { CopyableError } from '../../components/ui/CopyableError';
-import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { buildRowIdentity, rowIdentityKey, tableChangeContextKey } from '../../lib/tableChanges';
 import type { TableChangeContext } from '../../lib/tableChanges';
-import {
-  filterExpressionToConditions,
-  parseFilterForApply,
-  type FilterExpression,
-} from '../../lib/filterExpression';
 import { Button } from '../../components/ui/Button';
 import {
   TablePendingChangesBar,
   TableTransactionControls,
 } from './TablePendingChangesBar';
+import { TableStatusBanners } from './TableStatusBanners';
+import { TableToolbar } from './TableToolbar';
+import { useTableActions } from './useTableActions';
 import { PendingPlanDialog } from './PendingPlanDialog';
 import { useTableDraftRows } from './useTableDraftRows';
 import { isComposingEvent, isEditableTarget } from '../../lib/gridEventGuards';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
-import type { DatabaseType, FilterCondition, SortCondition } from '../../types';
+import type { DatabaseType } from '../../types';
 import { Spinner } from '../../components/ui/Spinner';
 
 interface TableViewProps {
@@ -104,85 +99,20 @@ export function TableView({
    * outlived its commit would contradict the highlight the user sees.
    */
   const [insertNotice, setInsertNotice] = useState<string | null>(null);
+  /**
+   * Every action that moves the page invalidates the notice: the user is
+   * looking at a different set of rows than the one the notice talks about.
+   *
+   * It is stable on purpose — the action table is memoised on it.
+   */
+  const invalidateNotice = useCallback(() => setInsertNotice(null), []);
   /** Panel-scoped action binders: every store call is namespaced by this tab's id. */
-  const actions = useMemo(() => {
-    const store = () => useTableDataStore.getState();
-    /**
-     * Every action that moves the page invalidates the notice: the user is
-     * looking at a different set of rows than the one the notice talks about.
-     */
-    const invalidateNotice = () => setInsertNotice(null);
-    return {
-      load: () => {
-        // The "retry" of a failed load re-reads the page, so the notice of the
-        // previous commit is stale — exactly like a plain reload.
-        invalidateNotice();
-        void store().loadTableData({ panelId, ...context });
-      },
-      reload: () => {
-        invalidateNotice();
-        store().reloadPanel(panelId);
-      },
-      setSort: (sort: SortCondition) => {
-        invalidateNotice();
-        store().setSort(panelId, sort);
-      },
-      removeFilter: (index: number) => store().removeFilter(panelId, index),
-      clearFilters: () => {
-        invalidateNotice();
-        store().clearFilters(panelId);
-      },
-      addFilter: (filter: FilterCondition) => store().addFilter(panelId, filter),
-      setFilters: (filters: FilterCondition[], logic?: 'and' | 'or') => {
-        invalidateNotice();
-        store().setFilters(panelId, filters, logic);
-      },
-      updateFilter: (index: number, filter: FilterCondition) =>
-        store().updateFilter(panelId, index, filter),
-      setFilterLogic: (logic: 'and' | 'or') => store().setFilterLogic(panelId, logic),
-      applyFilters: () => {
-        invalidateNotice();
-        store().applyFilters(panelId);
-      },
-      setFilterPanelOpen: (open: boolean) => store().setFilterPanelOpen(panelId, open),
-      setVisibleColumns: (columns: string[] | null) => store().setVisibleColumns(panelId, columns),
-      setPage: (page: number) => {
-        invalidateNotice();
-        store().setPage(panelId, page);
-      },
-      setPageSize: (size: number) => {
-        invalidateNotice();
-        store().setPageSize(panelId, size);
-      },
-      startEdit: (row: number, col: string) => store().startEdit(panelId, row, col),
-      stageCellChange: (row: number, col: string, value: unknown) =>
-        store().stageCellChange(panelId, row, col, value),
-      cancelEdit: () => store().cancelEdit(panelId),
-      // Row gutter (DB-01 §4.2): row-level selection must also switch the mode to 'row',
-      // otherwise `selectedRows` paints a highlight the selection model cannot explain.
-      selectRow: (index: number, opts?: { multi?: boolean; range?: boolean }) =>
-        store().setRowModeSelection(panelId, index, opts),
-      toggleSelectAll: () => store().toggleSelectAll(panelId),
-      // Cell/region selection (DB-01): the store owns the mode, the grid only reports.
-      setGridSelection: (selection: GridSelection) =>
-        store().setGridSelection(panelId, selection),
-      deleteRows: (rowIndices: number[]) => store().deleteRows(panelId, rowIndices),
-      previewPendingChanges: () => store().previewPendingChanges(panelId),
-      commitPendingChanges: () => store().commitPendingChanges(panelId),
-      rollbackPendingChanges: () => {
-        invalidateNotice();
-        store().rollbackPendingChanges(panelId);
-      },
-      setDetailRow: (index: number | null) => store().setDetailRow(panelId, index),
-    };
-  }, [context, panelId]);
+  const actions = useTableActions({ panelId, context, invalidateNotice });
 
   const confirmOnDelete = useSettingsStore((s) => s.settings.confirmOnDelete);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [quickFilter, setQuickFilter] = useState('');
-  const [quickFilterError, setQuickFilterError] = useState<string | null>(null);
   const [readOnlyTipVisible, setReadOnlyTipVisible] = useState(false);
   const readOnlyTipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -470,53 +400,6 @@ export function TableView({
     ],
   );
 
-  const handleQuickFilter = useCallback(() => {
-    const input = quickFilter.trim();
-    if (!input) {
-      setQuickFilterError(null);
-      actions.clearFilters();
-      return;
-    }
-    const parsed = parseFilterForApply(input, columns);
-    if (!parsed.ok) {
-      setQuickFilterError(t('filter.invalidExpression', { error: parsed.error }));
-      return;
-    }
-    const logic = new Set<'and' | 'or'>();
-    const collectLogic = (expression: FilterExpression) => {
-      if (expression.type === 'logical') {
-        logic.add(expression.operator);
-        collectLogic(expression.left);
-        collectLogic(expression.right);
-      }
-    };
-    collectLogic(parsed.value.expression);
-    if (logic.size > 1) {
-      setQuickFilterError(t('filter.mixedLogic'));
-      return;
-    }
-    setQuickFilterError(null);
-    actions.setFilters(
-      filterExpressionToConditions(parsed.value.expression),
-      [...logic][0] ?? 'and',
-    );
-  }, [actions, columns, quickFilter, t]);
-
-  const openManualFilter = () => {
-    if (filterPanelOpen) {
-      actions.setFilterPanelOpen(false);
-      return;
-    }
-    actions.setFilterPanelOpen(true);
-    if (draftFilters.length === 0) {
-      actions.addFilter({
-        column: columns[0]?.name ?? '',
-        operator: 'eq',
-        value: '',
-      });
-    }
-  };
-
   if (loading && columns.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
@@ -545,116 +428,33 @@ export function TableView({
     );
   }
 
-  const filterActive = filterPanelOpen || filters.length > 0 || draftFilters.length > 0;
-
   return (
     <div className="flex flex-1 flex-col overflow-hidden" onKeyDown={handleTableKeyDown}>
-      {error && (
-        <div className="flex items-start gap-3 border-b border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-          <CopyableError message={error} copyButton className="min-w-0 flex-1" />
-          <button
-            type="button"
-            className="shrink-0 text-xs text-accent hover:underline"
-            onClick={actions.load}
-          >
-            {t('common.retry')}
-          </button>
-        </div>
-      )}
-      {error && hasWork && (
-        <div className="border-b border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning">
-          {t('tableData.errorPendingHint')}
-        </div>
-      )}
-      {insertNotice && (
-        <div
-          role="status"
-          aria-live="polite"
-          data-testid="table-insert-degraded"
-          className="border-b border-edge bg-surface-raised px-3 py-1.5 text-xs text-fg-muted"
-        >
-          {insertNotice}
-        </div>
-      )}
-      <div className="flex shrink-0 items-start gap-0.5 border-b border-edge px-2 py-0.5">
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          className="mt-0 flex h-7 w-7 shrink-0 items-center justify-center rounded text-xs text-fg-muted transition-colors hover:bg-surface-alt hover:text-fg disabled:opacity-50"
-          onClick={handleRefresh}
-          disabled={loading}
-          title={t('connWin.refresh')}
-          aria-label={t('connWin.refresh')}
-          data-testid="table-data-refresh"
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-        </button>
-        {isEditable && (
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            className="mt-0 flex h-7 w-7 shrink-0 items-center justify-center rounded text-xs text-fg-muted transition-colors hover:bg-surface-alt hover:text-fg disabled:opacity-50"
-            onClick={() => drafts.addDraftRow()}
-            disabled={loading || pendingBusy}
-            title={t('tableData.insertRowHint', { shortcut: '⌘/Ctrl+I' })}
-            aria-label={t('tableData.insertRow')}
-            data-testid="table-insert-row"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-        )}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          className={cn(
-            'mt-0 flex h-7 w-7 shrink-0 items-center justify-center rounded text-xs transition-colors hover:bg-surface-alt',
-            filterActive ? 'text-accent' : 'text-fg-muted hover:text-fg',
-          )}
-          onClick={openManualFilter}
-          disabled={loading}
-          title={t('filter.filter')}
-          aria-label={t('filter.filter')}
-          aria-pressed={filterPanelOpen}
-          data-testid="table-filter-toggle"
-        >
-          <Filter className="h-3.5 w-3.5" />
-        </button>
-        <NlFilterInput
-          panelId={panelId}
-          dbSessionId={dbSessionId}
-          database={database}
-          tableName={tableName}
-        />
-        <div className="ml-1 flex min-w-0 flex-1 items-center">
-          <input
-            type="text"
-            value={quickFilter}
-            onChange={(event) => {
-              setQuickFilter(event.target.value);
-              if (quickFilterError) setQuickFilterError(null);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                handleQuickFilter();
-              }
-            }}
-            onBlur={() => {
-              if (quickFilter.trim()) handleQuickFilter();
-            }}
-            disabled={loading || pendingBusy}
-            placeholder={t('filter.quickPlaceholder')}
-            className="h-7 min-w-0 flex-1 rounded border border-edge bg-surface px-2 text-xs text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none"
-            aria-invalid={quickFilterError ? 'true' : undefined}
-            data-testid="table-quick-filter"
-          />
-        </div>
-      </div>
-      {quickFilterError && (
-        <ErrorBanner variant="strip" className="border-danger/30 py-1">
-          {quickFilterError}
-        </ErrorBanner>
-      )}
+      <TableStatusBanners
+        error={error}
+        hasWork={hasWork}
+        insertNotice={insertNotice}
+        onRetry={actions.load}
+      />
+      <TableToolbar
+        panelId={panelId}
+        dbSessionId={dbSessionId}
+        database={database}
+        tableName={tableName}
+        columns={columns}
+        loading={loading}
+        pendingBusy={pendingBusy}
+        isEditable={isEditable}
+        filterPanelOpen={filterPanelOpen}
+        appliedFilterCount={filters.length}
+        draftFilterCount={draftFilters.length}
+        onRefresh={handleRefresh}
+        onSetFilterPanelOpen={actions.setFilterPanelOpen}
+        onAddFilter={actions.addFilter}
+        onSetFilters={actions.setFilters}
+        onClearFilters={actions.clearFilters}
+        onAddDraftRow={() => drafts.addDraftRow()}
+      />
       {readOnlyTipVisible && (
         <div
           className="flex shrink-0 items-center gap-1.5 border-b border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning"
