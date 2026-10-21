@@ -389,7 +389,7 @@ export interface FkNavEntry {
     targetColumns: string[];
   };
   /** **离开该标签页时**写入的视口快照（进入时可能还是 null）。 */
-  viewport: GridViewport | null;
+  viewport: GridViewport | null;   // 〔契约审计修订 2026-10-22〕**本字段作废**：条目指向的是**跳转打开的**标签页，而「返回」要恢复的是**来源**标签页的视口——来源标签页没有对应条目。视口改按**面板 id** 存进 store 的 `viewports` 映射（`recordViewport(panelId, …)` / `takeViewport(panelId)` 的**公开 API 与本册一字不差**），条目不再带 viewport
 }
 
 interface FkNavigationState {
@@ -511,7 +511,7 @@ export async function openForeignKeyTarget(input: {
 1. `classifyGridError` 之前先做**前端前置校验**：`values` 长度必须等于 `foreignKey.columns`，且不含 `null`；否则直接返回 `ok:false`（不发 IPC）；
 2. `databaseCommands.resolveForeignKeyTargets(...)`；
 3. 失败 ⇒ 返回 `ok:false` + `{ code: classifyGridError(message), raw: message }`，**不打开任何标签**；
-4. 成功 ⇒ 计算 `navKey`；若 `findEntryIdByNavKey(navKey)` 命中 ⇒ `rewindTo(entryId)` + `setActivePanel(既有 panelId)` + 记录当前视口 + 返回 `ok:true`（**循环引用路径，不新建标签**）；
+4. 成功 ⇒ 计算 `navKey`；若 `findEntryIdByNavKey(navKey)` 命中 ⇒ `rewindTo(entryId)` + `setActivePanel(既有 panelId)` + 记录当前视口 + 返回 `ok`〔契约审计修订 2026-10-22〕**往返（A→B→A）的判定机制订正**：`fkNavKey(target, values)` **含值**，而往返两趟的当前值不同 ⇒ 「navKey 命中」这个字面机制**永远测不出往返**。真正兑现 §7 #5 可观测结果（标签数恒为 2、`back` 长度恒为 1）的机制是：「**目标表就是导航来处的那张表** ⇒ 复用既有标签 + 裁剪 `back` + 清空 `forward`」；`navKey` 命中（同目标**同值**）保留为**去重**手段:true`（**循环引用路径，不新建标签**）；
 5. 否则 `nextPanelId('tbl')` 构造 `TablePanel { type:'table', tableName: target.table, database: target.database, tableSchema: target.schema, subTab:'data', fkOrigin }` → `addPanel(panel)`；
 6. **紧接着、同一个事件回合内** `useTableDataStore.getState().seedPanel(panel.id, context, { filters: buildFkFilters(target, values) })`（必须早于 React 提交渲染，否则首帧无筛选）；
 7. `push(entry)`；记录源标签页视口（`recordViewport(sourcePanelId, snapshot)`）；

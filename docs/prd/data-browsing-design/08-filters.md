@@ -1329,7 +1329,7 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 | --- | --- |
 | `named_view_round_trip_survives_reopen` | 保存 → 用 `init_store_for_test` 重新打开同一目录 → `get_named_views()` 得到逐字段相等的记录（证明真的落盘） |
 | `join_filters_all_connectors_equal_is_byte_identical_to_today` | 全部 `Some(And)` + 全局 `and`、全部 `None` + 全局 `or` 两种情形，产出与 `parts.join(filter_join(logic))` **逐字节相等**（R4 的可执行证明） |
-| `join_filters_mixed_parenthesizes_and_runs` | `[A, Or, B, And, C]` → `A OR (B AND C)`；`[A, Or, B, And, C, Or, D]` → `(A OR B) AND C OR D`；单段不加括号 |
+| `join_filters_mixed_parenthesizes_and_runs` | `[A, Or, B, And, C]` → `A OR (B AND C)`；`[A, Or, B, And, C, Or, D]` → `A OR (B AND C) OR D`；单段不加括号〔契约审计修订 2026-10-22〕**本行原为 `(A OR B) AND C OR D`（左到右读），与本册 §3.6.2 的参考实现及本册 §10 自查第 12 条**自相矛盾**——§9.1 的两条断言互相打架。以 **SQL 优先级**为准（`AND` 绑定更紧）：按 `OR` 分组、组内的 `AND` 段加括号 |
 | `join_filters_first_entry_connector_is_ignored` | 只改第 0 条的 `connector`、其余不变 → 输出完全相同（§7 的「第 0 条必须忽略」） |
 | `join_filters_empty_is_empty_string` | 空输入 → 空串（`WHERE` 后不留多余空格） |
 | `join_filters_survives_a_dropped_fragment` | 构造「第 2 条产出空片段」，断言剩余片段与连接符**仍然成对**——§7 那条下标错位风险的回归锁 |
@@ -1447,7 +1447,7 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 | 9 | 改 `src/locales/en.ts` 加词条 | 改 `src/locales/en/query.ts`（领域包），`en.ts` 只有一行再导出 | 文案完全不生效，且排查半天以为是 i18n 加载问题 |
 | 10 | 把算子语义写错：`Between` 检测到上下界颠倒就自动交换；`IsEmpty` 写成 `col IS NULL OR col = ''` | `Between` 不交换、只提示「结果必为空」；`IsEmpty` 就是 `col = ''` 且文案写「空字符串」，`NULL` 交给 `IsNull` | 前者：用户打错的区间被静默「修正」，看到有结果却与输入不符（最难排查的一类 bug）；后者：库里的 `NULL` 与空串在 UI 上不可分辨，用户无法回答「这列到底是没填还是填了空」 |
 | 11 | `join_filters` 收两个平行切片（`&[String]` + `&[FilterCondition]`），按 `filters[i].connector` 配 `parts[i]` | 收**配对结构** `&[(String, Option<FilterConnector>)]`，并在丢弃空片段**之前**把 `connector` 拷出来 | 今天两个 `build_*` 就因为 `.filter(\|s\| !s.is_empty())` 丢过片段；一旦中间有一条被判不支持，**所有连接符整体偏移一位**，SQL 仍然执行、测试仍可能变绿，用户拿到的是错结果集 |
-| 12 | 混合连接符直接拼 `A OR B AND C`，「SQL 能看懂就行」 | 渲染成 `(A OR B) AND C`；凡是 AND 段被 OR 夹在中间一律加括号 | `AND` 优先级高于 `OR`，数据库会解析成 `A OR (B AND C)`——**结果集是错的，且不报任何错**。这类 bug 上线后只能靠用户投诉发现 |
+| 12 | 混合连接符直接拼 `A OR B AND C`，「SQL 能看懂就行」 | 渲染成 `A OR (B AND C)`；凡是 AND 段被 OR 夹在中间一律加括号〔契约审计修订 2026-10-22〕**期望渲染订正**：原写 `(A OR B) AND C`（左到右读），**与本格自己下一句的论证相反**——左到右会把用户勾的「A 或 B 且 C」渲染成数据库语义不同的表达式，**静默改变结果集**。正确形态是 `A OR (B AND C)` | `AND` 优先级高于 `OR`，数据库会解析成 `A OR (B AND C)`——**结果集是错的，且不报任何错**。这类 bug 上线后只能靠用户投诉发现 |
 | 13 | 用 `flattenToConnectors` 的失败返回去做「尽力拍平」，让快筛永远不报错 | 返回 `null` → 显式拒绝（`filter.nestedLogic`）；**绝不静默拍平** | `a AND (b OR c)` 被拍成 `a AND b OR c`，语义不同且不报错——比拒绝危险得多 |
 | 14 | 设连接符时用字面量重建条件对象（重排了键序） | 用 `{ ...f, connector }` 展开写法 | `filterDraftEqualsApplied` 用 `JSON.stringify` 比较，**对键序敏感**；同一组条件会因键序不同被判成 `dirty`，表现为「Apply 亮着但没变化」或「改了却显示没变化」 |
 | 15 | 只覆盖 `like_pattern_escape` 或只覆盖 `like_escape_clause` | 驱动**成对**覆盖；宿主一律用 `like_escape_config()` 读，配置不完整时拒绝 | 只给转义符不给 `ESCAPE` 子句时，`%` 与 `_` 仍会被当成通配符，且用户输入里的转义符本身改变语义——**静默返回错数据**，比不转义更糟 |
