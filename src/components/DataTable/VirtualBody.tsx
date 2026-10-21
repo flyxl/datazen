@@ -2,11 +2,12 @@ import { memo, useCallback, useMemo, type Key } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { useVirtualTable } from '../../hooks/useVirtualTable';
 import type { ColumnDef } from './TableHeader';
-import { GridCell } from './GridCell';
+import { GridCell, type FkCellAffordance } from './GridCell';
 import { CellRenderer } from './CellRenderer';
 import { EditableCell } from './EditableCell';
 import { classifyDataType } from '../../lib/dataTypeColors';
 import { dirtyCellAriaLabel, dirtyCellTooltip } from './dirtyCellText';
+import { isFkCellNavigable, type FkGroupAffordance } from '../../lib/fkNavigation';
 import type { CellCoord } from '../../stores/tableData/gridSelection';
 import type { DirtyCell, DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
 import { cn } from '../../lib/cn';
@@ -102,6 +103,24 @@ export interface VirtualBodyProps {
    * Omitted / `null` = no dirty marks at all, which is exactly today's DOM.
    */
   dirtyByRow?: ReadonlyMap<number, DirtyRowEntry> | null;
+  /**
+   * The foreign keys of the table, by column name (DB-07).
+   *
+   * Omitted = the table has no foreign keys (or the metadata could not be
+   * read): the grid renders exactly what it rendered before.
+   */
+  fkIndex?: ReadonlyMap<string, FkGroupAffordance>;
+  /**
+   * The displayed column names, in render order.
+   *
+   * The jump arrow lands on the group's **first visible** member, so hiding a
+   * column moves the arrow to the next member instead of losing it.
+   */
+  fkVisibleColumns?: readonly string[];
+  /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
+  fkResolving?: ReadonlySet<string>;
+  /** Follow the foreign key of a cell. */
+  onFkJump?: (rowIndex: number, columnName: string) => void;
 }
 
 interface VirtualRowProps {
@@ -141,6 +160,14 @@ interface VirtualRowProps {
   dirtyRow?: DirtyRowEntry;
   /** The wording of the gutter dot of a row that is marked for deletion. */
   deletedRowLabel: string;
+  /** The foreign-key groups of the table, by column name (DB-07). */
+  fkIndex?: ReadonlyMap<string, FkGroupAffordance>;
+  /** The columns of this row whose cell may be followed (DB-07). */
+  fkNavigable?: ReadonlySet<string>;
+  /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
+  fkResolving?: ReadonlySet<string>;
+  /** Follow the foreign key of a cell (DB-07). */
+  onFkJump?: (rowIndex: number, columnName: string) => void;
 }
 
 const VirtualRow = memo(function VirtualRow({
@@ -171,6 +198,10 @@ const VirtualRow = memo(function VirtualRow({
   newRowLabel,
   dirtyRow,
   deletedRowLabel,
+  fkIndex,
+  fkNavigable,
+  fkResolving,
+  onFkJump,
 }: VirtualRowProps) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -238,6 +269,26 @@ const VirtualRow = memo(function VirtualRow({
   }, [dirtyRow]);
   const rowDeleted = dirtyRow?.state === 'deleted';
   const rowDirty = dirtyRow?.state === 'dirty';
+
+  /**
+   * The foreign-key affordance of every column of this row (DB-07).
+   *
+   * The objects are built once per row and reused, so `memo(GridCell)` keeps
+   * working: a new object on every render would re-render every visible cell
+   * of the page on every scroll.
+   */
+  const fkAffordances = useMemo(() => {
+    if (!fkIndex || fkIndex.size === 0) return null;
+    const map = new Map<string, FkCellAffordance>();
+    for (const [columnName, group] of fkIndex) {
+      map.set(columnName, {
+        targetLabel: group.targetLabel,
+        navigable: fkNavigable?.has(columnName) ?? false,
+        resolving: fkResolving?.has(`${vRow.index}:${columnName}`) ?? false,
+      });
+    }
+    return map;
+  }, [fkIndex, fkNavigable, fkResolving, vRow.index]);
 
   return (
     <div
@@ -315,6 +366,7 @@ const VirtualRow = memo(function VirtualRow({
         const colW = columnWidths?.[colIdx] ?? 160;
         const cellId = cellIdPrefix ? `${cellIdPrefix}-r${vRow.index}c${colIdx}` : undefined;
         const dirtyCell = dirtyCells.get(col.name);
+        const fk = fkAffordances?.get(col.name) ?? null;
         return (
           <GridCell
             key={col.id}
@@ -330,6 +382,10 @@ const VirtualRow = memo(function VirtualRow({
             dirtyAriaLabel={
               dirtyCell ? dirtyCellAriaLabel(dirtyCell.original, dirtyCell.next) : undefined
             }
+            // The cell renders the arrow only when it is not occupied by an
+            // editor, so the affordance itself stays a stable object.
+            fk={fk}
+            onFkActivate={onFkJump}
             selected={cellSelectionEnabled && isCellSelected(vRow.index, col.name)}
             active={
               cellSelectionEnabled &&
@@ -515,6 +571,10 @@ export const VirtualBody = memo(function VirtualBody({
   editingDraft = null,
   newRowIndex = null,
   dirtyByRow = null,
+  fkIndex,
+  fkVisibleColumns,
+  fkResolving,
+  onFkJump,
 }: VirtualBodyProps) {
   const { t } = useI18n();
   /**
@@ -545,6 +605,41 @@ export const VirtualBody = memo(function VirtualBody({
     (rowIndex: number, columnName: string) => isCellSelected?.(rowIndex, columnName) ?? false,
     [isCellSelected],
   );
+  /**
+   * The columns whose cell may be followed, per row (DB-07).
+   *
+   * A composite key is navigable as a **whole**: one missing member makes the
+   * group unlocatable, because "where a = 1" alone would point at the wrong
+   * parent row. The arrow itself lands on the group's first **visible**
+   * member, so hiding a column moves the arrow instead of losing it.
+   */
+  const fkNavigableByRow = useMemo(() => {
+    const map = new Map<number, ReadonlySet<string>>();
+    if (!fkIndex || fkIndex.size === 0) return map;
+    const visible = fkVisibleColumns ?? columns.map((column) => column.name);
+    const columnIndexes = new Map(columns.map((column, index) => [column.name, index]));
+    rows.forEach((row, rowIndex) => {
+      // The values of the foreign-key members of this row, by column name.
+      const record: Record<string, unknown> = {};
+      for (const columnName of fkIndex.keys()) {
+        const columnIndex = columnIndexes.get(columnName);
+        record[columnName] = columnIndex === undefined ? undefined : row[columnIndex];
+      }
+      const navigable = new Set<string>();
+      for (const columnName of fkIndex.keys()) {
+        const navigates = isFkCellNavigable({
+          columnName,
+          row: record,
+          index: fkIndex,
+          visibleColumns: visible,
+          editing: false,
+        });
+        if (navigates) navigable.add(columnName);
+      }
+      map.set(rowIndex, navigable);
+    });
+    return map;
+  }, [rows, columns, fkIndex, fkVisibleColumns]);
 
   return (
     <div
@@ -583,6 +678,10 @@ export const VirtualBody = memo(function VirtualBody({
             newRowLabel={newRowLabel}
             dirtyRow={dirtyByRow?.get(vRow.index)}
             deletedRowLabel={deletedRowLabel}
+            fkIndex={fkIndex}
+            fkNavigable={fkNavigableByRow.get(vRow.index)}
+            fkResolving={fkResolving}
+            onFkJump={onFkJump}
           />
         ) : (
           <DraftRow

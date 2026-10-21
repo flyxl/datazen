@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
 import { tid } from '../../lib/tid';
 import { Download, Trash2 } from 'lucide-react';
 import type { FilterCondition, SortCondition, Value } from '../../types';
@@ -14,6 +14,7 @@ import {
 } from '../../stores/tableData/gridSelection';
 import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
 import type { DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
+import type { FkGroupAffordance } from '../../lib/fkNavigation';
 import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
 import { Pagination } from './Pagination';
@@ -119,6 +120,25 @@ export interface DataTableProps {
    */
   onRestoreRow?: (rowIndex: number) => void;
 
+  /**
+   * The foreign keys of the table, by column name (DB-07).
+   *
+   * Omitted = the table has no foreign keys (or the metadata could not be
+   * read): the grid renders exactly what it rendered before.
+   */
+  fkIndex?: ReadonlyMap<string, FkGroupAffordance>;
+  /**
+   * The displayed column names, in render order.
+   *
+   * The jump arrow lands on the group's **first visible** member, so hiding a
+   * column moves the arrow to the next member instead of losing it.
+   */
+  fkVisibleColumns?: readonly string[];
+  /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
+  fkResolving?: ReadonlySet<string>;
+  /** Follow the foreign key of a cell (DB-07). */
+  onFkJump?: (rowIndex: number, columnName: string) => void;
+
   loading?: boolean;
   statusBar?: React.ReactNode;
   rowHeight?: number;
@@ -151,12 +171,30 @@ export interface DataTableProps {
    * When omitted, uses the right-clicked cell value (preferred) or `window.getSelection()`.
    */
   getContextCellText?: () => string | null | undefined;
+
+  /**
+   * The scroll container of the grid, handed to its owner (DB-07).
+   *
+   * The owner needs it to snapshot the viewport when the tab is left and to
+   * restore it when the tab is entered again. It is a callback and not a ref
+   * because the element only exists after the first render.
+   */
+  onScrollElementChange?: (element: HTMLDivElement | null) => void;
 }
 
 const NOOP = () => {};
 const EMPTY_SET = new Set<number>();
 const EMPTY_SORTS: SortCondition[] = [];
 const EMPTY_FILTERS: FilterCondition[] = [];
+
+/**
+ * The height of one grid row, in pixels.
+ *
+ * It is stated here and handed to the grid by its owners, so the viewport
+ * anchor of the foreign-key navigation (a row index) and the grid agree on
+ * what a row is (DB-07).
+ */
+export const DATA_TABLE_ROW_HEIGHT = 28;
 
 export function DataTable({
   columns,
@@ -202,8 +240,12 @@ export function DataTable({
   newRowIndex,
   dirtyByRow,
   onRestoreRow,
+  fkIndex,
+  fkVisibleColumns,
+  fkResolving,
+  onFkJump,
   statusBar,
-  rowHeight = 28,
+  rowHeight = DATA_TABLE_ROW_HEIGHT,
   exportTableName,
   databaseType,
   dbSessionId,
@@ -216,10 +258,17 @@ export function DataTable({
   getContextCellText,
   gridSelection,
   onGridSelectionChange,
+  onScrollElementChange,
 }: DataTableProps) {
   const { t } = useI18n();
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+
+  // The owner of the grid keeps the viewport (DB-07): it has to know where the
+  // user was when the tab was left.
+  useEffect(() => {
+    onScrollElementChange?.(scrollEl);
+  }, [scrollEl, onScrollElementChange]);
 
   const colMeta = useMemo(() => columns.map((c) => ({ name: c.name, type: c.type })), [columns]);
   const { columnWidths: baseWidths, onResizeStart } = useColumnResize({
@@ -545,6 +594,10 @@ export function DataTable({
               editingDraft={editingDraft}
               newRowIndex={newRowIndex ?? null}
               dirtyByRow={dirtyByRow}
+              fkIndex={fkIndex}
+              fkVisibleColumns={fkVisibleColumns}
+              fkResolving={fkResolving}
+              onFkJump={onFkJump}
             />
             {loading ? (
               gridRow(

@@ -1,6 +1,9 @@
 import { memo } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 import type { ColumnDef } from './TableHeader';
 import { CellRenderer } from './CellRenderer';
+import { Spinner } from '../ui/Spinner';
+import { fkJumpLabel, fkResolvingLabel } from './fkCellText';
 import { cn } from '../../lib/cn';
 
 /**
@@ -14,6 +17,24 @@ import { cn } from '../../lib/cn';
  * `data-testid="data-table-cell"` stay on the outermost element, because
  * `resolveDataTableCellFromEvent` and the existing E2E specs look them up there.
  */
+
+/**
+ * What the grid knows about the foreign key of one cell (DB-07).
+ *
+ * `navigable` is the arrow's own condition: the whole group must have a value
+ * in this row, this cell must be the group's **first visible member**, and the
+ * cell must not be busy with an editor. A composite key draws exactly one
+ * arrow, on the first member the user can actually see.
+ */
+export interface FkCellAffordance {
+  /** The display label of the target (`customers.id`). */
+  targetLabel: string;
+  /** This cell carries the jump arrow. */
+  navigable: boolean;
+  /** A resolution for this target is in flight. */
+  resolving: boolean;
+}
+
 export interface GridCellProps {
   /** Row index inside the current page. Render-only, never used to build SQL. */
   rowIndex: number;
@@ -55,6 +76,22 @@ export interface GridCellProps {
   dirtyTooltip?: string;
   /** The screen-reader label of a dirty cell. */
   dirtyAriaLabel?: string;
+  /**
+   * The foreign key of this cell, or `null` when the column is not a member of
+   * one (DB-07).
+   *
+   * `null` is the default, and a cell without it renders exactly what it
+   * rendered before the foreign keys existed.
+   */
+  fk?: FkCellAffordance | null;
+  /**
+   * Follow the foreign key of this cell (DB-07).
+   *
+   * The handler receives the coordinates instead of being bound per cell: an
+   * inline closure per cell would give every cell a new prop identity and
+   * defeat `memo`, which a virtualised grid feels immediately.
+   */
+  onFkActivate?: (rowIndex: number, columnName: string) => void;
   onCellDoubleClick: (rowIndex: number, columnName: string) => void;
   onCellEdit: (rowIndex: number, columnName: string, value: unknown) => void;
   onCellEditCancel: () => void;
@@ -74,10 +111,20 @@ export const GridCell = memo(function GridCell({
   dirty = false,
   dirtyTooltip,
   dirtyAriaLabel,
+  fk = null,
+  onFkActivate,
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
 }: GridCellProps) {
+  /**
+   * The wording of the jump entry.
+   *
+   * A composite key names the table and the columns, a single-column key names
+   * the target column: the tooltip says **where** the arrow goes, not merely
+   * that it goes somewhere.
+   */
+  const fkTitle = fk ? (fk.resolving ? fkResolvingLabel() : fkJumpLabel(fk.targetLabel)) : null;
   return (
     <div
       id={id}
@@ -89,9 +136,12 @@ export const GridCell = memo(function GridCell({
       {...(active ? { 'data-dt-active': 'true' } : {})}
       {...(cellType ? { 'data-dt-cell-type': cellType } : {})}
       {...(dirty ? { 'data-dt-dirty': 'true' } : {})}
+      // The cell belongs to a foreign key. The **value** of the attribute is the
+      // marker; the target itself is in the tooltip (00-contracts §4.4).
+      {...(fk ? { 'data-dt-fk': 'true' } : {})}
       aria-selected={gridSemantics && selected ? 'true' : undefined}
-      aria-label={dirty ? dirtyAriaLabel : undefined}
-      title={dirty ? dirtyTooltip : undefined}
+      aria-label={dirty ? dirtyAriaLabel : fkTitle ?? undefined}
+      title={dirty ? dirtyTooltip : fkTitle ?? undefined}
       className={cn(
         'flex shrink-0 items-center overflow-hidden border-r border-edge/30 px-2',
         // The dirty mark is a *state* channel, kept apart from the value's
@@ -117,6 +167,29 @@ export const GridCell = memo(function GridCell({
           onCancel={onCellEditCancel}
         />
       </div>
+      {fk?.navigable && !editing && (
+        // The jump entry (DB-07). It is a real button: it can be reached with
+        // the keyboard, and Enter/Space do what a click does.
+        // An editor owns the cell it occupies, so the arrow steps aside.
+        <button
+          type="button"
+          data-dt-fk-click="true"
+          aria-label={fkTitle ?? undefined}
+          title={fkTitle ?? undefined}
+          disabled={fk.resolving}
+          className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-surface-raised hover:text-accent disabled:opacity-60"
+          onClick={(e) => {
+            // The click must not reach the row: a jump and a row selection are
+            // two different actions, and a double click on the arrow must not
+            // open the cell editor either.
+            e.stopPropagation();
+            onFkActivate?.(rowIndex, column.name);
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          {fk.resolving ? <Spinner size="xs" /> : <ArrowUpRight className="h-3 w-3" />}
+        </button>
+      )}
       {dirty && (
         // The corner mark: the second shape of the dirty channel. It is a
         // rotated square clipped by the cell's own `overflow-hidden`, so the
