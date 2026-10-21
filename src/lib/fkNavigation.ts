@@ -52,8 +52,12 @@ export interface FkGroupAffordance {
 /**
  * The target identity a navigation key is built from.
  *
- * Structurally compatible with the `FkTargetRef` the back end returns; the
- * shared DTO type lands next to the IPC wrapper.
+ * **Not the same type as the backend's `ForeignKeyTargetRef`**: this one is a
+ * *field subset* of it — the four fields a navigation key needs — so it is a
+ * separate concept with a separate name. The backend's `ForeignKeyTargetRef`
+ * (the port's type in `packages/backend-client`) carries the same four fields
+ * plus the referenced columns, their data types, the primary keys, the
+ * uniqueness flag and the candidate limit.
  */
 export interface FkNavTargetIdentity {
   readonly database: string;

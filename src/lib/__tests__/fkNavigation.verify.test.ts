@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { ForeignKeyInfo } from '../../types';
+import type { ForeignKeyInfo, Value } from '../../types';
 import {
   buildFkFilters,
   findForeignKey,
@@ -125,7 +125,12 @@ describe('a composite key is one group', () => {
 describe('a NULL never degrades into IS NULL', () => {
   it('refuses to build filters for a null or missing value', () => {
     expect(buildFkFilters({ columns: ['x'] }, [null])).toBeNull();
-    expect(buildFkFilters({ columns: ['x'] }, [undefined])).toBeNull();
+    // A *missing* value is not a `Value` on the wire — the cast states that
+    // this case feeds the helper something the type system does not allow,
+    // without changing what is asserted.
+    expect(
+      buildFkFilters({ columns: ['x'] }, [undefined as unknown as Value]),
+    ).toBeNull();
     expect(buildFkFilters({ columns: ['x', 'y'] }, [1, null])).toBeNull();
     expect(buildFkFilters({ columns: ['x', 'y'] }, [1])).toBeNull();
     expect(buildFkFilters({ columns: ['x'] }, [1, 2])).toBeNull();

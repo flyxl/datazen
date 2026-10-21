@@ -238,10 +238,9 @@ export const databaseCommands = {
    * Resolve the foreign key a local column points at, and whether the
    * referenced row still exists.
    *
-   * **Not wired to any UI yet.** The command belongs to 07 (FK navigation),
-   * and the desktop does not register it yet, so the desktop transport
-   * declares it unsupported and this call fails with
-   * `CapabilityUnsupported`. The UI entry point arrives with 07.
+   * The desktop **does** register the command (07), so this call reaches the
+   * host. The UI entry point is still to come: the grid's foreign-key arrow
+   * is the next wave's work, and until then nothing calls this method.
    */
   resolveForeignKeyTargets: async (
     params: ResolveForeignKeyTargetsRequest,
