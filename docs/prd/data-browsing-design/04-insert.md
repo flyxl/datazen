@@ -65,7 +65,7 @@
 - `packages/driver-api/src/traits/sql_text.rs`：`quote_ident`（按 `quote_char` 选 `` ` `` 或 `"`，并把引号字符翻倍）、`format_sql_literal`（`None | Some(Null)` → `NULL`，字符串/时间戳/JSON 都先 `replace('\\', "\\\\")` 再 `replace('\'', "''")`，Bytes → `X'…hex…'`）、`build_update_sql`（`UPDATE {q(table)} SET {…} WHERE {…}`，列名与值分别经 `driver.quote_ident` / `driver.format_sql_literal`）、`build_delete_sql`（同构 `DELETE FROM {q(table)} WHERE {…}`）、`pagination_syntax`、`qualified_sql`、`split_restore_sql`，以及私有 `bytes_to_hex`。
 - `packages/driver-api/src/reuse.rs`：`ReuseDriver`（MySQL 协议族 / PostgreSQL wire 的兼容包装器）**逐方法转发**给 `inner`，其中就有 `pagination_syntax`、`format_sql_literal`、`build_update_sql`、`build_delete_sql`。→ **新增 trait 方法如果不在 `ReuseDriver` 里补一行转发，包装驱动就会丢掉内层驱动的覆盖。**
 - `packages/driver-api/src/types.rs`：`Value`（`#[serde(untagged)]`，`Null`/`Bool`/`Integer`/`Float`/`String`/`Bytes`/`Timestamp`/`Json`，`Default = Null`）、`ColumnSchema { name, data_type, nullable, default_value: Option<String>, comment, is_primary_key, is_auto_increment }`、`TableSchema::effective_primary_keys()`、`TableDataResult`、`PaginationSyntax`。**`CellWrite` 不存在。**
-- `packages/driver-api/src/lib.rs`：`PROTOCOL_VERSION: u32 = 5`、`MIN_PROTOCOL_VERSION: u32 = 1`；`packages/driver-api/src/capabilities.rs` 的判定是「低于 MIN 拒绝 / 高于 PROTOCOL 拒绝 / 区间内接受」。
+- `packages/driver-api/src/lib.rs`：`PROTOCOL_VERSION: u32 = 6`（旧稿写 5）、`MIN_PROTOCOL_VERSION: u32 = 1`。〔合并后校正〕判定已不在 `capabilities.rs` 的成对函数里：注册期在 `packages/runtime/src/driver_registry/registry.rs`——**低于 MIN → 拒绝**，**高于 `PROTOCOL_VERSION` → 只 warn 并继续加载**，低于当前版本 → warn「degraded mode」并继续加载。协议自 2026-10-21 冻结于 6（[driver-capability-migration.md](../../architecture/platform/driver-capability-migration.md)）。
 - `packages/driver-api/src/mock_driver.rs`：`MockDriver` 与 `MockDriverOptions`；`execute_rows_affected` **默认为 0**；访问器有 `execute_calls()`、`commit_calls()`、`open_transaction_count()`、`query_calls()`，以及 `set_table_schema_for_test` / `add_table_for_test`；`query_rows` 可配置返回行。
 
 ### 2.3 驱动覆盖现状（grep 结论）
@@ -399,9 +399,9 @@ export interface TableState {
 
 ### 3.8 兼容性结论
 
-**是否提升 `PROTOCOL_VERSION`：不需要，保持 5；`MIN_PROTOCOL_VERSION` 保持 1。** 理由：
+**是否提升 `PROTOCOL_VERSION`：不需要，也不可能——版本已是 `6` 且自 2026-10-21 冻结；`MIN_PROTOCOL_VERSION` 保持 1。**〔合并后校正〕旧稿写「保持 5」。理由：
 
-1. 只**新增** trait 方法（`build_insert_sql` / `insert_returning_clause`），两者都有默认实现，默认行为等于今天（不产生任何 INSERT 语句）；`capabilities.rs` 的区间判定因此对 1..4 全部照旧接受。
+1. 只**新增** trait 方法（`build_insert_sql` / `insert_returning_clause`），两者都有默认实现，默认行为等于今天（不产生任何 INSERT 语句）；注册期判定因此对旧驱动照旧加载（高于宿主版本也只 warn）。
 2. 不改任何既有方法签名（`build_update_sql` / `build_delete_sql` / `format_sql_literal` / `pagination_syntax` / `execute` / `query` / `begin_transaction` / `commit` / `rollback` 全部逐字不变）。
 3. 不改既有 DTO 字段名与类型：`RowChangePlan` 只**新增可选**字段、`Value` / `ColumnSchema` / `PlannedStatement` 不动、`RowCommitStatementResult.operation` 只是多一个字符串取值。前端 TS 侧的 `CommitStatementResult.operation` 由 `'update' | 'delete'` 拓宽为三元联合，属类型拓宽，运行时收到的仍是字符串。
 4. `CellWrite` 是全新类型，没有旧数据需要反序列化。

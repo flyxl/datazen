@@ -1,6 +1,20 @@
 # 10 · 查询结果网格可编辑（DB-14）
 
-> **状态**：目标设计，**未实现**。本文描述的是要落地的形态，不是现状。
+> ## ⚠ 已实现事实（合并后校正，2026-10-21）
+>
+> **本册描述的目标在主干上已由另一套更窄的设计实现**，且实现方式与本册 Steps 1–6 不同。读下文之前先读这一段，否则会把已存在的代码当成待建功能：
+>
+> | 维度 | 已实现的事实 | 本册原设计 |
+> | --- | --- | --- |
+> | 可写判定 | `packages/driver-api` 的 `ResultRelationCandidate` + 宿主 `src-tauri/src/commands/result_mapping.rs::result_relation_candidate`，**只接受** `SELECT * FROM ident[.ident[.ident]] [LIMIT n [OFFSET m]]` | 一套更宽的「来源信息证明可写回」协议 |
+> | 验证 | `verify_result_mapping` 要求列名**逐个相等**且表有主键，产出 `writableMapping: 'verified'` | 驱动声明 `result_origin` + 宿主判定层 |
+> | 写回 | 前端 `src/stores/panelStore.ts::updateResultCell` 要求 `runtimeBinding` + `source.writableMapping === 'verified'`，调 `commit_query_result_cell`（`src-tauri/src/commands/result_write.rs`），载体 `ResultCellWrite { binding, statementIndex, rowIndex, column, value }` | `CellWrite` 三态 |
+> | 失效 | 写入成功后 binding 失效，UI 提示 `query.resultEditRequiresRefresh` | 仅「重取数清空选择」 |
+> | 只读原因 | `ResultTableView.tsx` 的 `canEdit = !safeMode && !!onCellEdit && writableMapping === 'verified' && !!runtimeBinding` | 按原因分类的可读文案矩阵 |
+>
+> **因此**：本册的 §3 驱动契约、§5 Step 1–6 大部分是**未采用的历史方案**，不要照着实现；真正需要做的是 §4 的**只读原因文案**与 §6 的边界清单。**`CellWrite` 在代码中不存在，结果网格写回用的是 `ResultCellWrite`（契约不同）**。
+
+> **状态**：目标设计中的**剩余部分**（按原因分类的只读文案矩阵与边界用例）未实现；已实现部分以上表为准。
 > **依赖**：`00-contracts.md`（§1.4 计划/提交链路与 `fingerprint`/`affected == 1`、§3 `CellWrite` 三态、§4.3 选择状态永不参与写操作定位、§8 错误前缀机制、第 10 节写作模板）；`01-selection.md`（选择与写路径解耦、重取数清空选择）；分册 04（行身份）；`05-editors.md`（编辑态与输入法）；`06-dirty-cells.md`（脏单元格呈现与提交入口）。
 > **被谁依赖**：`12-testing.md`（本册新增的表驱动负例进入回归矩阵）；后续任何「查询结果集内写入」能力（批量粘贴、结果集批注、AI 生成变更）都必须先经过本册的判定层。
 > **预估人日**：3.5 人日（判定层与驱动契约 1.5 / 前端只读化与原因解释 1.0 / 测试 1.0）。

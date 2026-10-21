@@ -141,22 +141,22 @@
 
 ### 2.4 环境事实（本工作树与 CI 的真实差异）
 
-**（a）驱动集**。本工作树的 `src/extensions/generated.ts` 是由 `--drivers=basic` 铺出来的：`DRIVER_DB_ENTRIES` 当前有 11 个 dbType（`postgresql`、`questdb`、`cloudberry`、`mysql`、`mariadb`、`doris`、`starrocks`、`manticore`、`ob_oracle`、`sqlite`、`redis`），来自 4 个 path driver 包（postgres / mysql / sqlite / redis）。前端 `DB_REGISTRY` 由 `DRIVER_DB_ENTRIES` 合并而来，所以**驱动集一变，同一份 Host 单测读到的注册表就变** —— 例如 `src/lib/__tests__/databaseTypes.test.ts`、依赖 `DB_REGISTRY` 的能力声明用例，都会随驱动集改变输入集合。
+**（a）驱动集**。〔合并后校正〕本工作树的 `src/extensions/generated.ts` 现在是 **`--drivers=all` 的产物，不是 basic**：`DRIVER_DB_ENTRIES` 有 **22 个 dbType**，来自 **15 个 path driver 包**。原因是 `scripts/ensure-generated-drivers.mjs` 在 `generated.ts` 已存在时会跳过重铺，于是保留了上次全量生成的产物；`pnpm install` / `pnpm build` 并不会把它改回 basic。前端 `DB_REGISTRY` 由 `DRIVER_DB_ENTRIES` 合并而来，所以**驱动集一变，同一份 Host 单测读到的注册表就变** —— 例如 `src/lib/__tests__/databaseTypes.test.ts`、依赖 `DB_REGISTRY` 的能力声明用例，都会随驱动集改变输入集合。
 
-由此推出两条纪律：
+由此推出三条纪律：
 
-1. 「Host 用例全绿」只在**该驱动集语义内**成立，不能据此推断 CI 结果。CI 在 `pnpm test:unit`（basic）之后还会跑 `pnpm test:unit:driver-set`（默认 `all`，全部已注册 path driver）。
-2. `pnpm typecheck` **不受驱动集影响**：`tsc --noEmit` 只按 `tsconfig.json` 的 `include` 走静态文件，不读 `generated.ts` 的内容分支。
+1. 「Host 用例全绿」只在**该驱动集语义内**成立，不能据此推断 CI 结果。CI 在 `pnpm test:unit`（basic）之后还会跑 `pnpm test:unit:driver-set`（默认 `all`）。
+2. **结论里必须写出实际驱动集**（`[驱动集]` 行），而不是照抄「basic」或「all」——本机默认两者都不是。要还原 basic 用 `pnpm drivers:codegen --drivers=basic`（会重写 `generated.ts`，属于工作区变更）。
+3. `pnpm typecheck` **不受驱动集影响**：`tsc --noEmit` 只按 `tsconfig.json` 的 `include` 走静态文件，不读 `generated.ts` 的内容分支。
 
-**（b）Pro 检出**。本工作树内 `packages/pro-extensions/sql-editor-pro` 克隆自 Pro `main`，其 `manifest.json` 声明 `extensionPointsVersion: "1.0.0"`，而宿主 `packages/extension-points/src/security.ts` 的 `EXTENSION_POINTS_VERSION` 是 `1.1.0` —— **两端不一致是事实**。
+**（b）Pro 检出**。〔合并后校正〕**这条已不成立**：本工作树内 `packages/pro-extensions/sql-editor-pro` 的 `manifest.json` 现声明 `extensionPointsVersion: "1.1.0"`，与宿主 `packages/extension-points/src/security.ts` 的 `EXTENSION_POINTS_VERSION`（`1.1.0`）**一致**。旧稿写的 `1.0.0` 是合并前的检出状态。
 
-但要准确说清它今天会不会让门禁红，否则实习生会误判：
+保留下面两条历史事实，因为实习生仍可能从旧日志里看到那个失败签名：
 
 - `packages/extension-points/src/__tests__/security.test.ts` 里**曾经**有两条读真实 `packages/pro-extensions/**/manifest.json` 做「两端版本一致」断言的用例，失败签名正是 `expected '1.0.0' to be '1.1.0'`。
-- 该文件自己写明这两条**已被删除**：一致性断言搬到了 Pro 仓库的 `scripts/verify-host-pin.mjs`（三向比对、在 Pro CI 上跑），理由是宿主 CI 结构上拿不到那个仓库，留下的只有「skip」或「本地红」两种结果，「不是门禁」。
-- 今天宿主侧只剩「钉住宿主常量」与「用合成 manifest 钉住精确相等比较规则」三类用例，**不读真实 Pro 检出**。我逐文件确认过：`packages/extension-points/src/__tests__/security.test.ts` 是唯一提到 `pro-extensions` 的宿主测试文件，且只把它写在注释里。
+- 这两条**已被删除**：一致性断言搬到 Pro 仓库的 `scripts/verify-host-pin.mjs`（三向比对、在 Pro CI 上跑），理由是宿主 CI 结构上拿不到那个仓库。今天宿主侧只剩「钉住宿主常量」与「用合成 manifest 钉住精确相等比较规则」的用例，**不读真实 Pro 检出**。
 
-**所以**：如果本地门禁出现 `expected '1.0.0' to be '1.1.0'` 这类版本一致性断言失败，那是**环境 / Pro 分支问题，不是数据浏览改动造成的**；但如果今天没出现，也不要写「一定会红」——那不是本工作树的现状。**不要为了消这条错去改 Pro 包的 `manifest.json`，也不要去改宿主 EP 版本常量**（后者是改动契约，等于破坏 D1）。工单边界见 §11 第 1 条。
+**所以**：今天**没有**这条既存失败；若你仍看到 `expected '1.0.0' to be '1.1.0'`，说明本地 Pro 检出是旧的，重新拉取 Pro `main` 即可，**不要改宿主 EP 版本常量**（那是改契约）。工单边界见 §11 第 1 条。
 
 **（c）`test/` 手工黑盒层不存在**。`git ls-files test/` 为空；`docs/architecture/testing.md` 第 6 节已把该层标为历史结构。数据浏览的新用例**不要**往 `test/` 放。
 
@@ -175,7 +175,8 @@
 | `pnpm test:unit:coverage` | `vitest run --coverage` |
 | `pnpm test:unit:e2e-contract` / `:coverage` | `vitest run --config vitest.e2e-contract.config.ts`（是否带 `--coverage`） |
 | `pnpm test:scripts` | `vitest run scripts/__tests__` |
-| `pnpm test:ids` / `test:layers` / `test:ci-docs` / `test:version` / `test:driver-protocol` / `test:boundaries` / `test:driver-types` / `test:i18n-keys` / `test:platform-arch` / `test:platform-crates` | 分别是 `scripts/check-id-terminology.mjs`、`check-module-layers.mjs`、`check-ci-docs-consistency.mjs`、`check-version-consistency.mjs`、`check-driver-protocol-compat.mjs`、`check-driver-import-boundaries.mjs`、`check-driver-type-isolation.mjs`、`i18n-key-collision-check.mjs`、`check-platform-crate-boundaries.mjs`、`run-platform-crate-tests.mjs` |
+| `pnpm test:ids` / `test:layers` / `test:boundaries` / `test:i18n-keys` / `test:driver-types` / `test:platform-arch` / `test:platform-crates` / `test:platform-arch:mutations` / `test:shared-crate-panic` / `test:release-variants` / `test:ci-docs` / `test:version` | 分别是 `scripts/check-id-terminology.mjs`、`check-module-layers.mjs`、`check-driver-import-boundaries.mjs`、`i18n-key-collision-check.mjs`、`check-driver-type-isolation.mjs`、`check-platform-crate-boundaries.mjs`、`run-platform-crate-tests.mjs`、该脚本的变异模式、共享 crate panic 扫描、发行变体检查、`check-ci-docs-consistency.mjs`、`check-version-consistency.mjs` |
+| ~~`pnpm test:driver-protocol`~~ | 〔合并后校正〕**已删除**：`scripts/check-driver-protocol-compat.mjs` 不存在，`package.json` 无该 script。协议版本自 2026-10-21 冻结于 6，退役理由见 `.github/workflows/ci.yml` 对应 job 的注释与 [driver-capability-migration.md](../../architecture/platform/driver-capability-migration.md) §5 |
 | `pnpm drivers:codegen` | `node scripts/resolve-drivers.mjs --codegen-only`（默认 `basic`） |
 | `pnpm drivers:resolve` | `node scripts/resolve-drivers.mjs`（完整注入：Cargo.toml + capabilities + codegen） |
 | `pnpm e2e` / `e2e:minimal` / `e2e:skip-build` | `node e2e/run.mjs`（`--minimal-drivers` / `--skip-build`） |
@@ -301,10 +302,10 @@
    - 需要断言「可访问名称」本身就来自字典时，用 `enCopy(key)` 回读（`src/test/enCopy.ts`），**禁止裸写 `en[key]`**。
    - 驱动 UI 测试统一 `useI18n: () => ({ t: (key) => key })`，之后可以 `getByText('query.filter.apply')` 这类 key 定位。
 
-**错误前缀也是一条契约锚点**（`00-contracts.md` 第 8 节）：`CommandError` 序列化到 IPC 之后是**脱敏后的字符串，没有机器可读的 `code` 字段**（`src-tauri/src/commands/error.rs` 的 `Serialize` 实现先脱敏再 `serialize_str`，其内联测试也钉住了「错误类别必须保留在文本里」）。因此新增的、需要前端精确识别的错误，消息以 `grid.<域>.<原因>: <说明>` **前缀**开头，前端用 `classifyGridError(message)` 做前缀匹配，匹配不到返回 `'unknown'` 并**回退显示原始消息**。
+**错误前缀也是一条契约锚点**（`00-contracts.md` 第 8 节）：`CommandError` 序列化到 IPC 之后**绝大多数分支是脱敏后的字符串、没有机器可读的 `code` 字段**（`src-tauri/src/commands/error.rs` 的 `Serialize` 实现先脱敏再 `serialize_str`）。〔合并后校正〕**例外已经在仓里**：`CommandError::RestoreOutcome` 序列化成结构化对象 `{ code: "restoreOutcome", message, details, automaticRetryAllowed, unsupported }`——所以「结构化 code」在宿主不是新机制，只是表格域还没用。因此新增的、需要前端精确识别的错误，消息以 `grid.<域>.<原因>: <说明>` **前缀**开头，前端用 `classifyGridError(message)` 做前缀匹配，匹配不到返回 `'unknown'` 并**回退显示原始消息**；若将来要统一，参照 `restoreOutcome` 的形状而不是推翻前缀方案。
 
 - **位置与归属已冻结，不再是「建议」**：`src/lib/gridErrors.ts` 由 **分册 01 创建**（含 `GridErrorCode` 联合类型、`classifyGridError`、前缀注册表骨架，01 只填 `grid.selection.*` / `grid.cell.*` / `grid.row.*` 三个域）；03 / 04 / 05 / 06 / 07 / 08 / 09 / 10 / 11 **只追加自己那一域的码**，禁止重写整个文件。追加的合规动作固定三步：① 联合类型加成员；② 注册表加本域条目；③ 分册 §6 变更表登记「修改（追加）」。
-- **码空间是一个闭集**：`00-contracts.md` 第 8.2 节的清单是**全量 42 个**，实现阶段一个不多一个不少；分册若新造了表外的码，必须**同时**在契约那张表登记一行（码 / 触发条件 / 文案要求 / 归属分册），否则不得进入实现。**测试因此可以按 40 个码逐条断言分类结果**；分册自己的下限只需覆盖**本册新增的前缀**（§9）。
+- **码空间是一个闭集**：`00-contracts.md` 第 8.2 节的清单是**全量 42 个**，实现阶段一个不多一个不少；分册若新造了表外的码，必须**同时**在契约那张表登记一行（码 / 触发条件 / 文案要求 / 归属分册），否则不得进入实现。**测试因此可以按 42 个码逐条断言分类结果**（旧稿此处写「40 个」，与契约 §8.2 的 42 行不符，以契约为准）；分册自己的下限只需覆盖**本册新增的前缀**（§9）。
 - 为什么是前缀而不是 `includes`：前缀是唯一在两侧都能逐字断言的形态；包含匹配会因为消息正文里出现同样的词而误判。
 - 现成范式：`src/lib/connectionShareError.ts` 的 `translateConnectionShareError`（`trimmed.startsWith(...)` 逐条前缀匹配，匹配不到 `return trimmed`），对应测试 `src/lib/__tests__/connectionShareError.test.ts` 覆盖「已知映射 / 未知透传 / 空消息 fallback」三类。**`gridErrors.ts` 照它写，测试照它写。**
 - 三条必须有的用例：① 每个已登记前缀**逐字**分类正确；② 未知前缀返回 `'unknown'` 且 **UI 回退显示原始消息**（不吞、不变空白）；③ **前缀只匹配开头** —— 正文里含同样词的普通消息不得被误分类。
@@ -782,7 +783,7 @@ tail -n 40 "$LOG"
 | 任何驱动 UI 改动 | `pnpm test:unit:drivers` | `Test Files` / `Tests` |
 | 任何 `driver-api` / 驱动 crate Rust 改动 | `cargo fmt --all -- --check`；`cargo test -p datazen-driver-api --lib`；`cargo test -p datazen-driver-<id>`（集成加 `--tests`） | `test result:` 行逐条记录 |
 | 任何 `src-tauri` Rust 改动 | `cargo fmt --all -- --check`；`cargo test -p datazen --lib`；要复现 CI 的 feature 条件时用 CI 的原式：`FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")` 然后 `cargo test -p datazen --lib --features "$FEATURES"` | `test result:` |
-| 新增/改动 i18n key | `node scripts/i18n-sync-check.mjs` | 脚本自己的总结行。**注意 CI 把它设成 `continue-on-error: true`（warning only），但本批方案要求本地干净** |
+| 新增/改动 i18n key | `node scripts/i18n-sync-check.mjs` | 脚本自己的总结行。〔合并后校正〕它现在是 **`.github/workflows/release.yml` 的 `pre-release-guards` 硬门禁**（翻译不完整，发布构建根本不启动），**不再是** `continue-on-error: true` 的 warning；但它仍然**不进 per-PR CI**，所以本批要求 PR 提交前本地跑干净 |
 | 新增/改动 i18n key 的 key 冲突 | `pnpm test:i18n-keys` | 脚本总结行 |
 | 新增/改动 IPC 命令名、类型名、领域术语 | `pnpm test:ids` | 脚本总结行 |
 | 改 Host UI 交互路径（必须同 PR 更新 E2E） | `pnpm tauri:build:webdriver` 后 `pnpm e2e:smoke`（或相关 `--suite`） | WDIO 的 `passing` / `failing` 计数行 |
@@ -803,7 +804,8 @@ tail -n 40 "$LOG"
 
 > A-1…A-4 应当落成**可执行**的测试（Host Rust 单测 / Host 前端单测），不是本文档里的提醒。写不进测试的条目等于不存在。
 
-> **CI 里真正会拦人的前端守卫**（决定本批方案会不会因格式/命名被红）：`pnpm typecheck`，然后 CI 把九条守卫合并成一步 fail-fast：`node scripts/check-managed-stubs.mjs`、`node scripts/check-structure-editor-guardrails.mjs`、`pnpm test:ids`、`pnpm test:layers`、`pnpm test:ci-docs`、`pnpm test:version`、`pnpm test:driver-protocol`、`pnpm test:boundaries`、`pnpm test:i18n-keys`，接着是 `pnpm test:unit`、`pnpm test:unit:drivers`、`pnpm test:unit:driver-set`。Rust 侧是 `cargo fmt --all -- --check`、basic 四驱动的 `cargo test --lib` 与 `--tests`、`cargo test -p datazen --lib --features ...`、`cargo test -p datazen-ai-api --lib`。
+> **CI 里真正会拦人的前端守卫**（决定本批方案会不会因格式/命名被红）：`pnpm typecheck`。〔合并后校正〕per-PR 门禁现在是**一条 fail-fast 步骤里的 5 条**（`.github/workflows/ci.yml`，step 名 "All strict guards (stubs, IDs, layers, boundaries, i18n keys)"）：`node scripts/check-managed-stubs.mjs`、`pnpm test:ids`、`pnpm test:layers`、`pnpm test:boundaries`、`pnpm test:i18n-keys`；`check-structure-editor-guardrails.mjs`、`test:ci-docs`、`test:version` **已移到 `release.yml` 的 `pre-release-guards`**（只在发布时跑），`test:driver-protocol` **已退役删除**。
+> 接着是 `pnpm test:unit`、`pnpm test:unit:drivers`、`pnpm test:unit:driver-set`；另一组 job 跑 `pnpm test:platform-arch` / `test:shared-crate-panic` / `test:driver-types` / `test:platform-crates` / `test:platform-arch:mutations`。Rust 侧是 `cargo fmt --all -- --check`、按 `.driver-features.json` 注入 feature 的 `cargo test -p datazen --lib` 与 `--tests`、`cargo test -p datazen-ai-api --lib`；**`packages/feature-core` 的改动要用 `cargo test -p datazen-feature-core --lib` 单独跑**（`cargo test -p datazen --lib` 覆盖不到它——`QueryExecutor` 的实现在那个 crate 里）。
 
 ### 7.3 为什么必须首尾各记录一次 HEAD 与工作区 sha
 
@@ -836,7 +838,7 @@ git -C . status --porcelain=v1 | git hash-object --stdin
 [时间] 2026-XX-XX HH:MM
 [HEAD] <sha-跑前> → <sha-跑后>   （必须相等）
 [工作区] <content-sha-跑前> → <content-sha-跑后>   （必须相等）
-[驱动集] full-all（默认）；Pro = main @ extensionPointsVersion 1.0.0
+[驱动集] full-all（默认）；Pro = main @ extensionPointsVersion 1.1.0（与宿主 EXTENSION_POINTS_VERSION 一致）
 [EXIT] 0
 [结论行-逐字]
  Test Files  123 passed (123)
@@ -1005,7 +1007,7 @@ git -C . status --porcelain=v1 | git hash-object --stdin
 
 | # | 问题 | 建议 |
 | --- | --- | --- |
-| T-1 | **Pro 检出与宿主 EP 版本不一致要不要纳入本批门禁？** 事实是：Pro 包声明 `1.0.0`、宿主 `EXTENSION_POINTS_VERSION` 是 `1.1.0`；但宿主侧读真实 Pro manifest 做「两端一致」断言的那两条用例**已被删除**（该文件自己写明搬到了 Pro 仓的 `scripts/verify-host-pin.mjs`），我今天在宿主测试里找不到任何读真实 Pro 检出的用例 | **不纳入本批门禁**。理由有三：(1) 宿主门禁里已不存在这条用例，纳入会变成「守一个不存在的门」；(2) 一致性断言的正确归属是 Pro 仓的 `verify-host-pin.mjs`，宿主 CI 结构上拿不到那个仓库（interaction 文件与该测试文件的注释都写明「唯一结果是 skip 或本地红，不是门禁」）；(3) 改 Pro 的 `manifest.json` 或宿主 EP 常量都属于改契约，越出本批范围。**但本册保留 §2.4b 的说明与 §10 第 12 条的自查项**：一旦本地真看到 `expected '1.0.0' to be '1.1.0'`，当场按环境问题归类并在结论里单独标注，不要动手改版本号 |
+| T-1 | **Pro 检出与宿主 EP 版本不一致要不要纳入本批门禁？** 〔合并后校正〕**前提已消失**：Pro 包现声明 `1.1.0`，与宿主 `EXTENSION_POINTS_VERSION` 一致；旧稿写的 `1.0.0` 是合并前状态。宿主侧读真实 Pro manifest 做「两端一致」断言的那两条用例**早已删除**（搬到 Pro 仓的 `scripts/verify-host-pin.mjs`），我今天在宿主测试里找不到任何读真实 Pro 检出的用例 | **不纳入本批门禁**。理由有三：(1) 宿主门禁里已不存在这条用例，纳入会变成「守一个不存在的门」；(2) 一致性断言的正确归属是 Pro 仓的 `verify-host-pin.mjs`，宿主 CI 结构上拿不到那个仓库（interaction 文件与该测试文件的注释都写明「唯一结果是 skip 或本地红，不是门禁」）；(3) 改 Pro 的 `manifest.json` 或宿主 EP 常量都属于改契约，越出本批范围。**但本册保留 §2.4b 的说明与 §10 第 12 条的自查项**：一旦本地真看到 `expected '1.0.0' to be '1.1.0'`，当场按环境问题归类并在结论里单独标注，不要动手改版本号 |
 | T-2 | **`pnpm test:unit:coverage` 要不要作为本批方案的强制门禁？** 它存在且对 `src/lib/**`、`src/stores/**`、`src/components/DataTable/**` 设了 `lines 80 / functions 80 / branches 75 / statements 80`，但 CI 的前端任务跑的是 `pnpm test:unit` / `pnpm test:unit:drivers` / `pnpm test:unit:driver-set`，**没有**跑覆盖率 | 建议**强制**：本批方案主要改的就是这三块，覆盖率是唯一能拦住「新分支没测」的自动门。若嫌重，退一步方案：只在改动这三块时强制，并把 `--coverage` 的结论行抄进门禁记录 |
 | T-3 | **反向注入要做多少次？** §1 D5 要求「至少 1 次」，但一条 journey 里可能有多条关键断言 | 建议按**分册**记 1 次（有代表性的一条：例如 DB-09 注入「`count_strategy` 不再由 `skip_query` 推出」，DB-04 注入「`Unset` 被补成 `NULL`」），并在分册第 9 节写明注入的是哪个符号、哪条用例转红。不做「每条断言都注入」——成本过高且会稀释重点 |
 | T-4 | **E2E spec 完全没有类型门禁**（`tsconfig.json` 的 `include` 不含 `e2e/`，`e2e/tsconfig.json` 存在但没有任何 script 或 workflow 驱动它） | 建议**单独立项**把 `e2e/tsconfig.json` 接进 `pnpm typecheck`，不要塞进数据浏览这一批（它会一次性暴露 e2e 目录的全部既有类型问题，与本批方案无关，混在一起会让本批的回归清单不可读）。在本批范围内，纪律是：新增/改动的 E2E spec **必须真跑一次**（`pnpm e2e:smoke` 或对应 `--suite`），不能只靠「看起来对」 |

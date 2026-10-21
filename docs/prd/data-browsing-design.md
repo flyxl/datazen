@@ -2,7 +2,8 @@
 
 > **文档性质**：本目录是**按用户明确要求保存的一次性技术设计**，属仓库 [文档维护纪律](../../AGENTS.md) 的窄范围例外（同 [PRD](data-browsing-optimization-prd.md) 的处理方式，已在 [docs/README.md](../README.md) 登记）。它记录的是**目标设计**，不代表当前 `main` 已实现；方案落地后应逐节改写为「已实现事实」并入 [architecture/frontend/components.md](../architecture/frontend/components.md) 与 [features/](../features/)，随后删除本目录。
 >
-> **基线**：`main` = `e0f6ba28b`。
+> **基线**：`main` = `87ce4b45e`（本文档初稿写于 `e0f6ba28b`，其后主干前进 619 个提交；合并后已按下述新基线逐册校正，凡与旧稿数字冲突处以新数为准）。
+> **合并状态**：`feature/data-browsing-prd` 已 merge `87ce4b45e`（merge commit `c9c8d23ae`，零冲突）。校正依据是合并后的工作树，实测命令为 `wc -l` 与 `git rev-parse`。
 > **引用纪律**：全目录**不写行号**（行号会随重构腐烂，且无门禁校验），位置一律用「文件路径 + 符号名」。**全文禁止出现 `文件名:行号` 形式的引用**。
 
 ---
@@ -59,7 +60,7 @@
 
 ## 3. 给实习生的阅读与开工路径
 
-不要试图一次读完 12 份分册。
+不要试图一次读完 12 份分册（连同 00 契约册，目录内共 13 个文件；「12 份分册」沿用历史口径，指 01–12）。
 
 **第 1 步（半天）**：读本总纲 → 读 [00-contracts.md](data-browsing-design/00-contracts.md) 全文 → 读 [12-testing.md](data-browsing-design/12-testing.md) 的「测试分层与落点」与「通用测试约定」两节。此时你应该能回答：`CellWrite` 为什么必须是三态？`data-dt-col` 存的是列名还是列下标？为什么写路径不能直接用行号拼 `WHERE`？
 
@@ -132,11 +133,11 @@
 ### 5.1 兼容性（详见 [00-contracts.md](data-browsing-design/00-contracts.md) 第 2 节）
 
 - **R1 只新增，不改签名**：不改 `build_update_sql` / `build_delete_sql` / `format_sql_literal` / `pagination_syntax` / `get_table_data` 等既有方法签名，也**不改既有 DTO 字段的类型或名字**。需要新语义时新增方法或字段。
-- **R2 新增 trait 方法必须有默认实现**：这样任何驱动（50+ path 驱动与 git 驱动）不改一行代码仍能编译。⚠ **默认实现的约束是单向的——允许「扩大」能力面，不得「移除或改变」今天已有的能力**，因此本条**不是**「默认行为逐字等于今天」。像 `supported_filter_operators` 默认返回 19 个算子（今天只有 10 个）就是刻意扩大的：宿主渲染器能处理全部 19 个，对旧驱动只会更宽松。凡刻意扩大，必须在方法注释里写明「今天的返回值是什么、为什么默认改成这样」。
+- **R2 新增 trait 方法必须有默认实现**：这样任何驱动（当前仓库 **15 个 path 驱动 + 3 个 git 驱动 = 18 个**，以 `drivers-registry.json` 为准）不改一行代码仍能编译。⚠ **默认实现的约束是单向的——允许「扩大」能力面，不得「移除或改变」今天已有的能力**，因此本条**不是**「默认行为逐字等于今天」。像 `supported_filter_operators` 默认返回 19 个算子（今天只有 10 个）就是刻意扩大的：宿主渲染器能处理全部 19 个，对旧驱动只会更宽松。凡刻意扩大，必须在方法注释里写明「今天的返回值是什么、为什么默认改成这样」。
 - **R3 JSON 契约靠 serde 自动映射**：Rust 侧已标 `#[serde(rename_all = "camelCase")]`，前端用 camelCase。**不要**手写转换函数，**不要**给前端预留 snake_case 别名，新增 DTO 必须带同名属性宏。
 - **R4 默认值必须等于「今天缺省时的实际行为」，不是无条件填 `false`**：今天默认**不可用**的能力（如 `insertReturning`）填 `false`；今天默认**可用**的能力填 `true`——典型如 `DataGridCapabilities.editable`，今天所有驱动都没声明过该字段、前端一律按可编辑渲染，填 `false` 会让所有未声明 `dataGrid` 的驱动**一夜之间变只读**，这正是本条要防的回归；枚举类（如 `countStrategy`）缺省填**今天走的那条分支**，不是「最严格的那个」。新增枚举分支必须在旧数据上反序列化成功（能用 `#[serde(default)]` 就用）；能力缺失时 UI **隐藏入口**，而不是渲染一个点了报错的按钮。
 - **R5 生产路径禁止裸 `unwrap()` / `expect()`**，见 [panic-policy.md](../development/panic-policy.md)。
-- **不需要提升 `PROTOCOL_VERSION`**（当前为 `5`，`MIN_PROTOCOL_VERSION` 为 `1`）：只新增带默认实现的方法、默认行为等于或不窄于今天、不动既有签名与既有 DTO 字段类型——已由契约第 11 节 C-3 裁定。**一旦改了既有签名就必须提升并同步所有 git 驱动的 `ref` 钉定。**
+- **不需要提升 `PROTOCOL_VERSION`**（当前为 **`6`**，`MIN_PROTOCOL_VERSION` 为 `1`）：只新增带默认实现的方法、默认行为等于或不窄于今天、不动既有签名与既有 DTO 字段类型——已由契约第 11 节 C-3 裁定。**协议版本自 2026-10-21 起冻结于 6**（见 [driver-capability-migration.md](../architecture/platform/driver-capability-migration.md) §5 与 `.github/workflows/ci.yml` 中对 `test:driver-protocol` 门禁族退役的说明），因此兼容性不再靠提版本表达；宿主对「驱动声明版本高于宿主」只 **warn** 并继续加载（`packages/runtime/src/driver_registry/registry.rs`），仅低于 `MIN_PROTOCOL_VERSION` 才拒绝。
 
 ### 5.2 零硬编码
 
@@ -166,19 +167,19 @@
 
 - 测试/门禁命令的输出动辄上千行，**必须**重定向到**系统临时目录**再取尾部（结论在末尾）；临时文件**不得落进仓库**（会污染 `git status`）；退出码必须单独打印并如实记录。
 - **同一棵工作树不得同时被提交方和验证方使用**（见 [worktree-isolation.md](../development/worktree-isolation.md)）。门禁重跑要首尾各记录一次 HEAD 与工作区 sha，证明运行期间没人动过。
-- **驱动集必须写进结论**：本工作树以 `--drivers=basic` 铺设（postgres / mysql / sqlite / redis），CI 常以 `--drivers=all` 运行；`DB_REGISTRY` 由 `generated.ts` 合并而来，驱动集一变宿主单测读到的注册表就变，因此「Host 用例全绿」只在本驱动集语义内成立。`pnpm typecheck` 不受影响。
-- 本工作树内 `packages/pro-extensions/sql-editor-pro`（Pro `main`，manifest 声明 `extensionPointsVersion=1.0.0`）与宿主 `1.1.0` 不一致，会让 `packages/extension-points/src/__tests__/security.test.ts` 的版本一致性用例失败。**这是环境造成的既有失败，不是本批方案的缺陷。**
+- **驱动集必须写进结论**：`scripts/resolve-drivers.mjs` 默认 `--drivers=basic`，但**本工作树的 codegen 实际是全量**——`src/extensions/generated.ts` 现有 **22 个 dbType、来自 15 个 path 驱动包**（`ensure-generated-drivers.mjs` 在文件已存在时跳过重铺，保留了上次 `--drivers=all` 的产物）。CI 常以 `--drivers=all` 运行；`DB_REGISTRY` 由 `generated.ts` 合并而来，驱动集一变宿主单测读到的注册表就变，因此「Host 用例全绿」只在本驱动集语义内成立，结论里必须记下实际驱动集。`pnpm typecheck` 不受影响。
+- 本工作树内 `packages/pro-extensions/sql-editor-pro`（Pro `main`，manifest 声明 `extensionPointsVersion=1.1.0`）与宿主 `packages/extension-points/src/security.ts` 的 `EXTENSION_POINTS_VERSION`（`1.1.0`）**已一致**；历史上曾出现 `1.0.0` vs `1.1.0` 的不一致，宿主侧读真实 Pro manifest 做「两端一致」断言的两条用例已删除（一致性断言移到 Pro 仓 `scripts/verify-host-pin.mjs`）。因此本工作树**没有**这条既存失败。
 
 ### 5.7 共享热文件行数总账（唯一账本）
 
-多个分册会往同一批文件里加接线，**行数账目只能有一个权威来源**：[00-contracts.md](data-browsing-design/00-contracts.md) 第 9.1 节。各册在「文件级改动清单」里申报热文件增量时必须遵守：
+多个分册会往同一批文件里加接线，**行数账目只能有一个权威来源**：[00-contracts.md](data-browsing-design/00-contracts.md) 第 **9.2** 节。各册在「文件级改动清单」里申报热文件增量时必须遵守：
 
 - **必须写明基线**以及「在自己之前合并的分册已完成哪些抽取」；只给一个数字而不写基线的，视为**未申报**；
 - 若某册的增量会让文件达到或超过 800 行，该册**必须**在**同一次提交**里带上自己的抽取方案（新建文件 + 搬走哪些内容 + 预估行数），不得把超限留给下一个分册去撞；
 - 账本里标注「创建归属」的新文件，**只有该分册可以创建**；其他分册只能复用、追加成员或加可选 props，**禁止另建平行文件**（同一职责出现三个文件名的教训已经真实发生过一次）；
 - 分册若发现账本与自己的实测不符，**先改账本**（它是契约的一部分），再改自己的推算；禁止各册各算一套——**这条规则本身就是被真实分歧逼出来的：08 判定「本册与 09 合计必超 800」，05 判定「由 01 抽取后不再触红线」，两者对同一个文件得出了相反结论，而两者都只看到了部分增量。**
 
-账本记录的两个结论：`TableView.tsx` 基线 770，逐笔叠加的峰值是 **746**（09 合并后），距 800 还剩 54 行；**把 08 那次 −90 的抽取拿掉重算，越界点不是「各册合计 824」，而是第一个越界提交——09（836 行），11 合并后 891 行**（因此那次抽取是**合并前置条件**，不是优化）；`src-tauri/src/services/query_executor.rs` 基线已 **811 行**，必须先目录化才能继续加子模块。此外 `packages/driver-api/src/types.rs`（958）、`traits.rs`（1062）、`src-tauri/src/commands/data.rs`（1416）**在本批之前就已超 800 行**，属于既有债务，本批只做最小净增并把新内容放进新文件。
+〔合并后校正〕账本记录的结论：`TableView.tsx` 基线 **803**（旧稿 770）——**它已在 800 之上**，因此 01 的 `TablePendingChangesBar` 抽取是**所有分册的前置条件**，不是优化项；按逐笔叠加重算，峰值是 **779**（09 合并后），余量 21 行。`packages/feature-core/src/services/query_executor.rs` 已 **755 行**（宿主 `src-tauri/src/services/query_executor.rs` 只剩 47 行门面），目录化要在 feature-core 内做。此外 `packages/driver-api/src/types.rs`（963）、`traits.rs`（1160）、`reuse.rs`（1344）、`src/stores/panelStore.ts`（793）、`src/windows/connection/TableView.tsx`（803）**在本批之前就已超 800 行**，属于既有债务，本批只做最小净增并把新内容放进新文件。
 
 ---
 
