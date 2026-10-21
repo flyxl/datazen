@@ -48,31 +48,6 @@ pub(super) fn delete_change(id: i64) -> PendingRowChange {
     }
 }
 
-pub(super) fn composite_update_change(
-    tenant_id: i64,
-    id: i64,
-    next_id: Option<i64>,
-) -> PendingRowChange {
-    let mut current_values =
-        BTreeMap::from([("name".into(), Some(Value::String("Updated".into())))]);
-    let mut changed_columns = vec!["name".into()];
-    if let Some(next_id) = next_id {
-        current_values.insert("id".into(), Some(Value::Integer(next_id)));
-        changed_columns.push("id".into());
-    }
-    PendingRowChange {
-        row_identity: BTreeMap::from([
-            ("tenant_id".into(), Some(Value::Integer(tenant_id))),
-            ("id".into(), Some(Value::Integer(id))),
-        ]),
-        original_values: BTreeMap::new(),
-        current_values,
-        changed_columns,
-        delete_marked: false,
-        insert_marked: false,
-    }
-}
-
 pub(super) fn assert_legacy_write_disabled(error: crate::commands::error::CommandError) {
     assert!(matches!(
         error,
