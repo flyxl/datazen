@@ -92,6 +92,16 @@ describe('classifyGridError', () => {
     ).toBe('grid.filter.unsupportedOperator');
   });
 
+  it('does not classify the "cannot estimate" notice — the front end knows it already', () => {
+    // "This database cannot estimate row counts" is a fact the front end has
+    // on its own: the driver's declaration, or the answer in `totalRowsKind`.
+    // The grid renders it directly, so it is an i18n key and **not** an
+    // error code — registering it would make the interface branch on a
+    // message that can never arrive.
+    expect(GRID_ERROR_CODES).not.toContain('grid.count.estimateUnavailable');
+    expect(classifyGridError('grid.count.estimateUnavailable: no estimate here')).toBe('unknown');
+  });
+
   it('tolerates surrounding whitespace but stays case-sensitive', () => {
     expect(classifyGridError('  grid.selection.stale: rows changed\n')).toBe('grid.selection.stale');
     expect(classifyGridError('GRID.SELECTION.STALE: rows changed')).toBe('unknown');

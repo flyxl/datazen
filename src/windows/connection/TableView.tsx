@@ -37,7 +37,7 @@ import {
 } from '../../lib/filterOperators';
 import type { ColumnSchema, DatabaseType } from '../../types';
 import { resolveDefaultTableSort } from '../../lib/defaultSort';
-import { DEFAULT_TABLE_SORT } from '../../types/settings';
+import { DEFAULT_ROW_COUNT_MODE, DEFAULT_TABLE_SORT } from '../../types/settings';
 import { Spinner } from '../../components/ui/Spinner';
 
 /** Stable empty fallbacks: a fresh array per render would defeat the memos below. */
@@ -162,6 +162,8 @@ export function TableView({
   const defaultTableSortSetting = useSettingsStore(
     (s) => s.settings.defaultTableSort ?? DEFAULT_TABLE_SORT,
   );
+  /** How the user wants the row count obtained. */
+  const rowCountMode = useSettingsStore((s) => s.settings.rowCountMode ?? DEFAULT_ROW_COUNT_MODE);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -272,6 +274,17 @@ export function TableView({
    * cannot count says so instead of showing zero rows.
    */
   const totalRowsKind = ts?.totalRowsKind ?? 'exact';
+  /**
+   * The user asked for an estimate and this database cannot give one.
+   *
+   * The host falls back to counting when the driver has no estimate, and says
+   * so in the answer. The front end knows that on its own, so the grid says
+   * it directly — there is no error to classify here, and nothing failed.
+   */
+  const estimateUnavailable =
+    rowCountMode === 'estimated' &&
+    (ts?.columns.length ?? 0) > 0 &&
+    totalRowsKind !== 'estimated';
   /** The panel's temporary override of the global default order. */
   const defaultOrderOverride = ts?.defaultOrderOverride ?? 'inherit';
   /** The order this read actually uses. */
@@ -630,6 +643,7 @@ export function TableView({
         onCountExact={handleCountExact}
         counting={counting}
         unstablePaging={unstablePaging}
+        estimateUnavailable={estimateUnavailable}
         defaultOrderOverride={defaultOrderOverride}
         onDefaultOrderOverrideChange={actions.setDefaultOrderOverride}
         page={page}

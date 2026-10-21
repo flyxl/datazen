@@ -122,6 +122,27 @@ describe('Pagination · the estimated state', () => {
     });
     expect(getByTestId('pagination-estimate-overshot')).toBeInTheDocument();
   });
+
+  it('says that this database cannot estimate when the user asked for one', () => {
+    // The front end knows this on its own: the driver declared it, or the
+    // answer came back without an estimate. It is a rendered fact, not an
+    // error to classify — nothing failed, the read simply fell back.
+    const { getByTestId } = renderPagination({
+      totalRowsKind: 'exact',
+      estimateUnavailable: true,
+    });
+    const notice = getByTestId('pagination-estimate-unavailable');
+    expect(notice).toBeInTheDocument();
+    expect(notice.textContent).toBe('This database cannot estimate row counts.');
+  });
+
+  it('says nothing about estimates when the database gave one', () => {
+    const { queryByTestId } = renderPagination({
+      totalRowsKind: 'estimated',
+      estimateUnavailable: false,
+    });
+    expect(queryByTestId('pagination-estimate-unavailable')).toBeNull();
+  });
 });
 
 describe('Pagination · the unknown state', () => {

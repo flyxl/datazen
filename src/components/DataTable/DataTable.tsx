@@ -51,6 +51,14 @@ export interface DataTableProps {
   counting?: boolean;
   /** No order is in force: rows across pages may repeat or be skipped. */
   unstablePaging?: boolean;
+  /**
+   * The user asked for an estimate and this database cannot give one.
+   *
+   * The grid knows it on its own — the driver declared it, or the answer came
+   * back without an estimate — so it says so directly instead of waiting for
+   * an error message that would never arrive.
+   */
+  estimateUnavailable?: boolean;
   /** The panel's temporary override of the global default order. */
   defaultOrderOverride?: DefaultOrderOverride;
   /** Change the panel's temporary override of the global default order. */
@@ -257,6 +265,7 @@ export function DataTable({
   onCountExact,
   counting,
   unstablePaging,
+  estimateUnavailable,
   defaultOrderOverride,
   onDefaultOrderOverrideChange,
   onCellDoubleClick,
@@ -674,6 +683,7 @@ export function DataTable({
           onCountExact={onCountExact}
           counting={counting}
           unstablePaging={unstablePaging}
+          estimateUnavailable={estimateUnavailable}
           footerExtras={
             onDefaultOrderOverrideChange ? (
               <DefaultOrderSelect

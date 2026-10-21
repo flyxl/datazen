@@ -80,6 +80,7 @@ const invalidateNotice = () => {};
 function Grid() {
   const ts = useTableDataStore((s) => s.byPanel.get(PANEL));
   const actions = useTableActions({ panelId: PANEL, context, invalidateNotice });
+  const rowCountMode = useSettingsStore((s) => s.settings.rowCountMode);
   const needsLoad = !ts || ts.rows.length === 0;
 
   useEffect(() => {
@@ -99,6 +100,13 @@ function Grid() {
       onPageChange={actions.setPage}
       onPageSizeChange={actions.setPageSize}
       onCountExact={actions.countExact}
+      // The front end knows on its own that the database cannot estimate: the
+      // user asked for one and the answer is not an estimate.
+      estimateUnavailable={
+        rowCountMode === 'estimated' &&
+        ts.columns.length > 0 &&
+        ts.totalRowsKind !== 'estimated'
+      }
     />
   );
 }
@@ -218,5 +226,41 @@ describe('the row count journey', () => {
     expect(view.queryByText('Page 1 / 1')).toBeNull();
     // And the user is not stuck on the first page: the page is full.
     expect(view.getByLabelText('Next')).not.toBeDisabled();
+  });
+
+  it('says that this database cannot estimate, without waiting for an error', async () => {
+    // ⓪ The user asked for an estimate.
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, rowCountMode: 'estimated' },
+    }));
+
+    // ① The read asks for one, and the host falls back to counting: this
+    // database has no estimate to give.
+    mockDatabaseCommands.getTableData.mockResolvedValueOnce({
+      columns,
+      rows: pageRows(50),
+      totalRows: 987_654,
+      totalRowsKind: 'exact',
+      page: 0,
+      pageSize: 50,
+    });
+
+    const view = render(<Grid />);
+    await waitFor(() => {
+      expect(mockDatabaseCommands.getTableData).toHaveBeenCalled();
+    });
+    const request = mockDatabaseCommands.getTableData.mock.calls.at(-1)?.[0];
+    expect(request.countStrategy).toBe('estimated');
+
+    // ② The grid says so — it knows it on its own, so it does not wait for
+    // an error message that would never arrive.
+    await waitFor(() => {
+      expect(view.getByTestId('pagination-estimate-unavailable')).toBeInTheDocument();
+    });
+    expect(view.getByTestId('pagination-estimate-unavailable').textContent).toBe(
+      'This database cannot estimate row counts.',
+    );
+    // And the number on screen is the exact one, not a lie about an estimate.
+    expect(view.getByTestId('pagination-row-count').textContent).toBe('1-50 / 987,654');
   });
 });

@@ -137,16 +137,17 @@ const CODE_PATTERN = /"grid\.[a-z]+\.[a-zA-Z]+/g;
  * Each entry is a decision, not a leftover: the front end branches on the
  * code, the back end does not raise it. When the producer lands, the entry
  * has to leave this list — the test below fails until it does.
+ *
+ * A code that will **never** have a producer does not belong here either:
+ * "this database cannot estimate row counts" is a fact the front end knows
+ * on its own (the driver's declaration, the answer in `totalRowsKind`), so the
+ * grid renders it directly instead of waiting for a message that would never
+ * arrive. It is an i18n key, not an error code.
  */
 const PRODUCER_PENDING: readonly string[] = [
   'grid.selection.invalid',
   'grid.selection.outOfBounds',
   'grid.selection.stale',
-  // The count track registers the code the back end will raise when a read
-  // explicitly asks for an estimate the database cannot serve. The producer
-  // lands with the back end's own count work; until then the front end
-  // classifies the prefix and falls back to the raw message.
-  'grid.count.estimateUnavailable',
 ];
 
 function rustFiles(root: string): string[] {

@@ -78,6 +78,15 @@ export interface PaginationProps {
   counting?: boolean;
   /** No order is in force: rows across pages may repeat or be skipped. */
   unstablePaging?: boolean;
+  /**
+   * The user asked for an estimate and this database cannot give one.
+   *
+   * The front end knows this on its own — the driver declared it, or the
+   * answer came back without an estimate — so the grid says so directly. It
+   * is **not** an error: nothing failed, the database simply has no estimate
+   * to give, and the read fell back to counting.
+   */
+  estimateUnavailable?: boolean;
   /** Extra controls rendered next to the pager (the panel's order override). */
   footerExtras?: ReactNode;
 }
@@ -97,6 +106,7 @@ export function Pagination({
   onCountExact,
   counting = false,
   unstablePaging = false,
+  estimateUnavailable = false,
   footerExtras,
 }: PaginationProps) {
   const { t } = useI18n();
@@ -190,6 +200,15 @@ export function Pagination({
             data-testid="pagination-estimate-overshot"
           >
             {t('pagination.estimatedLessThanActual')}
+          </span>
+        )}
+        {estimateUnavailable && (
+          <span
+            className="min-w-0 truncate text-warning"
+            title={t('grid.count.estimateUnavailable')}
+            data-testid="pagination-estimate-unavailable"
+          >
+            {t('grid.count.estimateUnavailable')}
           </span>
         )}
       </div>
