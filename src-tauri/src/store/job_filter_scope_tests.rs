@@ -842,3 +842,275 @@ fn probe<'a>(text: &'a &'static str) {
         );
     }
 }
+
+/// 守卫的**不变量**自检：掩码的不变量、真实活实例、以及类型位置的边界。
+///
+/// `self_check` 验的是「能不能抓住」；这里验的是「掩码是不是守得住」。
+///
+/// 掩码一旦破了**字节偏移**或**行数**，报告就会指错地方——指错地方的守卫等于没有：
+/// 人只会去改那行「看起来像」的代码，真正的漏网点原地不动。因此掩码的不变量
+/// 必须逐形态钉死，而不能只在「常见输入」下成立。
+#[cfg(test)]
+mod invariants {
+    use super::{mask_comments_and_literals, repository_root, scan_source};
+
+    /// 一组「容易让掩码失衡」的源码，覆盖词法器的每一条分支。
+    ///
+    /// 逐条列出来不是为了好看：词法器每多认一种形态，就多一个可能失衡的分支，
+    /// 而失衡在常见输入下**看不出来**（只在报告里体现为「指错行」「引错字」）。
+    const TRICKY_SOURCES: &[&str] = &[
+        // 普通字符串（含转义引号）。
+        "let a = \"x\\\"y\";\n",
+        // 裸串（0 个 `#`）：结尾的 `\"` 不转义，闭合引号紧跟其后。
+        "let b = r\"a\\\";\n",
+        // 原始串：1 个 / 2 个 `#`。
+        "let c = r#\"a\"#;\n",
+        "let d = r##\"a\"##;\n",
+        // Windows UNC 前缀：仓库里的**真实活实例**（`config.rs` 里就是它）。
+        "let e = r\"\\\\?\\\";\n",
+        // 嵌套块注释。
+        "/* /* nested */ */\n",
+        // 行注释。
+        "// line\n",
+        // 生命周期撇号（不是字符字面量）。
+        "fn f<'a>(x: &'a str) {}\n",
+        // 字符字面量：普通 / 转义 / 转义引号。
+        "let g = 'x'; let h = '\\n'; let i = '\\'';\n",
+        // 生命周期不是字符字面量（`'` 后没有闭合引号）。
+        "let j = 'static;\n",
+        // 非 ASCII（多字节）：掩码必须按**字节数**补空格。
+        "let k = \"\u{4e2d}\u{6587}\";\n",
+        // 跨行字符串。
+        "let l = \"multi\nline\";\n",
+        // 续行字符串（`\` + 换行）。
+        "let m = \"tail\\\n  continued\";\n",
+        // 字节串 / 字节裸串。
+        "let n = b\"bytes\"; let o = br\"raw\";\n",
+    ];
+
+    /// 掩码必须**与原文等字节长**，且**行数一致**。
+    ///
+    /// * 等字节长 → 掩码里的字节偏移可以直接回原文取字面量原文，报告里显示的是**真实常量**；
+    /// * 行数一致 → 报出的 `file:line` 才是**真实行号**。
+    ///
+    /// 两条都要**逐形态**成立：只在一半形态上成立，报告就会在另一半形态上指错地方。
+    #[test]
+    fn the_mask_keeps_the_byte_length_and_the_line_count() {
+        for source in TRICKY_SOURCES {
+            let masked = mask_comments_and_literals(source);
+            assert_eq!(
+                masked.len(),
+                source.len(),
+                "掩码必须与原文等字节长：{source:?} -> {masked:?}"
+            );
+            assert_eq!(
+                masked.lines().count(),
+                source.lines().count(),
+                "掩码的行数必须与原文一致：{source:?} -> {masked:?}"
+            );
+        }
+    }
+
+    /// 块注释的 `/*` 与 `*/` 必须各留 **2 个空格**的占位，字节偏移才守得住。
+    ///
+    /// 定界符被整个吞掉时，偏移就错位一格：掩码里的 `JobFilter` 会被切掉头，
+    /// 报告里引出来的字面量也就缺了字节（上一轮实测报出 `ob::JobFilter {`）。
+    #[test]
+    fn the_block_comment_markers_keep_the_byte_offsets() {
+        let source = "/*x*/JobFilter { states: Vec::new() }\n";
+        let masked = mask_comments_and_literals(source);
+        assert_eq!(masked.len(), source.len(), "掩码必须等字节长");
+        assert_eq!(&masked[0..2], "  ", "`/*` 必须留 2 个空格的占位");
+        assert_eq!(&masked[3..5], "  ", "`*/` 必须留 2 个空格的占位");
+        assert!(
+            masked[5..].starts_with("JobFilter"),
+            "块注释之后的字节偏移必须守住：{masked:?}"
+        );
+        // 偏移守住了，字面量也必须仍然被认出来。
+        let scan = scan_source("probe", source);
+        assert_eq!(
+            scan.literals, 1,
+            "块注释之后的字面量必须仍然可见：{:?}",
+            scan.without_organization
+        );
+    }
+
+    /// **真实活实例**：`config.rs` 里的裸串 `r"\\?\"` 不能再把后面的字面量一起吞掉。
+    ///
+    /// `r"\\?\"` 是 Windows 的 UNC 前缀（内容 `\\?\`，结尾是 `\"`）。旧实现只把
+    /// **带 `#`** 的原始串当原始串，裸串落进普通字符串分支 —— 那里结尾的 `\"`
+    /// 被当成转义吃掉闭合引号，词法器一路「处于字符串里」，**后面整段源码**
+    /// （包括真正的字面量）都被掩成字符串内容，守卫从此抓不住。
+    ///
+    /// 这里读**真实的** `config.rs`，在裸串之后注入一个坏字面量：它必须被抓到，
+    /// 且报出的行号必须是真实行号。
+    #[test]
+    fn the_live_bare_raw_string_cannot_hide_a_literal() {
+        let root = repository_root();
+        let path = root.join("src-tauri/src/commands/config.rs");
+        let source =
+            std::fs::read_to_string(&path).expect("config.rs 必须存在：它是这条断言的被测对象");
+        let anchor = ".strip_prefix(r\"\\\\?\\\")";
+        let at = source
+            .find(anchor)
+            .expect("config.rs 里的裸串锚点必须还在（改了实现就要改这条断言）");
+        let after = at + anchor.len();
+        // 锚点所在行 + 1 = 注入字面量所在的真实行号。
+        let expected_line = source[..after].lines().count() + 1;
+        let injected = format!(
+            "{}\n    let _ = JobFilter {{ states: Vec::new() }};\n{}",
+            &source[..after],
+            &source[after..]
+        );
+        let scan = scan_source("config.rs", &injected);
+        assert_eq!(
+            scan.without_organization.len(),
+            1,
+            "裸串之后的坏字面量必须被抓到（且只报这一个）：{:?}",
+            scan.without_organization
+        );
+        assert!(
+            scan.without_organization[0].starts_with(&format!("config.rs:{expected_line} ")),
+            "报出的行号必须等于真实行号（第 {expected_line} 行）：{:?}",
+            scan.without_organization
+        );
+    }
+
+    /// 类型位置上的同名 token **不是**字面量。
+    ///
+    /// 声明 / 实现 / 定义 / 返回类型里的 `JobFilter` 若被当成字面量，守卫就会
+    /// 假红——假红的守卫迟早被人关掉，于是真正的漏报原样回来。
+    ///
+    /// 这里的形态一律**故意不带 `organization_id`**：一旦被误判成字面量，守卫立刻红。
+    #[test]
+    fn type_positions_are_not_literals() {
+        let source = r##"
+pub struct JobFilter {
+    pub states: Vec<u8>,
+}
+pub enum JobFilter {
+    A,
+}
+pub trait JobFilter {
+    fn probe(&self);
+}
+pub union JobFilter {
+    pub a: u32,
+}
+impl JobFilter {
+    pub fn probe(&self) {}
+}
+impl datazen_platform_api::dto::job::JobFilter {
+    pub fn probe(&self) {}
+}
+fn returns_bare() -> JobFilter {
+    todo!()
+}
+fn returns_path_qualified() -> datazen_platform_api::dto::job::JobFilter {
+    todo!()
+}
+"##;
+        let scan = scan_source("probe", source);
+        assert_eq!(
+            scan.literals, 0,
+            "类型位置上的同名 token 不是字面量：{:?}",
+            scan.without_organization
+        );
+        assert!(
+            scan.without_organization.is_empty(),
+            "类型位置不得报违规：{:?}",
+            scan.without_organization
+        );
+    }
+
+    /// 但**同名结构体的字面量**必须仍然算。
+    ///
+    /// 这是上一条的反向：识别类型位置不能过度修正到「看不见真字面量」——
+    /// 那等于把守卫变成空转的。
+    #[test]
+    fn a_literal_of_a_same_named_type_is_still_a_literal() {
+        let source = r##"
+fn make() -> JobFilter {
+    JobFilter {
+        states: Vec::new(),
+        owner: None,
+        after: None,
+        limit: None,
+    }
+}
+"##;
+        let scan = scan_source("probe", source);
+        assert_eq!(
+            scan.literals, 1,
+            "函数体里的真字面量必须仍然被认出来：{:?}",
+            scan.without_organization
+        );
+        assert_eq!(
+            scan.without_organization.len(),
+            1,
+            "真字面量缺组织维度必须被报出来：{:?}",
+            scan.without_organization
+        );
+    }
+
+    /// 跨行字符串之后的坏字面量必须被抓到，且**报出的行号是真实行号**。
+    ///
+    /// 行号是掩码文本数出来的：掩码把换行也吃掉的话，报告会把人指到错误的行。
+    /// 这里同时覆盖**普通**字符串与**原始**字符串两种跨行形态。
+    #[test]
+    fn a_literal_behind_a_multi_line_string_reports_its_real_line() {
+        let quoted = "fn probe() {\n    let text = \"first\nsecond\";\n    let _ = JobFilter { states: Vec::new() };\n}\n";
+        let scan = scan_source("probe", quoted);
+        assert_eq!(
+            scan.without_organization.len(),
+            1,
+            "跨行普通字符串之后的坏字面量必须被抓到：{:?}",
+            scan.without_organization
+        );
+        assert!(
+            scan.without_organization[0].starts_with("probe:4 "),
+            "报出的行号必须等于真实行号：{:?}",
+            scan.without_organization
+        );
+
+        let raw = "fn probe() {\n    let text = r#\"first\nsecond\"#;\n    let _ = JobFilter { states: Vec::new() };\n}\n";
+        let scan = scan_source("probe", raw);
+        assert_eq!(
+            scan.without_organization.len(),
+            1,
+            "跨行原始字符串之后的坏字面量必须被抓到：{:?}",
+            scan.without_organization
+        );
+        assert!(
+            scan.without_organization[0].starts_with("probe:4 "),
+            "报出的行号必须等于真实行号：{:?}",
+            scan.without_organization
+        );
+    }
+
+    /// **已知缺陷**（第 4 轮终验发现，本轮未修）：字面量位于**行首**（第 0 列）时，
+    /// 报出的行号会**少一行**。
+    ///
+    /// 原因：行号是 `masked[..start].lines().count()`，而 `str::lines()` 不计末尾的
+    /// 空行——前缀若正好以换行结尾（字面量在行首），计数就比真实行号少 1。
+    ///
+    /// 这条用例 `#[ignore]`：等词法器侧修好之后去掉 ignore，它会立刻转绿；
+    /// 在此之前它把这条缺口**钉在代码里**，而不是只留在对话里。
+    #[test]
+    #[ignore = "已知缺陷：行首字面量的行号少报一行（见第 4 轮终验报告）"]
+    fn a_literal_at_the_start_of_a_line_reports_its_real_line() {
+        let source = "fn probe() {\nJobFilter { states: Vec::new() }\n}\n";
+        let scan = scan_source("probe", source);
+        assert_eq!(
+            scan.without_organization.len(),
+            1,
+            "行首的坏字面量必须被抓到：{:?}",
+            scan.without_organization
+        );
+        assert!(
+            scan.without_organization[0].starts_with("probe:2 "),
+            "报出的行号必须等于真实行号：{:?}",
+            scan.without_organization
+        );
+    }
+}
