@@ -19,7 +19,7 @@
   - `DelegationScopeBinding` —— 宿主侧协作者：把已校验的委托落到它被授权的执行目标上
     （端口的 `resolve_delegation` 不接收 `ExecutionTarget`，而 `ExecutionIdentity` 必须带 `connectionId`）。
   - `MonitorDelegationScope` —— 桌面实现：委托目标取自监控授权单（monitor grant）登记的 scope。
-- `src-tauri/src/platform/execution_identity_tests.rs`（655 行，15 条用例）。
+- `src-tauri/src/platform/execution_identity_tests.rs`（16 条用例，零 I/O）
 
 **改动**：
 
@@ -80,13 +80,13 @@
 | --- | --- |
 | ① 身份键不得由客户端 principal 派生 | `身份键不随请求主体变化`（隔离键固定下换主体 ⇒ 键不变）、`派生入口的入参里没有主体与凭据`（结构性）、`跨组织的连接拿不到执行身份` |
 | ② 同一 `(org, conn, iso)` 稳定同键 | `同一输入两次解析得到同一身份键`、`换一把解析器实例身份键仍然相同`（跨实例/跨重启）、`不同组织派生不同身份键`、`不同连接派生不同身份键`、`不同隔离键派生不同身份键` |
-| ③ 轮换凭据只推进 `credential_revision` | `轮换凭据只推进版本不动身份键`（真 Store、真轮换） |
+| ③ 轮换凭据只推进 `credential_revision` | `轮换凭据只推进版本不动身份键`（真 Store、真轮换）、`凭据版本推进时身份键不动`（替身层面，钉 `SecretProvider::revision` 通路） |
 | ④ 两条独立路径 | `委托身份与本人身份不同且未授权委托失败关闭`、`委托上下文不得走本人路径`、`跨组织的委托引用被拒绝`、`两条路径的域标签不同` |
 | ⑤ debug 不含 password/material | `执行身份不含秘密材料`、`派生盐的调试输出脱敏` |
 
 ---
 
-## 4. 新增用例清单（15 条，全部在 `src-tauri/src/platform/execution_identity_tests.rs`）
+## 4. 新增用例清单（16 条，全部在 `src-tauri/src/platform/execution_identity_tests.rs`）
 
 1. `身份键不随请求主体变化`
 2. `派生入口的入参里没有主体与凭据`
@@ -97,12 +97,13 @@
 7. `不同隔离键派生不同身份键`
 8. `跨组织的连接拿不到执行身份`
 9. `轮换凭据只推进版本不动身份键`
-10. `委托身份与本人身份不同且未授权委托失败关闭`
-11. `委托上下文不得走本人路径`
-12. `跨组织的委托引用被拒绝`
-13. `两条路径的域标签不同`
-14. `执行身份不含秘密材料`
-15. `派生盐的调试输出脱敏`
+10. `凭据版本推进时身份键不动`
+11. `委托身份与本人身份不同且未授权委托失败关闭`
+12. `委托上下文不得走本人路径`
+13. `跨组织的委托引用被拒绝`
+14. `两条路径的域标签不同`
+15. `执行身份不含秘密材料`
+16. `派生盐的调试输出脱敏`
 
 ---
 
@@ -114,16 +115,39 @@
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | **0** | 无输出 |
 | `cargo clippy -p datazen-platform-api -p datazen --all-targets` | **0** | 新文件 0 warning（仓库既有 warning 不计） |
-| `cargo check -p datazen-platform-api -p datazen --all-targets` | **0** | `Finished dev profile ... in 9.83s` |
-| `cargo check -p datazen --features webdriver --all-targets` | **0** | `Finished dev profile ... in 2m 49s` |
+| `cargo check -p datazen-platform-api -p datazen --all-targets` | **0** | `Finished dev profile` |
+| `cargo check -p datazen --features webdriver --all-targets` | **0** | `Finished dev profile` |
 | `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-platform-api --lib` | **0** | `test result: ok. 224 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out` |
-| `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib` | **0** | `test result: ok. 1281 passed; 0 failed; 9 ignored; 0 measured; 0 filtered out` |
+| `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib` | **0** | `test result: ok. 1282 passed; 0 failed; 9 ignored; 0 measured; 0 filtered out` |
 
 **基线校正（实测，非推断）**：任务简报写 host 基线 **1269**，本树实测基线是 **1266 passed; 0 failed; 9 ignored**
-（`git stash push -u` 后在 `HEAD=65dac1e2c` 上实测，EXIT=0）。改后 1281 = **1266 + 15**，正好等于本轨新增的 15 条用例，
+（`git stash push -u` 后在 `HEAD=65dac1e2c` 上实测，EXIT=0）。改后 1282 = **1266 + 16**，正好等于本轨新增的 16 条用例，
 既有 1266 条一条未动、零失败。platform-api 基线 224 与改后一致（该 crate 本轨未改）。
 
-**门禁首尾 HEAD / 工作区 sha**：见 §7。
+### 5.1 既有 flake：本轨一度把它从"跑不出来"推到"2/3 概率出来"，已修掉
+
+首版用例每条都建一份真 `Store`（AppDb + HistoryDb 两份 SQLite），9 条用例 = 18 份库。那点并发 I/O
+把 `platform::live_source::tests::*` 的**进程级 env 竞态**窗口撑大：那个家族的 `DesktopUserGuard`
+在 Drop 时把 `DATAZEN_DESKTOP_USER` 还原成「之前没有」，会把并行跑的兄弟用例的桌面主体读歪，
+于是 `DesktopPolicy::authorize` 判否、报 `connection permission denied`。
+
+实测（基线树用 `git worktree add --detach` + 独立克隆的 target，跑完已删除）：
+
+| 树 | 跑法 | 失败率 | 失败用例 |
+| --- | --- | --- | --- |
+| 基线 `65dac1e2c` | 整包 x6 | 2/6 | `native_tool::…overflow…reaped`（任务简报已列的既有 flake） |
+| 基线 `65dac1e2c` | 只跑 `platform::live_source` 家族 x5 | **4/5** | live_source 家族自身互撞（与本轨无关，独立可复现） |
+| 本轨首版 | 整包 x6 | **4/6** | 3× live_source + 1× native_tool |
+| 本轨首版 | 整包 `--skip platform::execution_identity` x6 | **0/6** | ——（证明是本轨用例把窗口撑大的） |
+| 本轨本次 | 整包 x8 | 2/8 | 2× `native_tool::…overflow…reaped`（**仅**简报已列的那条） |
+
+结论与处置：live_source 那条竞态是 `hub.md` §8 已登记的既有缺陷（Wave 4 修），但**本轨一度把它
+从"整包跑不出来"推到"整包跑 2/3 概率出来"**，不能留给别人背。因此提交 `a0733c5b1` 把用例改成
+零 I/O（大部分走替身；只有「凭据轮换」与「安装级稳定」两条需要真 Store，且共用同一份
+`OnceCell`，全模块只建一次）。改后整包 8 次跑只剩简报已列的 `native_tool` 既有 flake
+（单跑 3/3 绿），live_source 竞态不再在整包跑里出现——**失败画像与基线一致**。
+
+**未改 `live_source_tests.rs`**（范围外，且那是 Wave 4 的项）；本轨只保证自己不再触发它。
 
 ---
 
@@ -138,10 +162,20 @@
 | 5 | `MonitorDelegationScope` 与 `DesktopPolicy` 各查一次授权单 | 一次授权单读两次（`verify_delegation` + `authorized_target`） | 正确性优先，未做缓存；若成为热点再合并 |
 | 6 | 派生盐取宿主 **AES 主密钥** | 同源但已做域分离（HMAC 子钥），AES 与身份派生不使用同一把密钥。主密钥轮换 ⇒ 身份键全变（池整体失效）——当前仓库没有主密钥轮换路径 | 保留；若将来引入主密钥轮换，需给身份派生一把独立的、按 `keyVersion` 轮换的密钥 |
 | 7 | 身份解析端口已接线但**尚无调用方** | `packages/runtime/**` 禁改，runtime 的 `PoolKeyInputs::execution_identity_key` 仍是裸 `String`；本轨只把端口实现出来并接线，未改 runtime | 后续 initiative：让 runtime 从 `IdentityResolver` 取键 |
+| 8 | `live_source::tests::*` 的进程级 env 竞态仍在 | 既有缺陷（`hub.md` §8），本轨已不再触发；基线树独立复现 4/5 | 仍归 Wave 4（协调者已排期「优先级高」） |
 
 ---
 
 ## 7. 门禁首尾指纹
 
 - 开工前：`HEAD=65dac1e2cf79fe7099b57988ca4ecfc7095e2ee1`，工作区 sha（`git diff HEAD` + 未跟踪文件清单）= `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`（空树）
-- 收尾：见提交后的 `progress.md` 追加段（与 commit 一同入库）
+- 收尾（门禁跑完前后各记一次，两次一致）：`HEAD=a0733c5b13d15d781010448bed2752edeae692bb`，工作区 sha = `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`（空树，`git status --porcelain` 0 条目）
+
+---
+
+## 8. 提交
+
+| commit | 内容 |
+| --- | --- |
+| `c42f43d7f` | 实现 `IdentityResolver` 端口的桌面形态 + 接线 + 15 条用例 + 3 份文档 |
+| `a0733c5b1` | 把用例改成零 I/O（修掉本轨对既有 env 竞态的放大），用例数 15 → 16 |
