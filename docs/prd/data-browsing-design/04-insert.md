@@ -697,7 +697,7 @@ export interface TableState {
 | `tableData.insertReturningUnavailable` | `The new row's primary key could not be located automatically; the page was refreshed.` | 对应 `grid.insert.returningUnavailable` 与降级 warning |
 | ~~`tableData.insertCountUnavailable`~~ | — | 〔契约审计修订 2026-10-21〕R-C：**删除**。INSERT 不豁免 `affected == 1`，「计数不可用」这条容忍分支不存在 |
 | `tableData.insertSchemaUnavailable` | `Column metadata is unavailable; the database will validate this row.` | 对应 `insert-schema-unavailable` warning |
-| `tableData.highlightNewRow` | `New row` | 高亮行提示 |
+| `tableData.highlightNewRow` | `New row` | **新行提示**：渲染在**被高亮的那一行**上（`data-testid="new-row-badge"`），与草稿行的 `draft-row-badge`（"NEW"，未提交态）**区分** 〔契约审计修订 2026-10-21〕**必须实现，不得删**：本批不做 RETURNING 回填，定位可能失败；即使定位成功，网格的 `highlightedRow` 通道也是**与详情面板共用**的（`detailRowIndex ?? highlightedNewRowIndex`），只有一行**带文字**的标记才能让用户认出"哪一行是刚插入的"。网格侧需新增一个**独立** prop（如 `newRowIndex`）承载它——不能复用 `highlightedRow`，否则详情高亮会冒充新行 |
 
 **后端 `CommandError` 文案前缀（英文，不走 i18n，前端按前缀分类后再渲染本地化文案）**：
 
