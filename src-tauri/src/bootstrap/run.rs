@@ -327,6 +327,7 @@ pub fn run() {
             crate::commands::get_privileges,
             crate::commands::get_table_data,
             crate::commands::get_table_data_at_target,
+            crate::commands::resolve_foreign_key_targets,
             crate::commands::commit_query_result_cell,
             // ── 表结构编辑 ──
             // ── 行数据读写 ──
