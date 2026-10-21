@@ -1,5 +1,6 @@
 import { useCallback, useId, useRef, useState } from 'react';
 import { resolveDataTableCellFromEvent } from '../lib/dataTableContextMenu';
+import { isComposingEvent, isEditableTarget } from '../lib/gridEventGuards';
 import {
   EMPTY_GRID_SELECTION,
   columnIndexFromCoord,
@@ -60,16 +61,21 @@ interface DragSession {
   moved: boolean;
   additive: boolean;
   extended: boolean;
+  /** Element that took pointer capture, needed to hand it back when the session ends. */
+  captureTarget: Element | null;
 }
 
-/** Editable controls and open cell editors own their pointer/keyboard events. */
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  return (
-    target.closest(
-      'input, textarea, select, [contenteditable="true"], [data-dt-editing="true"]',
-    ) !== null
-  );
+/** Hand pointer capture back; jsdom has no pointer capture API, so both members are probed. */
+function releasePointerCapture(target: Element | null, pointerId: number): void {
+  if (target === null || typeof target.releasePointerCapture !== 'function') return;
+  if (typeof target.hasPointerCapture === 'function' && !target.hasPointerCapture(pointerId)) {
+    return;
+  }
+  try {
+    target.releasePointerCapture(pointerId);
+  } catch {
+    // The capture may already have been released by the browser (pointercancel does it).
+  }
 }
 
 /**
@@ -124,7 +130,10 @@ export function useGridSelection(options: UseGridSelectionOptions): UseGridSelec
   const sessionRef = useRef<DragSession | null>(null);
   const [dragging, setDragging] = useState(false);
 
+  /** Drop the in-flight drag: forget the session, hand back capture, leave `dragging` false. */
   const clearSession = useCallback(() => {
+    const session = sessionRef.current;
+    if (session !== null) releasePointerCapture(session.captureTarget, session.pointerId);
     sessionRef.current = null;
     setDragging(false);
   }, []);
@@ -133,6 +142,7 @@ export function useGridSelection(options: UseGridSelectionOptions): UseGridSelec
     (pointerId: number, commit: boolean, clientX?: number, clientY?: number) => {
       const session = sessionRef.current;
       if (!session || session.pointerId !== pointerId) return;
+      releasePointerCapture(session.captureTarget, session.pointerId);
       sessionRef.current = null;
       setDragging(false);
       if (!commit) return;
@@ -180,6 +190,9 @@ export function useGridSelection(options: UseGridSelectionOptions): UseGridSelec
       // A row index outside the current page is stale DOM from an uncommitted render.
       const cell = resolved !== null && resolved.rowIndex < rowCount ? resolved : null;
       const extended = cell !== null && event.shiftKey && selection.mode === 'cell';
+      const current = event.currentTarget;
+      const captureTarget = typeof current.setPointerCapture === 'function' ? current : null;
+      captureTarget?.setPointerCapture(event.pointerId);
       sessionRef.current = {
         pointerId: event.pointerId,
         anchor: cell,
@@ -187,11 +200,8 @@ export function useGridSelection(options: UseGridSelectionOptions): UseGridSelec
         moved: false,
         additive: event.metaKey || event.ctrlKey,
         extended,
+        captureTarget,
       };
-      const current = event.currentTarget;
-      if (typeof current.setPointerCapture === 'function') {
-        current.setPointerCapture(event.pointerId);
-      }
       // Cell interactions move focus to the grid host; editor inputs are excluded above.
       scrollElement?.focus();
     },
@@ -227,12 +237,19 @@ export function useGridSelection(options: UseGridSelectionOptions): UseGridSelec
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      // 01-selection §4.5: an IME composition owns every key, Escape included.
+      if (isComposingEvent(event)) return;
       if (event.key !== 'Escape') return;
       if (editingCell !== null) return;
-      if (selection.mode === 'none') return;
+      // Cancel the in-flight drag **first**: the store still reports the pre-drag mode, so
+      // clearing the selection alone would leave the session alive and the next pointerup
+      // would commit the region the user just cancelled.
+      const hadSession = sessionRef.current !== null;
+      clearSession();
+      if (!hadSession && selection.mode === 'none') return;
       onChange(EMPTY_GRID_SELECTION);
     },
-    [editingCell, onChange, selection.mode],
+    [clearSession, editingCell, onChange, selection.mode],
   );
 
   // Focus leaving the grid must not clear the selection: the user may be on the way to a
