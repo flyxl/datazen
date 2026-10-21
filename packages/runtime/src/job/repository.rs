@@ -731,12 +731,15 @@ impl JobRepository for InMemoryJobRepository {
         Ok(claim)
     }
 
-    /// 续约只凭 claim 本身（worker + generation + 租约）。
+    /// 续约只凭 claim 自身（`job_id` + `worker` + `claim_generation` + 租约）判定，
+    /// **续约路径本身不做组织比对**：`JobClaim` 不携带组织维度，因此
+    /// 「跨组织续约」在本路径上**不可表达**——持有者与铸出者在续约路径上不可区分。
+    /// 唯一的拒绝理由是：行不存在、行上没有 claim、worker 不符、generation 不符、
+    /// 租约过期。
     ///
-    /// 端口签名里没有 `RequestContext`，因此**续约自身不做组织比对**；组织边界由
-    /// **claim fencing** 兜底：claim 只在「按 `ctx` 组织核对过的行」上铸出
-    /// （见上面的 `claim`：`belongs_to` 过滤），所以越组织的续约拿不到有效 claim，
-    /// 只能按 `StaleClaim` 失败。
+    /// 组织边界由**写入路径**兜底：所有写入都经 `check_claim`，那里比对 `ctx` 的
+    /// 组织，越组织写按 `StaleClaim` 拒绝。端口契约的同一表述见
+    /// `datazen_platform_api::ports::job::JobRepository::renew`。
     async fn renew(&self, claim: &JobClaim) -> Result<JobClaim, PortError> {
         let mut inner = lock_inner(&self.inner)?;
         let now = self.clock.now();

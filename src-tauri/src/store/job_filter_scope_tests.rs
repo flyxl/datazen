@@ -20,7 +20,10 @@ fn repository_root() -> PathBuf {
 }
 
 /// 扫描范围（相对仓库根）：宿主与所有共享 crate 的 Rust 源码。
-const SCANNED_ROOTS: &[&str] = &["src-tauri/src", "packages"];
+///
+/// `src-tauri/tests` 是**集成测试目标**（`cargo check -p datazen --all-targets` 会编译它），
+/// 因此它和 `src-tauri/src` 一样属于「会被编译、因而可能写错」的代码，必须一并扫。
+const SCANNED_ROOTS: &[&str] = &["src-tauri/src", "src-tauri/tests", "packages"];
 
 /// 目录遍历时跳过的名字：构建产物与依赖目录里没有可执行的契约。
 const SKIPPED_DIRECTORIES: &[&str] = &["target", "node_modules", ".git"];
@@ -56,101 +59,228 @@ fn rust_sources(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// 去掉注释（行注释与块注释）。
+/// 掩掉**注释**与**字符串/字符字面量的内容**，其余代码原样保留。
 ///
 /// 文档注释里经常出现过滤器字面量的**说明**，它们不是字面量；
-/// 不去掉就会把说明当成违规。行数必须保持不变，因此块注释里的换行要补回去。
-fn strip_comments(source: &str) -> String {
+/// 不去掉就会把说明当成违规。行数必须保持不变，因此注释与字面量里的换行要保留。
+///
+/// 字符串/字符字面量的**内容**抹成空格（定界符保留）：字符串里出现的
+/// `JobFilter {` 或 `{` 不是代码，留在扫描输入里会造出**假字面量**或打乱花括号配平。
+/// 定界符保留是有意的——「组织值是不是内联常量」正是靠字面量里的 `"` 判定的。
+///
+/// **掩码与原文等字节长**（非 ASCII 字符用等字节数的空格代替），因此掩码里的
+/// 字节偏移可以直接用来回原文取字面量原文，报告里显示的是**真实的常量**，
+/// 而不是一片空白。
+///
+/// 词法要点（少判一条就会**假红**，而假红的守卫迟早被人关掉）：
+///
+/// * **生命周期撇号不是字符字面量**：`fn f<'a>(x: &'a str)`、`State<'_, AppState>`、
+///   `&'static str` 里的 `'` 后面跟的是标识符而不是闭合引号。把它们当成字符字面量
+///   会让后续整段源码被误判为「在字符串里」，注释不再剥离 → 注释里的**假**字面量
+///   被算成真字面量。
+/// * **字符字面量与生命周期的判据**：`'` 后若是 `\`（转义），或是「一个字符 + 闭合
+///   `'`」，那是字符字面量；否则（标识符后面没有闭合引号）是生命周期。
+/// * **原始字符串**：`r"..."` / `r#"..."#` 里的引号不转义，结束标记是 `"` 加同数量 `#`。
+/// * **块注释可嵌套**：Rust 的 `/* /* */ */` 合法，深度要计。
+fn mask_comments_and_literals(source: &str) -> String {
+    let characters: Vec<char> = source.chars().collect();
     let mut out = String::with_capacity(source.len());
-    let mut characters = source.chars().peekable();
-    let mut in_string = false;
-    let mut in_character = false;
-    let mut in_block_comment = false;
-    let mut in_line_comment = false;
-    while let Some(character) = characters.next() {
-        if in_line_comment {
-            if character == '\n' {
-                in_line_comment = false;
-                out.push(character);
-            }
-            continue;
-        }
-        if in_block_comment {
-            if character == '\n' {
-                out.push(character);
-            } else if character == '*' && characters.peek() == Some(&'/') {
-                characters.next();
-                in_block_comment = false;
-            }
-            continue;
-        }
-        if in_string {
-            out.push(character);
-            if character == '\\' {
-                if let Some(escaped) = characters.next() {
-                    out.push(escaped);
-                }
-            } else if character == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-        if in_character {
-            out.push(character);
-            if character == '\\' {
-                if let Some(escaped) = characters.next() {
-                    out.push(escaped);
-                }
-            } else if character == '\'' {
-                in_character = false;
-            }
-            continue;
-        }
+    let mut index = 0usize;
+    while index < characters.len() {
+        let character = characters[index];
         match character {
-            '/' if characters.peek() == Some(&'/') => {
-                characters.next();
-                in_line_comment = true;
+            '/' if characters.get(index + 1) == Some(&'/') => {
+                // 行注释：掩到行尾（换行符保留，行数因此不变）。
+                while index < characters.len() && characters[index] != '\n' {
+                    push_mask(&mut out, characters[index]);
+                    index += 1;
+                }
             }
-            '/' if characters.peek() == Some(&'*') => {
-                characters.next();
-                in_block_comment = true;
+            '/' if characters.get(index + 1) == Some(&'*') => {
+                // 块注释：可嵌套，深度计到 0 才结束。
+                let mut depth = 0usize;
+                while index < characters.len() {
+                    if characters[index] == '/' && characters.get(index + 1) == Some(&'*') {
+                        depth += 1;
+                        index += 2;
+                        continue;
+                    }
+                    if characters[index] == '*' && characters.get(index + 1) == Some(&'/') {
+                        depth = depth.saturating_sub(1);
+                        index += 2;
+                        if depth == 0 {
+                            break;
+                        }
+                        continue;
+                    }
+                    push_mask(&mut out, characters[index]);
+                    index += 1;
+                }
             }
             '"' => {
-                in_string = true;
-                out.push(character);
+                // 普通字符串：内容掩成空格，结束于未转义的 `"`。
+                out.push('"');
+                index += 1;
+                while index < characters.len() {
+                    let current = characters[index];
+                    index += 1;
+                    if current == '\\' {
+                        push_mask(&mut out, current);
+                        if let Some(escaped) = characters.get(index) {
+                            push_mask(&mut out, *escaped);
+                        }
+                        index += 1;
+                        continue;
+                    }
+                    if current == '"' {
+                        out.push('"');
+                        break;
+                    }
+                    push_mask(&mut out, current);
+                }
+            }
+            'r' if raw_string_hashes(&characters, index) > 0 => {
+                // 原始字符串：`r` + n 个 `#` + `"` …… `"` + n 个 `#`。
+                let hashes = raw_string_hashes(&characters, index);
+                out.push('r');
+                index += 1;
+                for _ in 0..hashes {
+                    out.push('#');
+                    index += 1;
+                }
+                out.push('"');
+                index += 1;
+                while index < characters.len() {
+                    let current = characters[index];
+                    index += 1;
+                    if current != '"' {
+                        push_mask(&mut out, current);
+                        continue;
+                    }
+                    let mut closing = 0usize;
+                    while closing < hashes && characters.get(index) == Some(&'#') {
+                        out.push('#');
+                        index += 1;
+                        closing += 1;
+                    }
+                    if closing == hashes {
+                        out.push('"');
+                        break;
+                    }
+                    push_mask(&mut out, current);
+                }
             }
             '\'' => {
-                in_character = true;
-                out.push(character);
+                // 字符字面量 vs 生命周期。
+                let escaped = characters.get(index + 1) == Some(&'\\');
+                let closes = !escaped && characters.get(index + 2) == Some(&'\'');
+                if escaped || closes {
+                    out.push('\'');
+                    index += 1;
+                    if escaped {
+                        // 转义字符：逐个吃掉直到闭合引号。
+                        while index < characters.len() {
+                            let current = characters[index];
+                            index += 1;
+                            if current == '\\' {
+                                push_mask(&mut out, current);
+                                if let Some(next) = characters.get(index) {
+                                    push_mask(&mut out, *next);
+                                }
+                                index += 1;
+                                continue;
+                            }
+                            if current == '\'' {
+                                out.push('\'');
+                                break;
+                            }
+                            push_mask(&mut out, current);
+                        }
+                    } else {
+                        // 单字符字面量：`'` + 一个字符 + `'`。
+                        if let Some(inner) = characters.get(index) {
+                            push_mask(&mut out, *inner);
+                            index += 1;
+                        }
+                        if let Some(closing) = characters.get(index) {
+                            out.push(*closing);
+                            index += 1;
+                        }
+                    }
+                } else {
+                    // 生命周期：撇号本身是代码，原样保留。
+                    out.push('\'');
+                    index += 1;
+                }
             }
-            _ => out.push(character),
+            _ => {
+                out.push(character);
+                index += 1;
+            }
         }
     }
     out
 }
 
-/// 提取源码里的 `JobFilter { ... }` **字面量**（按花括号配对）。
+/// 用**等字节长度**的空格掩掉一个字符，使掩码与原文的字节偏移一一对应。
+fn push_mask(out: &mut String, character: char) {
+    for _ in 0..character.len_utf8() {
+        out.push(' ');
+    }
+}
+
+/// `r` 之后紧跟的 `#` 个数（其后必须是 `"` 才算原始字符串）。
 ///
-/// `pub struct JobFilter {` 是**声明**不是字面量，按 `struct` 前缀排除。
-/// 返回 `(行号, 字面量原文)`。
-fn job_filter_literals(source: &str) -> Vec<(usize, String)> {
+/// 返回 0 表示这里不是原始字符串的开始（普通标识符 `r`）。
+fn raw_string_hashes(characters: &[char], index: usize) -> usize {
+    if characters.get(index) != Some(&'r') {
+        return 0;
+    }
+    let mut hashes = 0usize;
+    while characters.get(index + 1 + hashes) == Some(&'#') {
+        hashes += 1;
+    }
+    if characters.get(index + 1 + hashes) == Some(&'"') {
+        hashes
+    } else {
+        0
+    }
+}
+
+/// 提取源码里的 `JobFilter { ... }` **字面量**区间（按花括号配对）。
+///
+/// 输入是**掩码**后的源码（注释与字面量内容已抹掉），因此区间里不会出现
+/// 字符串/注释里的假字面量。掩码与原文等字节长，所以区间可以直接回原文取字面量
+/// 原文（报告里显示的是真实内容）。
+///
+/// 只认**表达式位置**上的 `JobFilter {`；类型位置上的同名 token 不是字面量：
+///
+/// * `pub struct JobFilter {` —— 声明；
+/// * `impl JobFilter {` —— 实现块；
+/// * `fn filter(..) -> JobFilter {` —— **返回类型 + 函数体**：这里的 `{` 是函数体的
+///   开头，不是字面量的花括号。若把它当字面量，函数体里的**真**字面量就被当成
+///   嵌套内容，计数被抬高（实测 16 个「字面量」里 2 个是这种假货），将来出现
+///   「返回 `JobFilter` 但函数体里没有字面量」的辅助函数还会让守卫假红。
+///
+/// 返回 `(行号, 起始字节, 结束字节)`。
+fn job_filter_literal_spans(masked: &str) -> Vec<(usize, usize, usize)> {
     let mut out = Vec::new();
     let mut cursor = 0usize;
-    while let Some(offset) = source[cursor..].find("JobFilter") {
+    while let Some(offset) = masked[cursor..].find("JobFilter") {
         let start = cursor + offset;
         cursor = start + "JobFilter".len();
-        if source[..start].trim_end().ends_with("struct") {
+        if !is_literal_position(masked, start) {
             continue;
         }
-        let rest = &source[cursor..];
+        let rest = &masked[cursor..];
         let trimmed = rest.trim_start();
         if !trimmed.starts_with('{') {
             continue;
         }
         let open = cursor + (rest.len() - trimmed.len());
         let mut depth = 0usize;
-        let mut end = source.len();
-        for (index, character) in source[open..].char_indices() {
+        let mut end = masked.len();
+        for (index, character) in masked[open..].char_indices() {
             match character {
                 '{' => depth += 1,
                 '}' => {
@@ -163,17 +293,96 @@ fn job_filter_literals(source: &str) -> Vec<(usize, String)> {
                 _ => {}
             }
         }
-        let line = source[..start].lines().count();
-        out.push((line, source[start..end].to_string()));
+        let line = masked[..start].lines().count();
+        out.push((line, start, end));
     }
     out
 }
 
+/// `JobFilter` 这个 token 是否处在**表达式位置**（即它后面跟的是字面量的花括号）。
+///
+/// 判据看它前面的内容：
+///
+/// * 前面是 `->` → 返回类型（`fn f() -> JobFilter {`），不是字面量；
+/// * 前一个词是类型/实现位置的关键字（`struct` / `impl` / `enum` / `trait` / `union`）
+///   → 声明，不是字面量。
+fn is_literal_position(source: &str, start: usize) -> bool {
+    let before = source[..start].trim_end();
+    if before.ends_with("->") {
+        return false;
+    }
+    let previous_word = before
+        .rsplit(|character: char| !character.is_alphanumeric() && character != '_')
+        .next()
+        .unwrap_or_default();
+    !matches!(
+        previous_word,
+        "struct" | "impl" | "enum" | "trait" | "union"
+    )
+}
+
+/// 一次扫描的结果。
+#[derive(Debug, Default)]
+struct Scan {
+    /// 识别到的**真实**字面量数（类型位置的同名 token 不计）。
+    literals: usize,
+    /// 真实字面量里**带** `organization_id` 字段的那些。
+    literals_with_organization: usize,
+    /// 缺 `organization_id` 的字面量（违规：组织维度必填）。
+    without_organization: Vec<String>,
+    /// `organization_id` 的值是内联字符串常量的字面量（违规：组织必须跟着上下文走）。
+    with_constant_organization: Vec<String>,
+}
+
+impl Scan {
+    fn merge(&mut self, other: Scan) {
+        self.literals += other.literals;
+        self.literals_with_organization += other.literals_with_organization;
+        self.without_organization.extend(other.without_organization);
+        self.with_constant_organization
+            .extend(other.with_constant_organization);
+    }
+}
+
+/// 扫描一份源码文本。
+///
+/// 两条守卫共用它，因此文件末尾的自检能对**同一条代码路径**验证「故意放一个坏
+/// 字面量 → 守卫变红」，而不是另写一份近似实现（近似实现与真实实现漂移，
+/// 自检就成了摆设）。
+fn scan_source(label: &str, source: &str) -> Scan {
+    let masked = mask_comments_and_literals(source);
+    let mut scan = Scan::default();
+    for (line, start, end) in job_filter_literal_spans(&masked) {
+        // 掩码与原文等字节长，区间可以回原文取字面量原文（报告里显示真实内容）。
+        let literal = source.get(start..end).unwrap_or_default().to_string();
+        scan.literals += 1;
+        if !literal.contains("organization_id") {
+            scan.without_organization
+                .push(format!("{label}:{line}  {}", literal.replace('\n', " ")));
+            continue;
+        }
+        scan.literals_with_organization += 1;
+        if let Some(value) = organization_id_value(&literal) {
+            if contains_string_literal(&value) {
+                scan.with_constant_organization
+                    .push(format!("{label}:{line}  organization_id: {value}"));
+            }
+        }
+    }
+    scan
+}
+
+/// 真实字面量的非空洞下限。
+///
+/// 阈值按**实测真实字面量数**（当前 14）留出余量：太接近实测值，删掉几个调用点
+/// 就会让守卫自己变红；太小则守卫可能空转。两条守卫各自的计数口径不同，因此
+/// 各自断言自己的下限。
+const MIN_REAL_LITERALS: usize = 8;
+
 #[test]
 fn every_job_filter_literal_declares_the_organization_dimension() {
     let root = repository_root();
-    let mut literals = 0usize;
-    let mut offenders: Vec<String> = Vec::new();
+    let mut scan = Scan::default();
     for file in rust_sources(&root) {
         let relative = file.strip_prefix(&root).unwrap_or(&file);
         if relative == Path::new(SELF) {
@@ -182,28 +391,19 @@ fn every_job_filter_literal_declares_the_organization_dimension() {
         let Ok(source) = std::fs::read_to_string(&file) else {
             continue;
         };
-        let stripped = strip_comments(&source);
-        for (line, literal) in job_filter_literals(&stripped) {
-            literals += 1;
-            if !literal.contains("organization_id") {
-                offenders.push(format!(
-                    "{}:{line}  {}",
-                    relative.display(),
-                    literal.replace('\n', " ")
-                ));
-            }
-        }
+        scan.merge(scan_source(&relative.display().to_string(), &source));
     }
     assert!(
-        literals >= 5,
-        "扫描必须真的找到 JobFilter 字面量，否则这条守卫是空的（找到 {literals} 个）"
+        scan.literals >= MIN_REAL_LITERALS,
+        "扫描必须真的找到 JobFilter 字面量，否则这条守卫是空的（找到 {} 个）",
+        scan.literals
     );
     assert!(
-        offenders.is_empty(),
+        scan.without_organization.is_empty(),
         "每一个 `JobFilter` 字面量都必须显式写出 `organization_id`（组织维度必填，\
          省略它就没有合法的列举调用）；下面的字面量省略了它，且默认门禁不编译它们所在的 \
          feature 分支，因此只能靠这条守卫拦住：\n{}",
-        offenders.join("\n")
+        scan.without_organization.join("\n")
     );
 }
 
@@ -284,8 +484,7 @@ fn contains_string_literal(expression: &str) -> bool {
 #[test]
 fn every_job_filter_literal_takes_the_organization_from_the_context() {
     let root = repository_root();
-    let mut literals = 0usize;
-    let mut offenders: Vec<String> = Vec::new();
+    let mut scan = Scan::default();
     for file in rust_sources(&root) {
         let relative = file.strip_prefix(&root).unwrap_or(&file);
         if relative == Path::new(SELF) {
@@ -294,28 +493,177 @@ fn every_job_filter_literal_takes_the_organization_from_the_context() {
         let Ok(source) = std::fs::read_to_string(&file) else {
             continue;
         };
-        let stripped = strip_comments(&source);
-        for (line, literal) in job_filter_literals(&stripped) {
-            let Some(value) = organization_id_value(&literal) else {
-                continue;
-            };
-            literals += 1;
-            if contains_string_literal(&value) {
-                offenders.push(format!(
-                    "{}:{line}  organization_id: {value}",
-                    relative.display()
-                ));
-            }
-        }
+        scan.merge(scan_source(&relative.display().to_string(), &source));
     }
     assert!(
-        literals >= 5,
-        "扫描必须真的找到带组织维度的 JobFilter 字面量，否则这条守卫是空的（找到 {literals} 个）"
+        scan.literals_with_organization >= MIN_REAL_LITERALS,
+        "扫描必须真的找到带组织维度的 JobFilter 字面量，否则这条守卫是空的（找到 {} 个）",
+        scan.literals_with_organization
     );
     assert!(
-        offenders.is_empty(),
+        scan.with_constant_organization.is_empty(),
         "JobFilter 的组织维度必须取自请求上下文，不得内联硬编码成常量；\
          下面这些字面量把组织钉死在字符串常量上（列举会静默返回空列表）：\n{}",
-        offenders.join("\n")
+        scan.with_constant_organization.join("\n")
     );
+}
+
+/// 守卫的**自检**。
+///
+/// 没有自检的守卫有两种死法，而且两种都不会自己报警：
+///
+/// * **一直是绿的**（空转）：扫描范围漏了目录、词法器失衡、字面量识别条件写错，
+///   漏洞就从门缝里过去——这正是 D1（`webdriver` 特性里的调用点漏网）那类问题。
+/// * **一直假红**：守卫报的东西其实不是违规，久了就有人给它加豁免或把它关掉，
+///   于是 D1 的根因原样回来。
+///
+/// 因此这里用**合成源码**对同一条扫描路径做双向验证：故意放坏字面量时必须变红，
+/// 周围全是容易让词法器失衡的东西时不得假红。
+#[cfg(test)]
+mod self_check {
+    use super::scan_source;
+
+    /// 周围全是「容易让词法器失衡」的东西，但字面量本身合规。
+    ///
+    /// 覆盖：行注释、块注释、普通字符串、原始字符串、生命周期撇号、字符字面量、
+    /// 以及「返回类型 + 函数体」形态。
+    const CLEAN_SOURCE: &str = r##"
+fn probe<'a>(text: &'a &'static str) -> &'static str {
+    // 行注释里的假字面量：JobFilter { states: vec![] }
+    /* 块注释里的假字面量：JobFilter { ..Default::default() } */
+    let raw = r#"JobFilter { states: vec![] }"#;
+    let quoted = "JobFilter { states: vec![] }";
+    let lifetime = 'a';
+    let slash = '/';
+    let _ = (raw, quoted, lifetime, slash);
+    text
+}
+
+fn make_filter(ctx: &Ctx) -> JobFilter {
+    JobFilter {
+        organization_id: ctx.organization_id.clone(),
+        states: Vec::new(),
+        owner: None,
+        after: None,
+        limit: None,
+    }
+}
+"##;
+
+    /// 缺组织维度的字面量：必须被抓出来（否则守卫是空转的）。
+    #[test]
+    fn a_literal_without_the_organization_dimension_is_reported() {
+        let source = r#"
+fn broken(ctx: &Ctx) {
+    let _ = JobFilter {
+        states: Vec::new(),
+        owner: None,
+        after: None,
+        limit: None,
+    };
+}
+"#;
+        let scan = scan_source("probe", source);
+        assert_eq!(scan.literals, 1, "只应看到一个真实字面量");
+        assert_eq!(
+            scan.without_organization.len(),
+            1,
+            "缺组织维度的字面量必须被报出来：{:?}",
+            scan.without_organization
+        );
+    }
+
+    /// 组织值被内联成常量：必须被抓出来（字段在、值是常量，是另一类夹带）。
+    #[test]
+    fn a_literal_with_an_inlined_organization_constant_is_reported() {
+        let source = r#"
+fn broken() {
+    let _ = JobFilter {
+        organization_id: OrganizationId::new("org-1"),
+        states: Vec::new(),
+        owner: None,
+        after: None,
+        limit: None,
+    };
+}
+"#;
+        let scan = scan_source("probe", source);
+        assert_eq!(scan.literals, 1);
+        assert_eq!(
+            scan.with_constant_organization.len(),
+            1,
+            "内联常量的组织必须被报出来：{:?}",
+            scan.with_constant_organization
+        );
+    }
+
+    /// 合规源码：一条违规都不得报（假红比漏报更危险——它会让守卫被关掉）。
+    #[test]
+    fn a_clean_source_reports_nothing() {
+        let scan = scan_source("probe", CLEAN_SOURCE);
+        assert_eq!(
+            scan.literals, 1,
+            "只有那个真的字面量算数：注释/字符串/原始字符串/返回类型里的都不算"
+        );
+        assert!(
+            scan.without_organization.is_empty(),
+            "合规源码不得报缺组织维度：{:?}",
+            scan.without_organization
+        );
+        assert!(
+            scan.with_constant_organization.is_empty(),
+            "合规源码不得报内联常量：{:?}",
+            scan.with_constant_organization
+        );
+    }
+
+    /// 扫描范围必须真的覆盖到每一个根目录。
+    ///
+    /// `src-tauri/tests` 曾因漏列而让整条守卫恒绿（集成测试目标同样会被编译，
+    /// 因此同样可能写错过滤器）。这里断言每个根目录下都扫到了 .rs 文件：
+    /// 目录被漏列、或目录空了，守卫都会在这里变红，而不是等到有人写错为止。
+    #[test]
+    fn every_scanned_root_contributes_at_least_one_rust_file() {
+        let root = super::repository_root();
+        let files = super::rust_sources(&root);
+        for scanned in super::SCANNED_ROOTS {
+            let prefix = format!("{scanned}/");
+            assert!(
+                files
+                    .iter()
+                    .any(|file| { file.to_string_lossy().replace('\\', "/").contains(&prefix) }),
+                "扫描根 `{scanned}` 一个 .rs 都没扫到：范围漏了它，这条守卫就会恒绿"
+            );
+        }
+    }
+
+    /// 词法器失衡会造成**漏报**：坏字面量藏在生命周期/字符串/注释之后却没被抓到。
+    ///
+    /// 复测的 M3c 方向：词法器 desync 只会造成误报、不会漏报——这条用例把该结论
+    /// 钉在合成源码上，免得以后有人改词法器时把漏报方向一起改坏。
+    #[test]
+    fn a_bad_literal_stays_visible_after_lexically_tricky_code() {
+        let source = r##"
+fn probe<'a>(text: &'a &'static str) {
+    // 注释里的假字面量：JobFilter { states: vec![] }
+    let raw = r#"JobFilter { states: vec![] }"#;
+    let quoted = "JobFilter { states: vec![] }";
+    let lifetime = 'a';
+    let _ = (raw, quoted, lifetime, text);
+    let _ = JobFilter {
+        states: Vec::new(),
+        owner: None,
+        after: None,
+        limit: None,
+    };
+}
+"##;
+        let scan = scan_source("probe", source);
+        assert_eq!(
+            scan.without_organization.len(),
+            1,
+            "词法器失衡不得造成漏报：{:?}",
+            scan.without_organization
+        );
+    }
 }
