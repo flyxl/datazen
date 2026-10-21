@@ -238,6 +238,54 @@ describe('desktop transport: table-data commands', () => {
 });
 
 /**
+ * The command names the host registers, parsed out of its handler list.
+ *
+ * Parsed, not pattern-matched. The entries in `tauri::generate_handler!` are
+ * **paths** — `crate::commands::x`, `crate::platform::session_commands::y`,
+ * `crate::commands::schema_diff::job::desktop::z` — and the Tauri command
+ * name is the *last* segment of the path. A substring search for
+ * `commands::x,` therefore misses every registration that is not spelled
+ * exactly that way (a different module path, a different last entry with no
+ * trailing comma), and this check's whole job is to notice a registration
+ * that changed shape.
+ *
+ * Comments are stripped first: a commented-out entry is not a registration.
+ */
+function parseRegisteredCommands(source: string): Set<string> {
+  const start = source.indexOf('tauri::generate_handler![');
+  if (start < 0) throw new Error('run.rs has no generate_handler! block');
+  const open = source.indexOf('[', start);
+
+  // Bracket matching, not `indexOf(']')`: the entries carry `#[cfg(...)]`
+  // attributes, which have brackets of their own.
+  let depth = 0;
+  let end = -1;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '[') depth += 1;
+    else if (source[i] === ']') {
+      depth -= 1;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  if (end < 0) throw new Error('run.rs has an unterminated generate_handler! block');
+
+  const block = source
+    .slice(open, end)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+
+  const names = new Set<string>();
+  for (const match of block.matchAll(/\bcrate::([A-Za-z0-9_]+(?:::[A-Za-z0-9_]+)+)\b/g)) {
+    const segments = match[1].split('::');
+    names.add(segments[segments.length - 1] as string);
+  }
+  return names;
+}
+
+/**
  * The declaration and the host's command registry are two facts that have to
  * agree, and nothing but a test makes them agree: the port registers every
  * method the product has, the desktop declares the ones the host cannot
@@ -267,9 +315,10 @@ describe('the desktop declaration against the host command registry', () => {
       path.join(ROOT, 'src-tauri/src/bootstrap/run.rs'),
       'utf8',
     );
+    const registeredCommands = parseRegisteredCommands(hostBootstrap);
 
     for (const { method, command } of TABLE_DATA_COMMANDS) {
-      const registered = hostBootstrap.includes(`commands::${command},`);
+      const registered = registeredCommands.has(command);
       const unsupported = declared[method] !== undefined;
 
       // The two facts have to be the same fact. A command that is registered
@@ -281,6 +330,33 @@ describe('the desktop declaration against the host command registry', () => {
         registered,
         unsupported: !registered,
       });
+    }
+  });
+
+  it('reads the registrations rather than guessing at their spelling', () => {
+    const hostBootstrap = fs.readFileSync(
+      path.join(ROOT, 'src-tauri/src/bootstrap/run.rs'),
+      'utf8',
+    );
+    const registered = parseRegisteredCommands(hostBootstrap);
+
+    // The four table-data commands the host *does* register are found by
+    // their command name, whatever module path they are registered under.
+    expect(registered.has('get_table_data_at_target')).toBe(true);
+    expect(registered.has('preview_pending_changes')).toBe(true);
+    expect(registered.has('commit_pending_changes')).toBe(true);
+    expect(registered.has('commit_query_result_cell')).toBe(true);
+
+    // And the five it does not are not found — which is what makes the
+    // declaration above necessary rather than redundant.
+    for (const command of [
+      'estimate_table_rows',
+      'resolve_foreign_key_targets',
+      'list_named_views',
+      'save_named_view',
+      'delete_named_view',
+    ]) {
+      expect(registered.has(command)).toBe(false);
     }
   });
 
