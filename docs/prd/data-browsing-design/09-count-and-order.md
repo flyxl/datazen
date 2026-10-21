@@ -154,7 +154,7 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
 - `DatabaseDriver::quote_char` / `quote_ident`（默认转发 `traits::sql_text::quote_ident`）、`format_sql_literal`（默认转发 `traits::sql_text::format_sql_literal`）、`has_schema_level`（默认 `false`）、`has_multi_database`（默认 `false`）、`default_schema`（默认 `None`）。
 - `DatabaseDriver::get_columns` 的默认实现转发到 `traits::streaming::get_columns`，后者用 `get_table_schema` + `TableSchema::effective_primary_keys()` 产出 `(columns, pks)`。
 - 文件顶部自带说明：trait 是**故意**保持单文件的（「the interface driver authors read」），非契约的实现细节一律放到 `traits/` 子模块（`sql_text` / `streaming` / `command_api` / `key_value` / `schema_target`）。
-- 该文件当前约 1062 行，**已经超过 800 行的单文件纪律**（既有负债）。
+- 该文件当前约 1062 行，**已经超过 800 行的单文件纪律**（既有负债）。〔契约审计修订 2026-10-22〕**行数已过期**：2026-10-22 实测 **1245 行**（Wave 5 后）、Wave 6 后 **1275 行**。**行数只引 00-contracts §9.2 的账本**，本册不另记数。⚠ 该文件已**越过 `packages/drivers/sqlserver` 的 `DATABASE_DRIVER_TRAITS_CEILING = 1020` 守卫**——而那条守卫在 `main` 上就已经是红的（main 实测 1160 行），属**既有欠账**；本册把净增压到 +30（方法体一律放 `traits/browsing.rs`），**拆分 `traits.rs` 本身**是 Q8 的待裁定项
 
 **`packages/driver-api/src/types.rs`**（既有）：
 
@@ -163,7 +163,7 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
 - `ColumnSchema { name, data_type, nullable, default_value, comment, is_primary_key, is_auto_increment }`。
 - `TableSchema { table_name, columns, primary_keys, indexes, foreign_keys, check_constraints, table_options }` 与 `TableSchema::effective_primary_keys()`（优先 `primary_keys` 字段，回退到列上的 `is_primary_key`）。
 - `TableInfo { name, schema, table_type, row_count: Option<i64> }` —— `auto` 阈值模式的先验输入来源。
-- 该文件当前约 958 行，同样**已经超过 800 行**（既有负债）。
+- 该文件当前约 958 行，同样**已经超过 800 行**（既有负债）。〔契约审计修订 2026-10-22〕**行数已过期**：2026-10-22 实测 **963 行**（Wave 5 后）、Wave 6 后 **991 行**。行数只引 00-contracts §9.2 的账本
 
 **`packages/driver-api/src/reuse.rs`**（既有）：
 
@@ -635,7 +635,13 @@ estimateTableRows: (
 - **为什么**：该文件当前 **755** 行，其中约 415 行是测试；本册在 `get_table_data` / `build_select_sql` 上净增约 30~40 行生产代码，不拆分**必然越过 800 行红线**（第 6 节有账）。
 - **怎么自测**：`cargo test -p datazen-feature-core --lib query_executor` 必须与原样全绿、用例数不变（这是纯搬运，任何一条由红转绿或消失都说明搬错了）。
 
-### Step 1：契约层——类型 + 4 个带默认实现的方法 + `ReuseDriver` 转发 + mock 扩展
+### Step 1：契约层——类型 + 4 个带默认实现的方法 + `ReuseDriver` 转发 + mock
+
+> 〔契约审计修订 2026-10-22〕**发布耦合（两侧必须同批上线）**：本册让 PostgreSQL 声明 `Estimated`，而**前端的三态渲染**（`≈`、tooltip、稳定性提示、"精确统计"入口）属 Step 6/8/9。**只上前端轨、不上前端渲染** ⇒ PG 网格会把**估算值按精确值的形状渲染**（分册 A4 明确禁止）。两者在同一个集成分支上 ⇒ 合流后同时生效；但**任何一侧单独上线都是回归**。
+>
+> 〔契约审计修订 2026-10-22〕**`has_effective_filters` 的口径已变**：分册写「所有条件都被 `filter_is_complete` 判为不完整 ⇒ false」，但 **08 落地后不完整的条件是整条查询被拒绝**（`filter_sql::render_filter_parts` 返回 `Err`），「所有条件都不完整 ⇒ 不产生 WHERE」这个状态**已不存在**。实现改为「**所有**条件都完整 ⇒ 有生效筛选」，并**复用 `filter_is_complete`**（不另写一套），因此不会与 `build_count_sql` 的实际 SQL 漂移。
+>
+> 〔契约审计修订 2026-10-22〕**`resolve_count_strategy` 的签名比本节草稿多三个 target 参数**（`database`/`schema`/`table`）：草稿签名没有它们，但规则 2/3 要求「驱动 `count_estimate_sql(database, schema, table)` 为 `None` ⇒ 降级为 Exact」——没有 target 就无法向驱动提问。该函数是**宿主内部函数**，不在契约冻结面内。 扩展
 
 - **改哪个文件**：`packages/driver-api/src/types.rs`（加 `CountStrategy`、`TableDataResult.total_rows_kind`）、`packages/driver-api/src/traits.rs`（只加 4 个方法的声明与文档）、新增 `packages/driver-api/src/traits/browsing.rs`（4 个方法体的可复用实现）、`packages/driver-api/src/reuse.rs`（补 4 条转发）、`packages/driver-api/src/mock_driver.rs`（`MockDriverOptions` 新增 `skip_count_query: bool`、`count_estimate_rows: Option<i64>`，并在 `impl Default` 与 `impl DatabaseDriver for MockDriver` 里接通）。
 - **加什么符号**：`CountStrategy`、`count_strategy`、`count_estimate_sql`、`default_order_columns`、`allow_first_column_fallback_order`、`traits::browsing::{count_strategy, default_order_columns}`、`MockDriverOptions::skip_count_query` / `::count_estimate_rows`。
