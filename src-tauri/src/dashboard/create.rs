@@ -1,8 +1,8 @@
 //! Desktop repository bindings for portable dashboard creation use cases.
-use super::types::{ChartConfig, Dashboard, ViewMode};
 use crate::store::{AppDb, WorkflowVisibility};
 use crate::workflow::WorkflowRegistry;
 pub use datazen_feature_core::dashboard::create::{CreateWidgetError, CreateWidgetResult};
+use datazen_feature_core::dashboard::types::{ChartConfig, Dashboard, ViewMode};
 use datazen_feature_core::workflow::model::{
     WorkflowDefinition, WorkflowVisibility as WfVisibility,
 };
@@ -13,10 +13,11 @@ struct DesktopCreationHost<'a> {
 #[async_trait::async_trait]
 impl datazen_feature_core::dashboard::create::WidgetCreationHost for DesktopCreationHost<'_> {
     fn dashboard(&self, id: &str) -> Result<Dashboard, String> {
-        super::store::get_dashboard(self.app_db, id).map_err(|error| error.to_string())
+        datazen_feature_core::dashboard::store::get_dashboard(self.app_db, id)
+            .map_err(|error| error.to_string())
     }
     fn save_dashboard(&self, dashboard: Dashboard) -> Result<(), String> {
-        super::store::save_dashboard(self.app_db, dashboard)
+        datazen_feature_core::dashboard::store::save_dashboard(self.app_db, dashboard)
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
@@ -114,11 +115,11 @@ pub async fn create_widget_from_workflow(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dashboard::store::save_dashboard;
-    use crate::dashboard::types::DashboardLayout;
     use crate::store::{AppDb, WorkflowRecord};
     use crate::workflow::WorkflowStep;
     use chrono::Utc;
+    use datazen_feature_core::dashboard::store::save_dashboard;
+    use datazen_feature_core::dashboard::types::DashboardLayout;
 
     async fn setup() -> (std::sync::Arc<AppDb>, WorkflowRegistry, Dashboard) {
         let db = AppDb::open_in_memory().unwrap();
@@ -136,7 +137,7 @@ mod tests {
             enabled: true,
             refresh_paused: false,
         };
-        save_dashboard(&db, dash.clone()).unwrap();
+        save_dashboard(&*db, dash.clone()).unwrap();
         (db, registry, dash)
     }
 

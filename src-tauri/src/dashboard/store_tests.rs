@@ -1,14 +1,16 @@
-use super::store::{
-    delete_dashboard, get_dashboard, list_dashboards, load_monitor_settings, save_dashboard,
-    set_dashboard_refresh_paused,
-};
-use super::types::{
-    ChartConfig, ChartType, Dashboard, DashboardLayout, DashboardWidget, RefreshMode,
-    RefreshPolicy, ViewMode, WidgetLayout,
-};
+//! The desktop store answers the shared dashboard store port.
+
+use super::store::load_monitor_settings;
 use crate::store::AppSettings;
 use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
 use chrono::Utc;
+use datazen_feature_core::dashboard::store::{
+    delete_dashboard, get_dashboard, list_dashboards, save_dashboard, set_dashboard_refresh_paused,
+};
+use datazen_feature_core::dashboard::types::{
+    AggregationType, ChartConfig, ChartSortBy, ChartType, Dashboard, DashboardLayout,
+    DashboardWidget, RefreshMode, RefreshPolicy, ViewMode, WidgetLayout,
+};
 
 fn seed_workflow(db: &AppDb, id: &str) {
     db.upsert_workflow(&WorkflowRecord {
@@ -43,8 +45,8 @@ fn sample_dashboard() -> Dashboard {
                 x_axis: Some("v".into()),
                 y_axes: vec!["v".into()],
                 group_by: None,
-                aggregation: super::types::AggregationType::None,
-                sort_by: super::types::ChartSortBy::None,
+                aggregation: AggregationType::None,
+                sort_by: ChartSortBy::None,
                 show_legend: true,
                 show_grid: true,
                 show_values: false,
@@ -78,8 +80,8 @@ fn open_db() -> std::sync::Arc<AppDb> {
 fn save_and_list_dashboard_roundtrip() {
     let db = open_db();
     let dash = sample_dashboard();
-    save_dashboard(&db, dash.clone()).unwrap();
-    let list = list_dashboards(&db).unwrap();
+    save_dashboard(&*db, dash.clone()).unwrap();
+    let list = list_dashboards(&*db).unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].id, dash.id);
     assert_eq!(list[0].widgets[0].workflow_id, "wf-1");
@@ -88,7 +90,7 @@ fn save_and_list_dashboard_roundtrip() {
 #[test]
 fn list_dashboards_empty_when_no_rows() {
     let db = AppDb::open_in_memory().unwrap();
-    let list = list_dashboards(&db).unwrap();
+    let list = list_dashboards(&*db).unwrap();
     assert!(list.is_empty());
 }
 
@@ -96,8 +98,8 @@ fn list_dashboards_empty_when_no_rows() {
 fn get_dashboard_returns_one_by_id() {
     let db = open_db();
     let dash = sample_dashboard();
-    save_dashboard(&db, dash.clone()).unwrap();
-    let loaded = get_dashboard(&db, "dash-1").unwrap();
+    save_dashboard(&*db, dash.clone()).unwrap();
+    let loaded = get_dashboard(&*db, "dash-1").unwrap();
     assert_eq!(loaded.id, dash.id);
 }
 
@@ -105,9 +107,9 @@ fn get_dashboard_returns_one_by_id() {
 fn delete_dashboard_removes_entry() {
     let db = open_db();
     let dash = sample_dashboard();
-    save_dashboard(&db, dash).unwrap();
-    delete_dashboard(&db, "dash-1").unwrap();
-    assert!(list_dashboards(&db).unwrap().is_empty());
+    save_dashboard(&*db, dash).unwrap();
+    delete_dashboard(&*db, "dash-1").unwrap();
+    assert!(list_dashboards(&*db).unwrap().is_empty());
 }
 
 #[test]
@@ -118,8 +120,8 @@ fn save_dashboard_clamps_interval_refresh_sec() {
         mode: RefreshMode::Interval,
         refresh_sec: Some(5),
     };
-    save_dashboard(&db, dash).unwrap();
-    let loaded = get_dashboard(&db, "dash-1").unwrap();
+    save_dashboard(&*db, dash).unwrap();
+    let loaded = get_dashboard(&*db, "dash-1").unwrap();
     assert_eq!(loaded.widgets[0].refresh.refresh_sec, Some(30));
 }
 
@@ -127,15 +129,15 @@ fn save_dashboard_clamps_interval_refresh_sec() {
 fn set_dashboard_refresh_paused_persists() {
     let db = open_db();
     let dash = sample_dashboard();
-    save_dashboard(&db, dash).unwrap();
-    set_dashboard_refresh_paused(&db, "dash-1", true).unwrap();
-    let loaded = get_dashboard(&db, "dash-1").unwrap();
+    save_dashboard(&*db, dash).unwrap();
+    set_dashboard_refresh_paused(&*db, "dash-1", true).unwrap();
+    let loaded = get_dashboard(&*db, "dash-1").unwrap();
     assert!(loaded.refresh_paused);
 }
 
 #[test]
 fn load_monitor_settings_uses_app_settings_nested_monitor() {
-    use super::types::MonitorSettings;
+    use datazen_feature_core::dashboard::types::MonitorSettings;
 
     let settings = AppSettings {
         monitor: MonitorSettings {

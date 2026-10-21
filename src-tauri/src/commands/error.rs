@@ -131,25 +131,34 @@ impl From<crate::data_transfer::TransferError> for CommandError {
     }
 }
 
-impl From<crate::dashboard::store::DashboardStoreError> for CommandError {
-    fn from(e: crate::dashboard::store::DashboardStoreError) -> Self {
+impl From<datazen_feature_core::dashboard::store::DashboardStoreError> for CommandError {
+    fn from(e: datazen_feature_core::dashboard::store::DashboardStoreError) -> Self {
         match e {
-            crate::dashboard::store::DashboardStoreError::NotFound(id) => Self::NotFound(id),
-            crate::dashboard::store::DashboardStoreError::Parse(msg) => Self::Validation(msg),
-            crate::dashboard::store::DashboardStoreError::Db(
-                crate::store::AppDbError::NotFound(id),
-            ) => Self::NotFound(id),
-            crate::dashboard::store::DashboardStoreError::Db(e) => Self::Internal(e.to_string()),
+            datazen_feature_core::dashboard::store::DashboardStoreError::NotFound(id) => {
+                Self::NotFound(id)
+            }
+            datazen_feature_core::dashboard::store::DashboardStoreError::Parse(msg) => {
+                Self::Validation(msg)
+            }
+            datazen_feature_core::dashboard::store::DashboardStoreError::Db(msg) => {
+                Self::Internal(msg)
+            }
         }
     }
 }
 
-impl From<crate::dashboard::runs::DashboardRunsError> for CommandError {
-    fn from(e: crate::dashboard::runs::DashboardRunsError) -> Self {
+impl From<datazen_feature_core::dashboard::runs::DashboardRunsError> for CommandError {
+    fn from(e: datazen_feature_core::dashboard::runs::DashboardRunsError) -> Self {
         match e {
-            crate::dashboard::runs::DashboardRunsError::NotFound(id) => Self::NotFound(id),
-            crate::dashboard::runs::DashboardRunsError::Parse(msg) => Self::Validation(msg),
-            crate::dashboard::runs::DashboardRunsError::Db(e) => Self::Internal(e.to_string()),
+            datazen_feature_core::dashboard::runs::DashboardRunsError::NotFound(id) => {
+                Self::NotFound(id)
+            }
+            datazen_feature_core::dashboard::runs::DashboardRunsError::Parse(msg) => {
+                Self::Validation(msg)
+            }
+            datazen_feature_core::dashboard::runs::DashboardRunsError::Db(msg) => {
+                Self::Internal(msg)
+            }
         }
     }
 }
