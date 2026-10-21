@@ -151,8 +151,8 @@ fn options_with(
     }
 }
 
-fn request(columns: &[&str], values: Vec<Value>) -> ResolveFkTargetsRequest {
-    ResolveFkTargetsRequest {
+fn request(columns: &[&str], values: Vec<Value>) -> ResolveForeignKeyTargetsRequest {
+    ResolveForeignKeyTargetsRequest {
         db_session_id: "session-1".into(),
         database: None,
         schema: None,
@@ -664,3 +664,5 @@ fn find_fk_prefers_the_constraint_name_and_falls_back_to_the_ordered_columns() {
     // The pairing is positional: a different order does not match.
     assert!(find_fk(&foreign_keys, &["b".to_string(), "a".to_string()], None).is_none());
 }
+
+mod target_resolution;

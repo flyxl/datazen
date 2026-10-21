@@ -19,14 +19,13 @@
 
 use std::sync::Arc;
 
-use datazen_driver_api::filters::{FilterCondition, FilterOperator};
 use datazen_driver_api::{
-    ColumnSchema, DatabaseDriver, ForeignKeyInfo, LegacySqlDialect, SqlTarget, TableSchema, Value,
+    ColumnSchema, DatabaseDriver, DriverError, ForeignKeyInfo, LegacySqlDialect, SqlDialect,
+    SqlTarget, TableSchema, Value,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::services::ports::{FkSessionBinding, FkSessionError, ForeignKeyNavigationSource};
-use crate::services::query_executor::QueryExecutor;
 use crate::services::schema_scope::{embedded_schema_of, metadata_schema};
 
 /// Default number of candidate rows returned for one navigation target.
@@ -119,7 +118,7 @@ impl std::error::Error for FkNavigationError {}
 /// does this group of local columns point?".
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ResolveFkTargetsRequest {
+pub struct ResolveForeignKeyTargetsRequest {
     /// The runtime session; never persisted.
     pub db_session_id: String,
     /// Database of the source table; falls back to the connection profile.
@@ -151,7 +150,7 @@ pub struct ResolveFkTargetsRequest {
 /// itself: the shape of that string differs per driver.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FkTargetRef {
+pub struct ForeignKeyTargetRef {
     /// Database of the target table.
     pub database: String,
     /// Namespace of the target table; `None` when the driver has no schema level.
@@ -178,9 +177,9 @@ pub struct FkTargetRef {
 /// row is gone.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FkTargetResolution {
+pub struct ForeignKeyTargetResolution {
     /// The resolved target.
-    pub target: FkTargetRef,
+    pub target: ForeignKeyTargetRef,
     /// Whether at least one row satisfies all equality conditions.
     pub exists: bool,
     /// The candidate rows, each in `target.columns` order.
@@ -241,13 +240,13 @@ pub fn referenced_columns_are_unique(schema: &TableSchema, referenced_columns: &
 
 /// Resolve the target of one foreign-key group and probe it for existence.
 ///
-/// The returned [`FkTargetResolution`] carries the normalized target, whether
+/// The returned [`ForeignKeyTargetResolution`] carries the normalized target, whether
 /// the referenced row still exists, and the candidate rows that satisfy the
 /// equality conditions.
 pub async fn resolve_foreign_key_targets(
     source: &dyn ForeignKeyNavigationSource,
-    request: &ResolveFkTargetsRequest,
-) -> Result<FkTargetResolution, FkNavigationError> {
+    request: &ResolveForeignKeyTargetsRequest,
+) -> Result<ForeignKeyTargetResolution, FkNavigationError> {
     validate_request(request)?;
     let binding = bind_session(source, request).await?;
     let driver = Arc::clone(&binding.driver);
@@ -368,8 +367,8 @@ pub async fn resolve_foreign_key_targets(
     let truncated = rows.len() as u32 > limit;
     let candidates = rows.into_iter().take(limit as usize).collect();
 
-    Ok(FkTargetResolution {
-        target: FkTargetRef {
+    Ok(ForeignKeyTargetResolution {
+        target: ForeignKeyTargetRef {
             database,
             schema: target_schema,
             table: target_table,
@@ -386,7 +385,7 @@ pub async fn resolve_foreign_key_targets(
 }
 
 /// Reject a request whose shape cannot describe a key at all.
-fn validate_request(request: &ResolveFkTargetsRequest) -> Result<(), FkNavigationError> {
+fn validate_request(request: &ResolveForeignKeyTargetsRequest) -> Result<(), FkNavigationError> {
     if request.columns.is_empty() || request.values.is_empty() {
         return Err(FkNavigationError::coded(
             FkErrorCode::ShapeMismatch,
@@ -426,7 +425,7 @@ fn validate_request(request: &ResolveFkTargetsRequest) -> Result<(), FkNavigatio
 /// Bind the live session the request addresses.
 async fn bind_session(
     source: &dyn ForeignKeyNavigationSource,
-    request: &ResolveFkTargetsRequest,
+    request: &ResolveForeignKeyTargetsRequest,
 ) -> Result<FkSessionBinding, FkNavigationError> {
     if request.db_session_id.trim().is_empty() {
         return Err(FkNavigationError::Session(FkSessionError::NotFound(
@@ -441,7 +440,10 @@ async fn bind_session(
 
 /// The database of the source table: the request wins, then the connection
 /// profile, then the host's own default.
-fn resolve_database(binding: &FkSessionBinding, request: &ResolveFkTargetsRequest) -> String {
+fn resolve_database(
+    binding: &FkSessionBinding,
+    request: &ResolveForeignKeyTargetsRequest,
+) -> String {
     request
         .database
         .as_deref()
@@ -458,14 +460,27 @@ fn resolve_database(binding: &FkSessionBinding, request: &ResolveFkTargetsReques
         .to_string()
 }
 
+/// The namespace the referenced table names itself, falling back to the source
+/// table's namespace.
+///
+/// A driver that folds the namespace into the table name (`public.parents`)
+/// says where the target lives; one that reports a bare name leaves the target
+/// in the source table's namespace.
+fn target_namespace(referenced_table: &str, source_schema: Option<&str>) -> Option<String> {
+    embedded_schema_of(referenced_table)
+        .map(str::to_string)
+        .or_else(|| source_schema.map(str::to_string))
+}
+
 /// Resolve the target table of a foreign key.
 ///
 /// Two attempts, in this order, and both are driver-agnostic:
 ///
-/// 1. the referenced table as the driver reported it, inside the source
-///    table's namespace;
+/// 1. the referenced table as the driver reported it, in the namespace **it
+///    names itself** — a driver that reports `public.parents` means the
+///    `public` namespace, not the source table's;
 /// 2. the referenced table split at its **last** `.`, so a driver that folds
-///    the namespace into the table name (`sales.customers`) still resolves.
+///    the namespace into the table name still resolves.
 ///
 /// There is no database-name branch here: a cross-database foreign key simply
 /// fails to resolve, which is safer than jumping into the wrong database.
@@ -476,36 +491,42 @@ async fn resolve_target_table(
     source_schema: Option<&str>,
     referenced_table: &str,
 ) -> Result<(String, Option<String>, TableSchema), FkNavigationError> {
-    let mut last_error = match driver
-        .get_table_schema(&binding.handle, referenced_table, database, source_schema)
-        .await
-    {
-        Ok(meta) if !meta.columns.is_empty() => {
-            return Ok((
-                referenced_table.to_string(),
-                source_schema.map(str::to_string),
-                meta,
-            ))
-        }
-        Ok(_) => "the driver returned no column metadata".to_string(),
-        Err(error) => error.to_string(),
-    };
+    // The namespace the referenced table names itself comes first; the source
+    // table's namespace is only the fallback.
+    let namespace = target_namespace(referenced_table, source_schema);
+    // The read respects the driver's schema level: a driver without one must
+    // not be handed a namespace at all.
+    let read_schema = metadata_schema(
+        driver.as_ref(),
+        None,
+        embedded_schema_of(referenced_table),
+        source_schema,
+    );
 
+    let mut candidates: Vec<(String, Option<String>)> =
+        vec![(referenced_table.to_string(), read_schema.clone())];
     if let Some((head, tail)) = referenced_table.rsplit_once('.') {
         let head = head.trim().trim_matches('"');
         let tail = tail.trim().trim_matches('"');
         if !head.is_empty() && !tail.is_empty() {
-            let split_schema = Some(head.to_string());
-            last_error = match driver
-                .get_table_schema(&binding.handle, tail, database, split_schema.as_deref())
-                .await
-            {
-                Ok(meta) if !meta.columns.is_empty() => {
-                    return Ok((tail.to_string(), split_schema, meta))
-                }
-                Ok(_) => "the driver returned no column metadata".to_string(),
-                Err(error) => error.to_string(),
-            };
+            candidates.push((tail.to_string(), read_schema.clone()));
+        }
+    }
+
+    let mut last_error = "the driver returned no column metadata".to_string();
+    for (table, schema) in candidates {
+        match driver
+            .get_table_schema(&binding.handle, &table, database, schema.as_deref())
+            .await
+        {
+            Ok(meta) if !meta.columns.is_empty() => {
+                // The **driver's** name for the table, not the raw reference:
+                // a driver that reports `public.parents` answers with the bare
+                // `parents`, and the probe has to address it by that name.
+                return Ok((meta.table_name.clone(), namespace, meta));
+            }
+            Ok(_) => last_error = "the driver returned no column metadata".to_string(),
+            Err(error) => last_error = error.to_string(),
         }
     }
 
@@ -558,46 +579,158 @@ async fn probe_target(
     values: &[Value],
     limit: u32,
 ) -> Result<Vec<Vec<Option<Value>>>, FkNavigationError> {
-    let filters: Vec<FilterCondition> = referenced_names
-        .iter()
-        .zip(values.iter())
-        .map(|(column, value)| FilterCondition {
-            column: column.clone(),
-            operator: FilterOperator::Eq,
-            value: value.clone(),
-        })
-        .collect();
     let dialect = LegacySqlDialect::new(driver.as_ref());
-    let sql = QueryExecutor::build_select_sql(
+    let statement = build_probe_statement(
+        &dialect,
         target_table,
         referenced_columns,
-        Some(filters),
-        None,
-        &dialect,
-        u64::from(limit) + 1,
-        0,
-        Some("and"),
+        referenced_names,
+        values,
+        limit,
     )
     .map_err(|error| {
+        // The statement could not be expressed: the metadata was readable, so
+        // this is a failed probe, not a shape fault.
+        tracing::warn!(
+            table = %target_table,
+            error_kind = driver_error_kind(&error),
+            "foreign key probe statement could not be built"
+        );
         FkNavigationError::coded(
-            FkErrorCode::ShapeMismatch,
-            format!("the target probe cannot be expressed: {error}"),
+            FkErrorCode::ProbeFailed,
+            format!("probing target table '{target_table}' failed (the driver error is omitted)"),
         )
     })?;
-    let result = driver
-        .query_at(
-            &binding.handle,
-            &sql,
-            SqlTarget::new(Some(database), target_schema),
+    let target = SqlTarget::new(Some(database), target_schema);
+    let result = match statement {
+        ProbeStatement::Bound { sql, params } => {
+            driver
+                .query_with_params_at(&binding.handle, &sql, &params, target)
+                .await
+        }
+        ProbeStatement::Inlined { sql } => driver.query_at(&binding.handle, &sql, target).await,
+    }
+    .map_err(|error| {
+        // A driver error can quote the value it choked on (`Incorrect integer
+        // value: 'abc'`), and that value is the user's own data. The IPC
+        // message therefore says nothing about the driver's text, and the log
+        // records the error's **kind** instead of its content.
+        tracing::warn!(
+            table = %target_table,
+            error_kind = driver_error_kind(&error),
+            "foreign key probe failed"
+        );
+        FkNavigationError::coded(
+            FkErrorCode::ProbeFailed,
+            format!("probing target table '{target_table}' failed (the driver error is omitted)"),
         )
-        .await
-        .map_err(|error| {
-            FkNavigationError::coded(
-                FkErrorCode::ProbeFailed,
-                format!("probing target table '{target_table}' failed: {error}"),
-            )
-        })?;
+    })?;
     Ok(result.rows)
+}
+
+/// The probe statement, in one of the two shapes a driver can execute.
+enum ProbeStatement {
+    /// The values are **bound**: the statement text carries placeholders
+    /// only, so a key value never reaches the SQL text.
+    Bound { sql: String, params: Vec<Value> },
+    /// The driver has no bound-parameter vocabulary: the values are inlined
+    /// as literals. The IPC message stays value-free either way.
+    Inlined { sql: String },
+}
+
+/// Build the existence probe: one `SELECT … LIMIT limit + 1` and no
+/// `COUNT(*)`, because the existence check must not cost a full-table count.
+///
+/// The statement selects the referenced columns only, in the constraint's
+/// order, so a candidate row is already the target's key.
+fn build_probe_statement(
+    dialect: &dyn SqlDialect,
+    target_table: &str,
+    referenced_columns: &[ColumnSchema],
+    referenced_names: &[String],
+    values: &[Value],
+    limit: u32,
+) -> Result<ProbeStatement, DriverError> {
+    let quote = |name: &str| dialect.quote_ident(name);
+    let columns = referenced_columns
+        .iter()
+        .map(|column| quote(&column.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut sql = format!("SELECT {columns} FROM {}", quote(target_table));
+
+    // The bound-parameter vocabulary is the driver's own; a driver without one
+    // keeps the values inline.
+    let placeholders = referenced_columns
+        .iter()
+        .enumerate()
+        .map(|(index, column)| {
+            dialect.parameter_placeholder(index + 1, Some(column.data_type.as_str()))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .ok();
+
+    let mut params = Vec::with_capacity(values.len());
+    for (index, name) in referenced_names.iter().enumerate() {
+        let value = values.get(index).cloned().unwrap_or(Value::Null);
+        match &placeholders {
+            Some(placeholders) => {
+                sql.push_str(&format!(
+                    " {} = {}",
+                    quote(name),
+                    placeholders.get(index).cloned().unwrap_or_default()
+                ));
+                params.push(value);
+            }
+            None => {
+                let literal = dialect.try_format_sql_literal(&Some(value))?;
+                sql.push_str(&format!(" {} = {}", quote(name), literal));
+            }
+        }
+    }
+
+    // A deterministic order: the referenced columns are the key that was
+    // looked up, and a dialect that only accepts a pagination clause after
+    // an ordering needs one.
+    let order = referenced_columns
+        .iter()
+        .map(|column| format!("{} ASC", quote(&column.name)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if !order.is_empty() {
+        sql.push_str(&format!(" ORDER BY {order}"));
+    }
+    let pagination = dialect.pagination_syntax(u64::from(limit) + 1, 0);
+    if !pagination.clause.is_empty() {
+        sql.push(' ');
+        sql.push_str(&pagination.clause);
+    }
+
+    Ok(match placeholders {
+        Some(_) => ProbeStatement::Bound { sql, params },
+        None => ProbeStatement::Inlined { sql },
+    })
+}
+
+/// The kind of a driver error, without its content.
+///
+/// The content can quote a user value; the kind cannot, and the kind is all
+/// a log line needs to say "the probe failed because the statement was
+/// refused" or "because the connection is gone".
+fn driver_error_kind(error: &DriverError) -> &'static str {
+    match error {
+        DriverError::SessionLost => "sessionLost",
+        DriverError::ConnectionFailed(_) => "connectionFailed",
+        DriverError::QueryFailed(_) => "queryFailed",
+        DriverError::ConnectionTimeout => "connectionTimeout",
+        DriverError::AuthenticationFailed(_) => "authenticationFailed",
+        DriverError::InvalidConfig(_) => "invalidConfig",
+        DriverError::PoolExhausted => "poolExhausted",
+        DriverError::NotSupported(_) => "notSupported",
+        DriverError::Unsupported(_) => "unsupported",
+        DriverError::QueryCancelled => "queryCancelled",
+        _ => "other",
+    }
 }
 
 #[cfg(test)]

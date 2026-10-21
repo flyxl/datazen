@@ -42,8 +42,12 @@ fn schema(
     }
 }
 
-fn request(db_session_id: &str, columns: &[&str], values: Vec<Value>) -> ResolveFkTargetsRequest {
-    ResolveFkTargetsRequest {
+fn request(
+    db_session_id: &str,
+    columns: &[&str],
+    values: Vec<Value>,
+) -> ResolveForeignKeyTargetsRequest {
+    ResolveForeignKeyTargetsRequest {
         db_session_id: db_session_id.to_string(),
         database: None,
         schema: None,

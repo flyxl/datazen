@@ -8,7 +8,9 @@
 
 use super::error::CommandError;
 use super::AppState;
-use datazen_feature_core::services::fk_navigation::{FkTargetResolution, ResolveFkTargetsRequest};
+use datazen_feature_core::services::fk_navigation::{
+    ForeignKeyTargetResolution, ResolveForeignKeyTargetsRequest,
+};
 use datazen_feature_core::services::ports::{
     FkSessionBinding, FkSessionError, ForeignKeyNavigationSource,
 };
@@ -63,8 +65,8 @@ impl ForeignKeyNavigationSource for HostNavigationSource<'_> {
 /// Resolve the target of one foreign-key group and probe it for existence.
 pub(crate) async fn resolve_foreign_key_targets_impl(
     state: &AppState,
-    request: ResolveFkTargetsRequest,
-) -> Result<FkTargetResolution, CommandError> {
+    request: ResolveForeignKeyTargetsRequest,
+) -> Result<ForeignKeyTargetResolution, CommandError> {
     if request.db_session_id.trim().is_empty() {
         return Err(CommandError::Validation("dbSessionId is required".into()));
     }
@@ -84,8 +86,8 @@ pub(crate) async fn resolve_foreign_key_targets_impl(
 #[tauri::command]
 pub async fn resolve_foreign_key_targets(
     state: State<'_, AppState>,
-    request: ResolveFkTargetsRequest,
-) -> Result<FkTargetResolution, CommandError> {
+    request: ResolveForeignKeyTargetsRequest,
+) -> Result<ForeignKeyTargetResolution, CommandError> {
     resolve_foreign_key_targets_impl(&state, request).await
 }
 

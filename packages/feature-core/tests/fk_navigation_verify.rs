@@ -19,7 +19,8 @@ use datazen_driver_api::{
 };
 use datazen_feature_core::services::fk_navigation::{
     find_fk, referenced_columns_are_unique, resolve_foreign_key_targets, FkErrorCode,
-    FkNavigationError, ResolveFkTargetsRequest, DEFAULT_CANDIDATE_LIMIT, MAX_CANDIDATE_LIMIT,
+    FkNavigationError, ResolveForeignKeyTargetsRequest, DEFAULT_CANDIDATE_LIMIT,
+    MAX_CANDIDATE_LIMIT,
 };
 use datazen_feature_core::services::ports::{
     FkSessionBinding, FkSessionError, ForeignKeyNavigationSource,
@@ -167,8 +168,8 @@ fn single_column_driver(query_rows: Vec<Vec<Option<Value>>>) -> Arc<MockDriver> 
     MockDriver::new("postgres", options_with(tables, query_rows))
 }
 
-fn request(columns: &[&str], values: Vec<Value>) -> ResolveFkTargetsRequest {
-    ResolveFkTargetsRequest {
+fn request(columns: &[&str], values: Vec<Value>) -> ResolveForeignKeyTargetsRequest {
+    ResolveForeignKeyTargetsRequest {
         db_session_id: "session-1".into(),
         database: None,
         schema: None,
@@ -1016,7 +1017,7 @@ fn the_request_deserializes_from_the_documented_camel_case_shape() {
         "values": [7],
         "limit": 10,
     });
-    let request: ResolveFkTargetsRequest =
+    let request: ResolveForeignKeyTargetsRequest =
         serde_json::from_value(json).expect("the request deserializes");
     assert_eq!(request.db_session_id, "sess-1");
     assert_eq!(request.database.as_deref(), Some("app"));
@@ -1038,7 +1039,7 @@ fn the_request_deserializes_from_the_documented_camel_case_shape() {
         "columns": ["customer_id"],
         "values": [7],
     });
-    let request: ResolveFkTargetsRequest =
+    let request: ResolveForeignKeyTargetsRequest =
         serde_json::from_value(minimal).expect("the minimal request deserializes");
     assert!(request.database.is_none());
     assert!(request.schema.is_none());
@@ -1057,22 +1058,24 @@ fn a_json_null_value_reaches_the_resolver_as_a_null_value() {
         "columns": ["customer_id"],
         "values": [null],
     });
-    let request: ResolveFkTargetsRequest =
+    let request: ResolveForeignKeyTargetsRequest =
         serde_json::from_value(json).expect("the request deserializes");
     assert!(matches!(request.values[0], Value::Null));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FK-D · the target name is not normalized: the raw `referenced_table` leaks
-// into `FkTargetRef.table`, and a schema-qualified name cannot survive the
-// driver's own qualification step.
+// FK-D · the target name must be the driver's normalized name, and the
+// namespace must be the one the reference names — a schema-qualified name
+// cannot survive the driver's own qualification step.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn the_target_table_name_is_the_raw_referenced_table_not_the_driver_name() {
+async fn the_target_table_name_is_the_driver_normalized_name_not_the_raw_reference() {
     // PostgreSQL reports `referenced_table` as "{schema}.{table}" and its
-    // `TableSchema.table_name` is the **bare** name. The resolver reports the
-    // raw string instead of the driver's normalized name.
+    // `TableSchema.table_name` is the **bare** name. The resolver has to
+    // report the driver's normalized name: the probe addresses the table by
+    // it, and `FROM "public.parents"` would be qualified into
+    // `"public"."public.parents"`, a relation that cannot exist.
     let mut tables = HashMap::new();
     tables.insert(
         "orders".to_string(),
@@ -1113,7 +1116,58 @@ async fn the_target_table_name_is_the_raw_referenced_table_not_the_driver_name()
     .expect("the target resolves");
 
     // The catalogued (driver-normalized) name is "parents".
-    assert_eq!(resolution.target.table, "public.parents");
+    assert_eq!(resolution.target.table, "parents");
+    // And the namespace is the one the reference names.
+    assert_eq!(resolution.target.schema.as_deref(), Some("public"));
+}
+
+#[tokio::test]
+async fn the_target_namespace_is_the_referenced_one_not_the_source_tables() {
+    // The source table lives in `public`, the target in `sales`: the target's
+    // namespace is the one the reference names, not the source table's.
+    let mut tables = HashMap::new();
+    tables.insert(
+        "orders".to_string(),
+        schema(
+            "orders",
+            vec![
+                column("id", "integer", true),
+                column("customer_id", "integer", false),
+            ],
+            vec!["id".to_string()],
+            Vec::new(),
+            vec![foreign_key(
+                "orders_customer_fk",
+                &["customer_id"],
+                "sales.parents",
+                &["id"],
+            )],
+        ),
+    );
+    tables.insert(
+        "sales.parents".to_string(),
+        schema(
+            "parents",
+            vec![column("id", "integer", true)],
+            vec!["id".to_string()],
+            Vec::new(),
+            Vec::new(),
+        ),
+    );
+    let mut options = options_with(tables, Vec::new());
+    options.has_schema_level = true;
+    options.default_schema = Some("public");
+    let driver = MockDriver::new("postgres", options);
+
+    let resolution = resolve_foreign_key_targets(
+        &TestSource::new(driver),
+        &request(&["customer_id"], vec![Value::Integer(7)]),
+    )
+    .await
+    .expect("the target resolves");
+
+    assert_eq!(resolution.target.table, "parents");
+    assert_eq!(resolution.target.schema.as_deref(), Some("sales"));
 }
 
 #[test]
