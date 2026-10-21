@@ -278,10 +278,9 @@ impl PlatformAdapter {
         // `CapabilityUnsupported` 收敛到同一个码），内部 `ApiError` 码**多数**是
         // `ServiceUnavailable`——`runtime()` / `profiles()` / `live_source()` /
         // `artifact_store()` / `identity_resolver()` 这 5 个访问器都是它，
-        // 受 `inject` 失败影响的访问器里，`require_application_services()` 与 `native_tools()` 是
-        // （另有 `require_bridge()` 与 `begin_owned_call()` 也返回该码，它们不由 `inject` 决定）
-        // 是
-        // `CapabilityUnsupported`。
+        // 受 `inject` 失败影响的访问器里，`require_application_services()` 与
+        // `native_tools()` 返回 `CapabilityUnsupported`（另有 `require_bridge()` 与
+        // `begin_owned_call()` 也返回该码，但它们不由 `inject` 决定）。
         let identities = Arc::new(
             super::execution_identity::DesktopIdentityResolver::for_desktop(
                 store.clone(),
