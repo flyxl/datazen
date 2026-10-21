@@ -220,6 +220,12 @@ pub struct AppState {
     /// 过去计划注册表是共享包里的 `static STORE`（进程级全局可变状态），
     /// 现在由组装点创建实例并注入。
     pub sync_stores: SyncStorePorts,
+    /// Data Transfer 的不可变计划与恢复检查点存储端口。
+    ///
+    /// 端口契约与 HashMap 实现都在 `datazen-data-transfer` 包内；宿主只负责在
+    /// 组装期创建**一个**实例并注入，调用点按组织作用域访问它。这样存储的
+    /// 生命周期由宿主决定，而不是包内的一个进程级全局。
+    pub transfer_plans: Arc<dyn crate::data_transfer::plan_store::TransferPlanStorePort>,
     /// 概要 §6.2 第 8 步的窄适配根：桌面身份 + owner 作用域句柄登记表。
     ///
     /// 事务归属和资源生命周期由 Runtime session actor 管理。取不到 adapter 时用

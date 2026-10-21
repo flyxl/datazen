@@ -625,6 +625,9 @@ mod tests {
             desktop_job_host,
             schema_diff_reviewed_plans,
             sync_stores: crate::commands::SyncStorePorts::desktop(),
+            transfer_plans: Arc::new(
+                crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+            ),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
         };
@@ -706,6 +709,9 @@ mod tests {
             desktop_job_host,
             schema_diff_reviewed_plans,
             sync_stores: crate::commands::SyncStorePorts::desktop(),
+            transfer_plans: Arc::new(
+                crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+            ),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
         };

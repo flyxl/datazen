@@ -230,6 +230,11 @@ pub(crate) fn finish_app_state(
         // Data Sync 的存储端口实例在组装期创建一次：宿主决定「实例从哪来」，
         // 规则与落盘实现留在共享包里。
         sync_stores: crate::commands::SyncStorePorts::desktop(),
+        // Data Transfer 的计划/检查点存储：宿主在组装期创建一个实例并注入。
+        // 包内不再有进程级全局，存储的生命周期到这里为止。
+        transfer_plans: Arc::new(
+            crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+        ),
     };
     if let Ok(adapter) = state.platform.require() {
         if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {

@@ -22,7 +22,6 @@ use datazen_runtime::job::{EndpointRef, EndpointRole, JobHandler, JobHost, Recov
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
 use crate::data_transfer::job::{derive_evidence, DataTransferHandler};
-use crate::data_transfer::plan_store as plans;
 use crate::services::migration_endpoint::EndpointIdentity;
 
 pub(crate) const PREPARE_KIND: &str = "dataTransferPrepare";
@@ -306,6 +305,7 @@ impl Drop for WriteGateGuard {
 }
 
 pub(crate) async fn drive(
+    transfer_plans: Arc<dyn crate::data_transfer::plan_store::TransferPlanStorePort>,
     host: Arc<JobHost>,
     accepted: AcceptedJob,
     plan: DrivePlan,
@@ -329,7 +329,12 @@ pub(crate) async fn drive(
         Ok(result) => {
             if result.state == JobState::Succeeded {
                 if let Some(plan_id) = plan.plan_id.as_deref() {
-                    plans::mark_plan_consumed(plan_id).map_err(CommandError::from)?;
+                    transfer_plans
+                        .mark_consumed(
+                            super::super::plan_scope::desktop_organization_scope(),
+                            plan_id,
+                        )
+                        .map_err(CommandError::from)?;
                 }
             }
             let external_artifacts: Vec<ArtifactId> = plan
@@ -411,6 +416,7 @@ pub(crate) async fn run(
         Admission::Replayed(outcome) => Ok(outcome),
         Admission::Accepted(accepted) => {
             drive(
+                state.transfer_plans.clone(),
                 state.desktop_job_host.clone(),
                 accepted,
                 DrivePlan::from_request(&request),

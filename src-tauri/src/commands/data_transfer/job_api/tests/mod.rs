@@ -6,6 +6,7 @@
 //! its rules), and the one-shot plan lifecycle in the plan store.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use datazen_platform_api::dto::job::JobState;
 use datazen_platform_api::id::ConnectionId;
@@ -26,12 +27,26 @@ use crate::commands::error::CommandError;
 use crate::data_transfer::model::{
     Endpoint, SqlFileTarget, TransferOptions, TransferRunOptions, TransferRunSelection,
 };
-use crate::data_transfer::plan_store::{self as plans, PlanState};
+use crate::data_transfer::plan_store::{
+    InMemoryTransferPlanStore, PlanIssueRequest, PlanState, TransferPlanStorePort,
+};
 use crate::data_transfer::{
     TableMapping, TransferJob, TransferMode, TransferPreview, TransferRunRequest, WriteMode,
 };
 use crate::services::migration_endpoint::EndpointIdentity;
 use crate::testing::app_state::TestAppState;
+
+/// A fresh plan registry for one test. The host injects **one** instance per
+/// process; a test must not share it with another test, or one test's plan
+/// would be claimable by the next.
+fn plan_store() -> Arc<dyn TransferPlanStorePort> {
+    Arc::new(InMemoryTransferPlanStore::new())
+}
+
+/// The scope the desktop plan registry is keyed by.
+fn plan_scope() -> &'static datazen_platform_api::ports::scope::OrganizationScope {
+    crate::commands::data_transfer::plan_scope::desktop_organization_scope()
+}
 
 /// A stand-in endpoint identity, so wiring facts can be asserted without a live
 /// connection. Real identities are produced by `super::endpoint_identity::identify`.
@@ -323,34 +338,44 @@ fn destructive_writes_require_explicit_confirmation() {
 #[test]
 fn plan_digest_is_stable_and_covers_the_revision() {
     let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
-    let mut first = plans::issue_plan(
-        job("src-session", "tgt-session"),
-        &preview(),
-        driver.as_ref(),
-        driver.as_ref(),
-        &HashMap::new(),
-        &HashMap::new(),
-        false,
-    )
-    .expect("plan issue");
-    let digest = plan_digest(&plans::peek_plan_any(&first).expect("plan peek")).expect("digest");
+    let store = plan_store();
+    let scope = plan_scope();
+    let mut first = store
+        .issue(
+            scope,
+            PlanIssueRequest::new(
+                job("src-session", "tgt-session"),
+                &preview(),
+                driver.as_ref(),
+                driver.as_ref(),
+                &HashMap::new(),
+                &HashMap::new(),
+                false,
+            ),
+        )
+        .expect("plan issue");
+    let digest = plan_digest(&store.peek_any(scope, &first).expect("plan peek")).expect("digest");
     assert!(digest.starts_with("sha256:"), "unexpected digest: {digest}");
     assert_eq!(
         digest,
-        plan_digest(&plans::peek_plan_any(&first).expect("plan peek")).expect("digest"),
+        plan_digest(&store.peek_any(scope, &first).expect("plan peek")).expect("digest"),
         "the digest of one stored plan must be stable"
     );
-    first = plans::issue_plan(
-        job("src-session", "tgt-session"),
-        &preview(),
-        driver.as_ref(),
-        driver.as_ref(),
-        &HashMap::new(),
-        &HashMap::new(),
-        false,
-    )
-    .expect("plan issue");
-    let redigest = plan_digest(&plans::peek_plan_any(&first).expect("plan peek")).expect("digest");
+    first = store
+        .issue(
+            scope,
+            PlanIssueRequest::new(
+                job("src-session", "tgt-session"),
+                &preview(),
+                driver.as_ref(),
+                driver.as_ref(),
+                &HashMap::new(),
+                &HashMap::new(),
+                false,
+            ),
+        )
+        .expect("plan issue");
+    let redigest = plan_digest(&store.peek_any(scope, &first).expect("plan peek")).expect("digest");
     assert_ne!(
         digest, redigest,
         "a re-issued plan is a different review and must not share a digest"
@@ -360,37 +385,43 @@ fn plan_digest_is_stable_and_covers_the_revision() {
 #[test]
 fn a_plan_id_serves_at_most_one_apply_job() {
     let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
-    let plan_id = plans::issue_plan(
-        job("src-session", "tgt-session"),
-        &preview(),
-        driver.as_ref(),
-        driver.as_ref(),
-        &HashMap::new(),
-        &HashMap::new(),
-        false,
-    )
-    .expect("plan issue");
+    let store = plan_store();
+    let scope = plan_scope();
+    let plan_id = store
+        .issue(
+            scope,
+            PlanIssueRequest::new(
+                job("src-session", "tgt-session"),
+                &preview(),
+                driver.as_ref(),
+                driver.as_ref(),
+                &HashMap::new(),
+                &HashMap::new(),
+                false,
+            ),
+        )
+        .expect("plan issue");
     assert_eq!(
-        availability_of(plans::peek_plan_any(&plan_id).expect("peek").state),
+        availability_of(store.peek_any(scope, &plan_id).expect("peek").state),
         PlanAvailability::Available
     );
 
-    plans::claim_plan(&plan_id).expect("claim");
+    store.claim(scope, &plan_id).expect("claim");
     assert!(
-        plans::peek_plan(&plan_id).is_err(),
+        store.peek(scope, &plan_id).is_err(),
         "a claimed plan is no longer previewable"
     );
     assert_eq!(
-        availability_of(plans::peek_plan_any(&plan_id).expect("peek").state),
+        availability_of(store.peek_any(scope, &plan_id).expect("peek").state),
         PlanAvailability::Claimed
     );
 
-    plans::mark_plan_consumed(&plan_id).expect("consume");
-    let consumed = plans::peek_plan_any(&plan_id).expect("peek");
+    store.mark_consumed(scope, &plan_id).expect("consume");
+    let consumed = store.peek_any(scope, &plan_id).expect("peek");
     assert_eq!(availability_of(consumed.state), PlanAvailability::Consumed);
-    assert!(plans::peek_plan(&plan_id).is_err());
+    assert!(store.peek(scope, &plan_id).is_err());
     assert!(
-        plans::peek_plan_any("no-such-plan").is_err(),
+        store.peek_any(scope, "no-such-plan").is_err(),
         "an unknown plan id must not resolve"
     );
     assert_eq!(
@@ -742,7 +773,10 @@ async fn an_apply_job_claims_the_plan_and_refuses_the_legacy_manager() {
     let plan_id = prepared.plan_id.clone();
 
     let applied = apply_and_wait(&test.state, apply_request_from(&prepared)).await;
-    let state = plans::peek_plan_any(&plan_id)
+    let state = test
+        .state
+        .transfer_plans
+        .peek_any(plan_scope(), &plan_id)
         .expect("the plan stays readable")
         .state;
     assert!(
@@ -766,6 +800,64 @@ async fn an_apply_job_claims_the_plan_and_refuses_the_legacy_manager() {
         refusal(&legacy_error).contains("already consumed"),
         "{legacy_error:?}"
     );
+}
+
+/// The registry the host injects is organization-scoped (CM-05): a foreign
+/// organization must not read, enumerate or claim the desktop's plan, and the
+/// refusal must be the same "not found" the desktop gets for an unknown id.
+///
+/// The check is deliberately adapter-free (no live session, no platform
+/// identity): it pins the *scope the host derives* against the *isolation the
+/// package implements*, which is the seam this track moved.
+#[test]
+fn the_desktop_scope_is_the_only_organization_the_plan_registry_sees() {
+    let scope = plan_scope();
+    assert_eq!(
+        scope.organization_id().as_str(),
+        crate::platform::LOCAL_ORGANIZATION_ID,
+        "every plan access must use the desktop's own organization"
+    );
+
+    let store = plan_store();
+    let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
+    let plan_id = store
+        .issue(
+            scope,
+            PlanIssueRequest::new(
+                job("p5dt-scope-source", "p5dt-scope-target"),
+                &preview(),
+                driver.as_ref(),
+                driver.as_ref(),
+                &HashMap::new(),
+                &HashMap::new(),
+                false,
+            ),
+        )
+        .expect("plan issue");
+
+    let foreign = datazen_platform_api::ports::scope::OrganizationScope::new(
+        datazen_platform_api::id::OrganizationId::new("p5dt-foreign-organization"),
+    );
+    let unknown = store
+        .peek(&foreign, "no-such-plan")
+        .expect_err("an unknown plan id");
+    let cross_org = store.peek(&foreign, &plan_id).expect_err("a foreign plan");
+    assert_eq!(
+        cross_org.to_string(),
+        unknown.to_string(),
+        "a foreign plan must be indistinguishable from an unknown id"
+    );
+    assert!(
+        store.peek_any(&foreign, &plan_id).is_err(),
+        "a foreign organization must not even learn that the plan exists"
+    );
+    assert!(
+        store.claim(&foreign, &plan_id).is_err(),
+        "a foreign organization must not claim the desktop's plan"
+    );
+
+    // The desktop's own organization still sees it.
+    assert!(store.peek(scope, &plan_id).is_ok());
 }
 
 /// Two apply Jobs racing for one planId: the registry's claim decides the winner

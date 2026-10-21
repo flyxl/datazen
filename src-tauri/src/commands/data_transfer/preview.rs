@@ -424,16 +424,21 @@ async fn preview_sql_file_target(
         }
     }
     let target_schemas: HashMap<String, TableSchema> = HashMap::new();
-    let plan_id = crate::data_transfer::plan_store::issue_plan(
-        job,
-        &preview,
-        src_driver.as_ref(),
-        target_driver.as_ref(),
-        &source_schemas,
-        &target_schemas,
-        false,
-    )
-    .map_err(CommandError::from)?;
+    let plan_id = state
+        .transfer_plans
+        .issue(
+            super::plan_scope::desktop_organization_scope(),
+            crate::data_transfer::plan_store::PlanIssueRequest::new(
+                job,
+                &preview,
+                src_driver.as_ref(),
+                target_driver.as_ref(),
+                &source_schemas,
+                &target_schemas,
+                false,
+            ),
+        )
+        .map_err(CommandError::from)?;
     preview.plan_id = plan_id;
     Ok(preview)
 }
@@ -829,17 +834,23 @@ pub(crate) async fn preview_data_transfer_impl(
         Vec::new()
     };
 
-    let plan_id = crate::data_transfer::plan_store::issue_plan_with_target_dependencies(
-        job,
-        &preview,
-        src_driver.as_ref(),
-        target_driver.as_ref(),
-        &source_schemas_for_plan,
-        &target_schemas,
-        tgt_config.read_only,
-        target_table_dependencies,
-    )
-    .map_err(CommandError::from)?;
+    let plan_id = state
+        .transfer_plans
+        .issue(
+            super::plan_scope::desktop_organization_scope(),
+            crate::data_transfer::plan_store::PlanIssueRequest {
+                job,
+                preview: &preview,
+                source_driver: src_driver.as_ref(),
+                target_driver: target_driver.as_ref(),
+                source_schemas: &source_schemas_for_plan,
+                target_schemas: &target_schemas,
+                target_read_only: tgt_config.read_only,
+                target_table_dependencies,
+                ttl: crate::data_transfer::plan_store::TRANSFER_PLAN_TTL,
+            },
+        )
+        .map_err(CommandError::from)?;
     preview.plan_id = plan_id;
 
     Ok(preview)
