@@ -64,13 +64,13 @@
 `version` 字段在**全仓库范围内只被写入，从未被读取**：
 
 - 没有任何按版本分派的解析代码（无 `match version`、无 `CURRENT_VERSION` 比较，三个内建 YAML 也未设置该字段）；
-- 生产代码写入点只有 `packages/feature-core/src/dashboard/create.rs:40` 的 `version: None` 字面量；其余 13 处全在测试代码内（宿主侧 `workflow/host.rs:128/169/204`、`workflow/registry.rs:224`、`workflow/migration.rs:433`、`commands/dashboard.rs:482`、`commands/ai/integration_tests.rs:377/932/1070/1123`；共享包侧 `packages/feature-core/src/workflow/registry.rs:429`、`packages/feature-core/src/workflow/scheduler.rs:223`、`packages/feature-core/src/dashboard/archive.rs:185`），其中仅 `integration_tests.rs:377` 写 `Some("1")`，同样无人读取。
+- 生产代码写入点只有 `packages/feature-core/src/dashboard/create.rs:40` 的 `version: None` 字面量；其余 13 处全在测试代码内（宿主侧 `workflow/host.rs:128/169/204`、`workflow/registry.rs:226`、`workflow/migration.rs:433`、`commands/dashboard.rs:482`、`commands/ai/integration_tests.rs:377/932/1070/1123`；共享包侧 `packages/feature-core/src/workflow/registry.rs:437`、`packages/feature-core/src/workflow/scheduler.rs:223`、`packages/feature-core/src/dashboard/archive.rs:185`），其中仅 `integration_tests.rs:377` 写 `Some("1")`，同样无人读取。
 
 对比：仓库中其他"定义版本"确有实现——`packages/schema-diff/src/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。Workflow 是这些带 `CURRENT_VERSION` 校验的定义中唯一未校验的一个；另需注意 `store/settings.rs:15` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）。
 
 ### 2.4 目标解析与资源获取
 
-[`executor.rs:129`](../../../packages/feature-core/src/workflow/executor.rs)：
+[`executor.rs:130-131`](../../../packages/feature-core/src/workflow/executor.rs)：
 
 ```rust
 let workflow_connection = workflow.connection.as_deref().or(connection_id);
@@ -95,18 +95,18 @@ command 分支（[command_runtime.rs`](../../../src-tauri/src/workflow/command_r
 5. `validate_command_input` + 按 `permission_mode` 的 `check_command_access`；id 为 `"query"` / `"execute"` 时再过 `sql_guard::check_sql` 与 `mcp::permission::check_sql_allowed`；
 6. `inject_sql_target_fields(&mut input, database, schema)` 后 `driver.execute_command`。
 
-`command_runtime.rs:115-119` 的注释明确记录了目标定位策略：**不再做 session 切库**，目标随 command input 下传，由支持 `qualify_sql_target` 的驱动就地改写未限定关系名；当前 6 个 SQL 驱动（clickhouse、sqlite、duckdb、mysql、postgres、sqlserver）均已实现该方法，mongodb 虽声明 `has_multi_database` 但不走 SQL 路径。
+`commands/driver_command/execute.rs:59-62` 的注释明确记录了目标定位策略：**不再做 session 切库**，目标随 command input 下传，由支持 `qualify_sql_target` 的驱动就地改写未限定关系名；当前 6 个 SQL 驱动（clickhouse、sqlite、duckdb、mysql、postgres、sqlserver）均已实现该方法，mongodb 虽声明 `has_multi_database` 但不走 SQL 路径。
 
 ### 2.5 调度、历史与 Job
 
 | 观察 | 证据 |
 | --- | --- |
-| 调度器不包裹 Job | `scheduler.rs:176` 直接调用 `commands::workflow_execute_impl(state, id, json!({}), None)`，连接参数恒为 `None` |
+| 调度器不包裹 Job | `workflow/scheduler.rs:44-48` 直接调用 `commands::workflow_execute_impl(state, id, json!({}), None)`，连接参数恒为 `None` |
 | 调度器无资源会计 | `WorkflowScheduler` 只有 `app_handle` / `paused` / `last_run` / `in_flight` / `cancel_token`，无预算与阶段字段；间隔下限 30 秒、默认 3600 秒，进程启动首次观察只上膛不触发 |
-| Dashboard 同样不传连接 | `dashboard/execute.rs:222` 传 `None` |
+| Dashboard 同样不传连接 | `dashboard/execute.rs:71` 传 `None` |
 | MCP 入口显式可选 | `mcp/tools.rs` 的 `run_workflow` 接受 `connection_id: Option<String>`，只读模式下 `run_workflow` 被 `READ_ONLY_BLOCKED_TOOLS` 拦截 |
 | 历史按可见性写入 | `commands/workflow.rs`：`visibility == DashboardHidden` 不写历史；变量经 `migration::sanitize_variables` 脱敏 |
-| 全链路**没有平台 Job 概念** | Workflow 执行不产生 jobId、不进 `JobRepository`、没有阶段资源与检查点；连 `migration` step 也把三件套请求的 `job_id` 传 `None`（[migration.rs:509](../../../src-tauri/src/workflow/migration.rs)） |
+| 全链路**没有平台 Job 概念** | Workflow 执行不产生 jobId、不进 `JobRepository`、没有阶段资源与检查点；连 `migration` step 也把三件套请求的 `job_id` 传 `None`（[migration.rs:221](../../../src-tauri/src/workflow/migration.rs)） |
 
 ### 2.6 错误与事务
 
