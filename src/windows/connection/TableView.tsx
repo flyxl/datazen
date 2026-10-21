@@ -88,6 +88,14 @@ export function TableView({
         : undefined,
     [databaseType],
   );
+  /** Copy only: whether this database ignores case in `LIKE`. */
+  const filterLikeCaseInsensitive = useMemo(
+    () =>
+      databaseType
+        ? DB_REGISTRY[databaseType as DatabaseType]?.dataGrid?.likeCaseInsensitive === true
+        : false,
+    [databaseType],
+  );
   const isConnectionReadOnly = Boolean(
     readOnlyProp ?? (savedConnection?.readOnly || driverReadOnly),
   );
@@ -560,6 +568,7 @@ export function TableView({
         filterPanelOpen={filterPanelOpen}
         onFilterPanelOpenChange={actions.setFilterPanelOpen}
         filterOperators={filterOperators}
+        filterLikeCaseInsensitive={filterLikeCaseInsensitive}
         onAddFilter={actions.addFilter}
         onUpdateFilter={actions.updateFilter}
         onFilterLogicChange={actions.setFilterLogic}

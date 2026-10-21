@@ -28,6 +28,11 @@ export interface FilterEditorProps {
   columns: FilterColumn[];
   /** The filter operators this database serves; defaults to the shared set. */
   supportedOperators?: readonly FilterOperator[];
+  /**
+   * Whether this database ignores case in `LIKE` under its default collation.
+   * Copy only — it never changes the SQL.
+   */
+  likeCaseInsensitive?: boolean;
   /** Currently applied filters (shown in collapsed summary). */
   appliedFilters: FilterCondition[];
   appliedLogic: FilterLogic;
@@ -50,6 +55,7 @@ export interface FilterEditorProps {
 export function FilterEditor({
   columns,
   supportedOperators = SHARED_FILTER_OPERATORS,
+  likeCaseInsensitive = false,
   appliedFilters,
   appliedLogic,
   draftFilters,
@@ -360,6 +366,7 @@ export function FilterEditor({
                         index={idx}
                         columns={columns}
                         supportedOperators={supportedOperators}
+                        likeCaseInsensitive={likeCaseInsensitive}
                         onChange={onChange}
                         onRemove={onRemove}
                         onCollapse={() => setEditingIndex(null)}

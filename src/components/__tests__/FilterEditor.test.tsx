@@ -540,6 +540,22 @@ describe('FilterEditor operators and completeness', () => {
     expect(props.onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: ['open'] }));
   });
 
+  it('hints that LIKE ignores case only when the driver says so', () => {
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'like', value: '' }],
+    });
+    expect(screen.queryByTestId('filter-like-case-insensitive')).not.toBeInTheDocument();
+
+    cleanup();
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'like', value: '' }],
+      likeCaseInsensitive: true,
+    });
+    expect(screen.getByTestId('filter-like-case-insensitive')).toHaveTextContent(
+      'filter.likeCaseInsensitiveHint',
+    );
+  });
+
   it('gives every condition row its index', () => {
     renderTyped({
       draftFilters: [

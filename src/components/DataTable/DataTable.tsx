@@ -50,6 +50,11 @@ export interface DataTableProps {
    * used; a driver that declares fewer operators only offers those.
    */
   filterOperators?: readonly FilterOperator[];
+  /**
+   * Whether this database ignores case in `LIKE` under its default collation.
+   * Copy only — it never changes the query.
+   */
+  filterLikeCaseInsensitive?: boolean;
   onRemoveFilter?: (index: number) => void;
   onClearFilters?: () => void;
   onAddFilter?: (filter: FilterCondition) => void;
@@ -215,6 +220,7 @@ export function DataTable({
   filterPanelOpen = false,
   onFilterPanelOpenChange,
   filterOperators,
+  filterLikeCaseInsensitive,
   editingCell,
   selectedRows = EMPTY_SET,
   loading,
@@ -451,6 +457,7 @@ export function DataTable({
         <FilterEditor
           columns={columns}
           supportedOperators={filterOperators}
+          likeCaseInsensitive={filterLikeCaseInsensitive}
           appliedFilters={filters}
           appliedLogic={filterLogic}
           draftFilters={draftFilters}

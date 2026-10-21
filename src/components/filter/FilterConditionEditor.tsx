@@ -37,6 +37,7 @@ export function FilterConditionEditor({
   index,
   columns,
   supportedOperators,
+  likeCaseInsensitive = false,
   onChange,
   onRemove,
   onCollapse,
@@ -48,6 +49,11 @@ export function FilterConditionEditor({
   index: number;
   columns: readonly FilterColumn[];
   supportedOperators: readonly FilterOperator[];
+  /**
+   * Whether this database ignores case in `LIKE`. Copy only: the hint says
+   * what the database does, it never changes the query.
+   */
+  likeCaseInsensitive?: boolean;
   onChange: (index: number, next: FilterCondition) => void;
   onRemove: (index: number) => void;
   onCollapse: () => void;
@@ -169,14 +175,25 @@ export function FilterConditionEditor({
         className="!h-7 w-[4.75rem] shrink-0 !px-1.5 !text-xs"
       />
       {valueKind === 'single' && (
-        <FilterValueInput
-          value={filter.value == null ? '' : String(filter.value)}
-          onCommit={(value) => pushChange({ ...latestRef.current, value })}
-          placeholder={t('filter.value')}
-          autoFocus={autoFocusValue}
-          disabled={disabled}
-          onEnterComplete={onCollapse}
-        />
+        <>
+          <FilterValueInput
+            value={filter.value == null ? '' : String(filter.value)}
+            onCommit={(value) => pushChange({ ...latestRef.current, value })}
+            placeholder={t('filter.value')}
+            autoFocus={autoFocusValue}
+            disabled={disabled}
+            onEnterComplete={onCollapse}
+          />
+          {likeCaseInsensitive && filter.operator === 'like' && (
+            <span
+              className="max-w-[12rem] truncate text-[11px] text-fg-muted"
+              title={t('filter.likeCaseInsensitiveHint')}
+              data-testid="filter-like-case-insensitive"
+            >
+              {t('filter.likeCaseInsensitiveHint')}
+            </span>
+          )}
+        </>
       )}
       {valueKind === 'tokens' && (
         <FilterTokenInput
