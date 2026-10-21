@@ -10,6 +10,7 @@ use super::super::AppState;
 use super::inspect::inspect_data_transfer_impl;
 use super::jobs;
 use super::plans::{self, StoredTransferPlan, TransferCheckpointSession};
+use crate::commands::driver_protocol::driver_protocol_version;
 use crate::data_transfer::model::TableExecutionOutcome;
 use crate::data_transfer::model::TransferRunSelection;
 use crate::data_transfer::resume::TransferResumeCheckpoint;
@@ -121,7 +122,7 @@ async fn execute_sql_file_target(
     let (driver, handle, mut inspected, mut schemas) =
         load_sql_source_snapshot(state, &validation_job).await?;
     if driver.driver_type() != plan.source_driver_type
-        || plans::driver_protocol_version(driver.as_ref()) != plan.source_driver_protocol
+        || driver_protocol_version(driver.as_ref()) != plan.source_driver_protocol
     {
         return Err(CommandError::Validation(
             "source driver contract changed since preview; return to preview".into(),
@@ -146,7 +147,7 @@ async fn execute_sql_file_target(
     )
     .map_err(CommandError::from)?;
     if target_driver.driver_type() != plan.target_driver_type
-        || plans::driver_protocol_version(target_driver.as_ref()) != plan.target_driver_protocol
+        || driver_protocol_version(target_driver.as_ref()) != plan.target_driver_protocol
     {
         return Err(CommandError::Validation(
             "SQL file target dialect contract changed since preview; return to preview".into(),
@@ -483,8 +484,8 @@ pub(super) async fn validate_plan_context(
 
     if src_driver.driver_type() != plan.source_driver_type
         || tgt_driver.driver_type() != plan.target_driver_type
-        || plans::driver_protocol_version(src_driver.as_ref()) != plan.source_driver_protocol
-        || plans::driver_protocol_version(tgt_driver.as_ref()) != plan.target_driver_protocol
+        || driver_protocol_version(src_driver.as_ref()) != plan.source_driver_protocol
+        || driver_protocol_version(tgt_driver.as_ref()) != plan.target_driver_protocol
     {
         return Err(CommandError::Validation(
             "driver contract changed since preview; return to preview".into(),

@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use crate::commands::driver_protocol::driver_protocol_version;
 use crate::db::{ConnectionHandle, DatabaseDriver};
 use datazen_driver_api::{TableSchema, TableType};
 use sha2::{Digest, Sha256};
@@ -364,7 +365,7 @@ async fn resolve_sql_file(
     let (driver, handle, mut inspected, mut schemas) =
         exec::load_sql_source_snapshot(state, job).await?;
     if driver.driver_type() != plan.source_driver_type
-        || plans::driver_protocol_version(driver.as_ref()) != plan.source_driver_protocol
+        || driver_protocol_version(driver.as_ref()) != plan.source_driver_protocol
     {
         return Err(CommandError::Validation(
             "source driver contract changed since preview; return to preview".into(),
@@ -379,7 +380,7 @@ async fn resolve_sql_file(
     )
     .map_err(CommandError::from)?;
     if target_driver.driver_type() != plan.target_driver_type
-        || plans::driver_protocol_version(target_driver.as_ref()) != plan.target_driver_protocol
+        || driver_protocol_version(target_driver.as_ref()) != plan.target_driver_protocol
     {
         return Err(CommandError::Validation(
             "SQL-file target dialect contract changed since preview; return to preview".into(),

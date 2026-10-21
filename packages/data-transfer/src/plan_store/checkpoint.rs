@@ -3,8 +3,8 @@ use std::time::Instant;
 
 use uuid::Uuid;
 
-use crate::data_transfer::resume::{ResumeTableProgress, TransferResumeCheckpoint as ResumeHook};
-use crate::data_transfer::TransferError;
+use crate::resume::{ResumeTableProgress, TransferResumeCheckpoint as ResumeHook};
+use crate::TransferError;
 
 use super::{
     global_store, source_boundary_fingerprint, target_boundary_fingerprint, PlanState,
@@ -25,14 +25,14 @@ pub(super) enum ResumeCheckpointState {
 /// plan's source boundary and starts the next table transaction from its
 /// beginning.
 #[derive(Debug, Clone)]
-pub(crate) struct TransferResumeCheckpoint {
-    pub(crate) token: String,
-    pub(crate) plan_id: String,
-    pub(crate) source_boundary: String,
-    pub(crate) target_boundary: String,
-    pub(crate) selected_tables: Vec<String>,
-    pub(crate) completed_tables: Vec<String>,
-    pub(crate) resume_tables: HashMap<String, ResumeTableProgress>,
+pub struct TransferResumeCheckpoint {
+    pub token: String,
+    pub plan_id: String,
+    pub source_boundary: String,
+    pub target_boundary: String,
+    pub selected_tables: Vec<String>,
+    pub completed_tables: Vec<String>,
+    pub resume_tables: HashMap<String, ResumeTableProgress>,
     pub(super) expires_at: Instant,
     pub(super) state: ResumeCheckpointState,
 }
@@ -56,7 +56,7 @@ pub(super) fn retain_live_checkpoints(
 }
 
 impl TransferPlanStore {
-    pub(crate) fn create_checkpoint(
+    pub fn create_checkpoint(
         &self,
         plan_id: &str,
         selected_tables: Vec<String>,
@@ -195,7 +195,7 @@ impl TransferPlanStore {
         &self,
         token: &str,
         source_table: &str,
-        cursor: Vec<crate::db::Value>,
+        cursor: Vec<datazen_driver_api::Value>,
         rows_seen: u64,
     ) -> Result<(), TransferError> {
         let mut plans = self
@@ -316,7 +316,7 @@ impl TransferPlanStore {
         }
     }
 
-    pub(crate) fn peek_checkpoint(
+    pub fn peek_checkpoint(
         &self,
         token: &str,
         plan_id: &str,
@@ -367,7 +367,7 @@ impl TransferPlanStore {
         Ok((plan.clone(), saved.clone()))
     }
 
-    pub(crate) fn claim_checkpoint(
+    pub fn claim_checkpoint(
         &self,
         token: &str,
         plan_id: &str,
@@ -413,7 +413,7 @@ impl TransferPlanStore {
         Ok((plan.clone(), saved.clone()))
     }
 
-    pub(crate) fn update_checkpoint(
+    pub fn update_checkpoint(
         &self,
         token: &str,
         completed_tables: Vec<String>,
@@ -466,14 +466,14 @@ impl TransferPlanStore {
 
     /// Unknown commit/rollback outcomes are never resumable. Removing the
     /// checkpoint forces a fresh preview instead of risking duplicate writes.
-    pub(crate) fn invalidate_checkpoint(&self, token: &str) {
+    pub fn invalidate_checkpoint(&self, token: &str) {
         if let Ok(mut checkpoints) = self.checkpoints.lock() {
             checkpoints.remove(token);
         }
     }
 }
 
-pub(crate) struct TransferCheckpointSession {
+pub struct TransferCheckpointSession {
     plan_id: String,
     selected_tables: Vec<String>,
     completed_tables: Vec<String>,
@@ -483,7 +483,7 @@ pub(crate) struct TransferCheckpointSession {
 }
 
 impl TransferCheckpointSession {
-    pub(crate) fn new(
+    pub fn new(
         plan_id: impl Into<String>,
         selected_tables: Vec<String>,
         completed_tables: Vec<String>,
@@ -499,7 +499,7 @@ impl TransferCheckpointSession {
         }
     }
 
-    pub(crate) fn finish(
+    pub fn finish(
         &mut self,
         completed_tables: Vec<String>,
         partial: bool,
@@ -530,7 +530,7 @@ impl TransferCheckpointSession {
         Ok(None)
     }
 
-    pub(crate) fn abort(&mut self) {
+    pub fn abort(&mut self) {
         if let Some(token) = self.token.take() {
             global_store().invalidate_checkpoint(&token);
         }
@@ -589,7 +589,7 @@ impl ResumeHook for TransferCheckpointSession {
     fn advance_table(
         &mut self,
         source_table: &str,
-        cursor: Vec<crate::db::Value>,
+        cursor: Vec<datazen_driver_api::Value>,
         rows_seen: u64,
     ) -> Result<(), TransferError> {
         let token = self.token.as_deref().ok_or_else(|| {

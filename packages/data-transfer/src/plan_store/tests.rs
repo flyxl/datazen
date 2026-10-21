@@ -1,8 +1,8 @@
 use super::*;
-use crate::data_transfer::model::{
+use crate::model::{
     Endpoint, TransferMode, TransferOptions, TransferRunRequest, WriteMode,
 };
-use crate::data_transfer::resume::{ResumeTableProgress, TransferResumeCheckpoint};
+use crate::resume::{ResumeTableProgress, TransferResumeCheckpoint};
 
 fn job() -> TransferJob {
     TransferJob {
@@ -53,9 +53,9 @@ fn disabled_mappings_are_excluded_from_the_plan_fingerprint_scope() {
     let mut plan_job = job();
     plan_job
         .tables
-        .push(crate::data_transfer::model::TableMapping::auto("users"));
+        .push(crate::model::TableMapping::auto("users"));
     plan_job.tables.push({
-        let mut mapping = crate::data_transfer::model::TableMapping::auto("archived");
+        let mut mapping = crate::model::TableMapping::auto("archived");
         mapping.enabled = false;
         mapping
     });
@@ -119,7 +119,7 @@ fn disabled_mappings_are_excluded_from_the_plan_fingerprint_scope() {
 #[test]
 fn expired_plan_is_rejected_and_consumed_plan_is_one_shot() {
     let store = TransferPlanStore::new();
-    let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
+    let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
         plan_id: String::new(),
         pairing_path: "direct".into(),
@@ -177,8 +177,8 @@ fn run_request_rejects_client_replacement_payloads() {
 fn source_scope_fingerprint_changes_when_recordset_changes() {
     let mut first = job();
     first.tables.push({
-        let mut mapping = crate::data_transfer::model::TableMapping::auto("users");
-        mapping.recordset = Some(crate::data_transfer::model::TransferRecordset {
+        let mut mapping = crate::model::TableMapping::auto("users");
+        mapping.recordset = Some(crate::model::TransferRecordset {
             order_by: Some("id".into()),
             start: None,
             end: None,
@@ -192,7 +192,7 @@ fn source_scope_fingerprint_changes_when_recordset_changes() {
     assert_ne!(first_fingerprint, filter_fingerprint(&first).unwrap());
     first.tables[0].recordset.as_mut().unwrap().limit = Some(10);
     first.tables[0].recordset.as_mut().unwrap().start =
-        Some(crate::data_transfer::model::TransferRecordsetBound {
+        Some(crate::model::TransferRecordsetBound {
             value: serde_json::json!(2),
             inclusive: true,
         });
@@ -201,9 +201,9 @@ fn source_scope_fingerprint_changes_when_recordset_changes() {
     let recordset = first.tables[0].recordset.as_mut().unwrap();
     recordset.order_by = None;
     recordset.start = None;
-    recordset.tuple_range = Some(crate::data_transfer::model::TransferRecordsetTupleRange {
+    recordset.tuple_range = Some(crate::model::TransferRecordsetTupleRange {
         columns: vec!["tenant".into(), "sequence".into()],
-        start: Some(crate::data_transfer::model::TransferRecordsetTupleBound {
+        start: Some(crate::model::TransferRecordsetTupleBound {
             values: vec![serde_json::json!("a-雪"), serde_json::json!("-3")],
             inclusive: false,
         }),
@@ -247,8 +247,8 @@ fn source_scope_fingerprint_changes_when_recordset_changes() {
 #[test]
 fn sql_file_target_dialect_is_bound_to_the_immutable_plan() {
     let store = TransferPlanStore::new();
-    let source = crate::testing::mock_driver::MockDriver::new("postgresql", Default::default());
-    let target = crate::testing::mock_driver::MockDriver::new("mysql", Default::default());
+    let source = datazen_driver_api::mock_driver::MockDriver::new("postgresql", Default::default());
+    let target = datazen_driver_api::mock_driver::MockDriver::new("mysql", Default::default());
     let preview = TransferPreview {
         plan_id: String::new(),
         pairing_path: "sqlFile".into(),
@@ -258,7 +258,7 @@ fn sql_file_target_dialect_is_bound_to_the_immutable_plan() {
             source_table: "users".into(),
             target_table: "users".into(),
             ddl: "CREATE TABLE `users` (`id` INT)".into(),
-            kind: crate::data_transfer::DdlPreviewKind::Table,
+            kind: crate::Table,
             depends_on: vec![],
         }],
         write_plans: vec![],
@@ -268,7 +268,7 @@ fn sql_file_target_dialect_is_bound_to_the_immutable_plan() {
     };
     let mut sql_job = job();
     sql_job.target = None;
-    sql_job.sql_file_target = Some(crate::data_transfer::SqlFileTarget {
+    sql_job.sql_file_target = Some(crate {
         file_token: "opaque-file".into(),
         database_type: Some("mysql".into()),
         database: None,
@@ -319,7 +319,7 @@ fn sql_file_target_dialect_is_bound_to_the_immutable_plan() {
     );
     let mut changed_format = stored.job.clone();
     changed_format.sql_file_target.as_mut().unwrap().compression =
-        Some(crate::data_transfer::SqlFileCompression::Gzip);
+        Some(crate::Gzip);
     assert_ne!(
         stored.target_scope_fingerprint,
         target_scope_fingerprint(&changed_format).unwrap()
@@ -341,7 +341,7 @@ fn test_tester_run_request_rejects_all_client_owned_execution_payloads() {
 #[test]
 fn resume_checkpoint_is_opaque_single_flight_and_consumed_on_success() {
     let store = TransferPlanStore::new();
-    let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
+    let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
         plan_id: String::new(),
         pairing_path: "direct".into(),
@@ -387,7 +387,7 @@ fn resume_checkpoint_is_opaque_single_flight_and_consumed_on_success() {
 #[test]
 fn chunk_checkpoint_binds_progress_and_claims_the_token_once() {
     let store = TransferPlanStore::new();
-    let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
+    let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
         plan_id: String::new(),
         pairing_path: "direct".into(),
@@ -435,7 +435,7 @@ fn chunk_checkpoint_binds_progress_and_claims_the_token_once() {
         .advance_checkpoint_table(
             &token,
             "users",
-            vec![crate::db::Value::Integer(8), crate::db::Value::Integer(21)],
+            vec![datazen_driver_api::Value::Integer(8), datazen_driver_api::Value::Integer(21)],
             250,
         )
         .unwrap();
@@ -454,7 +454,7 @@ fn chunk_checkpoint_binds_progress_and_claims_the_token_once() {
         )
         .unwrap();
     store
-        .advance_checkpoint_table(&token, "orders", vec![crate::db::Value::Integer(44)], 3)
+        .advance_checkpoint_table(&token, "orders", vec![datazen_driver_api::Value::Integer(44)], 3)
         .unwrap();
     store
         .update_checkpoint(&token, vec!["users".into()], false)
@@ -474,7 +474,7 @@ fn chunk_checkpoint_binds_progress_and_claims_the_token_once() {
             .cursor
             .as_ref()
             .and_then(|v| v.first()),
-        Some(crate::db::Value::Integer(8))
+        Some(datazen_driver_api::Value::Integer(8))
     ));
     assert_eq!(checkpoint.resume_tables["orders"].rows_seen, 3);
 
@@ -485,7 +485,7 @@ fn chunk_checkpoint_binds_progress_and_claims_the_token_once() {
 #[test]
 fn test_tester_concurrent_checkpoint_claim_allows_exactly_one_and_prevents_replay() {
     let store = TransferPlanStore::new();
-    let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
+    let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
         plan_id: String::new(),
         pairing_path: "direct".into(),
@@ -568,7 +568,7 @@ fn test_tester_concurrent_checkpoint_claim_allows_exactly_one_and_prevents_repla
 
 #[test]
 fn changed_source_digest_rejects_resume_and_session_invalidates_token() {
-    let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
+    let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
         plan_id: String::new(),
         pairing_path: "direct".into(),
@@ -604,7 +604,7 @@ fn changed_source_digest_rejects_resume_and_session_invalidates_token() {
         )
         .unwrap();
     first
-        .advance_table("users", vec![crate::db::Value::Integer(100)], 100)
+        .advance_table("users", vec![datazen_driver_api::Value::Integer(100)], 100)
         .unwrap();
     let token = first.token().unwrap();
     first.finish(Vec::new(), true).unwrap();
@@ -633,7 +633,7 @@ fn changed_source_digest_rejects_resume_and_session_invalidates_token() {
 #[test]
 fn checkpoint_ttl_is_independent_from_preview_expiry_and_expires_explicitly() {
     let store = TransferPlanStore::new();
-    let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
+    let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
         plan_id: String::new(),
         pairing_path: "direct".into(),
@@ -700,7 +700,7 @@ fn run_request_accepts_only_opaque_resume_token_field() {
 }
 
 fn tester_claimed_chunk(store: &TransferPlanStore) -> (String, String) {
-    let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
+    let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
         plan_id: String::new(),
         pairing_path: "direct".into(),
@@ -771,17 +771,17 @@ fn test_tester_checkpoint_state_matrix_rejects_wrong_owner_regression_and_replay
         .advance_checkpoint_table(
             &token,
             "users",
-            vec![crate::db::Value::Integer(1), crate::db::Value::Integer(2)],
+            vec![datazen_driver_api::Value::Integer(1), datazen_driver_api::Value::Integer(2)],
             2,
         )
         .expect_err("cursor width cannot diverge from the saved key")
         .to_string()
         .contains("primary-key order"));
     store
-        .advance_checkpoint_table(&token, "users", vec![crate::db::Value::Integer(3)], 3)
+        .advance_checkpoint_table(&token, "users", vec![datazen_driver_api::Value::Integer(3)], 3)
         .unwrap();
     assert!(store
-        .advance_checkpoint_table(&token, "users", vec![crate::db::Value::Integer(2)], 2)
+        .advance_checkpoint_table(&token, "users", vec![datazen_driver_api::Value::Integer(2)], 2)
         .expect_err("checkpoint progress cannot move backwards")
         .to_string()
         .contains("primary-key order"));
@@ -959,7 +959,7 @@ fn test_tester_checkpoint_store_fails_closed_on_expiry_and_corruption_boundaries
 
 #[test]
 fn test_tester_unfinalized_checkpoint_session_drop_fences_resume_token() {
-    let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
+    let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
         plan_id: String::new(),
         pairing_path: "direct".into(),
@@ -1035,7 +1035,7 @@ fn test_tester_invalidated_session_cannot_renew_or_advance_without_token() {
         .to_string()
         .contains("invalidated"));
     assert!(session
-        .advance_table("users", vec![crate::db::Value::Integer(1)], 1)
+        .advance_table("users", vec![datazen_driver_api::Value::Integer(1)], 1)
         .expect_err("a chunk cannot advance before the opaque checkpoint exists")
         .to_string()
         .contains("was not created before writing"));
