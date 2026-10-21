@@ -101,7 +101,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 
 | 轨 | 分支 | worktree | 热 target |
 |---|---|---|---|
-| D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ✅ 已交付 `06f2f62a4` → Tester 复测中 |
+| D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ❌ Tester **TEST_FAILED**（1 阻塞行为回归）→ 第 1 轮修复中 |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 已交付 `33416cb72` → Tester `0da32120` 复测中 |
 | F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ⏳ 已派发 `29467fd8` |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 已交付 `b4abf9de8` → Tester 复测中 |
@@ -413,6 +413,25 @@ D-01 / D-03 / D-04 / D-05 全处置，并 cherry-pick 复测 Tester 的 `0d3feff
 - **5 条自检**跑的是**同一条扫描路径**（`scan_source`），不是另写一份近似实现：能红（缺字段 / 内联常量）、不假红（合规源码含各种词法陷阱）、不漏报（词法器失衡后）、扫描根非空。
 
 **收尾项**：cherry-pick 进来的 Tester 文件带 2 条 clippy warning（`clone_on_copy`、`needless_range_loop`）。协调者已核实 **CI 没有 `-D warnings`**（`.github/workflows/ci.yml` 与 `scripts/ci-local.sh`），故不会让 CI 红；但它们是**本分支新增**而非既有噪音 → 裁决让 A 修。**A 的顾虑「改验证文件容易被读成篡改验证」不成立** —— 文件 cherry-pick 进分支后就是分支代码；真正要防的是改断言，已写进约束（只做这两处、逐字回报 diff）。
+
+### D 轨复测第 1 轮（Tester `d0b18d2e`）—— TEST_FAILED，1 条阻塞行为回归
+
+**D-01（阻塞）**：仪表板 / workflow 的 IPC 命令因"身份不可用"而**整体不可用**。`AppState::organization_scope()` 走 `platform_require()`，adapter 组装失败（唯一场景：`local_principal()` 取不到 OS 用户名，即 `DATAZEN_DESKTOP_USER` 未设且 `USER`/`USERNAME` 为空）时返回 `Err`，**无回退分支**。改造前这两类命令**不依赖 adapter**，照常工作。
+
+**Tester 的差分实验把责任边界划清了（值得记）**：`env -u USER -u DATAZEN_DESKTOP_USER cargo test -p datazen --lib` → **248 failed**；临时把 `organization_scope()` 改成 `Ok(local_organization_scope())` → **243 failed，恰好 6 条恢复**（正是 D 引入的那 6 条），其余 243 条是**改造前就有**的 adapter 依赖。**修法方向是被实测验证过的**，不是推断。
+
+**权威来源已核实**：`src-tauri/src/platform/identity.rs:36` 的 `LOCAL_ORGANIZATION_ID = "datazen-desktop-local"` 就是桌面本地组织的权威来源（`from_desktop_user` 把组织硬钉在该常量，identity.rs:104；identity.rs:373-400 的 INV-01 形状断言保证它不接收任何身份参数）。**组织的值是安装级常量，与 OS 用户名能不能取到无关**（用户名只决定 `principalId`）。
+
+→ **裁决：启动期确定一次 → 存进 `AppState` → 请求期直接取**（协调者早已倾向此形态，现由 Tester 实测背书）。**并要求把 Tester 的表征用例反转** —— `the_ipc_scope_is_unavailable_when_the_platform_adapter_failed_to_assemble` 断言的是**坏的**行为，修好后必须反转为"adapter 不可用时 IPC 作用域仍可用"，这是本轮修复的核心不变量。
+**自验特别项**：`env -u USER` 下那 6 条必须恢复；其余 243 条是改造前既有的 adapter 依赖，**不是本轨责任，不得去动**。
+
+**D-02（非阻塞·语义歧义）**：跨组织删除 workflow 返回 `Ok(())`（符合"删除不存在的 id 不是错误"的既有契约，数据也没被删），但调用方会读成"删除成功"。→ **裁决：不改语义，只在 trait 契约里写清**（改成 `NotFound` 会让"删除本就不存在的 id"也变成错误，那是改变既有行为，不该由端口化顺带引入）。
+
+**D-03（非阻塞·台账口径）**：`progress.md` 说"2 条断言写法变化"，机械 diff 实测元组改写只有 1 条（`registry.rs:541`），另 1 条是补 `&scope` 参数。结论不变，计数夸大。
+
+**Tester 额外加了一条我没要求的守卫（价值很高）**：`src-tauri/src/commands/org_scope_surface_tests.rs` —— **任何 IPC 命令参数不得含身份类型**（`OrganizationScope`/`OrganizationId`/`RequestContext`/`DesktopIdentity`），且 dashboard/workflow 命令不得把 scope 做成 IPC 参数。变异实测有效（给 `workflow_get` 加 scope 参数 → 两条守卫同时红）。**这正是本 initiative 的核心命题**（租户作用域不得泄漏进 IPC 载荷），把它变成机器可查的守卫，比写在文档里可靠。
+
+**D 轨其余部分实测通过**：越权语义（读→空/`None`/`NotFound`、写→`NotFound`，全文 0 处"无权限"形态，三个 impl 各做变异确认闸门承重）、按组织播种（变异确认全局哨兵会让第二个组织拿不到内置 workflow）、feature-core 公开签名无宿主类型、IPC 表面**逐字节一致**（272 个命令的函数名+参数列表+返回类型 0 处差异）、17→27 条跨组织用例。
 
 ## 6. 门禁与流程
 
