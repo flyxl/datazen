@@ -561,7 +561,11 @@ export interface GridSelection {
    > - `mode === 'none'` → **等同清空**：`gridSelection` + `selectedRows` + `lastSelectedIndex` 三件一起清。否则 `Escape`/点空白只清区域、整行高亮残留（这是实测缺陷 GS-D4 的附加面）。
    > - `mode === 'cell'` / `'row'` → **清空 `selectedRows`**，行集只能由 `applyRowModeTransition`（`selectRow` / 全选）与 `setRowModeSelection(panelId, rowIndex | null)` 这一对动作**和 mode 一起写入**。
    >
-   > 推论（下游分册必须遵守）：**「只改 mode、保留行集」不是合法操作**。若 04/05/03 需要这类语义，必须走 `setRowModeSelection`，不得直接 `setGridSelection({mode:'row', …})` 绕过行集写入——绕过就会重新造出「`mode: 'row'` 但 `selectedRows` 为空」的不一致态。同理，`toggleSelectAll` 也必须切到 `row` 模式，否则全选会留下「`mode: 'none'` + 非空 `selectedRows`」。
+   > **合法例外的边界（2026-10-21 第 2 轮复测后补）**：契约禁止的是「`none` / `cell` + **非空** `selectedRows`」这种**两套真相并存**，**不是**「`row` + **空**行集」。后者是正常状态——`toggleSelectAll` 反选到 0 行、`selectRow` 点同一行取消，都会自然产生「仍在 row 模式但一行没选」。**不要**为此加「空行集就退回 `none`」的逻辑：那会让「取消最后一行后按 Shift 连选」失去锚点语义。
+>
+> 另：`deleteRows` 这类**不改变选择语义**的动作**不得**写 `selectedRows` / `lastSelectedIndex`（删除定位由 `rowIdentityAnchors` 承担）；要保留「删后仍选中」的视觉，必须走 `setRowModeSelection` 与 mode 成对写入。实测偏差 GS2-D2 即此类。
+>
+> 推论（下游分册必须遵守）：**「只改 mode、保留行集」不是合法操作**。若 04/05/03 需要这类语义，必须走 `setRowModeSelection`，不得直接 `setGridSelection({mode:'row', …})` 绕过行集写入——绕过就会重新造出「`mode: 'row'` 但 `selectedRows` 为空」的不一致态。同理，`toggleSelectAll` 也必须切到 `row` 模式，否则全选会留下「`mode: 'none'` + 非空 `selectedRows`」。
 
    #### 4.2.1 `rowsCoveredBySelection` 的冻结签名（**唯一合法形状**）
 
