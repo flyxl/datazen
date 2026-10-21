@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Columns3, ShieldAlert } from 'lucide-react';
-import { DataTable, DATA_TABLE_ROW_HEIGHT } from '../../components/DataTable/DataTable';
+import { DataTable } from '../../components/DataTable/DataTable';
+import { DATA_TABLE_ROW_HEIGHT } from '../../components/DataTable/rowHeight';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { TableColumnFilter } from './TableColumnFilter';
 import { useTableDataStore } from '../../stores/tableDataStore';

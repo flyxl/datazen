@@ -24,6 +24,7 @@ import { useDataTableContextMenu } from './useDataTableContextMenu';
 import { DataExportDialog } from './DataExportDialog';
 import { cn } from '../../lib/cn';
 import { Spinner } from '../ui/Spinner';
+import { DATA_TABLE_ROW_HEIGHT } from './rowHeight';
 
 export interface DataTableProps {
   columns: ColumnDef[];
@@ -186,15 +187,6 @@ const NOOP = () => {};
 const EMPTY_SET = new Set<number>();
 const EMPTY_SORTS: SortCondition[] = [];
 const EMPTY_FILTERS: FilterCondition[] = [];
-
-/**
- * The height of one grid row, in pixels.
- *
- * It is stated here and handed to the grid by its owners, so the viewport
- * anchor of the foreign-key navigation (a row index) and the grid agree on
- * what a row is (DB-07).
- */
-export const DATA_TABLE_ROW_HEIGHT = 28;
 
 export function DataTable({
   columns,
