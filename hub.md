@@ -53,7 +53,7 @@ GC-D1 我给了两个子判据：「产物里 grep ≥ 1（证明接线存在）
 
 | # | 事项 | 谁负责 | 触发条件 |
 | --- | --- | --- | --- |
-| D1 | `src/types/index.ts` **838 行（既有超标）**，轨 B 净增 +1 → 839。**裁定：接受记账，不在功能轨里拆** | **Wave 3 `insert-frontend` 第一件事**（与 D11 的 `panelStore` 拆分一起做，同属 file-first 迁移） | 理由：838 是既有超标、非本轨引入；拆分有"index 与领域文件各声明一份、应用导入 index 副本"的**静默漂移**风险（搬走声明就换了应用实际导入的那一份）；在功能轨里做风险高于收益。**硬约束：本轨不得再增长（保持 ≤839）** |
+| D1 | `src/types/index.ts` **838 行（既有超标）**，轨 B 净增 +1 → 839。**裁定：接受记账，不在功能轨里拆** | **下一个真正碰到 `src/types/index.ts` 的轨**（**修正**：原写"Wave 3 insert-frontend"，但按 04 分册 Step 7/8，它只碰 `src/stores/tableData/types.ts` 与 `src/stores/tableDataStore.ts`，**不碰** `src/types/index.ts`；真正会碰它的是 09/10 等册） | 理由：838 是既有超标、非本轨引入；拆分有"index 与领域文件各声明一份、应用导入 index 副本"的**静默漂移**风险（搬走声明就换了应用实际导入的那一份）；在功能轨里做风险高于收益。**硬约束：碰到它的轨不得再增长（保持 ≤839）** |
 | D2 | 07 的 `embedded_schema_of` 提升（宿主 `commands/schema.rs:13` 私有 fn） | 07 轨开工第一步 | 07 开工时。提升后**严禁两边各留一份实现** |
 | D3 | 桌面 `unsupportedMethods` 里那 5 条 | 07 / 08 / 09 各自落地 Rust 命令时 | 那条"读 run.rs 比对是否注册/是否声明"的交叉核对测试**会红**，要求同步删声明——这是设计好的提醒 |
 | D4 | `TEST-INFRA-001` 的**残留 → 轨 B 第 3 轮修**：`tsc` 读侧完全没被锁覆盖，**两个**失败模式——TS6053（并发 typecheck **15%**）+ 「故意违规的夹具被类型检查」（约 **2–3%**，合计 **17–18%**） | 轨 B 第 3 轮（已下发） | 根 `tsconfig.json` + `packages/ui/tsconfig.json` + `packages/backend-client/tsconfig.json` **各加** `exclude: ["**/__boundaryProbe__*", "**/__uiBoundaryProbe__*"]`。**`tsc` 是独立进程，拿不到 vitest 进程内的 `mkdir` 锁**；让它持锁会把 typecheck 与 88s 的 vitest 串行化，且防不住「探针被类型检查」 |
