@@ -8,18 +8,20 @@ use super::super::AppState;
 use super::apply::generate_data_sync_sql_impl;
 use super::comparison_store::{ComparisonStore, ComparisonTableMetadata};
 use super::host::state::StoredSelection;
-use super::plans::{self, SelectionMatcher, StoredSyncPlan, SyncRunRequest, SyncRunSelection};
 #[cfg(test)]
 use crate::data_sync::execute_statement_batches_with_policy;
 #[cfg(test)]
 use crate::data_sync::execute_statements;
 use crate::data_sync::job::ApplySpec;
+use crate::data_sync::plan_store::{
+    self as plans, SelectionMatcher, StoredSyncPlan, SyncRunRequest, SyncRunSelection,
+};
 use crate::data_sync::{
     DataSyncError, ExecutionResult, IdentityInsertTarget, StatementBatchSource, StatementExecutor,
     SyncOptions,
 };
-use crate::db::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 use async_trait::async_trait;
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::JobState;
 use futures_util::FutureExt;
@@ -601,12 +603,12 @@ pub(crate) async fn start_data_sync_apply_job_impl(
         .unwrap_or_else(|| format!("data-sync-{}", uuid::Uuid::new_v4()));
     let requested_job_id = job_id.clone();
     let source_endpoint = crate::data_sync::Endpoint {
-        connection_id: sessions.source_id.clone(),
+        db_session_id: sessions.source_id.clone(),
         database: plan.source_database.clone(),
         schema: plan.source_schema.clone(),
     };
     let target_endpoint = crate::data_sync::Endpoint {
-        connection_id: sessions.target_id.clone(),
+        db_session_id: sessions.target_id.clone(),
         database: plan.target_database.clone(),
         schema: plan.target_schema.clone(),
     };
@@ -853,8 +855,8 @@ pub(crate) async fn execute_data_sync_impl(
 mod tests {
     use super::super::jobs_contract;
     use super::*;
-    use crate::commands::sync::plans::{SyncRunSelection, SyncSelectionMode, SyncTableSelection};
     use crate::data_sync::execute::RecordingExecutor;
+    use crate::data_sync::plan_store::{SyncRunSelection, SyncSelectionMode, SyncTableSelection};
     use crate::data_sync::{
         ChangeOperation, ComparisonResult, ConflictPolicy, RowChange, TableResult,
     };

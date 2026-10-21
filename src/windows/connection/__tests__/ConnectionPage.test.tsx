@@ -363,7 +363,7 @@ beforeEach(() => {
   webviewGetAllMock.mockResolvedValue([{ label: 'main' }]);
   localStorage.clear();
   getActiveConnectionState.mockReturnValue({ connections: {} });
-  connectMock.mockResolvedValue('conn-live-1');
+  connectMock.mockResolvedValue({ connectionId: 'cfg-1', dbSessionId: 'conn-live-1' });
   releaseConnectionMock.mockResolvedValue(true);
   pingMock.mockResolvedValue(undefined);
   Object.defineProperty(globalThis, '__TAURI_INTERNALS__', {
@@ -479,12 +479,11 @@ describe('ConnectionPage', () => {
   });
 
   it('TC-window: shows loading spinner while connect is pending', async () => {
-    let resolveConnect: (v: string) => void = () => {};
+    let resolveConnect: (v: { connectionId: string; dbSessionId: string }) => void = () => {};
     connectMock.mockImplementation(
-      () =>
-        new Promise<string>((resolve) => {
-          resolveConnect = resolve;
-        }),
+      () => new Promise<{ connectionId: string; dbSessionId: string }>((resolve) => {
+        resolveConnect = resolve;
+      }),
     );
     setPendingConnection({
       connectionId: 'cfg-slow',
@@ -498,7 +497,7 @@ describe('ConnectionPage', () => {
     });
     // ContentView is hidden while connecting to avoid duplicate loading indicators
     expect(screen.queryByTestId('mock-content-view')).not.toBeInTheDocument();
-    resolveConnect('conn-slow');
+    resolveConnect({ connectionId: 'cfg-slow', dbSessionId: 'conn-slow' });
     await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
   });
 

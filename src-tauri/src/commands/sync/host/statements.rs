@@ -15,7 +15,7 @@ use crate::data_sync::{
     generate_table_sql_with_qualified_table_and_policy, ChangeOperation, DataSyncError, RowChange,
     SqlStatement, SyncOptions, TableChangeSet, TableMappingStatus, TableResult,
 };
-use crate::db::{LegacySqlDialect, SqlDialect};
+use datazen_driver_api::{LegacySqlDialect, SqlDialect};
 
 use super::super::apply::{
     identity_insert_target_for_projection, resolve_projection_types, sqlserver_write_preflight,

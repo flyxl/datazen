@@ -5,7 +5,7 @@
 >
 > - 基线：`8592b0fe1`（2026-09-30）。
 > - 代码核对时的工作区 HEAD 为 `e544e0699`（2026-09-30 21:08）。`8592b0fe1` 是 HEAD 的祖先，两者相差 4 个提交；`git diff --stat 8592b0fe1..HEAD -- packages/drivers packages/driver-api` 输出为空，因此本文的全部代码结论对两个基线一致。
-> - **基线之后的迁移提示（后补，不改变上文的证据基线）**：此后发生两件事——（1）宿主驱动注册表已迁至 `packages/runtime/src/driver_registry/registry.rs`，宿主侧只保留 re-export 门面；（2）`PROTOCOL_VERSION` 在 `packages/driver-api` 侧已升到当前值 6。本文后文引用的 `src-tauri/src/db/registry.rs` 及其行号、以及代码块中的 `PROTOCOL_VERSION = 4`（连同 `// lib.rs:99` 行号）**仍指上述基线**，不是当前代码位置。
+> - **基线之后的迁移提示（后补，不改变上文的证据基线）**：此后发生两件事——（1）宿主驱动注册表已迁至 `packages/runtime/src/driver_registry/registry.rs`，宿主侧的 re-export 门面随后也已删除，调用点直接引用 runtime 路径；（2）`PROTOCOL_VERSION` 在 `packages/driver-api` 侧已升到当前值 6。本文后文引用的 `src-tauri/src/db/registry.rs` 及其行号、以及代码块中的 `PROTOCOL_VERSION = 4`（连同 `// lib.rs:99` 行号）**仍指上述基线**，不是当前代码位置。
 > - 配套文档：[连接与资源运行时设计](connection-management.md)（下称「连接管理」）、[平台开发计划](../../development/platform-development-plan.md)、[Driver API 依赖边界](../../development/driver-api-dependency-boundary.md)。
 > - 独立开发与发布的约束另见 [可选驱动](../../development/optional-drivers.md) 与 [独立驱动开发指南](../../development/independent-driver-development.zh-CN.md)。
 
@@ -334,7 +334,7 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:131
 - `packages/runtime/src/driver_registry/registry.rs:155-181`：`pv < MIN_PROTOCOL_VERSION` → 硬拒绝（`return Err`）；`pv > PROTOCOL_VERSION` → **只有 `tracing::warn!`，并不拒绝**，随后照常加载；`MIN <= pv < PROTOCOL_VERSION` → `warn!` 提示降级后照常加载，代码里**没有**把任何能力强制改写为 `false`——降级模式只是打日志，驱动仍按 factory 自己声明的能力运行。
 - `packages/ai-providers/src/registry.rs:317-341`：`pv < MIN_AI_PROTOCOL_VERSION` → `tracing::error!` + `continue`，跳过注册；`pv > AI_PROTOCOL_VERSION` → 同样只 `warn!` 后照常注册；`pv < AI_PROTOCOL_VERSION` → `warn!` 降级提示。
 
-数据迁移另有独立校验：plan 里携带 `plan.source_driver_protocol` / `plan.target_driver_protocol`，执行时再次核对（`src-tauri/src/commands/data_transfer/exec.rs:124,149,486-487`，取值辅助函数 `plans::driver_protocol_version` 在 `plans.rs:166`）。
+数据迁移另有独立校验：plan 里携带 `plan.source_driver_protocol` / `plan.target_driver_protocol`，执行时再次核对（`src-tauri/src/commands/data_transfer/exec.rs:124,149,486-487`，取值辅助函数是 `datazen_driver_api::driver_protocol_version`（`packages/driver-api/src/factory.rs`），Data Sync 与 Data Transfer 共用同一实现）。
 
 **治理决定（2026-10-21）**：仓库当前没有任何外部驱动（path 驱动全部在本仓内，git 驱动以钉死 `ref` 的形式按需引入），协议版本随之**冻结在 6**，`MIN` 停在 1。在这一前提下，「声明更高协议版本的驱动」在当前快照中不可能出现，`pv > PROTOCOL_VERSION` 分支只是警告后照常加载这件事**在冻结期内是空路径**；若未来又出现外部驱动生态，必须先重新定案该分支的处置（硬拒绝或加载并标记不可用，且不得以下调 `MIN` 绕过），再接入外部驱动。
 

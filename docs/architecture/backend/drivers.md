@@ -73,7 +73,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 - 默认实现输出 `LIMIT {n} OFFSET {m}`；驱动声明 `supports_offset() == false`（`superset`）时自动退化为 `LIMIT {n}`。
 - `requires_order_by == true` 时，Host 仅在**调用方没有排序**时补 `order_by_fallback`；用户显式排序优先，不叠加兜底排序。
-- 调用点：`src-tauri/src/services/query_executor.rs::build_select_sql`、`packages/data-transfer/src/execute.rs`、`packages/data-sync/src/keyset.rs`、`src-tauri/src/commands/sync/keyset_source.rs`。`data_transfer` 仍以 `supports_offset()` 作为翻页循环的终止条件（不能 OFFSET 的引擎不继续翻页），不参与 SQL 拼接。
+- 调用点：`packages/feature-core/src/services/query_executor.rs::build_select_sql`、`packages/data-transfer/src/execute.rs`、`packages/data-sync/src/keyset.rs`、`src-tauri/src/commands/sync/keyset_source.rs`。`data_transfer` 仍以 `supports_offset()` 作为翻页循环的终止条件（不能 OFFSET 的引擎不继续翻页），不参与 SQL 拼接。
 - 设置项 `limitSelectResults` 不生成 SQL：它把 `limit` 传给驱动命令，由驱动截断结果集（SQL Server 的做法见 §2.3）。
 
 ### 2.3 方言要点：SQL Server
@@ -223,7 +223,7 @@ Data Sync 的同族结构门闸和 Data Transfer 的 IR pairing 不应混为一�
 
 ## 6. Driver Registry
 
-Driver Registry 实现在 `packages/runtime/src/driver_registry/`（`datazen_runtime::driver_registry`），与 SchemaCache 同处共享 runtime 内核；`src-tauri/src/db/mod.rs` 只是 re-export 门面，同时 re-export Driver API 与 `registry` 模块，宿主连接层统一改走 runtime 路径后即删除。
+Driver Registry 实现在 `packages/runtime/src/driver_registry/`（`datazen_runtime::driver_registry`），与 SchemaCache 同处共享 runtime 内核。宿主原 `src-tauri/src/db/` 门面已删除，连接层统一直接引用 `datazen_runtime::driver_registry` 与 `datazen_driver_api`。
 
 Driver 通过 inventory 在编译期注册。构建时由 registry / build tooling 决定哪些 Driver 被编译进 DataZen。
 

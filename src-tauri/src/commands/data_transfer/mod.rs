@@ -1,12 +1,12 @@
 //! Data Transfer IPC commands.
 
+use crate::data_transfer::plan_store as plans;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 mod exec;
 mod inspect;
 mod job_api;
 mod jobs;
-mod plans;
 mod preview;
 mod types;
 

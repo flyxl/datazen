@@ -1,8 +1,15 @@
-use super::chat::is_db_tool;
 use super::*;
-use crate::ai::*;
 use crate::commands::workflow_list_impl;
 use datazen_ai_api::AiProviderType;
+use datazen_ai_api::*;
+use datazen_ai_providers::*;
+use datazen_feature_core::ai::response::{
+    extract_json_boundary, inject_language_hint, strip_markdown_fences, truncate_str,
+};
+use datazen_feature_core::ai::schema_pipeline::{
+    compose_schema_system_suffix, PromptSeed, SchemaContextPipeline,
+};
+use datazen_feature_core::ai::tools::{classify_tool, is_db_tool, ToolKind};
 
 #[test]
 fn test_provider_list_item_serialization() {

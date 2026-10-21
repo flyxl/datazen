@@ -7,7 +7,7 @@ use super::{
 use datazen_driver_api::{ConnectionConfig, ConnectionHandle, TableSchema};
 use std::{
     collections::HashMap,
-    sync::LazyLock,
+    sync::OnceLock,
     time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
@@ -46,8 +46,13 @@ pub struct ReviewedSourceSnapshot {
     pub table_dependency_catalog: Vec<SchemaObjectDependencySnapshot>,
 }
 
-static PLANS: LazyLock<Mutex<HashMap<String, ReviewedPlan>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static PLANS: OnceLock<Mutex<HashMap<String, ReviewedPlan>>> = OnceLock::new();
+
+/// The plan registry lives for the process; `OnceLock` keeps the workspace
+/// MSRV (1.77) unlike `LazyLock` (stable 1.80).
+fn plans() -> &'static Mutex<HashMap<String, ReviewedPlan>> {
+    PLANS.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 pub fn identity(config: &ConnectionConfig) -> serde_json::Value {
     serde_json::json!({"driver":config.database_type,"host":config.host,"port":config.port,
@@ -251,7 +256,7 @@ async fn freeze_internal(
 ) {
     let id = uuid::Uuid::new_v4().to_string();
     plan.plan_id = Some(id.clone());
-    let mut plans = PLANS.lock().await;
+    let mut plans = plans().lock().await;
     plans.retain(|_, p| p.created.elapsed() < Duration::from_secs(1800));
     // Keep memory bounded even when a window repeatedly prepares a plan.
     if plans.len() >= 128 {
@@ -298,7 +303,7 @@ pub async fn consume(
         .plan_id
         .as_ref()
         .ok_or("Prepare and review a new plan before deploying")?;
-    let mut plans = PLANS.lock().await;
+    let mut plans = plans().lock().await;
     let frozen = plans
         .get(id)
         .ok_or("Plan expired or already executed; compare again")?;

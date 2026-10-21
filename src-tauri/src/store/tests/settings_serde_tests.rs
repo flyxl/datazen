@@ -64,7 +64,7 @@ fn settings_json_roundtrip_preserves_language() {
 
 #[test]
 fn monitor_settings_json_roundtrip() {
-    use crate::dashboard::types::MonitorSettings;
+    use datazen_feature_core::dashboard::types::MonitorSettings;
 
     let settings = AppSettings {
         monitor: MonitorSettings {

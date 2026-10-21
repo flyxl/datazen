@@ -21,9 +21,9 @@ pub(crate) async fn save_sync_task_direct_impl(
 struct ResolvedTaskEndpoint {
     db_session_id: String,
     dedicated: bool,
-    driver: std::sync::Arc<dyn crate::db::DatabaseDriver>,
-    handle: crate::db::ConnectionHandle,
-    config: crate::db::ConnectionConfig,
+    driver: std::sync::Arc<dyn datazen_driver_api::DatabaseDriver>,
+    handle: datazen_driver_api::ConnectionHandle,
+    config: datazen_driver_api::ConnectionConfig,
 }
 
 async fn release_task_endpoint(state: &AppState, endpoint: &ResolvedTaskEndpoint) {

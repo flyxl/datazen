@@ -1,8 +1,8 @@
 use super::*;
-use crate::db::Value;
-use crate::services::SortCondition;
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
+use datazen_driver_api::Value;
+use datazen_feature_core::services::query_executor::SortCondition;
 use std::collections::HashMap;
 
 #[tokio::test]
@@ -71,7 +71,7 @@ async fn schema_commands_with_connected_mock() {
 
 #[tokio::test]
 async fn get_er_data_errors_when_no_table_metadata_is_readable() {
-    use crate::db::{TableInfo, TableType};
+    use datazen_driver_api::{TableInfo, TableType};
 
     // Schema-level driver that never supplies a schema (no explicit filter,
     // table schema None, no default): every ExactSchema metadata read fails
@@ -125,7 +125,7 @@ async fn schema_commands_error_when_not_connected() {
 
 #[tokio::test]
 async fn get_table_data_with_query_rows() {
-    use crate::db::{ColumnSchema, TableInfo, TableType};
+    use datazen_driver_api::{ColumnSchema, TableInfo, TableType};
 
     let opts = MockDriverOptions {
         databases: vec!["app".into()],
@@ -169,8 +169,8 @@ async fn get_table_data_with_query_rows() {
     assert_eq!(data.rows.len(), 1);
 }
 
-fn col(name: &str) -> crate::db::ColumnSchema {
-    crate::db::ColumnSchema {
+fn col(name: &str) -> datazen_driver_api::ColumnSchema {
+    datazen_driver_api::ColumnSchema {
         name: name.into(),
         data_type: "text".into(),
         nullable: true,
@@ -351,9 +351,9 @@ async fn privileges_map_grantee_and_skip_incomplete_rows() {
 
 #[tokio::test]
 async fn get_table_data_joins_filters_with_or() {
-    use crate::db::{TableInfo, TableType};
-    use crate::services::query_executor::FilterOperator;
-    use crate::services::FilterCondition;
+    use datazen_driver_api::{TableInfo, TableType};
+    use datazen_feature_core::services::query_executor::FilterCondition;
+    use datazen_feature_core::services::query_executor::FilterOperator;
 
     let opts = MockDriverOptions {
         databases: vec!["app".into()],
@@ -450,7 +450,7 @@ async fn get_table_data_reads_the_target_database_without_switching() {
 /// own `(database, schema)` target.
 #[tokio::test]
 async fn get_er_data_reads_each_tables_own_schema_and_never_caches_empty() {
-    use crate::db::{ColumnSchema, TableInfo, TableType};
+    use datazen_driver_api::{ColumnSchema, TableInfo, TableType};
 
     fn column(name: &str) -> ColumnSchema {
         ColumnSchema {

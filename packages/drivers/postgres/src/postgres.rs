@@ -86,6 +86,13 @@ impl DatabaseDriver for PostgresDriver {
         Some(std::sync::Arc::new(super::PostgresMigrationRenderer))
     }
 
+    /// PostgreSQL's own dialect SQL for the shared schema-object commands.
+    fn schema_object_sql(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::schema_object_sql::SchemaObjectSql>> {
+        Some(std::sync::Arc::new(super::PostgresSchemaObjectSql))
+    }
+
     fn migration_capabilities(
         &self,
     ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {

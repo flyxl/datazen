@@ -94,7 +94,7 @@ pub struct PlatformAdapter {
     services: std::sync::OnceLock<Arc<ApplicationServices>>,
     runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
     profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
-    driver_registry: std::sync::OnceLock<Arc<crate::db::DriverRegistry>>,
+    driver_registry: std::sync::OnceLock<Arc<datazen_runtime::driver_registry::DriverRegistry>>,
     target_metadata: std::sync::OnceLock<super::target_metadata::TargetMetadataCache>,
     target_metadata_gate: std::sync::Mutex<()>,
     /// 出向端口适配器。未接线是配置事实（`None`），不是故障。
@@ -250,7 +250,7 @@ impl PlatformAdapter {
     pub fn inject(
         &self,
         store: Arc<crate::store::Store>,
-        registry: Arc<crate::db::DriverRegistry>,
+        registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
     ) -> Result<(), ApiError> {
         if self.services.get().is_some() {
             return Ok(());
@@ -568,7 +568,7 @@ impl PlatformAdapter {
 
         let shape = super::target_metadata::namespace_shape(provider.namespace_shape());
         // Description only: the command catalogue is listed here, never executed.
-        let catalog = crate::db::LegacyCommandCatalog::new(driver.as_ref());
+        let catalog = datazen_driver_api::LegacyCommandCatalog::new(driver.as_ref());
         let mut commands = std::collections::HashMap::new();
         for definition in catalog.command_definitions() {
             if let Some(requirements) = catalog.target_requirements(&definition.id) {

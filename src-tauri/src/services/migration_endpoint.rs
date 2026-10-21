@@ -6,7 +6,7 @@ pub(crate) struct RuntimeSessionContext {
     pub(crate) view: datazen_platform_api::dto::session::SessionView,
     pub(crate) driver: std::sync::Arc<dyn datazen_driver_api::DatabaseDriver>,
     pub(crate) handle: datazen_driver_api::ConnectionHandle,
-    pub(crate) config: crate::db::ConnectionConfig,
+    pub(crate) config: datazen_driver_api::ConnectionConfig,
     pub(crate) _lease: datazen_runtime::application::LiveConnectionLease,
 }
 
@@ -164,7 +164,7 @@ pub(crate) async fn session_identity(
         config.database = normalized(Some(database))
             .or_else(|| normalized(config.database.as_deref()))
             .map(str::to_owned);
-        config.schema = crate::services::metadata_schema(
+        config.schema = datazen_feature_core::services::schema_scope::metadata_schema(
             driver.as_ref(),
             schema,
             None,

@@ -1,9 +1,10 @@
 //! AI provider configuration IPC commands.
 
-use crate::ai::*;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
 use datazen_ai_api::AiProviderConfig;
+use datazen_ai_api::*;
+use datazen_ai_providers::*;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
@@ -54,9 +55,9 @@ pub async fn ai_fetch_remote_models(
     api_key: String,
 ) -> Result<Vec<ModelInfo>, CommandError> {
     let proto = match protocol.as_str() {
-        "open_ai_compatible" => crate::ai::custom::CustomProtocol::OpenAiCompatible,
-        "open_ai_responses" => crate::ai::custom::CustomProtocol::OpenAiResponses,
-        "anthropic_compatible" => crate::ai::custom::CustomProtocol::AnthropicCompatible,
+        "open_ai_compatible" => datazen_ai_providers::custom::CustomProtocol::OpenAiCompatible,
+        "open_ai_responses" => datazen_ai_providers::custom::CustomProtocol::OpenAiResponses,
+        "anthropic_compatible" => datazen_ai_providers::custom::CustomProtocol::AnthropicCompatible,
         other => {
             return Err(CommandError::Validation(format!(
                 "Unknown protocol: {other}"
@@ -64,7 +65,7 @@ pub async fn ai_fetch_remote_models(
         }
     };
 
-    crate::ai::custom::fetch_remote_models_with_client(
+    datazen_ai_providers::custom::fetch_remote_models_with_client(
         datazen_ai_providers::http::HttpClient::desktop(),
         proto,
         &endpoint,

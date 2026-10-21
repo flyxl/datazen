@@ -183,6 +183,13 @@ impl std::hash::Hasher for FileIdentityHasher {
 
 #[async_trait]
 impl DatabaseDriver for SqliteDriver {
+    /// This driver's own dialect SQL for the shared schema-object commands.
+    fn schema_object_sql(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::schema_object_sql::SchemaObjectSql>> {
+        Some(std::sync::Arc::new(crate::SqliteSchemaObjectSql))
+    }
+
     fn supports_bound_writes(&self) -> bool {
         true
     }

@@ -12,10 +12,10 @@ use serde_json::{Map, Value};
 use tauri::http;
 
 use super::protocol::{
-    content_type_for, parse_datazen_uri, route_datazen_request, safe_relative_path, DatazenOutcome,
-    WAPPS_OPEN_PAGE_EVENT,
+    parse_datazen_uri, route_datazen_request, DatazenOutcome, WAPPS_OPEN_PAGE_EVENT,
 };
 use super::{parse_manifest, WappManager};
+use datazen_workspace_apps::protocol::{content_type_for, safe_relative_path};
 
 const MANIFEST: &str = r#"{
   "id": "acme.bill-audit",

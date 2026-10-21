@@ -23,7 +23,7 @@ use datazen_runtime::job::{InMemoryJobRepository, SharedClock};
 
 use crate::data_sync::job::ChangeSetArtifact;
 
-use super::super::plans::SyncRunSelection;
+use crate::data_sync::plan_store::SyncRunSelection;
 use crate::data_sync::SyncOptions;
 
 /// Deterministic clock origin: Job bookkeeping must not depend on wall time.

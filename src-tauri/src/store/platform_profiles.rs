@@ -1,5 +1,5 @@
 use super::{Store, StoreError};
-use crate::db::ConnectionConfig;
+use datazen_driver_api::ConnectionConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

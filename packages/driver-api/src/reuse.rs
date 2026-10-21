@@ -147,6 +147,10 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.migration_renderer()
     }
 
+    fn schema_object_sql(&self) -> Option<Arc<dyn crate::schema_object_sql::SchemaObjectSql>> {
+        self.inner.schema_object_sql()
+    }
+
     fn migration_capabilities(&self) -> Option<Arc<dyn MigrationCapabilities>> {
         self.inner.migration_capabilities()
     }

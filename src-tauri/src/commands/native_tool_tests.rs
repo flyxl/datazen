@@ -24,7 +24,7 @@ async fn state(path: &Path) -> AppState {
     let store = Arc::new(crate::store::Store::init_with_path(path).await.unwrap());
     crate::finish_app_state(
         store,
-        Arc::new(crate::db::init_drivers()),
+        Arc::new(datazen_runtime::driver_registry::init_drivers()),
         Arc::new(crate::transfer::adapter_registry::SyncAdapterRegistry::new()),
         None,
     )

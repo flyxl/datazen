@@ -1,7 +1,7 @@
 //! Claimed-plan Data Transfer execution and checkpoint finalization.
 
 use super::*;
-use crate::db::{LegacySqlDialect, SqlDialect};
+use datazen_driver_api::{LegacySqlDialect, SqlDialect};
 
 fn validate_structure_selection(
     plan: &StoredTransferPlan,

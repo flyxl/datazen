@@ -1,8 +1,24 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{ConnectionConfig, DriverCategory, ServerInfo};
+use datazen_driver_api::{ConnectionConfig, DriverCategory, ServerInfo};
 use datazen_platform_api::error::ApiErrorCode;
+use serde::{Deserialize, Serialize};
 use tauri::State;
+
+/// Self-describing result of `connect` / `connect_dedicated`.
+///
+/// The two ids are different concepts ([docs/architecture/naming.md]):
+/// `connectionId` is the persistent connection-config id (survives restart),
+/// `dbSessionId` is the runtime database session id (in-memory only, never
+/// persisted). Returning both in a typed payload instead of a bare `String`
+/// makes that boundary explicit and keeps callers from guessing which id the
+/// value is.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionSessionRef {
+    pub connection_id: String,
+    pub db_session_id: String,
+}
 
 fn redact_connection_secrets(config: &mut ConnectionConfig) {
     config.password = None;
@@ -19,7 +35,7 @@ fn redact_connection_secrets(config: &mut ConnectionConfig) {
     }
 }
 
-fn redact_ssh_secrets(ssh: &mut crate::db::SshTunnelConfig) {
+fn redact_ssh_secrets(ssh: &mut datazen_driver_api::SshTunnelConfig) {
     ssh.password = None;
     ssh.passphrase = None;
     if let Some(jump) = ssh.jump.as_deref_mut() {
@@ -57,8 +73,8 @@ fn merge_missing_connection_secrets(config: &mut ConnectionConfig, saved: Connec
 }
 
 fn merge_missing_ssh_secrets(
-    current: &mut crate::db::SshTunnelConfig,
-    saved: crate::db::SshTunnelConfig,
+    current: &mut datazen_driver_api::SshTunnelConfig,
+    saved: datazen_driver_api::SshTunnelConfig,
 ) {
     if current.password.is_none() {
         current.password = saved.password;
@@ -179,7 +195,7 @@ pub(crate) async fn test_connection_impl(
 pub(crate) async fn connect_impl(
     state: &AppState,
     connection_id: String,
-) -> Result<String, CommandError> {
+) -> Result<ConnectionSessionRef, CommandError> {
     log_ipc_identity(state, "connect");
     tracing::info!(%connection_id, "connect");
     let config = state
@@ -203,14 +219,17 @@ pub(crate) async fn connect_impl(
     .await?;
 
     tracing::info!(db_session_id = %db_session_id, "connect OK");
-    Ok(db_session_id)
+    Ok(ConnectionSessionRef {
+        connection_id: connection_id.clone(),
+        db_session_id,
+    })
 }
 
 pub(crate) async fn connect_dedicated_impl(
     state: &AppState,
     connection_id: String,
     database: Option<String>,
-) -> Result<String, CommandError> {
+) -> Result<ConnectionSessionRef, CommandError> {
     log_ipc_identity(state, "connect_dedicated");
     tracing::info!(%connection_id, database = ?database, "connect_dedicated");
     let database = match database {
@@ -254,7 +273,10 @@ pub(crate) async fn connect_dedicated_impl(
     }
 
     tracing::info!(db_session_id = %db_session_id, "connect_dedicated OK");
-    Ok(db_session_id)
+    Ok(ConnectionSessionRef {
+        connection_id: connection_id.clone(),
+        db_session_id,
+    })
 }
 
 pub(crate) async fn ping_connection_impl(
@@ -482,8 +504,8 @@ pub async fn test_connection(
 pub async fn connect(
     state: State<'_, AppState>,
     connection_id: String,
-) -> Result<String, CommandError> {
-    // connection_id = 持久化配置连接 id；返回值为运行时 db_session_id。
+) -> Result<ConnectionSessionRef, CommandError> {
+    // connection_id = 持久化配置连接 id；返回值携带 connectionId + 运行时 dbSessionId。
     connect_impl(&state, connection_id).await
 }
 
@@ -492,7 +514,7 @@ pub async fn connect_dedicated(
     state: State<'_, AppState>,
     connection_id: String,
     database: Option<String>,
-) -> Result<String, CommandError> {
+) -> Result<ConnectionSessionRef, CommandError> {
     connect_dedicated_impl(&state, connection_id, database).await
 }
 
@@ -569,8 +591,8 @@ pub async fn get_available_drivers(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{HttpProxyTunnelConfig, SshTunnelConfig, WebSocketTunnelConfig};
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use datazen_driver_api::{HttpProxyTunnelConfig, SshTunnelConfig, WebSocketTunnelConfig};
 
     #[tokio::test]
     async fn get_connections_empty_then_saved() {
@@ -796,7 +818,10 @@ mod tests {
     async fn connect_updates_last_connected_and_ping_disconnect() {
         let test = TestAppState::with_tables().await;
         test.save_connection("cfg-1").await;
-        let conn_id = connect_impl(&test.state, "cfg-1".into()).await.unwrap();
+        let conn_id = connect_impl(&test.state, "cfg-1".into())
+            .await
+            .unwrap()
+            .db_session_id;
         let stored = test.store.get_connection("cfg-1").await.unwrap();
         assert!(stored.last_connected_at.is_some());
 
@@ -825,7 +850,7 @@ mod tests {
             .register_test_driver_with_capabilities(
                 "postgres",
                 test.mock.clone(),
-                crate::db::DriverCapabilities {
+                datazen_runtime::driver_registry::DriverCapabilities {
                     has_multi_database: false,
                     supports_cancel_query: true,
                     supports_query_execution_cancel: true,
@@ -889,10 +914,14 @@ mod coverage_tests {
     async fn connect_dedicated_opens_separate_session_from_reuse() {
         let test = TestAppState::with_tables().await;
         test.save_connection("d1").await;
-        let shared = connect_impl(&test.state, "d1".into()).await.unwrap();
+        let shared = connect_impl(&test.state, "d1".into())
+            .await
+            .unwrap()
+            .db_session_id;
         let dedicated = connect_dedicated_impl(&test.state, "d1".into(), Some("app".into()))
             .await
-            .unwrap();
+            .unwrap()
+            .db_session_id;
         assert_ne!(shared, dedicated);
         // The dedicated session is independently owned; release semantics are
         // covered by `release_connection_decrements_then_tears_down` below.
@@ -908,7 +937,10 @@ mod coverage_tests {
         })
         .await;
         test.save_connection("cd1").await;
-        let session = connect_impl(&test.state, "cd1".into()).await.unwrap();
+        let session = connect_impl(&test.state, "cd1".into())
+            .await
+            .unwrap()
+            .db_session_id;
 
         let closed = close_database_impl(&test.state, session.clone(), "analytics".into())
             .await
@@ -932,7 +964,10 @@ mod coverage_tests {
         })
         .await;
         test.save_connection("od1").await;
-        let session = connect_impl(&test.state, "od1".into()).await.unwrap();
+        let session = connect_impl(&test.state, "od1".into())
+            .await
+            .unwrap()
+            .db_session_id;
 
         let open = get_open_databases_impl(&test.state, session).await.unwrap();
         // Sorted and de-duplicated, so the UI marker is stable across calls.
@@ -943,7 +978,10 @@ mod coverage_tests {
     async fn open_databases_is_empty_for_drivers_without_database_pools() {
         let test = TestAppState::with_tables().await;
         test.save_connection("od2").await;
-        let session = connect_impl(&test.state, "od2".into()).await.unwrap();
+        let session = connect_impl(&test.state, "od2".into())
+            .await
+            .unwrap()
+            .db_session_id;
         assert!(get_open_databases_impl(&test.state, session)
             .await
             .unwrap()
@@ -966,7 +1004,10 @@ mod coverage_tests {
     async fn close_database_is_a_noop_for_drivers_without_database_pools() {
         let test = TestAppState::with_tables().await;
         test.save_connection("cd2").await;
-        let session = connect_impl(&test.state, "cd2".into()).await.unwrap();
+        let session = connect_impl(&test.state, "cd2".into())
+            .await
+            .unwrap()
+            .db_session_id;
         let closed = close_database_impl(&test.state, session, "app".into())
             .await
             .unwrap();
@@ -977,7 +1018,10 @@ mod coverage_tests {
     async fn close_database_rejects_blank_names_and_unknown_sessions() {
         let test = TestAppState::with_tables().await;
         test.save_connection("cd3").await;
-        let session = connect_impl(&test.state, "cd3".into()).await.unwrap();
+        let session = connect_impl(&test.state, "cd3".into())
+            .await
+            .unwrap()
+            .db_session_id;
 
         let blank = close_database_impl(&test.state, session.clone(), "   ".into())
             .await
@@ -1002,8 +1046,14 @@ mod coverage_tests {
         let test = TestAppState::with_tables().await;
         test.save_connection("r1").await;
         // Runtime opens one owned session per connect call.
-        let s1 = connect_impl(&test.state, "r1".into()).await.unwrap();
-        let s2 = connect_impl(&test.state, "r1".into()).await.unwrap();
+        let s1 = connect_impl(&test.state, "r1".into())
+            .await
+            .unwrap()
+            .db_session_id;
+        let s2 = connect_impl(&test.state, "r1".into())
+            .await
+            .unwrap()
+            .db_session_id;
         assert_ne!(s1, s2, "Runtime session ownership is explicit per connect");
 
         // Each Runtime release closes exactly the owned session.
@@ -1052,9 +1102,17 @@ mod coverage_tests {
     async fn get_connection_info_reports_driver_category() {
         let harness = TestAppState::new().await;
         for (driver_type, expected_category, category) in [
-            ("kv-mock", "keyvalue", crate::db::DriverCategory::KeyValue),
-            ("doc-mock", "document", crate::db::DriverCategory::Document),
-            ("postgres", "sql", crate::db::DriverCategory::Sql),
+            (
+                "kv-mock",
+                "keyvalue",
+                datazen_driver_api::DriverCategory::KeyValue,
+            ),
+            (
+                "doc-mock",
+                "document",
+                datazen_driver_api::DriverCategory::Document,
+            ),
+            ("postgres", "sql", datazen_driver_api::DriverCategory::Sql),
         ] {
             let opts = MockDriverOptions {
                 category,
@@ -1075,7 +1133,8 @@ mod coverage_tests {
 
             let conn_id = connect_impl(&harness.state, driver_type.into())
                 .await
-                .unwrap();
+                .unwrap()
+                .db_session_id;
             let info = get_connection_info_impl(&harness.state, conn_id)
                 .await
                 .unwrap();

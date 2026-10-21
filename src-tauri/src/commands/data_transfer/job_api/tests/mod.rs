@@ -12,7 +12,6 @@ use datazen_platform_api::id::ConnectionId;
 use datazen_runtime::job::{project_frozen_plan, EndpointRole};
 
 use super::admission::{admit_apply_plan, ApplyPlanRequest, PlanAdmission, PlanAvailability};
-use super::endpoint_identity::EndpointIdentity;
 use super::runtime::{endpoint_refs, APPLY_KIND, PREPARE_KIND};
 use super::scope::{
     enforce_same_backend_scope, is_local_session_reference, TransferBackendScope,
@@ -23,14 +22,15 @@ use super::{
     plan_digest, prepare_data_transfer_job_impl, prepare_payload, TransferApplyJobRequest,
     TransferApplyJobView, TransferPrepareJobRequest, TransferPrepareJobView,
 };
-use crate::commands::data_transfer::plans::{self, PlanState};
 use crate::commands::error::CommandError;
 use crate::data_transfer::model::{
     Endpoint, SqlFileTarget, TransferOptions, TransferRunOptions, TransferRunSelection,
 };
+use crate::data_transfer::plan_store::{self as plans, PlanState};
 use crate::data_transfer::{
     TableMapping, TransferJob, TransferMode, TransferPreview, TransferRunRequest, WriteMode,
 };
+use crate::services::migration_endpoint::EndpointIdentity;
 use crate::testing::app_state::TestAppState;
 
 /// A stand-in endpoint identity, so wiring facts can be asserted without a live

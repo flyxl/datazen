@@ -6,8 +6,8 @@ use crate::commands::schema_diff::{
     fetch_schema_object, is_table_missing_error, list_schema_objects, schema_catalog_database,
 };
 use crate::commands::AppState;
-use crate::db::{CatalogReader, LegacyCatalogReader};
 use crate::schema_diff::job::PrepareRequest;
+use datazen_driver_api::{CatalogReader, LegacyCatalogReader};
 
 const TARGET_ID_PREFIX: &str = "obj-";
 const TARGET_EVIDENCE_PREFIX: &str = "recoveryObject:";

@@ -234,10 +234,10 @@ impl CacheWarmupStrategy {
 ### 1.3 优化的查询执行流程
 
 ```rust
-// src-tauri/src/services/query_executor.rs
+// packages/feature-core/src/services/query_executor.rs
 
-use crate::db::*;
-use crate::cache::*;
+use datazen_driver_api::*;
+use datazen_runtime::schema_cache::SchemaCache;
 use std::sync::Arc;
 
 /// 查询执行器 - 带缓存的优化版本
@@ -432,7 +432,7 @@ pub struct TableDataResult {
 ### 1.5 缓存失效策略
 
 缓存实现位于 `packages/runtime/src/schema_cache/`（`schema_cache.rs` + `schema_mutate.rs`），
-宿主 `src-tauri/src/cache/mod.rs` 只做 re-export 门面。
+宿主直接以 `datazen_runtime::schema_cache::{SchemaCache, sql_may_mutate_schema}` 使用，不再保留 re-export 门面。
 
 失效由三条互相独立的机制叠加，**不是**可配置的策略枚举：
 

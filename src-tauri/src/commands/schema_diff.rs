@@ -29,7 +29,6 @@ mod tests;
 use super::error::{CmdExt, CommandError};
 use super::sync::compare::diff_table_schemas_ir;
 use super::AppState;
-use crate::db::SqlTarget;
 use crate::schema_diff::deploy::{
     execute_schema_diff_deploy_at as run_schema_diff_deploy, plan_has_destructive, DeployOptions,
     DESTRUCTIVE_CONFIRM_TOKEN,
@@ -50,6 +49,7 @@ use crate::schema_diff::SchemaDiffProfile;
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::transfer::ddl::build_create_table_ddl;
 use crate::transfer::full_types::fetch_full_column_types;
+use datazen_driver_api::SqlTarget;
 use tauri::State;
 
 // Re-export the command surface so that `crate::commands::<command>` keeps

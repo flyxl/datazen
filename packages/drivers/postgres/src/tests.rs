@@ -520,16 +520,17 @@ fn build_pg_create_sequence_sql_and_owned_by() {
 
 #[test]
 fn postgres_sequence_catalog_ddl_covers_attributes_and_owned_by() {
-    let sql = object_ddl_sql_with_metadata(
-        "postgresql",
-        ObjectKind::Sequence,
-        "orders_id_seq",
-        Some("public"),
-        None,
-        None,
-        None,
-    )
-    .expect("PostgreSQL sequences have catalog-backed DDL");
+    use datazen_driver_api::schema_object_sql::SchemaObjectSql as _;
+    let sql = crate::PostgresSchemaObjectSql
+        .object_ddl_sql(&datazen_driver_api::schema_object_sql::ObjectDdlRequest {
+            kind: ObjectKind::Sequence,
+            name: "orders_id_seq",
+            schema: Some("public"),
+            signature: None,
+            target_schema: None,
+            target_name: None,
+        })
+        .expect("PostgreSQL sequences have catalog-backed DDL");
     for fragment in [
         "pg_sequence",
         "s.seqincrement",

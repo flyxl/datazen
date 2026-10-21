@@ -2,6 +2,17 @@ import { invoke } from '@tauri-apps/api/core';
 import { toIpcConnectionConfig } from '../lib/connectionConfig';
 import type { ConnectionConfig, DriverCapabilities, ServerInfo } from '../types';
 
+/**
+ * Self-describing result of `connect` / `connect_dedicated` (mirrors the Rust
+ * `ConnectionSessionRef`). `connectionId` is the persistent connection-config
+ * id (survives restart); `dbSessionId` is the runtime database session id
+ * (in-memory only, never persisted). See docs/architecture/naming.md.
+ */
+export interface ConnectionSessionRef {
+  connectionId: string;
+  dbSessionId: string;
+}
+
 async function waitForE2EConnectDelay(connectionId: string): Promise<void> {
   if (!import.meta.env.VITE_E2E || typeof window === 'undefined') return;
   const delays = (
@@ -33,15 +44,18 @@ export const connectionCommands = {
   testConnection: (config: ConnectionConfig) =>
     invoke<ServerInfo>('test_connection', { config: toIpcConnectionConfig(config) }),
 
-  /** connectionId = 持久化配置连接 id；返回值为运行时 dbSessionId。 */
-  connect: async (connectionId: string) => {
+  /** connectionId = 持久化配置连接 id；返回值携带 connectionId + 运行时 dbSessionId。 */
+  connect: async (connectionId: string): Promise<ConnectionSessionRef> => {
     await waitForE2EConnectDelay(connectionId);
-    return invoke<string>('connect', { connectionId });
+    return invoke<ConnectionSessionRef>('connect', { connectionId });
   },
 
   /** Sub-window only: always opens a new db session, optionally pinned to `database`. */
-  connectDedicated: (connectionId: string, database?: string) =>
-    invoke<string>('connect_dedicated', { connectionId, database: database ?? null }),
+  connectDedicated: (connectionId: string, database?: string): Promise<ConnectionSessionRef> =>
+    invoke<ConnectionSessionRef>('connect_dedicated', {
+      connectionId,
+      database: database ?? null,
+    }),
 
   pingConnection: (dbSessionId: string) => invoke<boolean>('ping_connection', { dbSessionId }),
 
