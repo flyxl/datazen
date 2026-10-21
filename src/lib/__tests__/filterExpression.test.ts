@@ -218,6 +218,8 @@ describe('flattenToConnectors', () => {
       "status = 'paid'",
       "status = 'paid' AND amount > 10",
       "(status = 'paid' AND amount > 10) OR active = true",
+      "status = 'paid' OR amount > 10 AND active = true",
+      "status = 'paid' AND amount > 10 OR active = true",
     ]) {
       const flattened = flattenToConnectors(parse(input));
       expect(flattened).not.toBeNull();
@@ -234,3 +236,43 @@ describe('flattenToConnectors', () => {
     expect(conditions.every((entry) => entry.connector === undefined)).toBe(true);
   });
 });
+
+  it('flatten_accepts_a_mixed_chain_without_parentheses', () => {
+    // `a AND b OR c` is `(a AND b) OR c`, and the flat list holds it: the
+    // connector of `b` is AND, the one of `c` is OR.
+    const flattened = flattenToConnectors(parse("status = 'paid' AND amount > 10 OR active = true"));
+    expect(flattened).not.toBeNull();
+    expect(flattened?.map((entry) => entry.condition.column)).toEqual([
+      'status',
+      'amount',
+      'active',
+    ]);
+    expect(flattened?.map((entry) => entry.connector)).toEqual([undefined, 'and', 'or']);
+  });
+
+  it('the rule the design first wrote would have refused the mixed chain', () => {
+    // The rule "the right child has to be a chain of the same operator"
+    // refuses `a = 1 or b = 2 and c = 3`: the tree of that expression is
+    // `or(a, and(b, c))`, so the right child is an `and` subtree, not an `or`
+    // chain. Under that rule the old guard was never replaced — the very
+    // expression this change is about would still have been refused. The rule
+    // in the code refuses only what a flat list really cannot hold.
+    const oldRule = (
+      node: FilterExpression,
+    ): Array<{ condition: FilterExpression; connector?: 'and' | 'or' }> | null => {
+      if (node.type === 'condition') return [{ condition: node }];
+      const { operator, left, right } = node;
+      const leftParts = oldRule(left);
+      if (!leftParts) return null;
+      if (right.type === 'condition') {
+        return [...leftParts, { condition: right, connector: operator }];
+      }
+      if (right.operator !== operator) return null;
+      const rightParts = oldRule(right);
+      if (!rightParts) return null;
+      const [first, ...rest] = rightParts;
+      if (!first) return null;
+      return [...leftParts, { condition: first.condition, connector: operator }, ...rest];
+    };
+    expect(oldRule(parse("status = 'paid' OR amount > 10 AND active = true"))).toBeNull();
+  });
