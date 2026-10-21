@@ -70,6 +70,18 @@ pub trait DatabaseDriver: Send + Sync {
         None
     }
 
+    /// Dialect-specific SQL for the shared schema-object commands
+    /// (`list_objects` / `get_object_ddl` / `list_privileges`).
+    ///
+    /// The commands themselves are implemented once in the driver API; the
+    /// SQL is dialect knowledge and belongs to the driver. A driver that
+    /// returns `None` keeps using the legacy shared tables in
+    /// [`crate::schema_objects`] — new dialects must publish their own
+    /// provider instead of adding branches there.
+    fn schema_object_sql(&self) -> Option<Arc<dyn crate::schema_object_sql::SchemaObjectSql>> {
+        None
+    }
+
     fn migration_capabilities(&self) -> Option<Arc<dyn MigrationCapabilities>> {
         None
     }

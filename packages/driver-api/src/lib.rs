@@ -30,6 +30,7 @@ pub mod schema_dependencies;
 pub mod schema_metadata;
 pub mod schema_migration;
 pub mod schema_object_commands;
+pub mod schema_object_sql;
 pub mod schema_objects;
 pub mod schema_scope_mapping;
 pub mod session;

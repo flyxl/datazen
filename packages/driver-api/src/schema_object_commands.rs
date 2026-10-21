@@ -283,7 +283,13 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
                     ));
                 }
             };
-            let Some(sql) = list_objects_sql_for_database(db_type, parsed, database) else {
+            // The dialect SQL belongs to the driver; the shared tables are
+            // the fallback for dialects that have not published a provider.
+            let sql = match driver.schema_object_sql() {
+                Some(provider) => provider.list_objects_sql_for_database(parsed, database),
+                None => list_objects_sql_for_database(db_type, parsed, database),
+            };
+            let Some(sql) = sql else {
                 return Ok(CommandResult::new(json!({ "objects": [] })));
             };
             let result = query_in_target_database(driver, db_type, handle, &sql, database).await?;
@@ -311,32 +317,50 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
             let target_schema = input.get("targetSchema").and_then(|v| v.as_str());
             let target_name = input.get("targetName").and_then(|v| v.as_str());
             let database = input.get("database").and_then(JsonValue::as_str);
-            let object_schema = if crate::schema_objects::dialect_family(db_type) == "mysql" {
-                schema.or(database)
-            } else {
-                schema
+            let provider = driver.schema_object_sql();
+            let object_schema = match provider.as_ref() {
+                Some(provider) => provider.ddl_schema_scope(schema, database),
+                None if crate::schema_objects::dialect_family(db_type) == "mysql" => {
+                    schema.or(database)
+                }
+                None => schema,
             };
-            let Some(sql) = object_ddl_sql_with_metadata(
-                db_type,
-                parsed,
+            let ddl_request = crate::schema_object_sql::ObjectDdlRequest {
+                kind: parsed,
                 name,
-                object_schema,
+                schema: object_schema,
                 signature,
                 target_schema,
                 target_name,
-            ) else {
+            };
+            let sql = match provider.as_ref() {
+                Some(provider) => provider.object_ddl_sql(&ddl_request),
+                None => object_ddl_sql_with_metadata(db_type, parsed, name, object_schema),
+            };
+            let Some(sql) = sql else {
                 return Err(DriverError::InvalidConfig(
                     "This database type does not expose object DDL".into(),
                 ));
             };
             let result = query_in_target_database(driver, db_type, handle, &sql, database).await?;
             let ddl = extract_object_ddl_checked(&result)?;
-            let view_metadata = if parsed == ObjectKind::View
-                && crate::schema_objects::dialect_family(db_type) == "mysql"
-            {
-                let show_create_sql =
-                    crate::schema_objects::mysql_show_create_view_sql(name, object_schema);
-                let show_create = driver.query(handle, &show_create_sql).await?;
+            let view_metadata_sql = match provider.as_ref() {
+                Some(provider) if parsed == ObjectKind::View => {
+                    provider.view_metadata_sql(name, object_schema)
+                }
+                Some(_) => None,
+                None if parsed == ObjectKind::View
+                    && crate::schema_objects::dialect_family(db_type) == "mysql" =>
+                {
+                    Some(crate::schema_objects::mysql_show_create_view_sql(
+                        name,
+                        object_schema,
+                    ))
+                }
+                None => None,
+            };
+            let view_metadata = if let Some(view_metadata_sql) = view_metadata_sql {
+                let show_create = driver.query(handle, &view_metadata_sql).await?;
                 Some(extract_mysql_view_metadata(&result, &show_create)?)
             } else {
                 None
@@ -356,7 +380,11 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
             )?))
         }
         "list_privileges" => {
-            let Some(sql) = list_privileges_sql(db_type) else {
+            let sql = match driver.schema_object_sql() {
+                Some(provider) => provider.list_privileges_sql(),
+                None => list_privileges_sql(db_type),
+            };
+            let Some(sql) = sql else {
                 return Ok(CommandResult::new(json!({ "grants": [] })));
             };
             let result = driver.query(handle, &sql).await?;
