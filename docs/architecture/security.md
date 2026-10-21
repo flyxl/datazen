@@ -6,18 +6,18 @@
 
 | 安全措施 | 实现方式 | 位置 |
 |----------|----------|------|
-| **密码加密存储** | AES-256-GCM；主密钥在 OS 钥匙串或 `{appData}/.key`（见 `key_store`） | `Store::encrypt/decrypt` + `store/key_store.rs` |
-| **密码派生** | Argon2id KDF（替代双轮 SHA-256） | `commands/config.rs::derive_key_from_password` |
-| **AI Key 加密** | 随 Store 整体 AES-256-GCM 加密 | `store/mod.rs::ai_config.enc` |
+| **密码加密存储** | AES-256-GCM；主密钥在 OS 钥匙串或 `{appData}/.key`（见 `key_store`） | `Store::encrypt/decrypt` + `src-tauri/src/store/key_store.rs` |
+| **密码派生** | Argon2id KDF（替代双轮 SHA-256），用于连接导入/导出文件与敏感字段的字段级加密 | `src-tauri/src/commands/connection_import/datazen.rs::derive_argon2_key` |
+| **AI Key 加密** | 随 Store 整体 AES-256-GCM 加密 | `src-tauri/src/store/ai_config.rs`（`ai_config.enc`） |
 | **连接池管理** | sqlx 连接池 + 超时清理 | 各数据库驱动 |
 | **空闲会话与资源回收** | Runtime 默认 30 分钟会话期限；桌面每 15 秒扫描，detached grace 为 60 秒；到期显式关闭而不透明重连 | `packages/runtime/src/application/idle.rs`、`src-tauri/src/platform/adapter.rs` |
-| **连接泄露检测** | 守卫模式 + 超时警告 | `ConnectionGuard` |
-| **内存限制** | 结果集大小检查 | `QueryResultLimiter` |
+| **连接生命周期** | 物理连接全部经 runtime 会话层租约借出（按用途授权、显式归还是常态路径），不是裸句柄长持有 | `packages/runtime/src/application/live.rs` |
+| **结果集内存控制（按面生效）** | 分面限制：Workflow 单查询 `query_row_limit`（默认 1000 行）；AI 边界对 `rows`/`data` 等 payload 字段整体剔除（§4） | `packages/feature-core/src/workflow/executor.rs`、`packages/feature-core/src/ai/safety.rs` |
 | **SQL 注入防护** | 参数化查询 | `query_with_params` |
 | **TLS 加密后端** | 进程级 rustls `CryptoProvider` 显式安装（`aws-lc-rs`） | `src-tauri/src/tls.rs` |
-| **CSP** | Content Security Policy | `tauri.conf.json` |
-| **路径遍历防护** | 路径校验 | `commands/file.rs` |
-| **SQL 安全（Safe Mode / 只读）** | 启发式语句分类 + 连接级拦截 | `sql_guard.rs` |
+| **CSP** | Content Security Policy | `src-tauri/tauri.conf.json` |
+| **路径遍历防护** | 路径校验 | `src-tauri/src/commands/file.rs` |
+| **SQL 安全（Safe Mode / 只读）** | 启发式语句分类 + 连接级拦截 | `packages/runtime/src/sql_guard`（宿主经 runtime 依赖调用） |
 
 ## 2. 加密存储
 
@@ -38,25 +38,36 @@ encrypted → base64 解码 → 分离 nonce(前12字节) + ciphertext → 解�
 使用 Argon2id（`argon2` crate v0.5）进行密码派生，取代之前的双轮 SHA-256：
 
 ```rust
-fn derive_key_from_password(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
-    use argon2::Argon2;
+pub fn derive_argon2_key(password: &str, salt: &[u8]) -> Result<[u8; 32], CommandError> {
     let mut key = [0u8; 32];
     Argon2::default()
         .hash_password_into(password.as_bytes(), salt, &mut key)
-        .map_err(|e| format!("Key derivation failed: {e}"))?;
+        .map_err(|e| CommandError::Internal(format!("Key derivation failed: {e}")))?;
     Ok(key)
 }
 ```
 
 ## 3. Content Security Policy
 
+CSP 以对象形式写在 `src-tauri/tauri.conf.json` 的 `security.csp`，当前生效值为：
+
 ```json
-"csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: tauri:; connect-src 'self' https: http:"
+"csp": {
+  "default-src": "'self'",
+  "script-src": "'self' blob: asset: http://asset.localhost",
+  "worker-src": "'self' blob:",
+  "frame-src": "'self' datazen:",
+  "style-src": "'self' 'unsafe-inline'",
+  "img-src": "'self' data: asset: tauri: blob: datazen:",
+  "font-src": "'self' blob: data:",
+  "connect-src": "'self' ipc: http://ipc.localhost asset://localhost"
+}
 ```
 
 - `default-src 'self'` — 默认仅允许同源资源
-- `connect-src 'self' https: http:` — 允许连接外部 API（AI Provider、MCP Server）
-- `script-src 'self'` — 禁止内联脚本和外部脚本
+- `script-src` 含 `blob: asset: http://asset.localhost` — Tauri 资源协议加载本地 bundle 所需，仍禁止远程脚本
+- `connect-src 'self' ipc: http://ipc.localhost asset://localhost` — 仅 Tauri 2 的 IPC 通道，**不含任意外网**。AI Provider、MCP Server 等出站请求全部由 Rust 侧发起（`packages/ai-providers` 的 reqwest、`src-tauri/src/mcp/` 的 Rust client），webview 的 connect-src 不需要也不应放行 `https:` / `http:`
+- `frame-src 'self' datazen:` — Workspace App 的 iframe 沙箱运行在 `datazen://` 协议下
 
 ## 4. AI 安全
 
