@@ -10,6 +10,7 @@
 //! 因此这里给 SQLite 侧补上同名同形状的用例。
 use super::*;
 use datazen_platform_api::dto::job::StageRecord;
+use datazen_runtime::job::runtime_repository::JobRuntimeRepository;
 
 fn organization_context(organization: &str) -> RequestContext {
     let mut ctx = request_context();
@@ -302,5 +303,49 @@ async fn the_renewal_path_carries_no_organization_dimension() {
     assert!(
         matches!(repo.renew(&wrong_worker).await, Err(PortError::StaleClaim)),
         "worker 对不上的续约按旧 claim 拒绝"
+    );
+}
+
+/// **ctx 作用域**的写入没有 claim 可比，越组织时按「不存在」处理。
+///
+/// 端口契约与实现文档把桌面写路径分成三类（`renew` 契约注释），本用例钉住其中的
+/// **第二类**：取消 / 确认未开始 / 标记失败 / 待核验 / 恢复结论——它们没有 claim
+/// 可比，改用**显式组织谓词**（`WHERE … organization_id=? AND owner_principal_id=?`）
+/// 过滤，因此越组织时受影响行数为 0，按 `NotFound` 处理。
+///
+/// 这与 claim 作用域的 `StaleClaim` **不是同一种拒绝**：claim 作用域越组织时行存在、
+/// 只是 claim 对不上；ctx 作用域越组织时行**对本调用方不存在**。
+/// 这条用例让「ctx 作用域按 `NotFound`」在代码里**可验证**，而不是只存在于注释里。
+#[tokio::test]
+async fn a_cross_organization_ctx_scoped_write_is_rejected_as_not_found() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = repository(temp.path(), clock(), 30);
+    let org_a = organization_context("org-a");
+    let org_b = organization_context("org-b");
+    repo.accept(
+        &org_a,
+        definition("job-org-ctx-write", "plan-org-ctx-write"),
+        &idempotency_key("org-ctx-write"),
+    )
+    .await
+    .unwrap();
+
+    let error = repo
+        .request_cancel(&org_b, &JobId::new("job-org-ctx-write"))
+        .await
+        .expect_err("跨组织的 ctx 作用域写入必须失败");
+    assert!(
+        matches!(error, PortError::NotFound(_)),
+        "ctx 作用域的跨组织写入按「不存在」处理（不是 StaleClaim）：{error:?}"
+    );
+
+    // 拒绝必须**真的没写**：取消意图不得落到别的组织的行上。
+    let record = repo
+        .get(&org_a, JobId::new("job-org-ctx-write"))
+        .await
+        .expect("归属组织仍能读到自己的行");
+    assert!(
+        !record.view.cancel_requested,
+        "越组织的取消请求不得落到行上：{record:?}"
     );
 }

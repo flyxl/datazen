@@ -1116,4 +1116,54 @@ fn make() -> JobFilter {
             scan.without_organization
         );
     }
+
+    /// 行号修正**不能**修坏别的场景：前缀的形态不止一种，每一种都要报真实行号。
+    ///
+    /// 「前缀里的换行数 + 1」这个算法在前缀的四种形态上都要给出行首字面量的**真实**
+    /// 行号：
+    ///
+    /// | 前缀形态 | 前缀里的换行数 | 真实行号 |
+    /// |---|---|---|
+    /// | 只有缩进（上一行的行尾之后） | 1 | 2 |
+    /// | 以换行结尾（块注释之后 / 上一行是空行） | 2 | 3 |
+    /// | 块注释**内部**含换行 | 2 | 3 |
+    /// | 前缀整个为空（字面量在文件第一行第 0 列） | 0 | 1 |
+    ///
+    /// 旧的 `str::lines().count()` 在后三种上都会少报一行——`lines()` 不计末尾的空行，
+    /// 前缀正好以换行结尾时计数就比真实行号少 1；前缀整个为空时它数出 0 行，
+    /// 于是第一行的字面量被报成**第 0 行**。这四种必须一起钉住，否则「修好了行首」
+    /// 只是把 bug 挪了个位置。
+    #[test]
+    fn the_reported_line_is_the_real_line_in_every_prefix_shape() {
+        let cases: &[(&str, usize)] = &[
+            // 只有缩进：前缀里有 1 个换行，且不以换行结尾。
+            (
+                "fn probe() {\n    let _ = JobFilter { states: Vec::new() };\n}\n",
+                2,
+            ),
+            // 块注释之后：前缀以换行结尾。
+            (
+                "/* c */\nfn probe() {\n    let _ = JobFilter { states: Vec::new() };\n}\n",
+                3,
+            ),
+            // 跨行块注释之后：块注释内部带换行，末尾还跟一个换行。
+            ("/* multi\nline */\nJobFilter { states: Vec::new() }\n", 3),
+            // 文件第一行第 0 列：前缀整个为空。
+            ("JobFilter { states: Vec::new() }\n", 1),
+        ];
+        for (source, expected_line) in cases {
+            let scan = scan_source("probe", source);
+            assert_eq!(
+                scan.without_organization.len(),
+                1,
+                "坏字面量必须被抓到：{source:?} -> {:?}",
+                scan.without_organization
+            );
+            assert!(
+                scan.without_organization[0].starts_with(&format!("probe:{expected_line} ")),
+                "报出的行号必须等于真实行号（第 {expected_line} 行）：{source:?} -> {:?}",
+                scan.without_organization
+            );
+        }
+    }
 }

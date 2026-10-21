@@ -507,3 +507,44 @@ async fn the_renewal_path_carries_no_organization_dimension() {
         "worker 对不上的续约按旧 claim 拒绝"
     );
 }
+
+/// **ctx 作用域**的写入没有 claim 可比，越组织时按「不存在」处理。
+///
+/// 与 SQLite 侧同名同形状（`src-tauri/src/store/app_db_job_org_tests.rs`）。
+/// 端口契约与实现文档把桌面写路径分成三类（`renew` 契约注释），本用例钉住其中的
+/// **第二类**：取消 / 确认未开始 / 标记失败 / 待核验——它们没有 claim 可比，
+/// 改用**行内的组织归属**过滤，因此越组织时按 `NotFound` 处理。
+///
+/// 这与 claim 作用域的 `StaleClaim` **不是同一种拒绝**：claim 作用域越组织时行存在、
+/// 只是 claim 对不上；ctx 作用域越组织时行**对本调用方不存在**。
+#[tokio::test]
+async fn a_cross_organization_ctx_scoped_write_is_rejected_as_not_found() {
+    let repo = repository();
+    let org_a = organization_context("org-a");
+    let org_b = organization_context("org-b");
+    repo.accept(
+        &org_a,
+        definition("job-ctx-write", "org-a"),
+        &IdempotencyKey::new("key-ctx-write"),
+    )
+    .await
+    .expect("accept a");
+
+    let error = repo
+        .request_cancel(&org_b, &JobId::new("job-ctx-write"))
+        .expect_err("跨组织的 ctx 作用域写入必须失败");
+    assert!(
+        matches!(error, PortError::NotFound(_)),
+        "ctx 作用域的跨组织写入按「不存在」处理（不是 StaleClaim）：{error:?}"
+    );
+
+    // 拒绝必须**真的没写**：取消意图不得落到别的组织的行上。
+    let record = repo
+        .get(&org_a, JobId::new("job-ctx-write"))
+        .await
+        .expect("归属组织仍能读到自己的行");
+    assert!(
+        !record.view.cancel_requested,
+        "越组织的取消请求不得落到行上：{record:?}"
+    );
+}
