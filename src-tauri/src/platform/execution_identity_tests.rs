@@ -4,29 +4,204 @@
 //! 每条都写成**会自己变红**的断言：改坏实现（把 principal 拼进身份键、把凭据版本
 //! 混进身份键、让委托路径转调本人路径）时，下面每一条都会点红。
 //!
-//! 替身只替换**策略端口**与**委托作用域绑定**：连接配置与凭据版本走真实的
-//! `DesktopProfiles`（真 Store、真落盘），这样「轮换凭据只推进版本」测的是真实行为，
-//! 不是替身的行为。
+//! ## 为什么大部分用例走替身而不是真 Store
+//!
+//! 本模块要断言的是「身份键的派生输入」，不是 SQLite 落盘。真 `Store` 每个用例要
+//! 建两份 SQLite（AppDb + HistoryDb），十几条用例就是几十份——那点并发 I/O 负载
+//! 会把 `platform::live_source::tests::*` 的**进程级 env 竞态**窗口撑大
+//! （`hub.md` §8 记录的既有 flake：那个家族的 `DesktopUserGuard` 在 Drop 时把
+//! `DATAZEN_DESKTOP_USER` 还原成「之前没有」，会把并行跑的兄弟用例的桌面主体读歪）。
+//! 替身让本模块零 I/O；**只有**「凭据轮换」与「安装级稳定」两条需要真 Store，
+//! 且共用同一份（`OnceCell`），全模块只建一次。
+//!
+//! 替身只替换**策略端口**、**连接配置仓储**、**凭据版本仓储**与**委托作用域绑定**；
+//! 被测的 `DesktopIdentityResolver` 本体、派生函数与端口契约一字未改。
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use datazen_platform_api::{
     dto::profile::{ProfileDraft, ProfilePatch},
-    id::{ClientInstanceId, ConfigRevision, IdempotencyKey, PrincipalId, RequestId, Timestamp},
+    id::{
+        ClientInstanceId, ConfigRevision, IdempotencyKey, PrincipalId, RequestId, SecretRef,
+        Timestamp,
+    },
     ports::policy::{
         AuthorizationAction, AuthorizationDecision, AuthorizationSubject, DelegationGrant,
         PolicyChangeStream,
     },
+    ports::profile::ProfileScope,
+    ports::secret::{ResolvedCredential, SecretPurpose},
     target::NamespaceTarget,
 };
 
 use super::*;
 use crate::platform::identity::LOCAL_ORGANIZATION_ID;
-use crate::platform::repositories::DesktopProfiles;
 
 /// 测试用密码。它只用来证明「凭据材料不进身份键」，本身是合成值。
 const TEST_PASSWORD: &str = "hunter2-not-a-real-secret";
+
+/// 替身用的秘密引用。它只是**一个引用**，不是材料。
+const TEST_SECRET_REF: &str = "test-secret-ref-conn-1";
+
+// ---------------------------------------------------------------------------
+// 替身
+// ---------------------------------------------------------------------------
+
+/// 内存连接配置仓储替身。
+///
+/// 越组织访问返回 `None`（CM-05），与桌面实现同口径。
+struct FakeProfiles {
+    records: Mutex<BTreeMap<String, ProfileRecord>>,
+}
+
+impl FakeProfiles {
+    fn new(records: Vec<ProfileRecord>) -> Self {
+        Self {
+            records: Mutex::new(
+                records
+                    .into_iter()
+                    .map(|record| (record.connection_id.as_str().to_owned(), record))
+                    .collect(),
+            ),
+        }
+    }
+
+    fn upsert(&self, record: ProfileRecord) {
+        let mut records = self.records.lock().unwrap_or_else(|e| e.into_inner());
+        records.insert(record.connection_id.as_str().to_owned(), record);
+    }
+}
+
+#[async_trait]
+impl ProfileRepository for FakeProfiles {
+    async fn list(
+        &self,
+        _ctx: &RequestContext,
+        _scope: ProfileScope,
+    ) -> Result<Vec<ProfileRecord>, PortError> {
+        let records = self.records.lock().unwrap_or_else(|e| e.into_inner());
+        Ok(records.values().cloned().collect())
+    }
+
+    async fn get(
+        &self,
+        ctx: &RequestContext,
+        connection_id: ConnectionId,
+    ) -> Result<Option<ProfileRecord>, PortError> {
+        let records = self.records.lock().unwrap_or_else(|e| e.into_inner());
+        Ok(records
+            .get(connection_id.as_str())
+            .filter(|record| record.organization_id == ctx.organization_id)
+            .cloned())
+    }
+
+    async fn create(
+        &self,
+        _ctx: &RequestContext,
+        _draft: ProfileDraft,
+        _idem: &IdempotencyKey,
+    ) -> Result<ProfileRecord, PortError> {
+        Err(PortError::BackendUnavailable(
+            "test double: create is not part of the identity path".into(),
+        ))
+    }
+
+    async fn compare_and_set(
+        &self,
+        _ctx: &RequestContext,
+        _connection_id: ConnectionId,
+        _expected: ConfigRevision,
+        _patch: ProfilePatch,
+    ) -> Result<ProfileRecord, PortError> {
+        Err(PortError::BackendUnavailable(
+            "test double: compare_and_set is not part of the identity path".into(),
+        ))
+    }
+
+    async fn disable(
+        &self,
+        _ctx: &RequestContext,
+        _connection_id: ConnectionId,
+    ) -> Result<ProfileRecord, PortError> {
+        Err(PortError::BackendUnavailable(
+            "test double: disable is not part of the identity path".into(),
+        ))
+    }
+
+    async fn advance_credential_revision(
+        &self,
+        _ctx: &RequestContext,
+        _connection_id: ConnectionId,
+    ) -> Result<CredentialRevision, PortError> {
+        Err(PortError::BackendUnavailable(
+            "test double: advance_credential_revision is not part of the identity path".into(),
+        ))
+    }
+}
+
+/// 内存凭据版本仓储替身。**只给版本号，不给材料**。
+struct FakeSecrets {
+    revisions: Mutex<BTreeMap<String, u64>>,
+}
+
+impl FakeSecrets {
+    fn new(revisions: Vec<(String, u64)>) -> Self {
+        Self {
+            revisions: Mutex::new(revisions.into_iter().collect()),
+        }
+    }
+
+    fn bump(&self, secret_ref: &str) {
+        let mut revisions = self.revisions.lock().unwrap_or_else(|e| e.into_inner());
+        let entry = revisions.entry(secret_ref.to_owned()).or_insert(0);
+        *entry += 1;
+    }
+}
+
+#[async_trait]
+impl SecretProvider for FakeSecrets {
+    async fn resolve(
+        &self,
+        _ctx: &RequestContext,
+        _secret_ref: SecretRef,
+        _purpose: SecretPurpose,
+    ) -> Result<ResolvedCredential, PortError> {
+        Err(PortError::BackendUnavailable(
+            "test double: the identity path must never read credential material".into(),
+        ))
+    }
+
+    async fn read_versioned(
+        &self,
+        _ctx: &RequestContext,
+        _secret_ref: SecretRef,
+        _revision: CredentialRevision,
+    ) -> Result<ResolvedCredential, PortError> {
+        Err(PortError::BackendUnavailable(
+            "test double: the identity path must never read credential material".into(),
+        ))
+    }
+
+    async fn rotate(
+        &self,
+        _ctx: &RequestContext,
+        _secret_ref: SecretRef,
+        _expected: CredentialRevision,
+    ) -> Result<CredentialRevision, PortError> {
+        Err(PortError::BackendUnavailable(
+            "test double: rotate is not part of the identity path".into(),
+        ))
+    }
+
+    async fn revision(&self, secret_ref: SecretRef) -> Result<CredentialRevision, PortError> {
+        let revisions = self.revisions.lock().unwrap_or_else(|e| e.into_inner());
+        let value = *revisions
+            .get(secret_ref.as_str())
+            .ok_or_else(|| PortError::NotFound("credential".into()))?;
+        Ok(CredentialRevision::new(value))
+    }
+}
 
 /// 固定隔离键的策略端口替身。
 ///
@@ -106,45 +281,35 @@ impl DelegationScopeBinding for FixedScope {
     }
 }
 
-/// 一份真实的桌面装配：真 Store、真连接配置、真凭据版本。
+// ---------------------------------------------------------------------------
+// 夹具
+// ---------------------------------------------------------------------------
+
+/// 替身夹具：零 I/O。
 struct Fixture {
-    store: Arc<Store>,
-    profiles: Arc<DesktopProfiles>,
+    profiles: Arc<FakeProfiles>,
+    secrets: Arc<FakeSecrets>,
     ctx: RequestContext,
     connection_id: ConnectionId,
-    config_revision: u64,
     target: ExecutionTarget,
-    /// 临时目录。放在最后声明 ⇒ 最后释放 ⇒ 不会在 Store 之前被删掉。
-    _dir: tempfile::TempDir,
 }
 
 impl Fixture {
-    /// 注入替身策略的解析器。派生盐取固定值，隔离键取固定值。
     fn resolver(&self) -> DesktopIdentityResolver {
+        self.resolver_with(FixedPolicy::new(
+            PolicyIsolationKey::new("test-isolation"),
+            None,
+        ))
+    }
+
+    fn resolver_with(&self, policy: FixedPolicy) -> DesktopIdentityResolver {
         DesktopIdentityResolver::new(
             self.profiles.clone(),
-            self.profiles.clone(),
-            Arc::new(FixedPolicy::new(
-                PolicyIsolationKey::new("test-isolation"),
-                None,
-            )),
+            self.secrets.clone(),
+            Arc::new(policy),
             Arc::new(FixedScope::new(Some(self.target.clone()))),
             test_derivation_key(),
         )
-    }
-
-    /// 走桌面装配入口：派生盐取自**宿主主密钥**，因此同一份 Store 装出来的
-    /// 解析器给出同一个身份键（安装级稳定、跨重启稳定）。
-    fn desktop_resolver(&self) -> DesktopIdentityResolver {
-        DesktopIdentityResolver::for_desktop(
-            self.store.clone(),
-            self.profiles.clone(),
-            Arc::new(FixedPolicy::new(
-                PolicyIsolationKey::new("test-isolation"),
-                None,
-            )),
-        )
-        .expect("桌面装配入口")
     }
 }
 
@@ -152,48 +317,32 @@ fn test_derivation_key() -> IdentityDerivationKey {
     IdentityDerivationKey::from_master_key(&[7u8; 32]).expect("派生盐")
 }
 
-async fn fixture() -> Fixture {
-    let dir = tempfile::tempdir().expect("临时目录");
-    let store = Arc::new(
-        Store::init_with_path(dir.path())
-            .await
-            .expect("store 初始化"),
-    );
-    let profiles = Arc::new(DesktopProfiles::new(store.clone()));
-    let ctx = RequestContext::new(
+fn profile_record(credential_revision: u64) -> ProfileRecord {
+    let mut record = ProfileRecord::new(
         OrganizationId::new(LOCAL_ORGANIZATION_ID),
-        PrincipalId::new("alice"),
-        None,
-        ClientInstanceId::new("client-1"),
-        RequestId::new("req-1"),
-        None,
+        ConnectionId::new("conn-1"),
+        "postgresql",
     );
-    let draft = ProfileDraft {
-        name: "测试连接".to_owned(),
-        driver_id: "postgresql".to_owned(),
-        initial_namespace: NamespaceTarget::database("app"),
-        public_options: BTreeMap::new(),
-        credentials: Some(BTreeMap::from([(
-            "password".to_owned(),
-            TEST_PASSWORD.to_owned(),
-        )])),
-    };
-    let record = profiles
-        .create(&ctx, draft, &IdempotencyKey::new("idem-1"))
-        .await
-        .expect("连接配置");
-    let target = ExecutionTarget::new(
-        record.connection_id.clone(),
-        NamespaceTarget::database("app"),
-    );
+    record.secret_ref = Some(SecretRef::new(TEST_SECRET_REF));
+    record.credential_revision = CredentialRevision::new(credential_revision);
+    record
+}
+
+fn fixture() -> Fixture {
+    let connection_id = ConnectionId::new("conn-1");
     Fixture {
-        store,
-        profiles,
-        ctx,
-        connection_id: record.connection_id,
-        config_revision: record.config_revision.get(),
-        target,
-        _dir: dir,
+        profiles: Arc::new(FakeProfiles::new(vec![profile_record(3)])),
+        secrets: Arc::new(FakeSecrets::new(vec![(TEST_SECRET_REF.to_owned(), 3)])),
+        ctx: RequestContext::new(
+            OrganizationId::new(LOCAL_ORGANIZATION_ID),
+            PrincipalId::new("alice"),
+            None,
+            ClientInstanceId::new("client-1"),
+            RequestId::new("req-1"),
+            None,
+        ),
+        target: ExecutionTarget::new(connection_id.clone(), NamespaceTarget::database("app")),
+        connection_id,
     }
 }
 
@@ -219,6 +368,73 @@ fn delegated_ctx(delegation: &DelegationRef) -> RequestContext {
     )
 }
 
+/// 全模块**唯一**一份真 Store（懒建一次）。
+///
+/// 只有「凭据轮换」与「安装级稳定」两条用例需要它——前者要真的落一次轮换，
+/// 后者要真的用宿主主密钥派生派生盐。其余用例零 I/O。
+static REAL_STORE: tokio::sync::OnceCell<RealFixture> = tokio::sync::OnceCell::const_new();
+
+struct RealFixture {
+    store: Arc<Store>,
+    profiles: Arc<crate::platform::repositories::DesktopProfiles>,
+    ctx: RequestContext,
+    connection_id: ConnectionId,
+    config_revision: u64,
+    target: ExecutionTarget,
+    _dir: tempfile::TempDir,
+}
+
+async fn real_fixture() -> &'static RealFixture {
+    REAL_STORE
+        .get_or_init(|| async {
+            let dir = tempfile::tempdir().expect("临时目录");
+            let store = Arc::new(
+                Store::init_with_path(dir.path())
+                    .await
+                    .expect("store 初始化"),
+            );
+            let profiles = Arc::new(crate::platform::repositories::DesktopProfiles::new(
+                store.clone(),
+            ));
+            let ctx = RequestContext::new(
+                OrganizationId::new(LOCAL_ORGANIZATION_ID),
+                PrincipalId::new("alice"),
+                None,
+                ClientInstanceId::new("client-1"),
+                RequestId::new("req-1"),
+                None,
+            );
+            let draft = ProfileDraft {
+                name: "测试连接".to_owned(),
+                driver_id: "postgresql".to_owned(),
+                initial_namespace: NamespaceTarget::database("app"),
+                public_options: BTreeMap::new(),
+                credentials: Some(BTreeMap::from([(
+                    "password".to_owned(),
+                    TEST_PASSWORD.to_owned(),
+                )])),
+            };
+            let record = profiles
+                .create(&ctx, draft, &IdempotencyKey::new("idem-1"))
+                .await
+                .expect("连接配置");
+            let target = ExecutionTarget::new(
+                record.connection_id.clone(),
+                NamespaceTarget::database("app"),
+            );
+            RealFixture {
+                store,
+                profiles,
+                ctx,
+                connection_id: record.connection_id,
+                config_revision: record.config_revision.get(),
+                target,
+                _dir: dir,
+            }
+        })
+        .await
+}
+
 // ---------------------------------------------------------------------------
 // 端口语义 1：身份键不得由客户端传入的 principal 派生
 // ---------------------------------------------------------------------------
@@ -229,7 +445,7 @@ fn delegated_ctx(delegation: &DelegationRef) -> RequestContext {
 /// 若实现把 `principal` 拼进身份键，两个主体的身份键就会不同。
 #[tokio::test]
 async fn 身份键不随请求主体变化() {
-    let fixture = fixture().await;
+    let fixture = fixture();
     let resolver = fixture.resolver();
 
     let alice = resolver
@@ -301,7 +517,7 @@ fn 派生入口的入参里没有主体与凭据() {
 
 #[tokio::test]
 async fn 同一输入两次解析得到同一身份键() {
-    let fixture = fixture().await;
+    let fixture = fixture();
     let resolver = fixture.resolver();
 
     let first = resolver
@@ -327,17 +543,29 @@ async fn 同一输入两次解析得到同一身份键() {
 /// 否则会话连续性（INV-02）与池复用都不成立。
 #[tokio::test]
 async fn 换一把解析器实例身份键仍然相同() {
-    let fixture = fixture().await;
-    let first = fixture
-        .desktop_resolver()
-        .resolve(&fixture.ctx, &fixture.target)
-        .await
-        .expect("第一次身份");
-    let second = fixture
-        .desktop_resolver()
-        .resolve(&fixture.ctx, &fixture.target)
-        .await
-        .expect("第二次身份");
+    let fixture = real_fixture().await;
+    let policy = Arc::new(FixedPolicy::new(
+        PolicyIsolationKey::new("test-isolation"),
+        None,
+    ));
+    let first = DesktopIdentityResolver::for_desktop(
+        fixture.store.clone(),
+        fixture.profiles.clone(),
+        policy.clone(),
+    )
+    .expect("桌面装配入口")
+    .resolve(&fixture.ctx, &fixture.target)
+    .await
+    .expect("第一次身份");
+    let second = DesktopIdentityResolver::for_desktop(
+        fixture.store.clone(),
+        fixture.profiles.clone(),
+        policy,
+    )
+    .expect("桌面装配入口")
+    .resolve(&fixture.ctx, &fixture.target)
+    .await
+    .expect("第二次身份");
 
     assert_eq!(
         first.execution_identity_key, second.execution_identity_key,
@@ -423,7 +651,7 @@ fn 不同隔离键派生不同身份键() {
 /// 跨组织的连接查不到配置 ⇒ 不发执行身份（CM-05：不泄漏「存在但无权」）。
 #[tokio::test]
 async fn 跨组织的连接拿不到执行身份() {
-    let fixture = fixture().await;
+    let fixture = fixture();
     let resolver = fixture.resolver();
     let foreign = RequestContext::new(
         OrganizationId::new("org-foreign"),
@@ -448,10 +676,23 @@ async fn 跨组织的连接拿不到执行身份() {
 // 端口语义 3：轮换凭据只推进 credential_revision，不动身份键
 // ---------------------------------------------------------------------------
 
+/// 真轮换：凭据版本推进，身份键不动。
+///
+/// 走真 `DesktopProfiles::compare_and_set`（真落盘），因此这条断言的是**真实**行为：
+/// 轮换推进 `credential_revision`，而身份键的输入里没有凭据版本。
 #[tokio::test]
 async fn 轮换凭据只推进版本不动身份键() {
-    let fixture = fixture().await;
-    let resolver = fixture.resolver();
+    let fixture = real_fixture().await;
+    let policy = Arc::new(FixedPolicy::new(
+        PolicyIsolationKey::new("test-isolation"),
+        None,
+    ));
+    let resolver = DesktopIdentityResolver::for_desktop(
+        fixture.store.clone(),
+        fixture.profiles.clone(),
+        policy,
+    )
+    .expect("桌面装配入口");
 
     let before = resolver
         .resolve(&fixture.ctx, &fixture.target)
@@ -492,24 +733,48 @@ async fn 轮换凭据只推进版本不动身份键() {
     );
 }
 
+/// 替身层面的同一条性质：凭据版本推进时身份键不动。
+///
+/// 真轮换那条已经覆盖集成面；这条把「版本变了 ⇒ 键不变」单独钉在解析器上，
+/// 读的是 `SecretProvider::revision` 这条通路。
+#[tokio::test]
+async fn 凭据版本推进时身份键不动() {
+    let fixture = fixture();
+    let resolver = fixture.resolver();
+
+    let before = resolver
+        .resolve(&fixture.ctx, &fixture.target)
+        .await
+        .expect("轮换前身份");
+    fixture.secrets.bump(TEST_SECRET_REF);
+    let mut record = profile_record(4);
+    record.credential_revision = CredentialRevision::new(4);
+    fixture.profiles.upsert(record);
+    let after = resolver
+        .resolve(&fixture.ctx, &fixture.target)
+        .await
+        .expect("轮换后身份");
+
+    assert_eq!(
+        before.execution_identity_key, after.execution_identity_key,
+        "凭据版本不得进入身份键"
+    );
+    assert_ne!(before.credential_revision, after.credential_revision);
+    assert_eq!(after.credential_revision, CredentialRevision::new(4));
+}
+
 // ---------------------------------------------------------------------------
 // 端口语义 4：resolve 与 resolve_delegation 是两条独立路径
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn 委托身份与本人身份不同且未授权委托失败关闭() {
-    let fixture = fixture().await;
+    let fixture = fixture();
     let granted = delegation("del-1", LOCAL_ORGANIZATION_ID);
-    let resolver = DesktopIdentityResolver::new(
-        fixture.profiles.clone(),
-        fixture.profiles.clone(),
-        Arc::new(FixedPolicy::new(
-            PolicyIsolationKey::new("test-isolation"),
-            Some(granted.clone()),
-        )),
-        Arc::new(FixedScope::new(Some(fixture.target.clone()))),
-        test_derivation_key(),
-    );
+    let resolver = fixture.resolver_with(FixedPolicy::new(
+        PolicyIsolationKey::new("test-isolation"),
+        Some(granted.clone()),
+    ));
 
     let delegated = resolver
         .resolve_delegation(&delegated_ctx(&granted), granted.clone())
@@ -544,18 +809,12 @@ async fn 委托身份与本人身份不同且未授权委托失败关闭() {
 /// 照样产出身份——那正是 CM-06 要防的「委托主体继承本人权限」。
 #[tokio::test]
 async fn 委托上下文不得走本人路径() {
-    let fixture = fixture().await;
+    let fixture = fixture();
     let granted = delegation("del-1", LOCAL_ORGANIZATION_ID);
-    let resolver = DesktopIdentityResolver::new(
-        fixture.profiles.clone(),
-        fixture.profiles.clone(),
-        Arc::new(FixedPolicy::new(
-            PolicyIsolationKey::new("test-isolation"),
-            Some(granted.clone()),
-        )),
-        Arc::new(FixedScope::new(Some(fixture.target.clone()))),
-        test_derivation_key(),
-    );
+    let resolver = fixture.resolver_with(FixedPolicy::new(
+        PolicyIsolationKey::new("test-isolation"),
+        Some(granted.clone()),
+    ));
 
     let error = resolver
         .resolve(&delegated_ctx(&granted), &fixture.target)
@@ -570,18 +829,12 @@ async fn 委托上下文不得走本人路径() {
 /// 跨组织的委托引用一律拒绝。
 #[tokio::test]
 async fn 跨组织的委托引用被拒绝() {
-    let fixture = fixture().await;
+    let fixture = fixture();
     let granted = delegation("del-1", LOCAL_ORGANIZATION_ID);
-    let resolver = DesktopIdentityResolver::new(
-        fixture.profiles.clone(),
-        fixture.profiles.clone(),
-        Arc::new(FixedPolicy::new(
-            PolicyIsolationKey::new("test-isolation"),
-            Some(granted.clone()),
-        )),
-        Arc::new(FixedScope::new(Some(fixture.target.clone()))),
-        test_derivation_key(),
-    );
+    let resolver = fixture.resolver_with(FixedPolicy::new(
+        PolicyIsolationKey::new("test-isolation"),
+        Some(granted.clone()),
+    ));
     let foreign = delegation("del-1", "org-foreign");
 
     let error = resolver
@@ -628,7 +881,7 @@ fn 两条路径的域标签不同() {
 
 #[tokio::test]
 async fn 执行身份不含秘密材料() {
-    let fixture = fixture().await;
+    let fixture = fixture();
     let resolver = fixture.resolver();
     let identity = resolver
         .resolve(&fixture.ctx, &fixture.target)
