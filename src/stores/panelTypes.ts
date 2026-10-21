@@ -19,6 +19,36 @@ export interface TablePanel extends PanelBase {
   subTab: SubTabId;
   structureEditing?: boolean;
   targetColumn?: string;
+  /**
+   * This tab was opened by following a foreign key (DB-07).
+   *
+   * It carries the **navigation** information only — where the jump came from
+   * and what it followed. The filter conditions of the jump live in the
+   * table-data slice (`TableState.filters`), which is the single truth for
+   * filters: a second copy on the panel would come back to life when the tab
+   * is mounted again and would fight the user's "clear filters".
+   */
+  fkOrigin?: FkOrigin;
+}
+
+/**
+ * Where a foreign-key jump came from (DB-07).
+ *
+ * The breadcrumb and the "back" button are the only consumers.
+ */
+export interface FkOrigin {
+  /** The tab the jump started from (the "back" target). */
+  sourcePanelId: string;
+  /** The table the jump started from. */
+  sourceTable: string;
+  /** The local columns of the foreign key, in pairing order. */
+  localColumns: string[];
+  /** The table the jump landed on. */
+  targetTable: string;
+  /** The referenced columns, in pairing order. */
+  targetColumns: string[];
+  /** The navigation-stack entry this jump created. */
+  navEntryId: string;
 }
 
 export interface ViewPanel extends PanelBase {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Columns3, ShieldAlert } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
+import { DATA_TABLE_ROW_HEIGHT } from '../../components/DataTable/rowHeight';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { TableColumnFilter } from './TableColumnFilter';
 import { useTableDataStore } from '../../stores/tableDataStore';
@@ -21,7 +22,10 @@ import {
 } from './TablePendingChangesBar';
 import { TableStatusBanners } from './TableStatusBanners';
 import { TableToolbar } from './TableToolbar';
+import { TableFkBreadcrumb } from './TableFkBreadcrumb';
+import { TableFkErrorBanner } from './TableFkErrorBanner';
 import { useTableActions } from './useTableActions';
+import { useTableForeignKeyNavigation } from './useTableForeignKeyNavigation';
 import { useDirtyIndex } from './useDirtyIndex';
 import { PendingPlanDialog } from './PendingPlanDialog';
 import { useTableDraftRows } from './useTableDraftRows';
@@ -235,6 +239,21 @@ export function TableView({
     return columns.filter((c) => set.has(c.name));
   }, [columns, visibleColumns]);
 
+  /** The foreign-key navigation of this tab (DB-07): arrows, jump, breadcrumb, keyboard, viewport. */
+  const fkNavigation = useTableForeignKeyNavigation({
+    panelId,
+    dbSessionId,
+    database,
+    tableName,
+    schema,
+    connectionId: connectionId ?? null,
+    databaseType: databaseType ?? null,
+    rows,
+    displayedColumns,
+    rowHeight: DATA_TABLE_ROW_HEIGHT,
+    activeCell: ts?.gridSelection?.focus ?? null,
+  });
+
   const columnDefs: ColumnDef[] = useMemo(
     () =>
       displayedColumns.map((c) => ({
@@ -354,6 +373,10 @@ export function TableView({
 
   const handleTableKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      // The foreign-key navigation (DB-07) comes first: it is the only
+      // shortcut that is about the tab, not about the grid.
+      fkNavigation.onKeyDown(event);
+      if (event.defaultPrevented) return;
       // An IME composition owns every key, and so does a text field: the grid
       // shortcuts never fire while the user is typing (01-selection §4.5).
       if (isComposingEvent(event)) return;
@@ -406,6 +429,7 @@ export function TableView({
     [
       drafts,
       editingCell,
+      fkNavigation,
       handleCommitPendingChanges,
       isEditable,
       pendingBusy,
@@ -443,12 +467,25 @@ export function TableView({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden" onKeyDown={handleTableKeyDown}>
+      {fkNavigation.breadcrumb && (
+        <TableFkBreadcrumb
+          origin={fkNavigation.breadcrumb.origin}
+          truncated={fkNavigation.breadcrumb.truncated}
+          canGoBack={fkNavigation.breadcrumb.canGoBack}
+          canGoForward={fkNavigation.breadcrumb.canGoForward}
+          onBack={fkNavigation.onBack}
+          onForward={fkNavigation.onForward}
+        />
+      )}
       <TableStatusBanners
         error={error}
         hasWork={hasWork}
         insertNotice={insertNotice}
         onRetry={actions.load}
       />
+      {/* A refused jump stays in the tab it started from: no tab is opened,
+          and the reason is shown here. */}
+      <TableFkErrorBanner error={fkNavigation.error} onDismiss={fkNavigation.dismissError} />
       <TableToolbar
         panelId={panelId}
         dbSessionId={dbSessionId}
@@ -534,6 +571,10 @@ export function TableView({
         highlightedRow={detailRowIndex ?? highlightedNewRowIndex}
         dirtyByRow={dirtyIndex.byRowIndex}
         onRestoreRow={actions.unstageRowDelete}
+        // The foreign-key jump (DB-07): the arrows and the callback.
+        foreignKeys={fkNavigation.foreignKeys}
+        rowHeight={DATA_TABLE_ROW_HEIGHT}
+        onScrollElementChange={fkNavigation.onScrollElementChange}
         // The marker of the inserted row is its own channel: the background
         // highlight above is shared with the detail panel, so only a marker
         // with a word on it tells the two apart.

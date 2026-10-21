@@ -66,6 +66,11 @@ impl serde::Serialize for CommandError {
         }
         // Redact secrets so IPC payloads never leak credentials (M9/B8).
         let redacted = crate::log_redact::redact_secrets_for_log(&self.to_string());
+        // …and the absolute paths: an IPC payload is not a log line, and it
+        // travels further than the machine it was produced on (AGENTS.md:
+        // "全局 IPC 错误 Payload 自动脱敏凭据与绝对路径"). The file name
+        // survives; the directories do not.
+        let redacted = crate::log_redact::redact_paths_for_ipc(&redacted);
         serializer.serialize_str(&redacted)
     }
 }
@@ -375,6 +380,32 @@ mod tests {
         assert!(
             ipc_json.contains("Connection failed"),
             "IPC must preserve error category: {ipc_json}"
+        );
+    }
+
+    /// FKU-D5: the IPC payload must not carry an absolute path either.
+    ///
+    /// The credential redaction has always been part of the payload; the path
+    /// was not, and it only stayed invisible because the front end dropped the
+    /// whole message. Now that the message reaches the UI, the path has to be
+    /// masked at the point where the payload is produced.
+    #[test]
+    fn cmd_ext_redacts_absolute_paths_in_ipc_payload() {
+        let err: CommandError = CommandError::Validation(
+            "cannot open /Users/alice/code/datazen/app.db for reading".into(),
+        );
+        // The log-side text keeps the path: a log line is read on the machine
+        // that produced it, and the path is what the reader needs.
+        assert!(err.to_string().contains("/Users/alice"));
+        // The IPC payload does not.
+        let ipc_json = serde_json::to_string(&err).unwrap();
+        assert!(
+            !ipc_json.contains("/Users/alice"),
+            "IPC must not contain an absolute path: {ipc_json}"
+        );
+        assert!(
+            ipc_json.contains("app.db"),
+            "IPC must keep the file name: {ipc_json}"
         );
     }
 

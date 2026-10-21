@@ -239,8 +239,9 @@ export const databaseCommands = {
    * referenced row still exists.
    *
    * The desktop **does** register the command (07), so this call reaches the
-   * host. The UI entry point is still to come: the grid's foreign-key arrow
-   * is the next wave's work, and until then nothing calls this method.
+   * host. The UI entry point is the grid's foreign-key arrow: it calls
+   * `openForeignKeyTarget` (`src/lib/fkNavigationActions.ts`), which resolves
+   * the target through this method before it opens the target tab.
    */
   resolveForeignKeyTargets: async (
     params: ResolveForeignKeyTargetsRequest,

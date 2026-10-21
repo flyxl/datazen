@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
 import { tid } from '../../lib/tid';
 import { Download, Trash2 } from 'lucide-react';
 import type { FilterCondition, SortCondition, Value } from '../../types';
@@ -14,6 +14,7 @@ import {
 } from '../../stores/tableData/gridSelection';
 import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
 import type { DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
+import type { FkGroupAffordance } from '../../lib/fkNavigation';
 import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
 import { Pagination } from './Pagination';
@@ -23,6 +24,7 @@ import { useDataTableContextMenu } from './useDataTableContextMenu';
 import { DataExportDialog } from './DataExportDialog';
 import { cn } from '../../lib/cn';
 import { Spinner } from '../ui/Spinner';
+import { DATA_TABLE_ROW_HEIGHT } from './rowHeight';
 
 export interface DataTableProps {
   columns: ColumnDef[];
@@ -119,6 +121,33 @@ export interface DataTableProps {
    */
   onRestoreRow?: (rowIndex: number) => void;
 
+  /**
+   * The foreign keys of the table (DB-07).
+   *
+   * Omitted = the table has no foreign keys (or the metadata could not be
+   * read): the grid renders exactly what it rendered before.
+   *
+   * It is **one object** and not four loose props because the pieces belong
+   * together: the arrow of a composite key is decided by the values of
+   * **all** of its members — including a member the user has hidden — and
+   * only the **full** row records carry those values (07 §7 #14). A grid that
+   * got the index but not the records would silently lose the arrow of every
+   * composite key with a hidden member, so the type makes that combination
+   * impossible to write (FKU-D1).
+   */
+  foreignKeys?: {
+    /** The columns that take part in a foreign key, mapped to their group. */
+    index: ReadonlyMap<string, FkGroupAffordance>;
+    /** The **full** row records (every column of the table), by row index. */
+    rows: readonly Record<string, unknown>[];
+    /** The displayed column names, in render order. */
+    visibleColumns: readonly string[];
+    /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
+    resolving?: ReadonlySet<string>;
+    /** Follow the foreign key of a cell. */
+    onJump?: (rowIndex: number, columnName: string) => void;
+  };
+
   loading?: boolean;
   statusBar?: React.ReactNode;
   rowHeight?: number;
@@ -151,6 +180,15 @@ export interface DataTableProps {
    * When omitted, uses the right-clicked cell value (preferred) or `window.getSelection()`.
    */
   getContextCellText?: () => string | null | undefined;
+
+  /**
+   * The scroll container of the grid, handed to its owner (DB-07).
+   *
+   * The owner needs it to snapshot the viewport when the tab is left and to
+   * restore it when the tab is entered again. It is a callback and not a ref
+   * because the element only exists after the first render.
+   */
+  onScrollElementChange?: (element: HTMLDivElement | null) => void;
 }
 
 const NOOP = () => {};
@@ -202,8 +240,9 @@ export function DataTable({
   newRowIndex,
   dirtyByRow,
   onRestoreRow,
+  foreignKeys,
   statusBar,
-  rowHeight = 28,
+  rowHeight = DATA_TABLE_ROW_HEIGHT,
   exportTableName,
   databaseType,
   dbSessionId,
@@ -216,10 +255,17 @@ export function DataTable({
   getContextCellText,
   gridSelection,
   onGridSelectionChange,
+  onScrollElementChange,
 }: DataTableProps) {
   const { t } = useI18n();
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+
+  // The owner of the grid keeps the viewport (DB-07): it has to know where the
+  // user was when the tab was left.
+  useEffect(() => {
+    onScrollElementChange?.(scrollEl);
+  }, [scrollEl, onScrollElementChange]);
 
   const colMeta = useMemo(() => columns.map((c) => ({ name: c.name, type: c.type })), [columns]);
   const { columnWidths: baseWidths, onResizeStart } = useColumnResize({
@@ -545,6 +591,7 @@ export function DataTable({
               editingDraft={editingDraft}
               newRowIndex={newRowIndex ?? null}
               dirtyByRow={dirtyByRow}
+              foreignKeys={foreignKeys}
             />
             {loading ? (
               gridRow(

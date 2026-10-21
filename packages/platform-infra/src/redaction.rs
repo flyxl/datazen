@@ -123,6 +123,84 @@ fn password_field_re() -> &'static Regex {
     })
 }
 
+/// The placeholder that replaces the **directory** part of an absolute path.
+const REDACTED_PATH: &str = "***";
+
+/// The pattern that finds the paths of an IPC payload.
+///
+/// Three alternatives, tried in this order at every position:
+///
+/// 1. a **`file://` URL** — the one URL whose path *is* a path on disk, so it
+///    is masked like one;
+/// 2. **any other URL** — its path is a path on the *server*, not on the
+///    user's disk, so it is left alone;
+/// 3. a **bare absolute path** — a unix root, a Windows drive or a UNC
+///    share — that does not continue a word.
+///
+/// Deciding by the **scheme** rather than by "is the previous character a
+/// colon" is what makes the difference: the old shape treated "a colon
+/// before the path" as "part of a URL", and so let `cannot open:/Users/…`
+/// through. Here a colon is just a character in front of a path.
+///
+/// A path **body** may contain spaces (a directory called "My Documents" is
+/// a directory), so an inner segment may hold them; the **last** segment may
+/// not, so the tail of a sentence ("app.db and more") is not mistaken for
+/// the file name.
+///
+/// The `regex` crate has no look-behind, so the character in front of a bare
+/// path is captured as `context` instead.
+const ABSOLUTE_PATH_PATTERN: &str = concat!(
+    r#"(?i)"#,
+    // 1. A `file://` URL: the scheme, the authority, and the path on disk.
+    r#"(?P<fileprefix>file://(?:[^\s/?#]*)?)"#,
+    r#"(?P<fileroot>(?:[a-z]:[\\/]|\\\\|/)(?:[^/\\\r\n"'<>|;()\[\]{}]+[\\/])*[^/\\\s\r\n"'<>|,:;()\[\]{}]+)"#,
+    r#"|"#,
+    // 2. Any other URL: not a path on this disk.
+    r#"(?P<url>[a-z][a-z0-9+.-]*://[^\s"'<>|]+)"#,
+    r#"|"#,
+    // 3. A bare absolute path that does not continue a word.
+    r#"(?:^|(?P<context>[^\w./\\]))"#,
+    r#"(?P<path>(?:[a-z]:[\\/]|\\\\|/)(?:[^/\\\r\n"'<>|;()\[\]{}]+[\\/])*[^/\\\s\r\n"'<>|,:;()\[\]{}]+)"#,
+);
+
+/// The matcher of the paths of an IPC payload.
+///
+/// The pattern is a compile-time literal, so it cannot fail to compile — and
+/// if it ever did, a redaction that masks **nothing** is a far better
+/// failure than a panic in the middle of an error report. Hence the `Option`
+/// and **no `expect`** on this path.
+fn absolute_path_re() -> Option<&'static Regex> {
+    static RE: OnceLock<Option<Regex>> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(ABSOLUTE_PATH_PATTERN).ok())
+        .as_ref()
+}
+
+/// Mask the **directory** part of a path, keeping the file name.
+///
+/// `/Users/alice/code/app.db` becomes `***/app.db`: the user's home
+/// directory, the project layout and the temporary directories stay behind,
+/// while the message still says which file it is about.
+///
+/// A path with a **single** segment and no extension (`/tmp`) is a directory
+/// in every spelling that matters, and there is no file name to keep — so it
+/// is masked whole. A single segment **with** an extension (`/app.db`) is a
+/// file, and it keeps its name.
+fn mask_path(path: &str) -> String {
+    let segments: Vec<&str> = path
+        .split(['/', '\\'])
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    let file_name = match segments.last() {
+        Some(last) if segments.len() > 1 || last.contains('.') => *last,
+        _ => "",
+    };
+    if file_name.is_empty() {
+        REDACTED_PATH.to_string()
+    } else {
+        format!("{REDACTED_PATH}/{file_name}")
+    }
+}
+
 /// Redact the userinfo of one `scheme://…` run.
 ///
 /// The parser is the primary path because it knows where userinfo ends and the
@@ -187,6 +265,55 @@ pub fn redact_url_for_log(url: &str) -> String {
         Some((base, _)) => format!("{base}?[redacted]"),
         None => redacted,
     }
+}
+
+/// Replace the **directory** part of every absolute path in `input`.
+///
+/// This is the path half of the redaction that `AGENTS.md` asks of the IPC
+/// error payload ("全局 IPC 错误 Payload 自动脱敏凭据与绝对路径"). It is a
+/// **separate** function from [`redact_secrets_for_log`] on purpose: that one
+/// is used on log lines all over the host, where a path is exactly what the
+/// reader needs, and changing its semantics would rewrite log output
+/// everywhere. The IPC payload is the place where a path must not travel.
+///
+/// The file name survives — it is what the message is about — while the
+/// directories are replaced: `/Users/alice/code/app.db` becomes
+/// `***/app.db`. The user's home directory, the project layout and the
+/// temporary directories stay behind.
+///
+/// The path of an **http(s)** URL is not a path on disk and stays intact:
+/// `https://host/api/v1` is returned unchanged.
+///
+/// A **`file://` URL** is the exception, and it is not a small one: its path
+/// *is* a path on disk (`file:///Users/alice/app.db` is the file the user
+/// opened), so it is masked like any other path.
+pub fn redact_paths_for_ipc(input: &str) -> String {
+    let Some(matcher) = absolute_path_re() else {
+        // Unreachable: the pattern is a literal. If it ever were not, the
+        // redaction degrades to "nothing is masked" instead of crashing the
+        // process while it reports an error.
+        return input.to_string();
+    };
+    matcher
+        .replace_all(input, |caps: &regex::Captures<'_>| {
+            // 1. A `file://` URL: its path is a path on this disk.
+            if let Some(prefix) = caps.name("fileprefix") {
+                if let Some(root) = caps.name("fileroot") {
+                    return format!("{}{}", prefix.as_str(), mask_path(root.as_str()));
+                }
+            }
+            // 2. Any other URL: not a path on this disk.
+            if let Some(url) = caps.name("url") {
+                return url.as_str().to_string();
+            }
+            // 3. A bare absolute path.
+            if let Some(path) = caps.name("path") {
+                let context = caps.name("context").map(|c| c.as_str()).unwrap_or("");
+                return format!("{context}{}", mask_path(path.as_str()));
+            }
+            caps[0].to_string()
+        })
+        .into_owned()
 }
 
 #[cfg(test)]
@@ -334,5 +461,132 @@ mod tests {
             redact_url_for_log("https://host?token=secret"),
             "https://host?[redacted]"
         );
+    }
+
+    /// FKU-D5: the absolute path of an IPC error payload must not travel.
+    #[test]
+    fn redacts_absolute_unix_paths_for_ipc() {
+        let out = redact_paths_for_ipc("cannot open /Users/alice/code/app.db for reading");
+        assert!(!out.contains("/Users/alice"), "{out}");
+        assert!(!out.contains("code"), "{out}");
+        // The file name survives: it is what the message is about.
+        assert!(out.contains("app.db"), "{out}");
+    }
+
+    #[test]
+    fn redacts_absolute_windows_paths_for_ipc() {
+        let out = redact_paths_for_ipc(r"cannot open C:\Users\alice\AppData\app.db");
+        assert!(!out.contains("Users"), "{out}");
+        assert!(!out.contains("AppData"), "{out}");
+        assert!(out.contains("app.db"), "{out}");
+    }
+
+    #[test]
+    fn redacts_unc_paths_for_ipc() {
+        let out = redact_paths_for_ipc(r"cannot open \\server\share\app.db");
+        assert!(!out.contains("server"), "{out}");
+        assert!(out.contains("app.db"), "{out}");
+    }
+
+    /// A URL's path is not a path on disk and must survive untouched.
+    #[test]
+    fn leaves_url_paths_intact_for_ipc() {
+        let url = "GET https://api.example.com/v1/users failed with 500";
+        assert_eq!(redact_paths_for_ipc(url), url);
+    }
+
+    /// A relative path is not absolute and stays as it is.
+    #[test]
+    fn leaves_relative_paths_intact_for_ipc() {
+        let out = redact_paths_for_ipc("config/app.toml not found");
+        assert_eq!(out, "config/app.toml not found");
+    }
+
+    /// G1 (FKU2-D2): a colon right in front of the path.
+    ///
+    /// The old shape decided "is this part of a URL?" by asking whether the
+    /// **previous character was a colon** — which let `cannot open:/Users/…`
+    /// through. The decision is made by the **scheme** now.
+    #[test]
+    fn masks_a_path_that_follows_a_colon_for_ipc() {
+        let out = redact_paths_for_ipc("cannot open:/Users/alice/app.db");
+        assert!(!out.contains("/Users/alice"), "{out}");
+        assert!(out.contains("app.db"), "{out}");
+    }
+
+    /// G2 (FKU2-D2): a path with a blank in it.
+    ///
+    /// "My Documents" is a directory, and a directory with a blank in it is
+    /// the **most common** shape on macOS and Windows. The old path body
+    /// stopped at the first blank, so only half of the path was masked.
+    #[test]
+    fn masks_a_path_with_a_blank_in_it_for_ipc() {
+        let out = redact_paths_for_ipc("/Users/alice/My Documents/app.db");
+        assert!(!out.contains("/Users/alice"), "{out}");
+        assert!(!out.contains("My Documents"), "{out}");
+        // The file name stays: it is what the message is about.
+        assert!(out.contains("app.db"), "{out}");
+    }
+
+    /// G3 (FKU2-D3): a `file://` URL.
+    ///
+    /// Its path **is** a path on disk — `file:///Users/alice/app.db` is the
+    /// file the user opened — so masking it is what AGENTS.md asks for.
+    #[test]
+    fn masks_the_path_of_a_file_url_for_ipc() {
+        let out = redact_paths_for_ipc("file:///Users/alice/app.db");
+        assert!(!out.contains("/Users/alice"), "{out}");
+        assert!(out.contains("app.db"), "{out}");
+    }
+
+    /// G4 (FKU2-D4): a single-segment path.
+    ///
+    /// `/tmp` is a directory and there is no file name to keep, so it is
+    /// masked whole: the absolute form is what must not travel.
+    #[test]
+    fn masks_a_single_segment_path_for_ipc() {
+        let out = redact_paths_for_ipc("cannot open /tmp");
+        assert!(!out.contains("/tmp"), "{out}");
+    }
+
+    /// A path in the middle of a sentence keeps the text around it.
+    #[test]
+    fn masks_a_path_inside_a_sentence_for_ipc() {
+        let out = redact_paths_for_ipc("failed to read /Users/alice/app.db: no such file");
+        assert!(!out.contains("/Users/alice"), "{out}");
+        assert!(out.contains("app.db"), "{out}");
+        // The tail of the sentence survives.
+        assert!(out.contains("no such file"), "{out}");
+    }
+
+    /// A Windows path with a blank in it, and a UNC share.
+    #[test]
+    fn masks_windows_and_unc_paths_with_blanks_for_ipc() {
+        let out = redact_paths_for_ipc(r"cannot open C:\Users\alice\My Documents\app.db");
+        assert!(!out.contains("Users"), "{out}");
+        assert!(!out.contains("My Documents"), "{out}");
+        assert!(out.contains("app.db"), "{out}");
+
+        let unc = redact_paths_for_ipc(r"cannot open \\server\share\app.db");
+        assert!(!unc.contains("server"), "{unc}");
+        assert!(unc.contains("app.db"), "{unc}");
+    }
+
+    /// The credential redaction is unchanged: the path step is a **separate**
+    /// capability, and the two compose.
+    #[test]
+    fn path_redaction_does_not_change_credential_redaction() {
+        let s = "mysql://root:s3cret@127.0.0.1:3306/app failed on /Users/alice/app.db";
+        let secrets = redact_secrets_for_log(s);
+        assert!(!secrets.contains("s3cret"), "{secrets}");
+        assert!(
+            secrets.contains("mysql://***@127.0.0.1:3306/app"),
+            "{secrets}"
+        );
+
+        let both = redact_paths_for_ipc(&secrets);
+        assert!(!both.contains("/Users/alice"), "{both}");
+        assert!(both.contains("mysql://***@127.0.0.1:3306/app"), "{both}");
+        assert!(both.contains("app.db"), "{both}");
     }
 }
