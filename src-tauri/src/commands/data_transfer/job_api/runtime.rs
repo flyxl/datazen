@@ -1,4 +1,4 @@
-//! Transfer adapter for the shared durable desktop Job host.
+//! Transfer adapter for the shared durable Job host.
 
 #[cfg(test)]
 use std::collections::HashMap;
@@ -17,9 +17,7 @@ use datazen_platform_api::id::{
     Timestamp, WorkerId,
 };
 use datazen_platform_api::{PortError, RequestContext};
-use datazen_runtime::job::{
-    DesktopJobHost, EndpointRef, EndpointRole, JobHandler, RecoveryVerdict,
-};
+use datazen_runtime::job::{EndpointRef, EndpointRole, JobHandler, JobHost, RecoveryVerdict};
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
@@ -307,7 +305,7 @@ impl Drop for WriteGateGuard {
 }
 
 pub(crate) async fn drive(
-    host: Arc<DesktopJobHost>,
+    host: Arc<JobHost>,
     accepted: AcceptedJob,
     plan: DrivePlan,
 ) -> Result<JobOutcome, CommandError> {
@@ -422,7 +420,7 @@ pub(crate) async fn run(
 }
 
 async fn persist_recovery(
-    host: &DesktopJobHost,
+    host: &JobHost,
     ctx: &RequestContext,
     job_id: &JobId,
     handler: &DataTransferHandler,

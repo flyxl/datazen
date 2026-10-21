@@ -78,13 +78,13 @@ pub(super) async fn build_app_state(
 
 pub(crate) fn build_desktop_job_host(
     app_db: Arc<crate::store::AppDb>,
-) -> Arc<datazen_runtime::job::DesktopJobHost> {
+) -> Arc<datazen_runtime::job::JobHost> {
     let clock: Arc<dyn JobClock> = Arc::new(SystemJobClock);
     let repository: Arc<dyn datazen_runtime::job::JobRuntimeRepository> = Arc::new(
         crate::store::app_db::jobs::SqliteJobRepository::new(app_db, clock.clone(), 300),
     );
     let ledger = Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::team_default())));
-    Arc::new(datazen_runtime::job::DesktopJobHost::new(
+    Arc::new(datazen_runtime::job::JobHost::new(
         repository, ledger, clock,
     ))
 }

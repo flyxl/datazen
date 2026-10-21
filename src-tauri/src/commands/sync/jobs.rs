@@ -1,6 +1,6 @@
 //! Durable Data Sync Job lifecycle.
 //!
-//! Production commands accept and dispatch through `DesktopJobHost`; runtime
+//! Production commands accept and dispatch through `JobHost`; runtime
 //! endpoint refs use the physical identity from `migration_endpoint` and never
 //! include a `dbSessionId`. A bounded in-process receipt fence prevents a
 //! same-process IPC retry from dispatching an accepted Job twice. The legacy
@@ -225,7 +225,7 @@ impl Drop for DispatchClaim {
 }
 
 async fn record_dispatch_failure(
-    host: &datazen_runtime::job::DesktopJobHost,
+    host: &datazen_runtime::job::JobHost,
     ctx: &RequestContext,
     job_id: &JobId,
     _reason: &str,
