@@ -98,6 +98,16 @@ export interface DirtyIndex {
  * two-character sequence `\u0000`, so a bare NUL never occurs in an identity
  * key, and SQL identifiers cannot contain one either. NUL is therefore
  * impossible on both sides.
+ *
+ * **This is a contract symbol, not a dead export.** It has no production
+ * call site yet — the dirty marks are resolved per row, not per cell — but
+ * 06 §3.1 freezes it as *the* key of a cell-level dirty mark: it is what a
+ * consumer queries when it needs to address one changed cell (by row identity
+ * + column name) instead of scanning the row's changed columns. Do **not**
+ * delete it as an unused export, and do not invent a call site for it either:
+ * the key space it defines (`rowIdentityKey` + NUL + column name) has to stay
+ * the one every later chapter uses, otherwise two chapters would build
+ * different keys for the same cell.
  */
 export function dirtyCellKey(identityKey: string, columnName: string): string {
   return `${identityKey}\u0000${columnName}`;
