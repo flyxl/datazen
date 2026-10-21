@@ -20,7 +20,6 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 当前已知缺陷：
 
 - [SE-PROD-011 列拖放不可达](bugs/SE-PROD-011-column-drag-drop-unreachable.md)：SQL Editor Pro 消费端已实现列负载，宿主未提供可拖拽列节点且适配层丢弃列信息；潜伏，不影响现有功能。
-- [TEST-INFRA-001 测试探针文件并发竞态](bugs/TEST-INFRA-001-concurrent-probe-file-race.md)：`boundaryMutation` 临时植入/删除仓库内探针文件，`driver-init-rustfmt` 整仓 `cpSync` 撞上删除窗口而 ENOENT；偶发把无关门禁跑红，单跑必绿。
 
 ## 功能文档
 
