@@ -1,6 +1,6 @@
 # DataZen 连接管理详细设计
 
-> 状态：待实现的开发契约。基线：2026-09-30，`8592b0fe1`。本次文档交付不代表已完成重构。
+> 状态：桌面 P3–P5 已落地，P6 进行中，P7–P10 仍为开发契约。基线：2026-09-30，`8592b0fe1`。桌面侧的 SessionRegistry、DesktopSessionBackend、Runtime 资源/预算与迁移三件套 Job 已按本文契约实现；P6 的消费者迁移仍有真实驱动旅程待验收，标为目标设计的服务端、多实例与跨实例协调部分尚未实现。
 > 读者：第一次参与 DataZen 的开发者。按“类型 → fake driver → 资源 → 会话 → 网关 → UI → Job → Web”顺序实现，不从修改 UI 当前库开始。
 > 配套：[系统概要](system-overview.md)、[开发计划](../../development/platform-development-plan.md)。
 

@@ -721,7 +721,7 @@ output:
 
 ### 12.3 AI 生成
 
-对话场景使用 Prompt：`resources/prompts/{lang}/workflow_generate.txt`。  
+对话场景使用 Prompt：`packages/feature-core/resources/prompts/workflow_generate.md`。
 生成结果必须是 **snake_case** YAML，并用 \`\`\`yaml 代码块包裹。
 
 ### 12.4 MCP
@@ -909,7 +909,7 @@ output:
 | `src-tauri/src/workflow/workflows.rs` | 模型、执行、模板、条件 |
 | `scripts/test-cross-db-workflow.yaml` | 跨库示例 |
 | `src-tauri/tests/workflow_tests.rs` | 集成测试 |
-| `src-tauri/resources/prompts/*/workflow_generate.txt` | AI 生成规范 |
+| `packages/feature-core/resources/prompts/workflow_generate.md` | AI 生成规范 |
 | `e2e/specs/workflow*.ts` | UI E2E |
 
 ### 15.5 与旧版本文档的差异（纠错）

@@ -12,7 +12,7 @@ Data Transfer 搬运结构和数据，支持异构数据库、表列映射，以
 
 | 层 | 目录 | 职责 |
 | --- | --- | --- |
-| IPC 与计划管理 | `commands/data_transfer/` | inspect、preview、执行、取消、计划认领与恢复请求核验 |
+| IPC 与计划管理 | `src-tauri/src/commands/data_transfer/` | inspect、preview、执行、取消、计划认领与恢复请求核验 |
 | 迁移执行 | `packages/data-transfer/src/` | 参数检查、映射、筛选、读取、分批写入、文件输出与 checkpoint |
 | 方言与类型转换 | `packages/data-transfer/src/transfer/` + Driver API | adapter 注册、IR 类型、源值读取、目标类型与 DDL 渲染 |
 
@@ -20,7 +20,7 @@ Data Transfer 搬运结构和数据，支持异构数据库、表列映射，以
 
 ## 2. 请求模型
 
-`data_transfer/model.rs` 的 `TransferJob` 包含 source、可选 target、可选 sqlFileTarget、mode、writeMode、tables 与 options。当前端点是运行时 `dbSessionId` + database + 可选 schema；它不是可跨进程恢复的持久化端点。保存的迁移 profile 则使用 sourceConnectionId / targetConnectionId 与 database/schema，不保存运行时会话。
+`packages/data-transfer/src/model.rs` 的 `TransferJob` 包含 source、可选 target、可选 sqlFileTarget、mode、writeMode、tables 与 options。当前端点是运行时 `dbSessionId` + database + 可选 schema；它不是可跨进程恢复的持久化端点。保存的迁移 profile 则使用 sourceConnectionId / targetConnectionId 与 database/schema，不保存运行时会话。
 
 | 字段 | 当前约束 |
 | --- | --- |
@@ -46,7 +46,7 @@ SQL 文件支持 UTF-8、UTF-8 BOM、UTF-16 LE/BE，以及 none/gzip 压缩。�
   → 执行 / Result
 ```
 
-`commands/data_transfer/plans.rs` 的 `TransferPlanStore` 使用进程内 Mutex + HashMap 保存计划与恢复信息。计划冻结原始 job、驱动协议、结构/范围/映射指纹、预期 DDL 和目标只读状态，并带有效期。TransferPlanStore 本身不持久化。
+`src-tauri/src/commands/data_transfer/plans.rs` 的 `TransferPlanStore` 使用进程内 Mutex + HashMap 保存计划与恢复信息。计划冻结原始 job、驱动协议、结构/范围/映射指纹、预期 DDL 和目标只读状态，并带有效期。TransferPlanStore 本身不持久化。
 
 peek 不消耗计划；claim 原子将 available 转为 executing 并建立活动执行占用。计划消费后不因失败重新变为 available，避免未知提交结果触发重复执行。执行请求引用 planId，selection 只允许缩小 sourceTables 集合；运行选项只开放破坏性确认，不允许客户端替换冻结映射与 SQL。
 
@@ -56,7 +56,7 @@ peek 不消耗计划；claim 原子将 available 转为 executing 并建立活�
 
 ## 4. 数据库执行
 
-`data_transfer/execute/dispatcher.rs` 解析固定源/目标驱动，先核验源结构、有效列映射、对象限定名与同端点冲突，再执行写入。读取范围来自冻结的结构化条件；标识符通过驱动 quote，参数 placeholder 与参数上限由目标能力决定。
+`packages/data-transfer/src/execute/dispatcher.rs` 解析固定源/目标驱动，先核验源结构、有效列映射、对象限定名与同端点冲突，再执行写入。读取范围来自冻结的结构化条件；标识符通过驱动 quote，参数 placeholder 与参数上限由目标能力决定。
 
 目标参数限制会进一步缩小有效 batch：有效列越多，每批行数越小。列映射为空、结构漂移、破坏性操作未确认等情况在写入前拒绝。目标 DDL 与数据插入不是天然的一个事务；不能把数据批次 rollback 描述成撤销全部结构变更。
 
@@ -75,7 +75,7 @@ peek 不消耗计划；claim 原子将 available 转为 executing 并建立活�
 
 ## 5. 分批恢复
 
-`data_transfer/resume.rs` 的 `TransferResumeCheckpoint` 定义 renew、prepareTable、advanceTable、token、invalidate 等旧恢复操作。恢复证据包括稳定 key 列、批大小、源指纹、已提交批次和 cursor；单纯保存行数或 OFFSET 不足以恢复。共享 JobRuntime 另将运行中 handler 提交的 checkpoint 与 CommitBoundary 写入 AppDb，并由 `get_transfer_job_details` 原样读回。
+`packages/data-transfer/src/resume.rs` 的 `TransferResumeCheckpoint` 定义 renew、prepareTable、advanceTable、token、invalidate 等旧恢复操作。恢复证据包括稳定 key 列、批大小、源指纹、已提交批次和 cursor；单纯保存行数或 OFFSET 不足以恢复。共享 JobRuntime 另将运行中 handler 提交的 checkpoint 与 CommitBoundary 写入 AppDb，并由 `get_transfer_job_details` 原样读回。
 
 旧 resume helper 的可恢复路径要求完整且非 NULL 的稳定主键、可核验的一致性条件与目标事务能力；源与目标运行时会话须分离。实现对已验证的 PostgreSQL/MySQL 路径作显式检查，不应据此声称所有已注册驱动都支持恢复。该 helper 不重建旧 Job 的运行时句柄，也不授权重放；检查点失效、结构/范围变化、无法证明源一致性时拒绝续跑。
 
@@ -83,9 +83,9 @@ peek 不消耗计划；claim 原子将 available 转为 executing 并建立活�
 
 ## 6. SQL 文件与取消
 
-`data_transfer/sql_file.rs` 负责 SQL 文件输出；SQL 文件目的地不建立目标数据库写会话，但仍需源读取与渲染能力。INSERT 字面量必须由目标 SQL 驱动声明的 `SqlLiteralDialect` 生成；无方言或值无法安全表示时停止生成，不能回退到默认转义。文件输出失败或取消不能标成完整产物；结果必须表达已输出部分和错误。
+`packages/data-transfer/src/sql_file.rs` 负责 SQL 文件输出；SQL 文件目的地不建立目标数据库写会话，但仍需源读取与渲染能力。INSERT 字面量必须由目标 SQL 驱动声明的 `SqlLiteralDialect` 生成；无方言或值无法安全表示时停止生成，不能回退到默认转义。文件输出失败或取消不能标成完整产物；结果必须表达已输出部分和错误。
 
-旧执行与兼容路径仍由 `commands/data_transfer/exec.rs` 等入口管理；P5 新路径在 `commands/data_transfer/job_api/`。新路径的 cancel intent 持久写入本机 Job repository，运行时通过 `CancelWatch` 将它传给当前 stage。该 SQLite repository 是单机桌面 host，不是团队服务跨实例协调器。Job 只存 Artifact ID 引用，不存文件字节；当前引用 TTL 为 30 天，且不保证仍可下载对应内容。
+旧执行与兼容路径仍由 `src-tauri/src/commands/data_transfer/exec.rs` 等入口管理；P5 新路径在 `src-tauri/src/commands/data_transfer/job_api/`。新路径的 cancel intent 持久写入本机 Job repository，运行时通过 `CancelWatch` 将它传给当前 stage。该 SQLite repository 是单机桌面 host，不是团队服务跨实例协调器。Job 只存 Artifact ID 引用，不存文件字节；当前引用 TTL 为 30 天，且不保证仍可下载对应内容。
 
 ## 7. 相关文档
 

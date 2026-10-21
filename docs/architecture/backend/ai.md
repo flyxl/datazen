@@ -169,7 +169,7 @@ AI Prompt 模板管理（替代原 `PromptBuilder`），统一使用英文系统
 **解析优先级**：
 1. 用户覆盖 — `prompt_overrides.json`（通过设置界面修改，按场景存储）
 2. 驱动覆盖 — `DatabaseDriver::prompt_overrides()`（运行时按连接的驱动类型动态应用）
-3. 资源文件模板 — `resources/prompts/*.md`（运行时加载）
+3. 资源文件模板 — `packages/feature-core/resources/prompts/*.md`（编译期嵌入 + 运行时覆盖）
 4. 编译时嵌入 — `embedded_default()`（编译期二进制兜底）
 
 **语言控制机制**：Prompt 模板统一保持英文以最大化模型指令遵循与工具调用稳定性；自然语言输出通过 `inject_language_hint` 动态注入系统指令，强制模型输出当前应用配置语言（如简体中文、英文等）。
@@ -189,7 +189,7 @@ AI Prompt 模板管理（替代原 `PromptBuilder`），统一使用英文系统
 | `Chat` | `chat.md` | AI 侧边栏对话 |
 | `WorkflowGenerate` | `workflow_generate.md` | AI 辅助 Workflow 生成 |
 
-**模板存放位置**：`src-tauri/resources/prompts/*.md`
+**模板存放位置**：`packages/feature-core/resources/prompts/*.md`
 
 **运行时加载**：首次使用 AI 时加载至内存缓存。
 

@@ -7,13 +7,13 @@
 | 层级 | 工具 | 范围 |
 |------|------|------|
 | Host Rust 单元测试 | `cargo test -p datazen` | `src-tauri` 各模块 `#[cfg(test)]` |
-| Host Rust 集成测试 | `cargo test -p datazen` | `src-tauri/tests/`（宿主编排，如 AI / Workflow） |
+| Host Rust 集成测试 | `cargo test -p datazen` | `src-tauri/tests/`（宿主编排，如 AI / Workflow / IPC） |
+| 共享 crate 测试 | `cargo test -p datazen-<crate>` | `packages/` 下的 runtime / application / feature-core / 领域引擎 |
 | 驱动 Rust 测试 | `cargo test -p datazen-driver-<id>` | `packages/drivers/<id>/` 的 `#[cfg(test)]` 与 `tests/` |
 | Host 前端单元测试 | Vitest | `src/**/__tests__/`（`pnpm test:unit`） |
 | 驱动 UI 单测 | Vitest | `packages/drivers/<id>/ui/__tests__/`（`pnpm test:unit:drivers`） |
 | Host E2E | WebdriverIO | `e2e/specs/` |
 | 驱动 E2E | WebdriverIO | `packages/drivers/<id>/e2e/`（显式脚本，不进默认 `pnpm e2e`） |
-| 手工黑盒测试 | computer-use-mcp | `test/`（**当前仓库无此目录**，见 §6） |
 
 ### 1.1 驱动测试必须写在驱动 crate 内
 
@@ -30,9 +30,9 @@ Path 驱动（`packages/drivers/<id>/`，crate `datazen-driver-<id>`）：
 
 Git 驱动（Kiwi 等）：测试在**驱动仓库**维护，不要提交到 Host。
 
-Host（`src-tauri/`、`src/`、`e2e/specs/`）只测宿主：IPC、Workflow 引擎、MCP、通用窗口/表数据。可以用真实 PG/MySQL 当**夹具**，但不要把 `use_database`、structure DDL、Redis Command 等驱动语义写进 Host 测试。
+Host（`src-tauri/`、`src/`、`e2e/specs/`）只测宿主：IPC、Workflow 引擎、MCP、通用窗口/表数据。可以用真实 PG/MySQL 当**夹具**，但不要把跨库目录 SQL、structure DDL、Redis Command 等驱动语义写进 Host 测试。
 
-错误示例：`cargo test -p datazen --test postgres_use_database`（应 `-p datazen-driver-postgres`）。Agent 约定见 [AGENTS.md](../../AGENTS.md)「驱动测试落点」。
+错误示例：`cargo test -p datazen --test postgres_cross_database`（应 `-p datazen-driver-postgres`）。Agent 约定见 [AGENTS.md](../../AGENTS.md)「驱动测试落点」。
 
 ## 2. 运行命令
 
@@ -65,15 +65,18 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<i
 
 | 模块 | 测试范围 |
 |------|---------|
-| `packages/ai-api/tests/api_tests.rs` | AiProvider trait、types、factory（17 tests） |
-| `src-tauri/src/ai/registry.rs` | AiProviderRegistry（7 tests） |
-| `src-tauri/src/ai/openai.rs` | OpenAI Provider（7 tests） |
-| `src-tauri/src/ai/anthropic.rs` | Anthropic Provider（5 tests） |
-| `src-tauri/src/ai/prompt_resolver.rs` | PromptResolver 解析优先级、多语言 fallback |
-| `src-tauri/src/mcp/server.rs` | MCP Server tools（6 tests） |
+| `packages/ai-api/tests/api_tests.rs` | AiProvider trait、types、factory |
+| `packages/ai-providers/src/registry.rs` | AiProviderRegistry 注册与查找 |
+| `packages/ai-providers/src/openai.rs` / `anthropic.rs` | Provider 适配层 |
+| `packages/ai-providers/src/protocol/` | OpenAI Chat/Responses 与 Anthropic wire protocol |
+| `packages/feature-core/src/ai/prompt_resolver_tests.rs` | PromptResolver 解析优先级、多语言 fallback |
+| `packages/feature-core/src/ai/safety_tests.rs` | AI 出境脱敏与安全门 |
+| `packages/feature-core/tests/monitor_authorization.rs` | Monitor 定时授权的共享策略 |
+| `packages/feature-core/tests/workflow_block_refusal.rs` | Workflow 资源块的失败关闭 |
+| `src-tauri/src/mcp/server.rs` | MCP Server tools |
 | `src-tauri/src/workflow/workflows.rs` | Workflows 系统 |
-| `src-tauri/src/mcp/client.rs` | MCP Client（3 tests） |
-| `src-tauri/src/commands/context.rs` | AI 上下文文件（路径遍历防护、扩展名白名单、大小限制，14 tests） |
+| `src-tauri/src/mcp/client.rs` | MCP Client |
+| `src-tauri/src/commands/context.rs` | AI 上下文文件（路径遍历防护、扩展名白名单、大小限制） |
 
 ### 3.2 集成测试
 
@@ -148,7 +151,7 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<i
 | 单测 / 覆盖率 | `vitest.e2e-contract.config.ts` | fixtures/plan 单测；`pnpm test:unit:e2e-contract:coverage` |
 | 运行命令 | `pnpm e2e:contract:matrix` | PG + MySQL + SQLite 全矩阵 |
 
-方言深度（`use_database`、专属 Command、Redis KV 等）仍在 `packages/drivers/<id>/` 的 crate 内测试，不进 Host 默认 `pnpm e2e`。
+方言深度（跨库目录、专属 Command、Redis KV 等）仍在 `packages/drivers/<id>/` 的 crate 内测试，不进 Host 默认 `pnpm e2e`。
 
 ## 5. E2E 测试
 
@@ -174,13 +177,13 @@ WebdriverIO E2E spec（Host：`e2e/specs/`）：
 | Path 驱动 Rust | `packages/drivers/<id>/` — `cargo test -p datazen-driver-<id>` |
 | Redis UI 单测 | `packages/drivers/redis/ui/__tests__/` — `pnpm test:unit:drivers` |
 | Redis E2E | `packages/drivers/redis/e2e/` — `pnpm e2e:redis` |
-| PG / MySQL `use_database` | `packages/drivers/{postgres,mysql}/tests/` |
+| PG / MySQL 跨库目录 | `packages/drivers/{postgres,mysql}/tests/*_cross_database.rs` |
 | Kiwi 元数据单测 | `datazen-driver-kiwi` `ui/plugin-meta.test.ts` |
 | Kiwi E2E | `datazen-driver-kiwi`：`pnpm e2e:kiwi` |
 
 配置文件：`e2e/.env`（`e2e/.env.example` 示例）。跑库相关 spec 前执行 `bash e2e/setup-e2e-env.sh`（`e2e/run.mjs` 也会调用）。
 
-**构建要求：** `pnpm tauri build --debug --features webdriver`（禁止裸 `cargo build`）。
+**构建要求：** `pnpm tauri:build:webdriver`（或 `pnpm e2e` 自动触发；禁止裸 `cargo build`）。
 
 快捷运行：
 ```bash
@@ -200,52 +203,4 @@ pnpm test:unit:drivers  # Path 驱动 UI 单测
 
 ## 6. 手工黑盒测试
 
-> **当前状态：仓库内没有 `test/` 目录。** 辅助工具 `computer-use-mcp` 仍配置在
-> `.cursor/mcp.json`，但已无配套文档。下文是 2026-08 以「obsolete / outdate」为由删除
-> **之前**的结构（`33860f548`、`a18d45c6c`），`git ls-files test/` 现为 0；6.1 的用例数与
-> 6.2 的报告格式同属删除当时的历史计划，**不描述当前仓库的测试存量**。要恢复手工黑盒层时，
-> 从本节起步即可。
-
-```
-test/
-├── test-plan.md            # 测试计划（范围、策略、环境）
-├── test-cases.md           # 测试用例（102 个，覆盖 14 个模块）
-├── test-results.md         # 测试执行结果与汇总
-├── bug-list.md             # Bug 清单索引
-├── mcp-setup.md            # computer-use-mcp 配置说明
-├── bugs/                   # 每个 Bug 一个文件
-│   ├── BUG-001.md ~ BUG-008.md
-└── screenshots/            # Bug 截图证据
-```
-
-> 上面 `bugs/BUG-001.md ~ BUG-008.md` 是一套**已随删除消失**的编号。`BUG-00x` 在本仓库
-> **不是一套全局编号**，因此**不可假定裸写 `BUG-00x` 指的就是上面这套**：现存 **15 套**
-> 带前缀的活跃系列（`F1-BUG-00x` 连接导航 / schema 树、`redis-codec-write-BUG-00x` 等，
-> 另有 `redis-tree-ui-` / `redis-kvbar-ui-` / `tunnel-form-` 等域前缀；其中 `redis-workbench-` 对应 `packages/drivers/redis/src/ops/workbench/` 下的一组测试，**它尚无已入库的 `bugs/` 登记表**，前缀按仓库既有的命名式样补的），此外还有 **354 处**裸写
-> `BUG-00x`——它既可能是某个活跃系列的简写，也可能属于另一套已删除编号。引用缺陷编号时
-> **必须连前缀一起写全**，读者才能定位到唯一一套。
->
-> 复算：`git grep -ohE '[A-Za-z0-9_.-]+-BUG-[0-9]+' -- . ':!progress.md' ':!hub.md' |
-> sed -E 's/-[0-9]+$//' | sort -u | wc -l` → 15（系列数）。裸写处数用
-> `git grep -ohE '(^|[^A-Za-z0-9_.-])BUG-[0-9]+' -- . ':!progress.md' ':!hub.md' | wc -l`
-> → 354。**两个计数测于 `95a60bea5`**（此前标的 `98b2c74e2` 已被下述补前缀动作改变）；编号空间会随各轨补前缀而变动，
-> 复算值与此处不符时以复算值为准——此处只标时点，不承诺永久成立。
-
-### 6.1 测试模块覆盖
-
-| 模块 | 用例数 | 说明 |
-|------|--------|------|
-| 连接管理 | 18 | CRUD、类型切换、表单验证、分组搜索 |
-| 统一主工作区（连接导航 / Schema） | 6 | Schema 浏览、导航、数据库切换 |
-| 表数据浏览 | 10 | 分页、排序、筛选、行内编辑 |
-| SQL 查询 | 10 | 执行、取消、历史、收藏、多标签 |
-| 表结构 | 6 | 列信息、索引、约束查看 |
-| AI 功能 | 9 | NL2SQL、诊断、EXPLAIN、Chat、NL 筛选 |
-| 数据同步 | Host E2E：`data-sync-window.ts` / `data-sync-real.ts`；领域单测：`data_sync/` | Compare 映射门闸、覆盖拷贝拒绝；行 Apply 未接线 |
-| 备份恢复 | 4 | 备份/恢复配置与执行 |
-| 设置 | 9 | 主题、语言、AI 配置、快捷键 |
-| 其他 | 26 | Redis、导出、多窗口、快捷键、边界容错 |
-
-### 6.2 Bug 报告格式
-
-每个 Bug 文件包含：基本信息、环境配置、重现步骤、预期/实际结果、根因分析、修复方案、回归验证记录。
+仓库当前没有 `test/` 目录，手工黑盒测试层已退役；可自动化的交互旅程由 `e2e/specs/` 覆盖，无法稳定自动化的路径登记在 [e2e-coverage.md](../development/e2e-coverage.md)。新增缺陷若已核实复现且本轮明确不修，按 [docs/README.md](../README.md) 的 `bugs/` 规则单独记录，不恢复旧的编号式 Bug 清单。

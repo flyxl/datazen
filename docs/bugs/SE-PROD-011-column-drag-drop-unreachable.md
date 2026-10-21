@@ -39,10 +39,10 @@ kind: 'table' | 'view';
 联合类型里没有 `column`，宿主无法构造列负载。
 
 `src/windows/connection/navigator/NavigatorTreeRow.tsx` 全文只有 3 处 `draggable`
-（`:295`、`:470`、`:622`），其中只有 2 处调用 `setDragPayload`：
+（`:272`、`:441`、`:625`），其中只有 2 处调用 `setDragPayload`：
 
-- `:475` —— 表 / 视图
-- `:636` —— 存储例程 / 函数 / 存储过程 / 触发器
+- `:446` —— 表 / 视图
+- `:639` —— 存储例程 / 函数 / 存储过程 / 触发器
 
 **没有任何列节点是可拖拽的**，生产端根本无法发出列负载。
 

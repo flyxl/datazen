@@ -1,7 +1,7 @@
 # Data Synchronization 使用手册
 
 > 行级增量同步（对标 Navicat Data Synchronization）。  
-> 架构说明见 [data-sync.md](../architecture/backend/data-sync.md)；产品定义见 [data-synchronization-prd.zh-CN.md。
+> 架构说明见 [data-sync.md](../architecture/backend/data-sync.md)。
 
 ---
 
