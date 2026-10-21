@@ -253,6 +253,19 @@ export interface TableColumnSchema {
   comment?: string;
 }
 
+/**
+ * How much the row count of a table read may be trusted.
+ *
+ * The count used to be a boolean on the request side ("count it or do not
+ * count it"), which cannot say *how* the number was obtained. A driver that
+ * can only offer a catalog estimate and a driver that cannot count at all
+ * are both "no exact count", and the UI has to render them differently: one
+ * shows "≈ 1.2M rows", the other shows "row count unavailable".
+ *
+ * The names are the host's `CountStrategy` enum, in its camelCase form.
+ */
+export type CountStrategy = 'exact' | 'estimated' | 'unsupported';
+
 /** The result of a table read. */
 export interface TableDataResult {
   columns: TableColumnSchema[];
@@ -265,6 +278,16 @@ export interface TableDataResult {
    * UI has to render, not a missing field.
    */
   totalRows?: number | null;
+  /**
+   * How much `totalRows` may be trusted.
+   *
+   * `null` (or a missing key) means "this response carries no fresh row
+   * count" — the caller asked to reuse the one it already had, or the
+   * backend is older than this field — and the caller keeps its own value.
+   * It is not the same as `'unsupported'`, which says the count was
+   * attempted and this database cannot provide one.
+   */
+  totalRowsKind?: CountStrategy | null;
   page: number;
   pageSize: number;
 }
@@ -285,6 +308,17 @@ export interface TableDataRequest {
   sorts?: SortCondition[];
   skipCount?: boolean;
   filterLogic?: 'and' | 'or';
+  /**
+   * The row-count strategy to use. Omitted means "the driver decides"; the
+   * backend never counts against the driver's own declaration.
+   */
+  countStrategy?: CountStrategy;
+  /**
+   * The columns to order by when the caller did not ask for an order. An
+   * empty array means "do not order at all"; omitted means "the driver's
+   * default order".
+   */
+  defaultOrderColumns?: string[];
 }
 
 /**

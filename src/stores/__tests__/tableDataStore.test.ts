@@ -167,6 +167,78 @@ describe('tableDataStore (panel-scoped)', () => {
     expect(slice('missing-panel')).toBeUndefined();
   });
 
+  it('stores the count kind the response reports', async () => {
+    mockDatabaseCommands.getTableData.mockResolvedValueOnce({
+      ...sampleResponse,
+      totalRows: 1_200_000,
+      totalRowsKind: 'estimated',
+    });
+    await loadTable();
+    expect(loaded().totalRowsKind).toBe('estimated');
+    expect(loaded().totalRows).toBe(1_200_000);
+  });
+
+  it('keeps the previous count kind when the response omits it', async () => {
+    mockDatabaseCommands.getTableData.mockResolvedValueOnce({
+      ...sampleResponse,
+      totalRowsKind: 'estimated',
+    });
+    await loadTable();
+    expect(loaded().totalRowsKind).toBe('estimated');
+
+    // A paged re-read reuses the cached total, so the response carries no
+    // kind — and the panel keeps the one it had.
+    mockDatabaseCommands.getTableData.mockResolvedValueOnce({
+      ...sampleResponse,
+      totalRowsKind: undefined,
+    });
+    useTableDataStore.getState().setPage(PANEL, 1);
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+    expect(loaded().totalRowsKind).toBe('estimated');
+  });
+
+  it('records the unsupported count kind as such', async () => {
+    mockDatabaseCommands.getTableData.mockResolvedValueOnce({
+      ...sampleResponse,
+      totalRows: null,
+      totalRowsKind: 'unsupported',
+    });
+    await loadTable();
+    expect(loaded().totalRowsKind).toBe('unsupported');
+  });
+
+  it('sends the count strategy the caller asked for', async () => {
+    await useTableDataStore.getState().loadTableData({
+      panelId: PANEL,
+      dbSessionId: 'conn-1',
+      table: 'users',
+      countStrategy: 'exact',
+    });
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ countStrategy: 'exact' }),
+    );
+  });
+
+  it('asks for no order at all when the panel overrides the default order', async () => {
+    await loadTable();
+    mockDatabaseCommands.getTableData.mockClear();
+    useTableDataStore.getState().setDefaultOrderOverride(PANEL, 'none');
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultOrderColumns: [] }),
+    );
+  });
+
+  it('leaves the order to the host while the panel follows the setting', async () => {
+    await loadTable();
+    mockDatabaseCommands.getTableData.mockClear();
+    useTableDataStore.getState().setDefaultOrderOverride(PANEL, 'inherit');
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultOrderColumns: undefined }),
+    );
+  });
+
   it('setPage triggers reload with skipCount', async () => {
     await loadTable();
     mockDatabaseCommands.getTableData.mockClear();

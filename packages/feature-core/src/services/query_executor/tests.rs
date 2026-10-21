@@ -4,7 +4,10 @@
 //! and so the filter tests sit next to the filter module they cover.
 
 use super::*;
-use datazen_driver_api::{BoundParameterLimit, PaginationSyntax};
+use crate::services::table_browsing;
+use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
+use datazen_driver_api::{BoundParameterLimit, PaginationSyntax, Value};
+use std::sync::Arc;
 
 #[derive(Clone, Copy)]
 enum TestPaging {
@@ -83,6 +86,8 @@ impl SqlDialect for TestDialect {
     }
 }
 
+mod browsing_tests;
+
 fn make_column(name: &str, is_pk: bool) -> ColumnSchema {
     ColumnSchema {
         name: name.to_string(),
@@ -95,13 +100,29 @@ fn make_column(name: &str, is_pk: bool) -> ColumnSchema {
     }
 }
 
+/// The order the host computes for a table.
+///
+/// The host no longer derives the order inside the statement builder: it
+/// asks the driver, with the normalised primary keys. The four equivalence
+/// tests below feed this helper the primary keys the **old** code would have
+/// derived from the column flags, so the assertion they carry is still the
+/// old behaviour's assertion — reached through the new chain.
+fn host_default_order(columns: &[ColumnSchema], primary_keys: &[String]) -> Vec<String> {
+    table_browsing::resolve_default_order(mock_driver().as_ref(), columns, primary_keys, None)
+}
+
+/// A driver that declares nothing of its own, so the trait defaults decide.
+fn mock_driver() -> Arc<MockDriver> {
+    MockDriver::new("sqlite", MockDriverOptions::default())
+}
+
 /// Regression for the SQL Server `LIMIT` failure: the host must emit the
 /// dialect's clause verbatim and add an `ORDER BY` when the read is unordered
 /// (`SELECT *` with no columns), because T-SQL `OFFSET … FETCH` requires one.
 #[test]
 fn tsql_pagination_emits_offset_fetch_and_never_limit() {
-    let sql =
-        QueryExecutor::build_select_sql("events", &[], None, None, &TSQL, 25, 75, None).unwrap();
+    let sql = QueryExecutor::build_select_sql("events", &[], None, None, &[], &TSQL, 25, 75, None)
+        .unwrap();
     assert!(
         sql.contains("OFFSET 75 ROWS FETCH NEXT 25 ROWS ONLY"),
         "expected T-SQL paging clause, got: {sql}"
@@ -117,8 +138,19 @@ fn tsql_pagination_emits_offset_fetch_and_never_limit() {
 #[test]
 fn tsql_pagination_keeps_pk_order_without_fallback() {
     let columns = vec![make_column("id", true)];
-    let sql = QueryExecutor::build_select_sql("orders", &columns, None, None, &TSQL, 50, 0, None)
-        .unwrap();
+    let default_order = host_default_order(&columns, &["id".to_string()]);
+    let sql = QueryExecutor::build_select_sql(
+        "orders",
+        &columns,
+        None,
+        None,
+        &default_order,
+        &TSQL,
+        50,
+        0,
+        None,
+    )
+    .unwrap();
     assert!(sql.contains("ORDER BY \"id\" ASC"), "got: {sql}");
     assert!(!sql.contains("(SELECT NULL)"), "got: {sql}");
     assert!(
@@ -135,9 +167,19 @@ fn no_explicit_sort_uses_primary_key_order() {
         make_column("name", false),
         make_column("email", false),
     ];
-    let sql =
-        QueryExecutor::build_select_sql("orders", &columns, None, None, &DEFAULT, 50, 0, None)
-            .unwrap();
+    let default_order = host_default_order(&columns, &["id".to_string()]);
+    let sql = QueryExecutor::build_select_sql(
+        "orders",
+        &columns,
+        None,
+        None,
+        &default_order,
+        &DEFAULT,
+        50,
+        0,
+        None,
+    )
+    .unwrap();
     assert!(
         sql.contains("ORDER BY \"id\" ASC"),
         "Expected default ORDER BY primary key, got: {sql}"
@@ -151,9 +193,22 @@ fn no_explicit_sort_composite_pk_uses_all_pk_columns() {
         make_column("product_id", true),
         make_column("quantity", false),
     ];
-    let sql =
-        QueryExecutor::build_select_sql("order_items", &columns, None, None, &DEFAULT, 50, 0, None)
-            .unwrap();
+    let default_order = host_default_order(
+        &columns,
+        &["order_id".to_string(), "product_id".to_string()],
+    );
+    let sql = QueryExecutor::build_select_sql(
+        "order_items",
+        &columns,
+        None,
+        None,
+        &default_order,
+        &DEFAULT,
+        50,
+        0,
+        None,
+    )
+    .unwrap();
     assert!(
         sql.contains("ORDER BY \"order_id\" ASC, \"product_id\" ASC"),
         "Expected composite PK ordering, got: {sql}"
@@ -167,11 +222,13 @@ fn explicit_sort_overrides_default_pk_order() {
         column: "name".to_string(),
         descending: true,
     };
+    let default_order = host_default_order(&columns, &["id".to_string()]);
     let sql = QueryExecutor::build_select_sql(
         "users",
         &columns,
         None,
         Some(order),
+        &default_order,
         &DEFAULT,
         50,
         0,
@@ -191,9 +248,19 @@ fn explicit_sort_overrides_default_pk_order() {
 #[test]
 fn no_pk_no_explicit_sort_still_has_order_by_first_column() {
     let columns = vec![make_column("col_a", false), make_column("col_b", false)];
-    let sql =
-        QueryExecutor::build_select_sql("no_pk_table", &columns, None, None, &DEFAULT, 50, 0, None)
-            .unwrap();
+    let default_order = host_default_order(&columns, &[]);
+    let sql = QueryExecutor::build_select_sql(
+        "no_pk_table",
+        &columns,
+        None,
+        None,
+        &default_order,
+        &DEFAULT,
+        50,
+        0,
+        None,
+    )
+    .unwrap();
     assert!(
         sql.contains("ORDER BY \"col_a\" ASC"),
         "Expected fallback ORDER BY first column, got: {sql}"
@@ -209,9 +276,18 @@ fn filter_literals_use_dialect_formatter() {
         value: Value::Bool(true),
         connector: None,
     }];
-    let sql =
-        QueryExecutor::build_select_sql("t", &columns, Some(filters), None, &DEFAULT, 10, 0, None)
-            .unwrap();
+    let sql = QueryExecutor::build_select_sql(
+        "t",
+        &columns,
+        Some(filters),
+        None,
+        &[],
+        &DEFAULT,
+        10,
+        0,
+        None,
+    )
+    .unwrap();
     assert!(
         sql.contains("WHERE \"flag\" = TRUE"),
         "Expected dialect-style TRUE literal, got: {sql}"
@@ -254,6 +330,7 @@ fn build_select_sql_joins_filters_with_or() {
         &columns,
         Some(filters),
         None,
+        &[],
         &DEFAULT,
         10,
         0,
@@ -302,9 +379,18 @@ fn filter_join_defaults_to_and() {
 #[test]
 fn build_select_sql_without_offset_when_unsupported() {
     let columns = vec![make_column("id", true)];
-    let sql =
-        QueryExecutor::build_select_sql("users", &columns, None, None, &LIMIT_ONLY, 25, 0, None)
-            .unwrap();
+    let sql = QueryExecutor::build_select_sql(
+        "users",
+        &columns,
+        None,
+        None,
+        &[],
+        &LIMIT_ONLY,
+        25,
+        0,
+        None,
+    )
+    .unwrap();
     assert!(sql.contains("LIMIT 25"));
     assert!(!sql.contains("OFFSET"));
 }
@@ -347,6 +433,7 @@ fn incomplete_eq_filter_is_rejected() {
         &columns,
         Some(filters),
         None,
+        &[],
         &DEFAULT,
         50,
         0,
@@ -388,6 +475,7 @@ fn one_incomplete_filter_rejects_the_whole_query() {
         &columns,
         Some(filters),
         None,
+        &[],
         &DEFAULT,
         50,
         0,
@@ -419,11 +507,13 @@ fn count_and_select_share_one_where() {
             connector: Some(FilterConnector::Or),
         },
     ];
+    let default_order = host_default_order(&columns, &["id".to_string()]);
     let select = QueryExecutor::build_select_sql(
         "users",
         &columns,
         Some(filters.clone()),
         None,
+        &default_order,
         &DEFAULT,
         50,
         0,
@@ -467,6 +557,7 @@ fn mixed_connectors_are_parenthesised_in_both_statements() {
         &columns,
         Some(filters.clone()),
         None,
+        &[],
         &DEFAULT,
         50,
         0,
@@ -508,6 +599,7 @@ fn mixed_connectors_are_parenthesised_in_both_statements() {
         &columns,
         Some(filters),
         None,
+        &[],
         &DEFAULT,
         50,
         0,

@@ -133,11 +133,10 @@ describe('desktop transport: table-data commands', () => {
     mock.invoke.mockResolvedValue(null);
     const transport = createDesktopBackendTransport();
 
-    // The transport is a raw pipe and the *facade* is the gate, so this
-    // mapping is not reachable from the frontend today — the desktop
-    // declares `estimateTableRows` unsupported until 09 registers the
-    // command. The mapping is pinned here so the day it lands, the argument
-    // bag is already right and the implementer does not have to re-derive it.
+    // The transport is a raw pipe and the *facade* is the gate. The desktop
+    // registered the command with 09, so the mapping is reachable now; it
+    // stays pinned here so the argument bag cannot drift away from the Rust
+    // command without a test noticing.
     await transport.call('estimateTableRows', {
       dbSessionId: 'sess-1',
       table: 'orders',
@@ -191,7 +190,7 @@ describe('desktop transport: table-data commands', () => {
   });
 
   it('refuses the commands the host does not register, before any IPC leaves', async () => {
-    // The desktop declares the 08/09 commands unsupported, so a call gets an
+    // The desktop declares the 08 commands unsupported, so a call gets an
     // explicit failure that names the method and the backend instead of
     // Tauri's bare "command not found" — and the pipe is never touched.
     mock.invoke.mockResolvedValue(undefined);
@@ -207,14 +206,25 @@ describe('desktop transport: table-data commands', () => {
     await expect(client.deleteNamedView({ id: 'view-1' })).rejects.toMatchObject({
       code: 'CapabilityUnsupported',
     });
-    await expect(
-      client.estimateTableRows({ dbSessionId: 'sess-1', table: 'orders' }),
-    ).rejects.toMatchObject({
-      code: 'CapabilityUnsupported',
-      unsupportedKind: 'notImplemented',
-    });
 
     expect(mock.invoke).not.toHaveBeenCalled();
+  });
+
+  it('serves the estimate command the host registers', async () => {
+    // 09 registered `estimate_table_rows`, so the declaration that kept it
+    // out of the desktop had to go — otherwise the desktop would refuse a
+    // command the host serves.
+    mock.invoke.mockResolvedValue(null);
+    const client = createBackendClient('desktop', createDesktopBackendTransport());
+
+    await client.estimateTableRows({ dbSessionId: 'sess-1', table: 'orders' });
+
+    expect(mock.invoke).toHaveBeenCalledWith('estimate_table_rows', {
+      dbSessionId: 'sess-1',
+      table: 'orders',
+      database: undefined,
+      schema: undefined,
+    });
   });
 
   it('serves the foreign-key command the host registers', async () => {
@@ -304,10 +314,10 @@ function parseRegisteredCommands(source: string): Set<string> {
  * method the product has, the desktop declares the ones the host cannot
  * serve, and the host's handler list says which those are.
  *
- * When 08/09 register one of these commands, this test fails and asks for the
+ * When a wave registers one of these commands, this test fails and asks for the
  * declaration to go — which is the whole point of declaring the gap instead of
  * letting the call reach a command that does not exist. 07 already did that
- * for `resolve_foreign_key_targets`.
+ * for `resolve_foreign_key_targets`, and 09 for `estimate_table_rows`.
  */
 describe('the desktop declaration against the host command registry', () => {
   const TABLE_DATA_COMMANDS: ReadonlyArray<{ method: keyof MethodMap; command: string }> = [
@@ -354,22 +364,18 @@ describe('the desktop declaration against the host command registry', () => {
     );
     const registered = parseRegisteredCommands(hostBootstrap);
 
-    // The five table-data commands the host *does* register are found by
-    // their command name, whatever module path they are registered under.
+    // The table-data commands the host *does* register are found by their
+    // command name, whatever module path they are registered under.
     expect(registered.has('get_table_data_at_target')).toBe(true);
     expect(registered.has('preview_pending_changes')).toBe(true);
     expect(registered.has('commit_pending_changes')).toBe(true);
     expect(registered.has('commit_query_result_cell')).toBe(true);
     expect(registered.has('resolve_foreign_key_targets')).toBe(true);
+    expect(registered.has('estimate_table_rows')).toBe(true);
 
-    // And the four it does not are not found — which is what makes the
+    // And the three it does not are not found — which is what makes the
     // declaration above necessary rather than redundant.
-    for (const command of [
-      'estimate_table_rows',
-      'list_named_views',
-      'save_named_view',
-      'delete_named_view',
-    ]) {
+    for (const command of ['list_named_views', 'save_named_view', 'delete_named_view']) {
       expect(registered.has(command)).toBe(false);
     }
   });

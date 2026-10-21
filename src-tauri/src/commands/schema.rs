@@ -1,12 +1,13 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{TableDataResult, TableSchema};
+use crate::db::{CountStrategy, TableDataResult, TableSchema};
 use crate::services::{
     embedded_schema_of, metadata_schema, FilterCondition, OrderBy, QueryExecutor, SortCondition,
 };
 use std::time::Instant;
 use tauri::State;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn get_table_data_impl(
     state: &AppState,
     db_session_id: String,
@@ -19,6 +20,8 @@ pub(crate) async fn get_table_data_impl(
     filter_logic: Option<String>,
     database: Option<String>,
     schema: Option<String>,
+    count_strategy: Option<CountStrategy>,
+    default_order_columns: Option<Vec<String>>,
 ) -> Result<TableDataResult, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %table, page, page_size, "get_table_data");
@@ -78,7 +81,10 @@ pub(crate) async fn get_table_data_impl(
             descending: s.descending,
         });
 
-    let effective_skip_count = skip_count.unwrap_or(false) || driver.skip_count_query();
+    // "Reuse the total you already have" and "this database cannot count"
+    // are two different facts. The caller says the first; the driver says
+    // the second, and the driver decides it on its own.
+    let caller_skip_count = skip_count.unwrap_or(false);
 
     let executor = QueryExecutor::new(state.schema_cache.clone());
     let result = executor
@@ -93,8 +99,10 @@ pub(crate) async fn get_table_data_impl(
             page_size,
             filters,
             order,
-            effective_skip_count,
+            caller_skip_count,
             filter_logic.as_deref(),
+            count_strategy,
+            default_order_columns,
         )
         .await
         .cmd_err("get_table_data")?;
@@ -357,6 +365,8 @@ pub async fn get_table_data(
     filter_logic: Option<String>,
     database: Option<String>,
     schema: Option<String>,
+    count_strategy: Option<CountStrategy>,
+    default_order_columns: Option<Vec<String>>,
 ) -> Result<TableDataResult, CommandError> {
     get_table_data_impl(
         &state,
@@ -370,8 +380,77 @@ pub async fn get_table_data(
         filter_logic,
         database,
         schema,
+        count_strategy,
+        default_order_columns,
     )
     .await
+}
+
+/// The estimated number of rows in a table.
+///
+/// `Ok(None)` means "this database cannot estimate this table" — an answer,
+/// not a failure. The command never falls back to an exact count behind the
+/// caller's back: deciding to spend that work is the caller's business.
+pub(crate) async fn estimate_table_rows_impl(
+    state: &AppState,
+    db_session_id: String,
+    table: String,
+    database: Option<String>,
+    schema: Option<String>,
+) -> Result<Option<i64>, CommandError> {
+    let start = Instant::now();
+    tracing::info!(%db_session_id, %table, "estimate_table_rows");
+    let resolved =
+        super::driver_command::resolve_command_driver(state, Some(&db_session_id), None).await?;
+    let driver = &resolved.driver;
+    let handle = &resolved.handle;
+
+    let config = resolved
+        .session
+        .as_ref()
+        .ok_or_else(|| CommandError::NotFound("DB session is unavailable".into()))?;
+    let config = state
+        .store
+        .get_connection(config.connection_id.as_str())
+        .await
+        .ok_or_else(|| CommandError::NotFound("connection profile is unavailable".into()))?;
+    let database = database
+        .as_deref()
+        .map(str::trim)
+        .filter(|db| !db.is_empty())
+        .or(config.database.as_deref())
+        .unwrap_or("default");
+    let schema = metadata_schema(
+        driver.as_ref(),
+        schema.as_deref(),
+        embedded_schema_of(&table),
+        config.schema.as_deref(),
+    );
+
+    let executor = QueryExecutor::new(state.schema_cache.clone());
+    let estimate = executor
+        .estimate_row_count(&driver, &handle, database, schema.as_deref(), &table)
+        .await
+        .cmd_err("estimate_table_rows")?;
+    tracing::info!(
+        %db_session_id,
+        %table,
+        estimated = ?estimate,
+        ms = start.elapsed().as_millis() as u64,
+        "estimate_table_rows OK"
+    );
+    Ok(estimate)
+}
+
+#[tauri::command]
+pub async fn estimate_table_rows(
+    state: State<'_, AppState>,
+    db_session_id: String,
+    table: String,
+    database: Option<String>,
+    schema: Option<String>,
+) -> Result<Option<i64>, CommandError> {
+    estimate_table_rows_impl(&state, db_session_id, table, database, schema).await
 }
 
 #[tauri::command]
@@ -384,5 +463,7 @@ pub async fn get_er_data(
     get_er_data_impl(&state, db_session_id, database, schema).await
 }
 
+#[cfg(test)]
+mod count_tests;
 #[cfg(test)]
 mod tests;

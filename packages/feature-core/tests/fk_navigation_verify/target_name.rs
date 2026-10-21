@@ -168,6 +168,7 @@ fn the_probe_sql_of_a_qualified_target_quotes_the_dotted_name_as_one_identifier(
             connector: None,
         }]),
         None,
+        &[],
         &dialect,
         51,
         0,

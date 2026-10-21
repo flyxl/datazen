@@ -5,6 +5,7 @@ pub(crate) mod runtime_command_source;
 pub mod schema_metadata;
 pub mod schema_scope;
 
+pub use datazen_feature_core::services::table_browsing;
 pub use query_executor::{FilterCondition, OrderBy, QueryExecutor, SortCondition};
 pub use schema_scope::{embedded_schema_of, metadata_schema};
 

@@ -7,6 +7,7 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { useBackendClient } from '@datazen/backend-client';
 import type {
+  CountStrategy,
   ForeignKeyTargetResolution,
   NamedView,
   NamedViewScope,
@@ -174,6 +175,17 @@ export const databaseCommands = {
     database?: string | null;
     /** Explicit target schema for schema-aware engines. */
     schema?: string | null;
+    /**
+     * The row-count strategy to use. Omitted means "the driver decides";
+     * the host never counts against the driver's own declaration.
+     */
+    countStrategy?: CountStrategy;
+    /**
+     * The columns to order by when the caller did not ask for an order. An
+     * empty array means "do not order at all"; omitted means "the driver's
+     * default order".
+     */
+    defaultOrderColumns?: string[];
   }): Promise<TableDataResult> => {
     const client = useBackendClient();
     return client.getTableData({
@@ -185,6 +197,8 @@ export const databaseCommands = {
       sorts: params.sorts,
       skipCount: params.skipCount,
       filterLogic: params.filterLogic,
+      countStrategy: params.countStrategy,
+      defaultOrderColumns: params.defaultOrderColumns,
     });
   },
 

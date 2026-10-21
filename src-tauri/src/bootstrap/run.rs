@@ -327,6 +327,7 @@ pub fn run() {
             crate::commands::get_privileges,
             crate::commands::get_table_data,
             crate::commands::get_table_data_at_target,
+            crate::commands::estimate_table_rows,
             crate::commands::resolve_foreign_key_targets,
             crate::commands::commit_query_result_cell,
             // ── 表结构编辑 ──
