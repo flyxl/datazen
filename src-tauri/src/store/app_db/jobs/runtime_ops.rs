@@ -530,6 +530,13 @@ impl SqliteJobRepository {
         })
     }
 
+    /// 续约。端口签名里没有 `RequestContext`，因此**续约自身不做组织比对**
+    /// （下面的 SQL 只按 `job_id` 定位行）。
+    ///
+    /// 组织边界由 **claim fencing** 兜底：claim 只在「按 `ctx` 组织核对过的行」上铸出
+    /// （见 `claim_job`，那里按 `organization_id` + `owner_principal_id` 过滤），
+    /// 且续约要匹配当前的 worker + claim generation + 未过期租约，
+    /// 所以越组织的续约拿不到有效 claim，只能按 `StaleClaim` 失败。
     pub(super) async fn renew_claim(&self, claim: &JobClaim) -> Result<JobClaim, PortError> {
         let now = self.clock.now();
         let expiry = after_seconds(&now, self.claim_ttl_secs).map_err(PortError::from)?;

@@ -454,6 +454,9 @@ impl JobRepository for InMemoryJobRepository {
     ///
     /// 组织归属只来自 `ctx`：调用方在 `JobDefinition` 里自报的组织值一律被覆盖
     /// （INV-01），落库的行因此永远属于受理它的那个组织。
+    ///
+    /// 与 SQLite 实现不同，**这一行在本实现里是承重的**：`JobDefinition` 本身就是
+    /// 落库值（行里存的就是它），行上的组织由它读出。
     async fn accept(
         &self,
         ctx: &RequestContext,
@@ -730,8 +733,10 @@ impl JobRepository for InMemoryJobRepository {
 
     /// 续约只凭 claim 本身（worker + generation + 租约）。
     ///
-    /// 端口签名里没有 `RequestContext`，因此这里没有第二个组织参数可漏传；
-    /// 组织边界由 claim 本身保证：claim 只能在 `claim` 受理时按组织核对过的行上产生。
+    /// 端口签名里没有 `RequestContext`，因此**续约自身不做组织比对**；组织边界由
+    /// **claim fencing** 兜底：claim 只在「按 `ctx` 组织核对过的行」上铸出
+    /// （见上面的 `claim`：`belongs_to` 过滤），所以越组织的续约拿不到有效 claim，
+    /// 只能按 `StaleClaim` 失败。
     async fn renew(&self, claim: &JobClaim) -> Result<JobClaim, PortError> {
         let mut inner = lock_inner(&self.inner)?;
         let now = self.clock.now();

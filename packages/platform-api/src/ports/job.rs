@@ -21,8 +21,16 @@
 //! * `list` 必须按 `JobFilter.organization_id` **且** `ctx` 的组织过滤；
 //!   两者不一致时结果是**空**，不是错误。
 //! * `get` / `list_recoverable` 必须按 `ctx` 的组织过滤。
-//! * 跨组织访问一律按「**不存在**」处理（`NotFound` / 空列表），不返回「无权限」
-//!   之类的错误，也不泄漏「存在但无权」（CM-05，与 `ProfileRepository` 同口径）。
+//!
+//! 跨组织访问按两条路径分别处理，**形状在内存实现与 SQLite 实现上一致**：
+//!
+//! * **读路径**（`get` / `list` / `list_recoverable`）：一律按「**不存在**」处理
+//!   （`NotFound` / 空列表），不返回「无权限」之类的错误，也不泄漏「存在但无权」
+//!   （CM-05，与 `ProfileRepository` 同口径）。
+//! * **写路径**（`record_stage` / `record_commit_boundary` / `compare_and_set_state` /
+//!   `save_checkpoint` / `record_progress` / `record_artifacts` / `record_domain_result` /
+//!   `finish`）：由 **claim fencing** 兜底——claim 只在「按 `ctx` 组织核对过的行」上
+//!   铸出，因此越组织的写入按 `StaleClaim` 拒绝（**不是** `NotFound`）。
 
 use async_trait::async_trait;
 
@@ -91,6 +99,10 @@ pub trait JobRepository: Send + Sync + 'static {
         worker: WorkerId,
     ) -> Result<JobClaim, PortError>;
 
+    /// 续约。端口签名里没有 `RequestContext`，因此**续约自身不做组织比对**：
+    /// 组织边界由 **claim fencing** 兜底——claim 只在「按 `ctx` 组织核对过的行」上铸出
+    /// （见 `claim`），且续约要匹配当前的 worker + claim generation + 未过期租约，
+    /// 所以越组织的续约拿不到有效 claim，只能按 `StaleClaim` 失败。
     async fn renew(&self, claim: &JobClaim) -> Result<JobClaim, PortError>;
 
     /// 检查点写入与恢复候选查询：只返回需要人工/计划核验的待办，不自动重放副作用阶段。

@@ -583,8 +583,11 @@ pub async fn webdriver_monitor_evidence(
         .list(
             &grant.context(),
             JobFilter {
+                organization_id: grant.context().organization_id.clone(),
+                states: Vec::new(),
+                owner: None,
+                after: None,
                 limit: Some(100),
-                ..Default::default()
             },
         )
         .await
