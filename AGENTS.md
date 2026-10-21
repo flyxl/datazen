@@ -179,7 +179,9 @@ pnpm tauri:build:community             # 构建 Community 社区版
 pnpm tauri:build:pro                   # 构建 Pro 增强版
 npx vitest run                         # Host 前端单元测试（不含 packages/drivers）
 pnpm test:unit:drivers                 # Path 驱动 UI 单测（packages/drivers/*/ui）
-pnpm typecheck                         # tsc --noEmit，覆盖 src + packages，**含测试文件**
+pnpm typecheck                         # 双引擎类型检查（tsc = TS 7 GA + tsrs = TS 7.1-dev），覆盖 src + packages，**含测试文件**
+pnpm typecheck:tsc                     # 只跑权威引擎（typescript@7.0.2）
+pnpm typecheck:tsrs                    # 只跑前瞻引擎（tsrs，跟随 TS 7.1 开发线）
 cargo test -p datazen --lib            # Host Rust 单元测试
 cargo test -p datazen-ai-api --lib     # AI API 单元测试
 cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust 测试
@@ -312,6 +314,13 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 - **Capabilities 管理**：`src-tauri/capabilities/default.json.host` 是 git 跟踪的 host 权限源文件；需要添加新 host capability 时直接修改该文件。`default.json` 在构建时自动合并生成，**严禁手动编辑或提交**。
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件。
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件。
+- **TypeScript 7 起 `node_modules/@types` 不再自动发现。** 根 `tsconfig.json` 与五个
+  `packages/<id>/tsconfig.json` 都显式列出了 `types`（当前为 dompurify / node / react /
+  react-dom，即 TS 5.9 自动发现的同一组）。**新增 `@types/*` 依赖时必须同步加进这六处**，
+  否则该包提供的全局类型不会生效。失败方向是安全的——漏加会**多**出错误而不是少掉错误。
+  门禁是双引擎的：`pnpm typecheck` 同时跑 `tsc`（TS 7 GA，权威）与 `tsrs`（TS 7.1-dev，前瞻），
+  两者输出必须逐字节一致；`tsrs` 在没有 Windows 二进制的平台会被跳过并明确打印跳过原因。
+  详见 [docs/development/ci-test-matrix.md](docs/development/ci-test-matrix.md) §2.1.4。
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中。
 - **本地环境变量文件保护**：任何 Agent（含子代理）不得打开、读取、解析、source 或打印仓库及其 worktree 中 `.env` / `.env.test` 文件的**内容**；不得将凭据写入提示、日志或报告。只允许检查文件是否存在及 Git 忽略状态。
   - **测试程序读 `.env` 是合法的**，不得因此禁止运行测试或驱动 live 套件——集成测试本就需要其中的 `DATABASE_URL` 等配置。被禁的是「把内容读进上下文」，不是「程序读文件」。误把二者混同会逼出「不跑测试」的假禁令，等于放走真实缺陷。

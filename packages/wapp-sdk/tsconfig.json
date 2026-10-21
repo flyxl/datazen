@@ -1,4 +1,9 @@
 {
+  "$comment": [
+    "TypeScript 7 does not auto-discover node_modules/@types; this list is the",
+    "same set TypeScript 5.9 auto-discovered for this program. See the root",
+    "tsconfig.json for the full rationale and the maintenance rule."
+  ],
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
@@ -11,7 +16,8 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "types": ["dompurify", "node", "react", "react-dom"]
   },
   "include": ["src", "__tests__"]
 }
