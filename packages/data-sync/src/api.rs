@@ -1,7 +1,8 @@
 //! Shared request helpers for Data Sync IPC.
 
 use crate::{
-    ConflictPolicy, LargeValueMode, MatchingStrategy, SyncOptions, TableMapping, TableResult,
+    ConflictPolicy, LargeValueMode, MatchingStrategy, SyncOptions, SyncSourceFilter, TableMapping,
+    TableResult,
 };
 use serde::Deserialize;
 
@@ -132,4 +133,29 @@ impl From<TableMappingInput> for TableMapping {
             source_filter: None,
         }
     }
+}
+
+/// Everything one data sync comparison needs: the two sessions, the scope
+/// and the selection.
+///
+/// The desktop window and the workflow migration step ask for the same
+/// comparison, so the shape of the ask belongs to the feature: one contract
+/// for the desktop host and a web host alike.
+#[derive(Debug, Clone)]
+pub struct SyncComparisonRequest {
+    pub source_db_session_id: String,
+    pub target_db_session_id: String,
+    /// The source tables to compare.
+    pub tables: Vec<String>,
+    /// Client-chosen job id; the host mints one when it is empty.
+    pub job_id: Option<String>,
+    pub source_database: Option<String>,
+    pub target_database: Option<String>,
+    pub source_schema: Option<String>,
+    pub target_schema: Option<String>,
+    pub options: SyncOptions,
+    /// The table mapping (source/target pairs) behind the comparison.
+    pub mappings: Vec<TableMapping>,
+    /// Per-source-table filters.
+    pub source_filters: std::collections::HashMap<String, SyncSourceFilter>,
 }

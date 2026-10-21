@@ -230,24 +230,11 @@ async fn run_transfer(
 
 async fn run_sync(
     state: &AppState,
-    request: datazen_feature_core::workflow::migration::SyncStepRequest,
+    request: datazen_data_sync::api::SyncComparisonRequest,
 ) -> Result<MigrationOutcome, WorkflowError> {
-    let preview = crate::commands::compare_data_sync_impl(
-        state,
-        request.source_db_session_id,
-        request.target_db_session_id,
-        request.tables,
-        None,
-        Some(request.source_database),
-        Some(request.target_database),
-        request.source_schema,
-        request.target_schema,
-        request.options.clone(),
-        &request.mappings,
-        &request.filters,
-    )
-    .await
-    .map_err(|error| WorkflowError::Validation(error.to_string()))?;
+    let preview = crate::commands::compare_data_sync_impl(state, request.clone())
+        .await
+        .map_err(|error| WorkflowError::Validation(error.to_string()))?;
     let result = crate::commands::execute_data_sync_profile_plan_impl(
         state,
         preview.plan_id,
@@ -507,7 +494,7 @@ impl datazen_feature_core::workflow::migration::MigrationRunner for AppState {
 
     async fn run_sync(
         &self,
-        request: datazen_feature_core::workflow::migration::SyncStepRequest,
+        request: datazen_data_sync::api::SyncComparisonRequest,
     ) -> Result<MigrationOutcome, WorkflowError> {
         run_sync(self, request).await
     }

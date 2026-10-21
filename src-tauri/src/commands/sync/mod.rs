@@ -23,6 +23,7 @@ mod tests;
 
 use super::error::CommandError;
 use super::AppState;
+use crate::data_sync::api::SyncComparisonRequest;
 use crate::data_sync::api::{resolve_options, SyncOptionsInput};
 pub(crate) use crate::data_sync::filter_validation::{
     resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
@@ -365,17 +366,19 @@ pub async fn compare_data_sync(
 ) -> Result<plans::SyncComparisonPreview, CommandError> {
     compare_data_sync_impl(
         &state,
-        source_db_session_id,
-        target_db_session_id,
-        tables.unwrap_or_default(),
-        job_id,
-        source_database,
-        target_database,
-        source_schema,
-        target_schema,
-        resolve_options(options),
-        &[],
-        &filters.unwrap_or_default(),
+        SyncComparisonRequest {
+            source_db_session_id,
+            target_db_session_id,
+            tables: tables.unwrap_or_default(),
+            job_id,
+            source_database,
+            target_database,
+            source_schema,
+            target_schema,
+            options: resolve_options(options),
+            mappings: Vec::new(),
+            source_filters: filters.unwrap_or_default(),
+        },
     )
     .await
 }
