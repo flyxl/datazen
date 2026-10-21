@@ -226,7 +226,7 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 |---|---|---|
 | C | **已验收 TEST_PASSED → 已合入集成 `e267fad3f`** | Tester `a1f0c68d`（3 次尝试后完成） |
 | B | **已验收 TEST_PASSED → 已合入 `056b35834`** | Tester `cda75c30` |
-| A | 第 2 轮修复完成 `643d1e2bb`（D-01/03/04/05 全处置）→ **收尾中**（清两条新增 clippy warning）→ 全新 Tester 终复测 | Tester `64877b2a`：D1 已修复复验；发现注释里有**代码不保证的不变量** |
+| A | 收尾完成 `276669e26`（2 条 lint 清理，warning 计数回到基线）→ **全新 Tester 终复测中**（验证树 `verify-job-org-scope-v3`） | 本轨累计 9 笔 commit |
 
 ### 环境
 - `export CARGO_TARGET_DIR=/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/.shared-target`（三轨共用；会打印 `Blocking waiting for file lock` —— **正常，等它**，禁止各轨改 target 目录）
