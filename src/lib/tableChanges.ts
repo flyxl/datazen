@@ -91,8 +91,16 @@ export interface RowChangePlan {
   table: TableChangeContext;
   updates: PlannedStatement[];
   deletes: PlannedStatement[];
-  /** New-row statements in request order: insertion order decides auto-increment. */
-  inserts?: PlannedStatement[];
+  /**
+   * New-row statements in request order: insertion order decides auto-increment.
+   *
+   * **Always present.** The host declares the field with `#[serde(default)]`
+   * (a tolerance for *deserializing* a plan that does not carry it) and
+   * serializes it unconditionally — a plan without inserts carries an empty
+   * list, never a missing key. The mirror therefore has to be required too: an
+   * optional field would let a caller claim a shape the host never produces.
+   */
+  inserts: PlannedStatement[];
   warnings: ChangeWarning[];
 }
 

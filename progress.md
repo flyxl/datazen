@@ -18,8 +18,8 @@
 | Step 8 · `TableView` 入口 / 快捷键 / 门闸 / 预览 | ✅ 完成 | `src/windows/connection/TableView.tsx` |
 | Step 8 · 只读连接隐藏「+ 行」 | ✅ 完成 | `TableView.tsx`（`isEditable && …`） |
 | Step 8 · i18n（英文领域包） | ✅ 完成 | `src/locales/en/query.ts`（16 个 `tableData.*`） |
-| Step 8 · `gridErrors.ts` | ⏭️ **未改动**（见「待裁定」） | — |
-| E2E `e2e/specs/table-insert.ts` | ⏸️ **留待 R 回归**（本机无 `target/debug/datazen`） | — |
+| Step 8 · `gridErrors.ts` | ⏭️ **未改动**（裁定 1：不登记无生产者的码） | — |
+| E2E `e2e/specs/table-insert.ts` | ✅ 已写（**留待 R 回归**：本机无 `target/debug/datazen`） | `e2e/specs/table-insert.ts` |
 
 ## 门禁（逐字结论行，HEAD = `c97f42156`）
 
@@ -46,6 +46,15 @@ error TS 计数 = 0
 | `src/windows/connection/PendingPlanDialog.tsx` | 92 | `src/lib/tableChanges.ts` | 297 |
 
 生产代码零 `any` / `@ts-ignore` / `.skip` / `.todo`；`git status --short -uall` 干净。
+
+## 协调者裁定后的落实（第二轮）
+
+| 裁定 | 落实 |
+| --- | --- |
+| 1 · `noWritableColumn` 不登记 | 契约已改（集成分支 `14c59ecc7`）。`gridErrors.ts` 仍**一行未改**；新增断言：`classifyGridError('grid.insert.noWritableColumn: …')` → `'unknown'`，且 `GRID_ERROR_CODES` 不含它 |
+| 2 · `row_identity` 恒空 | 不改代码。`insertLocation` 只挂在**前端**的 `CommitPendingChangesResult` 上，wire 类型 `CommitPendingChangesResponse`（桌面 + backend-client 镜像）未加字段；候补规则要求候选主键**比提交前更大**；降级提示是 `role="status"` 的中性提示，不出现「已高亮新行」措辞 |
+| 3 · `inserts` 必填 | 两处镜像都改成必填：`src/lib/tableChanges.ts` + `packages/backend-client/src/types/tableData.ts`；测试改成 `@ts-expect-error` 的 fail-closed 形态（变异验证：改回可选 → TS2578 → `tsc` EXIT=2 → 还原 EXIT=0） |
+| 4 · E2E spec | 新增 `e2e/specs/table-insert.ts`（TC-INS-001~007），**留待 R 回归**，未伪造通过 |
 
 ## 待裁定（只报不改，AGENTS.md「发现契约/实装冲突，停下来报告」）
 

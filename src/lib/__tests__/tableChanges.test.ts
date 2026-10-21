@@ -103,7 +103,13 @@ describe('tableChanges', () => {
     expect(draftWriteColumns(values)).toEqual([]);
   });
 
-  it('serializes an insert-free plan without an inserts key', () => {
+  it('requires the insert list on a plan, because the host always sends it', () => {
+    // Fail-closed: the host declares `inserts` with `#[serde(default)]` — a
+    // tolerance for *deserializing* a plan that does not carry the field — and
+    // serializes it unconditionally. A mirror that made the field optional
+    // would describe a shape the host never produces, so the requirement is
+    // pinned here: making the field optional again turns the directive below
+    // into an unused one (TS2578) and the typecheck goes red.
     const plan: RowChangePlan = {
       planId: 'plan-1',
       fingerprint: 'fingerprint-1',
@@ -118,10 +124,12 @@ describe('tableChanges', () => {
       updates: [],
       deletes: [],
       warnings: [],
+      // @ts-expect-error `inserts` is required: the host always serializes it.
+      inserts: undefined,
     };
-    // A plan without inserts must not carry the key at all: the old plans stay
-    // byte-identical (the host only reads the field when it is there).
-    expect(JSON.stringify(plan)).not.toContain('"inserts"');
-    expect('inserts' in plan).toBe(false);
+
+    // A plan without inserts carries an **empty list**, not a missing key.
+    const empty: RowChangePlan = { ...plan, inserts: [] };
+    expect(JSON.parse(JSON.stringify(empty)).inserts).toEqual([]);
   });
 });

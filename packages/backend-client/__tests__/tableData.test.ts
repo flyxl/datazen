@@ -218,14 +218,24 @@ describe('table data wire shapes', () => {
     ]);
   });
 
-  it('keeps an insert-free plan free of the insert field', () => {
-    // The backend omits `insertMarked` when it is false, so a plan without
-    // inserts must not carry an empty insert list either: the fingerprint of
-    // an insert-free plan has to stay byte-identical to the payload that
-    // predates the flag.
-    const insertFree: RowChangePlan = { ...PLAN, inserts: undefined };
-    expect(insertFree.inserts).toBeUndefined();
-    expect(JSON.parse(JSON.stringify(insertFree)).inserts).toBeUndefined();
+  it('carries an empty insert list for a plan without inserts', () => {
+    // The host declares `inserts` with `#[serde(default)]` — a tolerance for
+    // *deserializing* a plan that does not carry the field — and serializes it
+    // unconditionally. A plan without inserts therefore carries an empty list,
+    // never a missing key; a mirror that said otherwise would describe a shape
+    // the host never produces.
+    const insertFree: RowChangePlan = { ...PLAN, inserts: [] };
+    expect(insertFree.inserts).toEqual([]);
+    expect(JSON.parse(JSON.stringify(insertFree)).inserts).toEqual([]);
+  });
+
+  it('keeps the insert flag out of a change set without inserts', () => {
+    // The byte-identity of an insert-free change set comes from the
+    // `insertMarked` flag, not from the plan: the host omits the flag when it
+    // is false, so the fingerprint of a change set without inserts stays the
+    // one it had before the flag existed.
+    expect(JSON.parse(JSON.stringify(UPDATE_CHANGE))).not.toHaveProperty('insertMarked');
+    expect(JSON.parse(JSON.stringify(INSERT_CHANGE)).insertMarked).toBe(true);
   });
 
   it('accepts a table read whose row count was not taken', () => {
