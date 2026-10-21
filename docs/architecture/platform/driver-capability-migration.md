@@ -495,20 +495,15 @@ Err(DriverError::NotSupported(
 2. §5.1 的 9 个操作全部实现，且 `executeOnResource` 不再自行从随机池取连接。
 3. 所属批次的 D 层用例全绿，且 `CM-19` 明确断言「没有把单连接池假装成固定资源」。
 4. `resetResource` 要么返回 `Clean`（通过 CM-26 / CM-69）要么返回 `Discard`，没有第三条静默路径。
-5. 宿主对该驱动的所有 namespace API 调用点已迁移。2026-10-21 第二次复核（对
+5. 宿主对该驱动的所有 namespace API 调用点已迁移。2026-10-21 第三次复核（对
    `driver.close_database` / `get_open_databases` / `discard_connection` /
    `has_multi_database` 的全仓 grep，行号对应当前代码）。仍在册的宿主/领域
    侧驱动分支为：
 
-   - `src-tauri/src/commands/connection.rs:225` `driver.close_database(...)`
-     与 `:264` `driver.open_databases(...)`：两处 driver 均经
-     `runtime_session_context` 以 `LivePurpose::Inspection` 实借出，前者为
-     best-effort 关库（失败降级 `false` 但 schema cache 照常失效），
-     后者驱动导航树的「已打开」标记。
    - `src-tauri/src/commands/sync/exec.rs:103-105` 与
-     `src-tauri/src/commands/sync/host/executor.rs:206` 两个批次作业执行器的
+     `src-tauri/src/commands/sync/host/executor.rs:203-209` 两个批次作业执行器的
      `discard_connection`（批次语义，与批次 2 同步收敛，归 P10）。
-   - `src-tauri/src/commands/sync/jobs_cancel_contract.rs:306-311` 的
+   - `src-tauri/src/commands/sync/jobs_cancel_contract.rs:306-316` 的
      driver 包装转发（契约测试基座，不构成业务分支）。
 
    早期盘点列出的 `packages/data-transfer/execute/dispatcher.rs`、
@@ -522,10 +517,19 @@ Err(DriverError::NotSupported(
    本就在作用域内做 CommandCatalog 读取，非第二实例、非会话分支。
 
    per-database 池关闭在 `ResourceProvider` 契约中没有对应操作（一次
-   acquire = 一个资源 = 一个连接）；`connection.rs` 那两处与两个
-   `discard_connection` 的收敛，必须先在 runtime 层定义 per-database
-   关闭/丢弃的语义，而不是让宿主把驱动直调改头换面。这几处正是 P2 收敛
-   的宿主侧残余，收敛完成才允许删除 adapter。
+   acquire = 一个资源 = 一个连接）：它是驱动自己持有的跨库池，不是某次
+   acquire 的产物。其语义定义在 runtime 会话层——会话级需求、驱动级失败
+   尽力而为（`ServiceUnavailable` 降级为 `false`，schema cache 照常失效）、
+   会话级拒绝同步传播——而不是宿主把驱动直调改头换面。剩余两个
+   `discard_connection` 的收敛仍必须先在 runtime 层定义 per-database 丢弃
+   的语义；这几处正是 P2 收敛的宿主侧残余，收敛完成才允许删除 adapter。
+
+   `src-tauri/src/commands/connection.rs:201` 的 `close_database_impl` 与
+   `:257` 的 `get_open_databases_impl` 已收敛（`0e7f2a9d5`）：宿主只报
+   「会话 + 库名」，per-database 池的关闭与列举由 runtime 会话层承担
+   （`RuntimeConnectionUseCases::close_database` / `open_databases`，租约
+   用 `LivePurpose::Inspection`），宿主不再取 driver、不再取 handle，只把
+   裁决带回 `schema_cache.invalidate`。
 
 **删除时机**：adapter 的删除与**宿主侧对应分支的删除**必须同一个提交。只删驱动侧 adapter 而留宿主分支，宿主就会退回到 no-op；只删宿主分支而留驱动侧，则驱动仍可能被旧路径调用。这个原子性与 §5.4 的协议发布门槛是同一条原则的两次应用。
 
