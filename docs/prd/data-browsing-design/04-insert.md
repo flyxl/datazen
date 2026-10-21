@@ -618,8 +618,8 @@ export interface TableState {
 | `src-tauri/src/commands/data/mod.rs` | 改造 | **只留 `#[tauri::command]` 适配壳**（取值 → 必要校验 → 转发 → 映射 `CommandError`）；遗留入口 `commit_row_updates*` / `commit_row_deletes*` **仍注册且恒拒绝**（本册不改其注册状态） | −≈ 560（逻辑迁出；〔合并后校正〕现 **640** 行 → ≈ 80 + 既有子模块） | 否（本册不再新增子模块） |
 | `src-tauri/src/commands/data/tests.rs` | 修改 | 只留**命令壳级**用例（IPC 形状与错误映射）；计划/执行用例随逻辑迁到 `feature-core` 的 `#[cfg(test)] mod tests` | −≈ 460 | 否 |
 | `packages/driver-api/src/sql_builder.rs` | 修改 | `pub fn build_insert_statement(..)`（复用私有 `bind_parameter`） | +70 | 否（现 161 行级） |
-| `packages/driver-api/src/traits.rs` | 修改 | 两个新 trait 方法 + 文档注释 | +45 | 否（实测 **1160** 行，`wc -l` 2026-10-21 → **已超限**，属既有技术债，本册只做加法） |
-| `packages/driver-api/src/reuse.rs` | 修改 | `ReuseDriver` 转发两个方法 | +12 | 否（实测 **1344** 行，`wc -l` 2026-10-21 → **已超限**，同上） |
+| `packages/driver-api/src/traits.rs` | 修改 | 两个新 trait 方法 + 文档注释 | +45 | 否（实测 **1198** 行，`wc -l` 2026-10-21 → **已超限**，属既有技术债，本册只做加法） |
+| `packages/driver-api/src/reuse.rs` | 修改 | `ReuseDriver` 转发两个方法 | +12 | 否（实测 **1432** 行，`wc -l` 2026-10-21 → **已超限**，同上） |
 | `packages/driver-api/src/types.rs` | **不改** | —（三态类型不落地，R-D） | 0 | 否（实测 **963** 行，`wc -l` 2026-10-21；已超限属既有技术债） |
 | `packages/drivers/{mysql,postgres,sqlite,sqlserver}/src/*.rs` | 修改 | 方言覆盖（`build_insert_statement` / `insert_returning_clause`） | 每驱动 +15~35 | 否 |
 | `packages/drivers/*/src/tests.rs`（4 个） | 修改 | 三态断言（不写 / NULL / 值） | 每驱动 +40 | 否 |

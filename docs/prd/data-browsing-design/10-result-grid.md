@@ -159,10 +159,10 @@ DTO：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContex
 | --- | --- | --- |
 | `src/stores/panelStore.ts` | 728 | **接近上限**，本册只能在其上加最小接线，新逻辑必须另起文件 |
 | `packages/driver-api/src/types.rs` | **963**（`wc -l` 2026-10-21） | **已超限**，新增类型不得继续堆在这里 |
-| `packages/driver-api/src/traits.rs` | **1160**（`wc -l` 2026-10-21；〔契约审计修订 2026-10-21〕N5：旧稿 1062） | **已超限**，只允许追加带默认实现的方法 |
+| `packages/driver-api/src/traits.rs` | **1198**（`wc -l` 2026-10-21；〔契约审计修订 2026-10-21〕N5：旧稿 1062） | **已超限**，只允许追加带默认实现的方法 |
 | `src-tauri/src/commands/data.rs` | **640** | 已目录化（`#[path]` 子模块），接近但未越 800；新命令仍应另起模块 |
 | `src/windows/connection/ContentViewDrawers.tsx` | 228 | 有余量 |
-| `src/locales/en/query.ts` | **442**（`wc -l` 2026-10-21） | 有余量（〔契约审计修订 2026-10-21〕N3：旧稿把 **424** 写在 `src/locales/en/query.ts` 名下，而 `src/commands/query.ts` 实测只有 **141** 行；本册多处把两者混为一谈，已逐处校正） |
+| `src/locales/en/query.ts` | **443**（`wc -l` 2026-10-21） | 有余量（〔契约审计修订 2026-10-21〕N3：旧稿把 **424** 写在 `src/locales/en/query.ts` 名下，而 `src/commands/query.ts` 实测只有 **141** 行；本册多处把两者混为一谈，已逐处校正） |
 
 ---
 
@@ -287,7 +287,7 @@ pub struct ResultOriginDetail {
 
 ### 3.2 新增 trait 方法（带默认实现）
 
-**落点**：`packages/driver-api/src/traits.rs`（实测 1062 行，只允许追加）。默认实现**必须**返回不可判定。
+**落点**：`packages/driver-api/src/traits.rs`（实测 1198 行，只允许追加）。默认实现**必须**返回不可判定。
 
 ```rust
 // 新增：packages/driver-api/src/traits.rs
@@ -733,9 +733,9 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 | `src/lib/resultEditability.ts` | **新增** | 前端镜像类型 + `resolveGridEditability` + 文案 key 映射 | ~180 | 否（新文件） |
 | `src/lib/gridErrors.ts` | **修改（追加）** | 01 已建骨架；本册按契约 §8.1 三步追加 6 个只读原因码，**禁止整文件覆盖** | +20 | 否 |
 | `src/stores/panelResultEdit.ts` | **新增** | 判定缓存与结果网格编辑状态切片 | ~140 | 否（新文件） |
-| `src/stores/panelStore.ts` | 修改 | 最小接线（暴露切片入口 / 复用既有 `updateResultCell`） | **≤ 7** | 〔合并后校正〕**实测 793 行 → 只剩 7 行余量**；超过 7 行即视为失败，须先把它拆出（例如 `resultEdit` 切片）再接线 |
-| `src/windows/connection/ContentViewDrawers.tsx` | 修改 | `handleDetailFieldEdit` 的 `query` 分支改为判定驱动；只读出口 | ~55 | 否（实测 228 行） |
-| `src/locales/en/query.ts` | 修改 | 追加只读原因与错误文案 key | ~30 | 否（实测 **442** 行，`wc -l` 2026-10-21；〔契约审计修订 2026-10-21〕N3：旧稿写 424） |
+| `src/stores/panelStore.ts` | 修改 | 最小接线（暴露切片入口 / 复用既有 `updateResultCell`） | **≤ 7** | 〔合并后校正〕**实测 797 行 → 只剩 7 行余量**；超过 7 行即视为失败，须先把它拆出（例如 `resultEdit` 切片）再接线 |
+| `src/windows/connection/ContentViewDrawers.tsx` | 修改 | `handleDetailFieldEdit` 的 `query` 分支改为判定驱动；只读出口 | ~55 | 否（实测 236 行） |
+| `src/locales/en/query.ts` | 修改 | 追加只读原因与错误文案 key | ~30 | 否（实测 **443** 行，`wc -l` 2026-10-21；〔契约审计修订 2026-10-21〕N3：旧稿写 424） |
 | `src/lib/__tests__/resultEditability.test.ts` | **新增** | 行级合并判定单测 | ~140 | 否 |
 | `src/lib/__tests__/gridErrors.test.ts` | **修改（追加）** | 01 已建；本册只增本册前缀的断言用例，**禁止重写整个测试文件** | +30 | 否 |
 | `src/windows/connection/__tests__/ContentViewDrawers.resultReadOnly.test.tsx` | **新增** | 只读时禁止编辑的组件测试 | ~160 | 否 |

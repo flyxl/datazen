@@ -620,8 +620,8 @@ export function nextRequestCursor(
 | --- | --- | --- | --- | --- |
 | `packages/driver-api/src/keyset.rs` | **新增** | 公开类型 + `lexicographic_seek_predicate` + 用例 | ~200（含 ~90 行测试） | 否 |
 | `packages/driver-api/src/lib.rs` | 修改 | 加 `pub mod keyset;` | +1 | 否 |
-| `packages/driver-api/src/traits.rs` | 修改 | 两个方法（逐字契约） | +22 | 否（实测 **1160** 行，`wc -l` 2026-10-21，**已超限**，见下；〔契约审计修订 2026-10-21〕N5：旧稿 1062） |
-| `packages/driver-api/src/reuse.rs` | 修改 | 转发两个能力位 + 转发用例 | +16 | **是**（实测 **1344** 行，`wc -l` 2026-10-21，已超限；〔契约审计修订 2026-10-21〕N5：旧稿 1159），见下 |
+| `packages/driver-api/src/traits.rs` | 修改 | 两个方法（逐字契约） | +22 | 否（实测 **1198** 行，`wc -l` 2026-10-21，**已超限**，见下；〔契约审计修订 2026-10-21〕N5：旧稿 1062） |
+| `packages/driver-api/src/reuse.rs` | 修改 | 转发两个能力位 + 转发用例 | +16 | **是**（实测 **1432** 行，`wc -l` 2026-10-21，已超限；〔契约审计修订 2026-10-21〕N5：旧稿 1159），见下 |
 | `packages/driver-api/src/types.rs` | 修改 | `TableDataResult` 加可选 `paging` | +4 | 否（实测 **963** 行，`wc -l` 2026-10-21，**已超限**，见下；〔契约审计修订 2026-10-21〕N5：旧稿 958） |
 | `packages/driver-api/src/mock_driver.rs` | 修改 | `MockDriverOptions` 加 `supports_keyset_pagination` / `keyset_predicate_returns_none`；`MockDriver` 覆盖两个方法 | +30 | 否（文件较大，需自查） |
 | `packages/feature-core/src/services/table_paging.rs` | **新增** | `OrderSpec` / `keyset_decision` / `cursor_from_row` + 用例（〔契约审计修订 2026-10-21〕T0-10） | ~230（含 ~110 行测试） | 否 |
