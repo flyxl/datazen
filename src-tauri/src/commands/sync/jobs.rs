@@ -482,7 +482,7 @@ pub(crate) async fn submit_apply(
     let (source_session_id, target_session_id) = state
         .sync_stores
         .plan_store
-        .peek(&state.organization_scope(), &spec.plan_id)
+        .peek(&state.organization_scope()?, &spec.plan_id)
         .map(|plan| (plan.source_db_session_id, plan.target_db_session_id))
         .unwrap_or_default();
     let selection = state::confirmed_selection(&spec.plan_id).ok_or_else(|| {

@@ -82,6 +82,7 @@ use datazen_application::error::ApiError;
 use datazen_driver_api::QueryExecutionId;
 use datazen_feature_core::ai::context::SchemaContextBuilder;
 use datazen_feature_core::ai::prompt_resolver::PromptResolver;
+use datazen_platform_api::id::OrganizationId;
 use datazen_platform_api::ports::scope::OrganizationScope;
 use datazen_runtime::driver_registry::registry::DriverRegistry;
 use datazen_runtime::schema_cache::SchemaCache;
@@ -264,7 +265,6 @@ impl AppState {
     /// 按请求解析组织，那一步是可以失败的。桌面形态不会失败。
     pub fn organization_scope(&self) -> Result<OrganizationScope, CommandError> {
         Ok(self.organization_scope.clone())
-
     }
 
     /// Lazily register AI providers + load prompt templates.

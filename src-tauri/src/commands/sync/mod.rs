@@ -61,7 +61,7 @@ pub(crate) async fn execute_data_sync_profile_plan_impl(
     selection_revision: u64,
     options: crate::data_sync::SyncOptions,
 ) -> Result<crate::data_sync::ExecutionResult, CommandError> {
-    let scope = state.organization_scope();
+    let scope = state.organization_scope()?;
     let selection = plans::default_profile_selection(
         state.sync_stores.plan_store.as_ref(),
         &scope,
@@ -232,7 +232,7 @@ pub async fn execute_data_sync(
     };
     if let Some(run) = run.as_mut() {
         run.selected_count = request.selection.rows.len() as u64;
-        let scope = state.organization_scope();
+        let scope = state.organization_scope()?;
         if let Ok(plan) = state.sync_stores.plan_store.peek(&scope, &request.plan_id) {
             run.source_connection_id = plan
                 .source_endpoint_identity
@@ -397,7 +397,7 @@ pub fn get_data_sync_comparison_page(
     state: State<'_, AppState>,
     request: plans::SyncComparisonPageRequest,
 ) -> Result<plans::SyncComparisonPage, CommandError> {
-    let scope = state.organization_scope();
+    let scope = state.organization_scope()?;
     plans::get_comparison_page(state.sync_stores.plan_store.as_ref(), &scope, request)
         .map_err(CommandError::Validation)
 }

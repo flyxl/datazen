@@ -88,7 +88,10 @@ async fn desktop_sync_store_ports_admit_only_the_local_organization() {
     use datazen_platform_api::ports::scope::OrganizationScope;
 
     let test = crate::testing::app_state::TestAppState::new().await;
-    let scope = test.state.organization_scope();
+    let scope = test
+        .state
+        .organization_scope()
+        .expect("桌面组织作用域在测试中总是可用");
     assert_eq!(
         scope.organization_id().as_str(),
         crate::platform::identity::LOCAL_ORGANIZATION_ID,

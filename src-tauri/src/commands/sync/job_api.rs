@@ -208,7 +208,7 @@ pub(crate) async fn preview_for_durable_job(
     }
     crate::data_sync::plan_store::preview_for_plan(
         state.sync_stores.plan_store.as_ref(),
-        &state.organization_scope(),
+        &state.organization_scope()?,
         &plan_id,
     )
     .map_err(CommandError::Validation)

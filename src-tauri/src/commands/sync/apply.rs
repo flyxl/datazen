@@ -382,7 +382,7 @@ async fn finish_async_prepare_preview(
             .unwrap_or(usize::MAX)
     });
     // 一次调用只取一次作用域：比较存储与计划注册表必须落在同一个组织维度上。
-    let scope = state.organization_scope();
+    let scope = state.organization_scope()?;
     let comparison = ComparisonStore::from_comparison(
         rebuilt,
         state.sync_stores.comparison_root.as_ref(),

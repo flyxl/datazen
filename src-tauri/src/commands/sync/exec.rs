@@ -526,7 +526,7 @@ pub(crate) async fn generate_data_sync_sql_for_plan_impl(
     selection: SyncRunSelection,
     options: SyncOptions,
 ) -> Result<Vec<crate::data_sync::SqlStatement>, CommandError> {
-    let scope = state.organization_scope();
+    let scope = state.organization_scope()?;
     let plan = state
         .sync_stores
         .plan_store
@@ -571,7 +571,7 @@ pub(crate) async fn start_data_sync_apply_job_impl(
     {
         return Ok(receipt);
     }
-    let scope = state.organization_scope();
+    let scope = state.organization_scope()?;
     let plan = state
         .sync_stores
         .plan_store
@@ -740,7 +740,7 @@ pub(crate) async fn execute_data_sync_plan_impl(
     let (source_session_id, target_session_id) = state
         .sync_stores
         .plan_store
-        .peek(&state.organization_scope(), &request.plan_id)
+        .peek(&state.organization_scope()?, &request.plan_id)
         .map(|plan| (plan.source_db_session_id, plan.target_db_session_id))
         .unwrap_or_default();
     if request
@@ -940,7 +940,10 @@ mod tests {
         let comparison = ComparisonStore::from_comparison(
             ComparisonResult::new(vec![table]),
             test.state.sync_stores.comparison_root.as_ref(),
-            &test.state.organization_scope(),
+            &test
+                .state
+                .organization_scope()
+                .expect("桌面组织作用域在测试中总是可用"),
         )
         .expect("comparison should persist");
         assert!(comparison.is_spilled());
@@ -1099,7 +1102,10 @@ mod tests {
         let comparison = ComparisonStore::from_comparison(
             ComparisonResult::new(vec![table]),
             test.state.sync_stores.comparison_root.as_ref(),
-            &test.state.organization_scope(),
+            &test
+                .state
+                .organization_scope()
+                .expect("桌面组织作用域在测试中总是可用"),
         )
         .unwrap();
         let selection = SyncRunSelection {
@@ -1208,7 +1214,13 @@ mod tests {
             .state()
             .sync_stores
             .plan_store
-            .peek(&pair.state().organization_scope(), &preview.plan_id)
+            .peek(
+                &pair
+                    .state()
+                    .organization_scope()
+                    .expect("桌面组织作用域在测试中总是可用"),
+                &preview.plan_id
+            )
             .is_ok());
         assert_eq!(pair.test.mock.open_transaction_count(), 0);
         assert_eq!(pair.target.open_transaction_count(), 0);
