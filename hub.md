@@ -312,3 +312,36 @@ Tester 全量首跑遇到 `scripts/__tests__/driver-init-rustfmt.test.mjs` 失�
 **我要求两个 Tester 本轮各盯一个易漏点**：
 - `insert-backend`：「只改字符串」这条自述要从 diff 层与用例层双向证；且要给出**零生产者终盘清单**（码 → 归属 → 状态），写进合流报告。
 - `grid-selection`：`applyGridSelection` 现在返回**共享常量** `ROW_MODE_GRID_SELECTION`，要查它会不会被 mutate 污染全局；这比「跑绿」重要——归一化很容易顺手把 `cell` 合法几何也清掉。
+
+## 合流预检（两轨都还在最后一轮，先做静态检查）
+
+两轨各自相对分叉点的改动文件**交集为空**：
+
+```
+comm -12 <(diff --name-only base..grid-selection) <(diff --name-only base..insert-backend)
+→ (空)
+```
+
+`grid-selection` 13 个提交全在 `src/`（stores/hooks/lib/TableView/components 测试），`insert-backend` 11 个提交全在 `packages/` + `src-tauri/` + `packages/feature-core`。**合流不应产生内容冲突**；唯一的共享风险是 lockfile / 生成文件，本轮两轨都没碰。
+
+两条轨都**落后于集成分支**（集成分支多出的是 docs + hub 提交），所以合流顺序：
+1. `feature/data-browsing-prd` ← `feature/grid-selection`
+2. `feature/data-browsing-prd` ← `feature/insert-backend`
+3. 健全性校验（全量门禁：前端 `npx vitest run` + `pnpm typecheck`；Rust `--lib` 四包 + 各 `--test`；`cargo fmt --check`）
+4. 删两个 feature 分支与 worktree，删两轨 `progress.md`
+5. 派 Wave 2
+
+## Wave 2 派发单（合流 + 健全性校验通过后立即执行）
+
+三条轨并行，但要守住「三个热文件（`TableView.tsx` / `DataTable.tsx` / `tableDataStore.ts`）每波只允许一条前端轨」：
+
+| 轨 | 分支 | 内容 | 热文件 |
+| --- | --- | --- | --- |
+| `grid-cell` | `feature/grid-cell` | `[data-dt-surface]` / `data-dt-selected` / `role="rowheader"` / 选区摘要 testid 接线；消费 01 已落地的 `rowsCoveredBySelection` + `gridErrors` | **碰 `DataTable.tsx`** → 本波唯一前端轨 |
+| `web-transport` | `feature/web-transport` | `MethodMap` + `BackendClient` + wire 类型镜像（`insertMarked` / `inserts` / `operation:'insert'`）；前端只经 BackendClient | 只碰 `packages/backend-client`，可并行 |
+| `insert-frontend` | `feature/insert-frontend` | 草稿行 UI + TS 镜像接线 | 碰 `TableView.tsx` → **与 `grid-cell` 冲突，排 Wave 3** |
+
+**Wave 1 交给 Wave 2 的三条硬信息**：
+1. `insert-backend` 已把 `inserts` / `insertMarked` / `operation:'insert'` 镜像进桌面 TS（`src/lib/tableChanges.ts`），但 **`packages/backend-client` 没有**——`web-transport` 要照抄形状，不要重新设计；
+2. `grid-selection` 的 `deleteRows` **不再写行集**，`applyGridSelection` 已按 mode 归一化几何；`insert-frontend` 若要在删除后保留选中视觉，**必须走 `setRowModeSelection`**，不能自己拼 patch；
+3. 45 码里现在有 8 个有生产者；`grid-cell` 若要消费某个码，先确认它在生产者清单里，否则前端分支永不触发。
