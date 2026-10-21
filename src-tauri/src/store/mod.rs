@@ -25,8 +25,8 @@ pub use app_db::{
 };
 pub(crate) use favorites::NewFavorite;
 pub use history_db::{
-    HistoryDb, HistoryEntry, HistoryListItem, HistoryOrder, HistoryScope, MigrationProfileRef,
-    MigrationRunFilter, MigrationRunPage, MigrationRunRecord, QueryHistoryFilter, QueryHistoryPage,
+    HistoryDb, HistoryOrder, HistoryScope, MigrationProfileRef, MigrationRunFilter,
+    MigrationRunPage, MigrationRunRecord, QueryHistoryFilter, QueryHistoryPage,
 };
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
 pub use settings::{AppSettings, OnboardingState};

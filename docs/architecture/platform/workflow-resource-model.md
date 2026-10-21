@@ -43,7 +43,7 @@
 
 ### 2.1 模块结构
 
-`src-tauri/src/workflow/` 当前有 15 个源文件。共享执行语义（`conditions.rs`、`data_step.rs`、`model.rs`、`executor.rs` 等）已下沉到 `packages/feature-core/src/workflow/`；宿主 `mod.rs` 声明 `command`、`command_runtime`、`error`、`history`、`independent_sql`、`migration`、`workflows`、`model`、`registry`、`scheduler`、`host`，`context.rs` 与 `executor.rs` 仍通过 [`workflows.rs`](../../../src-tauri/src/workflow/workflows.rs) 的 `#[path]` 声明为私有子模块。`[已实现的 Workflow 架构](../backend/workflow.md)` 已按此分层更新。
+`src-tauri/src/workflow/` 当前有 9 个源文件。共享执行语义（`conditions.rs`、`data_step.rs`、`model.rs`、`executor.rs`、`registry.rs`、`history.rs` 等）已下沉到 `packages/feature-core/src/workflow/`；宿主 `mod.rs` 只声明真正环境相关的部分——`command_runtime`（Driver Command 运行时桥）、`history`（本地历史库绑定）、`independent_sql`（桌面身份/目标绑定）、`migration`（迁移端口的桌面实现）、`registry`（`AppDb` 绑定）、`scheduler`（桌面调度适配）、`host`（共享执行器的桌面 `WorkflowHost` 实现）。宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen_feature_core::workflow::…`。`[已实现的 Workflow 架构](../backend/workflow.md)` 已按此分层更新。
 
 `packages/feature-core/src/workflow/data_step.rs` **不涉及任何数据库资源**，内容是 `merge` / `transform` 的行集合并与表达式求值（`run_merge`、`run_transform`、`evaluate_expression`）。`context.rs` 负责变量与模板上下文，`conditions.rs` 负责条件比较。
 
@@ -64,13 +64,13 @@
 `version` 字段在**全仓库范围内只被写入，从未被读取**：
 
 - 没有任何按版本分派的解析代码（无 `match version`、无 `CURRENT_VERSION` 比较，三个内建 YAML 也未设置该字段）；
-- 生产代码写入点只有 `src-tauri/src/dashboard/create.rs:64` 的 `version: None` 字面量；其余 11 处全在测试代码内（`workflow/registry.rs:260`、`workflow/executor.rs:901/938/972`、`workflow/scheduler.rs:231`、`workflow/migration.rs:892`、`commands/dashboard.rs:461`、`commands/ai/integration_tests.rs:356/906/1039/1085`），其中仅 `integration_tests.rs:356` 写 `Some("1")`，同样无人读取。
+- 生产代码写入点只有 `packages/feature-core/src/dashboard/create.rs:39` 的 `version: None` 字面量；其余 10 处全在测试代码内（`workflow/host.rs:127/168/203`、`workflow/registry.rs:184`、`workflow/migration.rs:433`、`commands/dashboard.rs:460`、`commands/ai/integration_tests.rs:372/923/1057/1106`），其中仅 `integration_tests.rs:372` 写 `Some("1")`，同样无人读取。
 
 对比：仓库中其他"定义版本"确有实现——`packages/schema-diff/src/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。Workflow 是这些带 `CURRENT_VERSION` 校验的定义中唯一未校验的一个；另需注意 `store/settings.rs:15` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）。
 
 ### 2.4 目标解析与资源获取
 
-[`executor.rs:124`](../../../src-tauri/src/workflow/executor.rs)：
+[`executor.rs:129`](../../../packages/feature-core/src/workflow/executor.rs)：
 
 ```rust
 let workflow_connection = workflow.connection.as_deref().or(connection_id);
@@ -79,7 +79,7 @@ let workflow_database = workflow.database.as_deref();
 
 `connection_id` 是**调用方传入的运行时参数**，由 IPC / MCP / 调度器决定，是 P6 要消除的隐式目标来源。当前优先级因此只有两级：step 显式 → (workflow 默认 → 调用方 connectionId)。
 
-query 分支（[executor.rs:444-489](../../../src-tauri/src/workflow/executor.rs)）：
+query 分支（[executor.rs](../../../packages/feature-core/src/workflow/executor.rs)）：
 
 1. `step_database = step.database`（可为 `{{var}}`，先做模板解析）；
 2. `inherited_database = workflow_database`；

@@ -43,7 +43,7 @@ pub(super) struct LegacyWorkflowHistoryEntry {
     #[serde(alias = "skillName")]
     pub workflow_name: String,
     pub variables: serde_json::Value,
-    pub result: crate::workflow::workflows::WorkflowExecutionResult,
+    pub result: datazen_feature_core::workflow::model::WorkflowExecutionResult,
     pub created_at: String,
 }
 

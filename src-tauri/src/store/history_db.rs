@@ -36,7 +36,6 @@ use std::sync::{Arc, Mutex};
 use chrono::{Duration, Utc};
 
 use super::models::QueryHistoryEntry;
-use crate::workflow::workflows::WorkflowExecutionResult;
 
 pub const MAX_QUERY_HISTORY: usize = 1000;
 pub const MAX_WORKFLOW_HISTORY: usize = 100;
@@ -52,32 +51,6 @@ pub const LEGACY_FAVORITES_TABLE: &str = "favorite_queries";
 /// Where those rows go once they have been exported to `.sql` files. Keeping
 /// them (instead of dropping) is what makes the migration reversible.
 pub const LEGACY_FAVORITES_ARCHIVE_TABLE: &str = "favorite_queries_legacy_v1";
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HistoryEntry {
-    pub id: String,
-    #[serde(alias = "skillId")]
-    pub workflow_id: String,
-    #[serde(alias = "skillName")]
-    pub workflow_name: String,
-    pub variables: serde_json::Value,
-    pub result: WorkflowExecutionResult,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HistoryListItem {
-    pub id: String,
-    #[serde(alias = "skillId")]
-    pub workflow_id: String,
-    #[serde(alias = "skillName")]
-    pub workflow_name: String,
-    pub success: bool,
-    pub total_time_ms: u64,
-    pub created_at: String,
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum HistoryDbError {

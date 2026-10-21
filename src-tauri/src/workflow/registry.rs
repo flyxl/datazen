@@ -1,30 +1,126 @@
 //! Workflow persistence backed by [`crate::store::AppDb`].
+//!
+//! The registry's rules — which workflows a user sees, how a definition is
+//! encoded, what a saved workflow looks like — live in
+//! `datazen_feature_core::workflow::registry`. This module only binds them to
+//! the desktop store.
 
 use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
-use chrono::Utc;
 use datazen_feature_core::workflow::model::{
     WorkflowDefinition, WorkflowListItem, WorkflowVisibility,
 };
+use datazen_feature_core::workflow::registry::{
+    WorkflowDefinitionRecord, WorkflowDefinitionStore, WorkflowRegistry as CoreRegistry,
+};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+
+/// The builtin workflows the desktop host ships.
+const BUILTIN_DEFINITIONS: &[(&str, &str)] = &[
+    (
+        "hello-query",
+        include_str!("../../resources/builtin-workflows/hello-query.yaml"),
+    ),
+    (
+        "cross-db-sample",
+        include_str!("../../resources/builtin-workflows/cross-db-sample.yaml"),
+    ),
+    (
+        "ai-summarize",
+        include_str!("../../resources/builtin-workflows/ai-summarize.yaml"),
+    ),
+];
+
+/// The desktop rows the shared registry reads and writes.
+struct AppDbWorkflowStore {
+    app_db: Arc<AppDb>,
+}
+
+impl WorkflowDefinitionStore for AppDbWorkflowStore {
+    fn get_workflow(&self, id: &str) -> Result<Option<WorkflowDefinitionRecord>, String> {
+        match self.app_db.get_workflow(id) {
+            Ok(record) => Ok(Some(record_to_definition_record(&record))),
+            Err(AppDbError::NotFound(_)) => Ok(None),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn list_workflows(
+        &self,
+        visibility: WorkflowVisibility,
+    ) -> Result<Vec<WorkflowDefinitionRecord>, String> {
+        self.app_db
+            .list_workflows(Some(to_db_visibility(visibility)))
+            .map(|rows| rows.iter().map(record_to_definition_record).collect())
+            .map_err(|error| error.to_string())
+    }
+
+    fn upsert_workflow(&self, record: &WorkflowDefinitionRecord) -> Result<(), String> {
+        self.app_db
+            .upsert_workflow(&WorkflowRecord {
+                id: record.id.clone(),
+                name: record.name.clone(),
+                description: record.description.clone(),
+                visibility: to_db_visibility(record.visibility),
+                definition_yaml: record.definition_yaml.clone(),
+                created_at: record.created_at.clone(),
+                updated_at: record.updated_at.clone(),
+            })
+            .map_err(|error| error.to_string())
+    }
+
+    fn delete_workflow(&self, id: &str) -> Result<(), String> {
+        match self.app_db.delete_workflow(id) {
+            Ok(()) => Ok(()),
+            Err(AppDbError::NotFound(_)) => Ok(()),
+            Err(AppDbError::WorkflowInUse(summary)) => Err(format!(
+                "Workflow is still referenced by dashboards: {summary}"
+            )),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+}
+
+fn to_db_visibility(visibility: WorkflowVisibility) -> DbVisibility {
+    match visibility {
+        WorkflowVisibility::User => DbVisibility::User,
+        WorkflowVisibility::DashboardHidden => DbVisibility::DashboardHidden,
+    }
+}
+
+fn record_to_definition_record(record: &WorkflowRecord) -> WorkflowDefinitionRecord {
+    WorkflowDefinitionRecord {
+        id: record.id.clone(),
+        name: record.name.clone(),
+        description: record.description.clone(),
+        visibility: match record.visibility {
+            DbVisibility::User => WorkflowVisibility::User,
+            DbVisibility::DashboardHidden => WorkflowVisibility::DashboardHidden,
+        },
+        definition_yaml: record.definition_yaml.clone(),
+        created_at: record.created_at.clone(),
+        updated_at: record.updated_at.clone(),
+    }
+}
 
 pub struct WorkflowRegistry {
+    core: CoreRegistry<AppDbWorkflowStore>,
     app_db: Arc<AppDb>,
     /// Legacy path kept for `open_workflows_dir` / diagnostics (may be empty).
     workflows_dir: PathBuf,
-    seeded: AtomicBool,
-    seed_lock: Mutex<()>,
 }
 
 impl WorkflowRegistry {
     pub fn new(app_db: Arc<AppDb>, data_dir: PathBuf) -> Self {
         Self {
+            core: CoreRegistry::new(
+                AppDbWorkflowStore {
+                    app_db: app_db.clone(),
+                },
+                BUILTIN_DEFINITIONS.to_vec(),
+            ),
             app_db,
             workflows_dir: data_dir.join("workflows"),
-            seeded: AtomicBool::new(false),
-            seed_lock: Mutex::new(()),
         }
     }
 
@@ -36,221 +132,47 @@ impl WorkflowRegistry {
         self.app_db.clone()
     }
 
-    async fn ensure_seeded(&self) -> Result<(), String> {
-        if self.seeded.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        let _guard = self.seed_lock.lock().await;
-        if self.seeded.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        self.seed_builtins_if_empty()?;
-        self.seeded.store(true, Ordering::Release);
-        Ok(())
-    }
-
-    fn seed_builtins_if_empty(&self) -> Result<(), String> {
-        let existing = self
-            .app_db
-            .list_workflows(Some(DbVisibility::User))
-            .map_err(|e| e.to_string())?;
-        if !existing.is_empty() {
-            return Ok(());
-        }
-
-        const BUILTINS: &[(&str, &str)] = &[
-            (
-                "hello-query",
-                include_str!("../../resources/builtin-workflows/hello-query.yaml"),
-            ),
-            (
-                "cross-db-sample",
-                include_str!("../../resources/builtin-workflows/cross-db-sample.yaml"),
-            ),
-            (
-                "ai-summarize",
-                include_str!("../../resources/builtin-workflows/ai-summarize.yaml"),
-            ),
-        ];
-
-        for (label, content) in BUILTINS {
-            let mut def: WorkflowDefinition = serde_yaml::from_str(content)
-                .map_err(|e| format!("Failed to parse builtin {label}: {e}"))?;
-            if def.visibility == WorkflowVisibility::DashboardHidden {
-                def.visibility = WorkflowVisibility::User;
-            }
-            Self::validate_id(&def.id)?;
-            self.persist_definition(&def)
-                .map_err(|e| format!("Failed to seed builtin {label}: {e}"))?;
-            tracing::info!("Seeded builtin workflow {} ({})", def.name, def.id);
-        }
-        Ok(())
-    }
-
-    pub fn validate_id(id: &str) -> Result<(), String> {
-        if id.is_empty()
-            || !id
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(format!(
-                "Invalid workflow id: {id}. Only alphanumeric, dash, and underscore are allowed."
-            ));
-        }
-        Ok(())
-    }
-
-    fn to_db_visibility(v: WorkflowVisibility) -> DbVisibility {
-        match v {
-            WorkflowVisibility::User => DbVisibility::User,
-            WorkflowVisibility::DashboardHidden => DbVisibility::DashboardHidden,
-        }
-    }
-
-    fn from_db_visibility(v: DbVisibility) -> WorkflowVisibility {
-        match v {
-            DbVisibility::User => WorkflowVisibility::User,
-            DbVisibility::DashboardHidden => WorkflowVisibility::DashboardHidden,
-        }
-    }
-
-    fn record_to_definition(record: &WorkflowRecord) -> Result<WorkflowDefinition, String> {
-        let mut def: WorkflowDefinition = serde_yaml::from_str(&record.definition_yaml)
-            .map_err(|e| format!("Failed to parse workflow {}: {e}", record.id))?;
-        def.id = record.id.clone();
-        def.name = record.name.clone();
-        def.description = record.description.clone();
-        def.visibility = Self::from_db_visibility(record.visibility);
-        Ok(def)
-    }
-
-    fn persist_definition(&self, workflow: &WorkflowDefinition) -> Result<(), String> {
-        let now = Utc::now().to_rfc3339();
-        let existing = self.app_db.get_workflow(&workflow.id).ok();
-        let created_at = existing
-            .as_ref()
-            .map(|r| r.created_at.clone())
-            .unwrap_or_else(|| now.clone());
-
-        let definition_yaml = serde_yaml::to_string(workflow).map_err(|e| e.to_string())?;
-
-        let record = WorkflowRecord {
-            id: workflow.id.clone(),
-            name: workflow.name.clone(),
-            description: workflow.description.clone(),
-            visibility: Self::to_db_visibility(workflow.visibility),
-            definition_yaml,
-            created_at,
-            updated_at: now,
-        };
-        self.app_db
-            .upsert_workflow(&record)
-            .map_err(|e| e.to_string())
-    }
-
     pub async fn get(&self, id: &str) -> Option<WorkflowDefinition> {
-        if let Err(e) = self.ensure_seeded().await {
-            tracing::warn!("Failed to seed workflows before get: {e}");
-        }
-        match self.app_db.get_workflow(id) {
-            Ok(record) => match Self::record_to_definition(&record) {
-                Ok(def) => Some(def),
-                Err(e) => {
-                    tracing::warn!("Failed to load workflow {id}: {e}");
-                    None
-                }
-            },
-            Err(AppDbError::NotFound(_)) => None,
-            Err(e) => {
-                tracing::warn!("Failed to get workflow {id}: {e}");
-                None
-            }
-        }
+        self.core.get(id).await
     }
 
     /// List user-visible workflows only (excludes `dashboardHidden`).
     pub async fn list(&self) -> Vec<WorkflowListItem> {
-        if let Err(e) = self.ensure_seeded().await {
-            tracing::warn!("Failed to seed workflows before list: {e}");
-            return Vec::new();
-        }
-        match self.app_db.list_workflows(Some(DbVisibility::User)) {
-            Ok(rows) => rows
-                .iter()
-                .filter_map(|r| Self::record_to_definition(r).ok())
-                .map(|s| WorkflowListItem {
-                    id: s.id.clone(),
-                    name: s.name.clone(),
-                    description: s.description.clone(),
-                    variables: s.variables.clone(),
-                    scheduled: s.schedule.as_ref().map(|sc| sc.enabled).unwrap_or(false),
-                })
-                .collect(),
-            Err(e) => {
-                tracing::warn!("Failed to list workflows: {e}");
-                Vec::new()
-            }
-        }
+        self.core.list().await
     }
 
     /// Definitions for scheduler: user-visible only (hidden are dashboard-driven).
     pub async fn list_definitions(&self) -> Vec<WorkflowDefinition> {
-        if let Err(e) = self.ensure_seeded().await {
-            tracing::warn!("Failed to seed workflows before list_definitions: {e}");
-            return Vec::new();
-        }
-        match self.app_db.list_workflows(Some(DbVisibility::User)) {
-            Ok(rows) => rows
-                .iter()
-                .filter_map(|r| Self::record_to_definition(r).ok())
-                .collect(),
-            Err(e) => {
-                tracing::warn!("Failed to list workflow definitions: {e}");
-                Vec::new()
-            }
-        }
+        self.core.list_definitions().await
     }
 
     pub async fn save_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), String> {
-        Self::validate_id(&workflow.id)?;
-        let _ = self.ensure_seeded().await;
-        self.persist_definition(workflow)
+        self.core.save(workflow).await
     }
 
     /// Save from raw YAML text (dual-mode editor). Parses, validates, persists.
     pub async fn save_workflow_yaml(&self, yaml: &str) -> Result<WorkflowDefinition, String> {
-        let workflow: WorkflowDefinition =
-            serde_yaml::from_str(yaml).map_err(|e| format!("Invalid workflow YAML: {e}"))?;
-        self.save_workflow(&workflow).await?;
-        Ok(workflow)
+        self.core.save_yaml(yaml).await
     }
 
     pub async fn delete_workflow(&self, id: &str) -> Result<(), String> {
-        Self::validate_id(id)?;
-        let _ = self.ensure_seeded().await;
-        match self.app_db.delete_workflow(id) {
-            Ok(()) => Ok(()),
-            Err(AppDbError::NotFound(_)) => Ok(()),
-            Err(AppDbError::WorkflowInUse(summary)) => Err(format!(
-                "Workflow is still referenced by dashboards: {summary}"
-            )),
-            Err(e) => Err(e.to_string()),
-        }
+        self.core.delete(id).await
     }
 
     /// Reload is a no-op for DB backend (kept for IPC compatibility).
     pub async fn load_all(&self) -> Result<(), String> {
-        self.ensure_seeded().await
+        self.core.load_all().await
     }
 
     pub async fn ensure_loaded(&self) -> Result<(), String> {
-        self.ensure_seeded().await
+        self.core.ensure_loaded().await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use datazen_feature_core::workflow::model::WorkflowStep;
 
     fn sample_def(id: &str, visibility: WorkflowVisibility) -> WorkflowDefinition {

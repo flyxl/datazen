@@ -6,9 +6,7 @@ use datazen_driver_api::CommandResult;
 use datazen_feature_core::mcp::permission::McpPermissionMode;
 use datazen_feature_core::workflow::error::WorkflowError;
 
-pub use datazen_feature_core::workflow::command_runtime::{
-    inject_inherited_database, resolve_connection_id,
-};
+use datazen_feature_core::workflow::command_runtime::resolve_connection_id;
 
 pub async fn execute_command(
     app_state: &AppState,
@@ -198,7 +196,7 @@ mod tests {
 
 #[cfg(test)]
 mod inherit_tests {
-    use super::inject_inherited_database;
+    use datazen_feature_core::workflow::command_runtime::inject_inherited_database;
     use serde_json::json;
 
     #[test]

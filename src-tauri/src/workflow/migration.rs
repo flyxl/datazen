@@ -19,7 +19,6 @@ fn migration_command_error(error: crate::commands::CommandError) -> WorkflowErro
     WorkflowError::Driver(error.to_string())
 }
 
-pub use datazen_feature_core::workflow::migration::sanitize_variables;
 use datazen_feature_core::workflow::migration::{MigrationHost, MigrationOutcome};
 pub(crate) async fn execute_profile_step(
     state: &AppState,
@@ -338,6 +337,7 @@ mod tests {
     use crate::store::MigrationRunFilter;
     use crate::testing::app_state::TestAppState;
     use chrono::Utc;
+    use datazen_feature_core::workflow::migration::sanitize_variables;
     use datazen_feature_core::workflow::model::{
         WorkflowDefinition, WorkflowMigrationOperation, WorkflowStep, WorkflowVisibility,
     };

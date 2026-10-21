@@ -8,8 +8,9 @@ use crate::{
         app_state::{build_app_state, sample_postgres_config},
         FileKeyringGuard,
     },
-    workflow::{WorkflowDefinition, WorkflowExecutor},
 };
+use datazen_feature_core::workflow::executor::WorkflowExecutor;
+use datazen_feature_core::workflow::model::{StepStatus, WorkflowDefinition};
 use futures_util::FutureExt;
 use std::sync::Arc;
 // Link actual inventory factories even without production driver feature injection.
@@ -148,7 +149,7 @@ steps:
         && cleanup_result
             .steps
             .iter()
-            .all(|step| step.status == crate::workflow::StepStatus::Success);
+            .all(|step| step.status == StepStatus::Success);
     // Teardown precedes all result assertions and also runs after a panicked
     // orchestration future; no failing step can skip the final cleanup phase.
     let (setup_result, result) = match journey {
@@ -172,7 +173,7 @@ steps:
         .iter()
         .zip([if first == "pg" { 37 } else { 5 }, 42])
     {
-        assert_eq!(step.status, crate::workflow::StepStatus::Success);
+        assert_eq!(step.status, StepStatus::Success);
         let value = &step.result.as_ref().expect("query result")["rows"][0]["value"];
         assert_eq!(
             value.as_i64(),

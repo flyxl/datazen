@@ -360,7 +360,7 @@ async fn prompt_override_round_trip() {
 
 #[tokio::test]
 async fn workflow_save_list_get_delete() {
-    use crate::workflow::{WorkflowDefinition, WorkflowStep};
+    use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let test = TestAppState::new().await;
     test.state.workflow_registry.load_all().await.unwrap();
@@ -909,7 +909,7 @@ data: [DONE]
 
 #[tokio::test]
 async fn workflow_execute_ai_step_with_wiremock() {
-    use crate::workflow::{WorkflowDefinition, WorkflowStep};
+    use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     test.state.workflow_registry.load_all().await.unwrap();
@@ -1043,7 +1043,7 @@ async fn ai_chat_connected_english_schema_message() {
 
 #[tokio::test]
 async fn workflow_history_clear_after_execute() {
-    use crate::workflow::{WorkflowDefinition, WorkflowStep};
+    use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     test.state.workflow_registry.load_all().await.unwrap();
@@ -1090,7 +1090,9 @@ async fn workflow_history_clear_after_execute() {
 
 #[tokio::test]
 async fn dashboard_hidden_workflow_execute_skips_history() {
-    use crate::workflow::{WorkflowDefinition, WorkflowStep, WorkflowVisibility};
+    use datazen_feature_core::workflow::model::{
+        WorkflowDefinition, WorkflowStep, WorkflowVisibility,
+    };
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     test.state.workflow_registry.load_all().await.unwrap();

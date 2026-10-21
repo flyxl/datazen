@@ -8,7 +8,7 @@ use crate::dashboard::store::load_monitor_settings;
 use crate::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
 use crate::store::AppDb;
 use crate::store::AppSettings;
-use crate::workflow::WorkflowExecutor;
+use datazen_feature_core::workflow::executor::WorkflowExecutor;
 use datazen_feature_core::workflow::model::WorkflowExecutionResult;
 
 /// Default per-widget workflow timeout (seconds).

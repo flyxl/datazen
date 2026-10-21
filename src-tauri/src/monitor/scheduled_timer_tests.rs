@@ -58,7 +58,8 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
     let mut profile = test.save_connection("timer-profile").await;
     profile.database_type = "postgresql".into();
     test.store.save_connection(profile).await.unwrap();
-    let workflow: crate::workflow::WorkflowDefinition = serde_json::from_value(serde_json::json!({
+    let workflow: datazen_feature_core::workflow::model::WorkflowDefinition =
+        serde_json::from_value(serde_json::json!({
         "id":"timer-workflow", "name":"timer", "description":"real grant revision",
         "connection":"timer-profile", "database":"app", "variables":[],
         "steps":[{"id":"read", "type":"command", "command":"query", "connection":"timer-profile",

@@ -117,8 +117,8 @@ mod tests {
     use crate::dashboard::store::save_dashboard;
     use crate::dashboard::types::DashboardLayout;
     use crate::store::{AppDb, WorkflowRecord};
-    use crate::workflow::WorkflowStep;
     use chrono::Utc;
+    use datazen_feature_core::workflow::model::WorkflowStep;
 
     async fn setup() -> (std::sync::Arc<AppDb>, WorkflowRegistry, Dashboard) {
         let db = AppDb::open_in_memory().unwrap();
