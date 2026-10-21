@@ -1095,7 +1095,15 @@ export interface DataGridCapabilities {
 | 44 | `grid.selection.invalid` | 01 | 选区状态自相矛盾（锚点与焦点不匹配、区间倒置未归一） | 说明选区已重置，并提示重新选择 |
 | 45 | `grid.selection.stale` | 01 | 选区引用的行列在重取数/改列后已失效 | 说明选择已被清空，需重新选择 |
 
-> **⚠ 生产者盘点（2026-10-21，Wave 1 收尾实测，第 5 轮补齐后更新）**：本节现有 **44 行**（编号 10 的 `duplicateDraft` 已按 IB3-D4 删除、编号留空），其中 **8 个码**有真实 throw 点，合计 **27 处**：
+> **⚠ 生产者盘点（2026-10-22，Wave 5 更新）**：本节现有 **44 行**（编号 10 的 `duplicateDraft` 已按 IB3-D4 删除、编号留空），其中 **15 个码**有真实 throw 点，合计 **约 40 处**：
+>
+> **Wave 5 新增有生产者的码**（Wave 4/5 补齐）：
+> - `grid.fk.shapeMismatch` / `grid.fk.unknownConstraint` / `grid.fk.valueNull` / `grid.fk.targetUnresolved` / `grid.fk.probeFailed`（**07**，共享层 `feature-core/src/services/fk_navigation.rs`）——**注意**：源表 FK 元数据**不可读**也归 `unknownConstraint`（五码是闭集，没有第 6 个码可分配）；目标元数据**读不到**归 `targetUnresolved`，目标表**存在但缺该被引用列**归 `shapeMismatch`。
+> - `grid.filter.unsupportedOperator` / `grid.filter.incomplete`（**08**，共享层 `query_executor/filter_sql/`）——`incomplete` 的消息**必须点名缺哪一列、哪个算子、缺什么**，不许静默丢弃条件。
+>
+> **且这 15 个码此前在桌面 UI 里一个都到不了**（Wave 5 轨 A 发现并修复）：`CommandError::Serialize` 对普通错误产出**纯字符串**，而 `backend-client` 的 `deserializeApiError` 对**非 record** 的拒绝一律替换成无信息的话 ⇒ `grid.*` 前缀被整句丢掉。**所有针对错误码的测试都只测了分类器，从没测过「消息从 Rust 到 TS 的往返」**——这是本计划最重要的一次教训：错误码的验收必须包含**端到端往返**，不能停在分类器。
+>
+> 原有 8 个码的分布：
 > - `grid.commit.stalePlan`（**9** 处：`change_set` 3（会话不同 / 指纹不符 / 指纹过期）、`mod.rs` 3（`config_revision` / 库 / schema）、`write_exec` 3（自有会话目标未确认 / 手工事务漂移 / 执行前配置变更））
 > - `grid.commit.affectedMismatch`（3 处：INSERT / 行身份 / 驱动未上报）
 > - `grid.commit.conflictingIntents`（3 处：删除+列写入、新增行被标记删除、计划内身份冲突）
