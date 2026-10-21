@@ -227,7 +227,7 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 |---|---|---|
 | C | **已验收 TEST_PASSED → 已合入集成 `e267fad3f`** | Tester `a1f0c68d`（3 次尝试后完成） |
 | B | **已验收 TEST_PASSED → 已合入 `056b35834`** | Tester `cda75c30` |
-| A | 第 3 轮修复中（D-06 守卫漏报 / D-07 行号 / D-08 假红 / D-09 文档） | 终复测 `4f2d61f0`：D-01 改写**属实**（6/6），但第 2 轮的守卫精度修复**引入了漏报** |
+| A | 第 3 轮修复完成 `fd2e2a817` → **第 4 轮终验中**（`4f2d61f0` 之外的新 Tester） | 修法**直接对齐仓库已有的正确实现** `runtime/src/tunnel/source_scan.rs` |
 
 ### 环境
 - `export CARGO_TARGET_DIR=/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/.shared-target`（三轨共用；会打印 `Blocking waiting for file lock` —— **正常，等它**，禁止各轨改 target 目录）
@@ -513,7 +513,9 @@ P0/P2/P3/P4/P5 全部通过 —— **D-01 改写后的注释被逐条核实属�
 3. 第 2 轮：**修守卫精度时把"能抓住"改成了"抓不住"** —— 改一个守卫就是在改它的**检测能力本身**，每次都必须用变异证明没有退化。
 4. 第 3 轮：**仓库里已有一份正确实现**（`runtime/src/tunnel/source_scan.rs`）—— 遇到重复的词法/扫描逻辑，先找仓库里是否已有正确版本，别重写。
 
-**A 轨 Tester 另加 3 条 SQLite 侧用例**（跨组织认领 → `NotFound`、跨组织写 → `StaleClaim`、SQLite 侧的 D-01 事实对照），已随其提交 `dcbeb5f90` 交给 A cherry-pick。
+**A 轨 Tester 另加 3 条 SQLite 侧用例**（跨组织认领 → `NotFound`、跨组织写 → `StaleClaim`、SQLite 侧的 D-01 事实对照），已随其提交 `dcbeb5f90` 交给 A cherry-pick（`295ef5d6a`）。
+
+**第 3 轮修复（`fd2e2a817`）**：D-06 修法**直接对齐 `packages/runtime/src/tunnel/source_scan.rs:89-110`**（仓库里已有的正确词法实现）—— 这正是第 4 条教训的落地：**遇到重复的词法/扫描逻辑，先找仓库里是否已有正确版本，别重写**。同时修了 D-07（掩码保换行 + 块注释留占位 ⇒ 字节偏移与行数都对）、D-08（`->` 逐段剥整条路径 ⇒ 真实字面量数回到 14）、D-09（P9 目标形态 vs P5 桌面形态的限定语），并加 4 条回归自检（走**同一条** `scan_source` 路径）。按要求重建了 `progress.md` 承载教训链（首行已标注「合并前必须删除」）。
 
 ## 6. 门禁与流程
 
