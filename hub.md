@@ -226,7 +226,7 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 |---|---|---|
 | C | **已验收 TEST_PASSED → 已合入集成 `e267fad3f`** | Tester `a1f0c68d`（3 次尝试后完成） |
 | B | **已验收 TEST_PASSED → 已合入 `056b35834`** | Tester `cda75c30` |
-| A | 第 1 轮修复完成 `951f5ef68`（D1–D5 全处置）→ **全新 Tester 复测中** `64877b2a`（验证树 `verify-job-org-scope-v2`） | 上一轮 Tester `b285d2f2`：组织维度逐方法核实贯通，8 组变异证明新断言有效 |
+| A | 复测 **TEST_PASSED** → **第 2 轮修复中**（D-01 文档说谎 + D-03/04/05 守卫精度） | Tester `64877b2a`：D1 已修复复验；发现注释里有**代码不保证的不变量** |
 
 ### 环境
 - `export CARGO_TARGET_DIR=/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/.shared-target`（三轨共用；会打印 `Blocking waiting for file lock` —— **正常，等它**，禁止各轨改 target 目录）
@@ -353,6 +353,23 @@ D1–D5 全部处置，并 cherry-pick 上一轮 Tester 的三笔测试提交（
 2. 跨组织隔离的**读/写/删三条路径**逐条精确断言，且**不得**返回「无权限」。
 3. 规则函数签名与函数体逐字未变。
 4. **A 轨重叠文件未触碰**（独立核对 diff）。
+
+### A 轨复测第 2 轮（Tester `64877b2a`）—— TEST_PASSED，但发现「文档说谎」
+
+D1 阻塞项已修复并复验（`cargo check -p datazen --features webdriver --all-targets` → EXIT=0），P0–P8 全过。**但复测挖出一条本 initiative 至今最有价值的缺陷类型**：
+
+**D-01（文档说谎类）** —— 三处 `renew` 注释（`ports/job.rs:105`、`runtime/repository.rs:738`、`runtime_ops.rs:539`）写着**同一句错话**：「所以越组织的续约拿不到有效 claim，只能按 `StaleClaim` 失败」。
+Tester 用探针实测推翻：`**JobClaim`（`platform-api/src/dto/job.rs:276-283`）不带组织字段**，`renew` 也没有 ctx → 「一次越组织的续约」在 API 上**根本无法表达**；只要 worker + generation 对得上就成立（探针 `forged renew = Ok(...)`，只有 `wrong-worker renew` 才 `Err(StaleClaim)`）。
+**性质**：注释描述的是一个**代码不保证的不变量** —— 比措辞瑕疵严重得多。写注释时把"我以为成立"写成了"成立"，后来人照着它做判断就会错。
+→ **裁决：改写注释为事实陈述，不给 `JobClaim` 加组织维度**。理由：加组织维度是契约变更，波及所有 claim 的构造与传递（D/B/E/F 各轨都可能碰），而复测已核实**今天没有任何 IPC 命令接受客户端送来的 claim**（`grep JobClaim src-tauri/src/commands/` 为空、前端无 claim/renew）—— 为一条无对外入口的路径改契约不划算。
+
+**D-02（守卫只查字段存在、不查值来源）** → 把 `organization_id` 换成硬编码常量，原守卫**恒绿**。Tester 已补 `every_job_filter_literal_takes_the_organization_from_the_context` 堵上。**这不是泄漏**（`list` 会拿 filter.org 与 ctx.org 再比一次），而是"静默列举不出东西"。
+
+**D-03 / D-04 / D-05 合并为一条「守卫精度」** → 扫描根不含 `src-tauri/tests/`；词法器不懂 Rust 生命周期撇号（`'static` / `State<'_, _>`）→ 进入字符模式 → **假红**；字面量识别器把「返回类型 + 函数体」误判为字面量（16 个"字面量"里 2 个是假货）。
+→ **裁决：要求 A 在第 2 轮一并修**。理由不是洁癖：**一个会假红的守卫，迟早有人因为"它老是误报"而把它关掉或加豁免 —— 那就等于 D1 的根因回归**。守卫要能长期活着，精度就是必要条件。同时要求 A 自检"修完没把 M1/M3a/M3c 那三条漏报方向弄坏"。
+
+**D-07**（内存 `check_claim` 只比对组织，SQLite 比对组织+主体 → 同组织不同主体的写路径两侧口径不同）→ D2 文档只声明跨**组织**一致，不构成矛盾 → Wave 4。
+**D-06**（`track/a-tester-commits` 分支不存在）→ **协调者的疏忽**：我在 A cherry-pick 完成后就删了锚定分支，却仍在复测任务书里让 Tester 从该 ref 取原始提交。Tester 改用"原 SHA 线性存在于 HEAD 历史 ⇒ 内容逐字节未变 + 变异非恒绿"作等价证据，结论成立。**教训：拆掉临时 ref 前要先确认没有下游任务书引用它。**
 
 ## 6. 门禁与流程
 
