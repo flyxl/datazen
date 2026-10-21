@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FILTER_OPERATOR_META,
   convertFilterValue,
+  operatorsForDriver,
   defaultOperatorForColumn,
   likeCaseInsensitiveForMeta,
   normalizeOperatorForColumn,
@@ -10,6 +11,7 @@ import {
   valueInputFor,
 } from '../filterOperators';
 import type { DatabaseTypeMeta } from '../databaseMeta';
+import type { FilterOperator } from '../../types';
 import { EXISTING_FILTER_OPERATORS, SHARED_FILTER_OPERATORS } from '../../types';
 
 /** The order the operators that already shipped must keep, everywhere. */
@@ -120,6 +122,16 @@ describe('filter operator metadata', () => {
     expect(SHARED_FILTER_OPERATORS).toHaveLength(19);
   });
 
+  it('treats an empty declaration as "said nothing", not "serves nothing"', () => {
+    // The rule that the shipped path and this test have to agree on.
+    expect(operatorsForDriver(undefined)).toEqual([...SHARED_FILTER_OPERATORS]);
+    expect(operatorsForDriver([])).toEqual([...SHARED_FILTER_OPERATORS]);
+    expect(supportedOperatorsForMeta(metaWith({ filterOperators: [] }))).toEqual([
+      ...SHARED_FILTER_OPERATORS,
+    ]);
+    expect(supportedOperatorsForMeta(metaWith({ filterOperators: ['eq'] }))).toEqual(['eq']);
+  });
+
   it('narrows the supported operators to what the driver declares', () => {
     const supported = supportedOperatorsForMeta(
       metaWith({ filterOperators: ['eq', 'ne', 'isNull', 'isNotNull'] }),
@@ -177,6 +189,14 @@ describe('filter operator metadata', () => {
     expect(valueInputFor('notIn')).toBe('tokens');
     expect(valueInputFor('eq')).toBe('single');
     expect(valueInputFor('regex')).toBe('single');
+  });
+
+  it('degrades an unknown operator instead of throwing while the panel renders', () => {
+    // A condition persisted by another build may name an operator this build
+    // does not know. The panel has to render it.
+    const unknown = 'legacyOperator' as unknown as FilterOperator;
+    expect(() => valueInputFor(unknown)).not.toThrow();
+    expect(valueInputFor(unknown)).toBe('single');
   });
 
   it('records that only the literal substring operators escape the value', () => {

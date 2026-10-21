@@ -176,13 +176,34 @@ const DIALECT_OPERATORS_BY_FAMILY: Record<DataTypeFamily, readonly FilterOperato
   null: [],
 };
 
-/** The operators a driver serves when it says nothing: the shared nineteen. */
+/**
+ * The operators a driver serves, given what it declared.
+ *
+ * **An empty or missing list means the shared nineteen.** A driver that says
+ * nothing has not opted out of anything — it has simply said nothing, and the
+ * grid must keep working for it. This is the one place that rule lives, so
+ * the shipped path and the tested path cannot drift apart: the panel reads
+ * the driver's metadata through {@link supportedOperatorsForMeta}, and every
+ * consumer of a plain operator list runs it through this function.
+ */
+export function operatorsForDriver(
+  declared: readonly FilterOperator[] | undefined,
+): readonly FilterOperator[] {
+  if (!declared || declared.length === 0) return SHARED_FILTER_OPERATORS;
+  return declared;
+}
+
+/**
+ * The operators this driver serves, read from its metadata.
+ *
+ * A driver that declares none gets the shared set; the dialect specific
+ * operators only show up when the driver names them (the back end stays the
+ * authority).
+ */
 export function supportedOperatorsForMeta(
   meta: DatabaseTypeMeta | undefined,
 ): readonly FilterOperator[] {
-  const declared = meta?.dataGrid?.filterOperators;
-  if (!declared || declared.length === 0) return SHARED_FILTER_OPERATORS;
-  return declared;
+  return operatorsForDriver(meta?.dataGrid?.filterOperators);
 }
 
 /**
@@ -214,9 +235,17 @@ export function operatorsForColumn(
   return candidates.filter((operator) => supported.includes(operator));
 }
 
-/** Which value control an operator is edited with. */
+/**
+ * Which value control an operator is edited with.
+ *
+ * A condition that was persisted by another build may name an operator this
+ * build does not know. The panel then degrades to a single value field
+ * instead of throwing while it renders — an operator the user cannot change
+ * anyway is better than a panel that fails to open.
+ */
 export function valueInputFor(operator: FilterOperator): FilterValueInputKind {
-  return FILTER_OPERATOR_META[operator].valueInput;
+  const meta = FILTER_OPERATOR_META[operator] as FilterOperatorMeta | undefined;
+  return meta?.valueInput ?? 'single';
 }
 
 /**

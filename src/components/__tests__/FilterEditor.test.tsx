@@ -2,7 +2,7 @@ import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, screen, act } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
 import { FILTER_VALUE_DEBOUNCE_MS, FilterEditor } from '../FilterEditor';
-import type { FilterCondition } from '../../types';
+import type { FilterCondition, FilterOperator } from '../../types';
 import { SHARED_FILTER_OPERATORS } from '../../types';
 import { operatorsForColumn } from '../../lib/filterOperators';
 
@@ -585,6 +585,33 @@ describe('FilterEditor operators and completeness', () => {
     expect(screen.getByTestId('filter-like-case-insensitive')).toHaveTextContent(
       'filter.likeCaseInsensitiveHint',
     );
+  });
+
+  it('shows the comma separated form of a range in the collapsed summary', () => {
+    // An older draft carries the range as "10,20". The editor reads it (the
+    // bounds are in the two inputs); the collapsed chip has to show the same
+    // value, or the row reads as if the value were lost.
+    renderTyped({
+      draftFilters: [{ column: 'score', operator: 'between', value: '10,20' }],
+    });
+    expect(screen.getAllByText(/score filter\.between 10, 20/).length).toBeGreaterThan(0);
+  });
+
+  it('renders a condition whose operator this build does not know', () => {
+    // A persisted condition may name an operator that is not in the contract.
+    // The panel must degrade, not throw while it renders.
+    const legacy = {
+      column: 'name',
+      operator: 'legacyOperator' as unknown as FilterOperator,
+      value: 'alice',
+    };
+    expect(() =>
+      renderTyped({
+        draftFilters: [legacy],
+      }),
+    ).not.toThrow();
+    // The chip is readable and the operator stays visible.
+    expect(screen.getAllByText(/name filter\.legacyOperator alice/).length).toBeGreaterThan(0);
   });
 
   it('gives every condition row its index', () => {

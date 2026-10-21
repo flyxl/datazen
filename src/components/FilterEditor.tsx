@@ -11,6 +11,7 @@ import { FilterConditionChip } from './filter/FilterConditionChip';
 import { FilterConditionEditor } from './filter/FilterConditionEditor';
 import { FilterConnectorToggle } from './filter/FilterConnectorToggle';
 import { conditionSummary } from './filter/filterLabels';
+import { defaultOperatorForColumn } from '../lib/filterOperators';
 import type { FilterColumn } from './filter/types';
 
 export type FilterLogic = 'and' | 'or';
@@ -26,7 +27,16 @@ const FILTER_LIST_MAX_HEIGHT_CLASS = 'max-h-[4.75rem]';
 
 export interface FilterEditorProps {
   columns: FilterColumn[];
-  /** The filter operators this database serves; defaults to the shared set. */
+  /**
+   * The filter operators this panel offers.
+   *
+   * The list is **already resolved**: whoever read the driver's declaration
+   * turned it into a list with `operatorsForDriver` — an empty declaration
+   * means "said nothing", not "serves nothing", and that rule lives in the
+   * library so the shipped path and the tested path cannot drift apart.
+   *
+   * Omit the prop and the panel offers the shared set.
+   */
   supportedOperators?: readonly FilterOperator[];
   /**
    * Whether this database ignores case in `LIKE` under its default collation.
@@ -54,7 +64,7 @@ export interface FilterEditorProps {
 
 export function FilterEditor({
   columns,
-  supportedOperators = SHARED_FILTER_OPERATORS,
+  supportedOperators,
   likeCaseInsensitive = false,
   appliedFilters,
   appliedLogic,
@@ -72,6 +82,15 @@ export function FilterEditor({
   applyError = null,
 }: FilterEditorProps) {
   const { t } = useI18n();
+
+  /**
+   * The operators this panel offers.
+   *
+   * A caller that passes a list has already resolved it (see the prop); a
+   * caller that passes nothing gets the shared set, which is the same list
+   * `operatorsForDriver` falls back to.
+   */
+  const operators = supportedOperators ?? SHARED_FILTER_OPERATORS;
 
   const dirty = !filterDraftEqualsApplied(draftFilters, draftLogic, appliedFilters, appliedLogic);
 
@@ -163,9 +182,12 @@ export function FilterEditor({
   }
 
   const addEmpty = () => {
+    const column = columns[0];
     onAdd({
-      column: columns[0]?.name ?? '',
-      operator: 'eq',
+      column: column?.name ?? '',
+      // The default operator belongs to the column type: `eq` today, but a
+      // type that cannot take `eq` needs its own first operator.
+      operator: defaultOperatorForColumn(column?.type),
       value: '',
     });
   };
@@ -365,7 +387,7 @@ export function FilterEditor({
                         filter={f}
                         index={idx}
                         columns={columns}
-                        supportedOperators={supportedOperators}
+                        supportedOperators={operators}
                         likeCaseInsensitive={likeCaseInsensitive}
                         onChange={onChange}
                         onRemove={onRemove}

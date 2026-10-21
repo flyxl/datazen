@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { X } from 'lucide-react';
-import type { FilterCondition, FilterOperator, Value } from '../../types';
+import type { FilterCondition, FilterOperator } from '../../types';
 import { Select } from '../ui/Select';
 import { isCompleteFilter } from '../../stores/tableData/filterUtils';
 import {
@@ -14,6 +14,7 @@ import { FilterValueInput } from './FilterValueInput';
 import { FilterTokenInput } from './FilterTokenInput';
 import { FilterBetweenInput } from './FilterBetweenInput';
 import type { FilterColumn } from './types';
+import { toPair, toTokens } from './filterValues';
 
 /** The open select listbox of the shared `Select` component. */
 const SELECT_LISTBOX_SELECTOR = '[id^="dz-select-listbox-"]';
@@ -228,29 +229,4 @@ export function FilterConditionEditor({
       </button>
     </div>
   );
-}
-
-/** The value of a set operator as a list of strings. */
-function toTokens(value: Value | undefined): string[] {
-  if (Array.isArray(value)) return value.map((entry) => (entry == null ? '' : String(entry)));
-  if (typeof value === 'string' && value !== '') {
-    return value
-      .split(',')
-      .map((part) => part.trim())
-      .filter((part) => part !== '');
-  }
-  return [];
-}
-
-/** The value of a range operator as its two bounds. */
-function toPair(value: Value | undefined): [string, string] {
-  if (Array.isArray(value)) {
-    const [lower = '', upper = ''] = value;
-    return [lower == null ? '' : String(lower), upper == null ? '' : String(upper)];
-  }
-  if (typeof value === 'string' && value.includes(',')) {
-    const separator = value.indexOf(',');
-    return [value.slice(0, separator).trim(), value.slice(separator + 1).trim()];
-  }
-  return [value == null ? '' : String(value), ''];
 }
