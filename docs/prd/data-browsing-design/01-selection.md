@@ -228,12 +228,19 @@ export function columnsCoveredBySelection(selection: GridSelection, columnOrder:
  * 以及"行级批量动作降级为涉及的行集合"的唯一来源。
  * ⚠ 返回的是 UI 行下标，任何写路径都必须再经 `rowIdentityAnchors` 解析（契约 §4.3）。
  *
- * ⚠ 签名已由契约 §4.2.1 冻结为**单参数 + ReadonlySet**：不得加 `columnOrder`
+ * ⚠ 签名已由契约 §4.2.1 冻结为**单参数 `GridSelectionState` + ReadonlySet**：不得加 `columnOrder`
  *   （本函数求的是行覆盖集，与列序无关），不得返回 `number[]`
  *   （03 的既有断言写作 `.size > 0`，数组无 `.size`，typecheck 会失败）。
- *   `mode === 'row'` 时直接返回 `state.selectedRows` 本身，不拷贝。
+ *   `GridSelectionState`（`GridSelection & { selectedRows: ReadonlySet<number> }`，契约 §4.2.1 冻结）
+ *   与 §3.1 的四个基础类型一并从本文件导出；其中 `selectedRows` 是**必填**字段。
+ *   `mode === 'row'` 时直接返回 `state.selectedRows` 本身（不拷贝）；其余模式只读该字段、绝不写回。
+ *   调用方必须显式交出当前行选择集合——只传裸 `GridSelection` 会类型不通过，
+ *   而若把 `selectedRows` 放宽为可选，row 模式会静默返回空集（契约 §4.2.1 的落地校正原话）。
+ *
+ * 〔契约审计修订 2026-10-21〕T2-1：第一参数由 `GridSelection` 改为 `GridSelectionState`
+ *   （契约 §4.2.1 已把 `selectedRows` 定为**必填**，不再是"`GridSelection` 单参数"）。
  */
-export function rowsCoveredBySelection(state: GridSelection): ReadonlySet<number>;
+export function rowsCoveredBySelection(state: GridSelectionState): ReadonlySet<number>;
 
 /** 精确相等（含模式、锚点、焦点、附加区顺序无关比较）。用于避免无意义 store 写入。 */
 export function gridSelectionEquals(
@@ -428,6 +435,12 @@ export interface UseGridSelectionResult {
 | `data-dt-dirty` | `"true"` / 不输出 | 该格有未提交改动 | **不属本册**，由 06 在同一个 `GridCell` 里加 |
 | `data-dt-surface` | `"true"` | 标记虚拟滚动 filler（"空白处"判定的唯一合法依据） | 本册新增 |
 | `data-dt-selection-rows` / `data-dt-selection-cols` / `data-dt-selection-cells` | 数字 | 工具栏摘要的三个计数，供 E2E 逐字断言 | 本册新增 |
+
+> **〔契约审计修订 2026-10-21〕T1-15 · 05 换来源时必须同批改本册的期望值，不能只换 `GridCell` 里那一行。**
+> 05 把 `data-dt-cell-type` 的来源从 `classifyDataType`（7 族）换成 `resolveCellType`（`CellType`，11 值）时，**必须同一个提交内更新本册的两处期望值**：
+> ① Step 7 的等价性自测（第 678 行附近，`classifyDataType` 与 `data-dt-cell-type` 一致）；
+> ② §9.2 的组件用例 `emits data-dt-cell-type from classifyDataType`（用例名与断言都要改），以及任何 E2E 里对该属性具体值的硬编码。
+> `timestamp with time zone → datetime` 这类断言会变：**期望值必须按 `resolveCellType` 的实装重新取值，不得沿用 7 族口径推定**（`date` / `time` / `datetime` 在 11 值粒度下互不相等，`bytes` / `text`、`enum` / `uuid` / `unknown` 同理）。只换来源不改断言，结果是断言比对一个已不再产出该值的函数——要么当场红、要么被顺手删掉而**静默丢失覆盖**。
 
 ### 3.8 `DataTableProps` 增量（全部可选 ⇒ 既有 7 处消费者一行不改）
 

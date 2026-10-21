@@ -162,8 +162,8 @@ preview_pending_changes          // tauri command：生成计划
        └─ changes_fingerprint    // 指纹（sha2）
 commit_pending_changes           // tauri command：提交
   └─ commit_pending_changes_impl // pub(crate)：加锁、校验指纹、取连接
-       └─ execute_row_change_plan_impl  // 真正逐条执行
-（遗留入口 `commit_row_updates` / `commit_row_deletes` 按 C-1 已裁定删除，不再是本设计的链路一环）
+       └─ super::data_session::execute_plan  // 真正逐条执行（绑定语句，值不进 SQL 文本）
+（**〔契约审计修订 2026-10-21〕T1-1 / R-F**：遗留入口 `commit_row_updates` / `commit_row_deletes` **仍然注册在 `generate_handler!`**（`bootstrap/run.rs`），但实现恒返回 `"Legacy row writes are disabled; preview and commit a target-bound ChangeSet"`，不再是本设计的链路一环；`validate_legacy_pk_columns` 与 `commit_row_deletes_rejects_empty_pk` **全仓不存在**，任何"迁移它们"的要求作废）
 ```
 
 相关 DTO（**都是已存在的，新增字段要遵守第 2 节铁律**）：
@@ -204,15 +204,16 @@ pub struct CommitPendingChangesResponse { pub plan_id: String, pub fingerprint: 
 
 **五个必须记住的事实**：
 
-1. **`RowChangePlan` 只有 `updates` 与 `deletes` 两个语句集合，没有 `inserts`**。新增行是空白能力，不是「开关没打开」。
-2. **`execute_row_change_plan_impl` 对每条语句要求影响行数恰好为 1**，否则整批失败，错误是 `CommandError::Validation`，文案形如 `UPDATE for one row identity affected {n} rows; refusing ambiguous write`（DELETE 同构）。这条纪律本身是安全设计（`affected == 1` 意味着「恰好命中我定位的那一行」），但它与「插入」语义天然冲突：插入的影响行数是 1，却没有 `row_identity` 可校验。
+1. **`RowChangePlan` 基线只有 `updates` 与 `deletes` 两个语句集合，没有 `inserts`**〔契约审计修订 2026-10-21〕T1-9：DB-04 已追加 `inserts: Vec<PlannedStatement>`（`#[serde(default)]`，按请求顺序）。新增行在基线是空白能力，不是「开关没打开」。
+2. **`execute_plan` 对每条语句要求影响行数恰好为 1**，否则整批失败，错误是 `CommandError::Validation`，文案形如 `UPDATE for one row identity affected {n} rows; refusing ambiguous write`（DELETE 同构）。这条纪律本身是安全设计（`affected == 1` 意味着「恰好命中我定位的那一行」），但它与「插入」语义天然冲突：插入的影响行数是 1，却没有 `row_identity` 可校验。
+   〔契约审计修订 2026-10-21〕T1-14：**实测文案**是 `Row identity affected {affected} rows; refusing ambiguous write`（无 `UPDATE`/`DELETE` 前缀）；`RowChangePlan` 还有一个 `#[serde(default)] config_revision: Option<Counter>`；`commit_pending_changes` 的形参含 `manual_handle: Option<SessionHandle>`。凡下游断言文案的，一律以上面的实测串为准。
 3. **⚠ 插入计划会被静默吞掉（DB-04 必须处理的陷阱）**：该函数的第一个判断是「`plan.updates` 与 `plan.deletes` **都为空**时直接返回成功、`affected_rows` 为 0」。因此 DB-04 在给计划加入 `inserts` 之后，**必须同步把这条提前返回的判断扩展到 `inserts`**；漏改的后果是「用户点了提交、界面显示成功、数据库里什么都没有」，而且不报错。
-4. **事务归属有两条路径，插入必须走同一条**：若该 `dbSessionId` 上**已有用户开启的事务**（`AppState.session_transactions` 命中），本函数**不**自己开启或提交事务，改动并入用户事务、由用户决定提交或回滚；否则它自行 `begin_transaction`（驱动不支持时退化为裸 `BEGIN`），全部语句成功后 `COMMIT`，任一条失败则 `ROLLBACK` 后返回错误。**新增的插入语句必须放在同一个执行块内**，否则插入会落在另一个事务里，破坏「一次提交要么全成、要么全不成」的语义。
+4. **事务归属有两条路径，插入必须走同一条**〔契约审计修订 2026-10-21〕T1-1：**`AppState.session_transactions` 在生产代码里已不存在**。真实形态是 `platform.beginTransaction`（带 `defersCommit: true`）：`commit_pending_changes` 接受可选 `manual_handle: Option<SessionHandle>`，命中时校验目标与 `TransactionState::Active` 后把语句并入手动事务（不自行提交）；未命中时自行开一次会话级事务并在结束时提交/回滚。改动并入用户事务、由用户决定提交或回滚；否则它自行 `begin_transaction`（驱动不支持时退化为裸 `BEGIN`），全部语句成功后 `COMMIT`，任一条失败则 `ROLLBACK` 后返回错误。**新增的插入语句必须放在同一个执行块内**，否则插入会落在另一个事务里，破坏「一次提交要么全成、要么全不成」的语义。
 5. **`fingerprint` 是防「计划开裂」的**：预览与提交之间若暂存改动变了，指纹不匹配必须拒绝提交，禁止降级为「按新数据重算」。
 
-### 1.5 SQL 生成（Host 侧）
+### 1.5 SQL 生成（共享层）
 
-位置：`src-tauri/src/services/query_executor.rs`。
+位置：`packages/feature-core/src/services/query_executor.rs`（约 755 行，§9.2 账本）〔契约审计修订 2026-10-21〕T1-7：宿主 `src-tauri/src/services/query_executor.rs` 只剩 47 行 re-export 门面；本条原先写"Host 侧"是过期事实。
 
 ```rust
 pub struct SortCondition { pub column: String, #[serde(default)] pub descending: bool }
@@ -226,8 +227,10 @@ impl QueryExecutor {
         order_by: Option<OrderBy>, skip_count: bool,
     ) -> ...;
 
-    fn build_count_sql(table_name, columns, filters, qi, format_lit, filter_logic) -> String;
-    fn build_select_sql(table_name, columns, filters, order_by, qi, format_lit, pagination, filter_logic) -> String;
+    // 〔契约审计修订 2026-10-21〕T1-7 / T1-8：二者都是 crate 内 `pub fn`（不是 trait / IPC 面），
+    // build_count_sql 返回 Result<String, DriverError>；build_select_sql 多一个 filter_logic 形参。
+    pub fn build_count_sql(table_name, columns, filters, qi, format_lit, filter_logic) -> Result<String, DriverError>;
+    pub fn build_select_sql(table_name, columns, filters, order_by, qi, format_lit, pagination, filter_logic) -> Result<String, DriverError>;
     fn format_condition(condition, qi, format_lit) -> String;
     fn filter_is_complete(condition) -> bool;
 }
@@ -259,8 +262,11 @@ fn skip_count_query(&self) -> bool;                       // 默认 false
 fn supports_offset(&self) -> bool;                        // 默认 true
 fn pagination_syntax(&self, limit: u64, offset: u64) -> PaginationSyntax;
 fn format_sql_literal(&self, value: &Option<Value>) -> String;
-fn build_update_sql(&self, table: &str, set_columns: &[(&str, Option<Value>)], pk_columns: &[(&str, Option<Value>)]) -> String;
-fn build_delete_sql(&self, table: &str, pk_columns: &[(&str, Option<Value>)]) -> String;
+// 〔契约审计修订 2026-10-21〕T1-2 / R-B：真实写缝是下面两个（返回绑定语句，值不进 SQL）。
+// 上面的 build_update_sql / build_delete_sql 是**已废弃的字面量路径**（源码注释明确要求
+// product code 只用 *_statement），任何设计、任何门禁断言都不得再引用它们。
+fn build_update_statement(&self, table: &str, set_columns: &[(&str, Option<Value>)], pk_columns: &[(&str, Option<Value>)]) -> Result<BoundSqlStatement, DriverError>;
+fn build_delete_statement(&self, table: &str, pk_columns: &[(&str, Option<Value>)]) -> Result<BoundSqlStatement, DriverError>;
 fn has_schema_level(&self) -> bool;                       // 默认 false
 fn has_multi_database(&self) -> bool;                     // 默认 false
 fn default_schema(&self) -> Option<&'static str>;         // 默认 None
@@ -486,7 +492,7 @@ export const cellWriteUnset = (): CellWrite => ({ kind: 'unset' });
 | --- | --- |
 | `Value(v)`，而该列是生成列（`is_auto_increment` 或有 `default_value` 的只读列）且用户未显式改 | 应保持 `Unset`；若确实显式改了则允许，交由数据库报错 |
 | 一行的所有列都是 `Unset` 且 `delete_marked == false` | 该行无实际改动，**不得**进入计划（空语句会污染影响行数校验） |
-| `delete_marked == true` 同时又给出非 `Unset` 列写入 | 拒绝，报 `grid.commit.conflictingIntents` |
+| `delete_marked == true` 同时又给出非 `Unset` 列写入 | 拒绝，报 `grid.commit.conflictingIntents`〔契约审计修订 2026-10-21〕T1-12：**代码侧尚未实现**——`build_row_change_plan` 只校验"changed_columns 里的列必须有 current_values"，`delete_marked` 行直接走 delete 分支、列写入被**静默丢弃**。本行是契约要求，02/04/06 必须补校验，且拒绝发生在 SQL 生成之前 |
 | 主键列出现在 `Unset` 中，而该行是 UPDATE | 合法：主键列本来就不该改；行定位走 `row_identity`，与写入列无关 |
 
 ---
@@ -664,6 +670,7 @@ CellCoord.rowIndex
 | `data-dt-selection-rows` | 行容器 | `"true"` / 不存在 | 该行属于当前行选择（`mode === 'row'`） | **01** |
 | `data-dt-selection-cols` | 列头容器 | `"true"` / 不存在 | 该列属于当前列选择 | **01** |
 | `data-dt-selection-cells` | 单元格 | `"true"` / 不存在 | 该单元格属于当前 cell 选择范围 | **01** |
+| `data-dt-active` | 单元格 | `"true"` / 不存在 | 键盘光标所在格〔契约审计修订 2026-10-21〕T1-5：02 已自建并使用（全册 14 次引用），原先总表没有此行，属契约缺口 | 01 建（props 派生）+ 02 用 |
 | `data-dt-cell-type` | 单元格 | 归一化类型名 | 类型感知编辑器与测试（见下方收敛说明） | 01 先用 `classifyDataType`，**05 换成 `resolveCellType`** |
 | `data-dt-editing` | 单元格 | `"true"` / 不存在 | 该单元格正被编辑器占用 | **05**（01 只加样式 hook，不加此属性） |
 | `data-dt-editor-owned` | 单元格 | `"true"` / 不存在 | 编辑器已接管该格，外部点击不得抢焦点（IME / 组合态） | **05** |
@@ -705,11 +712,11 @@ CellCoord.rowIndex
 
 **W-1 · 每条 UPDATE / DELETE 必须携带至少一个非 NULL 的行身份谓词。**
 
-即：拼给 `build_update_sql` / `build_delete_sql` 的 WHERE 片段，必须包含**该表主键列全集**且每个值都非 NULL 的等值条件。少一列、多一列、或任一主键值为 NULL，都必须在**生成 SQL 之前**拒绝，返回 `CommandError::Validation`。
+即：拼给 `build_update_statement` / `build_delete_statement` 的行身份谓词（`pk_columns`），必须包含**该表主键列全集**且每个值都非 NULL 的等值条件。少一列、多一列、或任一主键值为 NULL，都必须在**生成 SQL 之前**拒绝，返回 `CommandError::Validation`。
 
 **W-2 · 拒绝发生在 SQL 生成之前，不是之后。**
 
-顺序固定为：`校验行身份 → 生成 SQL → 执行`。**禁止**先生成 SQL 再回头检查 WHERE 是否为空——`build_update_sql` 拿到空的 WHERE 片段时不会报错，它会照常产出一条无条件的语句。
+顺序固定为：`校验行身份 → 生成 SQL → 执行`。**禁止**先生成 SQL 再回头检查行身份是否为空——`build_delete_statement` 拿到空的 `pk_columns` 时**不会报错**，它会照常产出一条无条件的语句。
 
 **W-3 · 行身份列集必须与 `CachedColumns.primary_keys` 逐字相等。**
 
@@ -719,18 +726,13 @@ CellCoord.rowIndex
 
 它能挡住「多行被影响」，挡不住「影响 1 行但改的是错的行」。W-1/W-2/W-3 任一缺失都必须靠它兜底，所以它必须**始终存在**；但**不得**因为有它就放松 W-1~W-3。
 
-#### 既有守卫登记：`validate_legacy_pk_columns` 是今天唯一的空 WHERE 防线，且必须随 C-1 迁移
+#### 〔契约审计修订 2026-10-21〕C-3 / T2-7：`validate_legacy_pk_columns` **不存在**，空身份守卫必须**新建**
 
-既有函数 `validate_legacy_pk_columns(columns, operation)`（位于 `src-tauri/src/commands/data.rs`，由 `build_row_change_plan` 链路在「Row update」/「Row delete」两处调用，配套测试 `commit_row_deletes_rejects_empty_pk`）是**当前仓库中唯一**真正阻止空 WHERE 落到 `build_delete_sql` / `build_update_sql` 的检查。
+原稿写「`validate_legacy_pk_columns(columns, operation)` 位于 `src-tauri/src/commands/data.rs`，是今天唯一的空 WHERE 防线，必须随 C-1 迁移」。**审计核实：该函数以及 `commit_row_deletes_rejects_empty_pk` 全仓 0 命中，早已随遗留入口一起删除。** 因此本节原来那四条动作（列为迁移动作、语义并入 W-1、迁入新链路、门禁断言它拆分后仍存在）**全部作废**，替换为：
 
-它此前**在 14 份文档的盲区里无人提及**，而它所在的 `src-tauri/src/commands/data.rs`（**640** 行，〔合并后校正〕旧稿 1416）正是 DB-04 Step 1 要目录化为 `src-tauri/src/commands/data/{mod.rs,plan.rs,tests.rs}` 的那个文件——一次目录化就可能把它连同测试一起遗漏。
-
-**必须落地**：
-
-- 04 的目录化 Step **必须把 `validate_legacy_pk_columns` 与 `commit_row_deletes_rejects_empty_pk` 列为显式的迁移动作**，写进该 Step 的变更表，不得只写「拆分文件」；
-- 它的校验语义并入 W-1（注意：它只校验非空，**不含 W-3 的列集相等**，因此不能直接当作 W-1 的实现，它需要被加强）；
-- C-1 删除遗留入口后，该函数**不得随之删除**，其逻辑迁入新链路的 `row_change_plan.rs`；
-- `12-testing.md` 的门禁必须包含「`validate_legacy_pk_columns` 及其测试在拆分后仍然存在」这一条断言。
+- **空 / NULL 行身份守卫必须由 DB-04 新建**，不得写成"迁移"。Wave 1 `feature/insert-backend` 已实现在 `build_row_change_plan` 里（生成 SQL 之前拒绝，文案含操作、原因与 NULL 列名）；
+- **W-3（列集 == `CachedColumns.primary_keys`）仍是缺口**：Wave 1 只做了非空 + 非 NULL，列集相等要读 schema（`TableSchema::effective_primary_keys()`，范式见 `commands/result_write.rs`），schema 拿不到必须显式拒绝而不是静默跳过；
+- `commit_row_updates` / `commit_row_deletes` **仍然注册且恒拒绝**，门禁应断言"调用后返回固定拒绝文案"，**不是**断言"它们不出现在 `generate_handler!` 里"（12-testing A-2 同步改）。
 
 **W-5 · 并发覆盖必须显式承认，不得声称"只影响刚选中的那一行"。**
 
@@ -860,7 +862,7 @@ pub enum FilterConnector { And, Or }
 pub struct FilterCondition {
     pub column: String,
     pub operator: FilterOperator,
-    pub value: Option<Value>,
+    #[serde(default)] pub value: Value,   // 〔契约审计修订 2026-10-21〕T1-3 / C-4：实装是 Value 不是 Option<Value>
     /// 本条件与**前一条**条件的连接符。第 0 条的值**无意义，渲染时必须忽略**。
     /// 缺省（`None`）= 回落到全局 `filterLogic`，即今天的行为（R4）。
     #[serde(default)]
@@ -868,7 +870,7 @@ pub struct FilterCondition {
 }
 ```
 
-- **R1 合规**：只新增字段，不改任何既有字段的类型或名字。`#[serde(default)]` 保证老调用方（不发该字段）反序列化后行为不变；R3 的 camelCase 自动映射使前端 `connector?: 'and' | 'or'` 自动对上，无需手写映射。
+- **R1 合规**〔契约审计修订 2026-10-21〕T1-3：只新增 `connector` 字段，**不改任何既有字段的类型或名字**——本条原先写 `value: Option<Value>` 是错的（实装 `filters.rs` 是 `#[serde(default)] pub value: Value`，全仓约 25 处构造点、30 处读取；改成 `Option` 会破 R1）。`Value` 形态下"缺值"由 serde 默认落成 `Value::Null`，TS 侧 `value?: Value` 本来兼容。`#[serde(default)]` 保证老调用方（不发该字段）反序列化后行为不变；R3 的 camelCase 自动映射使前端 `connector?: 'and' | 'or'` 自动对上，无需手写映射。
 - **前端镜像**：`src/types/index.ts` 的 `FilterCondition` 加 `connector?: 'and' | 'or'`（可选，与 Rust 的 `Option` 对称）。
 - **为什么是「与前一条的连接符」而不是「与后一条的」**：拼接是左到右的；挂在后一条上会让第 0 条永远没有连接符，渲染时反而要多判一次首项。挂在**当前条**上时，第 0 条的无意义值在渲染入口被显式丢弃，判断只有一处。
 - **与命名视图**：`NamedView.filters` 存的是同一结构，存盘形态随之带 `connector`（缺省不写）。老视图文件读出来全是 `None` ⇒ 全部回落到全局逻辑 ⇒ 行为不变。
@@ -940,7 +942,7 @@ fn allow_first_column_fallback_order(&self) -> bool {
 >
 > 1. 在分册与提交信息里**显式声明**这是一次行为变更，并说明影响面（无主键表与「主键字段与列标志不一致」的表）；
 > 2. 为「有主键 / 无主键退化 / 复合主键 / 显式排序覆盖」四条路径各写一条测试，并**额外**写一条「列标志与 primary_keys 不一致时按 primary_keys 排序」的测试来钉住新语义；
-> 3. 确认 `build_select_sql` 是**私有**函数（`fn`，非 `pub`），因此给它加参数**不违反**第 2 节 R1——R1 约束的是驱动可见的 trait 方法与 IPC DTO，不是宿主内部私有辅助函数。若你发现它已被外部引用，先解决引用再改。
+> 3. 确认 `build_select_sql` **不在驱动可见面**（它是 `feature-core` 内的 `pub fn`，既不是 trait 方法也不是 IPC DTO）〔契约审计修订 2026-10-21〕T1-8：原先写"私有函数（`fn`，非 `pub`）"与代码不符（实为 `pub`），但"给它加参数不违反 R1"的**结论仍成立**，依据改为"不在驱动可见面"。R1 约束的是部私有辅助函数。若你发现它已被外部引用，先解决引用再改。
 
 ### 5.5 键集分页（DB-18，阶段二）
 
@@ -977,7 +979,7 @@ DB-18 的完整落地（含降级与边界）写在分册 11；**接口在本册
 ### 6.2 既有命令的**新增可选**字段
 
 - `getTableData`（宿主 `get_table_data_impl`）增加可选入参 `countStrategy`（缺省时按驱动 `count_strategy()` 决定），以及可选 `defaultOrderColumns`（缺省走 5.4 的默认实现）。
-- `commitPendingChanges`（宿主 `commit_pending_changes_impl`）增加可选入参 `inserts: Vec<...>`，字段**可选且缺省为空**，因此老前端调用形状不变。
+- **〔契约审计修订 2026-10-21〕T1-10 / R-D**：`commitPendingChanges` 的请求形状**不变**——不新增 `inserts` 入参。插入行由 `PendingRowChange.insert_marked`（`#[serde(default, skip_serializing_if = "is_false")]`）承载，`false` 时不进 JSON，因此**不含插入的旧计划指纹逐字节不变**；计划侧由 `RowChangePlan.inserts` 按请求顺序回传。原稿写法（新增可选入参 `inserts: Vec<...>`，字段**可选且缺省为空**）作废：此老前端调用形状不变。
 
 **铁律**：新增字段一律 `Option<T>` + `#[serde(default)]`；**禁止**把既有字段改成必填，否则老前端（或 MCP 这类第三方调用方）会直接反序列化失败。
 
@@ -985,7 +987,7 @@ DB-18 的完整落地（含降级与边界）写在分册 11；**接口在本册
 
 - **`CommandError`**：宿主 IPC 层错误（校验失败、计划过期、会话不存在）。新错误码统一加 `grid.` 前缀，见第 8 节。
 - **`DriverError`**：驱动/SQL 层错误。宿主**不得**把 `DriverError` 的原样文本直接透给用户（可能含 SQL 片段与库名），须经 `CmdExt` 统一脱敏。
-- 全局 IPC 错误 Payload 会自动脱敏凭据与绝对路径，新代码不要绕过这层。
+- 全局 IPC 错误 Payload 会自动脱敏凭据；**不处理绝对路径**〔契约审计修订 2026-10-21〕T1-11：`redact_secrets_for_log` 只有 4 条凭据替换规则（`platform-infra/src/redaction.rs`），全仓无路径脱敏层。原稿"与绝对路径"是错的，凡要求"错误文案不含路径"的契约（如 W-6）目前**没有兜底层**，需要各册自行保证。
 
 ---
 
@@ -1036,6 +1038,7 @@ export interface DataGridCapabilities {
 
 - `CommandError` 是一个 Rust 枚举，但它的 `Serialize` 实现**把整个错误序列化成一个脱敏后的字符串**（先脱敏再 `serialize_str`），前端收到的是 `string`，**没有** `code` 字段。
 - 既有约定是「错误类别必须保留在文本里，供前端分类」（`commands/error.rs` 的测试明确断言了这一点）。
+- **〔契约审计修订 2026-10-21〕T1-6**：上一条"整个错误序列化成脱敏字符串、没有 `code` 字段"**只对多数分支成立**——`CommandError::RestoreOutcome` 分支序列化成**对象** `{ code: "restoreOutcome", message, details, automaticRetryAllowed, unsupported }`（`commands/error.rs`）。前缀分类的结论不变，但本节的论证前提要按此收窄：前端消费 `grid.*` 前缀时，遇到 `restoreOutcome` 对象应先看 `code` 字段。
 - 因此**给 IPC 错误加 `{ code, message }` 结构会改动所有命令共享的错误契约**，属于第 2 节 R1 禁止的「改既有契约」，不是本批方案该做的事。
 
 **所以本节的错误码按下述两层实现**：
@@ -1073,8 +1076,8 @@ export interface DataGridCapabilities {
 | 3 | `grid.cell.ambiguousIdentity` | 03 | 一页内出现重复行身份键 | 说明该页无法安全定位，请缩小范围 |
 | 4 | `grid.cell.noRowIdentity` | 03 | 目标行没有可用行身份锚点 | 说明该行不可写入 |
 | 5 | `grid.commit.stalePlan` | 04 / 06 | `fingerprint` 不匹配 | 说明计划已过期，要求重新预览 |
-| 6 | `grid.commit.affectedMismatch` | 04 / 06 | 影响行数 ≠ 1（INSERT 除外） | 说明「预期影响 1 行、实际 N 行，已回滚/未提交」 |
-| 7 | `grid.commit.conflictingIntents` | 04 | 同一行既标记删除又有列写入 | 说明冲突并指出是同一行 |
+| 6 | `grid.commit.affectedMismatch` | 04 / 06 | 影响行数 ≠ 1（**INSERT 不豁免**，见 C-5） | 说明「预期影响 1 行、实际 N 行，已回滚/未提交」 |
+| 7 | `grid.commit.conflictingIntents` | 04 | 同一行既标记删除又有列写入；**或**新增行同时被标记删除〔契约审计修订 2026-10-21〕C-6：实装目前只覆盖后者（`insert_plan.rs`），前者的校验尚缺 | 说明冲突并指出是同一行 |
 | 8 | `grid.insert.noWritableColumn` | 04 | 一行的所有列都是 `Unset`、且无默认值可依赖 | 提示至少填一列 |
 | 9 | `grid.insert.returningUnavailable` | 04 | `insert_returning_clause` 为 `None` | 说明「新行主键无法自动定位，已为你刷新当前页」 |
 | 10 | `grid.insert.duplicateDraft` | 04 | 同一 draftId 被提交两次 | 说明草稿已提交，请刷新 |
@@ -1192,17 +1195,33 @@ export interface DataGridCapabilities {
 
 | 共用对象 | 创建归属 | 后续分册只允许做什么 |
 | --- | --- | --- |
+| `src/lib/gridEventGuards.ts`〔契约审计修订 2026-10-21〕T2-8：05/07 已依赖但原表未登记 | **01** | 05/07/02 只 import，不改判定 |
+| `src/lib/gridKeyboard.ts` + `src/hooks/useGridKeyboardNav.ts`〔同上〕 | **02** | 01 提供坐标系与守卫，02 只加键位映射 |
 | `src/lib/gridErrors.ts` | **01** | 03/04/05/06/07/08/09/10/11 按契约 §8.1 三步追加本册前缀的码 |
 | `src/stores/tableData/gridSelection.ts` + `src/hooks/useGridSelection.ts` | **01** | 02 只调，不改签名（签名已冻结于 §4.2.1） |
 | `src/components/DataTable/GridCell.tsx` | **01** | 05 加 `editing`/`editorOwned`/`readonly`，06 加 `dirty`，07 加 `fk`；**只加 prop 与 `data-*`，不改既有渲染分支** |
 | `data-dt-*` 全量属性总表 | **01**（表在 §4.4） | 各册只在自己那一行里加取值，**禁止另起名字** |
 | `src/lib/databaseMeta.ts` 的 `DataGridCapabilities` | **08** | 09 追加 `countStrategy?` / `allowFirstColumnFallbackOrder?` |
-| `src-tauri/src/services/query_executor/{mod.rs,tests.rs}`（目录化） | **08** | 09 只改 `mod.rs` 并往 `tests.rs` 补用例，**不做搬迁** |
-| `src-tauri/src/commands/data/`（目录化） | **04** | 04 同时把 `validate_legacy_pk_columns` 及其测试迁入 `plan.rs` |
+| `packages/feature-core/src/services/query_executor/{mod.rs,tests.rs}`（目录化）〔契约审计修订 2026-10-21〕T0-1：原写 `src-tauri/src/services/...`，与 §9.2 及实况不符 | **08** | 09 只改 `mod.rs` 并往 `tests.rs` 补用例，**不做搬迁** |
+| `packages/feature-core/src/data_browsing/{change_set.rs,write_exec.rs}`（新建）〔契约审计修订 2026-10-21〕T0-1/T0-2 | **04** | 计划/守卫/指纹/执行都在共享层；`src-tauri/src/commands/data.rs` 只留 command 适配 |
 | `src/lib/cellTypes.ts` | **05** | 01 的 `data-dt-cell-type` 在 05 合并时把来源换成 `resolveCellType` |
-| `src-tauri/src/services/traits/browsing.rs` | **09** | — |
+| `packages/driver-api/src/traits/browsing.rs`〔契约审计修订 2026-10-21〕T0-1：`src-tauri/src/services/traits/` 目录不存在 | **09** | — |
 | `src/stores/fkNavigationStore.ts` | **07** | — |
 | `src/stores/panelResultEdit.ts` | **10** | — |
+
+**G-4 · 新增 Rust 逻辑默认落共享层（〔契约审计修订 2026-10-21〕T0 规则的可执行版）**
+
+desktop 与 web 共用同一套 domain service。任何**新增**的 Rust 业务逻辑（计划构建、SQL 生成、指纹、校验、事务编排、状态机、策略决策）默认落 `packages/feature-core`（或 `packages/application` / `packages/runtime`，按其职责），`src-tauri` 只允许出现：`#[tauri::command]` 入口、`State<AppState>` 取值、DTO 反序列化、**必要入参校验**、端口注入、错误映射。三问全过才允许留在宿主：
+
+1. desktop 与 web 是否都要这个能力？（都要 → 共享层）
+2. 能否通过 `feature-core::services::ports`（如 `DatabaseToolHost`）注入端口，而不是直接吃 `AppState`？（能 → 共享层）
+3. 宿主侧剩下的代码是否只有「取值 → 校验 → 转发 → 映射错误」？（不是 → 拆分）
+
+参考事实：`packages/feature-core` 已依赖 `datazen-runtime` / `datazen-driver-api` / `datazen-platform-api` / `datazen-application`，具备承载执行层逻辑的条件；`packages/application` **不依赖 runtime**，放不了执行层。
+
+**G-5 · 新增 IPC 必须同时给出 web 通路（〔契约审计修订 2026-10-21〕R-E）**
+
+每条新增/扩展的 IPC 命令，都必须在 `packages/backend-client/src/transport.ts` 的 `MethodMap` 与 `BackendClient` 接口里登记（当前 MethodMap 只有 kernel 面，**没有一条**表数据方法，web 端无通路）。分册 §6 必须列出四元组：**命令名 / MethodMap 条目 / `BackendClient` 方法 / 前端封装文件**。
 
 **G-3 的实边（依赖图上原来漏画的一条）**：**09 → 08**。09 依赖的不是 08 的筛选逻辑，而是 08 的**目录化产出**——09 合并时 `query_executor/` 必须已是目录，否则 09 的 `build_select_sql` / `get_table_data` 改动会落在一个已被搬走的文件上。提交序已保证 08 先于 09，此边**只为让依赖图本身完整**，不代表 09 可以引用 08 的筛选符号。
 
@@ -1223,7 +1242,7 @@ export interface DataGridCapabilities {
 
 | 文件 | 状态 | 创建 / 抽取归属 | 其他分册只能 |
 | --- | --- | --- | --- |
-| `src/windows/connection/TablePendingChangesBar.tsx` | 新建（**~170–200 行**） | **01**（从 `TableView.tsx` 抽出；〔合并后校正〕基线已由 770 → **803**，块位置随之漂移，**抽取前必须重新 `wc -l` 与定位**。抽取范围除 `table-tx-controls` 与 `pending-changes-bar` 两个容器外，**必须包含** `table-transaction-error`、`table-session-open-new` 两个 testid 与 `txLost` / `onOpenNewSession` 接线——main 新增的 `e2e/specs/table-session-loss-recovery.ts` 直接依赖它们，漏抽会静默打断该 spec） | 复用或加可选 props |
+| `src/windows/connection/TablePendingChangesBar.tsx` | 新建（**273 行**〔契约审计修订 2026-10-21〕T3-N2：实测值，原稿写 "~170–200" 违反本节"禁止估值"） | **01**（从 `TableView.tsx` 抽出；〔合并后校正〕基线已由 770 → **803**，块位置随之漂移，**抽取前必须重新 `wc -l` 与定位**。抽取范围除 `table-tx-controls` 与 `pending-changes-bar` 两个容器外，**必须包含** `table-transaction-error`、`table-session-open-new` 两个 testid 与 `txLost` / `onOpenNewSession` 接线——main 新增的 `e2e/specs/table-session-loss-recovery.ts` 直接依赖它们，漏抽会静默打断该 spec） | 复用或加可选 props |
 | `src/windows/connection/TableFilterToolbar.tsx` | 新建（**~110 行**） | **08**（抽出筛选入口 + 视图菜单 + 快筛输入，**实测移除 ~90 行**：工具栏容器 JSX 449–508 = 60 行，加快筛 handler ~30 行） | 复用或加可选 props |
 | `src/stores/tableData/gridSelection.ts` | 新建（纯逻辑，无 React） | **01** | 只复用 |
 | `src/hooks/useGridSelection.ts` | 新建（React 接线） | **01** | 只复用 |
@@ -1245,7 +1264,7 @@ export interface DataGridCapabilities {
 
 | 合并序 | 分册 | 本册净增 | 本册移除 | 前置抽取（该提交时已发生） | 提交后余额 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | **01** | +10 | **−93**（`TablePendingChangesBar`，抽取块位置已随 803 漂移，提交前重测） | 无 | **720** |
+| 1 | **01** | +10 | **−161**（实测：803 → **642**，含把事务生命周期一并抽取）〔契约审计修订 2026-10-21〕T3-N1：原稿估 −93/720，实测差 78 行 | 无 | **642** |
 | 2 | 02 | +4（键盘逻辑全在 `gridKeyboard.ts` / `useGridKeyboardNav.ts`，本层仅挂 props） | 0 | 01 | **724** |
 | 3 | 03 | +20 | 0 | 01 | **744** |
 | 4 | 05 | +25 | 0 | 01 | **769** |
@@ -1315,7 +1334,7 @@ export interface DataGridCapabilities {
 
 | # | 问题 | 建议 |
 | --- | --- | --- |
-| C-1 | `CellWrite` 是否也替换既有的 `CellUpdate.value: Option<Value>`（遗留批量入口 `commit_row_updates` / `commit_row_deletes`） | **已裁定：删除遗留入口**。原「建议不动」的口径已推翻，理由如下（复核后确认，属高危）：① 两个命令**仍注册在 Tauri IPC**（`bootstrap/run.rs` 的 `generate_handler!` 列表内），任何 IPC 调用方或注入的 JS 都能触达，它们**不只**是死代码；② 两者都直接迭代 `driver.execute(...)` 并**把 affected 计数整个丢弃**，因此**是全仓库唯一不走 `affected == 1` 护栏的写路径**——DB-04 建立的那道护栏它们完全不经过；③ 两者只有 `validate_legacy_pk_columns` 挡空 WHERE，而它只校验「pk_columns 非空」，不校验是否等于真实主键列集；④ 前端**零生产调用点**（仅 `tableDataStore` 的测试 mock 断言 `not.toHaveBeenCalled()`），删除的使用成本为零。**动作**：从 `generate_handler!` 注销两个命令，删除 `commit_row_updates_impl` / `commit_row_deletes_impl` 及其导出，保留并迁移 `validate_legacy_pk_columns` 的校验逻辑到新链路（见 §4.5），同步删除 `tableDataStore.test.ts` 中的 mock 与 `not.toHaveBeenCalled()` 断言。**回归防线**：新增一条契约测试，断言 `tauri::generate_handler!` 注册的命令清单中**不存在** `commit_row_updates` 与 `commit_row_deletes`——否则将来重新注册时无人察觉 |
+| C-1 | 〔契约审计修订 2026-10-21〕**已作废**：`CellWrite` 不进 driver-api（§3 落地校正），遗留入口仍注册但恒拒绝（§4.5）；原问题"是否替换 `CellUpdate.value`"不再存在。原文：`CellWrite` 是否也替换既有的 `CellUpdate.value: Option<Value>`（遗留批量入口 `commit_row_updates` / `commit_row_deletes`） | **已裁定：删除遗留入口**。原「建议不动」的口径已推翻，理由如下（复核后确认，属高危）：① 两个命令**仍注册在 Tauri IPC**（`bootstrap/run.rs` 的 `generate_handler!` 列表内），任何 IPC 调用方或注入的 JS 都能触达，它们**不只**是死代码；② 两者都直接迭代 `driver.execute(...)` 并**把 affected 计数整个丢弃**，因此**是全仓库唯一不走 `affected == 1` 护栏的写路径**——DB-04 建立的那道护栏它们完全不经过；③ 两者只有 `validate_legacy_pk_columns` 挡空 WHERE，而它只校验「pk_columns 非空」，不校验是否等于真实主键列集；④ 前端**零生产调用点**（仅 `tableDataStore` 的测试 mock 断言 `not.toHaveBeenCalled()`），删除的使用成本为零。**动作**：从 `generate_handler!` 注销两个命令，删除 `commit_row_updates_impl` / `commit_row_deletes_impl` 及其导出，保留并迁移 `validate_legacy_pk_columns` 的校验逻辑到新链路（见 §4.5），同步删除 `tableDataStore.test.ts` 中的 mock 与 `not.toHaveBeenCalled()` 断言。**回归防线**：新增一条契约测试，断言 `tauri::generate_handler!` 注册的命令清单中**不存在** `commit_row_updates` 与 `commit_row_deletes`——否则将来重新注册时无人察觉 |
 | C-2 | ~~`supported_filter_operators()` 默认返回共享算子集，是否意味着所有驱动「宣称支持」新算子但实际 SQL 可能失败~~ **已裁定** | **裁定：默认返回共享的 19 个**（§5.2 与 §7 已按此冻结）。原先的顾虑不成立：共享的 19 个算子**全部由宿主 `format_condition` 渲染**，驱动不需要为它们写任何代码（驱动只提供 `quote_ident` / `format_sql_literal` 这两个已有方法）；只有**方言专有的 3 个**（`Regex` / `NotRegex` / `JsonContains`）必须由驱动显式声明并经 `filter_operator_sql` 渲染。因此缺省给 19 个不会让任何驱动"谎称支持"，也不会造出会报错的入口——真正无法渲染的组合由 `filter_operator_sql` / `supported_filter_operators()` 在**发语句之前显式拒绝**兜住，而不是靠把白名单缩小到 10 个。若按原建议只给 10 个，新算子在**任何未改动的驱动**上都不可用，DB-08 等于白做。残留的真实差异只有 `LIKE` 的大小写与转义（各驱动默认排序规则不同），它由 `like_is_case_insensitive()` 只影响**文案**，不改变 SQL |
 | C-3 | ~~`PROTOCOL_VERSION` 是否随本次改动提升~~ **已裁定：不提升** | **不提升；版本已是 `6` 且自 2026-10-21 冻结**（`MIN_PROTOCOL_VERSION` 保持 1）。〔合并后校正〕旧稿写「保持 5」，实测 `packages/driver-api/src/lib.rs` 是 `PROTOCOL_VERSION = 6`；宿主注册期对「高于宿主」只 warn 不拒绝（见 §1.7）。分册 04 独立复核后得出同一结论：只新增**带默认实现**的 trait 方法、默认行为等于今天、不动任何既有方法签名与 IPC DTO 字段。唯一残留是「旧 `ref` 的 git 驱动不会覆盖新方法」，那是**驱动覆盖缺口**（登记为刷新 git 驱动 `ref` 的事项），不构成提升协议版本的理由——版本已冻结，提升不再是一个可选项。若后续确需修改**既有**方法签名，走驱动兼容性评审并同步 git 驱动 `ref` |
 | C-4 | **W-3 与「预览 → 提交」之间的 TOCTOU：列集相等校验比对的是 `SchemaCache::get_columns` 的缓存快照，而计划指纹（`changes_fingerprint`）只覆盖列值、不覆盖表结构。若两次预览之间、或校验通过与语句发出之间，另一会话对表做了 DDL（加列、删列、改主键），本设计的三道防线都会基于过期的 `primary_keys` 判定 | **已裁定：登记为已知残留，不在本批实现**，理由与本批的最小成本缓解如下。理由：① 修彻底需要在 SQL 上附加 `WHERE` 的旧值谓词或引入版本列，那是 **DB-04 范围外**的乐观并发控制，与 W-5「本设计明确不实现乐观并发」同源；② SchemaCache 本来就是缓存，任何基于它的判定都天然带这个窗口，本批若单独给写路径补一层，会与只读路径的判定口径分叉；③ DDL 与本批的 P0 目标（选择、键盘、剪贴板、筛选）正交，把它塞进本批会让 04 的提交链路再增一条与 §4.5 W-1…W-4 平行的规则，增加实习生实现面却不降低真实风险。**本批的最小成本缓解（必须在 04 落地，不得省略）**：W-3 的列集相等校验必须在**紧邻生成 SQL 的那一刻**读取 `SchemaCache::get_columns`（**不得**复用预览阶段缓存下来的主键列表），这样至少把窗口从「整个面板生命周期」压缩到「单次提交调用内」；并在提交失败时把该次读取的主键列集与失败语句的类型一并写进日志，便于事后定位。**明确不做**：不做 schema 版本号、不做表结构指纹、不做「结构变了就禁用编辑」的额外门禁。**遗留影响**：在一个持续 DDL 的表上，仍可能出现「按旧主键列集生成的 WHERE 未命中」（落到 `affected == 0` → 被既有 `affected == 1` 校验拒绝，属于**失败而非误写**）这一可观测后果；真正危险的方向是「旧主键列已不再是主键」而语句仍按它拼 WHERE，此时 W-3 的兜底也失效——该情形需由 DB 的表结构变更纪律（不在 DDL 期间批量编辑数据）承担，不在本批验收范围内。**若将来要求覆盖，须另立需求并单独裁定** |
