@@ -121,6 +121,44 @@ fn row_bearing_table() -> TableResult {
     table
 }
 
+/// CM-05：越组织访问按「不存在」处理——存储根解析不出来即**失败关闭**。
+///
+/// 这条断言锁的是「根解析」这一层：端口实现（`LocalComparisonStoreRoot::root_for`）
+/// 返回 `None` 之后，比较存储的**两条**入口（内联/落盘构造与流式写入器）都必须
+/// 一致地失败，且失败发生在**触碰文件系统之前**——越组织访问不得在存储根下留下
+/// 任何目录，也不得返回「无权限」形态的措辞（那会泄漏「存在但无权」）。
+#[test]
+fn another_organization_gets_no_comparison_storage_at_all() {
+    let root = std::env::temp_dir().join(format!(
+        "datazen-sync-comparison-org-{}-{}",
+        TEST_ORGANIZATION,
+        Uuid::new_v4()
+    ));
+    let bound = LocalComparisonStoreRoot::new(root.clone(), OrganizationId::new(TEST_ORGANIZATION));
+    let foreign = OrganizationScope::new(OrganizationId::new("datazen-data-sync-other"));
+
+    let error = ComparisonStore::from_comparison(comparison(8), &bound, &foreign)
+        .expect_err("越组织访问不得拿到比较存储");
+    let lowered = error.to_lowercase();
+    assert!(!lowered.contains("permission"));
+    assert!(!lowered.contains("forbidden"));
+    assert!(!lowered.contains("denied"));
+
+    let writer = StreamingComparisonStoreWriter::new(&bound, &foreign);
+    assert!(writer.is_err(), "越组织访问不得拿到比较存储写入器");
+
+    assert!(
+        !root.exists(),
+        "越组织访问必须在触碰文件系统之前失败关闭：存储根不得被创建"
+    );
+
+    // 同一个根对本组织仍然可用：失败关闭不能误伤合法访问。
+    let store = ComparisonStore::from_comparison(comparison(8), &bound, &test_scope())
+        .expect("本组织应当拿到比较存储");
+    assert!(store.summaries().is_ok());
+    let _ = fs::remove_dir_all(&root);
+}
+
 #[test]
 fn small_comparison_stays_inline_and_round_trips() {
     let store = comparison_store_from(comparison(8)).unwrap();
@@ -629,6 +667,54 @@ fn stale_owner_store_is_reclaimed_after_its_lease_is_released() {
         !owner_lease_path.exists(),
         "unused stale owner lease remains"
     );
+}
+
+/// owner 租约**按根**缓存：租约文件必须住在**自己根**的 `.owners/` 下。
+///
+/// 旧实现用无键的全局租约：第二个根会复用第一个根的租约，于是第二个根下的
+/// 陈旧目录永远无法被证明可回收——回收要靠 `try_lock_existing_owner(root, id)`
+/// 在**那个根**里找到租约文件，租约不在就永远证明不了 owner 已死。
+///
+/// 这条断言锁的是「租约文件的位置」，它正是陈旧回收能成立的前提。
+#[test]
+fn owner_lease_is_cached_per_root_so_each_root_can_reclaim_its_own_stale_stores() {
+    let temporary = tempfile::tempdir().unwrap();
+    let first_root = ensure_private_store_root(&temporary.path().join("first")).unwrap();
+    let second_root = ensure_private_store_root(&temporary.path().join("second")).unwrap();
+
+    let first = current_process_owner(&first_root).unwrap();
+    let second = current_process_owner(&second_root).unwrap();
+    assert_ne!(first.id, second.id, "两个根不得共用同一份 owner 租约");
+
+    let lease_file = |root: &Path, owner: &OwnerLease| {
+        root.join(OWNER_DIRECTORY)
+            .join(format!("{}.sqlite", owner.id))
+    };
+    assert!(
+        lease_file(&first_root, &first).exists(),
+        "第一个根的租约文件必须住在第一个根下"
+    );
+    assert!(
+        lease_file(&second_root, &second).exists(),
+        "第二个根的租约文件必须住在第二个根下——否则该根的陈旧目录无法回收"
+    );
+    assert!(
+        !lease_file(&first_root, &second).exists(),
+        "第二个根的租约不得住在第一个根下"
+    );
+    assert!(
+        !lease_file(&second_root, &first).exists(),
+        "第一个根的租约不得住在第二个根下"
+    );
+
+    // 同一根重复解析必须复用同一份租约：不重复申请、不堆积租约文件。
+    assert_eq!(current_process_owner(&first_root).unwrap().id, first.id);
+    assert_eq!(current_process_owner(&second_root).unwrap().id, second.id);
+    let owners = fs::read_dir(second_root.join(OWNER_DIRECTORY))
+        .unwrap()
+        .flatten()
+        .count();
+    assert_eq!(owners, 1, "同一根不得因为重复解析而堆积租约文件");
 }
 
 #[test]
