@@ -340,6 +340,13 @@ describe('外键跳转与返回栈 (DB-07)', () => {
     expect(await filterLogicOf(COMPOSITE_PARENT_TABLE)).toBe('and');
     // The result is the one row of the seed.
     expect(await visibleRowCount()).toBe(1);
+    // The marker of the composite key names the target table **and** its
+    // columns — again the shape, with the driver-shaped prefix left open.
+    const marked = await browser.execute(() => {
+      const cell = document.querySelector('[data-dt-row="0"][data-dt-col="parent_px"]');
+      return cell?.getAttribute('data-dt-fk') ?? null;
+    });
+    expect(marked?.endsWith('_e2e_fk_comp_parent.(px, py)')).toBe(true);
   });
 
   it('TC-FK-003 back restores the source panel position', async () => {
@@ -397,18 +404,17 @@ describe('外键跳转与返回栈 (DB-07)', () => {
     // The cell is still marked as a member of the key, and the marker names
     // the target it points at.
     //
-    // The exact spelling is **driver-shaped**: PostgreSQL reports the
-    // referenced table with its schema (`public._e2e_fk_parent`), MySQL and
-    // SQLite with the bare name — so the assertion pins the two parts that
-    // every driver spells the same way (the table and the referenced column)
-    // instead of the prefix.
+    // The marker is the **reference target identifier**: the referenced table
+    // and the referenced column. Its exact spelling is driver-shaped — the
+    // schema prefix is PostgreSQL's alone (`public._e2e_fk_parent.cust_no`
+    // there, `_e2e_fk_parent.cust_no` on MySQL/SQLite) — so the assertion
+    // pins the *shape* (table + referenced column at the end) and the prefix
+    // is never asserted in either direction.
     const marked = await browser.execute(() => {
       const cell = document.querySelector('[data-dt-row="1"][data-dt-col="customer_id"]');
       return cell?.getAttribute('data-dt-fk') ?? null;
     });
-    expect(marked).toContain('_e2e_fk_parent');
-    expect(marked).toContain('cust_no');
-    expect(marked).not.toContain('public');
+    expect(marked?.endsWith('_e2e_fk_parent.cust_no')).toBe(true);
 
     const before = await tabCount();
     await $('[data-dt-row="1"][data-dt-col="customer_id"]').click();
