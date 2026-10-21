@@ -21,7 +21,7 @@
 | 项 | 实测 |
 |---|---|
 | `packages/platform-api/src/ports/` | **18 个 trait**，13 个有实现 |
-| **无人实现的端口** | `IdentityResolver`、`EventSink`、`SubmissionTokenIssuer`、`ClusterNodeBudgetPort`、`ControlResourcePort` |
+| **无人实现的端口** | `EventSink`、`SubmissionTokenIssuer`、`ClusterNodeBudgetPort`、`ControlResourcePort`（`IdentityResolver` 已由 G 轨实现，待合流） |
 | 共享包内的进程级 `static`（多租户串味源） | 3 处：`schema-diff/reviewed.rs:49`、`data-sync/plan_store/mod.rs:674-675`、`data-transfer/plan_store/mod.rs:440-441` |
 | 共享包内绑文件系统的存储 | `data-sync/src/comparison_store/`（`disk.rs` 494 + `mod.rs` 729，合计 32 处 `fs::`/`Path`） |
 | 未抽象的具体存储 | `data-sync/plan_store`（2,025 行）、`data-transfer/plan_store`（541 行） |
@@ -104,7 +104,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ⏳ 已派发 `9b9f1166` |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 已交付 `33416cb72` → Tester `0da32120` 复测中 |
 | F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ⏳ 已派发 `29467fd8` |
-| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ⏳ 已派发 `e035cc8f` |
+| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 已交付 `b4abf9de8` → Tester 复测中 |
 
 **派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖。**已执行**（四树均推进到 `65dac1e2c` = C + B + `OrganizationScope`）。
 
@@ -370,6 +370,23 @@ Tester 用探针实测推翻：`**JobClaim`（`platform-api/src/dto/job.rs:276-2
 
 **D-07**（内存 `check_claim` 只比对组织，SQLite 比对组织+主体 → 同组织不同主体的写路径两侧口径不同）→ D2 文档只声明跨**组织**一致，不构成矛盾 → Wave 4。
 **D-06**（`track/a-tester-commits` 分支不存在）→ **协调者的疏忽**：我在 A cherry-pick 完成后就删了锚定分支，却仍在复测任务书里让 Tester 从该 ref 取原始提交。Tester 改用"原 SHA 线性存在于 HEAD 历史 ⇒ 内容逐字节未变 + 变异非恒绿"作等价证据，结论成立。**教训：拆掉临时 ref 前要先确认没有下游任务书引用它。**
+
+### G 轨交付（编码代理 `b4abf9de8`）—— 交付，待 Tester 复测
+
+`IdentityResolver` 桌面实现（`src-tauri/src/platform/execution_identity.rs`，全仓唯一 `impl`）+ 接线 + 16 条用例 + 3 份文档改写为「已实现」事实。**端口 `platform-api/src/ports/identity.rs` 一字未改**。
+
+**身份键派生**（编码代理方案）：输入只有 `(organization_id, connection_id, policy_isolation_key)` + **服务端固定盐**（宿主主密钥经 `HMAC-SHA256(master, "datazen.execution-identity.derivation-key.v1")` 域分离派生的子钥）；消息 = 域标签 + 每字段 `u32` 长度前缀 + 内容；输出 = `HMAC-SHA256(subkey, message)` → base64。
+**委托路径独立**：不同域标签 + 额外绑定 `delegation_id` 与授权 scope；`resolve_delegation` **不转调** `resolve`；失败一律 `TokenInvalid` **不降级**为本人权限；`resolve` 在委托上下文**直接拒绝**。
+
+**G 轨的自我报告值得记**：它发现**自己的测试一度放大了既有 flake** —— 首版每条用例建真 Store（18 份 SQLite）的并发 I/O 把 `platform::live_source::tests::*` 的进程级 env 竞态从"整包跑不出来"推到"2/3 概率出来"。它没有甩锅，而是建基线树量化（基线自身跑该家族 4/5 失败）、用 `--skip` 证明是自己造成的、改成零 I/O 后复验**失败画像与基线一致**。这种"先证明责任在自己"的处理方式，比事后解释有价值得多。
+
+**G 的待裁定项裁决**：
+1. `hub.md` 的端口清单 → **协调者已改**（`IdentityResolver` 移出"无人实现"）。
+2. **`resolve` 在委托上下文一律拒绝** → **接受**。这是"实现比契约严"，方向安全（宁可拒绝不可降级），但**必须落到文档** → 已列为 Tester 的 P5 检查项（若文档没写，记非阻塞文档缺陷，由协调者在合流时补）。
+3. 委托授权单覆盖多连接 → 失败关闭 → **接受**（要支持需改端口签名，属契约变更，另立 initiative）。
+4. `DelegationScopeBinding` 放宿主侧、不进 `platform-api` 端口表 → **接受**（端口层不替实现方决定"委托目标从哪来"）。
+5. 派生盐取宿主 AES 主密钥 → 主密钥轮换 ⇒ 身份键全变。当前仓库**无主密钥轮换路径** → 接受为已知约束，**须在文档写明**（已列入 Tester P2 核查）。
+6. 端口已接线但**尚无调用方**（runtime 的 `PoolKeyInputs::execution_identity_key` 仍是裸 `String`）→ 接受，记 Wave 4/后续 initiative（runtime 取键）。
 
 ## 6. 门禁与流程
 
