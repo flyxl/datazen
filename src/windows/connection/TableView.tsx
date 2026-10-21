@@ -572,11 +572,7 @@ export function TableView({
         dirtyByRow={dirtyIndex.byRowIndex}
         onRestoreRow={actions.unstageRowDelete}
         // The foreign-key jump (DB-07): the arrows and the callback.
-        fkIndex={fkNavigation.fkIndex}
-        fkVisibleColumns={fkNavigation.fkVisibleColumns}
-        fkRows={rows}
-        fkResolving={fkNavigation.fkResolving}
-        onFkJump={fkNavigation.onFkJump}
+        foreignKeys={fkNavigation.foreignKeys}
         rowHeight={DATA_TABLE_ROW_HEIGHT}
         onScrollElementChange={fkNavigation.onScrollElementChange}
         // The marker of the inserted row is its own channel: the background

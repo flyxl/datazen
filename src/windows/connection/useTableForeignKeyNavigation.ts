@@ -53,14 +53,28 @@ export interface UseTableForeignKeyNavigationOptions {
 
 /** What the tab needs to render and to react to. */
 export interface TableForeignKeyNavigation {
-  /** The columns that take part in a foreign key, mapped to their group. */
-  fkIndex: ReadonlyMap<string, FkGroupAffordance>;
-  /** The displayed column names, in render order — the order the grid renders. */
-  fkVisibleColumns: readonly string[];
-  /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
-  fkResolving: ReadonlySet<string>;
-  /** Follow the foreign key of a cell. */
-  onFkJump: (rowIndex: number, columnName: string) => void;
+  /**
+   * The foreign-key affordances of the grid, as **one** object.
+   *
+   * The pieces belong together: the arrow of a composite key is decided by
+   * the values of **all** of its members — including a member the user has
+   * hidden — and only the full row records carry those values. A grid that
+   * got the index but not the records would silently lose the arrow of every
+   * composite key with a hidden member (FKU-D1), so the type makes the
+   * combination impossible to write.
+   */
+  foreignKeys: {
+    /** The columns that take part in a foreign key, mapped to their group. */
+    index: ReadonlyMap<string, FkGroupAffordance>;
+    /** The **full** row records (every column of the table), by row index. */
+    rows: readonly Record<string, unknown>[];
+    /** The displayed column names, in render order — the order the grid renders. */
+    visibleColumns: readonly string[];
+    /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
+    resolving: ReadonlySet<string>;
+    /** Follow the foreign key of a cell. */
+    onJump: (rowIndex: number, columnName: string) => void;
+  };
   /** Why the last jump was refused; `null` when there was no refusal. */
   error: { code: GridErrorCode | 'unknown'; raw: string } | null;
   /** Hide the error of a refused jump. */
@@ -107,14 +121,14 @@ export function useTableForeignKeyNavigation(
     [displayedColumns],
   );
 
-  const foreignKeys = useTableForeignKeys({
+  const metadata = useTableForeignKeys({
     dbSessionId,
     tableName,
     database,
     schema,
     connectionId,
   });
-  const fkIndex = foreignKeys.index;
+  const fkIndex = metadata.index;
 
   const [error, setError] = useState<{ code: GridErrorCode | 'unknown'; raw: string } | null>(null);
   const [resolving, setResolving] = useState<ReadonlySet<string>>(EMPTY_RESOLVING);
@@ -282,11 +296,25 @@ export function useTableForeignKeyNavigation(
 
   const dismissError = useCallback(() => setError(null), []);
 
+  /**
+   * The affordances of the grid, memoised as one object.
+   *
+   * The grid is `memo`-ised on its props, so a fresh object on every render
+   * would re-render every visible cell of the page.
+   */
+  const foreignKeys = useMemo(
+    () => ({
+      index: fkIndex,
+      rows,
+      visibleColumns,
+      resolving,
+      onJump: handleFkJump,
+    }),
+    [fkIndex, rows, visibleColumns, resolving, handleFkJump],
+  );
+
   return {
-    fkIndex,
-    fkVisibleColumns: visibleColumns,
-    fkResolving: resolving,
-    onFkJump: handleFkJump,
+    foreignKeys,
     error,
     dismissError,
     breadcrumb,

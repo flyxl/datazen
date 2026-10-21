@@ -126,11 +126,7 @@ function FkGrid({ rows }: { rows: Record<string, unknown>[] }) {
     <DataTable
       columns={COLUMNS}
       rows={rowArrays}
-      fkIndex={navigation.fkIndex}
-      fkVisibleColumns={navigation.fkVisibleColumns}
-      fkRows={rows}
-      fkResolving={navigation.fkResolving}
-      onFkJump={navigation.onFkJump}
+      foreignKeys={navigation.foreignKeys}
     />
   );
 }

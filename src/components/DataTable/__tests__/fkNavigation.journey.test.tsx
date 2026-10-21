@@ -193,11 +193,7 @@ function FkGrid({
       <DataTable
         columns={shownColumns}
         rows={rowArrays}
-        fkIndex={navigation.fkIndex}
-        fkVisibleColumns={navigation.fkVisibleColumns}
-        fkRows={rows}
-        fkResolving={navigation.fkResolving}
-        onFkJump={navigation.onFkJump}
+        foreignKeys={navigation.foreignKeys}
         onScrollElementChange={navigation.onScrollElementChange}
       />
     </div>

@@ -104,33 +104,30 @@ export interface VirtualBodyProps {
    */
   dirtyByRow?: ReadonlyMap<number, DirtyRowEntry> | null;
   /**
-   * The foreign keys of the table, by column name (DB-07).
+   * The foreign keys of the table (DB-07).
    *
    * Omitted = the table has no foreign keys (or the metadata could not be
    * read): the grid renders exactly what it rendered before.
-   */
-  fkIndex?: ReadonlyMap<string, FkGroupAffordance>;
-  /**
-   * The displayed column names, in render order.
    *
-   * The jump arrow lands on the group's **first visible** member, so hiding a
-   * column moves the arrow to the next member instead of losing it.
+   * One object, because the pieces belong together: the arrow of a composite
+   * key is decided by the values of **all** of its members — including a
+   * member the user has hidden — and only the **full** row records carry
+   * those values (07 §7 #14). A grid that got the index but not the records
+   * would silently lose the arrow of every composite key with a hidden
+   * member, so the type makes that combination impossible to write (FKU-D1).
    */
-  fkVisibleColumns?: readonly string[];
-  /**
-   * The **full** row records (every column of the table), by row index.
-   *
-   * The positional `rows` carry only the *displayed* columns, so the value of
-   * a hidden foreign-key member is not in them — and a hidden member must not
-   * look like a member without a value: hiding a column moves the arrow, it
-   * does not lose it (07 §7 #14). The owner of the grid has the full records
-   * (`TableState.rows`), so it hands them down.
-   */
-  fkRows?: readonly Record<string, unknown>[];
-  /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
-  fkResolving?: ReadonlySet<string>;
-  /** Follow the foreign key of a cell. */
-  onFkJump?: (rowIndex: number, columnName: string) => void;
+  foreignKeys?: {
+    /** The columns that take part in a foreign key, mapped to their group. */
+    index: ReadonlyMap<string, FkGroupAffordance>;
+    /** The **full** row records (every column of the table), by row index. */
+    rows: readonly Record<string, unknown>[];
+    /** The displayed column names, in render order. */
+    visibleColumns: readonly string[];
+    /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
+    resolving?: ReadonlySet<string>;
+    /** Follow the foreign key of a cell. */
+    onJump?: (rowIndex: number, columnName: string) => void;
+  };
 }
 
 interface VirtualRowProps {
@@ -170,14 +167,10 @@ interface VirtualRowProps {
   dirtyRow?: DirtyRowEntry;
   /** The wording of the gutter dot of a row that is marked for deletion. */
   deletedRowLabel: string;
-  /** The foreign-key groups of the table, by column name (DB-07). */
-  fkIndex?: ReadonlyMap<string, FkGroupAffordance>;
+  /** The foreign keys of the table (DB-07). */
+  foreignKeys?: VirtualBodyProps['foreignKeys'];
   /** The columns of this row whose cell may be followed (DB-07). */
   fkNavigable?: ReadonlySet<string>;
-  /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
-  fkResolving?: ReadonlySet<string>;
-  /** Follow the foreign key of a cell (DB-07). */
-  onFkJump?: (rowIndex: number, columnName: string) => void;
 }
 
 const VirtualRow = memo(function VirtualRow({
@@ -208,10 +201,8 @@ const VirtualRow = memo(function VirtualRow({
   newRowLabel,
   dirtyRow,
   deletedRowLabel,
-  fkIndex,
+  foreignKeys,
   fkNavigable,
-  fkResolving,
-  onFkJump,
 }: VirtualRowProps) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -288,17 +279,18 @@ const VirtualRow = memo(function VirtualRow({
    * of the page on every scroll.
    */
   const fkAffordances = useMemo(() => {
+    const fkIndex = foreignKeys?.index;
     if (!fkIndex || fkIndex.size === 0) return null;
     const map = new Map<string, FkCellAffordance>();
     for (const [columnName, group] of fkIndex) {
       map.set(columnName, {
         targetLabel: group.targetLabel,
         navigable: fkNavigable?.has(columnName) ?? false,
-        resolving: fkResolving?.has(`${vRow.index}:${columnName}`) ?? false,
+        resolving: foreignKeys.resolving?.has(`${vRow.index}:${columnName}`) ?? false,
       });
     }
     return map;
-  }, [fkIndex, fkNavigable, fkResolving, vRow.index]);
+  }, [foreignKeys, fkNavigable, vRow.index]);
 
   return (
     <div
@@ -395,7 +387,7 @@ const VirtualRow = memo(function VirtualRow({
             // The cell renders the arrow only when it is not occupied by an
             // editor, so the affordance itself stays a stable object.
             fk={fk}
-            onFkActivate={onFkJump}
+            onFkActivate={foreignKeys?.onJump}
             selected={cellSelectionEnabled && isCellSelected(vRow.index, col.name)}
             active={
               cellSelectionEnabled &&
@@ -581,11 +573,7 @@ export const VirtualBody = memo(function VirtualBody({
   editingDraft = null,
   newRowIndex = null,
   dirtyByRow = null,
-  fkIndex,
-  fkVisibleColumns,
-  fkRows,
-  fkResolving,
-  onFkJump,
+  foreignKeys,
 }: VirtualBodyProps) {
   const { t } = useI18n();
   /**
@@ -633,11 +621,13 @@ export const VirtualBody = memo(function VirtualBody({
    */
   const fkNavigableByRow = useMemo(() => {
     const map = new Map<number, ReadonlySet<string>>();
+    const fkIndex = foreignKeys?.index;
     if (!fkIndex || fkIndex.size === 0) return map;
-    const visible = fkVisibleColumns ?? columns.map((column) => column.name);
+    const visible = foreignKeys.visibleColumns;
+    const fkRows = foreignKeys.rows;
     const columnIndexes = new Map(columns.map((column, index) => [column.name, index]));
     rows.forEach((row, rowIndex) => {
-      const full = fkRows?.[rowIndex];
+      const full = fkRows[rowIndex];
       // The values of the foreign-key members of this row, by column name.
       const record: Record<string, unknown> = {};
       for (const columnName of fkIndex.keys()) {
@@ -662,7 +652,7 @@ export const VirtualBody = memo(function VirtualBody({
       map.set(rowIndex, navigable);
     });
     return map;
-  }, [rows, columns, fkIndex, fkVisibleColumns, fkRows]);
+  }, [rows, columns, foreignKeys]);
   return (
     <div
       className="min-w-max"
@@ -700,10 +690,8 @@ export const VirtualBody = memo(function VirtualBody({
             newRowLabel={newRowLabel}
             dirtyRow={dirtyByRow?.get(vRow.index)}
             deletedRowLabel={deletedRowLabel}
-            fkIndex={fkIndex}
+            foreignKeys={foreignKeys}
             fkNavigable={fkNavigableByRow.get(vRow.index)}
-            fkResolving={fkResolving}
-            onFkJump={onFkJump}
           />
         ) : (
           <DraftRow

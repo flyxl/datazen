@@ -91,10 +91,12 @@ function renderGrid(options: GridOptions) {
     <DataTable
       columns={displayed.map((column) => ({ id: column.name, name: column.name, type: 'integer' }))}
       rows={rowArrays}
-      fkIndex={fkIndex}
-      fkVisibleColumns={displayed.map((column) => column.name)}
-      fkRows={options.rows}
-      fkResolving={options.resolving}
+      foreignKeys={{
+        index: fkIndex,
+        rows: options.rows,
+        visibleColumns: displayed.map((column) => column.name),
+        resolving: options.resolving,
+      }}
       editingCell={options.editingCell ?? null}
     />,
   );

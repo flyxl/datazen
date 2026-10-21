@@ -94,7 +94,11 @@ function Harness({ panelId, scrollEl }: { panelId: string; scrollEl: HTMLDivElem
   }, [navigation.onScrollElementChange, scrollEl]);
   return (
     <div>
-      <button type="button" data-testid="jump" onClick={() => navigation.onFkJump(0, 'customer_id')}>
+      <button
+        type="button"
+        data-testid="jump"
+        onClick={() => navigation.foreignKeys.onJump?.(0, 'customer_id')}
+      >
         jump
       </button>
       <button type="button" data-testid="back" onClick={navigation.onBack}>

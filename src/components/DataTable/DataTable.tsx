@@ -122,32 +122,31 @@ export interface DataTableProps {
   onRestoreRow?: (rowIndex: number) => void;
 
   /**
-   * The foreign keys of the table, by column name (DB-07).
+   * The foreign keys of the table (DB-07).
    *
    * Omitted = the table has no foreign keys (or the metadata could not be
    * read): the grid renders exactly what it rendered before.
-   */
-  fkIndex?: ReadonlyMap<string, FkGroupAffordance>;
-  /**
-   * The displayed column names, in render order.
    *
-   * The jump arrow lands on the group's **first visible** member, so hiding a
-   * column moves the arrow to the next member instead of losing it.
+   * It is **one object** and not four loose props because the pieces belong
+   * together: the arrow of a composite key is decided by the values of
+   * **all** of its members — including a member the user has hidden — and
+   * only the **full** row records carry those values (07 §7 #14). A grid that
+   * got the index but not the records would silently lose the arrow of every
+   * composite key with a hidden member, so the type makes that combination
+   * impossible to write (FKU-D1).
    */
-  fkVisibleColumns?: readonly string[];
-  /**
-   * The **full** row records (every column of the table), by row index.
-   *
-   * The grid's own `rows` carry only the *displayed* columns, so the value of
-   * a hidden foreign-key member is not in them — and a hidden member must not
-   * look like a member without a value (07 §7 #14: hiding a column moves the
-   * arrow, it does not lose it).
-   */
-  fkRows?: readonly Record<string, unknown>[];
-  /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
-  fkResolving?: ReadonlySet<string>;
-  /** Follow the foreign key of a cell (DB-07). */
-  onFkJump?: (rowIndex: number, columnName: string) => void;
+  foreignKeys?: {
+    /** The columns that take part in a foreign key, mapped to their group. */
+    index: ReadonlyMap<string, FkGroupAffordance>;
+    /** The **full** row records (every column of the table), by row index. */
+    rows: readonly Record<string, unknown>[];
+    /** The displayed column names, in render order. */
+    visibleColumns: readonly string[];
+    /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
+    resolving?: ReadonlySet<string>;
+    /** Follow the foreign key of a cell. */
+    onJump?: (rowIndex: number, columnName: string) => void;
+  };
 
   loading?: boolean;
   statusBar?: React.ReactNode;
@@ -241,11 +240,7 @@ export function DataTable({
   newRowIndex,
   dirtyByRow,
   onRestoreRow,
-  fkIndex,
-  fkVisibleColumns,
-  fkRows,
-  fkResolving,
-  onFkJump,
+  foreignKeys,
   statusBar,
   rowHeight = DATA_TABLE_ROW_HEIGHT,
   exportTableName,
@@ -596,11 +591,7 @@ export function DataTable({
               editingDraft={editingDraft}
               newRowIndex={newRowIndex ?? null}
               dirtyByRow={dirtyByRow}
-              fkIndex={fkIndex}
-              fkVisibleColumns={fkVisibleColumns}
-              fkRows={fkRows}
-              fkResolving={fkResolving}
-              onFkJump={onFkJump}
+              foreignKeys={foreignKeys}
             />
             {loading ? (
               gridRow(
