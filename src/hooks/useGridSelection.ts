@@ -27,6 +27,12 @@ export interface UseGridSelectionOptions {
   enabled?: boolean;
   /** While a cell is being edited, Escape belongs to the editor. */
   editingCell: { row: number; col: string } | null;
+  /**
+   * Prefix for the `aria-activedescendant` id. The component that renders the cells has to
+   * build the very same ids, so it owns the prefix and passes it in; without it the hook
+   * falls back to its own `useId()` value.
+   */
+  idPrefix?: string;
 }
 
 export interface UseGridSelectionResult {
@@ -79,6 +85,22 @@ function releasePointerCapture(target: Element | null, pointerId: number): void 
 }
 
 /**
+ * Take pointer capture, tolerating a pointer id the browser does not know.
+ *
+ * A synthetic `PointerEvent` (the E2E suites dispatch those) has no active pointer, and
+ * `setPointerCapture` throws `NotFoundError` for it. An exception here would abort the whole
+ * pointerdown handler, so the drag session would never start and the click would be lost.
+ */
+function capturePointer(target: Element | null, pointerId: number): void {
+  if (target === null || typeof target.setPointerCapture !== 'function') return;
+  try {
+    target.setPointerCapture(pointerId);
+  } catch {
+    // No active pointer for this id: the drag still works, only the capture is missing.
+  }
+}
+
+/**
  * Row index of the row gutter the pointer landed on, if any. The gutter is a
  * `<div role="rowheader">` around a real button (00-contracts §4.4), so the row is resolved
  * from the header itself or from the first data cell of the same row.
@@ -125,8 +147,10 @@ export function useGridSelection(options: UseGridSelectionOptions): UseGridSelec
     onRowGutterSelect,
     enabled = true,
     editingCell,
+    idPrefix: idPrefixOption,
   } = options;
-  const idPrefix = useId();
+  const internalIdPrefix = useId();
+  const idPrefix = idPrefixOption ?? internalIdPrefix;
   const sessionRef = useRef<DragSession | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -192,7 +216,7 @@ export function useGridSelection(options: UseGridSelectionOptions): UseGridSelec
       const extended = cell !== null && event.shiftKey && selection.mode === 'cell';
       const current = event.currentTarget;
       const captureTarget = typeof current.setPointerCapture === 'function' ? current : null;
-      captureTarget?.setPointerCapture(event.pointerId);
+      capturePointer(captureTarget, event.pointerId);
       sessionRef.current = {
         pointerId: event.pointerId,
         anchor: cell,

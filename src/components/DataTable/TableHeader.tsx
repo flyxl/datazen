@@ -17,6 +17,12 @@ export interface TableHeaderProps {
   onResizeStart?: (colIndex: number, startX: number) => void;
   sortable?: boolean;
   onFilterColumn?: (column: string) => void;
+  /**
+   * The header belongs to an ARIA grid: the header row becomes `role="row"` and its cells
+   * `role="columnheader"`. A `row` may only contain cell children, so the roles are added
+   * together with the grid itself (00-contracts §4.4).
+   */
+  gridSemantics?: boolean;
 }
 
 export function TableHeader({
@@ -27,12 +33,19 @@ export function TableHeader({
   onResizeStart,
   sortable = true,
   onFilterColumn,
+  gridSemantics = false,
 }: TableHeaderProps) {
   const active = sorts[0];
 
   return (
-    <div className="sticky top-0 z-10 flex min-w-max border-b border-edge bg-surface-alt">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center border-r border-edge text-xs text-fg-muted">
+    <div
+      role={gridSemantics ? 'row' : undefined}
+      className="sticky top-0 z-10 flex min-w-max border-b border-edge bg-surface-alt"
+    >
+      <div
+        role={gridSemantics ? 'columnheader' : undefined}
+        className="flex h-10 w-10 shrink-0 items-center justify-center border-r border-edge text-xs text-fg-muted"
+      >
         #
       </div>
       {columns.map((col, colIdx) => {
@@ -43,6 +56,7 @@ export function TableHeader({
         return (
           <div
             key={col.id}
+            role={gridSemantics ? 'columnheader' : undefined}
             data-col-header={col.name}
             className="relative flex h-10 shrink-0 items-center justify-between gap-2 border-r border-edge px-3"
             style={{ width }}

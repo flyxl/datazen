@@ -1,10 +1,19 @@
-import { useCallback, useMemo, useState, type KeyboardEvent } from 'react';
+import { useCallback, useId, useMemo, useState, type KeyboardEvent } from 'react';
 import { tid } from '../../lib/tid';
 import { Download, Trash2 } from 'lucide-react';
 import type { DatabaseType, FilterCondition, SortCondition } from '../../types';
 import type { CellEdit } from '../../stores/tableData/types';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
+import { useGridSelection } from '../../hooks/useGridSelection';
+import {
+  EMPTY_GRID_SELECTION,
+  columnsCoveredBySelection,
+  gridSelectionCellCount,
+  rowsCoveredBySelection,
+  type GridSelection,
+} from '../../stores/tableData/gridSelection';
+import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
 import {
   buildDataTableContextMenuItems,
   formatRowAsSqlInsert,
@@ -69,6 +78,14 @@ export interface DataTableProps {
   selectedRows?: Set<number>;
   onRowSelect?: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   onSelectAll?: () => void;
+
+  /**
+   * Cell/region selection (controlled). Omit it and the grid keeps today's DOM: no
+   * `data-dt-surface`, no ARIA grid roles, no selection attributes (01-selection §3.8).
+   */
+  gridSelection?: GridSelection;
+  /** Selection write-back. Paired with `gridSelection`; without it the grid only renders. */
+  onGridSelectionChange?: (next: GridSelection) => void;
 
   /** Row clicked (single click) — used by parent to track detail panel row */
   onRowClick?: (index: number) => void;
@@ -160,6 +177,8 @@ export function DataTable({
   emptyPlaceholder,
   className,
   getContextCellText,
+  gridSelection,
+  onGridSelectionChange,
 }: DataTableProps) {
   const { t } = useI18n();
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
@@ -179,9 +198,17 @@ export function DataTable({
   const handleRowClick = useCallback(
     (index: number, opts?: { multi?: boolean; range?: boolean }) => {
       onRowClick?.(index);
-      onRowSelect?.(index, opts);
+      if (onRowSelect) {
+        // The consumer owns the row-mode transition: the store writes the mode and the row
+        // set together (00-contracts §4.2), so the grid must not write a second one.
+        onRowSelect(index, opts);
+        return;
+      }
+      // No consumer-side row path: the grid owns the mode, and `row` mode carries no
+      // geometry at all (00-contracts §4.2, I2).
+      onGridSelectionChange?.(ROW_MODE_GRID_SELECTION);
     },
-    [onRowClick, onRowSelect],
+    [onGridSelectionChange, onRowClick, onRowSelect],
   );
 
   const handleCellDoubleClick = useCallback(
@@ -196,6 +223,59 @@ export function DataTable({
 
   const exportEnabled = !!exportTableName && rows.length > 0 && dataExportCapability !== 'none';
   const columnNames = useMemo(() => columns.map((c) => c.name), [columns]);
+  const hasSelection = onSelectAll != null && onRowSelect != null;
+  /** Cell selection is a controlled pair: both props or neither (01-selection §3.8). */
+  const hasCellSelection = gridSelection != null && onGridSelectionChange != null;
+  const selection = gridSelection ?? EMPTY_GRID_SELECTION;
+  /** Prefix of the cell ids the grid's `aria-activedescendant` points at. */
+  const gridIdPrefix = useId();
+  const { surfaceProps, isCellSelected, activeDescendantId } = useGridSelection({
+    columnOrder: columnNames,
+    rowCount: rows.length,
+    selection,
+    onChange: onGridSelectionChange ?? NOOP,
+    scrollElement: scrollEl,
+    enabled: hasCellSelection,
+    editingCell: editingCell ?? null,
+    idPrefix: gridIdPrefix,
+  });
+  /**
+   * The grid surface. The scroll container is the ARIA grid host and the keyboard focus
+   * owner (00-contracts §4.4); the row count includes the header row and the column count
+   * includes the row-number column, exactly like the rendered header.
+   *
+   * Rendered only when the cell-selection contract is on, so a grid without it keeps
+   * today's DOM.
+   */
+  const surfaceDomProps = hasCellSelection
+    ? {
+        'data-dt-surface': '',
+        role: 'grid' as const,
+        tabIndex: 0,
+        'aria-rowcount': rows.length + 1,
+        'aria-colcount': columnNames.length + 1,
+        'aria-activedescendant': activeDescendantId ?? undefined,
+      }
+    : {};
+  /**
+   * Rows a cell selection covers. Derived, never written back into `selectedRows`
+   * (00-contracts §4.2, rule 3): in cell mode the row set is empty by contract.
+   */
+  const coveredRows = useMemo(() => {
+    if (!hasCellSelection || selection.mode !== 'cell') return null;
+    return Array.from(rowsCoveredBySelection({ ...selection, selectedRows })).sort((a, b) => a - b);
+  }, [hasCellSelection, selectedRows, selection]);
+  const coveredColumns = useMemo(
+    () => (hasCellSelection ? columnsCoveredBySelection(selection, columnNames) : 0),
+    [columnNames, hasCellSelection, selection],
+  );
+  const coveredCells = useMemo(
+    () => (hasCellSelection ? gridSelectionCellCount(selection, columnNames) : 0),
+    [columnNames, hasCellSelection, selection],
+  );
+  /** Row indices a delete action acts on: the covered rows in cell mode, else the row set. */
+  const deleteRowIndices = coveredRows ?? Array.from(selectedRows).sort((a, b) => a - b);
+  const deleteRowCount = coveredRows?.length ?? selectedRows.size;
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
@@ -425,7 +505,6 @@ export function DataTable({
 
   const hasPagination =
     page != null && pageSize != null && totalRows != null && onPageChange && onPageSizeChange;
-  const hasSelection = onSelectAll != null && onRowSelect != null;
   const hasFilters = filters.length > 0 && onRemoveFilter && onClearFilters;
   const hasFilterEditor =
     onAddFilter &&
@@ -441,6 +520,9 @@ export function DataTable({
       if (editingCell) return;
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       if (!onDeleteRows || (primaryKeyColumns?.length ?? 0) === 0) return;
+      // Cell mode keeps `selectedRows` empty on purpose, so the Delete key stays a
+      // whole-row action (01-selection §4.3). The toolbar button is the explicit way to
+      // delete the rows a cell region covers.
       if (selectedRows.size === 0) return;
       e.preventDefault();
       onDeleteRows(Array.from(selectedRows).sort((a, b) => a - b));
@@ -482,33 +564,49 @@ export function DataTable({
         />
       ) : null}
 
-      {hasSelection && (
+      {(hasSelection || hasCellSelection) && (
         <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-surface px-2 py-1.5">
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-secondary hover:text-fg">
-            <input
-              type="checkbox"
-              className="accent-accent"
-              checked={rows.length > 0 && selectedRows.size === rows.length}
-              ref={(el) => {
-                if (el) el.indeterminate = selectedRows.size > 0 && selectedRows.size < rows.length;
-              }}
-              onChange={onSelectAll}
-            />
-            {t('common.selectAll')}
-          </label>
-          {selectedRows.size > 0 && (
+          {hasSelection && (
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-secondary hover:text-fg">
+              <input
+                type="checkbox"
+                className="accent-accent"
+                checked={rows.length > 0 && selectedRows.size === rows.length}
+                ref={(el) => {
+                  if (el) el.indeterminate = selectedRows.size > 0 && selectedRows.size < rows.length;
+                }}
+                onChange={onSelectAll}
+              />
+              {t('common.selectAll')}
+            </label>
+          )}
+          {hasSelection && selectedRows.size > 0 && (
             <span className="text-xs text-fg-muted">
               {t('dataTable.selected')} {selectedRows.size} / {rows.length} {t('common.rows')}
             </span>
           )}
+          {hasCellSelection && selection.mode === 'cell' && (
+            <span
+              {...tid('data-table-selection-summary')}
+              data-dt-selection-rows={String(coveredRows?.length ?? 0)}
+              data-dt-selection-cols={String(coveredColumns)}
+              data-dt-selection-cells={String(coveredCells)}
+              className="text-xs text-fg-muted"
+            >
+              {t('dataTable.selectionSummary', {
+                rows: coveredRows?.length ?? 0,
+                cols: coveredColumns,
+              })}
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-1.5">
             {headerActions}
-            {onDeleteRows && selectedRows.size > 0 && (primaryKeyColumns?.length ?? 0) > 0 && (
+            {onDeleteRows && deleteRowCount > 0 && (primaryKeyColumns?.length ?? 0) > 0 && (
               <button
                 type="button"
                 data-testid="data-table-delete-rows"
                 className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-danger hover:bg-surface-raised hover:text-danger"
-                onClick={() => onDeleteRows(Array.from(selectedRows).sort((a, b) => a - b))}
+                onClick={() => onDeleteRows(deleteRowIndices)}
                 title={t('dataTable.deleteRow')}
               >
                 <Trash2 className="h-3 w-3" />
@@ -540,6 +638,8 @@ export function DataTable({
         aria-busy={loading}
         aria-label={t('dataTable.tableLabel')}
         onContextMenu={handleContextMenu}
+        {...surfaceDomProps}
+        {...(hasCellSelection ? surfaceProps : {})}
       >
         {emptyPlaceholder ? (
           emptyPlaceholder
@@ -552,6 +652,7 @@ export function DataTable({
               columnWidths={columnWidths}
               onResizeStart={onResizeStart}
               sortable={onSort != null}
+              gridSemantics={hasCellSelection}
               onFilterColumn={
                 onAddFilter
                   ? (column) => onAddFilter({ column, operator: 'eq', value: '' })
@@ -571,6 +672,11 @@ export function DataTable({
               onCellEdit={handleCellEdit}
               onCellEditCancel={handleCellEditCancel}
               onRowSelect={handleRowClick}
+              onRowClick={onRowClick}
+              cellSelectionEnabled={hasCellSelection}
+              isCellSelected={isCellSelected}
+              activeCell={selection.mode === 'cell' ? selection.focus : null}
+              cellIdPrefix={hasCellSelection ? gridIdPrefix : undefined}
             />
             {loading ? (
               <div

@@ -1,15 +1,15 @@
 /**
  * DB-01 cell/region selection — TC-SEL-001 ~ TC-SEL-006.
  *
- * Depends on the Wave-2 DOM wiring that DB-01 Steps 7–9 add to `DataTable`:
+ * Depends on the DOM wiring that DB-01 Steps 7–9 add to `DataTable`:
  *   - `[data-dt-surface]`               (grid scroll container, keyboard host)
  *   - `[data-dt-selected="true"]`       (per-cell membership)
  *   - `[data-dt-selection-rows|cols|cells]` + `[data-testid="data-table-selection-summary"]`
  *   - `[role="rowheader"] button`       (row gutter, contract §4.4b)
  * plus the store-owned `gridSelection` on `window.__tableDataStore` (landed in this track).
  *
- * Until that wiring exists the suite **skips itself** instead of failing on a selector that
- * is not implemented yet; drop the guard only when `data-dt-surface` is actually rendered.
+ * The wiring exists now, so the suite no longer skips itself: a missing surface is a
+ * failure, because a silently skipped suite would hide a broken selection contract.
  *
  * WKWebView's WebDriver has limited pointer-input support, so — following the convention in
  * `e2e/specs/table-edit.ts` — interactions dispatch `PointerEvent`s with real client
@@ -136,7 +136,6 @@ async function clickNextPage(): Promise<boolean> {
 
 describe('单元格与区域选择 (TC-SEL-001~006)', () => {
   let mainWindow: string;
-  let surfaceWired = false;
 
   before(async function () {
     this.timeout(120000);
@@ -167,7 +166,10 @@ describe('单元格与区域选择 (TC-SEL-001~006)', () => {
       { timeout: 20000, timeoutMsg: `表 ${TEST_TABLE} 数据行未渲染` },
     );
 
-    surfaceWired = await browser.execute(() => !!document.querySelector('[data-dt-surface]'));
+    // The selection DOM contract is wired: a missing surface fails the suite instead of
+    // skipping it, because a skipped suite would hide a broken selection contract.
+    const surfaceWired = await browser.execute(() => !!document.querySelector('[data-dt-surface]'));
+    expect(surfaceWired).toBe(true);
   });
 
   after(async () => {
@@ -178,8 +180,6 @@ describe('单元格与区域选择 (TC-SEL-001~006)', () => {
   });
 
   it('TC-SEL-001: 单击单元格应进入单元格选择', async function () {
-    if (!surfaceWired) return this.skip();
-
     await clickCell(0, FIRST_COL);
     const snapshot = await selectionSnapshot();
     expect(snapshot).not.toBeNull();
@@ -191,8 +191,6 @@ describe('单元格与区域选择 (TC-SEL-001~006)', () => {
   });
 
   it('TC-SEL-002: 拖拽应产生矩形区域并更新摘要', async function () {
-    if (!surfaceWired) return this.skip();
-
     const start = `[data-dt-row="2"][data-dt-col="id"]`;
     const end = `[data-dt-row="5"][data-dt-col="name"]`;
     await pointerOn(start, 'pointerdown');
@@ -223,8 +221,6 @@ describe('单元格与区域选择 (TC-SEL-001~006)', () => {
   });
 
   it('TC-SEL-003: Shift+单击应从锚点扩区', async function () {
-    if (!surfaceWired) return this.skip();
-
     await clickCell(0, 'name');
     const anchorSelector = `[data-dt-row="3"][data-dt-col="name"]`;
     await pointerOn(anchorSelector, 'pointerdown', { shiftKey: true });
@@ -240,8 +236,6 @@ describe('单元格与区域选择 (TC-SEL-001~006)', () => {
   });
 
   it('TC-SEL-004: Escape 应清空选区', async function () {
-    if (!surfaceWired) return this.skip();
-
     await clickCell(2, FIRST_COL);
     expect((await selectionSnapshot())?.mode).toBe('cell');
 
@@ -260,8 +254,6 @@ describe('单元格与区域选择 (TC-SEL-001~006)', () => {
   });
 
   it('TC-SEL-005: 行号槽仍走整行选择（回归）', async function () {
-    if (!surfaceWired) return this.skip();
-
     const clicked = await browser.execute(() => {
       const gutters = document.querySelectorAll('[role="rowheader"] button');
       if (gutters.length === 0) return false;
@@ -288,8 +280,6 @@ describe('单元格与区域选择 (TC-SEL-001~006)', () => {
   });
 
   it('TC-SEL-006: 翻页后选区不残留', async function () {
-    if (!surfaceWired) return this.skip();
-
     await clickCell(0, FIRST_COL);
     expect((await selectionSnapshot())?.mode).toBe('cell');
 
