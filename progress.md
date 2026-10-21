@@ -56,6 +56,15 @@ error TS 计数 = 0
 | 3 · `inserts` 必填 | 两处镜像都改成必填：`src/lib/tableChanges.ts` + `packages/backend-client/src/types/tableData.ts`；测试改成 `@ts-expect-error` 的 fail-closed 形态（变异验证：改回可选 → TS2578 → `tsc` EXIT=2 → 还原 EXIT=0） |
 | 4 · E2E spec | 新增 `e2e/specs/table-insert.ts`（TC-INS-001~007），**留待 R 回归**，未伪造通过 |
 
+## 第 1 轮复测后的落实
+
+| 编号 | 处理 |
+| --- | --- |
+| IF-D-1（真缺陷：降级提示永不消失） | **已修**：提示在「定位到了 / 不适用」时被清掉；并且在**页面状态变化**时失效——重新取数（reload / 刷新按钮）、翻页、改页大小、改筛选（应用筛选 / 快速筛选 / 清空筛选）、改排序、回滚、以及换表（contextKey 变化）。新用例 3 条，且做过变异验证（去掉修复后 3 条全红） |
+| IF-D-2 | `tableData.highlightNewRow` **已删**（全仓无消费者：高亮走 grid 既有的 `highlightedRow` 通道）。`locales.test.ts` 同步改成断言该 key **不存在**。⚠️ 事实更正：04 §8 的清单里**确实列了** `tableData.highlightNewRow`（`04-insert.md:700`），所以删 key 与 §8 有一处小分歧，需要协调者在契约里一并删掉那一行 |
+| IF-D-4 | 3 条被削弱的 E2E 断言已修：`INSERT` → `INSERT INTO`（表名 `_e2e_insert_test` 里就含 "insert"，原断言自满足）；补断言插入条数 `1 inserts`；草稿顺序断言从「长度」改成「顺序本身」（`toEqual([first, second])`） |
+| IF-D-3 | **接受**（协调者裁定）：「显式写 NULL」这一态在真实 UI 上不可达——契约把「Set NULL」右键菜单划给 05 分册（`tableData.insertSetNull` 词条已预落），store / wire 层面的三态完整可区分已由复测钉住 |
+
 ## 待裁定（只报不改，AGENTS.md「发现契约/实装冲突，停下来报告」）
 
 1. **`grid.insert.noWritableColumn` 没有生产者** —— 04 §8 把它列为本册要追加的码，

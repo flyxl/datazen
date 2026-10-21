@@ -365,6 +365,9 @@ describe('新增行 INSERT (TC-INS-001~007)', () => {
   });
 
   it('TC-INS-004: 快捷键应追加草稿行，行号槽可丢弃草稿', async () => {
+    const firstDraftId = await draftIdOf(0);
+    expect(firstDraftId).toBeTruthy();
+
     // Cmd/Ctrl+I appends a draft row.
     await browser.execute(() => {
       document
@@ -375,11 +378,15 @@ describe('新增行 INSERT (TC-INS-001~007)', () => {
     });
     await browser.pause(400);
     await expect(await $('[data-testid="draft-row-1"]')).toBeDisplayed();
+    const secondDraftId = await draftIdOf(1);
+    expect(secondDraftId).toBeTruthy();
+    expect(secondDraftId).not.toBe(firstDraftId);
 
     const snapshot = await draftSnapshot();
     expect(snapshot?.drafts).toBe(2);
-    // The creation order decides the plan order.
-    expect(snapshot?.order).toHaveLength(2);
+    // The creation order decides the plan order: the assertion is on the
+    // order **itself**, not on its length.
+    expect(snapshot?.order).toEqual([firstDraftId, secondDraftId]);
 
     // The row-number slot of the second draft discards it.
     const removed = await browser.execute(() => {
@@ -414,7 +421,13 @@ describe('新增行 INSERT (TC-INS-001~007)', () => {
     const preview = await $('[data-testid="pending-plan-dialog"]');
     await preview.waitForDisplayed({ timeout: 8000 });
     const previewText = await preview.getText();
-    expect(previewText.toUpperCase()).toContain('INSERT');
+    // The table is called `_e2e_insert_test`, so an assertion on "INSERT"
+    // would be satisfied by the table name alone. Only a rendered statement
+    // says "INSERT INTO".
+    expect(previewText).toContain('INSERT INTO');
+    // The plan lists exactly one insert — the count is asserted, not implied.
+    expect(previewText).toContain('1 inserts');
+    // The bound value is shown in the parameter summary.
     expect(previewText).toContain('e2e_preview');
 
     const previewButtons = await preview.$$('button');

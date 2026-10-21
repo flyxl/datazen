@@ -95,26 +95,60 @@ export function TableView({
     }),
     [connectionId, database, databaseType, dbSessionId, schema, tableName],
   );
+  /**
+   * Neutral notice shown when an insert could not be located after the commit.
+   *
+   * It describes **one commit of one page**, so it expires with the page
+   * state: a reload, another page, new filters, a new sort or another table
+   * all make "the new row could not be located" stale, and a notice that
+   * outlived its commit would contradict the highlight the user sees.
+   */
+  const [insertNotice, setInsertNotice] = useState<string | null>(null);
   /** Panel-scoped action binders: every store call is namespaced by this tab's id. */
   const actions = useMemo(() => {
     const store = () => useTableDataStore.getState();
+    /**
+     * Every action that moves the page invalidates the notice: the user is
+     * looking at a different set of rows than the one the notice talks about.
+     */
+    const invalidateNotice = () => setInsertNotice(null);
     return {
       load: () => void store().loadTableData({ panelId, ...context }),
-      reload: () => store().reloadPanel(panelId),
-      setSort: (sort: SortCondition) => store().setSort(panelId, sort),
+      reload: () => {
+        invalidateNotice();
+        store().reloadPanel(panelId);
+      },
+      setSort: (sort: SortCondition) => {
+        invalidateNotice();
+        store().setSort(panelId, sort);
+      },
       removeFilter: (index: number) => store().removeFilter(panelId, index),
-      clearFilters: () => store().clearFilters(panelId),
+      clearFilters: () => {
+        invalidateNotice();
+        store().clearFilters(panelId);
+      },
       addFilter: (filter: FilterCondition) => store().addFilter(panelId, filter),
-      setFilters: (filters: FilterCondition[], logic?: 'and' | 'or') =>
-        store().setFilters(panelId, filters, logic),
+      setFilters: (filters: FilterCondition[], logic?: 'and' | 'or') => {
+        invalidateNotice();
+        store().setFilters(panelId, filters, logic);
+      },
       updateFilter: (index: number, filter: FilterCondition) =>
         store().updateFilter(panelId, index, filter),
       setFilterLogic: (logic: 'and' | 'or') => store().setFilterLogic(panelId, logic),
-      applyFilters: () => store().applyFilters(panelId),
+      applyFilters: () => {
+        invalidateNotice();
+        store().applyFilters(panelId);
+      },
       setFilterPanelOpen: (open: boolean) => store().setFilterPanelOpen(panelId, open),
       setVisibleColumns: (columns: string[] | null) => store().setVisibleColumns(panelId, columns),
-      setPage: (page: number) => store().setPage(panelId, page),
-      setPageSize: (size: number) => store().setPageSize(panelId, size),
+      setPage: (page: number) => {
+        invalidateNotice();
+        store().setPage(panelId, page);
+      },
+      setPageSize: (size: number) => {
+        invalidateNotice();
+        store().setPageSize(panelId, size);
+      },
       startEdit: (row: number, col: string) => store().startEdit(panelId, row, col),
       stageCellChange: (row: number, col: string, value: unknown) =>
         store().stageCellChange(panelId, row, col, value),
@@ -130,7 +164,10 @@ export function TableView({
       deleteRows: (rowIndices: number[]) => store().deleteRows(panelId, rowIndices),
       previewPendingChanges: () => store().previewPendingChanges(panelId),
       commitPendingChanges: () => store().commitPendingChanges(panelId),
-      rollbackPendingChanges: () => store().rollbackPendingChanges(panelId),
+      rollbackPendingChanges: () => {
+        invalidateNotice();
+        store().rollbackPendingChanges(panelId);
+      },
       setDetailRow: (index: number | null) => store().setDetailRow(panelId, index),
     };
   }, [context, panelId]);
@@ -143,8 +180,6 @@ export function TableView({
   const [quickFilterError, setQuickFilterError] = useState<string | null>(null);
   const [readOnlyTipVisible, setReadOnlyTipVisible] = useState(false);
   const readOnlyTipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Neutral notice shown when an insert could not be located after the commit. */
-  const [insertNotice, setInsertNotice] = useState<string | null>(null);
 
   // Manual transaction state, controls and pending-change actions live in
   // `TablePendingChangesBar`; this component keeps only the ChangeSet handlers.
@@ -210,6 +245,13 @@ export function TableView({
   }, [actions]);
 
   const contextKey = tableChangeContextKey(context);
+  /**
+   * Another table (or another database / schema) means another set of rows:
+   * the notice of the previous table says nothing about this one.
+   */
+  useEffect(() => {
+    setInsertNotice(null);
+  }, [contextKey]);
   const hasData = ts != null && ts.columns.length > 0;
   const sliceContextKey = ts?.context ? tableChangeContextKey(ts.context) : null;
   // Nothing fetched yet, the panel was invalidated (rows dropped by a write from
@@ -344,10 +386,12 @@ export function TableView({
     const result = await actions.commitPendingChanges();
     // The insert rows have no returned primary key in this batch, so the new
     // row is often not locatable. The interface says so instead of claiming a
-    // highlight it cannot deliver (04 §4.1).
-    if (result.insertLocation === 'unavailable') {
-      setInsertNotice(t('tableData.insertReturningUnavailable'));
-    }
+    // highlight it cannot deliver (04 §4.1) — and it says **nothing** when
+    // the row *was* located: a notice left over from an earlier commit would
+    // contradict the highlight the user is looking at.
+    setInsertNotice(
+      result.insertLocation === 'unavailable' ? t('tableData.insertReturningUnavailable') : null,
+    );
   }, [
     actions,
     confirmCommit,

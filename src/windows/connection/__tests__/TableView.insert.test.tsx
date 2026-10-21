@@ -294,4 +294,74 @@ describe('TableView (new rows)', () => {
     // The wording is neutral: it is a notice, not an error.
     expect(notice).toHaveAttribute('role', 'status');
   });
+
+  it('drops the notice once a later commit located the new row', async () => {
+    renderTable();
+    await waitForTable();
+
+    // The first commit cannot locate the new row (the page still holds the
+    // old maximum), so the notice appears.
+    fireEvent.click(screen.getByTestId('table-insert-row'));
+    await screen.findByTestId('draft-row-0');
+    fireEvent.click(screen.getByTestId('pending-commit'));
+    await waitFor(() => expect(mockDatabaseCommands.commitPendingChanges).toHaveBeenCalled());
+    await screen.findByTestId('table-insert-degraded');
+
+    // The second commit **can** locate it: the refreshed page carries a
+    // primary key that grew.
+    mockDatabaseCommands.getTableData.mockResolvedValue({
+      columns: COLUMNS,
+      rows: [
+        [1, 'Alice'],
+        [2, 'Bob'],
+        [3, 'Carol'],
+      ],
+      totalRows: 3,
+      page: 0,
+      pageSize: 50,
+    });
+    fireEvent.click(screen.getByTestId('table-insert-row'));
+    await screen.findByTestId('draft-row-0');
+    fireEvent.click(screen.getByTestId('pending-commit'));
+    await waitFor(() => expect(mockDatabaseCommands.commitPendingChanges).toHaveBeenCalledTimes(2));
+
+    // The notice of the first commit is gone: it would contradict the
+    // highlight the user is looking at now.
+    await waitFor(() => expect(screen.queryByTestId('table-insert-degraded')).toBeNull());
+  });
+
+  it('drops the notice when the page state changes', async () => {
+    renderTable();
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('table-insert-row'));
+    await screen.findByTestId('draft-row-0');
+    fireEvent.click(screen.getByTestId('pending-commit'));
+    await waitFor(() => expect(mockDatabaseCommands.commitPendingChanges).toHaveBeenCalled());
+    await screen.findByTestId('table-insert-degraded');
+
+    // A new filter is a different set of rows: the notice of the previous
+    // commit says nothing about them.
+    const quickFilter = screen.getByTestId('table-quick-filter');
+    fireEvent.change(quickFilter, { target: { value: "name = 'Alice'" } });
+    fireEvent.keyDown(quickFilter, { key: 'Enter' });
+
+    await waitFor(() => expect(screen.queryByTestId('table-insert-degraded')).toBeNull());
+  });
+
+  it('drops the notice when the page is reloaded', async () => {
+    renderTable();
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('table-insert-row'));
+    await screen.findByTestId('draft-row-0');
+    fireEvent.click(screen.getByTestId('pending-commit'));
+    await waitFor(() => expect(mockDatabaseCommands.commitPendingChanges).toHaveBeenCalled());
+    await screen.findByTestId('table-insert-degraded');
+
+    // A reload replaces the rows the notice was talking about.
+    fireEvent.click(screen.getByTestId('table-data-refresh'));
+
+    await waitFor(() => expect(screen.queryByTestId('table-insert-degraded')).toBeNull());
+  });
 });
