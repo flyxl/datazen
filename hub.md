@@ -105,7 +105,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 复测 **TEST_PASSED** → 第 2 轮小修中（D-E6 回拨淘汰顺序反转 / O-1 端口 put 语义留白） |
 | **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 2 轮小修中（D1 文档字面为假 / D3 五条 clippy / D4 每访问分配 UUID） |
 | **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | ✅ 已交付 `dd8c9a0d7` → Tester 复测中 |
-| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 复测 **TEST_PASSED** → 第 3 轮小修中（D-01 注释夸大 / D-02 引用块夸大） |
+| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 第 3 轮完成 `e796ae835` → **终验中** |
 
 **派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖。**已执行**（四树均推进到 `65dac1e2c` = C + B + `OrganizationScope`）。
 
@@ -629,6 +629,19 @@ Tester 用**探针实测**推翻了 G-04 引用块里的一句话：「去掉其
 **O-1（契约留白）**：`ReviewedPlanStore::put` 的**越组织语义端口未规定** —— 包内实现 = 按 `scope` 分桶落库，宿主实现 = 直接丢弃。两侧实现各自 doc 已写明 ⇒ 不违约，但换个实现者可能做出第三种语义 → 要求在 trait doc 补一句。
 
 **E 的门禁**：`env -u USER` 242 failed 与基线**逐条相同**；包 606 → 854 生产（+248）、测试 816 → 1729；**宿主收窄代码本轮变薄**（删掉宿主自己的 HashMap + retain + 淘汰 ≈17 行，改为委派）。
+
+
+### G 轨第 3 轮（`7a0806944`）—— D-02 把"输出完全不变"**拆成两类**，是本轮最好的修法
+
+原句「去掉其中任何一个，**正常路径的输出完全不变**」只对一半成立。G 把它**按"是否进 HMAC 输入"分成两类**并四处同步：
+| 类别 | 成员 | 后果 |
+|---|---|---|
+| **进 HMAC 输入** | 域标签、长度前缀、子钥域分离、派生盐来源 | 改它们 ⇒ **每个正常路径调用的身份键值都变** ⇒ 等价于一次**全量身份键轮换**（连接池与缓存整体失效）；但正常路径用例断言的**关系**（同输入同键、跨组织不同键、委托 ≠ 本人）**不变** ⇒ 照绿 |
+| **不在派生路径上** | 跨组织委托的显式检查、多连接失败关闭 | 改它们 ⇒ 正常路径输出**完全不变** ⇒ 照绿 |
+**这不是换个措辞，而是把一个笼统说法换成"两类后果不同、修法含义也不同"**（前者 = 一次全量轮换，后者 = 放开失败关闭）。改完全仓再 grep「完全不变 / 照绿」，剩余命中**全部**只用于第二类。
+D-01 同轮改准（`ServiceUnavailable` **5 个**访问器 vs `CapabilityUnsupported` **2 个**；两者都收敛成 `CommandError::NotConfigured` ⇒ IPC 表面不可区分）。G 还**独立复核**了 Tester 的数字（`.runtime()` 调用点 67 vs 65，口径差异它说明了 —— 排除 `adapter.rs` 自身）。
+
+**协调者对 G-02（失败半径是否收窄）的裁决：不收窄。** 身份解析失败意味着拿不到 `principalId`，此时"降级接线"等于在没有可信主体的情况下继续工作 —— 比"整个平台装配失败"更危险。保持**失败关闭**。
 
 
 ## 6. 门禁与流程
