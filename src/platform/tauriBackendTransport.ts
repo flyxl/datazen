@@ -151,12 +151,26 @@ export function createDesktopBackendTransport(): BackendTransport {
       // The request's own fields are the command's named arguments, so this
       // cast is a widening to Tauri's argument bag, not a shape change: the
       // object handed to `invoke` is the same object `call` received.
-      const response = await invoke(command, args as Record<string, unknown>);
+      //
+      // A command that fails with a **plain string** — the shape
+      // `CommandError::Serialize` produces — keeps its message here: the
+      // backend client turns an unreadable payload into a generic sentence,
+      // and the `grid.*` classification reads the prefix of that message. The
+      // host is the only place where the raw value still exists.
+      let response: MethodMap[K]['response'];
+      try {
+        response = (await invoke(
+          command,
+          args as Record<string, unknown>,
+        )) as MethodMap[K]['response'];
+      } catch (error) {
+        throw typeof error === 'string' ? new Error(error) : error;
+      }
       if (method === 'readArtifact' && response && typeof response === 'object') {
         const chunk = response as { bytes?: number[] | Uint8Array };
         if (Array.isArray(chunk.bytes)) chunk.bytes = new Uint8Array(chunk.bytes);
       }
-      return response as MethodMap[K]['response'];
+      return response;
     },
     subscribe(_method, request) {
       return {
