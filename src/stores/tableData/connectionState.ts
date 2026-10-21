@@ -1,5 +1,6 @@
 import type { ColumnSchema, Value } from '../../types';
 import type { TableChangeContext } from '../../lib/tableChanges';
+import { EMPTY_GRID_SELECTION } from './gridSelection';
 import type { TableState } from './types';
 
 export function rowsToRecords(
@@ -55,6 +56,7 @@ export function emptyTableState(context: TableChangeContext | null = null): Tabl
     pendingStatus: 'idle',
     selectedRows: new Set(),
     lastSelectedIndex: null,
+    gridSelection: EMPTY_GRID_SELECTION,
     editingCell: null,
     detailRowIndex: null,
     loading: false,
