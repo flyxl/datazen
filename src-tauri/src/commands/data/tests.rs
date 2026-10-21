@@ -394,3 +394,161 @@ async fn empty_identity_is_rejected_before_any_sql_is_generated() {
         "a rejected plan must not open a transaction"
     );
 }
+
+// ---------------------------------------------------------------------------
+// [tester round-4] The four `commit_changes` refusals that now carry a code.
+// Each asserts the code is at position zero while the descriptive tail the
+// pre-round-4 message had is still present, so substring callers keep working.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_stale_config_revision_is_refused_with_the_stale_plan_code() {
+    let mut options = crate::testing::app_state::rich_mock_options();
+    options.execute_rows_affected = 1;
+    options.parameterized_writes = true;
+    let test = TestAppState::with_options(options).await;
+    let (_, conn_id) = test.save_and_connect("r4-config-revision").await;
+    let mut plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("r4-config-revision", &conn_id),
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+    plan.config_revision = Some(plan.config_revision.unwrap().saturating_increment());
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.starts_with("grid.commit.stalePlan: "), "got: {error}");
+    assert!(
+        error.contains("Connection configuration changed; preview the changes again"),
+        "got: {error}"
+    );
+    assert_eq!(test.mock.execute_with_params_calls(), 0);
+}
+
+#[tokio::test]
+async fn a_database_context_drift_is_refused_with_the_stale_plan_code() {
+    let mut options = crate::testing::app_state::rich_mock_options();
+    options.execute_rows_affected = 1;
+    options.parameterized_writes = true;
+    let test = TestAppState::with_options(options).await;
+    let (_, conn_id) = test.save_and_connect("r4-db-drift").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        RowChangeTableContext {
+            database: Some("other_db".into()),
+            ..table_context("r4-db-drift", &conn_id)
+        },
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.starts_with("grid.commit.stalePlan: "), "got: {error}");
+    assert!(
+        error.contains("Database context changed; preview the changes again"),
+        "got: {error}"
+    );
+    assert!(test.mock.use_database_calls().is_empty());
+}
+
+#[tokio::test]
+async fn a_schema_context_drift_is_refused_with_the_stale_plan_code() {
+    let mut options = crate::testing::app_state::rich_mock_options();
+    options.execute_rows_affected = 1;
+    options.parameterized_writes = true;
+    let test = TestAppState::with_options(options).await;
+    let mut config = crate::testing::app_state::sample_postgres_config("r4-schema-drift");
+    config.schema = Some("private".into());
+    test.store.save_connection(config).await.unwrap();
+    let conn_id = test.connect_config("r4-schema-drift").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        RowChangeTableContext {
+            schema: Some("public".into()),
+            ..table_context("r4-schema-drift", &conn_id)
+        },
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.starts_with("grid.commit.stalePlan: "), "got: {error}");
+    assert!(
+        error.contains("Schema context changed; preview the changes again"),
+        "got: {error}"
+    );
+}
+
+#[tokio::test]
+async fn a_read_only_connection_is_refused_with_the_read_only_code() {
+    let mut options = crate::testing::app_state::rich_mock_options();
+    options.execute_rows_affected = 1;
+    options.parameterized_writes = true;
+    let test = TestAppState::with_options(options).await;
+    let mut config = crate::testing::app_state::sample_postgres_config("r4-read-only");
+    config.read_only = true;
+    test.store.save_connection(config).await.unwrap();
+    let conn_id = test.connect_config("r4-read-only").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("r4-read-only", &conn_id),
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.starts_with("grid.cell.readOnly: "), "got: {error}");
+    assert!(
+        error.contains("Connection is read-only; row changes are not allowed"),
+        "got: {error}"
+    );
+    assert_eq!(test.mock.execute_with_params_calls(), 0);
+}
