@@ -1065,6 +1065,10 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 
 改：`OPERATORS` 换成 `operatorsForColumn(columnDataType, supportedOperators)`；不完整条件加标记 + `Apply` 阻断；移除 `loadTableData` 里的 `filters.filter(isCompleteFilter)`；`setFilters` 增加可选 `visibleColumns` / `columnOrder` 承载（给视图应用用）。
 为什么：这是 §4.5 的政策变更落点，也是本册唯一的**行为破坏性**改动。
+
+〔契约审计修订 2026-10-22〕**发布耦合（两侧必须同批上线）**：前端不再剥离不完整条件、**由宿主以 `grid.filter.incomplete` 拒绝**——只上前端（宿主仍是旧的静默丢弃）会让用户拿到「既不被提示丢弃、也不被拒绝」的**静默变宽**的结果集。两者在同一个集成分支上 ⇒ 合流后同时生效；但**任何一侧单独上线都是回归**。
+
+〔契约审计修订 2026-10-22〕**空界口径**：区间条件的**任一界为空** ⇒ 不完整（`grid.filter.incomplete`）——**共享层与前端同口径**。共享层原先的 `between_bounds` 对**逗号串**拒绝空界、对**数组**却接受 `["10", ""]`（同一件事两种判定），程序化调用方可据此拿到静默错结果集。
 自测：改写 `tableDataStore.test.ts` 的 `loadTableData omits incomplete applied filters from the request` → 新用例断言「请求体保留不完整条件、由宿主拒绝」，并新增「`applyFilters` 在不完整时不改变已应用状态、不发请求」。
 ### Step 11 · 逐条 AND/OR 连接符（前端落地：`FilterEditor.tsx` + `src/lib/filterExpression.ts` + `TableView.tsx`）
 
