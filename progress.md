@@ -222,7 +222,7 @@ revision 3→4、`aa849d68f` 平台 artifact 测试夹具字段清理、`f309046
      `PROTOCOL_VERSION` 6→6、`MIN_PROTOCOL_VERSION` 1→1 无须动；68 条
      规则单测全绿。Git 驱动兼容状态：未迁移即 `ResourceProviderMissing`
      （带驱动名），明确失败而非静默——无需额外改动。
-   - [ ] 遗留旧方法消费者逐点核验后再删（2026-10-21 初核实测）：
+   - [x] 遗留旧方法消费者逐点核验后再删（2026-10-21 复核收尾）：
      `uses_sql_restore_pipeline` / `new_sql_scanner` → 仅 feature-core
      `backup.rs` 两处（均经 LegacyBackupDialect）；`type_normalizer` →
      4 处（schema-diff plan.rs、data-sync types_eq.rs、data-transfer 测试、
@@ -230,11 +230,30 @@ revision 3→4、`aa849d68f` 平台 artifact 测试夹具字段清理、`f309046
      `format_sql_literal` → 剩 sqlite / http-support 的契约测试与 probe
      转发，属驱动契约自检；`split_restore_sql` 在 driver-api 外零直接消费者，
      唯一链条是 BackupDialect 适配器 → `DatabaseDriver::split_restore_sql`
-     默认实现 → `sql_text::split_restore_sql`（driver trait 上的方法现仅存
-     转发一跳，删除需先把契约默认实现直连 sql_text，属后续独立 PR）。
-     `drivers.md` / `driver-capability-migration.md` §6.2(5) 收尾改写后裁决。
-   - [ ] `drivers.md` 与 `driver-capability-migration.md` §6.2(5) 收尾改写。
-   - [ ] 交付时删除本台账（progress.md）。
+     默认实现 → `sql_text::split_restore_sql`。**裁决已写进 `drivers.md`
+     §2.4**（`27c6fb180`）：被新契约取代的旧 trait 方法**保留**——借用适配器
+     正是委托给它们的，删掉即两个实现；只有「driver-api 外零消费者 + 契约侧
+     已有自有实现」才可删，`split_restore_sql` 按此退役（`4b6e74495`），
+     其 trait 表面删除记入 crate 0.0.20（`27c6fb180`）。
+   - [x] `drivers.md` 与 `driver-capability-migration.md` §6.2(5) 收尾改写
+     （§6.2(5) `853816217`；`drivers.md` 版本史与旧方法去留规则 `27c6fb180`）。
+   - [ ] 交付时（验收合并入 main 的收尾步骤）删除本台账（progress.md）。
+   - [x] 尾部调用点收敛（`398774f3`，三个并行团队分域完成）：data-transfer 的
+     绑参上限/占位符/分页/字面量（writer / dispatcher / resume+fingerprint /
+     pipeline / handler / sql_file，`emit_insert_batch` 形参已是
+     `&dyn SqlDialect`）、feature-core `export/format.rs` +
+     `schema_metadata.rs` 目录读取、宿主 result_write / sync keyset 与
+     keyed read（`select_by_key_sql` 形参收窄为 `&dyn SqlDialect`）/
+     schema-diff 目录读取与 object-plan 迁移规则——全部经
+     `LegacySqlDialect` / `LegacyCatalogReader` / `LegacySchemaMigration`。
+     仍在驱动上的显式规则：`quote_char` /
+     `transfer_explicit_identity_insert_clause` / `supports_offset` /
+     `driver_type` / 外键目录可见性；`SyncTargetAdapter::quote_ident` 是
+     另一契约（SQL Server `[x]` / ClickHouse 反引号是有意分歧），不得并入。
+     后续收窄机会（函数形参 → 契约形参，行为不变）：`fetch_target_table_schema`
+     / `fetch_target_table_dependency_catalog`（需双形参承载 driver-only
+     规则）、`read_target_table_identities` → `&dyn CatalogReader`、
+     `build_page_for_context`；均已记录在 `drivers.md` §2.4。
 
 ## 工作树基建备忘
 
