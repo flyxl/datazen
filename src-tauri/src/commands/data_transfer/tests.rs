@@ -445,8 +445,8 @@ async fn sql_file_target_uses_opaque_path_and_publishes_atomic_output() {
 #[tokio::test]
 async fn sql_file_empty_selection_keeps_server_discovered_tables() {
     use crate::data_transfer::sql_file::register_path;
-    use crate::db::{TableInfo, TableType};
     use crate::testing::app_state::TestAppState;
+    use datazen_driver_api::{TableInfo, TableType};
 
     let mut options = transfer_plan_test_options();
     options.tables.push(TableInfo {
@@ -513,8 +513,8 @@ async fn sql_file_empty_selection_keeps_server_discovered_tables() {
 #[tokio::test]
 async fn sql_file_preview_honors_table_selection_renames_and_skipped_columns() {
     use crate::data_transfer::sql_file::register_path;
-    use crate::db::{TableInfo, TableType};
     use crate::testing::app_state::TestAppState;
+    use datazen_driver_api::{TableInfo, TableType};
 
     let mut options = transfer_plan_test_options();
     options.tables.push(TableInfo {
@@ -605,7 +605,7 @@ async fn sql_file_target_renders_registered_mysql_dialect() {
     // source fixture to a portable scalar so an unmodeled PostgreSQL text
     // collation does not imply a safe MySQL table definition.
     options.columns.retain(|column| column.name == "id");
-    options.query_rows = vec![vec![Some(crate::db::Value::Integer(1))]];
+    options.query_rows = vec![vec![Some(datazen_driver_api::Value::Integer(1))]];
     let mut schema = crate::testing::mock_driver::MockDriver::default_table_schema("users");
     schema.columns.retain(|column| column.name == "id");
     options.table_schema = Some(schema);
@@ -667,8 +667,8 @@ async fn sql_file_target_renders_registered_mysql_dialect() {
 #[tokio::test]
 async fn sql_file_target_executes_after_source_type_enrichment() {
     use crate::data_transfer::sql_file::register_path;
-    use crate::db::Value;
     use crate::testing::app_state::TestAppState;
+    use datazen_driver_api::Value;
 
     let mut options = transfer_plan_test_options();
     options.table_schema = Some(TableSchema {
@@ -748,8 +748,8 @@ async fn sql_file_target_executes_after_source_type_enrichment() {
 
 #[tokio::test]
 async fn test_tester_disabled_existing_table_does_not_invalidate_plan() {
-    use crate::db::{TableInfo, TableType};
     use crate::testing::app_state::TestAppState;
+    use datazen_driver_api::{TableInfo, TableType};
 
     let mut options = transfer_plan_test_options();
     options.tables.push(TableInfo {

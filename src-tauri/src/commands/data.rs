@@ -1,6 +1,6 @@
 use super::error::CommandError;
 use super::AppState;
-use crate::db::{BoundSqlStatement, Value};
+use datazen_driver_api::{BoundSqlStatement, Value};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -241,7 +241,7 @@ fn value_summary(value: &Option<Value>) -> String {
 }
 
 fn build_row_change_plan(
-    driver: &dyn crate::db::DatabaseDriver,
+    driver: &dyn datazen_driver_api::DatabaseDriver,
     table: RowChangeTableContext,
     changes: &[PendingRowChange],
 ) -> Result<RowChangePlan, CommandError> {
@@ -359,7 +359,7 @@ fn plan_changes(plan: &RowChangePlan) -> Vec<PendingRowChange> {
 }
 
 fn validate_immutable_plan(
-    driver: &dyn crate::db::DatabaseDriver,
+    driver: &dyn datazen_driver_api::DatabaseDriver,
     db_session_id: &str,
     plan: &RowChangePlan,
     fingerprint: &str,
@@ -393,7 +393,7 @@ fn validate_immutable_plan(
 }
 
 pub(super) fn bound_statement_for_plan(
-    driver: &dyn crate::db::DatabaseDriver,
+    driver: &dyn datazen_driver_api::DatabaseDriver,
     table: &str,
     planned: &PlannedStatement,
     delete: bool,
@@ -620,7 +620,7 @@ mod table_target;
 pub async fn get_table_data_at_target(
     state: State<'_, AppState>,
     request: table_target::TableReadRequest,
-) -> Result<crate::db::TableDataResult, CommandError> {
+) -> Result<datazen_driver_api::TableDataResult, CommandError> {
     table_target::read(&state, request).await
 }
 

@@ -155,8 +155,12 @@ async fn file_job_identity(
         config.database = normalized(Some(database))
             .or_else(|| normalized(config.database.as_deref()))
             .map(str::to_owned);
-        config.schema =
-            crate::services::metadata_schema(driver.as_ref(), None, None, config.schema.as_deref());
+        config.schema = datazen_feature_core::services::schema_scope::metadata_schema(
+            driver.as_ref(),
+            None,
+            None,
+            config.schema.as_deref(),
+        );
     }
     config.id = owner.as_str().to_owned();
     let identity = checked_identify(&config, driver.as_ref())?;

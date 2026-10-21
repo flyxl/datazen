@@ -10,7 +10,9 @@ use crate::data_sync::{
     build_keyset_select_sql_with_order_filter_and_pagination, keyset_seek_parameter_count,
     quote_ident_sql, DataSyncError, Row, RowPageSource, SyncSourceFilter,
 };
-use crate::db::{ConnectionHandle, DatabaseDriver, LegacySqlDialect, SqlDialect, SqlTarget};
+use datazen_driver_api::{
+    ConnectionHandle, DatabaseDriver, LegacySqlDialect, SqlDialect, SqlTarget,
+};
 
 pub struct DriverKeysetSource {
     driver: Arc<dyn DatabaseDriver>,

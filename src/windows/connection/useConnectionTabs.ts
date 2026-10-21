@@ -30,7 +30,7 @@ export function useConnectionTabs() {
       return existing.dbSessionId;
     }
     store.markConnecting(tab.connectionId, tab.initialDatabase ?? null);
-    return connectionCommands.connect(tab.connectionId);
+    return (await connectionCommands.connect(tab.connectionId)).dbSessionId;
   }, []);
 
   const connectingTabsRef = useRef<Set<string>>(new Set());

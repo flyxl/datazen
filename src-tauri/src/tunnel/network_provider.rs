@@ -46,8 +46,8 @@ use datazen_runtime::tunnel::{
 };
 use tracing::{debug, warn};
 
-use crate::db::{ConnectionConfig, DriverError};
 use crate::tunnel::{start_for_connection, Tunnel};
+use datazen_driver_api::{ConnectionConfig, DriverError};
 
 /// 路由 → 可启动隧道的连接配置。宿主实现细节里**唯一**需要注入的东西。
 ///

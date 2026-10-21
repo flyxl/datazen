@@ -1,14 +1,15 @@
 //! Desktop adapter for the shared monitor scheduler.
 use crate::dashboard::{
     execute::{execute_widget_once, DashboardExecuteError},
-    store::{
-        list_dashboards, load_monitor_settings, set_dashboard_refresh_paused, DashboardStoreError,
-    },
-    types::{Dashboard, DashboardWidget, WidgetRun},
+    store::load_monitor_settings,
 };
 use crate::monitor::channels::{dispatch_notifications, AlertChannelState};
 use crate::{commands::AppState, store::Store};
 use datazen_feature_core::dashboard::monitor::{MonitorEngine as CoreEngine, MonitorHost};
+use datazen_feature_core::dashboard::store::{
+    list_dashboards, set_dashboard_refresh_paused, DashboardStoreError,
+};
+use datazen_feature_core::dashboard::types::{Dashboard, DashboardWidget, WidgetRun};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 struct DesktopMonitorHost {
@@ -70,7 +71,7 @@ impl MonitorEngine {
         Ok(())
     }
     pub fn is_paused(&self) -> bool {
-        list_dashboards(&self.host.store.app_db())
+        list_dashboards(&*self.host.store.app_db())
             .map(|dashboards| {
                 !dashboards.is_empty()
                     && dashboards.iter().all(|dashboard| dashboard.refresh_paused)
@@ -79,9 +80,9 @@ impl MonitorEngine {
     }
     pub fn set_paused(&self, paused: bool) {
         let db = self.host.store.app_db();
-        if let Ok(dashboards) = list_dashboards(&db) {
+        if let Ok(dashboards) = list_dashboards(&*db) {
             for dashboard in dashboards {
-                if let Err(error) = set_dashboard_refresh_paused(&db, &dashboard.id, paused) {
+                if let Err(error) = set_dashboard_refresh_paused(&*db, &dashboard.id, paused) {
                     tracing::warn!(%error, "Unable to update dashboard pause");
                 }
             }
@@ -127,7 +128,7 @@ fn start_core_on_desktop_runtime(core: &Arc<CoreEngine>) {
 #[async_trait::async_trait]
 impl MonitorHost for DesktopMonitorHost {
     async fn dashboards(&self) -> Result<Vec<Dashboard>, String> {
-        list_dashboards(&self.store.app_db()).map_err(|error| error.to_string())
+        list_dashboards(&*self.store.app_db()).map_err(|error| error.to_string())
     }
     async fn max_concurrent_queries(&self) -> usize {
         load_monitor_settings(&self.store.get_settings().await).max_concurrent_queries as usize
@@ -213,7 +214,7 @@ impl MonitorHost for DesktopMonitorHost {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .clone();
-        let name = list_dashboards(&self.store.app_db())
+        let name = list_dashboards(&*self.store.app_db())
             .ok()
             .and_then(|dashboards| {
                 dashboards

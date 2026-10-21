@@ -188,6 +188,16 @@ fn has_data_modifying_cte(tokens: &[String]) -> bool {
 /// Returns the statement executed by `EXPLAIN ANALYZE`, accounting for both
 /// the shorthand and PostgreSQL's parenthesized option syntax. `ANALYZE FALSE`
 /// is an ordinary plan and must not be treated as executing the query.
+///
+/// The shorthand accepts the option keywords in either order — PostgreSQL's
+/// grammar is `EXPLAIN opt_verbose opt_analyze`, and `EXPLAIN VERBOSE ANALYZE
+/// ...` is valid too. The option run is skipped as a whole before the
+/// statement starts: classifying the statement by its first surviving token
+/// would let `EXPLAIN ANALYZE VERBOSE DELETE ...` be misread as a plan-only
+/// `EXPLAIN` (first surviving token `VERBOSE`, not a write verb), which
+/// executes the write on read-only connections — a fail-open hole. A form
+/// without `ANALYZE`/`ANALYSE` still resolves to `None`, so plan-only
+/// `EXPLAIN DELETE` (nothing executes) remains allowed.
 fn explain_analyze_statement(tokens: &[String]) -> Option<&[String]> {
     if !tokens.first()?.eq_ignore_ascii_case("EXPLAIN") {
         return None;
@@ -198,46 +208,74 @@ fn explain_analyze_statement(tokens: &[String]) -> Option<&[String]> {
         let options = &tokens[2..close];
         let analyze = options
             .iter()
-            .position(|token| token.eq_ignore_ascii_case("ANALYZE"))?;
-        let mut value = analyze + 1;
-        if options.get(value).map(String::as_str) == Some("=") {
-            value += 1;
-        }
-        if options.get(value).is_some_and(|token| {
-            ["FALSE", "OFF", "NO", "0"]
-                .iter()
-                .any(|false_value| token.eq_ignore_ascii_case(false_value))
-        }) {
+            .position(|token| is_analyze_option_keyword(token))?;
+        if analyse_bool_is_false(options, analyze) {
             return None;
         }
         return Some(&tokens[close + 1..]);
     }
 
-    if !tokens
-        .get(1)
-        .is_some_and(|token| token.eq_ignore_ascii_case("ANALYZE"))
-    {
+    let mut saw_analyze = false;
+    let mut statement = 1;
+    while let Some(token) = tokens.get(statement) {
+        let value = token.as_str();
+        if is_analyze_option_keyword(value) {
+            saw_analyze = true;
+            let (next, is_false) = skip_analyze_bool(tokens, statement + 1);
+            if is_false {
+                return None;
+            }
+            statement = next;
+        } else if value.eq_ignore_ascii_case("VERBOSE") {
+            statement += 1;
+        } else {
+            break;
+        }
+    }
+    if !saw_analyze {
         return None;
     }
-    let mut statement = 2;
-    if tokens.get(statement).map(String::as_str) == Some("=") {
-        statement += 1;
-    }
-    if tokens.get(statement).is_some_and(|token| {
-        ["TRUE", "FALSE", "ON", "OFF", "YES", "NO", "1", "0"]
-            .iter()
-            .any(|value| token.eq_ignore_ascii_case(value))
-    }) {
-        if tokens.get(statement).is_some_and(|token| {
-            ["FALSE", "OFF", "NO", "0"]
-                .iter()
-                .any(|false_value| token.eq_ignore_ascii_case(false_value))
-        }) {
-            return None;
-        }
-        statement += 1;
-    }
     Some(&tokens[statement..])
+}
+
+/// PostgreSQL accepts both spellings (`ANALYZE` / `ANALYSE`).
+fn is_analyze_option_keyword(token: &str) -> bool {
+    token.eq_ignore_ascii_case("ANALYZE") || token.eq_ignore_ascii_case("ANALYSE")
+}
+
+/// Consumes the optional `=` and boolean starting at `index` (right after an
+/// ANALYZE keyword) and reports whether that boolean turns analysis off
+/// (`ANALYZE FALSE`). A bare `ANALYZE` without a boolean means "on", so it
+/// reports `false` while consuming nothing.
+fn skip_analyze_bool(tokens: &[String], index: usize) -> (usize, bool) {
+    let mut value = index;
+    if tokens.get(value).map(String::as_str) == Some("=") {
+        value += 1;
+    }
+    if tokens
+        .get(value)
+        .is_some_and(|token| is_explicit_bool(token))
+    {
+        (value + 1, is_false_value(&tokens[value]))
+    } else {
+        (index, false)
+    }
+}
+
+fn is_explicit_bool(token: &str) -> bool {
+    ["TRUE", "FALSE", "ON", "OFF", "YES", "NO", "1", "0"]
+        .iter()
+        .any(|value| token.eq_ignore_ascii_case(value))
+}
+
+fn is_false_value(token: &str) -> bool {
+    ["FALSE", "OFF", "NO", "0"]
+        .iter()
+        .any(|value| token.eq_ignore_ascii_case(value))
+}
+
+fn analyse_bool_is_false(options: &[String], analyze_index: usize) -> bool {
+    skip_analyze_bool(options, analyze_index + 1).1
 }
 
 fn has_write_operation(tokens: &[String]) -> bool {

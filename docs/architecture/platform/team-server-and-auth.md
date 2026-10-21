@@ -36,7 +36,7 @@ server/
 └── src/
     ├── main.rs                    进程入口：子命令解析 → bootstrap（对齐 src-tauri/src/main.rs 的 headless 形态）
     ├── bootstrap.rs               唯一 composition root；migration.rs 是 migrate / check-schema 子命令入口
-    ├── config.rs / logging.rs     ServerConfig 校验（不回显凭据）、tracing 与 log_redact 接入
+    ├── config.rs / logging.rs     ServerConfig 校验（不回显凭据）、tracing 与脱敏接入
     ├── http/
     │   ├── router.rs              v1 路由表（与 system-overview §6.3 一一对应）
     │   ├── middleware/            request_id / auth / session / csrf / limit / authorize / error / audit
@@ -89,7 +89,7 @@ cargo build -p datazen-server --release && cargo test -p datazen-server
 
 ```mermaid
 flowchart TD
-    A["解析子命令 serve | migrate | check-schema"] --> B["logging::init + log_redact 挂载"]
+    A["解析子命令 serve | migrate | check-schema"] --> B["logging::init + 脱敏挂载"]
     B --> C["config::load 加载并校验 ServerConfig"]
     C --> D["rustls CryptoProvider 选择（进程内，与桌面 tls.rs 同源但独立初始化）"]
     D --> E["migration::ensure（迁移至目标或验证兼容范围）"]
@@ -104,7 +104,7 @@ flowchart TD
     M --> N["监听 :8443，暴露 /healthz、/readyz 与 /api/v1"]
 ```
 
-失败策略是 **fail-closed**：任一步失败即拒绝启动，错误可诊断但不泄密；`tracing` 与凭据脱敏复用 `src-tauri/src/log_redact.rs` 的口径（默认不打印密码、令牌、原始数据库错误与用户绝对路径）。
+失败策略是 **fail-closed**：任一步失败即拒绝启动，错误可诊断但不泄密；`tracing` 与凭据脱敏复用 `packages/platform-infra/src/redaction.rs` 的口径（默认不打印密码、令牌、原始数据库错误与用户绝对路径）。
 
 ### 2.4 进程模式
 
@@ -602,7 +602,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 | 池隔离 | 共享账号下按执行身份与权限范围分池，不按显示用户名 |
 | 审计 | 凭据轮换、失败解析、跨组织尝试均落审计，但不落秘密本身 |
 
-日志与审计的脱敏口径对齐 `src-tauri/src/log_redact.rs`：默认不打印密码、令牌、原始数据库错误与用户绝对路径。
+日志与审计的脱敏口径对齐 `packages/platform-infra/src/redaction.rs`：默认不打印密码、令牌、原始数据库错误与用户绝对路径。
 
 ### 10.3 `SessionDirectory` 与 `BudgetCoordinator`（单实例）
 
@@ -824,7 +824,7 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 - DTO、服务接口、错误码表、幂等与会话规则以 [连接与会话管理](connection-management.md) 为权威，本文只描述它们在 HTTP 宿主上的落地方式。
 - 管理库表结构以 [持久化模型](persistence-model.md) 为权威；本文的 [§10](#10-服务端仓储与-ports-实现) 与 [§13](#13-schema-migration-运行方式) 只描述运行行为。本文 [§4.3](#43-服务端登录会话) 的登录会话行与 [§6.1](#6-授权模型) 的成员关系 / ACL / 权限版本已由该文档 [§3.10 认证与授权表](persistence-model.md#310-认证与授权表) 登记为 `login_sessions` / `memberships` / `acl_entries` / `permission_versions`（固定角色用 CHECK 表达，不建 `roles` 表）。
 - 阶段交付与退出门槛以 [平台开发计划 §11](../../development/platform-development-plan.md#11-p7单实例团队-web-服务) 为准；P9 的多 worker 与全局预算不在本文范围。
-- 现有 `src-tauri` 的 store/keyring/file 能力是**桌面**实现，服务端不复用其存储形态（见 [§10.1](#101-实现矩阵)），但沿用其错误分类、日志脱敏与安全约定（`CommandError`、`log_redact`、路径遍历防护、扩展名白名单）。
+- 现有 `src-tauri` 的 store/keyring/file 能力是**桌面**实现，服务端不复用其存储形态（见 [§10.1](#101-实现矩阵)），但沿用其错误分类、日志脱敏与安全约定（`CommandError`、`datazen_platform_infra::redaction`、路径遍历防护、扩展名白名单）。
 - 现有 Wapp 桥接在 `datazen://` 不透明 origin 下必须使用 `'*'` target origin；Web 场景 origin 已知，因此本文**收紧**为精确 origin，这是有意的差异而非不一致（[§15.1](#151-wapp-iframe-与桥接)）。
 
 ## 18. 本文不覆盖什么

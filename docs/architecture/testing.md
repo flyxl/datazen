@@ -74,7 +74,7 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<i
 | `packages/feature-core/tests/monitor_authorization.rs` | Monitor 定时授权的共享策略 |
 | `packages/feature-core/tests/workflow_block_refusal.rs` | Workflow 资源块的失败关闭 |
 | `src-tauri/src/mcp/server.rs` | MCP Server tools |
-| `src-tauri/src/workflow/workflows.rs` | Workflows 系统 |
+| `packages/feature-core/src/workflow/` | Workflows 系统 |
 | `src-tauri/src/mcp/client.rs` | MCP Client |
 | `src-tauri/src/commands/context.rs` | AI 上下文文件（路径遍历防护、扩展名白名单、大小限制） |
 

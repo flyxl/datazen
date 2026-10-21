@@ -1,9 +1,9 @@
 //! MCP metadata calls through the Runtime connection/resource boundary.
 
 use super::server::DataZenMcpServer;
-use crate::ai::budget;
 use crate::services::runtime_command_source::RuntimeCommandSource;
 use datazen_driver_api::{DatabaseDriver, TableSchema};
+use datazen_feature_core::ai::budget;
 use datazen_feature_core::ai::context::format_compact_ddl;
 use rmcp::ErrorData as McpError;
 use std::sync::Arc;

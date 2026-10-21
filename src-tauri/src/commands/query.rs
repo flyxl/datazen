@@ -6,9 +6,9 @@ use super::driver_command::{
 };
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::MultiQueryResult;
 use crate::store::history_db::DEFAULT_HISTORY_PAGE_SIZE;
 use crate::store::{HistoryOrder, QueryHistoryEntry, QueryHistoryFilter, QueryHistoryPage};
+use datazen_driver_api::MultiQueryResult;
 use datazen_driver_api::{QueryExecutionId, QueryStreamCallback, QueryStreamEvent};
 use tauri::ipc::Channel;
 use tauri::State;
@@ -22,7 +22,7 @@ pub(crate) async fn execute_query_impl(
     tracing::info!(%db_session_id, sql_len = sql.len(), "execute_query");
     tracing::debug!(
         %db_session_id,
-        sql_preview = %crate::log_redact::sql_preview_for_log(&sql),
+        sql_preview = %datazen_platform_infra::redaction::sql_preview_for_log(&sql),
         "execute_query sql"
     );
     let result = super::driver_command::execute_driver_command_impl(

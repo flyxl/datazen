@@ -8,7 +8,7 @@ use datazen_driver_api::{
     resource::ResourceProvider,
     DatabaseDriver, DatabaseDriverFactory,
 };
-use datazen_feature_core::restore_job::RestoreGateway;
+use datazen_feature_core::restore_job::{RestoreGateway, RestorePlan};
 use datazen_platform_api::{
     dto::{artifact::ArtifactLifecycle, execution::EffectOutcome},
     id::*,
@@ -63,7 +63,7 @@ async fn host() -> (
         provider,
         driver: MockDriver::new("restore-host-fixture", MockDriverOptions::default()),
     }));
-    let registry = Arc::new(crate::db::DriverRegistry::new());
+    let registry = Arc::new(datazen_runtime::driver_registry::DriverRegistry::new());
     registry
         .register_test_driver("restore-host-fixture", factory.driver.clone())
         .await;

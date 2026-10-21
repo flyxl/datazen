@@ -101,12 +101,48 @@ pub enum ViewMode {
     Table,
 }
 
+/// The stored spelling of a view mode.
+pub fn view_mode_str(mode: ViewMode) -> &'static str {
+    match mode {
+        ViewMode::Chart => "chart",
+        ViewMode::Table => "table",
+    }
+}
+
+/// Read a stored view mode.
+pub fn parse_view_mode(value: &str) -> Option<ViewMode> {
+    match value {
+        "chart" => Some(ViewMode::Chart),
+        "table" => Some(ViewMode::Table),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum RefreshMode {
     Manual,
     OnOpen,
     Interval,
+}
+
+/// The stored spelling of a refresh mode.
+pub fn refresh_mode_str(mode: RefreshMode) -> &'static str {
+    match mode {
+        RefreshMode::Manual => "manual",
+        RefreshMode::OnOpen => "onOpen",
+        RefreshMode::Interval => "interval",
+    }
+}
+
+/// Read a stored refresh mode.
+pub fn parse_refresh_mode(value: &str) -> Option<RefreshMode> {
+    match value {
+        "manual" => Some(RefreshMode::Manual),
+        "onOpen" => Some(RefreshMode::OnOpen),
+        "interval" => Some(RefreshMode::Interval),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -281,6 +317,68 @@ pub struct DashboardWorkflowRef {
     pub widget_title: String,
 }
 
+/// One entry of a widget's run history index.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RunIndexEntry {
+    pub id: String,
+    pub started_at: String,
+    pub status: WidgetRunStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alert_fired: Option<bool>,
+}
+
+/// SMTP settings reserved for phase 2.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MonitorEmailSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<Vec<String>>,
+}
+
+/// Dashboard monitor / tray / retention settings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MonitorSettings {
+    pub tray_enabled: bool,
+    pub close_to_tray: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_webhook_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<MonitorEmailSettings>,
+    pub max_concurrent_queries: u32,
+    pub export_include_dashboard_runs: bool,
+    pub run_retention_count: u32,
+    pub run_retention_days: u32,
+}
+
+impl Default for MonitorSettings {
+    fn default() -> Self {
+        Self {
+            tray_enabled: true,
+            close_to_tray: true,
+            default_webhook_url: None,
+            email: None,
+            max_concurrent_queries: 2,
+            export_include_dashboard_runs: true,
+            run_retention_count: 200,
+            run_retention_days: 30,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,5 +416,30 @@ mod tests {
         };
         policy.normalize();
         assert_eq!(policy.refresh_sec, None);
+    }
+
+    #[test]
+    fn monitor_settings_default() {
+        let settings = MonitorSettings::default();
+        assert_eq!(settings.max_concurrent_queries, 2);
+        assert_eq!(settings.run_retention_count, 200);
+        assert_eq!(settings.run_retention_days, 30);
+        assert!(settings.export_include_dashboard_runs);
+    }
+
+    #[test]
+    fn stored_mode_spellings_round_trip() {
+        for mode in [
+            RefreshMode::Manual,
+            RefreshMode::OnOpen,
+            RefreshMode::Interval,
+        ] {
+            assert_eq!(parse_refresh_mode(refresh_mode_str(mode)), Some(mode));
+        }
+        for mode in [ViewMode::Chart, ViewMode::Table] {
+            assert_eq!(parse_view_mode(view_mode_str(mode)), Some(mode));
+        }
+        assert_eq!(parse_refresh_mode("nope"), None);
+        assert_eq!(parse_view_mode("nope"), None);
     }
 }

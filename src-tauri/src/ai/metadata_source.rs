@@ -1,10 +1,10 @@
 //! Desktop session identity lookup bound to independent Runtime metadata reads.
 use crate::{
-    db::DriverRegistry, platform::PlatformEntry,
-    services::runtime_command_source::RuntimeCommandSource, store::Store,
+    platform::PlatformEntry, services::runtime_command_source::RuntimeCommandSource, store::Store,
 };
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TableInfo, TableSchema};
 use datazen_feature_core::services::ports::SchemaContextSource;
+use datazen_runtime::driver_registry::DriverRegistry;
 use std::sync::Arc;
 pub struct RuntimeSchemaSource {
     runtime: RuntimeCommandSource,

@@ -69,7 +69,7 @@ describe('[tester] useConnectionTabs', () => {
   });
 
   it('connects pending tabs and marks connected on success', async () => {
-    connectMock.mockResolvedValue('sess-1');
+    connectMock.mockResolvedValue({ connectionId: 'cfg-1', dbSessionId: 'sess-1' });;
     const { result } = renderHook(() => useConnectionTabs());
 
     act(() => {

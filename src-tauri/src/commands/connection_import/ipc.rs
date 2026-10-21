@@ -7,11 +7,11 @@
 
 use super::super::error::{resolve_override_path, CmdExt, CommandError, OVERRIDE_DISABLED_MSG};
 use super::super::AppState;
-use super::{
+use datazen_driver_api::{ConnectionConfig, TunnelKind};
+use datazen_feature_core::connection_import::{
     build_tableplus_export, detect_import_path, format_label, parse_from_app, parse_import_file,
     ImportApp, ParsedImport, PathContext,
 };
-use crate::db::{ConnectionConfig, TunnelKind};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashSet};
 use std::path::PathBuf;
@@ -170,7 +170,9 @@ fn build_encrypted_connections_export(
     password: &str,
 ) -> Result<Vec<u8>, CommandError> {
     validate_share_password(password)?;
-    build_tableplus_export(connections, password)
+    // The shared feature answers with its own error type; the host maps it
+    // onto the IPC error shape.
+    build_tableplus_export(connections, password).map_err(CommandError::from)
 }
 
 /// Materialize `tunnel_id` references into the inline tunnel fields the export

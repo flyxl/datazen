@@ -49,13 +49,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::State;
 
-use super::plans::{self, PlanState, StoredTransferPlan};
 use super::AppState;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::data_transfer::job::{
     DataTransferHandler, TransferEndpoints, CHECKPOINT_VERSION, HANDLER_VERSION, PLAN_VERSION,
 };
 use crate::data_transfer::model::{TransferJob, TransferRunSelection};
+use crate::data_transfer::plan_store::{self as plans, PlanState, StoredTransferPlan};
 use crate::data_transfer::TransferPreview;
 use admission::{admit_apply_plan, ApplyPlanRequest, PlanAdmission, PlanAvailability};
 use assembly::FreezeAssembly;
@@ -245,7 +245,7 @@ pub(crate) async fn apply_detached(
                 cmd = "apply_data_transfer",
                 plan_id = %plan_id,
                 job_id = %job_id,
-                error = %crate::log_redact::redact_secrets_for_log(&error.to_string()),
+                error = %datazen_platform_infra::redaction::redact_secrets_for_log(&error.to_string()),
             );
         }
     });

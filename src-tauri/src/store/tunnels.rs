@@ -4,7 +4,7 @@
 //! Sensitive fields (SSH password/passphrase, HTTP proxy password, WS auth token)
 //! are encrypted at rest with the same AES-256-GCM key as connection passwords.
 
-use crate::db::SavedTunnel;
+use datazen_driver_api::SavedTunnel;
 
 use super::{Store, StoreError};
 

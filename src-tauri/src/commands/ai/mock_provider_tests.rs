@@ -143,7 +143,7 @@ async fn mock_provider_parse_filter() {
     .await
     .unwrap();
 
-    use crate::services::query_executor::FilterOperator;
+    use datazen_feature_core::services::query_executor::FilterOperator;
     assert_eq!(filters.len(), 1);
     assert!(matches!(filters[0].operator, FilterOperator::Gt));
 }

@@ -23,6 +23,7 @@ use datazen_driver_api::{ColumnSchema, DatabaseDriver, TableSchema};
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::JobState;
 
+use crate::data_sync::api::SyncComparisonRequest;
 use crate::data_sync::job::body::{ApplySpec, PrepareSpec};
 use crate::data_sync::Endpoint;
 use crate::data_sync::{ChangeOperation, SyncOptions, TableMapping};
@@ -55,8 +56,8 @@ pub fn mock_options(rows: &[(i64, &str)]) -> MockDriverOptions {
             .iter()
             .map(|(id, name)| {
                 vec![
-                    Some(crate::db::Value::Integer(*id)),
-                    Some(crate::db::Value::String((*name).to_string())),
+                    Some(datazen_driver_api::Value::Integer(*id)),
+                    Some(datazen_driver_api::Value::String((*name).to_string())),
                 ]
             })
             .collect(),
@@ -139,17 +140,19 @@ pub async fn compare(
 ) -> Result<SyncComparisonPreview, CommandError> {
     super::apply::compare_data_sync_impl(
         pair.state(),
-        pair.source_session.clone(),
-        pair.target_session.clone(),
-        Vec::new(),
-        None,
-        source_database,
-        target_database,
-        None,
-        None,
-        SyncOptions::default(),
-        &[],
-        &HashMap::new(),
+        SyncComparisonRequest {
+            source_db_session_id: pair.source_session.clone(),
+            target_db_session_id: pair.target_session.clone(),
+            tables: Vec::new(),
+            job_id: None,
+            source_database,
+            target_database,
+            source_schema: None,
+            target_schema: None,
+            options: SyncOptions::default(),
+            mappings: Vec::new(),
+            source_filters: HashMap::new(),
+        },
     )
     .await
 }
@@ -237,12 +240,12 @@ async fn prepare_job_freezes_a_change_set_and_closes_both_snapshots() {
     let pair = diff_pair("prepare-freeze").await;
     let spec = PrepareSpec {
         source: Endpoint {
-            connection_id: pair.source_session.clone(),
+            db_session_id: pair.source_session.clone(),
             database: "app".into(),
             schema: None,
         },
         target: Endpoint {
-            connection_id: pair.target_session.clone(),
+            db_session_id: pair.target_session.clone(),
             database: "app".into(),
             schema: None,
         },
@@ -341,17 +344,19 @@ async fn compare_refuses_a_non_database_target_before_any_job_is_submitted() {
     // `open_job`, so nothing is accepted and no planId is minted.
     let error = super::apply::compare_data_sync_impl(
         pair.state(),
-        pair.source_session.clone(),
-        foreign,
-        Vec::new(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        SyncOptions::default(),
-        &[],
-        &HashMap::new(),
+        SyncComparisonRequest {
+            source_db_session_id: pair.source_session.clone(),
+            target_db_session_id: foreign,
+            tables: Vec::new(),
+            job_id: None,
+            source_database: None,
+            target_database: None,
+            source_schema: None,
+            target_schema: None,
+            options: SyncOptions::default(),
+            mappings: Vec::new(),
+            source_filters: HashMap::new(),
+        },
     )
     .await
     .unwrap_err();
@@ -399,17 +404,19 @@ async fn the_budget_refuses_a_self_overlapping_pair_before_the_compare_reads_a_r
 
     let error = super::apply::compare_data_sync_impl(
         &test.state,
-        source,
-        target,
-        Vec::new(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        SyncOptions::default(),
-        &[],
-        &HashMap::new(),
+        SyncComparisonRequest {
+            source_db_session_id: source,
+            target_db_session_id: target,
+            tables: Vec::new(),
+            job_id: None,
+            source_database: None,
+            target_database: None,
+            source_schema: None,
+            target_schema: None,
+            options: SyncOptions::default(),
+            mappings: Vec::new(),
+            source_filters: HashMap::new(),
+        },
     )
     .await
     .unwrap_err();

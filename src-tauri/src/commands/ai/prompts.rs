@@ -1,9 +1,9 @@
 //! Prompt template management IPC commands.
 
-use crate::ai::prompt_resolver::{PromptInfo, PromptOverrideEntry};
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
 use datazen_driver_api::PromptScenario;
+use datazen_feature_core::ai::prompt_resolver::{PromptInfo, PromptOverrideEntry};
 use tauri::State;
 
 // ─── Prompt management IPC commands ───

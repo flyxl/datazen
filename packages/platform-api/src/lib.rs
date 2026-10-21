@@ -41,6 +41,7 @@ pub mod error;
 //（rustdoc 仍会在展开后的类型上生效），故在此局部放行。
 #[allow(unused_doc_comments)]
 pub mod id;
+pub mod migration;
 pub mod ports;
 pub mod target;
 

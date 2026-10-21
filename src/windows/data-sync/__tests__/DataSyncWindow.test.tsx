@@ -394,12 +394,10 @@ describe('DataSyncWindow wizard', () => {
     listDatabasesDedicatedMock
       .mockReset()
       .mockImplementation(async (connectionId: string, preferredDatabase?: string) => {
-        const dbSessionId = String(
-          await invokeMock('connect_dedicated', {
-            connectionId,
-            database: preferredDatabase ?? null,
-          }),
-        );
+        const { dbSessionId } = (await invokeMock('connect_dedicated', {
+          connectionId,
+          database: preferredDatabase ?? null,
+        })) as { dbSessionId: string };
         try {
           return {
             databases: await getDatabasesMock(dbSessionId, connectionId),
@@ -430,7 +428,7 @@ describe('DataSyncWindow wizard', () => {
         if (cmd === 'connect_dedicated') {
           const conn = args?.connectionId ?? 'unknown';
           const db = args?.database ?? 'default';
-          return `dedicated-${conn}-${db}`;
+          return { connectionId: conn as string, dbSessionId: `dedicated-${conn}-${db}` };
         }
         if (cmd === 'execute_driver_command' && args?.request?.command === 'list_databases') {
           return {
@@ -440,7 +438,7 @@ describe('DataSyncWindow wizard', () => {
           };
         }
         if (cmd === 'release_connection') return false;
-        if (cmd === 'connect') return `live-${args?.connectionId}`;
+        if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
         if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },
@@ -791,10 +789,10 @@ describe('DataSyncWindow wizard', () => {
         if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
         if (cmd === 'connect_dedicated') {
           if (args?.connectionId === 'pg-tgt') throw new Error('refused');
-          return `dedicated-${args?.connectionId}-db`;
+          return { connectionId: args?.connectionId as string, dbSessionId: `dedicated-${args?.connectionId}-db` };
         }
         if (cmd === 'release_connection') return false;
-        if (cmd === 'connect') return `live-${args?.connectionId}`;
+        if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
         if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },
@@ -903,10 +901,10 @@ describe('DataSyncWindow wizard', () => {
         if (cmd === 'connect_dedicated') {
           const conn = args?.connectionId ?? 'unknown';
           const db = args?.database ?? 'default';
-          return `dedicated-${conn}-${db}`;
+          return { connectionId: conn as string, dbSessionId: `dedicated-${conn}-${db}` };
         }
         if (cmd === 'release_connection') return false;
-        if (cmd === 'connect') return `live-${args?.connectionId}`;
+        if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
         if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },
@@ -944,10 +942,10 @@ describe('DataSyncWindow wizard', () => {
         if (cmd === 'connect_dedicated') {
           const conn = args?.connectionId ?? 'unknown';
           const db = args?.database ?? 'default';
-          return `dedicated-${conn}-${db}`;
+          return { connectionId: conn as string, dbSessionId: `dedicated-${conn}-${db}` };
         }
         if (cmd === 'release_connection') return false;
-        if (cmd === 'connect') return `live-${args?.connectionId}`;
+        if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
         if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },
@@ -1029,10 +1027,10 @@ describe('DataSyncWindow wizard', () => {
         if (cmd === 'connect_dedicated') {
           const conn = args?.connectionId ?? 'unknown';
           const db = args?.database ?? 'default';
-          return `dedicated-${conn}-${db}`;
+          return { connectionId: conn as string, dbSessionId: `dedicated-${conn}-${db}` };
         }
         if (cmd === 'release_connection') return false;
-        if (cmd === 'connect') return `live-${args?.connectionId}`;
+        if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
         if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },

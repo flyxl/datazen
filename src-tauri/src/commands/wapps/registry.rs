@@ -65,10 +65,12 @@ pub(crate) async fn inspect_wapp_package_impl(path: String) -> Result<WappManife
         )));
     }
 
-    tokio::task::spawn_blocking(move || crate::wapps::install::inspect_wapp_package(&source))
-        .await
-        .map_err(|e| CommandError::Internal(format!("inspect_wapp_package task: {e}")))?
-        .map_err(CommandError::Validation)
+    tokio::task::spawn_blocking(move || {
+        datazen_workspace_apps::install::inspect_wapp_package(&source)
+    })
+    .await
+    .map_err(|e| CommandError::Internal(format!("inspect_wapp_package task: {e}")))?
+    .map_err(CommandError::Validation)
 }
 
 pub(crate) async fn remove_wapp_impl(state: &AppState, id: String) -> Result<(), CommandError> {

@@ -1689,10 +1689,13 @@ async fn schema_object_commands_are_wired_and_their_sql_runs_live() {
     let (driver, handle) = connect(&cfg).await;
 
     // 1. Shipped dialect SQL must run against the live instance.
+    // The dialect SQL lives in this driver crate now.
+    use datazen_driver_api::schema_object_sql::SchemaObjectSql as _;
     let mut candidates: Vec<(String, String)> = vec![(
         "list_privileges".to_string(),
-        datazen_driver_api::list_privileges_sql("sqlserver")
-            .expect("driver-api has SQL Server privilege SQL"),
+        datazen_driver_sqlserver::SqlServerSchemaObjectSql
+            .list_privileges_sql()
+            .expect("the SQL Server driver ships privilege SQL"),
     )];
     for kind in [
         datazen_driver_api::ObjectKind::View,
@@ -1702,8 +1705,9 @@ async fn schema_object_commands_are_wired_and_their_sql_runs_live() {
         datazen_driver_api::ObjectKind::Sequence,
         datazen_driver_api::ObjectKind::Type,
     ] {
-        let sql = datazen_driver_api::list_objects_sql("sqlserver", kind)
-            .unwrap_or_else(|| panic!("driver-api lists {kind:?} for sqlserver"));
+        let sql = datazen_driver_sqlserver::SqlServerSchemaObjectSql
+            .list_objects_sql(kind)
+            .unwrap_or_else(|| panic!("the SQL Server driver lists {kind:?}"));
         assert!(
             !sql.contains("AS schema"),
             "`AS schema` is invalid T-SQL (SCHEMA is reserved): {sql}"
@@ -2183,9 +2187,11 @@ async fn server_status_surface_is_reachable_via_sql_and_test_connection() {
     assert!(principal_count >= 1, "at least dbo must be listed");
     eprintln!("✅ sys.database_principals → {principal_count} principal(s)");
 
-    // Privilege listing (the SQL driver-api ships for `list_privileges`).
-    let privileges_sql =
-        datazen_driver_api::list_privileges_sql("sqlserver").expect("privilege SQL");
+    // Privilege listing (the SQL this driver ships for `list_privileges`).
+    use datazen_driver_api::schema_object_sql::SchemaObjectSql as _;
+    let privileges_sql = datazen_driver_sqlserver::SqlServerSchemaObjectSql
+        .list_privileges_sql()
+        .expect("privilege SQL");
     let grants = query_resumable(&driver, &handle, &privileges_sql)
         .await
         .expect("privilege listing must be readable");

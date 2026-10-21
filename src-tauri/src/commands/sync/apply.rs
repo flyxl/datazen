@@ -7,15 +7,16 @@ use super::super::AppState;
 use super::artifact_view;
 use super::comparison_store::ComparisonStore;
 use super::inspect::inspect_data_sync_impl;
-use super::plans;
+use crate::data_sync::api::SyncComparisonRequest;
 use crate::data_sync::job::PrepareSpec;
+use crate::data_sync::plan_store as plans;
 use crate::data_sync::{
     generate_table_sql_with_qualified_table_and_policy, ChangeOperation, ChangeSet,
     ComparisonResult, ConflictPolicy, DataSyncError, Endpoint, SyncOptions, SyncSourceFilter,
     TableChangeSet, TableMapping, TableMappingStatus, TableResult,
 };
-use crate::db::{LegacySqlDialect, SqlDialect};
-use crate::services::metadata_schema;
+use datazen_driver_api::{LegacySqlDialect, SqlDialect};
+use datazen_feature_core::services::schema_scope::metadata_schema;
 use futures_util::FutureExt;
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
@@ -32,34 +33,26 @@ use uuid::Uuid;
 /// ChangeSet is attributed to.
 pub(crate) async fn compare_data_sync_impl(
     state: &AppState,
-    source_db_session_id: String,
-    target_db_session_id: String,
-    tables: Vec<String>,
-    job_id: Option<String>,
-    source_database: Option<String>,
-    target_database: Option<String>,
-    source_schema: Option<String>,
-    target_schema: Option<String>,
-    options: SyncOptions,
-    mappings: &[TableMapping],
-    source_filters: &HashMap<String, SyncSourceFilter>,
+    request: SyncComparisonRequest,
 ) -> Result<plans::SyncComparisonPreview, CommandError> {
-    let job_id = job_id
+    let job_id = request
+        .job_id
+        .clone()
         .filter(|id| !id.trim().is_empty())
         .unwrap_or_else(|| format!("data-sync-{}", Uuid::new_v4()));
     let accepted = start_data_sync_prepare_job_impl(
         state,
-        source_db_session_id,
-        target_db_session_id,
-        tables,
+        request.source_db_session_id,
+        request.target_db_session_id,
+        request.tables,
         job_id,
-        source_database,
-        target_database,
-        source_schema,
-        target_schema,
-        options,
-        source_filters.clone(),
-        Some(mappings.to_vec()),
+        request.source_database,
+        request.target_database,
+        request.source_schema,
+        request.target_schema,
+        request.options,
+        request.source_filters,
+        Some(request.mappings),
     )
     .await?;
     let finished = super::jobs::wait_for_durable_terminal(state, accepted.job_id.as_str()).await?;
@@ -103,11 +96,11 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
     .await?;
     let source_config = source_context.config.clone();
     let target_config = target_context.config.clone();
-    let source_database_name = super::types::resolve_db_name(
+    let source_database_name = crate::data_sync::api::resolve_db_name(
         source_database.as_deref(),
         source_config.database.as_deref(),
     );
-    let target_database_name = super::types::resolve_db_name(
+    let target_database_name = crate::data_sync::api::resolve_db_name(
         target_database.as_deref(),
         target_config.database.as_deref(),
     );
@@ -229,12 +222,12 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
 
     let plan_id = Uuid::new_v4().to_string();
     let source_endpoint = Endpoint {
-        connection_id: sessions.source_id.clone(),
+        db_session_id: sessions.source_id.clone(),
         database: source_database_name.clone(),
         schema: source_schema_name.clone(),
     };
     let target_endpoint = Endpoint {
-        connection_id: sessions.target_id.clone(),
+        db_session_id: sessions.target_id.clone(),
         database: target_database_name.clone(),
         schema: target_schema_name.clone(),
     };
@@ -692,8 +685,10 @@ pub(crate) async fn generate_data_sync_sql_impl(
     // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
     let dialect = LegacySqlDialect::new(tgt_driver.as_ref());
     let tgt_handle = target_context.handle.clone();
-    let target_database_name =
-        super::types::resolve_db_name(target_database.as_deref(), tgt_config.database.as_deref());
+    let target_database_name = crate::data_sync::api::resolve_db_name(
+        target_database.as_deref(),
+        tgt_config.database.as_deref(),
+    );
     let target_schema = metadata_schema(
         tgt_driver.as_ref(),
         target_schema.as_deref(),
@@ -900,7 +895,7 @@ mod tests {
         identity_insert_target_for_projection, sqlserver_write_preflight,
         validate_projected_identity_values,
     };
-    use crate::commands::sync::types::{resolve_options, SyncOptionsInput};
+    use crate::data_sync::api::{resolve_options, SyncOptionsInput};
     use crate::data_sync::{ChangeOperation, ConflictPolicy, RowChange, TableChangeSet};
     use datazen_driver_api::{ColumnSchema, TableSchema, Value};
 

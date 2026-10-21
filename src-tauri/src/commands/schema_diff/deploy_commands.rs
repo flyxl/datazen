@@ -173,7 +173,7 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
             || !use_transaction.unwrap_or(true)
             || !matches!(
                 datazen_driver_api::LegacySchemaMigration::new(driver.as_ref()).ddl_atomicity(),
-                crate::db::DdlAtomicity::Transactional
+                datazen_driver_api::DdlAtomicity::Transactional
             ))
     {
         return fail_schema_diff_deploy(

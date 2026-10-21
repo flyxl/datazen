@@ -134,7 +134,7 @@ impl TableSession {
 
 pub(super) async fn execute_plan(
     state: &AppState,
-    driver: &dyn crate::db::DatabaseDriver,
+    driver: &dyn datazen_driver_api::DatabaseDriver,
     plan: &RowChangePlan,
     manual_handle: Option<SessionHandle>,
 ) -> Result<CommitPendingChangesResponse, CommandError> {

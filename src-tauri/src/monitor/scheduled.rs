@@ -188,8 +188,8 @@ impl WidgetExecutionHost for ScheduledWidgetHost<'_> {
         .await
     }
     async fn persist_run(&self, run: &WidgetRun) -> Result<(), String> {
-        crate::dashboard::runs::write_run(
-            &self.state.store.app_db(),
+        datazen_feature_core::dashboard::runs::write_run(
+            &*self.state.store.app_db(),
             run,
             &crate::dashboard::store::load_monitor_settings(&self.state.store.get_settings().await),
         )

@@ -1,7 +1,11 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{TableDataResult, TableSchema};
-use crate::services::{metadata_schema, FilterCondition, OrderBy, QueryExecutor, SortCondition};
+use datazen_driver_api::schema_objects::{DatabaseObject, ObjectKind, PrivilegeGrant};
+use datazen_driver_api::{TableDataResult, TableSchema};
+use datazen_feature_core::services::query_executor::{
+    FilterCondition, OrderBy, QueryExecutor, SortCondition,
+};
+use datazen_feature_core::services::schema_scope::metadata_schema;
 use std::time::Instant;
 use tauri::State;
 
@@ -132,7 +136,7 @@ pub(crate) async fn get_er_data_impl(
             table.schema.as_deref(),
             None,
         );
-        let catalog = crate::db::LegacyCatalogReader::new(driver.as_ref());
+        let catalog = datazen_driver_api::LegacyCatalogReader::new(driver.as_ref());
         match state
             .schema_cache
             .get_table_schema(
@@ -169,17 +173,13 @@ pub(crate) async fn get_er_data_impl(
     Ok(schemas)
 }
 
-fn parse_objects_from_command(
-    data: &serde_json::Value,
-) -> Vec<crate::schema_objects::DatabaseObject> {
+fn parse_objects_from_command(data: &serde_json::Value) -> Vec<DatabaseObject> {
     data.get("objects")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default()
 }
 
-fn parse_grants_from_command(
-    data: &serde_json::Value,
-) -> Vec<crate::schema_objects::PrivilegeGrant> {
+fn parse_grants_from_command(data: &serde_json::Value) -> Vec<PrivilegeGrant> {
     data.get("grants")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default()
@@ -211,8 +211,8 @@ pub(crate) async fn get_database_objects_impl(
     db_session_id: String,
     kind: String,
     database: Option<String>,
-) -> Result<Vec<crate::schema_objects::DatabaseObject>, CommandError> {
-    if crate::schema_objects::ObjectKind::parse(&kind).is_none() {
+) -> Result<Vec<DatabaseObject>, CommandError> {
+    if ObjectKind::parse(&kind).is_none() {
         return Err(CommandError::Validation(format!(
             "Unknown object kind: {kind}"
         )));
@@ -259,7 +259,7 @@ pub(crate) async fn get_object_ddl_with_metadata_impl(
     target_name: Option<String>,
     database: Option<String>,
 ) -> Result<String, CommandError> {
-    if crate::schema_objects::ObjectKind::parse(&kind).is_none() {
+    if ObjectKind::parse(&kind).is_none() {
         return Err(CommandError::Validation(format!(
             "Unknown object kind: {kind}"
         )));
@@ -289,7 +289,7 @@ pub(crate) async fn get_object_ddl_with_metadata_impl(
 pub(crate) async fn get_privileges_impl(
     state: &AppState,
     db_session_id: String,
-) -> Result<Vec<crate::schema_objects::PrivilegeGrant>, CommandError> {
+) -> Result<Vec<PrivilegeGrant>, CommandError> {
     let data = run_schema_object_command(
         state,
         &db_session_id,
@@ -306,7 +306,7 @@ pub async fn get_database_objects(
     db_session_id: String,
     kind: String,
     database: Option<String>,
-) -> Result<Vec<crate::schema_objects::DatabaseObject>, CommandError> {
+) -> Result<Vec<DatabaseObject>, CommandError> {
     get_database_objects_impl(&state, db_session_id, kind, database).await
 }
 
@@ -340,7 +340,7 @@ pub async fn get_object_ddl(
 pub async fn get_privileges(
     state: State<'_, AppState>,
     db_session_id: String,
-) -> Result<Vec<crate::schema_objects::PrivilegeGrant>, CommandError> {
+) -> Result<Vec<PrivilegeGrant>, CommandError> {
     get_privileges_impl(&state, db_session_id).await
 }
 
