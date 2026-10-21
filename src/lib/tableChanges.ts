@@ -20,6 +20,15 @@ export interface PendingRowChange {
   currentValues: Record<string, Value | null>;
   changedColumns: string[];
   deleteMarked: boolean;
+  /**
+   * Marks this entry as a **new row draft** rather than a change to an existing
+   * row. Such a row has no identity yet, so `changedColumns` is the exact
+   * INSERT column list and a column absent from it keeps the database default
+   * (auto-increment, generated, `DEFAULT now()`). `null` in `currentValues`
+   * still means SQL `NULL`. The host never serializes `false`, which keeps
+   * fingerprints of insert-free plans byte-identical.
+   */
+  insertMarked?: boolean;
 }
 
 export interface PlannedStatement {
@@ -46,6 +55,8 @@ export interface RowChangePlan {
   table: TableChangeContext;
   updates: PlannedStatement[];
   deletes: PlannedStatement[];
+  /** New-row statements in request order: insertion order decides auto-increment. */
+  inserts?: PlannedStatement[];
   warnings: ChangeWarning[];
 }
 
@@ -78,7 +89,7 @@ export function tableChangeContextKey(context: TableChangeContext): string {
 }
 
 export interface CommitStatementResult {
-  operation: 'update' | 'delete';
+  operation: 'insert' | 'update' | 'delete';
   rowIdentity: RowIdentity;
   affectedRows: number;
 }
