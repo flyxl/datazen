@@ -8,7 +8,7 @@ use crate::schema_diff::diff_table_schemas;
 use crate::store::SyncTask;
 use crate::transfer::ir::{IRColumn, IRTable, IRType};
 
-use crate::db::{ColumnSchema, TableSchema, Value};
+use datazen_driver_api::{ColumnSchema, TableSchema, Value};
 
 fn ir_col(name: &str, ir_type: IRType, nullable: bool, is_primary_key: bool) -> IRColumn {
     IRColumn {
@@ -455,7 +455,7 @@ fn legacy_transfer_ir_compare_ipc_removed() {
 
 #[test]
 fn filter_tables_by_schema_keeps_matching_schema_only() {
-    use crate::db::{TableInfo, TableType};
+    use datazen_driver_api::{TableInfo, TableType};
 
     let tables = vec![
         TableInfo {

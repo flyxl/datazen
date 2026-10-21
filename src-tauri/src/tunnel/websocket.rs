@@ -1,7 +1,7 @@
 //! WebSocket tunnel: local TCP listener -> WS/WSS relay -> remote DB.
 //! Modes: `datazen_v1` (JSON open/opened + binary) | `raw_binary` (immediate binary).
 
-use crate::db::{DriverError, WebSocketTunnelConfig};
+use datazen_driver_api::{DriverError, WebSocketTunnelConfig};
 use futures_util::{SinkExt, StreamExt};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

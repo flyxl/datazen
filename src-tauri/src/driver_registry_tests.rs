@@ -1,29 +1,7 @@
-//! Database driver abstraction and shared types.
-//!
-//! Types and traits are re-exported from `datazen_driver_api` so that the rest
-//! of the main crate can continue using `crate::db::*` unchanged.
-//! Concrete drivers live in optional `packages/drivers/*` crates and register
-//! via inventory.
-//!
-//! ## 临时门面
-//!
-//! `DriverRegistry` 的实现已迁入 `packages/runtime/src/driver_registry/`
-//! （`datazen_runtime::driver_registry`），宿主不再自己实现驱动解析。
-//! 本文件只是 **re-export 门面**：`.registry` 模块与具名项原样转出，
-//! 使 `crate::db::registry::*` / `crate::db::DriverRegistry` 的既有调用点
-//! 零改动。等宿主连接层统一改走 runtime 路径后，本文件随之删除。
-
-pub use datazen_driver_api::*;
-
-pub use datazen_runtime::driver_registry::registry;
-
-pub use datazen_runtime::driver_registry::{
-    init_drivers, DriverCapabilities, DriverRegistry, ResourceProviderLookup,
-};
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use datazen_driver_api::iter_driver_factories;
+    use datazen_runtime::driver_registry::{DriverRegistry, ResourceProviderLookup};
     use std::sync::Arc;
 
     /// Every factory linked into this build resolves or explains itself, and

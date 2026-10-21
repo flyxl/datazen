@@ -70,18 +70,21 @@ pub use wapps::*;
 pub use window::*;
 pub use workflow::*;
 
-use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
-use crate::db::registry::DriverRegistry;
 use crate::mcp::McpClientManager;
-use crate::monitor::MonitorEngine;
+use crate::monitor::engine::MonitorEngine;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
-use crate::wapps::WappManager;
+use crate::workflow::history::WorkflowHistoryManager;
+use crate::workflow::registry::WorkflowRegistry;
 use crate::workflow::scheduler::WorkflowScheduler;
-use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+use datazen_ai_providers::AiProviderRegistry;
 use datazen_application::error::ApiError;
 use datazen_driver_api::QueryExecutionId;
+use datazen_feature_core::ai::context::SchemaContextBuilder;
+use datazen_feature_core::ai::prompt_resolver::PromptResolver;
+use datazen_runtime::driver_registry::registry::DriverRegistry;
 use datazen_runtime::schema_cache::SchemaCache;
+use datazen_workspace_apps::manager::WappManager;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -167,7 +170,7 @@ pub struct AppState {
     pub query_executions: Arc<QueryExecutionRegistry>,
     pub workflow_scheduler: Arc<WorkflowScheduler>,
     pub wapps: Arc<WappManager>,
-    pub cancel_registry: crate::ai::CancellationRegistry,
+    pub cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry,
     /// Owner-bound editor-session grants for AI tool execution (P6 §14.4).
     pub ai_grants: Arc<crate::commands::ai::AiGrantService>,
     /// P5 Wave-1：Schema Diff 的 JobRuntime 基础设施（仓储/预算/计划库）。
@@ -277,7 +280,7 @@ pub mod test_harness {
 
     pub async fn get_connections(
         state: &AppState,
-    ) -> Result<Vec<crate::db::ConnectionConfig>, String> {
+    ) -> Result<Vec<datazen_driver_api::ConnectionConfig>, String> {
         get_connections_impl(state).await.map_err(|e| e.to_string())
     }
 

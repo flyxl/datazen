@@ -1,8 +1,9 @@
 //! Desktop bindings for shared workflow execution.
 use crate::commands::AppState;
-use crate::workflow::{WorkflowCommandStep, WorkflowError};
 use datazen_ai_api::{ChatMessage, CompletionRequest, MessageRole};
 use datazen_feature_core::mcp::permission::McpPermissionMode;
+use datazen_feature_core::workflow::command::WorkflowCommandStep;
+use datazen_feature_core::workflow::error::WorkflowError;
 use datazen_feature_core::workflow::model::{
     StepExecutionResult, UnattendedDestructivePolicy, WorkflowMigrationOperation,
 };

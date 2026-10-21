@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use crate::data_sync::{quote_ident_sql, DataSyncError};
-use crate::db::SqlDialect;
+use datazen_driver_api::SqlDialect;
 
 use super::invalid;
 
@@ -87,7 +87,7 @@ mod tests {
 
     use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 
-    use crate::db::LegacySqlDialect;
+    use datazen_driver_api::LegacySqlDialect;
 
     use super::select_by_key_sql;
 

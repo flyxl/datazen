@@ -7,18 +7,18 @@ use std::collections::HashMap;
 // ── Helpers ─────────────────────────────────────────────────────────
 
 /// Count rows in a table on a given connection.
-pub(super) fn value_as_u64(value: &crate::db::Value) -> Option<u64> {
+pub(super) fn value_as_u64(value: &datazen_driver_api::Value) -> Option<u64> {
     match value {
-        crate::db::Value::Integer(n) if *n >= 0 => Some(*n as u64),
-        crate::db::Value::Float(f) if *f >= 0.0 && f.is_finite() => Some(*f as u64),
-        crate::db::Value::String(s) => s.parse().ok(),
+        datazen_driver_api::Value::Integer(n) if *n >= 0 => Some(*n as u64),
+        datazen_driver_api::Value::Float(f) if *f >= 0.0 && f.is_finite() => Some(*f as u64),
+        datazen_driver_api::Value::String(s) => s.parse().ok(),
         _ => None,
     }
 }
 
 pub(crate) async fn count_rows(
-    driver: &dyn crate::db::DatabaseDriver,
-    handle: &crate::db::ConnectionHandle,
+    driver: &dyn datazen_driver_api::DatabaseDriver,
+    handle: &datazen_driver_api::ConnectionHandle,
     family: &str,
     database: Option<&str>,
     schema: Option<&str>,
@@ -28,7 +28,11 @@ pub(crate) async fn count_rows(
     let qualified = qualify_relation_sql(family, database, schema, table, quote);
     let sql = format!("SELECT COUNT(*) FROM {qualified}");
     let res = driver
-        .query_at(handle, &sql, crate::db::SqlTarget::new(database, schema))
+        .query_at(
+            handle,
+            &sql,
+            datazen_driver_api::SqlTarget::new(database, schema),
+        )
         .await
         .cmd_err("count_rows")?;
     if let Some(row) = res.rows.first() {

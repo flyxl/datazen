@@ -7,7 +7,7 @@ use super::{
     schema_catalog_scope, uses_schema_scope, AppState, CmdExt, ColumnTypeOverride, CommandError,
     PlanOptions, SchemaDiffPlan, State, SyncSourceAdapter, SyncTargetAdapter,
 };
-use crate::db::{CatalogReader, LegacyCatalogReader};
+use datazen_driver_api::{CatalogReader, LegacyCatalogReader};
 use std::collections::HashSet;
 use std::sync::Arc;
 

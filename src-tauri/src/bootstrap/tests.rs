@@ -39,7 +39,7 @@ fn resolve_log_settings_reads_custom_level_and_path() {
 
 #[test]
 fn unique_driver_types_deduplicates_preserving_order() {
-    use crate::db::{ConnectionConfig, SslMode};
+    use datazen_driver_api::{ConnectionConfig, SslMode};
 
     fn conn(id: &str, db_type: &str) -> ConnectionConfig {
         ConnectionConfig {
@@ -196,9 +196,9 @@ fn should_auto_start_embedded_mcp_follows_setting() {
 
 #[tokio::test]
 async fn finish_app_state_wires_core_services() {
-    use crate::db::registry::DriverRegistry;
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
     use crate::transfer::adapter_registry::SyncAdapterRegistry;
+    use datazen_runtime::driver_registry::registry::DriverRegistry;
 
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
@@ -226,9 +226,9 @@ async fn finish_app_state_wires_core_services() {
 /// [tester] `finish_app_state` wires wapp manager and driver registry shells.
 #[tokio::test]
 async fn test_tester_finish_app_state_initializes_wapps_and_registry() {
-    use crate::db::registry::DriverRegistry;
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
     use crate::transfer::adapter_registry::SyncAdapterRegistry;
+    use datazen_runtime::driver_registry::registry::DriverRegistry;
 
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(

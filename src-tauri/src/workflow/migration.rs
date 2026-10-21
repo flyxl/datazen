@@ -9,8 +9,8 @@ use crate::commands::AppState;
 use crate::data_transfer::model::{TransferRunOptions, TransferRunSelection};
 use crate::data_transfer::TransferRunRequest;
 use crate::store::MigrationProfileRef;
-use crate::workflow::WorkflowError;
 use datazen_feature_core::workflow::context::WorkflowContext;
+use datazen_feature_core::workflow::error::WorkflowError;
 use datazen_feature_core::workflow::model::{
     StepExecutionResult, UnattendedDestructivePolicy, WorkflowMigrationOperation,
 };

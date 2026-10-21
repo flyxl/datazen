@@ -15,8 +15,8 @@ use crate::data_sync::{
     ComparisonResult, ConflictPolicy, DataSyncError, Endpoint, SyncOptions, SyncSourceFilter,
     TableChangeSet, TableMapping, TableMappingStatus, TableResult,
 };
-use crate::db::{LegacySqlDialect, SqlDialect};
-use crate::services::metadata_schema;
+use datazen_driver_api::{LegacySqlDialect, SqlDialect};
+use datazen_feature_core::services::schema_scope::metadata_schema;
 use futures_util::FutureExt;
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;

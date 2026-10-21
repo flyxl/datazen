@@ -1,13 +1,13 @@
 //! Table browsing uses independent target executions; it never borrows a tree/editor handle.
 use super::{AppState, CommandError, RowChangeTableContext};
-use crate::{
-    db::{TableDataResult, TableSchema, Value},
-    platform::into_command_error,
-    services::{FilterCondition, OrderBy, QueryExecutor, SortCondition},
-};
+use crate::platform::into_command_error;
 use datazen_application::{
     dto::requests::{CommandCall, ExecuteAtTargetRequest},
     sessions::ConnectionUseCases,
+};
+use datazen_driver_api::{TableDataResult, TableSchema, Value};
+use datazen_feature_core::services::query_executor::{
+    FilterCondition, OrderBy, QueryExecutor, SortCondition,
 };
 use datazen_platform_api::{
     context::RequestContext,
@@ -204,7 +204,7 @@ pub async fn read(
         .map_err(|_| CommandError::Validation("Invalid table schema result".into()))?;
     // SQL construction depends on the dialect contract only; execution below
     // still goes through the driver's explicit target path.
-    let dialect = crate::db::LegacySqlDialect::new(driver.as_ref());
+    let dialect = datazen_driver_api::LegacySqlDialect::new(driver.as_ref());
     let select = QueryExecutor::build_select_sql(
         &schema.table_name,
         &schema.columns,

@@ -68,7 +68,7 @@ impl WorkflowHistoryManager {
 mod tests {
     use super::*;
     use crate::store::HistoryDb;
-    use crate::workflow::workflows::{StepExecutionResult, StepStatus};
+    use datazen_feature_core::workflow::model::{StepExecutionResult, StepStatus};
 
     fn make_test_result(success: bool) -> WorkflowExecutionResult {
         WorkflowExecutionResult {

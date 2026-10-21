@@ -1,8 +1,11 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{TableDataResult, TableSchema};
-use crate::services::{metadata_schema, FilterCondition, OrderBy, QueryExecutor, SortCondition};
 use datazen_driver_api::schema_objects::{DatabaseObject, ObjectKind, PrivilegeGrant};
+use datazen_driver_api::{TableDataResult, TableSchema};
+use datazen_feature_core::services::query_executor::{
+    FilterCondition, OrderBy, QueryExecutor, SortCondition,
+};
+use datazen_feature_core::services::schema_scope::metadata_schema;
 use std::time::Instant;
 use tauri::State;
 
@@ -133,7 +136,7 @@ pub(crate) async fn get_er_data_impl(
             table.schema.as_deref(),
             None,
         );
-        let catalog = crate::db::LegacyCatalogReader::new(driver.as_ref());
+        let catalog = datazen_driver_api::LegacyCatalogReader::new(driver.as_ref());
         match state
             .schema_cache
             .get_table_schema(

@@ -1,8 +1,8 @@
 //! Fixtures shared across the store test modules.
 
 use super::super::*;
-use crate::db::{ConnectionConfig, SshTunnelConfig, SslMode};
 use chrono::Utc;
+use datazen_driver_api::{ConnectionConfig, SshTunnelConfig, SslMode};
 
 pub(super) fn use_file_key_backend() {
     std::env::set_var("DATAZEN_KEYRING", "file");

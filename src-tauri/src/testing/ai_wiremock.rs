@@ -152,7 +152,7 @@ impl TestAppState {
     pub async fn with_wiremock_ai_options(
         opts: super::mock_driver::MockDriverOptions,
     ) -> (Self, WiremockAi) {
-        use crate::ai::register_ai_providers;
+        use datazen_ai_providers::register_ai_providers;
 
         let mock = WiremockAi::start().await;
         mock.mount_models_list().await;

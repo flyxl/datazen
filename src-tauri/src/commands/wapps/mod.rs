@@ -13,8 +13,10 @@ use super::error::{resolve_override_path, CmdExt, CommandError, OVERRIDE_DISABLE
 use super::AppState;
 use crate::wapps::{
     install::{install_from_dir, install_from_zip},
-    storage_get, storage_remove, storage_set, LoadedWapp, WappManifest,
+    WappManifest,
 };
+use datazen_workspace_apps::manager::LoadedWapp;
+use datazen_workspace_apps::storage::{storage_get, storage_remove, storage_set};
 
 pub const WAPPS_CHANGED_EVENT: &str = "wapps:changed";
 

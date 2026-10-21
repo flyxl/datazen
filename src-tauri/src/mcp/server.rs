@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn test_resolve_query_limit_none_defaults_to_100() {
         assert_eq!(
-            crate::services::db_tools::resolve_query_limit(None),
+            datazen_feature_core::services::db_tools::resolve_query_limit(None),
             Some(100)
         );
     }
@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn test_resolve_query_limit_some_passthrough() {
         assert_eq!(
-            crate::services::db_tools::resolve_query_limit(Some(50)),
+            datazen_feature_core::services::db_tools::resolve_query_limit(Some(50)),
             Some(50)
         );
     }
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn test_resolve_query_limit_some_capped_at_max() {
         assert_eq!(
-            crate::services::db_tools::resolve_query_limit(Some(999_999)),
+            datazen_feature_core::services::db_tools::resolve_query_limit(Some(999_999)),
             Some(50_000)
         );
     }

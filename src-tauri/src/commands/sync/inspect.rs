@@ -6,7 +6,7 @@ use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
 use crate::data_sync::api::{filter_tables_by_schema, is_self_sync, resolve_db_name};
 use crate::data_sync::{classify_tables, require_data_sync_family, TableMapping, TableResult};
-use crate::services::metadata_schema;
+use datazen_feature_core::services::schema_scope::metadata_schema;
 
 pub(crate) async fn inspect_data_sync_impl(
     state: &AppState,
@@ -88,7 +88,7 @@ pub(crate) async fn inspect_data_sync_impl(
     let mut source_schema_errors = HashMap::new();
     for table in src_tables
         .iter()
-        .filter(|t| matches!(t.table_type, crate::db::TableType::Table))
+        .filter(|t| matches!(t.table_type, datazen_driver_api::TableType::Table))
     {
         let table_schema = metadata_schema(
             src_driver.as_ref(),
@@ -113,7 +113,7 @@ pub(crate) async fn inspect_data_sync_impl(
     let mut target_schema_errors = HashMap::new();
     for table in tgt_tables
         .iter()
-        .filter(|t| matches!(t.table_type, crate::db::TableType::Table))
+        .filter(|t| matches!(t.table_type, datazen_driver_api::TableType::Table))
     {
         let table_schema = metadata_schema(
             tgt_driver.as_ref(),

@@ -77,10 +77,10 @@ fn transactional_pk_schema(table: &str) -> TableSchema {
 
 fn two_table_safe_options() -> MockDriverOptions {
     let mut options = safe_options();
-    options.tables.push(crate::db::TableInfo {
+    options.tables.push(datazen_driver_api::TableInfo {
         name: "orders".into(),
         schema: None,
-        table_type: crate::db::TableType::Table,
+        table_type: datazen_driver_api::TableType::Table,
         row_count: Some(2),
     });
     options.table_schemas_by_database.insert(

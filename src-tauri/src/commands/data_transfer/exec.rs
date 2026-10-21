@@ -30,8 +30,8 @@ pub(super) async fn load_sql_source_snapshot(
     job: &TransferJob,
 ) -> Result<
     (
-        Arc<dyn crate::db::DatabaseDriver>,
-        crate::db::ConnectionHandle,
+        Arc<dyn datazen_driver_api::DatabaseDriver>,
+        datazen_driver_api::ConnectionHandle,
         Vec<crate::data_transfer::TableInspectResult>,
         HashMap<String, datazen_driver_api::TableSchema>,
     ),
@@ -47,7 +47,7 @@ pub(super) async fn load_sql_source_snapshot(
     let handle = context.handle.clone();
     let config = context.config.clone();
     let mut source = job.source.clone();
-    source.schema = crate::services::metadata_schema(
+    source.schema = datazen_feature_core::services::schema_scope::metadata_schema(
         driver.as_ref(),
         source.normalized_schema(),
         None,
@@ -396,18 +396,18 @@ pub(super) async fn resolve_transfer_adapters(
 }
 
 pub(super) struct ValidatedTransferContext {
-    pub(super) src_config: crate::db::ConnectionConfig,
-    pub(super) tgt_config: crate::db::ConnectionConfig,
-    pub(super) src_driver: Arc<dyn crate::db::DatabaseDriver>,
-    pub(super) src_handle: crate::db::ConnectionHandle,
-    pub(super) tgt_driver: Arc<dyn crate::db::DatabaseDriver>,
-    pub(super) tgt_handle: crate::db::ConnectionHandle,
+    pub(super) src_config: datazen_driver_api::ConnectionConfig,
+    pub(super) tgt_config: datazen_driver_api::ConnectionConfig,
+    pub(super) src_driver: Arc<dyn datazen_driver_api::DatabaseDriver>,
+    pub(super) src_handle: datazen_driver_api::ConnectionHandle,
+    pub(super) tgt_driver: Arc<dyn datazen_driver_api::DatabaseDriver>,
+    pub(super) tgt_handle: datazen_driver_api::ConnectionHandle,
 }
 
 async fn schema_fingerprint_for_side(
     endpoint: &crate::data_transfer::model::Endpoint,
-    driver: &dyn crate::db::DatabaseDriver,
-    handle: &crate::db::ConnectionHandle,
+    driver: &dyn datazen_driver_api::DatabaseDriver,
+    handle: &datazen_driver_api::ConnectionHandle,
     job: &TransferJob,
     source: bool,
 ) -> Result<String, CommandError> {

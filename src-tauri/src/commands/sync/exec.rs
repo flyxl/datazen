@@ -20,8 +20,8 @@ use crate::data_sync::{
     DataSyncError, ExecutionResult, IdentityInsertTarget, StatementBatchSource, StatementExecutor,
     SyncOptions,
 };
-use crate::db::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 use async_trait::async_trait;
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::JobState;
 use futures_util::FutureExt;

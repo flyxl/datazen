@@ -1,6 +1,6 @@
 //! Desktop file picker and source/event bindings for the portable export service.
 use super::{error::CommandError, AppState};
-use datazen_driver_api::{DatabaseDriver, Value};
+use datazen_driver_api::DatabaseDriver;
 pub use datazen_feature_core::export::*;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
@@ -8,7 +8,7 @@ mod stream;
 struct DesktopExportSource {
     platform: crate::platform::PlatformEntry,
     runtime: crate::services::runtime_command_source::RuntimeCommandSource,
-    registry: Arc<crate::db::DriverRegistry>,
+    registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
     cancel: datazen_runtime::job::CancelToken,
 }
 #[async_trait::async_trait]
@@ -50,7 +50,7 @@ impl ExportSource for DesktopExportSource {
 }
 struct ExportOperation {
     store: Arc<crate::store::Store>,
-    registry: Arc<crate::db::DriverRegistry>,
+    registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
     platform: crate::platform::PlatformEntry,
     request: ExportTablesRequest,
     app: AppHandle,
@@ -151,6 +151,7 @@ pub async fn export_tables_stream(
 mod tests {
     use super::*;
     use datazen_driver_api::ColumnInfo;
+    use datazen_driver_api::Value;
     use datazen_feature_core::error::FeatureError as CommandError;
     use std::sync::Mutex;
 

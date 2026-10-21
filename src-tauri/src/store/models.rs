@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::ai::AiProviderConfig;
-use crate::db::{ConnectionConfig, SavedTunnel};
+use datazen_ai_api::AiProviderConfig;
+use datazen_driver_api::{ConnectionConfig, SavedTunnel};
 
 use super::settings::AppSettings;
 
@@ -200,6 +200,6 @@ pub(crate) struct StoreCache {
     pub(super) schema_diff_profiles: Vec<crate::schema_diff::SchemaDiffProfile>,
     pub(super) schema_diff_profiles_loaded: bool,
     pub(super) ai_config: Option<AiProviderConfig>,
-    pub(super) ai_settings_config: Option<crate::ai::AiSettingsConfig>,
+    pub(super) ai_settings_config: Option<datazen_ai_api::AiSettingsConfig>,
     pub(super) ai_config_loaded: bool,
 }

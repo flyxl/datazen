@@ -56,8 +56,8 @@ pub fn mock_options(rows: &[(i64, &str)]) -> MockDriverOptions {
             .iter()
             .map(|(id, name)| {
                 vec![
-                    Some(crate::db::Value::Integer(*id)),
-                    Some(crate::db::Value::String((*name).to_string())),
+                    Some(datazen_driver_api::Value::Integer(*id)),
+                    Some(datazen_driver_api::Value::String((*name).to_string())),
                 ]
             })
             .collect(),

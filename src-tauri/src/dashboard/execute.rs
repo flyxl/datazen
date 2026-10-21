@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use crate::commands::AppState;
 use crate::dashboard::runs::write_run;
 use crate::dashboard::store::load_monitor_settings;
-use crate::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
+use crate::dashboard::types::{DashboardWidget, WidgetRun};
 use crate::store::AppDb;
 use crate::store::AppSettings;
 use crate::workflow::WorkflowExecutor;
@@ -26,10 +26,7 @@ pub enum DashboardExecuteError {
     Store(#[from] crate::dashboard::store::DashboardStoreError),
 }
 
-pub use datazen_feature_core::dashboard::execute::{
-    build_error_run, build_timeout_run, extract_table_from_execution, parse_final_output_as_table,
-    parse_step_result_value,
-};
+pub use datazen_feature_core::dashboard::execute::build_error_run;
 
 /// Build and persist an error-status run using monitor retention settings.
 #[allow(dead_code)]
@@ -103,6 +100,11 @@ mod tests {
     use crate::dashboard::runs::{get_run, list_run_index};
     use crate::dashboard::types::{RefreshPolicy, ViewMode, WidgetLayout};
     use crate::store::AppSettings;
+    use datazen_feature_core::dashboard::execute::{
+        build_timeout_run, extract_table_from_execution, parse_final_output_as_table,
+        parse_step_result_value,
+    };
+    use datazen_feature_core::dashboard::types::WidgetRunStatus;
     use datazen_feature_core::workflow::model::{
         StepExecutionResult, StepStatus, WorkflowExecutionResult,
     };

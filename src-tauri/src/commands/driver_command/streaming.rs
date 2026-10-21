@@ -39,7 +39,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
     let driver = &resolved.driver;
     let handle = &resolved.handle;
 
-    let catalog = crate::db::LegacyCommandCatalog::new(driver.as_ref());
+    let catalog = datazen_driver_api::LegacyCommandCatalog::new(driver.as_ref());
     let definition = catalog
         .command_definitions()
         .into_iter()
@@ -111,7 +111,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
     );
     tracing::debug!(
         db_session_id,
-        sql_preview = %crate::log_redact::sql_preview_for_log(&sql),
+        sql_preview = %datazen_platform_infra::redaction::sql_preview_for_log(&sql),
         "execute_driver_command_stream sql"
     );
 
@@ -183,7 +183,10 @@ pub(crate) async fn execute_driver_command_stream_impl(
             &execution_id,
             &sql,
             limit,
-            crate::db::SqlTarget::new(target_database.as_deref(), target_schema.as_deref()),
+            datazen_driver_api::SqlTarget::new(
+                target_database.as_deref(),
+                target_schema.as_deref(),
+            ),
             wrapped,
         )
         .await;

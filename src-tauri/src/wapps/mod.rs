@@ -35,4 +35,4 @@ pub use datazen_workspace_apps::{install, manifest, storage, WAPP_API_VERSION};
 #[allow(unused_imports)]
 pub use protocol::{handle_datazen_request, parse_datazen_uri, WAPPS_OPEN_PAGE_EVENT};
 
-pub use datazen_workspace_apps::manager::{LoadedWapp, WappManager};
+pub use datazen_workspace_apps::manager::WappManager;

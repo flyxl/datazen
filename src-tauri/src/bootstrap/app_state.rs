@@ -4,17 +4,17 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::ai::SchemaContextBuilder;
 use crate::commands::AppState;
-use crate::db::init_drivers;
-use crate::monitor::MonitorEngine;
+use crate::monitor::engine::MonitorEngine;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::{mcp, redis_flush_gate, wapps, workflow};
+use datazen_feature_core::ai::context::SchemaContextBuilder;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::job::RecoveryFilter;
 use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
+use datazen_runtime::driver_registry::init_drivers;
 use datazen_runtime::job::{JobClock, SystemJobClock};
 use datazen_runtime::schema_cache::SchemaCache;
 
@@ -162,7 +162,7 @@ pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<
 
 pub(crate) fn finish_app_state(
     store: Arc<Store>,
-    registry: Arc<crate::db::DriverRegistry>,
+    registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
     sync_adapters: Arc<crate::transfer::adapter_registry::SyncAdapterRegistry>,
     prompts_dir: Option<PathBuf>,
 ) -> AppState {
@@ -195,11 +195,13 @@ pub(crate) fn finish_app_state(
         store,
         schema_cache: schema_cache.clone(),
         sync_adapters,
-        ai_registry: Arc::new(crate::ai::AiProviderRegistry::with_http_client(
+        ai_registry: Arc::new(datazen_ai_providers::AiProviderRegistry::with_http_client(
             datazen_ai_providers::http::HttpClient::desktop(),
         )),
         schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_cache, schema_source)),
-        prompt_resolver: Arc::new(crate::ai::PromptResolver::new(&data_dir, prompts_dir)),
+        prompt_resolver: Arc::new(
+            datazen_feature_core::ai::prompt_resolver::PromptResolver::new(&data_dir, prompts_dir),
+        ),
         workflow_registry: Arc::new(workflow::WorkflowRegistry::new(app_db, data_dir.clone())),
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
@@ -209,7 +211,7 @@ pub(crate) fn finish_app_state(
         query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
         wapps: wapp_manager,
-        cancel_registry: crate::ai::CancellationRegistry::default(),
+        cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry::default(),
         ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
         desktop_job_host,

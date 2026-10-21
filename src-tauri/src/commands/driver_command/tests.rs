@@ -93,7 +93,7 @@ fn request_defaults_input_to_null_when_omitted() {
 #[test]
 fn debug_sql_preview_redacts_secrets() {
     let sql = "SELECT * FROM t WHERE url = 'mysql://root:hunter2@127.0.0.1/app'";
-    let redacted = crate::log_redact::sql_preview_for_log(sql);
+    let redacted = datazen_platform_infra::redaction::sql_preview_for_log(sql);
     assert!(!redacted.contains("hunter2"), "{redacted}");
     assert!(redacted.contains("mysql://***@"), "{redacted}");
 }

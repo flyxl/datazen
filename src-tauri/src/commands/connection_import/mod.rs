@@ -6,6 +6,4 @@
 //! environment-specific: the Tauri commands, the native file dialog and the
 //! store merge.
 
-pub use datazen_feature_core::connection_import::*;
-
 pub(crate) mod ipc;

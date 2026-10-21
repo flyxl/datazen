@@ -1,6 +1,6 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{ConnectionConfig, DriverCategory, ServerInfo};
+use datazen_driver_api::{ConnectionConfig, DriverCategory, ServerInfo};
 use datazen_platform_api::error::ApiErrorCode;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -35,7 +35,7 @@ fn redact_connection_secrets(config: &mut ConnectionConfig) {
     }
 }
 
-fn redact_ssh_secrets(ssh: &mut crate::db::SshTunnelConfig) {
+fn redact_ssh_secrets(ssh: &mut datazen_driver_api::SshTunnelConfig) {
     ssh.password = None;
     ssh.passphrase = None;
     if let Some(jump) = ssh.jump.as_deref_mut() {
@@ -73,8 +73,8 @@ fn merge_missing_connection_secrets(config: &mut ConnectionConfig, saved: Connec
 }
 
 fn merge_missing_ssh_secrets(
-    current: &mut crate::db::SshTunnelConfig,
-    saved: crate::db::SshTunnelConfig,
+    current: &mut datazen_driver_api::SshTunnelConfig,
+    saved: datazen_driver_api::SshTunnelConfig,
 ) {
     if current.password.is_none() {
         current.password = saved.password;
@@ -591,8 +591,8 @@ pub async fn get_available_drivers(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{HttpProxyTunnelConfig, SshTunnelConfig, WebSocketTunnelConfig};
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use datazen_driver_api::{HttpProxyTunnelConfig, SshTunnelConfig, WebSocketTunnelConfig};
 
     #[tokio::test]
     async fn get_connections_empty_then_saved() {
@@ -850,7 +850,7 @@ mod tests {
             .register_test_driver_with_capabilities(
                 "postgres",
                 test.mock.clone(),
-                crate::db::DriverCapabilities {
+                datazen_runtime::driver_registry::DriverCapabilities {
                     has_multi_database: false,
                     supports_cancel_query: true,
                     supports_query_execution_cancel: true,
@@ -1102,9 +1102,17 @@ mod coverage_tests {
     async fn get_connection_info_reports_driver_category() {
         let harness = TestAppState::new().await;
         for (driver_type, expected_category, category) in [
-            ("kv-mock", "keyvalue", crate::db::DriverCategory::KeyValue),
-            ("doc-mock", "document", crate::db::DriverCategory::Document),
-            ("postgres", "sql", crate::db::DriverCategory::Sql),
+            (
+                "kv-mock",
+                "keyvalue",
+                datazen_driver_api::DriverCategory::KeyValue,
+            ),
+            (
+                "doc-mock",
+                "document",
+                datazen_driver_api::DriverCategory::Document,
+            ),
+            ("postgres", "sql", datazen_driver_api::DriverCategory::Sql),
         ] {
             let opts = MockDriverOptions {
                 category,

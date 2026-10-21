@@ -92,8 +92,8 @@ async fn dispatch_channels(
                 if let Some(url) = settings.default_webhook_url.as_deref() {
                     if let Err(e) = notify_webhook(client, url, payload).await {
                         tracing::warn!(
-                            error = %crate::log_redact::redact_secrets_for_log(&e.to_string()),
-                            url = %crate::log_redact::redact_url_for_log(url),
+                            error = %datazen_platform_infra::redaction::redact_secrets_for_log(&e.to_string()),
+                            url = %datazen_platform_infra::redaction::redact_url_for_log(url),
                             "webhook alert failed"
                         );
                     }

@@ -1,15 +1,16 @@
 //! Shared helpers for AI command handlers.
 
-use crate::ai::*;
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
 use datazen_ai_api::AiProviderConfig;
+use datazen_ai_api::*;
+use datazen_feature_core::ai::response::{find_first_balanced_json, repair_json};
 use datazen_platform_api::dto::session::SessionView;
 use datazen_runtime::application::{LiveConnectionLease, LivePurpose};
 use std::sync::Arc;
 use tauri::{Emitter, WebviewWindow};
 
-pub(crate) use datazen_feature_core::ai::response::{inject_language_hint, language_hint};
+pub(crate) use datazen_feature_core::ai::response::language_hint;
 
 /// Delivers streaming chunks to the UI (or test collector).
 pub(crate) type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send + Sync>;
@@ -46,7 +47,7 @@ pub(crate) async fn resolve_ai(
     let safe_endpoint = config
         .endpoint
         .as_deref()
-        .map(crate::log_redact::redact_url_for_log);
+        .map(datazen_platform_infra::redaction::redact_url_for_log);
     tracing::debug!(
         provider = %config.provider_type,
         model = %config.model,
@@ -118,9 +119,6 @@ pub(crate) async fn runtime_session(
         })
 }
 
-pub(crate) use datazen_feature_core::ai::response::{
-    extract_json_boundary, repair_json, truncate_str,
-};
 pub(crate) fn parse_ai_json<T: serde::de::DeserializeOwned>(
     raw: &str,
     finish_reason: Option<&str>,
@@ -162,13 +160,12 @@ pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
     }
 }
 
-pub(crate) use datazen_feature_core::ai::response::{
-    find_first_balanced_json, strip_fences_all, strip_markdown_fences,
-};
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_feature_core::ai::response::{
+        extract_json_boundary, strip_fences_all, strip_markdown_fences, truncate_str,
+    };
 
     // ── find_first_balanced_json ──
 

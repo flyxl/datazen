@@ -138,7 +138,7 @@ impl DataZenMcpServer {
             .map_err(|e| tool_help::tool_error("query", &e))?;
         let mut command_input = serde_json::json!({
             "sql": input.sql,
-            "limit": crate::services::db_tools::resolve_query_limit(input.limit),
+            "limit": datazen_feature_core::services::db_tools::resolve_query_limit(input.limit),
         });
         self.app_state
             .store
@@ -249,18 +249,21 @@ impl DataZenMcpServer {
                 )
             })?;
 
-        let result = crate::workflow::WorkflowExecutor::execute_with_options(
-            &workflow,
-            self.app_state.as_ref(),
-            input.connection_id.as_deref(),
-            &input.variables,
-            crate::workflow::WorkflowExecuteOptions {
-                permission_mode: Some(self.permission_mode),
-                query_row_limit: Some(crate::workflow::WORKFLOW_QUERY_ROW_LIMIT),
-            },
-        )
-        .await
-        .map_err(|e| McpError::internal_error(e, None))?;
+        let result =
+            datazen_feature_core::workflow::executor::WorkflowExecutor::execute_with_options(
+                &workflow,
+                self.app_state.as_ref(),
+                input.connection_id.as_deref(),
+                &input.variables,
+                datazen_feature_core::workflow::executor::WorkflowExecuteOptions {
+                    permission_mode: Some(self.permission_mode),
+                    query_row_limit: Some(
+                        datazen_feature_core::workflow::executor::WORKFLOW_QUERY_ROW_LIMIT,
+                    ),
+                },
+            )
+            .await
+            .map_err(|e| McpError::internal_error(e, None))?;
 
         Ok(result.final_output)
     }

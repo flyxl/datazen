@@ -36,9 +36,9 @@ use crate::data_sync::{
     require_data_sync_family, DataSyncError, Endpoint, RowChange, SqlStatement, SyncOptions,
     SyncSourceFilter, TableMapping,
 };
-use crate::db::LegacySqlDialect;
-use crate::services::metadata_schema;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
+use datazen_driver_api::LegacySqlDialect;
+use datazen_feature_core::services::schema_scope::metadata_schema;
 
 use super::super::{resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas};
 use super::keyset_source::DriverKeysetSource;

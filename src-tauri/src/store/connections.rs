@@ -1,4 +1,4 @@
-use crate::db::ConnectionConfig;
+use datazen_driver_api::ConnectionConfig;
 
 use super::{Store, StoreError};
 

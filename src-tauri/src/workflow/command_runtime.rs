@@ -1,9 +1,9 @@
 //! Runtime bridge between Workflow Command Steps and Driver Commands.
 
 use crate::commands::AppState;
-use crate::workflow::WorkflowCommandStep;
 use datazen_driver_api::CommandResult;
 use datazen_feature_core::mcp::permission::McpPermissionMode;
+use datazen_feature_core::workflow::command::WorkflowCommandStep;
 use datazen_feature_core::workflow::error::WorkflowError;
 
 pub use datazen_feature_core::workflow::command_runtime::{

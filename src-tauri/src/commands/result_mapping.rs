@@ -1,6 +1,6 @@
 //! Conservative query-result mapping. SQL identifies a candidate relation only;
 //! the driver must confirm it on the original pinned resource before verification.
-use crate::db::{ColumnInfo, TableSchema};
+use datazen_driver_api::{ColumnInfo, TableSchema};
 use datazen_platform_api::{
     id::ConnectionId,
     target::{ExecutionTarget, NamespaceTarget, ObjectTarget},

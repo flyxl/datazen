@@ -563,14 +563,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_context_dir_from_state_uses_default_subdir() {
-        use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
         use crate::commands::AppState;
-        use crate::db::DriverRegistry;
         use crate::mcp::client::McpClientManager;
-        use crate::monitor::MonitorEngine;
+        use crate::monitor::engine::MonitorEngine;
         use crate::store::Store;
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
-        use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+        use crate::workflow::history::WorkflowHistoryManager;
+        use crate::workflow::registry::WorkflowRegistry;
+        use datazen_ai_providers::AiProviderRegistry;
+        use datazen_feature_core::ai::context::SchemaContextBuilder;
+        use datazen_feature_core::ai::prompt_resolver::PromptResolver;
+        use datazen_runtime::driver_registry::DriverRegistry;
         use datazen_runtime::schema_cache::SchemaCache;
         use std::sync::Arc;
 
@@ -608,8 +611,10 @@ mod tests {
             mcp_client_manager: Arc::new(McpClientManager::new()),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
-            wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
-            cancel_registry: crate::ai::CancellationRegistry::default(),
+            wapps: Arc::new(datazen_workspace_apps::manager::WappManager::new(
+                data_dir.join("wapps"),
+            )),
+            cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry::default(),
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
@@ -623,14 +628,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_context_dir_honors_custom_setting() {
-        use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
         use crate::commands::AppState;
-        use crate::db::DriverRegistry;
         use crate::mcp::client::McpClientManager;
-        use crate::monitor::MonitorEngine;
+        use crate::monitor::engine::MonitorEngine;
         use crate::store::{AppSettings, Store};
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
-        use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+        use crate::workflow::history::WorkflowHistoryManager;
+        use crate::workflow::registry::WorkflowRegistry;
+        use datazen_ai_providers::AiProviderRegistry;
+        use datazen_feature_core::ai::context::SchemaContextBuilder;
+        use datazen_feature_core::ai::prompt_resolver::PromptResolver;
+        use datazen_runtime::driver_registry::DriverRegistry;
         use datazen_runtime::schema_cache::SchemaCache;
         use std::sync::Arc;
 
@@ -676,8 +684,10 @@ mod tests {
             mcp_client_manager: Arc::new(McpClientManager::new()),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
-            wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
-            cancel_registry: crate::ai::CancellationRegistry::default(),
+            wapps: Arc::new(datazen_workspace_apps::manager::WappManager::new(
+                data_dir.join("wapps"),
+            )),
+            cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry::default(),
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,

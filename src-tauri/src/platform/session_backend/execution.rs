@@ -57,7 +57,7 @@ impl DesktopSessionBackend {
                 .get(&config.database_type)
                 .await
                 .ok_or(rc::ProviderError::CapabilityUnsupported)?;
-            let catalog = crate::db::LegacyCommandCatalog::new(driver.as_ref());
+            let catalog = datazen_driver_api::LegacyCommandCatalog::new(driver.as_ref());
             if !catalog
                 .command_definitions()
                 .iter()

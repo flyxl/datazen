@@ -2,7 +2,7 @@
 mod input;
 use super::{AppState, CommandError};
 use datazen_feature_core::restore_job::{
-    RestoreApplyJob, RestorePlan, UnsupportedRestoreGateway, RESTORE_APPLY_KIND,
+    RestoreApplyJob, UnsupportedRestoreGateway, RESTORE_APPLY_KIND,
 };
 use datazen_platform_api::{
     context::OwnerRef,
@@ -76,8 +76,12 @@ pub(crate) async fn restore_from_native_file(
         ));
     }
     config.database = database;
-    config.schema =
-        crate::services::metadata_schema(driver.as_ref(), None, None, config.schema.as_deref());
+    config.schema = datazen_feature_core::services::schema_scope::metadata_schema(
+        driver.as_ref(),
+        None,
+        None,
+        config.schema.as_deref(),
+    );
     let identity = datazen_feature_core::services::migration_endpoint::checked_identify(
         &config,
         driver.as_ref(),

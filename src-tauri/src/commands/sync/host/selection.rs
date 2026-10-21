@@ -7,7 +7,7 @@
 
 use crate::data_sync::job::artifact::{ChangeBlock, ChangeSetArtifact};
 use crate::data_sync::job::host::ArtifactStoreGuard;
-use crate::data_sync::{DataSyncError, SyncOptions};
+use crate::data_sync::DataSyncError;
 
 use super::{invalid, state};
 use crate::data_sync::plan_store as plans;

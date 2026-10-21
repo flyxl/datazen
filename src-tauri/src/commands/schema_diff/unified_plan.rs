@@ -177,8 +177,10 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
     let target_driver = target_context.driver.clone();
     let target_handle = target_context.handle.clone();
     // 表结构读取走窄契约，而不是整块驱动。
-    let source_catalog_reader = crate::db::LegacyCatalogReader::new(source_driver.as_ref());
-    let target_catalog_reader = crate::db::LegacyCatalogReader::new(target_driver.as_ref());
+    let source_catalog_reader =
+        datazen_driver_api::LegacyCatalogReader::new(source_driver.as_ref());
+    let target_catalog_reader =
+        datazen_driver_api::LegacyCatalogReader::new(target_driver.as_ref());
     let target_dependency_schema_scope = if uses_schema_scope(&target_config.database_type) {
         target_schema_scope.or(target_driver.default_schema())
     } else {
@@ -613,7 +615,7 @@ pub(super) async fn read_target_table_identities(
 ) -> Result<Vec<SchemaObjectIdentity>, CommandError> {
     let metadata_database = super::schema_catalog_database(dialect, Some(database));
     // 表清单读取走窄契约，而不是整块驱动。
-    let catalog = crate::db::LegacyCatalogReader::new(driver);
+    let catalog = datazen_driver_api::LegacyCatalogReader::new(driver);
     let tables = catalog
         .get_tables(handle, metadata_database, None)
         .await

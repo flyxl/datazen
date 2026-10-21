@@ -11,8 +11,6 @@ use super::types::Dashboard;
 use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
 use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowVisibility};
 
-pub use datazen_feature_core::dashboard::archive::FORMAT;
-
 #[derive(Debug, Error)]
 pub enum DashboardExportError {
     #[error("validation: {0}")]
@@ -157,6 +155,7 @@ mod tests {
     };
     use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
     use chrono::Utc;
+    use datazen_feature_core::dashboard::archive::FORMAT;
 
     fn open_db() -> std::sync::Arc<AppDb> {
         let db = AppDb::open_in_memory().unwrap();

@@ -8,14 +8,14 @@ use tauri::State;
 
 pub(crate) async fn workflow_list_impl(
     state: &AppState,
-) -> Result<Vec<crate::workflow::WorkflowListItem>, CommandError> {
+) -> Result<Vec<datazen_feature_core::workflow::model::WorkflowListItem>, CommandError> {
     Ok(state.workflow_registry.list().await)
 }
 
 #[tauri::command]
 pub async fn workflow_list(
     state: State<'_, AppState>,
-) -> Result<Vec<crate::workflow::WorkflowListItem>, CommandError> {
+) -> Result<Vec<datazen_feature_core::workflow::model::WorkflowListItem>, CommandError> {
     workflow_list_impl(&state).await
 }
 
@@ -24,14 +24,14 @@ pub(crate) async fn workflow_execute_impl(
     workflow_id: String,
     variables: serde_json::Value,
     connection_id: Option<String>,
-) -> Result<crate::workflow::WorkflowExecutionResult, CommandError> {
+) -> Result<datazen_feature_core::workflow::model::WorkflowExecutionResult, CommandError> {
     let workflow = state
         .workflow_registry
         .get(&workflow_id)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("Workflow '{workflow_id}' not found")))?;
 
-    let result = crate::workflow::WorkflowExecutor::execute(
+    let result = datazen_feature_core::workflow::executor::WorkflowExecutor::execute(
         &workflow,
         state,
         connection_id.as_deref(),
@@ -41,7 +41,9 @@ pub(crate) async fn workflow_execute_impl(
     .cmd_err("workflow_execute")?;
 
     // Dashboard-owned hidden workflows must not pollute the user-facing history list.
-    if workflow.visibility != crate::workflow::WorkflowVisibility::DashboardHidden {
+    if workflow.visibility
+        != datazen_feature_core::workflow::model::WorkflowVisibility::DashboardHidden
+    {
         let history_variables =
             crate::workflow::migration::sanitize_variables(&workflow, &variables);
         if let Err(e) = state
@@ -62,14 +64,14 @@ pub async fn workflow_execute(
     workflow_id: String,
     variables: serde_json::Value,
     connection_id: Option<String>,
-) -> Result<crate::workflow::WorkflowExecutionResult, CommandError> {
+) -> Result<datazen_feature_core::workflow::model::WorkflowExecutionResult, CommandError> {
     workflow_execute_impl(&state, workflow_id, variables, connection_id).await
 }
 
 #[tauri::command]
 pub async fn workflow_save(
     state: State<'_, AppState>,
-    workflow: crate::workflow::WorkflowDefinition,
+    workflow: datazen_feature_core::workflow::model::WorkflowDefinition,
 ) -> Result<(), CommandError> {
     state
         .workflow_registry
@@ -82,7 +84,7 @@ pub async fn workflow_save(
 pub async fn workflow_save_yaml(
     state: State<'_, AppState>,
     yaml: String,
-) -> Result<crate::workflow::WorkflowDefinition, CommandError> {
+) -> Result<datazen_feature_core::workflow::model::WorkflowDefinition, CommandError> {
     state
         .workflow_registry
         .save_workflow_yaml(&yaml)
@@ -142,7 +144,7 @@ pub async fn workflow_get_dir(state: State<'_, AppState>) -> Result<String, Comm
 pub async fn workflow_get(
     state: State<'_, AppState>,
     workflow_id: String,
-) -> Result<crate::workflow::WorkflowDefinition, CommandError> {
+) -> Result<datazen_feature_core::workflow::model::WorkflowDefinition, CommandError> {
     state
         .workflow_registry
         .get(&workflow_id)

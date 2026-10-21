@@ -2,8 +2,8 @@ use crate::data_sync::filter_validation::{
     resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
 };
 use crate::data_sync::SyncSourceFilter;
-use crate::db::{ColumnSchema, TableSchema};
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+use datazen_driver_api::{ColumnSchema, TableSchema};
 use datazen_driver_mysql::{MysqlDriver, MysqlSyncAdapter};
 use datazen_driver_postgres::{PgSyncAdapter, PostgresDriver};
 

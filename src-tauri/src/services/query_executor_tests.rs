@@ -1,13 +1,12 @@
-pub use datazen_feature_core::services::query_executor::*;
 #[cfg(test)]
 mod host_tests {
-    use super::*;
-    use crate::db::{ConnectionHandle, Value};
+    use datazen_driver_api::{ConnectionHandle, Value};
+    use datazen_feature_core::services::query_executor::*;
     use std::sync::Arc;
     #[tokio::test]
     async fn get_table_data_uses_schema_cache_and_returns_total() {
-        use crate::db::registry::DriverRegistry;
         use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+        use datazen_runtime::driver_registry::registry::DriverRegistry;
         use datazen_runtime::schema_cache::SchemaCache;
 
         let registry = Arc::new(DriverRegistry::new());
@@ -27,7 +26,7 @@ mod host_tests {
             .await;
         let cache = Arc::new(SchemaCache::new(registry));
         let executor = QueryExecutor::new(cache);
-        let driver = mock.clone() as Arc<dyn crate::db::DatabaseDriver>;
+        let driver = mock.clone() as Arc<dyn datazen_driver_api::DatabaseDriver>;
         let handle = ConnectionHandle {
             id: "h1".into(),
             pool_id: "p1".into(),

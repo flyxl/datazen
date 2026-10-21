@@ -420,7 +420,9 @@ async fn load_from_disk_restores_registry_with_persisted_enabled_state() {
         .unwrap();
 
     // Simulate a restart: fresh manager over the same app-data dir.
-    let reloaded = crate::wapps::WappManager::new(test.state.store.data_dir().join("wapps"));
+    let reloaded = datazen_workspace_apps::manager::WappManager::new(
+        test.state.store.data_dir().join("wapps"),
+    );
     reloaded.load_from_disk();
     let restored = reloaded.get("acme.demo").expect("wapp restored");
     assert!(!restored.enabled);
