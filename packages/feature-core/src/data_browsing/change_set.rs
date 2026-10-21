@@ -158,13 +158,15 @@ pub fn canonicalize_changes(
         let original_key = identity_key(&change.row_identity)?;
         if !original_keys.insert(original_key.clone()) {
             return Err(FeatureError::Validation(
-                "Row changes contain duplicate primary-key identity".into(),
+                "grid.cell.ambiguousIdentity: Row changes contain duplicate primary-key identity"
+                    .into(),
             ));
         }
         let current_key = identity_key(&effective_identity(change)?)?;
         if current_keys.insert(current_key, original_key).is_some() {
             return Err(FeatureError::Validation(
-                "Row changes contain a primary-key identity collision".into(),
+                "grid.cell.ambiguousIdentity: Row changes contain a primary-key identity collision"
+                    .into(),
             ));
         }
     }
@@ -175,13 +177,14 @@ pub fn canonicalize_changes(
 pub fn identity_key(identity: &BTreeMap<String, Option<Value>>) -> Result<String, FeatureError> {
     if identity.is_empty() {
         return Err(FeatureError::Validation(
-            "Row changes require primary-key identity".into(),
+            "grid.cell.noRowIdentity: Row changes require primary-key identity".into(),
         ));
     }
     for (column, value) in identity {
         if column.trim().is_empty() || value.is_none() || matches!(value, Some(Value::Null)) {
             return Err(FeatureError::Validation(
-                "Row identity must contain non-NULL primary-key values".into(),
+                "grid.cell.noRowIdentity: Row identity must contain non-NULL primary-key values"
+                    .into(),
             ));
         }
     }
@@ -451,7 +454,7 @@ pub fn validate_immutable_plan(
     }
     if plan.table.db_session_id != db_session_id {
         return Err(FeatureError::Validation(
-            "Row change plan belongs to a different database session".into(),
+            "grid.commit.stalePlan: Row change plan belongs to a different database session".into(),
         ));
     }
     if plan.fingerprint != fingerprint {

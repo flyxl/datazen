@@ -854,3 +854,71 @@ fn connection_facts_with_a_different_driver_type_are_refused() {
     };
     assert!(validate_connection_facts(&matching, &table).is_ok());
 }
+
+// ---------------------------------------------------------------------------
+// Round 3: the cell-domain codes ride on existing refusals
+// ---------------------------------------------------------------------------
+
+#[test]
+fn duplicate_identity_carries_the_ambiguous_identity_code() {
+    let duplicate = composite_update_change(1, 9, None);
+    let message = canonicalize_changes(&[duplicate.clone(), duplicate])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.starts_with("grid.cell.ambiguousIdentity: "),
+        "got: {message}"
+    );
+
+    let collision_a = composite_update_change(1, 9, Some(11));
+    let collision_b = composite_update_change(1, 10, Some(11));
+    let message = canonicalize_changes(&[collision_a, collision_b])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.starts_with("grid.cell.ambiguousIdentity: "),
+        "got: {message}"
+    );
+}
+
+#[test]
+fn an_empty_row_identity_carries_the_no_row_identity_code() {
+    let columns = users_columns();
+    let mut change = update_change(1, "Alice", "Updated");
+    change.row_identity = BTreeMap::new();
+
+    let message = plan_for(
+        table_context("cell-no-identity", "cell-no-identity-session"),
+        &[change],
+        &columns,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        message.starts_with("grid.cell.noRowIdentity: "),
+        "got: {message}"
+    );
+}
+
+#[test]
+fn a_table_without_a_primary_key_carries_the_cell_read_only_code() {
+    let columns = CachedColumns {
+        columns: vec![column("name", false, true)],
+        primary_keys: Vec::new(),
+        table_name: "logs".into(),
+        cached_at: std::time::Instant::now(),
+    };
+    let table = RowChangeTableContext {
+        table: "logs".into(),
+        ..table_context("cell-read-only", "cell-read-only-session")
+    };
+
+    let message = plan_for(table, &[update_change(1, "Alice", "Updated")], &columns)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.starts_with("grid.cell.readOnly: "),
+        "got: {message}"
+    );
+    assert!(message.contains("reports none"), "got: {message}");
+}

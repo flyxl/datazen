@@ -247,7 +247,7 @@ pub async fn execute_plan(
             session.handle = None;
         }
         return Err(FeatureError::Validation(
-            "Connection configuration changed before execution; preview again".into(),
+            "grid.commit.stalePlan: Connection configuration changed before execution; preview again".into(),
         ));
     }
     let result = async {
@@ -270,7 +270,7 @@ pub async fn execute_plan(
                 )
                 .await?
                 .ok_or_else(|| {
-                    FeatureError::Validation("Driver did not report affected rows".into())
+                    FeatureError::Validation("grid.commit.affectedMismatch: Driver did not report affected rows".into())
                 })?;
             if affected != 1 {
                 return Err(FeatureError::Validation(if operation == "insert" {

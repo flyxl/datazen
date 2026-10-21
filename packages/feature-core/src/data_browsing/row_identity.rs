@@ -25,7 +25,7 @@ pub fn validate_identity_shape(
 ) -> Result<(), FeatureError> {
     if change.row_identity.is_empty() {
         return Err(FeatureError::Validation(format!(
-            "{operation} requires the table's primary-key identity; the row identity is empty, so no column can locate the row"
+            "grid.cell.noRowIdentity: {operation} requires the table's primary-key identity; the row identity is empty, so no column can locate the row"
         )));
     }
     let null_columns: Vec<&str> = change
@@ -40,7 +40,7 @@ pub fn validate_identity_shape(
         .collect();
     if !null_columns.is_empty() {
         return Err(FeatureError::Validation(format!(
-            "{operation} row identity has NULL primary-key values: {}; a NULL cannot address one row",
+            "grid.cell.noRowIdentity: {operation} row identity has NULL primary-key values: {}; a NULL cannot address one row",
             null_columns.join(", ")
         )));
     }
@@ -84,7 +84,7 @@ pub fn validate_identity_against_primary_key(
 ) -> Result<(), FeatureError> {
     if columns.primary_keys.is_empty() {
         return Err(FeatureError::Validation(format!(
-            "{operation} requires the table's primary key, but '{}' reports none; a grid change cannot address one row",
+            "grid.cell.readOnly: {operation} requires the table's primary key, but '{}' reports none; a grid change cannot address one row",
             table.table
         )));
     }
@@ -95,7 +95,7 @@ pub fn validate_identity_against_primary_key(
     let missing: Vec<&str> = expected.difference(&submitted).copied().collect();
     if !missing.is_empty() {
         return Err(FeatureError::Validation(format!(
-            "{operation} row identity is missing primary-key column(s) of '{}': {}; the primary key is ({})",
+            "grid.cell.noRowIdentity: {operation} row identity is missing primary-key column(s) of '{}': {}; the primary key is ({})",
             table.table,
             missing.join(", "),
             columns.primary_keys.join(", ")
@@ -104,7 +104,7 @@ pub fn validate_identity_against_primary_key(
     let unexpected: Vec<&str> = submitted.difference(&expected).copied().collect();
     if !unexpected.is_empty() {
         return Err(FeatureError::Validation(format!(
-            "{operation} row identity contains column(s) that are not part of '{}' primary key: {}; the primary key is ({})",
+            "grid.cell.noRowIdentity: {operation} row identity contains column(s) that are not part of '{}' primary key: {}; the primary key is ({})",
             table.table,
             unexpected.join(", "),
             columns.primary_keys.join(", ")

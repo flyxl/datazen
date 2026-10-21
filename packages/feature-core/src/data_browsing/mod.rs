@@ -105,12 +105,13 @@ pub async fn commit_changes(
     validate_connection_facts(facts, &request.plan.table)?;
     if request.plan.config_revision != Some(Counter::new(facts.config_revision)) {
         return Err(FeatureError::Validation(
-            "Connection configuration changed; preview the changes again".into(),
+            "grid.commit.stalePlan: Connection configuration changed; preview the changes again"
+                .into(),
         ));
     }
     if facts.read_only {
         return Err(FeatureError::Validation(
-            "Connection is read-only; row changes are not allowed".into(),
+            "grid.cell.readOnly: Connection is read-only; row changes are not allowed".into(),
         ));
     }
     if facts
@@ -120,7 +121,7 @@ pub async fn commit_changes(
         .is_some_and(|database| request.plan.table.database.as_deref() != Some(database))
     {
         return Err(FeatureError::Validation(
-            "Database context changed; preview the changes again".into(),
+            "grid.commit.stalePlan: Database context changed; preview the changes again".into(),
         ));
     }
     if facts
@@ -130,7 +131,7 @@ pub async fn commit_changes(
         .is_some_and(|schema| request.plan.table.schema.as_deref() != Some(schema))
     {
         return Err(FeatureError::Validation(
-            "Schema context changed; preview the changes again".into(),
+            "grid.commit.stalePlan: Schema context changed; preview the changes again".into(),
         ));
     }
     let loaded = columns.table_columns(&request.plan.table).await?;
