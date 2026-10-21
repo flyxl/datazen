@@ -34,14 +34,21 @@ import {
 } from './tableData/selectionActions';
 import {
   AMBIGUOUS_ROW_IDENTITY_ERROR,
+  draftsForWire,
   findPendingForRow,
   hasPendingIdentityCollision,
+  hasPendingWork,
   overlayPendingRows,
   pendingChangesForWire,
-  pendingChangesSignature,
+  pendingWorkSignature,
   rebuildEditBuffer,
   rowIdentityIsUnique,
 } from './tableData/pendingChanges';
+import {
+  createDraftSlice,
+  type DraftStoreSlice,
+} from './tableData/draftInserts';
+import { locateInsertedRow } from './tableData/insertLocation';
 
 // ── Store ─────────────────────────────────────────────────────────
 
@@ -53,7 +60,7 @@ export interface LoadTableDataParams extends TableTarget {
 }
 
 /** Every action is scoped to one table/view panel, like `panelStore`'s queryExec map. */
-interface TableDataStore extends SelectionStoreSlice {
+interface TableDataStore extends SelectionStoreSlice, DraftStoreSlice {
   byPanel: Map<string, TableState>;
 
   loadTableData: (params: LoadTableDataParams) => Promise<void>;
@@ -89,6 +96,12 @@ interface TableDataStore extends SelectionStoreSlice {
   applyColumnToRows: (panelId: string, col: string, value: unknown, rows: number[]) => void;
   stageRowDelete: (panelId: string, rowIndices: number | number[]) => void;
   deleteRows: (panelId: string, rowIndices: number[]) => void;
+  /**
+   * Clear the "new row" highlight. It expires on its own (the row is
+   * highlighted for a moment after the commit) and it is cleared when the
+   * page, the filters or the sort change (04 §7 #17).
+   */
+  clearHighlightedNewRow: (panelId: string) => void;
   rollbackPendingChanges: (panelId: string) => void;
   previewPendingChanges: (panelId: string) => Promise<RowChangePlan | null>;
   commitPendingChanges: (panelId: string) => Promise<CommitPendingChangesResult>;
@@ -121,6 +134,9 @@ function patchPanelForReload(
   patchPanel(get, set, panelId, (ts) => ({
     ...updater(ts),
     ...rowIndexSelectionReset(),
+    // Paging, filtering or sorting moves the new row out of sight: the
+    // highlight would point at a row that is no longer on the page (04 §7 #17).
+    highlightedNewRowKey: null,
     requestRevision: ts.requestRevision + 1,
   }));
 }
@@ -279,7 +295,9 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     for (const [panelId, ts] of next) {
       if (ts.context?.dbSessionId !== dbSessionId) continue;
       if (tableName && ts.context?.table !== tableName) continue;
-      if (ts.pendingChanges.size > 0) continue;
+      // Drafts are staged work too: a panel with only drafts must not be
+      // invalidated behind the user's back (04 §3.7 R-4).
+      if (hasPendingWork(ts)) continue;
       if (ts.columns.length === 0 && ts.rows.length === 0) continue;
       next.set(panelId, {
         ...ts,
@@ -572,15 +590,30 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     get().stageRowDelete(panelId, unique);
   },
 
+  // Draft actions live in `tableData/draftInserts`; the store only wires them.
+  ...createDraftSlice(
+    (panelId, updater) => patchPanel(get, set, panelId, updater),
+    (panelId) => get().byPanel.get(panelId),
+  ),
+
+  clearHighlightedNewRow: (panelId) => {
+    patchPanel(get, set, panelId, (ts) =>
+      ts.highlightedNewRowKey === null ? {} : { highlightedNewRowKey: null },
+    );
+  },
+
   rollbackPendingChanges: (panelId) => {
     const ts = get().byPanel.get(panelId);
     if (!ts) return;
     patchPanel(get, set, panelId, () => ({
       pendingChanges: new Map(),
+      draftInserts: new Map(),
+      draftInsertOrder: [],
       previewPlan: null,
       pendingStatus: 'idle',
       editBuffer: new Map(),
       editingCell: null,
+      highlightedNewRowKey: null,
       error: null,
     }));
     get().reloadPanel(panelId);
@@ -589,7 +622,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   previewPendingChanges: async (panelId) => {
     const ts = get().byPanel.get(panelId);
     if (!ts) return null;
-    if (ts.pendingChanges.size === 0) return null;
+    if (!hasPendingWork(ts)) return null;
     if (!ts.context || !isCompleteTableChangeContext(ts.context)) {
       patchPanel(get, set, panelId, () => ({
         pendingStatus: 'idle',
@@ -598,16 +631,18 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       return null;
     }
 
-    const signature = pendingChangesSignature(ts.pendingChanges);
+    const signature = pendingWorkSignature(ts);
     const context = ts.context;
     patchPanel(get, set, panelId, () => ({ pendingStatus: 'previewing', error: null }));
     try {
       const plan = await databaseCommands.previewPendingChanges({
         context,
-        changes: pendingChangesForWire(ts.pendingChanges),
+        // The drafts ride along in the same `changes` array as the staged
+        // edits: the request shape does not change (04 §3.6).
+        changes: [...pendingChangesForWire(ts.pendingChanges), ...draftsForWire(ts)],
       });
       const latest = get().byPanel.get(panelId);
-      if (latest && pendingChangesSignature(latest.pendingChanges) === signature) {
+      if (latest && pendingWorkSignature(latest) === signature) {
         patchPanel(get, set, panelId, () => ({
           previewPlan: plan,
           pendingStatus: 'idle',
@@ -636,7 +671,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     };
     const initial = get().byPanel.get(panelId);
     if (!initial) return emptyResult;
-    if (initial.pendingChanges.size === 0) return emptyResult;
+    if (!hasPendingWork(initial)) return emptyResult;
     if (!initial.context || !isCompleteTableChangeContext(initial.context)) {
       return {
         ...emptyResult,
@@ -646,7 +681,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     }
     const context = initial.context;
 
-    const signature = pendingChangesSignature(initial.pendingChanges);
+    const signature = pendingWorkSignature(initial);
     let plan = initial.previewPlan;
     if (!plan || tableChangeContextKey(plan.table) !== tableChangeContextKey(context)) {
       plan = await get().previewPendingChanges(panelId);
@@ -662,6 +697,9 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
     patchPanel(get, set, panelId, () => ({ pendingStatus: 'committing', error: null }));
     try {
+      // The rows as they are *before* the commit: the "where did the new row
+      // end up" rule compares the page after the refresh with this one.
+      const previousRows = get().byPanel.get(panelId)?.rows ?? [];
       const response = await databaseCommands.commitPendingChanges({
         dbSessionId: context.dbSessionId,
         plan,
@@ -669,25 +707,36 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         fingerprint: plan.fingerprint,
       });
       const latest = get().byPanel.get(panelId);
-      if (latest && pendingChangesSignature(latest.pendingChanges) === signature) {
+      if (latest && pendingWorkSignature(latest) === signature) {
         patchPanel(get, set, panelId, () => ({
           pendingChanges: new Map(),
+          draftInserts: new Map(),
+          draftInsertOrder: [],
           previewPlan: null,
           pendingStatus: 'idle',
           editBuffer: new Map(),
           editingCell: null,
+          highlightedNewRowKey: null,
           error: null,
         }));
       }
 
       await get().loadTableData({ panelId, ...targetOf(context) });
       const refreshed = get().byPanel.get(panelId);
+      const location = locateInsertedRow(
+        previousRows,
+        refreshed?.rows ?? [],
+        refreshed?.columns.filter((column) => column.isPrimaryKey) ?? [],
+        response.statements,
+      );
+      patchPanel(get, set, panelId, () => ({ highlightedNewRowKey: location.key }));
       const result: CommitPendingChangesResult = {
         ...response,
         status: 'committed',
         refreshed: !refreshed?.error,
         refreshRequired: true,
         refreshStatus: refreshed?.error ? 'failed' : 'completed',
+        insertLocation: location.status,
       };
       patchPanel(get, set, panelId, () => ({ pendingStatus: 'idle' }));
       return result;

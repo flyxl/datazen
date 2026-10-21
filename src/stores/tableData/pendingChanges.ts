@@ -2,7 +2,9 @@ import type { ColumnSchema } from '../../types';
 import {
   buildRowIdentity,
   clonePendingRowChange,
+  draftWriteColumns,
   rowIdentityKey,
+  type PendingInsert,
   type PendingRowChange,
 } from '../../lib/tableChanges';
 import { editKey } from './connectionState';
@@ -124,4 +126,71 @@ export function pendingChangesForWire(pendingChanges: Map<string, PendingRowChan
     const { rowIndex: _rowIndex, ...wireChange } = clonePendingRowChange(change);
     return wireChange;
   });
+}
+
+/**
+ * "Is there work that has to be committed?" — staged edits **or** new-row
+ * drafts (04 §3.7 R-2).
+ *
+ * The two collections are independent: a panel can hold drafts without a
+ * single staged edit (that is the normal state right after "+ row"), and a
+ * panel can hold edits without drafts. Every gate that used to ask
+ * `pendingChanges.size === 0` has to ask this instead, otherwise a panel with
+ * only drafts would keep its commit button greyed out forever.
+ */
+export function hasPendingWork(ts: TableState): boolean {
+  return ts.pendingChanges.size > 0 || ts.draftInserts.size > 0;
+}
+
+/**
+ * The drafts as the wire sees them: one `PendingRowChange` per draft, marked
+ * with `insertMarked: true`.
+ *
+ * The order is `draftInsertOrder`, never the `Map` iteration order: the
+ * insertion order decides which row gets which auto-increment value, and the
+ * back end keeps the request order (it must not sort the insert statements).
+ *
+ * The draft id never goes on the wire — it is a UI association key only. The
+ * shape is exactly the one an existing row change has, plus the marker:
+ * `rowIdentity` / `originalValues` are empty (a new row has neither), and
+ * `changedColumns` is the exact list of columns to write.
+ */
+export function draftsForWire(ts: TableState): PendingRowChange[] {
+  const changes: PendingRowChange[] = [];
+  for (const draftId of ts.draftInsertOrder) {
+    const draft = ts.draftInserts.get(draftId);
+    if (!draft) continue;
+    changes.push(
+      clonePendingRowChange({
+        rowIdentity: {},
+        originalValues: {},
+        currentValues: { ...draft.values },
+        changedColumns: draftWriteColumns(draft.values),
+        deleteMarked: false,
+        insertMarked: true,
+      }),
+    );
+  }
+  return changes;
+}
+
+/**
+ * Signature of everything that has to be committed (staged edits **and**
+ * drafts), used to detect "the user changed something while the preview was in
+ * flight" (04 §3.7 R-3).
+ *
+ * `pendingChangesSignature` is left untouched — it keeps its single-argument
+ * signature — and is reused here for the staged part. The draft part keeps the
+ * creation order, because for drafts the order *is* part of the intent.
+ */
+export function pendingWorkSignature(input: {
+  pendingChanges: Map<string, PendingRowChange>;
+  draftInserts: Map<string, PendingInsert>;
+  draftInsertOrder: string[];
+}): string {
+  const drafts = input.draftInsertOrder.map((draftId) => {
+    const draft = input.draftInserts.get(draftId);
+    return [draftId, draft ? draft.values : null];
+  });
+  return JSON.stringify([pendingChangesSignature(input.pendingChanges), drafts]);
 }

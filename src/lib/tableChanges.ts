@@ -31,6 +31,42 @@ export interface PendingRowChange {
   insertMarked?: boolean;
 }
 
+/**
+ * One new-row draft (front-end UI shape; it never goes on the wire).
+ *
+ * The write intent of a column lives in the **membership** of the key, not in a
+ * separate tri-state enum:
+ *
+ * - key present with a value → the column is written with that value;
+ * - key present with `null` → the column is written as SQL `NULL`;
+ * - key absent → the column is **not written** and the database keeps its own
+ *   default (auto-increment, generated column, `DEFAULT now()`, trigger).
+ *
+ * "Not written" and "written as NULL" are different statements, so clearing a
+ * draft cell removes the key instead of storing `null`; and the columns that
+ * are not written must never be "filled up" with `NULL` — that would break
+ * auto-increment and generated columns (00-contracts §3).
+ */
+export interface PendingInsert {
+  /** UI association key: React key plus the draft row's `data-draft-id`. */
+  draftId: string;
+  /** Per-column write intent. A present key means "written"; `null` means SQL NULL. */
+  values: Record<string, Value | null>;
+}
+
+/**
+ * The exact INSERT column list of a draft: the **sorted** names of the columns
+ * the user actually wrote.
+ *
+ * The order is the column order of the generated statement, so it has to be
+ * deterministic — the same draft must always produce the same plan and the same
+ * bound parameters. A column the user cleared is absent from `values` and
+ * therefore absent here as well.
+ */
+export function draftWriteColumns(values: Record<string, Value | null>): string[] {
+  return Object.keys(values).sort();
+}
+
 export interface PlannedStatement {
   rowIdentity: RowIdentity;
   originalValues: Record<string, Value | null>;
@@ -103,12 +139,27 @@ export interface CommitPendingChangesResponse {
 
 export type PendingStatus = 'idle' | 'previewing' | 'committing';
 
+/**
+ * Where the row inserted by a commit ended up.
+ *
+ * - `located` — the new row was found on the refreshed page (by its row
+ *   identity, or by the single-column maximum-primary-key candidate);
+ * - `unavailable` — the commit succeeded, but the new row could not be located.
+ *   The page is refreshed and the UI says so; it must **not** claim that the new
+ *   row was highlighted (04 §4.1, the RETURNING backfill is not implemented in
+ *   this batch, so this is the regular path, not an error);
+ * - `not-applicable` — the commit contained no insert at all.
+ */
+export type InsertLocation = 'located' | 'unavailable' | 'not-applicable';
+
 export interface CommitPendingChangesResult extends CommitPendingChangesResponse {
   status: 'committed' | 'failed' | 'noop';
   refreshed: boolean;
   refreshRequired: boolean;
   refreshStatus?: 'completed' | 'failed';
   error?: string;
+  /** Front-end only: where the inserted row ended up after the refresh. */
+  insertLocation?: InsertLocation;
 }
 
 function valueForColumn(row: Record<string, unknown>, column: string): Value | null {
