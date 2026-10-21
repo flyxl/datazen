@@ -25,7 +25,12 @@ export type GridErrorCode =
   | 'grid.cell.ambiguousIdentity'
   | 'grid.cell.readOnly'
   | 'grid.insert.unknownColumn'
-  | 'grid.insert.returningUnavailable';
+  | 'grid.insert.returningUnavailable'
+  | 'grid.fk.shapeMismatch'
+  | 'grid.fk.unknownConstraint'
+  | 'grid.fk.valueNull'
+  | 'grid.fk.targetUnresolved'
+  | 'grid.fk.probeFailed';
 
 /**
  * Prefix registry. Entries are full message prefixes (`grid.<domain>.<reason>`); the
@@ -48,6 +53,11 @@ export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.cell.readOnly',
   'grid.insert.unknownColumn',
   'grid.insert.returningUnavailable',
+  'grid.fk.shapeMismatch',
+  'grid.fk.unknownConstraint',
+  'grid.fk.valueNull',
+  'grid.fk.targetUnresolved',
+  'grid.fk.probeFailed',
 ];
 
 /** Every grid message starts with this namespace; useful for cheap pre-checks. */
