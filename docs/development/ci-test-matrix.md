@@ -264,7 +264,7 @@ Windows 产物，一个在出货平台上跑不起来的类型门禁是更差的
 stable 时自动升上去，门禁语义在无人察觉时漂移；`^0.18.0-...` 同理会让 0.19.x 带着另一个
 TS 快照进来。两处都用精确版本。
 
-**迁移到 TS 7 需要的源码改动只有两处**，都已入库：
+**迁移到 TS 7 需要的源码改动只有两处**（外加五个包级 tsconfig 的配置修复），都已入库：
 
 1. **显式 `types`**。TS 7 不再自动发现 `node_modules/@types`。迁移前 `tsc 5.9.3` 静默
    吃进了全部四个包（dompurify / node / react / react-dom）；`tsconfig.json` 与五个
@@ -272,6 +272,28 @@ TS 快照进来。两处都用精确版本。
    不写这一处的实测代价：TS 7 报 **109 个错误**，全部是 `@types/node` 没被加载的形状。
    维护规则：新增 `@types/*` 依赖要同步加进这些列表；失败方向是安全的——漏了会**多**错误，
    不会少错误。
+
+   五个 `packages/<id>/tsconfig.json` 另外做了两件事，因为它们各自是 **standalone
+   program**，看不到根配置的上下文：
+
+   - **`extends: "../../tsconfig.json"`**。根配置的 `paths` 定义了 `@datazen/*` 别名，
+     standalone program 拿不到，于是每一个 `@datazen/*` import 都报 TS2307。实测：
+     driver-sdk 的 318 个错误里 84 个是 "Cannot find module '@datazen/ui'"、56 个是
+     "'@datazen/driver-sdk'"、23 个是 "'@datazen/backend-client'"——全是别名解析失败，
+     与代码质量无关。加上 `extends` 后这五个 program 全部归零。
+   - **补两份环境类型**。`vite/client` 提供 `import.meta.env` 与 `*.svg` / `*.svg?url`
+     模块声明（根 program 从 `src/vite-env.d.ts` 拿到同一个契约，但那个文件在 `src/`
+     里面，standalone program 看不见）；`@testing-library/jest-dom/vitest` 提供 DOM
+     matcher（根 program 从 `src/test/setup.ts` 拿到同一份增强）。实测：ui 的 147 个
+     错误里，139 个是 matcher 缺失（`toHaveAttribute` 等），8 个是 Vite 环境类型缺失。
+
+   结果：五个 program 在 TS 5.9.3 / TS 7.0.2 / tsrs 三个编译器下**都是 0 错误**，
+   修复前分别是 147 / 318 / 245 / 120 / 0。
+
+   `e2e/tsconfig.json` 的 120 个错误**不是**同一类问题，没有一并修：其中 30 个是同样的
+   `@datazen/*` 别名解析失败（`extends` 可修），另外 90 个是 E2E spec 里的真实代码缺陷
+   （`Promise<number>` 与 `number` 比较、`await` 缺失一类），需要改 spec 代码并跑 E2E
+   才能验证，不属于配置修复的范围。
 2. **`scripts/with-driver-inject.mjs` 的 JSDoc 拆 `@overload`**。TS 7 把 weak-type 检查
    （TS2559）扩展到了 union 目标，原先 `{...} | (() => boolean)` 的联合参数被拒。这是全仓
    唯一的 TS 7 语义报错，改完三个编译器都干净，15 个运行时测试仍全绿。

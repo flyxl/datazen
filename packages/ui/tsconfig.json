@@ -2,8 +2,26 @@
   "$comment": [
     "TypeScript 7 does not auto-discover node_modules/@types; this list is the",
     "same set TypeScript 5.9 auto-discovered for this program. See the root",
-    "tsconfig.json for the full rationale and the maintenance rule."
+    "tsconfig.json for the full rationale and the maintenance rule.",
+    "",
+    "`extends` gives this program the root's `paths`, so `@datazen/*` imports",
+    "resolve. Without it the program reported 147 errors that had nothing to do",
+    "with the code: 84 of them were 'Cannot find module @datazen/ui'.",
+    "",
+    "`vite/client` supplies the ambient Vite contract (import.meta.env and the",
+    "`*.svg` / `*.svg?url` module declarations). The root program gets the same",
+    "contract from src/vite-env.d.ts, which is inside src/ and therefore not",
+    "visible to a program rooted in packages/ui. Four of the five package",
+    "programs reach app code transitively and need it today; backend-client",
+    "does not yet, but carries it for the same reason the other four do — a",
+    "package that starts importing an .svg next month must not suddenly break.",
+    "",
+    "`@testing-library/jest-dom/vitest` supplies the DOM matchers",
+    "(toHaveAttribute, toBeDisabled, ...) that this package's own tests use.",
+    "The root program gets the same augmentation from src/test/setup.ts, which",
+    "is likewise outside this program."
   ],
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
@@ -16,7 +34,14 @@
     "isolatedModules": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "types": ["dompurify", "node", "react", "react-dom"]
+    "types": [
+      "dompurify",
+      "node",
+      "react",
+      "react-dom",
+      "vite/client",
+      "@testing-library/jest-dom/vitest"
+    ]
   },
   "include": ["src"]
 }

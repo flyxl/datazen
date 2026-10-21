@@ -315,9 +315,14 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件。
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件。
 - **TypeScript 7 起 `node_modules/@types` 不再自动发现。** 根 `tsconfig.json` 与五个
-  `packages/<id>/tsconfig.json` 都显式列出了 `types`（当前为 dompurify / node / react /
-  react-dom，即 TS 5.9 自动发现的同一组）。**新增 `@types/*` 依赖时必须同步加进这六处**，
+  `packages/<id>/tsconfig.json` 都显式列出了 `types`。根与五个包先是 TS 5.9 自动发现的同一组
+  （dompurify / node / react / react-dom）；五个包另加 `vite/client`，`packages/ui` 再加
+  `@testing-library/jest-dom/vitest`（它自己的测试用的 DOM matcher，根 program 从
+  `src/test/setup.ts` 拿到同一份增强）。**新增 `@types/*` 依赖时必须同步加进这六处**，
   否则该包提供的全局类型不会生效。失败方向是安全的——漏加会**多**出错误而不是少掉错误。
+  五个包的 config 现在 `extends` 根配置，因此也继承了根的 `paths`（`@datazen/*` 别名）；
+  在此之前它们各自是 standalone program，`@datazen/*` 全部解析失败，五个 program 合计
+  830 个错误，与代码本身无关。
   门禁是双引擎的：`pnpm typecheck` 同时跑 `tsc`（TS 7 GA，权威）与 `tsrs`（TS 7.1-dev，前瞻），
   两者输出必须逐字节一致；`tsrs` 在没有 Windows 二进制的平台会被跳过并明确打印跳过原因。
   详见 [docs/development/ci-test-matrix.md](docs/development/ci-test-matrix.md) §2.1.4。
