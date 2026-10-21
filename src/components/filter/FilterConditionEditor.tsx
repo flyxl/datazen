@@ -1,10 +1,19 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { X } from 'lucide-react';
-import type { FilterCondition, FilterOperator } from '../../types';
+import type { FilterCondition, FilterOperator, Value } from '../../types';
 import { Select } from '../ui/Select';
 import { isCompleteFilter } from '../../stores/tableData/filterUtils';
+import {
+  convertFilterValue,
+  normalizeOperatorForColumn,
+  operatorsForColumn,
+  valueInputFor,
+} from '../../lib/filterOperators';
 import type { I18nKey } from '../../locales';
 import { FilterValueInput } from './FilterValueInput';
+import { FilterTokenInput } from './FilterTokenInput';
+import { FilterBetweenInput } from './FilterBetweenInput';
+import type { FilterColumn } from './types';
 
 /** The open select listbox of the shared `Select` component. */
 const SELECT_LISTBOX_SELECTOR = '[id^="dz-select-listbox-"]';
@@ -15,12 +24,19 @@ const SELECT_LISTBOX_SELECTOR = '[id^="dz-select-listbox-"]';
  *
  * The component owns one piece of state only — which value it currently shows
  * — and reports every change to the parent, which owns the draft.
+ *
+ * **The operator list depends on the column.** A pattern operator on a
+ * numeric column would be a query the database is guaranteed to reject, so the
+ * list is the intersection of "the column type takes it" and "this database
+ * serves it". The draft's current operator stays visible even when it is not
+ * in that list: the row holds what was put there, and hiding it would make
+ * the editor lie about the draft.
  */
 export function FilterConditionEditor({
   filter,
   index,
-  columnOptions,
-  opOptions,
+  columns,
+  supportedOperators,
   onChange,
   onRemove,
   onCollapse,
@@ -30,8 +46,8 @@ export function FilterConditionEditor({
 }: {
   filter: FilterCondition;
   index: number;
-  columnOptions: { value: string; label: string }[];
-  opOptions: { value: string; label: string }[];
+  columns: readonly FilterColumn[];
+  supportedOperators: readonly FilterOperator[];
   onChange: (index: number, next: FilterCondition) => void;
   onRemove: (index: number) => void;
   onCollapse: () => void;
@@ -39,10 +55,33 @@ export function FilterConditionEditor({
   disabled: boolean;
   t: (key: I18nKey) => string;
 }) {
-  const needsValue = filter.operator !== 'isNull' && filter.operator !== 'isNotNull';
   const rootRef = useRef<HTMLDivElement>(null);
   const latestRef = useRef(filter);
   latestRef.current = filter;
+
+  const columnType = useMemo(
+    () => columns.find((column) => column.name === filter.column)?.type,
+    [columns, filter.column],
+  );
+
+  const columnOptions = useMemo(
+    () => columns.map((column) => ({ value: column.name, label: column.name })),
+    [columns],
+  );
+
+  const opOptions = useMemo(() => {
+    const operators = operatorsForColumn(columnType, supportedOperators);
+    const options = operators.map((operator) => ({
+      value: operator,
+      label: t(`filter.${operator}`),
+    }));
+    if (!operators.includes(filter.operator)) {
+      options.push({ value: filter.operator, label: t(`filter.${filter.operator}`) });
+    }
+    return options;
+  }, [columnType, supportedOperators, filter.operator, t]);
+
+  const valueKind = valueInputFor(filter.operator);
 
   const pushChange = (next: FilterCondition) => {
     latestRef.current = next;
@@ -59,6 +98,39 @@ export function FilterConditionEditor({
       if (document.querySelector(SELECT_LISTBOX_SELECTOR)) return;
       if (isCompleteFilter(latestRef.current)) onCollapse();
     }, 10);
+  };
+
+  const changeOperator = (operator: FilterOperator) => {
+    const from = valueInputFor(latestRef.current.operator);
+    const to = valueInputFor(operator);
+    const next: FilterCondition = {
+      ...latestRef.current,
+      operator,
+      value: convertFilterValue(from, to, latestRef.current.value),
+    };
+    pushChange(next);
+    // An operator without a value has nothing left to edit: collapse to the chip.
+    if (to === 'none') onCollapse();
+  };
+
+  const changeColumn = (column: string) => {
+    const nextType = columns.find((entry) => entry.name === column)?.type;
+    const operator = normalizeOperatorForColumn(
+      latestRef.current.operator,
+      nextType,
+      supportedOperators,
+    );
+    const next: FilterCondition = {
+      ...latestRef.current,
+      column,
+      operator,
+      value: convertFilterValue(
+        valueInputFor(latestRef.current.operator),
+        valueInputFor(operator),
+        latestRef.current.value,
+      ),
+    };
+    pushChange(next);
   };
 
   return (
@@ -86,24 +158,17 @@ export function FilterConditionEditor({
         value={filter.column}
         options={columnOptions}
         disabled={disabled}
-        onChange={(column) => pushChange({ ...latestRef.current, column })}
+        onChange={(column) => changeColumn(column)}
         className="!h-7 w-[6.5rem] shrink-0 !px-1.5 !text-xs"
       />
       <Select
         value={filter.operator}
         options={opOptions}
         disabled={disabled}
-        onChange={(operator) => {
-          const nextOp = operator as FilterOperator;
-          const next = { ...latestRef.current, operator: nextOp };
-          pushChange(next);
-          if (nextOp === 'isNull' || nextOp === 'isNotNull') {
-            onCollapse();
-          }
-        }}
+        onChange={(operator) => changeOperator(operator as FilterOperator)}
         className="!h-7 w-[4.75rem] shrink-0 !px-1.5 !text-xs"
       />
-      {needsValue && (
+      {valueKind === 'single' && (
         <FilterValueInput
           value={filter.value == null ? '' : String(filter.value)}
           onCommit={(value) => pushChange({ ...latestRef.current, value })}
@@ -111,6 +176,28 @@ export function FilterConditionEditor({
           autoFocus={autoFocusValue}
           disabled={disabled}
           onEnterComplete={onCollapse}
+        />
+      )}
+      {valueKind === 'tokens' && (
+        <FilterTokenInput
+          value={toTokens(filter.value)}
+          onCommit={(tokens) => pushChange({ ...latestRef.current, value: tokens })}
+          placeholder={t('filter.tokensPlaceholder')}
+          autoFocus={autoFocusValue}
+          disabled={disabled}
+          onEnterComplete={onCollapse}
+          removeLabel={t('filter.tokenRemove')}
+        />
+      )}
+      {valueKind === 'pair' && (
+        <FilterBetweenInput
+          value={toPair(filter.value)}
+          onCommit={(bounds) => pushChange({ ...latestRef.current, value: bounds })}
+          placeholder={t('filter.value')}
+          connectorLabel={t('filter.and')}
+          invertedLabel={t('filter.betweenInverted')}
+          autoFocus={autoFocusValue}
+          disabled={disabled}
         />
       )}
       <button
@@ -124,4 +211,29 @@ export function FilterConditionEditor({
       </button>
     </div>
   );
+}
+
+/** The value of a set operator as a list of strings. */
+function toTokens(value: Value | undefined): string[] {
+  if (Array.isArray(value)) return value.map((entry) => (entry == null ? '' : String(entry)));
+  if (typeof value === 'string' && value !== '') {
+    return value
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part !== '');
+  }
+  return [];
+}
+
+/** The value of a range operator as its two bounds. */
+function toPair(value: Value | undefined): [string, string] {
+  if (Array.isArray(value)) {
+    const [lower = '', upper = ''] = value;
+    return [lower == null ? '' : String(lower), upper == null ? '' : String(upper)];
+  }
+  if (typeof value === 'string' && value.includes(',')) {
+    const separator = value.indexOf(',');
+    return [value.slice(0, separator).trim(), value.slice(separator + 1).trim()];
+  }
+  return [value == null ? '' : String(value), ''];
 }

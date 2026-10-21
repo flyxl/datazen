@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FilterCondition, FilterOperator } from '../types';
+import { SHARED_FILTER_OPERATORS } from '../types';
 import { useI18n } from '../hooks/useI18n';
 import { Button } from './ui/Button';
 import { ErrorBanner } from './ui/ErrorBanner';
@@ -9,6 +10,7 @@ import { filterDraftEqualsApplied, isCompleteFilter } from '../stores/tableData/
 import { FilterConditionChip } from './filter/FilterConditionChip';
 import { FilterConditionEditor } from './filter/FilterConditionEditor';
 import { conditionSummary } from './filter/filterLabels';
+import type { FilterColumn } from './filter/types';
 
 export type FilterLogic = 'and' | 'or';
 
@@ -21,21 +23,10 @@ export { FILTER_VALUE_DEBOUNCE_MS } from './filter/FilterValueInput';
 /** Max height for the wrapping filter chip list (~2 rows) before scrolling. */
 const FILTER_LIST_MAX_HEIGHT_CLASS = 'max-h-[4.75rem]';
 
-const OPERATORS: FilterOperator[] = [
-  'eq',
-  'ne',
-  'gt',
-  'lt',
-  'gte',
-  'lte',
-  'like',
-  'in',
-  'isNull',
-  'isNotNull',
-];
-
 export interface FilterEditorProps {
-  columns: { name: string }[];
+  columns: FilterColumn[];
+  /** The filter operators this database serves; defaults to the shared set. */
+  supportedOperators?: readonly FilterOperator[];
   /** Currently applied filters (shown in collapsed summary). */
   appliedFilters: FilterCondition[];
   appliedLogic: FilterLogic;
@@ -57,6 +48,7 @@ export interface FilterEditorProps {
 
 export function FilterEditor({
   columns,
+  supportedOperators = SHARED_FILTER_OPERATORS,
   appliedFilters,
   appliedLogic,
   draftFilters,
@@ -73,10 +65,20 @@ export function FilterEditor({
   applyError = null,
 }: FilterEditorProps) {
   const { t } = useI18n();
-  const columnOptions = columns.map((c) => ({ value: c.name, label: c.name }));
-  const opOptions = OPERATORS.map((op) => ({ value: op, label: t(`filter.${op}`) }));
 
   const dirty = !filterDraftEqualsApplied(draftFilters, draftLogic, appliedFilters, appliedLogic);
+
+  /**
+   * The first condition that cannot be sent to the database.
+   *
+   * An incomplete condition is never dropped silently: it is marked in the
+   * list and it blocks `Apply`, so the user either completes it or removes
+   * it. The back end refuses such a condition as well (`grid.filter.incomplete`).
+   */
+  const incomplete = useMemo(
+    () => draftFilters.find((filter) => !isCompleteFilter(filter)),
+    [draftFilters],
+  );
 
   const appliedCount = appliedFilters.length;
   const summaryText =
@@ -226,8 +228,11 @@ export function FilterEditor({
               </Button>
               <Button
                 className="h-6 px-2.5 text-xs"
-                disabled={!dirty || loading}
+                disabled={!dirty || loading || incomplete !== undefined}
                 data-testid="filter-apply"
+                title={
+                  incomplete ? t('filter.errorIncomplete', { column: incomplete.column }) : undefined
+                }
                 onClick={() => {
                   setEditingIndex(null);
                   onApply();
@@ -249,6 +254,14 @@ export function FilterEditor({
                 {applyError}
               </ErrorBanner>
             )}
+            {incomplete && (
+              <ErrorBanner
+                className="basis-full px-1 py-1"
+                data-testid="filter-incomplete-error"
+              >
+                {t('filter.errorIncomplete', { column: incomplete.column })}
+              </ErrorBanner>
+            )}
             {draftFilters.length === 0 ? (
               <div className="px-1 py-1 text-xs text-fg-muted">{t('filter.noActive')}</div>
             ) : (
@@ -262,13 +275,14 @@ export function FilterEditor({
                     key={`${f.column}-${f.operator}-${idx}`}
                     ref={isLast ? lastItemRef : undefined}
                     className="max-w-full"
+                    data-filter-index={idx}
                   >
                     {expanded ? (
                       <FilterConditionEditor
                         filter={f}
                         index={idx}
-                        columnOptions={columnOptions}
-                        opOptions={opOptions}
+                        columns={columns}
+                        supportedOperators={supportedOperators}
                         onChange={onChange}
                         onRemove={onRemove}
                         onCollapse={() => setEditingIndex(null)}
@@ -284,6 +298,14 @@ export function FilterEditor({
                         disabled={loading}
                         t={t}
                       />
+                    )}
+                    {!complete && (
+                      <span
+                        className="ml-1 rounded bg-warning/15 px-1 py-px text-[10px] text-warning"
+                        data-testid="filter-incomplete"
+                      >
+                        {t('filter.incomplete')}
+                      </span>
                     )}
                   </div>
                 );

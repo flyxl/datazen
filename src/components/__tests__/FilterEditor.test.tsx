@@ -3,6 +3,8 @@ import { render, fireEvent, cleanup, screen, act } from '@testing-library/react'
 import type { ComponentProps } from 'react';
 import { FILTER_VALUE_DEBOUNCE_MS, FilterEditor } from '../FilterEditor';
 import type { FilterCondition } from '../../types';
+import { SHARED_FILTER_OPERATORS } from '../../types';
+import { operatorsForColumn } from '../../lib/filterOperators';
 
 vi.mock('../../hooks/useI18n', () => ({
   useI18n: () => ({
@@ -378,5 +380,177 @@ describe('FilterEditor', () => {
     expect(idleRemoveButton).not.toBeDisabled();
     fireEvent.click(idleRemoveButton);
     expect(idleProps.onRemove).toHaveBeenCalledWith(0);
+  });
+});
+
+// ── 08 Step 10: the operators follow the column type, and an incomplete
+// condition is marked and blocks Apply instead of being dropped silently.
+describe('FilterEditor operators and completeness', () => {
+  const typedColumns = [
+    { name: 'id', type: 'int4' },
+    { name: 'name', type: 'text' },
+  ];
+
+  function renderTyped(
+    overrides: Partial<ComponentProps<typeof FilterEditor>> = {},
+  ): ReturnType<typeof renderEditor> {
+    return renderEditor({ columns: typedColumns, ...overrides });
+  }
+
+  /** Open the first collapsed condition, so its controls exist in the DOM. */
+  function expandFirstChip(): void {
+    fireEvent.click(screen.getAllByTitle('filter.editCondition')[0]);
+  }
+
+  /** The values of the operator select of the expanded condition. */
+  function operatorOptions(): string[] {
+    const selects = screen.getAllByRole('combobox');
+    const operatorSelect = selects[1] as HTMLSelectElement;
+    return Array.from(operatorSelect.options).map((option) => option.value);
+  }
+
+  it('offers the operators of the column type in the designed order', () => {
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+    });
+    expect(operatorOptions()).toEqual(operatorsForColumn('text', SHARED_FILTER_OPERATORS));
+  });
+
+  it('does not offer the pattern operators for a numeric column', () => {
+    renderTyped({
+      draftFilters: [{ column: 'id', operator: 'eq', value: '' }],
+    });
+    const options = operatorOptions();
+    expect(options).toEqual(operatorsForColumn('int4', SHARED_FILTER_OPERATORS));
+    expect(options).not.toContain('like');
+    expect(options).not.toContain('contains');
+  });
+
+  it('hides a dialect operator the driver does not declare', () => {
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+    });
+    expect(operatorOptions()).not.toContain('regex');
+
+    cleanup();
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+      supportedOperators: [...SHARED_FILTER_OPERATORS, 'regex'],
+    });
+    expect(operatorOptions()).toContain('regex');
+  });
+
+  it('marks an incomplete condition and blocks Apply', () => {
+    const props = renderTyped({
+      appliedFilters: [],
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+    });
+
+    expect(screen.getByTestId('filter-incomplete')).toHaveTextContent('filter.incomplete');
+    expect(screen.getByTestId('filter-incomplete-error')).toHaveTextContent(
+      'filter.errorIncomplete',
+    );
+    expect(screen.getByTestId('filter-apply')).toBeDisabled();
+    expect(props.onApply).not.toHaveBeenCalled();
+  });
+
+  it('keeps the draft value when the operator changes to one without a value', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'name', operator: 'eq', value: 'alice' }],
+    });
+    expandFirstChip();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'isNull' } });
+    expect(props.onChange).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({ operator: 'isNull', value: 'alice' }),
+    );
+  });
+
+  it('seeds the lower bound and leaves the upper bound empty when switching to between', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'id', operator: 'eq', value: '50' }],
+    });
+    expandFirstChip();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'between' } });
+    expect(props.onChange).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({ operator: 'between', value: ['50', ''] }),
+    );
+  });
+
+  it('renders two value inputs for a between condition', () => {
+    renderTyped({
+      draftFilters: [{ column: 'id', operator: 'between', value: ['10', '20'] }],
+    });
+    expandFirstChip();
+    expect(screen.getAllByTestId('filter-value')).toHaveLength(2);
+    const inputs = screen.getAllByTestId('filter-value') as HTMLInputElement[];
+    expect(inputs[0].value).toBe('10');
+    expect(inputs[1].value).toBe('20');
+  });
+
+  it('warns about inverted bounds without blocking them', () => {
+    renderTyped({
+      draftFilters: [{ column: 'id', operator: 'between', value: ['20', '10'] }],
+    });
+    expandFirstChip();
+    expect(screen.getByTestId('filter-between-inverted')).toHaveTextContent(
+      'filter.betweenInverted',
+    );
+  });
+
+  it('renders a token input and turns Enter into a token', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'name', operator: 'in', value: [] }],
+    });
+    const field = screen.getByTestId('filter-token-field');
+    fireEvent.change(field, { target: { value: 'paid' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(props.onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: ['paid'] }));
+  });
+
+  it('does not turn the Enter of an IME composition into a token', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'name', operator: 'in', value: [] }],
+    });
+    const field = screen.getByTestId('filter-token-field');
+    fireEvent.compositionStart(field);
+    fireEvent.change(field, { target: { value: 'huan' } });
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
+    expect(props.onChange).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(field);
+    // The composition flag is cleared in the next animation frame: the Enter
+    // that confirms a candidate belongs to the composition and must not commit.
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(props.onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: ['huan'] }));
+  });
+
+  it('removes a token when its remove button is clicked', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'name', operator: 'in', value: ['paid', 'open'] }],
+    });
+    expandFirstChip();
+    fireEvent.click(screen.getAllByTestId('filter-token-remove')[0]);
+    expect(props.onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: ['open'] }));
+  });
+
+  it('gives every condition row its index', () => {
+    renderTyped({
+      draftFilters: [
+        { column: 'id', operator: 'eq', value: '1' },
+        { column: 'name', operator: 'eq', value: 'a' },
+      ],
+    });
+    const rows = document.querySelectorAll('[data-filter-index]');
+    expect(Array.from(rows).map((row) => row.getAttribute('data-filter-index'))).toEqual([
+      '0',
+      '1',
+    ]);
   });
 });

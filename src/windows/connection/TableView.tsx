@@ -76,6 +76,18 @@ export function TableView({
   const driverReadOnly = databaseType
     ? DB_REGISTRY[databaseType as DatabaseType]?.readOnly === true
     : false;
+  /**
+   * The filter operators this database serves. A driver that declares none
+   * gets the shared set; the dialect specific operators only show up when the
+   * driver names them (the back end stays the authority).
+   */
+  const filterOperators = useMemo(
+    () =>
+      databaseType
+        ? DB_REGISTRY[databaseType as DatabaseType]?.dataGrid?.filterOperators
+        : undefined,
+    [databaseType],
+  );
   const isConnectionReadOnly = Boolean(
     readOnlyProp ?? (savedConnection?.readOnly || driverReadOnly),
   );
@@ -547,6 +559,7 @@ export function TableView({
         draftFilterLogic={draftFilterLogic}
         filterPanelOpen={filterPanelOpen}
         onFilterPanelOpenChange={actions.setFilterPanelOpen}
+        filterOperators={filterOperators}
         onAddFilter={actions.addFilter}
         onUpdateFilter={actions.updateFilter}
         onFilterLogicChange={actions.setFilterLogic}
