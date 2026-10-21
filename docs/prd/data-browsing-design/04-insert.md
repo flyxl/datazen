@@ -703,7 +703,7 @@ export interface TableState {
 
 | 前缀 | 触发点 | 前端映射 |
 | --- | --- | --- |
-| `grid.insert.noWritableColumn: ` | V-3 | `tableData.insertNoWritableColumn` |
+| `grid.insert.noWritableColumn: ` | V-3 | `tableData.insertNoWritableColumn`〔契约审计修订 2026-10-21〕**前端登记推迟到 V-3 实装**：`src/lib/gridErrors.ts` 的登记规则是「只登记**有生产者**的码」（登记了却无生产者 = 前端分支到一个永不到达的前缀）。本码目前**零生产者**（V-3 需要 `ColumnSchema` 的 generated/identity 标记），故本批**不追加**到前端注册表；V-3 实装时同步补登记与 §9.4 的分类用例。**i18n 词条 `tableData.insertNoWritableColumn` 照常落地**（未使用的词条无害，届时即用上） |
 | `grid.insert.unknownColumn: ` | V-2 | `tableData.insertUnknownColumn` |
 | ~~`grid.insert.duplicateDraft: `~~ | — | 〔契约审计修订 2026-10-21〕T2-4：**删除**（同 `tableData.insertDuplicateDraft` 的理由） |
 | `grid.insert.returningUnavailable: ` | Step 6「定位不到新行」（**本批常规路径**，非异常；裁定 7） | `tableData.insertReturningUnavailable` |
@@ -758,7 +758,7 @@ export function classifyGridError(message: string): GridErrorCode | 'unknown';
 | `insert_rolls_back_whole_batch_on_failure` | **事务原子性**：让某条语句失败（`execute_rows_affected = 2` 触发 `grid.commit.affectedMismatch`，或 `MockDriverOptions.execute_error`）→ 整批 `Err`、`commit_calls()` 不增长、`open_transaction_count()` 归零。**注意**：`MockDriver` 只把 `rollback_calls` 记在内部、无公开访问器，因此要么补一个 `rollback_calls()`（测试基建纯新增），要么用「无 commit + 事务计数归零」间接断言；不要为断言在**生产路径**加钩子 |
 | `insert_joins_user_transaction_and_does_not_roll_it_back_on_failure` | 手动句柄事务内失败 → 不回滚那个手动事务（`open_transaction_count()` 保持）且错误上抛 |
 | ~~`insert_uses_query_path_when_returning_clause_is_present`~~〔裁定 7：**本批不写**，随回填能力落地再启用〕 | `insert_returning_clause` 非 `None` 时走 `driver.query`（`mock.query_calls()` 增长、`execute_calls()` 不增长），回填后的 `row_identity` 等于 `MockDriverOptions.query_rows` 给出的主键值 |
-| `insert_identity_falls_back_to_written_primary_key_when_returning_is_none` | **本批唯一启用的回填相关用例**（不依赖 `insert_returning_clause`）：驱动返回 `None`、草稿写满全部主键列 → `row_identity` 非空且等于用户写入值，**不**出现降级 warning |
+| `insert_identity_falls_back_to_written_primary_key_when_returning_is_none` | 〔契约审计修订 2026-10-21〕**后端未实装**：新行的 `row_identity` 被 `canonicalize_insert` 清空，且 `write_exec` 原样回传该空身份 ⇒ 「用户写满主键即可精确定位」这条路径**当前走不通**，前端只能靠「最大主键候补」（且要求候补**比提交前更大**，否则宁可不定位）。**不在本批补**（改 `canonicalize_insert` 会触及 Wave 1 已验收的指纹/规范化逻辑，收益不抵风险）；由 Wave 3 前端按**降级**口径实现（定位不到就明说），后端补回填另立条目 | **本批唯一启用的回填相关用例**（不依赖 `insert_returning_clause`）：驱动返回 `None`、草稿写满全部主键列 → `row_identity` 非空且等于用户写入值，**不**出现降级 warning |
 | `insert_without_returning_reports_degradation_warning` | **本批核心用例**：驱动返回 `None` 且未写满主键 → `row_identity` 为空 map + warning `insert-returning-unavailable`；并断言**没有**任何 `driver.query` 调用（证明宿主真的没走回填）、`driver.execute` 恰好 1 次 |
 | `insert_locate_new_row_falls_back_to_max_primary_key_when_row_identity_empty` | **本批定位策略**：`row_identity` 为空、表为单列可比较主键 → 刷新后取当前页主键最大行为候补并高亮；表为复合主键 → 不取候补、直接走降级 warning |
 | `insert_affected_zero_is_rejected_like_every_other_statement` | **R-C 回归**：`execute_rows_affected = 0` → `Err` + `grid.commit.affectedMismatch`（文案含 `INSERT affected 0 rows`）；`= 2` → 同样 `Err`。**不存在**「0 行容忍」分支 |
@@ -798,7 +798,7 @@ export function classifyGridError(message: string): GridErrorCode | 'unknown';
 | `…::preview_is_invalidated_when_a_draft_changes` | 预览返回前修改一条草稿 → `previewPlan` **不**被写入（沿用既有签名保护思想） |
 | `…::no_primary_key_table_allows_drafts_but_not_cell_edits` | 无主键表：`addDraftRow` 生效；`stageCellChange` 仍报 `tableData.noPrimaryKey` |
 | `…::new_locale_keys_exist_in_en_query_pack` | 遍历 §8 的新 key（**排除**已被 R-C / T2-4 删除的两条），断言都能在 `src/locales/en/query.ts` 的默认导出里取到非空字符串（防 `I18nKey` 的 `string & {}` 逃逸） |
-| `src/lib/__tests__/gridErrors.test.ts::classify_maps_insert_prefixes_and_falls_back_to_raw` | `classifyGridError('grid.insert.noWritableColumn: column "email" requires a value')` → `'grid.insert.noWritableColumn'`；无关消息 → `'unknown'` 且调用方拿到**原始字符串** |
+| `src/lib/__tests__/gridErrors.test.ts::classify_maps_insert_prefixes_and_falls_back_to_raw` | 〔契约审计修订 2026-10-21〕**用例改写**：`grid.insert.noWritableColumn` **本批不在前端注册表**（零生产者，见 §8 的裁定），所以这条断言**不能**用它做例子；改用**有生产者的** insert 域码（`grid.insert.unknownColumn` / `grid.insert.returningUnavailable`）做分类断言，并额外断言「未登记的码分类为 `unknown` 且**回退到原始消息**」——即 `classifyGridError('grid.insert.noWritableColumn: …')` → `'unknown'`（该断言的**用意**是「不把未登记的码当已登记」）。V-3 实装后再加一条 `noWritableColumn` 的分类断言 |rt.noWritableColumn'`；无关消息 → `'unknown'` 且调用方拿到**原始字符串** |
 
 ### 9.5 连续旅程测试（journey）
 
