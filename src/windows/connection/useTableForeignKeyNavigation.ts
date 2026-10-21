@@ -4,7 +4,11 @@ import { useFkNavigationShortcuts } from '../../hooks/useFkNavigationShortcuts';
 import { useFkNavigationStore } from '../../stores/fkNavigationStore';
 import { usePanelStore } from '../../stores/panelStore';
 import { openForeignKeyTarget } from '../../lib/fkNavigationActions';
-import { scrollTopForAnchorRow, type FkGroupAffordance, type GridViewport } from '../../lib/fkNavigation';
+import {
+  scrollTopForAnchorRow,
+  type FkGroupAffordance,
+  type GridViewport,
+} from '../../lib/fkNavigation';
 import type { GridErrorCode } from '../../lib/gridErrors';
 import { toCellValue } from '../../stores/tableData/connectionState';
 import type { CellCoord } from '../../stores/tableData/gridSelection';
@@ -51,7 +55,7 @@ export interface UseTableForeignKeyNavigationOptions {
 export interface TableForeignKeyNavigation {
   /** The columns that take part in a foreign key, mapped to their group. */
   fkIndex: ReadonlyMap<string, FkGroupAffordance>;
-  /** The displayed column names, in render order. */
+  /** The displayed column names, in render order — the order the grid renders. */
   fkVisibleColumns: readonly string[];
   /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
   fkResolving: ReadonlySet<string>;
