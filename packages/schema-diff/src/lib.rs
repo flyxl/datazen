@@ -7,6 +7,7 @@ pub mod deploy;
 pub mod ir;
 pub mod job;
 pub mod object_identity;
+pub mod object_selection;
 pub mod objects;
 mod operation_dependencies;
 mod operation_dependency_references;

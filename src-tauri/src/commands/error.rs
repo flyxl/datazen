@@ -102,6 +102,12 @@ impl From<serde_json::Error> for CommandError {
     }
 }
 
+impl From<crate::schema_diff::object_selection::ObjectSelectionError> for CommandError {
+    fn from(e: crate::schema_diff::object_selection::ObjectSelectionError) -> Self {
+        CommandError::Validation(e.to_string())
+    }
+}
+
 impl From<crate::data_sync::DataSyncError> for CommandError {
     fn from(e: crate::data_sync::DataSyncError) -> Self {
         match e {
