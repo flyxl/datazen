@@ -95,8 +95,16 @@ function capturePointer(target: Element | null, pointerId: number): void {
   if (target === null || typeof target.setPointerCapture !== 'function') return;
   try {
     target.setPointerCapture(pointerId);
-  } catch {
-    // No active pointer for this id: the drag still works, only the capture is missing.
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'NotFoundError') {
+      // No active pointer for this id (a synthetic PointerEvent has none): the drag still
+      // works, only the capture is missing.
+      return;
+    }
+    // Anything else is unexpected. Report it instead of swallowing it — but do NOT
+    // rethrow: that would abort the pointerdown handler and turn a degraded drag into a
+    // completely dead click.
+    console.warn('[grid] pointer capture failed', error);
   }
 }
 

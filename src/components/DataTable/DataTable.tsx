@@ -197,6 +197,17 @@ export function DataTable({
 
   const handleRowClick = useCallback(
     (index: number, opts?: { multi?: boolean; range?: boolean }) => {
+      // A click on the row background selects the whole row — and only that. The grid
+      // never invents a row-mode selection here: a consumer that owns the row set must
+      // keep owning it, or `setGridSelection` would clear the consumer's own rows.
+      onRowClick?.(index);
+      onRowSelect?.(index, opts);
+    },
+    [onRowClick, onRowSelect],
+  );
+
+  const handleGutterSelect = useCallback(
+    (index: number, opts?: { multi?: boolean; range?: boolean }) => {
       onRowClick?.(index);
       if (onRowSelect) {
         // The consumer owns the row-mode transition: the store writes the mode and the row
@@ -247,16 +258,30 @@ export function DataTable({
    * Rendered only when the cell-selection contract is on, so a grid without it keeps
    * today's DOM.
    */
+  const gridRowCount = emptyPlaceholder
+    ? 1
+    : rows.length + 1 + (loading || rows.length === 0 ? 1 : 0);
   const surfaceDomProps = hasCellSelection
     ? {
         'data-dt-surface': '',
         role: 'grid' as const,
         tabIndex: 0,
-        'aria-rowcount': rows.length + 1,
+        'aria-rowcount': gridRowCount,
         'aria-colcount': columnNames.length + 1,
         'aria-activedescendant': activeDescendantId ?? undefined,
       }
     : {};
+  /**
+   * Wrap non-row content (the status overlays, the caller-provided empty placeholder) in a
+   * row + gridcell: an ARIA grid may only contain rows, so a bare `role="status"` or a
+   * placeholder div would be invalid content. The live-region semantics of the status
+   * layer stay untouched inside the cell — a screen reader still announces it.
+   */
+  const gridRow = (content: React.ReactNode) => (
+    <div role={hasCellSelection ? 'row' : undefined}>
+      <div role={hasCellSelection ? 'gridcell' : undefined}>{content}</div>
+    </div>
+  );
   /**
    * Rows a cell selection covers. Derived, never written back into `selectedRows`
    * (00-contracts §4.2, rule 3): in cell mode the row set is empty by contract.
@@ -642,7 +667,7 @@ export function DataTable({
         {...(hasCellSelection ? surfaceProps : {})}
       >
         {emptyPlaceholder ? (
-          emptyPlaceholder
+          gridRow(emptyPlaceholder)
         ) : (
           <>
             <TableHeader
@@ -672,6 +697,7 @@ export function DataTable({
               onCellEdit={handleCellEdit}
               onCellEditCancel={handleCellEditCancel}
               onRowSelect={handleRowClick}
+              onRowGutterSelect={handleGutterSelect}
               onRowClick={onRowClick}
               cellSelectionEnabled={hasCellSelection}
               isCellSelected={isCellSelected}
@@ -679,23 +705,27 @@ export function DataTable({
               cellIdPrefix={hasCellSelection ? gridIdPrefix : undefined}
             />
             {loading ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex min-h-28 items-center justify-center gap-2 text-xs text-fg-muted"
-              >
-                <Spinner size="lg" />
-                {t('dataTable.loading')}
-              </div>
+              gridRow(
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex min-h-28 items-center justify-center gap-2 text-xs text-fg-muted"
+                >
+                  <Spinner size="lg" />
+                  {t('dataTable.loading')}
+                </div>,
+              )
             ) : rows.length === 0 ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex min-h-28 flex-col items-center justify-center gap-1 px-4 text-center text-xs text-fg-muted"
-              >
-                <span>{t('dataTable.empty')}</span>
-                <span className="text-fg-muted/80">{t('dataTable.emptyHint')}</span>
-              </div>
+              gridRow(
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex min-h-28 flex-col items-center justify-center gap-1 px-4 text-center text-xs text-fg-muted"
+                >
+                  <span>{t('dataTable.empty')}</span>
+                  <span className="text-fg-muted/80">{t('dataTable.emptyHint')}</span>
+                </div>,
+              )
             ) : null}
           </>
         )}

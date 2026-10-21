@@ -52,6 +52,12 @@ interface HarnessProps {
   selectedRows?: Set<number>;
   editingCell?: { row: number; col: string } | null;
   withSelectionProps?: boolean;
+  /** Rows to render; defaults to the sample rows. */
+  rows?: unknown[][];
+  loading?: boolean;
+  emptyPlaceholder?: React.ReactNode;
+  /** Omit `onRowSelect` to exercise the grid-owned row-mode fallback. */
+  withRowSelect?: boolean;
 }
 
 /** Controlled grid: the selection lives in the harness, the grid only reports changes. */
@@ -62,6 +68,10 @@ function Harness({
   selectedRows,
   editingCell = null,
   withSelectionProps = true,
+  rows = ROWS,
+  loading = false,
+  emptyPlaceholder,
+  withRowSelect = true,
 }: HarnessProps) {
   const [selection, setSelection] = useState<GridSelection>(EMPTY_GRID_SELECTION);
   const handleChange = useCallback(
@@ -75,13 +85,15 @@ function Harness({
   return (
     <DataTable
       columns={COLS}
-      rows={ROWS}
+      rows={rows}
       selectedRows={selectedRows}
       editingCell={editingCell}
-      onRowSelect={onRowSelect}
+      onRowSelect={withRowSelect ? onRowSelect : undefined}
       onSelectAll={vi.fn()}
       primaryKeyColumns={['id']}
       onDeleteRows={onDeleteRows}
+      loading={loading}
+      emptyPlaceholder={emptyPlaceholder}
       {...(withSelectionProps
         ? { gridSelection: selection, onGridSelectionChange: handleChange }
         : {})}
@@ -261,5 +273,72 @@ describe('DataTable selection surface', () => {
     expect(translate('dataTable.selectionSummary', { rows: 4, cols: 3 })).toBe(
       '4 rows × 3 columns',
     );
+  });
+});
+
+describe('DataTable ARIA grid structure', () => {
+  /** Every direct child of the grid must be a row or a row group. */
+  function expectOnlyRows(grid: HTMLElement) {
+    const children = Array.from(grid.children);
+    expect(children.length).toBeGreaterThan(0);
+    for (const child of children) {
+      expect(['row', 'rowgroup']).toContain(child.getAttribute('role'));
+    }
+  }
+
+  it('keeps the grid children limited to rows and row groups', () => {
+    const { container } = render(<Harness loading />);
+    expectOnlyRows(surface(container));
+  });
+
+  it('keeps the grid children limited to rows when the table is empty', () => {
+    const { container } = render(<Harness rows={[]} />);
+    expectOnlyRows(surface(container));
+  });
+
+  it('keeps the grid children limited to rows when an empty placeholder is shown', () => {
+    const { container } = render(
+      <Harness emptyPlaceholder={<div data-testid="all-columns-hidden">hidden</div>} />,
+    );
+    expectOnlyRows(surface(container));
+  });
+
+  it('keeps the loading status a live region inside the grid', () => {
+    const { container, getByRole } = render(<Harness loading />);
+    const status = getByRole('status');
+
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    // The announcement must survive: the live region stays inside the grid, wrapped in a
+    // row/cell instead of hanging off the grid as a non-row child.
+    expect(surface(container).contains(status)).toBe(true);
+    expect(status.closest('[role="gridcell"]')).not.toBeNull();
+  });
+
+  it('keeps the empty state a live region inside the grid', () => {
+    const { container, getByRole } = render(<Harness rows={[]} />);
+    const status = getByRole('status');
+
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(surface(container).contains(status)).toBe(true);
+  });
+});
+
+describe('DataTable row-mode fallback', () => {
+  it('emits the row-mode selection from the row gutter only', () => {
+    const onSelectionChange = vi.fn();
+    const { container } = render(
+      <Harness onSelectionChange={onSelectionChange} withRowSelect={false} />,
+    );
+
+    // The row background is not a row-selection entry point: the grid must not invent a
+    // selection there, or a consumer that owns its own row set would lose it.
+    fireEvent.click(container.querySelector('[data-dt-row-view="0"]')!);
+    expect(onSelectionChange).not.toHaveBeenCalled();
+
+    // The gutter is.
+    const gutter = container.querySelector('[role="rowheader"] button') as HTMLButtonElement;
+    fireEvent.click(gutter);
+    expect(onSelectionChange).toHaveBeenCalledTimes(1);
+    expect(onSelectionChange.mock.lastCall?.[0].mode).toBe('row');
   });
 });

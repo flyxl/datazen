@@ -32,6 +32,12 @@ export interface VirtualBodyProps {
   activeCell?: CellCoord | null;
   /** Prefix of the cell DOM ids the grid's `aria-activedescendant` points at. */
   cellIdPrefix?: string;
+  /**
+   * Row-number slot click. Falls back to `onRowSelect` when it is not given; the grid uses
+   * it to keep the "no consumer-side row path" fallback on the gutter only — a click on the
+   * row background must never clear a row set the consumer owns.
+   */
+  onRowGutterSelect?: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   /** Row clicked (single click) — used by the parent to track the detail-panel row. */
   onRowClick?: (index: number) => void;
 }
@@ -58,6 +64,7 @@ interface VirtualRowProps {
   onCellEdit: (row: number, col: string, value: unknown) => void;
   onCellEditCancel: () => void;
   onRowSelect: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
+  onRowGutterSelect?: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   onRowClick?: (index: number) => void;
 }
 
@@ -83,6 +90,7 @@ const VirtualRow = memo(function VirtualRow({
   onCellEdit,
   onCellEditCancel,
   onRowSelect,
+  onRowGutterSelect,
   onRowClick,
 }: VirtualRowProps) {
   const handleClick = useCallback(
@@ -125,12 +133,17 @@ const VirtualRow = memo(function VirtualRow({
   const handleSelectButtonClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onRowSelect(vRow.index, {
+      const opts = {
         multi: e.metaKey || e.ctrlKey,
         range: e.shiftKey,
-      });
+      };
+      if (onRowGutterSelect) {
+        onRowGutterSelect(vRow.index, opts);
+        return;
+      }
+      onRowSelect(vRow.index, opts);
     },
-    [onRowSelect, vRow.index],
+    [onRowGutterSelect, onRowSelect, vRow.index],
   );
 
   return (
@@ -223,6 +236,7 @@ export const VirtualBody = memo(function VirtualBody({
   isCellSelected,
   activeCell = null,
   cellIdPrefix,
+  onRowGutterSelect,
   onRowClick,
 }: VirtualBodyProps) {
   const { t } = useI18n();
@@ -272,6 +286,7 @@ export const VirtualBody = memo(function VirtualBody({
           onCellEdit={onCellEdit}
           onCellEditCancel={onCellEditCancel}
           onRowSelect={onRowSelect}
+          onRowGutterSelect={onRowGutterSelect}
           onRowClick={onRowClick}
         />
       ))}
