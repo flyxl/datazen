@@ -1,5 +1,6 @@
 import type { ColumnSchema, FilterCondition, SortCondition } from '../../types';
 import type {
+  PendingInsert,
   PendingRowChange,
   PendingStatus,
   RowChangePlan,
@@ -37,6 +38,20 @@ export interface TableState {
   editBuffer: Map<string, CellEdit>;
   /** Changes staged against this table; the map key is the stable PK identity. */
   pendingChanges: Map<string, PendingRowChange>;
+  /**
+   * New-row drafts, keyed by their draft id.
+   *
+   * Deliberately **not** part of `pendingChanges`: every consumer of that map
+   * assumes the row already exists and has a primary-key identity, while a
+   * draft has none (and tables without a primary key may still be inserted
+   * into). The two collections only meet at the wire boundary, where
+   * `draftsForWire()` turns a draft into an `insertMarked` row change.
+   */
+  draftInserts: Map<string, PendingInsert>;
+  /** Creation order of the drafts; it decides the plan order and the render order. */
+  draftInsertOrder: string[];
+  /** Identity key of the row highlighted right after an insert commit; `null` when none. */
+  highlightedNewRowKey: string | null;
   /** Ephemeral row-index anchor; it only points back to an original identity key. */
   rowIdentityAnchors: Map<number, string>;
   previewPlan: RowChangePlan | null;

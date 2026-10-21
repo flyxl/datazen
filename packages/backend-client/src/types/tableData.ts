@@ -138,8 +138,10 @@ export interface ChangeWarning {
  *
  * `inserts` carries the new-row statements in **request order**: the user's
  * visual draft order is also the execution order, because insert order decides
- * auto-increment allocation. A plan without inserts leaves the field unset
- * rather than sending an empty list.
+ * auto-increment allocation. The field is **always present**: the host declares
+ * it with `#[serde(default)]` (a tolerance for deserializing a plan that does
+ * not carry it) and serializes it unconditionally, so a plan without inserts
+ * carries an empty list rather than a missing key.
  */
 export interface RowChangePlan {
   planId: string;
@@ -167,7 +169,7 @@ export interface RowChangePlan {
   updates: PlannedStatement[];
   deletes: PlannedStatement[];
   /** New-row statements in request order: insertion order decides auto-increment. */
-  inserts?: PlannedStatement[];
+  inserts: PlannedStatement[];
   warnings: ChangeWarning[];
 }
 

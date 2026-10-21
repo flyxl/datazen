@@ -202,6 +202,8 @@ export interface TablePendingChangesBarProps {
   pendingCount: number;
   updateCount: number;
   deleteCount: number;
+  /** Staged new rows; shown as its own segment (04 §4.3). */
+  insertCount?: number;
   /** Loading or previewing/committing: every action is disabled while true. */
   busy: boolean;
   onPreview: () => void;
@@ -217,6 +219,7 @@ export function TablePendingChangesBar({
   pendingCount,
   updateCount,
   deleteCount,
+  insertCount = 0,
   busy,
   onPreview,
   onCommit,
@@ -229,6 +232,9 @@ export function TablePendingChangesBar({
       <span className="font-medium text-amber-300">
         {t('tableData.pendingChanges', { count: pendingCount })}
       </span>
+      {insertCount > 0 && (
+        <span className="text-fg-muted">{t('tableData.pendingInserts', { count: insertCount })}</span>
+      )}
       {updateCount > 0 && (
         <span className="text-fg-muted">
           {t('tableData.pendingUpdates', { count: updateCount })}

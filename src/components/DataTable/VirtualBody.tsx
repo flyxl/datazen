@@ -3,9 +3,30 @@ import { useI18n } from '../../hooks/useI18n';
 import { useVirtualTable } from '../../hooks/useVirtualTable';
 import type { ColumnDef } from './TableHeader';
 import { GridCell } from './GridCell';
+import { CellRenderer } from './CellRenderer';
+import { EditableCell } from './EditableCell';
 import { classifyDataType } from '../../lib/dataTypeColors';
 import type { CellCoord } from '../../stores/tableData/gridSelection';
 import { cn } from '../../lib/cn';
+import type { Value } from '../../types';
+
+/**
+ * One new-row draft, as the grid renders it.
+ *
+ * `cells` holds the **written** columns only. A key that is absent means "do not
+ * write this column" — the database keeps its default (auto-increment, generated
+ * column, `DEFAULT now()`) — while `null` means "write SQL NULL".
+ */
+export interface DraftRowViewModel {
+  /** UI association key; also rendered as `data-draft-id`. */
+  draftId: string;
+  /** Written columns only; a missing key means the column is not written. */
+  cells: Record<string, Value | null>;
+}
+
+const NOOP = () => {};
+const EMPTY_ROW: unknown[] = [];
+const EMPTY_DRAFT_ROWS: DraftRowViewModel[] = [];
 
 export interface VirtualBodyProps {
   columns: ColumnDef[];
@@ -40,6 +61,39 @@ export interface VirtualBodyProps {
   onRowGutterSelect?: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   /** Row clicked (single click) — used by the parent to track the detail-panel row. */
   onRowClick?: (index: number) => void;
+  /**
+   * New-row drafts, rendered **after** the real rows.
+   *
+   * They are derived rows: a draft is never part of the real row set, so it must
+   * not reach identity building, de-duplication, export or sorting (04 §3.7 R-5).
+   */
+  draftRows?: DraftRowViewModel[];
+  /** Write one cell of a draft. `undefined` clears the column (do not write it). */
+  onDraftCellEdit?: (draftId: string, column: string, value: Value | null | undefined) => void;
+  /** Start editing a draft cell. */
+  onDraftCellEditStart?: (draftId: string, column: string) => void;
+  /** Leave the draft cell editor without writing anything. */
+  onDraftCellEditCancel?: () => void;
+  /** Drop a draft row. */
+  onDraftRowRemove?: (draftId: string) => void;
+  /** The draft row the pointer focus is on (the target of duplicate / discard). */
+  onDraftRowActivate?: (draftId: string) => void;
+  /** Append a new draft row — the "empty area below the last row" entry. */
+  onAddDraftRow?: () => void;
+  /** The draft cell that is being edited right now. */
+  editingDraft?: { draftId: string; column: string } | null;
+  /**
+   * The row that was just inserted — the one the commit located.
+   *
+   * It is a **separate** channel from `highlightedRow`: that one is shared
+   * with the detail panel, so a highlighted row could be either. The new row
+   * gets a marker **with a word on it**, which is what tells the user which
+   * row the commit produced (04 §4.1).
+   *
+   * `null` (the default) renders no marker at all, so a grid that does not
+   * use the feature keeps today's DOM byte for byte.
+   */
+  newRowIndex?: number | null;
 }
 
 interface VirtualRowProps {
@@ -66,6 +120,10 @@ interface VirtualRowProps {
   onRowSelect: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   onRowGutterSelect?: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   onRowClick?: (index: number) => void;
+  /** This row is the one the last insert produced. */
+  isNewRow?: boolean;
+  /** The wording of the marker; passed down so every row does not subscribe. */
+  newRowLabel: string;
 }
 
 const VirtualRow = memo(function VirtualRow({
@@ -92,6 +150,8 @@ const VirtualRow = memo(function VirtualRow({
   onRowSelect,
   onRowGutterSelect,
   onRowClick,
+  isNewRow = false,
+  newRowLabel,
 }: VirtualRowProps) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -168,6 +228,14 @@ const VirtualRow = memo(function VirtualRow({
       onKeyDown={handleKeyDown}
       onDoubleClick={handleRowDoubleClick}
     >
+      {isNewRow && (
+        <span
+          data-testid="new-row-badge"
+          className="absolute right-1 top-1/2 z-10 -translate-y-1/2 rounded border border-accent/60 bg-surface/90 px-1 text-[10px] font-medium text-accent"
+        >
+          {newRowLabel}
+        </span>
+      )}
       {/* The row-number slot is the row header: a `row` may only contain gridcell /
           rowheader / columnheader children, so the bare button has to be wrapped. */}
       <div
@@ -219,6 +287,143 @@ const VirtualRow = memo(function VirtualRow({
   );
 });
 
+interface DraftRowProps {
+  vRow: { index: number; key: Key; start: number };
+  draft: DraftRowViewModel;
+  /** Position of the draft among the drafts; it is the `data-testid` suffix. */
+  draftIndex: number;
+  columns: ColumnDef[];
+  rowHeight: number;
+  columnWidths?: number[];
+  editing: { draftId: string; column: string } | null;
+  cellSelectionEnabled: boolean;
+  onDraftCellEdit?: (draftId: string, column: string, value: Value | null | undefined) => void;
+  onDraftCellEditStart?: (draftId: string, column: string) => void;
+  onDraftCellEditCancel?: () => void;
+  onDraftRowRemove?: (draftId: string) => void;
+  onDraftRowActivate?: (draftId: string) => void;
+}
+
+/**
+ * One new-row draft.
+ *
+ * The row is deliberately **outside** the cell-selection contract: a draft has
+ * no identity and is not a row of the table yet, so it must not answer the
+ * selection queries of the grid (04 §3.7 R-6). It therefore carries its own
+ * `data-row-kind="draft"` marker and its own `data-testid="draft-row-N"`.
+ */
+const DraftRow = memo(function DraftRow({
+  vRow,
+  draft,
+  draftIndex,
+  columns,
+  rowHeight,
+  columnWidths,
+  editing,
+  cellSelectionEnabled,
+  onDraftCellEdit,
+  onDraftCellEditStart,
+  onDraftCellEditCancel,
+  onDraftRowRemove,
+  onDraftRowActivate,
+}: DraftRowProps) {
+  const { t } = useI18n();
+  const badgeLabel = t('tableData.draftRowBadge');
+  const defaultLabel = t('tableData.insertDefault');
+  const unsavedLabel = t('tableData.draftRowUnsaved');
+  const removeLabel = t('tableData.removeDraftRow');
+
+  return (
+    <div
+      data-testid={`draft-row-${draftIndex}`}
+      data-row-kind="draft"
+      data-draft-id={draft.draftId}
+      role={cellSelectionEnabled ? 'row' : undefined}
+      aria-label={unsavedLabel}
+      className="absolute left-0 flex w-full border-b border-dashed border-accent/40 bg-accent/5 outline-none"
+      style={{ top: vRow.start, height: rowHeight }}
+      onClick={() => onDraftRowActivate?.(draft.draftId)}
+    >
+      <div
+        role={cellSelectionEnabled ? 'rowheader' : undefined}
+        className="flex w-10 shrink-0 items-center justify-center gap-0.5 border-r border-edge/30"
+      >
+        <span data-testid="draft-row-badge" className="text-[10px] font-semibold text-accent">
+          {badgeLabel}
+        </span>
+        <button
+          type="button"
+          tabIndex={-1}
+          data-testid="draft-row-remove"
+          aria-label={removeLabel}
+          title={removeLabel}
+          className="flex h-3.5 w-3.5 items-center justify-center rounded text-[10px] text-fg-muted hover:bg-surface-raised hover:text-danger"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDraftRowRemove?.(draft.draftId);
+          }}
+        >
+          ×
+        </button>
+      </div>
+      {columns.map((col, colIdx) => {
+        // A missing key is the third state of the write intent: the column is
+        // not written at all, so the cell shows the DEFAULT placeholder.
+        const written = Object.prototype.hasOwnProperty.call(draft.cells, col.name);
+        const value = written ? draft.cells[col.name] : undefined;
+        const isEditing =
+          editing !== null && editing.draftId === draft.draftId && editing.column === col.name;
+        const colW = columnWidths?.[colIdx] ?? 160;
+        return (
+          <div
+            key={col.id}
+            data-testid="draft-cell"
+            data-draft-col={col.name}
+            data-draft-state={written ? (value === null ? 'null' : 'value') : 'default'}
+            className="flex shrink-0 items-center overflow-hidden border-r border-edge/30 px-2"
+            style={{ width: colW }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              onDraftCellEditStart?.(draft.draftId, col.name);
+            }}
+          >
+            {isEditing ? (
+              <EditableCell
+                value={value ?? null}
+                type={(col.type ?? '').toLowerCase()}
+                onCommit={(committed) =>
+                  onDraftCellEdit?.(
+                    draft.draftId,
+                    col.name,
+                    committed === null ? undefined : (committed as Value),
+                  )
+                }
+                onCancel={() => onDraftCellEditCancel?.()}
+              />
+            ) : written ? (
+              <CellRenderer
+                columnName={col.name}
+                dataType={col.type}
+                value={value ?? null}
+                isEditing={false}
+                onCommit={NOOP}
+                onCancel={NOOP}
+              />
+            ) : (
+              <span
+                data-testid="draft-cell-default"
+                className="truncate text-xs italic text-fg-muted"
+              >
+                {defaultLabel}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+});
+
 export const VirtualBody = memo(function VirtualBody({
   columns,
   rows,
@@ -238,10 +443,28 @@ export const VirtualBody = memo(function VirtualBody({
   cellIdPrefix,
   onRowGutterSelect,
   onRowClick,
+  draftRows = EMPTY_DRAFT_ROWS,
+  onDraftCellEdit,
+  onDraftCellEditStart,
+  onDraftCellEditCancel,
+  onDraftRowRemove,
+  onDraftRowActivate,
+  onAddDraftRow,
+  editingDraft = null,
+  newRowIndex = null,
 }: VirtualBodyProps) {
   const { t } = useI18n();
+  /**
+   * The drafts take part in the virtualisation, so the virtual list is one row
+   * longer than the real row set. The placeholder entries only carry the
+   * length; the draft content is rendered from `draftRows`.
+   */
+  const displayRows = useMemo(
+    () => (draftRows.length === 0 ? rows : [...rows, ...draftRows.map(() => EMPTY_ROW)]),
+    [rows, draftRows],
+  );
   const { virtualRows, totalHeight } = useVirtualTable({
-    rows,
+    rows: displayRows,
     rowHeight,
     overscan: 12,
     scrollElement,
@@ -249,6 +472,8 @@ export const VirtualBody = memo(function VirtualBody({
 
   const colNames = columns.map((c) => c.name);
   const selectRowLabel = t('dataTable.selectRow');
+  /** The wording of the marker of a freshly inserted row. */
+  const newRowLabel = t('tableData.highlightNewRow');
   /** Normalised column type, rendered as `data-dt-cell-type` (DB-05 swaps the source). */
   const columnTypes = useMemo(() => columns.map((c) => classifyDataType(c.type)), [columns]);
   const cellSelected = useCallback(
@@ -259,37 +484,66 @@ export const VirtualBody = memo(function VirtualBody({
   return (
     <div
       className="min-w-max"
-      style={{ height: totalHeight, position: 'relative' }}
+      style={{ height: totalHeight + (onAddDraftRow ? rowHeight : 0), position: 'relative' }}
       role={cellSelectionEnabled ? 'rowgroup' : undefined}
     >
-      {virtualRows.map((vRow) => (
-        <VirtualRow
-          key={String(vRow.key)}
-          vRow={vRow}
-          row={rows[vRow.index] ?? []}
-          columns={columns}
-          colNames={colNames}
-          columnTypes={columnTypes}
-          rowHeight={rowHeight}
-          columnWidths={columnWidths}
-          editingCell={editingCell}
-          selected={selectedRows.has(vRow.index)}
-          nextSelected={selectedRows.has(vRow.index + 1)}
-          highlighted={highlightedRow === vRow.index}
-          selectRowLabel={selectRowLabel}
-          cellSelectionEnabled={cellSelectionEnabled}
-          isCellSelected={cellSelected}
-          activeRow={activeCell?.rowIndex ?? null}
-          activeColumnName={activeCell?.columnName ?? null}
-          cellIdPrefix={cellIdPrefix}
-          onCellDoubleClick={onCellDoubleClick}
-          onCellEdit={onCellEdit}
-          onCellEditCancel={onCellEditCancel}
-          onRowSelect={onRowSelect}
-          onRowGutterSelect={onRowGutterSelect}
-          onRowClick={onRowClick}
+      {virtualRows.map((vRow) =>
+        vRow.index < rows.length ? (
+          <VirtualRow
+            key={String(vRow.key)}
+            vRow={vRow}
+            row={rows[vRow.index] ?? []}
+            columns={columns}
+            colNames={colNames}
+            columnTypes={columnTypes}
+            rowHeight={rowHeight}
+            columnWidths={columnWidths}
+            editingCell={editingCell}
+            selected={selectedRows.has(vRow.index)}
+            nextSelected={selectedRows.has(vRow.index + 1)}
+            highlighted={highlightedRow === vRow.index}
+            selectRowLabel={selectRowLabel}
+            cellSelectionEnabled={cellSelectionEnabled}
+            isCellSelected={cellSelected}
+            activeRow={activeCell?.rowIndex ?? null}
+            activeColumnName={activeCell?.columnName ?? null}
+            cellIdPrefix={cellIdPrefix}
+            onCellDoubleClick={onCellDoubleClick}
+            onCellEdit={onCellEdit}
+            onCellEditCancel={onCellEditCancel}
+            onRowSelect={onRowSelect}
+            onRowGutterSelect={onRowGutterSelect}
+            onRowClick={onRowClick}
+            isNewRow={newRowIndex !== null && newRowIndex === vRow.index}
+            newRowLabel={newRowLabel}
+          />
+        ) : (
+          <DraftRow
+            key={String(vRow.key)}
+            vRow={vRow}
+            draft={draftRows[vRow.index - rows.length]}
+            draftIndex={vRow.index - rows.length}
+            columns={columns}
+            rowHeight={rowHeight}
+            columnWidths={columnWidths}
+            editing={editingDraft}
+            cellSelectionEnabled={cellSelectionEnabled}
+            onDraftCellEdit={onDraftCellEdit}
+            onDraftCellEditStart={onDraftCellEditStart}
+            onDraftCellEditCancel={onDraftCellEditCancel}
+            onDraftRowRemove={onDraftRowRemove}
+            onDraftRowActivate={onDraftRowActivate}
+          />
+        ),
+      )}
+      {onAddDraftRow && (
+        <div
+          data-testid="draft-add-row"
+          className="absolute left-0 w-full"
+          style={{ top: totalHeight, height: rowHeight }}
+          onDoubleClick={onAddDraftRow}
         />
-      ))}
+      )}
     </div>
   );
 });
