@@ -271,10 +271,18 @@ pub async fn resolve_foreign_key_targets(
         .get_table_schema(&binding.handle, source_table, &database, schema.as_deref())
         .await
         .map_err(|error| {
+            // The driver's text is not part of the message: it is the one
+            // place a user value can leak. The kind goes to the log.
+            tracing::warn!(
+                table = %source_table,
+                error_kind = driver_error_kind(&error),
+                "foreign key source metadata is unreadable"
+            );
             FkNavigationError::coded(
                 FkErrorCode::UnknownConstraint,
                 format!(
-                    "source table '{source_table}' has no readable foreign key metadata: {error}"
+                    "source table '{source_table}' has no readable foreign key metadata ({})",
+                    driver_error_note(&error)
                 ),
             )
         })?;
@@ -513,7 +521,9 @@ async fn resolve_target_table(
         }
     }
 
-    let mut last_error = "the driver returned no column metadata".to_string();
+    // The note carries the driver's **kind**, never its text: the text is the
+    // one place a user value can leak.
+    let mut last_note = "the driver returned no column metadata".to_string();
     for (table, schema) in candidates {
         match driver
             .get_table_schema(&binding.handle, &table, database, schema.as_deref())
@@ -525,14 +535,21 @@ async fn resolve_target_table(
                 // `parents`, and the probe has to address it by that name.
                 return Ok((meta.table_name.clone(), namespace, meta));
             }
-            Ok(_) => last_error = "the driver returned no column metadata".to_string(),
-            Err(error) => last_error = error.to_string(),
+            Ok(_) => last_note = "the driver returned no column metadata".to_string(),
+            Err(error) => {
+                tracing::warn!(
+                    table = %table,
+                    error_kind = driver_error_kind(&error),
+                    "foreign key target metadata is unreadable"
+                );
+                last_note = driver_error_note(&error);
+            }
         }
     }
 
     Err(FkNavigationError::coded(
         FkErrorCode::TargetUnresolved,
-        format!("referenced table '{referenced_table}' cannot be resolved: {last_error}"),
+        format!("referenced table '{referenced_table}' cannot be resolved ({last_note})"),
     ))
 }
 
@@ -598,7 +615,10 @@ async fn probe_target(
         );
         FkNavigationError::coded(
             FkErrorCode::ProbeFailed,
-            format!("probing target table '{target_table}' failed (the driver error is omitted)"),
+            format!(
+                "probing target table '{target_table}' cannot be expressed ({})",
+                driver_error_note(&error)
+            ),
         )
     })?;
     let target = SqlTarget::new(Some(database), target_schema);
@@ -612,9 +632,9 @@ async fn probe_target(
     }
     .map_err(|error| {
         // A driver error can quote the value it choked on (`Incorrect integer
-        // value: 'abc'`), and that value is the user's own data. The IPC
-        // message therefore says nothing about the driver's text, and the log
-        // records the error's **kind** instead of its content.
+        // value: 'abc'`), and that value is the user's own data. Neither the
+        // IPC message nor the log carries the driver's text: the message
+        // carries the error's **kind**, the log the same.
         tracing::warn!(
             table = %target_table,
             error_kind = driver_error_kind(&error),
@@ -622,7 +642,10 @@ async fn probe_target(
         );
         FkNavigationError::coded(
             FkErrorCode::ProbeFailed,
-            format!("probing target table '{target_table}' failed (the driver error is omitted)"),
+            format!(
+                "probing target table '{target_table}' failed ({})",
+                driver_error_note(&error)
+            ),
         )
     })?;
     Ok(result.rows)
@@ -632,10 +655,29 @@ async fn probe_target(
 enum ProbeStatement {
     /// The values are **bound**: the statement text carries placeholders
     /// only, so a key value never reaches the SQL text.
+    ///
+    /// PostgreSQL, MySQL, SQLite and SQL Server own a bound-parameter
+    /// vocabulary and take this path.
     Bound { sql: String, params: Vec<Value> },
-    /// The driver has no bound-parameter vocabulary: the values are inlined
-    /// as literals. The IPC message stays value-free either way.
+    /// The driver has no bound-parameter vocabulary, so the values are
+    /// inlined as literals: **the value does reach the SQL text**, and with
+    /// it the server's statement log.
+    ///
+    /// The SQL drivers in that group are ClickHouse, DuckDB, rqlite and
+    /// Turso (the non-SQL ones — Redis, MongoDB, Elasticsearch, InfluxDB,
+    /// Vector, VictoriaMetrics, HBase — have no foreign keys at all). The IPC
+    /// message stays value-free on this path too: only the error's *kind*
+    /// travels back.
     Inlined { sql: String },
+}
+
+impl ProbeStatement {
+    /// The statement text, whichever shape it has.
+    fn sql(&self) -> &str {
+        match self {
+            Self::Bound { sql, .. } | Self::Inlined { sql } => sql,
+        }
+    }
 }
 
 /// Build the existence probe: one `SELECT … LIMIT limit + 1` and no
@@ -670,37 +712,52 @@ fn build_probe_statement(
         .collect::<Result<Vec<_>, _>>()
         .ok();
 
+    let mut conditions: Vec<String> = Vec::with_capacity(values.len());
     let mut params = Vec::with_capacity(values.len());
     for (index, name) in referenced_names.iter().enumerate() {
         let value = values.get(index).cloned().unwrap_or(Value::Null);
-        match &placeholders {
+        let condition = match &placeholders {
             Some(placeholders) => {
-                sql.push_str(&format!(
-                    " {} = {}",
+                params.push(value);
+                format!(
+                    "{} = {}",
                     quote(name),
                     placeholders.get(index).cloned().unwrap_or_default()
-                ));
-                params.push(value);
+                )
             }
             None => {
                 let literal = dialect.try_format_sql_literal(&Some(value))?;
-                sql.push_str(&format!(" {} = {}", quote(name), literal));
+                format!("{} = {}", quote(name), literal)
             }
-        }
+        };
+        conditions.push(condition);
+    }
+    if !conditions.is_empty() {
+        sql.push_str(" WHERE ");
+        sql.push_str(&conditions.join(" AND "));
     }
 
-    // A deterministic order: the referenced columns are the key that was
-    // looked up, and a dialect that only accepts a pagination clause after
-    // an ordering needs one.
-    let order = referenced_columns
-        .iter()
-        .map(|column| format!("{} ASC", quote(&column.name)))
-        .collect::<Vec<_>>()
-        .join(", ");
-    if !order.is_empty() {
-        sql.push_str(&format!(" ORDER BY {order}"));
-    }
+    // An ordering is added **only** when the dialect's pagination clause is
+    // illegal without one (T-SQL's `OFFSET … FETCH NEXT …`). The command has
+    // no ordering parameter (07 U-8), so an ordering of its own would
+    // silently reorder the target rows — usually by the very key that was
+    // looked up, which reads as "the jump sorted my table".
     let pagination = dialect.pagination_syntax(u64::from(limit) + 1, 0);
+    if pagination.requires_order_by {
+        let order = pagination
+            .order_by_fallback
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                referenced_columns
+                    .iter()
+                    .map(|column| format!("{} ASC", quote(&column.name)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            });
+        if !order.is_empty() {
+            sql.push_str(&format!(" ORDER BY {order}"));
+        }
+    }
     if !pagination.clause.is_empty() {
         sql.push(' ');
         sql.push_str(&pagination.clause);
@@ -715,8 +772,8 @@ fn build_probe_statement(
 /// The kind of a driver error, without its content.
 ///
 /// The content can quote a user value; the kind cannot, and the kind is all
-/// a log line needs to say "the probe failed because the statement was
-/// refused" or "because the connection is gone".
+/// a rejection message and a log line need to say "the probe failed because
+/// the statement was refused" or "because the connection is gone".
 fn driver_error_kind(error: &DriverError) -> &'static str {
     match error {
         DriverError::SessionLost => "sessionLost",
@@ -731,6 +788,13 @@ fn driver_error_kind(error: &DriverError) -> &'static str {
         DriverError::QueryCancelled => "queryCancelled",
         _ => "other",
     }
+}
+
+/// The driver-error part of a rejection message: the **kind**, never the
+/// text. The text is the one place a user value can leak (a server-side type
+/// error quotes the value it choked on), so it is not part of any message.
+fn driver_error_note(error: &DriverError) -> String {
+    format!("driver error kind: {}", driver_error_kind(error))
 }
 
 #[cfg(test)]

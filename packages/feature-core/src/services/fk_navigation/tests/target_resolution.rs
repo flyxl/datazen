@@ -120,6 +120,35 @@ async fn resolve_fk_targets_probe_failure_does_not_echo_the_key_value() {
 }
 
 #[tokio::test]
+async fn resolve_fk_targets_reports_a_nul_bearing_key_value_as_a_probe_failure() {
+    // A NUL byte cannot travel to the server: the driver refuses the
+    // statement. The refusal is a **probe** failure, and the message must
+    // carry neither the value nor the byte.
+    let tables = catalog_with("parents", "parents", "parents");
+    let mut options = options_with(tables, Vec::new());
+    options.query_error = Some("invalid byte sequence for encoding UTF8: 0x00".into());
+    let driver = MockDriver::new("postgres", options);
+    let source = TestSource::new(driver);
+
+    let error = resolve_foreign_key_targets(
+        &source,
+        &request(&["customer_id"], vec![Value::String("a\u{0}b".to_string())]),
+    )
+    .await
+    .expect_err("a NUL-bearing value cannot be probed");
+
+    let message = error.to_string();
+    assert!(
+        message.starts_with("grid.fk.probeFailed"),
+        "unexpected message: {message}"
+    );
+    assert!(
+        !message.contains('\u{0}') && !message.contains("a\\u{0}b"),
+        "the message must not echo the value: {message}"
+    );
+}
+
+#[tokio::test]
 async fn resolve_fk_targets_binds_the_probe_values_instead_of_inlining_them() {
     // A driver with a bound-parameter vocabulary gets the values as
     // parameters, so a key value never reaches the SQL text — and never
