@@ -7,10 +7,10 @@ use datazen_driver_api::PromptScenario;
 
 use super::chat::execute_db_tool;
 use super::*;
-use crate::ai::prompt_resolver::PromptOverrideEntry;
 use crate::commands::{workflow_execute_impl, workflow_list_impl};
 use crate::testing::ai_wiremock::WiremockAi;
 use crate::testing::app_state::TestAppState;
+use datazen_feature_core::ai::prompt_resolver::PromptOverrideEntry;
 
 fn collecting_stream_callback() -> (StreamCallback, Arc<Mutex<Vec<(String, bool)>>>) {
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -332,7 +332,7 @@ async fn ai_chat_workflow_scenario_builds_system_prompt() {
 
 #[tokio::test]
 async fn prompt_override_round_trip() {
-    use crate::ai::prompt_resolver::PromptSource;
+    use datazen_feature_core::ai::prompt_resolver::PromptSource;
 
     let test = TestAppState::new().await;
     let entry = PromptOverrideEntry {

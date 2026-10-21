@@ -1,11 +1,11 @@
 //! DataZen MCP Server — orchestration entry (struct, core helpers, tests).
 
 use crate::commands::AppState;
-use crate::mcp::allowlist;
-use crate::mcp::permission::McpPermissionMode;
 use crate::mcp::session::McpSessionRegistry;
 use crate::mcp::tool_help;
 use crate::platform::identity::{new_request_id, DesktopIdentity};
+use datazen_feature_core::mcp::allowlist;
+use datazen_feature_core::mcp::permission::McpPermissionMode;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::id::ClientInstanceId;
 use rmcp::ErrorData as McpError;

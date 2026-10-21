@@ -564,7 +564,6 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_context_dir_from_state_uses_default_subdir() {
         use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
-        use crate::cache::SchemaCache;
         use crate::commands::AppState;
         use crate::db::DriverRegistry;
         use crate::mcp::client::McpClientManager;
@@ -572,6 +571,7 @@ mod tests {
         use crate::store::Store;
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+        use datazen_runtime::schema_cache::SchemaCache;
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();
@@ -624,7 +624,6 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_context_dir_honors_custom_setting() {
         use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
-        use crate::cache::SchemaCache;
         use crate::commands::AppState;
         use crate::db::DriverRegistry;
         use crate::mcp::client::McpClientManager;
@@ -632,6 +631,7 @@ mod tests {
         use crate::store::{AppSettings, Store};
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+        use datazen_runtime::schema_cache::SchemaCache;
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();

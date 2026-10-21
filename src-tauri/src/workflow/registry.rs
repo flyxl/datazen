@@ -1,8 +1,10 @@
 //! Workflow persistence backed by [`crate::store::AppDb`].
 
-use super::model::{WorkflowDefinition, WorkflowListItem, WorkflowVisibility};
 use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
 use chrono::Utc;
+use datazen_feature_core::workflow::model::{
+    WorkflowDefinition, WorkflowListItem, WorkflowVisibility,
+};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -249,7 +251,7 @@ impl WorkflowRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::model::WorkflowStep;
+    use datazen_feature_core::workflow::model::WorkflowStep;
 
     fn sample_def(id: &str, visibility: WorkflowVisibility) -> WorkflowDefinition {
         WorkflowDefinition {

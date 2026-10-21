@@ -78,8 +78,8 @@ src-tauri (desktop host)
   ├─ store/          桌面持久化（SQLite + 加密文件）
   ├─ tunnel/ + ssh_tunnel.rs   隧道装配
   ├─ wapps/          datazen:// 协议桥、WappManager
-  ├─ ai/             兼容 re-export 门面 + 宿主 metadata source
-  └─ db/, cache/     re-export 门面
+  ├─ ai/             对外 re-export 表面 + 宿主 metadata source
+  └─ db/             re-export 门面
   │
   ▼
 packages/

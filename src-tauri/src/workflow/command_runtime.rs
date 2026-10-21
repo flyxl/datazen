@@ -1,10 +1,10 @@
 //! Runtime bridge between Workflow Command Steps and Driver Commands.
 
 use crate::commands::AppState;
-use crate::mcp::permission::McpPermissionMode;
-use crate::workflow::error::WorkflowError;
 use crate::workflow::WorkflowCommandStep;
 use datazen_driver_api::CommandResult;
+use datazen_feature_core::mcp::permission::McpPermissionMode;
+use datazen_feature_core::workflow::error::WorkflowError;
 
 pub use datazen_feature_core::workflow::command_runtime::{
     inject_inherited_database, resolve_connection_id,
@@ -154,7 +154,7 @@ mod tests {
             &test.state,
             &step,
             Some("wf-ro"),
-            Some(crate::mcp::permission::McpPermissionMode::ReadOnly),
+            Some(datazen_feature_core::mcp::permission::McpPermissionMode::ReadOnly),
         )
         .await
         .unwrap_err();

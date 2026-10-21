@@ -7,21 +7,19 @@
 //!
 //! What stays here is the part that legitimately needs host services: schema context,
 //! safety gating, prompt resolution, token budget and cancellation.
+//!
+//! Those portable rules now live in `packages/feature-core`
+//! (`datazen_feature_core::ai::*`); the host keeps only the surface it names
+//! through `crate::ai::*` plus the schema-metadata adapter below.
 
 pub use datazen_ai_api::*;
 pub use datazen_ai_providers::*;
 
-pub mod budget;
-pub mod cancel;
-pub mod context;
-pub mod ctx_yaml;
-pub mod prompt_resolver;
-pub mod safety;
-pub mod schema_pipeline;
-
-pub use cancel::CancellationRegistry;
-pub use context::{prompt_db_type, SchemaContextBuilder};
-pub use prompt_resolver::PromptResolver;
-pub use schema_pipeline::{compose_schema_system_suffix, PromptSeed, SchemaContextPipeline};
+pub use datazen_feature_core::ai::cancel::CancellationRegistry;
+pub use datazen_feature_core::ai::context::{prompt_db_type, SchemaContextBuilder};
+pub use datazen_feature_core::ai::prompt_resolver::PromptResolver;
+pub use datazen_feature_core::ai::schema_pipeline::{
+    compose_schema_system_suffix, PromptSeed, SchemaContextPipeline,
+};
 
 pub(crate) mod metadata_source;

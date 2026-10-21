@@ -174,7 +174,7 @@ mod tests {
         expected.allow_destructive = true;
         expected.include_indexes = false;
         expected.require_rollback = true;
-        expected.source_objects = vec![crate::schema_objects::DatabaseObject {
+        expected.source_objects = vec![datazen_driver_api::schema_objects::DatabaseObject {
             kind: "function".into(),
             schema: Some("source_schema".into()),
             name: "calculate_total".into(),
@@ -182,7 +182,7 @@ mod tests {
             target_schema: None,
             target_name: None,
         }];
-        expected.target_objects = vec![crate::schema_objects::DatabaseObject {
+        expected.target_objects = vec![datazen_driver_api::schema_objects::DatabaseObject {
             kind: "trigger".into(),
             schema: Some("target_schema".into()),
             name: "audit_orders".into(),

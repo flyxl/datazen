@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::ai::SchemaContextBuilder;
-use crate::cache::SchemaCache;
 use crate::commands::AppState;
 use crate::db::init_drivers;
 use crate::monitor::MonitorEngine;
@@ -17,6 +16,7 @@ use datazen_platform_api::dto::job::RecoveryFilter;
 use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
 use datazen_runtime::job::{JobClock, SystemJobClock};
+use datazen_runtime::schema_cache::SchemaCache;
 
 use super::helpers::unique_driver_types;
 

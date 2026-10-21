@@ -49,7 +49,7 @@
 
 ### 2.2 定义模型
 
-[`model.rs`](../../../src-tauri/src/workflow/model.rs) 的 `WorkflowDefinition` 为扁平结构：顶层 `connection`（默认连接，可为 `{{var}}` 模板）与 `database`（默认库）被 step 继承；**没有任何 block 层级字段**。`WorkflowStep` 用 `#[serde(tag = "type")]` 区分 `query` / `command` / `ai` / `condition` / `foreach` / `migration` / `merge` / `transform`。
+[`model.rs`](../../../packages/feature-core/src/workflow/model.rs) 的 `WorkflowDefinition` 为扁平结构：顶层 `connection`（默认连接，可为 `{{var}}` 模板）与 `database`（默认库）被 step 继承；**没有任何 block 层级字段**。`WorkflowStep` 用 `#[serde(tag = "type")]` 区分 `query` / `command` / `ai` / `condition` / `foreach` / `migration` / `merge` / `transform`。
 
 | 观察 | 证据 |
 | --- | --- |

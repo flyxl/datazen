@@ -6,9 +6,9 @@ mod host_tests {
     use std::sync::Arc;
     #[tokio::test]
     async fn get_table_data_uses_schema_cache_and_returns_total() {
-        use crate::cache::SchemaCache;
         use crate::db::registry::DriverRegistry;
         use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+        use datazen_runtime::schema_cache::SchemaCache;
 
         let registry = Arc::new(DriverRegistry::new());
         let mock = MockDriver::new(

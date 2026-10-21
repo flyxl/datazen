@@ -8,8 +8,8 @@ use crate::dashboard::store::load_monitor_settings;
 use crate::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
 use crate::store::AppDb;
 use crate::store::AppSettings;
-use crate::workflow::model::WorkflowExecutionResult;
 use crate::workflow::WorkflowExecutor;
+use datazen_feature_core::workflow::model::WorkflowExecutionResult;
 
 /// Default per-widget workflow timeout (seconds).
 pub const DEFAULT_QUERY_TIMEOUT_SEC: u64 = 60;
@@ -103,7 +103,9 @@ mod tests {
     use crate::dashboard::runs::{get_run, list_run_index};
     use crate::dashboard::types::{RefreshPolicy, ViewMode, WidgetLayout};
     use crate::store::AppSettings;
-    use crate::workflow::model::{StepExecutionResult, StepStatus, WorkflowExecutionResult};
+    use datazen_feature_core::workflow::model::{
+        StepExecutionResult, StepStatus, WorkflowExecutionResult,
+    };
 
     fn sample_widget() -> DashboardWidget {
         DashboardWidget {

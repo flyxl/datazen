@@ -8,9 +8,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use datazen::ai::prompt_resolver::{self, PromptResolver};
 use datazen_ai_api::{ChatMessage, MessageRole};
 use datazen_driver_api::PromptScenario;
+use datazen_feature_core::ai::prompt_resolver::{self, PromptResolver};
 
 async fn system_prompt(
     scenario: PromptScenario,

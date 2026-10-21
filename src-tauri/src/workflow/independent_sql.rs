@@ -64,7 +64,7 @@ pub(super) async fn execute(
     state: &AppState,
     step: &WorkflowCommandStep,
     connection_id: &str,
-    mode: Option<crate::mcp::permission::McpPermissionMode>,
+    mode: Option<datazen_feature_core::mcp::permission::McpPermissionMode>,
     deadline: Option<tokio::time::Instant>,
 ) -> Result<CommandResult, WorkflowError> {
     datazen_feature_core::workflow::resource_execution::execute(

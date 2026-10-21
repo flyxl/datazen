@@ -1,8 +1,11 @@
 //! Desktop bindings for shared workflow execution.
 use crate::commands::AppState;
-use crate::workflow::{command::WorkflowCommandStep, error::WorkflowError, model::*};
+use crate::workflow::{WorkflowCommandStep, WorkflowError};
 use datazen_ai_api::{ChatMessage, CompletionRequest, MessageRole};
 use datazen_feature_core::mcp::permission::McpPermissionMode;
+use datazen_feature_core::workflow::model::{
+    StepExecutionResult, UnattendedDestructivePolicy, WorkflowMigrationOperation,
+};
 use datazen_feature_core::workflow::{context::WorkflowContext, host::WorkflowHost};
 
 #[async_trait::async_trait]
@@ -45,11 +48,11 @@ impl WorkflowHost for AppState {
             .get(&config.provider_type)
             .await
             .ok_or_else(|| WorkflowError::Ai("AI provider not available".into()))?;
-        let gate = crate::ai::safety::effective_safety_gate(
+        let gate = datazen_feature_core::ai::safety::effective_safety_gate(
             &self.store.get_ai_settings_config().await,
             &self.store.execution_settings().await,
         );
-        let prompt = crate::ai::safety::redact_for_gate(&prompt, &gate);
+        let prompt = datazen_feature_core::ai::safety::redact_for_gate(&prompt, &gate);
         let request = CompletionRequest {
             request_id: uuid::Uuid::new_v4().to_string(),
             model: config.model.clone(),

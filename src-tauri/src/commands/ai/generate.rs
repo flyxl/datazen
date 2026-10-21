@@ -5,11 +5,11 @@ use super::util::{
     borrow_runtime_session, resolve_ai, resolve_safety_gate, runtime_session,
     window_stream_callback, StreamCallback,
 };
-use crate::ai::budget;
-use crate::ai::safety::redact_for_gate;
 use crate::ai::*;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
+use datazen_feature_core::ai::budget;
+use datazen_feature_core::ai::safety::redact_for_gate;
 use tauri::{State, WebviewWindow};
 use tokio::sync::mpsc;
 
@@ -81,7 +81,7 @@ pub(crate) async fn ai_generate_sql_impl_with_claim(
             let entries = crate::commands::context::read_context_paths(&ctx_dir, ctx_files).await?;
             if !entries.is_empty() {
                 let (yaml_tables, remaining) =
-                    crate::ai::ctx_yaml::extract_ctx_yaml_tables(&entries);
+                    datazen_feature_core::ai::ctx_yaml::extract_ctx_yaml_tables(&entries);
                 ctx_yaml_tables = yaml_tables;
 
                 if !remaining.is_empty() {

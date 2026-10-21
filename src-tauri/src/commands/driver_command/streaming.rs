@@ -211,7 +211,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
                 )
                 .await;
             }
-            if crate::cache::sql_may_mutate_schema(&sql) {
+            if datazen_runtime::schema_cache::sql_may_mutate_schema(&sql) {
                 state.schema_cache.clear_connection(db_session_id).await;
             }
             Ok(())

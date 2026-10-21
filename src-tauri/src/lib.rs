@@ -3,7 +3,6 @@ mod app_data_archive;
 mod app_menu;
 #[path = "bootstrap/mod.rs"]
 mod bootstrap;
-mod cache;
 mod commands;
 mod dashboard;
 pub use datazen_data_sync as data_sync;
@@ -19,7 +18,6 @@ pub mod platform;
 mod product_features;
 mod redis_flush_gate;
 pub use datazen_schema_diff as schema_diff;
-mod schema_objects;
 mod services;
 mod ssh_known_hosts;
 pub mod ssh_tunnel;

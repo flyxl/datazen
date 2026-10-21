@@ -9,7 +9,7 @@ use thiserror::Error;
 use super::store::{list_dashboards, save_dashboard, DashboardStoreError};
 use super::types::Dashboard;
 use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
-use crate::workflow::model::{WorkflowDefinition, WorkflowVisibility};
+use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowVisibility};
 
 pub use datazen_feature_core::dashboard::archive::FORMAT;
 

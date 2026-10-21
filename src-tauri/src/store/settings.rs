@@ -1,6 +1,6 @@
 use crate::dashboard::types::MonitorSettings;
-use crate::mcp::permission::McpPermissionMode;
 use crate::mcp::McpServerConfig;
+use datazen_feature_core::mcp::permission::McpPermissionMode;
 use datazen_platform_api::settings::{ExecutionSettings, SharedSettings, UserPreferences};
 pub use datazen_platform_api::settings::{SqlFormatOptions, SqlSnippet};
 use serde::{Deserialize, Serialize};

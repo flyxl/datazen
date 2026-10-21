@@ -26,7 +26,7 @@ pub(crate) fn window_stream_callback(window: &WebviewWindow) -> StreamCallback {
 /// Falls back to a relaxed gate (credentials only) when no profile is found,
 /// matching the previous `ai_strict_egress = false` default behavior.
 pub(crate) async fn resolve_safety_gate(state: &AppState) -> AiSafetyGateConfig {
-    crate::ai::safety::effective_safety_gate(
+    datazen_feature_core::ai::safety::effective_safety_gate(
         &state.store.get_ai_settings_config().await,
         &state.store.execution_settings().await,
     )

@@ -84,7 +84,7 @@ CSP 以对象形式写在 `src-tauri/tauri.conf.json` 的 `security.csp`，当�
 AI 请求经过两个边界：
 
 1. **前端组装边界**：`src/lib/aiQueryActions.ts` 和 `src/stores/aiStore.ts` 在构造诊断上下文、发送 IPC 前，先清理 SQL、错误文本和 schema context。这个边界保证正常 UI 路径不会把明显的凭据直接传下去。
-2. **Rust Provider 边界**：`packages/feature-core/src/ai/safety.rs` 的 `redact_for_gate` 是唯一公开脱敏入口；`src-tauri/src/ai/safety.rs` 只做兼容 re-export。每个 AI 用例在把 caller 内容交给 Provider 前都会再处理一次，直接调用 IPC、绕过 UI 或未来新增调用方都不能仅依赖前端脱敏。
+2. **Rust Provider 边界**：`packages/feature-core/src/ai/safety.rs` 的 `redact_for_gate` 是唯一公开脱敏入口；宿主调用点直接引用该共享模块。每个 AI 用例在把 caller 内容交给 Provider 前都会再处理一次，直接调用 IPC、绕过 UI 或未来新增调用方都不能仅依赖前端脱敏。
 
 最终发送给 Provider 的内容由具体 AI 场景决定，但允许的数据库上下文原则上只有：
 
@@ -232,7 +232,7 @@ Safe Mode 额外约束：
 
 Safe Mode 开启时，Schema 树会隐藏 Truncate/Drop 等高危菜单项；关闭 Safe Mode 后，Query Panel 对 `DROP` / `TRUNCATE` 语句弹出二次确认，后端不再拦截此类语句。
 
-**限制**：`WHERE 1=1` 等恒真条件可通过检查；多语句脚本中任一条违规即拒绝整批；与 MCP `SafeWrite` 权限模式（`mcp/permission.rs`）是不同边界，互不替代。
+**限制**：`WHERE 1=1` 等恒真条件可通过检查；多语句脚本中任一条违规即拒绝整批；与 MCP `SafeWrite` 权限模式（`packages/feature-core/src/mcp/permission.rs`）是不同边界，互不替代。
 
 ### 5.3 未覆盖路径
 

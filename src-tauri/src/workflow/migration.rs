@@ -9,11 +9,11 @@ use crate::commands::AppState;
 use crate::data_transfer::model::{TransferRunOptions, TransferRunSelection};
 use crate::data_transfer::TransferRunRequest;
 use crate::store::MigrationProfileRef;
-use crate::workflow::model::{
+use crate::workflow::WorkflowError;
+use datazen_feature_core::workflow::context::WorkflowContext;
+use datazen_feature_core::workflow::model::{
     StepExecutionResult, UnattendedDestructivePolicy, WorkflowMigrationOperation,
 };
-use crate::workflow::workflows::context::WorkflowContext;
-use crate::workflow::WorkflowError;
 
 fn migration_command_error(error: crate::commands::CommandError) -> WorkflowError {
     WorkflowError::Driver(error.to_string())
@@ -350,10 +350,10 @@ mod tests {
     use crate::data_transfer::{TransferMode, TransferProfile, WriteMode};
     use crate::store::MigrationRunFilter;
     use crate::testing::app_state::TestAppState;
-    use crate::workflow::model::{
+    use chrono::Utc;
+    use datazen_feature_core::workflow::model::{
         WorkflowDefinition, WorkflowMigrationOperation, WorkflowStep, WorkflowVisibility,
     };
-    use chrono::Utc;
 
     #[test]
     fn workflow_transfer_history_preserves_partial_and_unknown_outcomes() {

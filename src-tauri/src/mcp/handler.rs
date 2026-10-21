@@ -1,8 +1,8 @@
 //! MCP `ServerHandler` implementation — tools, resources, and capabilities.
 
 use super::server::DataZenMcpServer;
-use crate::mcp::permission;
 use crate::mcp::tool_help;
+use datazen_feature_core::mcp::permission;
 use rmcp::model::*;
 use rmcp::service::RequestContext;
 use rmcp::{prompt_handler, tool_handler, ErrorData as McpError, RoleServer, ServerHandler};

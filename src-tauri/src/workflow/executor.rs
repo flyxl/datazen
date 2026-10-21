@@ -2,7 +2,7 @@ pub use datazen_feature_core::workflow::executor::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::model::{
+    use datazen_feature_core::workflow::model::{
         MergeSource, StepStatus, TransformColumn, WorkflowDefinition, WorkflowStep,
     };
 

@@ -71,7 +71,6 @@ pub use window::*;
 pub use workflow::*;
 
 use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
-use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
 use crate::mcp::McpClientManager;
 use crate::monitor::MonitorEngine;
@@ -82,6 +81,7 @@ use crate::workflow::scheduler::WorkflowScheduler;
 use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
 use datazen_application::error::ApiError;
 use datazen_driver_api::QueryExecutionId;
+use datazen_runtime::schema_cache::SchemaCache;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;

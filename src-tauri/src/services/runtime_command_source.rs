@@ -102,7 +102,7 @@ impl RuntimeCommandSource {
             &WappReadOnlyHost(self),
             &step,
             connection_id,
-            Some(crate::mcp::permission::McpPermissionMode::SafeWrite),
+            Some(datazen_feature_core::mcp::permission::McpPermissionMode::SafeWrite),
             None,
             false,
         )

@@ -3,14 +3,14 @@
 use super::server::{DataZenMcpServer, MCP_SESSION_PURPOSE};
 use super::session::{sanitize_ttl, SessionBinding};
 use super::types::*;
-use crate::mcp::allowlist;
-use crate::mcp::permission;
 use crate::mcp::tool_help;
 use datazen_application::dto::requests::{
     CloseMode, CloseSessionRequest, CommandCall, ExecuteInSessionRequest, OpenSessionRequest,
 };
 use datazen_application::identity_policy::IdentityPolicy;
 use datazen_application::sessions::ConnectionUseCases;
+use datazen_feature_core::mcp::allowlist;
+use datazen_feature_core::mcp::permission;
 use datazen_platform_api::context::{OwnerRef, RequestContext};
 use datazen_platform_api::dto::execution::{ExecutionState, ExecutionView};
 use datazen_platform_api::dto::idempotency::IdempotentOperation;

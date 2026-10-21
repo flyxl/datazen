@@ -3,8 +3,8 @@ pub use datazen_feature_core::services::db_tools::*;
 mod tests {
     use super::*;
     use crate::db::{TableInfo, TableType};
-    use crate::mcp::permission::McpPermissionMode;
     use crate::testing::{app_state::TestAppState, mock_driver::MockDriverOptions};
+    use datazen_feature_core::mcp::permission::McpPermissionMode;
 
     fn options_with_tables(databases: Vec<String>, tables: Vec<TableInfo>) -> MockDriverOptions {
         MockDriverOptions {

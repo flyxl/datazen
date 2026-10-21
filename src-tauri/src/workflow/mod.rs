@@ -3,26 +3,23 @@
 //! Exposed via Tauri IPC and optionally via MCP tools/resources; the engine
 //! itself does not depend on the MCP protocol.
 
-pub mod command;
 pub mod command_runtime;
-pub mod error;
 pub mod history;
 mod independent_sql;
 pub(crate) mod migration;
 pub mod workflows;
 
-pub use error::WorkflowError;
+pub use datazen_feature_core::workflow::error::WorkflowError;
 
-// These modules own the canonical workflow data types and registry. They are
-// public so the compatibility facade in `workflows` can re-export the same
-// types without introducing duplicate definitions.
-pub mod model;
+// These modules own the workflow registry and the desktop scheduling adapter.
+// They are public so the compatibility facade in `workflows` can re-export the
+// same types without introducing duplicate definitions.
 pub mod registry;
 pub mod scheduler;
 
 pub use crate::store::{HistoryEntry, HistoryListItem};
-pub use command::WorkflowCommandStep;
 pub use command_runtime::{execute_command, resolve_connection_id};
+pub use datazen_feature_core::workflow::command::WorkflowCommandStep;
 pub use history::WorkflowHistoryManager;
 pub use workflows::{
     enforce_workflow_query_guards, StepExecutionResult, StepStatus, UnattendedDestructivePolicy,

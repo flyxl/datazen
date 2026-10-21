@@ -1,11 +1,11 @@
 //! Desktop repository bindings for portable dashboard creation use cases.
 use super::types::{ChartConfig, Dashboard, ViewMode};
 use crate::store::{AppDb, WorkflowVisibility};
-use crate::workflow::{
-    model::{WorkflowDefinition, WorkflowVisibility as WfVisibility},
-    WorkflowRegistry,
-};
+use crate::workflow::WorkflowRegistry;
 pub use datazen_feature_core::dashboard::create::{CreateWidgetError, CreateWidgetResult};
+use datazen_feature_core::workflow::model::{
+    WorkflowDefinition, WorkflowVisibility as WfVisibility,
+};
 struct DesktopCreationHost<'a> {
     app_db: &'a AppDb,
     registry: Option<&'a WorkflowRegistry>,

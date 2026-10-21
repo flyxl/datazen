@@ -447,7 +447,7 @@ mod tests {
     #[tokio::test]
     async fn run_dashboard_widget_with_workflow() {
         use crate::testing::app_state::TestAppState;
-        use crate::workflow::model::{WorkflowDefinition, WorkflowStep};
+        use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
 
         let test = TestAppState::with_tables_and_resource_provider().await;
         test.save_connection("widget-cfg").await;
