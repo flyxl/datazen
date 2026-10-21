@@ -1142,3 +1142,373 @@ async fn reviewed_plan_consume_validates_the_copy_it_read() {
         "替身第二次读取必须返回被篡改的副本，否则本用例不承重"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 独立探针（Tester 第 3 轮终验）：回拨场景下的裁剪谓词与淘汰顺序
+//
+// 这几条刻意与编码代理那条用例**形状不同**：
+//   * 编码代理的用例用「128 条失效条目 + 2 条有效条目」铺满容量上限；
+//   * 本组探针**不**触容量淘汰（除探针 B 外），只隔离「裁剪谓词」一个变量，
+//     并额外覆盖「跨组织互不影响」与「谓词与规则层逐条一致」。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 【探针 A】有效计划的 `created_at_ms` 比失效条目**更小**时，有效计划必须留下。
+///
+/// 这正是「淘汰顺序反转」的核心：按**年龄**裁剪时，回拨条目（未来时间戳）的
+/// 年龄恒为 0 ⇒ **裁不掉**它们；而有效条目的 `created_at_ms` 反而**更小**
+/// ⇒ 淘汰排序（`min_by_key(created_at_ms)`）会**先**淘汰它。
+///
+/// 本探针只放 1 条有效 + 1 条失效 + 1 条触发写入，**不**触容量淘汰，
+/// 因此失败只可能来自裁剪谓词本身。
+#[tokio::test]
+async fn probe_valid_plan_survives_when_its_timestamp_is_older_than_an_invalid_entry() {
+    let store = InMemoryReviewedPlanStore::new();
+    let scope = scope("org-a");
+    let now = now_ms();
+
+    // 有效：冻结于 1 秒前。
+    let valid = reviewed_plan("valid", now.saturating_sub(1_000));
+    store
+        .put(&scope, "valid", valid.clone())
+        .await
+        .expect("put valid plan");
+    // 失效：冻结时刻落在「现在」之后 1 小时 ⇒ 等价于系统时钟回拨 ⇒ 规则层判已失效。
+    let invalid = reviewed_plan("invalid", now + 60 * 60 * 1000);
+    store
+        .put(&scope, "invalid", invalid.clone())
+        .await
+        .expect("put invalid plan");
+    // 再写一条，触发一次「写入时的清理」。
+    store
+        .put(
+            &scope,
+            "trigger",
+            reviewed_plan("trigger", now.saturating_sub(500)),
+        )
+        .await
+        .expect("put trigger plan");
+
+    assert!(
+        store
+            .get(&scope, "valid")
+            .await
+            .expect("read plan")
+            .is_some(),
+        "有效计划必须留下：它的 created_at_ms 比失效条目更小，淘汰排序不得反转"
+    );
+    assert!(
+        store
+            .get(&scope, "invalid")
+            .await
+            .expect("read plan")
+            .is_none(),
+        "失效条目必须在写入时被清掉（回拨条目不得靠「年龄恒为 0」躲过裁剪）"
+    );
+    assert!(
+        store
+            .get(&scope, "trigger")
+            .await
+            .expect("read plan")
+            .is_some(),
+        "触发写入的有效计划必须留下"
+    );
+}
+
+/// 【探针 B】容量上限仍然是 128：写满时淘汰**最旧**的一条，新写入的必须留下。
+///
+/// 排序键全部落在**过去**（冻结于 1～128 毫秒前），因此这些条目**都有效**
+/// （远未到 30 分钟 TTL），必然参与淘汰排序而不是被裁掉。
+#[tokio::test]
+async fn probe_capacity_evicts_the_oldest_valid_entry_and_keeps_the_new_one() {
+    let store = InMemoryReviewedPlanStore::new();
+    let scope = scope("org-a");
+    let now = now_ms();
+    let count = REVIEWED_PLAN_MAX_ENTRIES as u64;
+    for index in 0..count {
+        let id = format!("entry-{index}");
+        // index 越小 ⇒ 冻结越早（但仍是过去时刻 ⇒ 有效）。
+        let created = now.saturating_sub(count - index);
+        store
+            .put(&scope, &id, reviewed_plan(&id, created))
+            .await
+            .expect("put entry");
+    }
+    assert_eq!(
+        store.len().await,
+        REVIEWED_PLAN_MAX_ENTRIES,
+        "写满上限时不得提前裁剪"
+    );
+
+    store
+        .put(&scope, "newest", reviewed_plan("newest", now))
+        .await
+        .expect("put newest plan");
+
+    assert!(
+        store
+            .get(&scope, "entry-0")
+            .await
+            .expect("read plan")
+            .is_none(),
+        "最旧的条目必须被淘汰"
+    );
+    assert!(
+        store
+            .get(&scope, "entry-1")
+            .await
+            .expect("read plan")
+            .is_some(),
+        "次旧的条目必须留下（只淘汰一条）"
+    );
+    assert!(
+        store
+            .get(&scope, "newest")
+            .await
+            .expect("read plan")
+            .is_some(),
+        "新写入的条目必须留下"
+    );
+    assert_eq!(
+        store.len().await,
+        REVIEWED_PLAN_MAX_ENTRIES,
+        "条目总数必须仍被压在上限内"
+    );
+}
+
+/// 【探针 C】容量上限：130 条**过去**时刻的有效条目 ⇒ 恰好保留最新的 128 条。
+///
+/// 与宿主那条用例同形，但打在**包内生产实现**上（宿主那条打的是宿主委派层）。
+#[tokio::test]
+async fn probe_capacity_keeps_the_newest_128_of_130_past_dated_entries() {
+    let store = InMemoryReviewedPlanStore::new();
+    let scope = scope("org-a");
+    let now = now_ms();
+    for index in 0..130u64 {
+        let id = format!("plan-{index}");
+        store
+            .put(
+                &scope,
+                &id,
+                reviewed_plan(&id, now.saturating_sub(130 - index)),
+            )
+            .await
+            .expect("put plan");
+    }
+    assert!(
+        store
+            .get(&scope, "plan-0")
+            .await
+            .expect("read plan")
+            .is_none(),
+        "最旧的条目必须被裁剪"
+    );
+    assert!(
+        store
+            .get(&scope, "plan-1")
+            .await
+            .expect("read plan")
+            .is_none(),
+        "次旧的条目必须被裁剪"
+    );
+    assert!(
+        store
+            .get(&scope, "plan-2")
+            .await
+            .expect("read plan")
+            .is_some(),
+        "第 3 条必须仍在（上限正是 128，而不是更小的数）"
+    );
+    assert!(
+        store
+            .get(&scope, "plan-129")
+            .await
+            .expect("read plan")
+            .is_some(),
+        "最新的条目必须仍在"
+    );
+    assert_eq!(store.len().await, REVIEWED_PLAN_MAX_ENTRIES);
+}
+
+/// 【探针 D】裁剪是**逐条目**的：一个组织的写入不得清掉另一个组织的有效条目。
+#[tokio::test]
+async fn probe_rollback_trimming_does_not_touch_other_organizations() {
+    let store = InMemoryReviewedPlanStore::new();
+    let first = scope("org-a");
+    let second = scope("org-b");
+    let now = now_ms();
+
+    store
+        .put(
+            &first,
+            "rolled-back",
+            reviewed_plan("rolled-back", now + 60 * 60 * 1000),
+        )
+        .await
+        .expect("put rolled-back plan");
+    store
+        .put(&second, "valid", reviewed_plan("valid", now))
+        .await
+        .expect("put valid plan");
+    store
+        .put(&first, "fresh", reviewed_plan("fresh", now))
+        .await
+        .expect("put fresh plan");
+
+    assert!(
+        store
+            .get(&first, "rolled-back")
+            .await
+            .expect("read plan")
+            .is_none(),
+        "本组织的失效条目必须被清掉"
+    );
+    assert!(
+        store
+            .get(&second, "valid")
+            .await
+            .expect("read plan")
+            .is_some(),
+        "别的组织的有效条目不得被本组织的写入清掉"
+    );
+}
+
+/// 【探针 E】存储层的裁剪谓词与规则层的 [`ReviewedPlan::is_expired`] **逐条一致**。
+///
+/// 对照物是规则层自己的判定：凡是被规则层判「已过期」的条目，写入后必须被裁掉；
+/// 凡是被规则层判「有效」的条目，写入后必须留下。
+///
+/// 若存储层改用按**年龄**裁剪（`age() < REVIEWED_PLAN_TTL`），「回拨」那条
+/// （未来时间戳、年龄恒为 0）会与规则层判定**不一致** ⇒ 本探针变红。
+#[tokio::test]
+async fn probe_store_trim_predicate_matches_the_rule_layer_expiry_decision() {
+    let store = InMemoryReviewedPlanStore::new();
+    let scope = scope("org-a");
+    let now = now_ms();
+
+    let cases: Vec<(&str, u64)> = vec![
+        ("fresh", now.saturating_sub(1_000)),
+        ("near-ttl", now.saturating_sub(29 * 60 * 1000)),
+        ("past-ttl", now.saturating_sub(31 * 60 * 1000)),
+        ("rolled-back", now + 60 * 60 * 1000),
+    ];
+    for (id, created) in &cases {
+        store
+            .put(&scope, id, reviewed_plan(id, *created))
+            .await
+            .expect("put plan");
+    }
+    // 再写一条，触发一次清理，让上面四条都被同一谓词过一遍。
+    store
+        .put(&scope, "trigger", reviewed_plan("trigger", now))
+        .await
+        .expect("put trigger plan");
+
+    for (id, created) in &cases {
+        let rule_says_expired = reviewed_plan(id, *created).is_expired();
+        let present = store.get(&scope, id).await.expect("read plan").is_some();
+        assert_eq!(
+            present, !rule_says_expired,
+            "存储层裁剪判定必须与规则层一致：{id}（规则层判已过期={rule_says_expired}）"
+        );
+    }
+}
+
+/// 【探针 F】**未来**时刻的条目会在下一次写入时被裁掉。
+///
+/// 这条钉住「容量/淘汰语义的用例为什么不能用未来时间戳做排序键」：
+/// 未来时刻意味着「系统时钟相对冻结时刻被回拨过」⇒ 规则层判**已失效**
+/// ⇒ 存储层的写入清理会把它裁掉 ⇒ 每次写入都把上一条裁掉，条目数**达不到**
+/// 容量上限，淘汰逻辑根本不会执行。
+///
+/// 因此容量/淘汰用例必须用**过去**时刻（有效条目）做排序键。
+#[tokio::test]
+async fn probe_future_dated_entries_are_trimmed_by_the_next_put() {
+    let store = InMemoryReviewedPlanStore::new();
+    let scope = scope("org-a");
+    let future = now_ms() + 60 * 60 * 1000;
+
+    store
+        .put(&scope, "a", reviewed_plan("a", future))
+        .await
+        .expect("put a");
+    store
+        .put(&scope, "b", reviewed_plan("b", future))
+        .await
+        .expect("put b");
+
+    assert!(
+        store.get(&scope, "a").await.expect("read plan").is_none(),
+        "未来时刻的条目必须在下一次写入时被裁掉：容量用例不能用未来时间戳做排序键"
+    );
+    assert!(
+        store.get(&scope, "b").await.expect("read plan").is_some(),
+        "最后写入的那条仍在（它还没有被下一次写入清理）"
+    );
+}
+
+/// 【探针 G】越组织消费与「计划不存在」的错误文案**逐字相同**。
+///
+/// 两者都走 `consume` 里同一条「`get` 返回 `None`」的路径，必须落在**同一个**
+/// 字面量上。不得给越组织访问换一个更「具体」的措辞——那会泄漏「存在但无权」
+/// （CM-05）。
+#[tokio::test]
+async fn probe_foreign_organization_and_missing_plan_produce_identical_messages() {
+    let store = InMemoryReviewedPlanStore::new();
+    let owner = scope("org-a");
+    let other = scope("org-b");
+    let cfg = config();
+    let handle = handle();
+    let mut plan = plan();
+    freeze(
+        &store,
+        &owner,
+        &mut plan,
+        "session".into(),
+        &handle,
+        &cfg,
+        vec![],
+        cfg.database.clone(),
+        Some("public".into()),
+    )
+    .await
+    .expect("freeze plan");
+
+    // 1) 越组织消费：计划确实存在，只是组织不对。
+    let foreign = consume(
+        &store,
+        &other,
+        &plan,
+        "session",
+        &handle,
+        &cfg,
+        cfg.database.as_deref(),
+        Some("public"),
+    )
+    .await
+    .expect_err("越组织消费必须失败");
+
+    // 2) 计划根本不存在（本组织，但 id 不存在）。
+    let mut missing = plan.clone();
+    missing.plan_id = Some("no-such-plan".into());
+    let absent = consume(
+        &store,
+        &owner,
+        &missing,
+        "session",
+        &handle,
+        &cfg,
+        cfg.database.as_deref(),
+        Some("public"),
+    )
+    .await
+    .expect_err("不存在的计划必须失败");
+
+    assert_eq!(
+        foreign, absent,
+        "越组织与「不存在」的错误文案必须逐字相同（不得泄漏「存在但无权」）"
+    );
+    assert_eq!(
+        foreign, "Plan expired or already executed; compare again",
+        "文案必须逐字不变"
+    );
+}
