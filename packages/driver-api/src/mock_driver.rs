@@ -82,6 +82,10 @@ pub struct MockDriverOptions {
     /// The default remains unsupported so tests that exercise capability
     /// gating keep their original behavior.
     pub parameterized_writes: bool,
+    /// Returning clause reported by [`DatabaseDriver::insert_returning_clause`].
+    /// `None` (the default) models a dialect that cannot backfill the new row's
+    /// primary key; `Some("")` models the "already inlined" signal.
+    pub insert_returning_clause: Option<String>,
     /// Fail the selected commit call to model a lost acknowledgement. When
     /// `commit_error_after_effect` is true, the transaction is removed before
     /// returning the error; otherwise it remains open and unapplied.
@@ -171,6 +175,7 @@ impl Default for MockDriverOptions {
             cancel_error: None,
             execute_rows_affected: 0,
             parameterized_writes: false,
+            insert_returning_clause: None,
             commit_error_on_call: None,
             commit_error_after_effect: false,
             rollback_error_on_call: None,
@@ -204,6 +209,7 @@ pub struct MockDriver {
     commit_calls: AtomicU32,
     rollback_calls: AtomicU32,
     execute_calls: AtomicU32,
+    execute_with_params_calls: AtomicU32,
     cancel_query_calls: AtomicU32,
     precise_cancel_query_calls: AtomicU32,
     last_query_limit: Mutex<Option<Option<u32>>>,
@@ -234,6 +240,7 @@ impl MockDriver {
             commit_calls: AtomicU32::new(0),
             rollback_calls: AtomicU32::new(0),
             execute_calls: AtomicU32::new(0),
+            execute_with_params_calls: AtomicU32::new(0),
             cancel_query_calls: AtomicU32::new(0),
             precise_cancel_query_calls: AtomicU32::new(0),
             last_query_limit: Mutex::new(None),
@@ -339,6 +346,12 @@ impl MockDriver {
 
     pub fn execute_calls(&self) -> u32 {
         self.execute_calls.load(Ordering::Relaxed)
+    }
+
+    /// Bound-DML executions (`execute_with_params`), counted separately from
+    /// the unparameterized [`Self::execute_calls`] path.
+    pub fn execute_with_params_calls(&self) -> u32 {
+        self.execute_with_params_calls.load(Ordering::Relaxed)
     }
 
     pub fn cancel_query_calls(&self) -> u32 {
@@ -710,12 +723,18 @@ impl DatabaseDriver for MockDriver {
         }
     }
 
+    fn insert_returning_clause(&self, _columns: &[&str]) -> Option<String> {
+        self.opts.insert_returning_clause.clone()
+    }
+
     async fn execute_with_params(
         &self,
         _handle: &ConnectionHandle,
         _sql: &str,
         _params: &[Value],
     ) -> Result<u64, DriverError> {
+        self.execute_with_params_calls
+            .fetch_add(1, Ordering::Relaxed);
         if let Some(error) = self.opts.execute_with_params_error.as_ref() {
             return Err(DriverError::QueryFailed(error.clone()));
         }

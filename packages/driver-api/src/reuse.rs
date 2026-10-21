@@ -254,6 +254,18 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.build_delete_statement(table, pk_columns)
     }
 
+    fn build_insert_statement(
+        &self,
+        table: &str,
+        values: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        self.inner.build_insert_statement(table, values)
+    }
+
+    fn insert_returning_clause(&self, columns: &[&str]) -> Option<String> {
+        self.inner.insert_returning_clause(columns)
+    }
+
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
         self.inner.connect(config).await
     }

@@ -185,6 +185,49 @@ pub fn build_delete_statement(
     })
 }
 
+/// Build an `INSERT` whose values stay bound.
+///
+/// `columns` is the exact write list. A column that must keep the database
+/// default (auto-increment, generated, `DEFAULT now()`, a trigger) is simply
+/// absent; `None` as a value writes SQL `NULL`, which is a different intent.
+/// An empty list is a legal single-row insert where every column takes its
+/// default and renders `INSERT INTO t DEFAULT VALUES` — a spelling some
+/// dialects do not share, so their drivers override the builder.
+///
+/// Same budget contract as [`build_update_statement`]: `max_parameters` is the
+/// binding capability the caller established, and exceeding it fails before any
+/// SQL is returned.
+pub fn build_insert_statement(
+    dialect: &dyn SqlDialect,
+    max_parameters: usize,
+    table: &str,
+    columns: &[(&str, Option<Value>)],
+) -> Result<BoundSqlStatement, DriverError> {
+    let mut parameters = Vec::new();
+    let mut names = Vec::with_capacity(columns.len());
+    let mut values = Vec::with_capacity(columns.len());
+    for (column, value) in columns {
+        names.push(dialect.quote_ident(column));
+        values.push(bind_parameter(
+            dialect,
+            max_parameters,
+            &mut parameters,
+            value,
+        )?);
+    }
+    let sql = if names.is_empty() {
+        format!("INSERT INTO {} DEFAULT VALUES", dialect.quote_ident(table))
+    } else {
+        format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            dialect.quote_ident(table),
+            names.join(", "),
+            values.join(", ")
+        )
+    };
+    Ok(BoundSqlStatement { sql, parameters })
+}
+
 fn bind_parameter(
     dialect: &dyn SqlDialect,
     max_parameters: usize,
@@ -323,6 +366,67 @@ mod tests {
                 ("id", Some(Value::Integer(1))),
                 ("rev", Some(Value::Integer(2))),
             ],
+        )
+        .unwrap_err();
+        assert!(matches!(error, DriverError::Unsupported(_)));
+    }
+
+    #[test]
+    fn insert_statement_lists_written_columns_and_binds_each_value() {
+        let dialect = dialect();
+        let insert = build_insert_statement(
+            &dialect,
+            10,
+            "rows",
+            &[
+                ("text", Some(Value::String("x'\\y".into()))),
+                ("nullable", None),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            insert.sql,
+            "INSERT INTO `rows` (`text`, `nullable`) VALUES (?1, ?2)"
+        );
+        assert_eq!(insert.parameters.len(), 2);
+        assert!(
+            matches!(&insert.parameters[0], Value::String(value) if value == "x'\\y"),
+            "the raw value must travel as a bound parameter, not as SQL text"
+        );
+        assert!(matches!(&insert.parameters[1], Value::Null));
+
+        // The same table name renders exactly as the sibling builders do, so a
+        // driver that changes `quote_ident` changes all three at once.
+        let update = build_update_statement(
+            &dialect,
+            10,
+            "rows",
+            &[("text", Some(Value::Integer(1)))],
+            &[("id", Some(Value::Integer(1)))],
+        )
+        .unwrap();
+        let delete =
+            build_delete_statement(&dialect, 10, "rows", &[("id", Some(Value::Integer(1)))])
+                .unwrap();
+        assert!(insert.sql.contains("`rows`"));
+        assert!(update.sql.contains("`rows`"));
+        assert!(delete.sql.contains("`rows`"));
+    }
+
+    #[test]
+    fn insert_statement_with_no_written_columns_is_default_values() {
+        let insert = build_insert_statement(&dialect(), 10, "rows", &[]).unwrap();
+        assert_eq!(insert.sql, "INSERT INTO `rows` DEFAULT VALUES");
+        assert!(insert.parameters.is_empty());
+    }
+
+    #[test]
+    fn insert_statement_exceeding_the_parameter_budget_fails() {
+        let error = build_insert_statement(
+            &dialect(),
+            1,
+            "rows",
+            &[("a", Some(Value::Integer(1))), ("b", None)],
         )
         .unwrap_err();
         assert!(matches!(error, DriverError::Unsupported(_)));
