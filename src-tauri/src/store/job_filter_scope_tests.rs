@@ -81,7 +81,15 @@ fn rust_sources(root: &Path) -> Vec<PathBuf> {
 /// * **字符字面量与生命周期的判据**：`'` 后若是 `\`（转义），或是「一个字符 + 闭合
 ///   `'`」，那是字符字面量；否则（标识符后面没有闭合引号）是生命周期。
 /// * **原始字符串**：`r"..."` / `r#"..."#` 里的引号不转义，结束标记是 `"` 加同数量 `#`。
-/// * **块注释可嵌套**：Rust 的 `/* /* */ */` 合法，深度要计。
+///   **0 个 `#` 的裸串也是裸串**（`r"..."`）：它与普通字符串的差别正在于引号不转义，
+///   当成普通字符串会让闭合引号被当成转义吃掉，词法器一路扫到文件里下一个 `"` 才停，
+///   中间整段被掩成字符串内容 —— 那段里的 `JobFilter` 字面量就此**不可见**，
+///   守卫从「能抓住」变成「抓不住」。
+/// * **块注释可嵌套**：Rust 的 `/* /* */ */` 合法，深度要计；`/*` 与 `*/` 各占 2 字节，
+///   掩码里要留 2 个空格的占位，字节偏移才守得住。
+///
+/// **改这段词法逻辑时必须用变异证明**：把「能抓住」换成「抓不住」不会有任何编译错误，
+/// 也不会有任何既有用例变红——只会有守卫安静地漏报。
 fn mask_comments_and_literals(source: &str) -> String {
     let characters: Vec<char> = source.chars().collect();
     let mut out = String::with_capacity(source.len());
@@ -102,11 +110,13 @@ fn mask_comments_and_literals(source: &str) -> String {
                 while index < characters.len() {
                     if characters[index] == '/' && characters.get(index + 1) == Some(&'*') {
                         depth += 1;
+                        out.push_str("  ");
                         index += 2;
                         continue;
                     }
                     if characters[index] == '*' && characters.get(index + 1) == Some(&'/') {
                         depth = depth.saturating_sub(1);
+                        out.push_str("  ");
                         index += 2;
                         if depth == 0 {
                             break;
@@ -139,9 +149,9 @@ fn mask_comments_and_literals(source: &str) -> String {
                     push_mask(&mut out, current);
                 }
             }
-            'r' if raw_string_hashes(&characters, index) > 0 => {
-                // 原始字符串：`r` + n 个 `#` + `"` …… `"` + n 个 `#`。
-                let hashes = raw_string_hashes(&characters, index);
+            'r' if raw_string_hashes(&characters, index).is_some() => {
+                // 原始字符串：`r` + n 个 `#` + `"` …… `"` + n 个 `#`（n 可以是 0）。
+                let hashes = raw_string_hashes(&characters, index).unwrap_or(0);
                 out.push('r');
                 index += 1;
                 for _ in 0..hashes {
@@ -223,7 +233,14 @@ fn mask_comments_and_literals(source: &str) -> String {
 }
 
 /// 用**等字节长度**的空格掩掉一个字符，使掩码与原文的字节偏移一一对应。
+///
+/// 换行**保留**：掩码的行数因此与原文一致，报出的 `file:line` 才是真实行号
+/// （把换行也掩成空格会让行号整体前移）。
 fn push_mask(out: &mut String, character: char) {
+    if character == '\n' {
+        out.push('\n');
+        return;
+    }
     for _ in 0..character.len_utf8() {
         out.push(' ');
     }
@@ -231,20 +248,45 @@ fn push_mask(out: &mut String, character: char) {
 
 /// `r` 之后紧跟的 `#` 个数（其后必须是 `"` 才算原始字符串）。
 ///
-/// 返回 0 表示这里不是原始字符串的开始（普通标识符 `r`）。
-fn raw_string_hashes(characters: &[char], index: usize) -> usize {
+/// 返回 `None` 表示这里不是原始字符串的开始（普通标识符 `r`）。
+///
+/// **0 个 `#` 的裸串（`r"..."`）也是裸串**：它与普通字符串的差别在于引号不转义
+/// ——`r"a\"` 的内容是 `a\`，闭合引号紧跟其后。若把它当普通字符串，闭合引号会被
+/// 当成转义吃掉，词法器一路扫到文件里下一个 `"` 才停，中间整段被掩成字符串内容，
+/// 那段里的**所有** `JobFilter` 字面量就此不可见（守卫从「能抓住」变成「抓不住」）。
+///
+/// `r` 必须是**独立 token**：前面是标识符字符时不算（`br"..."` 的 `b` 是前缀，单独放行）。
+fn raw_string_hashes(characters: &[char], index: usize) -> Option<usize> {
     if characters.get(index) != Some(&'r') {
-        return 0;
+        return None;
+    }
+    let previous = index
+        .checked_sub(1)
+        .and_then(|position| characters.get(position))
+        .copied();
+    let byte_prefix = matches!(previous, Some('b') | Some('B'))
+        && index
+            .checked_sub(2)
+            .map_or(true, |position| !is_identifier_char(characters[position]));
+    if let Some(previous) = previous {
+        if is_identifier_char(previous) && !byte_prefix {
+            return None;
+        }
     }
     let mut hashes = 0usize;
     while characters.get(index + 1 + hashes) == Some(&'#') {
         hashes += 1;
     }
     if characters.get(index + 1 + hashes) == Some(&'"') {
-        hashes
+        Some(hashes)
     } else {
-        0
+        None
     }
+}
+
+/// 标识符字符（字母、数字、下划线）。
+fn is_identifier_char(character: char) -> bool {
+    character.is_alphanumeric() || character == '_'
 }
 
 /// 提取源码里的 `JobFilter { ... }` **字面量**区间（按花括号配对）。
@@ -303,22 +345,67 @@ fn job_filter_literal_spans(masked: &str) -> Vec<(usize, usize, usize)> {
 ///
 /// 判据看它前面的内容：
 ///
-/// * 前面是 `->` → 返回类型（`fn f() -> JobFilter {`），不是字面量；
-/// * 前一个词是类型/实现位置的关键字（`struct` / `impl` / `enum` / `trait` / `union`）
+/// * 前面是 `->`（可以隔着一整条路径：`-> a::b::JobFilter`）→ 返回类型
+///   （`fn f() -> JobFilter {`），不是字面量；
+/// * 前面的词是类型/实现位置的关键字（`struct` / `impl` / `enum` / `trait` / `union`）
 ///   → 声明，不是字面量。
 fn is_literal_position(source: &str, start: usize) -> bool {
     let before = source[..start].trim_end();
-    if before.ends_with("->") {
+    if is_return_type(before) {
         return false;
     }
-    let previous_word = before
-        .rsplit(|character: char| !character.is_alphanumeric() && character != '_')
-        .next()
-        .unwrap_or_default();
-    !matches!(
-        previous_word,
-        "struct" | "impl" | "enum" | "trait" | "union"
-    )
+    !is_type_position(before)
+}
+
+/// 前面是不是「`->` + 可选路径」的返回类型。
+///
+/// 路径段要**逐段剥掉**：`-> datazen_platform_api::dto::job::JobFilter` 的紧邻前两个
+/// 字符是 `::`，只看 `->` 会判成「不是返回类型」→ 该形态被当成字面量 → 假红。
+fn is_return_type(before: &str) -> bool {
+    let mut rest = before.trim_end();
+    loop {
+        let Some(head) = rest.strip_suffix("::") else {
+            break;
+        };
+        let head = head.trim_end();
+        let segment = last_identifier(head);
+        if segment.is_empty() {
+            break;
+        }
+        rest = head[..head.len() - segment.len()].trim_end();
+    }
+    rest.ends_with("->")
+}
+
+/// 前面是不是类型/实现位置（`struct` / `impl` / `enum` / `trait` / `union`）。
+///
+/// 沿路径链往前找：`impl datazen::JobFilter` 的关键字在路径**之前**，只看紧邻的一个词
+/// 会漏掉它。
+fn is_type_position(before: &str) -> bool {
+    const KEYWORDS: &[&str] = &["struct", "impl", "enum", "trait", "union"];
+    let mut rest = before.trim_end();
+    loop {
+        let word = last_identifier(rest);
+        if KEYWORDS.contains(&word) {
+            return true;
+        }
+        let Some(head) = rest.strip_suffix("::") else {
+            return false;
+        };
+        let head = head.trim_end();
+        let segment = last_identifier(head);
+        if segment.is_empty() {
+            return false;
+        }
+        rest = head[..head.len() - segment.len()].trim_end();
+    }
+}
+
+/// 末尾的标识符段（空串表示没有）。
+fn last_identifier(text: &str) -> &str {
+    text.rsplit(|character: char| !is_identifier_char(character))
+        .find(|piece| !piece.is_empty())
+        .unwrap_or_default()
 }
 
 /// 一次扫描的结果。
@@ -373,6 +460,10 @@ fn scan_source(label: &str, source: &str) -> Scan {
 }
 
 /// 真实字面量的非空洞下限。
+///
+/// 计数口径是**真实字面量**：类型位置上的同名 token（`struct JobFilter {`、
+/// `fn f() -> a::b::JobFilter {`）不算——把它们算进去会让计数虚高，将来出现
+/// 「返回 `JobFilter` 但函数体里没有字面量」的辅助函数就会假红。
 ///
 /// 阈值按**实测真实字面量数**（当前 14）留出余量：太接近实测值，删掉几个调用点
 /// 就会让守卫自己变红；太小则守卫可能空转。两条守卫各自的计数口径不同，因此
@@ -635,6 +726,90 @@ fn broken() {
                 "扫描根 `{scanned}` 一个 .rs 都没扫到：范围漏了它，这条守卫就会恒绿"
             );
         }
+    }
+
+    /// **M8**：裸串 `r"a\"` 之后的坏字面量必须被抓到。
+    ///
+    /// `r"a\"` 的内容是 `a\`，闭合引号紧跟其后。若把它当普通字符串，闭合引号会被
+    /// 当成转义吃掉，词法器一路扫到文件里下一个 `"` 才停 —— 中间整段被掩成字符串
+    /// 内容，那段里的 `JobFilter` 字面量**完全不可见**（守卫从「能抓住」变成「抓不住」）。
+    #[test]
+    fn a_bare_raw_string_does_not_hide_the_literal_behind_it() {
+        let source = r##"
+fn probe() {
+    let raw = r"a\";
+    let _ = JobFilter { states: Vec::new(), owner: None, after: None, limit: None };
+}
+"##;
+        let scan = scan_source("probe", source);
+        assert_eq!(
+            scan.without_organization.len(),
+            1,
+            "裸串之后的坏字面量必须被抓到：{:?}",
+            scan.without_organization
+        );
+    }
+
+    /// **M13**：坏字面量落在「曾经 desync 的区段内」也必须被抓到。
+    ///
+    /// 复现 `src-tauri/src/commands/config.rs` 的 `r"\\?"` 那种位置：裸串后面还有别的
+    /// 引号，desync 区段因此会一直延到那个引号为止。修复前区段里的字面量不可见。
+    #[test]
+    fn a_literal_inside_the_desync_region_is_reported() {
+        let source = r##"
+fn probe() {
+    let raw = r"a\";
+    let _ = JobFilter { states: Vec::new(), owner: None, after: None, limit: None };
+    let other = "later quote";
+}
+"##;
+        let scan = scan_source("probe", source);
+        assert_eq!(
+            scan.without_organization.len(),
+            1,
+            "desync 区段内的坏字面量必须被抓到：{:?}",
+            scan.without_organization
+        );
+    }
+
+    /// **M12**：跨行字符串之后的坏字面量必须被抓到，且**报出的行号就是真实行号**。
+    ///
+    /// 行号是掩码文本数出来的：掩码把换行也吃掉的话，报告会把人指到错误的行。
+    #[test]
+    fn the_reported_line_is_the_real_line_after_a_multi_line_string() {
+        let source = "fn probe() {\n    let text = r#\"first\nsecond\"#;\n    let _ = JobFilter { states: Vec::new(), owner: None, after: None, limit: None };\n}\n";
+        let scan = scan_source("probe", source);
+        assert_eq!(
+            scan.without_organization.len(),
+            1,
+            "跨行字符串之后的坏字面量必须被抓到：{:?}",
+            scan.without_organization
+        );
+        assert!(
+            scan.without_organization[0].starts_with("probe:4 "),
+            "报出的行号必须等于真实行号（坏字面量在第 4 行）：{:?}",
+            scan.without_organization
+        );
+    }
+
+    /// **M5b**：带路径限定的返回类型不是字面量，守卫不得报它。
+    ///
+    /// `-> datazen_platform_api::dto::job::JobFilter {` 的紧邻前两个字符是 `::`，
+    /// 只看 `->` 会把整个函数体当成字面量 —— 函数体里没有字面量时就假红。
+    #[test]
+    fn a_path_qualified_return_type_is_not_a_literal() {
+        let source = r##"
+fn probe() -> datazen_platform_api::dto::job::JobFilter {
+    todo!()
+}
+"##;
+        let scan = scan_source("probe", source);
+        assert_eq!(
+            scan.literals, 0,
+            "返回类型形态不是字面量：{:?}",
+            scan.without_organization
+        );
+        assert!(scan.without_organization.is_empty());
     }
 
     /// 词法器失衡会造成**漏报**：坏字面量藏在生命周期/字符串/注释之后却没被抓到。

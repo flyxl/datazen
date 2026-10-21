@@ -71,6 +71,8 @@ worker 心跳续其目录记录，但不延期客户端 attachment、事务或 J
 
 renew、阶段推进、提交边界、checkpoint、Artifact 引用和终态写入统一使用以下谓词：组织 + jobId + workerId + claimGeneration + `claim_expires_at > 管理库当前时间`；需要状态变化的写入另检查 stateVersion。零行更新表示 claim 失效，调用方停止推进，不能无条件补写或重新获取旧代次。
 
+> **这条谓词描述的是 P9 服务端形态**，其中 renew 的组织来自认证信封（见 §1：组织上下文由 API 签名或受认证 RPC 信封携带）。它**不适用于 P5 桌面的 `renew(claim)`**：桌面续约只凭 claim 自身（jobId + worker + claimGeneration + 租约）判定，**续约路径本身不做组织比对**——`JobClaim` 不携带组织维度，桌面形态的「跨组织续约」因此不可表达。桌面侧的组织边界由**写入路径**兜底：所有写入都经 claim 校验，那里比对 `RequestContext` 的组织，越组织写按 stale claim 拒绝。
+
 claim 校验与写入必须是同事务或单条条件 UPDATE，不允许“先 SELECT 有效、随后 UPDATE”造成 TOCTOU。checkpoint 插入、Job 投影与版本更新同事务；byte Artifact 先写不可变字节，引用发布受 claim fencing，失效后的孤儿字节由清理器回收。
 
 ### 4.2 取消与接管
