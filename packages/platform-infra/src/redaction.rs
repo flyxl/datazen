@@ -123,6 +123,27 @@ fn password_field_re() -> &'static Regex {
     })
 }
 
+/// The placeholder that replaces the **directory** part of an absolute path.
+const REDACTED_PATH: &str = "***";
+
+/// An absolute filesystem path: a unix root, a Windows drive or a UNC share.
+///
+/// The first group is the **context** the path sits in: the start of the
+/// string or a character that cannot be part of a longer word. That is what
+/// keeps a URL's path out of the match — in `https://host/api/v1` the run
+/// `/api/v1` follows a word character, and in `https://host//api` it follows
+/// a slash, so neither is the start of a path on disk. The `regex` crate has
+/// no look-behind, so the context is captured and checked by the pattern
+/// itself.
+fn absolute_path_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        // Literal pattern; no data-derived input reaches it.
+        Regex::new(r#"(?i)(^|[^\w.:/\\])(?:[a-z]:[\\/]|\\\\|/)((?:[^\s"'<>|]+[\\/])+[^\s"'<>|]*)"#)
+            .expect("absolute path regex")
+    })
+}
+
 /// Redact the userinfo of one `scheme://…` run.
 ///
 /// The parser is the primary path because it knows where userinfo ends and the
@@ -187,6 +208,42 @@ pub fn redact_url_for_log(url: &str) -> String {
         Some((base, _)) => format!("{base}?[redacted]"),
         None => redacted,
     }
+}
+
+/// Replace the **directory** part of every absolute path in `input`.
+///
+/// This is the path half of the redaction that `AGENTS.md` asks of the IPC
+/// error payload ("全局 IPC 错误 Payload 自动脱敏凭据与绝对路径"). It is a
+/// **separate** function from [`redact_secrets_for_log`] on purpose: that one
+/// is used on log lines all over the host, where a path is exactly what the
+/// reader needs, and changing its semantics would rewrite log output
+/// everywhere. The IPC payload is the place where a path must not travel.
+///
+/// The file name survives — it is what the message is about — while the
+/// directories are replaced: `/Users/alice/code/app.db` becomes
+/// `***/app.db`. The user's home directory, the project layout and the
+/// temporary directories stay behind.
+///
+/// A URL's path is **not** a path on disk and stays intact: `https://host/api/v1`
+/// is returned unchanged.
+pub fn redact_paths_for_ipc(input: &str) -> String {
+    absolute_path_re()
+        .replace_all(input, |caps: &regex::Captures<'_>| {
+            let context = &caps[1];
+            let path = &caps[2];
+            // The last segment is the file name; the rest is the layout.
+            let file_name = path
+                .rsplit(['/', '\\'])
+                .find(|segment| !segment.is_empty())
+                .unwrap_or("");
+            let masked = if file_name.is_empty() {
+                REDACTED_PATH.to_string()
+            } else {
+                format!("{REDACTED_PATH}/{file_name}")
+            };
+            format!("{context}{masked}")
+        })
+        .into_owned()
 }
 
 #[cfg(test)]
@@ -334,5 +391,62 @@ mod tests {
             redact_url_for_log("https://host?token=secret"),
             "https://host?[redacted]"
         );
+    }
+
+    /// FKU-D5: the absolute path of an IPC error payload must not travel.
+    #[test]
+    fn redacts_absolute_unix_paths_for_ipc() {
+        let out = redact_paths_for_ipc("cannot open /Users/alice/code/app.db for reading");
+        assert!(!out.contains("/Users/alice"), "{out}");
+        assert!(!out.contains("code"), "{out}");
+        // The file name survives: it is what the message is about.
+        assert!(out.contains("app.db"), "{out}");
+    }
+
+    #[test]
+    fn redacts_absolute_windows_paths_for_ipc() {
+        let out = redact_paths_for_ipc(r"cannot open C:\Users\alice\AppData\app.db");
+        assert!(!out.contains("Users"), "{out}");
+        assert!(!out.contains("AppData"), "{out}");
+        assert!(out.contains("app.db"), "{out}");
+    }
+
+    #[test]
+    fn redacts_unc_paths_for_ipc() {
+        let out = redact_paths_for_ipc(r"cannot open \\server\share\app.db");
+        assert!(!out.contains("server"), "{out}");
+        assert!(out.contains("app.db"), "{out}");
+    }
+
+    /// A URL's path is not a path on disk and must survive untouched.
+    #[test]
+    fn leaves_url_paths_intact_for_ipc() {
+        let url = "GET https://api.example.com/v1/users failed with 500";
+        assert_eq!(redact_paths_for_ipc(url), url);
+    }
+
+    /// A relative path is not absolute and stays as it is.
+    #[test]
+    fn leaves_relative_paths_intact_for_ipc() {
+        let out = redact_paths_for_ipc("config/app.toml not found");
+        assert_eq!(out, "config/app.toml not found");
+    }
+
+    /// The credential redaction is unchanged: the path step is a **separate**
+    /// capability, and the two compose.
+    #[test]
+    fn path_redaction_does_not_change_credential_redaction() {
+        let s = "mysql://root:s3cret@127.0.0.1:3306/app failed on /Users/alice/app.db";
+        let secrets = redact_secrets_for_log(s);
+        assert!(!secrets.contains("s3cret"), "{secrets}");
+        assert!(
+            secrets.contains("mysql://***@127.0.0.1:3306/app"),
+            "{secrets}"
+        );
+
+        let both = redact_paths_for_ipc(&secrets);
+        assert!(!both.contains("/Users/alice"), "{both}");
+        assert!(both.contains("mysql://***@127.0.0.1:3306/app"), "{both}");
+        assert!(both.contains("app.db"), "{both}");
     }
 }
