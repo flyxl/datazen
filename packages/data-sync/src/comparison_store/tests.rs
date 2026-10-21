@@ -5,9 +5,36 @@ use crate::{
     compare_table_pages_to_sink, ChangeOperation, RowChange, SliceRowSource, SyncOptions,
     SyncSourceFilter, TableResult,
 };
+use datazen_platform_api::id::OrganizationId;
 use uuid::Uuid;
 
 const CHILD_OWNER_ROOT_ENV: &str = "DATAZEN_TEST_COMPARISON_OWNER_ROOT";
+/// 包内测试用的组织。存储根与作用域都绑定到它。
+const TEST_ORGANIZATION: &str = "datazen-data-sync-tests";
+
+/// 包内测试用的存储根端口。
+fn test_root(root: &Path) -> LocalComparisonStoreRoot {
+    LocalComparisonStoreRoot::new(root.to_path_buf(), OrganizationId::new(TEST_ORGANIZATION))
+}
+
+/// 包内测试用的作用域。
+fn test_scope() -> OrganizationScope {
+    OrganizationScope::new(OrganizationId::new(TEST_ORGANIZATION))
+}
+
+/// 包内测试用的比较存储：根来自默认落盘约定，作用域来自测试组织。
+fn comparison_store_from(comparison: ComparisonResult) -> Result<ComparisonStore, String> {
+    ComparisonStore::from_comparison(
+        comparison,
+        &test_root(&default_comparison_store_root()),
+        &test_scope(),
+    )
+}
+
+/// 包内测试用的流式写入器。
+fn test_store_writer() -> Result<StreamingComparisonStoreWriter, String> {
+    StreamingComparisonStoreWriter::new(&test_root(&default_comparison_store_root()), &test_scope())
+}
 
 fn inserted_row(key: i64) -> RowChange {
     RowChange::insert(
@@ -96,7 +123,7 @@ fn row_bearing_table() -> TableResult {
 
 #[test]
 fn small_comparison_stays_inline_and_round_trips() {
-    let store = ComparisonStore::from_comparison(comparison(8)).unwrap();
+    let store = comparison_store_from(comparison(8)).unwrap();
     assert!(!store.is_spilled());
     assert_eq!(store.load().unwrap().tables.len(), 1);
     assert_eq!(store.summaries().unwrap()[0].row_count, 1);
@@ -109,8 +136,7 @@ fn small_comparison_stays_inline_and_round_trips() {
 #[test]
 fn one_shot_add_table_preserves_rows_metadata_counts_and_order() {
     let expected = row_bearing_table();
-    let inline =
-        ComparisonStore::from_comparison(ComparisonResult::new(vec![expected.clone()])).unwrap();
+    let inline = comparison_store_from(ComparisonResult::new(vec![expected.clone()])).unwrap();
     assert!(!inline.is_spilled());
     let inline_loaded = inline.load().unwrap();
     assert_eq!(
@@ -178,7 +204,7 @@ fn one_shot_add_table_row_write_failures_abort_without_publishing() {
 
 #[test]
 fn large_comparison_spills_to_private_indexed_store_and_round_trips() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let path = store.path().unwrap();
     let directory = store.directory().unwrap();
     assert!(store.is_spilled());
@@ -246,7 +272,7 @@ fn large_comparison_spills_to_private_indexed_store_and_round_trips() {
 
 #[test]
 fn manifest_operation_count_tampering_fails_closed() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let manifest = store.path().unwrap();
     let mut document: serde_json::Value =
         serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
@@ -264,7 +290,7 @@ fn manifest_operation_count_tampering_fails_closed() {
 #[test]
 fn indexed_page_reads_only_requested_table_and_rows_without_full_load() {
     let comparison = multi_table_comparison();
-    let store = ComparisonStore::from_comparison(ComparisonResult::new(vec![
+    let store = comparison_store_from(ComparisonResult::new(vec![
         TableResult::matched(
             "large-users",
             "large-users",
@@ -290,7 +316,7 @@ fn indexed_page_reads_only_requested_table_and_rows_without_full_load() {
 
 #[test]
 fn malformed_manifest_and_row_file_are_rejected_and_cleaned_on_drop() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let manifest = store.path().unwrap();
     let directory = store.directory().unwrap();
     fs::write(&manifest, b"not-json").unwrap();
@@ -301,7 +327,7 @@ fn malformed_manifest_and_row_file_are_rejected_and_cleaned_on_drop() {
     drop(store);
     assert!(!directory.exists());
 
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let directory = store.directory().unwrap();
     let row_path = directory.join("table-0.rows");
     fs::write(&row_path, b"broken").unwrap();
@@ -310,7 +336,7 @@ fn malformed_manifest_and_row_file_are_rejected_and_cleaned_on_drop() {
     drop(store);
     assert!(!directory.exists());
 
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let directory = store.directory().unwrap();
     let row_path = directory.join("table-0.rows");
     let mut bytes = fs::read(&row_path).unwrap();
@@ -328,7 +354,7 @@ fn malformed_manifest_and_row_file_are_rejected_and_cleaned_on_drop() {
 
 #[test]
 fn trailing_manifest_data_is_rejected() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let path = store.path().unwrap();
     let mut bytes = fs::read(&path).unwrap();
     bytes.extend_from_slice(b" trailing");
@@ -341,7 +367,7 @@ fn trailing_manifest_data_is_rejected() {
 
 #[test]
 fn cloned_owner_delays_cleanup_until_last_reference() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let directory = store.directory().unwrap();
     let clone = store.clone();
     drop(store);
@@ -363,7 +389,7 @@ fn existing_path_is_rejected_instead_of_overwritten() {
 #[test]
 fn streaming_writer_spills_rows_incrementally_and_cleans_unfinished_output() {
     let options = SyncOptions::default();
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))
@@ -391,7 +417,7 @@ fn streaming_writer_spills_rows_incrementally_and_cleans_unfinished_output() {
     drop(store);
     assert!(!directory.exists());
 
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("cancelled", "cancelled", Vec::new()))
@@ -410,7 +436,7 @@ fn streaming_writer_spills_rows_incrementally_and_cleans_unfinished_output() {
 #[test]
 fn test_tester_streaming_writer_round_trips_zero_one_and_large_row_counts() {
     let options = SyncOptions::default();
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     writer
         .begin_table(TableResult::matched("empty", "empty", Vec::new()))
         .unwrap();
@@ -468,7 +494,7 @@ fn test_tester_streaming_writer_round_trips_zero_one_and_large_row_counts() {
 #[test]
 fn test_tester_index_corruption_fails_summary_page_and_full_load() {
     let options = SyncOptions::default();
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))
         .unwrap();
@@ -496,7 +522,7 @@ fn test_tester_index_corruption_fails_summary_page_and_full_load() {
 
 #[tokio::test]
 async fn test_tester_cancelled_sink_drops_partial_store() {
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))
@@ -524,7 +550,7 @@ async fn test_tester_cancelled_sink_drops_partial_store() {
 
 #[test]
 fn test_tester_unchanged_row_is_rejected_and_writer_cleanup_is_recoverable() {
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))
@@ -547,7 +573,7 @@ fn test_tester_unchanged_row_is_rejected_and_writer_cleanup_is_recoverable() {
 #[test]
 fn test_tester_full_load_fails_closed_above_64_mib_but_page_stays_available() {
     let options = SyncOptions::default();
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     writer
         .begin_table(TableResult::matched("large", "large", Vec::new()))
         .unwrap();
@@ -853,7 +879,7 @@ fn test_tester_abrupt_child_exit_releases_sqlite_owner_lease() {
 
 #[test]
 fn repeated_pages_reuse_validation_but_detect_edits_after_a_cached_read() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let summary = store.summaries().unwrap().remove(0);
     store
         .load_table_page(

@@ -2,7 +2,7 @@
 
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -48,11 +48,11 @@ impl std::fmt::Debug for OwnerLease {
     }
 }
 
-static PROCESS_OWNER_LEASE: OnceLock<Mutex<Option<Arc<OwnerLease>>>> = OnceLock::new();
-
-pub(super) fn comparison_store_directory() -> PathBuf {
-    std::env::temp_dir().join("datazen-sync-comparisons")
-}
+/// 每个存储根一份 owner 租约。
+///
+/// 租约是**按根**缓存的：租约文件本身住在根目录下的 `.owners/`，用另一个根的
+/// 租约去标记当前根的目录，会让陈旧目录永远无法被证明为可回收。
+static PROCESS_OWNER_LEASES: OnceLock<Mutex<HashMap<PathBuf, Arc<OwnerLease>>>> = OnceLock::new();
 
 pub(super) fn ensure_private_store_root(path: &Path) -> io::Result<PathBuf> {
     ensure_private_directory(path)?;
@@ -105,15 +105,15 @@ pub(super) fn ensure_private_directory(path: &Path) -> io::Result<()> {
 }
 
 pub(super) fn current_process_owner(root: &Path) -> Result<Arc<OwnerLease>, String> {
-    let lease = PROCESS_OWNER_LEASE.get_or_init(|| Mutex::new(None));
-    let mut owner = lease
+    let leases = PROCESS_OWNER_LEASES.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut leases = leases
         .lock()
         .map_err(|_| "Data Sync comparison owner registry is unavailable".to_string())?;
-    if let Some(owner) = owner.as_ref() {
+    if let Some(owner) = leases.get(root) {
         return Ok(owner.clone());
     }
     let new_owner = acquire_owner_lease(root)?;
-    *owner = Some(new_owner.clone());
+    leases.insert(root.to_path_buf(), new_owner.clone());
     Ok(new_owner)
 }
 
