@@ -3,6 +3,7 @@
 //! Compare → Review → ChangeSet → SQL Preview → Execute.
 //! Does not perform Transfer (heterogeneous copy) or Structure Sync.
 
+pub mod api;
 pub mod apply_loop;
 pub mod changeset;
 pub mod compare;
@@ -10,6 +11,7 @@ pub mod comparison_store;
 pub mod error;
 pub mod execute;
 pub mod filter;
+pub mod filter_validation;
 mod filter_values;
 pub mod gate;
 pub mod job;
