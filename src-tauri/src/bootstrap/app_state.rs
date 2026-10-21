@@ -184,6 +184,11 @@ pub(crate) fn finish_app_state(
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
     let platform = crate::platform::PlatformEntry::launch();
+    // Schema Diff 评审计划的存储：桌面单租户，只承认桌面自己的组织。
+    // 桌面身份组装失败时不编造组织身份——该存储不承认任何组织，一切访问按
+    // 「不存在」处理（依赖身份的 IPC 调用本来也会明确失败）。
+    let schema_diff_reviewed_plans =
+        crate::commands::schema_diff::reviewed_store::desktop_reviewed_plan_store(&platform);
     let schema_source = Arc::new(crate::ai::metadata_source::RuntimeSchemaSource::new(
         registry.clone(),
         store.clone(),
@@ -221,6 +226,7 @@ pub(crate) fn finish_app_state(
         // 组织作用域在**启动期**确定一次：桌面是单租户，组织的值是安装级常量，
         // 与「当前 OS 用户名能不能取到」无关。请求期直接取这份值（INV-01）。
         organization_scope: crate::platform::local_organization_scope(),
+        schema_diff_reviewed_plans,
     };
     if let Ok(adapter) = state.platform.require() {
         if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {

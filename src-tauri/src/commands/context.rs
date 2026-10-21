@@ -593,6 +593,8 @@ mod tests {
             store.clone(),
             platform.clone(),
         ));
+        let schema_diff_reviewed_plans =
+            crate::commands::schema_diff::reviewed_store::desktop_reviewed_plan_store(&platform);
 
         let state = AppState {
             driver_registry: registry,
@@ -621,6 +623,7 @@ mod tests {
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
+            schema_diff_reviewed_plans,
             platform,
             organization_scope: crate::platform::local_organization_scope(),
         };
@@ -670,6 +673,8 @@ mod tests {
             store.clone(),
             platform.clone(),
         ));
+        let schema_diff_reviewed_plans =
+            crate::commands::schema_diff::reviewed_store::desktop_reviewed_plan_store(&platform);
 
         let state = AppState {
             driver_registry: registry,
@@ -698,6 +703,7 @@ mod tests {
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
+            schema_diff_reviewed_plans,
             platform,
             organization_scope: crate::platform::local_organization_scope(),
         };
