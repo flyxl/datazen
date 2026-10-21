@@ -65,6 +65,15 @@ error TS 计数 = 0
 | IF-D-4 | 3 条被削弱的 E2E 断言已修：`INSERT` → `INSERT INTO`（表名 `_e2e_insert_test` 里就含 "insert"，原断言自满足）；补断言插入条数 `1 inserts`；草稿顺序断言从「长度」改成「顺序本身」（`toEqual([first, second])`） |
 | IF-D-3 | **接受**（协调者裁定）：「显式写 NULL」这一态在真实 UI 上不可达——契约把「Set NULL」右键菜单划给 05 分册（`tableData.insertSetNull` 词条已预落），store / wire 层面的三态完整可区分已由复测钉住 |
 
+## 第 2 轮（协调者改判：04 §8 的 `highlightNewRow` 是**要求**，不是可选项）
+
+`tableData.highlightNewRow` **已恢复**并**实装**：网格新增独立 prop `newRowIndex`
+（默认 `null`），被标记的那一行渲染 `data-testid="new-row-badge"` 的徽标（文案
+`New row`）。背景高亮那条通道与详情面板共用，只有**带文字的标记**能告诉用户
+「哪一行是刚插入的」。徽标与草稿行的 `draft-row-badge`（`NEW`，未提交态）区分：
+文案与 testid 都不同，样式可复用。`newRowIndex === null` 时 DOM 与今天逐字相同。
+（契约侧改动：集成分支 `1a0b37cd9`。）
+
 ## 待裁定（只报不改，AGENTS.md「发现契约/实装冲突，停下来报告」）
 
 1. **`grid.insert.noWritableColumn` 没有生产者** —— 04 §8 把它列为本册要追加的码，

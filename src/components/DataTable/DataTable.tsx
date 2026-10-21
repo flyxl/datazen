@@ -98,6 +98,14 @@ export interface DataTableProps {
   onAddDraftRow?: () => void;
   /** The draft cell that is being edited right now. */
   editingDraft?: { draftId: string; column: string } | null;
+  /**
+   * The row the last insert produced; it gets a marker with a word on it.
+   *
+   * A separate channel from `highlightedRow` (that one is shared with the
+   * detail panel). `null` — the default — renders no marker, so a grid that
+   * does not use the feature keeps today's DOM.
+   */
+  newRowIndex?: number | null;
 
   loading?: boolean;
   statusBar?: React.ReactNode;
@@ -179,6 +187,7 @@ export function DataTable({
   onDraftRowActivate,
   onAddDraftRow,
   editingDraft,
+  newRowIndex,
   statusBar,
   rowHeight = 28,
   exportTableName,
@@ -518,6 +527,7 @@ export function DataTable({
               onDraftRowActivate={onDraftRowActivate}
               onAddDraftRow={onAddDraftRow}
               editingDraft={editingDraft}
+              newRowIndex={newRowIndex ?? null}
             />
             {loading ? (
               gridRow(

@@ -713,6 +713,10 @@ export function TableView({
         onSelectAll={actions.toggleSelectAll}
         onRowClick={actions.setDetailRow}
         highlightedRow={detailRowIndex ?? highlightedNewRowIndex}
+        // The marker of the inserted row is its own channel: the background
+        // highlight above is shared with the detail panel, so only a marker
+        // with a word on it tells the two apart.
+        newRowIndex={highlightedNewRowIndex}
         draftRows={drafts.draftRows}
         editingDraft={drafts.editingDraft}
         onDraftCellEdit={drafts.setDraftValue}

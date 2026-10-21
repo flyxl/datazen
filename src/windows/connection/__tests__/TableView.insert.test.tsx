@@ -295,6 +295,53 @@ describe('TableView (new rows)', () => {
     expect(notice).toHaveAttribute('role', 'status');
   });
 
+  it('marks the inserted row once the commit located it', async () => {
+    renderTable();
+    await waitForTable();
+
+    // The refreshed page carries a primary key that grew, so the commit can
+    // locate the new row.
+    mockDatabaseCommands.getTableData.mockResolvedValue({
+      columns: COLUMNS,
+      rows: [
+        [1, 'Alice'],
+        [2, 'Bob'],
+        [3, 'Carol'],
+      ],
+      totalRows: 3,
+      page: 0,
+      pageSize: 50,
+    });
+    fireEvent.click(screen.getByTestId('table-insert-row'));
+    await screen.findByTestId('draft-row-0');
+    fireEvent.click(screen.getByTestId('pending-commit'));
+    await waitFor(() => expect(mockDatabaseCommands.commitPendingChanges).toHaveBeenCalled());
+
+    // The new row (the third one) carries the marker. The other rows do not.
+    const marker = await waitFor(() => {
+      const found = document.querySelector('[data-dt-row-view="2"] [data-testid="new-row-badge"]');
+      expect(found).not.toBeNull();
+      return found;
+    });
+    expect(marker).toBeInTheDocument();
+    expect(document.querySelector('[data-dt-row-view="0"] [data-testid="new-row-badge"]')).toBeNull();
+    expect(document.querySelector('[data-dt-row-view="1"] [data-testid="new-row-badge"]')).toBeNull();
+  });
+
+  it('does not mark the row the detail panel highlights', async () => {
+    renderTable();
+    await waitForTable();
+
+    // The detail panel highlights a row through the very same background
+    // channel the insert uses — only the marker tells the two apart.
+    useTableDataStore.getState().setDetailRow(PANEL, 0);
+    await waitFor(() =>
+      expect(document.querySelector('[data-dt-row-view="0"]')).toBeInTheDocument(),
+    );
+
+    expect(document.querySelector('[data-testid="new-row-badge"]')).toBeNull();
+  });
+
   it('drops the notice once a later commit located the new row', async () => {
     renderTable();
     await waitForTable();

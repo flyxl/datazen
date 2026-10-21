@@ -337,6 +337,7 @@ describe('new-row locale keys (DB-04)', () => {
     'tableData.insertUnknownColumn',
     'tableData.insertReturningUnavailable',
     'tableData.insertSchemaUnavailable',
+    'tableData.highlightNewRow',
   ] as const;
 
   it('registers every new key in the English query pack', () => {
@@ -347,11 +348,12 @@ describe('new-row locale keys (DB-04)', () => {
     }
   });
 
-  it('has no key for the highlight of a new row', () => {
-    // The highlight of a freshly inserted row goes through the grid's existing
-    // `highlightedRow` channel — it needs no wording of its own, and a key
-    // without a consumer would only be a translation nobody ever reads.
+  it('words the marker of a freshly inserted row', () => {
+    // The background highlight of the grid is shared with the detail panel, so
+    // the new row needs a **word** of its own: the marker is what tells the
+    // user which row was just inserted.
     const pack = queryPack as unknown as Record<string, unknown>;
-    expect('tableData.highlightNewRow' in pack).toBe(false);
+    expect(typeof pack['tableData.highlightNewRow']).toBe('string');
+    expect(String(pack['tableData.highlightNewRow']).length).toBeGreaterThan(0);
   });
 });

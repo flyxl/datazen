@@ -82,6 +82,18 @@ export interface VirtualBodyProps {
   onAddDraftRow?: () => void;
   /** The draft cell that is being edited right now. */
   editingDraft?: { draftId: string; column: string } | null;
+  /**
+   * The row that was just inserted — the one the commit located.
+   *
+   * It is a **separate** channel from `highlightedRow`: that one is shared
+   * with the detail panel, so a highlighted row could be either. The new row
+   * gets a marker **with a word on it**, which is what tells the user which
+   * row the commit produced (04 §4.1).
+   *
+   * `null` (the default) renders no marker at all, so a grid that does not
+   * use the feature keeps today's DOM byte for byte.
+   */
+  newRowIndex?: number | null;
 }
 
 interface VirtualRowProps {
@@ -108,6 +120,10 @@ interface VirtualRowProps {
   onRowSelect: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   onRowGutterSelect?: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   onRowClick?: (index: number) => void;
+  /** This row is the one the last insert produced. */
+  isNewRow?: boolean;
+  /** The wording of the marker; passed down so every row does not subscribe. */
+  newRowLabel: string;
 }
 
 const VirtualRow = memo(function VirtualRow({
@@ -134,6 +150,8 @@ const VirtualRow = memo(function VirtualRow({
   onRowSelect,
   onRowGutterSelect,
   onRowClick,
+  isNewRow = false,
+  newRowLabel,
 }: VirtualRowProps) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -210,6 +228,14 @@ const VirtualRow = memo(function VirtualRow({
       onKeyDown={handleKeyDown}
       onDoubleClick={handleRowDoubleClick}
     >
+      {isNewRow && (
+        <span
+          data-testid="new-row-badge"
+          className="absolute right-1 top-1/2 z-10 -translate-y-1/2 rounded border border-accent/60 bg-surface/90 px-1 text-[10px] font-medium text-accent"
+        >
+          {newRowLabel}
+        </span>
+      )}
       {/* The row-number slot is the row header: a `row` may only contain gridcell /
           rowheader / columnheader children, so the bare button has to be wrapped. */}
       <div
@@ -425,6 +451,7 @@ export const VirtualBody = memo(function VirtualBody({
   onDraftRowActivate,
   onAddDraftRow,
   editingDraft = null,
+  newRowIndex = null,
 }: VirtualBodyProps) {
   const { t } = useI18n();
   /**
@@ -445,6 +472,8 @@ export const VirtualBody = memo(function VirtualBody({
 
   const colNames = columns.map((c) => c.name);
   const selectRowLabel = t('dataTable.selectRow');
+  /** The wording of the marker of a freshly inserted row. */
+  const newRowLabel = t('tableData.highlightNewRow');
   /** Normalised column type, rendered as `data-dt-cell-type` (DB-05 swaps the source). */
   const columnTypes = useMemo(() => columns.map((c) => classifyDataType(c.type)), [columns]);
   const cellSelected = useCallback(
@@ -485,6 +514,8 @@ export const VirtualBody = memo(function VirtualBody({
             onRowSelect={onRowSelect}
             onRowGutterSelect={onRowGutterSelect}
             onRowClick={onRowClick}
+            isNewRow={newRowIndex !== null && newRowIndex === vRow.index}
+            newRowLabel={newRowLabel}
           />
         ) : (
           <DraftRow

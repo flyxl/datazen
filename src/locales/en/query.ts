@@ -325,6 +325,7 @@ const pack = {
     "The new row's primary key could not be located automatically; the page was refreshed.",
   'tableData.insertSchemaUnavailable':
     'Column metadata is unavailable; the database will validate this row.',
+  'tableData.highlightNewRow': 'New row',
   'dataTable.selected': 'Selected',
   'dataTable.sort': 'Sort',
   'dataTable.selectRow': 'Select Row',
