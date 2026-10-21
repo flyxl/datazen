@@ -137,3 +137,22 @@
 **未验证**——按暂停令等契约审计结论，审计可能改动验收标准本身。
 
 遗留（待我决定）：`src/stores/__tests__/tableDataStore.test.ts:533` 的用例名「deleteRows selects indices then stages deletes」已过时（断言只查 `pendingChanges`，仍绿）；属冻结历史测试，改名与否等合流时一并处理。
+
+## 架构规则（用户 2026-10-21 定，优先级高于既有分册设计）
+
+> 新增功能都要同时支持 desktop 与 web。两端共享的逻辑必须放进共享 crate（`packages/feature-core` 等）；`src-tauri` 只保留 **command 适配层**——类似 web 的 controller：只做必要校验，然后把请求转发到 domain service（desktop 与 web 共用层）。
+
+已核实的 crate 依赖事实（`Cargo.toml`）：
+
+| crate | 依赖 | 承载能力 |
+| --- | --- | --- |
+| `packages/feature-core` | `datazen-runtime`(:13) / `datazen-driver-api`(:14) / `datazen-platform-api`(:16) / `datazen-application`(:12) | **能**承载「计划 + 守卫 + 指纹 + 经 runtime 执行」→ 数据浏览 Rust 侧的落点 |
+| `packages/application` | 仅 `datazen-platform-api`(:14) | 不依赖 runtime，放不了执行 |
+| `packages/runtime` | — | 只放 session/资源/预算原语 |
+| `packages/backend-client` | TS 侧传输无关契约 | web/desktop 共用的 IPC port |
+
+**对 Wave 1 的直接影响**：`insert-backend` 把计划构建/指纹/守卫/执行全放进了 `src-tauri/src/commands/**`，违反新规则。已给该轨追加「搬迁提交」要求：逻辑搬进 `packages/feature-core/src/data_browsing/`（`change_set.rs` / `write_exec.rs`），`src-tauri` 降为「取值 → 必要校验 → 调 feature-core → 映射 CommandError」，且 **IPC 形状、serde 形状、指纹结果、错误文案一个字都不能变**。
+
+**对后续波次的约束**：分册 `08/07/10/09/04/11` 都有把逻辑放 `src-tauri` 的描写（引用密度 16/13/10/10/10/6），必须逐册按新规则重定落点。已把「T0 分层落点审计」作为最高优先级插进契约审计代理（`efc3921d`）。
+
+**Wave 2 起的分册写作规范**（待审计确认后固化）：每个新增 Rust 逻辑都必须在分册里写清「共享层落点 + src-tauri 适配层的职责边界」，写不出共享层落点的，一律视为设计未完成。
