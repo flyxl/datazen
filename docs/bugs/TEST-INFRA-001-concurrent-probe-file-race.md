@@ -56,6 +56,35 @@ Error: ENOENT: no such file or directory, lstat
 
 **建议**：优先方案 1（立即止损），条件成熟后走方案 2（根治）。无论选哪个，都需要先写一条能**稳定复现**的测试（例如人为放大删除/拷贝窗口），否则改完无法证明修好了。
 
+## 机制定性（协调者复核，2026-10-21）
+
+写侧**有**互斥：`scripts/__tests__/boundaryMutation.ts` 提供 `withProbeLock`（`mkdir` 原子锁 + 死锁接管 + 超时），`withTempSourceFiles` / `withTempSourceFile` 都在锁内写删探针；`check-module-layers.test.ts` 与 `check-driver-import-boundaries.test.mjs` 都走这把锁。
+
+**读侧没有参与锁**，这才是根因。当前有**两个**读侧会看见"半成品树"：
+
+| 读侧 | 怎么撞上 | 症状 |
+| --- | --- | --- |
+| `driver-init-rustfmt.test.mjs` 的 `stageRepo()` | `cpSync(REPO, stage, { recursive: true })` **整棵活仓库**拷贝，拷贝期间探针被删 → `lstat` 抛 ENOENT | `FAIL driver-init-rustfmt.test.mjs` |
+| `pnpm typecheck`（`tsc --noEmit`） | 根 `tsconfig.json` 的 `include` 含 `packages/ui`，`packages/ui/tsconfig.json` 的 `include` 含 `src` ⇒ **探针路径在 tsc 的 program 里**；glob 展开后文件被删 | `error TS6053: __boundaryProbe__.ts not found` |
+
+**还有一个尚未被触发的隐患**：探针文件里是**故意违规的 import**（用来验证守卫能抓到）。只要它在 `tsc` 运行期间存在，`pnpm typecheck` 就会去类型检查这个**故意非法**的夹具——即使不发生竞态，typecheck 也可能因此变红。目前没暴露，只是因为探针通常不存在。
+
+⇒ 结论：**锁只保护写者，不保护读者**。修复必须让探针对读者不可见（按路径排除 / 拷贝过滤），或让读者也参与锁；只把 ENOENT 吞掉是掩盖，不是修复。
+
+## 修复验收标准（协调者）
+
+修复交付后由协调者**独立**验证，逐条要成立：
+
+1. **守卫没有被削弱**（最重要）：故意引入一次真实越界（让 `packages/ui` 导入一个它不该导入的模块），边界守卫**必须仍然报违规**。若修复方式是跳过探针、删断言、给违规加豁免，此条直接判不通过。
+2. **默认命令可靠**：`npx vitest run`（全量）与 `pnpm typecheck` **连续 10 次全绿**；`npx vitest run scripts/__tests__` 单独跑**连续 10 次全绿**。**不得**要求开发者额外传参或用 `--exclude`。
+3. **没有用例被削弱**：修复 diff 里**不得**出现 `.skip` / `.todo` / 删除断言 / 把 `expect` 改成恒真。
+4. **没有吞异常**：不得用 `try/catch` 把 ENOENT 之类的真实失败静默忽略；只允许"明确针对已知探针路径"的重试或跳过，且必须留下可诊断信息。
+5. **探针对读者不可见**：`tsc` 的 program 里**不应**包含探针路径（否则故意违规的夹具会被类型检查）；整仓拷贝**不应**把探针带进暂存目录。
+6. **锁语义未破坏**：`scripts/__tests__/boundaryMutation.test.ts` 里"被杀死运行的接管""超时抛错""ownerless 宽限"等既有用例必须仍然全绿——修复不能把互斥降级成"没有互斥"。
+7. **不留残渣**：跑完后 `packages/ui/src/__boundaryProbe__*` 与 `packages/ui/dist/__boundaryProbe__*` 不得残留；`git status --short` 不得出现探针。
+8. **没有明显性能回退**：全量 `vitest` 与 `typecheck` 的耗时不得明显变长（修复不是靠"每次都重试整仓拷贝"实现的）。
+9. **修复必须落在 `scripts/` 与配置里**，不能靠"每条轨自己证明红的不是我"来规避——那正是本缺陷存在的意义。
+
 ## 观测记录（2026-10-21）
 
 | 观测者 | 变体 | 结论 |
