@@ -30,12 +30,12 @@ use futures_util::FutureExt;
 #[cfg(test)]
 use std::sync::atomic::Ordering;
 
-#[cfg(test)]
-use super::plans::SyncRunRequest;
 pub(crate) use crate::data_sync::job::body::{APPLY_KIND, PREPARE_KIND};
 use crate::data_sync::job::host::DataSyncHost;
 #[cfg(test)]
 use crate::data_sync::job::{prepare_payload, ApplySpec, DataSyncHandler, PrepareSpec};
+#[cfg(test)]
+use crate::data_sync::plan_store::SyncRunRequest;
 use crate::data_sync::{Endpoint, SyncSourceFilter};
 
 use super::super::error::CommandError;
@@ -476,9 +476,10 @@ pub(crate) async fn submit_apply(
     spec: ApplySpec,
     window_job_id: Option<String>,
 ) -> Result<SyncJobOutcome, CommandError> {
-    let (source_session_id, target_session_id) = super::plans::peek_plan(&spec.plan_id)
-        .map(|plan| (plan.source_db_session_id, plan.target_db_session_id))
-        .unwrap_or_default();
+    let (source_session_id, target_session_id) =
+        crate::data_sync::plan_store::peek_plan(&spec.plan_id)
+            .map(|plan| (plan.source_db_session_id, plan.target_db_session_id))
+            .unwrap_or_default();
     let selection = state::confirmed_selection(&spec.plan_id).ok_or_else(|| {
         CommandError::Validation("reviewed selection is unavailable; compare again".into())
     })?;

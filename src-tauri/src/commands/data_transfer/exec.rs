@@ -9,10 +9,11 @@ use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
 use super::inspect::inspect_data_transfer_impl;
 use super::jobs;
-use super::plans::{self, StoredTransferPlan, TransferCheckpointSession};
-use crate::commands::driver_protocol::driver_protocol_version;
 use crate::data_transfer::model::TableExecutionOutcome;
 use crate::data_transfer::model::TransferRunSelection;
+use crate::data_transfer::plan_store::{
+    self as plans, StoredTransferPlan, TransferCheckpointSession,
+};
 use crate::data_transfer::resume::TransferResumeCheckpoint;
 use crate::data_transfer::{
     column_ir_types_by_source, create_target_tables_with_write_observer, enforce_transfer_pairing,
@@ -21,6 +22,7 @@ use crate::data_transfer::{
     TransferMode, TransferRunRequest, ValueFormatter,
 };
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
+use datazen_driver_api::driver_protocol_version;
 use datazen_driver_api::TableType;
 
 pub(super) async fn load_sql_source_snapshot(

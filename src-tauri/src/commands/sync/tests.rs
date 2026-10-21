@@ -471,14 +471,14 @@ fn filter_tables_by_schema_keeps_matching_schema_only() {
             row_count: None,
         },
     ];
-    let filtered = super::types::filter_tables_by_schema(tables, Some("public"));
+    let filtered = crate::data_sync::api::filter_tables_by_schema(tables, Some("public"));
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].name, "a");
 }
 
 #[test]
 fn is_self_sync_requires_matching_schema_on_same_connection() {
-    assert!(super::types::is_self_sync(
+    assert!(crate::data_sync::api::is_self_sync(
         "c1",
         "c1",
         "db",
@@ -486,7 +486,7 @@ fn is_self_sync_requires_matching_schema_on_same_connection() {
         Some("public"),
         Some("public")
     ));
-    assert!(!super::types::is_self_sync(
+    assert!(!crate::data_sync::api::is_self_sync(
         "c1",
         "c1",
         "db",

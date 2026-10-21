@@ -424,7 +424,7 @@ async fn preview_sql_file_target(
         }
     }
     let target_schemas: HashMap<String, TableSchema> = HashMap::new();
-    let plan_id = super::plans::issue_plan(
+    let plan_id = crate::data_transfer::plan_store::issue_plan(
         job,
         &preview,
         src_driver.as_ref(),
@@ -829,7 +829,7 @@ pub(crate) async fn preview_data_transfer_impl(
         Vec::new()
     };
 
-    let plan_id = super::plans::issue_plan_with_target_dependencies(
+    let plan_id = crate::data_transfer::plan_store::issue_plan_with_target_dependencies(
         job,
         &preview,
         src_driver.as_ref(),

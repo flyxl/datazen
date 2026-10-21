@@ -7,8 +7,8 @@ use super::super::AppState;
 use super::artifact_view;
 use super::comparison_store::ComparisonStore;
 use super::inspect::inspect_data_sync_impl;
-use super::plans;
 use crate::data_sync::job::PrepareSpec;
+use crate::data_sync::plan_store as plans;
 use crate::data_sync::{
     generate_table_sql_with_qualified_table_and_policy, ChangeOperation, ChangeSet,
     ComparisonResult, ConflictPolicy, DataSyncError, Endpoint, SyncOptions, SyncSourceFilter,
@@ -103,11 +103,11 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
     .await?;
     let source_config = source_context.config.clone();
     let target_config = target_context.config.clone();
-    let source_database_name = super::types::resolve_db_name(
+    let source_database_name = crate::data_sync::api::resolve_db_name(
         source_database.as_deref(),
         source_config.database.as_deref(),
     );
-    let target_database_name = super::types::resolve_db_name(
+    let target_database_name = crate::data_sync::api::resolve_db_name(
         target_database.as_deref(),
         target_config.database.as_deref(),
     );
@@ -692,8 +692,10 @@ pub(crate) async fn generate_data_sync_sql_impl(
     // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
     let dialect = LegacySqlDialect::new(tgt_driver.as_ref());
     let tgt_handle = target_context.handle.clone();
-    let target_database_name =
-        super::types::resolve_db_name(target_database.as_deref(), tgt_config.database.as_deref());
+    let target_database_name = crate::data_sync::api::resolve_db_name(
+        target_database.as_deref(),
+        tgt_config.database.as_deref(),
+    );
     let target_schema = metadata_schema(
         tgt_driver.as_ref(),
         target_schema.as_deref(),
@@ -900,7 +902,7 @@ mod tests {
         identity_insert_target_for_projection, sqlserver_write_preflight,
         validate_projected_identity_values,
     };
-    use crate::commands::sync::types::{resolve_options, SyncOptionsInput};
+    use crate::data_sync::api::{resolve_options, SyncOptionsInput};
     use crate::data_sync::{ChangeOperation, ConflictPolicy, RowChange, TableChangeSet};
     use datazen_driver_api::{ColumnSchema, TableSchema, Value};
 

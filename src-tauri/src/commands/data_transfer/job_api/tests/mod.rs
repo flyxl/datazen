@@ -23,11 +23,11 @@ use super::{
     plan_digest, prepare_data_transfer_job_impl, prepare_payload, TransferApplyJobRequest,
     TransferApplyJobView, TransferPrepareJobRequest, TransferPrepareJobView,
 };
-use crate::commands::data_transfer::plans::{self, PlanState};
 use crate::commands::error::CommandError;
 use crate::data_transfer::model::{
     Endpoint, SqlFileTarget, TransferOptions, TransferRunOptions, TransferRunSelection,
 };
+use crate::data_transfer::plan_store::{self as plans, PlanState};
 use crate::data_transfer::{
     TableMapping, TransferJob, TransferMode, TransferPreview, TransferRunRequest, WriteMode,
 };

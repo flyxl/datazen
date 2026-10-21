@@ -1,4 +1,4 @@
-use super::filter_validation::{
+use crate::data_sync::filter_validation::{
     resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
 };
 use crate::data_sync::SyncSourceFilter;

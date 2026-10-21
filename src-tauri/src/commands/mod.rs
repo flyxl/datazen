@@ -14,7 +14,6 @@ mod data_session;
 mod data_transfer;
 pub(crate) mod dialog;
 pub(crate) mod driver_command;
-pub(crate) mod driver_protocol;
 mod encryption_key;
 mod error;
 mod export;

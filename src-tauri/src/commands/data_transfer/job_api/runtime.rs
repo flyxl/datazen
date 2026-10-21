@@ -20,11 +20,11 @@ use datazen_runtime::job::{
     DesktopJobHost, EndpointRef, EndpointRole, JobHandler, RecoveryVerdict,
 };
 
-use super::super::plans;
 use super::endpoint_identity::EndpointIdentity;
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
 use crate::data_transfer::job::{derive_evidence, DataTransferHandler};
+use crate::data_transfer::plan_store as plans;
 
 pub(crate) const PREPARE_KIND: &str = "dataTransferPrepare";
 pub(crate) const APPLY_KIND: &str = "dataTransferApply";

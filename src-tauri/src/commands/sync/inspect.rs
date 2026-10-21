@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
-use super::types::{filter_tables_by_schema, is_self_sync, resolve_db_name};
+use crate::data_sync::api::{filter_tables_by_schema, is_self_sync, resolve_db_name};
 use crate::data_sync::{classify_tables, require_data_sync_family, TableMapping, TableResult};
 use crate::services::metadata_schema;
 

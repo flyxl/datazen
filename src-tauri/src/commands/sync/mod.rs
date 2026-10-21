@@ -5,7 +5,6 @@ mod artifact_view;
 pub(crate) mod compare;
 pub(crate) use datazen_data_sync::comparison_store;
 mod exec;
-mod filter_validation;
 #[cfg(test)]
 mod filter_validation_tests;
 mod host;
@@ -17,15 +16,19 @@ mod jobs_cancel_contract;
 #[cfg(test)]
 mod jobs_contract;
 mod keyset_source;
-mod plans;
 mod tasks;
-pub(crate) mod types;
 
 #[cfg(test)]
 mod tests;
 
 use super::error::CommandError;
 use super::AppState;
+use crate::data_sync::api::{resolve_options, SyncOptionsInput};
+pub(crate) use crate::data_sync::filter_validation::{
+    resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
+};
+use crate::data_sync::plan_store as plans;
+use crate::data_sync::plan_store::{SyncRunRequest, SyncRunSelection};
 use crate::data_sync::{
     classify_data_sync_pair as classify_data_sync_pair_impl, DataSyncExecutionResponse,
     DataSyncPairingView, SyncProfile, SyncSourceFilter, TableMapping,
@@ -37,21 +40,16 @@ pub(crate) use apply::{apply_data_sync_impl, compare_data_sync_impl, revalidate_
 #[cfg(test)]
 pub(crate) use exec::execute_data_sync_impl;
 pub(crate) use exec::{execute_data_sync_plan_impl, generate_data_sync_sql_for_plan_impl};
-pub(crate) use filter_validation::{
-    resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
-};
 pub(crate) use inspect::inspect_data_sync_impl;
 pub use job_api::*;
 #[cfg(test)]
 pub(crate) use jobs::cancel_job;
-use plans::{SyncRunRequest, SyncRunSelection};
 use std::collections::HashMap;
 pub(crate) use tasks::{
     check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
     save_sync_task_direct_impl,
 };
 use tauri::State;
-use types::{resolve_options, SyncOptionsInput};
 
 /// Execute the default reviewed selection of a freshly-created Sync plan.
 /// Workflow migration steps use this host-owned bridge so they cannot submit

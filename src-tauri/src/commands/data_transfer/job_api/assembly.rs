@@ -8,19 +8,19 @@
 
 use std::collections::HashMap;
 
-use crate::commands::driver_protocol::driver_protocol_version;
 use crate::db::{ConnectionHandle, DatabaseDriver};
+use datazen_driver_api::driver_protocol_version;
 use datazen_driver_api::{TableSchema, TableType};
 use sha2::{Digest, Sha256};
 
 use super::super::exec;
 use super::super::inspect::inspect_data_transfer_impl;
-use super::super::plans::{self, StoredTransferPlan};
 use super::super::AppState;
 use super::endpoint_identity::EndpointIdentity;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::data_transfer::job::{TransferEndpoints, TransferFreezeBody};
 use crate::data_transfer::model::{Endpoint, TableInspectResult, TransferRunSelection};
+use crate::data_transfer::plan_store::{self as plans, StoredTransferPlan};
 use crate::data_transfer::{
     enforce_transfer_pairing, validate_no_self_table_overwrite, TransferJob, TransferMode,
     WriteMode,
