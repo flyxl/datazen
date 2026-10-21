@@ -467,7 +467,7 @@ pub struct CellUpdate { pub column: String, pub value: Option<Value> }
 | --- | --- |
 | 值写在生成列（`is_auto_increment` 或只读）上且用户未显式改 | 应保持 `Unset`；若确实显式改了则允许，交由数据库报错 |
 | 一行的所有列都是 `Unset` 且 `delete_marked == false` | 该行无实际改动，**不得**进入计划（空语句会污染影响行数校验） |
-| `delete_marked == true` 同时又给出非 `Unset` 列写入 | 拒绝，报 `grid.commit.conflictingIntents`〔契约审计修订 2026-10-21〕T1-12：**代码侧尚未实现**——`build_row_change_plan` 只校验"changed_columns 里的列必须有 current_values"，`delete_marked` 行直接走 delete 分支、列写入被**静默丢弃**。本行是契约要求，02/04/06 必须补校验，且拒绝发生在 SQL 生成之前 |
+| `delete_marked == true` 同时又给出非 `Unset` 列写入 | 拒绝，报 `grid.commit.conflictingIntents`〔契约审计修订 2026-10-21〕T1-12 / **已实装**（`insert-backend` 起）：`build_row_change_plan` 在 SQL 生成之前拒绝，文案前缀 `grid.commit.conflictingIntents: `。此前版本在 `delete_marked` 行上**静默丢弃**列写入，属已修缺陷；02/04/06 仍须保证自己不绕过该守卫 |
 | 新增行（`insert_marked == true`）同时携带 `row_identity` / `original_values` | 拒绝，报 `grid.commit.conflictingIntents`（`insert-backend` 已实装） |
 | 主键列是 `Unset` 而该行是 UPDATE | 合法：主键列本来就不该改；行定位走 `row_identity`，与写入列无关 |
 
@@ -1051,12 +1051,12 @@ export interface DataGridCapabilities {
 | 2 | `grid.cell.invalidValue` | 05 | 类型化编辑器解析失败 | 说明期望类型与收到的值 |
 | 3 | `grid.cell.ambiguousIdentity` | 03 | 一页内出现重复行身份键 | 说明该页无法安全定位，请缩小范围 |
 | 4 | `grid.cell.noRowIdentity` | 03 | 目标行没有可用行身份锚点 | 说明该行不可写入 |
-| 5 | `grid.commit.stalePlan` | 04 / 06 | `fingerprint` 不匹配 | 说明计划已过期，要求重新预览 |
+| 5 | `grid.commit.stalePlan` | 04 / 06 | `fingerprint` 不匹配；**或**计划与当前上下文不再一致（驱动类型 / `config_revision` / 库 / schema / 会话漂移，或执行前配置变更）〔契约审计修订 2026-10-21〕IB3-D1：六条「后端唯一可知、语义等于计划失效」的拒绝统一到本码，前端才能统一走「重新预览」 | 说明计划已过期，要求重新预览 |
 | 6 | `grid.commit.affectedMismatch` | 04 / 06 | 影响行数 ≠ 1（**INSERT 不豁免**，见 C-5） | 说明「预期影响 1 行、实际 N 行，已回滚/未提交」 |
-| 7 | `grid.commit.conflictingIntents` | 04 | 同一行既标记删除又有列写入；**或**新增行同时被标记删除〔契约审计修订 2026-10-21〕C-6：实装目前只覆盖后者（`insert_plan.rs`），前者的校验尚缺 | 说明冲突并指出是同一行 |
+| 7 | `grid.commit.conflictingIntents` | 04 | 同一行既标记删除又有列写入；**或**新增行同时被标记删除〔契约审计修订 2026-10-21〕C-6 / **两条均已实装**：后者在 `data_browsing/insert_plan.rs`，前者在 `change_set.rs`（D7 修复） | 说明冲突并指出是同一行 |
 | 8 | `grid.insert.noWritableColumn` | 04 | 一行的所有列都是 `Unset`、且无默认值可依赖 | 提示至少填一列 |
 | 9 | `grid.insert.returningUnavailable` | 04 | `insert_returning_clause` 为 `None` | 说明「新行主键无法自动定位，已为你刷新当前页」 |
-| 10 | `grid.insert.duplicateDraft` | 04 | 同一 draftId 被提交两次 | 说明草稿已提交，请刷新 |
+| 10 | ~~`grid.insert.duplicateDraft`~~ **已删除**〔契约审计修订 2026-10-21〕IB3-D4：`PendingRowChange` 没有 draftId 字段（Q-4 裁定 draftId 不进线上），本码在当前契约下**不可能有生产者**；「同一计划并发提交两次」由 #5 `grid.commit.stalePlan` 在指纹/上下文层拦截 | — | — |
 | 11 | `grid.insert.unknownColumn` | 04 | 草稿引用了不存在/不可写的列 | 指出具体列名 |
 | 12 | `grid.filter.unsupportedOperator` | 08 | 算子不在驱动白名单 | 说清「该数据库不支持 X 筛选」，并给出可替代算子 |
 | 13 | `grid.filter.incomplete` | 08 | 筛选条件缺值 | 提示补齐，**不得**静默丢弃后照常查询 |
@@ -1092,6 +1092,12 @@ export interface DataGridCapabilities {
 | 43 | `grid.selection.outOfBounds` | 01 | 选区/焦点坐标落在此表之外（行或列越界） | 说明越界的行号或列名，并把焦点放回最近合法单元格 |
 | 44 | `grid.selection.invalid` | 01 | 选区状态自相矛盾（锚点与焦点不匹配、区间倒置未归一） | 说明选区已重置，并提示重新选择 |
 | 45 | `grid.selection.stale` | 01 | 选区引用的行列在重取数/改列后已失效 | 说明选择已被清空，需重新选择 |
+
+> **⚠ 生产者盘点（2026-10-21，Wave 1 收尾实测）**：本节 45 行里目前**只有 5 个码有真实 throw 点**——`grid.commit.stalePlan`（6 条上下文漂移 + 2 条指纹）、`grid.commit.affectedMismatch`（影响行数 ≠1 / 驱动未上报）、`grid.commit.conflictingIntents`（删除+列写入 / 新增行被标记删除）、`grid.insert.unknownColumn`（草稿引用不存在的列）、`grid.insert.returningUnavailable`（`ChangeWarning.code`，结构化字段而非文案前缀）。
+>
+> 其余是**声明**，不是事实。合入任何一册前必须回答：「本册要用的码，现在有没有生产者？」没有就当场补，或把该行改成「未实现」。前端 `src/` 目前**零处**按 `grid.*` 字符串分支——码表再全，没有生产者也等于没有契约。
+>
+> 本批已明细的缺口：`grid.insert.noWritableColumn`（需 `ColumnSchema` 有 generated/identity 标记）、`grid.selection.*` 三码（越界一律 `clampCellCoord → null`，从不抛错）、`grid.cell.invalidValue` / `grid.paste.*` / `grid.filter.*` / `grid.fk.*` / `grid.result.*` / `grid.paging.*` 等待各自分册落地。
 
 > **落地追加说明（2026-10-21，Wave 1 `grid-selection`）**：43–45 是分册 01 实装时确认必需的三个码——原 §8.1 把 `grid.selection.*` 指派给 01 建骨架，但 §8.2 的闭集里**一行都没有**这个域，属于契约自身的缺口。三个码已收敛在 `src/lib/gridErrors.ts` 的 `GRID_ERROR_CODES` 单表，若后续裁定要合并/改名，只改一处 + 两处断言。
 
