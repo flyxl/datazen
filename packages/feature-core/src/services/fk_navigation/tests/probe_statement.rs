@@ -76,6 +76,10 @@ fn the_probe_statement_is_a_valid_statement() {
     let dialect = LegacySqlDialect::new(driver.as_ref());
     let sql = statement_for(&dialect, 50);
 
+    assert_eq!(
+        sql, "SELECT \"id\" FROM \"parents\" WHERE \"id\" = 7 LIMIT 51 OFFSET 0",
+        "the probe statement has one shape: {sql}"
+    );
     assert!(
         Parser::parse_sql(&PostgreSqlDialect {}, &sql).is_ok(),
         "the probe statement must be valid SQL: {sql}"
@@ -172,6 +176,10 @@ fn the_bound_probe_statement_is_a_valid_statement() {
     assert!(
         sql.contains(" = ?1"),
         "the bound statement carries a placeholder: {sql}"
+    );
+    assert_eq!(
+        sql, "SELECT \"id\" FROM \"parents\" WHERE \"id\" = ?1 LIMIT 51 OFFSET 0",
+        "the bound probe statement has one shape: {sql}"
     );
     assert!(
         Parser::parse_sql(&SQLiteDialect {}, &sql).is_ok(),
