@@ -102,7 +102,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | 轨 | 分支 | worktree | 热 target |
 |---|---|---|---|
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ⏳ 已派发 `9b9f1166` |
-| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ⏳ 已派发 `e90711bf` |
+| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 已交付 `33416cb72` → Tester `0da32120` 复测中 |
 | F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ⏳ 已派发 `29467fd8` |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ⏳ 已派发 `e035cc8f` |
 
@@ -337,6 +337,22 @@ D1–D5 全部处置，并 cherry-pick 上一轮 Tester 的三笔测试提交（
 3. D4 的注释与变异结果是否一致（删掉盖章行后既有 host 用例是否仍通过 —— 上一轮 Tester 说会通过，若这次变红则上一轮结论错、注释就是错的）。
 4. 三笔 cherry-pick 的测试提交**在 cherry-pick 途中未被削弱**（原提交在 `track/a-tester-commits`，已随 A cherry-pick 完成而删除锚定分支，但 A 分支内已含其内容，原始对象仍在 git 对象库中直到 gc）。
 5. 组织隔离完整性未被修复破坏（内存/SQLite 错误形状仍完全一致、`list` 双条件过滤仍在）。
+
+### E 轨交付（编码代理 `33416cb72`）—— 交付，待 Tester 复测
+
+`packages/schema-diff/src/reviewed.rs` 的 `static PLANS` → 存储端口 `ReviewedPlanStore`（`put`/`get`/`remove`，方法带 `scope: &OrganizationScope`），实例由宿主组装期创建并注入（`src-tauri/src/commands/schema_diff/reviewed_store.rs`，桌面单租户进程内存）。包内**规则**（身份指纹 / 快照复核 / 目录比对 / 有效期）全留。
+
+**协调者已独立核实**：TTL 30min 与上限 128 **不是新增行为** —— 改造前 `main:reviewed.rs:260` 有 `plans.retain(|_, p| p.created.elapsed() < Duration::from_secs(1800))`、`:262` 有 `if plans.len() >= 128`，本次只是把魔数提取成命名常量 `REVIEWED_PLAN_TTL` / `REVIEWED_PLAN_MAX_ENTRIES`。
+
+**但有一处真正的语义改动**，已列为 Tester 的重点：冻结时刻从 `Instant::now()`（单调、不可持久化）改成 Unix 毫秒（可持久化、**受系统时钟影响**）。改造的必要性成立（端口化后存储层要自己按 TTL 裁剪，必须知道冻结时刻，且规则层与存储层必须读同一份时刻），但**退化面**需独立评估：时钟前跳会让刚冻结的计划立刻过期、回拨会让本该过期的重新有效。Tester 还被要求核实「存储层裁剪与规则层判定是否读同一份时刻」以及 `created_at_ms` 的**单位换算无 off-by-1000**。
+
+**E 的待裁定项裁决**：桌面评审计划**保持进程内存，不落 SQLite**。理由：改造前就是进程内存，落盘会让「一次性评审计划」变成跨会话残留，需要额外处理过期与并发消费 —— 那是行为变更，不该由端口化顺带引入。
+
+**E 轨 Tester 复测重点**（`0da32120`）：
+1. **一次性消费语义**（端口化最容易改坏的地方），三条各做变异验证：校验失败**不烧掉计划**、并发**只有一个删除成功**、**取出后再校验**（避免两次调用间的竞态窗口）。
+2. 跨组织隔离的**读/写/删三条路径**逐条精确断言，且**不得**返回「无权限」。
+3. 规则函数签名与函数体逐字未变。
+4. **A 轨重叠文件未触碰**（独立核对 diff）。
 
 ## 6. 门禁与流程
 
