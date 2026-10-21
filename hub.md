@@ -158,6 +158,23 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 
 ## 5. 现场状态（会话中断后接手者必读）
 
+### 🔧 标准流程：热 target 克隆（Wave 2 各树必须用，避免冷编译）
+
+**热源（全程保留，收工才删）**：`/tmp/datazen-di-dyn-target`（9.6G，由 B 轨用 `--drivers=all` 全量构建，已验证完整可用）。
+
+**每个新工作树建好后立即执行**（实测克隆 9.7G 只需 **4–7 秒**，APFS 写时复制 `cp -c`）：
+```
+# 1) 克隆热 target 进本树
+cp -c -R /tmp/datazen-di-dyn-target <worktree>/target
+# 2) 强制 path 依赖针对本树源码重新检查（registry 依赖不动）
+find <worktree>/packages -name '*.rs' -path '*/src/*' -exec touch {} +
+find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
+```
+**实测效果**：集成树 `cargo check -p datazen --all-targets` = **3m18s**，日志只出现 `Checking datazen-feature-core (.../datazen-storage-ports/packages/feature-core)` —— 即 **path 依赖按本树源码重新检查**（日志路径指向本树，不会链接别的工作树），**registry 依赖（tauri/tokio/reqwest 等编译大头）全部复用**。冷编译约 15–25 分钟。
+**touch 必须做**：万一指纹撞车，touch 强制重建，杜绝跨工作树串产物。
+
+**代理的 target 目录约定**：一律用**自己工作树内的 `target/`**（如上克隆所得）；**不用** `/tmp/datazen-<track>-target` 另建，**更不用**已作废的 `.shared-target`。各树之间互不共享 → 既热又隔离。
+
 ### ⚠️ 共享 `CARGO_TARGET_DIR` 已作废 —— 各轨必须用隔离 target 目录
 
 **这是协调者的判断失误**：我最初让三条轨道共用 `.worktrees/.shared-target`，实测证明**会跨工作树串产物** —— cargo 对 path 依赖（本仓库 `packages/*`）的指纹与产物文件名**不区分工作树路径**，多工作树互相覆盖同一 crate 的 rlib；后跑的轨道若判定"产物比源文件新"就 fresh 复用，**实际链接的是别人工作树的产物**。
