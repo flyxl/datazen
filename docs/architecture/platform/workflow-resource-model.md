@@ -61,12 +61,14 @@
 
 ### 2.3 版本字段的现状（重要）
 
-`version` 字段在**全仓库范围内只被写入，从未被读取**：
+`version` 字段**现已被严格校验**（本节早前版本称它「只被写入、从未被读取」，那是 `packages/feature-core` 落地**之前**的基线事实，现已不成立）：
 
-- 没有任何按版本分派的解析代码（无 `match version`、无 `CURRENT_VERSION` 比较，三个内建 YAML 也未设置该字段）；
-- 生产代码写入点只有 `packages/feature-core/src/dashboard/create.rs:39` 的 `version: None` 字面量；其余 13 处全在测试代码内（宿主侧 `workflow/host.rs:128/169/204`、`workflow/registry.rs:190`、`workflow/migration.rs:433`、`commands/dashboard.rs:463`、`commands/ai/integration_tests.rs:373/924/1058/1107`；共享包侧 `packages/feature-core/src/workflow/registry.rs:361`、`packages/feature-core/src/workflow/scheduler.rs:223`、`packages/feature-core/src/dashboard/archive.rs:185`），其中仅 `integration_tests.rs:373` 写 `Some("1")`，同样无人读取。
+- 版本解析在 `packages/feature-core/src/workflow/executable.rs:35` 的 `WorkflowVersion::parse`：**未声明**按 `V1` 处理；**空串**、**非 `^\d+$`**（严格 ASCII 数字，`u32::from_str` 还会接受 `"+2"`，那不是声明的格式）、以及**超过 `HIGHEST_SUPPORTED_VERSION = 2`**（`executable.rs:20`）的版本**一律拒绝**，报 `WorkflowError::UnsupportedDefinitionVersion`。
+- 按版本分派在 `executable.rs:50-54`（`Ok(1) => V1`、`Ok(2) => V2`）。
+- 校验发生在**生产路径**上：`src-tauri/src/monitor/grants.rs:105` 在把 workflow 变成可执行对象时调用 `into_executable()`（`executable.rs:236`），未知或越界版本在这里被拒（"workflow version invalid"）。因此**版本号不是"写了没人看"的装饰字段**。
+- 写入点：`packages/feature-core/src/dashboard/create.rs:39` 的 `version: None` 字面量（未声明 ⇒ 按 V1 执行），其余在测试代码内（宿主侧 `workflow/host.rs:128/169/204`、`workflow/registry.rs:190`、`workflow/migration.rs:433`、`commands/dashboard.rs:463`、`commands/ai/integration_tests.rs:373/924/1058/1107`；共享包侧 `packages/feature-core/src/workflow/registry.rs:361`、`packages/feature-core/src/workflow/scheduler.rs:223`、`packages/feature-core/src/dashboard/archive.rs:185`），其中仅 `integration_tests.rs:373` 写 `Some("1")`。三个内建 YAML 均未设置该字段，按 V1 执行。
 
-对比：仓库中其他"定义版本"确有实现——`packages/schema-diff/src/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。Workflow 是这些带 `CURRENT_VERSION` 校验的定义中唯一未校验的一个；另需注意 `store/settings.rs:15` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）。
+对比：仓库中其他"定义版本"同样有校验——`packages/schema-diff/src/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。**Workflow 现在也在其中**：它的版本由 `WorkflowVersion::parse` 校验，未知/空白/非整数/越界版本**拒绝执行**。另需注意 `store/settings.rs:15` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）——那**是**一个尚未校验的版本字段。
 
 ### 2.4 目标解析与资源获取
 

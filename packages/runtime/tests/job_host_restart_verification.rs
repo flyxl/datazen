@@ -48,6 +48,10 @@ fn ctx() -> RequestContext {
 fn definition(job_id: &str) -> JobDefinition {
     JobDefinition {
         job_id: JobId::new(job_id),
+        // The repository stamps the accepting context's organization onto the
+        // persisted definition, so this field only has to name the same
+        // organization the test drives the job with.
+        organization_id: OrganizationId::new("datazen-local"),
         kind: "dataSyncApply".into(),
         owner: datazen_platform_api::OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("client-1"),
