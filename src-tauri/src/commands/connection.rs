@@ -154,8 +154,9 @@ pub(crate) async fn delete_connection_impl(
 
 pub(crate) async fn test_connection_impl(
     state: &AppState,
-    mut config: ConnectionConfig,
+    config: ConnectionConfig,
 ) -> Result<ServerInfo, CommandError> {
+    let mut config = config;
     if let Some(saved) = state.store.get_connection(&config.id).await {
         merge_missing_connection_secrets(&mut config, saved);
     }
