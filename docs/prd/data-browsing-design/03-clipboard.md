@@ -801,7 +801,7 @@ export interface DataTableProps {
 
 ### Step 1 · 错误码表
 
-- **改**：`src/lib/gridErrors.ts`（01 已建骨架，本册**只追加** `grid.paste.*` 码，**禁止整文件重写**）。
+- **改**：`src/lib/gridErrors.ts`（〔合并后校正〕该文件今天**不存在**；骨架由 01 建立，本册**只追加** `grid.paste.*` 码，**禁止整文件重写**；若本册先合并则由本册建骨架）。
 - **加**：`GridErrorCode`、`GRID_ERROR_CODES`、`classifyGridError`。
 - **为什么**：`00` §8 要求前端有唯一的分类入口；本册新增 15 个码，必须在**同一处**登记，否则「前缀匹配顺序」会散落在各调用点。
 - **自测**：`npx vitest run src/lib/__tests__/gridErrors.test.ts` —— 逐码断言 `classifyGridError(code + ': 任意说明') === code`；断言 `GRID_ERROR_CODES` 无重复；断言未知消息返回 `'unknown'`。
@@ -898,7 +898,7 @@ export interface DataTableProps {
 - **为什么**：`00` §4.4 要求定位走 `data-*`；`tabIndex` 是「原生 paste 能不能收到」的前提。
 - **自测**：`npx vitest run src/components/DataTable/` 全绿；新增 `DataTable.clipboard.test.tsx` 断言「不传 `clipboard` 时容器没有 `onCopy`/`onPaste` 的可观测效果」。
 
-### Step 11 · 接线 `TableView.tsx`（复用 01 已抽出的组件，不新建）
+### Step 11 · 接线 `TableView.tsx`（复用 01 将要抽出的组件，不新建）
 
 - **改**：`src/windows/connection/TableView.tsx`：调用 `useGridClipboard`，把 `clipboard` / `gridSelection` / `onClipboardProblem` 传给 `DataTable`，并加 `confirmPaste` 对话框。
 - **前置（由 DB-01 提供，本册不创建）**：`src/windows/connection/TablePendingChangesBar.tsx` —— 待提交改动工具条，抽取 `table-tx-controls` + `pending-changes-bar` 两块，逐字保留既有 testid；由**分册 01 的 Step 10 首次创建**（它是 02/03/05/06/07 的共同依赖，提交顺序最前），命名在 01/03/06 之间统一为 `TablePendingChangesBar`。
@@ -912,7 +912,7 @@ export interface DataTableProps {
 
 | 文件路径 | 新增/修改 | 职责 | 预估行数 | 触及 800 行上限？ |
 | --- | --- | --- | --- | --- |
-| `src/lib/gridErrors.ts` | **修改（追加）** | 01 已建骨架；本册按契约 §8.1 三步追加 `grid.paste.*` 码，**禁止整文件覆盖** | +15 | 否 |
+| `src/lib/gridErrors.ts` | **修改（追加）** | 骨架由 01 建立（今天尚不存在）；本册按契约 §8.1 三步追加 `grid.paste.*` 码，**禁止整文件覆盖** | +15 | 否 |
 | `src/lib/tableChanges.ts` | 修改 | 增 `CellWrite` 三态、构造器、`CellWriteInput`、`columnWritability` | +55（227 → ~282） | 否 |
 | `src/lib/gridClipboard.ts` | 新增 | 二维解析、区域→矩阵、序列化、粘贴规划、超限常量 | ~340 | 否 |（本册新建；**含 3.2b 的 `ClipboardSource` / `recordClipboardSource` / `peekClipboardSource` / `tableChangeKey`**）
 | `src/stores/tableData/stageCellWrite.ts` | 新增 | 批量写入纯函数（从 `stageCellChange` 抽出） | ~160 | 否 |

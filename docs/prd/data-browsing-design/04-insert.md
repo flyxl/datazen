@@ -38,15 +38,28 @@
 
 > 本节只列**我亲自读过**的符号。**不含行号**，不做推测。凡「没有」的结论都由 grep 给出。
 
-### 2.1 `src-tauri/src/commands/data.rs`（现状 **1416 行**，见 §6）
+### 2.1 `src-tauri/src/commands/data.rs`（〔合并后校正〕现状 **640 行**，按 `#[path]` 挂载子模块）
+
+> ## 〔合并后校正〕写路径已经不是「executor 直连 driver」
+>
+> 下文第 1–14 条是**合并前**的事实，其中 2 / 3 / 11 / 12 / 14 已被主干推翻。今天的真实链路：
+>
+> 1. **`data.rs` 只生产计划**：`build_row_change_plan`（`commands/data.rs`）调 `build_update_statement` / `build_delete_statement`，产出 `RowChangePlan`；该结构已**新增 `config_revision: Option<Counter>`**，作为提交时的配置版本门。`validate_legacy_pk_columns` **已随遗留入口删除**（见第 3 条）。
+> 2. **执行归 `src-tauri/src/commands/data_session.rs::execute_plan`**，不在 `data.rs`：它先 `if writes.is_empty()` 早退，再用 `bound_statement_for_plan` 把计划编译成 **`BoundSqlStatement`**（参数化，`driver.supports_bound_writes` / `parameter_placeholder` / `max_bound_parameters`），然后**要么复用调用方给的 `manual_handle`，要么自己 `runtime.open_session` 开一个短命会话**并在其上 `platform.beginTransaction{defersCommit:true}` / `commitTransaction`。**没有 `state.session_transactions` 这张表了**，也没有 `driver.execute(handle, "BEGIN")` 的裸 SQL 退化路径。
+> 3. **遗留写入口仍然注册但恒失败**：`commit_row_updates` / `commit_row_deletes` 两个 Tauri 命令还在 `generate_handler!` 里，但实现直接返回 `"Legacy row writes are disabled; preview and commit a target-bound ChangeSet"`。**它们不再是可用的写路径**，04 的任何设计都不得挂回它们；C-1「删除遗留入口」的动作因此降级为「删掉这两个恒拒绝的桩」。
+> 4. **行身份护栏在 `execute_plan` 里**：每条语句执行后要求 `affected == 1`，否则 `Row identity affected {affected} rows; refusing ambiguous write`。第 4 条描述的位置变了，语义不变。
+> 5. **`build_delete_statement` 目前没有空主键守卫**（`build_row_change_plan` 侧也没有 `validate_legacy_pk_columns` 兜底）——这是本册必须补的第一件事，且要补在 `commands/data.rs` 的计划构建处，**不是**在 `execute_plan` 里补。
+> 6. 测试现在挂在 `#[path = "data/tests.rs"] mod tests;`，现有 19 例，含 `commit_row_updates_does_not_join_open_session_transaction`——它证明的正是第 3 条：遗留入口**不再**并入用户会话事务。
+>
+> **对本册各步的净影响**：Step 1「目录化 + 迁移 `validate_legacy_pk_columns`」→ 改为「在现有子模块布局里新增 `row_change_plan.rs` / `row_change_insert.rs`，并给 `build_delete_statement` 补守卫」；Step 4「扩展空计划早退」→ 改 `data_session::execute_plan` 的 `if writes.is_empty()`；Step 5「事务归属」→ 改为「随 `execute_plan` 的 `defersCommit` 语义，INSERT 与 UPDATE/DELETE 必须落在**同一次** `beginTransaction`/`commitTransaction` 内」；Step 6 的「不自己 begin/commit」结论仍然成立，但依据换成 `execute_plan` 的会话所有权。
 
 **DTO（全部已存在）**：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContext`、`PendingRowChange`、`PlannedStatement`、`ChangeWarning`、`RowChangePlan`、`CommitPendingChangesRequest`、`RowCommitStatementResult`、`CommitPendingChangesResponse`。
 
 **关键事实（逐条已核）**：
 
 1. `RowChangePlan` 的字段只有 `plan_id` / `fingerprint` / `table` / `updates` / `deletes` / `warnings`，**没有 `inserts`**。
-2. `execute_row_change_plan_impl` 的**第一个判断**是 `if plan.updates.is_empty() && plan.deletes.is_empty()` → 直接 `Ok(... affected_rows: 0 ...)`，**不开启事务、不执行任何语句**。加 `inserts` 后这里必须同步扩展（§5 Step 4）。
-3. `execute_row_change_plan_impl` 的事务归属：先看 `state.session_transactions.lock().await.contains_key(db_session_id)` 得到 `session_open`；`session_open == false` 时尝试 `driver.begin_transaction(handle)`，返回 `Err(DriverError::TransactionError(_))` 时退化为 `driver.execute(handle, "BEGIN")`；成功且非 `session_open` 时 `driver.commit(tx)` 或 `"COMMIT"`，失败时回滚。`session_open == true` 时**两条返回路径都不提交、不回滚**，直接返回结果/错误。
+2. **〔合并后校正：本条已失效，见上方校正块〕** 是 `if plan.updates.is_empty() && plan.deletes.is_empty()` → 直接 `Ok(... affected_rows: 0 ...)`，**不开启事务、不执行任何语句**。加 `inserts` 后这里必须同步扩展（§5 Step 4）。
+3. **〔合并后校正：本条已失效，见上方校正块〕** ：先看 `state.session_transactions.lock().await.contains_key(db_session_id)` 得到 `session_open`；`session_open == false` 时尝试 `driver.begin_transaction(handle)`，返回 `Err(DriverError::TransactionError(_))` 时退化为 `driver.execute(handle, "BEGIN")`；成功且非 `session_open` 时 `driver.commit(tx)` 或 `"COMMIT"`，失败时回滚。`session_open == true` 时**两条返回路径都不提交、不回滚**，直接返回结果/错误。
 4. 该函数对 `updates` 与 `deletes` 各要求 `affected == 1`，否则 `CommandError::Validation`，文案为 `UPDATE for one row identity affected {affected} rows; refusing ambiguous write`（DELETE 同构）。语句收集容量是 `plan.updates.len() + plan.deletes.len()`。
 5. `build_row_change_plan(driver, table, changes)` 只遍历 `canonicalize_changes(changes)` 的结果；对每条变更按 `delete_marked` 只调用 `driver.build_delete_sql` 或 `driver.build_update_sql`；行内以 `current_values` + `changed_columns` 组装 `set_columns: Vec<(&str, Option<Value>)>`；`parameter_summary` 由 `SET <列>=<值摘要>` 与 `PK <列>=<值摘要>` 拼接；随后追加 `delete-rows` 之类的 `ChangeWarning`。
 6. `changes_fingerprint(table, changes: &[PendingRowChange])` 用**函数内局部结构体 `FingerprintPayload { table, changes }`** 做 `serde_json::to_vec` 再 `Sha256`。指纹**只覆盖该 payload**，正文 SQL 与 `parameter_summary` 不参与。
@@ -54,10 +67,10 @@
 8. `plan_changes(plan: &RowChangePlan) -> Vec<PendingRowChange>` **只链 `updates` 与 `deletes`**。
 9. `canonicalize_changes` 会：校验 `row_identity` 非空且非 NULL（`identity_key`）、排序并去重 `changed_columns`、**丢掉 `changed_columns` 为空且非删除的行**、校验 `effective_identity` 无重复/碰撞、最后按 `identity_key` 排序。→ **插入行没有身份，不能走这个函数**。
 10. `identity_key` 对空 map 直接报 `Row changes require primary-key identity`。
-11. `preview_pending_changes_impl(state, table, changes)` 只取 `state.connection_manager.get_session(&table.db_session_id)` 拿到 `(driver, _handle)`，然后调用 `build_row_change_plan`；注释明确「preview 对数据库是纯的：不开事务、不执行语句」。**它目前拿不到任何列元数据。**
-12. `commit_pending_changes_impl` 在调用执行前做了：读 session/driver/handle、`get_session_config`、`owner_connection_id` 与 `table.connection_id` 比对、`driver_type` 双比对、`database` 比对、显式 `schema` 比对、`read_only` 拒绝，然后 `validate_immutable_plan`。**只读拒绝的文案是 `Connection is read-only; row changes are not allowed`（没有 `grid.` 前缀）。**
+11. **〔合并后校正：本条已失效，见上方校正块〕**  `state.connection_manager.get_session(&table.db_session_id)` 拿到 `(driver, _handle)`，然后调用 `build_row_change_plan`；注释明确「preview 对数据库是纯的：不开事务、不执行语句」。**它目前拿不到任何列元数据。**
+12. **〔合并后校正：本条已失效，见上方校正块〕** ：读 session/driver/handle、`get_session_config`、`owner_connection_id` 与 `table.connection_id` 比对、`driver_type` 双比对、`database` 比对、显式 `schema` 比对、`read_only` 拒绝，然后 `validate_immutable_plan`。**只读拒绝的文案是 `Connection is read-only; row changes are not allowed`（没有 `grid.` 前缀）。**
 13. `#[cfg(test)] mod tests` 使用 `crate::testing::app_state::TestAppState`，现有用例包括 `preview_builds_driver_sql_without_opening_a_transaction`、`commit_reuses_plan_fingerprint_and_returns_plan_id`、`commit_rejects_stale_fingerprint_before_execution`、`preview_rejects_changes_without_primary_key_identity`、`canonicalize_rejects_null_and_duplicate_composite_identities`、`canonicalize_rejects_composite_current_identity_collision`、`commit_row_updates_joins_open_session_transaction` 等。`commit_reuses_plan_fingerprint_and_returns_plan_id` 的写法是 `options.execute_rows_affected = 1` 后断言 `statements.len() == 2`、`affected_rows == 2`。
-14. **所有现有测试都通过 `preview_pending_changes_impl(&state, context, vec![...])` 三参形式调用**——本册要给它加第 4 个参数，这些调用点必须同步改（§5 Step 3）。
+14. **〔合并后校正：本条已失效，见上方校正块〕** ——本册要给它加第 4 个参数，这些调用点必须同步改（§5 Step 3）。
 
 ### 2.2 `packages/driver-api`（契约层）
 

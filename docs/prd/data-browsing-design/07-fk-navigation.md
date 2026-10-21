@@ -2,7 +2,7 @@
 
 > **状态**：目标设计，**未实现**。本册描述的箭头入口、跳转编排、返回栈、`resolve_foreign_key_targets` 命令今天在代码里**全部不存在**；带「新增」标记的符号一律按新增对待。
 >
-> **依赖**：`00-contracts`（§1.6 驱动契约、§4 选择模型、§6.1 新命令登记、§8 错误前缀、§10 写作模板）；`01-selection`（`src/stores/tableData/gridSelection.ts` 与 `src/hooks/useGridSelection.ts`，以及 `src/components/DataTable/GridCell.tsx` 与 `src/lib/gridEventGuards.ts` 的落地；01 同时负责把 `TableView.tsx` 从 770 行降到 ~660，本册的抽取方案建立在它之上）。
+> **依赖**：`00-contracts`（§1.6 驱动契约、§4 选择模型、§6.1 新命令登记、§8 错误前缀、§10 写作模板）；`01-selection`（`src/stores/tableData/gridSelection.ts` 与 `src/hooks/useGridSelection.ts`，以及 `src/components/DataTable/GridCell.tsx` 与 `src/lib/gridEventGuards.ts` 的落地；01 同时负责把 `TableView.tsx` 降到 ≤660；〔合并后校正〕**01 尚未落地**（上述四个文件在合并后的工作树里都不存在），且 `TableView.tsx` 现在 **803 行、已越 800 红线**——本册的抽取方案**建立在 01 与 08 的抽取之上**，若它们未完成，本册不得先合并。
 >
 > **被谁依赖**：`DB-20`（单元格内 FK 选择器 + 反查引用行）——PRD 路线图明确 DB-20 在 DB-07 完成后开始，且复用本册的 `resolve_foreign_key_targets` 与「目标唯一性」判定。
 >
@@ -83,7 +83,7 @@
 
 | 文件 | 已核实的符号 / 事实 |
 | --- | --- |
-| `src-tauri/src/commands/schema.rs` | `get_table_data_impl(state, db_session_id, table, page, page_size, filters, sorts, skip_count, filter_logic, database, schema)`：先 `connection_manager.get_session`，再 `get_session_config` 取 `config.database` / `config.schema` 兜底，`metadata_schema(driver, explicit, embedded_schema_of(table), config.schema)` 决定 schema，最后 `QueryExecutor::new(state.schema_cache.clone()).get_table_data(...)`；`embedded_schema_of(table)` 是**该文件的私有函数**；`#[tauri::command] get_table_data` / `get_er_data` 是薄壳 |
+| `src-tauri/src/commands/schema.rs` | `get_table_data_impl(state, db_session_id, table, page, page_size, filters, sorts, skip_count, filter_logic, database, schema)`：〔合并后校正〕先 `resolve_command_driver(state, Some(&db_session_id), None)` 拿到 `{driver, handle, session}`，再经 `session.connection_id` 去 `store.get_connection(...)` 取 `config.database` / `config.schema` 兜底（`connection_manager` 已不在该路径），`metadata_schema(driver, explicit, embedded_schema_of(table), config.schema)` 决定 schema，最后 `QueryExecutor::new(state.schema_cache.clone()).get_table_data(...)`；`embedded_schema_of(table)` 是**该文件的私有函数**；`#[tauri::command] get_table_data` / `get_er_data` 是薄壳 |
 | `src-tauri/src/services/schema_scope.rs` | `metadata_schema(driver, explicit, table_schema, config_schema) -> Option<String>`：`!driver.has_schema_level()` 时直接 `None`，否则按 `explicit → table_schema → config_schema → default_schema()` 取第一个非空 |
 | `src-tauri/src/services/query_executor.rs` | `QueryExecutor::new(schema_cache)`；`get_table_data(driver, handle, db_session_id, database, schema, table, page, page_size, filters, order_by, skip_count, filter_logic)`：**`skip_count = true` 时只发分页 SELECT，不发 COUNT**（存在性探测与候选值都能直接复用它，无需新 SQL 构造函数） |
 | `packages/driver-api/src/traits.rs` | `get_table_schema(&self, handle, table, database, schema) -> Result<TableSchema, DriverError>`（宿主读源表 FK / 目标表 PK+索引的权威入口）；`has_schema_level()` / `has_multi_database()` / `default_schema()` / `quote_ident` / `pagination_syntax` |
@@ -420,7 +420,7 @@ export const useFkNavigationStore: UseBoundStore<FkNavigationState & FkNavigatio
 
 | 设计点 | 结论与理由 |
 | --- | --- |
-| 落点 | `src/stores/fkNavigationStore.ts`（与 PRD"返回栈放 `panelStore.ts` 派生状态，不落盘"方向一致，但**独立成 store**：`panelStore.ts` 已 728 行，而契约要求单文件 ≤ 800；独立 store 同时避免 `panelStore` 反向依赖 `lib/fkNavigation`） |
+| 落点 | `src/stores/fkNavigationStore.ts`（与 PRD"返回栈放 `panelStore.ts` 派生状态，不落盘"方向一致，但**独立成 store**：〔合并后校正〕`panelStore.ts` 已 **793 行**（旧稿 728），距 800 只剩 7 行，因此**独立 store 不是偏好而是必需**；独立 store 同时避免 `panelStore` 反向依赖 `lib/fkNavigation`） |
 | 不落盘 | 纯内存派生状态；应用重启后没有返回栈（与 PRD 一致） |
 | `viewport` 写入时机 | **离开时**写（`push` 时目标标签还没渲染过，写不出视口）；返回/前进都由 `takeViewport` 消费一次 |
 | 剪枝 | `goBack` / `goForward` / `prune` 都接收"仍然存在的 panelId 集合"，由调用方从 `usePanelStore.getState().panels` 现取——**不在模块加载期订阅 `onPanelClosed`**，避免循环依赖与初始化顺序问题 |
@@ -642,7 +642,7 @@ GraphCell 箭头 onClick
 
 - **文件**：`src/stores/fkNavigationStore.ts`（新增）。
 - **新增符号**：3.5 全部（`FkNavEntry`、`FkNavigationState`、`FkNavigationActions`、`useFkNavigationStore`）。
-- **为什么**：栈与视口是跨标签页状态，必须脱离任何单个组件存活；独立 store 避免 `panelStore.ts`（728 行）越线与循环依赖。
+- **为什么**：栈与视口是跨标签页状态，必须脱离任何单个组件存活；独立 store 避免 `panelStore.ts`（**793 行**，已贴 800 线）越线与循环依赖。
 - **自测**：`npx vitest run src/stores/__tests__/fkNavigationStore.test.ts`（Step 14）。
 
 ### Step 7 · 面板载荷与首帧预置
@@ -671,7 +671,7 @@ GraphCell 箭头 onClick
 
 ### Step 10 · `TableView` 前置抽取（**本册必须做的腾地方动作**）
 
-- **背景（已核实）**：`TableView.tsx` 今天 **770 行**；01 计划把暂存改动条抽成 `TablePendingChangesBar.tsx`（→ ~660）。本册在此之上再抽一块，为面包屑与跳转接线腾出空间且不撞 800 行红线。
+- **背景（已核实）**：`TableView.tsx` 今天 **803 行**（〔合并后校正〕旧稿 770；已越 800 红线）；01 负责把暂存改动条抽成 `TablePendingChangesBar.tsx`。本册在此之上再抽一块，为面包屑与跳转接线腾出空间且不撞 800 行红线。
 - **文件**：`src/windows/connection/TableDataToolbar.tsx`（新增）、`src/windows/connection/TableFkBreadcrumb.tsx`（新增）、`src/windows/connection/TableView.tsx`（修改）。
 - **新增符号**：`TableDataToolbarProps` / `TableDataToolbar`（把现有工具栏那一块 JSX 与 `quickFilter` 状态搬过去，**`data-testid` 逐字保留**：`table-data-refresh`、`table-filter-toggle`、`table-quick-filter`、`table-read-only-tip`）；`TableFkBreadcrumbProps` / `TableFkBreadcrumb`（`{ origin: FkOrigin; truncated: boolean; canGoBack: boolean; canGoForward: boolean; onBack: () => void; onForward: () => void; onDismiss?: () => void }`）。
 - **为什么**：`TableView` 是 02/03/05/06/07 共同的加线点，不先抽就只能在 800 行上限上走钢丝；抽出的两块都是**纯展示 + 回调**，不引入新状态源。
@@ -735,9 +735,9 @@ GraphCell 箭头 onClick
 | `src/components/DataTable/GridCell.tsx` | 修改（01 新增） | 增加 `fk` / `fkMember` / `onFkActivate` 与 `data-dt-fk` | +30（~90 → ~120） | 否 |
 | `src/components/DataTable/VirtualBody.tsx` | 修改（01 已改） | 透传 FK 索引与跳转回调 | +18 | 否 |
 | `src/components/DataTable/DataTable.tsx` | 修改（01 已拆分） | 3 个可选 props 透传 | +15（须保持 ≤ 470 的自约束，01 后约 450 → ~465） | 否 |
-| `src/windows/connection/TableView.tsx` | 修改 | 抽取工具栏后接线：FK hook、跳转、面包屑、快捷键、视口恢复 | 770 → ~660（01）→ ~640 | 否（**必须依赖 Step 10 抽取**） |
+| `src/windows/connection/TableView.tsx` | 修改 | 抽取工具栏后接线：FK hook、跳转、面包屑、快捷键、视口恢复 | **803** → ~720（01）→ ~690（08）→ ~660（本册） | **是**（**必须依赖 01 与 08 的抽取**，且当前基线已越线） |
 | `src/stores/panelTypes.ts` | 修改 | `FkOrigin` + `TablePanel.fkOrigin?` | +22（202 → ~224） | 否 |
-| `src/stores/tableDataStore.ts` | 修改 | `seedPanel` + 接口声明 | +28（01 后约 700 → ~728） | **接近**（01 要求 ≤ 700；本册加 28 后需在 02/03 之前复核，见 U-4） |
+| `src/stores/tableDataStore.ts` | 修改 | `seedPanel` + 接口声明 | +28（〔合并后校正〕现 **729** 行 → ~757） | **接近**（距 800 只剩 43 行；本册加 28 后需在 02/03 之前复核，见 U-4） |
 | `src/types/connection.ts` | 修改 | 3 个 DTO | +42（250 → ~292） | 否 |
 | `src/commands/database.ts` | 修改 | `resolveForeignKeyTargets` 薄封装 | +6（161 → ~167） | 否 |
 | `src/lib/gridErrors.ts` | **修改（追加）** | 01 已建骨架；本册按契约 §8.1 三步追加 5 个 `grid.fk.*` 码，**禁止整文件覆盖** | +10 | 否 |

@@ -34,7 +34,7 @@
 | **影响面（不会变）** | 列标志与 `primary_keys` 一致的驱动（**树内 15 个 path 驱动经代码核实均属此类**：postgres 的 `get_columns_impl` 用 `pk_names.contains(&name)` 同时产出列标志与主键表；其余驱动走 `traits::streaming::get_columns` 默认实现，其 `pks` 直接来自 `TableSchema::effective_primary_keys()`）；有主键且列标志齐全的表；显式排序路径；**全部行数路径**（`count_strategy` / `count_estimate_sql` 与排序无关） |
 > ⚠ **驱动的计数口径**：`packages/drivers/` 下有 16 个目录，但其中 `http-support` **不是驱动**（`drivers-registry.json` 里没有它，crate 自述为「Shared HTTP helpers for DataZen path drivers」）。按注册表口径：path 驱动 **15** 个（postgres / mysql / sqlite / redis / mongodb / sqlserver / clickhouse / duckdb / elasticsearch / rqlite / turso / influxdb / victoriametrics / hbase / vector），git 驱动 **3** 个（kiwi / olap / superset），合计 **18**。**不要用目录数当驱动数。**
 | **无法穷举的部分** | `drivers-registry.json` 里的 git 驱动（kiwi / olap / superset 等）源码在构建时才克隆，**不在本工作树内，其列标志与 `primary_keys` 是否一致无法核实**。因此合入时必须：在 PR 描述里列出树内核实结果，并在宿主加一条 `tracing::debug!`（当 `cached.primary_keys` 与「列标志推导结果」不一致时打印表名），让不一致的表可被发现与上报 |
-| **合入条件** | ② 四条既有路径各一条测试 + 一条「列标志与 `primary_keys` 不一致时按 `primary_keys` 排序」的新语义测试（§9 A 组）；③ 已确认 `build_select_sql` 是**私有** `fn`（非 `pub`），给它加参数**不违反**契约 R1 —— R1 约束的是驱动可见的 trait 方法与 IPC DTO，不是宿主内部私有辅助函数 |
+| **合入条件** | ② 四条既有路径各一条测试 + 一条「列标志与 `primary_keys` 不一致时按 `primary_keys` 排序」的新语义测试（§9 A 组）；③ 已确认 `build_select_sql` 是 **`pub fn`、跨 crate 可见**（在 `packages/feature-core` 里并经 `pub use` 导出给宿主；旧稿写「私有 fn」是错的）。给它加参数**仍然不违反**契约 R1——R1 约束的是驱动可见的 trait 方法与 IPC DTO，`build_select_sql` 两者都不是；但要注意它是共享 crate 的公共 API，改签名要同步宿主 `table_target::read` 与 `QueryExecutor` 两个调用方 |
 
 ### 1.2 可观察的验收标准
 
@@ -95,7 +95,15 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
 
 ### 2.1 SQL 生成与执行（Host）
 
-**`src-tauri/src/services/query_executor.rs`**（既有）：
+> ## 〔合并后校正〕本节路径与签名已变化，语义结论不变
+>
+> - **实现位置**：SQL 生成在 `packages/feature-core/src/services/query_executor.rs`（**755 行**）；`src-tauri/src/services/query_executor.rs` 只剩 **47 行** re-export 门面。因此第 6 节的「目录化拆到 `src-tauri/src/services/query_executor/`」要改成 `packages/feature-core/src/services/query_executor/`，`cargo test -p datazen --lib` **覆盖不到**它，必须加 `cargo test -p datazen-feature-core --lib`。
+> - **签名**：`build_select_sql(...) -> Result<String, DriverError>`、`build_count_sql(...) -> Result<String, DriverError>`、`format_condition(condition, &dyn SqlDialect) -> Result<String, DriverError>`——已改用 `&dyn SqlDialect` + `try_format_sql_literal`，不再接受 `qi` / `format_lit` 两个闭包（迁移缝是 `LegacySqlDialect::new(driver.as_ref())`）。
+> - **并发结构有三种现实**，第 2 条只写了第一种：① `QueryExecutor::get_table_data`（`tokio::try_join!`，两条语句）；② `src-tauri/src/commands/table_target.rs::read`——**前端真实浏览入口**，把 count 与 select 拼成 `"{count};\n{select}"` **一次多语句下发**，再按产物 `statementIndex` 归属；③ `driver.skip_count_query()` 为真时只发 select。**`total_rows` 解析在 ② 里还接受 `Value::String` 的 `parse()`**，比 ① 宽。
+> - **`TableDataResult` 构造点有三处**（旧稿写两处）：`feature-core:89`、`feature-core:127`、`table_target.rs:279`——新增 `total_rows_kind` 时**三处都要填**，漏掉第三处会因 `serde(default)` 静默退化成「没取行数」。
+> - **`format_sql_literal`** 的默认实现转发 `crate::sql_builder::format_sql_literal_ansi`（`traits.rs`，注释已标 legacy）；新路径是 `try_format_sql_literal`（要求驱动声明 `sql_literal_dialect()`，否则 `DriverError::Unsupported`）。
+
+**`packages/feature-core/src/services/query_executor.rs`**（既有；宿主门面见上）：
 
 - `QueryExecutor::get_table_data` —— 先 `self.schema_cache.get_columns(...)` 取 `CachedColumns`；用 `driver.quote_ident(name)` 作为 `qi`、用 `driver.format_sql_literal(&Some(v.clone()))` 作为 `format_lit`；分页子句来自 `driver.pagination_syntax(page_size, page * page_size)`（乘法用 `saturating_mul`）。`skip_count == true` 时**只**发 SELECT 并返回 `total_rows: None`；否则 `tokio::try_join!` 并发发 count 与 select，并把 count 结果的第一行第一格解析为 `total_rows`（只有 `Value::Integer` 会被接受，其他类型得到 `None`）。
 - `QueryExecutor::build_select_sql` —— **本册的核心现状**：
@@ -116,12 +124,12 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
   - `tsql_pagination_emits_offset_fetch_and_never_limit` / `tsql_pagination_keeps_pk_order_without_fallback`：分页子句与中性 fallback 的边界。
   - `build_select_sql_without_offset_when_unsupported`、`build_count_sql_with_eq_filter`、`build_select_sql_joins_filters_with_or`、`build_count_sql_joins_filters_with_or`、`filter_join_defaults_to_and`、`format_condition_in_and_is_null`、`incomplete_eq_filter_is_skipped`、`complete_filters_kept_while_incomplete_skipped`、`filter_literals_use_formatter`。
   - `get_table_data_uses_schema_cache_and_returns_total`：用 `crate::testing::mock_driver::{MockDriver, MockDriverOptions}`，断言 `total_rows == Some(99)`、`rows.len() == 1`、`mock.query_calls() == 2`（count + data）。
-- 该文件当前**总计 811 行**（生产代码到 `filter_join` 结束，其后全部是 `#[cfg(test)] mod tests`）——这直接决定了第 6 节的拆分结论。
+- 该文件当前**总计 755 行**（生产代码到 `filter_join` 结束，其后全部是 `#[cfg(test)] mod tests`）；宿主门面 `src-tauri/src/services/query_executor.rs` 47 行。这决定了第 6 节的拆分结论：**本册 +150 行落在 755 上会破 800，所以 `filter_sql.rs` 的抽取是前置条件而非优化**。
 
 **三条约束本册设计、必须逐字承认的现状事实（契约 §1.5 事实 7 / 8 / 9）**：
 
 1. **多列排序在 IPC 边界就被截断**：`get_table_data_impl` 对 `sorts` 只取第一个元素（`sorts.and_then(|list| list.into_iter().next())`），**后面的排序条件被丢弃**。因此「只支持单列排序」不只在前端 store（`setSort` 只写 `[sort]`），后端入口同样如此；要支持多列排序必须**同时**改这两处（见 §11 Q2）。
-2. **行数查询与数据查询是并发的，不存在先后关系**：`get_table_data` 用 `tokio::try_join!(count, select)` 同时发出两条语句（所以不能用「先数一下再决定」的写法）。`total_rows` 的解析路径是「count 结果的第一行 → 第一个单元格 → `as_ref()` → 只接受 `Value::Integer(i64)`」，因此**字符串 / `NULL` / 大整数越界等非整数形态一律得到 `None`** —— 这正是「三态」要表达的现实；本册任何改动都必须重新交代这条并发结构的取舍（§3.3 给出结论）。
+2. **行数查询与数据查询是并发/合批的，不存在先后关系**：`get_table_data` 用 `tokio::try_join!(count, select)` 同时发出两条语句；而**生产路径** `table_target::read` 是拼成一条多语句一次下发（见上方校正）——所以都不能用「先数一下再决定」的写法。`total_rows` 的解析路径是「count 结果的第一行 → 第一个单元格 → `as_ref()` → 只接受 `Value::Integer(i64)`」，因此**字符串 / `NULL` / 大整数越界等非整数形态一律得到 `None`** —— 这正是「三态」要表达的现实；本册任何改动都必须重新交代这条并发结构的取舍（§3.3 给出结论）。
 3. **列与主键同源于一次 `get_columns`，但今天只用了列**：见 §2.2 的 `SchemaCache::get_columns`；`build_select_sql` 不读 `primary_keys` 构成既有隐患（§1.1）。
 
 **`src-tauri/src/commands/schema.rs`**（既有）：
@@ -132,7 +140,7 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
 - `mod tests` 声明在本文件末尾，用例落在 **`src-tauri/src/commands/schema/tests.rs`**（既有）：`get_table_data_with_query_rows`、`get_table_data_joins_filters_with_or`、`get_table_data_reads_the_target_database_without_switching`，以及共用的 `schema_commands_with_connected_mock` 夹具。
 - 注册点在 **`src-tauri/src/bootstrap/run.rs`** 的 `tauri::generate_handler!` 列表（「Schema 元数据」分组里现有 `crate::commands::get_table_data` 等）。
 
-**`src-tauri/src/cache/schema_cache.rs`**（既有）：
+**`src-tauri/src/cache/mod.rs`**（既有；〔合并后校正〕旧稿写的 `src-tauri/src/cache/schema_cache.rs` 不存在，实现在 `packages/runtime/src/schema_cache/schema_cache.rs`，门面只 re-export）：
 
 - `SchemaCache::get_columns` 返回 `CachedColumns { columns, primary_keys, table_name, cached_at }`；**`primary_keys` 已经存在且已归一化**（缓存命中路径由 `cached.schema.effective_primary_keys()` 得到；未命中路径直接取 `driver.get_columns(...)` 的第二个返回值，而该方法的默认实现 `traits::streaming::get_columns` 返回的正是 `TableSchema::effective_primary_keys()`）。但今天的 `build_select_sql` **只读 `cached.columns`，完全没读 `cached.primary_keys`**，而是从列上的 `is_primary_key` 标志重新推导 —— 两者不一致时就会漏掉主键（§1.1）。
 - `CachedColumns.table_name` 就是调用方传入的 `table` 字符串，`build_select_sql` 的 `FROM` 用的也是它——本册新增的估算语句必须用**同一个标识符**，否则两条语句可能指向不同对象。
@@ -179,7 +187,7 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
 
 **`src/commands/database.ts`**（既有）：`databaseCommands.getTableData` 的入参含 `skipCount?: boolean`，透传为 `skipCount`；`databaseCommands.listTables` 已把 catalog 的 `relation.rowCount` 映射成 `TableInfo.rowCount`。
 
-**`src/types/index.ts`**（既有）：`TableDataResult { columns, rows, totalRows?: number, page, pageSize }`（**`totalRows` 可选，且只有数字，没有可信度信息**）；`SortCondition { column, descending }`；`AppSettings`（含 `defaultPageSize: number`）。另有一份历史重复的 `SortCondition`/`FilterCondition` 定义在 `src/types/settings.ts`（分册 08 负责收敛，本册不动）。
+**`src/types/index.ts`**（既有）：`TableDataResult { columns, rows, totalRows?: number, page, pageSize }`（**`totalRows` 可选，且只有数字，没有可信度信息**）；`SortCondition { column, descending }`；`AppSettings`（extends `UserPreferences` / `ExecutionSettings`；〔合并后校正〕`defaultPageSize: number` **不在** `src/types/index.ts`，在 `packages/backend-client/src/settings.ts`）。另有一份历史重复的 `SortCondition`/`FilterCondition` 定义在 `src/types/settings.ts`（分册 08 负责收敛，本册不动）。
 
 **`src/components/DataTable/Pagination.tsx`**（既有）：`PaginationProps { page, pageSize, totalRows: number, onPageChange, onPageSizeChange, filterRevision?, onPageReset?, loading? }`；导出纯函数 `paginationReducer` 与 `resetPageOnFilterChange`；渲染 `{from}-{to} / {totalRows}` 与 `t('pagination.page') + " x / y " + t('pagination.pageOf')`；`totalPages = Math.max(1, Math.ceil(totalRows / pageSize))`，`current = Math.min(page, totalPages - 1)`，`from = totalRows === 0 ? 0 : current * pageSize + 1`。
 
@@ -269,7 +277,7 @@ pub struct TableDataResult {
 }
 ```
 
-**为什么用「新增字段」而不是把 `total_rows` 改成带 kind 的结构**：`TableDataResult` 是既有 IPC DTO，契约 §2 R1 禁止改既有字段的类型与名字；而 `total_rows_kind` 缺省 `None` 恰好表达「本次没取行数」，与今天 `total_rows: None` 的语义严格对齐。构造点只有两处（`QueryExecutor::get_table_data` 的两个 `Ok(TableDataResult { .. })`），改动可控。
+**为什么用「新增字段」而不是把 `total_rows` 改成带 kind 的结构**：`TableDataResult` 是既有 IPC DTO，契约 §2 R1 禁止改既有字段的类型与名字；而 `total_rows_kind` 缺省 `None` 恰好表达「本次没取行数」，与今天 `total_rows: None` 的语义严格对齐。〔合并后校正〕构造点**有三处**：`QueryExecutor::get_table_data` 的两个 `Ok(TableDataResult { .. })`，加上 `src-tauri/src/commands/table_target.rs` 里 `read` 的返回处——**三处都要填 `total_rows_kind`**，第三处漏填会因 `serde(default)` 静默退化成 `None`（=「没取行数」），不报错。
 
 ```rust
 // src-tauri/src/services/table_browsing.rs（新增文件：纯函数，便于单测，避免撑爆 query_executor.rs）

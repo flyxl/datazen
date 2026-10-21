@@ -44,7 +44,7 @@
 
 ### 2.1 SQL 生成与分页子句的确切拼装逻辑（既有）
 
-位置：`src-tauri/src/services/query_executor.rs`。
+位置：〔合并后校正〕`packages/feature-core/src/services/query_executor.rs`（实现，**755 行**）；`src-tauri/src/services/query_executor.rs` 只是 **47 行** re-export 门面。
 
 - `QueryExecutor::get_table_data` —— 真实签名比 00 契约第 1.5 节的摘录**多一个参数**：结尾还有 `filter_logic: Option<&str>`。它先经 `SchemaCache::get_columns` 取 `CachedColumns`，再调 `Self::build_select_sql`，分页子句来自 `driver.pagination_syntax(page_size as u64, (page as u64) * (page_size as u64))` —— **offset 就是「页码 × 每页条数」，这是 OFFSET 分页的定义式，也是键集要替换的那一项**。
 - 计数与数据是两次查询：`skip_count == true` 时只发 `SELECT` 且 `total_rows: None`；否则 `tokio::try_join!` 并发发 `build_count_sql` 与 `build_select_sql`，`total_rows` 由 COUNT 结果首行首列取 `Value::Integer`。
@@ -56,7 +56,7 @@
 - `QueryExecutor::build_count_sql` 第一行就丢弃入参 `columns`，只发 `SELECT COUNT(*) FROM t WHERE ...`。
 - `QueryExecutor::format_condition` 只渲染 10 个算子（`Eq` / `Ne` / `Gt` / `Lt` / `Gte` / `Lte` / `Like` / `In` / `IsNull` / `IsNotNull`），值经 `driver.format_sql_literal` **内联为字面量**；`filter_is_complete` 会静默丢弃不完整筛选；`filter_join` 只有全局单一 `AND` / `OR`。
 - 文件末尾 `#[cfg(test)] mod tests` 里的既有语义锚点（**键集接入后必须继续成立**）：`tsql_pagination_emits_offset_fetch_and_never_limit`、`tsql_pagination_keeps_pk_order_without_fallback`、`no_explicit_sort_uses_primary_key_order`、`no_explicit_sort_composite_pk_uses_all_pk_columns`、`explicit_sort_overrides_default_pk_order`、`no_pk_no_explicit_sort_still_has_order_by_first_column`、`build_select_sql_without_offset_when_unsupported`。测试用的 `PaginationSyntax` 由本地 helper `limit_syntax` / `limit_only_syntax` / `tsql_syntax` 手工构造。
-- 该文件**已经 811 行**（`wc -l`），逼近 800 行上限：键集逻辑**不能**直接加在这里（见第 6 节拆分方案）。
+- 该文件**已经 755 行**（`wc -l`；旧稿写 811 是合并前数值），逼近 800 行上限：本册约 +150 行会破线，**键集逻辑必须落在新文件**（见第 6 节拆分方案），且新文件必须在 `packages/feature-core/src/services/query_executor/` 下——`feature-core` 不能反向依赖 `src-tauri`。
 
 ### 2.2 分页子句为什么属于驱动（既有）
 
@@ -84,7 +84,7 @@
 - `src-tauri/src/commands/schema.rs::get_table_data`（`#[tauri::command]`）是 `get_table_data_impl` 的唯一 IPC 入口；全仓没有 MCP 或其它调用方（`get_table_data_impl` 的引用只在 `commands/schema.rs` 与其测试里）。
 - `src-tauri/src/cache/schema_cache.rs::SchemaCache::get_columns` 返回 `CachedColumns { columns, primary_keys, table_name, cached_at }`，注释明写「**Lightweight cached columns (no indexes / foreign keys)**」。`CachedColumns.primary_keys` 来自 `driver.get_columns(...)`（返回 `(columns, primary_keys)`）或全量 schema 缓存里的 `TableSchema::effective_primary_keys()`。
 - ⚠ **同一份主键在浏览路径上有两个来源**：`build_select_sql` 用的是 `columns.iter().filter(|c| c.is_primary_key)`，而缓存里的 `cached.primary_keys` **根本没被它用**。00 契约第 1.6 节要求「凡需要主键列的地方复用 `TableSchema::effective_primary_keys()`，不要自己过滤 `is_primary_key`」。这是既有漂移，本册的稳定性判定必须**沿用产出 `ORDER BY` 的那一份**，不得引入第三种口径（见未决问题 K-9）。
-- `packages/driver-api/src/types.rs::TableDataResult { columns, rows, total_rows, page, page_size }`：全仓**只有宿主**构造它（`query_executor.rs` 两处），驱动通过 `QueryResult` 返回行。
+- `packages/driver-api/src/types.rs::TableDataResult { columns, rows, total_rows, page, page_size }`：全仓**只有宿主**构造它——〔合并后校正〕**三处**：`feature-core` 的 `get_table_data` 两处 + `src-tauri/src/commands/table_target.rs::read` 一处；驱动通过 `QueryResult` 返回行。
 - `packages/driver-api/src/types.rs::Value` 是 `#[serde(untagged)]` 枚举（`Null` / `Bool` / `Integer` / `Float` / `String` / `Bytes` / `Timestamp` / `Json`）。**这条对游标至关重要**：untagged 下 `[1,2,3]` 这类数组既能反序列化成 `Bytes` 又能成为 `Json`，字符串既是 `String` 也可能是 `Timestamp`——**游标值不能靠 untagged 的 `Value` 过线**（见第 3 节的 `CursorValue` 与未决问题 K-6）。
 - `packages/driver-api/src/traits.rs::query_at` 的默认实现是「`qualified_sql` 重写后调 `query`」——**浏览路径没有任何绑定参数**。筛选值今天也是内联字面量。键集条件因此必须内联（见未决问题 K-6）。
 - `packages/driver-api/src/lib.rs`：`mod traits;` 是私有模块，`pub mod filters;` / `pub mod sync;` 是公开模块——**驱动要能调用共享实现，必须放在公开模块里**（这是新增 `pub mod keyset;` 的理由）。
@@ -271,7 +271,7 @@ pub struct TableDataResult {
 }
 ```
 
-> 字段加 `#[serde(default)]` 是为了「老前端 / MCP / 第三方调用方读到 `null` 也不炸」；但 Rust 侧结构体字面量**必须**补这个字段。全仓只有 `query_executor.rs` 的两个构造点（2.3），加字段的爆炸半径由此确定；外部 git 驱动的风险与替代方案见 K-4。
+> 字段加 `#[serde(default)]` 是为了「老前端 / MCP / 第三方调用方读到 `null` 也不炸」；但 Rust 侧结构体字面量**必须**补这个字段。全仓只有**三个**构造点（`feature-core` 两处 + `table_target.rs` 一处，见 2.3），加字段的爆炸半径由此确定——**漏填第三处不会编译失败**（`#[serde(default)]`），只会静默丢语义；外部 git 驱动的风险与替代方案见 K-4。
 
 ### 3.3 宿主内部类型（新增，位置见第 6 节）
 
@@ -571,9 +571,9 @@ export function nextRequestCursor(
 
 ### Step 4 · 宿主的 SQL 组装（仍不改变默认行为）
 
-改：`src-tauri/src/services/table_read_sql.rs`（**新增**，把 `build_select_sql` / `build_count_sql` / `format_condition` / `filter_is_complete` / `filter_join` **机械搬迁**过来）、`src-tauri/src/services/query_executor/mod.rs`（调用新模块、只留编排）。**注意路径**：本册排在提交序末位，此时 `query_executor/` 目录**已由 08 完成目录化**，基线里的单文件 `query_executor.rs` 不复存在——凡本册仍写 `query_executor.rs` 的地方，一律读作 `query_executor/mod.rs`。
+改：`packages/feature-core/src/services/query_executor/table_read_sql.rs`（**新增**，把 `build_select_sql` / `build_count_sql` / `format_condition` / `filter_is_complete` / `filter_join` **机械搬迁**过来）、`packages/feature-core/src/services/query_executor/mod.rs`（调用新模块、只留编排）。**注意路径**：〔合并后校正〕落点整体在 `packages/feature-core` 内，**不是** `src-tauri/src/services/`（后者只有 47 行门面，`feature-core` 无法被它调用）。本册排在提交序末位，此时 `query_executor/` 目录**已由 08 完成目录化**，基线里的单文件 `query_executor.rs` 不复存在——凡本册仍写 `query_executor.rs` 的地方，一律读作 `query_executor/mod.rs`。
 加：`build_paged_select_sql` + `PagedSelectSql`；`build_select_sql` 保留原签名、原语义（作为无游标适配器）。
-为什么：`query_executor.rs` 已 811 行（2.1），键集逻辑必须落在新文件（第 6 节）；搬迁是纯位移，**搬迁前后 SQL 文本必须逐字节相同**。
+为什么：`query_executor.rs` 已 **755** 行（2.1），加本册就破 800，键集逻辑必须落在新文件（第 6 节）；搬迁是纯位移，**搬迁前后 SQL 文本必须逐字节相同**。
 自测：`cargo test -p datazen --lib`，**先确认既有的 5 个语义锚点用例（A1 列出的）在搬迁后原样通过**，再跑新增的黄金 SQL 用例（第 9 节 H7~H12）。
 
 ### Step 5 · 宿主读链路与 IPC 接线（默认不启用）
@@ -633,7 +633,7 @@ export function nextRequestCursor(
 | `src/lib/__tests__/keysetPaging.test.ts` | **新增** | 上述纯函数用例 | ~220 | 否 |
 | `src/stores/tableData/types.ts` | 修改 | `TableState.keyset` | +3 | 否 |
 | `src/stores/tableData/connectionState.ts` | 修改 | `emptyTableState` 缺省 | +2 | 否 |
-| `src/stores/tableDataStore.ts` | 修改 | 请求带游标、落 `paging`、`setPage` 收紧 | +70 | 否（现 722 行 → ~790，**注意别越线**；若越线按「pendingChanges 相关动作拆 `tableData/actions.ts`」处理） |
+| `src/stores/tableDataStore.ts` | 修改 | 请求带游标、落 `paging`、`setPage` 收紧 | +70 | **是**（〔合并后校正〕现 **729** 行 → ~799，**距 800 只剩 1 行**；必须在同一次提交里把 `pendingChanges` 相关动作拆到 `tableData/actions.ts`，不能留给下一个分册） |
 | `src/commands/database.ts` | 修改 | `afterKey` 透传 | +6 | 否 |
 | `src/components/DataTable/Pagination.tsx` | 修改 | `pagingHint` 渲染 | +35 | 否（现 137 行） |
 | `src/components/DataTable/DataTable.tsx` | 修改 | 透传 `pagingHint` | +6 | 否 |
@@ -647,7 +647,7 @@ export function nextRequestCursor(
 
 ### 6.1 必须处理的三个「已超限」文件（诚实记录）
 
-1. `src-tauri/src/services/query_executor/`（**基线 811 行，但本册合并时 08 已完成目录化**，`mod.rs` 约 340 行、`tests.rs` 约 460 行）——本册**仍需**把 SQL 文本层整体搬出，否则加键集会越线。方案：把 SQL 文本层整体搬到 `table_read_sql.rs`，`QueryExecutor` 只留「取缓存 → 组装 → 发查询 → 组装结果」。搬迁后约 330 行，留出约 470 行余量。既有 `#[cfg(test)] mod tests` **随函数一起搬**，用例名不改（它们是 A1 的口径）。
+1. `packages/feature-core/src/services/query_executor/`（**基线 755 行，但本册合并时 08 已完成目录化**，`mod.rs` 约 340 行、`tests.rs` 约 415 行）——本册**仍需**把 SQL 文本层整体搬出，否则加键集会越线。方案：把 SQL 文本层整体搬到 `table_read_sql.rs`，`QueryExecutor` 只留「取缓存 → 组装 → 发查询 → 组装结果」。搬迁后约 330 行，留出约 470 行余量。既有 `#[cfg(test)] mod tests` **随函数一起搬**，用例名不改（它们是 A1 的口径）。
 2. `packages/driver-api/src/reuse.rs`（**现 1159 行，早于本册就超限**）——本册要加约 16 行。两个选择，**二选一但必须写进提交信息**：(a) 本册提交内先把 `impl DatabaseDriver for ReuseDriver` 整体搬到 `packages/driver-api/src/reuse/driver_impl.rs`（`reuse.rs` 变 `reuse/mod.rs` + `driver_impl.rs`，纯位移，转发用例跟着走），原始 1159 行降到约 550 + 约 620；(b) 记为既有技术债、本册只加 16 行，并在 `progress.md` 与提交信息里注明。**建议 (a)**：本册是「新增 trait 方法」的批次，转发块正是相关代码，顺手拆成本最低。
 3. `packages/driver-api/src/types.rs`（**现 958 行**）、`packages/driver-api/src/traits.rs`（**现 1062 行**）——同样早于本册超限。本册只加 4 / 22 行，且都是契约要求的位置，**不建议在本册顺手拆**（拆 DTO 与 trait 的爆炸半径远大于收益）。记录为既有技术债（K-10），提交信息里注明「未新增超限文件，仅触碰既有超限文件」。
 

@@ -496,9 +496,9 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
 - **细节**：`dirtyCellNames` 用 `useMemo` 从 `dirtyRow?.changedColumns` 构造 `Set`，但**不要**在 JSX 里现造集合（每次渲染新引用）；`Set` 的构造依赖 `dirtyRow`（引用稳定，见结构共享）。
 - **自测**：`VirtualBody.dirty.test.tsx` 断言脏格数、tooltip 文本、删除行不带 `data-dt-dirty`、缺省不输出属性。
 
-### Step 6 · 复用分册 01 Step 10 抽取的 `TablePendingChangesBar` 并加脏计数
+### Step 6 · 复用分册 01 Step 10 将抽取的 `TablePendingChangesBar` 并加脏计数
 
-- **不加新组件**：**复用分册 01 Step 10 已抽取的 `src/windows/connection/TablePendingChangesBar.tsx`**（该步把 `table-tx-controls` + `pending-changes-bar` 两块搬进去，逐字保留既有 `data-testid`，约 150 行）。**一个文件，不新建职责重叠的第二个组件**：分册 01 建骨架（事务控制 + 计数条 + 三个按钮），本册**只向它新增脏计数展示**。
+- **不加新组件**：**复用分册 01 Step 10 将抽取的 `src/windows/connection/TablePendingChangesBar.tsx`**（〔合并后校正〕该文件今天**不存在**——`TableView.tsx` 里仍是内联的 `table-tx-controls`（约 563 起）与 `pending-changes-bar`（约 606 起）；01 抽取时必须把 main 新增的 `table-transaction-error`、`table-session-open-new` 两个 testid 与 `txLost` / `onOpenNewSession` 一起带走，否则会打断 `e2e/specs/table-session-loss-recovery.ts`。抽取后约 170–200 行）。**一个文件，不新建职责重叠的第二个组件**：分册 01 建骨架（事务控制 + 计数条 + 三个按钮），本册**只向它新增脏计数展示**。
 - **我向该组件新增什么**：新增可选 props（`counts: DirtyCounts`，以及把既有的 `pendingUpdateCount` / `pendingDeleteCount` 收敛进同一入口；缺省时行为与今天一致），并在计数条内新增 `tid('pending-cells-count')` 子元素与 `tableData.pendingOffPage` 提示行。`pendingBusy` / `onPreview` / `onCommit` / `onRollback` 由分册 01 的版本提供，本册不改它们的语义。
 - **为什么**：`TableView.tsx` 已 770 行，逼近 800 上限，抽取是让 DB-02 / DB-03 / DB-06 后续还能进这个文件的前提；三册都要这一条，各建一份必然分叉（最小的是「谁先建谁被覆盖」）。本册**服从统一命名与单一组件**：文件名以分册 01 的为准，本册只做增量。
 - **自测**：`npx vitest run` 后 `e2e/specs/table-edit.ts` 依赖的 `pending-changes-bar` / `pending-preview` / `pending-commit` / `pending-rollback` 仍全部存在，且新增的 `pending-cells-count` 数字与 `counts.totalCells` 相等（组件测试断言 + 第 9.4 节 E2E）。
@@ -615,7 +615,7 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
 **错误码：本册不新增任何错误码。** 理由与落点说明：
 
 - 本册涉及的失败态全部复用**既有**标识：行身份歧义用 `AMBIGUOUS_ROW_IDENTITY_ERROR`（已存在于 `src/stores/tableData/pendingChanges.ts` 并在 `commitFetchedPage` / `stageCellChange` / `stageRowDelete` 里写入 `error`）；提交期的计划过期 / 影响行数不符由提交链路产生 `grid.commit.stalePlan` / `grid.commit.affectedMismatch`（00 契约 8.2 已定义），本册只负责**标记保留**。
-- `src/lib/gridErrors.ts` 在基线中不存在，**创建归属已由 00 契约 §8.1 归属总则冻结给 01**（本册排在 01 之后，合并时骨架必然已建）。因此本册**只追加** `grid.dirty.*` 域的码，按 §8.1 三步走（① `GridErrorCode` 加成员 → ② `GRID_ERROR_CODES` 加条目 → ③ §6 变更表登记），**禁止整文件重写**——并行合并下整文件覆盖不产生任何编译错误，只会静默抹掉其他分册的码。
+- `src/lib/gridErrors.ts` 在基线中不存在，**创建归属已由 00 契约 §8.1 归属总则冻结给 01**（本册排在 01 之后；〔合并后校正〕若 01 尚未落地，本册需自带最小骨架，规则不变：只能有一份骨架）。因此本册**只追加** `grid.dirty.*` 域的码，按 §8.1 三步走（① `GridErrorCode` 加成员 → ② `GRID_ERROR_CODES` 加条目 → ③ §6 变更表登记），**禁止整文件重写**——并行合并下整文件覆盖不产生任何编译错误，只会静默抹掉其他分册的码。
 - **分类与展示纪律**：匹配不到前缀时 `classifyGridError()` 返回 `'unknown'`，UI **必须回退显示原始消息**。因此 §6 变更表已把本册依赖登记为「否」——**实现阶段不得依赖分类器已经能正确归类**，错误展示先按原始消息渲染，分类只作为后续增强。
 - 将来若确需脏标记专属错误，前缀用 `grid.dirty.<原因>: <说明>`，并在本册的追加步骤里登记。
 

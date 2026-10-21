@@ -7,7 +7,7 @@
 > **被谁依赖**：DB-15（筛选 SQL 预览与「按当前筛选导出」——预览文本必须与本册生成的语句逐字节同源）；DB-07（外键跳转预置筛选必须走 `setFilters` 的**可见结构化条件**，不得退化成隐形 raw SQL）；DB-11（多列排序写入本册 `NamedView.sorts`，所以 DTO 用数组）；DB-09（筛选与行数三态的组合规则，见 §7「筛选后行数统计」）；分册 12（门禁）。 本册**新增一条入边**：分册 02 的键盘处理会触发「在筛选编辑器里改条件」，因此 §4.7 的连接符控件必须与 02 的 `[tabindex]` 迁移互不干扰——连接符用标准 `button`，不参与网格 roving tabindex，理由见 §4.7。
 >
 > **与已落地的相邻分册对齐（撰写期间 05 / 09 已出现在同目录，本册已读并按其事实改写）**：
-> - **分册 05（类型化编辑器）** 已定义 `src/lib/cellTypes.ts` 的 `CellType` / `resolveCellType` / `cellTypeToDataTypeFamily` / `CellTypeHints`，并把 `classifyDataType` 改为 `cellTypeToDataTypeFamily(resolveCellType(...))`。因此本册的**算子默认集按 `CellType` 分派**（§3.5），不再自行按 `DataTypeFamily` 猜；驱动经 `DatabaseTypeMeta.cellTypes` 声明的类型提示同时约束编辑控件与筛选算子集。
+> - **分册 05（类型化编辑器）** 的**设计**定义了 `src/lib/cellTypes.ts` 的 `CellType` / `resolveCellType` / `cellTypeToDataTypeFamily` / `CellTypeHints`，并把 `classifyDataType` 改为 `cellTypeToDataTypeFamily(resolveCellType(...))`。〔合并后校正〕**这些今天都不存在**：`src/lib/cellTypes.ts` 无此文件，`src/lib/dataTypeColors.ts` 里仍是独立的 `classifyDataType`，全仓无 `resolveCellType` / `cellTypeToDataTypeFamily`。因此本册「算子默认集按 `CellType` 分派」（§3.5）**依赖 05 先落地**：若 05 未落地，本册按 `DataTypeFamily` 兜底，或与 05 合并提交——**不得**在本册里私造第二套 `CellType`。
 > - **分册 09（行数三态与默认排序）** 已把「有生效筛选时禁止用估算行数」写进它的验收点 A7，并在其 §7 用 `has_effective_filters` + `filter_is_complete` 落地。本册 §7 只做**引用与耦合声明**，不再自行归口（原 Q-11 已改写）。
 > - **共用文件的去重（重要）**：`src/lib/gridErrors.ts`、`src/lib/databaseMeta.ts` 的 `DataGridCapabilities`、`src-tauri/src/services/query_executor.rs` 的拆分、`src/stores/tableDataStore.ts`、`src/windows/connection/TableView.tsx` 这五处 **08 与 09 都会动**。本册在 §6 逐条标注「只建一次 / 净增预算 / 已超限」。其中 `TableView.tsx` 是本册发现的**真实超限冲突**（770 + 09 的约 60 + 本册约 40 > 800），见 Q-13。
 >
@@ -64,7 +64,15 @@
 - `packages/driver-api/src/traits.rs`：`DatabaseDriver` trait 本体；同目录 `packages/driver-api/src/traits/` 下已有 `sql_text` / `streaming` / `command_api` / `key_value` / `schema_target` 子模块，`traits.rs` 用 `mod` + `pub use` 再导出。既有的引用与字面量入口是 `quote_ident` / `format_sql_literal` / `pagination_syntax` / `skip_count_query` / `supports_offset` / `has_schema_level`。
 - `packages/driver-api/src/mock_driver.rs`：`MockDriver`、`MockDriverOptions`。**它没有覆盖任何筛选相关方法**——这正是「默认实现 == 今天行为」的可测基座。宿主通过 `src-tauri/src/testing/mod.rs` 的 `pub use datazen_driver_api::mock_driver;` 以 `crate::testing::mock_driver` 使用它。
 
-### 2.2 宿主 SQL 生成（`src-tauri/src/services/query_executor.rs`，811 行）
+### 2.2 宿主 SQL 生成（〔合并后校正〕实现在 `packages/feature-core/src/services/query_executor.rs`，**755 行**；`src-tauri/src/services/query_executor.rs` 只剩 **47 行** re-export 门面 + 一段宿主集成测试）
+
+> **签名与并发结构都以本节为准（下方第 3–7 条为合并前形态）**：
+> - `pub fn build_count_sql(table_name, columns: &[String], filters: &Option<Vec<FilterCondition>>, dialect: &dyn SqlDialect, filter_logic: Option<&str>) -> Result<String, DriverError>`——**已是 `Result`**，不再收 `qi` / `format_lit` 两个闭包。
+> - `pub fn build_select_sql(..., limit: u64, offset: u64, filter_logic: Option<&str>) -> Result<String, DriverError>`——同样是 `Result`，分页以 `limit`/`offset` 传入（不是 `PaginationSyntax` 对象）。
+> - `pub fn format_condition(condition, dialect: &dyn SqlDialect) -> Result<String, DriverError>`，内部走 `dialect.try_format_sql_literal`；`LegacySqlDialect::new(driver.as_ref())` 是把旧 `DatabaseDriver` 适配成这个 seam 的桥。
+> - `filter_join(logic: Option<&str>) -> &'static str` 仍是模块级自由函数（「只支持全局 AND/OR」结论不变）；而 `filter_is_complete` 是 **`QueryExecutor` 的关联函数**，不是自由函数——搬移时别混为一谈。
+> - 因此本册 §3.3「把 builder 改成 fallible / 新增 `filter_sql.rs`」要改口径：**不是「变 fallible」而是「错误类型从 `DriverError` 换成 `FilterRejection`（或继续包 `DriverError`）」**；`filter_sql.rs` 必须落在 `packages/feature-core/src/services/query_executor/` 下（`feature-core` 不能反向依赖 `src-tauri`）。
+> - 另：真正的浏览入口不是这里的 `QueryExecutor::get_table_data`，而是 `src-tauri/src/commands/table_target.rs::read`（见 §2.3 校正）。
 
 - `SortCondition { column, #[serde(default)] descending }`、`OrderBy { column, descending }`。
 - `pub use datazen_driver_api::filters::{FilterCondition, FilterOperator};` —— 宿主与驱动看到**同一个类型**。
@@ -78,9 +86,10 @@
 
 ### 2.3 宿主 IPC 与服务层
 
+- 〔合并后校正〕**前端只 invoke `get_table_data_at_target`**（`src/commands/database.ts`），宿主实现是 `src-tauri/src/commands/table_target.rs::read`（`TableReadRequest`；在 `commands/data.rs` 里以 `get_table_data_at_target` 包装，注册于 `bootstrap/run.rs`）。它**自己**调 `build_select_sql` / `build_count_sql`、自己做 sorts 截断（只取第一个）、自己合并 `driver.skip_count_query()`，并把 count 与 select 拼成 `"{count};\n{select}"` **一次多语句下发**，再按产物的 `statementIndex` 归属两条结果；`total_rows` 解析还接受 `Value::String` 的 `parse()`。下一条描述的 `get_table_data_impl` **仍注册但前端零调用**——本册 Step 4（IPC 前置校验）与 Step 5（服务层兜底）**必须落到 `table_target::read`**，或把校验下沉到 `feature-core` 供两条路径共用；只改 `get_table_data_impl` 等于改死命令。
 - `src-tauri/src/commands/schema.rs`：`get_table_data_impl(state, db_session_id, table, page, page_size, filters, sorts, skip_count, filter_logic, database, schema) -> Result<TableDataResult, CommandError>`。关键事实：`sorts` 用 `and_then(|list| list.into_iter().next())` **只取第一个**；`effective_skip_count = skip_count.unwrap_or(false) || driver.skip_count_query()`；`filters` 未经任何校验直接透传给 `QueryExecutor::get_table_data`。同文件 `get_table_data` 是 `#[tauri::command]` 薄壳。
 - `src-tauri/src/commands/error.rs`：`CommandError` 枚举（含 `Validation(String)` / `NotFound(String)` / `Internal(String)`）；`Serialize` 实现是「先 `redact_secrets_for_log` 再 `serialize_str`」，因此前端收到的是**字符串**、没有 `code` 字段；`From<DriverError>` 把 `DriverError::NotSupported(msg)` 映射为 `CommandError::Validation(msg)`；`CmdExt::cmd_err` 只记日志、**不改写错误文本**，所以消息前缀会原样保留在最前。
-- `src-tauri/src/db/registry.rs`：`DriverCapabilities { supports_cancel_query, supports_query_execution_cancel, supports_explain, supports_streaming_results, supports_offset, has_schema_level }`、`DriverCapabilities::from_factory(...)`、`DriverRegistry::get_capabilities`。**没有**任何筛选算子能力位。
+- 〔合并后校正〕`DriverCapabilities` 不在 `src-tauri/src/db/registry.rs`（该文件不存在）：实现在 `packages/runtime/src/driver_registry/registry.rs`，经 `src-tauri/src/db/mod.rs` re-export；字段已不止 6 个（另有 `has_multi_database` 等）。**仍然没有任何筛选算子能力位**——结论不受影响。
 - `src-tauri/src/commands/schema/tests.rs` 存在（DB-08 的宿主命令测试落点之一）。
 - `src-tauri/src/services/mod.rs`：`pub mod query_executor;` 与 `pub use query_executor::{FilterCondition, OrderBy, QueryExecutor, SortCondition};`。
 
@@ -105,7 +114,7 @@
 - `src/components/DataTable/DataTable.tsx`：`hasFilters`（`filters.length > 0 && onRemoveFilter && onClearFilters`）与 `hasFilterEditor`（要求 7 个回调齐备）决定渲染 `FilterEditor` 还是退化的 `FilterBar`。
 - `src/windows/connection/TableView.tsx`（770 行）：`handleQuickFilter`（`parseFilterForApply` → 混用 AND/OR 时以 `t('filter.mixedLogic')` 拒绝 → `actions.setFilters(...)`）、`openManualFilter`、`quickFilter` / `quickFilterError` 状态。
 - `src/lib/filterExpression.ts`：`FilterExpressionOperator`（8 个：`eq ne gt gte lt lte isNull isNotNull`，**不含 `like` / `in`**）、`FilterConditionExpression` / `FilterLogicalExpression` / `FilterExpression`、`parseFilterExpression`、`filterExpressionToConditions`、`parseFilterForApply`。
-- `src/lib/dataTypeColors.ts`：`DataTypeFamily = 'null' | 'bool' | 'number' | 'datetime' | 'json' | 'binary' | 'text'` 与 **`classifyDataType(dataType: string | undefined): DataTypeFamily`**（大小写归一 + 关键字包含匹配）。**注意（分册 05 已落地）**：`classifyDataType` 已被改造为 `cellTypeToDataTypeFamily(resolveCellType(...))`；本册的算子白名单**不再**直接用它，而是消费 05 的 `CellType`（§3.5），族只用于渲染着色。
+- `src/lib/dataTypeColors.ts`：`DataTypeFamily = 'null' | 'bool' | 'number' | 'datetime' | 'json' | 'binary' | 'text'` 与 **`classifyDataType(dataType: string | undefined): DataTypeFamily`**（大小写归一 + 关键字包含匹配）。**注意（〔合并后校正〕分册 05 尚未落地）**：今天 `classifyDataType` **仍是这个独立函数**，没有被改造；05 落地后才会变成 `cellTypeToDataTypeFamily(resolveCellType(...))`；本册的算子白名单**不再**直接用它，而是消费 05 的 `CellType`（§3.5），族只用于渲染着色。
 - `src/lib/databaseMeta.ts`：`KvWorkspaceCapabilities`（可选字段 + 缺省 `false` 的向后兼容范式）与 `DatabaseTypeMeta`。**没有** `dataGrid` 字段。
 - `src/lib/driverCapabilities.ts`：`hasSchemaLevel`、`supportsOffset`、`capabilitiesForDbSession`、`relationSchemaFor`——运行时能力查询的既有范式（`get_connection_info` → `DriverCapabilities`）。
 - `src/commands/database.ts`：`databaseCommands.getTableData(params)` 的入参形状（`filters` / `sorts` / `skipCount` / `filterLogic` / `database` / `schema`）。
@@ -447,7 +456,7 @@ export function defaultOperatorForColumn(cellType: CellType): FilterOperator;   
 - **默认算子恒为 `eq`**，不按类型变化。理由：今天 `addEmpty` 与 `openManualFilter` 都写死 `{ operator: 'eq', value: '' }`，既有测试（`FilterEditor.test.tsx` 的 onAdd 断言）固化在这个值上；且 `eq` 在**所有** `CellType` 的集合里都存在，按类型改默认值的收益为零、回归面为正。
 - **方言算子不进任何 `cellTypes` 数组**：它们只通过驱动白名单追加，且只有 `text` 接 `regex` / `notRegex`、`json` 接 `jsonContains`。这是 R4 的落点——能力缺失时**隐藏入口**而不是渲染一个点了报错的按钮。
 
-**类型归一化的唯一来源（与分册 05 对齐，05 已落地）**：`src/lib/cellTypes.ts` 的 `resolveCellType(dataType, meta?.cellTypes)` → `CellType`。分册 05 已把 `classifyDataType` 改造为 `cellTypeToDataTypeFamily(resolveCellType(...))`，因此：
+**类型归一化的唯一来源（与分册 05 对齐；05 尚未落地，以下为 05 落地后的形态）**：`src/lib/cellTypes.ts` 的 `resolveCellType(dataType, meta?.cellTypes)` → `CellType`。05 落地时会把 `classifyDataType` 改造为 `cellTypeToDataTypeFamily(resolveCellType(...))`，因此：
 - 本册**不新增**任何类型判断逻辑，只消费 `CellType`；
 - 调用点必须先归一化一次：`operatorsForColumn(resolveCellType(column.dataType, meta?.cellTypes), supportedOperatorsForMeta(meta))`；
 - 驱动在 `DatabaseTypeMeta.cellTypes`（05 的 `CellTypeHints`）里声明的覆盖规则**同时**约束编辑控件与筛选算子集——这是「一处声明、两处生效」，避免出现「编辑器按 enum 处理、筛选器按 text 处理」的双重标准；
@@ -1103,7 +1112,7 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 | `src/lib/filterOperators.ts` | **新增** | 算子元数据表 + `CellType` 白名单 + 值形态转换 + `dataGrid` 缺省读取 | ~210 | 否 |
 | `src/lib/databaseMeta.ts` | 修改 | `DataGridCapabilities`（契约 §7）**归属冻结给本册**（提交序早于 09）：本册新建该接口并补 `filterOperators?` / `likeCaseInsensitive?`；09 合并时只追加 `countStrategy?` | +30 | 否（约 233 行） |
 | `src/lib/namedViews.ts` | **新增** | 视图 DTO + 纯函数（scope key / 命名归一 / 导入命名） | ~140 | 否 |
-| `src/lib/gridErrors.ts` | **修改（追加）** | **01 已建骨架**（契约 §8.1 归属总则已冻结，08 不再参与「谁先建」的博弈）；本册按三步追加 `grid.filter.*` / `grid.view.*` 码，**禁止整文件覆盖** | +25 | 否 |
+| `src/lib/gridErrors.ts` | **修改（追加）** | 骨架由 01 建立（今天尚不存在）；本册按三步追加 `grid.filter.*` / `grid.view.*` 码，**禁止整文件覆盖** | +25 | 否 |
 | `src/lib/__tests__/filterOperators.test.ts` | **新增** | 元数据 / 顺序 / 转换用例 | ~180 | 否 |
 | `src/lib/__tests__/namedViews.test.ts` | **新增** | DTO 纯函数用例 | ~120 | 否 |
 | `src/lib/__tests__/filterExpression.test.ts` | `flatten_keeps_plain_chain_in_order` | `a AND b AND c` → 3 条，第 0 条无 `connector`，后两条为 `and`；条件对象与 `filterExpressionToConditions` 的输出**逐字段相等** |
