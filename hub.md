@@ -295,6 +295,7 @@ DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p <crate> --lib
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets
 cargo check --workspace --all-targets
+cargo check -p datazen --features webdriver --all-targets   # ← 必须有：feature 门控代码不被默认门禁编译
 DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib            # 基线 1265 passed
 DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-feature-core --lib # 基线 367
 cargo test -p datazen-platform-api --lib
