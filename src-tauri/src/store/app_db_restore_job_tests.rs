@@ -45,6 +45,7 @@ fn plan() -> RestorePlan {
 fn definition(id: &str) -> JobDefinition {
     JobDefinition {
         job_id: JobId::new(id),
+        organization_id: context().organization_id,
         kind: RESTORE_APPLY_KIND.into(),
         owner: OwnerRef::ClientSession {
             client_instance_id: context().client_instance_id,

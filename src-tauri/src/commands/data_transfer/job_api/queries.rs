@@ -79,6 +79,7 @@ pub(crate) async fn read_jobs(
 ) -> Result<Vec<JobView>, CommandError> {
     let ctx = request_context();
     let filter = JobFilter {
+        organization_id: ctx.organization_id.clone(),
         states: states.unwrap_or_default(),
         owner: None,
         after: None,

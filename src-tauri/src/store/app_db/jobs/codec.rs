@@ -522,7 +522,7 @@ pub(super) fn read_record(
         .query_row(
             "SELECT kind,state,state_version,stage,owner_json,plan_json,execution_ids_json,\
              progress_json,effect_outcome,cancel_requested,\
-             pending_verification_reason,result_error_code,created_at,updated_at \
+             pending_verification_reason,result_error_code,created_at,updated_at,organization_id \
              FROM jobs WHERE job_id=?1 AND organization_id=?2 AND owner_principal_id=?3",
             params![
                 job_id.as_str(),
@@ -552,6 +552,7 @@ struct RawJob {
     error: Option<String>,
     created_at: String,
     updated_at: String,
+    organization_id: String,
 }
 
 impl RawJob {
@@ -571,6 +572,7 @@ impl RawJob {
             error: row.get(11)?,
             created_at: row.get(12)?,
             updated_at: row.get(13)?,
+            organization_id: row.get(14)?,
         })
     }
 }
@@ -607,6 +609,7 @@ fn build_record(
         },
         definition: JobDefinition {
             job_id: job_id.clone(),
+            organization_id: datazen_platform_api::id::OrganizationId::new(raw.organization_id),
             kind: raw.kind,
             owner,
             payload,

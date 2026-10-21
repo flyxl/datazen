@@ -195,6 +195,7 @@ pub(crate) async fn admit(
     ));
     let definition = JobDefinition {
         job_id: requested_job_id.clone(),
+        organization_id: ctx.organization_id.clone(),
         kind: request.kind.to_string(),
         owner: OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new(LOCAL_CLIENT_INSTANCE),

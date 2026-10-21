@@ -10,7 +10,9 @@ impl InMemoryJobRepository {
     ) -> Result<&'a JobRow, PortError> {
         let row = inner.jobs.get(&claim.job_id).ok_or(PortError::StaleClaim)?;
         let bound = row.claim_context.as_ref().ok_or(PortError::StaleClaim)?;
+        // 组织维度双重核对：claim 绑定的受理上下文与行本身的落库归属必须都是当前组织。
         let valid = bound.organization_id == ctx.organization_id
+            && row.belongs_to(&ctx.organization_id)
             && bound.principal_id == ctx.principal_id
             && bound.client_instance_id == ctx.client_instance_id
             && row.claim.as_ref() == Some(claim)

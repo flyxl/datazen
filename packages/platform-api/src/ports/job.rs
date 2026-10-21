@@ -13,6 +13,16 @@
 //! * **先持久化后取资源**（[连接 §10.1](connection-management.md#101-公共处理)）。
 //!   `accept` 成功返回即代表 Job 已受理；资源申请失败**不回滚**受理记录。
 //! * **不自动重放副作用阶段**。`list_recoverable` 只返回需要人工/计划核验的待办。
+//!
+//! ## 组织维度（落盘词汇 + 端口行为）
+//!
+//! * `accept` 必须把 `ctx` 的组织**盖章**到 `JobDefinition.organization_id`：
+//!   调用方自报的组织值不作数（INV-01），落库归属一律来自 adapter 构造的上下文。
+//! * `list` 必须按 `JobFilter.organization_id` **且** `ctx` 的组织过滤；
+//!   两者不一致时结果是**空**，不是错误。
+//! * `get` / `list_recoverable` 必须按 `ctx` 的组织过滤。
+//! * 跨组织访问一律按「**不存在**」处理（`NotFound` / 空列表），不返回「无权限」
+//!   之类的错误，也不泄漏「存在但无权」（CM-05，与 `ProfileRepository` 同口径）。
 
 use async_trait::async_trait;
 
@@ -27,6 +37,9 @@ use crate::id::{IdempotencyKey, JobId, JobStateVersion, WorkerId};
 #[async_trait]
 pub trait JobRepository: Send + Sync + 'static {
     /// 先持久化后取资源（[连接 §10.1](connection-management.md#101-公共处理)）。成功返回即代表 Job 已受理。
+    ///
+    /// 实现必须把 `ctx` 的组织盖章到 `definition.organization_id` 再落库：
+    /// 落库归属只来自 adapter 构造的上下文，调用方自报的组织值一律不作数。
     async fn accept(
         &self,
         ctx: &RequestContext,
@@ -34,8 +47,11 @@ pub trait JobRepository: Send + Sync + 'static {
         idem: &IdempotencyKey,
     ) -> Result<JobRecord, PortError>;
 
+    /// 按 `ctx` 的组织读取。跨组织访问返回「不存在」而不是错误。
     async fn get(&self, ctx: &RequestContext, job_id: JobId) -> Result<JobRecord, PortError>;
 
+    /// 按组织列举。`filter.organization_id` 与 `ctx` 的组织必须同时匹配；
+    /// 两者不一致时返回空列表（跨组织列举不是合法调用）。
     async fn list(
         &self,
         ctx: &RequestContext,
@@ -85,6 +101,7 @@ pub trait JobRepository: Send + Sync + 'static {
         cp: Checkpoint,
     ) -> Result<(), PortError>;
 
+    /// 恢复候选查询：按 `ctx` 的组织限定，跨组织的待办不出现在结果里。
     async fn list_recoverable(
         &self,
         ctx: &RequestContext,
@@ -236,6 +253,7 @@ mod tests {
             },
             definition: JobDefinition {
                 job_id: JId::new("job-1"),
+                organization_id: OrganizationId::new("org-1"),
                 kind: "workflow".into(),
                 owner: workflow_block_owner(JId::new("job-1"), BlockId::new("b1")),
                 payload: serde_json::json!({"steps": []}),
@@ -313,6 +331,7 @@ mod tests {
     fn listing_filters_are_recoverable_state_not_runtime_cursors() {
         // 过滤器里的 `after` 是 `Counter` 序号，不是持久化游标。
         let filter = JobFilter {
+            organization_id: OrganizationId::new("org-1"),
             states: vec![JobState::Running],
             owner: Some(OwnerRef::Job {
                 job_id: JId::new("job-1"),
@@ -323,6 +342,7 @@ mod tests {
         };
         let value = serde_json::to_value(&filter).expect("serialize");
         assert_eq!(value["after"], serde_json::json!("10"));
+        assert_eq!(value["organizationId"], serde_json::json!("org-1"));
         assert_eq!(value["owner"]["kind"], serde_json::json!("job"));
         assert_eq!(
             serde_json::from_value::<JobFilter>(value).expect("deserialize"),
@@ -344,6 +364,8 @@ mod tests {
     #[test]
     fn the_organization_scope_is_not_a_parameter_of_this_port() {
         // 组织隔离由 `ctx` 承担；端口方法没有第二个组织参数可被漏传或写错。
+        // 组织维度出现在**落盘词汇**（`JobDefinition` / `JobFilter`）里，而不是端口参数里：
+        // 前者是持久化归属，后者是调用现场身份，两者的来源不同、不能互相顶替。
         let trait_code = trait_code();
         assert!(
             !trait_code.contains("organization_id") && !trait_code.contains("OrganizationId"),
@@ -353,6 +375,25 @@ mod tests {
             OrganizationId::new("org-1"),
             PrincipalId::new("user-1"),
             JobId::new("job-1"),
+        );
+    }
+
+    #[test]
+    fn the_port_pins_the_organization_dimension_into_the_persisted_vocabulary() {
+        // 受理落库、列举、查询、恢复四条路径都必须按组织隔离。
+        // 这条断言盯住**契约文本**：端口文档一旦不再声明组织语义，就说明隔离语义被删了。
+        let source = include_str!("job.rs");
+        for marker in ["organization_id", "盖章", "跨组织"] {
+            assert!(
+                source.contains(marker),
+                "JobRepository 契约必须声明组织维度（缺 `{marker}`）"
+            );
+        }
+        // 落盘词汇侧的必填组织维度由 dto 的契约测试守着，这里只确认端口确实引用了它。
+        let job_dto = include_str!("../dto/job.rs");
+        assert!(
+            job_dto.contains("pub organization_id: OrganizationId"),
+            "JobDefinition / JobFilter 必须带必填的 organization_id"
         );
     }
 }

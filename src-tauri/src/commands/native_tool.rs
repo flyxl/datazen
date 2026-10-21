@@ -85,6 +85,7 @@ pub(crate) async fn submit(
             &ctx,
             JobDefinition {
                 job_id: id.clone(),
+                organization_id: ctx.organization_id.clone(),
                 kind: KIND.into(),
                 owner: OwnerRef::Job {
                     job_id: id.clone(),
@@ -168,7 +169,16 @@ async fn list(state: &AppState) -> Result<Vec<JobView>, CommandError> {
     let ctx = context(state).await?;
     Ok(state
         .desktop_job_host
-        .list(&ctx, JobFilter::default())
+        .list(
+            &ctx,
+            JobFilter {
+                organization_id: ctx.organization_id.clone(),
+                states: Vec::new(),
+                owner: None,
+                after: None,
+                limit: None,
+            },
+        )
         .await
         .map_err(|_| denied())?
         .into_iter()

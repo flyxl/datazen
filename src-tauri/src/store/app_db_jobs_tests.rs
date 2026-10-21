@@ -50,6 +50,7 @@ fn repository(path: &Path, clock: Arc<SharedClock>, claim_ttl_secs: i64) -> Sqli
 fn definition(job_id: &str, plan_id: &str) -> JobDefinition {
     JobDefinition {
         job_id: JobId::new(job_id),
+        organization_id: request_context().organization_id,
         kind: "schemaDiffApply".into(),
         owner: datazen_platform_api::OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("client-local"),
@@ -115,6 +116,7 @@ fn monitor_occurrence_definition(job_id: &str, scheduled_at: i64) -> JobDefiniti
     );
     JobDefinition {
         job_id: JobId::new(job_id),
+        organization_id: request_context().organization_id,
         kind: "monitorOccurrence".into(),
         owner: datazen_platform_api::OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("monitor:grant-1:1"),
@@ -848,3 +850,6 @@ impl JobRecoveryVerifier for ConfirmReadOnlyVerifier {
 
 #[path = "app_db_job_owner_tests.rs"]
 mod owner_claims;
+
+#[path = "app_db_job_org_tests.rs"]
+mod org_scope;

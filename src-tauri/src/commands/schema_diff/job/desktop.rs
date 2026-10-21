@@ -268,6 +268,7 @@ pub async fn read_schema_diff_jobs(
         .list(
             &context,
             JobFilter {
+                organization_id: context.organization_id.clone(),
                 states: states.unwrap_or_default(),
                 owner: None,
                 after: None,
@@ -318,6 +319,7 @@ pub async fn run_prepare_job(
     let job_id = JobId::new(format!("schemaDiffPrepare-{}", uuid::Uuid::new_v4()));
     let definition = JobDefinition {
         job_id: job_id.clone(),
+        organization_id: context.organization_id.clone(),
         kind: PREPARE_KIND.into(),
         owner: owner_ref(state),
         payload: prepare_payload(),
@@ -378,6 +380,7 @@ pub async fn run_apply_job(
     apply_request.job_id = Some(job_id.as_str().to_string());
     let definition = JobDefinition {
         job_id: job_id.clone(),
+        organization_id: context.organization_id.clone(),
         kind: APPLY_KIND.into(),
         owner: owner_ref(state),
         payload: apply_payload(&stored, &apply_request)?,

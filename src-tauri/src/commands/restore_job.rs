@@ -126,6 +126,7 @@ pub(crate) async fn restore_from_native_file(
         .map_err(storage_error)?;
     let definition = JobDefinition {
         job_id: job.clone(),
+        organization_id: context.organization_id.clone(),
         kind: RESTORE_APPLY_KIND.into(),
         owner: OwnerRef::ClientSession {
             client_instance_id: context.client_instance_id.clone(),

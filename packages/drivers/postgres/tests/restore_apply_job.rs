@@ -129,6 +129,7 @@ async fn artifact_restore_commits_through_runtime_and_rejects_client_formats_bef
         let id = JobId::new(format!("restore-job-{index}"));
         let definition = JobDefinition {
             job_id: id.clone(),
+            organization_id: ctx.organization_id.clone(),
             kind: RESTORE_APPLY_KIND.into(),
             owner: OwnerRef::ClientSession {
                 client_instance_id: ctx.client_instance_id.clone(),
@@ -182,7 +183,7 @@ async fn artifact_restore_commits_through_runtime_and_rejects_client_formats_bef
             )
             .await
             .unwrap();
-        let details = repo.get_details(id.clone()).unwrap();
+        let details = repo.get_details(&ctx, id.clone()).unwrap();
         let accepted = repo.get(&ctx, id.clone()).await.unwrap();
         assert_eq!(accepted.definition.payload, plan.payload());
         if index == 0 {

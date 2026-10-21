@@ -39,6 +39,9 @@ impl SqliteJobRepository {
         let key_hash = idempotency_hash(ctx, idem.as_str());
         let now = self.clock.now();
         definition.created_at = now.clone();
+        // 组织归属只来自 `ctx`：调用方在 `JobDefinition` 里自报的组织值一律作数被覆盖
+        // （INV-01），落库行因此永远属于受理它的那个组织。
+        definition.organization_id = ctx.organization_id.clone();
         let owner_json = encode(&definition.owner)?;
         let payload_json = encode(&payload)?;
         let progress_json = encode(&JobProgress::default())?;

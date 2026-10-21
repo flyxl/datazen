@@ -91,6 +91,7 @@ pub(crate) async fn admit_durable(
     let requested_job_id = JobId::new(job_id.to_string());
     let definition = JobDefinition {
         job_id: requested_job_id.clone(),
+        organization_id: ctx.organization_id.clone(),
         kind: kind.to_string(),
         owner: OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new(LOCAL_CLIENT_INSTANCE),
@@ -310,6 +311,7 @@ pub(crate) async fn list_durable_jobs(state: &AppState) -> Result<Vec<JobView>, 
         .list(
             &ctx,
             datazen_platform_api::dto::job::JobFilter {
+                organization_id: ctx.organization_id.clone(),
                 states: Vec::new(),
                 owner: None,
                 after: None,
@@ -338,6 +340,7 @@ pub(crate) async fn find_apply_receipt_for_plan(
         .list(
             &ctx,
             datazen_platform_api::dto::job::JobFilter {
+                organization_id: ctx.organization_id.clone(),
                 states: Vec::new(),
                 owner: None,
                 after: None,
@@ -691,6 +694,7 @@ async fn drive(
     );
     let definition = JobDefinition {
         job_id: job_id.clone(),
+        organization_id: ctx.organization_id.clone(),
         kind: kind.to_string(),
         owner: OwnerRef::ClientSession {
             client_instance_id: ctx.client_instance_id.clone(),
