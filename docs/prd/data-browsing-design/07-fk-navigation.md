@@ -113,7 +113,7 @@
 > - **DTO 留 host 合法**：`ResolveFkTargetsRequest` / `FkTargetRef` / `FkTargetResolution` 放 `src-tauri/src/commands/fk_navigation.rs`（≈60 行，含 `#[tauri::command]` 壳）；
 > - **逻辑进共享层**：`resolve_foreign_key_targets_impl`、`find_fk` 及下面第 1~9 步全部判定落 `packages/feature-core/src/services/fk_navigation.rs`（≈180 行）。句柄经 `feature-core::services::ports::DatabaseToolHost`（`driver_for_connection` / `execute_target`）注入；取数用 `feature-core` 侧的 `QueryExecutor`（见 08 的 T0-5 与 N4：`query_executor` 拆成宿主门面 + 共享实现），**不需要**把 `AppState` 传进 `feature-core`；
 > - 命令壳只做「取值 → 必要校验（`dbSessionId` 存在、请求形状完整）→ 转发 → 映射 `CommandError`」，**判定一行都不留**。
-> - **迁移时必须一并上提的工具**：`embedded_schema_of` 今天是宿主 `src-tauri/src/commands/schema.rs:13` 的**私有 `fn`**（实测未 `pub`）。判定逻辑进 `feature-core` 后拿不到它，因此本册落地时要么把它提升为共享 helper（推荐，`feature-core` 侧一份实现 + 宿主 `use`），要么在 `feature-core` 里重写——**严禁两边各留一份**（这是 Step 3「`embedded_schema_of` 复制一份必然漂移」那条纪律的反面）。会话与句柄走 `DatabaseToolHost` / `SchemaContextSource`（`get_session` / `get_session_config` / `driver_for_session` 已在 `packages/feature-core/src/services/ports.rs`），不需要 `AppState`。
+> - **开工第一步要上提的工具（不是本批动作）**：`embedded_schema_of` 今天是宿主 `src-tauri/src/commands/schema.rs:13` 的**私有 `fn`**（实测未 `pub`）。判定逻辑进 `feature-core` 后拿不到它，所以 **07 开工的第一步**是把它提升为共享 helper —— 〔契约审计修订 2026-10-21〕裁定 4：**本批不做**这次提升（它要动宿主既有的私有函数，风险独立于本册，由 07 自己的提交承担）；**提升之后严禁两边各留一份实现**（`feature-core` 侧一份 + 宿主 `use`，这是 Step 3「`embedded_schema_of` 复制一份必然漂移」那条纪律的反面）。会话与句柄走 `DatabaseToolHost` / `SchemaContextSource`（`get_session` / `get_session_config` / `driver_for_session` 已在 `packages/feature-core/src/services/ports.rs`），不需要 `AppState`。
 
 ```rust
 // 宿主惯例（已核实）：`commands/schema.rs` 从 `crate::db` 引 `TableSchema` / `TableDataResult`，

@@ -34,8 +34,8 @@
 1. 在无主键表上点「+ 行」→ 可以编辑、可以提交；同表的既有行双击仍然不进入编辑，`UPDATE`/`DELETE` 仍被拒绝（`tableData.noPrimaryKey`）。
 2. 只在自增主键列留空（该列**不进** `changed_columns`）、其余列填值 → 提交后新行出现且主键由数据库分配；语句里**不出现**该自增列。
 3. 提交一批「2 插入 + 1 更新」→ 后端 `affected_rows == 3`、`statements` 顺序为 `insert, insert, update`；任一条失败时**整批回滚**，插入的行不残留。
-4. `insert_returning_clause` 返回 `None` 的驱动 → 提交后界面**不承诺**新行保持高亮，刷新当前页并给出降级提示。
-5. 该 `dbSessionId` 上已有用户手动事务时提交 → 后端**不** `begin_transaction`/`commit`（`MockDriver::open_transaction_count()` 不增长），插入与更新并入用户事务。
+4. **本批不做 RETURNING 回填**〔契约审计修订 2026-10-21〕裁定 7：`insert_returning_clause` 只是**预留缝隙**（已实装默认 `None` + `ReuseDriver` / `MockDriver` 转发，**宿主尚未调用**），因此所有驱动在本批的行为一致——提交成功后**刷新当前页**，再按「`row_identity` 非空 → 用它定位；否则尝试用最大主键定位」的顺序找新行；**定位不到就明确降级为「不定位」**并附 `grid.insert.returningUnavailable` warning，界面**不得**声称能精确定位新行、也不承诺高亮。
+5. 该 `dbSessionId` 上已有用户手动事务时提交（即调用方传入 `manual_handle: Some(handle)`）→ 后端**不** `begin_transaction`/`commit`（`MockDriver::open_transaction_count()` 不增长），插入与更新并入那个手动事务。〔契约审计修订 2026-10-21〕裁定 1：旧稿写「已有用户事务」，用词对应一张已不存在的会话事务表；真实入口是 `commit_pending_changes` 的可选 `manual_handle` 形参。
 6. 回归证明：`inserts` 非空、`updates`/`deletes` 均为空时，`execute_row_change_plan_impl` **必须真的执行语句**（`MockDriver::execute_calls() == 1`），不得提前返回成功。
 
 ---
@@ -51,13 +51,13 @@
 > 下文第 1–14 条是**合并前**的事实，其中 2 / 3 / 11 / 12 / 14 已被主干推翻。今天的真实链路：
 >
 > 1. **`data.rs` 只生产计划**：`build_row_change_plan`（`commands/data.rs`）调 `build_update_statement` / `build_delete_statement`，产出 `RowChangePlan`；该结构已**新增 `config_revision: Option<Counter>`**，作为提交时的配置版本门。`validate_legacy_pk_columns` **已随遗留入口删除**（见第 3 条）。
-> 2. **执行归 `src-tauri/src/commands/data_session.rs::execute_plan`**，不在 `data.rs`：它先 `if writes.is_empty()` 早退，再用 `bound_statement_for_plan` 把计划编译成 **`BoundSqlStatement`**（参数化，`driver.supports_bound_writes` / `parameter_placeholder` / `max_bound_parameters`），然后**要么复用调用方给的 `manual_handle`，要么自己 `runtime.open_session` 开一个短命会话**并在其上 `platform.beginTransaction{defersCommit:true}` / `commitTransaction`。**没有 `state.session_transactions` 这张表了**，也没有 `driver.execute(handle, "BEGIN")` 的裸 SQL 退化路径。
+> 2. **执行归 `packages/feature-core/src/data_browsing/write_exec.rs::execute_plan`**〔契约审计修订 2026-10-21〕原 `src-tauri/src/commands/data_session.rs` 已整文件删除、逻辑等价迁入 feature-core；`src-tauri` 只做 command 适配：它先 `if writes.is_empty()` 早退，再用 `bound_statement_for_plan` 把计划编译成 **`BoundSqlStatement`**（参数化，`driver.supports_bound_writes` / `parameter_placeholder` / `max_bound_parameters`），然后**要么复用调用方给的 `manual_handle`，要么自己 `runtime.open_session` 开一个短命会话**并在其上 `platform.beginTransaction{defersCommit:true}` / `commitTransaction`。**`AppState` 上那张会话事务表已不存在**（没有可查询的「会话是否已开事务」状态），也没有 `driver.execute(handle, "BEGIN")` 的裸 SQL 退化路径。
 > 3. **遗留写入口仍然注册但恒失败**：`commit_row_updates` / `commit_row_deletes` 两个 Tauri 命令还在 `generate_handler!` 里，但实现直接返回 `"Legacy row writes are disabled; preview and commit a target-bound ChangeSet"`。**它们不再是可用的写路径**，04 的任何设计都不得挂回它们；C-1「删除遗留入口」的动作因此降级为「删掉这两个恒拒绝的桩」。
 > 4. **行身份护栏在 `execute_plan` 里**：每条语句执行后要求 `affected == 1`，否则 `Row identity affected {affected} rows; refusing ambiguous write`。第 4 条描述的位置变了，语义不变。
 > 5. **`build_delete_statement` 目前没有空主键守卫**（`build_row_change_plan` 侧也没有 `validate_legacy_pk_columns` 兜底）——这是本册必须补的第一件事，且要补在 `commands/data.rs` 的计划构建处，**不是**在 `execute_plan` 里补。
 > 6. 测试现在挂在 `#[path = "data/tests.rs"] mod tests;`，现有 19 例，含 `commit_row_updates_does_not_join_open_session_transaction`——它证明的正是第 3 条：遗留入口**不再**并入用户会话事务。
 >
-> **对本册各步的净影响**：Step 1「目录化 + 迁移 `validate_legacy_pk_columns`」→ 改为「在现有子模块布局里新增 `row_change_plan.rs` / `row_change_insert.rs`，并给 `build_delete_statement` 补守卫」；Step 4「扩展空计划早退」→ 改 `data_session::execute_plan` 的 `if writes.is_empty()`；Step 5「事务归属」→ 改为「随 `execute_plan` 的 `defersCommit` 语义，INSERT 与 UPDATE/DELETE 必须落在**同一次** `beginTransaction`/`commitTransaction` 内」；Step 6 的「不自己 begin/commit」结论仍然成立，但依据换成 `execute_plan` 的会话所有权。
+> **对本册各步的净影响**：Step 1「目录化 + 迁移 `validate_legacy_pk_columns`」→ 改为「在现有子模块布局里新增 `row_change_plan.rs` / `row_change_insert.rs`，并给 `build_delete_statement` 补守卫」；Step 4「扩展空计划早退」→ 改 `feature_core::data_browsing::write_exec::execute_plan` 的 `if writes.is_empty()`；Step 5「事务归属」→ 改为「随 `execute_plan` 的 `defersCommit` 语义，INSERT 与 UPDATE/DELETE 必须落在**同一次** `beginTransaction`/`commitTransaction` 内」；Step 6 的「不自己 begin/commit」结论仍然成立，但依据换成 `execute_plan` 的会话所有权。
 
 **DTO（全部已存在）**：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContext`、`PendingRowChange`、`PlannedStatement`、`ChangeWarning`、`RowChangePlan`、`CommitPendingChangesRequest`、`RowCommitStatementResult`、`CommitPendingChangesResponse`。
 
@@ -65,7 +65,11 @@
 
 1. `RowChangePlan` 的字段只有 `plan_id` / `fingerprint` / `table` / `updates` / `deletes` / `warnings`，**没有 `inserts`**。
 2. **〔合并后校正：本条已失效，见上方校正块〕** 是 `if plan.updates.is_empty() && plan.deletes.is_empty()` → 直接 `Ok(... affected_rows: 0 ...)`，**不开启事务、不执行任何语句**。加 `inserts` 后这里必须同步扩展（§5 Step 4）。
-3. **〔合并后校正：本条已失效，见上方校正块〕** ：先看 `state.session_transactions.lock().await.contains_key(db_session_id)` 得到 `session_open`；`session_open == false` 时尝试 `driver.begin_transaction(handle)`，返回 `Err(DriverError::TransactionError(_))` 时退化为 `driver.execute(handle, "BEGIN")`；成功且非 `session_open` 时 `driver.commit(tx)` 或 `"COMMIT"`，失败时回滚。`session_open == true` 时**两条返回路径都不提交、不回滚**，直接返回结果/错误。
+3. **〔合并后校正：本条已失效，见上方校正块；〔契约审计修订 2026-10-21〕裁定 1 已改成实测形态〕** 事务归属**只有两条路径，入口是一个可选的手动句柄**，不存在会话事务表：
+   - **路径 A（有手动句柄）**：`commit_pending_changes` 收到 `manual_handle: Option<SessionHandle> = Some(h)` → 校验目标（`database` / `schema` / `connection` 与计划一致）且该句柄处于 `TransactionState::Active` → 把语句**并入**该事务（`platform.beginTransaction` 的 `defersCommit: true` 语义），**不自行 begin、不自行 commit**，错误上抛给用户决定回滚；
+   - **路径 B（无手动句柄）**：`manual_handle == None` → 自行开一次**会话级**事务（`runtime.open_session` + `platform.beginTransaction { defersCommit: true }`），全部语句成功后 `commitTransaction`，任一条失败则回滚后返回错误；
+   - 两条路径共用同一段 `async` 块，因此 INSERT 与 UPDATE/DELETE 天然落在**同一次** `beginTransaction` / `commitTransaction` 内；
+   - **没有** `driver.begin_transaction` / 裸 `"BEGIN"` 的退化路径，也**没有** `AppState` 上的会话事务表（`src-tauri/src/platform/handles.rs` 里那条「生产代码不得出现会话事务表」的守卫用例就在钉这件事）；调用方要参与事务只能传 `manual_handle`。
 4. 该函数对 `updates` 与 `deletes` 各要求 `affected == 1`，否则 `CommandError::Validation`，文案为 `UPDATE for one row identity affected {affected} rows; refusing ambiguous write`（DELETE 同构）。语句收集容量是 `plan.updates.len() + plan.deletes.len()`。
 5. `build_row_change_plan(driver, table, changes)` 只遍历 `canonicalize_changes(changes)` 的结果；对每条变更按 `delete_marked` 只调用 `driver.build_delete_sql` 或 `driver.build_update_sql`；行内以 `current_values` + `changed_columns` 组装 `set_columns: Vec<(&str, Option<Value>)>`；`parameter_summary` 由 `SET <列>=<值摘要>` 与 `PK <列>=<值摘要>` 拼接；随后追加 `delete-rows` 之类的 `ChangeWarning`。
 6. `changes_fingerprint(table, changes: &[PendingRowChange])` 用**函数内局部结构体 `FingerprintPayload { table, changes }`** 做 `serde_json::to_vec` 再 `Sha256`。指纹**只覆盖该 payload**，正文 SQL 与 `parameter_summary` 不参与。
@@ -439,9 +443,9 @@ export interface TableState {
 | `drafting` | ① 点工具条「+ 行」；② `⌘/Ctrl+I`；③ 双击**最后一行下方空白区**；④ `⌘/Ctrl+D` 复制当前草稿行；⑤ 03 的 `Paste rows` 无区域路径回填 | 新草稿行追加到 `draftInsertOrder` 末尾并滚动到可见；每个单元格的空状态显示 `DEFAULT` 占位；编辑草稿格 → `values[col] = v`；把草稿格清空 → **删掉** `values` 里的这个键（即「不写」= 库默认，**不是**写 `NULL`）；`Set NULL` 显式动作 → `values[col] = null`；`⌘/Ctrl+D` → 复制本行 `values` 成一条新草稿；`Delete`（焦点在草稿行且无格在编辑）→ 移除该草稿；待提交计数 = `pendingChanges.size + draftInserts.size` | 点「预览/提交」→ `previewing`；在任何草稿格里输入但未提交 → 仍 `drafting`；`Esc` 且**所有**草稿行 `values` 为空 → 逐条移除空草稿并回 `idle`（有内容的草稿行**不**被 `Esc` 丢掉，必须显式删除） |
 | `previewing` | 点「预览」或「提交」触发 `previewPendingChanges` | 预览对话框同时列出 `inserts` / `updates` / `deletes` 三段与总影响行数；确认文案形如「提交 2 插入、1 更新、0 删除」；指纹可见 | 取消 → `drafting`（草稿与既有改动都保留）；确认 → `committing`；预览报错 → `drafting` 并把 `classifyGridError` 结果落到 `ts.error` |
 | `committing` | 预览计划指纹校验通过后调 `commitPendingChanges` | 两个集合都冻结（输入被忽略或在途改动触发签名不一致保护）；按钮 `pendingBusy` 置灰 | 成功 → 清空 `pendingChanges` 与 `draftInserts`、`loadTableData` 刷新当前页 → `highlighting` → `idle`；失败 → 保留两套暂存、`ts.error` 显示分类后文案 → `drafting` |
-| `highlighting` | 提交返回且能从回填结果或用户写入值得到新行身份 | 命中行加 1.5s 高亮（复用既有 `highlightedRow` 机制）；`highlightedNewRowKey` 超时清 `null` | 超时 → `idle`；用户翻页/改筛选/改排序 → 立即清空并 → `idle` |
+| `highlighting` | 提交返回且**能定位到新行**（`row_identity` 非空，或「最大主键」候补命中；见裁定 7） | 命中行加 1.5s 高亮（复用既有 `highlightedRow` 机制）；`highlightedNewRowKey` 超时清 `null` | 超时 → `idle`；用户翻页/改筛选/改排序 → 立即清空并 → `idle` |
 
-**降级分支（`insert_returning_clause` 为 `None` 或表无主键）**：提交成功后**不进入 `highlighting`**，直接刷新当前页回 `idle`，并在提交结果提示里显示「新行主键无法自动定位，已为你刷新当前页」（`tableData.insertReturningUnavailable`）。**唯一例外**：用户把该行的**全部主键列**都显式写成了值 → 身份已知 → 仍可高亮。
+**降级分支（定位不到新行：无主键 / 复合主键 / 类型不可比较 / 新行不在当前页 / 驱动未提供回填）**：〔契约审计修订 2026-10-21〕裁定 7——提交成功后**不进入 `highlighting`**，直接刷新当前页回 `idle`，并在提交结果提示里显示「新行主键无法自动定位，已为你刷新当前页」（`grid.insert.returningUnavailable` → 文案 key 见 §8）。**这是本批的常规路径而非异常**：宿主没有调用 `insert_returning_clause`，所以绝大多数驱动都会走到这里，文案必须中性（不是错误），且**不得**暗示新行已高亮。
 
 ### 4.2 键盘、鼠标、焦点、IME
 
@@ -535,18 +539,25 @@ export interface TableState {
 - **具体做法（顺序即语义）**：
   1. `let mut statements = Vec::with_capacity(plan.inserts.len() + plan.updates.len() + plan.deletes.len());`
   2. 在**既有的** `let result: Result<…> = async { … }.await;` 块内部，**最前面**加 `for planned in &plan.inserts { … }`，然后才是既有的 `updates` 循环、`deletes` 循环。顺序固定 **inserts → updates → deletes**（PRD 明文：先建父行再改子行，避免同批内瞬时外键违约）。
-  3. `driver.begin_transaction` / 裸 `"BEGIN"`、`driver.commit(tx)` / `"COMMIT"`、回滚路径**一行都不改**：`session_open == true` 时照旧不自行 begin/commit（插入并入用户事务），否则照旧 begin/commit/rollback。
-  4. 插入语句的**执行通道**按 Step 6 的判定选 `driver.execute`（无回填）或 `driver.query`（有回填）；两者都在**同一个** `async` 块里，因此共享同一事务与同一 `handle`。
-- **为什么**：函数有**两条**事务归属路径（已有用户事务 → 不自己 begin/commit；否则自行 begin/commit/rollback，驱动不支持 trait 事务时退化为裸 `BEGIN`）。插入如果写在 `async` 块之外（例如在 `begin_transaction` 之前跑，或在 `commit` 之后补跑），就会落在**另一个**事务里，破坏「一次提交要么全成、要么全不成」；而且落在 commit 之后的插入**无法回滚**，是真正的脏数据。
+  3. 事务的 begin/commit/rollback **一行都不改**：`manual_handle == Some(h)` 时照旧不自行 begin/commit（插入并入该手动事务），`None` 时照旧自行开一次会话级事务并 commit/rollback。〔契约审计修订 2026-10-21〕裁定 1：旧稿依赖的那个「会话是否已开事务」的布尔变量、以及 `driver.begin_transaction` / 裸 `BEGIN` 的退化路径，都不存在。
+  4. 插入语句的**执行通道**本批**恒为** `driver.execute`（无回填；〔契约审计修订 2026-10-21〕裁定 7：宿主不调用 `insert_returning_clause`，所以 `driver.query` 通道本批不启用）。它与 UPDATE/DELETE 在**同一个** `async` 块里，因此共享同一事务与同一 `handle`。
+- **为什么**：函数有**两条**事务归属路径（`manual_handle: Some(h)` → 并入该句柄的手动事务、不自己 begin/commit；`None` → 自行开会话级事务，结束时 commit/rollback）。插入如果写在 `async` 块之外（例如在 `begin_transaction` 之前跑，或在 `commit` 之后补跑），就会落在**另一个**事务里，破坏「一次提交要么全成、要么全不成」；而且落在 commit 之后的插入**无法回滚**，是真正的脏数据。
 - **怎么自测**：
   - `insert_and_update_share_one_transaction_and_one_commit`：`options.execute_rows_affected = 1`，一批含 1 插入 + 1 更新 → `mock.execute_calls() == 2`（真实执行两次，而不是 1 次）、`mock.commit_calls() == 1`、`open_transaction_count()` 归零、`affected_rows == 2`。
-  - `insert_joins_open_user_transaction_instead_of_committing`：先在 `state.session_transactions` 上登记该 `db_session_id`（沿用既有 `commit_row_updates_joins_open_session_transaction` 的手法）→ 断言提交后 `mock.commit_calls()` **不增长**、`open_transaction_count()` 仍为 1，但插入语句**已执行**（`execute_calls()` 增长）。
+  - `insert_joins_manual_handle_transaction_instead_of_committing`：构造一个 `TransactionState::Active` 的 `SessionHandle`（测试里用 `TestAppState` 的手动事务夹具开一个），把它作为 `manual_handle: Some(h)` 传入 → 断言提交后 `mock.commit_calls()` **不增长**、`open_transaction_count()` 仍为 1，但插入语句**已执行**（`execute_calls()` 增长）。〔契约审计修订 2026-10-21〕裁定 1：搭法从「往宿主那张会话事务表里塞一条登记」改为「传一个手动句柄」——那张表已不存在，测试里也不得引用它。
   - 事务原子性用例（§9 `insert_rolls_back_whole_batch_on_failure`）：让更新语句的 `affected != 1`（把 `execute_rows_affected` 设成 2 或在第二次调用上制造错误）→ 断言整批 `Err`、且**回滚被调用**（`rollback_calls` 增长，若 mock 未暴露该访问器则断言 `open_transaction_count()` 归零 + 无 `commit_calls` 增长）。
-  - 用户事务路径失败时**不**回滚用户事务（保持既有语义）：断言 `rollback_calls` 不增长。
+  - 手动句柄路径失败时**不**回滚用户事务（保持既有语义）：断言 `rollback_calls` 不增长。
 
 ### Step 6 · 主键回填与降级（两条路径的用户可见差异）
 
-- **改哪个文件 / 加什么符号**：`packages/feature-core/src/data_browsing/write_exec.rs` 新增私有函数 `insert_row_identity(driver, handle, sql, pk_columns) -> Result<Option<RowIdentity>, CommandError>`（或等价的内联逻辑）；`packages/feature-core/src/data_browsing/change_set.rs::build_row_change_plan` 在生成插入 `sql_template` 时调用 `driver.insert_returning_clause(&pk_column_names)`。（〔契约审计修订 2026-10-21〕T0-2/T0-3：路径改落 feature-core。）
+> **〔契约审计修订 2026-10-21〕裁定 7：本批不实现回填，本节降级为「预留缝隙的设计说明 + 本批的定位策略」**
+>
+> - **代码现状**：`insert_returning_clause` 已有契约默认实现（`None`）与 `ReuseDriver` / `MockDriver` 的转发，但**宿主一行都没调用**，所以今天插入结果的 `row_identity` **恒为空 map**，也没有任何 RETURNING / `OUTPUT INSERTED` 回填。
+> - **本批的定位策略（唯一要实现的）**：插入成功后 ① 若结果里的 `row_identity` 非空 → 用它定位并高亮；② 否则尝试「按最大主键定位」——**仅当**表有单列主键且该列类型可比较时，刷新后取当前页里主键最大的那一行作为候补；③ 仍定位不到（无主键 / 复合主键 / 类型不可比较 / 新行不在当前页）→ **不定位**，附 `grid.insert.returningUnavailable` warning，只刷新不高亮。**任何一步都不许猜主键值**（例如「当前最大主键 + 1」）。
+> - **下一节那张条件表保留为「回填能力落地时的设计」**，不是本批验收项：表里 `Some(clause)` / `Some("")` 两行属于后续改造；本批实际走的只有「`None` + 用户写满主键」与「`None` + 没写满」这两条。
+> - **因此 §9 里 `insert_uses_query_path_when_returning_clause_is_present` / `insert_identity_falls_back_to_written_primary_key_when_returning_is_none` / `insert_returning_clause_*` 这些驱动级用例，本批只保留在 `driver-api` 的默认实现与转发层面**（证明缝隙存在、不影响任何驱动），**宿主侧的回填用例本批不写**。
+
+- **改哪个文件 / 加什么符号**〔裁定 7：本批只实现「定位」，`insert_row_identity` 回填函数随回填能力落地再建〕：`packages/feature-core/src/data_browsing/write_exec.rs` 新增私有函数 `insert_row_identity(driver, handle, sql, pk_columns) -> Result<Option<RowIdentity>, CommandError>`（或等价的内联逻辑）；`packages/feature-core/src/data_browsing/change_set.rs::build_row_change_plan` 在生成插入 `sql_template` 时调用 `driver.insert_returning_clause(&pk_column_names)`。（〔契约审计修订 2026-10-21〕T0-2/T0-3：路径改落 feature-core。）
 - **符号与规则**：
 
 | 条件 | 宿主行为 | 用户可见差异 |
@@ -554,7 +565,7 @@ export interface TableState {
 | 表有主键（`CachedColumns::primary_keys` 非空，或由 `ColumnSchema::is_primary_key` 回退得到）且 `insert_returning_clause(&pk_names) == Some(clause)` 且 `clause` 非空 | `sql = format!("{} {}", sql_template, clause)`；用 `driver.query(handle, &sql)` 取 `QueryResult`，按 `QueryResult.columns[].name` 把第一行的主键列值映射成 `RowIdentity`；非 NULL 且齐全才接受，否则 `CommandError::Validation` 前缀 `grid.insert.returningUnavailable: …`；`RowCommitStatementResult.row_identity` = 回填身份 | 提交后**高亮新行 1.5s**（PRD 第 5 条） |
 | `insert_returning_clause(...) == Some("")` | **不追加任何字符**；`driver.query(handle, &sql_template)` 读返回行（SQL Server 的 `OUTPUT INSERTED.*` 已由驱动的 `build_insert_statement` 内联） | 同上一行 |
 | `insert_returning_clause(...) == None`，**但**该草稿把全部主键列都显式写了值 | 用用户写入的 PK 值构造 `row_identity`（不再向数据库索取） | 仍高亮新行；**不**提示降级 |
-| `insert_returning_clause(...) == None`，且草稿没写满主键 | 不猜测；`row_identity` 留空 map；附 `ChangeWarning { code: "insert-remaining-unavailable", severity: "info" }` | 提交后**刷新当前页**，提示「新行主键无法自动定位，已为你刷新当前页」（`tableData.insertReturningUnavailable`）；**不承诺**高亮 |
+| `insert_returning_clause(...) == None`，且草稿没写满主键（**本批的常规路径**，见上方裁定 7） | 不猜测主键值；`row_identity` 留空 map；刷新当前页后尝试「最大主键候补」（单列可比较主键才试）→ 命中则高亮，未命中则附 `ChangeWarning { code: "insert-remaining-unavailable", severity: "info" }` | 命中：高亮新行；未命中：**不定位 + 刷新**，提示「新行主键无法自动定位，已为你刷新当前页」（`tableData.insertReturningUnavailable`）；**不承诺**高亮 |
 | 表**无主键** | 不调用回填（`pk_names` 为空）；同「无法回填」路径 | 插入成功、刷新当前页、不高亮；`+ 行` 可用而既有行编辑/删除仍禁用 |
 
 - **为什么**：契约 §5.1 明文「返回 `Some` 时宿主追加子句并读取返回行以回填主键；返回 `None` 时宿主**不得**猜测主键，而是走『提交后重新拉取当前页』的降级路径，并在 UI 上不承诺『新行会保持高亮』」。回填通道必须用 `query` 而非 `execute`（`execute` 只回 `u64`），且**必须**在同一事务块内。
@@ -602,7 +613,7 @@ export interface TableState {
 | 文件 | 新增/修改 | 职责 | 预估新增/变动 | 触及 800 行上限？ |
 | --- | --- | --- | --- | --- |
 | `packages/feature-core/src/data_browsing/change_set.rs` | 新增 | DTO（`PendingRowChange.insert_marked`、`RowChangePlan.inserts` 等）、`canonicalize_changes`、`canonicalize_insert`、指纹、计划构建、`plan_changes`、本册 V-1…V-6 校验 | ≈ 620（迁移 ≈ 440 + 插入 ≈ 180） | 否 |
-| `packages/feature-core/src/data_browsing/write_exec.rs` | 新增 | `execute_row_change_plan_impl`、`commit_pending_changes_impl`、`insert_row_identity` 回填判定 | ≈ 350（迁移 ≈ 240 + 插入/回填 ≈ 110） | 否 |
+| `packages/feature-core/src/data_browsing/write_exec.rs` | 新增 | `execute_row_change_plan_impl`、`commit_pending_changes_impl`、**新行定位**（`row_identity` 优先 → 最大主键候补）；回填判定 `insert_row_identity` 属**后续批次**（裁定 7） | ≈ 320（迁移 ≈ 240 + 插入 ≈ 60 + 定位 ≈ 20；原估 350 含未实现回填的 ≈ 30） | 否 |
 | `packages/feature-core/src/data_browsing/mod.rs` | 新增 | `pub mod change_set; pub mod write_exec;` + re-export | ≈ 10 | 否 |
 | `src-tauri/src/commands/data/mod.rs` | 改造 | **只留 `#[tauri::command]` 适配壳**（取值 → 必要校验 → 转发 → 映射 `CommandError`）；遗留入口 `commit_row_updates*` / `commit_row_deletes*` **仍注册且恒拒绝**（本册不改其注册状态） | −≈ 560（逻辑迁出；〔合并后校正〕现 **640** 行 → ≈ 80 + 既有子模块） | 否（本册不再新增子模块） |
 | `src-tauri/src/commands/data/tests.rs` | 修改 | 只留**命令壳级**用例（IPC 形状与错误映射）；计划/执行用例随逻辑迁到 `feature-core` 的 `#[cfg(test)] mod tests` | −≈ 460 | 否 |
@@ -644,12 +655,12 @@ export interface TableState {
 | 5 | **无主键表** | **允许插入**（结论）。理由：INSERT 不需要行身份，`RowChangePlan.inserts` 的语句不含 `WHERE`，`affected` 校验也不依赖身份；代价是无法回填、不高亮。同表的既有行编辑/删除仍禁用（`tableData.noPrimaryKey`），UI 必须明确区分「+ 行可用、双击不可编辑」 | PRD DB-04 第 6 条 |
 | 6 | **NOT NULL 且无默认值的列被留空** | 预览期拒绝：`grid.insert.noWritableColumn: column "email" requires a value` | V-3 |
 | 7 | **唯一约束冲突** | 由数据库抛错 → 驱动 `Err` → `cmd_err("commit_pending_changes")` → 整批回滚；错误文本含列名（既有脱敏管线）；**不得**被 `affected` 校验误吞 | `CommandError` 序列化为脱敏字符串 |
-| 8 | **批量部分失败** | 「一次提交要么全成、要么全不成」：`session_open == false` 时全部成功后 `COMMIT`，任一条失败 `ROLLBACK` 后返回错误；`session_open == true` 时不回滚用户事务，只把错误上抛 | `execute_row_change_plan_impl` |
-| 9 | **用户事务已开启** | 不 `begin_transaction`、不 `commit`；插入与其他改动并入用户事务，由用户决定提交/回滚；`statements` 照常返回 | 陷阱 2 / Step 5 |
+| 8 | **批量部分失败** | 「一次提交要么全成、要么全不成」：`manual_handle == None` 时全部成功后 `COMMIT`，任一条失败 `ROLLBACK` 后返回错误；`manual_handle == Some(h)` 时不回滚那个手动事务，只把错误上抛 | `execute_row_change_plan_impl` |
+| 9 | **调用方传入手动句柄（用户事务已开启）** | 校验目标库与 `TransactionState::Active` 通过 → 不自行 `beginTransaction`、不 `commitTransaction`；插入与其他改动并入该事务，由用户决定提交/回滚；`statements` 照常返回 | 陷阱 2 / Step 5 |
 | 10 | **只读连接** | 预览前就被拒（`Connection is read-only; row changes are not allowed`，**无 `grid.` 前缀**）；前端不渲染「+ 行」 | `commit_pending_changes_impl` |
 | 11 | **表结构未知（列清单为空）** | 不做 V-2/V-3，附 `insert-schema-unavailable` warning，把约束判定交给数据库；**不得**因此拒绝插入，也**不得**因此把「不写」的列补成 `NULL` | V-4 |
 | 12 | **`affected == 0`（驱动不上报计数，如 ClickHouse）** | **不豁免**：INSERT 与其他语句一样，`affected != 1` 即整批拒绝（文案 `INSERT affected {n} rows; refusing ambiguous write`）。〔契约审计修订 2026-10-21〕R-C：`0` 行是否可按「幂等成功」放行，作为**独立分支**讨论（需先有可判定的幂等判据：明确的唯一键 + 驱动确实上报计数），不得在本册静默放宽护栏 | `execute_row_change_plan_impl`、`grid.commit.affectedMismatch` |
-| 13 | **回填返回空行 / 主键为 NULL** | `grid.insert.returningUnavailable: driver returned no usable primary-key row`；整批回滚 | Step 6 |
+| 13 | **定位不到新行**（含回填返回空行 / 主键为 NULL 的将来形态） | **不回滚**：整批已提交成功，只是无法定位新行 → 刷新当前页 + `grid.insert.returningUnavailable` warning（`severity: "info"`，中性文案）〔契约审计修订 2026-10-21〕裁定 7：旧稿写「整批回滚」，与「插入已成功」矛盾 | Step 6 |
 | 14 | **草稿数量很大（如 200 条）** | 预览对话框仍一次展示（虚拟滚动），提交仍是 200 条单行语句；超过前端阈值时提示「将执行 200 条语句」但**不**静默截断（拒绝静默丢失） | `tableData.confirmCommitWithInserts` |
 | 15 | **多字节字符 / 超长值 / 引号与反斜杠** | **值不进 SQL 文本**：`build_insert_statement` 只产出占位符 + `BoundSqlStatement.parameters`，值原样绑定，因此引号/反斜杠/换行既不需要转义也不会被改写（`format_sql_literal` 仍在基线里服务预览类场景，本册写路径不使用它） | `BoundSqlStatement` |
 | 16 | **草稿行在预览后被删除/修改** | `pendingWorkSignature` 不一致 → 预览计划作废、要求重新预览（现有纪律，不得降级为「按新数据重算」） | R-3 |
@@ -695,7 +706,7 @@ export interface TableState {
 | `grid.insert.noWritableColumn: ` | V-3 | `tableData.insertNoWritableColumn` |
 | `grid.insert.unknownColumn: ` | V-2 | `tableData.insertUnknownColumn` |
 | ~~`grid.insert.duplicateDraft: `~~ | — | 〔契约审计修订 2026-10-21〕T2-4：**删除**（同 `tableData.insertDuplicateDraft` 的理由） |
-| `grid.insert.returningUnavailable: ` | Step 6 回填失败/空行 | `tableData.insertReturningUnavailable` |
+| `grid.insert.returningUnavailable: ` | Step 6「定位不到新行」（**本批常规路径**，非异常；裁定 7） | `tableData.insertReturningUnavailable` |
 | `grid.commit.affectedMismatch: ` | `affected != 1`，**三类语句统一、INSERT 不豁免**（R-C） | 既有 `tableData.commitFailed` + 明细 |
 | `grid.commit.stalePlan: ` | 指纹/重建不一致 | 提示重新预览 |
 | `grid.commit.conflictingIntents: ` | 同一行既删除又有列写入 | 指出冲突行 |
@@ -743,12 +754,13 @@ export function classifyGridError(message: string): GridErrorCode | 'unknown';
 | `fingerprint_covers_insert_values_and_stays_stable_without_inserts` | 全部 `insert_marked == false` 时指纹与旧实现**逐字节相同**（保护 `commit_reuses_plan_fingerprint_and_returns_plan_id`）；改一个写入列值 → 指纹变化；对调两条内容不同的草稿 → 指纹变化 |
 | `insert_statement_values_never_reach_the_sql_text` | 写入值含 `'`、`\`、`\n` → `sql_template` 只有占位符，值出现在 `parameters`；`sql_template` 内不含该值的任何字面量 |
 | `insert_and_update_share_one_transaction_and_one_commit` | **陷阱 2**：`execute_calls() == 2`（真执行两次）、`commit_calls() == 1`、`open_transaction_count() == 0`、`affected_rows == 2` |
-| `insert_joins_open_user_transaction_instead_of_committing` | 已开启用户事务时 `commit_calls()` 不增长、`open_transaction_count()` 不归零、但插入已执行（**注意**：断言方式必须按当前 runtime 的事务归属模型写，不得引用已不存在的 `AppState` 会话表，见 §11 Q-8） |
+| `insert_joins_open_user_transaction_instead_of_committing` | 已开启用户事务时 `commit_calls()` 不增长、`open_transaction_count()` 不归零、但插入已执行（**注意**：搭法是传入 `manual_handle: Some(h)`（`TransactionState::Active`），断言不得引用已不存在的 `AppState` 会话表，见 §11 Q-8 的裁定 1 已改口径） |
 | `insert_rolls_back_whole_batch_on_failure` | **事务原子性**：让某条语句失败（`execute_rows_affected = 2` 触发 `grid.commit.affectedMismatch`，或 `MockDriverOptions.execute_error`）→ 整批 `Err`、`commit_calls()` 不增长、`open_transaction_count()` 归零。**注意**：`MockDriver` 只把 `rollback_calls` 记在内部、无公开访问器，因此要么补一个 `rollback_calls()`（测试基建纯新增），要么用「无 commit + 事务计数归零」间接断言；不要为断言在**生产路径**加钩子 |
 | `insert_joins_user_transaction_and_does_not_roll_it_back_on_failure` | 用户事务内失败 → 不回滚用户事务（`open_transaction_count()` 保持）且错误上抛 |
-| `insert_uses_query_path_when_returning_clause_is_present` | `insert_returning_clause` 非 `None` 时走 `driver.query`（`mock.query_calls()` 增长、`execute_calls()` 不增长），回填后的 `row_identity` 等于 `MockDriverOptions.query_rows` 给出的主键值 |
-| `insert_identity_falls_back_to_written_primary_key_when_returning_is_none` | 驱动返回 `None` 但草稿写满全部主键列 → `row_identity` 非空且等于用户写入值，**不**出现降级 warning |
-| `insert_without_returning_reports_degradation_warning` | 驱动返回 `None` 且未写主键 → warning `insert-returning-unavailable`、`row_identity` 为空 map |
+| ~~`insert_uses_query_path_when_returning_clause_is_present`~~〔裁定 7：**本批不写**，随回填能力落地再启用〕 | `insert_returning_clause` 非 `None` 时走 `driver.query`（`mock.query_calls()` 增长、`execute_calls()` 不增长），回填后的 `row_identity` 等于 `MockDriverOptions.query_rows` 给出的主键值 |
+| `insert_identity_falls_back_to_written_primary_key_when_returning_is_none` | **本批唯一启用的回填相关用例**（不依赖 `insert_returning_clause`）：驱动返回 `None`、草稿写满全部主键列 → `row_identity` 非空且等于用户写入值，**不**出现降级 warning |
+| `insert_without_returning_reports_degradation_warning` | **本批核心用例**：驱动返回 `None` 且未写满主键 → `row_identity` 为空 map + warning `insert-returning-unavailable`；并断言**没有**任何 `driver.query` 调用（证明宿主真的没走回填）、`driver.execute` 恰好 1 次 |
+| `insert_locate_new_row_falls_back_to_max_primary_key_when_row_identity_empty` | **本批定位策略**：`row_identity` 为空、表为单列可比较主键 → 刷新后取当前页主键最大行为候补并高亮；表为复合主键 → 不取候补、直接走降级 warning |
 | `insert_affected_zero_is_rejected_like_every_other_statement` | **R-C 回归**：`execute_rows_affected = 0` → `Err` + `grid.commit.affectedMismatch`（文案含 `INSERT affected 0 rows`）；`= 2` → 同样 `Err`。**不存在**「0 行容忍」分支 |
 
 ### 9.2 Rust 单元（`driver-api`：`packages/driver-api/src/sql_builder.rs`、`traits.rs`、`reuse.rs` 的 `#[cfg(test)]`）
@@ -825,11 +837,11 @@ export function classifyGridError(message: string): GridErrorCode | 'unknown';
 
 | # | 问题 | 建议选项 |
 | --- | --- | --- |
-| Q-1 | **回填子句的位置**：契约 §5.1 只冻结了 `insert_returning_clause()`，宿主「追加」的语义对 T-SQL 不成立（`OUTPUT` 必须在列清单与 `VALUES` 之间）。是否新增位置枚举/新 trait 方法？ | 建议**不新增**：维持「`Some("")` = 已内联、宿主用查询路径读」的约定，在 `traits.rs` 文档注释写清并由驱动测试锁死（零新增方法、不破冻结签名）。备选：新增 `insert_returning_placement()`（带默认实现，不破兼容）——需要人工裁定是否值得为此扩契约 |
+| Q-1 | **回填子句的位置**：契约 §5.1 只冻结了 `insert_returning_clause()`，宿主「追加」的语义对 T-SQL 不成立（`OUTPUT` 必须在列清单与 `VALUES` 之间）。是否新增位置枚举/新 trait 方法？ | 建议**不新增**：维持「`Some("")` = 已内联、宿主用查询路径读」的约定，在 `traits.rs` 文档注释写清并由驱动测试锁死（零新增方法、不破冻结签名）。备选：新增 `insert_returning_placement()`（带默认实现，不破兼容）——需要人工裁定是否值得为此扩契约 **〔契约审计修订 2026-10-21〕裁定 7：本批不做 RETURNING 回填，Q-1 / Q-2 / Q-3 三条一并推迟**——它们都只在「宿主开始调用 `insert_returning_clause`」之后才成立；本批 `row_identity` 恒为空、插入成功后按最大主键候补定位或降级，因此这三条**不在本批解决**，登记为回填能力落地时的前置裁定。 |
 | Q-2 | **MySQL 族的主键回填**：契约把 MySQL 归入「用 `LAST_INSERT_ID()`，由驱动另行处理」，但 §5.1 没有任何「插入后再查一次」的入口，因此 MySQL 只能返回 `None` 走降级（无高亮）。 | 建议本册先按 `None` 降级交付（不猜、不假装）；若产品要求 MySQL 也高亮，另开一条契约改动（新增 `post_insert_identity_query(&self) -> Option<String>` 类方法，带默认实现，不破兼容）——**不属于本册范围**，需人工确认优先级 |
 | Q-3 | **SQLite 的 `RETURNING` 版本门槛**：SQLite 3.35 起支持 `RETURNING`，更早版本语法错误。驱动该在连接时探测版本，还是一律返回 `None`？ | 建议**在连接时读版本并缓存到驱动实例**，`insert_returning_clause` 按版本返回 `Some`/`None`；不引入新 trait 方法。备选：一律 `None`（最保守，退回降级路径） |
 | Q-4 | **草稿行与提交结果的关联**：`PlannedStatement` 刻意不加 `draftId`，前端靠「插入结果与 `plan.inserts` 同序」对齐。是否要显式字段？ | 〔契约审计修订 2026-10-21〕T2-4：**已关闭**——`draftId` 连线上都不进（新行是 `PendingRowChange.insert_marked`），计划里更没有它的位置。关联靠**顺序契约**：`RowChangePlan.inserts` 与 `RowCommitStatementResult` 都按请求顺序回传，前端按 `draftInsertOrder` 逐条对齐。**不加字段**；为防止「后来加回去」，`fingerprint_covers_insert_values_and_stays_stable_without_inserts` 与 `draft_values_round_trip_the_wire_shape` 各锁一次。 |
 | Q-5 | **`src/lib/gridErrors.ts` 的归属**：01 分册把它登记为「由 04/05 首次建立」，03 分册的文件清单里已把它列为新增（冲突）。 | **已裁定并关闭：归属冻结给 01**（契约 §8.1 归属总则）。理由不是「以先落地者为准」——那仍然依赖不可知的合并时序——而是 **01 是提交顺序里唯一最早的分册**，因此无论并行开发如何交错，它必然先落地。本册只需按三步追加 `grid.insert.*`，无需请求任何分册为它让路。**附带硬约束：禁止整文件重写该文件**（并行下会静默抹掉他人码值且无编译错误） |
 | Q-6 | **执行顺序是否要驱动可声明**：PRD 提到「顺序固定 inserts → updates → deletes；需要别的顺序由驱动声明」，但 00-contracts §5 冻结的新增方法只有 5 个，其中没有顺序声明入口。 | **已裁定并冻结顺序声明**：① 顺序**恒为** `inserts → updates → deletes`，同一类内部按 `plan` 数组顺序（插入按请求顺序，即前端草稿视觉顺序）；② **不提供驱动声明入口**——契约 §5 不加方法，宿主**禁止**按 `driver_type()` 分支（违反零硬编码）；③ 确需别的顺序时，走**新的契约改动**（新增带默认实现的方法，默认实现即本顺序，所以未覆写的驱动零影响），不得在宿主里私开分支；④ 这条顺序与「同一事务内执行」是两件事：原子性见 Step 5 的陷阱 2，顺序见本条，两条都要有测试 |
 | Q-7 | **`affected == 0` 的容忍度**：旧稿按「驱动不上报计数」容忍 0 并记 warning，是否要更严格？ | 〔契约审计修订 2026-10-21〕**R-C 已裁定：不豁免**。INSERT 与 UPDATE/DELETE 走同一条护栏——`affected != 1` 整批拒绝（`INSERT affected {n} rows; refusing ambiguous write`），`insert-count-unavailable` 这条 warning 与同名 i18n key 一并删除。理由：①「0 行影响」对单行 `VALUES` 不是可忽略的噪声，而是「没插进去」的最可能形态（触发器吞掉、权限过滤、上游误路由）；②容忍 0 会让「提交成功但页面没有新行」成为合法终态，用户无法区分这两者。**剩下的开放点**：若要支持幂等重放（网络超时后由客户端重试同一批），`0` 行需要一条**独立**的成功路径，前提是（a）有明确唯一键、（b）驱动确实上报计数、（c）请求带幂等标记；这三条本批都不具备，故**不实现**，登记为后续契约改动项。 |
-| Q-8 | **事务归属的表述还停在旧模型**：本册 §4 / §7 第 8-9 条 / §9.1 的三条事务用例仍用「`session_open` / `AppState` 的会话事务表」描述「并入用户事务」。而 `AppState::session_transactions` 在生产代码里**已不存在**（`src-tauri/src/platform/handles.rs` 的守卫用例 `!production.contains("session_transactions")` 就在钉这件事；契约 §1.4 事实 4 已按 runtime 的 `beginTransaction` / `defersCommit` 改写）。 | **需要协调者裁定**：本册只把用例改成「断言方式必须按当前事务归属模型写」，**没有**重写事务模型段落——因为那会牵动 00 与 09/11 的共同口径（谁负责 begin/commit、用户事务如何延后提交）。建议由 00 给出唯一表述，然后本册 §4/§7/§9.1 一次性对齐；在裁定前**不要**按本册的事务描述写测试，否则会在不存在的字段上断言。 |
+| Q-8 | **事务归属的表述还停在旧模型**：本册 §4 / §7 第 8-9 条 / §9.1 的三条事务用例原先用「宿主会话事务表 + 一个『会话是否已开事务』的布尔量」描述「并入用户事务」。 | **〔契约审计修订 2026-10-21〕已裁定，并已按裁定改写**（协调者裁定 1）：真实形态只有「可选手动句柄」这一个入口——`commit_pending_changes` 接受 `manual_handle: Option<SessionHandle>`；`Some(h)` 时校验目标库与 `TransactionState::Active`，把语句并入该事务（`platform.beginTransaction` 的 `defersCommit: true`），**不自行提交**；`None` 时自行开一次会话级事务并在结束时 `commitTransaction` / 回滚。宿主上那张会话事务表已不存在，裸 `BEGIN` 退化路径也不存在。本册已按此改写 §4 事实第 3 条、§5 Step 5 的第 3 点与三条用例、§7 第 8-9 条、§9.1 的三条事务用例；**测试搭法改为构造 `TransactionState::Active` 的 `SessionHandle` 并从 `manual_handle` 传入**。 |

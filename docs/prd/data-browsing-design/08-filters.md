@@ -679,7 +679,7 @@ export const EXAMPLE_FILTER_TREE: FilterNode = {
 
 ### 3.7 命名视图 DTO（TS：`src/lib/namedViews.ts`（新增）；Rust：`src-tauri/src/store/named_views.rs`（新增））
 
-> **〔契约审计修订 2026-10-21〕T0-12 / R-A 例外说明**：本节把 store 层与命令层都留在 `src-tauri`，**这是有意的，不是漏改**。R-A 的规则是「新增 Rust 逻辑默认落 `feature-core`，`src-tauri` 只做 command 适配」，而命名视图的持久化只有两个消费方：① 桌面端 `Store`（`src-tauri/src/store/`，`{appData}/named_views.json`，AES/原子写/唯一临时路径都在那里）；② 同一进程内的 IPC 命令。**web 形态没有 `{appData}` 可写、也没有 `Store`**，把 store 层搬进 `feature-core` 只会得到一个「在 web 里必然不可用的 trait 实现」，而不是共享收益。因此：**DTO + 持久化 + 门面留 host**，命令层保持薄壳。若将来 web 端要支持命名视图，必须先有跨形态的存储端口（`platform-api` 级的 repository），那是独立契约改动，不在本册。
+> **〔契约审计修订 2026-10-21〕T0-12 / R-A 例外说明**：本节把 store 层与命令层都留在 `src-tauri`，**这是有意的，不是漏改**。R-A 的规则是「新增 Rust 逻辑默认落 `feature-core`，`src-tauri` 只做 command 适配」，而命名视图的持久化只有两个消费方：① 桌面端 `Store`（`src-tauri/src/store/`，`{appData}/named_views.json`，AES/原子写/唯一临时路径都在那里）；② 同一进程内的 IPC 命令。**web 形态没有 `{appData}` 可写、也没有 `Store`**，把 store 层搬进 `feature-core` 只会得到一个「在 web 里必然不可用的 trait 实现」，而不是共享收益。因此：**DTO + 持久化 + 门面留 host**，命令层保持薄壳。**web 侧的边界（协调者裁定 3 要求写清，避免 web 误以为可用）**：web 要支持命名视图**之前**，必须先有跨形态的存储端口（`platform-api` 级的 repository，把「按 scope 读写命名视图集合」抽象成与形态无关的接口）——`{appData}` 目录、桌面 `Store`（AES/原子写/唯一临时路径）、以及 `Store::save_json_file` 这一整套在 web 形态**没有对应物**。**在那之前，命名视图功能属 desktop-only**：web 端调用这三个命令必须得到明确的能力缺失错误（而不是「空列表」这种看起来成功的假象），前端据此隐藏「保存筛选为视图」入口。迁移存储端口是独立契约改动，不在本册。
 
 ```ts
 /** 视图作用域：持久化连接 id + 库 + 模式 + 表。 */

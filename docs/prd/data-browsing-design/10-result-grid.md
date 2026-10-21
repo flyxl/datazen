@@ -135,7 +135,7 @@
 
 ### 2.6 既有的计划—提交链路（`00-contracts.md` §1.4，直接复用，不新造）
 
-位置 `src-tauri/src/commands/data.rs`（〔合并后校正〕实测 **640 行**，已按 `#[path]` 挂子模块）。符号：`preview_pending_changes` → `build_row_change_plan` → `changes_fingerprint`；`commit_pending_changes` → **`commands/data_session.rs::execute_plan`**（`BoundSqlStatement` + 短自有 Runtime 会话；旧稿的 `commit_pending_changes_impl` / `execute_row_change_plan_impl` 已不存在）；遗留入口 `commit_row_updates` / `commit_row_deletes` **仍注册但恒返回 `"Legacy row writes are disabled; preview and commit a target-bound ChangeSet"`**。
+位置 `src-tauri/src/commands/data.rs`（〔合并后校正〕实测 **640 行**，已按 `#[path]` 挂子模块）。符号：`preview_pending_changes` → `build_row_change_plan` → `changes_fingerprint`；`commit_pending_changes` → **`packages/feature-core/src/data_browsing/write_exec.rs::execute_plan`**（`BoundSqlStatement` + 短自有 Runtime 会话）〔契约审计修订 2026-10-21〕：`src-tauri/src/commands/data_session.rs` 已整文件删除、逻辑等价迁入 feature-core；`build_row_change_plan` / `changes_fingerprint` 也在 `data_browsing/change_set.rs`，宿主 `data.rs` 只剩 command 适配（旧稿的 `commit_pending_changes_impl` / `execute_row_change_plan_impl` 已不存在）；遗留入口 `commit_row_updates` / `commit_row_deletes` **仍注册但恒返回 `"Legacy row writes are disabled; preview and commit a target-bound ChangeSet"`**。
 
 DTO：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContext`、`PendingRowChange`、`PlannedStatement`、`RowChangePlan`、`CommitPendingChangesRequest`、`RowCommitStatementResult`、`CommitPendingChangesResponse`。
 
@@ -555,7 +555,7 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 4. **别名会让文本解析定位错列**：`SELECT id AS order_id` 时按结果列名写回会写成 `SET order_id = ...`（错列或不存在）；`FROM orders o` 时按解析出的 token 写回会写成 `SET ... UPDATE o`（错表名）。
 5. **正确的位置在驱动**：只有驱动持有 prepared statement / statement handle 的元数据，能给出权威的列来源。因此本册把这件事**定义为驱动契约**，并让默认实现明说「不知道」。
 
-> **〔契约审计修订 2026-10-21〕T2-5**：本节结论不变（宿主**不做** SQL 文本解析），但要补一条落地纪律——**不新增任何独立的「解析模块」**。今天唯一在解析 `SELECT * FROM ident[.ident[.ident]] [LIMIT/OFFSET]` 的代码是宿主 `src-tauri/src/commands/result_mapping.rs`（`result_relation_candidate` + `verify_result_mapping`，已被 `commit_query_result_cell` 生产使用）；需要扩展识别能力时**扩展这个既有文件**（或它迁移到 `feature-core` 后的对应文件，迁移是否发生见 Step 3 的登记与 §11 Q-8），不要新建第二个 parser —— 两个 parser 对同一句 SQL 给出不同答案，比一个不完整的 parser 危险得多。
+> **〔契约审计修订 2026-10-21〕T2-5**：本节结论不变（宿主**不做** SQL 文本解析），但要补一条落地纪律——**不新增任何独立的「解析模块」**。今天唯一在解析 `SELECT * FROM ident[.ident[.ident]] [LIMIT/OFFSET]` 的代码是宿主 `src-tauri/src/commands/result_mapping.rs`（`result_relation_candidate` + `verify_result_mapping`，已被 `commit_query_result_cell` 生产使用）；需要扩展识别能力时**扩展这个既有文件**（或它将来迁移到 `feature-core` 后的对应文件——迁移已由 §11 Q-8 裁定为「本批不迁」），不要新建第二个 parser —— 两个 parser 对同一句 SQL 给出不同答案，比一个不完整的 parser 危险得多。
 
 ### 3.8 为什么不能靠「用户说这是单表查询」
 
@@ -657,7 +657,7 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 
 ### Step 3 · IPC 命令 + 错误前缀
 
-> **〔契约审计修订 2026-10-21〕T0-9 / R-A / R-E**：命令壳留 `src-tauri`（`#[tauri::command]` 只做「取值 → 必要校验 → 转发 feature-core → 映射 `CommandError`」），**判定与渲染逻辑一律进 `packages/feature-core`**。**迁移边界登记（需协调者裁定，见 §11 Q-4）**：既有的 `src-tauri/src/commands/result_mapping.rs`（`result_relation_candidate` / `verify_result_mapping`，SQL 文本解析 + 列名逐对比较）**是否随本册迁进 feature-core 尚未裁定**——它既被 `commit_query_result_cell` 使用，也被结果集来源判定使用，迁移会牵动 04/10 的共同入口；本批**不动它**，只登记（见 §11 Q-8）。
+> **〔契约审计修订 2026-10-21〕T0-9 / R-A / R-E**：命令壳留 `src-tauri`（`#[tauri::command]` 只做「取值 → 必要校验 → 转发 feature-core → 映射 `CommandError`」），**判定与渲染逻辑一律进 `packages/feature-core`**。**迁移边界（已裁定为「本批不迁」，见 §11 Q-8）**：既有的 `src-tauri/src/commands/result_mapping.rs`（`result_relation_candidate` / `verify_result_mapping`，SQL 文本解析 + 列名逐对比较）与 `commit_query_result_cell` 强耦合，而需要共享的**判定逻辑**已在 `feature-core`，因此本批**不动它**，登记为「web 端需要结果集写回时与 web 通路一并评估」。
 
 - **改哪个文件**：新增 `src-tauri/src/commands/result_origin.rs`（**薄壳**）；改 `src-tauri/src/commands/mod.rs`；改 `src/commands/query.ts`（前端 wrapper，现 **141** 行）；**并按 R-E 同时补 web 通路**：`packages/backend-client/src/transport.ts` 的 `MethodMap` + `BackendClient` 接口 + `src/commands/query.ts` 的封装。
 - **每个新命令的四元组（R-E，缺一不可）**：
@@ -941,4 +941,4 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 | **Q-5** | **判定结果要不要缓存、缓存多久？** | 建议：**内存缓存，仅用于渲染**；任何写回前必须复验。缓存随结果集替换、SQL 重新执行、结果 tab 切换、面板关闭失效；不落盘、不跨会话复用 |
 | **Q-6** | **`WHERE` 里的子查询是否真的安全？** 本册按「列来源未受影响」判为不置位 `has_derived_source` | 建议保持当前结论（B-5），但要求驱动在文档中明确其子查询检测范围，并在负例表里各留一条 `WHERE` 子查询的正向用例，防止驱动实现者把「任何子查询」都置位导致过度只读 |
 | **Q-7** | **只读原因用哪种呈现？** 单元格级 tooltip / 结果网格顶部一次性横幅 / 状态栏提示 | 建议：**单元格 hover tooltip + 首次进入只读结果时的一次性轻量提示**，不用模态。理由：原因需要「可发现但不可打扰」；模态会打断「连续执行多条 SQL」的主流程 |
-| **Q-8** | **`result_mapping.rs` 要不要迁进 `packages/feature-core`？**（〔契约审计修订 2026-10-21〕T0-9 登记）它是宿主里唯一在解析 `SELECT *` 并比对列来源的模块，被 `commit_query_result_cell`（10）与结果集来源判定共同使用。 | **建议：本批只登记、不迁**。迁移会同时改动 04/10 的实现入口与测试落点（`cargo test -p datazen --lib result_mapping` → `-p datazen-feature-core`），而在本册剩余范围内（只读文案矩阵）它一行都不用改——为一次零收益的搬迁冒跨册风险不划算。若协调者决定「所有 SQL 形态判定都必须进共享层」，则把它与 04 的 `change_set.rs` 一起迁，并保证 `MethodMap` / `BackendClient` 通路同步（R-E）。 |
+| **Q-8** | **`result_mapping.rs` 要不要迁进 `packages/feature-core`？**（〔契约审计修订 2026-10-21〕T0-9 登记）它是宿主里唯一在解析 `SELECT *` 并比对列来源的模块，被 `commit_query_result_cell`（10）与结果集来源判定共同使用。 | **〔契约审计修订 2026-10-21〕已裁定：本批不迁**（协调者裁定 2）。理由：解析/校验与 `commit_query_result_cell` 强耦合，而真正需要共享的判定逻辑（`result_edit.rs`）已经进 `feature-core`，迁移收益低于风险。**登记为后续**：等 web 端需要「查询结果集写回」时与 `commit_query_result_cell` 的 web 通路一并评估（届时必须同批补 `MethodMap` + `BackendClient`，R-E）。本册剩余范围（只读原因文案矩阵）**不依赖**它迁移。 |

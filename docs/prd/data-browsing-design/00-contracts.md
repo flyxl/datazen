@@ -162,7 +162,8 @@ preview_pending_changes          // tauri command：生成计划
        └─ changes_fingerprint    // 指纹（sha2）
 commit_pending_changes           // tauri command：提交
   └─ commit_pending_changes_impl // pub(crate)：加锁、校验指纹、取连接
-       └─ super::data_session::execute_plan  // 真正逐条执行（绑定语句，值不进 SQL 文本）
+       └─ feature_core::data_browsing::write_exec::execute_plan  // 真正逐条执行（绑定语句，值不进 SQL 文本）
+          // 〔契约审计修订 2026-10-21〕原 `src-tauri/src/commands/data_session.rs` 已整文件删除，逻辑迁入 feature-core
 （**〔契约审计修订 2026-10-21〕T1-1 / R-F**：遗留入口 `commit_row_updates` / `commit_row_deletes` **仍然注册在 `generate_handler!`**（`bootstrap/run.rs`），但实现恒返回 `"Legacy row writes are disabled; preview and commit a target-bound ChangeSet"`，不再是本设计的链路一环；`validate_legacy_pk_columns` 与 `commit_row_deletes_rejects_empty_pk` **全仓不存在**，任何"迁移它们"的要求作废）
 ```
 
@@ -1226,7 +1227,7 @@ desktop 与 web 共用同一套 domain service。任何**新增**的 Rust 业务
 | `src/lib/databaseMeta.ts` 的 `DataGridCapabilities` + `dataGrid?` | 既有文件 | **08**（按合并序最早需要它） | 只加自己那一项，且必须已存在于本契约 §7 |
 | `packages/feature-core/src/services/query_executor.rs` → `query_executor/{mod.rs,tests.rs,filter_sql.rs}` | **既有 755 行**（宿主 `src-tauri/src/services/query_executor.rs` 仅 47 行 re-export 门面） | **08**（在 feature-core 内目录化；**不能**在 `src-tauri` 下新建 `filter_sql.rs`——`feature-core` 不能反向依赖宿主） | 只新增子模块文件；09 只改 `mod.rs` 并往 `tests.rs` 补用例 |
 | `packages/driver-api/src/traits/browsing.rs` | 新建 | **09**（DB-09 的第一个新 trait 方法落在这里） | 后续新方法继续追加到同一文件 |
-| `src-tauri/src/commands/data.rs` → `data/{row_change_plan.rs,row_change_execute.rs}` | **既有 640 行** ⚠〔合并后校正〕旧稿写 1416 行；该文件已按 `#[path]` 挂载子模块（`table_target.rs` 读取路径、`result_mapping.rs` / `result_write.rs` 结果网格写回、`tests.rs`），**旧稿的 `validate_legacy_pk_columns` 迁移项已不适用**——该函数随遗留入口一起删除，遗留 `commit_row_updates` / `commit_row_deletes` 仍在注册但它们**恒拒绝**（"Legacy row writes are disabled; preview and commit a target-bound ChangeSet"） | **04**（把 INSERT 计划构建放进 `row_change_plan.rs`，执行仍由 `data_session::execute_plan` 统一拥有） | 只新增子模块文件；任何分册要改这个文件，必须先 rebase 到 04 的子模块化之后 |
+| `packages/feature-core/src/data_browsing/{change_set.rs,write_exec.rs}`（新建）+ `src-tauri/src/commands/data.rs` 降为适配层〔契约审计修订 2026-10-21〕T0-2/T0-3 | **既有 640 行** ⚠〔合并后校正〕旧稿写 1416 行；该文件已按 `#[path]` 挂载子模块（`table_target.rs` 读取路径、`result_mapping.rs` / `result_write.rs` 结果网格写回、`tests.rs`），**旧稿的 `validate_legacy_pk_columns` 迁移项已不适用**——该函数随遗留入口一起删除，遗留 `commit_row_updates` / `commit_row_deletes` 仍在注册但它们**恒拒绝**（"Legacy row writes are disabled; preview and commit a target-bound ChangeSet"） | **04**（把 INSERT 计划构建放进 `row_change_plan.rs`，执行仍由 `data_session::execute_plan` 统一拥有） | 只新增子模块文件；任何分册要改这个文件，必须先 rebase 到 04 的子模块化之后 |
 | `src/stores/panelStore.ts` | **既有 793 行** ⚠（〔合并后校正〕旧稿 728） | 不新增归属；**10** 只允许在其上加 ≤15 行接线 | 07 把返回栈放进**新文件** `src/stores/fkNavigationStore.ts`；10 的判定逻辑放进 `src/stores/panelResultEdit.ts`。超出 15 行者必须把逻辑整体搬进新文件，**不得**放任它突破 800 |
 
 #### 行数总账的读法（先读这段，否则下表会被误用）
