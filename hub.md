@@ -277,3 +277,25 @@
 | `grid-cell` | `[data-dt-surface]` / `data-dt-selected` / `role="rowheader"` / 选区摘要 testid 接线 | **碰 `DataTable.tsx`**（热文件）→ 本波唯一前端轨 |
 | `web-transport` | `MethodMap` + `BackendClient` + wire 类型镜像（`insertMarked`/`inserts`） | 只碰 `packages/backend-client`，可与 `grid-cell` 并行 |
 | `insert-frontend` | 草稿行 UI + TS 镜像接线（依赖 04 后端已就绪） | 碰 `TableView.tsx` → **与 `grid-cell` 冲突，排到 Wave 3** |
+
+## `grid-selection` 第 3 轮复测：**TEST_PASSED**（`8e4075059`）
+
+| 验证项 | 结果 |
+| --- | --- |
+| GS2-D2 红测转绿 | 是；另加 6 例不变式（cell+删多行 / 空列表 no-op / row 模式删选中行 / row+空合法不退回 none / 四写点矩阵） |
+| `deleteRows` 行集写入 | 全仓归零；生产写点全部成对（`connectionState` 初始 + `selectionActions` 六处 + `reset`） |
+| GS2-D1 类型层 | 改名 + 必填 + 去兜底均确认；**独立探针**重现 TS2345；反向构造（`as`/`Partial`/`Omit`/`Pick`/`satisfies`/`Object.assign`）**NONE** |
+| 永久类型钉 | 新增 `gridSelection.types.test.ts`（`@ts-expect-error`），并用机制探针证明「字段改回可选 → tsc 报 TS2578」⇒ 回归无法悄悄复活 |
+| 考题完整性 | 代理只补了 5 个调用点的必填字段，断言/期望值/用例名**一字未动** |
+| 门禁 | 629 文件 / 6583 例 EXIT=0；typecheck EXIT=0；`TableView 642`、`tableDataStore 713` |
+
+**Tester 提出的 3 条硬化建议，我的处理**：
+1. `setGridSelection({mode:'row', anchor})` 能造出「row + 非 null 几何」→ **要求实现归一化**（契约 I2 已明文要求几何为 null，公开 API 上的洞要堵），已下发第 4 轮；
+2. `00` §4 推论末句「row+空是不一致态」与新增例外段自相矛盾 → **已改**（`7652b3d88`）；
+3. `01` 的 I6 只列 `selectRow`/`toggleSelectAll`，漏了 `setRowModeSelection` → **已补**（同上）。
+
+## 非本轨观察：脚本测试并发串扰（记着，不在本批修）
+
+Tester 全量首跑遇到 `scripts/__tests__/driver-init-rustfmt.test.mjs` 失败：`ENOENT … packages/ui/src/__boundaryProbe__.ts`——该 probe 文件由 `scripts/__tests__/boundaryMutation.ts` **并发植入/删除**，属脚本测试之间的竞态。单跑该文件 8 passed、全量复跑全绿。
+
+**这是既有缺陷，与本批任何轨无关**，但它会周期性把别人的门禁弄红（本批已踩到一次）。登记：`docs/bugs/` 候选——「脚本测试用共享 probe 路径导致并发竞态」。合流后的健全性校验如果再次踩到，就按 `docs/bugs/` 单文件规则登记。
