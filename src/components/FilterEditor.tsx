@@ -82,10 +82,23 @@ export function FilterEditor({
   );
 
   const appliedCount = appliedFilters.length;
+  /**
+   * The summary of the applied filters.
+   *
+   * Every condition is joined with the connector that is actually in effect
+   * for it — its own one, or the request wide logic. Joining everything with
+   * the request wide logic would misread a mixed list.
+   */
   const summaryText =
     appliedCount === 0
       ? t('filter.noActive')
-      : appliedFilters.map((f) => conditionSummary(f, t)).join(` ${appliedLogic.toUpperCase()} `);
+      : appliedFilters
+          .map((filter, index) => {
+            const condition = conditionSummary(filter, t);
+            if (index === 0) return condition;
+            return `${(filter.connector ?? appliedLogic).toUpperCase()} ${condition}`;
+          })
+          .join(' ');
 
   /**
    * Whether a condition carries a connector of its own.

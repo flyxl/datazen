@@ -636,6 +636,18 @@ describe('FilterEditor per-condition connectors', () => {
     expect(Object.keys(next)).toEqual(['column', 'operator', 'value', 'connector']);
   });
 
+  it('summarizes the applied filters with the connector that is in effect', () => {
+    renderEditor({
+      appliedFilters: [
+        { column: 'id', operator: 'eq', value: '1' },
+        { column: 'name', operator: 'eq', value: 'a', connector: 'or' },
+      ],
+    });
+    // The summary must not read a mixed list as if every condition shared the
+    // request wide logic.
+    expect(screen.getByText('id filter.eq 1 OR name filter.eq a')).toBeInTheDocument();
+  });
+
   it('shows the badge of a collapsed condition too', () => {
     renderEditor({ draftFilters: twoRows });
     expect(screen.getAllByTestId('filter-connector')).toHaveLength(1);
