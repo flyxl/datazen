@@ -564,10 +564,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     if (!ts) return;
     const unique = [...new Set(rowIndices.filter((i) => Number.isInteger(i) && i >= 0))];
     if (unique.length === 0) return;
-    patchPanel(get, set, panelId, () => ({
-      selectedRows: new Set(unique),
-      lastSelectedIndex: unique[unique.length - 1] ?? null,
-    }));
+    // Deleting does not change the selection semantics (00-contracts §4, GS2-D2): the row
+    // set is owned by `mode`, so a `cell` selection must stay `cell` + empty rows while the
+    // delete scope lives in the derived selector, and row identity is carried by
+    // `rowIdentityAnchors` inside `stageRowDelete`. Writing `selectedRows` here would park
+    // two sources of truth on top of each other ("region highlighted" + "rows selected").
     get().stageRowDelete(panelId, unique);
   },
 

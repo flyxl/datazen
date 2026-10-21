@@ -199,6 +199,32 @@ describe('tableDataStore selection reset on re-fetch', () => {
     expectSelectionCleared();
   });
 
+  it('deleteRows keeps a cell selection intact and does not park rows in the row set', async () => {
+    await loadTable();
+    selectEverything();
+    expect(loaded().selectedRows.size).toBe(0);
+
+    useTableDataStore.getState().deleteRows(PANEL, [0, 1]);
+
+    // Delete scope came from the explicit indices; the selection keeps its single authority.
+    expect(loaded().gridSelection.mode).toBe('cell');
+    expect(loaded().selectedRows.size).toBe(0);
+    expect(loaded().lastSelectedIndex).toBeNull();
+    expect(loaded().pendingChanges.size).toBe(2);
+  });
+
+  it('deleteRows leaves a row-mode selection untouched', async () => {
+    await loadTable();
+    useTableDataStore.getState().selectRow(PANEL, 0);
+
+    useTableDataStore.getState().deleteRows(PANEL, [1]);
+
+    expect(loaded().gridSelection.mode).toBe('row');
+    expect(loaded().selectedRows).toEqual(new Set([0]));
+    expect(loaded().lastSelectedIndex).toBe(0);
+    expect(loaded().pendingChanges.size).toBe(1);
+  });
+
   it('a paging transition drops a row-mode selection and its mode', async () => {
     await loadTable();
     useTableDataStore.getState().selectRow(PANEL, 1);
