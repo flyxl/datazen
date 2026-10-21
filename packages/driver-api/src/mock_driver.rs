@@ -603,7 +603,23 @@ impl DatabaseDriver for MockDriver {
         let schema = self
             .get_table_schema(handle, table, database, schema)
             .await?;
-        Ok((schema.columns, schema.primary_keys))
+        let mut columns = schema.columns;
+        // The column-tier fixture also advertises a nullable `note` column so
+        // an insert draft can model "write SQL NULL" against a column the
+        // catalog really has. `get_table_schema` keeps the historical id/name
+        // shape because plan/projection fixtures pin it.
+        if columns.iter().all(|column| column.name != "note") {
+            columns.push(ColumnSchema {
+                name: "note".into(),
+                data_type: "text".into(),
+                nullable: true,
+                default_value: None,
+                comment: None,
+                is_primary_key: false,
+                is_auto_increment: false,
+            });
+        }
+        Ok((columns, schema.primary_keys))
     }
 
     async fn query(

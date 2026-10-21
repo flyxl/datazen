@@ -396,6 +396,8 @@ impl From<datazen_feature_core::error::FeatureError> for CommandError {
         match error {
             FeatureError::Ai(error) => Self::Ai(error),
             FeatureError::Validation(message) => Self::Validation(message),
+            FeatureError::NotFound(message) => Self::NotFound(message),
+            FeatureError::NotConfigured(message) => Self::NotConfigured(message),
             FeatureError::Internal(message) => Self::Internal(message),
             FeatureError::Driver(error) => Self::from(error),
             FeatureError::Io(error) => Self::Io(error),

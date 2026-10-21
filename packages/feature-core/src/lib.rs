@@ -3,6 +3,7 @@ pub mod ai;
 pub mod backup;
 pub mod backup_gateway;
 pub mod dashboard;
+pub mod data_browsing;
 pub mod error;
 pub mod export;
 pub mod mcp;
