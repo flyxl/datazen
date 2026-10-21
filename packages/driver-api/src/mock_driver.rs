@@ -168,6 +168,13 @@ pub struct MockDriverOptions {
     /// default) reports [`Self::count_total`] as an integer; a value of
     /// another shape models a count that did not come back as a number.
     pub count_total_value: Option<Value>,
+    /// The columns this mock reports as its default order. `None` (the
+    /// default) lets the trait's own default decide.
+    pub default_order_columns: Option<Vec<String>>,
+    /// Whether this mock allows the first-column fallback on a table without
+    /// a primary key. `None` (the default) lets the trait's own default
+    /// decide, which is "allowed".
+    pub allow_first_column_fallback_order: Option<bool>,
 }
 
 impl Default for MockDriverOptions {
@@ -224,6 +231,8 @@ impl Default for MockDriverOptions {
             count_strategy: None,
             count_error: None,
             count_total_value: None,
+            default_order_columns: None,
+            allow_first_column_fallback_order: None,
         }
     }
 }
@@ -506,6 +515,23 @@ impl DatabaseDriver for MockDriver {
         self.opts
             .count_estimate_rows
             .map(|_| format!("SELECT {ESTIMATE_COLUMN} FROM {}", self.quote_ident(table)))
+    }
+
+    fn default_order_columns(
+        &self,
+        columns: &[ColumnSchema],
+        primary_keys: &[String],
+    ) -> Vec<String> {
+        match &self.opts.default_order_columns {
+            Some(order) => order.clone(),
+            None => crate::traits::browsing::default_order_columns(columns, primary_keys),
+        }
+    }
+
+    fn allow_first_column_fallback_order(&self) -> bool {
+        self.opts
+            .allow_first_column_fallback_order
+            .unwrap_or_else(crate::traits::browsing::allow_first_column_fallback_order)
     }
 
     async fn close_database(

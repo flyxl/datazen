@@ -640,33 +640,54 @@ mod browsing_defaults {
         assert!(mock(MockDriverOptions::default()).allow_first_column_fallback_order());
     }
 
+    #[test]
+    fn allow_first_column_fallback_order_can_be_switched_off() {
+        // The switch the host's gate reads: a driver that forbids the
+        // fallback has to be able to say so.
+        let driver = mock(MockDriverOptions {
+            allow_first_column_fallback_order: Some(false),
+            ..Default::default()
+        });
+        assert!(!driver.allow_first_column_fallback_order());
+    }
+
     /// The wrapper must not lose the wrapped driver's rules: a reuse alias
     /// that quietly fell back to the trait default would drop the estimate
     /// and the default order of the engine it stands in for.
+    ///
+    /// The expectations are **written out**, not compared with the inner
+    /// driver's own answers. A comparison of "wrapper == inner" proves
+    /// nothing here: the inner driver answers the *trait defaults* unless it
+    /// is told otherwise, so a wrapper that did not forward at all would
+    /// still answer the same thing. The inner driver therefore overrides
+    /// every method of the contract, and the wrapper has to carry those
+    /// overrides over.
     #[test]
     fn reuse_driver_forwards_browsing_strategy_methods() {
         use crate::ReuseDriver;
 
         let inner = mock(MockDriverOptions {
             skip_count_query: false,
+            count_strategy: Some(CountStrategy::Estimated),
             count_estimate_rows: Some(4242),
+            default_order_columns: Some(vec!["wrapped_order".to_string()]),
+            allow_first_column_fallback_order: Some(false),
             ..Default::default()
         });
-        let wrapper = ReuseDriver::new(inner.clone(), "alias");
-        assert_eq!(wrapper.count_strategy(), inner.count_strategy());
+        let wrapper = ReuseDriver::new(inner, "alias");
+
+        // Every answer below differs from the trait default, so a wrapper
+        // that stopped forwarding would answer something else and the test
+        // would fail.
+        assert_eq!(wrapper.count_strategy(), CountStrategy::Estimated);
         assert_eq!(
             wrapper.count_estimate_sql("app", Some("public"), "orders"),
-            inner.count_estimate_sql("app", Some("public"), "orders")
-        );
-        let columns = vec![column("id", true)];
-        let primary_keys = vec!["id".to_string()];
-        assert_eq!(
-            wrapper.default_order_columns(&columns, &primary_keys),
-            inner.default_order_columns(&columns, &primary_keys)
+            Some("SELECT estimated_row_count FROM \"orders\"".to_string())
         );
         assert_eq!(
-            wrapper.allow_first_column_fallback_order(),
-            inner.allow_first_column_fallback_order()
+            wrapper.default_order_columns(&[], &[]),
+            vec!["wrapped_order".to_string()]
         );
+        assert!(!wrapper.allow_first_column_fallback_order());
     }
 }

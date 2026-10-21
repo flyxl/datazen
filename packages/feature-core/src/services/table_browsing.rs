@@ -202,6 +202,26 @@ pub fn exact_count_cell(cell: &Value) -> Option<i64> {
     }
 }
 
+/// The number an exact count statement reported, read the way the
+/// target-bound host path has always read it.
+///
+/// The target-bound path (`get_table_data_at_target`) accepts a number that
+/// arrives as a string and spells it out; the shared executor accepts only
+/// an integer. The difference predates the count contract — it is not part
+/// of the behaviour change this contract brings — so it is kept, but it now
+/// lives in **one** place instead of being written out in two callers.
+///
+/// A negative number is a legal exact count here, exactly as it was before:
+/// `COUNT(*)` cannot return one, and a driver that does is not this gate's
+/// business. The estimate below is the one that has to refuse a negative.
+pub fn target_count_cell(cell: &Value) -> Option<i64> {
+    match cell {
+        Value::Integer(count) => Some(*count),
+        Value::String(count) => count.parse().ok(),
+        _ => None,
+    }
+}
+
 /// The number an estimate statement reported.
 ///
 /// An estimate has one more rule than an exact count: a negative number is
@@ -338,14 +358,45 @@ mod tests {
     }
 
     #[test]
-    fn the_first_column_fallback_is_gated_in_the_host() {
+    fn the_first_column_fallback_is_used_when_the_driver_allows_it() {
+        // The default: a table without a primary key is ordered by its first
+        // column, which is what the host did before the contract existed.
         let columns = vec![column("col_a", false)];
         let driver = mock(MockDriverOptions::default());
         assert_eq!(
             resolve_default_order(driver.as_ref(), &columns, &[], None),
             vec!["col_a".to_string()]
         );
-        assert!(resolve_default_order(driver.as_ref(), &columns, &[], Some(&[])).is_empty());
+    }
+
+    #[test]
+    fn the_first_column_fallback_is_dropped_when_the_driver_forbids_it() {
+        // A driver that says "do not order a table without a key" gets an
+        // unordered read. The gate lives in the **host**, so it holds for a
+        // driver that overrode `default_order_columns` as well.
+        let columns = vec![column("col_a", false)];
+        let driver = mock(MockDriverOptions {
+            allow_first_column_fallback_order: Some(false),
+            ..Default::default()
+        });
+        assert!(!driver.allow_first_column_fallback_order());
+        assert!(resolve_default_order(driver.as_ref(), &columns, &[], None).is_empty());
+    }
+
+    #[test]
+    fn an_explicit_override_survives_the_first_column_gate() {
+        // The caller's own order is not the driver's fallback: "do not sort"
+        // and "sort by the first column" are two different orders, and only
+        // the second one is the fallback the gate is about.
+        let columns = vec![column("col_a", false)];
+        let driver = mock(MockDriverOptions {
+            allow_first_column_fallback_order: Some(false),
+            ..Default::default()
+        });
+        assert_eq!(
+            resolve_default_order(driver.as_ref(), &columns, &[], Some(&["col_a".to_string()])),
+            vec!["col_a".to_string()]
+        );
     }
 
     #[test]

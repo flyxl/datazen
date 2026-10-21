@@ -372,18 +372,24 @@ pub async fn read(
         let result_rows: Vec<Vec<Option<Value>>> =
             serde_json::from_value(output["rows"].clone())
                 .map_err(|_| CommandError::Validation("Invalid table result rows".into()))?;
-        let count = result_rows
-            .first()
-            .and_then(|row| row.first())
-            .and_then(Option::as_ref)
-            .and_then(|value| match value {
-                Value::Integer(count) => Some(*count),
-                Value::String(count) => count.parse().ok(),
-                _ => None,
-            });
         if count_at == Some(index) {
             // Drivers publish a final empty result chunk after each statement.
             // Do not let that metadata-only chunk erase the count row.
+            let cell = result_rows
+                .first()
+                .and_then(|row| row.first())
+                .and_then(Option::as_ref);
+            // The shared layer owns both readings, so the two host entry
+            // points cannot drift into two different shapes of the same DTO.
+            let count = match count_plan {
+                // An estimate has its own gate: a negative number is not an
+                // estimate of anything — it is what PostgreSQL says about a
+                // relation the planner never looked at. It must not travel
+                // as a row count.
+                CountPlan::Estimated => cell.and_then(table_browsing::estimated_count_cell),
+                // The exact count keeps the reading this path has always had.
+                _ => cell.and_then(table_browsing::target_count_cell),
+            };
             if let Some(count) = count {
                 total_rows = Some(count);
             }
@@ -400,7 +406,7 @@ pub async fn read(
         // is "the rows are there, the number is not".
         CountPlan::Exact => Some(CountStrategy::Exact),
         CountPlan::Estimated => match (estimate_failed, total_rows) {
-            (false, Some(count)) if count >= 0 => Some(CountStrategy::Estimated),
+            (false, Some(_)) => Some(CountStrategy::Estimated),
             _ => Some(CountStrategy::Unsupported),
         },
     };

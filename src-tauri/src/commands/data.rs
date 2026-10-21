@@ -225,6 +225,10 @@ mod table_columns;
 mod tests;
 
 #[cfg(test)]
+#[path = "data/target_read_tests.rs"]
+mod target_read_tests;
+
+#[cfg(test)]
 #[path = "data/insert_tests.rs"]
 mod insert_tests;
 
