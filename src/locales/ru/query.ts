@@ -192,8 +192,6 @@ const pack = {
   'filter.isNotNull': 'не равно NULL',
   'filter.quickPlaceholder': "Быстрый фильтр: status = 'open'",
   'filter.invalidExpression': 'Фильтр не применён: {error}',
-  'filter.mixedLogic':
-    'Фильтр не применён: используйте один логический оператор или редактор фильтра.',
   'import.description': 'Импортируйте данные из файла CSV или JSON.',
   'import.selectFile': 'Выберите файл',
   'import.targetTable': 'Целевая таблица',

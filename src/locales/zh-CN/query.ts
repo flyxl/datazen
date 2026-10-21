@@ -319,7 +319,6 @@ const pack = {
   'filter.isNotNull': '不为空',
   'filter.quickPlaceholder': "快速筛选：status = 'open'",
   'filter.invalidExpression': '未应用筛选：{error}',
-  'filter.mixedLogic': '未应用筛选：请只使用一种逻辑运算符，或使用筛选编辑器。',
   'import.description': '从 CSV 或 JSON 文件导入数据',
   'import.selectFile': '选择文件',
   'import.targetTable': '目标表',

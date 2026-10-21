@@ -455,16 +455,6 @@ pub fn filter_join(logic: Option<&str>) -> &'static str {
     }
 }
 
-/// One node of the filter expression the connectors describe.
-enum Node {
-    Fragment(String),
-    Binary {
-        operator: &'static str,
-        left: Box<Node>,
-        right: Box<Node>,
-    },
-}
-
 /// Join rendered fragments into a `WHERE` fragment.
 ///
 /// Every fragment may carry its own connector, which joins it to the fragment
@@ -472,66 +462,77 @@ enum Node {
 /// operator, which is what every filter list did before per-condition
 /// connectors existed.
 ///
-/// The list is read **left to right**, the way the rows are shown: the first
-/// row, then "OR B", then "AND C" means `(A OR B) AND C`. SQL gives `AND` the
-/// stronger precedence, so a mixed list has to be parenthesised explicitly —
-/// without the parentheses the database reads `A OR B AND C` as
-/// `A OR (B AND C)`, which is a different question than the one that was
-/// asked, and it fails silently.
+/// The connectors are read the way SQL reads them: `AND` binds stronger than
+/// `OR`. A list that mixes the two is therefore split into its maximal `AND`
+/// groups, and every group that is not a single condition is written in
+/// parentheses. The parentheses are not decoration — without them the
+/// database would group the list differently than the caller meant, and it
+/// would do so without reporting an error.
 pub fn join_filters(
     parts: &[(String, Option<FilterConnector>)],
     filter_logic: Option<&str>,
 ) -> String {
     let global = filter_join(filter_logic);
-    let Some((first, _)) = parts.first() else {
+    let Some(first) = parts.first() else {
         return String::new();
     };
+    let first_sql = first.0.as_str();
 
-    let mut node = Node::Fragment(first.clone());
-    for (fragment, connector) in parts.iter().skip(1) {
-        let operator = match connector {
+    // The connector of the first fragment is meaningless — it has no
+    // predecessor — so the connectors start at the second fragment.
+    let connectors: Vec<&'static str> = parts
+        .iter()
+        .skip(1)
+        .map(|(_, connector)| match connector {
             Some(FilterConnector::Or) => " OR ",
             Some(FilterConnector::And) => " AND ",
             None => global,
-        };
-        node = Node::Binary {
-            operator,
-            left: Box::new(node),
-            right: Box::new(Node::Fragment(fragment.clone())),
-        };
+        })
+        .collect();
+
+    // One operator throughout: the plain list, byte for byte what it was
+    // before per-condition connectors existed.
+    if connectors.iter().all(|connector| *connector == global) {
+        let mut joined = first_sql.to_string();
+        for ((fragment, _), connector) in parts.iter().skip(1).zip(connectors.iter()) {
+            joined.push_str(connector);
+            joined.push_str(fragment.as_str());
+        }
+        return joined;
     }
 
-    render_node(&node)
-}
-
-/// Whether the node is an `OR` group.
-fn is_or_node(node: &Node) -> bool {
-    matches!(node, Node::Binary { operator, .. } if *operator == " OR ")
-}
-
-/// Render one node of the left to right expression.
-///
-/// An `OR` group that ends up on the left of an `AND` is wrapped in
-/// parentheses, because SQL binds `AND` first and would otherwise answer a
-/// different question. Everything else is left alone, so a list that uses one
-/// operator throughout renders exactly as it always did.
-fn render_node(node: &Node) -> String {
-    match node {
-        Node::Fragment(fragment) => fragment.clone(),
-        Node::Binary {
-            operator,
-            left,
-            right,
-        } => {
-            let mut left_text = render_node(left);
-            if *operator == " AND " && is_or_node(left) {
-                left_text = format!("({left_text})");
+    // Mixed operators: cut the list into its maximal `AND` groups and join
+    // the groups with `OR`.
+    let mut groups: Vec<String> = vec![first_sql.to_string()];
+    let mut group_sizes: Vec<usize> = vec![1];
+    for ((fragment, _), connector) in parts.iter().skip(1).zip(connectors.iter()) {
+        if *connector == " AND " {
+            if let Some(group) = groups.last_mut() {
+                group.push_str(connector);
+                group.push_str(fragment.as_str());
             }
-            let mut right_text = render_node(right);
-            if *operator == " AND " && is_or_node(right) {
-                right_text = format!("({right_text})");
+            if let Some(size) = group_sizes.last_mut() {
+                *size += 1;
             }
-            format!("{left_text}{operator}{right_text}")
+        } else {
+            groups.push(fragment.clone());
+            group_sizes.push(1);
         }
     }
+    if groups.len() == 1 {
+        // A single group needs no parentheses; they would be noise.
+        return groups.into_iter().next().unwrap_or_default();
+    }
+    groups
+        .iter()
+        .zip(group_sizes.iter())
+        .map(|(group, size)| {
+            if *size > 1 {
+                format!("({group})")
+            } else {
+                group.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" OR ")
 }

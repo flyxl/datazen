@@ -191,8 +191,6 @@ const pack = {
   'filter.isNotNull': 'NULL이 아님',
   'filter.quickPlaceholder': "빠른 필터: status = 'open'",
   'filter.invalidExpression': '필터를 적용하지 못했습니다: {error}',
-  'filter.mixedLogic':
-    '필터를 적용하지 못했습니다: 논리 연산자를 하나만 사용하거나 필터 편집기를 사용하세요.',
   'import.description': 'CSV 또는 JSON 파일에서 데이터 가져오기',
   'import.selectFile': '파일 선택',
   'import.targetTable': '대상 테이블',

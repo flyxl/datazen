@@ -5,9 +5,8 @@ import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import {
-  filterExpressionToConditions,
+  flattenToConnectors,
   parseFilterForApply,
-  type FilterExpression,
 } from '../../lib/filterExpression';
 import type { ColumnSchema, FilterCondition } from '../../types';
 
@@ -88,21 +87,27 @@ export function TableToolbar({
       setQuickFilterError(t('filter.invalidExpression', { error: parsed.error }));
       return;
     }
-    const logic = new Set<'and' | 'or'>();
-    const collectLogic = (expression: FilterExpression) => {
-      if (expression.type === 'logical') {
-        logic.add(expression.operator);
-        collectLogic(expression.left);
-        collectLogic(expression.right);
-      }
-    };
-    collectLogic(parsed.value.expression);
-    if (logic.size > 1) {
-      setQuickFilterError(t('filter.mixedLogic'));
+    // A quick filter may mix AND and OR as long as the expression can be
+    // written down as a flat list of conditions with a connector each. Only a
+    // parenthesised group of a different operator needs the editor, and that
+    // one is refused rather than flattened into a different question.
+    const flattened = flattenToConnectors(parsed.value.expression);
+    if (!flattened) {
+      setQuickFilterError(t('filter.nestedLogic'));
       return;
     }
+    const connectors = flattened
+      .map((entry) => entry.connector)
+      .filter((connector): connector is 'and' | 'or' => connector !== undefined);
+    const globalLogic = connectors.length > 0 ? connectors[0] : 'and';
+    const conditions: FilterCondition[] = flattened.map((entry) => ({
+      column: entry.condition.column,
+      operator: entry.condition.operator,
+      value: entry.condition.value,
+      ...(entry.connector ? { connector: entry.connector } : {}),
+    }));
     setQuickFilterError(null);
-    onSetFilters(filterExpressionToConditions(parsed.value.expression), [...logic][0] ?? 'and');
+    onSetFilters(conditions, globalLogic);
   }, [columns, onClearFilters, onSetFilters, quickFilter, t]);
 
   const openManualFilter = () => {

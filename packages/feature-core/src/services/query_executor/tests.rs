@@ -481,8 +481,8 @@ fn mixed_connectors_are_parenthesised_in_both_statements() {
     );
 
     // Adding an AND after the OR group is what forces the parentheses: SQL
-    // binds AND first, so without them the database would read
-    // "id = 1 OR (name = 'alice' AND …)".
+    // binds AND first, so the group is written out instead of being left to
+    // the database's precedence rules.
     let filters = vec![
         FilterCondition {
             column: "id".into(),
@@ -515,7 +515,7 @@ fn mixed_connectors_are_parenthesised_in_both_statements() {
     )
     .unwrap();
     assert!(
-        select.contains("WHERE (\"id\" = 1 OR \"name\" = 'alice') AND \"id\" > 0"),
+        select.contains("WHERE \"id\" = 1 OR (\"name\" = 'alice' AND \"id\" > 0)"),
         "got: {select}"
     );
 }

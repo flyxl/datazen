@@ -190,7 +190,6 @@ const pack = {
   'filter.isNotNull': '不為 NULL',
   'filter.quickPlaceholder': "快速篩選：status = 'open'",
   'filter.invalidExpression': '篩選未套用：{error}',
-  'filter.mixedLogic': '篩選未套用：請只使用一個邏輯運算子，或改用篩選編輯器。',
   'import.description': '從 CSV 或 JSON 檔案匯入資料',
   'import.selectFile': '選擇檔案',
   'import.targetTable': '目標資料表',

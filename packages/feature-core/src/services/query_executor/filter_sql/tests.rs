@@ -604,9 +604,10 @@ fn join_filters_all_connectors_equal_is_byte_identical_to_today() {
 
 #[test]
 fn join_filters_mixed_parenthesizes_and_runs() {
-    // The rows are read left to right: "A OR B AND C" asks for
-    // "(A OR B) AND C". SQL binds AND first, so the group has to be
-    // written out — otherwise the database answers a different question.
+    // The connectors are read the way SQL reads them: AND binds stronger
+    // than OR. A mixed list is therefore cut into its maximal AND groups,
+    // and every group that is not a single condition is written out — so the
+    // database cannot group the list differently than the caller meant.
     assert_eq!(
         join_filters(
             &[
@@ -616,7 +617,7 @@ fn join_filters_mixed_parenthesizes_and_runs() {
             ],
             Some("and")
         ),
-        "(A OR B) AND C"
+        "A OR (B AND C)"
     );
     assert_eq!(
         join_filters(
@@ -628,10 +629,23 @@ fn join_filters_mixed_parenthesizes_and_runs() {
             ],
             Some("and")
         ),
-        "(A OR B) AND C OR D"
+        "A OR (B AND C) OR D"
     );
     // A single fragment never gets parentheses.
     assert_eq!(join_filters(&[part("A", None)], Some("and")), "A");
+    // An AND group that is not sandwiched between ORs keeps the plain
+    // shape, because there is nothing to disambiguate.
+    assert_eq!(
+        join_filters(
+            &[
+                part("A", None),
+                part("B", Some(FilterConnector::And)),
+                part("C", Some(FilterConnector::And)),
+            ],
+            Some("or")
+        ),
+        "A AND B AND C"
+    );
 }
 
 #[test]

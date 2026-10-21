@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FilterExpression } from '../filterExpression';
 import {
   filterExpressionToConditions,
+  flattenToConnectors,
   parseFilterExpression,
   parseFilterForApply,
 } from '../filterExpression';
@@ -154,5 +155,82 @@ describe('controlled filter expression rejection', () => {
     const result = parseFilterExpression('"users.id" = 1', columns);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain('Unknown filter column');
+  });
+});
+
+describe('flattenToConnectors', () => {
+  it('flatten_keeps_plain_chain_in_order', () => {
+    const flattened = flattenToConnectors(parse("status = 'paid' AND amount > 10 AND active = true"));
+    expect(flattened).not.toBeNull();
+    expect(flattened?.map((entry) => entry.condition.column)).toEqual([
+      'status',
+      'amount',
+      'active',
+    ]);
+    expect(flattened?.map((entry) => entry.connector)).toEqual([undefined, 'and', 'and']);
+    expect(flattened?.[0]?.condition).toEqual(condition('status', 'eq', 'paid'));
+    expect(flattened?.[1]?.condition).toEqual(condition('amount', 'gt', 10));
+  });
+
+  it('flatten_accepts_left_leaning_chain_across_operators', () => {
+    const flattened = flattenToConnectors(parse("(status = 'paid' AND amount > 10) OR active = true"));
+    expect(flattened).not.toBeNull();
+    expect(flattened?.map((entry) => entry.condition.column)).toEqual([
+      'status',
+      'amount',
+      'active',
+    ]);
+    // The second condition joins the first one, the third one joins the pair.
+    expect(flattened?.map((entry) => entry.connector)).toEqual([undefined, 'and', 'or']);
+  });
+
+  it('flatten_rejects_nested_or_in_right_child', () => {
+    expect(flattenToConnectors(parse("status = 'paid' AND (amount > 10 OR active = true)"))).toBeNull();
+  });
+
+  it('flatten_rejects_nested_after_and_run', () => {
+    expect(
+      flattenToConnectors(parse("status = 'paid' AND (amount > 10 OR active = true) AND amount < 99")),
+    ).toBeNull();
+  });
+
+  it('flatten_rejects_an_or_group_nested_under_an_and', () => {
+    // `(a OR b) AND c` cannot be written as a flat list either: the OR group
+    // sits inside an AND, and the flat list has no place for parentheses.
+    expect(flattenToConnectors(parse("(status = 'paid' OR amount > 10) AND active = true"))).toBeNull();
+  });
+
+  it('flatten_accepts_a_mixed_chain_that_keeps_the_sql_grouping', () => {
+    // `a OR b AND c` is `a OR (b AND c)`, which the flat list can express:
+    // the connector of `b` is OR, the one of `c` is AND.
+    const flattened = flattenToConnectors(parse("status = 'paid' OR amount > 10 AND active = true"));
+    expect(flattened).not.toBeNull();
+    expect(flattened?.map((entry) => entry.condition.column)).toEqual([
+      'status',
+      'amount',
+      'active',
+    ]);
+    expect(flattened?.map((entry) => entry.connector)).toEqual([undefined, 'or', 'and']);
+  });
+
+  it('flatten_never_emits_connector_on_first_item', () => {
+    for (const input of [
+      "status = 'paid'",
+      "status = 'paid' AND amount > 10",
+      "(status = 'paid' AND amount > 10) OR active = true",
+    ]) {
+      const flattened = flattenToConnectors(parse(input));
+      expect(flattened).not.toBeNull();
+      expect(flattened?.[0]?.connector).toBeUndefined();
+    }
+  });
+
+  it('flatten_output_conditions_carry_no_connector_by_default', () => {
+    // The parser layer stays connector-free: a condition that was not given a
+    // connector must fall back to the request-wide logic, so it must not
+    // pretend to carry one.
+    const expression = parse("status = 'paid' AND amount > 10");
+    const conditions = filterExpressionToConditions(expression);
+    expect(conditions.every((entry) => entry.connector === undefined)).toBe(true);
   });
 });
