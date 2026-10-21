@@ -12,6 +12,11 @@ use tokio::sync::Mutex;
 /// 进程内存的测试存储：按组织分桶。
 ///
 /// 越组织访问按「不存在」处理——取不到、也删不掉别人的计划。
+///
+/// **这是替身，不是生产实现**：它只用来驱动「规则层语义」类用例（有效期、
+/// 竞态、校验失败不烧计划）。**隔离性**类断言必须打生产实现
+/// （`InMemoryReviewedPlanStore`）——替身的键结构自带组织维度，在替身上断言
+/// 隔离对生产码是同义反复。
 #[derive(Default)]
 struct TestPlanStore {
     plans: Mutex<HashMap<(String, String), ReviewedPlan>>,
@@ -289,9 +294,12 @@ async fn test_tester_pool_change_rejected_without_consuming_valid_plan() {
 /// 跨组织读不到：别的组织既**取不到**计划，也**删不掉**它。
 ///
 /// 逐条断言，不写「大概率读不到」这类模糊断言。
+///
+/// **打的是生产实现**（`InMemoryReviewedPlanStore`，随端口一起提供的进程内实现），
+/// 不是测试替身：替身的键结构自带组织维度，断言在替身上恒成立，对生产码是同义反复。
 #[tokio::test]
 async fn reviewed_plan_store_hides_plans_from_other_organizations() {
-    let store = TestPlanStore::default();
+    let store = InMemoryReviewedPlanStore::new();
     let owner = scope("org-a");
     let other = scope("org-b");
     let mut plan = plan();
@@ -332,9 +340,11 @@ async fn reviewed_plan_store_hides_plans_from_other_organizations() {
 }
 
 /// 跨组织部署读不到别人的计划：消费按「不存在」失败，且**不**烧掉本组织的计划。
+///
+/// 同样打生产实现。
 #[tokio::test]
 async fn reviewed_plan_consume_rejects_foreign_organization_scope() {
-    let store = TestPlanStore::default();
+    let store = InMemoryReviewedPlanStore::new();
     let owner = scope("org-a");
     let other = scope("org-b");
     let mut plan = plan();
@@ -386,10 +396,17 @@ async fn reviewed_plan_consume_rejects_foreign_organization_scope() {
     .is_ok());
 }
 
-/// 跨组织写入不落数据：本组织读不到「别的组织写进来」的计划。
+/// 跨组织写入**不进本组织的桶**：别的组织写进来的计划，本组织读不到。
+///
+/// 打生产实现。生产实现按 `(organization_id, plan_id)` 分桶，因此别的组织的写入
+/// 落在**它自己**的桶里；本组织既读不到，也消费不到。
+///
+/// 桌面形态的「越组织写入**直接丢弃**」是宿主在生产实现之上叠加的**单租户**
+/// 策略（见 `src-tauri/src/commands/schema_diff/reviewed_store.rs`），不是本包
+/// 生产实现的语义。
 #[tokio::test]
-async fn reviewed_plan_store_drops_writes_from_other_organizations() {
-    let store = TestPlanStore::default();
+async fn reviewed_plan_store_keeps_foreign_writes_out_of_other_organizations() {
+    let store = InMemoryReviewedPlanStore::new();
     let owner = scope("org-a");
     let other = scope("org-b");
     let mut plan = plan();
@@ -412,6 +429,70 @@ async fn reviewed_plan_store_drops_writes_from_other_organizations() {
 
     let visible = store.get(&owner, &plan_id).await.expect("store readable");
     assert!(visible.is_none(), "别的组织写入的计划不得对本组织可见");
+
+    // 写入落在它自己的桶里（分桶，而不是丢弃）。
+    let own = store.get(&other, &plan_id).await.expect("store readable");
+    assert!(own.is_some(), "写入必须落在它自己的组织桶里");
+}
+
+/// 生产实现确实**按组织分桶**：同一个 `planId` 在两个组织下是两条互不影响的记录。
+///
+/// 这条直接打生产实现（`InMemoryReviewedPlanStore`）：若键里少了组织维度，
+/// 后写入的那条会顶掉先写入的那条，本用例的「两条都在」断言会红。
+#[tokio::test]
+async fn in_memory_store_buckets_plans_by_organization() {
+    let store = InMemoryReviewedPlanStore::new();
+    let first = scope("org-a");
+    let second = scope("org-b");
+
+    // 同一个 planId，两个组织各写一份**内容不同**的计划。
+    let plan_a = reviewed_plan("shared-plan", now_ms());
+    let mut plan_b = reviewed_plan("shared-plan", now_ms());
+    plan_b.plan.warnings.push("org-b copy".into());
+
+    store
+        .put(&first, "shared-plan", plan_a.clone())
+        .await
+        .expect("put plan for org-a");
+    store
+        .put(&second, "shared-plan", plan_b.clone())
+        .await
+        .expect("put plan for org-b");
+
+    assert_eq!(
+        store.len().await,
+        2,
+        "两个组织各一条记录：键里必须带组织维度"
+    );
+    let from_first = store.get(&first, "shared-plan").await.expect("read plan");
+    let from_second = store.get(&second, "shared-plan").await.expect("read plan");
+    assert_eq!(
+        from_first.map(|entry| entry.plan),
+        Some(plan_a.plan.clone()),
+        "org-a 的记录不得被 org-b 的同名写入顶掉"
+    );
+    assert_eq!(
+        from_second.map(|entry| entry.plan),
+        Some(plan_b.plan.clone()),
+        "org-b 的记录必须是自己那一份"
+    );
+
+    // 删掉一边不影响另一边。
+    assert!(
+        store
+            .remove(&first, "shared-plan")
+            .await
+            .expect("remove plan"),
+        "本组织的记录必须删得掉"
+    );
+    assert!(
+        store
+            .get(&second, "shared-plan")
+            .await
+            .expect("read plan")
+            .is_some(),
+        "删除一个组织的记录不得影响另一个组织"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -557,14 +638,19 @@ async fn reviewed_plan_freeze_stamps_creation_in_unix_milliseconds() {
     );
 }
 
-/// 【已知退化】系统时钟**回拨**会让本该过期的计划重新有效。
+/// 【刻意的失效关闭取舍】系统时钟**回拨**时，本该过期的计划被判**已过期**，
+/// 而不是复活。
 ///
 /// 改造前用单调钟（`Instant::elapsed`），回拨免疫；端口化后冻结时刻改为
-/// Unix 毫秒，`age()` 用 `saturating_sub`：`created_at_ms` 落在「现在」之后时
-/// age 归零 ⇒ 计划被判为「刚刚冻结」。本用例把该行为钉住，使取舍显式可见。
+/// Unix 毫秒（落盘实现需要可持久化的时刻），此时 `now < created_at_ms` 只能
+/// 意味着系统时钟被回拨过、时间基准不可信。
+///
+/// 本实现**不**把这种情形当成「刚刚冻结」——那会让本该过期的计划复活
+/// （**失效开放**）；规则层直接判**已过期**（**失效关闭**），用户重新比对即可恢复。
+/// 这条用例把该取舍钉住：它断言的是**修复后**的行为。
 #[tokio::test]
-async fn reviewed_plan_clock_rollback_reinstates_an_expired_plan() {
-    let store = TestPlanStore::default();
+async fn reviewed_plan_clock_rollback_expires_the_plan_instead_of_reinstating_it() {
+    let store = InMemoryReviewedPlanStore::new();
     let scope = scope("org-a");
     let cfg = config();
     let handle = handle();
@@ -574,20 +660,54 @@ async fn reviewed_plan_clock_rollback_reinstates_an_expired_plan() {
         .put(&scope, "rolled-back", frozen.clone())
         .await
         .expect("put plan");
-    assert!(
-        consume(
-            &store,
-            &scope,
-            &frozen.plan,
-            "session",
-            &handle,
-            &cfg,
-            cfg.database.as_deref(),
-            Some("public"),
-        )
+    let error = consume(
+        &store,
+        &scope,
+        &frozen.plan,
+        "session",
+        &handle,
+        &cfg,
+        cfg.database.as_deref(),
+        Some("public"),
+    )
+    .await
+    .expect_err("时钟回拨时计划必须被判过期，不得复活");
+    assert_eq!(
+        error, "Plan expired; compare again",
+        "时钟回拨必须按「已过期」处理（失效关闭），不得让本该过期的计划复活"
+    );
+}
+
+/// 系统时钟**前跳**时，刚冻结的计划立刻过期——同样是**失效关闭**方向。
+///
+/// 用户重新比对即可恢复：前跳不会让**不该**有效的计划变得有效。
+#[tokio::test]
+async fn reviewed_plan_clock_forward_jump_expires_the_plan() {
+    let store = InMemoryReviewedPlanStore::new();
+    let scope = scope("org-a");
+    let cfg = config();
+    let handle = handle();
+    // 冻结时刻落在「现在」之前 31 分钟 ⇒ 等价于冻结后系统时钟前跳了 31 分钟。
+    let frozen = reviewed_plan("jumped", now_ms().saturating_sub(31 * 60 * 1000));
+    store
+        .put(&scope, "jumped", frozen.clone())
         .await
-        .is_ok(),
-        "时钟回拨后 age 归零：本该过期的计划重新有效（已知退化）"
+        .expect("put plan");
+    let error = consume(
+        &store,
+        &scope,
+        &frozen.plan,
+        "session",
+        &handle,
+        &cfg,
+        cfg.database.as_deref(),
+        Some("public"),
+    )
+    .await
+    .expect_err("时钟前跳后计划必须立刻过期");
+    assert_eq!(
+        error, "Plan expired; compare again",
+        "时钟前跳必须按「已过期」处理（失效关闭）"
     );
 }
 

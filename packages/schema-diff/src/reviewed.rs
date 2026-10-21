@@ -12,6 +12,22 @@
 //! 端口方法一律带 `scope: &OrganizationScope`；**越组织访问一律按「不存在」处理**
 //! （`None` / `false` / 空），**不得**返回「无权限」错误——那会泄漏「存在但无权」
 //! （CM-05）。作用域类型由 `datazen-platform-api` 提供，本包不自造。
+//!
+//! # 时间基准
+//!
+//! 冻结时刻用**墙上时钟**（Unix 毫秒）而不是单调钟：存储实例可能被换成落盘实现，
+//! 而 `Instant` 不可持久化；有效期规则（[`REVIEWED_PLAN_TTL`]）必须由规则层与
+//! 存储层读同一份时刻。代价是**系统时钟异常会影响判定**，两个方向都按**失效关闭**
+//! 处理（详见 [`ReviewedPlan::is_expired`]）：
+//!
+//! * **回拨**（`now < created_at_ms`）：判**已过期**，不让本该过期的计划复活。
+//! * **前跳**（超过 TTL）：刚冻结的计划立刻过期，用户重新比对即可恢复。
+//!
+//! # 存储实现
+//!
+//! 本包随端口一起提供 [`InMemoryReviewedPlanStore`]：形态中立、无副作用、无传输的
+//! 进程内原语（先例：平台文档 §4 的 `ports::budget::pool_ledger`）。落盘实现由宿主
+//! 另给；桌面在其之上叠加**单租户**收窄。
 use super::{
     object_identity::{SchemaObjectDependencySnapshot, SchemaObjectIdentity},
     objects::SchemaObjectSnapshot,
@@ -20,7 +36,9 @@ use super::{
 use async_trait::async_trait;
 use datazen_driver_api::{ConnectionConfig, ConnectionHandle, TableSchema};
 use datazen_platform_api::ports::scope::OrganizationScope;
+use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 
 #[path = "reviewed_catalog.rs"]
 mod catalog;
@@ -74,6 +92,109 @@ pub trait ReviewedPlanStore: Send + Sync + 'static {
     ) -> Result<bool, ReviewedPlanStoreError>;
 }
 
+/// 评审计划在存储里的键：**组织 + 计划 id**。
+///
+/// 组织维度进键，是「不同组织的计划互不可见」这条语义的**唯一**实现点：
+/// 键里少了组织，跨组织就串味了。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PlanKey {
+    organization_id: String,
+    plan_id: String,
+}
+
+/// 进程内存的评审计划存储：按**组织**分桶。
+///
+/// 形态中立、无副作用、无传输的进程内原语，因此随端口一起提供（先例：平台文档 §4
+/// 的 `ports::budget::pool_ledger`）。落盘实现由宿主另给。
+///
+/// * 条目按 `(organization_id, plan_id)` 分桶：**不同组织的计划互不可见**——
+///   越组织访问按「不存在」处理（`get` → `None`、`remove` → `false`），
+///   **不**返回「无权限」错误（CM-05）。
+/// * 写入时裁剪**已过期**的条目（[`REVIEWED_PLAN_TTL`]），并把条目数压到
+///   [`REVIEWED_PLAN_MAX_ENTRIES`] 以内（超出时裁剪最旧的一条）。
+///   上限是**整个实例**的（跨组织合计），不是每组织各一份——内存必须有界。
+/// * 读取**不**按有效期过滤：过期判定属于规则层（[`validate`] 由
+///   `consume` 调用），存储层只负责存取。
+#[derive(Default)]
+pub struct InMemoryReviewedPlanStore {
+    plans: Mutex<HashMap<PlanKey, ReviewedPlan>>,
+}
+
+impl InMemoryReviewedPlanStore {
+    /// 新建一个空存储。
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn key(scope: &OrganizationScope, plan_id: &str) -> PlanKey {
+        PlanKey {
+            organization_id: scope.organization_id().as_str().to_owned(),
+            plan_id: plan_id.to_owned(),
+        }
+    }
+
+    /// 当前存储的条目总数（跨组织合计）。
+    pub async fn len(&self) -> usize {
+        self.plans.lock().await.len()
+    }
+
+    /// 当前存储是否为空。
+    pub async fn is_empty(&self) -> bool {
+        self.plans.lock().await.is_empty()
+    }
+}
+
+#[async_trait]
+impl ReviewedPlanStore for InMemoryReviewedPlanStore {
+    async fn put(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+        plan: ReviewedPlan,
+    ) -> Result<(), ReviewedPlanStoreError> {
+        let mut plans = self.plans.lock().await;
+        plans.retain(|_, plan| plan.age() < REVIEWED_PLAN_TTL);
+        // Keep memory bounded even when a window repeatedly prepares a plan.
+        if plans.len() >= REVIEWED_PLAN_MAX_ENTRIES {
+            if let Some(oldest) = plans
+                .iter()
+                .min_by_key(|(_, plan)| plan.created_at_ms)
+                .map(|(key, _)| key.clone())
+            {
+                plans.remove(&oldest);
+            }
+        }
+        plans.insert(Self::key(scope, plan_id), plan);
+        Ok(())
+    }
+
+    async fn get(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+    ) -> Result<Option<ReviewedPlan>, ReviewedPlanStoreError> {
+        Ok(self
+            .plans
+            .lock()
+            .await
+            .get(&Self::key(scope, plan_id))
+            .cloned())
+    }
+
+    async fn remove(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+    ) -> Result<bool, ReviewedPlanStoreError> {
+        Ok(self
+            .plans
+            .lock()
+            .await
+            .remove(&Self::key(scope, plan_id))
+            .is_some())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ReviewedPlan {
     pub plan: SchemaDiffPlan,
@@ -111,9 +232,34 @@ pub struct ReviewedSourceSnapshot {
 }
 
 impl ReviewedPlan {
-    /// 距冻结时刻过去了多久。
+    /// 距冻结时刻过去了多久（墙上时钟差）。
+    ///
+    /// 系统时钟**回拨**时该差值会归零（`saturating_sub`）：此时「现在」早于冻结
+    /// 时刻，真实经过时间**不可知**。因此**不要**只用 `age()` 判断有效性——
+    /// 有效性用 [`Self::is_expired`]。
+    ///
+    /// 存储层的**裁剪**策略按年龄做（`age() < REVIEWED_PLAN_TTL`），因此回拨造成的
+    /// 「冻结时刻在未来」的条目不会被裁掉；但规则层会判它过期（失效关闭），
+    /// 它只是占位、不可用。
     pub fn age(&self) -> Duration {
         Duration::from_millis(now_unix_millis().saturating_sub(self.created_at_ms))
+    }
+
+    /// 计划是否已过期（**失效关闭**）。
+    ///
+    /// * 正常路径：经过时间达到 [`REVIEWED_PLAN_TTL`] ⇒ 过期。
+    /// * **系统时钟回拨**（`now < created_at_ms`）：时间基准不可信 ⇒ 判**已过期**。
+    ///   冻结时刻落在「现在」之后，在单调世界里不可能发生，只能说明系统时钟被回拨
+    ///   过。若不这样判，回拨会让本该过期的计划**复活**（**失效开放**）；判过期的
+    ///   代价只是用户重新比对一次。
+    ///
+    /// 时钟**前跳**的方向天然是失效关闭：经过时间直接变大，刚冻结的计划立刻过期。
+    pub fn is_expired(&self) -> bool {
+        let now = now_unix_millis();
+        if now < self.created_at_ms {
+            return true;
+        }
+        Duration::from_millis(now - self.created_at_ms) >= REVIEWED_PLAN_TTL
     }
 }
 
@@ -428,7 +574,7 @@ fn validate(
     target_database_scope: Option<&str>,
     target_schema_scope: Option<&str>,
 ) -> Result<(), String> {
-    if frozen.age() >= REVIEWED_PLAN_TTL {
+    if frozen.is_expired() {
         return Err("Plan expired; compare again".into());
     }
     if frozen.plan != *submitted {

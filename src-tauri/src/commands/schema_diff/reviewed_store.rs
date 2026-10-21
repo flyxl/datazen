@@ -4,7 +4,17 @@
 //!
 //! 评审计划是**一次性**的：准备 → 用户复核 → 部署 → 消费。桌面是单租户形态，
 //! 计划本来就活在进程内；落盘只会把「一次性计划」变成跨会话残留，还得额外处理
-//! 过期清理与并发消费。因此桌面选**进程内存**实现，行为与改造前完全一致。
+//! 过期清理与并发消费。因此桌面选**进程内存**实现——存储本体是包提供的
+//! `InMemoryReviewedPlanStore`，本模块在其上叠加**单租户**收窄。
+//!
+//! **与改造前并非「完全一致」**：冻结时刻的时间基准从单调钟（`Instant::elapsed()`，
+//! 免疫系统时钟调整）改成**墙上时钟**（Unix 毫秒）——这是端口化后支持落盘实现的
+//! 必要取舍（`Instant` 不可持久化）。两处系统时钟异常都按**失效关闭**处理：
+//!
+//! * **时钟回拨**（`now < created_at_ms`）：原本会让本该过期的计划重新变新
+//!   （失效开放），规则层已用**失效关闭**的钳制堵住——回拨时直接判**已过期**。
+//! * **时钟前跳**（超过 TTL）：刚冻结的计划立刻过期（失效关闭方向），
+//!   用户重新比对即可恢复。
 //!
 //! 真正的收益不在桌面，而在**契约**：评审计划不再寄居在包里的进程级全局变量上，
 //! 而是寄居在宿主注入的实例上，并按组织作用域隔离——多租户宿主可以按组织分桶，
@@ -16,17 +26,14 @@
 //! 传别的组织的 scope 一律按「不存在」处理：`get` 返回 `None`、`remove` 返回
 //! `false`、`put` 不落数据——**不**返回「无权限」错误，那会泄漏「存在但无权」（CM-05）。
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use datazen_platform_api::id::OrganizationId;
 use datazen_platform_api::ports::scope::OrganizationScope;
 use datazen_schema_diff::reviewed::{
-    ReviewedPlan, ReviewedPlanStore, ReviewedPlanStoreError, REVIEWED_PLAN_MAX_ENTRIES,
-    REVIEWED_PLAN_TTL,
+    InMemoryReviewedPlanStore, ReviewedPlan, ReviewedPlanStore, ReviewedPlanStoreError,
 };
-use tokio::sync::Mutex;
 
 use crate::commands::{AppState, CommandError};
 use crate::platform::PlatformEntry;
@@ -51,11 +58,14 @@ pub fn desktop_reviewed_plan_store(platform: &PlatformEntry) -> Arc<dyn Reviewed
     }
 }
 
-/// 桌面形态的已评审计划存储：进程内存实现。
+/// 桌面形态的已评审计划存储：进程内存实现 + **单租户**收窄。
+///
+/// 存储本体是包提供的 [`InMemoryReviewedPlanStore`]（条目按组织分桶）；
+/// 本类型在其上叠加桌面策略：只承认桌面自己的组织。
 pub struct DesktopReviewedPlanStore {
     /// 桌面自己的组织。`None` 表示桌面身份不可用 ⇒ 不承认任何组织。
     organization_id: Option<OrganizationId>,
-    plans: Mutex<HashMap<String, ReviewedPlan>>,
+    inner: InMemoryReviewedPlanStore,
 }
 
 impl DesktopReviewedPlanStore {
@@ -63,7 +73,7 @@ impl DesktopReviewedPlanStore {
     pub fn new(organization_id: OrganizationId) -> Self {
         Self {
             organization_id: Some(organization_id),
-            plans: Mutex::new(HashMap::new()),
+            inner: InMemoryReviewedPlanStore::new(),
         }
     }
 
@@ -71,7 +81,7 @@ impl DesktopReviewedPlanStore {
     pub fn deny_all() -> Self {
         Self {
             organization_id: None,
-            plans: Mutex::new(HashMap::new()),
+            inner: InMemoryReviewedPlanStore::new(),
         }
     }
 
@@ -93,20 +103,7 @@ impl ReviewedPlanStore for DesktopReviewedPlanStore {
             // 越组织写入按「未发生」处理：不落数据，也不返回「无权限」。
             return Ok(());
         }
-        let mut plans = self.plans.lock().await;
-        plans.retain(|_, plan| plan.age() < REVIEWED_PLAN_TTL);
-        // Keep memory bounded even when a window repeatedly prepares a plan.
-        if plans.len() >= REVIEWED_PLAN_MAX_ENTRIES {
-            if let Some(oldest) = plans
-                .iter()
-                .min_by_key(|(_, plan)| plan.created_at_ms)
-                .map(|(id, _)| id.clone())
-            {
-                plans.remove(&oldest);
-            }
-        }
-        plans.insert(plan_id.to_owned(), plan);
-        Ok(())
+        self.inner.put(scope, plan_id, plan).await
     }
 
     async fn get(
@@ -117,7 +114,7 @@ impl ReviewedPlanStore for DesktopReviewedPlanStore {
         if !self.acknowledges(scope) {
             return Ok(None);
         }
-        Ok(self.plans.lock().await.get(plan_id).cloned())
+        self.inner.get(scope, plan_id).await
     }
 
     async fn remove(
@@ -128,7 +125,7 @@ impl ReviewedPlanStore for DesktopReviewedPlanStore {
         if !self.acknowledges(scope) {
             return Ok(false);
         }
-        Ok(self.plans.lock().await.remove(plan_id).is_some())
+        self.inner.remove(scope, plan_id).await
     }
 }
 
@@ -285,6 +282,46 @@ mod tests {
             !store.remove(&owner, "plan-1").await.expect("remove plan"),
             "第二次消费必须失败"
         );
+    }
+
+    /// 【装配路径】平台组装失败 ⇒ `desktop_reviewed_plan_store` 返回**不承认任何
+    /// 组织**的存储。
+    ///
+    /// 这条走的是真实的组装入口（不是直接构造 `deny_all()`）：平台身份不可用时，
+    /// 装配必须落到 deny-all 兜底，**不得**编造组织身份，也**不得**让任意组织
+    /// 的计划进入存储。
+    #[tokio::test]
+    async fn desktop_store_assembly_denies_every_organization_when_platform_failed() {
+        let failed = PlatformEntry::failed(datazen_application::error::ApiError::new(
+            datazen_application::error::ApiErrorCode::Unauthenticated,
+            "桌面本地身份不可用",
+        ));
+        let store = desktop_reviewed_plan_store(&failed);
+        let any = scope("datazen-desktop-local");
+        let other = scope("other-org");
+
+        // 写入不落数据。
+        store
+            .put(&any, "plan-1", plan("plan-1"))
+            .await
+            .expect("put plan");
+        store
+            .put(&other, "plan-2", plan("plan-2"))
+            .await
+            .expect("put plan");
+
+        let visible = store.get(&any, "plan-1").await.expect("read plan");
+        assert!(
+            visible.is_none(),
+            "平台组装失败时不得承认任何组织，实际读到了 {visible:?}"
+        );
+        let visible_other = store.get(&other, "plan-2").await.expect("read plan");
+        assert!(
+            visible_other.is_none(),
+            "平台组装失败时不得承认任何组织，实际读到了 {visible_other:?}"
+        );
+        let removed = store.remove(&any, "plan-1").await.expect("remove plan");
+        assert!(!removed, "平台组装失败时不得消费任何计划");
     }
 
     /// 桌面存储按 TTL 裁剪过期条目：写入新计划时，已过期的旧计划被清掉。
