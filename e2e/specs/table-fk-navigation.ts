@@ -396,11 +396,19 @@ describe('外键跳转与返回栈 (DB-07)', () => {
     expect(nullCell?.found).toBe(false);
     // The cell is still marked as a member of the key, and the marker names
     // the target it points at.
+    //
+    // The exact spelling is **driver-shaped**: PostgreSQL reports the
+    // referenced table with its schema (`public._e2e_fk_parent`), MySQL and
+    // SQLite with the bare name — so the assertion pins the two parts that
+    // every driver spells the same way (the table and the referenced column)
+    // instead of the prefix.
     const marked = await browser.execute(() => {
       const cell = document.querySelector('[data-dt-row="1"][data-dt-col="customer_id"]');
       return cell?.getAttribute('data-dt-fk') ?? null;
     });
-    expect(marked).toBe('cust_no');
+    expect(marked).toContain('_e2e_fk_parent');
+    expect(marked).toContain('cust_no');
+    expect(marked).not.toContain('public');
 
     const before = await tabCount();
     await $('[data-dt-row="1"][data-dt-col="customer_id"]').click();

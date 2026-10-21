@@ -135,6 +135,43 @@ describe('the round trip of a grid error message', () => {
     expect(classifyGridError((caught as Error).message)).toBe('unknown');
   });
 
+  it('keeps a non-foreign-key grid code readable in the error banner', async () => {
+    // The **other** grid codes were just as unreachable as `grid.fk.*`: the
+    // host's message was dropped on the way to the front end. This is the
+    // proof that the change reaches them too — through a path that has
+    // nothing to do with foreign keys (the staged-change commit).
+    const panelId = 'panel-orders';
+    mockInvoke.mockResolvedValueOnce({
+      columns: [
+        { name: 'id', dataType: 'integer', isPrimaryKey: true, isNullable: false },
+        { name: 'name', dataType: 'text', isPrimaryKey: false, isNullable: true },
+      ],
+      rows: [[1, 'Alice']],
+      totalRows: 1,
+      page: 0,
+      pageSize: 50,
+    });
+    await useTableDataStore
+      .getState()
+      .loadTableData({
+        panelId,
+        dbSessionId: 'session-1',
+        table: 'orders',
+        connectionId: 'conn-1',
+        driverType: 'postgresql',
+        database: 'app',
+        schema: null,
+      });
+    useTableDataStore.getState().stageCellChange(panelId, 0, 'name', 'Alicia');
+
+    mockInvoke.mockRejectedValue('grid.commit.stalePlan: Row change plan fingerprint is stale');
+    await useTableDataStore.getState().commitPendingChanges(panelId);
+
+    // The error banner of the grid carries the host's code.
+    const error = useTableDataStore.getState().byPanel.get(panelId)?.error ?? '';
+    expect(error).toContain('grid.commit.stalePlan');
+  });
+
   it('reports the classified code of a refused jump, end to end', async () => {
     const outcome = await openForeignKeyTarget({
       sourcePanelId: 'panel-orders',

@@ -261,7 +261,23 @@ export async function openForeignKeyTarget(
     };
   }
 
-  // 5. A **new** tab. Not the "open table" path: that one de-duplicates by
+  // 5. The conditions of the jump, built **before** the tab exists: a target
+  //    that does not line up with the values must not leave an empty tab
+  //    behind (07 §10 #3 — the "flash the whole table" defect).
+  const conditions = buildFkFilters(target, input.values);
+  if (conditions === null) {
+    // The host resolved a target that does not line up with the values: the
+    // jump is refused rather than opened with a half-written condition.
+    return {
+      ok: false,
+      error: {
+        code: 'grid.fk.shapeMismatch',
+        raw: `grid.fk.shapeMismatch: the resolved target has ${target.columns.length} referenced column(s) but ${input.values.length} value(s)`,
+      },
+    };
+  }
+
+  // 6. A **new** tab. Not the "open table" path: that one de-duplicates by
   //    table name and would switch to an existing tab without the conditions.
   const sourcePanel = panels.find((panel) => panel.id === input.sourcePanelId);
   const panelId = nextPanelId('tbl');
@@ -279,21 +295,9 @@ export async function openForeignKeyTarget(
   };
   panelStore.addPanel(panel);
 
-  // 6. The conditions of the jump, seeded into the tab's data slice — in the
-  //    same event turn, so the first frame already shows them. The tab's own
-  //    first load is the one fetch, and it carries the conditions.
-  const conditions = buildFkFilters(target, input.values);
-  if (conditions === null) {
-    // The host resolved a target that does not line up with the values: the
-    // jump is refused rather than opened with a half-written condition.
-    return {
-      ok: false,
-      error: {
-        code: 'grid.fk.shapeMismatch',
-        raw: `grid.fk.shapeMismatch: the resolved target has ${target.columns.length} referenced column(s) but ${input.values.length} value(s)`,
-      },
-    };
-  }
+  // 7. The conditions are seeded into the tab's data slice — in the same
+  //    event turn, so the first frame already shows them. The tab's own first
+  //    load is the one fetch, and it carries the conditions.
   const context: TableChangeContext = {
     connectionId: panel.connectionId,
     dbSessionId: panel.dbSessionId,
@@ -304,7 +308,7 @@ export async function openForeignKeyTarget(
   };
   useTableDataStore.getState().seedPanel(panelId, context, { filters: conditions });
 
-  // 7. The jump is recorded, and the tab carries where it came from.
+  // 8. The jump is recorded, and the tab carries where it came from.
   const nav = useFkNavigationStore.getState();
   const entry = nav.push({
     panelId,
@@ -329,7 +333,7 @@ export async function openForeignKeyTarget(
   });
   recordSourceViewport(input);
 
-  // 8. The referenced row may be gone: that is a **successful** jump with an
+  // 9. The referenced row may be gone: that is a **successful** jump with an
   //    empty result, not an error.
   return { ok: true, panelId, targetMissing: !resolution.exists };
 }

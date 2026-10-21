@@ -190,6 +190,33 @@ describe('openForeignKeyTarget', () => {
     expect(mockResolveForeignKeyTargets).not.toHaveBeenCalled();
   });
 
+  it('opens no tab when the resolved target does not line up with the values', async () => {
+    // The host answered with a target whose referenced columns do not match
+    // the values: the jump is refused, and it must not leave an empty tab
+    // behind (07 §10 #3).
+    mockResolveForeignKeyTargets.mockResolvedValue(
+      resolution({
+        target: {
+          database: 'app',
+          schema: null,
+          table: 'customers',
+          columns: ['id', 'tenant'],
+          dataTypes: ['integer', 'text'],
+          primaryKeys: ['id'],
+          unique: false,
+          candidateLimit: 50,
+        },
+      }),
+    );
+
+    const outcome = await openForeignKeyTarget(jump());
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error?.code).toBe('grid.fk.shapeMismatch');
+    // The source tab is the only one: no empty target tab was left behind.
+    expect(usePanelStore.getState().panels).toHaveLength(1);
+  });
+
   it('opens no tab when the host refuses', async () => {
     mockResolveForeignKeyTargets.mockRejectedValue(
       'grid.fk.targetUnresolved: the referenced table could not be resolved',
