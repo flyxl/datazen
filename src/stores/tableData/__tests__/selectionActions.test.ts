@@ -126,15 +126,33 @@ describe('cell/row mode transitions', () => {
     expect(next.selectedRows).toEqual(new Set());
   });
 
-  it('setGridSelection clears the row set in cell mode but not in row mode', () => {
+  it('setGridSelection derives the row set from the mode, so no stale highlight survives', () => {
     const cell: GridSelection = selectionFromAnchorFocus(coord(0, 'id'), coord(1, 'id'), 'cell');
     const withCell = applyGridSelection(tableState({ selectedRows: new Set([0]) }), cell);
     expect(withCell.gridSelection).toBe(cell);
     expect(withCell.selectedRows).toEqual(new Set());
 
-    const withRow = applyGridSelection(tableState({ selectedRows: new Set([0]) }), ROW_MODE_GRID_SELECTION);
+    // A bare row-mode value carries no row list: it means "row mode, nothing selected yet",
+    // and only `applyRowModeTransition` may pair a non-empty row set with the mode (D4).
+    const withRow = applyGridSelection(
+      tableState({ selectedRows: new Set([0]) }),
+      ROW_MODE_GRID_SELECTION,
+    );
     expect(withRow.gridSelection).toBe(ROW_MODE_GRID_SELECTION);
-    expect(withRow.selectedRows).toBeUndefined();
+    expect(withRow.selectedRows).toEqual(new Set());
+    expect(withRow.lastSelectedIndex).toBeNull();
+  });
+
+  it('setting the empty selection is the same transition as clearing (hook Escape path)', () => {
+    const next = applyGridSelection(
+      tableState({ selectedRows: new Set([2]), lastSelectedIndex: 2 }),
+      EMPTY_GRID_SELECTION,
+    );
+    expect(next).toEqual({
+      gridSelection: EMPTY_GRID_SELECTION,
+      selectedRows: new Set(),
+      lastSelectedIndex: null,
+    });
   });
 
   it('clearGridSelection drops geometry, rows and the anchor together', () => {
@@ -222,5 +240,50 @@ describe('createSelectionSlice', () => {
     slice.toggleSelectAll('panel');
     expect(patch).toHaveBeenCalledTimes(1);
     expect(patch.mock.calls[0]?.[0]).toBe('panel');
+  });
+
+  it('selectRow enters row mode, so the gutter path reaches mode "row" (D4)', () => {
+    const patched: Array<Partial<TableState>> = [];
+    const slice = createSelectionSlice((_panelId, updater) => {
+      patched.push(updater(tableState()));
+    });
+
+    slice.selectRow('panel', 0);
+
+    expect(patched[0]?.selectedRows).toEqual(new Set([0]));
+    expect(patched[0]?.gridSelection?.mode).toBe('row');
+    expect(patched[0]?.gridSelection?.anchor).toBeNull();
+    expect(patched[0]?.gridSelection?.focus).toBeNull();
+  });
+
+  it('toggleSelectAll also switches to row mode', () => {
+    const patched: Array<Partial<TableState>> = [];
+    const slice = createSelectionSlice((_panelId, updater) => {
+      patched.push(updater(tableState()));
+    });
+
+    slice.toggleSelectAll('panel');
+
+    expect(patched[0]?.selectedRows).toEqual(new Set([0, 1, 2]));
+    expect(patched[0]?.gridSelection?.mode).toBe('row');
+  });
+
+  it('setRowModeSelection enters row mode and leaving it clears the rows too', () => {
+    const patched: Array<Partial<TableState>> = [];
+    const state = tableState({ selectedRows: new Set([1]), lastSelectedIndex: 1 });
+    const slice = createSelectionSlice((_panelId, updater) => {
+      patched.push(updater(state));
+    });
+
+    slice.setRowModeSelection('panel', 2, { range: true });
+    expect(patched[0]?.selectedRows).toEqual(new Set([1, 2]));
+    expect(patched[0]?.gridSelection?.mode).toBe('row');
+
+    slice.setRowModeSelection('panel', null);
+    expect(patched[1]).toEqual({
+      gridSelection: EMPTY_GRID_SELECTION,
+      selectedRows: new Set(),
+      lastSelectedIndex: null,
+    });
   });
 });

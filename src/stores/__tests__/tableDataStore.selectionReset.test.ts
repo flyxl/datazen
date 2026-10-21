@@ -168,4 +168,44 @@ describe('tableDataStore selection reset on re-fetch', () => {
     expect(loaded().selectedRows).toEqual(new Set([0]));
     expect(loaded().lastSelectedIndex).toBe(0);
   });
+
+  it('row mode is reachable from selectRow and survives a fetch-free column change', async () => {
+    await loadTable();
+
+    useTableDataStore.getState().selectRow(PANEL, 1);
+
+    expect(loaded().gridSelection.mode).toBe('row');
+    expect(loaded().gridSelection.anchor).toBeNull();
+    expect(loaded().selectedRows).toEqual(new Set([1]));
+  });
+
+  it('clearing the selection in row mode also drops the whole-row highlight (Escape path)', async () => {
+    await loadTable();
+    useTableDataStore.getState().selectRow(PANEL, 1);
+    expect(loaded().gridSelection.mode).toBe('row');
+
+    // Exactly what `useGridSelection` does on Escape / a blank click.
+    useTableDataStore.getState().setGridSelection(PANEL, EMPTY_GRID_SELECTION);
+
+    expectSelectionCleared();
+  });
+
+  it('leaving row mode through setRowModeSelection(null) clears geometry and rows', async () => {
+    await loadTable();
+    useTableDataStore.getState().selectRow(PANEL, 1);
+
+    useTableDataStore.getState().setRowModeSelection(PANEL, null);
+
+    expectSelectionCleared();
+  });
+
+  it('a paging transition drops a row-mode selection and its mode', async () => {
+    await loadTable();
+    useTableDataStore.getState().selectRow(PANEL, 1);
+    mockDatabaseCommands.getTableData.mockReturnValueOnce(never());
+
+    useTableDataStore.getState().setPage(PANEL, 1);
+
+    expectSelectionCleared();
+  });
 });

@@ -113,8 +113,10 @@ export function TableView({
       stageCellChange: (row: number, col: string, value: unknown) =>
         store().stageCellChange(panelId, row, col, value),
       cancelEdit: () => store().cancelEdit(panelId),
+      // Row gutter (DB-01 §4.2): row-level selection must also switch the mode to 'row',
+      // otherwise `selectedRows` paints a highlight the selection model cannot explain.
       selectRow: (index: number, opts?: { multi?: boolean; range?: boolean }) =>
-        store().selectRow(panelId, index, opts),
+        store().setRowModeSelection(panelId, index, opts),
       toggleSelectAll: () => store().toggleSelectAll(panelId),
       deleteRows: (rowIndices: number[]) => store().deleteRows(panelId, rowIndices),
       previewPendingChanges: () => store().previewPendingChanges(panelId),

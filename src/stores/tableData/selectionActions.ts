@@ -104,9 +104,15 @@ export function applyRowModeTransition(
   return { ...applyRowSelect(ts, index, opts), gridSelection: ROW_MODE_GRID_SELECTION };
 }
 
-/** Store a selection computed elsewhere, enforcing the cell-mode row-set invariant. */
+/**
+ * Store a selection computed elsewhere. The row set is *always* derived from the mode here:
+ * `none` means no selection at all (so a stale whole-row highlight cannot survive), while
+ * `cell` and `row` both arrive without a row list — a plain `GridSelection` has no room for
+ * one — so the row set is emptied and any row selection must be written through
+ * {@link applyRowModeTransition} / `setRowModeSelection`, which patch mode and rows together.
+ */
 export function applyGridSelection(_ts: TableState, selection: GridSelection): Partial<TableState> {
-  if (selection.mode !== 'cell') return { gridSelection: selection };
+  if (selection.mode === 'none') return applyClearGridSelection(_ts);
   return { gridSelection: selection, selectedRows: new Set(), lastSelectedIndex: null };
 }
 
@@ -147,6 +153,16 @@ export function rowIndexSelectionReset(): Partial<TableState> {
 export interface SelectionStoreSlice {
   selectRow: (panelId: string, index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   toggleSelectAll: (panelId: string) => void;
+  /**
+   * Enter row mode for one row (`null` leaves row mode entirely). Kept as an explicit action
+   * because `selectRow` is the legacy name the table body already binds; both share one
+   * transition so the row set and the mode can never disagree.
+   */
+  setRowModeSelection: (
+    panelId: string,
+    rowIndex: number | null,
+    opts?: { multi?: boolean; range?: boolean },
+  ) => void;
   setGridSelection: (panelId: string, selection: GridSelection) => void;
   clearGridSelection: (panelId: string) => void;
   beginCellSelection: (panelId: string, coord: CellCoord) => void;
@@ -161,8 +177,19 @@ export function createSelectionSlice(
   patch: (panelId: string, updater: (ts: TableState) => Partial<TableState>) => void,
 ): SelectionStoreSlice {
   return {
-    selectRow: (panelId, index, opts) => patch(panelId, (ts) => applyRowSelect(ts, index, opts)),
-    toggleSelectAll: (panelId) => patch(panelId, (ts) => applyToggleSelectAll(ts)),
+    // Every row-level entry point also switches the mode, so `mode: 'row'` is reachable and
+    // `selectedRows` never becomes a highlight the selection model cannot explain (D4).
+    selectRow: (panelId, index, opts) =>
+      patch(panelId, (ts) => applyRowModeTransition(ts, index, opts)),
+    toggleSelectAll: (panelId) =>
+      patch(panelId, (ts) => ({
+        ...applyToggleSelectAll(ts),
+        gridSelection: ROW_MODE_GRID_SELECTION,
+      })),
+    setRowModeSelection: (panelId, rowIndex, opts) =>
+      patch(panelId, (ts) =>
+        rowIndex === null ? applyClearGridSelection(ts) : applyRowModeTransition(ts, rowIndex, opts),
+      ),
     setGridSelection: (panelId, selection) =>
       patch(panelId, (ts) => applyGridSelection(ts, selection)),
     clearGridSelection: (panelId) => patch(panelId, (ts) => applyClearGridSelection(ts)),

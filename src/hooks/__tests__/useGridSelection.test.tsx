@@ -1,7 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useCallback, useState } from 'react';
-import { EMPTY_GRID_SELECTION, type CellCoord, type GridSelection } from '../../stores/tableData/gridSelection';
+import {
+  EMPTY_GRID_SELECTION,
+  type CellCoord,
+  type GridSelection,
+} from '../../stores/tableData/gridSelection';
+import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
 import { useGridSelection } from '../useGridSelection';
 
 const COLUMNS = ['name', 'id', 'note'];
@@ -12,14 +17,21 @@ interface HarnessProps {
   onRowGutterSelect?: (rowIndex: number, opts: { multi: boolean; range: boolean }) => void;
   enabled?: boolean;
   editingCell?: { row: number; col: string } | null;
+  initialSelection?: GridSelection;
 }
 
 /**
  * Minimal grid surface: real DOM cells with the same `data-dt-row` / `data-dt-col` contract
  * the virtual body renders, plus the row-gutter and blank-filler shapes from DB-01.
  */
-function Harness({ onChange, onRowGutterSelect, enabled, editingCell = null }: HarnessProps) {
-  const [selection, setSelection] = useState<GridSelection>(EMPTY_GRID_SELECTION);
+function Harness({
+  onChange,
+  onRowGutterSelect,
+  enabled,
+  editingCell = null,
+  initialSelection = EMPTY_GRID_SELECTION,
+}: HarnessProps) {
+  const [selection, setSelection] = useState<GridSelection>(initialSelection);
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const handleChange = useCallback(
     (next: GridSelection) => {
@@ -292,5 +304,31 @@ describe('useGridSelection keyboard and focus', () => {
     click('cell-1-id');
     expect(screen.getByTestId('selected-id').textContent).toBe('true');
     expect(screen.getByTestId('selected-name').textContent).toBe('false');
+  });
+});
+
+describe('useGridSelection row-mode clearing', () => {
+  it('Escape in row mode emits the empty selection so the row highlight is cleared too', () => {
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} initialSelection={ROW_MODE_GRID_SELECTION} />);
+
+    expect(screen.getByTestId('mode').textContent).toBe('row');
+    fireEvent.keyDown(surface(), { key: 'Escape' });
+
+    // Emitting EMPTY is what makes the store drop `selectedRows`; a bare `mode: 'none'`
+    // write would leave the whole-row highlight painted (D4 follow-up risk).
+    expect(onChange).toHaveBeenLastCalledWith(EMPTY_GRID_SELECTION);
+    expect(screen.getByTestId('mode').textContent).toBe('none');
+  });
+
+  it('a blank click in row mode also goes through the empty selection', () => {
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} initialSelection={ROW_MODE_GRID_SELECTION} />);
+
+    const blank = screen.getByTestId('surface-filler');
+    fireEvent.pointerDown(blank, { pointerId: 3, button: 0 });
+    fireEvent.pointerUp(blank, { pointerId: 3, button: 0 });
+
+    expect(onChange).toHaveBeenLastCalledWith(EMPTY_GRID_SELECTION);
   });
 });
