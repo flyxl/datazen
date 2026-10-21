@@ -103,8 +103,8 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 |---|---|---|---|
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | 🔄 第 1 轮修复完成 `a0ea3d1f0` → 复测中 |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 第 1 轮修复完成 `9a4a1585e` → 复测中 |
-| **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | 🔄 data-transfer 侧（`plan_store` 端口化 + **激活 40 个孤儿测试**） |
-| **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | 🔄 data-sync 侧（`plan_store` + `comparison_store` 端口化 + 删门面） |
+| **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ✅ 已交付 `431b6d23c` → Tester 复测中 |
+| **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | ✅ 已交付 `dd8c9a0d7` → Tester 复测中 |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 第 1 轮小修完成 `d54812172` → 事实准确性复测中 |
 
 **派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖。**已执行**（四树均推进到 `65dac1e2c` = C + B + `OrganizationScope`）。
@@ -522,6 +522,19 @@ Tester 补的 8 条用例才把它们钉死。**这条已作为后续所有轨�
 - `G-05` / `G-06` / `G-07`（主密钥轮换 ⇒ 身份键全变、消息编码与长度前缀、域标签取值、`resolve` 拒绝委托上下文在另两份文档未写）→ **要求补文档**（这些是"后来者最容易无意改坏"的地方：长度前缀看着像冗余）。
 - `G-08`（native_tool 既有 flake 出现 2 次 vs 基线 0 次，Fisher p≈0.49）→ 接受为既有 flake。
 - `G-09`（端口已实现但**无调用方**；`runtime/src/connection/types.rs:460` 的 `PoolKeyInputs::execution_identity_key` 仍是裸 `String`）→ 接受，记 Wave 4（**web 多租户要真正用上它，需要 runtime 从 `IdentityResolver` 取键**，runtime 改动本轨是禁区）。
+
+### F1 / F2 交付要点（两条并行轨，文件面零重叠）
+
+**F1（data-transfer）**：`TransferPlanStorePort` + `InMemoryTransferPlanStore`（HashMap 留在包内），删 `static STORE`/`global_store()`/全部自由函数转发；`AppState.transfer_plans` 组装期注入。
+**关键发现**：那批**从未被编译**的孤儿测试（`plan_store/tests.rs`）第一次真正编译就炸在**编译期** —— `Some(crate { ... })` 少 `::SqlFileTarget`、`kind: crate::Table` 应为 `crate::DdlPreviewKind::Table`、`Some(crate::Gzip)` 应为 `crate::SqlFileCompression::Gzip`、缺恢复钩子 trait import。**这才是"从未运行"的真实代价**：不是断言红，而是测试引用的 API 早就漂移了，所以过去几年"绿"是因为根本没编译。修完编译后 19 条全通过、零红，断言 76 → 81（差额 +5 全来自新增跨组织用例）。
+**更正协调者的侦察错误**：简报写"40 个测试函数"，**实际 19 条**（协调者数的是含 helper 的模式）。
+**行数**：包 25,889 → 26,274（**+385**，变大 ⇒ 没被搬出包）；宿主 +247/−78。
+**F1 自提的约定违反**：端口 trait 16 个方法一次覆盖 plan + checkpoint 两侧，与 `platform-api` "按聚合拆、不合并 trait"冲突 → 已交 Tester 判断。
+
+**F2（data-sync）**：`SyncPlanStore` 端口 + `InMemorySyncPlanStore`（包内）；`ComparisonStoreRoot` 端口 + `LocalComparisonStoreRoot`（**只回答"某组织可用的根是哪个目录"**，越组织返回 `None`）；删 `static STORE`/`global_store()`/5 个全局自由函数；删转发门面 `commands/sync/mod.rs:6`。
+**F2 顺手修了一个既有隐患**：owner 租约缓存原是**无键全局**（第二个根复用第一个根的租约 → 该根下陈旧目录永远无法被证明可回收），改为**按根缓存**。
+**行数**：包 19,108 → 19,379（**+271**）；宿主 `commands/sync/` +65（**没有 +500**）。
+**F2 报了一处 IPC 签名变化**：`get_data_sync_comparison_page` 新增 `State<'_, AppState>`（原本没有 `state` 拿不到注入实例）。**JS 侧载荷不变**（Tauri 自动注入 `State`），但 Rust 侧签名变了 → **IPC 表面差异清单新增第 4 类：「Tauri 注入的 State 参数」**，与前三类（类型路径拼写 / 类型重命名 / 有意载荷变更）区分。
 
 ### IPC 表面检查点（只有 C+B 合流时做，趁早）
 
