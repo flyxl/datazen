@@ -214,7 +214,7 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 |---|---|---|
 | C | **已验收 TEST_PASSED → 已合入集成 `e267fad3f`** | Tester `a1f0c68d`（3 次尝试后完成） |
 | B | **已验收 TEST_PASSED → 已合入 `056b35834`** | Tester `cda75c30` |
-| A | 已交付 **`5ea292d8a`+`5bde303eb`**，`READY_FOR_TEST`，**隔离 target 验证全绿**（platform-api 224 / runtime 638 / host 1269） | Tester `b285d2f2` 在独立验证树 `.worktrees/verify-job-org-scope` 复测 |
+| A | **TEST_FAILED**（1 阻塞 + 2 文档）→ **已 resume 原编码代理修复（第 1 轮）** | Tester `b285d2f2`：组织维度**逐方法核实贯通**（内存/SQLite 错误形状完全一致），8 组变异验证证明新断言有效 |
 
 ### 环境
 - `export CARGO_TARGET_DIR=/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/.shared-target`（三轨共用；会打印 `Blocking waiting for file lock` —— **正常，等它**，禁止各轨改 target 目录）
@@ -280,6 +280,26 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 - `D3`（**先存**竞态：`platform::live_source::tests::*` 的 `DATAZEN_DESKTOP_USER` 进程级 env 竞态）→ Tester 用 M4 证伪本轨道责任（回退 B 的 6 个文件后 5 次跑，第 4 次同样 `1262 passed; 3 failed`，失败正是同族用例）→ **归 Wave 4，但优先级高**（它让 CI 周期性红）。
 - `D4`（编码代理自述数字与实况不符：自称 9 文件 +215/−45，实为 9 文件 +222/−45，排除 progress.md 则 8 文件 +93/−45）→ 信息项，无行动。
 - `D5`（宿主壳硬编码 `BUILTIN_DEFINITIONS`，web 宿主想要自定义 builtins 只能用 `CoreRegistry` 从而失去宿主壳的 `workflows_dir()`/`save_workflow()` 命名）→ 设计观察，归 **Wave 4**（建议：宿主构造器改名或 builtins 参数化）。
+
+### A 轨验证结论（Tester `b285d2f2`）—— TEST_FAILED
+
+**核心实现判定通过**：10 个 `JobRepository` + 17 个 `JobRuntimeRepository` 方法逐个核实，内存与 SQLite **错误形状完全一致**（不存在→`NotFound`，越组织→`StaleClaim`），**没有"内存漏过滤、SQLite 已过滤"的半贯通**。8 组变异（M1/M2/M3/M4/M6/M8/M9）逐条按预期变红，证明新断言非空转。Tester 写了一个**会自己变红的守卫测试**（扫全仓 `JobFilter` 字面量，缺 `organization_id` 即报错并给出行号）。
+
+**阻塞缺陷 D1 —— 暴露的是协调者门禁集的盲区，不是实现问题**：
+`JobFilter` 移除 `Default` 派生后，`src-tauri/src/commands/dashboard.rs:585-588` 这个**被 `#[cfg(feature = "webdriver")]` 门控**的调用点没跟上 → `cargo check -p datazen --features webdriver --all-targets` **EXIT=101**。
+**默认门禁不编译 feature 分支**，所以 fmt/clippy/check/三套件全绿也照样漏掉 → `pnpm tauri:build:webdriver` / `pnpm e2e` 整条 E2E 流水线会红。
+→ **已把 `cargo check -p datazen --features webdriver --all-targets` 补进合流门禁集**（§6），并要求 A 轨自验也跑这一条。**这是本轮最有价值的发现之一：门禁集自身的盲区比实现缺陷更危险。**
+
+其余缺陷处置：
+- `D2`（端口与架构文档的"跨组织访问"措辞只覆盖读路径，写路径实为 `StaleClaim`）→ **要求 A 修**（两处）。
+- `D3`（`renew` 的组织兜底只写在内存实现，端口契约零注释、SQLite 侧零注释，且没出现"claim fencing"字样）→ **要求 A 修**（端口 + SQLite 两侧）。
+- `D4`（`persistence-model.md` 的 `SCHEMA_VERSION` 3 vs 4）→ Tester 用 `git merge-base --is-ancestor 4fbee80f7 5ea292d8a^` **独立证实早于本轨** → Wave 4 文档收口。
+- `D5`（`progress.md` 已入库）→ 合并收尾删除。
+- `D6`（claim 写路径的"存在性预言机"：不存在→`NotFound` vs 属他组织→`StaleClaim`，可区分 jobId 是否存在，与 CM-05 不完全吻合）→ **SQLite 侧改前即如此**，内存侧本次忠实镜像 → 既有设计取舍 → Wave 4。
+- `D7`（SQLite 侧 `admission.rs:44` 的盖章行**非承重**，真正承重的是 INSERT 绑定 `admission.rs:107`；内存侧同名行承重）→ **要求 A 加注释说明**（低成本，防后来人误判）。
+- `D8`（`accept` 重复 jobId 新行为合并前**零覆盖** —— 整段删掉 630 条 runtime 用例仍全绿）→ **已由 Tester 的 `f6c089372` 补上**。
+
+**Tester 对 A 自述的校正（已采信）**：`accept` 从"静默覆盖"改报错**接受**。改前确实是裸 `inner.jobs.insert()` 覆盖整行、且**根本没有组织概念** —— 覆盖之所以变成"跨组织顶替入口"是**本轨引入组织维度后的必要收口**，不是无关收紧。且 `InMemoryJobRepository` 在**生产代码里只以 `#[cfg(test)]` 出现**（桌面走 SQLite，其重复 jobId 改前就已报错）→ **桌面行为零变化**。
 
 ## 6. 门禁与流程
 
