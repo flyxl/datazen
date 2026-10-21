@@ -39,6 +39,14 @@
 | **F11** | **`grid.selection.*` 三个码登记了却零生产者**（Wave 1 的 `grid-selection`）：越界一律 `clampCellCoord → null`，**从不抛错** | **需要一次显式决定** | 轨 B 新加的门禁 `src/lib/__tests__/gridErrors.registration.test.ts` 把它们列进 `PRODUCER_PENDING`，并加了一条断言：**它们一旦有了生产者，门禁就红**，逼着把 `PRODUCER_PENDING` 删掉。**二选一**：①让选择层改抛错（**行为变更**：静默夹取 → 明确报错，需独立轨 + 复测）；②撤登记并从契约 §8.2 删行。**不能一直挂着**——契约自己写着"只登记有生产者的码" |
 | F12 | `src/lib/gridErrors.ts` 的文件头注释仍写「Every entry here MUST have a real producer」，而 `grid.selection.*` 三条没有 | 协调者（合流后改注释） | 注释要写明 `PRODUCER_PENDING` 这个例外与它自清的机制 |
 
+## 本波又一条方法论：**重构会静默弄丢回归锁**
+
+轨 B 的 Tester 用变异抓出：拆分测试文件（`tests.rs` 791 行 → `tests.rs` / `join_tests.rs` / `test_support.rs`）时，`overlong_regex_pattern_is_refused` **被删掉了** —— 而"用例还在、只是断言变了"和"整条分支无人看守"是两件事。**证明方法**：把 `filter_sql/mod.rs` 的长度守卫 `> MAX_REGEX_PATTERN_LENGTH` 改成 `> usize::MAX`（等于关掉）⇒ **395 tests 依然全绿** ⇒ 这条分支没有任何测试。
+
+⇒ **两条通用做法**（已在本批用上）：
+1. **针对性变异**当验收手段：要证明"某分支被守着"，就**关掉它**，看有没有用例变红。这比"用例存在"强一个量级，成本却只有几分钟。
+2. **测试面清单**：像轨 A 的 `ACTION_NAMES`（冻结 store 的 action 名单）那样，为**大测试文件**冻结一份**用例名清单**（`src/lib/__tests__/…`），重构拆分时清单对不上就红 ⇒ **丢用例立刻可见**，不靠人眼比对 diff。
+
 ## Wave 6 排法（Wave 5 合流后执行）
 
 **一轨前端 + 一轨后端**，不排两轨前端（08 与 02 的 i18n 都落 `src/locales/en/query.ts`，同波会冲突）：
