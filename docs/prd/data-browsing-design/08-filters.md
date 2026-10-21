@@ -157,6 +157,14 @@ pub const DIALECT_FILTER_OPERATORS: &[FilterOperator] = &[
 
 /// 既有 10 个。**只有一个用途**：作为「既有行为逐字节不变」的测试基线；
 /// **运行时不被任何默认实现返回**（`supported_filter_operators()` 的默认值是 19 个的 SHARED）。
+///
+/// 〔契约审计修订 2026-10-22〕**「19 个」指的是**输入集**，不是**下拉里看到的个数**：算子下拉最终是
+/// `operatorsForColumn(列类型族, supported)` = **列类型族 ∩ 驱动白名单**（§3.5 的既有设计），
+/// 所以文本列看到 **17** 个、数值列 **12** 个、日期列 **10** 个。**「驱动没声明 ⇒ 用共享集」是
+/// `operatorsForDriver` 那条规则的语义**（空或未声明 ⇒ 共享集），随后**仍要**按列类型收窄。
+/// 另：这条规则**必须由出厂路径调用**——曾经它只活在 `supportedOperatorsForMeta` 里而
+/// `TableView` 直接读原始数组，于是同一个输入下 helper 给 19、编辑器只给 1 个（**被测的规则
+/// ≠ 出厂的规则**）。
 pub const EXISTING_FILTER_OPERATORS: &[FilterOperator] = &[/* 上面前 10 个 */];
 
 impl FilterOperator {
