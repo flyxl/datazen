@@ -3,15 +3,23 @@
 //! The comparison response is useful for review, but it is not an execution
 //! authority.  The complete reviewed comparison remains in this registry and
 //! later commands receive only an opaque plan id plus a validated selection.
+//!
+//! ## 端口边界
+//!
+//! 计划注册表本身是**端口**（[`SyncPlanStore`），实现随包提供
+//! （[`InMemorySyncPlanStore`]）。宿主在组装期创建实例并注入，调用点按
+//! [`OrganizationScope`] 访问；跨组织访问按「不存在」处理（CM-05）。
+//! 本模块过去用 `static STORE` 持有唯一注册表——那是进程级全局可变状态，
+//! 既没法按组织隔离，也没法在测试里换实例，现已移除。
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use datazen_driver_api::{DatabaseDriver, TableSchema};
+use datazen_driver_api::TableSchema;
+use datazen_platform_api::id::OrganizationId;
+use datazen_platform_api::ports::scope::OrganizationScope;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use uuid::Uuid;
 
 use crate::job::artifact::{ChangeBlock, ChangeSetArtifact};
 pub use datazen_driver_api::driver_protocol_version;
@@ -21,6 +29,9 @@ use crate::{
     ChangeOperation, ComparisonResult, ConflictPolicy, RowChange, SyncOptions, SyncSourceFilter,
     TableMappingStatus, TableResult,
 };
+
+mod store;
+pub use store::{InMemorySyncPlanStore, SyncPlanIssue, SyncPlanStore};
 
 pub const SYNC_PLAN_TTL: Duration = Duration::from_secs(15 * 60);
 /// Bounds one page sent over the review IPC. The server still owns the full
@@ -302,50 +313,6 @@ pub struct SyncRunRequest {
     pub job_id: Option<String>,
 }
 
-/// Build the unattended profile selection from a server-owned comparison.
-///
-/// Persisted profiles do not carry row payloads or SQL.  A profile run applies
-/// every enabled operation for every matched table in the immutable plan;
-/// the plan registry remains the only source of table and row identities.
-pub fn default_profile_selection(
-    plan_id: &str,
-    revision: u64,
-    options: &SyncOptions,
-) -> Result<SyncRunSelection, String> {
-    let plan = peek_plan(plan_id)?;
-    if plan.selection_revision != revision {
-        return Err("selection revision is stale; return to comparison".into());
-    }
-    let summaries = plan.comparison.summaries()?;
-    let operations = [
-        ChangeOperation::Insert,
-        ChangeOperation::Update,
-        ChangeOperation::Delete,
-    ]
-    .into_iter()
-    .filter(|operation| options.allows(*operation))
-    .collect::<Vec<_>>();
-    if operations.is_empty() {
-        return Err("profile has no enabled Data Sync operations".into());
-    }
-    let scopes = summaries
-        .into_iter()
-        .filter(|table| table.table.status == TableMappingStatus::Matched)
-        .map(|table| SyncTableSelection {
-            source_table: table.table.source_table,
-            target_table: table.table.target_table,
-            selection_mode: SyncSelectionMode::All,
-            operations: operations.clone(),
-            excluded_rows: Vec::new(),
-        })
-        .collect();
-    Ok(SyncRunSelection {
-        revision,
-        rows: Vec::new(),
-        scopes,
-    })
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncComparisonTableSummary {
@@ -443,7 +410,7 @@ fn parse_cursor(
     Ok(offset)
 }
 
-fn summary_for_table(
+pub(crate) fn summary_for_table(
     plan_id: &str,
     table: &crate::comparison_store::ComparisonTableMetadata,
 ) -> SyncComparisonTableSummary {
@@ -478,6 +445,8 @@ fn summary_for_table(
 
 #[derive(Debug, Clone)]
 pub struct StoredSyncPlan {
+    /// 计划归属的组织。跨组织访问按「不存在」处理。
+    pub(crate) organization_id: OrganizationId,
     pub source_db_session_id: String,
     pub target_db_session_id: String,
     /// Stable endpoint identities live only in this process-local plan. Live
@@ -499,271 +468,62 @@ pub struct StoredSyncPlan {
     pub conflict_policy_fingerprint: String,
     pub selection_revision: u64,
     pub target_read_only_at_preview: bool,
-    expires_at: Instant,
+    pub(crate) expires_at: Instant,
 }
 
-pub struct SyncPlanStore {
-    plans: Mutex<HashMap<String, StoredSyncPlan>>,
-}
-
-impl SyncPlanStore {
-    pub fn new() -> Self {
-        Self {
-            plans: Mutex::new(HashMap::new()),
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn issue(
-        &self,
-        source_db_session_id: String,
-        target_db_session_id: String,
-        source_database: String,
-        target_database: String,
-        source_schema: Option<String>,
-        target_schema: Option<String>,
-        source_driver: &dyn DatabaseDriver,
-        target_driver: &dyn DatabaseDriver,
-        source_schema_fingerprint: String,
-        target_schema_fingerprint: String,
-        comparison: ComparisonResult,
-        options: SyncOptions,
-        target_read_only_at_preview: bool,
-    ) -> Result<SyncComparisonPreview, String> {
-        let id = Uuid::new_v4().to_string();
-        let selection_revision = 1;
-        let comparison = ComparisonStore::from_comparison(comparison)?;
-        self.issue_with_store(
-            id,
-            selection_revision,
-            source_db_session_id,
-            target_db_session_id,
-            source_database,
-            target_database,
-            source_schema,
-            target_schema,
-            source_driver,
-            target_driver,
-            source_schema_fingerprint,
-            target_schema_fingerprint,
-            comparison,
-            options,
-            target_read_only_at_preview,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn issue_with_store(
-        &self,
-        id: String,
-        selection_revision: u64,
-        source_db_session_id: String,
-        target_db_session_id: String,
-        source_database: String,
-        target_database: String,
-        source_schema: Option<String>,
-        target_schema: Option<String>,
-        source_driver: &dyn DatabaseDriver,
-        target_driver: &dyn DatabaseDriver,
-        source_schema_fingerprint: String,
-        target_schema_fingerprint: String,
-        comparison: ComparisonStore,
-        options: SyncOptions,
-        target_read_only_at_preview: bool,
-    ) -> Result<SyncComparisonPreview, String> {
-        let preview_tables = comparison
-            .summaries()?
-            .iter()
-            .map(|table| summary_for_table(&id, table))
-            .collect();
-        let conflict_policy_fingerprint = fingerprint_conflict_policy(options.conflict_policy);
-        let plan = StoredSyncPlan {
-            source_db_session_id,
-            target_db_session_id,
-            source_endpoint_identity: None,
-            target_endpoint_identity: None,
-            source_database,
-            target_database,
-            source_schema,
-            target_schema,
-            source_driver_type: source_driver.driver_type(),
-            target_driver_type: target_driver.driver_type(),
-            source_driver_protocol: driver_protocol_version(source_driver),
-            target_driver_protocol: driver_protocol_version(target_driver),
-            source_schema_fingerprint,
-            target_schema_fingerprint,
-            comparison,
-            options,
-            conflict_policy_fingerprint,
-            selection_revision,
-            target_read_only_at_preview,
-            expires_at: Instant::now() + SYNC_PLAN_TTL,
-        };
-        let mut plans = self
-            .plans
-            .lock()
-            .map_err(|_| "sync plan registry is unavailable".to_string())?;
-        let now = Instant::now();
-        plans.retain(|_, existing| existing.expires_at > now);
-        plans.insert(id.clone(), plan);
-        Ok(SyncComparisonPreview {
-            contract_version: SYNC_COMPARISON_CONTRACT_VERSION,
-            plan_id: id,
-            selection_revision,
-            tables: preview_tables,
-            page_size: SYNC_COMPARISON_PAGE_SIZE,
-        })
-    }
-
-    pub fn peek(&self, id: &str) -> Result<StoredSyncPlan, String> {
-        let mut plans = self
-            .plans
-            .lock()
-            .map_err(|_| "sync plan registry is unavailable".to_string())?;
-        let Some(plan) = plans.get(id) else {
-            return Err("sync plan is unknown or has expired; return to comparison".into());
-        };
-        if plan.expires_at <= Instant::now() {
-            plans.remove(id);
-            return Err("sync plan has expired; return to comparison".into());
-        }
-        Ok(plan.clone())
-    }
-
-    fn attach_endpoint_identities(
-        &self,
-        id: &str,
-        source: datazen_platform_api::migration::EndpointIdentity,
-        target: datazen_platform_api::migration::EndpointIdentity,
-    ) -> Result<(), String> {
-        let mut plans = self
-            .plans
-            .lock()
-            .map_err(|_| "sync plan registry is unavailable".to_string())?;
-        let plan = plans.get_mut(id).ok_or_else(|| {
-            "sync plan is unknown or has expired; return to comparison".to_string()
-        })?;
-        plan.source_endpoint_identity = Some(source);
-        plan.target_endpoint_identity = Some(target);
-        Ok(())
-    }
-
-    /// Claim before a write starts.  A claimed plan remains consumed even if
-    /// the transaction result is unknown, so the UI can never retry blindly.
-    pub fn claim(&self, id: &str) -> Result<StoredSyncPlan, String> {
-        let mut plans = self
-            .plans
-            .lock()
-            .map_err(|_| "sync plan registry is unavailable".to_string())?;
-        let Some(plan) = plans.remove(id) else {
-            return Err("sync plan is unknown or has expired; return to comparison".into());
-        };
-        if plan.expires_at <= Instant::now() {
-            return Err("sync plan has expired; return to comparison".into());
-        }
-        Ok(plan)
-    }
-}
-
-impl Default for SyncPlanStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-fn global_store() -> &'static SyncPlanStore {
-    static STORE: OnceLock<SyncPlanStore> = OnceLock::new();
-    STORE.get_or_init(SyncPlanStore::new)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn issue_plan(
-    source_db_session_id: String,
-    target_db_session_id: String,
-    source_database: String,
-    target_database: String,
-    source_schema: Option<String>,
-    target_schema: Option<String>,
-    source_driver: &dyn DatabaseDriver,
-    target_driver: &dyn DatabaseDriver,
-    source_schema_fingerprint: String,
-    target_schema_fingerprint: String,
-    comparison: ComparisonResult,
-    options: SyncOptions,
-    target_read_only_at_preview: bool,
-) -> Result<SyncComparisonPreview, String> {
-    global_store().issue(
-        source_db_session_id,
-        target_db_session_id,
-        source_database,
-        target_database,
-        source_schema,
-        target_schema,
-        source_driver,
-        target_driver,
-        source_schema_fingerprint,
-        target_schema_fingerprint,
-        comparison,
-        options,
-        target_read_only_at_preview,
-    )
-}
-
-/// Issue a plan under a caller-minted plan id.
+/// Build the unattended profile selection from a server-owned comparison.
 ///
-/// §2.1: the compare command mints the id *before* the `dataSyncPrepare` Job
-/// exists, so the preview and the frozen ChangeSet Artifact name the same plan.
-/// The store still refuses to issue a second plan under one id.
-#[allow(clippy::too_many_arguments)]
-pub fn issue_plan_with_store_and_id(
-    id: String,
-    source_db_session_id: String,
-    target_db_session_id: String,
-    source_database: String,
-    target_database: String,
-    source_schema: Option<String>,
-    target_schema: Option<String>,
-    source_driver: &dyn DatabaseDriver,
-    target_driver: &dyn DatabaseDriver,
-    source_schema_fingerprint: String,
-    target_schema_fingerprint: String,
-    comparison: ComparisonStore,
-    options: SyncOptions,
-    target_read_only_at_preview: bool,
-) -> Result<SyncComparisonPreview, String> {
-    global_store().issue_with_store(
-        id,
-        1,
-        source_db_session_id,
-        target_db_session_id,
-        source_database,
-        target_database,
-        source_schema,
-        target_schema,
-        source_driver,
-        target_driver,
-        source_schema_fingerprint,
-        target_schema_fingerprint,
-        comparison,
-        options,
-        target_read_only_at_preview,
-    )
+/// Persisted profiles do not carry row payloads or SQL.  A profile run applies
+/// every enabled operation for every matched table in the immutable plan;
+/// the plan registry remains the only source of table and row identities.
+pub fn default_profile_selection(
+    store: &dyn SyncPlanStore,
+    scope: &OrganizationScope,
+    plan_id: &str,
+    revision: u64,
+    options: &SyncOptions,
+) -> Result<SyncRunSelection, String> {
+    let plan = store.peek(scope, plan_id)?;
+    if plan.selection_revision != revision {
+        return Err("selection revision is stale; return to comparison".into());
+    }
+    let summaries = plan.comparison.summaries()?;
+    let operations = [
+        ChangeOperation::Insert,
+        ChangeOperation::Update,
+        ChangeOperation::Delete,
+    ]
+    .into_iter()
+    .filter(|operation| options.allows(*operation))
+    .collect::<Vec<_>>();
+    if operations.is_empty() {
+        return Err("profile has no enabled Data Sync operations".into());
+    }
+    let scopes = summaries
+        .into_iter()
+        .filter(|table| table.table.status == TableMappingStatus::Matched)
+        .map(|table| SyncTableSelection {
+            source_table: table.table.source_table,
+            target_table: table.table.target_table,
+            selection_mode: SyncSelectionMode::All,
+            operations: operations.clone(),
+            excluded_rows: Vec::new(),
+        })
+        .collect();
+    Ok(SyncRunSelection {
+        revision,
+        rows: Vec::new(),
+        scopes,
+    })
 }
 
-pub fn peek_plan(id: &str) -> Result<StoredSyncPlan, String> {
-    global_store().peek(id)
-}
-
-pub fn attach_endpoint_identities(
+/// Build the review preview of an already-issued plan.
+pub fn preview_for_plan(
+    store: &dyn SyncPlanStore,
+    scope: &OrganizationScope,
     id: &str,
-    source: datazen_platform_api::migration::EndpointIdentity,
-    target: datazen_platform_api::migration::EndpointIdentity,
-) -> Result<(), String> {
-    global_store().attach_endpoint_identities(id, source, target)
-}
-
-pub fn preview_for_plan(id: &str) -> Result<SyncComparisonPreview, String> {
-    let plan = peek_plan(id)?;
+) -> Result<SyncComparisonPreview, String> {
+    let plan = store.peek(scope, id)?;
     let tables = plan
         .comparison
         .summaries()?
@@ -777,10 +537,6 @@ pub fn preview_for_plan(id: &str) -> Result<SyncComparisonPreview, String> {
         tables,
         page_size: SYNC_COMPARISON_PAGE_SIZE,
     })
-}
-
-pub fn claim_plan(id: &str) -> Result<StoredSyncPlan, String> {
-    global_store().claim(id)
 }
 
 /// Validate a selection against the server-owned comparison without
@@ -916,9 +672,11 @@ pub fn selected_table_page(
 /// use their manifest index and read only the requested table row range;
 /// inline stores slice the in-memory comparison.
 pub fn get_comparison_page(
+    store: &dyn SyncPlanStore,
+    scope: &OrganizationScope,
     request: SyncComparisonPageRequest,
 ) -> Result<SyncComparisonPage, String> {
-    let plan = peek_plan(&request.plan_id)?;
+    let plan = store.peek(scope, &request.plan_id)?;
     if request.limit == Some(0) {
         return Err("comparison page limit must be greater than zero".into());
     }
@@ -1333,7 +1091,6 @@ pub fn selected_rows(comparison: &ComparisonResult, options: &SyncOptions) -> Ve
 mod tests {
     use super::*;
     use crate::{RowChange, TableResult};
-    use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
     use datazen_driver_api::Value;
 
     fn comparison() -> ComparisonResult {
@@ -1683,343 +1440,5 @@ mod tests {
                 "client field {field} must be rejected"
             );
         }
-    }
-
-    #[test]
-    fn comparison_preview_is_summary_only_and_pages_are_cursor_bound() {
-        let source = MockDriver::new("postgres", MockDriverOptions::default());
-        let target = MockDriver::new("postgres", MockDriverOptions::default());
-        let options = SyncOptions::default();
-        let rows = (0..205)
-            .map(|value| {
-                RowChange::insert(
-                    vec![Value::Integer(value)],
-                    vec![Some(Value::Integer(value))],
-                    &options,
-                )
-            })
-            .collect();
-        let preview = issue_plan(
-            "source-session".into(),
-            "target-session".into(),
-            "source-db".into(),
-            "target-db".into(),
-            None,
-            None,
-            source.as_ref(),
-            target.as_ref(),
-            "source-fingerprint".into(),
-            "target-fingerprint".into(),
-            ComparisonResult::new(vec![TableResult::matched("users", "users", rows)]),
-            options,
-            false,
-        )
-        .unwrap();
-        let summary = &preview.tables[0];
-        assert_eq!(summary.insert_count, 205);
-        assert_eq!(summary.row_count, 205);
-        assert!(summary.first_cursor.is_some());
-
-        let first = get_comparison_page(SyncComparisonPageRequest {
-            plan_id: preview.plan_id.clone(),
-            source_table: "users".into(),
-            target_table: "users".into(),
-            cursor: summary.first_cursor.clone(),
-            limit: Some(2),
-        })
-        .unwrap();
-        assert_eq!(first.rows.len(), 2);
-        assert!(first.has_more);
-        assert_ne!(first.next_cursor, first.cursor);
-        let repeated = get_comparison_page(SyncComparisonPageRequest {
-            plan_id: preview.plan_id.clone(),
-            source_table: "users".into(),
-            target_table: "users".into(),
-            cursor: first.cursor.clone(),
-            limit: Some(2),
-        })
-        .unwrap();
-        assert_eq!(
-            serde_json::to_string(&repeated.rows[0].key).unwrap(),
-            serde_json::to_string(&first.rows[0].key).unwrap()
-        );
-
-        let forged = get_comparison_page(SyncComparisonPageRequest {
-            plan_id: preview.plan_id.clone(),
-            source_table: "users".into(),
-            target_table: "users".into(),
-            cursor: Some("v1.999.not-a-valid-signature".into()),
-            limit: Some(2),
-        });
-        assert!(forged.is_err());
-        assert!(get_comparison_page(SyncComparisonPageRequest {
-            plan_id: preview.plan_id.clone(),
-            source_table: "unknown".into(),
-            target_table: "users".into(),
-            cursor: None,
-            limit: Some(2),
-        })
-        .is_err());
-        assert!(get_comparison_page(SyncComparisonPageRequest {
-            plan_id: preview.plan_id,
-            source_table: "users".into(),
-            target_table: "users".into(),
-            cursor: None,
-            limit: Some(0),
-        })
-        .is_err());
-    }
-
-    #[test]
-    fn comparison_page_rejects_claimed_plan_and_overlarge_limit() {
-        let source = MockDriver::new("postgres", MockDriverOptions::default());
-        let target = MockDriver::new("postgres", MockDriverOptions::default());
-        let preview = issue_plan(
-            "source-session".into(),
-            "target-session".into(),
-            "source-db".into(),
-            "target-db".into(),
-            None,
-            None,
-            source.as_ref(),
-            target.as_ref(),
-            "source-fingerprint".into(),
-            "target-fingerprint".into(),
-            ComparisonResult::new(vec![comparison().tables[0].clone()]),
-            SyncOptions::default(),
-            false,
-        )
-        .unwrap();
-        assert!(get_comparison_page(SyncComparisonPageRequest {
-            plan_id: preview.plan_id.clone(),
-            source_table: "users".into(),
-            target_table: "users".into(),
-            cursor: None,
-            limit: Some(SYNC_COMPARISON_PAGE_MAX_LIMIT + 1),
-        })
-        .is_err());
-        let claimed = claim_plan(&preview.plan_id).unwrap();
-        drop(claimed);
-        assert!(get_comparison_page(SyncComparisonPageRequest {
-            plan_id: preview.plan_id,
-            source_table: "users".into(),
-            target_table: "users".into(),
-            cursor: None,
-            limit: Some(1),
-        })
-        .is_err());
-    }
-
-    #[test]
-    fn indexed_plan_summary_and_page_do_not_call_full_load() {
-        let source = MockDriver::new("postgres", MockDriverOptions::default());
-        let target = MockDriver::new("postgres", MockDriverOptions::default());
-        let large_row = RowChange::insert(
-            vec![Value::Integer(7)],
-            vec![Some(Value::String("x".repeat(
-                crate::comparison_store::COMPARISON_MEMORY_LIMIT + 1,
-            )))],
-            &SyncOptions::default(),
-        );
-        let preview = issue_plan(
-            "source-session".into(),
-            "target-session".into(),
-            "source-db".into(),
-            "target-db".into(),
-            None,
-            None,
-            source.as_ref(),
-            target.as_ref(),
-            "source-fingerprint".into(),
-            "target-fingerprint".into(),
-            ComparisonResult::new(vec![
-                TableResult::matched("users", "users", vec![large_row]),
-                TableResult::matched(
-                    "orders",
-                    "orders",
-                    vec![RowChange::insert(
-                        vec![Value::Integer(8)],
-                        vec![Some(Value::Integer(8))],
-                        &SyncOptions::default(),
-                    )],
-                ),
-            ]),
-            SyncOptions::default(),
-            false,
-        )
-        .unwrap();
-        let plan = peek_plan(&preview.plan_id).unwrap();
-        assert!(plan.comparison.is_spilled());
-        assert_eq!(preview.tables[0].row_count, 1);
-        let before = plan.comparison.full_load_calls();
-        let page = get_comparison_page(SyncComparisonPageRequest {
-            plan_id: preview.plan_id,
-            source_table: "users".into(),
-            target_table: "users".into(),
-            cursor: None,
-            limit: Some(1),
-        })
-        .unwrap();
-        assert_eq!(page.rows.len(), 1);
-        assert_eq!(plan.comparison.full_load_calls(), before);
-    }
-
-    #[test]
-    fn streaming_selection_reads_spilled_rows_in_pages_without_full_load() {
-        let source = MockDriver::new("postgres", MockDriverOptions::default());
-        let target = MockDriver::new("postgres", MockDriverOptions::default());
-        let options = SyncOptions::default();
-        let payload = "x".repeat(crate::comparison_store::COMPARISON_MEMORY_LIMIT + 1);
-        let mut rows = Vec::with_capacity(501);
-        rows.push(RowChange::insert(
-            vec![Value::Integer(0)],
-            vec![Some(Value::String(payload))],
-            &options,
-        ));
-        rows.extend((1..=500).map(|key| {
-            RowChange::insert(
-                vec![Value::Integer(key)],
-                vec![Some(Value::Integer(key))],
-                &options,
-            )
-        }));
-        let comparison = ComparisonResult::new(vec![TableResult::matched("users", "users", rows)]);
-        let comparison = ComparisonStore::from_comparison(comparison).unwrap();
-        assert!(comparison.is_spilled());
-        let store = SyncPlanStore::new();
-        let preview = store
-            .issue_with_store(
-                "plan-stream".into(),
-                1,
-                "source-session".into(),
-                "target-session".into(),
-                "source-db".into(),
-                "target-db".into(),
-                None,
-                None,
-                source.as_ref(),
-                target.as_ref(),
-                "source-fingerprint".into(),
-                "target-fingerprint".into(),
-                comparison,
-                options.clone(),
-                false,
-            )
-            .unwrap();
-        let plan = store.peek(&preview.plan_id).unwrap();
-        let selection = SyncRunSelection {
-            revision: 1,
-            rows: Vec::new(),
-            scopes: vec![table_scope(Vec::new())],
-        };
-        let matcher = validate_selection_streaming(&plan.comparison, &selection, &options).unwrap();
-        assert_eq!(plan.comparison.full_load_calls(), 0);
-        let table = plan
-            .comparison
-            .summaries()
-            .unwrap()
-            .into_iter()
-            .next()
-            .unwrap();
-        let rows = plan
-            .comparison
-            .load_table_page("users", "users", 500, 1)
-            .unwrap();
-        let page = selected_table_page(&table, rows, &matcher, &options)
-            .unwrap()
-            .unwrap();
-        assert_eq!(page.rows.len(), 1);
-        assert!(matches!(page.rows[0].key.as_slice(), [Value::Integer(500)]));
-        assert_eq!(plan.comparison.full_load_calls(), 0);
-    }
-
-    #[test]
-    fn expired_plan_drops_spilled_comparison_store() {
-        let source = MockDriver::new("postgres", MockDriverOptions::default());
-        let target = MockDriver::new("postgres", MockDriverOptions::default());
-        let large = ComparisonResult::new(vec![TableResult::matched(
-            "users",
-            "users",
-            vec![RowChange::insert(
-                vec![Value::Integer(1)],
-                vec![Some(Value::String("x".repeat(
-                    crate::comparison_store::COMPARISON_MEMORY_LIMIT + 1,
-                )))],
-                &SyncOptions::default(),
-            )],
-        )]);
-        let store = SyncPlanStore::new();
-        let preview = store
-            .issue(
-                "source-session".into(),
-                "target-session".into(),
-                "source-db".into(),
-                "target-db".into(),
-                None,
-                None,
-                source.as_ref(),
-                target.as_ref(),
-                "source-fingerprint".into(),
-                "target-fingerprint".into(),
-                large,
-                SyncOptions::default(),
-                false,
-            )
-            .unwrap();
-        let path = {
-            let plan = store.peek(&preview.plan_id).unwrap();
-            plan.comparison.path().unwrap()
-        };
-        assert!(path.exists());
-        store
-            .plans
-            .lock()
-            .unwrap()
-            .get_mut(&preview.plan_id)
-            .unwrap()
-            .expires_at = Instant::now() - Duration::from_secs(1);
-        assert!(store.peek(&preview.plan_id).is_err());
-        assert!(!path.exists());
-    }
-
-    #[test]
-    fn claiming_plan_removes_owner_and_cleans_file_after_claimed_handle_drops() {
-        let source = MockDriver::new("postgres", MockDriverOptions::default());
-        let target = MockDriver::new("postgres", MockDriverOptions::default());
-        let large = ComparisonResult::new(vec![TableResult::matched(
-            "users",
-            "users",
-            vec![RowChange::insert(
-                vec![Value::Integer(1)],
-                vec![Some(Value::String("x".repeat(
-                    crate::comparison_store::COMPARISON_MEMORY_LIMIT + 1,
-                )))],
-                &SyncOptions::default(),
-            )],
-        )]);
-        let store = SyncPlanStore::new();
-        let preview = store
-            .issue(
-                "source-session".into(),
-                "target-session".into(),
-                "source-db".into(),
-                "target-db".into(),
-                None,
-                None,
-                source.as_ref(),
-                target.as_ref(),
-                "source-fingerprint".into(),
-                "target-fingerprint".into(),
-                large,
-                SyncOptions::default(),
-                false,
-            )
-            .unwrap();
-        let claimed = store.claim(&preview.plan_id).unwrap();
-        let path = claimed.comparison.path().unwrap();
-        assert!(store.peek(&preview.plan_id).is_err());
-        assert!(path.exists());
-        drop(claimed);
-        assert!(!path.exists());
     }
 }
