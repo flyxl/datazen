@@ -101,7 +101,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 
 | 轨 | 分支 | worktree | 热 target |
 |---|---|---|---|
-| D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ⏳ 已派发 `9b9f1166` |
+| D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ✅ 已交付 `06f2f62a4` → Tester 复测中 |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 已交付 `33416cb72` → Tester `0da32120` 复测中 |
 | F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ⏳ 已派发 `29467fd8` |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 已交付 `b4abf9de8` → Tester 复测中 |
@@ -388,6 +388,16 @@ Tester 用探针实测推翻：`**JobClaim`（`platform-api/src/dto/job.rs:276-2
 5. 派生盐取宿主 AES 主密钥 → 主密钥轮换 ⇒ 身份键全变。当前仓库**无主密钥轮换路径** → 接受为已知约束，**须在文档写明**（已列入 Tester P2 核查）。
 6. 端口已接线但**尚无调用方**（runtime 的 `PoolKeyInputs::execution_identity_key` 仍是裸 `String`）→ 接受，记 Wave 4/后续 initiative（runtime 取键）。
 
+### D 轨交付（编码代理 `06f2f62a4`）—— 交付，待 Tester 复测
+
+三个存储 trait 的每个方法加 `scope: &OrganizationScope`（`DashboardStore` 10 / `DashboardRunStore` 3 / `WorkflowDefinitionStore` 4），规则层自由函数把 scope 传下去；宿主三实现加组织闸门；17 条跨组织用例（feature-core 10 + 宿主 7），逐条断言空/`None`。桌面 SQLite **未加** `organization_id` 列。
+
+**D 的待裁定项裁决**：
+1. **IPC 命令现在依赖 platform adapter**（adapter 组装失败时仪表板/workflow 命令明确失败，改造前不依赖）→ **已列为 Tester 的 P0 必查项**，由它独立判定是否构成行为回归。协调者的倾向：**桌面组织是安装级常量，不是请求级** —— 正确形态是启动期确定一次存进 AppState、请求期直接取，而不是 per-request 地绑 adapter 可用性。权威来源应是 `src-tauri/src/platform/identity.rs` 的 `LOCAL_ORGANIZATION_ID`（约 :36）。**若 Tester 确认这是真实回归，D 需在修-测循环里改为启动期缓存，并补一条"adapter 不可用时仪表板命令仍可用"的用例。**
+2. **`WidgetCreationHost` 也加了 scope**（超出任务书三个 trait）→ **接受**。理由成立：它能读写已存仪表板与 workflow，不带 scope 就是绕过三个 trait 的**越权旁路**。
+3. **内置 workflow 播种由全局 `AtomicBool` 改为按组织 `HashSet<OrganizationId>`** → **接受**。全局标志会让多租户下第二个组织永远拿不到内置 workflow；代价是"播种次数"语义变为"每组织一次"，这是多租户正确性的必要代价。
+4. **基线 1269 vs 实测 1266** → **协调者台账已更正**（D 与 G 两轨独立双证为 1266）。
+
 ## 6. 门禁与流程
 
 ### 每轨 coder 自验 + tester 独立复跑
@@ -403,7 +413,8 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets
 cargo check --workspace --all-targets
 cargo check -p datazen --features webdriver --all-targets   # ← 必须有：feature 门控代码不被默认门禁编译
-DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib            # 基线 1265 passed
+DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib            # 基线 1265（main）/ 1266（集成分支 65dac1e2c = C+B 合流后）
+# 注：台账原写 1269 是按 A 轨自报数填的（A 的 +4 尚未合入）。D 与 G 两轨各自用 `git stash` + 独立 detached 树**双证**为 1266 —— 以 1266 为准
 DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-feature-core --lib # 基线 367
 cargo test -p datazen-platform-api --lib
 cargo test -p datazen-data-sync --lib / -p datazen-data-transfer --lib / -p datazen-schema-diff --lib   # 235/226/148
