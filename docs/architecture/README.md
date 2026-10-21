@@ -200,7 +200,7 @@ Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview →
 ## 7. Workflow / AI / MCP / Dashboard
 
 - **Workflow**：共享模型、条件、模板、执行器和调度逻辑位于 `packages/feature-core/src/workflow/`；`src-tauri/src/workflow/` 提供 YAML registry、Command runtime、history、桌面 runtime entry 与真实驱动验收。Workflow v1 的连接管理经 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。
-- **AI**：Provider 契约与协议实现位于 `packages/ai-api/` 与 `packages/ai-providers/`；Prompt、Schema 上下文、NL2SQL/诊断/分析等共享逻辑位于 `packages/feature-core/src/ai/`。`src-tauri/src/ai/` 是对外兼容门面加宿主 Runtime/SchemaCache/profile 适配。
+- **AI**：Provider 契约与协议实现位于 `packages/ai-api/` 与 `packages/ai-providers/`；Prompt、Schema 上下文、NL2SQL/诊断/分析等共享逻辑位于 `packages/feature-core/src/ai/`。`src-tauri/src/ai/` 只保留宿主 Runtime/SchemaCache/profile 适配，调用点直接引用共享包。
 - **MCP**：`packages/feature-core/src/mcp/` 持有共享工具/资源逻辑，`src-tauri/src/mcp/` 提供 MCP Server 和 Client 的宿主传输、会话与权限接线，并支持 headless stdio。
 - **Dashboard**：`packages/feature-core/src/dashboard/` 负责 Widget 创建/归档/调度策略，`src-tauri/src/dashboard/` 负责桌面存储与执行适配；`src-tauri/src/monitor/` 负责 MonitorEngine、定时授权与 occurrence。
 

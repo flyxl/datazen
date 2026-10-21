@@ -5,7 +5,7 @@
 >
 > - 基线：`8592b0fe1`（2026-09-30）。
 > - 代码核对时的工作区 HEAD 为 `e544e0699`（2026-09-30 21:08）。`8592b0fe1` 是 HEAD 的祖先，两者相差 4 个提交；`git diff --stat 8592b0fe1..HEAD -- packages/drivers packages/driver-api` 输出为空，因此本文的全部代码结论对两个基线一致。
-> - **基线之后的迁移提示（后补，不改变上文的证据基线）**：此后发生两件事——（1）宿主驱动注册表已迁至 `packages/runtime/src/driver_registry/registry.rs`，宿主侧只保留 re-export 门面；（2）`PROTOCOL_VERSION` 在 `packages/driver-api` 侧已升到当前值 6。本文后文引用的 `src-tauri/src/db/registry.rs` 及其行号、以及代码块中的 `PROTOCOL_VERSION = 4`（连同 `// lib.rs:99` 行号）**仍指上述基线**，不是当前代码位置。
+> - **基线之后的迁移提示（后补，不改变上文的证据基线）**：此后发生两件事——（1）宿主驱动注册表已迁至 `packages/runtime/src/driver_registry/registry.rs`，宿主侧的 re-export 门面随后也已删除，调用点直接引用 runtime 路径；（2）`PROTOCOL_VERSION` 在 `packages/driver-api` 侧已升到当前值 6。本文后文引用的 `src-tauri/src/db/registry.rs` 及其行号、以及代码块中的 `PROTOCOL_VERSION = 4`（连同 `// lib.rs:99` 行号）**仍指上述基线**，不是当前代码位置。
 > - 配套文档：[连接与资源运行时设计](connection-management.md)（下称「连接管理」）、[平台开发计划](../../development/platform-development-plan.md)、[Driver API 依赖边界](../../development/driver-api-dependency-boundary.md)。
 > - 独立开发与发布的约束另见 [可选驱动](../../development/optional-drivers.md) 与 [独立驱动开发指南](../../development/independent-driver-development.zh-CN.md)。
 

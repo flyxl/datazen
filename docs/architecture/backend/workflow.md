@@ -26,10 +26,7 @@ packages/feature-core/src/workflow/
 
 src-tauri/src/workflow/
 ├── mod.rs               # 模块出口
-├── workflows.rs         # 对外兼容 facade（#[path] 挂 context/executor 并 re-export）
-├── model.rs             # 共享模型 re-export
-├── executor.rs          # 共享执行器 re-export + 宿主集成测试
-├── registry.rs          # YAML workflow 注册、加载、保存、删除
+├── registry.rs          # YAML workflow 注册、加载、保存、删除（AppDb 绑定）
 ├── command_runtime.rs   # 桌面 connection 解析与 Driver command 执行
 ├── independent_sql.rs   # 桌面身份/目标绑定 → feature-core resource_execution
 ├── scheduler.rs         # 桌面 scheduler 适配
@@ -39,7 +36,7 @@ src-tauri/src/workflow/
 └── live_acceptance.rs   # 真实 PostgreSQL/MySQL 跨库验收（ignored）
 ```
 
-`workflows.rs` 保留为兼容 facade；新的业务代码应直接依赖拆分后的模块，而不要继续向 `workflows.rs` 堆积实现。
+宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen_feature_core::workflow::…`。
 
 ## 执行模型
 

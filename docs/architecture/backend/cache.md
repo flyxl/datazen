@@ -234,9 +234,9 @@ impl CacheWarmupStrategy {
 ### 1.3 优化的查询执行流程
 
 ```rust
-// src-tauri/src/services/query_executor.rs
+// packages/feature-core/src/services/query_executor.rs
 
-use crate::db::*;
+use datazen_driver_api::*;
 use datazen_runtime::schema_cache::SchemaCache;
 use std::sync::Arc;
 

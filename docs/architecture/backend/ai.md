@@ -4,7 +4,7 @@
 
 ### 1.1 概述
 
-AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约与 active → default → first 的共享 Profile 选择规则，`packages/ai-providers` 提供各厂商实现、共享 HTTP 协议和现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、NL2SQL 请求组装、单轮诊断与分析用例、智能过滤、Schema 文档生成、预算、取消和 editor grant 所有权策略。`src-tauri/src/ai/` 只保留 `mod.rs` 的对外 re-export 表面与 `metadata_source.rs` 的桌面适配（把宿主 Runtime / SchemaCache / profile 查询绑定到共享端口）；Tauri 命令负责 IPC、宿主存储与连接查询、上下文文件读取、事件流和取消接线。
+AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约与 active → default → first 的共享 Profile 选择规则，`packages/ai-providers` 提供各厂商实现、共享 HTTP 协议和现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、NL2SQL 请求组装、单轮诊断与分析用例、智能过滤、Schema 文档生成、预算、取消和 editor grant 所有权策略。`src-tauri/src/ai/` 只保留 `metadata_source.rs` 的桌面适配（把宿主 Runtime / SchemaCache / profile 查询绑定到共享端口）；调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen_feature_core::ai`，宿主不再有 AI 门面；Tauri 命令负责 IPC、宿主存储与连接查询、上下文文件读取、事件流和取消接线。
 
 ### 1.2 架构分层
 
@@ -47,8 +47,7 @@ packages/feature-core/src/ai/       # 共享 AI 应用逻辑，不依赖 Tauri
 ├── budget.rs / cancel.rs           # token 预算与按 owner 隔离的取消
 └── ownership.rs                    # AiGrantRegistry / AiGrantService、editor 归属、DB 目标绑定与结果 attribution
 
-src-tauri/src/ai/                   # 对外表面与桌面适配
-├── mod.rs                          # re-export AI API、Provider 与宿主用到的共享入口
+src-tauri/src/ai/                   # 桌面适配
 └── metadata_source.rs              # 将会话到 profile 身份解析和 Runtime 元数据读取绑定到共享端口
 
 src-tauri/src/commands/ai/           # Tauri IPC 与平台接线
@@ -84,8 +83,7 @@ pub trait AiProvider: Send + Sync {
 ### 1.4 Provider 协议层
 
 多个 Provider 共享底层 HTTP 协议实现，避免重复代码。协议层位于 `packages/ai-providers/src/protocol/`，
-宿主通过 `crate::ai::*` 门面引用（`src-tauri/src/ai/mod.rs` 同时 re-export `datazen_ai_api` 与
-`datazen_ai_providers`），调用方无须改写 import 路径：
+宿主直接引用 `datazen_ai_api` 与 `datazen_ai_providers`，不再经由门面中转：
 
 | Provider | 协议 | 模块 |
 |----------|------|------|
@@ -283,7 +281,7 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 
 **四、AI 独立工具调用与 MCP 共用 `DatabaseToolHost`，SQL 执行经共享 Runtime 执行器；显式授权时改走编辑器会话（见第六点）。** 当前桌面 adapter 按持久化 `connectionId` 解析 schema metadata 所需的 live session/driver，并把 SQL 命令交给共享 `ResourceExecutionHost`/Runtime。`editorGrant` 模式跳过独立目标执行，直接借用授权记录中的编辑器 session handle；它不会拥有或关闭该会话。
 
-**五、取消是 AI 自己的注册表，且按 owner 隔离。** AI 侧用一张按「调用 ID + owner 指纹」登记的取消令牌表（`packages/feature-core/src/ai/cancel.rs`，宿主经 `src-tauri/src/ai/mod.rs` re-export `CancellationRegistry`）：
+**五、取消是 AI 自己的注册表，且按 owner 隔离。** AI 侧用一张按「调用 ID + owner 指纹」登记的取消令牌表（`packages/feature-core/src/ai/cancel.rs`，宿主按需直接引用 `datazen_feature_core::ai::cancel::CancellationRegistry`）：
 
 - `register(request_id, owner_fingerprint)` 在开始时登记、`unregister(request_id, owner_fingerprint)` 在结束时注销；owner 指纹由 `OwnerRef` 的稳定身份构成（桌面为本进程 `clientInstanceId`）。
 - `cancel(request_id, owner_fingerprint) -> CancelReceipt` 返回三态：`marked`（已登记标志并触发 token）、`alreadyFinished`（未注册：已完成 / 已取消 / 从未开始）、`forbidden`（同名请求属于另一个 owner，**不动它**）。伪造的 `request_id` 不能取消别的客户端的流（CM-53）。
