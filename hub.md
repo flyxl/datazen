@@ -38,6 +38,9 @@
 | F10 | i18n 同步：每个非英语 locale 缺 170 key（16 个是本波新增，其余既有） | 发布前 | `node scripts/i18n-sync-check.mjs` 是发布硬门禁 |
 | **F11** | **`grid.selection.*` 三个码登记了却零生产者**（Wave 1 的 `grid-selection`）：越界一律 `clampCellCoord → null`，**从不抛错** | **需要一次显式决定** | 轨 B 新加的门禁 `src/lib/__tests__/gridErrors.registration.test.ts` 把它们列进 `PRODUCER_PENDING`，并加了一条断言：**它们一旦有了生产者，门禁就红**，逼着把 `PRODUCER_PENDING` 删掉。**二选一**：①让选择层改抛错（**行为变更**：静默夹取 → 明确报错，需独立轨 + 复测）；②撤登记并从契约 §8.2 删行。**不能一直挂着**——契约自己写着"只登记有生产者的码" |
 | F12 | `src/lib/gridErrors.ts` 的文件头注释仍写「Every entry here MUST have a real producer」，而 `grid.selection.*` 三条没有 | 协调者（合流后改注释） | 注释要写明 `PRODUCER_PENDING` 这个例外与它自清的机制 |
+| F13 | 门禁的**扫描根推导**有两个静默失效路径（glob 只认末尾 `/*`；manifest 只取第一个行首 `members = [`）——今天都不咬，但**任何测试都不会红** | 轨 B 最后一轮加固 | 加一条「扫到文件数 **≥ 1423**」的下限断言，把静默缩小变成红灯。**写成下界**（仓库变大只升不降），不写成 `toBe` |
+| F14 | 门禁**只覆盖字面量**（`format!("grid.{}.x", …)` 看不见）；且 `exclude` **未被读取** ⇒ 被 exclude 的 driver 若在盘上会被过度要求登记 | 登记在门禁 doc 注释里 | 今天全仓无运行期拼装；kiwi/superset 不在盘上 |
+| F15 | `src/lib/gridErrors.ts` 的 `PRODUCER_PENDING` 机制本身是好设计：码一旦有了生产者，门禁就红、逼着删条目 | — | 这是 F11（`grid.selection.*` 零生产者）的自清机制 |
 
 ## 本波又一条方法论：**重构会静默弄丢回归锁**
 
