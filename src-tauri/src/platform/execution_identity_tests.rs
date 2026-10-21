@@ -1368,3 +1368,156 @@ async fn 授权单覆盖多个连接时失败关闭() {
         "多连接授权单应失败关闭：{error:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// 复测轮补：把「文档写下的字面量」钉成断言
+// ---------------------------------------------------------------------------
+
+/// 共享边界 §4.3 把三条**字面量事实**写进了正式文档：
+///
+/// 1. 身份键的 HMAC 消息 = 域标签 + 每个字段的 `u32` 长度前缀 + 字段内容；
+/// 2. 本人路径域标签 = `datazen.execution-identity.key.v1`，
+///    委托路径域标签 = `datazen.execution-identity.delegation-key.v1`；
+/// 3. 主密钥轮换 ⇒ 全部身份键变化。
+///
+/// 复测轮之前的用例只断言**关系**（「两条域标签彼此不同」「不同输入 ⇒ 不同键」），
+/// 没有任何一条断言它们**是什么**。于是把域标签从 `v1` 改成 `v2`、或把子钥的
+/// 域标签改掉，都会一次性改掉**全部**身份键 ⇒ 连接池与缓存整体失效（等价于一次
+/// 主密钥轮换），而当时**一条用例会红**。下面几条把字面量本身钉住。
+///
+/// 这正是本模块头「改这个文件之前先看变异」那条要求的反面：性质要靠**针对性**
+/// 用例钉，不能指望正常路径的用例顺带钉住。
+
+/// 三条域标签的**字面值**必须与文档一致。
+///
+/// 域标签是派生链的输入，不是「只要彼此不同就行」：改一个字面量就是一次全量
+/// 身份键轮换（连接池与缓存整体失效）。
+#[test]
+fn 域标签的字面值与文档一致() {
+    assert_eq!(
+        IDENTITY_KEY_DOMAIN,
+        b"datazen.execution-identity.key.v1".as_slice(),
+        "本人路径的域标签是文档写下的事实；改它等于全量轮换身份键"
+    );
+    assert_eq!(
+        DELEGATION_KEY_DOMAIN,
+        b"datazen.execution-identity.delegation-key.v1".as_slice(),
+        "委托路径的域标签是文档写下的事实；改它等于全量轮换身份键"
+    );
+    assert_eq!(
+        DERIVATION_KEY_LABEL,
+        b"datazen.execution-identity.derivation-key.v1".as_slice(),
+        "子钥派生的域标签是文档写下的事实；改它等于全量轮换身份键"
+    );
+}
+
+/// 消息编码的**字节布局**：域标签 + 每字段 `u32` 大端长度前缀 + 字段内容。
+///
+/// 期望值在用例里**手写**，不复用被测的 `encode_message` 自己——否则等于拿尺子
+/// 量尺子，换掉尺子就看不见了。
+#[test]
+fn 消息编码的字节布局是域标签加长度前缀加字段内容() {
+    let mut expected = Vec::from(b"datazen.test".as_slice());
+    expected.extend_from_slice(&2u32.to_be_bytes());
+    expected.extend_from_slice(b"ab");
+    expected.extend_from_slice(&1u32.to_be_bytes());
+    expected.extend_from_slice(b"c");
+    assert_eq!(
+        encode_message(b"datazen.test", &["ab", "c"]),
+        expected,
+        "消息编码必须是「域标签 + 每字段 u32 长度前缀 + 字段内容」"
+    );
+}
+
+/// **反事实**：没有长度前缀时，两种字段切分会拼成**同一条**消息 ⇒ 同一个身份键。
+///
+/// 这条把「长度前缀是承重的」从注释变成可执行的推理：先用**无前缀**的编码证明
+/// 两条消息会撞成一样的字节，再用生产编码证明它们必须分开。少了前半段，这条
+/// 用例就只是在复述生产代码。
+#[test]
+fn 没有长度前缀时两种字段切分会撞车() {
+    let without_prefix = |parts: &[&str]| -> Vec<u8> {
+        let mut message = Vec::from(b"datazen.test".as_slice());
+        for part in parts {
+            message.extend_from_slice(part.as_bytes());
+        }
+        message
+    };
+    assert_eq!(
+        without_prefix(&["ab", "c"]),
+        without_prefix(&["a", "bc"]),
+        "无长度前缀时这两种切分必须撞成同一条消息（否则这条用例失去意义）"
+    );
+    assert_ne!(
+        encode_message(b"datazen.test", &["ab", "c"]),
+        encode_message(b"datazen.test", &["a", "bc"]),
+        "生产编码必须靠长度前缀把两种切分分开"
+    );
+}
+
+/// **黄金值**：主密钥 → 子钥 → 身份键，整条链的输出被钉死。
+///
+/// 期望值由**两套独立实现**算出（Python `hmac`/`hashlib` 与 Node `crypto`，
+/// 两者一致），不是拿被测函数当尺子。主密钥固定为 `[7u8; 32]`，与
+/// [`test_derivation_key`] 同一把。
+///
+/// 这条同时钉住「子钥域标签 + 本人路径域标签 + 消息编码 + 委托路径域标签」四处：
+/// 任何一处变了，键值就变——也就是一次全量身份键轮换。
+#[test]
+fn 身份键的黄金值() {
+    let derivation = test_derivation_key();
+
+    let personal = derive_identity_key(
+        &derivation,
+        &OrganizationId::new("org-a"),
+        &ConnectionId::new("conn-1"),
+        &PolicyIsolationKey::new("iso-1"),
+    )
+    .expect("本人身份键");
+    assert_eq!(
+        personal.as_str(),
+        "mZfi6omatc6ygld69Tr4GdFZr0VOQhcRzYwxO0EFOpA",
+        "本人身份键的黄金值变了：要么派生链被改，要么编码/域标签被改——两者都要求全量轮换身份键"
+    );
+
+    let delegated = derive_delegation_identity_key(
+        &derivation,
+        &OrganizationId::new("org-a"),
+        &ConnectionId::new("conn-1"),
+        &PolicyIsolationKey::new("iso-1"),
+        &DelegationId::new("del-1"),
+        "",
+    )
+    .expect("委托身份键");
+    assert_eq!(
+        delegated.as_str(),
+        "9aYFoFtEr9AKXB6rtfOtB-Qcveigx5Ga_msMWg8API4",
+        "委托身份键的黄金值变了：同上"
+    );
+}
+
+/// **主密钥轮换 ⇒ 全部身份键变化**（共享边界 §4.3 新写下的那条约束）。
+///
+/// 这条把「主密钥一换，所有 `(organization, connection, isolation)` 的身份键
+/// 全部变」从文档句子变成可执行断言：同一组输入，只换主密钥，键必须全变。
+///
+/// 当前仓库没有主密钥轮换路径（`store/key_store.rs` 只有 load-or-create），
+/// 所以这条不是「轮换功能」的测试，而是**派生链对主密钥敏感**的测试。
+#[test]
+fn 主密钥一换全部身份键都变() {
+    let key_for = |master: [u8; 32]| {
+        let derivation = IdentityDerivationKey::from_master_key(&master).expect("派生盐");
+        derive_identity_key(
+            &derivation,
+            &OrganizationId::new("datazen-desktop-local"),
+            &ConnectionId::new("conn-42"),
+            &PolicyIsolationKey::new("iso-9"),
+        )
+        .expect("身份键")
+    };
+    assert_ne!(
+        key_for([7u8; 32]),
+        key_for([8u8; 32]),
+        "主密钥一换，身份键必须全变（否则一次轮换不会打空连接池，文档就是错的）"
+    );
+}
