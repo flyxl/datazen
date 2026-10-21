@@ -1,7 +1,12 @@
 //! Persists workflow execution history for auditing and replay.
+//!
+//! The shape of a run record is shared vocabulary
+//! (`datazen_feature_core::workflow::history`); the SQLite rows it lives in
+//! are the desktop host's own.
 
-use crate::store::{HistoryDb, HistoryEntry, HistoryListItem};
-use crate::workflow::workflows::WorkflowExecutionResult;
+use crate::store::HistoryDb;
+use datazen_feature_core::workflow::history::{new_run_id, WorkflowRunListItem, WorkflowRunRecord};
+use datazen_feature_core::workflow::model::WorkflowExecutionResult;
 use std::sync::Arc;
 
 pub struct WorkflowHistoryManager {
@@ -21,11 +26,7 @@ impl WorkflowHistoryManager {
         result: &WorkflowExecutionResult,
     ) -> Result<String, String> {
         let now = chrono::Local::now();
-        let id = format!(
-            "{}_{}",
-            now.format("%Y%m%dT%H%M%S"),
-            &uuid::Uuid::new_v4().to_string()[..8]
-        );
+        let id = new_run_id(now);
 
         self.db
             .record_workflow(
@@ -41,7 +42,7 @@ impl WorkflowHistoryManager {
         Ok(id)
     }
 
-    pub async fn list(&self, workflow_id: Option<&str>) -> Vec<HistoryListItem> {
+    pub async fn list(&self, workflow_id: Option<&str>) -> Vec<WorkflowRunListItem> {
         self.db
             .list_workflow_history(workflow_id)
             .unwrap_or_else(|e| {
@@ -50,7 +51,7 @@ impl WorkflowHistoryManager {
             })
     }
 
-    pub async fn get(&self, history_id: &str) -> Option<HistoryEntry> {
+    pub async fn get(&self, history_id: &str) -> Option<WorkflowRunRecord> {
         self.db.get_workflow_history(history_id).unwrap_or_else(|e| {
             tracing::warn!(error = %e, history_id, "Failed to get workflow history from SQLite");
             None

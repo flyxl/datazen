@@ -1,8 +1,4 @@
 //! Desktop scheduling adapter. The clock and in-flight lifecycle live in feature-core.
-pub use datazen_feature_core::workflow::scheduler::{
-    clamp_interval_secs, due_decision, is_workflow_due, scheduled_interval_secs, DueDecision,
-    MIN_INTERVAL_SECS,
-};
 use datazen_feature_core::workflow::scheduler::{
     WorkflowScheduleHost, WorkflowScheduler as CoreScheduler,
 };

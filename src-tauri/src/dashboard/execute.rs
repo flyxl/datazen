@@ -6,8 +6,8 @@ use crate::commands::AppState;
 use crate::dashboard::store::load_monitor_settings;
 use crate::store::AppDb;
 use crate::store::AppSettings;
-use crate::workflow::WorkflowExecutor;
 use datazen_feature_core::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
+use datazen_feature_core::workflow::executor::WorkflowExecutor;
 use datazen_feature_core::workflow::model::WorkflowExecutionResult;
 
 use datazen_feature_core::dashboard::execute::build_error_run;

@@ -11,6 +11,9 @@ use datazen_application::identity_policy::IdentityPolicy;
 use datazen_application::sessions::ConnectionUseCases;
 use datazen_feature_core::mcp::allowlist;
 use datazen_feature_core::mcp::permission;
+use datazen_feature_core::workflow::executor::{
+    WorkflowExecuteOptions, WorkflowExecutor, WORKFLOW_QUERY_ROW_LIMIT,
+};
 use datazen_platform_api::context::{OwnerRef, RequestContext};
 use datazen_platform_api::dto::execution::{ExecutionState, ExecutionView};
 use datazen_platform_api::dto::idempotency::IdempotentOperation;
@@ -249,21 +252,18 @@ impl DataZenMcpServer {
                 )
             })?;
 
-        let result =
-            datazen_feature_core::workflow::executor::WorkflowExecutor::execute_with_options(
-                &workflow,
-                self.app_state.as_ref(),
-                input.connection_id.as_deref(),
-                &input.variables,
-                datazen_feature_core::workflow::executor::WorkflowExecuteOptions {
-                    permission_mode: Some(self.permission_mode),
-                    query_row_limit: Some(
-                        datazen_feature_core::workflow::executor::WORKFLOW_QUERY_ROW_LIMIT,
-                    ),
-                },
-            )
-            .await
-            .map_err(|e| McpError::internal_error(e, None))?;
+        let result = WorkflowExecutor::execute_with_options(
+            &workflow,
+            self.app_state.as_ref(),
+            input.connection_id.as_deref(),
+            &input.variables,
+            WorkflowExecuteOptions {
+                permission_mode: Some(self.permission_mode),
+                query_row_limit: Some(WORKFLOW_QUERY_ROW_LIMIT),
+            },
+        )
+        .await
+        .map_err(|e| McpError::internal_error(e, None))?;
 
         Ok(result.final_output)
     }
