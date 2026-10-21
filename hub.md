@@ -123,9 +123,13 @@ R 阶段全量回归 → 合流 `main` → PR。
 ### Wave 1 各轨活性（22:41 实测）
 | 轨 | 状态 | 活性证据 |
 |---|---|---|
-| C | 已交付 `a4c54cc0c`，`READY_FOR_TEST` | Tester 复测中 |
-| A `job-org-scope` | running，33 文件未提交 | 最近编辑 22:37（4 分钟前），活跃 |
-| B `di-dyn` | running，9 文件未提交 | 最近编辑 22:12（29 分钟前），`progress.md` 已写 → 判断为在共享 target 锁上排队编译，**非停滞**；若再 20 分钟无变化需按 §5 探活 |
+| C | 已交付 `a4c54cc0c`，`READY_FOR_TEST` | Tester 复测中（已 resume 1 次，死亡 2/3） |
+| A `job-org-scope` | running，34 文件未提交 | 最近编辑 22:48，活跃 |
+| B `di-dyn` | **已交付** `56b5bbef0`，工作区干净 | 9 文件 +215/−45；未收到汇报，判断为在跑自验门禁（共享 target 锁排队）。**不要主动碰它的树** |
+
+B 的交付内容：`WorkflowRegistry<S>` → 注入 `Arc<dyn WorkflowDefinitionStore>`；宿主 `workflow/registry.rs` 重写绑定；连带 `bootstrap/app_state.rs`、`commands/context.rs`、`commands/workflow.rs`、`dashboard/create.rs` 与 2 份文档；`progress.md` 已入库。
+
+**新的冲突面**：B 也改了 `src-tauri/src/dashboard/create.rs` 与 `src-tauri/src/workflow/registry.rs`，而 D 轨要改这两个文件的 org 作用域 —— 印证了「D 依赖 B 先合」的安排。另 B 未碰 `packages/feature-core/src/dashboard/**`（禁区遵守）。
 
 ### 轨道 A 的范围扩张（可接受，但记为已知冲突）
 A 给 `JobDefinition` 加 `organization_id` 后，构造点扩散到了任务书列为禁区的文件：
