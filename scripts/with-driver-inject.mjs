@@ -30,11 +30,30 @@ export const INJECT_ACTIVE_ENV = 'DATAZEN_DRIVER_INJECT_ACTIVE';
 
 /**
  * Decide whether this wrapper owns stash lifecycle.
+ *
+ * TypeScript 7 extends the "weak type" check (TS2559: a source with no
+ * properties in common with an all-optional target) to UNION targets, so the
+ * single union parameter below was rejected by TS 7: the function form
+ * `() => boolean` shares no property with the object form
+ * `{ exists?, env? }`. TypeScript 5.9 accepted it.
+ *
+ * The fix is the overload pair below rather than a cast: the bare-function
+ * spelling is a real, supported call form (it is what the legacy callers
+ * pass), and an overload keeps it typed as exactly that instead of widening
+ * it to `any`. Measured: `tsc 5.9.3`, `tsc 7.0.2` and `tsrs 0.18.0` all
+ * report zero diagnostics for the scripts program with this shape, and the
+ * 15 runtime tests in scripts/__tests__/with-driver-inject.test.ts still
+ * pass.
+ *
+ * @overload
+ * @param {() => boolean} [opts] the bare-function form is the legacy spelling and is
+ *   still honoured: it stands for `{ exists }`, and env then means process.env
+ * @returns {{ ownStash: boolean, nested: boolean, orphanStash: boolean }}
+ * @overload
  * @param {{
  *   exists?: () => boolean,
  *   env?: NodeJS.ProcessEnv,
- * }} | (() => boolean) [opts] the bare-function form is the legacy spelling and is
- *   still honoured: it stands for `{ exists }`, and env then means process.env
+ * }} [opts]
  * @returns {{ ownStash: boolean, nested: boolean, orphanStash: boolean }}
  */
 export function planDriverInjectLifecycle(opts = {}) {
