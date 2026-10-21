@@ -104,7 +104,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ✅ 第 3 轮完成 `09e261eb0` → **终验中** |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 复测 **TEST_PASSED** → 第 2 轮小修中（D-E6 回拨淘汰顺序反转 / O-1 端口 put 语义留白） |
 | **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 2 轮小修中（D1 文档字面为假 / D3 五条 clippy / D4 每访问分配 UUID） |
-| **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | ✅ 已交付 `dd8c9a0d7` → Tester 复测中 |
+| **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 2 轮小修中（D-02 键不含组织 / D-04 措辞 / D-06 文档口径） |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 第 3 轮完成 `e796ae835` → **终验中** |
 
 **派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖。**已执行**（四树均推进到 `65dac1e2c` = C + B + `OrganizationScope`）。
@@ -642,6 +642,23 @@ Tester 用**探针实测**推翻了 G-04 引用块里的一句话：「去掉其
 D-01 同轮改准（`ServiceUnavailable` **5 个**访问器 vs `CapabilityUnsupported` **2 个**；两者都收敛成 `CommandError::NotConfigured` ⇒ IPC 表面不可区分）。G 还**独立复核**了 Tester 的数字（`.runtime()` 调用点 67 vs 65，口径差异它说明了 —— 排除 `adapter.rs` 自身）。
 
 **协调者对 G-02（失败半径是否收窄）的裁决：不收窄。** 身份解析失败意味着拿不到 `principalId`，此时"降级接线"等于在没有可信主体的情况下继续工作 —— 比"整个平台装配失败"更危险。保持**失败关闭**。
+
+
+### F2 轨验证（Tester `2e4c10d4`）—— TEST_PASSED，两处**零覆盖**，并纠正一个事实
+
+**核心结论**：`static STORE`/`global_store` **0 命中**；包内唯一进程级 `OnceLock` 是 owner 租约缓存，**只含租约 UUID + 一个 SQLite 连接，不含任何计划/比较数据**；落盘实现 `disk.rs`/`recovery.rs`/`manifest_cache.rs` **一行未搬进 `src-tauri/`**；端口只收「根/实例」，连根路径约定 `default_comparison_store_root()` 都留在包里。跨组织措辞**逐字相同**（两侧都走**同一个** `unknown_plan_message()` 函数）；**组织判定在过期判定之前** ⇒ 跨组织永不拿到「已过期」这个不同措辞。IPC **269 → 269**，唯一差异是 `get_data_sync_comparison_page` 加了 `State<'_, AppState>`（JS 侧载荷不变）；`invoke_handler` 块 15,697 字节**逐字节一致**。
+
+**两处零覆盖（Tester 已补）**：
+- **D-01**：比较存储的「根解析层」跨组织失败关闭 —— 把 `resolve_store_root()` 改成越组织返回根 ⇒ **data-sync 238 + 宿主 1266 全绿，一条没红**（端口的 `root_for` 有用例，但**消费方**的 `resolve_store_root` 没有）。
+- **D-03**：owner 租约「按根缓存」这个改动**零覆盖** —— 既有 4 条陈旧回收用例全部直接调 `acquire_owner_lease(&root)`，**从不经过 `current_process_owner`** ⇒ 退回无键全局租约，一条用例都不红。
+
+**Tester 纠正的事实（重要）**：本轨计划存储的键**本来就只有 `plan_id`**（组织是 value 上的字段）⇒ 隔离 100% 靠读取时三行比较，**键结构本身不承重**。
+**由此引出 D-02**：跨组织同 `plan_id` 的 `issue` 会**互相覆盖**（当前不可达 —— `plan_id` 由服务端 `Uuid::new_v4()` 铸造，但这个前提会变）。
+→ **裁决：要求修**（键带组织维度）。两条理由：与并行轨 F1 的 `InMemoryTransferPlanStore`（键含组织）**同构**，两条轨的存储端口应是同一个形状；且本 initiative 的命题是"多租户能在**同一个存储实现**上区分组织数据"，键不含组织就意味着"分区"只是**约定**而非**结构**，一旦有人绕过那三行比较就会跨组织覆盖。
+
+**D-04（措辞不同族）**：比较侧越组织是 `"Data Sync comparison storage is unavailable"`，计划侧是 `"sync plan is unknown or has expired; return to comparison"`。两者都不泄漏存在性 ⇒ CM-05 成立。→ **裁决：改 trait doc 对齐实际措辞，不改错误文案**（改文案会牵动"逐字相同"的既有断言，而比较侧本就没有「不存在」这个对照态）。
+**D-05**（owner 租约缓存只增不删，根被删后不回收）→ Wave 4。
+**D-06**（§2/§7「当前进程」对落盘比较不精确、§3.1 未点明默认根）→ 要求顺手改口径。
 
 
 ## 6. 门禁与流程
