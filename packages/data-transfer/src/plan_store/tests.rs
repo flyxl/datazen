@@ -387,6 +387,64 @@ fn a_foreign_organization_cannot_mutate_the_owners_plan_or_checkpoint() {
     assert!(store.peek_checkpoint(&scope, &token, &id).is_ok());
 }
 
+/// The plan store is an **instance**, not a process-wide global.
+///
+/// This is the runtime-observable half of the architecture claim: the store
+/// the host injects holds the plans, and no other instance can see them. If a
+/// process-wide singleton were ever reintroduced behind the port, a plan
+/// issued into one instance would leak into every other one — and this test
+/// would go red.
+#[test]
+fn two_store_instances_do_not_share_state_so_the_plan_store_is_not_a_global() {
+    let first = InMemoryTransferPlanStore::new();
+    let second = InMemoryTransferPlanStore::new();
+    let scope = scope();
+    let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
+    let preview = TransferPreview {
+        plan_id: String::new(),
+        pairing_path: "direct".into(),
+        mode: TransferMode::Data,
+        write_mode: WriteMode::Insert,
+        ddl: vec![],
+        write_plans: vec![],
+        warnings: vec![],
+        can_execute: true,
+        block_reason: None,
+    };
+    let id = issue_plan(
+        &first,
+        &scope,
+        job(),
+        &preview,
+        driver.as_ref(),
+        driver.as_ref(),
+        Duration::from_secs(60),
+    );
+
+    // The issuing instance sees its own plan.
+    assert!(first.peek(&scope, &id).is_ok());
+    // A second instance sees nothing: the storage is per instance, not global.
+    let unknown = second
+        .peek(&scope, "no-such-plan")
+        .expect_err("an unknown id");
+    let leaked = second
+        .peek(&scope, &id)
+        .expect_err("another instance must not see the first instance's plan");
+    assert_eq!(
+        leaked.to_string(),
+        unknown.to_string(),
+        "a plan must not leak into another store instance"
+    );
+    assert!(
+        second.peek_any(&scope, &id).is_err(),
+        "peek_any must not leak the plan into another instance either"
+    );
+    assert!(
+        second.claim(&scope, &id).is_err(),
+        "another instance must not claim the plan"
+    );
+}
+
 #[test]
 fn expired_plan_is_rejected_and_consumed_plan_is_one_shot() {
     let store = InMemoryTransferPlanStore::new();
