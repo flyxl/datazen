@@ -424,3 +424,119 @@ async fn insert_joins_the_callers_manual_transaction_instead_of_opening_one() {
         .await
         .unwrap();
 }
+
+// ---------------------------------------------------------------------------
+// [tester round-3] IB2-D4 for the `affectedMismatch` paths: the code must be at
+// position zero on both the INSERT and the row-identity variant, and the
+// descriptive tail must survive so substring assertions keep working.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn affected_mismatch_on_an_insert_is_coded_at_position_zero() {
+    let mut options = insert_capable_options();
+    options.execute_rows_affected = 2;
+    let test = TestAppState::with_resource_provider(options).await;
+    let (_, conn_id) = test.save_and_connect("r3-mismatch-insert").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("r3-mismatch-insert", &conn_id),
+        vec![insert_change(&[(
+            "name",
+            Some(Value::String("Ada".into())),
+        )])],
+    )
+    .await
+    .unwrap();
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(
+        error.starts_with("grid.commit.affectedMismatch: "),
+        "code must be at position zero, got: {error}"
+    );
+    assert!(error.contains("INSERT affected 2 rows"), "got: {error}");
+    assert!(error.contains("refusing ambiguous write"), "got: {error}");
+    assert_eq!(test.mock.commit_calls(), 0);
+}
+
+#[tokio::test]
+async fn affected_mismatch_on_a_row_identity_is_coded_at_position_zero() {
+    let mut options = insert_capable_options();
+    options.execute_rows_affected = 2;
+    let test = TestAppState::with_resource_provider(options).await;
+    let (_, conn_id) = test.save_and_connect("r3-mismatch-update").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("r3-mismatch-update", &conn_id),
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(
+        error.starts_with("grid.commit.affectedMismatch: "),
+        "code must be at position zero, got: {error}"
+    );
+    assert!(
+        error.contains("Row identity affected 2 rows"),
+        "got: {error}"
+    );
+    assert!(error.contains("refusing ambiguous write"), "got: {error}");
+    assert_eq!(test.mock.commit_calls(), 0);
+}
+
+#[tokio::test]
+async fn zero_affected_rows_is_treated_as_a_mismatch_not_as_success() {
+    let mut options = insert_capable_options();
+    options.execute_rows_affected = 0;
+    let test = TestAppState::with_resource_provider(options).await;
+    let (_, conn_id) = test.save_and_connect("r3-mismatch-zero").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("r3-mismatch-zero", &conn_id),
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(
+        error.starts_with("grid.commit.affectedMismatch: "),
+        "0 rows must be refused, got: {error}"
+    );
+    assert!(error.contains("affected 0 rows"), "got: {error}");
+    assert_eq!(test.mock.commit_calls(), 0);
+}
