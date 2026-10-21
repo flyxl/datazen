@@ -337,7 +337,8 @@ export interface KeyDetail {
 export interface TableDataResult {
   columns: ColumnSchema[];
   rows: (Value | null)[][];
-  totalRows?: number;
+  /** The row count, or `null` when the backend could not count. */
+  totalRows?: number | null;
   page: number;
   pageSize: number;
 }

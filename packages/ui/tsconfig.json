@@ -12,5 +12,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["**/__boundaryProbe__*", "**/__uiBoundaryProbe__*"],
+  "$comment": [
+    "The design system's guard test plants a probe in this very directory to",
+    "prove the layer rule is armed. Without the exclude, `tsc -p packages/ui`",
+    "compiles that probe: its body is not valid TypeScript for this package,",
+    "and it can vanish mid-run (TS6053). Both failures are the probe's, not",
+    "the tree's. The root tsconfig.json carries the same exclude."
+  ]
 }

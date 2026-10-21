@@ -1,5 +1,5 @@
 import { useTableDataStore } from './tableDataStore';
-import { invoke } from '@tauri-apps/api/core';
+import { useBackendClient, toTableValue } from '@datazen/backend-client';
 import { tableSessionKey } from '../lib/session/tableSession';
 import { getQueryPanelSessionRegistry } from '../lib/session/queryPanelSessionRoot';
 import { create } from 'zustand';
@@ -642,14 +642,18 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     if (resultWriteInflight.has(key)) throw new Error('A result edit is already in progress');
     resultWriteInflight.add(key);
     try {
-      await invoke('commit_query_result_cell', {
-        request: {
-          binding: original.runtimeBinding,
-          statementIndex: original.source.statementIndex,
-          rowIndex: row,
-          column: col,
-          value,
-        },
+      // The write goes through the bound `BackendClient` so the desktop and a
+      // browser build take the same command path. The binding travels with the
+      // request: the backend refuses a result whose runtime resource is gone
+      // instead of writing through some other handle.
+      const cellValue = toTableValue(value);
+      if (cellValue === undefined) throw new Error('Result cell value is not sendable');
+      await useBackendClient().commitQueryResultCell({
+        binding: original.runtimeBinding,
+        statementIndex: original.source.statementIndex,
+        rowIndex: row,
+        column: col,
+        value: cellValue,
       });
     } catch (error) {
       set((state) => ({

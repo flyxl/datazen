@@ -67,3 +67,34 @@ export type {
   ResultCompleteness,
 } from './jobs';
 export { emptyJobProgress } from './jobs';
+
+export type {
+  ChangeWarning,
+  CommitOperation,
+  CommitPendingChangesRequest,
+  CommitPendingChangesResponse,
+  CommitStatementResult,
+  DeleteNamedViewRequest,
+  EstimateTableRowsRequest,
+  FilterCondition,
+  ForeignKeyTargetRef,
+  ForeignKeyTargetResolution,
+  ListNamedViewsRequest,
+  NamedView,
+  NamedViewScope,
+  PendingRowChange,
+  PlannedStatement,
+  PreviewPendingChangesRequest,
+  ResolveForeignKeyTargetsRequest,
+  ResultCellWrite,
+  RowChangePlan,
+  RowIdentity,
+  SaveNamedViewRequest,
+  SortCondition,
+  TableChangeContext,
+  TableColumnSchema,
+  TableDataRequest,
+  TableDataResult,
+  TableValue,
+} from './tableData';
+export { toTableValue } from './tableData';

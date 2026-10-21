@@ -65,6 +65,7 @@ import { basename, dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 import { resolveDrivers } from '../resolve-drivers.mjs';
+import { withProbeLock } from './boundaryMutation';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../..');
@@ -157,12 +158,21 @@ function expectMatchesGolden(actual, goldenName, label) {
  * script's own location (`resolve(__dirname, '..')`), so running the staged
  * copy keeps every output inside the temp dir. `node_modules` is symlinked
  * rather than copied — the same trick the repo's own worktrees use.
+ *
+ * The copy holds the probe lock. A guard test in the same run plants a
+ * throwaway probe file in the working tree and deletes it again, and the
+ * copy can walk into that file between the directory listing and the read:
+ * the file is gone, and the copy fails with ENOENT on a file nobody can
+ * explain. The lock is the same one the probers take, so the two cannot
+ * overlap.
  */
 function stageRepo() {
   const stage = mkdtempSync(join(tmpdir(), 'datazen-driver-init-guard-'));
-  cpSync(REPO, stage, {
-    recursive: true,
-    filter: (src) => src === REPO || !SKIP_DIRS.has(basename(src)),
+  withProbeLock(() => {
+    cpSync(REPO, stage, {
+      recursive: true,
+      filter: (src) => src === REPO || !SKIP_DIRS.has(basename(src)),
+    });
   });
   const nodeModules = join(REPO, 'node_modules');
   if (existsSync(nodeModules)) {

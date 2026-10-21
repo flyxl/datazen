@@ -30,6 +30,7 @@ import {
   type PlatformServices,
   type SaveBinaryInput,
   type SaveTextInput,
+  type UnsupportedMethodKind,
 } from '@datazen/backend-client';
 
 /**
@@ -58,12 +59,65 @@ function toCommandName(method: keyof MethodMap): string {
     updateConnection: 'platform_update_profile',
     disableConnection: 'platform_disable_profile',
     readArtifact: 'read_artifact_chunk',
+    // The table read is the *target-bound* command: it carries its own
+    // context and manual handle instead of borrowing a session. The
+    // session-scoped `get_table_data` still exists on the Rust side, but the
+    // grid reads through the target-bound one, and the port has to name the
+    // command the grid actually uses.
+    getTableData: 'get_table_data_at_target',
   };
   if (commandOverrides[method]) return commandOverrides[method];
   return method.includes('_')
     ? method
     : method.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
+
+/**
+ * Methods whose payload *is* the command's argument bag.
+ *
+ * The kernel-surface commands take a single `request` argument, so their
+ * payload is nested under `request`. The commands below take **named**
+ * arguments instead (`context`, `changes`, `plan`, `scope`, ...), so their
+ * payload is the bag itself and nesting it would make the Rust side look for
+ * a `request` field that does not exist.
+ */
+const FLAT_ARGUMENT_METHODS: ReadonlySet<keyof MethodMap> = new Set<keyof MethodMap>([
+  'previewPendingChanges',
+  'commitPendingChanges',
+  'estimateTableRows',
+  'listNamedViews',
+  'saveNamedView',
+  'deleteNamedView',
+]);
+
+/**
+ * The table-data methods the desktop backend does not serve **yet**.
+ *
+ * The port registers every method the product has, so a method landing later
+ * cannot slip past it unnoticed. This list is the other half of that
+ * arrangement: it says which of them the *desktop* cannot serve today, so a
+ * caller gets an explicit `CapabilityUnsupported` — with the method name and
+ * the backend — instead of Tauri's bare "command not found".
+ *
+ * The names are the Rust commands of 07/08/09, which are not registered in
+ * `src-tauri/src/bootstrap/run.rs` yet. That file registers exactly five
+ * table-data commands: `get_table_data`, `get_table_data_at_target`,
+ * `commit_query_result_cell`, `commit_pending_changes` and
+ * `preview_pending_changes`. `src/platform/__tests__/tauriBackendTransport.tableData.test.ts`
+ * cross-checks this list against that registration, so the day one of these
+ * commands is registered, the test fails and asks for this entry to go.
+ *
+ * `notImplemented` — not `capability`: the desktop *can* serve these methods
+ * and does not yet. A browser build's named views are a different fact (a
+ * form factor with no host store), and the two must not be reported as one.
+ */
+const DESKTOP_UNSUPPORTED_METHODS: Partial<Record<keyof MethodMap, UnsupportedMethodKind>> = {
+  estimateTableRows: 'notImplemented',
+  resolveForeignKeyTargets: 'notImplemented',
+  listNamedViews: 'notImplemented',
+  saveNamedView: 'notImplemented',
+  deleteNamedView: 'notImplemented',
+};
 
 /**
  * Build the desktop transport.
@@ -78,6 +132,7 @@ function toCommandName(method: keyof MethodMap): string {
  */
 export function createDesktopBackendTransport(): BackendTransport {
   return {
+    unsupportedMethods: DESKTOP_UNSUPPORTED_METHODS,
     async call<K extends keyof MethodMap>(
       method: K,
       payload: MethodMap[K]['request'],
@@ -86,7 +141,10 @@ export function createDesktopBackendTransport(): BackendTransport {
       const args =
         method === 'getPlatformIdentity'
           ? {}
-          : method.includes('_') || method === 'getJob' || method === 'listJobs'
+          : method.includes('_') ||
+              method === 'getJob' ||
+              method === 'listJobs' ||
+              FLAT_ARGUMENT_METHODS.has(method)
             ? payload
             : { request: payload ?? {} };
       // The request's own fields are the command's named arguments, so this
