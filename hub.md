@@ -92,7 +92,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | 轨 | 分支 / commit | 范围 | 验收 |
 |---|---|---|---|
 | **A** `job-org-scope` | `feature/job-org-scope` / **`5ea292d8a` + `5bde303eb`**（35 改 + 3 新），`READY_FOR_TEST` | `platform-api/dto/job.rs:73 JobDefinition`、`:280 JobFilter` 加 `organization_id`（**必填非 Option**）；`ports/job.rs` 契约补语义；`runtime/job/repository.rs` 的 `InMemoryJobRepository` 按 org 过滤（跨 org 返回"不存在"）；`runtime_repository.rs`/`memory_runtime_repository.rs`/`owner_claims.rs`/`runtime_methods.rs`；宿主 `store/app_db/jobs/`（`admission.rs:146`）加列 + 迁移 + 过滤；`platform/ipc.rs` FROZEN_SIGNATURES 同提交更新 | 桌面单租户**行为完全不变**（1265 条断言不许动）；≥3 条组织隔离单测；跨 org 不泄漏"存在但无权" |
-| **B** `di-dyn` | `feature/di-dyn` / **`d235f7d3`**（9 文件 +215/−45；自验后 amend 过，**以此为准**） | `feature-core/src/workflow/registry.rs:95/103` 去泛型 → `Arc<dyn WorkflowDefinitionStore>`；宿主 `workflow/registry.rs`（`AppDbWorkflowStore` 提可见性 + 构造入口）、`bootstrap/app_state.rs:205`、`commands/mod.rs:78/167`、`dashboard/create.rs:3/11/53/77/124`、`commands/workflow.rs`、`commands/context.rs`；包内测试夹具 `MemoryStore` | 共享包公开签名里**不出现宿主类型参数**；`WorkflowRegistry` 无类型参数；feature-core 仍不依赖宿主 crate；行为不变 |
+| **B** `di-dyn` | `feature/di-dyn` / `d235f7d3` + `062aa0fde`（Tester 补测）+ `13f3df9bd`（修 D1 + 销毁台账）→ **已合入 `056b35834`** | `feature-core/src/workflow/registry.rs:95/103` 去泛型 → `Arc<dyn WorkflowDefinitionStore>`；宿主 `workflow/registry.rs`（`AppDbWorkflowStore` 提可见性 + 构造入口）、`bootstrap/app_state.rs:205`、`commands/mod.rs:78/167`、`dashboard/create.rs:3/11/53/77/124`、`commands/workflow.rs`、`commands/context.rs`；包内测试夹具 `MemoryStore` | 共享包公开签名里**不出现宿主类型参数**；`WorkflowRegistry` 无类型参数；feature-core 仍不依赖宿主 crate；行为不变 |
 | **C** `runtime-naming` | `feature/runtime-naming` / **`a4c54cc0c`** + `52225ed04`（Tester 补测）+ `b46db6468`（销毁 progress.md）→ **已合入 `e267fad3f`** | `git mv`：`job/desktop_host.rs`→`job/host.rs`（`DesktopJobHost`→`JobHost`）、`tunnel/desktop.rs`→`tunnel/route.rs`（`DesktopNetworkProvider`→`RouteNetworkProvider`、`DesktopRouteCatalog`→`RouteCatalog`）、`tests/tunnel_desktop_network_provider.rs`→`tunnel_route_network_provider.rs`；导出面、`single_counter_audit` 的 `AUDITED` 登记表、宿主/feature-core 引用点、11 份文档 | 三类型名 0 命中；无 `desktop.rs`/`desktop_host.rs`；**断言逐条未改**；历史保留 |
 
 ### Wave 2 —— **工作树已全部建好并注入热 target**
@@ -213,7 +213,7 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 | 轨 | 状态 | 活性证据 |
 |---|---|---|
 | C | **已验收 TEST_PASSED → 已合入集成 `e267fad3f`** | Tester `a1f0c68d`（3 次尝试后完成） |
-| B | 已交付 **`d235f7d3`**，`READY_FOR_TEST`，**隔离 target 验证全绿** | Tester `cda75c30` 在独立验证树 `.worktrees/verify-di-dyn` 复测 |
+| B | **已验收 TEST_PASSED → 已合入 `056b35834`** | Tester `cda75c30` |
 | A | 已交付 **`5ea292d8a`+`5bde303eb`**，`READY_FOR_TEST`，**隔离 target 验证全绿**（platform-api 224 / runtime 638 / host 1269） | Tester `b285d2f2` 在独立验证树 `.worktrees/verify-job-org-scope` 复测 |
 
 ### 环境
@@ -254,6 +254,32 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 - `ENV-01`（共享 target 串产物，环境级）→ **已处置**（隔离 target + 热克隆流程已固化于 §5）。
 - `DOC-01`（progress.md 的 grep 准则只覆盖类型名、漏模块路径名）→ **实质无缺口**（Tester 补扫确认路径名也 0 命中），且 progress.md 已随交付销毁 → **无需行动**。
 - `INFRA-02`（SQLite 双写遮蔽：宿主层漏调 `persist_recovery` 在 host 旅程里测不出）→ 风险已被 `52225ed04` 闭合；**提示归 Wave 3 文档收口**（写进正式文档，提醒后续改 `host.rs` 的人不要依赖 host 测守这条）。
+
+### B 轨验收结论（Tester `cda75c30`）
+
+**TEST_PASSED**，无阻塞缺陷。取证里两处做法值得留在台账：
+
+- **M1 / M1′ 双变异证明断言强度等价**：把 `seed_builtins_if_empty` 改成跳过播种，**改后**与**基线**上失败的是**同一对**用例（`365 passed; 2 failed`）→ 断言强度未被削弱，而不是"改完仍然绿"就算过。
+- **M3 证明新不变量承重**：把组装根注入的 store 换成另一个 `AppDb` → **稳定**失败 3 条，其中一条是 Tester 新加的 `finish_app_state_shares_one_app_db_between_the_registry_and_the_store`，报 `the registry must write into the store's own app db: NotFound(...)`。
+  **这条不变量是 B 引入的**（改前 registry 自持 `Arc<AppDb>` 时天然成立，改后靠装配约定维持，改前无任何测试钉住）。Tester 补的集成测试（`src-tauri/src/bootstrap/tests.rs`，仅测试文件）已随 B 合入。
+
+| 项 | 结论 |
+|---|---|
+| P0 去泛型彻底 | 通过。feature-core 仅 3 个公开类型带类型参数且**全是生命周期**；`AppDbWorkflowStore` 为 `pub(crate)`，不出现在任何公开签名；`cargo tree` 无宿主 crate、无 tauri |
+| P1 断言保真 | 通过（M1/M1′ 双变异） |
+| P2 API 影响面 | 通过。`store()` 生产代码**零调用点**；`app_db()` 无残留；**已查实是同一个 `Arc<AppDb>`**（`Store::app_db()` 是 `Arc::clone`，组装根注入同一实例） |
+| P3 行为不变 | 通过（367 未减少；5 个函数体逐字节 IDENTICAL） |
+| P4 IPC 未变 | 通过（`run.rs` 逐字节相同） |
+| P5 文档 | **2 个非阻塞缺陷**（D1/D2） |
+| P6 门禁 | 全绿（隔离 target） |
+| P7 E2E | 不适用；唯一需端到端证明的不变量改用组装根集成测试覆盖，并由 M3 证明其有效性 |
+
+**B 的缺陷清单处置**：
+- `D1`（`workflow-resource-model.md:67` 同行 8 处失效行号 + 计数 10→13 + 漏列 3 个 feature-core 写入点）→ **已在 B 分支修复并随 B 合入**（Tester 给了精确正确值，协调者已独立逐条核实）。
+- `D2`（`backend/workflow.md` 共享模块树漏 `error.rs`/`executable.rs`/`history.rs`/`target_plan.rs`；`results.rs` 是私有模块不列是对的）→ 归 **Wave 3 文档收口**（与本轨道无关，Tester 已核实属实）。
+- `D3`（**先存**竞态：`platform::live_source::tests::*` 的 `DATAZEN_DESKTOP_USER` 进程级 env 竞态）→ Tester 用 M4 证伪本轨道责任（回退 B 的 6 个文件后 5 次跑，第 4 次同样 `1262 passed; 3 failed`，失败正是同族用例）→ **归 Wave 4，但优先级高**（它让 CI 周期性红）。
+- `D4`（编码代理自述数字与实况不符：自称 9 文件 +215/−45，实为 9 文件 +222/−45，排除 progress.md 则 8 文件 +93/−45）→ 信息项，无行动。
+- `D5`（宿主壳硬编码 `BUILTIN_DEFINITIONS`，web 宿主想要自定义 builtins 只能用 `CoreRegistry` 从而失去宿主壳的 `workflows_dir()`/`save_workflow()` 命名）→ 设计观察，归 **Wave 4**（建议：宿主构造器改名或 builtins 参数化）。
 
 ## 6. 门禁与流程
 
@@ -306,5 +332,6 @@ git worktree remove --force .worktrees/verify-<track>   # 验证树用完即删
 | 搬宿主剩余纯规则 | 毛量 **3,399 行**：`job_api/admission.rs` 100（自述 pure）、`job_api/assembly.rs` 538、`schema_diff/job.rs` 700、`sync/jobs.rs` 879（DispatchClaim/preaccept）、`sync/jobs_contract.rs` 537、`sync/jobs_cancel_contract.rs` 530、`schema_diff/unified_plan/revalidation.rs` 115 | 真能搬约 1,000–1,600；**是搬家不是删除** |
 | `workspace-apps` 端口化 | `packages/workspace-apps` **0 个 port trait**；`manager.rs`/`storage.rs`/`install.rs` 直绑 `std::fs`+`PathBuf` | web 支持插件的前置：`WappCatalog` + `WappStore`；规则侧（manifest/zip 守卫/白名单）已共享，不用动 |
 | 残留转发门面清扫 | `commands/sync/mod.rs:6`（归 F）、`wapps/mod.rs:26-34`（实测仅 `validate_wapp_dir`、`Permission` 两名仍在用）、`monitor/channels.rs:14`、`lib.rs:8/20/27` | 小、低风险 |
+| **先存 CI flake（新发现，优先）** | `src-tauri/src/platform/live_source_tests.rs:481-482` 的 `std::env::set_var("DATAZEN_DESKTOP_USER", ...)` 是**进程级全局**竞态 → `platform::live_source::tests::*` 偶发 `PermissionDenied: connection permission denied` / `target delegation scope denied`。**已用基线证伪与本 initiative 无关**（回退 6 个文件后 5 次跑仍复现）。修法：把该 env 写入收进进程内串行守卫，或改用注入点而非 env | 会让 CI 周期性红（ Tester 5 次跑中第 4 次命中） |
 | 其余 4 个未实现端口 | `EventSink`、`SubmissionTokenIssuer`、`ClusterNodeBudgetPort`、`ControlResourcePort` | 与 web 多实例/预算治理相关，另立 initiative |
 | 线协议字面码去形态化 | `route.rs` 的 4 个 reason code + `desktop-tunnel/` 前缀；`ExportSink::DesktopDialogHandle` | 契约变更，需迁移说明 |
