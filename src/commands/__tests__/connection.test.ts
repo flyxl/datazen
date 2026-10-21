@@ -71,8 +71,34 @@ describe('connectionCommands IPC boundary', () => {
 
     expect(invokeMock).toHaveBeenCalledWith('save_connection', {
       config: expect.objectContaining({ id: 'c2', databaseType: 'mysql' }),
+      clearMissingCredentials: false,
     });
     const payload = invokeMock.mock.calls[0]?.[1] as { config: ConnectionConfig };
     expect(() => JSON.stringify(payload.config)).not.toThrow();
+  });
+
+  it('forwards the explicit request to clear blank saved credentials', async () => {
+    const config: ConnectionConfig = {
+      id: 'c3',
+      name: 'Clear credentials',
+      databaseType: 'postgresql',
+      sslMode: 'prefer',
+    };
+
+    await connectionCommands.saveConnection(config, true);
+
+    expect(invokeMock).toHaveBeenCalledWith('save_connection', {
+      config: expect.objectContaining({ id: 'c3' }),
+      clearMissingCredentials: true,
+    });
+  });
+
+  it('duplicates a connection through the backend without returning its credentials', async () => {
+    await connectionCommands.duplicateConnection('source', 'copy', 'Copy');
+    expect(invokeMock).toHaveBeenCalledWith('duplicate_connection', {
+      sourceId: 'source',
+      newId: 'copy',
+      newName: 'Copy',
+    });
   });
 });

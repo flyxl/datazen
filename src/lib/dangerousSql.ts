@@ -39,9 +39,9 @@ export type SqlStatementRisk = {
   /** True when a top-level (depth 0) WHERE is present in this statement. */
   hasTopLevelWhere: boolean;
   /**
-   * True when the verb is a strict write verb (the Host hard-blocks it under
-   * readOnly/safeMode). SELECT INTO / EXPLAIN ANALYZE are "may write" but are
-   * NOT strict write verbs, matching the Host guard.
+   * True when the Host hard-blocks the statement in read-only mode. SELECT
+   * INTO is strict in read-only mode; EXPLAIN ANALYZE is strict only when its
+   * executed statement (including a data-modifying CTE) writes.
    */
   strictWrite: boolean;
   /** Content range of the statement (surrounding whitespace trimmed). */
@@ -253,6 +253,79 @@ function extractMainVerb(sig: SigTok[]): SigTok | null {
   return tok.kind === 'word' ? tok : null;
 }
 
+function matchingCloseParen(sig: SigTok[], openIndex: number): number | null {
+  let depth = 0;
+  for (let i = openIndex; i < sig.length; i += 1) {
+    if (sig[i].kind === 'open') depth += 1;
+    else if (sig[i].kind === 'close') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return null;
+}
+
+/** Find CTE query bodies whose leading statement is a write. */
+function hasDataModifyingCte(sig: SigTok[]): boolean {
+  for (let i = 0; i < sig.length; i += 1) {
+    if (sig[i].kind !== 'word' || sig[i].word !== 'AS') continue;
+    let open = i + 1;
+    if (sig[open]?.word === 'NOT' && sig[open + 1]?.word === 'MATERIALIZED') open += 2;
+    else if (sig[open]?.word === 'MATERIALIZED') open += 1;
+    if (sig[open]?.kind !== 'open') continue;
+    const close = matchingCloseParen(sig, open);
+    if (close == null) continue;
+    const bodyVerb = extractMainVerb(sig.slice(open + 1, close));
+    if (bodyVerb?.word && WRITE_VERBS.has(bodyVerb.word)) return true;
+  }
+  return false;
+}
+
+function hasSelectInto(sig: SigTok[]): boolean {
+  const selectDepths = new Set<number>();
+  for (const token of sig) {
+    if (token.kind !== 'word') continue;
+    if (token.word === 'SELECT') selectDepths.add(token.depth);
+    if (token.word === 'INTO' && selectDepths.has(token.depth)) return true;
+  }
+  return false;
+}
+
+const FALSE_SQL_VALUES = new Set(['FALSE', 'OFF', 'NO', '0']);
+const BOOLEAN_SQL_VALUES = new Set(['TRUE', ...FALSE_SQL_VALUES]);
+
+/** Return the command that EXPLAIN ANALYZE will execute, if ANALYZE is on. */
+function explainAnalyzeStatement(sig: SigTok[]): SigTok[] | null {
+  if (sig[0]?.word !== 'EXPLAIN') return null;
+
+  if (sig[1]?.kind === 'open') {
+    const close = matchingCloseParen(sig, 1);
+    if (close == null) return null;
+    const options = sig.slice(2, close).filter((token) => token.kind === 'word');
+    const analyzeIndex = options.findIndex((token) => token.word === 'ANALYZE');
+    if (analyzeIndex < 0 || FALSE_SQL_VALUES.has(options[analyzeIndex + 1]?.word ?? '')) {
+      return null;
+    }
+    return sig.slice(close + 1);
+  }
+
+  if (sig[1]?.word !== 'ANALYZE') return null;
+  let statementIndex = 2;
+  const analyzeValue = sig[statementIndex]?.word;
+  if (analyzeValue && BOOLEAN_SQL_VALUES.has(analyzeValue)) {
+    if (FALSE_SQL_VALUES.has(analyzeValue)) return null;
+    statementIndex += 1;
+  }
+  if (sig[statementIndex]?.word === 'VERBOSE') {
+    statementIndex += 1;
+    const verboseValue = sig[statementIndex]?.word;
+    if (verboseValue && BOOLEAN_SQL_VALUES.has(verboseValue)) {
+      statementIndex += 1;
+    }
+  }
+  return sig.slice(statementIndex);
+}
+
 function hasTopLevelWhere(tokens: SqlToken[]): boolean {
   for (const tok of tokens) {
     if (
@@ -278,20 +351,12 @@ function commentContainsWriteVerb(tokens: SqlToken[]): boolean {
   return false;
 }
 
-/** Detect "may write" statements the Host does not hard-block (SELECT INTO / EXPLAIN ANALYZE). */
+/** Detect statements that can write when executed (SELECT INTO / EXPLAIN ANALYZE). */
 function isMayWrite(verb: string, sig: SigTok[]): boolean {
   if (verb === 'SELECT') {
     return sig.some((t) => t.kind === 'word' && t.word === 'INTO' && t.depth === 0);
   }
-  if (verb === 'EXPLAIN') {
-    for (let i = 0; i < sig.length; i += 1) {
-      if (sig[i].kind === 'word' && sig[i].word === 'EXPLAIN') {
-        const next = sig[i + 1];
-        if (next && next.kind === 'word' && next.word === 'ANALYZE') return true;
-      }
-    }
-  }
-  return false;
+  return verb === 'EXPLAIN' && explainAnalyzeStatement(sig) !== null;
 }
 
 function classifyVerb(
@@ -341,7 +406,12 @@ export function classifyRisk(sql: string): SqlRiskAssessment {
     const sig = buildSig(stmtTokens);
     const verbTok = extractMainVerb(sig);
     const verb = verbTok && verbTok.word != null ? verbTok.word : null;
-    const strictWrite = verb ? WRITE_VERBS.has(verb) : false;
+    const executableSig = verb === 'EXPLAIN' ? (explainAnalyzeStatement(sig) ?? []) : sig;
+    const executableVerb = extractMainVerb(executableSig)?.word ?? null;
+    const strictWrite =
+      (executableVerb !== null && WRITE_VERBS.has(executableVerb)) ||
+      hasDataModifyingCte(executableSig) ||
+      hasSelectInto(executableSig);
     const hasWhere = hasTopLevelWhere(stmtTokens);
     const commentHidesWriteVerb = commentContainsWriteVerb(stmtTokens);
     const mayWrite = verb ? isMayWrite(verb, sig) : false;

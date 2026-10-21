@@ -111,7 +111,7 @@ describe('assessExecutionRisk', () => {
     expect(prod.confirmReasons).toContain('production');
   });
 
-  it('SELECT INTO is may-write: production confirms, but no hard block under readOnly', () => {
+  it('SELECT INTO remains confirmable outside readOnly and is blocked in readOnly', () => {
     const prod = assessExecutionRisk('SELECT a INTO b FROM c', {
       readOnly: false,
       safeMode: false,
@@ -126,7 +126,9 @@ describe('assessExecutionRisk', () => {
       isProduction: false,
       confirmDangerous: true,
     });
-    expect(ro.hardBlocked).toBe(false);
+    expect(ro.hardBlocked).toBe(true);
+    expect(ro.hardBlockReason).toBe('readOnly');
+    expect(ro.needsConfirm).toBe(false);
   });
 
   it('confirmDangerous=false disables high-risk/production confirm -> direct pass', () => {

@@ -132,8 +132,9 @@ mod tests {
     /// 任何人动外观都会让这个测试变红。
     const FROZEN_SIGNATURES: &[&str] = &[
         "pub async fn get_connections( state: State<'_, AppState>, ) -> Result<Vec<ConnectionConfig>, CommandError>",
-        "pub async fn save_connection( state: State<'_, AppState>, config: ConnectionConfig, ) -> Result<(), CommandError>",
+        "pub async fn save_connection( state: State<'_, AppState>, config: ConnectionConfig, clear_missing_credentials: Option<bool>, ) -> Result<(), CommandError>",
         "pub async fn delete_connection(state: State<'_, AppState>, id: String) -> Result<(), CommandError>",
+        "pub async fn duplicate_connection( state: State<'_, AppState>, source_id: String, new_id: String, new_name: String, ) -> Result<(), CommandError>",
         "pub async fn test_connection( state: State<'_, AppState>, config: ConnectionConfig, ) -> Result<ServerInfo, CommandError>",
         "pub async fn connect( state: State<'_, AppState>, connection_id: String, ) -> Result<String, CommandError>",
         "pub async fn connect_dedicated( state: State<'_, AppState>, connection_id: String, database: Option<String>, ) -> Result<String, CommandError>",
@@ -146,8 +147,9 @@ mod tests {
         "pub async fn reorder_connections( state: State<'_, AppState>, ordered_ids: Vec<String>, ) -> Result<(), CommandError>",
         "pub async fn get_available_drivers( state: State<'_, AppState>, ) -> Result<Vec<String>, CommandError>",
         "pub(crate) async fn get_connections_impl( state: &AppState, ) -> Result<Vec<ConnectionConfig>, CommandError>",
-        "pub(crate) async fn save_connection_impl( state: &AppState, config: ConnectionConfig, ) -> Result<(), CommandError>",
+        "pub(crate) async fn save_connection_impl( state: &AppState, config: ConnectionConfig, clear_missing_credentials: bool, ) -> Result<(), CommandError>",
         "pub(crate) async fn delete_connection_impl( state: &AppState, id: String, ) -> Result<(), CommandError>",
+        "pub(crate) async fn duplicate_connection_impl( state: &AppState, source_id: String, new_id: String, new_name: String, ) -> Result<(), CommandError>",
         "pub(crate) async fn test_connection_impl( state: &AppState, config: ConnectionConfig, ) -> Result<ServerInfo, CommandError>",
         "pub(crate) async fn connect_impl( state: &AppState, connection_id: String, ) -> Result<String, CommandError>",
         "pub(crate) async fn connect_dedicated_impl( state: &AppState, connection_id: String, database: Option<String>, ) -> Result<String, CommandError>",

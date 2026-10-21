@@ -20,6 +20,15 @@
       "frontendHighRisk": false
     },
     {
+      "id": "with-data-modifying-cte-blocked-readonly",
+      "sql": "WITH del AS (DELETE FROM t RETURNING *) SELECT * FROM del",
+      "mode": { "readOnly": true, "safeMode": false },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
       "id": "where-in-string-read",
       "sql": "SELECT 'WHERE' FROM dual",
       "mode": { "readOnly": true, "safeMode": true },
@@ -227,8 +236,26 @@
       "frontendHighRisk": false
     },
     {
-      "id": "select-into-maywrite-not-blocked",
+      "id": "select-into-blocked-readonly",
       "sql": "SELECT a INTO b FROM c",
+      "mode": { "readOnly": true, "safeMode": false },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "explain-analyze-delete-blocked-readonly",
+      "sql": "EXPLAIN ANALYZE DELETE FROM t",
+      "mode": { "readOnly": true, "safeMode": false },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "explain-analyze-select-allowed-readonly",
+      "sql": "EXPLAIN ANALYZE SELECT * FROM t",
       "mode": { "readOnly": true, "safeMode": false },
       "guardAllowed": true,
       "frontendClassification": "mutation",
@@ -236,11 +263,20 @@
       "frontendHighRisk": false
     },
     {
-      "id": "explain-analyze-maywrite-not-blocked",
-      "sql": "EXPLAIN ANALYZE DELETE FROM t",
+      "id": "explain-analyze-option-delete-blocked-readonly",
+      "sql": "EXPLAIN (ANALYZE TRUE, FORMAT JSON) DELETE FROM t",
+      "mode": { "readOnly": true, "safeMode": false },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "explain-no-analyze-delete-allowed-readonly",
+      "sql": "EXPLAIN (ANALYZE FALSE) DELETE FROM t",
       "mode": { "readOnly": true, "safeMode": false },
       "guardAllowed": true,
-      "frontendClassification": "mutation",
+      "frontendClassification": "read",
       "frontendFindings": [],
       "frontendHighRisk": false
     },
