@@ -21,7 +21,7 @@
 
 | 轨道 | 波次 | 状态 | 提交 | 门禁实测 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| `grid-selection` | 1 | **第 2 轮复测**（Tester `7ebdb8e9`） | `9435810ba` / `5b406b05b` / `305cc725f` / `35cde046e` / `2c511db2e` / `7e8ecdcbc` / `afb21edff` | 第 1 轮 TEST_FAILED（4 缺陷）；修复后 624 文件 / 6550 例通过、typecheck EXIT=0、TableView **642**、tableDataStore **712** | 缺陷循环第 2 轮 |
+| `grid-selection` | 1 | **第 2 轮复测**（原 Tester `7037c93a` 唤醒） | `9435810ba` / `5b406b05b` / `305cc725f` / `35cde046e` / `2c511db2e` / `7e8ecdcbc` / `afb21edff` | 第 1 轮 TEST_FAILED（4 缺陷）；修复后 624 文件 / 6550 例通过、typecheck EXIT=0、TableView **642**、tableDataStore **712** | 缺陷循环第 2 轮 |
 | `insert-backend` | 1 | **测试中**（Tester `e104b765`） | `93032e47c` / `2562908fb` / `2d0bf5664` | driver-api 377 passed；host 1395 passed / 9 ignored；data.rs 757 行 | 编码代理自报；待 Tester 独立复测 |
 
 ## 协调者裁定记录
@@ -75,7 +75,7 @@
 2. §4.2.1 `rowsCoveredBySelection` 的 `GridSelectionState.selectedRows` 由可选改**必填**（可选会让 row 模式静默返回空集）；
 3. §4 新增第四条不变式：**`mode` 是行集唯一权威，写入必须成对**（`none` → 三件一起清；`cell`/`row` → 清空 `selectedRows`，行集只能由 `applyRowModeTransition` / `setRowModeSelection` 与 mode 成对写入；「只改 mode 保留行集」非法）。
 
-**第 2 轮**：Tester `7ebdb8e9` 复测中（重点：考题是否被改、4 修复能否被独立新用例重现、并发失败不得误清新选择、`applyGridSelection` 新语义是否提前破坏 03/04/05 的调用面）。
+**第 2 轮**：原 Tester `7037c93a` 复测中（重点：考题是否被改、4 修复能否被独立新用例重现、并发失败不得误清新选择、`applyGridSelection` 新语义是否提前破坏 03/04/05 的调用面）。
 
 ## 待 Wave 2 承接的债（本轨明确不做）
 
@@ -84,3 +84,11 @@
 | `TableView.test.tsx` 的冻结 store mock 无 `setRowModeSelection` | Wave 2 加行号槽用例前必须先补 mock（本轨无权改该文件） |
 | `[data-dt-surface]` / `[data-dt-selected]` / `role="rowheader"` / 选区摘要 testid | Wave 2 `grid-cell`（E2E `table-cell-selection.ts` 的 `surfaceWired` 守卫会在接线后自动激活） |
 | `gridEventGuards.ts` 已有，但 DataTable 尚未消费 | Wave 2 `grid-cell` |
+
+## 协作约定（用户 2026-10-21 定）
+
+**同一轨的复测一律唤醒原 Tester，不新起实例。** 原 Tester 手上已有上一轮的缺陷清单、自己写的考题与对实现的怀疑点，复测的针对性远高于新实例；新实例只剩「重读整个轨」的开销。
+
+- 例外：原 Tester 实例不可恢复（会话丢失）时才新起。
+- 协调者已按此取消过一次新实例（`7ebdb8e9` 第 2 轮复测），并删除它留下的 4 个未完成测试文件。
+- 编码代理侧同理沿用「resume 原 Coder」，两条规则合起来即：**一条轨只有一对 coder/tester，贯穿它的全部修复循环。**
