@@ -41,6 +41,28 @@
 - B 与 C 完全无交集。
 - 共享 `CARGO_TARGET_DIR=.worktrees/.shared-target`（cargo 文件锁会串行化，属预期）。
 
+## 本 initiative 的度量口径（防止做反）
+
+**本轮目标是解耦，不是压缩 src-tauri。** 实测已证明：Wave 1 三轨对宿主净变化 ≈ +27 行（A: 0；B: +30；C: −3）。端口化让宿主**新增** adapter 代码、让共享包**去掉**隐藏的具体存储决定 —— 宿主行数不是成功指标。
+
+预期落点：A–G 做完 src-tauri 生产代码 **≈73.8k–74.3k**（比现在略高）；若再做后续「搬纯规则」才会降到 ~72.5k，且那是**搬家不是删除**，全仓总量不变。
+
+**成功的判据换成这四条**：
+1. 共享包内**类型名与模块路径**无 `Desktop` 形态味（线协议字面码、冻结契约成员、宿主侧命名三类**不在**本条范围，见 C 的裁决）。
+2. `platform-api` 的 18 个端口中，web 必需的那几个（`IdentityResolver` 为最关键）有可运行实现。
+3. **共享包内的进程级 `static` 清零**：`schema-diff/reviewed.rs:49`、`data-sync/plan_store/mod.rs:674-675`、`data-transfer/plan_store/mod.rs:440-441` —— 这三处是多租户串味的真实风险源。
+4. 不改动任何共享包代码，web 宿主仅实现 trait 即可跑起来。
+
+### ⚠️ F 轨的强制约束（否则会逆向增长宿主）
+
+`packages/data-sync/src/comparison_store/` 共 2,211 行（`disk.rs` 494 + `mod.rs` 729 + `recovery.rs` 462 + 测试 648 + `manifest_cache.rs` 97），其中 `disk.rs`/`mod.rs` 合计 32 处 `fs::`/`Path` 调用。
+
+**裁决：文件系统实现留在共享包，端口只收"根目录/路径"注入。**
+- 反例（禁止）：把 `disk.rs` 整块搬进 `src-tauri/src/` —— 那会让宿主 +500 行，等于把解耦做成搬家，且 web 还得再抄一遍。
+- 正解：包内保留 `disk.rs`（形态中立：任何有本地文件系统的宿主都能用），把「存储根从哪来」变成构造参数（现在 `mod.rs:48-50` 已收 `root: PathBuf`，说明只差把构造点从宿主传进去）。
+- 同理 `SyncPlanStore`/`TransferPlanStore` 的 `static STORE: OnceLock<...>`：改成**宿主注入的实例**（`Arc<dyn ...>` 或包内 `#[derive(Default)]` 的实例由宿主持有），而不是把 HashMap 实现挪进宿主。
+- 判定标准：改完后 `packages/data-{sync,transfer}` 的总行数**基本不变**，`src-tauri` 只增加注入点的少量接线。
+
 ### Wave 2（并行，依赖 Wave 1 合流）
 
 | 轨 | 分支 | 范围 | 依赖 |
@@ -68,6 +90,25 @@ R 阶段全量回归 → 合流 `main` → PR。
 ## 待裁定项
 
 （暂无。若各轨提出，按 §7 归属裁决：默认不并入已关闭功能。）
+
+## 合流顺序与冲突面修正（C 交付后）
+
+**我原先的冲突面判断有一处错**：以为 C 只碰 `desktop_host.rs` + `mod.rs`。实际 C 改的是**跨 crate 的公开类型名**，引用点扩散到 `commands/sync/jobs.rs`、`store/app_db_jobs_tests.rs`、`commands/restore_job/tests.rs`、`commands/data_transfer/job_api/runtime.rs`、`packages/feature-core/src/restore_job.rs`、`bootstrap/app_state.rs` —— 与 A、B 均重叠。C 的处理正确：只做逐字标识符替换、零逻辑改动，并在报告里显式申报了这个冲突。
+
+**裁决：C 先合。** 机械改名先落地，后合的轨在「已改名的标识符」上解冲突，远比反向（把改名 re-apply 到已改动内容上）省力且可验证。
+
+合流顺序：`C → A → B`（若 B 先于 A 完成则 `C → B → A`，原则不变：改名类先合）。
+
+### C 的 4 个待裁定项（协调者裁决，不阻塞验收）
+
+| # | 项 | 裁决 |
+|---|---|---|
+| 1 | `route.rs` 里 4 个 `desktop*` reason code + `LeaseId` 前缀 `desktop-tunnel/` | **保留，不在本计划处理**。这些是已对外可见的线协议值，改名=行为变更，与"纯重命名"授权冲突。若要动，需另立一次带迁移说明的契约变更。 |
+| 2 | `ExportSink::DesktopDialogHandle`（platform-api） | **保留**。它是"宿主可提供哪几种导出汇"的契约枚举成员，本质是形态并集；改它属于契约设计变更，不在本 initiative 范围。记为后续候选。 |
+| 3 | 宿主侧 `AppState.desktop_job_host` / `DesktopTunnelHost` / `DesktopIdentity` | **保留，正确**。宿主本身就是桌面形态，形态名在宿主里是事实陈述。 |
+| 4 | `BudgetConfig::desktop_default()` | **保留**（方法名，形态内预设值，非类型名）。 |
+
+结论：共享内核里**类型名与模块路径**已无 desktop 形态味；剩余的 `desktop` 全部是 (a) 线协议字面码 (b) 宿主侧命名 (c) 冻结契约成员 —— 三者都不该由本轨动。
 
 ## 合流记录
 
