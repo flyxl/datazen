@@ -5,7 +5,9 @@ use std::time::Duration;
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
 
-use crate::dashboard::types::{AlertChannel, DashboardWidget, MonitorSettings, WidgetRun};
+use datazen_feature_core::dashboard::types::{
+    AlertChannel, DashboardWidget, MonitorSettings, WidgetRun,
+};
 
 const WEBHOOK_TIMEOUT: Duration = Duration::from_secs(10);
 
