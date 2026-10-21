@@ -129,7 +129,7 @@
 | `src/locales/en/index.ts` | 把领域包 `core`/`connection`/`schema`/`query`/`settings`/`chart`/`backup`/`ai`/`sync`/`workflows`/`dashboard`/`mcp`/`onboarding` 展开合并 |
 | `src/locales/en/query.ts` | **`dataTable.*` 与 `tableData.*` 两个命名空间的词条都在这里**（如 `'dataTable.selected'`、`'dataTable.selectRow'`、`'dataTable.deleteRow'`、`'dataTable.tableLabel'`、`'tableData.readOnlyEditDisabled'`）；key 是**扁平点号字符串**，不是嵌套对象 |
 | `src/locales/en/core.ts` | `common.*` 命名空间在这里（`'common.copy'`、`'common.rows'`、`'common.selectAll'`） |
-| `src/locales/index.ts` | `I18nKey = TranslationKey \| (string & {})`；`TranslationKey = keyof typeof zhCN`（`src/locales/zh-CN/index.ts`）—— 因此**只在英文侧新增 key 不会让 `t()` 报类型错**，仓库现状已有 **247** 个 en-only key（〔合并后校正〕旧稿 221；按 en 2542 / zh-CN 2295 的顶层 key 计数） |
+| `src/locales/index.ts` | `I18nKey = TranslationKey \| (string & {})`；`TranslationKey = keyof typeof zhCN`（`src/locales/zh-CN/index.ts`）—— 因此**只在英文侧新增 key 不会让 `t()` 报类型错**，仓库现状已有 **247** 个 en-only key（〔合并后校正〕旧稿 221；实测 en 2543 / zh-CN 2296 个 `领域.键` 路径，差集 247） |
 | `src/locales/t.ts` | 组件外可用的 `t(key, params?)`；插值形如 `{count}` |
 
 ---

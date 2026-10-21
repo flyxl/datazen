@@ -3,7 +3,7 @@
 > **文档定位与例外声明**
 > 本文件是**用户明确要求入库的一次性方案产物**，不属于 `docs/` 的长期文档纪律范围（[docs/README.md](../README.md) 规定 PRD 类文档不长期维护）。落地后应把结论改写为「已实现事实」并入 [architecture/frontend/components.md](../architecture/frontend/components.md)、[architecture/backend/services.md](../architecture/backend/services.md) 与 [features/](../features/)，随后删除本文件。
 >
-> **基线**：分支 `feature/data-browsing-prd`（worktree `/Users/flyxl/code/datazen/.worktrees/datazen-data-browsing-prd`）。初稿基于 `main` = `e0f6ba28b`；〔合并后校正〕本分支已 merge `main` = `87ce4b45e`（merge commit `c9c8d23ae`，零冲突），**本文所有「现状」结论已按新基线复核**，结论有变化的条目在正文里带「〔合并后校正〕」标记。分析最初在 detached HEAD `34d862eec` 上进行；已核对 `main..34d862eec` 的 33 个差异文件（672+/377−）**全部属于数据迁移链路**，本文引用的数据浏览相关源码在两者之间逐字一致。
+> **基线**：分支 `feature/data-browsing-prd`（worktree `/Users/flyxl/code/datazen/.worktrees/datazen-data-browsing-prd`）。初稿基于 `main` = `e0f6ba28b`；〔合并后校正〕本分支已两次 merge `main`（`c9c8d23ae` 并入 `87ce4b45e`、`a727d49a0` 并入 `e9870b235`，均零冲突），**本文所有「现状」结论已按新基线复核**，结论有变化的条目在正文里带「〔合并后校正〕」标记。分析最初在 detached HEAD `34d862eec` 上进行；已核对 `main..34d862eec` 的 33 个差异文件（672+/377−）**全部属于数据迁移链路**，本文引用的数据浏览相关源码在两者之间逐字一致。
 >
 > **最重要的校正**：**DB-14（查询结果网格可编辑）已由另一套更窄的设计在主干落地**（`SELECT * FROM ident[.ident[.ident]]` 才允许映射一次、`writableMapping === 'verified'` 才可写、每次写后 binding 失效）。本文对 DB-14 的描述是**当时的设计意图**，不是待建功能；读它之前先看 [10-result-grid.md](data-browsing-design/10-result-grid.md) 顶部的「已实现事实」段。
 >

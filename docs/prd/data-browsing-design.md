@@ -2,8 +2,8 @@
 
 > **文档性质**：本目录是**按用户明确要求保存的一次性技术设计**，属仓库 [文档维护纪律](../../AGENTS.md) 的窄范围例外（同 [PRD](data-browsing-optimization-prd.md) 的处理方式，已在 [docs/README.md](../README.md) 登记）。它记录的是**目标设计**，不代表当前 `main` 已实现；方案落地后应逐节改写为「已实现事实」并入 [architecture/frontend/components.md](../architecture/frontend/components.md) 与 [features/](../features/)，随后删除本目录。
 >
-> **基线**：`main` = `87ce4b45e`（本文档初稿写于 `e0f6ba28b`，其后主干前进 619 个提交；合并后已按下述新基线逐册校正，凡与旧稿数字冲突处以新数为准）。
-> **合并状态**：`feature/data-browsing-prd` 已 merge `87ce4b45e`（merge commit `c9c8d23ae`，零冲突）。校正依据是合并后的工作树，实测命令为 `wc -l` 与 `git rev-parse`。
+> **基线**：`main` = `e9870b235`（本文档初稿写于 `e0f6ba28b`；先按 `87ce4b45e` 校正，其后主干再前进 2 个提交到 `e9870b235`——只有 `docs: align architecture docs with current shared crates` 一条文档对齐提交，不含代码改动。凡与旧稿数字冲突处以新数为准）。
+> **合并状态**：`feature/data-browsing-prd` 已两次 merge `main`——`c9c8d23ae`（并入 `87ce4b45e`，零冲突）与 `a727d49a0`（并入 `e9870b235`，零冲突）。校正依据是合并后的工作树，实测命令为 `wc -l` 与 `git rev-parse`。
 > **引用纪律**：全目录**不写行号**（行号会随重构腐烂，且无门禁校验），位置一律用「文件路径 + 符号名」。**全文禁止出现 `文件名:行号` 形式的引用**。
 
 ---
