@@ -558,6 +558,8 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
         target_mysql_view_scope_context.as_ref(),
     );
     crate::schema_diff::reviewed::freeze_with_unified_catalog(
+        state.schema_diff_reviewed_plans.as_ref(),
+        &super::reviewed_scope(state)?,
         &mut plan,
         target_db_session_id,
         &target_handle,
@@ -586,7 +588,8 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
         },
         target_mysql_view_scope_context,
     )
-    .await;
+    .await
+    .map_err(CommandError::Validation)?;
     Ok(plan)
 }
 

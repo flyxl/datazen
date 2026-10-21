@@ -4,7 +4,7 @@ version = "0.2.3"
 description = "DataZen desktop database client (Tauri backend)"
 authors = ["DataZen"]
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.85"
 license = "GPL-3.0-or-later"
 
 [lib]

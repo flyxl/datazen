@@ -5,9 +5,9 @@ use datazen_platform_api::dto::job::JobState;
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
 use super::artifact_view;
-use super::comparison_store::ComparisonStore;
 use super::inspect::inspect_data_sync_impl;
 use crate::data_sync::api::SyncComparisonRequest;
+use crate::data_sync::comparison_store::ComparisonStore;
 use crate::data_sync::job::PrepareSpec;
 use crate::data_sync::plan_store as plans;
 use crate::data_sync::{
@@ -381,7 +381,14 @@ async fn finish_async_prepare_preview(
             })
             .unwrap_or(usize::MAX)
     });
-    let comparison = ComparisonStore::from_comparison(rebuilt).map_err(CommandError::Validation)?;
+    // 一次调用只取一次作用域：比较存储与计划注册表必须落在同一个组织维度上。
+    let scope = state.organization_scope()?;
+    let comparison = ComparisonStore::from_comparison(
+        rebuilt,
+        state.sync_stores.comparison_root.as_ref(),
+        &scope,
+    )
+    .map_err(CommandError::Validation)?;
     let source_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         source_job_session_id,
@@ -441,24 +448,34 @@ async fn finish_async_prepare_preview(
     let target_fingerprint =
         plans::fingerprint_relations_with_filters(target_database, target_schema, target_entries)
             .map_err(CommandError::Validation)?;
-    plans::issue_plan_with_store_and_id(
-        plan_id.to_string(),
-        source_plan_session_id.to_string(),
-        target_plan_session_id.to_string(),
-        source_database.to_string(),
-        target_database.to_string(),
-        source_schema.map(str::to_string),
-        target_schema.map(str::to_string),
-        source_driver.as_ref(),
-        target_driver.as_ref(),
-        source_fingerprint,
-        target_fingerprint,
-        comparison,
-        options,
-        target_read_only,
-    )
-    .map_err(CommandError::Validation)?;
-    plans::attach_endpoint_identities(plan_id, source_identity, target_identity)
+    state
+        .sync_stores
+        .plan_store
+        .issue(
+            &scope,
+            source_driver.as_ref(),
+            target_driver.as_ref(),
+            plans::SyncPlanIssue {
+                plan_id: Some(plan_id.to_string()),
+                selection_revision: 1,
+                source_db_session_id: source_plan_session_id.to_string(),
+                target_db_session_id: target_plan_session_id.to_string(),
+                source_database: source_database.to_string(),
+                target_database: target_database.to_string(),
+                source_schema: source_schema.map(str::to_string),
+                target_schema: target_schema.map(str::to_string),
+                source_schema_fingerprint: source_fingerprint,
+                target_schema_fingerprint: target_fingerprint,
+                comparison,
+                options,
+                target_read_only_at_preview: target_read_only,
+            },
+        )
+        .map_err(CommandError::Validation)?;
+    state
+        .sync_stores
+        .plan_store
+        .attach_endpoint_identities(&scope, plan_id, source_identity, target_identity)
         .map_err(CommandError::Validation)?;
     tracing::debug!(job_id, "Data Sync review plan is ready");
     Ok(())

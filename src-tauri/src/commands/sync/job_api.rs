@@ -206,7 +206,12 @@ pub(crate) async fn preview_for_durable_job(
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
-    crate::data_sync::plan_store::preview_for_plan(&plan_id).map_err(CommandError::Validation)
+    crate::data_sync::plan_store::preview_for_plan(
+        state.sync_stores.plan_store.as_ref(),
+        &state.organization_scope()?,
+        &plan_id,
+    )
+    .map_err(CommandError::Validation)
 }
 
 #[tauri::command]

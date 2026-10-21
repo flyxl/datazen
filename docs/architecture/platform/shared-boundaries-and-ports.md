@@ -1,8 +1,8 @@
 # DataZen 共享应用边界与端口详细设计
 
-> 状态：平台 DTO / ports / facade 已实现；P5 已把 `DesktopJobHost` 与 AppDb SQLite v2 接入 AppState，并接通 Schema Diff、Data Sync、Data Transfer 三件套的桌面 Job 生命周期。团队 server 与完整 Profile/ConnectionUseCases 仍未全部接线，不能把本机 Job adapter 当成团队服务仓储。
+> 状态：平台 DTO / ports / facade 已实现；P5 已把 `JobHost` 与 AppDb SQLite v2 接入 AppState，并接通 Schema Diff、Data Sync、Data Transfer 三件套的桌面 Job 生命周期。团队 server 与完整 Profile/ConnectionUseCases 仍未全部接线，不能把本机 Job adapter 当成团队服务仓储。
 >
-> **尚未完整接线的准确含义**：运行期 `DesktopJobHost` 已承载三件套的桌面 Job；Profile/ConnectionUseCases 仍不能从真实连接配置完整构造所需的 revision/credential 字段。`src-tauri/src/platform/adapter.rs` 的连接用例不能为缺失字段伪造值。
+> **尚未完整接线的准确含义**：运行期 `JobHost` 已承载三件套的桌面 Job；Profile/ConnectionUseCases 仍不能从真实连接配置完整构造所需的 revision/credential 字段。`src-tauri/src/platform/adapter.rs` 的连接用例不能为缺失字段伪造值。
 >
 > 仍待实现：团队 `server` crate、完整 Profile/ConnectionUseCases adapter，以及各节明确标为目标设计的 HTTP/多 worker 行为。P5 桌面迁移三件套独立测试与冒烟测试已通过；本机 Job host 不提供服务端或多 worker 语义。
 > 读者：本文只定义包边界、端口签名、组装方式和护栏；DTO 语义、会话状态机、资源预算算法以既有文档为权威，本文不重复定义。标为「目标设计」的段落仍是契约，未随 P1 实现。
@@ -402,7 +402,23 @@ pub trait JobRepository: Send + Sync + 'static {
 
 ```
 
-P5 落地：上述 worker 写入端口携带 `JobClaim`；claim 含 jobId、stageId、workerId、claimGeneration 与期限。`InMemoryJobRepository` 以锁原子校验，桌面 `SqliteJobRepository` 以 SQLite 事务校验 claim generation、worker、期限及状态版本。`DesktopJobHost` 和 `JobRuntimeRepository` 还提供 cancel polling、未启动失败、pending verification、progress、artifact refs、bounded domain results 与 async recovery receipt 写入。AppDb v2 是当前桌面 adapter，已供迁移三件套共用；P9 才增加跨 worker 协调。
+P5 落地：上述 worker 写入端口携带 `JobClaim`；claim 含 jobId、stageId、workerId、claimGeneration 与期限。`InMemoryJobRepository` 以锁原子校验，桌面 `SqliteJobRepository` 以 SQLite 事务校验 claim generation、worker、期限及状态版本。`JobHost` 和 `JobRuntimeRepository` 还提供 cancel polling、未启动失败、pending verification、progress、artifact refs、bounded domain results 与 async recovery receipt 写入。AppDb v2 是当前桌面 adapter，已供迁移三件套共用；P9 才增加跨 worker 协调。
+
+**Job 的组织维度（已实现）**：`JobDefinition` 与 `JobFilter` 都带**必填**的 `organizationId`（落库词汇的归属维度，与 `owner` 这个归属意图正交：`owner` 说「归谁」，`organizationId` 说「归哪个组织」）。因此：
+
+- `accept` 把 `ctx` 的组织**盖章**到 `JobDefinition`；调用方在定义里自报的组织值不作数（INV-01），落库行因此永远属于受理它的那个组织。
+- `list` 按 `filter.organizationId` **且** `ctx` 的组织过滤；两者不一致（例如拿别组织的过滤器来列举）时结果是**空**，不是错误。
+- `get` / `list_recoverable` 按 `ctx` 的组织过滤。
+- 跨组织访问按**读路径 / 写路径**分别处理，两个实现（内存 / SQLite）形状一致：
+  - **读路径**（`get` / `list` / `list_recoverable`）按「**不存在**」处理（`NotFound` / 空列表），不返回「无权限」之类的错误，也不泄漏「存在但无权」（CM-05，与 `ProfileRepository` 的 `ProfileScope` 同口径）。
+  - **写路径有三种形态**，越组织的拒绝形状**不同**，不可混为一谈：
+    - **claim 作用域**（`record_stage` / `record_commit_boundary` / `compare_and_set_state` / `save_checkpoint` / `record_progress` / `record_artifacts` / `record_domain_result` / `finish`）由 **claim fencing** 兜底：claim 只在「按 `ctx` 组织核对过的行」上铸出，因此越组织的写入按 `StaleClaim` 拒绝（**不是** `NotFound`）。
+    - **ctx 作用域**（取消 / 确认未开始 / 标记失败 / 待核验 / 恢复结论 / 认领 / 外部产物 / 恢复结果持久化）没有 claim 可比，用**显式组织谓词**过滤，越组织时受影响行数为 0，按 `NotFound` 处理。
+    - **受理**没有 claim 可比，按 `ctx` **盖章**组织（INV-01）—— 调用方在定义里自报的组织值不作数。
+  - `renew` 自身不属于上面任何一种：它只凭 claim 判定，**不做组织比对**（`JobClaim` 不携带组织维度，因此「跨组织续约」在本路径上不可表达）。
+- 幂等回执按 `(organizationId, principalId, idempotencyKey)` 作用域：同一个键在另一个组织不是重放。
+
+桌面是单租户：所有请求上下文都来自同一个本地组织，因此这些约束不改变任何桌面行为；它们是为 web 形态（多组织）准备的隔离边界。
 
 ```rust
 #[async_trait]
@@ -427,6 +443,24 @@ pub trait IdentityResolver: Send + Sync + 'static {
         -> Result<ExecutionIdentity, PortError>;
 }
 ```
+
+**`IdentityResolver` 的桌面实现（已落地）**：桌面形态的实现是 `src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`（全仓唯一的 `impl IdentityResolver`），装配在 `PlatformAdapter::inject`（§6.2 第 4 步「环境适配」）。它的语义是：
+
+- **派生输入只有三项**：`(organization_id, connection_id, policy_isolation_key)`，加一把**服务端持有的固定盐**。客户端传入的用户名、角色、`principal`、密码、token 一律不进入派生（CM §4.1）。策略隔离键按用户分桶是[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者) 的要求，但它是 `PolicyService` 的服务端产物，客户端无法指定。
+- **服务端固定盐**取宿主主密钥（`{appData}/.key` 或系统钥匙串），再用 HMAC-SHA256 做域分离派生（HKDF-Extract 形态）得到只用于身份派生的子钥。主密钥与子钥**都不进入**身份键——身份键是子钥对输入字段的 HMAC 摘要。主密钥取不到时**失败关闭**，不退回任何可预测的常量盐。
+- **主密钥轮换 ⇒ 全部身份键变化**：身份键由主密钥派生的子钥决定，主密钥一换，所有 `(organization, connection, isolation)` 的身份键全部变，连接池与缓存整体失效（等价于「全部资源换身份」）。**当前仓库没有主密钥轮换路径**（`src-tauri/src/store/key_store.rs` 只有 load-or-create，跨后端迁移也保留原密钥字节），因此暂无实际风险；将来若引入轮换，必须同时给身份派生一把按 `keyVersion` 轮换的独立密钥，否则一次轮换就会把全部连接池打空。
+- **消息编码与域标签（改动时最易改坏的两处）**：身份键的 HMAC 消息 = **域标签 + 每个字段的 `u32` 长度前缀 + 字段内容**。长度前缀是**承重**的：没有它，`("ab","c")` 与 `("a","bc")` 会拼成同一条消息，于是两个不同的身份输入派生出**同一个**身份键。两条域标签的用途是：本人路径用 `datazen.execution-identity.key.v1`，委托路径用 `datazen.execution-identity.delegation-key.v1`——刻意不同，因此即便两条路径的字段值完全一致，摘要也必然不同（委托身份**不可能**等于本人身份）。⚠️ **域标签与长度前缀都进 HMAC 输入**：改其中任何一个 ⇒ 每个正常路径调用的身份键**值**都变 ⇒ 等价于一次**全量身份键轮换**（连接池与缓存整体失效）；而正常路径用例断言的**关系**不变、照绿——所以改这两处必须连带跑变异（见本节末尾的引用块）。
+- **确定性**：派生不含随机数、时间戳或进程内计数器，因此同一 `(organization, connection, isolation)` 跨进程重启返回同一身份键（INV-02 的会话连续性与池复用依赖这一点）。
+- **凭据轮换只推进 `credential_revision`**：凭据版本取自 `SecretProvider::revision(secretRef)`（无凭据配置的连接退回配置记录上的版本），身份键的输入里没有凭据版本，因此轮换不动身份键。
+- **两条独立路径**：`resolve` 与 `resolve_delegation` 的域标签与输入集都不同（委托路径额外绑定委托 id 与授权作用域），委托身份因此**不可能**等于本人身份；`resolve_delegation` 先经 `PolicyService::verify_delegation` 校验，校验不过失败关闭、**不降级**为调用者本人的权限（CM-06）；`resolve` 在委托上下文上一律拒绝。
+- **委托的目标来自宿主协作者**：端口的 `resolve_delegation` 不接收 `ExecutionTarget`，而 `ExecutionIdentity` 必须带 `connectionId`，因此桌面侧由 `DelegationScopeBinding` 给出授权单登记的目标；授权单覆盖多个连接时失败关闭，不取第一个了事。
+
+> **改这块之前先看变异**：上面这些性质里，**长度前缀、域分离、跨组织委托的显式检查、多连接失败关闭**这几条，用例若只写「正常路径的行为」，是**钉不住的**。但它们被破坏时的后果**分两类**，不能笼统说「输出不变」：
+>
+> - **进 HMAC 输入的那些**（域标签、长度前缀、子钥域分离、派生盐的来源）：改它们 ⇒ **每个正常路径调用的身份键值都变** ⇒ 等价于一次**全量身份键轮换**（连接池与缓存整体失效）。正常路径用例断言的**关系**（同输入同键、跨组织不同键、委托身份 ≠ 本人身份）**不变**，所以它们照绿。
+> - **不在派生路径上的那些**（跨组织委托的显式检查、多连接失败关闭）：改它们 ⇒ 正常路径的输出**完全不变**，正常路径用例照绿。
+>
+> 两种情况下「用例全绿」都**不是**「没被破坏」的证据——前者把键的**值**换掉了，后者把失败关闭放开了。首版 16 条用例就漏了这些性质，是靠变异（去输入 / 去长度前缀 / 去域分离 / 放宽失败关闭）才暴露出来的；随后两轮共补 13 条针对性用例（长度前缀防撞车与反事实撞车、消息编码字节布局、域标签字面值、黄金值独立复算、身份键不含主密钥与派生盐、主密钥一换全部键都变、委托消息不可能等于本人、委托键绑定委托 id 与授权 scope、跨组织委托即便策略放行也被拒、委托路径不转调本人路径、授权单覆盖多连接失败关闭）。**改派生编码、域标签或失败关闭分支时，请连带跑变异，而不是只看用例是否全绿。**
 
 **端口命名来源（已统一）**：全仓统一用 `PolicyService`（[概要 §4](system-overview.md#4-模块职责与边界)、[概要 §6.4](system-overview.md#64-repositories-与环境-ports)）。此前只有[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者) 把 `policyIsolationKey` 的生产者写作 `AuthorizationService`，与本节 `PolicyService::isolation_key` 是**同一职责的两种叫法**（组织/用户/策略版本与只读限制），不是两个服务——`authorize`/`verify_delegation` 也落在本节同一 trait。该处**已改写为 `PolicyService`**，`AuthorizationService` 在文档与代码中归零，也没有拆分出新服务；[persistence-model §4.3](persistence-model.md#43-只存在于服务端的字段) 的生产者表本就记在 `PolicyService` 名下，三方现为同一名字。
 
@@ -582,7 +616,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 | `ProfileRepository` | 现有 SQLite + AES-256-GCM 存储（`src-tauri/src/platform/repositories.rs` 的 `DesktopProfiles` + `src-tauri/src/store/`） | **同一端口、另一适配器**：服务端库上的 SQLite 适配器，不复用宿主的 AES 落盘实现 | 同单进程 |
 | `JobRepository` | AppDb SQLite 已用于 P5 桌面迁移三件套；窗口关闭后任务继续，进程重启只标记恢复状态，不重放 handler | 服务端库，任务独立于连接存活 | 同上 |
 | `PolicyService` | 固定本地组织，全部放行 + `readOnly` 配置 | OIDC 登录会话 + membership | 同单进程 |
-| `IdentityResolver` | 当前桌面登录用户 + 配置中的连接账号 | 数据库侧服务身份 + 委托 | 同单进程 |
+| `IdentityResolver` | **已实现**：`src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`。`(organization, connection, isolation)` + 宿主主密钥派生的固定盐 ⇒ 确定性身份键；凭据轮换只动 `credentialRevision`；委托走独立路径 | 数据库侧服务身份 + 委托 | 同单进程 |
 | `SecretProvider` | 本机钥匙串主密钥（开发/`DATAZEN_KEYRING=file` 走 `{appData}/.key`） | 服务端密钥管理 | 同单进程 |
 | `NetworkProvider` | 允许 `localhost`/本机出口 + SSH/代理隧道 | 出站网络策略白名单 | 按 worker 节点策略 |
 | `SessionDirectory` | 进程内 `HashMap` + TTL | 同一 port 的单进程实现 | 共享内存目录 + CAS |
@@ -675,6 +709,33 @@ impl OpenSessionUseCase {
     // owner 只能取 OwnerRef::Editor 或 OwnerRef::Job { job_id }，并由 adapter 预校验。
 }
 ```
+
+### 5.2 组织作用域的来源（已实现）
+
+按组织限定的读写用 `OrganizationScope`（`platform-api::ports::scope`）表达**组织维度**；
+它只表达组织，不表达主体（主体是 `principalId` 的事）。作用域的来源按形态分：
+
+| 形态 | 组织作用域从哪来 | 与 adapter 组装的关系 |
+| --- | --- | --- |
+| 桌面本地 | **安装级常量**：进程常量 `LOCAL_ORGANIZATION_ID`（`src-tauri/src/platform/identity.rs`）——一份 app data 就是一个组织 | **不依赖** adapter 是否组装成功 |
+| HTTP / server | 认证会话解析出的组织（§5 的 `RequestContext.organizationId`） | 由 adapter 组装的请求上下文提供 |
+| 后台 Job / 子执行 | 发起 Job 的组织，逐阶段继承 | 同上 |
+
+桌面的取值是**安装级**的：它在**启动期确定一次**并存进 `AppState.organization_scope`，
+请求期直接取（`AppState::organization_scope()`）。由此得到三条结论：
+
+- **组织身份不可用 ≠ 组织边界不可用**。「取不到当前 OS 用户名」只让 `principalId` 拿不到
+  （`principalId` 仍依赖 adapter 组装成功），**不影响**组织作用域——按组织限定的功能
+  （仪表板 / workflow 等）不会因此整体不可用。
+- **IPC 路径与后台路径必须看到同一个组织**：两者都取同一个安装级常量
+  （`local_organization_scope()`），不得各自解析、各自缓存不同的值。
+- 任何请求体字段都不得覆盖组织身份（INV-01）：作用域**不是** IPC 参数。
+
+按组织限定的**存储端口**（共享 feature 层的 `DashboardStore` / `DashboardRunStore` /
+`WorkflowDefinitionStore`）每个方法都带 `scope: &OrganizationScope`：多租户宿主因此能在
+**同一个存储实现**上区分「本组织的数据」与「别的组织的数据」，不必退化成
+「每个组织一个存储实例」；越组织访问一律按「不存在」处理（空列表 / `None` / `NotFound`），
+**不返回**「无权限」类错误——后者会泄漏「存在但无权」（CM-05）。
 
 ## 6. Tauri adapter 组装根（目标设计，未随 P1 实现）
 

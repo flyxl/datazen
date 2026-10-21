@@ -50,8 +50,8 @@ pub use error::PortError;
 pub use ports::{
     ArtifactStore, BudgetCoordinator, Clock, ClusterNodeBudgetPort, ControlResourcePort,
     DriverPoolBudgetPort, EventSink, FixedClock, IdentityResolver, JobRepository, NetworkProvider,
-    PolicyService, ProfileRepository, SecretProvider, SessionDirectory, SettingsRepository,
-    SubmissionTokenIssuer, SystemClock,
+    OrganizationScope, PolicyService, ProfileRepository, SecretProvider, SessionDirectory,
+    SettingsRepository, SubmissionTokenIssuer, SystemClock,
 };
 
 pub mod settings;

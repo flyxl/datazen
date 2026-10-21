@@ -9,6 +9,7 @@
 //! * [`object_plan_commands`] — view / routine / sequence / type plans.
 //! * [`deploy_commands`] — deploy execution and cancellation.
 //! * [`compare_commands`] — single-table schema comparison.
+//! * [`reviewed_store`] — reviewed-plan storage port implementation (desktop, single tenant).
 //!
 //! [`job`] and [`unified_plan`] keep their own subtrees.
 
@@ -22,6 +23,7 @@ mod object_plan_commands;
 mod object_scope;
 mod plan_commands;
 mod profile_commands;
+pub(crate) mod reviewed_store;
 
 #[cfg(test)]
 mod tests;
@@ -71,3 +73,4 @@ use object_scope::{
     apply_sqlserver_object_scope_gate, ensure_distinct_schema_scope, fetch_schema_object,
     fetch_schema_view, list_schema_objects, list_schema_views, select_schema_object_pair,
 };
+pub(crate) use reviewed_store::reviewed_scope;

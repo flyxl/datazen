@@ -74,6 +74,7 @@ fn prepare_payload() -> serde_json::Value {
 fn definition(kind: &str, payload: serde_json::Value, job_id: &str) -> JobDefinition {
     JobDefinition {
         job_id: JobId::new(job_id),
+        organization_id: org(),
         kind: kind.into(),
         owner: owner_job(),
         payload,
@@ -240,6 +241,7 @@ async fn cm54_same_key_returns_same_job_id_without_reexecution() {
     // 不同 payload + 同键 → IdempotencyConflict
     let other = JobDefinition {
         job_id: JobId::new("job-2"),
+        organization_id: org(),
         kind: "schemaDiffApply".into(),
         owner: owner_job(),
         payload: serde_json::json!({"consumedPlanId": "plan-2", "planVersion": 1, "handlerVersion": 1, "checkpointVersion": 1}),
@@ -503,7 +505,7 @@ async fn recovery_commit_succeeded_checkpoint_missing_requires_manual_review() {
     );
     // 落库边界可见（D2）
     assert_eq!(
-        repo.committed_boundaries(&JobId::new("job-a")).len(),
+        repo.committed_boundaries(&c, &JobId::new("job-a")).len(),
         1,
         "边界必须落库"
     );

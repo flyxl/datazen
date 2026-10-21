@@ -25,8 +25,8 @@ use datazen_platform_api::id::{
 };
 use datazen_platform_api::ports::network::{NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec};
 use datazen_runtime::tunnel::{
-    DesktopNetworkProvider, DesktopRouteCatalog, TunnelError, TunnelFault, TunnelHandle,
-    TunnelState, TunnelTransport,
+    RouteCatalog, RouteNetworkProvider, TunnelError, TunnelFault, TunnelHandle, TunnelState,
+    TunnelTransport,
 };
 
 /// 并发档位。与 `cm28_concurrent_tunnel.rs` 同数：够多才会撞上真的交错。
@@ -170,13 +170,13 @@ impl TunnelTransport for RecordingTunnelPort {
 ///
 /// `local_endpoint` 用 `Mutex<Option<String>>` 而不是构造期定死，是因为「隧道开起来了、
 /// 端点却拿不到」正是要证的那种半开现场 —— 它只能在隧道**开起来之后**被抽掉。
-struct ScriptedCatalog {
+struct ScriptedRouteCatalog {
     spec: Option<TunnelSpec>,
     direct: String,
     local_endpoint: Mutex<Option<String>>,
 }
 
-impl ScriptedCatalog {
+impl ScriptedRouteCatalog {
     fn direct() -> Arc<Self> {
         Arc::new(Self {
             spec: None,
@@ -208,7 +208,7 @@ impl ScriptedCatalog {
     }
 }
 
-impl DesktopRouteCatalog for ScriptedCatalog {
+impl RouteCatalog for ScriptedRouteCatalog {
     fn tunnel_spec(&self, _route_ref: &NetworkRouteRef) -> Option<TunnelSpec> {
         self.spec.clone()
     }
@@ -250,20 +250,20 @@ fn binding(spec: &TunnelSpec) -> TunnelBinding {
 }
 
 fn provider(
-    catalog: &Arc<ScriptedCatalog>,
+    catalog: &Arc<ScriptedRouteCatalog>,
     port: Arc<RecordingTunnelPort>,
-) -> DesktopNetworkProvider {
-    DesktopNetworkProvider::new(Arc::clone(catalog) as Arc<dyn DesktopRouteCatalog>, port)
+) -> RouteNetworkProvider {
+    RouteNetworkProvider::new(Arc::clone(catalog) as Arc<dyn RouteCatalog>, port)
 }
 
 async fn ensure(
-    provider: &DesktopNetworkProvider,
+    provider: &RouteNetworkProvider,
     spec: TunnelSpec,
 ) -> Result<TunnelBinding, PortError> {
     provider.ensure_tunnel(&ctx(), spec).await
 }
 
-async fn release(provider: &DesktopNetworkProvider, spec: &TunnelSpec) -> Result<(), PortError> {
+async fn release(provider: &RouteNetworkProvider, spec: &TunnelSpec) -> Result<(), PortError> {
     provider.release_tunnel(&binding(spec)).await
 }
 
@@ -275,7 +275,7 @@ async fn release(provider: &DesktopNetworkProvider, spec: &TunnelSpec) -> Result
 async fn twenty_concurrent_ensures_of_one_tunnel_open_it_exactly_once() {
     let port = Arc::new(RecordingTunnelPort::new());
     let provider = Arc::new(provider(
-        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        &ScriptedRouteCatalog::tunneled("127.0.0.1:53124"),
         Arc::clone(&port),
     ));
 
@@ -319,7 +319,7 @@ async fn twenty_concurrent_ensures_of_one_tunnel_open_it_exactly_once() {
 
 #[tokio::test]
 async fn a_tunnel_that_opens_without_a_local_endpoint_is_rolled_back() {
-    let catalog = ScriptedCatalog::tunneled("127.0.0.1:53124");
+    let catalog = ScriptedRouteCatalog::tunneled("127.0.0.1:53124");
     let port = Arc::new(RecordingTunnelPort::new());
     let provider = provider(&catalog, Arc::clone(&port));
     catalog.withdraw_endpoint();
@@ -340,7 +340,7 @@ async fn a_tunnel_that_opens_without_a_local_endpoint_is_rolled_back() {
 async fn a_failed_open_leaves_no_trace_and_a_later_release_closes_nothing() {
     let port = RecordingTunnelPort::failing_open();
     let provider = provider(
-        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        &ScriptedRouteCatalog::tunneled("127.0.0.1:53124"),
         Arc::clone(&port),
     );
 
@@ -362,7 +362,7 @@ async fn a_failed_open_leaves_no_trace_and_a_later_release_closes_nothing() {
 async fn a_close_that_is_not_confirmed_keeps_the_entry_and_stays_idempotent() {
     let port = RecordingTunnelPort::failing_close();
     let provider = provider(
-        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        &ScriptedRouteCatalog::tunneled("127.0.0.1:53124"),
         Arc::clone(&port),
     );
 
@@ -382,7 +382,7 @@ async fn a_close_that_is_not_confirmed_keeps_the_entry_and_stays_idempotent() {
 async fn a_spec_that_needs_no_tunnel_is_answered_without_touching_the_table() {
     let port = Arc::new(RecordingTunnelPort::new());
     let provider = provider(
-        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        &ScriptedRouteCatalog::tunneled("127.0.0.1:53124"),
         Arc::clone(&port),
     );
 
@@ -403,7 +403,7 @@ async fn a_spec_that_needs_no_tunnel_is_answered_without_touching_the_table() {
 async fn releasing_one_binding_twenty_concurrent_times_closes_at_most_once() {
     let port = Arc::new(RecordingTunnelPort::new());
     let provider = Arc::new(provider(
-        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        &ScriptedRouteCatalog::tunneled("127.0.0.1:53124"),
         Arc::clone(&port),
     ));
     let held = ensure(&provider, spec(22)).await.expect("隧道应当开得起来");
@@ -432,7 +432,7 @@ async fn releasing_one_binding_twenty_concurrent_times_closes_at_most_once() {
 async fn releasing_a_tunnel_that_was_never_taken_is_a_no_op_success() {
     let port = Arc::new(RecordingTunnelPort::new());
     let provider = provider(
-        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        &ScriptedRouteCatalog::tunneled("127.0.0.1:53124"),
         Arc::clone(&port),
     );
 
@@ -451,7 +451,7 @@ async fn releasing_a_tunnel_that_was_never_taken_is_a_no_op_success() {
 async fn twenty_concurrent_repeats_of_one_holder_are_accepted_exactly_once() {
     let port = Arc::new(RecordingTunnelPort::new());
     let provider = Arc::new(provider(
-        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        &ScriptedRouteCatalog::tunneled("127.0.0.1:53124"),
         Arc::clone(&port),
     ));
     ensure(&provider, spec(22)).await.expect("隧道应当开得起来");
@@ -480,7 +480,7 @@ async fn twenty_concurrent_repeats_of_one_holder_are_accepted_exactly_once() {
 async fn a_storm_of_shared_holders_returns_the_reference_count_to_zero_exactly() {
     let port = Arc::new(RecordingTunnelPort::new());
     let provider = Arc::new(provider(
-        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        &ScriptedRouteCatalog::tunneled("127.0.0.1:53124"),
         Arc::clone(&port),
     ));
 
@@ -521,7 +521,7 @@ async fn a_storm_of_shared_holders_returns_the_reference_count_to_zero_exactly()
 async fn a_direct_route_resolves_to_its_own_endpoint_without_a_tunnel() {
     let port = Arc::new(RecordingTunnelPort::new());
     port.set_revision(&NetworkRouteRef::new("route-a"), 7);
-    let provider = provider(&ScriptedCatalog::direct(), Arc::clone(&port));
+    let provider = provider(&ScriptedRouteCatalog::direct(), Arc::clone(&port));
 
     let plan = resolve(&provider).await.expect("直连路由应当解析成功");
 
@@ -540,7 +540,7 @@ async fn a_tunneled_route_stays_refused_until_this_provider_holds_the_reference(
     let port = Arc::new(RecordingTunnelPort::new());
     port.set_revision(&NetworkRouteRef::new("route-a"), 9);
     let provider = provider(
-        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        &ScriptedRouteCatalog::tunneled("127.0.0.1:53124"),
         Arc::clone(&port),
     );
 
@@ -560,7 +560,7 @@ async fn a_tunneled_route_stays_refused_until_this_provider_holds_the_reference(
 
 #[tokio::test]
 async fn the_reference_withdrawn_last_is_the_one_that_tears_the_tunnel_down() {
-    let catalog = ScriptedCatalog::tunneled("127.0.0.1:53124");
+    let catalog = ScriptedRouteCatalog::tunneled("127.0.0.1:53124");
     let port = Arc::new(RecordingTunnelPort::new());
     port.set_revision(&NetworkRouteRef::new("route-a"), 3);
     let provider = provider(&catalog, Arc::clone(&port));
@@ -588,7 +588,7 @@ async fn the_reference_withdrawn_last_is_the_one_that_tears_the_tunnel_down() {
 #[tokio::test]
 async fn an_unknown_route_revision_is_refused_rather_than_guessed() {
     let port = Arc::new(RecordingTunnelPort::new());
-    let provider = provider(&ScriptedCatalog::direct(), Arc::clone(&port));
+    let provider = provider(&ScriptedRouteCatalog::direct(), Arc::clone(&port));
 
     assert!(matches!(
         resolve(&provider).await,
@@ -602,7 +602,7 @@ async fn an_unknown_route_revision_is_refused_rather_than_guessed() {
 
 // ---------------------------------------------------------------------------------------------
 
-async fn resolve(provider: &DesktopNetworkProvider) -> Result<RoutePlan, PortError> {
+async fn resolve(provider: &RouteNetworkProvider) -> Result<RoutePlan, PortError> {
     provider
         .resolve_route(&ctx(), NetworkRouteRef::new("route-a"))
         .await

@@ -1,12 +1,12 @@
 //! Data Transfer IPC commands.
 
-use crate::data_transfer::plan_store as plans;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 mod exec;
 mod inspect;
 mod job_api;
 mod jobs;
+mod plan_scope;
 mod preview;
 mod types;
 
@@ -211,7 +211,10 @@ async fn execute_data_transfer_inner(
         .source_tables
         .as_ref()
         .map_or(0, |tables| tables.len() as u64);
-    if let Ok(plan) = plans::peek_plan(&request.plan_id) {
+    if let Ok(plan) = state
+        .transfer_plans
+        .peek(plan_scope::desktop_organization_scope(), &request.plan_id)
+    {
         run.source_connection_id = crate::services::migration_endpoint::runtime_session_context(
             &state,
             &plan.job.source.db_session_id,

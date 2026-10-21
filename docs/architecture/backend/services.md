@@ -61,12 +61,12 @@ Runtime 默认会话空闲期限为 30 分钟，默认扫描间隔为 3 分钟�
 |---|---|---|---|---|---|
 | 查询流执行注册表 | `QueryExecutionId` | 单次流式查询执行 | **有**：发起会话与执行记录不一致直接拒绝（`belongs to a different db session`） | 进程内；条目在每个流的终态路径上被移除，未知或已过期的 ID 报 `unknown or stale` | `AppState.query_executions`（`commands/mod.rs:88-142`） |
 | Legacy job registry | `jobId` | 仍使用兼容执行路径的旧任务 | 只有 job ID，不按 `connectionId` / `dbSessionId` 归类 | 进程内静态表；`cancel_job` 先置位再返回，支持先取消后开始；重启失效 | `services/job_registry.rs`（全局 `static JOBS`） |
-| Migration Job state | `jobId` | Schema Diff、Data Sync、Data Transfer 的 prepare/apply | 本机 DesktopJobHost 的 RequestContext / 仓储校验 | cancel intent 和 Job 结果保存在 `{appData}/datazen.sqlite`；关闭窗口后继续当前进程里的 handler。重启只标记恢复候选，不复用旧 worker/session 或自动重放 | `AppState.desktop_job_host`、`store/app_db/jobs/` |
+| Migration Job state | `jobId` | Schema Diff、Data Sync、Data Transfer 的 prepare/apply | 本机 JobHost 的 RequestContext / 仓储校验 | cancel intent 和 Job 结果保存在 `{appData}/datazen.sqlite`；关闭窗口后继续当前进程里的 handler。重启只标记恢复候选，不复用旧 worker/session 或自动重放 | `AppState.desktop_job_host`、`store/app_db/jobs/` |
 | AI 调用取消注册表 | AI 调用 ID（`request_id`） | 单次 AI 调用（含流式） | **无**：只按调用 ID 查找 | 进程内；开始时登记、结束时注销，取消一个从未登记或已注销的调用返回 `false` 且无副作用 | `ai/cancel.rs` |
 
 要点：
 
-- Query 通过 Runtime session 进行 owner 校验；Schema Diff、Data Sync、Data Transfer 的长任务由 DesktopJobHost 持有 cancel intent。
+- Query 通过 Runtime session 进行 owner 校验；Schema Diff、Data Sync、Data Transfer 的长任务由 JobHost 持有 cancel intent。
 - MCP / Workflow 通过各自运行时用例执行，不依赖共享 GUI dbSessionId 或旧 ConnectionManager。
 - Host compatibility JobRegistry 与 AI cancel registry 仍是各自独立的进程内状态；它们不是连接生命周期管理器。
 
@@ -106,7 +106,7 @@ DataTable 的行编辑与数据导出是两条不同的写路径，不要按同�
 
 ## 6. 长任务
 
-Schema Diff、Data Sync 与 Data Transfer 的 prepare/apply 长任务均由共享 `DesktopJobHost` 管理，关闭 UI 不作为取消信号。各自 IPC 按 `jobId` 写入持久 cancel intent；Job handler 在当前进程中由后台任务继续执行，AppDb 保存 Job state、receipt、执行边界和结果。进程重启不会恢复旧 handler，而将未派发 Queued / 运行中任务分别标记为 NotExecuted / PendingVerification。横向差异见[取消机制表](#取消维度五种独立的取消机制)。
+Schema Diff、Data Sync 与 Data Transfer 的 prepare/apply 长任务均由共享 `JobHost` 管理，关闭 UI 不作为取消信号。各自 IPC 按 `jobId` 写入持久 cancel intent；Job handler 在当前进程中由后台任务继续执行，AppDb 保存 Job state、receipt、执行边界和结果。进程重启不会恢复旧 handler，而将未派发 Queued / 运行中任务分别标记为 NotExecuted / PendingVerification。横向差异见[取消机制表](#取消维度五种独立的取消机制)。
 
 ## 7. 依赖方向
 

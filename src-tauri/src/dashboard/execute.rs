@@ -9,6 +9,7 @@ use crate::store::AppSettings;
 use datazen_feature_core::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
 use datazen_feature_core::workflow::executor::WorkflowExecutor;
 use datazen_feature_core::workflow::model::WorkflowExecutionResult;
+use datazen_platform_api::ports::scope::OrganizationScope;
 
 use datazen_feature_core::dashboard::execute::build_error_run;
 
@@ -26,7 +27,10 @@ pub enum DashboardExecuteError {
 
 /// Build and persist an error-status run using monitor retention settings.
 #[allow(dead_code)]
+// 组织作用域是边界参数，不参与「这组入参讲的是同一件事」的语义。
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn persist_error_run(
+    scope: &OrganizationScope,
     app_db: &AppDb,
     settings: &AppSettings,
     dashboard_id: &str,
@@ -45,7 +49,7 @@ pub(crate) fn persist_error_run(
         error,
     );
     let retention = load_monitor_settings(settings);
-    datazen_feature_core::dashboard::runs::write_run(app_db, &run, &retention)?;
+    datazen_feature_core::dashboard::runs::write_run(scope, app_db, &run, &retention)?;
     Ok(run)
 }
 
@@ -53,6 +57,7 @@ struct DesktopWidgetHost<'a> {
     app_state: &'a AppState,
     app_db: &'a AppDb,
     settings: &'a AppSettings,
+    scope: &'a OrganizationScope,
 }
 #[async_trait::async_trait]
 impl datazen_feature_core::dashboard::execute::WidgetExecutionHost for DesktopWidgetHost<'_> {
@@ -60,13 +65,14 @@ impl datazen_feature_core::dashboard::execute::WidgetExecutionHost for DesktopWi
         let workflow = self
             .app_state
             .workflow_registry
-            .get(id)
+            .get(self.scope, id)
             .await
             .ok_or_else(|| format!("Workflow '{id}' not found"))?;
         WorkflowExecutor::execute(&workflow, self.app_state, None, &serde_json::json!({})).await
     }
     async fn persist_run(&self, run: &WidgetRun) -> Result<(), String> {
         datazen_feature_core::dashboard::runs::write_run(
+            self.scope,
             self.app_db,
             run,
             &load_monitor_settings(self.settings),
@@ -75,6 +81,7 @@ impl datazen_feature_core::dashboard::execute::WidgetExecutionHost for DesktopWi
     }
 }
 pub async fn execute_widget_once(
+    scope: &OrganizationScope,
     app_state: &AppState,
     app_db: &AppDb,
     settings: &AppSettings,
@@ -86,6 +93,7 @@ pub async fn execute_widget_once(
             app_state,
             app_db,
             settings,
+            scope,
         },
         dashboard_id,
         widget,
@@ -177,6 +185,7 @@ mod tests {
         let settings = AppSettings::default();
 
         let run = persist_error_run(
+            &crate::platform::local_organization_scope(),
             &db,
             &settings,
             "d1",
@@ -189,9 +198,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(run.status, WidgetRunStatus::Error);
-        let index = list_run_index(&*db, "d1", "w1", 10).unwrap();
+        let scope = crate::platform::local_organization_scope();
+        let index = list_run_index(&scope, &*db, "d1", "w1", 10).unwrap();
         assert_eq!(index.len(), 1);
-        let loaded = get_run(&*db, "d1", "w1", "run-connect-err").unwrap();
+        let loaded = get_run(&scope, &*db, "d1", "w1", "run-connect-err").unwrap();
         assert_eq!(loaded.status, WidgetRunStatus::Error);
     }
 

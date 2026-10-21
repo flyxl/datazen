@@ -5,9 +5,36 @@ use crate::{
     compare_table_pages_to_sink, ChangeOperation, RowChange, SliceRowSource, SyncOptions,
     SyncSourceFilter, TableResult,
 };
+use datazen_platform_api::id::OrganizationId;
 use uuid::Uuid;
 
 const CHILD_OWNER_ROOT_ENV: &str = "DATAZEN_TEST_COMPARISON_OWNER_ROOT";
+/// 包内测试用的组织。存储根与作用域都绑定到它。
+const TEST_ORGANIZATION: &str = "datazen-data-sync-tests";
+
+/// 包内测试用的存储根端口。
+fn test_root(root: &Path) -> LocalComparisonStoreRoot {
+    LocalComparisonStoreRoot::new(root.to_path_buf(), OrganizationId::new(TEST_ORGANIZATION))
+}
+
+/// 包内测试用的作用域。
+fn test_scope() -> OrganizationScope {
+    OrganizationScope::new(OrganizationId::new(TEST_ORGANIZATION))
+}
+
+/// 包内测试用的比较存储：根来自默认落盘约定，作用域来自测试组织。
+fn comparison_store_from(comparison: ComparisonResult) -> Result<ComparisonStore, String> {
+    ComparisonStore::from_comparison(
+        comparison,
+        &test_root(&default_comparison_store_root()),
+        &test_scope(),
+    )
+}
+
+/// 包内测试用的流式写入器。
+fn test_store_writer() -> Result<StreamingComparisonStoreWriter, String> {
+    StreamingComparisonStoreWriter::new(&test_root(&default_comparison_store_root()), &test_scope())
+}
 
 fn inserted_row(key: i64) -> RowChange {
     RowChange::insert(
@@ -94,9 +121,47 @@ fn row_bearing_table() -> TableResult {
     table
 }
 
+/// CM-05：越组织访问按「不存在」处理——存储根解析不出来即**失败关闭**。
+///
+/// 这条断言锁的是「根解析」这一层：端口实现（`LocalComparisonStoreRoot::root_for`）
+/// 返回 `None` 之后，比较存储的**两条**入口（内联/落盘构造与流式写入器）都必须
+/// 一致地失败，且失败发生在**触碰文件系统之前**——越组织访问不得在存储根下留下
+/// 任何目录，也不得返回「无权限」形态的措辞（那会泄漏「存在但无权」）。
+#[test]
+fn another_organization_gets_no_comparison_storage_at_all() {
+    let root = std::env::temp_dir().join(format!(
+        "datazen-sync-comparison-org-{}-{}",
+        TEST_ORGANIZATION,
+        Uuid::new_v4()
+    ));
+    let bound = LocalComparisonStoreRoot::new(root.clone(), OrganizationId::new(TEST_ORGANIZATION));
+    let foreign = OrganizationScope::new(OrganizationId::new("datazen-data-sync-other"));
+
+    let error = ComparisonStore::from_comparison(comparison(8), &bound, &foreign)
+        .expect_err("越组织访问不得拿到比较存储");
+    let lowered = error.to_lowercase();
+    assert!(!lowered.contains("permission"));
+    assert!(!lowered.contains("forbidden"));
+    assert!(!lowered.contains("denied"));
+
+    let writer = StreamingComparisonStoreWriter::new(&bound, &foreign);
+    assert!(writer.is_err(), "越组织访问不得拿到比较存储写入器");
+
+    assert!(
+        !root.exists(),
+        "越组织访问必须在触碰文件系统之前失败关闭：存储根不得被创建"
+    );
+
+    // 同一个根对本组织仍然可用：失败关闭不能误伤合法访问。
+    let store = ComparisonStore::from_comparison(comparison(8), &bound, &test_scope())
+        .expect("本组织应当拿到比较存储");
+    assert!(store.summaries().is_ok());
+    let _ = fs::remove_dir_all(&root);
+}
+
 #[test]
 fn small_comparison_stays_inline_and_round_trips() {
-    let store = ComparisonStore::from_comparison(comparison(8)).unwrap();
+    let store = comparison_store_from(comparison(8)).unwrap();
     assert!(!store.is_spilled());
     assert_eq!(store.load().unwrap().tables.len(), 1);
     assert_eq!(store.summaries().unwrap()[0].row_count, 1);
@@ -109,8 +174,7 @@ fn small_comparison_stays_inline_and_round_trips() {
 #[test]
 fn one_shot_add_table_preserves_rows_metadata_counts_and_order() {
     let expected = row_bearing_table();
-    let inline =
-        ComparisonStore::from_comparison(ComparisonResult::new(vec![expected.clone()])).unwrap();
+    let inline = comparison_store_from(ComparisonResult::new(vec![expected.clone()])).unwrap();
     assert!(!inline.is_spilled());
     let inline_loaded = inline.load().unwrap();
     assert_eq!(
@@ -178,7 +242,7 @@ fn one_shot_add_table_row_write_failures_abort_without_publishing() {
 
 #[test]
 fn large_comparison_spills_to_private_indexed_store_and_round_trips() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let path = store.path().unwrap();
     let directory = store.directory().unwrap();
     assert!(store.is_spilled());
@@ -246,7 +310,7 @@ fn large_comparison_spills_to_private_indexed_store_and_round_trips() {
 
 #[test]
 fn manifest_operation_count_tampering_fails_closed() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let manifest = store.path().unwrap();
     let mut document: serde_json::Value =
         serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
@@ -264,7 +328,7 @@ fn manifest_operation_count_tampering_fails_closed() {
 #[test]
 fn indexed_page_reads_only_requested_table_and_rows_without_full_load() {
     let comparison = multi_table_comparison();
-    let store = ComparisonStore::from_comparison(ComparisonResult::new(vec![
+    let store = comparison_store_from(ComparisonResult::new(vec![
         TableResult::matched(
             "large-users",
             "large-users",
@@ -290,7 +354,7 @@ fn indexed_page_reads_only_requested_table_and_rows_without_full_load() {
 
 #[test]
 fn malformed_manifest_and_row_file_are_rejected_and_cleaned_on_drop() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let manifest = store.path().unwrap();
     let directory = store.directory().unwrap();
     fs::write(&manifest, b"not-json").unwrap();
@@ -301,7 +365,7 @@ fn malformed_manifest_and_row_file_are_rejected_and_cleaned_on_drop() {
     drop(store);
     assert!(!directory.exists());
 
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let directory = store.directory().unwrap();
     let row_path = directory.join("table-0.rows");
     fs::write(&row_path, b"broken").unwrap();
@@ -310,7 +374,7 @@ fn malformed_manifest_and_row_file_are_rejected_and_cleaned_on_drop() {
     drop(store);
     assert!(!directory.exists());
 
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let directory = store.directory().unwrap();
     let row_path = directory.join("table-0.rows");
     let mut bytes = fs::read(&row_path).unwrap();
@@ -328,7 +392,7 @@ fn malformed_manifest_and_row_file_are_rejected_and_cleaned_on_drop() {
 
 #[test]
 fn trailing_manifest_data_is_rejected() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let path = store.path().unwrap();
     let mut bytes = fs::read(&path).unwrap();
     bytes.extend_from_slice(b" trailing");
@@ -341,7 +405,7 @@ fn trailing_manifest_data_is_rejected() {
 
 #[test]
 fn cloned_owner_delays_cleanup_until_last_reference() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let directory = store.directory().unwrap();
     let clone = store.clone();
     drop(store);
@@ -363,7 +427,7 @@ fn existing_path_is_rejected_instead_of_overwritten() {
 #[test]
 fn streaming_writer_spills_rows_incrementally_and_cleans_unfinished_output() {
     let options = SyncOptions::default();
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))
@@ -391,7 +455,7 @@ fn streaming_writer_spills_rows_incrementally_and_cleans_unfinished_output() {
     drop(store);
     assert!(!directory.exists());
 
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("cancelled", "cancelled", Vec::new()))
@@ -410,7 +474,7 @@ fn streaming_writer_spills_rows_incrementally_and_cleans_unfinished_output() {
 #[test]
 fn test_tester_streaming_writer_round_trips_zero_one_and_large_row_counts() {
     let options = SyncOptions::default();
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     writer
         .begin_table(TableResult::matched("empty", "empty", Vec::new()))
         .unwrap();
@@ -468,7 +532,7 @@ fn test_tester_streaming_writer_round_trips_zero_one_and_large_row_counts() {
 #[test]
 fn test_tester_index_corruption_fails_summary_page_and_full_load() {
     let options = SyncOptions::default();
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))
         .unwrap();
@@ -496,7 +560,7 @@ fn test_tester_index_corruption_fails_summary_page_and_full_load() {
 
 #[tokio::test]
 async fn test_tester_cancelled_sink_drops_partial_store() {
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))
@@ -524,7 +588,7 @@ async fn test_tester_cancelled_sink_drops_partial_store() {
 
 #[test]
 fn test_tester_unchanged_row_is_rejected_and_writer_cleanup_is_recoverable() {
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))
@@ -547,7 +611,7 @@ fn test_tester_unchanged_row_is_rejected_and_writer_cleanup_is_recoverable() {
 #[test]
 fn test_tester_full_load_fails_closed_above_64_mib_but_page_stays_available() {
     let options = SyncOptions::default();
-    let mut writer = StreamingComparisonStoreWriter::new().unwrap();
+    let mut writer = test_store_writer().unwrap();
     writer
         .begin_table(TableResult::matched("large", "large", Vec::new()))
         .unwrap();
@@ -603,6 +667,54 @@ fn stale_owner_store_is_reclaimed_after_its_lease_is_released() {
         !owner_lease_path.exists(),
         "unused stale owner lease remains"
     );
+}
+
+/// owner 租约**按根**缓存：租约文件必须住在**自己根**的 `.owners/` 下。
+///
+/// 旧实现用无键的全局租约：第二个根会复用第一个根的租约，于是第二个根下的
+/// 陈旧目录永远无法被证明可回收——回收要靠 `try_lock_existing_owner(root, id)`
+/// 在**那个根**里找到租约文件，租约不在就永远证明不了 owner 已死。
+///
+/// 这条断言锁的是「租约文件的位置」，它正是陈旧回收能成立的前提。
+#[test]
+fn owner_lease_is_cached_per_root_so_each_root_can_reclaim_its_own_stale_stores() {
+    let temporary = tempfile::tempdir().unwrap();
+    let first_root = ensure_private_store_root(&temporary.path().join("first")).unwrap();
+    let second_root = ensure_private_store_root(&temporary.path().join("second")).unwrap();
+
+    let first = current_process_owner(&first_root).unwrap();
+    let second = current_process_owner(&second_root).unwrap();
+    assert_ne!(first.id, second.id, "两个根不得共用同一份 owner 租约");
+
+    let lease_file = |root: &Path, owner: &OwnerLease| {
+        root.join(OWNER_DIRECTORY)
+            .join(format!("{}.sqlite", owner.id))
+    };
+    assert!(
+        lease_file(&first_root, &first).exists(),
+        "第一个根的租约文件必须住在第一个根下"
+    );
+    assert!(
+        lease_file(&second_root, &second).exists(),
+        "第二个根的租约文件必须住在第二个根下——否则该根的陈旧目录无法回收"
+    );
+    assert!(
+        !lease_file(&first_root, &second).exists(),
+        "第二个根的租约不得住在第一个根下"
+    );
+    assert!(
+        !lease_file(&second_root, &first).exists(),
+        "第一个根的租约不得住在第二个根下"
+    );
+
+    // 同一根重复解析必须复用同一份租约：不重复申请、不堆积租约文件。
+    assert_eq!(current_process_owner(&first_root).unwrap().id, first.id);
+    assert_eq!(current_process_owner(&second_root).unwrap().id, second.id);
+    let owners = fs::read_dir(second_root.join(OWNER_DIRECTORY))
+        .unwrap()
+        .flatten()
+        .count();
+    assert_eq!(owners, 1, "同一根不得因为重复解析而堆积租约文件");
 }
 
 #[test]
@@ -853,7 +965,7 @@ fn test_tester_abrupt_child_exit_releases_sqlite_owner_lease() {
 
 #[test]
 fn repeated_pages_reuse_validation_but_detect_edits_after_a_cached_read() {
-    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let store = comparison_store_from(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
     let summary = store.summaries().unwrap().remove(0);
     store
         .load_table_page(
