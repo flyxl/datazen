@@ -67,9 +67,31 @@ Error: ENOENT: no such file or directory, lstat
 | `driver-init-rustfmt.test.mjs` 的 `stageRepo()` | `cpSync(REPO, stage, { recursive: true })` **整棵活仓库**拷贝，拷贝期间探针被删 → `lstat` 抛 ENOENT | `FAIL driver-init-rustfmt.test.mjs` |
 | `pnpm typecheck`（`tsc --noEmit`） | 根 `tsconfig.json` 的 `include` 含 `packages/ui`，`packages/ui/tsconfig.json` 的 `include` 含 `src` ⇒ **探针路径在 tsc 的 program 里**；glob 展开后文件被删 | `error TS6053: __boundaryProbe__.ts not found` |
 
-**还有一个尚未被触发的隐患**：探针文件里是**故意违规的 import**（用来验证守卫能抓到）。只要它在 `tsc` 运行期间存在，`pnpm typecheck` 就会去类型检查这个**故意非法**的夹具——即使不发生竞态，typecheck 也可能因此变红。目前没暴露，只是因为探针通常不存在。
+**第二个失败模式（已由复测坐实，2026-10-21 晚）**：探针文件里是**故意违规的 import**（用来验证守卫能抓到），而 `tsc` **会把它当正常源码类型检查**。守卫套件真实种的 6+1 种探针体里，**3 种会直接产出真实类型错误**：
+
+| 探针体 | tsc 结果 |
+| --- | --- |
+| `import { open } from '@tauri-apps/plugin-dialog'` | EXIT=0（该包已安装） |
+| `export const pick = () => import('@tauri-apps/plugin-fs')` | **EXIT=2 · TS2307**（该包未安装） |
+| `const dlg = require('@tauri-apps/api/dialog')` | EXIT=0（`require` 在 `@types/node` 下返回 `any`，不查模块） |
+| `vi.mock('zustand', () => ({}))` | **EXIT=2 · TS2304**（`vi` 从未导入） |
+| `import { useSettingsStore } from '../../../src/stores/settingsStore'` | EXIT=0 |
+| `import { redisMeta } from '../../drivers/redis/ui/shared/meta'` | EXIT=0 |
+| `.tsx` 支的 `import { cn } from '../cn'` | **EXIT=2 · TS2307**（探针实际落在 `packages/ui/src/`，`../cn` 指向不存在的 `packages/ui/cn`） |
+
+注意：**"探针能被 tsc 解析"是个陷阱**——只有上表第 1 行能被解析，恰好是最容易手工构造的那一体。判定"路径是否在 tsc program 里"的可靠办法是**见证探针**（`export const __witness: number = 'not a number';` → TS2322），而不是"0 error"（不在 program 里也是 0 error）。
+
+**两条失败模式的定量（2026-10-21 复测实测）**：
+- **TS6053**（探针被删在 tsc glob 之后、读取之前）：确定性复现——tsc 启动后 0.8s / 1.5s 删除探针必红（12s 的一次 tsc 中约 **17%** 的时间窗）；真实并发下 **3/20 = 15%**；
+- **type error**（探针活着时被类型检查）：探针存活占空比 `packages/ui/src/__boundaryProbe__.ts` ≈ **4.5%**、其中 2/7 支是非法体 ⇒ 并发 typecheck 命中概率约 **2–3%**。
+
+⇒ 合计并发 typecheck 变红概率约 **17–18%**；不并发时 0 命中。
 
 ⇒ 结论：**锁只保护写者，不保护读者**。修复必须让探针对读者不可见（按路径排除 / 拷贝过滤），或让读者也参与锁；只把 ENOENT 吞掉是掩盖，不是修复。
+
+**为什么不能只靠"让 tsc 也持锁"**：`tsc` 是**独立 OS 进程**，而 `withProbeLock` 是 **vitest 进程内**的 `mkdir` 锁——`tsc` 根本拿不到它。要让 tsc 持锁，就得把每一次 typecheck 包进一个拿锁的 wrapper，那会把 typecheck 与整个 vitest 跑（**88s**）**串行化**，CI 代价不可接受；而且锁只能防"同时存在"，**防不住"探针被类型检查"**。`exclude` 才是"让探针对读者不可见"这条验收标准的字面做法。
+
+**已验证的修法（1 行配置）**：根 `tsconfig.json` 加 `"exclude": ["**/__boundaryProbe__*", "**/__uiBoundaryProbe__*"]` ⇒ 探针彻底离开 program（`tsc --listFiles | grep -c boundaryProbe` = 0），**两个失败模式同时消失**。`packages/ui/tsconfig.json` 与 `packages/backend-client/tsconfig.json` 也要各自加同样的 exclude——实测 `tsc -p packages/ui` 同样看得见探针，只修根配置等于留后门。
 
 ## 修复验收标准（协调者）
 
