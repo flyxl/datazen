@@ -110,6 +110,30 @@ R 阶段全量回归 → 合流 `main` → PR。
 
 结论：共享内核里**类型名与模块路径**已无 desktop 形态味；剩余的 `desktop` 全部是 (a) 线协议字面码 (b) 宿主侧命名 (c) 冻结契约成员 —— 三者都不该由本轨动。
 
+## 现场状态（会话中断后接手者必读）
+
+### ⚠️ 验证树上有未还原告异的变异
+`.worktrees/verify-runtime-naming`（detached @ `a4c54cc0c`）当前有 **1 个未还原变异**：
+`packages/runtime/src/tunnel/single_counter_audit/mod.rs:98` 的登记标签被改成 `src/tunnel/ghost.rs`（`include_str!` 保持有效，所以能编译）。
+这是 Tester 的 P2 变异 1，**是证据的一部分，不是脏数据**，不要直接 `git checkout .` 抹掉。
+- Tester `a1f0c68d` 已两次死在「跑变异 1 闸门」这一步，我已 resume（死亡 2/3 次，按规则 resume 优于换新实例）。
+- 若它再次死亡（>3 次），换新验证实例前**必须先还原该文件**，否则新实例会在脏树上得出无效结论。
+- 我（协调者）未在该树上跑过任何 cargo 命令，未改动任何文件。
+
+### Wave 1 各轨活性（22:41 实测）
+| 轨 | 状态 | 活性证据 |
+|---|---|---|
+| C | 已交付 `a4c54cc0c`，`READY_FOR_TEST` | Tester 复测中 |
+| A `job-org-scope` | running，33 文件未提交 | 最近编辑 22:37（4 分钟前），活跃 |
+| B `di-dyn` | running，9 文件未提交 | 最近编辑 22:12（29 分钟前），`progress.md` 已写 → 判断为在共享 target 锁上排队编译，**非停滞**；若再 20 分钟无变化需按 §5 探活 |
+
+### 轨道 A 的范围扩张（可接受，但记为已知冲突）
+A 给 `JobDefinition` 加 `organization_id` 后，构造点扩散到了任务书列为禁区的文件：
+`packages/feature-core/src/restore_job.rs`、`packages/drivers/{postgres,mysql}/tests/restore_apply_job.rs`。
+这与轨道 C 一样属于「契约字段变更的必要连带」，不是越界夹带 —— **接受**。
+后果：A 与 C 在 `packages/feature-core/src/restore_job.rs` 上**必然冲突**（C 改了那里的 `JobHost` 标识符，A 改了那里的 `JobDefinition` 构造）。按 `C → A` 顺序合，冲突是机械的（在已改名的标识符上加字段）。
+合流后必须由 Tester 独立复验 A，重点确认这些连带点**没有夹带逻辑改动**。
+
 ## 合流记录
 
 （每轨合入后追加：轨 → commit → 门禁数字 → 冲突处理。）
