@@ -444,6 +444,24 @@ pub trait IdentityResolver: Send + Sync + 'static {
 }
 ```
 
+**`IdentityResolver` 的桌面实现（已落地）**：桌面形态的实现是 `src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`（全仓唯一的 `impl IdentityResolver`），装配在 `PlatformAdapter::inject`（§6.2 第 4 步「环境适配」）。它的语义是：
+
+- **派生输入只有三项**：`(organization_id, connection_id, policy_isolation_key)`，加一把**服务端持有的固定盐**。客户端传入的用户名、角色、`principal`、密码、token 一律不进入派生（CM §4.1）。策略隔离键按用户分桶是[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者) 的要求，但它是 `PolicyService` 的服务端产物，客户端无法指定。
+- **服务端固定盐**取宿主主密钥（`{appData}/.key` 或系统钥匙串），再用 HMAC-SHA256 做域分离派生（HKDF-Extract 形态）得到只用于身份派生的子钥。主密钥与子钥**都不进入**身份键——身份键是子钥对输入字段的 HMAC 摘要。主密钥取不到时**失败关闭**，不退回任何可预测的常量盐。
+- **主密钥轮换 ⇒ 全部身份键变化**：身份键由主密钥派生的子钥决定，主密钥一换，所有 `(organization, connection, isolation)` 的身份键全部变，连接池与缓存整体失效（等价于「全部资源换身份」）。**当前仓库没有主密钥轮换路径**（`src-tauri/src/store/key_store.rs` 只有 load-or-create，跨后端迁移也保留原密钥字节），因此暂无实际风险；将来若引入轮换，必须同时给身份派生一把按 `keyVersion` 轮换的独立密钥，否则一次轮换就会把全部连接池打空。
+- **消息编码与域标签（改动时最易改坏的两处）**：身份键的 HMAC 消息 = **域标签 + 每个字段的 `u32` 长度前缀 + 字段内容**。长度前缀是**承重**的：没有它，`("ab","c")` 与 `("a","bc")` 会拼成同一条消息，于是两个不同的身份输入派生出**同一个**身份键。两条域标签的用途是：本人路径用 `datazen.execution-identity.key.v1`，委托路径用 `datazen.execution-identity.delegation-key.v1`——刻意不同，因此即便两条路径的字段值完全一致，摘要也必然不同（委托身份**不可能**等于本人身份）。⚠️ **域标签与长度前缀都进 HMAC 输入**：改其中任何一个 ⇒ 每个正常路径调用的身份键**值**都变 ⇒ 等价于一次**全量身份键轮换**（连接池与缓存整体失效）；而正常路径用例断言的**关系**不变、照绿——所以改这两处必须连带跑变异（见本节末尾的引用块）。
+- **确定性**：派生不含随机数、时间戳或进程内计数器，因此同一 `(organization, connection, isolation)` 跨进程重启返回同一身份键（INV-02 的会话连续性与池复用依赖这一点）。
+- **凭据轮换只推进 `credential_revision`**：凭据版本取自 `SecretProvider::revision(secretRef)`（无凭据配置的连接退回配置记录上的版本），身份键的输入里没有凭据版本，因此轮换不动身份键。
+- **两条独立路径**：`resolve` 与 `resolve_delegation` 的域标签与输入集都不同（委托路径额外绑定委托 id 与授权作用域），委托身份因此**不可能**等于本人身份；`resolve_delegation` 先经 `PolicyService::verify_delegation` 校验，校验不过失败关闭、**不降级**为调用者本人的权限（CM-06）；`resolve` 在委托上下文上一律拒绝。
+- **委托的目标来自宿主协作者**：端口的 `resolve_delegation` 不接收 `ExecutionTarget`，而 `ExecutionIdentity` 必须带 `connectionId`，因此桌面侧由 `DelegationScopeBinding` 给出授权单登记的目标；授权单覆盖多个连接时失败关闭，不取第一个了事。
+
+> **改这块之前先看变异**：上面这些性质里，**长度前缀、域分离、跨组织委托的显式检查、多连接失败关闭**这几条，用例若只写「正常路径的行为」，是**钉不住的**。但它们被破坏时的后果**分两类**，不能笼统说「输出不变」：
+>
+> - **进 HMAC 输入的那些**（域标签、长度前缀、子钥域分离、派生盐的来源）：改它们 ⇒ **每个正常路径调用的身份键值都变** ⇒ 等价于一次**全量身份键轮换**（连接池与缓存整体失效）。正常路径用例断言的**关系**（同输入同键、跨组织不同键、委托身份 ≠ 本人身份）**不变**，所以它们照绿。
+> - **不在派生路径上的那些**（跨组织委托的显式检查、多连接失败关闭）：改它们 ⇒ 正常路径的输出**完全不变**，正常路径用例照绿。
+>
+> 两种情况下「用例全绿」都**不是**「没被破坏」的证据——前者把键的**值**换掉了，后者把失败关闭放开了。首版 16 条用例就漏了这些性质，是靠变异（去输入 / 去长度前缀 / 去域分离 / 放宽失败关闭）才暴露出来的；随后两轮共补 13 条针对性用例（长度前缀防撞车与反事实撞车、消息编码字节布局、域标签字面值、黄金值独立复算、身份键不含主密钥与派生盐、主密钥一换全部键都变、委托消息不可能等于本人、委托键绑定委托 id 与授权 scope、跨组织委托即便策略放行也被拒、委托路径不转调本人路径、授权单覆盖多连接失败关闭）。**改派生编码、域标签或失败关闭分支时，请连带跑变异，而不是只看用例是否全绿。**
+
 **端口命名来源（已统一）**：全仓统一用 `PolicyService`（[概要 §4](system-overview.md#4-模块职责与边界)、[概要 §6.4](system-overview.md#64-repositories-与环境-ports)）。此前只有[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者) 把 `policyIsolationKey` 的生产者写作 `AuthorizationService`，与本节 `PolicyService::isolation_key` 是**同一职责的两种叫法**（组织/用户/策略版本与只读限制），不是两个服务——`authorize`/`verify_delegation` 也落在本节同一 trait。该处**已改写为 `PolicyService`**，`AuthorizationService` 在文档与代码中归零，也没有拆分出新服务；[persistence-model §4.3](persistence-model.md#43-只存在于服务端的字段) 的生产者表本就记在 `PolicyService` 名下，三方现为同一名字。
 
 `JobRepository` 的落库白名单必须排除 `dbSessionId`、SessionHandle、lease/cursor、取消句柄与 attachment token（[连接 §4.4](connection-management.md#44-可落盘来源与运行时绑定)）；`ExecutionView` 的持久化投影按[连接 §4](connection-management.md#4-dto-与字段定义)的两层来源规则拆分，实时 `runtimeBinding` 只留在 runtime 内存。
@@ -598,7 +616,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 | `ProfileRepository` | 现有 SQLite + AES-256-GCM 存储（`src-tauri/src/platform/repositories.rs` 的 `DesktopProfiles` + `src-tauri/src/store/`） | **同一端口、另一适配器**：服务端库上的 SQLite 适配器，不复用宿主的 AES 落盘实现 | 同单进程 |
 | `JobRepository` | AppDb SQLite 已用于 P5 桌面迁移三件套；窗口关闭后任务继续，进程重启只标记恢复状态，不重放 handler | 服务端库，任务独立于连接存活 | 同上 |
 | `PolicyService` | 固定本地组织，全部放行 + `readOnly` 配置 | OIDC 登录会话 + membership | 同单进程 |
-| `IdentityResolver` | 当前桌面登录用户 + 配置中的连接账号 | 数据库侧服务身份 + 委托 | 同单进程 |
+| `IdentityResolver` | **已实现**：`src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`。`(organization, connection, isolation)` + 宿主主密钥派生的固定盐 ⇒ 确定性身份键；凭据轮换只动 `credentialRevision`；委托走独立路径 | 数据库侧服务身份 + 委托 | 同单进程 |
 | `SecretProvider` | 本机钥匙串主密钥（开发/`DATAZEN_KEYRING=file` 走 `{appData}/.key`） | 服务端密钥管理 | 同单进程 |
 | `NetworkProvider` | 允许 `localhost`/本机出口 + SSH/代理隧道 | 出站网络策略白名单 | 按 worker 节点策略 |
 | `SessionDirectory` | 进程内 `HashMap` + TTL | 同一 port 的单进程实现 | 共享内存目录 + CAS |
