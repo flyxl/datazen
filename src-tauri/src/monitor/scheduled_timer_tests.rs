@@ -1,8 +1,7 @@
 use super::*;
-use crate::{
-    dashboard::{store::save_dashboard, types::*},
-    testing::{app_state::TestAppState, mock_driver::MockDriverOptions},
-};
+use crate::testing::{app_state::TestAppState, mock_driver::MockDriverOptions};
+use datazen_feature_core::dashboard::store::save_dashboard;
+use datazen_feature_core::dashboard::types::*;
 use datazen_platform_api::dto::job::{JobFilter, JobState};
 use std::time::Duration;
 
@@ -92,7 +91,7 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
         enabled: true,
     };
     save_dashboard(
-        &test.store.app_db(),
+        &*test.store.app_db(),
         Dashboard {
             id: "timer-dashboard".into(),
             name: "timer".into(),
@@ -161,8 +160,8 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
         .await
         .unwrap();
     let run_id = &details.domain_results[0].items[0].item_id;
-    let run = crate::dashboard::runs::get_run(
-        &test.store.app_db(),
+    let run = datazen_feature_core::dashboard::runs::get_run(
+        &*test.store.app_db(),
         "timer-dashboard",
         &widget.id,
         run_id,

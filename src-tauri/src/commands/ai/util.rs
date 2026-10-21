@@ -163,9 +163,7 @@ pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_feature_core::ai::response::{
-        extract_json_boundary, strip_fences_all, strip_markdown_fences, truncate_str,
-    };
+    use datazen_feature_core::ai::response::strip_fences_all;
 
     // ── find_first_balanced_json ──
 
