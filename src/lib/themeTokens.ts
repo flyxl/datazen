@@ -46,6 +46,11 @@ export const THEME_TOKENS = [
   '--dt-json',
   '--dt-text',
   '--dt-binary',
+  // Uncommitted-change marks (DB-06): a state channel a theme pack may override.
+  '--dt-dirty-border',
+  '--dt-dirty-bg',
+  '--dt-dirty-mark',
+  '--dt-deleted-fg',
 ] as const;
 
 export type ThemeTokenName = (typeof THEME_TOKENS)[number];

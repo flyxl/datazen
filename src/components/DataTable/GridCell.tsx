@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { ColumnDef } from './TableHeader';
 import { CellRenderer } from './CellRenderer';
+import { cn } from '../../lib/cn';
 
 /**
  * One grid cell — the single owner of the cell-level DOM contract.
@@ -42,6 +43,18 @@ export interface GridCellProps {
    * be invalid ARIA, so the roles are added as one set or not at all).
    */
   gridSemantics?: boolean;
+  /**
+   * The cell has an uncommitted change (DB-06).
+   *
+   * The attribute is the **only** contract the grid needs: `data-dt-dirty="true"`
+   * when the cell is dirty, no attribute at all when it is clean (00-contracts
+   * §4.4 — `"true"` / absent, never `"false"`).
+   */
+  dirty?: boolean;
+  /** The tooltip of a dirty cell: the original value and the value it becomes. */
+  dirtyTooltip?: string;
+  /** The screen-reader label of a dirty cell. */
+  dirtyAriaLabel?: string;
   onCellDoubleClick: (rowIndex: number, columnName: string) => void;
   onCellEdit: (rowIndex: number, columnName: string, value: unknown) => void;
   onCellEditCancel: () => void;
@@ -58,6 +71,9 @@ export const GridCell = memo(function GridCell({
   cellType,
   id,
   gridSemantics = false,
+  dirty = false,
+  dirtyTooltip,
+  dirtyAriaLabel,
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
@@ -72,8 +88,19 @@ export const GridCell = memo(function GridCell({
       {...(selected ? { 'data-dt-selected': 'true' } : {})}
       {...(active ? { 'data-dt-active': 'true' } : {})}
       {...(cellType ? { 'data-dt-cell-type': cellType } : {})}
+      {...(dirty ? { 'data-dt-dirty': 'true' } : {})}
       aria-selected={gridSemantics && selected ? 'true' : undefined}
-      className="flex shrink-0 items-center overflow-hidden border-r border-edge/30 px-2"
+      aria-label={dirty ? dirtyAriaLabel : undefined}
+      title={dirty ? dirtyTooltip : undefined}
+      className={cn(
+        'flex shrink-0 items-center overflow-hidden border-r border-edge/30 px-2',
+        // The dirty mark is a *state* channel, kept apart from the value's
+        // type colour: it drives the border and the background only.
+        dirty && 'relative border-l-2 border-l-dt-dirty-border',
+        // A selected cell keeps the selection background — the dirty channel
+        // is the border and the corner mark there (06 §11 D-8).
+        dirty && !selected && 'bg-dt-dirty-bg',
+      )}
       style={{ width }}
       onDoubleClick={(e) => {
         e.stopPropagation();
@@ -90,6 +117,15 @@ export const GridCell = memo(function GridCell({
           onCancel={onCellEditCancel}
         />
       </div>
+      {dirty && (
+        // The corner mark: the second shape of the dirty channel. It is a
+        // rotated square clipped by the cell's own `overflow-hidden`, so the
+        // shape does not depend on the theme.
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute right-0 top-0 h-1 w-1 rotate-45 bg-dt-dirty-mark"
+        />
+      )}
     </div>
   );
 });

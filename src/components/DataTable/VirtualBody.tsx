@@ -6,7 +6,9 @@ import { GridCell } from './GridCell';
 import { CellRenderer } from './CellRenderer';
 import { EditableCell } from './EditableCell';
 import { classifyDataType } from '../../lib/dataTypeColors';
+import { dirtyCellAriaLabel, dirtyCellTooltip } from './dirtyCellText';
 import type { CellCoord } from '../../stores/tableData/gridSelection';
+import type { DirtyCell, DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
 import { cn } from '../../lib/cn';
 import type { Value } from '../../types';
 
@@ -94,6 +96,12 @@ export interface VirtualBodyProps {
    * use the feature keeps today's DOM byte for byte.
    */
   newRowIndex?: number | null;
+  /**
+   * The dirty state of the current page, keyed by row index (DB-06).
+   *
+   * Omitted / `null` = no dirty marks at all, which is exactly today's DOM.
+   */
+  dirtyByRow?: ReadonlyMap<number, DirtyRowEntry> | null;
 }
 
 interface VirtualRowProps {
@@ -124,6 +132,15 @@ interface VirtualRowProps {
   isNewRow?: boolean;
   /** The wording of the marker; passed down so every row does not subscribe. */
   newRowLabel: string;
+  /**
+   * This row's dirty state (DB-06). `undefined` = clean.
+   *
+   * Only **this row's** entry is passed down: handing every row the whole map
+   * would change every row's props on every edit and defeat `memo`.
+   */
+  dirtyRow?: DirtyRowEntry;
+  /** The wording of the gutter dot of a row that is marked for deletion. */
+  deletedRowLabel: string;
 }
 
 const VirtualRow = memo(function VirtualRow({
@@ -152,6 +169,8 @@ const VirtualRow = memo(function VirtualRow({
   onRowClick,
   isNewRow = false,
   newRowLabel,
+  dirtyRow,
+  deletedRowLabel,
 }: VirtualRowProps) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -206,12 +225,27 @@ const VirtualRow = memo(function VirtualRow({
     [onRowGutterSelect, onRowSelect, vRow.index],
   );
 
+  /**
+   * The changed cells of this row, by column name.
+   *
+   * A deleted row carries no cell marks — the row-level strike-through says
+   * the same thing once (06 §4.1, exit transition 4).
+   */
+  const dirtyCells = useMemo(() => {
+    const map = new Map<string, DirtyCell>();
+    for (const cell of dirtyRow?.cells ?? []) map.set(cell.columnName, cell);
+    return map;
+  }, [dirtyRow]);
+  const rowDeleted = dirtyRow?.state === 'deleted';
+  const rowDirty = dirtyRow?.state === 'dirty';
+
   return (
     <div
       key={vRow.key}
       tabIndex={0}
       role={cellSelectionEnabled ? 'row' : undefined}
       data-dt-row-view={vRow.index}
+      data-dt-row-state={dirtyRow?.state ?? undefined}
       aria-selected={cellSelectionEnabled && selected ? 'true' : undefined}
       className={cn(
         'absolute left-0 flex w-full cursor-pointer outline-none',
@@ -222,6 +256,10 @@ const VirtualRow = memo(function VirtualRow({
           : highlighted
             ? 'bg-accent/8 dark:bg-accent/12'
             : 'hover:bg-surface-raised/50',
+        // A row that is marked for deletion reads as struck through. The
+        // strike-through colour is a state token; the value colour (the cell's
+        // own type colour) is untouched.
+        rowDeleted && 'line-through opacity-60 decoration-dt-deleted-fg',
       )}
       style={{ top: vRow.start, height: rowHeight }}
       onClick={handleClick}
@@ -240,7 +278,10 @@ const VirtualRow = memo(function VirtualRow({
           rowheader / columnheader children, so the bare button has to be wrapped. */}
       <div
         role={cellSelectionEnabled ? 'rowheader' : undefined}
-        className="flex w-10 shrink-0 items-center border-r border-edge/30"
+        className={cn(
+          'flex w-10 shrink-0 items-center border-r border-edge/30',
+          (rowDirty || rowDeleted) && 'relative',
+        )}
       >
         <button
           type="button"
@@ -254,12 +295,26 @@ const VirtualRow = memo(function VirtualRow({
         >
           {vRow.index + 1}
         </button>
+        {(rowDirty || rowDeleted) && (
+          // The row-level dot: the gutter says *that* row has something
+          // pending, the cell marks say *which* cells.
+          <span
+            data-testid={rowDeleted ? 'row-deleted-dot' : 'row-dirty-dot'}
+            title={rowDeleted ? deletedRowLabel : undefined}
+            aria-hidden={rowDeleted ? undefined : 'true'}
+            className={cn(
+              'pointer-events-none absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full',
+              rowDeleted ? 'bg-danger' : 'bg-dt-dirty-mark',
+            )}
+          />
+        )}
       </div>
       {columns.map((col, colIdx) => {
         const value = row[colIdx];
         const isEditing = editingCell?.row === vRow.index && editingCell.col === col.name;
         const colW = columnWidths?.[colIdx] ?? 160;
         const cellId = cellIdPrefix ? `${cellIdPrefix}-r${vRow.index}c${colIdx}` : undefined;
+        const dirtyCell = dirtyCells.get(col.name);
         return (
           <GridCell
             key={col.id}
@@ -268,6 +323,13 @@ const VirtualRow = memo(function VirtualRow({
             column={col}
             value={value}
             width={colW}
+            dirty={dirtyCell !== undefined}
+            dirtyTooltip={
+              dirtyCell ? dirtyCellTooltip(dirtyCell.original, dirtyCell.next) : undefined
+            }
+            dirtyAriaLabel={
+              dirtyCell ? dirtyCellAriaLabel(dirtyCell.original, dirtyCell.next) : undefined
+            }
             selected={cellSelectionEnabled && isCellSelected(vRow.index, col.name)}
             active={
               cellSelectionEnabled &&
@@ -452,6 +514,7 @@ export const VirtualBody = memo(function VirtualBody({
   onAddDraftRow,
   editingDraft = null,
   newRowIndex = null,
+  dirtyByRow = null,
 }: VirtualBodyProps) {
   const { t } = useI18n();
   /**
@@ -474,6 +537,8 @@ export const VirtualBody = memo(function VirtualBody({
   const selectRowLabel = t('dataTable.selectRow');
   /** The wording of the marker of a freshly inserted row. */
   const newRowLabel = t('tableData.highlightNewRow');
+  /** The wording of the gutter dot of a row that is marked for deletion. */
+  const deletedRowLabel = t('tableData.dirtyDeletedRow');
   /** Normalised column type, rendered as `data-dt-cell-type` (DB-05 swaps the source). */
   const columnTypes = useMemo(() => columns.map((c) => classifyDataType(c.type)), [columns]);
   const cellSelected = useCallback(
@@ -516,6 +581,8 @@ export const VirtualBody = memo(function VirtualBody({
             onRowClick={onRowClick}
             isNewRow={newRowIndex !== null && newRowIndex === vRow.index}
             newRowLabel={newRowLabel}
+            dirtyRow={dirtyByRow?.get(vRow.index)}
+            deletedRowLabel={deletedRowLabel}
           />
         ) : (
           <DraftRow

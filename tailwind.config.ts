@@ -65,6 +65,11 @@ export default {
           json: 'var(--dt-json)',
           text: 'var(--dt-text)',
           binary: 'var(--dt-binary)',
+          // Uncommitted-change marks (DB-06): a state channel, never a value colour.
+          'dirty-border': 'var(--dt-dirty-border)',
+          'dirty-bg': 'var(--dt-dirty-bg)',
+          'dirty-mark': 'var(--dt-dirty-mark)',
+          'deleted-fg': 'var(--dt-deleted-fg)',
         },
       },
     },

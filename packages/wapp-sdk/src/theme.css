@@ -202,6 +202,20 @@
   color: var(--dt-binary, #fb7185);
 }
 
+/* The uncommitted-change channel (DB-06). Like the host, the dirty marks
+   drive the border and the background only — never the value colour. */
+.dz-cell-dirty {
+  border-left: 2px solid var(--dt-dirty-border, #c084fc);
+  background: var(--dt-dirty-bg, rgba(192, 132, 252, 0.14));
+}
+.dz-cell-dirty-mark {
+  background: var(--dt-dirty-mark, #c084fc);
+}
+.dz-row-deleted {
+  text-decoration: line-through;
+  text-decoration-color: var(--dt-deleted-fg, #ff7b72);
+}
+
 /* ---- status ------------------------------------------------------------- */
 
 .dz-badge {

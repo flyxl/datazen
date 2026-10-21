@@ -274,6 +274,11 @@ const pack = {
   'tableData.pendingChanges': '{count} unsaved changes',
   'tableData.pendingUpdates': '{count} updates',
   'tableData.pendingDeletes': '{count} deletes',
+  // ── Uncommitted cells (DB-06) ─────────────────────────────────
+  'tableData.dirtyCellAria': 'Changed cell: {original} → {next}',
+  'tableData.dirtyValueNull': 'NULL',
+  'tableData.dirtyValueEmpty': '(empty string)',
+  'tableData.dirtyDeletedRow': 'Marked for deletion',
   'tableData.safeModeEditDisabled': 'Safe Mode prevents editing table cells.',
   'tableData.readOnlyEditDisabled': 'Cannot edit cells: connection or driver is read-only.',
   'tableData.preview': 'Preview',
