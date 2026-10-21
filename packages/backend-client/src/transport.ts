@@ -1,4 +1,5 @@
 import type { SharedSettings } from './settings';
+import type { UnsupportedMethodKind } from './errors';
 /**
  * The two binding interfaces the host must satisfy, and the registry that
  * hands them out.
@@ -246,7 +247,7 @@ export interface BackendTransport {
   ): AsyncIterable<EventEnvelope<ConnectionEvent>>;
   cancel?(opaque: string, reason: string): Promise<void>;
   /**
-   * The methods this backend cannot serve.
+   * The methods this backend cannot serve, and why.
    *
    * A capability that belongs to the *host* and not to the backend — the
    * desktop's persistent store, for instance — does not exist in every form
@@ -256,11 +257,28 @@ export interface BackendTransport {
    * letting it travel and come back as an opaque transport failure or — worse
    * — as a plausible-looking empty result.
    *
+   * The value says *which kind* of gap it is, because the two call for
+   * different reactions from a caller:
+   *
+   * - `capability` — this form factor has no way to serve the method, now or
+   *   later. A browser build has no host store, so it can never serve the
+   *   saved views. A caller hides the feature.
+   * - `notImplemented` — the backend could serve the method and does not yet.
+   *   The desktop has not registered the 07/08/09 commands. A caller may say
+   *   "not available yet" instead of hiding the feature.
+   *
    * Absent means "every method in `MethodMap` is served". It is a capability
    * statement, not a platform identity: a backend that *can* serve named views
    * says so by leaving the field out, whatever form factor it runs in.
+   *
+   * Note what this field is **not**: it is not the list of methods a backend
+   * happens to lack today. Whether a method is *registered* in `MethodMap` is
+   * a question of contract completeness — the port lists every method the
+   * product has, so that a method landing later cannot slip past the port
+   * unnoticed — while whether a particular backend *serves* one is declared
+   * here, by that backend.
    */
-  unsupportedMethods?: readonly (keyof MethodMap)[];
+  unsupportedMethods?: Partial<Record<keyof MethodMap, UnsupportedMethodKind>>;
 }
 
 /**

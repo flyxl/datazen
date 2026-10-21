@@ -216,6 +216,13 @@ export const databaseCommands = {
    * The estimated row count of a table, or `null` when the driver cannot
    * estimate it. `null` is an answer, not a failure: falling back to an exact
    * count is the caller's decision.
+   *
+   * **Not wired to any UI yet.** The command belongs to 09 (count strategy),
+   * and the desktop does not register it yet, so the desktop transport
+   * declares it unsupported and this call fails with
+   * `CapabilityUnsupported`. The wrapper exists because the port registers
+   * the method and a wrapper that does not exist cannot be called by mistake;
+   * the UI entry point arrives with 09, and this call then starts working.
    */
   estimateTableRows: async (
     dbSessionId: string,
@@ -230,6 +237,11 @@ export const databaseCommands = {
   /**
    * Resolve the foreign key a local column points at, and whether the
    * referenced row still exists.
+   *
+   * **Not wired to any UI yet.** The command belongs to 07 (FK navigation),
+   * and the desktop does not register it yet, so the desktop transport
+   * declares it unsupported and this call fails with
+   * `CapabilityUnsupported`. The UI entry point arrives with 07.
    */
   resolveForeignKeyTargets: async (
     params: ResolveForeignKeyTargetsRequest,
@@ -246,19 +258,31 @@ export const databaseCommands = {
    * backend that cannot serve them fails this call with
    * `CapabilityUnsupported` instead of answering with an empty list that reads
    * like "you have no saved views".
+   *
+   * **Not wired to any UI yet.** The command belongs to 08, and the desktop
+   * does not register it yet either, so the desktop transport declares it
+   * unsupported. The menu entry arrives with 08.
    */
   listNamedViews: async (scope?: NamedViewScope): Promise<readonly NamedView[]> => {
     const client = useBackendClient();
     return client.listNamedViews({ scope });
   },
 
-  /** Save a named view; the backend mints the id and stamps the timestamps. */
+  /**
+   * Save a named view; the backend mints the id and stamps the timestamps.
+   *
+   * **Not wired to any UI yet** — see `listNamedViews`.
+   */
   saveNamedView: async (view: NamedView): Promise<NamedView> => {
     const client = useBackendClient();
     return client.saveNamedView({ view });
   },
 
-  /** Delete a named view; the remaining views come back with the receipt. */
+  /**
+   * Delete a named view; the remaining views come back with the receipt.
+   *
+   * **Not wired to any UI yet** — see `listNamedViews`.
+   */
   deleteNamedView: async (id: string): Promise<readonly NamedView[]> => {
     const client = useBackendClient();
     return client.deleteNamedView({ id });

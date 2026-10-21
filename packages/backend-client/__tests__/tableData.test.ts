@@ -22,6 +22,7 @@ import {
   type TableChangeContext,
   type TableDataRequest,
   type TableDataResult,
+  type UnsupportedMethodKind,
 } from '../src/index';
 
 /* ------------------------------------------------------------------ */
@@ -89,6 +90,16 @@ export type CommitStatementParity = Assert<
 >;
 export type CommitResponseParity = Assert<
   Parity<DesktopCommitPendingChangesResponse, CommitPendingChangesResponse>
+>;
+/**
+ * The table read result is mirrored too, from the desktop's `src/types`.
+ *
+ * It matters for the same reason: the same read must mean the same thing on
+ * both sides of the port — in particular whether "the count was not taken"
+ * arrives as `null` or as a missing key.
+ */
+export type TableDataResultParity = Assert<
+  Parity<import('../../../src/types').TableDataResult, TableDataResult>
 >;
 
 /* ------------------------------------------------------------------ */
@@ -159,7 +170,9 @@ const PLAN: RowChangePlan = {
  * renamed or reshaped an argument would still receive the canned answer and
  * pass.
  */
-function createFakeTransport(options: { unsupportedMethods?: readonly (keyof MethodMap)[] } = {}) {
+function createFakeTransport(
+  options: { unsupportedMethods?: Partial<Record<keyof MethodMap, UnsupportedMethodKind>> } = {},
+) {
   const calls: Array<{ method: keyof MethodMap; payload: unknown }> = [];
   const responses = new Map<keyof MethodMap, unknown>();
 
@@ -213,6 +226,25 @@ describe('table data wire shapes', () => {
     const insertFree: RowChangePlan = { ...PLAN, inserts: undefined };
     expect(insertFree.inserts).toBeUndefined();
     expect(JSON.parse(JSON.stringify(insertFree)).inserts).toBeUndefined();
+  });
+
+  it('accepts a table read whose row count was not taken', () => {
+    // The backend's count is optional, so the key is always there and the
+    // value may be `null`. A type that said "the key may be missing" would
+    // be a different — and wrong — claim about the wire, and a caller that
+    // did `result.totalRows ?? 0` would still be right only by accident.
+    const uncounted: TableDataResult = {
+      columns: [{ name: 'id', dataType: 'int4', nullable: false }],
+      rows: [[7]],
+      totalRows: null,
+      page: 0,
+      pageSize: 50,
+    };
+    expect(uncounted.totalRows).toBeNull();
+    expect(JSON.parse(JSON.stringify(uncounted)).totalRows).toBeNull();
+
+    const counted: TableDataResult = { ...uncounted, totalRows: 1 };
+    expect(counted.totalRows).toBe(1);
   });
 
   it('narrows a cell value to what the wire can carry', () => {
@@ -387,11 +419,16 @@ describe('BackendClient table-data surface', () => {
 /* ------------------------------------------------------------------ */
 
 describe('a backend that cannot serve a method', () => {
-  const WEB_UNSUPPORTED: readonly (keyof MethodMap)[] = [
-    'listNamedViews',
-    'saveNamedView',
-    'deleteNamedView',
-  ];
+  /**
+   * A browser build's gaps. `capability` is the right kind here: the saved
+   * views live in the *host's* persistent store, and a browser build has no
+   * host store at all — not "not yet", but "not ever, in this form factor".
+   */
+  const WEB_UNSUPPORTED: Partial<Record<keyof MethodMap, UnsupportedMethodKind>> = {
+    listNamedViews: 'capability',
+    saveNamedView: 'capability',
+    deleteNamedView: 'capability',
+  };
 
   it('fails a named-view call with CapabilityUnsupported instead of an empty list', async () => {
     const fake = createFakeTransport({ unsupportedMethods: WEB_UNSUPPORTED });
@@ -428,6 +465,53 @@ describe('a backend that cannot serve a method', () => {
     await expect(client.listNamedViews({})).rejects.toThrow(/web/);
   });
 
+  it('tells a permanent capability gap from a command that is not implemented yet', async () => {
+    const fake = createFakeTransport({ unsupportedMethods: WEB_UNSUPPORTED });
+    const web = createBackendClient('web', fake.transport);
+
+    // A form factor that can never serve the method says so in the wording:
+    // the feature is out of reach here, and a caller must hide it.
+    await expect(web.listNamedViews({})).rejects.toThrow(/is not supported by the web backend/);
+
+    // A backend that simply has not implemented it yet says that instead, so
+    // a caller can tell "coming soon" from "never possible".
+    const pending = createFakeTransport({ unsupportedMethods: { estimateTableRows: 'notImplemented' } });
+    const desktop = createBackendClient('desktop', pending.transport);
+    await expect(
+      desktop.estimateTableRows({ dbSessionId: 'sess-1', table: 'orders' }),
+    ).rejects.toThrow(/is not implemented by the desktop backend yet/);
+  });
+
+  it('carries the kind of the gap on the error, so a caller need not read the message', async () => {
+    const fake = createFakeTransport({ unsupportedMethods: WEB_UNSUPPORTED });
+    const client = createBackendClient('web', fake.transport);
+
+    await expect(client.listNamedViews({})).rejects.toMatchObject({
+      code: 'CapabilityUnsupported',
+      unsupportedKind: 'capability',
+    });
+
+    const pending = createFakeTransport({ unsupportedMethods: { estimateTableRows: 'notImplemented' } });
+    const desktop = createBackendClient('desktop', pending.transport);
+    await expect(
+      desktop.estimateTableRows({ dbSessionId: 'sess-1', table: 'orders' }),
+    ).rejects.toMatchObject({ unsupportedKind: 'notImplemented' });
+  });
+
+  it('keeps the kind out of the wire payload, which stays the §6.3 shape', async () => {
+    const fake = createFakeTransport({ unsupportedMethods: WEB_UNSUPPORTED });
+    const client = createBackendClient('web', fake.transport);
+
+    const error = await client.listNamedViews({}).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).toPayload()).toEqual({
+      code: 'CapabilityUnsupported',
+      message: 'listNamedViews is not supported by the web backend.',
+      requestId: '',
+      retryDisposition: 'never',
+    });
+  });
+
   it('still serves the methods the backend does support', async () => {
     const fake = createFakeTransport({ unsupportedMethods: WEB_UNSUPPORTED });
     fake.responses.set('getTableData', {
@@ -455,7 +539,11 @@ describe('a backend that cannot serve a method', () => {
 describe('journey: a table write travels out through the port and comes back', () => {
   it('previews, commits, and refuses the desktop-only view commands on the web side', async () => {
     const fake = createFakeTransport({
-      unsupportedMethods: ['listNamedViews', 'saveNamedView', 'deleteNamedView'],
+      unsupportedMethods: {
+        listNamedViews: 'capability',
+        saveNamedView: 'capability',
+        deleteNamedView: 'capability',
+      },
     });
     fake.responses.set('previewPendingChanges', PLAN);
     fake.responses.set('commitPendingChanges', {

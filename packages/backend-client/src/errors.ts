@@ -30,6 +30,23 @@ export type RetryDisposition = 'never' | 'safeRead' | 'checkExecution';
 
 const RETRY_DISPOSITIONS = ['never', 'safeRead', 'checkExecution'] as const;
 
+/**
+ * Why a backend cannot serve a method.
+ *
+ * The two kinds are not interchangeable, and a caller has to be able to tell
+ * them apart — the difference decides what the UI should do:
+ *
+ * - `capability` — this form factor has no way to serve the method, now or
+ *   later. The saved views live in the *host's* persistent store (the
+ *   desktop `Store`: AES, atomic write, unique temp path), and a browser
+ *   build has no host store at all. A caller must **hide** the feature:
+ *   offering it and failing later is worse than never offering it.
+ * - `notImplemented` — the backend could serve the method and does not yet.
+ *   The desktop has not registered the 07/08/09 commands. The feature is
+ *   coming, so a caller may say "not available yet" instead of hiding it.
+ */
+export type UnsupportedMethodKind = 'capability' | 'notImplemented';
+
 export function isRetryDisposition(value: unknown): value is RetryDisposition {
   return typeof value === 'string' && (RETRY_DISPOSITIONS as readonly string[]).includes(value);
 }
@@ -94,6 +111,15 @@ export interface ApiErrorOptions {
   requestId?: string;
   retryDisposition?: RetryDisposition;
   cause?: unknown;
+  /**
+   * Why the request was refused because the backend cannot serve it.
+   *
+   * Set only for `CapabilityUnsupported`. It is a **client-side** distinction,
+   * so it is deliberately not part of `toPayload()`: the §6.3 wire shape
+   * stays exactly four fields, and a capability rejection that arrived over
+   * the wire arrives without it.
+   */
+  unsupportedKind?: UnsupportedMethodKind;
 }
 
 /**
@@ -107,6 +133,13 @@ export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly requestId: string;
   readonly retryDisposition: RetryDisposition;
+  /**
+   * Why this backend cannot serve the request, when it said so.
+   *
+   * `undefined` for every other rejection, and for a capability rejection
+   * that crossed a wire — the wire shape does not carry the distinction.
+   */
+  readonly unsupportedKind?: UnsupportedMethodKind;
 
   constructor(code: ApiErrorCode, message: string, options: ApiErrorOptions = {}) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
@@ -114,6 +147,7 @@ export class ApiError extends Error {
     this.code = code;
     this.requestId = options.requestId ?? '';
     this.retryDisposition = options.retryDisposition ?? defaultRetryDisposition(code);
+    this.unsupportedKind = options.unsupportedKind;
   }
 
   /** Structured form, safe to log and to put in a report. */

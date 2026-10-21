@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const ROOT = path.resolve(import.meta.dirname, '../../..');
 
 /**
  * The desktop half of the table-data port.
@@ -24,7 +28,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import { createDesktopBackendTransport } from '../tauriBackendTransport';
-import type { Counter, Id, MethodMap, RowChangePlan } from '@datazen/backend-client';
+import { createBackendClient, type Counter, type Id, type MethodMap, type RowChangePlan } from '@datazen/backend-client';
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -129,6 +133,11 @@ describe('desktop transport: table-data commands', () => {
     mock.invoke.mockResolvedValue(null);
     const transport = createDesktopBackendTransport();
 
+    // The transport is a raw pipe and the *facade* is the gate, so this
+    // mapping is not reachable from the frontend today — the desktop
+    // declares `estimateTableRows` unsupported until 09 registers the
+    // command. The mapping is pinned here so the day it lands, the argument
+    // bag is already right and the implementer does not have to re-derive it.
     await transport.call('estimateTableRows', {
       dbSessionId: 'sess-1',
       table: 'orders',
@@ -148,6 +157,8 @@ describe('desktop transport: table-data commands', () => {
     mock.invoke.mockResolvedValue({ exists: true, candidates: [], truncated: false });
     const transport = createDesktopBackendTransport();
 
+    // Same as above: the command is not registered yet (07), so the facade
+    // refuses before this pipe is reached.
     const request = {
       dbSessionId: 'sess-1',
       table: 'orders',
@@ -179,36 +190,106 @@ describe('desktop transport: table-data commands', () => {
     expect(mock.invoke).toHaveBeenLastCalledWith('commit_query_result_cell', { request });
   });
 
-  it('routes the three named-view commands to their own command names', async () => {
-    mock.invoke.mockResolvedValue([]);
-    const transport = createDesktopBackendTransport();
+  it('refuses the commands the host does not register, before any IPC leaves', async () => {
+    // The desktop declares the 07/08/09 commands unsupported, so a call gets
+    // an explicit failure that names the method and the backend instead of
+    // Tauri's bare "command not found" — and the pipe is never touched.
+    mock.invoke.mockResolvedValue(undefined);
+    const client = createBackendClient('desktop', createDesktopBackendTransport());
 
-    const scope = {
-      connectionId: 'conn-1',
-      database: 'sales',
-      schema: 'public',
-      table: 'orders',
-    };
-    await transport.call('listNamedViews', { scope });
-    expect(mock.invoke).toHaveBeenLastCalledWith('list_named_views', { scope });
+    await expect(client.listNamedViews({})).rejects.toMatchObject({
+      code: 'CapabilityUnsupported',
+      unsupportedKind: 'notImplemented',
+    });
+    await expect(client.saveNamedView({ view: {} as never })).rejects.toMatchObject({
+      code: 'CapabilityUnsupported',
+    });
+    await expect(client.deleteNamedView({ id: 'view-1' })).rejects.toMatchObject({
+      code: 'CapabilityUnsupported',
+    });
+    await expect(
+      client.estimateTableRows({ dbSessionId: 'sess-1', table: 'orders' }),
+    ).rejects.toMatchObject({
+      code: 'CapabilityUnsupported',
+      unsupportedKind: 'notImplemented',
+    });
+    await expect(
+      client.resolveForeignKeyTargets({
+        dbSessionId: 'sess-1',
+        table: 'orders',
+        columns: ['customer_id'],
+        values: [9],
+      }),
+    ).rejects.toMatchObject({ code: 'CapabilityUnsupported' });
 
-    const view = {
-      id: '',
-      name: 'open orders',
-      scope,
-      filters: [],
-      filterLogic: 'and' as const,
-      sorts: [],
-      visibleColumns: null,
-      columnOrder: null,
-      isDefault: false,
-      createdAt: '2026-01-01T00:00:00Z',
-      updatedAt: '2026-01-01T00:00:00Z',
-    };
-    await transport.call('saveNamedView', { view });
-    expect(mock.invoke).toHaveBeenLastCalledWith('save_named_view', { view });
+    expect(mock.invoke).not.toHaveBeenCalled();
+  });
 
-    await transport.call('deleteNamedView', { id: 'view-1' });
-    expect(mock.invoke).toHaveBeenLastCalledWith('delete_named_view', { id: 'view-1' });
+  it('serves the commands the host does register', async () => {
+    mock.invoke.mockResolvedValue({ columns: [], rows: [], page: 0, pageSize: 50 });
+    const client = createBackendClient('desktop', createDesktopBackendTransport());
+
+    await client.getTableData({ context: CONTEXT, page: 0, pageSize: 50 });
+
+    expect(mock.invoke).toHaveBeenCalledWith('get_table_data_at_target', {
+      request: { context: CONTEXT, page: 0, pageSize: 50 },
+    });
+  });
+});
+
+/**
+ * The declaration and the host's command registry are two facts that have to
+ * agree, and nothing but a test makes them agree: the port registers every
+ * method the product has, the desktop declares the ones the host cannot
+ * serve, and the host's handler list says which those are.
+ *
+ * When 07/08/09 register one of these commands, this test fails and asks for
+ * the declaration to go — which is the whole point of declaring the gap
+ * instead of letting the call reach a command that does not exist.
+ */
+describe('the desktop declaration against the host command registry', () => {
+  const TABLE_DATA_COMMANDS: ReadonlyArray<{ method: keyof MethodMap; command: string }> = [
+    { method: 'getTableData', command: 'get_table_data_at_target' },
+    { method: 'previewPendingChanges', command: 'preview_pending_changes' },
+    { method: 'commitPendingChanges', command: 'commit_pending_changes' },
+    { method: 'commitQueryResultCell', command: 'commit_query_result_cell' },
+    { method: 'estimateTableRows', command: 'estimate_table_rows' },
+    { method: 'resolveForeignKeyTargets', command: 'resolve_foreign_key_targets' },
+    { method: 'listNamedViews', command: 'list_named_views' },
+    { method: 'saveNamedView', command: 'save_named_view' },
+    { method: 'deleteNamedView', command: 'delete_named_view' },
+  ];
+
+  const declared = createDesktopBackendTransport().unsupportedMethods ?? {};
+
+  it('declares exactly the table-data commands the host does not register', () => {
+    const hostBootstrap = fs.readFileSync(
+      path.join(ROOT, 'src-tauri/src/bootstrap/run.rs'),
+      'utf8',
+    );
+
+    for (const { method, command } of TABLE_DATA_COMMANDS) {
+      const registered = hostBootstrap.includes(`commands::${command},`);
+      const unsupported = declared[method] !== undefined;
+
+      // The two facts have to be the same fact. A command that is registered
+      // but still declared unsupported keeps the desktop from using a
+      // feature that works; a command that is not registered but not
+      // declared hands the caller Tauri's bare "command not found".
+      expect({ method, registered, unsupported }).toEqual({
+        method,
+        registered,
+        unsupported: !registered,
+      });
+    }
+  });
+
+  it('declares the gaps as "not implemented", not as a missing capability', () => {
+    // The desktop *can* serve these methods; it has not implemented them
+    // yet. Calling that a capability gap would tell a caller to hide a
+    // feature that is about to arrive.
+    for (const kind of Object.values(declared)) {
+      expect(kind).toBe('notImplemented');
+    }
   });
 });

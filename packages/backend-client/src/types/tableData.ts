@@ -144,6 +144,18 @@ export interface ChangeWarning {
 export interface RowChangePlan {
   planId: string;
   fingerprint: string;
+  /**
+   * The connection's configuration revision at plan time.
+   *
+   * The wire carries a `Counter`, and a `Counter` travels as a **decimal
+   * string** (`platform-api` serializes `u64` with `collect_str`, because a
+   * JSON number cannot hold a count above 2^53). The branded `number` is the
+   * *application* form; the narrowing happens at the decode boundary, in the
+   * adapter, with `toCounter` — exactly as `ProfileView.configRevision` does.
+   * This package's facade does not decode the plan itself, so it does not
+   * narrow the field here either: the type states what the application layer
+   * receives, not what the wire holds.
+   */
   configRevision?: Counter | null;
   table: TableChangeContext;
   updates: PlannedStatement[];
@@ -237,7 +249,14 @@ export interface TableColumnSchema {
 export interface TableDataResult {
   columns: TableColumnSchema[];
   rows: (TableValue | null)[][];
-  totalRows?: number;
+  /**
+   * The row count, or `null` when the backend could not count.
+   *
+   * The backend's field is an optional count, so the key is always present
+   * and the *value* may be `null` — "the count was not taken" is a fact the
+   * UI has to render, not a missing field.
+   */
+  totalRows?: number | null;
   page: number;
   pageSize: number;
 }

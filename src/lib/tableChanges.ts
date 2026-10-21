@@ -230,6 +230,13 @@ export function valuesEqual(
 export function clonePendingRowChange(change: PendingRowChange): PendingRowChange {
   return {
     ...(change.rowIndex === undefined ? {} : { rowIndex: change.rowIndex }),
+    // The insert flag decides whether the row is a new-row draft or a change
+    // to an existing one, so a clone that drops it turns an INSERT into an
+    // UPDATE of a row that does not exist. It is copied only when it is
+    // there: `insertMarked: undefined` would put the key into the JSON, and
+    // the backend must keep receiving no key at all for a plan without
+    // inserts (that is what keeps an insert-free fingerprint byte-identical).
+    ...(change.insertMarked === undefined ? {} : { insertMarked: change.insertMarked }),
     rowIdentity: { ...change.rowIdentity },
     originalValues: { ...change.originalValues },
     currentValues: { ...change.currentValues },

@@ -30,6 +30,7 @@ import {
   type PlatformServices,
   type SaveBinaryInput,
   type SaveTextInput,
+  type UnsupportedMethodKind,
 } from '@datazen/backend-client';
 
 /**
@@ -90,6 +91,35 @@ const FLAT_ARGUMENT_METHODS: ReadonlySet<keyof MethodMap> = new Set<keyof Method
 ]);
 
 /**
+ * The table-data methods the desktop backend does not serve **yet**.
+ *
+ * The port registers every method the product has, so a method landing later
+ * cannot slip past it unnoticed. This list is the other half of that
+ * arrangement: it says which of them the *desktop* cannot serve today, so a
+ * caller gets an explicit `CapabilityUnsupported` — with the method name and
+ * the backend — instead of Tauri's bare "command not found".
+ *
+ * The names are the Rust commands of 07/08/09, which are not registered in
+ * `src-tauri/src/bootstrap/run.rs` yet. That file registers exactly five
+ * table-data commands: `get_table_data`, `get_table_data_at_target`,
+ * `commit_query_result_cell`, `commit_pending_changes` and
+ * `preview_pending_changes`. `src/platform/__tests__/tauriBackendTransport.tableData.test.ts`
+ * cross-checks this list against that registration, so the day one of these
+ * commands is registered, the test fails and asks for this entry to go.
+ *
+ * `notImplemented` — not `capability`: the desktop *can* serve these methods
+ * and does not yet. A browser build's named views are a different fact (a
+ * form factor with no host store), and the two must not be reported as one.
+ */
+const DESKTOP_UNSUPPORTED_METHODS: Partial<Record<keyof MethodMap, UnsupportedMethodKind>> = {
+  estimateTableRows: 'notImplemented',
+  resolveForeignKeyTargets: 'notImplemented',
+  listNamedViews: 'notImplemented',
+  saveNamedView: 'notImplemented',
+  deleteNamedView: 'notImplemented',
+};
+
+/**
  * Build the desktop transport.
  *
  * The request object *is* the Tauri argument bag: its own fields are passed
@@ -102,6 +132,7 @@ const FLAT_ARGUMENT_METHODS: ReadonlySet<keyof MethodMap> = new Set<keyof Method
  */
 export function createDesktopBackendTransport(): BackendTransport {
   return {
+    unsupportedMethods: DESKTOP_UNSUPPORTED_METHODS,
     async call<K extends keyof MethodMap>(
       method: K,
       payload: MethodMap[K]['request'],

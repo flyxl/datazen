@@ -179,12 +179,12 @@ export interface BackendClient extends TableDataClient {
  */
 export function createBackendClient(backendId: string, transport: BackendTransport): BackendClient {
   /**
-   * The methods this backend cannot serve.
+   * The methods this backend cannot serve, and the kind of each gap.
    *
    * A capability gap is a property of the backend, not of the call site, so it
    * is declared once by the adapter and enforced here.
    */
-  const unsupportedMethods = new Set<keyof MethodMap>(transport.unsupportedMethods ?? []);
+  const unsupportedMethods = transport.unsupportedMethods ?? {};
 
   /**
    * Delegation plus error normalization, applied to every kernel method.
@@ -195,12 +195,23 @@ export function createBackendClient(backendId: string, transport: BackendTranspo
    * table (`CapabilityUnsupported`), so a caller can branch on it instead of
    * on a message — and it is the same code this package already uses when a
    * backend has no event subscription.
+   *
+   * The two kinds of gap get different wording on purpose. A form factor
+   * that can *never* serve a method and a backend that simply has not
+   * implemented it yet are different facts, and a caller that hides a
+   * "coming soon" feature or offers a "never possible" one is misreading the
+   * port. The kind also travels on the error, so the caller can branch on it
+   * without reading the message.
    */
   const guard = async <T>(method: keyof MethodMap, run: () => Promise<T>): Promise<T> => {
-    if (unsupportedMethods.has(method)) {
+    const kind = unsupportedMethods[method];
+    if (kind !== undefined) {
       throw new ApiError(
         'CapabilityUnsupported',
-        `${method} is not supported by the ${backendId} backend.`,
+        kind === 'capability'
+          ? `${method} is not supported by the ${backendId} backend.`
+          : `${method} is not implemented by the ${backendId} backend yet.`,
+        { unsupportedKind: kind },
       );
     }
     try {
