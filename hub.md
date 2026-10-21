@@ -208,3 +208,41 @@
 **待复测验证的关键风险**：`data_session.rs` 整文件删除——事务归属（`manual_handle` 校验 / `defersCommit`）、错误文案是否在 `write_exec.rs` 里**等价**存在；测试搬家有没有丢断言（`data/tests.rs` 1203→396，迁出的必须逐条在 feature-core 重现）。
 
 **V-3 已知缺口**：`ColumnSchema` 无 generated/identity 标记，无法判定"不可写列"，`grid.insert.noWritableColumn` 本轮不做（不臆造规则）。
+
+## `insert-backend` 第 2 轮复测：**TEST_PASSED**（`9bc3f613a`）
+
+搬迁被独立验证为**真搬**，不是壳：
+
+| 检查 | 结果 |
+| --- | --- |
+| 核心定义仍在 `src-tauri`？ | `grep fn build_row_change_plan\|fn execute_plan\|fn changes_fingerprint\|fn canonicalize_insert` → **0 命中** |
+| feature-core 反向依赖宿主？ | `grep crate::commands\|use datazen::` → **0 命中**；`Cargo.toml` 无宿主 crate |
+| `data_session.rs` | 树内 0、源码引用 0、`mod` 已删；能力对照仅 **29 行机械差异**（签名 + 错误类型 + 3 行 adapter 上移） |
+| 行为零变化 | 指纹算法逐字未改；serde 14 条**多重集相等**；文案"旧有新无"仅 1 条 `#[path]` 常量；两个 command **逐字节相同** |
+| 测试搬家 | 46 个 fn 逐条比对，`not found=[]`、断言差异 **0**（3 行 import 之外零新增） |
+| IB-D5 变异自证 | Tester **独立重现**：删转发 → EXIT=101 `Unsupported(...)`；还原后 sha256 一致、diff 空 |
+
+**关键判断**：Tester 明确说明"只有 2 条真落 feature-core，另 6 条去 `insert_tests.rs`"**不是缩水**——那 6 条构造 `TestAppState` 调 `preview_pending_changes_impl`，搬进 feature-core 就必然反向依赖宿主，正好违反本轮分层规则。它用更强的判据（46 个 fn 全落点断言逐条相同）覆盖了这个偏差。这个判断我认可。
+
+**Tester 纠正了编码代理的一处自述**：V-2「未做」不成立——存在性检查已实装并带 `grid.insert.unknownColumn`；准确说法是「存在性已做、**可写性**未做」。V-3 理由成立但不完整（`ColumnSchema` 确无 generated 标记，但 `default_value`/`is_auto_increment` 可做保守版）。
+
+## 第 3 轮修复（已下发 `36973778`）
+
+| ID | 级别 | 内容 |
+| --- | --- | --- |
+| IB2-D4 | P2 | 错误码嵌入不一致：`affectedMismatch`/`stalePlan` **没有** `grid.*` 前缀（下游无法按码分支）；`unknownColumn` 对 UPDATE/DELETE 也发（契约限定草稿行） |
+| IB2-D7 | P2 | 契约第 7 条前半未实装：`delete_marked` + 列写入现状只发 warning 并**静默丢弃列写入**，要求改为拒绝 |
+| IB2-D2 | P3 | `let _ = facts.database_type.as_str();` 死代码 → 改为真正校验（多宿主时唯一防线） |
+| IB2-D3 | P3 | 注释与实现不符（"before the schema read"）→ 改注释，不挪顺序（挪动会改变"schema 不可读时报哪个错"的既有行为） |
+
+## 裁定：IB2-D1（web 通路）→ 单独立 Wave 级任务
+
+`packages/backend-client` 的 `MethodMap` 里**一条表数据方法都没有**（`previewPendingChanges`/`commitPendingChanges` 基线即缺），也没有 `insertMarked`/`inserts` 类型镜像。这是**基线缺口，不是本轨回归**，但按用户的架构规则（desktop 与 web 必须同时支持）它必须在功能上线前补齐。
+
+**新增 Wave 级任务 `web-transport`**（不挂在任何功能轨上）：
+1. `packages/backend-client/src/transport.ts` 的 `MethodMap` 补表数据方法（`getTableData` / `previewPendingChanges` / `commitPendingChanges` / `estimateTableRows` / `resolveForeignKeyTargets` / 命名视图三命令 / `commitQueryResultCell`）；
+2. `BackendClient` 接口补同名方法；
+3. `packages/backend-client/src/types.ts` 补 `insertMarked` / `inserts` / `operation:'insert'` 等 wire 类型镜像；
+4. 前端 `src/commands/*` 只经 BackendClient，禁止散落 `invoke`。
+
+这条应该在 Wave 2 里与 `grid-cell` 并行（它只改传输层，不碰三个热文件）。
