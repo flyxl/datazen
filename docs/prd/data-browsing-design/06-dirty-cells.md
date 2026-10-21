@@ -41,6 +41,9 @@
 
 | 位置 | 符号 | 事实 |
 | --- | --- | --- |
+| `src/components/DataTable/GridCell.tsx` | **必须落点**：`data-dt-dirty` 的渲染 〔契约审计修订 2026-10-21〕**本册的 §6 清单只列了 VirtualBody，漏了这个**——`data-dt-dirty` 是**单元格**属性，00 契约 §4.4 里单元格 DOM 契约的唯一所有者是 `GridCell.tsx`（`data-dt-selected` / `data-dt-cell-type` 都在那儿），落 VirtualBody 会与「属性归单元格」的纪律冲突 |
+| `packages/wapp-sdk/src/theme.ts` + `theme.css` | **必须落点**：新增 `--dt-dirty-*` token 〔契约审计修订 2026-10-21〕宿主 theme token 契约要求 SDK 的 `DEFAULT_THEME_TOKENS` 与宿主 `THEME_TOKENS` **逐字相等**、且 SDK 的 theme.css 必须**消费每一个** `--dt-*`——新增 token 直接触发这条 |
+| `src/lib/themeTokens.ts` | **必须落点**：themes.css 里每个 `--dt-*` 都必须在此登记〔契约审计修订 2026-10-21〕同上，是宿主既有契约的直接后果 |
 | `src/stores/tableData/types.ts` | `CellEdit` | 字段为 `rowIndex: number`、`columnName: string`、`originalValue: unknown`、`newValue: unknown`、`pkSnapshot: Record<string, unknown>` |
 | `src/stores/tableData/types.ts` | `TableState.editBuffer` | `Map<string, CellEdit>`；注释写作「逐格编辑缓冲（键由单元坐标拼成）」 |
 | `src/stores/tableData/types.ts` | `TableState.pendingChanges` | `Map<string, PendingRowChange>`；注释写明「键是稳定的 PK 身份」 |
@@ -197,9 +200,8 @@ import {
   rowIdentityKey,
   valuesEqual,
   type PendingRowChange,
-  type Value,
 } from '../../lib/tableChanges';
-import type { ColumnSchema } from '../../types';
+import type { ColumnSchema, Value } from '../../types';  // 〔契约审计修订 2026-10-21〕`Value` 实际来自 `../../types`——`lib/tableChanges` 只 import 不导出它，原示例的 import 来源是错的
 import type { TableState } from './types';
 
 /**
@@ -484,6 +486,7 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
 - **改哪个文件 / 加什么符号**：`src/windows/connection/TableView.tsx`
   - `const dirtyIndex = useMemo(() => buildDirtyIndex(ts ?? emptyTableState(), prevRef.current), [pendingChanges, rowIdentityAnchors, rows, columns])`，并用 `useRef` 保存上一轮结果供结构共享；
   - `const dirtyCounts = useMemo(() => selectDirtyCounts(pendingChanges), [pendingChanges])`；
+    〔契约审计修订 2026-10-21〕**但计数条不能直接用它**：`selectDirtyCounts(pendingChanges)` 按定义**不知道当前页**，`cellsOnPage` 只能是 0、`cellsOffPage` 只能是 `totalCells` ⇒ 「另有 N 处改动不在当前页」永远等于总数。计数条必须读**脏索引的 `counts`**（`buildDirtyIndex` 的子过程输出），这样「只有一份计数实现」与「页内/离屏都准」同时成立
   - `DataTable` 传 `dirtyByRow={dirtyIndex.byRowIndex}` 与 `onRestoreRow={actions.unstageRowDelete}`；
   - `handleCellDoubleClick` 增加守卫：`selectDirtyRow(dirtyIndex, row)?.state === 'deleted'` 时 return。
 - **为什么**：索引必须在**唯一一处**计算，网格与计数条共用同一份 `DirtyIndex` —— 这是从结构上消灭「工具条计数与网格高亮不一致」缺陷形态的手段，而不是靠两边各算一遍再对答案。
@@ -665,7 +668,7 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
 | `row-number gutter shows a dot for dirty and for deleted rows` | `tid('row-dirty-dot')` / `tid('row-deleted-dot')` 各自出现 |
 | `no dirty attributes and no dots when dirtyByRow is omitted` | 缺省渲染与今天逐位一致（零回归护栏） |
 | `dirty marker does not replace the type color on the value span` | 值 `<span>` 仍带 `text-dt-number` 等类型类（标记与类型色正交） |
-| `deleted row double-click does not request an edit` | 不调用 `onCellDoubleClick`（守卫在 TableView，但组件层要保证不额外触发） |
+| `deleted row double-click does not request an edit`〔契约审计修订 2026-10-21〕**归属订正**：这条**归面板级测试**（`TableView.dirty.test.tsx`）——守卫按 §5 Step 4 落在 `handleCellDoubleClick`（TableView），而格子的双击路径是 `GridCell → onCellDoubleClick`；要在组件级再挡一次，就得往 GridCell 塞一个「这行被删了」的开关，守卫会出现在两处、其中一处变成死代码 | 不调用 `onCellDoubleClick`（守卫在 TableView，但组件层要保证不额外触发） |
 
 ### 9.3 连续旅程测试 `src/stores/__tests__/tableDataStore.dirty.test.ts`（新增）
 

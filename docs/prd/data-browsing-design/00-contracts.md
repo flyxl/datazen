@@ -654,7 +654,7 @@ CellCoord.rowIndex
 | `data-dt-editor-owned` | 单元格 | `"true"` / 不存在 | 编辑器已接管该格，外部点击不得抢焦点（IME / 组合态） | **05** |
 | `data-dt-readonly` | 行容器或网格根 | `"true"` / 不存在 | 该范围只读，来自 `DataGridCapabilities.editable` | **05** |
 | `data-dt-dirty` | 单元格 | `"true"` / 不存在 | 该单元格有未提交改动 | **06** |
-| `data-dt-row-state` | 行容器 | `"dirty"` / `"error"` / 不存在 | 行级聚合态（该行存在脏格或行级错误） | **06** |
+| `data-dt-row-state` | 行容器 | `"dirty"` / `"deleted"` / 不存在 | 行级聚合态（该行有脏格 / 该行被标记删除）〔契约审计修订 2026-10-21〕**值域订正**：原写 `"dirty"` / `"error"`，与 06 §11 D-3 的裁定（`"dirty"` / `"deleted"`）**不一致**——行级**错误**不是本属性的语义（错误走错误横幅）。D-3 提到的第三个值 `"inserted"` 属插入卷，本批**不实现**，值域先只留两个 |
 | `data-dt-null` | 单元格 | `"true"` / 不存在 | 该格值为 SQL `NULL` | **05**（按 01 的 Q9 裁定：NULL 是**值**的属性，不得污染 `data-dt-cell-type` 的列类型语义） |
 | `data-dt-cell-error` | 单元格 | `"true"` / 不存在 | 该格最后一次写入被后端拒绝 | **03** |
 | `data-dt-fk` | 单元格 | 引用目标标识 | 该格是外键值，值即 `data-dt-fk` 的目标 | **07** |
