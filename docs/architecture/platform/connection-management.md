@@ -689,6 +689,8 @@ PostgreSQL 已实现按同一 profile、server endpoint、登录身份和 SSL �
 
 PoolKey 使用类型化结构等值比较，不能用随意字符串拼接。policyIsolationKey 在共享 DB 账号但权限不同的用户之间必须不同。已建立 session 保存建连时版本，不因配置更新改变底层身份；管理员按 drain/force 明确处理旧资源。effectiveIdentity 变化须先重新授权，不得在未匹配的池内直接切换角色。
 
+`executionIdentityKey` 的桌面实现是 `src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`：派生输入只有 `(organizationId, connectionId, policyIsolationKey)` 加一把服务端持有的固定盐（宿主主密钥经 HMAC 域分离派生的子钥），因此**同一三元组恒得同一键**（跨进程重启不变，INV-02 的会话连续性与池复用依赖这一点），而凭据轮换只推进 `credentialRevision`、不动该键。委托走独立入口 `resolve_delegation`：域标签与输入集都与本人路径不同（额外绑定委托 id 与授权作用域），委托身份因此不可能等于本人身份，校验不过失败关闭、不降级为调用者权限（CM-06）。客户端传入的用户名、角色与 `principal` 不参与派生（CM §4.1）。详见[共享边界 §4.3](shared-boundaries-and-ports.md#43-持久化与授权端口)。
+
 SchemaCache key 为组织、executionIdentityKey、policyIsolationKey、connectionId、config/credential/capabilityRevision、CanonicalTarget、Command/参数指纹；临时元数据只进绑定 runtime handle 的内存缓存。缓存 TTL 默认 60 秒，配置/授权/DDL 事件即时失效；刷新使用独立 cacheRevision 防止慢结果回填，它不是 session 代次。不能仅靠 TTL 延迟权限撤销。
 
 浏览多个 database 不必各保留连接，但 database-bound driver 可产生多个 pool key；每 pool min=0、max=2 仍受服务总预算，idle TTL 默认 60 秒、最多保留 32 个空 pool 元数据条目。空 pool LRU 可删除；有资源的 pool 先关闭再删除。跨数据库可安全复用只能由 driver 契约证明，不能为降低 pool 数量强行合并。

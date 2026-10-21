@@ -94,6 +94,11 @@ pub struct PlatformAdapter {
     services: std::sync::OnceLock<Arc<ApplicationServices>>,
     runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
     profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
+    /// 执行身份解析器（`IdentityResolver` 端口的桌面实现）。
+    ///
+    /// 放在 `OnceLock` 里而不是构造参数：它是**装配期**决定的事（派生盐取自宿主
+    /// 主密钥），而查询方在装配完成前拿不到它——与 `profiles` / `live` 同理。
+    identities: std::sync::OnceLock<Arc<super::execution_identity::DesktopIdentityResolver>>,
     driver_registry: std::sync::OnceLock<Arc<datazen_runtime::driver_registry::DriverRegistry>>,
     target_metadata: std::sync::OnceLock<super::target_metadata::TargetMetadataCache>,
     target_metadata_gate: std::sync::Mutex<()>,
@@ -125,6 +130,7 @@ impl PlatformAdapter {
             services: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
+            identities: std::sync::OnceLock::new(),
             driver_registry: std::sync::OnceLock::new(),
             target_metadata: std::sync::OnceLock::new(),
             target_metadata_gate: std::sync::Mutex::new(()),
@@ -143,6 +149,7 @@ impl PlatformAdapter {
             services: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
+            identities: std::sync::OnceLock::new(),
             driver_registry: std::sync::OnceLock::new(),
             target_metadata: std::sync::OnceLock::new(),
             target_metadata_gate: std::sync::Mutex::new(()),
@@ -256,6 +263,25 @@ impl PlatformAdapter {
             return Ok(());
         }
         let profiles = Arc::new(super::repositories::DesktopProfiles::new(store.clone()));
+        let policy = Arc::new(super::policy::DesktopPolicy::new(store.clone()));
+        // 执行身份解析端口（`IdentityResolver`）。派生盐取自宿主主密钥：安装级固定、
+        // 跨重启稳定，客户端拿不到就算不出身份键。
+        //
+        // 取不到主密钥就**不**接线：这里失败关闭，而不是换一个可预测的常量盐。
+        // 装配失败由 `inject` 的调用方记录（启动不中断，但身份解析能力明确缺席）。
+        let identities = Arc::new(
+            super::execution_identity::DesktopIdentityResolver::for_desktop(
+                store.clone(),
+                profiles.clone(),
+                policy.clone(),
+            )
+            .map_err(|error| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    format!("execution identity resolver unavailable: {error}"),
+                )
+            })?,
+        );
         let backend = Arc::new(super::session_backend::DesktopSessionBackend::new_scoped(
             registry.clone(),
             store.clone(),
@@ -284,7 +310,7 @@ impl PlatformAdapter {
         let runtime = Arc::new(
             datazen_runtime::application::RuntimeConnectionUseCases::new(
                 profiles.clone(),
-                Arc::new(super::policy::DesktopPolicy::new(store.clone())),
+                policy.clone(),
                 backend.clone(),
             ),
         );
@@ -370,6 +396,12 @@ impl PlatformAdapter {
         })?;
         self.profiles.set(profiles).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "profiles already injected")
+        })?;
+        self.identities.set(identities).map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::ContextConflict,
+                "identity resolver already injected",
+            )
         })?;
         self.driver_registry.set(registry).map_err(|_| {
             ApiError::new(
@@ -513,6 +545,18 @@ impl PlatformAdapter {
             .get()
             .cloned()
             .ok_or_else(|| ApiError::new(ApiErrorCode::ServiceUnavailable, "profiles not injected"))
+    }
+
+    /// 执行身份解析器。未注入 ⇒ 明确报错，不回落旧路径。
+    pub fn identity_resolver(
+        &self,
+    ) -> Result<Arc<super::execution_identity::DesktopIdentityResolver>, ApiError> {
+        self.identities.get().cloned().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "identity resolver not injected: 启动装配尚未调用 PlatformAdapter::inject",
+            )
+        })
     }
 
     /// Resolve an explicit execution target against the connection's actual driver metadata.

@@ -2,6 +2,7 @@ pub mod adapter;
 pub mod artifact_export;
 mod diagnostics;
 pub mod error;
+pub mod execution_identity;
 pub mod handles;
 pub mod identity;
 pub mod ipc;

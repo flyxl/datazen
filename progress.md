@@ -1,0 +1,147 @@
+# 轨道 G：identity-resolver — 进度台账
+
+> **本文件是开发期台账，交付即销毁。** 验收合并时必须删除，不得存活在 `main` 上（AGENTS.md「进度台账」条）。
+> 结论已同时落成代码、测试与 `docs/architecture/platform/` 里的正式文档事实。
+
+分支：`feature/identity-resolver`（基线 `65dac1e2c` = 集成分支，含 A/B/C 轨成果 + `OrganizationScope`）
+
+---
+
+## 1. 做了什么
+
+**目标**：`IdentityResolver` 端口（`packages/platform-api/src/ports/identity.rs`）自落地以来**无人实现**。本轨实现桌面形态的执行身份解析，让 web 多租户形态有可用的身份解析路径。
+
+**新增**：
+
+- `src-tauri/src/platform/execution_identity.rs`（442 行）
+  - `DesktopIdentityResolver` —— 全仓**唯一**的 `impl IdentityResolver`。
+  - `IdentityDerivationKey` —— 执行身份派生盐；`Debug` 脱敏；只从宿主主密钥派生。
+  - `DelegationScopeBinding` —— 宿主侧协作者：把已校验的委托落到它被授权的执行目标上
+    （端口的 `resolve_delegation` 不接收 `ExecutionTarget`，而 `ExecutionIdentity` 必须带 `connectionId`）。
+  - `MonitorDelegationScope` —— 桌面实现：委托目标取自监控授权单（monitor grant）登记的 scope。
+- `src-tauri/src/platform/execution_identity_tests.rs`（655 行，15 条用例）。
+
+**改动**：
+
+- `src-tauri/src/platform/mod.rs` —— 注册新模块。
+- `src-tauri/src/platform/adapter.rs` —— `PlatformAdapter::inject` 装配解析器（§6.2 第 4 步「环境适配」）；新增 `identity_resolver()` 取用口。
+- `docs/architecture/platform/shared-boundaries-and-ports.md` —— §4.3 补「桌面实现（已落地）」语义段；§4.7 形态适配表 `IdentityResolver` 行改为已实现事实。
+- `docs/architecture/platform/connection-management.md` —— §9.6 补 `executionIdentityKey` 的桌面派生语义。
+- `docs/architecture/platform/system-overview.md` —— §6.4 补 `IdentityResolver` 桌面实现已落地的事实。
+
+**未改动**（按纪律）：`packages/platform-api/src/ports/identity.rs`（端口契约一字未动）、其它
+`packages/platform-api/src/ports/*`、`packages/runtime/**`、`packages/feature-core/**`、
+`packages/{data-sync,data-transfer,schema-diff}/**`、`src-tauri/src/commands/**`、其它 worktree。
+`hub.md` 未改（协调者台账，由协调者维护）。
+
+---
+
+## 2. 身份键派生方案
+
+| 项 | 取值 |
+| --- | --- |
+| 派生输入 | `(organization_id, connection_id, policy_isolation_key)` |
+| 服务端固定盐 | 宿主主密钥（`{appData}/.key` 或系统钥匙串）经 `HMAC-SHA256(master, "datazen.execution-identity.derivation-key.v1")` 域分离派生的子钥（HKDF-Extract 形态） |
+| 消息编码 | 域标签 + 每字段 `u32` 长度前缀 + 字段内容（长度前缀避免 `("a","b\|c")` 与 `("a\|b","c")` 撞成同一条消息） |
+| 输出 | `HMAC-SHA256(subkey, message)` → URL-safe base64（无填充）→ `ExecutionIdentityKey` |
+| 本人路径域标签 | `datazen.execution-identity.key.v1` |
+| 委托路径域标签 | `datazen.execution-identity.delegation-key.v1`（**与本人路径不同**） |
+| 委托路径额外输入 | `delegation_id` + 授权作用域 `scope` |
+
+**为什么满足三条性质**
+
+- **稳定**：HMAC 是纯函数，输入里没有随机数、时间戳、进程内计数器；主密钥是安装级、跨进程重启不变 ⇒ 同一三元组恒得同一键（INV-02 会话连续性与池复用依赖这一点）。
+- **不可伪造**：客户端拿不到主密钥就算不出身份键；身份键不是客户端可传的字段；主密钥取不到时**失败关闭**，不退回任何可预测的常量盐。
+- **不含材料**：主密钥与子钥都**不进入**身份键——身份键是子钥对输入字段的摘要，摘要不可逆推主密钥，也不可逆推密码。`ExecutionIdentityKey` / `PolicyIsolationKey` 的 `Debug` 本就脱敏（`opaque_id!`）。
+
+**委托路径为何独立**
+
+1. **不同域标签** ⇒ 同样的字段值也派生出不同摘要 ⇒ 委托身份**不可能**等于本人身份（CM-06）。
+2. **不同输入集**：委托路径额外绑定 `delegation_id` 与授权 `scope` ⇒ 换委托/换授权范围即换键，池与缓存不会把两个权限范围混用。
+3. **独立实现**：`resolve_delegation` **不转调** `resolve`，它自己走「`verify_delegation` 校验 → 取授权目标 → 独立派生」。
+4. **失败关闭**：校验不过、跨组织委托、授权单覆盖多连接 ⇒ 一律 `PortError::TokenInvalid`，**不降级**为调用者本人权限。
+5. **本人路径拒绝委托上下文**：`resolve` 在 `ctx.is_delegated()` 时直接拒绝，否则「两条独立路径」只是两个方法名。
+
+---
+
+## 3. 验收标准逐条自证
+
+| # | 标准 | 证据 |
+| --- | --- | --- |
+| 1 | `grep -rn "impl.*IdentityResolver for" src-tauri/src/` 有且只有一条真实实现 | `src-tauri/src/platform/execution_identity.rs:309` —— 唯一命中 |
+| 2 | 5 条端口语义在桌面实现上重验（≥4 条 host 单测逐条钉住） | 15 条用例，见 §4 清单 |
+| 3 | `ExecutionIdentity` 不含秘密材料（debug 字符串断言） | `执行身份不含秘密材料` + `派生盐的调试输出脱敏` |
+| 4 | 不改动 `packages/platform-api/src/ports/identity.rs` 既有契约 | `git diff --stat` 无该文件；契约一字未动 |
+| 5 | 门禁全绿 | 见 §5 |
+
+### 端口 5 条语义 → 用例映射
+
+| 端口语义 | 用例 |
+| --- | --- |
+| ① 身份键不得由客户端 principal 派生 | `身份键不随请求主体变化`（隔离键固定下换主体 ⇒ 键不变）、`派生入口的入参里没有主体与凭据`（结构性）、`跨组织的连接拿不到执行身份` |
+| ② 同一 `(org, conn, iso)` 稳定同键 | `同一输入两次解析得到同一身份键`、`换一把解析器实例身份键仍然相同`（跨实例/跨重启）、`不同组织派生不同身份键`、`不同连接派生不同身份键`、`不同隔离键派生不同身份键` |
+| ③ 轮换凭据只推进 `credential_revision` | `轮换凭据只推进版本不动身份键`（真 Store、真轮换） |
+| ④ 两条独立路径 | `委托身份与本人身份不同且未授权委托失败关闭`、`委托上下文不得走本人路径`、`跨组织的委托引用被拒绝`、`两条路径的域标签不同` |
+| ⑤ debug 不含 password/material | `执行身份不含秘密材料`、`派生盐的调试输出脱敏` |
+
+---
+
+## 4. 新增用例清单（15 条，全部在 `src-tauri/src/platform/execution_identity_tests.rs`）
+
+1. `身份键不随请求主体变化`
+2. `派生入口的入参里没有主体与凭据`
+3. `同一输入两次解析得到同一身份键`
+4. `换一把解析器实例身份键仍然相同`
+5. `不同组织派生不同身份键`
+6. `不同连接派生不同身份键`
+7. `不同隔离键派生不同身份键`
+8. `跨组织的连接拿不到执行身份`
+9. `轮换凭据只推进版本不动身份键`
+10. `委托身份与本人身份不同且未授权委托失败关闭`
+11. `委托上下文不得走本人路径`
+12. `跨组织的委托引用被拒绝`
+13. `两条路径的域标签不同`
+14. `执行身份不含秘密材料`
+15. `派生盐的调试输出脱敏`
+
+---
+
+## 5. 门禁实测（退出码单独打印）
+
+隔离 target：`CARGO_TARGET_DIR=/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/datazen-identity-resolver/target`（11G 热 target，本树专用）
+
+| 命令 | 退出码 | 结论行 |
+| --- | --- | --- |
+| `cargo fmt --all -- --check` | **0** | 无输出 |
+| `cargo clippy -p datazen-platform-api -p datazen --all-targets` | **0** | 新文件 0 warning（仓库既有 warning 不计） |
+| `cargo check -p datazen-platform-api -p datazen --all-targets` | **0** | `Finished dev profile ... in 9.83s` |
+| `cargo check -p datazen --features webdriver --all-targets` | **0** | `Finished dev profile ... in 2m 49s` |
+| `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-platform-api --lib` | **0** | `test result: ok. 224 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out` |
+| `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib` | **0** | `test result: ok. 1281 passed; 0 failed; 9 ignored; 0 measured; 0 filtered out` |
+
+**基线校正（实测，非推断）**：任务简报写 host 基线 **1269**，本树实测基线是 **1266 passed; 0 failed; 9 ignored**
+（`git stash push -u` 后在 `HEAD=65dac1e2c` 上实测，EXIT=0）。改后 1281 = **1266 + 15**，正好等于本轨新增的 15 条用例，
+既有 1266 条一条未动、零失败。platform-api 基线 224 与改后一致（该 crate 本轨未改）。
+
+**门禁首尾 HEAD / 工作区 sha**：见 §7。
+
+---
+
+## 6. 遗留项与待裁定项
+
+| # | 项 | 说明 | 建议 |
+| --- | --- | --- | --- |
+| 1 | `hub.md:24` 的「无人实现的端口」清单仍列 `IdentityResolver` | 那是协调者台账，本轨未改 | 协调者合流时删掉该行（剩余 `EventSink` / `SubmissionTokenIssuer` / `ClusterNodeBudgetPort` / `ControlResourcePort`） |
+| 2 | `resolve` 在委托上下文上一律拒绝 | 端口契约没写这条，是本实现的**收紧**选择：让「两条独立路径」不只是方法名。代价：桌面若将来要在委托上下文里走本人路径，需改这一处 | 保留；若协调者认为应当放行，请裁定后由本轨改 |
+| 3 | 委托授权单覆盖**多个连接**时失败关闭 | 端口的 `resolve_delegation` 不接收 `ExecutionTarget`，而 `ExecutionIdentity` 只有单个 `connectionId`，一份授权单跨连接无法映射成单一身份 | 保留失败关闭；真需要跨连接委托时，端口签名要加目标或加「按连接解析」的入口——属契约变更，需概要先给语义 |
+| 4 | `DelegationScopeBinding` 是**宿主侧**新协作者（不在 `platform-api` 端口表里） | 端口层不替实现方决定「委托的目标从哪来」；做成端口会要求所有形态都提供同一份事实，而各形态的授权单形状不同 | 保留在宿主侧；若协调者希望它进 `platform-api`，需先定跨形态的委托目标语义 |
+| 5 | `MonitorDelegationScope` 与 `DesktopPolicy` 各查一次授权单 | 一次授权单读两次（`verify_delegation` + `authorized_target`） | 正确性优先，未做缓存；若成为热点再合并 |
+| 6 | 派生盐取宿主 **AES 主密钥** | 同源但已做域分离（HMAC 子钥），AES 与身份派生不使用同一把密钥。主密钥轮换 ⇒ 身份键全变（池整体失效）——当前仓库没有主密钥轮换路径 | 保留；若将来引入主密钥轮换，需给身份派生一把独立的、按 `keyVersion` 轮换的密钥 |
+| 7 | 身份解析端口已接线但**尚无调用方** | `packages/runtime/**` 禁改，runtime 的 `PoolKeyInputs::execution_identity_key` 仍是裸 `String`；本轨只把端口实现出来并接线，未改 runtime | 后续 initiative：让 runtime 从 `IdentityResolver` 取键 |
+
+---
+
+## 7. 门禁首尾指纹
+
+- 开工前：`HEAD=65dac1e2cf79fe7099b57988ca4ecfc7095e2ee1`，工作区 sha（`git diff HEAD` + 未跟踪文件清单）= `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`（空树）
+- 收尾：见提交后的 `progress.md` 追加段（与 commit 一同入库）
