@@ -229,7 +229,7 @@
 | 网格的选区跃迁、剪贴板、dirty 高亮 | Host 前端单测 / journey | `pnpm test:unit:driver-set` |
 | 「跨 PG/MySQL/SQLite 都能筛选」 | 契约矩阵 | `pnpm e2e:contract:matrix` |
 
-**驱动 crate 的一个好消息**：`Cargo.toml` 的 workspace `members` 含 `packages/drivers/*`（只 `exclude` `kiwi` / `olap` / `superset`），所以 `cargo test -p datazen-driver-sqlserver` 这类命令**不依赖当前驱动集选择**，随时可跑。驱动集选择只影响 `src-tauri` 的 feature 注入与前端 codegen（§6.3）。
+**驱动 crate 的一个好消息**：`Cargo.toml` 的 workspace `members` 含 `packages/drivers/*`（只 `exclude` `kiwi` / `superset`；`olap` 已移除），所以 `cargo test -p datazen-driver-sqlserver` 这类命令**不依赖当前驱动集选择**，随时可跑。驱动集选择只影响 `src-tauri` 的 feature 注入与前端 codegen（§6.3）。
 
 ### 3.3 一条改动的落点决策树
 

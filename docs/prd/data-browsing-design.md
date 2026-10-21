@@ -2,8 +2,8 @@
 
 > **文档性质**：本目录是**按用户明确要求保存的一次性技术设计**，属仓库 [文档维护纪律](../../AGENTS.md) 的窄范围例外（同 [PRD](data-browsing-optimization-prd.md) 的处理方式，已在 [docs/README.md](../README.md) 登记）。它记录的是**目标设计**，不代表当前 `main` 已实现；方案落地后应逐节改写为「已实现事实」并入 [architecture/frontend/components.md](../architecture/frontend/components.md) 与 [features/](../features/)，随后删除本目录。
 >
-> **基线**：`main` = `e9870b235`（本文档初稿写于 `e0f6ba28b`；先按 `87ce4b45e` 校正，其后主干再前进 2 个提交到 `e9870b235`——只有 `docs: align architecture docs with current shared crates` 一条文档对齐提交，不含代码改动。凡与旧稿数字冲突处以新数为准）。
-> **合并状态**：`feature/data-browsing-prd` 已两次 merge `main`——`c9c8d23ae`（并入 `87ce4b45e`，零冲突）与 `a727d49a0`（并入 `e9870b235`，零冲突）。校正依据是合并后的工作树，实测命令为 `wc -l` 与 `git rev-parse`。
+> **基线**：`main` = `3bb26cf8f`（本文档初稿写于 `e0f6ba28b`；其后主干三次前进：`87ce4b45e` → `e9870b235` → `3bb26cf8f`。第三次带来一条**影响本文事实**的提交 `refactor(drivers): remove olap and align git drivers to driver-api 0.0.20`——git 驱动由 3 个减为 2 个，见 R2）。凡与旧稿数字冲突处以新数为准。
+> **合并状态**：`feature/data-browsing-prd` 已三次 merge `main`——`c9c8d23ae`（并入 `87ce4b45e`）、`a727d49a0`（并入 `e9870b235`）、本次（并入 `3bb26cf8f`），均零冲突。校正依据是合并后的工作树，实测命令为 `wc -l` 与 `git rev-parse`。
 > **引用纪律**：全目录**不写行号**（行号会随重构腐烂，且无门禁校验），位置一律用「文件路径 + 符号名」。**全文禁止出现 `文件名:行号` 形式的引用**。
 
 ---
@@ -133,7 +133,7 @@
 ### 5.1 兼容性（详见 [00-contracts.md](data-browsing-design/00-contracts.md) 第 2 节）
 
 - **R1 只新增，不改签名**：不改 `build_update_sql` / `build_delete_sql` / `format_sql_literal` / `pagination_syntax` / `get_table_data` 等既有方法签名，也**不改既有 DTO 字段的类型或名字**。需要新语义时新增方法或字段。
-- **R2 新增 trait 方法必须有默认实现**：这样任何驱动（当前仓库 **15 个 path 驱动 + 3 个 git 驱动 = 18 个**，以 `drivers-registry.json` 为准）不改一行代码仍能编译。⚠ **默认实现的约束是单向的——允许「扩大」能力面，不得「移除或改变」今天已有的能力**，因此本条**不是**「默认行为逐字等于今天」。像 `supported_filter_operators` 默认返回 19 个算子（今天只有 10 个）就是刻意扩大的：宿主渲染器能处理全部 19 个，对旧驱动只会更宽松。凡刻意扩大，必须在方法注释里写明「今天的返回值是什么、为什么默认改成这样」。
+- **R2 新增 trait 方法必须有默认实现**：这样任何驱动（当前仓库 **15 个 path 驱动 + 2 个 git 驱动 = 17 个**〔合并 origin/main 后更新：`olap` 已随 `refactor(drivers): remove olap and align git drivers to driver-api 0.0.20` 移除〕，以 `drivers-registry.json` 为准）不改一行代码仍能编译。⚠ **默认实现的约束是单向的——允许「扩大」能力面，不得「移除或改变」今天已有的能力**，因此本条**不是**「默认行为逐字等于今天」。像 `supported_filter_operators` 默认返回 19 个算子（今天只有 10 个）就是刻意扩大的：宿主渲染器能处理全部 19 个，对旧驱动只会更宽松。凡刻意扩大，必须在方法注释里写明「今天的返回值是什么、为什么默认改成这样」。
 - **R3 JSON 契约靠 serde 自动映射**：Rust 侧已标 `#[serde(rename_all = "camelCase")]`，前端用 camelCase。**不要**手写转换函数，**不要**给前端预留 snake_case 别名，新增 DTO 必须带同名属性宏。
 - **R4 默认值必须等于「今天缺省时的实际行为」，不是无条件填 `false`**：今天默认**不可用**的能力（如 `insertReturning`）填 `false`；今天默认**可用**的能力填 `true`——典型如 `DataGridCapabilities.editable`，今天所有驱动都没声明过该字段、前端一律按可编辑渲染，填 `false` 会让所有未声明 `dataGrid` 的驱动**一夜之间变只读**，这正是本条要防的回归；枚举类（如 `countStrategy`）缺省填**今天走的那条分支**，不是「最严格的那个」。新增枚举分支必须在旧数据上反序列化成功（能用 `#[serde(default)]` 就用）；能力缺失时 UI **隐藏入口**，而不是渲染一个点了报错的按钮。
 - **R5 生产路径禁止裸 `unwrap()` / `expect()`**，见 [panic-policy.md](../development/panic-policy.md)。

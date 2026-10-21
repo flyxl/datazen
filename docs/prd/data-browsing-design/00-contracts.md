@@ -4,9 +4,9 @@
 >
 > **目标读者**：不了解本项目历史、第一次接手数据浏览功能的开发者。本册假设你还没看过任何 DataZen 代码，因此第 1 节把「今天代码是什么样」逐条写清；看不懂业务背景时回读 [PRD](../data-browsing-optimization-prd.md)。
 >
-> **基线**：`main` = `e9870b235`（初稿写于 `e0f6ba28b`；先按 `87ce4b45e` 校正，其后主干再前进 2 个提交——只有一条 `docs: align architecture docs with current shared crates` 文档对齐提交。与旧稿数字冲突处以本册为准）。**本册及所有分册一律不写行号**（行号会随重构腐烂，且没有任何门禁检查它），引用位置统一用「文件路径 + 符号名」，例如 `QueryExecutor::build_select_sql`。
+> **基线**：`main` = `3bb26cf8f`（初稿写于 `e0f6ba28b`；先按 `87ce4b45e` 校正，其后主干两次前进，第二次 `3bb26cf8f` 含 `refactor(drivers): remove olap`——git 驱动 3→2。与旧稿数字冲突处以本册为准）。**本册及所有分册一律不写行号**（行号会随重构腐烂，且没有任何门禁检查它），引用位置统一用「文件路径 + 符号名」，例如 `QueryExecutor::build_select_sql`。
 >
-> **校正标记**：本册中带「〔合并后校正〕」的段落是 2026-10-21 按 `87ce4b45e` / `e9870b235` 复核后的结论；无标记的段落是初稿原文，仍适用。
+> **校正标记**：本册中带「〔合并后校正〕」的段落是 2026-10-21 按 `87ce4b45e` / `e9870b235` / `3bb26cf8f` 复核后的结论；无标记的段落是初稿原文，仍适用。
 
 ---
 
@@ -356,7 +356,7 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1;
 
 ### R2 · 新增 trait 方法必须有默认实现
 
-所有 `DatabaseDriver` 新增方法都必须给出默认实现。这样任何驱动（当前 `drivers-registry.json` 里 **15 个 path 驱动 + 3 个 git 驱动**；旧稿写的「50+」是错的）不改一行代码仍然编译通过。
+所有 `DatabaseDriver` 新增方法都必须给出默认实现。这样任何驱动（当前 `drivers-registry.json` 里 **15 个 path 驱动 + 2 个 git 驱动**；〔合并 origin/main 后更新：`olap` 已移除〕旧稿写的「50+」是错的）不改一行代码仍然编译通过。
 
 默认实现的**约束**是**单向的**：允许**扩大**能力面，不得**移除或改变**今天已有的能力。
 
@@ -1236,7 +1236,7 @@ export interface DataGridCapabilities {
 
 > 原文三处数字（契约「−~70」、05 的「~495」、07 的「~450」）彼此不相容，根因是把 01 的抽取规模从 225 误记成 70。实测基线 **403** 而非 ~558 / ~500，因此该文件的余量远比原先估计的宽裕：**任何分册往它加超过 100 行才需要考虑抽取**（不是原文的 50 行）。若某分册仍按 628 这个旧基线做推算，一律以本表为准。
 
-**其余热文件基线（〔合并后校正〕全部按 `e9870b235` 内的工作树 `wc -l` 实测；分册引用前请再复核一次）**：`src/components/FilterEditor.tsx` **558**、`src/stores/tableDataStore.ts` **729**、`src/stores/panelStore.ts` **793**、`src/windows/connection/ContentViewDrawers.tsx` **236**、`src/components/DataTable/VirtualBody.tsx` **207**、`src/components/DataTable/DataTable.tsx` **628**、`packages/feature-core/src/services/query_executor.rs` **755**（宿主门面 `src-tauri/src/services/query_executor.rs` **47**）、`src-tauri/src/commands/data.rs` **640**、`packages/driver-api/src/types.rs` **963**、`packages/driver-api/src/traits.rs` **1160**、`packages/driver-api/src/reuse.rs` **1344**、`src/locales/en/query.ts` **442**。
+**其余热文件基线（〔合并后校正〕全部按 `3bb26cf8f` 内的工作树 `wc -l` 实测；分册引用前请再复核一次）**：`src/components/FilterEditor.tsx` **558**、`src/stores/tableDataStore.ts` **729**、`src/stores/panelStore.ts` **793**、`src/windows/connection/ContentViewDrawers.tsx` **236**、`src/components/DataTable/VirtualBody.tsx` **207**、`src/components/DataTable/DataTable.tsx` **628**、`packages/feature-core/src/services/query_executor.rs` **755**（宿主门面 `src-tauri/src/services/query_executor.rs` **47**）、`src-tauri/src/commands/data.rs` **640**、`packages/driver-api/src/types.rs` **963**、`packages/driver-api/src/traits.rs` **1160**、`packages/driver-api/src/reuse.rs` **1344**、`src/locales/en/query.ts` **442**。
 
 > 〔合并后校正〕旧稿这行的 `query_executor.rs 811` / `commands/data.rs 1416` / `panelStore.ts 728` / `tableDataStore.ts 722` / `ContentViewDrawers.tsx 228` / `types.rs 958` / `traits.rs 1062` 全是合并前数值，且 `FilterEditor.tsx` 被误记为 `src/components/filter/FilterEditor.tsx`（该目录不存在，是 08 计划新增）。**`panelStore.ts` 793 与 `TableView.tsx` 803 都已在 800 以上**，`reuse.rs` 1344 同样越线；它们属于既有债务，本批只做最小净增。
 
