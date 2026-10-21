@@ -6,8 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
-use rusqlite::{params, Connection, OptionalExtension};
-use serde::{Deserialize, Serialize};
+use rusqlite::{params, Connection};
 use thiserror::Error;
 pub const APP_DB_FILE: &str = "datazen.sqlite";
 pub const SCHEMA_VERSION: i32 = 4;
@@ -272,7 +271,7 @@ impl AppDb {
                 "#,
             )?;
 
-            let mut tx =
+            let tx =
                 conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             let current: i32 = tx.query_row(
                 "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
@@ -328,6 +327,5 @@ mod restore_job_tests;
 // Re-exported so the paths `app_db::X` keep resolving for `store/mod.rs`
 // and anything else that names these types through this module.
 pub use dashboards::{DashboardRecord, DashboardWorkflowRef, WidgetRecord};
-pub(crate) use jobs::SqliteJobRepository;
 pub use runs::WidgetRunRecord;
 pub use workflows::{WorkflowRecord, WorkflowVisibility};

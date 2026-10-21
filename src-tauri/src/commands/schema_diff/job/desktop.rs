@@ -418,7 +418,6 @@ fn dispatch_prepare(
     tauri::async_runtime::spawn(async move {
         let backend = Arc::new(AppStateBackend::new(
             Arc::clone(&state),
-            Arc::clone(&infra.plans),
             Some(target_session),
         ));
         let handler = Arc::new(SchemaDiffHandler::for_prepare(
@@ -445,7 +444,6 @@ fn dispatch_apply(
     tauri::async_runtime::spawn(async move {
         let backend = Arc::new(AppStateBackend::new(
             Arc::clone(&state),
-            Arc::clone(&infra.plans),
             Some(target_session),
         ));
         let handler = Arc::new(SchemaDiffHandler::for_apply(

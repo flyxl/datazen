@@ -44,12 +44,12 @@ use datazen_driver_api::resource::{
     ResultSink, ReusePolicy,
 };
 use datazen_driver_api::session::{
-    CancelDisposition, CancelReceipt, CloseDisposition, ContextChangeDisposition,
-    ExecutionCompletion, ResetDisposition, ResourceHealth, SessionHandleRef, SessionObservation,
-    TransactionObservation, TransactionOptions,
+    CancelReceipt, CloseDisposition, ContextChangeDisposition, ExecutionCompletion,
+    ResetDisposition, SessionHandleRef, SessionObservation, TransactionObservation,
+    TransactionOptions,
 };
 use datazen_driver_api::{
-    ConnectionConfig, DatabaseDriver, DatabaseType, DriverError, QueryExecutionId, SslMode,
+    ConnectionConfig, DatabaseDriver, DriverError, QueryExecutionId, SslMode,
 };
 
 use super::DesktopLiveConnectionSource;

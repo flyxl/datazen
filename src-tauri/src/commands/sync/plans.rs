@@ -8,10 +8,13 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use datazen_driver_api::{iter_driver_factories, DatabaseDriver, TableSchema, PROTOCOL_VERSION};
+use datazen_driver_api::{DatabaseDriver, TableSchema};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+pub(crate) use crate::commands::driver_protocol::driver_protocol_version;
+use crate::data_sync::job::artifact::{ChangeBlock, ChangeSetArtifact};
 
 use super::comparison_store::{ComparisonStore, ComparisonTableMetadata};
 use crate::data_sync::{
@@ -38,24 +41,6 @@ struct RelationFingerprintEntry {
     table_schema: Option<TableSchema>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source_filter: Option<SyncSourceFilter>,
-}
-
-/// A deterministic identity for the qualified objects participating in a
-/// reviewed comparison.  Endpoint identity is included in the hash so a
-/// client cannot redirect an old plan to another database by changing UI
-/// fields after review.
-pub(crate) fn fingerprint_relations(
-    database: &str,
-    schema: Option<&str>,
-    entries: impl IntoIterator<Item = (String, Option<TableSchema>)>,
-) -> Result<String, String> {
-    fingerprint_relations_with_filters(
-        database,
-        schema,
-        entries
-            .into_iter()
-            .map(|(relation, table_schema)| (relation, table_schema, None)),
-    )
 }
 
 /// Fingerprint the qualified schema plus the structured predicates that were
@@ -88,15 +73,6 @@ pub(crate) fn fingerprint_relations_with_filters(
     let bytes = serde_json::to_vec(&entries)
         .map_err(|error| format!("cannot fingerprint sync schema: {error}"))?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
-}
-
-pub(crate) fn driver_protocol_version(driver: &dyn DatabaseDriver) -> u32 {
-    let driver_type = driver.driver_type();
-    iter_driver_factories()
-        .into_iter()
-        .find(|factory| factory.driver_id() == driver_type)
-        .map(|factory| factory.protocol_version())
-        .unwrap_or(PROTOCOL_VERSION)
 }
 
 pub(crate) fn fingerprint_conflict_policy(policy: ConflictPolicy) -> String {
@@ -290,20 +266,30 @@ impl SelectionMatcher {
         options: &SyncOptions,
     ) -> Result<bool, String> {
         let token = selection_token(source_table, target_table, change.operation, &change.key)?;
-        if self.explicit_rows.contains(&token) {
-            return Ok(true);
+        let pair = (source_table.to_string(), target_table.to_string());
+        Ok(self.is_token_selected(&pair, change.operation, &token, options))
+    }
+
+    fn is_token_selected(
+        &self,
+        pair: &(String, String),
+        operation: ChangeOperation,
+        token: &str,
+        options: &SyncOptions,
+    ) -> bool {
+        if self.explicit_rows.contains(token) {
+            return true;
         }
-        Ok(self
-            .scopes
-            .get(&(source_table.to_string(), target_table.to_string()))
+        self.scopes
+            .get(pair)
             .into_iter()
             .flat_map(|scopes| scopes.iter())
             .any(|scope| {
-                scope.operations.contains(&change.operation)
+                scope.operations.contains(&operation)
                     && (scope.selection_mode == SyncSelectionMode::All
-                        || change.operation.default_selected(options))
-                    && !scope.excluded_rows.contains(&token)
-            }))
+                        || operation.default_selected(options))
+                    && !scope.excluded_rows.contains(token)
+            })
     }
 }
 
@@ -799,10 +785,6 @@ pub(crate) fn claim_plan(id: &str) -> Result<StoredSyncPlan, String> {
     global_store().claim(id)
 }
 
-pub(crate) fn load_comparison(plan: &StoredSyncPlan) -> Result<ComparisonResult, String> {
-    plan.comparison.load()
-}
-
 /// Validate a selection against the server-owned comparison without
 /// reconstructing the complete ComparisonResult. The manifest and indexed
 /// row frames are still validated by `summaries`/`load_table_page`; only one
@@ -1064,6 +1046,114 @@ pub(crate) fn apply_selection(
         }
     }
     Ok(result)
+}
+
+/// Validate a reviewed selection against the frozen artifact and return only
+/// the selected blocks. This keeps row payloads in their native representation
+/// and avoids rebuilding a complete `ComparisonResult` just to project it back.
+pub(crate) fn select_artifact_blocks(
+    artifact: &ChangeSetArtifact,
+    selection: &SyncRunSelection,
+    options: &SyncOptions,
+) -> Result<Vec<ChangeBlock>, String> {
+    if selection.revision == 0 {
+        return Err("selection revision is required".into());
+    }
+    let matcher = SelectionMatcher::new(selection, options)?;
+    let mut source_by_target = HashMap::new();
+    for mapping in &artifact.mappings {
+        source_by_target
+            .entry(mapping.target_table.as_str())
+            .or_insert(mapping.source_table.as_str());
+    }
+    let mut table_meta = HashMap::new();
+    let mut matched_tables = HashSet::new();
+    for meta in &artifact.table_meta {
+        let source_table = source_by_target
+            .get(meta.relation.table.as_str())
+            .copied()
+            .unwrap_or(meta.relation.table.as_str())
+            .to_string();
+        matched_tables.insert((source_table.clone(), meta.relation.table.clone()));
+        table_meta.insert(meta.relation.clone(), (source_table, meta));
+    }
+    for pair in matcher.scopes.keys() {
+        if !matched_tables.contains(pair) {
+            return Err("selection scope does not belong to a matched comparison table".into());
+        }
+    }
+
+    let expected_exclusions: HashSet<_> = matcher.excluded_rows().cloned().collect();
+    let mut found_explicit = HashSet::new();
+    let mut found_exclusions = HashSet::new();
+    let mut scoped_rows = HashSet::new();
+    let mut selected = Vec::new();
+    for block in &artifact.blocks {
+        let Some((source_table, meta)) = table_meta.get(&block.relation) else {
+            continue;
+        };
+        let source_table = source_table.as_str();
+        let target_table = block.relation.table.as_str();
+        let pair = (source_table.to_string(), target_table.to_string());
+        let token = selection_token(source_table, target_table, block.operation, &block.key)?;
+        if matcher.explicit_rows.contains(&token) {
+            found_explicit.insert(token.clone());
+        }
+        if let Some(scopes) = matcher.scopes.get(&pair) {
+            for scope in scopes {
+                if scope.excluded_rows.contains(&token) {
+                    found_exclusions.insert(token.clone());
+                    scoped_rows.insert(token.clone());
+                }
+                if scope.operations.contains(&block.operation)
+                    && (scope.selection_mode == SyncSelectionMode::All
+                        || block.operation.default_selected(options))
+                    && !scope.excluded_rows.contains(&token)
+                {
+                    scoped_rows.insert(token.clone());
+                }
+            }
+        }
+
+        if matcher.is_token_selected(&pair, block.operation, &token, options) {
+            if block.operation == ChangeOperation::Unchanged || !options.allows(block.operation) {
+                let operation = match block.operation {
+                    ChangeOperation::Insert => "insert",
+                    ChangeOperation::Update => "update",
+                    ChangeOperation::Delete => "delete",
+                    ChangeOperation::Unchanged => "unchanged",
+                };
+                return Err(format!(
+                    "table {target_table} selected a {operation} row that the reviewed options do not execute; review the selection again"
+                ));
+            }
+            let mut selected_block = block.clone();
+            selected_block.relation.database = artifact.target.database.clone();
+            selected_block.relation.schema = artifact.target.schema.clone();
+            selected_block.source_table = source_table.to_string();
+            selected_block.column_names = meta
+                .columns
+                .iter()
+                .map(|column| column.name.clone())
+                .collect();
+            selected_block.pk_columns = meta.pk_columns.clone();
+            selected.push(selected_block);
+        }
+    }
+    if found_explicit.len() != matcher.explicit_rows.len() {
+        return Err("selection contains a row that was not in the comparison plan".into());
+    }
+    if found_exclusions.len() != expected_exclusions.len() {
+        return Err("selection exclusion was not in the comparison plan".into());
+    }
+    if matcher
+        .explicit_rows
+        .iter()
+        .any(|token| scoped_rows.contains(token))
+    {
+        return Err("selection row duplicates a table scope".into());
+    }
+    Ok(selected)
 }
 
 pub(crate) fn validate_selection(

@@ -761,7 +761,7 @@ async fn cancel_data_sync_stops_execute_before_start() {
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
 
     let test = TestAppState::new().await;
-    let mut cfg = sample_postgres_config("cancel-tgt");
+    let cfg = sample_postgres_config("cancel-tgt");
     test.store.save_connection(cfg).await.unwrap();
     let id = test.open_runtime_session("cancel-tgt").await;
     let job = format!("job-{}", uuid::Uuid::new_v4());

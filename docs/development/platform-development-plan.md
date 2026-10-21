@@ -47,7 +47,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 **目的**：在移动代码前识别逻辑 session、pool handle、transaction handle 的真实语义，建立可比较的行为基线。
 
-输入为当前 ConnectionManager、Driver API、Query/Table consumer、三件套和 Workflow。重点代码链接见详细设计第 2 节。
+输入为当时的 ConnectionManager（现已删除）、Driver API、Query/Table consumer、三件套和 Workflow。重点代码链接见详细设计第 2 节。
 
 交付：
 
@@ -104,7 +104,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 ## 7. P3：统一 Session / Lease / Budget / ExecutionGateway
 
-**状态：已完成**（2026-10-13）。单进程 runtime 实现及 CM-02～07、20～32、37～39、54～56、60 单机部分、61～74 的 H 层断言已在 `datazen-runtime` 验收。CM-60 按逐请求总开销 p95 ≤10 ms、失败数为 0、事件无重复/丢失判定，并记录实测环境；不要求固定 CPU / 内存参考规格。桌面旧 consumer 仍由 P4/P5/P6 迁移，ConnectionManager 仅在所有 consumer 迁完后删除，不属于 P3 关闭条件。
+**状态：已完成**（2026-10-13）。单进程 runtime 实现及 CM-02～07、20～32、37～39、54～56、60 单机部分、61～74 的 H 层断言已在 `datazen-runtime` 验收。CM-60 按逐请求总开销 p95 ≤10 ms、失败数为 0、事件无重复/丢失判定，并记录实测环境；不要求固定 CPU / 内存参考规格。桌面旧 consumer 后续由 P4/P5/P6 迁移，连接生命周期统一改走 runtime。
 
 **目的**：建立桌面与 server 都能用的资源运行时。
 
@@ -126,11 +126,11 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 P3 前置阶段同步修订的 DTO/port 契约现已由 runtime 实现：`ArtifactStore` 由 `packages/runtime/src/artifact/` 的 `FileArtifactStore` 实现并接入桌面结果发布；写入期已发布块可读且不可覆盖，取消/失败可显式截断并保留恢复元数据。取消请求与执行终态分离，由 `ExecutionState::resolve_cancel` / `CancelOutcome` 表达并覆盖 CM-22 竞态。CM-60 基准按每个请求的两段附加耗时先求和，再以 nearest-rank 计算 p95；失败样本不从分母剔除。上述行为分别由 runtime artifact journey、CM-22 取消测试与 `cm60-bench` 实现和验证，详见共享边界 §4.6、夹具 §6.3/§11。
 
-P3 收尾不删除旧的 `ConnectionManager`：Tauri 仍有活跃生产调用方。待这些 consumer 迁移完成后再删除，并保留 CM-73/74 的行为测试，避免把仍在使用的连接生命周期路径误删。
+P3 收尾阶段曾保留旧的 `ConnectionManager`（当时 Tauri 仍有活跃生产调用方）；P6 迁移完成后它已连同其调用方一并删除，CM-73/74 的行为测试继续保留在 runtime 侧。
 
 ## 8. P4（已完成）：桌面 QueryPanel、TablePanel、元数据迁移
 
-**状态：已完成**（2026-10-16，`main` @ `918d82902`）。关闭结论见本节末尾，F 断言的逐项证据见 §8.1；两条首版发布限制（空闲池在真实驱动上恒为空、首版不提供查询结果原地写回）也记在那里。桌面旧 consumer 仍由 P5/P6 迁移，`ConnectionManager` 仅在所有 consumer 迁完后删除，**不属于 P4 关闭条件**。
+**状态：已完成**（2026-10-16，`main` @ `918d82902`）。关闭结论见本节末尾，F 断言的逐项证据见 §8.1；两条首版发布限制（空闲池在真实驱动上恒为空、首版不提供查询结果原地写回）也记在那里。桌面旧 consumer 后续由 P5/P6 迁移，连接生命周期最终统一到 runtime。
 
 **目的**：先在现有产品中完成连接正确性，不等待 Web。
 
@@ -149,7 +149,7 @@ QueryPanel Explain 已通过同一 pane 的 `EditorSessionController` 提交 `ex
 - CM-67 的收口结论见 §17.1 与连接管理 CM-67：H 层已落地并有实测，空闲池在首版真实驱动上恒为空是**能力事实**（全部 path 驱动 `ResetForReuse::Unsupported`）而不是实现缺失，那两条不作为 D 层断言。
 - F 断言不再只有汇总：§8.1 逐条给出证据，本轮补齐 5 个真实 UI 旅程（编辑器会话隔离、结果视图消失不取消、查询故障恢复、查询结果写回边界、表格并发与池计数）与 1 个真实驱动旅程（池键与轮换），全部实测通过。同时确认 CM-35/36/61 的**正向**写法在首版不可达：`WritableMapping::Verified` 要求 `context_before.confidence == Confirmed`，而确认要求驱动声明 `ContextObservation::Full`——**当前没有任何内置驱动声明**（postgres / mysql / sqlite / redis 均 `Partial`，其余 `Unsupported`）。真实 UI 层因此只能断言可达的那一半（只读、替换后仍可阅读），"可写结果在替换后失效"留在组件层。
 - P4 自己引入的旧取消路径已清理：`panelExecCleanup` 不再向旧 `cancel_query` IPC 发取消，改走该 pane 自己的 `EditorSessionController`；`cancel_query` IPC 本体仍留给旧 `execute_query*` 消费者。
-- CM-33 的 F 半补上了：新增只读观测口 `runtime_observability_snapshot`（runtime 侧 `resource/observability.rs`，经 `SessionBackend::observability_snapshot` 投影自有台账），真实 UI 旅程 `e2e/specs/journeys/table-pool-contention-journey.ts` 用它断言"4 个表 tab 逐个刷新期间物理资源不越预算、不随 tab 数增长，编辑器随后仍可执行且观察上下文不变"。在做它之前，那个数字在外部无法归因——同库上旧 `ConnectionManager` 会话与 runtime 会话在 `pg_stat_activity` 里分不开。
+- CM-33 的 F 半补上了：新增只读观测口 `runtime_observability_snapshot`（runtime 侧 `resource/observability.rs`，经 `SessionBackend::observability_snapshot` 投影自有台账），真实 UI 旅程 `e2e/specs/journeys/table-pool-contention-journey.ts` 用它断言"4 个表 tab 逐个刷新期间物理资源不越预算、不随 tab 数增长，编辑器随后仍可执行且观察上下文不变"。在做它之前，那个数字在外部无法归因——同库上旧 `ConnectionManager` 会话与 runtime 会话在 `pg_stat_activity` 里分不开（旧 `ConnectionManager` 已在 P6 迁移后删除）。
 
 **关闭结论（2026-10-16）**：
 
@@ -159,7 +159,7 @@ QueryPanel Explain 已通过同一 pane 的 `EditorSessionController` 提交 `ex
 
 **关闭时记录的两条首版发布限制**（详见连接管理 CM-67 与 CM-36）：空闲池在真实驱动上恒为空（全部 path 驱动 `ResetForReuse::Unsupported`，不进池、直接关闭）；首版不提供查询结果的原地写回（无驱动声明 `ContextObservation::Full`，`WritableMapping::Verified` 因此不产生）。
 
-**不属 P4（后续阶段或独立清理项）**：旧管理器（`ConnectionManager`）的删除按消费者迁移决定，属 P6/P10；Workflow 非 SQL 步骤、Monitor、AI、MCP、迁移三件套、backup/export、旧 `execute_driver_command` 网关仍在其上；`main` 基线自身的三个失败 E2E 文件与 `export-import` 的测试竞态是独立清理项，不阻塞 P4。已存在的单元测试或新 runtime 接线不代表全部验收通过——§8.1 的"F 已覆盖"只表示证据存在且实跑通过，适用层与限制逐条列在该节。
+**不属 P4（后续阶段或独立清理项）**：旧管理器（`ConnectionManager`）的删除按消费者迁移决定，属 P6/P10；P6 已完成迁移并删除该管理器，Workflow 非 SQL 步骤、Monitor、AI、MCP、迁移三件套、backup/export、旧 `execute_driver_command` 网关随之改走 runtime；`main` 基线自身的三个失败 E2E 文件与 `export-import` 的测试竞态是独立清理项，不阻塞 P4。已存在的单元测试或新 runtime 接线不代表全部验收通过——§8.1 的"F 已覆盖"只表示证据存在且实跑通过，适用层与限制逐条列在该节。
 
 #### 8.1 P4 F 断言逐项证据映射（2026-10 实测）
 

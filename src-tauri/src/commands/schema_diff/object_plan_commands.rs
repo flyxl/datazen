@@ -9,8 +9,7 @@ use super::{
     build_sequence_migration_plan_with_components, build_type_migration_plan_with_components,
     build_view_migration_plan_with_components, ensure_distinct_schema_scope, fetch_schema_object,
     fetch_schema_view, list_schema_objects, list_schema_views, normalize_dialect,
-    schema_catalog_scope, select_schema_object_pair, AppState, CmdExt, CommandError,
-    SchemaDiffPlan, State,
+    schema_catalog_scope, select_schema_object_pair, AppState, CommandError, SchemaDiffPlan, State,
 };
 
 /// Prepare a reviewed migration plan for selected views.

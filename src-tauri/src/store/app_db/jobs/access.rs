@@ -1,7 +1,7 @@
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::job::{
     CommitBoundary, JobDetails, JobDomainResult, JobFilter, JobRecord, JobRecoveryResult,
-    JobRecoveryTarget, JobState, RecoveryFilter,
+    JobRecoveryTarget, RecoveryFilter,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{JobId, Timestamp};
@@ -11,14 +11,6 @@ use super::codec::{decode, read_record};
 use super::SqliteJobRepository;
 
 const MAX_JOB_PAGE: u32 = 500;
-
-fn state_text(state: &JobState) -> Result<String, PortError> {
-    serde_json::to_value(state)
-        .map_err(|_| PortError::BackendUnavailable("job state encoding failed".into()))?
-        .as_str()
-        .map(str::to_owned)
-        .ok_or_else(|| PortError::BackendUnavailable("job state is invalid".into()))
-}
 
 impl SqliteJobRepository {
     pub(super) async fn get(

@@ -26,7 +26,6 @@ pub(crate) use exec::execute_data_transfer_impl;
 pub(crate) use exec::execute_data_transfer_impl_with_write_observer;
 pub(crate) use inspect::{inspect_data_transfer_impl, inspect_sql_file_transfer_impl};
 pub use job_api::*;
-pub(crate) use jobs::cancel_job;
 pub(crate) use preview::preview_data_transfer_impl;
 use tauri::{AppHandle, State};
 
@@ -180,6 +179,24 @@ pub async fn execute_data_transfer(
     request: TransferRunRequest,
     profile: Option<crate::store::MigrationProfileRef>,
 ) -> Result<TransferExecutionResult, CommandError> {
+    // Register before the first await so a cancellation racing the validation
+    // and session checks can still reach this legacy in-process run path.
+    let job_id = request.job_id.clone();
+    if let Some(id) = job_id.as_deref() {
+        jobs::ensure_job(id).await;
+    }
+    let result = execute_data_transfer_inner(state, request, profile).await;
+    if let Some(id) = job_id.as_deref() {
+        jobs::remove_job(id).await;
+    }
+    result
+}
+
+async fn execute_data_transfer_inner(
+    state: State<'_, AppState>,
+    request: TransferRunRequest,
+    profile: Option<crate::store::MigrationProfileRef>,
+) -> Result<TransferExecutionResult, CommandError> {
     crate::commands::history::validate_migration_profile_ref(
         &state,
         "dataTransfer",
@@ -270,22 +287,29 @@ pub(crate) use datazen_feature_core::workflow::migration::{
     transfer_error_history_outcome, transfer_rollback_history_outcome,
 };
 
+/// P5 Jobs are cancelled through the Job repository: `request_cancel` records
+/// the intent, the runtime's per-stage cancel watcher flips the `CancelToken`
+/// the stage already holds (mid-stage), or the next stage boundary check does
+/// (between stages), and the runtime closes the Job as `Cancelled`.
+pub(crate) async fn cancel_data_transfer_impl(
+    state: &AppState,
+    job_id: &str,
+) -> Result<bool, CommandError> {
+    if job_api::cancel_data_transfer_job(state, job_id).await? {
+        // A P5 Job answers with the recorded request itself, so the caller
+        // learns whether the cancel actually reached the Job.
+        return job_api::job_cancel_requested(state, job_id).await;
+    }
+    // Legacy `execute_data_transfer` runs are not durable Jobs, but the IPC
+    // still accepts them. Cancel a registered in-process run while preserving
+    // `false` for ids neither execution path has registered.
+    Ok(jobs::cancel_registered_job(job_id).await)
+}
+
 #[tauri::command]
 pub async fn cancel_data_transfer(
     state: State<'_, AppState>,
     job_id: String,
 ) -> Result<bool, CommandError> {
-    // P5 Jobs are cancelled through the Job repository: `request_cancel`
-    // records the intent, the runtime's per-stage cancel watcher flips the
-    // `CancelToken` the stage already holds (mid-stage), or the next stage
-    // boundary check does (between stages), and the runtime closes the Job as
-    // `Cancelled`. The legacy registry only knows
-    // `services::job_registry` jobs, so it stays the fallback for an id this
-    // client never accepted.
-    if job_api::cancel_data_transfer_job(&state, &job_id).await? {
-        // A P5 Job answers with the recorded request itself, so the caller
-        // learns whether the cancel actually reached the Job.
-        return job_api::job_cancel_requested(&state, &job_id).await;
-    }
-    Ok(cancel_job(&job_id).await)
+    cancel_data_transfer_impl(&state, &job_id).await
 }

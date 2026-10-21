@@ -152,7 +152,7 @@ mod tests {
     use super::*;
     use datazen_driver_api::ColumnInfo;
     use datazen_feature_core::error::FeatureError as CommandError;
-    use std::{collections::HashSet, path::Path, sync::Mutex};
+    use std::sync::Mutex;
 
     #[tokio::test]
     async fn desktop_export_reads_independent_runtime_target() {

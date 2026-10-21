@@ -7,7 +7,7 @@ use super::util::{
 use crate::ai::budget;
 use crate::ai::safety::redact_for_gate;
 use crate::ai::*;
-use crate::commands::error::{CmdExt, CommandError};
+use crate::commands::error::CommandError;
 use crate::commands::AppState;
 use std::sync::Arc;
 use tauri::{State, WebviewWindow};

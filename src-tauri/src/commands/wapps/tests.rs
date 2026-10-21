@@ -1,12 +1,5 @@
 use super::*;
 
-const SOURCE: &str = concat!(
-    include_str!("mod.rs"),
-    "\n",
-    include_str!("registry.rs"),
-    "\n",
-    include_str!("storage.rs")
-);
 const BOOTSTRAP_RS: &str = include_str!("../../bootstrap/run.rs");
 
 #[test]

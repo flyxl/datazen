@@ -167,7 +167,7 @@ impl DesktopSessionBackend {
     ///
     /// 绑定在 [`SessionBackend::open`] 里随资源一起写入（来源是
     /// `OpenResource::db_session_id`），因此「借出成功」蕴含「资源此刻在册」。
-    pub async fn live_resource_for_session(
+    pub(super) async fn live_resource_for_session(
         &self,
         db_session_id: &str,
         runtime_epoch: u64,

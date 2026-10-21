@@ -284,10 +284,14 @@ fn publish_staged_file(temporary: &Path, destination: &Path) -> std::io::Result<
 }
 
 impl AtomicSqlFile {
+    /// Test-only convenience constructors; production callers always go through
+    /// [`Self::create_with_format`] with an explicit compression choice.
+    #[cfg(test)]
     fn create(destination: PathBuf) -> Result<Self, TransferError> {
         Self::create_with_format(destination, SqlFileEncoding::Utf8, SqlFileCompression::None)
     }
 
+    #[cfg(test)]
     fn create_with_encoding(
         destination: PathBuf,
         encoding: SqlFileEncoding,
@@ -686,6 +690,9 @@ pub fn validate_target_ir(
     Ok(())
 }
 
+/// Test-only single-row convenience over [`insert_sql_batch`]; production callers
+/// go through the batch form directly.
+#[cfg(test)]
 fn insert_sql(
     driver: &dyn DatabaseDriver,
     job: &TransferJob,
@@ -766,6 +773,9 @@ fn render_sql_file_insert(
         .map_err(|error| TransferError::unsupported(error.to_string()))
 }
 
+/// Test-only single-row convenience over [`insert_sql_with_target_batch`];
+/// production callers go through the batch form directly.
+#[cfg(test)]
 fn insert_sql_with_target(
     target_driver: &dyn DatabaseDriver,
     target_adapter: &dyn SyncTargetAdapter,

@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { vi, type Mocked } from 'vitest';
 import type { SchemaStore } from '../../stores/schemaStore';
 import {
   createEmptyConnectionSchema,
@@ -23,58 +22,8 @@ import { projectRelationColumns } from '../../stores/schemaColumnLoader';
  * hooks reproduce the real ones' contract: a map hit returns that session's
  * field, a miss returns the empty snapshot, never another session's data.
  */
-export type SchemaStoreMock = Omit<Mocked<SchemaStore>, 'schemas' | 'activeDbSessionId'> & {
-  schemas: Map<string, ConnectionSchemaState>;
-  activeDbSessionId: string | null;
-};
-
 /** The only slice the mocked hooks read; suites add the action spies they assert on. */
 export type SchemaStoreCache = Pick<SchemaStore, 'schemas' | 'activeDbSessionId'>;
-
-/** Fresh state, shaped like a freshly created real store. */
-export function createSchemaStoreMock(): SchemaStoreMock {
-  const state: SchemaStoreMock = {
-    schemas: new Map(),
-    activeDbSessionId: null,
-    loadForConnection: vi.fn(async () => {}),
-    loadTables: vi.fn(async () => {}),
-    switchDatabase: vi.fn(async () => {}),
-    setCurrentSchema: vi.fn(),
-    setCurrentDatabase: vi.fn(),
-    setLoadedTables: vi.fn(),
-    removeRelation: vi.fn(),
-    mergeNamespace: vi.fn(),
-    cachePathItems: vi.fn(),
-    registerPathAliases: vi.fn(),
-    ensureNamespacePath: vi.fn(async () => {}),
-    ensureColumns: vi.fn(async () => {}),
-    ensureDatabaseColumns: vi.fn(async () => {}),
-    bindMetadataIdentity: vi.fn(),
-    toggleExpand: vi.fn(),
-    setSelected: vi.fn(),
-    reset: vi.fn(),
-    setActiveConnection: vi.fn(),
-    removeConnection: vi.fn(),
-    getConnectionSchema: vi.fn((dbSessionId: string) => state.schemas.get(dbSessionId)),
-    /** Same unique-owner rule as the real selector: ambiguous name → `null`. */
-    schemaOfRelation: vi.fn((name: string, dbSessionId: string) => {
-      const entry = state.schemas.get(dbSessionId);
-      if (!entry) return null;
-      const target = name.trim();
-      if (!target) return null;
-      const candidates = [
-        ...entry.tables,
-        ...entry.views,
-        ...Object.values(entry.pathItems).flat(),
-      ];
-      const owners = new Set(
-        candidates.filter((item) => item.name === target).map((item) => item.schema ?? null),
-      );
-      return owners.size === 1 ? ([...owners][0] ?? null) : null;
-    }),
-  };
-  return state;
-}
 
 /** Seed one session's cache the way `patchConnectionSchema` would. */
 export function seedConnectionSchema(

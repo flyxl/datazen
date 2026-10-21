@@ -59,7 +59,9 @@ pub(crate) async fn execute_driver_command_stream_impl(
     check_command_access(&definition, CommandAccessLevel::Read)
         .map_err(CommandError::Validation)?;
 
-    let sql = sql_from_input(&request.input).ok_or_else(|| {
+    // Presence-only validation: the actual string is re-read below after
+    // `bind_sql_params` has mutated `request.input` in place.
+    sql_from_input(&request.input).ok_or_else(|| {
         CommandError::Validation("command 'query_stream' requires string input 'sql'".into())
     })?;
 

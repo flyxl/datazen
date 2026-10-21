@@ -15,13 +15,6 @@ use sha2::{Digest, Sha256};
 
 use super::MAX_DURABLE_JOB_PLAN_BYTES;
 
-pub(super) fn map_db_error(error: crate::store::AppDbError) -> PortError {
-    match error {
-        crate::store::AppDbError::NotFound(id) => PortError::NotFound(id),
-        _ => PortError::BackendUnavailable("local job database operation failed".into()),
-    }
-}
-
 pub(super) fn encode<T: Serialize>(value: &T) -> Result<String, PortError> {
     serde_json::to_string(value)
         .map_err(|_| PortError::BackendUnavailable("job data could not be encoded".into()))

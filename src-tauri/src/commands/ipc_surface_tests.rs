@@ -4,9 +4,6 @@
 //! app-archive modules and the registered handler list, so they live here
 //! rather than inside any single one of them.
 
-use crate::commands::*;
-use std::path::Path;
-
 /// Every file that hosts part of the merged config IPC surface.
 const SOURCE: &str = concat!(
     include_str!("config.rs"),
@@ -68,13 +65,6 @@ fn merged_commands_route_through_shared_resolve_override_path() {
 
 mod ipc_contract_guards {
     use super::*;
-
-    // Runtime-assembled needles (avoid self-reference in include_str! source).
-    #[allow(non_upper_case_globals)]
-    const resolve: &str = "resolve";
-
-    #[allow(non_upper_case_globals)]
-    const override_path: &str = "override_path";
 
     #[test]
     fn merged_commands_take_override_path_not_raw_path_param() {
