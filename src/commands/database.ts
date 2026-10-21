@@ -5,6 +5,13 @@ import {
   metadataTarget,
 } from '../lib/session/targetCommand';
 import { invoke } from '@tauri-apps/api/core';
+import { useBackendClient } from '@datazen/backend-client';
+import type {
+  ForeignKeyTargetResolution,
+  NamedView,
+  NamedViewScope,
+  ResolveForeignKeyTargetsRequest,
+} from '@datazen/backend-client';
 import type {
   FilterCondition,
   SortCondition,
@@ -145,7 +152,14 @@ export const databaseCommands = {
     return schemas;
   },
 
-  getTableData: (params: {
+  /**
+   * Read one page of a table.
+   *
+   * The read goes through the bound `BackendClient`, so the desktop and a
+   * browser build take the same command path; the request shape the backend
+   * sees is unchanged.
+   */
+  getTableData: async (params: {
     dbSessionId: string;
     context: TableChangeContext;
     manualHandle?: import('@datazen/backend-client').SessionHandle | null;
@@ -160,37 +174,95 @@ export const databaseCommands = {
     database?: string | null;
     /** Explicit target schema for schema-aware engines. */
     schema?: string | null;
-  }) =>
-    invoke<TableDataResult>('get_table_data_at_target', {
-      request: {
-        context: params.context,
-        manualHandle: params.manualHandle ?? null,
-        page: params.page,
-        pageSize: params.pageSize,
-        filters: params.filters,
-        sorts: params.sorts,
-        skipCount: params.skipCount,
-        filterLogic: params.filterLogic,
-      },
-    }),
+  }): Promise<TableDataResult> => {
+    const client = useBackendClient();
+    return client.getTableData({
+      context: params.context,
+      manualHandle: params.manualHandle ?? null,
+      page: params.page,
+      pageSize: params.pageSize,
+      filters: params.filters,
+      sorts: params.sorts,
+      skipCount: params.skipCount,
+      filterLogic: params.filterLogic,
+    });
+  },
 
   executeSQL: (dbSessionId: string, sql: string) => queryCommands.executeQuery(dbSessionId, sql),
 
   /** Generate a serialisable plan only; the backend does not execute SQL. */
-  previewPendingChanges: (params: PreviewPendingChangesRequest) =>
-    invoke<RowChangePlan>('preview_pending_changes', {
+  previewPendingChanges: async (params: PreviewPendingChangesRequest): Promise<RowChangePlan> => {
+    const client = useBackendClient();
+    return client.previewPendingChanges({
       context: params.context,
       changes: params.changes,
-    }),
+    });
+  },
 
   /** Commit the exact plan returned by preview, guarded by its fingerprint. */
-  commitPendingChanges: (params: CommitPendingChangesRequest) =>
-    invoke<CommitPendingChangesResponse>('commit_pending_changes', {
+  commitPendingChanges: async (
+    params: CommitPendingChangesRequest,
+  ): Promise<CommitPendingChangesResponse> => {
+    const client = useBackendClient();
+    return client.commitPendingChanges({
       dbSessionId: params.dbSessionId,
       plan: params.plan,
       manualHandle: params.manualHandle ?? null,
       fingerprint: params.fingerprint,
-    }),
+    });
+  },
+
+  /**
+   * The estimated row count of a table, or `null` when the driver cannot
+   * estimate it. `null` is an answer, not a failure: falling back to an exact
+   * count is the caller's decision.
+   */
+  estimateTableRows: async (
+    dbSessionId: string,
+    table: string,
+    database?: string | null,
+    schema?: string | null,
+  ): Promise<number | null> => {
+    const client = useBackendClient();
+    return client.estimateTableRows({ dbSessionId, table, database, schema });
+  },
+
+  /**
+   * Resolve the foreign key a local column points at, and whether the
+   * referenced row still exists.
+   */
+  resolveForeignKeyTargets: async (
+    params: ResolveForeignKeyTargetsRequest,
+  ): Promise<ForeignKeyTargetResolution> => {
+    const client = useBackendClient();
+    return client.resolveForeignKeyTargets(params);
+  },
+
+  /**
+   * The saved views of one scope (or of every scope when `scope` is omitted).
+   *
+   * Named views are **desktop-only** for now: their storage is the desktop
+   * host's persistent store, which a browser build has no counterpart for. A
+   * backend that cannot serve them fails this call with
+   * `CapabilityUnsupported` instead of answering with an empty list that reads
+   * like "you have no saved views".
+   */
+  listNamedViews: async (scope?: NamedViewScope): Promise<readonly NamedView[]> => {
+    const client = useBackendClient();
+    return client.listNamedViews({ scope });
+  },
+
+  /** Save a named view; the backend mints the id and stamps the timestamps. */
+  saveNamedView: async (view: NamedView): Promise<NamedView> => {
+    const client = useBackendClient();
+    return client.saveNamedView({ view });
+  },
+
+  /** Delete a named view; the remaining views come back with the receipt. */
+  deleteNamedView: async (id: string): Promise<readonly NamedView[]> => {
+    const client = useBackendClient();
+    return client.deleteNamedView({ id });
+  },
 
   getDatabaseObjects: async (
     dbSessionId: string,

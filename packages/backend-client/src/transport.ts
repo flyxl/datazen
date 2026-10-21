@@ -26,17 +26,27 @@ import type {
   CloseSessionRequest,
   ConnectionEvent,
   ContextChangeReceipt,
+  DeleteNamedViewRequest,
+  EstimateTableRowsRequest,
   EventEnvelope,
   ExecuteAtTargetRequest,
   ExecuteInSessionRequest,
   ExecutionReceipt,
   ExecutionView,
+  ForeignKeyTargetResolution,
   JobView,
+  ListNamedViewsRequest,
+  NamedView,
   OpenSessionReceipt,
   OpenSessionRequest,
+  PreviewPendingChangesRequest,
   ProfileDraft,
   ProfilePatch,
   ProfileView,
+  ResolveForeignKeyTargetsRequest,
+  ResultCellWrite,
+  RowChangePlan,
+  SaveNamedViewRequest,
   SessionHandle,
   SessionView,
   SetSessionContextRequest,
@@ -44,6 +54,10 @@ import type {
   SubmitRequest,
   SubscribeEventsRequest,
   SubmissionToken,
+  TableDataRequest,
+  TableDataResult,
+  CommitPendingChangesRequest,
+  CommitPendingChangesResponse,
 } from './types';
 
 /** Legacy gateway envelope. Kept because the `{ data }` unwrap is a public contract. */
@@ -115,6 +129,68 @@ export interface MethodMap {
     response: SubmissionToken;
   };
 
+  // ---- Table data surface (data browsing) --------------------------------
+  /**
+   * A target-bound table read.
+   *
+   * The read never borrows an editor's session: it runs against the explicit
+   * target named by the context, or against the session a `manualHandle`
+   * pins.
+   */
+  getTableData: { request: TableDataRequest; response: TableDataResult };
+  /**
+   * The change preview. It produces a serialisable plan and executes nothing:
+   * the backend renders SQL, the frontend never does.
+   */
+  previewPendingChanges: {
+    request: PreviewPendingChangesRequest;
+    response: RowChangePlan;
+  };
+  /**
+   * The change commit. It applies the exact plan the preview returned and is
+   * guarded by that plan's fingerprint, so a stale preview cannot be applied.
+   */
+  commitPendingChanges: {
+    request: CommitPendingChangesRequest;
+    response: CommitPendingChangesResponse;
+  };
+  /**
+   * The estimated row count. `null` means "this driver cannot estimate", which
+   * is an answer and not an error; the caller decides whether to fall back to
+   * an exact count.
+   */
+  estimateTableRows: {
+    request: EstimateTableRowsRequest;
+    response: number | null;
+  };
+  /**
+   * The foreign-key resolution: which table a local column points at, and
+   * whether the referenced row still exists.
+   */
+  resolveForeignKeyTargets: {
+    request: ResolveForeignKeyTargetsRequest;
+    response: ForeignKeyTargetResolution;
+  };
+  /**
+   * The named views of one scope (or of every scope when `scope` is omitted).
+   *
+   * The three named-view commands are **desktop-only** for now: their storage
+   * is the desktop host's persistent store, which a browser build has no
+   * counterpart for. They are declared here so the port stays complete, and a
+   * backend that cannot serve them declares that in
+   * {@link BackendTransport.unsupportedMethods} — the caller then gets an
+   * explicit "unsupported" failure instead of an empty list that looks like
+   * "you have no saved views".
+   */
+  listNamedViews: { request: ListNamedViewsRequest; response: readonly NamedView[] };
+  saveNamedView: { request: SaveNamedViewRequest; response: NamedView };
+  deleteNamedView: { request: DeleteNamedViewRequest; response: readonly NamedView[] };
+  /**
+   * The write of one edited cell of a query result, bound to the runtime
+   * resource that produced the result.
+   */
+  commitQueryResultCell: { request: ResultCellWrite; response: undefined };
+
   // ---- Legacy driver-command gateway (transitional) ------------------------
   get_driver_commands: { request: { driverType: string }; response: unknown[] };
   get_connection_commands: { request: { dbSessionId: string }; response: unknown[] };
@@ -169,6 +245,22 @@ export interface BackendTransport {
     payload: SubscribeEventsRequest,
   ): AsyncIterable<EventEnvelope<ConnectionEvent>>;
   cancel?(opaque: string, reason: string): Promise<void>;
+  /**
+   * The methods this backend cannot serve.
+   *
+   * A capability that belongs to the *host* and not to the backend — the
+   * desktop's persistent store, for instance — does not exist in every form
+   * factor. Declaring the gap here is what keeps the port honest: the facade
+   * turns a call to one of these methods into an `ApiError` with the §13 code
+   * `CapabilityUnsupported` **before** the call leaves the process, instead of
+   * letting it travel and come back as an opaque transport failure or — worse
+   * — as a plausible-looking empty result.
+   *
+   * Absent means "every method in `MethodMap` is served". It is a capability
+   * statement, not a platform identity: a backend that *can* serve named views
+   * says so by leaving the field out, whatever form factor it runs in.
+   */
+  unsupportedMethods?: readonly (keyof MethodMap)[];
 }
 
 /**

@@ -49,6 +49,8 @@ export {
   useBackendClient,
 } from './client';
 
+export type { BackendGuard, TableDataClient } from './tableDataClient';
+
 export * from './types';
 
 export * from './settings';

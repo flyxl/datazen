@@ -58,12 +58,36 @@ function toCommandName(method: keyof MethodMap): string {
     updateConnection: 'platform_update_profile',
     disableConnection: 'platform_disable_profile',
     readArtifact: 'read_artifact_chunk',
+    // The table read is the *target-bound* command: it carries its own
+    // context and manual handle instead of borrowing a session. The
+    // session-scoped `get_table_data` still exists on the Rust side, but the
+    // grid reads through the target-bound one, and the port has to name the
+    // command the grid actually uses.
+    getTableData: 'get_table_data_at_target',
   };
   if (commandOverrides[method]) return commandOverrides[method];
   return method.includes('_')
     ? method
     : method.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
+
+/**
+ * Methods whose payload *is* the command's argument bag.
+ *
+ * The kernel-surface commands take a single `request` argument, so their
+ * payload is nested under `request`. The commands below take **named**
+ * arguments instead (`context`, `changes`, `plan`, `scope`, ...), so their
+ * payload is the bag itself and nesting it would make the Rust side look for
+ * a `request` field that does not exist.
+ */
+const FLAT_ARGUMENT_METHODS: ReadonlySet<keyof MethodMap> = new Set<keyof MethodMap>([
+  'previewPendingChanges',
+  'commitPendingChanges',
+  'estimateTableRows',
+  'listNamedViews',
+  'saveNamedView',
+  'deleteNamedView',
+]);
 
 /**
  * Build the desktop transport.
@@ -86,7 +110,10 @@ export function createDesktopBackendTransport(): BackendTransport {
       const args =
         method === 'getPlatformIdentity'
           ? {}
-          : method.includes('_') || method === 'getJob' || method === 'listJobs'
+          : method.includes('_') ||
+              method === 'getJob' ||
+              method === 'listJobs' ||
+              FLAT_ARGUMENT_METHODS.has(method)
             ? payload
             : { request: payload ?? {} };
       // The request's own fields are the command's named arguments, so this
