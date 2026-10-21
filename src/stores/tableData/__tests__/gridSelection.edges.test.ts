@@ -117,7 +117,7 @@ describe('coverage counts with a single cell/column', () => {
     const selection = cellSelection(coord(0, 'id'), coord(0, 'id'));
     expect(gridSelectionCellCount(selection, COLUMNS)).toBe(1);
     expect(columnsCoveredBySelection(selection, COLUMNS)).toBe(1);
-    const rows = rowsCoveredBySelection(selection);
+    const rows = rowsCoveredBySelection({ ...selection, selectedRows: new Set<number>() });
     expect(rows.size).toBe(1);
     expect(rows.has(0)).toBe(true);
   });
@@ -129,7 +129,9 @@ describe('coverage counts with a single cell/column', () => {
     // Cell metric is a render/summary count: overlapping regions count twice.
     expect(gridSelectionCellCount(selection, COLUMNS)).toBe(5);
     expect(columnsCoveredBySelection(selection, COLUMNS)).toBe(2);
-    expect([...rowsCoveredBySelection(selection)].sort()).toEqual([0, 1]);
+    expect(
+      [...rowsCoveredBySelection({ ...selection, selectedRows: new Set<number>() })].sort(),
+    ).toEqual([0, 1]);
   });
 
   it('rowsCoveredBySelection ignores an extra range with a negative row', () => {
@@ -137,7 +139,9 @@ describe('coverage counts with a single cell/column', () => {
       { start: coord(-1, 'name'), end: coord(-1, 'name') },
       { start: coord(2, 'note'), end: coord(2, 'note') },
     ]);
-    expect([...rowsCoveredBySelection(selection)]).toEqual([0, 2]);
+    expect(
+      [...rowsCoveredBySelection({ ...selection, selectedRows: new Set<number>() })],
+    ).toEqual([0, 2]);
   });
 });
 

@@ -130,13 +130,19 @@ describe('tableDataStore selection reset — supplemental edges', () => {
         PANEL,
         selectionFromAnchorFocus({ rowIndex: 0, columnName: 'id' }, { rowIndex: 1, columnName: 'id' }, 'cell'),
       );
-    expect(rowsCoveredBySelection(loaded().gridSelection).size).toBe(2);
+    expect(
+      rowsCoveredBySelection({ ...loaded().gridSelection, selectedRows: loaded().selectedRows })
+        .size,
+    ).toBe(2);
 
     mockDatabaseCommands.getTableData.mockReturnValueOnce(never());
     useTableDataStore.getState().setPage(PANEL, 1);
 
     expect(loaded().page).toBe(1);
-    expect(rowsCoveredBySelection(loaded().gridSelection).size).toBe(0);
+    expect(
+      rowsCoveredBySelection({ ...loaded().gridSelection, selectedRows: loaded().selectedRows })
+        .size,
+    ).toBe(0);
     expect(rowsCoveredBySelection({ ...loaded().gridSelection, selectedRows: loaded().selectedRows }).size).toBe(0);
   });
 

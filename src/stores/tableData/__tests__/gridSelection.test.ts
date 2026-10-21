@@ -21,6 +21,7 @@ import {
   type CellCoord,
   type CellRange,
   type GridSelection,
+  type GridSelectionState,
 } from '../gridSelection';
 
 /** Render order deliberately disagrees with lexicographic order (`id` < `name`). */
@@ -212,24 +213,29 @@ describe('rowsCoveredBySelection', () => {
       { start: coord(2, 'note'), end: coord(2, 'note') },
       { start: coord(5, 'note'), end: coord(5, 'note') },
     ]);
-    const rows = rowsCoveredBySelection(selection);
+    const rows = rowsCoveredBySelection({ ...selection, selectedRows: new Set<number>() });
     expect([...rows].sort((left, right) => left - right)).toEqual([0, 1, 2, 5]);
     expect(rows.has(3)).toBe(false);
   });
 
   it('returns the passed selectedRows verbatim in row mode', () => {
     const selectedRows = new Set([2, 7]);
-    const selection: GridSelection & { selectedRows: ReadonlySet<number> } = {
+    const selection: GridSelectionState = {
       ...selectionFromAnchorFocus(coord(0, 'name'), coord(0, 'name'), 'row'),
       selectedRows,
     };
     expect(rowsCoveredBySelection(selection)).toBe(selectedRows);
   });
 
-  it('is empty for none mode and for row mode without a row set', () => {
-    expect(rowsCoveredBySelection(EMPTY_GRID_SELECTION).size).toBe(0);
+  it('is empty for none mode and for row mode with an empty row set', () => {
     expect(
-      rowsCoveredBySelection(selectionFromAnchorFocus(coord(0, 'id'), coord(0, 'id'), 'row')).size,
+      rowsCoveredBySelection({ ...EMPTY_GRID_SELECTION, selectedRows: new Set<number>() }).size,
+    ).toBe(0);
+    expect(
+      rowsCoveredBySelection({
+        ...selectionFromAnchorFocus(coord(0, 'id'), coord(0, 'id'), 'row'),
+        selectedRows: new Set<number>(),
+      }).size,
     ).toBe(0);
   });
 });

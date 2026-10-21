@@ -43,18 +43,21 @@ export const EMPTY_GRID_SELECTION: GridSelection = Object.freeze({
   mode: 'none',
 });
 
-/** Row set used by `rowsCoveredBySelection` when a mode has no rows to report. */
+/** Row set used when a mode has no rows to report. */
 const EMPTY_ROW_SET: ReadonlySet<number> = new Set<number>();
 
 /**
  * The selection plus the row set that `mode: 'row'` keeps in `TableState.selectedRows`.
  *
  * `GridSelection` intentionally owns no row set (00-contracts §4.1), yet §4.2.1 requires
- * `mode: 'row'` to report `selectedRows` verbatim. Callers therefore pass the panel's
- * `selectedRows` alongside the selection; the parameter stays a single object.
+ * `mode: 'row'` to report `selectedRows` verbatim. `selectedRows` is therefore **required**
+ * (00-contracts §4.2.1, 落地校正): an optional field would let a caller pass a bare
+ * `GridSelection` and silently get an empty row set in row mode — the exact contract breach
+ * the freeze is meant to make impossible. Callers hand over the panel's own set; the
+ * parameter stays a single object, so the frozen signature is unchanged.
  */
-export type GridSelectionWithRows = GridSelection & {
-  readonly selectedRows?: ReadonlySet<number>;
+export type GridSelectionState = GridSelection & {
+  readonly selectedRows: ReadonlySet<number>;
 };
 
 function coordEquals(a: CellCoord, b: CellCoord): boolean {
@@ -221,8 +224,10 @@ export function columnsCoveredBySelection(
  * Row indices are UI indices: any write path still has to resolve a row identity through
  * `rowIdentityAnchors` before touching the database.
  */
-export function rowsCoveredBySelection(state: GridSelectionWithRows): ReadonlySet<number> {
-  if (state.mode === 'row') return state.selectedRows ?? EMPTY_ROW_SET;
+export function rowsCoveredBySelection(state: GridSelectionState): ReadonlySet<number> {
+  // No `?? EMPTY_ROW_SET` here: the type guarantees the field, and a fallback would swallow
+  // exactly the contract violation this signature exists to prevent.
+  if (state.mode === 'row') return state.selectedRows;
   if (state.mode !== 'cell') return EMPTY_ROW_SET;
   if (state.anchor === null || state.focus === null) return EMPTY_ROW_SET;
   // Row coverage never depends on column order, so the rectangle is rebuilt directly from
