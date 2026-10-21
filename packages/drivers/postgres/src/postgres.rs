@@ -104,6 +104,28 @@ impl DatabaseDriver for PostgresDriver {
         DdlAtomicity::Transactional
     }
 
+    /// PostgreSQL keeps a row estimate for every relation, so the grid can
+    /// show a row count before the exact count has been paid for.
+    fn count_strategy(&self) -> CountStrategy {
+        CountStrategy::Estimated
+    }
+
+    /// The statement that estimates the row count of a table.
+    ///
+    /// The table name and the schema are the **unquoted** names the caller
+    /// asked about; the driver writes them itself, escaped, and it locates
+    /// the relation by name rather than by a session-dependent function.
+    fn count_estimate_sql(
+        &self,
+        _database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Option<String> {
+        crate::sql::count_estimate_sql(table, schema, &|value: &str| {
+            self.format_sql_literal(&Some(Value::String(value.to_string())))
+        })
+    }
+
     fn sync_family(&self) -> String {
         "postgresql".into()
     }
@@ -650,5 +672,29 @@ impl DatabaseDriver for PostgresDriver {
         input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
         Self::execute_command_impl(self, handle, command, input).await
+    }
+}
+
+#[cfg(test)]
+mod count_estimate_tests {
+    use super::*;
+
+    fn driver() -> PostgresDriver {
+        PostgresDriver::new()
+    }
+
+    #[test]
+    fn postgres_declares_estimated_strategy() {
+        assert_eq!(driver().count_strategy(), CountStrategy::Estimated);
+    }
+
+    #[test]
+    fn postgres_estimate_names_the_requested_relation() {
+        let sql = driver()
+            .count_estimate_sql("app", Some("public"), "orders")
+            .expect("the driver has an estimate");
+        assert!(sql.contains("pg_catalog.pg_class"), "{sql}");
+        assert!(sql.contains("c.relname = 'orders'"), "{sql}");
+        assert!(sql.contains("n.nspname = 'public'"), "{sql}");
     }
 }
