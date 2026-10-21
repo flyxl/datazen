@@ -226,7 +226,7 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 |---|---|---|
 | C | **已验收 TEST_PASSED → 已合入集成 `e267fad3f`** | Tester `a1f0c68d`（3 次尝试后完成） |
 | B | **已验收 TEST_PASSED → 已合入 `056b35834`** | Tester `cda75c30` |
-| A | 收尾完成 `276669e26`（2 条 lint 清理，warning 计数回到基线）→ **全新 Tester 终复测中**（验证树 `verify-job-org-scope-v3`） | 本轨累计 9 笔 commit |
+| A | 第 3 轮修复中（D-06 守卫漏报 / D-07 行号 / D-08 假红 / D-09 文档） | 终复测 `4f2d61f0`：D-01 改写**属实**（6/6），但第 2 轮的守卫精度修复**引入了漏报** |
 
 ### 环境
 - `export CARGO_TARGET_DIR=/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/.shared-target`（三轨共用；会打印 `Blocking waiting for file lock` —— **正常，等它**，禁止各轨改 target 目录）
@@ -484,6 +484,25 @@ Tester 补的 8 条用例才把它们钉死。**这条已作为后续所有轨�
   | **有意的载荷变更** | 2 | `connect` / `connect_dedicated`：`String`（dbSessionId）→ `ConnectionSessionRef { connectionId, dbSessionId }` —— **评审项 ③**，前端 `src/commands/connection.ts` 已同步 |
 
 **没有任何命令的参数列表或载荷被顺带改动。** 四轨全部落地后必须**重跑**这次核对；若出现上表三类之外的差异，即为夹带。
+
+### A 轨终复测（Tester `4f2d61f0`）—— TEST_FAILED：第 2 轮的修复**引入了漏报**
+
+P0/P2/P3/P4/P5 全部通过 —— **D-01 改写后的注释被逐条核实属实（6/6）**，没有"换一种说法继续说谎"；lint 修复无语义变化；组织隔离完整（内存/SQLite 两侧错误形状一致、8 个写方法全经 claim fencing、`list` 双条件仍在）；IPC 表面 `run.rs` **sha256 逐字节相同**。
+
+**唯一阻塞 D-06：守卫的词法器对 `r"..."` 裸串 desync → 漏报，且仓库里有活实例。**
+- 成因：`job_filter_scope_tests.rs:142` 的分支守卫是 `raw_string_hashes(...) > 0`，而该函数对 `r"..."`（**0 个 `#`**）返回 **0** ⇒ 0 个 `#` 的裸串**永远不进裸串分支** → 裸串的闭合引号被当转义吃掉 → 词法器一路扫到文件里下一个 `"` 才停 → **中间整段被掩成字符串内容** → 该段之后的所有 `JobFilter` 字面量**完全不可见**。
+- **这正是第 2 轮"守卫精度修复"引入的**：旧 `strip_comments` 不掩字符串内容，desync 区段里的字面量**仍然可见**（只是行号不准）；新词法器把区段掩掉 → **从"能抓住"变成"抓不住"**。
+- **活实例**：`src-tauri/src/commands/config.rs:105` 的 `.strip_prefix(r"\?")`。Tester 的 M13 把坏字面量插进该真实文件的 desync 区段 → 守卫 **7 passed / 0 failed（漏报）**；同一探针放到文件末尾则被抓到 ⇒ 位置确认。
+- **文档说谎**：守卫文档 `:83` 明写「原始字符串 `r"..."` / `r#"..."#` 里的引号不转义」—— `r"..."` 实际未被支持。
+- **修法：仓库里已有一份正确实现** —— `packages/runtime/src/tunnel/source_scan.rs:89-110`（0 个 `#` 也认 + 掩码时保留换行）。搬过来即可，顺带修掉 D-07（掩码不保行数 → 行号偏移；块注释不吐占位 → 字节错位，实测报出 `ob::JobFilter {`）与 D-08（`-> a::b::JobFilter {` 带路径限定 → 假红，仓库里 `app_db_job_org_tests.rs:20` 已有一个这样的辅助函数，今天侥幸不假红）。
+
+**A 轨的教训链条（本 initiative 最完整的一条，已写进台账）**：
+1. 第 1 轮：**默认门禁不编译 feature 分支** → 阻塞缺陷一路滑过。
+2. 第 2 轮：**注释描述了代码不保证的不变量** → 改写为事实。
+3. 第 2 轮：**修守卫精度时把"能抓住"改成了"抓不住"** —— 改一个守卫就是在改它的**检测能力本身**，每次都必须用变异证明没有退化。
+4. 第 3 轮：**仓库里已有一份正确实现**（`runtime/src/tunnel/source_scan.rs`）—— 遇到重复的词法/扫描逻辑，先找仓库里是否已有正确版本，别重写。
+
+**A 轨 Tester 另加 3 条 SQLite 侧用例**（跨组织认领 → `NotFound`、跨组织写 → `StaleClaim`、SQLite 侧的 D-01 事实对照），已随其提交 `dcbeb5f90` 交给 A cherry-pick。
 
 ## 6. 门禁与流程
 
