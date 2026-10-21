@@ -149,12 +149,18 @@ export interface RowChangePlan {
    *
    * The wire carries a `Counter`, and a `Counter` travels as a **decimal
    * string** (`platform-api` serializes `u64` with `collect_str`, because a
-   * JSON number cannot hold a count above 2^53). The branded `number` is the
-   * *application* form; the narrowing happens at the decode boundary, in the
-   * adapter, with `toCounter` — exactly as `ProfileView.configRevision` does.
-   * This package's facade does not decode the plan itself, so it does not
-   * narrow the field here either: the type states what the application layer
-   * receives, not what the wire holds.
+   * JSON number cannot hold a count above 2^53).
+   *
+   * **This package does not narrow it.** The field is declared as the
+   * application-facing branded `number`, but the value that reaches the
+   * application is whatever the adapter handed over: the desktop adapter
+   * forwards the payload unchanged, so a string is still a string when it
+   * arrives. Narrowing with `toCounter` is the adapter's job, and no adapter
+   * in the tree does it today — that is a known gap in the whole package
+   * (`ProfileView.configRevision` has the same shape and the same gap), not
+   * something this type can close. `toCounter` does exist here, but the only
+   * place the package uses it is the job progress counters, which the facade
+   * genuinely decodes.
    */
   configRevision?: Counter | null;
   table: TableChangeContext;
