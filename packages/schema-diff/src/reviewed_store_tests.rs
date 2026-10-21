@@ -597,12 +597,20 @@ async fn reviewed_plan_clock_rollback_reinstates_an_expired_plan() {
 
 /// 把 `get` 与 `remove` 之间的窗口撑开的存储替身。
 ///
-/// `get` 读到条目后**先等一道屏障**：两个消费请求都读到计划之后才允许继续，
+/// `get` 读到条目后**先做一次会合**：自旋让出，直到两个消费请求都读到计划，
 /// 于是两者都会通过规则校验；此时只有一个 `remove` 能成功。
+///
+/// 会合是**有界**的（最多让出固定次数）：若实现只让一个请求走到 `get`
+/// （例如把 `remove` 挪到 `get` 之前），另一个请求就永远不会到达，
+/// 此时必须**超时退出**而不是把测试挂死——挂死会让「变异应当变红」退化成
+/// 「变异让 CI 永远跑不完」。
 struct BarrierPlanStore {
     plans: Mutex<HashMap<(String, String), ReviewedPlan>>,
-    barrier: tokio::sync::Barrier,
+    reads: std::sync::atomic::AtomicUsize,
 }
+
+/// 会合的自旋上限。超过即放弃等待（测试随后按断言失败，而不是挂死）。
+const RENDEZVOUS_MAX_YIELDS: usize = 512;
 
 impl BarrierPlanStore {
     fn bucket(scope: &OrganizationScope, plan_id: &str) -> (String, String) {
@@ -610,6 +618,16 @@ impl BarrierPlanStore {
             scope.organization_id().as_str().to_owned(),
             plan_id.to_owned(),
         )
+    }
+
+    /// 等另一个消费请求读到计划；到不了就放弃（不挂死）。
+    async fn rendezvous(&self) {
+        for _ in 0..RENDEZVOUS_MAX_YIELDS {
+            if self.reads.load(std::sync::atomic::Ordering::SeqCst) >= 2 {
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
     }
 }
 
@@ -640,7 +658,8 @@ impl ReviewedPlanStore for BarrierPlanStore {
             .get(&Self::bucket(scope, plan_id))
             .cloned();
         // 撑开 get 与 remove 之间的竞态窗口：两个消费请求都读到之后才继续。
-        self.barrier.wait().await;
+        self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.rendezvous().await;
         Ok(found)
     }
 
@@ -665,7 +684,7 @@ impl ReviewedPlanStore for BarrierPlanStore {
 async fn reviewed_plan_concurrent_consume_admits_exactly_one_consumer() {
     let store = BarrierPlanStore {
         plans: Mutex::new(HashMap::new()),
-        barrier: tokio::sync::Barrier::new(2),
+        reads: std::sync::atomic::AtomicUsize::new(0),
     };
     let scope = scope("org-a");
     let cfg = config();
