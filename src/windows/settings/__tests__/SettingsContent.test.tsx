@@ -66,6 +66,9 @@ const {
       runRetentionCount: 100,
       runRetentionDays: 7,
     },
+    rowCountMode: 'auto',
+    rowCountEstimateThreshold: 200000,
+    defaultTableSort: 'primaryKeyAsc',
   };
 
   const aiState = {

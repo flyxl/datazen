@@ -54,6 +54,9 @@ describe('settingsExport', () => {
         template: 'SELECT COUNT(*) FROM #{1:table};',
       },
     ],
+    rowCountMode: 'auto',
+    rowCountEstimateThreshold: 200000,
+    defaultTableSort: 'primaryKeyAsc',
   };
 
   it('exports only whitelisted safe editor and snippet properties', () => {

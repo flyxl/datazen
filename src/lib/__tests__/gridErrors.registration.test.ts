@@ -142,6 +142,11 @@ const PRODUCER_PENDING: readonly string[] = [
   'grid.selection.invalid',
   'grid.selection.outOfBounds',
   'grid.selection.stale',
+  // The count track registers the code the back end will raise when a read
+  // explicitly asks for an estimate the database cannot serve. The producer
+  // lands with the back end's own count work; until then the front end
+  // classifies the prefix and falls back to the raw message.
+  'grid.count.estimateUnavailable',
 ];
 
 function rustFiles(root: string): string[] {

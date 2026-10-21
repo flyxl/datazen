@@ -267,6 +267,9 @@ export type {
 } from '@datazen/backend-client';
 
 import type { UserPreferences, ExecutionSettings } from '@datazen/backend-client';
+import type { DefaultTableSort, RowCountMode } from './settings';
+
+export type { DefaultTableSort, RowCountMode } from './settings';
 
 export interface AppSettings extends UserPreferences, ExecutionSettings {
   sqlSyntaxTheme?: string;
@@ -289,6 +292,22 @@ export interface AppSettings extends UserPreferences, ExecutionSettings {
   mcpClientServers?: McpServerConfig[];
   /** Onboarding wizard state. `undefined` or `version < 1` → show wizard. */
   onboarding?: { completed: boolean; version: number };
+  /**
+   * How a table read obtains its row count. `auto` leaves the decision to the
+   * driver, which is what every read did before this setting existed.
+   */
+  rowCountMode: RowCountMode;
+  /**
+   * The row count above which the `auto` mode asks for an estimate instead of
+   * counting. Only the `auto` mode reads it; `<= 0` means "always count".
+   */
+  rowCountEstimateThreshold: number;
+  /**
+   * The order a table read uses when the user did not ask for one.
+   * `primaryKeyAsc` is the driver's own default, which is what every read did
+   * before this setting existed.
+   */
+  defaultTableSort: DefaultTableSort;
 }
 
 export interface SortCondition {

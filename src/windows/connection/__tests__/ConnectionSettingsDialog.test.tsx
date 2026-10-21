@@ -40,6 +40,9 @@ const baseSettings: AppSettings = {
     runRetentionCount: 50,
     runRetentionDays: 7,
   },
+  rowCountMode: 'auto',
+  rowCountEstimateThreshold: 200000,
+  defaultTableSort: 'primaryKeyAsc',
 };
 
 vi.mock('../../../hooks/useI18n', () => ({
