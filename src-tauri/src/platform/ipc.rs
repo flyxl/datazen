@@ -128,7 +128,7 @@ mod tests {
     ///
     /// 开发计划 :77 要求"保留现有 IPC 外观"。这类要求靠人读 diff 是守不住的：
     /// 加一个参数、改一个返回类型，名字和数量都不变，CI 也不会报。
-    /// 所以把 14 个 `#[tauri::command]` 与 13 个 `*_impl` 的完整签名钉在这里，
+    /// 所以把 15 个 `#[tauri::command]` 与 14 个 `*_impl` 的完整签名钉在这里，
     /// 任何人动外观都会让这个测试变红。
     const FROZEN_SIGNATURES: &[&str] = &[
         "pub async fn get_connections( state: State<'_, AppState>, ) -> Result<Vec<ConnectionConfig>, CommandError>",
@@ -256,18 +256,18 @@ mod tests {
     }
 
     #[test]
-    fn the_command_count_is_exactly_fourteen() {
+    fn the_command_count_is_exactly_fifteen() {
         // 冻结表也可能被"改到和新代码一致"而失去意义，所以单独钉住命令数量，
         // 并且只数生产代码里的 `#[tauri::command]`。
         let production = super::super::production_source(CONNECTION_COMMANDS);
         assert_eq!(
             production.matches("#[tauri::command]").count(),
-            14,
+            15,
             "connection.rs 对外暴露的 Tauri 命令数量变了"
         );
         assert_eq!(
             production.matches("pub(crate) async fn ").count(),
-            13,
+            14,
             "connection.rs 的 *_impl 数量变了"
         );
     }
