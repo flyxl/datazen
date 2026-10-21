@@ -99,6 +99,7 @@ pub use sync::{
     SyncKeyNullPolicy, SyncKeyValue, SyncSourceAdapter, SyncTargetAdapter,
 };
 pub use sync_taxonomy::{normalize_driver_id, sync_category_of, sync_family_of};
+pub use traits::filter_contract;
 pub use traits::*;
 pub use tunnel_types::{
     HttpProxyTunnelConfig, SavedTunnel, SavedTunnelSummary, TunnelKind, TunnelUsage,

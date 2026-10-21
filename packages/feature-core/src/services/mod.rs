@@ -6,3 +6,5 @@ pub mod ports;
 pub mod query_executor;
 pub mod schema_metadata;
 pub mod schema_scope;
+
+pub use query_executor::filter_sql::{join_filters, validate_filters, FilterRejection};

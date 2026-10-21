@@ -35,6 +35,7 @@ fn source_filter() -> SyncSourceFilter {
             column: "name".into(),
             operator: FilterOperator::Eq,
             value: Value::String("old-1".into()),
+            connector: None,
         }],
         SyncFilterLogic::And,
     )

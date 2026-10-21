@@ -27,6 +27,15 @@ pub(crate) async fn get_table_data_impl(
     let driver = &resolved.driver;
     let handle = &resolved.handle;
 
+    // The filter list is checked before anything is built or fetched: a filter
+    // this database cannot serve, or one that is missing a value, has to fail
+    // before the statement is assembled and before the connection is used.
+    // The shared layer owns the judgement; the host only maps the refusal.
+    datazen_feature_core::services::validate_filters(
+        driver.supported_filter_operators(),
+        filters.as_deref().unwrap_or_default(),
+    )?;
+
     // The caller's explicit target wins; the session's configured database is
     // only a fallback for callers that pass none. Reading `config.database`
     // unconditionally (the old behavior) silently ignored the request and
