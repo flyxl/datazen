@@ -70,6 +70,7 @@ fn condition(column: &str, operator: FilterOperator, value: Value) -> FilterCond
         column: column.into(),
         operator,
         value,
+        connector: None,
     }
 }
 

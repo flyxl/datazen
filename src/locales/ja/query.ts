@@ -191,8 +191,6 @@ const pack = {
   'filter.isNotNull': 'NULL でない',
   'filter.quickPlaceholder': "クイックフィルター: status = 'open'",
   'filter.invalidExpression': 'フィルターを適用できませんでした: {error}',
-  'filter.mixedLogic':
-    'フィルターを適用できませんでした: 論理演算子は 1 つに統一するか、フィルターエディターを使用してください。',
   'import.description': 'CSVまたはJSONファイルからデータをインポート',
   'import.selectFile': 'ファイルの選択',
   'import.targetTable': 'ターゲットテーブル',

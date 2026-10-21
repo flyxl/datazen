@@ -181,6 +181,16 @@ impl SourceFilter {
                 }
                 FilterOperator::IsNull => format!("({column} IS NULL)"),
                 FilterOperator::IsNotNull => format!("({column} IS NOT NULL)"),
+                // The shared extensions render patterns, ranges and set
+                // membership, which this parameterized builder does not model.
+                // Reject them loudly: silently treating them as a plain
+                // comparison would return the wrong rows.
+                operator => {
+                    return Err(TransferError::validation(format!(
+                        "source filter does not support the '{}' operator",
+                        operator.as_str()
+                    )));
+                }
             };
             parts.push(part);
         }
@@ -349,6 +359,7 @@ mod tests {
             column: column.into(),
             operator,
             value,
+            connector: None,
         }
     }
 

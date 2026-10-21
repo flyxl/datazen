@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::dialect::LegacySqlDialect;
+use crate::filters::FilterOperator;
 use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
 use crate::schema_migration::{MigrationCapabilities, MigrationRenderer, TypeNormalizer};
 use crate::sql_target::SqlTarget;
@@ -27,6 +28,8 @@ mod key_value;
 mod schema_target;
 pub(crate) mod sql_text;
 mod streaming;
+
+pub mod filter_contract;
 
 pub use command_api::execute_standard_sql_command;
 pub use key_value::KeyValueDriver;
@@ -111,6 +114,50 @@ pub trait DatabaseDriver: Send + Sync {
     /// Whether the driver supports EXPLAIN query plan analysis.
     fn supports_explain(&self) -> bool {
         true
+    }
+
+    /// The filter operators this driver accepts.
+    ///
+    /// Default: the shared operator set. See
+    /// [`filter_contract::supported_filter_operators`] for why the shared set
+    /// and not the ten operators that shipped before the extension.
+    fn supported_filter_operators(&self) -> &'static [FilterOperator] {
+        filter_contract::supported_filter_operators()
+    }
+
+    /// Render a dialect-specific filter operator.
+    ///
+    /// Default: `None`, so the host rejects the operator instead of dropping
+    /// the condition. See [`filter_contract::filter_operator_sql`].
+    fn filter_operator_sql(
+        &self,
+        operator: FilterOperator,
+        column_expr: &str,
+        literal: &str,
+    ) -> Option<String> {
+        filter_contract::filter_operator_sql(operator, column_expr, literal)
+    }
+
+    /// Whether this driver's `LIKE` is case-insensitive under its default
+    /// collation. UI hint only; it never changes the rendered SQL.
+    fn like_is_case_insensitive(&self) -> bool {
+        filter_contract::like_is_case_insensitive()
+    }
+
+    /// The escape character this driver uses for `LIKE` patterns.
+    ///
+    /// Default: `None` — no escaping, which is what the host did before this
+    /// method existed. Must be configured together with
+    /// [`Self::like_escape_clause`].
+    fn like_pattern_escape(&self) -> Option<char> {
+        filter_contract::like_pattern_escape()
+    }
+
+    /// The `ESCAPE '<char>'` clause this dialect accepts, if any.
+    ///
+    /// Must be configured together with [`Self::like_pattern_escape`].
+    fn like_escape_clause(&self, escape_char: char) -> Option<&'static str> {
+        filter_contract::like_escape_clause(escape_char)
     }
 
     /// Whether this driver has a **real schema level** in its namespace hierarchy.

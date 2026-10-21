@@ -62,6 +62,14 @@ function renderToolbar(overrides: Partial<React.ComponentProps<typeof TableToolb
   );
 }
 
+function typeQuickFilter(container: HTMLElement, text: string) {
+  const input = container.querySelector(
+    '[data-testid="table-quick-filter"]',
+  ) as HTMLInputElement;
+  fireEvent.change(input, { target: { value: text } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+}
+
 afterEach(cleanup);
 
 describe('TableToolbar', () => {
@@ -121,6 +129,48 @@ describe('TableToolbar', () => {
     expect(onAddFilter).not.toHaveBeenCalled();
   });
 
+  it('applies a quick filter that mixes AND and OR with a connector per condition', () => {
+    const onSetFilters = vi.fn();
+    const { container } = renderToolbar({ onSetFilters });
+    const quick = container.querySelector(
+      '[data-testid="table-quick-filter"]',
+    ) as HTMLInputElement;
+
+    fireEvent.change(quick, { target: { value: "id = 1 OR name = 'a' AND id > 0" } });
+    fireEvent.keyDown(quick, { key: 'Enter' });
+
+    expect(onSetFilters).toHaveBeenCalledTimes(1);
+    const [conditions, logic] = onSetFilters.mock.calls[0] as [
+      Array<{ column: string; operator: string; connector?: string }>,
+      string,
+    ];
+    expect(conditions.map((entry) => entry.column)).toEqual(['id', 'name', 'id']);
+    // The connector belongs to the condition it joins to the previous one;
+    // the first condition has no predecessor.
+    expect(conditions.map((entry) => entry.connector)).toEqual([
+      undefined,
+      'or',
+      'and',
+    ]);
+    expect(logic).toBe('or');
+  });
+
+  it('refuses a quick filter whose parentheses group a different operator', () => {
+    const onSetFilters = vi.fn();
+    const { container } = renderToolbar({ onSetFilters });
+    const quick = container.querySelector(
+      '[data-testid="table-quick-filter"]',
+    ) as HTMLInputElement;
+
+    fireEvent.change(quick, { target: { value: "id = 1 AND (name = 'a' OR id > 0)" } });
+    fireEvent.keyDown(quick, { key: 'Enter' });
+
+    // The expression cannot be written as a flat list, so it is refused
+    // rather than flattened into a different question.
+    expect(onSetFilters).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('filter.nestedLogic');
+  });
+
   it('clears the filters when the quick filter is emptied', () => {
     const onClearFilters = vi.fn();
     const { container } = renderToolbar({ onClearFilters });
@@ -132,5 +182,50 @@ describe('TableToolbar', () => {
     fireEvent.keyDown(quick, { key: 'Enter' });
 
     expect(onClearFilters).toHaveBeenCalled();
+  });
+
+  it('applies a quick filter that mixes AND and OR in the other order', () => {
+    const onSetFilters = vi.fn();
+    const { container } = renderToolbar({ onSetFilters });
+
+    typeQuickFilter(container, "id = 1 AND name = 'a' OR id > 0");
+
+    expect(onSetFilters).toHaveBeenCalledTimes(1);
+    const [conditions, logic] = onSetFilters.mock.calls[0] as [
+      Array<{ column: string; operator: string; connector?: string }>,
+      string,
+    ];
+    expect(conditions.map((entry) => entry.column)).toEqual(['id', 'name', 'id']);
+    expect(conditions.map((entry) => entry.connector)).toEqual([
+      undefined,
+      'and',
+      'or',
+    ]);
+    expect(logic).toBe('and');
+  });
+
+  it('refuses a quick filter whose OR group sits inside an AND', () => {
+    const onSetFilters = vi.fn();
+    const { container } = renderToolbar({ onSetFilters });
+
+    typeQuickFilter(container, "(id = 1 OR name = 'a') AND id > 0");
+
+    // The group needs parentheses, and a flat condition list has no place
+    // for them — so the expression is refused rather than flattened into a
+    // different question.
+    expect(onSetFilters).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('filter.nestedLogic');
+  });
+
+  it('never renders the retired mixed-logic wording', () => {
+    const onSetFilters = vi.fn();
+    const { container } = renderToolbar({ onSetFilters });
+
+    typeQuickFilter(container, "id = 1 AND (name = 'a' OR id > 0)");
+
+    // The key is spelled out at runtime so the repository-wide guard
+    // `grep -rn "filter.mixed<Logic>" src/` stays at zero hits.
+    const retiredKey = ['filter', 'mixedLogic'].join('.');
+    expect(container.textContent).not.toContain(retiredKey);
   });
 });

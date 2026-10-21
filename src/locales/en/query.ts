@@ -396,7 +396,8 @@ const pack = {
   'filter.isNotNull': 'is not null',
   'filter.quickPlaceholder': "Quick filter: status = 'open'",
   'filter.invalidExpression': 'Filter not applied: {error}',
-  'filter.mixedLogic': 'Filter not applied: use one logical operator or the Filter editor.',
+  'filter.nestedLogic':
+    'Filter not applied: this expression groups AND and OR in parentheses. Write the conditions one after another, or edit them in the Filter editor.',
   'import.description': 'Import data from CSV or JSON file',
   'import.selectFile': 'Select File',
   'import.targetTable': 'Target Table',

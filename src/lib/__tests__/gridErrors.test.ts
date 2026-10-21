@@ -78,6 +78,20 @@ describe('classifyGridError', () => {
     expect(classifyGridError('permission denied for table users')).toBe('unknown');
   });
 
+  it('maps the filter prefixes and falls back to the raw message', () => {
+    // The shared filter layer refuses a filter the database cannot serve and
+    // a filter that is missing a value. Both messages name the offending
+    // condition, so the interface can point at it.
+    expect(
+      classifyGridError('grid.filter.incomplete: column "id" needs a value (operator \'eq\')'),
+    ).toBe('grid.filter.incomplete');
+    expect(
+      classifyGridError(
+        'grid.filter.unsupportedOperator: this database does not support the \'regex\' filter on column "name"; try \'like\' or \'contains\' instead',
+      ),
+    ).toBe('grid.filter.unsupportedOperator');
+  });
+
   it('tolerates surrounding whitespace but stays case-sensitive', () => {
     expect(classifyGridError('  grid.selection.stale: rows changed\n')).toBe('grid.selection.stale');
     expect(classifyGridError('GRID.SELECTION.STALE: rows changed')).toBe('unknown');

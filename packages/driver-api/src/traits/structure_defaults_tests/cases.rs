@@ -493,3 +493,61 @@ mod validate_schema_target_tests {
         );
     }
 }
+
+/// The filter half of the contract: a driver that overrides nothing must keep
+/// the behaviour it had before the filter contract existed — no dialect
+/// operator, no `LIKE` escaping — while the whitelist it reports is the
+/// shared set the host can render on its own.
+mod filter_defaults {
+    use super::*;
+    use crate::filters::{FilterOperator, DIALECT_FILTER_OPERATORS, SHARED_FILTER_OPERATORS};
+    use crate::mock_driver::{MockDriver, MockDriverOptions};
+
+    fn mock() -> std::sync::Arc<MockDriver> {
+        MockDriver::new("sqlite", MockDriverOptions::default())
+    }
+
+    #[test]
+    fn default_supported_filter_operators_is_shared_set() {
+        assert_eq!(mock().supported_filter_operators(), SHARED_FILTER_OPERATORS);
+    }
+
+    #[test]
+    fn default_filter_operator_sql_is_none() {
+        let driver = mock();
+        for operator in DIALECT_FILTER_OPERATORS {
+            assert!(
+                driver
+                    .filter_operator_sql(*operator, "\"name\"", "'^a'")
+                    .is_none(),
+                "{operator:?} must not be renderable without a driver implementation"
+            );
+        }
+    }
+
+    #[test]
+    fn default_like_is_case_sensitive_flag_is_false() {
+        assert!(!mock().like_is_case_insensitive());
+    }
+
+    #[test]
+    fn default_like_escape_configuration_is_off() {
+        let driver = mock();
+        assert_eq!(driver.like_pattern_escape(), None);
+        assert_eq!(driver.like_escape_clause('!'), None);
+    }
+
+    #[test]
+    fn dialect_operators_are_absent_from_the_shared_whitelist() {
+        for operator in DIALECT_FILTER_OPERATORS {
+            assert!(
+                !SHARED_FILTER_OPERATORS.contains(operator),
+                "{operator:?} must be declared explicitly by a driver"
+            );
+        }
+        assert_eq!(mock().supported_filter_operators().len(), 19);
+        assert!(!mock()
+            .supported_filter_operators()
+            .contains(&FilterOperator::Regex));
+    }
+}

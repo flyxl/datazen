@@ -6,6 +6,7 @@
 use crate::db::DriverError;
 use crate::store::StoreError;
 use datazen_ai_api::AiError;
+use datazen_feature_core::services::FilterRejection;
 
 #[derive(Debug)]
 pub enum CommandError {
@@ -81,6 +82,17 @@ impl From<DriverError> for CommandError {
             DriverError::NotSupported(msg) => Self::Validation(msg),
             other => Self::Driver(other),
         }
+    }
+}
+
+/// A filter the shared layer refused becomes a validation error.
+///
+/// The shared layer owns the judgement and the message; the host only says
+/// which kind of failure it is. The message keeps its `grid.filter.*` prefix,
+/// so the frontend can tell a filter problem from any other failure.
+impl From<FilterRejection> for CommandError {
+    fn from(rejection: FilterRejection) -> Self {
+        Self::Validation(rejection.contract_message())
     }
 }
 

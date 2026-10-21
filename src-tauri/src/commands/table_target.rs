@@ -162,6 +162,14 @@ pub async fn read(
         .get_sql_driver_by_name(config.database_type.as_str())
         .await
         .ok_or_else(|| CommandError::NotConfigured("SQL driver unavailable".into()))?;
+    // The filter list is checked before anything is built or fetched: a filter
+    // this database cannot serve, or one that is missing a value, has to fail
+    // before the statement is assembled and before the connection is used.
+    // The shared layer owns the judgement; the host only maps the refusal.
+    datazen_feature_core::services::validate_filters(
+        driver.supported_filter_operators(),
+        request.filters.as_deref().unwrap_or_default(),
+    )?;
     let adapter = state.platform_require().map_err(into_command_error)?;
     let context = adapter.begin_call().context().clone();
     let runtime = adapter.runtime().map_err(into_command_error)?;

@@ -124,6 +124,7 @@ mod tests {
             column: column.into(),
             operator,
             value,
+            connector: None,
         }
     }
 

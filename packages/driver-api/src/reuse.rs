@@ -16,6 +16,7 @@
 //! reason the wrapper exists. `test_connection` and the precise-cancel methods
 //! override rather than forward, because they gate the alias' own contract.
 
+use crate::filters::FilterOperator;
 use crate::*;
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -181,6 +182,32 @@ impl DatabaseDriver for ReuseDriver {
 
     fn supports_explain(&self) -> bool {
         self.inner.supports_explain()
+    }
+
+    fn supported_filter_operators(&self) -> &'static [FilterOperator] {
+        self.inner.supported_filter_operators()
+    }
+
+    fn filter_operator_sql(
+        &self,
+        operator: FilterOperator,
+        column_expr: &str,
+        literal: &str,
+    ) -> Option<String> {
+        self.inner
+            .filter_operator_sql(operator, column_expr, literal)
+    }
+
+    fn like_is_case_insensitive(&self) -> bool {
+        self.inner.like_is_case_insensitive()
+    }
+
+    fn like_pattern_escape(&self) -> Option<char> {
+        self.inner.like_pattern_escape()
+    }
+
+    fn like_escape_clause(&self, escape_char: char) -> Option<&'static str> {
+        self.inner.like_escape_clause(escape_char)
     }
 
     fn has_schema_level(&self) -> bool {

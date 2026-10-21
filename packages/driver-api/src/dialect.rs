@@ -12,6 +12,7 @@
 //! either contains the rule or delegates to the shared builder, and the adapter
 //! is only used by consumers of the new contract.
 
+use crate::filters::FilterOperator;
 use crate::traits::DatabaseDriver;
 use crate::types::{DriverError, PaginationSyntax, Value};
 
@@ -93,6 +94,39 @@ pub trait SqlDialect: Send + Sync {
     /// The maximum number of bound parameters one statement may carry, and
     /// where that ceiling comes from.
     fn max_bound_parameters(&self) -> BoundParameterLimit;
+
+    /// Render a dialect-specific filter operator.
+    ///
+    /// This mirrors [`DatabaseDriver::filter_operator_sql`] on the narrow text
+    /// seam, so a consumer that only builds SQL can ask the dialect to render
+    /// an operator without holding a driver. The default is `None`: the caller
+    /// rejects the operator instead of dropping the condition.
+    fn filter_operator_sql(
+        &self,
+        operator: FilterOperator,
+        column_expr: &str,
+        literal: &str,
+    ) -> Option<String> {
+        let _ = (operator, column_expr, literal);
+        None
+    }
+
+    /// The escape character this dialect uses for `LIKE` patterns.
+    ///
+    /// `None` means "do not escape at all". Mirrors
+    /// [`DatabaseDriver::like_pattern_escape`].
+    fn like_pattern_escape(&self) -> Option<char> {
+        None
+    }
+
+    /// The `ESCAPE '<char>'` clause this dialect accepts, if any.
+    ///
+    /// Mirrors [`DatabaseDriver::like_escape_clause`]; the two must be
+    /// configured together.
+    fn like_escape_clause(&self, escape_char: char) -> Option<&'static str> {
+        let _ = escape_char;
+        None
+    }
 }
 
 /// Borrowing adapter from an existing [`DatabaseDriver`] to [`SqlDialect`].
@@ -148,6 +182,24 @@ impl<D: DatabaseDriver + ?Sized> SqlDialect for LegacySqlDialect<'_, D> {
         // The legacy API reports a number only; claiming it is a grammar limit
         // or a runtime limit would invent provenance the driver never declared.
         BoundParameterLimit::Declared(self.driver.max_bound_parameters())
+    }
+
+    fn filter_operator_sql(
+        &self,
+        operator: FilterOperator,
+        column_expr: &str,
+        literal: &str,
+    ) -> Option<String> {
+        self.driver
+            .filter_operator_sql(operator, column_expr, literal)
+    }
+
+    fn like_pattern_escape(&self) -> Option<char> {
+        self.driver.like_pattern_escape()
+    }
+
+    fn like_escape_clause(&self, escape_char: char) -> Option<&'static str> {
+        self.driver.like_escape_clause(escape_char)
     }
 }
 

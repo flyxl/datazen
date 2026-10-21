@@ -165,6 +165,7 @@ fn the_probe_sql_of_a_qualified_target_quotes_the_dotted_name_as_one_identifier(
             column: "id".into(),
             operator: datazen_driver_api::filters::FilterOperator::Eq,
             value: Value::Integer(7),
+            connector: None,
         }]),
         None,
         &dialect,

@@ -421,6 +421,65 @@ export function filterExpressionToConditions(expression: FilterExpression): Filt
   ];
 }
 
+/** One condition of a flattened expression, with the connector that joins it to the previous one. */
+export interface FlattenedFilterCondition {
+  condition: FilterConditionExpression;
+  /**
+   * How this condition joins the condition before it. The first condition has
+   * no predecessor, so its connector is always absent.
+   */
+  connector?: FilterExpressionLogic;
+}
+
+/**
+ * Flatten an expression tree into "one condition plus the connector that
+ * joins it to the previous one".
+ *
+ * The connectors are read the way SQL reads them — `AND` binds stronger than
+ * `OR` — so an expression can be written down as a flat list exactly when it
+ * is a list of `OR` groups of `AND` conditions. The one shape a flat list
+ * cannot hold is an `OR` group nested inside an `AND`, because that grouping
+ * needs parentheses: `a AND (b OR c)` and `a AND b OR c` are different
+ * questions.
+ *
+ * When the expression has that shape the function returns `null` and the
+ * caller refuses it. It never flattens "as well as it can": quietly turning
+ * `a AND (b OR c)` into `a AND b OR c` would answer the wrong question
+ * without saying so.
+ */
+export function flattenToConnectors(node: FilterExpression): FlattenedFilterCondition[] | null {
+  if (hasOrGroupUnderAnd(node)) {
+    return null;
+  }
+  return flattenParts(node);
+}
+
+/** Whether an `OR` group sits inside an `AND`, which would need parentheses. */
+function hasOrGroupUnderAnd(node: FilterExpression): boolean {
+  if (node.type === 'condition') return false;
+  const { operator, left, right } = node;
+  if (operator === 'and') {
+    if (left.type === 'logical' && left.operator === 'or') return true;
+    if (right.type === 'logical' && right.operator === 'or') return true;
+  }
+  return hasOrGroupUnderAnd(left) || hasOrGroupUnderAnd(right);
+}
+
+/** Flatten one subtree; the caller has already ruled out the grouped shape. */
+function flattenParts(node: FilterExpression): FlattenedFilterCondition[] {
+  if (node.type === 'condition') {
+    return [{ condition: node }];
+  }
+  const { operator, left, right } = node;
+  const leftParts = flattenParts(left);
+  const rightParts = flattenParts(right);
+  const [first, ...rest] = rightParts;
+  if (!first) {
+    return leftParts;
+  }
+  return [...leftParts, { condition: first.condition, connector: operator }, ...rest];
+}
+
 /** Parse and prepare the structured payload used by an Apply callback. */
 export function parseFilterForApply(
   input: string,

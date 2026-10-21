@@ -16,6 +16,10 @@ export type {
   TunnelUsage,
 } from './tunnel';
 
+// The filter contract lives in its own file; it is re-exported here so every
+// caller keeps importing the filter types from the aggregate.
+export * from './filters';
+
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 
 export interface SshTunnelConfig {
@@ -285,24 +289,6 @@ export interface AppSettings extends UserPreferences, ExecutionSettings {
   mcpClientServers?: McpServerConfig[];
   /** Onboarding wizard state. `undefined` or `version < 1` → show wizard. */
   onboarding?: { completed: boolean; version: number };
-}
-
-export type FilterOperator =
-  | 'eq'
-  | 'ne'
-  | 'gt'
-  | 'lt'
-  | 'gte'
-  | 'lte'
-  | 'like'
-  | 'in'
-  | 'isNull'
-  | 'isNotNull';
-
-export interface FilterCondition {
-  column: string;
-  operator: FilterOperator;
-  value?: Value;
 }
 
 export interface SortCondition {
