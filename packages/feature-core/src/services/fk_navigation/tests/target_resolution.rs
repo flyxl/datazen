@@ -120,6 +120,39 @@ async fn resolve_fk_targets_probe_failure_does_not_echo_the_key_value() {
 }
 
 #[tokio::test]
+async fn resolve_fk_targets_binds_the_probe_values_instead_of_inlining_them() {
+    // A driver with a bound-parameter vocabulary gets the values as
+    // parameters, so a key value never reaches the SQL text — and never
+    // reaches a driver error message either. The mock proves it: it answers a
+    // keyed read with the matching row only, which it can only do when the
+    // value arrived as a parameter.
+    let tables = catalog_with("parents", "parents", "parents");
+    let mut options = options_with(
+        tables,
+        vec![
+            vec![Some(Value::Integer(7))],
+            vec![Some(Value::Integer(99))],
+        ],
+    );
+    options.parameterized_writes = true;
+    options.filter_rows_by_key_equality = true;
+    let driver = MockDriver::new("postgres", options);
+    let source = TestSource::new(driver);
+
+    let resolution =
+        resolve_foreign_key_targets(&source, &request(&["customer_id"], vec![Value::Integer(7)]))
+            .await
+            .expect("the probe resolves");
+
+    assert_eq!(
+        resolution.candidates.len(),
+        1,
+        "only the row whose key equals the bound value comes back"
+    );
+    assert_eq!(cells(&resolution.candidates[0]), vec![serde_json::json!(7)]);
+}
+
+#[tokio::test]
 async fn resolve_fk_targets_exactly_the_limit_rows_is_not_truncated() {
     let rows: Vec<Vec<Option<Value>>> = (0..3)
         .map(|index| vec![Some(Value::Integer(index))])
