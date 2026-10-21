@@ -30,7 +30,9 @@ export type GridErrorCode =
   | 'grid.fk.unknownConstraint'
   | 'grid.fk.valueNull'
   | 'grid.fk.targetUnresolved'
-  | 'grid.fk.probeFailed';
+  | 'grid.fk.probeFailed'
+  | 'grid.filter.unsupportedOperator'
+  | 'grid.filter.incomplete';
 
 /**
  * Prefix registry. Entries are full message prefixes (`grid.<domain>.<reason>`); the
@@ -58,6 +60,8 @@ export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.fk.valueNull',
   'grid.fk.targetUnresolved',
   'grid.fk.probeFailed',
+  'grid.filter.unsupportedOperator',
+  'grid.filter.incomplete',
 ];
 
 /** Every grid message starts with this namespace; useful for cheap pre-checks. */
