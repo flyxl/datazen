@@ -103,7 +103,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 |---|---|---|---|
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ✅ 第 3 轮完成 `09e261eb0` → **终验中** |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 第 2 轮完成 `479239dfb` → **终验中** |
-| **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 2 轮小修中（D1 文档字面为假 / D3 五条 clippy / D4 每访问分配 UUID） |
+| **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ✅ 第 2 轮完成 `ac65207aa` → **终验中** |
 | **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 2 轮小修中（D-02 键不含组织 / D-04 措辞 / D-06 文档口径） |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 第 3 轮完成 `e796ae835` → **终验中** |
 
@@ -670,6 +670,14 @@ E 的处理：把排序键改为**过去**时刻 `base.saturating_sub(130 - inde
 → **这是本 initiative 里"改输入而非改断言"的正面样本**：测试失效时先判定是**输入前提**变了还是**断言**变弱，再改前者并留下原因。终验 Tester 被要求独立验证这一点（把排序键改回未来时间戳 ⇒ 应当变红）。
 
 **O-1**：`ReviewedPlanStore::put` 的 trait doc 补写「`put` 按 `scope` 落入**该组织的命名空间**；越组织写入是**丢弃**还是**落入别组织命名空间**，由实现形态决定，但实现必须在自己的文档里写明」—— 端口只声明归属规则，**不替实现方决定**丢弃还是分桶。
+
+
+### F1 轨第 2 轮（`2f88305ad` + `866c4e543`）
+
+- **D1（文档字面为假）**：「**包内**没有进程级全局单例」→ 收窄为「**计划存储**没有进程级全局单例（包的其它部分另有各自的进程级登记，例如 SQL 文件路径表 `sql_file.rs` 的 `PATHS`）」，`plan_store/mod.rs` 模块头同步。旧文案里那个**从未存在过**的失效路径 `commands/data_transfer/plans.rs` 保持删除。
+- **D3（5 条 clippy）**：4× `needless_borrow`（`tests.rs`，`store`/`scope` 本就是引用）+ 1× `nonminimal_bool`（`memory.rs:587`，`!is_some_and(u>now)` → `is_none_or(u<=now)`，同一谓词）。终验 Tester 被要求**自己用真值表**核等价性，并**核实 `is_none_or` 在本仓库 MSRV 下可用**（本机 rustc 可能是新的，MSRV 才是准）。
+- **D4（每访问分配 UUID）**：`desktop_organization_scope()` 改 `OnceLock` 复用、返回 `&'static OrganizationScope`、request id 固定 `transfer-plan-desktop`，注释写明**它不参与授权判断、不落盘、从不比较** ⇒ 一次计划访问**零分配**。新增用例 `the_scope_is_reused_so_a_plan_access_allocates_nothing`。终验 Tester 被要求核实这个固定 id **确实**只出现在构造处、`RequestContext` **不含可变状态**（否则复用就有跨调用污染）。
+- `port.rs` 模块头补「**Why the trait is not split**」：检查点侧与计划侧**是同一聚合**，同一次调用里同时改写两者；拆 trait 只会把单写者原子性的边界挪到 trait 边界，持久化实现仍须两侧都实现。
 
 
 ## 6. 门禁与流程
