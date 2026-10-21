@@ -43,13 +43,15 @@
 
 | # | 事项 | 谁负责 | 触发条件 |
 | --- | --- | --- | --- |
-| D1 | `src/types/index.ts` **838 行（已超 800 红线）**，轨 B 净增 +1 → 839 | 下一册碰它的轨**第一件事**做拆分 | 任何轨要改 `src/types/index.ts` 之前。拆分有"index 与领域文件各声明一份、应用导入 index 副本"的静默漂移风险，必须单独做 |
+| D1 | `src/types/index.ts` **838 行（既有超标）**，轨 B 净增 +1 → 839。**裁定：接受记账，不在功能轨里拆** | **Wave 3 `insert-frontend` 第一件事**（与 D11 的 `panelStore` 拆分一起做，同属 file-first 迁移） | 理由：838 是既有超标、非本轨引入；拆分有"index 与领域文件各声明一份、应用导入 index 副本"的**静默漂移**风险（搬走声明就换了应用实际导入的那一份）；在功能轨里做风险高于收益。**硬约束：本轨不得再增长（保持 ≤839）** |
 | D2 | 07 的 `embedded_schema_of` 提升（宿主 `commands/schema.rs:13` 私有 fn） | 07 轨开工第一步 | 07 开工时。提升后**严禁两边各留一份实现** |
 | D3 | 桌面 `unsupportedMethods` 里那 5 条 | 07 / 08 / 09 各自落地 Rust 命令时 | 那条"读 run.rs 比对是否注册/是否声明"的交叉核对测试**会红**，要求同步删声明——这是设计好的提醒 |
 | D4 | `TEST-INFRA-001` 的**残留 → 轨 B 第 3 轮修**：`tsc` 读侧完全没被锁覆盖，**两个**失败模式——TS6053（并发 typecheck **15%**）+ 「故意违规的夹具被类型检查」（约 **2–3%**，合计 **17–18%**） | 轨 B 第 3 轮（已下发） | 根 `tsconfig.json` + `packages/ui/tsconfig.json` + `packages/backend-client/tsconfig.json` **各加** `exclude: ["**/__boundaryProbe__*", "**/__uiBoundaryProbe__*"]`。**`tsc` 是独立进程，拿不到 vitest 进程内的 `mkdir` 锁**；让它持锁会把 typecheck 与 88s 的 vitest 串行化，且防不住「探针被类型检查」 |
 | D9 | `packages/backend-client/src/types/tableData.ts` 的 `configRevision` 注释断言「adapter 会用 `toCounter` 收窄、如同 `ProfileView.configRevision`」——**两半都不成立**（没有任何 adapter 收窄 `ProfileView.configRevision`；桌面 adapter 是裸 cast） | 轨 B 第 3 轮（已下发） | 改成陈述事实：线上是十进制字符串、本包不收窄、收窄责任在 adapter（当前桌面 adapter 未收窄，是已知缺口） |
 | D10 | 桌面 `unsupportedMethods` 的交叉核对测试用**裸字符串包含**判定注册（`commands::X,`），将来换拼写就看不见——而它的全部职责就是发现这种注册 | 轨 B 第 3 轮（已下发） | 改用**解析 `invoke_handler` 列表**里的 `crate::commands::X` 条目 |
-| D11 | `src/stores/panelStore.ts` 已 **797/800**（余量 3 行），轨 B 净增 +4 | Wave 3 `insert-frontend` 第一件事 | 拆分该 store。**本轮不得再增长** |
+| D11 | `src/stores/panelStore.ts` 已 **797/800**（余量 3 行），轨 B 净增 +4 | Wave 3 `insert-frontend` 第一件事（与 D1 一起） | 拆分该 store。**本轨不得再增长（保持 ≤797）** |
+| D12 | `TEST-INFRA-001` 修好后**必须从 `docs/bugs/` 删除**（含 `docs/README.md` 索引行） | 协调者（合流收尾时） | `docs/bugs/` 只收"已核实复现、**本轮明确不修**"的缺陷——修好了就必须删，否则是过期文档 |
+| D13 | 探针路径的 `exclude` 目前只在 3 个 tsconfig 里；若将来新增带 `include` 的 tsconfig，**必须同步加 exclude** | 新增 tsconfig 的那个轨 | 门禁 `scripts/__tests__/probe-exclusion.test.ts` 断言的是"当前这三个都含 exclude"，**不覆盖将来新增的配置**——新增 tsconfig 时要主动加 |
 | D5 | 10 分册的 `src-tauri/src/commands/table_target.rs:55`「Manual table session target changed」与 `stalePlan` 同族 | 10 轨 | 10 落地时统一到 `grid.commit.stalePlan` |
 | D6 | `grid.insert.noWritableColumn`（04/06 域唯一零生产者码） | 06 或 04 后续轮 | 需 `ColumnSchema` 有 generated/identity 标记才能做准；保守版（全列 Unset 且无 `default_value`/`is_auto_increment` 可依赖 → 拒绝）可先做 |
 | D7 | `backend-client` 的**解码边界**是否真的执行 `toCounter` 归一化 | 包级待核项 | 若某 transport 把原始字符串直接交给 app 层，`Counter` 这个 branded number 就是在说谎。全包性质，要改必须连 `types/jobs.ts` 一起改 |
