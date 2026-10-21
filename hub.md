@@ -102,7 +102,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | 轨 | 分支 | worktree | 热 target |
 |---|---|---|---|
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ✅ 第 3 轮完成 `09e261eb0` → **终验中** |
-| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 第 1 轮修复完成 `9a4a1585e` → 复测中 |
+| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 复测 **TEST_PASSED** → 第 2 轮小修中（D-E6 回拨淘汰顺序反转 / O-1 端口 put 语义留白） |
 | **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 2 轮小修中（D1 文档字面为假 / D3 五条 clippy / D4 每访问分配 UUID） |
 | **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | ✅ 已交付 `dd8c9a0d7` → Tester 复测中 |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 复测 **TEST_PASSED** → 第 3 轮小修中（D-01 注释夸大 / D-02 引用块夸大） |
@@ -616,6 +616,19 @@ Tester 用**探针实测**推翻了 G-04 引用块里的一句话：「去掉其
 
 **F1 的待办**：D1（文档"包内没有进程级全局单例"**字面为假** —— `sql_file.rs:36 static PATHS` 是前置存在的真全局；应把措辞**收窄到"计划存储"**）、D3（本轨新增 5 条 clippy 警告：4× `needless_borrow` + 1× `nonminimal_bool`；更严 CI 会红）、D4（`desktop_organization_scope()` 每次访问都 `Uuid::new_v4()` 分配一个 request id）。
 **台账数字更正**：端口 trait 是 **17** 个方法，不是编码代理自述的 16。
+
+
+### E 轨复测第 2 轮（Tester `c1efcc65`）—— TEST_PASSED，又一条**零覆盖**（D-E5）
+
+**核心结论**：存储实现**真的**移进包内并承重 —— `InMemoryReviewedPlanStore`（`packages/schema-diff/src/reviewed.rs:118-196`）是**生产实现**、宿主委派而非另写一份（宿主 `grep HashMap reviewed_store.rs` = 0 命中）；4 条隔离用例确认构造的是 `InMemoryReviewedPlanStore::new()` 而**不是** `TestPlanStore`；变异 1/2 各 **4 条**变红。失效关闭钳制三个变体全部变红。文档四条表述**逐句属实**，全仓已无失真表述。6 个规则函数与基线**逐字节相同**，10 条错误文案 IDENTICAL，IPC 表面不变，A 轨文件零命中。
+
+**D-E5（零覆盖，Tester 已补）**：把宿主 `acknowledges` 改成「只要有身份就承认任何组织」⇒ **包 159 全绿、宿主 1276 全绿、零条变红** —— 桌面单租户收窄的「**只承认自己那一个组织**」这半边**无护栏**（包内按组织分桶把差异盖住了）。Tester 补 `desktop_store_discards_cross_organization_writes_entirely`（断言**写入方自己**也读不到 ⇒ 越组织写入确实没落数据），复验变红。
+
+**D-E6（协调者问的存储泄漏，Tester 实测回答）**：**不会无界泄漏**（`REVIEWED_PLAN_MAX_ENTRIES = 128` 已被既有用例钉住），但实测到**淘汰顺序反转** —— 回拨后**刚冻结的有效计划先被淘汰、已失效条目留下**（`fresh_present=false / stale_present=true / len=128`）。根因：`retain` 按 `age() < TTL`（回拨条目 `age()` 恒 0 ⇒ 裁不掉）+ 淘汰按 `created_at_ms` 最小（回拨后新冻结的更小 ⇒ 先淘汰）。方向仍是**失效关闭**。→ 裁决：**本轨顺手修**（存储层 `retain` 改用同包的 `is_expired()`，单行、同时间基准），并补用例钉住。
+
+**O-1（契约留白）**：`ReviewedPlanStore::put` 的**越组织语义端口未规定** —— 包内实现 = 按 `scope` 分桶落库，宿主实现 = 直接丢弃。两侧实现各自 doc 已写明 ⇒ 不违约，但换个实现者可能做出第三种语义 → 要求在 trait doc 补一句。
+
+**E 的门禁**：`env -u USER` 242 failed 与基线**逐条相同**；包 606 → 854 生产（+248）、测试 816 → 1729；**宿主收窄代码本轮变薄**（删掉宿主自己的 HashMap + retain + 淘汰 ≈17 行，改为委派）。
 
 
 ## 6. 门禁与流程
