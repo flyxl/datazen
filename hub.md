@@ -1,188 +1,251 @@
-# 存储层端口化 — 跨轨台账（协调者维护）
+# 存储层端口化 — 协调台账与完整开发计划
 
-> 本文件是开发期台账，随分支流转；**验收合并后必须删除**，不得存活在 `main` 上。
-> 设计结论与缺陷必须变成代码、测试与 `docs/` 正式文档里的事实。
+> **本文件是开发期台账，交付即销毁。** 验收合并时必须删除，不得存活在 `main` 上（AGENTS.md「进度台账」条）。
+> 设计结论与缺陷必须变成代码、测试与 `docs/` 正式文档里的事实；台账消失后结论仍要能从代码读出来。
+> 基线：`main` @ `8bf6eb553`（PR #81 已合入）。集成分支 `feature/storage-ports`，worktree `.worktrees/datazen-storage-ports`。
 
-## 目标
+---
 
-按「web / desktop 共享架构模型」把 DataZen 的存储层彻底端口化：
+## 0. 目标架构模型（本 initiative 的判准）
 
-1. **存储层由 Repository trait 抽象**，runtime / feature-core 面向接口编程，不面对具体实现。
+用户确立的四条 + 协调者补的第五条：
+
+1. **存储层由 Repository trait 提供抽象**给 runtime / feature-core 等；共享层面向接口编程，不面对具体实现。
 2. **具体实现由 web 与 desktop 宿主各自提供**。
 3. **初始化时构造具体 Repository 并注入**（依赖注入）。
 4. **web / desktop 各保留形态差异**（HTTP server / Tauri app / 本地 I/O）。
+5. **（补）每个存储端口的方法要么带 `&RequestContext`，要么在构造时绑定 org 作用域。** 桌面单租户不需要它，但一旦 trait 签名里没有 org，web 就只能"按组织各建一个实例"，接口层就丧失了显式表达租户边界的能力。样板：`packages/platform-api/src/ports/profile.rs:24-40` 的 `ProfileScope::from_context(ctx)`，越权语义为**返回 `None`/空而非错误**（CM-05，不泄漏"存在但无权"）。
 
-## 现状基线（协调者实测，2026-10-21）
+### 现状盘点（实测，非推断）
 
-| 判据 | 状态 |
+| 项 | 实测 |
 |---|---|
-| 端口契约层 `packages/platform-api/src/ports/` | 18 个 trait，其中 13 个有实现 |
+| `packages/platform-api/src/ports/` | **18 个 trait**，13 个有实现 |
 | **无人实现的端口** | `IdentityResolver`、`EventSink`、`SubmissionTokenIssuer`、`ClusterNodeBudgetPort`、`ControlResourcePort` |
-| feature-core 存储 trait | `DashboardStore`、`DashboardRunStore`、`WorkflowDefinitionStore`（**方法签名无 ctx / org**） |
-| 迁移三件套的"存储" | **未抽象**：`data-sync/plan_store`（具体 struct）、`data-transfer/plan_store`（具体 struct）、`data-sync/comparison_store`（**直接绑 `std::fs`**）、`schema-diff/reviewed.rs`（**进程级 `static PLANS`**） |
+| 共享包内的进程级 `static`（多租户串味源） | 3 处：`schema-diff/reviewed.rs:49`、`data-sync/plan_store/mod.rs:674-675`、`data-transfer/plan_store/mod.rs:440-441` |
+| 共享包内绑文件系统的存储 | `data-sync/src/comparison_store/`（`disk.rs` 494 + `mod.rs` 729，合计 32 处 `fs::`/`Path`） |
+| 未抽象的具体存储 | `data-sync/plan_store`（2,025 行）、`data-transfer/plan_store`（541 行） |
 | DI 风格 | **两套并存**：`WorkflowRegistry<S>` 泛型 / `DashboardStore` 为 `&dyn` |
-| 共享内核的形态命名泄漏 | `runtime/src/job/desktop_host.rs`、`runtime/src/tunnel/desktop.rs` |
-| 多租户词汇 | `RequestContext.organization_id`、`ProfileScope::from_context`、`SessionOwner.organization_id`、`PolicyService.isolation_key` 已就位；**`JobDefinition`/`JobFilter`/`OwnerRef` 无 org** |
-| 转发门面残留 | `src-tauri/src/commands/sync/mod.rs:6` 的 `pub(crate) use datazen_data_sync::comparison_store;`、`src-tauri/src/wapps/mod.rs` 的 kernel re-export 块 |
+| 多租户词汇 | 已就位：`RequestContext.organization_id`、`ProfileScope`、`SessionOwner.organization_id`、`PolicyService.isolation_key`；**缺**：`JobDefinition`/`JobFilter` 无 org |
+| 宿主残留转发门面 | `src-tauri/src/commands/sync/mod.rs:6`、`src-tauri/src/wapps/mod.rs:26-34`、`src-tauri/src/monitor/channels.rs:14`、`src-tauri/src/lib.rs:8/20/27` |
 
-## 波次与轨道（按文件冲突面划分）
+---
 
-### Wave 1（并行，冲突面互斥）
+## 1. 度量口径（防止把解耦做成搬家）
 
-| 轨 | 分支 | worktree | 范围 | 状态 |
-|---|---|---|---|---|
-| A | `feature/job-org-scope` | `.worktrees/datazen-job-org-scope` | platform-api 的 `JobDefinition`/`JobFilter` 加 `organization_id`；runtime 与 SQLite 仓储按 org 过滤 | ⏳ 进行中 |
-| B | `feature/di-dyn` | `.worktrees/datazen-di-dyn` | `WorkflowRegistry<S>` 泛型 → `Arc<dyn WorkflowDefinitionStore>` | ⏳ 进行中 |
-| C | `feature/runtime-naming` | `.worktrees/datazen-runtime-naming` | `DesktopJobHost` / `DesktopNetworkProvider` / `DesktopRouteCatalog` 改名去形态味 | ⏳ 进行中 |
+**本 initiative 不压缩 src-tauri，它降低耦合。** 实测已证明：Wave 1 三轨对宿主净变化 **≈ +27 行**（A: 0；B: +30；C: −3）。
 
-**冲突面裁决**
-- A 与 C 都落在 `packages/runtime/src/job/` 下：A 只碰 `repository.rs` / `runtime_repository.rs` / `memory_runtime_repository.rs` / `owner_claims.rs` / `runtime_methods.rs`；C 只碰 `desktop_host.rs`（重命名）+ `mod.rs` 导出。**互斥文件已写进各自简报**。
-- A 与 B 都不碰对方文件（A 碰 platform-api/runtime-job/host-jobs；B 碰 feature-core/workflow-registry + host workflow-registry + app_state）。A 的简报明确禁止改 `bootstrap/app_state.rs`。
-- B 与 C 完全无交集。
-- 共享 `CARGO_TARGET_DIR=.worktrees/.shared-target`（cargo 文件锁会串行化，属预期）。
+| 阶段 | src-tauri 生产行数 |
+|---|---|
+| 基线 main | **73,363**（测试文件 24,987 / 总 98,350） |
+| Wave 1 (A/B/C) | +27 → ≈73,390 |
+| Wave 2 (D/E/F/G) | +400～900 → **≈73.8k–74.3k** |
+| （后续 Wave 4 搬纯规则） | −1,000～1,600 → ≈72.5k，**是搬家不是删除**，全仓总量不变 |
 
-## 本 initiative 的度量口径（防止做反）
+**src-tauri 有约 70k 的地板**：SQLite/AppDb 持久化、Tauri IPC + 窗口/菜单/托盘、AES-GCM + keyring、SSH 隧道、原生对话框、桌面身份装配、迁移三件套的 job 生命周期接线（20.5k 里实测 83% 是 job/驱动执行，不是可搬规则）、25k 宿主测试。**不要用"还剩多少行"验收。**
 
-**本轮目标是解耦，不是压缩 src-tauri。** 实测已证明：Wave 1 三轨对宿主净变化 ≈ +27 行（A: 0；B: +30；C: −3）。端口化让宿主**新增** adapter 代码、让共享包**去掉**隐藏的具体存储决定 —— 宿主行数不是成功指标。
+### 成功判据（四条，均可机械核验）
 
-预期落点：A–G 做完 src-tauri 生产代码 **≈73.8k–74.3k**（比现在略高）；若再做后续「搬纯规则」才会降到 ~72.5k，且那是**搬家不是删除**，全仓总量不变。
+1. 共享包内**类型名与模块路径**无 `Desktop` 形态味。例外三类**不在本条范围**：线协议字面码、冻结契约成员、宿主侧命名（见 §4 C 轨裁决）。
+2. web 必需的端口有可运行实现 —— 关键是 `IdentityResolver`（5 个无人实现里唯一阻塞 web 的）。
+3. **共享包内的进程级 `static` 清零**（上述 3 处）。
+4. **不改动任何共享包代码**，web 宿主仅实现 trait 即可跑起来。
 
-**成功的判据换成这四条**：
-1. 共享包内**类型名与模块路径**无 `Desktop` 形态味（线协议字面码、冻结契约成员、宿主侧命名三类**不在**本条范围，见 C 的裁决）。
-2. `platform-api` 的 18 个端口中，web 必需的那几个（`IdentityResolver` 为最关键）有可运行实现。
-3. **共享包内的进程级 `static` 清零**：`schema-diff/reviewed.rs:49`、`data-sync/plan_store/mod.rs:674-675`、`data-transfer/plan_store/mod.rs:440-441` —— 这三处是多租户串味的真实风险源。
-4. 不改动任何共享包代码，web 宿主仅实现 trait 即可跑起来。
+### 反模式（明确禁止）
 
-### ⚠️ F 轨的强制约束（否则会逆向增长宿主）
+- ❌ 把 `disk.rs` 整块搬进 `src-tauri/` —— 宿主 +500 行，等于把解耦做成搬家，web 还得再抄一遍。
+  ✅ 正解：fs 实现留在包内（**任何有本地文件系统的宿主都能用**，本就形态中立），端口只收"存储根/实例"注入。`comparison_store/mod.rs:48-50` 已经收 `root: PathBuf`，说明只差构造点接线。
+  **核验标准：改完后 `packages/data-{sync,transfer}` 总行数基本不变，`src-tauri` 只增加少量注入接线。**
+- ❌ 用兼容别名冒充改名完成（`pub use host::JobHost as DesktopJobHost`）—— 验收不成立。
+- ❌ 把 `JobFilter.organization_id` 做成 `Option` 来回避"列举必须按组织过滤"。
 
-`packages/data-sync/src/comparison_store/` 共 2,211 行（`disk.rs` 494 + `mod.rs` 729 + `recovery.rs` 462 + 测试 648 + `manifest_cache.rs` 97），其中 `disk.rs`/`mod.rs` 合计 32 处 `fs::`/`Path` 调用。
+---
 
-**裁决：文件系统实现留在共享包，端口只收"根目录/路径"注入。**
-- 反例（禁止）：把 `disk.rs` 整块搬进 `src-tauri/src/` —— 那会让宿主 +500 行，等于把解耦做成搬家，且 web 还得再抄一遍。
-- 正解：包内保留 `disk.rs`（形态中立：任何有本地文件系统的宿主都能用），把「存储根从哪来」变成构造参数（现在 `mod.rs:48-50` 已收 `root: PathBuf`，说明只差把构造点从宿主传进去）。
-- 同理 `SyncPlanStore`/`TransferPlanStore` 的 `static STORE: OnceLock<...>`：改成**宿主注入的实例**（`Arc<dyn ...>` 或包内 `#[derive(Default)]` 的实例由宿主持有），而不是把 HashMap 实现挪进宿主。
-- 判定标准：改完后 `packages/data-{sync,transfer}` 的总行数**基本不变**，`src-tauri` 只增加注入点的少量接线。
+## 2. 波次划分（按**文件冲突面**，不是功能相邻度）
 
-### Wave 2（并行，依赖 Wave 1 合流）
+```
+Wave 1 (并行 3)   A: job-org-scope     B: di-dyn        C: runtime-naming
+                     ↓                    ↓                 ↓
+                  合流 C → B → A（改名类先合）
+                     ↓
+Wave 2 (并行 4)   D: featurecore-org   E: reviewed-port  F: migration-store  G: identity-resolver
+                     ↓                    ↓                 ↓                    ↓
+                  合流 E → F → D → G
+                     ↓
+Wave 3            R 阶段全量回归 → 合入 main → 删台账 → PR
+Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4 个端口
+```
 
-| 轨 | 分支 | 范围 | 依赖 |
+### 依赖与排序理由
+
+- **D 依赖 B**：两者都改 `feature-core/src/workflow/registry.rs` 与宿主 `dashboard/create.rs`。B 先把 `WorkflowRegistry<S>` 变 `Arc<dyn>`，D 再往签名里加 scope，避免同一文件两轮结构变更。
+- **E/F/G 依赖 A**：A 提供 org 词汇（`JobDefinition`/`JobFilter.organization_id`），E/F 的端口化要用它做租户边界，G 的实现直接消费它。
+- **E / F / G 之间无文件交集**，可完全并行。
+- **合流顺序 `C → B → A`**：协调者原先判断"C 只碰 desktop_host.rs + mod.rs"是**错的** —— C 改的是跨 crate 公开类型名，引用点扩散到 6 个宿主文件，与 A/B 重叠。机械改名先落地，后合的轨在**已改名的标识符**上解冲突，远比反向省力。
+
+---
+
+## 3. 各轨范围、落点与验收
+
+### Wave 1
+
+| 轨 | 分支 / commit | 范围 | 验收 |
 |---|---|---|---|
-| D | `feature/featurecore-org-scope` | feature-core 三个存储 trait 加 org 作用域（`ProfileScope::from_context` 样板） | B（先 dyn 化再改签名，避免同一文件两轮冲突） |
-| E | `feature/schema-diff-reviewed-port` | `schema-diff/reviewed.rs` 的进程全局 → 端口 + 宿主实例 | A（reviewed plan 要带 org） |
-| F | `feature/migration-store-ports` | `data-sync/plan_store` + `data-transfer/plan_store` + `data-sync/comparison_store` → 端口；顺手清 `commands/sync/mod.rs:6` 的转发门面 | A |
-| G | `feature/identity-resolver` | 实现 `IdentityResolver`（桌面版） | A（要用 org 词汇） |
+| **A** `job-org-scope` | `feature/job-org-scope`（进行中，34 文件未提交） | `platform-api/dto/job.rs:73 JobDefinition`、`:280 JobFilter` 加 `organization_id`（**必填非 Option**）；`ports/job.rs` 契约补语义；`runtime/job/repository.rs` 的 `InMemoryJobRepository` 按 org 过滤（跨 org 返回"不存在"）；`runtime_repository.rs`/`memory_runtime_repository.rs`/`owner_claims.rs`/`runtime_methods.rs`；宿主 `store/app_db/jobs/`（`admission.rs:146`）加列 + 迁移 + 过滤；`platform/ipc.rs` FROZEN_SIGNATURES 同提交更新 | 桌面单租户**行为完全不变**（1265 条断言不许动）；≥3 条组织隔离单测；跨 org 不泄漏"存在但无权" |
+| **B** `di-dyn` | `feature/di-dyn` / **`d235f7d3`**（9 文件 +215/−45；自验后 amend 过，**以此为准**） | `feature-core/src/workflow/registry.rs:95/103` 去泛型 → `Arc<dyn WorkflowDefinitionStore>`；宿主 `workflow/registry.rs`（`AppDbWorkflowStore` 提可见性 + 构造入口）、`bootstrap/app_state.rs:205`、`commands/mod.rs:78/167`、`dashboard/create.rs:3/11/53/77/124`、`commands/workflow.rs`、`commands/context.rs`；包内测试夹具 `MemoryStore` | 共享包公开签名里**不出现宿主类型参数**；`WorkflowRegistry` 无类型参数；feature-core 仍不依赖宿主 crate；行为不变 |
+| **C** `runtime-naming` | `feature/runtime-naming` / **`a4c54cc0c`**（29 文件 +238/−105，`READY_FOR_TEST`） | `git mv`：`job/desktop_host.rs`→`job/host.rs`（`DesktopJobHost`→`JobHost`）、`tunnel/desktop.rs`→`tunnel/route.rs`（`DesktopNetworkProvider`→`RouteNetworkProvider`、`DesktopRouteCatalog`→`RouteCatalog`）、`tests/tunnel_desktop_network_provider.rs`→`tunnel_route_network_provider.rs`；导出面、`single_counter_audit` 的 `AUDITED` 登记表、宿主/feature-core 引用点、11 份文档 | 三类型名 0 命中；无 `desktop.rs`/`desktop_host.rs`；**断言逐条未改**；历史保留 |
 
-### Wave 3
+### Wave 2
 
-R 阶段全量回归 → 合流 `main` → PR。
+#### D `featurecore-org-scope`（依赖 B）
+**落点（实测）**
+- `feature-core/src/dashboard/store.rs:35-76` `DashboardStore` **10 方法**：`list_dashboard_rows`/`dashboard_row`/`upsert_dashboard_row`/`delete_dashboard_row`/`set_dashboard_refresh_paused`/`list_widget_rows`/`widget_row`/`upsert_widget_rows`/`delete_widget_row`/`find_workflow_refs`
+- 包内规则层自由函数签名也要带 scope：`:209 list_dashboards`、`:220 get_dashboard`、`:234 save_dashboard`、`:266 delete_dashboard`、`:272 set_dashboard_refresh_paused`、`:280 find_workflow_refs`、`:288 assign_import_id`
+- `feature-core/src/dashboard/runs.rs:28` `DashboardRunStore`
+- `feature-core/src/workflow/registry.rs:35` `WorkflowDefinitionStore`（4 方法）；`WorkflowRegistry` 公开方法 `get:188`/`list:209`/`list_definitions:218`/`save:247`/`save_yaml:254`/`delete:261`/`load_all:268`/`ensure_loaded:273` 需把 scope 传下去
+- 宿主实现：`src-tauri/src/dashboard/store.rs:24`、`dashboard/runs.rs:15`、`workflow/registry.rs:39`
+- 宿主调用：`src-tauri/src/monitor/engine.rs:10/63/67`、`dashboard/export.rs:10/24`、`dashboard/execute.rs:24`、`commands/dashboard.rs`
 
-## 门禁基线（Wave 1 开工前，2026-10-21，`main` @ 8bf6eb553）
+**验收**：三 trait 每个方法都能表达 org 作用域（`&RequestContext` 或构造期绑定 `Scope`，二选一并在全仓保持一致）；桌面行为与 1265 条断言不变；新增跨 org 用例证明 dashboard/workflow 不可互见。
 
-- `cargo fmt --all -- --check` → EXIT=0
-- `cargo clippy -p datazen --all-targets` → EXIT=0，0 errors
-- `cargo check --workspace --all-targets` → EXIT=0
-- `cargo test -p datazen --lib` → **1265 passed / 0 failed / 9 ignored**
-- `cargo test -p datazen-feature-core --lib` → 367 passed
-- `cargo test -p datazen-runtime --lib` → （以各轨实测为准）
-- `cargo test -p datazen-platform-api --lib` → （以各轨实测为准）
-- 前端 `tsc --noEmit` clean；`vitest run` → 608 files / 6341 tests passed
+#### E `schema-diff-reviewed-port`（依赖 A）
+**落点**
+- `packages/schema-diff/src/reviewed.rs`（524 行）。**病灶 `:49 static PLANS: OnceLock<Mutex<HashMap<String, ReviewedPlan>>>` + `:53 fn plans()`**
+- 公共入口：`:57 identity`、`:63 validate_source_connection_snapshot`、`:364 same_endpoint`、`:387 physical_database_scope`、`:451 validate_snapshot`、`:501 validate_object_snapshot`（`:324 validate`、`:358 normalized_scope` 私有）
+- 类型：`:19 ReviewedPlan`、`:38 ReviewedSourceSnapshot`
+- 宿主调用**全在** `src-tauri/src/commands/schema_diff/`：`object_plan_commands.rs:54/150/214/279/328/403/452/527`、`unified_plan/revalidation.rs:9/23`
+- 文件头注释「the plan registry lives for the process」**就是要被打破的语义**，改造时同步改写
 
-## 待裁定项
+**验收**：`grep "static PLANS" packages/schema-diff/src/` 0 命中；宿主持有一个注入的 store 实例；包行数基本不变。
 
-（暂无。若各轨提出，按 §7 归属裁决：默认不并入已关闭功能。）
+#### F `migration-store-ports`（依赖 A，⚠️ 见 §1 反模式约束）
+**落点**
+- `packages/data-sync/src/plan_store/mod.rs`（**2,025 行**）：`:505 SyncPlanStore { plans: Mutex<HashMap> }`、**`:674-675 static STORE`**；`global_store()` 被 **6 个自由函数**调用：`issue_plan:680`、`issue_plan_with_store_and_id:718`、`peek:754`、`attach_endpoint_identities:762`、`claim:783`（内部 `:695/:734`）
+- `packages/data-transfer/src/plan_store/mod.rs`（541 行）：`:166 TransferPlanStore { plans, checkpoints }`、**`:440-441 static STORE`**
+- `packages/data-sync/src/comparison_store/`：`disk.rs` 494（**留在包内**）、`mod.rs` 729（`:48-50` 已收 `root/directory/manifest: PathBuf`）、`recovery.rs` 462、`manifest_cache.rs` 97、测试 890+326
+- 顺手删残留门面 `src-tauri/src/commands/sync/mod.rs:6 pub(crate) use datazen_data_sync::comparison_store;`
+- 宿主调用：`commands/data_transfer/{exec.rs:14, preview.rs:427/832, job_api/mod.rs:58, job_api/assembly.rs:22}`、`commands/sync/{exec.rs:16/859, host/state.rs:26, mod.rs:32}`
+- **端口先例可参照**：`packages/data-sync/src/job/host.rs:78 async fn open_endpoint(...)`
 
-## 合流顺序与冲突面修正（C 交付后）
+**验收**：两处 `static STORE` 清零；`SyncPlanStore`/`TransferPlanStore` 的实例与存储根由宿主在组装根注入；包行数基本不变（核验 §1）。
 
-**我原先的冲突面判断有一处错**：以为 C 只碰 `desktop_host.rs` + `mod.rs`。实际 C 改的是**跨 crate 的公开类型名**，引用点扩散到 `commands/sync/jobs.rs`、`store/app_db_jobs_tests.rs`、`commands/restore_job/tests.rs`、`commands/data_transfer/job_api/runtime.rs`、`packages/feature-core/src/restore_job.rs`、`bootstrap/app_state.rs` —— 与 A、B 均重叠。C 的处理正确：只做逐字标识符替换、零逻辑改动，并在报告里显式申报了这个冲突。
+#### G `identity-resolver`（依赖 A）
+**落点**
+- 端口 `packages/platform-api/src/ports/identity.rs`：`ExecutionIdentity { organization_id, connection_id, execution_identity_key, policy_isolation_key, credential_revision }`；`resolve(&ctx, &ExecutionTarget)` / `resolve_delegation(&ctx, DelegationRef)`
+- **端口自带 5 条单测（`:71-190`）即验收依据**：身份键不得由客户端传入 principal 派生；轮换凭据只动 `credential_revision` 不动 key；`resolve` 与 `resolve_delegation` 是两条路径而非一个 flag；debug 输出不含 password/material 字样
+- 桌面原料（均已存在，**不要新建**）：
+  - `src-tauri/src/platform/identity.rs:66 DesktopIdentity` → `organization_id():127`、`principal_id():131`、`client_instance_id():135`、`request_context():111`、`next_request_context():123`
+  - `src-tauri/src/platform/repositories.rs:279 impl SecretProvider for DesktopProfiles` → `revision():358` = `credential_revision` 来源
+  - `src-tauri/src/platform/policy.rs` → `PolicyService::isolation_key(ctx)` = `policy_isolation_key` 来源
+  - `packages/platform-api/src/id.rs` → `ExecutionIdentityKey`/`PolicyIsolationKey`/`CredentialRevision` newtype
+- 硬约束（端口注释原文）：「同一 `(organization, connection, isolation)` 必须稳定返回同一 `execution_identity_key`，否则会话连续性（INV-02）与池复用都不成立」→ **确定性派生**（runtime 已有 `hmac`/`sha2` 依赖可参照 `packages/runtime/src/job/` 的做法），禁止随机、禁止把凭据材料放进身份键
 
-**裁决：C 先合。** 机械改名先落地，后合的轨在「已改名的标识符」上解冲突，远比反向（把改名 re-apply 到已改动内容上）省力且可验证。
+**验收**：`grep "IdentityResolver for"` 在宿主命中一条真实实现；5 条端口单测语义在宿主实现上重验（尤其确定性：同输入两次调用得同 key）；`ExecutionIdentity` 不含任何秘密材料。
 
-合流顺序：`C → A → B`（若 B 先于 A 完成则 `C → B → A`，原则不变：改名类先合）。
+---
 
-### C 的 4 个待裁定项（协调者裁决，不阻塞验收）
+## 4. 已裁决项（不阻塞验收）
 
 | # | 项 | 裁决 |
 |---|---|---|
-| 1 | `route.rs` 里 4 个 `desktop*` reason code + `LeaseId` 前缀 `desktop-tunnel/` | **保留，不在本计划处理**。这些是已对外可见的线协议值，改名=行为变更，与"纯重命名"授权冲突。若要动，需另立一次带迁移说明的契约变更。 |
-| 2 | `ExportSink::DesktopDialogHandle`（platform-api） | **保留**。它是"宿主可提供哪几种导出汇"的契约枚举成员，本质是形态并集；改它属于契约设计变更，不在本 initiative 范围。记为后续候选。 |
-| 3 | 宿主侧 `AppState.desktop_job_host` / `DesktopTunnelHost` / `DesktopIdentity` | **保留，正确**。宿主本身就是桌面形态，形态名在宿主里是事实陈述。 |
-| 4 | `BudgetConfig::desktop_default()` | **保留**（方法名，形态内预设值，非类型名）。 |
+| 1 | C 轨 `route.rs` 里 4 个 `desktop*` reason code + `LeaseId` 前缀 `desktop-tunnel/` | **保留**。已对外可见的线协议值，改名=行为变更。要动需另立带迁移说明的契约变更。 |
+| 2 | `ExportSink::DesktopDialogHandle`（`platform-api/ports/artifact.rs:128`，被 `runtime/src/artifact/mod.rs:638` 生产路径引用） | **保留**。冻结契约成员，属"宿主可提供的导出汇"形态并集。记为后续候选。 |
+| 3 | 宿主 `AppState.desktop_job_host`、`DesktopTunnelHost`、`DesktopIdentity`、`DesktopRestoreGateway`、`commands/schema_diff/job/desktop.rs` | **保留，正确**。宿主本身就是桌面形态，形态名在宿主里是事实陈述。 |
+| 4 | `BudgetConfig::desktop_default()`（方法名，形态内预设） | **保留**。 |
+| 5 | A/B 轨"越界"改禁区文件（`feature-core/restore_job.rs`、`drivers/{postgres,mysql}/tests/restore_apply_job.rs`、`store/app_db_jobs_tests.rs`、`commands/sync/jobs.rs`） | **接受**。契约字段/类型变更的必要连带，非夹带。后果：A 与 C 在 `feature-core/src/restore_job.rs` **必然冲突**（C 改那里的 `JobHost`，A 改那里的 `JobDefinition` 构造）——按 `C→A` 合，冲突是机械的。合流后 Tester 须独立复验这些连带点**没有夹带逻辑改动**。 |
 
-结论：共享内核里**类型名与模块路径**已无 desktop 形态味；剩余的 `desktop` 全部是 (a) 线协议字面码 (b) 宿主侧命名 (c) 冻结契约成员 —— 三者都不该由本轨动。
+---
 
-## 现场状态（会话中断后接手者必读）
+## 5. 现场状态（会话中断后接手者必读）
 
-### ⚠️ 验证树上有未还原告异的变异
-`.worktrees/verify-runtime-naming`（detached @ `a4c54cc0c`）当前有 **1 个未还原变异**：
-`packages/runtime/src/tunnel/single_counter_audit/mod.rs:98` 的登记标签被改成 `src/tunnel/ghost.rs`（`include_str!` 保持有效，所以能编译）。
-这是 Tester 的 P2 变异 1，**是证据的一部分，不是脏数据**，不要直接 `git checkout .` 抹掉。
-- Tester `a1f0c68d` 已两次死在「跑变异 1 闸门」这一步，我已 resume（死亡 2/3 次，按规则 resume 优于换新实例）。
-- 若它再次死亡（>3 次），换新验证实例前**必须先还原该文件**，否则新实例会在脏树上得出无效结论。
-- 我（协调者）未在该树上跑过任何 cargo 命令，未改动任何文件。
+### ⚠️ 共享 `CARGO_TARGET_DIR` 已作废 —— 各轨必须用隔离 target 目录
 
-### Wave 1 各轨活性（22:41 实测）
+**这是协调者的判断失误**：我最初让三条轨道共用 `.worktrees/.shared-target`，实测证明**会跨工作树串产物** —— cargo 对 path 依赖（本仓库 `packages/*`）的指纹与产物文件名**不区分工作树路径**，多工作树互相覆盖同一 crate 的 rlib；后跑的轨道若判定"产物比源文件新"就 fresh 复用，**实际链接的是别人工作树的产物**。
+
+实证（B 轨实测上报）：共享目录下 `cargo check` 退出码 101，报错路径直接指向 `.worktrees/datazen-job-org-scope/packages/feature-core/src/workflow/registry.rs:95`（`struct … with 1 generic parameter: S`）与该轨道独有的 `JobDefinition.organization_id` —— 即链接了 job-org-scope 工作树的产物。
+
+**处置**：
+- 共享目录已改名为 `.worktrees/.shared-target-VOID`，**禁止再使用**（含各轨的 `export CARGO_TARGET_DIR=...shared-target`）。
+- **每条轨道 / 每个验证树各自建隔离目录**：`/tmp/datazen-<track>-target`（约 10G/条，磁盘 229 GiB free，可承受）。
+- **后果追溯**：在共享目录上跑过的门禁结论**一律不可信**。已要求 A 轨（仍在跑）与 C 的 Tester（已 resume）**在隔离目录下重跑门禁**。C 轨编码代理自验的结论同样受影响，其 Tester 的 P5 全量门禁已在隔离目录重跑。
+- B 轨 `d235f7d3` 的门禁**本来就是隔离目录跑的**（`/tmp/datazen-di-dyn-target`），结论可信。
+
+### ⚠️ 验证树上有一个未还原告异的变异
+`.worktrees/verify-runtime-naming`（detached @ `a4c54cc0c`，独立建树 + 补齐 gitignored codegen + node_modules 软链）：
+`packages/runtime/src/tunnel/single_counter_audit/mod.rs:98` 的登记标签被改成 `("src/tunnel/ghost.rs", include_str!("../route.rs"))` —— `include_str!` 保持有效故可编译。
+
+**这是 Tester 的 P2 变异 1，是证据，不是脏数据。不要 `git checkout .` 抹掉。**
+- Tester `a1f0c68d` 已两次死在"跑变异 1 闸门"这步，已 resume（死亡 2/3 次；>3 次则换新实例，但**换新前必须先还原该文件**，否则新实例在脏树上结论无效）。
+- 变异验证的判准：标签指向不存在的路径 → 闸门**必须点红**（R6 的立论是"每个模块都得登记"）；静默通过 = **R6 形同虚设，记缺陷**。
+- 还要做变异 2：**整条删掉** `route.rs` 登记行 → 同样必须点红（"闸门自己不能被裁小"）。注意删掉一条 `include_str!` 会让该源码不再被扫，可能顺带触发别的规则断言 —— 要逐字读失败消息，确认是**因 R6 红**才算闸门有效。
+- 每次变异跑完立即还原并复验 EXIT=0。
+
+### 三轨活性（22:50 实测）
 | 轨 | 状态 | 活性证据 |
 |---|---|---|
-| C | 已交付 `a4c54cc0c`，`READY_FOR_TEST` | Tester 复测中（已 resume 1 次，死亡 2/3） |
-| A `job-org-scope` | running，34 文件未提交 | 最近编辑 22:48，活跃 |
-| B `di-dyn` | **已交付** `56b5bbef0`，工作区干净 | 9 文件 +215/−45；未收到汇报，判断为在跑自验门禁（共享 target 锁排队）。**不要主动碰它的树** |
+| C | 已交付 `a4c54cc0c`，`READY_FOR_TEST` | Tester 复测中（resume 1 次） |
+| B | 已交付 **`d235f7d3`**，`READY_FOR_TEST`，**隔离 target 验证全绿** | Tester `cda75c30` 在独立验证树 `.worktrees/verify-di-dyn` 复测 |
+| A | running，34 文件未提交 | 最近编辑 22:48，活跃 |
 
-B 的交付内容：`WorkflowRegistry<S>` → 注入 `Arc<dyn WorkflowDefinitionStore>`；宿主 `workflow/registry.rs` 重写绑定；连带 `bootstrap/app_state.rs`、`commands/context.rs`、`commands/workflow.rs`、`dashboard/create.rs` 与 2 份文档；`progress.md` 已入库。
+### 环境
+- `export CARGO_TARGET_DIR=/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/.shared-target`（三轨共用；会打印 `Blocking waiting for file lock` —— **正常，等它**，禁止各轨改 target 目录）
+- 各 worktree 的 `node_modules` 是软链，**禁 `pnpm install`**；驱动集 `NEW_WT_DRIVERS=all`（与 CI 对齐）
+- 磁盘 229 GiB free
+- 已知 flake：`platform::native_tool::tests::native_desktop_output_overflow_is_bounded_killed_and_reaped` 高负载下 `TimedOut`（期望 `OutputLimit`），单跑重试即绿，**不要为此改代码**
+- 长输出一律落 `mktemp` 文件再 `tail`/`grep`；退出码单独打印
 
-**新的冲突面**：B 也改了 `src-tauri/src/dashboard/create.rs` 与 `src-tauri/src/workflow/registry.rs`，而 D 轨要改这两个文件的 org 作用域 —— 印证了「D 依赖 B 先合」的安排。另 B 未碰 `packages/feature-core/src/dashboard/**`（禁区遵守）。
+---
 
-### 轨道 A 的范围扩张（可接受，但记为已知冲突）
-A 给 `JobDefinition` 加 `organization_id` 后，构造点扩散到了任务书列为禁区的文件：
-`packages/feature-core/src/restore_job.rs`、`packages/drivers/{postgres,mysql}/tests/restore_apply_job.rs`。
-这与轨道 C 一样属于「契约字段变更的必要连带」，不是越界夹带 —— **接受**。
-后果：A 与 C 在 `packages/feature-core/src/restore_job.rs` 上**必然冲突**（C 改了那里的 `JobHost` 标识符，A 改了那里的 `JobDefinition` 构造）。按 `C → A` 顺序合，冲突是机械的（在已改名的标识符上加字段）。
-合流后必须由 Tester 独立复验 A，重点确认这些连带点**没有夹带逻辑改动**。
+## 6. 门禁与流程
 
-## Wave 2 简报要点（侦察已完成，派发时直接用，勿重复摸底）
+### 每轨 coder 自验 + tester 独立复跑
+```
+cargo fmt --all -- --check
+cargo clippy -p <涉及 crate> --all-targets          # 0 errors
+cargo check -p <涉及 crate> --all-targets
+DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p <crate> --lib
+```
+### 每次合流后（集成分支）健全性校验
+```
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets
+cargo check --workspace --all-targets
+DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib            # 基线 1265 passed
+DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-feature-core --lib # 基线 367
+cargo test -p datazen-platform-api --lib
+cargo test -p datazen-data-sync --lib / -p datazen-data-transfer --lib / -p datazen-schema-diff --lib   # 235/226/148
+```
+**门禁首尾各记一次 HEAD 与工作区 sha**，证明运行期间无人改动。
 
-> 以下全部是**实测行号与行数**，非推断。派发前仍要求各自核实（代码可能已因 Wave 1 合流而漂移）。
+### 修-测循环（缺陷时）
+`Tester 完整上报缺陷 + TEST_FAILED` → resume **原 coder**（带完整缺陷清单 + "仅修这些，不做范围外改动"）→ **全新 Tester** 完整复测 → 通过才闭环。单轨最多 **5 轮**，超限时向用户汇报并给出选项与代价。coder 自验**不能**替代 tester 复测。
 
-### 共同样板：org 作用域该长什么样
-照 `packages/platform-api/src/ports/profile.rs:24-40` 抄，不要自创：
-- `ProfileScope { organization_id }`，`ProfileScope::from_context(&RequestContext)`（注释：「身份只能来自 adapter 构造的上下文（INV-01）」）
-- 越权语义：**返回 `None`/空而不是错误**，不泄漏「存在但无权」（CM-05），见同文件 `:20-22` 注释
+### 合流操作（每轨通过验收后，在 `.worktrees/datazen-storage-ports`）
+```
+git merge --no-ff feature/<track> -m "merge(<track>): ..."
+# 解冲突 → 跑上面的合流门禁 → 提交
+git worktree remove --force .worktrees/datazen-<track>
+git branch -d feature/<track>
+git worktree remove --force .worktrees/verify-<track>   # 验证树用完即删
+```
 
-### 轨 D — feature-core 三个存储 trait 加 org 作用域
-- `DashboardStore`：`packages/feature-core/src/dashboard/store.rs:35-76`，**10 个方法**（`list_dashboard_rows` / `dashboard_row` / `upsert_dashboard_row` / `delete_dashboard_row` / `set_dashboard_refresh_paused` / `list_widget_rows` / `widget_row` / `upsert_widget_row` / `delete_widget_row` / `find_workflow_refs`）
-- 包内自由函数（规则层，签名也要带 scope）：`:209 list_dashboards`、`:220 get_dashboard`、`:234 save_dashboard`、`:266 delete_dashboard`、`:272 set_dashboard_refresh_paused`、`:280 find_workflow_refs`、`:288 assign_import_id`
-- `DashboardRunStore`：`packages/feature-core/src/dashboard/runs.rs:28`
-- `WorkflowDefinitionStore`：`packages/feature-core/src/workflow/registry.rs:35`（4 方法；`WorkflowRegistry` 的公开方法 `get/list/list_definitions/save/save_yaml/delete/load_all/ensure_loaded` 在 `:188-280`，都需要把 scope 传下去）
-- **宿主实现点**：`src-tauri/src/dashboard/store.rs:24`（`impl DashboardStore for AppDb`）、`src-tauri/src/dashboard/runs.rs:15`、`src-tauri/src/workflow/registry.rs:39`（`impl WorkflowDefinitionStore for AppDbWorkflowStore`）
-- **宿主调用点**：`src-tauri/src/monitor/engine.rs:10,63,67`、`src-tauri/src/dashboard/export.rs:10,24`、`src-tauri/src/dashboard/execute.rs:24`、`src-tauri/src/commands/dashboard.rs`
-- 桌面单租户：org 恒为同一个值，**行为必须不变**（现有 host 单测 1265 条断言不许动）
-- 依赖：**B 先合**（`WorkflowRegistry` 已变 `Arc<dyn>`，D 再改签名，避免同一文件两轮冲突）
+---
 
-### 轨 E — schema-diff reviewed 进程全局 → 端口
-- `packages/schema-diff/src/reviewed.rs`（524 行）。**病灶在 `:49 static PLANS: OnceLock<Mutex<HashMap<String, ReviewedPlan>>>` + `:53 fn plans()`**
-- 公共入口：`:57 identity`、`:63 validate_source_connection_snapshot`、`:364 same_endpoint`、`:387 physical_database_scope`、`:451 validate_snapshot`、`:501 validate_object_snapshot`（`:324 validate`、`:358 normalized_scope` 是私有）
-- 类型：`:19 ReviewedPlan`、`:38 ReviewedSourceSnapshot`
-- **宿主调用点全在** `src-tauri/src/commands/schema_diff/`：`object_plan_commands.rs:54,150,214,279,328,403,452,527`、`unified_plan/revalidation.rs:9,23`
-- 文件头注释声称「registry lives for the process」—— 这条**就是要在 web 多租户下被打破的语义**，改造时同步改写。
+## 7. Wave 3：R 阶段与交付
 
-### 轨 F — 迁移三件套的 plan_store / comparison_store → 端口
-- `packages/data-sync/src/plan_store/mod.rs`（**2,025 行**）：`:505 SyncPlanStore { plans: Mutex<HashMap<..>> }`、**`:674-675 static STORE: OnceLock<SyncPlanStore>`**、`issue_plan` 在其后
-- `packages/data-transfer/src/plan_store/mod.rs`（541 行）：`:166 TransferPlanStore { plans, checkpoints }`、**`:440-441 static STORE`**
-- `packages/data-sync/src/comparison_store/`：`disk.rs` 494、`mod.rs` 729（`:48-50` 已收 `root/directory/manifest: PathBuf`）、`recovery.rs` 462、`manifest_cache.rs` 97、测试 890+326
-- 残留转发门面：`src-tauri/src/commands/sync/mod.rs:6 pub(crate) use datazen_data_sync::comparison_store;`（本轨顺手删）
-- 宿主调用点：`commands/data_transfer/{exec.rs:14,preview.rs:427,832,job_api/mod.rs:58,job_api/assembly.rs:22}`、`commands/sync/{exec.rs:16,859,host/state.rs:26,mod.rs:32}`
-- ⚠️ 见上文「F 轨强制约束」：**fs 实现留在包内，只把「存储根」与「实例」改成宿主注入**；判定标准是包行数基本不变。
+1. **全量回归**（一次性，在集成分支）：Rust 全套门禁 + 六个驱动套件 + 前端 `./node_modules/.bin/tsc --noEmit -p tsconfig.json` 与 `./node_modules/.bin/vitest run`（基线 608 files / 6341 tests）。
+2. **核验 §1 四条成功判据**，逐条给命令与命中数（不接受"看起来没问题"）。
+3. **IPC 表面核对**：`#[tauri::command]` 数量 275 与 `invoke_handler` 270 条目须与 main 逐字节一致；若某轨动到，必须像 PR #81 那样把差异分类为"类型路径拼写"或"有意的契约变更"并举证。
+4. **文档收口**：把结论改写为"已实现的事实"并入 `docs/architecture/`（候选：`shared-boundaries-and-ports.md`、`connection-management.md`、`backend/services.md`、`backend/workflow.md`、`platform/system-overview.md`）；反向 grep 清掉指向已改名/已删除文件的引用；自查 markdown 相对链接可达（CI 不校验链接）。
+5. **删台账**：`progress.md`（各轨已随分支合入，合流后逐一删除）与 `hub.md` 必须在交付提交里消失。
+6. 合入 `main` → push → `gh pr create --base main`（或本 initiative 的 PR）→ 清理全部 worktree 与分支 → 释放磁盘。
 
-### 轨 G — 实现 IdentityResolver（桌面）
-- 端口：`packages/platform-api/src/ports/identity.rs`，`ExecutionIdentity { organization_id, connection_id, execution_identity_key, policy_isolation_key, credential_revision }`；两个方法 `resolve(&ctx, &ExecutionTarget)` / `resolve_delegation(&ctx, DelegationRef)`
-- 端口自带 5 条单测（`:71-190`）钉住了语义，可当验收依据：身份键**不得由客户端传入的 principal 派生**；轮换凭据只动 `credential_revision` 不动 key；`resolve` 与 `resolve_delegation` 是两条路径不是个 flag
-- **桌面可用原料**（都在宿主，不用新建）：
-  - `src-tauri/src/platform/identity.rs:66 DesktopIdentity` → `organization_id():127`、`principal_id():131`、`client_instance_id():135`、`request_context():111`、`next_request_context():123`
-  - `src-tauri/src/platform/repositories.rs:279 impl SecretProvider for DesktopProfiles` → `revision(secret):358` 是 `credential_revision` 的来源
-  - `src-tauri/src/platform/policy.rs` → `PolicyService::isolation_key(ctx)` 是 `policy_isolation_key` 的来源
-  - `packages/platform-api/src/id.rs`：`ExecutionIdentityKey` / `PolicyIsolationKey` / `CredentialRevision` 的 newtype
-- 关键约束（端口注释原文）：「同一 `(organization, connection, isolation)` 必须稳定返回同一 `execution_identity_key`，否则会话连续性（INV-02）与池复用都不成立」→ 必须是**确定性派生**（HMAC/哈希），不能随机；且**不得**把凭据材料放进身份键（端口的测试会检查 debug 输出不含 password/material 字样）
-- 依赖：A（org 词汇）。与 E/F 无文件交集。
+## 8. Wave 4：后续 backlog（**不在本 initiative 目标内，勿顺手做**）
 
-## 合流记录
-
-（每轨合入后追加：轨 → commit → 门禁数字 → 冲突处理。）
+| 项 | 实测落点 | 说明 |
+|---|---|---|
+| 搬宿主剩余纯规则 | 毛量 **3,399 行**：`job_api/admission.rs` 100（自述 pure）、`job_api/assembly.rs` 538、`schema_diff/job.rs` 700、`sync/jobs.rs` 879（DispatchClaim/preaccept）、`sync/jobs_contract.rs` 537、`sync/jobs_cancel_contract.rs` 530、`schema_diff/unified_plan/revalidation.rs` 115 | 真能搬约 1,000–1,600；**是搬家不是删除** |
+| `workspace-apps` 端口化 | `packages/workspace-apps` **0 个 port trait**；`manager.rs`/`storage.rs`/`install.rs` 直绑 `std::fs`+`PathBuf` | web 支持插件的前置：`WappCatalog` + `WappStore`；规则侧（manifest/zip 守卫/白名单）已共享，不用动 |
+| 残留转发门面清扫 | `commands/sync/mod.rs:6`（归 F）、`wapps/mod.rs:26-34`（实测仅 `validate_wapp_dir`、`Permission` 两名仍在用）、`monitor/channels.rs:14`、`lib.rs:8/20/27` | 小、低风险 |
+| 其余 4 个未实现端口 | `EventSink`、`SubmissionTokenIssuer`、`ClusterNodeBudgetPort`、`ControlResourcePort` | 与 web 多实例/预算治理相关，另立 initiative |
+| 线协议字面码去形态化 | `route.rs` 的 4 个 reason code + `desktop-tunnel/` 前缀；`ExportSink::DesktopDialogHandle` | 契约变更，需迁移说明 |
