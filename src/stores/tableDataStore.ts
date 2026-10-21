@@ -10,7 +10,6 @@ import {
   isCompleteTableChangeContext,
   rowIdentityKey,
   tableChangeContextKey,
-  valuesEqual,
   type CommitPendingChangesResult,
   type RowChangePlan,
   type TableChangeContext,
@@ -23,7 +22,6 @@ import {
   emptyTableState,
   extractErrorMessage,
   rowsToRecords,
-  toCellValue,
   type TableTarget,
 } from './tableData/connectionState';
 import {
@@ -33,16 +31,17 @@ import {
   type SelectionStoreSlice,
 } from './tableData/selectionActions';
 import {
+  createPendingEditSlice,
+  type PendingEditStoreSlice,
+} from './tableData/pendingEditActions';
+import {
   AMBIGUOUS_ROW_IDENTITY_ERROR,
   draftsForWire,
-  findPendingForRow,
-  hasPendingIdentityCollision,
   hasPendingWork,
   overlayPendingRows,
   pendingChangesForWire,
   pendingWorkSignature,
   rebuildEditBuffer,
-  rowIdentityIsUnique,
 } from './tableData/pendingChanges';
 import {
   createDraftSlice,
@@ -60,7 +59,7 @@ export interface LoadTableDataParams extends TableTarget {
 }
 
 /** Every action is scoped to one table/view panel, like `panelStore`'s queryExec map. */
-interface TableDataStore extends SelectionStoreSlice, DraftStoreSlice {
+interface TableDataStore extends SelectionStoreSlice, DraftStoreSlice, PendingEditStoreSlice {
   byPanel: Map<string, TableState>;
 
   loadTableData: (params: LoadTableDataParams) => Promise<void>;
@@ -92,17 +91,12 @@ interface TableDataStore extends SelectionStoreSlice, DraftStoreSlice {
 
   startEdit: (panelId: string, row: number, col: string) => void;
   cancelEdit: (panelId: string) => void;
-  stageCellChange: (panelId: string, row: number, col: string, value: unknown) => void;
-  applyColumnToRows: (panelId: string, col: string, value: unknown, rows: number[]) => void;
-  stageRowDelete: (panelId: string, rowIndices: number | number[]) => void;
-  deleteRows: (panelId: string, rowIndices: number[]) => void;
   /**
    * Clear the "new row" highlight. It expires on its own (the row is
    * highlighted for a moment after the commit) and it is cleared when the
    * page, the filters or the sort change (04 §7 #17).
    */
   clearHighlightedNewRow: (panelId: string) => void;
-  rollbackPendingChanges: (panelId: string) => void;
   previewPendingChanges: (panelId: string) => Promise<RowChangePlan | null>;
   commitPendingChanges: (panelId: string) => Promise<CommitPendingChangesResult>;
 }
@@ -422,173 +416,12 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   // Whole-row + cell selection actions live in `tableData/selectionActions`.
   ...createSelectionSlice((panelId, updater) => patchPanel(get, set, panelId, updater)),
 
-  stageCellChange: (panelId, row, col, value) => {
-    const ts = get().byPanel.get(panelId);
-    if (!ts) return;
-    const rowObj = ts.rows[row];
-    if (!rowObj) return;
-    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
-    if (pkCols.length === 0) {
-      patchPanel(get, set, panelId, () => ({ error: t('tableData.noPrimaryKey') }));
-      return;
-    }
-
-    const rowIdentity = buildRowIdentity(rowObj, pkCols);
-    if (!rowIdentity || !rowIdentityIsUnique(ts, row, rowIdentity, pkCols)) {
-      patchPanel(get, set, panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
-      return;
-    }
-    const match = findPendingForRow(ts, row, rowObj, pkCols);
-    const identity = match?.change.rowIdentity ?? rowIdentity;
-    if (!identity) {
-      patchPanel(get, set, panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
-      return;
-    }
-    const existing = match?.change;
-    const hasOriginalValue =
-      existing !== undefined && Object.prototype.hasOwnProperty.call(existing.originalValues, col);
-    const originalValue = hasOriginalValue
-      ? existing.originalValues[col]
-      : toCellValue(rowObj[col]);
-    const currentValue = toCellValue(value);
-    const prospectiveRow = { ...rowObj, [col]: currentValue };
-    const prospectiveIdentity = buildRowIdentity(prospectiveRow, pkCols);
-    const key = match?.key ?? rowIdentityKey(identity);
-    if (
-      !prospectiveIdentity ||
-      !rowIdentityIsUnique(
-        {
-          ...ts,
-          rows: ts.rows.map((candidate, index) => (index === row ? prospectiveRow : candidate)),
-        },
-        row,
-        prospectiveIdentity,
-        pkCols,
-      ) ||
-      hasPendingIdentityCollision(ts, key, prospectiveIdentity, pkCols)
-    ) {
-      patchPanel(get, set, panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
-      return;
-    }
-    const originalValues = { ...(existing?.originalValues ?? {}) };
-    const currentValues = { ...(existing?.currentValues ?? {}) };
-    let changedColumns = [...(existing?.changedColumns ?? [])];
-
-    if (valuesEqual(originalValue, currentValue)) {
-      delete originalValues[col];
-      delete currentValues[col];
-      changedColumns = changedColumns.filter((column) => column !== col);
-    } else {
-      originalValues[col] = originalValue;
-      currentValues[col] = currentValue;
-      if (!changedColumns.includes(col)) changedColumns.push(col);
-    }
-
-    const pendingChanges = new Map(ts.pendingChanges);
-    if (changedColumns.length === 0 && !existing?.deleteMarked) {
-      pendingChanges.delete(key);
-    } else {
-      pendingChanges.set(key, {
-        rowIndex: row,
-        rowIdentity: { ...identity },
-        originalValues,
-        currentValues,
-        changedColumns,
-        deleteMarked: existing?.deleteMarked ?? false,
-      });
-    }
-
-    const nextRows = [...ts.rows];
-    nextRows[row] = { ...rowObj, [col]: currentValue };
-    const rowIdentityAnchors = new Map(ts.rowIdentityAnchors);
-    rowIdentityAnchors.set(row, key);
-
-    patchPanel(get, set, panelId, () => ({
-      rows: nextRows,
-      pendingChanges,
-      rowIdentityAnchors,
-      previewPlan: null,
-      pendingStatus: 'idle',
-      editBuffer: rebuildEditBuffer({ ...ts, rows: nextRows, pendingChanges }),
-      editingCell: null,
-      error: null,
-    }));
-  },
-
-  applyColumnToRows: (panelId, col, value, rows) => {
-    for (const row of rows) get().stageCellChange(panelId, row, col, value);
-  },
-
-  stageRowDelete: (panelId, rowIndices) => {
-    const ts = get().byPanel.get(panelId);
-    if (!ts) return;
-    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
-    if (pkCols.length === 0) {
-      patchPanel(get, set, panelId, () => ({ error: t('tableData.noPrimaryKey') }));
-      return;
-    }
-
-    const indices = [
-      ...new Set(
-        (Array.isArray(rowIndices) ? rowIndices : [rowIndices]).filter(
-          (index) => Number.isInteger(index) && index >= 0,
-        ),
-      ),
-    ].sort((left, right) => left - right);
-    if (indices.length === 0) return;
-
-    const pendingChanges = new Map(ts.pendingChanges);
-    const rowIdentityAnchors = new Map(ts.rowIdentityAnchors);
-    for (const rowIndex of indices) {
-      const row = ts.rows[rowIndex];
-      if (!row) continue;
-      const rowIdentity = buildRowIdentity(row, pkCols);
-      if (!rowIdentity || !rowIdentityIsUnique(ts, rowIndex, rowIdentity, pkCols)) {
-        patchPanel(get, set, panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
-        return;
-      }
-      const match = findPendingForRow(ts, rowIndex, row, pkCols);
-      const identity = match?.change.rowIdentity ?? rowIdentity;
-      const key = match?.key ?? rowIdentityKey(identity);
-      if (hasPendingIdentityCollision(ts, key, rowIdentity, pkCols)) {
-        patchPanel(get, set, panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
-        return;
-      }
-      const existing = match?.change;
-      pendingChanges.set(key, {
-        rowIndex,
-        rowIdentity: { ...identity },
-        originalValues: { ...(existing?.originalValues ?? {}) },
-        currentValues: { ...(existing?.currentValues ?? {}) },
-        changedColumns: [...(existing?.changedColumns ?? [])],
-        deleteMarked: true,
-      });
-      rowIdentityAnchors.set(rowIndex, key);
-    }
-
-    patchPanel(get, set, panelId, () => ({
-      pendingChanges,
-      rowIdentityAnchors,
-      previewPlan: null,
-      pendingStatus: 'idle',
-      editBuffer: rebuildEditBuffer({ ...ts, pendingChanges }),
-      editingCell: null,
-      error: null,
-    }));
-  },
-
-  deleteRows: (panelId, rowIndices) => {
-    const ts = get().byPanel.get(panelId);
-    if (!ts) return;
-    const unique = [...new Set(rowIndices.filter((i) => Number.isInteger(i) && i >= 0))];
-    if (unique.length === 0) return;
-    // Deleting does not change the selection semantics (00-contracts §4, GS2-D2): the row
-    // set is owned by `mode`, so a `cell` selection must stay `cell` + empty rows while the
-    // delete scope lives in the derived selector, and row identity is carried by
-    // `rowIdentityAnchors` inside `stageRowDelete`. Writing `selectedRows` here would park
-    // two sources of truth on top of each other ("region highlighted" + "rows selected").
-    get().stageRowDelete(panelId, unique);
-  },
+  // The staged-edit actions live in `tableData/pendingEditActions`; the store only wires them.
+  ...createPendingEditSlice(
+    (panelId, updater) => patchPanel(get, set, panelId, updater),
+    (panelId) => get().byPanel.get(panelId),
+    (panelId) => get().reloadPanel(panelId),
+  ),
 
   // Draft actions live in `tableData/draftInserts`; the store only wires them.
   ...createDraftSlice(
@@ -600,23 +433,6 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     patchPanel(get, set, panelId, (ts) =>
       ts.highlightedNewRowKey === null ? {} : { highlightedNewRowKey: null },
     );
-  },
-
-  rollbackPendingChanges: (panelId) => {
-    const ts = get().byPanel.get(panelId);
-    if (!ts) return;
-    patchPanel(get, set, panelId, () => ({
-      pendingChanges: new Map(),
-      draftInserts: new Map(),
-      draftInsertOrder: [],
-      previewPlan: null,
-      pendingStatus: 'idle',
-      editBuffer: new Map(),
-      editingCell: null,
-      highlightedNewRowKey: null,
-      error: null,
-    }));
-    get().reloadPanel(panelId);
   },
 
   previewPendingChanges: async (panelId) => {
