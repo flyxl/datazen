@@ -438,8 +438,8 @@ fn organization_id_value(literal: &str) -> Option<String> {
             // 值表达式一直读到该字段的逗号：按括号深度配平，`()`/`[]`/`{}` 都要算。
             let mut value_depth = 0usize;
             let mut end = bytes.len();
-            for offset in value_start..bytes.len() {
-                match bytes[offset] {
+            for (offset, byte) in bytes.iter().enumerate().skip(value_start) {
+                match *byte {
                     b'(' | b'[' | b'{' => value_depth += 1,
                     b')' | b']' | b'}' => value_depth = value_depth.saturating_sub(1),
                     b',' if value_depth == 0 => {

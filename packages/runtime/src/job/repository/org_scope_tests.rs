@@ -487,7 +487,7 @@ async fn the_renewal_path_carries_no_organization_dimension() {
         stage_id: claim.stage_id.clone(),
         worker_id: claim.worker_id.clone(),
         claimed_at: claim.claimed_at.clone(),
-        claim_generation: claim.claim_generation.clone(),
+        claim_generation: claim.claim_generation,
         expires_at: claim.expires_at.clone(),
     };
     let renewed = repo
