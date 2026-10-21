@@ -888,7 +888,7 @@ pub(crate) async fn delete_named_view_impl(state: &AppState, id: &str) -> Result
 | `none` → 单值 | 沿用保留的旧值 | 一个输入框 |
 | 单值 → `tokens`（`in`/`notIn`） | 字符串按逗号切分、`trim`、丢空段 → `string[]` | token 输入框 |
 | `tokens` → 单值 | `string[]` 用 `', '` 连接 → `string`（空数组 → `''`） | 一个输入框 |
-| 单值 → `pair`（`between`/`notBetween`） | `[原值, '']`：上半沿用，下半留空 → 立即是「不完整」，把用户视线引到缺失的下界 | 两个输入框 |
+| 单值 → `pair`（`between`/`notBetween`） | `[原值, '']`：**元素 0 = 下界、元素 1 = 上界**（与共享层 `between_bounds` 的元素序一致）⇒ 原值落在**下界**、上界留空 → 立即是「不完整」，把用户视线引到缺失的**上界** | 两个输入框 |
 | `pair` → 单值 | 取**下界**（上界丢弃，因为单值控件表达不了） | 一个输入框 |
 | `tokens` → `pair` | `[t0 ?? '', t1 ?? '']` | 两个输入框 |
 | `pair` → `tokens` | `[lo, hi]` 去掉空段 | token 输入框 |
@@ -1196,7 +1196,7 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 | 筛选后当前页超界 | 应用/清空筛选/切换视图时一律 `page: 0`（`patchPanelForReload` 已保证）。其它路径（如从第 5 页直接改条件）若返回 `rows.length === 0 && totalRows > 0 && page > 0`，UI 记一次 `resetPageOnce` 标志 → `setPage(0)` 重取一次，**用 `requestRevision` 防止循环**；不重复触发（每次筛选变更新增一个 revision，标志随之复位） |
 | 快筛表达式（`parseFilterForApply`） | 既有 8 算子解析器与 `<>` / `==` 的接受范围本册不动（属表达式语法演进）。**本册改变的是混用逻辑的处理**：不再按 `logic.size > 1` 一律拒绝，而是先过 §3.6.3 的 `flattenToConnectors`，能无损降维就带上逐条 `connector` 应用，返回 `null` 才拒绝。`filterExpressionToConditions` 产出的条件**不带** `connector`（缺省即全局），不要在解析层回填 |
 | 快速筛选与人工面板混用 | 快筛成功即 `setFilters`，会覆盖人工草稿（今天如此）；本册不改这条语义，但要求在 UI 上可见（应用后摘要行变化），不静默 |
-| 逐条连接符与 SQL 优先级 | 混合连接符**必须**加括号：`a OR b AND c` 渲染成 `(a OR b) AND c`。不加括号时数据库会按 `AND` 优先解析成 `a OR (b AND c)`——**结果集是错的且不报错**，比拒绝执行危险得多。单条件段不加括号（纯噪音） |
+| 逐条连接符与 SQL 优先级 | 混合连接符**必须**加括号：`a OR b AND c` 渲染成 `a OR (b AND c)`〔契约审计修订 2026-10-22〕**本行订正**：原文写 `(a OR b) AND c`（左到右读），与同册 §3.6.2 的参考实现、§9.1 的断言、§10 第 12 条**自相矛盾**，也与已合入的 `filter_sql::join_filters` 实现相反。**以 SQL 优先级为准**——左到右渲染会把用户勾的「A 或 B 且 C」变成语义不同的表达式，**静默改变结果集**。不加括号时数据库会按 `AND` 优先解析成 `a OR (b AND c)`——**结果集是错的且不报错**，比拒绝执行危险得多。单条件段不加括号（纯噪音） |
 | 第 0 条条件的 `connector` | **必须忽略**。UI 不渲染它、后端不读它；带值也不报错。这样前端在列表头插入 / 删除导致下标平移时，不会把连接符贴到错误的行上 |
 | 条件被丢弃后连接符错位 | 渲染阶段若某条产出空片段（驱动返回 `filter_operator_sql` = `Some("")`），过滤必须发生在**拷贝 `connector` 之后**，片段与连接符始终成对。**禁止先丢弃再按下标回查 `filters[i]`**——今天两个 `build_*` 就是这个写法，下标错位会让所有连接符整体偏移一位，而 SQL 仍能执行、测试仍可能变绿（§3.6.2） |
 | 嵌套表达式 `a AND (b OR c)` | 快筛入口显式拒绝（`filter.nestedLogic`），**绝不静默拍平**成 `a AND b OR c`。手工面板无法表达嵌套（逐条连接符是扁平列表），不存在对应路径；§3.6.4 的 `FilterNode` 只冻结类型、不接线 |
@@ -1388,7 +1388,7 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 | 同上（新增） | `between_renders_two_value_inputs` | `between` 条件展开后有两个 `data-testid="filter-value"`，上下界分别绑定 |
 | 同上（新增） | `in_renders_token_input_and_enter_creates_token` | 输入 `a` + Enter → 出现一个 token chip；`,` 同样成 token |
 | 同上（新增） | `ime_composition_enter_does_not_create_token` | `compositionstart` → `keydown Enter`（`isComposing: true`）→ **不**新增 token；`compositionend` 后才可 |
-| 同上（新增） | `switching_eq_to_between_seeds_lower_bound` | 上界 = 原值、下界为空、条件立即被判不完整 |
+| 同上（新增） | `switching_eq_to_between_seeds_the_lower_bound` | 〔契约审计修订 2026-10-22〕**口径按 §4.2 的表格**（元素 0 = 下界、元素 1 = 上界）⇒ 原值落在**下界**、**上界**留空、条件立即被判不完整。原文把「上界 = 原值、下界为空」与 §4.2 的 `[原值, '']` **正好相反** |
 | 同上（新增） | `switching_to_isnull_hides_value_and_keeps_draft_value` | 值输入消失但草稿里的值保留（切回 `eq` 复原） |
 | 同上（新增） | `apply_is_blocked_with_incomplete_reason` | `filter-error` 出现、文案由 mock `t` 返回 `filter.errorIncomplete`、`onApply` 未被调用 |
 | 同上（新增） | `escape_closes_expanded_condition_before_panel` | 第一次 Escape 收起正在编辑的条件、第二次才收起面板 |
