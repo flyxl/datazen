@@ -115,7 +115,7 @@
 - `src/commands/database.ts::databaseCommands.getTableData` 是 IPC 封装，逐个字段显式传参（`database` / `schema` 缺省补 `null`）。
 - `src/types/index.ts::TableDataResult { columns, rows, totalRows?, page, pageSize }` 与 `src/types/index.ts::SortCondition { column, descending }` 是前端镜像；`src/types/settings.ts` 里还有一份重复的 `SortCondition`。
 - `src/locales/en/query.ts` 已持有 `pagination.perPage` / `pagination.prev` / `pagination.next` / `pagination.page` / `pagination.pageOf`。
-- `src/lib/gridErrors.ts` 在基线中不存在，但**归属已由 00 契约 §8.1 冻结给 01**：本册合并时它已存在，本册只按三步追加 `grid.paging.*` 分支。见第 8 节。
+- `src/lib/gridErrors.ts` 在基线中不存在，但**归属已由 00 契约 §8.1 冻结给 01**：〔合并后校正〕**01 尚未落地，该文件今天仍不存在**；若 01 先合并则由 01 建骨架，否则本册建。无论顺序，本册只按三步追加 `grid.paging.*` 分支。见第 8 节。
 - `src/stores/__tests__/tableDataStore.test.ts`、`src/components/DataTable/__tests__/Pagination.test.tsx`、`src/stores/tableData/__tests__/` 是前端既有测试落点。
 
 ### 2.6 与 00 契约不一致/需回填的点（不藏）

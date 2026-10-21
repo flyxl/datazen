@@ -66,8 +66,8 @@
 | --- | --- |
 | 两文件**都没有** `useKeyboardShortcuts` | `grep -n 'useKeyboardShortcuts\|tabIndex'` 对这两个文件命中 0 处（退出码 1） |
 | `DataTable.tsx` 没有网格容器 `role` | `grep -n 'role='` 只命中 `role="status"` 两处（加载/空态），**没有 `role="grid"`** |
-| 文件规模 | `DataTable.tsx` 628 行、`TableView.tsx` 770 行、`VirtualBody.tsx` 207 行、`EditableCell.tsx` 119 行 |
-| 既有测试依赖 `[tabindex="0"]` 定位行 div | `src/components/DataTable/__tests__/VirtualBody.test.tsx` 2 处、`src/components/DataTable/__tests__/DataTable.test.tsx` 1 处、`e2e/specs/detail-panel.ts` 1 处、`e2e/specs/ops-process-server.ts` 2 处 |
+| 文件规模 | `DataTable.tsx` 628 行、`TableView.tsx` **803 行**（〔合并后校正〕旧稿 770；**已越 800 红线**）、`VirtualBody.tsx` 207 行、`EditableCell.tsx` 119 行 |
+| 既有测试依赖 `[tabindex="0"]` 定位行 div | `src/components/DataTable/__tests__/VirtualBody.test.tsx` 2 处、`src/components/DataTable/__tests__/DataTable.test.tsx` 1 处、`e2e/specs/detail-panel.ts` 1 处、`e2e/specs/ops-process-server.ts` **3 处**（〔合并后校正〕旧稿写 2 处，漏了基线里就存在的第 3 处） |
 
 ### 2.5 `e2e/specs/table-batch-ops.ts` 的 `TC-TABLE-013`
 
@@ -379,12 +379,12 @@ export interface DataTableProps {
 | `src/components/DataTable/__tests__/VirtualBody.test.tsx`（2 处） | `container.querySelector('[tabindex="0"]')` 取行 `div` | 行 `div` 变 `tabIndex={-1}`，该选择器会命中**容器**（或为 `null`） | 改为 `container.querySelector('[data-dt-row-view]')` |
 | `src/components/DataTable/__tests__/DataTable.test.tsx`（1 处） | 同上 | 同上 | 同上 |
 | `e2e/specs/detail-panel.ts`（1 处） | `span.closest('[tabindex="0"]')` | 行不再是唯一候选 | 改为 `span.closest('[data-dt-row-view]')`（语义等价：从格内元素上溯到行容器） |
-| `e2e/specs/ops-process-server.ts`（2 处） | `cell.closest('[tabindex="0"]')`、`document.querySelectorAll('[tabindex="0"]')` | 同上 | 改为 `[data-dt-row-view]`（两处都改） |
+| `e2e/specs/ops-process-server.ts`（**3 处**） | `cell.closest('[tabindex="0"]')`、`document.querySelectorAll('[tabindex="0"]')` | 同上 | 改为 `[data-dt-row-view]`（两处都改） |
 | `e2e/specs/table-batch-ops.ts` `TC-TABLE-013` | `document.querySelector('table, [role="grid"]')`，**匹配不到任何元素** | 容器有了 `data-dt-surface` | 改为 `[data-dt-surface]`（§5 Step 7） |
 | 键盘可访问性（真收益） | 每行一个 Tab 停靠点：100 行 = 按 100 次 `Tab` 才能穿过去 | 1 个停靠点，行内用方向键 | 这是本次改动的**主要收益**，必须在 PR 描述里写明 |
 | 行内的可聚焦元素 | 行号槽 `<button>` 实测是 Tab 停靠点（`e2e/specs/ops-process-server.ts` 用 `cell.closest('[tabindex="0"]').click()` 间接依赖行可聚焦） | 行号槽仍是停靠点 ⇒ 容器 `Tab` 必须 `preventDefault` 才能真的离开网格 | 见 §4.1 `Tab` 行；`data-dt-row-view` 迁移后 `ops-process-server.ts` 的点击路径改走行容器，不再依赖 `tabindex` |
 
-**与 01 §4.4 的关系（我是裁定方，给出对齐结论）**：01 §4.4 写「既有的行 div `tabIndex={0}` **本册不改**（既有单测用 `[tabindex="0"]` 找行），由此产生的『同一网格两个 Tab 停靠点』记入未决问题 Q1」。**02 作为 Q1 的裁定方，裁定改为 roving tabindex，并一次性完成 5 个既有定位点的迁移**（3 个单测文件位置 + 2 个 E2E spec，共 6 处表达式）。01 需要在下一版把 §4.4 的这句话改写为「行 `tabIndex={-1}`，由 02 落地并迁移既有定位点」，**两册不得各写一套**。
+**与 01 §4.4 的关系（我是裁定方，给出对齐结论）**：01 §4.4 写「既有的行 div `tabIndex={0}` **本册不改**（既有单测用 `[tabindex="0"]` 找行），由此产生的『同一网格两个 Tab 停靠点』记入未决问题 Q1」。**02 作为 Q1 的裁定方，裁定改为 roving tabindex，并一次性完成 5 个既有定位点的迁移**（3 个单测文件位置 + 2 个 E2E spec，共 **7** 处表达式）。01 需要在下一版把 §4.4 的这句话改写为「行 `tabIndex={-1}`，由 02 落地并迁移既有定位点」，**两册不得各写一套**。
 
 ### 4.5 Q-IME：输入法组合期间（**结论**）
 
@@ -529,7 +529,7 @@ it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
 
 ### Step 6 —— 测试与既有定位点迁移
 
-- **文件**：`src/lib/__tests__/gridKeyboard.test.ts`（新增）、`src/components/DataTable/__tests__/gridKeyboardJourney.test.tsx`（新增）、`src/components/DataTable/__tests__/VirtualBody.test.tsx`（修改 2 处 `[tabindex="0"]`）、`src/components/DataTable/__tests__/DataTable.test.tsx`（修改 1 处）、`e2e/specs/detail-panel.ts`（修改 1 处）、`e2e/specs/ops-process-server.ts`（修改 2 处）。
+- **文件**：`src/lib/__tests__/gridKeyboard.test.ts`（新增）、`src/components/DataTable/__tests__/gridKeyboardJourney.test.tsx`（新增）、`src/components/DataTable/__tests__/VirtualBody.test.tsx`（修改 2 处 `[tabindex="0"]`）、`src/components/DataTable/__tests__/DataTable.test.tsx`（修改 1 处）、`e2e/specs/detail-panel.ts`（修改 1 处）、`e2e/specs/ops-process-server.ts`（修改 **3** 处）。
 - **为什么**：焦点裁定改变了行容器的 `tabIndex`，这些定位表达式若不迁移，测试会以「选择器为 null」的形式失败（而不是以功能失败的形式），且这类失败最容易被误判为「测试过时」而被随手删掉。
 - **怎么自测**：`npx vitest run`（Host 全量）退出码 0；`pnpm e2e:minimal` 中 `detail-panel` / `ops-process-server` 用例全绿。
 
@@ -558,7 +558,7 @@ it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
 | `src/components/DataTable/DataTable.tsx` | 修改 | 容器 `data-dt-surface`/`tabIndex`/`aria-*`、两个新 prop 透传 | **628 → ~668** | **未触及，但余量只剩约 132 行**：本册只允许加接线，**禁止**把键盘语义、命令分发、journey 辅助函数写进这个文件 |
 | `src/components/DataTable/VirtualBody.tsx` | 修改 | 行 `tabIndex={-1}`、`data-dt-row-view`、行级 `data-dt-selected`、删除旧 `handleKeyDown` | 207 → ~215 | 否 |
 | `src/components/DataTable/EditableCell.tsx` | **不触及** | IME `Enter` 守卫归 05（01 §4.5 已登记） | 0 | 否（119 行，保持不动以避免与 05 撞车） |
-| `src/windows/connection/TableView.tsx` | 修改（仅传 prop） | 把 `keyboardNavigation` 与 `onRequestScrollIntoView` 传下去 | **770 → ~774** | **未触及，但余量只剩约 26 行**：这是本册**不把键盘接线放在这一层**的硬理由。若实现方发现需要在此加超过 5 行，必须停下来重新裁定（拆文件）而不是继续加 |
+| `src/windows/connection/TableView.tsx` | 修改（仅传 prop） | 把 `keyboardNavigation` 与 `onRequestScrollIntoView` 传下去 | **803 → ~807** | **已经越线**（〔合并后校正〕旧稿 770/余量 26）：本册**必须等 01 的抽取先落地**（712 附近）再传 prop，否则两个 prop 落在红线外。这也是本册**不把键盘接线放在这一层**的硬理由 |
 | `src/locales/en/query.ts` | 修改 | 8 个快捷键提示 key（§8） | 424 → ~432 | 否 |
 | `src/lib/__tests__/gridKeyboard.test.ts` | **新增** | 单测（§9.1） | +330 | 否 |
 | `src/components/DataTable/__tests__/gridKeyboardJourney.test.tsx` | **新增** | 连续旅程测试（§9.3） | +260 | 否 |

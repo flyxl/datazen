@@ -102,7 +102,7 @@
 
 | 位置 | 符号 | 事实 |
 | --- | --- | --- |
-| `src/components/DataTable/DataTable.tsx` | `DataTableProps.editBuffer` | 声明为 `editBuffer?: Map<string, CellEdit>`，注解写着「⚠ 已声明但组件内部从未解构使用」。**核对结论：解构列表里没有它，函数体内零次引用 → 确认为死 prop**；同文件的 `CellEdit` 类型导入也只为这一个 prop 存在 |
+| `src/components/DataTable/DataTable.tsx` | `DataTableProps.editBuffer` | 声明为 `editBuffer?: Map<string, CellEdit>`。〔合并后校正〕**该 prop 上没有那条「⚠ 已声明但从未解构使用」的注释**（旧稿把结论写成了注释引用），但**结论本身经复核成立**：解构列表里没有它、函数体内零次引用 → 死 prop；同文件的 `CellEdit` 类型导入也只为这一个 prop 存在。本册的移除动作不变 |
 | `src/components/DataTable/DataTable.tsx` | `handleContextMenu` | 用 `resolveDataTableCellFromEvent` / `resolveDataTableHeaderColFromEvent` 反查单元格；菜单项由 `buildDataTableContextMenuItems` 的 `labels` / `handlers` / 能力布尔组装 |
 | `src/components/DataTable/VirtualBody.tsx` | `VirtualRow` / `VirtualBody` | 两者都是 `memo`；单元格 `div` 带 `data-testid="data-table-cell"`、`data-dt-row`、`data-dt-col`；行号按钮 `title={selectRowLabel}`，**无任何状态标记**；`isEditing` 由 `editingCell?.row === vRow.index && editingCell.col === col.name` 推出 |
 | `src/components/DataTable/CellRenderer.tsx` | `CellRenderer` | `memo`；按 `classifyDataType` 分支渲染 `<span>`，颜色来自 `cellValueTextClass`；NULL 渲染为 `text-dt-null` 的 `NULL` |
@@ -132,7 +132,7 @@
 
 ### 2.6 我核实过的、与「脏标记」相关的既有视觉状态
 
-`grep -rniE "dirty|unsaved|modified"` 在 `src/` 的命中只有两类，**都不能复用**：
+`grep -rniE "dirty|unsaved|modified"` 在 `src/` 的命中不止两类（〔合并后校正〕还有 `TunnelEditDialog.tsx`、locale 文案、`FilterEditor`、`kvSlotState` 等），但**没有一个是网格级的**，因此**都不可复用**这个结论不变。主要两类是：
 
 1. `src/components/FilterEditor.tsx` 的局部变量 `dirty` = 「筛选草稿与已应用筛选不相等」，与网格改动无关。
 2. `src/lib/kvSlotState.ts`（Redis 槽位）的 `getDirty()` / `setDirty()` —— 宣称「no unsaved edits」但那是 KV 编辑器自己的状态机，`src/lib/__tests__/kvSlotState.test.ts` 覆盖。
@@ -332,7 +332,7 @@ interface VirtualRowProps {
 }
 ```
 
-**`CellRenderer` 不改**（`CellRendererProps` 保持 5 个字段）。偏离 PRD DB-06 技术落点原文的理由与替代方案见第 11 节 D-2；核心是三条：① 标记要覆盖单元格整块（含 padding），属于单元格盒子而不是文本节点；② 既有 5 条断言依赖 `container.querySelector('span')` 与 `className`，改结构会连带改测试；③ 少一层 props 传递，`CellRenderer` 的 `memo` 契约不动。
+**`CellRenderer` 不改**（`CellRendererProps` 保持 **6** 个字段：`columnName` / `dataType` / `value` / `isEditing` / `onCommit` / `onCancel`——〔合并后校正〕旧稿写 5 个，漏了 `columnName`；「既有 5 条断言」仍正确）。偏离 PRD DB-06 技术落点原文的理由与替代方案见第 11 节 D-2；核心是三条：① 标记要覆盖单元格整块（含 padding），属于单元格盒子而不是文本节点；② 既有 5 条断言依赖 `container.querySelector('span')` 与 `className`，改结构会连带改测试；③ 少一层 props 传递，`CellRenderer` 的 `memo` 契约不动。
 
 ### 3.5 为什么 `DirtyIndex` 不是第二真源
 
@@ -473,7 +473,7 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
 ### Step 3 · `tableDataStore` 新增 `unstageRowDelete`
 
 - **改哪个文件 / 加什么符号**：`src/stores/tableDataStore.ts` 的 `TableDataStore` 接口与实现各加 `unstageRowDelete: (panelId: string, rowIndex: number) => void`；同时把 `stageCellChange` 里「构造下一版 `PendingRowChange`」的纯计算外提到 `src/stores/tableData/stageEdit.ts`（新增 `computeStageResult`），供 `stageCellChange` 与 `unstageRowDelete` 共用。
-- **为什么**：(1) PRD DB-06 明确要求「右键可恢复此行」，而今天**没有任何撤销删除标记的入口**；(2) `tableDataStore.ts` 已经 722 行，直接内联两个新 action 会顶到 800 上限，所以把纯计算抽出去（既降行数，也让「改回原值就删键」这段关键逻辑第一次变得可单测）。
+- **为什么**：(1) PRD DB-06 明确要求「右键可恢复此行」，而今天**没有任何撤销删除标记的入口**；(2) `tableDataStore.ts` 已经 **729** 行，直接内联两个新 action 会顶到 800 上限，所以把纯计算抽出去（既降行数，也让「改回原值就删键」这段关键逻辑第一次变得可单测）。
 - **实现要点**：解析 `rowIndex` 的行身份（复用 `findPendingForRow`，与既有纪律一致，**不自己用行号拼**）→ 取条目 → `changedColumns.length === 0 ? pendingChanges.delete(key) : 写 deleteMarked: false` → 清 `previewPlan`、`pendingStatus: 'idle'`、`error: null`。
 - **自测**：单测断言「既改过列又标记删除的行，恢复后 `deleteMarked === false` 且 `changedColumns` 保持原样」与「只标记删除的行，恢复后该键消失」。
 
@@ -500,7 +500,7 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
 
 - **不加新组件**：**复用分册 01 Step 10 将抽取的 `src/windows/connection/TablePendingChangesBar.tsx`**（〔合并后校正〕该文件今天**不存在**——`TableView.tsx` 里仍是内联的 `table-tx-controls`（约 563 起）与 `pending-changes-bar`（约 606 起）；01 抽取时必须把 main 新增的 `table-transaction-error`、`table-session-open-new` 两个 testid 与 `txLost` / `onOpenNewSession` 一起带走，否则会打断 `e2e/specs/table-session-loss-recovery.ts`。抽取后约 170–200 行）。**一个文件，不新建职责重叠的第二个组件**：分册 01 建骨架（事务控制 + 计数条 + 三个按钮），本册**只向它新增脏计数展示**。
 - **我向该组件新增什么**：新增可选 props（`counts: DirtyCounts`，以及把既有的 `pendingUpdateCount` / `pendingDeleteCount` 收敛进同一入口；缺省时行为与今天一致），并在计数条内新增 `tid('pending-cells-count')` 子元素与 `tableData.pendingOffPage` 提示行。`pendingBusy` / `onPreview` / `onCommit` / `onRollback` 由分册 01 的版本提供，本册不改它们的语义。
-- **为什么**：`TableView.tsx` 已 770 行，逼近 800 上限，抽取是让 DB-02 / DB-03 / DB-06 后续还能进这个文件的前提；三册都要这一条，各建一份必然分叉（最小的是「谁先建谁被覆盖」）。本册**服从统一命名与单一组件**：文件名以分册 01 的为准，本册只做增量。
+- **为什么**：`TableView.tsx` 已 **803** 行（已越 800 上限，不是「逼近」），抽取是让 DB-02 / DB-03 / DB-06 后续还能进这个文件的前提；三册都要这一条，各建一份必然分叉（最小的是「谁先建谁被覆盖」）。本册**服从统一命名与单一组件**：文件名以分册 01 的为准，本册只做增量。
 - **自测**：`npx vitest run` 后 `e2e/specs/table-edit.ts` 依赖的 `pending-changes-bar` / `pending-preview` / `pending-commit` / `pending-rollback` 仍全部存在，且新增的 `pending-cells-count` 数字与 `counts.totalCells` 相等（组件测试断言 + 第 9.4 节 E2E）。
 
 ### Step 7 · 主题 token 与 i18n
@@ -532,7 +532,7 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
 | `src/stores/tableData/types.ts` | 修改 | 删 `CellEdit` 与 `editBuffer` 字段 | 55 → 43 | 否 |
 | `src/stores/tableData/connectionState.ts` | 修改 | 删 `editKey` 与 `emptyTableState` 的初始化 | 87 → 81 | 否 |
 | `src/stores/tableData/pendingChanges.ts` | 修改 | 删 `rebuildEditBuffer` | 127 → 105 | 否 |
-| `src/stores/tableDataStore.ts` | 修改 | 删 6 处 `editBuffer` 写点；`stageCellChange` 改调用抽出的纯计算；新增 `unstageRowDelete` | 722 → 约 660 | 否（**但必须靠 Step 3 的外提才留出预算**） |
+| `src/stores/tableDataStore.ts` | 修改 | 删 6 处 `editBuffer` 写点；`stageCellChange` 改调用抽出的纯计算；新增 `unstageRowDelete` | **729** → 约 667 | 否（**但必须靠 Step 3 的外提才留出预算**） |
 | `src/components/DataTable/DataTable.tsx` | 修改 | 删死 prop；新增 `dirtyByRow` / `onRestoreRow` 透传与 `canRestoreRow` | 628 → 约 640 | 否（仍紧；DB-02 / DB-03 也会加代码，需协调） |
 | `src/components/DataTable/VirtualBody.tsx` | 修改 | 单元格脏标记、行删除态、行号槽圆点 | 207 → 约 255 | 否 |
 | `src/components/DataTable/CellRenderer.tsx` | **不改** | 标记挂在单元格 wrapper；避免改 DOM 结构与 5 条既有断言 | 72 → 72 | 否 |
@@ -540,10 +540,10 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
 | `src/hooks/useGridSelection.ts` | **不改（DB-01 拥有）** | 选择状态的 React 接线；本册不注册鼠标 / 键盘事件 | 由 DB-01 定 | 由 DB-01 定 |
 | `src/lib/dataTableContextMenu.ts` | 修改 | `restoreRow` 标签 / handler / 能力位 | 398 → 约 412 | 否 |
 | `src/windows/connection/TablePendingChangesBar.tsx` | **复用（分册 01 Step 10 创建）** | 分册 01 建骨架（事务控制 + 计数条 + 三按钮，~150 行）；本册只**新增 props 与子元素**（脏计数 + `tid('pending-cells-count')` + off-page 提示），约 +20 行。**最终一个文件，不另建组件**（命名与归属由 01 裁定统一） | 01 的 ~150 + 本册 ~20 | 否 |
-| `src/windows/connection/TableView.tsx` | 修改 | 建 `dirtyIndex` / `dirtyCounts`；接线；把内联计数块改为调用 `TablePendingChangesBar` 并传 `counts` | 770 → 约 730 | 否（抽取后反而更安全；不抽必超） |
+| `src/windows/connection/TableView.tsx` | 修改 | 建 `dirtyIndex` / `dirtyCounts`；接线；把内联计数块改为调用 `TablePendingChangesBar` 并传 `counts` | **803** → ~763 | 否（抽取后反而更安全；不抽必超） |
 | `src/styles/themes.css` | 修改 | `:root` / `.dark` 各加 4 个脏标记 token | 161 → 约 171 | 否 |
 | `tailwind.config.ts` | 修改 | `colors.dt` 映射新 token | 72 → 约 77 | 否 |
-| `src/locales/en/query.ts` | 修改 | 新增 / 修正第 8 节的 key | 424 → 约 432 | 否 |
+| `src/locales/en/query.ts` | 修改 | 新增 / 修正第 8 节的 key | **442** → 约 450 | 否 |
 | `src/stores/tableData/__tests__/dirtyIndex.test.ts` | 新增 | 选择器单测（含与 `findPendingForRow` 的等价性用例） | ~220 | 否 |
 | `src/components/DataTable/__tests__/VirtualBody.dirty.test.tsx` | 新增 | 渲染测试 | ~130 | 否 |
 | `src/stores/__tests__/tableDataStore.dirty.test.ts` | 新增 | 连续旅程测试 | ~250 | 否 |
@@ -610,7 +610,7 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
 
 1. `src/locales/locales.test.ts` 的 `resolves every literal t() key used in host source` 会用正则扫宿主源码里的 `t('字面量键')`，**要求键存在于 `en`**。因此新增文案必须同时加 `en` 词条，且调用点写成字面量（不要 `` t(`tableData.dirty${kind}`) `` 这种动态拼接 —— 既扫不到，也不可检索）。
 2. 插值参数必须与调用点一致（`{count}` / `{original}` / `{next}`）。
-3. **只改英文侧**。其余语言在发布前由 `node scripts/i18n-sync-check.mjs` 与 i18n 同步流程补齐。已核实这是本仓库既定做法：`en/query.ts` 现有 389 个键中有 **18 个**在 `zh-CN/query.ts` 中不存在（例如 `tableData.beginTx`、`tableData.commitTx`、`query.session.revisionConflict`），而基线 `pnpm typecheck` 通过。
+3. **只改英文侧**。其余语言在发布前由 `node scripts/i18n-sync-check.mjs` 与 i18n 同步流程补齐。已核实这是本仓库既定做法：`en/query.ts` 现有 **402** 个键中有 **31 个**在 `zh-CN/query.ts` 中不存在（例如 `tableData.beginTx`、`tableData.commitTx`、`query.session.revisionConflict`）——〔合并后校正〕旧稿写 389/18，合并新增 13 个仅英文键，而基线 `pnpm typecheck` 通过。
 
 **错误码：本册不新增任何错误码。** 理由与落点说明：
 

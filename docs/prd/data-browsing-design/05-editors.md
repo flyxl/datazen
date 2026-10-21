@@ -109,7 +109,7 @@
 | `packages/driver-api/src/types.rs` | `Value` | `#[serde(untagged)]`，8 个变体：`Null`/`Bool`/`Integer`/`Float`/`String`/`Bytes(Vec<u8>)`/`Timestamp(String)`/`Json`。`Bytes` 无 `serde_bytes`，因此**线上是 JSON 数字数组**，前端 `Value` 类型里对应 `unknown[]` |
 | `packages/drivers/postgres/src/type_decode.rs` | `columns_of_row`、`describe_columns` | 查询结果列名与类型来自 sqlx `c.type_info().to_string()`（`INT4`/`TEXT`/`TIMESTAMPTZ` 这类），且 `nullable: true` **恒为真** |
 | `packages/drivers/postgres/src/schema.rs` | 列元数据 SQL | 表结构列类型取自 `information_schema.columns.data_type` → 枚举/复合类型报 `USER-DEFINED`，数组报 `ARRAY` |
-| `packages/drivers/mysql/src/mysql.rs` | 列元数据读取 | 类型取自 `COLUMN_TYPE` → 形如 `int(11) unsigned`、`tinyint(1)`、`enum('a','b')`、`varchar(255)` |
+| `packages/drivers/mysql/src/schema_table.rs`（表结构列）/ `packages/drivers/mysql/src/mysql/columns.rs`（查询结果列） | 列元数据读取 | 〔合并后校正〕旧稿写 `src/mysql.rs`，该文件已拆成模块目录。**表结构列**走 `SHOW FULL COLUMNS` + `decode_mysql_text(r, "Type")`；**结果集列**走 `information_schema.COLUMN_TYPE`。两种来源的取值形态相同：`int(11) unsigned`、`tinyint(1)`、`enum('a','b')`、`varchar(255)` |
 | `packages/drivers/sqlserver/src/metadata.rs` | `columns_sql` | 类型是用 `CASE` 现拼的字符串（`nvarchar(max)`、`decimal(10,2)`、`datetime2(7)`、`uniqueidentifier`、`timestamp`/`rowversion` 原样透出）；同一 SQL 里已有 `is_computed`、`is_rowversion`、`generated_always_type`，但**没有进入 `ColumnSchema`** |
 | `src/lib/structureEditor/types.ts` | `StructureEditorUiConfig.columnTypes` | 既有「驱动在前端声明类型词汇表」的先例：`columnTypes: { value, label }[]`，声明在各驱动自己的 `packages/drivers/<id>/ui/meta.ts`（如 `postgresqlStructureEditor` / mysql 的 `columnTypes` 列表）。它是**DDL 用的候选列表**，不是匹配器，但证明了「驱动自带类型词汇表」这条通路已存在 |
 | `src/lib/databaseMeta.ts` | `DatabaseTypeMeta`、`KvWorkspaceCapabilities` | 有 `readOnly?: boolean`（驱动级只读，`TableView` 已在用）、`structureEditor?`、`exportScope?`；**没有 `DataGridCapabilities`**（契约册 §7 要求新增），也**没有**任何列类型归一化声明字段 |
@@ -625,7 +625,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 ### Step 8 · `src/stores/tableData/stageCellWrite.ts`（**新增**，纯函数）+ `src/stores/tableDataStore.ts`（**修改**）
 
 新增 action `stageCellWrite(panelId, row, col, write: CellWrite)`；`stageCellChange` 改为 `stageCellWrite(..., cellWriteValue(toCellValue(value)))` 的薄壳；`TableState` 增 `enumCandidates: Map<string, readonly string[]>` 与 `setEnumCandidates`/`clearEnumCandidates`。
-**为什么**：三态必须有一个入口，同时 `stageCellChange` 的既有语义不能变（`applyColumnToRows` 与既有测试都依赖它）；把纯逻辑放到新文件是为了**不让 `tableDataStore.ts` 越过 800 行**（它今天 722 行，01 的 Step 3/4 把选择转移搬走后约 700 行）。**自测**：`npx vitest run src/stores/__tests__/tableDataStore.cellWrite.test.ts` + 既有 `tableDataStore.test.ts` 零改动通过。
+**为什么**：三态必须有一个入口，同时 `stageCellChange` 的既有语义不能变（`applyColumnToRows` 与既有测试都依赖它）；把纯逻辑放到新文件是为了**不让 `tableDataStore.ts` 越过 800 行**（它今天 **729** 行，01 的 Step 3/4 把选择转移搬走后约 707 行）。**自测**：`npx vitest run src/stores/__tests__/tableDataStore.cellWrite.test.ts` + 既有 `tableDataStore.test.ts` 零改动通过。
 
 ### Step 9 · `src/components/DataTable/GridCell.tsx`（**01 新增，本册扩展**）+ `CellRenderer.tsx`（**修改**）
 
@@ -640,7 +640,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 ### Step 11 · `src/windows/connection/tableEditing.ts`（**新增**，纯逻辑
 
 把 `TableState` + 列元数据算成 `columnCellTypes` / `resolveCellEditable` 的输入 / 候选值 provider 工厂）+ `src/windows/connection/TableView.tsx`（**修改**）：接上面新增的 props，注入 `onCellWrite` → `actions.stageCellWrite`、`loadCandidates` → `queryCommands.executeQuery(buildDistinctCandidatesSql(...))`、导航前 `resolveEditorBeforeNavigation()`；`PanelContentRenderer.tsx`（**修改**）给视图面板传 `readOnlyReason="view"`。
-**为什么**：`TableView.tsx` 原本已 770 行，接线逻辑必须落在独立模块（01 的 Step 10 抽出 `TablePendingChangesBar` 后约 660 行，本册只净增接线部分）。**与 01 的收敛点对齐**：`setPage` / `setPageSize` / `setSort` / `applyFilters` / `commitFetchedPage` / `invalidateCachedData` 都会把 `gridSelection` 与 `selectedRows` 重置（01 §4.3 的收敛点），因此这些路径必须**先** `resolveEditorBeforeNavigation()`（合法提交、非法中止导航），否则会出现「编辑器还开着、但它的焦点格已不在选择里」的不一致状态。**自测**：`npx vitest run src/windows/connection/__tests__/TableView.test.tsx`（既有用例零改动通过）+ 新用例：无主键表双击不调 `startEdit` 且给出原因文案；`readOnly` + `view` 时原因为 `view`；翻页时若有非法草稿则导航被中止。
+**为什么**：`TableView.tsx` 原本已 **803** 行（已越线），接线逻辑必须落在独立模块；01 的 Step 10 抽出 `TablePendingChangesBar` 后约 713 行（不是旧稿的 660），本册只净增接线部分。**与 01 的收敛点对齐**：`setPage` / `setPageSize` / `setSort` / `applyFilters` / `commitFetchedPage` / `invalidateCachedData` 都会把 `gridSelection` 与 `selectedRows` 重置（01 §4.3 的收敛点），因此这些路径必须**先** `resolveEditorBeforeNavigation()`（合法提交、非法中止导航），否则会出现「编辑器还开着、但它的焦点格已不在选择里」的不一致状态。**自测**：`npx vitest run src/windows/connection/__tests__/TableView.test.tsx`（既有用例零改动通过）+ 新用例：无主键表双击不调 `startEdit` 且给出原因文案；`readOnly` + `view` 时原因为 `view`；翻页时若有非法草稿则导航被中止。
 
 ### Step 12 · i18n + CHANGELOG + 收尾
 
@@ -659,7 +659,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | `src/lib/dataTypeColors.ts` | 修改 | 既有 API 不变，内部改为投影单一路径 | 56 → 60 | 否 |
 | `src/lib/databaseMeta.ts` | 修改 | 增 `DatabaseTypeMeta.cellTypes?: CellTypeHints` | 211 → 218 | 否 |
 | `src/lib/dataTableContextMenu.ts` | 修改 | 增 Set Value 子菜单参数与纯构造 | 398 → 450 | 否（离红线尚远） |
-| `src/lib/tableChanges.ts` | 修改 | 增 `normalizeCellWrite`（`CellWrite` 本体由 DB-04 加） | 227 → 236 | 否 |
+| `src/lib/tableChanges.ts` | 修改 | 增 `normalizeCellWrite`（`CellWrite` 本体由 DB-04 加） | **228** → 237 | 否 |
 | `src/components/DataTable/EditableCell.tsx` | 修改（**瘦身**） | 退化为兼容壳：再导出 `toEditString` 与 `CellEditorHost` | 119 → **30** | 否（**本册通过拆分把它从 119 行降到壳层**） |
 | `src/components/DataTable/editors/toEditString.ts` | 新增 | 值→编辑文本（含对象 JSON 化） | 30 | 否 |
 | `src/components/DataTable/editors/CellEditorHost.tsx` | 新增 | 按 `CellEditorKind` 分派 + 键盘/IME/blur 状态机 | 170 | 否（>200 需再拆） |
@@ -677,11 +677,11 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | `src/components/DataTable/VirtualBody.tsx` | **本册不改** | 01 的 Step 8 已改用 `GridCell` 并保证回调稳定（`data-dt-surface` 等一并落地） | 207 → ~188（01 的改动） | 否 |
 | `src/components/DataTable/DataTable.tsx` | 修改 | 新 props 透传 + 菜单接线 | 628 → ~495 | **不再触红线**：01 的 Step 9 先把右键菜单搬到 `useDataTableContextMenu.ts` 并降到 ~450，本册在**它的基线上**再加 ~45 |
 | `src/windows/connection/tableEditing.ts` | 新增 | 面板级纯逻辑：列类型映射、可编辑性输入、候选值 provider 工厂 | 150 | 否 |
-| `src/windows/connection/TableView.tsx` | 修改 | 注入 `onCellWrite` / `loadCandidates` / 导航前解析编辑器 | 770 → ~685 | **不再触红线**：01 的 Step 10 先抽出 `TablePendingChangesBar` 降到 ~660，本册净增 ≤ 25；新增逻辑一律放 `tableEditing.ts` |
+| `src/windows/connection/TableView.tsx` | 修改 | 注入 `onCellWrite` / `loadCandidates` / 导航前解析编辑器 | **803** → ~738 | **接近**：01 的 Step 10 先抽出 `TablePendingChangesBar` 降到 ~713，本册净增 ≤ 25；新增逻辑一律放 `tableEditing.ts`。旧稿的「不再触红线」建立在 770 基线上，前提已不存在 |
 | `src/stores/tableData/types.ts` | 修改 | `TableState.enumCandidates` 字段 + 缺省值 | 55 → 62 | 否 |
 | `src/components/DataTable/TableHeader.tsx` | 不变（仅消费） | `ColumnDef` 不扩字段：列元数据经 `cellTypes`/`cellEditability` 回调传入，避免把 `ColumnSchema` 塞进组件层 | — | 否 |
 | `src/stores/tableData/stageCellWrite.ts` | 新增 | 三态写入的纯逻辑（投影进 `PendingRowChange`） | 130 | 否 |
-| `src/stores/tableDataStore.ts` | 修改 | 加 `stageCellWrite` 动作 + `enumCandidates` 缓存；`stageCellChange` 变薄壳 | 722 → ~750 | **不再触红线**：01 的 Step 3/4 先把选择转移搬到 `src/stores/tableData/selectionActions.ts`（净减到 ~700），本册在**它的基线上**净增约 50；纯逻辑放 `stageCellWrite.ts` 就是为了守住这条线 |
+| `src/stores/tableDataStore.ts` | 修改 | 加 `stageCellWrite` 动作 + `enumCandidates` 缓存；`stageCellChange` 变薄壳 | **729** → ~757 | **接近**：01 的 Step 3/4 先把选择转移搬到 `src/stores/tableData/selectionActions.ts`（净减到 ~707），本册在**它的基线上**净增约 50；纯逻辑放 `stageCellWrite.ts` 就是为了守住这条线 |
 | `src/windows/connection/PanelContentRenderer.tsx` | 修改 | 视图面板传 `readOnlyReason="view"` | 558 → 562 | 否 |
 | `packages/drivers/<id>/ui/meta.ts` | 可选修改 | 声明 `cellTypes` 覆盖（sqlserver 的 `timestamp`/`rowversion`、mysql 的 `tinyint(1)`） | +5~15/驱动 | 否 |
 | `src/locales/en/query.ts` | 修改 | 第 8 节新增 key（**只改英文侧**） | +34 条 | 否 |
@@ -862,7 +862,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | 6 | 大值（> 64 KiB）的就地编辑：PRD DB-13 提到的 `load_cell_value` **不在**契约册 §5 冻结的 5 个新方法内 | 建议 **v1 不新增后端入口**：大值只读展示 + 尺寸 + 「复制到文件」，等 DB-13 落地专用入口后再开编辑。理由是契约册只冻结了 5 个方法，本册不得越权发明第 6 个 |
 | 7 | ~~新增 DOM 属性 `data-dt-readonly="<reason>"`（契约 §4.4 与 01 的 §3.7 当时都**尚未**包含它）~~ | **已裁定并关闭：已并入契约 §4.4 全量属性总表，创建归属 05**。本册**可以**在测试与 E2E 中依赖 `data-dt-readonly`（不必退化为只断言文案）；`data-dt-null` 同样归 05（01 的 Q9 已裁定）。输出点仍在 `GridCell`，与 `data-dt-cell-type` 同族、只增不改 |
 | 8 | 无效输入是否需要独立错误码（如 `grid.cell.invalidValue`） | 建议 **v1 不进契约册 §8.2**：编辑器行内错误 + 「N 格待修正」计数已足够。若 DB-06/DB-10 需要跨面板统一呈现「哪些格待修正」，再作为 §8.2 的新条目提案 |
-| 9 | `DataTable.tsx` 与 `TableView.tsx` 的行数预算（DB-02/03/06/10 都会动这两个文件） | **已由 01 的前置抽取解决**：01 的 Step 9 把右键菜单搬到 `useDataTableContextMenu.ts`（`DataTable.tsx` 628 → ~450），Step 10 把暂存条搬到 `TablePendingChangesBar.tsx`（`TableView.tsx` 770 → ~660），Step 3/4 把选择转移搬到 `selectionActions.ts`（`tableDataStore.ts` 722 → ~700）。本册因此在其基线上分别净增 ~45 / ~25 / ~50，**不再触红线**；但 02/03/06/10 仍须各自核算，集成方统一复核 |
+| 9 | `DataTable.tsx` 与 `TableView.tsx` 的行数预算（DB-02/03/06/10 都会动这两个文件） | **尚未解决**（〔合并后校正〕旧稿写「已由 01 的前置抽取解决」，但 01 未落地、`TableView.tsx` 仍 803 行）：01 将把01 的 Step 9 把右键菜单搬到 `useDataTableContextMenu.ts`（`DataTable.tsx` 628 → ~450），Step 10 把暂存条搬到 `TablePendingChangesBar.tsx`（`TableView.tsx` 770 → ~660），Step 3/4 把选择转移搬到 `selectionActions.ts`（`tableDataStore.ts` 722 → ~700）。本册因此在其基线上分别净增 ~45 / ~25 / ~50，**不再触红线**；但 02/03/06/10 仍须各自核算，集成方统一复核 |
 | 10 | 01 的接口面是否够本册用 | **按契约够用，但 01 尚未落盘（这些符号今天都不存在，需 01 先实现）**。本册消费：`gridSelection.ts` 的 `CellCoord` / `CellRange` / `GridSelection` / `EMPTY_GRID_SELECTION` / `normalizeCellRange` / `gridSelectionContains` / **`rowsCoveredBySelection(state): ReadonlySet<number>`（单参数；返回 `ReadonlySet` 而非 `number[]`，见契约 §4.2.1）** / `moveCellFocus` / `selectionFromAnchorFocus`；`useGridSelection.ts` 的 `surfaceProps` / `isCellSelected` / `activeDescendantId` / `focusKey`；`GridCell` 与 `GridCellProps`；store 的 `setGridSelection` / `clearGridSelection` / `beginCellSelection` / `reconcileGridSelectionForColumns`；`gridEventGuards.ts` 的 `isComposingEvent` / `isEditableTarget`。**不需要 01 再新增任何导出**——本册的「Tab 提交后进入下一格」用 `moveCellFocus`（纯函数）+ `setGridSelection`（写回）+ 本册的 `requestEdit(coord)` 即可表达。**唯一仍然需要 02 的**：把 `Enter` / `Tab` 接进 `surfaceProps.onKeyDown` 并调用本册暴露的 `requestEdit`；本册只提供入口，不注册网格级快捷键 |
 | 11 | Set Value 是否作用于整个选择区域（多格） | 建议 **v1 只作用于右键命中的那一格**（`multiRowSelection` 时沿用既有的「不做单格动作」规则），多格批量走 DB-03 粘贴路径；理由是批量 `Set NULL` 需要一个明确的「N 格将被改为 NULL」确认，属独立交互设计。若将来要做多格，目标集必须取 01 的 `rowsCoveredBySelection` / `selectionRanges`，**不得**把派生行集写回 `selectedRows`（契约册 §4.3） |
 | 12 | 枚举候选值的取数实现：宿主拼 `SELECT DISTINCT` vs 新增 Driver Command | 建议 **宿主拼**（复用 `queryCommands.executeQuery` + `escapeIdent`，已有「`formatRowAsSqlInsert` 在宿主拼 SQL」的先例），但必须写清边界：只构造单条 `SELECT DISTINCT`、只用于候选值、不参与写路径；若后续有驱动声明「不支持 DISTINCT 列采样」，再升级为 Driver Command |

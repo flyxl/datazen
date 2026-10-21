@@ -108,7 +108,7 @@
 - `src/locales/en/query.ts`：字段名以 `tableView.*` / `query.*` / `tableData.*` 开头的英文领域包（`const pack = {...} as const; export default pack;`）；已有 `tableData.noPrimaryKey`、`tableData.commitFailed`、`tableData.pendingChanges`（`{count} unsaved changes`）、`tableData.confirmCommit`（`Commit {updates} updates and {deletes} deletes?`）、`tableData.readOnlyEditDisabled`、`tableData.previewTitle` 等。
 - `src/locales/en/index.ts`：`...query` 等域名包被展开进 en 字典。
 - `src/locales/index.ts`：`export type I18nKey = TranslationKey | (string & {})` —— 新增 key 不会因 `TranslationKey`（由 `zh-CN` 派生）而 typecheck 失败，但**拼错的 key 也不会报错**（§8 要求测试兜住）。
-- `src/lib/gridErrors.ts` **在基线中不存在**；其**创建归属已由契约 §8.1 归属总则冻结给 01**（01 是提交顺序里最先合并的分册）。本册合并时该文件必然已存在，因此本册**只有「追加」这一种合法动作**：按 §8.1 三步追加 `grid.insert.*` 码，**禁止整文件重写**（整文件覆盖不产生编译错误，只会静默抹掉其他分册的码）。原 §11 Q-5 的归属冲突**已关闭**，见该条。
+- `src/lib/gridErrors.ts` **在基线中不存在**；其**创建归属已由契约 §8.1 归属总则冻结给 01**（01 是提交顺序里最先合并的分册）。〔合并后校正〕**但 01 尚未落地，该文件今天仍不存在**——若本册先合并则由本册按契约 §8 建骨架。无论谁先，本册都**只有「追加」这一种合法动作**：按 §8.1 三步追加 `grid.insert.*` 码，**禁止整文件重写**（整文件覆盖不产生编译错误，只会静默抹掉其他分册的码）。原 §11 Q-5 的归属冲突**已关闭**，见该条。
 
 ### 2.6 权威契约与 PRD 原文
 
@@ -462,14 +462,14 @@ export interface TableState {
 
 > 每步都写「改哪个文件 / 加什么符号 / 为什么 / 怎么自测」。顺序即推荐提交顺序。
 
-### Step 1 · 先拆 `src-tauri/src/commands/data.rs`（1416 行 → 三个文件）
+### Step 1 · 先拆 `src-tauri/src/commands/data.rs`（〔合并后校正〕**640 行，已按 `#[path]` 目录化**；改为「在现有子模块布局里新增两个文件」，不再需要从 1416 行起拆）
 
 - **改哪个文件**：`src-tauri/src/commands/data.rs` → 变成 `src-tauri/src/commands/data/mod.rs`，并新增 `src-tauri/src/commands/data/row_change_plan.rs`、`src-tauri/src/commands/data/row_change_execute.rs`、`src-tauri/src/commands/data/tests.rs`。
 - **加什么符号**：`mod row_change_plan; mod row_change_execute;`（在 `mod.rs` 内）；`row_change_plan.rs` 承载 `RowChangeTableContext` / `PendingRowChange` / `PlannedStatement` / `ChangeWarning` / `RowChangePlan` / `CommitPendingChangesRequest` / `RowCommitStatementResult` / `CommitPendingChangesResponse` + `canonicalize_changes` / `identity_key` / `effective_identity` / `validate_table_context` / `changes_fingerprint` / `value_summary` / `build_row_change_plan` / `plan_changes` / `validate_immutable_plan` / `preview_pending_changes_impl` / `preview_pending_changes`；`row_change_execute.rs` 承载 `execute_row_change_plan_impl` / `commit_pending_changes_impl` / `commit_pending_changes`；`tests.rs` 搬走 `mod tests`（`#[cfg(test)] mod tests;`）。
-- **为什么**：该文件**今天就已 1416 行、超过 800 行上限**；本册还要往里加插入逻辑与测试，不拆会同时违反规模纪律并让 review 无法聚焦。模块路径 `commands::data::*` 对外不变（`mod.rs` 兼容），所以拆分是纯结构提交，可独立回滚。
+- **为什么**：〔合并后校正〕该文件**今天 640 行、已按 `#[path]` 目录化**（`table_target.rs` / `result_mapping.rs` / `result_write.rs` / `tests.rs`），所以「从 1416 行起拆」这个动作**已经做过了**；本册只需要**新增两个子模块**（`row_change_plan.rs` / `row_change_insert.rs`）并把插入计划构建放进去。模块路径 `commands::data::*` 对外不变，纯结构增量。
 - **怎么自测**：`cargo test -p datazen --lib` 退出码 `0` 且用例数与拆分前**逐个不变**（先记下旧用例清单再比对）；`test result: ok`；`wc -l` 三个文件均 ≤ 800。**不得**在同一提交里改行为。
 
-- **迁移清单（不是可选项，契约 §4.5 硬性要求）**：本 Step 拆的是 `commands/data.rs`（1416 行），而该文件里恰好藏着**今天仓库中唯一**真正阻止空 `WHERE` 落到 `build_delete_sql` / `build_update_sql` 的检查——`validate_legacy_pk_columns`。它必须被**逐项**搬进新树，不能只写「拆分文件」：
+- **迁移清单（〔合并后校正〕整条已作废，替换为下面的新守卫）**：旧稿说本步要搬 `validate_legacy_pk_columns` —— **该函数已随遗留写入口一起删除**，今天仓库里**没有**任何阻止空 `WHERE` 落到 `build_delete_sql` / `build_update_sql` 的检查。因此本册不是「搬守卫」，而是**新建守卫**，且必须补在计划构建处（`build_delete_statement` 的空主键判断）：
   1. `validate_legacy_pk_columns` 的函数体 → `row_change_plan.rs`，并按 **W-3 加强**：既有实现只校验「非空且值非 NULL」，**不校验键集是否等于 `CachedColumns.primary_keys`**，因此一张 `(tenant_id, order_no)` 复合主键表只要前端传了 `{tenant_id: 7}` 就会静默生成 `WHERE "tenant_id" = 7` 命中成千上万行。搬过去时补上列集相等断言，语义升级为 W-1。
   2. 其配套测试 `commit_row_deletes_rejects_empty_pk` → `data/tests.rs`，**改名并扩充**为同时覆盖 W-1（行身份为空）、W-2（拒绝发生在 SQL 生成之前）、W-3（复合主键漏一列）的三条用例。
   3. `generate_handler!`（`src-tauri/src/bootstrap/run.rs`）里 `commit_row_updates` / `commit_row_deletes` 两个**遗留写入口**按 **C-1 已裁定删除**：注销注册项 + 删 `commit_row_updates_impl` / `commit_row_deletes_impl` + 删 `tableDataStore.test.ts` 里 4 处 mock + 加回归断言「这两个命令名不再出现在 `generate_handler!` 中」（见分册 12 §7.2.1 的 A-2）。
@@ -594,7 +594,7 @@ export interface TableState {
 
 | 文件 | 新增/修改 | 职责 | 预估行数 | 触及 800 行上限？ |
 | --- | --- | --- | --- | --- |
-| `src-tauri/src/commands/data.rs` → `data/mod.rs` | 改造 + 迁移 | 保留 IPC 命令壳、遗留批量入口（`commit_row_updates*` / `commit_row_deletes*`）、`get_table_data` 相关命令 | 迁出后 ≈ 700（净 0 新增） | **是（现状 1416 行已超限）→ 必须按 Step 1 拆分** |
+| `src-tauri/src/commands/data.rs` → `data/mod.rs` | 改造 + 迁移 | 保留 IPC 命令壳、遗留批量入口（`commit_row_updates*` / `commit_row_deletes*`，**恒拒绝**）、`get_table_data` 相关命令 | 〔合并后校正〕现 **640** 行 → 迁出后 ≈ 600 | 否（已目录化；本册只新增两个子模块） |
 | `src-tauri/src/commands/data/row_change_plan.rs` | 新增 | DTO、`canonicalize_changes`、`canonicalize_inserts`、指纹、计划构建、`plan_changes` | ≈ 620（迁移 ≈ 440 + 插入 ≈ 180） | 否 |
 | `src-tauri/src/commands/data/row_change_execute.rs` | 新增 | `execute_row_change_plan_impl`、`commit_pending_changes_impl`、回填 | ≈ 350（迁移 ≈ 240 + 插入/回填 ≈ 110） | 否 |
 | `src-tauri/src/commands/data/tests.rs` | 新增 | 从 `data.rs` 迁出的 `mod tests` + 本册新增用例 | ≈ 700（迁移 ≈ 460 + 新用例 ≈ 240） | 否（若超 800 再按 plan/execute 拆测试模块） |
@@ -608,7 +608,7 @@ export interface TableState {
 | `src/lib/gridErrors.ts` | **修改（追加）** | **01 已建骨架**（契约 §8.1 归属总则）；本册只追加 `grid.insert.*` 码，**禁止整文件覆盖** | +15 | 否 |
 | `src/stores/tableData/types.ts` | 修改 | `TableState` 三个新字段 | +12 | 否 |
 | `src/stores/tableData/pendingChanges.ts` | 修改 | `pendingWorkSignature`、`hasPendingWork`、`draftsForWire` | +50 | 否（现 127 行） |
-| `src/stores/tableDataStore.ts` | 修改 | 5 个草稿动作 + 早退判据 + 请求体 | +170 | 否（现 722 行 → 加后 ≈ 890 **会越线 → 见下方拆分**） |
+| `src/stores/tableDataStore.ts` | 修改 | 5 个草稿动作 + 早退判据 + 请求体 | +170 | **是**（〔合并后校正〕现 **729** 行 → 加后 ≈ 899 **必越线 → 见下方拆分**） |
 | `src/commands/database.ts` | 修改 | `inserts` 透传 | +6 | 否 |
 | `src/components/DataTable/VirtualBody.tsx` | 修改 | 草稿行渲染 | +120 | 否（现 ≈ 250 行） |
 | `src/windows/connection/TableView.tsx` | 修改 | 入口、快捷键、门闸、预览与确认 | +160 | 否（现 ≈ 400 行） |
@@ -618,9 +618,9 @@ export interface TableState {
 
 ### 拆分方案（`data.rs` 与 `tableDataStore.ts` 都已逼近/越线）
 
-1. **Rust（强制，Step 1）**：`data.rs`（1416 行）→ `data/mod.rs` + `data/row_change_plan.rs` + `data/row_change_execute.rs` + `data/tests.rs`，四个文件目标均 ≤ 800。模块路径对 `commands` 外部保持 `commands::data::*` 不变，因此拆分是独立可回滚的纯结构提交。
+1. **Rust（Step 1）**：`data.rs`〔合并后校正〕**已 640 行并目录化**，本册只需新增 `data/row_change_plan.rs` + `data/row_change_insert.rs` 两个子模块（均 ≤ 800）；执行逻辑仍归 `data_session::execute_plan`。模块路径对 `commands` 外部保持 `commands::data::*` 不变。
 2. **Rust 既有超限（登记，不在本册强改）**：`packages/driver-api/src/types.rs`（958）、`traits.rs`（1062）、`reuse.rs`（1159）**今天已超 800**。本册只做加法，不做无关重构；建议在 `docs/development/` 的规模纪律条目里登记为技术债（拆法示例：`types.rs` → `types/value.rs` + `types/schema.rs`；`traits.rs` → `traits/` 目录下按域拆并保留 re-export）。
-3. **前端（强制）**：`src/stores/tableDataStore.ts` 现 722 行，本册 +170 会越线 → 把草稿行逻辑放进新文件 `src/stores/tableData/draftInserts.ts`（纯函数：增删改、复制、`draftsForWire`、`pendingWorkSignature` 的草稿部分），`tableDataStore.ts` 只保留薄接线（每个动作 3~6 行），加后 ≈ 760 行，仍在 800 以内。
+3. **前端（强制）**：`src/stores/tableDataStore.ts` 现 **729** 行，本册 +170 会越线 → 把草稿行逻辑放进新文件 `src/stores/tableData/draftInserts.ts`（纯函数：增删改、复制、`draftsForWire`、`pendingWorkSignature` 的草稿部分），`tableDataStore.ts` 只保留薄接线（每个动作 3~6 行），加后 ≈ 760 行，仍在 800 以内。
 
 ---
 

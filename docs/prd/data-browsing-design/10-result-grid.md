@@ -99,7 +99,7 @@
 
 ### 2.2 `panelStore` 侧的 `updateResultCell`
 
-文件 `src/stores/panelStore.ts`（实测 **728 行**）：
+文件 `src/stores/panelStore.ts`（〔合并后校正〕实测 **793 行**；旧稿 728）：
 
 - 接口声明 `updateResultCell(panelId, resultIdx, row, col, value, paneId)`；
 - 实现先经 `paneKey(panelId, paneId)`（`src/stores/paneKeys.ts`）取 `queryExec`，再取 `exec.results[idx]`；
@@ -135,7 +135,7 @@
 
 ### 2.6 既有的计划—提交链路（`00-contracts.md` §1.4，直接复用，不新造）
 
-位置 `src-tauri/src/commands/data.rs`（实测 **1416 行**）。符号：`preview_pending_changes` → `build_row_change_plan` → `changes_fingerprint`；`commit_pending_changes` → `commit_pending_changes_impl` → `execute_row_change_plan_impl`；遗留入口 `commit_row_updates` / `commit_row_deletes`。
+位置 `src-tauri/src/commands/data.rs`（〔合并后校正〕实测 **640 行**，已按 `#[path]` 挂子模块）。符号：`preview_pending_changes` → `build_row_change_plan` → `changes_fingerprint`；`commit_pending_changes` → **`commands/data_session.rs::execute_plan`**（`BoundSqlStatement` + 短自有 Runtime 会话；旧稿的 `commit_pending_changes_impl` / `execute_row_change_plan_impl` 已不存在）；遗留入口 `commit_row_updates` / `commit_row_deletes` **仍注册但恒返回 `"Legacy row writes are disabled; preview and commit a target-bound ChangeSet"`**。
 
 DTO：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContext`、`PendingRowChange`、`PlannedStatement`、`RowChangePlan`、`CommitPendingChangesRequest`、`RowCommitStatementResult`、`CommitPendingChangesResponse`。
 
@@ -158,7 +158,7 @@ DTO：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContex
 | `src/stores/panelStore.ts` | 728 | **接近上限**，本册只能在其上加最小接线，新逻辑必须另起文件 |
 | `packages/driver-api/src/types.rs` | 958 | **已超限**，新增类型不得继续堆在这里 |
 | `packages/driver-api/src/traits.rs` | 1062 | **已超限**，只允许追加带默认实现的方法 |
-| `src-tauri/src/commands/data.rs` | 1416 | **已超限**，新命令必须另起模块 |
+| `src-tauri/src/commands/data.rs` | **640** | 已目录化（`#[path]` 子模块），接近但未越 800；新命令仍应另起模块 |
 | `src/windows/connection/ContentViewDrawers.tsx` | 228 | 有余量 |
 | `src/locales/en/query.ts` | 424 | 有余量 |
 
@@ -384,7 +384,7 @@ pub fn evaluate_result_editability(
 
 ### 3.4 新增 IPC 命令
 
-**落点**：新增文件 `src-tauri/src/commands/result_origin.rs`，在 `src-tauri/src/commands/mod.rs` 登记（`data.rs` 已 1416 行，不再追加）；前端 wrapper 落在既有 `src/commands/query.ts`。
+**落点**：〔合并后校正〕**该判定层已存在**——宿主 `src-tauri/src/commands/result_mapping.rs`（`result_relation_candidate` / `verify_result_mapping`）与命令 `src-tauri/src/commands/result_write.rs`（`commit_query_result_cell`）。本册若要扩展，是**改这两个文件**，不是新建 `result_origin.rs`；前端 wrapper 落在 `src/commands/query.ts`（442 行）。
 
 ```rust
 // 新增：src-tauri/src/commands/result_origin.rs
@@ -672,7 +672,7 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 
 ### Step 6 · 结果网格接线（含只读出口）
 
-- **改哪个文件**：改 `src/windows/connection/ContentViewDrawers.tsx`（228 行，有余量）；新增 `src/stores/panelResultEdit.ts`（判定缓存与状态切片）；改 `src/stores/panelStore.ts`（**只做最小接线，≤ 15 行**，因为它已 728 行）。
+- **改哪个文件**：改 `src/windows/connection/ContentViewDrawers.tsx`（〔合并后校正〕**236** 行，有余量）；**不要**新建 `panelResultEdit.ts`（判定逻辑已在 `src/commands/query.ts` 与 `panelStore` 的 `updateResultCell` 里）；改 `src/stores/panelStore.ts` 时**只做最小接线，≤ 7 行**（它已 **793** 行，距 800 只剩 7 行）。
 - **加什么符号**：`handleDetailFieldEdit` 的 `query` 分支改造；新增 `usePanelResultEdit`（或等价的 store 切片）暴露 `editability` / `resolving` / `resolveForResult` / `clearForResult`。
 - **为什么**：`query` 分支今天直接调 `updateResultCell`（§2.1），必须替换为「判定 → 只读出口 或 计划管线」。新逻辑放新文件是因为 `panelStore.ts` 接近 800 行上限。
 - **关键约束**：
@@ -718,7 +718,7 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 | `src/lib/resultEditability.ts` | **新增** | 前端镜像类型 + `resolveGridEditability` + 文案 key 映射 | ~180 | 否（新文件） |
 | `src/lib/gridErrors.ts` | **修改（追加）** | 01 已建骨架；本册按契约 §8.1 三步追加 6 个只读原因码，**禁止整文件覆盖** | +20 | 否 |
 | `src/stores/panelResultEdit.ts` | **新增** | 判定缓存与结果网格编辑状态切片 | ~140 | 否（新文件） |
-| `src/stores/panelStore.ts` | 修改 | 最小接线（暴露切片入口 / 复用 `updateResultCell`） | **≤ 15** | **实测 728 行 → 加 15 行 = 743，仍在上限内**；超过 15 行即视为失败，须整体搬入新文件 |
+| `src/stores/panelStore.ts` | 修改 | 最小接线（暴露切片入口 / 复用既有 `updateResultCell`） | **≤ 7** | 〔合并后校正〕**实测 793 行 → 只剩 7 行余量**；超过 7 行即视为失败，须先把它拆出（例如 `resultEdit` 切片）再接线 |
 | `src/windows/connection/ContentViewDrawers.tsx` | 修改 | `handleDetailFieldEdit` 的 `query` 分支改为判定驱动；只读出口 | ~55 | 否（实测 228 行） |
 | `src/locales/en/query.ts` | 修改 | 追加只读原因与错误文案 key | ~30 | 否（实测 424 行） |
 | `src/lib/__tests__/resultEditability.test.ts` | **新增** | 行级合并判定单测 | ~140 | 否 |

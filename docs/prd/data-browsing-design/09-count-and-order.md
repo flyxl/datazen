@@ -195,7 +195,7 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
 
 **`src/windows/connection/ContentStatusBar.tsx`**（既有）：`ContentStatusBarProps.totalRows: number`，在 `totalRows > 0` 时渲染 `{totalRows} {t('connWin.rowCount')}`（`connWin.rowCount` = `'rows'`，在 `src/locales/en/connection.ts`）。
 
-**`src/stores/tableDataStore.ts`**（既有，722 行）：
+**`src/stores/tableDataStore.ts`**（既有，〔合并后校正〕**729** 行）：
 
 - `LoadTableDataParams` 含 `skipCount?: boolean`；`reloadPanel: (panelId, opts?: { skipCount?: boolean }) => void`。
 - `commitFetchedPage` 是**唯一**写 `totalRows` 的地方：`totalRows: res.totalRows ?? current.totalRows`（缺省时保留上一次的值）。
@@ -621,7 +621,7 @@ estimateTableRows: (
 
 - **改哪个文件**：`src-tauri/src/services/query_executor.rs` → 目录模块 `src-tauri/src/services/query_executor/mod.rs` + 新增 `src-tauri/src/services/query_executor/tests.rs`；`src-tauri/src/services/mod.rs` 的 `mod query_executor;` 声明不变（目录模块对声明透明）。
 - **加什么符号**：`mod.rs` 末尾保留 `#[cfg(test)] mod tests;`；测试体原样搬到 `tests.rs`，只把 `use super::*;` 改为 `use super::*;`（同层级引用，符号路径不变）。
-- **为什么**：该文件当前 811 行，其中约 460 行是测试；本册在 `get_table_data` / `build_select_sql` 上净增约 30~40 行生产代码，不拆分**必然越过 800 行红线**（第 6 节有账）。
+- **为什么**：该文件当前 **755** 行，其中约 415 行是测试；本册在 `get_table_data` / `build_select_sql` 上净增约 30~40 行生产代码，不拆分**必然越过 800 行红线**（第 6 节有账）。
 - **怎么自测**：`cargo test -p datazen --lib query_executor` 必须与原样全绿、用例数不变（这是纯搬运，任何一条由红转绿或消失都说明搬错了）。
 
 ### Step 1：契约层——类型 + 4 个带默认实现的方法 + `ReuseDriver` 转发 + mock 扩展
@@ -713,7 +713,7 @@ estimateTableRows: (
 | `packages/driver-api/src/traits.rs` 的 `mod` 声明 | 修改 | 声明 `mod browsing;` | +1 | — |
 | `packages/driver-api/src/reuse.rs` | 修改 | 4 条转发（`count_strategy` / `count_estimate_sql` / `default_order_columns` / `allow_first_column_fallback_order`） | +24 | 否（既有约 1159 行，**已超限**；本次只补转发，属最小必要改动） |
 | `packages/driver-api/src/mock_driver.rs` | 修改 | `MockDriverOptions` 新增 `skip_count_query`、`count_estimate_rows`，并在 `Default` 与 `impl DatabaseDriver` 接通 | +20 | 否 |
-| ~~`src-tauri/src/services/query_executor.rs`~~ | **目录化归属冻结给 08**（契约 §9.1；提交序 08 早于 09） | 本册合并时 `query_executor/` 目录**必然已存在**，本册**不做搬迁**，只改 `mod.rs` 与 `tests.rs` | 0（搬迁由 08 完成） | **拆除红线风险**：现状 811 行，**由 08 完成**目录化后生产文件约 340 行，本册净增 30~40 后仍在 380 行以内 |
+| ~~`packages/feature-core/src/services/query_executor.rs`~~ | **目录化归属冻结给 08**（契约 §9.2；提交序 08 早于 09） | 本册合并时 `query_executor/` 目录**必然已存在**，本册**不做搬迁**，只改 `mod.rs` 与 `tests.rs` | 0（搬迁由 08 完成） | **拆除红线风险**：现状 **755** 行，**由 08 完成**目录化后生产文件约 340 行，本册净增 30~40 后仍在 380 行以内 |
 | `src-tauri/src/services/query_executor/mod.rs` | 修改 | `build_select_sql` 新增 `default_order` 参数并删除内部主键推导；`get_table_data` 新增两个参数、改用 `cached.primary_keys` 调 `resolve_default_order`（**行为变更，见 §1.1**）、接 `resolve_count_strategy`、补 `total_rows_kind`；新增 `estimate_row_count` 与估算分支的并发结构 | +55 / -25 | 否（约 370 行） |
 | `src-tauri/src/services/query_executor/tests.rs` | 修改（**搬迁已由 08 完成**，本册只补用例） | 四条等价性用例 + 一条新语义用例 + 三态与并发用例 | 新增约 150（不含 08 搬出的约 460） | 否 |
 | `src-tauri/src/services/table_browsing.rs` | **新增** | `resolve_count_strategy` / `resolve_default_order` 两个纯函数 + 单测 | ~120（含测试） | 否 |
@@ -732,7 +732,7 @@ estimateTableRows: (
 | `src/stores/settingsStore.ts` | 修改 | `DEFAULT_SETTINGS` 三个默认值 | +4 | 否 |
 | `src/stores/tableData/types.ts` | 修改 | `TableState` 两个新字段 | +6 | 否 |
 | `src/stores/tableData/connectionState.ts` | 修改 | `emptyTableState` 两个新字段初值 | +2 | 否 |
-| `src/stores/tableDataStore.ts` | 修改 | `commitFetchedPage` 补 kind；`loadTableData` 组装新入参；`reloadPanel` opts | +25 | **接近上限（现状 722 行，改后约 747）**：本次净增必须 ≤ 30 行；若超出，把 `commitFetchedPage` 的字段合成抽到 `src/stores/tableData/fetchedPage.ts` |
+| `src/stores/tableDataStore.ts` | 修改 | `commitFetchedPage` 补 kind；`loadTableData` 组装新入参；`reloadPanel` opts | +25 | **接近上限（现状 729 行，改后约 754）**：本次净增必须 ≤ 30 行；若超出，把 `commitFetchedPage` 的字段合成抽到 `src/stores/tableData/fetchedPage.ts` |
 | `src/components/DataTable/Pagination.tsx` | 修改 | 三态渲染、稳定性提示、`Count` 按钮、未知态翻页 | +70 | 否（约 210 行） |
 | `src/components/DataTable/DataTable.tsx` | 修改 | 透传 `totalRowsKind` / `hasMore` / `onCountExact` | +12 | **需 `wc -l` 确认**（该文件本身较大，若已接近 800 则把三态渲染完全留在 `Pagination` 内，只加 3 个 prop） |
 | `src/windows/connection/TableView.tsx` | 修改 | 接线 + 无主键提示 + 面板排序下拉 | +60 | 否 |

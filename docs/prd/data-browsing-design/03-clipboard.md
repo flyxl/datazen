@@ -98,7 +98,7 @@
 | `src/stores/tableDataStore.ts` | `TableDataStore.stageCellChange` | **单格写入的唯一入口**。流程：取 `ts.rows[row]` → 无主键列则 `patchPanel({ error: t('tableData.noPrimaryKey') })` 返回 → `buildRowIdentity` + `rowIdentityIsUnique` 失败则 `error: AMBIGUOUS_ROW_IDENTITY_ERROR` → `findPendingForRow` 复用既有 `originalValues` → `valuesEqual` 相等则**删除**该列的改动（回到无改动）→ 否则记入 → **重算整个 `editBuffer`**（`rebuildEditBuffer`）→ 每次调用一次 `patchPanel`（新建 `Map`） |
 | `src/stores/tableDataStore.ts` | `TableDataStore.applyColumnToRows` | 就是 `for (const row of rows) get().stageCellChange(...)`——**N 格 = N 次状态写入 + N 次全量 `rebuildEditBuffer`**，是批量写入在今天的唯一形态，也是本册要替换的反例 |
 | `src/stores/tableDataStore.ts` | `patchPanel` / `patchPanelForReload` | `patchPanel` 新建 `byPanel` Map 并 `set`；`patchPanelForReload` **只**并入 `updater(ts)` 并把 `requestRevision` 加一（竞态防护，`00` §1.1 第 2 条），**不清任何选择状态**。`00` §4.3 推论已把这条确认为既有缺陷并指定 DB-01 在 `patchPanelForReload` / `commitFetchedPage` / `invalidateCachedData` 三个收敛点统一修复 |
-| `src/stores/tableDataStore.ts` | `setPage` / `setPageSize` / `setSort` | **都不清空 `selectedRows`**（只有 `invalidateCachedData` 会清）。翻页/排序后 `selectedRows` 里留着上一页的行下标，而 `rowIndex` 的含义已整体平移。`00` §4.3 推论已确认这是既有缺陷并指派 DB-01 修复；本册只依赖该保证，不自行修补（见 B21 与 U-1） |
+| `src/stores/tableDataStore.ts` | `setPage` / `setPageSize` / `setSort` | **都不清空 `selectedRows`**（〔合并后校正〕清空点不止 `invalidateCachedData`：`commitFetchedPage` 也清 `selectedRows`，见 `tableDataStore.ts` 里 `selectedRows: new Set()`——所以「旧行号残留」的窗口只持续到新页数据落地，不是长期状态）。翻页/排序后 `selectedRows` 里留着上一页的行下标，而 `rowIndex` 的含义已整体平移。`00` §4.3 推论已确认这是既有缺陷并指派 DB-01 修复；本册只依赖该保证，不自行修补（见 B21 与 U-1） |
 | `src/stores/tableData/pendingChanges.ts` | `findPendingForRow` / `rowIdentityIsUnique` / `hasPendingIdentityCollision` / `rebuildEditBuffer` / `overlayPendingRows` | 行身份解析与冲突检测的既有工具箱；`rebuildEditBuffer` 是 O(rows × pending) 的全量重算 |
 | `src/stores/tableData/connectionState.ts` | `toCellValue` | `val === null \|\| val === undefined` → `null`；否则原样 `as Value`。**没有类型转换**：`'abc'` 进整数列就是字符串 `'abc'`，由数据库在提交时报错 |
 | `src/lib/tableChanges.ts` | `PendingRowChange` / `RowChangePlan` / `PlannedStatement` | 计划模型**只有 `updates` / `deletes`**（`00` §1.4 事实 1）；`valuesEqual` 是稳定 JSON 比较（`00` §3.4 要求复用它） |
@@ -118,7 +118,7 @@
 | 文件路径 | 当前总行数 | 与 800 行上限的关系 |
 | --- | --- | --- |
 | `src/stores/tableDataStore.ts` | 722 | 逼近；本册要求**净减** |
-| `src/windows/connection/TableView.tsx` | 770 | **已逼近**（96%）；本册要求先拆分腾出余量 |
+| `src/windows/connection/TableView.tsx` | **803** | **已越 800 红线**（〔合并后校正〕旧稿 770/96%）；本册要求先由 01 拆分腾出余量 |
 | `src/components/DataTable/DataTable.tsx` | 628 | 逼近；本册要求净减 |
 | `src/lib/dataTableContextMenu.ts` | 398 | 安全 |
 | `src/lib/tableChanges.ts` | 227 | 安全 |
@@ -843,7 +843,7 @@ export interface DataTableProps {
 
 - **改**：`src/stores/tableData/stageCellWrite.ts`（新增）。
 - **加**：`stageCellWritesInto`、`rebuildEditBufferOnce`、`CellWriteProblem`、`StageCellWritesOutcome`。
-- **为什么**：G9 与 G7 的根因都在「逐格 `patchPanel` + 每次全量 `rebuildEditBuffer`」。把逐格逻辑抽成**纯函数**（输入 `TableState`、输出新三件套）是本册唯一能让「单格」与「批量」共用同一套行身份校验的做法；也是 `tableDataStore.ts` **净减行数**的唯一办法（该文件已 722 行）。
+- **为什么**：G9 与 G7 的根因都在「逐格 `patchPanel` + 每次全量 `rebuildEditBuffer`」。把逐格逻辑抽成**纯函数**（输入 `TableState`、输出新三件套）是本册唯一能让「单格」与「批量」共用同一套行身份校验的做法；也是 `tableDataStore.ts` **净减行数**的唯一办法（该文件已 **729** 行）。
 - **怎么抽**：把 `stageCellChange` 的函数体逐行搬进 `stageCellWritesInto`，只做三处改造：(a) 循环 N 格；(b) 把 `patchPanel` 的副作用换成往 `outcome` 里累积；(c) 把依赖 `t()` 的文案换成 `problems[].code`。**`findPendingForRow` / `rowIdentityIsUnique` / `hasPendingIdentityCollision` / `valuesEqual` 的调用顺序与条件必须一模一样**——A2 的深度相等断言就是这条的守门人。
 - **自测**：`npx vitest run src/stores/tableData/__tests__/stageCellWrite.test.ts` —— ① 单格等价性（与重构前的快照逐字段比对）；② 空输入不产生新对象（引用相等）；③ 5 000 格只产生一次 `outcome`；④ 一格歧义不影响其余 4 999 格。
 
@@ -851,7 +851,7 @@ export interface DataTableProps {
 
 - **改**：`src/stores/tableDataStore.ts`。
 - **改/加**：`stageCellChange` 变薄包装（调 `stageCellWritesInto` 后把 `problems[0].code` 映射回既有 `t('tableData.noPrimaryKey')` / `AMBIGUOUS_ROW_IDENTITY_ERROR`，行为逐字不变）；新增 `stageCellWrites`。
-- **为什么**：对外契约（`TableDataStore` 接口）不变，内部批量化；`tableDataStore.ts` 因此净减行数（它已 722 行）。
+- **为什么**：对外契约（`TableDataStore` 接口）不变，内部批量化；`tableDataStore.ts` 因此净减行数（它已 **729** 行）。
 - **依赖而不重复实现**：翻页/排序/筛选后的选择清空**由 DB-01 负责**，落地在 `patchPanelForReload` / `commitFetchedPage` / `invalidateCachedData` 三个收敛点（`00` §4.3 推论）。本册**不**在 `setPage` / `setSort` / `applyFilters` 里各加一行清空——那正是缺陷当初的产生方式，两册各修一半会留下更隐蔽的半修状态。
 - **自测**：`npx vitest run src/stores/__tests__/tableDataStore*.test.ts` 全绿（既有回归门槛）；另加一条**守卫测试**：`setPage` 后 `gridSelection.mode === 'none'` 且 `selectedRows.size === 0`。若 DB-01 尚未落地，这条测试会红——这是正确的失败，应如实上报而不是在本册补一行让它变绿。
 
@@ -873,7 +873,7 @@ export interface DataTableProps {
   - `onPasteFromClipboard(anchor)`：`await requirePlatformServices().readClipboard()`（try/catch → `grid.clipboard.readFailed`）→ 走同一条 `onPasteText` 逻辑。
   - 只读拦截：`!isEditable` 时 `onPasteText` 立即 `showReadOnlyTip()` 并返回 `true`（消费掉，避免落到浏览器默认），复制仍可用（只读表当然可以复制）。
   - 超大批量：`writes.length > GRID_PASTE_CHUNK_CELLS` 时分批 `stageCellWrites`，每批之间 `await new Promise<void>(resolve => { window.requestAnimationFrame(() => resolve()); })`，并在提示里给进度。
-- **为什么放 hook**：G10 —— 列元数据（`ColumnSchema`）在 `TableView` 层，`DataTable` 拿不到；同时 `TableView.tsx` 已 770 行，只能容纳「一次 hook 调用 + 3 个 prop」。
+- **为什么放 hook**：G10 —— 列元数据（`ColumnSchema`）在 `TableView` 层，`DataTable` 拿不到；同时 `TableView.tsx` 已 **803** 行（已越线），只能容纳「一次 hook 调用 + 3 个 prop」。
 - **自测**：`npx vitest run src/hooks/__tests__/useGridClipboard.test.tsx`（渲染一个最小宿主，断言 onClick/onPaste 的调用序列与 store 调用次数）。
 
 ### Step 8 · 右键菜单项
@@ -903,7 +903,7 @@ export interface DataTableProps {
 - **改**：`src/windows/connection/TableView.tsx`：调用 `useGridClipboard`，把 `clipboard` / `gridSelection` / `onClipboardProblem` 传给 `DataTable`，并加 `confirmPaste` 对话框。
 - **前置（由 DB-01 提供，本册不创建）**：`src/windows/connection/TablePendingChangesBar.tsx` —— 待提交改动工具条，抽取 `table-tx-controls` + `pending-changes-bar` 两块，逐字保留既有 testid；由**分册 01 的 Step 10 首次创建**（它是 02/03/05/06/07 的共同依赖，提交顺序最前），命名在 01/03/06 之间统一为 `TablePendingChangesBar`。
 - **本册对它的用法**：**只复用，不另建**。若需要额外展示（例如粘贴结果摘要、复制反馈），通过**给它新增可选 props** 扩展。**禁止**在 `src/windows/connection/` 下另建平行组件——统一名是 `TablePendingChangesBar`（分册 01 的 Step 10 首次创建）；`TableViewPendingBar` / `PendingChangesBar` 这类变体名都不允许出现。
-- **为什么**：`TableView.tsx` 已 770 行（96%），接线约 +20 行，工具条由 01 抽走约 −150 行，净得 ~90 行余量给 01/02/05/06。**不依赖 01 的抽取就一定会爆 800**。
+- **为什么**：`TableView.tsx` 已 **803** 行（〔合并后校正〕旧稿 770/96%，**现在已越 800 红线**），接线约 +20 行；01 抽走暂存条后约 713，本册再抽工具条后约 570，给 02/05/06 腾出余量。**不依赖 01 的抽取就一定会爆 800**。
 - **自测**：`pnpm typecheck` + `npx vitest run src/windows/connection/` 全绿；`wc -l src/windows/connection/TableView.tsx` < 800。
 
 ---

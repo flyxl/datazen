@@ -28,7 +28,7 @@
 | A2 | 测试文件参与类型检查且干净（`tsconfig.json` 不排除 `__tests__/`） | `pnpm typecheck` | 无 `error TS`；退出码 `0` |
 | A3 | 既有整行选择与批量操作零回归 | `npx vitest run src/components/DataTable src/windows/connection/__tests__/TableView.test.tsx src/stores/__tests__/tableDataStore.test.ts` | 全绿；右键菜单条目 id 序列与今天**逐字一致**（既有断言不改） |
 | A4 | 真实鼠标序列在应用内生效 | `pnpm e2e:minimal` | `e2e/specs/table-cell-selection.ts` 与 `e2e/specs/table-batch-ops.ts`（TC-TABLE-009~014）均通过；`table-edit.ts` 的 `pending-changes-bar` / `pending-preview` / `pending-commit` / `pending-rollback` 断言保持通过 |
-| A5 | 单文件不越 800 行红线 | `wc -l src/components/DataTable/DataTable.tsx src/components/DataTable/VirtualBody.tsx src/windows/connection/TableView.tsx src/stores/tableDataStore.ts` | `DataTable.tsx` ≤ 470、`VirtualBody.tsx` ≤ 190、`TableView.tsx` ≤ 660、`tableDataStore.ts` ≤ 700 |
+| A5 | 单文件不越 800 行红线 | `wc -l src/components/DataTable/DataTable.tsx src/components/DataTable/VirtualBody.tsx src/windows/connection/TableView.tsx src/stores/tableDataStore.ts` | 〔合并后校正〕`DataTable.tsx` ≤ 470（现 628）、`VirtualBody.tsx` ≤ 190（现 207）、`TableView.tsx` **≤ 710**、`tableDataStore.ts` **≤ 730**。**原目标（660 / 700）已不可达**：`TableView.tsx` 现 **803 行**（旧稿 770，已越 800 红线），按本册 Step 10 声明的抽取边界（tx-controls + pending-bar，约 90 行）只能到 ~713；要落到 660 必须把事务生命周期（`refreshTxStatus` / `executeTableTransaction` / `handleBeginTx` / `handleCommitTx` / `handleRollbackTx`）一并抽出。因此本册把 A5 改成 710，并把「降到 660」列为 08/07 的后续抽取目标 |
 | A6 | 拖拽 `(r2,c1) → (r5,c3)` 的可观察结果 | E2E 断言（A4 内） | 工具栏出现 `4 rows × 3 columns`；`[data-dt-selected="true"]` 的单元格恰好 12 个；右键菜单出现 `copy-selected-cells` 条目（由 03 接线后） |
 
 > 纪律（AGENTS.md）：上述测试/门禁命令的长输出**一律重定向到系统临时目录**再 `tail`，退出码必须单独打印；门禁运行**首尾各记录一次 HEAD 与工作区 sha**；本轨驱动集为 `--drivers=basic`（postgres / mysql / sqlite / redis），"宿主用例全绿"只在该驱动集语义内成立。
@@ -47,8 +47,8 @@
 | 同上 | `DataTable`：`const [scrollEl, setScrollEl] = useState<HTMLDivElement \| null>(null)`；滚动容器的 `ref={setScrollEl}`、`onContextMenu={handleContextMenu}`、`aria-label={t('dataTable.tableLabel')}`；**外层根 div 上挂着 `onKeyDown={handleDeleteKey}`**（根 div 本身不可聚焦） |
 | 同上 | `handleDeleteKey`：唯一网格级键盘处理，只认 `Delete`/`Backspace`，且 `if (editingCell) return`、要求 `onDeleteRows` 存在且 `primaryKeyColumns` 非空、`selectedRows.size > 0` |
 | 同上 | `handleRowClick`：把 `onRowClick?.(index)` 与 `onRowSelect?.(index, opts)` 串起来（**整行选择的唯一接线点**） |
-| 同上 | `handleContextMenu`：右键菜单全部构造逻辑内联在这里（约 220 行），用 `resolveDataTableCellFromEvent` / `resolveDataTableHeaderColFromEvent` 反查，再调 `buildDataTableContextMenuItems` + `showNativeContextMenu` |
-| 同上 | `hasSelection = onSelectAll != null && onRowSelect != null`：**决定工具栏（全选复选框 + 选中计数 + 删除按钮 + 导出按钮）是否渲染** |
+| 同上 | `handleContextMenu`：右键菜单全部构造逻辑内联在这里（〔合并后校正〕实测约 226 行，块跨 200–425），用 `resolveDataTableCellFromEvent` / `resolveDataTableHeaderColFromEvent` 反查，再调 `buildDataTableContextMenuItems` + `showNativeContextMenu` |
+| 同上 | `hasSelection = onSelectAll != null && onRowSelect != null`：**决定工具栏是否渲染**；〔合并后校正〕导出按钮另需 `exportTableName && rows.length > 0 && dataExportCapability !== 'none'`，删除按钮另需 `onDeleteRows && selectedRows.size > 0 && primaryKeyColumns.length > 0` |
 | 同上 | `columnNames = columns.map((c) => c.name)`；区域判列用的就是这份顺序 |
 | 同上 | 工具栏选中计数文案：`t('dataTable.selected')` + `selectedRows.size` + `/` + `rows.length` + `t('common.rows')` |
 | `src/components/DataTable/TableHeader.tsx` | `ColumnDef { id: string; name: string; type?: string }`；`TableHeaderProps`：`columns`/`sorts`/`onSort`/`columnWidths`/`onResizeStart?`/`sortable`/`onFilterColumn?` |
@@ -110,8 +110,8 @@
 | 同上 | `handleTableKeyDown`：只处理 `(metaKey \|\| ctrlKey) && key === 'Enter'` → 提交暂存改动 |
 | 同上 | `displayedColumns = useMemo(...)`：`visibleColumns === null` → 全部列；否则 `columns.filter((c) => set.has(c.name))` —— **过滤保持 `TableState.columns` 的原序，`visibleColumns` 不是重排指令**；`columnDefs: ColumnDef[] = displayedColumns.map((c) => ({ id: c.name, name: c.name, type: c.dataType }))`；`rowArrays = rows.map((record) => displayedColumns.map((col) => record[col.name] ?? null))` |
 | 同上 | `<DataTable …>` 装配：`editingCell={!isEditable ? null : editingCell}`、`selectedRows`、`onRowSelect={actions.selectRow}`、`onSelectAll={actions.toggleSelectAll}`、`onRowClick={actions.setDetailRow}`、`highlightedRow={detailRowIndex}`、`primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}`、`onDeleteRows={isEditable ? handleDeleteRows : undefined}`、`headerActions={<TableColumnFilter …/>}`、`emptyPlaceholder={…all-columns-hidden…}` |
-| 同上 | 暂存改动条与事务控件全部内联在 `TableView` 里：`data-testid` 为 `pending-changes-bar`、`pending-preview`、`pending-commit`、`pending-rollback`、`table-tx-controls`、`table-tx-begin`、`table-tx-commit`、`table-tx-rollback`（**`e2e/specs/table-edit.ts` 与 `e2e/specs/detail-panel.ts` 直接依赖这些 testid**） |
-| `src/windows/connection/result-workspace/ResultTableView.tsx` | 只读结果网格：`<DataTable …>` **不传** `selectedRows` / `onRowSelect` / `onSelectAll` / `onDeleteRows`（因此 `hasSelection === false`），`onCellEdit={(_row, _col, _value) => setEditingCell(null)}`、`enableSetNull={false}` |
+| 同上 | 暂存改动条与事务控件全部内联在 `TableView` 里：`data-testid` 为 `pending-changes-bar`、`pending-preview`、`pending-commit`、`pending-rollback`、`table-tx-controls`、`table-tx-begin`、`table-tx-commit`、`table-tx-rollback`，〔合并后校正〕**另有 `table-transaction-error` 与 `table-session-open-new`**（main 新增的会话丢失恢复入口，`e2e/specs/table-loss-recovery` 系列直接依赖） |
+| `src/windows/connection/result-workspace/ResultTableView.tsx` | 〔合并后校正〕**结果网格已不是只读网格**：`canEdit = !safeMode && !!onCellEdit && result.source?.writableMapping === 'verified' && !!result.runtimeBinding`，`onCellEdit` 真写回（`Promise<void>`，失败保留编辑态并回显 `query.resultEditRequiresRefresh`）。仍然成立的部分：`<DataTable …>` **不传** `selectedRows` / `onRowSelect` / `onSelectAll` / `onDeleteRows`（因此 `hasSelection === false`），`enableSetNull={false}` 未变 |
 | 其他消费者 | `src/components/ai/ExplainPanel.tsx`、`src/windows/connection/ProcessListView.tsx`、`src/windows/dashboard/RunHistoryDrawer.tsx`、`src/windows/dashboard/ChartWidgetTile.tsx`、`src/windows/workflow/WorkflowPage.tsx` 也渲染 `DataTable`（多为只读展示，**本册新增 props 必须全部可选，它们一行都不用改**） |
 
 ### 2.6 测试与 i18n 落点
@@ -119,7 +119,7 @@
 | 文件 | 已核实的符号 / 事实 |
 | --- | --- |
 | `src/components/DataTable/__tests__/VirtualBody.test.tsx` | 用 `vi.mock` 替换 `useI18n`（`t: (key) => key`）与 `useVirtualTable`（自造 `virtualRows`）；靠 `container.querySelector('[tabindex="0"]')` 找行；断言 `onRowSelect` 收到 `{ multi: true, range: false }`；断言 `container.querySelector('button[title="dataTable.selectRow"]')` |
-| `src/components/DataTable/__tests__/DataTable.test.tsx` | mock `useColumnResize`、`useVirtualTable`、`nativeContextMenu`、`commands/file`；用 `container.querySelector('[data-dt-row="0"][data-dt-col="name"]')` 定位单元格；**逐条断言右键菜单的条目 id 序列**（如 `['copy', 'copy-row', 'filter-by-value', 'export']`）；断言 `data-table-delete-rows` 按钮与 `Delete` 键 |
+| `src/components/DataTable/__tests__/DataTable.test.tsx` | mock `useI18n`、`useColumnResize`、`useVirtualTable`、`nativeContextMenu`、`commands/file`、`FilterBar`（〔合并后校正〕补上后两项）；用 `container.querySelector('[data-dt-row="0"][data-dt-col="name"]')` 定位单元格；**逐条断言右键菜单的条目 id 序列**（如 `['copy', 'copy-row', 'filter-by-value', 'export']`）；断言 `data-table-delete-rows` 按钮与 `Delete` 键 |
 | `src/components/DataTable/__tests__/TableHeader.test.tsx` | 断言排序图标数量与双击表头触发 `onSort` |
 | `src/stores/__tests__/tableDataStore.test.ts` | `vi.mock('../../commands/database')`；`sampleColumns` / `sampleResponse` / `deferred<T>()` / `samplePlan` 的自造夹具风格 |
 | `src/stores/tableData/__tests__/connectionState.test.ts` | 对 `emptyTableState(ctx)` 做**逐字段**断言（不是整体 `toEqual`），因此新增字段不会破坏它 |
@@ -129,7 +129,7 @@
 | `src/locales/en/index.ts` | 把领域包 `core`/`connection`/`schema`/`query`/`settings`/`chart`/`backup`/`ai`/`sync`/`workflows`/`dashboard`/`mcp`/`onboarding` 展开合并 |
 | `src/locales/en/query.ts` | **`dataTable.*` 与 `tableData.*` 两个命名空间的词条都在这里**（如 `'dataTable.selected'`、`'dataTable.selectRow'`、`'dataTable.deleteRow'`、`'dataTable.tableLabel'`、`'tableData.readOnlyEditDisabled'`）；key 是**扁平点号字符串**，不是嵌套对象 |
 | `src/locales/en/core.ts` | `common.*` 命名空间在这里（`'common.copy'`、`'common.rows'`、`'common.selectAll'`） |
-| `src/locales/index.ts` | `I18nKey = TranslationKey \| (string & {})`；`TranslationKey = keyof typeof zhCN`（`src/locales/zh-CN/index.ts`）—— 因此**只在英文侧新增 key 不会让 `t()` 报类型错**，仓库现状已有 221 个 en-only key |
+| `src/locales/index.ts` | `I18nKey = TranslationKey \| (string & {})`；`TranslationKey = keyof typeof zhCN`（`src/locales/zh-CN/index.ts`）—— 因此**只在英文侧新增 key 不会让 `t()` 报类型错**，仓库现状已有 **247** 个 en-only key（〔合并后校正〕旧稿 221；按 en 2542 / zh-CN 2295 的顶层 key 计数） |
 | `src/locales/t.ts` | 组件外可用的 `t(key, params?)`；插值形如 `{count}` |
 
 ---
@@ -327,7 +327,7 @@ reconcileGridSelectionForColumns: (panelId: string, columnOrder: readonly string
 ```ts
 // —— src/stores/tableData/selectionActions.ts（新增）——
 // 纯状态转移：输入 TableState（或其相关切片）+ 参数，输出 Partial<TableState>。
-// 目的：把选择逻辑从已 722 行的 tableDataStore.ts 里挪出来，给 02/03/05/06 留出余量。
+// 目的：把选择逻辑从已 729 行的 tableDataStore.ts 里挪出来，给 02/03/05/06 留出余量。
 
 export interface SelectionTransitionDeps {
   /** 当前渲染列顺序（= displayedColumns 的列名数组）。 */
@@ -621,7 +621,7 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 ### Step 3 · 选择状态转移：`src/stores/tableData/selectionActions.ts`（新增）
 
 - **新增符号**：3.5 的 `SelectionTransitionDeps` 与 8 个 `apply*` 函数；其中 `applyRowSelect` / `applyToggleSelectAll` 是**既有实现的搬移**（语义必须逐字一致，包括"单击已选中的唯一行 = 清空 + `lastSelectedIndex = null`"）。
-- **为什么**：`tableDataStore.ts` 已 722 行，直接往里加 4 个动作 + 抽离逻辑必然逼近/越过 800 行红线。把纯转移挪到独立模块，既腾出余量，又让 02/03/06 的选择相关变更集中在一个可单测文件里。
+- **为什么**：`tableDataStore.ts` 已 **729** 行（〔合并后校正〕旧稿 722），直接往里加 4 个动作 + 抽离逻辑必然逼近/越过 800 行红线。把纯转移挪到独立模块，既腾出余量，又让 02/03/06 的选择相关变更集中在一个可单测文件里。
 - **自测**：`npx vitest run src/stores/__tests__/tableDataStore.test.ts` 必须**一行不改就全绿**（证明搬移无行为漂移）。
 
 ### Step 4 · store 接线与"重新取数即清空"
@@ -705,7 +705,7 @@ export function isEditableTarget(target: EventTarget | null): boolean;
   - 用 `<TablePendingChangesBar …/>` 替换内联块（**所有 `data-testid` 逐字保留**）；
   - `<DataTable>` 增加 `gridSelection={ts?.gridSelection ?? EMPTY_GRID_SELECTION}` 与 `onGridSelectionChange={(sel) => actions.setGridSelection(sel)}`；
   - **不新增**任何"清空选区"的代码：清空已由 Step 4 在 store 的重新取数路径里统一处理。
-- **为什么**：`TableView.tsx` 已 770 行，只差 30 行就撞红线，而 02/03/05/06 都会继续往这里加接线。抽取是"先腾地方"的必要前置（与 `DataTable` 拆分同一条纪律）。保留 testid 是因为 `e2e/specs/table-edit.ts`、`e2e/specs/detail-panel.ts` 与 `TableView.test.tsx` 直接依赖它们。
+- **为什么**：〔合并后校正〕`TableView.tsx` 已 **803 行**——**不是「只差 30 行」，是已经越线 3 行**（合并带入了会话控制器接线）。而 02/03/05/06 都会继续往这里加接线，所以抽取是**所有分册的前置条件**（不是本册的自选项）。抽取边界必须含 `table-transaction-error` / `table-session-open-new` 与 `txLost` / `onOpenNewSession`。保留 testid 是因为 `e2e/specs/table-edit.ts`、`e2e/specs/detail-panel.ts` 与 `TableView.test.tsx` 直接依赖它们。
 - **自测**：`npx vitest run src/windows/connection/__tests__/TableView.test.tsx` 全绿；`wc -l` 确认 `TableView.tsx` ≤ 660。
 
 ### Step 11 · 文案：`src/locales/en/query.ts`（唯一允许改的文案文件）
@@ -735,13 +735,13 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 | `src/windows/connection/TablePendingChangesBar.tsx` | **新增** | 从 `TableView` 抽出的暂存改动条 + 事务控件（**必须保留全部既有 testid**）；**归属见下方裁定：由本册首次创建，03/06 只能复用** | ~150 | 否 |
 | `src/stores/tableData/types.ts` | 修改 | `TableState` 增加 `gridSelection` | 55 → ~60 | 否 |
 | `src/stores/tableData/connectionState.ts` | 修改 | `emptyTableState` 初始化 `gridSelection` | 87 → ~89 | 否 |
-| `src/stores/tableDataStore.ts` | 修改 | 4 个新动作（薄封装）+ 委托既有选择动作 + 重新取数路径统一清空 | 722 → ~700 | 否（**本册必须净减少**） |
+| `src/stores/tableDataStore.ts` | 修改 | 4 个新动作（薄封装）+ 委托既有选择动作 + 重新取数路径统一清空 | **729** → ~707 | **接近**（距 800 只剩 71 行；「必须净减少」仍成立，但目标改成 707 而不是 700——扣掉 4 个动作的净增后这才是可核验的数） |
 | `src/components/DataTable/VirtualBody.tsx` | 修改 | 改用 `GridCell`、透传选区判定、`data-dt-surface`、**行号槽 `<button>` → `<div role="rowheader">` + 内层 `tabIndex={-1}` 按钮**、行容器加 `role="row"` | 207 → ~185 | 否 |
 | `src/components/DataTable/DataTable.tsx` | 修改 | 3 个新 props、`surfaceProps` 接线、选区摘要、删行降级为行集、菜单外移 | 628 → ~450 | 否（**必须拆分，否则 02/03 必然越线**） |
-| `src/windows/connection/TableView.tsx` | 修改 | 接线 `gridSelection` / `onGridSelectionChange`；替换内联暂存条 | 770 → ~660 | 否（**前置抽取后才安全**） |
+| `src/windows/connection/TableView.tsx` | 修改 | 接线 `gridSelection` / `onGridSelectionChange`；替换内联暂存条（**含会话丢失恢复入口**） | **803** → ~713 | **是**（基线已越线；本册的抽取是后续分册的前置条件） |
 | `src/components/DataTable/TableHeader.tsx` | **本册不改**（已核对） | 列序由 `TableData.columns` 过滤后保持原序决定；`data-col-header` 已存在；区域判列只用列名 + `columnOrder`，**无需新增 DOM 属性** | 115（不变） | 否 |
 | `src/lib/dataTableContextMenu.ts` | 修改 | `BuildDataTableContextMenuArgs` 增加选区相关可选入参 + 新增 `copy-selected-cells` 条目（handler 缺失时不出现） | 398 → ~420 | 否 |
-| `src/locales/en/query.ts` | 修改 | 追加 2 个 `dataTable.*` key（第 8 节） | 424 → ~427 | 否 |
+| `src/locales/en/query.ts` | 修改 | 追加 2 个 `dataTable.*` key（第 8 节） | **442** → ~444 | 否 |
 | `src/stores/tableData/__tests__/gridSelection.test.ts` | **新增** | 纯逻辑单测 | ~220 | 否 |
 | `src/stores/tableData/__tests__/selectionActions.test.ts` | **新增** | 状态转移单测 | ~180 | 否 |
 | `src/lib/__tests__/gridEventGuards.test.ts` | **新增** | 守卫单测 | ~70 | 否 |
@@ -926,7 +926,7 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 | `TC-SEL-007: 只读连接可选不可编辑` | 用只读连接（或把 `isEditable` 置假）→ 选择与摘要可用；双击后出现 `[data-testid="table-read-only-tip"]`，且**没有** `[data-testid="table-edit-input"]` |
 | 每步 | 调 `captureJourneyStep('table-cell-selection-<step>')` 记录步骤截图，便于失败定位 |
 
-**错误文案的断言纪律（契约第 8 节）**：`CommandError` 序列化到 IPC 后是**脱敏字符串，没有机器可读的 code 字段**，因此需要前端精确识别的错误，其消息**必须以 `grid.<域>.<原因>: <人类可读说明>` 前缀开头**，前端用 `classifyGridError()`（`src/lib/gridErrors.ts`，新增）做**前缀匹配**；匹配不到任何前缀时返回 `'unknown'` 并且 **UI 必须回退显示原始消息**（不得吞掉、不得显示空白）。DB-01 不新增任何后端错误生产者，因此本册的测试只覆盖消费侧：
+**错误文案的断言纪律（契约第 8 节）**：`CommandError` 序列化到 IPC 后**绝大多数分支是脱敏字符串、没有机器可读的 code 字段**（〔合并后校正〕例外：`CommandError::RestoreOutcome` 已是结构化 `{ code, message, details, … }`，说明结构化 code 在宿主有先例，只是表格域还没用），因此需要前端精确识别的错误，其消息**必须以 `grid.<域>.<原因>: <人类可读说明>` 前缀开头**，前端用 `classifyGridError()`（`src/lib/gridErrors.ts`，新增）做**前缀匹配**；匹配不到任何前缀时返回 `'unknown'` 并且 **UI 必须回退显示原始消息**（不得吞掉、不得显示空白）。DB-01 不新增任何后端错误生产者，因此本册的测试只覆盖消费侧：
 
 | 用例 | 断言要点 |
 | --- | --- |

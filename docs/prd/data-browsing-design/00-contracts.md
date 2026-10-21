@@ -695,7 +695,7 @@ CellCoord.rowIndex
 
 既有函数 `validate_legacy_pk_columns(columns, operation)`（位于 `src-tauri/src/commands/data.rs`，由 `build_row_change_plan` 链路在「Row update」/「Row delete」两处调用，配套测试 `commit_row_deletes_rejects_empty_pk`）是**当前仓库中唯一**真正阻止空 WHERE 落到 `build_delete_sql` / `build_update_sql` 的检查。
 
-它此前**在 14 份文档的盲区里无人提及**，而它所在的 `src-tauri/src/commands/data.rs`（1416 行）正是 DB-04 Step 1 要目录化为 `src-tauri/src/commands/data/{mod.rs,plan.rs,tests.rs}` 的那个文件——一次目录化就可能把它连同测试一起遗漏。
+它此前**在 14 份文档的盲区里无人提及**，而它所在的 `src-tauri/src/commands/data.rs`（**640** 行，〔合并后校正〕旧稿 1416）正是 DB-04 Step 1 要目录化为 `src-tauri/src/commands/data/{mod.rs,plan.rs,tests.rs}` 的那个文件——一次目录化就可能把它连同测试一起遗漏。
 
 **必须落地**：
 
@@ -1191,7 +1191,7 @@ export interface DataGridCapabilities {
 | `packages/feature-core/src/services/query_executor.rs` → `query_executor/{mod.rs,tests.rs,filter_sql.rs}` | **既有 755 行**（宿主 `src-tauri/src/services/query_executor.rs` 仅 47 行 re-export 门面） | **08**（在 feature-core 内目录化；**不能**在 `src-tauri` 下新建 `filter_sql.rs`——`feature-core` 不能反向依赖宿主） | 只新增子模块文件；09 只改 `mod.rs` 并往 `tests.rs` 补用例 |
 | `packages/driver-api/src/traits/browsing.rs` | 新建 | **09**（DB-09 的第一个新 trait 方法落在这里） | 后续新方法继续追加到同一文件 |
 | `src-tauri/src/commands/data.rs` → `data/{row_change_plan.rs,row_change_execute.rs}` | **既有 640 行** ⚠〔合并后校正〕旧稿写 1416 行；该文件已按 `#[path]` 挂载子模块（`table_target.rs` 读取路径、`result_mapping.rs` / `result_write.rs` 结果网格写回、`tests.rs`），**旧稿的 `validate_legacy_pk_columns` 迁移项已不适用**——该函数随遗留入口一起删除，遗留 `commit_row_updates` / `commit_row_deletes` 仍在注册但它们**恒拒绝**（"Legacy row writes are disabled; preview and commit a target-bound ChangeSet"） | **04**（把 INSERT 计划构建放进 `row_change_plan.rs`，执行仍由 `data_session::execute_plan` 统一拥有） | 只新增子模块文件；任何分册要改这个文件，必须先 rebase 到 04 的子模块化之后 |
-| `src/stores/panelStore.ts` | **既有 728 行** ⚠ | 不新增归属；**10** 只允许在其上加 ≤15 行接线 | 07 把返回栈放进**新文件** `src/stores/fkNavigationStore.ts`；10 的判定逻辑放进 `src/stores/panelResultEdit.ts`。超出 15 行者必须把逻辑整体搬进新文件，**不得**放任它突破 800 |
+| `src/stores/panelStore.ts` | **既有 793 行** ⚠（〔合并后校正〕旧稿 728） | 不新增归属；**10** 只允许在其上加 ≤15 行接线 | 07 把返回栈放进**新文件** `src/stores/fkNavigationStore.ts`；10 的判定逻辑放进 `src/stores/panelResultEdit.ts`。超出 15 行者必须把逻辑整体搬进新文件，**不得**放任它突破 800 |
 
 #### 行数总账的读法（先读这段，否则下表会被误用）
 
