@@ -101,7 +101,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 
 | 轨 | 分支 | worktree | 热 target |
 |---|---|---|---|
-| D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | 🔄 第 1 轮修复完成 `a0ea3d1f0` → 复测中 |
+| D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ✅ 第 3 轮完成 `09e261eb0` → **终验中** |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 第 1 轮修复完成 `9a4a1585e` → 复测中 |
 | **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ✅ 已交付 `431b6d23c` → Tester 复测中 |
 | **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | ✅ 已交付 `dd8c9a0d7` → Tester 复测中 |
@@ -448,6 +448,12 @@ D-01 / D-03 / D-04 / D-05 全处置，并 cherry-pick 复测 Tester 的 `0d3feff
 - **5 条自检**跑的是**同一条扫描路径**（`scan_source`），不是另写一份近似实现：能红（缺字段 / 内联常量）、不假红（合规源码含各种词法陷阱）、不漏报（词法器失衡后）、扫描根非空。
 
 **收尾项**：cherry-pick 进来的 Tester 文件带 2 条 clippy warning（`clone_on_copy`、`needless_range_loop`）。协调者已核实 **CI 没有 `-D warnings`**（`.github/workflows/ci.yml` 与 `scripts/ci-local.sh`），故不会让 CI 红；但它们是**本分支新增**而非既有噪音 → 裁决让 A 修。**A 的顾虑「改验证文件容易被读成篡改验证」不成立** —— 文件 cherry-pick 进分支后就是分支代码；真正要防的是改断言，已写进约束（只做这两处、逐字回报 diff）。
+
+### D 轨第 3 轮（`09e261eb0`）—— 零行为改动，只有注释与文档
+
+- **D-05**：`platform-api/src/ports/scope.rs` 的「作用域**只能由 adapter 构造**」改成「**可信来源**」（adapter 组装的上下文，或宿主形态的**安装级常量**）—— 因为桌面形态是用 `LOCAL_ORGANIZATION_ID` 构造、**不经 adapter**，原文已被 D 轨自己的修复推翻。模块级 / `new` / `from_context` 三处口径统一。
+- **D-04**：行号引用逐条核对后改准。**超出要求**的部分：它把 4 处**历史失效**引用也定位到了**现居所** —— 例如 `command_runtime.rs:115-119` 那条注释在历史提交 `e0f6ba28b` 里确在该处，后随 workflow 执行迁进 feature-core 而被删，**现居** `commands/driver_command/execute.rs:59-62`（改指现居所，非猜测）；`scheduler.rs:176` 越界（该文件仅 92 行）→ `workflow/scheduler.rs:44-48`；`dashboard/execute.rs` 222→71；`migration.rs` 509→221。
+- **§5.2「组织作用域的来源（已实现）」**（`shared-boundaries-and-ports.md` 新增）—— **本 initiative 最有价值的一份文档**：桌面 / HTTP / 后台三种形态的组织作用域来源 + 由此推出的三条结论：**组织身份不可用 ≠ 组织边界不可用**（`principalId` 仍依赖 adapter，组织作用域不依赖）、**IPC 路径与后台路径必须看到同一个组织**、**作用域不是 IPC 参数**。这是 web 形态开工需要的规格。
 
 ### D 轨复测第 1 轮（Tester `d0b18d2e`）—— TEST_FAILED，1 条阻塞行为回归
 
