@@ -78,6 +78,18 @@ const WORKSPACE_MANIFEST = join(REPO_ROOT, 'Cargo.toml');
  * and `tests` directories and its build script are all scanned; the `tests`
  * directory is where the integration tests live, and a code that only appears
  * there is still a code the front end has to know.
+ *
+ * **Two boundaries of this derivation, both deliberate:**
+ *
+ * * The manifest's `exclude` list is **not** read. A driver that is excluded
+ *   from the workspace but still on disk would be scanned anyway, so its
+ *   codes would be required to be registered even though nothing ships them.
+ *   Today the excluded drivers (`kiwi`, `superset`) are not on disk at all,
+ *   so this has no effect.
+ * * The member patterns are expanded by hand: only a trailing `/*` is
+ *   understood. A different glob shape would silently scan less — which is
+ *   why the test below pins a **lower bound** on the number of files the
+ *   scan reaches.
  */
 function scanRoots(): string[] {
   const manifest = readFileSync(WORKSPACE_MANIFEST, 'utf-8');
@@ -160,16 +172,23 @@ function rustFiles(root: string): string[] {
  */
 function producedCodes(): Set<string> {
   const codes = new Set<string>();
-  for (const root of scanRoots()) {
-    for (const file of rustFiles(root)) {
-      const source = readFileSync(file, 'utf-8');
-      for (const match of source.matchAll(CODE_PATTERN)) {
-        // The pattern starts at the opening quote; the code itself does not.
-        codes.add(match[0].slice(1));
-      }
+  for (const file of scannedRustFiles()) {
+    const source = readFileSync(file, 'utf-8');
+    for (const match of source.matchAll(CODE_PATTERN)) {
+      // The pattern starts at the opening quote; the code itself does not.
+      codes.add(match[0].slice(1));
     }
   }
   return codes;
+}
+
+/** Every Rust file the scan reaches. */
+function scannedRustFiles(): string[] {
+  const files: string[] = [];
+  for (const root of scanRoots()) {
+    files.push(...rustFiles(root));
+  }
+  return files;
 }
 
 describe('grid error code registration', () => {
@@ -194,6 +213,20 @@ describe('grid error code registration', () => {
 });
 
 describe('the scan of the back-end sources', () => {
+  it('reaches the whole workspace', () => {
+    // The one way this guard can weaken silently is the **derivation** of the
+    // scan roots: the glob only understands a trailing `/*`, and the manifest
+    // only the first line-initial `members = [`. Neither breaks loudly today,
+    // and a broken derivation would leave the guard scanning less than it
+    // thinks — the same kind of silence this guard was written to end.
+    //
+    // 1423 is the measured count on 2026-10-22. The repository only ever
+    // grows, so this number can only go up; if it goes **down**, the
+    // derivation broke and the scan is no longer covering what it claims.
+    const scanned = scannedRustFiles();
+    expect(scanned.length).toBeGreaterThanOrEqual(1423);
+  });
+
   it('registers every code the back-end sources raise', () => {
     const registered = new Set<string>(GRID_ERROR_CODES);
     const missing = [...producedCodes()]
