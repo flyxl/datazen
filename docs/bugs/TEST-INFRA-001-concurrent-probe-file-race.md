@@ -56,10 +56,19 @@ Error: ENOENT: no such file or directory, lstat
 
 **建议**：优先方案 1（立即止损），条件成熟后走方案 2（根治）。无论选哪个，都需要先写一条能**稳定复现**的测试（例如人为放大删除/拷贝窗口），否则改完无法证明修好了。
 
-## 观测记录
+## 观测记录（2026-10-21）
 
-| 时间 | 观测者 | 变体 | 结论 |
-| --- | --- | --- | --- |
-| 2026-10-21 | 分册文档代理 | `.ts` | 全量首跑红，单跑 8 passed，全量复跑绿 |
-| 2026-10-21 | `insert-backend` 复测代理 | — | 未跑 `vitest`，未触发 |
-| 2026-10-21 | `grid-selection` 编码代理 | `.tsx` | 全量首跑红，同 HEAD 复跑绿 |
+| 观测者 | 变体 | 结论 |
+| --- | --- | --- |
+| 分册文档代理 | `.ts` | 全量首跑红，单跑 8 passed，全量复跑绿 |
+| `insert-backend` 复测代理 | `.tsx` | 全量首跑红，同 HEAD 复跑绿 |
+| `grid-selection` 编码代理 | `.tsx` | 全量首跑红，同 HEAD 复跑绿 |
+| `grid-cell` 编码代理 | `.tsx` | 全量首跑红，**连续 3 次每次红的文件都不同** |
+| `web-transport` 编码代理 | `.tsx` | 并发跑 typecheck 时撞上，报 `error TS6053: __boundaryProbe__.ts not found` |
+
+## 受害面比最初判断的更广（`grid-cell` 轨的独立观测）
+
+1. **第二个受害套件**：`scripts/__tests__/check-platform-crate-boundaries.test.ts > F-04: platform-api depending on driver-api is allowed (§2.3)` —— 与 `driver-init-rustfmt` 不同的文件、不同的断言。
+2. **不跑全量也复现**：单独跑 `npx vitest run scripts/__tests__` **连续 3 次 → EXIT=0 / 1 / 1**，且**每次红的文件都不同**。⇒ 竞态在 `scripts/` 套件内部就已成立，**不需要**宿主前端套件参与。
+3. **它还会污染 `typecheck`**：探针文件在 `tsc` 的 glob 展开与读取之间被删掉，`pnpm typecheck` 报 `error TS6053: __boundaryProbe__.ts not found`。
+4. ⇒ 结论升级：**这不是"偶发一次、重跑就好"**，而是**门禁不可靠**——「全量 vitest 绿」「typecheck 绿」这两个结论在有并发时都不可信。
