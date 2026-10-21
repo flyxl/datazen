@@ -15,6 +15,7 @@ import {
   serializeDataTableRowsAsTsv,
 } from '../../lib/dataTableContextMenu';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
+import type { DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
 
 /**
  * The grid's right-click menu.
@@ -48,6 +49,10 @@ export interface UseDataTableContextMenuOptions {
   onAddFilter?: (filter: FilterCondition) => void;
   onCellEdit?: (row: number, col: string, value: unknown) => void;
   onDeleteRows?: (rowIndices: number[]) => void;
+  /** The dirty state of the current page, keyed by row index (DB-06). */
+  dirtyByRow?: ReadonlyMap<number, DirtyRowEntry> | null;
+  /** Undo the delete mark of a row (DB-06). */
+  onRestoreRow?: (rowIndex: number) => void;
   /** Opens the export dialog. */
   onExport?: () => void;
   /** i18n translate function. */
@@ -76,6 +81,8 @@ export function useDataTableContextMenu(
     onAddFilter,
     onCellEdit,
     onDeleteRows,
+    dirtyByRow,
+    onRestoreRow,
     onExport,
     t,
   } = options;
@@ -125,6 +132,13 @@ export function useDataTableContextMenu(
       const deleteIndices = hasSelectedRows ? selectedIndices : hit != null ? [hit.rowIndex] : [];
       const canDelete =
         !!onDeleteRows && (primaryKeyColumns?.length ?? 0) > 0 && deleteIndices.length > 0;
+      /**
+       * "Restore This Row" is offered on a row that is marked for deletion
+       * (DB-06). The row state comes from the dirty index, never from the
+       * selection: the deletion mark is a fact of the staged change.
+       */
+      const canRestoreRow =
+        !!hit && !!onRestoreRow && dirtyByRow?.get(hit.rowIndex)?.state === 'deleted';
 
       const csvRows = actionRow ? [actionRow] : selectedDataRows;
       const canCopyCsv = csvRows.length > 0;
@@ -159,6 +173,7 @@ export function useDataTableContextMenu(
               selectedRows.size > 0
                 ? `${t('export.export')} (${t('export.selectedRows')} ${selectedRows.size})`
                 : t('export.export'),
+            restoreRow: t('tableData.restoreRow'),
           },
           handlers: {
             onCopy:
@@ -276,6 +291,12 @@ export function useDataTableContextMenu(
                   onExport?.();
                 }
               : undefined,
+            onRestoreRow:
+              canRestoreRow && hit
+                ? () => {
+                    onRestoreRow?.(hit.rowIndex);
+                  }
+                : undefined,
           },
           hasCellContext,
           hasHeaderContext: !!hitHeaderCol,
@@ -285,6 +306,7 @@ export function useDataTableContextMenu(
           canFilterByValue,
           canSetNull,
           canDelete,
+          canRestoreRow,
         }),
         { x: e.clientX, y: e.clientY },
       );
@@ -304,6 +326,8 @@ export function useDataTableContextMenu(
       t,
       loading,
       onExport,
+      dirtyByRow,
+      onRestoreRow,
     ],
   );
 

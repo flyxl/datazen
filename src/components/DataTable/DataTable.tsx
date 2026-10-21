@@ -2,7 +2,6 @@ import { useCallback, useId, useMemo, useState, type KeyboardEvent } from 'react
 import { tid } from '../../lib/tid';
 import { Download, Trash2 } from 'lucide-react';
 import type { FilterCondition, SortCondition, Value } from '../../types';
-import type { CellEdit } from '../../stores/tableData/types';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
 import { useGridSelection } from '../../hooks/useGridSelection';
@@ -14,6 +13,7 @@ import {
   type GridSelection,
 } from '../../stores/tableData/gridSelection';
 import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
+import type { DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
 import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
 import { Pagination } from './Pagination';
@@ -51,7 +51,6 @@ export interface DataTableProps {
   onApplyFilters?: () => void;
 
   editingCell?: { row: number; col: string } | null;
-  editBuffer?: Map<string, CellEdit>;
   onCellDoubleClick?: (row: number, col: string) => void;
   onCellEdit?: (row: number, col: string, value: unknown) => void;
   onCellEditCancel?: () => void;
@@ -106,6 +105,19 @@ export interface DataTableProps {
    * does not use the feature keeps today's DOM.
    */
   newRowIndex?: number | null;
+
+  /**
+   * The dirty state of the current page, keyed by row index (DB-06).
+   *
+   * Omitted / `null` = no dirty marks at all: the grid renders exactly what
+   * it rendered before the dirty state existed (00-contracts R4).
+   */
+  dirtyByRow?: ReadonlyMap<number, DirtyRowEntry> | null;
+  /**
+   * "Restore This Row" — undo the delete mark of a row. Omitted = the context
+   * menu does not offer it.
+   */
+  onRestoreRow?: (rowIndex: number) => void;
 
   loading?: boolean;
   statusBar?: React.ReactNode;
@@ -188,6 +200,8 @@ export function DataTable({
   onAddDraftRow,
   editingDraft,
   newRowIndex,
+  dirtyByRow,
+  onRestoreRow,
   statusBar,
   rowHeight = 28,
   exportTableName,
@@ -340,6 +354,8 @@ export function DataTable({
     onAddFilter,
     onCellEdit,
     onDeleteRows,
+    dirtyByRow,
+    onRestoreRow,
     onExport: handleExport,
     t,
   });
@@ -528,6 +544,7 @@ export function DataTable({
               onAddDraftRow={onAddDraftRow}
               editingDraft={editingDraft}
               newRowIndex={newRowIndex ?? null}
+              dirtyByRow={dirtyByRow}
             />
             {loading ? (
               gridRow(

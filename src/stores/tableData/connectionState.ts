@@ -16,10 +16,6 @@ export function rowsToRecords(
   });
 }
 
-export function editKey(rowIndex: number, columnName: string) {
-  return `${rowIndex}:${columnName}`;
-}
-
 export function toCellValue(val: unknown): Value | null {
   if (val === null || val === undefined) return null;
   return val as Value;
@@ -49,7 +45,6 @@ export function emptyTableState(context: TableChangeContext | null = null): Tabl
     draftFilterLogic: 'and',
     filterPanelOpen: false,
     sorts: [],
-    editBuffer: new Map(),
     pendingChanges: new Map(),
     draftInserts: new Map(),
     draftInsertOrder: [],

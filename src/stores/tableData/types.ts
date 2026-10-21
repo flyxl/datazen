@@ -8,14 +8,6 @@ import type {
 } from '../../lib/tableChanges';
 import type { GridSelection } from './gridSelection';
 
-export interface CellEdit {
-  rowIndex: number;
-  columnName: string;
-  originalValue: unknown;
-  newValue: unknown;
-  pkSnapshot: Record<string, unknown>;
-}
-
 /**
  * Table-data state for one panel (tab). The panel is the unit of lifetime and of
  * cache scope: page/filters/selection/staged edits belong to the tab that set them,
@@ -35,7 +27,6 @@ export interface TableState {
   draftFilterLogic: 'and' | 'or';
   filterPanelOpen: boolean;
   sorts: SortCondition[];
-  editBuffer: Map<string, CellEdit>;
   /** Changes staged against this table; the map key is the stable PK identity. */
   pendingChanges: Map<string, PendingRowChange>;
   /**

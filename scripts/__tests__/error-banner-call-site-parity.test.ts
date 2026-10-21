@@ -183,7 +183,10 @@ const SITES: readonly Site[] = [
     // call site's and drops the variant's — `/30` must win, and the expected
     // set below proves the `/20` is gone rather than merely outranked.
     label: 'TableView quick-filter',
-    file: 'src/windows/connection/TableView.tsx',
+    // The quick filter moved out of `TableView` into `TableToolbar` (DB-06
+    // track, GC budget). The call site was moved verbatim — class set
+    // included — so only the file it lives in changed.
+    file: 'src/windows/connection/TableToolbar.tsx',
     count: 1,
     base: 'border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400',
     colour: 'bg-danger/10 border-danger/30 text-danger',
