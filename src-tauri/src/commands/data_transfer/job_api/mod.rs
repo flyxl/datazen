@@ -269,7 +269,7 @@ pub(crate) struct ApplyDrive {
     plan_digest: String,
     selection_revision: u64,
     sql_file_destination: Option<std::path::PathBuf>,
-    host: Arc<datazen_runtime::job::DesktopJobHost>,
+    host: Arc<datazen_runtime::job::JobHost>,
     run: runtime::BoxedJobRun,
 }
 

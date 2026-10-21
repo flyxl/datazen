@@ -11,7 +11,7 @@ use datazen_platform_api::dto::job::{
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{Counter, IdempotencyKey, JobId, StageId, WorkerId};
-use datazen_runtime::job::{DesktopJobHost, EndpointRef, JobHandler, JobRecoveryVerifier};
+use datazen_runtime::job::{EndpointRef, JobHandler, JobHost, JobRecoveryVerifier};
 use datazen_schema_diff::job::{ApplyRequest, PrepareRequest, SchemaDiffHandler};
 use datazen_schema_diff::types::{DeployStatus, SchemaDiffDeployResult};
 use serde::Serialize;
@@ -406,7 +406,7 @@ pub async fn run_apply_job(
 }
 
 fn dispatch_prepare(
-    host: Arc<DesktopJobHost>,
+    host: Arc<JobHost>,
     state: Arc<AppState>,
     infra: Arc<SchemaDiffJobInfra>,
     context: RequestContext,
@@ -430,7 +430,7 @@ fn dispatch_prepare(
 }
 
 fn dispatch_apply(
-    host: Arc<DesktopJobHost>,
+    host: Arc<JobHost>,
     state: Arc<AppState>,
     infra: Arc<SchemaDiffJobInfra>,
     context: RequestContext,
@@ -458,7 +458,7 @@ fn dispatch_apply(
 }
 
 async fn dispatch(
-    host: Arc<DesktopJobHost>,
+    host: Arc<JobHost>,
     context: RequestContext,
     job_id: JobId,
     endpoints: Vec<EndpointRef>,

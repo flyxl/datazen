@@ -71,7 +71,7 @@ reviewed ChangeSet + selectionRevision
   ↓
 accept dataSyncApply + idempotent receipt + consume planId
   ↓
-DesktopJobHost dispatches handler on job-owned sessions
+JobHost dispatches handler on job-owned sessions
   ↓
 batch transaction / checkpoints / commit boundary
 ```

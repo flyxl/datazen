@@ -1,7 +1,7 @@
 //! Runtime-only Data Sync artifacts and selections.
 //!
 //! Durable Job definitions, state, progress, commit boundaries, and recovery
-//! evidence live in `DesktopJobHost`. This module keeps the row-bearing
+//! evidence live in `JobHost`. This module keeps the row-bearing
 //! ChangeSet and reviewed selection only in process memory; neither contains a
 //! live session id in durable storage. Cancel intent belongs to the Job record.
 

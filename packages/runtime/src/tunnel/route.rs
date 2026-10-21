@@ -1,10 +1,13 @@
-//! 桌面侧 [`NetworkProvider`] 实现：隧道引用在端口内共享、归还、回滚。
+//! 路由侧 [`NetworkProvider`] 实现：隧道引用在端口内共享、归还、回滚。
+//!
+//! 名字表达的是**职责**（按路由目录翻译隧道引用与端点），不是**形态**：本内核
+//! 不依赖任何具体形态，谁来接线是宿主侧的事。
 //!
 //! # 为什么有本文件
 //!
 //! [`NetworkProvider`]（`datazen_platform_api::ports::network`，**冻结上游**）的四个方法里，
 //! [`ensure_tunnel`] / [`release_tunnel`] 承诺「同一路由/隧道被多处使用时共享同一份引用计数」
-//! 与「引用计数归零才真正拆除、重复释放是幂等的」。此前桌面连接路径分别持有隧道句柄，
+//! 与「引用计数归零才真正拆除、重复释放是幂等的」。此前各连接路径分别持有隧道句柄，
 //! 没有通过 `NetworkProvider` 统一落实这份共享引用契约。本文件提供 Runtime 侧的共享账，
 //! 物理隧道仍由宿主的 [`TunnelTransport`] 打开和关闭。
 //!
@@ -41,6 +44,11 @@
 //! * **不把**「单连接无状态驱动」包装成固定资源：释放时归还的是**隧道引用**，
 //!   物理资源许可由 `resource` 层自己的账管，本文件碰不到也不假装管。
 //! * **不改** `RequestContext`，也**不**要求调用方在请求里带 consumer id。
+//! * **不改**既有稳定字面码：`desktopRouteUnknown` / `desktopTunnelReferenceNotHeld` /
+//!   `desktopTunnelEndpointUnavailable` / `desktopTunnelTeardownUnconfirmed` 与
+//!   `LeaseId` 前缀 `desktop-tunnel/` 都是**已对外可见**的值（进错误消息、进租约文本、
+//!   进 trace reason），本轨道是纯重命名，故逐字保留；形态名是否要从字面码里退场，
+//!   属于行为变更，另行裁定。
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -61,9 +69,9 @@ use crate::connection::types::LeaseId;
 /// 路由目录：把 `NetworkRouteRef` 翻译成「走不走隧道、隧道建好后走哪个端点」。
 ///
 /// **刻意不叫「存储」**：它是一份只读的映射，问的是「这条路由对应什么」，
-/// 不承担任何生命周期（开不开、什么时候关都是 [`DesktopNetworkProvider`] 与
+/// 不承担任何生命周期（开不开、什么时候关都是 [`RouteNetworkProvider`] 与
 /// [`TunnelTransport`] 的事）。
-pub trait DesktopRouteCatalog: Send + Sync + 'static {
+pub trait RouteCatalog: Send + Sync + 'static {
     /// 这条路由要不要走隧道。`None` = 直连（`via_port == 0` 之类）。
     fn tunnel_spec(&self, route_ref: &NetworkRouteRef) -> Option<TunnelSpec>;
 
@@ -110,12 +118,12 @@ impl TunnelBooks {
     }
 }
 
-/// 桌面 [`NetworkProvider`]。
+/// 路由 [`NetworkProvider`]：把路由目录翻译成隧道引用与端点。
 ///
 /// 线程模型：所有状态在一把 [`Mutex`] 后面；四个端口方法里**没有 `.await`**，
 /// 所以锁不会跨挂起点被持有（`.await` 之前必须放锁，见各方法内的作用域）。
-pub struct DesktopNetworkProvider {
-    catalog: Arc<dyn DesktopRouteCatalog>,
+pub struct RouteNetworkProvider {
+    catalog: Arc<dyn RouteCatalog>,
     transport: Arc<dyn TunnelTransport>,
     books: Mutex<TunnelBooks>,
     /// 持有者身份的唯一来源。**只当身份发生器用**：取值从不参与任何判断，
@@ -123,8 +131,8 @@ pub struct DesktopNetworkProvider {
     tickets: AtomicU64,
 }
 
-impl DesktopNetworkProvider {
-    pub fn new(catalog: Arc<dyn DesktopRouteCatalog>, transport: Arc<dyn TunnelTransport>) -> Self {
+impl RouteNetworkProvider {
+    pub fn new(catalog: Arc<dyn RouteCatalog>, transport: Arc<dyn TunnelTransport>) -> Self {
         Self {
             catalog,
             transport: Arc::clone(&transport),
@@ -144,6 +152,8 @@ impl DesktopNetworkProvider {
 
     fn mint_holder(&self) -> LeaseId {
         let ticket = self.tickets.fetch_add(1, Ordering::Relaxed);
+        // 字面码 `desktop-tunnel/` 是**已对外可见的稳定标识**（会进 `LeaseId` 文本），
+        // 本轨道是纯重命名，故逐字保留；形态名是否要从字面码里退场，另行裁定。
         LeaseId::new(format!("desktop-tunnel/{ticket}"))
     }
 
@@ -193,7 +203,7 @@ fn tunnel_error_to_port(error: TunnelError) -> PortError {
 }
 
 #[async_trait]
-impl NetworkProvider for DesktopNetworkProvider {
+impl NetworkProvider for RouteNetworkProvider {
     async fn resolve_route(
         &self,
         _ctx: &RequestContext,

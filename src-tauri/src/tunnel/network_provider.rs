@@ -9,9 +9,9 @@
 //!
 //! | 层 | 谁 | 负责什么 |
 //! |---|---|---|
-//! | 共享账 | `runtime::tunnel::DesktopNetworkProvider` | 谁共享、引用多少、归零才拆 |
+//! | 共享账 | `runtime::tunnel::RouteNetworkProvider` | 谁共享、引用多少、归零才拆 |
 //! | 物理端口 | 本文件的 [`DesktopTunnelHost`]（`TunnelTransport`） | 真的把 SSH/代理/WS 隧道起起来 |
-//! | 路由目录 | 本文件的 [`DesktopTunnelHost`]（`DesktopRouteCatalog`） | 路由 → spec / 端点 |
+//! | 路由目录 | 本文件的 [`DesktopTunnelHost`]（`RouteCatalog`） | 路由 → spec / 端点 |
 //!
 //! 分工的必然性来自两个冻结事实：`TunnelSpec` 只带
 //! `route_ref / via_host / via_port`（**没有** SSH 凭据、代理地址、WebSocket 路径），
@@ -41,8 +41,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use datazen_platform_api::id::{NetworkRouteRef, NetworkRouteRevision};
 use datazen_platform_api::ports::network::{NetworkProvider, TunnelSpec};
 use datazen_runtime::tunnel::{
-    DesktopNetworkProvider, DesktopRouteCatalog, TunnelError, TunnelFault, TunnelHandle,
-    TunnelTransport,
+    RouteCatalog, RouteNetworkProvider, TunnelError, TunnelFault, TunnelHandle, TunnelTransport,
 };
 use tracing::{debug, warn};
 
@@ -187,7 +186,7 @@ fn start_tunnel_blocking(
 /// 宿主侧实现：同一个对象同时充当物理端口与路由目录。
 ///
 /// 之所以合一：端口刚把隧道挂上表，目录就得立刻能报出它的本地端口
-/// （`DesktopNetworkProvider::ensure_tunnel` 紧接着就问一次），两份状态就必然有
+/// （`RouteNetworkProvider::ensure_tunnel` 紧接着就问一次），两份状态就必然有
 /// 「挂上了还没报出来」的窗口。
 pub struct DesktopTunnelHost {
     source: Arc<dyn DesktopTunnelSource>,
@@ -295,7 +294,7 @@ impl TunnelTransport for DesktopTunnelHost {
     }
 }
 
-impl DesktopRouteCatalog for DesktopTunnelHost {
+impl RouteCatalog for DesktopTunnelHost {
     fn tunnel_spec(&self, route_ref: &NetworkRouteRef) -> Option<TunnelSpec> {
         self.source.tunnel_spec(route_ref)
     }
@@ -331,8 +330,8 @@ pub fn desktop_network_provider(
     known_hosts_path: PathBuf,
 ) -> Arc<dyn NetworkProvider> {
     let host = Arc::new(DesktopTunnelHost::new(source, known_hosts_path));
-    let catalog: Arc<dyn DesktopRouteCatalog> = host.clone();
-    Arc::new(DesktopNetworkProvider::new(catalog, host))
+    let catalog: Arc<dyn RouteCatalog> = host.clone();
+    Arc::new(RouteNetworkProvider::new(catalog, host))
 }
 
 #[cfg(test)]

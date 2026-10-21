@@ -685,12 +685,12 @@ mod tests {
     async fn durable_restore_job_records_unsupported_under_target_writer_budget() {
         use datazen_runtime::{
             budget::{ledger::BudgetLedger, quotas::BudgetConfig},
-            job::{DesktopJobHost, EndpointRef, EndpointRole},
+            job::{EndpointRef, EndpointRole, JobHost},
         };
         let (_dir, store, plan) = input().await;
         let clock = Arc::new(SystemJobClock);
         let repository = Arc::new(InMemoryJobRepository::new(clock.clone(), 60));
-        let host = DesktopJobHost::new(
+        let host = JobHost::new(
             repository,
             Arc::new(Mutex::new(BudgetLedger::new(
                 BudgetConfig::desktop_default(),

@@ -17,7 +17,7 @@ use datazen_platform_api::{
 };
 use datazen_runtime::{
     budget::{BudgetConfig, BudgetLedger},
-    job::{DesktopJobHost, SharedClock},
+    job::{JobHost, SharedClock},
 };
 use sha2::{Digest, Sha256};
 use std::sync::Mutex;
@@ -151,7 +151,7 @@ async fn desktop_restore_uploaded_input_reaches_durable_job_and_desktop_session_
         clock.clone(),
         300,
     ));
-    let host = DesktopJobHost::new(
+    let host = JobHost::new(
         repo.clone(),
         Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::team_default()))),
         clock.clone(),
@@ -315,7 +315,7 @@ async fn desktop_restore_empty_input_and_revoked_profile_fail_before_database_ex
         clock.clone(),
         300,
     ));
-    let host = DesktopJobHost::new(
+    let host = JobHost::new(
         repo,
         Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::team_default()))),
         clock,
