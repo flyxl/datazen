@@ -227,7 +227,7 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 |---|---|---|
 | C | **已验收 TEST_PASSED → 已合入集成 `e267fad3f`** | Tester `a1f0c68d`（3 次尝试后完成） |
 | B | **已验收 TEST_PASSED → 已合入 `056b35834`** | Tester `cda75c30` |
-| A | 第 3 轮修复完成 `fd2e2a817` → **第 4 轮终验中**（`4f2d61f0` 之外的新 Tester） | 修法**直接对齐仓库已有的正确实现** `runtime/src/tunnel/source_scan.rs` |
+| A | 终验 **TEST_PASSED** → 第 4 轮小修中（D-11 四处同句 / D-10 行号边界） | Tester 做了 **REV-1/REV-2 反向变异**证明新自检有牙 |
 
 ### 环境
 - `export CARGO_TARGET_DIR=/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/.shared-target`（三轨共用；会打印 `Blocking waiting for file lock` —— **正常，等它**，禁止各轨改 target 目录）
@@ -553,6 +553,10 @@ P0/P2/P3/P4/P5 全部通过 —— **D-01 改写后的注释被逐条核实属�
 2. 第 2 轮：**注释描述了代码不保证的不变量** → 改写为事实。
 3. 第 2 轮：**修守卫精度时把"能抓住"改成了"抓不住"** —— 改一个守卫就是在改它的**检测能力本身**，每次都必须用变异证明没有退化。
 4. 第 3 轮：**仓库里已有一份正确实现**（`runtime/src/tunnel/source_scan.rs`）—— 遇到重复的词法/扫描逻辑，先找仓库里是否已有正确版本，别重写。
+
+**A 轨第 4 轮终验（Tester `1854529e`）—— TEST_PASSED**：D-06 的机制被**实证**（独立程序并排跑两版词法器，全仓只有 `config.rs` 一个文件状态不一致；旧版把第 105–167 行整段掩掉 —— 那正是 Windows UNC 前缀 `r"\?\"` 的 3 个反斜杠把闭合引号吃掉所致；新版行数 239 == 原文 239）。
+**10 次变异**证明守卫能力：8 次正向（删字段 / 内联常量 / 词法陷阱 / desync 区段 / **活实例** `config.rs:113`）**能红且行号正确**；2 次假阳性方向**零报告**；4 条新自检确认走**同一条** `scan_source` 路径。**另加 2 次反向变异**（把修复改回旧 bug → 新测试必须红）证明新测试**有牙**。独立复核真实字面量 = 14。
+遗留 2 条非阻塞：**D-10**（行首字面量行号少报 1，`str::lines()` 不计末尾空行；检测能力不受影响，已用 `#[ignore]` 钉住）→ **要求修**；**D-11**（"所有写入都经 `check_claim`"过宽，桌面写路径实为三类：claim 作用域→`StaleClaim`；ctx 作用域→显式 SQL 谓词→`NotFound`；受理→按 ctx 盖章；且 `renew` 自身不经 `check_claim`。**同一句话在四处**：`ports/job.rs:108`、`repository.rs:740`、`runtime_ops.rs:539`、`multi-worker-coordination.md:74`）→ **要求四处一起改**。
 
 **A 轨 Tester 另加 3 条 SQLite 侧用例**（跨组织认领 → `NotFound`、跨组织写 → `StaleClaim`、SQLite 侧的 D-01 事实对照），已随其提交 `dcbeb5f90` 交给 A cherry-pick（`295ef5d6a`）。
 
