@@ -102,7 +102,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | 轨 | 分支 | worktree | 热 target |
 |---|---|---|---|
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | 🔄 第 1 轮修复完成 `a0ea3d1f0` → 复测中 |
-| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 已交付 `33416cb72` → Tester `0da32120` 复测中 |
+| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 1 轮修复中（D-E1 时钟回拨失效开放 / D-E2 文档说谎 / D-E3 同义反复 / D-E4 deny-all 无用例） |
 | **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | 🔄 data-transfer 侧（`plan_store` 端口化 + **激活 40 个孤儿测试**） |
 | **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | 🔄 data-sync 侧（`plan_store` + `comparison_store` 端口化 + 删门面） |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 1 轮小修中 |
@@ -338,6 +338,33 @@ D1–D5 全部处置，并 cherry-pick 上一轮 Tester 的三笔测试提交（
 3. D4 的注释与变异结果是否一致（删掉盖章行后既有 host 用例是否仍通过 —— 上一轮 Tester 说会通过，若这次变红则上一轮结论错、注释就是错的）。
 4. 三笔 cherry-pick 的测试提交**在 cherry-pick 途中未被削弱**（原提交在 `track/a-tester-commits`，已随 A cherry-pick 完成而删除锚定分支，但 A 分支内已含其内容，原始对象仍在 git 对象库中直到 gc）。
 5. 组织隔离完整性未被修复破坏（内存/SQLite 错误形状仍完全一致、`list` 双条件过滤仍在）。
+
+### E 轨复测（Tester `0da32120`）—— TEST_PASSED，10 个变异全部按预期
+
+**P0 进程级全局清零**：包内 `static PLANS` / 任何 `static X:` / `OnceLock` / `Lazy` / `thread_local!` **全部 0 命中**；剩余 7 处 `static` 字样都是生命周期标注（`&'static str`）与 trait bound `'static`。
+
+**P1 时间基准（唯一语义退化）**：
+- TTL 仍是 30 分钟（`REVIEWED_PLAN_TTL = Duration::from_secs(1800)` 与改造前 `reviewed.rs:260` 的魔数字面一致），**行为实测** 29 分钟可消费 / 31 分钟过期；变异把 TTL 改 3600s → 用例变红。
+- 单位换算**无 off-by-1000**：变异 `as_millis()`→`as_secs()` → 2 条变红；变异 `age()` 用 `from_secs` → 1 条变红。
+- 存储层与规则层读**同一份**时刻（都走 `ReviewedPlan::age()` → `now_unix_millis()` → `created_at_ms`）⇒ 不可能出现"存储已裁掉、规则却认为未过期"。
+- ⚠️ **D-E1（失效开放）**：单调钟 → 墙上钟后，**时钟回拨 ⇒ `saturating_sub` 归零 ⇒ 本该过期的计划重新有效**（实测确认）。时钟**前跳** ⇒ 刚冻结的计划立刻过期（失效关闭，安全方向）。
+- ⇒ **裁决：不退回 `Instant`**（落盘实现需要墙上钟），而是**把"失效开放"改成"失效关闭"** —— `now < created_at_ms`（单调世界里不可能 ⇒ 必是回拨）时直接判过期，并补用例钉住。
+
+**P2 一次性消费语义**：三条全部变异验证为红 —— 校验失败**不烧掉计划**（改成先删后校验 → 3 条红）、**并发只有一个删除成功**（`remove` 恒真 → 2 条红）、**校验的是它取出的那一份**（改成"再取一次"的副本 → 2 条红）。Tester 用**有界会合**替身撑开 `get`/`remove` 窗口，证明两个请求**都读到计划、都通过规则校验**，最终只有一个 `remove` 成功。
+（Tester 自曝：初版用 `tokio::sync::Barrier`，在 M3 变异下只有一个请求到达 `get` ⇒ **测试挂死而非失败**；改为有界会合后变异表现为断言失败而非 CI 永挂。）
+
+**P3 隔离**：读→`None`、删→false、写→**不落数据**（事后属主读到 `None`）；错误文案逐字未变；**无任何"无权限"形态**返回。变异去掉按 scope 过滤 → 宿主 4 条隔离用例变红 ⇒ 承重。
+⚠️ **D-E3**：包内那 3 条隔离用例测的是**测试替身**（键结构自带组织分桶）⇒ 对生产码是**同义反复**。
+
+**P4 规则层未改**：6 个规则函数在全部 hunk 中**一次都没出现**；`validate` 只改了一行（`created.elapsed() >= 1800s` → `age() >= REVIEWED_PLAN_TTL`）；**10 条错误文案集合 diff = IDENTICAL**。
+
+**P5 桌面行为等价**：容量上限 128（变异改 64 → 红）、过期裁剪、`get` 不过滤过期条目（由规则层判过期）三项均等价；**`src-tauri/src/store/` 零改动**（无新表、无迁移）。
+
+**PX（协调者插入的 adapter 依赖核查）—— 结论比预期乐观**：
+`env -u USER` 下基线 `65dac1e2c` → **242 failed**；本轨 → **242 failed**，**失败用例名集合逐名比对零差异**（新增 0 条 / 修复 0 条）。那 6 条 `schema_diff::tests::plan_deploy::*` 在**两棵树都失败** ⇒ schema-diff 的 prepare/deploy 命令**改造前就已依赖 adapter**。
+且 `desktop_reviewed_plan_store` 的 Err 分支**不 panic、不让装配失败**，返回 **deny-all**（`acknowledges()` 恒 false ⇒ put/get/remove 全按「不存在」拒绝）—— 兜底方向**最保守**，**不构成越权泄漏**。
+⇒ **判定非阻塞**：本轨引入的 `platform_require()` 依赖是**冗余依赖**，不是新的失效面。
+**但 Tester 指出形状不一致**：同一份组织身份被取用了两次、用了两种时机（作用域 per-request 报错 / 存储启动期 deny-all），adapter 不可用时两者不一致。→ **裁决：本轮不做**，等另一轨（作用域改启动期确定 + `AppState` 加字段）合流后收口，**避免 AppState 上出现两个平行的组织字段**。
 
 ### E 轨交付（编码代理 `33416cb72`）—— 交付，待 Tester 复测
 
