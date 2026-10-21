@@ -218,27 +218,55 @@ fn set_elements(value: &Value) -> Vec<Value> {
 /// split at its **first** comma, so a bound may itself contain a comma; a
 /// value that names more than two comma separated parts is refused rather
 /// than guessed at.
+///
+/// **Both bounds have to carry a value.** A range with an empty bound renders
+/// `BETWEEN '10' AND ''`, which matches nothing and reports nothing — a
+/// silent wrong result instead of a refusal. The array form and the string
+/// form are therefore judged by the same rule: an empty bound is incomplete.
 fn between_bounds(value: &Value) -> Result<(Value, Value), &'static str> {
     match value {
         Value::Json(serde_json::Value::Array(items)) if items.len() == 2 => {
+            if !bound_is_filled(&items[0]) {
+                return Err("needs a lower bound");
+            }
+            if !bound_is_filled(&items[1]) {
+                return Err("needs an upper bound");
+            }
             Ok((Value::Json(items[0].clone()), Value::Json(items[1].clone())))
         }
         Value::String(text) => match text.split_once(',') {
             Some((lower, upper)) => {
                 let lower = lower.trim();
                 let upper = upper.trim();
-                if lower.is_empty() || upper.is_empty() || upper.contains(',') {
-                    Err("needs exactly two values")
-                } else {
-                    Ok((
-                        Value::String(lower.to_string()),
-                        Value::String(upper.to_string()),
-                    ))
+                if lower.is_empty() {
+                    return Err("needs a lower bound");
                 }
+                if upper.is_empty() {
+                    return Err("needs an upper bound");
+                }
+                if upper.contains(',') {
+                    return Err("needs exactly two values");
+                }
+                Ok((
+                    Value::String(lower.to_string()),
+                    Value::String(upper.to_string()),
+                ))
             }
             None => Err("needs exactly two values"),
         },
         _ => Err("needs exactly two values"),
+    }
+}
+
+/// Whether one bound of a range condition carries a value.
+///
+/// `0` and `false` are values, not emptiness; an empty string (or one that is
+/// only whitespace) and a JSON null are.
+fn bound_is_filled(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Null => false,
+        serde_json::Value::String(text) => !text.trim().is_empty(),
+        _ => true,
     }
 }
 

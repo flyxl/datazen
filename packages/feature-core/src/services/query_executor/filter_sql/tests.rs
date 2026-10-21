@@ -162,6 +162,129 @@ fn between_comma_string_splits_on_first_comma_only() {
     assert!(matches!(rejection, FilterRejection::Incomplete { .. }));
 }
 
+/// A range with an empty bound is incomplete — in **both** value forms.
+///
+/// The string form always judged the bounds (`"10,"` was refused); the array
+/// form did not, so `["10", ""]` rendered `BETWEEN '10' AND ''` and matched
+/// nothing without saying so. The two forms are one rule now.
+#[test]
+fn between_with_an_empty_bound_is_refused_in_both_value_forms() {
+    let empty_upper = rendered(
+        &condition(
+            "score",
+            FilterOperator::Between,
+            Value::Json(serde_json::json!(["10", ""])),
+        ),
+        &PLAIN,
+    )
+    .expect_err("an empty upper bound is not a bound");
+    assert!(matches!(empty_upper, FilterRejection::Incomplete { .. }));
+    let message = empty_upper.contract_message();
+    assert!(
+        message.starts_with("grid.filter.incomplete: "),
+        "got: {message}"
+    );
+    // The refusal names the missing bound, so the user knows what to fill in.
+    assert!(message.contains("upper bound"), "got: {message}");
+    assert!(message.contains("\"score\""), "got: {message}");
+
+    let empty_lower = rendered(
+        &condition(
+            "score",
+            FilterOperator::Between,
+            Value::Json(serde_json::json!(["", "10"])),
+        ),
+        &PLAIN,
+    )
+    .expect_err("an empty lower bound is not a bound");
+    let message = empty_lower.contract_message();
+    assert!(message.contains("lower bound"), "got: {message}");
+
+    // The same rule for the comma separated form, which already refused them.
+    let empty_upper_text = rendered(
+        &condition(
+            "score",
+            FilterOperator::Between,
+            Value::String("10,".into()),
+        ),
+        &PLAIN,
+    )
+    .expect_err("an empty upper bound is not a bound");
+    let message = empty_upper_text.contract_message();
+    assert!(message.contains("upper bound"), "got: {message}");
+
+    // Whitespace is emptiness too, and a null bound is emptiness as well.
+    for value in [
+        serde_json::json!(["10", "   "]),
+        serde_json::json!([null, "10"]),
+        serde_json::json!(["10", null]),
+    ] {
+        let rejection = rendered(
+            &condition("score", FilterOperator::Between, Value::Json(value)),
+            &PLAIN,
+        )
+        .expect_err("a blank bound is not a bound");
+        assert!(
+            matches!(rejection, FilterRejection::Incomplete { .. }),
+            "got: {rejection:?}"
+        );
+    }
+
+    // The negated operator judges the same way.
+    let negated = rendered(
+        &condition(
+            "score",
+            FilterOperator::NotBetween,
+            Value::Json(serde_json::json!(["10", ""])),
+        ),
+        &PLAIN,
+    )
+    .expect_err("the negated range refuses an empty bound as well");
+    assert!(matches!(negated, FilterRejection::Incomplete { .. }));
+}
+
+/// The completeness predicate agrees with the renderer: an array with an empty
+/// bound is incomplete, so the entry gate refuses it before any SQL is built.
+#[test]
+fn filter_is_complete_refuses_a_range_with_an_empty_bound() {
+    let complete = condition(
+        "score",
+        FilterOperator::Between,
+        Value::Json(serde_json::json!(["10", "20"])),
+    );
+    assert!(filter_is_complete(&complete));
+    assert_eq!(incomplete_reason(&complete), None);
+
+    for value in [
+        serde_json::json!(["10", ""]),
+        serde_json::json!(["", "20"]),
+        serde_json::json!([null, "20"]),
+    ] {
+        let incomplete = condition("score", FilterOperator::Between, Value::Json(value));
+        assert!(
+            !filter_is_complete(&incomplete),
+            "a range with a blank bound must not count as complete"
+        );
+        let reason = incomplete_reason(&incomplete).expect("a blank bound has a reason");
+        assert!(
+            reason.contains("bound"),
+            "the reason names the missing bound, got: {reason}"
+        );
+    }
+
+    // A zero is a value, not an emptiness: `BETWEEN 0 AND 10` is a real range.
+    let zero_bound = condition(
+        "score",
+        FilterOperator::Between,
+        Value::Json(serde_json::json!([0, 10])),
+    );
+    assert!(filter_is_complete(&zero_bound));
+    assert_eq!(
+        rendered(&zero_bound, &PLAIN).unwrap(),
+        "\"score\" BETWEEN '0' AND '10'"
+    );
+}
+
 #[test]
 fn contains_escapes_wildcards_and_escape_char() {
     assert_eq!(

@@ -73,6 +73,14 @@ describe('isCompleteFilter for the extended operators', () => {
     expect(isCompleteFilter({ column: 'score', operator: 'between', value: ['1'] })).toBe(false);
     expect(isCompleteFilter({ column: 'score', operator: 'between', value: ['1', ''] })).toBe(false);
     expect(isCompleteFilter({ column: 'score', operator: 'between', value: ['1', '2'] })).toBe(true);
+    // A blank bound is a missing bound — the same rule the shared layer
+    // applies to the array form (`between_bounds`).
+    expect(isCompleteFilter({ column: 'score', operator: 'between', value: ['1', '  '] })).toBe(
+      false,
+    );
+    expect(isCompleteFilter({ column: 'score', operator: 'between', value: [null, '2'] })).toBe(
+      false,
+    );
     expect(isCompleteFilter({ column: 'score', operator: 'notBetween', value: ['1', '2'] })).toBe(
       true,
     );
