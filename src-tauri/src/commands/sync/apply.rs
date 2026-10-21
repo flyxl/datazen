@@ -14,6 +14,7 @@ use crate::data_sync::{
     ComparisonResult, ConflictPolicy, DataSyncError, Endpoint, SyncOptions, SyncSourceFilter,
     TableChangeSet, TableMapping, TableMappingStatus, TableResult,
 };
+use crate::db::{LegacySqlDialect, SqlDialect};
 use crate::services::metadata_schema;
 use futures_util::FutureExt;
 use std::collections::HashMap;
@@ -688,6 +689,8 @@ pub(crate) async fn generate_data_sync_sql_impl(
         &tgt_config.database_type,
     )?;
     let tgt_driver = target_context.driver.clone();
+    // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+    let dialect = LegacySqlDialect::new(tgt_driver.as_ref());
     let tgt_handle = target_context.handle.clone();
     let target_database_name =
         super::types::resolve_db_name(target_database.as_deref(), tgt_config.database.as_deref());
@@ -780,7 +783,7 @@ pub(crate) async fn generate_data_sync_sql_impl(
             &column_types,
             |name| preview_target.quote_ident(name),
             |index, data_type| {
-                tgt_driver
+                dialect
                     .parameter_placeholder(index, data_type)
                     .map_err(|error| DataSyncError::validation(error.to_string()))
             },

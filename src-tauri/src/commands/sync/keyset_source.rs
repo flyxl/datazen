@@ -10,7 +10,7 @@ use crate::data_sync::{
     build_keyset_select_sql_with_order_filter_and_pagination, keyset_seek_parameter_count,
     quote_ident_sql, DataSyncError, Row, RowPageSource, SyncSourceFilter,
 };
-use crate::db::{ConnectionHandle, DatabaseDriver, SqlTarget};
+use crate::db::{ConnectionHandle, DatabaseDriver, LegacySqlDialect, SqlDialect, SqlTarget};
 
 pub struct DriverKeysetSource {
     driver: Arc<dyn DatabaseDriver>,
@@ -52,13 +52,15 @@ impl DriverKeysetSource {
                 "normalized key contract count does not match primary key columns",
             ));
         }
-        let pagination = driver.pagination_syntax(1, 0);
+        // 分页子句与占位符来自 SqlDialect 契约，旧驱动 API 逐条转发。
+        let dialect = LegacySqlDialect::new(driver.as_ref());
+        let pagination = dialect.pagination_syntax(1, 0);
         if pagination.clause.trim().is_empty() {
             return Err(DataSyncError::validation(
                 "driver does not provide a Data Sync keyset pagination clause",
             ));
         }
-        driver
+        dialect
             .parameter_placeholder(1, None)
             .map_err(|error| DataSyncError::validation(error.to_string()))?;
         let key_order_expressions = pk_columns
@@ -99,6 +101,8 @@ impl RowPageSource for DriverKeysetSource {
         if self.recordset_remaining == Some(0) {
             return Ok(Vec::new());
         }
+        // 分页子句与占位符来自 SqlDialect 契约，旧驱动 API 逐条转发。
+        let dialect = LegacySqlDialect::new(self.driver.as_ref());
         let page_limit = self
             .recordset_remaining
             .map(|remaining| remaining.min(u64::from(limit)).max(1) as u32)
@@ -145,7 +149,7 @@ impl RowPageSource for DriverKeysetSource {
                     },
                     |column| self.column_types.get(column).cloned(),
                     |index, data_type| {
-                        self.driver
+                        dialect
                             .parameter_placeholder(index, data_type)
                             .map_err(|error| DataSyncError::validation(error.to_string()))
                     },
@@ -155,8 +159,7 @@ impl RowPageSource for DriverKeysetSource {
         };
         // Pagination syntax belongs to the driver (for example SQL Server
         // requires OFFSET/FETCH while PostgreSQL and MySQL use LIMIT).
-        let pagination_clause = self
-            .driver
+        let pagination_clause = dialect
             .pagination_syntax(u64::from(page_limit.max(1)), 0)
             .clause;
         if pagination_clause.trim().is_empty() {
@@ -176,7 +179,7 @@ impl RowPageSource for DriverKeysetSource {
             &pagination_clause,
             quote,
             |i| {
-                self.driver
+                dialect
                     .parameter_placeholder(i, None)
                     .map_err(|error| DataSyncError::validation(error.to_string()))
             },

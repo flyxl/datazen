@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::{LazyLock, Mutex};
 
-use datazen_driver_api::{DatabaseDriver, TableSchema};
+use datazen_driver_api::{DatabaseDriver, LegacySqlDialect, SqlDialect, TableSchema};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use uuid::Uuid;
@@ -727,7 +727,8 @@ fn insert_sql_batch(
             let values = row
                 .iter()
                 .map(|value| {
-                    driver
+                    // 字面量渲染来自 SqlDialect 契约，旧驱动 API 逐条转发。
+                    LegacySqlDialect::new(driver)
                         .try_format_sql_literal(value)
                         .map_err(|error| TransferError::unsupported(error.to_string()))
                 })
@@ -1079,7 +1080,8 @@ pub async fn execute_with_target(
             source_driver.quote_char(),
             &source_driver.driver_type(),
             |index, data_type| {
-                source_driver
+                // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+                LegacySqlDialect::new(source_driver)
                     .parameter_placeholder(index, data_type)
                     .map_err(|error| TransferError::unsupported(error.to_string()))
             },

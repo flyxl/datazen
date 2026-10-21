@@ -7,6 +7,7 @@ use super::{
     fetch_target_table_schema, normalize_dialect, resolve_table_for_dialect,
     schema_catalog_database, AppState, CmdExt, CommandError, State, TableColumnDiff,
 };
+use crate::db::{CatalogReader, LegacyCatalogReader};
 
 /// Compare column-level schema differences for a single table.
 pub(crate) async fn compare_table_schemas_impl(
@@ -42,7 +43,9 @@ pub(crate) async fn compare_table_schemas_impl(
     let src_table = resolve_table_for_dialect(&src_config.database_type, &source_table_name);
     let tgt_table = resolve_table_for_dialect(&tgt_config.database_type, &target_table_name);
 
-    let src_schema = src_driver
+    // 表结构读取走窄契约，而不是整块驱动。
+    let src_catalog = LegacyCatalogReader::new(src_driver.as_ref());
+    let src_schema = src_catalog
         .get_table_schema(
             &src_handle,
             &src_table,

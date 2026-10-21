@@ -115,10 +115,20 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 已迁移的消费者：
 
-- `QueryExecutor::build_select_sql` / `build_count_sql`（宿主读表）接收 `&dyn SqlDialect` 与 `limit`/`offset`；`commands/table_target.rs` 在边界处用 `LegacySqlDialect` 包装驱动。
-- `SchemaCache::get_columns` / `get_table_schema` / `warmup` 只接收 `&dyn CatalogReader`；读表、ER 图、AI 过滤解析与 `read_relation_columns` 在边界处用 `LegacyCatalogReader` 包装驱动。缓存键仍是 session + database + schema + relation，跨目标读取不共享条目。
+方言规则（`SqlDialect`）——`quote_ident` / `pagination_syntax` / `try_format_sql_literal` / `parameter_placeholder` / `max_bound_parameters` 全部经 `LegacySqlDialect`：
 
-其余消费者按调用链逐步迁移。
+- `QueryExecutor::build_select_sql` / `build_count_sql`（宿主读表）接收 `&dyn SqlDialect` 与 `limit`/`offset`；`commands/table_target.rs` 在边界处用 `LegacySqlDialect` 包装驱动。
+- 数据迁移写入路径：`data-transfer` 的绑参上限 / 占位符 / 分页子句 / 字面量（`writer.rs`、`dispatcher.rs`、`resume.rs`、`resume/fingerprint.rs`、`job/pipeline.rs`、`job/handler.rs`、`sql_file.rs`），宿主 `data_transfer/preview.rs`、`data_transfer/exec/execution.rs`，feature-core `export/format.rs`（`emit_insert_batch` 形参即是 `&dyn SqlDialect`）；`bound_insert*` 因同时需要驱动专属的显式自增子句而保留驱动形参。
+- 结果编辑校验与同步批读：`commands/result_write.rs` 的 UPDATE 前置 SELECT、`sync/keyset_source.rs`、`sync/host/select.rs`（形参已收窄为 `&dyn SqlDialect`）、`sync/host/statements.rs`、`sync/apply.rs`、`sync/filter_validation.rs`。
+- 驱动专属的规则（`quote_char` / `transfer_explicit_identity_insert_clause` / `supports_offset` / `driver_type`）不在此契约内，仍在驱动上显式调用。
+- 同步 IR 适配器的 `SyncTargetAdapter::quote_ident` 是另一个契约（SQL Server 用 `[x]`、ClickHouse 用反引号，与驱动方言的有意分歧），不得并入。
+
+目录读取（`CatalogReader`）——`get_databases` / `get_schemas` / `get_tables` / `get_table_schema` / `get_columns` / `get_all_columns` 全部经 `LegacyCatalogReader`：
+
+- `SchemaCache::get_columns` / `get_table_schema` / `warmup` 只接收 `&dyn CatalogReader`；读表、ER 图、AI 过滤解析与 `read_relation_columns` 在边界处用 `LegacyCatalogReader` 包装驱动。缓存键仍是 session + database + schema + relation，跨目标读取不共享条目。
+- Schema Diff 目录读取：`schema_diff` 的 plan / compare / unified plan / dependencies / recovery 与 `feature-core` `schema_metadata.rs` 的 `list_catalog` / `read_relation_schema`（driver 形参同时承载 `driver_type()`、外键目录可见性等驱动专属规则，适配器在函数内构造）。
+
+其余消费者按调用链逐步迁移；收窄函数形参（如 `fetch_target_table_schema`）留待其调用方迁完后统一做。
 
 版本：`datazen-driver-api` 0.0.13 → 0.0.20——0.0.14 `SqlDialect`、0.0.15 `CatalogReader`、0.0.16 `ReuseDriver` 显式转发补齐、0.0.17 `CommandCatalog`、0.0.18 `SchemaMigration`、0.0.19 `BackupDialect`、0.0.20 退役 `DatabaseDriver::split_restore_sql`（唯一一次 trait 表面删除，故单独记一版）。新契约本身都是 additive（新 trait + 适配器），`PROTOCOL_VERSION` 保持 6（2026-10-21 起协议版本冻结于 6，兼容门禁族退役——治理决定见 [driver-capability-migration.md](../platform/driver-capability-migration.md#5-协议版本演进) §5）；crate 版本记录的是**本仓库**的 trait 表面变化，仓库内各驱动按最新 trait 实现即可。
 

@@ -1,7 +1,7 @@
 //! Bound DML. Identifiers come from inspected metadata; values never enter SQL.
 use super::{error::TransferError, execute::ValueFormatter, model::ColumnMapping};
 use datazen_driver_api::TableSchema;
-use datazen_driver_api::{DatabaseDriver, Value};
+use datazen_driver_api::{DatabaseDriver, LegacySqlDialect, SqlDialect, Value};
 
 pub fn bound_insert(
     driver: &dyn DatabaseDriver,
@@ -36,6 +36,8 @@ pub fn bound_insert_batch(
     rows: &[Vec<Option<Value>>],
     formatter: &ValueFormatter<'_>,
 ) -> Result<(String, Vec<Value>), TransferError> {
+    // 绑参上限来自 SqlDialect 契约；旧驱动 API 只报数字，取 limit() 保持一致。
+    let dialect = LegacySqlDialect::new(driver);
     if columns.is_empty() || rows.is_empty() {
         return Err(TransferError::validation(
             "INSERT batch does not contain an active projection",
@@ -44,10 +46,10 @@ pub fn bound_insert_batch(
     let parameter_count = rows.len().checked_mul(columns.len()).ok_or_else(|| {
         TransferError::validation("INSERT batch parameter count exceeds the supported range")
     })?;
-    if parameter_count > driver.max_bound_parameters() {
+    if parameter_count > dialect.max_bound_parameters().limit() {
         return Err(TransferError::validation(format!(
             "INSERT batch requires {parameter_count} bound parameters, exceeding the driver's {}-parameter limit",
-            driver.max_bound_parameters()
+            dialect.max_bound_parameters().limit()
         )));
     }
     let mut names = std::collections::HashSet::new();
@@ -70,7 +72,7 @@ pub fn bound_insert_batch(
     }
     let column_sql = columns
         .iter()
-        .map(|c| driver.quote_ident(&c.target_column))
+        .map(|c| dialect.quote_ident(&c.target_column))
         .collect::<Vec<_>>()
         .join(", ");
     let has_explicit_identity = columns.iter().any(|mapping| {
@@ -79,6 +81,7 @@ pub fn bound_insert_batch(
             .iter()
             .any(|column| column.name == mapping.target_column && column.is_auto_increment)
     });
+    // 显式自增子句仍是驱动专属规则，SqlDialect 契约里还没有对应项，只能留在驱动上。
     let identity_insert_clause = has_explicit_identity
         .then(|| driver.transfer_explicit_identity_insert_clause())
         .flatten()
@@ -97,7 +100,7 @@ pub fn bound_insert_batch(
         for (column_index, (binding, value)) in columns.iter().zip(row).enumerate() {
             let parameter_index = parameters.len() + 1;
             placeholders.push(
-                driver
+                dialect
                     .parameter_placeholder(parameter_index, Some(target_types[column_index]))
                     .map_err(|e| TransferError::validation(e.to_string()))?,
             );

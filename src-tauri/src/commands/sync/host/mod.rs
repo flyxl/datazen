@@ -36,6 +36,7 @@ use crate::data_sync::{
     require_data_sync_family, DataSyncError, Endpoint, RowChange, SqlStatement, SyncOptions,
     SyncSourceFilter, TableMapping,
 };
+use crate::db::LegacySqlDialect;
 use crate::services::metadata_schema;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 
@@ -473,6 +474,8 @@ impl DataSyncHost for HostDataSync {
                 ),
             ] {
                 let quote = slot.session.driver.quote_char();
+                // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+                let dialect = LegacySqlDialect::new(slot.session.driver.as_ref());
                 // Each side keys on its own declared primary key. The pair
                 // shares a keyset contract (checked above), but the predicate
                 // that is actually sent to a connection must be built from that
@@ -504,7 +507,7 @@ impl DataSyncHost for HostDataSync {
                         key_contracts: contracts.clone(),
                         recordset_limit,
                         select_by_key_sql: select::select_by_key_sql(
-                            slot.session.driver.as_ref(),
+                            &dialect,
                             &quote,
                             &slot.session.database,
                             slot.session.schema.as_deref(),

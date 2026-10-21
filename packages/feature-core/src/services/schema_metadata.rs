@@ -10,9 +10,9 @@ use datazen_driver_api::schema_metadata::{
     RelationSummary,
 };
 use datazen_driver_api::{
-    validate_schema_target, CommandAccessLevel, CommandCategory, CommandResult, ConnectionHandle,
-    DatabaseDriver, DriverCommandDefinition, DriverCommandMetadata, DriverError, SchemaScope,
-    StructureChangeRequest,
+    validate_schema_target, CatalogReader, CommandAccessLevel, CommandCategory, CommandResult,
+    ConnectionHandle, DatabaseDriver, DriverCommandDefinition, DriverCommandMetadata, DriverError,
+    SchemaScope, StructureChangeRequest,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -223,7 +223,9 @@ pub async fn execute(
                 )
                 .await?;
             let tables = datazen_driver_api::parse_tables_from_command(&result.data);
-            let mut schemas = driver
+            // 目录读取走窄契约，而不是整块驱动。
+            let catalog = datazen_driver_api::LegacyCatalogReader::new(driver.as_ref());
+            let mut schemas = catalog
                 .get_schemas(handle, &input.database)
                 .await?
                 .unwrap_or_else(|| {
@@ -302,6 +304,8 @@ pub async fn execute_on_runtime_resource(
     command: &str,
     input: Value,
 ) -> Result<CommandResult, CommandError> {
+    // 目录读取走窄契约，而不是整块驱动。
+    let catalog = datazen_driver_api::LegacyCatalogReader::new(driver.as_ref());
     let data = match command {
         "list_catalog" => {
             let input: CatalogInput = decode(input)?;
@@ -322,7 +326,7 @@ pub async fn execute_on_runtime_resource(
                 )
                 .await?;
             let tables = datazen_driver_api::parse_tables_from_command(&result.data);
-            let mut schemas = driver
+            let mut schemas = catalog
                 .get_schemas(handle, &input.database)
                 .await?
                 .unwrap_or_else(|| {
@@ -355,7 +359,7 @@ pub async fn execute_on_runtime_resource(
         "read_relation_schema" => {
             let input: SchemaInput = decode(input)?;
             validate_relation(driver.as_ref(), &input.relation)?;
-            let definition = driver
+            let definition = catalog
                 .get_table_schema(
                     handle,
                     &input.relation.name,

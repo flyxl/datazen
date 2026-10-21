@@ -15,6 +15,7 @@ use crate::data_sync::{
     generate_table_sql_with_qualified_table_and_policy, ChangeOperation, DataSyncError, RowChange,
     SqlStatement, SyncOptions, TableChangeSet, TableMappingStatus, TableResult,
 };
+use crate::db::{LegacySqlDialect, SqlDialect};
 
 use super::super::apply::{
     identity_insert_target_for_projection, resolve_projection_types, sqlserver_write_preflight,
@@ -107,6 +108,8 @@ pub(super) fn generate(
     };
     let qualified_table =
         preview_target.qualify_relation(&meta.database, meta.schema.as_deref(), target_table);
+    // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+    let dialect = LegacySqlDialect::new(slot.session.driver.as_ref());
     let statements = generate_table_sql_with_qualified_table_and_policy(
         &change_set,
         &qualified_table,
@@ -115,8 +118,7 @@ pub(super) fn generate(
         &column_types,
         |name| preview_target.quote_ident(name),
         |index, data_type| {
-            slot.session
-                .driver
+            dialect
                 .parameter_placeholder(index, data_type)
                 .map_err(|error| DataSyncError::validation(error.to_string()))
         },

@@ -2,8 +2,8 @@
 use crate::error::FeatureError as CommandError;
 use datazen_driver_api::{
     BackupDialect, BackupDumpOptions, BackupRestoreOptions, ConnectionConfig, ConnectionHandle,
-    DatabaseDriver, DriverError, DumpPhase, DumpProgress, RestoreSession, SqlTarget, TableInfo,
-    TableType, Utf8ChunkDecoder,
+    DatabaseDriver, DriverError, DumpPhase, DumpProgress, LegacySqlDialect, RestoreSession,
+    SqlDialect, SqlTarget, TableInfo, TableType, Utf8ChunkDecoder,
 };
 use std::{
     io::Read,
@@ -234,14 +234,14 @@ pub async fn backup_database_to_path(
     Ok(())
 }
 
-fn qualify_restore_ident(driver: &dyn DatabaseDriver, table: &TableInfo) -> String {
+fn qualify_restore_ident(dialect: &dyn SqlDialect, table: &TableInfo) -> String {
     match table.schema.as_deref().filter(|s| !s.is_empty()) {
         Some(schema) => format!(
             "{}.{}",
-            driver.quote_ident(schema),
-            driver.quote_ident(&table.name)
+            dialect.quote_ident(schema),
+            dialect.quote_ident(&table.name)
         ),
-        None => driver.quote_ident(&table.name),
+        None => dialect.quote_ident(&table.name),
     }
 }
 
@@ -292,7 +292,8 @@ pub async fn drop_existing_restore_targets(
         .execute_at(handle, "SET FOREIGN_KEY_CHECKS=0", target)
         .await;
     for (i, table) in ordered.iter().enumerate() {
-        let ident = qualify_restore_ident(driver.as_ref(), table);
+        // 标识符引用来自 SqlDialect 契约，旧驱动 API 逐条转发。
+        let ident = qualify_restore_ident(&LegacySqlDialect::new(driver.as_ref()), table);
         emit_restore_progress(
             app,
             DumpProgress {

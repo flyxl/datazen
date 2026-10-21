@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use crate::data_sync::{quote_ident_sql, DataSyncError};
+use crate::db::SqlDialect;
 
 use super::invalid;
 
@@ -27,7 +28,7 @@ use super::invalid;
 /// at the boundary that owns it; the earlier "empty order clause" fallback
 /// turned the same defect into a silently full-table scan.
 pub(super) fn select_by_key_sql(
-    driver: &dyn crate::db::DatabaseDriver,
+    dialect: &dyn SqlDialect,
     quote: &char,
     database: &str,
     schema: Option<&str>,
@@ -62,7 +63,7 @@ pub(super) fn select_by_key_sql(
         .map(|(offset, pk)| {
             // Placeholder indexes are 1-based and positional: the key values the
             // executor binds land in exactly this order.
-            let placeholder = driver
+            let placeholder = dialect
                 .parameter_placeholder(offset + 1, column_types.get(pk).map(String::as_str))
                 .map_err(|error| invalid(error.to_string()))?;
             Ok(format!("{} = {placeholder}", quote_ident_sql(pk, *quote)))
@@ -85,6 +86,8 @@ mod tests {
     use std::sync::Arc;
 
     use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
+
+    use crate::db::LegacySqlDialect;
 
     use super::select_by_key_sql;
 
@@ -112,10 +115,17 @@ mod tests {
         )
     }
 
+    // The keyed read only needs the dialect rules, so the test hands it the
+    // same legacy adapter the host hands it.
+    fn dialect(driver: &Arc<MockDriver>) -> LegacySqlDialect<'_, MockDriver> {
+        LegacySqlDialect::new(driver.as_ref())
+    }
+
     #[test]
     fn a_keyed_read_binds_the_reviewed_key() {
+        let driver = postgres();
         let sql = select_by_key_sql(
-            postgres().as_ref(),
+            &dialect(&driver),
             &'"',
             "app",
             None,
@@ -133,8 +143,9 @@ mod tests {
 
     #[test]
     fn a_composite_key_binds_placeholder_indexes_in_key_order() {
+        let driver = postgres();
         let sql = select_by_key_sql(
-            postgres().as_ref(),
+            &dialect(&driver),
             &'"',
             "app",
             Some("public"),
@@ -153,8 +164,9 @@ mod tests {
 
     #[test]
     fn a_relation_without_a_primary_key_is_refused_instead_of_scanned() {
+        let driver = postgres();
         let error = select_by_key_sql(
-            postgres().as_ref(),
+            &dialect(&driver),
             &'"',
             "app",
             None,

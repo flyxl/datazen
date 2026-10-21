@@ -10,7 +10,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use datazen_driver_api::{
-    ConnectionHandle, DatabaseDriver, SyncSourceAdapter, SyncTargetAdapter, TableSchema, Value,
+    ConnectionHandle, DatabaseDriver, LegacySqlDialect, SqlDialect, SyncSourceAdapter,
+    SyncTargetAdapter, TableSchema, Value,
 };
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{Checkpoint, JobProgress};
@@ -528,6 +529,8 @@ impl DataTransferHandler {
                         .iter()
                         .find(|m| m.source_table == table.source_table);
                     let src_family_quote = source_driver.quote_char();
+                    // 占位符语法来自 SqlDialect 契约，旧驱动 API 逐条转发。
+                    let src_dialect = LegacySqlDialect::new(source_driver.as_ref());
                     let source_scope = match crate::recordset::build_source_scope(
                         &src_schema,
                         mapping.and_then(|m| m.source_filter.as_ref()),
@@ -535,7 +538,7 @@ impl DataTransferHandler {
                         src_family_quote,
                         source_type,
                         |index, data_type| {
-                            source_driver
+                            src_dialect
                                 .parameter_placeholder(index, data_type)
                                 .map_err(|e| TransferError::unsupported(e.to_string()))
                         },
