@@ -389,6 +389,11 @@ mod tests {
     }
 
     /// 别的组织删不掉本组织的工作流。
+    ///
+    /// 注意这里的**语义歧义**：跨组织删除按「不存在」处理，而「删除不存在的 id
+    /// 不是错误」是 `delete_workflow` 的既有契约 ⇒ 跨组织删除返回 `Ok(())`，
+    /// 调用方拿到「成功」却什么都没删。数据没被删是对的，但「成功」的措辞会
+    /// 让调用方误以为目标已删除。
     #[tokio::test]
     async fn a_workflow_of_another_organization_cannot_be_removed() {
         let db = AppDb::open_in_memory().unwrap();
@@ -401,7 +406,15 @@ mod tests {
             .await
             .unwrap();
 
+        // 跨组织删除返回 Ok（按「不存在」处理，不返回「无权限」）。
+        let before = reg.list(&scope).await.len();
         reg.delete_workflow(&foreign_scope(), "wf-1").await.unwrap();
+        // 但数据一个字节都没动。
         assert!(reg.get(&scope, "wf-1").await.is_some());
+        assert_eq!(
+            reg.list(&scope).await.len(),
+            before,
+            "跨组织删除不得影响本组织的工作流"
+        );
     }
 }

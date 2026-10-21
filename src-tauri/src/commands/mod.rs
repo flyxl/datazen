@@ -338,3 +338,7 @@ mod tunnel_probe_tests;
 #[cfg(test)]
 #[path = "tunnel_summary_tests.rs"]
 mod tunnel_summary_tests;
+
+#[cfg(test)]
+#[path = "org_scope_surface_tests.rs"]
+mod org_scope_surface_tests;

@@ -28,3 +28,7 @@ pub fn local_organization_scope() -> OrganizationScope {
 pub fn is_local_scope(scope: &OrganizationScope) -> bool {
     scope.organization_id().as_str() == LOCAL_ORGANIZATION_ID
 }
+
+#[cfg(test)]
+#[path = "scope_tests.rs"]
+mod tests;

@@ -146,7 +146,14 @@ mod tests {
     use datazen_feature_core::dashboard::store::save_dashboard;
     use datazen_feature_core::dashboard::types::DashboardLayout;
     use datazen_feature_core::workflow::model::WorkflowStep;
+    use datazen_platform_api::id::OrganizationId;
+    use datazen_platform_api::ports::scope::OrganizationScope;
     use std::sync::Arc;
+
+    /// 别的组织的作用域。
+    fn foreign_scope() -> OrganizationScope {
+        OrganizationScope::new(OrganizationId::new("another-organization"))
+    }
 
     async fn setup() -> (std::sync::Arc<AppDb>, WorkflowRegistry, Dashboard) {
         let db = AppDb::open_in_memory().unwrap();
@@ -296,5 +303,123 @@ mod tests {
         .await
         .unwrap_err();
         assert!(matches!(err, CreateWidgetError::Validation(_)));
+    }
+
+    // ─── 组织隔离（WidgetCreationHost 是读/写已存数据的端口） ───
+
+    /// 别的组织建不了 widget：读不到本组织的仪表板 ⇒ 失败，且**没有**写入。
+    ///
+    /// `WidgetCreationHost` 直接读写已存的仪表板与 workflow，不带作用域就是越权旁路。
+    #[tokio::test]
+    async fn a_widget_cannot_be_created_for_another_organization() {
+        let (db, registry, dash) = setup().await;
+        let foreign = foreign_scope();
+
+        let err = create_widget_from_sql(
+            &foreign,
+            &db,
+            &registry,
+            &dash.id,
+            "cfg-1",
+            "SELECT 1 AS v",
+            Some("SQL".into()),
+            ViewMode::Chart,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, CreateWidgetError::Store(_)),
+            "读不到别的组织的仪表板应当按「不存在」失败，实际：{err:?}"
+        );
+
+        // 本组织的数据一个字节都没被动过。
+        let local = crate::platform::local_organization_scope();
+        let loaded = datazen_feature_core::dashboard::store::get_dashboard(&local, &*db, &dash.id)
+            .expect("本组织的仪表板应当仍然读得到");
+        assert!(
+            loaded.widgets.is_empty(),
+            "别的组织不得往本组织的仪表板里塞 widget"
+        );
+    }
+
+    /// 别的组织绑不了本组织的 workflow（读路径按「不存在」处理）。
+    #[tokio::test]
+    async fn a_widget_cannot_be_bound_to_a_workflow_of_another_organization() {
+        let (db, _registry, dash) = setup().await;
+        db.upsert_workflow(&WorkflowRecord {
+            id: "user-wf".into(),
+            name: "User".into(),
+            description: String::new(),
+            visibility: WorkflowVisibility::User,
+            definition_yaml:
+                "id: user-wf\nname: User\nconnection: cfg\nsteps:\n  - type: query\n    id: q1\n    sql: SELECT 1\n"
+                    .into(),
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+        })
+        .unwrap();
+
+        let err = create_widget_from_workflow(
+            &foreign_scope(),
+            &db,
+            &dash.id,
+            "user-wf",
+            None,
+            ViewMode::Table,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, CreateWidgetError::Validation(_)),
+            "别的组织的 workflow 应当按「不存在」处理，实际：{err:?}"
+        );
+        assert!(err.to_string().contains("not found"));
+    }
+
+    /// 别的组织改不动本组织 dashboard 自带的隐藏 workflow（写路径）。
+    #[tokio::test]
+    async fn a_hidden_workflow_of_another_organization_cannot_be_updated() {
+        let (db, registry, dash) = setup().await;
+        let created = create_widget_from_sql(
+            &crate::platform::local_organization_scope(),
+            &db,
+            &registry,
+            &dash.id,
+            "cfg-1",
+            "SELECT 1 AS v",
+            Some("SQL".into()),
+            ViewMode::Chart,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let err = update_hidden_workflow_sql(
+            &foreign_scope(),
+            &db,
+            &registry,
+            &created.widget.workflow_id,
+            "cfg-2",
+            "SELECT 2",
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, CreateWidgetError::Validation(_)),
+            "别的组织的隐藏 workflow 应当按「不存在」处理，实际：{err:?}"
+        );
+
+        // 本组织的隐藏 workflow 内容没变。
+        let local = crate::platform::local_organization_scope();
+        let def = registry
+            .get(&local, &created.widget.workflow_id)
+            .await
+            .unwrap();
+        match &def.steps[0] {
+            WorkflowStep::Query { sql, .. } => assert_eq!(sql, "SELECT 1 AS v"),
+            other => panic!("expected query step, got {other:?}"),
+        }
     }
 }
