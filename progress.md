@@ -190,22 +190,114 @@ Tester 的另一条护栏 `the_ipc_scope_and_the_background_scope_name_the_same_
 
 Tester 加固的那条断言（跨组织删除前后 `list` 长度不变）保留。
 
-## D-03【非阻塞·台账口径】断言变化计数 —— 已改准
+## D-03【非阻塞·台账口径】断言变化计数 —— 已改准（第 3 轮再改一次）
 
-第 1 轮台账写「feature-core 2 条断言变化」，口径夸大。机械 diff 实测（`git diff -w`，
-只数**既有**断言行）：
+第 1 轮台账写「feature-core 2 条断言变化」，口径夸大；第 2 轮改成「6 条 = 1 + 5」，
+**仍不准**：那次数的是「diff 里出现变化的断言**行**」，而多行 `assert*` 宏会被 rustfmt
+换行重排，行级计数会漏。**第 3 轮按 Tester 的口径重算**：把多行 `assert*` 宏归一化成
+单条语句（拼接 + 折叠空白）后做**多重集配对**，基线取 `65dac1e2c`：
 
-| 位置 | 既有断言行变化 | 性质 |
+| 位置 | 既有断言**语句**变化 | 性质 |
 | --- | --- | --- |
-| feature-core `workflow/registry.rs` | `assert_eq!(records[0].visibility, …)` → `records[0].1.visibility` | **1 条元组改写**：内存存储改成按组织分区，记录是 `(OrganizationId, record)`。断言语义不变 |
-| feature-core `workflow/registry.rs` | `registry.get("hidden-1")` → `registry.get(&scope, "hidden-1")` | 只补 `&scope` 参数 |
-| feature-core `dashboard/store.rs` | `get_dashboard(&store, …)` → `get_dashboard(&scope, &store, …)` | 只补 `&scope` 参数 |
-| host `workflow/registry.rs` | `reg.get("hidden-1")` → `reg.get(&scope, "hidden-1")` | 只补 `&scope` 参数 |
-| host `dashboard/store_tests.rs` | `list_dashboards(&*db)` → `list_dashboards(&scope, &*db)` | 只补 `&scope` 参数 |
-| host `dashboard/export.rs` | `list_dashboards(&*db)` → `list_dashboards(&scope, &*db)` | 只补 `&scope` 参数 |
+| feature-core `workflow/registry.rs:466` | `assert_eq!(records[0].visibility, …)` → `records[0].1.visibility` | **1 条元组改写**：内存存储改成按组织分区，记录是 `(OrganizationId, record)`。断言语义不变 |
+| feature-core `dashboard/runs.rs:270` | `get_run(&store, "d1", "w2", "run-1")` → `get_run(&scope, &store, …)` | 只补 `&scope` 参数 |
+| feature-core `dashboard/store.rs:482` | `get_dashboard(&store, "dash-1")` → `get_dashboard(&scope, &store, …)` | 只补 `&scope` 参数 |
+| feature-core `workflow/registry.rs:415` | `registry.get("hidden-1")` → `registry.get(&scope, "hidden-1")` | 只补 `&scope` 参数 |
+| feature-core `workflow/registry.rs:476` | `registry.get("yaml-1")` → `registry.get(&scope, "yaml-1")` | 只补 `&scope` 参数 |
+| host `workflow/registry.rs:286` | `reg.get("hidden-1")` → `reg.get(&scope, "hidden-1")` | 只补 `&scope` 参数 |
+| host `dashboard/store_tests.rs:127` | `list_dashboards(&*db)` → `list_dashboards(&scope, &*db)` | 只补 `&scope` 参数 |
+| host `dashboard/export.rs:258` | `list_dashboards(&*db)` → `list_dashboards(&scope, &*db)` | 只补 `&scope` 参数 |
 
-合计 **6 条既有断言行变化 = 1 条元组改写 + 5 条只补 `&scope` 参数**；
-其余 diff 是 rustfmt 的换行重排（不改变断言内容）。**断言未改弱，结论不变。**
+**feature-core 5 条 = 1 条元组改写 + 4 条只补 `&scope`；宿主 3 条 = 3 条只补 `&scope`；
+合计 8 条 = 1 + 7。断言未改弱，结论不变。**
+
+> 复核注：`src-tauri/src/bootstrap/tests.rs` 里有一处 `assert!(src.contains("…generate_handler!["));`
+> 会被朴素的「按 `assert` 起头拼接」解析器误判为变化——它含不平衡的括号（字符串字面量里
+> 有 `![`），逐字比对确认**该断言一字未改**，不是第 9 条。
+
+---
+
+# 第 3 轮（修-测循环 · 第 2 轮）
+
+独立 Tester 复测结论 **TEST_PASSED**（D-01 确认已真修好且**只修好了它**：三棵树对照
+基线 242 / 修前 248 / 修后 242，失败集合逐条相同；7 条变异全部按预期）。
+本轮只做三项**文档/注释**小修。
+
+## D-04【要修·文档】行号引用 —— 已改准
+
+`docs/architecture/platform/workflow-resource-model.md` 的引用逐条核对当前代码后修正：
+
+| 引用 | 原值 | 现值 | 依据 |
+| --- | --- | --- | --- |
+| `workflow/registry.rs`（宿主侧 `version: None`） | 224 | **226** | 本轨 `a0ea3d1f0` 在其上方加了 2 行 D-02 注释 |
+| `packages/feature-core/src/workflow/registry.rs` | 429 | **437** | 本轨 `a0ea3d1f0` 在其上方加了 8 行 D-02 注释 |
+| `executor.rs`（§2.4 的两行代码块） | 129 | **130-131** | `workflow_connection` / `workflow_database` 两行 |
+| `command_runtime.rs:115-119`（目标定位策略注释） | 115-119 | **`commands/driver_command/execute.rs:59-62`** | 那条注释已随 workflow 执行迁进 feature-core 而**从 `command_runtime.rs` 消失**；它的现居所是 `driver_command/execute.rs` 的 F7 注释（"the target travels with the command input … the host never switches the session's database"） |
+| `scheduler.rs`（调度器不包裹 Job） | 176 | **`workflow/scheduler.rs:44-48`** | `src-tauri/src/workflow/scheduler.rs` 只有 92 行，`176` 越界；`commands::workflow_execute_impl(...)` 的调用在 44-48 行，连接参数恒为 `None`（第 48 行） |
+| `dashboard/execute.rs`（同样不传连接） | 222 | **71** | `src-tauri/src/dashboard/execute.rs` 第 71 行 `WorkflowExecutor::execute(&workflow, self.app_state, None, …)` |
+| `migration.rs`（`job_id` 传 `None`） | 509 | **221** | `src-tauri/src/workflow/migration.rs` 第 221 行 `job_id: None,` |
+
+顺带核对的另外 4 处**基线就已失效**的引用（不是本轨引入）已一并改准：
+`executor.rs:129`、`command_runtime.rs:115-119`、`scheduler.rs:176`、`dashboard/execute.rs:222`
+—— 见上表；`migration.rs:509` 同属该组。
+
+其余引用逐条核对**仍然正确**，未动：`dashboard/create.rs:40`、`workflow/host.rs:128/169/204`、
+`workflow/migration.rs:433`、`commands/dashboard.rs:482`、
+`commands/ai/integration_tests.rs:377/932/1070/1123`、`feature-core/workflow/scheduler.rs:223`、
+`feature-core/dashboard/archive.rs:185`、`store/settings.rs:15`。
+
+文档里的**事实断言**也复核过：`qualify_sql_target` 的实现方仍是 clickhouse / duckdb /
+mysql / postgres / sqlite / sqlserver **6 个** SQL 驱动，mongodb 仍声明 `has_multi_database`
+但不走 SQL 路径 —— 与文档表述一致。
+
+## D-05【要修·契约注释】`platform-api` 的「作用域只能由 adapter 构造」—— 已改
+
+`packages/platform-api/src/ports/scope.rs` 的模块级表述被桌面实现（安装级常量）字面推翻，
+且与同文件 `OrganizationScope::new` 的文档自相矛盾。已改成「可信来源」口径，并把模块级
+表述与 `new` 的文档**统一**：
+
+模块级（逐字）：
+
+```rust
+//! * 作用域**只能由可信来源构造**：adapter 组装的请求上下文
+//!   （[`OrganizationScope::from_context`]），或宿主形态的**安装级常量**——
+//!   桌面是单租户，它的组织 id 是一个进程常量，与「当前 OS 用户名能不能取到」
+//!   无关。两种来源都**不是**请求体字段：**任何请求体字段都不得覆盖组织身份**
+//!   （INV-01）。
+```
+
+`OrganizationScope::new`（逐字）：
+
+```rust
+    /// 直接以组织 id 构造作用域。
+    ///
+    /// 只在调用方已经持有**可信的组织身份**时用：宿主形态的安装级常量
+    /// （桌面单租户），或别的已解析好的组织身份。请求体字段**不得**流到这里
+    /// （INV-01）——那等于让调用方指定组织，租户边界随之失效。
+    /// 其余情况优先用 [`Self::from_context`]。
+```
+
+`OrganizationScope::from_context`（逐字）：
+
+```rust
+    /// 从请求上下文取作用域。
+    ///
+    /// 身份只能来自 adapter 构造的上下文（INV-01），因此本方法**不接受**任何
+    /// 请求体字段作为入参。宿主形态若不经过 adapter（例如桌面用安装级常量
+    /// 直接构造），见 [`Self::new`]。
+```
+
+## D-06【非阻塞·台账口径】断言变化计数 —— 再次改准（见上）
+
+feature-core **5 条 = 1 条元组改写 + 4 条只补 `&scope`**；
+宿主 **3 条 = 3 条只补 `&scope`**；合计 **8 条 = 1 + 7**。
+
+## 长期文档：桌面组织作用域的来源（已写进正式文档）
+
+新增 `docs/architecture/platform/shared-boundaries-and-ports.md` 的
+**§5.2 组织作用域的来源（已实现）**：形态对照表（桌面 = 安装级常量 / server = 认证会话 /
+后台 Job = 逐阶段继承）+ 三条结论（组织身份不可用 ≠ 组织边界不可用；IPC 路径与后台路径
+必须看到同一个组织；作用域不是 IPC 参数）+ 按组织限定的存储端口的越权约定（CM-05）。
 
 ---
 
