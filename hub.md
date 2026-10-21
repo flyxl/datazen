@@ -256,3 +256,24 @@
 2. 若必须并发，用 `git add <具体文件列表>` 而**不是** `-A`，把提交面钉死在自己改的文件上。
 3. 文档类代理默认给它**独立 worktree**（用户此前已提过一次同类风险）。
 4. 提交前后各记一次 `git status --short` 与 HEAD，与门禁前后记录同规矩。
+
+## 两条轨同时进入终局复测（2026-10-21）
+
+| 轨 | HEAD | 复测代理 | 本轮修了什么 |
+| --- | --- | --- | --- |
+| `insert-backend` | `a0d903519` | `e104b765`（原 Tester，第 3 轮） | IB2-D4 错误码补 `grid.*` 前缀并收敛域；IB2-D7 删除+列写入改为**拒绝**（原先只发 warning 且静默丢弃列写入）；IB2-D2 `driver_type` 防线；IB2-D3 注释改事实 |
+| `grid-selection` | `8e4075059` | `7037c93a`（原 Tester，第 3 轮） | GS2-D1 `selectedRows` 必填 + 类型改名 + 去兜底；GS2-D2 `deleteRows` 不再写行集 |
+
+**给两个 Tester 的关键考点**：
+- `insert-backend`：四条错误路径是否**都**带前缀且前缀在**最开头**、描述文案是否保留、`unknownColumn` 是否只在插入域；并要它给出**「零生产者错误码清单」**（45 码里还有哪些没有任何 throw 点）——这是本批最后一次能补齐的机会。
+- `grid-selection`：编码代理**承认改过 Tester 的 2 个测试文件**（纯类型适配），要求逐行核「只补参数、断言零变化」；并要它**独立重建探针**证明裸 `GridSelection` 调用必报 TS2345。
+
+## Wave 2 待派（终局复测通过、合流之后再动）
+
+三轨并行，但要遵守「三个热文件每波只允许一条前端轨」：
+
+| 轨 | 内容 | 与热文件的关系 |
+| --- | --- | --- |
+| `grid-cell` | `[data-dt-surface]` / `data-dt-selected` / `role="rowheader"` / 选区摘要 testid 接线 | **碰 `DataTable.tsx`**（热文件）→ 本波唯一前端轨 |
+| `web-transport` | `MethodMap` + `BackendClient` + wire 类型镜像（`insertMarked`/`inserts`） | 只碰 `packages/backend-client`，可与 `grid-cell` 并行 |
+| `insert-frontend` | 草稿行 UI + TS 镜像接线（依赖 04 后端已就绪） | 碰 `TableView.tsx` → **与 `grid-cell` 冲突，排到 Wave 3** |
