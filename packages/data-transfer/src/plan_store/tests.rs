@@ -223,6 +223,168 @@ fn a_plan_of_another_organization_is_not_found_rather_than_forbidden() {
 
     // The owning organization still sees its own plan.
     assert!(store.peek(&scope, &id).is_ok());
+    // The refusal must stay the actionable "unknown plan, return to preview"
+    // wording, not degenerate into a generic error on both paths.
+    assert!(
+        unknown.to_string().contains("unknown") && unknown.to_string().contains("preview"),
+        "the refusal must stay actionable: {unknown}"
+    );
+}
+
+/// A resume checkpoint of another organization must be **invisible**, not
+/// forbidden — the checkpoint side of the store obeys CM-05 exactly like the
+/// plan side, and the two refusals are byte for byte the same.
+#[test]
+fn a_checkpoint_of_another_organization_is_not_found_rather_than_forbidden() {
+    let store = InMemoryTransferPlanStore::new();
+    let scope = scope();
+    let foreign = foreign_scope();
+    let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
+    let preview = TransferPreview {
+        plan_id: String::new(),
+        pairing_path: "direct".into(),
+        mode: TransferMode::Data,
+        write_mode: WriteMode::Insert,
+        ddl: vec![],
+        write_plans: vec![],
+        warnings: vec![],
+        can_execute: true,
+        block_reason: None,
+    };
+    let id = issue_plan(
+        &store,
+        &scope,
+        job(),
+        &preview,
+        driver.as_ref(),
+        driver.as_ref(),
+        Duration::from_secs(60),
+    );
+    store.claim(&scope, &id).expect("claim");
+    let token = store
+        .create_checkpoint(&scope, &id, vec!["users".into()], Vec::new())
+        .expect("checkpoint");
+
+    let unknown = store
+        .peek_checkpoint(&foreign, "no-such-token", &id)
+        .expect_err("unknown token");
+    let cross_org = store
+        .peek_checkpoint(&foreign, &token, &id)
+        .expect_err("foreign token");
+    assert_eq!(
+        cross_org.to_string(),
+        unknown.to_string(),
+        "a foreign resume token must be indistinguishable from an unknown token"
+    );
+    assert!(
+        unknown.to_string().contains("unknown") && unknown.to_string().contains("expired"),
+        "the refusal must stay the actionable 'unknown, consumed, or expired' wording: {unknown}"
+    );
+    assert!(
+        store.claim_checkpoint(&foreign, &token, &id).is_err(),
+        "a foreign resume token must not be claimable"
+    );
+
+    // The owning organization still sees its own token.
+    assert!(store.peek_checkpoint(&scope, &token, &id).is_ok());
+}
+
+/// The write path is **narrowed**, not loudly refused: a foreign organization
+/// must not be able to consume, release, renew or invalidate the owner's plan
+/// or resume token.
+#[test]
+fn a_foreign_organization_cannot_mutate_the_owners_plan_or_checkpoint() {
+    let store = InMemoryTransferPlanStore::new();
+    let scope = scope();
+    let foreign = foreign_scope();
+    let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
+    let preview = TransferPreview {
+        plan_id: String::new(),
+        pairing_path: "direct".into(),
+        mode: TransferMode::Data,
+        write_mode: WriteMode::Insert,
+        ddl: vec![],
+        write_plans: vec![],
+        warnings: vec![],
+        can_execute: true,
+        block_reason: None,
+    };
+    let id = issue_plan(
+        &store,
+        &scope,
+        job(),
+        &preview,
+        driver.as_ref(),
+        driver.as_ref(),
+        Duration::from_secs(60),
+    );
+    store.claim(&scope, &id).expect("claim");
+    let token = store
+        .create_checkpoint(&scope, &id, vec!["users".into()], Vec::new())
+        .expect("checkpoint");
+
+    // Consuming and closing the plan from another organization are no-ops.
+    store.mark_consumed(&foreign, &id).expect("narrowed mark");
+    store.finish_execution(&foreign, &id, false);
+    assert!(
+        store.renew_execution(&foreign, &id, None).is_err(),
+        "a foreign organization must not renew the owner's execution lease"
+    );
+    assert_eq!(
+        store
+            .peek_any(&scope, &id)
+            .expect("owner still reads")
+            .state,
+        PlanState::Executing,
+        "a foreign organization must not consume or close the owner's plan"
+    );
+
+    // Releasing or invalidating the owner's token from another organization
+    // changes nothing.
+    assert!(
+        store
+            .update_checkpoint(&foreign, &token, vec!["users".into()], false)
+            .is_err(),
+        "a foreign organization must not release the owner's checkpoint"
+    );
+    store.invalidate_checkpoint(&foreign, &token);
+    let (_, checkpoint) = store
+        .peek_checkpoint(&scope, &token, &id)
+        .expect("the owner's token survives a foreign write");
+    assert!(
+        checkpoint.completed_tables.is_empty(),
+        "a foreign release must not advance the owner's completed set: {:?}",
+        checkpoint.completed_tables
+    );
+    assert!(
+        store
+            .prepare_checkpoint_table(
+                &foreign,
+                &token,
+                ResumeTableProgress {
+                    source_table: "users".into(),
+                    target_table: "users".into(),
+                    key_columns: vec!["id".into()],
+                    chunk_size: 500,
+                    source_fingerprint: "fp".into(),
+                    cursor: None,
+                    rows_seen: 0,
+                },
+            )
+            .is_err(),
+        "a foreign organization must not bind progress into the owner's checkpoint"
+    );
+    assert!(
+        !store.checkpoint_has_table_progress(&foreign, &token, "users"),
+        "a foreign organization must not observe the owner's checkpoint progress"
+    );
+    assert!(
+        !store.checkpoint_table_has_committed_chunks(&foreign, &token, "users"),
+        "a foreign organization must not observe the owner's committed chunks"
+    );
+
+    // The owning organization is unaffected.
+    assert!(store.peek_checkpoint(&scope, &token, &id).is_ok());
 }
 
 #[test]

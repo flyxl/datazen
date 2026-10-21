@@ -803,6 +803,64 @@ async fn an_apply_job_claims_the_plan_and_refuses_the_legacy_manager() {
     );
 }
 
+/// The registry the host injects is organization-scoped (CM-05): a foreign
+/// organization must not read, enumerate or claim the desktop's plan, and the
+/// refusal must be the same "not found" the desktop gets for an unknown id.
+///
+/// The check is deliberately adapter-free (no live session, no platform
+/// identity): it pins the *scope the host derives* against the *isolation the
+/// package implements*, which is the seam this track moved.
+#[test]
+fn the_desktop_scope_is_the_only_organization_the_plan_registry_sees() {
+    let scope = plan_scope();
+    assert_eq!(
+        scope.organization_id().as_str(),
+        crate::platform::LOCAL_ORGANIZATION_ID,
+        "every plan access must use the desktop's own organization"
+    );
+
+    let store = plan_store();
+    let driver = crate::testing::mock_driver::MockDriver::new("fixture", Default::default());
+    let plan_id = store
+        .issue(
+            &scope,
+            PlanIssueRequest::new(
+                job("p5dt-scope-source", "p5dt-scope-target"),
+                &preview(),
+                driver.as_ref(),
+                driver.as_ref(),
+                &HashMap::new(),
+                &HashMap::new(),
+                false,
+            ),
+        )
+        .expect("plan issue");
+
+    let foreign = datazen_platform_api::ports::scope::OrganizationScope::new(
+        datazen_platform_api::id::OrganizationId::new("p5dt-foreign-organization"),
+    );
+    let unknown = store
+        .peek(&foreign, "no-such-plan")
+        .expect_err("an unknown plan id");
+    let cross_org = store.peek(&foreign, &plan_id).expect_err("a foreign plan");
+    assert_eq!(
+        cross_org.to_string(),
+        unknown.to_string(),
+        "a foreign plan must be indistinguishable from an unknown id"
+    );
+    assert!(
+        store.peek_any(&foreign, &plan_id).is_err(),
+        "a foreign organization must not even learn that the plan exists"
+    );
+    assert!(
+        store.claim(&foreign, &plan_id).is_err(),
+        "a foreign organization must not claim the desktop's plan"
+    );
+
+    // The desktop's own organization still sees it.
+    assert!(store.peek(&scope, &plan_id).is_ok());
+}
+
 /// Two apply Jobs racing for one planId: the registry's claim decides the winner
 /// once, so exactly one Job writes and the other is refused by name.
 #[tokio::test]
