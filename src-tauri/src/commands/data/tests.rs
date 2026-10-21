@@ -795,3 +795,409 @@ async fn insert_rolls_back_the_whole_batch_on_failure() {
     assert_eq!(test.mock.commit_calls(), 0);
     assert_eq!(test.mock.open_transaction_count(), 0);
 }
+
+// ---------------------------------------------------------------------------
+// [tester] Coverage-driven additions for DB-04 (new rows).
+//
+// Everything below exists because the shipped tests did not reach the branch,
+// or because the assertion could pass without the behaviour being true.
+// ---------------------------------------------------------------------------
+
+/// The pre-INSERT struct shape with the exact serde names/order of
+/// `062a0d001:src-tauri/src/commands/data.rs`. Recomputing the old payload here
+/// is what makes "insert-free fingerprints are byte-identical" checkable
+/// without checking out the old commit.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BaselinePendingRowChange {
+    row_identity: BTreeMap<String, Option<Value>>,
+    original_values: BTreeMap<String, Option<Value>>,
+    current_values: BTreeMap<String, Option<Value>>,
+    changed_columns: Vec<String>,
+    delete_marked: bool,
+}
+
+#[derive(Serialize)]
+struct BaselineFingerprintPayload<'a> {
+    table: &'a RowChangeTableContext,
+    changes: &'a [BaselinePendingRowChange],
+}
+
+fn baseline_fingerprint(table: &RowChangeTableContext, changes: &[PendingRowChange]) -> String {
+    let changes: Vec<BaselinePendingRowChange> = changes
+        .iter()
+        .map(|change| BaselinePendingRowChange {
+            row_identity: change.row_identity.clone(),
+            original_values: change.original_values.clone(),
+            current_values: change.current_values.clone(),
+            changed_columns: change.changed_columns.clone(),
+            delete_marked: change.delete_marked,
+        })
+        .collect();
+    let bytes = serde_json::to_vec(&BaselineFingerprintPayload {
+        table,
+        changes: &changes,
+    })
+    .unwrap();
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn fingerprint_of(table: &RowChangeTableContext, changes: &[PendingRowChange]) -> String {
+    changes_fingerprint(table, &canonicalize_changes(changes).unwrap()).unwrap()
+}
+
+/// Backward compatibility, checked against the old algorithm rather than
+/// against the new one's own output.
+#[test]
+fn insert_free_fingerprint_is_byte_identical_to_the_pre_insert_payload() {
+    let table = table_context("baseline-conn", "baseline-session");
+    let changes = vec![update_change(7, "Alice", "Updated"), delete_change(3)];
+
+    let canonical = canonicalize_changes(&changes).unwrap();
+    let actual = changes_fingerprint(&table, &canonical).unwrap();
+    let expected = baseline_fingerprint(&table, &canonical);
+
+    assert_eq!(
+        actual, expected,
+        "an insert-free plan must hash exactly the pre-INSERT payload"
+    );
+
+    // The new marker must be absent from the wire form, not merely `false`:
+    // serializing it as `insertMarked: false` would change every fingerprint.
+    let json = serde_json::to_string(&canonical[0]).unwrap();
+    assert!(
+        !json.contains("insertMarked"),
+        "the marker leaked into the fingerprint payload: {json}"
+    );
+    assert!(json.contains("deleteMarked"));
+}
+
+#[test]
+fn insert_values_columns_and_row_order_all_reach_the_fingerprint() {
+    let table = table_context("fp-conn", "fp-session");
+    let first = insert_change(&[("name", Some(Value::String("first".into())))]);
+    let second = insert_change(&[("name", Some(Value::String("second".into())))]);
+
+    let base = fingerprint_of(&table, &[first.clone(), second.clone()]);
+    assert_eq!(
+        base,
+        fingerprint_of(&table, &[first.clone(), second.clone()]),
+        "the same plan must hash the same"
+    );
+
+    // Swapping two drafts changes execution order (auto-increment allocation),
+    // so it must change the fingerprint. `draft_id` does not exist here, so this
+    // is the strongest available statement of "order is covered".
+    assert_ne!(
+        base,
+        fingerprint_of(&table, &[second.clone(), first.clone()]),
+        "insert row order must be covered by the fingerprint"
+    );
+
+    let mut edited = first.clone();
+    edited
+        .current_values
+        .insert("name".into(), Some(Value::String("edited".into())));
+    assert_ne!(
+        base,
+        fingerprint_of(&table, &[edited, second.clone()]),
+        "editing a written value must invalidate the confirmed fingerprint"
+    );
+
+    // NULL-vs-unwritten is a real intent difference and must be visible too.
+    let with_null = insert_change(&[("note", None)]);
+    assert_ne!(
+        fingerprint_of(&table, &[with_null]),
+        fingerprint_of(&table, &[insert_change(&[])]),
+        "writing NULL must differ from leaving the column to its default"
+    );
+}
+
+/// W-2: the identity guard must fire *before* SQL generation. Rendering SQL on
+/// this driver fails, so a driver error would prove the guard ran too late.
+#[tokio::test]
+async fn empty_identity_is_rejected_before_any_sql_is_generated() {
+    // `parameterized_writes` stays false: every builder call is unsupported.
+    let test = TestAppState::with_options(crate::testing::app_state::rich_mock_options()).await;
+    let (_, conn_id) = test.save_and_connect("guard-before-sql").await;
+
+    let mut delete = delete_change(1);
+    delete.row_identity = BTreeMap::new();
+    let error = preview_pending_changes_impl(
+        &test.state,
+        table_context("guard-before-sql", &conn_id),
+        vec![delete],
+    )
+    .await
+    .unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("DELETE requires"), "got: {message}");
+    assert!(
+        !message.contains("parameterized row writes are not supported"),
+        "SQL was generated before the identity guard ran: {message}"
+    );
+    assert_eq!(test.mock.execute_calls(), 0);
+    assert!(
+        !crate::commands::session_transaction_status_impl(&test.state, conn_id)
+            .await
+            .unwrap(),
+        "a rejected plan must not open a transaction"
+    );
+}
+
+/// The guard must not misfire on new rows, which have no identity by design.
+#[tokio::test]
+async fn the_identity_guard_name_only_the_offending_operation() {
+    let test = with_parameterized_driver().await;
+    let (_, conn_id) = test.save_and_connect("guard-mixed").await;
+
+    let mut delete = delete_change(1);
+    delete.row_identity = BTreeMap::new();
+    let error = preview_pending_changes_impl(
+        &test.state,
+        table_context("guard-mixed", &conn_id),
+        vec![
+            insert_change(&[("name", Some(Value::String("Ada".into())))]),
+            delete,
+        ],
+    )
+    .await
+    .unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("DELETE requires"), "got: {message}");
+    assert!(
+        !message.contains("INSERT requires"),
+        "the new row was wrongly subject to the identity guard: {message}"
+    );
+}
+
+#[tokio::test]
+async fn mixed_insert_update_delete_plan_runs_in_insert_update_delete_order() {
+    let test = TestAppState::with_resource_provider(insert_capable_options()).await;
+    let (_, conn_id) = test.save_and_connect("mixed-plan").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("mixed-plan", &conn_id),
+        vec![
+            delete_change(9),
+            update_change(1, "Alice", "Updated"),
+            insert_change(&[("name", Some(Value::String("Ada".into())))]),
+        ],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(plan.inserts.len(), 1);
+    assert_eq!(plan.updates.len(), 1);
+    assert_eq!(plan.deletes.len(), 1);
+
+    let response = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap();
+
+    let operations: Vec<&str> = response
+        .statements
+        .iter()
+        .map(|statement| statement.operation.as_str())
+        .collect();
+    assert_eq!(
+        operations,
+        vec!["insert", "update", "delete"],
+        "execution order is fixed: parent rows first, deletes last"
+    );
+    assert_eq!(response.affected_rows, 3);
+    assert!(response
+        .statements
+        .iter()
+        .all(|statement| statement.affected_rows == 1));
+    assert_eq!(test.mock.execute_with_params_calls(), 3);
+    assert_eq!(test.mock.commit_calls(), 1);
+    assert_eq!(test.mock.open_transaction_count(), 0);
+}
+
+#[tokio::test]
+async fn insert_with_no_written_column_executes_default_values() {
+    let test = TestAppState::with_resource_provider(insert_capable_options()).await;
+    let (_, conn_id) = test.save_and_connect("insert-empty-columns").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("insert-empty-columns", &conn_id),
+        vec![insert_change(&[])],
+    )
+    .await
+    .unwrap();
+
+    let response = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(response.affected_rows, 1);
+    assert_eq!(response.statements[0].operation, "insert");
+    assert!(response.statements[0].row_identity.is_empty());
+    assert_eq!(response.statements[0].affected_rows, 1);
+    assert_eq!(test.mock.execute_with_params_calls(), 1);
+    assert_eq!(test.mock.commit_calls(), 1);
+}
+
+#[tokio::test]
+async fn commit_rejects_an_insert_plan_edited_after_preview() {
+    let test = TestAppState::with_resource_provider(insert_capable_options()).await;
+    let (_, conn_id) = test.save_and_connect("insert-tampered").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("insert-tampered", &conn_id),
+        vec![insert_change(&[(
+            "name",
+            Some(Value::String("Ada".into())),
+        )])],
+    )
+    .await
+    .unwrap();
+
+    let mut tampered = plan.clone();
+    tampered.inserts[0]
+        .current_values
+        .insert("name".into(), Some(Value::String("Mallory".into())));
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan: tampered,
+        },
+    )
+    .await
+    .unwrap_err();
+
+    assert!(error.to_string().contains("fingerprint"), "got: {error}");
+    assert_eq!(
+        test.mock.execute_with_params_calls(),
+        0,
+        "a stale plan must be rejected before anything is written"
+    );
+}
+
+/// Rebuilding the plan from its own metadata must be a fixed point.
+#[tokio::test]
+async fn canonicalizing_the_rebuilt_plan_is_idempotent_for_new_rows() {
+    let test = with_parameterized_driver().await;
+    let (_, conn_id) = test.save_and_connect("insert-rebuild").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("insert-rebuild", &conn_id),
+        vec![
+            insert_change(&[("name", Some(Value::String("Ada".into()))), ("note", None)]),
+            delete_change(4),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let once = canonicalize_changes(&plan_changes(&plan)).unwrap();
+    let twice = canonicalize_changes(&once).unwrap();
+    assert_eq!(
+        changes_fingerprint(&plan.table, &once).unwrap(),
+        plan.fingerprint
+    );
+    assert_eq!(
+        changes_fingerprint(&plan.table, &twice).unwrap(),
+        plan.fingerprint
+    );
+    assert!(
+        once.iter().any(|change| change.insert_marked),
+        "the rebuild dropped the new row"
+    );
+    // A new row's identity only exists after execution; the rebuilt plan must
+    // not invent one out of `current_values`.
+    for change in once.iter().filter(|change| change.insert_marked) {
+        assert!(change.row_identity.is_empty());
+        assert!(change.original_values.is_empty());
+    }
+}
+
+/// The caller's explicit transaction must swallow the inserts, not a new one.
+#[tokio::test]
+async fn insert_joins_the_callers_manual_transaction_instead_of_opening_one() {
+    let test = TestAppState::with_resource_provider(insert_capable_options()).await;
+    let (_, conn_id) = test.save_and_connect("insert-manual-tx").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("insert-manual-tx", &conn_id),
+        vec![
+            insert_change(&[("name", Some(Value::String("Ada".into())))]),
+            update_change(1, "Alice", "Updated"),
+        ],
+    )
+    .await
+    .unwrap();
+
+    crate::commands::begin_session_transaction_impl(&test.state, conn_id.clone())
+        .await
+        .unwrap();
+    assert_eq!(test.mock.open_transaction_count(), 1);
+    let commits_before = test.mock.commit_calls();
+
+    let platform = test.state.platform_require().unwrap();
+    let scope = platform.begin_call();
+    let runtime = platform.runtime().unwrap();
+    let handle = runtime
+        .get_session_by_id(scope.context(), &conn_id)
+        .await
+        .unwrap()
+        .handle;
+
+    let response = commit_pending_changes_with_handle(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id.clone(),
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+        Some(handle),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(response.affected_rows, 2);
+    assert_eq!(
+        test.mock.execute_with_params_calls(),
+        2,
+        "insert + update must really run inside the caller's transaction"
+    );
+    assert_eq!(
+        test.mock.commit_calls(),
+        commits_before,
+        "the ChangeSet must not commit the caller's transaction"
+    );
+    assert_eq!(
+        test.mock.open_transaction_count(),
+        1,
+        "no second transaction may be opened"
+    );
+    assert!(
+        crate::commands::session_transaction_status_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap(),
+        "the caller keeps control of its transaction"
+    );
+    crate::commands::rollback_session_transaction_impl(&test.state, conn_id)
+        .await
+        .unwrap();
+}

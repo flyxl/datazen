@@ -787,3 +787,36 @@ async fn execute_with_params_requires_pool() {
         .unwrap_err();
     assert!(matches!(error, DriverError::ConnectionFailed(_)));
 }
+
+#[test]
+fn bound_insert_keeps_mysql_quoting_and_omits_unwritten_columns() {
+    let driver = MysqlDriver::new(false);
+    let insert = driver
+        .build_insert_statement(
+            "users",
+            &[
+                ("name", Some(Value::String("O'Brien".into()))),
+                ("note", None),
+            ],
+        )
+        .unwrap();
+
+    // MySQL placeholders are positional `?` (bound in order), and identifiers
+    // use backticks with doubling — the same rendering as UPDATE/DELETE.
+    assert_eq!(
+        insert.sql,
+        "INSERT INTO `users` (`name`, `note`) VALUES (?, ?)"
+    );
+    assert_eq!(insert.parameters.len(), 2);
+    assert!(
+        matches!(&insert.parameters[0], Value::String(value) if value == "O'Brien"),
+        "the value must travel bound, not as SQL text"
+    );
+    assert!(matches!(&insert.parameters[1], Value::Null));
+    // `id` is Unset: it must not be written at all, or auto-increment dies.
+    assert!(!insert.sql.contains("id"));
+
+    // MySQL cannot RETURNING; the host must take the degradation path instead
+    // of guessing a primary key.
+    assert_eq!(driver.insert_returning_clause(&["id"]), None);
+}

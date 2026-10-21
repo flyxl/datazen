@@ -853,6 +853,12 @@ mod tests {
         precise_cancel: bool,
         ddl_atomicity: Option<DdlAtomicity>,
         full_fk_catalog_visibility: bool,
+        /// Sentinel returned by the [`DatabaseDriver::build_insert_statement`]
+        /// override. `None` models a driver that keeps the trait default, so a
+        /// completed seam has to be set explicitly.
+        insert_sentinel: Option<String>,
+        /// Sentinel returned by [`DatabaseDriver::insert_returning_clause`].
+        returning_sentinel: Option<String>,
     }
 
     impl FakeDriver {
@@ -864,6 +870,8 @@ mod tests {
                 precise_cancel: false,
                 ddl_atomicity: None,
                 full_fk_catalog_visibility: false,
+                insert_sentinel: None,
+                returning_sentinel: None,
             })
         }
 
@@ -875,6 +883,8 @@ mod tests {
                 precise_cancel: true,
                 ddl_atomicity: None,
                 full_fk_catalog_visibility: false,
+                insert_sentinel: None,
+                returning_sentinel: None,
             })
         }
 
@@ -886,6 +896,8 @@ mod tests {
                 precise_cancel: false,
                 ddl_atomicity: Some(atomicity),
                 full_fk_catalog_visibility: false,
+                insert_sentinel: None,
+                returning_sentinel: None,
             })
         }
 
@@ -893,6 +905,19 @@ mod tests {
             Arc::get_mut(&mut self)
                 .expect("fake driver is uniquely owned")
                 .full_fk_catalog_visibility = true;
+            self
+        }
+
+        /// Arms the two INSERT seams with values no default implementation can
+        /// produce, so forwarding is observable rather than merely plausible.
+        fn with_insert_seams(
+            mut self: Arc<Self>,
+            insert_sentinel: &str,
+            returning_sentinel: Option<&str>,
+        ) -> Arc<Self> {
+            let this = Arc::get_mut(&mut self).expect("fake driver is uniquely owned");
+            this.insert_sentinel = Some(insert_sentinel.to_string());
+            this.returning_sentinel = returning_sentinel.map(str::to_string);
             self
         }
 
@@ -922,6 +947,27 @@ mod tests {
 
         fn ddl_atomicity(&self) -> DdlAtomicity {
             self.ddl_atomicity.unwrap_or(DdlAtomicity::Unknown)
+        }
+
+        /// Mirrors a real driver that extends the default INSERT builder: the
+        /// sentinel proves the wrapper reached *this* body instead of inheriting
+        /// the trait default.
+        fn build_insert_statement(
+            &self,
+            _table: &str,
+            _values: &[(&str, Option<Value>)],
+        ) -> Result<BoundSqlStatement, DriverError> {
+            Ok(BoundSqlStatement {
+                sql: self
+                    .insert_sentinel
+                    .clone()
+                    .unwrap_or_else(|| "FAKE_DRIVER_DEFAULT_UNSET".into()),
+                parameters: Vec::new(),
+            })
+        }
+
+        fn insert_returning_clause(&self, _columns: &[&str]) -> Option<String> {
+            self.returning_sentinel.clone()
         }
 
         async fn has_complete_foreign_key_catalog_visibility(
@@ -1214,6 +1260,8 @@ mod tests {
                 precise_cancel: false,
                 ddl_atomicity: None,
                 full_fk_catalog_visibility: false,
+                insert_sentinel: None,
+                returning_sentinel: None,
             },
         };
         let handle = ConnectionHandle {
@@ -1253,6 +1301,34 @@ mod tests {
             .iter()
             .any(|e| matches!(e, QueryStreamEvent::StatementStart { .. })));
         assert!(matches!(events.last(), Some(QueryStreamEvent::Done { .. })));
+    }
+
+    /// `ReuseDriver` must forward both INSERT seams to the wrapped driver.
+    ///
+    /// The sibling test in `traits/sql_text.rs` uses `MockDriver`, which does
+    /// *not* override `build_insert_statement`; there the wrapper and the inner
+    /// driver both fall through to the same default body, so that assertion
+    /// cannot tell forwarding from inheritance. This one arms a real override
+    /// with a sentinel, which is the only way to observe the wrapper's decision.
+    #[test]
+    fn reuse_driver_forwards_both_insert_seams_to_the_inner_driver() {
+        let inner = FakeDriver::new(0, false)
+            .with_insert_seams("SENTINEL INNER INSERT", Some("RETURNING `id`"));
+        let reuse = ReuseDriver::new(inner, "doris");
+
+        let statement = reuse
+            .build_insert_statement("rows", &[("name", Some(Value::Integer(1)))])
+            .expect("forwarded insert builder");
+        assert_eq!(
+            statement.sql, "SENTINEL INNER INSERT",
+            "the wrapper inherited the generic builder instead of forwarding"
+        );
+
+        assert_eq!(
+            reuse.insert_returning_clause(&["id"]),
+            Some("RETURNING `id`".to_string()),
+            "the wrapper inherited `None` instead of forwarding the inner clause"
+        );
     }
 
     #[tokio::test]
