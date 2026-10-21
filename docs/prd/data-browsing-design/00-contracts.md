@@ -545,6 +545,8 @@ export interface GridSelection {
    >
    > **合法例外的边界（2026-10-21 第 2 轮复测后补）**：契约禁止的是「`none` / `cell` + **非空** `selectedRows`」这种**两套真相并存**，**不是**「`row` + **空**行集」。后者是正常状态——`toggleSelectAll` 反选到 0 行、`selectRow` 点同一行取消，都会自然产生「仍在 row 模式但一行没选」。**不要**为此加「空行集就退回 `none`」的逻辑：那会让「取消最后一行后按 Shift 连选」失去锚点语义。
 >
+> **共享常量必须冻结**：`EMPTY_GRID_SELECTION` / `ROW_MODE_GRID_SELECTION` 这类被多个写点以**同一引用**存进所有面板的常量，必须 `Object.freeze` 且其 `extraRanges` 也冻结（`Object.freeze([])`）。否则一次误写（`push` / 字段赋值）会同时污染所有面板且**不报错**；冻结后同类误写抛 `TypeError`，是 fail-loud。〔契约审计修订 2026-10-21〕GS4-D1 实测：原先 `ROW_MODE_GRID_SELECTION` 未冻结、`extraRanges` 可写，靠「当前没有写操作」侥幸成立。
+>
 > 另：`deleteRows` 这类**不改变选择语义**的动作**不得**写 `selectedRows` / `lastSelectedIndex`（删除定位由 `rowIdentityAnchors` 承担）；要保留「删后仍选中」的视觉，必须走 `setRowModeSelection` 与 mode 成对写入。实测偏差 GS2-D2 即此类。
 >
 > 推论（下游分册必须遵守）：**「只改 mode、保留行集」不是合法操作**。若 04/05/03 需要这类语义，必须走 `setRowModeSelection`，不得直接 `setGridSelection({mode:'row', …})` 绕过行集写入——绕过会得到「`mode: 'row'` + **空**行集」（这个状态本身合法，但**语义是「一行都没选」而不是「选了那几行」**，行级操作会静默作用 0 行）。同理，`mode:'row'`/`none` 时 `anchor`/`focus` 必须为 `null`（I2），`applyGridSelection` 应把几何一并归一化，不能让调用方塞进来。同理，`toggleSelectAll` 也必须切到 `row` 模式，否则全选会留下「`mode: 'none'` + 非空 `selectedRows`」。
