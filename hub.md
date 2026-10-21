@@ -105,7 +105,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 1 轮修复中（D-E1 时钟回拨失效开放 / D-E2 文档说谎 / D-E3 同义反复 / D-E4 deny-all 无用例） |
 | **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | 🔄 data-transfer 侧（`plan_store` 端口化 + **激活 40 个孤儿测试**） |
 | **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | 🔄 data-sync 侧（`plan_store` + `comparison_store` 端口化 + 删门面） |
-| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ Tester **TEST_PASSED** → 第 1 轮小修中 |
+| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 第 1 轮小修完成 `d54812172` → 事实准确性复测中 |
 
 **派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖。**已执行**（四树均推进到 `65dac1e2c` = C + B + `OrganizationScope`）。
 
@@ -507,6 +507,9 @@ Tester 补的 8 条用例才把它们钉死。**这条已作为后续所有轨�
 
 **G 的缺陷处置**：
 - `G-01`（台账仍列 `IdentityResolver` 为未实现）→ **协调者已改**。
+- `G-02`/`G-05`/`G-06`/`G-07` → **已修**（第 1 轮 `487c6dd4b`）。特别值得记：G 把 **G-04 教训落成了永久事实** —— 不只写进台账（交付即销毁），而是落进 `docs/architecture/platform/shared-boundaries-and-ports.md` §4.3 的引用块 + `execution_identity.rs` 模块头「改这个文件之前先看变异」。**方法论进代码库，而不是随交付蒸发** —— 这是本 initiative 里"教训沉淀"做得最好的一处。
+- **G-02 的失败半径是否收窄**（现为整个平台装配失败）→ **裁决：不收窄**。收窄意味着"平台未就绪时用某种降级身份继续"，那是比"装配失败"更糟的失败方向；现状是刻意的失败关闭。
+- 失败画像：本轨 36 次整包挂 3 次 vs 基线 42 次挂 1 次，Fisher p≈0.3 在噪声内；首版（每条用例各建真 Store）的 4/6 才是被放大过的形态，已由零 I/O 化压回噪声带。
 - `G-02`（`adapter.rs` 注释**误述失败半径**：写"仅身份能力缺席"，实际 `?` 让整个 `PlatformAdapter::inject` 失败）→ **要求修**（与 A 轨 D-01 同类：注释描述了代码不保证的行为）。
 - `G-03`（"主密钥取不到 ⇒ 失败关闭"**不可测**：该路径不可达、兜底分支不存在，变异实测 24 条全绿）→ 接受为**结构性满足**，但要求在台账写明"未被测试钉住"。
 - `G-05` / `G-06` / `G-07`（主密钥轮换 ⇒ 身份键全变、消息编码与长度前缀、域标签取值、`resolve` 拒绝委托上下文在另两份文档未写）→ **要求补文档**（这些是"后来者最容易无意改坏"的地方：长度前缀看着像冗余）。
