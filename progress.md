@@ -8,6 +8,10 @@ feature-core 的三个存储 trait（`DashboardStore` / `DashboardRunStore` / `W
 加上 `OrganizationScope`，使多租户宿主能在**同一个存储实现**上区分「本组织的数据」与
 「别的组织的数据」；桌面形态是单租户，只承认自己那一个组织。
 
+---
+
+# 第 1 轮（实现）
+
 ## 已完成
 
 ### 1. feature-core（共享层，规则 + 端口）
@@ -16,7 +20,6 @@ feature-core 的三个存储 trait（`DashboardStore` / `DashboardRunStore` / `W
   - `DashboardStore` 的 **10 个方法**全部加 `scope: &OrganizationScope`（`&self` 之后第一个参数）。
   - 规则层自由函数 `list_dashboards` / `get_dashboard` / `save_dashboard` / `delete_dashboard` /
     `set_dashboard_refresh_paused` / `find_workflow_refs` / `assign_import_id` 全部把 scope 传下去。
-  - 内部 `widgets_of` 同样带 scope。
 - `packages/feature-core/src/dashboard/runs.rs`
   - `DashboardRunStore` 的 3 个方法全部带 scope；`write_run` / `list_run_index` / `get_run` 带 scope。
 - `packages/feature-core/src/dashboard/create.rs`
@@ -42,40 +45,17 @@ feature-core 的三个存储 trait（`DashboardStore` / `DashboardRunStore` / `W
   - 三个 `impl` 全部加 org 闸门：别的组织的作用域 → 空列表 / `None` / `NotFound`；
     **不返回任何「无权限」类错误**（CM-05）。
   - 写操作（`upsert_*` / `delete_*`）对别的组织一律 `NotFound`；workflow 的 `delete_workflow`
-    按其既有契约「删除不存在的 id 不是错误」返回 `Ok(())`。
+    按其既有契约「删除不存在的 id 不是错误」返回 `Ok(())`（语义见 D-02）。
   - **SQLite 没有加 `organization_id` 列**：桌面是单租户，schema 不变。
-- `src-tauri/src/commands/mod.rs`：`AppState::organization_scope()`——IPC 路径的作用域来自
-  adapter 组装的请求上下文（`OrganizationScope::from_context(&ctx)`），命令参数无法覆盖身份。
-- 无请求上下文的桌面内路径（后台 monitor、MCP、调度器）用 `local_organization_scope()`。
 - `src-tauri/src/monitor/scheduled.rs`：定时执行的运行记录用 grant 自带请求上下文的作用域。
 
-### 3. 跨组织用例（新增 17 条）
+### 3. 跨组织用例（第 1 轮新增 17 条）
 
-feature-core（规则层，10 条）：
-
-- `dashboard/store.rs`：`a_dashboard_of_another_organization_is_not_found`、
-  `the_widgets_of_another_organization_are_not_found`、
-  `two_organizations_keep_their_own_dashboards_apart`、
-  `a_dashboard_of_another_organization_cannot_be_changed_or_removed`
-- `dashboard/runs.rs`：`the_runs_of_another_organization_are_not_found`、
-  `two_organizations_keep_their_own_runs_apart`
-- `workflow/registry.rs`：`the_workflows_of_another_organization_are_not_found`、
-  `two_organizations_keep_their_own_workflows_apart`、
-  `a_workflow_of_another_organization_cannot_be_removed`、
-  `the_builtin_workflows_are_seeded_per_organization`
-
-宿主（存储隔离，7 条）：
-
-- `dashboard/store_tests.rs`：`a_dashboard_of_another_organization_is_not_found`、
-  `the_widgets_of_another_organization_are_not_found`、
-  `a_dashboard_of_another_organization_cannot_be_changed_or_removed`、
-  `the_workflow_refs_of_another_organization_are_not_found`
-- `dashboard/runs.rs`：`the_runs_of_another_organization_are_not_found`
-- `workflow/registry.rs`：`the_workflows_of_another_organization_are_not_found`、
-  `a_workflow_of_another_organization_cannot_be_removed`
-
-断言一律逐条比对空/None（`assert!(...is_empty())` / `assert!(...is_none())` /
-`assert!(matches!(..., Err(NotFound(_)))`），**没有** `assert!(x.is_err())` 这类模糊断言。
+feature-core（规则层 10 条）：`dashboard/store.rs` 4 条、`dashboard/runs.rs` 2 条、
+`workflow/registry.rs` 4 条；宿主（存储隔离 7 条）：`dashboard/store_tests.rs` 4 条、
+`dashboard/runs.rs` 1 条、`workflow/registry.rs` 2 条。断言一律逐条比对空/None
+（`assert!(...is_empty())` / `assert!(...is_none())` / `assert!(matches!(..., Err(NotFound(_)))`），
+**没有** `assert!(x.is_err())` 这类模糊断言。
 
 ### 4. 文档
 
@@ -84,7 +64,152 @@ feature-core（规则层，10 条）：
 - `docs/architecture/platform/shared-boundaries-and-ports.md` 全文没有提到这三个存储 trait，
   无失效描述，未改。
 
-## 门禁实测（HEAD = 65dac1e2cf79fe7099b57988ca4ecfc7095e2ee1）
+---
+
+# 第 2 轮（修-测循环 · 第 1 轮）
+
+独立 Tester 复测结论 **TEST_FAILED**：1 条阻塞缺陷（D-01）+ 2 条非阻塞（D-02 / D-03）。
+Tester 留下三笔**只动测试**的提交，本轨道 cherry-pick 进来：
+
+- `2e3a1fc23`（来源 `3a1ffa622f3ae427dc98e8d13be841778ca490ae`，Tester 的
+  `test(verify): 组织作用域轨道的验证覆盖（P0/P1/P3/P7）`）：
+  `src-tauri/src/platform/scope_tests.rs`（新，5 条）、`src-tauri/src/commands/org_scope_surface_tests.rs`
+  （新，2 条 IPC 载荷守卫）、`src-tauri/src/dashboard/create.rs` 的 3 条 `WidgetCreationHost`
+  跨组织用例、`src-tauri/src/workflow/registry.rs` 1 条断言加固。**零生产代码改动。**
+
+## D-01【阻塞·行为回归】IPC 命令因「身份不可用」而整体不可用 —— 已修
+
+**根因**：第 1 轮把 IPC 路径的作用域写成
+`AppState::organization_scope()` → `platform_require()` → `begin_call().context()`，
+于是 adapter 组装失败（「取不到当前 OS 用户名」）时仪表板 / workflow 命令整体失败。
+
+**修法（协调者裁决：启动期确定一次 → 存进 `AppState` → 请求期直接取）**：
+
+1. `AppState` 新增字段 `pub organization_scope: OrganizationScope`，
+   值在**启动期**（`bootstrap/app_state.rs::finish_app_state`）算好并写入；
+2. `AppState::organization_scope()` **直接返回该字段**，不再走 `platform_require()`。
+
+改后的实现（逐字）：
+
+```rust
+    /// 本次 IPC 调用的**组织作用域**。
+    ///
+    /// 作用域在**启动期**确定一次并存进 [`AppState::organization_scope`]，请求期
+    /// 直接取：命令参数里没有任何字段能覆盖组织身份（INV-01）。
+    ///
+    /// 桌面形态下这个值永远是桌面自己那一个组织（安装级常量），因此本方法
+    /// **不依赖** platform adapter 是否组装成功——「取不到当前 OS 用户名」只影响
+    /// `principalId`，不影响组织边界；仪表板 / workflow 命令不会因此整体不可用。
+    ///
+    /// 保留 `Result` 是因为「作用域从哪来」是宿主形态的自由度：多租户宿主可能
+    /// 按请求解析组织，那一步是可以失败的。桌面形态不会失败。
+    pub fn organization_scope(&self) -> Result<OrganizationScope, CommandError> {
+        Ok(self.organization_scope.clone())
+    }
+```
+
+字段（逐字）：
+
+```rust
+    /// 桌面形态的**组织作用域**：**启动期确定一次**，请求期直接取。
+    ///
+    /// 桌面是单租户：一份 app data 就是一个组织。组织的值是**安装级常量**
+    /// （`crate::platform::LOCAL_ORGANIZATION_ID`），与「当前 OS 用户名能不能取到」
+    /// **无关**——后者只决定 `principalId`。因此组织作用域**不依赖** platform
+    /// adapter 是否组装成功：身份不可用时，仪表板 / workflow 命令依然可用。
+    ///
+    /// 作用域只在这里确定一次，请求体里的任何字段都覆盖不了它（INV-01）。
+    pub organization_scope: OrganizationScope,
+```
+
+装配点（逐字，`bootstrap/app_state.rs::finish_app_state`）：
+
+```rust
+        desktop_job_host,
+        // 组织作用域在**启动期**确定一次：桌面是单租户，组织的值是安装级常量，
+        // 与「当前 OS 用户名能不能取到」无关。请求期直接取这份值（INV-01）。
+        organization_scope: crate::platform::local_organization_scope(),
+    };
+```
+
+**表征用例已反转**（`src-tauri/src/platform/scope_tests.rs`，
+`the_ipc_scope_is_unavailable_when_the_platform_adapter_failed_to_assemble` →
+`the_ipc_scope_is_still_available_when_the_platform_adapter_failed_to_assemble`）：
+
+```rust
+/// 【P0 行为回归·不变量】adapter 组装失败时，IPC 路径的**组织作用域仍然可用**。
+///
+/// 桌面是单租户，组织的值是**安装级常量**（`LOCAL_ORGANIZATION_ID`），
+/// 与「当前 OS 用户名能不能取到」**无关**——后者只决定 `principalId`。
+///
+/// 因此仪表板 / workflow 命令**不因身份不可用而整体不可用**：作用域在启动期
+/// 确定一次并存在 `AppState` 里，请求期直接取，不走 `platform_require()`。
+///
+/// 这条用例钉住本轮修复的**核心不变量**：任何将来把作用域来源改回「请求期
+/// 解析身份」的改动，都会先把它弄红。
+#[tokio::test]
+async fn the_ipc_scope_is_still_available_when_the_platform_adapter_failed_to_assemble() {
+    let test = crate::testing::app_state::TestAppState::new().await;
+    let mut state = test.state.clone();
+    state.platform = failed_entry();
+
+    let scope = state
+        .organization_scope()
+        .expect("adapter 组装失败时 IPC 组织作用域仍然可用");
+    assert_eq!(
+        scope.organization_id().as_str(),
+        LOCAL_ORGANIZATION_ID,
+        "组织作用域不得依赖 adapter 是否组装成功"
+    );
+    assert_eq!(
+        scope.organization_id(),
+        local_organization_scope().organization_id(),
+        "IPC 路径与后台路径必须看到同一个组织"
+    );
+}
+```
+
+Tester 的另一条护栏 `the_ipc_scope_and_the_background_scope_name_the_same_organization`
+**一字未改**，仍然通过（两条路径都指向 `LOCAL_ORGANIZATION_ID`）。
+
+## D-02【非阻塞·语义歧义】跨组织删除 workflow 返回 `Ok(())` —— 只补契约，不改语义
+
+按协调者裁决：不改语义（改成 `NotFound` 会让「删除本就不存在的 id」也变成错误，
+那是改变既有行为）。已在 `packages/feature-core/src/workflow/registry.rs` 的
+`WorkflowDefinitionStore::delete_workflow` 契约注释里写清，并同步补在
+`WorkflowRegistry::delete` 与桌面实现上：
+
+```rust
+    /// Delete one saved workflow. Deleting an unknown id is not an error.
+    ///
+    /// **跨组织删除与删除一个不存在的 id 一样返回 `Ok(())`**：在本契约下二者
+    /// 不可区分——越组织一律按「不存在」处理（CM-05），而「删除不存在的 id 不是
+    /// 错误」是既有约定。因此调用方**不应**把这个 `Ok(())` 读作「目标已删除」，
+    /// 它只说明「没有需要删除的东西」。
+```
+
+Tester 加固的那条断言（跨组织删除前后 `list` 长度不变）保留。
+
+## D-03【非阻塞·台账口径】断言变化计数 —— 已改准
+
+第 1 轮台账写「feature-core 2 条断言变化」，口径夸大。机械 diff 实测（`git diff -w`，
+只数**既有**断言行）：
+
+| 位置 | 既有断言行变化 | 性质 |
+| --- | --- | --- |
+| feature-core `workflow/registry.rs` | `assert_eq!(records[0].visibility, …)` → `records[0].1.visibility` | **1 条元组改写**：内存存储改成按组织分区，记录是 `(OrganizationId, record)`。断言语义不变 |
+| feature-core `workflow/registry.rs` | `registry.get("hidden-1")` → `registry.get(&scope, "hidden-1")` | 只补 `&scope` 参数 |
+| feature-core `dashboard/store.rs` | `get_dashboard(&store, …)` → `get_dashboard(&scope, &store, …)` | 只补 `&scope` 参数 |
+| host `workflow/registry.rs` | `reg.get("hidden-1")` → `reg.get(&scope, "hidden-1")` | 只补 `&scope` 参数 |
+| host `dashboard/store_tests.rs` | `list_dashboards(&*db)` → `list_dashboards(&scope, &*db)` | 只补 `&scope` 参数 |
+| host `dashboard/export.rs` | `list_dashboards(&*db)` → `list_dashboards(&scope, &*db)` | 只补 `&scope` 参数 |
+
+合计 **6 条既有断言行变化 = 1 条元组改写 + 5 条只补 `&scope` 参数**；
+其余 diff 是 rustfmt 的换行重排（不改变断言内容）。**断言未改弱，结论不变。**
+
+---
+
+## 门禁实测（第 2 轮，HEAD = `2e3a1fc23` + 本轮修复提交之前的工作区）
 
 | 命令 | 退出码 | 结论行 |
 | --- | --- | --- |
@@ -93,27 +218,45 @@ feature-core（规则层，10 条）：
 | `cargo check -p datazen-feature-core -p datazen --all-targets` | 0 | 无 error |
 | `cargo check -p datazen --features webdriver --all-targets` | 0 | 无 error |
 | `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-feature-core --lib` | 0 | `test result: ok. 377 passed; 0 failed; 0 ignored` |
-| `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib` | 0 | `test result: ok. 1273 passed; 0 failed; 9 ignored` |
+| `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen --lib` | 0 | `test result: ok. 1283 passed; 0 failed; 9 ignored` |
+| `env -u USER -u DATAZEN_DESKTOP_USER … cargo test -p datazen --lib` | 101 | `test result: FAILED. 1041 passed; 242 failed; 9 ignored` |
 
-### 基线（同一命令、同一工作树，stash 后在 HEAD 实测）
+### `env -u USER` 这条的命令行专项核验
 
-| 包 | HEAD 基线 | 本轨道之后 | 增量 |
+- 修复前（Tester 实测）：**248 failed**，其中 **6 条由本轨引入**。
+- 修复后（本轨道实测，**连跑两次结果完全一致**）：**242 failed** ⇒ **恰好 6 条恢复**。
+- 恢复的 6 条（逐条按名字核对，现已不在失败清单里）：
+  `commands::dashboard::tests::dashboard_crud_via_impl`、
+  `commands::ai::integration_tests::workflow_save_list_get_delete`、
+  `commands::ai::integration_tests::workflow_execute_ai_step_with_wiremock`、
+  `commands::ai::integration_tests::workflow_history_clear_after_execute`、
+  `commands::ai::integration_tests::dashboard_hidden_workflow_execute_skips_history`、
+  `commands::ai::integration_tests::ai_providers_config_prompt_workflow_impl`。
+- 剩余 242 条**没有一条属于本轨引入的 6 条**；按模块分布：
+  `commands` 195、`services` 24、`mcp` 14、`workflow` 4、`platform` 4、`monitor` 1。
+- 它们的失败原因**全部**是「取不到当前桌面登录用户」（`principalId` 不可得），
+  即 **178 条 `platform is ready: ApiError { code: Unauthenticated …}`** +
+  23 条 `unauthenticated` / `NotConfigured("无法确定当前桌面登录用户…")` +
+  其余同类；**没有一条的失败信息提到组织作用域**（日志里 `organization_scope` /
+  「组织作用域」零命中）。
+- 这 242 条是**改造前既有**的 adapter 依赖（AI / connection / data / data_transfer /
+  backup / sync / schema_diff / wapps / mcp / native_tool / 测试夹具要求 platform ready），
+  **不在本轨道范围**，本轨道没有为「让它们全绿」去动它们。
+
+### 基线（同一命令、同一工作树，`git stash` 后在 `65dac1e2c` 实测）
+
+| 包 | HEAD 基线 | 第 1 轮之后 | 第 2 轮（+Tester 10 条） |
 | --- | --- | --- | --- |
-| feature-core | 367 passed | 377 passed | +10（本轨道新增） |
-| host | **1266** passed | 1273 passed | +7（本轨道新增） |
+| feature-core | 367 passed | 377 passed（+10） | 377 passed（不变） |
+| host | **1266** passed | 1273 passed（+7） | **1283 passed**（+10） |
 
-> 任务书写的 host 基线是 1269；本轨道用 `git stash` 在 HEAD 上实测为 **1266 passed; 0 failed;
-> 9 ignored**。差 3 条不影响结论（0 failed，且 +7 与本轨道新增的 7 条宿主用例一一对应），
-> 但**基线数字以实测为准**，任务书的 1269 需上游复核。
+> 任务书写的 host 基线是 1269；本轨道在 HEAD 上实测为 **1266 passed; 0 failed; 9 ignored**。
+> 差 3 条不影响结论（0 failed，且增量与新增用例数一一对应），但**基线数字以实测为准**。
 
 ### 既有断言是否被改动
 
-- 宿主侧**没有任何断言被改写**：所有改动都只是给调用点补上 `&scope` 参数
-  （例如 `assert!(list_dashboards(&*db).unwrap().is_empty())` →
-  `assert!(list_dashboards(&scope, &*db).unwrap().is_empty())`）。
-- feature-core 侧有 2 条断言的写法随内存存储改造变化（内存存储现在按组织分区，
-  记录是 `(OrganizationId, record)` 元组）：`assert_eq!(records[0].visibility, ...)` →
-  `assert_eq!(records[0].1.visibility, ...)`；断言的**语义不变**。
+见上面 D-03 的表格：**6 条既有断言行变化 = 1 条元组改写 + 5 条只补 `&scope` 参数**，
+断言语义与被断言对象一字未改；其余是 rustfmt 换行。
 
 ### clippy
 
@@ -138,6 +281,7 @@ feature-core（规则层，10 条）：
 3. **内置 workflow 播种改为按组织**：全局标志会让多租户下第二个组织拿不到内置 workflow。
    这一改动同时改变了「播种次数」的语义（同一 registry 的不同组织各自播种一次）。
 4. **宿主基线 1269 vs 实测 1266**：请上游复核基线数字的来源。
+5. `progress.md` 在分支根目录（可入库），**合并时必须删除**。
 
 ## 未开始 / 不在本轨道范围
 
@@ -145,3 +289,4 @@ feature-core（规则层，10 条）：
 - 未改动 `packages/platform-api/**`（`OrganizationScope` 词汇已备好）、`packages/runtime/**`、
   `packages/schema-diff/**`、`packages/data-{sync,transfer}/**`、
   `src-tauri/src/commands/{sync,data_transfer,schema_diff}/**`。
+- 未为 `env -u USER` 下那 242 条既有失败做「修复」——它们是改造前的 adapter 依赖，不在本轨范围。

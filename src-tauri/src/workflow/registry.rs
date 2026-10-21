@@ -104,6 +104,8 @@ impl WorkflowDefinitionStore for AppDbWorkflowStore {
 
     fn delete_workflow(&self, scope: &OrganizationScope, id: &str) -> Result<(), String> {
         // 删除不存在的 id 不是错误：别的组织的工作流对本组织同样「不存在」。
+        // 二者在本契约下不可区分 ⇒ 这里的 `Ok(())` 只说明「没有需要删除的东西」，
+        // **不是**「目标已删除」。见 trait 的契约注释。
         if !is_local_scope(scope) {
             return Ok(());
         }

@@ -63,6 +63,11 @@ pub trait WorkflowDefinitionStore: Send + Sync {
     ) -> Result<(), String>;
 
     /// Delete one saved workflow. Deleting an unknown id is not an error.
+    ///
+    /// **跨组织删除与删除一个不存在的 id 一样返回 `Ok(())`**：在本契约下二者
+    /// 不可区分——越组织一律按「不存在」处理（CM-05），而「删除不存在的 id 不是
+    /// 错误」是既有约定。因此调用方**不应**把这个 `Ok(())` 读作「目标已删除」，
+    /// 它只说明「没有需要删除的东西」。
     fn delete_workflow(&self, scope: &OrganizationScope, id: &str) -> Result<(), String>;
 }
 
@@ -315,6 +320,9 @@ impl WorkflowRegistry {
     }
 
     /// Delete one saved workflow.
+    ///
+    /// 跨组织删除与删除一个不存在的 id 一样返回 `Ok(())`（见 trait 的契约注释）：
+    /// 调用方**不应**把它读作「目标已删除」。
     pub async fn delete(&self, scope: &OrganizationScope, id: &str) -> Result<(), String> {
         validate_workflow_id(id)?;
         let _ = self.ensure_seeded(scope).await;
