@@ -6,6 +6,7 @@ import { TableColumnFilter } from './TableColumnFilter';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { EMPTY_GRID_SELECTION } from '../../stores/tableData/gridSelection';
 import { hasPendingWork } from '../../stores/tableData/pendingChanges';
+import { selectDirtyRow } from '../../stores/tableData/dirtyIndex';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -21,12 +22,17 @@ import {
 import { TableStatusBanners } from './TableStatusBanners';
 import { TableToolbar } from './TableToolbar';
 import { useTableActions } from './useTableActions';
+import { useDirtyIndex } from './useDirtyIndex';
 import { PendingPlanDialog } from './PendingPlanDialog';
 import { useTableDraftRows } from './useTableDraftRows';
 import { isComposingEvent, isEditableTarget } from '../../lib/gridEventGuards';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
-import type { DatabaseType } from '../../types';
+import type { ColumnSchema, DatabaseType } from '../../types';
 import { Spinner } from '../../components/ui/Spinner';
+
+/** Stable empty fallbacks: a fresh array per render would defeat the memos below. */
+const EMPTY_ROWS: Record<string, unknown>[] = [];
+const EMPTY_COLUMNS: ColumnSchema[] = [];
 
 interface TableViewProps {
   /** Table/view panel this grid belongs to; its data slice is keyed by this id. */
@@ -109,6 +115,14 @@ export function TableView({
   /** Panel-scoped action binders: every store call is namespaced by this tab's id. */
   const actions = useTableActions({ panelId, context, invalidateNotice });
 
+  /**
+   * The dirty index of the panel (DB-06): the **single** derivation of "what is
+   * staged but not committed". The grid paints the cells and the bar shows the
+   * counts, and both read this one index — that is what keeps the highlight and
+   * the counter from drifting apart.
+   */
+  const dirtyIndex = useDirtyIndex(ts);
+
   const confirmOnDelete = useSettingsStore((s) => s.settings.confirmOnDelete);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
@@ -140,9 +154,12 @@ export function TableView({
         showReadOnlyTip();
         return;
       }
+      // A row that is marked for deletion must not be edited: it is on its way
+      // out, and the row-level state says so (06 §4.2).
+      if (selectDirtyRow(dirtyIndex, row)?.state === 'deleted') return;
       actions.startEdit(row, col);
     },
-    [actions, isEditable, showReadOnlyTip],
+    [actions, dirtyIndex, isEditable, showReadOnlyTip],
   );
 
   const handleCellEdit = useCallback(
@@ -199,8 +216,8 @@ export function TableView({
     actions.load();
   }, [actions, needsLoad, requestRevision]);
 
-  const columns = ts?.columns ?? [];
-  const rows = ts?.rows ?? [];
+  const columns = ts?.columns ?? EMPTY_COLUMNS;
+  const rows = ts?.rows ?? EMPTY_ROWS;
   const totalRows = ts?.totalRows ?? 0;
   const page = ts?.page ?? 0;
   const pageSize = ts?.pageSize ?? 50;
@@ -237,15 +254,11 @@ export function TableView({
   const selectedRows = ts?.selectedRows ?? new Set<number>();
   const loading = ts?.loading ?? false;
   const error = ts?.error ?? null;
-  const pendingChanges = ts?.pendingChanges ?? new Map();
   const previewPlan = ts?.previewPlan ?? null;
   const pendingStatus = ts?.pendingStatus ?? 'idle';
-  const pendingUpdateCount = [...pendingChanges.values()].filter(
-    (change) => !change.deleteMarked && change.changedColumns.length > 0,
-  ).length;
-  const pendingDeleteCount = [...pendingChanges.values()].filter(
-    (change) => change.deleteMarked,
-  ).length;
+  const dirtyCounts = dirtyIndex.counts;
+  const pendingUpdateCount = dirtyCounts.updateRows;
+  const pendingDeleteCount = dirtyCounts.deleteRows;
   /** Staged new rows; they are pending work just like the staged edits. */
   const pendingInsertCount = ts?.draftInserts.size ?? 0;
   /**
@@ -474,10 +487,11 @@ export function TableView({
         onReload={actions.reload}
       />
       <TablePendingChangesBar
-        pendingCount={pendingChanges.size + pendingInsertCount}
+        pendingCount={dirtyCounts.totalRows + pendingInsertCount}
         updateCount={pendingUpdateCount}
         deleteCount={pendingDeleteCount}
         insertCount={pendingInsertCount}
+        counts={dirtyCounts}
         busy={pendingBusy}
         onPreview={() => void handlePreviewPendingChanges()}
         onCommit={() => void handleCommitPendingChanges()}
@@ -518,6 +532,8 @@ export function TableView({
         onSelectAll={actions.toggleSelectAll}
         onRowClick={actions.setDetailRow}
         highlightedRow={detailRowIndex ?? highlightedNewRowIndex}
+        dirtyByRow={dirtyIndex.byRowIndex}
+        onRestoreRow={actions.unstageRowDelete}
         // The marker of the inserted row is its own channel: the background
         // highlight above is shared with the detail panel, so only a marker
         // with a word on it tells the two apart.

@@ -5,6 +5,7 @@ import { cn } from '../../lib/cn';
 import { tableSessionController } from '../../lib/session/tableSession';
 import type { TableChangeContext } from '../../lib/tableChanges';
 import { extractErrorMessage } from '../../stores/tableData/connectionState';
+import type { DirtyCounts } from '../../stores/tableData/dirtyIndex';
 
 export interface TableTransactionControlsProps {
   panelId: string;
@@ -204,6 +205,14 @@ export interface TablePendingChangesBarProps {
   deleteCount: number;
   /** Staged new rows; shown as its own segment (04 §4.3). */
   insertCount?: number;
+  /**
+   * The dirty-cell counts of the panel (DB-06).
+   *
+   * Omitted = the bar shows exactly what it showed before the dirty state
+   * existed. The counts come from the same index that paints the grid, so the
+   * bar and the grid can never disagree.
+   */
+  counts?: DirtyCounts;
   /** Loading or previewing/committing: every action is disabled while true. */
   busy: boolean;
   onPreview: () => void;
@@ -220,6 +229,7 @@ export function TablePendingChangesBar({
   updateCount,
   deleteCount,
   insertCount = 0,
+  counts,
   busy,
   onPreview,
   onCommit,
@@ -243,6 +253,18 @@ export function TablePendingChangesBar({
       {deleteCount > 0 && (
         <span className="text-fg-muted">
           {t('tableData.pendingDeletes', { count: deleteCount })}
+        </span>
+      )}
+      {counts && counts.totalCells > 0 && (
+        <span data-testid="pending-cells-count" className="text-fg-muted">
+          {t('tableData.pendingCells', { count: counts.totalCells })}
+        </span>
+      )}
+      {counts && counts.cellsOffPage > 0 && (
+        // The grid only paints the current page; this line says that the other
+        // changes are still staged and still committable.
+        <span className="text-fg-muted">
+          {t('tableData.pendingOffPage', { count: counts.cellsOffPage })}
         </span>
       )}
       <div className="ml-auto flex items-center gap-1">

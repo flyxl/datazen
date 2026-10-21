@@ -13,6 +13,7 @@ import {
   type GridSelection,
 } from '../../stores/tableData/gridSelection';
 import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
+import type { DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
 import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
 import { Pagination } from './Pagination';
@@ -105,6 +106,19 @@ export interface DataTableProps {
    */
   newRowIndex?: number | null;
 
+  /**
+   * The dirty state of the current page, keyed by row index (DB-06).
+   *
+   * Omitted / `null` = no dirty marks at all: the grid renders exactly what
+   * it rendered before the dirty state existed (00-contracts R4).
+   */
+  dirtyByRow?: ReadonlyMap<number, DirtyRowEntry> | null;
+  /**
+   * "Restore This Row" — undo the delete mark of a row. Omitted = the context
+   * menu does not offer it.
+   */
+  onRestoreRow?: (rowIndex: number) => void;
+
   loading?: boolean;
   statusBar?: React.ReactNode;
   rowHeight?: number;
@@ -186,6 +200,8 @@ export function DataTable({
   onAddDraftRow,
   editingDraft,
   newRowIndex,
+  dirtyByRow,
+  onRestoreRow,
   statusBar,
   rowHeight = 28,
   exportTableName,
@@ -338,6 +354,8 @@ export function DataTable({
     onAddFilter,
     onCellEdit,
     onDeleteRows,
+    dirtyByRow,
+    onRestoreRow,
     onExport: handleExport,
     t,
   });
@@ -526,6 +544,7 @@ export function DataTable({
               onAddDraftRow={onAddDraftRow}
               editingDraft={editingDraft}
               newRowIndex={newRowIndex ?? null}
+              dirtyByRow={dirtyByRow}
             />
             {loading ? (
               gridRow(

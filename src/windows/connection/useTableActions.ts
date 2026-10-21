@@ -42,6 +42,8 @@ export interface TableActions {
   toggleSelectAll: () => void;
   setGridSelection: (selection: GridSelection) => void;
   deleteRows: (rowIndices: number[]) => void;
+  /** Undo the delete mark of one row (DB-06). */
+  unstageRowDelete: (rowIndex: number) => void;
   previewPendingChanges: () => Promise<RowChangePlan | null>;
   commitPendingChanges: () => Promise<CommitPendingChangesResult>;
   rollbackPendingChanges: () => void;
@@ -132,6 +134,9 @@ export function useTableActions({
       setGridSelection: (selection: GridSelection) =>
         store().setGridSelection(panelId, selection),
       deleteRows: (rowIndices: number[]) => store().deleteRows(panelId, rowIndices),
+      // Restoring a row is not a page move: the notice of the previous commit
+      // still describes the rows the user is looking at.
+      unstageRowDelete: (rowIndex: number) => store().unstageRowDelete(panelId, rowIndex),
       previewPendingChanges: () => store().previewPendingChanges(panelId),
       commitPendingChanges: () => store().commitPendingChanges(panelId),
       rollbackPendingChanges: () => {

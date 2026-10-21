@@ -31,6 +31,7 @@ const labels: DataTableContextMenuLabels = {
   copySelectedRows: 'Copy Selected Rows',
   deleteRow: 'Delete Row',
   export: 'Export',
+  restoreRow: 'Restore This Row',
 };
 
 function ids(items: ReturnType<typeof buildDataTableContextMenuItems>): string[] {

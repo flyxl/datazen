@@ -18,6 +18,8 @@ export type DataTableContextMenuLabels = {
   copySelectedRows: string;
   deleteRow: string;
   export: string;
+  /** "Restore This Row" — offered on a row that is marked for deletion (DB-06). */
+  restoreRow: string;
 };
 
 export type DataTableContextMenuHandlers = {
@@ -34,6 +36,8 @@ export type DataTableContextMenuHandlers = {
   onCopySelectedRows?: () => void;
   onDeleteRow?: () => void;
   onExport?: () => void;
+  /** Undo the delete mark of the right-clicked row (DB-06). */
+  onRestoreRow?: () => void;
 };
 
 export type BuildDataTableContextMenuArgs = {
@@ -60,6 +64,12 @@ export type BuildDataTableContextMenuArgs = {
   canSetNull?: boolean;
   /** Delete row available (needs PK + delete handler). */
   canDelete?: boolean;
+  /**
+   * The right-clicked row is marked for deletion and can be restored (DB-06).
+   * The capability bit defaults to false, so a grid without the dirty state
+   * keeps today's menu byte for byte.
+   */
+  canRestoreRow?: boolean;
 };
 
 function item(
@@ -293,6 +303,7 @@ export function buildDataTableContextMenuItems(
     canFilterByValue = false,
     canSetNull = false,
     canDelete = false,
+    canRestoreRow = false,
   } = args;
 
   if (hasHeaderContext && !hasCellContext) {
@@ -324,6 +335,12 @@ export function buildDataTableContextMenuItems(
       ? push(item('delete-row', labels.deleteRow, handlers.onDeleteRow))
       : [];
 
+    // "Restore This Row" belongs next to "Delete Row": both are about the
+    // deletion state of the row under the pointer.
+    const restore = canRestoreRow
+      ? push(item('restore-row', labels.restoreRow, handlers.onRestoreRow))
+      : [];
+
     const moreActions = push(
       item('copy-as-json', labels.copyAsJson, handlers.onCopyAsJson),
       item('copy-as-sql-insert', labels.copyAsSqlInsert, handlers.onCopyAsSqlInsert),
@@ -338,8 +355,9 @@ export function buildDataTableContextMenuItems(
     );
 
     let out = frequent;
-    if (danger.length > 0) {
-      out = out.length > 0 ? [...out, { kind: 'separator' }, ...danger] : danger;
+    const dangerZone = [...danger, ...restore];
+    if (dangerZone.length > 0) {
+      out = out.length > 0 ? [...out, { kind: 'separator' }, ...dangerZone] : dangerZone;
     }
     if (exportEnabled) {
       const exportItem = item('export', labels.export, handlers.onExport);

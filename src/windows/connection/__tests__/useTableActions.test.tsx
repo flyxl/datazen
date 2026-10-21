@@ -40,6 +40,7 @@ const tableStore = vi.hoisted(() => ({
   toggleSelectAll: vi.fn(),
   setGridSelection: vi.fn(),
   deleteRows: vi.fn(),
+  unstageRowDelete: vi.fn(),
   previewPendingChanges: vi.fn().mockResolvedValue(null),
   commitPendingChanges: vi.fn().mockResolvedValue({}),
   rollbackPendingChanges: vi.fn(),
@@ -88,6 +89,7 @@ const ACTION_NAMES = [
   'stageCellChange',
   'startEdit',
   'toggleSelectAll',
+  'unstageRowDelete',
   'updateFilter',
 ];
 

@@ -10,6 +10,7 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { DataTable } from '../DataTable';
+import type { DirtyRowEntry } from '../../../stores/tableData/dirtyIndex';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -62,6 +63,10 @@ interface MenuContext {
   /** `null` = the grid gets no table name at all (export is then impossible). */
   exportTableName?: string | null;
   onAddFilter?: boolean;
+  /** The dirty state of the page (DB-06): a row marked for deletion. */
+  dirtyByRow?: ReadonlyMap<number, DirtyRowEntry> | null;
+  /** The restore entry point (DB-06). */
+  onRestoreRow?: (rowIndex: number) => void;
 }
 
 function renderGrid(context: MenuContext) {
@@ -73,6 +78,8 @@ function renderGrid(context: MenuContext) {
     loading = false,
     exportTableName = 'users',
     onAddFilter = true,
+    dirtyByRow = null,
+    onRestoreRow,
   } = context;
 
   const { container } = render(
@@ -89,6 +96,8 @@ function renderGrid(context: MenuContext) {
       onCellEdit={editable ? vi.fn() : undefined}
       enableSetNull={editable}
       onDeleteRows={vi.fn()}
+      dirtyByRow={dirtyByRow}
+      onRestoreRow={onRestoreRow}
     />,
   );
 
@@ -149,6 +158,53 @@ describe('DataTable context menu equivalence', () => {
     // The label carries the number of rows the action will hit.
     const deleteItem = items.find((item) => item.id === 'delete-row');
     expect(deleteItem?.label).toBe('dataTable.deleteRow');
+  });
+
+  it('offers restore-row on a row that is marked for deletion, and only there', async () => {
+    const deletedRow: DirtyRowEntry = {
+      identityKey: '["id":1]',
+      state: 'deleted',
+      changedColumns: [],
+      cells: [],
+    };
+    const dirtyRow: DirtyRowEntry = {
+      identityKey: '["id":2]',
+      state: 'dirty',
+      changedColumns: ['name'],
+      cells: [{ columnName: 'name', original: 'Bob', next: 'Bobby' }],
+    };
+    const dirtyByRow = new Map<number, DirtyRowEntry>([
+      [0, deletedRow],
+      [1, dirtyRow],
+    ]);
+
+    // The right click lands on row 0 — the row that is marked for deletion.
+    renderGrid({ dirtyByRow, onRestoreRow: vi.fn() });
+    const items = await menuItems();
+    expect(rootIds(items)).toContain('restore-row');
+    const restoreItem = items.find((item) => item.id === 'restore-row');
+    expect(restoreItem?.label).toBe('tableData.restoreRow');
+
+    // A grid without the restore entry point does not offer the item.
+    vi.clearAllMocks();
+    renderGrid({ dirtyByRow });
+    const withoutHandler = await menuItems();
+    expect(rootIds(withoutHandler)).not.toContain('restore-row');
+  });
+
+  it('does not offer restore-row on a row that only has staged cell changes', async () => {
+    const dirtyRow: DirtyRowEntry = {
+      identityKey: '["id":1]',
+      state: 'dirty',
+      changedColumns: ['name'],
+      cells: [{ columnName: 'name', original: 'Alice', next: 'Alicia' }],
+    };
+    renderGrid({
+      dirtyByRow: new Map<number, DirtyRowEntry>([[0, dirtyRow]]),
+      onRestoreRow: vi.fn(),
+    });
+    const items = await menuItems();
+    expect(rootIds(items)).not.toContain('restore-row');
   });
 
   it('drops set-null on a read-only grid', async () => {
