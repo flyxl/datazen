@@ -654,6 +654,7 @@ mod tests {
         let repository = InMemoryJobRepository::new(clock.clone(), 60);
         let definition = |id: &str| JobDefinition {
             job_id: JobId::new(id),
+            organization_id: context("alice").organization_id,
             kind: RESTORE_APPLY_KIND.into(),
             owner: OwnerRef::ClientSession {
                 client_instance_id: ClientInstanceId::new("client"),
@@ -710,6 +711,7 @@ mod tests {
             &context,
             JobDefinition {
                 job_id: job_id.clone(),
+                organization_id: context.organization_id.clone(),
                 kind: RESTORE_APPLY_KIND.into(),
                 owner: OwnerRef::ClientSession {
                     client_instance_id: context.client_instance_id.clone(),

@@ -131,8 +131,11 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
                 .list(
                     &grant.context(),
                     JobFilter {
+                        organization_id: grant.context().organization_id.clone(),
                         limit: Some(10),
-                        ..Default::default()
+                        states: Vec::new(),
+                        owner: None,
+                        after: None,
                     },
                 )
                 .await
@@ -197,7 +200,16 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
     assert_eq!(
         test.state
             .desktop_job_host
-            .list(&grant.context(), JobFilter::default())
+            .list(
+                &grant.context(),
+                JobFilter {
+                    organization_id: grant.context().organization_id.clone(),
+                    states: Vec::new(),
+                    owner: None,
+                    after: None,
+                    limit: None,
+                },
+            )
             .await
             .unwrap()
             .len(),

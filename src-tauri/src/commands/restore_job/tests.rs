@@ -90,6 +90,7 @@ fn target() -> ExecutionTarget {
 fn definition(ctx: &RequestContext, plan: &RestorePlan, id: &str) -> JobDefinition {
     JobDefinition {
         job_id: JobId::new(id),
+        organization_id: ctx.organization_id.clone(),
         kind: RESTORE_APPLY_KIND.into(),
         owner: OwnerRef::ClientSession {
             client_instance_id: ctx.client_instance_id.clone(),

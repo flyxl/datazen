@@ -25,6 +25,8 @@ impl SqliteJobRepository {
         })
     }
 
+    /// 列举必须按组织隔离：`filter.organization_id` 与 `ctx` 的组织**同时**匹配才可见。
+    /// 两者不一致时结果是**空**，不是错误，也不泄漏「存在但无权」（CM-05）。
     pub(super) async fn list(
         &self,
         ctx: &RequestContext,
@@ -33,6 +35,9 @@ impl SqliteJobRepository {
         let now = self.clock.now();
         self.with_tx(|tx| {
             prune_expired_artifacts(tx, &now)?;
+            if filter.organization_id != ctx.organization_id {
+                return Ok(Vec::new());
+            }
             let mut statement = tx
                 .prepare(
                     "SELECT job_id FROM jobs WHERE organization_id=?1 AND owner_principal_id=?2 ORDER BY created_at,job_id",

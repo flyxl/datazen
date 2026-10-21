@@ -404,6 +404,18 @@ pub trait JobRepository: Send + Sync + 'static {
 
 P5 落地：上述 worker 写入端口携带 `JobClaim`；claim 含 jobId、stageId、workerId、claimGeneration 与期限。`InMemoryJobRepository` 以锁原子校验，桌面 `SqliteJobRepository` 以 SQLite 事务校验 claim generation、worker、期限及状态版本。`JobHost` 和 `JobRuntimeRepository` 还提供 cancel polling、未启动失败、pending verification、progress、artifact refs、bounded domain results 与 async recovery receipt 写入。AppDb v2 是当前桌面 adapter，已供迁移三件套共用；P9 才增加跨 worker 协调。
 
+**Job 的组织维度（已实现）**：`JobDefinition` 与 `JobFilter` 都带**必填**的 `organizationId`（落库词汇的归属维度，与 `owner` 这个归属意图正交：`owner` 说「归谁」，`organizationId` 说「归哪个组织」）。因此：
+
+- `accept` 把 `ctx` 的组织**盖章**到 `JobDefinition`；调用方在定义里自报的组织值不作数（INV-01），落库行因此永远属于受理它的那个组织。
+- `list` 按 `filter.organizationId` **且** `ctx` 的组织过滤；两者不一致（例如拿别组织的过滤器来列举）时结果是**空**，不是错误。
+- `get` / `list_recoverable` 按 `ctx` 的组织过滤。
+- 跨组织访问按**读路径 / 写路径**分别处理，两个实现（内存 / SQLite）形状一致：
+  - **读路径**（`get` / `list` / `list_recoverable`）按「**不存在**」处理（`NotFound` / 空列表），不返回「无权限」之类的错误，也不泄漏「存在但无权」（CM-05，与 `ProfileRepository` 的 `ProfileScope` 同口径）。
+  - **写路径**（`record_stage` / `record_commit_boundary` / `compare_and_set_state` / `save_checkpoint` / `record_progress` / `record_artifacts` / `record_domain_result` / `finish`）由 **claim fencing** 兜底：claim 只在「按 `ctx` 组织核对过的行」上铸出，因此越组织的写入按 `StaleClaim` 拒绝（**不是** `NotFound`）。
+- 幂等回执按 `(organizationId, principalId, idempotencyKey)` 作用域：同一个键在另一个组织不是重放。
+
+桌面是单租户：所有请求上下文都来自同一个本地组织，因此这些约束不改变任何桌面行为；它们是为 web 形态（多组织）准备的隔离边界。
+
 ```rust
 #[async_trait]
 pub trait PolicyService: Send + Sync + 'static {

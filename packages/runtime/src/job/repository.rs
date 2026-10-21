@@ -22,7 +22,7 @@ use datazen_platform_api::dto::job::{
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{
-    Counter, IdempotencyKey, JobId, JobStateVersion, StageId, Timestamp, WorkerId,
+    Counter, IdempotencyKey, JobId, JobStateVersion, OrganizationId, StageId, Timestamp, WorkerId,
 };
 
 use crate::connection::types::fnv1a64_hex;
@@ -34,6 +34,9 @@ use datazen_platform_api::ports::job::JobRepository;
 mod owner_claims;
 mod runtime_methods;
 
+#[cfg(test)]
+mod org_scope_tests;
+
 /// 单个 Job 的可变行。
 #[derive(Debug, Clone)]
 struct JobRow {
@@ -41,6 +44,18 @@ struct JobRow {
     claim: Option<JobClaim>,
     claim_context: Option<RequestContext>,
     cancel_requested_at: Option<Timestamp>,
+}
+
+impl JobRow {
+    /// 这一行归属的组织。落库归属来自受理时的 `RequestContext`。
+    fn organization(&self) -> &OrganizationId {
+        &self.record.definition.organization_id
+    }
+
+    /// 是否属于给定组织。跨组织一律按「不存在」处理，不泄漏「存在但无权」（CM-05）。
+    fn belongs_to(&self, organization: &OrganizationId) -> bool {
+        self.organization() == organization
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -61,16 +76,32 @@ pub struct CancelPollSnapshot {
 
 #[derive(Default)]
 struct Inner {
-    /// 以 job_id 为键（RequestContext 的组织维度由 ctx 校验：内存实现单组织作用域演示，
-    /// 组织键的完整隔离语义由服务端仓储落地，详见 persistence-model §3.6）。
+    /// 以 job_id 为键。**组织归属是行内的维度**（`definition.organization_id`），
+    /// 不是主键的一部分：因此每次读取/写入都必须逐行核对组织，越组织按「不存在」处理。
     jobs: HashMap<JobId, JobRow>,
-    idempotency: HashMap<String, IdemReceipt>, // key
-    consumed_plans: HashMap<String, JobId>,    // planId
+    /// 幂等回执按 `(组织, 主体, 键)` 作用域：同一个键在不同组织是不同的请求。
+    idempotency: HashMap<String, IdemReceipt>, // scoped key
+    /// 已消费 planId 按 `(组织, planId)` 唯一，与 SQLite 的
+    /// `UNIQUE (organization_id, consumed_plan_id)` 同口径。
+    consumed_plans: HashMap<(OrganizationId, String), JobId>,
     checkpoints: HashMap<(JobId, u64), Checkpoint>,
     /// 逐批已确认提交边界（§7）：record_commit_boundary 落库，按产生顺序递增。
     boundaries: HashMap<JobId, Vec<CommitBoundary>>,
     recovery: HashMap<JobId, JobRecoveryResult>,
     domain_results: HashMap<(JobId, StageId), JobDomainResult>,
+}
+
+/// 幂等回执的作用域键：组织 + 主体 + 键。
+///
+/// 与 SQLite 的 `idempotency_hash`（`datazen-desktop-job-v1|org|principal|key`）同口径：
+/// 幂等只在**同一主体、同一组织**内成立，跨组织复用同一个键不是重放。
+fn scoped_idempotency_key(ctx: &RequestContext, key: &IdempotencyKey) -> String {
+    format!(
+        "{}|{}|{}",
+        ctx.organization_id.as_str(),
+        ctx.principal_id.as_str(),
+        key.as_str()
+    )
 }
 
 /// `JobRepository` 的内存实现。线程安全：单个 `Mutex` 保护全部索引（同一把锁即受理事务）。
@@ -134,13 +165,13 @@ impl InMemoryJobRepository {
         job_id: &JobId,
         state: JobState,
     ) -> Result<JobRecord, PortError> {
-        let _ = ctx;
         debug_assert!(state.is_terminal(), "只允许强制成终态");
         let mut inner = lock_inner(&self.inner)?;
         let now = self.clock.now();
         let row = inner
             .jobs
             .get_mut(job_id)
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         row.record.view.state = state;
         row.record.view.updated_at = now;
@@ -158,7 +189,6 @@ impl InMemoryJobRepository {
         ctx: &RequestContext,
         job_id: &JobId,
     ) -> Result<CancelPollSnapshot, PortError> {
-        let _ = ctx;
         #[cfg(any(test, feature = "test-harness"))]
         {
             use std::sync::atomic::Ordering;
@@ -173,6 +203,7 @@ impl InMemoryJobRepository {
         let row = inner
             .jobs
             .get(job_id)
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         Ok(CancelPollSnapshot {
             cancel_requested: row.record.view.cancel_requested,
@@ -181,11 +212,22 @@ impl InMemoryJobRepository {
     }
 
     /// claim fencing：generation/worker 必须匹配当前持有值，且租约未过期。
-    fn check_claim(inner: &Inner, claim: &JobClaim, now: &Timestamp) -> Result<(), JobError> {
+    ///
+    /// 另加**组织维度**：claim 只在它被受理的那个组织内有效。越组织的写入按
+    /// 「旧 claim」拒绝，与 SQLite 侧 `check_claim` 的组织比对同口径。
+    fn check_claim(
+        inner: &Inner,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        now: &Timestamp,
+    ) -> Result<(), JobError> {
         let row = inner
             .jobs
             .get(&claim.job_id)
             .ok_or_else(|| JobError::NotFound(claim.job_id.as_str().to_string()))?;
+        if !row.belongs_to(&ctx.organization_id) {
+            return Err(JobError::StaleClaim);
+        }
         let current = row.claim.as_ref().ok_or(JobError::StaleClaim)?;
         if current.worker_id != claim.worker_id
             || current.claim_generation != claim.claim_generation
@@ -205,11 +247,11 @@ impl InMemoryJobRepository {
         ctx: &RequestContext,
         job_id: &JobId,
     ) -> Result<JobRecord, PortError> {
-        let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
         let row = inner
             .jobs
             .get_mut(job_id)
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         if row.record.view.state.is_terminal() {
             return Err(PortError::CasConflict {
@@ -230,11 +272,11 @@ impl InMemoryJobRepository {
         job_id: &JobId,
         effect_outcome: EffectOutcome,
     ) -> Result<JobRecord, PortError> {
-        let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
         let row = inner
             .jobs
             .get_mut(job_id)
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         if row.record.view.state != JobState::Queued || !row.record.view.cancel_requested {
             return Err(PortError::CasConflict {
@@ -257,9 +299,8 @@ impl InMemoryJobRepository {
         claim: &JobClaim,
         outcome: EffectOutcome,
     ) -> Result<(), PortError> {
-        let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
-        Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        Self::check_claim(&inner, ctx, claim, &self.clock.now()).map_err(PortError::from)?;
         let row = inner
             .jobs
             .get_mut(&claim.job_id)
@@ -276,9 +317,8 @@ impl InMemoryJobRepository {
         claim: &JobClaim,
         reason: &str,
     ) -> Result<(), PortError> {
-        let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
-        Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        Self::check_claim(&inner, ctx, claim, &self.clock.now()).map_err(PortError::from)?;
         let row = inner
             .jobs
             .get_mut(&claim.job_id)
@@ -300,12 +340,12 @@ impl InMemoryJobRepository {
         job_id: &JobId,
         reason: &str,
     ) -> Result<JobRecord, PortError> {
-        let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
         let record = {
             let row = inner
                 .jobs
                 .get_mut(job_id)
+                .filter(|row| row.belongs_to(&ctx.organization_id))
                 .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
             if row.claim.is_some() || row.record.view.state != JobState::Queued {
                 return Err(PortError::CasConflict {
@@ -339,11 +379,11 @@ impl InMemoryJobRepository {
         job_id: &JobId,
         reason: &str,
     ) -> Result<JobRecord, PortError> {
-        let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
         let row = inner
             .jobs
             .get_mut(job_id)
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         if !row.record.view.state.is_terminal() {
             row.record.view.state = JobState::Failed;
@@ -362,19 +402,36 @@ impl InMemoryJobRepository {
         Ok(row.record.clone())
     }
 
-    /// 已落库的提交边界（按产生顺序）。
-    pub fn committed_boundaries(&self, job_id: &JobId) -> Vec<CommitBoundary> {
+    /// 已落库的提交边界（按产生顺序）。越组织读取返回**空**而不是错误。
+    pub fn committed_boundaries(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+    ) -> Vec<CommitBoundary> {
         let inner = match self.inner.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
+        if !inner
+            .jobs
+            .get(job_id)
+            .is_some_and(|row| row.belongs_to(&ctx.organization_id))
+        {
+            return Vec::new();
+        }
         inner.boundaries.get(job_id).cloned().unwrap_or_default()
     }
 
-    /// checkpoint 读取（恢复核验用）。
+    /// checkpoint 读取（恢复核验用）。越组织读取返回 `None`。
     pub fn latest_checkpoint(&self, ctx: &RequestContext, job_id: &JobId) -> Option<Checkpoint> {
-        let _ = ctx;
         let inner = self.inner.lock().ok()?;
+        if !inner
+            .jobs
+            .get(job_id)
+            .is_some_and(|row| row.belongs_to(&ctx.organization_id))
+        {
+            return None;
+        }
         inner
             .checkpoints
             .iter()
@@ -394,13 +451,19 @@ fn lock_inner(mutex: &Mutex<Inner>) -> Result<std::sync::MutexGuard<'_, Inner>, 
 impl JobRepository for InMemoryJobRepository {
     /// 幂等 receipt：同键同指纹 → 原记录；不同指纹 → IdempotencyConflict。
     /// apply 类同时建立 planId 唯一消费；三者在同一锁事务内完成（§2.1）。
+    ///
+    /// 组织归属只来自 `ctx`：调用方在 `JobDefinition` 里自报的组织值一律被覆盖
+    /// （INV-01），落库的行因此永远属于受理它的那个组织。
+    ///
+    /// 与 SQLite 实现不同，**这一行在本实现里是承重的**：`JobDefinition` 本身就是
+    /// 落库值（行里存的就是它），行上的组织由它读出。
     async fn accept(
         &self,
         ctx: &RequestContext,
-        definition: JobDefinition,
+        mut definition: JobDefinition,
         idem: &IdempotencyKey,
     ) -> Result<JobRecord, PortError> {
-        let _ = ctx;
+        definition.organization_id = ctx.organization_id.clone();
         let plan =
             project_frozen_plan(&definition.kind, &definition.payload).map_err(PortError::from)?;
         let fingerprint = format!(
@@ -409,7 +472,8 @@ impl JobRepository for InMemoryJobRepository {
             fnv1a64_hex(definition.payload.to_string().as_bytes())
         );
         let mut inner = lock_inner(&self.inner)?;
-        if let Some(prev) = inner.idempotency.get(idem.as_str()) {
+        let scope = scoped_idempotency_key(ctx, idem);
+        if let Some(prev) = inner.idempotency.get(&scope) {
             if prev.accept_fingerprint == fingerprint {
                 let row = inner
                     .jobs
@@ -420,9 +484,17 @@ impl JobRepository for InMemoryJobRepository {
             return Err(PortError::IdempotencyConflict);
         }
         if let Some(plan_id) = &plan.consumed_plan_id {
-            if inner.consumed_plans.contains_key(plan_id) {
+            let consumed_key = (ctx.organization_id.clone(), plan_id.clone());
+            if inner.consumed_plans.contains_key(&consumed_key) {
                 return Err(PortError::PlanAlreadyConsumed(plan_id.clone()));
             }
+        }
+        if inner.jobs.contains_key(&definition.job_id) {
+            // jobId 在本进程内唯一：受理一个已被占用的 jobId 会覆盖既有行，
+            // 那既是数据损坏，也是跨组织的覆盖入口（另一个组织可以借此顶掉本组织的行）。
+            return Err(PortError::BackendUnavailable(
+                "job identity is already admitted".into(),
+            ));
         }
         let now = self.clock.now();
         let record = JobRecord {
@@ -455,22 +527,22 @@ impl JobRepository for InMemoryJobRepository {
             },
         );
         inner.idempotency.insert(
-            idem.as_str().to_string(),
+            scope,
             IdemReceipt {
                 job_id: definition.job_id.clone(),
                 accept_fingerprint: fingerprint,
             },
         );
         if let Some(plan_id) = plan.consumed_plan_id {
-            inner
-                .consumed_plans
-                .insert(plan_id, definition.job_id.clone());
+            inner.consumed_plans.insert(
+                (ctx.organization_id.clone(), plan_id),
+                definition.job_id.clone(),
+            );
         }
         Ok(record)
     }
 
     async fn get(&self, ctx: &RequestContext, job_id: JobId) -> Result<JobRecord, PortError> {
-        let _ = ctx;
         #[cfg(any(test, feature = "test-harness"))]
         {
             use std::sync::atomic::Ordering;
@@ -485,28 +557,38 @@ impl JobRepository for InMemoryJobRepository {
         inner
             .jobs
             .get(&job_id)
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .map(|row| row.record.clone())
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))
     }
 
+    /// 列举必须按组织隔离：`filter.organization_id` 与 `ctx` 的组织**同时**匹配才可见。
+    /// 两者不一致（例如调用方拿别组织的过滤器来列举）时结果是**空**，不是错误，
+    /// 也不泄漏「存在但无权」（CM-05）。
     async fn list(
         &self,
         ctx: &RequestContext,
         filter: JobFilter,
     ) -> Result<Vec<JobRecord>, PortError> {
-        let _ = ctx;
         let inner = lock_inner(&self.inner)?;
-        let mut out: Vec<JobRecord> = inner
-            .jobs
-            .values()
-            .filter(|row| {
-                filter.states.is_empty() || filter.states.contains(&row.record.view.state)
-            })
-            .filter(|row| {
-                filter.owner.is_none() || filter.owner == Some(row.record.definition.owner.clone())
-            })
-            .map(|row| row.record.clone())
-            .collect();
+        let scoped = filter.organization_id == ctx.organization_id;
+        let mut out: Vec<JobRecord> = if scoped {
+            inner
+                .jobs
+                .values()
+                .filter(|row| row.belongs_to(&ctx.organization_id))
+                .filter(|row| {
+                    filter.states.is_empty() || filter.states.contains(&row.record.view.state)
+                })
+                .filter(|row| {
+                    filter.owner.is_none()
+                        || filter.owner == Some(row.record.definition.owner.clone())
+                })
+                .map(|row| row.record.clone())
+                .collect()
+        } else {
+            Vec::new()
+        };
         out.sort_by(|a, b| a.view.created_at.cmp(&b.view.created_at));
         Ok(out)
     }
@@ -517,9 +599,8 @@ impl JobRepository for InMemoryJobRepository {
         claim: &JobClaim,
         stage: StageRecord,
     ) -> Result<(), PortError> {
-        let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
-        Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        Self::check_claim(&inner, ctx, claim, &self.clock.now()).map_err(PortError::from)?;
         let row = inner
             .jobs
             .get_mut(&claim.job_id)
@@ -550,9 +631,8 @@ impl JobRepository for InMemoryJobRepository {
         claim: &JobClaim,
         boundary: CommitBoundary,
     ) -> Result<(), PortError> {
-        let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
-        Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        Self::check_claim(&inner, ctx, claim, &self.clock.now()).map_err(PortError::from)?;
         if !inner.jobs.contains_key(&claim.job_id) {
             return Err(PortError::NotFound(claim.job_id.as_str().into()));
         }
@@ -577,9 +657,8 @@ impl JobRepository for InMemoryJobRepository {
         expected: JobStateVersion,
         next: JobState,
     ) -> Result<JobRecord, PortError> {
-        let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
-        Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        Self::check_claim(&inner, ctx, claim, &self.clock.now()).map_err(PortError::from)?;
         let row = inner
             .jobs
             .get_mut(&claim.job_id)
@@ -605,11 +684,11 @@ impl JobRepository for InMemoryJobRepository {
         job_id: JobId,
         worker: WorkerId,
     ) -> Result<JobClaim, PortError> {
-        let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
         let row = inner
             .jobs
             .get_mut(&job_id)
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         if row.record.view.state.is_terminal() {
             return Err(PortError::CasConflict {
@@ -652,6 +731,24 @@ impl JobRepository for InMemoryJobRepository {
         Ok(claim)
     }
 
+    /// 续约只凭 claim 自身（`job_id` + `worker` + `claim_generation` + 租约）判定，
+    /// **续约路径本身不做组织比对**：`JobClaim` 不携带组织维度，因此
+    /// 「跨组织续约」在本路径上**不可表达**——持有者与铸出者在续约路径上不可区分。
+    /// 唯一的拒绝理由是：行不存在、行上没有 claim、worker 不符、generation 不符、
+    /// 租约过期。
+    ///
+    /// 组织边界由**写入路径**兜底，而写入路径有**三种**形态：
+    ///
+    /// * **claim 作用域**（阶段登记、提交边界、状态 CAS、checkpoint、进度、产物、
+    ///   域结果、终态）：经 `check_claim`，那里比对 `ctx` 的**组织**（本实现不比主体），
+    ///   越组织写按 `StaleClaim` 拒绝；
+    /// * **ctx 作用域**（取消、确认未开始、标记失败、待核验、恢复结论）：没有 claim
+    ///   可比，用**行内的组织归属**过滤，越组织时按 `NotFound` 处理；
+    /// * **受理**：没有 claim 可比，按 `ctx` **盖章**组织（INV-01）。
+    ///
+    /// `renew` 自身不属于上面任何一种：它只凭 claim 判定，不做组织比对。
+    /// 端口契约的同一表述见
+    /// `datazen_platform_api::ports::job::JobRepository::renew`。
     async fn renew(&self, claim: &JobClaim) -> Result<JobClaim, PortError> {
         let mut inner = lock_inner(&self.inner)?;
         let now = self.clock.now();
@@ -684,9 +781,8 @@ impl JobRepository for InMemoryJobRepository {
         claim: &JobClaim,
         cp: Checkpoint,
     ) -> Result<(), PortError> {
-        let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
-        Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        Self::check_claim(&inner, ctx, claim, &self.clock.now()).map_err(PortError::from)?;
         if inner
             .checkpoints
             .contains_key(&(cp.job_id.clone(), cp.state_version.get()))
@@ -702,16 +798,17 @@ impl JobRepository for InMemoryJobRepository {
         Ok(())
     }
 
+    /// 恢复扫描按 `ctx` 的组织限定：别组织的待核验待办不出现在结果里。
     async fn list_recoverable(
         &self,
         ctx: &RequestContext,
         filter: RecoveryFilter,
     ) -> Result<Vec<JobRecord>, PortError> {
-        let _ = ctx;
         let inner = lock_inner(&self.inner)?;
         let mut out: Vec<JobRecord> = inner
             .jobs
             .values()
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .filter(|row| {
                 matches!(
                     row.record.view.state,

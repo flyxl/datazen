@@ -7,7 +7,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::dto::execution::EffectOutcome;
-use crate::id::{ArtifactId, BlockId, Counter, ExecutionId, JobId, StageId, Timestamp, WorkerId};
+use crate::id::{
+    ArtifactId, BlockId, Counter, ExecutionId, JobId, OrganizationId, StageId, Timestamp, WorkerId,
+};
 use crate::OwnerRef;
 
 /// 任务状态。与 `ExecutionState` 是**不同**的状态机：任务状态不含 `cancelRequested`。
@@ -68,10 +70,16 @@ pub struct JobView {
 }
 
 /// 任务定义：一次提交要做什么。**不含**任何运行时会话信息。
+///
+/// `organization_id` 是**落盘的组织归属维度**：受理时由 `JobRepository::accept` 按
+/// `RequestContext` 盖章（调用方自报的值不作数，INV-01），之后的列举、查询与恢复
+/// 都以它为隔离边界。它与 `owner`（归属意图）是**两个正交维度**，不要互相替代。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JobDefinition {
     pub job_id: JobId,
+    /// 落盘的组织归属。跨组织访问按「不存在」处理，不泄漏「存在但无权」。
+    pub organization_id: OrganizationId,
     pub kind: String,
     pub owner: OwnerRef,
     /// 计划正文（工作流步骤 / 任务体）。敏感内容只允许引用 `SecretRef`，禁止内联凭据。
@@ -275,9 +283,15 @@ pub struct JobClaim {
 }
 
 /// 任务查询过滤条件。分页游标**不落盘、不跨重启**，因此用 `Counter` 而非持久化游标。
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+///
+/// `organization_id` **必填**：列举 job 必须落在某个组织内，「列出所有组织的 job」
+/// 不是合法调用。跨组织的列举返回**空**而不是错误，也不泄漏「存在但无权」（CM-05）。
+/// 因此本类型**不实现 `Default`**——省略组织维度的过滤器无从构造。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JobFilter {
+    /// 过滤所属组织。与 `RequestContext` 的组织不一致时结果为空。
+    pub organization_id: OrganizationId,
     pub states: Vec<JobState>,
     pub owner: Option<OwnerRef>,
     pub after: Option<crate::id::Counter>,
@@ -301,8 +315,12 @@ pub fn workflow_block_owner(job_id: JobId, block_id: BlockId) -> OwnerRef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::id::{Counter, JobId, StageId};
+    use crate::id::{Counter, JobId, OrganizationId, StageId};
     use serde_json::json;
+
+    fn organization() -> OrganizationId {
+        OrganizationId::new("org-1")
+    }
 
     fn job_view() -> JobView {
         JobView {
@@ -409,6 +427,7 @@ mod tests {
             view: job_view(),
             definition: JobDefinition {
                 job_id: JobId::new("job-1"),
+                organization_id: organization(),
                 kind: "workflow".into(),
                 owner: workflow_block_owner(JobId::new("job-1"), BlockId::new("b1")),
                 payload: json!({"steps": []}),
@@ -438,12 +457,14 @@ mod tests {
     #[test]
     fn filters_and_claims_round_trip() {
         let filter = JobFilter {
+            organization_id: organization(),
             states: vec![JobState::Running, JobState::Queued],
             owner: None,
             after: Some(Counter::new(10)),
             limit: Some(50),
         };
         let value = serde_json::to_value(&filter).expect("serialize");
+        assert_eq!(value["organizationId"], json!("org-1"));
         assert_eq!(value["states"], json!(["running", "queued"]));
         assert_eq!(value["after"], json!("10"));
         assert_eq!(
@@ -482,5 +503,57 @@ mod tests {
         assert!(JobState::Succeeded.is_terminal());
         assert!(JobState::Cancelled.is_terminal());
         assert!(!JobState::Queued.is_terminal());
+    }
+
+    #[test]
+    fn the_persisted_job_vocabulary_carries_the_organization_dimension() {
+        // 受理落库的归属：JobDefinition 带组织，跨组织访问按「不存在」处理。
+        let definition = JobDefinition {
+            job_id: JobId::new("job-1"),
+            organization_id: organization(),
+            kind: "workflow".into(),
+            owner: workflow_block_owner(JobId::new("job-1"), BlockId::new("b1")),
+            payload: json!({"steps": []}),
+            created_at: Timestamp::new("2026-01-01T00:00:00Z"),
+        };
+        let value = serde_json::to_value(&definition).expect("serialize");
+        assert_eq!(value["organizationId"], json!("org-1"));
+
+        // 列举的边界：JobFilter 的组织维度必填，省略它就没有合法的列举调用。
+        let filter = JobFilter {
+            organization_id: organization(),
+            states: Vec::new(),
+            owner: None,
+            after: None,
+            limit: None,
+        };
+        let mut value = serde_json::to_value(&filter).expect("serialize");
+        value
+            .as_object_mut()
+            .expect("filter object")
+            .remove("organizationId");
+        assert!(
+            serde_json::from_value::<JobFilter>(value).is_err(),
+            "省略 organizationId 的过滤器必须无法反序列化：列举 job 不得跨组织"
+        );
+    }
+
+    #[test]
+    fn the_job_filter_cannot_be_declared_without_a_required_organization() {
+        // 用**声明形状**断言，而不是靠编译失败：可选字段会让「跨组织列举」悄悄成立。
+        let source = include_str!("job.rs");
+        let declaration = source
+            .split("pub struct JobFilter")
+            .nth(1)
+            .and_then(|rest| rest.find("\n}\n").map(|end| &rest[..end]))
+            .expect("JobFilter declaration");
+        assert!(
+            declaration.contains("pub organization_id: OrganizationId"),
+            "JobFilter 必须声明必填的组织维度：{declaration}"
+        );
+        assert!(
+            !declaration.contains("Option<OrganizationId>"),
+            "组织维度不可选：可选就等于允许「列出所有组织的 job」：{declaration}"
+        );
     }
 }

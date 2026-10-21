@@ -252,6 +252,7 @@ pub(crate) async fn execute(
     });
     let definition = JobDefinition {
         job_id: requested_job_id.clone(),
+        organization_id: context.organization_id.clone(),
         kind: "monitorOccurrence".into(),
         owner: OwnerRef::ClientSession {
             client_instance_id: context.client_instance_id.clone(),
