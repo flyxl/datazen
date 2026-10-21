@@ -90,18 +90,36 @@
 `4f33b9b73`（包 +5 / 宿主 +4 有效期与容量覆盖）、`decf4b475`（钉住 consume 校验的是它取出的那一份，
 包 +1）、`b676ddf3e`（并发用例改有界会合，变异时失败而不是挂死）。
 
+## 修-测第 2 轮（独立 Tester 复测：TEST_PASSED，2 项缺陷 + 1 条零覆盖用例）
+
+| 缺陷 | 处理 |
+|---|---|
+| **D-E6 淘汰顺序反转**：回拨场景下刚冻结的有效计划被先淘汰 | 存储层裁剪改用规则层同一个 `is_expired()`（`plans.retain(\|_, plan\| !plan.is_expired())`）：失效条目先被清掉，有效计划留下，淘汰顺序不再反转。用例：`in_memory_store_clears_invalid_entries_before_evicting_valid_ones_after_clock_rollback` |
+| **O-1 契约留白**：`put` 的越组织语义未在端口规定 | trait doc 补写：`put` 按 `scope` 落入该组织的命名空间；越组织写入是**丢弃**还是**落入别组织命名空间**由实现形态决定，但实现必须在自己的文档里写明 |
+
+**Tester 提交已 cherry-pick**（只动测试文件，生产零改动）：`59f8a5db6`
+（`desktop_store_discards_cross_organization_writes_entirely`——补上桌面单租户收窄
+「只承认自己那一个组织」这半边的承重；此前该半边**零覆盖**）。
+
+**一处连带改动（须知悉）**：宿主 `desktop_store_enforces_max_entries_by_evicting_the_oldest`
+（Tester 提交）原用**未来**时间戳 `base + index` 做排序键；D-E6 修复后，未来时间戳意味着
+「时钟回拨 ⇒ 已失效」⇒ 条目会被**裁掉**而不是参与淘汰排序。该用例的排序键改为**过去**的
+时刻 `base.saturating_sub(130 - index)`（index 越小 ⇒ 冻结越早），**断言与意图一字未改**
+（上限 128、淘汰最旧）。
+
 ## 遗留与待裁定
 
-- **包行数**：生产码 606 → 854（`reviewed.rs` 524→772：端口契约 + 文档注释 + 随端口提供的
-  进程内实现 `InMemoryReviewedPlanStore`；`reviewed_catalog.rs` 82 不变），测试码 816 → 1729
-  （`reviewed_tests.rs` 647 + `reviewed_store_tests.rs` 1082：搬迁 3 例 + Tester 6 例 + 新增
-  隔离/时钟用例 + 测试替身）。包**没有**被掏空：规则、类型、目录校验、存储实现全部留在包里。
+- **包行数**：生产码 606 → 861（`reviewed.rs` 524→779：端口契约 + 文档注释 + 随端口提供的
+  进程内实现 `InMemoryReviewedPlanStore`；`reviewed_catalog.rs` 82 不变），测试码 816 → 1791
+  （`reviewed_tests.rs` 647 + `reviewed_store_tests.rs` 1144）。包**没有**被掏空：规则、类型、
+  目录校验、存储实现全部留在包里。
 - **A 轨重叠**：`packages/schema-diff/tests/job_handler.rs` 与
   `src-tauri/src/commands/schema_diff/job/desktop.rs` 本轨**未触碰**，合流无冲突面。
 - **同族未改造**：`packages/data-sync/src/plan_store/`、`packages/data-transfer/src/plan_store/`
   仍有各自的进程内计划存储，不在本轨范围。
 - **待裁定（协调者已裁决，本轮不做）**：组织作用域改为「启动期确定一次 → 存进 `AppState`」
   由另一条并行轨道（feature-core 存储 trait 加 org 作用域）负责；本轨**未**新增
-  `AppState` 组织字段，等 D 合流后再收口 `reviewed_scope(state)`。
+  `AppState` 组织字段，**本轮未动 `reviewed_scope`**，等 D 合流后再收口。
 - **待裁定**：是否把桌面评审计划落到 `{appData}/datazen.sqlite`（当前选进程内存；
   落盘会让「一次性计划」变成跨会话残留，需额外处理过期与并发消费）。
+- **交付收尾**：`progress.md` 必须在合并收尾时删除（AGENTS.md「交付即销毁」）。
