@@ -105,7 +105,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 第 1 轮修复完成 `9a4a1585e` → 复测中 |
 | **F1** `migration-store-ports` | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ✅ 已交付 `431b6d23c` → Tester 复测中 |
 | **F2** `sync-store-ports` | `feature/sync-store-ports` | `.worktrees/datazen-sync-store-ports` | ✅ 11G | ✅ 已交付 `dd8c9a0d7` → Tester 复测中 |
-| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 第 1 轮小修完成 `d54812172` → 事实准确性复测中 |
+| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 复测 **TEST_PASSED** → 第 3 轮小修中（D-01 注释夸大 / D-02 引用块夸大） |
 
 **派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖。**已执行**（四树均推进到 `65dac1e2c` = C + B + `OrganizationScope`）。
 
@@ -586,6 +586,24 @@ D-10 改法：行号由 `masked[..start].lines().count()` 改为「前缀换行�
 **A 轨 Tester 另加 3 条 SQLite 侧用例**（跨组织认领 → `NotFound`、跨组织写 → `StaleClaim`、SQLite 侧的 D-01 事实对照），已随其提交 `dcbeb5f90` 交给 A cherry-pick（`295ef5d6a`）。
 
 **第 3 轮修复（`fd2e2a817`）**：D-06 修法**直接对齐 `packages/runtime/src/tunnel/source_scan.rs:89-110`**（仓库里已有的正确词法实现）—— 这正是第 4 条教训的落地：**遇到重复的词法/扫描逻辑，先找仓库里是否已有正确版本，别重写**。同时修了 D-07（掩码保换行 + 块注释留占位 ⇒ 字节偏移与行数都对）、D-08（`->` 逐段剥整条路径 ⇒ 真实字面量数回到 14）、D-09（P9 目标形态 vs P5 桌面形态的限定语），并加 4 条回归自检（走**同一条** `scan_source` 路径）。按要求重建了 `progress.md` 承载教训链（首行已标注「合并前必须删除」）。
+
+### G 轨复测（Tester `6f7ed6e6`）—— TEST_PASSED，挖出**方法论表述本身的夸大**
+
+Tester 用**探针实测**推翻了 G-04 引用块里的一句话：「去掉其中任何一个，**正常路径的输出完全不变**」—— 对**长度前缀**与**域分离**两类**不成立**：
+| 变异 | 正常路径的身份键值 |
+|---|---|
+| 去长度前缀 | `mZfi6oma…` → `UA2UHeiXeQ…`（**变**） |
+| 去子钥域标签 | → `EihY9tKplx…`（**变**） |
+| 去跨组织委托检查 / 放宽多连接失败关闭 / 派生盐换常量 | **不变** |
+原因：**长度前缀与域标签是进 HMAC 输入的** —— 去掉它们 = 每个正常路径调用的身份键值都变 = 等价于一次**全量身份键轮换**（连接池与缓存整体失效）。成立的只是「正常路径用例所断言的**关系**不变」。
+→ **裁决：按 Tester 的建议改写四处**（`shared-boundaries-and-ports.md` §4.3 与末尾引用块、`execution_identity.rs` 模块头「改这个文件之前先看变异」一节）。**这比原句更有用** —— 原句让人以为"改这些安全"，而实际等于一次全量轮换。
+
+**D-01（注释夸大）**：「此后所有依赖平台的调用都会拿到 `CapabilityUnsupported`」不属实 —— 返回 `ServiceUnavailable` 的有 5 个访问器（含 `.runtime()`，**65 处**生产调用点），返回 `CapabilityUnsupported` 的只有 2 个。缓解：两者都收敛成 `CommandError::NotConfigured` ⇒ IPC 表面不可区分。
+
+**D-03（测试覆盖缺口，Tester 已补）**：文档把域标签**字面值**写成事实，却无用例钉住 —— 改一个字面量，**24 条旧用例全绿**。Tester 补 5 条（域标签字面值、消息编码字节布局**手写不复用被测函数**、无长度前缀的**反事实撞车**、**黄金值**由 Python `hmac` + Node `crypto` 两套独立实现算出并互校、主密钥一换全部身份键都变）。
+
+**G 的失败画像对照**（20 vs 20 次**交替**跑以均衡负载）：本树 2/20 失败 vs 基线 2/20 失败，**Fisher p = 1.0000**；两个 flake 家族**各自都会在对方缺席时出现**（`native_tool` 那条挂基线树、`live_source` 那条挂本树）⇒ 都是既有竞态、非本轨引入。
+
 
 ## 6. 门禁与流程
 
