@@ -3,7 +3,8 @@
 //! The registry's rules — which workflows a user sees, how a definition is
 //! encoded, what a saved workflow looks like — live in
 //! `datazen_feature_core::workflow::registry`. This module only binds them to
-//! the desktop store.
+//! the desktop store: the rows are handed over as a trait object, so the
+//! shared crate never names the desktop persistence type.
 
 use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
 use datazen_feature_core::workflow::model::{
@@ -32,8 +33,19 @@ const BUILTIN_DEFINITIONS: &[(&str, &str)] = &[
 ];
 
 /// The desktop rows the shared registry reads and writes.
-struct AppDbWorkflowStore {
+///
+/// The host binds this to the local SQLite database and injects it into the
+/// shared registry as a trait object, so the shared crate never names the
+/// desktop persistence type.
+pub(crate) struct AppDbWorkflowStore {
     app_db: Arc<AppDb>,
+}
+
+impl AppDbWorkflowStore {
+    /// Bind the desktop rows to the local SQLite database.
+    pub(crate) fn new(app_db: Arc<AppDb>) -> Self {
+        Self { app_db }
+    }
 }
 
 impl WorkflowDefinitionStore for AppDbWorkflowStore {
@@ -103,33 +115,27 @@ fn record_to_definition_record(record: &WorkflowRecord) -> WorkflowDefinitionRec
     }
 }
 
+/// The desktop workflow registry: the shared rules over the desktop rows.
 pub struct WorkflowRegistry {
-    core: CoreRegistry<AppDbWorkflowStore>,
-    app_db: Arc<AppDb>,
+    core: CoreRegistry,
     /// Legacy path kept for `open_workflows_dir` / diagnostics (may be empty).
     workflows_dir: PathBuf,
 }
 
 impl WorkflowRegistry {
-    pub fn new(app_db: Arc<AppDb>, data_dir: PathBuf) -> Self {
+    /// The desktop registry over an injected store.
+    ///
+    /// The store arrives as a trait object: the desktop rows stay behind it,
+    /// and the shared registry never learns the desktop persistence type.
+    pub fn new(store: Arc<dyn WorkflowDefinitionStore>, data_dir: PathBuf) -> Self {
         Self {
-            core: CoreRegistry::new(
-                AppDbWorkflowStore {
-                    app_db: app_db.clone(),
-                },
-                BUILTIN_DEFINITIONS.to_vec(),
-            ),
-            app_db,
+            core: CoreRegistry::new(store, BUILTIN_DEFINITIONS.to_vec()),
             workflows_dir: data_dir.join("workflows"),
         }
     }
 
     pub fn workflows_dir(&self) -> &PathBuf {
         &self.workflows_dir
-    }
-
-    pub fn app_db(&self) -> Arc<AppDb> {
-        self.app_db.clone()
     }
 
     pub async fn get(&self, id: &str) -> Option<WorkflowDefinition> {
@@ -205,7 +211,10 @@ mod tests {
     #[tokio::test]
     async fn list_excludes_dashboard_hidden() {
         let db = AppDb::open_in_memory().unwrap();
-        let reg = WorkflowRegistry::new(db, PathBuf::from("/tmp/datazen-wf-test"));
+        let reg = WorkflowRegistry::new(
+            Arc::new(AppDbWorkflowStore::new(db)),
+            PathBuf::from("/tmp/datazen-wf-test"),
+        );
         reg.save_workflow(&sample_def("user-1", WorkflowVisibility::User))
             .await
             .unwrap();
@@ -230,7 +239,10 @@ mod tests {
     #[tokio::test]
     async fn save_yaml_roundtrip() {
         let db = AppDb::open_in_memory().unwrap();
-        let reg = WorkflowRegistry::new(db, PathBuf::from("/tmp/datazen-wf-test2"));
+        let reg = WorkflowRegistry::new(
+            Arc::new(AppDbWorkflowStore::new(db)),
+            PathBuf::from("/tmp/datazen-wf-test2"),
+        );
         let def = sample_def("yaml-1", WorkflowVisibility::User);
         let yaml = serde_yaml::to_string(&def).unwrap();
         let saved = reg.save_workflow_yaml(&yaml).await.unwrap();
@@ -244,7 +256,10 @@ mod tests {
         use crate::store::{DashboardRecord, WidgetRecord};
 
         let db = AppDb::open_in_memory().unwrap();
-        let reg = WorkflowRegistry::new(db.clone(), PathBuf::from("/tmp/datazen-wf-test3"));
+        let reg = WorkflowRegistry::new(
+            Arc::new(AppDbWorkflowStore::new(db.clone())),
+            PathBuf::from("/tmp/datazen-wf-test3"),
+        );
         reg.save_workflow(&sample_def("wf-ref", WorkflowVisibility::User))
             .await
             .unwrap();
@@ -289,7 +304,10 @@ mod tests {
     #[tokio::test]
     async fn seeds_builtins_when_empty() {
         let db = AppDb::open_in_memory().unwrap();
-        let reg = WorkflowRegistry::new(db, PathBuf::from("/tmp/datazen-wf-seed"));
+        let reg = WorkflowRegistry::new(
+            Arc::new(AppDbWorkflowStore::new(db)),
+            PathBuf::from("/tmp/datazen-wf-seed"),
+        );
         let list = reg.list().await;
         assert!(
             list.len() >= 3,

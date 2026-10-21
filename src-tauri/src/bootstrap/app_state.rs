@@ -202,7 +202,10 @@ pub(crate) fn finish_app_state(
         prompt_resolver: Arc::new(
             datazen_feature_core::ai::prompt_resolver::PromptResolver::new(&data_dir, prompts_dir),
         ),
-        workflow_registry: Arc::new(workflow::WorkflowRegistry::new(app_db, data_dir.clone())),
+        workflow_registry: Arc::new(workflow::WorkflowRegistry::new(
+            Arc::new(workflow::registry::AppDbWorkflowStore::new(app_db.clone())),
+            data_dir.clone(),
+        )),
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
         // 概要 §6.2 第 8 步：身份在启动期组装一次。组装失败时把原因存进

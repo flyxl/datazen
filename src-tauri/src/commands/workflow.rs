@@ -96,7 +96,7 @@ pub async fn workflow_get_yaml(
     workflow_id: String,
 ) -> Result<String, CommandError> {
     let record = state
-        .workflow_registry
+        .store
         .app_db()
         .get_workflow(&workflow_id)
         .map_err(|e| match e {
