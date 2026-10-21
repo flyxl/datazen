@@ -45,7 +45,7 @@ describe('injection detectors', () => {
   it('detects capabilities plugin ACL entries', () => {
     expect(hasInjectedCapabilities(`"permissions": ["core:default"]`)).toBe(false);
     expect(hasInjectedCapabilities(`"permissions": ["kiwi:default"]`)).toBe(true);
-    expect(hasInjectedCapabilities(`"permissions": ["olap:default"]`)).toBe(true);
+    expect(hasInjectedCapabilities(`"permissions": ["redis:default"]`)).toBe(true);
     expect(hasInjectedCapabilities(`"permissions": ["superset:allow-login"]`)).toBe(true);
   });
 

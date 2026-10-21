@@ -7,7 +7,6 @@ pub fn normalize_driver_id(raw: &str) -> String {
     match raw.to_ascii_lowercase().as_str() {
         "postgres" => "postgresql".into(),
         "mssql" => "sqlserver".into(),
-        "presto" => "trino".into(),
         "tidb" | "oceanbase" => "mysql".into(),
         other => other.to_string(),
     }
@@ -47,7 +46,6 @@ mod tests {
     fn aliases_normalize_before_lookup() {
         assert_eq!(normalize_driver_id("Postgres"), "postgresql");
         assert_eq!(normalize_driver_id("MSSQL"), "sqlserver");
-        assert_eq!(normalize_driver_id("presto"), "trino");
         assert_eq!(normalize_driver_id("TiDB"), "mysql");
     }
 
@@ -55,12 +53,6 @@ mod tests {
     fn unregistered_kiwi_is_sql() {
         // Kiwi was re-classified as a SQL driver (category: 'sql').
         assert_eq!(sync_category_of("kiwi"), SyncCategory::Sql);
-    }
-
-    #[test]
-    fn unregistered_trino_family_is_trino() {
-        assert_eq!(sync_family_of("trino"), "trino");
-        assert_eq!(sync_family_of("presto"), "trino");
     }
 
     #[test]

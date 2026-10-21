@@ -68,7 +68,7 @@ function driverUiSources(dir = DRIVER_UI_DIR): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    // `kiwi` / `olap` / `superset` are git drivers, absent or excluded from
+    // `kiwi` / `superset` are git drivers, absent or excluded from
     // `vitest.drivers.config.ts`; skip any driver without a `ui/` directory.
     const uiDir = join(dir, entry.name, 'ui');
     try {

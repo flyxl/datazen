@@ -249,7 +249,6 @@ workspace/
 | HBase | `all` | REST 接口 |
 | 通用向量数据库 | `all` | HTTP 向量端点 |
 | Kiwi（云数据库代理） | git 驱动 | 代理的云实例 |
-| Presto / Trino | git 驱动 | OLAP 引擎 |
 | Superset | git 驱动 | 数据探索平台 |
 
 `basic` 是四个核心驱动，`all` 是全部已注册的 path 驱动；git 驱动需显式选择，例如 `--drivers=basic,kiwi,superset`。驱动集合是构建期决定的，因此一个发行包不必携带所有引擎。协议允许时，线兼容引擎会顺带支持——QuestDB/Cloudberry 走 PostgreSQL 协议，Doris/StarRocks/OceanBase 走 MySQL 协议。

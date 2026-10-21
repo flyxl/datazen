@@ -464,21 +464,6 @@ const FRONTEND_DRIVER_CONFIG = {
     },
     sqlDialects: [],
   },
-  olap: {
-    dbTypes: [
-      { id: 'presto', metaExport: 'prestoMeta' },
-      { id: 'trino', metaExport: 'trinoMeta' },
-    ],
-    metaPath: '../../packages/drivers/olap/ui/plugin-meta',
-    connectionForm: {
-      component: 'CatalogConnectionFields',
-      path: '../../packages/drivers/olap/ui/CatalogConnectionFields',
-      formVariant: 'catalog',
-    },
-    sqlDialects: [
-      { family: 'trino', export: 'trinoDialect', path: '../../packages/drivers/olap/ui/trinoDialect' },
-    ],
-  },
   superset: {
     dbTypes: [{ id: 'superset', metaExport: 'supersetMeta' }],
     metaPath: '../../packages/drivers/superset/ui/plugin-meta',

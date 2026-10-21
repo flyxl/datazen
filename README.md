@@ -249,7 +249,6 @@ Most independent drivers consume the published MIT-licensed `datazen-driver-api`
 | HBase | `all` | REST interface |
 | Generic vector database | `all` | HTTP vector endpoints |
 | Kiwi (cloud database proxy) | git driver | Proxied cloud instances |
-| Presto / Trino | git driver | OLAP engines |
 | Superset | git driver | Data exploration platform |
 
 `basic` is the four core drivers and `all` is every registered path driver; Git drivers are selected explicitly, e.g. `--drivers=basic,kiwi,superset`. The exact driver set is a build-time choice, so a distribution never has to ship every engine. Wire-compatible engines ride along where the protocol allows — QuestDB/Cloudberry on the PostgreSQL wire, Doris/StarRocks/OceanBase on the MySQL wire.

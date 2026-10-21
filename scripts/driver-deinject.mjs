@@ -3,13 +3,13 @@
  * Strip resolve-drivers injection from tracked managed files while keeping user edits.
  *
  * - Cargo.toml: empty `# <<driver-*>>` (and legacy BEGIN/END) marker bodies
- * - capabilities: drop `kiwi:` / `olap:` / `superset:` permissions; keep windows etc.
+ * - capabilities: drop `kiwi:` / `superset:` / `redis:` permissions; keep windows etc.
  *
  * `driver_init.rs` / `generated.ts` are gitignored codegen
  * and are not deinjected — they stay as the last resolve-drivers output.
  */
 
-export const DRIVER_ACL_IDS = ['kiwi', 'olap', 'superset', 'redis'];
+export const DRIVER_ACL_IDS = ['kiwi', 'superset', 'redis'];
 
 export const FULLY_GENERATED_MANAGED = [
   'src-tauri/src/driver_init.rs',
