@@ -347,6 +347,23 @@ describe('tableDataStore (panel-scoped)', () => {
     expect(mockDatabaseCommands.getTableData).not.toHaveBeenCalled();
   });
 
+  // 08 §7: removing a row must not shift the connector of another row onto
+  // it. The connector belongs to the condition, not to its position.
+  it('keeps a per-condition connector on its own condition when a row is removed', async () => {
+    await loadTable();
+    useTableDataStore.getState().setFilters(PANEL, [
+      { column: 'id', operator: 'eq', value: '1' },
+      { column: 'name', operator: 'eq', value: 'a', connector: 'or' },
+      { column: 'region', operator: 'eq', value: 'eu', connector: 'and' },
+    ]);
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+
+    useTableDataStore.getState().removeFilter(PANEL, 1);
+    const draft = loaded().draftFilters;
+    expect(draft.map((filter) => filter.column)).toEqual(['id', 'region']);
+    expect(draft.map((filter) => filter.connector)).toEqual([undefined, 'and']);
+  });
+
   it('setSort triggers reload', async () => {
     await loadTable();
     mockDatabaseCommands.getTableData.mockClear();

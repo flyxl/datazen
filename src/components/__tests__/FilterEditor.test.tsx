@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, screen, act } from '@testing-library/react';
-import type { ComponentProps } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { FILTER_VALUE_DEBOUNCE_MS, FilterEditor } from '../FilterEditor';
 import type { FilterCondition } from '../../types';
 import { SHARED_FILTER_OPERATORS } from '../../types';
@@ -547,10 +547,98 @@ describe('FilterEditor operators and completeness', () => {
         { column: 'name', operator: 'eq', value: 'a' },
       ],
     });
-    const rows = document.querySelectorAll('[data-filter-index]');
+    // The connector badge carries the index too; the row containers are the
+    // ones without a test id.
+    const rows = document.querySelectorAll('[data-filter-index]:not([data-testid])');
     expect(Array.from(rows).map((row) => row.getAttribute('data-filter-index'))).toEqual([
       '0',
       '1',
     ]);
+  });
+});
+
+// ── 08 Step 11: the connector of one condition (逐条 AND/OR).
+describe('FilterEditor per-condition connectors', () => {
+  const twoRows: FilterCondition[] = [
+    { column: 'id', operator: 'eq', value: '1' },
+    { column: 'name', operator: 'eq', value: 'alice' },
+  ];
+
+  /**
+   * The panel is controlled: the badge only changes when the parent writes the
+   * new draft back. The harness does that, like the store does.
+   */
+  function StatefulEditor({ initial }: { initial: FilterCondition[] }) {
+    const [draft, setDraft] = useState(initial);
+    return (
+      <FilterEditor
+        columns={columns}
+        appliedFilters={[]}
+        appliedLogic="and"
+        draftFilters={draft}
+        draftLogic="and"
+        open
+        onOpenChange={vi.fn()}
+        onLogicChange={vi.fn()}
+        onChange={(index, next) =>
+          setDraft((previous) => previous.map((filter, position) => (position === index ? next : filter)))
+        }
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+        onApply={vi.fn()}
+        onClear={vi.fn()}
+      />
+    );
+  }
+
+  it('starts without a connector of its own and keeps the global switch usable', () => {
+    render(<StatefulEditor initial={twoRows} />);
+    // The first condition has no predecessor, so it has no badge.
+    expect(screen.queryAllByTestId('filter-connector')).toHaveLength(1);
+    expect(screen.getByTestId('filter-connector')).toHaveAttribute('data-connector', 'and');
+    expect(screen.getByTestId('filter-logic-and')).not.toBeDisabled();
+    expect(screen.queryByTestId('filter-connector-reset')).not.toBeInTheDocument();
+  });
+
+  it('takes the global logic out of the picture when a row gets its own connector', () => {
+    const props = renderEditor({ draftFilters: twoRows });
+    fireEvent.click(screen.getByTestId('filter-connector-or'));
+    expect(props.onChange).toHaveBeenCalledWith(1, { ...twoRows[1], connector: 'or' });
+
+    cleanup();
+    render(<StatefulEditor initial={twoRows} />);
+    fireEvent.click(screen.getByTestId('filter-connector-or'));
+    expect(screen.getByTestId('filter-connector-or')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('filter-logic-and')).toBeDisabled();
+    expect(screen.getByTestId('filter-connector-reset')).toBeInTheDocument();
+  });
+
+  it('drops every own connector when the reset is used', () => {
+    const props = renderEditor({
+      draftFilters: [twoRows[0], { ...twoRows[1], connector: 'or' }],
+    });
+    fireEvent.click(screen.getByTestId('filter-connector-reset'));
+    expect(props.onChange).toHaveBeenCalledWith(1, { column: 'name', operator: 'eq', value: 'alice' });
+
+    cleanup();
+    render(<StatefulEditor initial={[twoRows[0], { ...twoRows[1], connector: 'or' }]} />);
+    fireEvent.click(screen.getByTestId('filter-connector-reset'));
+    expect(screen.getByTestId('filter-logic-and')).not.toBeDisabled();
+    expect(screen.queryByTestId('filter-connector-reset')).not.toBeInTheDocument();
+    expect(screen.getByTestId('filter-connector')).toHaveAttribute('data-connector', 'and');
+  });
+
+  it('keeps the key order of a condition when it gets a connector', () => {
+    const props = renderEditor({ draftFilters: twoRows });
+    fireEvent.click(screen.getByTestId('filter-connector-or'));
+    const onChangeMock = props.onChange as ReturnType<typeof vi.fn>;
+    const [, next] = onChangeMock.mock.calls[0];
+    expect(Object.keys(next)).toEqual(['column', 'operator', 'value', 'connector']);
+  });
+
+  it('shows the badge of a collapsed condition too', () => {
+    renderEditor({ draftFilters: twoRows });
+    expect(screen.getAllByTestId('filter-connector')).toHaveLength(1);
+    expect(screen.getAllByTitle('filter.editCondition')).toHaveLength(2);
   });
 });

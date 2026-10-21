@@ -9,6 +9,7 @@ import { cn } from '../lib/cn';
 import { filterDraftEqualsApplied, isCompleteFilter } from '../stores/tableData/filterUtils';
 import { FilterConditionChip } from './filter/FilterConditionChip';
 import { FilterConditionEditor } from './filter/FilterConditionEditor';
+import { FilterConnectorToggle } from './filter/FilterConnectorToggle';
 import { conditionSummary } from './filter/filterLabels';
 import type { FilterColumn } from './filter/types';
 
@@ -85,6 +86,41 @@ export function FilterEditor({
     appliedCount === 0
       ? t('filter.noActive')
       : appliedFilters.map((f) => conditionSummary(f, t)).join(` ${appliedLogic.toUpperCase()} `);
+
+  /**
+   * Whether a condition carries a connector of its own.
+   *
+   * The first condition has no predecessor, so its own connector is
+   * meaningless; every other condition either names its connector or follows
+   * the request wide logic.
+   */
+  const perConditionLogic = useMemo(
+    () => draftFilters.slice(1).some((filter) => filter.connector !== undefined),
+    [draftFilters],
+  );
+
+  /**
+   * Give one condition its own connector.
+   *
+   * The spread keeps the key order of the condition — `JSON.stringify` is
+   * order sensitive and the draft comparison would call a rewritten condition
+   * "changed" (or "unchanged") for the wrong reason.
+   */
+  const setConnector = (index: number, connector: 'and' | 'or') => {
+    const filter = draftFilters[index];
+    if (!filter) return;
+    onChange(index, { ...filter, connector });
+  };
+
+  /** Drop every own connector, so the request wide logic is the only truth again. */
+  const resetConnectors = () => {
+    draftFilters.forEach((filter, index) => {
+      if (filter.connector === undefined) return;
+      const rest = { ...filter };
+      delete rest.connector;
+      onChange(index, rest);
+    });
+  };
 
   /** Index of the filter currently shown as full inputs; null = all complete → chips. */
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -188,7 +224,8 @@ export function FilterEditor({
                   draftLogic === 'and' ? 'bg-accent/15 text-accent' : 'text-fg-secondary',
                 )}
                 onClick={() => onLogicChange('and')}
-                disabled={loading}
+                disabled={loading || perConditionLogic}
+                title={perConditionLogic ? t('filter.globalLogicDisabledHint') : undefined}
                 data-testid="filter-logic-and"
               >
                 {t('filter.and')}
@@ -200,12 +237,24 @@ export function FilterEditor({
                   draftLogic === 'or' ? 'bg-accent/15 text-accent' : 'text-fg-secondary',
                 )}
                 onClick={() => onLogicChange('or')}
-                disabled={loading}
+                disabled={loading || perConditionLogic}
+                title={perConditionLogic ? t('filter.globalLogicDisabledHint') : undefined}
                 data-testid="filter-logic-or"
               >
                 {t('filter.or')}
               </button>
             </div>
+            {perConditionLogic && (
+              <button
+                type="button"
+                className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-fg-secondary hover:text-fg"
+                onClick={resetConnectors}
+                disabled={loading}
+                data-testid="filter-connector-reset"
+              >
+                {t('filter.connectorReset', { logic: draftLogic.toUpperCase() })}
+              </button>
+            )}
             <Button
               variant="ghost"
               className="h-6 shrink-0 gap-1 px-1.5 text-xs"
@@ -269,14 +318,29 @@ export function FilterEditor({
                 const complete = isCompleteFilter(f);
                 const expanded = !complete || editingIndex === idx;
                 const isLast = idx === draftFilters.length - 1;
+                // The first condition has no predecessor: its own connector
+                // would be meaningless, so no badge is rendered for it.
+                const connector = idx > 0 ? (f.connector ?? draftLogic) : null;
+                const explicit = f.connector !== undefined;
 
                 return (
                   <div
                     key={`${f.column}-${f.operator}-${idx}`}
                     ref={isLast ? lastItemRef : undefined}
-                    className="max-w-full"
+                    className="flex max-w-full flex-nowrap items-center gap-1"
                     data-filter-index={idx}
                   >
+                    {connector && (
+                      <FilterConnectorToggle
+                        index={idx}
+                        value={connector}
+                        explicit={explicit}
+                        differsFromGlobal={explicit && connector !== draftLogic}
+                        disabled={loading}
+                        onSelect={(next) => setConnector(idx, next)}
+                        t={t}
+                      />
+                    )}
                     {expanded ? (
                       <FilterConditionEditor
                         filter={f}
