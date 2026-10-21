@@ -1,24 +1,25 @@
-import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { FilterCondition, FilterOperator } from '../types';
 import { useI18n } from '../hooks/useI18n';
-import type { I18nKey } from '../locales';
-import { Select } from './ui/Select';
-import { Input } from './ui/Input';
 import { Button } from './ui/Button';
 import { ErrorBanner } from './ui/ErrorBanner';
 import { cn } from '../lib/cn';
 import { filterDraftEqualsApplied, isCompleteFilter } from '../stores/tableData/filterUtils';
-import { formatCell } from '../lib/formatters';
+import { FilterConditionChip } from './filter/FilterConditionChip';
+import { FilterConditionEditor } from './filter/FilterConditionEditor';
+import { conditionSummary } from './filter/filterLabels';
 
 export type FilterLogic = 'and' | 'or';
 
-/** Delay before writing a typed value into the draft (IME-safe). */
-export const FILTER_VALUE_DEBOUNCE_MS = 350;
+/**
+ * The debounce of the value field lives with the value field now; the panel
+ * re-exports it because the existing tests import it from here.
+ */
+export { FILTER_VALUE_DEBOUNCE_MS } from './filter/FilterValueInput';
 
 /** Max height for the wrapping filter chip list (~2 rows) before scrolling. */
 const FILTER_LIST_MAX_HEIGHT_CLASS = 'max-h-[4.75rem]';
-const SELECT_LISTBOX_SELECTOR = '[id^="dz-select-listbox-"]';
 
 const OPERATORS: FilterOperator[] = [
   'eq',
@@ -52,268 +53,6 @@ export interface FilterEditorProps {
   loading?: boolean;
   /** Caller-owned parse/apply error; this editor does not execute requests. */
   applyError?: string | null;
-}
-
-function opLabel(op: FilterOperator, t: (key: I18nKey) => string): string {
-  return t(`filter.${op}`);
-}
-
-function conditionSummary(f: FilterCondition, t: (key: I18nKey) => string): string {
-  const op = opLabel(f.operator, t);
-  if (f.operator === 'isNull' || f.operator === 'isNotNull') {
-    return `${f.column} ${op}`;
-  }
-  const value =
-    f.value === null || f.value === undefined || f.value === '' ? '…' : formatCell(f.value);
-  return `${f.column} ${op} ${value}`;
-}
-
-/**
- * Local draft + IME-aware value field.
- * Commits into the filter draft only (no query); parent Apply runs the query.
- */
-function FilterValueInput({
-  value,
-  onCommit,
-  placeholder,
-  autoFocus,
-  disabled,
-  onEnterComplete,
-}: {
-  value: string;
-  onCommit: (value: string) => void;
-  placeholder: string;
-  autoFocus?: boolean;
-  disabled?: boolean;
-  /** Called after Enter commits a non-empty value (collapse to chip). */
-  onEnterComplete?: () => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const composingRef = useRef(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
-
-  useEffect(() => {
-    if (!composingRef.current) setDraft(value);
-  }, [value]);
-
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    },
-    [],
-  );
-
-  const clearTimer = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  const flush = (next: string) => {
-    clearTimer();
-    if (next !== value) onCommit(next);
-  };
-
-  const schedule = (next: string) => {
-    clearTimer();
-    timerRef.current = setTimeout(() => flush(next), FILTER_VALUE_DEBOUNCE_MS);
-  };
-
-  return (
-    <Input
-      autoFocus={autoFocus}
-      disabled={disabled}
-      value={draft}
-      onChange={(e) => {
-        const next = e.target.value;
-        setDraft(next);
-        if (composingRef.current || (e.nativeEvent as InputEvent).isComposing) return;
-        schedule(next);
-      }}
-      onCompositionStart={() => {
-        composingRef.current = true;
-        clearTimer();
-      }}
-      onCompositionEnd={(e) => {
-        const next = e.currentTarget.value;
-        setDraft(next);
-        requestAnimationFrame(() => {
-          composingRef.current = false;
-        });
-        schedule(next);
-      }}
-      onBlur={() => {
-        if (composingRef.current) return;
-        flush(draftRef.current);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' && !composingRef.current && !e.nativeEvent.isComposing) {
-          e.preventDefault();
-          flush(draftRef.current);
-          if (draftRef.current.trim() !== '') onEnterComplete?.();
-        }
-      }}
-      placeholder={placeholder}
-      className="!h-7 w-24 shrink-0 !px-2 !text-xs"
-      data-testid="filter-value"
-    />
-  );
-}
-
-function FilterConditionChip({
-  filter,
-  onEdit,
-  onRemove,
-  disabled = false,
-  t,
-}: {
-  filter: FilterCondition;
-  onEdit: () => void;
-  onRemove: () => void;
-  disabled?: boolean;
-  t: (key: I18nKey) => string;
-}) {
-  const label = conditionSummary(filter, t);
-  return (
-    <div
-      className="inline-flex max-w-full items-center gap-0.5 rounded-full border border-accent/30 bg-accent/10 py-0.5 pl-2 pr-0.5 text-xs text-accent"
-      aria-disabled={disabled || undefined}
-    >
-      <button
-        type="button"
-        className="selectable min-w-0 truncate px-0.5 text-left hover:underline"
-        onClick={onEdit}
-        disabled={disabled}
-        aria-disabled={disabled || undefined}
-        title={t('filter.editCondition')}
-      >
-        {label}
-      </button>
-      <button
-        type="button"
-        className="shrink-0 rounded-full p-0.5 text-accent/80 hover:bg-accent/20 hover:text-accent"
-        onClick={onRemove}
-        disabled={disabled}
-        aria-disabled={disabled || undefined}
-        aria-label={t('filter.remove')}
-      >
-        <X className="h-3 w-3" />
-      </button>
-    </div>
-  );
-}
-
-function FilterConditionEditor({
-  filter,
-  index,
-  columnOptions,
-  opOptions,
-  onChange,
-  onRemove,
-  onCollapse,
-  autoFocusValue,
-  disabled,
-  t,
-}: {
-  filter: FilterCondition;
-  index: number;
-  columnOptions: { value: string; label: string }[];
-  opOptions: { value: string; label: string }[];
-  onChange: (index: number, next: FilterCondition) => void;
-  onRemove: (index: number) => void;
-  onCollapse: () => void;
-  autoFocusValue: boolean;
-  disabled: boolean;
-  t: (key: I18nKey) => string;
-}) {
-  const needsValue = filter.operator !== 'isNull' && filter.operator !== 'isNotNull';
-  const rootRef = useRef<HTMLDivElement>(null);
-  const latestRef = useRef(filter);
-  latestRef.current = filter;
-
-  const pushChange = (next: FilterCondition) => {
-    latestRef.current = next;
-    onChange(index, next);
-  };
-
-  const tryCollapseIfComplete = () => {
-    // Defer: Select portal clicks blur the trigger before focus returns / listbox closes.
-    globalThis.setTimeout(() => {
-      const active = document.activeElement;
-      if (rootRef.current?.contains(active)) return;
-      if (active?.closest?.(SELECT_LISTBOX_SELECTOR)) return;
-      // Listbox still open (picking an option) — stay expanded.
-      if (document.querySelector(SELECT_LISTBOX_SELECTOR)) return;
-      if (isCompleteFilter(latestRef.current)) onCollapse();
-    }, 10);
-  };
-
-  return (
-    <div
-      ref={rootRef}
-      className="inline-flex max-w-full flex-nowrap items-center gap-1 rounded border border-edge bg-surface-alt/50 py-0.5 pl-0.5 pr-0.5"
-      onBlur={(e) => {
-        const related = e.relatedTarget as Node | null;
-        if (related && rootRef.current?.contains(related)) return;
-
-        // Focus moved to a known outside node — collapse if complete (skip activeElement
-        // check; jsdom often leaves activeElement on the blurred input).
-        if (related && !rootRef.current?.contains(related)) {
-          globalThis.setTimeout(() => {
-            if (document.querySelector(SELECT_LISTBOX_SELECTOR)) return;
-            if (isCompleteFilter(latestRef.current)) onCollapse();
-          }, 10);
-          return;
-        }
-
-        tryCollapseIfComplete();
-      }}
-    >
-      <Select
-        value={filter.column}
-        options={columnOptions}
-        disabled={disabled}
-        onChange={(column) => pushChange({ ...latestRef.current, column })}
-        className="!h-7 w-[6.5rem] shrink-0 !px-1.5 !text-xs"
-      />
-      <Select
-        value={filter.operator}
-        options={opOptions}
-        disabled={disabled}
-        onChange={(operator) => {
-          const nextOp = operator as FilterOperator;
-          const next = { ...latestRef.current, operator: nextOp };
-          pushChange(next);
-          if (nextOp === 'isNull' || nextOp === 'isNotNull') {
-            onCollapse();
-          }
-        }}
-        className="!h-7 w-[4.75rem] shrink-0 !px-1.5 !text-xs"
-      />
-      {needsValue && (
-        <FilterValueInput
-          value={filter.value == null ? '' : String(filter.value)}
-          onCommit={(value) => pushChange({ ...latestRef.current, value })}
-          placeholder={t('filter.value')}
-          autoFocus={autoFocusValue}
-          disabled={disabled}
-          onEnterComplete={onCollapse}
-        />
-      )}
-      <button
-        type="button"
-        className="shrink-0 rounded p-1 text-fg-muted hover:bg-surface-raised hover:text-fg"
-        disabled={disabled}
-        onClick={() => onRemove(index)}
-        aria-label={t('filter.remove')}
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
 }
 
 export function FilterEditor({

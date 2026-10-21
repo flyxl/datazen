@@ -124,6 +124,10 @@ export default defineConfig({
         'src/windows/connection/ObjectBrowser.tsx',
         'src/windows/connection/PrivilegeView.tsx',
         'src/components/FilterEditor.tsx',
+        // The filter editor's parts live next to it since 08 Step 9; the
+        // coverage gate has to see them, or the split would quietly shrink
+        // the denominator instead of moving it.
+        'src/components/filter/**/*.{ts,tsx}',
         'src/components/query/BindParamPanel.tsx',
         'src/components/connection/SshTunnelFields.tsx',
         'src/windows/workflow/**/*.{ts,tsx}',
