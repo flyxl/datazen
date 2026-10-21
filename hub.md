@@ -91,11 +91,23 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 
 | 轨 | 分支 / commit | 范围 | 验收 |
 |---|---|---|---|
-| **A** `job-org-scope` | `feature/job-org-scope`（进行中，34 文件未提交） | `platform-api/dto/job.rs:73 JobDefinition`、`:280 JobFilter` 加 `organization_id`（**必填非 Option**）；`ports/job.rs` 契约补语义；`runtime/job/repository.rs` 的 `InMemoryJobRepository` 按 org 过滤（跨 org 返回"不存在"）；`runtime_repository.rs`/`memory_runtime_repository.rs`/`owner_claims.rs`/`runtime_methods.rs`；宿主 `store/app_db/jobs/`（`admission.rs:146`）加列 + 迁移 + 过滤；`platform/ipc.rs` FROZEN_SIGNATURES 同提交更新 | 桌面单租户**行为完全不变**（1265 条断言不许动）；≥3 条组织隔离单测；跨 org 不泄漏"存在但无权" |
+| **A** `job-org-scope` | `feature/job-org-scope` / **`5ea292d8a` + `5bde303eb`**（35 改 + 3 新），`READY_FOR_TEST` | `platform-api/dto/job.rs:73 JobDefinition`、`:280 JobFilter` 加 `organization_id`（**必填非 Option**）；`ports/job.rs` 契约补语义；`runtime/job/repository.rs` 的 `InMemoryJobRepository` 按 org 过滤（跨 org 返回"不存在"）；`runtime_repository.rs`/`memory_runtime_repository.rs`/`owner_claims.rs`/`runtime_methods.rs`；宿主 `store/app_db/jobs/`（`admission.rs:146`）加列 + 迁移 + 过滤；`platform/ipc.rs` FROZEN_SIGNATURES 同提交更新 | 桌面单租户**行为完全不变**（1265 条断言不许动）；≥3 条组织隔离单测；跨 org 不泄漏"存在但无权" |
 | **B** `di-dyn` | `feature/di-dyn` / **`d235f7d3`**（9 文件 +215/−45；自验后 amend 过，**以此为准**） | `feature-core/src/workflow/registry.rs:95/103` 去泛型 → `Arc<dyn WorkflowDefinitionStore>`；宿主 `workflow/registry.rs`（`AppDbWorkflowStore` 提可见性 + 构造入口）、`bootstrap/app_state.rs:205`、`commands/mod.rs:78/167`、`dashboard/create.rs:3/11/53/77/124`、`commands/workflow.rs`、`commands/context.rs`；包内测试夹具 `MemoryStore` | 共享包公开签名里**不出现宿主类型参数**；`WorkflowRegistry` 无类型参数；feature-core 仍不依赖宿主 crate；行为不变 |
 | **C** `runtime-naming` | `feature/runtime-naming` / **`a4c54cc0c`**（29 文件 +238/−105，`READY_FOR_TEST`） | `git mv`：`job/desktop_host.rs`→`job/host.rs`（`DesktopJobHost`→`JobHost`）、`tunnel/desktop.rs`→`tunnel/route.rs`（`DesktopNetworkProvider`→`RouteNetworkProvider`、`DesktopRouteCatalog`→`RouteCatalog`）、`tests/tunnel_desktop_network_provider.rs`→`tunnel_route_network_provider.rs`；导出面、`single_counter_audit` 的 `AUDITED` 登记表、宿主/feature-core 引用点、11 份文档 | 三类型名 0 命中；无 `desktop.rs`/`desktop_host.rs`；**断言逐条未改**；历史保留 |
 
-### Wave 2
+### Wave 2 —— **工作树已全部建好并注入热 target**
+
+四棵 Wave 2 工作树已用 `scripts/new-feature-worktree.sh` 建好（base = `feature/storage-ports` @ `9c724c8e8`），各自注入 11G 热 target（APFS 克隆）+ touch path 依赖：
+
+| 轨 | 分支 | worktree | 热 target |
+|---|---|---|---|
+| D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G |
+| E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G |
+| F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G |
+| G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G |
+
+**派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖（合并改变了 `packages/*` 源码），然后才派发。
+
 
 #### D `featurecore-org-scope`（依赖 B）
 **落点（实测）**
@@ -202,7 +214,7 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 |---|---|---|
 | C | 已交付 `a4c54cc0c`，`READY_FOR_TEST` | Tester 复测中（resume 1 次） |
 | B | 已交付 **`d235f7d3`**，`READY_FOR_TEST`，**隔离 target 验证全绿** | Tester `cda75c30` 在独立验证树 `.worktrees/verify-di-dyn` 复测 |
-| A | running，34 文件未提交 | 最近编辑 22:48，活跃 |
+| A | 已交付 **`5ea292d8a`+`5bde303eb`**，`READY_FOR_TEST`，**隔离 target 验证全绿**（platform-api 224 / runtime 638 / host 1269） | Tester `b285d2f2` 在独立验证树 `.worktrees/verify-job-org-scope` 复测 |
 
 ### 环境
 - `export CARGO_TARGET_DIR=/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/.shared-target`（三轨共用；会打印 `Blocking waiting for file lock` —— **正常，等它**，禁止各轨改 target 目录）
@@ -212,6 +224,17 @@ find <worktree>/src-tauri/src -name '*.rs' -exec touch {} +
 - 长输出一律落 `mktemp` 文件再 `tail`/`grep`；退出码单独打印
 
 ---
+
+### A 轨的裁决（6 项）
+
+| # | 项 | 裁决 |
+|---|---|---|
+| 1 | 越界改 `packages/feature-core/src/restore_job.rs` 2 行（DTO 必填字段，不改则该 crate lib test 无法编译） | **接受**。与 C 轨同文件冲突 → 按 `C→A` 合，机械可解。 |
+| 2 | 简报前提错误：jobs 表**早有** `organization_id`（`JOB_SCHEMA_V2`），无需迁移 | **记录为协调者简报失误**。代理核实后如实上报而非照做 —— 正确行为。 |
+| 3 | `InMemoryJobRepository::accept` 重复 jobId：**静默覆盖 → 报错** | **有条件接受**。条件：Tester 须独立验证 ①改前是否真是跨组织覆盖入口（旧实现是否按 jobId 覆盖整行）②是否有既有测试断言过"重复即覆盖"而被改弱或删除 ③错误类型与 SQLite 主键冲突口径真的一致 ④无调用方依赖静默覆盖。**任一条不成立则回退该行为变更**，只保留字段与过滤。 |
+| 4 | `JobRuntimeRepository::renew` 无 `ctx` | **接受**，条件：端口注释须明确写"续约由 claim fencing 兜底"，否则后来者会误以为 renew 也有 org 隔离。 |
+| 5 | `RecoveryFilter` 未加组织字段 | **接受**（恢复扫描按 ctx 的组织过滤即组织内）。跨组织恢复扫描需显式 opt-in 类型 → 记入 Wave 4。 |
+| 6 | `persistence-model.md` §4.1 写 SCHEMA_VERSION=3，代码是 4 | 若确为**既有漂移** → 归 Wave 3 文档收口（非阻塞）；若本轨引入 → 缺陷。Tester P7 独立核实。 |
 
 ## 6. 门禁与流程
 
