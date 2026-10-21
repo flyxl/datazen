@@ -1,9 +1,9 @@
 //! Shared backup and SQL restore use cases. Paths and progress delivery are supplied by hosts.
 use crate::error::FeatureError as CommandError;
 use datazen_driver_api::{
-    BackupDumpOptions, BackupRestoreOptions, ConnectionConfig, ConnectionHandle, DatabaseDriver,
-    DriverError, DumpPhase, DumpProgress, RestoreSession, SqlTarget, TableInfo, TableType,
-    Utf8ChunkDecoder,
+    BackupDialect, BackupDumpOptions, BackupRestoreOptions, ConnectionConfig, ConnectionHandle,
+    DatabaseDriver, DriverError, DumpPhase, DumpProgress, LegacySqlDialect, RestoreSession,
+    SqlDialect, SqlTarget, TableInfo, TableType, Utf8ChunkDecoder,
 };
 use std::{
     io::Read,
@@ -234,14 +234,14 @@ pub async fn backup_database_to_path(
     Ok(())
 }
 
-fn qualify_restore_ident(driver: &dyn DatabaseDriver, table: &TableInfo) -> String {
+fn qualify_restore_ident(dialect: &dyn SqlDialect, table: &TableInfo) -> String {
     match table.schema.as_deref().filter(|s| !s.is_empty()) {
         Some(schema) => format!(
             "{}.{}",
-            driver.quote_ident(schema),
-            driver.quote_ident(&table.name)
+            dialect.quote_ident(schema),
+            dialect.quote_ident(&table.name)
         ),
-        None => driver.quote_ident(&table.name),
+        None => dialect.quote_ident(&table.name),
     }
 }
 
@@ -292,7 +292,8 @@ pub async fn drop_existing_restore_targets(
         .execute_at(handle, "SET FOREIGN_KEY_CHECKS=0", target)
         .await;
     for (i, table) in ordered.iter().enumerate() {
-        let ident = qualify_restore_ident(driver.as_ref(), table);
+        // 标识符引用来自 SqlDialect 契约，旧驱动 API 逐条转发。
+        let ident = qualify_restore_ident(&LegacySqlDialect::new(driver.as_ref()), table);
         emit_restore_progress(
             app,
             DumpProgress {
@@ -408,7 +409,10 @@ pub async fn restore_database_from_path(
         let mut throttle = ThrottledRestoreProgress::new(app);
         {
             let mut on_progress = |progress: DumpProgress| throttle.emit(progress);
-            if driver.uses_sql_restore_pipeline() {
+            // Restore-file rules are read through the narrow BackupDialect
+            // contract; execution below stays on the driver's lifecycle.
+            let backup = datazen_driver_api::LegacyBackupDialect::new(driver.as_ref());
+            if backup.uses_sql_restore_pipeline() {
                 stream_sql_file_into_session(
                     &input_path,
                     driver.as_ref(),
@@ -470,6 +474,9 @@ pub async fn restore_database_from_path(
 const SQL_STREAM_CHUNK: usize = 64 * 1024;
 
 /// Read a `.sql` / `.sql.gz` file in chunks and feed the driver's restore pipeline.
+///
+/// The scanner comes from the [`BackupDialect`] rule source; the driver stays
+/// in the loop for statement execution and recovery only.
 pub async fn stream_sql_file_into_session(
     path: &std::path::Path,
     driver: &dyn DatabaseDriver,
@@ -479,6 +486,9 @@ pub async fn stream_sql_file_into_session(
     safe_mode: bool,
     on_progress: &mut (dyn FnMut(DumpProgress) + Send),
 ) -> Result<(), CommandError> {
+    // The scanner source is derived from the driver once, here, so callers
+    // never juggle both the driver and its rule view.
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(driver);
     let gz = path
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("gz"));
@@ -504,7 +514,7 @@ pub async fn stream_sql_file_into_session(
         Ok::<(), String>(())
     });
 
-    let mut session = RestoreSession::new(driver, handle, driver.new_sql_scanner(), Some(opts))
+    let mut session = RestoreSession::new(driver, handle, dialect.new_sql_scanner(), Some(opts))
         .with_statement_guard(Box::new(move |stmt| {
             datazen_runtime::sql_guard::check_sql(stmt, read_only, safe_mode)
                 .map_err(DriverError::QueryFailed)

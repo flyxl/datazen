@@ -96,55 +96,83 @@ impl DatabaseDriverFactory for PostgresFactory {
 static POSTGRES_FACTORY: PostgresFactory = PostgresFactory;
 datazen_driver_api::register_driver!(&POSTGRES_FACTORY);
 
-struct QuestDbFactory;
-impl DatabaseDriverFactory for QuestDbFactory {
-    fn create(&self) -> Arc<dyn DatabaseDriver> {
-        Arc::new(ReuseDriver::new_with_precise_cancel(
-            Arc::new(PostgresDriver::new()),
-            "questdb",
-            true,
-        ))
-    }
-    fn driver_id(&self) -> &'static str {
-        "questdb"
-    }
-    fn supports_explain(&self) -> bool {
-        true
-    }
-    fn supports_cancel_query(&self) -> bool {
-        false
-    }
-    fn supports_query_execution_cancel(&self) -> bool {
-        true
-    }
-}
-datazen_driver_api::register_driver!(&QuestDbFactory);
+/// A reuse alias factory: its 物理资源契约由本 crate 的资源机制承载，但能力快照
+/// 与每个句柄的身份是别名自己的 driver id（能力声明与同一厂商父库一致，按
+/// 别名精修与否在 capability matrix 中另行裁决）。
+///
+/// 三个单例必须同时成立：
+/// * `inner` 与 `provider` 绑定同一个 [`PostgresDriver`] 实例（否则 provider
+///   发出的句柄会寻址到另一组池）；
+/// * `create()` 每次从同一个 `inner` 出发包一层 [`ReuseDriver`]（注册表有
+///   自身缓存，池子住在 inner 里，跨调用引用同一批池）；
+/// * provider_id 与 driver_id 同名。
+macro_rules! postgres_alias_factory {
+    ($factory:ident, $inner:ident, $provider:ident, $id:literal) => {
+        struct $factory;
+        static $inner: OnceLock<Arc<PostgresDriver>> = OnceLock::new();
+        static $provider: OnceLock<Arc<dyn ResourceProvider>> = OnceLock::new();
 
-struct CloudberryFactory;
-impl DatabaseDriverFactory for CloudberryFactory {
-    fn create(&self) -> Arc<dyn DatabaseDriver> {
-        // Cloudberry is a PostgreSQL derivative and uses the same backend PID
-        // and pg_cancel_backend control protocol as native PostgreSQL.
-        Arc::new(ReuseDriver::new_with_precise_cancel(
-            Arc::new(PostgresDriver::new()),
-            "cloudberry",
-            true,
-        ))
-    }
-    fn driver_id(&self) -> &'static str {
-        "cloudberry"
-    }
-    fn supports_explain(&self) -> bool {
-        true
-    }
-    fn supports_cancel_query(&self) -> bool {
-        false
-    }
-    fn supports_query_execution_cancel(&self) -> bool {
-        true
-    }
+        impl $factory {
+            fn inner(&self) -> Arc<PostgresDriver> {
+                $inner
+                    .get_or_init(|| Arc::new(PostgresDriver::new()))
+                    .clone()
+            }
+
+            fn provider(&self) -> Arc<dyn ResourceProvider> {
+                $provider
+                    .get_or_init(|| {
+                        Arc::new(PostgresResourceProvider::with_provider_id(
+                            self.inner(),
+                            $id,
+                        )) as Arc<dyn ResourceProvider>
+                    })
+                    .clone()
+            }
+        }
+
+        impl DatabaseDriverFactory for $factory {
+            fn create(&self) -> Arc<dyn DatabaseDriver> {
+                Arc::new(ReuseDriver::new_with_precise_cancel(
+                    self.inner(),
+                    $id,
+                    true,
+                ))
+            }
+            fn driver_id(&self) -> &'static str {
+                $id
+            }
+            fn supports_explain(&self) -> bool {
+                true
+            }
+            fn supports_cancel_query(&self) -> bool {
+                false
+            }
+            fn supports_query_execution_cancel(&self) -> bool {
+                true
+            }
+            /// The alias shares the PostgreSQL resource machinery; the provider
+            /// is never `None`, so the resource contract is reachable for the
+            /// alias database type exactly as it is for the native pool.
+            fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
+                Some(self.provider())
+            }
+            fn resource_capabilities(&self) -> CapabilitySet {
+                self.provider().capabilities().capabilities.clone()
+            }
+        }
+
+        datazen_driver_api::register_driver!(&$factory);
+    };
 }
-datazen_driver_api::register_driver!(&CloudberryFactory);
+
+postgres_alias_factory!(QuestDbFactory, QUESTDB_INNER, QUESTDB_PROVIDER, "questdb");
+postgres_alias_factory!(
+    CloudberryFactory,
+    CLOUDBERRY_INNER,
+    CLOUDBERRY_PROVIDER,
+    "cloudberry"
+);
 
 #[cfg(test)]
 mod tests {
@@ -164,6 +192,49 @@ mod tests {
 
         assert!(QuestDbFactory.create().supports_query_execution_cancel());
         assert!(CloudberryFactory.create().supports_query_execution_cancel());
+    }
+
+    /// A reuse alias must be able to open a platform session: the factory
+    /// resolves a resource provider, and pools live in the memoized inner
+    /// driver that provider was built from — the same one every `create()`
+    /// call wraps, so the provider's handles reach the pools the host's
+    /// live-connection port hands out.
+    #[test]
+    fn every_alias_factory_binds_a_provider_to_the_driver_it_hands_out() {
+        for (factory, id) in [
+            (&QuestDbFactory as &dyn DatabaseDriverFactory, "questdb"),
+            (
+                &CloudberryFactory as &dyn DatabaseDriverFactory,
+                "cloudberry",
+            ),
+        ] {
+            assert_eq!(factory.driver_id(), id);
+
+            let provider = factory.resource_provider().unwrap_or_else(|| {
+                panic!("{id}: alias factories must resolve the resource contract")
+            });
+            assert!(
+                Arc::ptr_eq(&provider, &factory.resource_provider().unwrap()),
+                "{id}: the provider must be memoized; a rebuilt provider rejects \
+                 every handle issued by the previous one"
+            );
+            assert_eq!(provider.provider_id(), id, "{id}: alias identity");
+            assert!(
+                !provider.capabilities().provider_id.is_empty(),
+                "{id}: capability snapshot is keyed on the alias identity"
+            );
+
+            // The wrapper handed out twice shares the same inner driver —
+            // asserted at the wrapper layer because the wrapper is what the
+            // registry cache and the live-connection port both hold.
+            let first = factory.create();
+            let second = factory.create();
+            assert_eq!(
+                (first.driver_type(), second.driver_type()),
+                (id.into(), id.into()),
+                "{id}: wrappers wrap this alias id"
+            );
+        }
     }
 
     #[tokio::test]

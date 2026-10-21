@@ -132,6 +132,7 @@ pub(crate) async fn get_er_data_impl(
             table.schema.as_deref(),
             None,
         );
+        let catalog = crate::db::LegacyCatalogReader::new(driver.as_ref());
         match state
             .schema_cache
             .get_table_schema(
@@ -139,7 +140,7 @@ pub(crate) async fn get_er_data_impl(
                 &database,
                 table_schema.as_deref(),
                 &table.name,
-                &driver,
+                &catalog,
                 &handle,
             )
             .await

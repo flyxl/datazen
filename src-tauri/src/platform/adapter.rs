@@ -23,6 +23,7 @@ use std::sync::Arc;
 use datazen_application::error::{ApiError, ApiErrorCode};
 use datazen_application::frontend_bridge::{self, BridgeInjection, FrontendBridge};
 use datazen_application::ApplicationServices;
+use datazen_driver_api::CommandCatalog;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::{
     id::{Counter, RequestId},
@@ -566,9 +567,11 @@ impl PlatformAdapter {
             })?;
 
         let shape = super::target_metadata::namespace_shape(provider.namespace_shape());
+        // Description only: the command catalogue is listed here, never executed.
+        let catalog = crate::db::LegacyCommandCatalog::new(driver.as_ref());
         let mut commands = std::collections::HashMap::new();
-        for definition in driver.command_definitions() {
-            if let Some(requirements) = driver.target_requirements(&definition.id) {
+        for definition in catalog.command_definitions() {
+            if let Some(requirements) = catalog.target_requirements(&definition.id) {
                 commands.insert(
                     definition.id,
                     super::target_metadata::command_requirements(requirements),

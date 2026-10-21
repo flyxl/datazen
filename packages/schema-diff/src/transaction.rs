@@ -1,7 +1,7 @@
 //! Dialect-aware transaction scope for DDL and DML operations.
 
 use datazen_driver_api::{
-    ConnectionHandle, DatabaseDriver, DdlAtomicity, SqlTarget, TransactionHandle,
+    ConnectionHandle, DatabaseDriver, DdlAtomicity, SchemaMigration, SqlTarget, TransactionHandle,
 };
 
 /// Dialect-aware transaction scope.
@@ -37,7 +37,10 @@ impl<'a> TransactionScope<'a> {
         handle: &'a ConnectionHandle,
         target: SqlTarget<'a>,
     ) -> Result<Self, String> {
-        let atomicity = driver.ddl_atomicity();
+        // The atomicity decision is a structural-migration rule, read through
+        // the narrow SchemaMigration contract; BEGIN/COMMIT stay on the
+        // driver's resource lifecycle.
+        let atomicity = datazen_driver_api::LegacySchemaMigration::new(driver).ddl_atomicity();
         let tx = if matches!(atomicity, DdlAtomicity::Transactional) {
             Some(
                 driver

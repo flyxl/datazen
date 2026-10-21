@@ -1,6 +1,6 @@
 //! Workflow SQL steps use a short, independent resource through the execution gateway.
 use super::{error::WorkflowError, WorkflowCommandStep};
-use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
+use datazen_driver_api::{CommandCatalog, ConnectionConfig, DatabaseDriver};
 use datazen_platform_api::context::RequestContext;
 use datazen_runtime::application::RuntimeConnectionUseCases;
 use std::sync::Arc;
@@ -165,6 +165,8 @@ async fn execute_bound(
         return Err(WorkflowError::Validation("connection disabled".into()));
     }
     let driver = before_dispatch(deadline, state.driver(&config)).await??;
+    // Command description only; execution keeps its own lifecycle below.
+    let catalog = datazen_driver_api::LegacyCommandCatalog::new(driver.as_ref());
     // Query steps and SQL Command steps converge here after resolving workflow
     // inheritance and validating explicit namespace fields. Require a named
     // database before either path can acquire an independent SQL resource.
@@ -182,7 +184,7 @@ async fn execute_bound(
             connection_id: connection_id.into(),
         });
     }
-    let definition = driver
+    let definition = catalog
         .command_definitions()
         .into_iter()
         .chain(datazen_driver_api::schema_catalog_command_definitions())

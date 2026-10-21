@@ -94,17 +94,13 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - 所有实际建连的预算 port，包括 driver pool、集群节点和控制资源。
 - 现有 Command 和迁移接口保持领域语义；资源获得方式通过 adapter 演进。
 - **第一轮只迁移 `basic` 四个驱动**（postgres、mysql、sqlite、redis —— CI 与默认构建实际编译的集合）：先迁移具有真实会话与事务的代表 driver，再迁移该集合内其余驱动；不支持能力明确拒绝。**其余 path/Git 驱动不在 P2 门槛内**，按 P10 补齐；未迁移的驱动必须在能力注册处显式声明未支持，不得静默回退到旧 Command 路径。
-- 修改公共契约时核对 crate SemVer、PROTOCOL_VERSION 和 minimum compatible；同步 path/Git driver、factory、ReuseDriver、生成选型路径。判定规则与门禁见 [driver-capability-migration.md §5.3](../architecture/platform/driver-capability-migration.md)：任何 breaking 改动强制升 `PROTOCOL_VERSION`（`pnpm test:driver-protocol`，CI 硬门禁），升 `MIN` 是主动放弃老驱动兼容性的独立决定，不是 breaking 的处理方式。
+- 修改公共契约时同步 path/Git driver、factory、ReuseDriver、生成选型路径，**同一次交付内全树编译绿**。治理决定（2026-10-21）：仓库无外部驱动，`PROTOCOL_VERSION` 冻结在 6、`MIN` 停在 1，协议兼容门禁族（含规则表与其测试）退役删除；`MIN` 不下调是仍然成立的红线，判据见 [driver-capability-migration.md §5.3](../architecture/platform/driver-capability-migration.md)。
 
 退出门槛：D 层 CM-07～19、22～26、30、45、48；不同 driver 不共享实现库类型；新增能力缺失不会 no-op 成功。**本门槛只对第一轮四个基本驱动断言**；其余驱动的对应断言属于 P10，不得在 P2 记录为已通过。
 
 回退：过渡 adapter 可以支持旧 driver 的独立受控 Command，但不能开放未证明的 statefulSession。
 
-「协议升级与驱动发布是原子兼容门槛，不允许用下调最低版本掩盖 breaking change」这句回退约定分两半落地，现状（`scripts/check-driver-protocol-compat.mjs`，由 `pnpm test:driver-protocol` 接入 CI 硬门禁，28 个单测）：
-
-- **已实现——"不允许下调最低版本"这半**。脚本把它写成两条不变量并直接阻断：`min-protocol-never-lowered`（`MIN_PROTOCOL_VERSION` 不得下降，报错文案即回指本节）与 `protocol-window-non-empty`（`MIN_PROTOCOL_VERSION <= PROTOCOL_VERSION`）；另外对 20 条受管契约（`CONTRACT_RULES`，规则表在 `scripts/lib/driver-protocol-rules.mjs`）内的增删改强制 `PROTOCOL_VERSION` 上移。最初受管的 10 条是 `database-driver` / `key-value-driver` / `driver-factory` / `resource-provider` / `budget-port` / `resource-error` / `driver-command-definition` / `capability-set` / `capability-registry` / `reuse-driver`，其后补入 `availability` / `namespace-switch` / `context-observation` / `transaction-observation` / `session-continuity` / `session-scoped-handles` / `reset-for-reuse` / `precise-cancel` / `snapshots` 与 `legacy-resource-adapter`。当前窗口是 `PROTOCOL_VERSION = 6`、`MIN_PROTOCOL_VERSION = 1`。
-- **已实现——"原子"那半**。`scripts/check-driver-protocol-release.mjs`（`pnpm test:driver-protocol-release`，CI 硬门禁，紧随 strict guards 一步）只读 `drivers-registry.json` 与各 crate 的 `Cargo.toml`/`lib.rs`，不依赖 codegen，因此无需等驱动注入完成即可判定一次交付里协议号与驱动发布是否绑定在同一 commit。它与数字那半互不重叠：`check-driver-protocol-compat.mjs` 判定契约改动**是否需要**升协议号，本脚本判定**是否真的升了、升了之后该跟着发什么**。六条规则按 fail-closed 报出：`driver-release-state-unreadable`（基线 ref 与工作区之间的驱动发布态不可读，例如 registry 指向的 crate 在基线上不存在）、`protocol-moved-without-driver-release`、`protocol-moved-without-driver-api-release`、`driver-released-without-driver-api-release`、`released-driver-outside-delivered-protocol-window`（已发布驱动的 `protocol_version()` 落在本次交付声明的 `MIN..=PROTOCOL` 窗口之外）、`recompiled-driver-not-released`（驱动声明的协议号随本次交付上移却没有跟着发布）。path 驱动以 `[package] version` 前进计一次发布，Git 驱动以 `drivers-registry.json` 的 `ref` 移动计；未钉 `ref` 的 Git 驱动（当前 `kiwi` / `superset`）发布决策发生在 clone 时，脚本只报告、从不计数。
-- **已实现——`LegacyResourceAdapter` 纳入受管契约**。`legacy-resource-adapter` 规则锚在 `impl LegacyResourceAdapter {`（`packages/driver-api/src/resource_adapter.rs:111`）而不是 `pub struct LegacyResourceAdapter`（`:76`）：宿主为每个未迁移驱动调用一次 `LegacyResourceAdapter::new(driver, driver_id, driver_version)`，被治理的是这条构造 ABI，而结构体本身只有六个私有字段，改它们在 crate 外不触发任何重编译。`scripts/__tests__/driver-protocol-legacy-adapter.test.ts` 同时断言被否决的那个锚点确实覆盖不到构造签名，并断言只有这一条规则覆盖它，以免日后悄悄变成"两个锚点都行"。
+「协议升级与驱动发布是原子兼容门槛，不允许用下调最低版本掩盖 breaking change」这句回退约定随生态现实收敛（治理决定 2026-10-21）：仓库已无外部驱动，协议版本冻结在 6，上述两个机检门禁（`check-driver-protocol-compat.mjs` / `check-driver-protocol-release.mjs` 及其规则表与测试）**整体退役删除**——逐符号四档机检的维护成本在「零外部驱动」前提下不再划算。保留下来的红线是人工纪律：「不得下调 `MIN_PROTOCOL_VERSION` 掩盖不兼容」（`[MIN, PROTOCOL]` 窗口语义在 `driver_registry/registry.rs:155-181` 与各处 `protocol_version()` 比对中仍然生效）；契约改动改为「同一次交付内全树迁移 + 全树编译绿」。若未来重新出现外部驱动生态，恢复机检前必须先定案 `pv > PROTOCOL_VERSION` 分支的处置再接入（`driver-capability-migration.md` §5.1）。
 
 ## 7. P3：统一 Session / Lease / Budget / ExecutionGateway
 

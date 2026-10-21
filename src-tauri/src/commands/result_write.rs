@@ -1,7 +1,7 @@
 //! Result edits use immutable provenance and the original live runtime resource.
 use super::{AppState, CommandError};
 use crate::{
-    db::{ColumnInfo, TableSchema, Value},
+    db::{ColumnInfo, LegacySqlDialect, SqlDialect, TableSchema, Value},
     platform::into_command_error,
 };
 use datazen_application::{
@@ -299,19 +299,21 @@ pub async fn commit_query_result_cell(
     if affected == Some(0) {
         // MySQL reports changed rows: a concurrent writer may already have set
         // the requested value. Confirm it on this resource before calling it unchanged.
+        // 占位符与标识符引用来自 SqlDialect 契约，旧驱动 API 逐条转发。
+        let dialect = LegacySqlDialect::new(driver.as_ref());
         let mut parameters = Vec::new();
         let mut predicates = Vec::new();
         for (key, value) in &pk {
-            let placeholder = driver
+            let placeholder = dialect
                 .parameter_placeholder(parameters.len() + 1, None)
                 .map_err(CommandError::Driver)?;
             parameters.push(value.clone().unwrap_or(Value::Null));
-            predicates.push(format!("{} = {}", driver.quote_ident(key), placeholder));
+            predicates.push(format!("{} = {}", dialect.quote_ident(key), placeholder));
         }
         let sql = format!(
             "SELECT {} FROM {} WHERE {}",
-            driver.quote_ident(&request.column),
-            driver.quote_ident(&table),
+            dialect.quote_ident(&request.column),
+            dialect.quote_ident(&table),
             predicates.join(" AND ")
         );
         let sql = driver

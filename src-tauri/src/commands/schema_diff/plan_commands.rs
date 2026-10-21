@@ -7,6 +7,7 @@ use super::{
     schema_catalog_scope, uses_schema_scope, AppState, CmdExt, ColumnTypeOverride, CommandError,
     PlanOptions, SchemaDiffPlan, State, SyncSourceAdapter, SyncTargetAdapter,
 };
+use crate::db::{CatalogReader, LegacyCatalogReader};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -147,6 +148,9 @@ pub(crate) async fn prepare_schema_diff_plan_with_schemas_impl(
     let src_handle = src_context.handle.clone();
     let tgt_driver = tgt_context.driver.clone();
     let tgt_handle = tgt_context.handle.clone();
+    // 表结构读取走窄契约，而不是整块驱动。
+    let src_catalog = LegacyCatalogReader::new(src_driver.as_ref());
+    let tgt_catalog = LegacyCatalogReader::new(tgt_driver.as_ref());
     let target_dependency_schema_scope = if uses_schema_scope(&tgt_config.database_type) {
         target_schema_scope.or(tgt_driver.default_schema())
     } else {
@@ -176,7 +180,7 @@ pub(crate) async fn prepare_schema_diff_plan_with_schemas_impl(
             target_table,
             target_schema_override.as_deref(),
         );
-        let src_schema = src_driver
+        let src_schema = src_catalog
             .get_table_schema(
                 &src_handle,
                 &src_table,
@@ -220,7 +224,7 @@ pub(crate) async fn prepare_schema_diff_plan_with_schemas_impl(
         // Target-only selection is an explicit destructive request. Read the
         // real target schema and fail closed if the selected table disappeared;
         // do not turn it into an empty source schema sentinel.
-        let tgt_schema = tgt_driver
+        let tgt_schema = tgt_catalog
             .get_table_schema(
                 &tgt_handle,
                 &tgt_table,

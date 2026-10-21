@@ -109,8 +109,11 @@ impl RuntimeRestoreGateway {
         let Ok(sql) = String::from_utf8(bytes) else {
             return None;
         };
+        // Preflight text rules come from the backup-dialect contract; the
+        // driver stays in the gateway for execution and authorization.
+        let dialect = datazen_driver_api::LegacyBackupDialect::new(self.driver.as_ref());
         let Ok(statements) = restore_sql::prepare(
-            self.driver.as_ref(),
+            &dialect,
             &sql,
             &self.profile,
             plan.single_transaction,

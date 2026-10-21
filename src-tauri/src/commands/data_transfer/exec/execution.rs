@@ -1,6 +1,7 @@
 //! Claimed-plan Data Transfer execution and checkpoint finalization.
 
 use super::*;
+use crate::db::{LegacySqlDialect, SqlDialect};
 
 fn validate_structure_selection(
     plan: &StoredTransferPlan,
@@ -226,7 +227,9 @@ pub(crate) async fn execute_data_transfer_impl_with_write_observer(
         job.mode,
         TransferMode::Data | TransferMode::StructureAndData
     ) {
-        tgt_driver
+        // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+        let tgt_dialect = LegacySqlDialect::new(tgt_driver.as_ref());
+        tgt_dialect
             .parameter_placeholder(1, None)
             .map_err(|error| CommandError::Validation(error.to_string()))?;
         // Check the target data transaction path before any structure mutation.

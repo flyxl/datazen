@@ -4,6 +4,17 @@
 //! Used for engines that speak a compatible wire protocol:
 //! - MySQL protocol: Doris, StarRocks, ManticoreSearch, OceanBase (MySQL mode)
 //! - PostgreSQL wire: QuestDB, Cloudberry
+//!
+//! **Invariant: every `DatabaseDriver` method is decided here.** A method the
+//! wrapper does not mention inherits a default body written for a generic
+//! driver, so driver-specific rules (`has_multi_database`, `get_schemas`,
+//! `qualify_sql_target`, `default_host`/`default_port`, the migration
+//! renderers, target-qualified streaming) silently disappear while the product
+//! metadata keeps advertising them. `reuse_forwarding_tests.rs` fails the build
+//! when the trait grows and this table does not, so the omission cannot return.
+//! Only `driver_type` is deliberately *not* forwarded: the alias id is the
+//! reason the wrapper exists. `test_connection` and the precise-cancel methods
+//! override rather than forward, because they gate the alias' own contract.
 
 use crate::*;
 use async_trait::async_trait;
@@ -132,8 +143,28 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.type_normalizer()
     }
 
+    fn migration_renderer(&self) -> Option<Arc<dyn MigrationRenderer>> {
+        self.inner.migration_renderer()
+    }
+
+    fn migration_capabilities(&self) -> Option<Arc<dyn MigrationCapabilities>> {
+        self.inner.migration_capabilities()
+    }
+
     fn quote_char(&self) -> char {
         self.inner.quote_char()
+    }
+
+    fn quote_ident(&self, name: &str) -> String {
+        self.inner.quote_ident(name)
+    }
+
+    fn default_host(&self) -> Option<&'static str> {
+        self.inner.default_host()
+    }
+
+    fn default_port(&self) -> Option<u16> {
+        self.inner.default_port()
     }
 
     fn skip_count_query(&self) -> bool {
@@ -154,6 +185,10 @@ impl DatabaseDriver for ReuseDriver {
 
     fn has_schema_level(&self) -> bool {
         self.inner.has_schema_level()
+    }
+
+    fn has_multi_database(&self) -> bool {
+        self.inner.has_multi_database()
     }
 
     fn default_schema(&self) -> Option<&'static str> {
@@ -199,6 +234,24 @@ impl DatabaseDriver for ReuseDriver {
 
     fn build_delete_sql(&self, table: &str, pk_columns: &[(&str, Option<Value>)]) -> String {
         self.inner.build_delete_sql(table, pk_columns)
+    }
+
+    fn build_update_statement(
+        &self,
+        table: &str,
+        set_columns: &[(&str, Option<Value>)],
+        pk_columns: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        self.inner
+            .build_update_statement(table, set_columns, pk_columns)
+    }
+
+    fn build_delete_statement(
+        &self,
+        table: &str,
+        pk_columns: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        self.inner.build_delete_statement(table, pk_columns)
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
@@ -265,6 +318,14 @@ impl DatabaseDriver for ReuseDriver {
         schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
         self.inner.get_tables(handle, database, schema).await
+    }
+
+    async fn get_schemas(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<Option<Vec<String>>, DriverError> {
+        self.inner.get_schemas(handle, database).await
     }
 
     async fn get_table_schema(
@@ -360,6 +421,19 @@ impl DatabaseDriver for ReuseDriver {
             .await
     }
 
+    async fn query_stream_with_params(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        params: &[Value],
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        self.inner
+            .query_stream_with_params(handle, sql, params, limit, on_event)
+            .await
+    }
+
     async fn query_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -428,6 +502,25 @@ impl DatabaseDriver for ReuseDriver {
         target: SqlTarget<'_>,
     ) -> Result<u64, DriverError> {
         self.inner.execute_at(handle, sql, target).await
+    }
+
+    async fn query_stream_with_execution_at(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<u32>,
+        target: SqlTarget<'_>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        if !self.precise_query_execution_cancel {
+            return Err(DriverError::Unsupported(
+                "precise query cancellation is not supported for this compatibility driver".into(),
+            ));
+        }
+        self.inner
+            .query_stream_with_execution_at(handle, execution_id, sql, limit, target, on_event)
+            .await
     }
 
     async fn query_with_params_at(
@@ -574,6 +667,19 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.prompt_overrides()
     }
 
+    fn dialect_notes(&self) -> Option<String> {
+        self.inner.dialect_notes()
+    }
+
+    fn qualify_sql_target(
+        &self,
+        sql: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
+    ) -> Option<String> {
+        self.inner.qualify_sql_target(sql, database, schema)
+    }
+
     async fn dump_table_ddl(
         &self,
         handle: &ConnectionHandle,
@@ -643,10 +749,6 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.new_sql_scanner()
     }
 
-    fn split_restore_sql(&self, sql: &str) -> Vec<String> {
-        self.inner.split_restore_sql(sql)
-    }
-
     async fn recover_restore_statement(
         &self,
         handle: &ConnectionHandle,
@@ -678,6 +780,35 @@ impl DatabaseDriver for ReuseDriver {
         self.inner
             .restore_sql_with_progress(handle, sql, opts, on_progress)
             .await
+    }
+
+    async fn validate_schema_migration(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+    ) -> Result<(), DriverError> {
+        self.inner.validate_schema_migration(handle, target).await
+    }
+
+    async fn validate_schema_migration_plan(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+        expected_target_schemas: &[TableSchema],
+    ) -> Result<(), DriverError> {
+        self.inner
+            .validate_schema_migration_plan(handle, target, expected_target_schemas)
+            .await
+    }
+
+    fn render_transfer_identity_sequence_sync_sql(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        columns: &[String],
+    ) -> Result<Vec<String>, DriverError> {
+        self.inner
+            .render_transfer_identity_sequence_sync_sql(schema, table, columns)
     }
 
     async fn structure_capabilities(
@@ -1204,3 +1335,10 @@ mod tests {
         assert_eq!(reuse.ddl_atomicity(), DdlAtomicity::Transactional);
     }
 }
+
+/// Enforces "the reuse wrapper decides on every driver method" in CI rather
+/// than in review. Lives beside the wrapper because it reads `traits.rs` and
+/// this file as text.
+#[cfg(test)]
+#[path = "reuse_forwarding_tests.rs"]
+mod forwarding_tests;

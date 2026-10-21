@@ -1,4 +1,5 @@
 use super::*;
+use datazen_driver_api::CommandCatalog;
 impl DesktopSessionBackend {
     pub(super) async fn execute_resource(
         &self,
@@ -56,7 +57,8 @@ impl DesktopSessionBackend {
                 .get(&config.database_type)
                 .await
                 .ok_or(rc::ProviderError::CapabilityUnsupported)?;
-            if !driver
+            let catalog = crate::db::LegacyCommandCatalog::new(driver.as_ref());
+            if !catalog
                 .command_definitions()
                 .iter()
                 .any(|definition| definition.id == "explain")

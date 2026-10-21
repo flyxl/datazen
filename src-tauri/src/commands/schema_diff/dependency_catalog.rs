@@ -7,6 +7,7 @@
 use super::{
     normalize_dialect, resolve_table_for_dialect, uses_schema_scope, CommandError, SchemaDiffPlan,
 };
+use crate::db::{CatalogReader, LegacyCatalogReader};
 use std::collections::{BTreeMap, HashSet};
 
 pub(super) fn is_table_missing_error(msg: &str) -> bool {
@@ -49,8 +50,10 @@ pub(super) async fn fetch_target_table_schema(
     database: &str,
     schema: Option<&str>,
 ) -> Result<crate::db::TableSchema, CommandError> {
+    // 表结构读取走窄契约，`driver_type()` 仍是驱动专属规则。
+    let catalog = LegacyCatalogReader::new(driver);
     let database = schema_catalog_database(&driver.driver_type(), Some(database));
-    match driver
+    match catalog
         .get_table_schema(handle, table, database, schema)
         .await
     {
@@ -86,6 +89,8 @@ pub(super) async fn fetch_target_table_dependency_catalog(
     const CATALOG_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
     let started_at = std::time::Instant::now();
     let metadata_database = schema_catalog_database(dialect, Some(database));
+    // 目录读取走窄契约；外键可见性检查仍是驱动专属规则。
+    let catalog = LegacyCatalogReader::new(driver);
     let (snapshots, table_count) = tokio::time::timeout(CATALOG_READ_TIMEOUT, async {
         let databases = if normalize_dialect(dialect) == "mysql" {
             if !driver
@@ -97,7 +102,7 @@ pub(super) async fn fetch_target_table_dependency_catalog(
                     "MySQL target-only table drops require direct global SELECT or ALL PRIVILEGES on *.* with no partial REVOKE so every database dependency can be inspected; use a suitably privileged connection and retry.".into(),
                 ));
             }
-            let databases = driver
+            let databases = catalog
                 .get_databases(handle)
                 .await
                 .map_err(CommandError::Driver)?;
@@ -118,7 +123,7 @@ pub(super) async fn fetch_target_table_dependency_catalog(
         let mut table_count = 0usize;
 
         for catalog_database in databases {
-            let tables = driver
+            let tables = catalog
                 .get_tables(handle, &catalog_database, None)
                 .await
                 .map_err(CommandError::Driver)?;

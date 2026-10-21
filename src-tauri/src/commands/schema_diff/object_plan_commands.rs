@@ -1,6 +1,8 @@
 //! Object-level Schema Diff plan preparation for views, routines, sequences
 //! and user-defined types.
 
+use datazen_driver_api::SchemaMigration as _;
+
 use super::unified_plan;
 use super::{
     apply_sqlserver_object_scope_gate, build_routine_trigger_migration_plan_with_components,
@@ -89,13 +91,14 @@ pub async fn prepare_schema_view_plan(
     } else {
         None
     };
-    let Some(renderer) = tgt_driver.migration_renderer() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(tgt_driver.as_ref());
+    let Some(renderer) = migration.migration_renderer() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration rendering",
             tgt_config.database_type
         )));
     };
-    let Some(capabilities) = tgt_driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration capabilities",
             tgt_config.database_type
@@ -242,13 +245,14 @@ pub async fn prepare_schema_routine_trigger_plan(
     }
     let src_dialect = normalize_dialect(&src_config.database_type);
     let tgt_dialect = normalize_dialect(&tgt_config.database_type);
-    let Some(renderer) = tgt_driver.migration_renderer() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(tgt_driver.as_ref());
+    let Some(renderer) = migration.migration_renderer() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration rendering",
             tgt_config.database_type
         )));
     };
-    let Some(capabilities) = tgt_driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration capabilities",
             tgt_config.database_type
@@ -365,13 +369,14 @@ pub async fn prepare_schema_sequence_plan(
     }
     let src_dialect = normalize_dialect(&src_config.database_type);
     let tgt_dialect = normalize_dialect(&tgt_config.database_type);
-    let Some(renderer) = tgt_driver.migration_renderer() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(tgt_driver.as_ref());
+    let Some(renderer) = migration.migration_renderer() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration rendering",
             tgt_config.database_type
         )));
     };
-    let Some(capabilities) = tgt_driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration capabilities",
             tgt_config.database_type
@@ -488,13 +493,14 @@ pub async fn prepare_schema_type_plan(
     }
     let src_dialect = normalize_dialect(&src_config.database_type);
     let tgt_dialect = normalize_dialect(&tgt_config.database_type);
-    let Some(renderer) = tgt_driver.migration_renderer() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(tgt_driver.as_ref());
+    let Some(renderer) = migration.migration_renderer() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration rendering",
             tgt_config.database_type
         )));
     };
-    let Some(capabilities) = tgt_driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration capabilities",
             tgt_config.database_type

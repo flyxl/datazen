@@ -72,7 +72,7 @@ pub(super) fn resource_connection_cost(
 #[async_trait]
 impl ResourceProvider for PostgresResourceProvider {
     fn provider_id(&self) -> &str {
-        POSTGRES_PROVIDER_ID
+        self.provider_id
     }
 
     fn capabilities(&self) -> &CapabilityRegistry {

@@ -1,7 +1,7 @@
 //! Shared desktop adapter for read-only commands executed through Runtime.
 use crate::{db::DriverRegistry, platform::PlatformEntry, store::Store};
 use datazen_driver_api::{
-    check_command_access, CommandAccessLevel, ConnectionConfig, DatabaseDriver,
+    check_command_access, CommandAccessLevel, CommandCatalog, ConnectionConfig, DatabaseDriver,
 };
 use datazen_feature_core::workflow::{
     command::WorkflowCommandStep,
@@ -81,7 +81,8 @@ impl RuntimeCommandSource {
             .driver(&config)
             .await
             .map_err(|error| error.to_string())?;
-        let definition = driver
+        let catalog = crate::db::LegacyCommandCatalog::new(driver.as_ref());
+        let definition = catalog
             .command_definitions()
             .into_iter()
             .chain(datazen_driver_api::schema_catalog_command_definitions())

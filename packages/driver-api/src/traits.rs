@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::dialect::LegacySqlDialect;
 use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
 use crate::schema_migration::{MigrationCapabilities, MigrationRenderer, TypeNormalizer};
 use crate::sql_target::SqlTarget;
@@ -24,7 +25,7 @@ use crate::{
 mod command_api;
 mod key_value;
 mod schema_target;
-mod sql_text;
+pub(crate) mod sql_text;
 mod streaming;
 
 pub use command_api::execute_standard_sql_command;
@@ -164,7 +165,7 @@ pub trait DatabaseDriver: Send + Sync {
     /// Legacy best-effort SQL literal formatter. New code should use
     /// [`Self::try_format_sql_literal`], which requires an explicit dialect.
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
-        sql_text::format_sql_literal(value)
+        crate::sql_builder::format_sql_literal_ansi(value)
     }
 
     /// The literal grammar this driver can safely render for SQL artifacts.
@@ -187,12 +188,17 @@ pub trait DatabaseDriver: Send + Sync {
         set_columns: &[(&str, Option<Value>)],
         pk_columns: &[(&str, Option<Value>)],
     ) -> String {
-        sql_text::build_update_sql(self, table, set_columns, pk_columns)
+        crate::sql_builder::build_update_sql(
+            &LegacySqlDialect::new(self),
+            table,
+            set_columns,
+            pk_columns,
+        )
     }
 
     /// Build `DELETE FROM … WHERE pk…` for row-level deletes (mirrors `build_update_sql`).
     fn build_delete_sql(&self, table: &str, pk_columns: &[(&str, Option<Value>)]) -> String {
-        sql_text::build_delete_sql(self, table, pk_columns)
+        crate::sql_builder::build_delete_sql(&LegacySqlDialect::new(self), table, pk_columns)
     }
 
     /// Build an UPDATE with driver placeholders and values kept out of SQL.
@@ -202,7 +208,18 @@ pub trait DatabaseDriver: Send + Sync {
         set_columns: &[(&str, Option<Value>)],
         pk_columns: &[(&str, Option<Value>)],
     ) -> Result<BoundSqlStatement, DriverError> {
-        sql_text::build_update_statement(self, table, set_columns, pk_columns)
+        if !self.supports_bound_writes() {
+            return Err(DriverError::Unsupported(
+                "parameterized row writes are not supported".into(),
+            ));
+        }
+        crate::sql_builder::build_update_statement(
+            &LegacySqlDialect::new(self),
+            self.max_bound_parameters(),
+            table,
+            set_columns,
+            pk_columns,
+        )
     }
 
     /// Build a DELETE with driver placeholders and values kept out of SQL.
@@ -211,7 +228,17 @@ pub trait DatabaseDriver: Send + Sync {
         table: &str,
         pk_columns: &[(&str, Option<Value>)],
     ) -> Result<BoundSqlStatement, DriverError> {
-        sql_text::build_delete_statement(self, table, pk_columns)
+        if !self.supports_bound_writes() {
+            return Err(DriverError::Unsupported(
+                "parameterized row writes are not supported".into(),
+            ));
+        }
+        crate::sql_builder::build_delete_statement(
+            &LegacySqlDialect::new(self),
+            self.max_bound_parameters(),
+            table,
+            pk_columns,
+        )
     }
 
     /// The host this driver dials when the connection config leaves `host` unset.
@@ -1060,11 +1087,6 @@ pub trait DatabaseDriver: Send + Sync {
     /// Override to disable `DELIMITER`, change quote rules, or swap splitters.
     fn new_sql_scanner(&self) -> crate::sql_split::SqlStatementScanner {
         crate::sql_split::SqlStatementScanner::new()
-    }
-
-    /// Split a complete SQL buffer. Default uses [`Self::new_sql_scanner`].
-    fn split_restore_sql(&self, sql: &str) -> Vec<String> {
-        sql_text::split_restore_sql(self, sql)
     }
 
     /// After a restore statement fails: clear an aborted PG transaction,

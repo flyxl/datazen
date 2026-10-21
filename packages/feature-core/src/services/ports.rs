@@ -58,7 +58,14 @@ pub trait SchemaContextSource: Send + Sync {
     ) -> Result<datazen_driver_api::TableSchema, String> {
         let (driver, handle) = self.get_session(session_id).await?;
         cache
-            .get_table_schema(session_id, database, schema, table, &driver, &handle)
+            .get_table_schema(
+                session_id,
+                database,
+                schema,
+                table,
+                &datazen_driver_api::LegacyCatalogReader::new(driver.as_ref()),
+                &handle,
+            )
             .await
             .map_err(|error| error.to_string())
     }

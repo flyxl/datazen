@@ -55,7 +55,18 @@ pub(crate) async fn restore_from_native_file(
         .get(&config.database_type)
         .await
         .ok_or_else(|| CommandError::Validation("Restore driver unavailable".into()))?;
-    if driver.has_multi_database()
+    // The multi-database rule reads the registry capability row (one fact,
+    // captured at registration from the factory+driver pair), not a second
+    // ask of this driver instance. Test-registered drivers carry no row;
+    // for those the driver instance is still their fact source.
+    let capabilities = state
+        .driver_registry
+        .get_capabilities(&config.database_type)
+        .await;
+    let has_multi_database = capabilities
+        .map(|capabilities| capabilities.has_multi_database)
+        .unwrap_or_else(|| driver.has_multi_database());
+    if has_multi_database
         && database
             .as_deref()
             .is_none_or(|value| value.trim().is_empty())

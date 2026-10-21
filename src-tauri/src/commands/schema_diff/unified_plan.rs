@@ -10,7 +10,9 @@ use crate::schema_diff::{
 };
 pub(super) use catalog::read_target_object_catalog;
 use catalog::{fetch_object_dependency_snapshot, fetch_object_snapshot};
-use datazen_driver_api::{DatabaseObject, ObjectKind, TableInfo, TableType};
+use datazen_driver_api::{
+    CatalogReader, DatabaseObject, ObjectKind, SchemaMigration, TableInfo, TableType,
+};
 pub(super) use revalidation::revalidate_source_snapshot;
 use std::collections::BTreeSet;
 
@@ -178,6 +180,9 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
     let source_handle = source_context.handle.clone();
     let target_driver = target_context.driver.clone();
     let target_handle = target_context.handle.clone();
+    // 表结构读取走窄契约，而不是整块驱动。
+    let source_catalog_reader = crate::db::LegacyCatalogReader::new(source_driver.as_ref());
+    let target_catalog_reader = crate::db::LegacyCatalogReader::new(target_driver.as_ref());
     let target_dependency_schema_scope = if uses_schema_scope(&target_config.database_type) {
         target_schema_scope.or(target_driver.default_schema())
     } else {
@@ -258,7 +263,7 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
             target_table,
             target_schema.as_deref(),
         );
-        let source_schema_snapshot = source_driver
+        let source_schema_snapshot = source_catalog_reader
             .get_table_schema(
                 &source_handle,
                 &source_table,
@@ -395,7 +400,7 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
             table,
             target_schema.as_deref(),
         );
-        let snapshot = target_driver
+        let snapshot = target_catalog_reader
             .get_table_schema(
                 &target_handle,
                 &table,
@@ -508,13 +513,14 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
             .map(|snapshot| snapshot.identity.clone()),
     );
 
-    let Some(renderer) = target_driver.migration_renderer() else {
+    let migration = datazen_driver_api::LegacySchemaMigration::new(target_driver.as_ref());
+    let Some(renderer) = migration.migration_renderer() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration rendering",
             target_config.database_type
         )));
     };
-    let Some(capabilities) = target_driver.migration_capabilities() else {
+    let Some(capabilities) = migration.migration_capabilities() else {
         return Err(CommandError::Validation(format!(
             "Driver {} does not expose schema migration capabilities",
             target_config.database_type
@@ -691,7 +697,9 @@ pub(super) async fn read_target_table_identities(
     schema_scope: Option<&str>,
 ) -> Result<Vec<SchemaObjectIdentity>, CommandError> {
     let metadata_database = super::schema_catalog_database(dialect, Some(database));
-    let tables = driver
+    // 表清单读取走窄契约，而不是整块驱动。
+    let catalog = crate::db::LegacyCatalogReader::new(driver);
+    let tables = catalog
         .get_tables(handle, metadata_database, None)
         .await
         .map_err(CommandError::Driver)?;

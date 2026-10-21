@@ -87,28 +87,23 @@ jobs:
       - name: TypeScript typecheck
         run: pnpm typecheck
 
-      # 6 个严格守卫合并为一步：任何失败立即停止（fail-fast），
+      # 5 个严格守卫合并为一步：任何失败立即停止（fail-fast），
       # 输出清晰标注哪条命令失败。省掉 5 次 shell launch 开销。
       #
       # version / ci-docs / guardrails 三条已移到 release.yml 的 pre-release-guards
       # （理由见该 job 注释）：它们只在发布这一刻才有意义，不该让每个 PR 都付这
       # 几次 shell launch，也不该让版本号或文档矩阵的短暂不一致拦住与它无关的
       # 功能 PR。per-PR 门禁只保留"改错了就必须在合并前发现"的那几条。
-      - name: All strict guards (stubs, IDs, layers, driver-protocol, boundaries, i18n keys)
+      # driver-protocol 门禁已于 2026-10-21 退役：仓库已无外部驱动，协议版本
+      # 冻结于 6（治理决定见 docs/architecture/platform/
+      # driver-capability-migration.md §5）。
+      - name: All strict guards (stubs, IDs, layers, boundaries, i18n keys)
         run: |
           node scripts/check-managed-stubs.mjs
           pnpm test:ids
           pnpm test:layers
-          pnpm test:driver-protocol
           pnpm test:boundaries
           pnpm test:i18n-keys
-
-      # 协议号与驱动发布的原子性门禁。放在 strict guards 之后、resolve-drivers
-      # 之前：它只读 drivers-registry.json 与各 crate 的 Cargo.toml，不碰
-      # gitignored codegen，因此无需等驱动注入完成。它需要完整历史（上一步的
-      # fetch-depth: 0）才能读出基线 ref 上的 manifest 与 protocol 数字。
-      - name: Protocol number / driver release atomicity
-        run: pnpm test:driver-protocol-release
 
       - name: Frontend unit tests
         # No Pro here, and no Pro opt-out. `packages/pro-extensions/**` is a

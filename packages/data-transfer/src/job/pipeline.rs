@@ -10,7 +10,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
+use datazen_driver_api::{
+    ConnectionHandle, DatabaseDriver, LegacySqlDialect, SqlDialect, TransactionHandle, Value,
+};
 use datazen_platform_api::dto::job::{CommitBoundary, JobProgress};
 use datazen_platform_api::id::Counter;
 use datazen_platform_api::ports::Clock;
@@ -148,10 +150,13 @@ pub async fn execute_bounded_table(
     }
 
     let projection = source_projection(context.columns, &keys);
+    // 绑参上限来自 SqlDialect 契约；旧驱动 API 只报数字，取 limit() 保持一致。
     let chunk_size = effective_chunk_size(
         context.job.options.batch_size,
         context.columns.len(),
-        context.target_driver.max_bound_parameters(),
+        LegacySqlDialect::new(context.target_driver)
+            .max_bound_parameters()
+            .limit(),
     )?;
     let cursor_indexes = keys
         .iter()

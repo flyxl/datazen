@@ -1,5 +1,7 @@
 //! Schema Diff deploy execution and cancellation.
 
+use datazen_driver_api::SchemaMigration as _;
+
 use super::job;
 use super::unified_plan;
 use super::{
@@ -170,7 +172,7 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
         && (!plan.rollback_completeness.complete
             || !use_transaction.unwrap_or(true)
             || !matches!(
-                driver.ddl_atomicity(),
+                datazen_driver_api::LegacySchemaMigration::new(driver.as_ref()).ddl_atomicity(),
                 crate::db::DdlAtomicity::Transactional
             ))
     {

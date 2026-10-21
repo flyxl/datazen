@@ -477,16 +477,7 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
 
     // `DesktopPolicy` 只放行**本机桌面身份**（见 policy.rs）。这里显式注入
     // `DATAZEN_DESKTOP_USER`，让测试不依赖 `$USER`——否则 CI 上换一个 build user
-    // 就会随机 PermissionDenied，而那不是被测行为。
-    struct DesktopUserGuard(Option<String>);
-    impl Drop for DesktopUserGuard {
-        fn drop(&mut self) {
-            match &self.0 {
-                Some(previous) => std::env::set_var("DATAZEN_DESKTOP_USER", previous),
-                None => std::env::remove_var("DATAZEN_DESKTOP_USER"),
-            }
-        }
-    }
+    // 就会随机 PermissionDenied，而那不是被测行为。（守卫结构在本文件顶部。）
     let _guard = DesktopUserGuard(std::env::var("DATAZEN_DESKTOP_USER").ok());
     std::env::set_var("DATAZEN_DESKTOP_USER", "wiring-tester");
 
@@ -569,6 +560,223 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
 
     let released = lease.release();
     assert!(!released.revoked, "新借出的会话不该是被作废的");
+}
+
+// ---------------------------------------------------------------------------
+// Runtime 用例（per-database 池维护）共享装配
+// ---------------------------------------------------------------------------
+
+/// `DATAZEN_DESKTOP_USER` 守卫：`DesktopPolicy` 只放行本机桌面身份，测试显式注入
+/// 固定值，测试结束（Drop）恢复原值——否则 CI 上换一个 build user 会随机
+/// PermissionDenied，而那不是被测行为。
+struct DesktopUserGuard(Option<String>);
+impl Drop for DesktopUserGuard {
+    fn drop(&mut self) {
+        match &self.0 {
+            Some(previous) => std::env::set_var("DATAZEN_DESKTOP_USER", previous),
+            None => std::env::remove_var("DATAZEN_DESKTOP_USER"),
+        }
+    }
+}
+
+/// 真 runtime 用例 + 真 session 的最小装配，供 per-database 池维护用例测试共享。
+///
+/// 与上一条接线测试同一条装配骨架（临时库 + profile、provider+driver 测试工厂、
+/// 桌面会话后端、真 `RuntimeConnectionUseCases` 并注入 live 源），只是把 open 出的
+/// `dbSessionId` 一起交回。driver 选项由调用方给，让断言贴着被测行为走。
+struct PoolMaintenanceWiring {
+    service: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
+    driver: Arc<MockDriver>,
+    ctx: datazen_platform_api::context::RequestContext,
+    db_session_id: String,
+}
+
+async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolMaintenanceWiring {
+    use datazen_application::sessions::ConnectionUseCases;
+    use datazen_driver_api::DatabaseDriverFactory;
+    use datazen_platform_api::{
+        context::{OwnerRef, RequestContext},
+        dto::idempotency::IdempotentOperation,
+        id::*,
+    };
+
+    let temp = tempfile::tempdir().expect("temp dir");
+    let store = Arc::new(
+        crate::store::Store::init_with_path(temp.path())
+            .await
+            .expect("store init"),
+    );
+    seed_profile(&store, &connection_config("pool-conn", "test-live")).await;
+
+    struct Factory {
+        driver: Arc<MockDriver>,
+        provider: Arc<CountingProvider>,
+    }
+    impl DatabaseDriverFactory for Factory {
+        fn create(&self) -> Arc<dyn DatabaseDriver> {
+            Arc::clone(&self.driver) as Arc<dyn DatabaseDriver>
+        }
+        fn driver_id(&self) -> &'static str {
+            "test-live"
+        }
+        fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
+            Some(Arc::clone(&self.provider) as Arc<dyn ResourceProvider>)
+        }
+    }
+
+    let driver = MockDriver::new("test-live", driver_opts);
+    let factory: &'static Factory = Box::leak(Box::new(Factory {
+        driver: Arc::clone(&driver),
+        provider: CountingProvider::new("test-live-provider"),
+    }));
+    let registry = Arc::new(crate::db::DriverRegistry::new());
+    registry
+        .register_test_driver("test-live", Arc::clone(&driver) as Arc<dyn DatabaseDriver>)
+        .await;
+    registry.register_test_factory("test-live", factory).await;
+
+    // live 源与 runtime 用例**共享同一个**会话后端：session 行只登记在一处，
+    // 分开建的两个比如同两个 runtime，一边打开另一边永远 SessionNotFound。
+    let backend = Arc::new(super::super::session_backend::DesktopSessionBackend::new(
+        Arc::clone(&registry),
+        Arc::clone(&store),
+        8,
+    ));
+    let recording = Arc::new(DesktopLiveConnectionSource::new(
+        Arc::clone(&registry),
+        Arc::clone(&store),
+        Arc::clone(&backend),
+    ));
+
+    let service = Arc::new(
+        datazen_runtime::application::RuntimeConnectionUseCases::new(
+            Arc::new(super::super::repositories::DesktopProfiles::new(
+                store.clone(),
+            )),
+            Arc::new(super::super::policy::DesktopPolicy::new(store.clone())),
+            backend,
+        ),
+    );
+    service.with_live_connections(recording.clone());
+
+    // 不动 `DATAZEN_DESKTOP_USER`：它存在于本文件另一处测试才是唯一 env 守卫，
+    // 这里并发运行时抢该变量等于给同仓测试埋竞态。桌面身份直接取
+    // `local_principal()` 的进程值，授权照常成立。
+    let principal = crate::platform::local_principal()
+        .expect("a desktop local principal exists in the test process");
+
+    let ctx = RequestContext::new(
+        OrganizationId::new(super::super::LOCAL_ORGANIZATION_ID),
+        PrincipalId::new(principal.as_str()),
+        None,
+        ClientInstanceId::new("client"),
+        RequestId::new("request"),
+        None,
+    );
+    let token = service
+        .issue_submission_token(&ctx, IdempotentOperation::OpenSession, None)
+        .await
+        .expect("token issues");
+    let opened = service
+        .open_session(
+            &ctx,
+            datazen_application::dto::requests::OpenSessionRequest::new(
+                datazen_platform_api::target::ExecutionTarget::new(
+                    datazen_platform_api::id::ConnectionId::new("pool-conn"),
+                    datazen_platform_api::target::NamespaceTarget::database("app"),
+                ),
+                OwnerRef::Editor {
+                    client_instance_id: ctx.client_instance_id.clone(),
+                    editor_session_id: EditorSessionId::new("editor-pool"),
+                },
+                token.idempotency_key,
+            ),
+        )
+        .await
+        .expect("session opens");
+    PoolMaintenanceWiring {
+        service,
+        driver,
+        ctx,
+        db_session_id: opened.session.handle.db_session_id.as_str().to_owned(),
+    }
+}
+
+/// runtime 拥有 per-database 池维护的可测形式：宿主只交 session + database 名，
+/// 驱动真的被问到，drv 的裁定原样回到调用方。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn close_database_routes_the_session_pool_demand_to_the_driver() {
+    let wiring = wired_pool_maintenance_harness(MockDriverOptions {
+        has_schema_level: true,
+        ..MockDriverOptions::default()
+    })
+    .await;
+
+    let closed = wiring
+        .service
+        .close_database(&wiring.ctx, &wiring.db_session_id, "app")
+        .await
+        .expect("close_database succeeds");
+    assert!(closed, "verdict comes from the driver, not a default body");
+    assert_eq!(
+        wiring.driver.close_database_calls(),
+        vec!["app".to_owned()],
+        "the driver was asked once, with the trimmed database name"
+    );
+}
+
+/// 未迁移驱动（无 per-database 资源）在 runtime 用例下依然是普通结果：默认体
+/// `Ok(false)`，不报错、不触驱动失败路径。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn close_database_treats_no_per_database_resource_as_a_normal_outcome() {
+    let wiring = wired_pool_maintenance_harness(MockDriverOptions::default()).await;
+
+    let closed = wiring
+        .service
+        .close_database(&wiring.ctx, &wiring.db_session_id, "app")
+        .await
+        .expect("no resource to close is a normal outcome");
+    assert!(!closed);
+    assert_eq!(
+        wiring.driver.close_database_calls(),
+        vec!["app".to_owned()],
+        "the demand still reaches the driver"
+    );
+}
+
+/// open_databases 逐字带回驱动报告的池列表；这是导航树「已打开」标记的唯一来源。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn open_databases_reports_the_driver_pool_list_verbatim() {
+    let wiring = wired_pool_maintenance_harness(MockDriverOptions {
+        open_databases: vec!["aux".to_owned(), "app".to_owned()],
+        ..MockDriverOptions::default()
+    })
+    .await;
+
+    let open = wiring
+        .service
+        .open_databases(&wiring.ctx, &wiring.db_session_id)
+        .await
+        .expect("open_databases succeeds");
+    assert_eq!(open, vec!["aux".to_owned(), "app".to_owned()]);
+}
+
+/// 把会话自己的库空兜住：名字不合法在本用例边界就拒绝，不触驱动。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn close_database_rejects_an_empty_database_name_before_touching_the_driver() {
+    let wiring = wired_pool_maintenance_harness(MockDriverOptions::default()).await;
+
+    let error = wiring
+        .service
+        .close_database(&wiring.ctx, &wiring.db_session_id, "   ")
+        .await
+        .expect_err("empty name is refused");
+    use datazen_platform_api::error::ApiErrorCode;
+    assert_eq!(error.code, ApiErrorCode::InvalidArgument);
+    assert!(
+        wiring.driver.close_database_calls().is_empty(),
+        "the driver must not be asked for an invalid name"
+    );
 }
 
 /// 把公开句柄里的 `runtime_epoch`（形如 `rte-7` 的字符串 id）还原成数字。

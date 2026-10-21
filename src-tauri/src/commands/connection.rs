@@ -1,6 +1,7 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::db::{ConnectionConfig, DriverCategory, ServerInfo};
+use datazen_platform_api::error::ApiErrorCode;
 use tauri::State;
 
 fn redact_connection_secrets(config: &mut ConnectionConfig) {
@@ -313,29 +314,39 @@ pub(crate) async fn close_database_impl(
     }
     tracing::info!(%db_session_id, %database, "close_database");
 
-    let context = crate::services::migration_endpoint::runtime_session_context(
-        state,
-        &db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
-    )
-    .await?;
-    let driver = context.driver;
-    let handle = context.handle;
+    // Per-database pool maintenance is a runtime session demand: the runtime
+    // raises the use case (lease + authorize + driver call) and the host only
+    // carries the verdict into its cache policy.
+    let adapter = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = adapter.begin_call();
+    let runtime = adapter
+        .runtime()
+        .map_err(crate::platform::into_command_error)?;
 
-    // Best-effort: a driver without per-database resources returns `false`, and
-    // a failure to close must not leave stale metadata behind.
-    let closed = match driver.close_database(&handle, &database).await {
-        Ok(closed) => closed,
-        Err(e) => {
+    // Driver-level failure is best-effort (`ServiceUnavailable`): a close that
+    // cannot be performed must not leave stale metadata behind, and a driver
+    // without per-database resources reports `false` anyway. Session-level
+    // rejections (unknown/dead session, permission) are honest failures the
+    // caller must see.
+    let closed = match runtime
+        .close_database(call.context(), &db_session_id, &database)
+        .await
+    {
+        Ok(closed) => Some(closed),
+        Err(e) if e.code == ApiErrorCode::ServiceUnavailable => {
             tracing::warn!(%db_session_id, %database, error = %e, "close_database failed");
-            false
+            None
         }
+        Err(e) => return Err(crate::platform::into_command_error(e)),
     };
+    let closed = closed.unwrap_or(false);
+    tracing::info!(%db_session_id, %database, closed, "close_database OK");
     state
         .schema_cache
         .invalidate(&db_session_id, &database, None)
         .await;
-    tracing::info!(%db_session_id, %database, closed, "close_database OK");
     Ok(closed)
 }
 
@@ -351,19 +362,18 @@ pub(crate) async fn get_open_databases_impl(
 ) -> Result<Vec<String>, CommandError> {
     log_ipc_identity(state, "get_open_databases");
     let start = std::time::Instant::now();
-    let context = crate::services::migration_endpoint::runtime_session_context(
-        state,
-        &db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
-    )
-    .await?;
-    let driver = context.driver;
-    let handle = context.handle;
-
-    let mut open = driver
-        .open_databases(&handle)
+    // Runtime session demand; the host never sees a driver or a handle here.
+    let adapter = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = adapter.begin_call();
+    let runtime = adapter
+        .runtime()
+        .map_err(crate::platform::into_command_error)?;
+    let mut open = runtime
+        .open_databases(call.context(), &db_session_id)
         .await
-        .cmd_err("get_open_databases")?;
+        .map_err(crate::platform::into_command_error)?;
     open.sort();
     open.dedup();
     tracing::info!(

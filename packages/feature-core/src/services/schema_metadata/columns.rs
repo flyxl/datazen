@@ -1,4 +1,5 @@
 use super::*;
+use datazen_driver_api::{CatalogReader, LegacyCatalogReader};
 use datazen_runtime::schema_cache::CachedColumns;
 use std::{collections::HashMap, time::Instant};
 
@@ -19,6 +20,7 @@ pub(super) async fn read(
     for relation in &relations {
         validate_relation(driver.as_ref(), relation)?;
     }
+    let catalog = LegacyCatalogReader::new(driver.as_ref());
     let mut seen = HashSet::new();
     let relations: Vec<_> = relations
         .into_iter()
@@ -47,7 +49,7 @@ pub(super) async fn read(
     for ((database, schema), missing) in groups {
         let generation = schema_cache.generation();
         let mut batch = if missing.len() > 1 {
-            match driver
+            match catalog
                 .get_all_columns(handle, &database, schema.as_deref())
                 .await
             {
@@ -98,7 +100,7 @@ pub(super) async fn read(
                         &database,
                         schema.as_deref(),
                         &relation.name,
-                        driver,
+                        &catalog,
                         handle,
                     )
                     .await
@@ -151,6 +153,7 @@ pub(super) async fn read_on_runtime_resource(
     for relation in &relations {
         validate_relation(driver.as_ref(), relation)?;
     }
+    let catalog = LegacyCatalogReader::new(driver.as_ref());
     let mut seen = HashSet::new();
     let relations: Vec<_> = relations
         .into_iter()
@@ -166,7 +169,7 @@ pub(super) async fn read_on_runtime_resource(
     let mut values = HashMap::new();
     for ((database, schema), requested) in groups {
         let mut batch = if requested.len() > 1 {
-            match driver
+            match catalog
                 .get_all_columns(handle, &database, schema.as_deref())
                 .await
             {
@@ -181,7 +184,7 @@ pub(super) async fn read_on_runtime_resource(
             let read = if let Some(value) = batch.remove(&relation.name) {
                 Ok(value)
             } else {
-                driver
+                catalog
                     .get_columns(
                         handle,
                         &relation.name,

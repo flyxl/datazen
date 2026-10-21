@@ -1,6 +1,7 @@
 //! Catalog reads and structured dependency snapshots for the unified plan.
 
 use super::*;
+use crate::db::{CatalogReader, LegacyCatalogReader};
 use crate::schema_diff::object_identity::{
     SchemaObjectDependencySnapshot, SchemaObjectIdentity, SequenceDependencyUsage,
     SequenceDependencyUsageKind, TypeDependencyUsage, TypeDependencyUsageKind,
@@ -17,6 +18,8 @@ pub(crate) async fn read_target_object_catalog(
     complete: &mut bool,
 ) -> (Vec<DatabaseObject>, Vec<SchemaObjectDependencySnapshot>) {
     let metadata_database = super::schema_catalog_database(dialect, Some(database));
+    // 表清单读取走窄契约；对象依赖查询仍是驱动命令通道。
+    let catalog = LegacyCatalogReader::new(driver);
     let mut objects = Vec::new();
     for kind in UNIFIED_OBJECT_KINDS {
         match list_schema_objects(driver, handle, kind).await {
@@ -28,7 +31,7 @@ pub(crate) async fn read_target_object_catalog(
         }
     }
     let mut dependency_objects = objects.clone();
-    match driver.get_tables(handle, metadata_database, None).await {
+    match catalog.get_tables(handle, metadata_database, None).await {
         Ok(tables) => {
             dependency_objects.extend(
                 tables

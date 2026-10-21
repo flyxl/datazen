@@ -10,8 +10,8 @@ use super::helpers::{
 use super::resolve::resolve_command_driver;
 use super::types::{ExecuteDriverCommandStreamOpts, ExecuteDriverCommandStreamRequest};
 use datazen_driver_api::{
-    check_command_access, validate_command_input, CommandAccessLevel, QueryExecutionId,
-    QueryStreamCallback, QueryStreamEvent,
+    check_command_access, validate_command_input, CommandAccessLevel, CommandCatalog,
+    QueryExecutionId, QueryStreamCallback, QueryStreamEvent,
 };
 
 pub(crate) async fn execute_driver_command_stream_impl(
@@ -39,7 +39,8 @@ pub(crate) async fn execute_driver_command_stream_impl(
     let driver = &resolved.driver;
     let handle = &resolved.handle;
 
-    let definition = driver
+    let catalog = crate::db::LegacyCommandCatalog::new(driver.as_ref());
+    let definition = catalog
         .command_definitions()
         .into_iter()
         .find(|definition| definition.id == request.command)

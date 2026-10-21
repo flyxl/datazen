@@ -41,9 +41,7 @@ use sqlx::PgPool;
 
 use crate::postgres::PostgresDriver;
 
-use super::capabilities::{
-    postgres_capability_registry, postgres_namespace_shape, POSTGRES_PROVIDER_ID,
-};
+use super::capabilities::{postgres_namespace_shape, POSTGRES_PROVIDER_ID};
 use super::observation;
 use super::payload::{decode_command_result, StatementOutput};
 use super::registry::{LiveResource, OpenTransaction, ResourceRegistry};
@@ -59,6 +57,11 @@ fn next_runtime_epoch() -> u64 {
 
 /// PostgreSQL's implementation of the resource contract.
 pub struct PostgresResourceProvider {
+    /// This provider instance's identity. The native pool uses
+    /// [`super::capabilities::POSTGRES_PROVIDER_ID`]; a reuse alias (questdb,
+    /// cloudberry) binds its own id so its capability snapshot and handles
+    /// name the database type the user actually configured.
+    provider_id: &'static str,
     driver: Arc<PostgresDriver>,
     capabilities: CapabilityRegistry,
     namespace_shape: NamespaceShape,
@@ -72,9 +75,18 @@ impl PostgresResourceProvider {
     /// real connection surface, so the `Arc` is shared rather than re-created:
     /// the host and the provider must see the same pools.
     pub fn new(driver: Arc<PostgresDriver>) -> Self {
+        Self::with_provider_id(driver, POSTGRES_PROVIDER_ID)
+    }
+
+    /// Bind an alias-identity provider to its own driver instance. The id must
+    /// match the alias factory's `driver_id`, so a handle minted by this
+    /// provider names the same identity the Command API resolves. The runtime
+    /// epoch stays unique per instance regardless of identity.
+    pub fn with_provider_id(driver: Arc<PostgresDriver>, provider_id: &'static str) -> Self {
         Self {
+            provider_id,
+            capabilities: super::capabilities::postgres_capability_registry_for(provider_id),
             driver,
-            capabilities: postgres_capability_registry(),
             namespace_shape: postgres_namespace_shape(),
             runtime_epoch: next_runtime_epoch(),
             resources: Mutex::new(ResourceRegistry::default()),
@@ -109,7 +121,7 @@ impl PostgresResourceProvider {
         handle: &ResourceHandle,
         operation: &str,
     ) -> Result<LiveResource, ResourceError> {
-        handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
+        handle.check(self.provider_id, self.runtime_epoch)?;
         self.lock()
             .live
             .get(handle.resource_key())
@@ -130,7 +142,7 @@ impl PostgresResourceProvider {
         handle: &ResourceHandle,
         operation: &str,
     ) -> Result<OpenTransaction, ResourceError> {
-        handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
+        handle.check(self.provider_id, self.runtime_epoch)?;
         let key = handle.resource_key().to_string();
         let mut registry = self.lock();
         let resource = registry
@@ -163,7 +175,7 @@ impl PostgresResourceProvider {
         handle: &ResourceHandle,
         handle_id: &str,
     ) -> Result<OpenTransaction, ResourceError> {
-        handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
+        handle.check(self.provider_id, self.runtime_epoch)?;
         let key = handle.resource_key().to_string();
         let mut registry = self.lock();
         let resource = registry
@@ -436,7 +448,7 @@ impl PostgresResourceProvider {
                 revision: 1,
             },
         );
-        ResourceHandle::issue(POSTGRES_PROVIDER_ID, resource_key, self.runtime_epoch)
+        ResourceHandle::issue(self.provider_id, resource_key, self.runtime_epoch)
     }
 
     /// Test-only seeding. `#[cfg(test)]`, so it is invisible to the integration

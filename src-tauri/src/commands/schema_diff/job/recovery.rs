@@ -6,6 +6,7 @@ use crate::commands::schema_diff::{
     fetch_schema_object, is_table_missing_error, list_schema_objects, schema_catalog_database,
 };
 use crate::commands::AppState;
+use crate::db::{CatalogReader, LegacyCatalogReader};
 use crate::schema_diff::job::PrepareRequest;
 
 const TARGET_ID_PREFIX: &str = "obj-";
@@ -160,10 +161,12 @@ pub(super) async fn fingerprint_targets(
     let database = database.or(config.database.as_deref()).unwrap_or_default();
     let driver_type = driver.driver_type();
     let catalog_database = schema_catalog_database(&driver_type, Some(database));
+    // 表结构读取走窄契约；`driver_type()` 仍是驱动专属规则。
+    let catalog = LegacyCatalogReader::new(driver.as_ref());
     let mut entries = Vec::with_capacity(targets.len());
     for target in targets {
         if ObjectKind::parse(&target.kind) == Some(ObjectKind::Table) {
-            let snapshot = match driver
+            let snapshot = match catalog
                 .get_table_schema(
                     &handle,
                     &target.name,

@@ -8,6 +8,7 @@ use super::inspect::inspect_data_transfer_impl;
 use crate::data_transfer::{
     build_preview, enforce_transfer_pairing, TransferJob, TransferPreview, TransferPreviewAdapters,
 };
+use crate::db::{LegacySqlDialect, SqlDialect};
 use datazen_driver_api::{TableSchema, TableType};
 
 async fn count_scoped_source_rows(
@@ -87,6 +88,8 @@ async fn preview_sql_file_target(
     .await?;
     let src_config = src_context.config.clone();
     let src_driver = src_context.driver.clone();
+    // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+    let src_dialect = LegacySqlDialect::new(src_driver.as_ref());
     let src_handle = src_context.handle.clone();
     job.source.schema = crate::services::metadata_schema(
         src_driver.as_ref(),
@@ -230,7 +233,7 @@ async fn preview_sql_file_target(
             src_driver.quote_char(),
             &src_driver.driver_type(),
             |index, data_type| {
-                src_driver
+                src_dialect
                     .parameter_placeholder(index, data_type)
                     .map_err(|error| {
                         crate::data_transfer::TransferError::unsupported(error.to_string())
@@ -375,7 +378,7 @@ async fn preview_sql_file_target(
                 src_driver.quote_char(),
                 &src_driver.driver_type(),
                 |index, data_type| {
-                    src_driver
+                    src_dialect
                         .parameter_placeholder(index, data_type)
                         .map_err(|error| {
                             crate::data_transfer::TransferError::unsupported(error.to_string())
@@ -464,8 +467,11 @@ pub(crate) async fn preview_data_transfer_impl(
     let src_config = src_context.config.clone();
     let tgt_config = tgt_context.config.clone();
     let src_driver = src_context.driver.clone();
+    // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+    let src_dialect = LegacySqlDialect::new(src_driver.as_ref());
     let src_handle = src_context.handle.clone();
     let target_driver = tgt_context.driver.clone();
+    let tgt_dialect = LegacySqlDialect::new(target_driver.as_ref());
     let target_handle = tgt_context.handle.clone();
     job.source.schema = crate::services::metadata_schema(
         src_driver.as_ref(),
@@ -608,7 +614,7 @@ pub(crate) async fn preview_data_transfer_impl(
             src_driver.quote_char(),
             &src_driver.driver_type(),
             |index, data_type| {
-                src_driver
+                src_dialect
                     .parameter_placeholder(index, data_type)
                     .map_err(|error| {
                         crate::data_transfer::TransferError::unsupported(error.to_string())
@@ -743,7 +749,7 @@ pub(crate) async fn preview_data_transfer_impl(
             src_driver.quote_char(),
             &src_driver.driver_type(),
             |index, data_type| {
-                src_driver
+                src_dialect
                     .parameter_placeholder(index, data_type)
                     .map_err(|error| {
                         crate::data_transfer::TransferError::unsupported(error.to_string())
@@ -798,7 +804,7 @@ pub(crate) async fn preview_data_transfer_impl(
         crate::data_transfer::TransferMode::Data
             | crate::data_transfer::TransferMode::StructureAndData
     ) {
-        if let Err(error) = target_driver.parameter_placeholder(1, None) {
+        if let Err(error) = tgt_dialect.parameter_placeholder(1, None) {
             preview.can_execute = false;
             preview.block_reason = Some(error.to_string());
         }

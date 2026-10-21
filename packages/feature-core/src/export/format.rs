@@ -1,5 +1,5 @@
 use super::{DataFormat, SQL_INSERT_BATCH_SIZE};
-use datazen_driver_api::{DatabaseDriver, Value};
+use datazen_driver_api::{DatabaseDriver, LegacySqlDialect, SqlDialect, Value};
 use std::sync::Arc;
 // ---------------------------------------------------------------------------
 // Pure value/identifier escaping (mirrors src/lib/exportData.ts)
@@ -221,6 +221,9 @@ impl StreamFormatter {
             return Ok(String::new());
         }
         let mut out = String::new();
+        // 字面量渲染来自 SqlDialect 契约，旧驱动 API 逐条转发。
+        let driver: &dyn DatabaseDriver = self.driver.as_ref();
+        let dialect = LegacySqlDialect::new(driver);
         let mut batch: Vec<Vec<Option<Value>>> = Vec::new();
         for row in pending.drain(..) {
             batch.push(row);
@@ -229,7 +232,7 @@ impl StreamFormatter {
                     columns,
                     &self.table,
                     &self.database_type,
-                    self.driver.as_ref(),
+                    &dialect,
                     &batch,
                 )?);
                 batch.clear();
@@ -240,7 +243,7 @@ impl StreamFormatter {
                 columns,
                 &self.table,
                 &self.database_type,
-                self.driver.as_ref(),
+                &dialect,
                 &batch,
             )?);
         }
@@ -273,7 +276,7 @@ pub fn emit_insert_batch(
     columns: &[String],
     table: &str,
     database_type: &Option<String>,
-    driver: &dyn DatabaseDriver,
+    dialect: &dyn SqlDialect,
     rows: &[Vec<Option<Value>>],
 ) -> Result<String, datazen_driver_api::DriverError> {
     let db_type = database_type.as_deref();
@@ -294,7 +297,7 @@ pub fn emit_insert_batch(
         }
         let values = row
             .iter()
-            .map(|value| driver.try_format_sql_literal(value))
+            .map(|value| dialect.try_format_sql_literal(value))
             .collect::<Result<Vec<_>, _>>()?
             .join(", ");
         out.push_str(&format!("({values})"));

@@ -1,6 +1,6 @@
 //! Opt-in contract for restoring SQL statements on a retained ResourceProvider.
 //! It deliberately excludes COPY/client protocols and embedded transaction control.
-use crate::{sql_dump::is_comment_only_or_empty, DatabaseDriver, DriverError};
+use crate::{sql_dump::is_comment_only_or_empty, DriverError};
 
 pub const CAPABILITY_KEY: &str = "retainedSqlRestoreV1";
 pub const TRANSACTIONAL: &str = "transactionalDdl";
@@ -8,8 +8,12 @@ pub const IMPLICIT_COMMIT: &str = "implicitCommitDdl";
 
 /// Preflight the entire script before any external write. The returned statements
 /// use the driver's scanner, including dollar quotes and MySQL DELIMITER handling.
+///
+/// The scanner comes from the [`BackupDialect`](crate::backup_dialect::BackupDialect)
+/// file-rule source, not from the whole driver: preflight is a pure text rule
+/// and must not depend on the execution surface.
 pub fn prepare(
-    driver: &dyn DatabaseDriver,
+    dialect: &dyn crate::backup_dialect::BackupDialect,
     input: &str,
     profile: &str,
     single_transaction: bool,
@@ -23,7 +27,7 @@ pub fn prepare(
             "Restore transaction mode unsupported by retained resource".into(),
         ));
     }
-    let mut scanner = driver.new_sql_scanner();
+    let mut scanner = dialect.new_sql_scanner();
     let mut statements = scanner.push(input);
     statements.extend(scanner.finish());
     let mut prepared = Vec::new();

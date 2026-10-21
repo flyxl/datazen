@@ -29,7 +29,7 @@ use datazen_driver_api::{ConnectionConfig, ConnectionHandle, DriverError, QueryE
 use crate::postgres::PostgresDriver;
 
 use super::capabilities::{
-    postgres_capability_registry, postgres_capability_set, postgres_namespace_shape,
+    postgres_capability_registry_for, postgres_capability_set, postgres_namespace_shape,
     POSTGRES_CAPABILITY_REVISION, POSTGRES_DRIVER_VERSION, POSTGRES_PROVIDER_ID,
 };
 use super::PostgresResourceProvider;
@@ -481,7 +481,7 @@ async fn data_supports_bounded_streaming_and_backup_stays_undeclared() {
 
 #[tokio::test]
 async fn the_capability_snapshot_pins_identity_protocol_and_evidence() {
-    let registry = postgres_capability_registry();
+    let registry = postgres_capability_registry_for(POSTGRES_PROVIDER_ID);
     let snapshot = &registry.snapshot;
 
     assert_eq!(snapshot.driver_id, POSTGRES_PROVIDER_ID);
@@ -513,7 +513,7 @@ async fn the_capability_snapshot_pins_identity_protocol_and_evidence() {
 
 #[tokio::test]
 async fn every_evidence_entry_that_names_a_source_file_names_a_real_one() {
-    let registry = postgres_capability_registry();
+    let registry = postgres_capability_registry_for(POSTGRES_PROVIDER_ID);
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
 
     for (capability, evidence) in &registry.snapshot.confirmed {
