@@ -20,6 +20,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
+use datazen_feature_core::dashboard::schedule_grant::{MonitorGrant, MonitorScope};
 use datazen_platform_api::{
     dto::profile::{ProfileDraft, ProfilePatch},
     id::{
@@ -905,4 +906,465 @@ fn 派生盐的调试输出脱敏() {
     let debug = format!("{derivation:?}");
     assert_eq!(debug, "IdentityDerivationKey(<redacted>)");
     assert!(!debug.contains("7"), "派生盐不得出现在调试输出里：{debug}");
+}
+
+// ===========================================================================
+// 验证轨（identity-resolver 验证轨）补齐的覆盖
+//
+// 以下用例补的是**首版用例没钉住**的几条性质。每一���都对应一次具体的变异
+// （见验证报告）：去掉输入、去掉长度前缀、去掉域分离、放宽失败关闭……
+// 只要对应的那段生产代码被改坏，下面就会变红。
+// ===========================================================================
+
+/// **宽松**策略端口替身：任何委托都放行。
+///
+/// 用途：把「跨组织委托必须被拒」从策略端口的校验里剥出来，单独钉在解析器
+/// 自己的跨组织检查上。否则那条检查被策略端口顺带覆盖——删掉它不会有任何
+/// 用例变红。
+struct PermissivePolicy {
+    isolation: PolicyIsolationKey,
+}
+
+#[async_trait]
+impl PolicyService for PermissivePolicy {
+    async fn authorize(
+        &self,
+        _ctx: &RequestContext,
+        _subject: AuthorizationSubject,
+        _action: AuthorizationAction,
+    ) -> Result<AuthorizationDecision, PortError> {
+        Ok(AuthorizationDecision::Deny {
+            reason_code: "test_policy",
+        })
+    }
+
+    async fn verify_delegation(
+        &self,
+        _ctx: &RequestContext,
+        delegation: DelegationRef,
+    ) -> Result<DelegationGrant, PortError> {
+        Ok(DelegationGrant {
+            delegation,
+            actions: vec![AuthorizationAction::Connect, AuthorizationAction::Query],
+        })
+    }
+
+    fn isolation_key(&self, _ctx: &RequestContext) -> Result<PolicyIsolationKey, PortError> {
+        Ok(self.isolation.clone())
+    }
+
+    fn subscribe_version_changes(&self) -> PolicyChangeStream {
+        Box::new(std::iter::empty())
+    }
+}
+
+fn permissive_resolver(fixture: &Fixture) -> DesktopIdentityResolver {
+    DesktopIdentityResolver::new(
+        fixture.profiles.clone(),
+        fixture.secrets.clone(),
+        Arc::new(PermissivePolicy {
+            isolation: PolicyIsolationKey::new("test-isolation"),
+        }),
+        Arc::new(FixedScope::new(Some(fixture.target.clone()))),
+        test_derivation_key(),
+    )
+}
+
+/// **长度前缀是承重的**：去掉它，不同的字段切分会拼成同一条消息 ⇒ 同一个身份键。
+///
+/// 编码里每字段前面带 `u32` 长度；没有它，`("ab","c")` 与 `("a","bc")` 会拼成
+/// 同样的字节串，于是两个不同的连接配置会拿到**同一个**身份键。
+#[test]
+fn 长度前缀让字段切分不撞车() {
+    let derivation = test_derivation_key();
+
+    // 消息层面：两种切分不得撞成同一条消息。
+    let left = encode_message(b"datazen.test", &["ab", "c"]);
+    let right = encode_message(b"datazen.test", &["a", "bc"]);
+    assert_ne!(
+        left, right,
+        "长度前缀必须让两种字段切分产出不同的消息，否则身份键会撞车"
+    );
+
+    // 键层面：同样的切分落到真实派生入口上，必须给出不同的身份键。
+    let first = derive_identity_key(
+        &derivation,
+        &OrganizationId::new("ab"),
+        &ConnectionId::new("c"),
+        &PolicyIsolationKey::new("iso-1"),
+    )
+    .expect("切分 A 的身份键");
+    let second = derive_identity_key(
+        &derivation,
+        &OrganizationId::new("a"),
+        &ConnectionId::new("bc"),
+        &PolicyIsolationKey::new("iso-1"),
+    )
+    .expect("切分 B 的身份键");
+    assert_ne!(
+        first, second,
+        "字段切分不同就必须得到不同的身份键（长度前缀是承重的）"
+    );
+}
+
+/// **委托身份不可能等于本人身份**——不是「通常不同」，而是构造上不可能。
+///
+/// 两条断言合起来把这条性质钉死：
+/// 1. 域标签不同（把域标签改成同一个 ⇒ 下面第一条变红）；
+/// 2. 即使把域标签强行改成同一个，委托路径多出来的 `delegation_id` 与 `scope`
+///    也让两条消息不同——所以「域标签不同」不是唯一的护栏。
+#[test]
+fn 委托路径的消息必然不同于本人路径() {
+    let organization = OrganizationId::new("org-a");
+    let connection = ConnectionId::new("conn-1");
+    let isolation = PolicyIsolationKey::new("iso-1");
+
+    let personal_parts = [
+        organization.as_str(),
+        connection.as_str(),
+        isolation.as_str(),
+    ];
+    let delegation_parts = [
+        organization.as_str(),
+        connection.as_str(),
+        isolation.as_str(),
+        "del-1",
+        "scope-1",
+    ];
+
+    // 1. 两条路径的域标签必须不同。
+    assert_ne!(
+        IDENTITY_KEY_DOMAIN, DELEGATION_KEY_DOMAIN,
+        "两条路径不得共用同一个域标签"
+    );
+
+    // 2. 就算域标签相同，委托路径的输入集严格更大 ⇒ 消息必然不同。
+    assert_ne!(
+        encode_message(IDENTITY_KEY_DOMAIN, &personal_parts),
+        encode_message(IDENTITY_KEY_DOMAIN, &delegation_parts),
+        "委托路径的输入集必须严格大于本人路径，否则两条路径会产出同一条消息"
+    );
+
+    // 3. 实际使用的两个域下消息也不同。
+    assert_ne!(
+        encode_message(IDENTITY_KEY_DOMAIN, &personal_parts),
+        encode_message(DELEGATION_KEY_DOMAIN, &delegation_parts)
+    );
+}
+
+/// 委托身份键必须绑定**委托 id** 与**授权作用域**：换委托、换授权范围即换键。
+///
+/// 否则两个不同权限范围的委托会共用同一个身份键，池与缓存会把它们混用。
+#[tokio::test]
+async fn 委托身份键绑定委托标识与授权作用域() {
+    let fixture = fixture();
+    let resolver = permissive_resolver(&fixture);
+
+    let base = delegation("del-1", LOCAL_ORGANIZATION_ID);
+    let mut other_scope = base.clone();
+    other_scope.scope = "monitor:dash:widget:rev:2".to_owned();
+    let mut other_delegation = base.clone();
+    other_delegation.delegation_id = DelegationId::new("del-2");
+
+    let ctx = delegated_ctx(&base);
+    let first = resolver
+        .resolve_delegation(&ctx, base.clone())
+        .await
+        .expect("基准委托身份");
+    let rescoped = resolver
+        .resolve_delegation(&ctx, other_scope)
+        .await
+        .expect("换授权范围的委托身份");
+    let redelegated = resolver
+        .resolve_delegation(&ctx, other_delegation)
+        .await
+        .expect("换委托的委托身份");
+
+    assert_ne!(
+        first.execution_identity_key, rescoped.execution_identity_key,
+        "授权作用域变了必须换身份键"
+    );
+    assert_ne!(
+        first.execution_identity_key, redelegated.execution_identity_key,
+        "委托 id 变了必须换身份键"
+    );
+}
+
+/// 跨组织委托：即便策略端口放行，解析器自己也必须拒。
+///
+/// 这条专门钉解析器内部那道跨组织检查——首版用例里策略替身会顺带拒掉跨组织
+/// 委托，于是那道检查删掉也没有任何用例变红。
+#[tokio::test]
+async fn 跨组织委托即便策略放行也被拒() {
+    let fixture = fixture();
+    let resolver = permissive_resolver(&fixture);
+
+    let local = delegation("del-1", LOCAL_ORGANIZATION_ID);
+    let foreign = delegation("del-foreign", "org-foreign");
+
+    let error = resolver
+        .resolve_delegation(&delegated_ctx(&local), foreign)
+        .await
+        .expect_err("跨组织委托必须被拒");
+    assert!(
+        matches!(error, PortError::TokenInvalid),
+        "跨组织委托应失败关闭：{error:?}"
+    );
+}
+
+/// 委托路径**不转调**本人路径。
+///
+/// 端口原文：「委托身份与本人身份不是同一条路径」。这条从源码结构上钉住它：
+/// `resolve_delegation` 的函数体里不得出现 `self.resolve(`，也不得走本人路径
+/// 的派生函数。
+#[test]
+fn 委托路径不转调本人路径() {
+    let production = crate::platform::production_source(include_str!("execution_identity.rs"));
+    let start = production
+        .find("async fn resolve_delegation(")
+        .expect("委托入口必须在实现里");
+    let end = start
+        + production[start..]
+            .find("impl fmt::Debug for DesktopIdentityResolver")
+            .expect("委托入口的结束位置");
+    let body = &production[start..end];
+
+    assert!(
+        !body.contains("self.resolve("),
+        "resolve_delegation 不得转调 resolve（端口：两条独立路径）"
+    );
+    assert!(
+        body.contains("derive_delegation_identity_key("),
+        "委托路径必须自己派生身份键"
+    );
+    assert!(
+        !body.contains("derive_identity_key("),
+        "委托路径不得走本人路径的派生函数"
+    );
+}
+
+/// 派生链的**黄金值**：主密钥 → 子钥 → 身份键，整条链独立复算一遍。
+///
+/// 独立复算（不复用被测的 `IdentityDerivationKey::from_master_key` 当期望值）的
+/// 意义：否则「派生盐来自宿主主密钥」「域分离真的换了密钥」「输出是 URL-safe
+/// base64」这些性质都拿被测函数自己当尺子——把尺子换掉就看不见了。
+///
+/// 主密钥取不到时 `for_desktop` 直接返回 `Err`（失败关闭），装配层据此拒绝接线，
+/// 没有兜底的常量盐。
+#[tokio::test]
+async fn 桌面装配的派生盐来自宿主主密钥() {
+    let fixture = real_fixture().await;
+    let isolation = PolicyIsolationKey::new("test-isolation");
+    let policy = Arc::new(FixedPolicy::new(isolation.clone(), None));
+    let resolver = DesktopIdentityResolver::for_desktop(
+        fixture.store.clone(),
+        fixture.profiles.clone(),
+        policy,
+    )
+    .expect("桌面装配入口");
+
+    // 独立复算子钥：HMAC-SHA256(主密钥, 域标签)。
+    let master = master_key_bytes(&fixture.store).expect("宿主主密钥");
+    let mut subkey_mac = HmacSha256::new_from_slice(&master).expect("HMAC");
+    subkey_mac.update(DERIVATION_KEY_LABEL);
+    let subkey: [u8; 32] = subkey_mac
+        .finalize()
+        .into_bytes()
+        .as_slice()
+        .try_into()
+        .expect("32 字节子钥");
+
+    // 独立复算身份键：URL-safe base64(HMAC-SHA256(子钥, 域标签||长度前缀字段))。
+    let organization = OrganizationId::new(LOCAL_ORGANIZATION_ID);
+    let mut identity_mac = HmacSha256::new_from_slice(&subkey).expect("HMAC");
+    identity_mac.update(&encode_message(
+        IDENTITY_KEY_DOMAIN,
+        &[
+            organization.as_str(),
+            fixture.connection_id.as_str(),
+            isolation.as_str(),
+        ],
+    ));
+    let expected =
+        ExecutionIdentityKey::new(BASE64_URL.encode(identity_mac.finalize().into_bytes()));
+
+    let actual = resolver
+        .resolve(&fixture.ctx, &fixture.target)
+        .await
+        .expect("身份");
+
+    assert_eq!(
+        actual.execution_identity_key, expected,
+        "身份键必须由宿主主密钥经域分离派生的子钥算出"
+    );
+}
+
+/// 身份键里不得出现主密钥或派生盐本身。
+///
+/// 身份键是子钥对输入字段的 HMAC 摘要：摘要不可逆推主密钥，也不可逆推密码。
+/// 这条把「主密钥/子钥都不进入身份键」从注释里的断言变成可执行的断言。
+#[test]
+fn 身份键不含主密钥与派生盐() {
+    let master = [7u8; 32];
+    let derivation = IdentityDerivationKey::from_master_key(&master).expect("派生盐");
+    let key = derive_identity_key(
+        &derivation,
+        &OrganizationId::new("org-a"),
+        &ConnectionId::new("conn-1"),
+        &PolicyIsolationKey::new("iso-1"),
+    )
+    .expect("身份键");
+    let text = key.as_str();
+
+    // 域分离确实换了密钥：子钥不等于主密钥。
+    assert_ne!(
+        derivation.0, master,
+        "身份派生必须用独立的子钥，不能拿主密钥直接跑 HMAC"
+    );
+
+    for forbidden in [
+        BASE64_STANDARD.encode(master),
+        BASE64_STANDARD.encode(derivation.0),
+    ] {
+        assert!(
+            !text.contains(forbidden.as_str()),
+            "身份键不得包含主密钥或派生盐：{text}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 桌面授权单 → 委托目标（宿主协作者 `MonitorDelegationScope`）
+// ---------------------------------------------------------------------------
+
+/// 造一份监控授权单。
+fn monitor_grant(
+    id: &str,
+    dashboard_id: &str,
+    widget_id: &str,
+    workflow_id: &str,
+    workflow_yaml: &str,
+    scopes: Vec<MonitorScope>,
+) -> MonitorGrant {
+    MonitorGrant {
+        id: id.to_owned(),
+        dashboard_id: dashboard_id.to_owned(),
+        widget_id: widget_id.to_owned(),
+        workflow_id: workflow_id.to_owned(),
+        workflow_revision: crate::monitor::grants::revision(workflow_yaml),
+        organization_id: LOCAL_ORGANIZATION_ID.to_owned(),
+        service_principal: format!("monitor-service:{id}"),
+        approved_by: "desktop-user".to_owned(),
+        scopes,
+        actions: vec!["connect".to_owned(), "query".to_owned()],
+        read_only: true,
+        expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+        revocation_version: 1,
+        revoked: false,
+    }
+}
+
+/// 把授权单需要的仪表盘 / 部件 / 工作流落进 AppDb。
+///
+/// 复用 `real_fixture()` 的那一份 Store（全模块只建一次真库），不额外开库。
+async fn seed_monitor_grant(store: &Store, grant: &MonitorGrant, workflow_yaml: &str) {
+    let db = store.app_db();
+    db.upsert_workflow(&crate::store::WorkflowRecord {
+        id: grant.workflow_id.clone(),
+        name: "Fixed".to_owned(),
+        description: String::new(),
+        visibility: crate::store::WorkflowVisibility::User,
+        definition_yaml: workflow_yaml.to_owned(),
+        created_at: String::new(),
+        updated_at: String::new(),
+    })
+    .expect("工作流");
+    db.upsert_dashboard(&crate::store::DashboardRecord {
+        id: grant.dashboard_id.clone(),
+        name: "Ops".to_owned(),
+        created_at: String::new(),
+        updated_at: String::new(),
+        layout_cols: 12,
+        layout_row_height: 80,
+        enabled: true,
+        refresh_paused: false,
+    })
+    .expect("仪表盘");
+    db.upsert_widget(&crate::store::WidgetRecord {
+        id: grant.widget_id.clone(),
+        dashboard_id: grant.dashboard_id.clone(),
+        title: "Report".to_owned(),
+        workflow_id: grant.workflow_id.clone(),
+        view_mode: "table".to_owned(),
+        chart_config_json: None,
+        layout_x: 0,
+        layout_y: 0,
+        layout_w: 4,
+        layout_h: 3,
+        refresh_mode: "interval".to_owned(),
+        refresh_sec: Some(30),
+        alert_json: None,
+        enabled: true,
+        sort_order: 0,
+        created_at: String::new(),
+        updated_at: String::new(),
+    })
+    .expect("部件");
+    db.save_monitor_grant(grant).expect("授权单");
+}
+
+/// 授权单覆盖**多个连接**时必须失败关闭。
+///
+/// 一个执行身份只对应一个连接；一份授权单跨连接无法映射成单一身份 ⇒ 必须拒绝，
+/// 绝不「取第一个了事」。首版用例全部走替身，这段生产逻辑没有任何断言。
+#[tokio::test]
+async fn 授权单覆盖多个连接时失败关闭() {
+    let fixture = real_fixture().await;
+    let yaml = "id: wf-monitor-identity\nname: Fixed\n";
+    let scope_of = |connection: &str| MonitorScope {
+        target: ExecutionTarget::new(
+            ConnectionId::new(connection),
+            NamespaceTarget::database("app"),
+        ),
+        config_revision: 1,
+        command: "query".to_owned(),
+    };
+
+    let single = monitor_grant(
+        "grant-identity-single",
+        "dash-identity-single",
+        "widget-identity-single",
+        "wf-monitor-identity",
+        yaml,
+        vec![scope_of("conn-1")],
+    );
+    let multi = monitor_grant(
+        "grant-identity-multi",
+        "dash-identity-multi",
+        "widget-identity-multi",
+        "wf-monitor-identity",
+        yaml,
+        vec![scope_of("conn-1"), scope_of("conn-2")],
+    );
+    seed_monitor_grant(&fixture.store, &single, yaml).await;
+    seed_monitor_grant(&fixture.store, &multi, yaml).await;
+
+    let scope = MonitorDelegationScope::new(fixture.store.clone());
+
+    // 单连接授权单：目标就是授权单登记的连接。
+    let authorized = scope
+        .authorized_target(&single.context(), &single.delegation())
+        .await
+        .expect("单连接授权单应给出目标");
+    assert_eq!(authorized.connection_id, ConnectionId::new("conn-1"));
+
+    // 多连接授权单：失败关闭。
+    let error = scope
+        .authorized_target(&multi.context(), &multi.delegation())
+        .await
+        .expect_err("多连接授权单必须失败关闭");
+    assert!(
+        matches!(error, PortError::TokenInvalid),
+        "多连接授权单应失败关闭：{error:?}"
+    );
 }
