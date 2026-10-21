@@ -335,7 +335,15 @@ fn job_filter_literal_spans(masked: &str) -> Vec<(usize, usize, usize)> {
                 _ => {}
             }
         }
-        let line = masked[..start].lines().count();
+        // 行号 = 前缀里的换行数 + 1。
+        //
+        // 不能用 `str::lines().count()`：它**不计末尾的空行**，前缀若正好以换行结尾
+        // （字面量在行首、第 0 列），计数就比真实行号少 1，报告会把人指到上一行。
+        let line = masked[..start]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count()
+            + 1;
         out.push((line, start, end));
     }
     out
@@ -1088,16 +1096,11 @@ fn make() -> JobFilter {
         );
     }
 
-    /// **已知缺陷**（第 4 轮终验发现，本轮未修）：字面量位于**行首**（第 0 列）时，
-    /// 报出的行号会**少一行**。
+    /// 字面量位于**行首**（第 0 列）时，报出的行号也必须等于真实行号。
     ///
-    /// 原因：行号是 `masked[..start].lines().count()`，而 `str::lines()` 不计末尾的
-    /// 空行——前缀若正好以换行结尾（字面量在行首），计数就比真实行号少 1。
-    ///
-    /// 这条用例 `#[ignore]`：等词法器侧修好之后去掉 ignore，它会立刻转绿；
-    /// 在此之前它把这条缺口**钉在代码里**，而不是只留在对话里。
+    /// 行号是「前缀里的换行数 + 1」：`str::lines()` 不计末尾空行，用它算的话，
+    /// 前缀正好以换行结尾时（字面量在行首）会少报一行，把人指到上一行。
     #[test]
-    #[ignore = "已知缺陷：行首字面量的行号少报一行（见第 4 轮终验报告）"]
     fn a_literal_at_the_start_of_a_line_reports_its_real_line() {
         let source = "fn probe() {\nJobFilter { states: Vec::new() }\n}\n";
         let scan = scan_source("probe", source);

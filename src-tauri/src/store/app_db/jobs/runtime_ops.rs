@@ -536,8 +536,18 @@ impl SqliteJobRepository {
     /// 持有者与铸出者在续约路径上不可区分。唯一的拒绝理由是：行不存在、行上没有
     /// claim、worker 不符、generation 不符、租约过期。
     ///
-    /// 组织边界由**写入路径**兜底：所有写入都经 `check_claim`，那里比对 `ctx` 的
-    /// 组织（以及主体），越组织写按 `StaleClaim` 拒绝。端口契约的同一表述见
+    /// 组织边界由**写入路径**兜底，而写入路径有**三种**形态：
+    ///
+    /// * **claim 作用域**（阶段登记、提交边界、状态 CAS、checkpoint、进度、产物、
+    ///   域结果、终态）：经 `check_claim`，那里比对 `ctx` 的**组织与主体**，
+    ///   越组织写按 `StaleClaim` 拒绝；
+    /// * **ctx 作用域**（取消、确认未开始、标记失败、待核验、恢复结论）：没有 claim
+    ///   可比，用**显式组织谓词**（`WHERE … organization_id=? AND owner_principal_id=?`）
+    ///   过滤，越组织时受影响行数为 0、按 `NotFound` 处理；
+    /// * **受理**：没有 claim 可比，按 `ctx` **盖章**组织（INV-01）。
+    ///
+    /// `renew` 自身不属于上面任何一种：它只凭 claim 判定，不做组织比对。
+    /// 端口契约的同一表述见
     /// `datazen_platform_api::ports::job::JobRepository::renew`。
     pub(super) async fn renew_claim(&self, claim: &JobClaim) -> Result<JobClaim, PortError> {
         let now = self.clock.now();

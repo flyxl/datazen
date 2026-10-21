@@ -71,7 +71,7 @@ worker 心跳续其目录记录，但不延期客户端 attachment、事务或 J
 
 renew、阶段推进、提交边界、checkpoint、Artifact 引用和终态写入统一使用以下谓词：组织 + jobId + workerId + claimGeneration + `claim_expires_at > 管理库当前时间`；需要状态变化的写入另检查 stateVersion。零行更新表示 claim 失效，调用方停止推进，不能无条件补写或重新获取旧代次。
 
-> **这条谓词描述的是 P9 服务端形态**，其中 renew 的组织来自认证信封（见 §1：组织上下文由 API 签名或受认证 RPC 信封携带）。它**不适用于 P5 桌面的 `renew(claim)`**：桌面续约只凭 claim 自身（jobId + worker + claimGeneration + 租约）判定，**续约路径本身不做组织比对**——`JobClaim` 不携带组织维度，桌面形态的「跨组织续约」因此不可表达。桌面侧的组织边界由**写入路径**兜底：所有写入都经 claim 校验，那里比对 `RequestContext` 的组织，越组织写按 stale claim 拒绝。
+> **这条谓词描述的是 P9 服务端形态**，其中 renew 的组织来自认证信封（见 §1：组织上下文由 API 签名或受认证 RPC 信封携带）。它**不适用于 P5 桌面的 `renew(claim)`**：桌面续约只凭 claim 自身（jobId + worker + claimGeneration + 租约）判定，**续约路径本身不做组织比对**——`JobClaim` 不携带组织维度，桌面形态的「跨组织续约」因此不可表达。桌面侧的组织边界由**写入路径**兜底，而桌面写路径有**三种**形态：**claim 作用域**的写入（阶段登记、提交边界、状态 CAS、checkpoint、进度、产物、域结果、终态）经 claim 校验，那里比对 `RequestContext` 的组织与主体，越组织写按 stale claim 拒绝；**ctx 作用域**的写入（取消、确认未开始、标记失败、待核验、恢复结论）没有 claim 可比，用显式组织谓词过滤，越组织时受影响行数为 0、按 not found 处理；**受理**路径同样没有 claim 可比，按 `RequestContext` 盖章组织。`renew` 自身只凭 claim 判定，不做组织比对。
 
 claim 校验与写入必须是同事务或单条条件 UPDATE，不允许“先 SELECT 有效、随后 UPDATE”造成 TOCTOU。checkpoint 插入、Job 投影与版本更新同事务；byte Artifact 先写不可变字节，引用发布受 claim fencing，失效后的孤儿字节由清理器回收。
 
