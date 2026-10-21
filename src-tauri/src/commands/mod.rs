@@ -183,6 +183,15 @@ pub struct AppState {
     /// 事务归属和资源生命周期由 Runtime session actor 管理。取不到 adapter 时用
     /// `AppState::platform_require()`，它返回明确错误而不是 `Option` 兜底。
     pub platform: crate::platform::PlatformEntry,
+    /// 桌面形态的**组织作用域**：**启动期确定一次**，请求期直接取。
+    ///
+    /// 桌面是单租户：一份 app data 就是一个组织。组织的值是**安装级常量**
+    /// （`crate::platform::LOCAL_ORGANIZATION_ID`），与「当前 OS 用户名能不能取到」
+    /// **无关**——后者只决定 `principalId`。因此组织作用域**不依赖** platform
+    /// adapter 是否组装成功：身份不可用时，仪表板 / workflow 命令依然可用。
+    ///
+    /// 作用域只在这里确定一次，请求体里的任何字段都覆盖不了它（INV-01）。
+    pub organization_scope: OrganizationScope,
 }
 
 impl AppState {
@@ -196,16 +205,17 @@ impl AppState {
 
     /// 本次 IPC 调用的**组织作用域**。
     ///
-    /// 身份只来自 adapter 组装的请求上下文（INV-01）：作用域的组织 id 由
-    /// `DesktopIdentity` 决定，命令参数里没有任何字段能覆盖它。
-    /// 桌面是单租户，因此这个作用域永远是桌面自己那一个组织。
+    /// 作用域在**启动期**确定一次并存进 [`AppState::organization_scope`]，请求期
+    /// 直接取：命令参数里没有任何字段能覆盖组织身份（INV-01）。
+    ///
+    /// 桌面形态下这个值永远是桌面自己那一个组织（安装级常量），因此本方法
+    /// **不依赖** platform adapter 是否组装成功——「取不到当前 OS 用户名」只影响
+    /// `principalId`，不影响组织边界；仪表板 / workflow 命令不会因此整体不可用。
+    ///
+    /// 保留 `Result` 是因为「作用域从哪来」是宿主形态的自由度：多租户宿主可能
+    /// 按请求解析组织，那一步是可以失败的。桌面形态不会失败。
     pub fn organization_scope(&self) -> Result<OrganizationScope, CommandError> {
-        let adapter = self
-            .platform_require()
-            .map_err(|error| CommandError::Internal(error.message))?;
-        Ok(OrganizationScope::from_context(
-            adapter.begin_call().context(),
-        ))
+        Ok(self.organization_scope.clone())
     }
 
     /// Lazily register AI providers + load prompt templates.

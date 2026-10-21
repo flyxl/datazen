@@ -77,26 +77,34 @@ async fn the_ipc_scope_and_the_background_scope_name_the_same_organization() {
     );
 }
 
-/// 【P0 行为回归·表征用例】adapter 组装失败时，IPC 路径**取不到**作用域。
+/// 【P0 行为回归·不变量】adapter 组装失败时，IPC 路径的**组织作用域仍然可用**。
 ///
-/// 桌面是单租户，组织是安装级常量，与「当前 OS 用户名能不能取到」无关。
-/// 改造前仪表板 / workflow 命令不依赖 adapter；改造后它们经
-/// [`crate::commands::AppState::organization_scope`] 取作用域，
-/// 于是 adapter 不可用时这些命令整体失败。
+/// 桌面是单租户，组织的值是**安装级常量**（`LOCAL_ORGANIZATION_ID`），
+/// 与「当前 OS 用户名能不能取到」**无关**——后者只决定 `principalId`。
 ///
-/// 这条用例把当前行为**钉住**，以便修法落地时能明确看到行为变化。
+/// 因此仪表板 / workflow 命令**不因身份不可用而整体不可用**：作用域在启动期
+/// 确定一次并存在 `AppState` 里，请求期直接取，不走 `platform_require()`。
+///
+/// 这条用例钉住本轮修复的**核心不变量**：任何将来把作用域来源改回「请求期
+/// 解析身份」的改动，都会先把它弄红。
 #[tokio::test]
-async fn the_ipc_scope_is_unavailable_when_the_platform_adapter_failed_to_assemble() {
+async fn the_ipc_scope_is_still_available_when_the_platform_adapter_failed_to_assemble() {
     let test = crate::testing::app_state::TestAppState::new().await;
     let mut state = test.state.clone();
     state.platform = failed_entry();
 
-    let error = state
+    let scope = state
         .organization_scope()
-        .expect_err("adapter 组装失败时 IPC 作用域必须失败");
-    assert!(
-        format!("{error:?}").contains("Internal"),
-        "期望是内部错误（adapter 不可用），实际：{error:?}"
+        .expect("adapter 组装失败时 IPC 组织作用域仍然可用");
+    assert_eq!(
+        scope.organization_id().as_str(),
+        LOCAL_ORGANIZATION_ID,
+        "组织作用域不得依赖 adapter 是否组装成功"
+    );
+    assert_eq!(
+        scope.organization_id(),
+        local_organization_scope().organization_id(),
+        "IPC 路径与后台路径必须看到同一个组织"
     );
 }
 
