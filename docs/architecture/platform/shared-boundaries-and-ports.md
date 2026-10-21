@@ -98,7 +98,9 @@ packages/runtime/src/
 
 packages/backend-client/src/
 ├── types/                    # ids、target、context、session、execution、job、profile、artifact、event、idempotency、requests
-├── client.ts                 # BackendClient 接口（21 个方法）+ backendId 注入登记
+├── client.ts                 # BackendClient 接口（kernel 部分）+ backendId 注入登记；表数据半边在 tableDataClient.ts
+├── tableDataClient.ts        # TableDataClient 接口（表数据方法），由 client.ts 的 BackendClient 扩展
+├── types/tableData.ts        # 表数据 wire 类型镜像（与桌面前端 src/lib/tableChanges.ts 形状一致）
 ├── transport.ts              # BackendTransport 绑定接口、PlatformServices 接口（§7.1）、MethodMap
 ├── streams.ts                # AsyncIterable 事件流抽象
 ├── errors.ts                 # ApiError 反序列化
@@ -720,7 +722,13 @@ flowchart TD
 
 ## 7. BackendClient 与 PlatformServices 注入
 
-> 落地形态：`packages/backend-client` 已交付类型与门面（`types/` 镜像、`BackendClient` 21 个方法、`MethodMap` 21 条、`createBackendClient` 与 backendId 登记器），**零传输实现**——`BackendTransport` / `PlatformServices` 的具体实现（桌面 Tauri、Server HTTP）由 P2 起的 adapter 提供。`BackendClient` 与 `keyof MethodMap` 之间有编译期双向对齐断言，方法集合改动会直接编译失败。
+> 落地形态：`packages/backend-client` 已交付类型与门面（`types/` 镜像、`BackendClient`（kernel + 表数据两部分）、`MethodMap`、`createBackendClient` 与 backendId 登记器）。`BackendTransport` 的**桌面 Tauri 实现**已交付（`src/platform/tauriBackendTransport.ts`）；**零传输实现的说法已过时**——Server HTTP 与浏览器形态的 transport 仍未落地。
+>
+> **编译期保证的准确范围**（不要外推）：
+> - `BackendTransport.call<K extends keyof MethodMap>` 是**单向**约束：transport 必须覆盖 `MethodMap` 的全部键。**不存在**「`BackendClient` 与 `keyof MethodMap` 双向对齐」的断言——`BackendClient` 的方法若少写一个，编译期不会报错。
+> - 已有的编译期断言是**类型形状**层面的：表数据 wire 镜像与桌面前端 `src/lib/tableChanges.ts` 的对应类型要求「互相可赋值 **且** 键集合完全相同」，任一侧漂移则 `tsc` 失败。
+>
+> **某个后端是否真的服务某个方法，由该 transport 的 `unsupportedMethods` 声明**：这是**运行时**事实，不是类型事实。`MethodMap` 登记的是**契约完整性**（该方法在协议中存在），不是"所有后端都实现了它"。
 
 ### 7.1 传输无关契约
 
