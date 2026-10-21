@@ -103,7 +103,7 @@ Wave 4 (可选,不在本目标内)  搬纯规则 / WappCatalog 端口 / 其余 4
 |---|---|---|---|
 | D | `feature/featurecore-org-scope` | `.worktrees/datazen-featurecore-org-scope` | ✅ 11G | ❌ Tester **TEST_FAILED**（1 阻塞行为回归）→ 第 1 轮修复中 |
 | E | `feature/schema-diff-reviewed-port` | `.worktrees/datazen-schema-diff-reviewed-port` | ✅ 11G | ✅ 已交付 `33416cb72` → Tester `0da32120` 复测中 |
-| F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | ⏳ 已派发 `29467fd8` |
+| F | `feature/migration-store-ports` | `.worktrees/datazen-migration-store-ports` | ✅ 11G | 🔄 代理中断（第 1 次死亡），**已 resume**；发现 1,042 行孤儿测试 |
 | G | `feature/identity-resolver` | `.worktrees/datazen-identity-resolver` | ✅ 11G | ✅ 已交付 `b4abf9de8` → Tester 复测中 |
 
 **派发前必做**：Wave 1 合流进 `feature/storage-ports` 后，把集成分支 merge 进这四棵树的分支，再**重新 touch** path 依赖。**已执行**（四树均推进到 `65dac1e2c` = C + B + `OrganizationScope`）。
@@ -432,6 +432,23 @@ D-01 / D-03 / D-04 / D-05 全处置，并 cherry-pick 复测 Tester 的 `0d3feff
 **Tester 额外加了一条我没要求的守卫（价值很高）**：`src-tauri/src/commands/org_scope_surface_tests.rs` —— **任何 IPC 命令参数不得含身份类型**（`OrganizationScope`/`OrganizationId`/`RequestContext`/`DesktopIdentity`），且 dashboard/workflow 命令不得把 scope 做成 IPC 参数。变异实测有效（给 `workflow_get` 加 scope 参数 → 两条守卫同时红）。**这正是本 initiative 的核心命题**（租户作用域不得泄漏进 IPC 载荷），把它变成机器可查的守卫，比写在文档里可靠。
 
 **D 轨其余部分实测通过**：越权语义（读→空/`None`/`NotFound`、写→`NotFound`，全文 0 处"无权限"形态，三个 impl 各做变异确认闸门承重）、按组织播种（变异确认全局哨兵会让第二个组织拿不到内置 workflow）、feature-core 公开签名无宿主类型、IPC 表面**逐字节一致**（272 个命令的函数名+参数列表+返回类型 0 处差异）、17→27 条跨组织用例。
+
+### F 轨：代理中断 → resume + 一条重量级先存发现
+
+F 轨代理在探索阶段中断（死亡 1/3）。工作树**零提交零改动**（未丢编辑）→ 按纪律 resume 原实例（保留它的侦察上下文，优于换新实例）。
+
+**它侦察到、并由协调者独立核实的一条重量级先存缺陷**：
+```
+packages/data-transfer/src/plan_store/tests.rs   → 1,042 行、40 个测试函数
+packages/data-transfer/src/plan_store/mod.rs:13  → 只声明了 `mod checkpoint;`
+```
+→ **`mod tests;` 从未被声明 ⇒ 这 40 个测试从未被编译、从未运行过。**
+（对照：`packages/data-sync/src/plan_store/mod.rs:1332` 是内联 `#[cfg(test)] mod tests { … }`，**是编译的**。）
+
+这 40 个覆盖的全是**迁移正确性的核心不变量**，不是边角料：指纹顺序无关、过期计划拒绝 + 一次性消费、客户端不得替换 payload、SQL 文件目标方言绑定不可变计划、恢复 checkpoint 一次性消费、并发认领恰好一次并防重放、源摘要变化拒绝恢复…… 这也解释了 `data-transfer --lib` 为什么只有 **226** 个测试。
+→ **已作为 F 轨的验收标准追加**：必须把孤儿测试接进模块树并跑通；**若暴露出真实缺陷，不得删改断言来让它变绿**（那 40 个测试从未跑过，激活后红是"暴露先存缺陷"，不是本轨引入）。同时它也是**本轨的交付价值**（把 40 个从未运行的测试激活）。
+
+**顺带同步了一条跨轨形态风险**：D 轨被判定出的行为回归（IPC 命令作用域 per-request 依赖 `platform_require()` → adapter 不可用时功能整体不可用）已写进 F 的简报，要求它**主动规避**并把 `env -u USER` 差分自验列入门禁。
 
 ## 6. 门禁与流程
 
