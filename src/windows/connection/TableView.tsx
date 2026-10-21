@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Columns3, Filter, RefreshCw, ShieldAlert } from 'lucide-react';
+import { Columns3, Filter, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { NlFilterInput } from '../../components/ai/NlFilterInput';
 import { TableColumnFilter } from './TableColumnFilter';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { EMPTY_GRID_SELECTION, type GridSelection } from '../../stores/tableData/gridSelection';
+import { hasPendingWork } from '../../stores/tableData/pendingChanges';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -13,19 +14,21 @@ import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { cn } from '../../lib/cn';
 import { CopyableError } from '../../components/ui/CopyableError';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
-import { tableChangeContextKey } from '../../lib/tableChanges';
-import type { RowChangePlan, TableChangeContext } from '../../lib/tableChanges';
+import { buildRowIdentity, rowIdentityKey, tableChangeContextKey } from '../../lib/tableChanges';
+import type { TableChangeContext } from '../../lib/tableChanges';
 import {
   filterExpressionToConditions,
   parseFilterForApply,
   type FilterExpression,
 } from '../../lib/filterExpression';
 import { Button } from '../../components/ui/Button';
-import { Dialog } from '../../components/ui/Dialog';
 import {
   TablePendingChangesBar,
   TableTransactionControls,
 } from './TablePendingChangesBar';
+import { PendingPlanDialog } from './PendingPlanDialog';
+import { useTableDraftRows } from './useTableDraftRows';
+import { isComposingEvent, isEditableTarget } from '../../lib/gridEventGuards';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { DatabaseType, FilterCondition, SortCondition } from '../../types';
 import { Spinner } from '../../components/ui/Spinner';
@@ -75,6 +78,8 @@ export function TableView({
 
   // NlFilterInput handles unconfigured state internally
   const ts = useTableDataStore((s) => s.byPanel.get(panelId));
+  /** New-row drafts: the staged rows plus the interaction state around them. */
+  const drafts = useTableDraftRows(panelId, ts, isEditable);
   /**
    * The panel pins its own target database, so a cross-database table loads
    * correctly even when the session's active database differs.
@@ -138,6 +143,8 @@ export function TableView({
   const [quickFilterError, setQuickFilterError] = useState<string | null>(null);
   const [readOnlyTipVisible, setReadOnlyTipVisible] = useState(false);
   const readOnlyTipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Neutral notice shown when an insert could not be located after the commit. */
+  const [insertNotice, setInsertNotice] = useState<string | null>(null);
 
   // Manual transaction state, controls and pending-change actions live in
   // `TablePendingChangesBar`; this component keeps only the ChangeSet handlers.
@@ -262,50 +269,156 @@ export function TableView({
   const pendingDeleteCount = [...pendingChanges.values()].filter(
     (change) => change.deleteMarked,
   ).length;
+  /** Staged new rows; they are pending work just like the staged edits. */
+  const pendingInsertCount = ts?.draftInserts.size ?? 0;
+  /**
+   * Everything that has to be committed: staged edits **and** staged new rows.
+   * A panel with only drafts still has work, so its commit button is live.
+   */
+  const hasWork = ts ? hasPendingWork(ts) : false;
   const pendingBusy = loading || pendingStatus !== 'idle';
+
+  /**
+   * The row the "new row" highlight points at.
+   *
+   * The store keeps the **identity key** of the located row; the grid needs an
+   * index. When the row cannot be located (the regular path in this batch:
+   * the driver returns no primary key), there is no highlight at all.
+   */
+  const highlightedNewRowIndex = useMemo(() => {
+    const key = ts?.highlightedNewRowKey;
+    if (!key || !ts) return null;
+    const pkColumns = ts.columns.filter((column) => column.isPrimaryKey);
+    if (pkColumns.length === 0) return null;
+    const index = ts.rows.findIndex((row) => {
+      const identity = buildRowIdentity(row, pkColumns);
+      if (!identity) return false;
+      try {
+        return rowIdentityKey(identity) === key;
+      } catch {
+        return false;
+      }
+    });
+    return index >= 0 ? index : null;
+  }, [ts]);
+
+  // The highlight expires on its own (04 §4.1: the new row is highlighted for
+  // a moment, not forever).
+  useEffect(() => {
+    if (!ts?.highlightedNewRowKey) return;
+    const timer = setTimeout(() => {
+      useTableDataStore.getState().clearHighlightedNewRow(panelId);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [panelId, ts?.highlightedNewRowKey]);
 
   useEffect(() => {
     if (!isEditable && editingCell) actions.cancelEdit();
   }, [actions, editingCell, isEditable]);
 
   const handlePreviewPendingChanges = useCallback(async () => {
-    if (driverReadOnly || pendingBusy || pendingChanges.size === 0) return;
+    if (driverReadOnly || pendingBusy || !hasWork) return;
     const plan = await actions.previewPendingChanges();
     if (plan) setPreviewOpen(true);
-  }, [actions, driverReadOnly, pendingBusy, pendingChanges.size]);
+  }, [actions, driverReadOnly, pendingBusy, hasWork]);
 
   const handleCommitPendingChanges = useCallback(async () => {
-    if (driverReadOnly || pendingBusy || pendingChanges.size === 0) return;
+    if (driverReadOnly || pendingBusy || !hasWork) return;
     const confirmed = await confirmCommit({
       title: t('tableData.commit'),
-      message: t('tableData.confirmCommit', {
-        updates: pendingUpdateCount,
-        deletes: pendingDeleteCount,
-      }),
+      message:
+        pendingInsertCount > 0
+          ? t('tableData.confirmCommitWithInserts', {
+              inserts: pendingInsertCount,
+              updates: pendingUpdateCount,
+              deletes: pendingDeleteCount,
+            })
+          : t('tableData.confirmCommit', {
+              updates: pendingUpdateCount,
+              deletes: pendingDeleteCount,
+            }),
       confirmLabel: t('tableData.commit'),
       kind: 'warning',
     });
-    if (confirmed) await actions.commitPendingChanges();
+    if (!confirmed) return;
+    const result = await actions.commitPendingChanges();
+    // The insert rows have no returned primary key in this batch, so the new
+    // row is often not locatable. The interface says so instead of claiming a
+    // highlight it cannot deliver (04 §4.1).
+    if (result.insertLocation === 'unavailable') {
+      setInsertNotice(t('tableData.insertReturningUnavailable'));
+    }
   }, [
     actions,
     confirmCommit,
     driverReadOnly,
     pendingBusy,
-    pendingChanges.size,
     pendingDeleteCount,
+    pendingInsertCount,
     pendingUpdateCount,
+    hasWork,
     t,
   ]);
 
   const handleTableKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-        if (pendingChanges.size === 0 || pendingBusy) return;
+      // An IME composition owns every key, and so does a text field: the grid
+      // shortcuts never fire while the user is typing (01-selection §4.5).
+      if (isComposingEvent(event)) return;
+      const mod = event.metaKey || event.ctrlKey;
+      if (mod && event.key === 'Enter') {
+        if (!hasWork || pendingBusy) return;
         event.preventDefault();
         void handleCommitPendingChanges();
+        return;
+      }
+      if (mod && (event.key === 'i' || event.key === 'I')) {
+        if (!isEditable || pendingBusy) return;
+        if (isEditableTarget(event.target)) return;
+        event.preventDefault();
+        drafts.addDraftRow();
+        return;
+      }
+      if (mod && (event.key === 'd' || event.key === 'D')) {
+        if (!isEditable || pendingBusy) return;
+        if (isEditableTarget(event.target)) return;
+        // The focus is on a real row: duplicating a row is not this track's
+        // business (02 owns that), so the key is left alone.
+        if (!drafts.activeDraftId) return;
+        event.preventDefault();
+        drafts.duplicateDraftRow(drafts.activeDraftId);
+        return;
+      }
+      if (event.key === 'Escape') {
+        // The editor owns Escape while it is open; the grid clears its own
+        // selection. What is left for the panel is the drafts: the **empty**
+        // ones go, a filled one stays (04 §4.1).
+        if (editingCell || drafts.editingDraft) return;
+        if (isEditableTarget(event.target)) return;
+        drafts.removeEmptyDraftRows();
+        return;
+      }
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        // The grid handles Delete for the selected real rows; when it did, the
+        // event is already consumed and the draft must survive.
+        if (event.defaultPrevented) return;
+        if (!isEditable || pendingBusy) return;
+        if (isEditableTarget(event.target)) return;
+        // A cell editor owns the key while it is open.
+        if (editingCell || drafts.editingDraft) return;
+        if (!drafts.activeDraftId) return;
+        event.preventDefault();
+        drafts.removeDraftRow(drafts.activeDraftId);
       }
     },
-    [handleCommitPendingChanges, pendingBusy, pendingChanges.size],
+    [
+      drafts,
+      editingCell,
+      handleCommitPendingChanges,
+      isEditable,
+      pendingBusy,
+      hasWork,
+    ],
   );
 
   const handleQuickFilter = useCallback(() => {
@@ -399,9 +512,19 @@ export function TableView({
           </button>
         </div>
       )}
-      {error && pendingChanges.size > 0 && (
+      {error && hasWork && (
         <div className="border-b border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning">
           {t('tableData.errorPendingHint')}
+        </div>
+      )}
+      {insertNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="table-insert-degraded"
+          className="border-b border-edge bg-surface-raised px-3 py-1.5 text-xs text-fg-muted"
+        >
+          {insertNotice}
         </div>
       )}
       <div className="flex shrink-0 items-start gap-0.5 border-b border-edge px-2 py-0.5">
@@ -417,6 +540,20 @@ export function TableView({
         >
           <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
         </button>
+        {isEditable && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            className="mt-0 flex h-7 w-7 shrink-0 items-center justify-center rounded text-xs text-fg-muted transition-colors hover:bg-surface-alt hover:text-fg disabled:opacity-50"
+            onClick={() => drafts.addDraftRow()}
+            disabled={loading || pendingBusy}
+            title={t('tableData.insertRowHint', { shortcut: '⌘/Ctrl+I' })}
+            aria-label={t('tableData.insertRow')}
+            data-testid="table-insert-row"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
@@ -488,9 +625,10 @@ export function TableView({
         onReload={actions.reload}
       />
       <TablePendingChangesBar
-        pendingCount={pendingChanges.size}
+        pendingCount={pendingChanges.size + pendingInsertCount}
         updateCount={pendingUpdateCount}
         deleteCount={pendingDeleteCount}
+        insertCount={pendingInsertCount}
         busy={pendingBusy}
         onPreview={() => void handlePreviewPendingChanges()}
         onCommit={() => void handleCommitPendingChanges()}
@@ -530,7 +668,15 @@ export function TableView({
         onRowSelect={actions.selectRow}
         onSelectAll={actions.toggleSelectAll}
         onRowClick={actions.setDetailRow}
-        highlightedRow={detailRowIndex}
+        highlightedRow={detailRowIndex ?? highlightedNewRowIndex}
+        draftRows={drafts.draftRows}
+        editingDraft={drafts.editingDraft}
+        onDraftCellEdit={drafts.setDraftValue}
+        onDraftCellEditStart={drafts.startDraftEdit}
+        onDraftCellEditCancel={drafts.cancelDraftEdit}
+        onDraftRowRemove={drafts.removeDraftRow}
+        onDraftRowActivate={drafts.activateDraftRow}
+        onAddDraftRow={isEditable ? () => drafts.addDraftRow() : undefined}
         exportTableName={tableName}
         databaseType={databaseType}
         dbSessionId={dbSessionId}
@@ -573,76 +719,5 @@ export function TableView({
         onClose={() => setPreviewOpen(false)}
       />
     </div>
-  );
-}
-
-function PendingPlanDialog({
-  plan,
-  open,
-  onClose,
-}: {
-  plan: RowChangePlan | null;
-  open: boolean;
-  onClose: () => void;
-}) {
-  const { t } = useI18n();
-  if (!plan) return null;
-  const statements = [...plan.updates, ...plan.deletes];
-  return (
-    <Dialog
-      open={open}
-      title={t('tableData.previewTitle')}
-      description={`${plan.table.table} · ${plan.updates.length} ${t('tableData.pendingUpdates', { count: plan.updates.length })} · ${plan.deletes.length} ${t('tableData.pendingDeletes', { count: plan.deletes.length })}`}
-      onClose={onClose}
-      testId="pending-plan-dialog"
-      footer={
-        <Button size="sm" variant="secondary" onClick={onClose}>
-          {t('common.close')}
-        </Button>
-      }
-    >
-      <div className="space-y-3 text-xs">
-        <div>
-          <div className="font-medium text-fg">{t('tableData.previewFingerprint')}</div>
-          <code className="mt-1 block break-all rounded bg-surface px-2 py-1 font-mono text-fg-muted">
-            {plan.fingerprint}
-          </code>
-        </div>
-        <div>
-          <div className="font-medium text-fg">{t('tableData.previewSql')}</div>
-          <div className="mt-1 space-y-2">
-            {statements.length === 0 ? (
-              <div className="text-fg-muted">{t('tableData.noPendingChanges')}</div>
-            ) : (
-              statements.map((statement, index) => (
-                <div
-                  key={`${statement.sqlTemplate}-${index}`}
-                  className="rounded border border-edge bg-surface p-2"
-                >
-                  <code className="block whitespace-pre-wrap break-words font-mono text-fg-secondary">
-                    {statement.sqlTemplate}
-                  </code>
-                  {statement.parameterSummary.length > 0 && (
-                    <div className="mt-1 text-fg-muted">
-                      {t('tableData.previewParameters')}: {statement.parameterSummary.join(', ')}
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-        {plan.warnings.length > 0 && (
-          <div className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-amber-200">
-            <div className="font-medium">{t('tableData.previewWarnings')}</div>
-            <ul className="mt-1 list-disc pl-4">
-              {plan.warnings.map((warning) => (
-                <li key={`${warning.code}-${warning.message}`}>{warning.message}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    </Dialog>
   );
 }

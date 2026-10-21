@@ -306,6 +306,26 @@ const pack = {
   'tableData.txRollbackFailed': 'Failed to roll back transaction',
   'tableData.errorPendingHint':
     'Unsaved changes remain staged. Retry, adjust the filter, or roll back before closing this tab.',
+  // ── New rows (DB-04) ──────────────────────────────────────────
+  'tableData.insertRow': 'Insert Row',
+  'tableData.insertRowHint': 'Insert Row ({shortcut})',
+  'tableData.duplicateDraftRow': 'Duplicate Row',
+  'tableData.removeDraftRow': 'Discard Row',
+  'tableData.draftRowBadge': 'NEW',
+  'tableData.draftRowUnsaved': 'New row (not yet saved)',
+  'tableData.insertDefault': 'DEFAULT',
+  'tableData.insertSetNull': 'Set NULL',
+  'tableData.pendingInserts': '{count} inserts',
+  'tableData.confirmCommitWithInserts':
+    'Commit {inserts} inserts, {updates} updates and {deletes} deletes?',
+  'tableData.insertFailed': 'Failed to insert rows',
+  'tableData.insertNoWritableColumn': 'Fill at least one column: {columns} requires a value.',
+  'tableData.insertUnknownColumn': 'Column {column} is not part of this table.',
+  'tableData.insertReturningUnavailable':
+    "The new row's primary key could not be located automatically; the page was refreshed.",
+  'tableData.insertSchemaUnavailable':
+    'Column metadata is unavailable; the database will validate this row.',
+  'tableData.highlightNewRow': 'New row',
   'dataTable.selected': 'Selected',
   'dataTable.sort': 'Sort',
   'dataTable.selectRow': 'Select Row',

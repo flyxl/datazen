@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import en from './en';
+import queryPack from './en/query';
 import {
   BUILTIN_LOCALES,
   getAllTranslations,
@@ -309,5 +310,41 @@ describe('locales', () => {
       unregisterLocale('test-lang');
       expect(getAvailableLocales()).not.toContain('test-lang');
     });
+  });
+});
+
+/**
+ * The keys of the new-row track (DB-04) live in the English domain pack.
+ *
+ * `I18nKey` is `TranslationKey | (string & {})`, so a misspelled key does not
+ * fail the type check — it only shows up as the key itself in the interface.
+ * This test pins the key list of the track against the pack.
+ */
+describe('new-row locale keys (DB-04)', () => {
+  const NEW_ROW_KEYS = [
+    'tableData.insertRow',
+    'tableData.insertRowHint',
+    'tableData.duplicateDraftRow',
+    'tableData.removeDraftRow',
+    'tableData.draftRowBadge',
+    'tableData.draftRowUnsaved',
+    'tableData.insertDefault',
+    'tableData.insertSetNull',
+    'tableData.pendingInserts',
+    'tableData.confirmCommitWithInserts',
+    'tableData.insertFailed',
+    'tableData.insertNoWritableColumn',
+    'tableData.insertUnknownColumn',
+    'tableData.insertReturningUnavailable',
+    'tableData.insertSchemaUnavailable',
+    'tableData.highlightNewRow',
+  ] as const;
+
+  it('registers every new key in the English query pack', () => {
+    const pack = queryPack as unknown as Record<string, unknown>;
+    for (const key of NEW_ROW_KEYS) {
+      expect(typeof pack[key], `missing English key: ${key}`).toBe('string');
+      expect(String(pack[key]).length, `empty English key: ${key}`).toBeGreaterThan(0);
+    }
   });
 });

@@ -54,6 +54,17 @@ describe('classifyGridError', () => {
     expect(classifyGridError('   ')).toBe('unknown');
   });
 
+  it('maps the insert prefixes and falls back to the raw message', () => {
+    expect(
+      classifyGridError("grid.insert.unknownColumn: INSERT writes column(s) that do not exist on 'users'"),
+    ).toBe('grid.insert.unknownColumn');
+    // The "returning unavailable" code is a warning of the plan rather than an
+    // error message, but it is registered so the interface can branch on it.
+    expect(GRID_ERROR_CODES).toContain('grid.insert.returningUnavailable');
+    // An unrelated message stays unknown, and the caller renders it verbatim.
+    expect(classifyGridError('permission denied for table users')).toBe('unknown');
+  });
+
   it('tolerates surrounding whitespace but stays case-sensitive', () => {
     expect(classifyGridError('  grid.selection.stale: rows changed\n')).toBe('grid.selection.stale');
     expect(classifyGridError('GRID.SELECTION.STALE: rows changed')).toBe('unknown');

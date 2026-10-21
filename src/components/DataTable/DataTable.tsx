@@ -1,7 +1,7 @@
 import { useCallback, useId, useMemo, useState, type KeyboardEvent } from 'react';
 import { tid } from '../../lib/tid';
 import { Download, Trash2 } from 'lucide-react';
-import type { FilterCondition, SortCondition } from '../../types';
+import type { FilterCondition, SortCondition, Value } from '../../types';
 import type { CellEdit } from '../../stores/tableData/types';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
@@ -18,7 +18,7 @@ import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
 import { Pagination } from './Pagination';
 import { TableHeader, type ColumnDef } from './TableHeader';
-import { VirtualBody } from './VirtualBody';
+import { VirtualBody, type DraftRowViewModel } from './VirtualBody';
 import { useDataTableContextMenu } from './useDataTableContextMenu';
 import { DataExportDialog } from './DataExportDialog';
 import { cn } from '../../lib/cn';
@@ -78,6 +78,26 @@ export interface DataTableProps {
 
   /** Highlighted row index (e.g. for detail panel) */
   highlightedRow?: number | null;
+
+  /**
+   * New-row drafts, rendered after the real rows. They are derived rows: they
+   * are not part of `rows` and never reach the selection model (04 §3.7 R-5).
+   */
+  draftRows?: DraftRowViewModel[];
+  /** Write one cell of a draft. `undefined` clears the column (do not write it). */
+  onDraftCellEdit?: (draftId: string, column: string, value: Value | null | undefined) => void;
+  /** Start editing a draft cell. */
+  onDraftCellEditStart?: (draftId: string, column: string) => void;
+  /** Leave the draft cell editor without writing anything. */
+  onDraftCellEditCancel?: () => void;
+  /** Drop a draft row. */
+  onDraftRowRemove?: (draftId: string) => void;
+  /** The draft row the pointer focus is on. */
+  onDraftRowActivate?: (draftId: string) => void;
+  /** Append a new draft row — the "empty area below the last row" entry. */
+  onAddDraftRow?: () => void;
+  /** The draft cell that is being edited right now. */
+  editingDraft?: { draftId: string; column: string } | null;
 
   loading?: boolean;
   statusBar?: React.ReactNode;
@@ -151,6 +171,14 @@ export function DataTable({
   onSelectAll,
   onRowClick,
   highlightedRow,
+  draftRows,
+  onDraftCellEdit,
+  onDraftCellEditStart,
+  onDraftCellEditCancel,
+  onDraftRowRemove,
+  onDraftRowActivate,
+  onAddDraftRow,
+  editingDraft,
   statusBar,
   rowHeight = 28,
   exportTableName,
@@ -482,6 +510,14 @@ export function DataTable({
               isCellSelected={isCellSelected}
               activeCell={selection.mode === 'cell' ? selection.focus : null}
               cellIdPrefix={hasCellSelection ? gridIdPrefix : undefined}
+              draftRows={draftRows}
+              onDraftCellEdit={onDraftCellEdit}
+              onDraftCellEditStart={onDraftCellEditStart}
+              onDraftCellEditCancel={onDraftCellEditCancel}
+              onDraftRowRemove={onDraftRowRemove}
+              onDraftRowActivate={onDraftRowActivate}
+              onAddDraftRow={onAddDraftRow}
+              editingDraft={editingDraft}
             />
             {loading ? (
               gridRow(
