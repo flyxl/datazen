@@ -110,7 +110,7 @@
 ### 3.1 Rust：IPC 命令的 DTO 与判定逻辑（**分层落点见修订块**）
 
 > **〔契约审计修订 2026-10-21〕T0-4 / R-A**：本节原稿把 DTO **与全部判定逻辑**都放进 `src-tauri/src/commands/fk_navigation.rs`（原估 ~240 行）。**逻辑落点错了**：`find_fk`、目标库/表解析、`unique` 判定、探测与候选值组装都是纯业务逻辑，不依赖 Tauri 运行时，按 R-A 必须落 `packages/feature-core`。
-> - **DTO 留 host 合法**：`ResolveFkTargetsRequest` / `FkTargetRef` / `FkTargetResolution` 放 `src-tauri/src/commands/fk_navigation.rs`（≈60 行，含 `#[tauri::command]` 壳）；
+> - **DTO 留 host 合法**：`ResolveForeignKeyTargetsRequest` / `ForeignKeyTargetRef` / `ForeignKeyTargetResolution`〔契约审计修订 2026-10-21〕**命名口径统一**：本册原稿写的 `ResolveFkTargetsRequest` / `FkTargetRef` / `FkTargetResolution` 与**端口**（`packages/backend-client/src/types/tableData.ts`）的 `ResolveForeignKeyTargetsRequest` / `ForeignKeyTargetRef` / `ForeignKeyTargetResolution` 是同一线形的**两个名字**（结构逐字段一致，已核）。**以端口为准**——`src/commands/database.ts` 已在用端口那套名字，且端口是跨形态契约；Rust 侧与本册一并改成端口名，避免同一个形状有三个名字。放 `src-tauri/src/commands/fk_navigation.rs`（≈60 行，含 `#[tauri::command]` 壳）；
 > - **逻辑进共享层**：`resolve_foreign_key_targets_impl`、`find_fk` 及下面第 1~9 步全部判定落 `packages/feature-core/src/services/fk_navigation.rs`（≈180 行）。句柄经 `feature-core::services::ports::DatabaseToolHost`（`driver_for_connection` / `execute_target`）注入；取数用 `feature-core` 侧的 `QueryExecutor`（见 08 的 T0-5 与 N4：`query_executor` 拆成宿主门面 + 共享实现），**不需要**把 `AppState` 传进 `feature-core`；
 > - 命令壳只做「取值 → 必要校验（`dbSessionId` 存在、请求形状完整）→ 转发 → 映射 `CommandError`」，**判定一行都不留**。
 > - **开工第一步要上提的工具（不是本批动作）**：`embedded_schema_of` 今天是宿主 `src-tauri/src/commands/schema.rs:13` 的**私有 `fn`**（实测未 `pub`）。判定逻辑进 `feature-core` 后拿不到它，所以 **07 开工的第一步**是把它提升为共享 helper —— 〔契约审计修订 2026-10-21〕裁定 4：**本批不做**这次提升（它要动宿主既有的私有函数，风险独立于本册，由 07 自己的提交承担）；**提升之后严禁两边各留一份实现**（`feature-core` 侧一份 + 宿主 `use`，这是 Step 3「`embedded_schema_of` 复制一份必然漂移」那条纪律的反面）。会话与句柄走 `DatabaseToolHost` / `SchemaContextSource`（`get_session` / `get_session_config` / `driver_for_session` 已在 `packages/feature-core/src/services/ports.rs`），不需要 `AppState`。
@@ -153,7 +153,7 @@ pub struct ResolveFkTargetsRequest {
 /// 归一化后的目标引用。前端**只**消费这一份，禁止自己解析 `referenced_table`。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FkTargetRef {
+pub struct ForeignKeyTargetRef {
     /// 目标表所在库（今天等于源标签页的库；跨库 FK 见第 11 节 U-1）。
     pub database: String,
     /// 目标表所在 namespace；`None` = 该驱动无 schema 层。
@@ -175,8 +175,8 @@ pub struct FkTargetRef {
 /// 解析结果。`exists = false` **不是错误**：目标表可读但那一行不在了。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FkTargetResolution {
-    pub target: FkTargetRef,
+pub struct ForeignKeyTargetResolution {
+    pub target: ForeignKeyTargetRef,
     /// 目标表里是否存在至少一行满足全部等值条件（LTIMIT 1 探测，不 COUNT）。
     pub exists: bool,
     /// 候选行（每行按 `target.columns` 顺序），最多 `candidate_limit` 行。
@@ -238,7 +238,7 @@ pub(crate) async fn resolve_foreign_key_targets_impl(
 
 ```ts
 // src/types/connection.ts（新增片段；与 Rust camelCase 一一对应）
-export interface FkTargetRef {
+export interface ForeignKeyTargetRef {
   database: string;
   schema: string | null;
   table: string;
@@ -252,7 +252,7 @@ export interface FkTargetRef {
   candidateLimit: number;
 }
 
-export interface FkTargetResolution {
+export interface ForeignKeyTargetResolution {
   target: FkTargetRef;
   /** false = 目标表可读但那一行不在了（**不是错误**）。 */
   exists: boolean;
