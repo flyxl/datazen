@@ -242,7 +242,13 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         table: context.table,
         page,
         pageSize,
-        filters: filters.filter(isCompleteFilter),
+        // The applied filters go on the wire as they are. Stripping the
+        // incomplete ones here would make the query answer a question the
+        // user did not ask — the result set would be *wider* than the filter
+        // list on screen. The host refuses an incomplete condition with
+        // `grid.filter.incomplete`, which is a visible, actionable error
+        // instead of a silent widening.
+        filters,
         sorts,
         skipCount,
         filterLogic,
@@ -375,6 +381,14 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     if (
       filterDraftEqualsApplied(ts.draftFilters, ts.draftFilterLogic, ts.filters, ts.filterLogic)
     ) {
+      return;
+    }
+    // An incomplete condition is refused, not skipped. Applying it would send
+    // a condition the host rejects (`grid.filter.incomplete`), and dropping it
+    // on the way would quietly widen the result set beyond what the user
+    // asked for. The editor marks the condition and blocks the button; this
+    // is the second gate for every other caller.
+    if (ts.draftFilters.some((filter) => !isCompleteFilter(filter))) {
       return;
     }
     patchPanelForReload(get, set, panelId, (cur) => ({

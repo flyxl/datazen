@@ -31,6 +31,10 @@ import { PendingPlanDialog } from './PendingPlanDialog';
 import { useTableDraftRows } from './useTableDraftRows';
 import { isComposingEvent, isEditableTarget } from '../../lib/gridEventGuards';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import {
+  likeCaseInsensitiveForMeta,
+  supportedOperatorsForMeta,
+} from '../../lib/filterOperators';
 import type { ColumnSchema, DatabaseType } from '../../types';
 import { Spinner } from '../../components/ui/Spinner';
 
@@ -76,6 +80,30 @@ export function TableView({
   const driverReadOnly = databaseType
     ? DB_REGISTRY[databaseType as DatabaseType]?.readOnly === true
     : false;
+  /**
+   * The filter operators this database serves. A driver that declares none
+   * gets the shared set; the dialect specific operators only show up when the
+   * driver names them (the back end stays the authority).
+   *
+   * The rule ("nothing declared ⇒ the shared set") is the one in
+   * `supportedOperatorsForMeta`, so the shipped path and the tested path
+   * cannot drift apart.
+   */
+  const filterOperators = useMemo(
+    () =>
+      supportedOperatorsForMeta(
+        databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined,
+      ),
+    [databaseType],
+  );
+  /** Copy only: whether this database ignores case in `LIKE`. */
+  const filterLikeCaseInsensitive = useMemo(
+    () =>
+      likeCaseInsensitiveForMeta(
+        databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined,
+      ),
+    [databaseType],
+  );
   const isConnectionReadOnly = Boolean(
     readOnlyProp ?? (savedConnection?.readOnly || driverReadOnly),
   );
@@ -547,6 +575,8 @@ export function TableView({
         draftFilterLogic={draftFilterLogic}
         filterPanelOpen={filterPanelOpen}
         onFilterPanelOpenChange={actions.setFilterPanelOpen}
+        filterOperators={filterOperators}
+        filterLikeCaseInsensitive={filterLikeCaseInsensitive}
         onAddFilter={actions.addFilter}
         onUpdateFilter={actions.updateFilter}
         onFilterLogicChange={actions.setFilterLogic}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
 import { tid } from '../../lib/tid';
 import { Download, Trash2 } from 'lucide-react';
-import type { FilterCondition, SortCondition, Value } from '../../types';
+import type { FilterCondition, FilterOperator, SortCondition, Value } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
 import { useGridSelection } from '../../hooks/useGridSelection';
@@ -45,6 +45,16 @@ export interface DataTableProps {
   draftFilterLogic?: 'and' | 'or';
   filterPanelOpen?: boolean;
   onFilterPanelOpenChange?: (open: boolean) => void;
+  /**
+   * The filter operators this database serves. Omit it and the shared set is
+   * used; a driver that declares fewer operators only offers those.
+   */
+  filterOperators?: readonly FilterOperator[];
+  /**
+   * Whether this database ignores case in `LIKE` under its default collation.
+   * Copy only — it never changes the query.
+   */
+  filterLikeCaseInsensitive?: boolean;
   onRemoveFilter?: (index: number) => void;
   onClearFilters?: () => void;
   onAddFilter?: (filter: FilterCondition) => void;
@@ -209,6 +219,8 @@ export function DataTable({
   draftFilterLogic = 'and',
   filterPanelOpen = false,
   onFilterPanelOpenChange,
+  filterOperators,
+  filterLikeCaseInsensitive,
   editingCell,
   selectedRows = EMPTY_SET,
   loading,
@@ -444,6 +456,8 @@ export function DataTable({
       {hasFilterEditor ? (
         <FilterEditor
           columns={columns}
+          supportedOperators={filterOperators}
+          likeCaseInsensitive={filterLikeCaseInsensitive}
           appliedFilters={filters}
           appliedLogic={filterLogic}
           draftFilters={draftFilters}

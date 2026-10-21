@@ -312,18 +312,56 @@ describe('tableDataStore (panel-scoped)', () => {
     expect(mockDatabaseCommands.getTableData).not.toHaveBeenCalled();
   });
 
-  it('loadTableData omits incomplete applied filters from the request', async () => {
+  // 08 §4.5: the front end no longer strips an incomplete condition from the
+  // request. Dropping it would make the query answer a question the user did
+  // not ask (the result set would be wider than the filter list on screen);
+  // the host refuses such a condition with `grid.filter.incomplete`, which is
+  // a visible error instead of a silent widening.
+  it('loadTableData keeps incomplete applied filters on the wire', async () => {
     await loadTable();
-    useTableDataStore.getState().addFilter(PANEL, { column: 'id', operator: 'eq', value: '' });
-    useTableDataStore.getState().addFilter(PANEL, { column: 'name', operator: 'eq', value: 'Bob' });
-    useTableDataStore.getState().applyFilters(PANEL);
+    useTableDataStore.getState().setFilters(PANEL, [
+      { column: 'id', operator: 'eq', value: '' },
+      { column: 'name', operator: 'eq', value: 'Bob' },
+    ]);
     await vi.waitFor(() =>
       expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
         expect.objectContaining({
-          filters: [{ column: 'name', operator: 'eq', value: 'Bob' }],
+          filters: [
+            { column: 'id', operator: 'eq', value: '' },
+            { column: 'name', operator: 'eq', value: 'Bob' },
+          ],
         }),
       ),
     );
+  });
+
+  it('applyFilters with an incomplete draft does not change the applied state', async () => {
+    await loadTable();
+    mockDatabaseCommands.getTableData.mockClear();
+    useTableDataStore.getState().addFilter(PANEL, { column: 'id', operator: 'eq', value: '' });
+    const before = loaded();
+    useTableDataStore.getState().applyFilters(PANEL);
+    expect(loaded().filters).toEqual(before.filters);
+    expect(loaded().requestRevision).toBe(before.requestRevision);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mockDatabaseCommands.getTableData).not.toHaveBeenCalled();
+  });
+
+  // 08 §7: removing a row must not shift the connector of another row onto
+  // it. The connector belongs to the condition, not to its position.
+  it('keeps a per-condition connector on its own condition when a row is removed', async () => {
+    await loadTable();
+    useTableDataStore.getState().setFilters(PANEL, [
+      { column: 'id', operator: 'eq', value: '1' },
+      { column: 'name', operator: 'eq', value: 'a', connector: 'or' },
+      { column: 'region', operator: 'eq', value: 'eu', connector: 'and' },
+    ]);
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+
+    useTableDataStore.getState().removeFilter(PANEL, 1);
+    const draft = loaded().draftFilters;
+    expect(draft.map((filter) => filter.column)).toEqual(['id', 'region']);
+    expect(draft.map((filter) => filter.connector)).toEqual([undefined, 'and']);
   });
 
   it('setSort triggers reload', async () => {
