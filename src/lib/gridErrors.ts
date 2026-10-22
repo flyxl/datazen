@@ -15,9 +15,6 @@
 /** Codes the front end can branch on. `unknown` means "no registered prefix matched". */
 export type GridErrorCode =
   | 'unknown'
-  | 'grid.selection.invalid'
-  | 'grid.selection.outOfBounds'
-  | 'grid.selection.stale'
   | 'grid.commit.stalePlan'
   | 'grid.commit.affectedMismatch'
   | 'grid.commit.conflictingIntents'
@@ -68,11 +65,15 @@ export type GridErrorCode =
  * So `PRODUCER_PENDING` means **"this code is not produced by Rust"**, not "nobody
  * produces it yet". Do not invent a Rust producer for a front-end rejection just to
  * silence the guard — the back end has no such semantics to offer.
+ *
+ * The `grid.selection.*` domain **does not exist, deliberately**. Selection is client-side
+ * state and its geometry **clamps** rather than fails: `clampCellCoord` pins a coordinate
+ * into the grid, and "nowhere left to go" is reported as `null`. An out-of-bounds or stale
+ * selection is therefore not an error condition — there is nothing to report, so nothing is
+ * registered. Three such codes were once registered here waiting for a producer that could
+ * never arrive; they were withdrawn rather than kept as branches nothing could reach.
  */
 export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
-  'grid.selection.invalid',
-  'grid.selection.outOfBounds',
-  'grid.selection.stale',
   'grid.commit.stalePlan',
   'grid.commit.affectedMismatch',
   'grid.commit.conflictingIntents',
@@ -104,15 +105,22 @@ export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
 /** Every grid message starts with this namespace; useful for cheap pre-checks. */
 export const GRID_ERROR_NAMESPACE = 'grid.';
 
-/** Longest first: `grid.selection.outOfBounds` must win over any shorter registered prefix. */
+/**
+ * Longest first, so a code can never be shadowed by a shorter registered prefix.
+ *
+ * No registered code is a prefix of another **today**, so nothing depends on this order yet;
+ * it is one sort at module load and it makes the classifier structurally correct if a pair
+ * like `grid.paging.cursor` / `grid.paging.cursorTooDeep` is ever added. Keeping it is
+ * cheaper than remembering to re-sort later.
+ */
 const PREFIXES_LONGEST_FIRST: readonly GridErrorCode[] = [...GRID_ERROR_CODES].sort(
   (left, right) => right.length - left.length,
 );
 
 /**
  * Classify a message by its leading `grid.<domain>.<reason>` prefix. The separator after the
- * code is mandatory (`:`), so `grid.selection.invalidity: …` is not misread as
- * `grid.selection.invalid`. Matching is case-sensitive and anchored at the start: a mention
+ * code is mandatory (`:`), so `grid.cell.readOnlyBecause: …` is not misread as
+ * `grid.cell.readOnly`. Matching is case-sensitive and anchored at the start: a mention
  * of the code inside otherwise ordinary prose is not a grid error.
  */
 export function classifyGridError(message: string): GridErrorCode {

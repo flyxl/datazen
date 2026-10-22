@@ -21,17 +21,17 @@ describe('classifyGridError contract edges', () => {
     // The signature is `string`, but IPC payloads are not typed at the boundary.
     expect(classifyGridError(undefined as unknown as string)).toBe('unknown');
     expect(classifyGridError(null as unknown as string)).toBe('unknown');
-    expect(classifyGridError({ message: 'grid.selection.invalid: x' } as unknown as string)).toBe(
+    expect(classifyGridError({ message: 'grid.cell.readOnly: x' } as unknown as string)).toBe(
       'unknown',
     );
   });
 
   it('does not treat a longer reason as a registered code and is case-sensitive', () => {
-    expect(classifyGridError('grid.selection.invalidity: typo')).toBe('unknown');
-    expect(classifyGridError('Grid.Selection.Invalid: casing')).toBe('unknown');
-    expect(classifyGridError('grid.selection.invalid')).toBe('grid.selection.invalid');
-    expect(classifyGridError('grid.selection.outOfBounds: beyond the last column')).toBe(
-      'grid.selection.outOfBounds',
+    expect(classifyGridError('grid.cell.readOnlyBecause: typo')).toBe('unknown');
+    expect(classifyGridError('Grid.Cell.ReadOnly: casing')).toBe('unknown');
+    expect(classifyGridError('grid.cell.readOnly')).toBe('grid.cell.readOnly');
+    expect(classifyGridError('grid.paging.cursorTooDeep: beyond the limit')).toBe(
+      'grid.paging.cursorTooDeep',
     );
   });
 });

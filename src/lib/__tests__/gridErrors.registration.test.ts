@@ -145,9 +145,6 @@ const CODE_PATTERN = /"grid\.[a-z]+\.[a-zA-Z]+/g;
  * arrive. It is an i18n key, not an error code.
  */
 const PRODUCER_PENDING: readonly string[] = [
-  'grid.selection.invalid',
-  'grid.selection.outOfBounds',
-  'grid.selection.stale',
   // DB-05: the typed editor refuses a value it cannot parse (05 §8.2 row 2).
   // The refusal happens in the **front end** — the invalid value never
   // reaches the back end, so there is no Rust producer to wait for. The code

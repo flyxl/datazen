@@ -29,23 +29,29 @@ describe('classifyGridError', () => {
   });
 
   it('matches a bare code without a separator', () => {
-    expect(classifyGridError('grid.selection.invalid')).toBe('grid.selection.invalid');
+    expect(classifyGridError('grid.cell.readOnly')).toBe('grid.cell.readOnly');
   });
 
   it('does not classify a longer reason that merely starts with the code text', () => {
-    expect(classifyGridError('grid.selection.invalidity: not a registered code')).toBe('unknown');
+    expect(classifyGridError('grid.cell.readOnlyBecause: not a registered code')).toBe('unknown');
   });
 
   it('does not classify a code mentioned inside ordinary prose', () => {
-    expect(classifyGridError('unexpected grid.selection.invalid: wrapped in another message')).toBe(
+    expect(classifyGridError('unexpected grid.cell.readOnly: wrapped in another message')).toBe(
       'unknown',
     );
   });
 
-  it('picks the longest registered prefix when prefixes overlap', () => {
-    expect(classifyGridError('grid.selection.outOfBounds: cell is outside the page')).toBe(
-      'grid.selection.outOfBounds',
+  it('registers no code that is a prefix of another', () => {
+    // `classifyGridError` sorts the registry longest-first so a shorter code can never
+    // shadow a longer one. No pair needs that today — this guards the assumption, so
+    // adding an overlapping code (`grid.paging.cursor` next to
+    // `grid.paging.cursorTooDeep`) is a deliberate choice someone has to make here
+    // rather than an accident the sort silently absorbs.
+    const overlaps = GRID_ERROR_CODES.flatMap((short) =>
+      GRID_ERROR_CODES.filter((long) => long !== short && long.startsWith(short)),
     );
+    expect(overlaps).toEqual([]);
   });
 
   it('falls back to unknown for unrelated, empty and whitespace-only messages', () => {
@@ -135,7 +141,9 @@ describe('classifyGridError', () => {
   });
 
   it('tolerates surrounding whitespace but stays case-sensitive', () => {
-    expect(classifyGridError('  grid.selection.stale: rows changed\n')).toBe('grid.selection.stale');
-    expect(classifyGridError('GRID.SELECTION.STALE: rows changed')).toBe('unknown');
+    expect(classifyGridError('  grid.commit.stalePlan: rows changed\n')).toBe(
+      'grid.commit.stalePlan',
+    );
+    expect(classifyGridError('GRID.COMMIT.STALEPLAN: rows changed')).toBe('unknown');
   });
 });
