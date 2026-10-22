@@ -266,7 +266,11 @@ describe('the exact count is a full re-read', () => {
     await useTableDataStore.getState().loadTableData({ panelId: PANEL, ...CONTEXT });
     expect(useTableDataStore.getState().byPanel.get(PANEL)?.totalRowsKind).toBe('estimated');
 
-    mockDatabaseCommands.getTableData.mockRejectedValueOnce('grid.count.exactFailed: nope');
+    // A **registered** code, so the message in the test is one the back end
+    // can actually raise: `grid.count.*` is an empty domain (the count
+    // notices are front-end facts, not error codes), and a made-up code in a
+    // test sends the next reader looking for a producer that does not exist.
+    mockDatabaseCommands.getTableData.mockRejectedValueOnce('grid.cell.readOnly: nope');
     await act(async () => {
       useTableDataStore.getState().reloadPanel(PANEL, { skipCount: false, countStrategy: 'exact' });
     });
@@ -276,6 +280,6 @@ describe('the exact count is a full re-read', () => {
     const slice = useTableDataStore.getState().byPanel.get(PANEL);
     // The estimate is still on screen — the failed count does not erase it.
     expect(slice?.totalRowsKind).toBe('estimated');
-    expect(slice?.error).toContain('grid.count.exactFailed');
+    expect(slice?.error).toContain('grid.cell.readOnly');
   });
 });

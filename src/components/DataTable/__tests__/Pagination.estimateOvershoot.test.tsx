@@ -78,8 +78,8 @@ describe('an estimate that is smaller than the real row count', () => {
       rowCount: 50,
     });
     fireEvent.click(getByLabelText('Next'));
-    // Today the clamp sends the user back to page index 2 — the page they are
-    // already on. The contract asks for one page forward.
+    // Clamping **used to** send the user back to page index 2 — the page they
+    // were already on. The contract asks for one page forward.
     expect(onPageChange).toHaveBeenCalledWith(3);
   });
 
@@ -91,7 +91,8 @@ describe('an estimate that is smaller than the real row count', () => {
       rowCount: 50,
     });
     fireEvent.click(getByLabelText('Next'));
-    // Today: onPageChange(2) — from page index 5 back to page index 2.
+    // Clamping **used to** call onPageChange(2) — from page index 5 back to
+    // page index 2.
     expect(onPageChange).toHaveBeenCalledWith(6);
   });
 });
