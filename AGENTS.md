@@ -291,7 +291,7 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 - **生产路径禁止裸 `unwrap()` / `expect()`**（`#[cfg(test)]` 除外；确需 panic 须注释说明）。详见 [docs/development/panic-policy.md](docs/development/panic-policy.md)。
 - TypeScript：严格模式，无 `any`（除 generated 文件），absolute imports。
 - CSS：Tailwind utility classes，暗色主题默认。
-- **单文件规模与模块拆分**：严格限制单源码文件大小（推荐单文件不超过 800 行，严禁出现超大单文件）；大型模块必须按职责拆分为高内聚、低耦合的子组件与子模块。
+- **单文件规模与模块拆分**：**超长文件是耦合度的信号**——它属于 code review 的判断（评审时决定要不要拆、怎么拆），**不要把行数上限做成 CI 门禁**：占一次 CI 运行时间，却不产生新信号。大型模块仍应按职责拆分为高内聚、低耦合的子组件与子模块；新增代码不要往已经很长的文件里继续堆。
 - 安全：CSP、AES-256-GCM、路径遍历防护、文件扩展名白名单。
 
 ## 交互与补全开发原则（防回归规范）

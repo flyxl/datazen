@@ -12,7 +12,8 @@
 //! braces has a dummy inner span. That blindness is precisely how the contract
 //! sitting after these tests came to be reported nowhere, so the braces are kept to
 //! put the lint back in charge of this file's layout, and this file keeps the bulk
-//! out of line so `traits.rs` stays inside `DATABASE_DRIVER_TRAITS_CEILING`.
+//! out of line so `traits.rs` stays readable. (There is no line-count ceiling on
+//! it any more: file size is a coupling signal for code review, not a CI gate.)
 
 use super::super::*;
 use crate::ReuseDriver;

@@ -32,8 +32,6 @@ const DEFAULT_PORT: u16 = 1433;
 
 mod catalog;
 mod dialect;
-#[cfg(test)]
-mod file_line_cap;
 mod session;
 #[cfg(test)]
 mod tests;
