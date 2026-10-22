@@ -11,7 +11,7 @@
 //! * 目标词汇（`target`）：提交目标 → 规范化目标的形状与层次要求。
 //! * 错误词汇（`error`）：`PortError`，端口层的**唯一**失败类型。
 //! * 契约 DTO（`dto`）：跨边界传输的形状（camelCase 序列化）。
-//! * 端口（`ports`）：23 个 trait，注入方是 `Arc<dyn X>`；其中 6 个是只读窄端口
+//! * 端口（`ports`）：24 个 trait，注入方是 `Arc<dyn X>`；其中 6 个是只读窄端口
 //!   （见 `ports::mod` 的模块头与架构文档 §4.10）；时基端口 `Clock` 另带
 //!   系统时钟 `SystemClock` 与固定时钟 `FixedClock`（见 `ports::clock` 的模块说明）。
 //!
@@ -54,6 +54,7 @@ pub use ports::{
     IdentityResolver, JobRepository, MasterKeyProvider, MigrationProfileReader, MonitorGrantReader,
     NetworkProvider, OrganizationScope, PolicyService, ProfileReader, ProfileRepository,
     SecretProvider, SessionDirectory, SettingsRepository, SubmissionTokenIssuer, SystemClock,
+    TunnelRepository,
 };
 
 pub mod settings;

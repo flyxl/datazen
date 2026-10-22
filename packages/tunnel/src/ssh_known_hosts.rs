@@ -1,10 +1,19 @@
-//! SSH known-hosts store (TOFU), persisted under the caller's data directory.
+//! SSH known-hosts 的**纯逻辑**：条目形状、指纹、TOFU 判定与错误文案。
+//!
+//! 这一层是形态中立的：它不知道条目存在哪儿。**存哪儿**是端口
+//! [`crate::known_hosts_store::KnownHostsStore`] 的事——桌面实现读
+//! `{appData}/ssh_known_hosts.json`，将来的 web 形态由服务端 host 实现
+//! （服务端存储目录 / 组织级存储）。
+//!
+//! 换句话说：**共享包不再读本机文件**。
 
 use russh::keys::ssh_key::{HashAlg, PublicKey};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::Path;
 
+/// 一条已知主机记录：指纹、算法与 OpenSSH 公钥文本。
+///
+/// 落盘形状（字段名与 JSON 结构）由**实现方**决定，桌面实现沿用
+/// `{appData}/ssh_known_hosts.json` 的既有格式。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct KnownHostEntry {
     pub fingerprint: String,
@@ -12,6 +21,7 @@ pub struct KnownHostEntry {
     pub public_key: String,
 }
 
+/// 主机密钥判定结果（TOFU：首次使用即信任，之后必须一致）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostKeyDecision {
     AcceptFirstUse { fingerprint: String },
@@ -19,14 +29,17 @@ pub enum HostKeyDecision {
     RejectMismatch { expected: String, received: String },
 }
 
+/// 已知主机的键：`host:port`。
 pub fn host_key_id(host: &str, port: u16) -> String {
     format!("{host}:{port}")
 }
 
+/// 公钥指纹（OpenSSH 的 SHA256 形式）。
 pub fn format_public_key_fingerprint(key: &PublicKey) -> String {
     key.fingerprint(HashAlg::Sha256).to_string()
 }
 
+/// 由观测到的公钥造一条已知主机记录。
 pub fn known_host_entry_from_key(key: &PublicKey) -> Result<KnownHostEntry, String> {
     Ok(KnownHostEntry {
         fingerprint: format_public_key_fingerprint(key),
@@ -37,6 +50,7 @@ pub fn known_host_entry_from_key(key: &PublicKey) -> Result<KnownHostEntry, Stri
     })
 }
 
+/// TOFU 判定：没有记录就接受并记下指纹；有记录就必须一致。
 pub fn verify_host_key(
     stored: Option<&KnownHostEntry>,
     observed: &KnownHostEntry,
@@ -53,35 +67,34 @@ pub fn verify_host_key(
     }
 }
 
-pub fn load_known_hosts(path: &Path) -> HashMap<String, KnownHostEntry> {
-    match std::fs::read_to_string(path) {
-        Ok(raw) => match serde_json::from_str(&raw) {
-            Ok(map) => map,
-            Err(e) => {
-                tracing::warn!(path = %path.display(), error = %e, "Ignoring corrupt ssh_known_hosts.json");
-                HashMap::new()
-            }
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
-        Err(e) => {
-            tracing::warn!(path = %path.display(), error = %e, "Failed to read ssh_known_hosts.json");
-            HashMap::new()
-        }
-    }
-}
-
-pub fn save_known_hosts(path: &Path, map: &HashMap<String, KnownHostEntry>) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("create known hosts dir {}: {e}", parent.display()))?;
-    }
-    let json = serde_json::to_string_pretty(map)
-        .map_err(|e| format!("serialize ssh_known_hosts.json: {e}"))?;
-    std::fs::write(path, json).map_err(|e| format!("write {}: {e}", path.display()))
-}
-
+/// 主机密钥不匹配时的错误文案。
 pub fn mismatch_error_message(host_id: &str, expected: &str, received: &str) -> String {
     format!(
         "SSH host key changed for {host_id} (possible MITM). Expected {expected}, got {received}"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_entry_shape_is_the_frozen_on_disk_shape() {
+        // 落盘字段名被桌面实现直接复用：改这里等于改 `{appData}/ssh_known_hosts.json`
+        // 的格式。字段名是 **snake_case**（`public_key`，不是 `publicKey`）——
+        // 这条钉住的就是它。
+        let entry = KnownHostEntry {
+            fingerprint: "SHA256:abc".into(),
+            algorithm: "ssh-ed25519".into(),
+            public_key: "ssh-ed25519 AAAA".into(),
+        };
+        let json = serde_json::to_value(&entry).expect("serialize entry");
+        assert_eq!(json["fingerprint"], "SHA256:abc");
+        assert_eq!(json["algorithm"], "ssh-ed25519");
+        assert_eq!(json["public_key"], "ssh-ed25519 AAAA");
+        assert!(
+            json.get("publicKey").is_none(),
+            "known_hosts.json 的字段名不得改成 camelCase：{json}"
+        );
+    }
 }

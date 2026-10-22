@@ -3,17 +3,57 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
+use datazen_platform_api::error::PortError;
 use tauri::State;
 
+/// 端口失败 → 命令错误：**原文保留**。
+///
+/// 桌面实现的失败只有一个来源（存储层），端口把它压成
+/// `PortError::BackendUnavailable(<原文>)`；这里把原文原样还回去，因此 IPC 载荷
+/// 与端口化之前**逐字相同**（此前这里是 `DesktopRepositoryError`，其 `Display` 已被端口原样带走）。
+fn tunnel_port_error(error: PortError) -> CommandError {
+    match error {
+        PortError::BackendUnavailable(detail) => CommandError::Internal(detail),
+        PortError::NotFound(entity) => CommandError::NotFound(entity),
+        other => CommandError::Internal(other.to_string()),
+    }
+}
+
+/// 端口调用 → 命令结果：映射之外**照旧记一条 error 日志**（与 `cmd_err` 同形）。
+fn tunnel_cmd<T>(result: Result<T, PortError>, cmd: &str) -> Result<T, CommandError> {
+    result.map_err(|error| {
+        let err = tunnel_port_error(error);
+        let redacted = datazen_platform_infra::redaction::redact_secrets_for_log(&err.to_string());
+        tracing::error!(cmd, error = %redacted);
+        err
+    })
+}
+
 pub(crate) async fn get_tunnels_impl(state: &AppState) -> Result<Vec<SavedTunnel>, CommandError> {
-    Ok(state.store.get_tunnels().await)
+    // 端口只有两档：名单（摘要，**不带密钥**）与单条取用（全量）。这个 IPC 的载荷是
+    // **全量**且形状冻结，因此由两档组合而成：先取名单，再逐条取用。
+    //
+    // 生产代码没有它的调用方（所有列表路径都走 `get_tunnel_summaries`），但命令的
+    // 形状与载荷不变。
+    let scope = state.organization_scope()?;
+    let summaries = tunnel_cmd(state.tunnels.list(&scope).await, "get_tunnels")?;
+    let mut tunnels = Vec::with_capacity(summaries.len());
+    for summary in summaries {
+        let Some(tunnel) = tunnel_cmd(state.tunnels.get(&scope, &summary.id).await, "get_tunnels")?
+        else {
+            continue;
+        };
+        tunnels.push(tunnel);
+    }
+    Ok(tunnels)
 }
 
 pub(crate) async fn get_tunnel_impl(
     state: &AppState,
     id: String,
 ) -> Result<Option<SavedTunnel>, CommandError> {
-    Ok(state.store.get_tunnel(&id).await)
+    let scope = state.organization_scope()?;
+    tunnel_cmd(state.tunnels.get(&scope, &id).await, "get_tunnel")
 }
 
 pub(crate) async fn save_tunnel_impl(
@@ -21,36 +61,25 @@ pub(crate) async fn save_tunnel_impl(
     tunnel: SavedTunnel,
 ) -> Result<(), CommandError> {
     tracing::info!(id = %tunnel.id, name = %tunnel.name, kind = ?tunnel.kind, "save_tunnel");
-    state.store.save_tunnel(tunnel).await.cmd_err("save_tunnel")
+    let scope = state.organization_scope()?;
+    tunnel_cmd(state.tunnels.save(&scope, tunnel).await, "save_tunnel")
 }
 
 pub(crate) async fn delete_tunnel_impl(state: &AppState, id: String) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_tunnel");
-    state
-        .store
-        .delete_tunnel(&id)
-        .await
-        .cmd_err("delete_tunnel")
+    let scope = state.organization_scope()?;
+    tunnel_cmd(state.tunnels.delete(&scope, &id).await, "delete_tunnel")
 }
 
 /// Metadata-only projection of the stored tunnels for the selector.
 ///
-/// Deliberately drops `ssh` / `http_proxy` / `websocket`: `get_tunnels` hands
-/// the decrypted secrets to the webview, so the list path must not reuse it.
+/// 走端口的**名单档**：它只带 `id` / `name` / `kind`，**不含**任何凭据——
+/// 端口这一档刻意不返回密钥（`get_tunnels` 那种全量列表是另一条路径）。
 pub(crate) async fn get_tunnel_summaries_impl(
     state: &AppState,
 ) -> Result<Vec<SavedTunnelSummary>, CommandError> {
-    Ok(state
-        .store
-        .get_tunnels()
-        .await
-        .into_iter()
-        .map(|t| SavedTunnelSummary {
-            id: t.id,
-            name: t.name,
-            kind: t.kind,
-        })
-        .collect())
+    let scope = state.organization_scope()?;
+    tunnel_cmd(state.tunnels.list(&scope).await, "get_tunnel_summaries")
 }
 
 /// Which connections reference `id`. `connection_ids` and `connection_names`
@@ -59,22 +88,8 @@ pub(crate) async fn get_tunnel_usage_impl(
     state: &AppState,
     id: String,
 ) -> Result<TunnelUsage, CommandError> {
-    let mut connection_ids = Vec::new();
-    let mut connection_names = Vec::new();
-    // An empty query must not sweep in connections whose reference is itself
-    // empty: `materialize_tunnel_refs` treats "" as "no tunnel reference".
-    if !id.is_empty() {
-        for conn in state.store.get_connections().await {
-            if conn.tunnel_id.as_deref() == Some(id.as_str()) {
-                connection_ids.push(conn.id);
-                connection_names.push(conn.name);
-            }
-        }
-    }
-    Ok(TunnelUsage {
-        connection_ids,
-        connection_names,
-    })
+    let scope = state.organization_scope()?;
+    tunnel_cmd(state.tunnels.usage(&scope, &id).await, "get_tunnel_usage")
 }
 
 /// Probe a saved tunnel against `target_host:target_port`; returns elapsed ms.
@@ -84,9 +99,17 @@ pub(crate) async fn test_tunnel_impl(
     target_host: String,
     target_port: u16,
 ) -> Result<u64, CommandError> {
-    let elapsed = crate::tunnel::test_tunnel(&state.store, &id, &target_host, target_port)
-        .await
-        .cmd_err("test_tunnel")?;
+    let scope = state.organization_scope()?;
+    let elapsed = crate::tunnel::test_tunnel(
+        &*state.tunnels,
+        &scope,
+        &state.known_hosts,
+        &id,
+        &target_host,
+        target_port,
+    )
+    .await
+    .cmd_err("test_tunnel")?;
     let elapsed_ms = elapsed.as_millis() as u64;
     tracing::info!(tunnel_id = %id, elapsed_ms, "test_tunnel OK");
     Ok(elapsed_ms)

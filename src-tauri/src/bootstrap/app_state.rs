@@ -189,11 +189,29 @@ pub(crate) fn finish_app_state(
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
     let platform = crate::platform::PlatformEntry::launch();
+    // 隧道相关的两个**存储端口**实例在组装期创建一次：
+    //
+    // * `tunnels`：隧道定义的仓储。桌面实现就是存储层本身（`DesktopRepository` 实现了
+    //   `TunnelRepository`：加密落盘 `{appData}/tunnels.json`）。
+    // * `known_hosts`：SSH known-hosts 的存储。端口契约住在形态中立的
+    //   `packages/tunnel`，**文件 I/O** 留在宿主（桌面读
+    //   `{appData}/ssh_known_hosts.json`）。
+    //
+    // 同一份实例既注入会话后端（建连时解引用 `tunnelId`、启动隧道），也进
+    // `AppState`（命令侧取用）：整个进程只有一份，存储的生命周期由宿主决定。
+    let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
+    let known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore> =
+        crate::platform::known_hosts::desktop_known_hosts_store(&data_dir);
     // 平台装配必须**先于**依赖它的功能绑定：共享的元数据源要拿到 Runtime 门面
     // （解析会话归属）与执行宿主（profile / 驱动 / 命令执行），两者都出自装配。
     // 装配失败不崩应用——与既有行为一致——但依赖平台的调用会明确失败。
     if let Ok(adapter) = platform.require() {
-        if let Err(error) = adapter.inject(store.clone(), registry.clone()) {
+        if let Err(error) = adapter.inject(
+            store.clone(),
+            registry.clone(),
+            tunnels.clone(),
+            known_hosts.clone(),
+        ) {
             tracing::error!(code = ?error.code, "desktop platform injection failed");
         }
     }
@@ -259,6 +277,9 @@ pub(crate) fn finish_app_state(
         transfer_plans: Arc::new(
             crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
         ),
+        // 隧道定义与 SSH known-hosts 的存储端口实例（同一个实例也注给了会话后端）。
+        tunnels,
+        known_hosts,
     };
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state

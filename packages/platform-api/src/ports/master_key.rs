@@ -1,14 +1,14 @@
 //! `MasterKeyProvider`：主密钥保管的窄端口。
 //!
-//! ## 为什么主密钥**不属** `Store`
+//! ## 为什么主密钥**不属** `DesktopRepository`
 //!
 //! 主密钥（系统钥匙串，或 `{appData}/.key`）是**密钥保管**职责，不是**数据存储**
-//! 职责：桌面侧它由 `src-tauri/src/store/key_store.rs` 持有，而 `Store` 持有的是
-//! 连接档案、设置、历史等业务数据。把「取主密钥」挂在 `Store` 上，等于让每一个只想
+//! 职责：桌面侧它由 `src-tauri/src/store/key_store.rs` 持有，而 `DesktopRepository` 持有的是
+//! 连接档案、设置、历史等业务数据。把「取主密钥」挂在 `DesktopRepository` 上，等于让每一个只想
 //! 派生一把子密钥的组件都拖着整个数据存储。
 //!
 //! 桌面现状：`src-tauri/src/platform/execution_identity.rs` 的 `for_desktop` 从
-//! `Store` 取主密钥字节，再用 HMAC-SHA256 做域分离派生出**只**用于执行身份派生的
+//! `DesktopRepository` 取主密钥字节，再用 HMAC-SHA256 做域分离派生出**只**用于执行身份派生的
 //! 子钥——这正是本端口 `derive_subkey` 的形状。
 //!
 //! ## 边界
