@@ -316,15 +316,15 @@ F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名�
 类型 / 常量 / 字面量，会把「只有桌面才成立」的假设焊进代码——桌面形态在场时看不出问题，
 换成 web 形态才发现那一半用不了。
 
-内核（`packages/runtime`）曾有三处这样的焊点，全部是桌面形态独占的名字：
+内核（`packages/runtime`）里形态中立的名字，以及它们这样定的依据：
 
-| 位置 | 原名 | 现名 | 依据 |
-| --- | --- | --- | --- |
-| `tunnel/route.rs` 的稳定字面码 | `desktopRouteUnknown` 等四个 | `routeUnknown` / `tunnel*` | 与同模块既有的 `tunnelNotShareable` / `tunnelAlreadyHeld` / `tunnelRevisionUnavailable` 同族 |
-| `tunnel/route.rs` 的租约前缀 | `desktop-tunnel/` | `tunnel/` | 同上；租约文本会进错误消息与 trace |
-| `platform-api` 端口的导出目标 | `ExportSink::DesktopDialogHandle` | `ExportSink::HostHandle` | 端口只说「宿主持有句柄」，不规定宿主怎么渲染 |
-| `runtime` 的额度档位 | `DESKTOP_*` / `desktop_default()` | `LOCAL_*` / `local_default()` | 两档按**内核跑在哪**区分：共享部署（`TEAM_*`）与本地客户端（`LOCAL_*`） |
-| `runtime` 的连接夹具字段 | `desktop_total_target_connections` | `local_total_target_connections` | 同上 |
+| 位置 | 现名 | 依据 |
+| --- | --- | --- |
+| `tunnel/route.rs` 的稳定字面码 | `routeUnknown` / `tunnel*` | 与同模块既有的 `tunnelNotShareable` / `tunnelAlreadyHeld` / `tunnelRevisionUnavailable` 同族 |
+| `tunnel/route.rs` 的租约前缀 | `tunnel/` | 同上；租约文本会进错误消息与 trace |
+| `platform-api` 端口的导出目标 | `ExportSink::HostHandle` | 端口只说「宿主持有句柄」，不规定宿主怎么渲染 |
+| `runtime` 的额度档位 | `LOCAL_*` / `local_default()` | 两档按**内核跑在哪**区分：共享部署（`TEAM_*`）与本地客户端（`LOCAL_*`） |
+| `runtime` 的连接夹具字段 | `local_total_target_connections` | 同上 |
 
 **判据是分词后逐词比，不是子串比**：`webhook` / `webdriver` 这类协议复合词不算形态名
 （它们切出来是整词），否则误伤会逼人把合法写法藏起来。
