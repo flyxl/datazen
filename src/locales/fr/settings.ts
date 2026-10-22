@@ -54,6 +54,18 @@ const pack = {
   'settings.langEn': 'English',
   'settings.dataBrowsing': 'Navigation dans les données',
   'settings.defaultPageSize': 'Taille de page par défaut',
+  'settings.rowCountMode': 'Mode de comptage des lignes',
+  'settings.rowCountMode.auto': 'Automatique',
+  'settings.rowCountMode.exact': 'Toujours exact',
+  'settings.rowCountMode.estimated': 'Estimer lorsque possible',
+  'settings.rowCountMode.none': 'Ne pas compter',
+  'settings.rowCountEstimateThreshold': 'Estimer au-delà de ce nombre de lignes',
+  'settings.defaultTableSort': 'Tri par défaut des tables',
+  'settings.defaultTableSort.primaryKeyAsc': 'Clé primaire, croissant',
+  'settings.defaultTableSort.primaryKeyDesc': 'Clé primaire, décroissant',
+  'settings.defaultTableSort.none': 'Ne pas trier',
+  'settings.defaultTableSort.hint':
+    '"Ne pas trier" rend la pagination plus rapide sur les grandes tables, mais les lignes peuvent se répéter ou être omises d\'une page à l\'autre.',
   'settings.connectionPoolSize': 'Taille du pool de connexions',
   'settings.connectionPoolSizeHint':
     'Nombre maximal de connexions conservées par connexion à la base de données.',

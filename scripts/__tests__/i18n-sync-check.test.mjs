@@ -252,7 +252,7 @@ describe('i18n-sync-check driver locale packs', () => {
       });
       expect(report.exitCode).toBe(1);
       expect(report.lines[0].trim()).toBe(
-        'Summary: 3 missing key(s), 0 stale translation(s) across 8 host locales; 0 driver pack issue(s) across 2 driver locale pack(s).',
+        'Summary: 3 missing key(s), 0 stale translation(s) across 9 host locales; 0 driver pack issue(s) across 2 driver locale pack(s).',
       );
     });
 

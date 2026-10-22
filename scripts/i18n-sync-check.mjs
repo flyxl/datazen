@@ -33,7 +33,7 @@ const root = resolve(__dirname, '..');
 const localesDir = resolve(root, 'src/locales');
 const driversDir = resolve(root, 'packages/drivers');
 
-const LOCALE_FILES = ['de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru', 'zh-TW'];
+const LOCALE_FILES = ['de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru', 'zh-TW', 'zh-CN'];
 
 function extractKeys(filePath) {
   return extractHostKeysFromSources([readFileSync(filePath, 'utf-8')]);
