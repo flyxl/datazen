@@ -475,15 +475,24 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
     );
     service.with_live_connections(recording.clone());
 
-    // `DesktopPolicy` 只放行**本机桌面身份**（见 policy.rs）。这里显式注入
-    // `DATAZEN_DESKTOP_USER`，让测试不依赖 `$USER`——否则 CI 上换一个 build user
-    // 就会随机 PermissionDenied，而那不是被测行为。（守卫结构在本文件顶部。）
-    let _guard = DesktopUserGuard(std::env::var("DATAZEN_DESKTOP_USER").ok());
-    std::env::set_var("DATAZEN_DESKTOP_USER", "wiring-tester");
+    // `DesktopPolicy` 只放行**本机桌面身份**（见 policy.rs）。这里的主体直接取
+    // `local_principal()`——本进程解析出来的桌面主体，与策略判定用的是同一个值。
+    //
+    // 之前这里注入 `DATAZEN_DESKTOP_USER=wiring-tester`（并在用例结束时用
+    // `DesktopUserGuard` 还原），那是本文件唯一的**进程级 env 写者**：`DATAZEN_DESKTOP_USER`
+    // 是**进程级可变状态**，而授权判定要读它。于是「捕获主体」与「判定授权」之间一旦
+    // 撞上这次写入/还原，两个读到的值就不一致 ⇒ 合法的本机请求被翻成
+    // `desktop_identity_required`。并行跑兄弟用例时这条随时会被踩中（CI 里
+    // `platform::live_source::tests::*` 的红就是它）。
+    //
+    // 主体改为取进程解析值之后，本文件**不再有任何进程级 env 写者**；桌面主体本身
+    // 由 `local_principal()` 在进程内只解析一次（见 identity.rs），授权基线恒定。
+    let principal = crate::platform::local_principal()
+        .expect("a desktop local principal exists in the test process");
 
     let ctx = RequestContext::new(
         OrganizationId::new(super::super::LOCAL_ORGANIZATION_ID),
-        PrincipalId::new("wiring-tester"),
+        PrincipalId::new(principal.as_str()),
         None,
         ClientInstanceId::new("client"),
         RequestId::new("request"),
@@ -566,19 +575,6 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
 // Runtime 用例（per-database 池维护）共享装配
 // ---------------------------------------------------------------------------
 
-/// `DATAZEN_DESKTOP_USER` 守卫：`DesktopPolicy` 只放行本机桌面身份，测试显式注入
-/// 固定值，测试结束（Drop）恢复原值——否则 CI 上换一个 build user 会随机
-/// PermissionDenied，而那不是被测行为。
-struct DesktopUserGuard(Option<String>);
-impl Drop for DesktopUserGuard {
-    fn drop(&mut self) {
-        match &self.0 {
-            Some(previous) => std::env::set_var("DATAZEN_DESKTOP_USER", previous),
-            None => std::env::remove_var("DATAZEN_DESKTOP_USER"),
-        }
-    }
-}
-
 /// 真 runtime 用例 + 真 session 的最小装配，供 per-database 池维护用例测试共享。
 ///
 /// 与上一条接线测试同一条装配骨架（临时库 + profile、provider+driver 测试工厂、
@@ -659,9 +655,13 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
     );
     service.with_live_connections(recording.clone());
 
-    // 不动 `DATAZEN_DESKTOP_USER`：它存在于本文件另一处测试才是唯一 env 守卫，
-    // 这里并发运行时抢该变量等于给同仓测试埋竞态。桌面身份直接取
-    // `local_principal()` 的进程值，授权照常成立。
+    // 桌面身份直接取 `local_principal()` 的进程值：它是**进程内只解析一次**的主体，
+    // 与策略判定读的是同一个值 ⇒ 「捕获主体」与「判定授权」之间不可能漂移。
+    //
+    // 本用例族过去栽在这里：本文件另一处用例在运行期写 `DATAZEN_DESKTOP_USER`
+    // 并在结束时还原（本进程唯一的 env 写者），撞上这个窗口时，策略读到的主体
+    // 与这里捕获的主体不等 ⇒ 合法的本机请求被判 `desktop_identity_required`。
+    // 写者已移除，主体改为进程解析值，窗口随之消失。
     let principal = crate::platform::local_principal()
         .expect("a desktop local principal exists in the test process");
 

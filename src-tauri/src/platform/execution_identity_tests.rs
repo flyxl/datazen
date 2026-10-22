@@ -8,11 +8,15 @@
 //!
 //! 本模块要断言的是「身份键的派生输入」，不是 SQLite 落盘。真 `Store` 每个用例要
 //! 建两份 SQLite（AppDb + HistoryDb），十几条用例就是几十份——那点并发 I/O 负载
-//! 会把 `platform::live_source::tests::*` 的**进程级 env 竞态**窗口撑大
-//! （`hub.md` §8 记录的既有 flake：那个家族的 `DesktopUserGuard` 在 Drop 时把
-//! `DATAZEN_DESKTOP_USER` 还原成「之前没有」，会把并行跑的兄弟用例的桌面主体读歪）。
+//! 会挤占同仓用例的机器资源，让**判定类**用例的时序更敏感。
 //! 替身让本模块零 I/O；**只有**「凭据轮换」与「安装级稳定」两条需要真 Store，
 //! 且共用同一份（`OnceCell`），全模块只建一次。
+//!
+//! （历史注记：这里曾经还写着「真 Store 的 I/O 负载会撑大 `platform::live_source::tests::*`
+//! 的**进程级 env 竞态**窗口」——那个家族曾有一个 `DesktopUserGuard` 在 Drop 时把
+//! `DATAZEN_DESKTOP_USER` 还原成「之前没有」，把并行跑的兄弟用例的桌面主体读歪。
+//! 该竞态已在 `platform::identity` 根治：桌面主体改成**进程内只解析一次**，
+//! 授权基线不再在请求之间漂移；本模块的零 I/O 夹具只为自己的断言服务。）
 //!
 //! 替身只替换**策略端口**、**连接配置仓储**、**凭据版本仓储**与**委托作用域绑定**；
 //! 被测的 `DesktopIdentityResolver` 本体、派生函数与端口契约一字未改。
