@@ -44,10 +44,11 @@
 | 类型名 | 渲染族（旧 → 新） | 筛选算子集的变化 |
 | --- | --- | --- |
 | `point`（PG 几何）、`interval` | number → text | 去掉 `between`/`notBetween`，多出 LIKE 家族、`isEmpty`/`isNotEmpty` 与 `regex` |
-| `abstime`、`reltime`（PG 内部类型） | datetime → text | 同上 |
-| `ARRAY`、`ARRAY[]`、`text[]`、`integer[]`、`Array(Int32)` | text / number → json | 去掉大小比较、`between`、LIKE 家族与 `in`/`notIn`，多出 `jsonContains` |
-| `image`（SQL Server）、`RAW`（Oracle）、`FixedString(16)`（ClickHouse） | text → binary | 去掉大小比较、`between`、`in`/`notIn` 与 LIKE 家族 |
-| `dec`、`dec(10,2)`、`NUMBER(38,0)` | text → number | 去掉 LIKE 家族与空串检查，多出 `between`/`notBetween` |
+| `abstime`、`reltime`（PG 内部类型） | datetime → text | 去掉 `between`/`notBetween`，多出 LIKE 家族、`in`/`notIn`、`isEmpty`/`isNotEmpty` 与 `regex` |
+| `ARRAY`、`ARRAY[]`、`text[]` | text → json | 去掉大小比较、LIKE 家族、`in`/`notIn`、`isEmpty`/`isNotEmpty` 与 `regex`，多出 `jsonContains` |
+| `integer[]`、`Array(Int32)` | number → json | 去掉大小比较、`between`/`notBetween` 与 `in`/`notIn`，多出 `jsonContains` |
+| `image`（SQL Server）、`RAW`（Oracle）、`FixedString(16)`（ClickHouse） | text → binary | 去掉大小比较、LIKE 家族、`in`/`notIn`、`isEmpty`/`isNotEmpty` 与 `regex` |
+| `dec`、`dec(10,2)`、`NUMBER(38,0)` | text → number | 去掉 LIKE 家族、`isEmpty`/`isNotEmpty` 与 `regex`，多出 `between`/`notBetween` |
 | `enum('a','b')`、`set('a','b')`、`Enum8('a' = 1)`、`Enum` | text → text（族不变，控件变成下拉） | 去掉大小比较、LIKE 家族与 `isEmpty`/`isNotEmpty`、`regex` —— PostgreSQL 上这些入口必然报错 |
 | `uuid`、`uniqueidentifier`、`UUID` | text → text（族不变，控件加 UUID 校验） | 同上 |
 
