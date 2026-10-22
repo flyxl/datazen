@@ -304,6 +304,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                   {renderRightPanel ? (
                     renderRightPanel({
                       dbSessionId,
+                      connectionId,
                       dbIndex,
                       selectedKey: detail.selectedKey,
                       detail: detail.keyDetail,

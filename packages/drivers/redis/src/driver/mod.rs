@@ -21,6 +21,13 @@ use session::{get_key_detail_on, get_key_raw_on, info_server_on, select_db_on};
 pub(crate) struct RedisConn {
     pub(crate) plan: ConnectionPlan,
     pub(crate) live: RedisLiveConn,
+    /// 持久化连接配置 id（宿主的 `connectionId`，`ConnectionConfig.id`）。
+    ///
+    /// **不是** `ConnectionHandle.pool_id`（驱动自己的运行时句柄 `redis_<uuid>`），
+    /// 也不是宿主的 `dbSessionId`（Runtime 会话 id，`dbs_<hex>`）——三个不同的
+    /// id 空间。Pub/Sub 事件的归属字段要的是这个：只有它前端才认得，也才配
+    /// 得上 naming.md 里 `connectionId` 的定义。
+    pub(crate) connection_config_id: String,
 }
 
 /// Like [`with_live_op!`], but hands the operation the connection topology.
@@ -636,6 +643,18 @@ impl RedisDriver {
             .get(connection_id)
             .map(|rc| rc.plan.clone())
             .ok_or_else(|| DriverError::ConnectionFailed("Redis connection not found".into()))
+    }
+
+    /// 某个驱动运行时句柄（`ConnectionHandle.pool_id`）对应的**持久化连接配置
+    /// id**（宿主 `connectionId`）。
+    ///
+    /// Pub/Sub 事件按它归属：naming.md §5 的「UI 连接归属」用 `connectionId`，
+    /// 而 `connectionId` 按 §1 的定义就是持久化连接配置 id。找不到就是找不到——
+    /// **不回退**成 `pool_id`：驱动内部的运行时句柄顶着 `connectionId` 的名字
+    /// 上线，前端永远匹配不上，消息会被静默丢掉（这正是本缺陷的形态）。
+    pub async fn connection_config_id(&self, pool_id: &str) -> Option<String> {
+        let conns = self.connections.read().await;
+        conns.get(pool_id).map(|rc| rc.connection_config_id.clone())
     }
 
     pub async fn plugin_pubsub_publish(

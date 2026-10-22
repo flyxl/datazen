@@ -10,6 +10,12 @@ import type { RedisPendingAction } from '../overview/overviewNavigation';
  */
 export interface RightPanelRenderProps {
   dbSessionId: string;
+  /**
+   * Persisted connection config id (the host's `connectionId`), when the host
+   * view forwards one. The right panel's Pub/Sub tab filters the
+   * `redis-pubsub-message` stream on it, so it has to reach that tab.
+   */
+  connectionId?: string;
   dbIndex: number;
   selectedKey: string | null;
   detail: KeyDetail | null;
@@ -29,10 +35,11 @@ export interface RightPanelRenderProps {
 export interface RedisWorkbenchProps {
   dbSessionId: string;
   /**
-   * Persistent connection id, when the host view forwards one (D-3 uses it as
-   * the key-tree preference bucket). Absent ⇒ preferences stay scoped to
-   * `dbSessionId`, which is the only identity `ConnectionViewProps` guarantees
-   * every host mount provides.
+   * Persistent connection id, when the host view forwards one. D-3 uses it as
+   * the key-tree preference bucket, and the right panel's Pub/Sub tab uses it
+   * to attribute the `redis-pubsub-message` stream to this connection.
+   * Absent ⇒ preferences stay scoped to `dbSessionId`, which is the only
+   * identity `ConnectionViewProps` guarantees every host mount provides.
    */
   connectionId?: string;
   initialDatabase?: string;
