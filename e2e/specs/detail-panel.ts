@@ -103,7 +103,11 @@ describe('详情面板 (DP-001~DP-004)', () => {
     await browser.execute(() => {
       const span = document.querySelector('span[title="Alice"]');
       if (!span) return;
-      const row = span.closest('[tabindex="0"]');
+      // The row container is `data-dt-row-view` and carries `tabIndex={-1}` once
+      // cell selection is on, so a `[tabindex="0"]` locator finds nothing. Clicking
+      // the container itself still goes through `onRowSelect` (a click that lands
+      // inside a cell would belong to the cell path instead).
+      const row = span.closest('[data-dt-row-view]');
       if (row) row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     await browser.pause(300);

@@ -194,10 +194,12 @@ async function clickRowByPid(pid: number): Promise<boolean> {
     );
     const cell = pidCells.find((c) => c.textContent?.trim() === pidText);
     if (cell) {
-      (cell.closest('[tabindex="0"]') as HTMLElement | null)?.click();
+      // `data-dt-row-view` names the row container; its `tabIndex` is `-1` while
+      // cell selection is enabled, so `[tabindex="0"]` no longer finds it.
+      (cell.closest('[data-dt-row-view]') as HTMLElement | null)?.click();
       return true;
     }
-    const row = Array.from(document.querySelectorAll('[tabindex="0"]')).find((el) =>
+    const row = Array.from(document.querySelectorAll('[data-dt-row-view]')).find((el) =>
       el.textContent?.includes(pidText),
     );
     if (!row) return false;
@@ -481,7 +483,7 @@ describe('运维: 进程列表与服务器状态', () => {
         (c) => c.getAttribute('data-dt-col')?.toLowerCase() === 'pid',
       );
       const cell = pidCells.find((c) => (c.textContent?.trim().length ?? 0) > 0);
-      const row = cell?.closest('[tabindex="0"]') as HTMLElement | null;
+      const row = cell?.closest('[data-dt-row-view]') as HTMLElement | null;
       row?.click();
     });
     await browser.pause(300);

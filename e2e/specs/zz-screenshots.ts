@@ -209,8 +209,10 @@ async function clickExecuteWithRetry(minRows: number, attempts = 3) {
 }
 
 async function countDtRows() {
-  // `[data-dt-row]` appears on BOTH the row wrapper and every cell, so counting
-  // nodes over-reports by the column count. Count DISTINCT row indices.
+  // `[data-dt-row]` rides on every **cell** (`data-dt-row-view` is the wrapper's
+  // own attribute), so counting nodes over-reports by the column count. Count
+  // DISTINCT row indices instead — the wrapper, if it ever carries the attribute
+  // too, contributes the same indices and changes nothing.
   return browser.execute(() => {
     const indices = new Set<string>();
     document.querySelectorAll('[data-dt-row]').forEach((el) => {
