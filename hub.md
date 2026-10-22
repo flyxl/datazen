@@ -291,6 +291,23 @@ Tester 查出：`src/windows/connection/result-workspace/ResultTableView.tsx` �
 
 **方法论（值得留）**：Tester 把「被另一道闸遮住」从「更细的提示」升级为「**可证明永远不会拒绝**」，靠的是**代码级论证**（同一个谓词 + 拒绝分支强制短路），不是靠感觉。⇒ **一个守卫如果永远不会被单独触发，它就不是守卫。**
 
+## 轨 A `editors` 修复轮（3 提交 `f988fecb3`）+ 追加一条
+
+七条必修全部完成：导航守卫（`countExact`/`load` 加 `mayNavigate()`、**额外护住 `invalidateCachedData`**）、`uint` 规则、CHANGELOG 改**分类迁移清单**（22 个类型名分 7 组）、G5 矩阵守卫（`filterOperators.cellTypeMatrix.test.ts` + 金标准 `filterOperators.cellTypeMigration.test.ts`，后者**断言清单之外没有任何类型名变化**）、驱动 hints 接到筛选器、`classifyDataType` 接可选 `hints`、空 map 降级。
+
+### 追加一条（协调者裁定）：表头标签也必须用同一份 hints
+
+`TableHeader.tsx:76` 渲染列的**原始类型串**并按类型族着色 ⇒ MySQL `tinyint(1)` 的**表头数字色、单元格布尔色**。**要么两处都接、要么都不接**，不许停在「一面接了、另一面没接」。落点比预估省事：`DataTable` 已有 `cellTypeHints` prop 且已在往下传（`:520`）、`TableView.tsx:704` 已在传 ⇒ 只需把同一份 hints 送到 `TableHeader`。**不许为表头新建第二份取值路径**。预算：`DataTable` +27 → **最多 +38**；`TableView`（+11/≤15）、`VirtualBody`（+29/≤40）**不许再挤**（离 800 只剩 29 / 6 行）。
+
+### 一处**用户可见的行为变化**（已认可，记在案）
+
+`invalidateCachedData` 现在**不清**开着编辑器的面板（行晚一次刷新）。取舍理由：**草稿不丢 > 早一次刷新**（契约 05 §4.4 明令禁止静默丢弃用户的键入）。⇒ 若后续有轨依赖「清缓存后立刻重新取数」，由协调者统一处置。
+
+### 两条裁定的落定
+
+- **`grid.cell.invalidValue` 的 `PRODUCER_PENDING` ⇒ (a) 维持现状**（我先前说「不许进例外表」是**错的**：该码由**前端**产生，非法值走不到 Rust，后端没有任何一处会抛它 ⇒ 它**天然**无 Rust 生产者，而守卫要求「要么有 Rust 生产者、要么列进例外表」⇒ 不列则守卫直接红。(b) = 后端编一个它没有的拒绝语义；(c) = 该码形同虚设）。契约 00 §8.2 与 `gridErrors.ts` 骨架注释**协调者已改**。
+- **`FILTER_OPERATOR_META.columnFamilies → cellTypes` 无冲突**：08 册早已落地完成（Wave 5/6），不存在「08 册按契约 §3.5 落地时撞这一处」的情形。
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
