@@ -46,7 +46,7 @@
 
 **本册不破坏的不变量**（必须逐条自证）：
 1. `stageCellChange(panelId, row, col, value)` 的对外语义与今天逐字节一致——既有 `src/stores/__tests__/tableDataStore.test.ts`、`src/windows/connection/__tests__/TableView.test.tsx` 零改动通过；
-2. `classifyDataType` 的签名与既有测试输入上的输出不变；
+2. `classifyDataType` 的签名与既有测试输入上的输出不变；〔契约审计修订 2026-10-22〕**但它必须接受与编辑器同一份驱动 hints（可选参数，向后兼容）**——否则 MySQL `tinyint(1)` 这类列会被画成**数字色**却用**复选框**编辑，正是 §3.1「归一化把一次判断收敛成一次投影」要消灭的「显示按 A 分类、编辑器按 B 分类」；既有调用点不传 hints 时行为必须逐字不变；
 3. `EditableCell` 的 `toEditString` 导出路径保留（`src/components/DataTable/__tests__/EditableCell.test.ts` 直接 `import { toEditString } from '../../DataTable/EditableCell'`）；
 4. `DataTable` 新增 props **全部可选**，未提供时行为与今天一致（契约册 R4）；
 5. DOM 数据属性只新增，不改既有 `data-dt-row` / `data-dt-col` / `data-col-header`；
@@ -244,7 +244,7 @@ export function isReadOnlyCellType(dataType: string | undefined | null, hints?: 
 | 16 | `tokenPrefix` | `date` | `date` | ClickHouse `Date32` |
 | 17 | `exact` | `time` | `time` | `time`；必须晚于 12 |
 | 18 | `tokenPrefix` | `time` | `time` | `time(6)`/`timetz`；同样晚于 12 |
-| 19 | `tokenPrefix` | `int` | `number` | `int`/`int4`/`int32`/`bigint`/`smallint`/`tinyint(1)`/`mediumint`/`Nullable(Int32)` |
+| 19 | `tokenPrefix` | `int` `uint` | `number` | `int`/`int4`/`int32`/`bigint`/`smallint`/`tinyint(1)`/`mediumint`/`Nullable(Int32)`；**`uint` 必须单列**〔契约审计修订 2026-10-22〕Wave 8 轨 A 实装后实测：ClickHouse 的 `UInt8…UInt256` / `Nullable(UInt32)` 的 token 是 `uint*`，`startsWith('int')` 为假 ⇒ 落到兜底 `text` ⇒ 颜色、编辑器（数值框→文本框）、筛选算子集（多出 LIKE 家族、丢掉 between/notBetween）三项全变，是相对基线的**回归**。`int` 前缀匹配不到 `uint`，两者必须并列 |
 | 20 | `substring` | `serial` | `number` | `serial`/`bigserial` |
 | 21 | `tokenPrefix` | `numeric` `decimal` `dec` `float` `double` `real` `money` | `number` | `numeric(10,2)`/`decimal(38,0)`/`double precision`/`real`/`float8` |
 | 22 | `tokenPrefix` | `number` | `number` | Oracle/Snowflake `NUMBER(38,0)` |

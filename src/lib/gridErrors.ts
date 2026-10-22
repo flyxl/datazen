@@ -40,10 +40,25 @@ export type GridErrorCode =
  * Prefix registry. Entries are full message prefixes (`grid.<domain>.<reason>`); the
  * classifier does longest-prefix matching, so appenders do not have to keep an order.
  *
- * Every entry here MUST have a real producer in the back end, otherwise the front end
- * branches on a prefix that can never arrive. See `docs/prd/data-browsing-design/00-contracts.md`
- * §8.2 for the producer inventory (`grid.selection.*` currently has none: out-of-bounds
- * coordinates are clamped to `null` instead of raising).
+ * Every entry here MUST be **reachable** by the front end, i.e. some producer must be able
+ * to emit it — otherwise the front end branches on a prefix that can never arrive. See
+ * `docs/prd/data-browsing-design/00-contracts.md` §8.2 for the producer inventory.
+ *
+ * "Reachable" is **not** the same as "produced by Rust". Two kinds of codes live here:
+ *
+ * * **Back-end codes** — raised by a Rust producer and carried in the message prefix
+ *   (`grid.commit.*`, `grid.fk.*`, `grid.view.*`, …).
+ * * **Front-end codes** — the rejection happens **in the browser** and never reaches the
+ *   host at all: `grid.cell.invalidValue` (the typed editor refuses to commit an
+ *   unparsable value) is the one today. The back end has no such rejection to raise, so
+ *   there is no Rust literal for it — and `gridErrors.registration.test.ts` scans Rust
+ *   sources for the codes it knows about. **Such a code must be listed in that test's
+ *   `PRODUCER_PENDING`** (the list of codes the back end does not raise) or the guard
+ *   fails.
+ *
+ * So `PRODUCER_PENDING` means **"this code is not produced by Rust"**, not "nobody
+ * produces it yet". Do not invent a Rust producer for a front-end rejection just to
+ * silence the guard — the back end has no such semantics to offer.
  */
 export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.selection.invalid',
