@@ -420,6 +420,20 @@ describe('gridKeyboard · resolveGridKeyCommand', () => {
     });
   });
 
+  it('clamps the row mode page move into the page', () => {
+    const cmd = resolveGridKeyCommand(
+      { kind: 'move-page', direction: 'down' },
+      context({
+        mode: 'row',
+        rowCount: 10,
+        cursor: { rowIndex: 8, columnName: 'name' },
+        viewportRowCount: 20,
+      }),
+      EMPTY_GRID_SELECTION,
+    );
+    expect(cmd).toEqual({ kind: 'row-select', rowIndex: 9, opts: { multi: false, range: false } });
+  });
+
   it('selects every row in every mode', () => {
     for (const mode of ['none', 'cell', 'row'] as const) {
       expect(

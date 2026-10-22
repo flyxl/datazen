@@ -336,20 +336,17 @@ function rowMovementTarget(
   cursor: CellCoord,
 ): number | null {
   if (movement.kind === 'move-edge') return null;
-  if (movement.kind === 'move-page') {
-    const delta = resolvePageDelta(ctx.viewportRowCount) * (movement.direction === 'down' ? 1 : -1);
-    const clamped = clampCellCoord(
-      { rowIndex: cursor.rowIndex + delta, columnName: cursor.columnName },
-      ctx.rowCount,
-      ctx.columnOrder,
-    );
-    if (clamped === null || clamped.rowIndex === cursor.rowIndex) return null;
-    return clamped.rowIndex;
-  }
-  if (movement.deltaColumn !== 0) return null; // a horizontal arrow has no row
-  const next = cursor.rowIndex + movement.deltaRow;
-  if (next < 0 || next >= ctx.rowCount || next === cursor.rowIndex) return null;
-  return next;
+  if (movement.kind === 'move' && movement.deltaColumn !== 0) return null; // a horizontal arrow has no row
+  const delta =
+    movement.kind === 'move-page'
+      ? resolvePageDelta(ctx.viewportRowCount) * (movement.direction === 'down' ? 1 : -1)
+      : movement.deltaRow;
+  // The row movement goes through 01's `moveCellFocus` like every other
+  // movement: it clamps the row into the page and answers `null` when there is
+  // no room left. A hand-rolled border check here would silently diverge from
+  // the cell mode the day 01 changes its border semantics.
+  const next = moveCellFocus(cursor, delta, 0, ctx.rowCount, ctx.columnOrder);
+  return next === null ? null : next.rowIndex;
 }
 
 /** A movement: a cell in cell mode, a row in row mode, an entry in `none`. */
