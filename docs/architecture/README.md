@@ -21,12 +21,14 @@
 - [Data Transfer](backend/data-transfer.md)
 - [Data Sync](backend/data-sync.md)
 - [Schema Diff](backend/schema-diff.md)
+- [Result Write](backend/result-write.md)（查询结果写回的两条通道、写入守卫与失败分支）
 - [Wapps](backend/wapps.md)（含主题应用与首屏背景缓存；旧 `theme.md` 已合并至此）
 
 ### 前端
 
 - [State](frontend/state.md)
 - [Components](frontend/components.md)
+- [Data Table](frontend/data-table.md)（数据网格：虚拟化、`data-dt-*` 契约、选择与键盘、编辑生命周期、分页与外键跳转）
 - [AI](frontend/ai.md)
 - [Extensibility](frontend/extensibility.md)
 

@@ -241,7 +241,7 @@ cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust �
 - 仓库只维护三类长期文档：功能使用（`docs/features/`）、代码架构（`docs/architecture/`）、开发流程（`docs/development/`）；另有公开发布的 `docs/blogs/`，以及仅记录**已核实复现、本轮明确不修**缺陷的 `docs/bugs/`。索引见 [docs/README.md](docs/README.md)。
 - **不新增** PRD、设计稿、原型图、实施规范、开发进度、Bug List、评审记录类文档；这些是一次性过程产物，已交付即失效。缺陷结论优先变成代码、测试与正式文档；只有核实复现且明确不修的缺陷才按 `docs/bugs/` 的单文件规则登记。唯一例外是并行开发期间的进度台账（分支根目录 `progress.md` / 集成分支根目录 `hub.md`）——见上文「进度台账：开发期间允许，交付即销毁」：开发期间它存在于分支而非 `docs/`，**验收合并时必须删除**，因而同样满足「已交付即失效」。
 - 用户明确要求并已入库的 [桌面 / Web 平台演进设计](docs/README.md) 是本纪律的窄范围例外；其中标为「目标设计」的概要、详细设计和开发计划只在该明确授权范围内维护，落地后逐节改写为已实现事实。该例外不授权新增其他方案、评审记录或进度文档。
-- 同样属窄范围例外的还有 [数据浏览竞品对标 PRD](docs/prd/data-browsing-optimization-prd.md) 与其 [技术设计分册](docs/prd/data-browsing-design.md)：它们是**按用户明确要求保存的一次性方案**，在 `feature/data-browsing-prd` 分支上随功能开发维护；**方案落地后必须逐节改写为「已实现事实」并入 `docs/architecture/` 与 `docs/features/`，并删除 `docs/prd/` 整个目录**。该例外不授权新增其他 PRD、评审记录或进度文档，也不允许把分册长期留存在 `main` 上。
+- 数据浏览的竞品对标 PRD 与 11 个技术设计分册曾经是第二条窄范围例外（一次性方案，按用户明确要求保存）。**该例外已经关闭**：方案落地后逐节改写为已实现事实，分别进入 [数据表格架构](docs/architecture/frontend/data-table.md)、[结果写回架构](docs/architecture/backend/result-write.md) 与 [数据浏览使用指南](docs/features/data-browsing-guide.zh-CN.md)，`docs/prd/` 整个目录已删除。它**不再**授权新增任何 PRD、分册或评审记录。
 - 需要长期留存的设计结论，**改写为「已实现」的事实**并入对应架构文档，而不是保留方案原文。
 - 引用文件路径、命令、IPC 名称、驱动数量等事实前先核对代码；删除或重构代码时同步删除失效引用。
 - 写完文档自查链接可达：`pnpm exec` 下的脚本与 CI 不会校验 Markdown 链接，失效引用只能靠人工/代理检查。

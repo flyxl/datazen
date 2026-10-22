@@ -2,7 +2,8 @@
  * Independent re-test of the Wave-2 `grid-cell` DOM contract.
  *
  * This file is written by the RETEST agent, not by the implementer, and asserts the contract
- * from `docs/prd/data-browsing-design/00-contracts.md` §4.4 against the **rendered DOM**:
+ * against the **rendered DOM** (the `data-dt-*` family is documented in
+ * `docs/architecture/frontend/data-table.md` §2.2):
  *
  *  - `[data-dt-surface]`  : the scroll container, fixed value `""`, carrying the whole ARIA grid host set
  *  - `[data-dt-selected]` : `"true"` / attribute absent (never `"false"`)
