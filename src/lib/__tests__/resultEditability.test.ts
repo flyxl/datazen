@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RESULT_ORIGIN_WRITE_BACK_ENABLED,
   gridReadOnlyMessageKey,
   isColumnEditable,
+  originChannelWritable,
   resolveGridEditability,
   resolveResultEditability,
+  resolveResultWriteBack,
   type GridReadOnlyReason,
   type ServerEditability,
 } from '../resultEditability';
@@ -67,12 +70,7 @@ describe('resolveGridEditability', () => {
   });
 
   it('refuses a result the back end called writable but that names no key column', () => {
-    const verdict = resolveGridEditability(
-      { ...writable, identityColumns: [] },
-      rows,
-      columns,
-      0,
-    );
+    const verdict = resolveGridEditability({ ...writable, identityColumns: [] }, rows, columns, 0);
 
     expect(verdict.writable).toBe(false);
     expect(verdict.writable === false && verdict.reason).toBe('keyNotSelected');
@@ -96,6 +94,61 @@ describe('resolveGridEditability', () => {
     const serverRefuses = resolveGridEditability(readOnly('view'), rows, columns, 0);
     expect(serverRefuses.writable).toBe(false);
   });
+
+  it('never lets the page overrule a refusal, and never lets a refusal overrule the page', () => {
+    // Back end refuses, page is perfect.
+    expect(resolveGridEditability(readOnly('view'), rows, columns, 0).writable).toBe(false);
+    // Back end allows, page has a NULL key.
+    const nullKey = resolveGridEditability(writable, [[null, 10]], columns, 0);
+    expect(nullKey.writable).toBe(false);
+    expect(nullKey.writable === false && nullKey.reason).toBe('keyValueNull');
+  });
+
+  it('reaches the user with the reason the back end gave, not one of its own', () => {
+    const verdict = resolveGridEditability(readOnly('sessionReadOnly'), rows, columns, 0);
+    expect(verdict.writable === false && verdict.reason).toBe('sessionReadOnly');
+  });
+});
+
+describe('the release channel of the result grid', () => {
+  it('is closed while the new write pipeline is not connected', () => {
+    // The origin verdict is the only thing that could open a result the
+    // narrow host-side check cannot see (`SELECT id, total FROM t`). The write
+    // path that could carry such a write does not exist yet, so the channel
+    // must stay shut: open, the grid would claim a cell is editable, the
+    // narrow write path would refuse, and the refusal would be silent.
+    expect(RESULT_ORIGIN_WRITE_BACK_ENABLED).toBe(false);
+    expect(originChannelWritable(writable)).toBe(false);
+  });
+
+  it('is unreachable: the origin verdict alone cannot make a result writable', () => {
+    const verdict = resolveResultEditability(false, writable, rows, columns, 0);
+
+    expect(verdict.writable).toBe(false);
+    expect(resolveResultWriteBack(false, writable)).toBe(false);
+  });
+
+  it('does not dilute a refusal: a refused verdict stays refused', () => {
+    // Every refusal reason, with the page data as perfect as it gets.
+    const reasons: GridReadOnlyReason[] = [
+      'unknownOrigin',
+      'ambiguousOrigin',
+      'multiTable',
+      'aggregate',
+      'distinct',
+      'setOperation',
+      'derivedSource',
+      'view',
+      'noPrimaryKey',
+      'keyNotSelected',
+      'sessionReadOnly',
+    ];
+    for (const reason of reasons) {
+      const verdict = resolveResultEditability(false, readOnly(reason), rows, columns, 0);
+      expect(verdict.writable).toBe(false);
+      expect(verdict.writable === false && verdict.reason).toBe(reason);
+    }
+  });
 });
 
 describe('resolveResultEditability', () => {
@@ -113,12 +166,6 @@ describe('resolveResultEditability', () => {
 
     expect(verdict.writable).toBe(false);
     expect(verdict.writable === false && verdict.reason).toBe('aggregate');
-  });
-
-  it('lets the origin verdict grant write-back the narrow check cannot see', () => {
-    const verdict = resolveResultEditability(false, writable, rows, columns, 0);
-
-    expect(verdict.writable).toBe(true);
   });
 });
 
@@ -152,5 +199,27 @@ describe('gridReadOnlyMessageKey', () => {
     for (const reason of reasons) {
       expect(gridReadOnlyMessageKey(reason)).toBe(`query.gridReadOnly.${reason}`);
     }
+    expect(reasons).toHaveLength(14);
+  });
+});
+
+describe('the reason codes the user can actually see today', () => {
+  it('cannot be produced without a driver that implements the origin contract', () => {
+    // The back end can only answer "the driver cannot tell" (unknownOrigin)
+    // or "the session is read-only" (sessionReadOnly) while every driver
+    // answers Undeterminable. The nine shape reasons need a Determined
+    // origin; the three page-level reasons need a writable back-end verdict.
+    const producibleWithoutADeterminedOrigin: GridReadOnlyReason[] = [
+      'unknownOrigin',
+      'sessionReadOnly',
+    ];
+    expect(producibleWithoutADeterminedOrigin).toHaveLength(2);
+  });
+
+  it('keeps the page-level reasons out of reach while the back end refuses', () => {
+    // A refused verdict short-circuits before the page is even looked at, so
+    // the page-level reasons cannot be produced from a refused verdict.
+    const verdict = resolveGridEditability(readOnly('unknownOrigin'), [[null, 10]], columns, 0);
+    expect(verdict.writable === false && verdict.reason).toBe('unknownOrigin');
   });
 });

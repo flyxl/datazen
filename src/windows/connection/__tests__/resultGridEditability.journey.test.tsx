@@ -202,25 +202,53 @@ describe('the write-back journey of one query result', () => {
     expect(updateResultCell).not.toHaveBeenCalled();
   });
 
-  it('goes from resolving to writable and then enters the write path', async () => {
+  it('opens the grid through the narrow verdict and then enters the write path', async () => {
     const updateResultCell = vi.fn(async () => undefined);
     usePanelStore.setState({ updateResultCell });
-    let releaseVerdict: (value: unknown) => void = () => undefined;
-    resolveResultOrigin.mockReturnValue(
-      new Promise((resolve) => {
-        releaseVerdict = resolve;
-      }),
-    );
+    // The narrow host-side mapping verdict verified the relation — the one
+    // channel that can open the grid today.
+    seedResult({
+      ...result('SELECT id, total FROM orders'),
+      source: { writableMapping: 'verified', statementIndex: 0 },
+    } as unknown as StatementResult);
+    resolveResultOrigin.mockResolvedValue({
+      writable: false,
+      identityColumns: [],
+      editableColumns: [],
+      table: null,
+      reason: 'unknownOrigin',
+    });
 
     const { container } = renderDrawers();
 
     // ── Step 1: the verdict is on its way; the grid is still read-only.
     await waitFor(() => expect(resolveResultOrigin).toHaveBeenCalledTimes(1));
-    expect(reasonAttribute(container)).toBe('unknownOrigin');
-    expect(screen.getByTestId('mock-detail-panel')).toHaveAttribute('data-editable', 'false');
+    await waitFor(() =>
+      expect(screen.getByTestId('mock-detail-panel')).toHaveAttribute('data-editable', 'true'),
+    );
 
-    // ── Step 2: the verdict arrives and the grid opens up.
-    releaseVerdict({
+    // ── Step 2: the origin verdict arrives and cannot take the grant away —
+    // the narrow verdict is not withdrawn by it.
+    await waitFor(() => expect(reasonAttribute(container)).toBeNull());
+    expect(screen.getByTestId('mock-detail-panel')).toHaveAttribute('data-editable', 'true');
+
+    // ── Step 3: the edit reaches the write path.
+    fireEvent.click(screen.getByTestId('mock-edit-field'));
+    await waitFor(() => expect(updateResultCell).toHaveBeenCalledTimes(1));
+  });
+
+  it('keeps the grid shut when only the origin verdict would grant the write', async () => {
+    const updateResultCell = vi.fn(async () => undefined);
+    usePanelStore.setState({ updateResultCell });
+    // The narrow verdict did not verify the mapping; only the origin verdict
+    // says the result may be written. The release channel is closed, so the
+    // grid stays read-only — an open grid would claim an edit that the write
+    // path silently refuses.
+    seedResult({
+      ...result('SELECT id, total FROM orders'),
+      source: { writableMapping: 'readOnly', statementIndex: 0 },
+    } as unknown as StatementResult);
+    resolveResultOrigin.mockResolvedValue({
       writable: true,
       identityColumns: [{ column: 'id', sourceColumn: 'id' }],
       editableColumns: [
@@ -230,12 +258,15 @@ describe('the write-back journey of one query result', () => {
       table: { catalog: null, schema: null, name: 'orders', aliased: false },
       reason: null,
     });
-    await waitFor(() => expect(reasonAttribute(container)).toBeNull());
-    expect(screen.getByTestId('mock-detail-panel')).toHaveAttribute('data-editable', 'true');
 
-    // ── Step 3: the edit reaches the write path.
+    const { container } = renderDrawers();
+
+    await waitFor(() => expect(resolveResultOrigin).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(reasonAttribute(container)).not.toBeNull());
+    expect(screen.getByTestId('mock-detail-panel')).toHaveAttribute('data-editable', 'false');
+
     fireEvent.click(screen.getByTestId('mock-edit-field'));
-    await waitFor(() => expect(updateResultCell).toHaveBeenCalledTimes(1));
+    expect(updateResultCell).not.toHaveBeenCalled();
   });
 
   it('drops the verdict when the panel is closed', async () => {

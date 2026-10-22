@@ -35,9 +35,11 @@ use super::AppState;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveResultOriginRequest {
-    /// The connection the result was read from.
-    pub connection_id: String,
     /// The session the result was read from.
+    ///
+    /// The connection is **not** part of the request: it is resolved from the
+    /// session, so every surface of a result can ask the same question
+    /// without knowing which connection the session belongs to.
     pub db_session_id: String,
     /// The database the result was read from.
     pub database: Option<String>,
@@ -67,7 +69,7 @@ pub(crate) async fn resolve_result_origin_impl(
 ) -> Result<ResultEditability, CommandError> {
     validate_envelope(&request.db_session_id, &request.sql)?;
     let resolved = resolve_command_driver(state, Some(&request.db_session_id), None).await?;
-    let profile = connection_profile(state, &request.connection_id).await?;
+    let profile = session_profile(state, &resolved).await?;
     let (database, schema) = sql_target(
         &resolved,
         &profile,
@@ -79,7 +81,6 @@ pub(crate) async fn resolve_result_origin_impl(
     let columns = source_table_columns(
         state,
         &resolved,
-        &request.connection_id,
         &profile,
         request.database.as_deref(),
         request.schema.as_deref(),
@@ -138,7 +139,6 @@ pub(crate) async fn preview_result_cell_change_impl(
     let columns = source_table_columns(
         state,
         &resolved,
-        &request.connection_id,
         &profile,
         request.database.as_deref(),
         request.schema.as_deref(),
@@ -203,7 +203,6 @@ async fn describe_origin(
 async fn source_table_columns(
     state: &AppState,
     resolved: &ResolvedCommandDriver,
-    connection_id: &str,
     profile: &ConnectionConfig,
     database: Option<&str>,
     schema: Option<&str>,
@@ -223,7 +222,7 @@ async fn source_table_columns(
     state
         .schema_cache
         .get_columns(
-            connection_id,
+            &profile.id,
             database,
             schema,
             &table,
@@ -271,6 +270,24 @@ fn sql_target(
 
 fn nonblank(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+/// The connection the session belongs to.
+///
+/// The session is the one that knows: the request names the session, and the
+/// session names its connection.
+async fn session_profile(
+    state: &AppState,
+    resolved: &ResolvedCommandDriver,
+) -> Result<ConnectionConfig, CommandError> {
+    let connection_id = resolved
+        .session
+        .as_ref()
+        .map(|session| session.connection_id.as_str().to_string())
+        .ok_or_else(|| {
+            CommandError::NotFound("the DB session does not name a connection".into())
+        })?;
+    connection_profile(state, &connection_id).await
 }
 
 /// The connection the result was read from.

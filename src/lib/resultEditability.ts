@@ -128,22 +128,75 @@ export function resolveGridEditability(
 }
 
 /**
- * The final verdict for one cell, legacy mapping verdict included.
+ * Whether the **origin** verdict may grant write-back.
  *
- * Two verdicts exist and they answer different questions:
+ * The origin verdict (the driver's own answer about where the rows came from)
+ * is the only way a result the narrow host-side mapping check cannot see —
+ * `SELECT id, total FROM t`, an aliased key, a projected column — may ever be
+ * written back. That is worth having, but only once something can carry the
+ * write: today the only write path is the narrow one
+ * (`commitQueryResultCell`), and it re-verifies the mapping with the narrow
+ * check — which refuses exactly the statements the origin verdict would have
+ * allowed. With the release channel open, the grid would claim a cell is
+ * editable, the narrow write path would refuse, and the refusal would be
+ * **silent**: the cell would show the new value while the row in the database
+ * kept the old one. That is the "edited, then quietly lost" state DB-14
+ * exists to kill, and it is worse than a grey cell.
+ *
+ * So the channel is a **named switch with one meaning**: it may only be
+ * turned on when **both** halves exist — a driver that overrides
+ * `describe_result_origin` (so the origin verdict can say something at all),
+ * **and** a front end that writes through the new pipeline
+ * (`previewResultCellChange` → `commitPendingChanges`), so a granted write
+ * actually reaches the database. Until both are true it must stay `false`,
+ * and the test that pins it is the proof that the release arm is unreachable.
+ */
+export const RESULT_ORIGIN_WRITE_BACK_ENABLED: boolean = false;
+
+/**
+ * Whether the **origin channel** granted the write-back for this result.
+ *
+ * The origin channel is the one that knows which result columns are straight
+ * copies of a base column; the narrow channel knows only the relation. A
+ * column the origin channel does not list therefore has no source to write
+ * back to, and the back end refuses it with `grid.result.writeDenied` — so
+ * the interface must not offer it.
+ *
+ * The channel is closed today (see
+ * {@link RESULT_ORIGIN_WRITE_BACK_ENABLED}), which is why the guard is inert
+ * today and correct the moment the channel opens.
+ */
+export function originChannelWritable(server: ServerEditability): boolean {
+  return RESULT_ORIGIN_WRITE_BACK_ENABLED && server.writable;
+}
+
+/**
+ * Whether the result as a whole may be written back.
+ *
+ * Two verdicts answer that, and either one is enough:
  *
  * * the **narrow mapping verdict** (`writableMapping === 'verified'`) is the
- *   host-side check that shipped first: it recognises
- *   `SELECT * FROM <relation>` and the write path re-verifies the mapping
- *   against the live catalog before it writes;
- * * the **origin verdict** is the driver's own answer about where the rows
- *   came from, and it is the one that can grant write-back to statements the
- *   narrow check cannot see (an aliased key, a projected column).
+ *   host-side check that shipped first; the write path re-verifies it against
+ *   the live catalog before it writes, so it is not withdrawn here;
+ * * the **origin verdict** is the driver's own answer, and it may only grant
+ *   write-back while the release channel is open (see
+ *   {@link RESULT_ORIGIN_WRITE_BACK_ENABLED}).
  *
- * A cell is writable when **either** says so: the narrow verdict is not
- * withdrawn by the new one, and the new one adds what the narrow one cannot
- * see. Neither verdict is recomputed here — both are answers the back end
- * gave.
+ * Neither verdict is recomputed here — both are answers the back end gave.
+ */
+export function resolveResultWriteBack(
+  legacyVerified: boolean,
+  server: ServerEditability,
+): boolean {
+  if (legacyVerified) return true;
+  return originChannelWritable(server);
+}
+
+/**
+ * The final verdict for one cell, legacy mapping verdict included.
+ *
+ * The page-level facts (a NULL key value, two rows with the same identity)
+ * only ever *refuse*; they never make a refused result writable.
  */
 export function resolveResultEditability(
   legacyVerified: boolean,
@@ -152,7 +205,7 @@ export function resolveResultEditability(
   columns: ReadonlyArray<{ name: string }>,
   rowIndex: number,
 ): GridEditability {
-  if (legacyVerified) {
+  if (resolveResultWriteBack(legacyVerified, server)) {
     return {
       writable: true,
       identityColumns: server.identityColumns ?? [],
@@ -160,7 +213,10 @@ export function resolveResultEditability(
       table: server.table as ResultTableRef,
     };
   }
-  return resolveGridEditability(server, rows, columns, rowIndex);
+  // The release channel is closed, so the origin verdict may only **refuse**.
+  // A refusal keeps the back end's reason: the page never invents one, and
+  // the page-level facts never turn a refusal into a grant.
+  return resolveGridEditability({ ...server, writable: false }, rows, columns, rowIndex);
 }
 
 /**

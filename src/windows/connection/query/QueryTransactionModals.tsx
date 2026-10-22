@@ -14,6 +14,7 @@ import { QueryErrorPanel } from '../../../components/query/QueryErrorPanel';
 import { DiagnosisPanel } from '../../../components/ai/DiagnosisPanel';
 import { ExplainPanel } from '../../../components/ai/ExplainPanel';
 import { ResultWorkspace } from '../result-workspace';
+import { resultEditKey } from '../../../stores/panelResultEdit';
 import { AddToDashboardDialog } from '../../dashboard/AddToDashboardDialog';
 import { DataExportDialog } from '../../../components/DataTable/DataExportDialog';
 import { isAbortedTransactionError } from '../../../lib/sqlTransactionGuard';
@@ -577,6 +578,7 @@ export function QueryResultsPane({
                 )}
                 <ResultWorkspace
                   result={activeResult}
+                  writeBackKey={resultEditKey(dbSessionId, activeResultIdx)}
                   onCellEdit={running ? undefined : onCellEdit}
                   view={running ? 'table' : resultViewMode}
                   chartConfig={chartConfig}

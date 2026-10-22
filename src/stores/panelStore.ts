@@ -635,7 +635,8 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const exec = get().queryExec.get(key);
     if (!exec) return;
     const original = exec.results[resultIdx];
-    assertResultWritable(panelId, paneId, resultIdx);
+    const panel = get().panels.find((item) => item.id === panelId);
+    assertResultWritable(panel?.dbSessionId ?? '', resultIdx);
     if (!original?.runtimeBinding || original.source?.writableMapping !== 'verified')
       throw new Error('Result is read-only; execute the query again');
     const columnIndex = original.columns.findIndex((column) => column.name === col);

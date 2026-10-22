@@ -58,10 +58,15 @@ export interface ResultEditability {
   reason: GridReadOnlyReason | null;
 }
 
-/** Ask where a result came from, and whether it may be written back. */
+/**
+ * Ask where a result came from, and whether it may be written back.
+ *
+ * The connection is **not** part of the request: the back end resolves it from
+ * the session the result was read from, so both surfaces of a result (the
+ * grid and the row-detail drawer) can ask without knowing which connection
+ * the session belongs to.
+ */
 export interface ResolveResultOriginRequest {
-  /** The connection the result was read from. */
-  connectionId: string;
   /** The session the result was read from. */
   dbSessionId: string;
   /** The database the result was read from. */

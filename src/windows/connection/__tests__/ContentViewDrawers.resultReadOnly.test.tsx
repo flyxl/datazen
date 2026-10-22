@@ -164,7 +164,7 @@ describe('the result grid drawer when the driver refuses the result', () => {
     expect(updateResultCell).not.toHaveBeenCalled();
   });
 
-  it('lets the write path run when the driver says the result may be written', async () => {
+  it('keeps the grid read-only when the driver says the result may be written', async () => {
     const updateResultCell = vi.fn(async () => undefined);
     usePanelStore.setState({ updateResultCell });
     resolveResultOrigin.mockResolvedValue({
@@ -180,12 +180,15 @@ describe('the result grid drawer when the driver refuses the result', () => {
 
     const { container } = renderDrawers();
 
-    await waitFor(() => expect(reasonAttribute(container)).toBeNull());
-    expect(screen.getByTestId('mock-detail-panel')).toHaveAttribute('data-editable', 'true');
+    // The origin verdict alone must not open the grid: the write path that
+    // could carry such a write is not connected, so an opened drawer would
+    // claim an edit that is silently refused.
+    await waitFor(() => expect(reasonAttribute(container)).not.toBeNull());
+    expect(screen.getByTestId('mock-detail-panel')).toHaveAttribute('data-editable', 'false');
 
     fireEvent.click(screen.getByTestId('mock-edit-field'));
 
-    await waitFor(() => expect(updateResultCell).toHaveBeenCalledTimes(1));
+    expect(updateResultCell).not.toHaveBeenCalled();
   });
 
   it('keeps a result the narrow mapping check verified editable', async () => {
