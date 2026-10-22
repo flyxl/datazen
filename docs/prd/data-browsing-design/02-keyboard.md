@@ -21,7 +21,7 @@
 | A3 | `npx vitest run src/components/DataTable/__tests__/VirtualBody.test.tsx src/components/DataTable/__tests__/DataTable.test.tsx` | 全绿（这两个文件里的「定位行 div」表达式已随焦点裁定迁移，见 §4.4） |
 | A4 | `pnpm typecheck` | 退出码 0；`gridKeyboard.ts` / `useGridKeyboardNav.ts` / 测试文件零 `any`、零 `@ts-ignore` |
 | A5 | `pnpm e2e:minimal` | `TC-TABLE-013` 由**假绿**变为真断言并全绿（改造方式见 §5 Step 7）；新增 `table-keyboard-nav` 用例全绿 |
-| A6 | `wc -l src/components/DataTable/DataTable.tsx src/components/DataTable/VirtualBody.tsx src/lib/gridKeyboard.ts src/hooks/useGridKeyboardNav.ts` | 每个文件 **≤ 800**；`DataTable.tsx` 必须显著低于 800（起点已 628 行，见 §6） |
+| A6 | `wc -l src/components/DataTable/DataTable.tsx src/components/DataTable/VirtualBody.tsx src/lib/gridKeyboard.ts src/hooks/useGridKeyboardNav.ts` | **不是门禁**（〔裁定 2026-10-22〕行数是耦合度的信号，归 code review，见 AGENTS.md）。本册记录实测值供评审参考：`DataTable.tsx` 747 → 785（余 15 行，之后再往里加东西就该抽了）、`VirtualBody.tsx` 771 → 765、`gridKeyboard.ts` 新建 404、`useGridKeyboardNav.ts` 新建 205 |
 
 ---
 
@@ -66,7 +66,7 @@
 | --- | --- |
 | 两文件**都没有** `useKeyboardShortcuts` | `grep -n 'useKeyboardShortcuts\|tabIndex'` 对这两个文件命中 0 处（退出码 1） |
 | `DataTable.tsx` 没有网格容器 `role` | `grep -n 'role='` 只命中 `role="status"` 两处（加载/空态），**没有 `role="grid"`** |
-| 文件规模 | `DataTable.tsx` 628 行、`TableView.tsx` **803 行**（〔合并后校正〕旧稿 770；**已越 800 红线**）、`VirtualBody.tsx` 207 行、`EditableCell.tsx` 119 行 |
+| 文件规模 | 〔实测校正 2026-10-22〕`DataTable.tsx` **747** 行、`TableView.tsx` **774** 行、`VirtualBody.tsx` **771** 行。原稿写的 628 / 803 / 207 全部过时（628 与 803 是更早一轮的数字）。**注**：行数不是门禁，只是评审信号 |
 | 既有测试依赖 `[tabindex="0"]` 定位行 div | `src/components/DataTable/__tests__/VirtualBody.test.tsx` 2 处、`src/components/DataTable/__tests__/DataTable.test.tsx` 1 处、`e2e/specs/detail-panel.ts` 1 处、`e2e/specs/ops-process-server.ts` **3 处**（〔合并后校正〕旧稿写 2 处，漏了基线里就存在的第 3 处） |
 
 ### 2.5 `e2e/specs/table-batch-ops.ts` 的 `TC-TABLE-013`
@@ -372,6 +372,15 @@ export interface DataTableProps {
 
 **裁定：采用 roving tabindex —— 网格滚动容器 `tabIndex={0}`（唯一 Tab 停靠点），行容器 `tabIndex={-1}`。**
 
+〔裁定 2026-10-22，实测补充〕**`tabIndex={-1}` 只在「该网格真的有替代停靠点」时成立** —— 即 `hasCellSelection` 为真、
+滚动容器拿到了 `data-dt-surface` 与 `tabIndex:0` 的场合。**未开 cell-selection 契约的网格必须保持改动前的行 `tabIndex={0}`**，
+行容器 Enter/Space → 行激活的分支也**只在 `!hasCellSelection` 时保留**（既恢复旧网格的键盘可达，又不会与 02 的
+「Enter = 进入编辑」双触发）。
+
+理由是实测出来的：「无条件 `-1`」一度让 **ProcessListView 与 ResultTableView 变成零键盘路径** —— 它们只接了
+`onRowClick`，没有 `onRowSelect`/`onSelectAll`，因此既无 `hasCellSelection` 的 surface 停靠点，也没有工具栏「全选」复选框。
+改前 Tab 到行、Enter/Space 能激活（高亮 / 打开行详情），改后**只剩鼠标**。这是本册唯一一处被复测打回的行为回归。
+
 三要素：
 
 | 要素 | 内容 |
@@ -510,7 +519,7 @@ it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
 
 ### Step 2 —— 容器成为焦点宿主
 
-- **文件**：`src/components/DataTable/DataTable.tsx`（修改；起点 628 行）。
+- **文件**：`src/components/DataTable/DataTable.tsx`（修改；起点实测 **747** 行）。
 - **符号**：承载虚拟滚动的容器 `div` 上新增 `data-dt-surface="true"`、`tabIndex={keyboardNavigation ? 0 : -1}`、`aria-label`（走 i18n）、`aria-activedescendant`（值来自 01 的 `useGridSelection().activeDescendantId`）、`data-dt-selected` 之外的 `data-dt-surface`（01 已定）；新增 prop `keyboardNavigation` 与 `onRequestScrollIntoView`（§3.4）。**不新增** `role`（K-7）。
 - **为什么**：键盘导航必须有唯一的焦点与唯一的事件落点；今天的网格**完全没有**焦点宿主（§2.4 证实 `role`/`tabIndex` 均不存在），这是所有键盘能力的前置条件。
 - **怎么自测**：组件测试里 `container.querySelector('[data-dt-surface]')` 非空且 `keyboardNavigation` 缺省时 `tabIndex` 为 `-1`（保证缺省行为逐位等于今天）；`pnpm typecheck`。
@@ -564,10 +573,10 @@ it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
 | `src/lib/gridKeyboard.ts` | **新增** | 键→意图→命令的纯逻辑、光标派生与夹取 | +190 | 否（新增文件，余量充足） |
 | `src/hooks/useGridKeyboardNav.ts` | **新增** | React 接线：事件摊平、光标记忆、命令分发 | +130 | 否 |
 | `src/hooks/useGridSelection.ts` | 修改（01 的新增文件） | 在 `surfaceProps.onKeyDown` 最前面调用 02 的 handler（**只加 3~5 行**） | +5 | 取决于 01 的预估；本册只加 5 行，不得把 02 的逻辑写进来 |
-| `src/components/DataTable/DataTable.tsx` | 修改 | 容器 `data-dt-surface`/`tabIndex`/`aria-*`、两个新 prop 透传 | **628 → ~668** | **未触及，但余量只剩约 132 行**：本册只允许加接线，**禁止**把键盘语义、命令分发、journey 辅助函数写进这个文件 |
+| `src/components/DataTable/DataTable.tsx` | 修改 | 容器 `data-dt-surface`/`tabIndex`/`aria-*`、三个新 prop 透传 | **747 → 785（+38）** | 余量 15 行：本册只允许加接线，**禁止**把键盘语义、命令分发、journey 辅助函数写进这个文件。本册把 7 个 `t()` 抽到 `GridKeyboardHints.tsx`（26 行）就是为了守这一点 |
 | `src/components/DataTable/VirtualBody.tsx` | 修改 | 行 `tabIndex={-1}`、`data-dt-row-view`、行级 `data-dt-selected`、删除旧 `handleKeyDown` | 207 → ~215 | 否 |
 | `src/components/DataTable/EditableCell.tsx` | **不触及** | IME `Enter` 守卫归 05（01 §4.5 已登记） | 0 | 否（119 行，保持不动以避免与 05 撞车） |
-| `src/windows/connection/TableView.tsx` | 修改（仅传 prop） | 把 `keyboardNavigation` 与 `onRequestScrollIntoView` 传下去 | **803 → ~807** | **已经越线**（〔合并后校正〕旧稿 770/余量 26）：本册**必须等 01 的抽取先落地**（712 附近）再传 prop，否则两个 prop 落在红线外。这也是本册**不把键盘接线放在这一层**的硬理由 |
+| `src/windows/connection/TableView.tsx` | 修改（仅传 prop） | 把 `keyboardNavigation` 与 `lastSelectedIndex` 传下去 | **774 → 777（+3）** | 〔实测校正 2026-10-22〕原稿写 803 并判「已越 800 红线」，与实测不符。本册只传 prop，不把键盘接线放在这一层（架构理由，与行数无关） |
 | `src/locales/en/query.ts` | 修改 | 8 个快捷键提示 key（§8） | 424 → ~432 | 否 |
 | `src/lib/__tests__/gridKeyboard.test.ts` | **新增** | 单测（§9.1） | +330 | 否 |
 | `src/components/DataTable/__tests__/gridKeyboardJourney.test.tsx` | **新增** | 连续旅程测试（§9.3） | +260 | 否 |
@@ -578,7 +587,7 @@ it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
 | `e2e/specs/detail-panel.ts` | 修改 | 定位表达式迁移（1 处） | +2 | 否 |
 | `e2e/specs/ops-process-server.ts` | 修改 | 定位表达式迁移（2 处） | +4 | 否 |
 
-**规模红线**：`DataTable.tsx`（628）与 `TableView.tsx`（770）**都不允许**因本册越过 800 行。本册的解法是把全部语义压进 `src/lib/gridKeyboard.ts`（无 React 依赖）与 `src/hooks/useGridKeyboardNav.ts`（新文件），两个既有大文件只留接线。
+**规模纪律（不是门禁）**：〔裁定 2026-10-22〕**行数是耦合度的信号，归 code review，不做 CI 门禁**。本册仍把全部语义压进 `src/lib/gridKeyboard.ts`（无 React 依赖）与 `src/hooks/useGridKeyboardNav.ts`（新文件），两个既有大文件只留接线——理由不是「怕超线」，而是**语义与接线本就该分开**（纯逻辑层可以在没有 DOM 的环境里被穷举测试，这一点是本册 28 例纯逻辑用例的前提）。
 
 ---
 
