@@ -107,3 +107,9 @@ pub(crate) fn fn_parameter_lists(code: &str) -> Vec<String> {
     }
     lists
 }
+
+/// 宿主侧的**组织 id 字面量闸门**：生产代码里不得把组织 id 写死成字符串字面量。
+///
+/// 随 `--lib` 跑（因而进 CI），自带 kill test、不误伤用例与自证。理由与判据见该文件。
+#[cfg(test)]
+mod org_literal_gate;

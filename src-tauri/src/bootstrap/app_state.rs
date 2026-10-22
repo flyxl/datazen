@@ -109,7 +109,7 @@ pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<
     }
 
     let ctx = RequestContext::new(
-        OrganizationId::new("datazen-local"),
+        OrganizationId::new(crate::platform::LOCAL_ORGANIZATION_ID),
         PrincipalId::new("datazen-local-user"),
         None,
         ClientInstanceId::new("datazen-local-client"),

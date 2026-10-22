@@ -969,6 +969,75 @@ CM-05 要求跨组织访问按「不存在」处理，而这里是「用错组�
 
 一句话：`is_local_scope` 是**桌面绑定的实现细节**，不是共享端口契约的一部分——
 共享端口契约只有「按传入的 `scope` 过滤，越组织按「不存在」处理」这一条。
+### 5.3 桌面形态的身份三根轴（组织 / 主体 / 客户端实例）
+
+`RequestContext` 有六个字段，但桌面上**真正参与落库与过滤**的只有三根轴：组织、主体、
+客户端实例。它们在桌面形态下的取值来源**各不相同**——必须逐根说清，否则「任务互相
+看不见」「认领失败」「恢复扫描漏掉」会被当成偶发故障去查。
+
+| 轴 | 桌面取值 | 取值来源 | 参与什么 |
+| --- | --- | --- | --- |
+| 组织 `organizationId` | **规范常量** `LOCAL_ORGANIZATION_ID`（`"datazen-desktop-local"`） | [`platform/identity.rs`](../../../src-tauri/src/platform/identity.rs) 的进程常量；IPC 上下文与三条迁移链的后台上下文**同值** | 落库进 `jobs.organization_id`；列举 / 恢复扫描按它过滤（[`store/app_db/jobs/access.rs`](../../../src-tauri/src/store/app_db/jobs/access.rs)） |
+| 主体 `principalId` | IPC：**当前 OS 用户名**；三条迁移链：字面量 `"datazen-local-user"` | IPC 走 [`local_principal()`](../../../src-tauri/src/platform/identity.rs)（`DATAZEN_DESKTOP_USER` → OS 用户名；取不到时**失败关闭**，不伪造占位主体）；迁移链写死字面量 | 落库进 `jobs.owner_principal_id`；列举 / 恢复扫描**同时**按它过滤（`WHERE organization_id=?1 AND owner_principal_id=?2`） |
+| 客户端实例 `clientInstanceId` | IPC：每次启动生成的 UUID；三条迁移链：字面量 `"datazen-local-client"` | IPC 走 [`new_client_instance_id()`](../../../src-tauri/src/platform/identity.rs)；迁移链写死字面量 | **不参与**列举 / 读取过滤（过滤键只有组织 + 主体）；只出现在认领栅栏的**自比自**里（[`store/app_db/jobs/owner.rs`](../../../src-tauri/src/store/app_db/jobs/owner.rs) 的 `j.claim_client_instance_id=?8`） |
+
+#### 本波只统一组织轴
+
+2026-10-09 引入 `jobs` 表的那次提交里，四处**生产代码**把组织写死成了另一个字面量
+`"datazen-local"`——它与规范值 `"datazen-desktop-local"` **不是同一个字符串**。两套值
+落在 `jobs.organization_id` 的同一列上 ⇒ 同一张表里落着两套组织。落库组织取自**受理方
+ctx**（[`store/app_db/jobs/admission.rs`](../../../src-tauri/src/store/app_db/jobs/admission.rs)），
+列举则按 `ctx.organization_id` **且** `ctx.principal_id` 过滤 ⇒ monitor / native / file /
+restore 任务（组织 = 规范值）与 transfer / schema-diff / sync 任务（组织 = 旧字面量）
+落在同一列的两个值上。
+
+本波把四处统一到 `crate::platform::LOCAL_ORGANIZATION_ID`
+（`bootstrap/app_state.rs` 的启动期恢复扫描、`commands/schema_diff/job.rs` 的 `job_ctx()`、
+`commands/data_transfer/job_api/runtime.rs` 的 `request_context()`、`commands/sync/jobs.rs`
+的 `durable_context()`），并用 `AppDb` 的 **v5 迁移**把已落库的旧行并回规范值
+（见[持久化模型 §4.1](persistence-model.md#41-桌面本地持久化现状已实现)）。
+
+**四处必须同波一起改**，不是四选一：启动期恢复扫描的第 2 段用**不限 kind** 的全量扫描，
+它必须与三条链的落库组织一致——漏改任一处，该特性的任务崩溃后就不再被标记待核验
+（这是真回归，不是「看不见而已」）。
+
+#### 主体轴为什么延后（更深的一处未修）
+
+组织统一**不等于**三根轴统一。主体轴目前仍然分裂，证据有三条：
+
+1. **列举的主体谓词**：[`store/app_db/jobs/access.rs`](../../../src-tauri/src/store/app_db/jobs/access.rs)
+   的 `WHERE organization_id=?1 AND owner_principal_id=?2`——组织匹配**不够**，主体也要匹配。
+2. **两边的取值不同**：IPC 上下文的主体是 **OS 用户名**
+   （[`local_principal()`](../../../src-tauri/src/platform/identity.rs)），三条迁移链的主体是
+   字面量 `"datazen-local-user"`。因此即使组织统一了，**用 IPC ctx 建的通用任务中心仍看不到
+   这三条链的任务**——它们的主体对不上。
+3. **统一主体是行为变更**：这批行会**突然**出现在通用列表里（可见性变化），并改变启动期
+   恢复扫描第 2 段与三条链之间的「同主体」前提；认领栅栏（`jobs/owner.rs` 的
+   `claim_client_instance_id=?8`）也建立在同一套主体取值上。主体轴一旦动，必须与认领、
+   恢复路径一起评估，**单独排期**，不夹带在「统一组织」这一波里。
+
+（当前可见症状有限：今天唯一以 IPC ctx 列举的路径是
+[`commands/native_tool.rs`](../../../src-tauri/src/commands/native_tool.rs) 的
+`native_tool_list_jobs`，它额外按 `kind` 过滤。但结构性事实不变——主体轴仍分裂。）
+
+#### 客户端实例轴为什么不动
+
+客户端实例 id **从不参与列举 / 读取过滤**（过滤键只有组织 + 主体），只在认领栅栏上
+**自比自**。字面量版「跨启动恒定」对后台任务本来就是合理语义：一条后台任务的 owner
+不随窗口关闭而变。把它改成每次启动新生成的 UUID 只会让认领栅栏更脆，不带来任何收益。
+
+#### 防回归闸门
+
+[`src-tauri/src/platform/org_literal_gate.rs`](../../../src-tauri/src/platform/org_literal_gate.rs)
+（`#[cfg(test)]`，随 `cargo test -p datazen --lib` 跑 ⇒ 进 CI）把「组织 id 被写死成字面量」
+钉成常驻断言：**生产代码**（排除 `#[cfg(test)]` 体与测试专用文件）里不得出现
+`OrganizationId::new("<字符串字面量>")`；取规范常量 `LOCAL_ORGANIZATION_ID` 或取运行时
+变量都**不算**违规。判据刻意只认这一种窄形态——不扫「形如 `datazen-…` 的字面量」，
+那会命中 crate 名与临时目录前缀，噪声大到闸门会被整体关掉。
+
+闸门自带三类用例：kill test（植入违规字面量 ⇒ 转红）、不误伤（`#[cfg(test)]` 夹具里的
+字面量**不**转红，**且必须同时断言扫描器确实看得见它**）、自证（把本波统一的四个站点
+改回字面量 ⇒ 必须转红；另有一条「生产代码里至少扫到 N 处构造调用」的地板）。
 
 ## 6. Tauri adapter 组装根（目标设计，未随 P1 实现）
 
