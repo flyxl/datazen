@@ -1,6 +1,15 @@
 /** Auto-split domain: query (en) */
 const pack = {
   'tableView.loadingData': 'Loading table data…',
+  // DB-02: the keyboard hints of the result grid.
+  'tableView.a11y.gridLabel': 'Data grid',
+  'tableView.shortcut.hint': 'Arrow keys move, Shift+Arrow extends, Enter edits',
+  'tableView.shortcut.enterEdit': 'Enter or F2 to edit the focused cell',
+  'tableView.shortcut.extendSelection': 'Shift+Arrow keys extend the selection',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown move one screen',
+  'tableView.shortcut.moveToEdge': 'Home/End go to row edge, Cmd+Home/End to grid edge',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A selects all rows',
+  'tableView.shortcut.tabLeavesGrid': 'Tab leaves the grid',
   'query.execute': 'Execute',
   'query.run': 'Run',
   'query.runSelection': 'Run Selection',

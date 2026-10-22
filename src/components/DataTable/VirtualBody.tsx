@@ -245,14 +245,20 @@ const VirtualRow = memo(function VirtualRow({
     [cellSelectionEnabled, onRowClick, onRowSelect, vRow.index],
   );
 
+  /**
+   * The row's own keyboard activation — only **without** the cell-selection
+   * contract: with the contract on, `Enter` belongs to the grid (it opens the
+   * editor), and a grid without a focus host has the row as its only way in.
+   */
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (cellSelectionEnabled) return;
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         onRowSelect(vRow.index);
       }
     },
-    [onRowSelect, vRow.index],
+    [cellSelectionEnabled, onRowSelect, vRow.index],
   );
 
   const handleRowDoubleClick = useCallback(() => {
@@ -314,10 +320,16 @@ const VirtualRow = memo(function VirtualRow({
   return (
     <div
       key={vRow.key}
-      tabIndex={0}
+      // Roving tabindex (DB-02 §4.4): with the cell-selection contract on, the
+      // scroll container is the only tab stop of the grid. Without the contract
+      // there is no focus host at all, so the rows keep their tab stop.
+      tabIndex={cellSelectionEnabled ? -1 : 0}
       role={cellSelectionEnabled ? 'row' : undefined}
       data-dt-row-view={vRow.index}
       data-dt-row-state={dirtyRow?.state ?? undefined}
+      // The row's own selection state (the cells carry `data-dt-selected` too, so a
+      // locator has to name the row: `[data-dt-row-view][data-dt-selected]`).
+      data-dt-selected={selected ? 'true' : undefined}
       aria-selected={cellSelectionEnabled && selected ? 'true' : undefined}
       className={cn(
         'absolute left-0 flex w-full cursor-pointer outline-none',

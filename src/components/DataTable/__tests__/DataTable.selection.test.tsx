@@ -115,8 +115,13 @@ function surface(container: HTMLElement): HTMLElement {
   return found;
 }
 
+/**
+ * The selected **cells**. The row containers carry `data-dt-selected` as well
+ * (DB-02: the row highlight needs a locator of its own), so a cell locator
+ * has to name the cell attributes.
+ */
 function selectedCells(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll('[data-dt-selected="true"]'));
+  return Array.from(container.querySelectorAll('[data-dt-row][data-dt-selected="true"]'));
 }
 
 beforeEach(() => {

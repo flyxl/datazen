@@ -143,7 +143,9 @@ describe('contract · [data-dt-selected]', () => {
     fireEvent.pointerDown(cellOf(container, 1, 'code'), { pointerId: 1, button: 0 });
     fireEvent.pointerUp(cellOf(container, 1, 'code'), { pointerId: 1, button: 0 });
 
-    const marked = container.querySelectorAll('[data-dt-selected]');
+    // The row containers carry `data-dt-selected` too (DB-02), so the cell
+    // locator has to name the cell attributes.
+    const marked = container.querySelectorAll('[data-dt-row][data-dt-selected]');
     expect(marked).toHaveLength(1);
     expect(marked[0].getAttribute('data-dt-selected')).toBe('true');
     expect(marked[0]).toBe(cellOf(container, 1, 'code'));
@@ -198,7 +200,7 @@ describe('contract · selection summary counts', () => {
       '4 rows × 3 columns',
     );
     // The page itself has 10 rows x 3 columns — the counts must be the covered ones.
-    expect(container.querySelectorAll('[data-dt-selected="true"]')).toHaveLength(12);
+    expect(container.querySelectorAll('[data-dt-row][data-dt-selected="true"]')).toHaveLength(12);
   });
 
   it('reports the covered counts, not the grid dimensions, for a 2x2 rectangle', () => {
