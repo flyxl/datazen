@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import {
-  planTsrsCommand,
+  planEngineCommand,
   planTypecheckCommands,
   readDriverFeatures,
   runTypecheck,
@@ -17,12 +17,11 @@ function seededRoot(features: string[]): string {
 }
 
 describe('ci-union-typecheck typecheck plan', () => {
-  it('runs the same codegen as pnpm build, then tsc', () => {
+  it('runs the same codegen as pnpm build', () => {
     const root = seededRoot(['driver-postgres']);
     const commands = planTypecheckCommands(root).map((c) => c.args.join(' ').replaceAll('\\', '/'));
     expect(commands[0]).toContain('generate-builtin-locales.mjs');
     expect(commands[1]).toContain('generate-menu-labels.mjs');
-    expect(commands[2]).toContain('typescript/bin/tsc --noEmit');
     // Invoked through process.execPath so the plan is identical on Windows.
     for (const command of planTypecheckCommands(root)) {
       expect(command.cmd).toBe(process.execPath);
@@ -36,27 +35,29 @@ describe('ci-union-typecheck typecheck plan', () => {
   });
 });
 
-describe('ci-union-typecheck runs the forward-looking engine too', () => {
-  it('plans a tsrs step over the same union', () => {
+describe('ci-union-typecheck typechecks with tsrs', () => {
+  it('plans the tsrs engine over the same union', () => {
     const root = seededRoot(['driver-postgres']);
-    const { command } = planTsrsCommand(root);
+    const { command, engine } = planEngineCommand(root);
     if (!command) {
-      // The platform has no tsrs binary. The step is skipped, not faked.
-      expect(planTsrsCommand(root).reason).toBeTruthy();
+      // The platform has neither engine: the gate must not pretend.
+      expect(engine).toBeNull();
       return;
     }
-    expect(command.args.join(' ')).toContain('tsrs');
     expect(command.args.join(' ')).toContain('--noEmit');
-    // Same reasoning as the tsc step: invoked through process.execPath so the
-    // plan is identical on Windows, macOS and Linux.
+    // Same reasoning as the codegen steps: invoked through process.execPath so
+    // the plan is identical on Windows, macOS and Linux.
     expect(command.cmd).toBe(process.execPath);
     expect(command.args.join(' ')).not.toContain('pnpm');
+    // tsrs is the engine the whole pipeline uses; tsc is the fallback for
+    // platforms where tsrs ships no binary.
+    expect(['tsrs', 'tsc']).toContain(engine);
   });
 
-  it('explains itself when the engine cannot run here', () => {
-    // A root with no node_modules at all: tsrs cannot resolve a binary there.
+  it('explains itself when no engine can run here', () => {
+    // A root with no node_modules at all: neither engine can resolve a binary.
     const empty = mkdtempSync(join(tmpdir(), 'datazen-union-nobins-'));
-    const { command, reason } = planTsrsCommand(empty);
+    const { command, reason } = planEngineCommand(empty);
     expect(command).toBeNull();
     expect(reason).toBeTruthy();
   });
