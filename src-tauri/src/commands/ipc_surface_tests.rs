@@ -142,13 +142,27 @@ mod ipc_contract_guards {
 ///
 /// The host maps a shared error onto [`super::error::CommandError`] and
 /// nothing else: which code a failure is, and what it means, is decided in
-/// `packages/feature-core`. A literal `grid.` prefix inside a command shell is
-/// therefore a rule that lives in the wrong place — and it would be invisible
-/// to every other check, because the shell still compiles and every unit test
-/// still passes.
+/// `packages/feature-core`. A rule code inside a command shell is therefore a
+/// rule that lives in the wrong place — and it would be invisible to every
+/// other check, because the shell still compiles and every unit test still
+/// passes.
 ///
-/// This guard scans the production command sources for such a literal. Test
-/// files are exempt: a test that *asserts* a code must name it.
+/// Two shapes are refused, because there are two ways to decide a code in the
+/// shell:
+///
+/// 1. **writing the code** — a `grid.` literal, in any form;
+/// 2. **naming the code** — a `ResultErrorCode` mention. The shell may ask the
+///    shared layer which code a reason maps to
+///    (`read_only_error_code(reason)`), but it may not pick one itself: the
+///    choice of code is a rule.
+///
+/// The scan removes comments first (both `//` and `/* … */`), and it does so
+/// with a scanner that knows about string literals — otherwise a `//` inside a
+/// string (a URL, say) would cut the line short and hide a code behind it,
+/// while a block comment that merely *mentions* a code would be reported as
+/// one.
+///
+/// Test files are exempt: a test that *asserts* a code must name it.
 #[test]
 fn the_command_shell_carries_no_rule_codes() {
     let mut checked = 0usize;
@@ -156,15 +170,17 @@ fn the_command_shell_carries_no_rule_codes() {
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("cannot read {}: {err}", path.display()));
         checked += 1;
-        for (number, line) in source.lines().enumerate() {
-            // A comment may talk about a code; only code may carry one.
-            let code = match line.find("//") {
-                Some(at) => &line[..at],
-                None => line,
-            };
+        let code = without_comments(&source);
+        for (number, line) in code.lines().enumerate() {
             assert!(
-                !code.contains("\"grid."),
+                !line.contains("grid."),
                 "{}:{} carries a rule code; the `grid.*` vocabulary belongs to the shared layer",
+                path.display(),
+                number + 1
+            );
+            assert!(
+                !line.contains("ResultErrorCode"),
+                "{}:{} names a rule code; the shell must ask the shared layer which code a reason maps to",
                 path.display(),
                 number + 1
             );
@@ -174,6 +190,71 @@ fn the_command_shell_carries_no_rule_codes() {
         checked > 5,
         "guard ran vacuously: only {checked} command source(s) were scanned"
     );
+}
+
+/// The source with its comments removed.
+///
+/// The scanner knows about string literals, so a `//` inside a string does not
+/// start a comment, and it knows about block comments, so a code mentioned in
+/// a doc block is not a code. Raw strings (`r"…"`) are not tracked as such:
+/// the only thing that matters here is that a *rule code* is never hidden
+/// behind one.
+fn without_comments(source: &str) -> String {
+    let chars: Vec<char> = source.chars().collect();
+    let mut out = String::with_capacity(source.len());
+    let mut index = 0usize;
+    let mut in_string = false;
+    let mut in_block_comment = false;
+    while index < chars.len() {
+        let current = chars[index];
+        let next = chars.get(index + 1).copied();
+        if in_block_comment {
+            if current == '*' && next == Some('/') {
+                in_block_comment = false;
+                index += 2;
+            } else {
+                index += 1;
+            }
+            continue;
+        }
+        if in_string {
+            out.push(current);
+            if current == '\\' {
+                if let Some(escaped) = next {
+                    out.push(escaped);
+                    index += 2;
+                } else {
+                    index += 1;
+                }
+                continue;
+            }
+            if current == '"' {
+                in_string = false;
+            }
+            index += 1;
+            continue;
+        }
+        if current == '/' && next == Some('/') {
+            while index < chars.len() && chars[index] != '\n' {
+                index += 1;
+            }
+            continue;
+        }
+        if current == '/' && next == Some('*') {
+            in_block_comment = true;
+            index += 2;
+            continue;
+        }
+        if current == '"' {
+            in_string = true;
+            out.push(current);
+            index += 1;
+            continue;
+        }
+        out.push(current);
+        index += 1;
+    }
+    out
 }
 
 /// The production sources of the IPC command shell.
