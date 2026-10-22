@@ -257,6 +257,15 @@ Host / Workflow 只依赖 Command Definition 和 JSON input/output，不按 data
 
 标准 SQL Driver 默认提供 query / execute，以及 schema catalog commands；Driver 可以扩展管理、KV、NoSQL 等 Command。
 
+**Command 的 `permissions` 字段不是 Tauri ACL 权限。** `DriverCommandDefinition::permissions`（`packages/driver-api/src/command.rs`）里的标识符是 **DataZen 自己的权限词表**，用途只有风险分类：`required_access_level()` 与 `check_command_access()` 按它把命令分成读 / 写 / 高危三档。`redis:allow-info`、`redis:allow-set-string` 这类名字**长得像** Tauri ACL 权限，但两者不是一回事：
+
+| | Driver Command 权限词表 | Tauri ACL 权限 |
+| --- | --- | --- |
+| 来源 | 驱动在 `command_definitions()` 里自己写的标识符 | 驱动的 Tauri 插件 `permissions/` manifest（构建期生成的 ACL 权限清单） |
+| 消费方 | `required_access_level()` / `check_command_access()`——只做风险分类 | tauri-build 的 ACL 校验与 `src-tauri/capabilities/default.json` |
+
+redis 驱动已随「Pub/Sub 事件出口改走形态中立 inventory 注册」删除 Tauri 插件与 `permissions/` 目录（PR #95），驱动侧不再有任何 `tauri` 依赖；因此**仓库里现在不会生成任何 `<id>:default` 权限**——`scripts/resolve-drivers.mjs` 的 `syncDriverCapabilities` 只为声明了非空 `tauriPlugin.commands` 的驱动并入 `<tauriPlugin.id>:default`，而当前没有任何驱动满足该条件。读到 `<id>:allow-*` 时不要拿它去 capabilities 文件里找对应条目。
+
 ### 3.1 驱动推送事件的归属字段
 
 除「Host 调 Driver」外，驱动还可以**向 Host 推送事件**（Tauri event）。推送事件的载荷里如果带身份字段，那个字段必须是 **Host 认得的 id**，而不是驱动内部的句柄——否则前端按它过滤时永远匹配不上，事件会被静默丢弃。
