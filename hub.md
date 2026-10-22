@@ -122,6 +122,45 @@ Rust（Wave 7 收尾时实测）：宿主 1429 / feature-core 527 / driver-api 3
 
 ⇒ 记在这里是为了**别让人误以为收编的 4 个文件覆盖了它**。
 
+## Wave 11 · 时间戳格式化（GitHub issue #32）· **4 轨真并行**
+
+**前置已落地**：契约提交 `82f5e4185`（`src/types/timestamp_format.ts` + `src/lib/timestampFormatEngine.ts` 默认实现 + `src/components/DataTable/TimestampFormatContext.tsx` 壳）。**双引擎 typecheck EXIT=0。**
+
+### 四轨与各自拥有的文件
+
+| 轨 | 分支 | 拥有（互不重叠） | 内容 |
+| --- | --- | --- | --- |
+| **A `timestamp-format`** | `feature/timestamp-format` | `src/lib/timestampFormat.ts`(新)、`src/lib/timestampFormatEngine.ts`(改内部)、`src/components/DataTable/CellRenderer.tsx`(改)、`src/lib/__tests__/` | 规则引擎 + **三级优先级**（表级覆盖 > 规则 > 全局）+ 格式化本体（`iso` / `iso-tz` / `locale`）+ 引擎接进渲染路径 + **ReDoS 防护** |
+| **B `timestamp-settings`** | `feature/timestamp-settings` | `src/windows/settings/TimestampFormattingSection.tsx`(新)、`SettingsContent.tsx`(改)、`src/types/settings.ts`(改)、`src/stores/settingsStore.ts`(改)、i18n | 设置 UI：全局开关 + 格式选择 + **规则编辑器** + 预览窗格 |
+| **C `timestamp-overrides`** | `feature/timestamp-overrides` | `src-tauri/src/store/timestamp_overrides.rs`(新)、`store/{mod,models}.rs`(改)、`commands/timestamp_overrides.rs`(新)、`commands/mod.rs`、`bootstrap/run.rs`、`packages/backend-client/src/{types/tableData,transport,tableDataClient}.ts`、`src/commands/`(新)、`src/platform/tauriBackendTransport.ts` | 表级覆盖的**存储**（宿主 store）+ 三条命令 + web 通路四元组 |
+| **D `timestamp-column`** | `feature/timestamp-column` | `src/components/DataTable/useDataTableContextMenu.ts`(改)、`src/lib/dataTableContextMenu.ts`(改)、`src/windows/connection/TableView.tsx`(改)、列头菜单的格式化面板(新)、i18n | 列头右键「格式配置」+ 每列覆盖 UI + 在 `TableView` 挂 Provider |
+
+**冲突面：只有 `src/locales/en/query.ts`（B 与 D 各加词条）** ⇒ 预留插入位即可自动合并。
+
+### 为什么能比 Wave 8 更并行（三条机制）
+
+1. **共享的只有契约，而契约已提前提交** ⇒ 四条轨**编译期无依赖**（Wave 8 的两轨是各自独立，不需要这一步；这里是四轨共用一个「引擎」概念，不预置契约就必然互等）。
+2. **引擎经上下文到达渲染侧** ⇒ 不必改 `DataTable.tsx` / `VirtualBody.tsx` / `GridCell.tsx` —— **那三个同时是 05 册的落点**，多占一个就多一份冲突面。
+3. **配置与覆盖的数据形状由契约固定** ⇒ C 轨的端口 DTO 与 D 轨用的类型是**同一形状**。⚠️ **必须加一条逐字段的编译期断言**（照命名视图轨 `FilterConditionConnectorMatches` 的做法）—— 否则就是「同一个 DTO 两种形状」那个老坑。
+
+### 与 issue 方案的 5 处偏离（已裁定）
+
+| # | issue 写的 | 改成 | 理由 |
+| --- | --- | --- | --- |
+| 1 | 类型加进 `src/types/index.ts` | 新文件 `src/types/timestamp_format.ts` | `index.ts` 现 707 行，本批刚因为 800 行红线搬走过 AI 类型；settings 类型另有 `src/types/settings.ts` |
+| 2 | 规则用 `RegExp` | **模式字符串** + 运行时编译 + 防 ReDoS | `RegExp` 不可序列化（存不进 settings JSON），且用户要能编辑它 |
+| 3 | 表级覆盖「Persist in connection metadata」 | **独立 store**（宿主）+ 薄命令 + 端口 | 连接档案内会长出一个「每表每列显示规则」的杂物袋；规则本身是 per-table 的，`connectionId` 只是索引 |
+| 4 | `custom` 格式 | **Wave 11 不做** | issue 的示例是 **Java 风格** `yyyy-MM-dd`，JS 生态是 `YYYY-MM-DD` —— 小写 `yyyy` 在 JS 里是「年内的第几天」。语义不定死就实现＝埋雷。issue 自己也标了 future enhancement |
+| 5 | BIGINT 自动识别 | **默认关闭** + 命中时**显式显示解释**（Unix 秒/毫秒）+ 允许逐列覆盖 | 一个叫 `at` 的 BIGINT 列可能是计数。issue 的三条要求全部保留 |
+
+### 保留现状的一条语义（加时区支持时**不许**改）
+
+`src/lib/formatters.ts` 的 `formatTimestamp` 对**没有时区标识的库文本**（`2026-03-01 00:15:30`）是**原样返回**的 —— 因为 `new Date()` 会把墙钟文本按**本地时区**解释，于是每个单元格被偏移一个本地 UTC 偏移量，还会拼上一个假的 `Z`。⚠️ 这是这个仓库已经踩过的坑，Wave 11 的格式化本体必须沿用它。
+
+### 验收口径（issue 的 8 条 → 本仓形态）
+
+Settings UI（`iso`/`iso-tz`/`locale`）· 规则引擎（表名/列名/列类型三种匹配）· 表级覆盖的持久化 · 时区偏移格式 · Unix 秒 vs 毫秒 · **三级优先级** · **opt-in（默认关闭，既有行为逐字节不变）** · 文档落到 `docs/features/`（允许的文档类型）· E2E 留给 R 阶段。
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
