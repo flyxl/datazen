@@ -442,4 +442,60 @@ mod keyset {
         let paging = data.paging.expect("the read reports its paging");
         assert_eq!(paging.mode, PagingMode::Keyset);
     }
+
+    #[tokio::test]
+    async fn a_jumped_to_page_holds_that_page_and_hands_back_its_own_last_row() {
+        // A caller that jumps (no boundary) lands on page 2. Reading that page
+        // from the top of the table would return the first row under the label
+        // of the third — silently wrong data, not a slow page. So the rows are
+        // asserted, not just the report: `rows_start_at_offset` makes the mock
+        // behave like a table whose pages differ from each other.
+        let four_rows = || {
+            vec![
+                vec![Some(Value::Integer(1)), Some(Value::String("alice".into()))],
+                vec![Some(Value::Integer(2)), Some(Value::String("bob".into()))],
+                vec![Some(Value::Integer(3)), Some(Value::String("carol".into()))],
+                vec![Some(Value::Integer(4)), Some(Value::String("dave".into()))],
+            ]
+        };
+        let test = TestAppState::with_options(MockDriverOptions {
+            rows_start_at_offset: true,
+            count_total: 4,
+            query_rows: four_rows(),
+            ..keyset_driver()
+        })
+        .await;
+        let (_, conn_id) = test.save_and_connect("target-read-keyset-jump").await;
+
+        let mut request = request("target-read-keyset-jump", &conn_id);
+        request.page = 2;
+        request.page_size = 1;
+        request.skip_count = Some(true);
+        request.after_key = None;
+        let data = table_target::read(&test.state, request)
+            .await
+            .expect("the read succeeds");
+
+        assert_eq!(data.rows.len(), 1, "one row per page");
+        assert!(
+            matches!(data.rows[0][0], Some(Value::Integer(3))),
+            "the jumped-to page holds its own rows, not the table head: {:?}",
+            data.rows[0][0]
+        );
+
+        let paging = data.paging.expect("the read reports its paging");
+        assert_eq!(paging.mode, PagingMode::Offset);
+        assert_eq!(
+            paging.unavailable_reason,
+            Some(KeysetUnavailableReason::NotAdjacent),
+            "a jump is offset-read and says why"
+        );
+        // The boundary is taken from the rows this page holds, so the next seek
+        // continues after `carol` instead of repeating or skipping a row.
+        assert_eq!(
+            paging.next_after_key,
+            Some(vec![CursorValue::Integer(3)]),
+            "the boundary is this page's last row"
+        );
+    }
 }
