@@ -222,6 +222,30 @@ Tester 查出：`src/windows/connection/result-workspace/ResultTableView.tsx` �
 1. **「并集」不是免费的**：它保住了在用功能，但**造出了一个今天关着、将来一接驱动就打开的洞**。⇒ 「A 或 B」的合成必须配一个**显式的单一启用开关**，否则两个可选路径的并集天然会打开错误的那条。
 2. **契约的文件清单会漏掉缺陷本体所在的文件**（10 册漏了 `ResultTableView.tsx`）⇒ 分册的 §6 清单**不能**当作「缺陷在哪」的依据；判据要看 PRD 总纲里「缺陷本体」那一段。
 
+## 轨 A `editors`（05 册）的 8 项裁定
+
+交付 6 提交（HEAD `3243330c5`）。**8 项偏离全部接受**，其中一项是**协调者纠正了自己先前的指示**：
+
+| # | 偏离 | 裁定 |
+| --- | --- | --- |
+| 1 | `grid.cell.invalidValue` 进了 `PRODUCER_PENDING` | **接受，且纠正我先前的指示**（我先前说「不许进，因为它有真实 Rust 生产者」——**错了**：这个码由**前端**产生，非法值走不到 Rust，后端没有这个拒绝语义）。⇒ **`PRODUCER_PENDING` 的含义是「这个码不由 Rust 生产」，不是「还没人生产」**（守卫的注释本来就这么写）。已同步契约 00 §8.2 第 2 行与表下的通则 |
+| 2 | `DataTable` 的 8 个新 prop 合并成一个 `cellEditing: CellEditingContext` | 接受：散 prop + 文档注释在给定预算下必然超（实测 +58/+61 vs 预算 +40/+40） |
+| 3 | JSON / long-text 编辑器是格内多行 textarea，不是弹层 | 接受：弹层会把 Apply/Cancel 搬进控件，与「提交时机只有一处（`CellEditorHost`）」直接冲突 |
+| 4 | `readOnlyReasonMessageKey` 放在 `cellEditorKind.ts`（不在 `gridErrors.ts`） | 接受：`gridErrors.ts` 是 01 的骨架，本轨只被授权碰 `grid.cell.*` 块；映射仍唯一 |
+| 5 | 带时区的 `time`（`timetz`）走文本编辑器 | 接受：选择器装不下偏移量，用它会**悄悄挪动瞬时**（契约 §7 #8） |
+| 6 | `money` 归 `text` 而非 `number` | 接受：契约 §3.5 的规则表把 money 列在数值族，但 **§7 #21 明写「money 归 text、不做金额解析」** ⇒ §7 更具体 |
+| 7 | `FILTER_OPERATOR_META.columnFamilies` → `cellTypes` | 接受（08 §3.5 的设计形状；全仓无外部消费者） |
+| 8 | `CHANGELOG.md` 记三条用户可见行为变化 | 接受（算子集对 `enum`/`uuid` 收窄、JSON 拒绝提交、`point` 改判文本色）；并行轨未改 CHANGELOG ⇒ 无冲突 |
+
+### 两处**环境**问题（不是代码问题，但会让门禁不可比）
+
+1. **驱动集**：两个 Wave 8 工作树是脚本默认的 **basic** 集（10 驱动、无 sqlserver），而集成分支是 **all** 集（21 驱动）⇒ 同一份宿主单测的绿/红**不可比**（12-testing D6）。已把两棵树重新铺成 all，并要求复测在 all 集下重跑。
+2. **i18n 追加位冲突**：两轨都往 `src/locales/en/query.ts` **末尾**追加（editors 36 条、result-grid 19 条）⇒ 合流必然文本冲突 ⇒ 手工取并集（纯追加、互不重叠 ⇒ 零语义风险）。
+
+### i18n 第三轮的需求已确定（等 Wave 8 两轨落地后开）
+
+合流后新增的 en key：named-views **22** + editors **36** + result-grid **19** = **77 条 × 9 语种 = 693**。⚠️ 门禁的 stale 规则**没有符号豁免**（实测把 `'≈ {count}'` / `'—'` 原样写进语种会立刻报 stale）⇒ 纯符号型新 key 会被逼着改用本族措辞 —— 这条盲区值得单独立项（与 `i18n-key-collision-check` 合并考虑）。
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |

@@ -1050,7 +1050,7 @@ export interface DataGridCapabilities {
 | # | 错误码 | 归属分册 | 触发条件 | 用户可见文案要求 |
 | --- | --- | --- | --- | --- |
 | 1 | `grid.cell.readOnly` | 05 / 04 | 连接级只读 / 无主键表 / 生成列〔契约审计修订 2026-10-21〕IB4-D6：04 的 `mod.rs`（连接只读）与 `row_identity.rs`（表无主键）也在生产，非 05 独占 | 说明不可编辑的**具体原因**，禁止只显示「不可编辑」 |
-| 2 | `grid.cell.invalidValue` | 05 | 类型化编辑器解析失败 | 说明期望类型与收到的值 |
+| 2 | `grid.cell.invalidValue` | 05 | 类型化编辑器解析失败 | 说明期望类型与收到的值。〔契约审计修订 2026-10-22〕Wave 8 轨 A 实装后确认：这是**前端产生**的拒绝——非法值**根本走不到 Rust**（后端没有这个拒绝语义），所以它**天然**没有 Rust 生产者 |
 | 3 | `grid.cell.ambiguousIdentity` | 03 / 04 | 一页内出现重复行身份键〔契约审计修订 2026-10-21〕IB4-D6：04 的 `change_set::canonicalize_changes` 也在生产 | 说明该页无法安全定位，请缩小范围 |
 | 4 | `grid.cell.noRowIdentity` | 03 / 04 | 目标行的行身份**无法唯一定位一行**：身份为空、身份含 NULL、缺主键列、**多出非主键列**——W-3 要求身份列集与主键全集逐字相等，任一不满足都归本码〔契约审计修订 2026-10-21〕IB3-D3：前端动作相同（重建行身份），故不为此再拆新码 | 说明该行不可写入，并指出缺/多的列名 |
 | 5 | `grid.commit.stalePlan` | 04 / 06 | `fingerprint` 不匹配；**或**计划与当前上下文不再一致（`config_revision` / 库 / schema / 会话漂移，或执行前配置变更；**不含「请求里的 driver_type 与连接 profile 不一致」**——那属调用方错误，由 `validate_connection_facts` 以普通 `Validation` 拒绝、不带码，见下方〔生产者盘点〕的例外说明）〔契约审计修订 2026-10-21〕IB3-D1：六条「后端唯一可知、语义等于计划失效」的拒绝统一到本码，前端才能统一走「重新预览」 | 说明计划已过期，要求重新预览 |
@@ -1124,6 +1124,8 @@ export interface DataGridCapabilities {
 > 本批已明细的缺口：`grid.insert.noWritableColumn`（需 `ColumnSchema` 有 generated/identity 标记）、`grid.selection.*` 三码（越界一律 `clampCellCoord → null`，从不抛错）、`grid.cell.invalidValue` / `grid.paste.*` / `grid.filter.*` / `grid.fk.*` / `grid.result.*` / `grid.paging.*` 等待各自分册落地。
 
 > **落地追加说明（2026-10-21，Wave 1 `grid-selection`）**：43–45 是分册 01 实装时确认必需的三个码——原 §8.1 把 `grid.selection.*` 指派给 01 建骨架，但 §8.2 的闭集里**一行都没有**这个域，属于契约自身的缺口。三个码已收敛在 `src/lib/gridErrors.ts` 的 `GRID_ERROR_CODES` 单表，若后续裁定要合并/改名，只改一处 + 两处断言。
+
+> 〔契约审计修订 2026-10-22〕**`PRODUCER_PENDING` 的含义是「这个码不由 Rust 生产」，不是「还没人生产」。** 登记守卫（`src/lib/__tests__/gridErrors.registration.test.ts`）要求「每个注册的码要么有 Rust 生产者、要么列进 `PRODUCER_PENDING`」，于是**前端产生的码只能列进例外表**——`grid.cell.invalidValue` 就是这样：类型化编辑器在**浏览器里**拒绝非法值，后端从未、也不该抛它。⚠️ 因此**不得**为了「让它有生产者」而在后端编一个假的拒绝语义；也**不得**因为它进了例外表就断言「注册表与生产者一一对应」。
 
 **域 → 注册表前缀的映射**（`classifyGridError` 按此表最长前缀匹配）：
 
