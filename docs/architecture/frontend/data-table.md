@@ -236,7 +236,11 @@
 
 菜单项与 `⌘C` 都走 `copyToClipboard`（`src/lib/fetchRelationDdl.ts`）的三级降级：`navigator.clipboard.writeText` → `invoke('write_clipboard')` → `document.execCommand('copy')`。WKWebView 在用户手势结束后会拒绝第一级，菜单点击恰好就是这种情形（缺陷 G5），所以只写 `writeText` 的复制会静默失败。空文本按**失败**处理（`copyToClipboard('')` 返回 `false`），不会点亮「已复制」。
 
-复制成功后由 `recordClipboardSource` 记下「来源表 + 列名」，供粘贴时的同名对齐与「同表免确认」判定；它只能**抬高**门槛（证明同表），绝不用于自动放行写入。
+复制成功后由 `recordClipboardSource(source, text)` 记下「来源表 + 列名 + **复制出去的那段文本**」。粘贴时只经 `sourceForClipboardText(pasteText)` 取来源：**文本对不上就等于来源未知**，退回「外部粘贴」路径（按位置对齐 + 强制确认）。
+
+这条绑定不是洁癖。来源记录是模块级变量，与系统剪贴板当前内容毫无关系——用户在 Excel 里复制一次，它照样声称「来自本表」。没有文本绑定时，这会让一次外部粘贴**跳过确认**并按**陈旧的列名**写入，即 G12「静默写错列」换个入口再来一次。有了绑定，「来源」与「剪贴板内容」是同一个事实而不是两个：证明不了就不证明，失败方向永远是「问用户」，不是「静默写」。
+
+换行比较前会归一（`\r\n?` → `\n`），因为 Windows 经手剪贴板会把 `\n` 改写成 `\r\n`；逐字节比会让同表粘贴在那个平台上每次都弹确认。
 
 `⌘C` / `⌘V` 绑定在滚动容器上（`useDataTableClipboardDom`），三条守卫：没有 `clipboard` 桥则完全不挂监听（老行为）；编辑器或任何输入控件打开时不拦截；没有落点单元格时不拦截 `paste`。
 
