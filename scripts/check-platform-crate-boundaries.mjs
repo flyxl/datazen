@@ -238,6 +238,18 @@ const RULES = Object.freeze([
     specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
     note: 'portable feature services depend on shared domain/runtime ports, never the desktop or a server transport',
   },
+  {
+    id: 'F-13',
+    subjects: ['tunnel'],
+    subjectsFromSpec: true,
+    forbiddenLayers: ['host'],
+    forbiddenCrates: ['tauri'],
+    // Same form as F-02 / F-09: the §2.4 row also names `datazen`, which the
+    // host layer already covers.
+    specSubsetOnly: true,
+    specTokens: ['tauri'],
+    note: 'the shared tunnel mechanisms stay form-neutral, so desktop and web link the same code',
+  },
 ]);
 
 /**

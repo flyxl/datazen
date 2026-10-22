@@ -1,0 +1,26 @@
+[package]
+name = "datazen-tunnel"
+version = "0.0.1"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Form-neutral tunnel mechanisms (HTTP CONNECT proxy / WebSocket relay / SSH forwarding) shared by the desktop host and the future web form"
+
+[dependencies]
+# The tunnel configs and the error type live in the driver contract crate, which
+# every form already links.
+datazen-driver-api = { workspace = true }
+futures-util = "0.3"
+russh = "0.60"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "macros", "sync", "time", "io-util", "net"] }
+tokio-rustls = "0.26"
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+tokio-util = { version = "0.7.19", features = ["rt", "compat"] }
+tracing = "0.1"
+url = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+webpki-roots = "0.26"
+
+[dev-dependencies]
+tempfile = "3.27.0"

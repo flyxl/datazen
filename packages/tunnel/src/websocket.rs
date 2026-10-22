@@ -170,7 +170,7 @@ fn resolve_url(
 /// spawns the accept loop — so on its own it reports success even for an
 /// unreachable relay. This is the step that actually establishes the upstream
 /// leg, and it is what the standalone tunnel connectivity probe uses.
-pub(crate) async fn verify_upstream(
+pub async fn verify_upstream(
     cfg: &WebSocketTunnelConfig,
     remote_host: &str,
     remote_port: u16,
@@ -253,7 +253,7 @@ async fn connect_ws(
     // `wss://` hands off to rustls inside tungstenite; install the process-wide
     // provider first so its `ClientConfig::builder()` cannot panic
     // (tunnel-backend-BUG-004). Idempotent, so it is safe per connection.
-    crate::tls::install_default_crypto_provider();
+    crate::install_default_crypto_provider();
 
     let mut request = url
         .into_client_request()
