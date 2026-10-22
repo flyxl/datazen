@@ -151,6 +151,10 @@ const AUDITED: &[(&str, &str)] = &[
         "tests/tunnel_route_network_provider.rs",
         include_str!("../../../tests/tunnel_route_network_provider.rs"),
     ),
+    (
+        "src/tunnel/form_neutrality.rs",
+        include_str!("../form_neutrality.rs"),
+    ),
 ];
 
 /// 被登记的端口实现数与含端口实现的文件数：夹具端口 + 四个测试轨端口 = 5 / 5。

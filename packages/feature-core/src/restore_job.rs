@@ -693,9 +693,7 @@ mod tests {
         let repository = Arc::new(InMemoryJobRepository::new(clock.clone(), 60));
         let host = JobHost::new(
             repository,
-            Arc::new(Mutex::new(BudgetLedger::new(
-                BudgetConfig::desktop_default(),
-            ))),
+            Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::local_default()))),
             clock.clone(),
         );
         let context = context("alice");

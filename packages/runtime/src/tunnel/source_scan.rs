@@ -147,6 +147,122 @@ pub(super) fn char_literal_len(b: &[u8], at: usize) -> Option<usize> {
     None
 }
 
+/// 一个**字符串字面量**：内容原文（**未解转义**）与其在源文本中的**字节**下标。
+#[derive(Debug, Clone)]
+pub(super) struct Literal {
+    pub text: String,
+    pub at: usize,
+}
+
+/// 扫出文本里全部**字符串字面量**（含字节串 `b"…"`、裸字符串 `r"…"` / `r#"…"#`）。
+///
+/// 与 [`blank`] 认的是**同一套词法边界**（行注释 / 块注释 / 字符字面量 / 裸字符串），
+/// 区别只在**收集**而不是**抹除**。因此两者对「哪一段是字面量」的判断必然一致 ——
+/// [`form_neutrality`](super::form_neutrality) 那道闸门正是靠这一点自证扫描没瞎。
+///
+/// 字符字面量**不算**字符串字面量，但同样被整体跳过：`'"'` 里的引号若被当成
+/// 字符串起点，扫描会一路吞到下一个引号、把中间的**真字面量**整片漏掉
+/// （与 [`blank`] 注释里记的是同一个坑，故两处必须共用同一套跳过规则）。
+///
+/// **下标是字节下标**：源文件里有中文注释时，字符下标与字节下标会错位。
+/// 取内容一律按**字节**切片再转 UTF-8（见 [`slice_bytes`]），不做字符下标运算。
+pub(super) fn literals(text: &str) -> Vec<Literal> {
+    let b = text.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < b.len() {
+        // 行注释
+        if b[i] == b'/' && b.get(i + 1) == Some(&b'/') {
+            while i < b.len() && b[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        // 块注释（含 `/*` 开头的文档块）
+        if b[i] == b'/' && b.get(i + 1) == Some(&b'*') {
+            i += 2;
+            while i < b.len() {
+                if b[i] == b'*' && b.get(i + 1) == Some(&b'/') {
+                    i += 2;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+        // 字符 / 字节字面量：不是字符串，整体跳过
+        if let Some(len) = char_literal_len(b, i) {
+            i += len;
+            continue;
+        }
+        // 裸字符串 r"…" / r#"…"#
+        if b[i] == b'r' && matches!(b.get(i + 1), Some(b'"') | Some(b'#')) {
+            let mut j = i + 1;
+            let mut hashes = 0usize;
+            while b.get(j) == Some(&b'#') {
+                hashes += 1;
+                j += 1;
+            }
+            if b.get(j) == Some(&b'"') {
+                let close: String = std::iter::once('"')
+                    .chain(std::iter::repeat_n('#', hashes))
+                    .collect();
+                let content_start = j + 1;
+                let mut k = content_start;
+                while k < b.len() {
+                    // `b[k] == b'"'` 是 ASCII 字节 ⇒ `k` 必落在字符边界上，
+                    // `text[k..]` 不会 panic（与 `blank` 里同一处判据同理由）。
+                    if b[k] == b'"' && text[k..].starts_with(&close) {
+                        out.push(Literal {
+                            text: slice_bytes(text, content_start, k),
+                            at: content_start,
+                        });
+                        i = k + close.len();
+                        break;
+                    }
+                    k += 1;
+                }
+                if k >= b.len() {
+                    i = b.len();
+                }
+                continue;
+            }
+        }
+        // 普通字符串 / 字节串字面量
+        if b[i] == b'"' || (b[i] == b'b' && b.get(i + 1) == Some(&b'"')) {
+            let is_byte = b[i] == b'b';
+            let content_start = i + usize::from(is_byte) + 1;
+            let mut k = content_start;
+            while k < b.len() {
+                if b[k] == b'\\' {
+                    k += 2;
+                    continue;
+                }
+                if b[k] == b'"' {
+                    out.push(Literal {
+                        text: slice_bytes(text, content_start, k),
+                        at: content_start,
+                    });
+                    i = k + 1;
+                    break;
+                }
+                k += 1;
+            }
+            if k >= b.len() {
+                i = b.len();
+            }
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// 按**字节**切片取一段文本（`from` / `to` 是字节下标）。
+fn slice_bytes(text: &str, from: usize, to: usize) -> String {
+    String::from_utf8_lossy(&text.as_bytes()[from..to]).into_owned()
+}
+
 pub(super) fn is_ident_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }

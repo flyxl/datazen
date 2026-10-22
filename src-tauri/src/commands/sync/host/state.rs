@@ -48,11 +48,8 @@ static REPOSITORY: LazyLock<Arc<InMemoryJobRepository>> =
     LazyLock::new(|| Arc::new(InMemoryJobRepository::new(CLOCK.clone(), CLAIM_TTL_SECS)));
 
 #[cfg(test)]
-static LEDGER: LazyLock<Arc<Mutex<BudgetLedger>>> = LazyLock::new(|| {
-    Arc::new(Mutex::new(BudgetLedger::new(
-        BudgetConfig::desktop_default(),
-    )))
-});
+static LEDGER: LazyLock<Arc<Mutex<BudgetLedger>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::local_default()))));
 
 /// Frozen ChangeSet artifacts, keyed by planId. They are process-local and
 /// must be rebuilt through a fresh compare after application restart.

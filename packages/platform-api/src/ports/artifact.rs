@@ -124,8 +124,9 @@ impl ByteRange {
 /// 受控导出目标。**不接受任意服务端绝对路径**。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExportSink {
-    /// 桌面：保存对话框返回的句柄。
-    DesktopDialogHandle(LeaseId),
+    /// 宿主交互句柄：由宿主自己生成并持有（桌面形态是保存对话框返回的句柄，
+    /// 浏览器形态是宿主给的下载句柄）。端口**不解析**这个句柄，只把它交还给宿主。
+    HostHandle(LeaseId),
     /// server：服务端授权的存储路径（由 host 生成，不来自请求体）。
     ServerAuthorizedPath(OrganizationId, String),
 }
@@ -400,12 +401,12 @@ mod tests {
     #[test]
     fn export_sink_has_no_variant_for_an_arbitrary_server_path() {
         // 两个变体都由 host 侧产生句柄或授权路径；请求体无法直接塞进任意绝对路径。
-        let desktop = ExportSink::DesktopDialogHandle(LeaseId::new("dialog-1"));
+        let host = ExportSink::HostHandle(LeaseId::new("dialog-1"));
         let server = ExportSink::ServerAuthorizedPath(
             OrganizationId::new("org-1"),
             "/data/exports/x.parquet".into(),
         );
-        assert_ne!(desktop, server);
+        assert_ne!(host, server);
         let source = include_str!("artifact.rs");
         let sink_block = &source[source.find("pub enum ExportSink").unwrap()..];
         let sink_block = &sink_block[..sink_block.find("\n}").unwrap()];
