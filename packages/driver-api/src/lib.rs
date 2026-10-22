@@ -3,6 +3,10 @@
 //! External drivers depend on this crate and implement [`DatabaseDriver`].
 //! They register themselves at link time via the [`register_driver!`] macro,
 //! which uses the [`inventory`] crate for zero-code discovery in the host binary.
+//!
+//! A driver that produces events for a user-facing surface declares a
+//! [`DriverEventOutlet`] and registers it the same way; the host installs
+//! its own form-neutral [`DriverEventSink`] at startup. See [`event_sink`].
 
 pub use async_trait::async_trait;
 pub use inventory;
@@ -15,6 +19,7 @@ pub mod command;
 pub mod command_catalog;
 pub mod dialect;
 mod explain_plan;
+pub mod event_sink;
 mod factory;
 pub mod filters;
 pub mod mock_driver;
@@ -59,6 +64,9 @@ pub use command::{
 pub use command_catalog::{CommandCatalog, LegacyCommandCatalog};
 pub use dialect::{BoundParameterLimit, LegacySqlDialect, SqlDialect};
 pub use explain_plan::{normalize_mysql_explain_plan, normalize_postgres_explain_plan};
+pub use event_sink::{
+    iter_event_outlets, DriverEvent, DriverEventOutlet, DriverEventSink,
+};
 pub use factory::*;
 pub use query_stream::{
     append_select_limit, emit_execute_statement, emit_multi_query_as_stream, stream_decoded_rows,
