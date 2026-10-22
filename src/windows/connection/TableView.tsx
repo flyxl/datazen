@@ -29,6 +29,7 @@ import { useTableForeignKeyNavigation } from './useTableForeignKeyNavigation';
 import { useDirtyIndex } from './useDirtyIndex';
 import { PendingPlanDialog } from './PendingPlanDialog';
 import { useTableDraftRows } from './useTableDraftRows';
+import { useNamedViewMenu } from './useNamedViewMenu';
 import { isComposingEvent, isEditableTarget } from '../../lib/gridEventGuards';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import {
@@ -260,6 +261,21 @@ export function TableView({
   const draftFilterLogic = ts?.draftFilterLogic ?? 'and';
   const filterPanelOpen = ts?.filterPanelOpen ?? false;
   const visibleColumns = ts?.visibleColumns ?? null;
+
+  /** The saved-views menu, or nothing when this backend cannot serve it. */
+  const namedView = useNamedViewMenu({
+    connectionId,
+    database,
+    schema,
+    tableName,
+    filters,
+    filterLogic,
+    sorts,
+    draftFilters,
+    draftFilterLogic,
+    visibleColumns,
+    actions,
+  });
 
   const displayedColumns = useMemo(() => {
     if (visibleColumns === null) return columns;
@@ -532,6 +548,7 @@ export function TableView({
         onSetFilters={actions.setFilters}
         onClearFilters={actions.clearFilters}
         onAddDraftRow={() => drafts.addDraftRow()}
+        namedView={namedView}
       />
       {readOnlyTipVisible && (
         <div

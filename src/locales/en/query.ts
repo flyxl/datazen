@@ -413,6 +413,8 @@ const pack = {
   'filter.incomplete': 'Needs a value, not applied',
   'filter.errorIncomplete':
     'Filter not applied: one condition has no value yet (column "{column}")',
+  'filter.errorUnsupportedOperator':
+    'This database does not support the "{operator}" filter. Try {alternatives}.',
   'filter.tokensPlaceholder': 'Type a value, press Enter',
   'filter.tokenRemove': 'Remove value',
   'filter.betweenInverted':
@@ -423,6 +425,29 @@ const pack = {
   'filter.connectorInherited': 'Using the logic of all conditions',
   'filter.likeCaseInsensitiveHint':
     "LIKE is case-insensitive under this database's default collation",
+  // ── Named views (saved filter views) ──────────────────────────────
+  'filter.view.savedViews': 'Saved views',
+  'filter.view.save': 'Save',
+  'filter.view.saveAs': 'Save as…',
+  'filter.view.rename': 'Rename',
+  'filter.view.delete': 'Delete',
+  'filter.view.deleteConfirm': 'Delete the saved view "{name}"?',
+  'filter.view.nameLabel': 'View name',
+  'filter.view.namePlaceholder': 'e.g. Open orders this week',
+  'filter.view.empty': 'No saved views for this table',
+  'filter.view.nameExists': 'A view with this name already exists for this table',
+  'filter.view.overwrite': 'Overwrite',
+  'filter.view.setDefault': 'Set as default',
+  'filter.view.defaultBadge': 'Default',
+  'filter.view.draftNotAppliedHint':
+    'Saving the applied filters — you still have unapplied changes',
+  'filter.view.applyAnyway': 'Apply first',
+  'filter.view.export': 'Export…',
+  'filter.view.import': 'Import…',
+  'filter.view.importDone': '{count} views imported',
+  'filter.view.importFailed': 'Import failed: {error}',
+  'filter.view.missingColumn': 'Column "{column}" no longer exists on this table',
+  'filter.view.errorNameExists': 'A saved view with this name already exists',
   'import.description': 'Import data from CSV or JSON file',
   'import.selectFile': 'Select File',
   'import.targetTable': 'Target Table',

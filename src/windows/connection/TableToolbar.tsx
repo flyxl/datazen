@@ -1,13 +1,10 @@
-import { useCallback, useState } from 'react';
-import { Filter, Plus, RefreshCw } from 'lucide-react';
-import { NlFilterInput } from '../../components/ai/NlFilterInput';
-import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { Plus, RefreshCw } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import {
-  flattenToConnectors,
-  parseFilterForApply,
-} from '../../lib/filterExpression';
+  TableFilterToolbar,
+  type NamedViewMenuConfig,
+} from './TableFilterToolbar';
 import type { ColumnSchema, FilterCondition } from '../../types';
 
 export interface TableToolbarProps {
@@ -41,16 +38,24 @@ export interface TableToolbarProps {
   onClearFilters: () => void;
   /** Append a new-row draft. */
   onAddDraftRow: () => void;
+  /**
+   * The saved views of this table.
+   *
+   * Absent when this backend cannot serve them — a browser build has no host
+   * store, so the entry is hidden rather than offered and refused later.
+   */
+  namedView?: NamedViewMenuConfig | null;
 }
 
 /**
- * The panel toolbar: refresh, insert row, filter, the natural-language filter
- * input and the quick-filter box.
+ * The panel toolbar: refresh, insert row and the filter half.
  *
- * Extracted verbatim from `TableView` (DB-06 track, GC budget) — the quick
- * filter's draft state and its two handlers moved with the markup, because
- * both of them are only ever used by this toolbar. Every `data-testid` here is
- * consumed by the E2E specs, so it must not change.
+ * The filter half — the manual filter entry, the saved views and the
+ * quick-filter box — lives in `TableFilterToolbar`; this component keeps the
+ * two buttons that are about the table rather than about its filters.
+ *
+ * Every `data-testid` here is consumed by the E2E specs, so it must not
+ * change.
  */
 export function TableToolbar({
   panelId,
@@ -70,144 +75,54 @@ export function TableToolbar({
   onSetFilters,
   onClearFilters,
   onAddDraftRow,
+  namedView,
 }: TableToolbarProps) {
   const { t } = useI18n();
-  const [quickFilter, setQuickFilter] = useState('');
-  const [quickFilterError, setQuickFilterError] = useState<string | null>(null);
-
-  const handleQuickFilter = useCallback(() => {
-    const input = quickFilter.trim();
-    if (!input) {
-      setQuickFilterError(null);
-      onClearFilters();
-      return;
-    }
-    const parsed = parseFilterForApply(input, columns);
-    if (!parsed.ok) {
-      setQuickFilterError(t('filter.invalidExpression', { error: parsed.error }));
-      return;
-    }
-    // A quick filter may mix AND and OR as long as the expression can be
-    // written down as a flat list of conditions with a connector each. Only a
-    // parenthesised group of a different operator needs the editor, and that
-    // one is refused rather than flattened into a different question.
-    const flattened = flattenToConnectors(parsed.value.expression);
-    if (!flattened) {
-      setQuickFilterError(t('filter.nestedLogic'));
-      return;
-    }
-    const connectors = flattened
-      .map((entry) => entry.connector)
-      .filter((connector): connector is 'and' | 'or' => connector !== undefined);
-    const globalLogic = connectors.length > 0 ? connectors[0] : 'and';
-    const conditions: FilterCondition[] = flattened.map((entry) => ({
-      column: entry.condition.column,
-      operator: entry.condition.operator,
-      value: entry.condition.value,
-      ...(entry.connector ? { connector: entry.connector } : {}),
-    }));
-    setQuickFilterError(null);
-    onSetFilters(conditions, globalLogic);
-  }, [columns, onClearFilters, onSetFilters, quickFilter, t]);
-
-  const openManualFilter = () => {
-    if (filterPanelOpen) {
-      onSetFilterPanelOpen(false);
-      return;
-    }
-    onSetFilterPanelOpen(true);
-    if (draftFilterCount === 0) {
-      onAddFilter({
-        column: columns[0]?.name ?? '',
-        operator: 'eq',
-        value: '',
-      });
-    }
-  };
-
-  const filterActive = filterPanelOpen || appliedFilterCount > 0 || draftFilterCount > 0;
 
   return (
-    <>
-      <div className="flex shrink-0 items-start gap-0.5 border-b border-edge px-2 py-0.5">
+    <TableFilterToolbar
+      panelId={panelId}
+      dbSessionId={dbSessionId}
+      database={database}
+      tableName={tableName}
+      columns={columns}
+      loading={loading}
+      pendingBusy={pendingBusy}
+      filterPanelOpen={filterPanelOpen}
+      appliedFilterCount={appliedFilterCount}
+      draftFilterCount={draftFilterCount}
+      onSetFilterPanelOpen={onSetFilterPanelOpen}
+      onAddFilter={onAddFilter}
+      onSetFilters={onSetFilters}
+      onClearFilters={onClearFilters}
+      namedView={namedView}
+    >
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        className="mt-0 flex h-7 w-7 shrink-0 items-center justify-center rounded text-xs text-fg-muted transition-colors hover:bg-surface-alt hover:text-fg disabled:opacity-50"
+        onClick={onRefresh}
+        disabled={loading}
+        title={t('connWin.refresh')}
+        aria-label={t('connWin.refresh')}
+        data-testid="table-data-refresh"
+      >
+        <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+      </button>
+      {isEditable && (
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           className="mt-0 flex h-7 w-7 shrink-0 items-center justify-center rounded text-xs text-fg-muted transition-colors hover:bg-surface-alt hover:text-fg disabled:opacity-50"
-          onClick={onRefresh}
-          disabled={loading}
-          title={t('connWin.refresh')}
-          aria-label={t('connWin.refresh')}
-          data-testid="table-data-refresh"
+          onClick={onAddDraftRow}
+          disabled={loading || pendingBusy}
+          title={t('tableData.insertRowHint', { shortcut: '⌘/Ctrl+I' })}
+          aria-label={t('tableData.insertRow')}
+          data-testid="table-insert-row"
         >
-          <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+          <Plus className="h-3.5 w-3.5" />
         </button>
-        {isEditable && (
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            className="mt-0 flex h-7 w-7 shrink-0 items-center justify-center rounded text-xs text-fg-muted transition-colors hover:bg-surface-alt hover:text-fg disabled:opacity-50"
-            onClick={onAddDraftRow}
-            disabled={loading || pendingBusy}
-            title={t('tableData.insertRowHint', { shortcut: '⌘/Ctrl+I' })}
-            aria-label={t('tableData.insertRow')}
-            data-testid="table-insert-row"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-        )}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          className={cn(
-            'mt-0 flex h-7 w-7 shrink-0 items-center justify-center rounded text-xs transition-colors hover:bg-surface-alt',
-            filterActive ? 'text-accent' : 'text-fg-muted hover:text-fg',
-          )}
-          onClick={openManualFilter}
-          disabled={loading}
-          title={t('filter.filter')}
-          aria-label={t('filter.filter')}
-          aria-pressed={filterPanelOpen}
-          data-testid="table-filter-toggle"
-        >
-          <Filter className="h-3.5 w-3.5" />
-        </button>
-        <NlFilterInput
-          panelId={panelId}
-          dbSessionId={dbSessionId}
-          database={database}
-          tableName={tableName}
-        />
-        <div className="ml-1 flex min-w-0 flex-1 items-center">
-          <input
-            type="text"
-            value={quickFilter}
-            onChange={(event) => {
-              setQuickFilter(event.target.value);
-              if (quickFilterError) setQuickFilterError(null);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                handleQuickFilter();
-              }
-            }}
-            onBlur={() => {
-              if (quickFilter.trim()) handleQuickFilter();
-            }}
-            disabled={loading || pendingBusy}
-            placeholder={t('filter.quickPlaceholder')}
-            className="h-7 min-w-0 flex-1 rounded border border-edge bg-surface px-2 text-xs text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none"
-            aria-invalid={quickFilterError ? 'true' : undefined}
-            data-testid="table-quick-filter"
-          />
-        </div>
-      </div>
-      {quickFilterError && (
-        <ErrorBanner variant="strip" className="border-danger/30 py-1">
-          {quickFilterError}
-        </ErrorBanner>
       )}
-    </>
+    </TableFilterToolbar>
   );
 }
