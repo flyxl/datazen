@@ -119,7 +119,7 @@ pub(crate) async fn run_output_job(
         )
         .map_err(unavailable)?;
     artifacts
-        .export(&context, artifact, ExportSink::DesktopDialogHandle(handle))
+        .export(&context, artifact, ExportSink::HostHandle(handle))
         .await
         .map_err(unavailable)?;
     Ok(rows)
@@ -289,7 +289,7 @@ pub async fn export_file_job(
         )
         .map_err(unavailable)?;
     artifacts
-        .export(&context, artifact, ExportSink::DesktopDialogHandle(handle))
+        .export(&context, artifact, ExportSink::HostHandle(handle))
         .await
         .map_err(unavailable)?;
     Ok(true)

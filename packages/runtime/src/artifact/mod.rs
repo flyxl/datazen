@@ -635,7 +635,7 @@ impl ArtifactStore for FileArtifactStore {
     ) -> Result<ExportReceipt, PortError> {
         let mut s = self.state.lock().map_err(|_| unavailable())?;
         let r = self.visible(&s, c, &id)?.clone();
-        let ExportSink::DesktopDialogHandle(handle) = sink else {
+        let ExportSink::HostHandle(handle) = sink else {
             return Err(PortError::TokenInvalid);
         };
         let grant = s.exports.get(&handle).ok_or(PortError::TokenInvalid)?;

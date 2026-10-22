@@ -13,15 +13,24 @@
 use datazen_platform_api::ports::budget::{ResourceClass, ServiceQuota};
 
 /// 可调默认值。集中成常量，让「配置」有唯一来源。
+///
+/// 两档额度按**内核跑在哪**区分，**刻意不写形态名**：
+///
+/// * `TEAM_*` —— 团队版**共享部署**（服务端：HTTP API / 管理服务 / worker 同进程）。
+/// * `LOCAL_*` —— 团队版的**本地客户端**（用户自己的机器上一份内核）。
+///
+/// 形态名（「桌面」「Web」）不写进常量名：内核跑在服务端时，用的是 `TEAM_*` 那一档；
+/// 「客户端」这一档叫 `LOCAL`，不叫「桌面」——否则同一份共享包里的额度口径
+/// 就被绑死在某一种形态上。
 pub mod defaults {
-    /// 团队版：每个数据库服务的总额度。
+    /// 团队版共享部署：每个数据库服务的总额度。
     pub const TEAM_SERVICE_TOTAL: u32 = 20;
-    /// 团队版桌面端：每个数据库服务的总额度。
-    pub const DESKTOP_SERVICE_TOTAL: u32 = 16;
+    /// 团队版本地客户端：每个数据库服务的总额度。
+    pub const LOCAL_SERVICE_TOTAL: u32 = 16;
     /// 团队版保留额，按 [`ResourceClass::index`] 定位：control 2 / interactive 2 / metadata 1。
     pub const TEAM_RESERVED: [u32; 4] = [2, 2, 1, 0];
-    /// 桌面端保留额：control 1 / interactive 2 / metadata 1。
-    pub const DESKTOP_RESERVED: [u32; 4] = [1, 2, 1, 0];
+    /// 本地客户端保留额：control 1 / interactive 2 / metadata 1。
+    pub const LOCAL_RESERVED: [u32; 4] = [1, 2, 1, 0];
 
     /// 单个用户的逻辑 session 上限。`New` 状态也算——它没有 socket。
     pub const PER_USER_LOGICAL_SESSIONS: u32 = 100;
@@ -102,14 +111,14 @@ impl BudgetConfig {
         }
     }
 
-    /// 团队版口径：总额度 20，保留 control 2 / interactive 2 / metadata 1，共享 15。
+    /// 团队版共享部署口径：总额度 20，保留 control 2 / interactive 2 / metadata 1，共享 15。
     pub fn team_default() -> Self {
         Self::from_parts(defaults::TEAM_SERVICE_TOTAL, defaults::TEAM_RESERVED)
     }
 
-    /// 桌面端口径：总额度 16，保留 control 1 / interactive 2 / metadata 1，共享 12。
-    pub fn desktop_default() -> Self {
-        Self::from_parts(defaults::DESKTOP_SERVICE_TOTAL, defaults::DESKTOP_RESERVED)
+    /// 本地客户端口径：总额度 16，保留 control 1 / interactive 2 / metadata 1，共享 12。
+    pub fn local_default() -> Self {
+        Self::from_parts(defaults::LOCAL_SERVICE_TOTAL, defaults::LOCAL_RESERVED)
     }
 
     /// 用总额度与保留额直接构造。

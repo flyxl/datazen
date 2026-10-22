@@ -140,9 +140,7 @@ async fn job_with_selection(
         JobRuntime::new(
             repo.clone(),
             Arc::new(handlers),
-            Arc::new(Mutex::new(BudgetLedger::new(
-                BudgetConfig::desktop_default(),
-            ))),
+            Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::local_default()))),
             clock,
             0,
         ),

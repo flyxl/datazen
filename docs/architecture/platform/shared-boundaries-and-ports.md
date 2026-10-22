@@ -260,6 +260,45 @@ Wave-2 在此基础上又新增 `packages/ai-providers` 与 `packages/workspace-
 
 `packages/runtime` 在基线上已自带 `connection/types.rs` 的 ID newtype、`ExecutionTarget`、`ApiError` / `ApiErrorCode`、`CapabilitySnapshot`，与 `platform-api` 的同名类型**是两份互不相同的类型**。F-04 要求 `platform-api` 不反向依赖 runtime，因此去重方向只能是 runtime 改为 `pub use datazen_platform_api::{…}`——这需要改动 `packages/runtime/**`，不在 P1 写范围内。相关形状差异已在本文各节按「以 platform-api 为准」记录（runtime 的 `NamespaceTarget` 四个非 `Option` 字段、`path: String`、`ConfigRevision(pub u64)` 等在迁移时必须丢弃）。
 
+### 2.7 形态中立：共享包里的名字不得绑死形态（已实现）
+
+F-01…F-12 拦的是**依赖**。还有一类耦合不产生依赖边：**名字**。共享包里一个带形态名的
+类型 / 常量 / 字面量，会把「只有桌面才成立」的假设焊进代码——桌面形态在场时看不出问题，
+换成 web 形态才发现那一半用不了。
+
+内核（`packages/runtime`）曾有三处这样的焊点，全部是桌面形态独占的名字：
+
+| 位置 | 原名 | 现名 | 依据 |
+| --- | --- | --- | --- |
+| `tunnel/route.rs` 的稳定字面码 | `desktopRouteUnknown` 等四个 | `routeUnknown` / `tunnel*` | 与同模块既有的 `tunnelNotShareable` / `tunnelAlreadyHeld` / `tunnelRevisionUnavailable` 同族 |
+| `tunnel/route.rs` 的租约前缀 | `desktop-tunnel/` | `tunnel/` | 同上；租约文本会进错误消息与 trace |
+| `platform-api` 端口的导出目标 | `ExportSink::DesktopDialogHandle` | `ExportSink::HostHandle` | 端口只说「宿主持有句柄」，不规定宿主怎么渲染 |
+| `runtime` 的额度档位 | `DESKTOP_*` / `desktop_default()` | `LOCAL_*` / `local_default()` | 两档按**内核跑在哪**区分：共享部署（`TEAM_*`）与本地客户端（`LOCAL_*`） |
+| `runtime` 的连接夹具字段 | `desktop_total_target_connections` | `local_total_target_connections` | 同上 |
+
+**判据是分词后逐词比，不是子串比**：`webhook` / `webdriver` 这类协议复合词不算形态名
+（它们切出来是整词），否则误伤会逼人把合法写法藏起来。
+
+**闸门**：`packages/runtime/src/tunnel/form_neutrality.rs`（随 `--lib` 跑，因而进 CI）。
+它扫内核 crate 的 `src/`，两层都查——**字面量**（对外产出的稳定码、租约前缀、错误码）
+与**标识符**（类型 / 常量 / 字段名）。三条配套事实：
+
+- **闸门自证**：断言扫描器真的把已知的稳定码读了出来，否则「没发现违规」只意味着它
+  什么也没看见；并断言被扫文件数达到下界，防止递归枚举少扫一片。
+- **闸门有 kill test**：把带形态名的字面量与标识符当字符串喂给同一套判据，断言转红。
+  闸门自己**不写**完整的形态名字面量（拆开拼），否则它会被自己的规则点红。
+- **闸门有边界**（不留模糊措辞）：只认拉丁字母的形态名（中文散文不算契约）；只扫 `src/`
+  ——`tests/` 里对**宿主 crate** 的合法引用（如按路径读 `src-tauri/…/identity.rs`
+  验证宿主接线）里的形态名是真实存在的目录名，不是内核的形态假设；它查的是**名字**，
+  管不了运行时行为，也挡不住蓄意对抗（`concat!` 拆分、`#[cfg]` 藏匿）。
+
+其余共享包（`feature-core` / `platform-api` / `ai-providers` 等）里的形态名**未纳入**这道
+闸门，原因是它们确有**领域含义**而非形态耦合：`AlertChannel::Desktop` 指「桌面通知」
+这一投递渠道，`ExportSink` 的另一支 `ServerAuthorizedPath` 指「服务端授权的存储路径」。
+`ai-providers` 的 `HttpClient::desktop()` 是一份**出网策略预设**（允许内网地址 + 走环境代理），
+端口 `EgressPolicy` 本身形态中立，web 形态可以自带策略。把这三处一并禁掉是误伤，
+不是治理。
+
 ## 3. runtime 包内部模块（目标设计，未随 P1 实现）
 
 ### 3.1 目录约定

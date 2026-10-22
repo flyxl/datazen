@@ -44,11 +44,16 @@
 //! * **不把**「单连接无状态驱动」包装成固定资源：释放时归还的是**隧道引用**，
 //!   物理资源许可由 `resource` 层自己的账管，本文件碰不到也不假装管。
 //! * **不改** `RequestContext`，也**不**要求调用方在请求里带 consumer id。
-//! * **不改**既有稳定字面码：`desktopRouteUnknown` / `desktopTunnelReferenceNotHeld` /
-//!   `desktopTunnelEndpointUnavailable` / `desktopTunnelTeardownUnconfirmed` 与
-//!   `LeaseId` 前缀 `desktop-tunnel/` 都是**已对外可见**的值（进错误消息、进租约文本、
-//!   进 trace reason），本轨道是纯重命名，故逐字保留；形态名是否要从字面码里退场，
-//!   属于行为变更，另行裁定。
+//! * **不改**既有稳定字面码的**语义**：`routeUnknown` / `tunnelReferenceNotHeld` /
+//!   `tunnelEndpointUnavailable` / `tunnelTeardownUnconfirmed` 与 `LeaseId` 前缀
+//!   `tunnel/` 都进错误消息、进租约文本、进 trace reason，含义逐字不变。
+//!   这些码曾带 `desktop` 前缀（`desktopRouteUnknown` / `desktop-tunnel/` …），
+//!   是本模块尚叫 `desktop.rs` 时的遗留形态名：同族字面码
+//!   （`tunnelNotShareable` / `tunnelAlreadyHeld` / `tunnelRevisionUnavailable`）
+//!   本来就是形态中立的，形态名只在这几个码上不一致，且会把「桌面」写进
+//!   web 形态同样会产出的租约与错误文本。**已裁定退场**，并由
+//!   `tunnel::form_neutrality` 那道闸门钉住（其中的
+//!   `the_scanner_actually_sees_the_stable_codes` 逐个断言这些码无形态名）。
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -152,9 +157,11 @@ impl RouteNetworkProvider {
 
     fn mint_holder(&self) -> LeaseId {
         let ticket = self.tickets.fetch_add(1, Ordering::Relaxed);
-        // 字面码 `desktop-tunnel/` 是**已对外可见的稳定标识**（会进 `LeaseId` 文本），
-        // 本轨道是纯重命名，故逐字保留；形态名是否要从字面码里退场，另行裁定。
-        LeaseId::new(format!("desktop-tunnel/{ticket}"))
+        // 前缀 `tunnel/` 与本模块其它稳定字面码（`tunnelNotShareable` /
+        // `tunnelAlreadyHeld` / `tunnelRevisionUnavailable`）同族：**形态中立**。
+        // 这里曾用 `desktop-tunnel/`，是模块尚叫 `desktop.rs` 时的遗留形态名，
+        // 与同族字面码不一致，且会把「桌面」写进 web 形态也会产出的租约文本。
+        LeaseId::new(format!("tunnel/{ticket}"))
     }
 
     /// 归还**一份**引用。名册里没有身份 = 这份引用早就还过了 = 幂等空转。
@@ -214,7 +221,7 @@ impl NetworkProvider for RouteNetworkProvider {
             let endpoint = self
                 .catalog
                 .direct_endpoint(&route_ref)
-                .ok_or_else(|| PortError::NotFound("desktopRouteUnknown".to_owned()))?;
+                .ok_or_else(|| PortError::NotFound("routeUnknown".to_owned()))?;
             return Ok(RoutePlan::new(endpoint, false, route_revision));
         };
 
@@ -222,12 +229,13 @@ impl NetworkProvider for RouteNetworkProvider {
         // 否则调用方拿到的端点会指向一个随时可能被拆掉的隧道，影响仍在使用它的其他会话。
         if !self.holds_live_reference(&spec) {
             return Err(PortError::BackendUnavailable(
-                "desktopTunnelReferenceNotHeld".to_owned(),
+                "tunnelReferenceNotHeld".to_owned(),
             ));
         }
-        let endpoint = self.catalog.tunneled_endpoint(&spec).ok_or_else(|| {
-            PortError::BackendUnavailable("desktopTunnelEndpointUnavailable".to_owned())
-        })?;
+        let endpoint = self
+            .catalog
+            .tunneled_endpoint(&spec)
+            .ok_or_else(|| PortError::BackendUnavailable("tunnelEndpointUnavailable".to_owned()))?;
         Ok(RoutePlan::new(endpoint, true, route_revision))
     }
 
@@ -264,7 +272,7 @@ impl NetworkProvider for RouteNetworkProvider {
         if self.catalog.tunneled_endpoint(&spec).is_none() {
             self.give_back(&spec);
             return Err(PortError::BackendUnavailable(
-                "desktopTunnelEndpointUnavailable".to_owned(),
+                "tunnelEndpointUnavailable".to_owned(),
             ));
         }
 
@@ -283,7 +291,7 @@ impl NetworkProvider for RouteNetworkProvider {
                 // 只是一次无副作用的早退，并不会真的把隧道拆掉。
                 tracing::warn!(
                     target: "datazen_runtime::tunnel",
-                    reason = "desktopTunnelTeardownUnconfirmed",
+                    reason = "tunnelTeardownUnconfirmed",
                     "隧道关闭未证实：台账条目保留，等待后续观察"
                 );
             }

@@ -6,7 +6,7 @@ use super::*;
 #[tokio::test]
 async fn caller_owner_fields_cannot_authorize_job_or_block() {
     let (service, backend, _, _) = setup();
-    let context = ctx("user", "desktop");
+    let context = ctx("user", "client");
     for owner in [
         OwnerRef::Job {
             job_id: JobId::new("invented"),

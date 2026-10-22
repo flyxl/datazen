@@ -110,7 +110,7 @@ pub async fn export_artifact(
         tauri::async_runtime::block_on(store.export(
             &context,
             request.artifact_id,
-            ExportSink::DesktopDialogHandle(handle),
+            ExportSink::HostHandle(handle),
         ))
     })
     .await

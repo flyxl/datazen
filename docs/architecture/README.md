@@ -70,7 +70,7 @@ React / TypeScript (src/)
 src-tauri (desktop host)
   ├─ commands/       IPC 边界与参数/错误处理
   ├─ platform/       Tauri 组装根：PlatformAdapter、DesktopSessionBackend、身份/策略/仓储适配
-  ├─ services/       薄宿主服务：QueryExecutor、Schema metadata、DbTools、JobRegistry
+  ├─ services/       薄宿主服务：Schema metadata、JobRegistry、Runtime command source
   ├─ workflow/       Workflow host、YAML registry、executor、scheduler、runtime entry
   ├─ mcp/            MCP Server / Client
   ├─ dashboard/      Dashboard 主机侧适配
@@ -78,8 +78,7 @@ src-tauri (desktop host)
   ├─ store/          桌面持久化（SQLite + 加密文件）
   ├─ tunnel/ + ssh_tunnel.rs   隧道装配
   ├─ wapps/          datazen:// 协议桥、WappManager
-  ├─ ai/             对外 re-export 表面 + 宿主 metadata source
-  └─ db/             re-export 门面
+  └─ ai/             宿主 metadata source（规则与 provider 契约在共享包）
   │
   ▼
 packages/
