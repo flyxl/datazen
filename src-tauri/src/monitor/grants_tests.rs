@@ -41,9 +41,12 @@ async fn seeded() -> (
 ) {
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        crate::store::DesktopRepository::init_with_path(temp.path())
-            .await
-            .unwrap(),
+        crate::store::DesktopRepository::init_with_path(
+            temp.path(),
+            crate::store::KeyBackend::File,
+        )
+        .await
+        .unwrap(),
     );
     store.save_connection(config()).await.unwrap();
     let db = store.app_db();

@@ -46,7 +46,7 @@ async fn host() -> (
 ) {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        crate::store::DesktopRepository::init_with_path(dir.path())
+        crate::store::DesktopRepository::init_with_path(dir.path(), crate::store::KeyBackend::File)
             .await
             .unwrap(),
     );

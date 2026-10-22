@@ -578,8 +578,11 @@ mod tests {
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("DATAZEN_KEYRING", "file");
-        let store = Arc::new(DesktopRepository::init_with_path(dir.path()).await.unwrap());
+        let store = Arc::new(
+            DesktopRepository::init_with_path(dir.path(), crate::store::KeyBackend::File)
+                .await
+                .unwrap(),
+        );
         let registry = Arc::new(DriverRegistry::new());
         let platform = crate::platform::PlatformEntry::launch();
         let monitor_engine = MonitorEngine::new(store.clone());
@@ -657,8 +660,11 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let custom = dir.path().join("my-contexts");
-        std::env::set_var("DATAZEN_KEYRING", "file");
-        let store = Arc::new(DesktopRepository::init_with_path(dir.path()).await.unwrap());
+        let store = Arc::new(
+            DesktopRepository::init_with_path(dir.path(), crate::store::KeyBackend::File)
+                .await
+                .unwrap(),
+        );
         store
             .save_settings(AppSettings {
                 context_dir: custom.display().to_string(),

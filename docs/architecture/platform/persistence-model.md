@@ -646,7 +646,7 @@ expiredHeld 的 `amount - returned_amount` 继续计入 reserved；TTL 到期、
 
 | 形态 | 主密钥来源 | 连接秘密来源 |
 | --- | --- | --- |
-| 桌面本地模式 | `key_store::key_backend()`：默认 OS 钥匙串（`keyring::v1::Entry::new(APP_IDENTIFIER, "app-encryption-key")`）；`DATAZEN_KEYRING=file` 或 macOS 未签名/adhoc 构建时用 `{appData}/.key`；旧 `.key` 会透明迁入钥匙串后删除 | 本地 `connections.json` 逐字段 AES-256-GCM（nonce 12 字节前置，base64 STANDARD） |
+| 桌面本地模式 | `key_backend::resolve_key_backend()`（**启动期读一次 `DATAZEN_KEYRING`**，得到的 `KeyBackend` 一路显式传下去）：默认 OS 钥匙串（`keyring::v1::Entry::new(APP_IDENTIFIER, "app-encryption-key")`）；`DATAZEN_KEYRING=file` 或 macOS 未签名/adhoc 构建时用 `{appData}/.key`；旧 `.key` 会透明迁入钥匙串后删除 | 本地 `connections.json` 逐字段 AES-256-GCM（nonce 12 字节前置，base64 STANDARD） |
 | 桌面团队模式 | 同上（本地设置仍需加密） | **不下载团队数据库凭据**（[概要 §11 验收 2](system-overview.md#11-系统级验收)）；执行身份由服务端 `SecretProvider` 解析 |
 | 服务端 | 不使用用户钥匙串（无用户钥匙串可访问） | KMS / 外部密钥服务；管理库只存 `secret_ref` |
 

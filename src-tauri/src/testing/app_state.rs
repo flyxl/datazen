@@ -11,9 +11,8 @@ use datazen_driver_api::{ConnectionConfig, SslMode, TableInfo, TableType};
 use datazen_driver_api::{DatabaseDriver, DatabaseDriverFactory};
 use datazen_runtime::driver_registry::registry::DriverRegistry;
 
-/// Temp store + mock postgres driver + keyring guard for command tests.
+/// Temp store + mock postgres driver for command tests.
 pub struct TestAppState {
-    pub _keyring: super::FileKeyringGuard,
     pub _temp: tempfile::TempDir,
     pub state: AppState,
     pub store: Arc<DesktopRepository>,
@@ -102,10 +101,9 @@ impl TestAppState {
     }
 
     async fn build(opts: MockDriverOptions, _with_resource_provider: bool) -> Self {
-        let keyring = super::FileKeyringGuard::set();
         let temp = tempfile::tempdir().expect("tempdir");
         let store = Arc::new(
-            DesktopRepository::init_with_path(temp.path())
+            DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
                 .await
                 .expect("store init"),
         );
@@ -124,7 +122,6 @@ impl TestAppState {
         registry.register_test_factory("postgres", factory).await;
         let state = build_app_state(store.clone(), registry.clone());
         Self {
-            _keyring: keyring,
             _temp: temp,
             state,
             store,
