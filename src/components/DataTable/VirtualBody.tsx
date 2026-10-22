@@ -14,6 +14,7 @@ import { dirtyCellAriaLabel, dirtyCellTooltip } from './dirtyCellText';
 import { isFkCellNavigable, type FkGroupAffordance } from '../../lib/fkNavigation';
 import type { CellCoord } from '../../stores/tableData/gridSelection';
 import type { DirtyCell, DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
+import type { CellTypeHints } from '../../lib/cellTypes';
 import { cn } from '../../lib/cn';
 import type { Value } from '../../types';
 
@@ -49,6 +50,15 @@ export interface VirtualBodyProps {
   onCellEditCancel: () => void;
   /** The editing context of the grid (DB-05). */
   cellEditing?: CellEditingContext;
+  /**
+   * The driver's own column-type declaration.
+   *
+   * It is what a grid without an editing context falls back to: the cell type
+   * is read from the declaration rather than from the type name alone, so a
+   * MySQL `tinyint(1)` is a boolean in the cells exactly as it is in the
+   * header and in the drawer.
+   */
+  cellTypeHints?: CellTypeHints;
   onRowSelect: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   /**
    * The cell-selection DOM contract is on: the ARIA grid roles and the `data-dt-*`
@@ -572,6 +582,7 @@ export const VirtualBody = memo(function VirtualBody({
   onCellEdit,
   onCellEditCancel,
   cellEditing,
+  cellTypeHints,
   onRowSelect,
   cellSelectionEnabled = false,
   isCellSelected,
@@ -631,8 +642,8 @@ export const VirtualBody = memo(function VirtualBody({
     const provided = cellEditing?.columnEditorInfo;
     return provided && provided.size > 0
       ? provided
-      : buildColumnEditorInfoFromDefs(columns);
-  }, [cellEditing, columns]);
+      : buildColumnEditorInfoFromDefs(columns, cellTypeHints);
+  }, [cellEditing, columns, cellTypeHints]);
   const cellSelected = useCallback(
     (rowIndex: number, columnName: string) => isCellSelected?.(rowIndex, columnName) ?? false,
     [isCellSelected],

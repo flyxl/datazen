@@ -500,13 +500,20 @@ export function buildColumnEditorInfo(
  * the type comes from the driver's type name, the nullability is assumed
  * (the grid cannot know better) and an integer column is recognised by its
  * name.
+ *
+ * `hints` is the driver's own column-type declaration. Without it the type is
+ * read from the type **name** alone, and a MySQL `tinyint(1)` would be a
+ * number here while the drawer next to the grid says it is a boolean — the
+ * same column, two colours, one screen. The declaration is the same one the
+ * table panel and the drawer read.
  */
 export function buildColumnEditorInfoFromDefs(
   columns: readonly { name: string; type?: string; nullable?: boolean }[],
+  hints?: CellTypeHints,
 ): Map<string, ColumnEditorInfo> {
   const info = new Map<string, ColumnEditorInfo>();
   for (const column of columns) {
-    const cellType = resolveCellType(column.type);
+    const cellType = resolveCellType(column.type, hints);
     info.set(column.name, {
       cellType,
       // The column definition knows the nullability when its owner filled it
@@ -514,8 +521,8 @@ export function buildColumnEditorInfoFromDefs(
       // assumption is what lets a `NOT NULL` column accept an empty input
       // as a `NULL` (05 §7 #3).
       nullable: column.nullable ?? true,
-      integerOnly: isIntegerCellType(column.type),
-      readOnlyReason: columnReadOnlyReason(cellType, column.type),
+      integerOnly: isIntegerCellType(column.type, hints),
+      readOnlyReason: columnReadOnlyReason(cellType, column.type, hints),
     });
   }
   return info;
