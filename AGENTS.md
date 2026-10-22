@@ -177,9 +177,9 @@ pnpm tauri:build:community             # 构建 Community 社区版
 pnpm tauri:build:pro                   # 构建 Pro 增强版
 npx vitest run                         # Host 前端单元测试（不含 packages/drivers）
 pnpm test:unit:drivers                 # Path 驱动 UI 单测（packages/drivers/*/ui）
-pnpm typecheck                         # 双引擎类型检查（tsc = TS 7 GA + tsrs = TS 7.1-dev），覆盖 src + packages，**含测试文件**
-pnpm typecheck:tsc                     # 只跑权威引擎（typescript@7.0.2）
-pnpm typecheck:tsrs                    # 只跑前瞻引擎（tsrs，跟随 TS 7.1 开发线）
+pnpm typecheck                         # 单引擎类型检查（tsrs，跟随 TS 7.1 开发线），覆盖 src + packages，**含测试文件**
+pnpm typecheck:tsc                     # 跑权威引擎（typescript@7.0.2）——与发布门禁同一个编译器
+pnpm typecheck:tsrs                    # 同 `pnpm typecheck`（显式写法）
 cargo test -p datazen --lib            # Host Rust 单元测试
 cargo test -p datazen-ai-api --lib     # AI API 单元测试
 cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust 测试
@@ -326,8 +326,11 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
   五个包的 config 现在 `extends` 根配置，因此也继承了根的 `paths`（`@datazen/*` 别名）；
   在此之前它们各自是 standalone program，`@datazen/*` 全部解析失败，五个 program 合计
   830 个错误，与代码本身无关。
-  门禁是双引擎的：`pnpm typecheck` 同时跑 `tsc`（TS 7 GA，权威）与 `tsrs`（TS 7.1-dev，前瞻），
-  两者输出必须逐字节一致；`tsrs` 在没有 Windows 二进制的平台会被跳过并明确打印跳过原因。
+  门禁是**单引擎**的：`pnpm typecheck` 只跑 `tsrs`（TS 7.1-dev，前瞻、快约 2 倍）。
+  发布流水线的 `union-typecheck` 另跑权威的 `tsc`（TS 7 GA），所以**本地门禁不等于发布
+  门禁**——「PR 绿但发版红」是可能的（`tsrs` 只会比 GA 多报，不会少报，反之不成立）；
+  需要权威结论时跑 `pnpm typecheck:tsc`。`tsrs` 在没有 Windows 二进制的平台会**回退到
+  `tsc`** 并明确打印回退原因（绝不静默）。
   详见 [docs/development/ci-test-matrix.md](docs/development/ci-test-matrix.md) §2.1.4。
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中。
 - **本地环境变量文件保护**：任何 Agent（含子代理）不得打开、读取、解析、source 或打印仓库及其 worktree 中 `.env` / `.env.test` 文件的**内容**；不得将凭据写入提示、日志或报告。只允许检查文件是否存在及 Git 忽略状态。

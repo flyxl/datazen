@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { basename, join } from 'path';
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_ENGINE,
   ENGINE_ORDER,
   TYPECHECK_ENGINES,
   TYPECHECK_PROGRAMS,
@@ -40,13 +41,19 @@ function rootWithEngines(engines: string[]): string {
 }
 
 describe('typecheck engine selection', () => {
-  it('defaults to both engines', () => {
-    expect(parseEngineSelection([])).toBe('both');
+  it('defaults to the tsrs engine', () => {
+    // The gate runs ONE compiler. tsrs is the one: it is the faster of the
+    // two and it reports the next TypeScript release's diagnostics. The
+    // authoritative compiler is still in the pipeline through the release
+    // gate (scripts/ci-union-typecheck.mjs).
+    expect(parseEngineSelection([])).toBe('tsrs');
+    expect(DEFAULT_ENGINE).toBe('tsrs');
   });
 
   it('accepts a single engine', () => {
     expect(parseEngineSelection(['--engine=tsc'])).toBe('tsc');
     expect(parseEngineSelection(['--engine=tsrs'])).toBe('tsrs');
+    expect(parseEngineSelection(['--engine=both'])).toBe('both');
   });
 
   it('rejects an unknown engine instead of silently narrowing the gate', () => {
@@ -122,5 +129,33 @@ describe('typecheck engine probe', () => {
     const { engines, skipped } = resolveEngines(root, 'both');
     expect(engines).toEqual(['tsc', 'tsrs']);
     expect(skipped).toEqual([]);
+  });
+
+  it('falls back to tsc when tsrs cannot run on this platform', () => {
+    // tsrs 0.18.0 ships no win32 binary. A gate that cannot run where the
+    // product ships is worse than a gate that runs the other compiler — and
+    // the fallback has to be announced, so it is recorded on the skipped
+    // entry rather than applied silently.
+    const root = rootWithEngines(['tsc']);
+    const { engines, skipped } = resolveEngines(root, 'tsrs');
+    expect(engines).toEqual(['tsc']);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0].engine).toBe('tsrs');
+    expect(skipped[0].fellBackTo).toBe('tsc');
+  });
+
+  it('does not fall back when the requested engine is available', () => {
+    const root = rootWithEngines(['tsc', 'tsrs']);
+    const { engines, skipped } = resolveEngines(root, 'tsrs');
+    expect(engines).toEqual(['tsrs']);
+    expect(skipped).toEqual([]);
+  });
+
+  it('has no engine at all when neither compiler is installed', () => {
+    const { engines, skipped } = resolveEngines(emptyRoot(), 'tsrs');
+    expect(engines).toEqual([]);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0].engine).toBe('tsrs');
+    expect(skipped[0].fellBackTo).toBeUndefined();
   });
 });
