@@ -17,6 +17,30 @@
 
 Wave 7 收尾时把 02 / 03 / 05 / 10 / 11 五册 §6 的文件清单求交，得到矩阵（见下）。据此**重排**了波次：原方案（02∥11 / 03∥10 / 05）的总冲突 **6**，重排后（05∥10 / 02∥11 / 03）**2**，且**全程没有 ratchet 争用**。
 
+## 门禁基线（Wave 7 合流后，协调者实测）
+
+```
+npx vitest run                        → EXIT=0   706 files / 7344 tests
+node scripts/typecheck.mjs            → EXIT=0   tsrs 0.18.0-ts7.1.0-dev，三个 program，0 error TS
+node scripts/typecheck.mjs --engine=tsc → EXIT=0   tsc 7.0.2（权威），三个 program，0 error TS
+node scripts/i18n-sync-check.mjs      → EXIT=1   408 missing = 51×8（count-frontend 29 + named-views 22）
+```
+Rust（Wave 7 收尾时实测）：宿主 1429 / feature-core 527 / driver-api 396(+6 集成) / sqlserver 230。
+
+**仓库级 CI 守卫（本轮首次全量跑，全部绿）**：
+
+| 守卫 | 结论 |
+| --- | --- |
+| `pnpm test:ids` | EXIT=0（ID 术语规范） |
+| `pnpm test:layers` | EXIT=0（模块分层） |
+| `pnpm test:boundaries` | EXIT=0（驱动 import 边界） |
+| `pnpm test:driver-types` | EXIT=0（驱动类型隔离） |
+| `pnpm test:platform-arch` | EXIT=0 —— PASS，30 个 workspace member 分类、11 条规则、0 violation、3 advisory |
+| `pnpm test:shared-crate-panic` | EXIT=0 —— PASS，1 crate / 3 文件 / 0 test-exempt unwrap / 0 violation |
+| `pnpm test:platform-arch:mutations` | EXIT=0 —— **8/8 变异都把守卫变红**，且 `git status --porcelain` 在变异后为空（revert 已核实） |
+
+⇒ 意义：本批 PRD 新增的共享层模块（`feature-core/src/services/named_views/`）与共享 crate 的改动（`driver-api/src/filters.rs` 的 serde 属性）**没有越过任何架构边界**。
+
 ## 剩余四册的冲突矩阵（实测，不是估计）
 
 把 02 / 03 / 05 / 10 / 11 五册 §6 的文件清单求交：
