@@ -19,6 +19,13 @@ export type {
 // The filter contract lives in its own file; it is re-exported here so every
 // caller keeps importing the filter types from the aggregate.
 export * from './filters';
+export type {
+  CursorValue,
+  KeysetUnavailableReason,
+  OrderColumn,
+  PagePagingInfo,
+  PagingMode,
+} from './keyset';
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 
@@ -268,6 +275,7 @@ export type {
 
 import type { UserPreferences, ExecutionSettings } from '@datazen/backend-client';
 import type { DefaultTableSort, RowCountMode } from './settings';
+import type { PagePagingInfo } from './keyset';
 
 export type { DefaultTableSort, RowCountMode } from './settings';
 
@@ -348,74 +356,6 @@ export interface KeyDetail {
  * tell them apart.
  */
 export type CountStrategy = 'exact' | 'estimated' | 'unsupported';
-
-/**
- * How a page was read.
- *
- * The mirror of the host's `PagingMode`: by offset (the page starts
- * `page × pageSize` rows in) or by seek (the page starts after a value
- * boundary that was read from a real row).
- */
-export type PagingMode = 'offset' | 'keyset';
-
-/**
- * Why a page could not be read by seek.
- *
- * The mirror of the host's `KeysetUnavailableReason`. Every one of them is a
- * **degradation**, not an error: the page is read by offset and the reason
- * says why.
- */
-export type KeysetUnavailableReason =
-  | 'driverUnsupported'
-  | 'noStableOrder'
-  | 'nullableKeyColumn'
-  | 'nullBoundary'
-  | 'predicateUnavailable'
-  | 'noPaginationClause'
-  | 'staleCursor'
-  | 'notAdjacent';
-
-/**
- * One boundary value, **with its tag**.
- *
- * The host's `Value` is untagged, so `[1, 2, 3]` reads as `Bytes` *or* as
- * `Json`. A boundary travels "Rust → front end → Rust", and untagged it
- * would change its variant on the way back — the seek would then compare
- * against the wrong literal, with no error anywhere. The tag is what keeps
- * the two apart.
- */
-export type CursorValue =
-  | { kind: 'null' }
-  | { kind: 'bool'; value: boolean }
-  | { kind: 'integer'; value: number }
-  | { kind: 'float'; value: number }
-  | { kind: 'string'; value: string }
-  | { kind: 'bytes'; value: number[] }
-  | { kind: 'timestamp'; value: string }
-  | { kind: 'json'; value: unknown };
-
-/** One ordering column and its direction. */
-export interface OrderColumn {
-  column: string;
-  descending: boolean;
-}
-
-/** What the host did about the paging of one page. */
-export interface PagePagingInfo {
-  /**
-   * The strategy that was used. **The front end believes this field**, not
-   * its own guess about which strategy is in force.
-   */
-  mode: PagingMode;
-  /** The real column order of the page, key columns included. */
-  orderColumns: OrderColumn[];
-  /** The key values of the last row, to be sent back for the next page. */
-  nextAfterKey?: CursorValue[];
-  /** Set when the page was **not** read by seek: why not. */
-  unavailableReason?: KeysetUnavailableReason;
-  /** Rows were deleted while the user was paging. */
-  driftSuspected: boolean;
-}
 
 /** Raw backend response — rows are 2D arrays. */
 export interface TableDataResult {

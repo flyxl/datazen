@@ -137,6 +137,25 @@ impl DatabaseDriver for PostgresDriver {
         "postgresql".into()
     }
 
+    fn supports_keyset_pagination(&self) -> bool {
+        true
+    }
+
+    /// The seek condition for one page boundary.
+    ///
+    /// PostgreSQL compares **row values**, so an order that runs in one
+    /// direction is a single `(a, b) > (1, 2)` instead of a disjunction of
+    /// `OR`ed predicates — one comparison the planner can answer from the
+    /// index instead of a filter over a union. A mixed order (`a ASC, b
+    /// DESC`) has no row-value form, and is spelled out lexicographically.
+    fn keyset_predicate_sql(
+        &self,
+        order_columns: &[(String, bool)],
+        boundary: &[(String, Value)],
+    ) -> Option<String> {
+        datazen_driver_api::keyset::row_value_seek_predicate(self, order_columns, boundary)
+    }
+
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
         match value {
             None | Some(Value::Null) => "NULL".into(),

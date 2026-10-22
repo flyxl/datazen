@@ -233,6 +233,23 @@ pub fn lexicographic_seek_predicate(
     order_columns: &[(String, bool)],
     boundary: &[(String, Value)],
 ) -> Option<String> {
+    lexicographic_seek_predicate_with(driver, order_columns, boundary, &|value: &Value| {
+        Some(driver.format_sql_literal(&Some(value.clone())))
+    })
+}
+
+/// The same condition, with the caller rendering the boundary literals.
+///
+/// A dialect whose literals are not the ANSI ones — T-SQL spells bytes
+/// `0x…` and has no `TRUE` — has to render them itself; it passes a renderer
+/// that returns `None` for a value it cannot spell, and the whole condition
+/// then becomes `None`, which the host reads as "read this page by offset".
+pub fn lexicographic_seek_predicate_with(
+    driver: &dyn DatabaseDriver,
+    order_columns: &[(String, bool)],
+    boundary: &[(String, Value)],
+    literal: &dyn Fn(&Value) -> Option<String>,
+) -> Option<String> {
     if order_columns.is_empty() || order_columns.len() != boundary.len() {
         return None;
     }
@@ -243,7 +260,6 @@ pub fn lexicographic_seek_predicate(
         return None;
     }
 
-    let literal = |value: &Value| driver.format_sql_literal(&Some(value.clone()));
     let mut disjuncts = Vec::with_capacity(order_columns.len());
     for index in 0..order_columns.len() {
         let mut conjuncts = Vec::with_capacity(index + 1);
@@ -251,7 +267,7 @@ pub fn lexicographic_seek_predicate(
             conjuncts.push(format!(
                 "{} = {}",
                 driver.quote_ident(&order_columns[previous].0),
-                literal(&boundary[previous].1),
+                literal(&boundary[previous].1)?,
             ));
         }
         let comparison = if order_columns[index].1 { "<" } else { ">" };
@@ -259,7 +275,7 @@ pub fn lexicographic_seek_predicate(
             "{} {} {}",
             driver.quote_ident(&order_columns[index].0),
             comparison,
-            literal(&boundary[index].1),
+            literal(&boundary[index].1)?,
         ));
         disjuncts.push(format!("({})", conjuncts.join(" AND ")));
     }
@@ -269,6 +285,50 @@ pub fn lexicographic_seek_predicate(
     } else {
         Some(format!("({})", disjuncts.join(" OR ")))
     }
+}
+
+/// The same condition, in a dialect that compares **row values**.
+///
+/// An order that runs in one direction is one comparison — `(a, b) > (1, 2)`
+/// — which the planner may answer straight from the index instead of
+/// filtering a union. A mixed order has no row-value form: `(a, b) > (1, 2)`
+/// means "`a` after, or `a` equal and `b` after", which is the wrong question
+/// when `b` sorts the other way. Those orders fall back to the lexicographic
+/// spelling, and so does a boundary that holds a `NULL`.
+pub fn row_value_seek_predicate(
+    driver: &dyn DatabaseDriver,
+    order_columns: &[(String, bool)],
+    boundary: &[(String, Value)],
+) -> Option<String> {
+    if order_columns.is_empty() || order_columns.len() != boundary.len() {
+        return None;
+    }
+    if boundary
+        .iter()
+        .any(|(_, value)| matches!(value, Value::Null))
+    {
+        return None;
+    }
+
+    let uniform = order_columns
+        .iter()
+        .all(|(_, descending)| *descending == order_columns[0].1);
+    if order_columns.len() > 1 && uniform {
+        let left = order_columns
+            .iter()
+            .map(|(column, _)| driver.quote_ident(column))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let right = boundary
+            .iter()
+            .map(|(_, value)| driver.format_sql_literal(&Some(value.clone())))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let comparison = if order_columns[0].1 { "<" } else { ">" };
+        return Some(format!("({left}) {comparison} ({right})"));
+    }
+
+    lexicographic_seek_predicate(driver, order_columns, boundary)
 }
 
 #[cfg(test)]
