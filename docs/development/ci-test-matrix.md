@@ -46,7 +46,7 @@
 |------|-------------|------|
 | 依赖 | `pnpm install --frozen-lockfile` | Node **24**、pnpm **11**（与 workflow 一致） |
 | 代码生成 | `node scripts/generate-builtin-locales.mjs` | `builtinLocales.ts` 为 gitignore codegen |
-| 类型 | `pnpm typecheck` | `tsrs --noEmit`（单引擎，见 §2.1.4；发布 job 另跑 `tsc`，见 §6.2） |
+| 类型 | `pnpm typecheck` | `tsrs --noEmit`（单引擎，见 §2.1.4）。发布侧的 `union-typecheck` **也是只跑 `tsrs`**（§6.2），所以本地绿与发布绿是同一件事 |
 | 守卫 | `check-managed-stubs.mjs`、`check-id-terminology.mjs`、`check-module-layers.mjs` 等 | 防止误提交 inject 产物、ID 术语回退、分层倒置。`check-structure-editor-guardrails.mjs` 已移至发布前，见 §2.1.3 |
 | Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
 | Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**硬门禁**（无 `continue-on-error`），理由见 §2.1.1；重新加回软门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts`（见 §2.1.1 末） |
