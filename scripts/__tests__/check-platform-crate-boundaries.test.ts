@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_REQUIRED_LAYERS,
+  RULES,
   SPEC_PATH,
   checkPlatformCrateBoundaries,
   checkSpecConsistency,
@@ -44,6 +45,12 @@ function specRow(id: string): string {
  * are keyed by `id` and carry no `pkg` field — an earlier draft of this guard
  * keyed nodes by `node.pkg` and therefore resolved every closure to exactly
  * the member itself, which reads as a perfectly green guard.
+ *
+ * `root` is the tree the member manifests live in. It defaults to the real
+ * repository, which is what most cases want: the declared-edge scan reads
+ * `Cargo.toml` **from disk**, so a case that needs a manifest with a specific
+ * dependency in it points `root` at a throwaway tree and writes the manifest
+ * there.
  */
 function fixture(
   members: Array<{ name: string; dir: string }>,
@@ -51,6 +58,7 @@ function fixture(
   external: Array<{ name: string }> = [],
   /** Edge kinds by `from->to`; anything unlisted is a normal dependency. */
   kinds: Record<string, 'normal' | 'build' | 'dev'> = {},
+  root = REPO_ROOT,
 ): object {
   const all = [
     ...members.map((m) => ({ name: m.name, dir: m.dir as string | null })),
@@ -59,11 +67,11 @@ function fixture(
   const dirOf = new Map(all.map((p) => [p.name, p.dir]));
   const idOf = (name: string) => `path+file://${dirOf.get(name)}#${name}`;
   return {
-    workspace_root: REPO_ROOT,
+    workspace_root: root,
     packages: all.map((p) => ({
       id: idOf(p.name),
       name: p.name,
-      manifest_path: join(REPO_ROOT, p.dir ?? '.', 'Cargo.toml'),
+      manifest_path: join(root, p.dir ?? '.', 'Cargo.toml'),
     })),
     workspace_members: members.map((m) => idOf(m.name)),
     resolve: {
@@ -272,17 +280,16 @@ describe('checkPlatformCrateBoundaries', () => {
     expect(result.violations.join('\n')).toMatch(/F-01.*datazen-driver-redis/);
   });
 
-  it('F-01: a tauri crate in a driver build graph is reported as an advisory, not a violation', () => {
-    // RED FIRST, then corrected. This test was written against the ORIGINAL
-    // behaviour — it asserted `violations` and was red at base 2530161ac, which
-    // is what proved the hole was real rather than assumed. It is kept, and it is
-    // kept *failing on the wrong array*: the guard cannot make this a violation,
-    // because F-01's `forbiddenCrates` is `[]` and §2.4's F-01 row names only
-    // workspace crates. The guard and the spec agree with each other and both are
-    // weaker than the file header, so tightening the guard here would mean the
-    // implementation quietly overriding the contract. Asserting the advisory is
-    // the honest form of the same claim: the edge is visible, and still not a
-    // verdict.
+  it('F-01: a tauri crate in a driver build graph is a violation', () => {
+    // RED FIRST, then corrected — twice. The first version of this test was
+    // written against the ORIGINAL behaviour: it asserted `violations` and was
+    // red at base 2530161ac, which is what proved the hole was real rather
+    // than assumed. It was then rewritten to assert the **advisory** instead,
+    // because at that point F-01's `forbiddenCrates` was `[]` and the guard
+    // could not make the call without the spec adopting it. The spec adopted it
+    // (§2.4's F-01 row already said `tauri*`; the archive's precondition table
+    // in `docs/development/ci-test-matrix.md` §2.3.1 listed the two remaining
+    // steps), so the honest form of the claim is a violation again.
     //
     // Neither matcher is at fault. `normalBuildClosure` follows `kind ===
     // "build"` edges and `matchesCrateFamily("tauri-plugin", "tauri")` is true
@@ -296,35 +303,62 @@ describe('checkPlatformCrateBoundaries', () => {
         { 'datazen-driver-redis->tauri-plugin': 'build' },
       ),
     );
-    expect(result.violations).toEqual([]);
-    expect(result.advisories.join('\n')).toMatch(
-      /F-01\?\s+datazen-driver-redis.*reaches tauri-plugin in its normal\+build closure\. Not blocking/,
-    );
+    expect(result.violations.join('\n')).toMatch(/F-01.*datazen-driver-redis.*→ tauri-plugin/);
+    // The rule's own summary line must agree with the line above it.
+    expect(ruleVerdict('F-01', result.violations)).toBe('fail');
   });
 
-  it('a declared host edge the resolve graph drops is reported as an advisory', () => {
-    // The second half of the finding, and the reason the manifest scan exists at
+  it('F-01: a dormant tauri declaration in a driver is a violation', () => {
+    // The second half of the rule, and the reason the manifest scan exists at
     // all. The resolve graph is feature-resolved, so an optional dependency
     // behind a feature nobody enables is not in `resolve.deps[]` and no closure
-    // walk can reach it. `packages/drivers/redis/Cargo.toml:27` declares
-    // `tauri = { version = "2", optional = true }` and line 31 declares
-    // `tauri-plugin` as a build-dependency — only the second appears in the real
-    // resolved graph.
+    // walk can reach it. §2.4's note under the table says both sides count.
     //
-    // This fixture resolves no edges for redis at all, so *neither* declaration is
-    // resolved here; the assertion is pinned to the `[dependencies]` one, which is
-    // the line that is genuinely invisible to the closure walk.
-    const result = run(fixture(CORE, { ...clean }, [{ name: 'tauri' }]));
-    expect(result.violations).toEqual([]);
-    expect(result.advisories.join('\n')).toMatch(/declares tauri in \[dependencies\]/);
+    // Hermetic: the driver manifest is written into a throwaway tree, because
+    // the declared-edge scan reads `Cargo.toml` **from disk** — a fixture that
+    // only faked the graph could not exercise this half at all.
+    const root = mkdtempSync(join(tmpdir(), 'datazen-f01-declared-'));
+    try {
+      const dir = join(root, 'packages/drivers/probe');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'Cargo.toml'),
+        '[package]\nname = "datazen-driver-probe"\nversion = "0.0.1"\n\n' +
+          '[dependencies]\ntauri = { version = "2", optional = true }\n',
+      );
+      const result = run(
+        fixture([{ name: 'datazen-driver-probe', dir: 'packages/drivers/probe' }], {}, [], {}, root),
+      );
+      expect(result.violations.join('\n')).toMatch(
+        /F-01.*datazen-driver-probe.*declares tauri in \[dependencies\]/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
-  it('the advisory does not double-report an edge the closure walk already found', () => {
-    // Declared-minus-resolved, not declared-in-full: an edge that resolved is the
-    // closure advisory's to report, and printing it twice would make the count
-    // read as two findings when there is one. The real redis manifest declares
-    // `tauri-plugin` (line 31) and the fixture resolves it, so it must appear only
-    // in the closure line.
+  it('F-01: the host\'s own dormant tauri declaration is not adjudicated by F-01', () => {
+    // The trap this rule must not fall into. `src-tauri/Cargo.toml` declares
+    // `tauri-plugin-webdriver` for the macOS silent-E2E feature, and the host
+    // is *supposed* to depend on Tauri — F-01's subjects are the `driver`
+    // layer, so that edge is outside the rule. Reading it as a violation would
+    // be the gate punishing the one member that is allowed to have it.
+    //
+    // The real `src-tauri/Cargo.toml` is read here, so this case is about the
+    // real tree's host manifest, not a synthetic one.
+    const result = run(fixture(CORE, { ...clean }));
+    expect(result.violations.filter((v) => v.startsWith('F-01'))).toEqual([]);
+    expect(result.advisories.join('\n')).toMatch(
+      /datazen \(src-tauri\/Cargo\.toml\) declares .*tauri-plugin-webdriver/,
+    );
+    expect(result.advisories.join('\n')).toMatch(/Not blocking: F-01's subjects are/);
+  });
+
+  it('a declared edge the resolve graph drops is reported once, by the rule that owns it', () => {
+    // Declared-minus-resolved, not declared-in-full: an edge that resolved is
+    // the closure walk's to report, and printing it twice would make the count
+    // read as two findings when there is one. The fixture resolves
+    // `tauri-plugin`, so the declared-edge side must stay quiet about it.
     const result = run(
       fixture(
         CORE,
@@ -333,8 +367,8 @@ describe('checkPlatformCrateBoundaries', () => {
         { 'datazen-driver-redis->tauri-plugin': 'build' },
       ),
     );
-    expect(result.advisories.join('\n')).not.toMatch(/declares tauri-plugin/);
-    expect(result.advisories.join('\n')).toMatch(/reaches tauri-plugin in its normal\+build/);
+    expect(result.violations.filter((v) => v.includes('tauri-plugin')).length).toBe(1);
+    expect(result.advisories.join('\n')).not.toMatch(/datazen-driver-redis/);
   });
 
   it('F-02: a tauri crate in a core crate closure is a violation', () => {
@@ -360,6 +394,26 @@ describe('checkPlatformCrateBoundaries', () => {
       ),
     );
     expect(result.violations.join('\n')).toMatch(/F-02.*datazen-runtime.*→ tauri/);
+  });
+
+  it('a manifest that cannot be read is an error, not a silent skip', () => {
+    // The declared-edge scan used to `advisories.push` and `continue` on a
+    // read failure — the one non-fail-closed asymmetry in the gate. Now that
+    // F-01 adjudicates declaration edges, that same hole would swallow a real
+    // violation, so the read failure became an **error**.
+    //
+    // The member's manifest is pointed at a path that does not exist. Cargo
+    // would have failed before reaching this point in the real world; the
+    // fixture is what makes the branch reachable.
+    const root = mkdtempSync(join(tmpdir(), 'datazen-f01-unreadable-'));
+    try {
+      const result = run(
+        fixture([{ name: 'datazen-driver-ghost', dir: 'packages/drivers/ghost' }], {}, [], {}, root),
+      );
+      expect(result.errors.join('\n')).toMatch(/read\?.*datazen-driver-ghost/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('F-02: a dev-dependency does not count as a shippable edge', () => {
@@ -420,6 +474,82 @@ describe('checkPlatformCrateBoundaries', () => {
       requireLayers: ['server'],
     });
     expect(result.errors.join('\n')).toContain('server');
+  });
+});
+
+/**
+ * F-01's exemption mechanism.
+ *
+ * The rule table has no implicit way for a driver to keep a `tauri*` edge: an
+ * exemption is a **written-down decision** — member + family + reason — and
+ * the guard prints it on every run. Two properties are load-bearing and are
+ * asserted here:
+ *
+ *   * an exemption that names a member the rule does not cover, or a family
+ *     the rule does not forbid, is an **error**: a stale entry protects
+ *     nothing while looking like it does;
+ *   * an exemption covers the **family** side only — a driver allowed to
+ *     depend on `tauri*` is still forbidden from depending on the host.
+ */
+describe('F-01 exemptions', () => {
+  const clean = { 'datazen-runtime': ['datazen-driver-api'] };
+
+  /** The production rule table with F-01's exemption list replaced. */
+  function withExemptions(exemptions: Array<{ member: string; family: string; reason: string }>) {
+    return RULES.map((rule) =>
+      rule.id === 'F-01' ? { ...rule, exemptions } : rule,
+    );
+  }
+
+  function runWith(
+    exemptions: Array<{ member: string; family: string; reason: string }>,
+    metadata: object,
+  ) {
+    return checkPlatformCrateBoundaries({
+      root: REPO_ROOT,
+      metadata,
+      specText: SPEC,
+      rules: withExemptions(exemptions),
+    });
+  }
+
+  it('suppresses the violation and says so out loud', () => {
+    const result = runWith(
+      [{ member: 'datazen-driver-redis', family: 'tauri', reason: 'probe exemption' }],
+      fixture(
+        CORE,
+        { ...clean, 'datazen-driver-redis': ['tauri-plugin'] },
+        [{ name: 'tauri-plugin' }],
+      ),
+    );
+    expect(result.violations.filter((v) => v.includes('tauri-plugin'))).toEqual([]);
+    expect(result.exemptions.join('\n')).toMatch(/datazen-driver-redis.*tauri-plugin.*probe exemption/);
+  });
+
+  it('does not let an exemption cover the host side', () => {
+    // The exemption names the `tauri` family, so it says nothing about the
+    // `datazen` host crate — that edge is still a violation.
+    const result = runWith(
+      [{ member: 'datazen-driver-redis', family: 'tauri', reason: 'probe exemption' }],
+      fixture(CORE, { ...clean, 'datazen-driver-redis': ['datazen'] }),
+    );
+    expect(result.violations.join('\n')).toMatch(/F-01.*datazen-driver-redis.*→ datazen/);
+  });
+
+  it('rejects an exemption whose member is not a subject of the rule', () => {
+    const result = runWith(
+      [{ member: 'datazen-driver-nobody', family: 'tauri', reason: 'probe exemption' }],
+      fixture(CORE, clean),
+    );
+    expect(result.errors.join('\n')).toMatch(/F-01.*datazen-driver-nobody.*not a subject/);
+  });
+
+  it('rejects an exemption whose family the rule does not forbid', () => {
+    const result = runWith(
+      [{ member: 'datazen-driver-redis', family: 'axum', reason: 'probe exemption' }],
+      fixture(CORE, clean),
+    );
+    expect(result.errors.join('\n')).toMatch(/F-01.*family.*axum/);
   });
 });
 

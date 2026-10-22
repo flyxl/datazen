@@ -75,7 +75,7 @@ datazen/
 1. `drivers-registry.json` 定义 path 驱动 + git 驱动；Git 可钉 `ref`。
 2. `scripts/resolve-drivers.mjs` 构建前执行驱动选型、克隆 Git driver，并生成 `generated.ts`、`driver_init.rs`、`.driver-features.json`（均 gitignored）。
 3. `scripts/resolve-pro.mjs` 控制构建版本：默认 `--edition=community`（纯开源 Fallback）；`--edition=pro`（打包并 stage `@datazen/extension-sql-editor-pro` 到 `src-tauri/resources/builtin-ep/`，运行时经签名验签后动态加载）。
-4. 数据库驱动通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories。
+4. 数据库驱动通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories。驱动的**事件出口**（如 Redis Pub/Sub）同样走 `inventory` 注册（`register_event_outlet!`），宿主在启动期遍历装入**本形态**的 sink —— 契约形态中立，驱动侧不出现任何宿主类型。
 
 注入前托管清单文件的干净副本会存进 gitignored 的 `.driver-file-stash/`；该 stash 带 `.stash-meta.json` 旁证，复用前判新鲜度，**陈旧时 `resolve-drivers.mjs` 以退出码 1 硬失败并给出恢复命令，而不是静默回滚合并后的清单文件**。此时**不要**跑 `--restore`（它会用合并前的旧副本覆盖当前结果）。详见 [docs/development/worktree-isolation.md](docs/development/worktree-isolation.md)。
 
@@ -110,7 +110,7 @@ DataZen 确立严格正交的四维可扩展架构，依托独立设计系统 `@
 
 ### Driver Command API 与统一执行网关
 
-`packages/driver-api` 提供统一 Command 抽象（`command_definitions()` + `execute_command()`）。SQL 编辑器的 `query`/`execute`、流式 `query_stream`、Schema 对象元数据、Redis 操作、管理命令等全部走 `execute_driver_command`，宿主不按 Driver 类型硬编码。Redis 深度能力集中在 `packages/drivers/redis`，宿主仅为薄 Tab 壳。
+`packages/driver-api` 提供统一 Command 抽象（`command_definitions()` + `execute_command()`）。SQL 编辑器的 `query`/`execute`、流式 `query_stream`、Schema 对象元数据、Redis 操作、管理命令等全部走 `execute_driver_command`，宿主不按 Driver 类型硬编码。Redis 深度能力集中在 `packages/drivers/redis`，宿主仅为薄 Tab 壳。Redis 的 Pub/Sub 消息经 `packages/driver-api` 的**形态中立事件出口**（`DriverEventOutlet` / `DriverEventSink` / `register_event_outlet!`）送达前端：驱动侧**没有任何 `tauri` 依赖**，宿主在启动期遍历装入本形态的 sink（桌面实现见 `src-tauri/src/platform/event_sink.rs`）。
 
 ### AI 模块与 ai-api
 
