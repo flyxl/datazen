@@ -8,9 +8,10 @@
 //! transport, no ambient state, nothing form-specific.
 //!
 //! Two byte-identical copies used to exist, one per consumer
-//! (`src-tauri/src/app_data_archive.rs` and
-//! `packages/workspace-apps/src/zip_path.rs`). Neither imported the other and
-//! the workspace-apps copy only named the host copy in its header, so the host
+//! (`src-tauri/src/app_data_archive.rs` and the workspace-app installer, whose
+//! package has since been merged into `packages/feature-core/src/workspace_apps/`).
+//! Neither imported the other and
+//! the workspace-app copy only named the host copy in its header, so the host
 //! side did not even know a second copy existed — a one-sided edit left one
 //! side still enforcing the old rules, which on a security check is the worst
 //! possible failure direction. Exactly one implementation lives here and every
