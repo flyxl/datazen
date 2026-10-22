@@ -68,6 +68,45 @@ export function pagingHintKey(reason: KeysetUnavailableReason): string {
   return reason === 'notAdjacent' ? 'pagination.hint.jumpReanchored' : `pagination.hint.${reason}`;
 }
 
+/**
+ * Whether the pager says anything at all about a database that cannot seek.
+ *
+ * A database that does not support fast paging is read exactly as it was
+ * before the contract existed, and the grid shows **nothing** about it:
+ * there is no keyset entry to show, and a standing note would be a new
+ * thing in the footer of every table of every such database. The reason
+ * itself is still in the answer — the host reports the truth — it is just
+ * not rendered.
+ */
+export function showPagingReason(reason: KeysetUnavailableReason): boolean {
+  return reason !== 'driverUnsupported';
+}
+
+/**
+ * Whether the pager shows the strategy it read the page with.
+ *
+ * "Fast paging" is worth saying when the seek is in force **and** there is
+ * more than one page to walk — a table that fits on one screen is never
+ * paged, and saying "fast paging" about it is noise.
+ *
+ * "Offset paging" is worth saying only when the offset was a
+ * **fallback**: a driver that simply cannot seek is not a fallback, it is
+ * how that database reads, and saying so on every page would be noise.
+ */
+export function showPagingLabel(hint: PagingHint, hasMoreThanOnePage: boolean): boolean {
+  if (hint.reason !== null && showPagingReason(hint.reason)) {
+    // A fallback happened: the reason is shown, and the strategy belongs
+    // with it.
+    return true;
+  }
+  return hint.mode === 'keyset' && hasMoreThanOnePage;
+}
+
+/** The i18n key of the strategy label. */
+export function pagingLabelKey(hint: PagingHint): string {
+  return hint.mode === 'keyset' ? 'pagination.mode.keyset' : 'pagination.mode.offset';
+}
+
 export interface PaginationProps {
   page: number;
   pageSize: number;
@@ -273,19 +312,17 @@ export function Pagination({
             {t('pagination.unstablePaging')}
           </span>
         )}
-        {pagingHint && (
+        {pagingHint && showPagingLabel(pagingHint, totalRows > pageSize) && (
           <span
             className="shrink-0 text-fg-tertiary"
-            title={t(pagingHint.mode === 'keyset' ? 'pagination.mode.keyset' : 'pagination.mode.offset')}
+            title={t(pagingLabelKey(pagingHint))}
             data-testid="pagination-paging-mode"
-            data-i18n-key={
-              pagingHint.mode === 'keyset' ? 'pagination.mode.keyset' : 'pagination.mode.offset'
-            }
+            data-i18n-key={pagingLabelKey(pagingHint)}
           >
-            {t(pagingHint.mode === 'keyset' ? 'pagination.mode.keyset' : 'pagination.mode.offset')}
+            {t(pagingLabelKey(pagingHint))}
           </span>
         )}
-        {pagingHint?.reason && (
+        {pagingHint?.reason && showPagingReason(pagingHint.reason) && (
           <span
             className="max-w-[22rem] truncate text-warning"
             title={t(pagingHintKey(pagingHint.reason), { page: current + 1 })}

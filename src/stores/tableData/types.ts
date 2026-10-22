@@ -45,6 +45,15 @@ export interface TableState {
    * a boundary that was really read. There is no second page number.
    */
   keyset: KeysetPagingState;
+  /**
+   * The page whose row count was already recomputed after a drift.
+   *
+   * Rows deleted while the user was paging make the count stale, and the
+   * count is then read again — once per page. This remembers which page
+   * that was, so a table that keeps shrinking cannot make the panel read
+   * itself in a loop.
+   */
+  driftRecountPage: number | null;
   /** Applied filters used by queries. */
   filters: FilterCondition[];
   filterLogic: 'and' | 'or';

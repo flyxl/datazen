@@ -85,15 +85,46 @@ describe('the paging hint', () => {
     expect(queryByTestId('pagination-paging-mode')).not.toBeNull();
   });
 
-  it('labels a degraded pager as offset paging', () => {
-    const { getByTestId, queryByTestId } = renderPagination({
+  it('says_nothing_about_a_database_that_cannot_seek', () => {
+    // The spec: a database without the capability shows **no** keyset
+    // entry. A standing note in the footer of every table of every such
+    // database is exactly what must not happen.
+    const { queryByTestId } = renderPagination({
       reason: 'driverUnsupported',
+      driftSuspected: false,
+      mode: 'offset',
+    });
+    expect(queryByTestId('pagination-paging-mode')).toBeNull();
+    expect(queryByTestId('pagination-paging-reason')).toBeNull();
+  });
+
+  it('labels_a_degraded_pager_as_offset_paging', () => {
+    const { getByTestId, queryByTestId } = renderPagination({
+      reason: 'noStableOrder',
       driftSuspected: false,
       mode: 'offset',
     });
     // A degraded pager says so **and** says why.
     expect(getByTestId('pagination-paging-mode').getAttribute('data-i18n-key')).toBe(
       'pagination.mode.offset',
+    );
+    expect(queryByTestId('pagination-paging-reason')).not.toBeNull();
+  });
+
+  it('shows_the_degradation_even_when_the_row_count_is_unknown', () => {
+    // The count is unknown: the pager cannot tell that there is more than
+    // one page, and the degradation must not disappear with it.
+    const { queryByTestId } = render(
+      <Pagination
+        page={0}
+        pageSize={50}
+        totalRows={0}
+        totalRowsKind="unsupported"
+        onPageChange={vi.fn()}
+        onPageSizeChange={vi.fn()}
+        onCountExact={vi.fn()}
+        pagingHint={{ reason: 'nullableKeyColumn', driftSuspected: false, mode: 'offset' }}
+      />,
     );
     expect(queryByTestId('pagination-paging-reason')).not.toBeNull();
   });

@@ -42,7 +42,7 @@ function keysetResponse(
   page: number,
   nextAfterKey: CursorValue[] | undefined,
   overrides: Partial<PagePagingInfo> = {},
-): unknown {
+) {
   const paging: PagePagingInfo = {
     mode: 'keyset',
     orderColumns: [{ column: 'id', descending: false }],
@@ -164,6 +164,49 @@ describe('the keyset half of the table-data store', () => {
     expect(loaded().keyset.anchorPage).toBe(7);
     // The page number was **not** turned into a boundary.
     expect(loaded().keyset.nextAfterKey).toBeNull();
+  });
+
+  it('drift_triggers_a_recount_of_the_rows', async () => {
+    // Rows were deleted while the user was paging: the count on the panel
+    // is stale, and a stale count is read again — not only announced.
+    mockDatabaseCommands.getTableData.mockResolvedValue({
+      ...keysetResponse(0, FIRST_BOUNDARY),
+      paging: {
+        mode: 'keyset',
+        orderColumns: [{ column: 'id', descending: false }],
+        driftSuspected: true,
+      },
+    });
+    await loadTable();
+
+    await vi.waitFor(() =>
+      expect(mockDatabaseCommands.getTableData).toHaveBeenCalledTimes(2),
+    );
+    const recount = mockDatabaseCommands.getTableData.mock.calls[1][0];
+    expect(
+      (recount as { skipCount?: boolean }).skipCount,
+      'the recount must not skip the count — that is the whole point of it',
+    );
+  });
+
+  it('a_drift_is_not_counted_twice_for_the_same_page', async () => {
+    mockDatabaseCommands.getTableData.mockResolvedValue({
+      ...keysetResponse(0, FIRST_BOUNDARY),
+      paging: {
+        mode: 'keyset',
+        orderColumns: [{ column: 'id', descending: false }],
+        driftSuspected: true,
+      },
+    });
+    await loadTable();
+
+    await vi.waitFor(() =>
+      expect(mockDatabaseCommands.getTableData).toHaveBeenCalledTimes(2),
+    );
+    // The recount answers with the same drift, and it must not start a
+    // third read: a table that keeps shrinking must not spin the panel.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledTimes(2);
   });
 
   it('degrade_reason_from_response_is_surfaced', async () => {

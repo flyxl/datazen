@@ -321,21 +321,20 @@ export function TableView({
    * What the back end said about the paging of this page.
    *
    * A degradation is not an error: the page was read by offset and the
-   * reason says why. The reason is only worth showing when the table has
-   * more than one page — "fast paging" is a fact about paging, and a table
-   * that fits on one page is never paged.
+   * reason says why. The hint is **not** hidden when the row count is
+   * unknown — that is exactly when the user cannot tell that something
+   * degraded. What is hidden is the case where the database simply cannot
+   * seek at all; see `showPagingReason`.
    */
   const pagingHint = useMemo(() => {
     const keyset = ts?.keyset;
     if (!keyset) return undefined;
-    const hasMoreThanOnePage = totalRows > pageSize;
-    if (!hasMoreThanOnePage && !keyset.driftSuspected) return undefined;
     return {
       reason: keyset.unavailable,
       driftSuspected: keyset.driftSuspected,
       mode: keyset.mode,
     };
-  }, [ts?.keyset, totalRows, pageSize]);
+  }, [ts?.keyset]);
 
   /**
    * A table without a primary key cannot be ordered by one. The grid still

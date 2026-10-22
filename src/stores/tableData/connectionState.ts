@@ -47,6 +47,7 @@ export function emptyTableState(context: TableChangeContext | null = null): Tabl
     // A panel that has never paged by seek reads by offset — which is what
     // every read did before the keyset contract existed.
     keyset: emptyKeysetPagingState,
+    driftRecountPage: null,
     filters: [],
     filterLogic: 'and',
     draftFilters: [],

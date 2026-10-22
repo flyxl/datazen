@@ -164,6 +164,8 @@ function patchPanelForReload(
     // highlight would point at a row that is no longer on the page (04 §7 #17).
     highlightedNewRowKey: null,
     requestRevision: ts.requestRevision + 1,
+    // A new question: the drift guard of the old page does not carry over.
+    driftRecountPage: null,
   }));
 }
 
@@ -252,6 +254,8 @@ function commitFetchedPage(
       sanitizedVisible && sanitizedVisible.length === res.columns.length ? null : sanitizedVisible,
     rows: rowsWithPending,
     totalRows: res.totalRows ?? current.totalRows,
+    // The page whose count was recomputed after a drift.
+    driftRecountPage: res.paging?.driftSuspected ? res.page : current.driftRecountPage,
     // A response that carries no kind says nothing about the count — the
     // panel keeps the value it had. Only a kind that is actually reported
     // replaces it.
@@ -269,6 +273,14 @@ function commitFetchedPage(
     error: duplicateIdentityKeys.length > 0 ? AMBIGUOUS_ROW_IDENTITY_ERROR : null,
   });
   set({ byPanel: next });
+
+  // Rows were deleted while the user was paging: the count on the panel is
+  // stale, and a stale count is not a note — it is read again. The read is
+  // a full one (`skipCount: false`), once per page: a table that keeps
+  // shrinking must not make the panel read itself in a loop.
+  if (res.paging?.driftSuspected && current.driftRecountPage !== res.page) {
+    get().reloadPanel(panelId, { skipCount: false });
+  }
 }
 
 export const useTableDataStore = create<TableDataStore>((set, get) => ({
