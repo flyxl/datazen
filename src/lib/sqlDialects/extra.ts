@@ -112,6 +112,42 @@ export const sqlserverDialect: SqlDialectStrategy = {
     { id: 'no-owner', label: '--no-owner' },
     { id: 'single-transaction', label: '--single-transaction' },
   ],
+  // SQL Server has no `LIMIT`: the cap is `TOP n` inside the select list.
+  rowLimit: { placement: 'select-list', clause: (limit) => `TOP ${limit}` },
+  tableSql: new BaseTableSqlGenerator('"'),
+};
+
+/**
+ * Oracle 12c+.
+ *
+ * Oracle has no `LIMIT` either: the cap is `FETCH FIRST n ROWS ONLY` at the
+ * end of the statement. The family is declared here so an Oracle driver's
+ * row cap is right the day the driver ships, and so the host never has to
+ * spell `FETCH FIRST` itself.
+ */
+export const oracleDialect: SqlDialectStrategy = {
+  family: 'oracle',
+  ddl: {
+    getTableDdlQuery(tableName: string) {
+      return {
+        sql: `SELECT DBMS_METADATA.GET_DDL('TABLE', '${tableName.replace(/'/g, "''")}') FROM DUAL`,
+        extractColumnIndex: 0,
+      };
+    },
+    getViewDdlQuery(viewName: string) {
+      return {
+        sql: `SELECT DBMS_METADATA.GET_DDL('VIEW', '${viewName.replace(/'/g, "''")}') FROM DUAL`,
+        extractColumnIndex: 0,
+      };
+    },
+  },
+  index: standardIndex('bare'),
+  backupOptions: [
+    { id: 'schema-only', label: '--schema-only' },
+    { id: 'data-only', label: '--data-only' },
+    { id: 'clean', label: '--clean' },
+  ],
+  rowLimit: { placement: 'trailing', clause: (limit) => `FETCH FIRST ${limit} ROWS ONLY` },
   tableSql: new BaseTableSqlGenerator('"'),
 };
 
