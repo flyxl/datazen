@@ -149,17 +149,26 @@ Coder 交付 5 提交（`66fc97aae`/`fa0dcfd59`/`c4a8c98b4`/`c6b59dda0`/`89ec12d
 
 ## 波次总计划（9 波）
 
-| Wave | 内容 | 状态 |
-| --- | --- | --- |
-| 1 | `grid-selection` + `insert-backend` | ✅ |
-| 2 | `grid-cell` + `web-transport` | ✅ |
-| 3 | `insert-frontend` | ✅ |
-| 4 | `dirty-cells` + `fk-navigation` | ✅ |
-| 5 | `fk-navigation-ui` + `filters` | ✅ |
-| 6 | `filters-frontend` + `count-backend` | ✅ |
-| 7 | `count-frontend` + `named-views` | 🔄 进行中 |
-| 8 | 02 键盘 ∥ 11 键集分页 | ⏳ |
-| 9 | 03 剪贴板 ∥ 10 结果网格 | ⏳ |
-| 10 | 05 编辑器 ∥ 12 测试 | ⏳ |
+| Wave | 内容 | 状态 | 共享文件（合流时需手工解） |
+| --- | --- | --- | --- |
+| 1 | `grid-selection` + `insert-backend` | ✅ | — |
+| 2 | `grid-cell` + `web-transport` | ✅ | — |
+| 3 | `insert-frontend` | ✅ | — |
+| 4 | `dirty-cells` + `fk-navigation` | ✅ | — |
+| 5 | `fk-navigation-ui` + `filters` | ✅ | — |
+| 6 | `filters-frontend` + `count-backend` | ✅ | `src/stores/tableDataStore.ts` |
+| 7 | `count-frontend` + `named-views` | 🔄 进行中 | `src/locales/en/query.ts`、`src/lib/gridErrors.ts`、`src/platform/tauriBackendTransport.ts` |
+| 8 | **02 键盘 ∥ 11 键集分页** | ⏳ | `DataTable.tsx`、`TableView.tsx`、`src/locales/en/query.ts` |
+| 9 | **03 剪贴板 ∥ 10 结果网格** | ⏳ | `src/lib/gridErrors.ts`、`src/locales/en/query.ts` |
+| 10 | **05 编辑器**（单轨） | ⏳ | `src/lib/gridErrors.ts`、`src/locales/en/query.ts`、`src/lib/tableChanges.ts`、`src/lib/dataTableContextMenu.ts` |
+| R | 12-testing 的 **D1–D8 审计** + 全量回归 + E2E 补齐 + i18n 补齐 + 契约改写 + 删 `docs/prd/` | ⏳ | — |
+
+### 12-testing 不是一条「并行代码轨」
+
+它是**整批方案的共享测试基建册**：第 1.1 节给出的是**完成定义 D1–D8**（契约不破 / 按 §9 矩阵交付 / 门禁逐条全绿 / 既有测试同步更新 / **至少一次反向注入** / 环境归属写清 / **零文案断言** / 类型干净），第 5 节给的是 journey 骨架。⇒ 它的落地形态是**R 阶段的一次独立审计**（逐条对 D1–D8 检查已交付的 12 册），不是与 05 并行的一条轨。
+
+### `packages/driver-api/src/traits.rs` 是**硬串行点**
+
+sqlserver 的 `file_line_cap.rs` 把 `traits.rs` 钉在 **≤1265 行**，且是 **ratchet**（只许缩不许涨；加 1 行 ⇒ `cargo test -p datazen-driver-sqlserver` 变红）。⇒ **10 与 11 不能并行**（两册都要往 `traits.rs` 加 trait 方法，都必须腾出行数），必须串行。11 排在 10 之前（11 的方法体可落进新子模块 `traits/keyset.rs`，腾行数的成本更低）。
 
 R 阶段：全量回归 ⇒ 逐节把 `docs/prd/data-browsing-design/` 改写为「已实现事实」并入 `docs/architecture/` 与 `docs/features/` ⇒ 删除 `docs/prd/` 整个目录 ⇒ 清 G9（i18n）⇒ 推分支。
