@@ -4,6 +4,8 @@
 //! app-archive modules and the registered handler list, so they live here
 //! rather than inside any single one of them.
 
+use std::path::{Path, PathBuf};
+
 /// Every file that hosts part of the merged config IPC surface.
 const SOURCE: &str = concat!(
     include_str!("config.rs"),
@@ -132,6 +134,78 @@ mod ipc_contract_guards {
         for name in ["export_connections", "export_app_data", "import_app_data"] {
             let variant = format!("{fn_prefix}{name}{with_dialog}{dialog_kind}");
             assert!(!SOURCE.contains(&variant), "stale dialog twin `{variant}`");
+        }
+    }
+}
+
+/// The `grid.*` codes are the **shared layer's** vocabulary.
+///
+/// The host maps a shared error onto [`super::error::CommandError`] and
+/// nothing else: which code a failure is, and what it means, is decided in
+/// `packages/feature-core`. A literal `grid.` prefix inside a command shell is
+/// therefore a rule that lives in the wrong place — and it would be invisible
+/// to every other check, because the shell still compiles and every unit test
+/// still passes.
+///
+/// This guard scans the production command sources for such a literal. Test
+/// files are exempt: a test that *asserts* a code must name it.
+#[test]
+fn the_command_shell_carries_no_rule_codes() {
+    let mut checked = 0usize;
+    for path in command_sources() {
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("cannot read {}: {err}", path.display()));
+        checked += 1;
+        for (number, line) in source.lines().enumerate() {
+            // A comment may talk about a code; only code may carry one.
+            let code = match line.find("//") {
+                Some(at) => &line[..at],
+                None => line,
+            };
+            assert!(
+                !code.contains("\"grid."),
+                "{}:{} carries a rule code; the `grid.*` vocabulary belongs to the shared layer",
+                path.display(),
+                number + 1
+            );
+        }
+    }
+    assert!(
+        checked > 5,
+        "guard ran vacuously: only {checked} command source(s) were scanned"
+    );
+}
+
+/// The production sources of the IPC command shell.
+///
+/// Test files are skipped: they assert codes, so they have to name them.
+fn command_sources() -> Vec<PathBuf> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands");
+    let mut files = Vec::new();
+    collect_command_sources(&root, &mut files);
+    files.sort();
+    files
+}
+
+fn collect_command_sources(dir: &Path, files: &mut Vec<PathBuf>) {
+    let entries =
+        std::fs::read_dir(dir).unwrap_or_else(|err| panic!("cannot list {}: {err}", dir.display()));
+    for entry in entries {
+        let path = entry.expect("readable directory entry").path();
+        if path.is_dir() {
+            // A `tests` directory holds assertions, not rules.
+            if path.file_name().and_then(|name| name.to_str()) != Some("tests") {
+                collect_command_sources(&path, files);
+            }
+            continue;
+        }
+        let is_rust = path.extension().and_then(|ext| ext.to_str()) == Some("rs");
+        let is_test = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == "tests.rs" || name.ends_with("_tests.rs"));
+        if is_rust && !is_test {
+            files.push(path);
         }
     }
 }
