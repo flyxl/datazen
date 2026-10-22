@@ -6,9 +6,7 @@ use datazen_application::{
     sessions::ConnectionUseCases,
 };
 use datazen_driver_api::{ColumnInfo, LegacySqlDialect, SqlDialect, TableSchema, Value};
-use datazen_feature_core::services::result_edit::{
-    read_only_error_code, GridReadOnlyReason,
-};
+use datazen_feature_core::services::result_edit::{read_only_error_code, GridReadOnlyReason};
 use datazen_platform_api::{
     context::RequestContext,
     dto::{
