@@ -131,7 +131,7 @@ Rust（Wave 7 收尾时实测）：宿主 1429 / feature-core 527 / driver-api 3
 | 轨 | 分支 | 拥有（互不重叠） | 内容 |
 | --- | --- | --- | --- |
 | **A `timestamp-format`** | `feature/timestamp-format` | `src/lib/timestampFormat.ts`(新)、`src/lib/timestampFormatEngine.ts`(改内部)、`src/components/DataTable/CellRenderer.tsx`(改)、`src/lib/__tests__/` | 规则引擎 + **三级优先级**（表级覆盖 > 规则 > 全局）+ 格式化本体（`iso` / `iso-tz` / `locale`）+ 引擎接进渲染路径 + **ReDoS 防护** |
-| **B `timestamp-settings`** | `feature/timestamp-settings` | `src/windows/settings/TimestampFormattingSection.tsx`(新)、`SettingsContent.tsx`(改)、`src/types/settings.ts`(改)、`src/stores/settingsStore.ts`(改)、i18n | 设置 UI：全局开关 + 格式选择 + **规则编辑器** + 预览窗格 |
+| **B `timestamp-settings`** | `feature/timestamp-settings` | **`packages/platform-api/src/settings.rs`(改，Rust 权威)**、**`packages/backend-client/src/settings.ts`(改，TS 镜像)**、`src/windows/settings/TimestampFormattingSection.tsx`(新)、`SettingsContent.tsx`(改)、`src/stores/settingsStore.ts`(改)、i18n | 设置 UI：全局开关 + 格式选择 + **规则编辑器** + 预览窗格。⚠️ **两侧必须同批**（见下） |
 | **C `timestamp-overrides`** | `feature/timestamp-overrides` | `src-tauri/src/store/timestamp_overrides.rs`(新)、`store/{mod,models}.rs`(改)、`commands/timestamp_overrides.rs`(新)、`commands/mod.rs`、`bootstrap/run.rs`、`packages/backend-client/src/{types/tableData,transport,tableDataClient}.ts`、`src/commands/`(新)、`src/platform/tauriBackendTransport.ts` | 表级覆盖的**存储**（宿主 store）+ 三条命令 + web 通路四元组 |
 | **D `timestamp-column`** | `feature/timestamp-column` | `src/components/DataTable/useDataTableContextMenu.ts`(改)、`src/lib/dataTableContextMenu.ts`(改)、`src/windows/connection/TableView.tsx`(改)、列头菜单的格式化面板(新)、i18n | 列头右键「格式配置」+ 每列覆盖 UI + 在 `TableView` 挂 Provider |
 
@@ -152,6 +152,33 @@ Rust（Wave 7 收尾时实测）：宿主 1429 / feature-core 527 / driver-api 3
 | 3 | 表级覆盖「Persist in connection metadata」 | **独立 store**（宿主）+ 薄命令 + 端口 | 连接档案内会长出一个「每表每列显示规则」的杂物袋；规则本身是 per-table 的，`connectionId` 只是索引 |
 | 4 | `custom` 格式 | **Wave 11 不做** | issue 的示例是 **Java 风格** `yyyy-MM-dd`，JS 生态是 `YYYY-MM-DD` —— 小写 `yyyy` 在 JS 里是「年内的第几天」。语义不定死就实现＝埋雷。issue 自己也标了 future enhancement |
 | 5 | BIGINT 自动识别 | **默认关闭** + 命中时**显式显示解释**（Unix 秒/毫秒）+ 允许逐列覆盖 | 一个叫 `at` 的 BIGINT 列可能是计数。issue 的三条要求全部保留 |
+
+### 设置项的落点：**跨形态共享的类型链，两侧必须同批**
+
+「全局设置 + 规则」落在 `{appData}/settings.json` ✓（`src-tauri/src/store/mod.rs:293`，**全局**，不分连接）。但**不是**加一个 TS 字段就完事 —— 设置类型是**跨形态共享**的：
+
+```
+packages/platform-api/src/settings.rs        ← Rust 权威（UserPreferences，带 #[serde(deny_unknown_fields)]）
+      ↓
+packages/backend-client/src/settings.ts      ← TS 镜像 + toSharedSettings() 转换
+      ↓
+src/types/index.ts 的 AppSettings           ← extends UserPreferences, ExecutionSettings
+      ↓
+src/stores/settingsStore.ts → 设置 UI
+```
+
+⚠️ **`deny_unknown_fields` 是硬耦合**：Rust 侧不加字段、TS 侧就发 ⇒ **反序列化直接失败**（不是「那个字段被忽略」，是整个 `settings.json` 读不出来）。⇒ **轨 B 必须 Rust 与 TS 两侧同批改**，不能只改 TS。
+
+### 归属判据：跟着**谁**走
+
+| 层 | 归属 | 落点 |
+| --- | --- | --- |
+| 全局设置 + 规则引擎 | **用户偏好** —— 跟着用户走 | `settings.json` |
+| 表级 / 列级覆盖 | **连接/表的数据** —— 跟着某个连接走 | 独立 store（`{appData}/<name>.json` + 宿主 store + 薄命令 + web 端口） |
+
+判据不是「它算不算设置」，而是「**它跟着谁走**」。这正是 issue 三层里前两层与第三层的分界。
+
+**待协调者/用户拍板的取舍**：表级覆盖放独立 store（本方案，与命名视图一致；连接 profile 保持「连接怎么连」的纯粹性，导出连接时不带走一堆显示规则）**vs** 放进**连接 profile**（`src-tauri/src/store/connections.rs`；覆盖跟着连接一起导出/迁移）。
 
 ### 保留现状的一条语义（加时区支持时**不许**改）
 
