@@ -548,5 +548,51 @@ const pack = {
   'query.objectTree.tables': 'Tables',
   'query.objectTree.views': 'Views',
   'query.objectTree.noObjects': 'No objects',
+  // ── Cell editor (DB-05) ─────────────────────────────────────────
+  // The write entries of the right-click menu. "Set empty string" and
+  // "Set NULL" are different writes, and so is "leave the column alone".
+  'cellEditor.setValue': 'Set Value',
+  'cellEditor.setEmpty': 'Set empty string',
+  'cellEditor.setDefault': 'Use column default',
+  'cellEditor.revertCell': 'Revert this cell',
+  'cellEditor.loadCandidates': 'Load candidate values',
+  'cellEditor.loadingCandidates': 'Loading candidate values…',
+  'cellEditor.candidatesEmpty': 'No candidate values found',
+  'cellEditor.candidatesFailed': 'Failed to load candidate values',
+  'cellEditor.candidatesTruncated': 'Showing the first {count} distinct values',
+  'cellEditor.commit': 'Apply',
+  'cellEditor.formatJson': 'Format JSON',
+  'cellEditor.minifyJson': 'Minify',
+  'cellEditor.ariaLabel': 'Edit cell value',
+  // The refusals. Each one says what was expected, not just "invalid".
+  'cellEditor.invalidNumber': 'Enter a valid number',
+  'cellEditor.invalidInteger': 'Enter a whole number',
+  'cellEditor.invalidBoolean': 'Enter true or false',
+  'cellEditor.invalidDate': 'Enter a valid date (YYYY-MM-DD)',
+  'cellEditor.invalidTime': 'Enter a valid time (HH:MM:SS)',
+  'cellEditor.invalidDateTime': 'Enter a valid date and time (YYYY-MM-DDTHH:MM:SS)',
+  'cellEditor.invalidJson': 'Invalid JSON — fix it before applying',
+  'cellEditor.invalidUuid': 'Enter a valid UUID',
+  'cellEditor.notNull': 'This column does not allow NULL',
+  'cellEditor.valueTooLarge': 'This value is too large to edit in the grid',
+  'cellEditor.binaryNotEditable': 'Binary values cannot be edited in the grid',
+  'cellEditor.discardedUncommitted':
+    'Your edit was discarded because the row is no longer displayed',
+  'cellEditor.readOnlyTitle': 'Cell is read-only',
+  // One sentence per reason — "read-only" on its own tells the user nothing.
+  'cellEditor.readOnly.connection': 'This connection is read-only, so cells cannot be edited.',
+  'cellEditor.readOnly.driverCapability': 'This database driver does not support writing.',
+  'cellEditor.readOnly.view':
+    'Views and materialized views are read-only in the data grid.',
+  'cellEditor.readOnly.noPrimaryKey':
+    'This table has no primary key, so a row cannot be identified for an update.',
+  'cellEditor.readOnly.ambiguousRowIdentity':
+    'This row cannot be identified uniquely (its key is NULL or duplicated).',
+  'cellEditor.readOnly.autoIncrement': 'Auto-increment columns cannot be edited in place.',
+  'cellEditor.readOnly.generated': 'Generated columns cannot be edited.',
+  'cellEditor.readOnly.typeNotEditable':
+    'This column type cannot be edited in place in this database.',
+  'cellEditor.readOnly.binaryColumn': 'Binary columns cannot be edited in place.',
+  'cellEditor.readOnly.largeValue': 'This value is too large to edit in place.',
 } as const;
 export default pack;
