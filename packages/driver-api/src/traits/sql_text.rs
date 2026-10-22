@@ -10,8 +10,9 @@
 //! is the default body of the trait method that carries the same name.
 
 use super::DatabaseDriver;
+use crate::dialect::LegacySqlDialect;
 use crate::sql_target::SqlTarget;
-use crate::types::{DriverError, PaginationSyntax, SqlLiteralDialect, Value};
+use crate::types::{BoundSqlStatement, DriverError, PaginationSyntax, SqlLiteralDialect, Value};
 
 /// Lowercase hexadecimal encoding used by the default literal formatter.
 ///
@@ -154,6 +155,99 @@ pub(crate) fn split_restore_sql<D: DatabaseDriver + ?Sized>(driver: &D, sql: &st
     let mut out = scanner.push(sql);
     out.extend(scanner.finish());
     out
+}
+
+// ── The row-write statement builders ─────────────────────────────────
+//
+// These are the default bodies of the trait methods with the same names.
+// They live here because they are SQL text: the rules (which dialect quotes
+// how, how many parameters a statement may bind, when a driver may not write
+// at all) are one story, and the trait declaration stays a one-liner.
+//
+// The bodies are unchanged by living here — they are the same statements the
+// trait produced before, byte for byte.
+
+/// The legacy inline-value `UPDATE`.
+pub(crate) fn build_update_sql<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    set_columns: &[(&str, Option<Value>)],
+    pk_columns: &[(&str, Option<Value>)],
+) -> String {
+    crate::sql_builder::build_update_sql(
+        &LegacySqlDialect::new(driver),
+        table,
+        set_columns,
+        pk_columns,
+    )
+}
+
+/// The legacy inline-value `DELETE`.
+pub(crate) fn build_delete_sql<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    pk_columns: &[(&str, Option<Value>)],
+) -> String {
+    crate::sql_builder::build_delete_sql(&LegacySqlDialect::new(driver), table, pk_columns)
+}
+
+/// The parameterized `UPDATE`: values stay out of the SQL text.
+pub(crate) fn build_update_statement<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    set_columns: &[(&str, Option<Value>)],
+    pk_columns: &[(&str, Option<Value>)],
+) -> Result<BoundSqlStatement, DriverError> {
+    if !driver.supports_bound_writes() {
+        return Err(DriverError::Unsupported(
+            "parameterized row writes are not supported".into(),
+        ));
+    }
+    crate::sql_builder::build_update_statement(
+        &LegacySqlDialect::new(driver),
+        driver.max_bound_parameters(),
+        table,
+        set_columns,
+        pk_columns,
+    )
+}
+
+/// The parameterized `DELETE`: values stay out of the SQL text.
+pub(crate) fn build_delete_statement<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    pk_columns: &[(&str, Option<Value>)],
+) -> Result<BoundSqlStatement, DriverError> {
+    if !driver.supports_bound_writes() {
+        return Err(DriverError::Unsupported(
+            "parameterized row writes are not supported".into(),
+        ));
+    }
+    crate::sql_builder::build_delete_statement(
+        &LegacySqlDialect::new(driver),
+        driver.max_bound_parameters(),
+        table,
+        pk_columns,
+    )
+}
+
+/// The parameterized `INSERT`: values stay out of the SQL text.
+pub(crate) fn build_insert_statement<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    values: &[(&str, Option<Value>)],
+) -> Result<BoundSqlStatement, DriverError> {
+    if !driver.supports_bound_writes() {
+        return Err(DriverError::Unsupported(
+            "parameterized row writes are not supported".into(),
+        ));
+    }
+    crate::sql_builder::build_insert_statement(
+        &LegacySqlDialect::new(driver),
+        driver.max_bound_parameters(),
+        table,
+        values,
+    )
 }
 
 #[cfg(test)]

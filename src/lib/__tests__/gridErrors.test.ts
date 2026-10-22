@@ -104,6 +104,36 @@ describe('classifyGridError', () => {
     expect(classifyGridError('grid.count.estimateUnavailable: no estimate here')).toBe('unknown');
   });
 
+  it('maps the result-grid prefixes and falls back to the raw message', () => {
+    // The five codes of the result grid's write-back gate. Every one of them
+    // has a producer in the back end, so the interface may branch on them.
+    expect(
+      classifyGridError(
+        'grid.result.originUnavailable: the driver cannot report where this result came from',
+      ),
+    ).toBe('grid.result.originUnavailable');
+    expect(
+      classifyGridError(
+        'grid.result.originAmbiguous: column origin count does not match the result column count',
+      ),
+    ).toBe('grid.result.originAmbiguous');
+    expect(
+      classifyGridError(
+        'grid.result.rowNotAddressable: the row identity has NULL value(s) in column(s) id',
+      ),
+    ).toBe('grid.result.rowNotAddressable');
+    expect(
+      classifyGridError(
+        'grid.result.multiRowNotAllowed: editing many query-result rows at once is not supported',
+      ),
+    ).toBe('grid.result.multiRowNotAllowed');
+    expect(
+      classifyGridError('grid.result.writeDenied: column "doubled" is not a writable column'),
+    ).toBe('grid.result.writeDenied');
+    // A code that merely looks like one of them stays unclassified.
+    expect(classifyGridError('grid.result.writeDeniedish: nope')).toBe('unknown');
+  });
+
   it('tolerates surrounding whitespace but stays case-sensitive', () => {
     expect(classifyGridError('  grid.selection.stale: rows changed\n')).toBe('grid.selection.stale');
     expect(classifyGridError('GRID.SELECTION.STALE: rows changed')).toBe('unknown');

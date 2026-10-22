@@ -4,6 +4,8 @@
 //! app-archive modules and the registered handler list, so they live here
 //! rather than inside any single one of them.
 
+use std::path::{Path, PathBuf};
+
 /// Every file that hosts part of the merged config IPC surface.
 const SOURCE: &str = concat!(
     include_str!("config.rs"),
@@ -39,6 +41,19 @@ fn bootstrap_rs_registers_merged_commands_only() {
     assert!(BOOTSTRAP_RS.contains("commands::get_tunnel_summaries,"));
     assert!(BOOTSTRAP_RS.contains("commands::get_tunnel_usage,"));
     assert!(BOOTSTRAP_RS.contains("commands::test_tunnel,"));
+}
+
+/// The result grid's write-back gate must be reachable over IPC.
+///
+/// A command that exists but is not registered compiles, passes every unit
+/// test and is simply absent at runtime — the front end then waits forever
+/// for a verdict that never arrives, and the grid silently stays read-only
+/// without saying why. The registration is therefore pinned here, by the same
+/// `include_str!` discipline the other surface guards use.
+#[test]
+fn bootstrap_rs_registers_the_result_grid_write_back_commands() {
+    assert!(BOOTSTRAP_RS.contains("crate::commands::resolve_result_origin,"));
+    assert!(BOOTSTRAP_RS.contains("crate::commands::preview_result_cell_change,"));
 }
 
 #[test]
@@ -119,6 +134,159 @@ mod ipc_contract_guards {
         for name in ["export_connections", "export_app_data", "import_app_data"] {
             let variant = format!("{fn_prefix}{name}{with_dialog}{dialog_kind}");
             assert!(!SOURCE.contains(&variant), "stale dialog twin `{variant}`");
+        }
+    }
+}
+
+/// The `grid.*` codes are the **shared layer's** vocabulary.
+///
+/// The host maps a shared error onto [`super::error::CommandError`] and
+/// nothing else: which code a failure is, and what it means, is decided in
+/// `packages/feature-core`. A rule code inside a command shell is therefore a
+/// rule that lives in the wrong place — and it would be invisible to every
+/// other check, because the shell still compiles and every unit test still
+/// passes.
+///
+/// Two shapes are refused, because there are two ways to decide a code in the
+/// shell:
+///
+/// 1. **writing the code** — a `grid.` literal, in any form;
+/// 2. **naming the code** — a `ResultErrorCode` mention. The shell may ask the
+///    shared layer which code a reason maps to
+///    (`read_only_error_code(reason)`), but it may not pick one itself: the
+///    choice of code is a rule.
+///
+/// The scan removes comments first (both `//` and `/* … */`), and it does so
+/// with a scanner that knows about string literals — otherwise a `//` inside a
+/// string (a URL, say) would cut the line short and hide a code behind it,
+/// while a block comment that merely *mentions* a code would be reported as
+/// one.
+///
+/// Test files are exempt: a test that *asserts* a code must name it.
+#[test]
+fn the_command_shell_carries_no_rule_codes() {
+    let mut checked = 0usize;
+    for path in command_sources() {
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("cannot read {}: {err}", path.display()));
+        checked += 1;
+        let code = without_comments(&source);
+        for (number, line) in code.lines().enumerate() {
+            assert!(
+                !line.contains("grid."),
+                "{}:{} carries a rule code; the `grid.*` vocabulary belongs to the shared layer",
+                path.display(),
+                number + 1
+            );
+            assert!(
+                !line.contains("ResultErrorCode"),
+                "{}:{} names a rule code; the shell must ask the shared layer which code a reason maps to",
+                path.display(),
+                number + 1
+            );
+        }
+    }
+    assert!(
+        checked > 5,
+        "guard ran vacuously: only {checked} command source(s) were scanned"
+    );
+}
+
+/// The source with its comments removed.
+///
+/// The scanner knows about string literals, so a `//` inside a string does not
+/// start a comment, and it knows about block comments, so a code mentioned in
+/// a doc block is not a code. Raw strings (`r"…"`) are not tracked as such:
+/// the only thing that matters here is that a *rule code* is never hidden
+/// behind one.
+fn without_comments(source: &str) -> String {
+    let chars: Vec<char> = source.chars().collect();
+    let mut out = String::with_capacity(source.len());
+    let mut index = 0usize;
+    let mut in_string = false;
+    let mut in_block_comment = false;
+    while index < chars.len() {
+        let current = chars[index];
+        let next = chars.get(index + 1).copied();
+        if in_block_comment {
+            if current == '*' && next == Some('/') {
+                in_block_comment = false;
+                index += 2;
+            } else {
+                index += 1;
+            }
+            continue;
+        }
+        if in_string {
+            out.push(current);
+            if current == '\\' {
+                if let Some(escaped) = next {
+                    out.push(escaped);
+                    index += 2;
+                } else {
+                    index += 1;
+                }
+                continue;
+            }
+            if current == '"' {
+                in_string = false;
+            }
+            index += 1;
+            continue;
+        }
+        if current == '/' && next == Some('/') {
+            while index < chars.len() && chars[index] != '\n' {
+                index += 1;
+            }
+            continue;
+        }
+        if current == '/' && next == Some('*') {
+            in_block_comment = true;
+            index += 2;
+            continue;
+        }
+        if current == '"' {
+            in_string = true;
+            out.push(current);
+            index += 1;
+            continue;
+        }
+        out.push(current);
+        index += 1;
+    }
+    out
+}
+
+/// The production sources of the IPC command shell.
+///
+/// Test files are skipped: they assert codes, so they have to name them.
+fn command_sources() -> Vec<PathBuf> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands");
+    let mut files = Vec::new();
+    collect_command_sources(&root, &mut files);
+    files.sort();
+    files
+}
+
+fn collect_command_sources(dir: &Path, files: &mut Vec<PathBuf>) {
+    let entries =
+        std::fs::read_dir(dir).unwrap_or_else(|err| panic!("cannot list {}: {err}", dir.display()));
+    for entry in entries {
+        let path = entry.expect("readable directory entry").path();
+        if path.is_dir() {
+            // A `tests` directory holds assertions, not rules.
+            if path.file_name().and_then(|name| name.to_str()) != Some("tests") {
+                collect_command_sources(&path, files);
+            }
+            continue;
+        }
+        let is_rust = path.extension().and_then(|ext| ext.to_str()) == Some("rs");
+        let is_test = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == "tests.rs" || name.ends_with("_tests.rs"));
+        if is_rust && !is_test {
+            files.push(path);
         }
     }
 }

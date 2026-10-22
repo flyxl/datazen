@@ -45,7 +45,10 @@ import type {
   ProfilePatch,
   ProfileView,
   ResolveForeignKeyTargetsRequest,
+  ResolveResultOriginRequest,
+  ResultCellChangeRequest,
   ResultCellWrite,
+  ResultEditability,
   RowChangePlan,
   SaveNamedViewRequest,
   SessionHandle,
@@ -191,6 +194,26 @@ export interface MethodMap {
    * resource that produced the result.
    */
   commitQueryResultCell: { request: ResultCellWrite; response: undefined };
+  /**
+   * Where a query result came from, and whether it may be written back.
+   *
+   * The verdict is computed by the backend because only the driver knows the
+   * provenance of the rows; the interface renders it and never recomputes it.
+   */
+  resolveResultOrigin: {
+    request: ResolveResultOriginRequest;
+    response: ResultEditability;
+  };
+  /**
+   * The change plan for one edited cell of a query result.
+   *
+   * The preview produces a serialisable plan and executes nothing: the
+   * backend renders the statement, the frontend never does.
+   */
+  previewResultCellChange: {
+    request: ResultCellChangeRequest;
+    response: RowChangePlan;
+  };
 
   // ---- Legacy driver-command gateway (transitional) ------------------------
   get_driver_commands: { request: { driverType: string }; response: unknown[] };

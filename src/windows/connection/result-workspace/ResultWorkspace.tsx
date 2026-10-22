@@ -25,6 +25,11 @@ export interface ResultWorkspaceProps {
   /** Driver export capability; query results hide export when `none`. */
   dataExportCapability?: DataExportCapability;
   /**
+   * The key the write-back verdict of this result is stored under. The grid
+   * reads the verdict through it; the drawer fetches it.
+   */
+  writeBackKey?: string | null;
+  /**
    * Optional action button(s) rendered on the right side of the view-toggle
    * toolbar row (e.g. export). Placed here so the button shares vertical space
    * with the "表格 / 图表" tabs instead of occupying its own row.
@@ -52,6 +57,7 @@ export function ResultWorkspace({
   onChartConfigChange,
   onRowDetail,
   dataExportCapability,
+  writeBackKey,
   headerActions,
   className,
 }: ResultWorkspaceProps) {
@@ -157,6 +163,7 @@ export function ResultWorkspace({
           rowDetailIndex={rowDetailIndex}
           onRowDetail={handleRowDetail}
           dataExportCapability={dataExportCapability}
+          writeBackKey={writeBackKey}
         />
       ) : (
         <ChartView

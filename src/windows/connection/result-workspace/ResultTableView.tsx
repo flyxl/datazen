@@ -7,8 +7,34 @@ import { useSettingsStore } from '../../../stores/settingsStore';
 import type { StatementResult } from '../../../types';
 import type { DataExportCapability } from '../../../lib/exportCapability';
 import { tid } from '../../../lib/tid';
+import {
+  gridReadOnlyMessageKey,
+  isColumnEditable,
+  originChannelWritable,
+  resolveResultEditability,
+  resolveResultWriteBack,
+  resolveRowAddressability,
+  type GridReadOnlyReason,
+  type ServerEditability,
+} from '../../../lib/resultEditability';
+import { useResultVerdict } from '../../../stores/panelResultEdit';
 import { isMutationExecution } from './isMutationExecution';
 import { ExecutionSummaryCard } from './ExecutionSummaryCard';
+
+/**
+ * The verdict of a result nobody has judged yet.
+ *
+ * "Not judged" is read-only: a permission that has not been granted is not a
+ * permission. The reason is "the origin is unknown", which is what the user
+ * is told until the back end answers.
+ */
+const UNJUDGED: ServerEditability = {
+  writable: false,
+  identityColumns: [],
+  editableColumns: [],
+  table: null,
+  reason: 'unknownOrigin',
+};
 
 export interface ResultTableViewProps {
   result: StatementResult;
@@ -16,6 +42,14 @@ export interface ResultTableViewProps {
   rowDetailIndex?: number | null;
   onRowDetail?: (rowIndex: number) => void;
   dataExportCapability?: DataExportCapability;
+  /**
+   * The key the write-back verdict of this result is stored under.
+   *
+   * The grid does not fetch the verdict itself: the row-detail drawer does,
+   * and both surfaces share one key so the answer is fetched once. Without the
+   * key the grid falls back to the narrow verdict it always had.
+   */
+  writeBackKey?: string | null;
 }
 
 /** Read-only DataTable adapter for query results.
@@ -30,18 +64,44 @@ export function ResultTableView({
   rowDetailIndex = null,
   onRowDetail,
   dataExportCapability,
+  writeBackKey = null,
 }: ResultTableViewProps) {
   const { t } = useI18n();
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const [editError, setEditError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
+  /**
+   * Why the last clicked row refused to open an editor.
+   *
+   * A row-level refusal is not a silent one: the grid says which row could
+   * not be addressed and why (its locating key is NULL, or its identity is
+   * not unique on the page).
+   */
+  const [rowRefusal, setRowRefusal] = useState<GridReadOnlyReason | null>(null);
 
-  const canEdit =
-    !safeMode &&
-    !!onCellEdit &&
-    result.source?.writableMapping === 'verified' &&
-    !!result.runtimeBinding;
+  const { verdict } = useResultVerdict(writeBackKey);
+  const serverVerdict = verdict ?? UNJUDGED;
+  // The narrow host-side mapping verdict: it recognises `SELECT * FROM
+  // <relation>` and the write path re-verifies it against the live catalog.
+  const legacyVerified =
+    result.source?.writableMapping === 'verified' && !!result.runtimeBinding;
+  // The grid is editable when **either** verdict says so. The origin verdict
+  // may only grant write-back while the release channel is open — see
+  // `resolveResultWriteBack`.
+  // Whether the **result** may be written back at all. Safe Mode is a
+  // setting the user chose, not a fact about the result, so it does not
+  // decide the reason.
+  const resultWritable = resolveResultWriteBack(legacyVerified, serverVerdict);
+  const canEdit = !safeMode && !!onCellEdit && resultWritable;
+  /**
+   * Why the grid cannot be edited, when the **result** cannot be written
+   * back.
+   *
+   * A read-only grid always says why: a grid that is simply grey is the
+   * "unresponsive cell" the contract forbids.
+   */
+  const readOnlyReason = resultWritable ? null : (verdict?.reason ?? 'unknownOrigin');
   // A visible result outlives its physical session. Do not keep an input alive
   // across retirement/replacement, or revive it for a newly queried result.
   useEffect(() => {
@@ -109,9 +169,42 @@ export function ResultTableView({
         setEditingCell(null);
         return;
       }
+      // The page-level guards are decided for **the row being clicked**: a
+      // NULL key value or a duplicate identity makes that row unaddressable.
+      const editability = resolveResultEditability(
+        legacyVerified,
+        serverVerdict,
+        result.rows,
+        result.columns,
+        row,
+      );
+      if (!editability.writable) {
+        setEditingCell(null);
+        setRowRefusal(
+          resolveRowAddressability(
+            serverVerdict.identityColumns ?? [],
+            result.rows,
+            result.columns,
+            row,
+          ),
+        );
+        return;
+      }
+      setRowRefusal(null);
+      // A column that is not a straight copy of a base column has no source
+      // to write back to — the back end refuses it with
+      // `grid.result.writeDenied`.
+      //
+      // §1.3 §5 has **no executor on the narrow channel today**: the origin
+      // channel is closed, so no column list exists to check against. The
+      // guard is in place and starts to bite the moment the channel opens.
+      if (originChannelWritable(serverVerdict) && !isColumnEditable(serverVerdict, col)) {
+        setEditingCell(null);
+        return;
+      }
       setEditingCell({ row, col });
     },
-    [onRowDetail, canEdit],
+    [onRowDetail, canEdit, legacyVerified, serverVerdict, result],
   );
 
   if (isMutationExecution(result)) {
@@ -124,8 +217,23 @@ export function ResultTableView({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" {...tid('result-workspace-table')}>
-      {result.source?.writableMapping === 'verified' && !result.runtimeBinding && (
-        <div className="p-2 text-xs text-fg-muted">{t('query.resultEditRequiresRefresh')}</div>
+      {readOnlyReason && (
+        <div
+          data-dt-grid-readonly-reason={readOnlyReason}
+          className="p-2 text-xs text-fg-muted"
+        >
+          {result.source?.writableMapping === 'verified' && !result.runtimeBinding
+            ? t('query.resultEditRequiresRefresh')
+            : t(gridReadOnlyMessageKey(readOnlyReason))}
+        </div>
+      )}
+      {rowRefusal && (
+        <div
+          data-dt-grid-row-refusal={rowRefusal}
+          className="p-2 text-xs text-fg-muted"
+        >
+          {t(gridReadOnlyMessageKey(rowRefusal))}
+        </div>
       )}
       {editError && (
         <div role="alert" className="p-2 text-sm text-red-400">

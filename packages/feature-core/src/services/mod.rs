@@ -5,6 +5,7 @@ pub mod migration_endpoint;
 pub mod named_views;
 pub mod ports;
 pub mod query_executor;
+pub mod result_edit;
 pub mod schema_metadata;
 pub mod schema_scope;
 pub mod table_browsing;

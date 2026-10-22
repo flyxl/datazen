@@ -100,3 +100,12 @@ export type {
   TableValue,
 } from './tableData';
 export { toTableValue } from './tableData';
+
+export type {
+  GridReadOnlyReason,
+  IdentityColumn,
+  ResolveResultOriginRequest,
+  ResultCellChangeRequest,
+  ResultEditability,
+  ResultTableRef,
+} from './resultOrigin';

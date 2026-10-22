@@ -12,9 +12,9 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::dialect::LegacySqlDialect;
 use crate::filters::FilterOperator;
 use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
+use crate::result_origin::ResultOrigin;
 use crate::schema_migration::{MigrationCapabilities, MigrationRenderer, TypeNormalizer};
 use crate::sql_target::SqlTarget;
 use crate::types::*;
@@ -25,6 +25,7 @@ use crate::{
 
 mod command_api;
 mod key_value;
+mod result_origin;
 mod schema_target;
 pub(crate) mod sql_text;
 mod streaming;
@@ -272,17 +273,12 @@ pub trait DatabaseDriver: Send + Sync {
         set_columns: &[(&str, Option<Value>)],
         pk_columns: &[(&str, Option<Value>)],
     ) -> String {
-        crate::sql_builder::build_update_sql(
-            &LegacySqlDialect::new(self),
-            table,
-            set_columns,
-            pk_columns,
-        )
+        sql_text::build_update_sql(self, table, set_columns, pk_columns)
     }
 
     /// Build `DELETE FROM … WHERE pk…` for row-level deletes (mirrors `build_update_sql`).
     fn build_delete_sql(&self, table: &str, pk_columns: &[(&str, Option<Value>)]) -> String {
-        crate::sql_builder::build_delete_sql(&LegacySqlDialect::new(self), table, pk_columns)
+        sql_text::build_delete_sql(self, table, pk_columns)
     }
 
     /// Build an UPDATE with driver placeholders and values kept out of SQL.
@@ -292,18 +288,7 @@ pub trait DatabaseDriver: Send + Sync {
         set_columns: &[(&str, Option<Value>)],
         pk_columns: &[(&str, Option<Value>)],
     ) -> Result<BoundSqlStatement, DriverError> {
-        if !self.supports_bound_writes() {
-            return Err(DriverError::Unsupported(
-                "parameterized row writes are not supported".into(),
-            ));
-        }
-        crate::sql_builder::build_update_statement(
-            &LegacySqlDialect::new(self),
-            self.max_bound_parameters(),
-            table,
-            set_columns,
-            pk_columns,
-        )
+        sql_text::build_update_statement(self, table, set_columns, pk_columns)
     }
 
     /// Build a DELETE with driver placeholders and values kept out of SQL.
@@ -312,17 +297,7 @@ pub trait DatabaseDriver: Send + Sync {
         table: &str,
         pk_columns: &[(&str, Option<Value>)],
     ) -> Result<BoundSqlStatement, DriverError> {
-        if !self.supports_bound_writes() {
-            return Err(DriverError::Unsupported(
-                "parameterized row writes are not supported".into(),
-            ));
-        }
-        crate::sql_builder::build_delete_statement(
-            &LegacySqlDialect::new(self),
-            self.max_bound_parameters(),
-            table,
-            pk_columns,
-        )
+        sql_text::build_delete_statement(self, table, pk_columns)
     }
 
     /// Build an INSERT with driver placeholders and values kept out of SQL.
@@ -337,17 +312,7 @@ pub trait DatabaseDriver: Send + Sync {
         table: &str,
         values: &[(&str, Option<Value>)],
     ) -> Result<BoundSqlStatement, DriverError> {
-        if !self.supports_bound_writes() {
-            return Err(DriverError::Unsupported(
-                "parameterized row writes are not supported".into(),
-            ));
-        }
-        crate::sql_builder::build_insert_statement(
-            &LegacySqlDialect::new(self),
-            self.max_bound_parameters(),
-            table,
-            values,
-        )
+        sql_text::build_insert_statement(self, table, values)
     }
 
     /// Dialect clause that makes a new row's primary key available, or `None`
@@ -504,6 +469,33 @@ pub trait DatabaseDriver: Send + Sync {
         sql: &str,
         limit: Option<u32>,
     ) -> Result<MultiQueryResult, DriverError>;
+
+    /// Say where the rows of a statement came from.
+    ///
+    /// The host never parses SQL, so every fact a "may this cell be written
+    /// back?" decision needs comes from here: which relation the rows come
+    /// from, whether that relation is a base table, and which result column
+    /// is a straight copy of which base column.
+    ///
+    /// `result_columns` are the column names the **executed** result reports.
+    /// They are needed because `SELECT *` names no column: only the result
+    /// knows how many columns the star expanded to.
+    ///
+    /// The default answers "I cannot tell"
+    /// ([`crate::result_origin::UndeterminableReason::NotImplemented`]), which
+    /// keeps every result grid read-only — the behaviour that existed before
+    /// this contract. See [`crate::result_origin`] for the whole contract and
+    /// [`crate::result_origin::describe_result_origin_with_catalog`] for the
+    /// helper a driver calls to answer it.
+    async fn describe_result_origin(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+        result_columns: &[String],
+        sql: &str,
+    ) -> Result<ResultOrigin, DriverError> {
+        result_origin::describe_result_origin(self, handle, target, result_columns, sql).await
+    }
 
     /// Stream query results as row batches.
     ///
