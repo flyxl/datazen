@@ -92,6 +92,9 @@ const pack = {
   'newConn.databaseIndex': 'Datenbankindex',
   'newConn.username': 'Benutzername',
   'newConn.password': 'Passwort',
+  'newConn.clearStoredCredentials': 'Gespeicherte Zugangsdaten bei leeren Feldern löschen',
+  'newConn.clearStoredCredentialsHint':
+    'Leere Felder behalten ihre gespeicherten Werte, sofern dies nicht aktiviert ist.',
   'newConn.group': 'Gruppe',
   'newConn.noGroup': 'Keine Gruppe',
   'newConn.colorTag': 'Farbetikett',

@@ -16,6 +16,15 @@ const pack = {
   'dashboard.import': 'Dashboard importieren…',
   'dashboard.pauseMonitoring': 'Dashboard-Aktualisierung pausieren',
   'dashboard.resumeMonitoring': 'Dashboard-Aktualisierung fortsetzen',
+  'dashboard.scheduleAuthorization': 'Autorisierung für geplante Aktualisierungen',
+  'dashboard.scheduleAuthorizationHint':
+    'Autorisieren Sie schreibgeschützte PostgreSQL-/MySQL-Abfragen für den gespeicherten Workflow mit expliziten Verbindungs- und Datenbankzielen. Änderungen erfordern eine neue Autorisierung.',
+  'dashboard.scheduleAuthorizeHour': 'Für 1 Stunde autorisieren',
+  'dashboard.scheduleRevoke': 'Autorisierung widerrufen',
+  'dashboard.scheduleUnauthorized': 'Die geplante Aktualisierung ist nicht autorisiert.',
+  'dashboard.scheduleAuthorizedUntil': 'Autorisiert bis {time}',
+  'dashboard.scheduleSaveFirst':
+    'Speichern Sie die Änderungen, bevor Sie die geplante Aktualisierung autorisieren.',
   'dashboard.widgetEnabled': 'Widget aktivieren',
   'dashboard.history': 'Verlauf',
   'dashboard.widgetTitle': 'Titel',
