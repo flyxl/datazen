@@ -22,6 +22,17 @@ import {
   resetDir,
 } from './fixture';
 
+/**
+ * The part of `drivers-registry.json` this file reads.
+ *
+ * `JSON.parse` hands back `any`; narrowing it to the shape the registry
+ * actually has is what lets the derivation below stay type-checked instead of
+ * riding on an untyped value.
+ */
+interface RegistryEntry {
+  tauriPlugin?: { id?: string; commands?: string[] };
+}
+
 describe('injection detectors', () => {
   it('detects cargo marker injection and ignores empty markers', () => {
     expect(hasInjectedCargoContent(CLEAN_CONTENTS['Cargo.toml'])).toBe(false);
@@ -53,10 +64,14 @@ describe('injection detectors', () => {
   });
 
   it('derives the default ACL id list from drivers-registry.json', () => {
-    const registry = JSON.parse(readFileSync(resolve(ROOT, 'drivers-registry.json'), 'utf-8'));
-    const expected = Object.values(registry)
-      .filter((meta) => meta?.tauriPlugin?.id && (meta.tauriPlugin.commands ?? []).length > 0)
-      .map((meta) => meta.tauriPlugin.id);
+    const registry = JSON.parse(
+      readFileSync(resolve(ROOT, 'drivers-registry.json'), 'utf-8'),
+    ) as Record<string, RegistryEntry>;
+    const expected = Object.values(registry).flatMap((meta) => {
+      const plugin = meta.tauriPlugin;
+      if (!plugin?.id || (plugin.commands ?? []).length === 0) return [];
+      return [plugin.id];
+    });
     expect(driverAclIds()).toEqual(expected);
     // Only a driver that declares non-empty `tauriPlugin.commands` ships an ACL
     // permission manifest, so only its id can show up in the generated
