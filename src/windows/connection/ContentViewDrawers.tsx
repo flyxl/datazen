@@ -199,6 +199,9 @@ export function ContentViewDrawers({
                 : undefined
             }
             editable={activePanel?.type !== 'query' || (activeQueryResult?.source?.writableMapping === 'verified' && !!activeQueryResult?.runtimeBinding)}
+            // The drawer shows the same columns as the grid next to it, so it
+            // reads the same driver declaration (05 §3.1).
+            cellTypeHints={databaseType ? DB_REGISTRY[databaseType]?.cellTypes : undefined}
             onFieldEdit={handleDetailFieldEdit}
           />
         ))}

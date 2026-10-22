@@ -6,6 +6,7 @@ import type { ColumnDef } from './TableHeader';
 import { toEditString } from './EditableCell';
 import { formatCell } from '../../lib/formatters';
 import { dataTypeTextClass } from '../../lib/dataTypeColors';
+import type { CellTypeHints } from '../../lib/cellTypes';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 
@@ -18,6 +19,14 @@ export interface DetailPanelProps {
   onFieldEdit?: (row: number, col: string, value: unknown) => void;
   /** Indices of currently selected rows — used to surface bulk-edit mode. */
   selectedRows?: Set<number>;
+  /**
+   * The driver's own column-type rules (`DatabaseTypeMeta.cellTypes`).
+   *
+   * The drawer shows the **same columns** as the grid next to it, so its
+   * type label must not answer a different question than the grid's
+   * (05 §3.1). Omitted → the shared table alone decides, as before.
+   */
+  cellTypeHints?: CellTypeHints;
 }
 
 const EMPTY_SET = new Set<number>();
@@ -72,6 +81,7 @@ export function DetailPanel({
   editable,
   onFieldEdit,
   selectedRows = EMPTY_SET,
+  cellTypeHints,
 }: DetailPanelProps) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
@@ -137,6 +147,7 @@ export function DetailPanel({
                   column={col}
                   value={row[col.name]}
                   editable={editable}
+                  cellTypeHints={cellTypeHints}
                   onCommit={
                     editable && onFieldEdit && rowIndex !== null
                       ? (v) => onFieldEdit(rowIndex, col.name, v)
@@ -157,9 +168,11 @@ interface FieldRowProps {
   value: unknown;
   editable?: boolean;
   onCommit?: (value: unknown) => void;
+  /** The driver's own column-type rules — the same ones the grid reads. */
+  cellTypeHints?: CellTypeHints;
 }
 
-function FieldRow({ column, value, editable, onCommit }: FieldRowProps) {
+function FieldRow({ column, value, editable, onCommit, cellTypeHints }: FieldRowProps) {
   const { t } = useI18n();
   const [quickLookOpen, setQuickLookOpen] = useState(false);
 
@@ -187,7 +200,9 @@ function FieldRow({ column, value, editable, onCommit }: FieldRowProps) {
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
           {column.type && (
-            <span className={cn('font-mono text-[10px]', dataTypeTextClass(column.type))}>
+            <span
+              className={cn('font-mono text-[10px]', dataTypeTextClass(column.type, cellTypeHints))}
+            >
               {column.type}
             </span>
           )}
