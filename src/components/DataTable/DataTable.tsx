@@ -17,7 +17,7 @@ import type { DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
 import type { FkGroupAffordance } from '../../lib/fkNavigation';
 import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
-import { Pagination } from './Pagination';
+import { Pagination, type PagingHint } from './Pagination';
 import { DefaultOrderSelect } from './DefaultOrderSelect';
 import type { DefaultOrderOverride } from '../../lib/defaultSort';
 import { TableHeader, type ColumnDef } from './TableHeader';
@@ -61,6 +61,13 @@ export interface DataTableProps {
    * an error message that would never arrive.
    */
   estimateUnavailable?: boolean;
+  /**
+   * What the back end said about the paging of this page.
+   *
+   * A degradation is not an error: the page was read by offset, and this
+   * says why. The grid renders the reason the back end gave.
+   */
+  pagingHint?: PagingHint;
   /** The panel's temporary override of the global default order. */
   defaultOrderOverride?: DefaultOrderOverride;
   /** Change the panel's temporary override of the global default order. */
@@ -287,6 +294,7 @@ export function DataTable({
   counting,
   unstablePaging,
   estimateUnavailable,
+  pagingHint,
   defaultOrderOverride,
   onDefaultOrderOverrideChange,
   onCellDoubleClick,
@@ -713,6 +721,7 @@ export function DataTable({
           counting={counting}
           unstablePaging={unstablePaging}
           estimateUnavailable={estimateUnavailable}
+          pagingHint={pagingHint}
           footerExtras={
             onDefaultOrderOverrideChange ? (
               <DefaultOrderSelect

@@ -4,7 +4,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { canPageForward, formatRowCount, totalRowsView } from '../../lib/totalRowsDisplay';
-import type { CountStrategy } from '../../types';
+import type { CountStrategy, KeysetUnavailableReason, PagingMode } from '../../types';
 
 export interface PaginationState {
   page: number;
@@ -40,6 +40,32 @@ export function paginationReducer(
 /** Reset only the page when filters change; total rows and page size are retained. */
 export function resetPageOnFilterChange(state: PaginationState): PaginationState {
   return paginationReducer(state, { type: 'filterChanged' });
+}
+
+/**
+ * What the grid says about the paging of the page on screen.
+ *
+ * The reason is a **degradation**, not an error: the page was read by
+ * offset, and this says why. It is the back end's reason — the front end
+ * does not second-guess it.
+ */
+export interface PagingHint {
+  /** Why the page was not read by seek, when it was not. */
+  reason: KeysetUnavailableReason | null;
+  /** Rows were deleted while the user was paging. */
+  driftSuspected: boolean;
+  /** The strategy the back end reported. */
+  mode: PagingMode;
+}
+
+/**
+ * The i18n key of a degradation reason.
+ *
+ * `notAdjacent` is not a reason but a consequence — the grid restarted from
+ * the page it is on — so it has a wording of its own.
+ */
+export function pagingHintKey(reason: KeysetUnavailableReason): string {
+  return reason === 'notAdjacent' ? 'pagination.hint.jumpReanchored' : `pagination.hint.${reason}`;
 }
 
 export interface PaginationProps {
@@ -89,6 +115,8 @@ export interface PaginationProps {
   estimateUnavailable?: boolean;
   /** Extra controls rendered next to the pager (the panel's order override). */
   footerExtras?: ReactNode;
+  /** What the back end said about the paging of this page. */
+  pagingHint?: PagingHint;
 }
 
 export function Pagination({
@@ -108,6 +136,7 @@ export function Pagination({
   unstablePaging = false,
   estimateUnavailable = false,
   footerExtras,
+  pagingHint,
 }: PaginationProps) {
   const { t } = useI18n();
   const previousFilterRevision = useRef<{ initialized: boolean; value?: string | number }>({
@@ -242,6 +271,38 @@ export function Pagination({
             data-testid="pagination-unstable-notice"
           >
             {t('pagination.unstablePaging')}
+          </span>
+        )}
+        {pagingHint && (
+          <span
+            className="shrink-0 text-fg-tertiary"
+            title={t(pagingHint.mode === 'keyset' ? 'pagination.mode.keyset' : 'pagination.mode.offset')}
+            data-testid="pagination-paging-mode"
+            data-i18n-key={
+              pagingHint.mode === 'keyset' ? 'pagination.mode.keyset' : 'pagination.mode.offset'
+            }
+          >
+            {t(pagingHint.mode === 'keyset' ? 'pagination.mode.keyset' : 'pagination.mode.offset')}
+          </span>
+        )}
+        {pagingHint?.reason && (
+          <span
+            className="max-w-[22rem] truncate text-warning"
+            title={t(pagingHintKey(pagingHint.reason), { page: current + 1 })}
+            data-testid="pagination-paging-reason"
+            data-i18n-key={pagingHintKey(pagingHint.reason)}
+          >
+            {t(pagingHintKey(pagingHint.reason), { page: current + 1 })}
+          </span>
+        )}
+        {pagingHint?.driftSuspected && (
+          <span
+            className="max-w-[22rem] truncate text-warning"
+            title={t('pagination.hint.drift')}
+            data-testid="pagination-paging-drift"
+            data-i18n-key="pagination.hint.drift"
+          >
+            {t('pagination.hint.drift')}
           </span>
         )}
         {footerExtras}

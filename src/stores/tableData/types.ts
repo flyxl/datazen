@@ -8,6 +8,7 @@ import type {
   TableChangeContext,
 } from '../../lib/tableChanges';
 import type { GridSelection } from './gridSelection';
+import type { KeysetPagingState } from '../../lib/keysetPaging';
 
 /**
  * Table-data state for one panel (tab). The panel is the unit of lifetime and of
@@ -36,6 +37,14 @@ export interface TableState {
   defaultOrderOverride: 'inherit' | 'primaryKeyAsc' | 'primaryKeyDesc' | 'none';
   page: number;
   pageSize: number;
+  /**
+   * How this panel is paged.
+   *
+   * `page` stays the ordinal it has always been — "the Nth page" — and the
+   * keyset state says how that page is **read**: by offset, or by seek from
+   * a boundary that was really read. There is no second page number.
+   */
+  keyset: KeysetPagingState;
   /** Applied filters used by queries. */
   filters: FilterCondition[];
   filterLogic: 'and' | 'or';

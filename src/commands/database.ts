@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useBackendClient } from '@datazen/backend-client';
 import type {
   CountStrategy,
+  CursorValue,
   ForeignKeyTargetResolution,
   NamedView,
   NamedViewScope,
@@ -186,6 +187,15 @@ export const databaseCommands = {
      * default order".
      */
     defaultOrderColumns?: string[];
+    /**
+     * The boundary of the page: the key values the back end reported for the
+     * previous page, sent back verbatim.
+     *
+     * Omitted means "the first page of a read". The values are never
+     * computed on this side — a boundary derived from a page number locates
+     * the wrong rows, silently.
+     */
+    afterKey?: CursorValue[];
   }): Promise<TableDataResult> => {
     const client = useBackendClient();
     return client.getTableData({
@@ -199,6 +209,7 @@ export const databaseCommands = {
       filterLogic: params.filterLogic,
       countStrategy: params.countStrategy,
       defaultOrderColumns: params.defaultOrderColumns,
+      afterKey: params.afterKey,
     });
   },
 

@@ -281,6 +281,74 @@ export interface TableColumnSchema {
  */
 export type CountStrategy = 'exact' | 'estimated' | 'unsupported';
 
+/**
+ * How a page was read.
+ *
+ * The mirror of the host's `PagingMode`: by offset (the page starts
+ * `page × pageSize` rows in) or by seek (the page starts after a value
+ * boundary that was read from a real row).
+ */
+export type PagingMode = 'offset' | 'keyset';
+
+/**
+ * Why a page could not be read by seek.
+ *
+ * The mirror of the host's `KeysetUnavailableReason`. Every one of them is a
+ * **degradation**, not an error: the page is read by offset and the reason
+ * says why.
+ */
+export type KeysetUnavailableReason =
+  | 'driverUnsupported'
+  | 'noStableOrder'
+  | 'nullableKeyColumn'
+  | 'nullBoundary'
+  | 'predicateUnavailable'
+  | 'noPaginationClause'
+  | 'staleCursor'
+  | 'notAdjacent';
+
+/**
+ * One boundary value, **with its tag**.
+ *
+ * The host's `Value` is untagged, so `[1, 2, 3]` reads as `Bytes` *or* as
+ * `Json`. A boundary travels "back end → front end → back end", and untagged
+ * it would change its variant on the way back — the seek would then compare
+ * against the wrong literal, with no error anywhere. The tag is what keeps
+ * the two apart.
+ */
+export type CursorValue =
+  | { kind: 'null' }
+  | { kind: 'bool'; value: boolean }
+  | { kind: 'integer'; value: number }
+  | { kind: 'float'; value: number }
+  | { kind: 'string'; value: string }
+  | { kind: 'bytes'; value: number[] }
+  | { kind: 'timestamp'; value: string }
+  | { kind: 'json'; value: unknown };
+
+/** One ordering column and its direction. */
+export interface OrderColumn {
+  column: string;
+  descending: boolean;
+}
+
+/** What the host did about the paging of one page. */
+export interface PagePagingInfo {
+  /**
+   * The strategy that was used. **The front end believes this field**, not
+   * its own guess about which strategy is in force.
+   */
+  mode: PagingMode;
+  /** The real column order of the page, key columns included. */
+  orderColumns: OrderColumn[];
+  /** The key values of the last row, to be sent back for the next page. */
+  nextAfterKey?: CursorValue[];
+  /** Set when the page was **not** read by seek: why not. */
+  unavailableReason?: KeysetUnavailableReason;
+  /** Rows were deleted while the user was paging. */
+  driftSuspected: boolean;
+}
+
 /** The result of a table read. */
 export interface TableDataResult {
   columns: TableColumnSchema[];
@@ -305,6 +373,15 @@ export interface TableDataResult {
   totalRowsKind?: CountStrategy | null;
   page: number;
   pageSize: number;
+  /**
+   * How the page was paged.
+   *
+   * A missing key means the back end is older than this field — the page was
+   * read by offset, which is what every read did before it existed. A
+   * `null` value says the same thing; both are "this response carries no
+   * paging decision".
+   */
+  paging?: PagePagingInfo | null;
 }
 
 /**
@@ -334,6 +411,16 @@ export interface TableDataRequest {
    * default order".
    */
   defaultOrderColumns?: string[];
+  /**
+   * The boundary of the page: the key values of the last row of the
+   * previous page.
+   *
+   * Omitted means "the first page of a read". The values are **not**
+   * computed by the caller — they are what the back end reported for the
+   * previous page, sent back verbatim. A caller that derives a boundary
+   * from a page number gets a wrong page, silently.
+   */
+  afterKey?: CursorValue[];
 }
 
 /**

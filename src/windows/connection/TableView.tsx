@@ -318,6 +318,26 @@ export function TableView({
    */
   const unstablePaging = effectiveOrder === 'none' && sorts.length === 0;
   /**
+   * What the back end said about the paging of this page.
+   *
+   * A degradation is not an error: the page was read by offset and the
+   * reason says why. The reason is only worth showing when the table has
+   * more than one page — "fast paging" is a fact about paging, and a table
+   * that fits on one page is never paged.
+   */
+  const pagingHint = useMemo(() => {
+    const keyset = ts?.keyset;
+    if (!keyset) return undefined;
+    const hasMoreThanOnePage = totalRows > pageSize;
+    if (!hasMoreThanOnePage && !keyset.driftSuspected) return undefined;
+    return {
+      reason: keyset.unavailable,
+      driftSuspected: keyset.driftSuspected,
+      mode: keyset.mode,
+    };
+  }, [ts?.keyset, totalRows, pageSize]);
+
+  /**
    * A table without a primary key cannot be ordered by one. The grid still
    * opens it — that has always worked — but the implicit order (the first
    * column) is worth saying out loud.
@@ -673,6 +693,7 @@ export function TableView({
         counting={counting}
         unstablePaging={unstablePaging}
         estimateUnavailable={estimateUnavailable}
+        pagingHint={pagingHint}
         defaultOrderOverride={defaultOrderOverride}
         onDefaultOrderOverrideChange={actions.setDefaultOrderOverride}
         page={page}

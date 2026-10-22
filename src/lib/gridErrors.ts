@@ -40,7 +40,10 @@ export type GridErrorCode =
   | 'grid.result.originAmbiguous'
   | 'grid.result.rowNotAddressable'
   | 'grid.result.multiRowNotAllowed'
-  | 'grid.result.writeDenied';
+  | 'grid.result.writeDenied'
+  | 'grid.paging.keysetUnavailable'
+  | 'grid.paging.cursorInvalidated'
+  | 'grid.paging.cursorTooDeep';
 
 /**
  * Prefix registry. Entries are full message prefixes (`grid.<domain>.<reason>`); the
@@ -93,6 +96,9 @@ export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.result.rowNotAddressable',
   'grid.result.multiRowNotAllowed',
   'grid.result.writeDenied',
+  'grid.paging.keysetUnavailable',
+  'grid.paging.cursorInvalidated',
+  'grid.paging.cursorTooDeep',
 ];
 
 /** Every grid message starts with this namespace; useful for cheap pre-checks. */

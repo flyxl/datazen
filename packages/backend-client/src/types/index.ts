@@ -12,6 +12,14 @@ export { toCounter, toId, toTimestamp } from './identity';
 export type { CountStrategy } from './tableData';
 
 export type {
+  CursorValue,
+  KeysetUnavailableReason,
+  OrderColumn,
+  PagePagingInfo,
+  PagingMode,
+} from './tableData';
+
+export type {
   AttachmentRequest,
   AttachmentState,
   CancelReceipt,
