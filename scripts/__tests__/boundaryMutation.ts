@@ -38,24 +38,107 @@ import {
   writeFileSync,
   writeSync,
 } from 'fs';
-import { dirname, join, resolve } from 'path';
+import { createHash } from 'crypto';
+import { execFileSync } from 'child_process';
+import { tmpdir } from 'os';
+import { dirname, isAbsolute, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
-/** Lives under `node_modules/` so it can never end up in `git status`. */
-const LOCK_PATH = join(REPO_ROOT, 'node_modules/.cache/dz-boundary-probe.lock');
+/**
+ * The tree's **private** git directory.
+ *
+ * A worktree's `.git` is a *file* holding `gitdir: <path>`, and that path is
+ * the worktree's own git dir (`.git/worktrees/<name>`) — private to that tree.
+ * The main checkout's `.git` is a *directory*, and that directory is its own
+ * git dir.
+ *
+ * `--git-common-dir` is deliberately **not** used: that is the *shared* git dir
+ * every worktree of the repository points at, and a lock placed there would be
+ * one lock for the whole repository — the opposite of what is wanted.
+ *
+ * The lock protects one *working tree*: a probe planted in one tree is not in
+ * another tree, and a scan of one tree never reads the other tree's probe. So
+ * two trees have nothing to exclude each other over, and one lock per tree is
+ * what makes that true.
+ */
+function resolveGitDir(repoRoot: string): string {
+  const dotGit = join(repoRoot, '.git');
+  try {
+    if (statSync(dotGit).isDirectory()) return dotGit;
+    // A worktree: `.git` is a file pointing at the worktree's own git dir.
+    const pointer = readFileSync(dotGit, 'utf8');
+    const match = /^\s*gitdir:\s*(.+?)\s*$/m.exec(pointer);
+    if (match) {
+      const dir = match[1];
+      return isAbsolute(dir) ? dir : resolve(repoRoot, dir);
+    }
+  } catch {
+    // Not a worktree pointer, or unreadable — ask git itself.
+  }
+  try {
+    const dir = execFileSync('git', ['rev-parse', '--git-dir'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (dir) return isAbsolute(dir) ? dir : resolve(repoRoot, dir);
+  } catch {
+    // No git either.
+  }
+  // Neither: a private directory under the system temp dir, keyed by the
+  // tree's path. Still one per tree, still outside the working tree.
+  const key = createHash('sha256').update(repoRoot).digest('hex').slice(0, 16);
+  return join(tmpdir(), `datazen-probe-lock-${key}`);
+}
+
+/**
+ * The lock file of one working tree.
+ *
+ * It lives inside that tree's own git directory, which is why it can never
+ * show up in `git status`, and why it is one file per tree rather than one
+ * per repository.
+ */
+export function probeLockPath(repoRoot: string = REPO_ROOT): string {
+  return join(resolveGitDir(repoRoot), 'dz-boundary-probe.lock');
+}
+
+/**
+ * Where the lock used to live, before it was moved into the tree's git
+ * directory.
+ *
+ * Under `node_modules/` — which, in a worktree, is a **symlink to the main
+ * checkout's** `node_modules`. Every worktree therefore resolved to the *same*
+ * lock file, so trees that cannot interfere with each other excluded each
+ * other anyway: no correctness gain, only serialization. It is cleaned up
+ * (never used) so the old artifact does not linger.
+ */
+const LEGACY_LOCK_PATH = join(REPO_ROOT, 'node_modules/.cache/dz-boundary-probe.lock');
+
+const LOCK_PATH = probeLockPath();
 export const LOCK_TIMEOUT_MS = 60_000;
 /**
  * How long a lock whose owner cannot be read is given before it is taken over.
  *
- * The owner is written synchronously right after the lock is created, so a
- * missing one means either a dead run (the common case: a kill between the two
- * statements, or a write that failed) or the microsecond-wide window of a live
- * holder that has not written it yet. Treating "no owner" as stale outright
- * would let a second process into the critical section in exactly that window,
- * which is the collision the lock exists to prevent, so a grace period is
- * required rather than optional.
+ * **This number is an ASSUMPTION, not a measured upper bound.** What was
+ * measured is the *gap* it has to cover, on one machine: the owner is written
+ * synchronously right after the lock is created, so a lock that names nobody
+ * is either a dead run (the common case: a kill between the two statements, or
+ * a write that failed) or a live holder inside that write window. The gap
+ * measured p50 0.12ms and a worst case of 17ms over two runs of 20k samples
+ * here, and the shipped 2s is ~118x that worst observation. (The *median* would
+ * make it look like four orders of magnitude, which is how this number used to
+ * be described; the median is not the statistic a safety margin should be
+ * sized on.) The 500ms floor the suite pins is the same measurement at ~29x.
+ *
+ * What is **not** measured is the gap on every machine this runs on: a
+ * pathological scheduler pause, a loaded CI runner, or a machine whose clock
+ * and filesystem timestamps disagree can all widen it beyond anything sampled
+ * here. So the 2s is the size of a budget chosen against a measurement, and it
+ * is *assumed* to be generous enough everywhere. If it is not, the failure is
+ * the one the grace exists to prevent: a second process walks into the
+ * critical section while the first is still in its write window.
  *
  * It only has to outlast the create-to-write gap, not a whole critical section
  * (a full-tree boundaries scan measures ~0.32s in process and ~0.42s as a CLI
@@ -66,14 +149,9 @@ export const LOCK_TIMEOUT_MS = 60_000;
  * sized against it rather than against the critical section. While a holder is
  * inside the write window the lock names nobody at all: `readLockOwnerPid`
  * returns null, the pid check below is unreachable, and this grace is the only
- * thing between that live holder and a second process. The gap measures p50
- * 0.12ms and a worst case of 17ms over two runs of 20k samples, so the shipped
- * 2s is ~118x the worst observation. (The *median* would make it look like
- * four orders of magnitude, which is how this number used to be described; the
- * median is not the statistic a safety margin should be sized on.) The 500ms
- * floor the suite pins is the same measurement at ~29x. It is deliberately under
- * the 5s per-test budget, so recovering from a killed run stays inside one test
- * instead of turning into a test timeout.
+ * thing between that live holder and a second process. It is deliberately under
+ * the 5s per-test budget, so recovering from a killed run stays inside one
+ * test instead of turning into a test timeout.
  *
  * Scope, because the constant and the branches below are one unit: the ownerless
  * branch in {@link lockIsStale} is what reads this value, and the fifth
@@ -292,14 +370,27 @@ function evictLock(lockPath: string, ino: number): void {
  *
  * The lock was a directory until it became a file; a directory left at the
  * path by an earlier run would make the exclusive create fail with EISDIR
- * forever, and it lives under `node_modules/`, so `git status` never shows it
- * and nothing else would ever clear it.
+ * forever, and it lives inside the tree's git directory, so `git status` never
+ * shows it and nothing else would ever clear it.
+ *
+ * The lock the previous implementation used, under `node_modules/`, is left
+ * alone on purpose: that path is shared by every worktree, and a tree still
+ * running the previous format may be holding it right now. It is not a lock
+ * any more — there is exactly one lock, the one in the tree's git directory.
  */
 function clearLegacyLockDir(lockPath: string): void {
   try {
     if (statSync(lockPath).isDirectory()) rmSync(lockPath, { recursive: true, force: true });
   } catch {
     // No lock there, or it is already the file format.
+  }
+  // The location the previous implementation used, under `node_modules/`.
+  // Removed only when it is **empty**: that path is shared by every worktree,
+  // and a tree still running the previous format may be holding it right now.
+  try {
+    rmdirSync(LEGACY_LOCK_PATH);
+  } catch {
+    // Still held by a tree running the previous format, or already gone.
   }
 }
 

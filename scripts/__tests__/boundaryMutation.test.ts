@@ -13,16 +13,18 @@
  * rather than the shared one: a test that planted a fake lock at the shared path
  * would break the mutual exclusion every other guard test relies on.
  */
-import { spawn } from 'child_process';
+import { execFileSync, spawn } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   LOCK_MAX_AGE_MS,
   LOCK_OWNER_GRACE_MS,
   LOCK_TIMEOUT_MS,
+  REPO_ROOT,
   lockIsStale,
+  probeLockPath,
   sweepStaleProbes,
   withProbeLockAt,
 } from './boundaryMutation';
@@ -401,5 +403,99 @@ describe('sweepStaleProbes', () => {
     sweepStaleProbes(probeRoot);
 
     expect(existsSync(join(probeRoot, 'node_modules/vendored-lib/index.ts'))).toBe(true);
+  });
+});
+
+/**
+ * The lock is one per **working tree**, not one per repository.
+ *
+ * It protects one tree: a probe planted in one tree is not in another tree,
+ * and a scan of one tree never reads the other tree's probe. So two trees have
+ * nothing to exclude each other over — one shared lock would only make them
+ * wait for each other.
+ *
+ * The lock therefore lives in the tree's **own** git directory. `--git-dir`
+ * is the tree's private one (`.git/worktrees/<name>` for a worktree);
+ * `--git-common-dir` is the shared one, and using it would put every worktree
+ * back on one lock.
+ */
+describe('the lock is one per working tree', () => {
+  const sandboxes: string[] = [];
+
+  afterEach(() => {
+    for (const dir of sandboxes.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** A throwaway directory shaped like one kind of checkout. */
+  function fakeTree(kind: 'main' | 'worktree'): string {
+    const dir = join(tmpdir(), `dz-probe-tree-${process.pid}-${sandboxes.length}`);
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    sandboxes.push(dir);
+    if (kind === 'main') {
+      mkdirSync(join(dir, '.git'));
+    } else {
+      const other = join(dir, 'elsewhere');
+      mkdirSync(other, { recursive: true });
+      writeFileSync(join(dir, '.git'), `gitdir: ${other}\n`);
+    }
+    return dir;
+  }
+
+  it('puts the lock inside the tree\'s own git directory', () => {
+    const path = probeLockPath(REPO_ROOT);
+    const gitDir = resolve(
+      REPO_ROOT,
+      execFileSync('git', ['rev-parse', '--git-dir'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim(),
+    );
+    expect(path).toBe(join(gitDir, 'dz-boundary-probe.lock'));
+    // Inside `.git/`, so `git status` can never show it …
+    expect(path.replace(/\\/g, '/')).toMatch(/\/\.git(\/|$)/);
+    // … and never in `node_modules/`, which a worktree symlinks to the main
+    // checkout and which would therefore be shared by every tree.
+    expect(path).not.toContain(`${'node_modules'}/`);
+  });
+
+  it('does not use the shared git directory', () => {
+    // The whole point of `--git-dir` over `--git-common-dir`. They are equal
+    // in the main checkout and different in a worktree, so this only says
+    // something in a worktree — which is exactly where it matters.
+    const common = resolve(
+      REPO_ROOT,
+      execFileSync('git', ['rev-parse', '--git-common-dir'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim(),
+    );
+    const own = resolve(
+      REPO_ROOT,
+      execFileSync('git', ['rev-parse', '--git-dir'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim(),
+    );
+    if (common === own) return; // The main checkout: the two are the same.
+    expect(probeLockPath(REPO_ROOT)).not.toBe(join(common, 'dz-boundary-probe.lock'));
+  });
+
+  it('gives two different trees two different locks, and one tree one lock', () => {
+    const main = fakeTree('main');
+    const worktree = fakeTree('worktree');
+
+    expect(probeLockPath(main)).not.toBe(probeLockPath(worktree));
+    // Stable: the same tree always resolves to the same lock.
+    expect(probeLockPath(main)).toBe(probeLockPath(main));
+    expect(probeLockPath(worktree)).toBe(probeLockPath(worktree));
+    // And each is inside its own tree's git directory.
+    expect(probeLockPath(main)).toBe(join(main, '.git', 'dz-boundary-probe.lock'));
+    expect(probeLockPath(worktree)).toBe(
+      join(worktree, 'elsewhere', 'dz-boundary-probe.lock'),
+    );
   });
 });
