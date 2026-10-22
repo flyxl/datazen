@@ -6,7 +6,10 @@ use datazen_application::{
     dto::requests::{CommandCall, ExecuteAtTargetRequest},
     sessions::ConnectionUseCases,
 };
+use datazen_driver_api::keyset::CursorValue;
 use datazen_driver_api::{CountStrategy, TableDataResult, TableSchema, Value};
+use datazen_feature_core::services::query_executor::{keyset_refusal, paging_info, resolve_paging};
+use datazen_feature_core::services::table_paging::{keyset_decision, resolve_order_spec};
 use datazen_platform_api::{
     context::RequestContext,
     dto::{execution::ExecutionState, idempotency::IdempotentOperation},
@@ -34,6 +37,26 @@ pub struct TableReadRequest {
     /// The columns to order by when the caller did not ask for an order. An
     /// empty list means "do not order at all".
     pub default_order_columns: Option<Vec<String>>,
+    /// The boundary of the page: the key values of the last row of the
+    /// previous page. `None` — the default — is the first page of a read.
+    ///
+    /// The field is optional so that a caller that does not know about it is
+    /// not broken by it: an older front end sends no boundary and gets the
+    /// offset read it always got.
+    pub after_key: Option<Vec<CursorValue>>,
+    /// "This read needs keyset paging; do not fall back to an offset."
+    ///
+    /// The default is `false`, and `false` means the read **degrades**: when
+    /// the page cannot be read by seek, the host reads it by offset and says
+    /// so in the answer. A caller that cannot accept an offset read asks for
+    /// it explicitly and gets an error instead of a different page.
+    pub require_keyset: Option<bool>,
+    /// How many boundaries the caller holds in its chain.
+    ///
+    /// The host refuses a chain that is deeper than it accepts: a boundary
+    /// that far from the first page describes a moment in the past that the
+    /// data underneath has almost certainly left.
+    pub cursor_depth: Option<u32>,
 }
 
 /// What a read does about its row count.
@@ -247,23 +270,58 @@ pub async fn read(
         &primary_keys,
         request.default_order_columns.as_deref(),
     );
-    let select = QueryExecutor::build_select_sql(
-        &schema.table_name,
-        &schema.columns,
-        request.filters.clone(),
-        request
-            .sorts
-            .and_then(|sorts| sorts.into_iter().next())
-            .map(|sort| OrderBy {
-                column: sort.column,
-                descending: sort.descending,
-            }),
+    // The order of this read, and whether it is a total order. The decision
+    // is made once, here: the statement, the boundary and the answer to the
+    // caller all read it from the same place.
+    let explicit_sort = request
+        .sorts
+        .and_then(|sorts| sorts.into_iter().next())
+        .map(|sort| OrderBy {
+            column: sort.column,
+            descending: sort.descending,
+        });
+    let order = resolve_order_spec(
+        explicit_sort
+            .as_ref()
+            .map(|sort| (sort.column.as_str(), sort.descending)),
         &default_order,
+        &primary_keys,
+    );
+    let decision = keyset_decision(order, &schema.columns);
+    let plan = resolve_paging(
+        driver.as_ref(),
+        &decision,
+        request.after_key.as_deref(),
         &dialect,
         u64::from(request.page_size),
-        u64::from(request.page).saturating_mul(u64::from(request.page_size)),
-        request.filter_logic.as_deref(),
-    )?;
+    );
+
+    // A caller that needs keyset paging and cannot have it is told so; a
+    // caller that does not care reads the page by offset and is told that
+    // too, in the answer.
+    if let Some(message) = keyset_refusal(
+        &plan,
+        request.after_key.is_some(),
+        request.require_keyset.unwrap_or(false),
+        request.cursor_depth.unwrap_or(0),
+    ) {
+        return Err(CommandError::Validation(message));
+    }
+
+    let select =
+        datazen_feature_core::services::query_executor::table_read_sql::build_paged_select_sql(
+            &schema.table_name,
+            &schema.columns,
+            request.filters.clone(),
+            &plan.order,
+            plan.mode,
+            plan.predicate.as_deref(),
+            &dialect,
+            u64::from(request.page_size),
+            u64::from(request.page).saturating_mul(u64::from(request.page_size)),
+            request.filter_logic.as_deref(),
+        )?
+        .sql;
     let caller_skip_count = request.skip_count.unwrap_or(false);
     let count_plan = if caller_skip_count {
         CountPlan::Reuse
@@ -408,6 +466,14 @@ pub async fn read(
             _ => Some(CountStrategy::Unsupported),
         },
     };
+    let paging = paging_info(
+        &plan,
+        &schema.columns,
+        &rows,
+        request.page,
+        request.page_size,
+        total_rows,
+    );
     Ok(TableDataResult {
         columns: schema.columns,
         rows,
@@ -415,6 +481,6 @@ pub async fn read(
         total_rows_kind,
         page: request.page,
         page_size: request.page_size,
-        paging: None,
+        paging: Some(paging),
     })
 }

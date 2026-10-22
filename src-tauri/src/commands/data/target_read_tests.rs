@@ -31,6 +31,9 @@ fn request(connection_id: &str, conn_id: &str) -> TableReadRequest {
         filter_logic: None,
         count_strategy: None,
         default_order_columns: None,
+        after_key: None,
+        require_keyset: None,
+        cursor_depth: None,
     }
 }
 
@@ -223,4 +226,150 @@ async fn a_caller_that_reuses_the_total_gets_no_kind_at_all() {
     assert_eq!(data.total_rows, None);
     // Not "unsupported": the caller keeps the total it already had.
     assert_eq!(data.total_rows_kind, None);
+}
+
+/// The paging half of the target read: what a page is read by, and what the
+/// caller is told about it.
+mod keyset {
+    use super::*;
+    use datazen_driver_api::keyset::{CursorValue, KeysetUnavailableReason, PagingMode};
+
+    fn keyset_driver() -> MockDriverOptions {
+        MockDriverOptions {
+            columns: vec![
+                datazen_driver_api::ColumnSchema {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: true,
+                    is_auto_increment: false,
+                },
+                datazen_driver_api::ColumnSchema {
+                    name: "name".into(),
+                    data_type: "text".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: false,
+                    is_auto_increment: false,
+                },
+            ],
+            primary_keys: vec!["id".into()],
+            supports_keyset_pagination: true,
+            count_total: 2,
+            query_rows: rows(),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_driver_without_the_capability_reads_by_offset_and_says_so() {
+        let test = TestAppState::with_options(MockDriverOptions {
+            columns: keyset_driver().columns,
+            primary_keys: vec!["id".into()],
+            count_total: 2,
+            query_rows: rows(),
+            ..Default::default()
+        })
+        .await;
+        let (_, conn_id) = test.save_and_connect("target-read-no-keyset").await;
+
+        let data = table_target::read(&test.state, request("target-read-no-keyset", &conn_id))
+            .await
+            .expect("the read succeeds");
+
+        let paging = data.paging.expect("the read reports its paging");
+        assert_eq!(paging.mode, PagingMode::Offset);
+        assert_eq!(
+            paging.unavailable_reason,
+            Some(KeysetUnavailableReason::DriverUnsupported)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_driver_with_the_capability_reports_the_boundary_of_the_next_page() {
+        let test = TestAppState::with_options(keyset_driver()).await;
+        let (_, conn_id) = test.save_and_connect("target-read-keyset").await;
+
+        let mut request = request("target-read-keyset", &conn_id);
+        // The mock answers one statement at a time, so the read asks for the
+        // rows only — the count is not what this case is about.
+        request.skip_count = Some(true);
+        let data = table_target::read(&test.state, request)
+            .await
+            .expect("the read succeeds");
+
+        let paging = data.paging.expect("the read reports its paging");
+        assert_eq!(paging.mode, PagingMode::Keyset);
+        assert_eq!(paging.unavailable_reason, None);
+        assert_eq!(
+            paging.next_after_key,
+            Some(vec![CursorValue::Integer(1)]),
+            "the boundary of the next page is the last row that was read"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_caller_that_insists_on_keyset_paging_is_refused_when_it_cannot_have_it() {
+        let test = TestAppState::with_options(MockDriverOptions {
+            columns: keyset_driver().columns,
+            primary_keys: vec!["id".into()],
+            count_total: 2,
+            query_rows: rows(),
+            ..Default::default()
+        })
+        .await;
+        let (_, conn_id) = test.save_and_connect("target-read-keyset-refused").await;
+
+        let mut request = request("target-read-keyset-refused", &conn_id);
+        request.require_keyset = Some(true);
+        let error = table_target::read(&test.state, request)
+            .await
+            .expect_err("the read is refused");
+
+        let message = error.to_string();
+        assert!(
+            message.starts_with("grid.paging.keysetUnavailable: "),
+            "the prefix is part of the contract, got: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_deep_boundary_chain_is_refused() {
+        let test = TestAppState::with_options(keyset_driver()).await;
+        let (_, conn_id) = test.save_and_connect("target-read-keyset-deep").await;
+
+        let mut request = request("target-read-keyset-deep", &conn_id);
+        request.cursor_depth = Some(100_000);
+        let error = table_target::read(&test.state, request)
+            .await
+            .expect_err("the read is refused");
+
+        let message = error.to_string();
+        assert!(
+            message.starts_with("grid.paging.cursorTooDeep: "),
+            "the prefix is part of the contract, got: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_old_caller_without_a_boundary_still_reads_the_page() {
+        // The request shape did not change: a caller that knows nothing about
+        // boundaries sends none and gets the page it always got.
+        let test = TestAppState::with_options(keyset_driver()).await;
+        let (_, conn_id) = test.save_and_connect("target-read-keyset-old").await;
+
+        let mut request = request("target-read-keyset-old", &conn_id);
+        request.after_key = None;
+        request.skip_count = Some(true);
+        let data = table_target::read(&test.state, request)
+            .await
+            .expect("the read succeeds");
+
+        assert_eq!(data.rows.len(), 1);
+        let paging = data.paging.expect("the read reports its paging");
+        assert_eq!(paging.mode, PagingMode::Keyset);
+    }
 }

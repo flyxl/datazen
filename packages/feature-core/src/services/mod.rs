@@ -9,5 +9,6 @@ pub mod result_edit;
 pub mod schema_metadata;
 pub mod schema_scope;
 pub mod table_browsing;
+pub mod table_paging;
 
 pub use query_executor::filter_sql::{join_filters, validate_filters, FilterRejection};

@@ -86,6 +86,38 @@ pub enum KeysetUnavailableReason {
     NotAdjacent,
 }
 
+impl std::fmt::Display for KeysetUnavailableReason {
+    /// A phrase that says **why**, not which variant it was.
+    ///
+    /// The front end has its own wording for each reason; this one is for a
+    /// message that reaches a log or a caller that reads the raw text.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = match self {
+            KeysetUnavailableReason::DriverUnsupported => {
+                "this database does not support keyset paging"
+            }
+            KeysetUnavailableReason::NoStableOrder => {
+                "this table has no key, so its rows have no stable order"
+            }
+            KeysetUnavailableReason::NullableKeyColumn => {
+                "the order includes a column that can be NULL"
+            }
+            KeysetUnavailableReason::NullBoundary => "the page boundary is NULL",
+            KeysetUnavailableReason::PredicateUnavailable => {
+                "this order cannot be turned into a seek condition"
+            }
+            KeysetUnavailableReason::NoPaginationClause => {
+                "this database cannot paginate this query"
+            }
+            KeysetUnavailableReason::StaleCursor => "the page boundary belongs to another order",
+            KeysetUnavailableReason::NotAdjacent => {
+                "the requested page is not reachable from the pages that were visited"
+            }
+        };
+        f.write_str(text)
+    }
+}
+
 /// What the host did about the paging of one page.
 ///
 /// This travels with every table read. A caller that receives nothing (an

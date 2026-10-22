@@ -265,6 +265,12 @@ pub struct MockDriver {
     cancel_query_calls: AtomicU32,
     precise_cancel_query_calls: AtomicU32,
     last_query_limit: Mutex<Option<Option<u32>>>,
+    /// The statements this mock was asked to run, in call order.
+    ///
+    /// A statement is the only way to see what a host actually sent, and
+    /// "the statement is exactly this" is the assertion that keeps a
+    /// refactor from quietly changing every query the product sends.
+    query_log: Mutex<Vec<String>>,
     open_txs: Mutex<HashSet<String>>,
     /// Regression tripwire: the driver contract no longer has `use_database`,
     /// so this can only ever be empty. Host tests assert it stays empty to
@@ -296,6 +302,7 @@ impl MockDriver {
             cancel_query_calls: AtomicU32::new(0),
             precise_cancel_query_calls: AtomicU32::new(0),
             last_query_limit: Mutex::new(None),
+            query_log: Mutex::new(Vec::new()),
             open_txs: Mutex::new(HashSet::new()),
             use_database_calls: Mutex::new(Vec::new()),
             qualify_calls: Mutex::new(Vec::new()),
@@ -363,6 +370,15 @@ impl MockDriver {
 
     pub fn last_query_limit(&self) -> Option<Option<u32>> {
         self.last_query_limit.lock().ok().and_then(|g| *g)
+    }
+
+    /// The statements this mock was asked to run, in call order.
+    pub fn query_log(&self) -> Vec<String> {
+        self.query_log
+            .lock()
+            .ok()
+            .map(|g| g.clone())
+            .unwrap_or_default()
     }
 
     pub fn get_columns_calls(&self) -> u32 {
@@ -763,6 +779,9 @@ impl DatabaseDriver for MockDriver {
         sql: &str,
     ) -> Result<QueryResult, DriverError> {
         self.query_calls.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut log) = self.query_log.lock() {
+            log.push(sql.to_string());
+        }
         if let Some(msg) = &self.opts.query_error {
             return Err(DriverError::QueryFailed(msg.clone()));
         }
