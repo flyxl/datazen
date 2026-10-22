@@ -139,6 +139,56 @@ Coder 交付 5 提交（`66fc97aae`/`fa0dcfd59`/`c4a8c98b4`/`c6b59dda0`/`89ec12d
 
 **E2E 为什么整体推到 R 阶段**：它需要**完整 app 构建**（`pnpm tauri:build:webdriver`，禁止裸 `cargo build`）+ **真实库**（`e2e/.env`）。各轨在开发期只交组件级与 store 级用例；`TC-TABLE-013` 这类「假绿」问题**在 R 阶段一次性处理**。
 
+## Wave 8 的协调者裁定（两册的契约都有一批「行数与路径已过期」的落点）
+
+### 02 键盘 · 契约的现状描述已过期
+
+| 契约写的 | 实测 | 裁定 |
+| --- | --- | --- |
+| Step 2「容器成为焦点宿主」：给滚动容器加 `data-dt-surface` / `tabIndex` / `aria-*` | **Wave 1 已经做完了**：`DataTable.tsx` 的 `surfaceDomProps` 里已有 `data-dt-surface`、`role="grid"`、`tabIndex: 0`、`aria-rowcount`、`aria-colcount`、`aria-activedescendant`，且已把 `surfaceProps`（含 `onKeyDown`）展开到滚动容器上 | **本册不重建 surface**。本册的工作是**键盘语义**（纯逻辑模块 + 接线 + 行容器退出 Tab 序列）。契约 K-7「不新增 role」也已过期（role 存在） |
+| Step 3：行容器加 `data-dt-row-view` | **已存在**（`VirtualBody.tsx:300`） | 剩下的是：行容器 `tabIndex={0}` → `-1`（`:298`）、行级 `data-dt-selected` |
+| Step 4：删除行容器上被取代的键盘分支 | **仍在**（`VirtualBody.tsx:229` 的 `handleKeyDown`：Enter/Space → `onRowSelect`） | 照做。契约给的两条删除理由都成立：Enter 的归属已裁定给「进入编辑」；行 `tabIndex={-1}` 后，焦点在行号槽按钮上按 Enter 会**双触发** `onRowSelect` |
+| `VirtualBody.tsx` 起点 207 行 | **725 行** | 800 行红线用**实测**值判断，不按契约的数字 |
+| `DataTable.tsx` 起点 628 行 | **667 行** | 同上 |
+| `TableView.tsx` 803 行（已越线） | **663 行** | 契约说「必须等 01 的抽取先落地」——**那件事 W4 已经做了**（663 < 800） |
+
+另：**E2E（Step 7）留给 R 阶段**（`table-keyboard-nav.ts` 新建 + `TC-TABLE-013` 的假绿改真断言 + `detail-panel` / `ops-process-server` 的定位表达式迁移）——但 `TC-TABLE-013` 那条「**把 `Cmd+A` 的处理分支注释掉再跑一次、必须变红**」是这一册的**验收关键步骤**，必须明确留档。
+
+### 11 键集分页 · 三处路径/范围要订正
+
+| 契约写的 | 实测 | 裁定 |
+| --- | --- | --- |
+| Step 5 改 `src-tauri/src/services/query_executor/mod.rs` | **该文件已被 main 撤掉**（宿主门面） | 共享层是 `packages/feature-core/src/services/query_executor/mod.rs`（现 431 行）；IPC 侧是 `src-tauri/src/commands/schema.rs`（现 **466** 行） |
+| Step 4 把 `build_select_sql` / `build_count_sql` / `format_condition` / `filter_is_complete` / `filter_join` 一起搬进新文件 `table_read_sql.rs` | `format_condition` / `filter_is_complete` / `filter_join` / `join_filters` / `validate_filters` 都在 **`filter_sql/mod.rs`（580 行）**——那是 Wave 5 刚目录化出来的 | **只搬 `build_select_sql`（`query_executor/mod.rs:349`）与 `build_count_sql`（`:316`）** 及其私有助手进 `table_read_sql.rs`；**`filter_sql/` 一行不动**（搬回去等于撤销上一波的工作，且会与 08 的成果冲突） |
+| `traits.rs` 1062 / `reuse.rs` 1159 / `types.rs` 958 | **1265 / 1488 / 991** | 见下 |
+
+### `traits.rs` 的 ratchet 是**硬门禁**（不是建议）
+
+`packages/drivers/sqlserver/src/sqlserver/file_line_cap.rs` 把 `packages/driver-api/src/traits.rs` 钉在 **≤1265 行**，且是 **ratchet**（**只许缩不许涨**；加 1 行 ⇒ `cargo test -p datazen-driver-sqlserver` 变红，合并专员已实测过这条会红）。而 11 册 Step 2 要往 `traits.rs` 加两个 trait 方法。
+
+⇒ 裁定：
+1. 两个方法的**默认实现体**放进新文件 `packages/driver-api/src/traits/keyset.rs`（照 `traits/browsing.rs` / `traits/filter_contract.rs` 的既有范式），`traits.rs` 只留声明 + `mod keyset;`；
+2. **但声明本身也要加行** ⇒ **同一次提交必须把等量的行从 `traits.rs` 搬出去**（文档或整段委派方法搬进既有子模块，**纯位移**，行为不变，既有测试作证）；
+3. **自证**：提交后 `cargo test -p datazen-driver-sqlserver` 必须绿；再临时给 `traits.rs` 加 1 行 ⇒ 必须变红。
+
+`reuse.rs`（1488 行，已超限近一倍）：采纳契约 §6.1 第 2 条的**选项 (a)**——把 `impl DatabaseDriver for ReuseDriver` 整体搬到 `packages/driver-api/src/reuse/driver_impl.rs`（`reuse.rs` 变 `reuse/mod.rs`），转发用例跟着走。理由：本册是「新增 trait 方法」的批次，转发块正是相关代码，顺手拆成本最低。
+
+### 两册共用的 `src/locales/en/query.ts`（合流时手工解冲突的位置先定好）
+
+- **02**：8 个快捷键提示 key ⇒ 加在**既有的 `pagination.*` 区块内**（`query.ts` 的 `pagination.*` 现在在 369–403 行）。
+- **11**：12 个 `pagination.mode.*` / `pagination.hint.*` key ⇒ 加在**文件末尾**（`} as const;` 之前）。
+- ⇒ 两处**编辑区域不同** ⇒ git 可自动合并。
+
+### 其余必须带进 checklist 的
+
+- **三个 `grid.paging.*` 码**（契约 00 §8.2 第 38–40 行）必须有**Rust 生产者**，并**追加**到 `src/lib/gridErrors.ts`（联合类型 + 注册表两处）；**不许**进 `PRODUCER_PENDING`；**不许整文件覆盖**（该文件由 01 建立，各册只追加）。
+- **`CursorValue` 必须带标签**（`tag="kind", content="value"`）：`Value` 是 `#[serde(untagged)]`，`[1,2,3]` 在「Rust → 前端 → Rust」两跳里会被读成 `Bytes`，**键集边界悄悄算错**。
+- **顺序是硬约束**（契约 §5）：Step 1~2 只加**默认全 false / 全 None**的契约与共享实现，此时**任何驱动行为逐字节不变**；Step 3~5 在宿主内建能力但**默认不开启**；Step 6~7 才让具体驱动与前端开启。
+- **`tableDataStore.ts` 现 660 行**（契约写 729、说「距 800 只剩 1 行」）：本册净增若超 **40 行**，就必须在**同一次提交**里拆出 `src/stores/tableData/actions.ts`，不许留给下一册。
+- **`ReuseDriver` 转发的回归锁**必须是**硬编码期望值**或让 inner **逐条覆盖**——**不能**用「wrapper == inner」的自反比较（Wave 6 踩过：恒真，只钉住 1 条）。
+- **`sqlserver` 的谓词用例必须断言 SQL 里不出现行值比较**（`((a, b) > …)` 这种形状）——契约 Step 7 明写。
+- **12-testing 的 D1–D8 是完成定义**，两条最容易被忽略的：**D5 至少一次反向注入**（亲手改坏 ⇒ 亲眼看到转红 ⇒ 还原）、**D7 零文案断言**（不许把 `t()` 渲染的文案钉进断言或定位器）。
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
