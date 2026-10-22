@@ -125,6 +125,12 @@ pub use transport::{TunnelFault, TunnelHandle, TunnelTransport};
 #[cfg(test)]
 mod harness;
 
+/// 共享内核的**形态中立**闸门：内核源码里不得出现形态名（桌面 / Tauri / GUI / Web）。
+/// 扫的是整个内核 crate 的 `src/`（字面量 + 标识符两层），并自带 kill test 与自证。
+/// 住在 `src/tunnel/` 而非顶层 `tests/`，是因为它随 `--lib` 跑、因而真的进 CI
+/// （与上面那道闸门同一理由）。
+#[cfg(test)]
+mod form_neutrality;
 /// 三个注入点的失败传播旅程（第三条断言）。
 #[cfg(test)]
 mod journey_failure;

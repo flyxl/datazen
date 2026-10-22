@@ -20,7 +20,7 @@ async fn harness_checks_owner_and_preserves_unknown_outcome_fencing() {
     let gateway = ExecutionGateway::new(
         port,
         OwnerMatchAuthorizer::shared(),
-        InMemoryIdempotencyStore::shared(),
+        InMemoryIdempotencyRepository::shared(),
         Arc::new(InstantClock::new()),
     );
     let peer = RequestPrincipal::new(

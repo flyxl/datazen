@@ -16,7 +16,7 @@ pub(crate) fn validate_backup_filter_extension(extension: &str) -> Result<String
 struct DesktopBackupSource {
     platform: crate::platform::PlatformEntry,
     registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
-    store: Arc<crate::store::Store>,
+    store: Arc<crate::store::DesktopRepository>,
 }
 impl DesktopBackupSource {
     fn new(state: &AppState) -> Self {

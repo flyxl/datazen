@@ -14,7 +14,7 @@ use datazen_platform_api::{
     RequestContext,
 };
 use datazen_runtime::{
-    artifact::FileArtifactStore,
+    artifact::FileArtifactRepository,
     budget::{BudgetConfig, BudgetLedger},
     job::*,
 };
@@ -74,7 +74,7 @@ async fn artifact_restore_commits_through_runtime_and_rejects_client_formats_bef
         profile: datazen_driver_api::restore_sql::TRANSACTIONAL.into(),
     });
     let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(FileArtifactStore::open(dir.path().join("artifacts")).unwrap());
+    let artifacts = Arc::new(FileArtifactRepository::open(dir.path().join("artifacts")).unwrap());
     let scripts = [
         format!("CREATE TABLE {schema}.items(id int PRIMARY KEY); INSERT INTO {schema}.items VALUES (7), (8);"),
         format!("CREATE TABLE {schema}.copy_probe(id int); COPY {schema}.copy_probe FROM stdin;\n1\n\\."),

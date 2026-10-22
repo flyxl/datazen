@@ -35,7 +35,6 @@
 //! * **不静默降级。** 调用方要了隧道、而路由给出的配置里 `tunnel_kind` 却是 `None`
 //!   时，本文件报开隧道**失败**，而不是悄悄让连接直连真实库主机。
 
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use datazen_platform_api::id::{NetworkRouteRef, NetworkRouteRevision};
@@ -43,6 +42,7 @@ use datazen_platform_api::ports::network::{NetworkProvider, TunnelSpec};
 use datazen_runtime::tunnel::{
     RouteCatalog, RouteNetworkProvider, TunnelError, TunnelFault, TunnelHandle, TunnelTransport,
 };
+use datazen_tunnel::KnownHostsStore;
 use tracing::{debug, warn};
 
 use crate::tunnel::{start_for_connection, Tunnel};
@@ -55,7 +55,7 @@ use datazen_driver_api::{ConnectionConfig, DriverError};
 /// 存档隧道要靠内存快照回答：快照的刷新由实现方在别处做。
 ///
 /// [`TunnelSpec`] 里只有 `route_ref / via_host / via_port`：`route_ref` 是**存档隧道的
-/// id**（与旧路径 `config.tunnel_id` → `store.get_tunnel` 一一对应），
+/// id**（与 `config.tunnel_id` → `TunnelRepository::get` 一一对应），
 /// `via_host` / `via_port` 是跳转腿，**只进共享身份与池键**，不参与开法。
 /// 真正的 SSH 账号、代理地址、WebSocket 路径只能由本端口去查存档补齐。
 pub trait DesktopTunnelSource: Send + Sync + 'static {
@@ -154,7 +154,7 @@ fn open_fault(spec: &TunnelSpec, detail: impl std::fmt::Display) -> TunnelError 
 fn start_tunnel_blocking(
     spec: &TunnelSpec,
     config: ConnectionConfig,
-    known_hosts_path: &Path,
+    known_hosts: Arc<dyn KnownHostsStore>,
 ) -> Result<Option<Tunnel>, TunnelError> {
     let Ok(handle) = tokio::runtime::Handle::try_current() else {
         return Err(open_fault(
@@ -172,7 +172,7 @@ fn start_tunnel_blocking(
         ));
     }
 
-    let start = async move { start_for_connection(config, known_hosts_path).await };
+    let start = async move { start_for_connection(config, known_hosts).await };
     // `block_in_place` 把当前 worker 让给调度器去跑别的任务，所以这段握手等待
     // 不会让运行时少一个执行线程。
     //
@@ -190,17 +190,21 @@ fn start_tunnel_blocking(
 /// 「挂上了还没报出来」的窗口。
 pub struct DesktopTunnelHost {
     source: Arc<dyn DesktopTunnelSource>,
-    known_hosts_path: PathBuf,
+    /// 已知主机的**存储端口**实例（宿主注入）：桌面读 `{appData}/ssh_known_hosts.json`。
+    known_hosts: Arc<dyn KnownHostsStore>,
     /// 存活的隧道。`std::sync::Mutex` 而非 `tokio::sync::Mutex`：
     /// 临界区里没有任何 `.await`，开隧道那段耗时全部在锁**之外**。
     live: Mutex<Roster<Tunnel>>,
 }
 
 impl DesktopTunnelHost {
-    pub fn new(source: Arc<dyn DesktopTunnelSource>, known_hosts_path: PathBuf) -> Self {
+    pub fn new(
+        source: Arc<dyn DesktopTunnelSource>,
+        known_hosts: Arc<dyn KnownHostsStore>,
+    ) -> Self {
         Self {
             source,
-            known_hosts_path,
+            known_hosts,
             live: Mutex::new(Roster::new()),
         }
     }
@@ -230,7 +234,7 @@ impl TunnelTransport for DesktopTunnelHost {
             .connection_config(&spec.route_ref)
             .map_err(|detail| open_fault(spec, detail))?;
 
-        let tunnel = start_tunnel_blocking(spec, config, &self.known_hosts_path)?;
+        let tunnel = start_tunnel_blocking(spec, config, self.known_hosts.clone())?;
 
         let Some(tunnel) = tunnel else {
             // 调用方拿着 `via_port != 0` 要隧道，而存档配置里 `tunnel_kind` 是 `None`。
@@ -327,9 +331,9 @@ fn local_endpoint(local_port: u16) -> String {
 /// `src-tauri/src/platform/`（平台轨），本轨不越界改它。
 pub fn desktop_network_provider(
     source: Arc<dyn DesktopTunnelSource>,
-    known_hosts_path: PathBuf,
+    known_hosts: Arc<dyn KnownHostsStore>,
 ) -> Arc<dyn NetworkProvider> {
-    let host = Arc::new(DesktopTunnelHost::new(source, known_hosts_path));
+    let host = Arc::new(DesktopTunnelHost::new(source, known_hosts));
     let catalog: Arc<dyn RouteCatalog> = host.clone();
     Arc::new(RouteNetworkProvider::new(catalog, host))
 }

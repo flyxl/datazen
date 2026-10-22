@@ -427,7 +427,7 @@ async fn preview_sql_file_target(
     let plan_id = state
         .transfer_plans
         .issue(
-            super::plan_scope::desktop_organization_scope(),
+            &state.organization_scope()?,
             crate::data_transfer::plan_store::PlanIssueRequest::new(
                 job,
                 &preview,
@@ -837,7 +837,7 @@ pub(crate) async fn preview_data_transfer_impl(
     let plan_id = state
         .transfer_plans
         .issue(
-            super::plan_scope::desktop_organization_scope(),
+            &state.organization_scope()?,
             crate::data_transfer::plan_store::PlanIssueRequest {
                 job,
                 preview: &preview,

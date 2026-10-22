@@ -13,31 +13,32 @@ packages/feature-core/src/workflow/
 ├── mod.rs               # 共享模块出口
 ├── model.rs             # WorkflowDefinition / WorkflowStep 等数据模型
 ├── executor.rs          # WorkflowExecutor：步骤编排、错误策略、超时
+├── executor_tests.rs    # executor.rs 的纯规则用例（database_is_required 等）
 ├── context.rs           # 模板解析、路径解析、循环上下文
 ├── conditions.rs        # Condition 表达式求值
 ├── data_step.rs         # Merge / Transform 等数据处理步骤
 ├── command.rs           # Workflow Command Step 数据结构
-├── command_runtime.rs   # 共享 Command 执行规则
+├── command_runtime.rs   # 共享 Command 执行规则：显式目标校验、connection 解析、命令派发
 ├── resource_execution.rs# 独立 Runtime 资源执行与授权目标
-├── migration.rs         # 迁移 step 的共享策略
 ├── plan_guard.rs        # 计划与目标守卫
 ├── scheduler.rs         # 到期判定与 in-flight 生命周期
-├── registry.rs          # 保存的 workflow 规则；宿主以 Arc<dyn WorkflowDefinitionStore> 注入存储
+├── registry.rs          # 保存的 workflow 规则；宿主以 Arc<dyn WorkflowDefinitionRepository> 注入存储
 └── host.rs              # 宿主端口
 
 src-tauri/src/workflow/
 ├── mod.rs               # 模块出口
 ├── registry.rs          # YAML workflow 注册、加载、保存、删除（AppDb 绑定）
-├── command_runtime.rs   # 桌面 connection 解析与 Driver command 执行
-├── independent_sql.rs   # 桌面身份/目标绑定 → feature-core resource_execution
+├── command_runtime.rs   # 桌面 AppState 绑定的 Command 桥（规则在 feature-core）
 ├── scheduler.rs         # 桌面 scheduler 适配
 ├── history.rs           # 执行历史持久化
-├── migration.rs         # 桌面迁移 step 适配（profile 仓储/历史/专用会话）
-├── host.rs              # 宿主 Runtime/Store 绑定
+├── host.rs              # 共享端口的桌面实现（WorkflowHost / ResourceExecutionHost）
+├── doc_reference_tests.rs # 长期文档的行号引用新鲜度守卫
 └── live_acceptance.rs   # 真实 PostgreSQL/MySQL 跨库验收（ignored）
 ```
 
 宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen_feature_core::workflow::…`。
+
+宿主侧的 Command 桥只做「同一条链的桌面绑定」：显式 `database`/`schema` 校验、connection 继承解析、命令派发这三条规则都在 `packages/feature-core/src/workflow/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。
 
 ## 执行模型
 
@@ -85,7 +86,7 @@ Step 没有指定 `connection` 时继承 Workflow 默认 connection；Step 显�
 
 ### 连接与会话
 
-Workflow IPC 和 YAML 使用持久化 `connectionId`，不会保存或接收 GUI 的 `dbSessionId`。Workflow v1 的每条 step 经 `command_runtime → independent_sql → feature-core resource_execution` 进入共享 Runtime；Runtime 按该 step 的 connection profile 建立或借用自己的 session/resource，并在该次执行完成后按 Runtime 生命周期清理。它不复用编辑器会话，也不通过 Host `ConnectionManager` 管理连接。
+Workflow IPC 和 YAML 使用持久化 `connectionId`，不会保存或接收 GUI 的 `dbSessionId`。Workflow v1 的每条 step 经 `feature-core command_runtime → feature-core resource_execution` 进入共享 Runtime；Runtime 按该 step 的 connection profile 建立或借用自己的 session/resource，并在该次执行完成后按 Runtime 生命周期清理。它不复用编辑器会话，也不通过 Host `ConnectionManager` 管理连接。
 
 当前实现保留以下 v1 行为：
 
@@ -207,6 +208,32 @@ Workflow Command Runtime 同时被 Tauri IPC 使用，主要能力包括：
 - 路径遍历防护
 - GUI / IPC / MCP 共用 Workflow Engine
 
+## 迁移 step（已移除）
+
+Workflow 曾支持一种 `migration` step：在 workflow 里以 step 的形式调用数据迁移三件套
+（Schema Diff / Data Sync / Data Transfer）——按持久化的迁移 profile 开会话、生成计划、
+执行并写入迁移运行历史。
+
+**该能力已从 workflow 中移除，且不保留任何兼容分支**（包括只为报错而存在的残留结构）。
+理由与事实：
+
+- 迁移 step 走的是**宿主专属**的服务：宿主存储里的迁移 profile、宿主开的会话、宿主的
+  迁移执行路径。web 形态要支持它，就得把这一整套也做成形态中立的。
+- 与其留一个「只有桌面能用」的半截能力，不如先删掉；将来按 **web 与桌面同时可用**的
+  形态重做。
+- 该能力**从未真正发布**（其代码虽随被撤回的 v0.2.3 一起构建过，但该版本已撤回），
+  内置 workflow 模板也从未使用它；因此本次按**直接移除**处理，不保留兼容分支或
+  「只为报错而存在」的残留结构。
+
+**三件套本身不受影响**：Schema Diff / Data Sync / Data Transfer 作为独立功能（命令、
+存储、端口、UI）全部保留，只是不再能以 workflow step 的形式调用。
+
+已删除的实现：`packages/feature-core/src/workflow/migration.rs`、
+`packages/feature-core/src/workflow/migration_outcome.rs`、
+`src-tauri/src/workflow/migration.rs`，以及 `WorkflowStep::Migration` 变体、
+`WorkflowMigrationOperation` / `UnattendedDestructivePolicy` 枚举、
+`WorkflowHost::execute_profile_step` 端口，与前端对应的 step 类型、表单与文案。
+
 ## 前端架构
 
 Workflow 编辑器不应硬编码每种 Driver 的 Command 列表。Command Step 的编辑流程为：
@@ -241,7 +268,7 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 
 ### P6 Workflow v1 范围
 
-Workflow 保持既有 v1 协议、模型、跨数据库逐步执行及前步 output 供后步模板串联的语义；仅将底层连接管理走 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。本轮不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof。YAML、version model 与既有 IPC 形状不变。scheduler 保留桌面 runtime-entry 修复，Monitor 固定只读授权/独立 occurrence 和其他消费者的 Runtime 接线继续保留。
+Workflow 保持既有 v1 协议、模型、跨数据库逐步执行及前步 output 供后步模板串联的语义；仅将底层连接管理走 `feature-core command_runtime → feature-core resource_execution → Runtime`。本轮不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof。YAML、version model 与既有 IPC 形状不变。scheduler 保留桌面 runtime-entry 修复，Monitor 固定只读授权/独立 occurrence 和其他消费者的 Runtime 接线继续保留。
 
 #### Workflow v1 真实驱动验收
 
@@ -255,7 +282,7 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 
 后端从当前桌面 RequestContext 取得批准者，并生成独立 service principal / delegation ID。AppDb schema v3 的 `monitor_schedule_grants` 仅保存批准者、服务身份、dashboard/widget/workflow ID、工作流 YAML SHA-256 revision、固定 canonical connection/database/schema 与配置版本、connect/query 动作及命令范围、readOnly、到期时间、撤销状态与版本。不保存 SQL 副本、session、attachment、bearer token、秘密或凭据。新授权取代同 widget 的旧授权；变更 workflow 定义或 profile 配置必须重新授权。
 
-当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI、migration 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询；函数仅允许明确的内置聚合/数值/文本/空值/时钟函数白名单，未知、带 schema、引号名称及表值函数失败关闭，因此序列推进/状态、命名锁获取/状态/释放和会话配置函数不能借 SELECT 派发），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。其他驱动和写动作均失败关闭。
+当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询；函数仅允许明确的内置聚合/数值/文本/空值/时钟函数白名单，未知、带 schema、引号名称及表值函数失败关闭，因此序列推进/状态、命名锁获取/状态/释放和会话配置函数不能借 SELECT 派发），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。其他驱动和写动作均失败关闭。
 
 共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
 

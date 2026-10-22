@@ -1,4 +1,4 @@
-//! The store facade's per-domain CRUD, exercised through `Store` rather than
+//! The store facade's per-domain CRUD, exercised through `DesktopRepository` rather than
 //! through the SQLite layer directly (that is `history_db`'s own suite).
 //!
 //! What is asserted here is the facade's behaviour: history dedup keys on the

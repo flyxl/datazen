@@ -8,10 +8,10 @@ use datazen_platform_api::{
 };
 
 pub struct DesktopPolicy {
-    store: std::sync::Arc<crate::store::Store>,
+    store: std::sync::Arc<crate::store::DesktopRepository>,
 }
 impl DesktopPolicy {
-    pub fn new(store: std::sync::Arc<crate::store::Store>) -> Self {
+    pub fn new(store: std::sync::Arc<crate::store::DesktopRepository>) -> Self {
         Self { store }
     }
     fn grant(
@@ -135,5 +135,115 @@ impl PolicyService for DesktopPolicy {
     }
     fn subscribe_version_changes(&self) -> PolicyChangeStream {
         Box::new(std::iter::empty())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
+
+    /// 桌面策略只放行**本机桌面身份**。这三条用例把这条契约钉住：
+    ///
+    /// - 本机主体 ⇒ 放行；
+    /// - **主体不匹配 ⇒ 必须被拒**（这是本文件最要紧的一条：桌面主体改成「进程内
+    ///   只解析一次」之后，这条校验一点没放松——它比的是「请求里的主体」与「本进程的
+    ///   桌面主体」，不是一个被放行后就不再核对的快照）；
+    /// - 组织不匹配 ⇒ 必须被拒。
+    ///
+    /// 主体取 [`local_principal`]（进程内解析一次的桌面主体），因此用例不依赖
+    /// `$USER` 是什么，也不受测试进程里其它用例的调度影响。
+    async fn desktop_policy() -> DesktopPolicy {
+        let temp = tempfile::tempdir().expect("临时目录");
+        let store = std::sync::Arc::new(
+            crate::store::DesktopRepository::init_with_path(
+                temp.path(),
+                crate::store::KeyBackend::File,
+            )
+            .await
+            .expect("store 初始化"),
+        );
+        DesktopPolicy::new(store)
+    }
+
+    fn context(organization: &str, principal: &str) -> RequestContext {
+        RequestContext::new(
+            OrganizationId::new(organization),
+            PrincipalId::new(principal),
+            None,
+            ClientInstanceId::new("client-1"),
+            RequestId::new("req-1"),
+            None,
+        )
+    }
+
+    fn subject(principal: &str) -> AuthorizationSubject {
+        AuthorizationSubject::Principal {
+            principal_id: PrincipalId::new(principal),
+        }
+    }
+
+    #[tokio::test]
+    async fn 本机桌面主体放行() {
+        let policy = desktop_policy().await;
+        let principal = local_principal().expect("桌面主体应当存在");
+        let decision = policy
+            .authorize(
+                &context(LOCAL_ORGANIZATION_ID, principal.as_str()),
+                subject(principal.as_str()),
+                AuthorizationAction::Connect,
+            )
+            .await
+            .expect("授权判定");
+        assert!(decision.is_allowed(), "本机桌面主体必须放行");
+    }
+
+    /// **主体不匹配 ⇒ 必须被拒。**
+    ///
+    /// 这条是本文件最承重的一条：桌面主体改成「进程内只解析一次」之后，
+    /// 「请求里的主体」与「本进程的桌面主体」仍然逐次比对，不匹配就没有理由放行。
+    #[tokio::test]
+    async fn 主体不匹配必须被拒() {
+        let policy = desktop_policy().await;
+        let principal = local_principal().expect("桌面主体应当存在");
+        let impostor = format!("{}-impostor", principal.as_str());
+        let decision = policy
+            .authorize(
+                &context(LOCAL_ORGANIZATION_ID, &impostor),
+                subject(&impostor),
+                AuthorizationAction::Connect,
+            )
+            .await
+            .expect("授权判定");
+        assert!(
+            !decision.is_allowed(),
+            "主体不是本机桌面主体时必须被拒：{decision:?}"
+        );
+        match decision {
+            AuthorizationDecision::Deny { reason_code } => assert_eq!(
+                reason_code, "desktop_identity_required",
+                "拒绝理由必须是「需要桌面身份」"
+            ),
+            AuthorizationDecision::Allow => panic!("主体不匹配时不得放行"),
+        }
+    }
+
+    /// **组织不匹配 ⇒ 必须被拒。**
+    #[tokio::test]
+    async fn 组织不匹配必须被拒() {
+        let policy = desktop_policy().await;
+        let principal = local_principal().expect("桌面主体应当存在");
+        let decision = policy
+            .authorize(
+                &context("org-foreign", principal.as_str()),
+                subject(principal.as_str()),
+                AuthorizationAction::Connect,
+            )
+            .await
+            .expect("授权判定");
+        assert!(
+            !decision.is_allowed(),
+            "组织不是本地组织时必须被拒：{decision:?}"
+        );
     }
 }

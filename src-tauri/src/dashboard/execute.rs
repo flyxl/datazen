@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 
 use crate::commands::AppState;
-use crate::dashboard::store::load_monitor_settings;
+use crate::dashboard::repository::load_monitor_settings;
 use crate::store::AppDb;
 use crate::store::AppSettings;
 use datazen_feature_core::dashboard::types::{DashboardWidget, WidgetRun};
@@ -22,7 +22,7 @@ pub enum DashboardExecuteError {
     Runs(#[from] datazen_feature_core::dashboard::runs::DashboardRunsError),
 
     #[error("Store error: {0}")]
-    Store(#[from] datazen_feature_core::dashboard::store::DashboardStoreError),
+    Store(#[from] datazen_feature_core::dashboard::repository::DashboardRepositoryError),
 }
 
 /// Build and persist an error-status run using monitor retention settings.

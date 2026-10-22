@@ -14,20 +14,21 @@ use tempfile::TempDir;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
-// Kernel items (manifest rules, install, storage) now arrive from
-// packages/workspace-apps through the `wapps` facade; these host tests stay
-// here because they drive the host command layer and `WappManager`.
-use super::storage::MAX_STORAGE_BYTES;
-use super::{
-    is_valid_wapp_id, parse_manifest, storage_get, storage_remove, validate_manifest,
-    validate_wapp_dir, WappManager,
-};
+// Kernel items (manifest rules, install, storage) now live in
+// `packages/feature-core` as the `feature_core::workspace_apps` module; these
+// host tests stay here because they drive the host command layer.
 use crate::commands::{
     get_wapp_manifest_impl, install_wapp_from_path_impl, list_wapps_impl, read_wapp_file_impl,
     remove_wapp_impl, set_wapp_enabled_impl, wapp_storage_get_impl, wapp_storage_remove_impl,
     wapp_storage_set_impl,
 };
 use crate::testing::app_state::TestAppState;
+use datazen_feature_core::workspace_apps::manager::WappManager;
+use datazen_feature_core::workspace_apps::storage::MAX_STORAGE_BYTES;
+use datazen_feature_core::workspace_apps::{
+    is_valid_wapp_id, parse_manifest, storage_get, storage_remove, validate_manifest,
+    validate_wapp_dir,
+};
 
 const PAGE_MANIFEST_ID: &str = "acme.bill-audit";
 
@@ -402,7 +403,7 @@ async fn manifest_boundary_rules_enforced_on_install() {
 
     // 规则 2 文案：必须点名 DataZen 与期望的 apiVersion。内核不知道承载它的
     // 是哪个 DataZen 构建，因此不再内插 `>= x.y.z`，只给出「需要更新版本的
-    // DataZen」+ 期望版本号（见 packages/workspace-apps manifest.rs 规则 2）。
+    // DataZen」+ 期望版本号（见 feature-core 的 workspace_apps/manifest.rs 规则 2）。
     let old =
         parse_manifest(&PAGE_MANIFEST.replace("\"apiVersion\": 2", "\"apiVersion\": 1")).unwrap();
     let dir = tmp.path().join(PAGE_MANIFEST_ID);

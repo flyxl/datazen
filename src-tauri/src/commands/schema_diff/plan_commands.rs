@@ -46,39 +46,6 @@ pub async fn prepare_schema_diff_plan(
     .await
 }
 
-/// Prepare a plan using schema overrides stored in a migration profile.
-///
-/// Interactive callers inherit the live connection schema. Persisted profiles
-/// carry both source and target schema, so their runner must keep those scopes
-/// explicit when it creates the reviewed immutable plan.
-pub(crate) async fn prepare_schema_diff_profile_plan_impl(
-    state: &AppState,
-    source_db_session_id: String,
-    target_db_session_id: String,
-    table_names: Vec<String>,
-    target_only_table_names: Vec<String>,
-    allow_destructive: bool,
-    include_indexes: Option<bool>,
-    type_overrides: Option<Vec<ColumnTypeOverride>>,
-    source_schema: Option<String>,
-    target_schema: Option<String>,
-) -> Result<SchemaDiffPlan, CommandError> {
-    prepare_schema_diff_plan_with_schemas_impl(
-        state,
-        source_db_session_id,
-        target_db_session_id,
-        table_names.clone(),
-        table_names,
-        target_only_table_names,
-        allow_destructive,
-        include_indexes,
-        type_overrides,
-        source_schema,
-        target_schema,
-    )
-    .await
-}
-
 pub(crate) async fn prepare_schema_diff_plan_with_schemas_impl(
     state: &AppState,
     source_db_session_id: String,

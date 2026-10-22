@@ -6,6 +6,10 @@ mod exec;
 mod inspect;
 mod job_api;
 mod jobs;
+/// 桌面的计划注册表作用域：**测试夹具**，不是生产的作用域来源。
+///
+/// 生产代码从宿主取作用域（`AppState::organization_scope()`）——理由见该模块的文档。
+#[cfg(test)]
 mod plan_scope;
 mod preview;
 mod types;
@@ -22,6 +26,9 @@ use crate::data_transfer::{
     TransferExecutionResult, TransferJob, TransferMode, TransferPreview, TransferProfile,
     TransferRunRequest,
 };
+/// 无写入观察者的执行入口只被测试夹具直接调用；生产路径走
+/// `execute_data_transfer_impl_with_write_observer`。
+#[cfg(test)]
 pub(crate) use exec::execute_data_transfer_impl;
 pub(crate) use exec::execute_data_transfer_impl_with_write_observer;
 pub(crate) use inspect::{inspect_data_transfer_impl, inspect_sql_file_transfer_impl};
@@ -213,7 +220,7 @@ async fn execute_data_transfer_inner(
         .map_or(0, |tables| tables.len() as u64);
     if let Ok(plan) = state
         .transfer_plans
-        .peek(plan_scope::desktop_organization_scope(), &request.plan_id)
+        .peek(&state.organization_scope()?, &request.plan_id)
     {
         run.source_connection_id = crate::services::migration_endpoint::runtime_session_context(
             &state,
@@ -286,9 +293,63 @@ pub fn reset_data_transfer_test_commit_ack_loss() -> bool {
     crate::data_transfer::execute::clear_test_commit_ack_loss()
 }
 
-pub(crate) use datazen_feature_core::workflow::migration::{
-    transfer_error_history_outcome, transfer_rollback_history_outcome,
-};
+/// 把一次传输执行的结果映射成迁移运行历史里的 `rollback_outcome`。
+///
+/// 这条规则属于 Data Transfer 域：它回答「目标库事务到底回滚了没有」，
+/// 与 workflow 无关。SQL 文件输出不走目标库事务，也没有逐表结果，
+/// 因此沿用它既有的运行历史口径。
+pub(crate) fn transfer_rollback_history_outcome(result: &TransferExecutionResult) -> &'static str {
+    use crate::data_transfer::model::TableExecutionOutcome;
+
+    // SQL-file output does not use target database transactions or typed
+    // per-table outcomes. Preserve its existing run-history contract here.
+    if result.tables.iter().all(|table| table.outcome.is_none()) {
+        return if result.partial {
+            "unknown"
+        } else {
+            "notRequired"
+        };
+    }
+
+    if result
+        .tables
+        .iter()
+        .any(|table| table.outcome == Some(TableExecutionOutcome::Unknown))
+    {
+        "unknown"
+    } else if result
+        .tables
+        .iter()
+        .any(|table| table.outcome == Some(TableExecutionOutcome::PartiallyApplied))
+    {
+        "partiallyApplied"
+    } else if result
+        .tables
+        .iter()
+        .any(|table| table.outcome == Some(TableExecutionOutcome::RolledBack))
+    {
+        "rolledBack"
+    } else if result.partial
+        && result
+            .tables
+            .iter()
+            .all(|table| table.outcome == Some(TableExecutionOutcome::NotStarted))
+    {
+        "notStarted"
+    } else {
+        "notRequired"
+    }
+}
+
+/// 传输失败时的回滚口径：写入已经开始就只能说「未知」，没开始才敢写
+/// 「未开始」。
+pub(crate) fn transfer_error_history_outcome(write_started: bool) -> &'static str {
+    if write_started {
+        "unknown"
+    } else {
+        "notStarted"
+    }
+}
 
 /// P5 Jobs are cancelled through the Job repository: `request_cancel` records
 /// the intent, the runtime's per-stage cancel watcher flips the `CancelToken`

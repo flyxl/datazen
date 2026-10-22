@@ -4,7 +4,7 @@
 
 ### 1.1 概述
 
-AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约与 active → default → first 的共享 Profile 选择规则，`packages/ai-providers` 提供各厂商实现、共享 HTTP 协议和现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、NL2SQL 请求组装、单轮诊断与分析用例、智能过滤、Schema 文档生成、预算、取消和 editor grant 所有权策略。`src-tauri/src/ai/` 只保留 `metadata_source.rs` 的桌面适配（把宿主 Runtime / SchemaCache / profile 查询绑定到共享端口）；调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen_feature_core::ai`，宿主不再有 AI 门面；Tauri 命令负责 IPC、宿主存储与连接查询、上下文文件读取、事件流和取消接线。
+AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约与 active → default → first 的共享 Profile 选择规则，`packages/ai-providers` 提供各厂商实现、共享 HTTP 协议和现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、NL2SQL 请求组装、单轮诊断与分析用例、智能过滤、Schema 文档生成、预算、取消和 editor grant 所有权策略。AI 需要的数据库元数据（表 / 列 / 类型 / schema）同样在共享层：`packages/feature-core/src/services/schema_context/` 里的 `RuntimeSchemaContextSource` 实现 `LogicalSchemaContextSource` 端口，用 `RuntimeConnectionUseCases` 解析会话归属、用注入的 `ResourceExecutionHost` 取 profile / 驱动并经共享执行网关读元数据；物理句柄契约 `PhysicalSchemaContextSource` 只对真正持有句柄的形态开放，共享层用 `PhysicalSchemaContextAdapter` 把两者接起来并持有缓存；桌面只在 `src-tauri/src/services/schema_context_source.rs` 注入这两个跨形态件，不再有自己的 AI 适配层。调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen_feature_core::ai`，宿主不再有 AI 门面；Tauri 命令负责 IPC、宿主存储与连接查询、上下文文件读取、事件流和取消接线。
 
 ### 1.2 架构分层
 
@@ -47,8 +47,12 @@ packages/feature-core/src/ai/       # 共享 AI 应用逻辑，不依赖 Tauri
 ├── budget.rs / cancel.rs           # token 预算与按 owner 隔离的取消
 └── ownership.rs                    # AiGrantRegistry / AiGrantService、editor 归属、DB 目标绑定与结果 attribution
 
-src-tauri/src/ai/                   # 桌面适配
-└── metadata_source.rs              # 将会话到 profile 身份解析和 Runtime 元数据读取绑定到共享端口
+packages/feature-core/src/services/schema_context/  # 共享元数据源（表/列/类型/schema）
+├── source.rs                       # RuntimeSchemaContextSource：会话→连接映射 + 独立 Runtime 目标上的元数据读取
+└── tests.rs                        # 端口契约测试（假 ResourceExecutionHost + 假 runtime）
+
+src-tauri/src/services/             # 桌面适配
+└── schema_context_source.rs        # 向共享实现注入 ResourceExecutionHost 与 Runtime 门面
 
 src-tauri/src/commands/ai/           # Tauri IPC 与平台接线
 ├── generate.rs                     # 配置/会话/历史读取、脱敏、流式交付与共享用例调用

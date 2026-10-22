@@ -1,10 +1,10 @@
-use super::{Store, StoreError};
+use super::{DesktopRepository, DesktopRepositoryError};
 use crate::schema_diff::SchemaDiffProfile;
 use serde_json::Value;
 
 const FILE_NAME: &str = "schema_diff_profiles.enc";
 
-impl Store {
+impl DesktopRepository {
     async fn ensure_schema_diff_profiles_loaded(&self) {
         {
             let cache = self.cache.read().await;
@@ -27,19 +27,19 @@ impl Store {
 
     async fn load_schema_diff_profiles_from_disk(
         &self,
-    ) -> Result<Vec<SchemaDiffProfile>, StoreError> {
+    ) -> Result<Vec<SchemaDiffProfile>, DesktopRepositoryError> {
         let path = self.data_dir.join(FILE_NAME);
         if !path.exists() {
-            return Err(StoreError::ReadError("missing".into()));
+            return Err(DesktopRepositoryError::ReadError("missing".into()));
         }
         let encrypted = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|error| StoreError::ReadError(error.to_string()))?;
+            .map_err(|error| DesktopRepositoryError::ReadError(error.to_string()))?;
         let plaintext = self.decrypt(&encrypted)?;
         let value: Value = serde_json::from_str(&plaintext)
-            .map_err(|error| StoreError::ParseError(error.to_string()))?;
+            .map_err(|error| DesktopRepositoryError::ParseError(error.to_string()))?;
         let records = value.as_array().ok_or_else(|| {
-            StoreError::ParseError("schema diff profiles must be an array".into())
+            DesktopRepositoryError::ParseError("schema diff profiles must be an array".into())
         })?;
         Ok(records
             .iter()
@@ -56,8 +56,10 @@ impl Store {
     pub async fn save_schema_diff_profile(
         &self,
         profile: SchemaDiffProfile,
-    ) -> Result<(), StoreError> {
-        profile.validate().map_err(StoreError::ParseError)?;
+    ) -> Result<(), DesktopRepositoryError> {
+        profile
+            .validate()
+            .map_err(DesktopRepositoryError::ParseError)?;
         self.ensure_schema_diff_profiles_loaded().await;
         let snapshot = {
             let mut cache = self.cache.write().await;
@@ -75,7 +77,7 @@ impl Store {
         self.save_schema_diff_profiles_to_disk(&snapshot).await
     }
 
-    pub async fn delete_schema_diff_profile(&self, id: &str) -> Result<(), StoreError> {
+    pub async fn delete_schema_diff_profile(&self, id: &str) -> Result<(), DesktopRepositoryError> {
         self.ensure_schema_diff_profiles_loaded().await;
         let snapshot = {
             let mut cache = self.cache.write().await;
@@ -90,10 +92,10 @@ impl Store {
     async fn save_schema_diff_profiles_to_disk(
         &self,
         profiles: &[SchemaDiffProfile],
-    ) -> Result<(), StoreError> {
+    ) -> Result<(), DesktopRepositoryError> {
         let _guard = self.write_lock.lock().await;
         let json = serde_json::to_string(profiles)
-            .map_err(|error| StoreError::ParseError(error.to_string()))?;
+            .map_err(|error| DesktopRepositoryError::ParseError(error.to_string()))?;
         let encrypted = self.encrypt(&json)?;
         Self::write_file_atomic(&self.data_dir.join(FILE_NAME), encrypted).await
     }
@@ -131,9 +133,10 @@ mod tests {
 
     #[tokio::test]
     async fn encrypted_round_trip_filters_invalid_records() {
-        let _keyring = crate::testing::FileKeyringGuard::set();
         let temp = tempfile::tempdir().expect("tempdir");
-        let store = Store::init_with_path(temp.path()).await.expect("store");
+        let store = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
+            .await
+            .expect("store");
         store
             .save_schema_diff_profile(profile("valid"))
             .await
@@ -156,7 +159,7 @@ mod tests {
         tokio::fs::write(temp.path().join(FILE_NAME), encrypted)
             .await
             .expect("write records");
-        let fresh = Store::init_with_path(temp.path())
+        let fresh = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
             .await
             .expect("reload store");
         assert_eq!(fresh.get_schema_diff_profiles().await.len(), 1);
@@ -164,9 +167,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_tester_round_trip_preserves_scope_options_and_type_overrides() {
-        let _keyring = crate::testing::FileKeyringGuard::set();
         let temp = tempfile::tempdir().expect("tempdir");
-        let store = Store::init_with_path(temp.path()).await.expect("store");
+        let store = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
+            .await
+            .expect("store");
         let mut expected = profile("with-override");
         expected.source_schema = Some("source_schema".into());
         expected.target_schema = Some("target_schema".into());
@@ -200,7 +204,7 @@ mod tests {
             .save_schema_diff_profile(expected.clone())
             .await
             .expect("save profile");
-        let fresh = Store::init_with_path(temp.path())
+        let fresh = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
             .await
             .expect("reload store");
         let actual = fresh

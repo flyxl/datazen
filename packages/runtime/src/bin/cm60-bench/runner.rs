@@ -40,7 +40,7 @@ use datazen_runtime::connection::{
 use datazen_runtime::gateway::owner_binding::OwnerMatchAuthorizer;
 use datazen_runtime::gateway::{
     ExecutionEvent, ExecutionGateway, ExecutionRequest, ExecutionSource, GatewayError,
-    InMemoryIdempotencyStore, RequestPrincipal, SourceKind, GATEWAY_HISTORY_CAPACITY,
+    InMemoryIdempotencyRepository, RequestPrincipal, SourceKind, GATEWAY_HISTORY_CAPACITY,
 };
 
 use crate::clock::InstantClock;
@@ -605,7 +605,7 @@ async fn drive_all(
 ) -> Result<BenchRun, BenchError> {
     let started = Instant::now();
     let driver_journal = Arc::new(crate::driver::DriverJournal::default());
-    let idempotency_store = InMemoryIdempotencyStore::shared();
+    let idempotency_store = InMemoryIdempotencyRepository::shared();
     let mut gateways = Vec::with_capacity(1 + plan.rounds.saturating_mul(2));
     let mut ports = Vec::with_capacity(1 + plan.rounds.saturating_mul(2));
     let mut session_ordinal = 0usize;
@@ -730,12 +730,12 @@ fn session_id(ordinal: usize) -> String {
 
 fn make_gateway(
     port: &Arc<FakeDriverPort>,
-    store: &Arc<InMemoryIdempotencyStore>,
+    store: &Arc<InMemoryIdempotencyRepository>,
 ) -> Arc<ExecutionGateway> {
     Arc::new(ExecutionGateway::new(
         Arc::clone(port) as Arc<dyn datazen_runtime::registry::SessionPort>,
         OwnerMatchAuthorizer::shared(),
-        Arc::clone(store) as Arc<dyn datazen_runtime::gateway::IdempotencyStore>,
+        Arc::clone(store) as Arc<dyn datazen_runtime::gateway::IdempotencyRepository>,
         Arc::new(InstantClock::new()),
     ))
 }

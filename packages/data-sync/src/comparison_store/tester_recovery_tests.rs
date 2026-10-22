@@ -184,7 +184,7 @@ async fn test_tester_mutation_operation_counts_include_insert_update_delete_and_
     let options = SyncOptions::default();
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().join("stores");
-    let mut writer = StreamingComparisonStoreWriter::new_at(&root, None).unwrap();
+    let mut writer = StreamingComparisonStorageWriter::new_at(&root, None).unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))
         .unwrap();
@@ -237,14 +237,14 @@ fn test_tester_inline_page_bounds_and_writer_state_errors_cleanup() {
 
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().join("stores");
-    let mut empty_writer = StreamingComparisonStoreWriter::new_at(&root, None).unwrap();
+    let mut empty_writer = StreamingComparisonStorageWriter::new_at(&root, None).unwrap();
     empty_writer
         .add_table(TableResult::matched("empty", "empty", Vec::new()))
         .unwrap();
     let empty_store = empty_writer.finish().unwrap();
     assert_eq!(empty_store.summaries().unwrap()[0].row_count, 0);
 
-    let mut writer = StreamingComparisonStoreWriter::new_at(&root, None).unwrap();
+    let mut writer = StreamingComparisonStorageWriter::new_at(&root, None).unwrap();
     let directory = writer.directory.clone().unwrap();
     assert!(writer
         .finish_table(0)
@@ -256,7 +256,7 @@ fn test_tester_inline_page_bounds_and_writer_state_errors_cleanup() {
     );
     assert!(writer.finish().unwrap_err().contains("not being written"));
 
-    let mut writer = StreamingComparisonStoreWriter::new_at(&root, None).unwrap();
+    let mut writer = StreamingComparisonStorageWriter::new_at(&root, None).unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))
@@ -273,7 +273,7 @@ fn test_tester_inline_page_bounds_and_writer_state_errors_cleanup() {
     );
     assert!(!directory.exists());
 
-    let mut writer = StreamingComparisonStoreWriter::new_at(&root, None).unwrap();
+    let mut writer = StreamingComparisonStorageWriter::new_at(&root, None).unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("unfinished", "unfinished", Vec::new()))
@@ -286,7 +286,7 @@ fn test_tester_inline_page_bounds_and_writer_state_errors_cleanup() {
 fn test_tester_row_index_creation_failure_closes_and_removes_partial_store() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().join("stores");
-    let mut writer = StreamingComparisonStoreWriter::new_at(&root, None).unwrap();
+    let mut writer = StreamingComparisonStorageWriter::new_at(&root, None).unwrap();
     let directory = writer.directory.clone().unwrap();
     fs::write(directory.join("table-0.index"), b"occupied").unwrap();
 
@@ -310,7 +310,7 @@ fn test_tester_row_index_creation_failure_closes_and_removes_partial_store() {
 fn test_tester_manifest_creation_failure_removes_finalized_row_files() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().join("stores");
-    let mut writer = StreamingComparisonStoreWriter::new_at(&root, None).unwrap();
+    let mut writer = StreamingComparisonStorageWriter::new_at(&root, None).unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))

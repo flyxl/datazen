@@ -21,7 +21,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand::RngCore;
 
 /// 存储管理器
-pub struct Store {
+pub struct DesktopRepository {
     /// 存储目录
     data_dir: PathBuf,
     /// AES-256 master key（来自 OS keychain 或 `{appData}/.key`，见 key_store）
@@ -117,19 +117,19 @@ pub struct FavoriteQuery {
     pub folder: Option<String>,
 }
 
-impl Store {
+impl DesktopRepository {
     /// 初始化存储
-    pub async fn init(app_handle: &tauri::AppHandle) -> Result<Self, StoreError> {
+    pub async fn init(app_handle: &tauri::AppHandle) -> Result<Self, DesktopRepositoryError> {
         // 获取应用数据目录
         let data_dir = app_handle
             .path()
             .app_data_dir()
-            .map_err(|e| StoreError::InitError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?;
         
         // 确保目录存在
         tokio::fs::create_dir_all(&data_dir)
             .await
-            .map_err(|e| StoreError::InitError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?;
         
         // 获取或创建主加密密钥（key_store：钥匙串 / `.key`）
         let encryption_key = Self::get_or_create_encryption_key(&data_dir).await?;
@@ -147,9 +147,9 @@ impl Store {
     }
     
     /// 加密数据
-    fn encrypt(&self, plaintext: &str) -> Result<String, StoreError> {
+    fn encrypt(&self, plaintext: &str) -> Result<String, DesktopRepositoryError> {
         let cipher = Aes256Gcm::new_from_slice(&self.encryption_key)
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
         
         let mut nonce_bytes = [0u8; 12];
         OsRng.fill_bytes(&mut nonce_bytes);
@@ -157,7 +157,7 @@ impl Store {
         
         let ciphertext = cipher
             .encrypt(nonce, plaintext.as_bytes())
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
         
         // 格式: base64(nonce || ciphertext)
         let mut combined = nonce_bytes.to_vec();
@@ -167,30 +167,30 @@ impl Store {
     }
     
     /// 解密数据
-    fn decrypt(&self, encrypted: &str) -> Result<String, StoreError> {
+    fn decrypt(&self, encrypted: &str) -> Result<String, DesktopRepositoryError> {
         let combined = BASE64.decode(encrypted)
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
         
         if combined.len() < 12 {
-            return Err(StoreError::EncryptionError("Invalid encrypted data".to_string()));
+            return Err(DesktopRepositoryError::EncryptionError("Invalid encrypted data".to_string()));
         }
         
         let (nonce_bytes, ciphertext) = combined.split_at(12);
         let nonce = Nonce::from_slice(nonce_bytes);
         
         let cipher = Aes256Gcm::new_from_slice(&self.encryption_key)
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
         
         let plaintext = cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
         
         String::from_utf8(plaintext)
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))
+            .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))
     }
     
     /// 加载所有数据
-    async fn load_all(&self) -> Result<(), StoreError> {
+    async fn load_all(&self) -> Result<(), DesktopRepositoryError> {
         let mut cache = self.cache.write().await;
         
         // 加载连接配置
@@ -216,51 +216,51 @@ impl Store {
             .unwrap_or_default();
         
         // 收藏是文件，不在这里加载：见 §1.4 收藏（文件优先）
-        // FavoritesStore 自带 RwLock 缓存，列表在调用时按需扫描
+        // FavoritesRepository 自带 RwLock 缓存，列表在调用时按需扫描
         
         Ok(())
     }
     
     /// 加载 JSON 文件
-    async fn load_json_file<T: for<'de> Deserialize<'de>>(&self, filename: &str) -> Result<T, StoreError> {
+    async fn load_json_file<T: for<'de> Deserialize<'de>>(&self, filename: &str) -> Result<T, DesktopRepositoryError> {
         let path = self.data_dir.join(filename);
         
         if !path.exists() {
-            return Err(StoreError::FileNotFound(filename.to_string()));
+            return Err(DesktopRepositoryError::FileNotFound(filename.to_string()));
         }
         
         let content = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| StoreError::ReadError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::ReadError(e.to_string()))?;
         
         serde_json::from_str(&content)
-            .map_err(|e| StoreError::ParseError(e.to_string()))
+            .map_err(|e| DesktopRepositoryError::ParseError(e.to_string()))
     }
     
     /// 保存 JSON 文件
-    async fn save_json_file<T: Serialize>(&self, filename: &str, data: &T) -> Result<(), StoreError> {
+    async fn save_json_file<T: Serialize>(&self, filename: &str, data: &T) -> Result<(), DesktopRepositoryError> {
         let path = self.data_dir.join(filename);
         
         // 确保父目录存在
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
-                .map_err(|e| StoreError::WriteError(e.to_string()))?;
+                .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))?;
         }
         
         let content = serde_json::to_string_pretty(data)
-            .map_err(|e| StoreError::ParseError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::ParseError(e.to_string()))?;
         
         tokio::fs::write(&path, content)
             .await
-            .map_err(|e| StoreError::WriteError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))?;
         
         Ok(())
     }
 }
 
 /// 连接配置存储服务
-impl Store {
+impl DesktopRepository {
     /// 获取所有连接配置
     pub async fn get_connections(&self) -> Vec<ConnectionConfig> {
         let cache = self.cache.read().await;
@@ -274,7 +274,7 @@ impl Store {
     }
     
     /// 保存连接配置
-    pub async fn save_connection(&self, config: ConnectionConfig) -> Result<(), StoreError> {
+    pub async fn save_connection(&self, config: ConnectionConfig) -> Result<(), DesktopRepositoryError> {
         let mut cache = self.cache.write().await;
         
         // 加密密码
@@ -297,7 +297,7 @@ impl Store {
     }
     
     /// 删除连接配置
-    pub async fn delete_connection(&self, id: &str) -> Result<(), StoreError> {
+    pub async fn delete_connection(&self, id: &str) -> Result<(), DesktopRepositoryError> {
         let mut cache = self.cache.write().await;
         
         cache.connections.retain(|c| c.id != id);
@@ -308,15 +308,15 @@ impl Store {
     }
     
     /// 解密连接配置中的数据库密码
-    pub fn decrypt_password(&self, encrypted: &str) -> Result<String, StoreError> {
+    pub fn decrypt_password(&self, encrypted: &str) -> Result<String, DesktopRepositoryError> {
         self.decrypt(encrypted)
     }
 }
 
 /// 查询历史管理
-impl Store {
+impl DesktopRepository {
     /// 添加查询历史
-    pub async fn add_query_history(&self, entry: QueryHistoryEntry) -> Result<(), StoreError> {
+    pub async fn add_query_history(&self, entry: QueryHistoryEntry) -> Result<(), DesktopRepositoryError> {
         let mut cache = self.cache.write().await;
         
         cache.query_history.insert(0, entry);
@@ -338,7 +338,7 @@ impl Store {
     }
     
     /// 清空查询历史
-    pub async fn clear_query_history(&self) -> Result<(), StoreError> {
+    pub async fn clear_query_history(&self) -> Result<(), DesktopRepositoryError> {
         let mut cache = self.cache.write().await;
         cache.query_history.clear();
         
@@ -349,7 +349,7 @@ impl Store {
 }
 
 /// 设置管理
-impl Store {
+impl DesktopRepository {
     /// 获取设置
     pub async fn get_settings(&self) -> AppSettings {
         let cache = self.cache.read().await;
@@ -357,7 +357,7 @@ impl Store {
     }
     
     /// 保存设置
-    pub async fn save_settings(&self, settings: AppSettings) -> Result<(), StoreError> {
+    pub async fn save_settings(&self, settings: AppSettings) -> Result<(), DesktopRepositoryError> {
         let mut cache = self.cache.write().await;
         cache.settings = settings;
         
@@ -368,7 +368,7 @@ impl Store {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum StoreError {
+pub enum DesktopRepositoryError {
     #[error("Initialization error: {0}")]
     InitError(String),
     
@@ -389,7 +389,7 @@ pub enum StoreError {
 }
 
 /// 类型别名
-pub type ConfigStore = Store;
+pub type ConfigRepository = DesktopRepository;
 ```
 
 ## 主加密密钥（`key_store`）
@@ -402,7 +402,7 @@ pub type ConfigStore = Store;
 | **Platform vault** | macOS：`security` CLI → 登录钥匙串，服务 `com.datazen.encryption-key` / 账户 `master-key`；Windows：DPAPI → `.key.dpapi` | macOS **adhoc/未签名** 二进制（`tauri:dev` 等）自动优先，ACL 绑 `/usr/bin/security`，避免每次重链弹钥匙串 ACL |
 | **文件 `.key`** | `{appData}/.key`（base64 主密钥，`chmod 600`） | `DATAZEN_KEYRING=file`（dev / CI / 单测）；钥匙串不可用时的兜底 |
 
-选择逻辑摘要：
+选择逻辑摘要（`store/key_backend.rs` 的 `resolve_key_backend()`）：
 
 ```text
 DATAZEN_KEYRING=file       → File
@@ -415,7 +415,11 @@ unset + macOS 签名 / Linux → Keyring（失败可回退已有 `.key`）
 
 - 首次启动随机生成主密钥并写入当前后端；已有 `.key` 时可迁移进钥匙串后删除文件。
 - 应用数据 ZIP **不包含** `.key`；跨机恢复密文需另行备份主密钥（设置流程可走 `save_encryption_key_with_dialog`）。
-- 实现入口：`Store::get_or_create_encryption_key` → `key_store::load_or_create_master_key`。
+- 实现入口：`DesktopRepository::get_or_create_encryption_key` → `key_store::load_or_create_master_key`。
+- **后端是启动期事实**：`DATAZEN_KEYRING` 只在启动装配时读一次（GUI：`DesktopRepository::init`；无头 MCP：`bootstrap::run::run_mcp_stdio`），
+  得到的 `KeyBackend` 一路**显式传参**下去（`init_with_path(dir, backend)` → `load_or_create_master_key(dir, backend)`）。
+  请求期不再读进程环境，因此任何线程改写 `DATAZEN_KEYRING` 都无法把运行中的 store 改道到钥匙串。
+  这与「桌面主体是启动期事实，授权基线不得在请求之间漂移」是同一条原则。
 
 ### 单元测试与钥匙串弹窗
 
@@ -424,9 +428,13 @@ crate 与 `security` CLI 都走它们）在钥匙串搜索列表异常时都会�
 `app-encryption-key` 的钥匙串 `login`」模态框，并**阻塞**调用进程直到人工点掉。`cargo test` 一旦命中
 就整条挂死，所以：
 
-- `key_backend()` 在 `cfg(test)` 下恒为 `File`，`load_or_create_from_file` 在测试构建中也不再回探 vault / keychain。
-- 少数需要真正验证钥匙串后端的用例（`keyring_forced_*`、`keyring_creates_and_reloads_master_key`）默认跳过，
-  须显式设 `DATAZEN_TEST_KEYRING=1` 才访问 OS keychain。
+- `cfg(test)` 下后端解析恒为 `File`，`load_or_create_from_file` 在测试构建中也不再回探 vault / keychain。
+- **非 `#[ignore]` 的用例一律不写进程 env**：后端由参数显式传入（`KeyBackend::File`），
+  因此用例之间不存在「谁改了 `DATAZEN_KEYRING`」的跨模块竞态。这条规则由源码扫描守卫
+  `store/key_backend_env_guard_tests.rs` 钉住（钥匙串 env 的写入只允许出现在 `#[ignore]` 用例里）。
+- 少数需要真正验证钥匙串后端的用例（`keyring_forced_*`、`keyring_creates_and_reloads_master_key`、
+  `migrates_dot_key_into_keyring_and_deletes_file`）默认跳过，须显式设 `DATAZEN_TEST_KEYRING=1`
+  才访问 OS keychain；它们带 `#[ignore]`，靠 `cargo test -- --ignored` 单独跑，env 写入因此是安全的。
 - 门禁脚本 `scripts/ci-local.sh` 与 `.github/workflows/ci.yml` 同样导出 `DATAZEN_KEYRING=file`；
   E2E 侧的同类处理见 [E2E — 主密钥与系统钥匙串](../../development/e2e-testing.md)。
 
@@ -438,7 +446,7 @@ crate 与 `security` CLI 都走它们）在钥匙串搜索列表异常时都会�
 
 收藏不再进 SQLite。每条收藏是收藏根目录下的**一个 `.sql` 文件**，文件名是去扩展名的 ULID，因此 `ls` 的时间序就是创建序，`diff` / `merge` / 备份都能交给 iCloud、Dropbox、Git 直接做。实现见 `src-tauri/src/store/favorites/`。
 
-根目录取 `AppSettings.favoritesRoot`，缺省或空串时是 `{appData}/favorites`。**目前没有设置界面**：改动只存在于 `settings.json`，`Store::init_with_path` 在启动时应用一次（解析失败则 `tracing::warn!` 并回落到缺省值），运行中改设置不会改指当前 store，界面上只以 `query.favoritesRoot`（"Saved in"）显示当前解析结果。面板会重扫，不会替用户搬文件。
+根目录取 `AppSettings.favoritesRoot`，缺省或空串时是 `{appData}/favorites`。**目前没有设置界面**：改动只存在于 `settings.json`，`DesktopRepository::init_with_path` 在启动时应用一次（解析失败则 `tracing::warn!` 并回落到缺省值），运行中改设置不会改指当前 store，界面上只以 `query.favoritesRoot`（"Saved in"）显示当前解析结果。面板会重扫，不会替用户搬文件。
 
 ```text
 {appData}/favorites/            ← 可用 AppSettings.favoritesRoot 改指到任意已同步目录
@@ -465,7 +473,7 @@ SELECT * FROM orders WHERE d = CURRENT_DATE;
 - **未知键会被丢弃**，这是有意的取舍而非遗漏。读回时只把上面 6 个字段装进 `FavoriteQuery`，重写时也只渲染这 6 个字段，所以**旧版本 App 改写新版本写的文件会丢掉新键**。换来的是格式永远由一处定义；代价只在跨版本混编的同步目录上出现。
 - **值转义**。`\n` `\r` `\\` 转义后再落盘，值无法自己换行，front-matter 因此不可能渗进语句正文。反向读取时每个值会被 `trim()`，所以标题末尾的手工空格读回即丢——仅影响显示，读操作从不重写文件。
 - **只归一化一处**。`parse` 不改写任何内容（读手写文件不会被重写）；`render` 在正文缺尾换行时补一个 `\n`。所以编辑器里的 `SELECT 1` 读回是 `SELECT 1\n`，这是全部差异；正文本来就以 `\n` 结尾的（哪怕是两个）不会被改动。
-- **id 只来自文件名**。写与删走 `FavoritesStore::resolve_file`，它先过 `is_safe_stem`（ASCII 字母数字加 `-` `_`，≤ 64 **字节**，并按大小写不敏感拒绝 22 个 Windows 设备名），不通过即 `UnsafeId`，因此穿越与绝对路径在任何情况下都到不了 `fs`。读方向不走这个门：扫描把文件名的 stem 当 id，所以用户在根目录里手工放一个怪名字的文件不会伤到任何东西，只是 id 不好看。
+- **id 只来自文件名**。写与删走 `FavoritesRepository::resolve_file`，它先过 `is_safe_stem`（ASCII 字母数字加 `-` `_`，≤ 64 **字节**，并按大小写不敏感拒绝 22 个 Windows 设备名），不通过即 `UnsafeId`，因此穿越与绝对路径在任何情况下都到不了 `fs`。读方向不走这个门：扫描把文件名的 stem 当 id，所以用户在根目录里手工放一个怪名字的文件不会伤到任何东西，只是 id 不好看。
 - **写入是原子的**：临时文件 + `fs::rename`；失败不留临时文件。
 - **删除是软删除**：移入 `.trash/{ISO 时间}-{毫秒:03}__{id}.sql`（如 `2026-08-18T10-00-00-000__01J8XK2M9Q7B4F.sql`），人眼可排序且 id 可还原。`.trash` 与一切 `.` 开头目录都不参与扫描。
 - **符号链接不跟随**（`symlink_metadata`），避免根目录外的内容被扫进来。
@@ -475,7 +483,7 @@ SELECT * FROM orders WHERE d = CURRENT_DATE;
 
 #### 1.4.1 从 `favorite_queries` 表迁移
 
-`favorite_queries` 表已停用（v2 建表语句不再创建它，新装用户根本不会有）。老用户升级后，`Store::init_with_path` 在打开 `HistoryDb` 与 `FavoritesStore`、并应用 `favoritesRoot` 设置之后，执行一次导出：
+`favorite_queries` 表已停用（v2 建表语句不再创建它，新装用户根本不会有）。老用户升级后，`DesktopRepository::init_with_path` 在打开 `HistoryDb` 与 `FavoritesRepository`、并应用 `favoritesRoot` 设置之后，执行一次导出：
 
 1. `favorite_queries_legacy_v1` 已存在 → 直接返回，不读任何行（见下）。
 2. 表不存在 → 直接返回，不写标记文件。

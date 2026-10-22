@@ -17,8 +17,9 @@ DataZen 的 Driver 是**编译期集成**的数据库实现，不通过运行时
 - `MigrationCapabilities`
 - `TypeNormalizer`
 - `SyncSourceAdapter` / `SyncTargetAdapter`
+- `DriverEventOutlet` / `DriverEventSink`（形态中立的事件出口，见 §2.9）
 
-公共 API 不暴露 sqlx、mongodb、redis 等数据库实现类型；具体连接池、Row、事务实现由 Driver 自己管理。
+公共 API 不暴露 sqlx、mongodb、redis 等数据库实现类型；具体连接池、Row、事务实现由 Driver 自己管理。公共 API 也不暴露任何**宿主形态**的类型（`tauri::Emitter` 之类）——驱动能看到的宿主面只有本文件列出的这些契约。
 
 当前 API：
 
@@ -130,7 +131,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 其余消费者按调用链逐步迁移；收窄函数形参（如 `fetch_target_table_schema`）留待其调用方迁完后统一做。
 
-版本：`datazen-driver-api` 0.0.13 → 0.0.20——0.0.14 `SqlDialect`、0.0.15 `CatalogReader`、0.0.16 `ReuseDriver` 显式转发补齐、0.0.17 `CommandCatalog`、0.0.18 `SchemaMigration`、0.0.19 `BackupDialect`、0.0.20 退役 `DatabaseDriver::split_restore_sql`（唯一一次 trait 表面删除，故单独记一版）。新契约本身都是 additive（新 trait + 适配器），`PROTOCOL_VERSION` 保持 6（2026-10-21 起协议版本冻结于 6，兼容门禁族退役——治理决定见 [driver-capability-migration.md](../platform/driver-capability-migration.md#5-协议版本演进) §5）；crate 版本记录的是**本仓库**的 trait 表面变化，仓库内各驱动按最新 trait 实现即可。
+版本：`datazen-driver-api` 0.0.13 → 0.0.21——0.0.14 `SqlDialect`、0.0.15 `CatalogReader`、0.0.16 `ReuseDriver` 显式转发补齐、0.0.17 `CommandCatalog`、0.0.18 `SchemaMigration`、0.0.19 `BackupDialect`、0.0.20 退役 `DatabaseDriver::split_restore_sql`（唯一一次 trait 表面删除，故单独记一版）、0.0.21 事件出口契约（`DriverEventOutlet` / `DriverEventSink`，见 §2.9；纯新增 trait，无既有 trait 表面变动）。新契约本身都是 additive（新 trait + 适配器），`PROTOCOL_VERSION` 保持 6（2026-10-21 起协议版本冻结于 6，兼容门禁族退役——治理决定见 [driver-capability-migration.md](../platform/driver-capability-migration.md#5-协议版本演进) §5）；crate 版本记录的是**本仓库**的 trait 表面变化，仓库内各驱动按最新 trait 实现即可。
 
 ### 2.5 复用包装器：`ReuseDriver` 必须显式决定每个方法
 
@@ -176,6 +177,27 @@ Schema Diff 领域消费的结构迁移决策统一收敛到 `SchemaMigration`�
 
 `LegacyBackupDialect` 是自 `DatabaseDriver` 到 `BackupDialect` 的单向适配器。已迁移的调用点：feature-core 备份流程（`backup.rs` 的管线路由与 `RestoreSession` 扫描器；执行侧恢复循环继续持有驱动）、retained-restore 预检 `restore_sql::prepare`（scanner 取自 `BackupDialect`，feature-core `restore_gateway.rs` 与 postgres/mysql 驱动的 `restore_sql` 集成测试在边界包适配器）。
 
+### 2.9 事件出口契约：`DriverEventOutlet` / `DriverEventSink`
+
+有些驱动会产生「给人看的事件」——Redis 驱动的 Pub/Sub 消息是现成例子。事件怎么送达用户**不是驱动能决定的事**：桌面形态用 Tauri 事件发给前端，server 形态会用它自己的传输通道。契约因此拆成两半，与 driver factory 同一形态（`packages/driver-api/src/event_sink.rs`）：
+
+| 契约 | 归属 | 作用 |
+| --- | --- | --- |
+| `DriverEvent` | 驱动 | 一条事件：稳定事件名 + 已序列化 payload |
+| `DriverEventOutlet` | 驱动 | 声明「我有一个事件出口，宿主给我一个 sink」；`outlet_id()` 是出口标识，`install(sink)` 接受宿主给的 sink |
+| `DriverEventSink` | 宿主 | 事件的目的地，每个形态一个实现；`emit(&DriverEvent)` 把事件送达该形态的消费者 |
+| `register_event_outlet!` | 驱动 | 链接期注册（`inventory`），与 `register_driver!` 同形 |
+| `iter_event_outlets()` | 宿主 | 启动期遍历收集已链接进来的出口 |
+
+两条不变量：
+
+- **链接期常量只有「有一个出口」。**「装哪个 sink」是宿主在**启动期**的运行时决定：宿主遍历 `iter_event_outlets()`，把自己形态的 sink 装进每一个出口。宿主不需要知道本次构建链接了哪些驱动（驱动是编译期选型，宿主也不可能静态引用某个具体驱动）。
+- **sink 未装之前的事件按驱动自己的策略处理。** Redis Pub/Sub 是**静默丢弃**（不缓存、不补发），与改造前的行为逐字一致；契约不替驱动决定这条策略。
+
+形态中立是硬要求：契约里不得出现任何宿主类型。改造前 Redis 的注入通道是一个 Tauri 插件（驱动 crate 内的 `plugin.rs` + `build.rs`，均已删除），于是 `tauri` 进了驱动的可选依赖闭包 —— server 形态要支持 Redis Pub/Sub 就必须启用 `tauri-plugin` feature，把 Tauri 拖进 server 依赖闭包，直接撞上[共享边界 §2.2](../platform/shared-boundaries-and-ports.md)对 server 的禁令。**Pub/Sub 曾经是「桌面独占」能力，根因是注入通道的形态，不是能力本身。** 换成 `inventory` 注册后，驱动的 `tauri` 可选依赖、`tauri-plugin` 构建依赖、`build.rs` 与插件 ACL 目录一并删除，同一份驱动 crate 可被 server 形态复用。
+
+桌面形态的实现见 `src-tauri/src/platform/event_sink.rs`（把驱动事件转成 Tauri 事件，事件名与 payload 逐字转发）。
+
 ## 3. Driver Commands
 
 Driver 可以通过 `command_definitions()` 声明 Command，通过 `execute_command()` 执行。
@@ -183,6 +205,27 @@ Driver 可以通过 `command_definitions()` 声明 Command，通过 `execute_com
 Host / Workflow 只依赖 Command Definition 和 JSON input/output，不按 database type 复制 Driver-specific dispatch。
 
 标准 SQL Driver 默认提供 query / execute，以及 schema catalog commands；Driver 可以扩展管理、KV、NoSQL 等 Command。
+
+### 3.1 驱动推送事件的归属字段
+
+除「Host 调 Driver」外，驱动还可以**向 Host 推送事件**（Tauri event）。推送事件的载荷里如果带身份字段，那个字段必须是 **Host 认得的 id**，而不是驱动内部的句柄——否则前端按它过滤时永远匹配不上，事件会被静默丢弃。
+
+Redis Pub/Sub 是当前唯一的这类事件：事件名 `redis-pubsub-message`，载荷由 `packages/drivers/redis/src/ops/pubsub.rs` 的 `RedisPubSubMessageEvent` 序列化（camelCase）：
+
+```text
+{ connectionId, subscriptionId, channel, payload, ts }
+```
+
+`connectionId` 的取值是**持久化连接配置 id**（Host 的 `connectionId`），不是驱动自己的运行时句柄 `ConnectionHandle.pool_id`（形如 `redis_<uuid>`），也不是 Host 的 `dbSessionId`（形如 `dbs_<hex>`）——三者分属不同 id 空间，只有第一个是前端拿得到、也拿得准的那个。驱动在 `RedisDriver::connect` 时把 `ConnectionConfig.id` 记进连接记录，订阅时据此给事件归属。
+
+两侧的 id 各司其职，不做双模回退：
+
+| 面 | 用哪个 id | 理由 |
+|---|---|---|
+| 调用侧（`pubsub_subscribe` / `pubsub_unsubscribe` / `pubsub_publish`） | `dbSessionId` | 对已建立会话的操作（[naming.md](../naming.md) §5） |
+| 事件侧（`redis-pubsub-message` 载荷） | `connectionId` | 归属语义：这条消息属于哪份连接配置（同上 §5「UI 连接归属」） |
+
+订阅本身建在**会话**上（`pubsub_subscribe` 用 `dbSessionId` 调用，Host 解析出活会话后驱动用该会话的连接计划开订阅，随会话销毁），但 Redis Pub/Sub 的频道是**服务器级**而非会话级的，所以事件按连接归属。
 
 ## 4. Schema Migration
 

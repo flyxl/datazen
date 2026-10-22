@@ -3,7 +3,7 @@
 use std::sync::{Arc, OnceLock};
 
 use crate::commands::AppState;
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use datazen_driver_api::resource::ResourceProvider;
@@ -11,12 +11,11 @@ use datazen_driver_api::{ConnectionConfig, SslMode, TableInfo, TableType};
 use datazen_driver_api::{DatabaseDriver, DatabaseDriverFactory};
 use datazen_runtime::driver_registry::registry::DriverRegistry;
 
-/// Temp store + mock postgres driver + keyring guard for command tests.
+/// Temp store + mock postgres driver for command tests.
 pub struct TestAppState {
-    pub _keyring: super::FileKeyringGuard,
     pub _temp: tempfile::TempDir,
     pub state: AppState,
-    pub store: Arc<Store>,
+    pub store: Arc<DesktopRepository>,
     pub mock: Arc<MockDriver>,
     pub registry: Arc<DriverRegistry>,
 }
@@ -139,10 +138,11 @@ impl TestAppState {
         session_context: Option<datazen_driver_api::session::SessionContext>,
         session_context_after: Option<datazen_driver_api::session::SessionContext>,
     ) -> Self {
-        let keyring = super::FileKeyringGuard::set();
+        // The keyring backend is chosen by `init_with_path(..., KeyBackend::File)`, not by a
+        // process-wide env guard: main resolves the master key once at startup.
         let temp = tempfile::tempdir().expect("tempdir");
         let store = Arc::new(
-            Store::init_with_path(temp.path())
+            DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
                 .await
                 .expect("store init"),
         );
@@ -165,7 +165,6 @@ impl TestAppState {
         registry.register_test_factory("postgres", factory).await;
         let state = build_app_state(store.clone(), registry.clone());
         Self {
-            _keyring: keyring,
             _temp: temp,
             state,
             store,
@@ -321,6 +320,6 @@ pub fn rich_mock_options() -> MockDriverOptions {
     }
 }
 
-pub fn build_app_state(store: Arc<Store>, registry: Arc<DriverRegistry>) -> AppState {
+pub fn build_app_state(store: Arc<DesktopRepository>, registry: Arc<DriverRegistry>) -> AppState {
     crate::finish_app_state(store, registry, Arc::new(SyncAdapterRegistry::new()), None)
 }

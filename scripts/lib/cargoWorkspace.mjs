@@ -67,8 +67,8 @@ export const LAYERS = Object.freeze([
   { id: 'host', path: 'src-tauri', kind: 'rust' },
   { id: 'application', path: 'packages/application', kind: 'rust' },
   { id: 'runtime', path: 'packages/runtime', kind: 'rust' },
+  { id: 'tunnel', path: 'packages/tunnel', kind: 'rust' },
   { id: 'feature-core', path: 'packages/feature-core', kind: 'rust' },
-  { id: 'workspace-apps', path: 'packages/workspace-apps', kind: 'rust' },
   { id: 'platform-api', path: 'packages/platform-api', kind: 'rust' },
   { id: 'platform-infra', path: 'packages/platform-infra', kind: 'rust' },
   { id: 'server', path: 'server', kind: 'rust' },
@@ -262,7 +262,7 @@ export function normalBuildClosure(index, id) {
  *
  * A Cargo key can carry a quoted `cfg()` containing a string literal with a
  * dot in it — `target.'cfg(target_os = "macos")'.dependencies` is the form
- * `src-tauri/Cargo.toml:90` actually uses — so a plain `split('.')` puts
+ * `src-tauri/Cargo.toml:103` actually uses — so a plain `split('.')` puts
  * fragments of the predicate in the wrong place.
  */
 function splitDottedKey(key) {

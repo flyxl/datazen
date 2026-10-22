@@ -2,22 +2,28 @@ use std::sync::Arc;
 
 use super::favorites::NewFavorite;
 use super::models::{FavoriteQuery, QueryHistoryEntry};
-use super::{MigrationRunFilter, MigrationRunPage, MigrationRunRecord, Store, StoreError};
+use super::{
+    DesktopRepository, DesktopRepositoryError, MigrationRunFilter, MigrationRunPage,
+    MigrationRunRecord,
+};
 
-impl Store {
-    pub async fn save_migration_run(&self, run: &MigrationRunRecord) -> Result<(), StoreError> {
+impl DesktopRepository {
+    pub async fn save_migration_run(
+        &self,
+        run: &MigrationRunRecord,
+    ) -> Result<(), DesktopRepositoryError> {
         self.history_db
             .save_migration_run(run)
-            .map_err(|error| StoreError::WriteError(error.to_string()))
+            .map_err(|error| DesktopRepositoryError::WriteError(error.to_string()))
     }
 
     pub async fn get_migration_run(
         &self,
         id: &str,
-    ) -> Result<Option<MigrationRunRecord>, StoreError> {
+    ) -> Result<Option<MigrationRunRecord>, DesktopRepositoryError> {
         self.history_db
             .get_migration_run(id)
-            .map_err(|error| StoreError::ReadError(error.to_string()))
+            .map_err(|error| DesktopRepositoryError::ReadError(error.to_string()))
     }
 
     pub async fn list_migration_runs(
@@ -25,15 +31,18 @@ impl Store {
         filter: &MigrationRunFilter,
         offset: u64,
         limit: u64,
-    ) -> Result<MigrationRunPage, StoreError> {
+    ) -> Result<MigrationRunPage, DesktopRepositoryError> {
         self.history_db
             .list_migration_runs(filter, offset, limit)
-            .map_err(|error| StoreError::ReadError(error.to_string()))
+            .map_err(|error| DesktopRepositoryError::ReadError(error.to_string()))
     }
-    pub async fn add_query_history(&self, entry: QueryHistoryEntry) -> Result<(), StoreError> {
+    pub async fn add_query_history(
+        &self,
+        entry: QueryHistoryEntry,
+    ) -> Result<(), DesktopRepositoryError> {
         self.history_db
             .add_query_history(entry)
-            .map_err(|e| StoreError::WriteError(e.to_string()))
+            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))
     }
 
     pub async fn get_query_history(
@@ -51,7 +60,7 @@ impl Store {
             })
     }
 
-    pub async fn clear_query_history(&self) -> Result<(), StoreError> {
+    pub async fn clear_query_history(&self) -> Result<(), DesktopRepositoryError> {
         self.purge_history(super::HistoryScope::Query, None).await?;
         Ok(())
     }
@@ -60,27 +69,27 @@ impl Store {
     pub async fn get_query_history_page(
         &self,
         filter: &super::history_db::QueryHistoryFilter<'_>,
-    ) -> Result<super::history_db::QueryHistoryPage, StoreError> {
+    ) -> Result<super::history_db::QueryHistoryPage, DesktopRepositoryError> {
         self.history_db
             .query_history_page(filter)
-            .map_err(|e| StoreError::WriteError(e.to_string()))
+            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))
     }
 
     /// Delete one history row. `Ok(0)` means the id was already gone.
-    pub async fn delete_query_history(&self, id: &str) -> Result<u64, StoreError> {
+    pub async fn delete_query_history(&self, id: &str) -> Result<u64, DesktopRepositoryError> {
         self.history_db
             .delete_query_history(id)
-            .map_err(|e| StoreError::WriteError(e.to_string()))
+            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))
     }
 
     pub async fn purge_history(
         &self,
         scope: super::HistoryScope,
         retain_days: Option<u32>,
-    ) -> Result<u64, StoreError> {
+    ) -> Result<u64, DesktopRepositoryError> {
         self.history_db
             .purge(scope, retain_days)
-            .map_err(|e| StoreError::WriteError(e.to_string()))
+            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))
     }
 
     // ── Favorites (file-backed, see `store::favorites`) ───────────────────
@@ -92,16 +101,16 @@ impl Store {
     }
 
     /// Repoint the favorites at a new directory (a settings change).
-    pub async fn set_favorites_root(&self, root: &str) -> Result<(), StoreError> {
+    pub async fn set_favorites_root(&self, root: &str) -> Result<(), DesktopRepositoryError> {
         let root = root.trim();
         if root.is_empty() {
-            return Err(StoreError::InitError(
+            return Err(DesktopRepositoryError::InitError(
                 "Favorites directory must not be empty".into(),
             ));
         }
         self.favorites
             .set_root(std::path::Path::new(root))
-            .map_err(|e| StoreError::InitError(e.to_string()))
+            .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))
     }
 
     /// List favorites for one connection (`None` = every connection).
@@ -112,34 +121,34 @@ impl Store {
     pub async fn get_favorite_queries(
         &self,
         connection_id: Option<String>,
-    ) -> Result<Vec<FavoriteQuery>, StoreError> {
+    ) -> Result<Vec<FavoriteQuery>, DesktopRepositoryError> {
         let favorites = Arc::clone(&self.favorites);
         let filter = connection_id.clone();
         tokio::task::spawn_blocking(move || favorites.list(filter.as_deref()))
             .await
-            .map_err(|e| StoreError::ReadError(format!("Favorites task failed: {e}")))
+            .map_err(|e| DesktopRepositoryError::ReadError(format!("Favorites task failed: {e}")))
     }
 
     /// Save a new favorite as its own `.sql` file.
     pub async fn add_favorite_query(
         &self,
         draft: NewFavorite,
-    ) -> Result<FavoriteQuery, StoreError> {
+    ) -> Result<FavoriteQuery, DesktopRepositoryError> {
         let favorites = Arc::clone(&self.favorites);
         tokio::task::spawn_blocking(move || favorites.add(draft))
             .await
-            .map_err(|e| StoreError::ReadError(format!("Favorites task failed: {e}")))?
-            .map_err(|e| StoreError::WriteError(e.to_string()))
+            .map_err(|e| DesktopRepositoryError::ReadError(format!("Favorites task failed: {e}")))?
+            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))
     }
 
     /// Move a favorite into `.trash/`.
-    pub async fn delete_favorite_query(&self, id: &str) -> Result<(), StoreError> {
+    pub async fn delete_favorite_query(&self, id: &str) -> Result<(), DesktopRepositoryError> {
         let favorites = Arc::clone(&self.favorites);
         let id = id.to_string();
         tokio::task::spawn_blocking(move || favorites.delete(&id))
             .await
-            .map_err(|e| StoreError::ReadError(format!("Favorites task failed: {e}")))?
-            .map_err(|e| StoreError::WriteError(e.to_string()))
+            .map_err(|e| DesktopRepositoryError::ReadError(format!("Favorites task failed: {e}")))?
+            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))
     }
 
     /// Re-read the favorites directory and return the fresh listing.
@@ -151,7 +160,7 @@ impl Store {
     pub async fn refresh_favorites(
         &self,
         connection_id: Option<String>,
-    ) -> Result<Vec<FavoriteQuery>, StoreError> {
+    ) -> Result<Vec<FavoriteQuery>, DesktopRepositoryError> {
         self.favorites.invalidate_cache();
         self.get_favorite_queries(connection_id).await
     }

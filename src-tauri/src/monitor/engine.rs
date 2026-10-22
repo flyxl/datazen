@@ -1,20 +1,20 @@
 //! Desktop adapter for the shared monitor scheduler.
 use crate::dashboard::{
     execute::{execute_widget_once, DashboardExecuteError},
-    store::load_monitor_settings,
+    repository::load_monitor_settings,
 };
 use crate::monitor::channels::{dispatch_notifications, AlertChannelState};
-use crate::{commands::AppState, store::Store};
+use crate::{commands::AppState, store::DesktopRepository};
 use datazen_feature_core::dashboard::monitor::{MonitorEngine as CoreEngine, MonitorHost};
-use datazen_feature_core::dashboard::store::{
-    list_dashboards, set_dashboard_refresh_paused, DashboardStoreError,
+use datazen_feature_core::dashboard::repository::{
+    list_dashboards, set_dashboard_refresh_paused, DashboardRepositoryError,
 };
 use datazen_feature_core::dashboard::types::{Dashboard, DashboardWidget, WidgetRun};
 use datazen_platform_api::ports::scope::OrganizationScope;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 struct DesktopMonitorHost {
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     state: Mutex<Option<Arc<AppState>>>,
     app: Mutex<Option<AppHandle>>,
     channels: tokio::sync::Mutex<AlertChannelState>,
@@ -29,12 +29,17 @@ pub struct MonitorEngine {
     host: Arc<DesktopMonitorHost>,
 }
 impl MonitorEngine {
-    pub fn new(store: Arc<Store>) -> Arc<Self> {
+    pub fn new(store: Arc<DesktopRepository>) -> Arc<Self> {
         let host = Arc::new(DesktopMonitorHost {
             store,
             state: Mutex::new(None),
             app: Mutex::new(None),
             channels: tokio::sync::Mutex::new(AlertChannelState::new()),
+            // scope-gate: desktop-background-timer
+            // 桌面 monitor 的定时任务**不在请求周期内**：它由宿主自己的时钟驱动，
+            // 跑的是桌面本地的那批 widget。而 `MonitorEngine` 在 `AppState` 之前
+            // 就被构造（`AppState` 持有 monitor engine），此刻没有宿主状态可问。
+            // 因此这里保留桌面的安装级常量，并登记进形态中立闸门的显式白名单。
             scope: crate::platform::local_organization_scope(),
         });
         Arc::new(Self {
@@ -67,11 +72,11 @@ impl MonitorEngine {
     pub fn is_monitoring_active(&self) -> bool {
         self.core.is_monitoring_active()
     }
-    pub async fn reload_from_store(&self) -> Result<(), DashboardStoreError> {
+    pub async fn reload_from_store(&self) -> Result<(), DashboardRepositoryError> {
         self.core
             .reload()
             .await
-            .map_err(DashboardStoreError::Parse)?;
+            .map_err(DashboardRepositoryError::Parse)?;
         if let Some(app) = self.app_handle() {
             crate::tray::sync_tray_async(&app).await;
         }

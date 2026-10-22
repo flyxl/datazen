@@ -14,12 +14,12 @@ use datazen_feature_core::services::named_views::{
     NamedView, NamedViewError, NamedViewIdMinter, NamedViewRepository,
 };
 
-use super::{Store, StoreError};
+use super::{DesktopRepository, DesktopRepositoryError};
 
 /// The file the views live in.
 const NAMED_VIEWS_FILE: &str = "named_views.json";
 
-impl Store {
+impl DesktopRepository {
     /// Load the views once, then keep them in the cache.
     ///
     /// Every record is parsed on its own: a record written by a newer build,
@@ -60,7 +60,7 @@ impl Store {
     ///
     /// The whole file is written in one go, so a crash leaves either the old
     /// collection or the new one — never half of each.
-    pub async fn set_named_views(&self, views: &[NamedView]) -> Result<(), StoreError> {
+    pub async fn set_named_views(&self, views: &[NamedView]) -> Result<(), DesktopRepositoryError> {
         self.ensure_named_views_loaded().await;
         {
             let mut cache = self.cache.write().await;
@@ -73,7 +73,7 @@ impl Store {
 
 /// The store is the desktop's implementation of the shared storage port.
 #[async_trait::async_trait]
-impl NamedViewRepository for Store {
+impl NamedViewRepository for DesktopRepository {
     async fn load_views(&self) -> Result<Vec<NamedView>, NamedViewError> {
         Ok(self.get_named_views().await)
     }

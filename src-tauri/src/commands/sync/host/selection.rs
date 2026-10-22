@@ -6,7 +6,7 @@
 //! and nothing else, and it may do so exactly once.
 
 use crate::data_sync::job::artifact::{ChangeBlock, ChangeSetArtifact};
-use crate::data_sync::job::host::ArtifactStoreGuard;
+use crate::data_sync::job::host::ArtifactRepositoryGuard;
 use crate::data_sync::DataSyncError;
 
 use super::{invalid, state};
@@ -15,10 +15,10 @@ use crate::data_sync::plan_store as plans;
 /// Freeze the artifact under the id the handler reports in its receipt.
 pub(super) fn store_artifact(
     artifact: ChangeSetArtifact,
-) -> Result<ArtifactStoreGuard, DataSyncError> {
+) -> Result<ArtifactRepositoryGuard, DataSyncError> {
     let artifact_id = state::artifact_id(&artifact.plan_id);
     state::store_artifact(artifact);
-    Ok(ArtifactStoreGuard { artifact_id })
+    Ok(ArtifactRepositoryGuard { artifact_id })
 }
 
 /// The confirmed block subset for one revision of the reviewed plan.

@@ -7,7 +7,7 @@ use super::super::error::CommandError;
 use super::super::AppState;
 use super::apply::generate_data_sync_sql_impl;
 use super::host::state::StoredSelection;
-use crate::data_sync::comparison_store::{ComparisonStore, ComparisonTableMetadata};
+use crate::data_sync::comparison_store::{ComparisonStorage, ComparisonTableMetadata};
 #[cfg(test)]
 use crate::data_sync::execute_statement_batches_with_policy;
 #[cfg(test)]
@@ -363,10 +363,10 @@ async fn current_schema_fingerprint(
         .map_err(CommandError::Validation)
 }
 
-struct StoreSqlPageSource<'a> {
+struct ComparisonStorageSqlPageSource<'a> {
     state: &'a AppState,
     target_db_session_id: &'a str,
-    comparison: &'a ComparisonStore,
+    comparison: &'a ComparisonStorage,
     matcher: &'a SelectionMatcher,
     options: &'a SyncOptions,
     target_database: Option<&'a str>,
@@ -376,11 +376,11 @@ struct StoreSqlPageSource<'a> {
     row_offset: usize,
 }
 
-impl<'a> StoreSqlPageSource<'a> {
+impl<'a> ComparisonStorageSqlPageSource<'a> {
     fn new(
         state: &'a AppState,
         target_db_session_id: &'a str,
-        comparison: &'a ComparisonStore,
+        comparison: &'a ComparisonStorage,
         matcher: &'a SelectionMatcher,
         options: &'a SyncOptions,
         target_database: Option<&'a str>,
@@ -453,7 +453,7 @@ impl<'a> StoreSqlPageSource<'a> {
 }
 
 #[async_trait]
-impl StatementBatchSource for StoreSqlPageSource<'_> {
+impl StatementBatchSource for ComparisonStorageSqlPageSource<'_> {
     async fn next_batch(
         &mut self,
     ) -> Result<Option<Vec<crate::data_sync::SqlStatement>>, DataSyncError> {
@@ -467,7 +467,7 @@ impl StatementBatchSource for StoreSqlPageSource<'_> {
 /// response would exceed the documented cap. Execution uses the same page
 /// source directly and never accumulates this preview vector.
 async fn generate_bounded_data_sync_sql_preview(
-    mut source: StoreSqlPageSource<'_>,
+    mut source: ComparisonStorageSqlPageSource<'_>,
 ) -> Result<Vec<crate::data_sync::SqlStatement>, CommandError> {
     let mut statements = Vec::new();
     let mut response_bytes = 2usize; // JSON array brackets
@@ -541,7 +541,7 @@ pub(crate) async fn generate_data_sync_sql_for_plan_impl(
     let matcher = plans::validate_selection_streaming(&plan.comparison, &selection, &options)
         .map_err(CommandError::Validation)?;
     let _context = validate_plan_context(state, &plan).await?;
-    generate_bounded_data_sync_sql_preview(StoreSqlPageSource::new(
+    generate_bounded_data_sync_sql_preview(ComparisonStorageSqlPageSource::new(
         state,
         &plan.target_db_session_id,
         &plan.comparison,
@@ -937,7 +937,7 @@ mod tests {
         table.columns = vec!["id".into(), "name".into()];
         table.column_types = vec!["integer".into(), "text".into()];
         table.primary_keys = vec!["id".into()];
-        let comparison = ComparisonStore::from_comparison(
+        let comparison = ComparisonStorage::from_comparison(
             ComparisonResult::new(vec![table]),
             test.state.sync_stores.comparison_root.as_ref(),
             &test
@@ -961,7 +961,7 @@ mod tests {
         };
         let matcher = plans::validate_selection_streaming(&comparison, &selection, &options)
             .expect("selection should match the persisted comparison");
-        let mut source = StoreSqlPageSource::new(
+        let mut source = ComparisonStorageSqlPageSource::new(
             &test.state,
             &target_db_session_id,
             &comparison,
@@ -1099,7 +1099,7 @@ mod tests {
         table.columns = vec!["id".into(), "name".into()];
         table.column_types = vec!["integer".into(), "text".into()];
         table.primary_keys = vec!["id".into()];
-        let comparison = ComparisonStore::from_comparison(
+        let comparison = ComparisonStorage::from_comparison(
             ComparisonResult::new(vec![table]),
             test.state.sync_stores.comparison_root.as_ref(),
             &test
@@ -1121,7 +1121,7 @@ mod tests {
         };
         let matcher =
             plans::validate_selection_streaming(&comparison, &selection, &options).unwrap();
-        let source = StoreSqlPageSource::new(
+        let source = ComparisonStorageSqlPageSource::new(
             &test.state,
             &target_db_session_id,
             &comparison,

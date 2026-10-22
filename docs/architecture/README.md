@@ -72,7 +72,7 @@ React / TypeScript (src/)
 src-tauri (desktop host)
   ├─ commands/       IPC 边界与参数/错误处理
   ├─ platform/       Tauri 组装根：PlatformAdapter、DesktopSessionBackend、身份/策略/仓储适配
-  ├─ services/       薄宿主服务：QueryExecutor、Schema metadata、DbTools、JobRegistry
+  ├─ services/       薄宿主服务：Schema metadata、JobRegistry、Runtime command source
   ├─ workflow/       Workflow host、YAML registry、executor、scheduler、runtime entry
   ├─ mcp/            MCP Server / Client
   ├─ dashboard/      Dashboard 主机侧适配
@@ -80,8 +80,7 @@ src-tauri (desktop host)
   ├─ store/          桌面持久化（SQLite + 加密文件）
   ├─ tunnel/ + ssh_tunnel.rs   隧道装配
   ├─ wapps/          datazen:// 协议桥、WappManager
-  ├─ ai/             对外 re-export 表面 + 宿主 metadata source
-  └─ db/             re-export 门面
+  └─ ai/             宿主 metadata source（规则与 provider 契约在共享包）
   │
   ▼
 packages/
@@ -89,12 +88,11 @@ packages/
   ├─ platform-infra/    形态中立基础设施原语（脱敏、路径安全）
   ├─ application/       应用层用例（target、identity policy、sessions、settings、DTO）
   ├─ runtime/           运行时内核：session/resource/lease/budget/gateway/job/sql_guard/schema_cache/tunnel
-  ├─ feature-core/      共享 feature 逻辑：Workflow/AI/MCP/Dashboard/导出/备份恢复
+  ├─ feature-core/      共享 feature 逻辑：Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核
   ├─ schema-diff/       方言中立 Schema Diff 引擎
   ├─ data-sync/         同族 Data Sync 引擎
   ├─ data-transfer/     异构 Data Transfer 引擎
   ├─ migration-common/  迁移引擎共享的 pair/recordset 边界
-  ├─ workspace-apps/    Wapp manifest/安装/存储内核
   ├─ driver-api/        Driver trait 与 Command/迁移/资源契约
   ├─ ai-api/, ai-providers/   AI Provider 契约与协议实现
   └─ backend-client/, driver-sdk/, wapp-sdk/, extension-points/, ui/   JS/TS 契约与 UI 包
@@ -201,8 +199,8 @@ Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview →
 
 ## 7. Workflow / AI / MCP / Dashboard
 
-- **Workflow**：共享模型、条件、模板、执行器和调度逻辑位于 `packages/feature-core/src/workflow/`；`src-tauri/src/workflow/` 提供 YAML registry、Command runtime、history、桌面 runtime entry 与真实驱动验收。Workflow v1 的连接管理经 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。
-- **AI**：Provider 契约与协议实现位于 `packages/ai-api/` 与 `packages/ai-providers/`；Prompt、Schema 上下文、NL2SQL/诊断/分析等共享逻辑位于 `packages/feature-core/src/ai/`。`src-tauri/src/ai/` 只保留宿主 Runtime/SchemaCache/profile 适配，调用点直接引用共享包。
+- **Workflow**：共享模型、条件、模板、执行器和调度逻辑位于 `packages/feature-core/src/workflow/`；`src-tauri/src/workflow/` 提供 YAML registry、Command runtime 绑定、history、桌面 runtime entry 与真实驱动验收。Workflow v1 的连接管理经 `feature-core command_runtime → feature-core resource_execution → Runtime`。
+- **AI**：Provider 契约与协议实现位于 `packages/ai-api/` 与 `packages/ai-providers/`；Prompt、Schema 上下文、NL2SQL/诊断/分析等共享逻辑位于 `packages/feature-core/src/ai/`；AI 用的数据库元数据源位于 `packages/feature-core/src/services/schema_context/`（宿主只注入 `ResourceExecutionHost` 与 Runtime 门面）。调用点直接引用共享包。
 - **MCP**：`packages/feature-core/src/mcp/` 持有共享工具/资源逻辑，`src-tauri/src/mcp/` 提供 MCP Server 和 Client 的宿主传输、会话与权限接线，并支持 headless stdio。
 - **Dashboard**：`packages/feature-core/src/dashboard/` 负责 Widget 创建/归档/调度策略，`src-tauri/src/dashboard/` 负责桌面存储与执行适配；`src-tauri/src/monitor/` 负责 MonitorEngine、定时授权与 occurrence。
 
@@ -211,7 +209,7 @@ Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview →
 DataZen 采用四维扩展体系：
 
 - **数据库驱动（Driver）**：编译时注入，基于 `@datazen/driver-sdk` 与 `packages/driver-api`，通过 inventory 注册。承载数据库连接、SQL 方言、DDL 和 Driver Command。
-- **沙箱工作区应用（Wapp）**：基于 `@datazen/wapp-sdk`、`manifest.json`、`datazen://` 协议与沙箱 `<iframe>`，运行目录 `{appData}/wapps/{publisher}.{name}/`，向用户暴露独立工作区页面与外观主题，通过受控 postMessage 桥通信；取数一律走 `execute_driver_command`；形态无关的规则/安装/存储在 `packages/workspace-apps`。详见 [wapps.md](backend/wapps.md)。
+- **沙箱工作区应用（Wapp）**：基于 `@datazen/wapp-sdk`、`manifest.json`、`datazen://` 协议与沙箱 `<iframe>`，运行目录 `{appData}/wapps/{publisher}.{name}/`，向用户暴露独立工作区页面与外观主题，通过受控 postMessage 桥通信；取数一律走 `execute_driver_command`；形态无关的规则/安装/存储在 `packages/feature-core` 的 `workspace_apps` 模块。详见 [wapps.md](backend/wapps.md)。
 - **特权扩展点（Host Extension Points）**：基于 `@datazen/extension-points` 的 `ExtensionPoint<T>` 契约与 CodeMirror Compartment，宿主进程内（In-Process）接入，专用于 SQLEditor 增强等高性能、深交互核心模块。受根目录 **DataZen Plugin, Driver & Extension Linking Exception** 保护，支持独立许可与分发。
 - **外观主题（Theme）**：由 Wapp 以 `contributes.themes[]` 贡献的纯静态资源包（`tokens.css` / `editor.json` / `charts.json` / `icons/`），零代码执行。旧 v1 ThemePack（`packages/themes/`）已存档，`{appData}/themes/` 运行时入口已移除。详见 [wapps.md](backend/wapps.md)「主题应用」与「首屏背景缓存」。
 

@@ -41,8 +41,12 @@ impl DataZenMcpServer {
         }
 
         if uri == "datazen://workflows" {
-            // MCP 读的是桌面自己那一个组织的数据。
-            let scope = crate::platform::local_organization_scope();
+            // 组织作用域取宿主解析的那一份：MCP 资源没有自己的请求上下文，
+            // 宿主状态（AppState）就是唯一的组织身份来源。
+            let scope = self
+                .app_state
+                .organization_scope()
+                .map_err(|error| McpError::internal_error(error.to_string(), None))?;
             let workflows = self.app_state.workflow_registry.list(&scope).await;
             let json = serde_json::to_string_pretty(&workflows)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;

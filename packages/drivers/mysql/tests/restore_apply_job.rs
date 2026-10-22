@@ -14,7 +14,7 @@ use datazen_platform_api::{
     RequestContext,
 };
 use datazen_runtime::{
-    artifact::FileArtifactStore,
+    artifact::FileArtifactRepository,
     budget::{BudgetConfig, BudgetLedger},
     job::*,
 };
@@ -65,7 +65,7 @@ async fn artifact_restore_records_implicit_commits_and_rejects_client_formats_be
         profile: datazen_driver_api::restore_sql::IMPLICIT_COMMIT.into(),
     });
     let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(FileArtifactStore::open(dir.path().join("artifacts")).unwrap());
+    let artifacts = Arc::new(FileArtifactRepository::open(dir.path().join("artifacts")).unwrap());
     // Every name is unique within the disposable database. No cross-DDL/DML
     // atomicity is claimed: each confirmed nontransactional statement is a boundary.
     let scripts = [

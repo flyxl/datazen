@@ -109,16 +109,5 @@ const pack = {
   'workflows.stepOrder.toggle': 'Alternar el orden de los resultados de los pasos',
   'workflows.stepOrder.asc': 'Más antiguos primero',
   'workflows.stepOrder.desc': 'Más recientes primero',
-  'workflows.form.migration': 'Perfil de migración',
-  'workflows.form.migrationTransfer': 'Transferencia de datos',
-  'workflows.form.migrationSync': 'Sincronización de datos',
-  'workflows.form.migrationSchema': 'Diferencia de esquema',
-  'workflows.form.migrationReject': 'Rechazar cambios destructivos',
-  'workflows.form.migrationAllow': 'Permitir cambios destructivos',
-  'workflows.form.migrationProfileId': 'ID de perfil persistido',
-  'workflows.form.migrationProfileRevision': 'Revisión del perfil (opcional)',
-  'workflows.form.migrationTokenVariable': 'Variable de token de archivo SQL por ejecución',
-  'workflows.form.migrationHint':
-    'Los perfiles se vuelven a validar y planificar en cada ejecución. Los destinos de archivo SQL requieren una variable de token nueva del diálogo nativo.',
 } as const;
 export default pack;

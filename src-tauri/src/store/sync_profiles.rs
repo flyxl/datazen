@@ -1,7 +1,7 @@
-use super::{Store, StoreError};
+use super::{DesktopRepository, DesktopRepositoryError};
 use crate::data_sync::SyncProfile;
 
-impl Store {
+impl DesktopRepository {
     async fn ensure_sync_profiles_loaded(&self) {
         {
             let cache = self.cache.read().await;
@@ -35,8 +35,13 @@ impl Store {
         self.cache.read().await.sync_profiles.clone()
     }
 
-    pub async fn save_sync_profile(&self, profile: SyncProfile) -> Result<(), StoreError> {
-        profile.validate().map_err(StoreError::ParseError)?;
+    pub async fn save_sync_profile(
+        &self,
+        profile: SyncProfile,
+    ) -> Result<(), DesktopRepositoryError> {
+        profile
+            .validate()
+            .map_err(DesktopRepositoryError::ParseError)?;
         self.ensure_sync_profiles_loaded().await;
         {
             let mut cache = self.cache.write().await;
@@ -50,7 +55,7 @@ impl Store {
         self.save_json_file("sync_profiles.json", &snapshot).await
     }
 
-    pub async fn delete_sync_profile(&self, id: &str) -> Result<(), StoreError> {
+    pub async fn delete_sync_profile(&self, id: &str) -> Result<(), DesktopRepositoryError> {
         self.ensure_sync_profiles_loaded().await;
         {
             let mut cache = self.cache.write().await;

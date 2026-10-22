@@ -221,7 +221,7 @@ pub fn host(
     runtime
         .result_sink()
         .with_artifact_store(Arc::new(
-            datazen_runtime::artifact::FileArtifactStore::open(artifacts_dir.path()).unwrap(),
+            datazen_runtime::artifact::FileArtifactRepository::open(artifacts_dir.path()).unwrap(),
         ))
         .unwrap();
     *publisher.lock().unwrap() = Some(runtime.result_sink());

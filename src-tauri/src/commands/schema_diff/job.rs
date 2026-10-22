@@ -19,8 +19,8 @@ use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, Re
 use datazen_runtime::job::{EndpointRef, EndpointRole};
 
 use datazen_schema_diff::job::{
-    ApplyRequest, PlanStore, PrepareRequest, PreparedPlan, ReadOnlyVerdict, SchemaDiffFrozenPlan,
-    SchemaDiffJobBackend, SchemaDiffPlanError, StoredPlan,
+    ApplyRequest, PlanRepository, PrepareRequest, PreparedPlan, ReadOnlyVerdict,
+    SchemaDiffFrozenPlan, SchemaDiffJobBackend, SchemaDiffPlanError, StoredPlan,
 };
 use datazen_schema_diff::types::{SchemaDiffDeployResult, SchemaDiffPlan};
 
@@ -34,13 +34,13 @@ mod recovery;
 /// 进程级 Job 基础设施。置于 [`AppState`] 中，驻留整个应用生命周期：
 /// Job 关闭后仍保留终态与 effect 投影（§8：窗口关闭不释放 Job 资源）。
 pub struct SchemaDiffJobInfra {
-    pub plans: Arc<PlanStore>,
+    pub plans: Arc<PlanRepository>,
 }
 
 impl SchemaDiffJobInfra {
     pub fn new() -> Self {
         Self {
-            plans: Arc::new(PlanStore::new()),
+            plans: Arc::new(PlanRepository::new()),
         }
     }
 }
@@ -377,7 +377,7 @@ impl SchemaDiffJobBackend for AppStateBackend {
 
 pub(super) fn job_ctx() -> RequestContext {
     RequestContext::new(
-        OrganizationId::new("datazen-local"),
+        OrganizationId::new(crate::platform::LOCAL_ORGANIZATION_ID),
         PrincipalId::new("datazen-local-user"),
         None,
         ClientInstanceId::new("datazen-local-client"),
@@ -463,7 +463,8 @@ async fn target_schema_from_config(state: &AppState, session: &str) -> Option<St
 
 pub(super) fn owner_ref(_state_unused: &AppState) -> datazen_platform_api::OwnerRef {
     datazen_platform_api::OwnerRef::ClientSession {
-        client_instance_id: ClientInstanceId::new("desktop"),
+        // 描述性字段：与本链 ctx 的客户端实例取值一致（落在 `owner_json` 里，从不被比对）。
+        client_instance_id: ClientInstanceId::new("datazen-local-client"),
         purpose: "migration".into(),
     }
 }
@@ -624,7 +625,7 @@ mod tests {
 pub mod desktop;
 pub use desktop::{cancel_schema_diff_job, run_apply_job, run_prepare_job, SchemaDiffJobAccepted};
 
-/// 旧 IPC 兼容路径：客户端直接携带计划正文时，先注册进 PlanStore 再走 apply Job。
+/// 旧 IPC 兼容路径：客户端直接携带计划正文时，先注册进 PlanRepository 再走 apply Job。
 /// 两种受理（prepare 产物 / 直接携带正文）都满足「只经 JobRuntime」。
 /// D1：登记的 meta 与 verify_authorization/read_target_fingerprint 使用
 /// **相同**的哈希计算方式（current_capability_hash / compute_target_fingerprint），

@@ -109,7 +109,7 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 
 后端从当前桌面 RequestContext 取得批准者，并生成独立 service principal / delegation ID。AppDb schema v3 的 `monitor_schedule_grants` 仅保存批准者、服务身份、dashboard/widget/workflow ID、工作流 YAML SHA-256 revision、固定 canonical connection/database/schema 与配置版本、connect/query 动作及命令范围、readOnly、到期时间、撤销状态与版本。不保存 SQL 副本、session、attachment、bearer token、秘密或凭据。新授权取代同 widget 的旧授权；变更 workflow 定义或 profile 配置必须重新授权。
 
-当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI、migration 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询；函数仅允许明确的内置聚合/数值/文本/空值/时钟函数白名单，未知、带 schema、引号名称及表值函数失败关闭，因此序列推进/状态、命名锁获取/状态/释放和会话配置函数不能借 SELECT 派发），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。SQL 中的 relation 只接受单段标识符；任意 schema/database/catalog 限定名称均失败关闭，包括引号、反引号和多段名称，且递归覆盖 join、子查询与 CTE。即使限定名称看似与批准目标一致也不放宽，因为当前校验不执行方言相关的大小写与引号归一比较；单段引号表名、别名和列限定仍可用。其他驱动和写动作均失败关闭。
+当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询；函数仅允许明确的内置聚合/数值/文本/空值/时钟函数白名单，未知、带 schema、引号名称及表值函数失败关闭，因此序列推进/状态、命名锁获取/状态/释放和会话配置函数不能借 SELECT 派发），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。SQL 中的 relation 只接受单段标识符；任意 schema/database/catalog 限定名称均失败关闭，包括引号、反引号和多段名称，且递归覆盖 join、子查询与 CTE。即使限定名称看似与批准目标一致也不放宽，因为当前校验不执行方言相关的大小写与引号归一比较；单段引号表名、别名和列限定仍可用。其他驱动和写动作均失败关闭。
 
 共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
 
@@ -117,7 +117,7 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 
 PostgreSQL 与 MySQL 的 driver 专属 `tests/monitor_scheduled_query.rs` 现提供同层级 live 证据：安全 migration fixture gate 下，生产 Monitor 只读 SQL 校验与精确 grant scope 匹配，经 `workflow::resource_execution::execute`、Runtime 和真实 ResourceProvider 执行聚合查询，读取实际 Artifact 结果并由独立连接核对；危险 SQL、限定 relation、越界 database 与撤销 grant 不新增物理 SQL 执行，短资源确认关闭。测试 host 的 Profile/Policy/SessionBackend 是端口接缝；不覆盖 Tauri AppState、后端 grant 签发/持久化、SQLite occurrence admission、duplicate-tick receipt 或完整 scheduler，不能称为完整 Monitor scheduled E2E。
 
-这些 live 查询暴露并修复了委托结果发布的 P6 阻塞：普通 FileArtifactStore 拒绝 delegated create/read，过去即使 SQL 成功也会在发布结果时失败。Runtime 现使用专用内部 `ExecutionArtifactScope`，只从当前 admitted execution entry 取得完整组织、主体、客户端、认证会话、delegation 与 execution 绑定；读时先经当前 PolicyService 重验，再检查同一 live entry / artifact / execution。普通 Artifact API 仍拒绝委托任意创建、读取及导出，同 owner 的普通上下文也不能读取受限结果。scope 不序列化，metadata 只保留受限结果标记；TTL 到期清理，撤权后不可读，重开 ArtifactStore 清理这种进程内结果，不恢复 delegated access 或重放查询。Runtime 回归另覆盖身份不符、其他有效 delegation、任意 Artifact ID、撤权、TTL 与重启拒绝。
+这些 live 查询暴露并修复了委托结果发布的 P6 阻塞：普通 FileArtifactRepository 拒绝 delegated create/read，过去即使 SQL 成功也会在发布结果时失败。Runtime 现使用专用内部 `ExecutionArtifactScope`，只从当前 admitted execution entry 取得完整组织、主体、客户端、认证会话、delegation 与 execution 绑定；读时先经当前 PolicyService 重验，再检查同一 live entry / artifact / execution。普通 Artifact API 仍拒绝委托任意创建、读取及导出，同 owner 的普通上下文也不能读取受限结果。scope 不序列化，metadata 只保留受限结果标记；TTL 到期清理，撤权后不可读，重开 ArtifactRepository 清理这种进程内结果，不恢复 delegated access 或重放查询。Runtime 回归另覆盖身份不符、其他有效 delegation、任意 Artifact ID、撤权、TTL 与重启拒绝。
 
 ## 7. 导出、备份与恢复的环境端口
 
@@ -169,9 +169,9 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 ### 8.1 当前共享实现与保留边界（2026-10-17）
 
-Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。 NativeTool 继续使用不可序列化的通用 `StageOwnerPermit` 核验活动 Job claim、阶段、实例和取消状态；移除的是 Workflow 专用块/会话绑定，非通用 Job fencing。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `feature-core command_runtime → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。 NativeTool 继续使用不可序列化的通用 `StageOwnerPermit` 核验活动 Job claim、阶段、实例和取消状态；移除的是 Workflow 专用块/会话绑定，非通用 Job fencing。
 
-共享领域实现集中在 `packages/feature-core`，Wapp 协议/路由策略在 `packages/workspace-apps`。本轮补迁 command policy、迁移端点身份算法、Dashboard 创建/归档规则、export 容器规划与迁移结果历史映射；原路径保留薄绑定和兼容导出。逐项源码边界见 [feature-core 残余审计](feature-core.md#final-residual-audit-2026-10-17)。
+共享领域实现集中在 `packages/feature-core`，Wapp 内核（协议/路由策略）作为 `feature_core::workspace_apps` 模块同在其中，宿主只保留 `datazen://` 协议适配器。本轮补迁 command policy、迁移端点身份算法、Dashboard 创建/归档规则、export 容器规划与迁移结果历史映射；原路径保留薄绑定和兼容导出。逐项源码边界见 [feature-core 残余审计](feature-core.md#final-residual-audit-2026-10-17)。
 
 `execute_driver_command` 仍服务桌面 editor/session IPC；Runtime 的 `SessionRegistry` 与 `DesktopSessionBackend` 承载本地 session identity、物理资源、预算与隧道生命周期。AI/MCP/Workflow 默认 DB 工具已走共享 Runtime `ResourceExecutionHost`。Monitor 的定时调度与手动 widget 执行保持共享 MonitorHost/Workflow/Runtime 路径。
 
@@ -195,4 +195,4 @@ Host fake 验证归属与清理；真实 driver 验证共享状态、精确取�
 
 ### P6 Workflow v1 范围
 
-Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `feature-core command_runtime → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。

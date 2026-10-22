@@ -52,7 +52,7 @@ pub struct PreparedPlan {
     pub body_digest: String,
 }
 
-/// 应用阶段输入：由 handler 从 FrozenPlan 投影 + PlanStore 解析。
+/// 应用阶段输入：由 handler 从 FrozenPlan 投影 + PlanRepository 解析。
 #[derive(Debug, Clone)]
 pub struct ApplyRequest {
     pub target_db_session_id: String,

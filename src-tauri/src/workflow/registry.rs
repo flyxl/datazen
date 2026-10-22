@@ -12,7 +12,7 @@ use datazen_feature_core::workflow::model::{
     WorkflowDefinition, WorkflowListItem, WorkflowVisibility,
 };
 use datazen_feature_core::workflow::registry::{
-    WorkflowDefinitionRecord, WorkflowDefinitionStore, WorkflowRegistry as CoreRegistry,
+    WorkflowDefinitionRecord, WorkflowDefinitionRepository, WorkflowRegistry as CoreRegistry,
 };
 use datazen_platform_api::ports::scope::OrganizationScope;
 use std::path::PathBuf;
@@ -39,18 +39,18 @@ const BUILTIN_DEFINITIONS: &[(&str, &str)] = &[
 /// The host binds this to the local SQLite database and injects it into the
 /// shared registry as a trait object, so the shared crate never names the
 /// desktop persistence type.
-pub(crate) struct AppDbWorkflowStore {
+pub(crate) struct AppDbWorkflowRepository {
     app_db: Arc<AppDb>,
 }
 
-impl AppDbWorkflowStore {
+impl AppDbWorkflowRepository {
     /// Bind the desktop rows to the local SQLite database.
     pub(crate) fn new(app_db: Arc<AppDb>) -> Self {
         Self { app_db }
     }
 }
 
-impl WorkflowDefinitionStore for AppDbWorkflowStore {
+impl WorkflowDefinitionRepository for AppDbWorkflowRepository {
     fn get_workflow(
         &self,
         scope: &OrganizationScope,
@@ -154,7 +154,7 @@ impl WorkflowRegistry {
     ///
     /// The store arrives as a trait object: the desktop rows stay behind it,
     /// and the shared registry never learns the desktop persistence type.
-    pub fn new(store: Arc<dyn WorkflowDefinitionStore>, data_dir: PathBuf) -> Self {
+    pub fn new(store: Arc<dyn WorkflowDefinitionRepository>, data_dir: PathBuf) -> Self {
         Self {
             core: CoreRegistry::new(store, BUILTIN_DEFINITIONS.to_vec()),
             workflows_dir: data_dir.join("workflows"),
@@ -258,7 +258,7 @@ mod tests {
     async fn list_excludes_dashboard_hidden() {
         let db = AppDb::open_in_memory().unwrap();
         let reg = WorkflowRegistry::new(
-            Arc::new(AppDbWorkflowStore::new(db)),
+            Arc::new(AppDbWorkflowRepository::new(db)),
             PathBuf::from("/tmp/datazen-wf-test"),
         );
         let scope = local_scope();
@@ -290,7 +290,7 @@ mod tests {
     async fn save_yaml_roundtrip() {
         let db = AppDb::open_in_memory().unwrap();
         let reg = WorkflowRegistry::new(
-            Arc::new(AppDbWorkflowStore::new(db)),
+            Arc::new(AppDbWorkflowRepository::new(db)),
             PathBuf::from("/tmp/datazen-wf-test2"),
         );
         let scope = local_scope();
@@ -308,7 +308,7 @@ mod tests {
 
         let db = AppDb::open_in_memory().unwrap();
         let reg = WorkflowRegistry::new(
-            Arc::new(AppDbWorkflowStore::new(db.clone())),
+            Arc::new(AppDbWorkflowRepository::new(db.clone())),
             PathBuf::from("/tmp/datazen-wf-test3"),
         );
         let scope = local_scope();
@@ -357,7 +357,7 @@ mod tests {
     async fn seeds_builtins_when_empty() {
         let db = AppDb::open_in_memory().unwrap();
         let reg = WorkflowRegistry::new(
-            Arc::new(AppDbWorkflowStore::new(db)),
+            Arc::new(AppDbWorkflowRepository::new(db)),
             PathBuf::from("/tmp/datazen-wf-seed"),
         );
         let list = reg.list(&local_scope()).await;
@@ -373,7 +373,7 @@ mod tests {
     async fn the_workflows_of_another_organization_are_not_found() {
         let db = AppDb::open_in_memory().unwrap();
         let reg = WorkflowRegistry::new(
-            Arc::new(AppDbWorkflowStore::new(db)),
+            Arc::new(AppDbWorkflowRepository::new(db)),
             PathBuf::from("/tmp/datazen-wf-isolation"),
         );
         let scope = local_scope();
@@ -400,7 +400,7 @@ mod tests {
     async fn a_workflow_of_another_organization_cannot_be_removed() {
         let db = AppDb::open_in_memory().unwrap();
         let reg = WorkflowRegistry::new(
-            Arc::new(AppDbWorkflowStore::new(db)),
+            Arc::new(AppDbWorkflowRepository::new(db)),
             PathBuf::from("/tmp/datazen-wf-isolation-delete"),
         );
         let scope = local_scope();

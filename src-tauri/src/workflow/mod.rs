@@ -5,12 +5,11 @@
 //!
 //! The engine, the model and the rules live in
 //! `datazen_feature_core::workflow`. What stays here is the desktop half: the
-//! store bindings, the runtime session handling and the Tauri IPC.
+//! port bindings over the desktop stores, the desktop persistence, the
+//! scheduling adapter and the Tauri IPC.
 
 pub mod command_runtime;
 pub mod history;
-mod independent_sql;
-pub(crate) mod migration;
 
 // These modules own the workflow registry and the desktop scheduling adapter.
 pub mod registry;

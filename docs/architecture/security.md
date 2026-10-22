@@ -6,7 +6,7 @@
 
 | 安全措施 | 实现方式 | 位置 |
 |----------|----------|------|
-| **密码加密存储** | AES-256-GCM；主密钥在 OS 钥匙串或 `{appData}/.key`（见 `key_store`） | `Store::encrypt/decrypt` + `src-tauri/src/store/key_store.rs` |
+| **密码加密存储** | AES-256-GCM；主密钥在 OS 钥匙串或 `{appData}/.key`（见 `key_store`） | `DesktopRepository::encrypt/decrypt` + `src-tauri/src/store/key_store.rs` |
 | **密码派生** | Argon2id KDF（替代双轮 SHA-256），用于连接导入/导出文件与敏感字段的字段级加密 | `packages/feature-core/src/connection_import/datazen.rs::derive_argon2_key` |
 | **AI Key 加密** | 随 Store 整体 AES-256-GCM 加密 | `src-tauri/src/store/ai_config.rs`（`ai_config.enc`） |
 | **连接池管理** | sqlx 连接池 + 超时清理 | 各数据库驱动 |
@@ -14,7 +14,7 @@
 | **连接生命周期** | 物理连接全部经 runtime 会话层租约借出（按用途授权、显式归还是常态路径），不是裸句柄长持有 | `packages/runtime/src/application/live.rs` |
 | **结果集内存控制（按面生效）** | 分面限制：Workflow 单查询 `query_row_limit`（默认 1000 行）；AI 边界对 `rows`/`data` 等 payload 字段整体剔除（§4） | `packages/feature-core/src/workflow/executor.rs`、`packages/feature-core/src/ai/safety.rs` |
 | **SQL 注入防护** | 参数化查询 | `query_with_params` |
-| **TLS 加密后端** | 进程级 rustls `CryptoProvider` 显式安装（`aws-lc-rs`） | `src-tauri/src/tls.rs` |
+| **TLS 加密后端** | 进程级 rustls `CryptoProvider` 显式安装（`aws-lc-rs`） | 实现体在 `packages/tunnel/src/crypto.rs`，宿主 `src-tauri/src/tls.rs` 保留接线守卫与再导出 |
 | **CSP** | Content Security Policy | `src-tauri/tauri.conf.json` |
 | **路径遍历防护** | 路径校验 | `src-tauri/src/commands/file.rs` |
 | **SQL 安全（Safe Mode / 只读）** | 启发式语句分类 + 连接级拦截 | `packages/runtime/src/sql_guard`（宿主经 runtime 依赖调用） |
@@ -31,7 +31,7 @@ plaintext → 生成随机 nonce(12字节) → AES-256-GCM 加密 → base64(non
 encrypted → base64 解码 → 分离 nonce(前12字节) + ciphertext → 解密 → plaintext
 ```
 
-加密主密钥由 `store/key_store.rs` 管理：**正式签名版默认存 OS 钥匙串**（macOS Keychain / Windows Credential Store / Linux Secret Service）；`DATAZEN_KEYRING=file` 或 macOS adhoc/未签名开发构建则使用 `{appData}/.key`。钥匙串不可用时可回退到已有 `.key`。首次启动随机生成 32 字节密钥。详见 [持久化存储 — 主加密密钥](backend/store.md#主加密密钥key_store)。
+加密主密钥由 `store/key_store.rs` 管理、后端由 `store/key_backend.rs` 在**启动期**选定（`DATAZEN_KEYRING` 只读一次，结果作为 `KeyBackend` 显式传下去）：**正式签名版默认存 OS 钥匙串**（macOS Keychain / Windows Credential Store / Linux Secret Service）；`DATAZEN_KEYRING=file` 或 macOS adhoc/未签名开发构建则使用 `{appData}/.key`。钥匙串不可用时可回退到已有 `.key`。首次启动随机生成 32 字节密钥。详见 [持久化存储 — 主加密密钥](backend/store.md#主加密密钥key_store)。
 
 ### 2.2 密码派生（导入/导出）
 
@@ -256,7 +256,9 @@ DataZen 的出站 TLS 统一走 `rustls 0.23`。该 crate 的 `CryptoProvider` �
 | `aws-lc-rs` | `reqwest`（feature `rustls`）、`tokio-rustls`（默认 feature） |
 | `ring` | `tauri-plugin-updater`（feature `rustls-tls`）；启用 `redis` / `mongodb` / `sqlx` 等驱动时还会增加请求方 |
 
-两个 feature 同时存在时，rustls 拒绝猜测：凡是**未显式指定 provider** 的 `ClientConfig::builder()` 都会 panic。因此 `src-tauri/src/tls.rs::install_default_crypto_provider()` 在 `main()` 的第一行显式安装 `aws-lc-rs`（rustls 0.23 自身的首选实现），并由各 TLS 构造点重复调用以覆盖不经 `main()` 的库/测试嵌入方。
+两个 feature 同时存在时，rustls 拒绝猜测：凡是**未显式指定 provider** 的 `ClientConfig::builder()` 都会 panic。因此 `install_default_crypto_provider()` 在 `main()` 的第一行显式安装 `aws-lc-rs`（rustls 0.23 自身的首选实现），并由各 TLS 构造点重复调用以覆盖不经 `main()` 的库/测试嵌入方。
+
+该函数的**实现体**住在共享 crate `packages/tunnel/src/crypto.rs`，宿主 `src-tauri/src/tls.rs` 只保留模块文档、宿主接线守卫（`main()` 必须在解析 argv 前安装）与测试，并以 `pub use` 原样再导出——所以 `datazen::install_default_crypto_provider()` 这条对外路径、调用时机与行为均未变，全仓仍然只有**一个**安装器。实现体必须住在共享 crate 的原因是隧道机制自身的两条 TLS 腿（`https://` HTTP `CONNECT` 代理、`wss://` WebSocket 中继）都要建**自动探测**的 `ClientConfig`，这个决策不能留在宿主边界之后；而宿主 `tls.rs` 本身不能整体搬走，因为它用 `include_str!("main.rs")` / `include_str!("lib.rs")` 做宿主接线守卫，跨 crate 内嵌会破 `cargo package`。
 
 `install_default()` 由 rustls 自身的 compare-and-swap 保证不会重复安装；DataZen 用 `OnceLock` 保证全进程只发起一次安装，**先到先得的竞态不会 panic**。需要注意的是 `tauri-plugin-updater` 会在没有默认 provider 时安装 `ring`，与本模块构成竞争——所以「安装得足够早」（`main()` 首行，早于 Tauri builder 初始化插件）是该修复成立的前提，而不仅仅是「幂等」。该竞争并不发生在插件注册阶段：`ring` 的安装语句位于 `tauri-plugin-updater-2.10.1/src/updater.rs:446-448` 的 `Updater::check()` 内，只有真正发起更新检查时才会执行；`main()` 优先是三重保障中最便宜的一重，即使任一依赖移动也仍然成立。
 

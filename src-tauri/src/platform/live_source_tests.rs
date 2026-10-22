@@ -371,13 +371,13 @@ fn connection_config(id: &str, db_type: &str) -> ConnectionConfig {
     }
 }
 
-/// 落一份连接配置，让 `Store::platform_profile` 读得到。
+/// 落一份连接配置，让 `DesktopRepository::platform_profile` 读得到。
 ///
 /// 走 `save_connection` 而不是手写 `connections.json`：前者是本进程真实的持久化
 /// 路径，绕开它就绕开了「runtime 读到的 revision 与宿主写下的 revision 是同一条」
 /// 这一层。首次保存时 `ProfileMetadata::default()` 给 `config_revision = 1`，
 /// 因此 runtime 侧 `profile()` 读到 1——测试用 1 即可，不需要魔数。
-async fn seed_profile(store: &crate::store::Store, config: &ConnectionConfig) {
+async fn seed_profile(store: &crate::store::DesktopRepository, config: &ConnectionConfig) {
     store
         .save_connection(config.clone())
         .await
@@ -406,9 +406,12 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
 
     let temp = tempfile::tempdir().expect("temp dir");
     let store = Arc::new(
-        crate::store::Store::init_with_path(temp.path())
-            .await
-            .expect("store init"),
+        crate::store::DesktopRepository::init_with_path(
+            temp.path(),
+            crate::store::KeyBackend::File,
+        )
+        .await
+        .expect("store init"),
     );
     seed_profile(&store, &connection_config("conn-1", "test-live")).await;
 
@@ -449,10 +452,14 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
         .await;
     registry.register_test_factory("test-live", factory).await;
 
+    let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
+    let known_hosts = super::super::known_hosts::desktop_known_hosts_store(store.data_dir());
     let backend = Arc::new(super::super::session_backend::DesktopSessionBackend::new(
         Arc::clone(&registry),
         Arc::clone(&store),
         8,
+        tunnels,
+        known_hosts,
     ));
     let recording = Arc::new(RecordingSource {
         inner: DesktopLiveConnectionSource::new(
@@ -475,11 +482,18 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
     );
     service.with_live_connections(recording.clone());
 
-    // `DesktopPolicy` 只放行**本机桌面身份**（见 policy.rs），并且它在**每次**
-    // 授权时重新读 `DATAZEN_DESKTOP_USER`。这里不再改写该进程级变量：同一文件
-    // 的池维护用例会捕获 `local_principal()` 作为上下文身份，改写变量会让它们
-    // 在并发运行时被自己的授权拒绝（"connection permission denied"），而那不是
-    // 被测行为。直接取进程身份，与 `wired_pool_maintenance_harness` 同一策略。
+    // `DesktopPolicy` 只放行**本机桌面身份**（见 policy.rs）。这里的主体直接取
+    // `local_principal()`——本进程解析出来的桌面主体，与策略判定用的是同一个值。
+    //
+    // 之前这里注入 `DATAZEN_DESKTOP_USER=wiring-tester`（并在用例结束时用
+    // `DesktopUserGuard` 还原），那是本文件唯一的**进程级 env 写者**：`DATAZEN_DESKTOP_USER`
+    // 是**进程级可变状态**，而授权判定要读它。于是「捕获主体」与「判定授权」之间一旦
+    // 撞上这次写入/还原，两个读到的值就不一致 ⇒ 合法的本机请求被翻成
+    // `desktop_identity_required`。并行跑兄弟用例时这条随时会被踩中（CI 里
+    // `platform::live_source::tests::*` 的红就是它）。
+    //
+    // 主体改为取进程解析值之后，本文件**不再有任何进程级 env 写者**；桌面主体本身
+    // 由 `local_principal()` 在进程内只解析一次（见 identity.rs），授权基线恒定。
     let principal = crate::platform::local_principal()
         .expect("a desktop local principal exists in the test process");
 
@@ -591,9 +605,12 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
 
     let temp = tempfile::tempdir().expect("temp dir");
     let store = Arc::new(
-        crate::store::Store::init_with_path(temp.path())
-            .await
-            .expect("store init"),
+        crate::store::DesktopRepository::init_with_path(
+            temp.path(),
+            crate::store::KeyBackend::File,
+        )
+        .await
+        .expect("store init"),
     );
     seed_profile(&store, &connection_config("pool-conn", "test-live")).await;
 
@@ -626,10 +643,14 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
 
     // live 源与 runtime 用例**共享同一个**会话后端：session 行只登记在一处，
     // 分开建的两个比如同两个 runtime，一边打开另一边永远 SessionNotFound。
+    let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
+    let known_hosts = super::super::known_hosts::desktop_known_hosts_store(store.data_dir());
     let backend = Arc::new(super::super::session_backend::DesktopSessionBackend::new(
         Arc::clone(&registry),
         Arc::clone(&store),
         8,
+        tunnels,
+        known_hosts,
     ));
     let recording = Arc::new(DesktopLiveConnectionSource::new(
         Arc::clone(&registry),
@@ -648,9 +669,13 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
     );
     service.with_live_connections(recording.clone());
 
-    // 全程不改写 `DATAZEN_DESKTOP_USER`：`DesktopPolicy` 每次授权都重读该进程级
-    // 变量，任何并发测试改写它都会让捕获了 `local_principal()` 的上下文被拒绝。
-    // 桌面身份直接取进程值，授权照常成立。
+    // 桌面身份直接取 `local_principal()` 的进程值：它是**进程内只解析一次**的主体，
+    // 与策略判定读的是同一个值 ⇒ 「捕获主体」与「判定授权」之间不可能漂移。
+    //
+    // 本用例族过去栽在这里：本文件另一处用例在运行期写 `DATAZEN_DESKTOP_USER`
+    // 并在结束时还原（本进程唯一的 env 写者），撞上这个窗口时，策略读到的主体
+    // 与这里捕获的主体不等 ⇒ 合法的本机请求被判 `desktop_identity_required`。
+    // 写者已移除，主体改为进程解析值，窗口随之消失。
     let principal = crate::platform::local_principal()
         .expect("a desktop local principal exists in the test process");
 

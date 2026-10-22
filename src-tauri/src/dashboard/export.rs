@@ -6,8 +6,8 @@ use chrono::Utc;
 use thiserror::Error;
 
 use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
-use datazen_feature_core::dashboard::store::{
-    assign_import_id, list_dashboards, save_dashboard, DashboardStoreError,
+use datazen_feature_core::dashboard::repository::{
+    assign_import_id, list_dashboards, save_dashboard, DashboardRepositoryError,
 };
 use datazen_feature_core::dashboard::types::Dashboard;
 use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowVisibility};
@@ -22,7 +22,7 @@ pub enum DashboardExportError {
     Io(#[from] io::Error),
 
     #[error("store error: {0}")]
-    Store(#[from] DashboardStoreError),
+    Store(#[from] DashboardRepositoryError),
 
     #[error("database error: {0}")]
     Database(#[from] AppDbError),
@@ -140,7 +140,7 @@ mod tests {
     use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
     use chrono::Utc;
     use datazen_feature_core::dashboard::archive::FORMAT;
-    use datazen_feature_core::dashboard::store::{
+    use datazen_feature_core::dashboard::repository::{
         delete_dashboard, get_dashboard, list_dashboards, save_dashboard,
     };
     use datazen_feature_core::dashboard::types::{

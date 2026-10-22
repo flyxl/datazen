@@ -1,5 +1,5 @@
 use super::identity::LOCAL_ORGANIZATION_ID;
-use crate::store::{platform_profiles::ProfileMetadata, Store};
+use crate::store::{platform_profiles::ProfileMetadata, DesktopRepository};
 use async_trait::async_trait;
 use datazen_driver_api::ConnectionConfig;
 use datazen_platform_api::{
@@ -16,11 +16,11 @@ use datazen_platform_api::{
 use std::{collections::BTreeMap, sync::Arc};
 
 pub struct DesktopProfiles {
-    pub(crate) store: Arc<Store>,
+    pub(crate) store: Arc<DesktopRepository>,
     create_lock: tokio::sync::Mutex<()>,
 }
 impl DesktopProfiles {
-    pub fn new(store: Arc<Store>) -> Self {
+    pub fn new(store: Arc<DesktopRepository>) -> Self {
         Self {
             store,
             create_lock: tokio::sync::Mutex::new(()),

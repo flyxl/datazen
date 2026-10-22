@@ -10,7 +10,7 @@
 //! ## 端口边界
 //!
 //! 落盘实现留在本包（本地文件系统是形态中立的），**宿主注入的只有存储根**：
-//! [`ComparisonStoreRoot`] 决定比较结果写到哪个目录，并按
+//! [`ComparisonStorageRoot`] 决定比较结果写到哪个目录，并按
 //! [`OrganizationScope`] 把越组织访问当作「不可用」。见 [`port`]。
 
 use crate::{ComparisonResult, DataSyncError, RowChange, RowChangeSink, TableResult};
@@ -46,7 +46,9 @@ use disk::*;
 mod manifest_cache;
 use manifest_cache::ManifestCache;
 mod port;
-pub use port::{default_comparison_store_root, ComparisonStoreRoot, LocalComparisonStoreRoot};
+pub use port::{
+    default_comparison_storage_root, ComparisonStorageRoot, LocalComparisonStorageRoot,
+};
 mod recovery;
 use recovery::*;
 
@@ -101,7 +103,7 @@ pub struct ComparisonTableMetadata {
 /// 越组织访问按「不可用」处理：这里**不**返回「无权限」，因为那会泄漏
 /// 「存在但无权」（CM-05）。
 fn resolve_store_root(
-    root: &dyn ComparisonStoreRoot,
+    root: &dyn ComparisonStorageRoot,
     scope: &OrganizationScope,
 ) -> Result<PathBuf, String> {
     root.root_for(scope)
@@ -146,14 +148,14 @@ struct DiskManifest {
 /// directory owner and it is removed when the last plan/operation reference
 /// drops.
 #[derive(Clone, Debug)]
-pub struct ComparisonStore {
+pub struct ComparisonStorage {
     inner: Arc<Inner>,
 }
 
 /// Incremental writer used by the live comparison path. It owns one framed
 /// row file per table and only keeps manifest metadata in memory. Dropping an
 /// unfinished writer removes its private directory.
-pub struct StreamingComparisonStoreWriter {
+pub struct StreamingComparisonStorageWriter {
     root: PathBuf,
     owner: Arc<OwnerLease>,
     directory: Option<PathBuf>,
@@ -186,11 +188,14 @@ struct StreamingTable {
     delete_count: usize,
 }
 
-impl StreamingComparisonStoreWriter {
+impl StreamingComparisonStorageWriter {
     /// 用宿主注入的存储根创建写入器。
     ///
     /// 越组织访问按「不可用」处理：根解析不出来即失败，绝不落到别的目录。
-    pub fn new(root: &dyn ComparisonStoreRoot, scope: &OrganizationScope) -> Result<Self, String> {
+    pub fn new(
+        root: &dyn ComparisonStorageRoot,
+        scope: &OrganizationScope,
+    ) -> Result<Self, String> {
         let root = ensure_private_store_root(&resolve_store_root(root, scope)?)
             .map_err(|error| format!("cannot prepare Data Sync comparison store root: {error}"))?;
         let owner = current_process_owner(&root)?;
@@ -336,7 +341,7 @@ impl StreamingComparisonStoreWriter {
         result
     }
 
-    pub fn finish(mut self) -> Result<ComparisonStore, String> {
+    pub fn finish(mut self) -> Result<ComparisonStorage, String> {
         if let Some(error) = self.failed.take() {
             return Err(error);
         }
@@ -422,7 +427,7 @@ impl StreamingComparisonStoreWriter {
                         return Err("Data Sync comparison store writer is already finalized".into())
                     }
                 };
-                Ok(ComparisonStore {
+                Ok(ComparisonStorage {
                     inner: Arc::new(Inner {
                         manifest_cache: ManifestCache::default(),
                         storage: Storage::File {
@@ -545,7 +550,7 @@ impl StreamingComparisonStoreWriter {
     }
 }
 
-impl Drop for StreamingComparisonStoreWriter {
+impl Drop for StreamingComparisonStorageWriter {
     fn drop(&mut self) {
         self.tables.clear();
         if let Some(directory) = self.directory.take() {
@@ -555,7 +560,7 @@ impl Drop for StreamingComparisonStoreWriter {
 }
 
 #[async_trait::async_trait]
-impl RowChangeSink for StreamingComparisonStoreWriter {
+impl RowChangeSink for StreamingComparisonStorageWriter {
     async fn push(&mut self, change: RowChange) -> Result<(), DataSyncError> {
         self.push_row(change)
     }
@@ -585,14 +590,14 @@ impl RowChangeSink for StreamingComparisonStoreWriter {
     }
 }
 
-impl ComparisonStore {
+impl ComparisonStorage {
     /// 用宿主注入的存储根构造比较存储。
     ///
     /// 越组织访问按「不可用」处理：根解析不出来即失败，内联与落盘两条路径
     /// 一致地失败关闭，绝不把别的组织的比较结果落到当前目录。
     pub fn from_comparison(
         comparison: ComparisonResult,
-        root: &dyn ComparisonStoreRoot,
+        root: &dyn ComparisonStorageRoot,
         scope: &OrganizationScope,
     ) -> Result<Self, String> {
         let store_root = resolve_store_root(root, scope)?;

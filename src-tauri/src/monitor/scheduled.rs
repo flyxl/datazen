@@ -12,7 +12,6 @@ use datazen_feature_core::{
         types::{DashboardWidget, WidgetRun},
     },
     workflow::{
-        context::WorkflowContext,
         executor::{WorkflowExecuteOptions, WorkflowExecutor},
         host::WorkflowHost,
         model::*,
@@ -143,20 +142,6 @@ impl WorkflowHost for ScheduledWorkflowHost<'_> {
     async fn complete_ai(&self, _: String) -> Result<String, WorkflowError> {
         Err(WorkflowError::Validation("scheduled AI unsupported".into()))
     }
-    async fn execute_profile_step(
-        &self,
-        _: &str,
-        _: WorkflowMigrationOperation,
-        _: &str,
-        _: Option<&str>,
-        _: UnattendedDestructivePolicy,
-        _: Option<&str>,
-        _: &mut WorkflowContext,
-    ) -> Result<StepExecutionResult, WorkflowError> {
-        Err(WorkflowError::Validation(
-            "scheduled migration unsupported".into(),
-        ))
-    }
 }
 struct ScheduledWidgetHost<'a> {
     state: &'a AppState,
@@ -196,7 +181,9 @@ impl WidgetExecutionHost for ScheduledWidgetHost<'_> {
             &scope,
             &*self.state.store.app_db(),
             run,
-            &crate::dashboard::store::load_monitor_settings(&self.state.store.get_settings().await),
+            &crate::dashboard::repository::load_monitor_settings(
+                &self.state.store.get_settings().await,
+            ),
         )
         .map_err(|_| "monitor run persistence failed".into())
     }

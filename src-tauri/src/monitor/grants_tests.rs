@@ -34,12 +34,19 @@ fn config() -> datazen_driver_api::ConnectionConfig {
         pinned: false,
     }
 }
-async fn seeded() -> (tempfile::TempDir, Arc<crate::store::Store>, MonitorGrant) {
+async fn seeded() -> (
+    tempfile::TempDir,
+    Arc<crate::store::DesktopRepository>,
+    MonitorGrant,
+) {
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        crate::store::Store::init_with_path(temp.path())
-            .await
-            .unwrap(),
+        crate::store::DesktopRepository::init_with_path(
+            temp.path(),
+            crate::store::KeyBackend::File,
+        )
+        .await
+        .unwrap(),
     );
     store.save_connection(config()).await.unwrap();
     let db = store.app_db();

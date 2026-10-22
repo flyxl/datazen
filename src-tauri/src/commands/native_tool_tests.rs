@@ -21,7 +21,11 @@ struct Fixture {
     marker: PathBuf,
 }
 async fn state(path: &Path) -> AppState {
-    let store = Arc::new(crate::store::Store::init_with_path(path).await.unwrap());
+    let store = Arc::new(
+        crate::store::DesktopRepository::init_with_path(path, crate::store::KeyBackend::File)
+            .await
+            .unwrap(),
+    );
     crate::finish_app_state(
         store,
         Arc::new(datazen_runtime::driver_registry::init_drivers()),
@@ -34,7 +38,12 @@ fn attach(
     manifest: &serde_json::Value,
 ) -> Result<(), datazen_application::error::ApiError> {
     let mut adapter = PlatformAdapter::new_launch(&uuid::Uuid::new_v4().to_string())?;
-    adapter.inject(state.store.clone(), state.driver_registry.clone())?;
+    adapter.inject(
+        state.store.clone(),
+        state.driver_registry.clone(),
+        state.tunnels.clone(),
+        state.known_hosts.clone(),
+    )?;
     adapter.replace_native_fixture(&manifest.to_string())?;
     state.platform = PlatformEntry::ready(adapter);
     Ok(())
@@ -184,9 +193,12 @@ async fn native_product_probe_freezes_sqlite_contract_and_same_key_never_dispatc
             .iter()
             .any(|result| result.result_code == "nativeCleanupConfirmed"));
         // A separately opened SQLite store retains the exact frozen payload.
-        let reopened = crate::store::Store::init_with_path(fixture.directory.path())
-            .await
-            .unwrap();
+        let reopened = crate::store::DesktopRepository::init_with_path(
+            fixture.directory.path(),
+            crate::store::KeyBackend::File,
+        )
+        .await
+        .unwrap();
         let host = crate::build_desktop_job_host(reopened.app_db());
         let reread = host.get(&ctx, first.job_id.clone()).await.unwrap();
         assert_eq!(reread.definition.payload, record.definition.payload);

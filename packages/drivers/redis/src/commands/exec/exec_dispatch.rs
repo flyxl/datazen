@@ -666,6 +666,10 @@ pub(super) async fn dispatch(
             let channels = opt_string_vec(&input, "channels");
             let patterns = opt_string_vec(&input, "patterns");
             json_ok(
+                // The session is addressed by the driver's runtime handle
+                // (`pool_id`); the event the subscription produces is attributed
+                // to the session's persisted connection config id, which the
+                // driver resolves from that handle.
                 crate::ops::pubsub::start_subscription(
                     driver,
                     handle.pool_id.clone(),
@@ -690,13 +694,13 @@ pub(super) async fn dispatch(
             Ok(ok())
         }
         "pubsub_list_subscriptions" => {
-            let conn_id = &handle.pool_id;
-            let subs = crate::ops::pubsub::list_active_subscriptions(conn_id).await;
+            let pool_id = &handle.pool_id;
+            let subs = crate::ops::pubsub::list_active_subscriptions(pool_id).await;
             json_ok(serde_json::json!({ "subscriptions": subs }))
         }
         "pubsub_stats" => {
-            let conn_id = &handle.pool_id;
-            let stats = crate::ops::pubsub::pubsub_stats(conn_id).await;
+            let pool_id = &handle.pool_id;
+            let stats = crate::ops::pubsub::pubsub_stats(pool_id).await;
             json_ok(serde_json::json!({
                 "totalMessages": stats.total_messages,
                 "byChannel": stats.by_channel,

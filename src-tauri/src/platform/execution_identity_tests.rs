@@ -4,15 +4,19 @@
 //! 每条都写成**会自己变红**的断言：改坏实现（把 principal 拼进身份键、把凭据版本
 //! 混进身份键、让委托路径转调本人路径）时，下面每一条都会点红。
 //!
-//! ## 为什么大部分用例走替身而不是真 Store
+//! ## 为什么大部分用例走替身而不是真 DesktopRepository
 //!
-//! 本模块要断言的是「身份键的派生输入」，不是 SQLite 落盘。真 `Store` 每个用例要
+//! 本模块要断言的是「身份键的派生输入」，不是 SQLite 落盘。真 `DesktopRepository` 每个用例要
 //! 建两份 SQLite（AppDb + HistoryDb），十几条用例就是几十份——那点并发 I/O 负载
-//! 会把 `platform::live_source::tests::*` 的**进程级 env 竞态**窗口撑大
-//! （`hub.md` §8 记录的既有 flake：那个家族的 `DesktopUserGuard` 在 Drop 时把
-//! `DATAZEN_DESKTOP_USER` 还原成「之前没有」，会把并行跑的兄弟用例的桌面主体读歪）。
-//! 替身让本模块零 I/O；**只有**「凭据轮换」与「安装级稳定」两条需要真 Store，
+//! 会挤占同仓用例的机器资源，让**判定类**用例的时序更敏感。
+//! 替身让本模块零 I/O；**只有**「凭据轮换」与「安装级稳定」两条需要真 DesktopRepository，
 //! 且共用同一份（`OnceCell`），全模块只建一次。
+//!
+//! （历史注记：这里曾经还写着「真 DesktopRepository 的 I/O 负载会撑大 `platform::live_source::tests::*`
+//! 的**进程级 env 竞态**窗口」——那个家族曾有一个 `DesktopUserGuard` 在 Drop 时把
+//! `DATAZEN_DESKTOP_USER` 还原成「之前没有」，把并行跑的兄弟用例的桌面主体读歪。
+//! 该竞态已在 `platform::identity` 根治：桌面主体改成**进程内只解析一次**，
+//! 授权基线不再在请求之间漂移；本模块的零 I/O 夹具只为自己的断言服务。）
 //!
 //! 替身只替换**策略端口**、**连接配置仓储**、**凭据版本仓储**与**委托作用域绑定**；
 //! 被测的 `DesktopIdentityResolver` 本体、派生函数与端口契约一字未改。
@@ -369,14 +373,14 @@ fn delegated_ctx(delegation: &DelegationRef) -> RequestContext {
     )
 }
 
-/// 全模块**唯一**一份真 Store（懒建一次）。
+/// 全模块**唯一**一份真 DesktopRepository（懒建一次）。
 ///
 /// 只有「凭据轮换」与「安装级稳定」两条用例需要它——前者要真的落一次轮换，
 /// 后者要真的用宿主主密钥派生派生盐。其余用例零 I/O。
 static REAL_STORE: tokio::sync::OnceCell<RealFixture> = tokio::sync::OnceCell::const_new();
 
 struct RealFixture {
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     profiles: Arc<crate::platform::repositories::DesktopProfiles>,
     ctx: RequestContext,
     connection_id: ConnectionId,
@@ -390,7 +394,7 @@ async fn real_fixture() -> &'static RealFixture {
         .get_or_init(|| async {
             let dir = tempfile::tempdir().expect("临时目录");
             let store = Arc::new(
-                Store::init_with_path(dir.path())
+                DesktopRepository::init_with_path(dir.path(), crate::store::KeyBackend::File)
                     .await
                     .expect("store 初始化"),
             );
@@ -1266,8 +1270,8 @@ fn monitor_grant(
 
 /// 把授权单需要的仪表盘 / 部件 / 工作流落进 AppDb。
 ///
-/// 复用 `real_fixture()` 的那一份 Store（全模块只建一次真库），不额外开库。
-async fn seed_monitor_grant(store: &Store, grant: &MonitorGrant, workflow_yaml: &str) {
+/// 复用 `real_fixture()` 的那一份 DesktopRepository（全模块只建一次真库），不额外开库。
+async fn seed_monitor_grant(store: &DesktopRepository, grant: &MonitorGrant, workflow_yaml: &str) {
     let db = store.app_db();
     db.upsert_workflow(&crate::store::WorkflowRecord {
         id: grant.workflow_id.clone(),

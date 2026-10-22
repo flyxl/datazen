@@ -535,7 +535,7 @@ fn the_wiring_guard_catches_a_planted_production_wiring() {
     let planted = r#"
 use datazen_runtime::gateway::AlwaysAllow;
 /// 文档里提到 AlwaysAllow 不该被算作使用。
-pub fn wire(port: Arc<dyn SessionPort>, store: Arc<dyn IdempotencyStore>) -> ExecutionGateway {
+pub fn wire(port: Arc<dyn SessionPort>, store: Arc<dyn IdempotencyRepository>) -> ExecutionGateway {
     ExecutionGateway::new(port, Arc::new(AlwaysAllow), store, clock)
 }
 #[cfg(test)]

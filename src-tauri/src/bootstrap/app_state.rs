@@ -6,9 +6,9 @@ use std::time::Instant;
 
 use crate::commands::AppState;
 use crate::monitor::engine::MonitorEngine;
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
-use crate::{mcp, redis_flush_gate, wapps, workflow};
+use crate::{mcp, redis_flush_gate, workflow};
 use datazen_feature_core::ai::context::SchemaContextBuilder;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::job::RecoveryFilter;
@@ -20,14 +20,18 @@ use datazen_runtime::schema_cache::SchemaCache;
 
 use super::helpers::unique_driver_types;
 
-/// Build AppState for the GUI: Store first, then preload drivers used by saved connections.
+/// Build AppState for the GUI: DesktopRepository first, then preload drivers used by saved connections.
 /// Sync adapters / AI / prompts / workflows / history / MCP load on demand.
 pub(super) async fn build_gui_app_state(
     handle: &tauri::AppHandle,
     prompts_dir: Option<PathBuf>,
 ) -> Result<AppState, String> {
     let t_core = Instant::now();
-    let store = Arc::new(Store::init(handle).await.map_err(|e| e.to_string())?);
+    let store = Arc::new(
+        DesktopRepository::init(handle)
+            .await
+            .map_err(|e| e.to_string())?,
+    );
     redis_flush_gate::sync_from_settings(&store.get_settings().await);
     tracing::info!("[startup]   store: {:?}", t_core.elapsed());
 
@@ -53,7 +57,7 @@ pub(super) async fn build_gui_app_state(
 
 /// Build AppState for headless MCP (shells only; AI/prompts/sync load on first use).
 pub(super) async fn build_app_state(
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     prompts_dir: Option<PathBuf>,
 ) -> Result<AppState, String> {
     redis_flush_gate::sync_from_settings(&store.get_settings().await);
@@ -109,7 +113,7 @@ pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<
     }
 
     let ctx = RequestContext::new(
-        OrganizationId::new("datazen-local"),
+        OrganizationId::new(crate::platform::LOCAL_ORGANIZATION_ID),
         PrincipalId::new("datazen-local-user"),
         None,
         ClientInstanceId::new("datazen-local-client"),
@@ -161,7 +165,7 @@ pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<
 }
 
 pub(crate) fn finish_app_state(
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
     sync_adapters: Arc<crate::transfer::adapter_registry::SyncAdapterRegistry>,
     prompts_dir: Option<PathBuf>,
@@ -177,38 +181,71 @@ pub(crate) fn finish_app_state(
     // Runtime wapps: scan {appData}/wapps/ for installed packages.
     let wapps_dir = data_dir.join("wapps");
     // Invalid packages are skipped (warn) so one bad install can't break boot.
-    let wapp_manager = Arc::new(wapps::WappManager::new(wapps_dir));
+    let wapp_manager =
+        Arc::new(datazen_feature_core::workspace_apps::manager::WappManager::new(wapps_dir));
     let wapp_count = wapp_manager.load_from_disk();
     tracing::info!("[startup]   ui wapps loaded: {wapp_count}");
 
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
     let platform = crate::platform::PlatformEntry::launch();
+    // 隧道相关的两个**存储端口**实例在组装期创建一次：
+    //
+    // * `tunnels`：隧道定义的仓储。桌面实现就是存储层本身（`DesktopRepository` 实现了
+    //   `TunnelRepository`：加密落盘 `{appData}/tunnels.json`）。
+    // * `known_hosts`：SSH known-hosts 的存储。端口契约住在形态中立的
+    //   `packages/tunnel`，**文件 I/O** 留在宿主（桌面读
+    //   `{appData}/ssh_known_hosts.json`）。
+    //
+    // 同一份实例既注入会话后端（建连时解引用 `tunnelId`、启动隧道），也进
+    // `AppState`（命令侧取用）：整个进程只有一份，存储的生命周期由宿主决定。
+    let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
+    let known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore> =
+        crate::platform::known_hosts::desktop_known_hosts_store(&data_dir);
+    // 平台装配必须**先于**依赖它的功能绑定：共享的元数据源要拿到 Runtime 门面
+    // （解析会话归属）与执行宿主（profile / 驱动 / 命令执行），两者都出自装配。
+    // 装配失败不崩应用——与既有行为一致——但依赖平台的调用会明确失败。
+    if let Ok(adapter) = platform.require() {
+        if let Err(error) = adapter.inject(
+            store.clone(),
+            registry.clone(),
+            tunnels.clone(),
+            known_hosts.clone(),
+        ) {
+            tracing::error!(code = ?error.code, "desktop platform injection failed");
+        }
+    }
     // Schema Diff 评审计划的存储：桌面单租户，只承认桌面自己的组织。
     // 桌面身份组装失败时不编造组织身份——该存储不承认任何组织，一切访问按
     // 「不存在」处理（依赖身份的 IPC 调用本来也会明确失败）。
     let schema_diff_reviewed_plans =
-        crate::commands::schema_diff::reviewed_store::desktop_reviewed_plan_store(&platform);
-    let schema_source = Arc::new(crate::ai::metadata_source::RuntimeSchemaSource::new(
+        crate::commands::schema_diff::reviewed_repository::desktop_reviewed_plan_repository(
+            &platform,
+        );
+    // AI 元数据源：共享实现住在 feature-core，桌面只提供两个跨形态件——Runtime
+    // 门面与执行宿主。桌面不再有自己的 AI 适配层。
+    let schema_source = crate::services::schema_context_source::desktop_schema_context_source(
         registry.clone(),
         store.clone(),
         platform.clone(),
-    ));
+    );
     let state = AppState {
         driver_registry: registry,
         monitor_engine: monitor_engine.clone(),
         store,
-        schema_cache: schema_cache.clone(),
+        schema_cache,
         sync_adapters,
         ai_registry: Arc::new(datazen_ai_providers::AiProviderRegistry::with_http_client(
             datazen_ai_providers::http::HttpClient::desktop(),
         )),
-        schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_cache, schema_source)),
+        schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_source)),
         prompt_resolver: Arc::new(
             datazen_feature_core::ai::prompt_resolver::PromptResolver::new(&data_dir, prompts_dir),
         ),
         workflow_registry: Arc::new(workflow::WorkflowRegistry::new(
-            Arc::new(workflow::registry::AppDbWorkflowStore::new(app_db.clone())),
+            Arc::new(workflow::registry::AppDbWorkflowRepository::new(
+                app_db.clone(),
+            )),
             data_dir.clone(),
         )),
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
@@ -225,22 +262,25 @@ pub(crate) fn finish_app_state(
         desktop_job_host,
         // 组织作用域在**启动期**确定一次：桌面是单租户，组织的值是安装级常量，
         // 与「当前 OS 用户名能不能取到」无关。请求期直接取这份值（INV-01）。
+        //
+        // scope-gate: desktop-composition-root
+        // 这是**桌面形态自己的作用域来源**：宿主组装期在这里回答「本形态是哪个组织」。
+        // 请求期的调用方一律走 `AppState::organization_scope()`，不得再直读常量。
+        // 别的形态（多租户服务端）把这一行换成「按请求解析组织」即可，其余调用点不用动。
         organization_scope: crate::platform::local_organization_scope(),
         schema_diff_reviewed_plans,
         // Data Sync 的存储端口实例在组装期创建一次：宿主决定「实例从哪来」，
         // 规则与落盘实现留在共享包里。
-        sync_stores: crate::commands::SyncStorePorts::desktop(),
+        sync_stores: crate::commands::SyncRepositoryPorts::desktop(),
         // Data Transfer 的计划/检查点存储：宿主在组装期创建一个实例并注入。
         // 包内不再有进程级全局，存储的生命周期到这里为止。
         transfer_plans: Arc::new(
-            crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+            crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
         ),
+        // 隧道定义与 SSH known-hosts 的存储端口实例（同一个实例也注给了会话后端）。
+        tunnels,
+        known_hosts,
     };
-    if let Ok(adapter) = state.platform.require() {
-        if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {
-            tracing::error!(code = ?error.code, "desktop platform injection failed");
-        }
-    }
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state
 }

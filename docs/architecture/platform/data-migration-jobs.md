@@ -1,6 +1,6 @@
 # 迁移三件套与 JobRuntime 平台化详细设计
 
-> 状态：P5 桌面 JobRuntime 与数据迁移三件套已完成（2026-10-09）。Schema Diff、Data Sync、Data Transfer 的 prepare/apply 均接入共享持久化 Job host；三件套独立测试与冒烟测试通过。本文区分当前桌面实现与后续目标设计，不代表 P7 server、完整服务端 ArtifactStore 或跨进程自动续跑已实现。
+> 状态：P5 桌面 JobRuntime 与数据迁移三件套已完成（2026-10-09）。Schema Diff、Data Sync、Data Transfer 的 prepare/apply 均接入共享持久化 Job host；三件套独立测试与冒烟测试通过。本文区分当前桌面实现与后续目标设计，不代表 P7 server、完整服务端 ArtifactRepository 或跨进程自动续跑已实现。
 > **当前桌面实现**：`packages/runtime/src/job/` 提供 `JobHost` 与 JobRuntime 仓储；`src-tauri/src/store/app_db.rs` 在既有 `{appData}/datazen.sqlite` 上执行事务化 v2 迁移，保留 workflows 并建立 job、receipt、stage、boundary、checkpoint、result、artifact reference 表。`AppState` 经 bootstrap 注入该 host。三套领域 handler 经 durable accept 与幂等回执后由后台 dispatch 执行。应用重启后，旧 Running 转为待核验，未派发 Queued 标为 `notExecuted`；不会重放旧 worker 或 handler。
 > 本文按用户要求补齐平台演进设计。连接、错误与 CM 用例以 [连接管理](connection-management.md) 为权威，阶段门槛以 [开发计划](../../development/platform-development-plan.md) 为权威；持久化字段以 [持久化模型](persistence-model.md) 为权威。
 
@@ -28,7 +28,7 @@ Runtime 承担接受/认领、预算、资源申请、子 execution、事件、�
 
 准备操作以 `schemaDiffPrepare` / `dataSyncPrepare` / `dataTransferPrepare` Job 执行。准备完成后 Job 终结、资源释放，输出私有计划 Artifact 与审阅数据。审阅不占用物理连接、快照、worker claim 或预算。
 
-只有 complete 且摘要一致的私有计划 Artifact 可应用；接受时检查其组织、owner/ACL、有效期与选择版本。Job 接受后为其引用建立保留，计划及输入 Artifact 在 Job 终结和恢复保留窗口结束前不受普通 TTL 清理；ArtifactStore/仓储 adapter 以引用检查和删除 CAS 实现，不能只延长客户端缓存。
+只有 complete 且摘要一致的私有计划 Artifact 可应用；接受时检查其组织、owner/ACL、有效期与选择版本。Job 接受后为其引用建立保留，计划及输入 Artifact 在 Job 终结和恢复保留窗口结束前不受普通 TTL 清理；ArtifactRepository/仓储 adapter 以引用检查和删除 CAS 实现，不能只延长客户端缓存。
 
 上述计划 Artifact 保留协议仍是目标设计。当前桌面三套引擎的完整计划正文与部分审阅态仍由进程内计划存储管理；AppDb 持久化 Job 允许的 plan projection 和 Artifact ID 引用，不保存完整 Artifact 字节，也未实现服务端引用保留锁。因此应用重启后旧计划不能再次 apply，必须重新 prepare/compare；不能把 Job Artifact reference TTL 理解为计划字节的可用期。该边界不影响当前进程内的 durable Job 接受、后台执行、窗口重附着和提交结果持久化。
 
@@ -93,11 +93,41 @@ JobState 与 effectOutcome 按 [连接 §10.1.1](connection-management.md#1011-p
 
 启动扫描把旧 Running 终结为 Failed/Unknown，并写入 `pendingVerification`；旧 Queued 以 `notExecuted` / `notDispatchedAfterRestart` 终结为 Failed/NotStarted。后者只是 durable admission 未进入 dispatch 的事实，不是 handler 核验结果；显式 `verify_recovery` 仅接受 PendingVerification，NotExecuted 不能通过 verifier 变成可续跑状态。恢复 verifier 是异步、只读职责，由调用方用新授权的资源提供；host 不自动获取旧 session/lease，也不自动 dispatch。
 
+### 2.4.1 三条链的后台 Job 用的是哪套身份
+
+Schema Diff / Data Sync / Data Transfer 的 prepare/apply 是**后台任务**：它们不接受 IPC
+请求上下文，而是在**受理时**自造一个 `RequestContext`。这三处自造上下文的取值必须逐项
+说清，否则「任务互相看不见」会被当成偶发故障：
+
+| 链 | 受理入口 | 组织 | 主体 | 客户端实例 |
+| --- | --- | --- | --- | --- |
+| Schema Diff | `commands/schema_diff/job.rs::job_ctx()` | 规范常量 `LOCAL_ORGANIZATION_ID` | 字面量 `"datazen-local-user"` | 字面量 `"datazen-local-client"` |
+| Data Transfer | `commands/data_transfer/job_api/runtime.rs::request_context()` | 规范常量 `LOCAL_ORGANIZATION_ID` | 字面量 `"datazen-local-user"` | 字面量 `"datazen-local-client"` |
+| Data Sync | `commands/sync/jobs.rs::durable_context()` | 规范常量 `LOCAL_ORGANIZATION_ID` | 字面量 `"datazen-local-user"` | 字面量 `"datazen-local-client"` |
+| 启动期恢复扫描（第 2 段，不限 kind） | `bootstrap/app_state.rs::recover_desktop_jobs_at_startup()` | 规范常量 `LOCAL_ORGANIZATION_ID` | 字面量 `"datazen-local-user"` | 字面量 `"datazen-local-client"` |
+
+- **组织轴已统一**（2026-10 的一轮修复）：四处此前把组织写死成另一个字面量
+  `"datazen-local"`，与规范值 `"datazen-desktop-local"` 不是同一个字符串 ⇒ 同一列上落着
+  两套组织。现在四处同取 `LOCAL_ORGANIZATION_ID`，已落库的旧行由 `AppDb` 的 **v5 迁移**
+  并回规范值（见[持久化模型 §4.1](persistence-model.md#41-桌面本地持久化现状已实现)）。
+  四处**必须同波一起改**：恢复扫描第 2 段不限 kind，它与三条链的落库组织不一致时，
+  那条链的任务崩溃后就不再被标记待核验。
+- **主体轴仍分裂**：IPC 上下文的主体是 OS 用户名（`platform/identity.rs::local_principal()`），
+  三条链的主体是字面量。落库行按**受理方**的主体存，列举按 `ctx.organization_id` **且**
+  `ctx.principal_id` 过滤（`store/app_db/jobs/access.rs`）⇒ 用 IPC ctx 建的通用任务中心
+  **看不到**这三条链的任务。统一主体是**行为变更**（这批行会突然出现在通用列表里），
+  **单独排期**，不夹带在统一组织这一波。
+- **客户端实例轴不动**：它从不参与列举 / 读取过滤（过滤键只有组织 + 主体），只在认领
+  栅栏上自比自（`store/app_db/jobs/owner.rs` 的 `j.claim_client_instance_id=?8`）；
+  字面量版「跨启动恒定」对后台任务本来就是合理语义。
+
+三根轴的完整口径与防回归闸门见[共享边界 §5.3](shared-boundaries-and-ports.md#53-桌面形态的身份三根轴组织--主体--客户端实例)。
+
 ### 2.5 Restore Apply Job（已接线，驱动执行失败关闭）
 
 `databaseRestoreApply` 已加入 `runtime::job::APPLY_KINDS`：必须携带由 host 生成的 `consumedPlanId`，受理时由现有 durable receipt/plan-consumption 事务保证单次消费。冻结 `RestorePlan` 仅含完整逻辑 target、配置 revision、输入 Artifact ID/字节数/SHA-256 和恢复选项；不含本地路径、SQL 正文、凭据或运行时 session/lease。桌面 SQLite admission 对此 kind 使用独立 typed projection，重新编码并核对完整 payload，拒绝额外/未知嵌套字段，校验 ID、摘要和有界命名空间，并将 consumedPlanId/selectionRevision 分别绑定 planId/configRevision；继续受全局 durable plan 大小限制。
 
-桌面 `restore_sql_file` 保留原 IPC 参数与 boolean 成功/取消返回；已受理失败返回结构化 `restoreOutcome` 错误（JobDetails、实际 state/effectOutcome、unsupported 与 `automaticRetryAllowed:false`）。native picker（或既有 webdriver gated override）选中的文件先复制至私有 staging，再以 owner/组织绑定写入 ArtifactStore；上传失败 abort，完整上传才 finalize 与受理 Job。恢复阶段按 RequestContext 再读取 complete Artifact，逐块重查 ACL/TTL，核对 ArtifactMetadata 的不可变目标指纹（连接、命名空间、对象）与冻结 plan.target 一致，再核对长度和 SHA-256，然后要求 `RestoreGateway` 重验 target/revision/能力并提交。Job 通过既有 TargetWriter endpoint 预算派发；输入摘要验证不是数据库写入。
+桌面 `restore_sql_file` 保留原 IPC 参数与 boolean 成功/取消返回；已受理失败返回结构化 `restoreOutcome` 错误（JobDetails、实际 state/effectOutcome、unsupported 与 `automaticRetryAllowed:false`）。native picker（或既有 webdriver gated override）选中的文件先复制至私有 staging，再以 owner/组织绑定写入 ArtifactRepository；上传失败 abort，完整上传才 finalize 与受理 Job。恢复阶段按 RequestContext 再读取 complete Artifact，逐块重查 ACL/TTL，核对 ArtifactMetadata 的不可变目标指纹（连接、命名空间、对象）与冻结 plan.target 一致，再核对长度和 SHA-256，然后要求 `RestoreGateway` 重验 target/revision/能力并提交。Job 通过既有 TargetWriter endpoint 预算派发；输入摘要验证不是数据库写入。
 
 `RestoreApplyJob` 与只读 `FileArtifactJob` 分离。Gateway 必须返回实际执行 ID、提交边界及独立的终态/效果证据；取消不能推断 rolledBack，Unknown 保留 Unknown。恢复 verifier 一律要求人工/驱动核验，不自动重放。安全 domain result 保存稳定 `restoreUnsupported` / `restoreNotAuthorized` / `restoreInvalidInput` 及提交前失败的 `restoreRuntimeUnavailable` / `restoreAdmissionRejected` / `restoreTargetMismatch` / `restoreNotSubmitted` 代码；NotStarted 取消统一为 `restoreCancelledBeforeSubmission`，不伪装输入无效或已经执行；get/cancel file Job 接口可读取/取消恢复 Job，恢复输入不会被当成导出结果。
 
@@ -107,11 +137,11 @@ JobState 与 effectOutcome 按 [连接 §10.1.1](connection-management.md#1011-p
 
 每次成功的非事务语句记录真实执行 ID、目标/载荷摘要和提交边界；单事务只在确认 COMMIT 后记录一个边界。失败立即停止；已提交边界保留，传输/提交/回滚不确定为 Unknown。取消独立于效果，回滚使用独立清理令牌，只有成功的自有 ROLLBACK 才报告 RolledBack。旧 path helper 只在 Host 测试编译，不是生产回退。
 
-PostgreSQL 的 `packages/drivers/postgres/tests/restore_apply_job.rs` 通过安全 live launcher 的 `--test restore_apply_job` 运行。该旅程使用真实 disposable migration fixture、私有 ArtifactStore、JobRuntime 的 TargetWriter 预算与单次 plan 消费，复用桌面委托的 `feature-core::restore_gateway::RuntimeRestoreGateway`，由 Runtime Session / ExecutionGateway 调用真正 PostgreSQL ResourceProvider；断言 COMMIT 执行 ID/摘要边界及独立连接读回两行，并验证 COPY、客户端指令、输入摘要/目标替换和配置 revision 失效在写入前失败；事务内建表后写不存在 relation 的 SQL 失败证明自有 ROLLBACK、无残表和 provider close 完成。测试宿主的 Profile/Policy/SessionBackend 是驱动测试接缝；不覆盖桌面 picker、Store、DesktopSessionBackend 的接线，MySQL 的独立旅程见下文。共享 orchestrator 的授权端口在桌面仍重查 Store 的 enabled/revision/readOnly/safeMode 与目标授权。
+PostgreSQL 的 `packages/drivers/postgres/tests/restore_apply_job.rs` 通过安全 live launcher 的 `--test restore_apply_job` 运行。该旅程使用真实 disposable migration fixture、私有 ArtifactRepository、JobRuntime 的 TargetWriter 预算与单次 plan 消费，复用桌面委托的 `feature-core::restore_gateway::RuntimeRestoreGateway`，由 Runtime Session / ExecutionGateway 调用真正 PostgreSQL ResourceProvider；断言 COMMIT 执行 ID/摘要边界及独立连接读回两行，并验证 COPY、客户端指令、输入摘要/目标替换和配置 revision 失效在写入前失败；事务内建表后写不存在 relation 的 SQL 失败证明自有 ROLLBACK、无残表和 provider close 完成。测试宿主的 Profile/Policy/SessionBackend 是驱动测试接缝；不覆盖桌面 picker、Store、DesktopSessionBackend 的接线，MySQL 的独立旅程见下文。共享 orchestrator 的授权端口在桌面仍重查 Store 的 enabled/revision/readOnly/safeMode 与目标授权。
 
-MySQL 的 `packages/drivers/mysql/tests/restore_apply_job.rs` 使用同一安全 launcher、disposable migration gate、私有 ArtifactStore、JobRuntime 与生产 `RuntimeRestoreGateway`，通过 Runtime Session / ExecutionGateway 调用 factory 注册的真实 MysqlResourceProvider。`IMPLICIT_COMMIT` 配合 `single_transaction=false`：成功 CREATE/INSERT 逐句记录执行 ID、目标和语句摘要边界，独立连接读回两行；LOAD DATA、SOURCE、输入摘要不符、冻结目标替换及配置 revision 失效均在资源获取/写入前拒绝，NotStarted、attempted=0，且无表、无执行 ID；各拒绝路径均断言 Runtime resource open 计数不变。另一脚本先建表，再向不存在的表 INSERT，失败立即停止；独立连接证明 DDL 表仍存在、后续 CREATE 未运行，再清理残表。驱动 SQL 错误当前不提供本语句的确定效果证据，因此总体效果保守为 Unknown，同时保留已确认的 CREATE 提交边界及 committed=1，不能宣称跨 DDL/DML 原子性、RolledBack 或确定的 PartiallyApplied。测试宿主替代 Profile/Policy/SessionBackend 接线，不覆盖桌面 picker、Store 与 DesktopSessionBackend。
+MySQL 的 `packages/drivers/mysql/tests/restore_apply_job.rs` 使用同一安全 launcher、disposable migration gate、私有 ArtifactRepository、JobRuntime 与生产 `RuntimeRestoreGateway`，通过 Runtime Session / ExecutionGateway 调用 factory 注册的真实 MysqlResourceProvider。`IMPLICIT_COMMIT` 配合 `single_transaction=false`：成功 CREATE/INSERT 逐句记录执行 ID、目标和语句摘要边界，独立连接读回两行；LOAD DATA、SOURCE、输入摘要不符、冻结目标替换及配置 revision 失效均在资源获取/写入前拒绝，NotStarted、attempted=0，且无表、无执行 ID；各拒绝路径均断言 Runtime resource open 计数不变。另一脚本先建表，再向不存在的表 INSERT，失败立即停止；独立连接证明 DDL 表仍存在、后续 CREATE 未运行，再清理残表。驱动 SQL 错误当前不提供本语句的确定效果证据，因此总体效果保守为 Unknown，同时保留已确认的 CREATE 提交边界及 committed=1，不能宣称跨 DDL/DML 原子性、RolledBack 或确定的 PartiallyApplied。测试宿主替代 Profile/Policy/SessionBackend 接线，不覆盖桌面 picker、Store 与 DesktopSessionBackend。
 
-桌面边界另由 `commands::restore_job::tests` 的 Host 组合旅程核验：原生 picker 之后的生产 `upload_native_input` 将文件复制到私有 staging、分块上传并冻结 owner/组织、target fingerprint、字节数和摘要；源文件随后改写不会改变已上传输入，其他 owner/组织不能读取。旅程使用真实 Store、`PlatformAdapter::inject`、FileArtifactStore、SQLite JobRepository、JobHost 与 DesktopRestoreGateway，通过实际 DesktopSessionBackend 派发 probe 和 SQL，并检查执行 ID/提交边界、完成状态及重开仓储后的单次 plan 消费；数据库 provider 是专用于宿主接线的 synthetic fixture，不替代驱动 live SQL 证据。空输入及 Store revision/read-only/safe-mode 拒绝也有针对性回归。原生 OS picker、Tauri 事件交付与实际数据库效果仍分别属于 UI/驱动验收范围；该组合旅程不宣称覆盖这些边界。
+桌面边界另由 `commands::restore_job::tests` 的 Host 组合旅程核验：原生 picker 之后的生产 `upload_native_input` 将文件复制到私有 staging、分块上传并冻结 owner/组织、target fingerprint、字节数和摘要；源文件随后改写不会改变已上传输入，其他 owner/组织不能读取。旅程使用真实 Store、`PlatformAdapter::inject`、FileArtifactRepository、SQLite JobRepository、JobHost 与 DesktopRestoreGateway，通过实际 DesktopSessionBackend 派发 probe 和 SQL，并检查执行 ID/提交边界、完成状态及重开仓储后的单次 plan 消费；数据库 provider 是专用于宿主接线的 synthetic fixture，不替代驱动 live SQL 证据。空输入及 Store revision/read-only/safe-mode 拒绝也有针对性回归。原生 OS picker、Tauri 事件交付与实际数据库效果仍分别属于 UI/驱动验收范围；该组合旅程不宣称覆盖这些边界。
 
 ## 3. 多端预算、重叠与授权
 
@@ -216,7 +246,7 @@ ChangeSet 大数据以不可变块落 Artifact，块记录 relation identity、t
 
 ### 6.4 SQL 文件
 
-输出 writer 经 ArtifactStore 接受，方言 renderer 不建目标连接；文件选择返回的本地 token 只留 adapter 内存。准备冻结输出编码、压缩与限定名。产物使用冻结的输出规格，实际字节摘要由 writer 终结时计算；预览 SQL 不充当完整数据文件摘要，成功 finalize 才可按 complete 导出；取消/磁盘不足记 truncated，保留标记并由用户明确选择是否下载，不伪称可完整恢复。
+输出 writer 经 ArtifactRepository 接受，方言 renderer 不建目标连接；文件选择返回的本地 token 只留 adapter 内存。准备冻结输出编码、压缩与限定名。产物使用冻结的输出规格，实际字节摘要由 writer 终结时计算；预览 SQL 不充当完整数据文件摘要，成功 finalize 才可按 complete 导出；取消/磁盘不足记 truncated，保留标记并由用户明确选择是否下载，不伪称可完整恢复。
 
 Web 只能上传/下载授权 Artifact，不接收服务器路径；桌面导出走 PlatformServices 受控保存。Artifact 写入不绕过配额，文件句柄和密码不落检查点。
 

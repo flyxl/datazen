@@ -49,7 +49,7 @@ impl ExportSource for DesktopExportSource {
     }
 }
 struct ExportOperation {
-    store: Arc<crate::store::Store>,
+    store: Arc<crate::store::DesktopRepository>,
     registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
     platform: crate::platform::PlatformEntry,
     request: ExportTablesRequest,

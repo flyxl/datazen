@@ -31,8 +31,8 @@ impl WorkflowScheduleHost for DesktopScheduleHost {
         &self,
     ) -> Result<Vec<datazen_feature_core::workflow::model::WorkflowDefinition>, String> {
         let state = self.0.state::<crate::commands::AppState>();
-        // 调度器跑的是桌面自己那一个组织的数据。
-        let scope = crate::platform::local_organization_scope();
+        // 组织作用域取宿主解析的那一份（调度器不在请求周期内，但宿主状态在手）。
+        let scope = state.organization_scope().map_err(|e| e.to_string())?;
         state.workflow_registry.ensure_loaded(&scope).await?;
         Ok(state.workflow_registry.list_definitions(&scope).await)
     }

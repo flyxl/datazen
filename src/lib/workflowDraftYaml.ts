@@ -1,5 +1,5 @@
 import type { WorkflowStepType } from '../types';
-import type { WorkflowDraft, WorkflowStepDraft } from '../windows/workflow/WorkflowForm';
+import type { WorkflowDraft } from '../windows/workflow/WorkflowForm';
 
 export function draftToYamlObject(d: WorkflowDraft): Record<string, unknown> {
   return {
@@ -13,17 +13,6 @@ export function draftToYamlObject(d: WorkflowDraft): Record<string, unknown> {
       required: v.required,
     })),
     steps: d.steps.map((s) => {
-      if (s.type === 'migration') {
-        return {
-          type: s.type,
-          id: s.id,
-          operation: s.operation ?? 'dataSync',
-          profileId: s.profileId ?? '',
-          profileRevision: s.profileRevision,
-          destructivePolicy: s.destructivePolicy ?? 'reject',
-          sqlFileTokenVariable: s.sqlFileTokenVariable,
-        };
-      }
       if (s.type === 'command') {
         const input: Record<string, unknown> = { ...(s.input ?? {}) };
         if (s.database) input.database = s.database;
@@ -81,19 +70,6 @@ export function yamlObjectToDraft(obj: Record<string, unknown>): WorkflowDraft {
           input,
           connection: s.connection != null ? String(s.connection) : undefined,
           database,
-          operation:
-            s.type === 'migration'
-              ? (String(s.operation ?? 'dataSync') as WorkflowStepDraft['operation'])
-              : undefined,
-          profileId: s.type === 'migration' ? String(s.profileId ?? '') : undefined,
-          profileRevision:
-            s.type === 'migration' ? String(s.profileRevision ?? '') || undefined : undefined,
-          destructivePolicy:
-            s.type === 'migration'
-              ? (String(s.destructivePolicy ?? 'reject') as WorkflowStepDraft['destructivePolicy'])
-              : undefined,
-          sqlFileTokenVariable:
-            s.type === 'migration' ? String(s.sqlFileTokenVariable ?? '') || undefined : undefined,
         };
       })
     : [];

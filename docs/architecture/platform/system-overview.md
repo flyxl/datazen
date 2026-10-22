@@ -31,7 +31,7 @@
 | [Driver API](../../../packages/driver-api/src/traits.rs) | 提供 DatabaseDriver、Command、迁移等能力 | 增加固定执行资源契约、可选能力接口 |
 | [Factory](../../../packages/driver-api/src/factory.rs) | inventory 编译期注册 | 桌面与 server 使用同一注册入口 |
 | [前端 Command SDK](../../../packages/driver-sdk/src/ipc/driverCommands.ts) | 直接导入 Tauri invoke/Channel | 注入传输无关 BackendClient |
-| [Workflow Command runtime](../../../src-tauri/src/workflow/command_runtime.rs) | 解析 connectionId，传递目标 database/schema | 明确 step/session/transaction 三种资源范围 |
+| [Workflow Command runtime](../../../packages/feature-core/src/workflow/command_runtime.rs) | 解析 connectionId，传递目标 database/schema | 明确 step/session/transaction 三种资源范围 |
 | [dedicatedDbSession](../../../src/lib/dedicatedDbSession.ts) | 三件套准备会话由前端创建、释放 | 执行资源由后端 Job 持有 |
 
 Driver 公共类型继续遵守[驱动依赖边界](../../development/driver-api-dependency-boundary.md)。基线 `packages/driver-api/src/lib.rs` 的 `PROTOCOL_VERSION` 为 6、最低版本为 1；实现时重新核对，不能从旧架构说明复制版本数字。
@@ -52,7 +52,7 @@ flowchart TD
     Resources --> Drivers[Driver API / Registry]
     Drivers --> DB[目标数据库]
     App --> Repos[配置 / 权限 / 任务 repositories]
-    Runtime --> Artifacts[结果与文件 ArtifactStore]
+    Runtime --> Artifacts[结果与文件 ArtifactRepository]
 ```
 
 部署拆分后，API 负责入口和路由；worker 持有真实连接、事务、游标和驱动实例。SessionDirectory 记录 owner worker；JobRepository 保存任务状态。共享存储不保存可迁移的数据库连接。
@@ -85,7 +85,7 @@ flowchart TD
 | Workflow Runtime | 目标继承、step/block、DAG、重试 | run、子任务 | 不继承 GUI 当前数据库 |
 | Driver capabilities | 协议、方言、实际会话语义、能力探测 | opaque resource、CommandResult | 不 import host、不弹原生对话框 |
 | RuntimeRouter | 会话路由、能力/网络匹配、worker drain | owner worker、执行响应 | 不把旧 session 绑定到替代 worker |
-| ArtifactStore | 结果分块、上传、导出、TTL、访问授权 | artifactId、受控数据 | 不接受任意服务器绝对路径 |
+| ArtifactRepository | 结果分块、上传、导出、TTL、访问授权 | artifactId、受控数据 | 不接受任意服务器绝对路径 |
 
 ### 4.1 目标代码组织
 
@@ -100,8 +100,7 @@ packages/schema-diff/        共享 Schema Diff 领域引擎                  �
 packages/data-sync/          共享 Data Sync 领域引擎                    【已落地】
 packages/data-transfer/      共享 Data Transfer 领域引擎                【已落地】
 packages/migration-common/   迁移引擎共享的 pair/recordset 边界          【已落地】
-packages/feature-core/       共享 feature（Workflow/AI/MCP/Dashboard/导出/备份恢复）【已落地】
-packages/workspace-apps/     Wapp manifest/安装/存储内核                【已落地】
+packages/feature-core/       共享 feature（Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核）【已落地】
 packages/driver-api/         现有 Driver API 与可选能力
 packages/driver-sdk/         现有驱动前端元数据/方言/Command SDK
 packages/ai-api/             现有 AI Provider trait、工厂与调用协议
@@ -211,7 +210,7 @@ interface ArtifactChunk {
 }
 ```
 
-`credentials` 只出现在请求侧，`ProfileView` 只回 `credentialConfigured`；`driverId` 属目标身份，变更走新建配置而非 patch。`JobView` 由 JobRuntime 拥有，`ArtifactChunk` 由 ArtifactStore 拥有，二者都不承载 connectionId 以外的授权信息，授权仍以 PolicyService 判定为准。
+`credentials` 只出现在请求侧，`ProfileView` 只回 `credentialConfigured`；`driverId` 属目标身份，变更走新建配置而非 patch。`JobView` 由 JobRuntime 拥有，`ArtifactChunk` 由 ArtifactRepository 拥有，二者都不承载 connectionId 以外的授权信息，授权仍以 PolicyService 判定为准。
 
 `ContextChangeReceipt` 包含 `session: SessionView`、`replacedSessionId: string | null` 和 `attachmentToken: string | null`；替换时 token 只返回原 owner，原地切换为 null。客户端原子切换到返回 session；失效旧句柄不得继续执行。
 
@@ -256,7 +255,7 @@ interface ArtifactChunk {
 | JobRepository | create、状态 CAS、claim/renew、检查点、恢复待核验任务 |
 | SessionDirectory | 内存 register/get、owner epoch CAS、原子替换提交、invalidate；禁止落盘 |
 | SubmissionTokenIssuer | 签名、验证作用域/有效期/owner epoch；未知版本拒绝 |
-| ArtifactStore | create writer、按块读取、finalize、TTL 删除、ACL 校验 |
+| ArtifactRepository | create writer、按块读取、finalize、TTL 删除、ACL 校验 |
 | EventSink | 发布带 sequence 的事件、受控订阅；终态可从 repository 重建 |
 | NetworkProvider | 按路由策略建立直连/隧道、端点校验、共享引用 |
 | BudgetCoordinator | 申请节点额度、续期、drain；失联时停止新增资源 |
@@ -265,7 +264,7 @@ interface ArtifactChunk {
 
 `IdentityResolver` 的桌面实现**已落地**（`src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`，装配于 `PlatformAdapter::inject`）：身份键由 `(organizationId, connectionId, policyIsolationKey)` 加一把服务端固定盐（宿主主密钥经 HMAC 域分离派生的子钥）确定性派生，因此同一三元组恒得同一键、凭据轮换只推进 `credentialRevision`；委托走独立入口 `resolve_delegation`，域标签与输入集都与本人路径不同，校验不过失败关闭、不降级为调用者权限（CM-06）；**`resolve` 在委托上下文上一律拒绝**——委托身份只能由 `resolve_delegation` 产出。客户端传入的用户名、角色与 `principal` 不参与派生（CM §4.1）。
 
-Desktop adapters 使用现有 Store/keychain/file 管理能力逐步适配；Server adapters 使用服务端元数据数据库、SecretProvider 与 ArtifactStore。第一版推荐 PostgreSQL 管理组织、配置版本、任务、审计和额度，不与用户业务数据库混用。SSE 用于单向状态通知，取消走 HTTP；有双向交互需要时再引入 WebSocket。
+Desktop adapters 使用现有 Store/keychain/file 管理能力逐步适配；Server adapters 使用服务端元数据数据库、SecretProvider 与 ArtifactRepository。第一版推荐 PostgreSQL 管理组织、配置版本、任务、审计和额度，不与用户业务数据库混用。SSE 用于单向状态通知，取消走 HTTP；有双向交互需要时再引入 WebSocket。
 
 ## 7. 核心交互
 

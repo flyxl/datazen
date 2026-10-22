@@ -243,7 +243,7 @@ function addDependencyTo(snapshot, rel, table, line) {
  * @param {string} name dependency key, e.g. `tauri`
  * @param {string} table table to look in, e.g. `dependencies`
  */
-function declaredInTable(text, name, table) {
+export function declaredInTable(text, name, table) {
   const at = text.search(new RegExp(`^\\[${table}\\]$`, 'm'));
   if (at === -1) return false;
   const body = text.slice(at).split('\n').slice(1);
@@ -297,7 +297,7 @@ function runGuard(env = {}) {
  * Matching on the F-id alone would accept a run that failed for an unrelated
  * reason, so the line must also name the crate the mutation touched.
  */
-function violationMentions(stdout, rule, crateName) {
+export function violationMentions(stdout, rule, crateName) {
   // The guard prefixes every line with `[check-platform-arch]` and separates the
   // rule id from the message with two spaces, so the match anchors on the
   // `VIOLATION <F-id> ` token rather than the start of the line.
@@ -323,7 +323,7 @@ function readOrEmpty(rel) {
  * path, a manifest cargo never read — would be counted as a red guard, and the
  * suite would report "F-02 verified" for an F-02 that was never exercised.
  */
-const MUTATIONS = [
+export const MUTATIONS = [
   {
     id: 'M1',
     rule: 'F-01',
@@ -476,6 +476,65 @@ const MUTATIONS = [
       return () =>
         readOrEmpty('Cargo.toml').includes('"crates/arch-probe",') &&
         readOrEmpty('crates/arch-probe/Cargo.toml').includes('name = "arch-probe"');
+    },
+  },
+  {
+    id: 'M9',
+    rule: 'F-01',
+    title: 'a driver crate depends on a tauri* crate',
+    crate: 'datazen-driver-arch-tauri-probe',
+    apply(snapshot, scratch) {
+      // F-01's `tauri*` ban, on the **resolved** side. A stub crate named
+      // `tauri` rather than `tauri-fake`, because the rule is stated as a crate
+      // *family* and a differently-named stub would let a family-matching bug
+      // hide (same reasoning as the other stub crates here).
+      //
+      // The probe is a **new member under `packages/drivers/*`** rather than an
+      // edit to a real driver manifest: `scripts/resolve-drivers.mjs` owns the
+      // placeholder sections under `packages/drivers/*` and rewrites them
+      // during every build, so a probe that edited a real driver would be
+      // racing a generator rather than testing the guard.
+      addMemberDir(
+        snapshot,
+        'packages/drivers/zz-arch-tauri-probe',
+        'datazen-driver-arch-tauri-probe',
+        `[dependencies]\ntauri = { path = "${stubCrate('tauri', scratch)}" }\n`,
+      );
+      return () =>
+        declaredInTable(
+          readOrEmpty('packages/drivers/zz-arch-tauri-probe/Cargo.toml'),
+          'tauri',
+          'dependencies',
+        );
+    },
+  },
+  {
+    id: 'M10',
+    rule: 'F-01',
+    title: 'a driver crate declares a tauri* crate the resolve graph drops',
+    crate: 'datazen-driver-arch-dormant-probe',
+    apply(snapshot, scratch) {
+      // The other half of the same rule: a **declared but dormant** edge. The
+      // resolve graph is feature-resolved, so an optional dependency behind a
+      // feature nobody enables is not in `resolve.deps[]` at all — the shape of
+      // the redis `tauri` edge that PR #95 removed, and the reason §2.4 says
+      // F-01 covers the declaration edges as well as the closure.
+      //
+      // Without this mutation the declared-edge half of F-01 could stop
+      // working while M9 stayed green: M9 exercises the closure walk, this one
+      // exercises the manifest scan. A rule with two halves needs two proofs.
+      addMemberDir(
+        snapshot,
+        'packages/drivers/zz-arch-dormant-probe',
+        'datazen-driver-arch-dormant-probe',
+        `[dependencies]\ntauri = { path = "${stubCrate('tauri', scratch)}", optional = true }\n`,
+      );
+      return () =>
+        declaredInTable(
+          readOrEmpty('packages/drivers/zz-arch-dormant-probe/Cargo.toml'),
+          'tauri',
+          'dependencies',
+        );
     },
   },
 ];

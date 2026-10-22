@@ -7,7 +7,25 @@ import { redisCommandInvoke } from '../shared/redisInvoke';
 import { useRedisGate } from '../shared/useRedisGate';
 
 export interface PubSubPanelProps {
+  /**
+   * Runtime session id — every command this panel issues (`pubsub_subscribe`,
+   * `pubsub_unsubscribe`, `pubsub_publish`) is an operation on an already
+   * established session, so they are addressed by `dbSessionId`.
+   */
   dbSessionId: string;
+  /**
+   * Persisted connection config id (the host's `connectionId`).
+   *
+   * The `redis-pubsub-message` payload attributes a message to a **connection**,
+   * not to a session: the backend puts the persisted connection config id in
+   * `connectionId`. This panel therefore filters incoming events on this id.
+   * Filtering on a session id instead would compare against a field the
+   * payload never carries, and every message would be dropped.
+   *
+   * Absent ⇒ the panel has no connection to attribute messages to and shows
+   * none; it never falls back to showing another connection's messages.
+   */
+  connectionId?: string;
 }
 
 interface PubSubMessage {
@@ -24,8 +42,15 @@ interface ActiveSubscription {
   patterns: string[];
 }
 
+/**
+ * The `redis-pubsub-message` payload.
+ *
+ * `connectionId` is the persisted connection config id — the backend's
+ * `RedisPubSubMessageEvent.connection_id`, which carries the *persisted*
+ * connection config id rather than the driver's internal runtime handle.
+ */
 interface PubSubMessageEvent {
-  dbSessionId: string;
+  connectionId: string;
   subscriptionId: string;
   channel: string;
   payload: string;
@@ -45,7 +70,7 @@ function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString();
 }
 
-export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
+export function PubSubPanel({ dbSessionId, connectionId }: PubSubPanelProps) {
   const { t } = useI18n();
   const { gateWrite, gateDialog } = useRedisGate();
   const [channelsInput, setChannelsInput] = useState('');
@@ -80,7 +105,9 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
       try {
         unlisten = await listen<PubSubMessageEvent>('redis-pubsub-message', (event) => {
           const payload = event.payload;
-          if (payload.dbSessionId !== dbSessionId) return;
+          // Attribution is by connection: the payload names the persisted
+          // connection config id it was produced for.
+          if (payload.connectionId !== connectionId) return;
           messageSeq.current += 1;
           setMessages((prev) => {
             const next = [
@@ -106,7 +133,7 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
       cancelled = true;
       unlisten?.();
     };
-  }, [dbSessionId]);
+  }, [connectionId]);
 
   useEffect(() => {
     return () => {

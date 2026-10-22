@@ -1,7 +1,7 @@
-use super::{Store, StoreError};
+use super::{DesktopRepository, DesktopRepositoryError};
 use crate::data_transfer::TransferProfile;
 
-impl Store {
+impl DesktopRepository {
     async fn ensure_transfer_profiles_loaded(&self) {
         {
             let cache = self.cache.read().await;
@@ -32,8 +32,13 @@ impl Store {
         self.cache.read().await.transfer_profiles.clone()
     }
 
-    pub async fn save_transfer_profile(&self, profile: TransferProfile) -> Result<(), StoreError> {
-        profile.validate().map_err(StoreError::ParseError)?;
+    pub async fn save_transfer_profile(
+        &self,
+        profile: TransferProfile,
+    ) -> Result<(), DesktopRepositoryError> {
+        profile
+            .validate()
+            .map_err(DesktopRepositoryError::ParseError)?;
         self.ensure_transfer_profiles_loaded().await;
         {
             let mut cache = self.cache.write().await;
@@ -52,7 +57,7 @@ impl Store {
             .await
     }
 
-    pub async fn delete_transfer_profile(&self, id: &str) -> Result<(), StoreError> {
+    pub async fn delete_transfer_profile(&self, id: &str) -> Result<(), DesktopRepositoryError> {
         self.ensure_transfer_profiles_loaded().await;
         {
             let mut cache = self.cache.write().await;

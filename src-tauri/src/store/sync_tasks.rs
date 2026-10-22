@@ -1,7 +1,7 @@
 use super::models::SyncTask;
-use super::{Store, StoreError};
+use super::{DesktopRepository, DesktopRepositoryError};
 
-impl Store {
+impl DesktopRepository {
     async fn ensure_sync_tasks_loaded(&self) {
         {
             let cache = self.cache.read().await;
@@ -49,7 +49,7 @@ impl Store {
         cache.sync_tasks.clone()
     }
 
-    pub async fn save_sync_task(&self, task: SyncTask) -> Result<(), StoreError> {
+    pub async fn save_sync_task(&self, task: SyncTask) -> Result<(), DesktopRepositoryError> {
         self.ensure_sync_tasks_loaded().await;
         let mut task = task;
         task.normalize_legacy_state();
@@ -68,7 +68,7 @@ impl Store {
         self.save_json_file("sync_tasks.json", &snapshot).await
     }
 
-    pub async fn delete_sync_task(&self, id: &str) -> Result<(), StoreError> {
+    pub async fn delete_sync_task(&self, id: &str) -> Result<(), DesktopRepositoryError> {
         self.ensure_sync_tasks_loaded().await;
         {
             let mut cache = self.cache.write().await;

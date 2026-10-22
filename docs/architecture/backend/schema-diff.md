@@ -40,7 +40,7 @@ Host 不直接拼接 PostgreSQL/MySQL/SQLite 的 DDL。方言实现位于 Driver
 | `packages/schema-diff/src/plan.rs` | 能力检查、DDL 渲染、计划生成 |
 | `packages/schema-diff/src/deploy.rs` | 目标库部署及事务/部分失败结果 |
 | `packages/schema-diff/src/types.rs` | Snapshot、Diff、Plan DTO |
-| `packages/schema-diff/src/reviewed.rs` | 评审计划的**规则**（身份指纹、目标快照复核、依赖目录比对）与存储端口 `ReviewedPlanStore` |
+| `packages/schema-diff/src/reviewed.rs` | 评审计划的**规则**（身份指纹、目标快照复核、依赖目录比对）与存储端口 `ReviewedPlanRepository` |
 | `src-tauri/src/commands/schema_diff/` | Tauri IPC 与桌面 Job adapter |
 
 Host 侧 `src-tauri/src/commands/schema_diff.rs` 只是模块门面（模块声明 + re-export），
@@ -56,7 +56,7 @@ Host 侧 `src-tauri/src/commands/schema_diff.rs` 只是模块门面（模块声�
 | `src-tauri/src/commands/schema_diff/object_plan_commands.rs` | 视图 / 存储过程 / 序列 / 类型计划生成 |
 | `src-tauri/src/commands/schema_diff/deploy_commands.rs` | 迁移计划执行与取消 |
 | `src-tauri/src/commands/schema_diff/compare_commands.rs` | 单表列级差异比较 |
-| `src-tauri/src/commands/schema_diff/reviewed_store.rs` | 评审计划存储端口的桌面实现（单租户、进程内存）与组织作用域取用 |
+| `src-tauri/src/commands/schema_diff/reviewed_repository.rs` | 评审计划存储端口的桌面实现（单租户、进程内存）与组织作用域取用 |
 
 `src-tauri/src/commands/schema_diff/job.rs` 与 `unified_plan.rs` 保持各自的子树
 （桌面 Job adapter、统一计划与依赖目录复核）。
@@ -149,8 +149,8 @@ Schema Diff 的 prepare/apply 请求以 `sourceDbSessionId` / `targetDbSessionId
 
 | 位置 | 职责 |
 |---|---|
-| `packages/schema-diff/src/reviewed.rs` | **规则**：配置身份指纹、目标快照复核、依赖目录比对、计划有效期；并定义存储端口 `ReviewedPlanStore` 与随端口提供的进程内实现 `InMemoryReviewedPlanStore`（按组织分桶） |
-| `src-tauri/src/commands/schema_diff/reviewed_store.rs` | **存储实现**：桌面形态的实例，在包内进程内实现之上叠加**单租户**收窄 |
+| `packages/schema-diff/src/reviewed.rs` | **规则**：配置身份指纹、目标快照复核、依赖目录比对、计划有效期；并定义存储端口 `ReviewedPlanRepository` 与随端口提供的进程内实现 `InMemoryReviewedPlanRepository`（按组织分桶） |
+| `src-tauri/src/commands/schema_diff/reviewed_repository.rs` | **存储实现**：桌面形态的实例，在包内进程内实现之上叠加**单租户**收窄 |
 
 - **包内没有进程级全局可变状态**。计划寄居在宿主注入的实例里（`AppState.schema_diff_reviewed_plans`），不再寄居在包里的 `static` 上：多租户宿主可以按组织分桶，A 组织的计划不会被 B 组织读到、顶掉或提前消费掉。
 - **端口方法一律带 `scope: &OrganizationScope`**（`datazen_platform_api::ports::scope`）。**越组织访问按「不存在」处理**——取不到、删不掉，也**不**返回「无权限」错误，那会泄漏「存在但无权」（CM-05）。

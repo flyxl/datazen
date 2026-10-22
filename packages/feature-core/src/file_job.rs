@@ -8,7 +8,7 @@ use datazen_platform_api::{
         job::Checkpoint,
     },
     id::{ArtifactId, ExecutionId, StageId},
-    ports::artifact::{ArtifactSpec, ArtifactStore, ChunkPayload},
+    ports::artifact::{ArtifactRepository, ArtifactSpec, ChunkPayload},
 };
 use datazen_runtime::job::{
     CancelToken, FrozenPlan, JobError, JobHandler, RecoveryVerdict, StageOutcome, StageSpec,
@@ -32,7 +32,7 @@ pub trait FileJobOperation: Send + Sync {
 pub struct FileArtifactJob {
     kind: String,
     context: RequestContext,
-    artifacts: Arc<dyn ArtifactStore>,
+    artifacts: Arc<dyn ArtifactRepository>,
     operation: Arc<dyn FileJobOperation>,
     output: Mutex<Option<(ArtifactId, u64)>>,
 }
@@ -40,7 +40,7 @@ impl FileArtifactJob {
     pub fn new(
         kind: &str,
         context: RequestContext,
-        artifacts: Arc<dyn ArtifactStore>,
+        artifacts: Arc<dyn ArtifactRepository>,
         operation: Arc<dyn FileJobOperation>,
     ) -> Self {
         Self {
@@ -181,7 +181,7 @@ mod tests {
         dto::artifact::ArtifactLifecycle,
         id::{ClientInstanceId, Counter, OrganizationId, PrincipalId, RequestId},
     };
-    use datazen_runtime::artifact::FileArtifactStore;
+    use datazen_runtime::artifact::FileArtifactRepository;
     struct Output {
         path: PathBuf,
     }
@@ -218,7 +218,7 @@ mod tests {
         tokio::fs::write(&path, b"id,name\n1,alice\n")
             .await
             .unwrap();
-        let store = Arc::new(FileArtifactStore::open(dir.path().join("artifacts")).unwrap());
+        let store = Arc::new(FileArtifactRepository::open(dir.path().join("artifacts")).unwrap());
         let job = FileArtifactJob::new(
             "tableExport",
             context("alice"),
@@ -251,7 +251,7 @@ mod tests {
     #[tokio::test]
     async fn cancel_before_dispatch_does_not_open_or_publish_source() {
         let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(FileArtifactStore::open(dir.path().join("artifacts")).unwrap());
+        let store = Arc::new(FileArtifactRepository::open(dir.path().join("artifacts")).unwrap());
         let job = FileArtifactJob::new(
             "tableExport",
             context("alice"),
@@ -270,7 +270,7 @@ mod tests {
     #[tokio::test]
     async fn producer_failure_does_not_claim_a_complete_artifact() {
         let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(FileArtifactStore::open(dir.path().join("artifacts")).unwrap());
+        let store = Arc::new(FileArtifactRepository::open(dir.path().join("artifacts")).unwrap());
         let job = FileArtifactJob::new(
             "tableExport",
             context("alice"),

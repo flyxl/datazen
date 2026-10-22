@@ -62,7 +62,7 @@ pub struct DurableExecutionRecord {
     /// 逐语句结果来源。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub statement_sources: Vec<StatementResultSource>,
-    /// 产物 id 列表（产物字节在 ArtifactStore 里，记录只留引用）。
+    /// 产物 id 列表（产物字节在 ArtifactRepository 里，记录只留引用）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub artifact_ids: Vec<ArtifactId>,
     /// 结果完整性。

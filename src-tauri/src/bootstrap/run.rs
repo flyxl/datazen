@@ -11,7 +11,7 @@ use tauri::Emitter;
 use tauri::Manager;
 
 use crate::commands::AppState;
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use crate::{driver_init, mcp, theme, tray, wapps};
 
 #[cfg(target_os = "macos")]
@@ -39,13 +39,17 @@ pub fn run_mcp_stdio() {
         .expect("Failed to create tokio runtime");
 
     rt.block_on(async {
-        let data_dir = Store::default_app_data_dir().expect("Cannot determine data dir");
+        let data_dir =
+            DesktopRepository::default_app_data_dir().expect("Cannot determine data dir");
         if let Err(e) = mcp::auth::verify_stdio_token(&data_dir) {
             tracing::error!("{e}");
             std::process::exit(1);
         }
+        // Backend selection is a **startup-time fact**: `DATAZEN_KEYRING` is read
+        // exactly once, here, and the resolved backend is passed down explicitly.
+        let key_backend = crate::store::key_backend::resolve_key_backend();
         let store = Arc::new(
-            Store::init_with_path(&data_dir)
+            DesktopRepository::init_with_path(&data_dir, key_backend)
                 .await
                 .expect("Failed to init store"),
         );
@@ -127,6 +131,14 @@ pub fn run() {
             tracing::info!("[startup] setup begin (builder took {:?})", builder_elapsed);
 
             let handle = app.handle().clone();
+
+            // 形态中立的驱动事件出口：桌面形态把驱动产出的事件转成 Tauri 事件
+            // 发给前端。装在这里（启动期最前处）是因为 sink 的选择是**运行时**
+            // 决定 —— 宿主启动时才知道自己有哪些驱动事件出口可用。
+            //
+            // 时机语义与改造前一致：sink 装好之前到达的事件按驱动自己的策略
+            // 处理（Redis Pub/Sub 是静默丢弃，不缓存、不补发）。
+            crate::platform::event_sink::install_driver_event_sinks(&handle);
 
             let t0 = Instant::now();
             let prompts_dir = resolve_prompts_dir(handle.path().resource_dir().ok());

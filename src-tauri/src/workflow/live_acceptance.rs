@@ -2,11 +2,8 @@
 //! Run explicitly through run-live-contract.sh --crate datazen --lib-test
 //! workflow::live_acceptance. Missing/unreachable live prerequisites fail.
 use crate::{
-    store::Store,
-    testing::{
-        app_state::{build_app_state, sample_postgres_config},
-        FileKeyringGuard,
-    },
+    store::DesktopRepository,
+    testing::app_state::{build_app_state, sample_postgres_config},
 };
 use datazen_feature_core::workflow::executor::WorkflowExecutor;
 use datazen_feature_core::workflow::model::{StepStatus, WorkflowDefinition};
@@ -28,10 +25,9 @@ async fn cross_driver(first: &str, second: &str) {
         Ok("1"),
         "run through the strict live contract runner"
     );
-    let _keyring = FileKeyringGuard::set();
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        Store::init_with_path(temp.path())
+        DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
             .await
             .expect("temporary store"),
     );

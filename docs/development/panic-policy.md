@@ -4,7 +4,7 @@
 
 ## Rules
 
-1. **No bare `unwrap()` / `expect()` on production paths.** Propagate errors via `Result` and the existing error types (`CommandError`, `ConnectionError`, `StoreError`, etc.).
+1. **No bare `unwrap()` / `expect()` on production paths.** Propagate errors via `Result` and the existing error types (`CommandError`, `ConnectionError`, `DesktopRepositoryError`, etc.).
 2. **Tests are exempt.** `#[cfg(test)]` modules, `#[test]` functions, and test-only helpers may use `unwrap()` / `expect()` for brevity.
 3. **Intentional panic must be documented.** If a path truly cannot fail (e.g. a compile-time invariant) or recovery is impossible, use `expect("…")` with a comment explaining why panic is acceptable.
 4. **Poisoned locks are not fatal by default.** Prefer `lock().map_err(...)` and return an internal/store error. In `Fn` callbacks that cannot return `Result`, recover with `into_inner()` after logging — see `commands/export.rs`.

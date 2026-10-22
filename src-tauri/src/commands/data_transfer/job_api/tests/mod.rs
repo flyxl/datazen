@@ -28,7 +28,7 @@ use crate::data_transfer::model::{
     Endpoint, SqlFileTarget, TransferOptions, TransferRunOptions, TransferRunSelection,
 };
 use crate::data_transfer::plan_store::{
-    InMemoryTransferPlanStore, PlanIssueRequest, PlanState, TransferPlanStorePort,
+    InMemoryTransferPlanRepository, PlanIssueRequest, PlanState, TransferPlanRepositoryPort,
 };
 use crate::data_transfer::{
     TableMapping, TransferJob, TransferMode, TransferPreview, TransferRunRequest, WriteMode,
@@ -39,8 +39,8 @@ use crate::testing::app_state::TestAppState;
 /// A fresh plan registry for one test. The host injects **one** instance per
 /// process; a test must not share it with another test, or one test's plan
 /// would be claimable by the next.
-fn plan_store() -> Arc<dyn TransferPlanStorePort> {
-    Arc::new(InMemoryTransferPlanStore::new())
+fn plan_store() -> Arc<dyn TransferPlanRepositoryPort> {
+    Arc::new(InMemoryTransferPlanRepository::new())
 }
 
 /// The scope the desktop plan registry is keyed by.

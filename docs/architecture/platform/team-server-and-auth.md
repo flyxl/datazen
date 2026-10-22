@@ -98,7 +98,7 @@ flowchart TD
     G --> H["DriverRegistry（inventory 注册，随构建期驱动选型）"]
     H --> I["BudgetCoordinator（单实例）与 SessionDirectory（单进程内存）"]
     I --> J["SessionRegistry / ExecutionGateway / JobRuntime / ResourceManager"]
-    J --> K["ArtifactStore（字节存储 + 元数据）"]
+    J --> K["ArtifactRepository（字节存储 + 元数据）"]
     K --> L["PolicyService（ACL/角色/权限版本）"]
     L --> M["http::router 装配中间件链与 handler"]
     M --> N["监听 :8443，暴露 /healthz、/readyz 与 /api/v1"]
@@ -495,7 +495,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 
 **SSE 断开只解除订阅，不直接取消正在执行的 SQL。** 执行的生命周期由其自身状态机与预算/产物配额决定：
 
-- 无订阅者的执行继续按计划运行，结果写入 ArtifactStore；
+- 无订阅者的执行继续按计划运行，结果写入 ArtifactRepository；
 - 结果无人消费时按 [连接与管理 §7.7](connection-management.md#77-结果订阅与放弃消费) 的有界放弃消费政策超期取消；
 - 只有 `cancelExecution` / `POST /api/v1/executions/{id}/cancel` 才是显式取消路径。
 
@@ -584,7 +584,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 | `ProfileRepository` | PostgreSQL，按 `organization_id` 限定查询，`expectedRevision` CAS | 管理库 | 桌面现为 `src-tauri/src/store/connections.rs` 的本地库；服务端多组织隔离且无本地用户边界 |
 | `JobRepository` | PostgreSQL，claim/renew 用条件更新 + 租约 | 管理库 | 桌面 P5 三件套已由 `AppDb` SQLite 持久化 Job / receipt / checkpoint / 结果；服务端 `JobRepository` 尚未接入。桌面重启只把旧 Job 置为 NotExecuted 或 PendingVerification，不重放 handler |
 | `Audit` | 追加写表，应用角色无 UPDATE/DELETE 授权 | 管理库 | 桌面只写本地日志；服务端审计是安全资产 |
-| `ArtifactStore` | 字节存储 + 元数据表 | 对象存储/受控目录 + 管理库 | 桌面走 `src-tauri/src/commands/file.rs` 的本地路径与扩展名白名单；服务端不接受路径（见 §11） |
+| `ArtifactRepository` | 字节存储 + 元数据表 | 对象存储/受控目录 + 管理库 | 桌面走 `src-tauri/src/commands/file.rs` 的本地路径与扩展名白名单；服务端不接受路径（见 §11） |
 | `SecretProvider` | 服务端密钥管理适配 | KMS/外部密钥服务 | 桌面 `src-tauri/src/store/key_store.rs` + `platform_vault.rs` 的 OS 钥匙串路径在服务端**不适用**（无用户钥匙串） |
 | `SessionDirectory` | **单进程内存** | 内存 | 禁止落盘/快照/追加日志；多实例归 P9 |
 | `BudgetCoordinator` | **单实例**实现 | 内存 + 组织/用户/数据库额度取自管理库 | 多 worker 全局预算归 P9 |
@@ -623,7 +623,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 
 ---
 
-## 11. `ArtifactStore` 服务端实现
+## 11. `ArtifactRepository` 服务端实现
 
 ```mermaid
 flowchart LR
@@ -646,7 +646,7 @@ flowchart LR
 | TTL | `expires_at` 到期由清理任务删字节并置元数据终态；读已过期产物在端口层是 `ArtifactExpired`，到 HTTP 层**有意**统一为 404 + `NotFound`（不返回 410），理由见 [§7.1](#71-判定与映射) |
 | ACL 变更 | 组织/连接 ACL 收紧后，旧 artifact 立即不可读；不需要也不能靠「产物已生成」豁免授权 |
 | 共享语义 | 共享 SQL 文件**不授予**结果读取权；结果默认私有 |
-| 路径 | **不接受任何服务器绝对路径**；导出/下载只用 `artifactId`；备份产物由 Job 生成后进 ArtifactStore |
+| 路径 | **不接受任何服务器绝对路径**；导出/下载只用 `artifactId`；备份产物由 Job 生成后进 ArtifactRepository |
 
 受控上传（`POST /api/v1/artifacts/uploads`）的额外约束：扩展名白名单（对齐 `src-tauri/src/commands/file.rs` 的 `ALLOWED_EXTENSIONS` 口径）、组织产物配额、路径遍历防护；上传内容按不可信数据处理，不自动解压执行。
 
@@ -673,7 +673,7 @@ flowchart TD
 | 解析后校验 | 拒绝环回（除显式放行的执行节点本机）、link-local、云元数据地址、未授权私网段、节点自身管理地址 |
 | DNS rebinding | 校验通过后**固定已校验 IP**用于本次连接，连接期间不再重新解析 |
 | 重定向 | 首版禁用自动跟随；跨跳由显式二次请求触发完整校验 |
-| 隧道目标 | SSH 隧道（[`src-tauri/src/ssh_tunnel.rs`](../../../src-tauri/src/ssh_tunnel.rs) 的 `SshTunnel`）与代理隧道（`src-tauri/src/tunnel/` 的 `HttpProxyTunnel`、`WebSocketTunnel`）的最终目标走同一校验；隧道端点本身是管理员配置的 `networkRouteRef`，不接受请求体提供 |
+| 隧道目标 | SSH 隧道（[`packages/tunnel/src/ssh.rs`](../../../packages/tunnel/src/ssh.rs) 的 `SshTunnel`）与代理隧道（`packages/tunnel/src/` 的 `HttpProxyTunnel`、`WebSocketTunnel`）的最终目标走同一校验；隧道端点本身是管理员配置的 `networkRouteRef`，不接受请求体提供 |
 | `localhost` 的含义 | `localhost` 指**执行节点自身**。这是明确约定而非绕过：私网可达性通过把执行节点部署在可达网络解决，而不是靠 SSRF 洞。是否允许字面 `localhost` 由组织级 `egressPolicy.loopback` 决定，默认 `deny` |
 | 工具与证书路径 | TLS 证书、私钥、备份/dump 工具二进制路径改为**配置引用或 artifact 引用**；不接受请求体路径；规范化后必须落在允许根目录内，拒绝符号链接逃逸 |
 | 失败表达 | 一律 `ApiError.code = PermissionDenied` + 审计事件，不回显被拒地址的内部结构 |
@@ -710,7 +710,7 @@ flowchart TB
     P --> S[datazen-server 单进程]
     S --> M[(管理数据库 PostgreSQL，独立于用户业务库)]
     S --> K[SecretProvider / KMS]
-    S --> A[(ArtifactStore 字节存储)]
+    S --> A[(ArtifactRepository 字节存储)]
     S --> W[用户业务数据库（受出站策略约束）]
     X[Web 静态资源] -.同源.-> P
     Y[Wapp 静态资源] -.独立受限 origin.-> P
@@ -720,7 +720,7 @@ flowchart TB
 | --- | --- |
 | 管理数据库 | **PostgreSQL**（[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 已给结论：管理组织、配置版本、任务、审计和额度，不与用户业务数据库混用），独立实例/独立库 |
 | TLS | 进程内 rustls 或前置代理终止；**同源 HTTPS**，浏览器只看到一个 origin（Wapp 静态资源除外） |
-| rustls 初始化 | 进程级 `CryptoProvider` 选择与 `src-tauri/src/tls.rs` 同源，但 server 独立初始化（不能依赖桌面 host 的入口） |
+| rustls 初始化 | 进程级 `CryptoProvider` 选择与 `packages/tunnel/src/crypto.rs` 同源（宿主 `src-tauri/src/tls.rs` 只是再导出与宿主接线守卫），但 server 独立初始化（不能依赖桌面 host 的入口） |
 | 资源额度 | 组织/用户/数据库三级 + 控制与 cluster 资源统计，进程内会计 |
 | 客户端一致性 | 同一用例经 IPC（桌面）与 HTTP（Web）运行，断言结果与错误语义一致（CI 门禁） |
 | 不承诺 | 会话无损故障转移、跨服务器原子事务、浏览器代理数据库流量、驱动后端直迁 |
@@ -767,15 +767,15 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 由此得到三条由代码保证、而非由约定保证的事实：
 
 1. **服务端安装不需要改写内核逻辑，只需要换一个存储根目录。** 安装、校验、回滚、存储读写已全部按 `wapps_dir` 参数化，adapter 传入不同的 `wapps_dir` 即可。唯一必须由 adapter 承担的是**隔离口径**：桌面是单机单用户，服务端必须把根目录切到 `(organizationId, principalId, wappId)` 三元组之下，否则同组织内不同用户会共享 `storage:local` 数据。
-2. **「插件自定义资源 schema」在服务端没有需要翻译的对象。** manifest 中承载自定义资源的字段是 `backend`，而该字段在**安装时即被显式拒绝**（`packages/workspace-apps/src/manifest.rs`，注释 `Rule 3b: backend plugins are reserved for P2`，错误文本为「manifest.backend is not supported by this host; 需要更新版本的 DataZen」）。全仓检索 `.backend` 只命中这一处拒绝点，没有任何解释器消费它。因此 v1 不存在需要跨形态搬运的自定义资源 schema；P2 若要落地，必须**只在共享内核实现一次**，再由桌面 adapter 与服务端 adapter 分别供给运行环境，不得为服务端另写一份解释器。
-3. **真正随形态变化的是资源地址，不是 schema。** 桌面用 `datazen://` 自定义 scheme 承载 iframe 入口与静态资源，并用 `ASSET_CSP` 锁死来源（`connect-src 'none'` 等，见 `src-tauri/src/wapps/protocol.rs`）。Web 侧静态资源必须改由 HTTPS origin 提供，`WappManifest` 的 `entry` / `icon` / theme 资源路径需按目标 origin 重写。这一步是 **adapter 的职责**，必须留在 adapter：内核一旦开始感知 origin 就不再形态中立，服务端接入时即构成破坏性变更（见[共享边界 F-10](./shared-boundaries-and-ports.md)）。
+2. **「插件自定义资源 schema」在服务端没有需要翻译的对象。** manifest 中承载自定义资源的字段是 `backend`，而该字段在**安装时即被显式拒绝**（`packages/feature-core/src/workspace_apps/manifest.rs`，注释 `Rule 3b: backend plugins are reserved for P2`，错误文本为「manifest.backend is not supported by this host; 需要更新版本的 DataZen」）。全仓检索 `.backend` 只命中这一处拒绝点，没有任何解释器消费它。因此 v1 不存在需要跨形态搬运的自定义资源 schema；P2 若要落地，必须**只在共享内核实现一次**，再由桌面 adapter 与服务端 adapter 分别供给运行环境，不得为服务端另写一份解释器。
+3. **真正随形态变化的是资源地址，不是 schema。** 桌面用 `datazen://` 自定义 scheme 承载 iframe 入口与静态资源，并用 `ASSET_CSP` 锁死来源（`connect-src 'none'` 等，见 `src-tauri/src/wapps/protocol.rs`）。Web 侧静态资源必须改由 HTTPS origin 提供，`WappManifest` 的 `entry` / `icon` / theme 资源路径需按目标 origin 重写。这一步是 **adapter 的职责**，必须留在 adapter：内核一旦开始感知 origin 就不再形态中立，服务端接入时即构成破坏性变更（见[共享边界 F-12](./shared-boundaries-and-ports.md)）。
 
 另有两处进程级状态在服务端必须重新定义归属，不能沿用桌面形态：`WappManager` 当前是启动时从 `AppState` 装载的**进程全局单例**，启用态由包目录内的 `.enabled` 标记文件记录；服务端须改为按 `(organizationId, principalId)` 解析，且安装类操作先过 §5 RBAC 词表中的 `wapp` 资源 ACL（`write` verb）再落盘。
 
 由此确定 Web 端「安装插件」入口的权限口径：
 
 - 入口是否可见、是否可点是**客户端提示**，不是授权；服务端必须独立判定 `wapp` 资源上的 `write`，未授权按 §7 统一 404（INV-S3）。
-- 安装包来源仍受 §12 `NetworkProvider` 的 SSRF 约束；安装过程**不在服务端自动解压执行**，包体先落 §11 `ArtifactStore`（配额、TTL、扩展名白名单、不接受服务器绝对路径），解压与校验由内核在目标 `wapps_dir` 内完成。
+- 安装包来源仍受 §12 `NetworkProvider` 的 SSRF 约束；安装过程**不在服务端自动解压执行**，包体先落 §11 `ArtifactRepository`（配额、TTL、扩展名白名单、不接受服务器绝对路径），解压与校验由内核在目标 `wapps_dir` 内完成。
 - 卸载或撤权即刻关闭该 Wapp 的桥接订阅（§15.1 末条），并连带作废其存储根目录的读权限。
 
 ---

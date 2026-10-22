@@ -236,7 +236,7 @@ Journey 用小数据集保证 UI 路径稳定；类型与 apply 闭环见 `SYNC-
 ### 应用数据隔离（DATAZEN_DATA_DIR）
 
 `e2e/run.mjs` 启动 webdriver 应用时会注入 `DATAZEN_DATA_DIR=<repo>/e2e/.app-data`（gitignored），
-宿主 `Store::default_app_data_dir()` / `Store::init()` 优先读取该变量。**没有它，E2E 会直接读写
+宿主 `DesktopRepository::default_app_data_dir()` / `DesktopRepository::init()` 优先读取该变量。**没有它，E2E 会直接读写
 真实生产数据**（`~/Library/Application Support/com.tbeasy.datazen`），清连接类 spec 会删掉真实
 连接列表。注意：
 

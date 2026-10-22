@@ -78,7 +78,17 @@ impl DatabaseDriver for RedisDriver {
         let live = open_live_conn(&plan).await?;
 
         let mut conns = self.connections.write().await;
-        conns.insert(pool_id.clone(), RedisConn { plan, live });
+        conns.insert(
+            pool_id.clone(),
+            RedisConn {
+                plan,
+                live,
+                // 驱动自己的运行时句柄是 `redis_<uuid>`；宿主那边认的是**持久化
+                // 连接配置 id**（`ConnectionConfig.id`）。Pub/Sub 事件按后者归属，
+                // 所以在这里记下来，别让它随连接一起丢掉。
+                connection_config_id: config.id.clone(),
+            },
+        );
         drop(conns);
 
         Ok(ConnectionHandle {

@@ -1,4 +1,4 @@
-//! `ArtifactStore`：结果落盘端口。
+//! `ArtifactRepository`：结果落盘端口。
 //!
 //! 词汇表（§4.6）：`ArtifactSpec`、`ArtifactWriter`、`ChunkPayload`、`ChunkIndex`、
 //! `ByteRange`、`ExportSink`、`ExportReceipt`、`RevokeReason`。
@@ -13,7 +13,7 @@
 //!
 //! ## 已实现契约（[共享边界 §4.6](../shared-boundaries-and-ports.md#46-结果与事件端口)）
 //!
-//! 以下行为由 `datazen-runtime::artifact::FileArtifactStore` 实现，并由 runtime 的
+//! 以下行为由 `datazen-runtime::artifact::FileArtifactRepository` 实现，并由 runtime 的
 //! artifact journey 与 `p3_live_port` 测试覆盖。其他 host 可以提供自己的实现，但必须遵守同一端口契约。
 //!
 //! * 生命周期 `writing → complete | truncated`，另有 `revoked/expired` 不可读终态。
@@ -124,8 +124,9 @@ impl ByteRange {
 /// 受控导出目标。**不接受任意服务端绝对路径**。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExportSink {
-    /// 桌面：保存对话框返回的句柄。
-    DesktopDialogHandle(LeaseId),
+    /// 宿主交互句柄：由宿主自己生成并持有（桌面形态是保存对话框返回的句柄，
+    /// 浏览器形态是宿主给的下载句柄）。端口**不解析**这个句柄，只把它交还给宿主。
+    HostHandle(LeaseId),
     /// server：服务端授权的存储路径（由 host 生成，不来自请求体）。
     ServerAuthorizedPath(OrganizationId, String),
 }
@@ -152,7 +153,7 @@ pub enum RevokeReason {
 }
 
 #[async_trait]
-pub trait ArtifactStore: Send + Sync + 'static {
+pub trait ArtifactRepository: Send + Sync + 'static {
     /// create writer：返回可写 artifact 与 writer 句柄；ACL 在 create 时绑定组织/owner。
     async fn create(
         &self,
@@ -179,7 +180,7 @@ pub trait ArtifactStore: Send + Sync + 'static {
     async fn finalize(&self, writer: ArtifactWriter) -> Result<ArtifactId, PortError>;
 
     /// 显式中止：**保留已发布块**并标记 truncated，用于取消/失败/消费超限。
-    /// 正常完成走 [`ArtifactStore::finalize`]，二者不得互相顶替。
+    /// 正常完成走 [`ArtifactRepository::finalize`]，二者不得互相顶替。
     async fn abort(
         &self,
         writer: ArtifactWriter,
@@ -400,12 +401,12 @@ mod tests {
     #[test]
     fn export_sink_has_no_variant_for_an_arbitrary_server_path() {
         // 两个变体都由 host 侧产生句柄或授权路径；请求体无法直接塞进任意绝对路径。
-        let desktop = ExportSink::DesktopDialogHandle(LeaseId::new("dialog-1"));
+        let host = ExportSink::HostHandle(LeaseId::new("dialog-1"));
         let server = ExportSink::ServerAuthorizedPath(
             OrganizationId::new("org-1"),
             "/data/exports/x.parquet".into(),
         );
-        assert_ne!(desktop, server);
+        assert_ne!(host, server);
         let source = include_str!("artifact.rs");
         let sink_block = &source[source.find("pub enum ExportSink").unwrap()..];
         let sink_block = &sink_block[..sink_block.find("\n}").unwrap()];

@@ -25,7 +25,7 @@ use datazen_platform_api::ports::scope::OrganizationScope;
 /// 端口只回答一个问题：**某个组织可用的比较存储根是哪个目录**。
 /// 越组织访问一律按「**不可用**」处理——返回 `None`，而不是「无权限」错误，
 /// 以免泄漏「存在但无权」（CM-05）。
-pub trait ComparisonStoreRoot: Send + Sync {
+pub trait ComparisonStorageRoot: Send + Sync {
     /// 取该作用域下的比较存储根。
     ///
     /// 越组织访问返回 `None`；调用方据此按「**不可用**」处理（错误文案是
@@ -39,12 +39,12 @@ pub trait ComparisonStoreRoot: Send + Sync {
 /// 这是默认实现，也是形态中立的那一个：宿主把「比较结果落在哪」决定下来，
 /// 剩下的落盘语义由包内承担。
 #[derive(Debug, Clone)]
-pub struct LocalComparisonStoreRoot {
+pub struct LocalComparisonStorageRoot {
     root: PathBuf,
     organization_id: OrganizationId,
 }
 
-impl LocalComparisonStoreRoot {
+impl LocalComparisonStorageRoot {
     /// 组装一个「根目录 ↔ 单一组织」的绑定。
     pub fn new(root: impl Into<PathBuf>, organization_id: OrganizationId) -> Self {
         Self {
@@ -64,7 +64,7 @@ impl LocalComparisonStoreRoot {
     }
 }
 
-impl ComparisonStoreRoot for LocalComparisonStoreRoot {
+impl ComparisonStorageRoot for LocalComparisonStorageRoot {
     fn root_for(&self, scope: &OrganizationScope) -> Option<PathBuf> {
         if scope.organization_id() == &self.organization_id {
             Some(self.root.clone())
@@ -78,7 +78,7 @@ impl ComparisonStoreRoot for LocalComparisonStoreRoot {
 ///
 /// 路径约定留在包里（它是包内落盘语义的一部分），但**用哪个根**由宿主注入：
 /// 宿主可以指到 `{appData}` 下的目录，也可以沿用这里的临时目录。
-pub fn default_comparison_store_root() -> PathBuf {
+pub fn default_comparison_storage_root() -> PathBuf {
     std::env::temp_dir().join("datazen-sync-comparisons")
 }
 
@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn the_bound_root_is_returned_for_its_own_organization() {
-        let root = LocalComparisonStoreRoot::new(
+        let root = LocalComparisonStorageRoot::new(
             PathBuf::from("/tmp/datazen-sync-comparisons"),
             OrganizationId::new("org-a"),
         );
@@ -105,7 +105,7 @@ mod tests {
     /// CM-05：越组织访问按「不可用」处理，不返回「无权限」。
     #[test]
     fn another_organization_gets_no_root_instead_of_a_permission_error() {
-        let root = LocalComparisonStoreRoot::new(
+        let root = LocalComparisonStorageRoot::new(
             PathBuf::from("/tmp/datazen-sync-comparisons"),
             OrganizationId::new("org-a"),
         );

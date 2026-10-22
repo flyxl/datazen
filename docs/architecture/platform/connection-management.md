@@ -31,7 +31,7 @@
 | [activeConnectionStore](../../../src/stores/activeConnectionStore.ts) | connectionId 索引的连接状态 | 连接可达性与编辑器 session 状态分开 |
 | [QuerySidebarSection](../../../src/windows/connection/query/QuerySidebarSection.tsx) | SQL 推测上下文 | 仅做补全/浏览推测，实际上下文由后端更新 |
 | [dedicatedDbSession](../../../src/lib/dedicatedDbSession.ts) | 三件套窗口准备/释放 | 明确目标，执行 Lease 归 Job |
-| [workflow command_runtime](../../../src-tauri/src/workflow/command_runtime.rs) | Workflow v1 默认目标与 Command | 独立 step 经 feature-core resource execution 使用 Runtime |
+| [workflow command_runtime](../../../packages/feature-core/src/workflow/command_runtime.rs) | Workflow v1 默认目标与 Command | 独立 step 经 feature-core resource execution 使用 Runtime |
 
 桌面 Host 不再维护第二份 `ConnectionManager`、活动连接表或事务句柄表。Runtime actor 与 lease manager 是物理 session、事务句柄、idle 回收和资源预算的运行时所有者；连接配置仍由 Store 持久化，前端 `connectionId` 与 `dbSessionId` 的用途保持分离。
 
@@ -588,9 +588,9 @@ Drop 仅做同步兜底标记并把资源移交 runtime cleanup queue；异步 r
 
 ### 7.7 结果订阅与放弃消费
 
-订阅仅观察已接受执行。结束 AsyncIterable、关闭结果视图或网络断线都不自动 cancelExecution，也不立即释放固定编辑器资源。ResultSink 将数据写入有界内存/ArtifactStore，事件订阅慢不能把无界数据留在内存。每订阅事件队列最大 256 条/1 MiB，先触及任一上限即停止订阅并发 streamResetRequired（无法发送则断开）；客户端读快照，不继续积压。
+订阅仅观察已接受执行。结束 AsyncIterable、关闭结果视图或网络断线都不自动 cancelExecution，也不立即释放固定编辑器资源。ResultSink 将数据写入有界内存/ArtifactRepository，事件订阅慢不能把无界数据留在内存。每订阅事件队列最大 256 条/1 MiB，先触及任一上限即停止订阅并发 streamResetRequired（无法发送则断开）；客户端读快照，不继续积压。
 
-首版每 execution 未消费缓冲上限 8 MiB、无消费者等待 30 秒、放弃后的协议 drain deadline 10 秒，均可配置。ArtifactStore 的每 execution 字节上限必填，桌面默认 256 MiB，团队默认 1 GiB，仍受组织总产物额度限制；达到上限停止写入并按下面流程处理，不能无限 spool。订阅端收到结果截断原因，ExecutionView 记录产物完整性，不把截断产物宣称完整导出。
+首版每 execution 未消费缓冲上限 8 MiB、无消费者等待 30 秒、放弃后的协议 drain deadline 10 秒，均可配置。ArtifactRepository 的每 execution 字节上限必填，桌面默认 256 MiB，团队默认 1 GiB，仍受组织总产物额度限制；达到上限停止写入并按下面流程处理，不能无限 spool。订阅端收到结果截断原因，ExecutionView 记录产物完整性，不把截断产物宣称完整导出。
 
 处理流程：无订阅者时继续在额度内持久化 → 等待期限或产物额度耗尽后，普通查询切换到 bounded discard/drain → 能完成则保留 SQL 终态，结果标为 truncated → 不能在 drain deadline 内结束则请求精确取消 → 等协议终结、观察事务/健康 → 仍未知则关闭/隔离资源。bounded discard 按固定块读取并丢弃，不累计整个结果。流水线导出/迁移由 Job 的背压与任务策略控制，不适用普通结果放弃策略。
 
@@ -749,7 +749,7 @@ checkpoint 记录稳定键、已确认提交、源一致性证据和映射指纹
 
 ## 11. Workflow / AI / MCP / Wapp
 
-P6 保持 Workflow v1 的模型、YAML、IPC 与 step 执行语义，只将底层连接管理接到 Runtime。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。step 的显式连接/数据库目标覆盖 Workflow 默认目标；独立 step 的会话状态不泄漏到后续 step，前一步结果仍可通过模板传入下一步。跨数据库流程由各 step 选择自己的连接完成。
+P6 保持 Workflow v1 的模型、YAML、IPC 与 step 执行语义，只将底层连接管理接到 Runtime。生产路径为 `feature-core command_runtime → feature-core resource_execution → Runtime`。step 的显式连接/数据库目标覆盖 Workflow 默认目标；独立 step 的会话状态不泄漏到后续 step，前一步结果仍可通过模板传入下一步。跨数据库流程由各 step 选择自己的连接完成。
 
 P6 不引入 Workflow Job 包裹、session/transaction block、block owner 或事务计划证明。相关未来设计见 [Workflow 资源模型](workflow-resource-model.md)，不属于当前 v1 验收范围。AI/MCP/Wapp、调度授权与原生工具细节见 [消费者接入](consumer-adapters.md)。
 

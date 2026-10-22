@@ -650,35 +650,6 @@ impl WorkflowExecutor {
                     sql_executed: None,
                 })
             }
-            WorkflowStep::Migration {
-                id,
-                operation,
-                profile_id,
-                profile_revision,
-                destructive_policy,
-                sql_file_token_variable,
-                ..
-            } => {
-                let resolved_profile_id = context.resolve_template(profile_id)?;
-                let resolved_revision = profile_revision
-                    .as_deref()
-                    .map(|revision| context.resolve_template(revision))
-                    .transpose()?;
-                let result = app_state
-                    .execute_profile_step(
-                        id,
-                        *operation,
-                        &resolved_profile_id,
-                        resolved_revision.as_deref(),
-                        *destructive_policy,
-                        sql_file_token_variable.as_deref(),
-                        context,
-                    )
-                    .await?;
-                context
-                    .set_step_result(id, result.result.clone().unwrap_or(serde_json::Value::Null));
-                Ok(result)
-            }
             WorkflowStep::Condition { .. } | WorkflowStep::ForEach { .. } => {
                 unreachable!("control flow is handled by execute_steps")
             }
@@ -772,3 +743,7 @@ async fn effective_connection_name(
     let id = command_runtime::resolve_connection_id(step, workflow_connection)?;
     app_state.connection_name(id).await
 }
+
+#[cfg(test)]
+#[path = "executor_tests.rs"]
+mod tests;

@@ -1,5 +1,5 @@
 //! Shared desktop adapter for read-only commands executed through Runtime.
-use crate::{platform::PlatformEntry, store::Store};
+use crate::{platform::PlatformEntry, store::DesktopRepository};
 use datazen_driver_api::{
     check_command_access, CommandAccessLevel, CommandCatalog, ConnectionConfig, DatabaseDriver,
 };
@@ -14,14 +14,14 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(crate) struct RuntimeCommandSource {
     registry: Arc<DriverRegistry>,
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     platform: PlatformEntry,
 }
 
 impl RuntimeCommandSource {
     pub(crate) fn new(
         registry: Arc<DriverRegistry>,
-        store: Arc<Store>,
+        store: Arc<DesktopRepository>,
         platform: PlatformEntry,
     ) -> Self {
         Self {
@@ -47,22 +47,6 @@ impl RuntimeCommandSource {
             .filter(|(_, metadata)| metadata.enabled)
             .ok_or_else(|| "Connection profile unavailable".to_owned())?;
         Ok((owner.as_str().to_owned(), config, metadata.config_revision))
-    }
-
-    pub(crate) async fn read_session_command(
-        &self,
-        session_id: &str,
-        command: &str,
-        input: serde_json::Value,
-    ) -> Result<serde_json::Value, String> {
-        let (owner, _, _) = self.profile_for_session(session_id).await?;
-        let step = WorkflowCommandStep::new("runtime-read", command, Some(owner.clone()), input);
-        datazen_feature_core::workflow::resource_execution::execute(
-            self, &step, &owner, None, None, false,
-        )
-        .await
-        .map(|result| result.data)
-        .map_err(|error| error.to_string())
     }
 
     pub(crate) async fn read_target_command(

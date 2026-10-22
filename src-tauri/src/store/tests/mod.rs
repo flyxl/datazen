@@ -11,6 +11,7 @@ mod paths_tests;
 mod settings_defaults_tests;
 mod settings_extensions_tests;
 mod settings_serde_tests;
+mod tunnel_repository_tests;
 
 mod fixtures;
 

@@ -3,7 +3,7 @@
 //! ## 这是**契约**，不是实现
 //!
 //! 依赖图里 `APP → PA, DAPI`（**没有** `APP → RT`），因此 application 无法直接编排
-//! 运行时 actor、预算、ArtifactStore 这些实现。本文件固定的是：
+//! 运行时 actor、预算、ArtifactRepository 这些实现。本文件固定的是：
 //!
 //! * 方法集合与顺序语义（§7.1–§7.7）；
 //! * 身份只从 `&RequestContext` 来（INV-01，第一个参数恒定）；

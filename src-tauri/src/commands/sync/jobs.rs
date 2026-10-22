@@ -63,7 +63,7 @@ pub(crate) struct DurableAdmission {
 
 pub(crate) fn durable_context() -> RequestContext {
     RequestContext::new(
-        OrganizationId::new("datazen-local"),
+        OrganizationId::new(crate::platform::LOCAL_ORGANIZATION_ID),
         PrincipalId::new("datazen-local-user"),
         None,
         ClientInstanceId::new(LOCAL_CLIENT_INSTANCE),

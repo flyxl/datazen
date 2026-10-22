@@ -4,20 +4,26 @@ use super::super::*;
 use chrono::Utc;
 use datazen_driver_api::{ConnectionConfig, SshTunnelConfig, SslMode};
 
-pub(super) fn use_file_key_backend() {
-    std::env::set_var("DATAZEN_KEYRING", "file");
-}
-
 /// Serialize tests that mutate process env vars.
-
+///
+/// Process-wide lock: `std::env::set_var` is process-global, so every env
+/// writer **and** reader in the test binary shares one mutex (see
+/// `crate::testing::ENV_LOCK`).
 pub(super) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    crate::testing::ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
 }
 
-pub(super) async fn init_store_for_test(dir: &std::path::Path) -> Store {
-    use_file_key_backend();
-    Store::init_with_path(dir).await.unwrap()
+/// Open a store on the **file** backend.
+///
+/// The backend is passed explicitly: tests must not depend on the ambient
+/// environment (`DATAZEN_KEYRING`), and must never write it — a process-wide
+/// env write races with every other test in the binary.
+pub(super) async fn init_store_for_test(dir: &std::path::Path) -> DesktopRepository {
+    DesktopRepository::init_with_path(dir, KeyBackend::File)
+        .await
+        .unwrap()
 }
 
 pub(super) fn sample_connection_with_ssh() -> ConnectionConfig {

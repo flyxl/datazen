@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use datazen_ai_api::{AiModelProfile, AiProviderConfig, AiSettingsConfig};
 
-use super::{Store, StoreError};
+use super::{DesktopRepository, DesktopRepositoryError};
 
-impl Store {
+impl DesktopRepository {
     async fn ensure_ai_config_loaded(&self) {
         {
             let cache = self.cache.read().await;
@@ -76,7 +76,7 @@ impl Store {
     pub async fn save_ai_settings_config(
         &self,
         config: &AiSettingsConfig,
-    ) -> Result<(), StoreError> {
+    ) -> Result<(), DesktopRepositoryError> {
         let active_cfg = config.selected_profile().map(AiProviderConfig::from);
 
         {
@@ -88,7 +88,7 @@ impl Store {
         self.save_encrypted_json("ai_config.enc", config).await
     }
 
-    pub async fn set_active_profile(&self, profile_id: &str) -> Result<(), StoreError> {
+    pub async fn set_active_profile(&self, profile_id: &str) -> Result<(), DesktopRepositoryError> {
         self.ensure_ai_config_loaded().await;
         let mut settings = {
             let cache = self.cache.read().await;
@@ -98,14 +98,17 @@ impl Store {
             settings.active_profile_id = target.id.clone();
             self.save_ai_settings_config(&settings).await
         } else {
-            Err(StoreError::WriteError(format!(
+            Err(DesktopRepositoryError::WriteError(format!(
                 "Profile {} not found",
                 profile_id
             )))
         }
     }
 
-    pub async fn save_ai_config(&self, config: &AiProviderConfig) -> Result<(), StoreError> {
+    pub async fn save_ai_config(
+        &self,
+        config: &AiProviderConfig,
+    ) -> Result<(), DesktopRepositoryError> {
         self.ensure_ai_config_loaded().await;
         let mut settings = {
             let cache = self.cache.read().await;
@@ -125,7 +128,7 @@ impl Store {
         self.save_ai_settings_config(&settings).await
     }
 
-    pub async fn delete_ai_config(&self) -> Result<(), StoreError> {
+    pub async fn delete_ai_config(&self) -> Result<(), DesktopRepositoryError> {
         {
             let mut cache = self.cache.write().await;
             cache.ai_config = None;
@@ -136,34 +139,35 @@ impl Store {
         if path.exists() {
             tokio::fs::remove_file(&path)
                 .await
-                .map_err(|e| StoreError::WriteError(e.to_string()))?;
+                .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))?;
         }
         Ok(())
     }
 
-    async fn load_encrypted_json<T>(&self, filename: &str) -> Result<T, StoreError>
+    async fn load_encrypted_json<T>(&self, filename: &str) -> Result<T, DesktopRepositoryError>
     where
         T: for<'de> Deserialize<'de>,
     {
         let path = self.data_dir.join(filename);
         if !path.exists() {
-            return Err(StoreError::ReadError("missing".into()));
+            return Err(DesktopRepositoryError::ReadError("missing".into()));
         }
         let encrypted = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| StoreError::ReadError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::ReadError(e.to_string()))?;
         let plaintext = self.decrypt(&encrypted)?;
-        serde_json::from_str(&plaintext).map_err(|e| StoreError::ParseError(e.to_string()))
+        serde_json::from_str(&plaintext)
+            .map_err(|e| DesktopRepositoryError::ParseError(e.to_string()))
     }
 
     async fn save_encrypted_json<T: Serialize>(
         &self,
         filename: &str,
         data: &T,
-    ) -> Result<(), StoreError> {
+    ) -> Result<(), DesktopRepositoryError> {
         let path = self.data_dir.join(filename);
-        let json =
-            serde_json::to_string(data).map_err(|e| StoreError::ParseError(e.to_string()))?;
+        let json = serde_json::to_string(data)
+            .map_err(|e| DesktopRepositoryError::ParseError(e.to_string()))?;
         let encrypted = self.encrypt(&json)?;
         Self::write_file_atomic(&path, encrypted).await
     }

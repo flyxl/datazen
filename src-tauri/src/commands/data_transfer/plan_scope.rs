@@ -1,15 +1,34 @@
-//! The organization scope of the Data Transfer plan registry.
+//! The **desktop's own** organization scope, as a *test fixture*.
 //!
-//! The desktop is a **single-tenant** shape: one app data directory is one
-//! organization, and its id is the process constant
-//! [`LOCAL_ORGANIZATION_ID`](crate::platform::LOCAL_ORGANIZATION_ID). The scope
-//! is therefore a property of the *shape*, not of the request: it is derived
-//! from the desktop identity the host assembles, never from a request body
-//! field (INV-01).
+//! # What changed and why
 //!
-//! The scope is what the storage port checks on every access. A plan that
-//! belongs to another organization is answered as **not found**, so a caller
-//! can never learn that it exists (CM-05).
+//! This module used to be the production source of the Data Transfer plan
+//! registry's scope: `desktop_organization_scope()` returned the desktop's
+//! install-level organization constant ([`LOCAL_ORGANIZATION_ID`]), and every
+//! plan access went through it.
+//!
+//! That is only correct while the desktop is the *only* shape. The plan
+//! registry is an **organization-partitioned storage port**
+//! ([`TransferPlanRepositoryPort`]: every method takes an `&OrganizationScope`), so
+//! the scope the caller passes **is** the tenant boundary. Pinning it to the
+//! desktop's install-level constant means a server shape would look up
+//! *"the desktop's organization"* inside a multi-tenant store — the wrong
+//! tenant, i.e. a cross-organization read that CM-05 requires to be treated as
+//! "does not exist".
+//!
+//! Production code therefore takes the scope from the **host**
+//! (`AppState::organization_scope()`), which is the shape's regular entry
+//! point: on the desktop it still resolves to the local organization, and in a
+//! server shape it resolves to the authenticated session's organization.
+//!
+//! What is left here is the **test fixture** for "the desktop's own
+//! organization", plus the two invariants that used to be attached to it:
+//!
+//! * the scope is **assembled**, never taken from a request field (INV-01);
+//! * the scope carries **only** the organization — no principal, no
+//!   credential — so it can be used as a storage key.
+//!
+//! [`TransferPlanRepositoryPort`]: crate::data_transfer::plan_store::TransferPlanRepositoryPort
 
 use std::sync::OnceLock;
 
@@ -56,7 +75,10 @@ fn desktop_context() -> &'static RequestContext {
     })
 }
 
-/// The organization scope of the plan registry.
+/// The organization scope of the desktop's own plan registry.
+///
+/// **Test fixture only.** Production code must take the scope from the host
+/// (`AppState::organization_scope()`) — see the module docs for why.
 ///
 /// Returned as a shared reference so that a plan access allocates nothing: the
 /// scope is a constant of the desktop shape, so there is no reason to rebuild

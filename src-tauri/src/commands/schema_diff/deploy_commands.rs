@@ -51,7 +51,7 @@ pub async fn execute_schema_diff_deploy(
     let (effective_plan_id, effective_selection_revision) = match (plan_id, selection_revision) {
         (Some(plan_id), Some(sel_rev)) => (plan_id, sel_rev),
         _ => {
-            // 兼容路径：客户端直接携带计划正文 ⇒ 先注册进 PlanStore 再跑 apply Job。
+            // 兼容路径：客户端直接携带计划正文 ⇒ 先注册进 PlanRepository 再跑 apply Job。
             job::register_plan_for_apply(&state, plan, &target_db_session_id).await?
         }
     };
@@ -64,6 +64,12 @@ pub async fn execute_schema_diff_deploy(
     .await
 }
 
+/// 进程内直接部署 Schema Diff（不挂 Job）的执行入口。
+///
+/// 用户可见的部署命令走 `JobRuntime`（见 `execute_schema_diff_deploy`）。这个
+/// 无取消令的薄封装在 workflow 的迁移 step 移除后只剩三件套自己的用例在调用，
+/// 因此非测试构建里它是死代码——保留它是因为它属于 Schema Diff 域自身的执行面。
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) async fn execute_schema_diff_deploy_impl(
     state: &AppState,
     target_db_session_id: String,

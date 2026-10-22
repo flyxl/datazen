@@ -3,7 +3,7 @@ use crate::commands::{AppState, CommandError};
 use datazen_platform_api::{
     dto::artifact::ArtifactLifecycle,
     id::{ArtifactId, LeaseId},
-    ports::artifact::{ArtifactStore, ExportSink},
+    ports::artifact::{ArtifactRepository, ExportSink},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{
@@ -110,7 +110,7 @@ pub async fn export_artifact(
         tauri::async_runtime::block_on(store.export(
             &context,
             request.artifact_id,
-            ExportSink::DesktopDialogHandle(handle),
+            ExportSink::HostHandle(handle),
         ))
     })
     .await

@@ -1,6 +1,6 @@
 //! 产物契约 DTO：结果块与产物摘要。
 //!
-//! 产物**内容**由 `ArtifactStore` 端口持有（`ChunkPayload`、`ByteRange` 等私有词汇），
+//! 产物**内容**由 `ArtifactRepository` 端口持有（`ChunkPayload`、`ByteRange` 等私有词汇），
 //! 本模块只放客户端可见的 DTO 家族。
 //!
 //! **线缆编码**：`bytes` 是进程内的原始字节，serde 默认按字节数组编码。
@@ -96,7 +96,7 @@ pub enum AbortReason {
 
 /// 产物元数据。客户端每次查询都先授权（§4.6）。
 ///
-/// 这是 `ArtifactStore` 的共享 DTO；runtime 当前由 `FileArtifactStore` 实现对应的存储行为。
+/// 这是 `ArtifactRepository` 的共享 DTO；runtime 当前由 `FileArtifactRepository` 实现对应的存储行为。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactMetadata {

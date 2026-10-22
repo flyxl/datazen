@@ -31,7 +31,6 @@ datazen/
 │   └── extensions/              # 自动生成注册文件（generated.ts / generated-locales.ts / generated-pro.ts）
 ├── src-tauri/                   # Rust 后端
 │   ├── src/
-│   │   ├── ai/                  # 宿主 AI 适配（Runtime/SchemaCache/profile 元数据绑定）
 │   │   ├── bootstrap/           # AppState、启动与关停装配
 │   │   ├── commands/            # Tauri IPC 命令
 │   │   ├── dashboard/           # Dashboard 宿主存储与执行适配
@@ -40,7 +39,7 @@ datazen/
 │   │   ├── platform/            # PlatformAdapter、DesktopSessionBackend、身份/策略/仓储
 │   │   ├── services/            # Schema metadata、JobRegistry、Runtime 命令源
 │   │   ├── store/               # AES-256-GCM 加密持久化
-│   │   ├── tunnel/ + ssh_tunnel.rs  # 隧道装配
+│   │   ├── tunnel/                # 隧道装配（机制内核在 packages/tunnel）
 │   │   ├── wapps/               # Wapp 协议桥与管理器
 │   │   └── workflow/            # YAML Workflow 宿主适配与历史
 │   └── resources/               # 菜单翻译、内置 Workflow 模板、原生工具探针
@@ -54,9 +53,9 @@ datazen/
 │   ├── platform-infra/           # Rust: 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖
 │   ├── application/              # Rust: 应用层用例与 ApplicationServices（不依赖宿主形态）
 │   ├── runtime/                  # Rust: 共享内核（session / resource / job / gateway / schema_cache / sql_guard）
-│   ├── feature-core/             # Rust: 共享 feature（Workflow / AI / MCP / Dashboard / 导出 / 备份恢复）
+│   ├── tunnel/                   # Rust: 形态中立的隧道机制内核（HTTP CONNECT 代理 / WebSocket 中继 / SSH 转发）
+│   ├── feature-core/             # Rust: 共享 feature（Workflow / AI / MCP / Dashboard / 导出 / 备份恢复 / Wapp 内核）
 │   ├── schema-diff/ data-sync/ data-transfer/ migration-common/  # 迁移三件套与共享迁移边界
-│   ├── workspace-apps/           # Rust: Wapp manifest / 安装 / 存储
 │   ├── backend-client/           # JS: 远端 / 浏览器侧 BackendClient 端口实现
 │   ├── ai-api/                  # Rust: AiProvider trait + 工厂 + 消息/调用协议模型
 │   ├── ai-providers/            # Rust: OpenAI/Anthropic/DeepSeek/Ollama/Custom provider 适配 + wire protocol 实现（纯客户端，不依赖 Tauri）
@@ -76,7 +75,7 @@ datazen/
 1. `drivers-registry.json` 定义 path 驱动 + git 驱动；Git 可钉 `ref`。
 2. `scripts/resolve-drivers.mjs` 构建前执行驱动选型、克隆 Git driver，并生成 `generated.ts`、`driver_init.rs`、`.driver-features.json`（均 gitignored）。
 3. `scripts/resolve-pro.mjs` 控制构建版本：默认 `--edition=community`（纯开源 Fallback）；`--edition=pro`（打包并 stage `@datazen/extension-sql-editor-pro` 到 `src-tauri/resources/builtin-ep/`，运行时经签名验签后动态加载）。
-4. 数据库驱动通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories。
+4. 数据库驱动通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories。驱动的**事件出口**（如 Redis Pub/Sub）同样走 `inventory` 注册（`register_event_outlet!`），宿主在启动期遍历装入**本形态**的 sink —— 契约形态中立，驱动侧不出现任何宿主类型。
 
 注入前托管清单文件的干净副本会存进 gitignored 的 `.driver-file-stash/`；该 stash 带 `.stash-meta.json` 旁证，复用前判新鲜度，**陈旧时 `resolve-drivers.mjs` 以退出码 1 硬失败并给出恢复命令，而不是静默回滚合并后的清单文件**。此时**不要**跑 `--restore`（它会用合并前的旧副本覆盖当前结果）。详见 [docs/development/worktree-isolation.md](docs/development/worktree-isolation.md)。
 
@@ -111,12 +110,12 @@ DataZen 确立严格正交的四维可扩展架构，依托独立设计系统 `@
 
 ### Driver Command API 与统一执行网关
 
-`packages/driver-api` 提供统一 Command 抽象（`command_definitions()` + `execute_command()`）。SQL 编辑器的 `query`/`execute`、流式 `query_stream`、Schema 对象元数据、Redis 操作、管理命令等全部走 `execute_driver_command`，宿主不按 Driver 类型硬编码。Redis 深度能力集中在 `packages/drivers/redis`，宿主仅为薄 Tab 壳。
+`packages/driver-api` 提供统一 Command 抽象（`command_definitions()` + `execute_command()`）。SQL 编辑器的 `query`/`execute`、流式 `query_stream`、Schema 对象元数据、Redis 操作、管理命令等全部走 `execute_driver_command`，宿主不按 Driver 类型硬编码。Redis 深度能力集中在 `packages/drivers/redis`，宿主仅为薄 Tab 壳。Redis 的 Pub/Sub 消息经 `packages/driver-api` 的**形态中立事件出口**（`DriverEventOutlet` / `DriverEventSink` / `register_event_outlet!`）送达前端：驱动侧**没有任何 `tauri` 依赖**，宿主在启动期遍历装入本形态的 sink（桌面实现见 `src-tauri/src/platform/event_sink.rs`）。
 
 ### AI 模块与 ai-api
 
 - `packages/ai-api` 是 Rust 层的 AI Provider 抽象契约（类比 `driver-api`），定义核心 `AiProvider` trait、请求/流式响应模型与工厂注册，并统一 active → default → first 的 AI Profile 选择回退规则。
-- `packages/ai-providers` 承载具体 provider 适配与 wire protocol 实现：`protocol/{openai_chat,openai_responses,anthropic}.rs` 实现 OpenAI Chat/Responses 与 Anthropic 协议，`{openai,anthropic,deepseek,ollama,custom}.rs` 实现 OpenAI / Anthropic / DeepSeek / Ollama / 自定义端点适配，`registry.rs` 负责注册与配置恢复，`metadata.rs` 提供现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 承载 Provider-neutral 的 Prompt、Schema、Chat/NL2SQL 请求组装、诊断/分析/过滤/文档生成、安全、预算、取消、工具循环与 ownership policy（包括 grant database 绑定和结果 attribution）；`src-tauri/src/ai/` 仅保留 Runtime/SchemaCache/profile 元数据适配（共享类型由调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen_feature_core::ai`），`commands/ai/` 保留 Tauri IPC、Provider/Profile 配置、仓储/会话读取、输入脱敏、context 文件、MCP/Runtime 工具宿主、事件流和取消接线。
+- `packages/ai-providers` 承载具体 provider 适配与 wire protocol 实现：`protocol/{openai_chat,openai_responses,anthropic}.rs` 实现 OpenAI Chat/Responses 与 Anthropic 协议，`{openai,anthropic,deepseek,ollama,custom}.rs` 实现 OpenAI / Anthropic / DeepSeek / Ollama / 自定义端点适配，`registry.rs` 负责注册与配置恢复，`metadata.rs` 提供现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 承载 Provider-neutral 的 Prompt、Schema、Chat/NL2SQL 请求组装、诊断/分析/过滤/文档生成、安全、预算、取消、工具循环与 ownership policy（包括 grant database 绑定和结果 attribution）；AI 用的数据库元数据源（表 / 列 / 类型 / schema）在 `packages/feature-core/src/services/schema_context/`，它实现共享层的 `LogicalSchemaContextSource` 契约（纯逻辑：不暴露物理句柄，也不接收调用方传入的 SchemaCache），物理句柄契约 `PhysicalSchemaContextSource` 只对真正持有句柄的形态开放，共享层用 `PhysicalSchemaContextAdapter` 把两者接起来并持有缓存；宿主只注入 `ResourceExecutionHost` 与 Runtime 门面（`src-tauri/src/services/schema_context_source.rs`），桌面与将来的 web 形态共用同一份实现；共享类型由调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen_feature_core::ai`，`commands/ai/` 保留 Tauri IPC、Provider/Profile 配置、仓储/会话读取、输入脱敏、context 文件、MCP/Runtime 工具宿主、事件流和取消接线。
 - `PromptResolver` 优先级：用户覆盖 → 驱动覆盖 → 资源文件 → 编译时英文嵌入。
 - 详情参考 [docs/architecture/backend/ai.md](docs/architecture/backend/ai.md)。
 
@@ -289,6 +288,7 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 
 - Rust：`rustfmt` + `thiserror` + `tracing` + `CommandError`。
 - **生产路径禁止裸 `unwrap()` / `expect()`**（`#[cfg(test)]` 除外；确需 panic 须注释说明）。详见 [docs/development/panic-policy.md](docs/development/panic-policy.md)。
+- **组织作用域一律走宿主入口**：请求周期内用 `OrganizationScope::from_context(&ctx)`（有请求上下文）或 `state.organization_scope()`（有 `AppState`）；**不得**在宿主生产代码里直读桌面的安装级组织常量（`local_organization_scope()` / `desktop_organization_scope()`）——那是「拿桌面的组织去查服务端的多租户存储」，属于越组织读写。确有桌面专有理由的，在该行**紧邻上方**写 `// scope-gate: <id>` 并登记进 `src-tauri/src/platform/scope_gate.rs` 的白名单（该闸门随 `cargo test -p datazen --lib` 跑，违规即红）。详见 [docs/architecture/platform/shared-boundaries-and-ports.md](docs/architecture/platform/shared-boundaries-and-ports.md) §5.2。
 - TypeScript：严格模式，无 `any`（除 generated 文件），absolute imports。
 - CSS：Tailwind utility classes，暗色主题默认。
 - **单文件规模与模块拆分**：**超长文件是耦合度的信号**——它属于 code review 的判断（评审时决定要不要拆、怎么拆），**不要把行数上限做成 CI 门禁**：占一次 CI 运行时间，却不产生新信号。大型模块仍应按职责拆分为高内聚、低耦合的子组件与子模块；新增代码不要往已经很长的文件里继续堆。

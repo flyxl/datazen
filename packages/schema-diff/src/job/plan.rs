@@ -1,4 +1,4 @@
-//! §2.2 冻结计划数据模型与进程内计划工厂（PlanStore）。
+//! §2.2 冻结计划数据模型与进程内计划工厂（PlanRepository）。
 //!
 //! 准备阶段（`schemaDiffPrepare`）完成后落入此处；应用阶段（`schemaDiffApply`）
 //! 以 planId 一次性消费（§2.1）。计划正文 Artifact 可变子集通过
@@ -138,7 +138,7 @@ pub fn fnv1a64_hex(bytes: &[u8]) -> String {
     format!("{h:016x}")
 }
 
-/// 存储在 PlanStore 里的受理物：冻结计划元数据 + 已渲染的 SchemaDiffPlan 本体。
+/// 存储在 PlanRepository 里的受理物：冻结计划元数据 + 已渲染的 SchemaDiffPlan 本体。
 #[derive(Debug)]
 pub struct StoredPlan {
     pub meta: SchemaDiffFrozenPlan,
@@ -149,11 +149,11 @@ pub struct StoredPlan {
 /// 进程内计划工厂。planId 一次消费语义由 JobRepository 的 `consumedPlanId`
 /// 唯一约束保证；此处提供 prepare→apply 之间的内存衔接与过期/选择版本校验。
 #[derive(Default)]
-pub struct PlanStore {
+pub struct PlanRepository {
     inner: Mutex<HashMap<String, StoredPlan>>,
 }
 
-impl PlanStore {
+impl PlanRepository {
     pub fn new() -> Self {
         Self::default()
     }
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn take_for_apply_rejects_expired_and_stale_selection() {
-        let store = PlanStore::new();
+        let store = PlanRepository::new();
         store.insert(stored_plan("p1"));
         let now = Timestamp::new("2026-01-01T02:00:00Z");
         assert!(matches!(
@@ -334,7 +334,7 @@ mod tests {
     /// 整秒边界此前无覆盖（`expires_at` 全仓无毫秒字面量）：本断言把两种形状各跑一遍。
     #[test]
     fn expiry_verdict_is_unchanged_by_the_second_to_millisecond_shape_switch() {
-        let store = PlanStore::new();
+        let store = PlanRepository::new();
         store.insert(stored_plan("p-boundary"));
 
         // 机制本身：同一整秒内，秒级形状排在毫秒级形状**之后**。

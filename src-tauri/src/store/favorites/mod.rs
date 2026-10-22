@@ -86,7 +86,7 @@ pub struct ScanResult {
 }
 
 /// Directory-backed favorites store. Cheap to construct, cheap to clone-share.
-pub struct FavoritesStore {
+pub struct FavoritesRepository {
     /// Re-writable so a settings change can repoint the store at a synced
     /// directory without a restart.
     root: RwLock<PathBuf>,
@@ -95,7 +95,7 @@ pub struct FavoritesStore {
     cache: RwLock<Option<Vec<FavoriteQuery>>>,
 }
 
-impl FavoritesStore {
+impl FavoritesRepository {
     /// Open (creating if absent) a favorites store rooted at `root`.
     pub fn open(root: &Path) -> Result<Self, FavoritesError> {
         create_root(root)?;

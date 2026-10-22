@@ -5,7 +5,7 @@
 //! | 字段 | 桌面取值 | 本文件对应 |
 //! | --- | --- | --- |
 //! | `organizationId` | 固定本地组织 ID（进程常量） | [`LOCAL_ORGANIZATION_ID`] |
-//! | `principalId` | 当前桌面登录用户 | [`local_principal`] |
+//! | `principalId` | 当前桌面登录用户（**进程内只解析一次**，见 [`local_principal`]） | [`local_principal`] |
 //! | `authenticationSessionId` | `None`（本地模式无登录会话） | [`DesktopIdentity::request_context`] |
 //! | `clientInstanceId` | 每次应用启动生成一个实例 ID | [`DesktopIdentity::new_launch`] |
 //! | `requestId` | 每个 IPC 调用生成一个 | [`new_request_id`] |
@@ -21,6 +21,8 @@
 //! 3. **OwnerRef 与身份绑定。** 归属不是自由文本：`admit_editor` 必须比对当前实例 ID，
 //!    `admit_job` 在桌面形态下**失败关闭**（桌面没有「已授权 Job」记录源，接上去就是
 //!    放行任意 job owner）。
+
+use std::sync::OnceLock;
 
 use datazen_application::error::{ApiError, ApiErrorCode};
 use datazen_platform_api::context::{OwnerRef, RequestContext};
@@ -40,7 +42,54 @@ pub const LOCAL_ORGANIZATION_ID: &str = "datazen-desktop-local";
 /// 桌面形态下 `{appData}` 本身即按 OS 账号隔离，因此"该用户"与"该 app data 目录的属主"
 /// 是同一个人。取不到时返回 `None`，由调用方决定失败策略（默认失败关闭），
 /// **绝不在此处伪造一个占位主体**。
+///
+/// ## 进程内只解析一次（授权基线不得漂移）
+///
+/// 桌面主体是**启动期事实**，不是「每次调用重读一遍」的运行时状态：
+/// [`DesktopIdentity`] 的契约写死了这一点——「单次应用启动的桌面身份。进程内构造一次，
+/// 逐次 IPC 调用只换 `requestId`」。
+///
+/// 之前本函数**每次调用都重读** `DATAZEN_DESKTOP_USER` / `$USER` 这两个**进程级可变状态**，
+/// 于是授权基线可以在请求之间**漂移**：请求上下文里的 `principalId` 是装配时捕获的，
+/// 而策略判定（[`super::policy`]）读的是**判定当下**的值。两者一旦不等，一个合法的
+/// 本机请求就被翻成 `desktop_identity_required`（`PermissionDenied`）——哪怕只是因为
+/// 进程里另一个执行流在运行期改写了那个 env。`DATAZEN_DESKTOP_USER` 正是这样的进程级
+/// 可变状态：任何写者（测试二进制里的桌面主体注入用例就是）都能在别的用例「捕获主体」
+/// 与「判定授权」之间插进去，把两者错开。
+///
+/// 解析一次之后，全进程（身份组装 / 策略判定 / 会话后端 / 监控授权单）看到的是**同一个**
+/// 主体，授权基线在进程内恒定。**「主体不匹配就该被拒」这条校验一点没放松**：它比的是
+/// 「请求里的主体」与「本进程的桌面主体」，两者仍然逐次比对，只是不再拿「当下的环境变量」
+/// 当后者。
+///
+/// **生产行为不变**：生产里除了启动前注入 `DATAZEN_DESKTOP_USER` 之外没有任何写者
+/// （`$USER` / `$USERNAME` 也不会在进程运行期变化），而首次解析发生在启动装配时，
+/// 因此「每次读」与「读一次」在生产中恒等。变的是**测试进程**里那种「另一个执行流在
+/// 运行期改这个 env」的场景——那正是本条修复要消灭的东西。
+///
+/// **给测试的提示**：进程内主体已解析一次之后再改写 `DATAZEN_DESKTOP_USER` **不再生效**。
+/// 需要「本机桌面主体」的用例直接用 [`local_principal`] 的返回值构造 ctx 即可（策略判定
+/// 比的就是它）；**不要**再注入 env——注入既不生效，又会把进程级可变状态引回授权路径。
+///
+/// ## 这是既有缺陷，不是新引入的
+///
+/// 「授权基线在请求之间漂移」这件事在 `main` 上就存在（`policy.rs` 每次判定都重读
+/// `local_principal()`，而后者每次都重读进程级 env）。`main` 与本分支在
+/// `policy.rs` / `identity.rs` / `live_source_tests.rs` 上**逐字相同**；本分支只是
+/// 新增了 9 条测试函数（组织 id 字面量闸门 6 条 + 组织 id 统一落库 3 条）改变了同一个
+/// 测试二进制里的并行调度，把这条**既有**竞态从「偶发」推到「CI 上必现」。因此它按
+/// **既有缺陷**记，而不是本分支引入的回归。
 pub fn local_principal() -> Option<PrincipalId> {
+    /// 进程内**只解析一次**的桌面主体。
+    ///
+    /// `get_or_init` 保证并发首调只有一个执行体跑解析，其余调用者拿到**同一个**结果
+    /// （不会各读各的 env，于是不会在「第一次解析」这件事上再复制一份竞态）。
+    static PRINCIPAL: OnceLock<Option<PrincipalId>> = OnceLock::new();
+    PRINCIPAL.get_or_init(resolve_local_principal).clone()
+}
+
+/// 解析桌面主体：优先显式注入，其次 OS 用户名。**只在进程内首次解析时调用。**
+fn resolve_local_principal() -> Option<PrincipalId> {
     // 优先显式注入（测试与「按配置文件切换账号」的打包形态走这条）。
     if let Ok(explicit) = std::env::var("DATAZEN_DESKTOP_USER") {
         let trimmed = explicit.trim();
@@ -275,6 +324,33 @@ mod tests {
         assert_ne!(a.request_id, b.request_id, "requestId 必须逐次生成");
         assert_eq!(a.principal_id, b.principal_id);
         assert_eq!(a.client_instance_id, b.client_instance_id);
+    }
+
+    /// 桌面主体是**进程内只解析一次**的启动期事实：运行期改写
+    /// `DATAZEN_DESKTOP_USER` 不得改变它。
+    ///
+    /// 这条钉住「授权基线不得漂移」：策略判定拿它当「本机桌面主体」，请求上下文里的
+    /// 主体拿它当装配时的快照。两者一旦能在进程运行期分叉，合法的本机请求就会被判成
+    /// `desktop_identity_required`（`PermissionDenied`）——这不是理论风险：CI 里
+    /// `platform::live_source::tests::*` 的红就是这么来的（同一个测试二进制里另有一处
+    /// 在运行期写这个 env）。
+    ///
+    /// 本用例自己会写一次进程级 env（因此必须还原）；它只影响 env 的**当前值**，
+    /// 不影响已经解析出来的主体。
+    #[test]
+    fn 桌面主体在进程内只解析一次() {
+        let resolved = local_principal().expect("桌面主体应当存在");
+        let previous = std::env::var("DATAZEN_DESKTOP_USER").ok();
+        std::env::set_var("DATAZEN_DESKTOP_USER", "datazen-identity-probe");
+        let after = local_principal().expect("桌面主体应当存在");
+        match previous {
+            Some(value) => std::env::set_var("DATAZEN_DESKTOP_USER", value),
+            None => std::env::remove_var("DATAZEN_DESKTOP_USER"),
+        }
+        assert_eq!(
+            after, resolved,
+            "桌面主体是进程内只解析一次的启动期事实，运行期改写 env 不得改变它"
+        );
     }
 
     #[test]

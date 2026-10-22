@@ -95,7 +95,7 @@ use datazen_platform_api::{
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
-use crate::store::Store;
+use crate::store::DesktopRepository;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -221,7 +221,7 @@ fn derive_delegation_identity_key(
 ///
 /// 桌面形态的**服务端固定盐**就是它。取字节而不是 base64 字符串，是为了让域分离
 /// 派生作用在真正的密钥字节上。
-fn master_key_bytes(store: &Store) -> Result<[u8; 32], PortError> {
+fn master_key_bytes(store: &DesktopRepository) -> Result<[u8; 32], PortError> {
     let encoded = store.encryption_key_b64();
     let decoded = BASE64_STANDARD
         .decode(encoded.as_bytes())
@@ -285,7 +285,7 @@ impl DesktopIdentityResolver {
     /// 装配**的失败（`profiles` / `runtime` / `services` 一并装不上），不是
     /// 「仅身份解析能力缺席」。要缩小半径，得把这一步改成可降级的接线点。
     pub fn for_desktop(
-        store: Arc<Store>,
+        store: Arc<DesktopRepository>,
         profiles: Arc<super::repositories::DesktopProfiles>,
         policy: Arc<dyn PolicyService>,
     ) -> Result<Self, PortError> {
@@ -419,11 +419,11 @@ impl fmt::Debug for DesktopIdentityResolver {
 /// 刷新授权给 `monitor:<id>:<rev>` 服务身份，授权单里登记了它被允许触达的目标
 /// （连接 + 命名空间 + 命令）。
 pub struct MonitorDelegationScope {
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
 }
 
 impl MonitorDelegationScope {
-    pub fn new(store: Arc<Store>) -> Self {
+    pub fn new(store: Arc<DesktopRepository>) -> Self {
         Self { store }
     }
 }

@@ -6,6 +6,7 @@ mod connections;
 pub(crate) mod favorites;
 mod history;
 pub(crate) mod history_db;
+pub(crate) mod key_backend;
 mod key_codec;
 mod key_store;
 mod models;
@@ -18,6 +19,11 @@ mod sync_profiles;
 mod sync_tasks;
 mod transfer_profiles;
 mod tunnels;
+
+/// Where the AES master key lives. Resolved **once** at startup
+/// (`key_backend::resolve_key_backend`) and threaded down explicitly — the
+/// backend is a startup-time fact, never a per-call env lookup.
+pub(crate) use key_backend::KeyBackend;
 
 #[allow(unused_imports)] // public re-exports for IPC / other modules
 pub use app_db::{
@@ -48,7 +54,7 @@ use tauri::Manager;
 use thiserror::Error;
 use tokio::sync::{Mutex, RwLock};
 
-use favorites::FavoritesStore;
+use favorites::FavoritesRepository;
 use models::StoreCache;
 /// Bundle identifier — must match `tauri.conf.json` `"identifier"`.
 pub const APP_IDENTIFIER: &str = "com.tbeasy.datazen";
@@ -58,7 +64,7 @@ pub const APP_IDENTIFIER: &str = "com.tbeasy.datazen";
 static TMP_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Encrypted JSON store rooted at the per-app data directory.
-pub struct Store {
+pub struct DesktopRepository {
     pub(super) data_dir: PathBuf,
     pub(super) encryption_key: [u8; 32],
     pub(super) cache: Arc<RwLock<StoreCache>>,
@@ -67,11 +73,11 @@ pub struct Store {
     pub(super) write_lock: Mutex<()>,
     history_db: Arc<HistoryDb>,
     app_db: Arc<AppDb>,
-    favorites: Arc<FavoritesStore>,
+    favorites: Arc<FavoritesRepository>,
 }
 
 #[derive(Debug, Error)]
-pub enum StoreError {
+pub enum DesktopRepositoryError {
     #[error("Initialization error: {0}")]
     InitError(String),
 
@@ -87,7 +93,7 @@ pub enum StoreError {
     #[error("Encryption error: {0}")]
     EncryptionError(String),
 }
-impl Store {
+impl DesktopRepository {
     pub fn data_dir(&self) -> &PathBuf {
         &self.data_dir
     }
@@ -111,24 +117,29 @@ impl Store {
 
     /// Default app data directory for headless entry points (MCP stdio, early logging).
     /// Matches Tauri `app_data_dir()` for the configured bundle identifier.
-    pub fn default_app_data_dir() -> Result<PathBuf, StoreError> {
+    pub fn default_app_data_dir() -> Result<PathBuf, DesktopRepositoryError> {
         if let Some(dir) = Self::data_dir_override() {
             return Ok(dir);
         }
         dirs::data_dir()
             .map(|d| d.join(APP_IDENTIFIER))
-            .ok_or_else(|| StoreError::InitError("Cannot determine data dir".into()))
+            .ok_or_else(|| DesktopRepositoryError::InitError("Cannot determine data dir".into()))
     }
 
-    pub async fn init(app_handle: &tauri::AppHandle) -> Result<Self, StoreError> {
+    pub async fn init(app_handle: &tauri::AppHandle) -> Result<Self, DesktopRepositoryError> {
         let data_dir = match Self::data_dir_override() {
             Some(dir) => dir,
             None => app_handle
                 .path()
                 .app_data_dir()
-                .map_err(|e| StoreError::InitError(e.to_string()))?,
+                .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?,
         };
-        Self::init_with_path(&data_dir).await
+        // Backend selection is a **startup-time fact**: `DATAZEN_KEYRING` is read
+        // exactly once, here, and the result is passed down explicitly. Nothing
+        // on the request path re-reads the process environment, so no other
+        // thread can redirect a running store to the OS keychain.
+        let backend = key_backend::resolve_key_backend();
+        Self::init_with_path(&data_dir, backend).await
     }
 
     /// Where favorites live when `AppSettings::favorites_root` is unset.
@@ -140,16 +151,20 @@ impl Store {
         data_dir.join("favorites")
     }
 
-    pub async fn init_with_path(data_dir: &std::path::Path) -> Result<Self, StoreError> {
+    pub async fn init_with_path(
+        data_dir: &std::path::Path,
+        backend: KeyBackend,
+    ) -> Result<Self, DesktopRepositoryError> {
         tokio::fs::create_dir_all(data_dir)
             .await
-            .map_err(|e| StoreError::InitError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?;
 
-        let encryption_key = Self::get_or_create_encryption_key(data_dir).await?;
+        let encryption_key = Self::get_or_create_encryption_key(data_dir, backend).await?;
 
-        let history_db =
-            HistoryDb::open(data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
-        let app_db = AppDb::open(data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
+        let history_db = HistoryDb::open(data_dir)
+            .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?;
+        let app_db =
+            AppDb::open(data_dir).map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?;
 
         let store = Self {
             data_dir: data_dir.to_path_buf(),
@@ -159,8 +174,8 @@ impl Store {
             history_db,
             app_db,
             favorites: Arc::new(
-                FavoritesStore::open(&Self::default_favorites_root(data_dir))
-                    .map_err(|e| StoreError::InitError(e.to_string()))?,
+                FavoritesRepository::open(&Self::default_favorites_root(data_dir))
+                    .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?,
             ),
         };
 
@@ -212,11 +227,14 @@ impl Store {
 
     async fn get_or_create_encryption_key(
         data_dir: &std::path::Path,
-    ) -> Result<[u8; 32], StoreError> {
+        backend: KeyBackend,
+    ) -> Result<[u8; 32], DesktopRepositoryError> {
         let data_dir = data_dir.to_path_buf();
-        tokio::task::spawn_blocking(move || key_store::load_or_create_master_key(&data_dir))
-            .await
-            .map_err(|e| StoreError::InitError(e.to_string()))?
+        tokio::task::spawn_blocking(move || {
+            key_store::load_or_create_master_key(&data_dir, backend)
+        })
+        .await
+        .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?
     }
 
     /// Base64 encoding of the master encryption key (for user export via S1+ dialog).
@@ -227,11 +245,12 @@ impl Store {
     #[cfg(test)]
     pub(crate) async fn get_or_create_encryption_key_for_test(
         data_dir: &std::path::Path,
-    ) -> Result<[u8; 32], StoreError> {
-        Self::get_or_create_encryption_key(data_dir).await
+        backend: KeyBackend,
+    ) -> Result<[u8; 32], DesktopRepositoryError> {
+        Self::get_or_create_encryption_key(data_dir, backend).await
     }
 
-    pub(super) fn encrypt(&self, plaintext: &str) -> Result<String, StoreError> {
+    pub(super) fn encrypt(&self, plaintext: &str) -> Result<String, DesktopRepositoryError> {
         let key = Key::<Aes256Gcm>::from_slice(&self.encryption_key);
         let cipher = Aes256Gcm::new(key);
 
@@ -241,20 +260,20 @@ impl Store {
 
         let ciphertext = cipher
             .encrypt(nonce, plaintext.as_bytes())
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
 
         let mut combined = nonce_bytes.to_vec();
         combined.extend(ciphertext);
         Ok(BASE64.encode(combined))
     }
 
-    pub(super) fn decrypt(&self, encrypted: &str) -> Result<String, StoreError> {
+    pub(super) fn decrypt(&self, encrypted: &str) -> Result<String, DesktopRepositoryError> {
         let combined = BASE64
             .decode(encrypted)
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
 
         if combined.len() < 12 {
-            return Err(StoreError::EncryptionError(
+            return Err(DesktopRepositoryError::EncryptionError(
                 "Invalid encrypted payload".into(),
             ));
         }
@@ -266,12 +285,13 @@ impl Store {
 
         let plaintext = cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
 
-        String::from_utf8(plaintext).map_err(|e| StoreError::EncryptionError(e.to_string()))
+        String::from_utf8(plaintext)
+            .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))
     }
 
-    async fn load_all(&self) -> Result<(), StoreError> {
+    async fn load_all(&self) -> Result<(), DesktopRepositoryError> {
         let mut cache = self.cache.write().await;
 
         cache.connections = self.load_connections_from_disk().await?;
@@ -324,45 +344,49 @@ impl Store {
         Ok(())
     }
 
-    pub(super) async fn load_json_file<T>(&self, filename: &str) -> Result<T, StoreError>
+    pub(super) async fn load_json_file<T>(
+        &self,
+        filename: &str,
+    ) -> Result<T, DesktopRepositoryError>
     where
         T: for<'de> Deserialize<'de>,
     {
         let path = self.data_dir.join(filename);
         if !path.exists() {
-            return Err(StoreError::ReadError("missing".into()));
+            return Err(DesktopRepositoryError::ReadError("missing".into()));
         }
 
         let content = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| StoreError::ReadError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::ReadError(e.to_string()))?;
 
-        serde_json::from_str(&content).map_err(|e| StoreError::ParseError(e.to_string()))
+        serde_json::from_str(&content)
+            .map_err(|e| DesktopRepositoryError::ParseError(e.to_string()))
     }
 
     pub(super) async fn write_file_atomic(
         path: &std::path::Path,
         content: impl AsRef<[u8]>,
-    ) -> Result<(), StoreError> {
-        let parent = path
-            .parent()
-            .ok_or_else(|| StoreError::WriteError("path has no parent directory".into()))?;
+    ) -> Result<(), DesktopRepositoryError> {
+        let parent = path.parent().ok_or_else(|| {
+            DesktopRepositoryError::WriteError("path has no parent directory".into())
+        })?;
         tokio::fs::create_dir_all(parent)
             .await
-            .map_err(|e| StoreError::WriteError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))?;
 
         let file_name = path
             .file_name()
             .and_then(|n| n.to_str())
-            .ok_or_else(|| StoreError::WriteError("invalid file name".into()))?;
+            .ok_or_else(|| DesktopRepositoryError::WriteError("invalid file name".into()))?;
         let tmp_path = Self::unique_tmp_path(parent, file_name);
 
         tokio::fs::write(&tmp_path, content.as_ref())
             .await
-            .map_err(|e| StoreError::WriteError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))?;
         tokio::fs::rename(&tmp_path, path)
             .await
-            .map_err(|e| StoreError::WriteError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))?;
 
         Ok(())
     }
@@ -388,18 +412,18 @@ impl Store {
         &self,
         filename: &str,
         data: &T,
-    ) -> Result<(), StoreError> {
+    ) -> Result<(), DesktopRepositoryError> {
         let _guard = self.write_lock.lock().await;
         let path = self.data_dir.join(filename);
 
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
-                .map_err(|e| StoreError::WriteError(e.to_string()))?;
+                .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))?;
         }
 
         let content = serde_json::to_string_pretty(data)
-            .map_err(|e| StoreError::ParseError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::ParseError(e.to_string()))?;
 
         Self::write_file_atomic(&path, content).await
     }
@@ -429,7 +453,7 @@ impl Store {
 
     /// Atomically persist settings: acquire write lock, snapshot, write to disk,
     /// then release. This avoids a separate read-after-write cycle.
-    pub async fn save_settings(&self, settings: AppSettings) -> Result<(), StoreError> {
+    pub async fn save_settings(&self, settings: AppSettings) -> Result<(), DesktopRepositoryError> {
         let snapshot = {
             let mut cache = self.cache.write().await;
             cache.settings = settings;
@@ -448,8 +472,13 @@ mod tests;
 #[path = "job_filter_scope_tests.rs"]
 mod job_filter_scope_tests;
 
+/// 只有 `#[ignore]` 的钥匙串用例才允许改钥匙串 env 的落点守卫（源码扫描）。
+#[cfg(test)]
+#[path = "key_backend_env_guard_tests.rs"]
+mod key_backend_env_guard_tests;
+
 #[async_trait::async_trait]
-impl datazen_platform_api::ports::SettingsRepository for Store {
+impl datazen_platform_api::ports::SettingsRepository for DesktopRepository {
     async fn read_settings(
         &self,
     ) -> Result<datazen_platform_api::settings::SharedSettings, datazen_platform_api::PortError>

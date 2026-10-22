@@ -77,7 +77,7 @@ pub use workflow::*;
 
 use crate::mcp::McpClientManager;
 use crate::monitor::engine::MonitorEngine;
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::workflow::history::WorkflowHistoryManager;
 use crate::workflow::registry::WorkflowRegistry;
@@ -87,11 +87,11 @@ use datazen_application::error::ApiError;
 use datazen_driver_api::QueryExecutionId;
 use datazen_feature_core::ai::context::SchemaContextBuilder;
 use datazen_feature_core::ai::prompt_resolver::PromptResolver;
+use datazen_feature_core::workspace_apps::manager::WappManager;
 use datazen_platform_api::id::OrganizationId;
 use datazen_platform_api::ports::scope::OrganizationScope;
 use datazen_runtime::driver_registry::registry::DriverRegistry;
 use datazen_runtime::schema_cache::SchemaCache;
-use datazen_workspace_apps::manager::WappManager;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -166,24 +166,24 @@ impl Default for QueryExecutionRegistry {
 /// 认领」的规则，宿主只决定**实例从哪来**——比较存储的根目录与计划注册表本身。
 /// 端口方法都带 [`OrganizationScope`]，跨组织访问按「不存在」处理。
 #[derive(Clone)]
-pub struct SyncStorePorts {
+pub struct SyncRepositoryPorts {
     /// 计划注册表端口。签发 / 查看 / 绑定端点身份 / 认领。
-    pub plan_store: Arc<dyn datazen_data_sync::plan_store::SyncPlanStore>,
+    pub plan_store: Arc<dyn datazen_data_sync::plan_store::SyncPlanRepository>,
     /// 比较存储根端口。决定比较结果写到哪个目录。
-    pub comparison_root: Arc<dyn datazen_data_sync::comparison_store::ComparisonStoreRoot>,
+    pub comparison_root: Arc<dyn datazen_data_sync::comparison_store::ComparisonStorageRoot>,
 }
 
-impl SyncStorePorts {
+impl SyncRepositoryPorts {
     /// 桌面形态的默认接线：一个本地根 + 一个进程内计划注册表。
     ///
     /// 桌面是单租户：比较存储的根只属于本地组织这一个组织。
     pub fn desktop() -> Self {
         let organization = OrganizationId::new(crate::platform::identity::LOCAL_ORGANIZATION_ID);
         Self {
-            plan_store: Arc::new(datazen_data_sync::plan_store::InMemorySyncPlanStore::new()),
+            plan_store: Arc::new(datazen_data_sync::plan_store::InMemorySyncPlanRepository::new()),
             comparison_root: Arc::new(
-                datazen_data_sync::comparison_store::LocalComparisonStoreRoot::new(
-                    datazen_data_sync::comparison_store::default_comparison_store_root(),
+                datazen_data_sync::comparison_store::LocalComparisonStorageRoot::new(
+                    datazen_data_sync::comparison_store::default_comparison_storage_root(),
                     organization,
                 ),
             ),
@@ -196,7 +196,7 @@ impl SyncStorePorts {
 pub struct AppState {
     pub driver_registry: Arc<DriverRegistry>,
     pub monitor_engine: Arc<MonitorEngine>,
-    pub store: Arc<Store>,
+    pub store: Arc<DesktopRepository>,
     pub schema_cache: Arc<SchemaCache>,
     pub sync_adapters: Arc<SyncAdapterRegistry>,
     pub ai_registry: Arc<AiProviderRegistry>,
@@ -219,19 +219,34 @@ pub struct AppState {
     ///
     /// 评审计划**不**再寄居在包里的进程级全局变量上：实例由宿主持有，访问按
     /// 组织作用域隔离——多租户宿主里 A 组织的计划不会被 B 组织读到或顶掉。
-    /// 桌面是单租户，实现见 `commands/schema_diff/reviewed_store.rs`。
-    pub schema_diff_reviewed_plans: Arc<dyn crate::schema_diff::reviewed::ReviewedPlanStore>,
+    /// 桌面是单租户，实现见 `commands/schema_diff/reviewed_repository.rs`。
+    pub schema_diff_reviewed_plans: Arc<dyn crate::schema_diff::reviewed::ReviewedPlanRepository>,
     /// Data Sync 的存储端口实例：计划注册表 + 比较存储根。
     ///
     /// 过去计划注册表是共享包里的 `static STORE`（进程级全局可变状态），
     /// 现在由组装点创建实例并注入。
-    pub sync_stores: SyncStorePorts,
+    pub sync_stores: SyncRepositoryPorts,
     /// Data Transfer 的不可变计划与恢复检查点存储端口。
     ///
     /// 端口契约与 HashMap 实现都在 `datazen-data-transfer` 包内；宿主只负责在
     /// 组装期创建**一个**实例并注入，调用点按组织作用域访问它。这样存储的
     /// 生命周期由宿主决定，而不是包内的一个进程级全局。
-    pub transfer_plans: Arc<dyn crate::data_transfer::plan_store::TransferPlanStorePort>,
+    pub transfer_plans: Arc<dyn crate::data_transfer::plan_store::TransferPlanRepositoryPort>,
+    /// 隧道定义的存储端口。
+    ///
+    /// 隧道定义是**独立聚合**：连接侧只存 `tunnelId`，解引用发生在建连时
+    /// （[隧道 §4.1](../../docs/architecture/backend/tunnel.md#41-引用而非拷贝)）。
+    /// 桌面实现是宿主 `DesktopRepository`——加密落盘 `{appData}/tunnels.json`；web 形态由
+    /// 服务端 host 实现（组织级存储）。
+    ///
+    /// 端口方法都带 [`OrganizationScope`]，跨组织访问按「不存在」处理（CM-05）。
+    pub tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
+    /// SSH known-hosts 的存储端口。
+    ///
+    /// 端口契约住在形态中立的 `packages/tunnel`（那里只留**规则**）；**文件 I/O**
+    /// 是形态的事，因此实现留在宿主：桌面读 `{appData}/ssh_known_hosts.json`，
+    /// web 形态由服务端 host 实现。
+    pub known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore>,
     /// 概要 §6.2 第 8 步的窄适配根：桌面身份 + owner 作用域句柄登记表。
     ///
     /// 事务归属和资源生命周期由 Runtime session actor 管理。取不到 adapter 时用
@@ -394,6 +409,10 @@ pub mod test_harness {
 #[cfg(test)]
 #[path = "ipc_surface_tests.rs"]
 mod ipc_surface_tests;
+
+#[cfg(test)]
+#[path = "tunnel_probe_fixture.rs"]
+mod tunnel_probe_fixture;
 
 #[cfg(test)]
 #[path = "tunnel_probe_tests.rs"]

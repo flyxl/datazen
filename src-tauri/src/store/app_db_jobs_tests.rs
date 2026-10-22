@@ -653,14 +653,13 @@ async fn cancel_claim_fencing_and_durable_json_exclude_session_and_idempotency_s
 
 #[tokio::test]
 async fn app_state_reopen_marks_interrupted_job_for_verification_without_dispatch() {
-    use crate::store::Store;
+    use crate::store::DesktopRepository;
     use crate::transfer::adapter_registry::SyncAdapterRegistry;
     use datazen_runtime::driver_registry::registry::DriverRegistry;
 
-    let _keyring = crate::testing::FileKeyringGuard::set();
     let temp = tempfile::tempdir().expect("temp directory");
     let first_store = Arc::new(
-        Store::init_with_path(temp.path())
+        DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
             .await
             .expect("first store"),
     );
@@ -671,7 +670,7 @@ async fn app_state_reopen_marks_interrupted_job_for_verification_without_dispatc
         None,
     );
     let ctx = RequestContext::new(
-        OrganizationId::new("datazen-local"),
+        OrganizationId::new(crate::platform::LOCAL_ORGANIZATION_ID),
         PrincipalId::new("datazen-local-user"),
         None,
         ClientInstanceId::new("datazen-local-client"),
@@ -702,7 +701,7 @@ async fn app_state_reopen_marks_interrupted_job_for_verification_without_dispatc
     drop(first_store);
 
     let reopened_store = Arc::new(
-        Store::init_with_path(temp.path())
+        DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
             .await
             .expect("reopened store"),
     );

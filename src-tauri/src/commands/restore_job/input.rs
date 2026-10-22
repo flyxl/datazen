@@ -4,7 +4,7 @@ use datazen_feature_core::restore_job::RestorePlan;
 use datazen_platform_api::{
     dto::artifact::AbortReason,
     id::{Counter, ExecutionId},
-    ports::artifact::{ArtifactSpec, ArtifactStore, ChunkPayload},
+    ports::artifact::{ArtifactRepository, ArtifactSpec, ChunkPayload},
     target::ExecutionTarget,
     RequestContext,
 };
@@ -14,7 +14,7 @@ use tokio::io::AsyncReadExt;
 
 pub(super) async fn upload_native_input(
     context: &RequestContext,
-    artifacts: Arc<dyn ArtifactStore>,
+    artifacts: Arc<dyn ArtifactRepository>,
     target: ExecutionTarget,
     config_revision: u64,
     path: &Path,

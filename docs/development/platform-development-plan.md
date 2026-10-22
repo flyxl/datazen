@@ -73,7 +73,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - 创建并注册拟新增 application/runtime/platform-api/backend-client 包，明确依赖方向。
 - 定义 RequestContext、ID newtype、CanonicalTarget、namespaceShape/操作级 targetRequirements、会话、执行、Job、Artifact DTO 和 ApiError。
 - 分开 DurableExecutionRecord 与实时 runtimeBinding，定义能力快照、CancelReceipt 和签名幂等令牌 port；所有持久化路径排除运行时句柄。
-- 定义 repositories、SecretProvider、NetworkProvider、ArtifactStore、EventSink ports。
+- 定义 repositories、SecretProvider、NetworkProvider、ArtifactRepository、EventSink ports。
 - Tauri adapter 组装本地身份，调用应用服务；保留现有 IPC 外观的窄适配。
 - BackendClient 和 PlatformServices 注入，迁移 SDK 中 invoke/Channel，存量调用用薄再导出过渡。
 - 加入依赖护栏：core 不引用 Tauri/HTTP，driver 不引用 host，前端领域不直接绑定平台传输。
@@ -124,7 +124,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 回退：新 runtime 仅给已迁移 consumer 使用；不同时维护一条资源的旧 refs 和新 lease。服务暂停/重启前关闭新 session，不能将活事务移回旧 manager。
 
-P3 前置阶段同步修订的 DTO/port 契约现已由 runtime 实现：`ArtifactStore` 由 `packages/runtime/src/artifact/` 的 `FileArtifactStore` 实现并接入桌面结果发布；写入期已发布块可读且不可覆盖，取消/失败可显式截断并保留恢复元数据。取消请求与执行终态分离，由 `ExecutionState::resolve_cancel` / `CancelOutcome` 表达并覆盖 CM-22 竞态。CM-60 基准按每个请求的两段附加耗时先求和，再以 nearest-rank 计算 p95；失败样本不从分母剔除。上述行为分别由 runtime artifact journey、CM-22 取消测试与 `cm60-bench` 实现和验证，详见共享边界 §4.6、夹具 §6.3/§11。
+P3 前置阶段同步修订的 DTO/port 契约现已由 runtime 实现：`ArtifactRepository` 由 `packages/runtime/src/artifact/` 的 `FileArtifactRepository` 实现并接入桌面结果发布；写入期已发布块可读且不可覆盖，取消/失败可显式截断并保留恢复元数据。取消请求与执行终态分离，由 `ExecutionState::resolve_cancel` / `CancelOutcome` 表达并覆盖 CM-22 竞态。CM-60 基准按每个请求的两段附加耗时先求和，再以 nearest-rank 计算 p95；失败样本不从分母剔除。上述行为分别由 runtime artifact journey、CM-22 取消测试与 `cm60-bench` 实现和验证，详见共享边界 §4.6、夹具 §6.3/§11。
 
 P3 收尾阶段曾保留旧的 `ConnectionManager`（当时 Tauri 仍有活跃生产调用方）；P6 迁移完成后它已连同其调用方一并删除，CM-73/74 的行为测试继续保留在 runtime 侧。
 
@@ -238,7 +238,7 @@ pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rota
 - 任务窗口关闭后，后台 Job 继续运行；窗口重开可读取任务状态和结果。应用重启不会自动重放旧 worker：运行中的任务进入待核验，未派发任务标记为未执行。
 - 迁移三件套独立测试和冒烟测试通过，P5 退出门槛已关闭。
 
-本阶段边界：完整计划正文与部分审阅态仍为桌面进程内状态；应用重启后需要重新准备计划或执行只读恢复核验。服务端 ArtifactStore、团队 Web、多 worker 自动接管仍属于后续阶段，不影响 P5 关闭。
+本阶段边界：完整计划正文与部分审阅态仍为桌面进程内状态；应用重启后需要重新准备计划或执行只读恢复核验。服务端 ArtifactRepository、团队 Web、多 worker 自动接管仍属于后续阶段，不影响 P5 关闭。
 
 ## 10. P6：Workflow、AI、MCP、Wapp 与辅助任务
 
@@ -269,7 +269,7 @@ Monitor occurrence 当前状态：周期执行已先受理 SQLite durable `monit
 
 恢复 Apply Job 当前状态：已接受控 Artifact 输入、冻结 target/revision/input digest、单次 plan 消费和 JobRuntime 写预算；SQLite admission 已验证真实 typed payload、拒绝未知/不一致元数据且失败不消费 plan；PostgreSQL/MySQL 已接固定 Runtime Session / ExecutionGateway 的受限 SQL 恢复与提交证据；COPY/客户端指令不在此格式内，其他驱动至 P10 明确 Unsupported/NotStarted。PostgreSQL 已有 driver 专属 live 旅程，复用共享 production RuntimeRestoreGateway/Runtime Session/ExecutionGateway/JobRuntime 并独立读回，覆盖单事务提交、自有 ROLLBACK 与无残表、COPY/客户端格式及冻结输入/目标/revision 拒绝；MySQL 也已有 driver 专属 live 旅程，覆盖非事务 CREATE/INSERT 的逐句提交和独立读回、LOAD DATA/SOURCE 整份拒绝，以及 DDL 后 SQL 失败保留已确认边界并独立证明残表；失败语句效果缺少驱动确定证据时总体保留 Unknown，不宣称跨 DDL/DML 原子性。桌面 picker/Store/DesktopSessionBackend 接线不在这些旅程验收范围，具体边界见 [Job §2.5](../architecture/platform/data-migration-jobs.md#25-restore-apply-job已接线驱动执行失败关闭)。
 
-桌面 Restore 入口边界补充：Host 组合旅程复用生产 staging/upload helper，并使用真实 Store/PlatformAdapter 注入的 ArtifactStore、DesktopSessionBackend 与 SQLite JobHost，验证冻结文件输入、owner/组织隔离、实际 SQL 派发和提交边界、durable plan 重复消费拒绝，以及 revision/read-only/safe-mode 拒绝。provider 为宿主接线 fixture；原生 picker/Tauri 事件和真实数据库效果没有由该测试冒充覆盖，后者继续由 driver live 旅程负责。
+桌面 Restore 入口边界补充：Host 组合旅程复用生产 staging/upload helper，并使用真实 Store/PlatformAdapter 注入的 ArtifactRepository、DesktopSessionBackend 与 SQLite JobHost，验证冻结文件输入、owner/组织隔离、实际 SQL 派发和提交边界、durable plan 重复消费拒绝，以及 revision/read-only/safe-mode 拒绝。provider 为宿主接线 fixture；原生 picker/Tauri 事件和真实数据库效果没有由该测试冒充覆盖，后者继续由 driver live 旅程负责。
 
 ## 11. P7：单实例团队 Web 服务
 
@@ -281,7 +281,7 @@ Monitor occurrence 当前状态：周期执行已先受理 SQLite durable `monit
 
 - server host，无 Tauri 依赖，初期同进程管理与执行。
 - OIDC、membership、服务端登录会话、RBAC/资源 ACL、CSRF、同源 HTTPS 部署。
-- ProfileRepository/JobRepository/Audit/ArtifactStore 的服务端实现和 schema migration。
+- ProfileRepository/JobRepository/Audit/ArtifactRepository 的服务端实现和 schema migration。
 - secretRef/轮换、个人/团队执行身份、出站网络政策。
 - 概要设计 v1 HTTP API，幂等提交、SSE 重订阅、分页/大小限制、受控上传下载。
 - React Web shell：窗口替换为页面/面板，文件和剪贴板使用 Web 平台实现。
@@ -434,7 +434,7 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 
   - **`canonicalize` 的生产调用点不止 redis / postgres。** 除 `packages/drivers/redis/src/resource/provider/contract.rs`、`packages/drivers/postgres/src/resource/provider/contract.rs` 与两者的 `provider.rs` 外，还有 `packages/driver-api/src/resource_adapter.rs`（`LegacyResourceAdapter`）以及 sqlite / mysql / mongodb / hbase / vector 各自的 `resource.rs` 或 `resource/provider.rs`。这直接决定 ⑦ 的改造半径：把 `CaseFolding::Unknown` 改成硬拒绝会同时打断这 6 个驱动的生产路径。
 
-  - **application 层：已实现、已断言，且已接入生产调用链。** 实现是 `packages/application/src/target.rs` 的 `TargetResolver::compute` 六步流水线，12 个单测在同文件 `mod tests`（`:336`）。①`empty_field_values_are_rejected_before_anything_else` → `InvalidArgument`（第 1 步 `validate_namespace_target`，`target.rs:100` → `packages/application/src/dto/requests.rs:40`）；②`the_six_steps_run_in_the_documented_order` → `TargetUnsupported` 且信息含 `catalog`，`unknown_operation_or_connection_fails_closed` 覆盖失败关闭；③`a_missing_required_layer_is_target_required_not_a_backfill` → `TargetRequired`；④`session_defaults_apply_only_when_the_command_allows_them`（`execute_in_session` 可补、`query` 不可补）与 `object_identity_is_gated_by_the_command_requirements`（schema 可省）；⑤`a_successful_computation_yields_canonical_identity_only`（别名 `main` 与真名 `app` 落到同一身份）、`the_canonical_target_round_trips_and_carries_no_display_name`（别名不出现在序列化结果里）；⑥`alias_in_the_wrong_slot_is_a_target_conflict` → `ApiErrorCode::TargetConflict`，即 CM-62 所指的那个 `TargetConflict`。**该"生产不可达"结论已被后续接线取代**：生产调用点共三处，全部在组装层——`src-tauri/src/platform/target_metadata.rs:51` 的 `resolver()` 构造 `TargetResolver`，`src-tauri/src/platform/adapter.rs:326` 用它在 `PlatformAdapter::inject` 里组装 `ApplicationServices` 并 `set` 出去（`adapter.rs:327-352`），`adapter.rs:567` 在 `resolve_execution_target` 内调用 `compute()`；生产入口是 `execute_at_target`（`src-tauri/src/platform/session_commands.rs:130-138` 先 `compute` 再把规范目标写回请求），另有 `src-tauri/src/commands/table_target.rs:79` 与 `src-tauri/src/workflow/independent_sql.rs:155` 两个调用方。**仍未经过 `compute()` 的是会话打开路径**（`open_session` / `execute_in_session`）：它们的必填层校验由 runtime 自己做（`TargetRequired` / `TargetConflict`，`packages/runtime/src/connection/types.rs`），不是遗漏。
+  - **application 层：已实现、已断言，且已接入生产调用链。** 实现是 `packages/application/src/target.rs` 的 `TargetResolver::compute` 六步流水线，12 个单测在同文件 `mod tests`（`:336`）。①`empty_field_values_are_rejected_before_anything_else` → `InvalidArgument`（第 1 步 `validate_namespace_target`，`target.rs:100` → `packages/application/src/dto/requests.rs:40`）；②`the_six_steps_run_in_the_documented_order` → `TargetUnsupported` 且信息含 `catalog`，`unknown_operation_or_connection_fails_closed` 覆盖失败关闭；③`a_missing_required_layer_is_target_required_not_a_backfill` → `TargetRequired`；④`session_defaults_apply_only_when_the_command_allows_them`（`execute_in_session` 可补、`query` 不可补）与 `object_identity_is_gated_by_the_command_requirements`（schema 可省）；⑤`a_successful_computation_yields_canonical_identity_only`（别名 `main` 与真名 `app` 落到同一身份）、`the_canonical_target_round_trips_and_carries_no_display_name`（别名不出现在序列化结果里）；⑥`alias_in_the_wrong_slot_is_a_target_conflict` → `ApiErrorCode::TargetConflict`，即 CM-62 所指的那个 `TargetConflict`。**该"生产不可达"结论已被后续接线取代**：生产调用点共三处，全部在组装层——`src-tauri/src/platform/target_metadata.rs:51` 的 `resolver()` 构造 `TargetResolver`，`src-tauri/src/platform/adapter.rs:326` 用它在 `PlatformAdapter::inject` 里组装 `ApplicationServices` 并 `set` 出去（`adapter.rs:327-352`），`adapter.rs:567` 在 `resolve_execution_target` 内调用 `compute()`；生产入口是 `execute_at_target`（`src-tauri/src/platform/session_commands.rs:130-138` 先 `compute` 再把规范目标写回请求），另有 `src-tauri/src/commands/table_target.rs:79` 与 `src-tauri/src/workflow/host.rs:154` 两个调用方。**仍未经过 `compute()` 的是会话打开路径**（`open_session` / `execute_in_session`）：它们的必填层校验由 runtime 自己做（`TargetRequired` / `TargetConflict`，`packages/runtime/src/connection/types.rs`），不是遗漏。
 
   - **⑦大小写别名：已实现，只覆盖已声明的驱动。** `canonicalize` 现在经内部的 `canonical_identifier` 折叠每个进入规范路径的标识符。引号按驱动既有的记录方式识别——引号是字符串的一部分（`"Sales"`），与 `datazen_driver_postgres::resource::observation` 一致——因此**无需改 DTO、无需 `PROTOCOL_VERSION` 升版**；剥离后规范路径仍是裸标识符，由驱动在拼 SQL 时重新加引号。折叠发生在别名查找**之前**、别名结果**之后**，所以 `Sales` / `SALES` 会命中同一条 alias 项。别名解析本身不动（`resolve_alias` 仍是 public）。
 
@@ -465,7 +465,7 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 
 ### P6 Workflow v1 范围
 
-Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `feature-core command_runtime → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
 
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）
 
@@ -473,7 +473,7 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 
 后端从当前桌面 RequestContext 取得批准者，并生成独立 service principal / delegation ID。AppDb schema v3 的 `monitor_schedule_grants` 仅保存批准者、服务身份、dashboard/widget/workflow ID、工作流 YAML SHA-256 revision、固定 canonical connection/database/schema 与配置版本、connect/query 动作及命令范围、readOnly、到期时间、撤销状态与版本。不保存 SQL 副本、session、attachment、bearer token、秘密或凭据。新授权取代同 widget 的旧授权；变更 workflow 定义或 profile 配置必须重新授权。
 
-当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI、migration 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询；函数仅允许明确的内置聚合/数值/文本/空值/时钟函数白名单，未知、带 schema、引号名称及表值函数失败关闭，因此序列推进/状态、命名锁获取/状态/释放和会话配置函数不能借 SELECT 派发），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。其他驱动和写动作均失败关闭。
+当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询；函数仅允许明确的内置聚合/数值/文本/空值/时钟函数白名单，未知、带 schema、引号名称及表值函数失败关闭，因此序列推进/状态、命名锁获取/状态/释放和会话配置函数不能借 SELECT 派发），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。其他驱动和写动作均失败关闭。
 
 共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
 

@@ -4,7 +4,7 @@ mod release;
 #[cfg(feature = "webdriver")]
 pub(crate) mod webdriver_dispatch;
 use super::{resource_budget::DesktopResourceBudget, resource_mapping as map};
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use async_trait::async_trait;
 use datazen_driver_api::{resource as dr, session as ds, QueryExecutionId};
 use datazen_platform_api::ports::budget::BudgetCoordinator as _;
@@ -73,7 +73,7 @@ impl Resource {
 
 pub struct DesktopSessionBackend {
     registry: Arc<DriverRegistry>,
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     budget: Arc<datazen_runtime::budget::InProcessBudgetCoordinator>,
     organization: datazen_platform_api::id::OrganizationId,
     principal: datazen_platform_api::id::PrincipalId,
@@ -92,6 +92,13 @@ pub struct DesktopSessionBackend {
     by_session: tokio::sync::RwLock<HashMap<String, String>>,
     publisher: RwLock<Option<ResultPublisher>>,
     export_output: RwLock<Option<ExportOutputAuthority>>,
+    /// 隧道定义的存储端口（宿主注入）。
+    ///
+    /// 建连时用它把连接侧的 `tunnelId` 解引用回内联配置（解引用发生在**建连时**，
+    /// 不是打开表单时）。
+    tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
+    /// SSH known-hosts 的存储端口（宿主注入）。
+    known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore>,
 }
 impl DesktopSessionBackend {
     pub(crate) fn physical_budget(
@@ -100,7 +107,13 @@ impl DesktopSessionBackend {
         self.budget.clone()
     }
 
-    pub fn new(registry: Arc<DriverRegistry>, store: Arc<Store>, physical_limit: u32) -> Self {
+    pub fn new(
+        registry: Arc<DriverRegistry>,
+        store: Arc<DesktopRepository>,
+        physical_limit: u32,
+        tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
+        known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore>,
+    ) -> Self {
         Self::new_scoped(
             registry,
             store,
@@ -109,14 +122,19 @@ impl DesktopSessionBackend {
             super::identity::local_principal().unwrap_or_else(|| {
                 datazen_platform_api::id::PrincipalId::new("unresolved-desktop-user")
             }),
+            tunnels,
+            known_hosts,
         )
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn new_scoped(
         registry: Arc<DriverRegistry>,
-        store: Arc<Store>,
+        store: Arc<DesktopRepository>,
         physical_limit: u32,
         organization: datazen_platform_api::id::OrganizationId,
         principal: datazen_platform_api::id::PrincipalId,
+        tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
+        known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore>,
     ) -> Self {
         Self {
             registry,
@@ -135,6 +153,8 @@ impl DesktopSessionBackend {
             by_session: tokio::sync::RwLock::new(HashMap::new()),
             publisher: RwLock::new(None),
             export_output: RwLock::new(None),
+            tunnels,
+            known_hosts,
         }
     }
     pub fn set_publisher(&self, publisher: ResultPublisher) -> Result<(), rc::ProviderError> {
