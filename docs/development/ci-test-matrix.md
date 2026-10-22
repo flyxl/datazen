@@ -361,26 +361,30 @@ Rust 单测，而 CI 里没有任何一步执行它们。`--require-layers=<ids>
 **变异自证**：`scripts/platform-arch-selfcheck.mjs` 临时改写 `Cargo.toml` / 新增探针 crate，
 逐条运行门禁并断言退出码非零 + 输出点名了预期规则与 crate，再逐条还原；末尾断言
 `git status --porcelain` 为空。它放在 job 的**最后一步**，因为它会动工作树——放在这里，
-被强杀也不会污染任何后续步骤。8 个变异约 5s；它失败说明门禁本身失去了鉴别力，比门禁变红更早报警。
+被强杀也不会污染任何后续步骤。10 个变异约 5s；它失败说明门禁本身失去了鉴别力，比门禁变红更早报警。
 
-**判定范围**：门禁的 **Cargo 闭包判定**只读 crate 依赖闭包；声明边（manifest 里写了什么）只产
-advisory，见 §2.3.1。`@tauri-apps/api` / `fetch(` / `XMLHttpRequest` 这类前端字面量由
+**判定范围**：门禁的 **Cargo 闭包判定**只读 crate 依赖闭包；**声明边**（manifest 里写了什么）
+此前只产 advisory，**现已按规则的主体范围参与阻断判定**（F-01 的驱动侧），见 §2.3.1。
+`@tauri-apps/api` / `fetch(` / `XMLHttpRequest` 这类前端字面量由
 `shared-boundaries-and-ports.md` §7 记的源码扫描（F-07）负责，不属于 Cargo 闭包判定，但由同一门禁执行；
 `packages/backend-client` 的 pnpm 接线（tsconfig paths / include / vite alias）见
 `shared-boundaries-and-ports.md` §2.5，同样不在本门禁内。
 
-### 2.3.1 F-01 的 `tauri*` 何时能变成阻断门禁
+### 2.3.1 F-01 的 `tauri*` 已变成阻断门禁
 
-§2.4 的 F-01 禁止列已经写了 `tauri*`，但**门禁侧看不见**：`F-01` 的 `forbiddenCrates`
-仍是 `[]`（`scripts/check-platform-crate-boundaries.mjs` 的 F-01 规则 `forbiddenCrates`）。而 `checkSpecConsistency`
-的 crate 双向比对**只在 `forbiddenCrates === 'spec'` 时才跑**，F-01 不是，所以文档写多少，
-门禁都不会有反应。这一段记的是"怎么把它变成阻断门禁"，不是"已经变了"。
+§2.4 的 F-01 禁止列写的是 `tauri*`，**门禁侧现在看得见了**：`F-01` 的 `forbiddenCrates`
+是 `['tauri']`（`scripts/check-platform-crate-boundaries.mjs` 的 F-01 规则），闭包侧与声明边侧
+任一出现 `tauri*` 都是 **violation**，退出码非 0。
 
-当前实测产出 **1 条** advisory（退出码 0）：
+> 这一段此前记的是"怎么把它变成阻断门禁"，不是"已经变了"。**三条前置条件现已全部完成**，
+> 下面的推导保留下来，因为"为什么当时不能武装"正是今天能武装的依据。
+
+当前实测产出 **1 条** advisory（退出码 0）——它来自**宿主**，不在 F-01 的主体范围内：
 
 ```
 ADVISORY F-01?  datazen (src-tauri/Cargo.toml) declares tauri-plugin-webdriver in
-                [dependencies], which the resolved graph does not contain.
+                [dependencies], which the resolved graph does not contain. Not blocking:
+                F-01's subjects are `packages/drivers/*`, and `datazen` is not one of them.
 ```
 
 `datazen-driver-redis` 已不在任何 tauri advisory 里：它的 `[dependencies] tauri`、
@@ -394,39 +398,47 @@ ADVISORY F-01?  datazen (src-tauri/Cargo.toml) declares tauri-plugin-webdriver i
 | # | 前置条件 | 位置 | 归属 | 状态 |
 |---|---------|------|------|------|
 | 1 | redis 去掉 `tauri` 声明（`packages/drivers/redis/Cargo.toml` 的 `[dependencies] tauri`）与 `[build-dependencies] tauri-plugin` | `packages/drivers/**` | 驱动轨 | ✅ 已完成 |
-| 2 | manifest 读取失败路径由 advisory 改为 error（§2.3.2） | `scripts/**` | 门禁脚本轨 | 待办 |
-| 3 | `F-01` 的 `forbiddenCrates` 由 `[]` 改为 `['tauri']` | `scripts/**` | 门禁脚本轨 | 待办 |
+| 2 | manifest 读取失败路径由 advisory 改为 error（§2.3.2） | `scripts/**` | 门禁脚本轨 | ✅ 已完成 |
+| 3 | `F-01` 的 `forbiddenCrates` 由 `[]` 改为 `['tauri']` | `scripts/**` | 门禁脚本轨 | ✅ 已完成 |
 
-**前置条件 1 完成后，"任何阻断式的 tauri 检查今天都是红的"这句话不再成立。**
+**"任何阻断式的 tauri 检查今天都是红的"这句话已不成立。**
 此前之所以写死"没有不动驱动 manifest 就能先武装的中间态"，是因为 redis 不只**声明**了
 tauri，它**真的解析到** `tauri-plugin` 与 `tauri-utils`——无论把检查挂在声明边还是解析边
-上，阻断式检查都会当场把 CI 转红。现在 redis 的声明边与解析闭包都不含 tauri 家族，
-武装本身是绿的；剩下的两条前置条件都只动 `scripts/**`。
+上，阻断式检查都会当场把 CI 转红。redis 的声明边与解析闭包都不含 tauri 家族之后，
+武装本身是绿的；剩下的两条前置条件都只动 `scripts/**`，与驱动侧的前置条件**同一次落地**。
 
-把声明边降级成 advisory（也就是现在的形态）已经是当前树上能上线的最强形态——它既报了
-闭包侧，也报了声明侧，缺的只是"阻断"两个字。
+**武装后不会误伤宿主**：F-01 的 `subjects` 是 `['driver']`（`packages/drivers/*`），**闭包侧与
+声明边侧都按这个主体范围判定**。`src-tauri` 那 9 条 tauri 声明（宿主本来就该依赖 tauri）
+不在该规则主体内：闭包侧本来就不查宿主，声明边侧把宿主那条报成 advisory 而**不是** violation。
+若按"工作区里所有成员"判，宿主自己声明的 `tauri-plugin-webdriver`（Tauri 自己的 webdriver
+插件，宿主本来就该有）会把 CI 变红——这就是主体范围必须两侧一致的原因。
 
-**武装后不会误伤宿主**：`F-01` 的 `subjects` 是 `['driver']`，`src-tauri` 那 9 条
-tauri 声明（宿主本来就该依赖 tauri）不在该规则主体内。
+**豁免必须显式**：规则表的 `exemptions` 列表（成员 + 家族 + 理由）是唯一的放行通道，空即无豁免；
+过期条目（成员不是本规则主体、或家族不是本规则禁的）报 **error**。**没有**"降级成 advisory
+就放过"这种口子——真要豁免一个驱动，只能把它和理由一起写进规则表，并让它每次跑都打印出来。
 
-### 2.3.2 manifest 读不出来为何是 advisory 而不是 error
+**自证**：`scripts/platform-arch-selfcheck.mjs` 增加了两条 F-01 变异——M9（驱动**依赖**
+`tauri*`，打闭包侧）与 M10（驱动**声明**但解析图里没有的 `tauri*`，打声明边侧）。两条必须同时
+存在：F-01 有两侧，只有 M9 时声明边那一侧可以悄悄坏掉而自证仍然全绿。
+
+### 2.3.2 manifest 读不出来现在是 error
 
 `scripts/check-platform-crate-boundaries.mjs` 的声明边扫描（逐 member 读 manifest）：
-`readFileSync(member.manifestPath)`，抛错时压一条 `read?` advisory 然后 `continue`。
-这是整套门禁里唯一一处非 fail-closed 的不对称。
+`readFileSync(member.manifestPath)`，抛错时压一条 `read?` **error** 然后 `continue`。
+退出码数 `violations + errors`，所以读不到的成员会把闸门打成红的——这曾是整套门禁里
+唯一一处非 fail-closed 的不对称，现在没有了。
 
-**结论：今天可接受，但武装 F-01 时必须一起改掉。** 理由三条：
+**这条翻转与 F-01 武装是耦合的，所以必须同一次落地。** 理由三条：
 
-1. **它大声 fail-open。** 打印的是 `read? <crate> (<dir>/Cargo.toml) could not be read for
-   declared dependencies (<err.code>)`——点名了成员和错误码，不是静默跳过。
+1. **它曾经大声 fail-open。** 翻转前打印的是 `read? <crate> (<dir>/Cargo.toml) could not be read for
+   declared dependencies (<err.code>)` advisory，然后 `continue`——点名了成员和错误码，但不影响退出码。
 2. **触发面窄。** `member.manifestPath` 来自 `cargo metadata` 刚成功读过的同一批路径，
    同进程、同用户、微秒级。要它失败需要 TOCTOU 竞态，不是配置能造出来的。
-3. **损失有界。** 解析边那一路读的是已经在内存里的 metadata，全程不碰文件，该成员照样被
-   覆盖；丢的只是声明边那一路，而声明边今天不阻断任何东西。
+3. **损失原本有界，今天不再有界。** 翻转前解析边那一路读的是已经在内存里的 metadata，全程不碰文件，
+   该成员照样被覆盖，丢的只是声明边那一路——而那时声明边还不阻断任何东西。**F-01 武装之后，
+   同一个口子会导致漏掉一条真 violation**：这条路径是"声明扫描整体被跳过"的唯一入口。
 
-**但它与 F-01 武装是耦合的**：这条路径是"声明扫描整体被跳过"的唯一入口。今天它只导致
-少一条 advisory；F-01 武装之后，同一个口子会导致**漏掉一条真 violation**。所以上表
-前置条件 2 不是洁癖，是武装的组成部分——**两者必须同一次落地**，不能只武装第 3 条。
+所以上表前置条件 2 不是洁癖，是武装的组成部分——**两者必须同一次落地**，不能只武装第 3 条。
 
 ### 2.3.3 声明边扫描器的已知边界
 
@@ -452,6 +464,11 @@ tauri 声明（宿主本来就该依赖 tauri）不在该规则主体内。
 
 **处置：不排期修，改为记录触发条件。** 理由是修它需要引入 TOML 解析依赖，而门禁当前是
 零依赖的；为一个实测命中数为 0 的盲点换掉零依赖不划算。等触发条件真的出现时再改。
+
+> **武装后这份清单的分量变了**：F-01 武装之前，声明扫描漏掉一条边只少一条 advisory；武装之后，
+> 同一个盲点会漏掉一条**真 violation**（驱动侧）。两个盲点今天仍然都是空的，且各有一层独立理由
+> 兜住，所以武装当天不引入新的漏报面；但触发条件一旦出现，处理优先级从"记录"升为"修"——
+> 那时漏掉的是闸门的一半。
 
 ## 3. 驱动预设与 SKU
 

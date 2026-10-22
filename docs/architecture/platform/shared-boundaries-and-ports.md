@@ -148,7 +148,7 @@ flowchart TD
 
 | 编号 | 断言 | 违背后果 |
 | --- | --- | --- |
-| F-01 | `packages/drivers/*` 的 crate 依赖闭包不含 `datazen`、`datazen-runtime`、`datazen-application`、`datazen-platform-api`、`datazen-ai-api`，且不含任何 `tauri*` crate | 驱动反向引用宿主或宿主框架，Web 端与宿主无关的构建被拖垮 |
+| F-01 | `packages/drivers/*` 的 crate 依赖闭包不含 `datazen`、`datazen-runtime`、`datazen-application`、`datazen-platform-api`、`datazen-ai-api`，且不含任何 `tauri*` crate；闭包侧与声明边侧任一出现即违规，**已武装为阻断门禁** | 驱动反向引用宿主或宿主框架，Web 端与宿主无关的构建被拖垮 |
 | F-02 | `packages/application`、`packages/runtime`、`packages/platform-api` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 内核无法在没有 Tauri 的进程（测试、server worker）中编译 |
 | F-03 | `packages/application`、`packages/runtime` 不含 `axum`、`actix-web`、`warp`、`tonic` 等 HTTP/传输框架 | 传输策略渗入业务内核 |
 | F-04 | `packages/platform-api` 不依赖 `application` / `runtime` / 领域包 / `src-tauri` | ports 与用例循环依赖 |
@@ -161,6 +161,8 @@ flowchart TD
 | F-12 | `packages/feature-core` 的 normal + build 依赖闭包不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`，不依赖桌面宿主层；仅依赖共享 runtime/application/领域包与契约 | Workflow、AI、Monitor、导出与 Workspace App 内核逻辑重新绑定桌面或服务端传输 |
 | F-13 | `packages/tunnel` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 隧道机制（HTTP `CONNECT` 代理 / WebSocket 中继 / SSH 转发）是形态中立件：一旦拖进 Tauri 或宿主 crate，桌面端与将来的 Web 端就无法共用同一份实现 |
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
+
+**F-01 两侧都已是阻断判定；主体是 `packages/drivers/*`，两侧都按主体范围判定。** 宿主 `datazen` 自己声明 `tauri-plugin-webdriver`（Tauri 自己的 webdriver 插件，宿主本来就该有）是**合法的**：它不在 `packages/drivers/*` 里，因此声明边那一侧只把它报成 advisory，不判 violation。驱动的豁免必须是**显式**的：规则表里的 `exemptions` 列表（成员 + 家族 + 理由）为空即无豁免，且过期条目（成员不是本规则主体、或家族不是本规则禁的）直接报 **error**——它什么也没保护，却看起来像在保护。
 
 这条不是修辞上的严谨，是实测出来的盲点：`packages/drivers/redis/Cargo.toml` 曾声明的 `tauri = { version = "2", optional = true }` 与 `src-tauri/Cargo.toml` 的 `tauri-plugin-webdriver = { version = "0.2", optional = true }` 都不在解析图里，只读闭包的守卫对它们完全失明。判定方式与告警含义见 §8.2 注 3。
 
@@ -1249,7 +1251,7 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
 
 | 本节条目 | 实现位置 | 判定方式 | 状态 |
 | --- | --- | --- | --- |
-| F-01 · 驱动依赖闭包不含宿主 / platform crate，且不含 `tauri*` | `RULES` 里的 `F-01` 条目 | `allowedLayers: ['driver','driver-api']` **反向白名单**：`LAYERS` 里新增任何一层，当天即对驱动禁用，放行必须是一次显式编辑（`forbiddenNames` 的推导处）。`forbiddenCrates: []`，故 `tauri*` 侧不产 violation，改由两个 advisory 块覆盖：闭包 advisory 块、声明边 advisory 块 | ✅ 宿主 / platform crate 侧已强制，`packages/drivers/*` 全部纳入；⚠️ `tauri*` 侧仅 advisory（见下注 3）；**驱动的 `tauri*` 边已清零**（redis 驱动已无任何 `tauri` 依赖） |
+| F-01 · 驱动依赖闭包不含宿主 / platform crate，且不含 `tauri*` | `RULES` 里的 `F-01` 条目 | `allowedLayers: ['driver','driver-api']` **反向白名单**：`LAYERS` 里新增任何一层，当天即对驱动禁用，放行必须是一次显式编辑（`forbiddenNames` 的推导处）。`forbiddenCrates: ['tauri']`（家族匹配：`tauri` 命中 `tauri-plugin` / `tauri-utils` / `tauri-build` …，不命中 `taurium`），故 `tauri*` 侧**产 violation**。`declaredEdges: true` 让声明边侧同样参与判定（见下注 3）。`specTokens: ['packages/drivers/*','tauri']` 把 §2.4 的行钉住，`subjectsFromSpec: true` 让主体路径集合双向相等 | ✅ **已武装为阻断门禁**：宿主 / platform crate 侧与 `tauri*` 侧都产 violation，`packages/drivers/*` 全部纳入；驱动的 `tauri*` 边已清零（redis 驱动已无任何 `tauri` 依赖），实测 `ok F-01`；**豁免只能显式写进 `exemptions`（成员 + 家族 + 理由），过期条目报 error** |
 | F-02 · 内核 normal+build 闭包无 `tauri*`、无 `datazen` | `RULES` 里的 `F-02` 条目 | `forbiddenLayers:['host']` + `forbiddenCrates:['tauri']`，`specSubsetOnly` 表示文档多写的 `datazen` 由 host 层覆盖 | ✅ 已武装，实测 `ok F-02: datazen-application, datazen-runtime, datazen-platform-api`（无真空） |
 | F-03 · 内核无 HTTP / 传输框架 | `RULES` 里的 `F-03` 条目 | `forbiddenCrates:'spec'` 从 §2.4 行里取 crate token 双向核对，`specCrates` 预置 `axum`/`actix-web`/`warp`/`tonic`，新增 token 无需改脚本 | ✅ 已武装，实测 `ok F-03: datazen-application, datazen-runtime`（无真空） |
 | F-04 · platform-api 只依赖 port 层 | `RULES` 里的 `F-04` 条目 | 同 F-01 的反向白名单形态：`['platform-api','driver-api','ai-api']` | ✅ 已武装，实测 `ok F-04: datazen-platform-api`（无真空） |
@@ -1269,34 +1271,39 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
    >
    > `packages/backend-client` 是第三种情况：目录存在但**没有 `Cargo.toml`**，因此永不是 Cargo member。它的"存在"只能按目录判定（见上表 `resolveSubject`），不能按 cargo 索引判定。
 2. **F-05 的 `@tauri-apps/api` 前端半边不由本门禁判**，它归 §7 的源码扫描与 §8.1 的 `backend-client-transport-agnostic` / `driver-sdk-no-direct-tauri`。
-3. **驱动的 `tauri*` 边已清零；门禁侧对驱动仍以 advisory 报告。** `check-platform-crate-boundaries.mjs` 的声明边 advisory 块直接读 `Cargo.toml` 的**声明边**，报告"声明了但解析图不包含"的边，与只走闭包的闭包 advisory 块互为补充。**redis 驱动已去掉 `tauri` 与 `[build-dependencies] tauri-plugin` 两条声明边**（连同 `build.rs`、插件 ACL 目录与 `tauri-plugin` feature 一并删除），实测 advisory 由 3 条降为 **1 条**，只剩 `datazen` 声明侧 `tauri-plugin-webdriver`（宿主自己的休眠边，见下注 4）；`datazen-driver-redis` 已不在任何 tauri advisory 里。F-01 的 `forbiddenCrates` 仍为 `[]`，所以不产 violation——把它升为阻断判定的其余前置条件（声明边读取失败改 error、`forbiddenCrates` 由 `[]` 改为 `['tauri']`）按 [ci-test-matrix §2.3.1](../../development/ci-test-matrix.md) 的归属表属**门禁脚本轨**；驱动侧的前置条件已满足。
-4. **`tauri-plugin-webdriver` 是同一个盲点，且长在宿主自己身上。** `src-tauri/Cargo.toml` 里的 `tauri-plugin-webdriver = { version = "0.2", optional = true }`，由该文件 `webdriver` feature 数组里的 `tauri-plugin-webdriver` 门控，不在 `resolve.deps[]` 里。该 feature 数组共 **4** 项：`webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen-data-transfer/webdriver"]`——只有第一项属 tauri 家族，`dep:objc2` / `dep:objc2-app-kit` 是 macOS 静默 E2E 的两个支撑 crate，第四项把 `datazen-data-transfer` 的 `webdriver` feature 一并打开；`default = []`，所以整条数组都在默认 feature 之外。宿主 manifest 一直"看起来干净"，只是因为里面没有任何 tauri 边可达，不代表它干净。
+3. **驱动的 `tauri*` 边已清零；F-01 的 `tauri*` 侧已武装为阻断判定（两侧都判）。** `check-platform-crate-boundaries.mjs` 的 F-01 规则现在是 `forbiddenCrates: ['tauri']` + `declaredEdges: true`：**闭包侧**（`cargo metadata` 的 resolve 图）与**声明边侧**（直接读 `Cargo.toml` 的声明行，报告"声明了但解析图不包含"的休眠边）任一出现都是 **violation**，不再有 advisory。**redis 驱动已去掉 `tauri` 与 `[build-dependencies] tauri-plugin` 两条声明边**（连同 `build.rs`、插件 ACL 目录与 `tauri-plugin` feature 一并删除），所以武装当天 CI 仍然是绿的；驱动侧的前置条件与门禁脚本侧的两条（声明边读取失败改 error、`forbiddenCrates` 由 `[]` 改为 `['tauri']`）已在同一次提交里落地，归属表见 [ci-test-matrix §2.3.1](../../development/ci-test-matrix.md)。
+   > **判定按主体范围，不按工作区。** F-01 的主体是 `driver` 层（`packages/drivers/*`），**两侧都按主体范围判定**：驱动里的休眠 `tauri*` 边是 violation；宿主 `datazen` 的休眠 `tauri*` 边**不是** F-01 的事（宿主本来就该依赖 Tauri），只报成 advisory。宿主那条见下注 4。
+   >
+   > **豁免必须显式。** 规则表的 `exemptions` 列表（成员 + 家族 + 理由）是唯一的放行通道，空即无豁免；过期条目（成员不是本规则主体、或家族不是本规则禁的）报 **error**。**没有**"降级成 advisory 就放过"这种口子。
+4. **`tauri-plugin-webdriver` 是同一个盲点，且长在宿主自己身上。** `src-tauri/Cargo.toml` 里的 `tauri-plugin-webdriver = { version = "0.2", optional = true }`，由该文件 `webdriver` feature 数组里的 `tauri-plugin-webdriver` 门控，不在 `resolve.deps[]` 里。该 feature 数组共 **4** 项：`webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen-data-transfer/webdriver"]`——只有第一项属 tauri 家族，`dep:objc2` / `dep:objc2-app-kit` 是 macOS 静默 E2E 的两个支撑 crate，第四项把 `datazen-data-transfer` 的 `webdriver` feature 一并打开；`default = []`，所以整条数组都在默认 feature 之外。宿主 manifest 一直"看起来干净"，只是因为里面没有任何 tauri 边可达，不代表它干净。**F-01 武装后它仍然合法**：宿主不在 F-01 的主体范围内，这条边只报 advisory。
 5. **怎么读 declared-minus-resolved 这类告警（别只记"共几条"）。** 对某个成员，令 D = manifest 声明的 tauri 家族集合，R = normal+build 闭包解析到的 tauri 家族集合：
    - `D∖R`（声明了但当前 feature 解析不链接的**休眠边**）**才是信号**，且只有 manifest 扫描看得见；
    - `R∖D`（解析到了但未声明 = **传递依赖**）**不是信号**——任何有传递依赖的 crate 都成立，拿它告警会天天误报。
 
    历史实测（redis 尚带 `tauri` 边时）：`D = {tauri, tauri-plugin}`、`R = {tauri-plugin, tauri-utils}`，`D∖R = {tauri}`、`R∖D = {tauri-utils}`。两集合互不包含：只走闭包会漏掉 `tauri`，只走声明会漏掉 `tauri-utils`，两个扫描各有一半视野，谁也替代不了谁。这也是报告 `D∖R` 而非 `D` 全集的原因——已被闭包报过的声明边不报第二次，计数才不会看起来像两个发现。**当前实测**：`datazen-driver-redis` 的 `D = ∅`、`R = ∅`（驱动侧已无任何 tauri 边），剩下的唯一一条 advisory 来自宿主 `datazen` 的 `D∖R = {tauri-plugin-webdriver}`。
 6. **本门禁没有 `ALLOWLIST`**：白名单形态是上面那两条 `allowedLayers` 反转规则，`ALLOWLIST` 精确三元组（规则 + 文件 + 说明符 + 到期报告）只存在于前端字符串护栏 `check-driver-import-boundaries.mjs`。
-7. **60 个单测用内联 `cargo metadata` 夹具**（`fixture()`，依赖经 `metadata` 注入），不在单测里真跑 cargo（实测：`npx vitest run scripts/__tests__/check-platform-crate-boundaries.test.ts` → `60 tests` 通过）。所以"单测全绿"证明的是判定逻辑，不是真实 workspace 图；真实图由 CI 的 `pnpm test:platform-arch` 与 `pnpm test:platform-arch:mutations` 的 8 个变异自证覆盖。
+7. **66 个单测用内联 `cargo metadata` 夹具**（`fixture()`，依赖经 `metadata` 注入），不在单测里真跑 cargo（实测：`npx vitest run scripts/__tests__/check-platform-crate-boundaries.test.ts` → `66 tests` 通过）。所以"单测全绿"证明的是判定逻辑，不是真实 workspace 图；真实图由 CI 的 `pnpm test:platform-arch` 与 `pnpm test:platform-arch:mutations` 的 10 个变异自证覆盖。
    > 主体"存在/缺失"的用例外壳说明：`subject presence` 那组刻意**不给** `backend-client` 建 Cargo member（`fixture(CORE, …)`），因为那才是真实 workspace 的形状。若测试顺手把它加成 member，这组断言会在修复被回退后继续绿。
 
-8. **第二个 advisory 块读不到 manifest 时是 fail-open（`read?`），但触发面比"manifest 有问题"窄得多。** 声明边扫描用 `try { readFileSync(member.manifestPath) } catch` 包住，catch 分支只 `advisories.push` 后 `continue`。退出码只数 `violations + errors`，advisory 单独打印，所以这一跳是 fail-open：读不到 = 该成员的 `D∖R` 休眠边不报，闸门仍报干净。
+8. **声明边扫描读不到 manifest 时是 fail-closed（`read?` → error），与 F-01 武装同一次落地。** 声明边扫描用 `try { readFileSync(member.manifestPath) } catch` 包住，catch 分支现在 `errors.push` 后 `continue`——退出码数 `violations + errors`，所以读不到的成员会把闸门打成红的，而不是被静默跳过。
 
-   关键前提是这个 `catch` 在正常路径上**几乎不可达**。`member.manifestPath` 就是 `cargo metadata` 自己的 `pkg.manifest_path`（`cargoWorkspace.mjs` 的 `manifestPath` 字段），而 `runCargoMetadata` 是 fail-closed 的：cargo 报错、非零退出、JSON 不可解析、或 `packages`/`resolve` 缺失，一律 `throw`（`cargoWorkspace.mjs` 的 `runCargoMetadata` fail-closed 抛错段，其中明写 "refusing to guard an unknown graph" 的那一行）。也就是说，manifest 本身坏掉的情况在到达声明边扫描 **之前**就已经把闸门打成硬失败了。
+   **为什么这次翻转和 F-01 武装绑在一起**：武装之前，这条 `read?` 只导致"少一条 advisory"；武装之后，同一个口子会导致**漏掉一条真 violation**（F-01 现在判声明边）。所以它不是洁癖，是武装的组成部分——[ci-test-matrix §2.3.1](../../development/ci-test-matrix.md) §2.3.1 的前置条件表把两者列成"必须同一次落地"。
 
-   | 触发 | 能否到达声明边扫描的 catch | 现状 | 翻转成 fail-closed 后 |
+   触发面仍然很窄：`member.manifestPath` 就是 `cargo metadata` 自己的 `pkg.manifest_path`（`cargoWorkspace.mjs` 的 `manifestPath` 字段），而 `runCargoMetadata` 是 fail-closed 的：cargo 报错、非零退出、JSON 不可解析、或 `packages`/`resolve` 缺失，一律 `throw`（`cargoWorkspace.mjs` 的 `runCargoMetadata` fail-closed 抛错段，其中明写 "refusing to guard an unknown graph" 的那一行）。也就是说，manifest 本身坏掉的情况在到达声明边扫描 **之前**就已经把闸门打成硬失败了。
+
+   | 触发 | 能否到达声明边扫描的 catch | 翻转前 | 翻转后（现状） |
    | --- | --- | --- | --- |
    | manifest 缺失 / 路径写错 | ❌ `cargo metadata` 非零退出（实测 101） | 更早的硬失败，消息指向 cargo | 无变化 |
    | manifest TOML 语法坏 | ❌ 同上（实测 101） | 同上 | 无变化 |
    | 权限 `EACCES` / 路径非目录 `ENOTDIR` / 目标是目录 `EISDIR` | ❌ 同进程同用户，cargo 读不到就整体失败 | 同上 | 无变化 |
    | `ELOOP` / `ENAMETOOLONG` | ❌ cargo 已用同一路径成功读过 | 同上 | 无变化 |
-   | 瞬时资源耗尽 `EMFILE`/`ENFILE` | ✅ 唯一现实可触发类 | 静默跳过该成员的休眠边扫描，exit 0 | 闸门变红 |
-   | 瞬时 I/O `EIO` | ✅ | 同上 | 闸门变红 |
-   | TOCTOU：`cargo metadata` 之后、循环之前 manifest 被删/被换 | ✅ | 同上 | 闸门变红 |
+   | 瞬时资源耗尽 `EMFILE`/`ENFILE` | ✅ 唯一现实可触发类 | 静默跳过该成员的休眠边扫描，exit 0 | 闸门变红（error） |
+   | 瞬时 I/O `EIO` | ✅ | 同上 | 闸门变红（error） |
+   | TOCTOU：`cargo metadata` 之后、循环之前 manifest 被删/被换 | ✅ | 同上 | 闸门变红（error） |
 
-   两条同文件内的对照说明这是**局部**选择而非门禁风格：F-07 的 TS 源码扫描（`checkTsLayer`）把读失败推进 `errors`（`checkTsLayer` 的 catch 分支），计入失败，是 fail-closed；`runCargoMetadata` 同样 fail-closed。声明边扫描是例外。
+   这条现在与门禁的其它读路径一致：F-07 的 TS 源码扫描（`checkTsLayer`）把读失败推进 `errors`，`runCargoMetadata` 同样 fail-closed，声明边扫描不再是那唯一的例外。
 
-   **翻转的前置条件不是武装 F-01。** 以下描述的是最初 F-01..F-07 规则集中的 Rust 依赖阻塞路径，不含 F-07 的 TS 源码扫描，也不概括后续新增规则。当时的 Rust 依赖阻塞判定完全走 `cargo metadata` 索引：`forbiddenNames` 由 `LAYERS` + `index.members` 推出（`forbiddenNames` 的推导处），`families` 匹配的是 `index.byId.get(pkgId)`（闭包遍历那段），`normalBuildClosure` 也只走 `resolve.deps[]`。整条阻塞路径**一次都不重读 manifest 文本**；`declaredDependencies` 在全文件只有一个调用点，就在这个 advisory 块里。所以即使把 F-01 的 `forbiddenCrates` 从 `[]` 武装起来，这条 `read?` 仍然不承载任何 F-row 判定。
+   **闭包 advisory 块已删除。** 它当年的作用是"驱动闭包里出现 `tauri*` 边，但还没有 F-row 禁它，所以只报不拦"；F-01 的 `forbiddenCrates` 一旦武装，同一条边由闭包遍历直接报成 violation，那个块就成了重复报告（它自己的注释里写明了这个删除条件："Delete this block in the same commit that removes the build-dependency, **or** promote the family into F-01's `forbiddenCrates`"）。
 
    那么翻转的真实代价与收益是不对称的：**丢的是一条 advisory，代价是整条闸门转红。** 现存可达触发全是瞬时类（资源耗尽 / I/O / TOCTOU），翻转会把它们从"静默少报一条"变成"CI 偶发变红"。因此翻转的正确动机是"声明边扫描将来要升级成阻塞判定"，而不是"补上坏 manifest 的漏报"——后者早被 `runCargoMetadata` 的 fail-closed 挡住了。若将来要让 `D∖R` 进入 F-01 的 violation，则必须**在同一个提交里**同时把这里的 catch 改成 fail-closed：那才是漏报开始伤人的那一刻。
 
@@ -1337,7 +1344,7 @@ Rust 不能复用 `scripts/lib/scanSourceCode.mjs` 的 `scanCode`：它是 JS/TS
 | --- | --- | --- |
 | §8.1 的 `backend-client-transport-agnostic` 与 `driver-sdk-no-direct-tauri` | frontend job 的 `pnpm test:layers`（`ci.yml` 的 strict-guards step 里的 `pnpm test:layers`；该 step 共 **5** 条命令，`pnpm test:layers` 是**第 3 条**：`check-managed-stubs` → `test:ids` → `test:layers` → `test:boundaries` → `test:i18n-keys`） | 纯 Node 字符串扫描，无需 cargo。两条规则写在 `scripts/check-module-layers.mjs` 的 `LAYER_RULES` 表里（该表共 **4** 条规则，另两条是既有的 `shared relation metadata must not import its consumers` 与 `shared design system (@datazen/ui) must stay a host-free leaf`），脚本已存在，因此**不需要新 script、不需要新 step** |
 | 平台边界规则 | rust job 的 `pnpm test:platform-arch`（step `Platform crate dependency boundaries`），紧接 `Resolve drivers (basic)` 之后 | 驱动 crate 由 `scripts/resolve-drivers.mjs` 注入为 Cargo feature，注入前读 `cargo metadata` 会漏掉驱动依赖边 |
-| 初始规则的鉴别力自证（F-01..F-07 与未分类成员，不涵盖 F-08 / F-09 / F-11 / F-12） | rust job 末步 `pnpm test:platform-arch:mutations`（step `Platform arch guard self-proof (8 mutations)`），共 8 个变异 | 门禁自身会临时改写 manifest 再还原，所以必须排在 job 最后 |
+| 初始规则的鉴别力自证（F-01..F-07 与未分类成员，不涵盖 F-08 / F-09 / F-11 / F-12） | rust job 末步 `pnpm test:platform-arch:mutations`（step `Platform arch guard self-proof (10 mutations)`），共 10 个变异（M9 / M10 是 F-01 的 `tauri*` 两侧） | 门禁自身会临时改写 manifest 再还原，所以必须排在 job 最后 |
 | 内核 crate 单测 | rust job 的 `pnpm test:platform-crates`（step `Rust unit tests (platform core crates)`），crate 集由脚本发现 | 新增 core crate 无需改 CI |
 
 上表中 frontend job 的位置用行号锚定、rust job 的三处用 step 名锚定，是因为两者稳定性不同：frontend job 的守卫块在文件前段，rust job 的步骤在文件后段，向其中任一段插入新步骤都会让该段之后的行号整体平移，而 step 名是 `ci.yml` 里的稳定字符串。若日后统一为行号，需在改动 rust job 步骤后一并复核。

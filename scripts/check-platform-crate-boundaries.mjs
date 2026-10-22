@@ -27,8 +27,11 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * Layers come from directory paths (see `lib/cargoWorkspace.mjs`), the
  * forbidden workspace crates come from `cargo metadata`'s own package names for
  * those layers, and the third-party families (`tauri*`, HTTP transports,
- * `react*`) come out of the **spec table itself** by parsing §2.4's rows. Three
- * consequences:
+ * `react*`) come either straight out of the **spec table itself**
+ * (`forbiddenCrates: 'spec'`, parsed from §2.4's rows) or from an explicit list
+ * that the spec table is required to still name (`specTokens`, one-way: the row
+ * must mention the family, and the two lists are compared both ways where the
+ * rule says so). Three consequences:
  *
  *  1. a crate dropped under `packages/platform-api/`, `packages/application/` or
  *     `server/` is covered with no edit here and no edit to ci.yml;
@@ -67,6 +70,17 @@ export const SPEC_PATH = 'docs/architecture/platform/shared-boundaries-and-ports
 export const PREFIX = '[check-platform-arch]';
 
 /**
+ * The crate family the declared-edge scan watches for.
+ *
+ * Independent of any single rule on purpose: the scan is a **canary** over
+ * every workspace member, so a dormant `tauri*` edge anywhere is reported even
+ * where no rule adjudicates it (the host's own `tauri-plugin-webdriver` is the
+ * live example). The rules that *do* adjudicate it name the same family in
+ * their own `forbiddenCrates`.
+ */
+export const TAURI_FAMILY = 'tauri';
+
+/**
  * `forbiddenCrates: 'spec'` means "take the crate names straight out of this
  * rule's own §2.4 row", which is why F-03 needs no `axum`/`actix-web`/`warp`/
  * `tonic` literal here. `subjectsFromSpec` means "assert the layer ids I
@@ -84,7 +98,7 @@ export const PREFIX = '[check-platform-arch]';
  * names (`datazen-runtime`) in others, so only some rows can be compared both
  * ways. What is checked, per rule:
  *
- *   F-01  token presence + allow-list inversion      (row names crates, not paths)
+ *   F-01  token presence + subject two-way + allow-list inversion
  *   F-02  token presence + subject two-way           (row also names `datazen`)
  *   F-03  token presence + subject two-way + crate-family two-way
  *   F-04  token presence + allow-list inversion      (row names forbidden paths)
@@ -95,13 +109,18 @@ export const PREFIX = '[check-platform-arch]';
  * "Two-way" means *equal on both sides*, so a §2.4 row edited without the guard
  * goes red and the guard edited without §2.4 goes red too.
  */
-const RULES = Object.freeze([
+export const RULES = Object.freeze([
   {
     id: 'F-01',
     subjects: ['driver'],
+    // §2.4's F-01 row names `packages/drivers/*` — the same path the guard
+    // resolves its subject from — so the subject set is compared **both ways**
+    // against the row: a doc edit that adds or drops a subject path turns the
+    // gate red until the guard and the spec are reconciled.
+    subjectsFromSpec: true,
     // F-01's row names its forbidden crates (`datazen`, `datazen-runtime`, …) as
-    // crate *names*, not as paths, so there is no subject/path two-way check to
-    // run against it. It gets a stronger check instead: an allow-list.
+    // crate *names*, not as paths, so the *crate* half of the rule is the
+    // allow-list below rather than a two-way crate comparison.
     //
     // `allowedLayers` inverts the rule on purpose. Written as a deny-list, a
     // layer added to LAYERS six months from now would be *permitted* for drivers
@@ -109,8 +128,32 @@ const RULES = Object.freeze([
     // this guard exists to prevent. Written this way, a new layer is forbidden
     // for drivers the day it is declared, and relaxing it is a deliberate edit.
     allowedLayers: ['driver', 'driver-api'],
-    forbiddenCrates: [],
-    specTokens: ['packages/drivers/*'],
+    // The `tauri*` half, armed. §2.4's row says `tauri*`; `matchesCrateFamily`
+    // turns that into `tauri-plugin` / `tauri-utils` / `tauri-build` (measured:
+    // `tauri` matches `tauri-plugin`, `tauri-build`, `tauri_utils`; `taurium`
+    // does not). It was `[]` until the redis driver dropped its `tauri` edges
+    // (PR #95); the archived preconditions are
+    // `docs/development/ci-test-matrix.md` §2.3.1.
+    forbiddenCrates: ['tauri'],
+    // Both halves of the row are pinned: the subject path and the forbidden
+    // family. Drop either from §2.4 and the guard says so instead of quietly
+    // enforcing a rule the document no longer states.
+    specTokens: ['packages/drivers/*', 'tauri'],
+    // F-01's scope covers **both** sides — the resolved closure and the
+    // manifest's declaration edges. See the note under §2.4's table: the
+    // resolve graph is feature-resolved, so an optional edge behind a feature
+    // nobody enables is not in `resolve.deps[]` and no closure walk can see it.
+    // A declared-but-dormant `tauri*` edge in a driver is a violation.
+    declaredEdges: true,
+    // Explicit, visible exemptions. Empty on purpose today: **no** driver
+    // legitimately needs `tauri*`, and the whole point of this list is that a
+    // future exception is a written-down decision rather than an advisory that
+    // lets the edge through. An exemption names the member, the family it is
+    // exempt from, and why — the guard prints it on every run, so a reader sees
+    // the edge being allowed instead of missing. A stale entry (a member that
+    // is not a subject, or a family this rule does not forbid) is an **error**:
+    // it protects nothing while looking like it does.
+    exemptions: [],
     note: 'drivers stay host-free and platform-free',
   },
   {
@@ -478,6 +521,7 @@ function resolveSubject(layerId, membersByLayer, root) {
  *   specText?: string,
  *   env?: NodeJS.ProcessEnv,
  *   requireLayers?: string[],
+ *   rules?: readonly object[],
  *   log?: (s: string) => void,
  *   error?: (s: string) => void,
  * }} options
@@ -489,10 +533,15 @@ export function checkPlatformCrateBoundaries(options) {
     log = () => {},
     error = console.error,
   } = options;
+  // The rule table is a parameter, not a constant, for the same reason
+  // `checkSpecConsistency` takes one: the exemption mechanism has to be
+  // testable without editing the production table.
+  const rules = options.rules ?? RULES;
   const violations = [];
   const errors = [];
   const vacuous = [];
   const advisories = [];
+  const exemptions = [];
   const evaluated = [];
 
   const metadata =
@@ -502,11 +551,19 @@ export function checkPlatformCrateBoundaries(options) {
     const specFile = resolve(root, SPEC_PATH);
     if (!existsSync(specFile)) {
       errors.push(`missing ${SPEC_PATH}; the guard cannot verify it implements the specification`);
-      return { violations, errors, vacuous, advisories, evaluated, summary: 'aborted: no spec' };
+      return {
+        violations,
+        errors,
+        vacuous,
+        advisories,
+        exemptions,
+        evaluated,
+        summary: 'aborted: no spec',
+      };
     }
     specText = readFileSync(specFile, 'utf8');
   }
-  violations.push(...checkSpecConsistency(specText));
+  violations.push(...checkSpecConsistency(specText, rules));
 
   const index = buildWorkspaceIndex(metadata);
   for (const bad of index.unclassified) {
@@ -527,7 +584,13 @@ export function checkPlatformCrateBoundaries(options) {
 
   const required = new Set(requireLayers);
 
-  for (const rule of RULES) {
+  // member id → the rule that also constrains its manifest **declaration**
+  // edges. Filled in by the rule loop; read by the declared-edge scan below.
+  // A member that is *not* in this map is still scanned — its dormant `tauri*`
+  // edges are reported as advisories — but it is never adjudicated by F-01.
+  const declaredEdgeScope = new Map();
+
+  for (const rule of rules) {
     const subjects = [];
     const tsLayers = [];
     for (const layerId of rule.subjects) {
@@ -585,8 +648,58 @@ export function checkPlatformCrateBoundaries(options) {
       rule.forbiddenCrates === 'spec'
         ? parseSpecRow(findSpecRow(specText, rule.id) ?? '').crates
         : rule.forbiddenCrates;
+    // The family tokens, normalized: `tauri*` in §2.4 is the family `tauri`.
+    const familyTokens = families.map((f) => f.replace(/\*$/, ''));
     if (subjects.length === 0) continue;
     evaluated.push({ rule: rule.id, subjects: subjects.map((s) => s.name) });
+
+    // ── Exemptions ──────────────────────────────────────────────────────────
+    //
+    // The only legitimate way for a subject to keep a forbidden edge is a
+    // written-down exemption: member + family + reason, listed in the rule
+    // table. Two properties make it different from "an advisory instead of a
+    // violation":
+    //
+    //   * it is **visible** — the guard prints it on every run, so a reader can
+    //     see that the edge is allowed rather than missing;
+    //   * it is **honest** — an entry that names a member which is not a
+    //     subject, or a family the rule does not forbid, is an **error**. A
+    //     stale exemption protects nothing while looking like it does, which
+    //     is the silent-pass failure this guard exists to prevent.
+    const ruleExemptions = rule.exemptions ?? [];
+    for (const exemption of ruleExemptions) {
+      if (!subjects.some((s) => s.name === exemption.member)) {
+        errors.push(
+          `${rule.id}: exemption names \`${exemption.member}\`, which is not a subject of this ` +
+            `rule. A stale exemption protects nothing while looking like it does — delete it, ` +
+            `or point it at a member this rule actually covers.`,
+        );
+      }
+      if (!familyTokens.includes(exemption.family)) {
+        errors.push(
+          `${rule.id}: exemption for \`${exemption.member}\` names the family ` +
+            `\`${exemption.family}\`, which this rule does not forbid ` +
+            `(${familyTokens.join(', ') || 'none'}).`,
+        );
+      }
+    }
+    /** The exemption covering `member` for `family`, or null. */
+    const exemptionFor = (memberName, family) =>
+      ruleExemptions.find((e) => e.member === memberName && e.family === family) ?? null;
+
+    // Rules that also constrain the manifest's **declaration** edges register
+    // their subjects here, so the declared-edge scan below knows which members
+    // it may adjudicate and which it may only report.
+    if (rule.declaredEdges) {
+      for (const member of subjects) {
+        declaredEdgeScope.set(member.id, {
+          ruleId: rule.id,
+          note: rule.note,
+          families: familyTokens,
+          exemptions: ruleExemptions,
+        });
+      }
+    }
 
     for (const member of subjects) {
       const closure = normalBuildClosure(index, member.id);
@@ -595,8 +708,21 @@ export function checkPlatformCrateBoundaries(options) {
         const pkg = index.byId.get(pkgId);
         if (!pkg) continue;
         const viaLayer = forbiddenNames.has(pkg.name);
-        const viaFamily = families.some((f) => matchesCrateFamily(pkg.name, f.replace(/\*$/, '')));
+        const family = familyTokens.find((f) => matchesCrateFamily(pkg.name, f));
+        const viaFamily = family !== undefined;
         if (!viaLayer && !viaFamily) continue;
+        // An exemption covers the **family** side only: a member allowed to
+        // depend on `tauri*` is still forbidden from depending on the host.
+        if (viaFamily) {
+          const exemption = exemptionFor(member.name, family);
+          if (exemption) {
+            exemptions.push(
+              `${rule.id}  ${member.name} (${member.relDir}/Cargo.toml) → ${pkg.name} is exempt ` +
+                `from the \`${family}\` ban: ${exemption.reason}`,
+            );
+            continue;
+          }
+        }
         const why = viaFamily
           ? 'crate family'
           : `${pkg.name}'s layer (${nameToLayer.get(pkg.name) ?? 'external'})`;
@@ -608,83 +734,98 @@ export function checkPlatformCrateBoundaries(options) {
     }
   }
 
-  // Advisory, non-blocking. Same precedent as R3 in
-  // check-driver-import-boundaries.mjs: a real finding that no F-row names, so
-  // blocking on it would be enforcing a rule the spec has not adopted.
+  // ── The declared-edge half of F-01 ───────────────────────────────────────
   //
-  // Finding, measured at 6175f1c1f: `packages/drivers/redis/Cargo.toml:32`
-  // declares `[build-dependencies] tauri-plugin = { version = "2", features =
-  // ["build"] }`, so the redis driver drags Tauri into its build graph. F-01's
-  // consequence column describes exactly this ("宿主无关的构建被拖垮"), but F-01's
-  // own cell names workspace crates only. Escalated to the platform owner rather
-  // than enforced here; the fix is an edit to a driver manifest, which is
-  // outside this guard's write scope. Delete this block in the same commit that
-  // removes the build-dependency, or promote the family into F-01's
-  // `forbiddenCrates`.
-  for (const member of membersByLayer.get('driver') ?? []) {
-    const closure = normalBuildClosure(index, member.id);
-    const tauri = [...closure]
-      .map((id) => index.byId.get(id))
-      .filter((pkg) => pkg && matchesCrateFamily(pkg.name, 'tauri'))
-      .map((pkg) => pkg.name);
-    if (tauri.length === 0) continue;
-    advisories.push(
-      `F-01?  ${member.name} (${member.relDir}/Cargo.toml) reaches ${tauri.sort().join(', ')} ` +
-        `in its normal+build closure. Not blocking: no F-row forbids tauri* for drivers.`,
-    );
-  }
-
-  // Second advisory, same source of non-blocking-ness, different source of truth.
+  // §2.4's note under the table: F-01 covers **both** sides — the resolved
+  // closure and the manifest's declaration edges. The resolve graph is
+  // feature-resolved, so an optional edge behind a feature nobody enables is
+  // not in `resolve.deps[]` at all and no closure walk can ever see it.
+  // Measured at 2530161ac, redis declared two tauri edges — `tauri-plugin`
+  // (build-dependencies) and `tauri` (dependencies, `optional = true` behind a
+  // feature no member enables) — and only the first was in the graph.
   //
-  // The block above walks the resolve graph, which is feature-resolved: an edge
-  // behind a feature nobody enables is not in `resolve.deps[]` at all and no
-  // closure walk can ever see it. Measured at 2530161ac, redis declares two tauri
-  // edges — `tauri-plugin` (build-dependencies, line 32) and `tauri`
-  // (dependencies, line 27, `optional = true` behind a feature no member
-  // enables) — and only the first is in the graph. This block reads the manifest
-  // instead, so the second edge becomes visible.
+  // **The subject scope is the rule's, not the workspace's.** F-01's subjects
+  // are the `driver` layer (`packages/drivers/*`), so:
   //
-  // Deliberately scoped to declared-minus-resolved, not declared-in-full:
-  //   * a declared edge that DID resolve is already reported above, and printing
-  //     it twice would make the count look like a second finding;
-  //   * a purely transitive edge (`tauri-utils` for redis) appears in neither set
-  //     here and stays the closure walk's to report.
+  //   * a dormant `tauri*` edge in a **driver** is a violation;
+  //   * the same edge in the **host** is not. `src-tauri/Cargo.toml` declares
+  //     `tauri-plugin-webdriver` for the macOS silent-E2E feature, and the host
+  //     is *supposed* to depend on Tauri — F-01 does not cover it, so it is
+  //     reported (an advisory) but never adjudicated. Reading the host's own
+  //     tauri edge as an F-01 violation would be the guard punishing the one
+  //     member that is allowed to have it.
+  //
+  // Deliberately scoped to declared-minus-resolved (D∖R), not declared-in-full:
+  //   * a declared edge that DID resolve is already a violation above, and
+  //     printing it twice would make the count look like a second finding;
+  //   * a purely transitive edge (`tauri-utils` for redis) appears in neither
+  //     set here and stays the closure walk's to report.
   // The two are complements, not two views of one set. Measured on this repo:
-  // redis DECLARES {tauri, tauri-plugin} and RESOLVES {tauri-plugin, tauri-utils}
-  // — neither contains the other, so each scan sees exactly one crate the other
-  // cannot. The host is the other shape: it declares 9 tauri crates and resolves
-  // 17 — but 17-9=8 is the wrong subtraction, not a wrong tally: only 8 of the 9 declared resolve (`tauri-plugin-webdriver` is `optional = true` behind the non-default `webdriver` feature), so the true split is 8 declared-and-resolved + 9 purely transitive = 17. Take set differences, never sizes.
-  //
-  // No F-row is consulted, so this cannot tighten anything — it reports what the
-  // manifest says. Not blocking: whether an optional host edge should exist in a
-  // driver is a spec question for §2.4 F-01, and the guard must not answer it
-  // unilaterally.
+  // redis DECLARES {tauri, tauri-plugin} and RESOLVES {tauri-plugin,
+  // tauri-utils} — neither contains the other, so each scan sees exactly one
+  // crate the other cannot. The host is the other shape: it declares 9 tauri
+  // crates and resolves 17 — but 17-9=8 is the wrong subtraction, not a wrong
+  // tally: only 8 of the 9 declared resolve (`tauri-plugin-webdriver` is
+  // `optional = true` behind the non-default `webdriver` feature), so the true
+  // split is 8 declared-and-resolved + 9 purely transitive = 17. Take set
+  // differences, never sizes.
   for (const member of index.members.values()) {
     let manifest;
     try {
       manifest = readFileSync(member.manifestPath, 'utf8');
     } catch (err) {
-      advisories.push(
+      // **Fail-closed.** This used to be an advisory and a `continue`, which was
+      // the one non-fail-closed asymmetry in the gate: the member's declaration
+      // edges went unread and the gate still reported clean. Now that F-01
+      // adjudicates declaration edges, that same hole would swallow a real
+      // violation, so a manifest that cannot be read is an **error**. The
+      // trigger is narrow — `member.manifestPath` is the very path
+      // `cargo metadata` just read successfully — but narrow is not the same as
+      // harmless.
+      errors.push(
         `read?  ${member.name} (${member.relDir}/Cargo.toml) could not be read for declared ` +
-          `dependencies (${err.code ?? err.message}). The graph above still covers its resolved edges.`,
+          `dependencies (${err.code ?? err.message}). The gate refuses to report a member ` +
+          `whose manifest it could not read.`,
       );
       continue;
     }
+    const scope = declaredEdgeScope.get(member.id);
+    const families = scope ? scope.families : [TAURI_FAMILY];
     const closure = normalBuildClosure(index, member.id);
     const resolvedNames = new Set(
       [...closure].map((id) => index.byId.get(id)?.name).filter(Boolean),
     );
     const dormant = declaredDependencies(manifest)
-      .filter((d) => matchesCrateFamily(d.name, 'tauri'))
+      .filter((d) => families.some((f) => matchesCrateFamily(d.name, f)))
       .filter((d) => !resolvedNames.has(d.name));
     if (dormant.length === 0) continue;
     const where = dormant
       .map((d) => `${d.name} in [${d.target === null ? d.kind : `target.${d.target}.${d.kind}`}]`)
       .sort()
       .join(', ');
-    advisories.push(
-      `F-01?  ${member.name} (${member.relDir}/Cargo.toml) declares ${where}, which the ` +
-        `resolved graph does not contain. Not blocking: no F-row forbids tauri* here.`,
+    if (!scope) {
+      advisories.push(
+        `F-01?  ${member.name} (${member.relDir}/Cargo.toml) declares ${where}, which the ` +
+          `resolved graph does not contain. Not blocking: F-01's subjects are ` +
+          `\`packages/drivers/*\`, and \`${member.name}\` is not one of them.`,
+      );
+      continue;
+    }
+    // An exemption covers the family side here too: a member allowed to
+    // declare `tauri*` is allowed to declare it, resolved or dormant.
+    const exemption = scope.exemptions.find(
+      (e) => e.member === member.name && scope.families.includes(e.family),
+    );
+    if (exemption) {
+      exemptions.push(
+        `${scope.ruleId}  ${member.name} (${member.relDir}/Cargo.toml) declares ${where}, which ` +
+          `is exempt from the \`${exemption.family}\` ban: ${exemption.reason}`,
+      );
+      continue;
+    }
+    violations.push(
+      `${scope.ruleId}  ${member.name} (${member.relDir}/Cargo.toml) declares ${where}, which ` +
+        `the resolved graph does not contain: ${scope.note}.`,
     );
   }
 
@@ -700,8 +841,9 @@ export function checkPlatformCrateBoundaries(options) {
   const summary =
     `${index.members.size} workspace member(s) classified, ${evaluated.length} rule(s) evaluated over ` +
     `${subjectSlots} crate(s), ${vacuous.length} rule×subject combo(s) vacuous: ` +
-    `${violations.length} violation(s), ${errors.length} error(s), ${advisories.length} advisory(ies)`;
-  return { violations, errors, vacuous, advisories, evaluated, summary, index };
+    `${violations.length} violation(s), ${errors.length} error(s), ${advisories.length} advisory(ies)` +
+    `${exemptions.length > 0 ? `, ${exemptions.length} exemption(s)` : ''}`;
+  return { violations, errors, vacuous, advisories, exemptions, evaluated, summary, index };
 }
 
 function parseArgs(argv) {
@@ -793,6 +935,10 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
     );
   }
   for (const line of result.advisories) out(`${PREFIX} ADVISORY ${line}`);
+  // Printed before the violations: an exemption is a *decision* the guard made
+  // on the rule table's authority, and a reader who sees a red F-01 line has to
+  // be able to tell "allowed on purpose" from "missed".
+  for (const line of result.exemptions) out(`${PREFIX} EXEMPT   ${line}`);
   for (const line of result.violations) err(`${PREFIX} VIOLATION ${line}`);
   for (const line of result.errors) err(`${PREFIX} ERROR    ${line}`);
   for (const rule of result.evaluated) {
