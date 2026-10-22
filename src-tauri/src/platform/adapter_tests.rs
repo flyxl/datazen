@@ -39,6 +39,83 @@ fn assembly_state_is_derived_from_injection_not_hand_kept() {
     assert!(adapter.handles().is_empty());
 }
 
+/// 「补上这一步之后」必须真的**往前走一档**。
+///
+/// 这条断言盯的是一个真实缺陷：缺步表把 §6.2-7 的目标状态写成
+/// `AwaitingApplicationServices`——与自己同一档。于是第 7 步落地之后，
+/// 表仍然说它没落地，「补完就前进」这句话是假的。调用方读这张表是为了
+/// 回答「还差哪一步、补完会到哪」，两者必须是同一个答案。
+#[test]
+fn completing_step_seven_advances_the_machine_to_fully_wired() {
+    for state in [
+        AssemblyState::IdentityReady,
+        AssemblyState::AwaitingApplicationServices,
+    ] {
+        let steps = state.missing_steps();
+        let (name, after) = steps.last().expect("尚未 FullyWired 的状态必须列出缺步");
+        assert_eq!(
+            *name, "§6.2-7 ApplicationServices",
+            "{state:?} 的最后一条缺步必须是第 7 步"
+        );
+        assert_eq!(
+            *after,
+            AssemblyState::FullyWired,
+            "{state:?}：补完 §6.2-7 之后必须到 FullyWired，不能停在原地"
+        );
+        // 目标状态必须与当前状态不同——停在原地就是「补了也没变」。
+        assert_ne!(*after, state);
+    }
+    // 已经补完的档位不再列缺步。
+    assert!(AssemblyState::FullyWired.missing_steps().is_empty());
+}
+
+/// 组装完成后：状态机报第 7 步已落地，且**注入的存储端口就在应用服务里**。
+///
+/// 这条是本轨的端到端证据——§6.2 第 7 步不是「有个 `ApplicationServices` 对象」，
+/// 而是「应用服务**持有**了形态中立的存储端口」。端口实例必须与宿主注入的
+/// **同一个**（`Arc::ptr_eq` 比地址）：另造一份就是两份事实。
+#[tokio::test]
+async fn injection_wires_the_storage_ports_into_the_application_services() {
+    use crate::store::{DesktopRepository, KeyBackend};
+    use datazen_platform_api::ports::tunnel::TunnelRepository;
+
+    let temp = tempfile::tempdir().expect("临时目录");
+    let store = Arc::new(
+        DesktopRepository::init_with_path(temp.path(), KeyBackend::File)
+            .await
+            .expect("临时存储"),
+    );
+    let tunnels: Arc<dyn TunnelRepository> = store.clone();
+    let expected_settings: Arc<dyn datazen_platform_api::ports::SettingsRepository> = store.clone();
+
+    let adapter = adapter();
+    adapter
+        .inject(
+            store,
+            Arc::new(datazen_runtime::driver_registry::DriverRegistry::new()),
+            tunnels.clone(),
+            crate::platform::known_hosts::desktop_known_hosts_repository(temp.path()),
+        )
+        .expect("装配必须成功");
+
+    // 状态机如实反映第 7 步已落地。
+    assert_eq!(adapter.assembly_state(), AssemblyState::FullyWired);
+    assert!(adapter.assembly_state().missing_steps().is_empty());
+
+    let services = adapter
+        .require_application_services()
+        .expect("注入后必须取得到应用服务");
+    // 注入的端口就是宿主创建的那一个实例。
+    assert!(
+        Arc::ptr_eq(&services.tunnels, &tunnels),
+        "应用服务持有的隧道仓储必须是宿主注入的那一个实例"
+    );
+    assert!(
+        Arc::ptr_eq(&services.settings, &expected_settings),
+        "应用服务持有的设置仓储必须是宿主注入的那一个实例"
+    );
+}
+
 #[test]
 fn launch_without_a_deterministic_desktop_user_fails_closed() {
     // `new_launch` 依赖运行环境变量；这里只断言它要么成功、要么明确失败，

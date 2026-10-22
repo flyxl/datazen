@@ -83,6 +83,108 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 回退：Tauri adapter 可仍调用原用例实现，但不得把新 owner 和权限语义伪映射为旧共享 session。新 frontend bridge 在未注入时明确报错。
 
+### 5.1 application 层持有注入的存储端口：已实现的事实与下一步分期
+
+本节记录 §6.2 第 7 步（`ApplicationServices`）的落地状态与后续分期。**已实现的部分是事实**，**未做的部分是下一步**，两者不混写。
+
+本节的事实与数字测于 `b9de8a978`（PR #102 合并后的 `main`）：该 PR 已把 known-hosts 存储端口按 §2.8 改名（`KnownHostsStore` → `KnownHostsRepository`）并给 platform-api 加了端口清单 `packages/platform-api/src/ports/inventory.rs`（端口规模由 `PORT_TRAITS` **派生**，模块头不再手写计数）。下文引用的端口清单一律以那份清单为准。
+
+#### 5.1.1 已实现的事实
+
+**形态中立的用例层现在真的持有注入的存储端口。** `ApplicationServices`（`packages/application/src/lib.rs`）新增两个字段：
+
+| 字段 | 端口类型 | 桌面实现 | 注入点 |
+| --- | --- | --- | --- |
+| `settings` | `datazen_platform_api::ports::SettingsRepository` | `DesktopRepository`（`src-tauri/src/store/mod.rs`） | `PlatformAdapter::inject`（`src-tauri/src/platform/adapter.rs`） |
+| `tunnels` | `datazen_platform_api::ports::tunnel::TunnelRepository` | `DesktopRepository`（`src-tauri/src/store/tunnels.rs`） | 同上（与注入给会话后端的是**同一个实例**） |
+
+要点：
+
+- 端口是**构造参数**而不是 `Option`：漏注入是**编译错误**，不是运行时的 `None`。构造函数对桌面与将来的 web 形态**完全相同**，只有传入的 `Arc<dyn …>` 实现不同。
+- `ApplicationServices::settings_service()` 让形态中立的设置用例（`packages/application/src/settings.rs` 的 `SettingsService`）直接跑在聚合持有的端口上，不再借用宿主的 store。
+- `AssemblyState::missing_steps()` 里 §6.2-7 的目标状态由 `AwaitingApplicationServices` 改为 `FullyWired`——旧值与当前档位同级，导致「补完第 7 步」在机器上永远不前进。
+- 机器可校验的不变式：`packages/application` 侧 6 条（形状 3 条 + 行为 3 条），宿主侧 5 条（装配状态机 2 条 + `AppState` 形状 3 条）。
+
+**依赖边结论（为什么 application 层不能直接持有领域包端口）**：`datazen-runtime` 依赖 `datazen-application`，而 `datazen-schema-diff` / `datazen-data-sync` / `datazen-data-transfer` 都依赖 `datazen-runtime`。因此 `application → 领域包` 会闭成 Cargo 环（`cargo metadata` 报 `cyclic package dependency`），门禁连跑都跑不起来。F-02/F-03/F-05 只禁宿主、传输框架与前端标识，**不禁**这条边——挡住它的是依赖图本身，不是门禁。F-04 另外禁止 `platform-api` 依赖领域包，因此「把领域端口搬进 `platform-api`」这条路也要靠**新写窄端口**而不是靠依赖。结论：**领域端口只能由宿主在组装期包成 `platform-api` 层的窄端口再注入**。这一条已写成断言（`the_crate_does_not_depend_on_the_domain_packages`）。
+
+**没有做、也不许顺手做的事**：现有 145 处 `state.store.…` 调用点一个都没搬；命令的签名、载荷与错误文案一个都没改；`AppState` 没有新增 `pub` 字段（新增字段数上限由断言钉在 25）。
+
+#### 5.1.2 下一步分期
+
+每期都必须满足：形态中立（不引入形态分支）、零行为变化、可独立验收。下表的「少掉」一栏是**验收时应当观测到的数字**。
+
+**第一步（已落地）——聚合持有两个平台端口**
+
+搬走／新增：`ApplicationServices.settings`、`ApplicationServices.tunnels`；`PlatformAdapter::inject` 注入同一实例；`AssemblyState` 第 7 步目标状态修正为 `FullyWired`。
+
+`AppState` 少掉：**0 个字段**（本期只加持有权，不动宿主的字段），访问数不变（`state.store` 仍是 145，`state.tunnels` 仍是 12）。
+
+独立验收：`cargo test -p datazen-application --lib`（形状 3 条 + 行为 3 条）、`cargo test -p datazen --lib`（`completing_step_seven_advances_the_machine_to_fully_wired`、`injection_wires_the_storage_ports_into_the_application_services`、`app_state_*` 3 条）、`node scripts/check-platform-crate-boundaries.mjs`（F-02/F-03/F-04 仍绿）。
+
+风险：`ApplicationServices` 多了必填构造参数 ⇒ 将来任何新的形态都必须提供这两个端口的实现；漏了编译不过，这是**期望**的失败面。注入的实例必须与宿主持有的是同一份（`Arc::ptr_eq` 断言已钉住），否则出现两份事实。
+
+**第二步——设置用例归位到 application 层**
+
+搬走：`src-tauri/src/commands/config.rs` 的两处 `SettingsService::new(state.store.as_ref())`（`get_settings` / `save_settings`）改为经 `ApplicationServices::settings_service()` 取用。
+
+`AppState` 少掉：**0 个字段**；`state.store` 的访问数从 145 减到 **143**。
+
+独立验收：新增断言「`config.rs` 生产源码里 `state.store.as_ref()` 出现 0 次」；`cargo test -p datazen --lib` 全绿；IPC 签名冻结表（`src-tauri/src/platform/ipc.rs`）不变。
+
+风险（**必须先裁定**）：今天 `config.rs` 走 `state.store`，在 platform 装配失败时仍然可用；改走聚合后，聚合取不到时设置命令会从「可用」变成 `NotConfigured`。因此本期的**前置条件**是先把「platform 装配失败时聚合是否存在」这件事定下来：要么把 `ApplicationServices` 的构造从 `PlatformAdapter::inject` 提到装配根（§6.2 第 7 步本来就排在第 8 步之前），要么由产品裁定这个失败面变化并写进本节。**不得**在本期顺手改失败面。
+
+**第三步——隧道定义仓储归位**
+
+搬走：`AppState.tunnels`（`Arc<dyn TunnelRepository>`）→ 由 `ApplicationServices.tunnels` 持有；`src-tauri/src/commands/tunnel.rs`（8 处）、`src-tauri/src/commands/connection.rs`（1 处）、`src-tauri/src/commands/connection_import/ipc.rs`（1 处）、`src-tauri/src/commands/mcp.rs`（1 处）共 **12 处** `state.tunnels`（含 1 处测试）改为经聚合取。
+
+`AppState` 少掉：**1 个字段**（25 → 24）；`state.tunnels` 的访问数从 12 减到 **0**。
+
+独立验收：新增断言「生产源码里 `state.tunnels` 出现 0 次」+「`AppState` 的 `pub` 字段数 ≤ 24」；`cargo test -p datazen --lib`；隧道 IPC 的载荷冻结断言不变（名单档只有三个字段，platform-api 已有断言）。
+
+风险：隧道定义的**组织限定**语义（越组织按「不存在」处理，CM-05）不能因为换持有者而变——端口方法自带 `OrganizationScope`，换持有者时不得把 scope 从入参降级成字段。同一个实例必须继续同时喂给会话后端与命令侧（建连时解引用 `tunnelId`），否则出现两份事实。
+
+**第四步——领域包端口的窄化**
+
+搬走／新增：在 `packages/platform-api/src/ports/` 新增三个**窄端口**（纯 trait，不依赖领域包）：
+- `ReviewedPlanRepository`（schema-diff 的评审计划存储，现契约在 `packages/schema-diff/src/reviewed.rs`）；
+- `SyncPlanRepository`（data-sync 的计划注册表，现契约在 `packages/data-sync/src/plan_store/repository.rs`）；
+- `TransferPlanRepository`（data-transfer 的不可变计划与检查点，现契约在 `packages/data-transfer/src/plan_store/port.rs`）。
+
+宿主在组装期实现这些窄端口（转发到领域包端口的实例），再注入给 `ApplicationServices`。
+
+**新增 platform-api 端口必须同时改四处（漏一处即红）**：`packages/platform-api/src/ports/inventory.rs` 的 `PORT_TRAITS`（按 trait 名字的 ASCII 字母序插入）、`packages/platform-api/src/ports/inventory/parser.rs` 的 `SOURCE_FILES`（新端口文件不在这个清单里，它里面的 `pub trait` 会被**静默漏掉**——测试照样绿）、`packages/platform-api/src/ports/mod.rs` 模块头的构成说明（不在概要 §6.4 表里的端口必须在那里被**逐个点名**）、以及（可选）`docs/architecture/platform/system-overview.md` §6.4 的端口表。模块头里**不得**再出现手写端口计数（规模由 `PORT_TRAITS` 派生）。
+
+`AppState` 少掉：**3 个字段**——`schema_diff_reviewed_plans`（9 处访问）、`sync_stores`（7 处）、`transfer_plans`（5 处），合计 **21 处** `state.*` 直读归零；字段数 24 → **21**。
+
+独立验收：`cargo test -p datazen-platform-api --lib`（清单 ↔ 代码 ↔ 文档三条交叉断言 + 窄端口的 DTO 往返断言）+ `cargo test -p datazen --lib`（宿主适配器的转发断言：转发的是同一个领域端口实例）+ `node scripts/check-platform-crate-boundaries.mjs`（F-04 必须仍绿：`platform-api` 不依赖领域包）+ 新增断言「生产源码里 `state.schema_diff_reviewed_plans` / `state.sync_stores` / `state.transfer_plans` 出现 0 次」。
+
+风险（最高的一期）：窄端口的 DTO 一旦与领域包的形状**各写一份**，事实就有两份 ⇒ 窄端口必须只暴露领域包已有的类型；**若某个领域模型无法用 platform-api 的词汇表达，说明该能力本就不该进形态中立层**，此时该窄端口**不应**被创建。这一期也是形态专属的东西最容易漏进中立层的地方——评审必须逐条问「这个方法在 web 形态有对应物吗」。
+
+**第五步——known-hosts 存储端口归位进 platform-api**
+
+搬走：`datazen_tunnel::KnownHostsRepository`（`packages/tunnel/src/known_hosts_repository.rs`）→ `datazen_platform_api::ports::known_hosts::KnownHostsRepository`。**改名部分已由 PR #102 完成**（`KnownHostsStore` → `KnownHostsRepository`，含宿主实现与工厂函数）；本步剩下的只有**归位**：端口 trait 从 `packages/tunnel` 搬进 `packages/platform-api/src/ports/`，错误类型从自带的 `KnownHostsRepositoryError` 换成 platform-api 的 `PortError`（端口层的失败类型只有一套），并按第四步的四处清单登记。
+
+`AppState` 少掉：**1 个字段**（`known_hosts`，4 处访问）；字段数 21 → **20**。
+
+独立验收：`cargo test -p datazen-platform-api --lib`（清单 ↔ 代码 ↔ 文档三条交叉断言必须仍绿——端口搬家后清单与模块头要点名跟着改）+ `cargo test -p datazen --lib` + 新增断言「仓库里 `datazen_tunnel::KnownHostsRepository` 出现 0 次」。
+
+风险：`packages/tunnel` 的公开 trait 换位置是**破坏性 API 变更**，必须一次迁完（含 `packages/tunnel/src/ssh.rs`、`src-tauri/src/tunnel/`、`src-tauri/src/platform/known_hosts.rs`、`session_backend.rs` 等引用点）。本机钥匙串 / `{appData}/ssh_known_hosts.json` 的文件 I/O 留在宿主实现里，**不进**中立层。
+
+**第六步——`AppState.store` 的 145 处归位（按命令族分期）**
+
+搬走：`state.store`（`Arc<DesktopRepository>`）的 145 处访问，按命令族分期迁到 application 层的用例上。命令族与当前访问分布（实测，生产文件）：dashboard 16、config 14、ai/* 合计 27（其中 generate.rs 7）、connection 7、connection_import 6、monitor 6（scheduled 3 + grants 3）、history 3、tray 3、mcp/prompts 3、app_archive 3 等。
+
+`AppState` 少掉：**1 个字段**（`store`），字段数 20 → **19**；`state.store` 的访问数从 145 减到 **0**。
+
+独立验收：每期一条「该命令族的生产源码里不再出现 `state.store`」的断言 + `cargo test -p datazen --lib` 全绿 + 该命令族的 IPC 载荷冻结断言不变 + E2E。
+
+风险：这是最大的一期。`DesktopRepository` 里的本地加密落盘、`{appData}` 路径、本机钥匙串都是**桌面专属**，application 层**不能**持有 `DesktopRepository` 本身，只能持有窄端口（如 `SettingsRepository`、`ProfileRepository`、`SecretProvider`、`TunnelRepository`）。每搬一族都要问一句「web 形态这一族有没有对应物」；没有对应物的（如本机钥匙串、桌面 Job 恢复、桌面驱动注册表）就**留在宿主**，不进中立层。
+
+#### 5.1.3 形态专属、不得进中立层的东西（清单）
+
+`DesktopRepository` 的本地 AES-256-GCM 加密落盘、`{appData}` 路径解析、本机钥匙串（`KeyBackend::File` / `Keyring` / `PlatformVault`）、桌面 Job 恢复（`{appData}/datazen.sqlite` 的 `JobHost`）、桌面驱动注册表（`DriverRegistry` 的本机 inventory 装载）、`{appData}/wapps/` 的工作区应用安装目录、桌面组织的安装级常量（`LOCAL_ORGANIZATION_ID`）与本机用户名的解析。这些是**形态的事**：中立层只声明端口，端口的实现留在形态侧。
+
+
 ## 6. P2：Driver 固定资源与可选能力契约
 
 **目的**：把“执行在同一真实资源上”变成可测试保证。

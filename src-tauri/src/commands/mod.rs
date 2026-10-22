@@ -420,3 +420,7 @@ mod tunnel_summary_tests;
 #[cfg(test)]
 #[path = "org_scope_surface_tests.rs"]
 mod org_scope_surface_tests;
+
+#[cfg(test)]
+#[path = "app_state_shape_tests.rs"]
+mod app_state_shape_tests;
