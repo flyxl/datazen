@@ -540,6 +540,8 @@ fn request() -> ResultCellChangeRequest {
         database: Some("app".to_string()),
         schema: Some("public".to_string()),
         table: "orders".to_string(),
+        sql: "SELECT id, total FROM orders".to_string(),
+        result_columns: vec!["id".to_string(), "total".to_string()],
         identity_columns: vec![IdentityColumn {
             column: "id".to_string(),
             source_column: "id".to_string(),

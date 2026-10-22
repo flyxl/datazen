@@ -342,6 +342,12 @@ pub struct ResultCellChangeRequest {
     pub schema: Option<String>,
     /// The real name of the relation.
     pub table: String,
+    /// The statement the result came from. The server re-reads the origin from
+    /// it before it writes anything — a cached verdict may be stale.
+    pub sql: String,
+    /// The column names the executed result reports. The server needs them to
+    /// re-derive the origin: `SELECT *` names no column itself.
+    pub result_columns: Vec<String>,
     /// The key columns, in both names.
     pub identity_columns: Vec<IdentityColumn>,
     /// The row identity: **source** column name → the value the result showed.
@@ -462,13 +468,21 @@ pub fn build_result_cell_change_plan(
         )));
     }
 
+    // The relation the write targets is the one the **driver** named, not the
+    // one the request claims.
+    let table_name = editability
+        .table
+        .as_ref()
+        .map(|table| table.name.clone())
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| request.table.clone());
     let table = RowChangeTableContext {
         connection_id: request.connection_id.clone(),
         db_session_id: request.db_session_id.clone(),
         driver_type: request.driver_type.clone(),
         database: request.database.clone(),
         schema: request.schema.clone(),
-        table: request.table.clone(),
+        table: table_name,
     };
     let mut original_values = BTreeMap::new();
     original_values.insert(
