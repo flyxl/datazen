@@ -130,7 +130,12 @@ describe('the narrow write path', () => {
           {
             ...EMPTY_QUERY_EXEC,
             sql: RESULT.sql,
-            results: [{ ...RESULT, source: { writableMapping: 'readOnly', statementIndex: 0 } }],
+            results: [
+              {
+                ...RESULT,
+                source: { writableMapping: 'readOnly', statementIndex: 0 },
+              } as unknown as StatementResult,
+            ],
             activeResultIdx: 0,
           },
         ],
