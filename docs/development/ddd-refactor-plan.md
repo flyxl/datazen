@@ -1,0 +1,296 @@
+# DDD 分层收敛计划（PRD）
+
+> 状态：提案，待 §9 决策点裁定后启动 P0。
+> 范围：分层归属、依赖方向、依赖环、编排位置、装配根。
+> 关系：[分阶段开发计划](platform-development-plan.md) 仍是「形态演进与端口归属」的唯一权威，本文件只负责「层与依赖」这一轴；两者交叉处在各自正文互引。
+> 基线：`main` = `2a5bef0af`（2026-10-22），#105 第六期计划已入库。
+
+## 1. 问题陈述
+
+### 1.1 一句话
+
+端口与适配器的骨架是真的（platform-api + 注入 + 桌面/无头两形态已验证），但**内层是空的**：应用层被抽空成契约包，领域层被基础设施反向绑住，真正的编排住在接口层。
+
+### 1.2 实测证据
+
+依赖边（`Cargo.toml` 生产依赖，已排除 dev-dependencies）：
+
+| 包 | 生产依赖（内部） |
+|---|---|
+| `driver-api` / `ai-api` / `platform-infra` | 无 |
+| `platform-api` | `driver-api` |
+| `application` | `driver-api`、`platform-api` |
+| `runtime` | **`application`**、`driver-api`、`platform-api` |
+| `schema-diff` | `driver-api`、`platform-api`、**`runtime`** |
+| `data-sync` / `data-transfer` | `driver-api`、`migration-common`、`platform-api`、**`runtime`**（具体驱动仅 dev-dep） |
+| `feature-core` | `ai-api`、**`application`**、`driver-api`、`platform-api`、`platform-infra`、**`runtime`**、`schema-diff` |
+| `src-tauri`（宿主） | 以上全部 |
+
+**环**（实测，非推断）：把 `datazen-schema-diff` 加进 `packages/application/Cargo.toml` 的 `[dependencies]` 后：
+
+```text
+$ cargo metadata --offline --format-version 1
+error: cyclic package dependency: package `datazen-application v0.0.1` depends on itself. Cycle:
+  package `datazen-application v0.0.1`
+   ... which satisfies path dependency `datazen-application` of package `datazen-runtime v0.0.1`
+EXIT=101
+```
+
+⇒ `application → schema-diff → runtime → application`。**应用层物理上无法依赖领域层**，这是「应用层只能当契约包」的机械原因。
+
+### 1.3 规模与位置错位
+
+行数为 `wc -l` 全量（含内联测试；「生产」列指不含 `#[cfg(test)]` 模块的文件，两种口径都给出以免误导）：
+
+| 层（DDD 角色） | 包 | 行数 | 真实角色 |
+|---|---|---|---|
+| 接口/适配 | `src-tauri/src/commands` | 53,350（宿主 104,677） | **实际编排层**，276 个 IPC，118 处直读 `state.store.` |
+| 应用 | `packages/application` | 5,618（生产口径 1,595） | 契约包：真用例仅 `SettingsService`(59)、`IdentityPolicy`(373)、`TargetResolver`(598)；`sessions.rs` 只有 trait |
+| 领域 | `schema-diff` / `data-sync` / `data-transfer` / `feature-core` / `tunnel` | 18,747 / 17,409 / 26,518 / 31,335 / 2,784 | 逻辑真实，但**生产依赖 runtime**（共 76 处引用：34+32+6+4） |
+| 基础设施 | `runtime` / `src-tauri/src/store` | 68,458 / 17,804 | `runtime` 同时是 infra、应用服务实现（唯一 `RuntimeConnectionUseCases` impl）与部分业务规则（`sql_guard`） |
+| 端口/契约 | `platform-api` / `driver-api` | 13,737 / 28,280 | 唯一干净的一层 |
+
+关键比例：**编排在接口层 53k 行，应用层 1.6k 生产行（约 3%）**；领域包合计约 9.4 万行，**没有一行被应用层编排**——全部被宿主直接调用。
+
+### 1.4 为什么现在做
+
+1. 形态复用（Web / MCP）的产品目标要求用例层可复用；现状下复用单位是「宿主 commands」，不可搬。
+2. #105 已把 `ApplicationServices` 放进 `AppState` 并修好装配目标状态，应用层有了落点；环不拆，第二期起的用例无处安放。
+3. 领域包对 `runtime` 的引用是 76 处的小尾巴，越晚拆成本越高（`feature-core` 已达 31k 行）。
+
+## 2. 目标与非目标
+
+### 2.1 目标
+
+- **G1 断环**：`application` 可依赖领域包，`cargo metadata` 全绿。
+- **G2 领域纯化**：四个领域包对 `runtime` 的生产依赖降为 0，改用各自端口。
+- **G3 编排归位**：`commands` 只做 IPC 参数校验 + DTO 映射；用例编排进 `application`。
+- **G4 装配根收敛**：请求期不再直读装配对象；`AppState` 的字段只出现在装配与入口。
+- **G5 仓储按聚合**：一个聚合一个仓储端口，存储实现按聚合拆分，而非按落盘文件。
+- **G6 可度量**：每期有可执行验收命令；新增依赖方向门禁脚本。
+
+### 2.2 非目标
+
+- 不改 IPC 协议、不改前端、不改驱动机制、不改迁移算法语义。
+- 不新增进程/服务边界（不拆微服务、不引入事件总线）。
+- 不重写领域算法（schema-diff / data-sync / data-transfer 的逻辑原样保留，只移动依赖与归属）。
+- 不以「层名好看」为目标：`runtime` 是否物理拆分（P1）允许裁定为「不拆」。
+
+## 3. 目标架构与分层规则
+
+```mermaid
+flowchart TB
+  subgraph IF["① 接口适配层"]
+    C1["commands/*：IPC 参数校验 + DTO"]
+  end
+  subgraph APP["② 应用层（用例编排，无规则）"]
+    A1["ConnectionUseCases"]
+    A2["SchemaDiffUseCases / SyncUseCases / TransferUseCases"]
+    A3["SettingsService / IdentityPolicy / TargetResolver"]
+  end
+  subgraph DOM["③ 领域层（纯逻辑 + 端口）"]
+    D1["schema-diff：diff / plan 算法"]
+    D2["data-sync / data-transfer：映射与执行规则"]
+    D3["tunnel / feature-core：领域服务"]
+    D4["聚合 · 不变量 · 仓储端口（每聚合一个）"]
+  end
+  subgraph INFRA["④ 基础设施适配"]
+    I1["store（AES-GCM + SQLite/JSON）"]
+    I2["job ledger / artifact / schema cache"]
+    I3["drivers / keyring / network"]
+  end
+  IF --> APP --> DOM
+  I1 -.->|实现仓储端口| D4
+  I2 -.->|实现端口| APP
+  I3 -.->|实现端口| DOM
+```
+
+规则（全部进 §7 门禁）：
+
+| # | 规则 |
+|---|---|
+| R1 | 领域包不得依赖 `runtime`、`src-tauri`、任何驱动 crate（dev-dep 除外） |
+| R2 | `application` 不得依赖 `runtime`；`runtime` 不得依赖 `application`（P0 后） |
+| R3 | 端口只定义在内层：跨形态技术端口（identity / settings / job / artifact / clock / policy / network）归 `platform-api`；聚合仓储端口归领域包 |
+| R4 | `commands` 不得直读装配对象：只经用例服务或请求上下文 |
+| R5 | 一个聚合一个仓储端口；实现按聚合拆文件，不按落盘文件 |
+| R6 | 接口层不含业务规则：出现分支规则即搬去领域服务 |
+| R7 | 单文件 ≤ 800 行（现为纪律，P5 起转 CI 硬门禁） |
+| R8 | 新增端口必须有实现或用例引用，否则不入库（治「半截端口」） |
+| R9 | 依赖方向门禁脚本纳入 CI，与现有 boundary 门禁同级 |
+
+## 4. 现状基线（可复现）
+
+| 度量 | 基线 | 复现命令 |
+|---|---|---|
+| Cargo 环 | 1（试加即 101） | 附录 A.1 |
+| `application → 领域包` | 0（被环阻塞） | `grep -c datazen-schema-diff packages/application/Cargo.toml` |
+| 领域包 `runtime` 生产引用 | 76 处 | 附录 A.2 |
+| `commands` 直读 `state.store.` | 118 处 | 附录 A.3 |
+| `commands` 直读 `.app_db()` | 22 处 | 同上 |
+| `AppState` 字段 | 25 个 `pub` | 附录 A.4 |
+| `AppState` 全仓直读 | 397 处（store 145） | 同上 |
+| 无外部实现的端口 | 12 / 24（其中 `Clock` 端口文件内自带实现、`ProfileReader` 仅测试桩 ⇒ 真缺口约 10） | 附录 A.5 |
+| 端口散落 | `platform-api` 24 个 + 领域包 5 个 | 附录 A.5 |
+| 超 800 行文件 | 6 个（最大 `data-sync/execute.rs` 1,858） | 附录 A.6 |
+| 全量 vitest | 614 文件 / 6,420 用例全绿 | `npx vitest run` |
+
+## 5. 分期交付
+
+每期一个可独立回滚的 PR 系列；每期只做本期的移动，不夹带行为变更。
+
+### P0 断环（唯一硬阻塞，先做）
+
+- 把 `application` 中被 `runtime` 使用的两个类型——错误类型 `ApiError`/`ApiErrorCode` 与端口 `RuntimeConnectionUseCases`——迁到 `platform-api`（它本就是跨形态契约包），`runtime` 改依赖 `platform-api`。
+- `runtime` 不再出现在 `application` 的依赖里；`application` 增加对领域包（首选 `schema-diff`）的依赖以证明环已解。
+- **验收**：附录 A.1 命令 `EXIT=0`；`cargo metadata` 无 `cyclic`；`cargo test -p datazen-platform-api`、`cargo test -p datazen-runtime --lib` 绿。
+- **回滚**：单 PR revert，无行为变更。
+- **风险**：`ApiError` 是全仓最被复用的应用层身份（宿主 179 处），迁移是机械改动但面广；用 `cargo check -p datazen` 全量验证。
+
+### P1 `runtime` 拆分（有裁定分支，见 D1）
+
+- 方案 A（推荐）：拆成 `runtime-infra`（job ledger、artifact、schema cache、sql_guard）与 `runtime-session`（session actor、driver registry），两者都只依赖端口。
+- 方案 B（不拆）：保持单包，但用 `mod` 边界 + 门禁限制跨层引用。
+- **验收**：拆分后各 crate 依赖闭包满足 R1/R2；`cargo test` 全绿。
+- **风险**：39k 生产行的移动面；建议先做 A 的目录切分、后改 crate，分两步。
+
+### P2 领域纯化（工作量最大且最机械）
+
+- 4 个包共 76 处 `datazen_runtime::` 生产引用改为端口注入：`data-transfer` 34、`feature-core` 32、`schema-diff` 6、`data-sync` 4。
+- **验收**：附录 A.2 输出 0；4 个 `Cargo.toml` 的 `[dependencies]` 无 `datazen-runtime`；`cargo test -p datazen-schema-diff -p datazen-data-sync -p datazen-data-transfer -p datazen-feature-core` 绿。
+- **回滚**：按包分 4 个 PR，逐个可回滚。
+- **风险**：端口定义反复 → 先冻结端口清单（R3/R8）再改。
+
+### P3 编排归位（长尾，按 feature 切）
+
+- 顺序建议：连接管理（契约最全、测试最多）→ schema-diff → sync → transfer → ai/workflow。
+- 每个 feature：commands 里抽出用例服务到 `application`，宿主只保留 IPC 壳。
+- **验收**：该 feature 的 `commands` 文件行数下降 ≥50%；`grep state.store.` 在该 feature 目录降为 0；IPC 签名与返回类型不变（用既有前端类型做回归）。
+- **回滚**：按 feature 分批，每批独立 PR。
+- **风险**：双轨期重复逻辑 → 冻结规则：新代码必须进用例层，旧代码只减不增。
+
+### P4 装配根收敛
+
+- `AppState` 25 字段 → 请求上下文（context）门面；`store` 145 处直读逐步改为仓储端口调用（与 P3 合并推进）。
+- **验收**：请求期直读计数下降；`app_state_shape_tests.rs` 的字段不变式随迁移更新。
+- **风险**：`AppState` 被 397 处引用，需按命令模块分批。
+
+### P5 仓储规整 + 规模门禁
+
+- `DesktopRepository` 按聚合拆（settings / tunnels / history / app_db 各自仓储实现）。
+- 6 个超 800 行文件拆分；`R7` 转 CI 硬门禁。
+- **验收**：`ls src-tauri/src/store/*.rs` 单文件 ≤800；CI 脚本对超标文件失败。
+
+## 6. 不变量与禁区
+
+- IPC 命令清单、参数、返回类型不变（前端 `src/commands/` 为对照）。
+- 既有测试不许删；可迁移但断言强度不得降低。
+- `scope-gate` 白名单不扩大。
+- 门禁清单（全部保持绿）：`cargo test -p datazen --lib`、`cargo test -p datazen-ai-api --lib`、`npx vitest run`、`pnpm typecheck`、`node scripts/check-platform-crate-boundaries.mjs`、`check-module-layers.mjs`、`check-id-terminology.mjs`、prettier。
+- 提交纪律沿用 AGENTS.md：验证方与提交方不同树、门禁首尾记录 HEAD 与工作区 sha。
+
+## 7. 度量与验收
+
+| 指标 | 基线 | P0 后 | P2 后 | 目标 | 采集 |
+|---|---|---|---|---|---|
+| Cargo 环 | 1 | 0 | 0 | 0 | 附录 A.1 |
+| `application` 依赖领域包 | 0 | ≥1 | ≥1 | ≥3 | `Cargo.toml` |
+| 领域包 `runtime` 引用 | 76 | 76 | 0 | 0 | 附录 A.2 |
+| `commands` 直读 `state.store.` | 118 | 118 | 118 | 0 | 附录 A.3 |
+| `commands` 行数 | 53,350 | — | — | 降 ≥50% | `wc -l` |
+| 请求期 `AppState` 直读 | 397 | 397 | — | 0 | 附录 A.4 |
+| 无实现端口 | 12 | 裁定 | — | 0 | 附录 A.5 |
+| 超 800 行文件 | 6 | — | — | 0 | 附录 A.6 |
+
+新增门禁建议（P0 随行）：`scripts/check-ddd-layers.mjs` —— 解析 `cargo metadata` 断言 R1/R2/R3 + 行数门禁 R7；与 `check-platform-crate-boundaries.mjs` 同级挂进 CI。
+
+## 8. 风险与缓解
+
+| 风险 | 缓解 |
+|---|---|
+| P2 面大（76 处）导致长期分支 | 按包拆 4 个 PR，主线不冻结 |
+| P3 双轨期逻辑重复 | 冻结规则：新代码只进用例层；每 feature 完成即删旧路径 |
+| 断环后 `application` 反向依赖 `runtime` | R2 门禁脚本直接阻断 |
+| 端口定义反复推翻 | 先冻结端口清单（P2 前置），R8 |
+| 大规模移动引入行为回归 | 每期不夹带行为变更；IPC 契约测试 + 6,420 用例兜底 |
+| `runtime` 拆分失败（P1 方案 A） | 允许退到方案 B，不阻塞 P2/P3 |
+
+## 9. 需裁定决策点
+
+1. **D1 `runtime` 是否物理拆分**：拆（`runtime-infra` + `runtime-session`，代价中，收益是层身份清晰）vs 不拆（代价零，靠门禁约束）。建议拆。
+2. **D2 端口归属规则**：R3 提案（跨形态→`platform-api`，聚合仓储→领域包）与现有 §2.8「端口 trait 统一归 platform-api」冲突——采纳哪条？若采纳现有规则，领域包需反向依赖 `platform-api` 的新仓储端口，P2 的改法随之变化。
+3. **D3 12 个无实现端口处置**：删（契约噪音）/ 降级为文档 / 排期实现。建议：`Clock` 保留（已实现），`ProfileReader` 仅测试桩→删或标注，其余逐个裁定。
+4. **D4 P3 首批 feature**：连接管理 vs schema-diff。建议连接管理（有 74 用例契约与详细设计背书）。
+5. **D5 是否承诺第二形态**：承诺→P3 全量投入；不承诺→只做 P0/P2/P4（本地痛点），P3 降级为「新功能一律进用例层」的增量规则。
+6. **D6 行数门禁**：R7 转 CI 硬门禁会让当前 6 个文件立即红——先修后加，还是加白名单渐进？
+
+## 10. 开放问题
+
+- `KnownHostsRepository` 归属（`packages/tunnel` 自持 vs `platform-api`）——与 D2 同源。
+- `DesktopRepository` 拆分粒度：按聚合（settings/tunnels/history/app_db）是否引入跨仓储事务问题。
+- `feature-core` 31k 行同时是 domain + 应用协作 + 宿主适配，是否需要按 feature 再拆包。
+- 60+ 处 `AppState` 直读中哪些可立即降级（不依赖 P3 的先行项）。
+
+## 附录 A 实测命令与原始结论
+
+### A.1 环
+
+```bash
+git worktree add --detach /tmp/dz-cycle <base>
+awk 'BEGIN{d=0} /^\[dependencies\]$/ && !d {print; print "datazen-schema-diff = { workspace = true }"; d=1; next} {print}' \
+  packages/application/Cargo.toml > /tmp/t && mv /tmp/t packages/application/Cargo.toml
+cargo metadata --offline --format-version 1 >/dev/null   # EXIT=101, "cyclic package dependency"
+```
+
+### A.2 领域包对 runtime 的生产引用
+
+```bash
+for p in schema-diff data-sync data-transfer tunnel feature-core; do
+  printf '%s ' "$p"; grep -rh "datazen_runtime::" --include='*.rs' packages/$p/src | wc -l
+done
+# schema-diff 6 / data-sync 4 / data-transfer 34 / tunnel 0 / feature-core 32
+```
+
+### A.3 命令层直读
+
+```bash
+grep -rE 'state\.store\.' --include='*.rs' src-tauri/src/commands | wc -l      # 118
+grep -rE '\.app_db\(\)'   --include='*.rs' src-tauri/src/commands | wc -l      # 22
+grep -rE 'state\.driver_registry' --include='*.rs' src-tauri/src/commands | wc -l  # 14
+```
+
+### A.4 装配对象
+
+```bash
+# 字段数
+awk '/^pub struct AppState/,/^}/' src-tauri/src/bootstrap/app_state.rs | grep -cE '^\s+pub [a-z_]+:'
+# 全仓直读
+grep -rE '\bstate\.(store|tunnels|driver_registry|platform|wapps|sync_adapters|desktop_job_host)\b' \
+  --include='*.rs' src-tauri/src | wc -l
+```
+
+### A.5 端口
+
+```bash
+traits=$(grep -rhoE 'pub trait [A-Za-z0-9_]{3,}' packages/platform-api/src/ports | awk '{print $3}' | sort -u)
+for t in $traits; do
+  hit=$(grep -rlE "\b$t for [A-Za-z_]" src-tauri/src packages/*/src | grep -v '/ports/' | wc -l)
+  [ "$hit" = 0 ] && echo "无实现: $t"
+done
+# 24 个 trait 中 12 个无外部 impl：ClusterNodeBudgetPort / ControlResourcePort /
+# DriverPoolBudgetPort / EventSink / ExecutionSettingsReader / ExecutionTargetResolver /
+# MasterKeyProvider / MigrationProfileReader / MonitorGrantReader / ProfileReader /
+# SubmissionTokenIssuer / Clock（Clock 在端口文件内自带 SystemClock/FixedClock；
+# ProfileReader 仅有测试桩 StubProfiles）
+```
+
+### A.6 超 800 行
+
+```bash
+find src-tauri/src packages/*/src -name '*.rs' -size +40k | while read f; do
+  printf '%s %s\n' "$(wc -l < "$f")" "$f"
+done
+# 1,858 data-sync/execute.rs；1,444 data-sync/plan_store/mod.rs；1,419 data-transfer/plan_store/tests.rs；
+# 1,228 src-tauri/src/commands/sync/exec.rs；1,180 src-tauri/src/commands/connection.rs；
+# 1,176 src-tauri/src/commands/sync/apply.rs
+```
