@@ -74,11 +74,6 @@ export interface WorkflowStepDraft {
   database?: string;
   command?: string;
   input?: Record<string, unknown>;
-  operation?: 'dataTransfer' | 'dataSync' | 'schemaDiff';
-  profileId?: string;
-  profileRevision?: string;
-  destructivePolicy?: 'reject' | 'allow';
-  sqlFileTokenVariable?: string;
 }
 
 export interface WorkflowDraft {
@@ -768,16 +763,12 @@ export function WorkflowForm({
                     { value: 'query', label: 'Query (legacy)' },
                     { value: 'command', label: 'Command' },
                     { value: 'ai', label: 'AI' },
-                    { value: 'migration', label: t('workflows.form.migration') },
                   ]}
                   onChange={(v) =>
                     setStep(i, {
                       type: v as WorkflowStepType,
                       command: v === 'command' ? step.command : undefined,
                       input: v === 'command' ? (step.input ?? {}) : undefined,
-                      operation: v === 'migration' ? (step.operation ?? 'dataSync') : undefined,
-                      destructivePolicy:
-                        v === 'migration' ? (step.destructivePolicy ?? 'reject') : undefined,
                     })
                   }
                   className="!h-7 !text-xs w-32"
@@ -911,65 +902,6 @@ export function WorkflowForm({
                   placeholder="AI prompt..."
                   rows={4}
                 />
-              )}
-              {step.type === 'migration' && (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <Select
-                      value={step.operation ?? 'dataSync'}
-                      options={[
-                        { value: 'dataTransfer', label: t('workflows.form.migrationTransfer') },
-                        { value: 'dataSync', label: t('workflows.form.migrationSync') },
-                        { value: 'schemaDiff', label: t('workflows.form.migrationSchema') },
-                      ]}
-                      onChange={(operation) =>
-                        setStep(i, {
-                          operation: operation as WorkflowStepDraft['operation'],
-                        })
-                      }
-                      className="!h-8 !text-xs"
-                    />
-                    <Select
-                      value={step.destructivePolicy ?? 'reject'}
-                      options={[
-                        { value: 'reject', label: t('workflows.form.migrationReject') },
-                        { value: 'allow', label: t('workflows.form.migrationAllow') },
-                      ]}
-                      onChange={(destructivePolicy) =>
-                        setStep(i, {
-                          destructivePolicy:
-                            destructivePolicy as WorkflowStepDraft['destructivePolicy'],
-                        })
-                      }
-                      className="!h-8 !text-xs"
-                    />
-                  </div>
-                  <input
-                    className="h-8 w-full rounded border border-edge bg-surface-alt px-2.5 text-xs text-fg outline-none focus:border-accent"
-                    value={step.profileId ?? ''}
-                    onChange={(e) => setStep(i, { profileId: e.target.value })}
-                    placeholder={t('workflows.form.migrationProfileId')}
-                  />
-                  <input
-                    className="h-8 w-full rounded border border-edge bg-surface-alt px-2.5 text-xs text-fg outline-none focus:border-accent"
-                    value={step.profileRevision ?? ''}
-                    onChange={(e) => setStep(i, { profileRevision: e.target.value || undefined })}
-                    placeholder={t('workflows.form.migrationProfileRevision')}
-                  />
-                  {step.operation === 'dataTransfer' && (
-                    <input
-                      className="h-8 w-full rounded border border-edge bg-surface-alt px-2.5 text-xs text-fg outline-none focus:border-accent"
-                      value={step.sqlFileTokenVariable ?? ''}
-                      onChange={(e) =>
-                        setStep(i, { sqlFileTokenVariable: e.target.value || undefined })
-                      }
-                      placeholder={t('workflows.form.migrationTokenVariable')}
-                    />
-                  )}
-                  <div className="text-[11px] text-fg-muted">
-                    {t('workflows.form.migrationHint')}
-                  </div>
-                </div>
               )}
             </div>
           );

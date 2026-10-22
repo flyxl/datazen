@@ -3,8 +3,8 @@ use datazen_driver_api::CommandResult;
 use datazen_feature_core::{
     mcp::permission::McpPermissionMode,
     workflow::{
-        context::WorkflowContext, executor::WorkflowExecutor, host::WorkflowHost, model::*,
-        WorkflowCommandStep, WorkflowError,
+        executor::WorkflowExecutor, host::WorkflowHost, model::*, WorkflowCommandStep,
+        WorkflowError,
     },
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -30,18 +30,6 @@ impl WorkflowHost for NoDispatch {
         Err(self.touched())
     }
     async fn complete_ai(&self, _: String) -> Result<String, WorkflowError> {
-        Err(self.touched())
-    }
-    async fn execute_profile_step(
-        &self,
-        _: &str,
-        _: WorkflowMigrationOperation,
-        _: &str,
-        _: Option<&str>,
-        _: UnattendedDestructivePolicy,
-        _: Option<&str>,
-        _: &mut WorkflowContext,
-    ) -> Result<StepExecutionResult, WorkflowError> {
         Err(self.touched())
     }
 }

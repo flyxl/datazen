@@ -2138,8 +2138,6 @@ dependencies = [
  "chrono",
  "datazen-ai-api",
  "datazen-application",
- "datazen-data-sync",
- "datazen-data-transfer",
  "datazen-driver-api",
  "datazen-platform-api",
  "datazen-platform-infra",

@@ -104,16 +104,5 @@ const pack = {
   'workflows.stepOrder.toggle': '단계 결과 순서 전환',
   'workflows.stepOrder.asc': '오래된 순 먼저',
   'workflows.stepOrder.desc': '최신 순 먼저',
-  'workflows.form.migration': '마이그레이션 프로필',
-  'workflows.form.migrationTransfer': 'Data Transfer (데이터 전송)',
-  'workflows.form.migrationSync': 'Data Sync (데이터 동기화)',
-  'workflows.form.migrationSchema': 'Schema Diff (스키마 차이)',
-  'workflows.form.migrationReject': '파괴적 변경 거부',
-  'workflows.form.migrationAllow': '파괴적 변경 허용',
-  'workflows.form.migrationProfileId': '저장된 프로필 ID',
-  'workflows.form.migrationProfileRevision': '프로필 리비전 (선택 사항)',
-  'workflows.form.migrationTokenVariable': '실행별 SQL 파일 토큰 변수',
-  'workflows.form.migrationHint':
-    '프로필은 실행할 때마다 다시 검증되고 계획됩니다. SQL 파일 대상에는 네이티브 대화상자에서 새로 받은 토큰 변수가 필요합니다.',
 } as const;
 export default pack;

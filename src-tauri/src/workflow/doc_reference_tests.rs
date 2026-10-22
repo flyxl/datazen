@@ -140,8 +140,6 @@ const LINE_REFERENCES: &[(&str, usize, &str)] = &[
         71,
         "WorkflowExecutor::execute(",
     ),
-    // §2.5：migration step 把 job_id 传 None（原 `migration.rs:509`）。
-    ("src-tauri/src/workflow/migration.rs", 221, "job_id: None,"),
     // §2.3：逐条核对过仍正确的若干处（抽样）。
     (
         "packages/feature-core/src/dashboard/create.rs",
@@ -155,7 +153,7 @@ const LINE_REFERENCES: &[(&str, usize, &str)] = &[
     ),
     (
         "packages/feature-core/src/workflow/scheduler.rs",
-        223,
+        220,
         "version: None,",
     ),
     (

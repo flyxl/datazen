@@ -33,7 +33,8 @@
 //! ——见 [`budget`] 模块头对四个 trait 分工的说明。
 //! **按读写再切一刀同样不合并**：上列六个窄端口是既有端口的**只读投影 / 读侧拆分**
 //! （`ProfileReader` 只暴露 `ProfileRepository` 的读方法；`MigrationProfileReader` 只暴露
-//! `MigrationHost` 的三个读方法；`ExecutionSettingsReader` 只暴露执行期真正要读的两项
+//! 迁移 profile 的三个读方法——它原先是 workflow 迁移 step 的读侧拆分，那个能力移除后
+//! 端口作为三件套的只读投影边界保留；`ExecutionSettingsReader` 只暴露执行期真正要读的两项
 //! 设置）。它们与既有 trait **读同一份事实**——实现方同时实现两者，事实仍然只有一份；
 //! 消费方按需注入窄的那个，于是「只读」是**类型事实**而不是约定。
 //!

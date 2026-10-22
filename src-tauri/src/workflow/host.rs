@@ -5,13 +5,10 @@ use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
 use datazen_feature_core::mcp::permission::McpPermissionMode;
 use datazen_feature_core::workflow::command::WorkflowCommandStep;
 use datazen_feature_core::workflow::error::WorkflowError;
-use datazen_feature_core::workflow::model::{
-    StepExecutionResult, UnattendedDestructivePolicy, WorkflowMigrationOperation,
-};
+use datazen_feature_core::workflow::host::WorkflowHost;
 use datazen_feature_core::workflow::resource_execution::{
     PreparedExecution, ResourceExecutionHost,
 };
-use datazen_feature_core::workflow::{context::WorkflowContext, host::WorkflowHost};
 use std::sync::Arc;
 
 #[async_trait::async_trait]
@@ -80,28 +77,6 @@ impl WorkflowHost for AppState {
             .await
             .map(|response| response.content)
             .map_err(|error| WorkflowError::Ai(error.to_string()))
-    }
-    async fn execute_profile_step(
-        &self,
-        id: &str,
-        operation: WorkflowMigrationOperation,
-        profile_id: &str,
-        revision: Option<&str>,
-        destructive_policy: UnattendedDestructivePolicy,
-        sql_file_token_variable: Option<&str>,
-        context: &mut WorkflowContext,
-    ) -> Result<StepExecutionResult, WorkflowError> {
-        super::migration::execute_profile_step(
-            self,
-            id,
-            operation,
-            profile_id,
-            revision,
-            destructive_policy,
-            sql_file_token_variable,
-            context,
-        )
-        .await
     }
 }
 

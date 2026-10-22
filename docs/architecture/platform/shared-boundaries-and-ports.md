@@ -578,7 +578,7 @@ pub trait IdentityResolver: Send + Sync + 'static {
 
 P5 本机 Core 的 `CommitBoundary` 已包含 stageId、operationId/batchId、stable target fingerprint、payload digest、evidence 与 verifiedAt，并与 checkpoint 写入 SQLite；accept 同事务写 Job、幂等 receipt、consumed plan ID 和初始详情。`JobDetails` 额外读取 progress、recovery verdict、bounded domain results、artifact IDs 与安全 recovery target projection。领域 verifier 仍负责外部事实核验，不允许只凭目标指纹宣称某批写入已生效。团队服务仓储仍是目标设计。详见[迁移任务设计](data-migration-jobs.md)。
 
-**本节的三个窄端口**（签名见 §4.10）：`ProfileReader`（`ProfileRepository` 的**只读投影**：写路径只留在 `ProfileRepository`，桌面 `DesktopProfiles` 同时实现两个 trait、事实只有一份）、`MigrationProfileReader`（`MigrationHost` 三个读方法的**读侧拆分**：迁移的写与执行仍属 `MigrationHost` / `MigrationRunner`）、`ExecutionTargetResolver`（目标规范化的**环境部分**：与 §4.3 末的 `IdentityResolver` 分工不同——一个解析执行身份、一个解析执行目标；它存在的首要理由是**打破引用环**，`Application` 绝不能持 `Arc<PlatformAdapter>`）。
+**本节的三个窄端口**（签名见 §4.10）：`ProfileReader`（`ProfileRepository` 的**只读投影**：写路径只留在 `ProfileRepository`，桌面 `DesktopProfiles` 同时实现两个 trait、事实只有一份）、`MigrationProfileReader`（迁移 profile 的**只读投影**：端口保留，作为三件套自身的读侧边界；它原先是 workflow 迁移 step 的读侧拆分，那个能力移除后不再有桌面实现）、`ExecutionTargetResolver`（目标规范化的**环境部分**：与 §4.3 末的 `IdentityResolver` 分工不同——一个解析执行身份、一个解析执行目标；它存在的首要理由是**打破引用环**，`Application` 绝不能持 `Arc<PlatformAdapter>`）。
 
 ### 4.4 秘密、网络与执行材料端口
 
@@ -809,7 +809,7 @@ pub struct FixedClock { /* … */ }    // 测试替身：at(ts) / set(ts)，克�
 | `ExecutionSettingsReader` | `ports/execution_settings.rs` | `src-tauri/src/store/mod.rs` 的 `execution_settings()` | `read` |
 | `ExecutionTargetResolver` | `ports/execution_target.rs` | `src-tauri/src/platform/adapter.rs` 的 `PlatformAdapter::resolve_execution_target` | `resolve` |
 | `MasterKeyProvider` | `ports/master_key.rs` | `src-tauri/src/platform/execution_identity.rs` 的 `for_desktop(store, …)` | `master_key` / `derive_subkey` |
-| `MigrationProfileReader` | `ports/migration_profile.rs` | `src-tauri/src/workflow/migration.rs` 的 `impl MigrationHost for AppState` 三个读方法 | `list_transfer_profiles` / `list_sync_profiles` / `list_schema_diff_profiles` |
+| `MigrationProfileReader` | `ports/migration_profile.rs` | 端口保留（三件套的只读 profile 投影）；桌面侧唯一的实现曾是 workflow 迁移 step 的 `impl MigrationHost for AppState`，该能力已移除，三件套自身经 `Store` 读 profile | `list_transfer_profiles` / `list_sync_profiles` / `list_schema_diff_profiles` |
 
 ```rust
 // packages/platform-api/src/ports/profile_reader.rs（已实现）
@@ -865,7 +865,7 @@ pub trait MigrationProfileReader: Send + Sync + 'static {
 
 **四条口径**：
 
-1. **不重复，是同一份事实的不同取用宽度**：`ProfileReader` 与 `ProfileRepository` 读同一份档案（**写路径只留在后者**，桌面 `DesktopProfiles` 同时实现两个 trait、事实只有一份）；`MigrationProfileReader` 与 feature-core 的 `MigrationHost` 读同一份迁移 profile（**迁移的写与执行仍属 `MigrationHost` / `MigrationRunner`**）；`ExecutionSettingsReader` 与 `SettingsRepository`、以及 feature-core 层的 `DatabaseToolHost::execution_settings()` 读同一份执行设置——**三者是同一份事实的三种取用宽度**，不是三份重复实现，收敛方向是让后两者经本端口取。`MonitorGrantReader` 的 `authorized_target` 与宿主侧 `DelegationScopeBinding` **同形**，集成时应收敛为一条。
+1. **不重复，是同一份事实的不同取用宽度**：`ProfileReader` 与 `ProfileRepository` 读同一份档案（**写路径只留在后者**，桌面 `DesktopProfiles` 同时实现两个 trait、事实只有一份）；`MigrationProfileReader` 读同一份迁移 profile（**迁移的写与执行仍属三件套自己的命令路径**，端口只管读）；`ExecutionSettingsReader` 与 `SettingsRepository`、以及 feature-core 层的 `DatabaseToolHost::execution_settings()` 读同一份执行设置——**三者是同一份事实的三种取用宽度**，不是三份重复实现，收敛方向是让后两者经本端口取。`MonitorGrantReader` 的 `authorized_target` 与宿主侧 `DelegationScopeBinding` **同形**，集成时应收敛为一条。
 2. **打破引用环**：`ExecutionTargetResolver` 存在的首要理由是 `Application` **绝不能**持 `Arc<PlatformAdapter>`（`PlatformAdapter` 持 `Arc<ApplicationServices>`），只能持这个窄端口；桌面实现在**宿主侧**实现它，签名里只有 platform-api 自己的类型，桌面 driver registry 与目标元数据缓存一律藏在实现里。
 3. **能力事实用值表达**：目标不被支持时端口返回 `TargetResolution::Unsupported { reason_code }` 而不是抛错（§4.1）。
 4. **私有词汇表**：`MonitorGrantScope` / `ExecutionPolicy` / `TargetResolution` / `KeyMaterial` / `MigrationProfileSummary` 各自留在**自己的端口文件**里（§4.1 的「每个端口文件自带它的私有词汇表」），**不进 `dto/`**；将来若要跨边界序列化再各自补 serde。

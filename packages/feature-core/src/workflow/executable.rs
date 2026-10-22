@@ -139,8 +139,7 @@ impl ExecutableStep {
         }
     }
 
-    /// 只有 `query` / `command` 走四级链目标解析。`migration` step 自己按
-    /// profile 开会话，不吃 step 级目标声明。
+    /// 只有 `query` / `command` 走四级链目标解析。其余 step 不吃 step 级目标声明。
     pub fn resolves_target(&self) -> bool {
         matches!(
             &self.step,

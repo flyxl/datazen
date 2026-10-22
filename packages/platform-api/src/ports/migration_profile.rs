@@ -2,17 +2,21 @@
 //!
 //! ## 它替代什么
 //!
-//! 桌面侧 `src-tauri/src/workflow/migration.rs` 的 `impl MigrationHost for AppState`
-//! 里，`transfer_profiles()` / `sync_profiles()` / `schema_profiles()` 三个方法**只做
-//! 一件事**：从 `Store` 里读出已保存的迁移 profile 列表——而 `AppState` 因此拖着
-//! 整个 `Store`。
+//! 桌面侧曾经有一个 `impl MigrationHost for AppState`（位于
+//! `src-tauri/src/workflow/migration.rs`），它的 `transfer_profiles()` /
+//! `sync_profiles()` / `schema_profiles()` 三个方法**只做一件事**：从 `Store` 里
+//! 读出已保存的迁移 profile 列表——而 `AppState` 因此拖着整个 `Store`。
+//!
+//! 那个 workflow 迁移 step 能力已被移除（它从未真正发布；见
+//! `docs/architecture/backend/workflow.md` 的「迁移 step（已移除）」）。**端口本身
+//! 保留**：它是三件套的只读 profile 投影边界，与 workflow 无关。
 //!
 //! ## 它**不**包含什么
 //!
 //! 迁移的**写**（保存 / 更新 profile）与**执行**（跑一次传输 / 同步 / 结构比对）
-//! **不**在这里：前者是迁移仓储的事，后者是 `MigrationHost` / `MigrationRunner` 的
-//! 事。端口按聚合拆开，实现方不必实现与自己无关的方法（与 `ports/mod.rs` 模块头
-//! 那条「repositories 是一张表，不是一个合并 trait」同一原则）。
+//! **不**在这里：前者是迁移仓储的事，后者是三件套自己的命令路径的事。端口按聚合
+//! 拆开，实现方不必实现与自己无关的方法（与 `ports/mod.rs` 模块头那条
+//! 「repositories 是一张表，不是一个合并 trait」同一原则）。
 //!
 //! ## 词汇表
 //!

@@ -43,13 +43,13 @@
 
 ### 2.1 模块结构
 
-`src-tauri/src/workflow/` 当前有 9 个源文件。共享执行语义（`conditions.rs`、`data_step.rs`、`model.rs`、`executor.rs`、`registry.rs`、`history.rs` 等）已下沉到 `packages/feature-core/src/workflow/`；宿主 `mod.rs` 只声明真正环境相关的部分——`command_runtime`（Driver Command 运行时桥的桌面绑定）、`history`（本地历史库绑定）、`migration`（迁移端口的桌面实现）、`registry`（`AppDb` 绑定）、`scheduler`（桌面调度适配）、`host`（共享端口的桌面实现：`WorkflowHost` 与 `ResourceExecutionHost`）。规则本身——显式 `database`/`schema` 校验、connection 继承解析、命令派发——都在 `packages/feature-core/src/workflow/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去；迁移 step 的结果口径（transfer / sync / schema diff）在 `packages/feature-core/src/workflow/migration_outcome.rs`。宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen_feature_core::workflow::…`。`[已实现的 Workflow 架构](../backend/workflow.md)` 已按此分层更新。
+`src-tauri/src/workflow/` 当前有 8 个源文件。共享执行语义（`conditions.rs`、`data_step.rs`、`model.rs`、`executor.rs`、`registry.rs`、`history.rs` 等）已下沉到 `packages/feature-core/src/workflow/`；宿主 `mod.rs` 只声明真正环境相关的部分——`command_runtime`（Driver Command 运行时桥的桌面绑定）、`history`（本地历史库绑定）、`registry`（`AppDb` 绑定）、`scheduler`（桌面调度适配）、`host`（共享端口的桌面实现：`WorkflowHost` 与 `ResourceExecutionHost`）。规则本身——显式 `database`/`schema` 校验、connection 继承解析、命令派发——都在 `packages/feature-core/src/workflow/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen_feature_core::workflow::…`。`[已实现的 Workflow 架构](../backend/workflow.md)` 已按此分层更新。
 
 `packages/feature-core/src/workflow/data_step.rs` **不涉及任何数据库资源**，内容是 `merge` / `transform` 的行集合并与表达式求值（`run_merge`、`run_transform`、`evaluate_expression`）。`context.rs` 负责变量与模板上下文，`conditions.rs` 负责条件比较。
 
 ### 2.2 定义模型
 
-[`model.rs`](../../../packages/feature-core/src/workflow/model.rs) 的 `WorkflowDefinition` 为扁平结构：顶层 `connection`（默认连接，可为 `{{var}}` 模板）与 `database`（默认库）被 step 继承；**没有任何 block 层级字段**。`WorkflowStep` 用 `#[serde(tag = "type")]` 区分 `query` / `command` / `ai` / `condition` / `foreach` / `migration` / `merge` / `transform`。
+[`model.rs`](../../../packages/feature-core/src/workflow/model.rs) 的 `WorkflowDefinition` 为扁平结构：顶层 `connection`（默认连接，可为 `{{var}}` 模板）与 `database`（默认库）被 step 继承；**没有任何 block 层级字段**。`WorkflowStep` 用 `#[serde(tag = "type")]` 区分 `query` / `command` / `ai` / `condition` / `foreach` / `merge` / `transform`。
 
 | 观察 | 证据 |
 | --- | --- |
@@ -58,6 +58,7 @@
 | `ai` step **没有** `connection` / `database` 字段 | AI 步骤当前不接触目标资源 |
 | `version: Option<String>` 存在 | `WorkflowDefinition.version` |
 | 三个内建 YAML 均未写 `version` | [`src-tauri/resources/builtin-workflows/`](../../../src-tauri/resources/builtin-workflows) 下的 `hello-query.yaml`、`cross-db-sample.yaml`、`ai-summarize.yaml` |
+| workflow 不再以 step 形式调用数据迁移三件套 | `WorkflowStep` 没有 `migration` 变体；`WorkflowHost` 没有迁移端口；该能力从未真正发布，按直接移除处理，详见 [backend/workflow.md §迁移 step（已移除）](../backend/workflow.md#迁移-step已移除) |
 
 ### 2.3 版本字段的现状（重要）
 
@@ -66,7 +67,7 @@
 - 版本解析在 `packages/feature-core/src/workflow/executable.rs:35` 的 `WorkflowVersion::parse`：**未声明**按 `V1` 处理；**空串**、**非 `^\d+$`**（严格 ASCII 数字，`u32::from_str` 还会接受 `"+2"`，那不是声明的格式）、以及**超过 `HIGHEST_SUPPORTED_VERSION = 2`**（`executable.rs:20`）的版本**一律拒绝**，报 `WorkflowError::UnsupportedDefinitionVersion`。
 - 按版本分派在 `executable.rs:50-54`（`Ok(1) => V1`、`Ok(2) => V2`）。
 - 校验发生在**生产路径**上：`src-tauri/src/monitor/grants.rs:105` 在把 workflow 变成可执行对象时调用 `into_executable()`（`executable.rs:236`），未知或越界版本在这里被拒（"workflow version invalid"）。因此**版本号不是"写了没人看"的装饰字段**。
-- 写入点：`packages/feature-core/src/dashboard/create.rs:40` 的 `version: None` 字面量（未声明 ⇒ 按 V1 执行），其余在测试代码内（宿主侧 `workflow/host.rs:128/169/204`、`workflow/registry.rs:226`、`workflow/migration.rs:433`、`commands/dashboard.rs:482`、`commands/ai/integration_tests.rs:377/932/1070/1123`；共享包侧 `packages/feature-core/src/workflow/registry.rs:437`、`packages/feature-core/src/workflow/scheduler.rs:223`、`packages/feature-core/src/dashboard/archive.rs:185`），其中仅 `integration_tests.rs:377` 写 `Some("1")`。三个内建 YAML 均未设置该字段，按 V1 执行。
+- 写入点：`packages/feature-core/src/dashboard/create.rs:40` 的 `version: None` 字面量（未声明 ⇒ 按 V1 执行），其余在测试代码内（宿主侧 `workflow/host.rs:170/211/246`、`workflow/registry.rs:226`、`commands/dashboard.rs:482`、`commands/ai/integration_tests.rs:377/932/1070/1123`；共享包侧 `packages/feature-core/src/workflow/registry.rs:437`、`packages/feature-core/src/workflow/scheduler.rs:220`、`packages/feature-core/src/dashboard/archive.rs:185`），其中仅 `integration_tests.rs:377` 写 `Some("1")`。三个内建 YAML 均未设置该字段，按 V1 执行。
 
 对比：仓库中其他"定义版本"同样有校验——`packages/schema-diff/src/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。**Workflow 现在也在其中**：它的版本由 `WorkflowVersion::parse` 校验，未知/空白/非整数/越界版本**拒绝执行**。另需注意 `store/settings.rs:15` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）——那**是**一个尚未校验的版本字段。
 
@@ -107,14 +108,14 @@ command 分支（[command_runtime.rs`](../../../packages/feature-core/src/workfl
 | 调度器无资源会计 | `WorkflowScheduler` 只有 `app_handle` / `paused` / `last_run` / `in_flight` / `cancel_token`，无预算与阶段字段；间隔下限 30 秒、默认 3600 秒，进程启动首次观察只上膛不触发 |
 | Dashboard 同样不传连接 | `dashboard/execute.rs:71` 传 `None` |
 | MCP 入口显式可选 | `mcp/tools.rs` 的 `run_workflow` 接受 `connection_id: Option<String>`，只读模式下 `run_workflow` 被 `READ_ONLY_BLOCKED_TOOLS` 拦截 |
-| 历史按可见性写入 | `commands/workflow.rs`：`visibility == DashboardHidden` 不写历史；变量经 `migration::sanitize_variables` 脱敏 |
-| 全链路**没有平台 Job 概念** | Workflow 执行不产生 jobId、不进 `JobRepository`、没有阶段资源与检查点；连 `migration` step 也把三件套请求的 `job_id` 传 `None`（[migration.rs:221](../../../src-tauri/src/workflow/migration.rs)） |
+| 历史按可见性写入 | `commands/workflow.rs`：`visibility == DashboardHidden` 不写历史 |
+| 全链路**没有平台 Job 概念** | Workflow 执行不产生 jobId、不进 `JobRepository`、没有阶段资源与检查点；workflow 也不再以 step 形式调用三件套，因而没有「step 内嵌 Job」的例外 |
 
 ### 2.6 错误与事务
 
 `error.rs` 的 `WorkflowError` 共 13 个变体，IPC 边界仍用 `into_ipc_string()` **把错误拍平成字符串**：没有结构化 `ExecutionErrorCode`，没有 `UnsupportedPlan`、`TargetRequired`、`OutcomeUnknown` 等目标化错误码。全仓库 grep 不到 `UnsupportedPlan` 在 Workflow 路径上的产生点。
 
-事务：Workflow 执行路径**完全不管理事务**。`packages/schema-diff/src/transaction.rs` 的 `TransactionScope` 目前唯一的生产消费者是 `packages/schema-diff/src/deploy.rs`。`migration.rs`（三件套 step 执行器，**不是定义版本迁移机制**）内部用 `RuntimeSession { db_session_id, database, schema }` 表达自己的端点会话并在结束时 `release`，同样不暴露给 Workflow block 语义。
+事务：Workflow 执行路径**完全不管理事务**。`packages/schema-diff/src/transaction.rs` 的 `TransactionScope` 目前唯一的生产消费者是 `packages/schema-diff/src/deploy.rs`。
 
 ### 2.7 现状与目标的差距小结
 
@@ -652,7 +653,7 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 
 后端从当前桌面 RequestContext 取得批准者，并生成独立 service principal / delegation ID。AppDb schema v3 的 `monitor_schedule_grants` 仅保存批准者、服务身份、dashboard/widget/workflow ID、工作流 YAML SHA-256 revision、固定 canonical connection/database/schema 与配置版本、connect/query 动作及命令范围、readOnly、到期时间、撤销状态与版本。不保存 SQL 副本、session、attachment、bearer token、秘密或凭据。新授权取代同 widget 的旧授权；变更 workflow 定义或 profile 配置必须重新授权。
 
-当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI、migration 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询；函数仅允许明确的内置聚合/数值/文本/空值/时钟函数白名单，未知、带 schema、引号名称及表值函数失败关闭，因此序列推进/状态、命名锁获取/状态/释放和会话配置函数不能借 SELECT 派发），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。其他驱动和写动作均失败关闭。
+当前授权范围限 PostgreSQL/MySQL 的静态独立 `query` 步骤，要求保存的 workflow 明确声明 connection/database；不接受变量、循环、条件、AI 或资源块。Monitor 使用独立的只读查询 AST 校验（单查询，拒绝 writable CTE、SELECT INTO、行锁及非查询；函数仅允许明确的内置聚合/数值/文本/空值/时钟函数白名单，未知、带 schema、引号名称及表值函数失败关闭，因此序列推进/状态、命名锁获取/状态/释放和会话配置函数不能借 SELECT 派发），不使用会禁止所有 SQL 工具的 MCP ReadOnly 模式。其他驱动和写动作均失败关闭。
 
 共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
 
@@ -814,7 +815,7 @@ v1 定义的映射规则是机械的、无歧义的：
 - **不规定**事务隔离级别、锁策略、死锁处理与重试退避参数。
 - **不规定**驱动方言实现，只规定宿主对 driver 能力验证的输入输出（[第 7 章](#7-transaction-block-计划预校验)）。
 - **不重复**连接管理文档中的 DTO、预算数值、队列上限、TTL 与幂等键期限，也不重复 [persistence-model §3.6](persistence-model.md#36-jobs-与-job_checkpoints) 的检查点表结构与字段语义。
-- **不处理** Workflow 与三件套 profile 的复用关系、`migration` step 在 block 内的定位（[§12](#12-待-p0-验证清单) 第 1/5 条）。
+- **不处理** Workflow 与三件套 profile 的复用关系——workflow 已不再以 step 形式调用三件套（见 [backend/workflow.md §迁移 step（已移除）](../backend/workflow.md#迁移-step已移除)）。
 - **不承诺** session block 的中间恢复能力，也不为跨端事务提供原子性。
 - **不引入**新的进度、验收清单类文档；本文结论落地后应改写为"已实现"并入 [backend/workflow.md](../backend/workflow.md)。
 

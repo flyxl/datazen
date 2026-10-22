@@ -103,16 +103,5 @@ const pack = {
   'workflows.editor.invalidYamlField': 'YAML 無效：缺少或無效的欄位「{field}」',
   'workflows.addToDashboard': '新增至儀表板',
   'workflows.dashboard.defaultName': '新儀表板',
-  'workflows.form.migration': '遷移設定檔',
-  'workflows.form.migrationTransfer': '資料傳輸',
-  'workflows.form.migrationSync': '資料同步',
-  'workflows.form.migrationSchema': '結構差異',
-  'workflows.form.migrationReject': '拒絕破壞性變更',
-  'workflows.form.migrationAllow': '允許破壞性變更',
-  'workflows.form.migrationProfileId': '已儲存設定檔 ID',
-  'workflows.form.migrationProfileRevision': '設定檔版本（選填）',
-  'workflows.form.migrationTokenVariable': '每次執行的 SQL 檔案權杖變數',
-  'workflows.form.migrationHint':
-    '每次執行都會重新驗證設定檔並建立計畫。SQL 檔案目的地需要使用原生對話方塊產生的新權杖變數。',
 } as const;
 export default pack;

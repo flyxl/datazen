@@ -209,10 +209,7 @@ impl WorkflowScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::model::{
-        UnattendedDestructivePolicy, WorkflowDefinition, WorkflowMigrationOperation,
-        WorkflowSchedule, WorkflowStep,
-    };
+    use crate::workflow::model::{WorkflowDefinition, WorkflowSchedule};
 
     fn wf(enabled: bool, interval: Option<u64>) -> WorkflowDefinition {
         WorkflowDefinition {
@@ -279,22 +276,12 @@ mod tests {
     }
 
     #[test]
-    fn scheduled_workflow_accepts_host_owned_migration_step() {
-        let mut workflow = wf(true, Some(60));
-        workflow.steps.push(WorkflowStep::Migration {
-            id: "nightly-transfer".into(),
-            operation: WorkflowMigrationOperation::DataTransfer,
-            profile_id: "transfer-profile".into(),
-            profile_revision: None,
-            destructive_policy: UnattendedDestructivePolicy::Reject,
-            sql_file_token_variable: None,
-            timeout_secs: None,
-            on_error: None,
-        });
+    fn scheduled_workflow_keeps_its_interval_regardless_of_step_shape() {
+        let workflow = wf(true, Some(60));
 
         // The scheduler delegates the complete definition to the normal
-        // workflow executor, so migration steps retain the same interval and
-        // first-observation arming semantics as every other workflow.
+        // workflow executor, so every workflow keeps the same interval and
+        // first-observation arming semantics.
         assert_eq!(scheduled_interval_secs(&workflow), Some(60));
         let now = Instant::now();
         assert_eq!(due_decision(None, now, 60), DueDecision::Arm);
