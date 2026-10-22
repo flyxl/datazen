@@ -131,7 +131,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 其余消费者按调用链逐步迁移；收窄函数形参（如 `fetch_target_table_schema`）留待其调用方迁完后统一做。
 
-版本：`datazen-driver-api` 0.0.13 → 0.0.20——0.0.14 `SqlDialect`、0.0.15 `CatalogReader`、0.0.16 `ReuseDriver` 显式转发补齐、0.0.17 `CommandCatalog`、0.0.18 `SchemaMigration`、0.0.19 `BackupDialect`、0.0.20 退役 `DatabaseDriver::split_restore_sql`（唯一一次 trait 表面删除，故单独记一版）。新契约本身都是 additive（新 trait + 适配器），`PROTOCOL_VERSION` 保持 6（2026-10-21 起协议版本冻结于 6，兼容门禁族退役——治理决定见 [driver-capability-migration.md](../platform/driver-capability-migration.md#5-协议版本演进) §5）；crate 版本记录的是**本仓库**的 trait 表面变化，仓库内各驱动按最新 trait 实现即可。
+版本：`datazen-driver-api` 0.0.13 → 0.0.21——0.0.14 `SqlDialect`、0.0.15 `CatalogReader`、0.0.16 `ReuseDriver` 显式转发补齐、0.0.17 `CommandCatalog`、0.0.18 `SchemaMigration`、0.0.19 `BackupDialect`、0.0.20 退役 `DatabaseDriver::split_restore_sql`（唯一一次 trait 表面删除，故单独记一版）、0.0.21 事件出口契约（`DriverEventOutlet` / `DriverEventSink`，见 §2.9；纯新增 trait，无既有 trait 表面变动）。新契约本身都是 additive（新 trait + 适配器），`PROTOCOL_VERSION` 保持 6（2026-10-21 起协议版本冻结于 6，兼容门禁族退役——治理决定见 [driver-capability-migration.md](../platform/driver-capability-migration.md#5-协议版本演进) §5）；crate 版本记录的是**本仓库**的 trait 表面变化，仓库内各驱动按最新 trait 实现即可。
 
 ### 2.5 复用包装器：`ReuseDriver` 必须显式决定每个方法
 
