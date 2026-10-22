@@ -1,5 +1,5 @@
 //! The declared capability surface and namespace shape of the mongodb driver,
-//! matching `docs/architecture/platform/driver-capability-migration.md` §2.1.
+//! matching `docs/architecture/platform/connection-management.md` §5.2.
 //!
 //! Kept apart from the provider itself so the declarations can be read — and
 //! tested — without wading through the connection plumbing. Almost every cell
@@ -102,8 +102,7 @@ pub(crate) fn mongodb_capability_set() -> CapabilitySet {
     capabilities.reset_for_reuse = ResetForReuse::Unsupported;
     // `cancel_query` has nothing to interrupt — this crate holds no cursor
     // handle — and returns `DriverError::Unsupported` rather than the `Ok(())`
-    // that `driver-capability-migration.md` §7.1 calls out as the last broken
-    // fail-closed default.
+    // that a fail-closed default must never be.
     capabilities.precise_cancel = PreciseCancelSupport::Unsupported;
     // No snapshot primitive: a read concern is per-operation and not exposed as
     // a resource-level snapshot, so claiming one would be an invention.
