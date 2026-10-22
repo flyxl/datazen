@@ -1,14 +1,13 @@
-//! Builds compact schema context for AI prompts from the SchemaCache.
+//! Builds compact schema context for AI prompts from the SchemaContext source.
 //!
 //! [`SchemaContextBuilder`] provides methods to fetch table names and build
 //! selective/full DDL context.  [`format_compact_ddl`] produces a compact
 //! `CREATE TABLE` representation including PK, FK, indexes, defaults, and
 //! comments.
 
-use crate::services::ports::SchemaContextSource;
+use crate::services::ports::LogicalSchemaContextSource;
 use datazen_ai_api::SqlGenerationContext;
 use datazen_driver_api::TableSchema;
-use datazen_runtime::schema_cache::SchemaCache;
 use std::sync::Arc;
 
 /// Format host-read context-file entries as a stable AI prompt block.
@@ -43,19 +42,12 @@ pub fn prompt_db_type(driver: &dyn datazen_driver_api::DatabaseDriver) -> String
 }
 
 pub struct SchemaContextBuilder {
-    schema_cache: Arc<SchemaCache>,
-    schema_source: Arc<dyn SchemaContextSource>,
+    schema_source: Arc<dyn LogicalSchemaContextSource>,
 }
 
 impl SchemaContextBuilder {
-    pub fn new(
-        schema_cache: Arc<SchemaCache>,
-        schema_source: Arc<dyn SchemaContextSource>,
-    ) -> Self {
-        Self {
-            schema_cache,
-            schema_source,
-        }
+    pub fn new(schema_source: Arc<dyn LogicalSchemaContextSource>) -> Self {
+        Self { schema_source }
     }
 
     /// Schema to use for the AI's metadata reads.
@@ -126,13 +118,7 @@ impl SchemaContextBuilder {
         for table_name in table_names {
             let schema = self
                 .schema_source
-                .table_schema(
-                    &self.schema_cache,
-                    db_session_id,
-                    database,
-                    schema.as_deref(),
-                    table_name,
-                )
+                .table_schema(db_session_id, database, schema.as_deref(), table_name)
                 .await;
 
             match schema {
@@ -214,13 +200,7 @@ impl SchemaContextBuilder {
         for table_name in &ranked {
             let schema = self
                 .schema_source
-                .table_schema(
-                    &self.schema_cache,
-                    db_session_id,
-                    database,
-                    schema.as_deref(),
-                    table_name,
-                )
+                .table_schema(db_session_id, database, schema.as_deref(), table_name)
                 .await;
 
             match schema {

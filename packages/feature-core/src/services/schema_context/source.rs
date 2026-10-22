@@ -1,6 +1,6 @@
 //! Runtime-backed metadata source: session identity plus independent metadata reads.
 
-use crate::services::ports::SchemaContextSource;
+use crate::services::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
 use crate::workflow::command::WorkflowCommandStep;
 use crate::workflow::error::WorkflowError;
 use crate::workflow::resource_execution::{self, ResourceExecutionHost};
@@ -9,7 +9,6 @@ use datazen_driver_api::{
 };
 use datazen_runtime::application::RuntimeConnectionUseCases;
 use datazen_runtime::connection::DbSessionId;
-use datazen_runtime::schema_cache::SchemaCache;
 use std::sync::Arc;
 
 /// Step id of every metadata read.
@@ -20,9 +19,8 @@ const METADATA_STEP_ID: &str = "runtime-read";
 
 /// The port's refusal to hand out a physical connection handle.
 ///
-/// The Runtime path addresses sessions logically, so the three default
-/// methods of the port — which are all built on a physical
-/// [`ConnectionHandle`] — cannot be used here and are overridden instead.
+/// The Runtime path addresses sessions logically, so it owns no live
+/// [`ConnectionHandle`] and cannot answer the physical contract with one.
 /// The wording is part of the contract and must not drift.
 const NO_PHYSICAL_HANDLE: &str =
     "The Runtime metadata source does not expose physical session handles";
@@ -110,25 +108,19 @@ fn host_message(error: WorkflowError) -> String {
     }
 }
 
+/// The logical half of the metadata port.
+///
+/// Every read is answered from the session's identity, so the source never
+/// needs a physical handle and never takes a cache from its caller.
 #[async_trait::async_trait]
-impl SchemaContextSource for RuntimeSchemaContextSource {
-    async fn get_session(
-        &self,
-        _id: &str,
-    ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-        Err(NO_PHYSICAL_HANDLE.into())
-    }
-
+impl LogicalSchemaContextSource for RuntimeSchemaContextSource {
     async fn driver_for_session(&self, id: &str) -> Result<Arc<dyn DatabaseDriver>, String> {
         let (_connection, config) = self.profile_for_session(id).await?;
         self.host.driver(&config).await.map_err(host_message)
     }
 
     async fn session_schema(&self, id: &str) -> Option<String> {
-        self.profile_for_session(id)
-            .await
-            .ok()
-            .and_then(|(_connection, config)| config.schema)
+        PhysicalSchemaContextSource::configured_schema(self, id).await
     }
 
     async fn tables(
@@ -149,7 +141,6 @@ impl SchemaContextSource for RuntimeSchemaContextSource {
 
     async fn table_schema(
         &self,
-        _cache: &SchemaCache,
         id: &str,
         database: &str,
         schema: Option<&str>,
@@ -175,6 +166,29 @@ impl SchemaContextSource for RuntimeSchemaContextSource {
     }
 }
 
+/// The physical half of the metadata port.
+///
+/// The Runtime path owns no live handle, so it answers the physical contract
+/// with the refusal it has always given. The metadata reads themselves run
+/// through the logical half above.
+#[async_trait::async_trait]
+impl PhysicalSchemaContextSource for RuntimeSchemaContextSource {
+    async fn get_session(
+        &self,
+        _id: &str,
+    ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
+        Err(NO_PHYSICAL_HANDLE.into())
+    }
+
+    /// The schema the session's connection profile is configured with.
+    async fn configured_schema(&self, id: &str) -> Option<String> {
+        self.profile_for_session(id)
+            .await
+            .ok()
+            .and_then(|(_connection, config)| config.schema)
+    }
+}
+
 /// The metadata source of a form whose Runtime is not wired.
 ///
 /// The shared source needs a Runtime facade; an assembly that failed to
@@ -192,15 +206,10 @@ impl UnavailableSchemaContextSource {
     }
 }
 
+/// The logical half of the metadata port for a form whose Runtime is not
+/// wired: every read reports the assembly reason.
 #[async_trait::async_trait]
-impl SchemaContextSource for UnavailableSchemaContextSource {
-    async fn get_session(
-        &self,
-        _id: &str,
-    ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-        Err(NO_PHYSICAL_HANDLE.into())
-    }
-
+impl LogicalSchemaContextSource for UnavailableSchemaContextSource {
     async fn driver_for_session(&self, _id: &str) -> Result<Arc<dyn DatabaseDriver>, String> {
         Err(self.reason.clone())
     }
@@ -220,12 +229,27 @@ impl SchemaContextSource for UnavailableSchemaContextSource {
 
     async fn table_schema(
         &self,
-        _cache: &SchemaCache,
         _id: &str,
         _database: &str,
         _schema: Option<&str>,
         _table: &str,
     ) -> Result<TableSchema, String> {
         Err(self.reason.clone())
+    }
+}
+
+/// The physical half of the metadata port: this source owns no handle either,
+/// so it answers with the refusal.
+#[async_trait::async_trait]
+impl PhysicalSchemaContextSource for UnavailableSchemaContextSource {
+    async fn get_session(
+        &self,
+        _id: &str,
+    ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
+        Err(NO_PHYSICAL_HANDLE.into())
+    }
+
+    async fn configured_schema(&self, _id: &str) -> Option<String> {
+        None
     }
 }

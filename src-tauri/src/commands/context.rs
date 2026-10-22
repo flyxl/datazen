@@ -601,13 +601,10 @@ mod tests {
             driver_registry: registry,
             monitor_engine,
             store,
-            schema_cache: schema_cache.clone(),
+            schema_cache,
             sync_adapters: Arc::new(SyncAdapterRegistry::new()),
             ai_registry: Arc::new(AiProviderRegistry::new()),
-            schema_context_builder: Arc::new(SchemaContextBuilder::new(
-                schema_cache,
-                schema_context_source,
-            )),
+            schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_context_source)),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
             workflow_registry: Arc::new(WorkflowRegistry::new(
                 Arc::new(AppDbWorkflowStore::new(app_db)),
@@ -688,13 +685,10 @@ mod tests {
             driver_registry: registry,
             monitor_engine,
             store: store.clone(),
-            schema_cache: schema_cache.clone(),
+            schema_cache,
             sync_adapters: Arc::new(SyncAdapterRegistry::new()),
             ai_registry: Arc::new(AiProviderRegistry::new()),
-            schema_context_builder: Arc::new(SchemaContextBuilder::new(
-                schema_cache,
-                schema_context_source,
-            )),
+            schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_context_source)),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
             workflow_registry: Arc::new(WorkflowRegistry::new(
                 Arc::new(AppDbWorkflowStore::new(store.app_db())),
