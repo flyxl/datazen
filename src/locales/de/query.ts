@@ -281,6 +281,52 @@ const pack = {
   'dataTable.emptyHint': 'Diese Abfrage hat keine Zeilen zurückgegeben.',
   'dataTable.tableLabel': 'Datentabelle',
   'dataTable.selectionSummary': '{rows} Zeilen × {cols} Spalten',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': 'Ausgewählte Zellen kopieren',
+  'dataTable.copySelectedCellsAs': 'Ausgewählte Zellen kopieren als…',
+  'dataTable.copySelectedCellsAsTsv': 'Als TSV kopieren',
+  'dataTable.copySelectedCellsAsTsvWithHeader': 'Als TSV mit Kopfzeile kopieren',
+  'dataTable.copySelectedCellsAsCsv': 'Als CSV kopieren',
+  'dataTable.copySelectedCellsAsJson': 'Als JSON kopieren (2D-Array)',
+  'dataTable.pasteSelectedCells': 'In ausgewählte Zellen einfügen',
+  'dataTable.pasteRows': 'Zeilen einfügen',
+  'dataTable.copyFailed': 'Kopieren nicht möglich; die Zwischenablage ist nicht verfügbar.',
+  'dataTable.pasteReadFailed':
+    'Die Zwischenablage konnte nicht gelesen werden. Drücken Sie {shortcut} erneut oder erlauben Sie den Zugriff auf die Zwischenablage.',
+  'dataTable.pasteEmpty': 'Die Zwischenablage ist leer — es gibt nichts einzufügen.',
+  'dataTable.pasteTooLarge':
+    'Die Zwischenablage enthält {cells} Zellen; eingefügt werden können höchstens {maxCells}. Es wurde nichts eingefügt.',
+  'dataTable.pasteRaggedRow':
+    'Zeile {row} enthält {count} Feld(er), die erste Zeile jedoch {expected}. Korrigieren Sie die Quelldaten und kopieren Sie erneut. Es wurde nichts eingefügt.',
+  'dataTable.pasteUnclosedQuote':
+    'Ein Wert in Anführungszeichen ist nicht geschlossen; er wurde als eine Zelle gelesen.',
+  'dataTable.pasteClippedToPage':
+    '{count} Zelle(n) wurden übersprungen, weil das Einfügen diese Seite verlassen würde. Wechseln Sie zur nächsten Seite und fügen Sie den Rest dort ein.',
+  'dataTable.pasteNoWritableColumn': 'Keine der Spalten in der Auswahl kann beschrieben werden.',
+  'dataTable.readOnlyPasteDisabled':
+    'Zellen können nicht eingefügt werden: Verbindung oder Treiber ist schreibgeschützt.',
+  'dataTable.pasteReadOnlyColumn':
+    '{count} Spalte(n) können nicht beschrieben werden und wurden übersprungen: {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    'Zeile {row} hat für {column} einen leeren Wert, der NOT NULL ist. Diese Zelle wurde übersprungen.',
+  'dataTable.pasteIdentityChanged':
+    'Zeile {row}, Spalte {column}: Das Schreiben würde die Zeilenidentität mehrdeutig machen. Diese Zelle wurde übersprungen.',
+  'dataTable.pasteNoRowIdentity':
+    'Diese Tabelle hat keinen Primärschlüssel; eingefügte Werte lassen sich daher keinen Zeilen zuordnen.',
+  'dataTable.pasteDroppedColumns':
+    '{count} Quellspalte(n) wurden verworfen (hier gibt es keine solche Spalte): {names}',
+  'dataTable.pasteCrossTableTitle': 'In eine andere Tabelle einfügen?',
+  'dataTable.pasteCrossTableNotice': 'Aus einer anderen Tabelle in {table} eingefügt',
+  'dataTable.pasteCrossTableBody':
+    'Die Zwischenablage stammt aus einer anderen Tabelle. Ihre Spalten werden anhand des Namens mit {target} abgeglichen ({matched} von {total} zugeordnet); nicht zugeordnete Spalten werden verworfen.',
+  'dataTable.pasteUnknownSourceBody':
+    'Die Zwischenablage stammt nicht aus dieser Tabelle; ihre Spalten werden daher anhand der Position {target} zugeordnet: {total} Spalte(n).',
+  'dataTable.pasteConfirmTitle': '{cells} Zellen einfügen?',
+  'dataTable.pasteConfirmMessage':
+    'Dies schreibt {rows} Zeile(n) × {cols} Spalte(n) und überschreibt {overwritten} ausstehende Änderung(en). Nichts wird übernommen, bevor Sie den Commit ausführen.',
+  'dataTable.pasteToSelectedCells': 'Einfügen',
+  'dataTable.pasteResult': '{count} Zelle(n) eingefügt · {skipped} übersprungen',
+  'dataTable.pasteOverwrotePending': '{count} ausstehende Änderung(en) überschrieben',
   'detail.title': 'Details',
   'detail.show': 'Detailbereich anzeigen',
   'detail.hide': 'Detailbereich ausblenden',

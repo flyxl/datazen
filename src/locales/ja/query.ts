@@ -194,6 +194,51 @@ const pack = {
   'dataTable.emptyHint': 'このクエリは 1 行も返しませんでした。',
   'dataTable.tableLabel': 'データテーブル',
   'dataTable.selectionSummary': '{rows} 行 × {cols} 列',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': '選択したセルをコピー',
+  'dataTable.copySelectedCellsAs': '選択したセルを別の形式でコピー…',
+  'dataTable.copySelectedCellsAsTsv': 'TSV としてコピー',
+  'dataTable.copySelectedCellsAsTsvWithHeader': 'ヘッダー付き TSV としてコピー',
+  'dataTable.copySelectedCellsAsCsv': 'CSV としてコピー',
+  'dataTable.copySelectedCellsAsJson': 'JSON（2 次元配列）としてコピー',
+  'dataTable.pasteSelectedCells': '選択したセルに貼り付け',
+  'dataTable.pasteRows': '行を貼り付け',
+  'dataTable.copyFailed': 'コピーできませんでした。クリップボードを利用できません。',
+  'dataTable.pasteReadFailed':
+    'クリップボードを読み取れませんでした。{shortcut} をもう一度押すか、クリップボードへのアクセスを許可してください。',
+  'dataTable.pasteEmpty': 'クリップボードが空です — 貼り付ける内容がありません。',
+  'dataTable.pasteTooLarge':
+    'クリップボードには {cells} 個のセルがありますが、貼り付けは {maxCells} 個までです。何も貼り付けられませんでした。',
+  'dataTable.pasteRaggedRow':
+    '{row} 行目のフィールド数は {count} 個ですが、先頭行は {expected} 個です。元データを修正してコピーし直してください。何も貼り付けられませんでした。',
+  'dataTable.pasteUnclosedQuote':
+    '引用符で囲まれた値が閉じられていません。1 つのセルとして読み取られました。',
+  'dataTable.pasteClippedToPage':
+    'このページの範囲を超えるため、{count} 個のセルをスキップしました。次のページに移動して、残りをそこで貼り付けてください。',
+  'dataTable.pasteNoWritableColumn': '選択範囲内に書き込み可能な列がありません。',
+  'dataTable.readOnlyPasteDisabled':
+    'セルを貼り付けられません。接続またはドライバーが読み取り専用です。',
+  'dataTable.pasteReadOnlyColumn': '{count} 個の列に書き込めないためスキップしました: {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    '{row} 行目の {column} は空ですが、NOT NULL です。このセルはスキップされました。',
+  'dataTable.pasteIdentityChanged':
+    '{row} 行目・{column} 列: このまま書き込むと行を一意に特定できなくなります。このセルはスキップされました。',
+  'dataTable.pasteNoRowIdentity':
+    'このテーブルには主キーがないため、貼り付けた値を行に割り当てられません。',
+  'dataTable.pasteDroppedColumns':
+    'コピー元の列のうち {count} 個は、このテーブルに存在しないため破棄されました: {names}',
+  'dataTable.pasteCrossTableTitle': '別のテーブルに貼り付けますか？',
+  'dataTable.pasteCrossTableNotice': '別のテーブルから {table} に貼り付けました',
+  'dataTable.pasteCrossTableBody':
+    'クリップボードは別のテーブルからコピーされました。列は名前で {target} と対応付けられます（{total} 個中 {matched} 個が一致）。一致しない列は破棄されます。',
+  'dataTable.pasteUnknownSourceBody':
+    'クリップボードはこのテーブルからコピーされたものではないため、列は位置で {target} に対応付けられます（{total} 列）。',
+  'dataTable.pasteConfirmTitle': '{cells} 個のセルを貼り付けますか？',
+  'dataTable.pasteConfirmMessage':
+    '{rows} 行 × {cols} 列を書き込み、保留中の変更 {overwritten} 件を上書きします。コミットするまで確定はされません。',
+  'dataTable.pasteToSelectedCells': '貼り付け',
+  'dataTable.pasteResult': '{count} 個のセルを貼り付けました · {skipped} 個をスキップ',
+  'dataTable.pasteOverwrotePending': '保留中の変更 {count} 件を上書きしました',
   'detail.title': '詳細',
   'detail.show': '詳細パネルを表示',
   'detail.hide': '詳細パネルを非表示にする',

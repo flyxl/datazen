@@ -344,6 +344,46 @@ const pack = {
   'dataTable.emptyHint': '此查询没有返回任何行。',
   'dataTable.tableLabel': '数据表',
   'dataTable.selectionSummary': '{rows} 行 × {cols} 列',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': '复制选中的单元格',
+  'dataTable.copySelectedCellsAs': '将选中的单元格复制为…',
+  'dataTable.copySelectedCellsAsTsv': '复制为 TSV',
+  'dataTable.copySelectedCellsAsTsvWithHeader': '复制为带表头的 TSV',
+  'dataTable.copySelectedCellsAsCsv': '复制为 CSV',
+  'dataTable.copySelectedCellsAsJson': '复制为 JSON（二维数组）',
+  'dataTable.pasteSelectedCells': '粘贴到选中的单元格',
+  'dataTable.pasteRows': '粘贴行',
+  'dataTable.copyFailed': '无法复制：剪贴板不可用。',
+  'dataTable.pasteReadFailed': '无法读取剪贴板。请再次按 {shortcut}，或允许访问剪贴板。',
+  'dataTable.pasteEmpty': '剪贴板是空的，没有可粘贴的内容。',
+  'dataTable.pasteTooLarge':
+    '剪贴板中有 {cells} 个单元格，而一次最多只能粘贴 {maxCells} 个。没有粘贴任何内容。',
+  'dataTable.pasteRaggedRow':
+    '第 {row} 行有 {count} 个字段，而第一行有 {expected} 个。请检查并修正源数据后重新复制。没有粘贴任何内容。',
+  'dataTable.pasteUnclosedQuote': '有一个引号没有闭合，该值被当作一个单元格读取。',
+  'dataTable.pasteClippedToPage':
+    '有 {count} 个单元格被跳过，因为粘贴会超出当前页。请翻到下一页，在那里粘贴剩下的内容。',
+  'dataTable.pasteNoWritableColumn': '选中的列都无法写入。',
+  'dataTable.readOnlyPasteDisabled': '无法粘贴单元格：当前连接或驱动是只读的。',
+  'dataTable.pasteReadOnlyColumn': '有 {count} 列无法写入，已跳过：{columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    '第 {row} 行的 {column} 为空，但该列是 NOT NULL。这个单元格已跳过。',
+  'dataTable.pasteIdentityChanged':
+    '第 {row} 行的 {column} 列：写入后无法唯一定位该行。这个单元格已跳过。',
+  'dataTable.pasteNoRowIdentity': '这张表没有主键，因此粘贴的值无法对应到具体的行。',
+  'dataTable.pasteDroppedColumns': '有 {count} 个来源列在这里不存在，已丢弃：{names}',
+  'dataTable.pasteCrossTableTitle': '要粘贴到另一张表吗？',
+  'dataTable.pasteCrossTableNotice': '已从另一张表粘贴到 {table}',
+  'dataTable.pasteCrossTableBody':
+    '剪贴板内容来自另一张表。其中的列会按名称与 {target} 对应（{total} 列中匹配 {matched} 列），没有对应上的列会被丢弃。',
+  'dataTable.pasteUnknownSourceBody':
+    '剪贴板内容不是从这张表复制的，因此按位置把列对应到 {target}，共 {total} 列。',
+  'dataTable.pasteConfirmTitle': '要粘贴 {cells} 个单元格吗？',
+  'dataTable.pasteConfirmMessage':
+    '这会写入 {rows} 行 × {cols} 列，并覆盖 {overwritten} 项待提交的更改。在提交之前不会真正写入。',
+  'dataTable.pasteToSelectedCells': '粘贴',
+  'dataTable.pasteResult': '已粘贴 {count} 个单元格 · 跳过 {skipped} 个',
+  'dataTable.pasteOverwrotePending': '已覆盖 {count} 项待提交的更改',
   'detail.title': '详情',
   'detail.show': '显示详情面板',
   'detail.hide': '隐藏详情面板',

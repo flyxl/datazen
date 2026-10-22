@@ -195,6 +195,52 @@ const pack = {
   'dataTable.emptyHint': 'Esta consulta no devolvió ninguna fila.',
   'dataTable.tableLabel': 'Tabla de datos',
   'dataTable.selectionSummary': '{rows} filas × {cols} columnas',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': 'Copiar celdas seleccionadas',
+  'dataTable.copySelectedCellsAs': 'Copiar celdas seleccionadas como…',
+  'dataTable.copySelectedCellsAsTsv': 'Copiar como TSV',
+  'dataTable.copySelectedCellsAsTsvWithHeader': 'Copiar como TSV con encabezado',
+  'dataTable.copySelectedCellsAsCsv': 'Copiar como CSV',
+  'dataTable.copySelectedCellsAsJson': 'Copiar como JSON (matriz 2D)',
+  'dataTable.pasteSelectedCells': 'Pegar en las celdas seleccionadas',
+  'dataTable.pasteRows': 'Pegar filas',
+  'dataTable.copyFailed': 'No se pudo copiar; el portapapeles no está disponible.',
+  'dataTable.pasteReadFailed':
+    'No se pudo leer el portapapeles. Pulse {shortcut} de nuevo o permita el acceso al portapapeles.',
+  'dataTable.pasteEmpty': 'El portapapeles está vacío: no hay nada que pegar.',
+  'dataTable.pasteTooLarge':
+    'El portapapeles contiene {cells} celdas; solo se pueden pegar {maxCells}. No se pegó nada.',
+  'dataTable.pasteRaggedRow':
+    'La fila {row} tiene {count} campo(s) y la primera fila tiene {expected}; corrija el origen de datos y vuelva a copiar. No se pegó nada.',
+  'dataTable.pasteUnclosedQuote':
+    'Un valor entre comillas no está cerrado; se leyó como una sola celda.',
+  'dataTable.pasteClippedToPage':
+    'Se omitieron {count} celda(s) porque el pegado saldría de esta página. Vaya a la página siguiente y pegue allí el resto.',
+  'dataTable.pasteNoWritableColumn': 'Ninguna de las columnas de la selección se puede escribir.',
+  'dataTable.readOnlyPasteDisabled':
+    'No se pueden pegar celdas: la conexión o el controlador es de solo lectura.',
+  'dataTable.pasteReadOnlyColumn':
+    '{count} columna(s) no se pueden escribir y se omitieron: {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    'La fila {row} tiene un valor vacío en {column}, que es NOT NULL. Esa celda se omitió.',
+  'dataTable.pasteIdentityChanged':
+    'Fila {row}, columna {column}: la escritura haría ambigua la identidad de la fila. Esa celda se omitió.',
+  'dataTable.pasteNoRowIdentity':
+    'Esta tabla no tiene clave principal, así que los valores pegados no se pueden asignar a filas.',
+  'dataTable.pasteDroppedColumns':
+    'Se descartaron {count} columna(s) de origen (aquí no existe esa columna): {names}',
+  'dataTable.pasteCrossTableTitle': '¿Pegar en otra tabla?',
+  'dataTable.pasteCrossTableNotice': 'Pegado desde otra tabla en {table}',
+  'dataTable.pasteCrossTableBody':
+    'El portapapeles se copió de otra tabla. Sus columnas se emparejarán por nombre con {target} ({matched} de {total} emparejadas); las columnas sin coincidencia se descartan.',
+  'dataTable.pasteUnknownSourceBody':
+    'El portapapeles no se copió de esta tabla, así que sus columnas se asignan a {target} por posición: {total} columna(s).',
+  'dataTable.pasteConfirmTitle': '¿Pegar {cells} celdas?',
+  'dataTable.pasteConfirmMessage':
+    'Esto escribe {rows} fila(s) × {cols} columna(s) y sobrescribe {overwritten} cambio(s) pendiente(s). Nada se confirma hasta que confirme los cambios.',
+  'dataTable.pasteToSelectedCells': 'Pegar',
+  'dataTable.pasteResult': '{count} celda(s) pegadas · {skipped} omitidas',
+  'dataTable.pasteOverwrotePending': '{count} cambio(s) pendiente(s) sobrescrito(s)',
   'detail.title': 'Detalles',
   'detail.show': 'Mostrar panel de detalles',
   'detail.hide': 'Ocultar panel de detalles',

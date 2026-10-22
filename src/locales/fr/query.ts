@@ -196,6 +196,55 @@ const pack = {
   'dataTable.emptyHint': 'Cette requête n’a renvoyé aucune ligne.',
   'dataTable.tableLabel': 'Table de données',
   'dataTable.selectionSummary': '{rows} lignes × {cols} colonnes',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': 'Copier les cellules sélectionnées',
+  'dataTable.copySelectedCellsAs': 'Copier les cellules sélectionnées au format…',
+  'dataTable.copySelectedCellsAsTsv': 'Copier en TSV',
+  'dataTable.copySelectedCellsAsTsvWithHeader': 'Copier en TSV avec en-tête',
+  'dataTable.copySelectedCellsAsCsv': 'Copier en CSV',
+  'dataTable.copySelectedCellsAsJson': 'Copier en JSON (tableau 2D)',
+  'dataTable.pasteSelectedCells': 'Coller dans les cellules sélectionnées',
+  'dataTable.pasteRows': 'Coller des lignes',
+  'dataTable.copyFailed': 'Impossible de copier : le presse-papiers n’est pas disponible.',
+  'dataTable.pasteReadFailed':
+    'Impossible de lire le presse-papiers. Appuyez à nouveau sur {shortcut} ou autorisez l’accès au presse-papiers.',
+  'dataTable.pasteEmpty': 'Le presse-papiers est vide — il n’y a rien à coller.',
+  'dataTable.pasteTooLarge':
+    'Le presse-papiers contient {cells} cellules ; le collage est limité à {maxCells}. Rien n’a été collé.',
+  'dataTable.pasteRaggedRow':
+    'La ligne {row} contient {count} champ(s) alors que la première ligne en contient {expected} ; corrigez la source puis copiez à nouveau. Rien n’a été collé.',
+  'dataTable.pasteUnclosedQuote':
+    'Une valeur entre guillemets n’est pas fermée ; elle a été lue comme une seule cellule.',
+  'dataTable.pasteClippedToPage':
+    '{count} cellule(s) ont été ignorées car le collage sortirait de cette page. Allez à la page suivante et collez-y le reste.',
+  'dataTable.pasteNoWritableColumn': 'Aucune colonne de la sélection ne peut être écrite.',
+  'dataTable.readOnlyPasteDisabled':
+    'Impossible de coller des cellules : la connexion ou le pilote est en lecture seule.',
+  'dataTable.pasteReadOnlyColumn':
+    '{count} colonne(s) ne peuvent pas être écrites et ont été ignorées : {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    'La ligne {row} a une valeur vide pour {column}, qui est NOT NULL. Cette cellule a été ignorée.',
+  'dataTable.pasteIdentityChanged':
+    'Ligne {row}, colonne {column} : l’écriture rendrait l’identité de la ligne ambiguë. Cette cellule a été ignorée.',
+  'dataTable.pasteNoRowIdentity':
+    'Cette table n’a pas de clé primaire, donc les valeurs collées ne peuvent pas être rattachées à des lignes.',
+  // `écartées`, not `ignorées`: the read-only message above already owns `ignorées`, and the
+  // two are different events (a source column with no counterpart vs a column that cannot be
+  // written). Sharing one word would make the cross-table signal unreadable.
+  'dataTable.pasteDroppedColumns':
+    '{count} colonne(s) source(s) ont été écartées (cette colonne n’existe pas ici) : {names}',
+  'dataTable.pasteCrossTableTitle': 'Coller dans une autre table ?',
+  'dataTable.pasteCrossTableNotice': 'Collé depuis une autre table dans {table}',
+  'dataTable.pasteCrossTableBody':
+    'Le presse-papiers a été copié depuis une autre table. Ses colonnes seront appariées par nom avec {target} ({matched} sur {total} appariées) ; les colonnes sans correspondance sont ignorées.',
+  'dataTable.pasteUnknownSourceBody':
+    'Le presse-papiers n’a pas été copié depuis cette table ; ses colonnes sont donc associées à {target} par position : {total} colonne(s).',
+  'dataTable.pasteConfirmTitle': 'Coller {cells} cellules ?',
+  'dataTable.pasteConfirmMessage':
+    'Cela écrit {rows} ligne(s) × {cols} colonne(s) et écrase {overwritten} modification(s) en attente. Rien n’est écrit en base tant que vous ne validez pas.',
+  'dataTable.pasteToSelectedCells': 'Coller',
+  'dataTable.pasteResult': '{count} cellule(s) collées · {skipped} ignorées',
+  'dataTable.pasteOverwrotePending': '{count} modification(s) en attente écrasée(s)',
   'detail.title': 'Détails',
   'detail.show': 'Afficher le panneau de détails',
   'detail.hide': 'Masquer le panneau de détails',

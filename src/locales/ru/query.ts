@@ -195,6 +195,51 @@ const pack = {
   'dataTable.emptyHint': 'Этот запрос не вернул ни одной строки.',
   'dataTable.tableLabel': 'Таблица данных',
   'dataTable.selectionSummary': 'Строк: {rows} × столбцов: {cols}',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': 'Копировать выделенные ячейки',
+  'dataTable.copySelectedCellsAs': 'Копировать выделенные ячейки как…',
+  'dataTable.copySelectedCellsAsTsv': 'Копировать как TSV',
+  'dataTable.copySelectedCellsAsTsvWithHeader': 'Копировать как TSV с заголовками',
+  'dataTable.copySelectedCellsAsCsv': 'Копировать как CSV',
+  'dataTable.copySelectedCellsAsJson': 'Копировать как JSON (двумерный массив)',
+  'dataTable.pasteSelectedCells': 'Вставить в выделенные ячейки',
+  'dataTable.pasteRows': 'Вставить строки',
+  'dataTable.copyFailed': 'Не удалось скопировать: буфер обмена недоступен.',
+  'dataTable.pasteReadFailed':
+    'Не удалось прочитать буфер обмена. Нажмите {shortcut} ещё раз или разрешите доступ к буферу обмена.',
+  'dataTable.pasteEmpty': 'Буфер обмена пуст — вставлять нечего.',
+  'dataTable.pasteTooLarge':
+    'В буфере обмена ячеек: {cells}, а вставка ограничена {maxCells}. Ничего не вставлено.',
+  'dataTable.pasteRaggedRow':
+    'В строке {row} полей: {count}, а в первой строке — {expected}. Исправьте исходные данные и скопируйте снова. Ничего не вставлено.',
+  'dataTable.pasteUnclosedQuote': 'Значение в кавычках не закрыто; оно прочитано как одна ячейка.',
+  'dataTable.pasteClippedToPage':
+    'Пропущено ячеек: {count} — вставка вышла бы за пределы этой страницы. Перейдите на следующую страницу и вставьте остаток там.',
+  'dataTable.pasteNoWritableColumn': 'Ни один столбец из выделения нельзя записать.',
+  'dataTable.readOnlyPasteDisabled':
+    'Нельзя вставить ячейки: подключение или драйвер доступен только для чтения.',
+  'dataTable.pasteReadOnlyColumn':
+    'Пропущено столбцов, которые нельзя записать: {count} — {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    'В строке {row} у столбца {column} пустое значение, а этот столбец NOT NULL. Эта ячейка пропущена.',
+  'dataTable.pasteIdentityChanged':
+    'Строка {row}, столбец {column}: запись сделала бы строку неоднозначной. Эта ячейка пропущена.',
+  'dataTable.pasteNoRowIdentity':
+    'В этой таблице нет первичного ключа, поэтому вставленные значения не удаётся сопоставить со строками.',
+  'dataTable.pasteDroppedColumns':
+    'Столбцов источника отброшено: {count} (здесь такого столбца нет) — {names}',
+  'dataTable.pasteCrossTableTitle': 'Вставить в другую таблицу?',
+  'dataTable.pasteCrossTableNotice': 'Вставлено из другой таблицы в {table}',
+  'dataTable.pasteCrossTableBody':
+    'Буфер обмена скопирован из другой таблицы. Его столбцы сопоставляются по имени с {target} (совпало {matched} из {total}); столбцы без соответствия отбрасываются.',
+  'dataTable.pasteUnknownSourceBody':
+    'Буфер обмена скопирован не из этой таблицы, поэтому столбцы сопоставляются с {target} по позиции: столбцов — {total}.',
+  'dataTable.pasteConfirmTitle': 'Вставить ячеек: {cells}?',
+  'dataTable.pasteConfirmMessage':
+    'Будет записано строк: {rows} × столбцов: {cols}, перезаписано ожидающих изменений: {overwritten}. Ничего не фиксируется до коммита.',
+  'dataTable.pasteToSelectedCells': 'Вставить',
+  'dataTable.pasteResult': 'Вставлено ячеек: {count} · пропущено: {skipped}',
+  'dataTable.pasteOverwrotePending': 'Перезаписано ожидающих изменений: {count}',
   'detail.title': 'Подробности',
   'detail.show': 'Показать панель сведений',
   'detail.hide': 'Скрыть панель сведений',

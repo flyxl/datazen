@@ -186,6 +186,46 @@ const pack = {
   'dataTable.emptyHint': '此查詢沒有回傳任何資料列。',
   'dataTable.tableLabel': '資料表格',
   'dataTable.selectionSummary': '{rows} 個資料列 × {cols} 個欄位',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': '複製選取的儲存格',
+  'dataTable.copySelectedCellsAs': '將選取的儲存格複製為…',
+  'dataTable.copySelectedCellsAsTsv': '複製為 TSV',
+  'dataTable.copySelectedCellsAsTsvWithHeader': '複製為含標題列的 TSV',
+  'dataTable.copySelectedCellsAsCsv': '複製為 CSV',
+  'dataTable.copySelectedCellsAsJson': '複製為 JSON（二維陣列）',
+  'dataTable.pasteSelectedCells': '貼到選取的儲存格',
+  'dataTable.pasteRows': '貼上資料列',
+  'dataTable.copyFailed': '無法複製：剪貼簿無法使用。',
+  'dataTable.pasteReadFailed': '無法讀取剪貼簿。請再按一次 {shortcut}，或允許存取剪貼簿。',
+  'dataTable.pasteEmpty': '剪貼簿是空的，沒有可貼上的內容。',
+  'dataTable.pasteTooLarge':
+    '剪貼簿中有 {cells} 個儲存格，一次最多只能貼上 {maxCells} 個。未貼上任何內容。',
+  'dataTable.pasteRaggedRow':
+    '第 {row} 個資料列有 {count} 個欄位，但第一個資料列有 {expected} 個。請檢查並修正來源資料後重新複製。未貼上任何內容。',
+  'dataTable.pasteUnclosedQuote': '有引號未閉合，該值被視為單一儲存格讀取。',
+  'dataTable.pasteClippedToPage':
+    '有 {count} 個儲存格被略過，因為貼上會超出目前頁面。請翻到下一頁，在那裡貼上剩下的內容。',
+  'dataTable.pasteNoWritableColumn': '選取的欄位都無法寫入。',
+  'dataTable.readOnlyPasteDisabled': '無法貼上儲存格：目前的連線或驅動程式為唯讀。',
+  'dataTable.pasteReadOnlyColumn': '有 {count} 個欄位無法寫入，已略過：{columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    '第 {row} 個資料列的 {column} 為空，但該欄位是 NOT NULL。這個儲存格已略過。',
+  'dataTable.pasteIdentityChanged':
+    '第 {row} 個資料列的 {column} 欄位：寫入後將無法唯一定位該資料列。這個儲存格已略過。',
+  'dataTable.pasteNoRowIdentity': '這張資料表沒有主鍵，因此貼上的值無法對應到特定的資料列。',
+  'dataTable.pasteDroppedColumns': '有 {count} 個來源欄位在這裡不存在，已捨棄：{names}',
+  'dataTable.pasteCrossTableTitle': '要貼到另一張資料表嗎？',
+  'dataTable.pasteCrossTableNotice': '已從另一張資料表貼到 {table}',
+  'dataTable.pasteCrossTableBody':
+    '剪貼簿內容來自另一張資料表。其中的欄位會依名稱與 {target} 對應（{total} 個欄位中符合 {matched} 個），沒有對應到的欄位會被捨棄。',
+  'dataTable.pasteUnknownSourceBody':
+    '剪貼簿內容不是從這張資料表複製的，因此依位置將欄位對應到 {target}，共 {total} 個欄位。',
+  'dataTable.pasteConfirmTitle': '要貼上 {cells} 個儲存格嗎？',
+  'dataTable.pasteConfirmMessage':
+    '這會寫入 {rows} 個資料列 × {cols} 個欄位，並覆寫 {overwritten} 項尚未提交的變更。提交之前不會真正寫入。',
+  'dataTable.pasteToSelectedCells': '貼上',
+  'dataTable.pasteResult': '已貼上 {count} 個儲存格 · 略過 {skipped} 個',
+  'dataTable.pasteOverwrotePending': '已覆寫 {count} 項尚未提交的變更',
   'detail.title': '詳細資料',
   'detail.show': '顯示詳細資料面板',
   'detail.hide': '隱藏詳細資料面板',

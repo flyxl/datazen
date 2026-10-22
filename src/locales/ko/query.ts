@@ -192,6 +192,50 @@ const pack = {
   'dataTable.emptyHint': '이 쿼리는 행을 반환하지 않았습니다.',
   'dataTable.tableLabel': '데이터 테이블',
   'dataTable.selectionSummary': '{rows}개 행 × {cols}개 열',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': '선택한 셀 복사',
+  'dataTable.copySelectedCellsAs': '선택한 셀을 다른 형식으로 복사…',
+  'dataTable.copySelectedCellsAsTsv': 'TSV로 복사',
+  'dataTable.copySelectedCellsAsTsvWithHeader': '헤더 포함 TSV로 복사',
+  'dataTable.copySelectedCellsAsCsv': 'CSV로 복사',
+  'dataTable.copySelectedCellsAsJson': 'JSON(2차원 배열)으로 복사',
+  'dataTable.pasteSelectedCells': '선택한 셀에 붙여넣기',
+  'dataTable.pasteRows': '행 붙여넣기',
+  'dataTable.copyFailed': '복사하지 못했습니다. 클립보드를 사용할 수 없습니다.',
+  'dataTable.pasteReadFailed':
+    '클립보드를 읽지 못했습니다. {shortcut}을(를) 다시 누르거나 클립보드 접근을 허용하세요.',
+  'dataTable.pasteEmpty': '클립보드가 비어 있습니다 — 붙여넣을 내용이 없습니다.',
+  'dataTable.pasteTooLarge':
+    '클립보드에 셀이 {cells}개 있지만 붙여넣기는 {maxCells}개로 제한됩니다. 아무것도 붙여넣지 않았습니다.',
+  'dataTable.pasteRaggedRow':
+    '{row}행의 필드가 {count}개인데 첫 행은 {expected}개입니다. 원본 데이터를 수정한 뒤 다시 복사하세요. 아무것도 붙여넣지 않았습니다.',
+  'dataTable.pasteUnclosedQuote': '따옴표로 묶인 값이 닫히지 않아 하나의 셀로 읽혔습니다.',
+  'dataTable.pasteClippedToPage':
+    '이 페이지를 벗어나게 되어 셀 {count}개를 건너뛰었습니다. 다음 페이지로 이동해 나머지를 거기서 붙여넣으세요.',
+  'dataTable.pasteNoWritableColumn': '선택한 범위에 쓸 수 있는 열이 없습니다.',
+  'dataTable.readOnlyPasteDisabled':
+    '셀을 붙여넣을 수 없습니다. 연결 또는 드라이버가 읽기 전용입니다.',
+  'dataTable.pasteReadOnlyColumn': '쓸 수 없는 열 {count}개를 건너뛰었습니다: {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    '{row}행의 {column} 값이 비어 있지만 NOT NULL입니다. 해당 셀은 건너뛰었습니다.',
+  'dataTable.pasteIdentityChanged':
+    '{row}행 {column}열: 이대로 쓰면 행을 고유하게 식별할 수 없게 됩니다. 해당 셀은 건너뛰었습니다.',
+  'dataTable.pasteNoRowIdentity':
+    '이 테이블에는 기본 키가 없어 붙여넣은 값을 행에 연결할 수 없습니다.',
+  'dataTable.pasteDroppedColumns':
+    '원본 열 {count}개는 이 테이블에 없는 열이라 제외되었습니다: {names}',
+  'dataTable.pasteCrossTableTitle': '다른 테이블에 붙여넣을까요?',
+  'dataTable.pasteCrossTableNotice': '다른 테이블에서 {table}에 붙여넣음',
+  'dataTable.pasteCrossTableBody':
+    '클립보드가 다른 테이블에서 복사되었습니다. 열은 이름을 기준으로 {target}에 대응되며({total}개 중 {matched}개 일치), 일치하지 않는 열은 제외됩니다.',
+  'dataTable.pasteUnknownSourceBody':
+    '클립보드가 이 테이블에서 복사된 것이 아니므로 열을 위치 기준으로 {target}에 대응합니다({total}개 열).',
+  'dataTable.pasteConfirmTitle': '셀 {cells}개를 붙여넣을까요?',
+  'dataTable.pasteConfirmMessage':
+    '{rows}행 × {cols}열을 쓰고 대기 중인 변경 사항 {overwritten}개를 덮어씁니다. 커밋하기 전까지는 아무것도 확정되지 않습니다.',
+  'dataTable.pasteToSelectedCells': '붙여넣기',
+  'dataTable.pasteResult': '셀 {count}개 붙여넣음 · {skipped}개 건너뜀',
+  'dataTable.pasteOverwrotePending': '대기 중인 변경 사항 {count}개를 덮어썼습니다',
   'detail.title': '세부',
   'detail.show': '세부정보 패널 표시',
   'detail.hide': '세부정보 패널 숨기기',

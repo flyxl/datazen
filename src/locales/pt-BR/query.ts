@@ -195,6 +195,52 @@ const pack = {
   'dataTable.emptyHint': 'Esta consulta não retornou nenhuma linha.',
   'dataTable.tableLabel': 'Tabela de dados',
   'dataTable.selectionSummary': '{rows} linhas × {cols} colunas',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': 'Copiar células selecionadas',
+  'dataTable.copySelectedCellsAs': 'Copiar células selecionadas como…',
+  'dataTable.copySelectedCellsAsTsv': 'Copiar como TSV',
+  'dataTable.copySelectedCellsAsTsvWithHeader': 'Copiar como TSV com cabeçalho',
+  'dataTable.copySelectedCellsAsCsv': 'Copiar como CSV',
+  'dataTable.copySelectedCellsAsJson': 'Copiar como JSON (matriz 2D)',
+  'dataTable.pasteSelectedCells': 'Colar nas células selecionadas',
+  'dataTable.pasteRows': 'Colar linhas',
+  'dataTable.copyFailed': 'Não foi possível copiar; a área de transferência não está disponível.',
+  'dataTable.pasteReadFailed':
+    'Não foi possível ler a área de transferência. Pressione {shortcut} novamente ou permita o acesso à área de transferência.',
+  'dataTable.pasteEmpty': 'A área de transferência está vazia — não há nada para colar.',
+  'dataTable.pasteTooLarge':
+    'A área de transferência contém {cells} células; a colagem é limitada a {maxCells}. Nada foi colado.',
+  'dataTable.pasteRaggedRow':
+    'A linha {row} tem {count} campo(s), enquanto a primeira linha tem {expected}; corrija a origem e copie novamente. Nada foi colado.',
+  'dataTable.pasteUnclosedQuote':
+    'Um valor entre aspas não está fechado; ele foi lido como uma única célula.',
+  'dataTable.pasteClippedToPage':
+    '{count} célula(s) foram ignoradas porque a colagem sairia desta página. Vá para a próxima página e cole o restante lá.',
+  'dataTable.pasteNoWritableColumn': 'Nenhuma coluna da seleção aceita escrita.',
+  'dataTable.readOnlyPasteDisabled':
+    'Não é possível colar células: conexão ou driver é somente leitura.',
+  'dataTable.pasteReadOnlyColumn':
+    '{count} coluna(s) não aceitam escrita e foram ignoradas: {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    'A linha {row} tem um valor vazio em {column}, que é NOT NULL. Essa célula foi ignorada.',
+  'dataTable.pasteIdentityChanged':
+    'Linha {row}, coluna {column}: a gravação tornaria a identidade da linha ambígua. Essa célula foi ignorada.',
+  'dataTable.pasteNoRowIdentity':
+    'Esta tabela não tem chave primária, então os valores colados não podem ser associados a linhas.',
+  'dataTable.pasteDroppedColumns':
+    '{count} coluna(s) de origem foram descartadas (essa coluna não existe aqui): {names}',
+  'dataTable.pasteCrossTableTitle': 'Colar em outra tabela?',
+  'dataTable.pasteCrossTableNotice': 'Colado de outra tabela em {table}',
+  'dataTable.pasteCrossTableBody':
+    'A área de transferência foi copiada de outra tabela. As colunas serão associadas por nome a {target} ({matched} de {total} associadas); colunas sem correspondência são descartadas.',
+  'dataTable.pasteUnknownSourceBody':
+    'A área de transferência não foi copiada desta tabela, então as colunas são associadas a {target} por posição: {total} coluna(s).',
+  'dataTable.pasteConfirmTitle': 'Colar {cells} células?',
+  'dataTable.pasteConfirmMessage':
+    'Isso grava {rows} linha(s) × {cols} coluna(s) e sobrescreve {overwritten} alteração(ões) pendente(s). Nada é efetivado até você confirmar.',
+  'dataTable.pasteToSelectedCells': 'Colar',
+  'dataTable.pasteResult': '{count} célula(s) colada(s) · {skipped} ignorada(s)',
+  'dataTable.pasteOverwrotePending': '{count} alteração(ões) pendente(s) sobrescrita(s)',
   'detail.title': 'Detalhes',
   'detail.show': 'Mostrar painel de detalhes',
   'detail.hide': 'Ocultar painel de detalhes',
