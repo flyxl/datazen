@@ -8,12 +8,17 @@
     "resolve. This program was already green, but it shares the same contract",
     "as its four sibling packages and should not be the one that breaks when a",
     "new `@datazen/*` import appears.",
-    "",
     "`vite/client` supplies the ambient Vite contract (import.meta.env and the",
     "`*.svg` / `*.svg?url` module declarations). This program does not reach",
     "app code today, so it does not need the contract yet; it carries it",
     "because the four packages that do need it are its siblings, and a package",
-    "that starts importing an .svg next month must not suddenly break."
+    "that starts importing an .svg next month must not suddenly break.",
+    "The module-layers guard test plants a probe in this package's src to",
+    "prove the transport-agnostic rule is armed. Without the exclude,",
+    "`tsc -p packages/backend-client` compiles that probe — whose body",
+    "contains a Tauri import on purpose, so it cannot type-check here — and",
+    "the probe can vanish mid-run (TS6053). The root tsconfig.json carries",
+    "the same exclude."
   ],
   "extends": "../../tsconfig.json",
   "compilerOptions": {
@@ -33,13 +38,5 @@
     "types": ["dompurify", "node", "react", "react-dom", "vite/client"]
   },
   "include": ["src", "__tests__"],
-  "exclude": ["**/__boundaryProbe__*", "**/__uiBoundaryProbe__*"],
-  "$comment": [
-    "The module-layers guard test plants a probe in this package's src to",
-    "prove the transport-agnostic rule is armed. Without the exclude,",
-    "`tsc -p packages/backend-client` compiles that probe — whose body",
-    "contains a Tauri import on purpose, so it cannot type-check here — and",
-    "the probe can vanish mid-run (TS6053). The root tsconfig.json carries",
-    "the same exclude."
-  ]
+  "exclude": ["**/__boundaryProbe__*", "**/__uiBoundaryProbe__*"]
 }

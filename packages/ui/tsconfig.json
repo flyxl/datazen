@@ -7,7 +7,6 @@
     "`extends` gives this program the root's `paths`, so `@datazen/*` imports",
     "resolve. Without it the program reported 147 errors that had nothing to do",
     "with the code: 84 of them were 'Cannot find module @datazen/ui'.",
-    "",
     "`vite/client` supplies the ambient Vite contract (import.meta.env and the",
     "`*.svg` / `*.svg?url` module declarations). The root program gets the same",
     "contract from src/vite-env.d.ts, which is inside src/ and therefore not",
@@ -15,11 +14,15 @@
     "programs reach app code transitively and need it today; backend-client",
     "does not yet, but carries it for the same reason the other four do — a",
     "package that starts importing an .svg next month must not suddenly break.",
-    "",
     "`@testing-library/jest-dom/vitest` supplies the DOM matchers",
     "(toHaveAttribute, toBeDisabled, ...) that this package's own tests use.",
     "The root program gets the same augmentation from src/test/setup.ts, which",
-    "is likewise outside this program."
+    "is likewise outside this program.",
+    "The design system's guard test plants a probe in this very directory to",
+    "prove the layer rule is armed. Without the exclude, `tsc -p packages/ui`",
+    "compiles that probe: its body is not valid TypeScript for this package,",
+    "and it can vanish mid-run (TS6053). Both failures are the probe's, not",
+    "the tree's. The root tsconfig.json carries the same exclude."
   ],
   "extends": "../../tsconfig.json",
   "compilerOptions": {
@@ -44,12 +47,5 @@
     ]
   },
   "include": ["src"],
-  "exclude": ["**/__boundaryProbe__*", "**/__uiBoundaryProbe__*"],
-  "$comment": [
-    "The design system's guard test plants a probe in this very directory to",
-    "prove the layer rule is armed. Without the exclude, `tsc -p packages/ui`",
-    "compiles that probe: its body is not valid TypeScript for this package,",
-    "and it can vanish mid-run (TS6053). Both failures are the probe's, not",
-    "the tree's. The root tsconfig.json carries the same exclude."
-  ]
+  "exclude": ["**/__boundaryProbe__*", "**/__uiBoundaryProbe__*"]
 }
