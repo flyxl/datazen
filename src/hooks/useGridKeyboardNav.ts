@@ -162,10 +162,18 @@ export function useGridKeyboardNav(
           onGridSelectionChange(command.selection);
           scrollIntoView(command.selection.focus);
           return;
-        case 'row-select':
+        case 'row-select': {
           event.preventDefault();
           onRowGutterSelect(command.rowIndex, command.opts);
+          // The row highlight has to stay visible: the row mode carries no cell
+          // cursor, so the scroll request is the only thing that follows the
+          // row (volume 10's hook point).
+          const firstColumn = columnOrder[0];
+          if (firstColumn !== undefined) {
+            scrollIntoView({ rowIndex: command.rowIndex, columnName: firstColumn });
+          }
           return;
+        }
         case 'select-all-rows':
           event.preventDefault();
           // The action owns both the row set and the mode (01's `toggleSelectAll`
@@ -180,7 +188,14 @@ export function useGridKeyboardNav(
           return;
       }
     },
-    [onCellDoubleClick, onGridSelectionChange, onRowGutterSelect, onToggleSelectAll, scrollIntoView],
+    [
+      columnOrder,
+      onCellDoubleClick,
+      onGridSelectionChange,
+      onRowGutterSelect,
+      onToggleSelectAll,
+      scrollIntoView,
+    ],
   );
 
   const handleKeyDown = useCallback(

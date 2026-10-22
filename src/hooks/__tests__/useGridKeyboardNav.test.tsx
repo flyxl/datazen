@@ -8,7 +8,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { useGridKeyboardNav, type UseGridKeyboardNavOptions } from '../useGridKeyboardNav';
-import { EMPTY_GRID_SELECTION } from '../../stores/tableData/gridSelection';
+import { EMPTY_GRID_SELECTION, type GridSelection } from '../../stores/tableData/gridSelection';
 
 const COLUMNS = ['id', 'name'];
 
@@ -59,6 +59,33 @@ describe('useGridKeyboardNav', () => {
     expect(fireEvent.keyDown(surface(container), { key: 'a', metaKey: true })).toBe(true);
 
     expect(onGridSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it('asks for the row to be scrolled into view when the row selection moves', () => {
+    const onRowGutterSelect = vi.fn();
+    const onRequestScrollIntoView = vi.fn();
+    const selection: GridSelection = {
+      anchor: null,
+      focus: null,
+      extraRanges: [],
+      mode: 'row',
+    };
+    const options: UseGridKeyboardNavOptions = {
+      ...baseOptions(),
+      selection,
+      lastSelectedIndex: 3,
+      onRowGutterSelect,
+      onRequestScrollIntoView,
+    };
+
+    const { container } = render(<Harness options={options} />);
+    fireEvent.keyDown(surface(container), { key: 'ArrowDown' });
+
+    expect(onRowGutterSelect).toHaveBeenCalledWith(4, { multi: false, range: false });
+    // The row highlight has to stay visible: the row mode has no cell cursor,
+    // so the scroll request is the only thing that follows the row.
+    expect(onRequestScrollIntoView).toHaveBeenCalledTimes(1);
+    expect(onRequestScrollIntoView).toHaveBeenCalledWith({ rowIndex: 4, columnName: 'id' });
   });
 
   it('hands Cmd+A to the select-all action and writes no selection of its own', () => {
