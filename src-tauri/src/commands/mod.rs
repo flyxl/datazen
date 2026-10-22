@@ -404,3 +404,7 @@ mod tunnel_summary_tests;
 #[cfg(test)]
 #[path = "org_scope_surface_tests.rs"]
 mod org_scope_surface_tests;
+
+#[cfg(test)]
+#[path = "named_views_error_tests.rs"]
+mod named_views_error_tests;
