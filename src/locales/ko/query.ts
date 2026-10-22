@@ -223,7 +223,7 @@ const pack = {
   'pagination.estimateUnavailable': '이 데이터베이스는 행 수를 예상할 수 없습니다.',
   'filter.filter': '필터',
   'filter.remove': '필터 제거',
-  'filter.clear': '분명한',
+  'filter.clear': '필터 지우기',
   'filter.add': '필터 추가',
   'filter.and': 'AND',
   'filter.or': 'OR',
