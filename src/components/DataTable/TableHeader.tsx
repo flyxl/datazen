@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Filter } from 'lucide-react';
 import type { SortCondition } from '../../types';
 import { cn } from '../../lib/cn';
 import { dataTypeTextClass } from '../../lib/dataTypeColors';
+import type { CellTypeHints } from '../../lib/cellTypes';
 
 export interface ColumnDef {
   id: string;
@@ -18,6 +19,15 @@ export interface TableHeaderProps {
   sortable?: boolean;
   onFilterColumn?: (column: string) => void;
   /**
+   * The driver's own column-type rules (`DatabaseTypeMeta.cellTypes`).
+   *
+   * The **same** declaration the cells read: the type label of a header and
+   * the value of a cell must not give two different answers for the same
+   * column (05 §3.1). Omitted → the shared table alone decides, exactly as
+   * before.
+   */
+  cellTypeHints?: CellTypeHints;
+  /**
    * The header belongs to an ARIA grid: the header row becomes `role="row"` and its cells
    * `role="columnheader"`. A `row` may only contain cell children, so the roles are added
    * together with the grid itself (00-contracts §4.4).
@@ -33,6 +43,7 @@ export function TableHeader({
   onResizeStart,
   sortable = true,
   onFilterColumn,
+  cellTypeHints,
   gridSemantics = false,
 }: TableHeaderProps) {
   const active = sorts[0];
@@ -73,7 +84,10 @@ export function TableHeader({
               </div>
               {col.type ? (
                 <div
-                  className={cn('truncate font-mono text-[11px]', dataTypeTextClass(col.type))}
+                  className={cn(
+                    'truncate font-mono text-[11px]',
+                    dataTypeTextClass(col.type, cellTypeHints),
+                  )}
                   title={col.type}
                 >
                   {col.type}

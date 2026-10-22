@@ -12,6 +12,7 @@ import { DataTable } from '../DataTable';
 import { useTableDataStore } from '../../../stores/tableDataStore';
 import { emptyTableState } from '../../../stores/tableData/connectionState';
 import { buildColumnEditorInfo } from '../../../lib/cellEditorKind';
+import type { CellTypeHints } from '../../../lib/cellTypes';
 import type { CellType } from '../../../lib/cellTypes';
 import type { TableState } from '../../../stores/tableData/types';
 import type { TableChangeContext } from '../../../lib/tableChanges';
@@ -166,6 +167,36 @@ describe('the DOM contract of the grid', () => {
   it('exposes the read-only reason in data-dt-readonly', () => {
     const { container } = render(<StoreGrid />);
     expect(container.querySelector('[data-dt-readonly]')).toBeNull();
+  });
+
+  it('gives the header label and the cell of one column the same colour', () => {
+    // MySQL's `tinyint(1)` is a boolean: the cell is edited with a checkbox,
+    // so the header's type label must not be painted as a number (05 §3.1 —
+    // one judgement, two projections).
+    const mysql: CellTypeHints = {
+      overrides: [{ match: 'exact', pattern: 'tinyint(1)', cellType: 'bool' }],
+    };
+    const columns = [{ name: 'flag', dataType: 'tinyint(1)', nullable: true }];
+    const columnEditorInfo = buildColumnEditorInfo(columns, mysql);
+
+    function HintedGrid() {
+      return (
+        <DataTable
+          columns={[{ id: 'flag', name: 'flag', type: 'tinyint(1)' }]}
+          rows={[[1]]}
+          cellTypeHints={mysql}
+          cellEditing={{ columnEditorInfo, readOnlyReason: null }}
+          onCellEditCancel={() => undefined}
+        />
+      );
+    }
+    const { container } = render(<HintedGrid />);
+
+    const headerLabel = container.querySelector('[title="tinyint(1)"]');
+    const cell = container.querySelector('[data-dt-row="0"][data-dt-col="flag"]');
+    const value = cell?.querySelector('span');
+    expect(headerLabel?.className).toContain('text-dt-bool');
+    expect(value?.className).toContain('text-dt-bool');
   });
 
   it('names the read-only reason of a read-only grid', () => {

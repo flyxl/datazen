@@ -636,6 +636,7 @@ export function DataTable({
                   ? (column) => onAddFilter({ column, operator: 'eq', value: '' })
                   : undefined
               }
+              cellTypeHints={cellTypeHints}
             />
             <VirtualBody
               columns={columns}
