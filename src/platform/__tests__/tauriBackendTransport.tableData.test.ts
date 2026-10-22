@@ -361,6 +361,8 @@ describe('the desktop declaration against the host command registry', () => {
     { method: 'listNamedViews', command: 'list_named_views' },
     { method: 'saveNamedView', command: 'save_named_view' },
     { method: 'deleteNamedView', command: 'delete_named_view' },
+    { method: 'resolveResultOrigin', command: 'resolve_result_origin' },
+    { method: 'previewResultCellChange', command: 'preview_result_cell_change' },
   ];
 
   const declared = createDesktopBackendTransport().unsupportedMethods ?? {};

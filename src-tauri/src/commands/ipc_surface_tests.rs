@@ -41,6 +41,19 @@ fn bootstrap_rs_registers_merged_commands_only() {
     assert!(BOOTSTRAP_RS.contains("commands::test_tunnel,"));
 }
 
+/// The result grid's write-back gate must be reachable over IPC.
+///
+/// A command that exists but is not registered compiles, passes every unit
+/// test and is simply absent at runtime — the front end then waits forever
+/// for a verdict that never arrives, and the grid silently stays read-only
+/// without saying why. The registration is therefore pinned here, by the same
+/// `include_str!` discipline the other surface guards use.
+#[test]
+fn bootstrap_rs_registers_the_result_grid_write_back_commands() {
+    assert!(BOOTSTRAP_RS.contains("crate::commands::resolve_result_origin,"));
+    assert!(BOOTSTRAP_RS.contains("crate::commands::preview_result_cell_change,"));
+}
+
 #[test]
 fn merged_commands_route_through_shared_resolve_override_path() {
     // Single mechanism: config.rs must reuse the error.rs helper (F3

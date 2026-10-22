@@ -358,6 +358,9 @@ pub fn run() {
             crate::commands::refresh_favorites,
             crate::commands::rollback_session_transaction,
             crate::commands::session_transaction_status,
+            // ── 查询结果网格的可写回判定 ──
+            crate::commands::preview_result_cell_change,
+            crate::commands::resolve_result_origin,
             // ── 查询历史维护 ──
             crate::commands::purge_history,
             crate::commands::get_migration_run,

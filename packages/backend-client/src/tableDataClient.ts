@@ -26,7 +26,10 @@ import type {
   NamedView,
   PreviewPendingChangesRequest,
   ResolveForeignKeyTargetsRequest,
+  ResolveResultOriginRequest,
+  ResultCellChangeRequest,
   ResultCellWrite,
+  ResultEditability,
   RowChangePlan,
   SaveNamedViewRequest,
   TableDataRequest,
@@ -108,6 +111,20 @@ export interface TableDataClient {
    * other handle.
    */
   commitQueryResultCell(request: ResultCellWrite): Promise<void>;
+  /**
+   * Ask where a query result came from, and whether it may be written back.
+   *
+   * The verdict is the backend's answer — only the driver knows the
+   * provenance of the rows — so the interface renders it and never
+   * recomputes it.
+   */
+  resolveResultOrigin(request: ResolveResultOriginRequest): Promise<ResultEditability>;
+  /**
+   * The change plan for one edited cell of a query result.
+   *
+   * The preview produces a serialisable plan and executes nothing.
+   */
+  previewResultCellChange(request: ResultCellChangeRequest): Promise<RowChangePlan>;
 }
 
 /** Build the table-data half of a facade over a transport. */
@@ -141,5 +158,11 @@ export function createTableDataMethods(
       guard('commitQueryResultCell', async () => {
         await transport.call('commitQueryResultCell', request);
       }),
+
+    resolveResultOrigin: (request) =>
+      guard('resolveResultOrigin', () => transport.call('resolveResultOrigin', request)),
+
+    previewResultCellChange: (request) =>
+      guard('previewResultCellChange', () => transport.call('previewResultCellChange', request)),
   };
 }
