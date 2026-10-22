@@ -82,7 +82,7 @@ Rust 端承担“拥有资源”和“决定是否执行”的职责。所有需
 
 `Runtime` 管理运行时数据库会话，连接池、驱动资源和会话预算都属于 Rust 的资源；`DesktopSessionBackend` 负责把 Runtime session 接到 Store 配置和具体 Driver。前端只能通过 `connect`、`disconnect`、`ping_connection` 等命令操作生命周期。
 
-连接配置则由 `Store` 持久化。这样可以把“用户保存了什么”和“当前进程建立了什么”分开建模，也避免页面卸载时意外销毁连接池。
+连接配置则由 `DesktopRepository` 持久化。这样可以把“用户保存了什么”和“当前进程建立了什么”分开建模，也避免页面卸载时意外销毁连接池。
 
 ### 2. 业务编排与验证
 

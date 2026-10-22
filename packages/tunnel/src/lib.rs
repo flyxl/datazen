@@ -16,7 +16,7 @@
 //! | [`websocket`] | WebSocket relay tunnel (`ws://` / `wss://` upstream included) |
 //! | [`ssh`] | SSH forwarding tunnel with TOFU host-key verification |
 //! | [`ssh_known_hosts`] | the SSH known-hosts **rules** (fingerprint / TOFU decision) |
-//! | [`known_hosts_store`] | the SSH known-hosts **storage port** the host implements |
+//! | [`known_hosts_repository`] | the SSH known-hosts **storage port** the host implements |
 //! | [`crypto`] | the process-wide rustls provider the TLS legs need |
 //!
 //! The configuration types (`SshTunnelConfig`, `HttpProxyTunnelConfig`,
@@ -28,7 +28,7 @@
 //!
 //! It does not read the machine's files. The SSH known-hosts store used to be
 //! `std::fs` calls inside this crate; the **rules** stay here, the **storage**
-//! is the [`KnownHostsStore`] port: the desktop host implements it over
+//! is the [`KnownHostsRepository`] port: the desktop host implements it over
 //! `{appData}/ssh_known_hosts.json`, a future web form over server-side
 //! storage. Same split for tunnel definitions: the **port**
 //! (`datazen_platform_api::ports::TunnelRepository`) lives in the contract
@@ -36,14 +36,14 @@
 
 mod crypto;
 mod http_proxy;
-mod known_hosts_store;
+mod known_hosts_repository;
 mod ssh;
 mod ssh_known_hosts;
 mod websocket;
 
 pub use crypto::install_default_crypto_provider;
 pub use http_proxy::{verify_upstream as verify_http_proxy_upstream, HttpProxyTunnel};
-pub use known_hosts_store::{KnownHostsStore, KnownHostsStoreError};
+pub use known_hosts_repository::{KnownHostsRepository, KnownHostsRepositoryError};
 pub use ssh::SshTunnel;
 pub use ssh_known_hosts::KnownHostEntry;
 pub use websocket::{verify_upstream as verify_websocket_upstream, WebSocketTunnel};

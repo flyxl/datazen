@@ -29,7 +29,7 @@ use datazen_driver_api::{
 use datazen_platform_api::ports::scope::OrganizationScope;
 use datazen_platform_api::ports::tunnel::TunnelRepository;
 use datazen_runtime::driver_registry::registry::DriverRegistry;
-use datazen_tunnel::{KnownHostsStore, SshTunnel};
+use datazen_tunnel::{KnownHostsRepository, SshTunnel};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::time::Duration;
@@ -92,7 +92,7 @@ pub fn resolve_tunnel_kind(config: &ConnectionConfig) -> TunnelKind {
 /// （桌面：`{appData}/ssh_known_hosts.json`）。
 pub async fn start_for_connection(
     config: ConnectionConfig,
-    known_hosts: Arc<dyn KnownHostsStore>,
+    known_hosts: Arc<dyn KnownHostsRepository>,
 ) -> Result<(ConnectionConfig, Option<Tunnel>), DriverError> {
     let kind = resolve_tunnel_kind(&config);
     match kind {
@@ -139,7 +139,7 @@ pub async fn resolve_saved_tunnel(
 pub async fn test_connection(
     tunnels: &dyn TunnelRepository,
     scope: &OrganizationScope,
-    known_hosts: &Arc<dyn KnownHostsStore>,
+    known_hosts: &Arc<dyn KnownHostsRepository>,
     registry: &DriverRegistry,
     config: ConnectionConfig,
 ) -> Result<datazen_driver_api::ServerInfo, DriverError> {
@@ -159,7 +159,7 @@ pub async fn test_connection(
 pub async fn test_tunnel(
     tunnels: &dyn TunnelRepository,
     scope: &OrganizationScope,
-    known_hosts: &Arc<dyn KnownHostsStore>,
+    known_hosts: &Arc<dyn KnownHostsRepository>,
     tunnel_id: &str,
     target_host: &str,
     target_port: u16,
@@ -282,7 +282,7 @@ async fn start_websocket(
 
 async fn start_ssh(
     config: ConnectionConfig,
-    known_hosts: Arc<dyn KnownHostsStore>,
+    known_hosts: Arc<dyn KnownHostsRepository>,
 ) -> Result<(ConnectionConfig, Option<Tunnel>), DriverError> {
     let ssh = config
         .ssh_tunnel

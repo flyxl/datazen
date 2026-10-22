@@ -453,7 +453,7 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
     registry.register_test_factory("test-live", factory).await;
 
     let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
-    let known_hosts = super::super::known_hosts::desktop_known_hosts_store(store.data_dir());
+    let known_hosts = super::super::known_hosts::desktop_known_hosts_repository(store.data_dir());
     let backend = Arc::new(super::super::session_backend::DesktopSessionBackend::new(
         Arc::clone(&registry),
         Arc::clone(&store),
@@ -644,7 +644,7 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
     // live 源与 runtime 用例**共享同一个**会话后端：session 行只登记在一处，
     // 分开建的两个比如同两个 runtime，一边打开另一边永远 SessionNotFound。
     let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
-    let known_hosts = super::super::known_hosts::desktop_known_hosts_store(store.data_dir());
+    let known_hosts = super::super::known_hosts::desktop_known_hosts_repository(store.data_dir());
     let backend = Arc::new(super::super::session_backend::DesktopSessionBackend::new(
         Arc::clone(&registry),
         Arc::clone(&store),
