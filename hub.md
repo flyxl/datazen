@@ -188,6 +188,40 @@ src/stores/settingsStore.ts → 设置 UI
 
 Settings UI（`iso`/`iso-tz`/`locale`）· 规则引擎（表名/列名/列类型三种匹配）· 表级覆盖的持久化 · 时区偏移格式 · Unix 秒 vs 毫秒 · **三级优先级** · **opt-in（默认关闭，既有行为逐字节不变）** · 文档落到 `docs/features/`（允许的文档类型）· E2E 留给 R 阶段。
 
+## 轨 B `result-grid` 的复测裁定（2 条中危）
+
+复测 **TEST_PASSED**，但查出 2 条中危 ⇒ **修复轮中**。
+
+### 中危一 · 放行通道的启用条件缺失/不唯一
+
+并集的放行臂（`src/lib/resultEditability.ts`）只以 `server.writable` 为条件，而**「新管线已接通」在代码里零表示**（`previewResultCellChange` 生产代码零调用）。今天这个洞靠**两个散落条件**关着：① 驱动契约默认实现（契约级、刻意的）② `ContentViewDrawers.tsx` 的 `!!runtimeBinding`（**偶然的**，与判定无关）。
+
+Tester 在**组件层实测复现了后果**：来源判定可写 + 窄判定未验证 + 有 runtimeBinding ⇒ 网格**声称可编辑** → 用户改值回车 → 窄路径拒绝 → **零写语句离开进程**、**`exec.error` 为 null（失败被完全静默）**、单元格**仍显示新值** ⇒ 正是 DB-14 要消灭的「改了、然后悄悄丢掉」；另一半是「无 runtimeBinding 时不可编辑**且 `data-dt-grid-readonly-reason` 缺失**」⇒ 不响应的灰格子（PRD §4.2 明令禁止）。
+
+⇒ **裁定**：加**一个显式的、单一**的启用开关，条件写成「来源判定可写 **且** 新管线已接通」，并补一条把它钉死的测试（今天必须为 false ⇒ 放行臂不可达）。**在第一个驱动覆写落地之前它必须保持关闭。**
+
+### 中危二 · 目标面打偏了（**协调者裁定**）
+
+Tester 查出：`src/windows/connection/result-workspace/ResultTableView.tsx` 的 `canEdit` **一行未改**（仍是 `!safeMode && !!onCellEdit && writableMapping === 'verified' && !!runtimeBinding`），新判定只 governs **行详情抽屉**。
+
+**裁定为真缺陷**：缺陷本体就在网格本体 —— PRD 总纲写的是「查询结果网格 | …双击进编辑但**提交即丢弃** | `ResultTableView`」「问题：`ResultTableView` 的编辑「提交即丢弃」」「查询结果网格编辑即丢弃 | `ResultTableView.tsx` | `handleCellDoubleClick`、只读结果 `DataTable` 装配」。⇒ **10 册 §6 的文件清单漏了 `ResultTableView.tsx`**（契约缺口，不怪按清单做的实现），但不打靶心就没有消灭第三种状态。⇒ 网格本体的 `canEdit` 必须由判定驱动，且只读时**根本不得进入编辑态**（`handleCellDoubleClick` 那条「编辑只关闭编辑器」的旧机制正是「悄悄丢掉」的来源）。
+
+### 只登记、不修
+
+| # | 事项 | 处置 |
+| --- | --- | --- |
+| 2 | 往命令壳塞一条规则 ⇒ 1439 + 539 条用例**全绿**（Coder 以为写了自检，实测抓不到；`ipc_surface_tests.rs` 里新增的是**注册**自检） | 要么改成真能抓（源码扫描 `src-tauri/src/commands/*.rs` 出现 `grid.` 前缀字面量 ⇒ 红），要么登记为「靠阅读保证的不变量」。**前者优先**（这是用户定则的核心） |
+| 3 | `assertResultWritable` 的 throw 被去掉 ⇒ 1508 条前端用例**全绿**；而它的注释自称「绕过它的调用者也不得写穿只读结果」—— 该主张**无证据** | 补一条 store 级用例（便宜、值得） |
+| 6 | A-7 的 E2E 未交付且**未在仓库留档**（分支内无 progress.md / hub.md）⇒「留 R 阶段」只在对话里成立 | **协调者做**：R 阶段的 E2E 清单要落进**永久文档**（台账会销毁 ⇒ 只活在对白里不算数） |
+| 9 | 窄写路径不查连接的只读标志 | 既有行为，非本轨引入 ⇒ 登记 |
+| 10 | `resolveResultEditability` 的 legacy 臂返回 `table: null`（来源判定只读时 `server.table` 实际是 null） | 不健全断言 ⇒ 登记 |
+| — | **14 个只读原因码今天只有 2 个可达**（`unknownOrigin` / `sessionReadOnly`；其余需驱动覆写或需可写的后端判定） | 契约的条件交付设计如此，**不是缺陷**。记账：要拿到「为什么」级别的解释，需要 ① 至少一个驱动覆写 `describe_result_origin`（~12 行委派 `describe_result_origin_with_catalog`，helper 已就绪、用真 sqlparser AST）**且** ② 前端接新管线 |
+
+### 值得记下的方法论（Tester 的两个发现）
+
+1. **「并集」不是免费的**：它保住了在用功能，但**造出了一个今天关着、将来一接驱动就打开的洞**。⇒ 「A 或 B」的合成必须配一个**显式的单一启用开关**，否则两个可选路径的并集天然会打开错误的那条。
+2. **契约的文件清单会漏掉缺陷本体所在的文件**（10 册漏了 `ResultTableView.tsx`）⇒ 分册的 §6 清单**不能**当作「缺陷在哪」的依据；判据要看 PRD 总纲里「缺陷本体」那一段。
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
