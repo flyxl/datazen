@@ -39,7 +39,7 @@ datazen/
 │   │   ├── platform/            # PlatformAdapter、DesktopSessionBackend、身份/策略/仓储
 │   │   ├── services/            # Schema metadata、JobRegistry、Runtime 命令源
 │   │   ├── store/               # AES-256-GCM 加密持久化
-│   │   ├── tunnel/ + ssh_tunnel.rs  # 隧道装配
+│   │   ├── tunnel/                # 隧道装配（机制内核在 packages/tunnel）
 │   │   ├── wapps/               # Wapp 协议桥与管理器
 │   │   └── workflow/            # YAML Workflow 宿主适配与历史
 │   └── resources/               # 菜单翻译、内置 Workflow 模板、原生工具探针
@@ -53,6 +53,7 @@ datazen/
 │   ├── platform-infra/           # Rust: 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖
 │   ├── application/              # Rust: 应用层用例与 ApplicationServices（不依赖宿主形态）
 │   ├── runtime/                  # Rust: 共享内核（session / resource / job / gateway / schema_cache / sql_guard）
+│   ├── tunnel/                   # Rust: 形态中立的隧道机制内核（HTTP CONNECT 代理 / WebSocket 中继 / SSH 转发）
 │   ├── feature-core/             # Rust: 共享 feature（Workflow / AI / MCP / Dashboard / 导出 / 备份恢复 / Wapp 内核）
 │   ├── schema-diff/ data-sync/ data-transfer/ migration-common/  # 迁移三件套与共享迁移边界
 │   ├── backend-client/           # JS: 远端 / 浏览器侧 BackendClient 端口实现
@@ -114,7 +115,7 @@ DataZen 确立严格正交的四维可扩展架构，依托独立设计系统 `@
 ### AI 模块与 ai-api
 
 - `packages/ai-api` 是 Rust 层的 AI Provider 抽象契约（类比 `driver-api`），定义核心 `AiProvider` trait、请求/流式响应模型与工厂注册，并统一 active → default → first 的 AI Profile 选择回退规则。
-- `packages/ai-providers` 承载具体 provider 适配与 wire protocol 实现：`protocol/{openai_chat,openai_responses,anthropic}.rs` 实现 OpenAI Chat/Responses 与 Anthropic 协议，`{openai,anthropic,deepseek,ollama,custom}.rs` 实现 OpenAI / Anthropic / DeepSeek / Ollama / 自定义端点适配，`registry.rs` 负责注册与配置恢复，`metadata.rs` 提供现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 承载 Provider-neutral 的 Prompt、Schema、Chat/NL2SQL 请求组装、诊断/分析/过滤/文档生成、安全、预算、取消、工具循环与 ownership policy（包括 grant database 绑定和结果 attribution）；AI 用的数据库元数据源（表 / 列 / 类型 / schema）在 `packages/feature-core/src/services/schema_context/`，宿主只注入 `ResourceExecutionHost` 与 Runtime 门面（`src-tauri/src/services/schema_context_source.rs`），桌面与将来的 web 形态共用同一份实现；共享类型由调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen_feature_core::ai`，`commands/ai/` 保留 Tauri IPC、Provider/Profile 配置、仓储/会话读取、输入脱敏、context 文件、MCP/Runtime 工具宿主、事件流和取消接线。
+- `packages/ai-providers` 承载具体 provider 适配与 wire protocol 实现：`protocol/{openai_chat,openai_responses,anthropic}.rs` 实现 OpenAI Chat/Responses 与 Anthropic 协议，`{openai,anthropic,deepseek,ollama,custom}.rs` 实现 OpenAI / Anthropic / DeepSeek / Ollama / 自定义端点适配，`registry.rs` 负责注册与配置恢复，`metadata.rs` 提供现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 承载 Provider-neutral 的 Prompt、Schema、Chat/NL2SQL 请求组装、诊断/分析/过滤/文档生成、安全、预算、取消、工具循环与 ownership policy（包括 grant database 绑定和结果 attribution）；AI 用的数据库元数据源（表 / 列 / 类型 / schema）在 `packages/feature-core/src/services/schema_context/`，它实现共享层的 `LogicalSchemaContextSource` 契约（纯逻辑：不暴露物理句柄，也不接收调用方传入的 SchemaCache），物理句柄契约 `PhysicalSchemaContextSource` 只对真正持有句柄的形态开放，共享层用 `PhysicalSchemaContextAdapter` 把两者接起来并持有缓存；宿主只注入 `ResourceExecutionHost` 与 Runtime 门面（`src-tauri/src/services/schema_context_source.rs`），桌面与将来的 web 形态共用同一份实现；共享类型由调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen_feature_core::ai`，`commands/ai/` 保留 Tauri IPC、Provider/Profile 配置、仓储/会话读取、输入脱敏、context 文件、MCP/Runtime 工具宿主、事件流和取消接线。
 - `PromptResolver` 优先级：用户覆盖 → 驱动覆盖 → 资源文件 → 编译时英文嵌入。
 - 详情参考 [docs/architecture/backend/ai.md](docs/architecture/backend/ai.md)。
 

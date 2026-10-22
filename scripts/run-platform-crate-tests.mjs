@@ -125,6 +125,7 @@ export const PREFIX = '[platform-crate-tests]';
  */
 export const TESTED_LAYERS = Object.freeze([
   'runtime',
+  'tunnel',
   'application',
   'platform-api',
   'platform-infra',

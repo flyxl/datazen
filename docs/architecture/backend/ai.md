@@ -4,7 +4,7 @@
 
 ### 1.1 概述
 
-AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约与 active → default → first 的共享 Profile 选择规则，`packages/ai-providers` 提供各厂商实现、共享 HTTP 协议和现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、NL2SQL 请求组装、单轮诊断与分析用例、智能过滤、Schema 文档生成、预算、取消和 editor grant 所有权策略。AI 需要的数据库元数据（表 / 列 / 类型 / schema）同样在共享层：`packages/feature-core/src/services/schema_context/` 里的 `RuntimeSchemaContextSource` 实现 `SchemaContextSource` 端口，用 `RuntimeConnectionUseCases` 解析会话归属、用注入的 `ResourceExecutionHost` 取 profile / 驱动并经共享执行网关读元数据；桌面只在 `src-tauri/src/services/schema_context_source.rs` 注入这两个跨形态件，不再有自己的 AI 适配层。调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen_feature_core::ai`，宿主不再有 AI 门面；Tauri 命令负责 IPC、宿主存储与连接查询、上下文文件读取、事件流和取消接线。
+AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约与 active → default → first 的共享 Profile 选择规则，`packages/ai-providers` 提供各厂商实现、共享 HTTP 协议和现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、NL2SQL 请求组装、单轮诊断与分析用例、智能过滤、Schema 文档生成、预算、取消和 editor grant 所有权策略。AI 需要的数据库元数据（表 / 列 / 类型 / schema）同样在共享层：`packages/feature-core/src/services/schema_context/` 里的 `RuntimeSchemaContextSource` 实现 `LogicalSchemaContextSource` 端口，用 `RuntimeConnectionUseCases` 解析会话归属、用注入的 `ResourceExecutionHost` 取 profile / 驱动并经共享执行网关读元数据；物理句柄契约 `PhysicalSchemaContextSource` 只对真正持有句柄的形态开放，共享层用 `PhysicalSchemaContextAdapter` 把两者接起来并持有缓存；桌面只在 `src-tauri/src/services/schema_context_source.rs` 注入这两个跨形态件，不再有自己的 AI 适配层。调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen_feature_core::ai`，宿主不再有 AI 门面；Tauri 命令负责 IPC、宿主存储与连接查询、上下文文件读取、事件流和取消接线。
 
 ### 1.2 架构分层
 

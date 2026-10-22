@@ -159,6 +159,7 @@ flowchart TD
 | F-09 | `packages/ai-providers` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 与 F-02 同因：这个包要同时被桌面端与服务端复用，一旦拖进 Tauri 就只能编进桌面进程 |
 | F-11 | `packages/platform-infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
 | F-12 | `packages/feature-core` 的 normal + build 依赖闭包不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`，不依赖桌面宿主层；仅依赖共享 runtime/application/领域包与契约 | Workflow、AI、Monitor、导出与 Workspace App 内核逻辑重新绑定桌面或服务端传输 |
+| F-13 | `packages/tunnel` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 隧道机制（HTTP `CONNECT` 代理 / WebSocket 中继 / SSH 转发）是形态中立件：一旦拖进 Tauri 或宿主 crate，桌面端与将来的 Web 端就无法共用同一份实现 |
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
 这条不是修辞上的严谨，是实测出来的盲点：`packages/drivers/redis/Cargo.toml:27` 的 `tauri = { version = "2", optional = true }` 与 `src-tauri/Cargo.toml:58` 的 `tauri-plugin-webdriver = { version = "0.2", optional = true }` 都不在解析图里，只读闭包的守卫对它们完全失明。判定方式与告警含义见 §8.2 注 3。
@@ -265,13 +266,37 @@ export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages
 
 > **尚未实现**：仓库 `vitest.config.ts` 的 `include` 通配与 `resolve.alias` 未覆盖 `packages/backend-client`（两者都在 CI 轨道的改动范围）。P1 的 40 条前端单测用临时 vitest 配置在本地跑通，合并后需把该包的测试纳入默认 `npx vitest run`。
 
+#### 2.5.2 形态中立隧道层 `packages/tunnel`（已实现）
+
+根 `Cargo.toml` 的 `members` 新增 `packages/tunnel`，crate 名 `datazen-tunnel`。这一层装的是**隧道机制本身**：
+HTTP `CONNECT` 代理隧道、WebSocket 中继隧道、SSH 转发隧道，以及它们依赖的 SSH known-hosts 存储与进程级
+rustls provider 选择。
+
+它**不装**装配：隧道从哪来配置、在哪个会话里存活、存到哪里，由宿主侧决定——`src-tauri/src/tunnel/mod.rs`
+仍然留在宿主（它含 `resolve_tunnel_kind` / `start_for_connection` / `test_tunnel` 与形态相关的接线），
+`network_provider.rs` 里的 `DesktopTunnelHost` 仍是桌面形态专属。
+
+边界由 F-13 断言：normal + build 依赖闭包不含 `tauri*`、不含宿主 crate `datazen`。依赖方向是
+host → tunnel，与 F-13 禁止的 tunnel → host 相反；该层的单元测试由 `run-platform-crate-tests.mjs` 的
+`TESTED_LAYERS` 纳入 CI。
+
+> **两处宿主符号随之改属**：① 进程级 rustls provider 的选择函数 `install_default_crypto_provider`
+> 原本住在 `src-tauri/src/tls.rs`，其**实现体**下移到 `packages/tunnel/src/crypto.rs`——因为 `https://`
+> 代理腿与 `wss://` 中继腿都要建**自动探测**的 `ClientConfig`，这个决策不能留在宿主边界之后。宿主侧
+> `src-tauri/src/tls.rs` 保留模块文档、宿主接线守卫（`main()` 必须在解析 argv 前安装）与全部测试，并以
+> `pub use` 原样再导出该函数，因此 `datazen::install_default_crypto_provider()` 这条对外路径、调用时机与
+> 行为均未变，全仓仍然只有**一个**安装器。宿主 `tls.rs` 本身不能整体搬走：它用
+> `include_str!("main.rs")` / `include_str!("lib.rs")` 做宿主接线守卫，跨 crate 内嵌会破 `cargo package`。
+> ② SSH known-hosts 存储全仓只被 SSH 隧道使用（无第二消费者），随 `ssh.rs` 一并迁入本层（S4 会把它的
+> 文件 I/O 变成端口）。
+
 ### 2.6 待办：runtime 去重（超出 P1 交付范围）
 
 `packages/runtime` 在基线上已自带 `connection/types.rs` 的 ID newtype、`ExecutionTarget`、`ApiError` / `ApiErrorCode`、`CapabilitySnapshot`，与 `platform-api` 的同名类型**是两份互不相同的类型**。F-04 要求 `platform-api` 不反向依赖 runtime，因此去重方向只能是 runtime 改为 `pub use datazen_platform_api::{…}`——这需要改动 `packages/runtime/**`，不在 P1 写范围内。相关形状差异已在本文各节按「以 platform-api 为准」记录（runtime 的 `NamespaceTarget` 四个非 `Option` 字段、`path: String`、`ConfigRevision(pub u64)` 等在迁移时必须丢弃）。
 
 ### 2.7 形态中立：共享包里的名字不得绑死形态（已实现）
 
-F-01…F-12 拦的是**依赖**。还有一类耦合不产生依赖边：**名字**。共享包里一个带形态名的
+F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名字**。共享包里一个带形态名的
 类型 / 常量 / 字面量，会把「只有桌面才成立」的假设焊进代码——桌面形态在场时看不出问题，
 换成 web 形态才发现那一半用不了。
 
@@ -359,6 +384,7 @@ packages/runtime/src/connection/
 - **`RequestContext` 与全部 ID newtype 定义在 `platform-api`**，无行为、无平台依赖；`application` 与 `runtime` 用 `pub use` 再导出。这样端口签名（`platform-api`）与用例签名（`application`）共用同一份类型定义而不产生依赖倒置（否则 `platform-api` 必须反向依赖 `application`，与 F-04 冲突）。
 - 端口 trait 一律 `#[async_trait] pub trait X: Send + Sync + 'static`，对象安全，通过 `Arc<dyn X>` 注入。
 - 端口错误统一 `PortError`；**业务拒绝不在端口层抛出**，由用例层转 `ApiError`（码表见[连接 §13](connection-management.md#13-错误重试和事件)）；执行终态错误走 `ExecutionErrorCode`，与 `ApiError.code` 是两个独立命名空间。
+- **能力事实用「值」表达，不塞进 `PortError`**：例如「这个驱动 / 这个命令 / 这个目标不被支持」是**能力事实**（不是基础设施故障），端口用**返回值形状**承载它——见 §4.10 的 `TargetResolution::Unsupported { reason_code }`，由用例层翻译成 `ApiErrorCode::TargetUnsupported`。`PortError` 的变体集合已被 `packages/platform-api/src/error.rs` 的用例测试 `variant_set_includes_the_p5_job_contract` 钉死、**不可扩展**，所以新增一类「不被支持」只能靠返回值形状承载，**不得**为它新增 `PortError` 变体。
 - 端口不做重试、不做权限判定、不做缓存。缓存与版本计算由 port 的提供方负责（例如 `SecretProvider` 负责 `credentialRevision`）。
 
 **类型名的来源声明（本文集中说明一次）**：§4.3–§4.6 签名里出现的类型分两类，不得混为一谈。
@@ -516,6 +542,8 @@ pub trait IdentityResolver: Send + Sync + 'static {
 
 P5 本机 Core 的 `CommitBoundary` 已包含 stageId、operationId/batchId、stable target fingerprint、payload digest、evidence 与 verifiedAt，并与 checkpoint 写入 SQLite；accept 同事务写 Job、幂等 receipt、consumed plan ID 和初始详情。`JobDetails` 额外读取 progress、recovery verdict、bounded domain results、artifact IDs 与安全 recovery target projection。领域 verifier 仍负责外部事实核验，不允许只凭目标指纹宣称某批写入已生效。团队服务仓储仍是目标设计。详见[迁移任务设计](data-migration-jobs.md)。
 
+**本节的三个窄端口**（签名见 §4.10）：`ProfileReader`（`ProfileRepository` 的**只读投影**：写路径只留在 `ProfileRepository`，桌面 `DesktopProfiles` 同时实现两个 trait、事实只有一份）、`MigrationProfileReader`（`MigrationHost` 三个读方法的**读侧拆分**：迁移的写与执行仍属 `MigrationHost` / `MigrationRunner`）、`ExecutionTargetResolver`（目标规范化的**环境部分**：与 §4.3 末的 `IdentityResolver` 分工不同——一个解析执行身份、一个解析执行目标；它存在的首要理由是**打破引用环**，`Application` 绝不能持 `Arc<PlatformAdapter>`）。
+
 ### 4.4 秘密、网络与执行材料端口
 
 ```rust
@@ -551,6 +579,8 @@ pub trait NetworkProvider: Send + Sync + 'static {
 默认仅允许公网，桌面宿主显式选择支持私网与环境代理的策略；服务端适配尚未落地。
 
 `SecretProvider` 只认 `SecretRef`，不认 `connectionId`；`connectionId` → `SecretRef` 的映射由 `ProfileRecord` 持有（[连接 §4.1](connection-management.md#41-服务接口与补充响应) 的内部 `ConnectionProfile` 同列 `connectionId` 与 `secretRef`）。因此[团队服务 §10.2 `SecretProvider`](team-server-and-auth.md#102-secretprovider) 的「按 `connectionId` + `credentialRevision` 解析执行身份」在端口层拆成三步：`ProfileRepository::get` 由 `connectionId` 取 `secretRef` 与 `configRevision`，`SecretProvider::resolve(ctx, secret_ref, purpose)` 配 `revision(secret_ref)` 取材料与 `CredentialRevision`，执行身份本身由 `IdentityResolver::resolve` 产出（§4.3）。
+
+**本节的两个窄端口**（签名见 §4.10）：`MasterKeyProvider`（**主密钥保管**——主密钥是密钥保管职责而非数据存储职责，因此**不属** `Store`；端口只暴露「取主密钥 / 派生子密钥」，材料不可序列化）与 `ExecutionSettingsReader`（**执行期设置项的只读投影**——只给 `safe_mode` 与结果集上限两项，不给 MCP / AI / 驱动私有设置与用户偏好）。后者与 `SettingsRepository`、以及 feature-core 层的 `DatabaseToolHost::execution_settings()` 是**同一份事实的三种取用宽度**，不是三份重复实现；收敛方向是让后两者改为经本端口取。
 
 ### 4.5 会话目录、预算与令牌端口
 
@@ -608,6 +638,8 @@ pub trait SubmissionTokenIssuer: Send + Sync + 'static {
 `SessionDirectory` **禁止**磁盘持久化、快照与 append-only 日志；丢失目录必须使相关会话明确失效，不得据此恢复物理会话（[连接 §12](connection-management.md#12-web多实例权限与结果)）。`SubmissionTokenIssuer` 的签名载荷按[连接 §4.1](connection-management.md#41-服务接口与补充响应)的 `IdempotentOperation` 覆盖，默认有效期 24 小时，过期语义见[连接 §13.1](connection-management.md#131-幂等键期限与响应分类)。
 
 P9 adapter 的目录 CAS、路由信封、预算 generation 与 expiredHeld 核销按 [多 worker 协议](multi-worker-coordination.md) 实现。现有 port 是 P1 基础签名；跨节点 operationId/查询与 fencing 字段在 P9 以版本化 DTO 补齐，并同步 fake，不能将当前签名标成完整集群协议。节点分配账允许持久化，物理 ResourceLease 和目录仍只在内存。
+
+**本节的一个窄端口**（签名见 §4.10）：`MonitorGrantReader`（**监控授权单的只读窄端口**——`authorized_target` 与宿主侧的 `DelegationScopeBinding` **同形**，集成时应收敛为一条，否则全仓会留下两个同义形状）。
 
 ### 4.6 结果与事件端口
 
@@ -727,6 +759,82 @@ pub struct FixedClock { /* … */ }    // 测试替身：at(ts) / set(ts)，克�
 - **宿主层不在本端口范围内**：`src-tauri/` 有大量生产直调墙上时钟（`Utc::now` / `Local::now` / `SystemTime::now`）：同一条 grep 在 `src-tauri/src` 下命中 **93 行 / 41 个文件**（排除 `*_tests.rs`、`/tests/`）；验证方按另一口径测得 40 处 / 28 个文件——**数字随口径变化**，故本节只给命令与上面的逐条清单，不写「全仓唯一」这类会被下一次 grep 推翻的话。该层属宿主侧独立变更。
 - **形状切换不改变 `expires_at < now` 的逐案判定（实测 + 常驻断言）**：schema-diff handler 的时间来源由秒级形状换成端口的毫秒形状，**这不是行为变更**（早先的提交说明写成「更严、到秒即过期」，方向是反的，以本节为准）。字典序下：同一整秒内，秒级 `expires_at` 的下一位是 `'Z'`(0x5A)、毫秒级 `now` 的下一位是 `'.'`(0x2E)，`'Z' > '.'` ⇒ `expires_at > now` ⇒ 判**未过期**，与秒级 `now` 逐案相同；下一秒才判过期。常驻断言：`packages/schema-diff/src/job/plan.rs` 的 `expiry_verdict_is_unchanged_by_the_second_to_millisecond_shape_switch`（同一整秒：秒级 / 毫秒级 now 各一遍 → 未过期；下一秒：两种形状各一遍 → 过期）。若要「整秒即过期」，改的是 `expires_at` 的生产形状（`src-tauri/src/commands/schema_diff/job.rs`）或比较前归一，**不是**把 `now` 毫秒化。
 - **已知遗留（形状）**：`packages/runtime/src/job/time.rs::after_seconds` 不读系统时间、只做算术，但产出秒级形状（chrono 模板 `%Y-%m-%dT%H:%M:%SZ`），与毫秒形状同列排序存在整秒翻转；收口前不要把它与 `Clock` 的输出放进同一排序。
+
+### 4.10 窄端口（应用装配用，已实现于 `packages/platform-api/src/ports/`）
+
+共享 `Application` 对象要持有一批注入式 store。它**不该**为「读一点数据」而依赖一个带写能力、或覆盖面过宽的端口，因此本节给出**六个窄端口**：它们与既有端口**读同一份事实**，实现方同时实现两者，**事实只有一份**；消费方按需注入窄的那个，于是「只读」是**类型事实**而不是约定。
+
+**这不违反 §4.2 的「不合并 trait」**：那一条说的是**不把不同聚合并成一个 trait**；本节是**按读写再切一刀**，切出来的两个 trait 仍各自对应一个聚合，实现方不必实现与自己无关的方法。
+
+| 端口 | 文件 | 取代的宿主位置（只因「读一点」而持着整个 `Arc<Store>`） | 方法 |
+| --- | --- | --- | --- |
+| `ProfileReader` | `ports/profile_reader.rs` | `src-tauri/src/platform/repositories.rs` 的 `DesktopProfiles`；`src-tauri/src/store/platform_profiles.rs` 的 `platform_profile(owner)` | `get` / `list` |
+| `MonitorGrantReader` | `ports/monitor_grant.rs` | `src-tauri/src/monitor/grants.rs` 的 `current(store, ctx)`；`src-tauri/src/platform/execution_identity.rs` 的 `MonitorDelegationScope` | `grant_scopes` / `authorized_target` |
+| `ExecutionSettingsReader` | `ports/execution_settings.rs` | `src-tauri/src/store/mod.rs` 的 `execution_settings()` | `read` |
+| `ExecutionTargetResolver` | `ports/execution_target.rs` | `src-tauri/src/platform/adapter.rs` 的 `PlatformAdapter::resolve_execution_target` | `resolve` |
+| `MasterKeyProvider` | `ports/master_key.rs` | `src-tauri/src/platform/execution_identity.rs` 的 `for_desktop(store, …)` | `master_key` / `derive_subkey` |
+| `MigrationProfileReader` | `ports/migration_profile.rs` | `src-tauri/src/workflow/migration.rs` 的 `impl MigrationHost for AppState` 三个读方法 | `list_transfer_profiles` / `list_sync_profiles` / `list_schema_diff_profiles` |
+
+```rust
+// packages/platform-api/src/ports/profile_reader.rs（已实现）
+#[async_trait]
+pub trait ProfileReader: Send + Sync + 'static {
+    async fn get(&self, ctx: &RequestContext, connection_id: ConnectionId)
+        -> Result<Option<ProfileRecord>, PortError>;
+    async fn list(&self, ctx: &RequestContext, scope: ProfileScope)
+        -> Result<Vec<ProfileRecord>, PortError>;
+}
+
+// packages/platform-api/src/ports/monitor_grant.rs（已实现）
+#[async_trait]
+pub trait MonitorGrantReader: Send + Sync + 'static {
+    async fn grant_scopes(&self, ctx: &RequestContext)
+        -> Result<Option<Vec<MonitorGrantScope>>, PortError>;
+    async fn authorized_target(&self, ctx: &RequestContext, delegation: &DelegationRef)
+        -> Result<ExecutionTarget, PortError>;
+}
+
+// packages/platform-api/src/ports/execution_settings.rs（已实现）
+#[async_trait]
+pub trait ExecutionSettingsReader: Send + Sync + 'static {
+    async fn read(&self, ctx: &RequestContext) -> Result<ExecutionPolicy, PortError>;
+}
+
+// packages/platform-api/src/ports/execution_target.rs（已实现）
+#[async_trait]
+pub trait ExecutionTargetResolver: Send + Sync + 'static {
+    async fn resolve(&self, ctx: &RequestContext, expected_config_revision: ConfigRevision,
+        command: &str, target: &ExecutionTarget) -> Result<TargetResolution, PortError>;
+}
+
+// packages/platform-api/src/ports/master_key.rs（已实现）
+#[async_trait]
+pub trait MasterKeyProvider: Send + Sync + 'static {
+    async fn master_key(&self, ctx: &RequestContext) -> Result<KeyMaterial, PortError>;
+    async fn derive_subkey(&self, ctx: &RequestContext, label: &str)
+        -> Result<KeyMaterial, PortError>;
+}
+
+// packages/platform-api/src/ports/migration_profile.rs（已实现）
+#[async_trait]
+pub trait MigrationProfileReader: Send + Sync + 'static {
+    async fn list_transfer_profiles(&self, ctx: &RequestContext)
+        -> Result<Vec<MigrationProfileSummary>, PortError>;
+    async fn list_sync_profiles(&self, ctx: &RequestContext)
+        -> Result<Vec<MigrationProfileSummary>, PortError>;
+    async fn list_schema_diff_profiles(&self, ctx: &RequestContext)
+        -> Result<Vec<MigrationProfileSummary>, PortError>;
+}
+```
+
+**四条口径**：
+
+1. **不重复，是同一份事实的不同取用宽度**：`ProfileReader` 与 `ProfileRepository` 读同一份档案（**写路径只留在后者**，桌面 `DesktopProfiles` 同时实现两个 trait、事实只有一份）；`MigrationProfileReader` 与 feature-core 的 `MigrationHost` 读同一份迁移 profile（**迁移的写与执行仍属 `MigrationHost` / `MigrationRunner`**）；`ExecutionSettingsReader` 与 `SettingsRepository`、以及 feature-core 层的 `DatabaseToolHost::execution_settings()` 读同一份执行设置——**三者是同一份事实的三种取用宽度**，不是三份重复实现，收敛方向是让后两者经本端口取。`MonitorGrantReader` 的 `authorized_target` 与宿主侧 `DelegationScopeBinding` **同形**，集成时应收敛为一条。
+2. **打破引用环**：`ExecutionTargetResolver` 存在的首要理由是 `Application` **绝不能**持 `Arc<PlatformAdapter>`（`PlatformAdapter` 持 `Arc<ApplicationServices>`），只能持这个窄端口；桌面实现在**宿主侧**实现它，签名里只有 platform-api 自己的类型，桌面 driver registry 与目标元数据缓存一律藏在实现里。
+3. **能力事实用值表达**：目标不被支持时端口返回 `TargetResolution::Unsupported { reason_code }` 而不是抛错（§4.1）。
+4. **私有词汇表**：`MonitorGrantScope` / `ExecutionPolicy` / `TargetResolution` / `KeyMaterial` / `MigrationProfileSummary` 各自留在**自己的端口文件**里（§4.1 的「每个端口文件自带它的私有词汇表」），**不进 `dto/`**；将来若要跨边界序列化再各自补 serde。
+
+**单测**：六个端口各自在同文件带 `#[cfg(test)]` 用例，共 22 条。每个端口至少一条钉住「对象安全 + 能以 `Arc<dyn Trait>` 持有并实际调用」（`fn assert_object_safe<T: Send + Sync + 'static + ?Sized>()`），外加各自的源码守卫：只读端口不得出现写方法、端口签名不得出现宿主类型、密钥材料不得经 `Debug` 或 serde 泄漏。
 
 ## 5. RequestContext 的三个构造来源
 
@@ -861,6 +969,75 @@ CM-05 要求跨组织访问按「不存在」处理，而这里是「用错组�
 
 一句话：`is_local_scope` 是**桌面绑定的实现细节**，不是共享端口契约的一部分——
 共享端口契约只有「按传入的 `scope` 过滤，越组织按「不存在」处理」这一条。
+### 5.3 桌面形态的身份三根轴（组织 / 主体 / 客户端实例）
+
+`RequestContext` 有六个字段，但桌面上**真正参与落库与过滤**的只有三根轴：组织、主体、
+客户端实例。它们在桌面形态下的取值来源**各不相同**——必须逐根说清，否则「任务互相
+看不见」「认领失败」「恢复扫描漏掉」会被当成偶发故障去查。
+
+| 轴 | 桌面取值 | 取值来源 | 参与什么 |
+| --- | --- | --- | --- |
+| 组织 `organizationId` | **规范常量** `LOCAL_ORGANIZATION_ID`（`"datazen-desktop-local"`） | [`platform/identity.rs`](../../../src-tauri/src/platform/identity.rs) 的进程常量；IPC 上下文与三条迁移链的后台上下文**同值** | 落库进 `jobs.organization_id`；列举 / 恢复扫描按它过滤（[`store/app_db/jobs/access.rs`](../../../src-tauri/src/store/app_db/jobs/access.rs)） |
+| 主体 `principalId` | IPC：**当前 OS 用户名**；三条迁移链：字面量 `"datazen-local-user"` | IPC 走 [`local_principal()`](../../../src-tauri/src/platform/identity.rs)（`DATAZEN_DESKTOP_USER` → OS 用户名；取不到时**失败关闭**，不伪造占位主体）；迁移链写死字面量 | 落库进 `jobs.owner_principal_id`；列举 / 恢复扫描**同时**按它过滤（`WHERE organization_id=?1 AND owner_principal_id=?2`） |
+| 客户端实例 `clientInstanceId` | IPC：每次启动生成的 UUID；三条迁移链：字面量 `"datazen-local-client"` | IPC 走 [`new_client_instance_id()`](../../../src-tauri/src/platform/identity.rs)；迁移链写死字面量 | **不参与**列举 / 读取过滤（过滤键只有组织 + 主体）；只出现在认领栅栏的**自比自**里（[`store/app_db/jobs/owner.rs`](../../../src-tauri/src/store/app_db/jobs/owner.rs) 的 `j.claim_client_instance_id=?8`） |
+
+#### 本波只统一组织轴
+
+2026-10-09 引入 `jobs` 表的那次提交里，四处**生产代码**把组织写死成了另一个字面量
+`"datazen-local"`——它与规范值 `"datazen-desktop-local"` **不是同一个字符串**。两套值
+落在 `jobs.organization_id` 的同一列上 ⇒ 同一张表里落着两套组织。落库组织取自**受理方
+ctx**（[`store/app_db/jobs/admission.rs`](../../../src-tauri/src/store/app_db/jobs/admission.rs)），
+列举则按 `ctx.organization_id` **且** `ctx.principal_id` 过滤 ⇒ monitor / native / file /
+restore 任务（组织 = 规范值）与 transfer / schema-diff / sync 任务（组织 = 旧字面量）
+落在同一列的两个值上。
+
+本波把四处统一到 `crate::platform::LOCAL_ORGANIZATION_ID`
+（`bootstrap/app_state.rs` 的启动期恢复扫描、`commands/schema_diff/job.rs` 的 `job_ctx()`、
+`commands/data_transfer/job_api/runtime.rs` 的 `request_context()`、`commands/sync/jobs.rs`
+的 `durable_context()`），并用 `AppDb` 的 **v5 迁移**把已落库的旧行并回规范值
+（见[持久化模型 §4.1](persistence-model.md#41-桌面本地持久化现状已实现)）。
+
+**四处必须同波一起改**，不是四选一：启动期恢复扫描的第 2 段用**不限 kind** 的全量扫描，
+它必须与三条链的落库组织一致——漏改任一处，该特性的任务崩溃后就不再被标记待核验
+（这是真回归，不是「看不见而已」）。
+
+#### 主体轴为什么延后（更深的一处未修）
+
+组织统一**不等于**三根轴统一。主体轴目前仍然分裂，证据有三条：
+
+1. **列举的主体谓词**：[`store/app_db/jobs/access.rs`](../../../src-tauri/src/store/app_db/jobs/access.rs)
+   的 `WHERE organization_id=?1 AND owner_principal_id=?2`——组织匹配**不够**，主体也要匹配。
+2. **两边的取值不同**：IPC 上下文的主体是 **OS 用户名**
+   （[`local_principal()`](../../../src-tauri/src/platform/identity.rs)），三条迁移链的主体是
+   字面量 `"datazen-local-user"`。因此即使组织统一了，**用 IPC ctx 建的通用任务中心仍看不到
+   这三条链的任务**——它们的主体对不上。
+3. **统一主体是行为变更**：这批行会**突然**出现在通用列表里（可见性变化），并改变启动期
+   恢复扫描第 2 段与三条链之间的「同主体」前提；认领栅栏（`jobs/owner.rs` 的
+   `claim_client_instance_id=?8`）也建立在同一套主体取值上。主体轴一旦动，必须与认领、
+   恢复路径一起评估，**单独排期**，不夹带在「统一组织」这一波里。
+
+（当前可见症状有限：今天唯一以 IPC ctx 列举的路径是
+[`commands/native_tool.rs`](../../../src-tauri/src/commands/native_tool.rs) 的
+`native_tool_list_jobs`，它额外按 `kind` 过滤。但结构性事实不变——主体轴仍分裂。）
+
+#### 客户端实例轴为什么不动
+
+客户端实例 id **从不参与列举 / 读取过滤**（过滤键只有组织 + 主体），只在认领栅栏上
+**自比自**。字面量版「跨启动恒定」对后台任务本来就是合理语义：一条后台任务的 owner
+不随窗口关闭而变。把它改成每次启动新生成的 UUID 只会让认领栅栏更脆，不带来任何收益。
+
+#### 防回归闸门
+
+[`src-tauri/src/platform/org_literal_gate.rs`](../../../src-tauri/src/platform/org_literal_gate.rs)
+（`#[cfg(test)]`，随 `cargo test -p datazen --lib` 跑 ⇒ 进 CI）把「组织 id 被写死成字面量」
+钉成常驻断言：**生产代码**（排除 `#[cfg(test)]` 体与测试专用文件）里不得出现
+`OrganizationId::new("<字符串字面量>")`；取规范常量 `LOCAL_ORGANIZATION_ID` 或取运行时
+变量都**不算**违规。判据刻意只认这一种窄形态——不扫「形如 `datazen-…` 的字面量」，
+那会命中 crate 名与临时目录前缀，噪声大到闸门会被整体关掉。
+
+闸门自带三类用例：kill test（植入违规字面量 ⇒ 转红）、不误伤（`#[cfg(test)]` 夹具里的
+字面量**不**转红，**且必须同时断言扫描器确实看得见它**）、自证（把本波统一的四个站点
+改回字面量 ⇒ 必须转红；另有一条「生产代码里至少扫到 N 处构造调用」的地板）。
 
 ## 6. Tauri adapter 组装根（目标设计，未随 P1 实现）
 
@@ -1030,7 +1207,7 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
 
 逐条核对（第一列是**本节自定义的标题**，不是 §2.4 的行首形状）：`checkSpecConsistency` 的 `findSpecRow` 按 `^\|\s*F-0N\s*\|` 取**第一条**匹配行（`findSpecRow`），所以本表刻意不用 `| F-01 |` 开头，避免被守卫误认成 §2.4 的规则行。
 
-**口径**：本表覆盖 `RULES` 里**当前全部已武装规则**，不按「本节关心的前 7 条」截断——实测 10 条（F-01..F-09、F-11、F-12；F-10 随 Workspace App 内核并入 `packages/feature-core` 而整条删除，见 §2.4）。守卫每轮实跑的规则集与本表一一对应，漏列即说明文档漂移；下表「状态」列的判定一律以 `node scripts/check-platform-crate-boundaries.mjs` 的实跑输出为准。
+**口径**：本表覆盖 `RULES` 里**当前全部已武装规则**，不按「本节关心的前 7 条」截断——实测 11 条（F-01..F-09、F-11、F-12、F-13；F-10 随 Workspace App 内核并入 `packages/feature-core` 而整条删除，见 §2.4）。守卫每轮实跑的规则集与本表一一对应，漏列即说明文档漂移；下表「状态」列的判定一律以 `node scripts/check-platform-crate-boundaries.mjs` 的实跑输出为准。
 
 | 本节条目 | 实现位置 | 判定方式 | 状态 |
 | --- | --- | --- | --- |
@@ -1045,6 +1222,7 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
 | F-09 · `packages/ai-providers` 闭包无 `tauri*`、无 `datazen` 宿主 crate | `RULES` 里的 `F-09` 条目 | `forbiddenLayers:['host']` + `forbiddenCrates:['tauri']` + `specSubsetOnly:true`（§2.4 行里多写的 `datazen` 由 host 层覆盖），与 F-02 同形态 | ✅ 已武装，实测 `ok F-09: datazen-ai-providers`（无真空） |
 | F-11 · `packages/platform-infra` 只依赖自身 | `RULES` 里的 `F-11` 条目 | 反向白名单 `allowedLayers:['platform-infra']`（垫底层不允许依赖任何其它层，新加一层当天即被禁）+ `forbiddenCrates:'spec'`，`specCrates` 与 F-08 同 | ✅ 已武装，实测 `ok F-11: datazen-platform-infra`（无真空） |
 | F-12 · `packages/feature-core` 不依赖桌面宿主层与传输框架 | `RULES` 里的 `F-12` 条目 | 反向白名单 `allowedLayers` 列出 11 个允许层（feature-core / runtime / application / platform-api / platform-infra / driver-api / ai-api / data-transfer / data-sync / schema-diff / migration-common）+ `forbiddenCrates:'spec'`，`specCrates` 同 F-08；宿主层由 `allowedLayers` 挡掉，故不把 `datazen` 当家族 | ✅ 已武装，实测 `ok F-12: datazen-feature-core`（无真空） |
+| F-13 · `packages/tunnel` 闭包无 `tauri*`、无 `datazen` 宿主 crate | `RULES` 里的 `F-13` 条目 | 同 F-02 形态：`forbiddenLayers:['host']` + `forbiddenCrates:['tauri']` + `specSubsetOnly:true`（§2.4 行里多写的 `datazen` 由 host 层覆盖） | ✅ 已武装，实测 `ok F-13: datazen-tunnel`（无真空） |
 
 仍然真空或刻意不判的部分（不要读成 pass）：
 

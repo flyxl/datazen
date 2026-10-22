@@ -109,7 +109,7 @@ pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<
     }
 
     let ctx = RequestContext::new(
-        OrganizationId::new("datazen-local"),
+        OrganizationId::new(crate::platform::LOCAL_ORGANIZATION_ID),
         PrincipalId::new("datazen-local-user"),
         None,
         ClientInstanceId::new("datazen-local-client"),
@@ -209,12 +209,12 @@ pub(crate) fn finish_app_state(
         driver_registry: registry,
         monitor_engine: monitor_engine.clone(),
         store,
-        schema_cache: schema_cache.clone(),
+        schema_cache,
         sync_adapters,
         ai_registry: Arc::new(datazen_ai_providers::AiProviderRegistry::with_http_client(
             datazen_ai_providers::http::HttpClient::desktop(),
         )),
-        schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_cache, schema_source)),
+        schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_source)),
         prompt_resolver: Arc::new(
             datazen_feature_core::ai::prompt_resolver::PromptResolver::new(&data_dir, prompts_dir),
         ),

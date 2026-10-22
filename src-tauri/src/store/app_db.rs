@@ -9,8 +9,18 @@ use chrono::Utc;
 use rusqlite::{params, Connection};
 use thiserror::Error;
 pub const APP_DB_FILE: &str = "datazen.sqlite";
-pub const SCHEMA_VERSION: i32 = 4;
+pub const SCHEMA_VERSION: i32 = 5;
 pub const MAX_RUN_ROWS: usize = datazen_feature_core::dashboard::execute::MAX_RUN_ROWS;
+
+/// 历史遗留的桌面本地组织 id（**不是**规范值）。
+///
+/// 2026-10-09 引入 `jobs` 表的那次提交里，迁移三件套与启动期恢复扫描把
+/// `"datazen-local"` 写死成了组织 id，而桌面的规范组织 id 是
+/// [`crate::platform::LOCAL_ORGANIZATION_ID`]（`"datazen-desktop-local"`）。
+/// 两个值落在 `jobs.organization_id` 的同一列上 ⇒ 同一张表里落着两套组织。
+///
+/// v5 迁移把旧行并回规范值；本常量只用于**识别旧行**，不得用于写入。
+const LEGACY_LOCAL_ORGANIZATION_ID: &str = "datazen-local";
 
 const JOB_SCHEMA_V2: &str = r#"
 CREATE TABLE jobs (
@@ -299,6 +309,50 @@ impl AppDb {
                 tx.execute_batch("ALTER TABLE jobs ADD COLUMN claim_client_instance_id TEXT;")?;
                 tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (4,?1)", params![Utc::now().to_rfc3339()])?;
             }
+            if current < 5 {
+                // v5：把「历史遗留的桌面本地组织 id」并回**规范值**。
+                //
+                // 桌面是单租户：一份 app data 就是一个组织，组织轴上**只能**有一个值。
+                // 旧实现里迁移三件套与启动期恢复扫描用了另一个字面量，于是
+                // `jobs.organization_id` 同一列上落着两套组织 ⇒ 列举 / 恢复扫描
+                // 按组织过滤时，两类任务互不可见。
+                //
+                // `jobs` 上有 `UNIQUE (organization_id, consumed_plan_id)`：若同一
+                // `consumed_plan_id` 在两个组织下都存在，直接 UPDATE 会撞唯一约束 ⇒
+                // 迁移事务失败 ⇒ **应用起不来**。因此 UPDATE 只作用于「改过去之后
+                // 不会撞」的行；撞上的行留在原地——它本来就读不出来（列举按组织过滤），
+                // 不比现在更糟。
+                tx.execute(
+                    "UPDATE jobs SET organization_id = ?1 \
+                     WHERE organization_id = ?2 \
+                       AND (consumed_plan_id IS NULL \
+                            OR NOT EXISTS (SELECT 1 FROM jobs t \
+                                            WHERE t.organization_id = ?1 \
+                                              AND t.consumed_plan_id = jobs.consumed_plan_id))",
+                    params![
+                        crate::platform::LOCAL_ORGANIZATION_ID,
+                        LEGACY_LOCAL_ORGANIZATION_ID
+                    ],
+                )?;
+                // 幂等回执的主键含组织：不改就成了孤儿（永远查不到）。
+                //
+                // 幂等哈希把组织算进了进去（`jobs/codec.rs::idempotency_hash`），
+                // 因此这里**本不该**撞主键；仍加同样的防御谓词，代价为零，
+                // 换来的是「迁移永远不把应用卡在起不来的状态」这条不变量。
+                tx.execute(
+                    "UPDATE job_idempotency_receipts SET organization_id = ?1 \
+                     WHERE organization_id = ?2 \
+                       AND NOT EXISTS (SELECT 1 FROM job_idempotency_receipts t \
+                                        WHERE t.organization_id = ?1 \
+                                          AND t.owner_principal_id = job_idempotency_receipts.owner_principal_id \
+                                          AND t.idempotency_key_hash = job_idempotency_receipts.idempotency_key_hash)",
+                    params![
+                        crate::platform::LOCAL_ORGANIZATION_ID,
+                        LEGACY_LOCAL_ORGANIZATION_ID
+                    ],
+                )?;
+                tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (5,?1)", params![Utc::now().to_rfc3339()])?;
+            }
             tx.commit()?;
             Ok(())
         })
@@ -323,6 +377,10 @@ mod job_tests;
 #[cfg(test)]
 #[path = "app_db_restore_job_tests.rs"]
 mod restore_job_tests;
+
+#[cfg(test)]
+#[path = "app_db_org_unify_tests.rs"]
+mod org_unify_tests;
 
 // Re-exported so the paths `app_db::X` keep resolving for `store/mod.rs`
 // and anything else that names these types through this module.

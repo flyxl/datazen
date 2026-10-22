@@ -175,7 +175,10 @@ async fn v3_running_claims_migrate_with_null_instance_and_remain_unusable() {
     repo.record_stage(&ctx, &claim, stage(&claim, "stage"))
         .await
         .unwrap();
-    repo.db.with_conn(|c| Ok(c.execute_batch("ALTER TABLE jobs DROP COLUMN claim_client_instance_id; DELETE FROM schema_migrations WHERE version=4;")?)).unwrap();
+    // 回退到 **v3**：v4 加了 `claim_client_instance_id` 列，v5 之后还有别的迁移，
+    // 因此这里按「≥4 全删」回退，而不是只删 v4 那一条（否则 MAX(version) 仍 ≥4，
+    // v4 迁移不会重跑，列就再也加不回来）。
+    repo.db.with_conn(|c| Ok(c.execute_batch("ALTER TABLE jobs DROP COLUMN claim_client_instance_id; DELETE FROM schema_migrations WHERE version>=4;")?)).unwrap();
     drop(repo);
     let reopened = repository(temp.path(), time, 30);
     let client: Option<String> = reopened
