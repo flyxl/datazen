@@ -6,6 +6,7 @@ import { useI18n } from '../../../hooks/useI18n';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import type { StatementResult } from '../../../types';
 import type { DataExportCapability } from '../../../lib/exportCapability';
+import type { CellTypeHints } from '../../../lib/cellTypes';
 import { tid } from '../../../lib/tid';
 import {
   gridReadOnlyMessageKey,
@@ -50,6 +51,15 @@ export interface ResultTableViewProps {
    * key the grid falls back to the narrow verdict it always had.
    */
   writeBackKey?: string | null;
+  /**
+   * The driver's own column-type declaration.
+   *
+   * The **same** declaration the table panel and the row-detail drawer read:
+   * `DB_REGISTRY[databaseType]?.cellTypes`. A MySQL `tinyint(1)` column is a
+   * boolean in the grid's header and cells, in the drawer and in the table
+   * panel — one declaration, one answer, three surfaces.
+   */
+  cellTypeHints?: CellTypeHints;
 }
 
 /** Read-only DataTable adapter for query results.
@@ -65,6 +75,7 @@ export function ResultTableView({
   onRowDetail,
   dataExportCapability,
   writeBackKey = null,
+  cellTypeHints,
 }: ResultTableViewProps) {
   const { t } = useI18n();
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
@@ -243,6 +254,7 @@ export function ResultTableView({
       <DataTable
         columns={columnDefs}
         rows={result.rows}
+        cellTypeHints={cellTypeHints}
         statusBar={statusBar}
         rowHeight={32}
         editingCell={canEdit ? editingCell : null}

@@ -651,6 +651,7 @@ export function DataTable({
               onCellEdit={handleCellEdit}
               onCellEditCancel={handleCellEditCancel}
               cellEditing={cellEditing}
+              cellTypeHints={cellTypeHints}
               onRowSelect={handleRowClick}
               onRowGutterSelect={handleGutterSelect}
               onRowClick={onRowClick}
