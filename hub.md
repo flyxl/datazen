@@ -413,4 +413,3 @@ Tester 查出：`src/windows/connection/result-workspace/ResultTableView.tsx` �
 | 9 | 02 键盘 ∥ 11 键集分页 | ⏳ | 2（`DataTable.tsx`、`TableView.tsx`） |
 | 10 | 03 剪贴板 ∥ 12-testing 的 D1–D8 审计 | ⏳ | 0 |
 | R | 全量回归 + E2E + i18n 收尾 + 契约改写 + 删 `docs/prd/` | ⏳ | — |
-
