@@ -4,6 +4,10 @@ const pack = {
   'chat.send': 'Senden',
   'chat.clear': 'Chat löschen',
   'chat.stop': 'Generierung stoppen',
+  'chat.cancelled': 'Generierung gestoppt.',
+  'chat.shareEditor.label': 'Aktuelle Editor-Sitzung teilen',
+  'chat.shareEditor.unavailable': 'Öffnen Sie einen Abfrage-Editor, um dessen Sitzung zu teilen.',
+  'chat.shareEditor.error': 'Die Editor-Sitzung konnte nicht geteilt werden: {error}',
   'chat.thinking': 'Denken…',
   'chat.callingMcpTool': 'MCP-Tool {name} wird aufgerufen…',
   'common.aiNotConfigured':

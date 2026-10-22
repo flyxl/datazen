@@ -146,6 +146,12 @@ const pack = {
   'privileges.allPrivileges': 'すべての権限',
   'schema.loadDbFailed': 'データベースのロードに失敗しました',
   'schema.loadTablesFailed': 'テーブルのロードに失敗しました',
+  'metadata.temporaryResultInvalidated':
+    '一時結果が無効になりました: 実行セッションまたは設定が変更されました。',
+  'metadata.staleResultProvenance':
+    'この結果は別の接続、設定リビジョン、または対象で生成されました。',
+  'metadata.cacheBucketIsolated':
+    'メタデータキャッシュのエントリは、接続、設定リビジョン、対象ごとに分離されています。',
   'objectFilter.hideSystemSchemas': 'システム schema とデータベースを非表示',
   'objectFilter.include': 'テーブル名を含む',
   'objectFilter.exclude': 'テーブル名を除外',
@@ -295,6 +301,24 @@ const pack = {
   'fk.localColumn': 'カラム',
   'fk.refTable': '参照表',
   'fk.refColumn': '参照列',
+  'fkNav.jumpTo': '{target} へ移動',
+  'fkNav.jumpToComposite': '{table} へ移動 ({columns})',
+  'fkNav.resolving': '外部キーを解決しています…',
+  'fkNav.breadcrumbFrom': '{source} から',
+  'fkNav.backToSource': '{table} に戻る',
+  'fkNav.back': '戻る',
+  'fkNav.forward': '進む',
+  'fkNav.stackTruncated': 'それ以前のナビゲーション手順は破棄されました',
+  'fkNav.targetMissing': '参照先の行は既に存在しません',
+  'fkNav.notUniqueWarning':
+    '{columns} は主キーでも一意キーでもないため、移動時に多くの行が返る可能性があります',
+  'fkNav.error.shapeMismatch': 'この外部キーの列が一致しません',
+  'fkNav.error.unknownConstraint': '外部キーが変更されました。テーブル構造を再読み込みしてください',
+  'fkNav.error.valueNull': '複合キーの一部が NULL です',
+  'fkNav.error.targetUnresolved':
+    '{target} に到達できません。存在しないか、別のデータベースにあるか、読み取れない可能性があります',
+  'fkNav.error.probeFailed': '対象テーブルは見つかりましたが、読み取れませんでした',
+  'fkNav.error.unknown': '外部キーのナビゲーションに失敗しました',
   'schemaTree.generateSql': 'SQL 生成',
   'schemaTree.generateSelect': 'SELECT を生成',
   'schemaTree.generateInsert': 'INSERT を生成',

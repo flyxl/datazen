@@ -4,6 +4,84 @@ const pack = {
     '前回のプランは有効ではなくなっています (期限切れ、ターゲットの変更、または権限の変更)。適用する前に新しいプランを作り直してください。',
   'migrationJob.pendingVerificationHint':
     '前回のジョブが検証待ちです。新しい変更を適用する前にジョブセンターを確認して整合してください。',
+  'migrationJob.notExecutedHint':
+    'キューに入っているデータ同期ジョブは再起動後に開始されませんでした。再実行もされていないため、適用する前に新しい比較を実行してください。',
+  'migrationJob.notExecutedJob': '再起動後は未実行',
+  'migrationJob.verifyRecovery': '復旧を検証',
+  'migrationJob.verifyingRecovery': '検証しています…',
+  'migrationJob.cancelJob': 'ジョブをキャンセル',
+  'migrationJob.cancellingJob': 'キャンセルしています…',
+  'migrationJob.recoveryEndpointMismatch':
+    '復旧を検証する前に、このジョブと同じソース接続とターゲット接続を選択してください。',
+  'migrationJob.recoverySelectEndpoints':
+    '復旧を検証する前に、両方のエンドポイントを選択して接続してください。',
+  'migrationJob.recoveryManualReview':
+    '復旧の証拠が記録されました。何かを適用する前に現在のデータを比較してください。',
+  'migrationJob.recoveryRecorded':
+    '復旧の証拠が記録されました。何かを適用する前に新しい比較を実行してください。',
+  'migration.verdict.ok': '完了',
+  'migration.verdict.partial': '一部のみ適用',
+  'migration.verdict.uncertain': '結果は未確定',
+  'migration.verdict.failed': '未適用',
+  'migration.verdict.committedRows': '確定した行数',
+  'migration.verdict.replayedReceipt':
+    'この応答は、すでに実行済みの記録付きレシートからのものです。二重に書き込まれることはありません。',
+  'migration.verdict.noBoundaries':
+    '書き込み境界が記録されていないため、確定済みとして報告できるものはありません。',
+  'migration.verdict.recoveryLabel': '復旧判定',
+  'migration.verdict.notExecuted': '未実行',
+  'migration.verdict.notDispatchedAfterRestart':
+    'このジョブが受理された後、開始される前にアプリケーションが再起動したため、移行処理は実行されませんでした。再試行するには新しいプランを作成してください。',
+  'migration.verdict.requiresReconcile':
+    '他の変更を適用する前に、記録された境界と照合して対象を検証してください。',
+  'migration.verdict.resumeThrough': '復旧は境界 # まで再開できる可能性があります',
+  'migration.verdict.rereview': '新しいプランを確認',
+  'migration.verdict.rereviewBlocked':
+    'この実行は再度書き込む前に対象との照合が必要です。読み取り専用で検証してから、このウィンドウを閉じて開き直し、新しいプランを確認してください。',
+  'migration.boundary.verified': '証拠ありでコミット済み',
+  'migration.boundary.unverified': '証拠なしでコミット済み — 未検証',
+  'migration.progress.counts': '読み取り / 変換 / 試行 / コミット / 不明',
+  'migration.cancel.none': 'キャンセルは要求されていません。',
+  'migration.cancel.notStarted':
+    '実行開始前にキャンセルが要求されたため、何も書き込まれませんでした。',
+  'migration.cancel.requestedInFlight':
+    '実行中にキャンセルが要求されました。停止した位置はまだ不明です — 以下の判定を確認してください。',
+  'migration.cancel.settledPartially':
+    '実行中にキャンセルが要求されました。一部の境界はコミット済みで、残りは適用されていません。',
+  'migration.cancel.settledRolledBack':
+    '実行中にキャンセルが要求されました。実行はロールバックされ、コミット済みの境界も元に戻されました。',
+  'migration.cancel.settledCompleted':
+    'キャンセルが要求されましたが、書き込みはすでに完了していました。実行はキャンセルされず完了しました。',
+  'migration.cancel.settledUnknown':
+    '実行中にキャンセルが要求されましたが、停止した位置を特定できませんでした。',
+  'migration.cancel.unknownJob':
+    'この実行に対応するジョブがバックエンドに存在しないため、キャンセル要求の対象がありませんでした。何もキャンセルされていません。',
+  'migration.failure.backendScope.title': 'バックエンドのスコープが拒否されました',
+  'migration.failure.backendScope.body':
+    'エンドポイントがローカルのデスクトップバックエンドであることを証明できなかったため、検証されていないスコープで実行するのではなく、移行が拒否されました。何も書き込まれませんでした。両方のエンドポイントを再度選択し、新しいプランを確認してください。',
+  'migration.failure.pipelineBudget.title': 'パイプライン予算によりこの実行が拒否されました',
+  'migration.failure.pipelineBudget.body':
+    '実行が 8 MiB のパイプライン予算を超えたため、バックエンドはその段階が適用される前に意図的に停止しました。これは意図的な安全制限であり不具合ではありません — 選択範囲またはバッチサイズを絞り込み、新しいプランを確認してください。',
+  'migration.failure.planConsumed.title': 'このプランはすでに適用済みです',
+  'migration.failure.planConsumed.body':
+    'プランは一度しか適用できず、前の実行で既に使用済みです。二重に書き込まれることはありません。続行するには新しいプランを確認してください。',
+  'migration.failure.stalePlan.title': 'プランが古くなっています',
+  'migration.failure.stalePlan.body':
+    'プランの有効期限が切れたか、対象が変更されたか、権限が変わりました。再利用されるのではなく破棄されます — 新しいプランを確認してください。',
+  'migration.failure.other.title': '移行が拒否されました',
+  'migration.failure.other.body':
+    'バックエンドが実行を拒否しました。確定済みとして報告できるものはありません — 以下の詳細を確認してください。',
+  'migration.failure.reReview': '新しいプランを確認',
+  'migration.uncertainty.noCheckpoint':
+    'チェックポイントが記録されていないため、この実行がどこで停止したかを再構築できません。',
+  'migration.uncertainty.recoveryRejected':
+    '復旧が拒否されたため、この実行は再開できず、手動で検証する必要があります。',
+  'migration.uncertainty.effectOutcomeUnknown':
+    'データベースは書き込みがコミットされたかロールバックされたかを確認しませんでした。',
+  'migration.uncertainty.missingEvidence':
+    'コミット済みの境界のうち少なくとも 1 つに証拠がないため、未検証として報告されます。',
+  'migration.uncertainty.manualReviewRequired':
+    'バックエンドは他の変更を適用する前に手動での確認を要求しています。',
   // --- Data Sync ---
   'sync.source': 'ソース',
   'sync.target': 'ターゲット',
@@ -155,6 +233,13 @@ const pack = {
   'transfer.executing': '転送を実行中…',
   'transfer.executingProgress': '{count} 件のテーブルを転送中…',
   'transfer.cancel': 'キャンセル',
+  'transfer.job.attachedTitle': 'データ転送のジョブがすでに実行中です',
+  'transfer.job.restoredTitle': '前回のデータ転送の結果',
+  'transfer.job.detailsLoading': '保存された転送レポートを読み込んでいます…',
+  'transfer.job.detailsUnavailable':
+    '保存されたレポートを利用できません。再試行する前に対象を確認してください。',
+  'transfer.job.queued': '転送をキューに追加しました',
+  'transfer.job.running': '転送を実行中',
   'transfer.back': '戻る',
   'transfer.next': '次へ',
   'transfer.error': '転送エラー',
@@ -182,6 +267,10 @@ const pack = {
   'transfer.mapping.autoMatch': '名前で自動マッチ',
   'transfer.mapping.clearUnmapped': '未マッピングをクリア',
   'transfer.mapping.unmappedTargetWarning': 'マッピングされていないターゲット列: {columns}',
+  'transfer.mapping.gateLost':
+    'プランの準備中にテーブルが変更されたため、列の対応がすべて解除されました。対応を再確認してもう一度お試しください。',
+  'transfer.mapping.targetNameRequired':
+    '続行する前に、この対応で作成されるテーブルに名前を付けてください。対象にはまだ何も存在しないため、フォールバックする名前がありません。',
   'transfer.mapping.sourceType': 'ソースの型',
   'transfer.mapping.targetType': 'ターゲットの型',
   'transfer.limitations.title': '現在の制限',
@@ -266,6 +355,38 @@ const pack = {
   'schemaDiff.confirmDeploy': '破壊的デプロイは {token} と入力して確認',
   'schemaDiff.deploy': 'ターゲットへデプロイ',
   'schemaDiff.deploying': 'デプロイ中…',
+  'schemaDiff.prepareJob': 'プラン作成ジョブ',
+  'schemaDiff.applyJob': '適用ジョブ',
+  'schemaDiff.jobUnknown': 'ステータスを取得できません',
+  'schemaDiff.jobQueued': '受理済み。開始を待っています',
+  'schemaDiff.jobRunning': '実行中',
+  'schemaDiff.jobSucceeded': '完了',
+  'schemaDiff.jobFailed': '失敗',
+  'schemaDiff.jobCancelled': 'キャンセル済み',
+  'schemaDiff.jobProgress': '試行 {attempted}、コミット {committed}、不明 {unknown}',
+  'schemaDiff.requestCancel': 'キャンセルを要求',
+  'schemaDiff.cancelRequested': 'キャンセルが要求されました。ジョブの結果を待っています。',
+  'schemaDiff.cancelUnavailable': 'キャンセル要求はこのジョブに届きませんでした。',
+  'schemaDiff.planUnavailableAfterRestart':
+    '再起動後、確認済みのプランは利用できません。適用する前にもう一度比較してください。',
+  'schemaDiff.notDispatchedAfterRestart':
+    'この受理済みのジョブは再起動前に開始されませんでした。再実行もされていないため、新しいジョブを作成するにはもう一度比較してください。',
+  'schemaDiff.notExecuted':
+    'このジョブは開始されませんでした。処理は再実行されていないため、新しいジョブを送信するにはもう一度比較してください。',
+  'schemaDiff.recoveryPending':
+    '対象には明示的な読み取り専用チェックが必要です。このジョブは自動的に再開されません。',
+  'schemaDiff.recoveryIdentityUnavailable':
+    '対象の識別情報が自動検証用に取得できないため、手動での確認が必要です。',
+  'schemaDiff.verifyRecovery': '対象の状態を確認',
+  'schemaDiff.verifyingRecovery': '対象の状態を確認しています…',
+  'schemaDiff.recoveryUnchanged':
+    '対象のフィンガープリントは変更されていません。ただし、陳述式が実行されなかった証明にはなりません — 適用する前にもう一度比較してください。',
+  'schemaDiff.recoveryChanged':
+    '対象のフィンガープリントが変更されました。新しいプランを作成する前に、データベースを手動で確認してください。',
+  'schemaDiff.recoveryManualReview':
+    '読み取り専用のチェックでは結果を確認できませんでした。続行する前に、対象を手動で確認してください。',
+  'schemaDiff.lastApplyReport': '最新の適用レポート',
+  'schemaDiff.recoveryCode': '復旧コード: {code}',
   'schemaDiff.deployStatus': 'デプロイ状態',
   'schemaDiff.executed': '実行済み',
   'schemaDiff.missingOnTarget': 'ターゲットに不足（ADD）',

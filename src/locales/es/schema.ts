@@ -147,6 +147,12 @@ const pack = {
   'privileges.allPrivileges': 'todos los privilegios',
   'schema.loadDbFailed': 'No se pudieron cargar las bases de datos',
   'schema.loadTablesFailed': 'No se pudieron cargar las tablas',
+  'metadata.temporaryResultInvalidated':
+    'Resultado temporal invalidado: su sesión en tiempo de ejecución o su configuración cambió.',
+  'metadata.staleResultProvenance':
+    'Este resultado se generó con otra conexión, revisión de configuración o destino.',
+  'metadata.cacheBucketIsolated':
+    'Las entradas de la caché de metadatos están aisladas por conexión, revisión de configuración y destino.',
   'objectFilter.hideSystemSchemas': 'Ocultar esquemas y bases de datos del sistema',
   'objectFilter.include': 'Incluir nombres de tabla',
   'objectFilter.exclude': 'Excluir nombres de tabla',
@@ -296,6 +302,24 @@ const pack = {
   'fk.localColumn': 'Columna',
   'fk.refTable': 'Tabla de referencias',
   'fk.refColumn': 'Columna de referencia',
+  'fkNav.jumpTo': 'Ir a {target}',
+  'fkNav.jumpToComposite': 'Ir a {table} ({columns})',
+  'fkNav.resolving': 'Resolviendo la clave foránea…',
+  'fkNav.breadcrumbFrom': 'Desde {source}',
+  'fkNav.backToSource': 'Volver a {table}',
+  'fkNav.back': 'Atrás',
+  'fkNav.forward': 'Adelante',
+  'fkNav.stackTruncated': 'Se descartaron los pasos de navegación anteriores',
+  'fkNav.targetMissing': 'La fila referenciada ya no existe',
+  'fkNav.notUniqueWarning':
+    '{columns} no es una clave principal ni única; el salto puede devolver muchas filas',
+  'fkNav.error.shapeMismatch': 'Las columnas de esta clave foránea no coinciden',
+  'fkNav.error.unknownConstraint': 'La clave foránea cambió; actualice la estructura de la tabla',
+  'fkNav.error.valueNull': 'Parte de la clave compuesta es NULL',
+  'fkNav.error.targetUnresolved':
+    'No se puede llegar a {target}: puede que no exista, esté en otra base de datos o no sea legible',
+  'fkNav.error.probeFailed': 'Se encontró la tabla de destino, pero no se pudo leer',
+  'fkNav.error.unknown': 'La navegación por clave foránea falló',
   'schemaTree.generateSql': 'Generar SQL',
   'schemaTree.generateSelect': 'Generar SELECT',
   'schemaTree.generateInsert': 'Generar INSERT',

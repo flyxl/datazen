@@ -148,6 +148,12 @@ const pack = {
   'privileges.allPrivileges': 'alle Rechte',
   'schema.loadDbFailed': 'Datenbanken konnten nicht geladen werden',
   'schema.loadTablesFailed': 'Tabellen konnten nicht geladen werden',
+  'metadata.temporaryResultInvalidated':
+    'Temporäres Ergebnis ungültig: Die zugehörige Sitzung oder Konfiguration hat sich geändert.',
+  'metadata.staleResultProvenance':
+    'Dieses Ergebnis wurde unter einer anderen Verbindung, Konfigurationsrevision oder einem anderen Ziel erzeugt.',
+  'metadata.cacheBucketIsolated':
+    'Einträge des Metadaten-Caches sind nach Verbindung, Konfigurationsrevision und Ziel getrennt.',
   'objectFilter.hideSystemSchemas': 'System-Schemas und -Datenbanken ausblenden',
   'objectFilter.include': 'Tabellenname einschließen',
   'objectFilter.exclude': 'Tabellenname ausschließen',
@@ -296,6 +302,25 @@ const pack = {
   'fk.localColumn': 'Spalte',
   'fk.refTable': 'Referenzierte Tabelle',
   'fk.refColumn': 'Referenzspalte',
+  'fkNav.jumpTo': 'Zu {target} springen',
+  'fkNav.jumpToComposite': 'Zu {table} springen ({columns})',
+  'fkNav.resolving': 'Fremdschlüssel wird aufgelöst…',
+  'fkNav.breadcrumbFrom': 'Von {source}',
+  'fkNav.backToSource': 'Zurück zu {table}',
+  'fkNav.back': 'Zurück',
+  'fkNav.forward': 'Vorwärts',
+  'fkNav.stackTruncated': 'Frühere Navigationsschritte wurden verworfen',
+  'fkNav.targetMissing': 'Die referenzierte Zeile existiert nicht mehr',
+  'fkNav.notUniqueWarning':
+    '{columns} ist kein Primär- oder eindeutiger Schlüssel; der Sprung kann viele Zeilen zurückgeben',
+  'fkNav.error.shapeMismatch': 'Die Spalten dieses Fremdschlüssels passen nicht zueinander',
+  'fkNav.error.unknownConstraint':
+    'Der Fremdschlüssel hat sich geändert; aktualisieren Sie die Tabellenstruktur',
+  'fkNav.error.valueNull': 'Ein Teil des zusammengesetzten Schlüssels ist NULL',
+  'fkNav.error.targetUnresolved':
+    '{target} ist nicht erreichbar; die Tabelle fehlt möglicherweise, liegt in einer anderen Datenbank oder ist nicht lesbar',
+  'fkNav.error.probeFailed': 'Die Zieltabelle wurde gefunden, konnte aber nicht gelesen werden',
+  'fkNav.error.unknown': 'Navigation über den Fremdschlüssel fehlgeschlagen',
   'schemaTree.generateSql': 'SQL generieren',
   'schemaTree.generateSelect': 'SELECT-Abfrage generieren',
   'schemaTree.generateInsert': 'INSERT generieren',

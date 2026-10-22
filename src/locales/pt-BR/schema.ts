@@ -146,6 +146,12 @@ const pack = {
   'privileges.allPrivileges': 'todos os privilégios',
   'schema.loadDbFailed': 'Falha ao carregar bancos de dados',
   'schema.loadTablesFailed': 'Falha ao carregar tabelas',
+  'metadata.temporaryResultInvalidated':
+    'Resultado temporário invalidado: a sessão de execução ou a configuração mudou.',
+  'metadata.staleResultProvenance':
+    'Este resultado foi gerado sob outra conexão, revisão de configuração ou destino.',
+  'metadata.cacheBucketIsolated':
+    'As entradas do cache de metadados são isoladas por conexão, revisão de configuração e destino.',
   'objectFilter.hideSystemSchemas': 'Ocultar schemas e bancos de dados do sistema',
   'objectFilter.include': 'Incluir nome da tabela',
   'objectFilter.exclude': 'Excluir nome da tabela',
@@ -293,6 +299,24 @@ const pack = {
   'fk.localColumn': 'Coluna',
   'fk.refTable': 'Tabela de referência',
   'fk.refColumn': 'Coluna de referência',
+  'fkNav.jumpTo': 'Ir para {target}',
+  'fkNav.jumpToComposite': 'Ir para {table} ({columns})',
+  'fkNav.resolving': 'Resolvendo a chave estrangeira…',
+  'fkNav.breadcrumbFrom': 'De {source}',
+  'fkNav.backToSource': 'Voltar para {table}',
+  'fkNav.back': 'Voltar',
+  'fkNav.forward': 'Avançar',
+  'fkNav.stackTruncated': 'Etapas de navegação anteriores foram descartadas',
+  'fkNav.targetMissing': 'A linha referenciada não existe mais',
+  'fkNav.notUniqueWarning':
+    '{columns} não é uma chave primária nem única; o salto pode retornar várias linhas',
+  'fkNav.error.shapeMismatch': 'As colunas desta chave estrangeira não correspondem',
+  'fkNav.error.unknownConstraint': 'A chave estrangeira mudou; atualize a estrutura da tabela',
+  'fkNav.error.valueNull': 'Parte da chave composta é NULL',
+  'fkNav.error.targetUnresolved':
+    'Não foi possível acessar {target}; ela pode estar ausente, em outro banco de dados ou ilegível',
+  'fkNav.error.probeFailed': 'A tabela de destino foi encontrada, mas não pôde ser lida',
+  'fkNav.error.unknown': 'A navegação pela chave estrangeira falhou',
   'schemaTree.generateSql': 'Gerar SQL',
   'schemaTree.generateSelect': 'Gerar SELECT',
   'schemaTree.generateInsert': 'Gerar INSERT',
