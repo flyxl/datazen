@@ -16,6 +16,15 @@ const pack = {
   'dashboard.import': 'Importer un tableau de bord…',
   'dashboard.pauseMonitoring': 'Suspendre l’actualisation des panneaux',
   'dashboard.resumeMonitoring': 'Reprendre l’actualisation des panneaux',
+  'dashboard.scheduleAuthorization': 'Autorisation de l’actualisation planifiée',
+  'dashboard.scheduleAuthorizationHint':
+    'Autorisez les requêtes PostgreSQL/MySQL en lecture seule du flux enregistré avec des cibles de connexion et de base de données explicites. Toute modification exige une nouvelle autorisation.',
+  'dashboard.scheduleAuthorizeHour': 'Autoriser pour 1 heure',
+  'dashboard.scheduleRevoke': 'Révoquer l’autorisation',
+  'dashboard.scheduleUnauthorized': 'L’actualisation planifiée n’est pas autorisée.',
+  'dashboard.scheduleAuthorizedUntil': 'Autorisé jusqu’à {time}',
+  'dashboard.scheduleSaveFirst':
+    'Enregistrez les modifications avant d’autoriser l’actualisation planifiée.',
   'dashboard.widgetEnabled': 'Activer le widget',
   'dashboard.history': 'Historique',
   'dashboard.widgetTitle': 'Titre',

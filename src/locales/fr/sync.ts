@@ -4,6 +4,84 @@ const pack = {
     'Le plan précédent n’est plus valide (il a expiré, la cible a dérivé ou les autorisations ont changé). Préparez à nouveau un plan à jour avant d’appliquer quoi que ce soit.',
   'migrationJob.pendingVerificationHint':
     'Une tâche précédente attend une vérification. Consultez le centre des tâches et effectuez le rapprochement avant d’appliquer de nouvelles modifications.',
+  'migrationJob.notExecutedHint':
+    'Une tâche Data Sync en attente n’a pas démarré après le redémarrage. Elle n’a pas été rejouée ; lancez une nouvelle comparaison avant d’appliquer.',
+  'migrationJob.notExecutedJob': 'Non exécuté après le redémarrage',
+  'migrationJob.verifyRecovery': 'Vérifier la récupération',
+  'migrationJob.verifyingRecovery': 'Vérification…',
+  'migrationJob.cancelJob': 'Annuler la tâche',
+  'migrationJob.cancellingJob': 'Annulation…',
+  'migrationJob.recoveryEndpointMismatch':
+    'Sélectionnez les mêmes connexions source et cible que celles de cette tâche avant de vérifier la récupération.',
+  'migrationJob.recoverySelectEndpoints':
+    'Sélectionnez et connectez les deux points de terminaison avant de vérifier la récupération.',
+  'migrationJob.recoveryManualReview':
+    'Les preuves de récupération ont été enregistrées. Comparez les données actuelles avant toute application.',
+  'migrationJob.recoveryRecorded':
+    'Les preuves de récupération ont été enregistrées. Lancez une nouvelle comparaison avant toute application.',
+  'migration.verdict.ok': 'Terminé',
+  'migration.verdict.partial': 'Appliqué partiellement',
+  'migration.verdict.uncertain': 'Résultat incertain',
+  'migration.verdict.failed': 'Non appliqué',
+  'migration.verdict.committedRows': 'Lignes confirmées',
+  'migration.verdict.replayedReceipt':
+    'Cette réponse provient du reçu enregistré d’une exécution déjà effectuée. Rien n’a été écrit une seconde fois.',
+  'migration.verdict.noBoundaries':
+    'Aucune limite d’écriture n’a été enregistrée, rien ne peut donc être signalé comme validé.',
+  'migration.verdict.recoveryLabel': 'Verdict de récupération',
+  'migration.verdict.notExecuted': 'Non exécuté',
+  'migration.verdict.notDispatchedAfterRestart':
+    'L’application a redémarré après l’acceptation de cette tâche, mais avant son lancement : aucun travail de migration n’a été exécuté. Préparez un nouveau plan pour réessayer.',
+  'migration.verdict.requiresReconcile':
+    'Vérifiez la cible par rapport aux limites enregistrées avant toute autre application.',
+  'migration.verdict.resumeThrough': 'La récupération peut reprendre jusqu’à la limite n°',
+  'migration.verdict.rereview': 'Examiner un nouveau plan',
+  'migration.verdict.rereviewBlocked':
+    'Cette exécution doit encore être rapprochée de la cible avant toute nouvelle écriture. Vérifiez-la en lecture seule, puis fermez et rouvrez cette fenêtre pour examiner un nouveau plan.',
+  'migration.boundary.verified': 'Validé avec preuve',
+  'migration.boundary.unverified': 'Validé sans preuve — non vérifié',
+  'migration.progress.counts': 'Lus / convertis / tentés / validés / inconnus',
+  'migration.cancel.none': 'Aucune annulation n’a été demandée.',
+  'migration.cancel.notStarted':
+    'L’annulation a été demandée avant le démarrage de l’exécution ; rien n’a été écrit.',
+  'migration.cancel.requestedInFlight':
+    'L’annulation a été demandée pendant l’exécution. Le point d’arrêt n’est pas encore connu — consultez le verdict ci-dessous.',
+  'migration.cancel.settledPartially':
+    'L’annulation a été demandée pendant l’exécution. Certaines limites sont validées, le reste n’a pas été appliqué.',
+  'migration.cancel.settledRolledBack':
+    'L’annulation a été demandée pendant l’exécution. L’exécution a été annulée et les limites validées ont été déaites.',
+  'migration.cancel.settledCompleted':
+    'L’annulation a été demandée, mais l’écriture était déjà terminée. L’exécution s’est terminée au lieu d’être annulée.',
+  'migration.cancel.settledUnknown':
+    'L’annulation a été demandée pendant l’exécution et le point d’arrêt n’a pas pu être déterminé.',
+  'migration.cancel.unknownJob':
+    'Le backend n’a aucune tâche pour cette exécution : la demande d’annulation n’avait donc aucune cible. Rien n’a été annulé.',
+  'migration.failure.backendScope.title': 'Portée du backend refusée',
+  'migration.failure.backendScope.body':
+    'Les points de terminaison n’ont pas pu prouver qu’ils correspondent au backend local de bureau ; la migration a donc été refusée plutôt qu’exécutée dans une portée non vérifiée. Rien n’a été écrit. Resélectionnez les deux points de terminaison et examinez un nouveau plan.',
+  'migration.failure.pipelineBudget.title': 'Le budget du pipeline a refusé cette exécution',
+  'migration.failure.pipelineBudget.body':
+    'L’exécution a dépassé le budget de pipeline de 8 Mio et le backend l’a arrêtée volontairement, avant que cette étape ne soit appliquée. Il s’agit d’une limite de sécurité délibérée, pas d’un dysfonctionnement — réduisez la sélection ou la taille du lot et examinez un nouveau plan.',
+  'migration.failure.planConsumed.title': 'Ce plan a déjà été appliqué',
+  'migration.failure.planConsumed.body':
+    'Un plan ne peut être appliqué qu’une fois et une exécution antérieure l’a déjà consommé. Rien n’a été écrit une seconde fois. Examinez un nouveau plan pour continuer.',
+  'migration.failure.stalePlan.title': 'Le plan n’est plus à jour',
+  'migration.failure.stalePlan.body':
+    'Le plan a expiré, la cible a divergé ou les autorisations ont changé. Il est écarté plutôt que réutilisé — examinez un nouveau plan.',
+  'migration.failure.other.title': 'Migration refusée',
+  'migration.failure.other.body':
+    'Le backend a refusé de s’exécuter. Rien ne peut être signalé comme validé — lisez le détail ci-dessous.',
+  'migration.failure.reReview': 'Examiner un nouveau plan',
+  'migration.uncertainty.noCheckpoint':
+    'Aucun point de contrôle n’a été enregistré : le point d’arrêt de cette exécution ne peut pas être reconstitué.',
+  'migration.uncertainty.recoveryRejected':
+    'La récupération a été refusée : cette exécution ne peut pas être reprise et doit être vérifiée manuellement.',
+  'migration.uncertainty.effectOutcomeUnknown':
+    'La base de données n’a pas confirmé si l’écriture a été validée ou annulée.',
+  'migration.uncertainty.missingEvidence':
+    'Au moins une limite validée n’a pas de preuve : elle est donc signalée comme non vérifiée.',
+  'migration.uncertainty.manualReviewRequired':
+    'Le backend exige une vérification manuelle avant toute autre application.',
   // --- Data Sync ---
   'sync.source': 'Source',
   'sync.target': 'Cible',
@@ -160,6 +238,13 @@ const pack = {
   'transfer.executing': 'Exécution du transfert…',
   'transfer.executingProgress': 'Transfert de {count} table(s)…',
   'transfer.cancel': 'Annuler',
+  'transfer.job.attachedTitle': 'Des tâches Data Transfer sont déjà en cours',
+  'transfer.job.restoredTitle': 'Résultat du Transfert de données précédent',
+  'transfer.job.detailsLoading': 'Chargement du rapport de transfert enregistré…',
+  'transfer.job.detailsUnavailable':
+    'Le rapport enregistré n’est pas disponible ; vérifiez la cible avant de réessayer.',
+  'transfer.job.queued': 'Transfert mis en file d’attente',
+  'transfer.job.running': 'Transfert en cours',
   'transfer.back': 'Retour',
   'transfer.next': 'Suivant',
   'transfer.error': 'Erreur de transfert',
@@ -187,6 +272,10 @@ const pack = {
   'transfer.mapping.autoMatch': 'Correspondance automatique par nom',
   'transfer.mapping.clearUnmapped': 'Effacer les non mappés',
   'transfer.mapping.unmappedTargetWarning': 'Colonnes cibles non mappées : {columns}',
+  'transfer.mapping.gateLost':
+    'Les tables ont changé pendant la préparation du plan : aucune colonne n’est donc plus mappée. Revérifiez le mappage et réessayez.',
+  'transfer.mapping.targetNameRequired':
+    'Nommez la table que ce mappage va créer avant de continuer. Rien n’existe encore côté cible : il n’y a donc aucun nom de repli.',
   'transfer.mapping.sourceType': 'Type de source',
   'transfer.mapping.targetType': 'Type de cible',
   'transfer.limitations.title': 'Limitations actuelles',
@@ -281,6 +370,38 @@ const pack = {
   'schemaDiff.confirmDeploy': 'Tapez {token} pour confirmer un déploiement destructif',
   'schemaDiff.deploy': 'Déployer vers la cible',
   'schemaDiff.deploying': 'Déploiement…',
+  'schemaDiff.prepareJob': 'Tâche de planification',
+  'schemaDiff.applyJob': 'Tâche d’application',
+  'schemaDiff.jobUnknown': 'Statut indisponible',
+  'schemaDiff.jobQueued': 'Acceptée ; en attente de lancement',
+  'schemaDiff.jobRunning': 'En cours',
+  'schemaDiff.jobSucceeded': 'Terminé',
+  'schemaDiff.jobFailed': 'Échec',
+  'schemaDiff.jobCancelled': 'Annulée',
+  'schemaDiff.jobProgress': 'Tentées {attempted} ; validées {committed} ; inconnues {unknown}',
+  'schemaDiff.requestCancel': 'Demander l’annulation',
+  'schemaDiff.cancelRequested': 'L’annulation a été demandée ; en attente du résultat de la tâche.',
+  'schemaDiff.cancelUnavailable': 'La demande d’annulation n’a pas atteint cette tâche.',
+  'schemaDiff.planUnavailableAfterRestart':
+    'Le plan examiné n’est plus disponible après le redémarrage. Comparez à nouveau avant d’appliquer.',
+  'schemaDiff.notDispatchedAfterRestart':
+    'Cette tâche acceptée n’a pas été lancée avant le redémarrage. Elle n’a pas été rejouée ; comparez à nouveau pour créer une nouvelle tâche.',
+  'schemaDiff.notExecuted':
+    'Cette tâche n’a pas démarré. Son travail n’a pas été rejoué ; comparez à nouveau pour soumettre une nouvelle tâche.',
+  'schemaDiff.recoveryPending':
+    'La cible nécessite une vérification explicite en lecture seule. Cette tâche ne reprendra pas automatiquement.',
+  'schemaDiff.recoveryIdentityUnavailable':
+    'L’identité de la cible n’est pas disponible pour la vérification automatique ; une vérification manuelle est requise.',
+  'schemaDiff.verifyRecovery': 'Vérifier l’état de la cible',
+  'schemaDiff.verifyingRecovery': 'Vérification de l’état de la cible…',
+  'schemaDiff.recoveryUnchanged':
+    'L’empreinte de la cible n’a pas changé. Cela ne prouve pas que les instructions n’ont pas été exécutées ; comparez à nouveau avant d’appliquer.',
+  'schemaDiff.recoveryChanged':
+    'L’empreinte de la cible a changé. Vérifiez manuellement la base de données avant de créer un nouveau plan.',
+  'schemaDiff.recoveryManualReview':
+    'La vérification en lecture seule n’a pas pu déterminer le résultat. Vérifiez la cible manuellement avant de continuer.',
+  'schemaDiff.lastApplyReport': 'Dernier rapport d’application',
+  'schemaDiff.recoveryCode': 'Code de récupération : {code}',
   'schemaDiff.deployStatus': 'Statut du déploiement',
   'schemaDiff.executed': 'exécutées',
   'schemaDiff.missingOnTarget': 'Absent sur la cible (ADD)',

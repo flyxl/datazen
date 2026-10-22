@@ -95,6 +95,9 @@ const pack = {
   'newConn.databaseIndex': 'Index de la base de données',
   'newConn.username': "Nom d'utilisateur",
   'newConn.password': 'Mot de passe',
+  'newConn.clearStoredCredentials': 'Effacer les identifiants enregistrés laissés vides',
+  'newConn.clearStoredCredentialsHint':
+    'Les champs vides conservent leurs valeurs enregistrées sauf si cette option est cochée.',
   'newConn.group': 'Groupe',
   'newConn.noGroup': 'Aucun groupe',
   'newConn.colorTag': 'Étiquette de couleur',
