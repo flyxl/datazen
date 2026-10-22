@@ -500,7 +500,7 @@ mod tests {
         };
         test.state
             .workflow_registry
-            .save_workflow(&crate::platform::local_organization_scope(), &workflow)
+            .save_workflow(&test.state.organization_scope().unwrap(), &workflow)
             .await
             .unwrap();
 

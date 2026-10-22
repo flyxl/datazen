@@ -775,15 +775,92 @@ impl OpenSessionUseCase {
 - **组织身份不可用 ≠ 组织边界不可用**。「取不到当前 OS 用户名」只让 `principalId` 拿不到
   （`principalId` 仍依赖 adapter 组装成功），**不影响**组织作用域——按组织限定的功能
   （仪表板 / workflow 等）不会因此整体不可用。
-- **IPC 路径与后台路径必须看到同一个组织**：两者都取同一个安装级常量
-  （`local_organization_scope()`），不得各自解析、各自缓存不同的值。
+- **IPC 路径与后台路径必须看到同一个组织**：两条路径都取**同一个入口**
+  （`AppState::organization_scope()`），不得各自解析、各自缓存不同的值。
 - 任何请求体字段都不得覆盖组织身份（INV-01）：作用域**不是** IPC 参数。
+
+#### 5.2.1 作用域的解析入口（宿主侧，已收敛）
+
+宿主里**只有两个**直读「桌面的安装级组织常量」的入口：
+`crate::platform::local_organization_scope()` 与
+`crate::commands::data_transfer::plan_scope::desktop_organization_scope()`。
+桌面形态下它们与正规入口解析出的值**逐字相同**；但服务端形态下，直读常量等于
+「拿桌面的组织去查服务端的多租户存储」——那是**越组织读写**，比性能问题严重：
+CM-05 要求跨组织访问按「不存在」处理，而这里是「用错组织查」，查到就是真的越界。
+
+因此宿主把作用域的解析收敛成三类路径：
+
+| 路径 | 取法 | 桌面上的值 | 服务端形态上的值 |
+| --- | --- | --- | --- |
+| 请求周期内、**有请求上下文** | `OrganizationScope::from_context(&ctx)` | `LOCAL_ORGANIZATION_ID` | 认证会话里的组织 |
+| 请求周期内、**有宿主状态**（IPC 命令 / MCP 工具 / 调度器） | `state.organization_scope()` | `LOCAL_ORGANIZATION_ID` | 宿主按形态解析出的组织 |
+| **桌面专有**的后台路径（组装根、monitor 定时任务） | 直读安装级常量 | `LOCAL_ORGANIZATION_ID` | —（该路径本身是桌面专有的） |
+
+已改造的宿主调用点（生产代码）：
+
+- **Data Transfer 计划注册表**（`commands/data_transfer/`）：预览签发、认领、查看、
+  检查点、以及脱离请求的 Job 写入（`job_api/runtime.rs` 的 `DrivePlan`），
+  一律取宿主解析的作用域。写入任务跑在 `apply_detached` spawn 出来的 future 里，
+  那里没有请求上下文，因此作用域**在受理请求时就解析好、随计划带进去**——
+  不是在后台任务里重新解析，更不是写死常量。
+- **MCP 工具与资源**（`mcp/tools.rs`、`mcp/resources.rs`）：MCP 没有自己的请求上下文，
+  宿主状态（`AppState`）是唯一的组织身份来源。
+- **Workflow 调度器**（`workflow/scheduler.rs`）：定时器不在请求周期内，但宿主状态在手，
+  因此同样走宿主入口。
+
+**桌面行为逐字不变**：桌面上 `AppState::organization_scope()` 解析出的组织**恒为**
+`LOCAL_ORGANIZATION_ID`（请求上下文里的 `organizationId` 也恒为它）。这一点由
+`platform/scope_gate.rs` 的等价性用例实测断言。
+
+#### 5.2.2 形态中立闸门（防回归）
+
+`src-tauri/src/platform/scope_gate.rs` 是宿主侧的**机械闸门**：它扫描宿主 `src/` 的
+**生产代码**，找出每一次直读安装级组织常量的调用点，要求每一处都带
+`scope-gate: <id>` 标记、且 `<id>` 落在该文件内的**显式白名单**里并写明
+「为什么这里是桌面专有路径」；白名单里的 id 也必须都被用上（不许养闲条目）。
+
+- 当前白名单只有两条：`desktop-composition-root`（`bootstrap/app_state.rs`——桌面形态的
+  **组装根**，是「本形态是哪个组织」的唯一答案所在）与 `desktop-background-timer`
+  （`monitor/engine.rs`——monitor 的定时任务不在请求周期内，且 `MonitorEngine` 在
+  `AppState` 之前构造，此刻没有宿主状态可问）。
+- 闸门随 `cargo test -p datazen --lib` 跑（因而进 CI），自带 **kill test**
+  （植入一处无标记的直读，断言判据转红）、**不误伤**用例（带标记的直读、测试区里的
+  直读）、**自证**（断言扫描器确实看得见白名单里的站点，否则「没发现违规」只意味着
+  它什么也没看见）与**等价性**用例（正规入口解析出的组织仍是 `LOCAL_ORGANIZATION_ID`）。
+- 闸门**不引入任何进程级全局状态**：全部是纯函数 + 一个 `const` 白名单。
 
 按组织限定的**存储端口**（共享 feature 层的 `DashboardStore` / `DashboardRunStore` /
 `WorkflowDefinitionStore`）每个方法都带 `scope: &OrganizationScope`：多租户宿主因此能在
 **同一个存储实现**上区分「本组织的数据」与「别的组织的数据」，不必退化成
 「每个组织一个存储实例」；越组织访问一律按「不存在」处理（空列表 / `None` / `NotFound`），
 **不返回**「无权限」类错误——后者会泄漏「存在但无权」（CM-05）。
+
+#### 5.2.3 第二类组织收窄：`is_local_scope`（桌面绑定，不是共享端口契约）
+
+宿主里有**两种**性质不同的组织收窄，**不要**把它们混为一谈：
+
+| | §5.2.1 的「直读常量」 | 本节的 `is_local_scope` |
+| --- | --- | --- |
+| 动作 | **从外部取**组织（回答「我是哪个组织」） | **对传入的 scope 做谓词判断**（回答「这是不是本组织」） |
+| 位置 | 宿主调用点（请求期 / 后台） | 宿主**存储实现**内部（`impl DashboardStore for AppDb` 等） |
+| 越权风险 | web 形态下**用错组织查**多租户存储 ⇒ 越组织读写 | 无（它不产生组织身份，只收窄可见性） |
+
+`is_local_scope`（`src-tauri/src/platform/scope.rs`）的语义是**桌面单租户收窄**：
+桌面只有自己那一个组织，因此**非本组织的作用域一律按「不存在」处理**（空列表 /
+`NotFound`），**不返回**「无权限」类错误（CM-05）。
+
+它出现在这些**宿主绑定**里：`src-tauri/src/dashboard/store.rs`、
+`src-tauri/src/dashboard/runs.rs`、`src-tauri/src/dashboard/create.rs`、
+`src-tauri/src/workflow/registry.rs`、`src-tauri/src/commands/workflow.rs`。
+
+**服务端的存储实现必须按传入的 `scope` 过滤，不得复制这条收窄。** 桌面实现之所以能
+「非本组织即不存在」，是因为桌面**真的只有一个组织**；多租户服务端若**照抄**这些绑定
+（例如 `impl DashboardStore for AppDb` → `impl DashboardStore for PostgresStore`），
+`!is_local_scope(scope)` 对**任何真实租户**都成立 ⇒ 所有非「本机那个组织」的作用域
+一律被判「不存在」⇒ **服务端上的每个真实租户都读不到自己的数据**。
+
+一句话：`is_local_scope` 是**桌面绑定的实现细节**，不是共享端口契约的一部分——
+共享端口契约只有「按传入的 `scope` 过滤，越组织按「不存在」处理」这一条。
 
 ## 6. Tauri adapter 组装根（目标设计，未随 P1 实现）
 

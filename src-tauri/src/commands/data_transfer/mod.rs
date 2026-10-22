@@ -6,6 +6,10 @@ mod exec;
 mod inspect;
 mod job_api;
 mod jobs;
+/// 桌面的计划注册表作用域：**测试夹具**，不是生产的作用域来源。
+///
+/// 生产代码从宿主取作用域（`AppState::organization_scope()`）——理由见该模块的文档。
+#[cfg(test)]
 mod plan_scope;
 mod preview;
 mod types;
@@ -213,7 +217,7 @@ async fn execute_data_transfer_inner(
         .map_or(0, |tables| tables.len() as u64);
     if let Ok(plan) = state
         .transfer_plans
-        .peek(plan_scope::desktop_organization_scope(), &request.plan_id)
+        .peek(&state.organization_scope()?, &request.plan_id)
     {
         run.source_connection_id = crate::services::migration_endpoint::runtime_session_context(
             &state,

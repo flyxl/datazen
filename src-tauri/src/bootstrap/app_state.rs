@@ -236,6 +236,11 @@ pub(crate) fn finish_app_state(
         desktop_job_host,
         // 组织作用域在**启动期**确定一次：桌面是单租户，组织的值是安装级常量，
         // 与「当前 OS 用户名能不能取到」无关。请求期直接取这份值（INV-01）。
+        //
+        // scope-gate: desktop-composition-root
+        // 这是**桌面形态自己的作用域来源**：宿主组装期在这里回答「本形态是哪个组织」。
+        // 请求期的调用方一律走 `AppState::organization_scope()`，不得再直读常量。
+        // 别的形态（多租户服务端）把这一行换成「按请求解析组织」即可，其余调用点不用动。
         organization_scope: crate::platform::local_organization_scope(),
         schema_diff_reviewed_plans,
         // Data Sync 的存储端口实例在组装期创建一次：宿主决定「实例从哪来」，
