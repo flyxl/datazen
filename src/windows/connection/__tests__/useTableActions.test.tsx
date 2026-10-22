@@ -75,6 +75,7 @@ const tableStore = vi.hoisted(() => {
     commitPendingChanges: recordAsync('commitPendingChanges'),
     rollbackPendingChanges: record('rollbackPendingChanges'),
     setDetailRow: record('setDetailRow'),
+    setDefaultOrderOverride: record('setDefaultOrderOverride'),
   };
 });
 
@@ -101,6 +102,7 @@ const ACTION_NAMES = [
   'cancelEdit',
   'clearFilters',
   'commitPendingChanges',
+  'countExact',
   'deleteRows',
   'load',
   'previewPendingChanges',
@@ -108,6 +110,7 @@ const ACTION_NAMES = [
   'removeFilter',
   'rollbackPendingChanges',
   'selectRow',
+  'setDefaultOrderOverride',
   'setDetailRow',
   'setFilterLogic',
   'setFilterPanelOpen',
@@ -131,9 +134,11 @@ const ACTION_NAMES = [
 const NOTICE_INVALIDATING = [
   'applyFilters',
   'clearFilters',
+  'countExact',
   'load',
   'reload',
   'rollbackPendingChanges',
+  'setDefaultOrderOverride',
   'setFilters',
   'setPage',
   'setPageSize',
@@ -331,6 +336,20 @@ const BINDING_CASES: readonly BindingCase[] = [
     method: 'setDetailRow',
     args: [7],
     trigger: (actions) => actions.setDetailRow(7),
+  },
+  {
+    // The exact count is a full re-read: the count has to run again, so the
+    // request must not reuse the cached one.
+    action: 'countExact',
+    method: 'reloadPanel',
+    args: [{ skipCount: false, countStrategy: 'exact' }],
+    trigger: (actions) => actions.countExact(),
+  },
+  {
+    action: 'setDefaultOrderOverride',
+    method: 'setDefaultOrderOverride',
+    args: ['none'],
+    trigger: (actions) => actions.setDefaultOrderOverride('none'),
   },
 ];
 

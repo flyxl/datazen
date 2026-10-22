@@ -25,6 +25,16 @@ describe('totalRowsView', () => {
     // has, and the number that happens to be in the panel is not one.
     expect(totalRowsView('unsupported', 0)).toEqual({ kind: 'unknown' });
   });
+
+  it('keeps the estimated shape apart from the exact one', () => {
+    // The same number in two states must not produce the same view: that is
+    // what lets the interface render "about 1,234" instead of "1,234".
+    const exact = totalRowsView('exact', 1234);
+    const estimated = totalRowsView('estimated', 1234);
+    expect(exact).not.toEqual(estimated);
+    expect(exact.kind).toBe('exact');
+    expect(estimated.kind).toBe('estimated');
+  });
 });
 
 describe('formatRowCount', () => {
@@ -40,6 +50,14 @@ describe('formatRowCount', () => {
     expect(formatRowCount(Number.NaN)).toBe('0');
     expect(formatRowCount(Number.POSITIVE_INFINITY)).toBe('0');
     expect(formatRowCount(-5)).toBe('0');
+    expect(formatRowCount(12.7)).toBe('12');
+  });
+
+  it('carries no tilde of its own', () => {
+    // The "about" sign belongs to the rendering, not to the number — that is
+    // what keeps an estimate from ever looking like a fact.
+    expect(formatRowCount(1234)).not.toContain('≈');
+    expect(formatRowCount(1_200_000)).not.toContain('≈');
   });
 });
 
@@ -49,6 +67,7 @@ describe('canPageForward', () => {
     expect(canPageForward(unknown, 50, 50)).toBe(true);
     expect(canPageForward(unknown, 49, 50)).toBe(false);
     expect(canPageForward(unknown, 0, 50)).toBe(false);
+    expect(canPageForward(unknown, 50, 0)).toBe(false);
   });
 
   it('never closes the grid on an estimate', () => {

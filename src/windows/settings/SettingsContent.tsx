@@ -33,6 +33,7 @@ import { SettingHint } from './SettingHint';
 import { Slider } from '../../components/ui/Slider';
 import { DataCleanupSection } from './DataCleanupSection';
 import { AppearanceSection } from './AppearanceSection';
+import { TableDataSettingsSection } from './TableDataSettingsSection';
 import { SqlSnippetsCard } from './SqlSnippetsCard';
 import {
   parseSettingsSection,
@@ -423,6 +424,8 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                   onChange={(v) => updateField('defaultPageSize', Number(v))}
                 />
               </SettingRow>
+
+              <TableDataSettingsSection />
 
               <SettingRow
                 label={t('settings.connectionPoolSize')}

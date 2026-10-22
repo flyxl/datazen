@@ -219,6 +219,71 @@ describe('tableDataStore (panel-scoped)', () => {
     );
   });
 
+  it('keeps the "do not count" mode across a re-read', async () => {
+    // The setting is a promise about every read, not only about the first
+    // one: a filter change must not quietly bring the count back.
+    const { useSettingsStore } = await import('../settingsStore');
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, rowCountMode: 'none' },
+    }));
+    try {
+      await loadTable();
+      mockDatabaseCommands.getTableData.mockClear();
+      useTableDataStore.getState().setPage(PANEL, 1);
+      await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+      expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+        expect.objectContaining({ countStrategy: 'unsupported' }),
+      );
+    } finally {
+      useSettingsStore.setState((state) => ({
+        settings: { ...state.settings, rowCountMode: 'auto' },
+      }));
+    }
+  });
+
+  it('leaves the strategy to the driver in the automatic mode', async () => {
+    // Without a size to weigh, the automatic mode has no opinion: the driver
+    // declares what it can do.
+    await loadTable();
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ countStrategy: undefined }),
+    );
+  });
+
+  it('asks for the same strategy on the first read and on a re-read', async () => {
+    // The automatic mode weighs the size the catalog knows, and **every** read
+    // has to weigh it: a table below the threshold asks for an exact count at
+    // first, and it has to keep asking. A re-read that sent nothing would let
+    // the driver decide — and for an estimating driver that turns the
+    // panel's number into an estimate on the first refresh.
+    const { useSchemaStore } = await import('../schemaStore');
+    const { createEmptyConnectionSchema } = await import('../schemaStoreState');
+    useSchemaStore.setState((state) => {
+      const schemas = new Map(state.schemas);
+      schemas.set(
+        'conn-1',
+        Object.assign(createEmptyConnectionSchema(), {
+          tables: [
+            { name: 'users', schema: null, tableType: 'table' as const, rowCount: 100 },
+          ],
+        }),
+      );
+      return { schemas };
+    });
+
+    await loadTable();
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ countStrategy: 'exact' }),
+    );
+
+    mockDatabaseCommands.getTableData.mockClear();
+    useTableDataStore.getState().reloadPanel(PANEL);
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ countStrategy: 'exact' }),
+    );
+  });
+
   it('asks for no order at all when the panel overrides the default order', async () => {
     await loadTable();
     mockDatabaseCommands.getTableData.mockClear();

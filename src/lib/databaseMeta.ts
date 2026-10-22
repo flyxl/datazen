@@ -3,7 +3,7 @@
  * Extracted to avoid circular deps between types/index.ts ↔ plugins/generated.ts.
  */
 
-import type { DatabaseObjectKind, FilterOperator, SslMode } from '../types';
+import type { CountStrategy, DatabaseObjectKind, FilterOperator, SslMode } from '../types';
 import type { StructureEditorUiConfig } from './structureEditor/types';
 import type { FunctionEntry } from './sqlFunctionTypes';
 import type {
@@ -75,6 +75,19 @@ export interface DataGridCapabilities {
    * level `COLLATE`.
    */
   likeCaseInsensitive?: boolean;
+  /**
+   * The row-count strategy this database serves (00-contracts §7).
+   *
+   * Unset means `'exact'`, which is the branch every read took before the
+   * three states existed: a driver that says nothing still counts exactly.
+   *
+   * The declaration is a **hint, not the authority**: the back end still
+   * refuses to count against the driver's own `count_strategy()`, and the
+   * response carries the strategy that was actually used
+   * (`TableDataResult.totalRowsKind`). The grid renders that answer, never
+   * this one.
+   */
+  countStrategy?: CountStrategy;
 }
 
 export interface DatabaseTypeMeta {

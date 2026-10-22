@@ -57,6 +57,9 @@ const mockSettings: AppSettings = {
       template: 'SELECT custom FROM tbl;${1}',
     },
   ],
+  rowCountMode: 'auto',
+  rowCountEstimateThreshold: 200000,
+  defaultTableSort: 'primaryKeyAsc',
 };
 
 describe('SqlSnippetsCard', () => {

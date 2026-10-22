@@ -4,6 +4,11 @@ import { settingsCommands } from '../commands/settings';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { resolveUiLanguage } from '../lib/resolveUiLanguage';
 import type { AppSettings } from '../types';
+import {
+  DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD,
+  DEFAULT_ROW_COUNT_MODE,
+  DEFAULT_TABLE_SORT,
+} from '../types/settings';
 import { DEFAULT_SQL_FORMAT_OPTIONS } from '../lib/sqlFormat';
 import { DEFAULT_THEME_PREFERENCE, normalizeThemePreference, type ThemeMode } from '../types/theme';
 import { DEFAULT_MONITOR_SETTINGS } from '../types/dashboard';
@@ -48,6 +53,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   sqlExecutionStrategy: 'current_statement',
   sqlSnippets: [],
   workflowStepResultOrder: 'desc',
+  // The three settings a table read consults. Their defaults are the
+  // behaviour of every read before they existed: nobody forces a count
+  // strategy, the driver decides; nobody forces an order, the driver decides.
+  rowCountMode: DEFAULT_ROW_COUNT_MODE,
+  rowCountEstimateThreshold: DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD,
+  defaultTableSort: DEFAULT_TABLE_SORT,
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';

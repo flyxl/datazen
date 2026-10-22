@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Columns3, ShieldAlert } from 'lucide-react';
+import { Columns3, Info, ShieldAlert } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import { DATA_TABLE_ROW_HEIGHT } from '../../components/DataTable/rowHeight';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -36,6 +36,8 @@ import {
   supportedOperatorsForMeta,
 } from '../../lib/filterOperators';
 import type { ColumnSchema, DatabaseType } from '../../types';
+import { resolveDefaultTableSort } from '../../lib/defaultSort';
+import { DEFAULT_ROW_COUNT_MODE, DEFAULT_TABLE_SORT } from '../../types/settings';
 import { Spinner } from '../../components/ui/Spinner';
 
 /** Stable empty fallbacks: a fresh array per render would defeat the memos below. */
@@ -156,6 +158,12 @@ export function TableView({
   const dirtyIndex = useDirtyIndex(ts);
 
   const confirmOnDelete = useSettingsStore((s) => s.settings.confirmOnDelete);
+  /** The global default order; the panel's own override beats it. */
+  const defaultTableSortSetting = useSettingsStore(
+    (s) => s.settings.defaultTableSort ?? DEFAULT_TABLE_SORT,
+  );
+  /** How the user wants the row count obtained. */
+  const rowCountMode = useSettingsStore((s) => s.settings.rowCountMode ?? DEFAULT_ROW_COUNT_MODE);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -260,6 +268,44 @@ export function TableView({
   const draftFilterLogic = ts?.draftFilterLogic ?? 'and';
   const filterPanelOpen = ts?.filterPanelOpen ?? false;
   const visibleColumns = ts?.visibleColumns ?? null;
+  /**
+   * How much the row count may be trusted. The grid renders this state and
+   * nothing else: an estimate is shown as "about N", and a database that
+   * cannot count says so instead of showing zero rows.
+   */
+  const totalRowsKind = ts?.totalRowsKind ?? 'exact';
+  /**
+   * The user asked for an estimate and this database cannot give one.
+   *
+   * The host falls back to counting when the driver has no estimate, and says
+   * so in the answer. The front end knows that on its own, so the grid says
+   * it directly — there is no error to classify here, and nothing failed.
+   */
+  const estimateUnavailable =
+    rowCountMode === 'estimated' &&
+    (ts?.columns.length ?? 0) > 0 &&
+    totalRowsKind !== 'estimated';
+  /** The panel's temporary override of the global default order. */
+  const defaultOrderOverride = ts?.defaultOrderOverride ?? 'inherit';
+  /** The order this read actually uses. */
+  const effectiveOrder = resolveDefaultTableSort(
+    defaultOrderOverride,
+    defaultTableSortSetting,
+  );
+  /**
+   * Without an order the rows of two pages may repeat or be skipped. The grid
+   * has to say so — an explicit sort the user made is stable again.
+   */
+  const unstablePaging = effectiveOrder === 'none' && sorts.length === 0;
+  /**
+   * A table without a primary key cannot be ordered by one. The grid still
+   * opens it — that has always worked — but the implicit order (the first
+   * column) is worth saying out loud.
+   */
+  const noPrimaryKey =
+    columns.length > 0 &&
+    columns.every((column) => !column.isPrimaryKey) &&
+    effectiveOrder !== 'none';
 
   const displayedColumns = useMemo(() => {
     if (visibleColumns === null) return columns;
@@ -300,6 +346,21 @@ export function TableView({
   const detailRowIndex = ts?.detailRowIndex ?? null;
   const selectedRows = ts?.selectedRows ?? new Set<number>();
   const loading = ts?.loading ?? false;
+  /**
+   * An exact count is being fetched.
+   *
+   * The estimate is not wrong, it is just not the truth yet; the button that
+   * asks for the truth says so while it waits, so the user knows the number
+   * on screen is about to change.
+   */
+  const [counting, setCounting] = useState(false);
+  useEffect(() => {
+    if (!loading) setCounting(false);
+  }, [loading]);
+  const handleCountExact = useCallback(() => {
+    setCounting(true);
+    actions.countExact();
+  }, [actions]);
   const error = ts?.error ?? null;
   const previewPlan = ts?.previewPlan ?? null;
   const pendingStatus = ts?.pendingStatus ?? 'idle';
@@ -544,6 +605,18 @@ export function TableView({
           {t('tableData.readOnlyEditDisabled')}
         </div>
       )}
+      {noPrimaryKey && (
+        <div
+          className="flex shrink-0 items-center gap-1.5 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-muted"
+          role="status"
+          data-testid="table-no-primary-key-tip"
+        >
+          <Info className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0 truncate" title={t('defaultSort.noPrimaryKey')}>
+            {t('defaultSort.noPrimaryKey')}
+          </span>
+        </div>
+      )}
       <TableTransactionControls
         panelId={panelId}
         context={context}
@@ -566,6 +639,13 @@ export function TableView({
         columns={columnDefs}
         rows={rowArrays}
         totalRows={totalRows}
+        totalRowsKind={totalRowsKind}
+        onCountExact={handleCountExact}
+        counting={counting}
+        unstablePaging={unstablePaging}
+        estimateUnavailable={estimateUnavailable}
+        defaultOrderOverride={defaultOrderOverride}
+        onDefaultOrderOverrideChange={actions.setDefaultOrderOverride}
         page={page}
         pageSize={pageSize}
         sorts={sorts}

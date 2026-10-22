@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useTableDataStore } from '../../stores/tableDataStore';
+import { resolvePanelCountStrategy } from '../../stores/tableData/countStrategy';
 import type { GridSelection } from '../../stores/tableData/gridSelection';
 import type {
   CommitPendingChangesResult,
@@ -7,6 +8,7 @@ import type {
   TableChangeContext,
 } from '../../lib/tableChanges';
 import type { FilterCondition, SortCondition } from '../../types';
+import type { DefaultOrderOverride } from '../../lib/defaultSort';
 
 /**
  * Panel-scoped action binders: every store call is namespaced by this tab's id.
@@ -23,6 +25,10 @@ import type { FilterCondition, SortCondition } from '../../types';
 export interface TableActions {
   load: () => void;
   reload: () => void;
+  /** Ask for the exact row count — the answer to an estimated one. */
+  countExact: () => void;
+  /** Change the panel's temporary override of the default order. */
+  setDefaultOrderOverride: (override: DefaultOrderOverride) => void;
   setSort: (sort: SortCondition) => void;
   removeFilter: (index: number) => void;
   clearFilters: () => void;
@@ -83,11 +89,26 @@ export function useTableActions({
         // The "retry" of a failed load re-reads the page, so the notice of the
         // previous commit is stale — exactly like a plain reload.
         invalidateNotice();
-        void store().loadTableData({ panelId, ...context });
+        void store().loadTableData({
+          panelId,
+          ...context,
+          countStrategy: resolvePanelCountStrategy(context),
+        });
       },
       reload: () => {
         invalidateNotice();
         store().reloadPanel(panelId);
+      },
+      countExact: () => {
+        // The exact count is a **full** re-read, not a paged one: the estimate
+        // is replaced by the real number, which means the count has to run
+        // again.
+        invalidateNotice();
+        store().reloadPanel(panelId, { skipCount: false, countStrategy: 'exact' });
+      },
+      setDefaultOrderOverride: (override) => {
+        invalidateNotice();
+        store().setDefaultOrderOverride(panelId, override);
       },
       setSort: (sort: SortCondition) => {
         invalidateNotice();

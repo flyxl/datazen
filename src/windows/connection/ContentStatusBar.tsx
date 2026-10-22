@@ -1,7 +1,8 @@
 import { useI18n } from '../../hooks/useI18n';
 import { usePlatform } from '../../hooks/usePlatform';
 import { getDbLabel } from '../../lib/databaseTypes';
-import type { DatabaseType } from '../../types';
+import { formatRowCount } from '../../lib/totalRowsDisplay';
+import type { CountStrategy, DatabaseType } from '../../types';
 import type { KvStatusBarBinding } from './useKvWorkspaceSlots';
 
 export interface ContentStatusBarProps {
@@ -11,6 +12,14 @@ export interface ContentStatusBarProps {
   tableName: string;
   columnCount: number;
   totalRows: number;
+  /**
+   * How much `totalRows` may be trusted.
+   *
+   * An estimate is shown as "about N rows", and a database that cannot count
+   * says so — the alternative, a silent "0 rows", is a statement the back end
+   * never made.
+   */
+  totalRowsKind?: CountStrategy | null;
   /**
    * Driver-contributed KV status bar. When present it takes the centre cluster —
    * which is always empty on a KV panel — and the rest of the footer is untouched,
@@ -26,6 +35,7 @@ export function ContentStatusBar({
   tableName,
   columnCount,
   totalRows,
+  totalRowsKind,
   statusBarSlot,
 }: ContentStatusBarProps) {
   const { t } = useI18n();
@@ -34,6 +44,23 @@ export function ContentStatusBar({
   const mod = isMac ? '⌘' : 'Ctrl';
   const keySep = isMac ? '' : '+';
   const Slot = statusBarSlot?.Component;
+
+  /**
+   * The row count in the footer's own words.
+   *
+   * The estimate keeps its "about" sign here too: a number that is an
+   * approximation must not lose its approximation on the way to the footer.
+   * The unknown state says that the count is unavailable instead of showing a
+   * zero nobody counted.
+   */
+  const rowCountText =
+    totalRowsKind === 'unsupported'
+      ? t('pagination.rowsUnknown')
+      : totalRowsKind === 'estimated'
+        ? `${t('pagination.rowCountEstimated', { count: formatRowCount(totalRows) })} ${t('connWin.rowCount')}`
+        : totalRows > 0
+          ? `${formatRowCount(totalRows)} ${t('connWin.rowCount')}`
+          : null;
 
   return (
     <footer
@@ -60,7 +87,7 @@ export function ContentStatusBar({
             currentDatabase,
             tableName,
             columnCount > 0 && `${columnCount} ${t('connWin.fields')}`,
-            totalRows > 0 && `${totalRows} ${t('connWin.rowCount')}`,
+            rowCountText,
           ]
             .filter(Boolean)
             .join(' · ')}
