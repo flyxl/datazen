@@ -7,8 +7,9 @@
 
 | 轨 | 分支 | worktree | 状态 |
 | --- | --- | --- | --- |
-| A `count-frontend` | `feature/count-frontend` | `.worktrees/datazen-count-fe` | 复测 **TEST_PASSED 但查出 2 个真缺陷**（V-1 估算态页码死循环 / V-2 `auto` 口径只对首读生效），**第 2 轮修复中**（Coder `86ac7c3a`） |
-| B `named-views` | `feature/named-views` | `.worktrees/datazen-named-views` | **实现中**（Coder `29f87132`，08 §3.7/§3.8/§4.6 + Step 12–15） |
+| A `count-frontend` | `feature/count-frontend` | `.worktrees/datazen-count-fe` | ✅ **已落地**（合并提交 `b7b530e86`）：复测 TEST_PASSED、零缺陷；Coder 收尾轮 `bcc8b9bee`（陈旧注释 / mock 码 / 收编复测代理的第二轮锁） |
+| B `named-views` | `feature/named-views` | `.worktrees/datazen-named-views` | Coder 已交付 5 提交；**复测中**（Tester `eb6a116d`，HEAD `c9d881ec4` = Coder 的 5 提交 + 合并集成分支） |
+| C `i18n-sync-existing`（**非 PRD 轨，但属发布门禁**） | `chore/i18n-sync-existing` | `.worktrees/dz-i18n-sync` | **翻译中**（Agent `76f074fd`）：补齐 **192 key × 8 语种 = 1536** 的既有缺口，让 `i18n-sync-check.mjs` 变绿 |
 
 集成分支 `feature/data-browsing-prd` HEAD = `00e373c4b`。
 
@@ -78,6 +79,23 @@ Coder 交付 5 提交（`66fc97aae`/`fa0dcfd59`/`c4a8c98b4`/`c6b59dda0`/`89ec12d
 | 10 | Step 16 E2E（`e2e/specs/table-saved-views.ts`）未做 | **接受，留 R 阶段** | E2E 需要完整 app 构建与真实库 |
 | 11 | `TableToolbar` 黄金文件未变且仍绿；`error-banner-call-site-parity` 的快筛调用点改指 `TableFilterToolbar.tsx` | **接受，但须独立复验守卫仍有牙齿** | 协调者已复验过同类改动（`probe-exclusion`）：断言从「文件里的原始数组」换成「编译器解析后的有效值」时，**必须**证明去掉一个模式仍会红 |
 | 12 | 三条命令已进 `generate_handler!` 且有 `include_str!` 注册自检；`grid.view.*` 有真实生产者、**未**进 `PRODUCER_PENDING` | **接受** | 协调者已抽查：Rust 侧两个码的真实 throw 点在 `packages/feature-core/src/services/named_views/error.rs`（前缀在第 0 位）、三条命令都在 `bootstrap/run.rs`、桌面 `DESKTOP_UNSUPPORTED_METHODS` 已清空 |
+
+## 流程事故：磁盘被 cargo target 撑爆（已修，纪律已加）
+
+**症状**：`/System/Volumes/Data` 只剩 **166 MiB**（460 GiB 的卷 100% 满）。表现为：某个代理的 `npx vitest run` 整棵树崩掉（每个文件 `0 test`、尾部 Node 崩溃栈、无异常信息），`git worktree add` 报 `No space left on device`，`resolve-drivers` 中途失败。
+
+**根因**：历次并行轨各自的 `CARGO_TARGET_DIR`（`/tmp/datazen-target-*`）**共 18 个目录、约 193 GB**，加上仓库自己的 `target/` 45 GB。cargo target **不会**因为轨结束而消失——它们只是躺在 `/tmp` 里。
+
+**已修**：删掉 14 个**陈旧**的 target 目录（保留当时在用的两个），可用空间从 166 MiB 回到 **201 GiB**；主检出的生成物重新生成。
+
+**纪律（新）**：
+1. **每条轨的 `CARGO_TARGET_DIR` 在轨验收后必须删掉**（`rm -rf /tmp/datazen-target-<track>`），由协调者在合流收尾时统一做。
+2. 代理跑完 Rust 套件后**自己删自己那个** target 目录，不要留给下一个轨。
+3. 「整棵树 `(0 test)` + 无异常信息的崩溃」**先查磁盘**，不要当成代码问题去改代码——本次就有一名代理差点把环境事故当成自己的缺陷。
+
+**顺带修掉的两处环境漂移**：
+- `node_modules/typescript` 的根软链指向陈旧的 **5.9.3**（package.json 声明 7.0.2）⇒ `pnpm typecheck:tsc` 跑的不是权威编译器。已改指 7.0.2，`tsc 7.0.2` 与 `tsrs` 两个引擎在集成分支上实测全 EXIT=0。**「本地门禁=发布门禁」这句话此前在这台机器上是不成立的。**
+- 合并 `origin/main` 造成三个 tsconfig 各有**两段顶层 `$comment`**（ts7 PR 的 + 我们分支的探针 exclude 说明）⇒ JSON 只允许一个 ⇒ 后者覆盖前者，且每次 TS 调用打一条 `Duplicate key` 警告。**修法不是「换成 ts7 PR 的版本」**——origin/main 删掉了探针机制，但我们分支的 `scripts/__tests__/probe-exclusion.test.ts` 还在（它在 origin/main 里不存在），连同三处 `exclude` 必须留着；换掉会把探针放回 program。改成把两段合成一段（24 / 23 / 19 条），exclude 与 types 逐字保留。实测：两个引擎三个 program EXIT=0、Duplicate key 警告 0 条、探针守卫 4 条仍绿。
 
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
