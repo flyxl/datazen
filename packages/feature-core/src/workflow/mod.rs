@@ -15,6 +15,7 @@ pub mod resource_execution;
 pub mod scheduler;
 pub use command::WorkflowCommandStep;
 pub mod migration;
+pub mod migration_outcome;
 pub mod plan_guard;
 mod results;
 pub mod target_plan;

@@ -13,13 +13,15 @@ packages/feature-core/src/workflow/
 ├── mod.rs               # 共享模块出口
 ├── model.rs             # WorkflowDefinition / WorkflowStep 等数据模型
 ├── executor.rs          # WorkflowExecutor：步骤编排、错误策略、超时
+├── executor_tests.rs    # executor.rs 的纯规则用例（database_is_required 等）
 ├── context.rs           # 模板解析、路径解析、循环上下文
 ├── conditions.rs        # Condition 表达式求值
 ├── data_step.rs         # Merge / Transform 等数据处理步骤
 ├── command.rs           # Workflow Command Step 数据结构
-├── command_runtime.rs   # 共享 Command 执行规则
+├── command_runtime.rs   # 共享 Command 执行规则：显式目标校验、connection 解析、命令派发
 ├── resource_execution.rs# 独立 Runtime 资源执行与授权目标
 ├── migration.rs         # 迁移 step 的共享策略
+├── migration_outcome.rs # 迁移 step 的结果口径（transfer / sync / schema diff）
 ├── plan_guard.rs        # 计划与目标守卫
 ├── scheduler.rs         # 到期判定与 in-flight 生命周期
 ├── registry.rs          # 保存的 workflow 规则；宿主以 Arc<dyn WorkflowDefinitionStore> 注入存储
@@ -28,16 +30,18 @@ packages/feature-core/src/workflow/
 src-tauri/src/workflow/
 ├── mod.rs               # 模块出口
 ├── registry.rs          # YAML workflow 注册、加载、保存、删除（AppDb 绑定）
-├── command_runtime.rs   # 桌面 connection 解析与 Driver command 执行
-├── independent_sql.rs   # 桌面身份/目标绑定 → feature-core resource_execution
+├── command_runtime.rs   # 桌面 AppState 绑定的 Command 桥（规则在 feature-core）
 ├── scheduler.rs         # 桌面 scheduler 适配
 ├── history.rs           # 执行历史持久化
 ├── migration.rs         # 桌面迁移 step 适配（profile 仓储/历史/专用会话）
-├── host.rs              # 宿主 Runtime/Store 绑定
+├── host.rs              # 共享端口的桌面实现（WorkflowHost / ResourceExecutionHost）
+├── doc_reference_tests.rs # 长期文档的行号引用新鲜度守卫
 └── live_acceptance.rs   # 真实 PostgreSQL/MySQL 跨库验收（ignored）
 ```
 
 宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen_feature_core::workflow::…`。
+
+宿主侧的 Command 桥只做「同一条链的桌面绑定」：显式 `database`/`schema` 校验、connection 继承解析、命令派发这三条规则都在 `packages/feature-core/src/workflow/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。
 
 ## 执行模型
 
@@ -85,7 +89,7 @@ Step 没有指定 `connection` 时继承 Workflow 默认 connection；Step 显�
 
 ### 连接与会话
 
-Workflow IPC 和 YAML 使用持久化 `connectionId`，不会保存或接收 GUI 的 `dbSessionId`。Workflow v1 的每条 step 经 `command_runtime → independent_sql → feature-core resource_execution` 进入共享 Runtime；Runtime 按该 step 的 connection profile 建立或借用自己的 session/resource，并在该次执行完成后按 Runtime 生命周期清理。它不复用编辑器会话，也不通过 Host `ConnectionManager` 管理连接。
+Workflow IPC 和 YAML 使用持久化 `connectionId`，不会保存或接收 GUI 的 `dbSessionId`。Workflow v1 的每条 step 经 `feature-core command_runtime → feature-core resource_execution` 进入共享 Runtime；Runtime 按该 step 的 connection profile 建立或借用自己的 session/resource，并在该次执行完成后按 Runtime 生命周期清理。它不复用编辑器会话，也不通过 Host `ConnectionManager` 管理连接。
 
 当前实现保留以下 v1 行为：
 
@@ -241,7 +245,7 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 
 ### P6 Workflow v1 范围
 
-Workflow 保持既有 v1 协议、模型、跨数据库逐步执行及前步 output 供后步模板串联的语义；仅将底层连接管理走 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。本轮不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof。YAML、version model 与既有 IPC 形状不变。scheduler 保留桌面 runtime-entry 修复，Monitor 固定只读授权/独立 occurrence 和其他消费者的 Runtime 接线继续保留。
+Workflow 保持既有 v1 协议、模型、跨数据库逐步执行及前步 output 供后步模板串联的语义；仅将底层连接管理走 `feature-core command_runtime → feature-core resource_execution → Runtime`。本轮不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof。YAML、version model 与既有 IPC 形状不变。scheduler 保留桌面 runtime-entry 修复，Monitor 固定只读授权/独立 occurrence 和其他消费者的 Runtime 接线继续保留。
 
 #### Workflow v1 真实驱动验收
 

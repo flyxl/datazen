@@ -772,3 +772,7 @@ async fn effective_connection_name(
     let id = command_runtime::resolve_connection_id(step, workflow_connection)?;
     app_state.connection_name(id).await
 }
+
+#[cfg(test)]
+#[path = "executor_tests.rs"]
+mod tests;

@@ -1,12 +1,15 @@
 //! Runtime bridge between Workflow Command Steps and Driver Commands.
+//!
+//! The rules — which connection a step runs against, what its input must
+//! look like, and how the command is dispatched — live in
+//! `datazen_feature_core::workflow::command_runtime`. What stays here is the
+//! desktop binding: the same chain, typed against [`AppState`].
 
 use crate::commands::AppState;
 use datazen_driver_api::CommandResult;
 use datazen_feature_core::mcp::permission::McpPermissionMode;
 use datazen_feature_core::workflow::command::WorkflowCommandStep;
 use datazen_feature_core::workflow::error::WorkflowError;
-
-use datazen_feature_core::workflow::command_runtime::resolve_connection_id;
 
 pub async fn execute_command(
     app_state: &AppState,
@@ -32,23 +35,10 @@ pub(super) async fn execute_command_with_deadline(
     permission_mode: Option<McpPermissionMode>,
     workflow_deadline: Option<tokio::time::Instant>,
 ) -> Result<CommandResult, WorkflowError> {
-    // Validate explicit namespace input before resolving or opening a resource.
-    // Null/absent fields inherit the workflow policy; malformed explicit fields
-    // must not silently execute against the connection's configured namespace.
-    for field in ["database", "schema"] {
-        if let Some(value) = step.input.get(field) {
-            if !value.is_null() && !value.as_str().is_some_and(|name| !name.trim().is_empty()) {
-                return Err(WorkflowError::Validation(format!(
-                    "explicit {field} must be a non-empty string"
-                )));
-            }
-        }
-    }
-    let connection_id = resolve_connection_id(step, workflow_connection)?;
-    super::independent_sql::execute(
+    datazen_feature_core::workflow::command_runtime::execute_command(
         app_state,
         step,
-        connection_id,
+        workflow_connection,
         permission_mode,
         workflow_deadline,
     )
@@ -58,47 +48,6 @@ pub(super) async fn execute_command_with_deadline(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn explicit_step_connection_wins() {
-        let step = WorkflowCommandStep::new(
-            "aggregate",
-            "aggregate",
-            Some("mongo-prod".into()),
-            serde_json::json!({}),
-        );
-        assert_eq!(
-            resolve_connection_id(&step, Some("mysql-prod")).unwrap(),
-            "mongo-prod"
-        );
-    }
-
-    #[test]
-    fn workflow_connection_is_used_when_step_has_none() {
-        let step = WorkflowCommandStep::new(
-            "query",
-            "query",
-            None,
-            serde_json::json!({"sql": "SELECT 1"}),
-        );
-        assert_eq!(
-            resolve_connection_id(&step, Some("mysql-prod")).unwrap(),
-            "mysql-prod"
-        );
-    }
-
-    #[test]
-    fn missing_connection_is_a_clear_workflow_error() {
-        let step = WorkflowCommandStep::new(
-            "query",
-            "query",
-            None,
-            serde_json::json!({"sql": "SELECT 1"}),
-        );
-        let error = resolve_connection_id(&step, None).unwrap_err();
-        assert!(matches!(error, WorkflowError::MissingConnection { .. }));
-        assert!(error.to_string().contains("query"));
-    }
 
     #[tokio::test]
     async fn inherited_connection_executes_query_command() {
@@ -191,50 +140,5 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.to_string().contains("read-only"));
-    }
-}
-
-#[cfg(test)]
-mod inherit_tests {
-    use datazen_feature_core::workflow::command_runtime::inject_inherited_database;
-    use serde_json::json;
-
-    #[test]
-    fn injects_workflow_database_when_step_omits_it() {
-        let out = inject_inherited_database(json!({ "limit": 10 }), "datazen_demo");
-        assert_eq!(out["database"], json!("datazen_demo"));
-        assert_eq!(out["limit"], json!(10));
-    }
-
-    #[test]
-    fn explicit_step_database_wins() {
-        let out = inject_inherited_database(json!({ "database": "other_db" }), "datazen_demo");
-        assert_eq!(out["database"], json!("other_db"));
-    }
-
-    #[test]
-    fn blank_step_database_is_treated_as_unset() {
-        let out = inject_inherited_database(json!({ "database": "   " }), "datazen_demo");
-        assert_eq!(out["database"], json!("datazen_demo"));
-    }
-
-    #[test]
-    fn blank_workflow_database_is_a_noop() {
-        let out = inject_inherited_database(json!({ "limit": 1 }), "   ");
-        assert!(out.get("database").is_none());
-    }
-
-    #[test]
-    fn workflow_database_is_trimmed() {
-        let out = inject_inherited_database(json!({}), "  datazen_demo  ");
-        assert_eq!(out["database"], json!("datazen_demo"));
-    }
-
-    #[test]
-    fn non_object_input_is_left_alone() {
-        // `inject_sql_target_fields` bails on non-objects; make sure we do not
-        // panic or corrupt the payload.
-        let out = inject_inherited_database(json!("just a string"), "datazen_demo");
-        assert_eq!(out, json!("just a string"));
     }
 }
