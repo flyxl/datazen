@@ -85,6 +85,8 @@ const pack = {
   'newConn.databaseIndex': '資料庫索引',
   'newConn.username': '使用者名稱',
   'newConn.password': '密碼',
+  'newConn.clearStoredCredentials': '清除留白的已儲存憑證',
+  'newConn.clearStoredCredentialsHint': '未勾選此選項時，留白的欄位會保留已儲存的值。',
   'newConn.group': '分組',
   'newConn.noGroup': '無分組',
   'newConn.colorTag': '顏色標籤',
