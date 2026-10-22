@@ -8,7 +8,7 @@
 | 轨 | 分支 | worktree | 状态 |
 | --- | --- | --- | --- |
 | A `count-frontend` | `feature/count-frontend` | `.worktrees/datazen-count-fe` | ✅ **已落地**（合并提交 `b7b530e86`）：复测 TEST_PASSED、零缺陷；Coder 收尾轮 `bcc8b9bee`（陈旧注释 / mock 码 / 收编复测代理的第二轮锁） |
-| B `named-views` | `feature/named-views` | `.worktrees/datazen-named-views` | Coder 已交付 5 提交；**复测中**（Tester `eb6a116d`，HEAD `c9d881ec4` = Coder 的 5 提交 + 合并集成分支） |
+| B `named-views` | `feature/named-views` | `.worktrees/datazen-named-views` | 复测 **TEST_PASSED**（Tester `eb6a116d` 独立复核 11 个验收点 + 7 处变异自证），但查出 **D1**（用户自由文本进宿主消息）⇒ **修复轮中**（Coder `29f87132`），修完由原 Tester 复验 |
 | C `i18n-sync-existing`（**非 PRD 轨，但属发布门禁**） | `chore/i18n-sync-existing` | `.worktrees/dz-i18n-sync` | **翻译中**（Agent `76f074fd`）：补齐 **192 key × 8 语种 = 1536** 的既有缺口，让 `i18n-sync-check.mjs` 变绿 |
 
 集成分支 `feature/data-browsing-prd` HEAD = `00e373c4b`。
@@ -96,6 +96,25 @@ Coder 交付 5 提交（`66fc97aae`/`fa0dcfd59`/`c4a8c98b4`/`c6b59dda0`/`89ec12d
 **顺带修掉的两处环境漂移**：
 - `node_modules/typescript` 的根软链指向陈旧的 **5.9.3**（package.json 声明 7.0.2）⇒ `pnpm typecheck:tsc` 跑的不是权威编译器。已改指 7.0.2，`tsc 7.0.2` 与 `tsrs` 两个引擎在集成分支上实测全 EXIT=0。**「本地门禁=发布门禁」这句话此前在这台机器上是不成立的。**
 - 合并 `origin/main` 造成三个 tsconfig 各有**两段顶层 `$comment`**（ts7 PR 的 + 我们分支的探针 exclude 说明）⇒ JSON 只允许一个 ⇒ 后者覆盖前者，且每次 TS 调用打一条 `Duplicate key` 警告。**修法不是「换成 ts7 PR 的版本」**——origin/main 删掉了探针机制，但我们分支的 `scripts/__tests__/probe-exclusion.test.ts` 还在（它在 origin/main 里不存在），连同三处 `exclude` 必须留着；换掉会把探针放回 program。改成把两段合成一段（24 / 23 / 19 条），exclude 与 types 逐字保留。实测：两个引擎三个 program EXIT=0、Duplicate key 警告 0 条、探针守卫 4 条仍绿。
+
+## D1 的裁定：宿主规则消息只写宿主自己的话
+
+**缺陷**（Tester 查出，低危不阻断）：命名视图的**名字是用户手打的自由文本**，被原样嵌进 IPC 错误消息（`grid.view.nameExists: a saved view named '{name}' already exists for this table`）。宿主脱敏器 `redact_secrets_for_log` 只覆盖它文档化的几种形态（JSON 式 `"password": "…"`、查询串 `?password=…` / `&password=…`、bearer 令牌、URL userinfo），**不覆盖自由文本里的裸 `key=value`** ⇒ 名为 `password=hunter2` 的视图，其字面量未经脱敏进入本机 IPC 载荷与本机日志。
+
+**为什么这是真缺陷而不只是洁癖**：宿主消息里第一次出现了**完全用户手打的自由文本**。此前的宿主消息嵌的是**受限词汇表**里的东西（表名/列名来自库 schema，算子名来自固定枚举，如 `grid.filter.incomplete: column "id" needs a value`）——那些不是自由文本。视图名是。
+
+**裁定（不是三选一，是一条规则）**：**宿主规则消息只写宿主自己的话——用户输入可以被描述，绝不被引用。**
+
+- **不**给脱敏器加「自由文本 key=value」规则：误报率不可控，且规则会越滚越多（下一个自由文本字段又要加一条）。
+- **不**把「用户自撰文本不保证脱敏」写成契约边界：那是把漏洞登记成特性。
+- 而是**让消息里根本没有用户文本**。这条规则一次成型，且可审计：*宿主消息只含宿主撰写的文本*。
+
+**落地范围（协调者核实过不止一处）**：
+1. `NamedViewError::NameExists` 的消息去掉视图名（名字仍作为**结构化数据**留在变体里，加 `name()` 访问器——调用方要用还能拿到，只是不进消息）；
+2. `dto.rs` 里 `filter_logic` 校验消息**回显了用户给的值**（`got "{}"`）——**同一类漏洞，容易漏**，一并去掉；
+3. 补两条永久回归锁：视图名含 `password=hunter2` ⇒ 消息里既没有名字也没有 `password=`；`filter_logic` 含凭据形态 ⇒ 消息里没有该值。
+
+**代价（诚实记录）**：宿主日志从此看不到「是哪个视图名冲突了」。前端**本来就看不到**（`describe()` 换成本地化词条 `filter.view.errorNameExists`），所以这个信息对用户没有价值；真要排查，store 层的测试与结构化载荷仍在。
 
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
