@@ -6,7 +6,9 @@ use datazen_application::{
     sessions::ConnectionUseCases,
 };
 use datazen_driver_api::{ColumnInfo, LegacySqlDialect, SqlDialect, TableSchema, Value};
-use datazen_feature_core::services::result_edit::{read_only_error_code, GridReadOnlyReason};
+use datazen_feature_core::services::result_edit::{
+    read_only_error_code, GridReadOnlyReason, WriteTarget,
+};
 use datazen_platform_api::{
     context::RequestContext,
     dto::{
@@ -80,7 +82,9 @@ async fn execute(
         .get_session(context, binding.handle.clone())
         .await
         .map_err(into_command_error)?;
-    if &session.observed_context != expected_context {
+    // The same target check the command makes, from the same one representation:
+    // a write must not be aimed at a session that now points somewhere else.
+    if WriteTarget::of(&session.observed_context) != WriteTarget::of(expected_context) {
         return Err(CommandError::Validation(
             "Result session context changed; execute the query again before editing".into(),
         ));
@@ -204,8 +208,16 @@ pub(crate) async fn commit_query_result_cell_impl(
         .relation
         .as_ref()
         .ok_or_else(|| CommandError::Validation("Result relation unavailable".into()))?;
-    // Never silently redirect a retained result after USE/search_path/identity changes.
-    if session.connection_id != relation.connection_id || session.observed_context != source.context
+    // Never silently redirect a retained result to another target. What decides
+    // that is **where the write goes and as whom** — the namespace and the
+    // effective identity — never the session's *mode*: a statement may open a
+    // transaction, change autocommit or move the search path while it runs, and
+    // the observed context is captured *after* the statement, so comparing raw
+    // contexts would make a verified result permanently unwritable for those
+    // drivers. Both sides go through `WriteTarget`, one representation, one
+    // place that decides "the same target" (`result_edit::WriteTarget`).
+    if session.connection_id != relation.connection_id
+        || WriteTarget::of(&session.observed_context) != WriteTarget::of(&source.context)
     {
         return Err(CommandError::Validation(
             "Result session context changed; execute the query again before editing".into(),

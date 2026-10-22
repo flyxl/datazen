@@ -307,33 +307,24 @@ impl DesktopSessionBackend {
         if let Some(completion) = &completion {
             for (index, statement) in completion.statement_results.iter().enumerate() {
                 let mut output = serde_json::json!({"kind":"statementMetadata","statementIndex":index,"columns":statement.columns,"rowsAffected":statement.rows_affected,"truncated":statement.truncated});
-                if completion.statement_results.len() == 1
-                    && completion.context_before.confidence == ds::ObservationConfidence::Confirmed
-                {
-                    if let Some((context, metadata)) = &mapping_probe {
-                        if *context == completion.context_before {
-                            if let (Some(schema), Some(resolved)) =
-                                (metadata.get("schema"), metadata.get("resolvedTarget"))
-                            {
-                                if let Ok(schema) = serde_json::from_value::<
-                                    datazen_driver_api::TableSchema,
-                                >(schema.clone())
-                                {
-                                    if let Some(relation) = crate::commands::verify_result_mapping(
-                                        rc::ConnectionId::new(&resource.connection_id),
-                                        &statement.columns,
-                                        &schema,
-                                        resolved,
-                                    ) {
-                                        output["source"] = serde_json::to_value(datazen_platform_api::dto::execution::StatementResultSource {
-                                            execution_id: request.execution_id.clone(), statement_index: index as u32,
-                                            context: serde_json::from_value(serde_json::to_value(map::context(context)).map_err(|_| rc::ProviderError::ProtocolError("context encoding failed".into()))?).map_err(|_| rc::ProviderError::ProtocolError("context conversion failed".into()))?, relation: Some(relation),
-                                            writable_mapping: datazen_platform_api::dto::execution::WritableMapping::Verified,
-                                        }).map_err(|_| rc::ProviderError::ProtocolError("result source encoding failed".into()))?;
-                                    }
-                                }
-                            }
-                        }
+                // Attach the writable source only when the probe answers. A
+                // `None` here is not an error: the grid just stays read-only.
+                if let Some(source) = verified_source(
+                    &request.execution_id,
+                    index as u32,
+                    &statement.columns,
+                    completion,
+                    mapping_probe.as_ref(),
+                    &resource.connection_id,
+                ) {
+                    match serde_json::to_value(source) {
+                        Ok(source) => output["source"] = source,
+                        // Unencodable provenance is *no* provenance; it still
+                        // must not cost the user the rows.
+                        Err(_) => tracing::debug!(
+                            source = "result_mapping",
+                            "verified source could not be encoded; result stays read-only"
+                        ),
                     }
                 }
                 publisher(request.execution_id.clone(), output).await?;
@@ -460,4 +451,74 @@ impl DesktopSessionBackend {
             cancel_handle,
         })
     }
+}
+
+/// Can this single statement's result be written back?
+///
+/// This is a **capability probe, not a precondition.** Every way it can fail
+/// means "we do not know that these rows came from one real relation", and the
+/// caller renders that as *no source* — the grid stays read-only. None of these
+/// paths may abort the execution: a probe that cannot answer has no business
+/// taking the user's rows away, so everything here degrades to `None` (and a
+/// debug line) instead of bubbling an error.
+fn verified_source(
+    execution_id: &rc::ExecutionId,
+    statement_index: u32,
+    columns: &[datazen_driver_api::ColumnInfo],
+    completion: &ds::ExecutionCompletion,
+    mapping_probe: Option<&(ds::SessionContext, serde_json::Value)>,
+    connection_id: &str,
+) -> Option<datazen_platform_api::dto::execution::StatementResultSource> {
+    // One statement, and a context the driver actually confirmed — a batch or
+    // an unobserved context can never name a single writable relation.
+    if completion.statement_results.len() != 1
+        || completion.context_before.confidence != ds::ObservationConfidence::Confirmed
+    {
+        return None;
+    }
+    let Some((observed, metadata)) = mapping_probe else {
+        return None;
+    };
+    // The probe must describe the very context this statement ran in; if the
+    // session moved underneath it, the probe says nothing about these rows.
+    if *observed != completion.context_before {
+        tracing::debug!(
+            source = "result_mapping",
+            "session context changed between the probe and the execution"
+        );
+        return None;
+    }
+    let (Some(schema), Some(resolved)) = (metadata.get("schema"), metadata.get("resolvedTarget"))
+    else {
+        tracing::debug!(
+            source = "result_mapping",
+            "driver did not answer the relation probe completely"
+        );
+        return None;
+    };
+    let Ok(schema) = serde_json::from_value::<datazen_driver_api::TableSchema>(schema.clone())
+    else {
+        tracing::debug!(
+            source = "result_mapping",
+            "driver relation metadata was not a readable table schema"
+        );
+        return None;
+    };
+    let relation = crate::commands::verify_result_mapping(
+        rc::ConnectionId::new(connection_id),
+        columns,
+        &schema,
+        resolved,
+    )?;
+    // The context is projected from the driver observation *field by field*; it
+    // must never be rebuilt by serializing one shape and deserializing another.
+    Some(
+        datazen_platform_api::dto::execution::StatementResultSource {
+            execution_id: execution_id.clone(),
+            statement_index,
+            context: map::platform_context(observed),
+            relation: Some(relation),
+            writable_mapping: datazen_platform_api::dto::execution::WritableMapping::Verified,
+        },
+    )
 }
