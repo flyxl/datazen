@@ -1,4 +1,4 @@
-//! `IdentityResolver`：执行身份解析端口（概要 §6.4 第 10 行之外的第 11 个端口）。
+//! `IdentityResolver`：执行身份解析端口（概要 §6.4 的端口表之外新增的端口）。
 //!
 //! 词汇表（§4.3）：`ExecutionIdentity`。
 //!
