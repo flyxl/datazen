@@ -1268,6 +1268,9 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 
 **新增（命名视图，统一 `filter.view.` 前缀）**
 
+> 〔契约审计修订 2026-10-22〕**UI 文案的中文定稿**：本功能在简体中文里叫「**命名视图**」（繁体「命名檢視」）。理由：本册散文通篇用「命名视图」指称它（00-contracts 同说法），而**裸的「视图 / 檢視」在这些词条文件里已专指「数据库视图」**（`query.objectTree.views` / `schemaTree.views`）⇒ 加「命名」二字既与设计书一致，又不与「数据库视图」撞义。其余语种沿用本语种既有的「视图」词（Ansichten / Vistas / Vues / ビュー / 뷰 / Visualizações / Представления），与英文 "Saved views" 取义一致。
+
+
 `filter.view.savedViews`（`'Saved views'`）、`filter.view.save`（`'Save'`）、`filter.view.saveAs`（`'Save as…'`）、`filter.view.rename`（`'Rename'`）、`filter.view.delete`（`'Delete'`）、`filter.view.deleteConfirm`（`'Delete the saved view "{name}"?'`）、`filter.view.nameLabel`（`'View name'`）、`filter.view.namePlaceholder`（`'e.g. Open orders this week'`）、`filter.view.empty`（`'No saved views for this table'`）、`filter.view.nameExists`（`'A view with this name already exists for this table'`）、`filter.view.overwrite`（`'Overwrite'`）、`filter.view.setDefault`（`'Set as default'`）、`filter.view.defaultBadge`（`'Default'`）、`filter.view.draftNotAppliedHint`（`'Saving the applied filters — you still have unapplied changes'`）、`filter.view.applyAnyway`（`'Apply first'`）、`filter.view.export`（`'Export…'`）、`filter.view.import`（`'Import…'`）、`filter.view.importDone`（`'{count} views imported'`）、`filter.view.importFailed`（`'Import failed: {error}'`）、`filter.view.missingColumn`（`'Column "{column}" no longer exists on this table'`）、`filter.view.errorNameExists`（`'A saved view with this name already exists'`）
 
 **两条文案纪律**
