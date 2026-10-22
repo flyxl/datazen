@@ -4,6 +4,7 @@ mod connections_tests;
 mod domain_crud_tests;
 mod key_encryption_tests;
 mod migration_tests;
+mod named_views_tests;
 mod onboarding_tests;
 mod paths_tests;
 mod settings_defaults_tests;

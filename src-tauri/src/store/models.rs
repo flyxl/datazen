@@ -199,6 +199,9 @@ pub(crate) struct StoreCache {
     /// Lazy: loaded on first Schema Diff profile access.
     pub(super) schema_diff_profiles: Vec<crate::schema_diff::SchemaDiffProfile>,
     pub(super) schema_diff_profiles_loaded: bool,
+    /// Lazy: loaded on first named-view access (`named_views.json`).
+    pub(super) named_views: Vec<datazen_feature_core::services::named_views::NamedView>,
+    pub(super) named_views_loaded: bool,
     pub(super) ai_config: Option<AiProviderConfig>,
     pub(super) ai_settings_config: Option<crate::ai::AiSettingsConfig>,
     pub(super) ai_config_loaded: bool,
