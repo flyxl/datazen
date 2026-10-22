@@ -1,5 +1,5 @@
 use super::{AppState, CommandError, State};
-use crate::wapps::Permission;
+use datazen_feature_core::workspace_apps::Permission;
 use serde::Deserialize;
 
 const WAPP_COMMAND_DENYLIST: &[&str] = &[

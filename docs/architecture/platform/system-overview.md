@@ -100,8 +100,7 @@ packages/schema-diff/        共享 Schema Diff 领域引擎                  �
 packages/data-sync/          共享 Data Sync 领域引擎                    【已落地】
 packages/data-transfer/      共享 Data Transfer 领域引擎                【已落地】
 packages/migration-common/   迁移引擎共享的 pair/recordset 边界          【已落地】
-packages/feature-core/       共享 feature（Workflow/AI/MCP/Dashboard/导出/备份恢复）【已落地】
-packages/workspace-apps/     Wapp manifest/安装/存储内核                【已落地】
+packages/feature-core/       共享 feature（Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核）【已落地】
 packages/driver-api/         现有 Driver API 与可选能力
 packages/driver-sdk/         现有驱动前端元数据/方言/Command SDK
 packages/ai-api/             现有 AI Provider trait、工厂与调用协议

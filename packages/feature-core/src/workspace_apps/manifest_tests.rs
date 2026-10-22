@@ -1,5 +1,5 @@
-use crate::manifest::*;
-use crate::WAPP_API_VERSION;
+use crate::workspace_apps::manifest::*;
+use crate::workspace_apps::WAPP_API_VERSION;
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;

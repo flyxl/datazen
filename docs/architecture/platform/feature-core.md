@@ -12,7 +12,7 @@
 - `WidgetExecutionHost` binds Workflow execution and run persistence. Result conversion and alert evaluation are shared. `MonitorHost` supplies dashboards, concurrency policy and result delivery; the shared scheduler owns due decisions, in-flight state and per-workflow serialization. Notification transitions/cooldowns are shared; native notification and webhook delivery remain adapters.
 - `ExportSource`/`ExportEvents` and `BackupSource`/`BackupEvents` bind authorized sources and event delivery. Formatting, file planning, archive construction, independent backup/restore sessions, SQL decoding and statement guards are shared. Native dialogs and local source lookup remain desktop adapters. Built-in prompts have one canonical source under `packages/feature-core/resources/prompts`; desktop bundling points to that directory. These services accept host-provided paths; a server must bind its artifact/storage root rather than accept an arbitrary client path.
 
-`packages/workspace-apps` additionally owns the installed-app registry, URI grammar, path/MIME policy and routing decisions. Tauri only converts outcomes into native protocol responses and frontend events.
+The Workspace App kernel — manifest schema and rules, package install, per-wapp key-value storage, the installed-app registry, URI grammar, path/MIME policy and routing decisions — is merged into this crate as the `feature_core::workspace_apps` module, because a Workspace App is a generic feature rather than a separate package. The host keeps only the `datazen://` protocol adapter, which converts outcomes into native protocol responses and frontend events.
 
 ## Settings
 

@@ -616,9 +616,11 @@ mod tests {
             mcp_client_manager: Arc::new(McpClientManager::new()),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
-            wapps: Arc::new(datazen_workspace_apps::manager::WappManager::new(
-                data_dir.join("wapps"),
-            )),
+            wapps: Arc::new(
+                datazen_feature_core::workspace_apps::manager::WappManager::new(
+                    data_dir.join("wapps"),
+                ),
+            ),
             cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry::default(),
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
@@ -700,9 +702,11 @@ mod tests {
             mcp_client_manager: Arc::new(McpClientManager::new()),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
-            wapps: Arc::new(datazen_workspace_apps::manager::WappManager::new(
-                data_dir.join("wapps"),
-            )),
+            wapps: Arc::new(
+                datazen_feature_core::workspace_apps::manager::WappManager::new(
+                    data_dir.join("wapps"),
+                ),
+            ),
             cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry::default(),
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),

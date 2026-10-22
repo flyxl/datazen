@@ -9,6 +9,7 @@ pub mod export;
 pub mod mcp;
 pub mod services;
 pub mod workflow;
+pub mod workspace_apps;
 
 pub mod file_job;
 

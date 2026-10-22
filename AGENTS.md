@@ -54,9 +54,8 @@ datazen/
 │   ├── platform-infra/           # Rust: 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖
 │   ├── application/              # Rust: 应用层用例与 ApplicationServices（不依赖宿主形态）
 │   ├── runtime/                  # Rust: 共享内核（session / resource / job / gateway / schema_cache / sql_guard）
-│   ├── feature-core/             # Rust: 共享 feature（Workflow / AI / MCP / Dashboard / 导出 / 备份恢复）
+│   ├── feature-core/             # Rust: 共享 feature（Workflow / AI / MCP / Dashboard / 导出 / 备份恢复 / Wapp 内核）
 │   ├── schema-diff/ data-sync/ data-transfer/ migration-common/  # 迁移三件套与共享迁移边界
-│   ├── workspace-apps/           # Rust: Wapp manifest / 安装 / 存储
 │   ├── backend-client/           # JS: 远端 / 浏览器侧 BackendClient 端口实现
 │   ├── ai-api/                  # Rust: AiProvider trait + 工厂 + 消息/调用协议模型
 │   ├── ai-providers/            # Rust: OpenAI/Anthropic/DeepSeek/Ollama/Custom provider 适配 + wire protocol 实现（纯客户端，不依赖 Tauri）

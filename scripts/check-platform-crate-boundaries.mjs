@@ -190,25 +190,13 @@ const RULES = Object.freeze([
   },
   {
     id: 'F-09',
-    subjects: ['ai-providers', 'workspace-apps'],
+    subjects: ['ai-providers'],
     subjectsFromSpec: true,
     forbiddenLayers: ['host'],
     forbiddenCrates: ['tauri'],
     specSubsetOnly: true,
     specTokens: ['tauri'],
-    note: 'the shared AI / workspace-app cores stay webview-free',
-  },
-  {
-    id: 'F-10',
-    subjects: ['workspace-apps'],
-    subjectsFromSpec: true,
-    forbiddenLayers: [],
-    forbiddenCrates: 'spec',
-    // ai-providers is deliberately NOT a subject: an HTTP *client* (reqwest) is
-    // its job. F-10 forbids server *frameworks* in the kernel, not clients.
-    specTokens: ['axum'],
-    specCrates: ['axum', 'actix-web', 'warp', 'tonic'],
-    note: 'workspace-apps stays transport-neutral so a server adapter needs no breaking change',
+    note: 'the shared AI provider cores stay webview-free',
   },
   {
     id: 'F-11',

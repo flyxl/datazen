@@ -130,7 +130,10 @@ export const TESTED_LAYERS = Object.freeze([
   'platform-infra',
   'server',
   'ai-providers',
-  'workspace-apps',
+  // The Workspace App kernel used to be the standalone `workspace-apps` layer.
+  // It now lives in `feature-core` as the `feature_core::workspace_apps`
+  // module, so its unit tests travel with that layer.
+  'feature-core',
   'schema-diff',
   'migration-common',
   'data-sync',
