@@ -29,12 +29,6 @@ pub use resource::RedisResourceProvider;
 pub const SETTINGS_KEY: &str = "redis";
 pub use driver::*;
 
-#[cfg(feature = "tauri-plugin")]
-mod plugin;
-
-#[cfg(feature = "tauri-plugin")]
-pub use plugin::init;
-
 static SHARED: OnceLock<Arc<RedisDriver>> = OnceLock::new();
 
 /// Process-wide Redis driver instance (shared by host registry and plugin commands).
@@ -89,3 +83,24 @@ impl DatabaseDriverFactory for RedisFactory {
     }
 }
 datazen_driver_api::register_driver!(&RedisFactory);
+
+/// The Redis Pub/Sub event outlet.
+///
+/// Form-neutral by construction: the driver declares that it *has* an event
+/// outlet, and the host installs the sink that actually delivers the
+/// messages. The driver never names a host framework — that is the whole
+/// point of the contract, because the previous injection channel (a Tauri
+/// plugin) made Pub/Sub desktop-only by dragging `tauri` into this crate's
+/// dependency closure.
+pub struct RedisPubSubOutlet;
+
+impl DriverEventOutlet for RedisPubSubOutlet {
+    fn outlet_id(&self) -> &'static str {
+        "redis-pubsub"
+    }
+
+    fn install(&self, sink: Arc<dyn DriverEventSink>) {
+        crate::ops::pubsub::set_pubsub_sink(sink);
+    }
+}
+datazen_driver_api::register_event_outlet!(&RedisPubSubOutlet);

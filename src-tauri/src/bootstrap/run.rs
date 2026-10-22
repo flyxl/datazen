@@ -129,6 +129,14 @@ pub fn run() {
 
             let handle = app.handle().clone();
 
+            // 形态中立的驱动事件出口：桌面形态把驱动产出的事件转成 Tauri 事件
+            // 发给前端。装在这里（启动期最前处）是因为 sink 的选择是**运行时**
+            // 决定 —— 宿主启动时才知道自己有哪些驱动事件出口可用。
+            //
+            // 时机语义与改造前一致：sink 装好之前到达的事件按驱动自己的策略
+            // 处理（Redis Pub/Sub 是静默丢弃，不缓存、不补发）。
+            crate::platform::event_sink::install_driver_event_sinks(&handle);
+
             let t0 = Instant::now();
             let prompts_dir = resolve_prompts_dir(handle.path().resource_dir().ok());
             let app_state =

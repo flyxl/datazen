@@ -111,7 +111,10 @@ mod tests {
 
     impl DriverEventSink for RecordingSink {
         fn emit(&self, event: &DriverEvent) {
-            self.events.lock().expect("recording sink is not poisoned").push(event.clone());
+            self.events
+                .lock()
+                .expect("recording sink is not poisoned")
+                .push(event.clone());
         }
     }
 

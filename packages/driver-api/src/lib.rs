@@ -18,8 +18,8 @@ pub mod catalog;
 pub mod command;
 pub mod command_catalog;
 pub mod dialect;
-mod explain_plan;
 pub mod event_sink;
+mod explain_plan;
 mod factory;
 pub mod filters;
 pub mod mock_driver;
@@ -63,10 +63,8 @@ pub use command::{
 };
 pub use command_catalog::{CommandCatalog, LegacyCommandCatalog};
 pub use dialect::{BoundParameterLimit, LegacySqlDialect, SqlDialect};
+pub use event_sink::{iter_event_outlets, DriverEvent, DriverEventOutlet, DriverEventSink};
 pub use explain_plan::{normalize_mysql_explain_plan, normalize_postgres_explain_plan};
-pub use event_sink::{
-    iter_event_outlets, DriverEvent, DriverEventOutlet, DriverEventSink,
-};
 pub use factory::*;
 pub use query_stream::{
     append_select_limit, emit_execute_statement, emit_multi_query_as_stream, stream_decoded_rows,

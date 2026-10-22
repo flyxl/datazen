@@ -376,30 +376,32 @@ advisory，见 §2.3.1。`@tauri-apps/api` / `fetch(` / `XMLHttpRequest` 这类�
 的 crate 双向比对**只在 `forbiddenCrates === 'spec'` 时才跑**，F-01 不是，所以文档写多少，
 门禁都不会有反应。这一段记的是"怎么把它变成阻断门禁"，不是"已经变了"。
 
-当前实测产出 3 条 advisory（`ce1c32bc3`，退出码 0）：
+当前实测产出 **1 条** advisory（退出码 0）：
 
 ```
-ADVISORY F-01?  datazen-driver-redis (packages/drivers/redis/Cargo.toml) reaches tauri-plugin,
-                tauri-utils in its normal+build closure. Not blocking: no F-row forbids tauri*.
 ADVISORY F-01?  datazen (src-tauri/Cargo.toml) declares tauri-plugin-webdriver in
                 [dependencies], which the resolved graph does not contain.
-ADVISORY F-01?  datazen-driver-redis (packages/drivers/redis/Cargo.toml) declares tauri in
-                [dependencies], which the resolved graph does not contain.
 ```
 
-**武装的前置条件共三条，归属分属两个我不拥有的写范围：**
+`datazen-driver-redis` 已不在任何 tauri advisory 里：它的 `[dependencies] tauri`、
+`[build-dependencies] tauri-plugin`、`build.rs` 与插件 ACL 目录已随「Redis Pub/Sub 事件出口
+改走形态中立的 `inventory` 注册」一并删除（契约见[驱动层 §1](../architecture/backend/drivers.md)）。
+此前实测的 3 条（redis 闭包侧 `tauri-plugin`、`tauri-utils`，redis 声明侧 `tauri`，
+`datazen` 声明侧 `tauri-plugin-webdriver`）因此降为 1 条。
 
-| # | 前置条件 | 位置 | 归属 |
-|---|---------|------|------|
-| 1 | redis 去掉 `tauri` 声明（`packages/drivers/redis/Cargo.toml` 的 `[dependencies] tauri`）与 `[build-dependencies] tauri-plugin` | `packages/drivers/**` | 驱动轨 |
-| 2 | manifest 读取失败路径由 advisory 改为 error（§2.3.2） | `scripts/**` | 门禁脚本轨 |
-| 3 | `F-01` 的 `forbiddenCrates` 由 `[]` 改为 `['tauri']` | `scripts/**` | 门禁脚本轨 |
+**武装的前置条件共三条，归属分属两个写范围：**
 
-**没有"不动驱动 manifest 就能先武装"的中间态**，这一点要写死，因为它看起来像个可以
-先走一步的捷径：redis 今天**不只是声明**了 tauri，它**真的解析到** `tauri-plugin` 与
-`tauri-utils`（上面第一条 advisory 就是证据）。所以无论把检查挂在声明边还是解析边上，
-任何阻断式的 tauri 检查**今天都是红的**。"先武装、以后再修 redis"不是中间态，是当场
-把 CI 转红。
+| # | 前置条件 | 位置 | 归属 | 状态 |
+|---|---------|------|------|------|
+| 1 | redis 去掉 `tauri` 声明（`packages/drivers/redis/Cargo.toml` 的 `[dependencies] tauri`）与 `[build-dependencies] tauri-plugin` | `packages/drivers/**` | 驱动轨 | ✅ 已完成 |
+| 2 | manifest 读取失败路径由 advisory 改为 error（§2.3.2） | `scripts/**` | 门禁脚本轨 | 待办 |
+| 3 | `F-01` 的 `forbiddenCrates` 由 `[]` 改为 `['tauri']` | `scripts/**` | 门禁脚本轨 | 待办 |
+
+**前置条件 1 完成后，"任何阻断式的 tauri 检查今天都是红的"这句话不再成立。**
+此前之所以写死"没有不动驱动 manifest 就能先武装的中间态"，是因为 redis 不只**声明**了
+tauri，它**真的解析到** `tauri-plugin` 与 `tauri-utils`——无论把检查挂在声明边还是解析边
+上，阻断式检查都会当场把 CI 转红。现在 redis 的声明边与解析闭包都不含 tauri 家族，
+武装本身是绿的；剩下的两条前置条件都只动 `scripts/**`。
 
 把声明边降级成 advisory（也就是现在的形态）已经是当前树上能上线的最强形态——它既报了
 闭包侧，也报了声明侧，缺的只是"阻断"两个字。
