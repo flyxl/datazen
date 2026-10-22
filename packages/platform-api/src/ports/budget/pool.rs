@@ -715,7 +715,7 @@ mod tests {
 
     #[test]
     fn the_budget_contract_ships_no_implementation() {
-        // 契约层零实现是 P3 的退出门槛（H 层 CM-02～07）。这三个端口里一旦出现实现块，
+        // 契约层零实现是 P3 的退出门槛（H 层 CM-02～07）。这些端口里一旦出现实现块，
         // 就等于把 P3 的活做掉了一半。被检查的指针由 join 拼出，本注释也不写全它。
         let sources = [
             ("pool.rs", include_str!("pool.rs"), "DriverPoolBudgetPort"),

@@ -7,7 +7,7 @@
 //! 本模块内唯一的实现体是 [`pool_ledger`]：driver pool 端口的**进程内**参考账本，
 //! 用来把 §9.3 的记账规则钉在可测的代码上；它不是调度器，也还不是任何调用方的依赖。
 //!
-//! ## 四个 trait 的分工
+//! ## 各 trait 的分工
 //!
 //! | trait | 管什么 | 不管什么 |
 //! | --- | --- | --- |
@@ -21,12 +21,13 @@
 //! 「这台机器/这个节点上现在真的有几条 socket」。任何一侧缺失都会让 §9.3 的
 //! 「归池不释放物理预算」变成一句无法兑现的口号。
 //!
-//! ## 为什么 `BudgetCoordinator` 不被这三个 trait 取代
+//! ## 为什么 `BudgetCoordinator` 不被物理预算端口取代
 //!
-//! `BudgetCoordinator`（P1 §6.4 第 10 行）的粒度是 `organization_id × connection_id ×
+//! `BudgetCoordinator`（P1 概要 §6.4 表中的 `BudgetCoordinator` 行）的粒度是
+//! `organization_id × connection_id ×
 //! purpose`，它不知道 PoolKey，也不区分 control/interactive/metadata/job 四类。把它扩成
 //! 「什么都能干的大 trait」会让无关实现方被迫实现无关方法，违反 §4.2 不合并 trait。
-//! 因此这里**新增**三个窄 trait，而不是改写它——两套词汇各自成文件、各自带私有词汇表（§2.4）。
+//! 因此这里**新增**窄 trait，而不是改写它——两套词汇各自成文件、各自带私有词汇表（§2.4）。
 //!
 //! ## 三条不可绕过的记账规则（已由本模块的类型与测试固定）
 //!

@@ -587,6 +587,7 @@ expiredHeld 的 `amount - returned_amount` 继续计入 reserved；TTL 到期、
 | --- | --- | --- | --- |
 | `{appData}/connections.json` | `ConnectionConfig` 数组（明文 JSON，仅 `password`、`ssh_tunnel.password`、`ssh_tunnel.passphrase` 逐字段 AES-256-GCM） | 字段级 | [`store/connections.rs`](../../../src-tauri/src/store/connections.rs) |
 | `{appData}/settings.json` / `tunnels.json` / `groups.json` | 应用设置、隧道、分组 | 同上（仅凭据字段） | [`store/mod.rs`](../../../src-tauri/src/store/mod.rs) `load_all()` |
+| `{appData}/ssh_known_hosts.json` | SSH known-hosts 条目（`host:port` → `{fingerprint, algorithm, public_key}`） | 无（公钥与指纹不是秘密） | [`platform/known_hosts.rs`](../../../src-tauri/src/platform/known_hosts.rs) |
 | `{appData}/ai_config.enc` | AI Provider 配置 | 整体密文 | [`store/ai_config.rs`](../../../src-tauri/src/store/ai_config.rs) |
 | `{appData}/history.sqlite` | `query_history`、`workflow_history`、`migration_run_history`（WAL，`PRAGMA foreign_keys = ON`） | **明文**（SQL 文本、错误信息按明文存） | [`store/history_db.rs`](../../../src-tauri/src/store/history_db.rs) |
 | `{appData}/datazen.sqlite` | `schema_migrations`、`workflows`、`dashboards`、`widgets`、`widget_runs`、`widget_latest_run`；v2 增加 `jobs`、`job_idempotency_receipts`、`job_stages`、`job_commit_boundaries`、`job_checkpoints`、`job_result_details`、`job_domain_results`、`job_artifact_refs`；v3 增加 `monitor_schedule_grants`；v4 给 `jobs` 增加 `claim_client_instance_id`；v5 把历史遗留的桌面本地组织 id 并回规范值（纯数据迁移，无 DDL） | 明文；Job plan/result 是受限 DTO 投影 | [`store/app_db.rs`](../../../src-tauri/src/store/app_db.rs)、[`store/app_db/jobs/`](../../../src-tauri/src/store/app_db/jobs/) |
@@ -609,6 +610,16 @@ expiredHeld 的 `amount - returned_amount` 继续计入 reserved；TTL 到期、
 1. `connections.json` 里**没有** `configRevision`、`credentialRevision`、`organizationId`。这三个字段必须由新增的映射层补出，映射层不是"读现有文件"而是"把旧结构映射到新结构"。
 2. `history.sqlite` 明确以明文存 SQL 与错误信息（见[持久化存储 §1.3](../backend/store.md#13-查询历史明文)），因此备份 app data 目录必须视同敏感审计日志。本文的 §7 以此为前提。
 3. 旧实现把运行时会话 id 写进过持久化模型。`SyncTask` 的处理方式就是目标模板：字段保留在 Rust 结构里以便读旧 JSON，但标 `#[serde(default, skip_serializing)]` 并在归一化时清空（[`store/models.rs`](../../../src-tauri/src/store/models.rs) `normalize_legacy_state()`）。**"能读旧数据、绝不再写出"** 是本仓已有的、已测试的先例。
+
+**隧道定义与 known-hosts 改走端口后，落盘格式不变**（本轨的结构改造，不改持久化模型）：
+
+| 载体 | 改的是什么 | 没改的是什么 |
+| --- | --- | --- |
+| `{appData}/tunnels.json` | 读写**经** `TunnelRepository` 端口（`src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`） | 文件名、JSON 数组形状、字段名（camelCase）、6 个凭据字段的 AES-256-GCM 逐字段加密、原子写、解密失败降级为 `None` 并 `warn!` |
+| `{appData}/ssh_known_hosts.json` | 文件 I/O **经** `KnownHostsRepository` 端口（`src-tauri/src/platform/known_hosts.rs`） | 文件名、`to_string_pretty` 的对象形状、字段名（`public_key` 是 snake_case）、两条 warn 文案（`Ignoring corrupt ssh_known_hosts.json` / `Failed to read ssh_known_hosts.json`）、三条错误文案（`create known hosts dir …` / `serialize ssh_known_hosts.json: …` / `write …`） |
+
+端口层是**内存内明文**语义：加密与落盘在宿主实现侧（主钥匙串在宿主手里）。因此**没有**新增
+落盘点、**没有**改字段、**没有**改迁移判据——已有 `{appData}` 目录照常读写，不需要任何迁移步骤。
 
 ### 4.2 字段同构（本地 `ConnectionConfig` → 服务端 `connections`）
 
@@ -646,7 +657,7 @@ expiredHeld 的 `amount - returned_amount` 继续计入 reserved；TTL 到期、
 
 | 形态 | 主密钥来源 | 连接秘密来源 |
 | --- | --- | --- |
-| 桌面本地模式 | `key_store::key_backend()`：默认 OS 钥匙串（`keyring::v1::Entry::new(APP_IDENTIFIER, "app-encryption-key")`）；`DATAZEN_KEYRING=file` 或 macOS 未签名/adhoc 构建时用 `{appData}/.key`；旧 `.key` 会透明迁入钥匙串后删除 | 本地 `connections.json` 逐字段 AES-256-GCM（nonce 12 字节前置，base64 STANDARD） |
+| 桌面本地模式 | `key_backend::resolve_key_backend()`（**启动期读一次 `DATAZEN_KEYRING`**，得到的 `KeyBackend` 一路显式传下去）：默认 OS 钥匙串（`keyring::v1::Entry::new(APP_IDENTIFIER, "app-encryption-key")`）；`DATAZEN_KEYRING=file` 或 macOS 未签名/adhoc 构建时用 `{appData}/.key`；旧 `.key` 会透明迁入钥匙串后删除 | 本地 `connections.json` 逐字段 AES-256-GCM（nonce 12 字节前置，base64 STANDARD） |
 | 桌面团队模式 | 同上（本地设置仍需加密） | **不下载团队数据库凭据**（[概要 §11 验收 2](system-overview.md#11-系统级验收)）；执行身份由服务端 `SecretProvider` 解析 |
 | 服务端 | 不使用用户钥匙串（无用户钥匙串可访问） | KMS / 外部密钥服务；管理库只存 `secret_ref` |
 

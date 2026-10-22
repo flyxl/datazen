@@ -578,8 +578,11 @@ mod tests {
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("DATAZEN_KEYRING", "file");
-        let store = Arc::new(DesktopRepository::init_with_path(dir.path()).await.unwrap());
+        let store = Arc::new(
+            DesktopRepository::init_with_path(dir.path(), crate::store::KeyBackend::File)
+                .await
+                .unwrap(),
+        );
         let registry = Arc::new(DriverRegistry::new());
         let platform = crate::platform::PlatformEntry::launch();
         let monitor_engine = MonitorEngine::new(store.clone());
@@ -598,6 +601,9 @@ mod tests {
             crate::commands::schema_diff::reviewed_repository::desktop_reviewed_plan_repository(
                 &platform,
             );
+        let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
+        let known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository> =
+            crate::platform::known_hosts::desktop_known_hosts_repository(store.data_dir());
 
         let state = AppState {
             driver_registry: registry,
@@ -630,6 +636,8 @@ mod tests {
             transfer_plans: Arc::new(
                 crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
             ),
+            tunnels: tunnels.clone(),
+            known_hosts: known_hosts.clone(),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
         };
@@ -657,8 +665,11 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let custom = dir.path().join("my-contexts");
-        std::env::set_var("DATAZEN_KEYRING", "file");
-        let store = Arc::new(DesktopRepository::init_with_path(dir.path()).await.unwrap());
+        let store = Arc::new(
+            DesktopRepository::init_with_path(dir.path(), crate::store::KeyBackend::File)
+                .await
+                .unwrap(),
+        );
         store
             .save_settings(AppSettings {
                 context_dir: custom.display().to_string(),
@@ -684,6 +695,9 @@ mod tests {
             crate::commands::schema_diff::reviewed_repository::desktop_reviewed_plan_repository(
                 &platform,
             );
+        let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
+        let known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository> =
+            crate::platform::known_hosts::desktop_known_hosts_repository(store.data_dir());
 
         let state = AppState {
             driver_registry: registry,
@@ -716,6 +730,8 @@ mod tests {
             transfer_plans: Arc::new(
                 crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
             ),
+            tunnels: tunnels.clone(),
+            known_hosts: known_hosts.clone(),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
         };

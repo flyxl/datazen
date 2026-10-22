@@ -45,8 +45,11 @@ pub fn run_mcp_stdio() {
             tracing::error!("{e}");
             std::process::exit(1);
         }
+        // Backend selection is a **startup-time fact**: `DATAZEN_KEYRING` is read
+        // exactly once, here, and the resolved backend is passed down explicitly.
+        let key_backend = crate::store::key_backend::resolve_key_backend();
         let store = Arc::new(
-            DesktopRepository::init_with_path(&data_dir)
+            DesktopRepository::init_with_path(&data_dir, key_backend)
                 .await
                 .expect("Failed to init store"),
         );

@@ -11,12 +11,11 @@ use super::fixtures::*;
 
 #[tokio::test]
 async fn file_backend_creates_and_reloads_key() {
-    use_file_key_backend();
     let dir = tempfile::tempdir().unwrap();
-    let k1 = DesktopRepository::get_or_create_encryption_key_for_test(dir.path())
+    let k1 = DesktopRepository::get_or_create_encryption_key_for_test(dir.path(), KeyBackend::File)
         .await
         .unwrap();
-    let k2 = DesktopRepository::get_or_create_encryption_key_for_test(dir.path())
+    let k2 = DesktopRepository::get_or_create_encryption_key_for_test(dir.path(), KeyBackend::File)
         .await
         .unwrap();
     assert_eq!(k1, k2);
@@ -26,8 +25,15 @@ async fn file_backend_creates_and_reloads_key() {
 #[tokio::test]
 #[ignore = "requires OS keychain; run with: DATAZEN_TEST_KEYRING=1 cargo test migrates_dot_key -- --ignored"]
 async fn migrates_dot_key_into_keyring_and_deletes_file() {
-    std::env::remove_var("DATAZEN_KEYRING");
-    if !key_store::keyring_is_available() {
+    // The only place left that may write the process env: this test runs on its
+    // own (`cargo test -- --ignored`) and exercises the startup resolution end
+    // to end.
+    let _guard = crate::testing::ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let _keyring = crate::testing::ForceKeyringGuard::new();
+    let backend = crate::store::key_backend::resolve_key_backend();
+    if backend != KeyBackend::Keyring {
         eprintln!("skip: OS keychain unavailable (needs DATAZEN_TEST_KEYRING=1)");
         return;
     }
@@ -41,7 +47,7 @@ async fn migrates_dot_key_into_keyring_and_deletes_file() {
     )
     .unwrap();
 
-    let loaded = key_store::load_or_create_master_key(dir.path()).unwrap();
+    let loaded = key_store::load_or_create_master_key(dir.path(), backend).unwrap();
     assert_eq!(loaded, known_key);
     assert!(!key_store::key_file_path(dir.path()).exists());
 
@@ -160,11 +166,13 @@ async fn reload_clears_bad_encrypted_ssh_password() {
 
 #[test]
 fn decrypt_rejects_short_payload() {
-    use_file_key_backend();
     let dir = tempfile::tempdir().unwrap();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let store = rt
-        .block_on(DesktopRepository::init_with_path(dir.path()))
+        .block_on(DesktopRepository::init_with_path(
+            dir.path(),
+            KeyBackend::File,
+        ))
         .unwrap();
     let err = store.decrypt_password("AAAA").unwrap_err();
     assert!(matches!(err, DesktopRepositoryError::EncryptionError(_)));

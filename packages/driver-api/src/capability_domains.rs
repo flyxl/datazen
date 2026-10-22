@@ -16,7 +16,7 @@
 //! one back. Flattening that to `bool` would force the caller to re-derive the
 //! distinction the driver already knows, and would make the degraded path a
 //! silent no-op — the exact defect
-//! `driver-capability-migration.md` §6.1 and the [`CapabilityError`]
+//! `connection-management.md` §5.2 and the [`CapabilityError`]
 //! rejection surface exist to prevent.
 //!
 //! ## Three states, not two

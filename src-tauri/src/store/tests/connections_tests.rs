@@ -74,7 +74,6 @@ async fn groups_merge_connection_groups_without_groups_file() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_save_connection_all_succeed() {
-    use_file_key_backend();
     let dir = tempfile::tempdir().unwrap();
     let store = std::sync::Arc::new(init_store_for_test(dir.path()).await);
 
@@ -109,7 +108,6 @@ async fn concurrent_save_connection_all_succeed() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_save_groups_all_succeed() {
-    use_file_key_backend();
     let dir = tempfile::tempdir().unwrap();
     let store = std::sync::Arc::new(init_store_for_test(dir.path()).await);
 

@@ -4,8 +4,8 @@
 //!
 //! 桌面侧曾经有一个 `impl MigrationHost for AppState`（位于
 //! `src-tauri/src/workflow/migration.rs`），它的 `transfer_profiles()` /
-//! `sync_profiles()` / `schema_profiles()` 三个方法**只做一件事**：从 `Store` 里
-//! 读出已保存的迁移 profile 列表——而 `AppState` 因此拖着整个 `Store`。
+//! `sync_profiles()` / `schema_profiles()` 三个方法**只做一件事**：从 `DesktopRepository` 里
+//! 读出已保存的迁移 profile 列表——而 `AppState` 因此拖着整个 `DesktopRepository`。
 //!
 //! 那个 workflow 迁移 step 能力已被移除（它从未真正发布；见
 //! `docs/architecture/backend/workflow.md` 的「迁移 step（已移除）」）。**端口本身

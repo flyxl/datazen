@@ -32,7 +32,11 @@ impl DesktopSessionBackend {
         // Resolve a persisted tunnel definition before asking the driver to describe the
         // resource. The Runtime session owns the resulting tunnel lease below, so it remains
         // alive with pooled resources and with resources quarantined after uncertain close.
-        let config = crate::tunnel::resolve_saved_tunnel(&self.store, config)
+        // The definition is read through the `TunnelRepository` port: the connection side
+        // only stores `tunnelId`, and the dereference happens here — at connect time.
+        let scope =
+            datazen_platform_api::ports::scope::OrganizationScope::new(self.organization.clone());
+        let config = crate::tunnel::resolve_saved_tunnel(&*self.tunnels, &scope, config)
             .await
             .map_err(|error| map::error(dr::ResourceError::Driver(error)))?;
         let logical = datazen_runtime::resource::LogicalSessionPermit::reserve(
@@ -197,9 +201,8 @@ impl DesktopSessionBackend {
                 held._tunnel.clone(),
             )
         } else {
-            let known_hosts_path = self.store.data_dir().join("ssh_known_hosts.json");
             let (effective_config, tunnel) =
-                crate::tunnel::start_for_connection(config, &known_hosts_path)
+                crate::tunnel::start_for_connection(config, self.known_hosts.clone())
                     .await
                     .map_err(|error| map::error(dr::ResourceError::Driver(error)))?;
             let handle = provider

@@ -2,6 +2,14 @@
 //!
 //! Drivers always connect to `127.0.0.1:<local_port>` when a tunnel is active.
 //! See `docs/architecture/backend/tunnel.md`.
+//!
+//! # 隧道定义走**端口**
+//!
+//! 「用隧道定义」（解引用 `tunnelId`）经 [`TunnelRepository`] 端口：隧道定义是独立
+//! 聚合，连接侧只存 id，解引用发生在**建连时**而不是打开表单时
+//! （[隧道 §4.1](../../docs/architecture/backend/tunnel.md#41-引用而非拷贝)）。
+//! 桌面实现是宿主 `DesktopRepository`（加密落盘 `{appData}/tunnels.json`）；web 形态由服务端
+//! host 实现。
 
 mod network_provider;
 
@@ -15,13 +23,14 @@ pub use network_provider::{desktop_network_provider, DesktopTunnelHost, DesktopT
 pub(crate) use datazen_tunnel::verify_http_proxy_upstream;
 pub(crate) use datazen_tunnel::verify_websocket_upstream;
 
-use crate::store::DesktopRepository;
 use datazen_driver_api::{
     ConnectionConfig, DriverError, HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig,
 };
+use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_platform_api::ports::tunnel::TunnelRepository;
 use datazen_runtime::driver_registry::registry::DriverRegistry;
-use datazen_tunnel::SshTunnel;
-use std::path::Path;
+use datazen_tunnel::{KnownHostsRepository, SshTunnel};
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::time::Duration;
 
@@ -78,28 +87,43 @@ pub fn resolve_tunnel_kind(config: &ConnectionConfig) -> TunnelKind {
 ///
 /// On success with a tunnel, the returned [`ConnectionConfig`] has `host`/`port`
 /// rewritten to the local listener and tunnel config cleared so drivers dial loopback.
+///
+/// `known_hosts` 是宿主注入的**存储端口**实例：已知主机存在哪儿由实现方决定
+/// （桌面：`{appData}/ssh_known_hosts.json`）。
 pub async fn start_for_connection(
     config: ConnectionConfig,
-    known_hosts_path: &Path,
+    known_hosts: Arc<dyn KnownHostsRepository>,
 ) -> Result<(ConnectionConfig, Option<Tunnel>), DriverError> {
     let kind = resolve_tunnel_kind(&config);
     match kind {
         TunnelKind::None => Ok((config, None)),
-        TunnelKind::Ssh => start_ssh(config, known_hosts_path).await,
+        TunnelKind::Ssh => start_ssh(config, known_hosts).await,
         TunnelKind::HttpProxy => start_http_proxy(config).await,
         TunnelKind::WebSocket => start_websocket(config).await,
     }
 }
 
 /// Resolve a persisted tunnel reference without creating a runtime session.
+///
+/// 隧道定义经 [`TunnelRepository`] 端口取用：端口**不接受 connection id**——
+/// 解引用发生在建连时，调用方只拿 `tunnelId` 来。
 pub async fn resolve_saved_tunnel(
-    store: &DesktopRepository,
+    tunnels: &dyn TunnelRepository,
+    scope: &OrganizationScope,
     mut config: ConnectionConfig,
 ) -> Result<ConnectionConfig, DriverError> {
     let Some(tunnel_id) = config.tunnel_id.as_ref().filter(|id| !id.is_empty()) else {
         return Ok(config);
     };
-    let Some(saved) = store.get_tunnel(tunnel_id).await else {
+    let saved = match tunnels.get(scope, tunnel_id).await {
+        Ok(saved) => saved,
+        Err(error) => {
+            return Err(DriverError::InvalidConfig(format!(
+                "tunnel id '{tunnel_id}' unavailable: {error}"
+            )));
+        }
+    };
+    let Some(saved) = saved else {
         return Err(DriverError::InvalidConfig(format!(
             "tunnel id '{tunnel_id}' not found"
         )));
@@ -111,16 +135,17 @@ pub async fn resolve_saved_tunnel(
     Ok(config)
 }
 
-/// Test a connection directly through DesktopRepository/DriverRegistry, with no db session.
+/// Test a connection directly through the tunnel repository / DriverRegistry, with no db session.
 pub async fn test_connection(
-    store: &DesktopRepository,
+    tunnels: &dyn TunnelRepository,
+    scope: &OrganizationScope,
+    known_hosts: &Arc<dyn KnownHostsRepository>,
     registry: &DriverRegistry,
     config: ConnectionConfig,
 ) -> Result<datazen_driver_api::ServerInfo, DriverError> {
-    let known_hosts_path = store.data_dir().join("ssh_known_hosts.json");
     let (effective_config, _tunnel) = start_for_connection(
-        resolve_saved_tunnel(store, config).await?,
-        &known_hosts_path,
+        resolve_saved_tunnel(tunnels, scope, config).await?,
+        known_hosts.clone(),
     )
     .await?;
     let driver = registry
@@ -132,15 +157,26 @@ pub async fn test_connection(
 
 /// Probe a saved tunnel directly, without manufacturing a runtime session id.
 pub async fn test_tunnel(
-    store: &DesktopRepository,
+    tunnels: &dyn TunnelRepository,
+    scope: &OrganizationScope,
+    known_hosts: &Arc<dyn KnownHostsRepository>,
     tunnel_id: &str,
     target_host: &str,
     target_port: u16,
 ) -> Result<Duration, DriverError> {
-    let saved = store
-        .get_tunnel(tunnel_id)
-        .await
-        .ok_or_else(|| DriverError::InvalidConfig(format!("tunnel id '{tunnel_id}' not found")))?;
+    let saved = match tunnels.get(scope, tunnel_id).await {
+        Ok(saved) => saved,
+        Err(error) => {
+            return Err(DriverError::InvalidConfig(format!(
+                "tunnel id '{tunnel_id}' unavailable: {error}"
+            )));
+        }
+    };
+    let Some(saved) = saved else {
+        return Err(DriverError::InvalidConfig(format!(
+            "tunnel id '{tunnel_id}' not found"
+        )));
+    };
     let config = ConnectionConfig {
         id: format!("__tunnel_test__{tunnel_id}"),
         name: format!("tunnel test: {tunnel_id}"),
@@ -168,10 +204,9 @@ pub async fn test_tunnel(
         pinned: false,
     };
     let started = Instant::now();
-    let known_hosts_path = store.data_dir().join("ssh_known_hosts.json");
     let (_resolved, tunnel) = start_for_connection(
-        resolve_saved_tunnel(store, config).await?,
-        &known_hosts_path,
+        resolve_saved_tunnel(tunnels, scope, config).await?,
+        known_hosts.clone(),
     )
     .await?;
     let Some(tunnel) = tunnel else {
@@ -247,7 +282,7 @@ async fn start_websocket(
 
 async fn start_ssh(
     config: ConnectionConfig,
-    known_hosts_path: &Path,
+    known_hosts: Arc<dyn KnownHostsRepository>,
 ) -> Result<(ConnectionConfig, Option<Tunnel>), DriverError> {
     let ssh = config
         .ssh_tunnel
@@ -272,7 +307,7 @@ async fn start_ssh(
         "Starting SSH tunnel"
     );
 
-    let tunnel = SshTunnel::start(ssh, remote_host, remote_port, known_hosts_path).await?;
+    let tunnel = SshTunnel::start(ssh, remote_host, remote_port, known_hosts).await?;
     Ok((
         rewrite_to_local(config, tunnel.local_port()),
         Some(Tunnel::Ssh(tunnel)),

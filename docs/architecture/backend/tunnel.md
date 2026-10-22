@@ -2,18 +2,31 @@
 
 > Source of truth: `packages/tunnel/src/`（形态中立的隧道机制内核）、`src-tauri/src/tunnel/`（宿主装配层）、
 > `src-tauri/src/platform/session_backend/`、`src-tauri/src/store/tunnels.rs`、
+> `packages/platform-api/src/ports/tunnel.rs`（隧道定义仓储端口）、
 > `packages/driver-api/src/tunnel_types.rs`。
 
 隧道子系统解决的是「数据库不在本机、也不在可达网段」时的连接问题。**核心设计约束只有一条：驱动零改动。** 隧道不进入 `DatabaseDriver` trait，也不进入 `PROTOCOL_VERSION`——桌面 `DesktopSessionBackend` 在 Runtime 打开 Driver resource 前改写地址，并把 Tunnel 句柄保存在该 Runtime resource 上。
 
 用户视角的使用说明见 [Tunnel 使用指南](../../features/tunnel-guide.zh-CN.md)。
 
-**代码分布**：隧道机制本身（HTTP `CONNECT` 代理、WebSocket 中继、SSH 转发、SSH known-hosts 存储、进程级
+**代码分布**：隧道机制本身（HTTP `CONNECT` 代理、WebSocket 中继、SSH 转发、SSH known-hosts 规则、进程级
 rustls provider 选择）住在形态中立的共享 crate `packages/tunnel/`（crate 名 `datazen-tunnel`，边界由
 §2.4 的 F-13 断言）；宿主侧 `src-tauri/src/tunnel/` 只留装配与形态相关接线（`resolve_tunnel_kind` /
 `start_for_connection` / `test_tunnel`、`DesktopTunnelHost`）。进程级 rustls provider 的**实现体**在
 `packages/tunnel/src/crypto.rs`，宿主 `src-tauri/src/tls.rs` 只保留接线守卫与 `pub use` 再导出——理由见
 [security.md §](../security.md)。
+
+**两处存储走端口**（本轨的结构改造）：
+
+| 存什么 | 端口 | 住在哪 | 桌面实现 | web 形态 |
+|---|---|---|---|---|
+| 隧道定义 | `TunnelRepository` | `packages/platform-api/src/ports/tunnel.rs`（跨形态端口家族） | `src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`（加密落盘 `{appData}/tunnels.json`） | 服务端库上的组织级存储（同一端口、另一适配器） |
+| SSH known-hosts | `KnownHostsRepository` | `packages/tunnel/src/known_hosts_repository.rs`（**领域包端口**，与 `ReviewedPlanRepository` / `TransferPlanRepositoryPort` 同形） | `src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`（读 `{appData}/ssh_known_hosts.json`） | 服务端存储目录 / 组织级存储 |
+
+两者的**规则**都在共享包里（`SavedTunnel` 的形状、TOFU 判定、指纹与错误文案），**文件 I/O 与落盘加密**
+在宿主：**共享包不再读本机文件**。端口实例由宿主在组装期创建一次并注入
+（`bootstrap/app_state.rs`），**不新增进程级全局**。端口清单见
+[共享边界与端口 §4.3](../platform/shared-boundaries-and-ports.md#43-持久化与授权端口)。
 
 ## 1. 设计前提：为什么不用改驱动
 
@@ -109,7 +122,7 @@ config.websocket_tunnel = None;
 
 ```text
 ConnectionConfig { tunnel_id: "prod-bastion", ... }
-   ↓ resolve_saved_tunnel → store.get_tunnel(id)
+   ↓ resolve_saved_tunnel → TunnelRepository::get(scope, "prod-bastion")
 ConnectionConfig { tunnel_kind: Ssh, ssh_tunnel: {...}, ... }
    ↓ start_for_connection
 ConnectionConfig { host: 127.0.0.1, port: <ephemeral>, tunnel_kind: None, ... }
@@ -120,6 +133,27 @@ ConnectionConfig { host: 127.0.0.1, port: <ephemeral>, tunnel_kind: None, ... }
 - **解引用发生在建连，而不是打开表单时。** 改 `tunnels.json` 里的跳板机对所有引用它的连接立即生效，不必逐个改连接。
 - **空字符串 `tunnel_id` 视为「无引用」**（`tunnels.rs:26-28`），与导出导入侧 `materialize_tunnel_refs` 的约定一致。而 `tunnel_id` 指向不存在的隧道会在建连时报 `tunnel id '<id>' not found`——**fail-closed，不静默降级为直连**。
 
+### 4.1.1 存储走端口：宿主实现 `TunnelRepository`
+
+隧道定义**不再由宿主直接持有**，而是经[共享边界与端口 §4.3](../platform/shared-boundaries-and-ports.md#43-持久化与授权端口)
+的 `TunnelRepository` 端口取用。端口的形状由三条事实决定：
+
+- **按组织限定**：每个方法都带 `OrganizationScope`；越组织访问按**「不存在」**处理
+  （`list` → 空列表、`get` → `None`、写入 → `NotFound`），**不**返回「无权限」（CM-05）。
+  桌面是**单租户**：它只承认自己那一个组织（安装级常量），别的组织一律按「不存在」处理。
+  桌面**没有**为隧道定义造出组织维度——落盘文件里没有组织列，组织边界由**端口契约**表达，
+  由实现方（桌面）按「单租户」兑现。
+- **两档：名单不带密钥**：`list` 返回**摘要**（`id` / `name` / `kind`），`get` 才返回全量定义。
+  这不是风格选择：名单路径要进选择器与 IPC 载荷。`get_tunnels`（全量列表、无生产调用方）
+  由两档组合而成，因此它的**载荷形状逐字不变**。
+- **反向投影单列**：`usage`（哪些连接引用了这条隧道）独立成方法——它读的是**连接侧**的事实，
+  不属于隧道定义本身；删除前的引用检查走它（见 §8「引用完整性只在前端」）。
+
+**落盘加密留宿主**：端口是**内存内明文**语义，主钥匙串在宿主手里。桌面的实现体是
+`src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`——加密字段集合
+（6 个）、落盘文件名、原子写与降级策略全部逐字不变（见 §4.2）。**端口方法不接受
+connection id**：隧道定义是独立聚合，连接侧只存 `tunnelId`。
+
 ### 4.2 加密与最小暴露
 
 `store/tunnels.rs` 的凭据处理与连接密码同源（同一把 AES-256-GCM 主密钥，`store/mod.rs:161-199`）。**落盘前加密 6 个字段**：
@@ -128,7 +162,13 @@ ConnectionConfig { host: 127.0.0.1, port: <ephemeral>, tunnel_kind: None, ... }
 
 读取后由 `load_tunnels_from_disk`（`tunnels.rs:12`）在应用启动时（`store/mod.rs:205`）一次性加载并解密进内存缓存。**解密失败降级为 `None` 并 `warn!`**，不让单条坏记录阻断整份加载。
 
-已知主机校验文件为 `{appData}/ssh_known_hosts.json`（`src-tauri/src/tunnel/mod.rs`），采用 TOFU 策略：首次接受并记录指纹，不匹配则拒绝并回传精确错误（`ssh_tunnel.rs:37-95`）。
+已知主机校验文件为 `{appData}/ssh_known_hosts.json`（桌面实现：`src-tauri/src/platform/known_hosts.rs`
+的 `DesktopKnownHostsRepository`），采用 TOFU 策略：首次接受并记录指纹，不匹配则拒绝并回传精确错误（`ssh_tunnel.rs:37-95`）。
+**文件 I/O 是端口**（`KnownHostsRepository`，见[共享边界与端口 §4.3](../platform/shared-boundaries-and-ports.md#43-持久化与授权端口)），
+**规则**（`KnownHostEntry` / `HostKeyDecision` / `verify_host_key` / `mismatch_error_message`）留在
+`packages/tunnel`；端口的降级语义属于契约：`load` **不失败**（读不到一律按空集合处理），
+`save` 失败如实报错。落盘格式（文件、JSON 形状、字段名 `public_key`、两条 warn 文案、三条错误文案）
+**逐字不变**。
 
 **凭据绝不下发到渲染进程。** 选择器用 `SavedTunnelSummary`（`tunnel_types.rs:99`），只有 `id` / `name` / `kind`；`summary_serializes_metadata_only` 单测逐个断言 `password` / `passphrase` / `authToken` / `ssh` / `httpProxy` / `websocket` 均不在序列化结果中。删除前的引用方查询用 `TunnelUsage`（`tunnel_types.rs:108`），同样只带连接 id 与名称。
 

@@ -260,7 +260,7 @@ interface ArtifactChunk {
 | NetworkProvider | 按路由策略建立直连/隧道、端点校验、共享引用 |
 | BudgetCoordinator | 申请节点额度、续期、drain；失联时停止新增资源 |
 
-本表 10 行不含 `IdentityResolver`（它已在 §4 模块职责表中引入）：执行身份解析（`executionIdentityKey` 的生产者）由 `IdentityResolver` 承担，`SecretProvider` 只负责版本化秘密材料的读取与轮换；边界见共享边界详细设计。
+本表不含 `IdentityResolver`（它已在 §4 模块职责表中引入）：执行身份解析（`executionIdentityKey` 的生产者）由 `IdentityResolver` 承担，`SecretProvider` 只负责版本化秘密材料的读取与轮换；边界见共享边界详细设计。
 
 `IdentityResolver` 的桌面实现**已落地**（`src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`，装配于 `PlatformAdapter::inject`）：身份键由 `(organizationId, connectionId, policyIsolationKey)` 加一把服务端固定盐（宿主主密钥经 HMAC 域分离派生的子钥）确定性派生，因此同一三元组恒得同一键、凭据轮换只推进 `credentialRevision`；委托走独立入口 `resolve_delegation`，域标签与输入集都与本人路径不同，校验不过失败关闭、不降级为调用者权限（CM-06）；**`resolve` 在委托上下文上一律拒绝**——委托身份只能由 `resolve_delegation` 产出。客户端传入的用户名、角色与 `principal` 不参与派生（CM §4.1）。
 
@@ -309,7 +309,7 @@ DriverFactory 注册 descriptor、配置 schema、Command schema、资源 provid
 
 普通新增驱动只改变驱动包、选型/注册、schema、UI、文案与该驱动测试。新语义确实超出既有能力时才扩展公共契约，更新版本并迁移所有实现；不通过宿主数据库名称分支绕过。
 
-「更新版本」分两种，不能混：只有改动驱动与宿主**线上**说的内容才动 `PROTOCOL_VERSION`；给公共契约加 FOREVER 冻结（如 `#[non_exhaustive]`，「以后不能再加字段」）只动 crate 版本并附一份迁移配方，不动协议号。此时线上一个字节都没变——升协议号等于宣布一场不存在的线上事故，而真正会断的是别人的 `cargo build`；已经编好的老驱动仍然照常加载。治理决定（2026-10-21）：仓库无外部驱动，`PROTOCOL_VERSION` 冻结在 6、`MIN` 停在 1，逐符号四档机检已随门禁族退役；判据保留为人工纪律，见 [driver-capability-migration.md §5.5](./driver-capability-migration.md#55-source-breaking老驱动跑得好好的但新的编不出来)。
+「更新版本」分两种，不能混：只有改动驱动与宿主**线上**说的内容才动 `PROTOCOL_VERSION`；给公共契约加 FOREVER 冻结（如 `#[non_exhaustive]`，「以后不能再加字段」）只动 crate 版本并附一份迁移配方，不动协议号。此时线上一个字节都没变——升协议号等于宣布一场不存在的线上事故，而真正会断的是别人的 `cargo build`；已经编好的老驱动仍然照常加载。治理决定（2026-10-21）：仓库无第三方驱动生态，`PROTOCOL_VERSION` 冻结在 6、`MIN` 停在 1，逐符号四档机检已随门禁族退役；判据保留为人工纪律，见 [驱动层 §2.5](../backend/drivers.md#25-协议版本闸门)。
 
 保留 inventory 编译期注册。原生同进程驱动属于可信代码。管理员升级发布包/镜像，worker drain 后切换；独立 driver runner 是后续隔离方案，需版本化 RPC，不能把 Rust trait 当作稳定动态 ABI。
 

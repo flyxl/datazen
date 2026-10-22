@@ -31,7 +31,7 @@ plaintext → 生成随机 nonce(12字节) → AES-256-GCM 加密 → base64(non
 encrypted → base64 解码 → 分离 nonce(前12字节) + ciphertext → 解密 → plaintext
 ```
 
-加密主密钥由 `store/key_store.rs` 管理：**正式签名版默认存 OS 钥匙串**（macOS Keychain / Windows Credential Store / Linux Secret Service）；`DATAZEN_KEYRING=file` 或 macOS adhoc/未签名开发构建则使用 `{appData}/.key`。钥匙串不可用时可回退到已有 `.key`。首次启动随机生成 32 字节密钥。详见 [持久化存储 — 主加密密钥](backend/store.md#主加密密钥key_store)。
+加密主密钥由 `store/key_store.rs` 管理、后端由 `store/key_backend.rs` 在**启动期**选定（`DATAZEN_KEYRING` 只读一次，结果作为 `KeyBackend` 显式传下去）：**正式签名版默认存 OS 钥匙串**（macOS Keychain / Windows Credential Store / Linux Secret Service）；`DATAZEN_KEYRING=file` 或 macOS adhoc/未签名开发构建则使用 `{appData}/.key`。钥匙串不可用时可回退到已有 `.key`。首次启动随机生成 32 字节密钥。详见 [持久化存储 — 主加密密钥](backend/store.md#主加密密钥key_store)。
 
 ### 2.2 密码派生（导入/导出）
 

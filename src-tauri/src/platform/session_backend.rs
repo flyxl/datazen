@@ -92,6 +92,13 @@ pub struct DesktopSessionBackend {
     by_session: tokio::sync::RwLock<HashMap<String, String>>,
     publisher: RwLock<Option<ResultPublisher>>,
     export_output: RwLock<Option<ExportOutputAuthority>>,
+    /// 隧道定义的存储端口（宿主注入）。
+    ///
+    /// 建连时用它把连接侧的 `tunnelId` 解引用回内联配置（解引用发生在**建连时**，
+    /// 不是打开表单时）。
+    tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
+    /// SSH known-hosts 的存储端口（宿主注入）。
+    known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository>,
 }
 impl DesktopSessionBackend {
     pub(crate) fn physical_budget(
@@ -104,6 +111,8 @@ impl DesktopSessionBackend {
         registry: Arc<DriverRegistry>,
         store: Arc<DesktopRepository>,
         physical_limit: u32,
+        tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
+        known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository>,
     ) -> Self {
         Self::new_scoped(
             registry,
@@ -113,14 +122,19 @@ impl DesktopSessionBackend {
             super::identity::local_principal().unwrap_or_else(|| {
                 datazen_platform_api::id::PrincipalId::new("unresolved-desktop-user")
             }),
+            tunnels,
+            known_hosts,
         )
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn new_scoped(
         registry: Arc<DriverRegistry>,
         store: Arc<DesktopRepository>,
         physical_limit: u32,
         organization: datazen_platform_api::id::OrganizationId,
         principal: datazen_platform_api::id::PrincipalId,
+        tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
+        known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository>,
     ) -> Self {
         Self {
             registry,
@@ -139,6 +153,8 @@ impl DesktopSessionBackend {
             by_session: tokio::sync::RwLock::new(HashMap::new()),
             publisher: RwLock::new(None),
             export_output: RwLock::new(None),
+            tunnels,
+            known_hosts,
         }
     }
     pub fn set_publisher(&self, publisher: ResultPublisher) -> Result<(), rc::ProviderError> {
