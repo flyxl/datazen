@@ -43,6 +43,9 @@ pub(crate) struct TestResourceProvider {
     namespace_shape: NamespaceShape,
     targets: Mutex<HashMap<String, NamespaceTarget>>,
     transactions: Mutex<HashMap<String, (String, TransactionHandle)>>,
+    /// A fixed observation for tests that need the driver to report more than
+    /// the acquisition target carries (for example a multi-segment `path`).
+    observed_context: Option<SessionContext>,
 }
 
 impl TestResourceProvider {
@@ -85,7 +88,20 @@ impl TestResourceProvider {
             namespace_shape,
             targets: Mutex::new(HashMap::new()),
             transactions: Mutex::new(HashMap::new()),
+            observed_context: None,
         }
+    }
+
+    /// Report `context` as this resource's session observation.
+    ///
+    /// The default observation is derived from the acquisition target, which
+    /// cannot carry a richer namespace than the platform-api target the session
+    /// was opened with. Tests that pin the projection from a driver
+    /// observation — a `path` with several segments, for instance — set the
+    /// full context here.
+    pub(crate) fn reporting_context(mut self, context: SessionContext) -> Self {
+        self.observed_context = Some(context);
+        self
     }
 
     fn connection(
@@ -116,6 +132,12 @@ impl TestResourceProvider {
     }
 
     fn context(&self, handle: &ResourceHandle) -> Result<SessionContext, ResourceError> {
+        if let Some(context) = &self.observed_context {
+            // Still prove the handle names a live resource, so a fixed
+            // observation cannot mask a lost one.
+            self.connection(handle)?;
+            return Ok(context.clone());
+        }
         let namespace = self.target(handle)?;
         let transaction_state = self.transaction_observation(handle).state;
         Ok(SessionContext {

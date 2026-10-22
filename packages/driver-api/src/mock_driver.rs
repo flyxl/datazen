@@ -61,6 +61,11 @@ pub struct MockDriverOptions {
     pub column_errors_by_table: HashMap<String, String>,
     pub table_schema: Option<TableSchema>,
     pub query_rows: Vec<Vec<Option<Value>>>,
+    /// Affected-row count reported for a **contiguous mutation** sent through
+    /// `query` (an `UPDATE`/`INSERT`/`DELETE` statement). `None` (the default)
+    /// keeps the historical answer: the mock returns the configured read rows
+    /// with no affected-row count, whatever the statement text says.
+    pub query_rows_affected: Option<u64>,
     /// Keyset pages after the first are empty for resume-executor tests.
     pub empty_keyset_after_cursor: bool,
     pub count_total: i64,
@@ -204,6 +209,7 @@ impl Default for MockDriverOptions {
             server_version: String::new(),
             extra_commands: Vec::new(),
             command_results: HashMap::new(),
+            query_rows_affected: None,
             query_error: None,
             cancel_error: None,
             execute_rows_affected: 0,
@@ -736,6 +742,23 @@ impl DatabaseDriver for MockDriver {
         self.query_calls.fetch_add(1, Ordering::Relaxed);
         if let Some(msg) = &self.opts.query_error {
             return Err(DriverError::QueryFailed(msg.clone()));
+        }
+        // A mutation sent down the `query` channel reports an affected-row
+        // count, not the configured read rows. Opt-in, so the historical mock
+        // answer (rows for any SQL) stays the default.
+        if let Some(rows_affected) = self.opts.query_rows_affected {
+            let verb = sql.trim_start().split_whitespace().next().unwrap_or("");
+            if ["UPDATE", "INSERT", "DELETE"]
+                .iter()
+                .any(|mutation| verb.eq_ignore_ascii_case(mutation))
+            {
+                return Ok(QueryResult {
+                    columns: Vec::new(),
+                    rows: Vec::new(),
+                    rows_affected: Some(rows_affected),
+                    execution_time_ms: 0,
+                });
+            }
         }
         // The estimate statement is answered on its own, so a test can tell it
         // apart from the count and from the data statement — and can make it

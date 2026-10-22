@@ -244,6 +244,10 @@ mod insert_guard_tests;
 #[path = "data/result_write_tests.rs"]
 mod result_write_tests;
 
+#[cfg(test)]
+#[path = "data/result_source_tests.rs"]
+mod result_source_tests;
+
 #[path = "table_target.rs"]
 mod table_target;
 

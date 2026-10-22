@@ -32,6 +32,8 @@ struct TestMockDriverFactory {
     driver_id: &'static str,
     driver: Arc<dyn DatabaseDriver>,
     provider: OnceLock<Arc<dyn ResourceProvider>>,
+    /// See [`super::resource_provider::TestResourceProvider::reporting_context`].
+    session_context: Option<datazen_driver_api::session::SessionContext>,
 }
 
 impl TestMockDriverFactory {
@@ -40,6 +42,7 @@ impl TestMockDriverFactory {
             driver_id,
             driver,
             provider: OnceLock::new(),
+            session_context: None,
         }
     }
 }
@@ -57,12 +60,15 @@ impl DatabaseDriverFactory for TestMockDriverFactory {
         Some(
             self.provider
                 .get_or_init(|| {
-                    Arc::new(
-                        super::resource_provider::TestResourceProvider::new_for_driver(
-                            Arc::clone(&self.driver),
-                            self.driver_id,
-                        ),
-                    ) as Arc<dyn ResourceProvider>
+                    let provider = super::resource_provider::TestResourceProvider::new_for_driver(
+                        Arc::clone(&self.driver),
+                        self.driver_id,
+                    );
+                    let provider = match &self.session_context {
+                        Some(context) => provider.reporting_context(context.clone()),
+                        None => provider,
+                    };
+                    Arc::new(provider) as Arc<dyn ResourceProvider>
                 })
                 .clone(),
         )
@@ -75,7 +81,7 @@ impl TestAppState {
     }
 
     pub async fn with_options(opts: MockDriverOptions) -> Self {
-        Self::build(opts, false).await
+        Self::build(opts, None).await
     }
 
     /// Build a test state with a resource provider for runtime SQL/ChangeSet
@@ -98,10 +104,22 @@ impl TestAppState {
             .or_insert_with(|| {
                 serde_json::to_value(&opts.explain_plan).expect("serialize mock explain plan")
             });
-        Self::build(opts, true).await
+        Self::build(opts, None).await
     }
 
-    async fn build(opts: MockDriverOptions, _with_resource_provider: bool) -> Self {
+    /// Build a test state whose retained-resource fixture reports `context`
+    /// as the session observation on every `observeSession`.
+    pub async fn with_session_context(
+        opts: MockDriverOptions,
+        context: datazen_driver_api::session::SessionContext,
+    ) -> Self {
+        Self::build(opts, Some(context)).await
+    }
+
+    async fn build(
+        opts: MockDriverOptions,
+        session_context: Option<datazen_driver_api::session::SessionContext>,
+    ) -> Self {
         let keyring = super::FileKeyringGuard::set();
         let temp = tempfile::tempdir().expect("tempdir");
         let store = Arc::new(
@@ -120,7 +138,10 @@ impl TestAppState {
         // command path would reject.
         let driver: Arc<dyn DatabaseDriver> = mock.clone();
         let factory: &'static dyn DatabaseDriverFactory =
-            Box::leak(Box::new(TestMockDriverFactory::new("postgres", driver)));
+            Box::leak(Box::new(TestMockDriverFactory {
+                session_context,
+                ..TestMockDriverFactory::new("postgres", driver)
+            }));
         registry.register_test_factory("postgres", factory).await;
         let state = build_app_state(store.clone(), registry.clone());
         Self {
