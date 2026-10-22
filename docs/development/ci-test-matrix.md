@@ -552,18 +552,18 @@ driver-protocol / boundaries / i18n keys）、`pnpm test:unit`、
 
 | 项 | 数值 | 依据 |
 |----|------|------|
-| `e2e/specs/**` spec 文件总数 | 144 | `find e2e/specs -name '*.ts'` |
-| 默认排除（截图/录屏类） | 10 | `wdio.conf.ts` 根级 `exclude`（`E2E_CAPTURE` 时放开为空数组） |
-| **默认实际运行** | **约 134** | 144 − 7 个 `*screenshot*` − `zz-screenshots` / `demo-recording` / `zz-diag` |
+| `e2e/specs/**` spec 文件总数 | 153 | `find e2e/specs -name '*.ts'` |
+| 默认排除（截图/录屏类） | 9 | `wdio.conf.ts` 根级 `exclude`（`E2E_CAPTURE` 时放开为空数组）：7 个 `*screenshot*`（含 `zz-screenshots`）+ `demo-recording` + `zz-diag` |
+| **默认实际运行** | **144** | 153 − 9 |
 
 跳过条件分三层：
 
 1. **截图类**：`--capture` 未开启时统一排除（`pnpm e2e:shots` 才跑）。
 2. **数据库类**：`e2e/run.mjs` 的 `runEnvSetup()` 启动前跑 `e2e/setup-e2e-env.sh`，**失败只告警不中断**
-   （"DB specs may fail; UI-only specs can still run"）。约 40 个 spec 读
+   （"DB specs may fail; UI-only specs can still run"）。54 个 spec 读
    `E2E_PG_*` / `E2E_MYSQL_*`；预置库缺失时这些 spec 失败，UI 类仍可跑完。
-3. **spec 级**：`E2E_SKIP_WORKER_DATABASE=1`（`e2e:schema-tree-objects`）、`E2E_SKIP_SQLSERVER=1`、
-   `E2E_MIGRATION_LIVE=1`（`e2e:migration-live`，默认不跑）等由各 spec 自查。
+3. **脚本级**：`E2E_SKIP_WORKER_DATABASE=1`（`e2e:schema-tree-objects`）由 `wdio.conf.ts` 读取并
+   跳过依赖 worker 数据库的 spec；其余开关（如 `E2E_SKIP_SQLSERVER=1`）由各 spec 自查。
 
 ### 5.3 预置数据库链路（已核实）
 

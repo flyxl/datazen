@@ -23,11 +23,6 @@ export function workflowDefinitionToDraft(workflow: WorkflowDefinition): Workflo
       database: s.database,
       command: s.type === 'command' ? s.command : undefined,
       input: s.type === 'command' ? (s.input ?? {}) : undefined,
-      operation: s.type === 'migration' ? s.operation : undefined,
-      profileId: s.type === 'migration' ? s.profileId : undefined,
-      profileRevision: s.type === 'migration' ? s.profileRevision : undefined,
-      destructivePolicy: s.type === 'migration' ? s.destructivePolicy : undefined,
-      sqlFileTokenVariable: s.type === 'migration' ? s.sqlFileTokenVariable : undefined,
     })),
     scheduleEnabled: workflow.schedule?.enabled ?? false,
     scheduleIntervalSecs:
@@ -68,17 +63,6 @@ export function workflowDraftToDefinition(draft: WorkflowDraft): WorkflowDefinit
       }
       if (s.type === 'ai') {
         return { type: 'ai' as const, id: s.id, prompt: s.prompt ?? '' };
-      }
-      if (s.type === 'migration') {
-        return {
-          type: 'migration' as const,
-          id: s.id,
-          operation: s.operation ?? 'dataSync',
-          profileId: s.profileId ?? '',
-          profileRevision: s.profileRevision,
-          destructivePolicy: s.destructivePolicy ?? 'reject',
-          sqlFileTokenVariable: s.sqlFileTokenVariable,
-        };
       }
       return {
         type: 'query' as const,

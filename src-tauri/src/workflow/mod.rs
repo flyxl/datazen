@@ -10,7 +10,6 @@
 
 pub mod command_runtime;
 pub mod history;
-pub(crate) mod migration;
 
 // These modules own the workflow registry and the desktop scheduling adapter.
 pub mod registry;

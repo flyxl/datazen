@@ -111,16 +111,5 @@ const pack = {
   'workflows.editor.invalidYamlField': 'YAML invalide : champ « {field} » manquant ou invalide',
   'workflows.addToDashboard': 'Ajouter au tableau de bord',
   'workflows.dashboard.defaultName': 'Nouveau tableau de bord',
-  'workflows.form.migration': 'Profil de migration',
-  'workflows.form.migrationTransfer': 'Transfert de données',
-  'workflows.form.migrationSync': 'Synchronisation des données',
-  'workflows.form.migrationSchema': 'Différence de schéma',
-  'workflows.form.migrationReject': 'Refuser les modifications destructives',
-  'workflows.form.migrationAllow': 'Autoriser les modifications destructives',
-  'workflows.form.migrationProfileId': 'ID du profil enregistré',
-  'workflows.form.migrationProfileRevision': 'Révision du profil (facultatif)',
-  'workflows.form.migrationTokenVariable': 'Variable de jeton de fichier SQL par exécution',
-  'workflows.form.migrationHint':
-    'Les profils sont revalidés et planifiés à chaque exécution. Les destinations de fichiers SQL nécessitent une nouvelle variable de jeton issue de la boîte de dialogue native.',
 } as const;
 export default pack;

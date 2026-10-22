@@ -106,16 +106,5 @@ const pack = {
   'workflows.stepOrder.toggle': 'Переключить порядок результатов шагов',
   'workflows.stepOrder.asc': 'Сначала старые',
   'workflows.stepOrder.desc': 'Сначала последние',
-  'workflows.form.migration': 'Профиль миграции',
-  'workflows.form.migrationTransfer': 'Перенос данных',
-  'workflows.form.migrationSync': 'Синхронизация данных',
-  'workflows.form.migrationSchema': 'Сравнение схем',
-  'workflows.form.migrationReject': 'Отклонять разрушительные изменения',
-  'workflows.form.migrationAllow': 'Разрешать разрушительные изменения',
-  'workflows.form.migrationProfileId': 'ID сохранённого профиля',
-  'workflows.form.migrationProfileRevision': 'Версия профиля (необязательно)',
-  'workflows.form.migrationTokenVariable': 'Переменная токена файла SQL для каждого запуска',
-  'workflows.form.migrationHint':
-    'Профили перепроверяются и планируются при каждом запуске. Для назначения SQL-файла требуется новая переменная токена из системного диалога выбора файла.',
 } as const;
 export default pack;

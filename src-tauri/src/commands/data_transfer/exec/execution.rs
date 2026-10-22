@@ -31,6 +31,12 @@ fn validate_structure_selection(
     Ok(())
 }
 
+/// 无写入观察者的执行入口。
+///
+/// 生产路径一律走 [`execute_data_transfer_impl_with_write_observer`]（它需要
+/// `write_started` 观察者把「写入是否已开始」记进迁移运行历史）。这个薄封装
+/// 只剩测试夹具在用——workflow 的迁移 step 移除后，不再有生产调用方。
+#[cfg(test)]
 pub(crate) async fn execute_data_transfer_impl(
     state: &AppState,
     request: TransferRunRequest,

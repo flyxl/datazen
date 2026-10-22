@@ -657,9 +657,11 @@ fn completed_tables_from_result(prior: &[String], result: &TransferExecutionResu
 
 mod execution;
 mod resume_preflight;
-pub(crate) use execution::{
-    execute_data_transfer_impl, execute_data_transfer_impl_with_write_observer,
-};
+/// 无写入观察者的执行入口只被测试夹具（resume 预检）直接调用；生产路径
+/// 走 `execute_data_transfer_impl_with_write_observer`。
+#[cfg(test)]
+pub(crate) use execution::execute_data_transfer_impl;
+pub(crate) use execution::execute_data_transfer_impl_with_write_observer;
 
 #[cfg(test)]
 mod tests {

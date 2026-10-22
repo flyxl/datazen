@@ -4,7 +4,6 @@ use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
 use datazen_feature_core::workflow::executor::WorkflowExecutor;
 use datazen_feature_core::workflow::history::{WorkflowRunListItem, WorkflowRunRecord};
-use datazen_feature_core::workflow::migration::sanitize_variables;
 use datazen_feature_core::workflow::model::{
     WorkflowDefinition, WorkflowExecutionResult, WorkflowListItem, WorkflowVisibility,
 };
@@ -45,10 +44,9 @@ pub(crate) async fn workflow_execute_impl(
 
     // Dashboard-owned hidden workflows must not pollute the user-facing history list.
     if workflow.visibility != WorkflowVisibility::DashboardHidden {
-        let history_variables = sanitize_variables(&workflow, &variables);
         if let Err(e) = state
             .workflow_history
-            .record(&workflow.id, &workflow.name, &history_variables, &result)
+            .record(&workflow.id, &workflow.name, &variables, &result)
             .await
         {
             tracing::warn!("Failed to record workflow history: {e}");

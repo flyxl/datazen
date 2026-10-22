@@ -51,37 +51,6 @@ pub(crate) use tasks::{
 };
 use tauri::State;
 
-/// Execute the default reviewed selection of a freshly-created Sync plan.
-/// Workflow migration steps use this host-owned bridge so they cannot submit
-/// client-authored rows or SQL while still sharing the normal immutable-plan
-/// executor.
-pub(crate) async fn execute_data_sync_profile_plan_impl(
-    state: &AppState,
-    plan_id: String,
-    selection_revision: u64,
-    options: crate::data_sync::SyncOptions,
-) -> Result<crate::data_sync::ExecutionResult, CommandError> {
-    let scope = state.organization_scope()?;
-    let selection = plans::default_profile_selection(
-        state.sync_stores.plan_store.as_ref(),
-        &scope,
-        &plan_id,
-        selection_revision,
-        &options,
-    )
-    .map_err(CommandError::Validation)?;
-    execute_data_sync_plan_impl(
-        state,
-        plans::SyncRunRequest {
-            plan_id,
-            selection,
-            options,
-            job_id: None,
-        },
-    )
-    .await
-}
-
 #[tauri::command]
 pub fn classify_data_sync_pair(
     source_database_type: String,

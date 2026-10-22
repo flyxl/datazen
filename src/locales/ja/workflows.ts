@@ -106,16 +106,5 @@ const pack = {
   'workflows.stepOrder.toggle': 'ステップ結果の並び順を切り替え',
   'workflows.stepOrder.asc': '古い順',
   'workflows.stepOrder.desc': '新しい順',
-  'workflows.form.migration': '移行プロファイル',
-  'workflows.form.migrationTransfer': 'Data Transfer（データ転送）',
-  'workflows.form.migrationSync': 'Data Sync（データ同期）',
-  'workflows.form.migrationSchema': 'Schema Diff（スキーマ差分）',
-  'workflows.form.migrationReject': '破壊的変更を拒否',
-  'workflows.form.migrationAllow': '破壊的変更を許可',
-  'workflows.form.migrationProfileId': '保存済みプロファイル ID',
-  'workflows.form.migrationProfileRevision': 'プロファイルのリビジョン (任意)',
-  'workflows.form.migrationTokenVariable': '実行ごとの SQL ファイル トークン変数',
-  'workflows.form.migrationHint':
-    'プロファイルは実行のたびに再検証され、プランが作成されます。SQL ファイルの保存先には、ネイティブ ダイアログで新たに取得したトークン変数が必要です。',
 } as const;
 export default pack;
