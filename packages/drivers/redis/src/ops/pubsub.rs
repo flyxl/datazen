@@ -1,9 +1,10 @@
 //! Pub/Sub subscribe loop, publish helper, and subscription registry.
 
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use datazen_driver_api::{DriverEvent, DriverEventSink};
 use futures_util::StreamExt;
 use redis::aio::ConnectionLike;
 use redis::AsyncCommands;
@@ -14,23 +15,52 @@ use tokio::task::JoinHandle;
 use crate::connect::{open_pubsub_connection, ConnectionPlan};
 use crate::driver::RedisDriver;
 
-#[allow(dead_code)] // event name reserved for the Redis plugin Pub/Sub sink
+/// Event name the Pub/Sub outlet publishes under.
+///
+/// Part of the wire contract with the frontend: the host's sink forwards the
+/// name verbatim, so the desktop form emits exactly this Tauri event.
 pub const EVENT_NAME: &str = "redis-pubsub-message";
 
-pub type PubSubEmitter = std::sync::Arc<dyn Fn(RedisPubSubMessageEvent) + Send + Sync>;
+/// The sink the Pub/Sub outlet publishes into.
+///
+/// Installed by the host at startup through [`crate::RedisPubSubOutlet`].
+/// Until it is installed the outlet has no sink and messages are dropped —
+/// the same policy the previous emitter-based injection had, where an unset
+/// emitter dropped the message silently.
+static PUBSUB_SINK: OnceLock<Arc<dyn DriverEventSink>> = OnceLock::new();
 
-static PUBSUB_EMITTER: OnceLock<PubSubEmitter> = OnceLock::new();
-
-/// Install the frontend event sink. Called once from the Redis plugin setup hook.
-#[allow(dead_code)]
-pub fn set_pubsub_emitter(emitter: PubSubEmitter) {
-    let _ = PUBSUB_EMITTER.set(emitter);
+/// Install the form-neutral event sink for the Pub/Sub outlet.
+pub(crate) fn set_pubsub_sink(sink: Arc<dyn DriverEventSink>) {
+    let _ = PUBSUB_SINK.set(sink);
 }
 
+/// Publish one Pub/Sub message through the installed sink.
+///
+/// A message that arrives before the sink is installed is dropped, exactly
+/// as it was when the emitter was not set yet.
 fn emit_pubsub_message(event: RedisPubSubMessageEvent) {
-    if let Some(emitter) = PUBSUB_EMITTER.get() {
-        emitter(event);
-    }
+    publish_to(PUBSUB_SINK.get(), &event);
+}
+
+/// The sink-facing half of [`emit_pubsub_message`].
+///
+/// Split out so the "no sink installed yet" branch is reachable from a test
+/// without mutating the process-wide sink.
+fn publish_to(sink: Option<&Arc<dyn DriverEventSink>>, event: &RedisPubSubMessageEvent) {
+    let Some(sink) = sink else {
+        return;
+    };
+    let payload = match serde_json::to_value(event) {
+        Ok(payload) => payload,
+        Err(error) => {
+            tracing::warn!(error = %error, "redis pubsub event payload serialization failed");
+            return;
+        }
+    };
+    sink.emit(&DriverEvent {
+        name: EVENT_NAME,
+        payload,
+    });
 }
 
 /// A Pub/Sub message pushed to the frontend (`redis-pubsub-message`).
@@ -354,7 +384,94 @@ mod tests {
     use datazen_driver_api::ConnectionConfig;
     use datazen_driver_api::DatabaseDriver;
     use datazen_driver_api::SslMode;
+    use std::sync::Mutex;
     use std::time::Duration;
+
+    /// A sink that records what it was handed.
+    #[derive(Default)]
+    struct RecordingSink {
+        events: Mutex<Vec<DriverEvent>>,
+    }
+
+    impl DriverEventSink for RecordingSink {
+        fn emit(&self, event: &DriverEvent) {
+            self.events
+                .lock()
+                .expect("recording sink is not poisoned")
+                .push(event.clone());
+        }
+    }
+
+    /// The one sink this test binary installs.
+    ///
+    /// `PUBSUB_SINK` is a one-shot `OnceLock`: the first `set` wins and every
+    /// later one is a no-op. Two cases below need a sink — the offline one
+    /// that pins the wire shape and the live one that pins the attribution —
+    /// so they share one recorder and pick their own event out of it. An event
+    /// carries the subscription id that produced it, which is what tells the
+    /// two apart.
+    fn shared_sink() -> Arc<RecordingSink> {
+        static SINK: OnceLock<Arc<RecordingSink>> = OnceLock::new();
+        SINK.get_or_init(|| {
+            let sink = Arc::new(RecordingSink::default());
+            set_pubsub_sink(sink.clone());
+            sink
+        })
+        .clone()
+    }
+
+    /// The event recorded for `subscription_id`, if it has arrived.
+    fn recorded_event(sink: &RecordingSink, subscription_id: &str) -> Option<DriverEvent> {
+        let events = sink.events.lock().expect("recording sink is not poisoned");
+        events
+            .iter()
+            .find(|event| event.payload["subscriptionId"] == serde_json::json!(subscription_id))
+            .cloned()
+    }
+
+    fn sample_event() -> RedisPubSubMessageEvent {
+        RedisPubSubMessageEvent {
+            connection_id: "conn-1".into(),
+            subscription_id: "sub-1".into(),
+            channel: "news".into(),
+            payload: "hello".into(),
+            ts: 42,
+        }
+    }
+
+    #[test]
+    fn a_message_without_a_sink_is_dropped() {
+        // The pre-installation policy: the message arrives before the host
+        // installed a sink, so it goes nowhere — it must not panic and must
+        // not be buffered.
+        publish_to(None, &sample_event());
+    }
+
+    #[test]
+    fn an_installed_sink_receives_the_event_with_its_wire_shape() {
+        let sink = shared_sink();
+
+        emit_pubsub_message(sample_event());
+
+        let events = sink.events.lock().expect("recording sink is not poisoned");
+        // The recorder is shared with the live case below, so this publication
+        // is picked out by the subscription id it carries instead of counted
+        // against the whole recorder.
+        let delivered: Vec<_> = events
+            .iter()
+            .filter(|event| event.payload["subscriptionId"] == serde_json::json!("sub-1"))
+            .collect();
+        assert_eq!(delivered.len(), 1, "the sink took the published event once");
+        let event = delivered[0];
+        assert_eq!(event.name, EVENT_NAME);
+        // The frontend reads camelCase keys off the payload; that shape is
+        // the wire contract and must not drift.
+        assert_eq!(event.payload["connectionId"], serde_json::json!("conn-1"));
+        assert_eq!(event.payload["subscriptionId"], serde_json::json!("sub-1"));
+        assert_eq!(event.payload["channel"], serde_json::json!("news"));
+        assert_eq!(event.payload["payload"], serde_json::json!("hello"));
+        assert_eq!(event.payload["ts"], serde_json::json!(42));
+    }
 
     /// The wire shape is a cross-end contract: the frontend filters on
     /// `connectionId` and reads `subscriptionId` / `channel` / `payload` / `ts`.
@@ -407,14 +524,10 @@ mod tests {
              means the binary is installed but unusable",
         );
 
-        // The emitter is a process-wide one-shot sink. Installing it here is
-        // safe because this is the only test in the crate that subscribes.
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        set_pubsub_emitter(std::sync::Arc::new(
-            move |event: RedisPubSubMessageEvent| {
-                let _ = tx.send(event);
-            },
-        ));
+        // The sink is process-wide and one-shot, so this case shares the
+        // recorder with the offline case above and reads back the event the
+        // subscription emitted.
+        let sink = shared_sink();
 
         let config = ConnectionConfig {
             id: "conn-live-1".into(),
@@ -461,27 +574,32 @@ mod tests {
                     .plugin_pubsub_publish(&handle.pool_id, "news", "hello")
                     .await
                     .expect("publish reaches the live server");
-                if let Ok(Some(event)) =
-                    tokio::time::timeout(Duration::from_millis(250), rx.recv()).await
-                {
+                if let Some(event) = recorded_event(sink.as_ref(), &subscription_id) {
                     break event;
                 }
+                tokio::time::sleep(Duration::from_millis(50)).await;
             }
         })
         .await
         .expect("a published message reaches the subscriber");
 
+        assert_eq!(event.name, EVENT_NAME);
         assert_eq!(
-            event.connection_id, "conn-live-1",
+            event.payload["connectionId"],
+            serde_json::json!("conn-live-1"),
             "the event is attributed to the persisted connection config id"
         );
         assert_ne!(
-            event.connection_id, handle.pool_id,
+            event.payload["connectionId"],
+            serde_json::json!(handle.pool_id),
             "the driver's own runtime handle must never stand in for a connection id"
         );
-        assert_eq!(event.subscription_id, subscription_id);
-        assert_eq!(event.channel, "news");
-        assert_eq!(event.payload, "hello");
+        assert_eq!(
+            event.payload["subscriptionId"],
+            serde_json::json!(subscription_id)
+        );
+        assert_eq!(event.payload["channel"], serde_json::json!("news"));
+        assert_eq!(event.payload["payload"], serde_json::json!("hello"));
     }
 
     #[test]

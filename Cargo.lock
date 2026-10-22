@@ -1840,7 +1840,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-driver-api"
-version = "0.0.20"
+version = "0.0.21"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2019,8 +2019,6 @@ dependencies = [
  "rustls 0.23.43",
  "serde",
  "serde_json",
- "tauri",
- "tauri-plugin",
  "tokio",
  "tracing",
  "urlencoding",
