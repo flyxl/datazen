@@ -3,7 +3,12 @@ import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
-import { planTypecheckCommands, readDriverFeatures, runTypecheck } from '../ci-union-typecheck.mjs';
+import {
+  planTsrsCommand,
+  planTypecheckCommands,
+  readDriverFeatures,
+  runTypecheck,
+} from '../ci-union-typecheck.mjs';
 
 function seededRoot(features: string[]): string {
   const root = mkdtempSync(join(tmpdir(), 'datazen-union-'));
@@ -28,6 +33,32 @@ describe('ci-union-typecheck typecheck plan', () => {
     for (const command of planTypecheckCommands(seededRoot([]))) {
       expect(command.args.join(' ')).not.toContain('pnpm');
     }
+  });
+});
+
+describe('ci-union-typecheck runs the forward-looking engine too', () => {
+  it('plans a tsrs step over the same union', () => {
+    const root = seededRoot(['driver-postgres']);
+    const { command } = planTsrsCommand(root);
+    if (!command) {
+      // The platform has no tsrs binary. The step is skipped, not faked.
+      expect(planTsrsCommand(root).reason).toBeTruthy();
+      return;
+    }
+    expect(command.args.join(' ')).toContain('tsrs');
+    expect(command.args.join(' ')).toContain('--noEmit');
+    // Same reasoning as the tsc step: invoked through process.execPath so the
+    // plan is identical on Windows, macOS and Linux.
+    expect(command.cmd).toBe(process.execPath);
+    expect(command.args.join(' ')).not.toContain('pnpm');
+  });
+
+  it('explains itself when the engine cannot run here', () => {
+    // A root with no node_modules at all: tsrs cannot resolve a binary there.
+    const empty = mkdtempSync(join(tmpdir(), 'datazen-union-nobins-'));
+    const { command, reason } = planTsrsCommand(empty);
+    expect(command).toBeNull();
+    expect(reason).toBeTruthy();
   });
 });
 

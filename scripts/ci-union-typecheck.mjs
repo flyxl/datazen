@@ -11,9 +11,19 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * DATAZEN_CI_TYPECHECK_ONCE=1.
  *
  * The check is target independent, so one runner covers all four
- * (platform, target) pairs. Nothing here is compiled: codegen + `tsc` need
- * `generated.ts` and the TypeScript sources, not a Rust artifact, so the job
+ * (platform, target) pairs. Nothing here is compiled: codegen + the compilers
+ * need `generated.ts` and the TypeScript sources, not a Rust artifact, so the job
  * needs no Rust toolchain and no `dist/`.
+ *
+ * **Both TypeScript 7 engines run here** (user decision): the authoritative
+ * `tsc` (7.0.2 GA) *and* the forward-looking `tsrs` (7.1-dev). The local
+ * gate (`pnpm typecheck`) runs `tsrs` alone for speed; the release gate is
+ * where both get compared against the same union, so a `tsrs`-only diagnostic
+ * that the GA compiler disagrees with is caught **before** a release, not after.
+ *
+ * `tsrs` has no win32 binary, so on a platform where it cannot run the step is
+ * **announced and skipped** (never silently) — the authoritative `tsc` has
+ * already run by then, so the gate still has a compiler behind it.
  *
  * This used to also warm the shared cargo cache (`ci-driver-warmup.mjs`, with a
  * `warm-driver-deps` job ahead of the matrix). That was removed after
@@ -25,6 +35,7 @@ import { spawnSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { engineBinPath, probeEngine } from './typecheck.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -45,6 +56,27 @@ export function planTypecheckCommands(root = ROOT) {
     { cmd: process.execPath, args: [join(root, 'scripts', 'generate-menu-labels.mjs')] },
     { cmd: process.execPath, args: [join(root, TSC), '--noEmit'] },
   ];
+}
+
+/**
+ * The forward-looking engine's step, when it can run here.
+ *
+ * `tsrs` resolves a platform binary at launch time, so its availability is a
+ * property of the machine, not of the repository: probing it is the only honest
+ * way to know. When it cannot run, the caller **announces** the skip and moves
+ * on — the authoritative `tsc` has already run, so the gate is not left
+ * without a compiler.
+ */
+export function planTsrsCommand(root = ROOT) {
+  const probe = probeEngine(root, 'tsrs');
+  if (!probe.available) {
+    return { command: null, reason: probe.reason };
+  }
+  const bin = engineBinPath(root, 'tsrs');
+  return {
+    command: { cmd: process.execPath, args: [bin, '--noEmit'] },
+    reason: null,
+  };
 }
 
 /**
@@ -72,6 +104,23 @@ export function runTypecheck({ root = ROOT, log = console.log } = {}) {
     if (result.status !== 0) {
       return { status: result.status ?? 1 };
     }
+  }
+
+  // The forward-looking engine, on the same union. Both compilers have now
+  // seen the same sources, which is the point: a diagnostic only one of them
+  // reports is exactly what a release gate should catch.
+  const tsrs = planTsrsCommand(root);
+  if (!tsrs.command) {
+    log(`[ci-union-typecheck] SKIPPING tsrs: ${tsrs.reason}`);
+    return { status: 0 };
+  }
+  const tsrsResult = spawnSync(tsrs.command.cmd, tsrs.command.args, {
+    cwd: root,
+    stdio: 'inherit',
+    shell: false,
+  });
+  if (tsrsResult.status !== 0) {
+    return { status: tsrsResult.status ?? 1 };
   }
   return { status: 0 };
 }

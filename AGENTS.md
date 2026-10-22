@@ -327,10 +327,12 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
   在此之前它们各自是 standalone program，`@datazen/*` 全部解析失败，五个 program 合计
   830 个错误，与代码本身无关。
   门禁是**单引擎**的：`pnpm typecheck` 只跑 `tsrs`（TS 7.1-dev，前瞻、快约 2 倍）。
-  发布流水线的 `union-typecheck` 另跑权威的 `tsc`（TS 7 GA），所以**本地门禁不等于发布
-  门禁**——「PR 绿但发版红」是可能的（`tsrs` 只会比 GA 多报，不会少报，反之不成立）；
-  需要权威结论时跑 `pnpm typecheck:tsc`。`tsrs` 在没有 Windows 二进制的平台会**回退到
-  `tsc`** 并明确打印回退原因（绝不静默）。
+  发布流水线的 `union-typecheck` 跑**两个**引擎：`tsc`（TS 7 GA）之后紧跟 `tsrs`，跑在
+  同一份 driver union 上 ⇒ **本地门禁弱于发布门禁**（「PR 绿但发版红」是可能的：`tsrs`
+  只会比 GA 多报，不会少报，反之不成立）；需要权威结论时跑 `pnpm typecheck:tsc`。
+  `tsrs` 在没有 Windows 二进制的平台会**回退到 `tsc`** 并明确打印回退原因（绝不静默）；
+  发布侧若跑不到 `tsrs`，同样**明确打印跳过原因**，而此时 `tsc` 已经跑过 ⇒ 门禁背后始终
+  有编译器。
   详见 [docs/development/ci-test-matrix.md](docs/development/ci-test-matrix.md) §2.1.4。
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中。
 - **本地环境变量文件保护**：任何 Agent（含子代理）不得打开、读取、解析、source 或打印仓库及其 worktree 中 `.env` / `.env.test` 文件的**内容**；不得将凭据写入提示、日志或报告。只允许检查文件是否存在及 Git 忽略状态。

@@ -10,7 +10,7 @@
 | 驱动选型 | **`basic` 固定**（postgres, mysql, sqlite, redis）；Host 单测另跑一遍 **`all`** | Basic / All × 四平台 + Akulaku × 三平台（Windows / macOS，无 Linux） | 任意 `--drivers=` / `DATAZEN_DRIVERS` |
 | Host 前端单测 | ✅ `basic`：`pnpm test:unit`；`all`：`pnpm test:unit:driver-set`（硬门禁，理由见 §2.1.1） | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` / `pnpm test:unit:driver-set` |
 | 驱动 UI 单测 | ✅ `pnpm test:unit:drivers` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit:drivers` |
-| TypeScript | ✅ `pnpm typecheck`（**单引擎**：`tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` 跑权威的 `tsc`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
+| TypeScript | ✅ `pnpm typecheck`（**单引擎**：`tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` 跑**两个**引擎：`tsc` + `tsrs`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
 | Host Rust lib | ✅ `cargo test -p datazen --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen --lib` |
 | driver-api | ✅ | 随构建链接 | `cargo test -p datazen-driver-api --lib` |
 | ai-api | ✅ | 随构建链接 | `cargo test -p datazen-ai-api --lib` |
@@ -231,16 +231,14 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 | 引擎 | 包 | 上游 | 角色 |
 |------|----|------|------|
 | `tsrs` | `tsrs@0.18.0-ts7.1.0-dev.20260929`（精确锁定） | TypeScript **7.1 开发线** | **门禁本体**。比 GA 领先一个版本，提前暴露下一版的新诊断；比 `tsc` 快约 2 倍、峰值内存少约 3.6 倍。 |
-| `tsc` | `typescript@7.0.2`（精确锁定） | TypeScript 7 GA（Go 移植） | **发布门禁**。发布流水线的 `union-typecheck`（`scripts/ci-union-typecheck.mjs`）跑的就是这个二进制。`pnpm typecheck:tsc` 可在本地按需跑它。 |
+| `tsc` | `typescript@7.0.2`（精确锁定） | TypeScript 7 GA（Go 移植） | **发布门禁的一半**。发布流水线的 `union-typecheck`（`scripts/ci-union-typecheck.mjs`）**两个引擎都跑**：`tsc` 之后紧跟 `tsrs`，跑在同一份 union 上。`pnpm typecheck:tsc` 可在本地按需单跑它。 |
 
-**为什么只跑一个。** 门禁只有一个实现时，"用哪个"才是一次需要依据的取舍。这里选 `tsrs`：
-它是唯一会报出**下一个 TypeScript 版本**诊断的那个，代价是发版流水线里仍然有 `tsc`
-（`union-typecheck`），所以权威编译器**没有离开流水线**，只是离开了**快的本地门禁**。
-
-**代价（明写，不藏）**：本地门禁不再等于发布门禁。一个 PR 可以过了 `pnpm typecheck`
-却仍然在发版时被 `tsc` 的某条诊断拦下——`tsrs` 领先一个版本，它与 GA 的差异只会让
-`tsrs` **多**报，不会让 `tsc` 少报，但反过来并不成立：GA 独有的诊断 `tsrs` 可能没有。
-需要权威结论时跑 `pnpm typecheck:tsc`。
+**本地只跑一个，发布跑两个。** 本地门禁只有一个实现时，"用哪个"才是一次需要依据的取舍，
+这里选 `tsrs`（快约 2 倍、唯一会报出**下一个 TS 版本**诊断的那个）。
+**发布门禁不做这个取舍**：两个引擎跑同一份 union，差异当场暴露 —— 这是本地门禁给不了的。
+代价与收益都写明：本地门禁**弱于**发布门禁（一个 PR 可以过了 `pnpm typecheck` 却在发版时被
+`tsc` 的某条诊断拦下——`tsrs` 领先一版，它与 GA 的差异只会让 `tsrs` **多**报，不会让 `tsc`
+少报，但反过来不成立：GA 独有的诊断 `tsrs` 可能没有）；而发布侧两引擎的差异在发版前就被看到。
 
 **实测（本仓库，1845 个 TS 文件，三个 program）**：
 
@@ -687,17 +685,20 @@ feature 集变化。但实测证明它一分钱不省：
 ### 6.2 union 类型检查：保留
 
 `union-typecheck` 是独立的一个 job，对 union（`all,kiwi,superset`，即 basic / all / akulaku
-的超集）做**一次** `tsc --noEmit`。11 个 variant job 通过 workflow 级
-`DATAZEN_CI_TYPECHECK_ONCE=1` 跳过自己的 tsc，改走 `pnpm build:bundle`（codegen + Vite）。
+的超集）做**一次**类型检查。11 个 variant job 通过 workflow 级
+`DATAZEN_CI_TYPECHECK_ONCE=1` 跳过自己的类型检查，改走 `pnpm build:bundle`（codegen + Vite）。
 
-**它只跑 `tsc`，不跑 `tsrs`。** `scripts/ci-union-typecheck.mjs` 直接调用
-`node_modules/typescript/bin/tsc`（即 TS 7.0.2 GA），没有走 `pnpm typecheck` 的单引擎
-入口，这是有意的：发布门禁应当由**已发布**的编译器裁决，而不是由一个跟随开发线的
-`tsrs` 裁决。同时这一条命令在该 job 里几乎没有成本——它的墙钟由 `pnpm install` 主导，
-把 `tsc` 换成 `tsrs` 只省约 1 秒，却要多承担一层"两个编译器可能分歧"的风险。
-PR 侧的 `pnpm typecheck` 现在只跑 `tsrs`（§2.1.4），因此**"PR 绿但发版红"在这一层
-是可能的**——`tsrs` 与 GA 的差异只会让 `tsrs` 多报，不会让 `tsc` 少报，但反过来不成立。
-发版门禁因此是这条链路上唯一的权威裁决点，这也是它单列一个 job 的理由之一。
+**它跑两个引擎：`tsc` 之后紧跟 `tsrs`**（用户裁定）。`scripts/ci-union-typecheck.mjs`
+先调 `node_modules/typescript/bin/tsc`（TS 7.0.2 GA），再调 `node_modules/tsrs/bin/tsrs`，
+**两者跑在同一份 union 上**。
+
+为什么是发布侧跑两个、而本地只跑一个：本地门禁要快（`tsrs` 快约 2 倍），取舍只能做一半；
+**发布是唯一一个「两个结论都要」的场合** —— 与其事后争论「为什么本地绿、发布红」，不如在
+发版前让两个编译器看同一份代码，把分歧当场暴露出来。成本可忽略：这一条命令在该 job 里
+几乎没有成本——它的墙钟由 `pnpm install` 主导，多跑一个引擎约 +1 秒。
+
+`tsrs` 没有 win32 二进制，因此该 job 跑不到它时**明确打印跳过原因**（绝不静默），
+而此时权威的 `tsc` 已经跑过 ⇒ 门禁背后**始终有编译器**。
 
 单列一个 job 的理由是它与 target 无关：一条 runner 就能覆盖全部 4 个
 `(platform, target)` 组合，放在预热里则要么重复 4 次，要么落在最慢那条的关键路径上。
