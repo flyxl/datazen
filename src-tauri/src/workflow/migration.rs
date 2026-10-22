@@ -242,26 +242,7 @@ async fn run_sync(
     )
     .await
     .map_err(|error| WorkflowError::Step(error.to_string()))?;
-    Ok(MigrationOutcome {
-        result: serde_json::json!({
-            "operation": "dataSync",
-            "applied": result.applied,
-            "affectedRows": result.affected_rows,
-            "skipped": result.skipped,
-            "conflicts": result.conflicts.len(),
-            "rolledBack": result.rolled_back,
-        }),
-        committed: result.affected_rows,
-        failed: u64::from(result.rolled_back),
-        conflicts: result.conflicts.len() as u64,
-        cancelled: false,
-        success: !result.rolled_back,
-        rollback_outcome: if result.rolled_back {
-            "completed"
-        } else {
-            "notRequired"
-        },
-    })
+    Ok(datazen_feature_core::workflow::migration_outcome::sync_migration_outcome(&result))
 }
 
 async fn run_schema(
@@ -299,30 +280,7 @@ async fn run_schema(
     )
     .await
     .map_err(|error| WorkflowError::Step(error.to_string()))?;
-    let success = matches!(result.status, crate::schema_diff::DeployStatus::Committed);
-    let cancelled = matches!(result.status, crate::schema_diff::DeployStatus::Cancelled);
-    Ok(MigrationOutcome {
-        result: serde_json::json!({
-            "operation": "schemaDiff",
-            "status": result.status,
-            "executed": result.executed_count,
-            "statements": result.statement_count,
-            "errors": result.errors.len(),
-            "cancelled": cancelled,
-        }),
-        committed: result.executed_count as u64,
-        failed: result.errors.len() as u64,
-        conflicts: 0,
-        cancelled,
-        success,
-        rollback_outcome: match result.status {
-            crate::schema_diff::DeployStatus::RolledBack => "completed",
-            crate::schema_diff::DeployStatus::Unknown | crate::schema_diff::DeployStatus::Mixed => {
-                "unknown"
-            }
-            _ => "notRequired",
-        },
-    })
+    Ok(datazen_feature_core::workflow::migration_outcome::schema_migration_outcome(&result))
 }
 
 use datazen_feature_core::workflow::migration::transfer_migration_outcome;

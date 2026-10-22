@@ -1,9 +1,27 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { PubSubPanel } from '../observe/PubSubPanel';
 
 // jsdom does not implement scrollIntoView
 Element.prototype.scrollIntoView = vi.fn();
+
+/**
+ * The `redis-pubsub-message` payload, as the backend emits it: the message is
+ * attributed to the **persisted connection config id**, not to a session.
+ */
+interface PubSubEventPayload {
+  connectionId: string;
+  subscriptionId: string;
+  channel: string;
+  payload: string;
+  ts: number;
+}
+
+// The listener the panel registers, captured so a test can push an event
+// through the real subscription path.
+let pubSubHandler: ((event: { payload: PubSubEventPayload }) => void) | undefined;
+
+const listenMock = vi.hoisted(() => vi.fn());
 
 // Components take `useI18n` from the single @datazen/ui runtime; keep the
 // assertions locale-independent by overriding only that hook.
@@ -24,7 +42,7 @@ vi.mock('@datazen/ui', async (importOriginal) => ({
 }));
 
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
+  listen: listenMock,
 }));
 
 const mockInvoke = vi.fn().mockResolvedValue(undefined);
@@ -38,6 +56,19 @@ vi.mock('../shared/useRedisGate', () => ({
 }));
 
 describe('PubSubPanel', () => {
+  beforeEach(() => {
+    pubSubHandler = undefined;
+    listenMock.mockReset();
+    listenMock.mockImplementation(
+      async (name: string, handler: (event: { payload: PubSubEventPayload }) => void) => {
+        if (name === 'redis-pubsub-message') {
+          pubSubHandler = handler;
+        }
+        return () => {};
+      },
+    );
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -181,5 +212,52 @@ describe('PubSubPanel', () => {
       channel: 'my-channel',
       message: 'hello world',
     });
+  });
+
+  /**
+   * The regression this file exists for: the panel used to filter the
+   * `redis-pubsub-message` stream on a `dbSessionId` the payload never
+   * carries, so the comparison was true for every message and the panel threw
+   * all of them away. The payload attributes a message to the persisted
+   * connection config id, and that is what the panel filters on.
+   */
+  it('shows a message delivered for this connection', async () => {
+    render(<PubSubPanel dbSessionId="test-session" connectionId="conn-1" />);
+    await waitFor(() => expect(pubSubHandler).toBeDefined());
+
+    await act(async () => {
+      pubSubHandler?.({
+        payload: {
+          connectionId: 'conn-1',
+          subscriptionId: 'sub-1',
+          channel: 'news',
+          payload: 'hello from redis',
+          ts: 1_700_000_000_000,
+        },
+      });
+    });
+
+    expect(screen.getByText('hello from redis')).toBeTruthy();
+    expect(screen.getByText('news')).toBeTruthy();
+  });
+
+  it('drops a message that belongs to another connection', async () => {
+    render(<PubSubPanel dbSessionId="test-session" connectionId="conn-1" />);
+    await waitFor(() => expect(pubSubHandler).toBeDefined());
+
+    await act(async () => {
+      pubSubHandler?.({
+        payload: {
+          connectionId: 'conn-other',
+          subscriptionId: 'sub-2',
+          channel: 'news',
+          payload: 'not mine',
+          ts: 1_700_000_000_001,
+        },
+      });
+    });
+
+    expect(screen.queryByText('not mine')).toBeNull();
+    expect(screen.getByText('redis.pubsubEmpty')).toBeTruthy();
   });
 });

@@ -43,7 +43,7 @@
 
 ### 2.1 模块结构
 
-`src-tauri/src/workflow/` 当前有 9 个源文件。共享执行语义（`conditions.rs`、`data_step.rs`、`model.rs`、`executor.rs`、`registry.rs`、`history.rs` 等）已下沉到 `packages/feature-core/src/workflow/`；宿主 `mod.rs` 只声明真正环境相关的部分——`command_runtime`（Driver Command 运行时桥）、`history`（本地历史库绑定）、`independent_sql`（桌面身份/目标绑定）、`migration`（迁移端口的桌面实现）、`registry`（`AppDb` 绑定）、`scheduler`（桌面调度适配）、`host`（共享执行器的桌面 `WorkflowHost` 实现）。宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen_feature_core::workflow::…`。`[已实现的 Workflow 架构](../backend/workflow.md)` 已按此分层更新。
+`src-tauri/src/workflow/` 当前有 9 个源文件。共享执行语义（`conditions.rs`、`data_step.rs`、`model.rs`、`executor.rs`、`registry.rs`、`history.rs` 等）已下沉到 `packages/feature-core/src/workflow/`；宿主 `mod.rs` 只声明真正环境相关的部分——`command_runtime`（Driver Command 运行时桥的桌面绑定）、`history`（本地历史库绑定）、`migration`（迁移端口的桌面实现）、`registry`（`AppDb` 绑定）、`scheduler`（桌面调度适配）、`host`（共享端口的桌面实现：`WorkflowHost` 与 `ResourceExecutionHost`）。规则本身——显式 `database`/`schema` 校验、connection 继承解析、命令派发——都在 `packages/feature-core/src/workflow/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去；迁移 step 的结果口径（transfer / sync / schema diff）在 `packages/feature-core/src/workflow/migration_outcome.rs`。宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen_feature_core::workflow::…`。`[已实现的 Workflow 架构](../backend/workflow.md)` 已按此分层更新。
 
 `packages/feature-core/src/workflow/data_step.rs` **不涉及任何数据库资源**，内容是 `merge` / `transform` 的行集合并与表达式求值（`run_merge`、`run_transform`、`evaluate_expression`）。`context.rs` 负责变量与模板上下文，`conditions.rs` 负责条件比较。
 
@@ -88,7 +88,7 @@ query 分支（[executor.rs](../../../packages/feature-core/src/workflow/executo
 3. `resolved_database = step_database.or(inherited_database)`；
 4. 仅当 `resolved_database.is_none()` 且 `database_is_required(connection_database, driver_has_multi_database)` 时报 `MissingDatabase`；该判定只对多库驱动生效，PostgreSQL 驱动在 `resolve_connect_database` 中硬编码 `"postgres"`。
 
-command 分支（[command_runtime.rs`](../../../src-tauri/src/workflow/command_runtime.rs)）：
+command 分支（[command_runtime.rs`](../../../packages/feature-core/src/workflow/command_runtime.rs)）：
 
 1. `resolve_connection_id(step, workflow_connection)` → `step.effective_connection(workflow_connection)`，缺失报 `MissingConnection { step_id }`；
 2. `inject_inherited_database(input, workflow_database)`：显式非空 `input.database` 优先，空白串按未设置处理，trim，非对象则空操作；
@@ -752,7 +752,7 @@ v1 定义的映射规则是机械的、无歧义的：
 | 回归项 | 断言 | 对应本文 |
 | --- | --- | --- |
 | R1 继承链等价 | v1 定义在 v2 runtime 下，`connection` / `database` 继承结果与现状一致 | [§10.4](#104-旧定义在目标-runtime-下的默认语义) |
-| R2 显式覆盖 | step 显式目标覆盖 workflow 默认（[现状 `effective_connection`](../../../src-tauri/src/workflow/command_runtime.rs) 行为保持） | [§4.1](#41-四级链) |
+| R2 显式覆盖 | step 显式目标覆盖 workflow 默认（[现状 `effective_connection`](../../../packages/feature-core/src/workflow/command.rs) 行为保持） | [§4.1](#41-四级链) |
 | R3 `input.database` 优先级 | 显式非空 `input.database` 优先，空白按未设置 | [§4.2](#42-解析算法) |
 | R4 多库缺 database | 仍报 `TargetRequired`（现为 `MissingDatabase`），仅多库驱动 | [§4.3](#43-冲突处理) |
 | R5 缺连接 | 仍报缺失连接（现为 `MissingConnection`），且错误升级为结构化 code | [§4.2](#42-解析算法) |
@@ -765,7 +765,7 @@ v1 定义的映射规则是机械的、无歧义的：
 
 | 测试 | 落点 |
 | --- | --- |
-| v1 → 独立 step 映射（纯函数） | `src-tauri/src/workflow/` 单元测试 |
+| v1 → 独立 step 映射（纯函数） | `packages/feature-core/src/workflow/` 单元测试 |
 | 目标四级链与冲突 | 同上，含 `TargetConflict` / `TargetRequired` 断言 |
 | 计划预校验：受控 Command / 任意 SQL 拒绝 / 能力缺失 | 宿主单元 + 各驱动 crate `tests/` |
 | block 资源获取、跨 step 状态保留、块结束释放 | 假驱动 fake resource（[连接管理 §15.1 基础夹具](connection-management.md#151-基础夹具)） |
@@ -821,6 +821,6 @@ v1 定义的映射规则是机械的、无歧义的：
 
 ### P6 Workflow v1 范围
 
-Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `feature-core command_runtime → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
 
 Workflow scheduler 保留桌面 runtime-entry 修复；Monitor 的固定只读目标授权与独立 occurrence Job、Wapp 实例会话、MCP owner/TTL、Restore/Backup/Export 和 NativeTool 通用 Job fencing 不受此范围收缩影响。跨驱动 v1 旅程须独立验收，未运行的测试不算通过。 Host 通用真实驱动旅程位于 `src-tauri/src/workflow/live_acceptance.rs`，通过安全 live runner 显式运行两个方向的 Query → Command 与前步结果 SQL 模板串联；不把直接 sqlx 查询或 ignored 测试计为 Runtime 接线验收。

@@ -1,13 +1,18 @@
 //! Desktop bindings for shared workflow execution.
 use crate::commands::AppState;
 use datazen_ai_api::{ChatMessage, CompletionRequest, MessageRole};
+use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
 use datazen_feature_core::mcp::permission::McpPermissionMode;
 use datazen_feature_core::workflow::command::WorkflowCommandStep;
 use datazen_feature_core::workflow::error::WorkflowError;
 use datazen_feature_core::workflow::model::{
     StepExecutionResult, UnattendedDestructivePolicy, WorkflowMigrationOperation,
 };
+use datazen_feature_core::workflow::resource_execution::{
+    PreparedExecution, ResourceExecutionHost,
+};
 use datazen_feature_core::workflow::{context::WorkflowContext, host::WorkflowHost};
+use std::sync::Arc;
 
 #[async_trait::async_trait]
 impl WorkflowHost for AppState {
@@ -97,6 +102,68 @@ impl WorkflowHost for AppState {
             context,
         )
         .await
+    }
+}
+
+/// The desktop identity/target binding for the shared independent resource executor.
+///
+/// The rules — what a step may dispatch, how the target is resolved and which
+/// commands are allowed in a workflow — live in
+/// `datazen_feature_core::workflow::resource_execution`. This binding only
+/// supplies the desktop primitives: the persisted profile, the driver
+/// registry, the safe-mode policy and the platform's canonical target.
+#[async_trait::async_trait]
+impl ResourceExecutionHost for AppState {
+    async fn profile(&self, id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
+        self.store
+            .platform_profile(id)
+            .await
+            .map(|(config, metadata)| (config, metadata.config_revision, metadata.enabled))
+            .ok_or_else(|| WorkflowError::ConnectionFailed {
+                connection_id: id.into(),
+                message: "profile unavailable".into(),
+            })
+    }
+    async fn driver(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<Arc<dyn DatabaseDriver>, WorkflowError> {
+        self.driver_registry
+            .get(&config.database_type)
+            .await
+            .ok_or_else(|| WorkflowError::Driver("Driver unavailable".into()))
+    }
+    async fn safe_mode(&self) -> bool {
+        self.store.execution_settings().await.safe_mode
+    }
+    async fn prepare(
+        &self,
+        _id: &str,
+        revision: u64,
+        command: &str,
+        target: datazen_platform_api::target::ExecutionTarget,
+    ) -> Result<PreparedExecution, WorkflowError> {
+        let adapter = self
+            .platform_require()
+            .map_err(|error| WorkflowError::Validation(error.to_string()))?;
+        let call = adapter.begin_call();
+        let runtime = adapter
+            .runtime()
+            .map_err(|error| WorkflowError::Validation(error.to_string()))?;
+        let canonical = adapter
+            .resolve_execution_target(
+                call.context(),
+                datazen_platform_api::id::Counter::new(revision),
+                command,
+                &target,
+            )
+            .await
+            .map_err(|error| WorkflowError::Validation(error.message))?;
+        Ok(PreparedExecution {
+            runtime,
+            context: call.context().clone(),
+            target: crate::platform::into_execution_target(canonical),
+        })
     }
 }
 
@@ -266,40 +333,5 @@ mod host_execution_tests {
         let m1 = result.steps[1].result.clone().unwrap();
         assert_eq!(m1["rows_count"], 3);
         assert_eq!(m1["rows"][2]["src"], "LIT");
-    }
-}
-
-#[cfg(test)]
-mod database_required_tests {
-    use datazen_feature_core::workflow::executor::database_is_required;
-
-    #[test]
-    fn requires_a_database_for_an_unpinned_multi_db_connection() {
-        // The reported failure: a PostgreSQL connection with no database, and a
-        // step that names none. PG would fall back to its hardcoded "postgres".
-        assert!(database_is_required(None, None, true));
-    }
-
-    #[test]
-    fn a_step_database_satisfies_the_rule() {
-        assert!(!database_is_required(Some("datazen_demo"), None, true));
-    }
-
-    #[test]
-    fn a_connection_default_satisfies_the_rule() {
-        assert!(!database_is_required(None, Some("datazen_demo"), true));
-    }
-
-    #[test]
-    fn a_single_database_driver_never_requires_one() {
-        // Keeps existing workflows that legitimately omit the value working.
-        assert!(!database_is_required(None, None, false));
-    }
-
-    #[test]
-    fn blank_values_count_as_unset() {
-        assert!(database_is_required(Some("   "), Some("\t"), true));
-        assert!(!database_is_required(Some(" real_db "), None, true));
-        assert!(!database_is_required(None, Some(" real_db "), true));
     }
 }

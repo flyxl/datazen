@@ -31,7 +31,7 @@
 | [activeConnectionStore](../../../src/stores/activeConnectionStore.ts) | connectionId 索引的连接状态 | 连接可达性与编辑器 session 状态分开 |
 | [QuerySidebarSection](../../../src/windows/connection/query/QuerySidebarSection.tsx) | SQL 推测上下文 | 仅做补全/浏览推测，实际上下文由后端更新 |
 | [dedicatedDbSession](../../../src/lib/dedicatedDbSession.ts) | 三件套窗口准备/释放 | 明确目标，执行 Lease 归 Job |
-| [workflow command_runtime](../../../src-tauri/src/workflow/command_runtime.rs) | Workflow v1 默认目标与 Command | 独立 step 经 feature-core resource execution 使用 Runtime |
+| [workflow command_runtime](../../../packages/feature-core/src/workflow/command_runtime.rs) | Workflow v1 默认目标与 Command | 独立 step 经 feature-core resource execution 使用 Runtime |
 
 桌面 Host 不再维护第二份 `ConnectionManager`、活动连接表或事务句柄表。Runtime actor 与 lease manager 是物理 session、事务句柄、idle 回收和资源预算的运行时所有者；连接配置仍由 Store 持久化，前端 `connectionId` 与 `dbSessionId` 的用途保持分离。
 
@@ -749,7 +749,7 @@ checkpoint 记录稳定键、已确认提交、源一致性证据和映射指纹
 
 ## 11. Workflow / AI / MCP / Wapp
 
-P6 保持 Workflow v1 的模型、YAML、IPC 与 step 执行语义，只将底层连接管理接到 Runtime。生产路径为 `command_runtime → independent_sql → feature-core resource_execution → Runtime`。step 的显式连接/数据库目标覆盖 Workflow 默认目标；独立 step 的会话状态不泄漏到后续 step，前一步结果仍可通过模板传入下一步。跨数据库流程由各 step 选择自己的连接完成。
+P6 保持 Workflow v1 的模型、YAML、IPC 与 step 执行语义，只将底层连接管理接到 Runtime。生产路径为 `feature-core command_runtime → feature-core resource_execution → Runtime`。step 的显式连接/数据库目标覆盖 Workflow 默认目标；独立 step 的会话状态不泄漏到后续 step，前一步结果仍可通过模板传入下一步。跨数据库流程由各 step 选择自己的连接完成。
 
 P6 不引入 Workflow Job 包裹、session/transaction block、block owner 或事务计划证明。相关未来设计见 [Workflow 资源模型](workflow-resource-model.md)，不属于当前 v1 验收范围。AI/MCP/Wapp、调度授权与原生工具细节见 [消费者接入](consumer-adapters.md)。
 

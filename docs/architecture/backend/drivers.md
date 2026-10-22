@@ -184,6 +184,27 @@ Host / Workflow 只依赖 Command Definition 和 JSON input/output，不按 data
 
 标准 SQL Driver 默认提供 query / execute，以及 schema catalog commands；Driver 可以扩展管理、KV、NoSQL 等 Command。
 
+### 3.1 驱动推送事件的归属字段
+
+除「Host 调 Driver」外，驱动还可以**向 Host 推送事件**（Tauri event）。推送事件的载荷里如果带身份字段，那个字段必须是 **Host 认得的 id**，而不是驱动内部的句柄——否则前端按它过滤时永远匹配不上，事件会被静默丢弃。
+
+Redis Pub/Sub 是当前唯一的这类事件：事件名 `redis-pubsub-message`，载荷由 `packages/drivers/redis/src/ops/pubsub.rs` 的 `RedisPubSubMessageEvent` 序列化（camelCase）：
+
+```text
+{ connectionId, subscriptionId, channel, payload, ts }
+```
+
+`connectionId` 的取值是**持久化连接配置 id**（Host 的 `connectionId`），不是驱动自己的运行时句柄 `ConnectionHandle.pool_id`（形如 `redis_<uuid>`），也不是 Host 的 `dbSessionId`（形如 `dbs_<hex>`）——三者分属不同 id 空间，只有第一个是前端拿得到、也拿得准的那个。驱动在 `RedisDriver::connect` 时把 `ConnectionConfig.id` 记进连接记录，订阅时据此给事件归属。
+
+两侧的 id 各司其职，不做双模回退：
+
+| 面 | 用哪个 id | 理由 |
+|---|---|---|
+| 调用侧（`pubsub_subscribe` / `pubsub_unsubscribe` / `pubsub_publish`） | `dbSessionId` | 对已建立会话的操作（[naming.md](../naming.md) §5） |
+| 事件侧（`redis-pubsub-message` 载荷） | `connectionId` | 归属语义：这条消息属于哪份连接配置（同上 §5「UI 连接归属」） |
+
+订阅本身建在**会话**上（`pubsub_subscribe` 用 `dbSessionId` 调用，Host 解析出活会话后驱动用该会话的连接计划开订阅，随会话销毁），但 Redis Pub/Sub 的频道是**服务器级**而非会话级的，所以事件按连接归属。
+
 ## 4. Schema Migration
 
 Schema Diff 不直接在 Host 拼接数据库方言。

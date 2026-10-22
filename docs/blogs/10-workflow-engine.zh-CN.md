@@ -33,12 +33,13 @@ steps:
 - `packages/feature-core/src/workflow/context.rs`：模板变量、路径和循环上下文；
 - `packages/feature-core/src/workflow/conditions.rs`：Condition 表达式；
 - `packages/feature-core/src/workflow/executor.rs`：步骤编排、超时和错误策略；
+- `packages/feature-core/src/workflow/command_runtime.rs`：显式目标校验、连接继承解析与命令派发；
 - `packages/feature-core/src/workflow/resource_execution.rs`：独立 Runtime 资源执行；
 - `src-tauri/src/workflow/registry.rs`：加载、保存、删除 YAML；
-- `src-tauri/src/workflow/command_runtime.rs`：桌面连接解析、Command discovery 和 Driver 执行；
+- `src-tauri/src/workflow/command_runtime.rs`：把上一条规则绑定到桌面 `AppState`；
 - `src-tauri/src/workflow/history.rs`：执行历史持久化。
 
-`workflows.rs` 只是兼容 facade，新代码应依赖拆分后的模块。
+宿主不再保留 workflow 的 re-export 门面文件，新代码应直接依赖拆分后的模块。
 
 ## 连接继承
 
