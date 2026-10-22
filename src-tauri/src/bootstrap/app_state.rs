@@ -185,16 +185,26 @@ pub(crate) fn finish_app_state(
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
     let platform = crate::platform::PlatformEntry::launch();
+    // 平台装配必须**先于**依赖它的功能绑定：共享的元数据源要拿到 Runtime 门面
+    // （解析会话归属）与执行宿主（profile / 驱动 / 命令执行），两者都出自装配。
+    // 装配失败不崩应用——与既有行为一致——但依赖平台的调用会明确失败。
+    if let Ok(adapter) = platform.require() {
+        if let Err(error) = adapter.inject(store.clone(), registry.clone()) {
+            tracing::error!(code = ?error.code, "desktop platform injection failed");
+        }
+    }
     // Schema Diff 评审计划的存储：桌面单租户，只承认桌面自己的组织。
     // 桌面身份组装失败时不编造组织身份——该存储不承认任何组织，一切访问按
     // 「不存在」处理（依赖身份的 IPC 调用本来也会明确失败）。
     let schema_diff_reviewed_plans =
         crate::commands::schema_diff::reviewed_store::desktop_reviewed_plan_store(&platform);
-    let schema_source = Arc::new(crate::ai::metadata_source::RuntimeSchemaSource::new(
+    // AI 元数据源：共享实现住在 feature-core，桌面只提供两个跨形态件——Runtime
+    // 门面与执行宿主。桌面不再有自己的 AI 适配层。
+    let schema_source = crate::services::schema_context_source::desktop_schema_context_source(
         registry.clone(),
         store.clone(),
         platform.clone(),
-    ));
+    );
     let state = AppState {
         driver_registry: registry,
         monitor_engine: monitor_engine.clone(),
@@ -237,11 +247,6 @@ pub(crate) fn finish_app_state(
             crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
         ),
     };
-    if let Ok(adapter) = state.platform.require() {
-        if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {
-            tracing::error!(code = ?error.code, "desktop platform injection failed");
-        }
-    }
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state
 }
