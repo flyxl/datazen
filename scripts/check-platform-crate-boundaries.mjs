@@ -600,7 +600,7 @@ export function checkPlatformCrateBoundaries(options) {
   // check-driver-import-boundaries.mjs: a real finding that no F-row names, so
   // blocking on it would be enforcing a rule the spec has not adopted.
   //
-  // Finding, measured at 6175f1c1f: `packages/drivers/redis/Cargo.toml:31`
+  // Finding, measured at 6175f1c1f: `packages/drivers/redis/Cargo.toml:32`
   // declares `[build-dependencies] tauri-plugin = { version = "2", features =
   // ["build"] }`, so the redis driver drags Tauri into its build graph. F-01's
   // consequence column describes exactly this ("宿主无关的构建被拖垮"), but F-01's
@@ -627,7 +627,7 @@ export function checkPlatformCrateBoundaries(options) {
   // The block above walks the resolve graph, which is feature-resolved: an edge
   // behind a feature nobody enables is not in `resolve.deps[]` at all and no
   // closure walk can ever see it. Measured at 2530161ac, redis declares two tauri
-  // edges — `tauri-plugin` (build-dependencies, line 31) and `tauri`
+  // edges — `tauri-plugin` (build-dependencies, line 32) and `tauri`
   // (dependencies, line 27, `optional = true` behind a feature no member
   // enables) — and only the first is in the graph. This block reads the manifest
   // instead, so the second edge becomes visible.
