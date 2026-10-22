@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Columns3, Info } from 'lucide-react';
+import { Columns3 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import { DATA_TABLE_ROW_HEIGHT } from '../../components/DataTable/rowHeight';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -12,7 +12,6 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
-import { CopyableError } from '../../components/ui/CopyableError';
 import { buildRowIdentity, rowIdentityKey, tableChangeContextKey } from '../../lib/tableChanges';
 import type { TableChangeContext } from '../../lib/tableChanges';
 import { Button } from '../../components/ui/Button';
@@ -20,6 +19,10 @@ import {
   TablePendingChangesBar,
   TableTransactionControls,
 } from './TablePendingChangesBar';
+import { TableClipboardStatus } from './TableClipboardStatus';
+import { TableNoPrimaryKeyTip } from './TableNoPrimaryKeyTip';
+import { TableLoadErrorState } from './TableLoadErrorState';
+import { useTableViewClipboard } from './useTableViewClipboard';
 import { TableStatusBanners } from './TableStatusBanners';
 import { TableToolbar } from './TableToolbar';
 import { TableFkBreadcrumb } from './TableFkBreadcrumb';
@@ -399,6 +402,21 @@ export function TableView({
     () => rows.map((record) => displayedColumns.map((col) => record[col.name] ?? null)),
     [rows, displayedColumns],
   );
+
+  /**
+   * The clipboard bridge (DB-03): ⌘C / ⌘V on the grid, the "Copy Selected Cells As …"
+   * menu, and the paste confirmation. `displayedColumns` is the render order, which is the
+   * order a paste has to align against.
+   */
+  const clipboard = useTableViewClipboard({
+    panelId,
+    ts,
+    actions,
+    isEditable,
+    columnOrder: displayedColumns.map((column) => column.name),
+    tableLabel: tableName,
+    onReadOnlyPaste: () => showReadOnlyTip('connectionReadOnly'),
+  });
   const editingCell = ts?.editingCell ?? null;
   const detailRowIndex = ts?.detailRowIndex ?? null;
   const selectedRows = ts?.selectedRows ?? new Set<number>();
@@ -595,20 +613,7 @@ export function TableView({
   // Keep the table chrome (filters etc.) visible after a failed reload so the
   // user can clear/fix the bad filter instead of being stuck on a blank error page.
   if (error && columns.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <div className="max-w-lg text-center">
-          <CopyableError message={error} copyButton className="text-sm text-red-400" />
-          <button
-            type="button"
-            className="mt-2 text-xs text-accent hover:underline"
-            onClick={actions.load}
-          >
-            {t('common.retry')}
-          </button>
-        </div>
-      </div>
-    );
+    return <TableLoadErrorState error={error} retryLabel={t('common.retry')} onRetry={actions.load} />;
   }
 
   return (
@@ -653,18 +658,8 @@ export function TableView({
         namedView={namedView}
       />
       {readOnlyTipReason ? <TableReadOnlyTip reason={readOnlyTipReason} /> : null}
-      {noPrimaryKey && (
-        <div
-          className="flex shrink-0 items-center gap-1.5 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-muted"
-          role="status"
-          data-testid="table-no-primary-key-tip"
-        >
-          <Info className="h-3.5 w-3.5 shrink-0" />
-          <span className="min-w-0 truncate" title={t('defaultSort.noPrimaryKey')}>
-            {t('defaultSort.noPrimaryKey')}
-          </span>
-        </div>
-      )}
+      {noPrimaryKey && <TableNoPrimaryKeyTip message={t('defaultSort.noPrimaryKey')} />}
+      <TableClipboardStatus bridge={clipboard} />
       <TableTransactionControls
         panelId={panelId}
         context={context}
@@ -684,6 +679,7 @@ export function TableView({
         onRollback={actions.rollbackPendingChanges}
       />
       <DataTable
+        {...clipboard.dataTableProps}
         columns={columnDefs}
         rows={rowArrays}
         totalRows={totalRows}

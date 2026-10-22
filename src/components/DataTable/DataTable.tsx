@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
-import { tid } from '../../lib/tid';
-import { Download, Trash2 } from 'lucide-react';
 import type { CountStrategy, FilterCondition, FilterOperator, SortCondition, Value } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
@@ -14,6 +12,8 @@ import {
   type CellCoord,
   type GridSelection,
 } from '../../stores/tableData/gridSelection';
+import type { GridClipboardHandlers } from './gridClipboardBridge';
+import { useDataTableClipboardDom } from './useDataTableClipboardDom';
 import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
 import type { DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
 import type { FkGroupAffordance } from '../../lib/fkNavigation';
@@ -27,6 +27,7 @@ import { VirtualBody, type DraftRowViewModel } from './VirtualBody';
 import { GridKeyboardHints } from './GridKeyboardHints';
 import { useDataTableContextMenu } from './useDataTableContextMenu';
 import { DataExportDialog } from './DataExportDialog';
+import { DataTableSelectionBar } from './DataTableSelectionBar';
 import type { CellEditingContext } from '../../lib/cellEditorKind';
 import type { CellTypeHints } from '../../lib/cellTypes';
 import { cn } from '../../lib/cn';
@@ -143,6 +144,19 @@ export interface DataTableProps {
   onGridSelectionChange?: (next: GridSelection) => void;
   /** Keyboard navigation (DB-02). Omitted ⇒ no key is intercepted at all. */
   keyboardNavigation?: boolean;
+  /**
+   * The clipboard bridge (DB-03).
+   *
+   * **Omitted ⇒ the grid binds no `copy` / `paste` listener at all**, which is exactly
+   * today's behaviour; every consumer that does not opt in keeps byte-identical behaviour.
+   */
+  clipboard?: GridClipboardHandlers;
+  /**
+   * Cells the owner wants marked as rejected, keyed `${rowIndex}:${columnName}`.
+   *
+   * Rendered as `data-dt-cell-error`; omitted ⇒ no attribute (today's DOM).
+   */
+  cellErrors?: ReadonlySet<string>;
   /** Scroll the cursor cell into view (volume 10's hook point). */
   onRequestScrollIntoView?: (coord: CellCoord) => void;
   /** The anchor of the row selection (`TableState.lastSelectedIndex`), read-only. */
@@ -287,6 +301,8 @@ export function DataTable({
   cellTypeHints,
   filterLikeCaseInsensitive,
   editingCell,
+  clipboard,
+  cellErrors,
   selectedRows = EMPTY_SET,
   loading,
   onSort,
@@ -475,6 +491,15 @@ export function DataTable({
       <div role={hasCellSelection ? 'gridcell' : undefined}>{content}</div>
     </div>
   );
+  /** The `copy` / `paste` binding; `{}` when the owner passed no bridge (DB-03). */
+  const clipboardDomHandlers = useDataTableClipboardDom({
+    clipboard,
+    editingCell: editingCell ?? null,
+    enabled: hasCellSelection,
+    columnNames,
+    selection,
+    selectedRows,
+  });
   /**
    * Rows a cell selection covers. Derived, never written back into `selectedRows`
    * (00-contracts §4.2, rule 3): in cell mode the row set is empty by contract.
@@ -584,69 +609,26 @@ export function DataTable({
       ) : null}
 
       {(hasSelection || hasCellSelection) && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-surface px-2 py-1.5">
-          {hasSelection && (
-            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-secondary hover:text-fg">
-              <input
-                type="checkbox"
-                className="accent-accent"
-                checked={rows.length > 0 && selectedRows.size === rows.length}
-                ref={(el) => {
-                  if (el) el.indeterminate = selectedRows.size > 0 && selectedRows.size < rows.length;
-                }}
-                onChange={onSelectAll}
-              />
-              {t('common.selectAll')}
-            </label>
-          )}
-          {hasSelection && selectedRows.size > 0 && (
-            <span className="text-xs text-fg-muted">
-              {t('dataTable.selected')} {selectedRows.size} / {rows.length} {t('common.rows')}
-            </span>
-          )}
-          {hasCellSelection && selection.mode === 'cell' && (
-            <span
-              {...tid('data-table-selection-summary')}
-              data-dt-selection-rows={String(coveredRows?.length ?? 0)}
-              data-dt-selection-cols={String(coveredColumns)}
-              data-dt-selection-cells={String(coveredCells)}
-              className="text-xs text-fg-muted"
-            >
-              {t('dataTable.selectionSummary', {
-                rows: coveredRows?.length ?? 0,
-                cols: coveredColumns,
-              })}
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-1.5">
-            {headerActions}
-            {onDeleteRows && deleteRowCount > 0 && (primaryKeyColumns?.length ?? 0) > 0 && (
-              <button
-                type="button"
-                data-testid="data-table-delete-rows"
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-danger hover:bg-surface-raised hover:text-danger"
-                onClick={() => onDeleteRows(deleteRowIndices)}
-                title={t('dataTable.deleteRow')}
-              >
-                <Trash2 className="h-3 w-3" />
-                {t('dataTable.deleteRow')}
-              </button>
-            )}
-            {exportEnabled && (
-              <button
-                type="button"
-                {...tid('data-table-export')}
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-secondary hover:bg-surface-raised hover:text-fg"
-                onClick={() => setExportOpen(true)}
-                title={t('export.export')}
-              >
-                <Download className="h-3 w-3" />
-                {t('export.export')}
-              </button>
-            )}
-          </div>
-          {loading ? <span className="text-xs text-fg-muted">{t('common.loading')}</span> : null}
-        </div>
+        <DataTableSelectionBar
+          hasSelection={hasSelection}
+          hasCellSelection={hasCellSelection}
+          selection={selection}
+          selectedRows={selectedRows}
+          rowCount={rows.length}
+          coveredRows={coveredRows}
+          coveredColumns={coveredColumns}
+          coveredCells={coveredCells}
+          onSelectAll={onSelectAll ?? NOOP}
+          headerActions={headerActions}
+          onDeleteRows={onDeleteRows}
+          deleteRowIndices={deleteRowIndices}
+          deleteRowCount={deleteRowCount}
+          primaryKeyColumns={primaryKeyColumns}
+          exportEnabled={exportEnabled}
+          onExport={() => setExportOpen(true)}
+          loading={loading}
+          t={t}
+        />
       )}
 
       {statusBar}
@@ -662,6 +644,7 @@ export function DataTable({
         aria-label={hasCellSelection ? t('tableView.a11y.gridLabel') : t('dataTable.tableLabel')}
         aria-describedby={keyboardNavigation && hasCellSelection ? `${gridIdPrefix}-shortcuts` : undefined}
         onContextMenu={onContextMenu}
+        {...clipboardDomHandlers}
         {...surfaceDomProps}
         {...(hasCellSelection ? surfaceProps : {})}
       >
@@ -716,6 +699,7 @@ export function DataTable({
               newRowIndex={newRowIndex ?? null}
               dirtyByRow={dirtyByRow}
               foreignKeys={foreignKeys}
+              cellErrors={cellErrors}
             />
             {loading ? (
               gridRow(
@@ -792,3 +776,4 @@ export function DataTable({
 }
 
 export type { ColumnDef };
+export type { GridClipboardHandlers, GridCopyTarget } from './gridClipboardBridge';

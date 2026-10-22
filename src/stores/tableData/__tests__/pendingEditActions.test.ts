@@ -92,6 +92,8 @@ const STORE_ACTIONS = [
   'stageCellChange',
   // DB-05: the three-state write (undefined = do not write the column).
   'stageCellValue',
+  // DB-03: the batch write of a paste (one `set()` for the whole block).
+  'stagePasteWrites',
   'stageRowDelete',
   'startEdit',
   'toggleSelectAll',

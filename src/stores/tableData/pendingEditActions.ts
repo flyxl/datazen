@@ -29,7 +29,18 @@ import {
 } from './pendingChanges';
 import { computeUnstageDeleteResult } from './stageEdit';
 import { computeStageCellValueResult, restoredCellValue } from './stageCellValue';
+import { stagePasteWritesInto, type PasteCellProblem } from './stagePasteWrites';
+import type { CellPasteWrite } from '../../lib/tableChanges';
 import type { TableState } from './types';
+
+/** What one paste did, for the caller's summary line. */
+export interface StagePasteWritesResult {
+  /** Cells that really entered `pendingChanges`. */
+  staged: number;
+  /** Cells that were skipped (the reason is in `problems`). */
+  skipped: number;
+  problems: PasteCellProblem[];
+}
 
 export interface PendingEditStoreSlice {
   /** Stage one cell edit; the only entry point that produces a staged change. */
@@ -49,6 +60,17 @@ export interface PendingEditStoreSlice {
   ) => void;
   /** Stage the same value in one column of many rows (one call per cell). */
   applyColumnToRows: (panelId: string, col: string, value: unknown, rows: number[]) => void;
+  /**
+   * Stage many cells in **one** state write (DB-03).
+   *
+   * Each write carries its own three-state intent through the membership of the sequence
+   * (`CellPasteWrite`); the merge with existing staged changes happens in
+   * `stagePasteWritesInto` and is the same merge a single-cell edit performs.
+   *
+   * Returns what happened instead of writing `ts.error`: a batch of thousands of cells would
+   * otherwise have every failure promptly overwritten by the next one.
+   */
+  stagePasteWrites: (panelId: string, writes: readonly CellPasteWrite[]) => StagePasteWritesResult;
   /** Mark rows for deletion. */
   stageRowDelete: (panelId: string, rowIndices: number | number[]) => void;
   /** Delete rows: the selection semantics first, then the delete mark. */
@@ -283,6 +305,32 @@ export function createPendingEditSlice(
   return {
     stageCellChange,
     stageCellValue,
+
+    stagePasteWrites: (panelId, writes) => {
+      const ts = read(panelId);
+      if (!ts || writes.length === 0) return { staged: 0, skipped: 0, problems: [] };
+      const pkCols = ts.columns.filter((column) => column.isPrimaryKey);
+      const outcome = stagePasteWritesInto(ts, writes, pkCols);
+      // A paste where every cell was skipped leaves the state untouched: writing it anyway
+      // would re-render the whole grid and clear the preview for nothing.
+      const landed = outcome.rows !== ts.rows || outcome.pendingChanges !== ts.pendingChanges;
+      if (landed) {
+        patch(panelId, () => ({
+          rows: outcome.rows,
+          pendingChanges: outcome.pendingChanges,
+          rowIdentityAnchors: outcome.rowIdentityAnchors,
+          // Any staged change invalidates an existing preview (same rule as `stageCellValue`).
+          previewPlan: null,
+          pendingStatus: 'idle',
+          error: null,
+        }));
+      }
+      return {
+        staged: outcome.staged,
+        skipped: outcome.problems.length,
+        problems: outcome.problems,
+      };
+    },
 
     applyColumnToRows: (panelId, col, value, rows) => {
       for (const row of rows) stageCellChange(panelId, row, col, value);

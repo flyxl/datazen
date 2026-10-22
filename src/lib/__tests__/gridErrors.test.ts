@@ -140,6 +140,47 @@ describe('classifyGridError', () => {
     expect(classifyGridError('grid.result.writeDeniedish: nope')).toBe('unknown');
   });
 
+  it('classifies the clipboard codes and never swallows an unknown message', () => {
+    // DB-03 §3.3: every paste refusal is classified, so the UI can pick the right sentence…
+    expect(classifyGridError('grid.paste.tooLarge: 120000 cells')).toBe('grid.paste.tooLarge');
+    expect(classifyGridError('grid.paste.empty: nothing to paste')).toBe('grid.paste.empty');
+    expect(classifyGridError('grid.paste.raggedRow: row 2 has 3 fields')).toBe(
+      'grid.paste.raggedRow',
+    );
+    expect(classifyGridError('grid.paste.unclosedQuote: quoted value is not closed')).toBe(
+      'grid.paste.unclosedQuote',
+    );
+    expect(classifyGridError('grid.paste.outOfBounds: row 99 is not on this page')).toBe(
+      'grid.paste.outOfBounds',
+    );
+    expect(classifyGridError('grid.paste.noWritableCell: none of the selected columns')).toBe(
+      'grid.paste.noWritableCell',
+    );
+    expect(classifyGridError('grid.paste.notNullEmpty: column "name" is NOT NULL')).toBe(
+      'grid.paste.notNullEmpty',
+    );
+    expect(classifyGridError('grid.paste.identityChanged: row identity would move')).toBe(
+      'grid.paste.identityChanged',
+    );
+    expect(classifyGridError('grid.paste.crossTable: copied from another table')).toBe(
+      'grid.paste.crossTable',
+    );
+    expect(classifyGridError('grid.paste.columnMismatch: 2 columns dropped')).toBe(
+      'grid.paste.columnMismatch',
+    );
+    expect(classifyGridError('grid.clipboard.writeFailed: denied')).toBe(
+      'grid.clipboard.writeFailed',
+    );
+    expect(classifyGridError('grid.clipboard.readFailed: denied')).toBe(
+      'grid.clipboard.readFailed',
+    );
+    // …and a message that is *not* one of ours comes back raw, so the UI shows the original
+    // text instead of a made-up sentence (00-contracts §8.2).
+    expect(classifyGridError('UPDATE ... affected 3 rows')).toBe('unknown');
+    expect(classifyGridError('grid.paste.unknownThing: huh')).toBe('unknown');
+    expect(classifyGridError('')).toBe('unknown');
+  });
+
   it('tolerates surrounding whitespace but stays case-sensitive', () => {
     expect(classifyGridError('  grid.commit.stalePlan: rows changed\n')).toBe(
       'grid.commit.stalePlan',

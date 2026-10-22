@@ -151,6 +151,22 @@ const PRODUCER_PENDING: readonly string[] = [
   // is nevertheless the contract's: the grid classifies the refusal with it,
   // and the reason it carries is the one the editor refused for.
   'grid.cell.invalidValue',
+  // DB-03: the clipboard is a **front-end** concern. Every one of these codes is
+  // produced by `gridClipboard.ts` / `useGridClipboard.ts` while deciding whether a
+  // paste may be planned at all — the clipboard text never reaches Rust, so no
+  // producer will ever appear for them (03 §3.3).
+  'grid.paste.empty',
+  'grid.paste.tooLarge',
+  'grid.paste.raggedRow',
+  'grid.paste.unclosedQuote',
+  'grid.paste.outOfBounds',
+  'grid.paste.noWritableCell',
+  'grid.paste.notNullEmpty',
+  'grid.paste.identityChanged',
+  'grid.paste.crossTable',
+  'grid.paste.columnMismatch',
+  'grid.clipboard.writeFailed',
+  'grid.clipboard.readFailed',
 ];
 
 function rustFiles(root: string): string[] {

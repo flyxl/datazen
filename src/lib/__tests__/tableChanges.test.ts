@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Value } from '../../types';
 import {
   buildRowIdentity,
+  columnWritability,
   duplicateRowIdentityKeys,
   draftWriteColumns,
   isCompleteTableChangeContext,
@@ -159,5 +160,37 @@ describe('tableChanges', () => {
     // A plan without inserts carries an **empty list**, not a missing key.
     const empty: RowChangePlan = { ...plan, inserts: [] };
     expect(JSON.parse(JSON.stringify(empty)).inserts).toEqual([]);
+  });
+});
+
+describe('columnWritability (DB-03 paste)', () => {
+  it('skips an auto-increment column', () => {
+    expect(
+      columnWritability({ name: 'id', dataType: 'integer', nullable: false, isAutoIncrement: true }),
+    ).toEqual({ writable: false, reason: 'auto-increment' });
+  });
+
+  it('rejects a column the record does not have', () => {
+    expect(columnWritability(undefined)).toEqual({ writable: false, reason: 'unknown-column' });
+  });
+
+  it('allows a primary key: a paste may rewrite a row identity', () => {
+    // The planner still refuses the *ambiguous* outcome (`grid.paste.identityChanged`), but
+    // the writability check itself must not block the PK — copying rows between tables
+    // depends on writing it.
+    expect(
+      columnWritability({ name: 'id', dataType: 'integer', nullable: false, isPrimaryKey: true }),
+    ).toEqual({ writable: true, reason: null });
+  });
+
+  it('allows an ordinary nullable and a NOT NULL column alike', () => {
+    expect(columnWritability({ name: 'a', dataType: 'text', nullable: true })).toEqual({
+      writable: true,
+      reason: null,
+    });
+    expect(columnWritability({ name: 'b', dataType: 'text', nullable: false })).toEqual({
+      writable: true,
+      reason: null,
+    });
   });
 });

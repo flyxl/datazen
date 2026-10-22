@@ -10,6 +10,8 @@ import type {
 } from '../../lib/tableChanges';
 import type { FilterCondition, SortCondition } from '../../types';
 import type { DefaultOrderOverride } from '../../lib/defaultSort';
+import type { CellPasteWrite } from '../../lib/tableChanges';
+import type { StagePasteWritesResult } from '../../stores/tableData/pendingEditActions';
 
 /**
  * Panel-scoped action binders: every store call is namespaced by this tab's id.
@@ -44,6 +46,8 @@ export interface TableActions {
   setPageSize: (size: number) => void;
   startEdit: (row: number, col: string) => void;
   stageCellChange: (row: number, col: string, value: unknown) => void;
+  /** Stage a whole pasted block in one state write (DB-03). */
+  stagePasteWrites: (writes: readonly CellPasteWrite[]) => StagePasteWritesResult;
   cancelEdit: () => void;
   selectRow: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   toggleSelectAll: () => void;
@@ -168,6 +172,7 @@ export function useTableActions({
       startEdit: (row: number, col: string) => store().startEdit(panelId, row, col),
       stageCellChange: (row: number, col: string, value: unknown) =>
         store().stageCellChange(panelId, row, col, value),
+      stagePasteWrites: (writes) => store().stagePasteWrites(panelId, writes),
       cancelEdit: () => store().cancelEdit(panelId),
       // Row gutter (DB-01 §4.2): row-level selection must also switch the mode to 'row',
       // otherwise `selectedRows` paints a highlight the selection model cannot explain.

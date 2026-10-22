@@ -327,3 +327,55 @@ export function clonePendingRowChange(change: PendingRowChange): PendingRowChang
     deleteMarked: change.deleteMarked,
   };
 }
+
+// ── Clipboard paste (DB-03) ────────────────────────────────────────────────
+
+/**
+ * One cell a paste wants to write.
+ *
+ * There is **no tri-state enum**: the three write intents are expressed by two carriers,
+ * exactly as `PendingInsert.values` and the Rust `&[(&str, Option<Value>)]` slice do it
+ * (00-contracts §3, landing correction):
+ *
+ * - the cell **appears** in the `writes` sequence → the column goes into the statement;
+ * - `value === null` → the column is written as SQL `NULL` (`Option::None`);
+ * - the cell is **absent** from the sequence → the column is **not written at all**
+ *   (UPDATE keeps its value, INSERT keeps the database default).
+ *
+ * "Not written" and "written as NULL" are different actions, so a paste never emits a
+ * `null` write for a cell it does not cover — that would clear cells the user never
+ * selected.
+ */
+export interface CellPasteWrite {
+  /** 0-based row index inside the current page. Render-only: never used to build SQL. */
+  rowIndex: number;
+  /** **Column name**, not index: indices drift when columns are hidden or reordered. */
+  columnName: string;
+  /** The value to write; `null` means SQL `NULL`. */
+  value: Value | null;
+}
+
+/** Whether a column may be written by a **paste**. */
+export interface ColumnWritability {
+  writable: boolean;
+  /** Why not, when `writable === false`. `null` when writable. */
+  reason: 'auto-increment' | 'unknown-column' | null;
+}
+
+/**
+ * Column-level gate for pasting.
+ *
+ * Deliberately **not** wired into the single-cell editing path: a double-click edit is an
+ * explicit per-column action by the user, and adding a gate there would change behaviour
+ * that already ships (00-contracts R4). A paste is a bulk action the user did not aim at
+ * one column, so an auto-increment column is skipped wholesale (03 §3.1, U-3).
+ *
+ * `ColumnSchema` has no `isGenerated` yet, so a generated column cannot be told apart from
+ * an ordinary one with a default value; using `defaultValue != null` instead would mark
+ * perfectly writable columns read-only (03 §11 U-3).
+ */
+export function columnWritability(column: ColumnSchema | undefined): ColumnWritability {
+  if (!column) return { writable: false, reason: 'unknown-column' };
+  if (column.isAutoIncrement === true) return { writable: false, reason: 'auto-increment' };
+  return { writable: true, reason: null };
+}

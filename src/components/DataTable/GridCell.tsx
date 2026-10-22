@@ -49,6 +49,11 @@ export interface GridCellProps {
   width: number;
   /** The cell is inside the current cell selection. */
   selected: boolean;
+  /**
+   * A paste refused this cell (DB-03). Rendered as `data-dt-cell-error`, which is the hook
+   * the message, the `title` and the test locator all read.
+   */
+  error?: boolean;
   /** The cell is the focus corner of the selection (pointer/keyboard cursor). */
   active?: boolean;
   /** The cell is being edited right now. */
@@ -124,6 +129,7 @@ export const GridCell = memo(function GridCell({
   value,
   width,
   selected,
+  error = false,
   active = false,
   editing,
   cellType,
@@ -186,6 +192,7 @@ export const GridCell = memo(function GridCell({
       {...(value === null || value === undefined ? { 'data-dt-null': 'true' } : {})}
       {...(readOnlyReason ? { 'data-dt-readonly': readOnlyReason } : {})}
       {...(dirty ? { 'data-dt-dirty': 'true' } : {})}
+      {...(error ? { 'data-dt-cell-error': 'true' } : {})}
       // The cell belongs to a foreign key, and the **value** of the attribute
       // is the target it points at: `customers.id`, or `sales.parents.(x, y)`
       // for a composite key (00-contracts §4.4). The target comes from the

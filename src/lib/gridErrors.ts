@@ -40,7 +40,20 @@ export type GridErrorCode =
   | 'grid.result.writeDenied'
   | 'grid.paging.keysetUnavailable'
   | 'grid.paging.cursorInvalidated'
-  | 'grid.paging.cursorTooDeep';
+  | 'grid.paging.cursorTooDeep'
+  // ── DB-03 (clipboard). Append only: adding a member here is the whole change. ──
+  | 'grid.paste.empty'
+  | 'grid.paste.tooLarge'
+  | 'grid.paste.raggedRow'
+  | 'grid.paste.unclosedQuote'
+  | 'grid.paste.outOfBounds'
+  | 'grid.paste.noWritableCell'
+  | 'grid.paste.notNullEmpty'
+  | 'grid.paste.identityChanged'
+  | 'grid.paste.crossTable'
+  | 'grid.paste.columnMismatch'
+  | 'grid.clipboard.writeFailed'
+  | 'grid.clipboard.readFailed';
 
 /**
  * Prefix registry. Entries are full message prefixes (`grid.<domain>.<reason>`); the
@@ -100,7 +113,44 @@ export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.paging.keysetUnavailable',
   'grid.paging.cursorInvalidated',
   'grid.paging.cursorTooDeep',
+  // DB-03: clipboard. Every one of these is a **front-end** rejection: the paste matrix is
+  // parsed and planned in the browser and a refused cell never reaches the host, so there is
+  // no Rust producer to wait for (see `PRODUCER_PENDING` in the registration test). They are
+  // registered anyway, because the grid branches on them and they share the one code table.
+  'grid.paste.empty',
+  'grid.paste.tooLarge',
+  'grid.paste.raggedRow',
+  'grid.paste.unclosedQuote',
+  'grid.paste.outOfBounds',
+  'grid.paste.noWritableCell',
+  'grid.paste.notNullEmpty',
+  'grid.paste.identityChanged',
+  'grid.paste.crossTable',
+  'grid.paste.columnMismatch',
+  'grid.clipboard.writeFailed',
+  'grid.clipboard.readFailed',
 ];
+
+/**
+ * One structured problem of a paste plan, produced entirely in the browser.
+ *
+ * The code is **carried directly**, not parsed back out of a message: a paste problem is
+ * structured data from the moment it is raised, while `classifyGridError` exists for
+ * back-end messages that arrive as prose (00-contracts §8.1). Both use the same
+ * `GridErrorCode` so there is still one code table.
+ */
+export interface PasteProblem {
+  code: GridErrorCode;
+  /** 0-based clipboard-matrix row; `null` for a whole-batch problem. */
+  row: number | null;
+  /** Column name; `null` when the problem is not about one column. */
+  column: string | null;
+  /**
+   * Extra explanation (a column name, a count). **Never a cell value**: pasted content is
+   * user data and must not leave the client (PRD §8.4).
+   */
+  detail?: string;
+}
 
 /** Every grid message starts with this namespace; useful for cheap pre-checks. */
 export const GRID_ERROR_NAMESPACE = 'grid.';

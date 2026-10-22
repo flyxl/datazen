@@ -145,11 +145,127 @@ describe('serializeDataTableColumnValues', () => {
     ];
     expect(serializeDataTableColumnValues(0, rows)).toBe('1\n2\n3');
     expect(serializeDataTableColumnValues(1, rows)).toBe('Alice\n\nCharlie');
-    expect(serializeDataTableColumnValues(2, rows)).toBe('{"role":"admin"}\n{"role":"user"}\n');
+    // DB-03 §5 Step 9: the column copy runs through the one TSV serializer, so a JSON value
+    // is quoted and its inner quotes are doubled — otherwise a value containing a quote or a
+    // line break would silently change the number of "rows" of the copy. The text is
+    // byte-for-byte the same once a spreadsheet (or `parseClipboardMatrix`) reads it back.
+    expect(serializeDataTableColumnValues(2, rows)).toBe(
+      '"{""role"":""admin""}"\n"{""role"":""user""}"\n',
+    );
   });
 
   it('returns empty string for negative column index', () => {
     expect(serializeDataTableColumnValues(-1, [[1]])).toBe('');
+  });
+});
+
+describe('cell-selection clipboard block (DB-03)', () => {
+  const clipboardLabels: DataTableContextMenuLabels = {
+    ...labels,
+    copySelectedCells: 'Copy Selected Cells',
+    copySelectedCellsAs: 'Copy Selected Cells As…',
+    copySelectedCellsAsTsv: 'Copy as TSV',
+    copySelectedCellsAsTsvWithHeader: 'Copy as TSV with header',
+    copySelectedCellsAsCsv: 'Copy as CSV',
+    copySelectedCellsAsJson: 'Copy as JSON',
+    pasteSelectedCells: 'Paste to Selected Cells',
+  };
+
+  const baseHandlers = () => ({
+    onCopy: vi.fn(),
+    onCopyRow: vi.fn(),
+    onCopySelectedCells: vi.fn(),
+    onCopySelectedCellsAs: vi.fn(),
+    onPasteSelectedCells: vi.fn(),
+  });
+
+  it('adds the block only when a region is reported', () => {
+    // Regression: without the new argument the sequence is byte-identical to today's.
+    const without = buildDataTableContextMenuItems({
+      labels: clipboardLabels,
+      handlers: baseHandlers(),
+      hasCellContext: true,
+    });
+    expect(rootItemIds(without)).toEqual(['copy', 'copy-row']);
+
+    const withRegion = buildDataTableContextMenuItems({
+      labels: clipboardLabels,
+      handlers: baseHandlers(),
+      hasCellContext: true,
+      hasCellRange: true,
+      canCopySelection: true,
+      canPasteSelection: true,
+    });
+    expect(rootItemIds(withRegion)).toEqual([
+      'copy',
+      'copy-row',
+      'copy-selected-cells',
+      'paste-selected-cells',
+    ]);
+  });
+
+  it('routes every "copy as" format to the handler with its own options', () => {
+    const handlers = baseHandlers();
+    const items = buildDataTableContextMenuItems({
+      labels: clipboardLabels,
+      handlers,
+      hasCellContext: true,
+      hasCellRange: true,
+      canCopySelection: true,
+    });
+    const copyAs = findSubmenu(items, 'copy-selected-cells-as');
+    expect(copyAs?.label).toBe('Copy Selected Cells As…');
+
+    const children = copyAs?.items ?? [];
+    for (const child of children) {
+      if (child.kind !== 'item') continue;
+      child.action?.();
+    }
+    expect(handlers.onCopySelectedCellsAs.mock.calls).toEqual([
+      ['tsv'],
+      ['tsv', { includeHeader: true }],
+      ['csv'],
+      ['json'],
+    ]);
+  });
+
+  it('keeps an unavailable entry visible but disabled', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: clipboardLabels,
+      handlers: baseHandlers(),
+      hasCellContext: true,
+      hasCellRange: true,
+      // A read-only connection: copying is fine, pasting is refused — and the user has to see
+      // that the entry exists before wondering why nothing happens.
+      canCopySelection: true,
+      canPasteSelection: false,
+    });
+    const byId = new Map(
+      items
+        .filter((entry): entry is Extract<(typeof items)[number], { kind: 'item' }> => entry.kind === 'item')
+        .map((entry) => [entry.id, entry]),
+    );
+    // `NativeMenuItemDef` expresses "enabled" by **omitting** the flag, so the enabled item
+    // must not carry `enabled: false` at all.
+    expect(byId.get('copy-selected-cells')).toBeDefined();
+    expect(byId.get('copy-selected-cells')?.enabled).not.toBe(false);
+    expect(byId.get('paste-selected-cells')?.enabled).toBe(false);
+  });
+
+  it('says so when part of the selection cannot be copied', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: clipboardLabels,
+      handlers: baseHandlers(),
+      hasCellContext: true,
+      hasCellRange: true,
+      canCopySelection: true,
+      selectionIgnoredRanges: 2,
+    });
+    const copy = items.find(
+      (entry): entry is Extract<(typeof items)[number], { kind: 'item' }> =>
+        entry.kind === 'item' && entry.id === 'copy-selected-cells',
+    );
+    expect(copy?.label).toBe('Copy Selected Cells (2…)');
   });
 });
 

@@ -1,6 +1,7 @@
 import type { NativeMenuItemDef } from './nativeContextMenu';
 import type { DatabaseType } from '../types';
 import { escapeIdent, getEscapeSqlValue } from './databaseTypes';
+import { rowToNamedRecord as clipboardNamedRecord, serializeCells } from './gridClipboard';
 import {
   resolveSetValueActions,
   type SetValueActionId,
@@ -42,6 +43,24 @@ export type DataTableContextMenuLabels = {
   revertCell?: string;
   /** "Load candidate values". */
   loadCandidates?: string;
+  /* ── Selected-cell clipboard (DB-03). All optional: a caller that does not offer the
+     entries keeps the menu it had before DB-03, and no label has to be invented. ── */
+  /** "Copy Selected Cells". */
+  copySelectedCells?: string;
+  /** "Copy Selected Cells As …" — the submenu title. */
+  copySelectedCellsAs?: string;
+  /** "Copy as TSV". */
+  copySelectedCellsAsTsv?: string;
+  /** "Copy as TSV with Header". */
+  copySelectedCellsAsTsvWithHeader?: string;
+  /** "Copy as CSV". */
+  copySelectedCellsAsCsv?: string;
+  /** "Copy as JSON (2D array)". */
+  copySelectedCellsAsJson?: string;
+  /** "Paste to Selected Cells". */
+  pasteSelectedCells?: string;
+  /** "Paste Rows" — the row-level entry DB-04 fills in; DB-03 only reserves the slot. */
+  pasteRows?: string;
 };
 
 export type DataTableContextMenuHandlers = {
@@ -64,6 +83,14 @@ export type DataTableContextMenuHandlers = {
   onSetValue?: (id: SetValueActionId) => void;
   /** Read the candidate values of an enumeration column (DB-05). */
   onLoadCandidates?: () => void;
+  /** Copy the selected region as TSV (DB-03). */
+  onCopySelectedCells?: () => void;
+  /** Copy the selected region in an explicit format (DB-03). */
+  onCopySelectedCellsAs?: (format: 'tsv' | 'csv' | 'json', options?: { includeHeader?: boolean }) => void;
+  /** Paste the system clipboard into the selected region (DB-03). */
+  onPasteSelectedCells?: () => void;
+  /** Paste whole rows (DB-04 owns the handler). */
+  onPasteRows?: () => void;
 };
 
 export type BuildDataTableContextMenuArgs = {
@@ -102,6 +129,18 @@ export type BuildDataTableContextMenuArgs = {
    * today's shape, with `Set NULL` inside `more-actions`.
    */
   setValue?: SetValueState;
+  /**
+   * There is a cell region to copy/paste into (DB-03). Default `false`: without it the menu
+   * keeps exactly the item sequence it had before DB-03, which is the regression gate for
+   * every existing consumer of this builder.
+   */
+  hasCellRange?: boolean;
+  /** Copying the selection is possible (default `false` ⇒ the entry renders disabled). */
+  canCopySelection?: boolean;
+  /** Pasting into the selection is possible (default `false` ⇒ the entry renders disabled). */
+  canPasteSelection?: boolean;
+  /** Extra non-contiguous regions the rectangular copy deliberately ignores (DB-03 §3.7). */
+  selectionIgnoredRanges?: number;
 };
 
 function item(
@@ -113,6 +152,24 @@ function item(
   return { kind: 'item', id, label, action };
 }
 
+/**
+ * An item that stays **visible but disabled**.
+ *
+ * The difference matters and the chapter calls it out: an unavailable entry is
+ * `enabled: false` **with** an action, while an irrelevant entry is no action at all (which
+ * `item()` drops). Conflating the two either hides why an action is missing or offers a
+ * click that does nothing.
+ */
+function enabledItem(
+  id: string,
+  label: string,
+  action: (() => void) | undefined,
+  enabled: boolean,
+): NativeMenuItemDef | null {
+  if (!action) return null;
+  return { kind: 'item', id, label, action, ...(enabled ? {} : { enabled: false }) };
+}
+
 function push(...defs: Array<NativeMenuItemDef | null>): NativeMenuItemDef[] {
   return defs.filter((d): d is NativeMenuItemDef => d != null);
 }
@@ -121,46 +178,33 @@ function submenu(id: string, label: string, items: NativeMenuItemDef[]): NativeM
   return items.length > 0 ? { kind: 'submenu', id, label, items } : null;
 }
 
-function escapeCsvCell(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
-  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-    return `"${str.replaceAll('"', '""')}"`;
-  }
-  return str;
-}
-
 /** Serialize table rows to TSV (tab-separated cells, newline-separated rows). */
 export function serializeDataTableRowsAsTsv(rows: unknown[][]): string {
-  return rows
-    .map((row) => row.map((cell) => (cell == null ? '' : String(cell))).join('\t'))
-    .join('\n');
+  // Delegates to the one serializer so copy/export share the escaping rules (DB-03 Step 9):
+  // a value containing a tab used to add a phantom column here, and `[object Object]` used
+  // to be written for an object value. Both are fixed in `serializeCells`.
+  return serializeCells(rows, { format: 'tsv', columnNames: [] });
 }
 
 /** Serialize rows as CSV with a header line. */
 export function serializeDataTableRowsAsCsv(columnNames: string[], rows: unknown[][]): string {
-  const header = columnNames.map(escapeCsvCell).join(',');
-  const body = rows.map((row) => columnNames.map((_, i) => escapeCsvCell(row[i])).join(','));
-  return [header, ...body].join('\n');
+  return serializeCells(rows, { format: 'csv', columnNames, includeHeader: true });
 }
 
 /** Serialize rows as a pretty-printed JSON array of named records. */
 export function serializeDataTableRowsAsJson(columnNames: string[], rows: unknown[][]): string {
-  return JSON.stringify(
-    rows.map((row) => rowToNamedRecord(columnNames, row)),
-    null,
-    2,
-  );
+  return serializeCells(rows, {
+    format: 'json',
+    columnNames,
+    jsonObjects: true,
+    // Kept at 2 so this function's output stays byte-identical to what it shipped before.
+    jsonIndent: 2,
+  });
 }
 
 /** Build a JSON object row from column names + cell values. */
 export function rowToNamedRecord(columnNames: string[], row: unknown[]): Record<string, unknown> {
-  const obj: Record<string, unknown> = {};
-  for (let i = 0; i < columnNames.length; i++) {
-    const name = columnNames[i];
-    if (name) obj[name] = row[i] ?? null;
-  }
-  return obj;
+  return clipboardNamedRecord(columnNames, row);
 }
 
 function escapeSqlValue(value: unknown, dialect?: DatabaseType): string {
@@ -306,13 +350,12 @@ export function resolveDataTableHeaderColFromEvent(target: EventTarget | null): 
  */
 export function serializeDataTableColumnValues(columnIndex: number, rows: unknown[][]): string {
   if (columnIndex < 0) return '';
-  return rows
-    .map((row) => {
-      if (!Array.isArray(row)) return '';
-      const cell = row[columnIndex];
-      return cell == null ? '' : typeof cell === 'object' ? JSON.stringify(cell) : String(cell);
-    })
-    .join('\n');
+  // One column, no header, same kernel as everything else: a value with a newline in it now
+  // arrives quoted instead of silently becoming two lines.
+  return serializeCells(
+    rows.map((row) => [Array.isArray(row) ? row[columnIndex] : null]),
+    { format: 'tsv', columnNames: [''] },
+  );
 }
 
 /**
@@ -390,7 +433,57 @@ export function buildDataTableContextMenuItems(
     canSetNull = false,
     canDelete = false,
     canRestoreRow = false,
+    hasCellRange = false,
+    canCopySelection = false,
+    canPasteSelection = false,
+    selectionIgnoredRanges = 0,
   } = args;
+
+  /**
+   * The selected-cell clipboard block (DB-03).
+   *
+   * Only built when the caller reports a region: a menu unaware of the feature keeps its
+   * exact previous item sequence. Unavailable entries render `enabled: false` rather than
+   * disappearing, because "the connection is read-only" is information the user needs.
+   */
+  const clipboardBlock = (): NativeMenuItemDef[] => {
+    if (!hasCellRange) return [];
+    const copyAs = submenu('copy-selected-cells-as', labels.copySelectedCellsAs ?? '', [
+      ...push(
+        item('copy-selected-cells-as-tsv', labels.copySelectedCellsAsTsv ?? '', () =>
+          handlers.onCopySelectedCellsAs?.('tsv'),
+        ),
+        item('copy-selected-cells-as-tsv-header', labels.copySelectedCellsAsTsvWithHeader ?? '', () =>
+          handlers.onCopySelectedCellsAs?.('tsv', { includeHeader: true }),
+        ),
+        item('copy-selected-cells-as-csv', labels.copySelectedCellsAsCsv ?? '', () =>
+          handlers.onCopySelectedCellsAs?.('csv'),
+        ),
+        item('copy-selected-cells-as-json', labels.copySelectedCellsAsJson ?? '', () =>
+          handlers.onCopySelectedCellsAs?.('json'),
+        ),
+      ),
+    ]);
+    const copyLabel =
+      selectionIgnoredRanges > 0 && labels.copySelectedCells
+        ? `${labels.copySelectedCells} (${selectionIgnoredRanges}…)`
+        : labels.copySelectedCells;
+    return push(
+      enabledItem(
+        'copy-selected-cells',
+        copyLabel ?? '',
+        handlers.onCopySelectedCells,
+        canCopySelection,
+      ),
+      copyAs,
+      enabledItem(
+        'paste-selected-cells',
+        labels.pasteSelectedCells ?? '',
+        handlers.onPasteSelectedCells,
+        canPasteSelection,
+      ),
+    );
+  };
 
   if (hasHeaderContext && !hasCellContext) {
     const headerItems = push(
@@ -418,6 +511,7 @@ export function buildDataTableContextMenuItems(
     const frequent = push(
       item('copy', labels.copy, handlers.onCopy),
       item('copy-row', labels.copyRow, handlers.onCopyRow),
+      ...clipboardBlock(),
       canFilterByValue
         ? item('filter-by-value', labels.filterByValue, handlers.onFilterByValue)
         : null,
@@ -476,6 +570,8 @@ export function buildDataTableContextMenuItems(
   // "copy" is the whole selection.
   const frequent = push(
     item('copy-selected-rows', labels.copySelectedRows, handlers.onCopySelectedRows),
+    // The row-level paste slot. DB-03 reserves it; DB-04 (INSERT) fills the handler in.
+    item('paste-rows', labels.pasteRows ?? '', handlers.onPasteRows),
     canFilterByValue
       ? item('filter-by-value', labels.filterByValue, handlers.onFilterByValue)
       : null,

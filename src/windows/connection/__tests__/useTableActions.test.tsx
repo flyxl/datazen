@@ -65,6 +65,7 @@ const tableStore = vi.hoisted(() => {
     setPageSize: record('setPageSize'),
     startEdit: record('startEdit'),
     stageCellChange: record('stageCellChange'),
+    stagePasteWrites: record('stagePasteWrites'),
     cancelEdit: record('cancelEdit'),
     setRowModeSelection: record('setRowModeSelection'),
     toggleSelectAll: record('toggleSelectAll'),
@@ -121,6 +122,7 @@ const ACTION_NAMES = [
   'setSort',
   'setVisibleColumns',
   'stageCellChange',
+  'stagePasteWrites',
   'startEdit',
   'toggleSelectAll',
   'unstageRowDelete',
@@ -350,6 +352,15 @@ const BINDING_CASES: readonly BindingCase[] = [
     method: 'setDefaultOrderOverride',
     args: ['none'],
     trigger: (actions) => actions.setDefaultOrderOverride('none'),
+  },
+  {
+    // DB-03: the batch write of a paste. One call for the whole block — that is the point of
+    // the binding, so the case pins exactly one store call with the panel id in front.
+    action: 'stagePasteWrites',
+    method: 'stagePasteWrites',
+    args: [[{ rowIndex: 0, columnName: 'name', value: 'x' }]],
+    trigger: (actions) =>
+      actions.stagePasteWrites([{ rowIndex: 0, columnName: 'name', value: 'x' }]),
   },
 ];
 

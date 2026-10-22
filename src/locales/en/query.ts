@@ -363,6 +363,49 @@ const pack = {
   'dataTable.emptyHint': 'This query returned no rows.',
   'dataTable.tableLabel': 'Data table',
   'dataTable.selectionSummary': '{rows} rows × {cols} columns',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': 'Copy Selected Cells',
+  'dataTable.copySelectedCellsAs': 'Copy Selected Cells As…',
+  'dataTable.copySelectedCellsAsTsv': 'Copy as TSV',
+  'dataTable.copySelectedCellsAsTsvWithHeader': 'Copy as TSV with header',
+  'dataTable.copySelectedCellsAsCsv': 'Copy as CSV',
+  'dataTable.copySelectedCellsAsJson': 'Copy as JSON (2D array)',
+  'dataTable.pasteSelectedCells': 'Paste to Selected Cells',
+  'dataTable.pasteRows': 'Paste Rows',
+  'dataTable.copyFailed': 'Could not copy; the clipboard is unavailable.',
+  'dataTable.pasteReadFailed':
+    'Could not read the clipboard. Press {shortcut} again, or grant clipboard access.',
+  'dataTable.pasteEmpty': 'The clipboard is empty — nothing to paste.',
+  'dataTable.pasteTooLarge':
+    'The clipboard holds {cells} cells; pasting is limited to {maxCells}. Nothing was pasted.',
+  'dataTable.pasteRaggedRow':
+    'Row {row} has {count} field(s) while the first row has {expected}; fix the source and copy again. Nothing was pasted.',
+  'dataTable.pasteUnclosedQuote': 'A quoted value is not closed; it was read as one cell.',
+  'dataTable.pasteClippedToPage':
+    '{count} cell(s) were skipped because the paste would leave this page. Go to the next page and paste the rest there.',
+  'dataTable.pasteNoWritableColumn': 'None of the columns in the selection can be written.',
+  'dataTable.readOnlyPasteDisabled': 'Cannot paste cells: connection or driver is read-only.',
+  'dataTable.pasteReadOnlyColumn': '{count} column(s) cannot be written and were skipped: {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    'Row {row} has an empty value for {column}, which is NOT NULL. That cell was skipped.',
+  'dataTable.pasteIdentityChanged':
+    'Row {row}, column {column}: the write would make the row identity ambiguous. That cell was skipped.',
+  'dataTable.pasteNoRowIdentity':
+    'This table has no primary key, so pasted values cannot be mapped to rows.',
+  'dataTable.pasteDroppedColumns':
+    '{count} source column(s) were dropped (no such column here): {names}',
+  'dataTable.pasteCrossTableTitle': 'Paste into another table?',
+  'dataTable.pasteCrossTableNotice': 'Pasted from another table into {table}',
+  'dataTable.pasteCrossTableBody':
+    'The clipboard was copied from another table. Its columns will be matched by name against {target} ({matched} of {total} matched); unmatched columns are dropped.',
+  'dataTable.pasteUnknownSourceBody':
+    'The clipboard was not copied from this table, so its columns are matched to {target} by position: {total} column(s).',
+  'dataTable.pasteConfirmTitle': 'Paste {cells} cells?',
+  'dataTable.pasteConfirmMessage':
+    'This writes {rows} row(s) × {cols} column(s) and overwrites {overwritten} pending change(s). Nothing is committed until you commit.',
+  'dataTable.pasteToSelectedCells': 'Paste',
+  'dataTable.pasteResult': 'Pasted {count} cell(s) · {skipped} skipped',
+  'dataTable.pasteOverwrotePending': '{count} pending change(s) overwritten',
   'detail.title': 'Details',
   'detail.show': 'Show detail panel',
   'detail.hide': 'Hide detail panel',

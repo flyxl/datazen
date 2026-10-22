@@ -244,6 +244,34 @@ export function rowsCoveredBySelection(state: GridSelectionState): ReadonlySet<n
   return rows;
 }
 
+/**
+ * Every coordinate of a normalized rectangle, row-major.
+ *
+ * This is the **one** place a region is expanded into coordinates. A consumer that needs to
+ * walk a selection (copying a block, exporting the selected cells) calls this instead of
+ * writing its own nested loop: a second traversal is a second answer to "which cells are in
+ * this rectangle", and the two drift the moment one of them changes how corners are ordered
+ * (00-contracts §4.1).
+ */
+export function cellCoordsInRange(
+  range: CellRange,
+  columnOrder: readonly string[],
+): CellCoord[] {
+  const normalized = normalizeCellRange(range, columnOrder);
+  if (!normalized) return [];
+  const left = columnOrder.indexOf(normalized.start.columnName);
+  const right = columnOrder.indexOf(normalized.end.columnName);
+  if (left < 0 || right < 0) return [];
+  const coords: CellCoord[] = [];
+  for (let rowIndex = normalized.start.rowIndex; rowIndex <= normalized.end.rowIndex; rowIndex += 1) {
+    for (let column = left; column <= right; column += 1) {
+      const columnName = columnOrder[column];
+      if (columnName !== undefined) coords.push({ rowIndex, columnName });
+    }
+  }
+  return coords;
+}
+
 /** Structural equality; extra ranges are compared as an unordered set. */
 export function gridSelectionEquals(
   a: GridSelection,

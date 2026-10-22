@@ -19,7 +19,13 @@
 | 表头与排序 | `src/components/DataTable/TableHeader.tsx` | `TableHeader`、双击循环 |
 | 页脚 | `src/components/DataTable/Pagination.tsx` | `Pagination`、`paginationReducer`、`PagingHint` |
 | 默认序选择器 | `src/components/DataTable/DefaultOrderSelect.tsx` | `DefaultOrderSelect` |
-| 右键菜单（复制项） | `src/components/DataTable/useDataTableContextMenu.ts` | 菜单构建与 `navigator.clipboard.writeText` |
+| 右键菜单 | `src/components/DataTable/useDataTableContextMenu.ts` | 菜单构建、`buildDataTableContextMenuItems` 的标签/处理器接线 |
+| 剪贴板解析/序列化（纯逻辑） | `src/lib/gridClipboard.ts` | `parseClipboardMatrix`、`serializeCells`、`buildSelectionMatrix` |
+| 粘贴规划（纯逻辑） | `src/lib/gridPastePlan.ts` | `planPaste`、`tableChangeKey`、`recordClipboardSource` |
+| 剪贴板编排 | `src/hooks/useGridClipboard.ts` | `useGridClipboard`、`describePasteProblem`、分批与确认 |
+| 剪贴板 DOM 接线 | `src/components/DataTable/useDataTableClipboardDom.ts`、`gridClipboardBridge.ts` | `onCopy` / `onPaste` 判定、`GridClipboardHandlers` |
+| 面板接线 | `src/windows/connection/useTableViewClipboard.ts`、`TableClipboardStatus.tsx` | 读取面板切片、粘贴结果行 |
+| 批量暂存 | `src/stores/tableData/stagePasteWrites.ts` | `stagePasteWritesInto`（一次 `set()`） |
 | 行高 | `src/components/DataTable/rowHeight.ts` | `DATA_TABLE_ROW_HEIGHT = 28` |
 | 选择状态（纯逻辑） | `src/stores/tableData/gridSelection.ts` | `CellCoord`、`GridSelection`、`clampCellCoord`、`moveCellFocus` |
 | 选择动作（写 Store） | `src/stores/tableData/selectionActions.ts` | `applyRowSelect`、`applyToggleSelectAll`、`ROW_MODE_GRID_SELECTION` |
@@ -207,25 +213,53 @@
 
 `isEditableTarget`（`src/lib/gridEventGuards.ts`）把编辑器与输入控件（含 `[data-dt-editing="true"]`）判为「自己管键盘」。所有网格快捷键、外键快捷键、面板级快捷键都先过这一道；IME 判定再过一道。两层都过不去才轮到网格。
 
-## 5. 右键菜单的复制项
+## 5. 复制与粘贴（剪贴板）
 
-右键菜单里的复制项把「当前单元格 / 一行 / 选中的行 / 一列 / 多行」变成文本，全部经 `navigator.clipboard.writeText` 交给操作系统。菜单由 `useDataTableContextMenu` 构建，序列化函数在 `src/lib/dataTableContextMenu.ts`。**这两套转换是分开的**：菜单的 CSV 转义是私有的 `escapeCsvCell`，导出文件的 CSV 走 `src/lib/exportData.ts` 的 `escapeCSV`；改一边不会改变另一边。
+复制与粘贴只有**一套**序列化与**一条**写回路径，这是本章存在的原因：过去的实现里有三份互不一致的转义（菜单私有 `escapeCsvCell`、导出的 `escapeCSV`、TSV 完全不转义），值里一旦出现制表符、换行或引号，粘贴回来的行列数就变了。
 
-| 菜单项 | 内容 | 序列化函数 |
+### 5.1 一份转义规则
+
+`serializeCells`（`src/lib/gridClipboard.ts`）是唯一的单元格序列化入口；下面这些函数都只是它的薄封装，签名不变：
+
+| 调用点 | 参数 | 结果 |
 |---|---|---|
-| 复制（菜单标签为「复制」） | 单元格文本（`null`/`undefined` → 空串） | — |
-| 复制行 | 一行 TSV | `serializeDataTableRowsAsTsv` |
-| 复制选中行 | 多行 TSV，行间 `\n` | `serializeDataTableRowsAsTsv` |
-| 复制列名 | 列名 | — |
-| 复制整列数据 | 该列各行值按行拼 | — |
-| 复制为 JSON | 对象数组，`JSON.stringify(..., null, 2)` | `serializeDataTableRowsAsJson` / `rowToNamedRecord` |
-| 复制为 CSV | 首行表头，`escapeCsvCell` 处理逗号/引号/换行 | `serializeDataTableRowsAsCsv` |
-| 复制为 SQL INSERT | 每行一条 `INSERT`，标识符与字面量按方言转义 | `formatRowsAsSqlInsert` |
-| 复制为 UPDATE | 每行一条 `UPDATE`，`WHERE` 用主键列（无主键时退化为第一列） | `formatRowAsSqlUpdate` |
+| `serializeDataTableRowsAsTsv` / 复制的行 | `tsv`，无表头 | 制表符分列、`\n` 分行 |
+| `serializeDataTableRowsAsCsv` | `csv`，默认带表头 | 逗号分列 |
+| `serializeDataTableRowsAsJson` | `json`，`jsonObjects` | 对象数组 |
+| `serializeDataTableColumnValues` | `tsv`，单列 | 换行分隔的值列表 |
 
-序列化的事实：CSV 只在含 `,`/`"`/换行时加引号并把 `"` 双写；TSV 不做引号转义（值内出现制表符会产生无法还原的文本）；SQL 的标识符与字面量分别由 `escapeIdent` / `getEscapeSqlValue` 按连接方言处理；`UPDATE` 的 `WHERE` 遇到 `NULL` 主键值用 `IS NULL`。
+转义规则：值内含分隔符、`"`、`\n` 或 `\r` 时整格用 `"` 包裹并把内部 `"` 双写；`null` 默认渲染为空串（可传 `nullLiteral`，粘贴侧认 `NULL` 与 `\N`）；对象值走 `JSON.stringify` 而不是 `String(v)`；长值不截断。
 
-菜单还有「设为 NULL」「设值」「恢复此行」「删除行」「按值筛选」「导出」等非复制项，它们改的是暂存状态或打开导出对话框，不是复制。
+因此「复制整列」这类原本不做转义的路径也会输出 `"{""a"":1}"`。这不改变读回的内容：`parseClipboardMatrix` 与电子表格都会还原成 `{"a":1}`。
+
+### 5.2 写出到系统剪贴板
+
+菜单项与 `⌘C` 都走 `copyToClipboard`（`src/lib/fetchRelationDdl.ts`）的三级降级：`navigator.clipboard.writeText` → `invoke('write_clipboard')` → `document.execCommand('copy')`。WKWebView 在用户手势结束后会拒绝第一级，菜单点击恰好就是这种情形（缺陷 G5），所以只写 `writeText` 的复制会静默失败。空文本按**失败**处理（`copyToClipboard('')` 返回 `false`），不会点亮「已复制」。
+
+复制成功后由 `recordClipboardSource` 记下「来源表 + 列名」，供粘贴时的同名对齐与「同表免确认」判定；它只能**抬高**门槛（证明同表），绝不用于自动放行写入。
+
+`⌘C` / `⌘V` 绑定在滚动容器上（`useDataTableClipboardDom`），三条守卫：没有 `clipboard` 桥则完全不挂监听（老行为）；编辑器或任何输入控件打开时不拦截；没有落点单元格时不拦截 `paste`。
+
+### 5.3 落进暂存，而不是直接写库
+
+粘贴的写入路径与单元格编辑完全相同：`pendingChanges` → `preview_pending_changes` → `commit_pending_changes`。差别只在批量：
+
+1. `parseClipboardMatrix` 解析文本，畸形输入当场拒绝并给出结构化原因（空文本、超限、行列不齐、引号未闭合）；
+2. `planPaste`（`src/lib/gridPastePlan.ts`）决定「写到哪」：同表按列名对齐、跨表或来源未知时按位置对齐并强制确认，不可写列（自增列）整列跳过，`NOT NULL` 列的空值逐格拒绝，越界默认「扩展」到页尾并统计被裁掉的格数；
+3. `stagePasteWritesInto` 一次性算完整个块，Store 只 `set()` **一次**（5 000 格也只触发一次通知），每格复用 `computeStageCellValueResult`，与单格编辑逐字段等价；
+4. 超过 `GRID_PASTE_CONFIRM_CELLS`（2 000 格）或跨表时先弹确认框。
+
+三态语义因此原样保留：`null` 写 SQL NULL、空串写 `''`、块里没有的格子根本不写。把某格粘回它自己的原值时，暂存项会消失而不是留下一条空变更。
+
+### 5.4 失败怎么显示
+
+粘贴拒绝用 12 个 `grid.paste.*` / `grid.clipboard.*` 码表达（`src/lib/gridErrors.ts`），全部在**前端**产生，因此登记在 `gridErrors.registration.test.ts` 的 `PRODUCER_PENDING` 里。逐格失败用 `data-dt-cell-error` 标记该单元格；整批失败用 `TableClipboardStatus` 一行文字说明，不覆盖用户已有的暂存修改。
+
+### 5.5 已知边界
+
+- `ColumnSchema` 没有 `isGenerated`，所以只有 `isAutoIncrement` 列被当作不可写列跳过；生成列目前会照常写入并由数据库拒绝。
+- 复制只取主选区（`selection.anchor → focus`）的矩形；`extraRanges` 不参与复制，菜单标签会以 `(N…)` 提示被忽略的区域。
+- 粘贴按位置对齐时以选区**左上角**为起点，越界默认扩展，与电子表格一致。
 
 ## 6. 编辑生命周期
 
