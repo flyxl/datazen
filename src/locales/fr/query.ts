@@ -204,6 +204,29 @@ const pack = {
   'pagination.next': 'Suivant',
   'pagination.page': 'Page',
   'pagination.pageOf': '',
+  'pagination.rowCountEstimated': 'env. {count}',
+  'pagination.rowCountUnknown': 'inconnu',
+  'pagination.rowsUnknown': 'Nombre de lignes indisponible',
+  'pagination.estimateTooltip':
+    'Nombre de lignes estimé — le nombre réel peut différer. Utilisez « Compter » pour la valeur exacte.',
+  'pagination.countExact': 'Compter',
+  'pagination.counting': 'Comptage…',
+  'pagination.pageOnly': 'Page n° {page}',
+  'pagination.unstablePaging':
+    "Aucun ordre de tri n'est défini — les lignes peuvent se répéter ou être omises d'une page à l'autre.",
+  'pagination.estimatedLessThanActual':
+    "Cette page est vide. Le nombre réel de lignes peut être inférieur à l'estimation — utilisez « Compter » pour le vérifier.",
+  'defaultSort.noPrimaryKey': 'Aucune clé primaire — le tri se fait sur la première colonne.',
+  'defaultSort.custom': 'Ordre personnalisé',
+  'defaultSort.panelLabel': 'Trier',
+  'defaultSort.inherit': 'Suivre le paramètre',
+  'defaultSort.primaryKeyAsc': 'Clé primaire ↑',
+  'defaultSort.primaryKeyDesc': 'Clé primaire ↓',
+  'defaultSort.primaryKeyDescUnavailable':
+    "Le tri décroissant sur une clé primaire composite n'est pas encore pris en charge.",
+  'defaultSort.none': 'Ne pas trier',
+  'pagination.estimateUnavailable':
+    'Cette base de données ne peut pas estimer le nombre de lignes.',
   'filter.filter': 'Filtre',
   'filter.remove': 'Supprimer le filtre',
   'filter.clear': 'Clair',
@@ -223,7 +246,7 @@ const pack = {
   'filter.lt': '<',
   'filter.gte': '≥',
   'filter.lte': '≤',
-  'filter.like': 'contient',
+  'filter.like': 'correspond au motif',
   'filter.in': 'dans',
   'filter.isNull': 'est NULL',
   'filter.isNotNull': "n'est pas NULL",

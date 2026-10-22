@@ -52,6 +52,18 @@ const pack = {
   'settings.langEn': 'English',
   'settings.dataBrowsing': 'Просмотр данных',
   'settings.defaultPageSize': 'Размер страницы по умолчанию',
+  'settings.rowCountMode': 'Режим подсчёта строк',
+  'settings.rowCountMode.auto': 'Автоматически',
+  'settings.rowCountMode.exact': 'Всегда точно',
+  'settings.rowCountMode.estimated': 'Оценивать по возможности',
+  'settings.rowCountMode.none': 'Не считать',
+  'settings.rowCountEstimateThreshold': 'Оценивать при превышении этого числа строк',
+  'settings.defaultTableSort': 'Сортировка таблицы по умолчанию',
+  'settings.defaultTableSort.primaryKeyAsc': 'Первичный ключ, по возрастанию',
+  'settings.defaultTableSort.primaryKeyDesc': 'Первичный ключ, по убыванию',
+  'settings.defaultTableSort.none': 'Не сортировать',
+  'settings.defaultTableSort.hint':
+    '"Не сортировать" ускоряет разбиение на страницы в больших таблицах, но строки могут повторяться или пропускаться при переходе между страницами.',
   'settings.connectionPoolSize': 'Размер пула соединений',
   'settings.connectionPoolSizeHint':
     'Максимальное число соединений, удерживаемых для каждого подключения к БД.',
