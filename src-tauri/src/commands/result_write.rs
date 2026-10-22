@@ -6,6 +6,9 @@ use datazen_application::{
     sessions::ConnectionUseCases,
 };
 use datazen_driver_api::{ColumnInfo, LegacySqlDialect, SqlDialect, TableSchema, Value};
+use datazen_feature_core::services::result_edit::{
+    read_only_error_code, GridReadOnlyReason,
+};
 use datazen_platform_api::{
     context::RequestContext,
     dto::{
@@ -168,10 +171,16 @@ pub(crate) async fn commit_query_result_cell_impl(
         .await
         .ok_or_else(|| CommandError::NotFound("Connection profile unavailable".into()))?;
     if config.read_only {
-        return Err(CommandError::Validation(
-            "grid.result.writeDenied: Connection is read-only; result cells cannot be written back"
-                .into(),
-        ));
+        // **Which code a refusal carries is a rule, and the rule lives in the
+        // shared layer.** The shell asks `read_only_error_code` for it rather
+        // than writing the code out: `SessionReadOnly` is already one of the
+        // editability reasons, so a read-only connection is refused with the
+        // same code the origin verdict would have used — the two ends of the
+        // same decision agree, and the vocabulary stays in one place.
+        let code = read_only_error_code(GridReadOnlyReason::SessionReadOnly);
+        return Err(CommandError::Validation(format!(
+            "{code}: Connection is read-only; result cells cannot be written back"
+        )));
     }
     if !profile.enabled || Counter::new(profile.config_revision) != session.config_revision {
         return Err(CommandError::Validation(
