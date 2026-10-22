@@ -30,6 +30,7 @@ import { createRunningCloseGuard } from './runningExecutionClose';
 import { DEFAULT_PANE_ID, paneKey } from './paneKeys';
 import { resolveNextActive, resetPanelIdCounter, type Panel } from './panelTypes';
 import { createPanelCloseNotifier } from './panelCloseNotifier';
+import { syncPaneFocus } from './paneFocus';
 
 const resultWriteInflight = new Set<string>();
 
@@ -210,41 +211,6 @@ interface PanelActions {
   toggleFavorites: () => void;
 
   reset: () => void;
-}
-
-/** The two focus fields an action has to write, plus the new activation. */
-type PaneFocusPatch = Pick<PanelState, 'focusedPaneIdByPanel' | 'focusedPaneId' | 'activePanelId'>;
-
-/**
- * The one writer of pane focus.
- *
- * It drops entries whose tab is gone (a pane cannot outlive its panel), applies
- * `paneId` to `panelId` when given, and re-derives the `focusedPaneId` mirror
- * from whichever tab ends up active. Routing the mirror through the map — rather
- * than letting each action assign it — is what keeps a tab from inheriting
- * another tab's pane id, and what keeps closing a pane in one tab from stealing
- * the focus of another.
- *
- * `paneId` of `null` / `undefined` means "this tab's default pane": the entry is
- * removed rather than stored, so an unsplit tab is simply absent from the map.
- */
-function syncPaneFocus(
-  prev: Pick<PanelState, 'focusedPaneIdByPanel'>,
-  panels: Panel[],
-  activePanelId: string | null,
-  focus?: { panelId: string; paneId: string | null },
-): PaneFocusPatch {
-  const live = new Set(panels.map((p) => p.id));
-  const next: Record<string, string> = {};
-  for (const [panelId, paneId] of Object.entries(prev.focusedPaneIdByPanel)) {
-    if (live.has(panelId) && panelId !== focus?.panelId) next[panelId] = paneId;
-  }
-  if (focus?.paneId) next[focus.panelId] = focus.paneId;
-  return {
-    focusedPaneIdByPanel: next,
-    focusedPaneId: activePanelId ? (next[activePanelId] ?? null) : null,
-    activePanelId,
-  };
 }
 
 export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
