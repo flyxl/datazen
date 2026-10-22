@@ -394,7 +394,7 @@ async fn real_fixture() -> &'static RealFixture {
         .get_or_init(|| async {
             let dir = tempfile::tempdir().expect("临时目录");
             let store = Arc::new(
-                DesktopRepository::init_with_path(dir.path())
+                DesktopRepository::init_with_path(dir.path(), crate::store::KeyBackend::File)
                     .await
                     .expect("store 初始化"),
             );

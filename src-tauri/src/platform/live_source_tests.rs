@@ -406,9 +406,12 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
 
     let temp = tempfile::tempdir().expect("temp dir");
     let store = Arc::new(
-        crate::store::DesktopRepository::init_with_path(temp.path())
-            .await
-            .expect("store init"),
+        crate::store::DesktopRepository::init_with_path(
+            temp.path(),
+            crate::store::KeyBackend::File,
+        )
+        .await
+        .expect("store init"),
     );
     seed_profile(&store, &connection_config("conn-1", "test-live")).await;
 
@@ -602,9 +605,12 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
 
     let temp = tempfile::tempdir().expect("temp dir");
     let store = Arc::new(
-        crate::store::DesktopRepository::init_with_path(temp.path())
-            .await
-            .expect("store init"),
+        crate::store::DesktopRepository::init_with_path(
+            temp.path(),
+            crate::store::KeyBackend::File,
+        )
+        .await
+        .expect("store init"),
     );
     seed_profile(&store, &connection_config("pool-conn", "test-live")).await;
 

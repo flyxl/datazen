@@ -127,12 +127,14 @@ async fn journey(prefix: &str, driver_id: &str) {
         std::env::var("DATAZEN_CONTRACT_REQUIRE_LIVE").as_deref(),
         Ok("1")
     );
-    let _keyring = crate::testing::FileKeyringGuard::set();
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        crate::store::DesktopRepository::init_with_path(temp.path())
-            .await
-            .unwrap(),
+        crate::store::DesktopRepository::init_with_path(
+            temp.path(),
+            crate::store::KeyBackend::File,
+        )
+        .await
+        .unwrap(),
     );
     let mut settings = store.get_settings().await;
     settings.limit_select_results = true;
