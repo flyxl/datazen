@@ -27,7 +27,6 @@ import {
   sessionKeysOfPanel,
 } from './panelExecCleanup';
 import { createRunningCloseGuard } from './runningExecutionClose';
-import { assertResultWritable } from './panelResultEdit';
 import { DEFAULT_PANE_ID, paneKey } from './paneKeys';
 import { resolveNextActive, resetPanelIdCounter, type Panel } from './panelTypes';
 import { createPanelCloseNotifier } from './panelCloseNotifier';
@@ -630,21 +629,21 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     }));
   },
 
+  /** The **narrow** channel's write path — see `panelResultEdit` for the channels. */
   updateResultCell: async (panelId, resultIdx, row, col, value, paneId) => {
     const key = paneKey(panelId, paneId);
     const exec = get().queryExec.get(key);
     if (!exec) return;
     const original = exec.results[resultIdx];
-    const panel = get().panels.find((item) => item.id === panelId);
-    assertResultWritable(panel?.dbSessionId ?? '', resultIdx);
-    if (!original?.runtimeBinding || original.source?.writableMapping !== 'verified')
-      throw new Error('Result is read-only; execute the query again');
-    const columnIndex = original.columns.findIndex((column) => column.name === col);
-    if (columnIndex < 0 || !original.rows[row]) throw new Error('Result cell unavailable');
-    if (JSON.stringify(original.rows[row][columnIndex]) === JSON.stringify(value)) return;
     if (resultWriteInflight.has(key)) throw new Error('A result edit is already in progress');
     resultWriteInflight.add(key);
     try {
+      // Refusals go through the error handler below, so they reach the user.
+      if (!original?.runtimeBinding || original.source?.writableMapping !== 'verified')
+        throw new Error('Result is read-only; execute the query again');
+      const columnIndex = original.columns.findIndex((column) => column.name === col);
+      if (columnIndex < 0 || !original.rows[row]) throw new Error('Result cell unavailable');
+      if (JSON.stringify(original.rows[row][columnIndex]) === JSON.stringify(value)) return;
       // The write goes through the bound `BackendClient` so the desktop and a
       // browser build take the same command path. The binding travels with the
       // request: the backend refuses a result whose runtime resource is gone

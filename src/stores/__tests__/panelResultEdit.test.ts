@@ -24,8 +24,9 @@ beforeEach(() => {
 
 describe('assertResultWritable', () => {
   it('refuses a write to a result the driver refused', () => {
-    // The interface is not the security boundary: a caller that skipped it
-    // must not be able to write through a read-only result either.
+    // The origin channel's guard: an origin refusal closes the origin write
+    // path (and nothing else — the narrow channel has its own verdict and
+    // its own re-verification against the live catalog).
     usePanelResultEdit.setState({
       verdicts: { [resultEditKey('sess-1', 0)]: refused },
       resolving: {},
@@ -56,8 +57,9 @@ describe('assertResultWritable', () => {
   });
 
   it('lets a write through when nobody judged the result yet', () => {
-    // The judgement arrives on its own; the interface stays read-only until
-    // it does, so the store does not refuse here.
+    // "Not judged yet" is not "judged read-only": the judgement arrives on
+    // its own, and the interface stays read-only until it does, so the store
+    // does not refuse here.
     expect(() => assertResultWritable('sess-1', 0)).not.toThrow();
   });
 

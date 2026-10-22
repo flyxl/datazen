@@ -87,6 +87,12 @@ function readOnly(reason: GridReadOnlyReason): GridEditability {
  * are computable on the narrow channel, where the driver cannot describe the
  * result at all.
  *
+ * **What §1.3 §7 guarantees**: that the row is addressed **uniquely within
+ * this page**. The uniqueness across pages (and across the whole table) is
+ * the database's primary-key constraint, not this check; the last line of
+ * defence for a write is the statement's `WHERE` carrying nothing but the
+ * primary-key predicate plus the `affected == 1` guard.
+ *
  * Returns the reason the row cannot be addressed, or `null` when it can.
  */
 export function resolveRowAddressability(

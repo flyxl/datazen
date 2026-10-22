@@ -208,17 +208,28 @@ export function useResultEditability(options: {
 }
 
 /**
- * Refuse a write to a result the driver has already refused.
+ * The two write channels of the result grid, and what guards each.
  *
- * The interface is not the security boundary: a caller that skipped it must
- * not be able to write through a read-only result either.
+ * * **The narrow channel** — `updateResultCell` → `commitQueryResultCell`. It
+ *   is governed by the narrow host-side mapping verdict
+ *   (`writableMapping === 'verified'` plus a live runtime binding), and the
+ *   backend re-verifies that mapping against the **live catalog** before it
+ *   writes. The origin verdict has no say here: it is a different channel,
+ *   and closing the narrow one with it would silently remove a feature that
+ *   works.
+ * * **The origin channel** — `preview_result_cell_change` → the change plan →
+ *   the commit. It is governed by the origin verdict (the driver's own
+ *   answer about where the rows came from).
+ *
+ * This guard belongs to the **origin** channel: an origin refusal closes the
+ * origin write path and nothing else.
  *
  * **"Not judged yet" is not "judged read-only".** A result nobody has judged
  * is *not* refused here: the judgement arrives on its own, and the interface
  * stays read-only until it does. A caller that skipped the interface can
  * therefore still enter the write path in that window — what stops it there is
- * the narrow write path's own re-verification against the live catalog, not
- * this guard.
+ * the write path's own re-verification against the live catalog, not this
+ * guard.
  */
 export function assertResultWritable(dbSessionId: string, resultIdx: number): void {
   const verdict = usePanelResultEdit.getState().verdicts[resultEditKey(dbSessionId, resultIdx)];
