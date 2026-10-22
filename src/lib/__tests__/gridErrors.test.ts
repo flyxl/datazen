@@ -92,13 +92,15 @@ describe('classifyGridError', () => {
     ).toBe('grid.filter.unsupportedOperator');
   });
 
-  it('does not classify the "cannot estimate" notice — the front end knows it already', () => {
+  it('has no error code in the count domain — the "cannot estimate" notice is an i18n key', () => {
     // "This database cannot estimate row counts" is a fact the front end has
     // on its own: the driver's declaration, or the answer in `totalRowsKind`.
-    // The grid renders it directly, so it is an i18n key and **not** an
-    // error code — registering it would make the interface branch on a
-    // message that can never arrive.
-    expect(GRID_ERROR_CODES).not.toContain('grid.count.estimateUnavailable');
+    // The grid renders it directly, so it is an i18n key
+    // (`pagination.estimateUnavailable`) and **not** an error code:
+    // registering it would make the interface branch on a message that can
+    // never arrive. The `grid.count.` domain therefore has no members at all.
+    expect(GRID_ERROR_CODES.filter((code) => code.startsWith('grid.count.'))).toEqual([]);
+    // And a prefix that merely looks like one stays unclassified.
     expect(classifyGridError('grid.count.estimateUnavailable: no estimate here')).toBe('unknown');
   });
 

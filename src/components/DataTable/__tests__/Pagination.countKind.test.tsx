@@ -123,6 +123,35 @@ describe('Pagination · the estimated state', () => {
     expect(getByTestId('pagination-estimate-overshot')).toBeInTheDocument();
   });
 
+  it('never clamps the user to a page the estimate allows', () => {
+    // The estimate is a bound: it may be smaller than the real row count. The
+    // pager therefore shows the page the user asked for and moves them one
+    // page forward — clamping the estimate used to pin them to the page they
+    // were already on (or send them backwards).
+    const { getByText, getByLabelText, onPageChange } = renderPagination({
+      totalRowsKind: 'estimated',
+      totalRows: 60,
+      page: 2,
+      rowCount: 50,
+    });
+    // The estimate implies two pages; the user is on the third.
+    expect(getByText('Page 3 / 2')).toBeInTheDocument();
+    fireEvent.click(getByLabelText('Next'));
+    expect(onPageChange).toHaveBeenCalledWith(3);
+  });
+
+  it('still clamps an exact total, which is a fact', () => {
+    // The exact state is the opposite case: the total is real, so a page
+    // beyond the end belongs to the last one.
+    const { getByText } = renderPagination({
+      totalRowsKind: 'exact',
+      totalRows: 60,
+      page: 5,
+      rowCount: 10,
+    });
+    expect(getByText('Page 2 / 2')).toBeInTheDocument();
+  });
+
   it('says that this database cannot estimate when the user asked for one', () => {
     // The front end knows this on its own: the driver declared it, or the
     // answer came back without an estimate. It is a rendered fact, not an

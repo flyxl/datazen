@@ -133,30 +133,52 @@ export function Pagination({
   // and pin the user to the first page forever.
   const view = totalRowsView(totalRowsKind, totalRows);
   const rowsOnPage = rowCount ?? 0;
+  const rowsKnown = rowCount !== undefined;
   const totalPages = view.kind === 'unknown' ? 0 : Math.max(1, Math.ceil(view.value / pageSize));
-  const current = view.kind === 'unknown' ? page : Math.min(page, totalPages - 1);
 
-  const range =
-    view.kind === 'unknown'
-      ? {
-          from: rowsOnPage > 0 ? current * pageSize + 1 : 0,
-          to: current * pageSize + rowsOnPage,
-        }
-      : {
-          from: view.value === 0 ? 0 : current * pageSize + 1,
-          to: Math.min(view.value, (current + 1) * pageSize),
-        };
+  /**
+   * The page the grid shows.
+   *
+   * Only the **exact** total may clamp it: the total is a fact, so a page
+   * beyond the end belongs to the last one. An estimate is a bound — it may
+   * be smaller than the real row count — and clamping the user's page to it
+   * would trap them on the page they are already on (and send them
+   * *backwards* from a later one). The estimate therefore never moves the
+   * user: the page that was asked for is the page that is shown.
+   */
+  const current = view.kind === 'exact' ? Math.min(page, totalPages - 1) : page;
+
+  /**
+   * The rows of the current page.
+   *
+   * The exact state derives the range from the total. The estimated state
+   * cannot: the estimate may be smaller than the data, and a range built
+   * from it would read "101-60". The rows that are actually here are the
+   * honest answer; the estimate only ever names the total.
+   */
+  let from: number;
+  let to: number;
+  if (view.kind === 'unknown') {
+    from = rowsOnPage > 0 ? current * pageSize + 1 : 0;
+    to = current * pageSize + rowsOnPage;
+  } else if (view.kind === 'estimated' && rowsKnown) {
+    from = rowsOnPage > 0 ? current * pageSize + 1 : 0;
+    to = current * pageSize + rowsOnPage;
+  } else {
+    from = view.value === 0 ? 0 : current * pageSize + 1;
+    to = Math.min(view.value, (current + 1) * pageSize);
+  }
 
   // The estimate is a bound, not a fact: it is rendered with the "about" sign
   // and never in the shape of an exact count.
   const rowCountText =
     view.kind === 'exact'
-      ? `${range.from}-${range.to} / ${formatRowCount(view.value)}`
+      ? `${from}-${to} / ${formatRowCount(view.value)}`
       : view.kind === 'estimated'
-        ? `${range.from}-${range.to} / ${t('pagination.rowCountEstimated', {
+        ? `${from}-${to} / ${t('pagination.rowCountEstimated', {
             count: formatRowCount(view.value),
           })}`
-        : `${range.from}-${range.to} / ${t('pagination.rowCountUnknown')}`;
+        : `${from}-${to} / ${t('pagination.rowCountUnknown')}`;
 
   const estimateTooltip =
     view.kind === 'estimated' ? t('pagination.estimateTooltip') : undefined;
@@ -205,10 +227,10 @@ export function Pagination({
         {estimateUnavailable && (
           <span
             className="min-w-0 truncate text-warning"
-            title={t('grid.count.estimateUnavailable')}
+            title={t('pagination.estimateUnavailable')}
             data-testid="pagination-estimate-unavailable"
           >
-            {t('grid.count.estimateUnavailable')}
+            {t('pagination.estimateUnavailable')}
           </span>
         )}
       </div>

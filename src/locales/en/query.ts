@@ -395,7 +395,12 @@ const pack = {
   'defaultSort.primaryKeyDescUnavailable':
     'Descending by a composite primary key is not supported yet.',
   'defaultSort.none': 'Do not sort',
-  'grid.count.estimateUnavailable': 'This database cannot estimate row counts.',
+  // The "cannot estimate" notice is an i18n key, **not** an error code: the
+  // `grid.<domain>.<reason>` namespace belongs to messages the back end
+  // raises, and this one the grid renders on its own (the driver's
+  // declaration, the answer in `totalRowsKind`). It lives with the pager
+  // because that is where it is shown.
+  'pagination.estimateUnavailable': 'This database cannot estimate row counts.',
   'filter.filter': 'Filter',
   'filter.remove': 'Remove filter',
   'filter.clear': 'Clear',
