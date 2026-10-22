@@ -179,7 +179,7 @@ where
     // in and no process default exists (tunnel-backend-BUG-004). Installing one
     // is idempotent, so this is safe on every connection and also covers library
     // and test embedders that never go through `main()`.
-    crate::tls::install_default_crypto_provider();
+    crate::install_default_crypto_provider();
 
     let roots = RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect(),
@@ -212,7 +212,7 @@ where
 /// Every stage is bounded by `connect_timeout_secs`: dial, TLS handshake and the
 /// CONNECT handshake itself ([`perform_connect_within`]). A proxy that accepts
 /// TCP but never answers must yield `Err` instead of hanging the caller forever.
-pub(crate) async fn verify_upstream(
+pub async fn verify_upstream(
     proxy: &HttpProxyTunnelConfig,
     remote_host: &str,
     remote_port: u16,

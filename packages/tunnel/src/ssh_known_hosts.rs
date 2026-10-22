@@ -1,4 +1,4 @@
-//! SSH known-hosts store (TOFU) persisted under the app data directory.
+//! SSH known-hosts store (TOFU), persisted under the caller's data directory.
 
 use russh::keys::ssh_key::{HashAlg, PublicKey};
 use serde::{Deserialize, Serialize};

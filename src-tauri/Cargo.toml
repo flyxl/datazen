@@ -32,6 +32,9 @@ datazen-platform-infra = { path = "../packages/platform-infra" }
 datazen-schema-diff = { path = "../packages/schema-diff" }
 datazen-data-sync = { path = "../packages/data-sync" }
 datazen-data-transfer = { path = "../packages/data-transfer" }
+# 形态中立的隧道机制内核（HTTP CONNECT 代理 / WebSocket 中继 / SSH 转发）。
+# 方向是 host → tunnel，与 F-13 禁止的 tunnel → host 相反。
+datazen-tunnel = { path = "../packages/tunnel" }
 # Wave-2 B1：Workspace App 形态中立内核（manifest 规则 / 安装 / 存储）已并入
 # datazen-feature-core（feature_core::workspace_apps 模块），此处不再单独依赖。
 inventory = "0.3"
