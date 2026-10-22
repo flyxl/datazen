@@ -33,6 +33,8 @@ export interface UseGridSelectionOptions {
    * falls back to its own `useId()` value.
    */
   idPrefix?: string;
+  /** Keyboard navigation (DB-02), called **first** on the grid's single keydown. */
+  onKeyboardNav?: (event: React.KeyboardEvent<HTMLDivElement>) => void;
 }
 
 export interface UseGridSelectionResult {
@@ -156,6 +158,7 @@ export function useGridSelection(options: UseGridSelectionOptions): UseGridSelec
     enabled = true,
     editingCell,
     idPrefix: idPrefixOption,
+    onKeyboardNav,
   } = options;
   const internalIdPrefix = useId();
   const idPrefix = idPrefixOption ?? internalIdPrefix;
@@ -269,6 +272,10 @@ export function useGridSelection(options: UseGridSelectionOptions): UseGridSelec
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      // DB-02: the navigation claims the keys it owns; a claimed key must not
+      // reach the selection handler below.
+      onKeyboardNav?.(event);
+      if (event.defaultPrevented) return;
       // 01-selection §4.5: an IME composition owns every key, Escape included.
       if (isComposingEvent(event)) return;
       if (event.key !== 'Escape') return;
@@ -281,7 +288,7 @@ export function useGridSelection(options: UseGridSelectionOptions): UseGridSelec
       if (!hadSession && selection.mode === 'none') return;
       onChange(EMPTY_GRID_SELECTION);
     },
-    [clearSession, editingCell, onChange, selection.mode],
+    [clearSession, editingCell, onChange, onKeyboardNav, selection.mode],
   );
 
   // Focus leaving the grid must not clear the selection: the user may be on the way to a

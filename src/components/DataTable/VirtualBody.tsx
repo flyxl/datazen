@@ -245,16 +245,6 @@ const VirtualRow = memo(function VirtualRow({
     [cellSelectionEnabled, onRowClick, onRowSelect, vRow.index],
   );
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        onRowSelect(vRow.index);
-      }
-    },
-    [onRowSelect, vRow.index],
-  );
-
   const handleRowDoubleClick = useCallback(() => {
     const first = colNames[0];
     if (first) onCellDoubleClick(vRow.index, first);
@@ -314,10 +304,15 @@ const VirtualRow = memo(function VirtualRow({
   return (
     <div
       key={vRow.key}
-      tabIndex={0}
+      // Roving tabindex (DB-02 §4.4): the scroll container is the only tab stop of the
+      // grid, the rows are reachable with the arrow keys.
+      tabIndex={-1}
       role={cellSelectionEnabled ? 'row' : undefined}
       data-dt-row-view={vRow.index}
       data-dt-row-state={dirtyRow?.state ?? undefined}
+      // The row's own selection state (the cells carry `data-dt-selected` too, so a
+      // locator has to name the row: `[data-dt-row-view][data-dt-selected]`).
+      data-dt-selected={selected ? 'true' : undefined}
       aria-selected={cellSelectionEnabled && selected ? 'true' : undefined}
       className={cn(
         'absolute left-0 flex w-full cursor-pointer outline-none',
@@ -335,7 +330,6 @@ const VirtualRow = memo(function VirtualRow({
       )}
       style={{ top: vRow.start, height: rowHeight }}
       onClick={handleClick}
-      onKeyDown={handleKeyDown}
       onDoubleClick={handleRowDoubleClick}
     >
       {isNewRow && (

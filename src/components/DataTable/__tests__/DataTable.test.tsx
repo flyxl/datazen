@@ -476,7 +476,7 @@ describe('DataTable', () => {
         highlightedRow={0}
       />,
     );
-    const row = container.querySelector('[tabindex="0"]')!;
+    const row = container.querySelector('[data-dt-row-view]')!;
     fireEvent.click(row);
     expect(onRowClick).toHaveBeenCalledWith(0);
     expect(onRowSelect).toHaveBeenCalledWith(0, { multi: false, range: false });

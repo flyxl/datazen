@@ -694,6 +694,9 @@ export function TableView({
         selectedRows={selectedRows}
         gridSelection={ts?.gridSelection ?? EMPTY_GRID_SELECTION}
         onGridSelectionChange={actions.setGridSelection}
+        // DB-02: the keyboard navigation of the grid (arrows, `Cmd+A`, `Enter`).
+        keyboardNavigation
+        lastSelectedIndex={ts?.lastSelectedIndex ?? null}
         loading={loading}
         onSort={actions.setSort}
         onRemoveFilter={actions.removeFilter}

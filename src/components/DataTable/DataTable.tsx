@@ -5,11 +5,13 @@ import type { CountStrategy, FilterCondition, FilterOperator, SortCondition, Val
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
 import { useGridSelection } from '../../hooks/useGridSelection';
+import { useGridKeyboardNav } from '../../hooks/useGridKeyboardNav';
 import {
   EMPTY_GRID_SELECTION,
   columnsCoveredBySelection,
   gridSelectionCellCount,
   rowsCoveredBySelection,
+  type CellCoord,
   type GridSelection,
 } from '../../stores/tableData/gridSelection';
 import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
@@ -22,6 +24,7 @@ import { DefaultOrderSelect } from './DefaultOrderSelect';
 import type { DefaultOrderOverride } from '../../lib/defaultSort';
 import { TableHeader, type ColumnDef } from './TableHeader';
 import { VirtualBody, type DraftRowViewModel } from './VirtualBody';
+import { GridKeyboardHints } from './GridKeyboardHints';
 import { useDataTableContextMenu } from './useDataTableContextMenu';
 import { DataExportDialog } from './DataExportDialog';
 import type { CellEditingContext } from '../../lib/cellEditorKind';
@@ -131,6 +134,12 @@ export interface DataTableProps {
   gridSelection?: GridSelection;
   /** Selection write-back. Paired with `gridSelection`; without it the grid only renders. */
   onGridSelectionChange?: (next: GridSelection) => void;
+  /** Keyboard navigation (DB-02). Omitted ⇒ no key is intercepted at all. */
+  keyboardNavigation?: boolean;
+  /** Scroll the cursor cell into view (volume 10's hook point). */
+  onRequestScrollIntoView?: (coord: CellCoord) => void;
+  /** The anchor of the row selection (`TableState.lastSelectedIndex`), read-only. */
+  lastSelectedIndex?: number | null;
 
   /** Row clicked (single click) — used by parent to track detail panel row */
   onRowClick?: (index: number) => void;
@@ -324,6 +333,9 @@ export function DataTable({
   getContextCellText,
   gridSelection,
   onGridSelectionChange,
+  keyboardNavigation,
+  onRequestScrollIntoView,
+  lastSelectedIndex,
   onScrollElementChange,
 }: DataTableProps) {
   const { t } = useI18n();
@@ -392,6 +404,26 @@ export function DataTable({
   const selection = gridSelection ?? EMPTY_GRID_SELECTION;
   /** Prefix of the cell ids the grid's `aria-activedescendant` points at. */
   const gridIdPrefix = useId();
+  /** The rows one screen holds; the keyboard hook never measures the viewport (02 §K-10). */
+  const viewportRowCount = scrollEl
+    ? Math.max(1, Math.floor(scrollEl.clientHeight / rowHeight))
+    : 1;
+  const keyboardNav = useGridKeyboardNav({
+    columnOrder: columnNames,
+    rowCount: rows.length,
+    selection,
+    lastSelectedIndex: lastSelectedIndex ?? null,
+    editing: editingCell != null,
+    viewportRowCount,
+    enabled: keyboardNavigation === true && hasCellSelection,
+    onGridSelectionChange: onGridSelectionChange ?? NOOP,
+    onCellDoubleClick: handleCellDoubleClick,
+    onRowGutterSelect: handleGutterSelect,
+    onToggleSelectAll: onSelectAll,
+    onRequestScrollIntoView,
+  });
+  /** The cell that carries `data-dt-active` (02): the keyboard cursor. */
+  const activeCell = keyboardNav.activeCoord ?? (selection.mode === 'cell' ? selection.focus : null);
   const { surfaceProps, isCellSelected, activeDescendantId } = useGridSelection({
     columnOrder: columnNames,
     rowCount: rows.length,
@@ -401,6 +433,7 @@ export function DataTable({
     enabled: hasCellSelection,
     editingCell: editingCell ?? null,
     idPrefix: gridIdPrefix,
+    onKeyboardNav: keyboardNav.handleKeyDown,
   });
   /**
    * The grid surface. The scroll container is the ARIA grid host and the keyboard focus
@@ -610,11 +643,16 @@ export function DataTable({
 
       {statusBar}
 
+      {keyboardNavigation && hasCellSelection ? (
+        <GridKeyboardHints id={`${gridIdPrefix}-shortcuts`} />
+      ) : null}
+
       <div
         ref={setScrollEl}
         className="min-h-0 flex-1 overflow-auto"
         aria-busy={loading}
-        aria-label={t('dataTable.tableLabel')}
+        aria-label={hasCellSelection ? t('tableView.a11y.gridLabel') : t('dataTable.tableLabel')}
+        aria-describedby={keyboardNavigation && hasCellSelection ? `${gridIdPrefix}-shortcuts` : undefined}
         onContextMenu={onContextMenu}
         {...surfaceDomProps}
         {...(hasCellSelection ? surfaceProps : {})}
@@ -657,7 +695,7 @@ export function DataTable({
               onRowClick={onRowClick}
               cellSelectionEnabled={hasCellSelection}
               isCellSelected={isCellSelected}
-              activeCell={selection.mode === 'cell' ? selection.focus : null}
+              activeCell={activeCell}
               cellIdPrefix={hasCellSelection ? gridIdPrefix : undefined}
               draftRows={draftRows}
               onDraftCellEdit={onDraftCellEdit}
