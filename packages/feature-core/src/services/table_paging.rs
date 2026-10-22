@@ -77,14 +77,25 @@ pub struct OrderSpec {
 /// What the host decided about reading this page by seek.
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeysetDecision {
-    /// The order the **statement** is written in.
+    /// The order a read uses when it is **not** part of a seek sequence.
     ///
     /// The tie-breaker columns that make an order total are **not** in
-    /// here: they are a property of the seek, not of the read. A page that
-    /// is not read by seek is written in the order the caller asked for —
-    /// byte for byte the statement the read always sent. This is the whole
-    /// point of the "a driver that did not opt in reads exactly as before"
-    /// promise, and it is why the two orders are two fields and not one.
+    /// here: they are a property of the seek, not of the read. With no keyset
+    /// capability anywhere on the path, the statement is written in the order
+    /// the caller asked for — byte for byte the statement the read always
+    /// sent. This is the whole point of the "a driver that did not opt in
+    /// reads exactly as before" promise, and it is why the two orders are two
+    /// fields and not one.
+    ///
+    /// It is **not** true that every non-seek statement is written in this
+    /// order. A page that returns rows which then become the anchor of the
+    /// next seek is sliced with the **total** order from
+    /// [`KeysetSeek::Eligible`] — the non-adjacent (jumped-to) page is the
+    /// live example, and the other refusal reasons that still answer a page
+    /// behave the same way. Slicing in one order and continuing the seek in
+    /// another would skip or repeat rows, so the two halves must share an
+    /// order. Those branches keep the byte-for-byte promise a different way:
+    /// they are unreachable unless a seek is already on the path.
     pub order: OrderSpec,
     /// Whether the page can be read by seek, and in which total order.
     pub seek: KeysetSeek,
