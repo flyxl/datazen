@@ -8,7 +8,7 @@
 | 轨 | 分支 | worktree | 状态 |
 | --- | --- | --- | --- |
 | A `count-frontend` | `feature/count-frontend` | `.worktrees/datazen-count-fe` | ✅ **已落地**（合并提交 `b7b530e86`）：复测 TEST_PASSED、零缺陷；Coder 收尾轮 `bcc8b9bee`（陈旧注释 / mock 码 / 收编复测代理的第二轮锁） |
-| B `named-views` | `feature/named-views` | `.worktrees/datazen-named-views` | 复测 **TEST_PASSED**（Tester `eb6a116d` 独立复核 11 个验收点 + 7 处变异自证），但查出 **D1**（用户自由文本进宿主消息）⇒ **修复轮中**（Coder `29f87132`），修完由原 Tester 复验 |
+| B `named-views` | `feature/named-views` | `.worktrees/datazen-named-views` | ✅ **已落地**（合并提交 `7a458c13c`）：复测 TEST_PASSED + D1 修复轮 + 聚焦复验 TEST_PASSED、零缺陷 |
 | C `i18n-sync-existing`（**非 PRD 轨，但属发布门禁**） | `chore/i18n-sync-existing` | `.worktrees/dz-i18n-sync` | **翻译中**（Agent `76f074fd`）：补齐 **192 key × 8 语种 = 1536** 的既有缺口，让 `i18n-sync-check.mjs` 变绿 |
 
 集成分支 `feature/data-browsing-prd` HEAD = `00e373c4b`。
@@ -189,6 +189,41 @@ Coder 交付 5 提交（`66fc97aae`/`fa0dcfd59`/`c4a8c98b4`/`c6b59dda0`/`89ec12d
 - **`sqlserver` 的谓词用例必须断言 SQL 里不出现行值比较**（`((a, b) > …)` 这种形状）——契约 Step 7 明写。
 - **12-testing 的 D1–D8 是完成定义**，两条最容易被忽略的：**D5 至少一次反向注入**（亲手改坏 ⇒ 亲眼看到转红 ⇒ 还原）、**D7 零文案断言**（不许把 `t()` 渲染的文案钉进断言或定位器）。
 
+## 剩余四册的冲突矩阵（实测，不是估计）
+
+把 02 / 03 / 05 / 10 / 11 五册 §6 的文件清单求交：
+
+| 组合 | 共享文件数 | 共享的是 |
+| --- | --- | --- |
+| **02 ∥ 10** | **1** | 只有 `en/query.ts` |
+| **05 ∥ 10** | **2** | `gridErrors.ts` + `en/query.ts`（**都是纯追加**） |
+| 02 ∥ 11 | 3 | `DataTable.tsx`、`TableView.tsx`、`en/query.ts` |
+| 03 ∥ 10 | 3 | `gridErrors.ts`(+测试)、`en/query.ts` |
+| 02 ∥ 03 | 4 | + `VirtualBody.tsx` |
+| 10 ∥ 11 | 5 | **`driver-api/traits.rs`**、`driver-api/lib.rs`、`feature-core/services/mod.rs` + 2 追加文件 |
+| 03 ∥ 11 | 6 | + `tableDataStore.ts`、`tableData/types.ts` |
+| 05 ∥ 11 | 6 | 同上 |
+| 02 ∥ 05 | 5 | + `EditableCell.tsx` |
+| **03 ∥ 05** | **9** | `VirtualBody` / `DataTable` / `TableView` / `gridErrors` / `tableChanges` / `dataTableContextMenu` / `tableDataStore` / `tableData/types` / `en/query.ts` |
+
+**两条不可协商 / 可协商的界线**：
+1. **10 ∥ 11 不能同波**：两者都要往 `packages/driver-api/src/traits.rs` 加 trait 方法，而它被 sqlserver 的 ratchet 钉在 ≤1265（只许缩不许涨）；两者还要改同一批驱动 crate ⇒ 同波 = 钉子值二义 + 三方合并。
+2. **`en/query.ts`（5 册都碰）与 `gridErrors.ts`（4 册都碰）可以变成零冲突**：两者本质是**纯追加**（各册追加自己域的码/词条）。**给每册预留一个插入位**（不是都往末尾追加），git 就能自动合并 ⇒ 这两个文件从「必然冲突」变成「零冲突」。剩余的组件级冲突（`DataTable.tsx` / `TableView.tsx` / `VirtualBody.tsx` / `tableDataStore.ts`）必须手工解 —— 而这些正是历史上出过事故的地方（Wave 6 的 `tableDataStore.ts` 差点丢掉轨 B 的 `sorts`；`probe-exclusion` 的断言被改弱）。⇒ 并行度控制在「同一文件最多 3 册碰」以内。
+
+**重排后的总冲突**：原方案（02∥11 / 03∥10 / 05）= 6；重排后（05∥10 / 02∥11 / 03）= **2**（且全程无 ratchet 争用）。
+
+## D1 的守护点在**三处**（不是收编的那四个文件）
+
+复测代理实测发现：收编的 4 个文件**抓不到** Rust 侧的消息回显（`namedViews.contract.test.ts` 的 host 消息是它**自造的 fixture**，改 Rust 不会让它红）。⇒「宿主消息不回显用户文本」这条规则的守护点：
+
+| # | 位置 | 条数 |
+| --- | --- | --- |
+| 1 | `packages/feature-core/src/services/named_views/tests.rs` | 2（`a_duplicate_name_message_never_quotes_the_name`、`an_invalid_filter_logic_message_never_quotes_the_value`） |
+| 2 | `src-tauri/src/store/tests/named_views_tests.rs` | 1（`the_refusal_message_never_quotes_the_view_name`） |
+| 3 | `src-tauri/src/commands/named_views_error_tests.rs`（复测代理产出，已收录 `05dcc13d1`） | 4 条 D1 断言（IPC 层） |
+
+⇒ 记在这里是为了**别让人误以为收编的 4 个文件覆盖了它**。
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
@@ -231,9 +266,9 @@ Coder 交付 5 提交（`66fc97aae`/`fa0dcfd59`/`c4a8c98b4`/`c6b59dda0`/`89ec12d
 | 5 | `fk-navigation-ui` + `filters` | ✅ | — |
 | 6 | `filters-frontend` + `count-backend` | ✅ | `src/stores/tableDataStore.ts` |
 | 7 | `count-frontend` + `named-views` | 🔄 进行中 | `src/locales/en/query.ts`、`src/lib/gridErrors.ts`、`src/platform/tauriBackendTransport.ts` |
-| 8 | **02 键盘 ∥ 11 键集分页** | ⏳ | `DataTable.tsx`、`TableView.tsx`、`src/locales/en/query.ts` |
-| 9 | **03 剪贴板 ∥ 10 结果网格** | ⏳ | `src/lib/gridErrors.ts`、`src/locales/en/query.ts` |
-| 10 | **05 编辑器**（单轨） | ⏳ | `src/lib/gridErrors.ts`、`src/locales/en/query.ts`、`src/lib/tableChanges.ts`、`src/lib/dataTableContextMenu.ts` |
+| 8 | **05 编辑器 ∥ 10 结果网格** | ⏳ | `src/lib/gridErrors.ts`、`src/locales/en/query.ts`（**两个都是纯追加，预留插入位后可自动合并 ⇒ 组件级冲突 0**） |
+| 9 | **02 键盘 ∥ 11 键集分页** | ⏳ | `DataTable.tsx`、`TableView.tsx`（`en/query.ts` 可自动合并） |
+| 10 | **03 剪贴板**（单轨）∥ 12-testing 的 D1–D8 审计 | ⏳ | 03 与 05 共享 **9** 个文件 ⇒ 两册**必须分开**；03 放在最后，它的合流面最小 |
 | R | 12-testing 的 **D1–D8 审计** + 全量回归 + E2E 补齐 + i18n 补齐 + 契约改写 + 删 `docs/prd/` | ⏳ | — |
 
 ### 12-testing 不是一条「并行代码轨」
