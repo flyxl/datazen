@@ -60,6 +60,25 @@
 2. **`updatedAt` 形状冲突**：TS 是 `string`（必填），Rust 是 `Option<DateTime<Utc>>` ⇒ serde 发 `null`。两侧必须一致。
 3. **桌面错误码可达性**：`CommandError::Serialize` 发纯字符串 ⇒ 前缀会丢；前端必须用 `src/lib/fkNavigationActions.ts:90-112` 的 `hostErrorMessage` 沿 `cause` 链取原文，**不能**直接用 `error.message`。
 
+## 轨 B `named-views` 的 12 项裁定（协调者，逐条给理由）
+
+Coder 交付 5 提交（`66fc97aae`/`fa0dcfd59`/`c4a8c98b4`/`c6b59dda0`/`89ec12d01`），并把新基线并进来后 HEAD = `c9d881ec4`。12 项待裁定的**逐条结论**：
+
+| # | 事项 | 裁定 | 理由 |
+| --- | --- | --- | --- |
+| 1 | 改共享 crate `packages/driver-api/src/filters.rs`：`connector` 加 `skip_serializing_if = "Option::is_none"` | **接受** | 契约 00 §5.2.1 明写「缺省不写」。线上出现 `connector: null` 就是「没有连接符」的**第二种拼法**，TS 侧就得同时处理「键缺失」与「键为 null」——正是本项目一直在消灭的「同一个 DTO 两种形状」。反序列化完全不变（null↔None↔缺省等价）。**并且它修掉了一个潜在 bug**：既有 TS 侧用 `!== undefined` 判定，`null` 会让判定为真 |
+| 2 | `updatedAt` 选型 | **接受 `string | null`** | 对齐契约的 Rust `Option<DateTime<Utc>>`（serde 会发 null）。另一选项（Rust 改非可选 + `default = now`）会把「从未更新」的记录**谎报**成「刚更新」 |
+| 3 | 多加 1 条 i18n key `filter.errorUnsupportedOperator`（22 条 = 契约 §8 的 21 条 + 这一条） | **接受** | 它**本来就在**契约 §8 的 08 词条清单里，只是基线没实现；命名视图恢复视图时需要「宿主不认识的算子」的文案。不加只能硬编码英文（违反 i18n 纪律） |
+| 4 | `hostErrorMessage` 从 `src/lib/fkNavigationActions.ts` 搬到 `src/lib/hostErrorMessage.ts`，原路径**再导出** | **接受** | 菜单组件要拿错误原文，而那个纯函数所在模块拖着 fkNavigationStore / panelStore / tableDataStore 三个 store，会把 `src/commands/database` 拉进组件依赖图、打断既有测试的 `vi.mock`。再导出保住了既有 import 路径 |
+| 5 | tsrs 在 scripts program 上多报 1 条 `TS2559`（`scripts/__tests__/with-driver-inject.test.ts:71`） | **销案（不是缺陷）** | 该文件与 origin/main 逐字节相同；**origin/main 修了 `scripts/with-driver-inject.mjs` 的 JSDoc**，所以它在新基线上**已经不存在**。协调者在集成分支实测 tsrs 门禁 EXIT=0。Coder 看到的是旧基线上的残留 |
+| 6 | `tsconfig.json` 显式列 `types` | **接受** | TS 7 不再自动发现 `@types`；该清单与 origin/main 根配置**逐字一致** ⇒ 落新基线是同一份改动、不产生冲突 |
+| 7 | `store/mod.rs` 只再导出 `HostViewIdMinter`、**不再导出 DTO**（契约 §6 的文件清单写的是「mod named_views; + re-export DTO」） | **接受偏离**，并已在契约 08 §6 记一笔 | DTO 的权威位置是 feature-core（按 T0-1/T0-2 裁定）；宿主从那里 import。再导一份等于给同一个类型**第二个名字**——这正是「同一个 DTO 两种形状」的源头 |
+| 8 | 端口 DTO 的 `operator` 刻意保持 `string`，「两份 FilterCondition 逐字相等」做成逐字段断言 | **接受** | 端口**不该**知道某个方言声明了哪些算子；`operator` 逐字相等**不可能**，是设计本身。逐字段 + 编译期断言是能做到的最强形态 |
+| 9 | web 边界：仓内没有 web transport ⇒ 能力缺口落在端口契约（`unsupportedMethods` + kind `capability`） | **接受** | 「桌面已实现」与「web 能服务」是**两种不同的缺口**（`notImplemented` vs `capability`），不得混为一谈；前端据此隐藏入口 |
+| 10 | Step 16 E2E（`e2e/specs/table-saved-views.ts`）未做 | **接受，留 R 阶段** | E2E 需要完整 app 构建与真实库 |
+| 11 | `TableToolbar` 黄金文件未变且仍绿；`error-banner-call-site-parity` 的快筛调用点改指 `TableFilterToolbar.tsx` | **接受，但须独立复验守卫仍有牙齿** | 协调者已复验过同类改动（`probe-exclusion`）：断言从「文件里的原始数组」换成「编译器解析后的有效值」时，**必须**证明去掉一个模式仍会红 |
+| 12 | 三条命令已进 `generate_handler!` 且有 `include_str!` 注册自检；`grid.view.*` 有真实生产者、**未**进 `PRODUCER_PENDING` | **接受** | 协调者已抽查：Rust 侧两个码的真实 throw 点在 `packages/feature-core/src/services/named_views/error.rs`（前缀在第 0 位）、三条命令都在 `bootstrap/run.rs`、桌面 `DESKTOP_UNSUPPORTED_METHODS` 已清空 |
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
