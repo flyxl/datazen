@@ -167,7 +167,7 @@ const pack = {
   'tableData.previewWarnings': '警告',
   'tableData.noPendingChanges': '未保存の変更はありません',
   'dataTable.selected': '選択済み',
-  'dataTable.sort': '選別',
+  'dataTable.sort': '並べ替え',
   'dataTable.selectRow': '行を選択',
   'dataTable.copyRow': '行をコピー',
   'dataTable.moreActions': 'その他の操作',

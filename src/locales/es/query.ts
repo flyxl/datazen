@@ -167,7 +167,7 @@ const pack = {
   'tableData.previewWarnings': 'Advertencias',
   'tableData.noPendingChanges': 'No hay cambios pendientes',
   'dataTable.selected': 'Seleccionado',
-  'dataTable.sort': 'Clasificar',
+  'dataTable.sort': 'Ordenar',
   'dataTable.selectRow': 'Seleccionar fila',
   'dataTable.copyRow': 'Copiar fila',
   'dataTable.moreActions': 'Más acciones',

@@ -165,7 +165,7 @@ const pack = {
   'tableData.previewWarnings': '경고',
   'tableData.noPendingChanges': '대기 중인 변경 사항이 없습니다',
   'dataTable.selected': '선택된',
-  'dataTable.sort': '종류',
+  'dataTable.sort': '정렬',
   'dataTable.selectRow': '행 선택',
   'dataTable.copyRow': '행 복사',
   'dataTable.moreActions': '더 많은 작업',
