@@ -446,6 +446,18 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.query_multi(handle, sql, limit).await
     }
 
+    async fn describe_result_origin(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+        result_columns: &[String],
+        sql: &str,
+    ) -> Result<ResultOrigin, DriverError> {
+        self.inner
+            .describe_result_origin(handle, target, result_columns, sql)
+            .await
+    }
+
     async fn query_stream(
         &self,
         handle: &ConnectionHandle,

@@ -37,12 +37,20 @@ const LINE_LIMIT: usize = 800;
 /// guards nothing.
 ///
 /// The value below is therefore the **measured size of the merged file**
-/// (1265 lines), and it is a ratchet: from here the declaration may shrink,
+/// (1257 lines), and it is a ratchet: from here the declaration may shrink,
 /// never grow. One line added to `driver-api/src/traits.rs` makes this guard
 /// fail again, and lowering the pin requires moving documentation or whole
 /// methods out of the declaration — a contract change rather than a layout
 /// change.
-const DATABASE_DRIVER_TRAITS_CEILING: usize = 1265;
+///
+/// The number was lowered from 1265 to 1257 by the result-grid track, which
+/// added the `describe_result_origin` declaration and paid for it by moving
+/// the five row-write statement builders (`build_update_sql`,
+/// `build_delete_sql`, `build_update_statement`, `build_delete_statement`,
+/// `build_insert_statement`) out of the declaration and into
+/// `driver-api/src/traits/sql_text.rs` — a pure move: the statements they
+/// render are byte for byte the ones the trait rendered before.
+const DATABASE_DRIVER_TRAITS_CEILING: usize = 1257;
 
 /// Path shown in a failure message: `driver-api` is reached by climbing out of
 /// this crate, and a name full of `..` segments is harder to act on than the

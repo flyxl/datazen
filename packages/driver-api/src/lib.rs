@@ -24,6 +24,7 @@ pub mod resource;
 pub mod resource_adapter;
 pub mod restore_sql;
 mod restore_sql_target;
+pub mod result_origin;
 mod reuse;
 pub mod schema_catalog_commands;
 pub mod schema_dependencies;
@@ -63,6 +64,10 @@ pub use factory::*;
 pub use query_stream::{
     append_select_limit, emit_execute_statement, emit_multi_query_as_stream, stream_decoded_rows,
     QueryRowBatcher, QueryStreamCallback, QueryStreamEvent, QUERY_STREAM_BATCH_SIZE,
+};
+pub use result_origin::{
+    ResultColumnOrigin, ResultObjectKind, ResultOrigin, ResultOriginDetail, ResultShape,
+    ResultTableRef, SetOperation, UndeterminableReason,
 };
 pub use reuse::ReuseDriver;
 pub use schema_catalog_commands::{
