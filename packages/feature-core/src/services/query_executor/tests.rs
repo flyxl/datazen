@@ -87,6 +87,7 @@ impl SqlDialect for TestDialect {
 }
 
 mod browsing_tests;
+mod keyset_tests;
 
 fn make_column(name: &str, is_pk: bool) -> ColumnSchema {
     ColumnSchema {

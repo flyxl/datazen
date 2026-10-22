@@ -1,6 +1,7 @@
 import type { ColumnSchema, Value } from '../../types';
 import type { TableChangeContext } from '../../lib/tableChanges';
 import { EMPTY_GRID_SELECTION } from './gridSelection';
+import { emptyKeysetPagingState } from '../../lib/keysetPaging';
 import type { TableState } from './types';
 
 export function rowsToRecords(
@@ -43,6 +44,10 @@ export function emptyTableState(context: TableChangeContext | null = null): Tabl
     defaultOrderOverride: 'inherit',
     page: 0,
     pageSize: 50,
+    // A panel that has never paged by seek reads by offset — which is what
+    // every read did before the keyset contract existed.
+    keyset: emptyKeysetPagingState,
+    driftRecountPage: null,
     filters: [],
     filterLogic: 'and',
     draftFilters: [],

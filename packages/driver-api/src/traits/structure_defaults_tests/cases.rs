@@ -557,6 +557,58 @@ mod filter_defaults {
 /// keep the behaviour it had before the count strategy and the default order
 /// existed — an exact count, no estimate, the primary key (or the first
 /// column) as the order.
+/// The keyset half of the contract, as a **default**.
+///
+/// The driver used here does not implement the two keyset methods, so what
+/// it answers is the trait's own default — not a mock's option, and not a
+/// driver's choice. That is the whole point: a test that goes through
+/// `MockDriver` cannot see the default at all, because the mock overrides
+/// both methods, and a default that was flipped to `true` would leave every
+/// suite green.
+mod keyset_defaults {
+    use super::*;
+    use crate::traits::keyset;
+
+    #[test]
+    fn a_driver_that_says_nothing_cannot_seek() {
+        let driver = StubDriver;
+        assert!(
+            !driver.supports_keyset_pagination(),
+            "the capability must be off by default: a driver that did not opt in must keep reading pages by OFFSET"
+        );
+    }
+
+    #[test]
+    fn a_driver_that_says_nothing_has_no_condition() {
+        let driver = StubDriver;
+        assert_eq!(
+            driver.keyset_predicate_sql(
+                &[("id".to_string(), false)],
+                &[("id".to_string(), crate::types::Value::Integer(42))],
+            ),
+            None,
+            "a driver that did not opt in must never be asked for a condition"
+        );
+    }
+
+    #[test]
+    fn the_default_bodies_themselves_are_off() {
+        // The two assertions above go through the trait; these go straight
+        // to the bodies, so the default is pinned even if a driver starts
+        // overriding it.
+        let driver = StubDriver;
+        assert!(!keyset::supports_keyset_pagination(&driver));
+        assert_eq!(
+            keyset::keyset_predicate_sql(
+                &driver,
+                &[("id".to_string(), false)],
+                &[("id".to_string(), crate::types::Value::Integer(42))],
+            ),
+            None
+        );
+    }
+}
+
 mod browsing_defaults {
     use super::*;
     use crate::mock_driver::{MockDriver, MockDriverOptions};

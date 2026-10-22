@@ -635,5 +635,26 @@ const pack = {
   'query.gridEdit.resolving': 'Checking whether this result can be edited…',
   'query.gridEdit.submitting': 'Saving change…',
   'query.gridEdit.empty': 'This result has no rows.',
+  // ── Keyset (seek) paging (DB-18) ─────────────────────────────────────
+  // The state of the pager. "Fast paging" means the page was read from a
+  // value boundary instead of an offset; the reasons say why a page could
+  // not be read that way. Every one of them is a **degradation**, not an
+  // error: the page was read, by offset.
+  'pagination.mode.keyset': 'Fast paging',
+  'pagination.mode.offset': 'Offset paging',
+  'pagination.hint.driverUnsupported': 'This database does not support fast paging.',
+  'pagination.hint.noStableOrder':
+    'This table has no primary key, so pages cannot be read with a stable order.',
+  'pagination.hint.nullableKeyColumn':
+    'Fast paging is unavailable while sorting by a column that can be NULL.',
+  'pagination.hint.nullBoundary':
+    "This row's sort key is NULL, so fast paging restarted from an exact position.",
+  'pagination.hint.predicateUnavailable':
+    'Fast paging is unavailable for the current sort order.',
+  'pagination.hint.noPaginationClause': 'This database cannot paginate this query.',
+  'pagination.hint.staleCursor':
+    'Sort or filter changed; paging restarted from the first page.',
+  'pagination.hint.jumpReanchored': 'Fast paging restarted from page {page}.',
+  'pagination.hint.drift': 'Rows changed while paging; the row count has been refreshed.',
 } as const;
 export default pack;

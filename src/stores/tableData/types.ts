@@ -8,6 +8,7 @@ import type {
   TableChangeContext,
 } from '../../lib/tableChanges';
 import type { GridSelection } from './gridSelection';
+import type { KeysetPagingState } from '../../lib/keysetPaging';
 
 /**
  * Table-data state for one panel (tab). The panel is the unit of lifetime and of
@@ -36,6 +37,23 @@ export interface TableState {
   defaultOrderOverride: 'inherit' | 'primaryKeyAsc' | 'primaryKeyDesc' | 'none';
   page: number;
   pageSize: number;
+  /**
+   * How this panel is paged.
+   *
+   * `page` stays the ordinal it has always been — "the Nth page" — and the
+   * keyset state says how that page is **read**: by offset, or by seek from
+   * a boundary that was really read. There is no second page number.
+   */
+  keyset: KeysetPagingState;
+  /**
+   * The page whose row count was already recomputed after a drift.
+   *
+   * Rows deleted while the user was paging make the count stale, and the
+   * count is then read again — once per page. This remembers which page
+   * that was, so a table that keeps shrinking cannot make the panel read
+   * itself in a loop.
+   */
+  driftRecountPage: number | null;
   /** Applied filters used by queries. */
   filters: FilterCondition[];
   filterLogic: 'and' | 'or';

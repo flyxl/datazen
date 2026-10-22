@@ -4,7 +4,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { canPageForward, formatRowCount, totalRowsView } from '../../lib/totalRowsDisplay';
-import type { CountStrategy } from '../../types';
+import type { CountStrategy, KeysetUnavailableReason, PagingMode } from '../../types';
 
 export interface PaginationState {
   page: number;
@@ -40,6 +40,71 @@ export function paginationReducer(
 /** Reset only the page when filters change; total rows and page size are retained. */
 export function resetPageOnFilterChange(state: PaginationState): PaginationState {
   return paginationReducer(state, { type: 'filterChanged' });
+}
+
+/**
+ * What the grid says about the paging of the page on screen.
+ *
+ * The reason is a **degradation**, not an error: the page was read by
+ * offset, and this says why. It is the back end's reason — the front end
+ * does not second-guess it.
+ */
+export interface PagingHint {
+  /** Why the page was not read by seek, when it was not. */
+  reason: KeysetUnavailableReason | null;
+  /** Rows were deleted while the user was paging. */
+  driftSuspected: boolean;
+  /** The strategy the back end reported. */
+  mode: PagingMode;
+}
+
+/**
+ * The i18n key of a degradation reason.
+ *
+ * `notAdjacent` is not a reason but a consequence — the grid restarted from
+ * the page it is on — so it has a wording of its own.
+ */
+export function pagingHintKey(reason: KeysetUnavailableReason): string {
+  return reason === 'notAdjacent' ? 'pagination.hint.jumpReanchored' : `pagination.hint.${reason}`;
+}
+
+/**
+ * Whether the pager says anything at all about a database that cannot seek.
+ *
+ * A database that does not support fast paging is read exactly as it was
+ * before the contract existed, and the grid shows **nothing** about it:
+ * there is no keyset entry to show, and a standing note would be a new
+ * thing in the footer of every table of every such database. The reason
+ * itself is still in the answer — the host reports the truth — it is just
+ * not rendered.
+ */
+export function showPagingReason(reason: KeysetUnavailableReason): boolean {
+  return reason !== 'driverUnsupported';
+}
+
+/**
+ * Whether the pager shows the strategy it read the page with.
+ *
+ * "Fast paging" is worth saying when the seek is in force **and** there is
+ * more than one page to walk — a table that fits on one screen is never
+ * paged, and saying "fast paging" about it is noise.
+ *
+ * "Offset paging" is worth saying only when the offset was a
+ * **fallback**: a driver that simply cannot seek is not a fallback, it is
+ * how that database reads, and saying so on every page would be noise.
+ */
+export function showPagingLabel(hint: PagingHint, hasMoreThanOnePage: boolean): boolean {
+  if (hint.reason !== null && showPagingReason(hint.reason)) {
+    // A fallback happened: the reason is shown, and the strategy belongs
+    // with it.
+    return true;
+  }
+  return hint.mode === 'keyset' && hasMoreThanOnePage;
+}
+
+/** The i18n key of the strategy label. */
+export function pagingLabelKey(hint: PagingHint): string {
+  return hint.mode === 'keyset' ? 'pagination.mode.keyset' : 'pagination.mode.offset';
 }
 
 export interface PaginationProps {
@@ -89,6 +154,8 @@ export interface PaginationProps {
   estimateUnavailable?: boolean;
   /** Extra controls rendered next to the pager (the panel's order override). */
   footerExtras?: ReactNode;
+  /** What the back end said about the paging of this page. */
+  pagingHint?: PagingHint;
 }
 
 export function Pagination({
@@ -108,6 +175,7 @@ export function Pagination({
   unstablePaging = false,
   estimateUnavailable = false,
   footerExtras,
+  pagingHint,
 }: PaginationProps) {
   const { t } = useI18n();
   const previousFilterRevision = useRef<{ initialized: boolean; value?: string | number }>({
@@ -242,6 +310,36 @@ export function Pagination({
             data-testid="pagination-unstable-notice"
           >
             {t('pagination.unstablePaging')}
+          </span>
+        )}
+        {pagingHint && showPagingLabel(pagingHint, totalRows > pageSize) && (
+          <span
+            className="shrink-0 text-fg-tertiary"
+            title={t(pagingLabelKey(pagingHint))}
+            data-testid="pagination-paging-mode"
+            data-i18n-key={pagingLabelKey(pagingHint)}
+          >
+            {t(pagingLabelKey(pagingHint))}
+          </span>
+        )}
+        {pagingHint?.reason && showPagingReason(pagingHint.reason) && (
+          <span
+            className="max-w-[22rem] truncate text-warning"
+            title={t(pagingHintKey(pagingHint.reason), { page: current + 1 })}
+            data-testid="pagination-paging-reason"
+            data-i18n-key={pagingHintKey(pagingHint.reason)}
+          >
+            {t(pagingHintKey(pagingHint.reason), { page: current + 1 })}
+          </span>
+        )}
+        {pagingHint?.driftSuspected && (
+          <span
+            className="max-w-[22rem] truncate text-warning"
+            title={t('pagination.hint.drift')}
+            data-testid="pagination-paging-drift"
+            data-i18n-key="pagination.hint.drift"
+          >
+            {t('pagination.hint.drift')}
           </span>
         )}
         {footerExtras}

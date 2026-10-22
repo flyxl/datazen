@@ -19,6 +19,13 @@ export type {
 // The filter contract lives in its own file; it is re-exported here so every
 // caller keeps importing the filter types from the aggregate.
 export * from './filters';
+export type {
+  CursorValue,
+  KeysetUnavailableReason,
+  OrderColumn,
+  PagePagingInfo,
+  PagingMode,
+} from './keyset';
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 
@@ -268,6 +275,7 @@ export type {
 
 import type { UserPreferences, ExecutionSettings } from '@datazen/backend-client';
 import type { DefaultTableSort, RowCountMode } from './settings';
+import type { PagePagingInfo } from './keyset';
 
 export type { DefaultTableSort, RowCountMode } from './settings';
 
@@ -365,6 +373,15 @@ export interface TableDataResult {
   totalRowsKind?: CountStrategy | null;
   page: number;
   pageSize: number;
+  /**
+   * How the page was paged.
+   *
+   * A missing key means the back end is older than this field — the page was
+   * read by offset, which is what every read did before it existed. A
+   * `null` value says the same thing; both are "this response carries no
+   * paging decision".
+   */
+  paging?: PagePagingInfo | null;
 }
 
 // The AI contract lives in its own file; it is re-exported here so every

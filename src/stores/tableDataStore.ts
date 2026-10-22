@@ -59,6 +59,12 @@ import {
   type PanelSeedSlice,
 } from './tableData/panelSeed';
 import { locateInsertedRow } from './tableData/insertLocation';
+import {
+  applyKeysetResult,
+  invalidatedKeyset,
+  keysetRequestFor,
+  type KeysetRequest,
+} from './tableData/keysetActions';
 
 // ── Store ─────────────────────────────────────────────────────────
 
@@ -158,6 +164,8 @@ function patchPanelForReload(
     // highlight would point at a row that is no longer on the page (04 §7 #17).
     highlightedNewRowKey: null,
     requestRevision: ts.requestRevision + 1,
+    // A new question: the drift guard of the old page does not carry over.
+    driftRecountPage: null,
   }));
 }
 
@@ -213,6 +221,7 @@ function commitFetchedPage(
   context: TableChangeContext,
   requestRevision: number,
   res: Awaited<ReturnType<typeof databaseCommands.getTableData>>,
+  keysetRequest: KeysetRequest,
 ): void {
   const current = get().byPanel.get(panelId);
   if (!current) return; // panel closed while the request was in flight
@@ -245,12 +254,16 @@ function commitFetchedPage(
       sanitizedVisible && sanitizedVisible.length === res.columns.length ? null : sanitizedVisible,
     rows: rowsWithPending,
     totalRows: res.totalRows ?? current.totalRows,
+    // The page whose count was recomputed after a drift.
+    driftRecountPage: res.paging?.driftSuspected ? res.page : current.driftRecountPage,
     // A response that carries no kind says nothing about the count — the
     // panel keeps the value it had. Only a kind that is actually reported
     // replaces it.
     totalRowsKind: res.totalRowsKind ?? current.totalRowsKind,
     page: res.page,
     pageSize: res.pageSize,
+    // The back end's word about the paging is the authority.
+    keyset: applyKeysetResult(current, res, keysetRequest),
     context,
     rowIdentityAnchors: anchors,
     loading: false,
@@ -260,6 +273,14 @@ function commitFetchedPage(
     error: duplicateIdentityKeys.length > 0 ? AMBIGUOUS_ROW_IDENTITY_ERROR : null,
   });
   set({ byPanel: next });
+
+  // Rows were deleted while the user was paging: the count on the panel is
+  // stale, and a stale count is not a note — it is read again. The read is
+  // a full one (`skipCount: false`), once per page: a table that keeps
+  // shrinking must not make the panel read itself in a loop.
+  if (res.paging?.driftSuspected && current.driftRecountPage !== res.page) {
+    get().reloadPanel(panelId, { skipCount: false });
+  }
 }
 
 export const useTableDataStore = create<TableDataStore>((set, get) => ({
@@ -297,6 +318,8 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         sorts,
         useSettingsStore.getState().settings.defaultTableSort ?? DEFAULT_TABLE_SORT,
       );
+      // The boundary of the page, or nothing: an unvisited page has none.
+      const keysetRequest = keysetRequestFor(existing, page);
       const res = await databaseCommands.getTableData({
         context,
         manualHandle: tableManualHandle(panelId),
@@ -322,12 +345,13 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         // cannot change shape on a refresh.
         countStrategy: countStrategy ?? resolvePanelCountStrategy(context),
         defaultOrderColumns: order.defaultOrderColumns,
+        afterKey: keysetRequest.afterKey,
         database: context.database,
         // The table's own schema, not a guess: without it the host falls back
         // to the connection default and a table outside it reads as missing.
         schema: context.schema ?? null,
       });
-      commitFetchedPage(get, set, panelId, context, requestRevision, res);
+      commitFetchedPage(get, set, panelId, context, requestRevision, res, keysetRequest);
     } catch (e) {
       // Fourth convergence point (00-contracts §4 needs the sync): a *failed* fetch must
       // drop row-indexed selection exactly like a successful one. `patchPanelForReload`
@@ -404,7 +428,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   setPageSize: (panelId, size) => {
-    patchPanelForReload(get, set, panelId, () => ({ pageSize: size, page: 0 }));
+    patchPanelForReload(get, set, panelId, (ts) => ({
+      pageSize: size,
+      page: 0,
+      keyset: invalidatedKeyset(ts.keyset),
+    }));
     get().reloadPanel(panelId, { skipCount: true });
   },
 
@@ -417,13 +445,14 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   setFilters: (panelId, filters, logic = 'and') => {
     const next = cloneFilters(filters);
-    patchPanelForReload(get, set, panelId, () => ({
+    patchPanelForReload(get, set, panelId, (ts) => ({
       filters: next,
       draftFilters: cloneFilters(next),
       filterLogic: logic,
       draftFilterLogic: logic,
       page: 0,
       filterPanelOpen: true,
+      keyset: invalidatedKeyset(ts.keyset),
     }));
     get().reloadPanel(panelId);
   },
@@ -445,12 +474,13 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   clearFilters: (panelId) => {
-    patchPanelForReload(get, set, panelId, () => ({
+    patchPanelForReload(get, set, panelId, (ts) => ({
       filters: [],
       draftFilters: [],
       filterLogic: 'and',
       draftFilterLogic: 'and',
       page: 0,
+      keyset: invalidatedKeyset(ts.keyset),
     }));
     get().reloadPanel(panelId);
   },
@@ -475,6 +505,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       filters: cloneFilters(cur.draftFilters),
       filterLogic: cur.draftFilterLogic,
       page: 0,
+      keyset: invalidatedKeyset(cur.keyset),
     }));
     get().reloadPanel(panelId);
   },
@@ -491,17 +522,22 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   setSort: (panelId, sort) => {
-    patchPanelForReload(get, set, panelId, () => ({ sorts: [sort], page: 0 }));
+    patchPanelForReload(get, set, panelId, (ts) => ({
+      sorts: [sort],
+      page: 0,
+      keyset: invalidatedKeyset(ts.keyset),
+    }));
     get().reloadPanel(panelId, { skipCount: true });
   },
 
   setDefaultOrderOverride: (panelId, override) => {
-    patchPanelForReload(get, set, panelId, () => ({
+    patchPanelForReload(get, set, panelId, (ts) => ({
       defaultOrderOverride: override,
       // The override replaces the default order, so an explicit sort the
       // user made is no longer the only ordering in force.
       sorts: [],
       page: 0,
+      keyset: invalidatedKeyset(ts.keyset),
     }));
     get().reloadPanel(panelId, { skipCount: true });
   },

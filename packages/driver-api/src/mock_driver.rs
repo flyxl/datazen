@@ -25,6 +25,28 @@ use crate::{
 /// the estimate statement apart from the count and from the data statement.
 pub const ESTIMATE_COLUMN: &str = "estimated_row_count";
 
+/// The `OFFSET` of a statement, if it has one.
+///
+/// The mock reads the offset so that a test can tell a page that was read
+/// by offset from a page that was read from the top of the table — the two
+/// differ only in the rows themselves.
+fn offset_in_statement(sql: &str) -> Option<u64> {
+    let upper = sql.to_ascii_uppercase();
+    let index = upper.rfind("OFFSET ")?;
+    let rest = &sql[index + "OFFSET ".len()..];
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
+/// The `LIMIT` of a statement, if it has one.
+fn limit_in_statement(sql: &str) -> Option<u64> {
+    let upper = sql.to_ascii_uppercase();
+    let index = upper.rfind("LIMIT ")?;
+    let rest = &sql[index + "LIMIT ".len()..];
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
 /// Models "another task registered its own transaction for the same
 /// `dbSessionId` while this one was being opened".
 ///
@@ -66,6 +88,14 @@ pub struct MockDriverOptions {
     /// keeps the historical answer: the mock returns the configured read rows
     /// with no affected-row count, whatever the statement text says.
     pub query_rows_affected: Option<u64>,
+    /// The rows are returned **from the statement's `OFFSET`** onwards.
+    ///
+    /// A mock that always returns the same rows cannot tell "the page was
+    /// read by offset" from "the page was read from the top of the table" —
+    /// the two differ only in the rows themselves. With this on, the mock
+    /// behaves like a table that has pages, so a test can assert **which
+    /// rows** a page holds.
+    pub rows_start_at_offset: bool,
     /// Keyset pages after the first are empty for resume-executor tests.
     pub empty_keyset_after_cursor: bool,
     pub count_total: i64,
@@ -180,6 +210,15 @@ pub struct MockDriverOptions {
     /// a primary key. `None` (the default) lets the trait's own default
     /// decide, which is "allowed".
     pub allow_first_column_fallback_order: Option<bool>,
+    /// Whether this mock claims the keyset (seek) paging capability. `false`
+    /// (the default) models a driver that has not opted in, so the host reads
+    /// every page with an `OFFSET`.
+    pub supports_keyset_pagination: bool,
+    /// Whether the mock refuses to render a seek condition even though it
+    /// claims the capability. `false` (the default) renders the portable
+    /// lexicographic condition; `true` models a dialect that cannot express
+    /// this particular order.
+    pub keyset_predicate_returns_none: bool,
 }
 
 impl Default for MockDriverOptions {
@@ -193,6 +232,7 @@ impl Default for MockDriverOptions {
             column_errors_by_table: HashMap::new(),
             table_schema: None,
             query_rows: Vec::new(),
+            rows_start_at_offset: false,
             empty_keyset_after_cursor: false,
             count_total: 0,
             databases: Vec::new(),
@@ -239,6 +279,8 @@ impl Default for MockDriverOptions {
             count_total_value: None,
             default_order_columns: None,
             allow_first_column_fallback_order: None,
+            supports_keyset_pagination: false,
+            keyset_predicate_returns_none: false,
         }
     }
 }
@@ -260,6 +302,12 @@ pub struct MockDriver {
     cancel_query_calls: AtomicU32,
     precise_cancel_query_calls: AtomicU32,
     last_query_limit: Mutex<Option<Option<u32>>>,
+    /// The statements this mock was asked to run, in call order.
+    ///
+    /// A statement is the only way to see what a host actually sent, and
+    /// "the statement is exactly this" is the assertion that keeps a
+    /// refactor from quietly changing every query the product sends.
+    query_log: Mutex<Vec<String>>,
     open_txs: Mutex<HashSet<String>>,
     /// Regression tripwire: the driver contract no longer has `use_database`,
     /// so this can only ever be empty. Host tests assert it stays empty to
@@ -291,6 +339,7 @@ impl MockDriver {
             cancel_query_calls: AtomicU32::new(0),
             precise_cancel_query_calls: AtomicU32::new(0),
             last_query_limit: Mutex::new(None),
+            query_log: Mutex::new(Vec::new()),
             open_txs: Mutex::new(HashSet::new()),
             use_database_calls: Mutex::new(Vec::new()),
             qualify_calls: Mutex::new(Vec::new()),
@@ -358,6 +407,15 @@ impl MockDriver {
 
     pub fn last_query_limit(&self) -> Option<Option<u32>> {
         self.last_query_limit.lock().ok().and_then(|g| *g)
+    }
+
+    /// The statements this mock was asked to run, in call order.
+    pub fn query_log(&self) -> Vec<String> {
+        self.query_log
+            .lock()
+            .ok()
+            .map(|g| g.clone())
+            .unwrap_or_default()
     }
 
     pub fn get_columns_calls(&self) -> u32 {
@@ -567,6 +625,24 @@ impl DatabaseDriver for MockDriver {
             .unwrap_or_else(crate::traits::browsing::allow_first_column_fallback_order)
     }
 
+    fn supports_keyset_pagination(&self) -> bool {
+        self.opts.supports_keyset_pagination
+    }
+
+    fn keyset_predicate_sql(
+        &self,
+        order_columns: &[(String, bool)],
+        boundary: &[(String, Value)],
+    ) -> Option<String> {
+        // A driver that does not claim the capability has no condition to
+        // give: the host never asks one, and asking one anyway must not
+        // produce a condition.
+        if !self.opts.supports_keyset_pagination || self.opts.keyset_predicate_returns_none {
+            return None;
+        }
+        crate::keyset::lexicographic_seek_predicate(self, order_columns, boundary)
+    }
+
     async fn close_database(
         &self,
         _handle: &ConnectionHandle,
@@ -740,6 +816,9 @@ impl DatabaseDriver for MockDriver {
         sql: &str,
     ) -> Result<QueryResult, DriverError> {
         self.query_calls.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut log) = self.query_log.lock() {
+            log.push(sql.to_string());
+        }
         if let Some(msg) = &self.opts.query_error {
             return Err(DriverError::QueryFailed(msg.clone()));
         }
@@ -824,9 +903,19 @@ impl DatabaseDriver for MockDriver {
                 nullable: c.nullable,
             })
             .collect();
+        let mut rows = self.opts.query_rows.clone();
+        if self.opts.rows_start_at_offset {
+            // A table that has pages: the rows before the offset are not
+            // part of this page, and the page holds at most `LIMIT` rows.
+            let offset = offset_in_statement(sql).unwrap_or(0) as usize;
+            rows = rows.into_iter().skip(offset).collect();
+            if let Some(limit) = limit_in_statement(sql) {
+                rows.truncate(limit as usize);
+            }
+        }
         Ok(QueryResult {
             columns,
-            rows: self.opts.query_rows.clone(),
+            rows,
             rows_affected: None,
             execution_time_ms: 0,
         })
