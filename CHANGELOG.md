@@ -35,13 +35,27 @@
 
 `kiwi` 与 `superset` 仍是独立 git 仓库，改动已在各自仓库提交并推送；`drivers-registry.json` 的两条 `source: "git"` 条目跟随 `main`，无需改 pin。
 
-**数据浏览网格：单元格编辑改成类型感知（DB-05）。** 列类型先归一化成 11 种 `CellType`（`src/lib/cellTypes.ts`），编辑器、单元格颜色与筛选算子都从它投影，从此不再各判各的。三条用户可见的行为变化：
+**数据浏览网格：单元格编辑改成类型感知（DB-05）。** 列类型先归一化成 11 种 `CellType`（`src/lib/cellTypes.ts`），编辑器、单元格颜色与筛选算子都从它投影，从此不再各判各的。
 
-- **JSON 列的非法输入不再被提交。** 旧编辑器在 `JSON.parse` 失败时会把原文当值提交，等于往 JSON 列里写了一段非 JSON 文本，直到下游解析才炸；现在它**阻止提交**并给出行内原因。
-- **几何/网络类型不再被当成数字。** `classifyDataType('point')` 此前答「number」（`'point'.includes('int')` 为真），一个 PostgreSQL 几何列被画成数字色；现在按文本处理。连带效果：该列的筛选算子集会多出 LIKE 家族（正确——几何值本就该按文本比较）。
-- **枚举与 UUID 列的筛选算子收窄。** 它们此前与文本列同族，会放出 PostgreSQL 上必然报错的 `enum LIKE` / `enum = ''`；现在按 `CellType` 分派，枚举列只保留 `eq ne in notIn isNull isNotNull`。
+**行为变化一：JSON 列的非法输入不再被提交。** 旧编辑器在 `JSON.parse` 失败时会把原文当值提交，等于往 JSON 列里写了一段非 JSON 文本，直到下游解析才炸；现在它**阻止提交**并给出行内原因。
 
-此外，编辑器的写入意图从此是三态：`NULL`、值、以及「不写这一列」（撤销该格改动）。三者不再互相折叠——一次「改成空串」不会再被某个 `.filter(Boolean)` 变成「这一列没改动」。SQL Server 的 `timestamp`/`rowversion` 按行版本（字节）处理且不可就地编辑，MySQL 的 `tinyint(1)` 按布尔处理；这两条由驱动自己的元数据声明，宿主不写驱动分支。
+**行为变化二：类型归一化改了若干列的渲染族与筛选算子集。** 旧实现是一串子串判断（`type.includes('int')` …），因此把几何列当成数字、把数组当成文本。归一化后，下列类型名的**渲染族**（即单元格的着色族）与**筛选算子集**发生了变化——清单由 `src/lib/__tests__/filterOperators.cellTypeMigration.test.ts` 逐条钉住，多一条少一条都会红：
+
+| 类型名 | 渲染族（旧 → 新） | 筛选算子集的变化 |
+| --- | --- | --- |
+| `point`（PG 几何）、`interval` | number → text | 去掉 `between`/`notBetween`，多出 LIKE 家族、`isEmpty`/`isNotEmpty` 与 `regex` |
+| `abstime`、`reltime`（PG 内部类型） | datetime → text | 同上 |
+| `ARRAY`、`ARRAY[]`、`text[]`、`integer[]`、`Array(Int32)` | text / number → json | 去掉大小比较、`between`、LIKE 家族与 `in`/`notIn`，多出 `jsonContains` |
+| `image`（SQL Server）、`RAW`（Oracle）、`FixedString(16)`（ClickHouse） | text → binary | 去掉大小比较、`between`、`in`/`notIn` 与 LIKE 家族 |
+| `dec`、`dec(10,2)`、`NUMBER(38,0)` | text → number | 去掉 LIKE 家族与空串检查，多出 `between`/`notBetween` |
+| `enum('a','b')`、`set('a','b')`、`Enum8('a' = 1)`、`Enum` | text → text（族不变，控件变成下拉） | 去掉大小比较、LIKE 家族与 `isEmpty`/`isNotEmpty`、`regex` —— PostgreSQL 上这些入口必然报错 |
+| `uuid`、`uniqueidentifier`、`UUID` | text → text（族不变，控件加 UUID 校验） | 同上 |
+
+其余类型名（含 `UInt8`…`UInt256` 这类 ClickHouse 无符号整数、`Int128`/`Int256`）的族与算子集**不变**；无符号整数此前靠 `'uint64'.includes('int')` 碰巧落在 number 族，新规则表为此显式写了 `uint` 一条。
+
+**行为变化三：编辑器的写入意图从此是三态。** `NULL`、值、以及「不写这一列」（撤销该格改动）三者不再互相折叠——一次「改成空串」不会再被某个 `.filter(Boolean)` 变成「这一列没改动」。
+
+此外，SQL Server 的 `timestamp`/`rowversion` 按行版本（字节）处理且不可就地编辑，MySQL 的 `tinyint(1)` 按布尔处理；这两条由驱动自己的元数据声明，宿主不写驱动分支，且**同一份声明**同时约束单元格编辑器与筛选算子（筛选器不再把 `timestamp` 当成时间列）。
 
 ---
 

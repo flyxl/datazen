@@ -1,11 +1,16 @@
 import { memo, useCallback, useMemo } from 'react';
 import { formatCell, formatTimestamp } from '../../lib/formatters';
-import { cellValueTextClass, classifyDataType } from '../../lib/dataTypeColors';
+import { cellValueTextClassFor } from '../../lib/dataTypeColors';
 import { cn } from '../../lib/cn';
 import { CellEditorHost } from './editors/CellEditorHost';
 import { countCodePoints, toEditString } from './editors/toEditString';
 import { resolveCellEditorKind } from '../../lib/cellEditorKind';
-import { isZonedCellType, resolveCellType, type CellType } from '../../lib/cellTypes';
+import {
+  cellTypeToDataTypeFamily,
+  isZonedCellType,
+  resolveCellType,
+  type CellType,
+} from '../../lib/cellTypes';
 import type { Value } from '../../types';
 
 export interface CellRendererProps {
@@ -89,8 +94,10 @@ export const CellRenderer = memo(function CellRenderer({
     return <span className="truncate italic text-dt-null">NULL</span>;
   }
 
-  const family = classifyDataType(dataType);
-  const colorClass = cellValueTextClass(dataType, value);
+  // The colour reads the **normalised** type, not the type name: the cell
+  // and its editor then cannot give two answers (05 §3.4).
+  const family = cellTypeToDataTypeFamily(cellType ?? resolveCellType(dataType));
+  const colorClass = cellValueTextClassFor(cellType ?? resolveCellType(dataType), value);
 
   if (family === 'bool') {
     return <span className={cn('truncate font-mono text-sm', colorClass)}>{String(value)}</span>;

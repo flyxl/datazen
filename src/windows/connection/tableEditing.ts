@@ -342,6 +342,14 @@ export interface TableEditing {
    * is close to its size limit.
    */
   readonly cellEditing: CellEditingContext;
+  /**
+   * The driver's own column-type rules, read from its metadata.
+   *
+   * The filter editor needs the very same declaration (08 §3.5, "一处声明、
+   * 两处生效"): a column the driver calls a boolean must not be filtered
+   * with the operators of a number.
+   */
+  readonly cellTypeHints: CellTypeHints | undefined;
   /** Why one cell cannot be edited, if it cannot. */
   readonly resolveReadOnlyReason: (row: number, columnName: string) => CellReadOnlyReason | null;
 }
@@ -479,5 +487,5 @@ export function useTableEditing(options: UseTableEditingOptions): TableEditing {
     [panelId],
   );
 
-  return { cellEditing, resolveReadOnlyReason };
+  return { cellEditing, cellTypeHints: hints, resolveReadOnlyReason };
 }

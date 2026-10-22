@@ -616,11 +616,18 @@ export const VirtualBody = memo(function VirtualBody({
    * without schema behind it (the result grid) falls back to the column
    * definitions. Either way the normalisation happens **once per column**,
    * never once per cell.
+   *
+   * **An empty map means "the owner knows nothing"**, and it takes the same
+   * fallback as a missing one: `??` would only catch `undefined`, and an
+   * empty map would silently take every column's type away — the cell would
+   * lose its `data-dt-cell-type`, its nullability and its integer check.
    */
-  const editorInfo = useMemo(
-    () => cellEditing?.columnEditorInfo ?? buildColumnEditorInfoFromDefs(columns),
-    [cellEditing, columns],
-  );
+  const editorInfo = useMemo(() => {
+    const provided = cellEditing?.columnEditorInfo;
+    return provided && provided.size > 0
+      ? provided
+      : buildColumnEditorInfoFromDefs(columns);
+  }, [cellEditing, columns]);
   const cellSelected = useCallback(
     (rowIndex: number, columnName: string) => isCellSelected?.(rowIndex, columnName) ?? false,
     [isCellSelected],

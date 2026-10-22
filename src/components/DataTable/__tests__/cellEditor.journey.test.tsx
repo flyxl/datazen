@@ -152,6 +152,17 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('the cell editor journey', () => {
+  it('journey: an empty editor context still knows the column types', () => {
+    const { container } = render(<StoreGrid />);
+    // The harness hands over an **empty** map (it has no schema behind it),
+    // and the grid falls back to the column definitions: the cell keeps its
+    // type, its nullability and its integer check.
+    const cell = container.querySelector('[data-dt-row="0"][data-dt-col="name"]');
+    expect(cell?.getAttribute('data-dt-cell-type')).toBe('text');
+    const idCell = container.querySelector('[data-dt-row="0"][data-dt-col="id"]');
+    expect(idCell?.getAttribute('data-dt-cell-type')).toBe('number');
+  });
+
   it('journey: double click, type, Enter commits a value write', () => {
     const { container } = render(<StoreGrid />);
 

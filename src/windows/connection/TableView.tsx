@@ -701,6 +701,7 @@ export function TableView({
         onCellEdit={isEditable ? handleCellEdit : undefined}
         onCellEditCancel={actions.cancelEdit}
         cellEditing={editing.cellEditing}
+        cellTypeHints={editing.cellTypeHints}
         enableSetNull={isEditable}
         onRowSelect={actions.selectRow}
         onSelectAll={actions.toggleSelectAll}

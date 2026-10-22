@@ -12,6 +12,7 @@ import { FilterConditionEditor } from './filter/FilterConditionEditor';
 import { FilterConnectorToggle } from './filter/FilterConnectorToggle';
 import { conditionSummary } from './filter/filterLabels';
 import { defaultOperatorForColumn } from '../lib/filterOperators';
+import type { CellTypeHints } from '../lib/cellTypes';
 import type { FilterColumn } from './filter/types';
 
 export type FilterLogic = 'and' | 'or';
@@ -39,6 +40,12 @@ export interface FilterEditorProps {
    */
   supportedOperators?: readonly FilterOperator[];
   /**
+   * The driver's own column-type rules (`DatabaseTypeMeta.cellTypes`) — the
+   * same declaration the cell editor reads, so a column the driver calls a
+   * boolean is a boolean in the filter too (08 §3.5).
+   */
+  cellTypeHints?: CellTypeHints;
+  /**
    * Whether this database ignores case in `LIKE` under its default collation.
    * Copy only — it never changes the SQL.
    */
@@ -65,6 +72,7 @@ export interface FilterEditorProps {
 export function FilterEditor({
   columns,
   supportedOperators,
+  cellTypeHints,
   likeCaseInsensitive = false,
   appliedFilters,
   appliedLogic,
@@ -187,7 +195,7 @@ export function FilterEditor({
       column: column?.name ?? '',
       // The default operator belongs to the column type: `eq` today, but a
       // type that cannot take `eq` needs its own first operator.
-      operator: defaultOperatorForColumn(column?.type),
+      operator: defaultOperatorForColumn(column?.type, cellTypeHints),
       value: '',
     });
   };
@@ -388,6 +396,7 @@ export function FilterEditor({
                         index={idx}
                         columns={columns}
                         supportedOperators={operators}
+                        cellTypeHints={cellTypeHints}
                         likeCaseInsensitive={likeCaseInsensitive}
                         onChange={onChange}
                         onRemove={onRemove}

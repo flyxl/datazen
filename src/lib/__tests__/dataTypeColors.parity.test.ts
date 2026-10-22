@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { classifyDataType } from '../dataTypeColors';
-import { cellTypeToDataTypeFamily, resolveCellType } from '../cellTypes';
+import { cellValueTextClass, cellValueTextClassFor, classifyDataType } from '../dataTypeColors';
+import { cellTypeToDataTypeFamily, resolveCellType, type CellTypeHints } from '../cellTypes';
 
 /**
  * The colour classification and the editor classification must be the same
@@ -72,5 +72,27 @@ describe('classifyDataType is the projection of resolveCellType', () => {
   it('fixes the geometry type the old substring test got wrong', () => {
     // `point`.includes('int') is true — the old answer was "number".
     expect(classifyDataType('point')).toBe('text');
+  });
+
+  it('reads the driver declaration, so the colour and the editor agree', () => {
+    // MySQL's `tinyint(1)` is a boolean: the editor shows a checkbox, so the
+    // cell must not be painted as a number (05 §3.4).
+    const mysql: CellTypeHints = {
+      overrides: [{ match: 'exact', pattern: 'tinyint(1)', cellType: 'bool' }],
+    };
+    expect(classifyDataType('tinyint(1)')).toBe('number');
+    expect(classifyDataType('tinyint(1)', mysql)).toBe('bool');
+    // Without the declaration the behaviour is exactly what it was.
+    expect(classifyDataType('varchar(255)')).toBe('text');
+    expect(classifyDataType('varchar(255)', mysql)).toBe('text');
+  });
+
+  it('paints a cell from the normalised type it was given', () => {
+    // The grid hands the colour the normalised type, so the cell and its
+    // editor cannot give two answers.
+    expect(cellValueTextClassFor('bool', 1)).toBe('text-dt-bool');
+    expect(cellValueTextClassFor('number', 1)).toBe('text-dt-number');
+    expect(cellValueTextClassFor('text', null)).toBe('text-dt-null');
+    expect(cellValueTextClass('tinyint(1)', 1)).toBe('text-dt-number');
   });
 });

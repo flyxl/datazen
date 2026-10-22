@@ -10,6 +10,7 @@ import {
   valueInputFor,
 } from '../../lib/filterOperators';
 import type { I18nKey } from '../../locales';
+import type { CellTypeHints } from '../../lib/cellTypes';
 import { FilterValueInput } from './FilterValueInput';
 import { FilterTokenInput } from './FilterTokenInput';
 import { FilterBetweenInput } from './FilterBetweenInput';
@@ -38,6 +39,7 @@ export function FilterConditionEditor({
   index,
   columns,
   supportedOperators,
+  cellTypeHints,
   likeCaseInsensitive = false,
   onChange,
   onRemove,
@@ -50,6 +52,15 @@ export function FilterConditionEditor({
   index: number;
   columns: readonly FilterColumn[];
   supportedOperators: readonly FilterOperator[];
+  /**
+   * The driver's own column-type rules (`DatabaseTypeMeta.cellTypes`).
+   *
+   * The same declaration the cell editor reads: a column the driver calls
+   * a boolean is a boolean in the filter too, and the operator list follows
+   * the type (08 §3.5, "一处声明、两处生效"). Omitted → the shared table
+   * alone decides, exactly as before.
+   */
+  cellTypeHints?: CellTypeHints;
   /**
    * Whether this database ignores case in `LIKE`. Copy only: the hint says
    * what the database does, it never changes the query.
@@ -77,7 +88,7 @@ export function FilterConditionEditor({
   );
 
   const opOptions = useMemo(() => {
-    const operators = operatorsForColumn(columnType, supportedOperators);
+    const operators = operatorsForColumn(columnType, supportedOperators, cellTypeHints);
     const options = operators.map((operator) => ({
       value: operator,
       label: t(`filter.${operator}`),
@@ -86,7 +97,7 @@ export function FilterConditionEditor({
       options.push({ value: filter.operator, label: t(`filter.${filter.operator}`) });
     }
     return options;
-  }, [columnType, supportedOperators, filter.operator, t]);
+  }, [cellTypeHints, columnType, supportedOperators, filter.operator, t]);
 
   const valueKind = valueInputFor(filter.operator);
 
@@ -126,6 +137,7 @@ export function FilterConditionEditor({
       latestRef.current.operator,
       nextType,
       supportedOperators,
+      cellTypeHints,
     );
     const next: FilterCondition = {
       ...latestRef.current,
