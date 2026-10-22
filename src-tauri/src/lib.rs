@@ -1,4 +1,3 @@
-pub(crate) mod ai;
 mod app_data_archive;
 mod app_menu;
 #[path = "bootstrap/mod.rs"]

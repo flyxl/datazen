@@ -49,22 +49,6 @@ impl RuntimeCommandSource {
         Ok((owner.as_str().to_owned(), config, metadata.config_revision))
     }
 
-    pub(crate) async fn read_session_command(
-        &self,
-        session_id: &str,
-        command: &str,
-        input: serde_json::Value,
-    ) -> Result<serde_json::Value, String> {
-        let (owner, _, _) = self.profile_for_session(session_id).await?;
-        let step = WorkflowCommandStep::new("runtime-read", command, Some(owner.clone()), input);
-        datazen_feature_core::workflow::resource_execution::execute(
-            self, &step, &owner, None, None, false,
-        )
-        .await
-        .map(|result| result.data)
-        .map_err(|error| error.to_string())
-    }
-
     pub(crate) async fn read_target_command(
         &self,
         connection_id: &str,
