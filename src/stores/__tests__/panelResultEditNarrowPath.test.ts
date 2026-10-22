@@ -114,6 +114,38 @@ describe('the narrow write path', () => {
     expect(calls).toContain('commitQueryResultCell');
   });
 
+  it('reports a refusal loudly instead of swallowing it', async () => {
+    // A result the narrow check did **not** verify: the write is refused, and
+    // the refusal lands in `exec.error` — so the interface says so on both
+    // paths (the grid renders it as an alert, the drawer shows the same error).
+    // A refusal thrown outside the store's error handling would be swallowed
+    // by the caller, and the user would see "edited, never written" with no
+    // word about it.
+    usePanelStore.setState({
+      panels: [PANEL],
+      activePanelId: PANEL.id,
+      queryExec: new Map([
+        [
+          PANEL.id,
+          {
+            ...EMPTY_QUERY_EXEC,
+            sql: RESULT.sql,
+            results: [{ ...RESULT, source: { writableMapping: 'readOnly', statementIndex: 0 } }],
+            activeResultIdx: 0,
+          },
+        ],
+      ]),
+    });
+
+    await expect(
+      usePanelStore.getState().updateResultCell(PANEL.id, 0, 0, 'total', 11),
+    ).rejects.toThrow();
+
+    const exec = usePanelStore.getState().queryExec.get(PANEL.id);
+    expect(exec?.error ?? null).not.toBeNull();
+    expect(calls).not.toContain('commitQueryResultCell');
+  });
+
   it('writes when the back end refused the origin — the narrow channel is its own', async () => {
     // The production situation: the grid asked for the verdict, and the back
     // end answered "the driver cannot tell" — which is every answer today,
