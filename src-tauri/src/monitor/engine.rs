@@ -35,6 +35,11 @@ impl MonitorEngine {
             state: Mutex::new(None),
             app: Mutex::new(None),
             channels: tokio::sync::Mutex::new(AlertChannelState::new()),
+            // scope-gate: desktop-background-timer
+            // 桌面 monitor 的定时任务**不在请求周期内**：它由宿主自己的时钟驱动，
+            // 跑的是桌面本地的那批 widget。而 `MonitorEngine` 在 `AppState` 之前
+            // 就被构造（`AppState` 持有 monitor engine），此刻没有宿主状态可问。
+            // 因此这里保留桌面的安装级常量，并登记进形态中立闸门的显式白名单。
             scope: crate::platform::local_organization_scope(),
         });
         Arc::new(Self {

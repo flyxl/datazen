@@ -17,6 +17,12 @@ pub mod session_backend;
 pub mod session_commands;
 mod target_metadata;
 
+/// 宿主侧的**组织作用域形态中立闸门**：生产代码里不得直读桌面的安装级组织常量。
+///
+/// 随 `--lib` 跑（因而进 CI），自带 kill test 与自证。理由与判据见该文件。
+#[cfg(test)]
+mod scope_gate;
+
 pub use adapter::{AssemblyState, PlatformAdapter, PlatformEntry};
 pub use error::into_command_error;
 pub use handles::{HandleKey, SessionHandleRegistry, SessionScopedHandle};

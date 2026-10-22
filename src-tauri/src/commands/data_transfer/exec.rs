@@ -278,10 +278,7 @@ async fn execute_sql_file_target(
     }
     let claimed = state
         .transfer_plans
-        .claim(
-            super::plan_scope::desktop_organization_scope(),
-            &request.plan_id,
-        )
+        .claim(&state.organization_scope()?, &request.plan_id)
         .map_err(CommandError::from)?;
     let immutable_structure = claimed.sql_file_structure.clone();
     let mut job = claimed.job;

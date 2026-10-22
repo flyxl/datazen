@@ -16,6 +16,7 @@ use datazen_platform_api::id::{
     ArtifactId, ClientInstanceId, IdempotencyKey, JobId, OrganizationId, PrincipalId, RequestId,
     Timestamp, WorkerId,
 };
+use datazen_platform_api::ports::scope::OrganizationScope;
 use datazen_platform_api::{PortError, RequestContext};
 use datazen_runtime::job::{EndpointRef, EndpointRole, JobHandler, JobHost, RecoveryVerdict};
 
@@ -83,15 +84,24 @@ pub(crate) struct DrivePlan {
     pub(crate) endpoints: Vec<EndpointRef>,
     pub(crate) artifact_ids: Vec<String>,
     pub(crate) plan_id: Option<String>,
+    /// 计划注册表的作用域：**在请求期解析，随 Job 带进脱离请求的写入任务**。
+    ///
+    /// 写入跑在脱离请求的任务里（`apply_detached` spawn 出来的 future），
+    /// 那里没有请求上下文可用；而计划注册表是**按组织分区**的存储端口，
+    /// 用错组织就等于查不到计划（CM-05：按「不存在」处理）。
+    /// 因此作用域在**受理请求时**就解析好、随计划一起带进来 ——
+    /// 不是在后台任务里重新解析，更不是写死桌面的安装级常量。
+    pub(crate) scope: OrganizationScope,
 }
 
 impl DrivePlan {
-    pub(crate) fn from_request(request: &JobRunRequest<'_>) -> Self {
+    pub(crate) fn from_request(request: &JobRunRequest<'_>, scope: OrganizationScope) -> Self {
         Self {
             handler: request.handler.clone(),
             endpoints: request.endpoints.clone(),
             artifact_ids: request.artifact_ids.clone(),
             plan_id: request.plan_id.map(str::to_string),
+            scope,
         }
     }
 }
@@ -330,10 +340,7 @@ pub(crate) async fn drive(
             if result.state == JobState::Succeeded {
                 if let Some(plan_id) = plan.plan_id.as_deref() {
                     transfer_plans
-                        .mark_consumed(
-                            super::super::plan_scope::desktop_organization_scope(),
-                            plan_id,
-                        )
+                        .mark_consumed(&plan.scope, plan_id)
                         .map_err(CommandError::from)?;
                 }
             }
@@ -419,7 +426,7 @@ pub(crate) async fn run(
                 state.transfer_plans.clone(),
                 state.desktop_job_host.clone(),
                 accepted,
-                DrivePlan::from_request(&request),
+                DrivePlan::from_request(&request, state.organization_scope()?),
             )
             .await
         }

@@ -366,7 +366,7 @@ async fn workflow_save_list_get_delete() {
     let test = TestAppState::new().await;
     test.state
         .workflow_registry
-        .load_all(&crate::platform::local_organization_scope())
+        .load_all(&test.state.organization_scope().unwrap())
         .await
         .unwrap();
     let wf = WorkflowDefinition {
@@ -394,7 +394,7 @@ async fn workflow_save_list_get_delete() {
 
     test.state
         .workflow_registry
-        .save_workflow(&crate::platform::local_organization_scope(), &wf)
+        .save_workflow(&test.state.organization_scope().unwrap(), &wf)
         .await
         .unwrap();
     let list = workflow_list_impl(&test.state).await.unwrap();
@@ -403,14 +403,14 @@ async fn workflow_save_list_get_delete() {
     let loaded = test
         .state
         .workflow_registry
-        .get(&crate::platform::local_organization_scope(), "test-wf")
+        .get(&test.state.organization_scope().unwrap(), "test-wf")
         .await
         .expect("workflow");
     assert_eq!(loaded.name, "Test Workflow");
 
     test.state
         .workflow_registry
-        .delete_workflow(&crate::platform::local_organization_scope(), "test-wf")
+        .delete_workflow(&test.state.organization_scope().unwrap(), "test-wf")
         .await
         .unwrap();
     let remaining = workflow_list_impl(&test.state).await.unwrap();
@@ -919,7 +919,7 @@ async fn workflow_execute_ai_step_with_wiremock() {
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     test.state
         .workflow_registry
-        .load_all(&crate::platform::local_organization_scope())
+        .load_all(&test.state.organization_scope().unwrap())
         .await
         .unwrap();
     mock.mount_chat_completion_text("workflow output").await;
@@ -948,7 +948,7 @@ async fn workflow_execute_ai_step_with_wiremock() {
     };
     test.state
         .workflow_registry
-        .save_workflow(&crate::platform::local_organization_scope(), &wf)
+        .save_workflow(&test.state.organization_scope().unwrap(), &wf)
         .await
         .unwrap();
 
@@ -1057,7 +1057,7 @@ async fn workflow_history_clear_after_execute() {
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     test.state
         .workflow_registry
-        .load_all(&crate::platform::local_organization_scope())
+        .load_all(&test.state.organization_scope().unwrap())
         .await
         .unwrap();
     mock.mount_chat_completion_text("done").await;
@@ -1086,7 +1086,7 @@ async fn workflow_history_clear_after_execute() {
     };
     test.state
         .workflow_registry
-        .save_workflow(&crate::platform::local_organization_scope(), &wf)
+        .save_workflow(&test.state.organization_scope().unwrap(), &wf)
         .await
         .unwrap();
     workflow_execute_impl(&test.state, "hist-wf".into(), serde_json::json!({}), None)
@@ -1110,7 +1110,7 @@ async fn dashboard_hidden_workflow_execute_skips_history() {
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     test.state
         .workflow_registry
-        .load_all(&crate::platform::local_organization_scope())
+        .load_all(&test.state.organization_scope().unwrap())
         .await
         .unwrap();
     mock.mount_chat_completion_text("done").await;
@@ -1139,7 +1139,7 @@ async fn dashboard_hidden_workflow_execute_skips_history() {
     };
     test.state
         .workflow_registry
-        .save_workflow(&crate::platform::local_organization_scope(), &wf)
+        .save_workflow(&test.state.organization_scope().unwrap(), &wf)
         .await
         .unwrap();
     workflow_execute_impl(

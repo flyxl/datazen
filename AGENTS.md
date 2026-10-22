@@ -283,6 +283,7 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 
 - Rust：`rustfmt` + `thiserror` + `tracing` + `CommandError`。
 - **生产路径禁止裸 `unwrap()` / `expect()`**（`#[cfg(test)]` 除外；确需 panic 须注释说明）。详见 [docs/development/panic-policy.md](docs/development/panic-policy.md)。
+- **组织作用域一律走宿主入口**：请求周期内用 `OrganizationScope::from_context(&ctx)`（有请求上下文）或 `state.organization_scope()`（有 `AppState`）；**不得**在宿主生产代码里直读桌面的安装级组织常量（`local_organization_scope()` / `desktop_organization_scope()`）——那是「拿桌面的组织去查服务端的多租户存储」，属于越组织读写。确有桌面专有理由的，在该行**紧邻上方**写 `// scope-gate: <id>` 并登记进 `src-tauri/src/platform/scope_gate.rs` 的白名单（该闸门随 `cargo test -p datazen --lib` 跑，违规即红）。详见 [docs/architecture/platform/shared-boundaries-and-ports.md](docs/architecture/platform/shared-boundaries-and-ports.md) §5.2。
 - TypeScript：严格模式，无 `any`（除 generated 文件），absolute imports。
 - CSS：Tailwind utility classes，暗色主题默认。
 - **单文件规模与模块拆分**：严格限制单源码文件大小（推荐单文件不超过 800 行，严禁出现超大单文件）；大型模块必须按职责拆分为高内聚、低耦合的子组件与子模块。
