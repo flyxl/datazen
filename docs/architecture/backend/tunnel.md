@@ -1,12 +1,19 @@
 # Tunnel
 
-> Source of truth: `src-tauri/src/tunnel/`、`src-tauri/src/ssh_tunnel.rs`、
+> Source of truth: `packages/tunnel/src/`（形态中立的隧道机制内核）、`src-tauri/src/tunnel/`（宿主装配层）、
 > `src-tauri/src/platform/session_backend/`、`src-tauri/src/store/tunnels.rs`、
 > `packages/driver-api/src/tunnel_types.rs`。
 
 隧道子系统解决的是「数据库不在本机、也不在可达网段」时的连接问题。**核心设计约束只有一条：驱动零改动。** 隧道不进入 `DatabaseDriver` trait，也不进入 `PROTOCOL_VERSION`——桌面 `DesktopSessionBackend` 在 Runtime 打开 Driver resource 前改写地址，并把 Tunnel 句柄保存在该 Runtime resource 上。
 
 用户视角的使用说明见 [Tunnel 使用指南](../../features/tunnel-guide.zh-CN.md)。
+
+**代码分布**：隧道机制本身（HTTP `CONNECT` 代理、WebSocket 中继、SSH 转发、SSH known-hosts 存储、进程级
+rustls provider 选择）住在形态中立的共享 crate `packages/tunnel/`（crate 名 `datazen-tunnel`，边界由
+§2.4 的 F-13 断言）；宿主侧 `src-tauri/src/tunnel/` 只留装配与形态相关接线（`resolve_tunnel_kind` /
+`start_for_connection` / `test_tunnel`、`DesktopTunnelHost`）。进程级 rustls provider 的**实现体**在
+`packages/tunnel/src/crypto.rs`，宿主 `src-tauri/src/tls.rs` 只保留接线守卫与 `pub use` 再导出——理由见
+[security.md §](../security.md)。
 
 ## 1. 设计前提：为什么不用改驱动
 
@@ -36,9 +43,9 @@ DesktopSessionBackend                └── 上游（跳板机 / 代理 / 中
 | `TunnelKind` | 配置字段 | 上游形态 |
 |---|---|---|
 | `none` | — | 直连 |
-| `ssh` | `ConnectionConfig.ssh_tunnel`（`SshTunnelConfig`，`types.rs:68`） | SSH 端口转发（`ssh_tunnel::SshTunnel`） |
-| `httpProxy` | `ConnectionConfig.http_proxy_tunnel` | 本机监听 → HTTP `CONNECT` 代理 → 真实库（`tunnel/http_proxy.rs`） |
-| `websocket` | `ConnectionConfig.websocket_tunnel` | 本机监听 → WebSocket 中继 → 真实库（`tunnel/websocket.rs`） |
+| `ssh` | `ConnectionConfig.ssh_tunnel`（`SshTunnelConfig`，`types.rs:68`） | SSH 端口转发（`datazen_tunnel::SshTunnel`，`packages/tunnel/src/ssh.rs`） |
+| `httpProxy` | `ConnectionConfig.http_proxy_tunnel` | 本机监听 → HTTP `CONNECT` 代理 → 真实库（`packages/tunnel/src/http_proxy.rs`） |
+| `websocket` | `ConnectionConfig.websocket_tunnel` | 本机监听 → WebSocket 中继 → 真实库（`packages/tunnel/src/websocket.rs`） |
 
 `SshTunnelConfig` 支持三种认证（`password` / `private_key` / `agent`）与**递归 ProxyJump**（`jump: Option<Box<SshTunnelConfig>>`），多层跳板由 `_upstream` 持有，任一层随 session 一起拆除。
 
@@ -203,7 +210,7 @@ ConnectionConfig { host: 127.0.0.1, port: <ephemeral>, tunnel_kind: None, ... }
 
 以下是当前实现的客观事实，接手时不要误读为「已保证」：
 
-1. **不附带 WebSocket 中继服务端。** `tunnel/websocket.rs` 只是客户端；`datazen_v1` 所需的 `open` / `opened` / `error` / `close` 四操作 JSON 协议，DataZen **没有实现**任何一端。中继需自行提供。
+1. **不附带 WebSocket 中继服务端。** `packages/tunnel/src/websocket.rs` 只是客户端；`datazen_v1` 所需的 `open` / `opened` / `error` / `close` 四操作 JSON 协议，DataZen **没有实现**任何一端。中继需自行提供。
 2. **内联（非保存）的 HTTP 代理密码与 WS token 明文落盘。** `store/connections.rs:64-126` 只加密 `conn.password` 与 `ssh_tunnel.password/passphrase`——**既不覆盖 jump 跳板，也不覆盖 `http_proxy_tunnel.password` 与 `websocket_tunnel.authToken`**。同一份凭据存进 `tunnels.json` 是加密的。这是一处真实的加密覆盖缺口，不是设计取舍。
 3. **`headers` 一律明文**（两个存储都如此）。把密钥放进自定义 header 就会明文落盘。
 4. **无文件权限加固。** 整个 store 的写盘路径只有「临时文件 + rename」，没有 `set_permissions`；`tunnels.json`（含加密密文）与 `ssh_known_hosts.json` 的权限继承 umask。

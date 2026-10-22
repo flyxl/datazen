@@ -18,8 +18,6 @@ mod product_features;
 mod redis_flush_gate;
 pub use datazen_schema_diff as schema_diff;
 mod services;
-mod ssh_known_hosts;
-pub mod ssh_tunnel;
 mod store;
 mod theme;
 mod tls;

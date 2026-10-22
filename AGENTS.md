@@ -39,7 +39,7 @@ datazen/
 │   │   ├── platform/            # PlatformAdapter、DesktopSessionBackend、身份/策略/仓储
 │   │   ├── services/            # Schema metadata、JobRegistry、Runtime 命令源
 │   │   ├── store/               # AES-256-GCM 加密持久化
-│   │   ├── tunnel/ + ssh_tunnel.rs  # 隧道装配
+│   │   ├── tunnel/                # 隧道装配（机制内核在 packages/tunnel）
 │   │   ├── wapps/               # Wapp 协议桥与管理器
 │   │   └── workflow/            # YAML Workflow 宿主适配与历史
 │   └── resources/               # 菜单翻译、内置 Workflow 模板、原生工具探针
@@ -53,6 +53,7 @@ datazen/
 │   ├── platform-infra/           # Rust: 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖
 │   ├── application/              # Rust: 应用层用例与 ApplicationServices（不依赖宿主形态）
 │   ├── runtime/                  # Rust: 共享内核（session / resource / job / gateway / schema_cache / sql_guard）
+│   ├── tunnel/                   # Rust: 形态中立的隧道机制内核（HTTP CONNECT 代理 / WebSocket 中继 / SSH 转发）
 │   ├── feature-core/             # Rust: 共享 feature（Workflow / AI / MCP / Dashboard / 导出 / 备份恢复 / Wapp 内核）
 │   ├── schema-diff/ data-sync/ data-transfer/ migration-common/  # 迁移三件套与共享迁移边界
 │   ├── backend-client/           # JS: 远端 / 浏览器侧 BackendClient 端口实现
