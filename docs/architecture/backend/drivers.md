@@ -17,7 +17,7 @@ DataZen 的 Driver 是**编译期集成**的数据库实现，不通过运行时
 - `MigrationCapabilities`
 - `TypeNormalizer`
 - `SyncSourceAdapter` / `SyncTargetAdapter`
-- `DriverEventOutlet` / `DriverEventSink`（形态中立的事件出口，见 §2.10）
+- `DriverEventOutlet` / `DriverEventSink`（形态中立的事件出口，见 §2.11）
 
 公共 API 不暴露 sqlx、mongodb、redis 等数据库实现类型；具体连接池、Row、事务实现由 Driver 自己管理。公共 API 也不暴露任何**宿主形态**的类型（`tauri::Emitter` 之类）——驱动能看到的宿主面只有本文件列出的这些契约。
 
@@ -131,7 +131,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 其余消费者按调用链逐步迁移；收窄函数形参（如 `fetch_target_table_schema`）留待其调用方迁完后统一做。
 
-版本：`datazen-driver-api` 0.0.13 → 0.0.21——0.0.14 `SqlDialect`、0.0.15 `CatalogReader`、0.0.16 `ReuseDriver` 显式转发补齐、0.0.17 `CommandCatalog`、0.0.18 `SchemaMigration`、0.0.19 `BackupDialect`、0.0.20 退役 `DatabaseDriver::split_restore_sql`（唯一一次 trait 表面删除，故单独记一版）、0.0.21 事件出口契约（`DriverEventOutlet` / `DriverEventSink`，见 §2.10；纯新增 trait，无既有 trait 表面变动）。新契约本身都是 additive（新 trait + 适配器），`PROTOCOL_VERSION` 保持 6（2026-10-21 起协议版本冻结于 6，兼容门禁族退役——治理决定见 §2.5）；crate 版本记录的是**本仓库**的 trait 表面变化，仓库内各驱动按最新 trait 实现即可。
+版本：`datazen-driver-api` 0.0.13 → 0.0.21——0.0.14 `SqlDialect`、0.0.15 `CatalogReader`、0.0.16 `ReuseDriver` 显式转发补齐、0.0.17 `CommandCatalog`、0.0.18 `SchemaMigration`、0.0.19 `BackupDialect`、0.0.20 退役 `DatabaseDriver::split_restore_sql`（唯一一次 trait 表面删除，故单独记一版）、0.0.21 事件出口契约（`DriverEventOutlet` / `DriverEventSink`，见 §2.11；纯新增 trait，无既有 trait 表面变动）。新契约本身都是 additive（新 trait + 适配器），`PROTOCOL_VERSION` 保持 6（2026-10-21 起协议版本冻结于 6，兼容门禁族退役——治理决定见 §2.5）；crate 版本记录的是**本仓库**的 trait 表面变化，仓库内各驱动按最新 trait 实现即可。
 
 ### 2.5 协议版本闸门
 
@@ -168,7 +168,23 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 **`source-breaking` 的判据**：把改动判成 breaking 并升 `PROTOCOL_VERSION` 是谎报——协议号表达的是**线上兼容**，而 `#[non_exhaustive]`（FOREVER 冻结）这类改动线上一个字节都没变：已经编好的老驱动照常运行，只有**还没编译**的代码编不出来。正解是只动 crate 版本，并在说明里写清楚「以后不能再加字段」与迁移配方。判成 additive 同样是谎报：它对还没编译的代码承诺「你没事」，而那正是会炸的地方。
 
-### 2.6 复用包装器：`ReuseDriver` 必须显式决定每个方法
+### 2.6 备份能力的判定方式
+
+「这个驱动能不能备份」由三处**互相独立**的事实决定，任何一处都推不出另一处：
+
+| 面 | 位置 | 作用 |
+| --- | --- | --- |
+| UI 入口是否可达 | 驱动 UI 元数据 `supportsBackup`（`packages/drivers/<id>/ui/meta.ts`） | 前端连接导航菜单据此决定要不要给出「备份 / 恢复」入口 |
+| 声明式能力 | `CapabilitySet.backup`（`BackupSupport`：`ArtifactAndRestore` / `ArtifactOnly` / `RestoreOnly` / `Unsupported` / `Unknown`，`packages/driver-api/src/capability_domains.rs`） | 逐驱动声明备份域的档位 |
+| 通用 dump 的运行前提 | `DatabaseDriver::dump_database_with_progress` 的默认实现（`packages/driver-api/src/traits.rs`）→ `sql_dump::dump_sql_database_with_progress`（`packages/driver-api/src/sql_dump/dump.rs`） | 通用 SQL dump 对驱动只有两项要求：`get_tables` 与 `get_table_schema` 必须是**真实现** |
+
+**判据不是「有没有覆写 dump」，而是「通用实现能不能真的跑起来」。** 默认实现把工作交给 `sql_dump::dump_sql_database_with_progress`，它对驱动只有两项要求：`get_tables` 枚举可 dump 的对象清单，`get_table_schema` 渲染 DDL 并生成 `INSERT INTO` 的列清单。其余环节都不是门槛：`dump_routines` / `dump_triggers` 的缺省是空串；`dump_view_ddl` 的缺省确实返回 `NotSupported`，但通用实现把它接住并写成一行注释跳过。
+
+**判定顺序：先看有没有覆写并显式拒绝，再看 `get_tables` / `get_table_schema`。** 覆写 `dump_database_with_progress` 并显式拒绝的驱动根本不会执行通用实现，顺序反过来就会把「显式拒绝」误判成「缺实现」。
+
+`CapabilitySet.backup` 的两个入口 `require_backup_artifact()` / `require_restore_from_artifact()`（`packages/driver-api/src/capabilities.rs`）目前**只有测试调用**，尚未接进备份执行路径——执行路径是 `packages/feature-core/src/backup.rs` 直接调驱动的 `dump_database_with_progress`。声明与执行之间还没有自动咬合，接线前不要把「已声明」读成「已生效」。
+
+### 2.7 复用包装器：`ReuseDriver` 必须显式决定每个方法
 
 `ReuseDriver` 把内层驱动以另一个 id 呈现（QuestDB / Cloudberry 复用 PostgreSQL 线协议，Doris / StarRocks / Manticore / OceanBase MySQL 模式复用 MySQL）。不变量只有一条：**`DatabaseDriver` 的每个方法都必须在包装器里显式决定**——转发，或有意覆写。不允许某个方法落到 trait 默认体。
 
@@ -194,25 +210,25 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 机械守卫：`packages/driver-api/src/reuse_forwarding_tests.rs` 读取 `traits.rs` 与 `reuse.rs` 的源码，断言 trait 的每个方法都出现在包装器实现中，并带正/反控制用例。`DatabaseDriver` 以后新增方法而包装器不更新，`cargo test -p datazen-driver-api` 直接失败；这条不变量不再依赖评审。
 
-### 2.7 命令描述契约：`CommandCatalog`
+### 2.8 命令描述契约：`CommandCatalog`
 
 Driver Command 的"声明"与"执行"分成两个契约。`CommandCatalog`（`packages/driver-api/src/command_catalog.rs`）只包含描述：`command_definitions()`（该驱动暴露哪些命令）与 `target_requirements(command)`（每条命令需要什么目标；未知命令返回 `None`，平台据此在获取资源之前拒绝）。它刻意不包含执行路径——一个只会列出命令的宿主面（目标元数据、workflow 校验、Runtime 只读命令源）依赖 `CommandCatalog`，而不是整个 `DatabaseDriver`；执行继续走 `execute_command` 这一既有的资源生命周期入口。
 
 `LegacyCommandCatalog` 是自 `DatabaseDriver` 到 `CommandCatalog` 的单向适配器，两个方法全部转发，驱动保留且仅保留一份实现。已迁移的调用点：workflow 步骤校验（`resource_execution.rs`）、Runtime 命令源（`runtime_command_source.rs`）、流式查询网关（`streaming.rs`）、平台 `explain` 能力判定（`adapter.rs`、`session_backend/execution.rs`）。
 
-### 2.8 结构迁移契约：`SchemaMigration`
+### 2.9 结构迁移契约：`SchemaMigration`
 
 Schema Diff 领域消费的结构迁移决策统一收敛到 `SchemaMigration`（`packages/driver-api/src/schema_migration.rs`）：`migration_renderer()` / `migration_capabilities()` / `type_normalizer()` / `ddl_atomicity()`，加上两个部署期校验（`validate_schema_migration_plan`、`validate_schema_migration`）。领域侧（`schema-diff` 的 plan/objects/deploy/transaction、`data-sync` 同族类型等价门、宿主 schema_diff 命令）只读这份窄契约，执行渲染出的 DDL 仍走各自的资源生命周期；`MigrationRenderer` / `MigrationCapabilities` / `TypeNormalizer` 保持驱动专属实现。
 
 `LegacySchemaMigration` 是自 `DatabaseDriver` 到 `SchemaMigration` 的单向适配器，六个方法全部转发。已迁移的调用点通过它读取规则：同族/跨方言结构 plan（`plan.rs`）、对象 plan（`objects.rs`、`object_plan_commands.rs`、`unified_plan.rs`）、部署原子性与校验（`deploy.rs`、`transaction.rs`、`deploy_commands.rs`）、同步类型等价（`types_eq.rs`、`compare_commands.rs`）。
 
-### 2.9 备份文件规则契约：`BackupDialect`
+### 2.10 备份文件规则契约：`BackupDialect`
 
 备份域中真正"纯规则"的部分收敛到 `BackupDialect`（`packages/driver-api/src/backup_dialect.rs`）：`uses_sql_restore_pipeline()`（共享 SQL 恢复管线的路由）、`new_sql_scanner()`（语句扫描器，选择/关闭 `DELIMITER` 处理）、`split_restore_sql()`（整段 SQL 缓冲的切分）。带 `ConnectionHandle` 的执行入口（`dump_database*`、`restore_sql*`、`recover_restore_statement`）不在此契约内，保留在驱动上，待运行时路径收敛（§5 计划）统一处理；共享流程本身继续复用 `sql_dump` 模块。
 
 `LegacyBackupDialect` 是自 `DatabaseDriver` 到 `BackupDialect` 的单向适配器。已迁移的调用点：feature-core 备份流程（`backup.rs` 的管线路由与 `RestoreSession` 扫描器；执行侧恢复循环继续持有驱动）、retained-restore 预检 `restore_sql::prepare`（scanner 取自 `BackupDialect`，feature-core `restore_gateway.rs` 与 postgres/mysql 驱动的 `restore_sql` 集成测试在边界包适配器）。
 
-### 2.10 事件出口契约：`DriverEventOutlet` / `DriverEventSink`
+### 2.11 事件出口契约：`DriverEventOutlet` / `DriverEventSink`
 
 有些驱动会产生「给人看的事件」——Redis 驱动的 Pub/Sub 消息是现成例子。事件怎么送达用户**不是驱动能决定的事**：桌面形态用 Tauri 事件发给前端，server 形态会用它自己的传输通道。契约因此拆成两半，与 driver factory 同一形态（`packages/driver-api/src/event_sink.rs`）：
 
