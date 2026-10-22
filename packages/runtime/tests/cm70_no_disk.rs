@@ -120,8 +120,8 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../src/gateway/cancel_event_tests.rs"),
     ),
     (
-        "event_store_tests.rs",
-        include_str!("../src/gateway/event_store_tests.rs"),
+        "event_repository_tests.rs",
+        include_str!("../src/gateway/event_repository_tests.rs"),
     ),
     (
         "facade_tests.rs",

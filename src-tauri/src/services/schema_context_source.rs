@@ -7,7 +7,7 @@
 //! commands, their parsing and the refusals — is shared.
 use crate::platform::PlatformEntry;
 use crate::services::runtime_command_source::RuntimeCommandSource;
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use datazen_feature_core::services::ports::LogicalSchemaContextSource;
 use datazen_feature_core::services::schema_context::{
     RuntimeSchemaContextSource, UnavailableSchemaContextSource,
@@ -22,7 +22,7 @@ use std::sync::Arc;
 /// the database is empty.
 pub(crate) fn desktop_schema_context_source(
     registry: Arc<DriverRegistry>,
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     platform: PlatformEntry,
 ) -> Arc<dyn LogicalSchemaContextSource> {
     let runtime = platform.require().and_then(|adapter| adapter.runtime());

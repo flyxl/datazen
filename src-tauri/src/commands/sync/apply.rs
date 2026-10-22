@@ -7,7 +7,7 @@ use super::super::AppState;
 use super::artifact_view;
 use super::inspect::inspect_data_sync_impl;
 use crate::data_sync::api::SyncComparisonRequest;
-use crate::data_sync::comparison_store::ComparisonStore;
+use crate::data_sync::comparison_store::ComparisonStorage;
 use crate::data_sync::job::PrepareSpec;
 use crate::data_sync::plan_store as plans;
 use crate::data_sync::{
@@ -383,7 +383,7 @@ async fn finish_async_prepare_preview(
     });
     // 一次调用只取一次作用域：比较存储与计划注册表必须落在同一个组织维度上。
     let scope = state.organization_scope()?;
-    let comparison = ComparisonStore::from_comparison(
+    let comparison = ComparisonStorage::from_comparison(
         rebuilt,
         state.sync_stores.comparison_root.as_ref(),
         &scope,

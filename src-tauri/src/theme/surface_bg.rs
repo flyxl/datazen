@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tauri::plugin::Plugin;
 use tauri::{AppHandle, Manager, Runtime};
 
-use crate::store::Store;
+use crate::store::DesktopRepository;
 
 pub const DEFAULT_SURFACE_DARK_HEX: &str = "#0b0e14";
 pub const SURFACE_BG_FILE: &str = "surface-bg.json";
@@ -44,7 +44,7 @@ pub struct SurfaceBgCache {
 
 impl SurfaceBgCache {
     pub fn load() -> Self {
-        let path = Store::default_app_data_dir()
+        let path = DesktopRepository::default_app_data_dir()
             .map(|d| d.join(SURFACE_BG_FILE))
             .unwrap_or_else(|_| PathBuf::from(SURFACE_BG_FILE));
         Self::load_from(path)

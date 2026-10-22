@@ -175,7 +175,7 @@ struct RegistryInner {
 
 /// 授予登记表（进程内）。
 ///
-/// 单进程网关用它就够了，与 [`crate::gateway::idempotency::InMemoryIdempotencyStore`]
+/// 单进程网关用它就够了，与 [`crate::gateway::idempotency::InMemoryIdempotencyRepository`]
 /// 同一条生命周期。需要跨进程共享的部署形态应替换实现，而不是在本类型上叠锁。
 #[derive(Debug, Default)]
 pub struct GrantRegistry {

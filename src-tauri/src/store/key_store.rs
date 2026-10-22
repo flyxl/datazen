@@ -15,7 +15,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand::RngCore;
 use std::path::{Path, PathBuf};
 
-use super::{StoreError, APP_IDENTIFIER};
+use super::{DesktopRepositoryError, APP_IDENTIFIER};
 
 pub const KEYRING_ACCOUNT: &str = "app-encryption-key";
 const KEY_FILE: &str = ".key";
@@ -153,7 +153,7 @@ pub fn key_file_path(data_dir: &Path) -> PathBuf {
 }
 
 /// Load or create the 32-byte AES master key.
-pub fn load_or_create_master_key(data_dir: &Path) -> Result<[u8; 32], StoreError> {
+pub fn load_or_create_master_key(data_dir: &Path) -> Result<[u8; 32], DesktopRepositoryError> {
     match key_backend() {
         KeyBackend::File => load_or_create_from_file(data_dir),
         KeyBackend::PlatformVault => load_or_create_via_platform_vault(data_dir),
@@ -181,7 +181,7 @@ fn store_in_keyring(entry: &keyring::v1::Entry, key: &[u8; 32]) -> Result<(), ke
     entry.set_password(&BASE64.encode(key))
 }
 
-fn read_key_file(data_dir: &Path) -> Result<Option<[u8; 32]>, StoreError> {
+fn read_key_file(data_dir: &Path) -> Result<Option<[u8; 32]>, DesktopRepositoryError> {
     let path = key_file_path(data_dir);
     let Ok(key_b64) = std::fs::read_to_string(&path) else {
         return Ok(None);
@@ -189,11 +189,11 @@ fn read_key_file(data_dir: &Path) -> Result<Option<[u8; 32]>, StoreError> {
     decode_key_b64(&key_b64).map(Some)
 }
 
-fn write_key_file(data_dir: &Path, key: &[u8; 32]) -> Result<(), StoreError> {
+fn write_key_file(data_dir: &Path, key: &[u8; 32]) -> Result<(), DesktopRepositoryError> {
     let path = key_file_path(data_dir);
     let key_b64 = BASE64.encode(key);
     std::fs::write(&path, key_b64.as_bytes())
-        .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+        .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
     restrict_key_file_permissions(&path);
     Ok(())
 }
@@ -223,14 +223,17 @@ fn remove_key_file(data_dir: &Path) {
     }
 }
 
-fn fail_closed_no_key_source(context: &str) -> StoreError {
-    StoreError::InitError(format!(
+fn fail_closed_no_key_source(context: &str) -> DesktopRepositoryError {
+    DesktopRepositoryError::InitError(format!(
         "Cannot load encryption key: {context}. \
          Refusing to create a new key that would leave existing encrypted data unreadable."
     ))
 }
 
-fn load_legacy_key_or_fail(data_dir: &Path, context: &str) -> Result<[u8; 32], StoreError> {
+fn load_legacy_key_or_fail(
+    data_dir: &Path,
+    context: &str,
+) -> Result<[u8; 32], DesktopRepositoryError> {
     if let Some(key) = read_key_file(data_dir)? {
         tracing::warn!(
             "Using legacy {KEY_FILE} because {context}; \
@@ -248,7 +251,7 @@ fn load_legacy_key_or_fail(data_dir: &Path, context: &str) -> Result<[u8; 32], S
 // File backend
 // ---------------------------------------------------------------------------
 
-fn load_or_create_from_file(data_dir: &Path) -> Result<[u8; 32], StoreError> {
+fn load_or_create_from_file(data_dir: &Path) -> Result<[u8; 32], DesktopRepositoryError> {
     if let Some(key) = read_key_file(data_dir)? {
         return Ok(key);
     }
@@ -292,7 +295,7 @@ fn load_or_create_from_file(data_dir: &Path) -> Result<[u8; 32], StoreError> {
 // Platform vault backend (macOS security CLI / Windows DPAPI)
 // ---------------------------------------------------------------------------
 
-fn load_or_create_via_platform_vault(data_dir: &Path) -> Result<[u8; 32], StoreError> {
+fn load_or_create_via_platform_vault(data_dir: &Path) -> Result<[u8; 32], DesktopRepositoryError> {
     // 1. Try loading from platform vault
     match super::platform_vault::load_from_vault() {
         Ok(Some(key)) => {
@@ -337,7 +340,7 @@ fn load_or_create_via_platform_vault(data_dir: &Path) -> Result<[u8; 32], StoreE
 // Keyring backend (macOS signed / Linux)
 // ---------------------------------------------------------------------------
 
-fn load_or_create_via_keyring(data_dir: &Path) -> Result<[u8; 32], StoreError> {
+fn load_or_create_via_keyring(data_dir: &Path) -> Result<[u8; 32], DesktopRepositoryError> {
     let entry = match open_keyring_entry() {
         Ok(entry) => entry,
         Err(e) => {
@@ -489,14 +492,14 @@ mod tests {
     #[test]
     fn decode_key_b64_rejects_invalid_base64() {
         let err = decode_key_b64("not-valid-base64!!!").unwrap_err();
-        assert!(matches!(err, StoreError::EncryptionError(_)));
+        assert!(matches!(err, DesktopRepositoryError::EncryptionError(_)));
     }
 
     #[test]
     fn decode_key_b64_rejects_wrong_length() {
         let short = BASE64.encode([1u8; 16]);
         let err = decode_key_b64(&short).unwrap_err();
-        assert!(matches!(err, StoreError::EncryptionError(_)));
+        assert!(matches!(err, DesktopRepositoryError::EncryptionError(_)));
     }
 
     #[test]
@@ -581,7 +584,7 @@ mod tests {
             }
             Err(err) => {
                 assert!(
-                    matches!(&err, StoreError::InitError(msg) if msg.contains("Refusing to create")),
+                    matches!(&err, DesktopRepositoryError::InitError(msg) if msg.contains("Refusing to create")),
                     "unexpected: {err:?}"
                 );
             }
@@ -638,7 +641,7 @@ mod tests {
     fn fail_closed_error_includes_context() {
         let err = fail_closed_no_key_source("unit test context");
         match err {
-            StoreError::InitError(msg) => {
+            DesktopRepositoryError::InitError(msg) => {
                 assert!(msg.contains("unit test context"));
                 assert!(msg.contains("Refusing to create"));
             }
@@ -660,7 +663,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let err = load_legacy_key_or_fail(dir.path(), "missing key").unwrap_err();
         assert!(
-            matches!(&err, StoreError::InitError(msg) if msg.contains("Refusing to create")),
+            matches!(&err, DesktopRepositoryError::InitError(msg) if msg.contains("Refusing to create")),
             "unexpected: {err:?}"
         );
     }

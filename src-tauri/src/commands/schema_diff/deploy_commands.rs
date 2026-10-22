@@ -51,7 +51,7 @@ pub async fn execute_schema_diff_deploy(
     let (effective_plan_id, effective_selection_revision) = match (plan_id, selection_revision) {
         (Some(plan_id), Some(sel_rev)) => (plan_id, sel_rev),
         _ => {
-            // 兼容路径：客户端直接携带计划正文 ⇒ 先注册进 PlanStore 再跑 apply Job。
+            // 兼容路径：客户端直接携带计划正文 ⇒ 先注册进 PlanRepository 再跑 apply Job。
             job::register_plan_for_apply(&state, plan, &target_db_session_id).await?
         }
     };

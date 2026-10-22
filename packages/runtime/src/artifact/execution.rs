@@ -1,5 +1,5 @@
 //! Internal scoped storage for results of an already-admitted delegated execution.
-//! Public ArtifactStore operations keep refusing delegated create/read/export.
+//! Public ArtifactRepository operations keep refusing delegated create/read/export.
 use super::*;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -25,7 +25,7 @@ impl ExecutionArtifactScope {
         })
     }
 }
-impl FileArtifactStore {
+impl FileArtifactRepository {
     pub(crate) fn create_execution_sync(
         &self,
         scope: ExecutionArtifactScope,
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn scoped_result_cannot_change_execution_identity_or_outlive_expiry() {
         let dir = tempfile::tempdir().unwrap();
-        let store = FileArtifactStore::open(dir.path()).unwrap();
+        let store = FileArtifactRepository::open(dir.path()).unwrap();
         let ctx = RequestContext::new(
             OrganizationId::new("org"),
             PrincipalId::new("service"),

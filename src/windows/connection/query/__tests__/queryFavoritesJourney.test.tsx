@@ -16,7 +16,7 @@
  * restart — and this test is what pins the rescan that prevents that.
  *
  * The fake below reproduces the backend's real caching contract
- * (`store::favorites::FavoritesStore`): `getFavoriteQueries` answers from the
+ * (`store::favorites::FavoritesRepository`): `getFavoriteQueries` answers from the
  * cache, `refreshFavorites` drops the cache and re-reads. The Rust suite owns
  * the file format itself; this suite owns *when the UI asks*.
  */

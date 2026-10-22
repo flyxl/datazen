@@ -63,20 +63,20 @@ use datazen_runtime::application::{
 };
 
 use super::session_backend::DesktopSessionBackend;
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use datazen_runtime::driver_registry::DriverRegistry;
 
 /// 桌面侧出向端口实现。
 pub struct DesktopLiveConnectionSource {
     registry: Arc<DriverRegistry>,
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     backend: Arc<DesktopSessionBackend>,
 }
 
 impl DesktopLiveConnectionSource {
     pub fn new(
         registry: Arc<DriverRegistry>,
-        store: Arc<Store>,
+        store: Arc<DesktopRepository>,
         backend: Arc<DesktopSessionBackend>,
     ) -> Self {
         Self {

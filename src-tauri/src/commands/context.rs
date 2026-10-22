@@ -566,10 +566,10 @@ mod tests {
         use crate::commands::AppState;
         use crate::mcp::client::McpClientManager;
         use crate::monitor::engine::MonitorEngine;
-        use crate::store::Store;
+        use crate::store::DesktopRepository;
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::history::WorkflowHistoryManager;
-        use crate::workflow::registry::{AppDbWorkflowStore, WorkflowRegistry};
+        use crate::workflow::registry::{AppDbWorkflowRepository, WorkflowRegistry};
         use datazen_ai_providers::AiProviderRegistry;
         use datazen_feature_core::ai::context::SchemaContextBuilder;
         use datazen_feature_core::ai::prompt_resolver::PromptResolver;
@@ -579,7 +579,7 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("DATAZEN_KEYRING", "file");
-        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
+        let store = Arc::new(DesktopRepository::init_with_path(dir.path()).await.unwrap());
         let registry = Arc::new(DriverRegistry::new());
         let platform = crate::platform::PlatformEntry::launch();
         let monitor_engine = MonitorEngine::new(store.clone());
@@ -595,7 +595,9 @@ mod tests {
                 platform.clone(),
             );
         let schema_diff_reviewed_plans =
-            crate::commands::schema_diff::reviewed_store::desktop_reviewed_plan_store(&platform);
+            crate::commands::schema_diff::reviewed_repository::desktop_reviewed_plan_repository(
+                &platform,
+            );
 
         let state = AppState {
             driver_registry: registry,
@@ -607,7 +609,7 @@ mod tests {
             schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_context_source)),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
             workflow_registry: Arc::new(WorkflowRegistry::new(
-                Arc::new(AppDbWorkflowStore::new(app_db)),
+                Arc::new(AppDbWorkflowRepository::new(app_db)),
                 data_dir.clone(),
             )),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
@@ -624,9 +626,9 @@ mod tests {
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
             schema_diff_reviewed_plans,
-            sync_stores: crate::commands::SyncStorePorts::desktop(),
+            sync_stores: crate::commands::SyncRepositoryPorts::desktop(),
             transfer_plans: Arc::new(
-                crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+                crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
             ),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
@@ -642,10 +644,10 @@ mod tests {
         use crate::commands::AppState;
         use crate::mcp::client::McpClientManager;
         use crate::monitor::engine::MonitorEngine;
-        use crate::store::{AppSettings, Store};
+        use crate::store::{AppSettings, DesktopRepository};
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::history::WorkflowHistoryManager;
-        use crate::workflow::registry::{AppDbWorkflowStore, WorkflowRegistry};
+        use crate::workflow::registry::{AppDbWorkflowRepository, WorkflowRegistry};
         use datazen_ai_providers::AiProviderRegistry;
         use datazen_feature_core::ai::context::SchemaContextBuilder;
         use datazen_feature_core::ai::prompt_resolver::PromptResolver;
@@ -656,7 +658,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let custom = dir.path().join("my-contexts");
         std::env::set_var("DATAZEN_KEYRING", "file");
-        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
+        let store = Arc::new(DesktopRepository::init_with_path(dir.path()).await.unwrap());
         store
             .save_settings(AppSettings {
                 context_dir: custom.display().to_string(),
@@ -679,7 +681,9 @@ mod tests {
                 platform.clone(),
             );
         let schema_diff_reviewed_plans =
-            crate::commands::schema_diff::reviewed_store::desktop_reviewed_plan_store(&platform);
+            crate::commands::schema_diff::reviewed_repository::desktop_reviewed_plan_repository(
+                &platform,
+            );
 
         let state = AppState {
             driver_registry: registry,
@@ -691,7 +695,7 @@ mod tests {
             schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_context_source)),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
             workflow_registry: Arc::new(WorkflowRegistry::new(
-                Arc::new(AppDbWorkflowStore::new(store.app_db())),
+                Arc::new(AppDbWorkflowRepository::new(store.app_db())),
                 data_dir.clone(),
             )),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
@@ -708,9 +712,9 @@ mod tests {
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
             schema_diff_reviewed_plans,
-            sync_stores: crate::commands::SyncStorePorts::desktop(),
+            sync_stores: crate::commands::SyncRepositoryPorts::desktop(),
             transfer_plans: Arc::new(
-                crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+                crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
             ),
             platform,
             organization_scope: crate::platform::local_organization_scope(),

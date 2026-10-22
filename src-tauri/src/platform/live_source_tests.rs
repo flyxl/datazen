@@ -371,13 +371,13 @@ fn connection_config(id: &str, db_type: &str) -> ConnectionConfig {
     }
 }
 
-/// 落一份连接配置，让 `Store::platform_profile` 读得到。
+/// 落一份连接配置，让 `DesktopRepository::platform_profile` 读得到。
 ///
 /// 走 `save_connection` 而不是手写 `connections.json`：前者是本进程真实的持久化
 /// 路径，绕开它就绕开了「runtime 读到的 revision 与宿主写下的 revision 是同一条」
 /// 这一层。首次保存时 `ProfileMetadata::default()` 给 `config_revision = 1`，
 /// 因此 runtime 侧 `profile()` 读到 1——测试用 1 即可，不需要魔数。
-async fn seed_profile(store: &crate::store::Store, config: &ConnectionConfig) {
+async fn seed_profile(store: &crate::store::DesktopRepository, config: &ConnectionConfig) {
     store
         .save_connection(config.clone())
         .await
@@ -406,7 +406,7 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
 
     let temp = tempfile::tempdir().expect("temp dir");
     let store = Arc::new(
-        crate::store::Store::init_with_path(temp.path())
+        crate::store::DesktopRepository::init_with_path(temp.path())
             .await
             .expect("store init"),
     );
@@ -598,7 +598,7 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
 
     let temp = tempfile::tempdir().expect("temp dir");
     let store = Arc::new(
-        crate::store::Store::init_with_path(temp.path())
+        crate::store::DesktopRepository::init_with_path(temp.path())
             .await
             .expect("store init"),
     );

@@ -113,7 +113,7 @@ pub enum CapabilityKey {
     /// 流式返回结果集（`factory.rs:41` 的 `supports_streaming_results`）。
     StreamingResults,
     // ── backup ──
-    /// 能由 Job 产出备份产物并进 ArtifactStore（`team-server-and-auth.md:629`）。
+    /// 能由 Job 产出备份产物并进 ArtifactRepository（`team-server-and-auth.md:629`）。
     BackupArtifact,
     /// 能从备份产物恢复。**从不**意味着活动数据库会话可恢复
     /// （`persistence-model.md` §7.2 与发布门槛原文）。

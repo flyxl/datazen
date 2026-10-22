@@ -1,11 +1,11 @@
 use datazen_driver_api::ConnectionConfig;
 
-use super::{Store, StoreError};
+use super::{DesktopRepository, DesktopRepositoryError};
 
-impl Store {
+impl DesktopRepository {
     pub(super) async fn load_connections_from_disk(
         &self,
-    ) -> Result<Vec<ConnectionConfig>, StoreError> {
+    ) -> Result<Vec<ConnectionConfig>, DesktopRepositoryError> {
         let path = self.data_dir.join("connections.json");
         if !path.exists() {
             return Ok(Vec::new());
@@ -13,10 +13,10 @@ impl Store {
 
         let content = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| StoreError::ReadError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::ReadError(e.to_string()))?;
 
-        let mut connections: Vec<ConnectionConfig> =
-            serde_json::from_str(&content).map_err(|e| StoreError::ParseError(e.to_string()))?;
+        let mut connections: Vec<ConnectionConfig> = serde_json::from_str(&content)
+            .map_err(|e| DesktopRepositoryError::ParseError(e.to_string()))?;
 
         for conn in &mut connections {
             if let Some(enc) = &conn.password {
@@ -64,7 +64,7 @@ impl Store {
     async fn persist_connections(
         &self,
         connections: &[ConnectionConfig],
-    ) -> Result<(), StoreError> {
+    ) -> Result<(), DesktopRepositoryError> {
         let mut to_disk = Vec::with_capacity(connections.len());
 
         for conn in connections {
@@ -98,7 +98,7 @@ impl Store {
     pub(super) async fn persist_connections_locked(
         &self,
         connections: &[ConnectionConfig],
-    ) -> Result<(), StoreError> {
+    ) -> Result<(), DesktopRepositoryError> {
         let mut to_disk = Vec::with_capacity(connections.len());
 
         for conn in connections {
@@ -124,7 +124,7 @@ impl Store {
         let metadata = self.cache.read().await.platform_profiles.clone();
         let records = super::platform_profiles::encode_records(to_disk, &metadata)?;
         let content = serde_json::to_string_pretty(&records)
-            .map_err(|e| StoreError::ParseError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::ParseError(e.to_string()))?;
         let path = self.data_dir.join("connections.json");
         Self::write_file_atomic(&path, content).await
     }
@@ -139,7 +139,10 @@ impl Store {
         cache.connections.iter().find(|c| c.id == id).cloned()
     }
 
-    pub async fn save_connection(&self, config: ConnectionConfig) -> Result<(), StoreError> {
+    pub async fn save_connection(
+        &self,
+        config: ConnectionConfig,
+    ) -> Result<(), DesktopRepositoryError> {
         // Serialize the whole update→snapshot→persist sequence under the
         // store-wide write lock. Snapshotting before acquiring the lock let
         // an older copy overwrite a newer file when concurrent saves
@@ -159,19 +162,19 @@ impl Store {
                 .entry(config.id.clone())
                 .or_default();
             if let Some(previous) = previous {
-                metadata.config_revision = metadata
-                    .config_revision
-                    .checked_add(1)
-                    .ok_or_else(|| StoreError::WriteError("revision exhausted".into()))?;
+                metadata.config_revision =
+                    metadata.config_revision.checked_add(1).ok_or_else(|| {
+                        DesktopRepositoryError::WriteError("revision exhausted".into())
+                    })?;
                 if previous.password != config.password
                     || serde_json::to_value(&previous.ssh_tunnel).ok()
                         != serde_json::to_value(&config.ssh_tunnel).ok()
                     || previous.options != config.options
                 {
-                    metadata.credential_revision = metadata
-                        .credential_revision
-                        .checked_add(1)
-                        .ok_or_else(|| StoreError::WriteError("revision exhausted".into()))?;
+                    metadata.credential_revision =
+                        metadata.credential_revision.checked_add(1).ok_or_else(|| {
+                            DesktopRepositoryError::WriteError("revision exhausted".into())
+                        })?;
                 }
             }
             if let Some(pos) = cache.connections.iter().position(|c| c.id == config.id) {
@@ -194,7 +197,7 @@ impl Store {
     /// configuration revision. Activity timestamps are observational metadata;
     /// treating them as a connection change invalidates every live session
     /// immediately after `connect` returns.
-    pub async fn touch_last_connected_at(&self, id: &str) -> Result<(), StoreError> {
+    pub async fn touch_last_connected_at(&self, id: &str) -> Result<(), DesktopRepositoryError> {
         let _guard = self.write_lock.lock().await;
         {
             let mut cache = self.cache.write().await;
@@ -211,7 +214,7 @@ impl Store {
         self.persist_connections_locked(&snapshot).await
     }
 
-    pub async fn delete_connection(&self, id: &str) -> Result<(), StoreError> {
+    pub async fn delete_connection(&self, id: &str) -> Result<(), DesktopRepositoryError> {
         {
             let mut cache = self.cache.write().await;
             cache.connections.retain(|c| c.id != id);
@@ -240,7 +243,7 @@ impl Store {
         set.into_iter().collect()
     }
 
-    pub async fn save_groups(&self, groups: Vec<String>) -> Result<(), StoreError> {
+    pub async fn save_groups(&self, groups: Vec<String>) -> Result<(), DesktopRepositoryError> {
         {
             let mut cache = self.cache.write().await;
             cache.groups = groups;
@@ -255,7 +258,10 @@ impl Store {
     /// Reorder connections to match the given list of IDs.
     /// IDs not present in the current list are ignored; connections
     /// whose IDs are not in `ordered_ids` are appended at the end.
-    pub async fn reorder_connections(&self, ordered_ids: Vec<String>) -> Result<(), StoreError> {
+    pub async fn reorder_connections(
+        &self,
+        ordered_ids: Vec<String>,
+    ) -> Result<(), DesktopRepositoryError> {
         {
             let mut cache = self.cache.write().await;
             let mut by_id: std::collections::HashMap<String, ConnectionConfig> = cache
@@ -280,7 +286,7 @@ impl Store {
         self.persist_connections(&snapshot).await
     }
 
-    pub fn decrypt_password(&self, encrypted: &str) -> Result<String, StoreError> {
+    pub fn decrypt_password(&self, encrypted: &str) -> Result<String, DesktopRepositoryError> {
         self.decrypt(encrypted)
     }
 }

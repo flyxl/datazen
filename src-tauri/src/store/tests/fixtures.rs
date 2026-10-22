@@ -15,9 +15,9 @@ pub(super) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-pub(super) async fn init_store_for_test(dir: &std::path::Path) -> Store {
+pub(super) async fn init_store_for_test(dir: &std::path::Path) -> DesktopRepository {
     use_file_key_backend();
-    Store::init_with_path(dir).await.unwrap()
+    DesktopRepository::init_with_path(dir).await.unwrap()
 }
 
 pub(super) fn sample_connection_with_ssh() -> ConnectionConfig {

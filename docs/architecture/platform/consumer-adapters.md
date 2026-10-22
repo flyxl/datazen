@@ -117,7 +117,7 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 
 PostgreSQL 与 MySQL 的 driver 专属 `tests/monitor_scheduled_query.rs` 现提供同层级 live 证据：安全 migration fixture gate 下，生产 Monitor 只读 SQL 校验与精确 grant scope 匹配，经 `workflow::resource_execution::execute`、Runtime 和真实 ResourceProvider 执行聚合查询，读取实际 Artifact 结果并由独立连接核对；危险 SQL、限定 relation、越界 database 与撤销 grant 不新增物理 SQL 执行，短资源确认关闭。测试 host 的 Profile/Policy/SessionBackend 是端口接缝；不覆盖 Tauri AppState、后端 grant 签发/持久化、SQLite occurrence admission、duplicate-tick receipt 或完整 scheduler，不能称为完整 Monitor scheduled E2E。
 
-这些 live 查询暴露并修复了委托结果发布的 P6 阻塞：普通 FileArtifactStore 拒绝 delegated create/read，过去即使 SQL 成功也会在发布结果时失败。Runtime 现使用专用内部 `ExecutionArtifactScope`，只从当前 admitted execution entry 取得完整组织、主体、客户端、认证会话、delegation 与 execution 绑定；读时先经当前 PolicyService 重验，再检查同一 live entry / artifact / execution。普通 Artifact API 仍拒绝委托任意创建、读取及导出，同 owner 的普通上下文也不能读取受限结果。scope 不序列化，metadata 只保留受限结果标记；TTL 到期清理，撤权后不可读，重开 ArtifactStore 清理这种进程内结果，不恢复 delegated access 或重放查询。Runtime 回归另覆盖身份不符、其他有效 delegation、任意 Artifact ID、撤权、TTL 与重启拒绝。
+这些 live 查询暴露并修复了委托结果发布的 P6 阻塞：普通 FileArtifactRepository 拒绝 delegated create/read，过去即使 SQL 成功也会在发布结果时失败。Runtime 现使用专用内部 `ExecutionArtifactScope`，只从当前 admitted execution entry 取得完整组织、主体、客户端、认证会话、delegation 与 execution 绑定；读时先经当前 PolicyService 重验，再检查同一 live entry / artifact / execution。普通 Artifact API 仍拒绝委托任意创建、读取及导出，同 owner 的普通上下文也不能读取受限结果。scope 不序列化，metadata 只保留受限结果标记；TTL 到期清理，撤权后不可读，重开 ArtifactRepository 清理这种进程内结果，不恢复 delegated access 或重放查询。Runtime 回归另覆盖身份不符、其他有效 delegation、任意 Artifact ID、撤权、TTL 与重启拒绝。
 
 ## 7. 导出、备份与恢复的环境端口
 

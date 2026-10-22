@@ -196,7 +196,9 @@ impl WidgetExecutionHost for ScheduledWidgetHost<'_> {
             &scope,
             &*self.state.store.app_db(),
             run,
-            &crate::dashboard::store::load_monitor_settings(&self.state.store.get_settings().await),
+            &crate::dashboard::repository::load_monitor_settings(
+                &self.state.store.get_settings().await,
+            ),
         )
         .map_err(|_| "monitor run persistence failed".into())
     }

@@ -84,8 +84,8 @@ pub(crate) fn should_auto_start_embedded_mcp(mcp_server_enabled: bool) -> bool {
 }
 
 pub(crate) fn resolve_log_settings() -> (String, PathBuf) {
-    let data_dir =
-        crate::store::Store::default_app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let data_dir = crate::store::DesktopRepository::default_app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
     resolve_log_settings_in(&data_dir)
 }
 

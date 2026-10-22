@@ -1,7 +1,7 @@
 //! Portable dashboard run records and the rules that shape them.
 //!
 //! A host stores the runs a widget produced as rows
-//! ([`WidgetRunRecord`]) and provides them through [`DashboardRunStore`].
+//! ([`WidgetRunRecord`]) and provides them through [`DashboardRunRepository`].
 //! Which status a row carries, when a row belongs to the widget that was
 //! asked for, and how a run is shaped for the frontend are decided here.
 
@@ -32,7 +32,7 @@ pub enum DashboardRunsError {
 /// 每个方法都带一个 [`OrganizationScope`]：运行记录与仪表板、widget 一样属于
 /// 某个组织。越组织访问一律按「不存在」处理（空列表 / `NotFound`），
 /// **不得**返回「无权限」类错误（CM-05）。
-pub trait DashboardRunStore: Send + Sync {
+pub trait DashboardRunRepository: Send + Sync {
     /// Store a run row and apply the retention policy.
     fn write_run_row(
         &self,
@@ -127,7 +127,7 @@ pub fn run_from_record(record: &WidgetRunRecord) -> Result<WidgetRun, DashboardR
 /// Store a run and apply the retention policy of the monitor settings.
 pub fn write_run(
     scope: &OrganizationScope,
-    store: &dyn DashboardRunStore,
+    store: &dyn DashboardRunRepository,
     run: &WidgetRun,
     retention: &MonitorSettings,
 ) -> Result<(), DashboardRunsError> {
@@ -143,7 +143,7 @@ pub fn write_run(
 /// The run index of a widget.
 pub fn list_run_index(
     scope: &OrganizationScope,
-    store: &dyn DashboardRunStore,
+    store: &dyn DashboardRunRepository,
     _dashboard_id: &str,
     widget_id: &str,
     limit: usize,
@@ -167,7 +167,7 @@ pub fn list_run_index(
 /// either — the scope is the organization boundary (CM-05).
 pub fn get_run(
     scope: &OrganizationScope,
-    store: &dyn DashboardRunStore,
+    store: &dyn DashboardRunRepository,
     _dashboard_id: &str,
     widget_id: &str,
     run_id: &str,
@@ -186,11 +186,11 @@ mod tests {
     use std::sync::Mutex;
 
     /// 一个**按组织分区**的内存运行存储：多个组织的运行记录并存于同一份数据。
-    struct MemoryRunStore {
+    struct MemoryRunRepository {
         rows: Mutex<Vec<(OrganizationId, WidgetRunRecord)>>,
     }
 
-    impl MemoryRunStore {
+    impl MemoryRunRepository {
         fn new() -> Self {
             Self {
                 rows: Mutex::new(Vec::new()),
@@ -203,7 +203,7 @@ mod tests {
         OrganizationScope::new(OrganizationId::new(organization))
     }
 
-    impl DashboardRunStore for MemoryRunStore {
+    impl DashboardRunRepository for MemoryRunRepository {
         fn write_run_row(
             &self,
             scope: &OrganizationScope,
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn write_run_roundtrip() {
-        let store = MemoryRunStore::new();
+        let store = MemoryRunRepository::new();
         let scope = scope_of("org-a");
         let run = sample_run("run-7", "w1");
         write_run(&scope, &store, &run, &MonitorSettings::default()).unwrap();
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn list_run_index_returns_entries() {
-        let store = MemoryRunStore::new();
+        let store = MemoryRunRepository::new();
         let scope = scope_of("org-a");
         for index in 0..3 {
             write_run(
@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn a_run_of_another_widget_is_not_found() {
-        let store = MemoryRunStore::new();
+        let store = MemoryRunRepository::new();
         let scope = scope_of("org-a");
         write_run(
             &scope,
@@ -331,7 +331,7 @@ mod tests {
     /// 别的组织的运行记录读不到：索引为空、单条 `NotFound`（CM-05）。
     #[test]
     fn the_runs_of_another_organization_are_not_found() {
-        let store = MemoryRunStore::new();
+        let store = MemoryRunRepository::new();
         let owner = scope_of("org-a");
         let other = scope_of("org-b");
         write_run(
@@ -354,7 +354,7 @@ mod tests {
     /// 两个组织的运行记录互不可见。
     #[test]
     fn two_organizations_keep_their_own_runs_apart() {
-        let store = MemoryRunStore::new();
+        let store = MemoryRunRepository::new();
         let a = scope_of("org-a");
         let b = scope_of("org-b");
         write_run(

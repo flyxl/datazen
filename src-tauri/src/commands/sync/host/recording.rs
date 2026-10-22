@@ -14,7 +14,7 @@ use datazen_runtime::job::CancelToken;
 
 use crate::data_sync::job::artifact::{ChangeSetArtifact, RelationIdentity};
 use crate::data_sync::job::host::{
-    ArtifactStoreGuard, DataSyncHost, EndpointSession, KeysetPageSource, TableSchemaPair,
+    ArtifactRepositoryGuard, DataSyncHost, EndpointSession, KeysetPageSource, TableSchemaPair,
     TargetExecutor, TransactionScope,
 };
 use crate::data_sync::{
@@ -88,7 +88,7 @@ impl DataSyncHost for RecordingHost {
     async fn store_artifact(
         &self,
         artifact: ChangeSetArtifact,
-    ) -> Result<ArtifactStoreGuard, DataSyncError> {
+    ) -> Result<ArtifactRepositoryGuard, DataSyncError> {
         self.record(self.inner.store_artifact(artifact).await)
     }
 

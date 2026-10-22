@@ -1,4 +1,4 @@
-//! `ArtifactStore`：结果落盘端口。
+//! `ArtifactRepository`：结果落盘端口。
 //!
 //! 词汇表（§4.6）：`ArtifactSpec`、`ArtifactWriter`、`ChunkPayload`、`ChunkIndex`、
 //! `ByteRange`、`ExportSink`、`ExportReceipt`、`RevokeReason`。
@@ -13,7 +13,7 @@
 //!
 //! ## 已实现契约（[共享边界 §4.6](../shared-boundaries-and-ports.md#46-结果与事件端口)）
 //!
-//! 以下行为由 `datazen-runtime::artifact::FileArtifactStore` 实现，并由 runtime 的
+//! 以下行为由 `datazen-runtime::artifact::FileArtifactRepository` 实现，并由 runtime 的
 //! artifact journey 与 `p3_live_port` 测试覆盖。其他 host 可以提供自己的实现，但必须遵守同一端口契约。
 //!
 //! * 生命周期 `writing → complete | truncated`，另有 `revoked/expired` 不可读终态。
@@ -153,7 +153,7 @@ pub enum RevokeReason {
 }
 
 #[async_trait]
-pub trait ArtifactStore: Send + Sync + 'static {
+pub trait ArtifactRepository: Send + Sync + 'static {
     /// create writer：返回可写 artifact 与 writer 句柄；ACL 在 create 时绑定组织/owner。
     async fn create(
         &self,
@@ -180,7 +180,7 @@ pub trait ArtifactStore: Send + Sync + 'static {
     async fn finalize(&self, writer: ArtifactWriter) -> Result<ArtifactId, PortError>;
 
     /// 显式中止：**保留已发布块**并标记 truncated，用于取消/失败/消费超限。
-    /// 正常完成走 [`ArtifactStore::finalize`]，二者不得互相顶替。
+    /// 正常完成走 [`ArtifactRepository::finalize`]，二者不得互相顶替。
     async fn abort(
         &self,
         writer: ArtifactWriter,

@@ -3,7 +3,7 @@ use crate::commands::{AppState, CommandError};
 use datazen_platform_api::{
     dto::artifact::ArtifactLifecycle,
     id::{ArtifactId, LeaseId},
-    ports::artifact::{ArtifactStore, ExportSink},
+    ports::artifact::{ArtifactRepository, ExportSink},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{

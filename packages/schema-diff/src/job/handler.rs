@@ -18,7 +18,7 @@ use datazen_runtime::job::{
 };
 
 use crate::job::backend::{ApplyRequest, PrepareRequest, SchemaDiffJobBackend};
-use crate::job::plan::{fnv1a64_hex, PlanStore, SchemaDiffPlanError, StoredPlan};
+use crate::job::plan::{fnv1a64_hex, PlanRepository, SchemaDiffPlanError, StoredPlan};
 use crate::job::recovery::decide_recovery;
 use crate::types::{DeployStatus, SchemaDiffDeployResult};
 
@@ -41,7 +41,7 @@ pub enum HandlerRole {
 pub struct SchemaDiffHandler<B: SchemaDiffJobBackend> {
     role: HandlerRole,
     backend: Arc<B>,
-    plans: Arc<PlanStore>,
+    plans: Arc<PlanRepository>,
     clock: Arc<dyn Clock>,
     prepare_request: Option<PrepareRequest>,
     apply_request: Option<ApplyRequest>,
@@ -50,7 +50,11 @@ pub struct SchemaDiffHandler<B: SchemaDiffJobBackend> {
 }
 
 impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
-    pub fn for_prepare(backend: Arc<B>, plans: Arc<PlanStore>, request: PrepareRequest) -> Self {
+    pub fn for_prepare(
+        backend: Arc<B>,
+        plans: Arc<PlanRepository>,
+        request: PrepareRequest,
+    ) -> Self {
         Self {
             role: HandlerRole::Prepare,
             backend,
@@ -65,7 +69,7 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
 
     pub fn for_apply(
         backend: Arc<B>,
-        plans: Arc<PlanStore>,
+        plans: Arc<PlanRepository>,
         consumed_plan_id: String,
         selection_revision: u64,
         request: ApplyRequest,
@@ -361,7 +365,7 @@ impl<B: SchemaDiffJobBackend> JobHandler for SchemaDiffHandler<B> {
                 let selection_revision = plan.selection_revision.ok_or_else(|| {
                     JobError::PlanProjectionInvalid("selectionRevision missing".into())
                 })?;
-                // PlanStore 校验：存在、未过期、版本守卫、选择版本一致（不消费）。
+                // PlanRepository 校验：存在、未过期、版本守卫、选择版本一致（不消费）。
                 match self
                     .plans
                     .validate_for_apply(plan_id, selection_revision, &self.now())
@@ -462,7 +466,7 @@ mod tests {
     use super::*;
     use crate::job::backend::SchemaDiffJobBackend;
     use crate::job::backend::{ApplyRequest, PrepareRequest, PreparedPlan, ReadOnlyVerdict};
-    use crate::job::plan::{PlanStore, SchemaDiffFrozenPlan, SchemaDiffPlanError};
+    use crate::job::plan::{PlanRepository, SchemaDiffFrozenPlan, SchemaDiffPlanError};
     use crate::types::{SchemaDiffPlan, StatementExecResult};
     use datazen_platform_api::dto::job::JobResultItem;
     use datazen_platform_api::id::Counter;
@@ -516,7 +520,7 @@ mod tests {
     fn handler() -> SchemaDiffHandler<UnusedBackend> {
         SchemaDiffHandler::for_prepare(
             Arc::new(UnusedBackend),
-            Arc::new(PlanStore::new()),
+            Arc::new(PlanRepository::new()),
             PrepareRequest::Table {
                 source_db_session_id: "source-live-session".into(),
                 target_db_session_id: "target-live-session".into(),

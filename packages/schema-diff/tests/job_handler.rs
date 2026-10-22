@@ -19,7 +19,7 @@ use datazen_runtime::job::{
 };
 
 use datazen_schema_diff::job::{
-    ApplyRequest, PlanStore, PrepareRequest, PreparedPlan, ReadOnlyVerdict, RecoveryPolicy,
+    ApplyRequest, PlanRepository, PrepareRequest, PreparedPlan, ReadOnlyVerdict, RecoveryPolicy,
     SchemaDiffFrozenPlan, SchemaDiffHandler, SchemaDiffJobBackend, SchemaDiffPlanError, StoredPlan,
 };
 use datazen_schema_diff::types::{
@@ -207,8 +207,8 @@ impl SchemaDiffJobBackend for FakeBackend {
 
 // ------------------------------------------------------------------ helpers
 
-fn store_with(meta: SchemaDiffFrozenPlan, plan: SchemaDiffPlan) -> Arc<PlanStore> {
-    let store = Arc::new(PlanStore::new());
+fn store_with(meta: SchemaDiffFrozenPlan, plan: SchemaDiffPlan) -> Arc<PlanRepository> {
+    let store = Arc::new(PlanRepository::new());
     store.insert(StoredPlan {
         meta,
         plan,
@@ -564,7 +564,7 @@ async fn s42_cancel_stops_new_operations_and_keeps_actual_terminal() {
 
 #[tokio::test]
 async fn prepare_stage_stores_plan_and_reports_progress() {
-    let store = Arc::new(PlanStore::new());
+    let store = Arc::new(PlanRepository::new());
     let prepared = PreparedPlan {
         meta: frozen_meta("plan-new", 1, "2999-01-01T00:00:00Z"),
         plan: plan_with_statements(2),
@@ -608,7 +608,7 @@ async fn prepare_stage_stores_plan_and_reports_progress() {
     assert_eq!(out.effect_outcome, EffectOutcome::Completed);
     assert_eq!(out.progress.read.get(), 1);
     assert_eq!(out.progress.converted.get(), 2);
-    assert!(store.get("plan-new").is_some(), "计划已入 PlanStore");
+    assert!(store.get("plan-new").is_some(), "计划已入 PlanRepository");
 }
 
 fn repo_clock() -> (InMemoryJobRepository, Arc<SharedClock>) {

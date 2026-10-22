@@ -15,14 +15,14 @@ use tokio::sync::Mutex;
 ///
 /// **这是替身，不是生产实现**：它只用来驱动「规则层语义」类用例（有效期、
 /// 竞态、校验失败不烧计划）。**隔离性**类断言必须打生产实现
-/// （`InMemoryReviewedPlanStore`）——替身的键结构自带组织维度，在替身上断言
+/// （`InMemoryReviewedPlanRepository`）——替身的键结构自带组织维度，在替身上断言
 /// 隔离对生产码是同义反复。
 #[derive(Default)]
-struct TestPlanStore {
+struct TestPlanRepository {
     plans: Mutex<HashMap<(String, String), ReviewedPlan>>,
 }
 
-impl TestPlanStore {
+impl TestPlanRepository {
     fn bucket(scope: &OrganizationScope, plan_id: &str) -> (String, String) {
         (
             scope.organization_id().as_str().to_owned(),
@@ -32,13 +32,13 @@ impl TestPlanStore {
 }
 
 #[async_trait]
-impl ReviewedPlanStore for TestPlanStore {
+impl ReviewedPlanRepository for TestPlanRepository {
     async fn put(
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
         plan: ReviewedPlan,
-    ) -> Result<(), ReviewedPlanStoreError> {
+    ) -> Result<(), ReviewedPlanRepositoryError> {
         self.plans
             .lock()
             .await
@@ -50,7 +50,7 @@ impl ReviewedPlanStore for TestPlanStore {
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<Option<ReviewedPlan>, ReviewedPlanStoreError> {
+    ) -> Result<Option<ReviewedPlan>, ReviewedPlanRepositoryError> {
         Ok(self
             .plans
             .lock()
@@ -63,7 +63,7 @@ impl ReviewedPlanStore for TestPlanStore {
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<bool, ReviewedPlanStoreError> {
+    ) -> Result<bool, ReviewedPlanRepositoryError> {
         Ok(self
             .plans
             .lock()
@@ -92,7 +92,7 @@ fn handle() -> ConnectionHandle {
 
 #[tokio::test]
 async fn reviewed_plan_rejects_client_mutation_wrong_target_and_replay() {
-    let store = TestPlanStore::default();
+    let store = TestPlanRepository::default();
     let scope = scope("org-a");
     let mut plan = plan();
     let config = config();
@@ -192,7 +192,7 @@ async fn reviewed_plan_rejects_client_mutation_wrong_target_and_replay() {
 
 #[tokio::test]
 async fn test_tester_concurrent_deploy_consumes_exactly_once() {
-    let store = TestPlanStore::default();
+    let store = TestPlanRepository::default();
     let scope = scope("org-a");
     let mut plan = plan();
     let cfg = config();
@@ -240,7 +240,7 @@ async fn test_tester_concurrent_deploy_consumes_exactly_once() {
 
 #[tokio::test]
 async fn test_tester_pool_change_rejected_without_consuming_valid_plan() {
-    let store = TestPlanStore::default();
+    let store = TestPlanRepository::default();
     let scope = scope("org-a");
     let mut plan = plan();
     let cfg = config();
@@ -295,11 +295,11 @@ async fn test_tester_pool_change_rejected_without_consuming_valid_plan() {
 ///
 /// 逐条断言，不写「大概率读不到」这类模糊断言。
 ///
-/// **打的是生产实现**（`InMemoryReviewedPlanStore`，随端口一起提供的进程内实现），
+/// **打的是生产实现**（`InMemoryReviewedPlanRepository`，随端口一起提供的进程内实现），
 /// 不是测试替身：替身的键结构自带组织维度，断言在替身上恒成立，对生产码是同义反复。
 #[tokio::test]
 async fn reviewed_plan_store_hides_plans_from_other_organizations() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let owner = scope("org-a");
     let other = scope("org-b");
     let mut plan = plan();
@@ -344,7 +344,7 @@ async fn reviewed_plan_store_hides_plans_from_other_organizations() {
 /// 同样打生产实现。
 #[tokio::test]
 async fn reviewed_plan_consume_rejects_foreign_organization_scope() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let owner = scope("org-a");
     let other = scope("org-b");
     let mut plan = plan();
@@ -402,11 +402,11 @@ async fn reviewed_plan_consume_rejects_foreign_organization_scope() {
 /// 落在**它自己**的桶里；本组织既读不到，也消费不到。
 ///
 /// 桌面形态的「越组织写入**直接丢弃**」是宿主在生产实现之上叠加的**单租户**
-/// 策略（见 `src-tauri/src/commands/schema_diff/reviewed_store.rs`），不是本包
+/// 策略（见 `src-tauri/src/commands/schema_diff/reviewed_repository.rs`），不是本包
 /// 生产实现的语义。
 #[tokio::test]
 async fn reviewed_plan_store_keeps_foreign_writes_out_of_other_organizations() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let owner = scope("org-a");
     let other = scope("org-b");
     let mut plan = plan();
@@ -437,11 +437,11 @@ async fn reviewed_plan_store_keeps_foreign_writes_out_of_other_organizations() {
 
 /// 生产实现确实**按组织分桶**：同一个 `planId` 在两个组织下是两条互不影响的记录。
 ///
-/// 这条直接打生产实现（`InMemoryReviewedPlanStore`）：若键里少了组织维度，
+/// 这条直接打生产实现（`InMemoryReviewedPlanRepository`）：若键里少了组织维度，
 /// 后写入的那条会顶掉先写入的那条，本用例的「两条都在」断言会红。
 #[tokio::test]
 async fn in_memory_store_buckets_plans_by_organization() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let first = scope("org-a");
     let second = scope("org-b");
 
@@ -549,7 +549,7 @@ fn reviewed_plan(plan_id: &str, created_at_ms: u64) -> ReviewedPlan {
 /// 本用例的「29 分钟仍可消费」断言会红。
 #[tokio::test]
 async fn reviewed_plan_ttl_is_thirty_minutes_over_unix_milliseconds() {
-    let store = TestPlanStore::default();
+    let store = TestPlanRepository::default();
     let scope = scope("org-a");
     let cfg = config();
     let handle = handle();
@@ -601,7 +601,7 @@ async fn reviewed_plan_ttl_is_thirty_minutes_over_unix_milliseconds() {
 /// 毫秒级约 1.7e12；且必须贴近冻结时刻。
 #[tokio::test]
 async fn reviewed_plan_freeze_stamps_creation_in_unix_milliseconds() {
-    let store = TestPlanStore::default();
+    let store = TestPlanRepository::default();
     let scope = scope("org-a");
     let cfg = config();
     let mut plan = plan();
@@ -650,7 +650,7 @@ async fn reviewed_plan_freeze_stamps_creation_in_unix_milliseconds() {
 /// 这条用例把该取舍钉住：它断言的是**修复后**的行为。
 #[tokio::test]
 async fn reviewed_plan_clock_rollback_expires_the_plan_instead_of_reinstating_it() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let scope = scope("org-a");
     let cfg = config();
     let handle = handle();
@@ -683,7 +683,7 @@ async fn reviewed_plan_clock_rollback_expires_the_plan_instead_of_reinstating_it
 /// 用户重新比对即可恢复：前跳不会让**不该**有效的计划变得有效。
 #[tokio::test]
 async fn reviewed_plan_clock_forward_jump_expires_the_plan() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let scope = scope("org-a");
     let cfg = config();
     let handle = handle();
@@ -723,7 +723,7 @@ async fn reviewed_plan_clock_forward_jump_expires_the_plan() {
 /// ⇒ 失效条目先被清掉，有效计划留下。
 #[tokio::test]
 async fn in_memory_store_clears_invalid_entries_before_evicting_valid_ones_after_clock_rollback() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let scope = scope("org-a");
     let now = now_ms();
     // 回拨**前**冻结 ⇒ 相对回拨后的「现在」落在未来 ⇒ 已失效。
@@ -786,7 +786,7 @@ async fn in_memory_store_clears_invalid_entries_before_evicting_valid_ones_after
 /// （例如把 `remove` 挪到 `get` 之前），另一个请求就永远不会到达，
 /// 此时必须**超时退出**而不是把测试挂死——挂死会让「变异应当变红」退化成
 /// 「变异让 CI 永远跑不完」。
-struct BarrierPlanStore {
+struct BarrierPlanRepository {
     plans: Mutex<HashMap<(String, String), ReviewedPlan>>,
     reads: std::sync::atomic::AtomicUsize,
 }
@@ -794,7 +794,7 @@ struct BarrierPlanStore {
 /// 会合的自旋上限。超过即放弃等待（测试随后按断言失败，而不是挂死）。
 const RENDEZVOUS_MAX_YIELDS: usize = 512;
 
-impl BarrierPlanStore {
+impl BarrierPlanRepository {
     fn bucket(scope: &OrganizationScope, plan_id: &str) -> (String, String) {
         (
             scope.organization_id().as_str().to_owned(),
@@ -814,13 +814,13 @@ impl BarrierPlanStore {
 }
 
 #[async_trait]
-impl ReviewedPlanStore for BarrierPlanStore {
+impl ReviewedPlanRepository for BarrierPlanRepository {
     async fn put(
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
         plan: ReviewedPlan,
-    ) -> Result<(), ReviewedPlanStoreError> {
+    ) -> Result<(), ReviewedPlanRepositoryError> {
         self.plans
             .lock()
             .await
@@ -832,7 +832,7 @@ impl ReviewedPlanStore for BarrierPlanStore {
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<Option<ReviewedPlan>, ReviewedPlanStoreError> {
+    ) -> Result<Option<ReviewedPlan>, ReviewedPlanRepositoryError> {
         let found = self
             .plans
             .lock()
@@ -849,7 +849,7 @@ impl ReviewedPlanStore for BarrierPlanStore {
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<bool, ReviewedPlanStoreError> {
+    ) -> Result<bool, ReviewedPlanRepositoryError> {
         Ok(self
             .plans
             .lock()
@@ -864,7 +864,7 @@ impl ReviewedPlanStore for BarrierPlanStore {
 /// 失败方必须报「已被执行」——不得报「不存在」，也不得两个都成功。
 #[tokio::test]
 async fn reviewed_plan_concurrent_consume_admits_exactly_one_consumer() {
-    let store = BarrierPlanStore {
+    let store = BarrierPlanRepository {
         plans: Mutex::new(HashMap::new()),
         reads: std::sync::atomic::AtomicUsize::new(0),
     };
@@ -925,7 +925,7 @@ async fn reviewed_plan_concurrent_consume_admits_exactly_one_consumer() {
 /// 校验失败**不**烧掉计划：端点不匹配的失败消费之后，原计划仍可正常消费。
 #[tokio::test]
 async fn reviewed_plan_failed_validation_does_not_burn_the_plan() {
-    let store = TestPlanStore::default();
+    let store = TestPlanRepository::default();
     let scope = scope("org-a");
     let cfg = config();
     let handle = handle();
@@ -995,12 +995,12 @@ async fn reviewed_plan_failed_validation_does_not_burn_the_plan() {
 /// 也就不是复核过的那份计划。
 ///
 /// 替身：第一次读返回真实计划，之后的读返回**被篡改**的副本。
-struct SecondReadTamperedStore {
+struct SecondReadTamperedRepository {
     plans: Mutex<HashMap<(String, String), ReviewedPlan>>,
     reads: Mutex<HashMap<(String, String), usize>>,
 }
 
-impl Default for SecondReadTamperedStore {
+impl Default for SecondReadTamperedRepository {
     fn default() -> Self {
         Self {
             plans: Mutex::new(HashMap::new()),
@@ -1010,13 +1010,13 @@ impl Default for SecondReadTamperedStore {
 }
 
 #[async_trait]
-impl ReviewedPlanStore for SecondReadTamperedStore {
+impl ReviewedPlanRepository for SecondReadTamperedRepository {
     async fn put(
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
         plan: ReviewedPlan,
-    ) -> Result<(), ReviewedPlanStoreError> {
+    ) -> Result<(), ReviewedPlanRepositoryError> {
         self.plans.lock().await.insert(
             (
                 scope.organization_id().as_str().to_owned(),
@@ -1031,7 +1031,7 @@ impl ReviewedPlanStore for SecondReadTamperedStore {
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<Option<ReviewedPlan>, ReviewedPlanStoreError> {
+    ) -> Result<Option<ReviewedPlan>, ReviewedPlanRepositoryError> {
         let key = (
             scope.organization_id().as_str().to_owned(),
             plan_id.to_owned(),
@@ -1057,7 +1057,7 @@ impl ReviewedPlanStore for SecondReadTamperedStore {
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<bool, ReviewedPlanStoreError> {
+    ) -> Result<bool, ReviewedPlanRepositoryError> {
         Ok(self
             .plans
             .lock()
@@ -1073,7 +1073,7 @@ impl ReviewedPlanStore for SecondReadTamperedStore {
 /// `consume` 校验的必须是它**取出的那一份**，返回给部署方的也必须是同一份。
 #[tokio::test]
 async fn reviewed_plan_consume_validates_the_copy_it_read() {
-    let store = SecondReadTamperedStore::default();
+    let store = SecondReadTamperedRepository::default();
     let scope = scope("org-a");
     let cfg = config();
     let handle = handle();
@@ -1162,7 +1162,7 @@ async fn reviewed_plan_consume_validates_the_copy_it_read() {
 /// 因此失败只可能来自裁剪谓词本身。
 #[tokio::test]
 async fn probe_valid_plan_survives_when_its_timestamp_is_older_than_an_invalid_entry() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let scope = scope("org-a");
     let now = now_ms();
 
@@ -1220,7 +1220,7 @@ async fn probe_valid_plan_survives_when_its_timestamp_is_older_than_an_invalid_e
 /// （远未到 30 分钟 TTL），必然参与淘汰排序而不是被裁掉。
 #[tokio::test]
 async fn probe_capacity_evicts_the_oldest_valid_entry_and_keeps_the_new_one() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let scope = scope("org-a");
     let now = now_ms();
     let count = REVIEWED_PLAN_MAX_ENTRIES as u64;
@@ -1280,7 +1280,7 @@ async fn probe_capacity_evicts_the_oldest_valid_entry_and_keeps_the_new_one() {
 /// 与宿主那条用例同形，但打在**包内生产实现**上（宿主那条打的是宿主委派层）。
 #[tokio::test]
 async fn probe_capacity_keeps_the_newest_128_of_130_past_dated_entries() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let scope = scope("org-a");
     let now = now_ms();
     for index in 0..130u64 {
@@ -1332,7 +1332,7 @@ async fn probe_capacity_keeps_the_newest_128_of_130_past_dated_entries() {
 /// 【探针 D】裁剪是**逐条目**的：一个组织的写入不得清掉另一个组织的有效条目。
 #[tokio::test]
 async fn probe_rollback_trimming_does_not_touch_other_organizations() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let first = scope("org-a");
     let second = scope("org-b");
     let now = now_ms();
@@ -1381,7 +1381,7 @@ async fn probe_rollback_trimming_does_not_touch_other_organizations() {
 /// （未来时间戳、年龄恒为 0）会与规则层判定**不一致** ⇒ 本探针变红。
 #[tokio::test]
 async fn probe_store_trim_predicate_matches_the_rule_layer_expiry_decision() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let scope = scope("org-a");
     let now = now_ms();
 
@@ -1423,7 +1423,7 @@ async fn probe_store_trim_predicate_matches_the_rule_layer_expiry_decision() {
 /// 因此容量/淘汰用例必须用**过去**时刻（有效条目）做排序键。
 #[tokio::test]
 async fn probe_future_dated_entries_are_trimmed_by_the_next_put() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let scope = scope("org-a");
     let future = now_ms() + 60 * 60 * 1000;
 
@@ -1453,7 +1453,7 @@ async fn probe_future_dated_entries_are_trimmed_by_the_next_put() {
 /// （CM-05）。
 #[tokio::test]
 async fn probe_foreign_organization_and_missing_plan_produce_identical_messages() {
-    let store = InMemoryReviewedPlanStore::new();
+    let store = InMemoryReviewedPlanRepository::new();
     let owner = scope("org-a");
     let other = scope("org-b");
     let cfg = config();

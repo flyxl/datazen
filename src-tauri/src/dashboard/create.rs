@@ -14,7 +14,7 @@ struct DesktopCreationHost<'a> {
 #[async_trait::async_trait]
 impl datazen_feature_core::dashboard::create::WidgetCreationHost for DesktopCreationHost<'_> {
     fn dashboard(&self, scope: &OrganizationScope, id: &str) -> Result<Dashboard, String> {
-        datazen_feature_core::dashboard::store::get_dashboard(scope, self.app_db, id)
+        datazen_feature_core::dashboard::repository::get_dashboard(scope, self.app_db, id)
             .map_err(|error| error.to_string())
     }
     fn save_dashboard(
@@ -22,7 +22,7 @@ impl datazen_feature_core::dashboard::create::WidgetCreationHost for DesktopCrea
         scope: &OrganizationScope,
         dashboard: Dashboard,
     ) -> Result<(), String> {
-        datazen_feature_core::dashboard::store::save_dashboard(scope, self.app_db, dashboard)
+        datazen_feature_core::dashboard::repository::save_dashboard(scope, self.app_db, dashboard)
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
@@ -141,9 +141,9 @@ pub async fn create_widget_from_workflow(
 mod tests {
     use super::*;
     use crate::store::{AppDb, WorkflowRecord};
-    use crate::workflow::registry::AppDbWorkflowStore;
+    use crate::workflow::registry::AppDbWorkflowRepository;
     use chrono::Utc;
-    use datazen_feature_core::dashboard::store::save_dashboard;
+    use datazen_feature_core::dashboard::repository::save_dashboard;
     use datazen_feature_core::dashboard::types::DashboardLayout;
     use datazen_feature_core::workflow::model::WorkflowStep;
     use datazen_platform_api::id::OrganizationId;
@@ -158,7 +158,7 @@ mod tests {
     async fn setup() -> (std::sync::Arc<AppDb>, WorkflowRegistry, Dashboard) {
         let db = AppDb::open_in_memory().unwrap();
         let registry = WorkflowRegistry::new(
-            Arc::new(AppDbWorkflowStore::new(db.clone())),
+            Arc::new(AppDbWorkflowRepository::new(db.clone())),
             std::path::PathBuf::from("/tmp"),
         );
         let dash = Dashboard {
@@ -335,8 +335,9 @@ mod tests {
 
         // 本组织的数据一个字节都没被动过。
         let local = crate::platform::local_organization_scope();
-        let loaded = datazen_feature_core::dashboard::store::get_dashboard(&local, &*db, &dash.id)
-            .expect("本组织的仪表板应当仍然读得到");
+        let loaded =
+            datazen_feature_core::dashboard::repository::get_dashboard(&local, &*db, &dash.id)
+                .expect("本组织的仪表板应当仍然读得到");
         assert!(
             loaded.widgets.is_empty(),
             "别的组织不得往本组织的仪表板里塞 widget"

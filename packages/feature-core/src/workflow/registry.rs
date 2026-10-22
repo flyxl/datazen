@@ -2,9 +2,9 @@
 //! which saved workflows a user sees.
 //!
 //! The rules live here so every host agrees on them. The host owns only the
-//! rows: it implements [`WorkflowDefinitionStore`] over its own persistence
+//! rows: it implements [`WorkflowDefinitionRepository`] over its own persistence
 //! and hands the store to [`WorkflowRegistry`] as an
-//! `Arc<dyn WorkflowDefinitionStore>`, so the host's persistence type never
+//! `Arc<dyn WorkflowDefinitionRepository>`, so the host's persistence type never
 //! enters this crate's signatures.
 
 use super::model::{WorkflowDefinition, WorkflowListItem, WorkflowVisibility};
@@ -40,7 +40,7 @@ pub struct WorkflowDefinitionRecord {
 /// looks like — stays in this crate. The registry holds the store as a trait
 /// object, so the host's implementation type stays out of the shared
 /// signatures and the host picks the implementation at assembly time.
-pub trait WorkflowDefinitionStore: Send + Sync {
+pub trait WorkflowDefinitionRepository: Send + Sync {
     /// One saved workflow of the organization, or `None` when the id is unknown.
     fn get_workflow(
         &self,
@@ -117,10 +117,10 @@ pub fn list_item_for(definition: &WorkflowDefinition) -> WorkflowListItem {
 ///
 /// The store is held as a trait object on purpose: the registry must not
 /// name the host's persistence type, so a host can bind any
-/// [`WorkflowDefinitionStore`] implementation without the shared crate's
+/// [`WorkflowDefinitionRepository`] implementation without the shared crate's
 /// signatures changing.
 pub struct WorkflowRegistry {
-    store: Arc<dyn WorkflowDefinitionStore>,
+    store: Arc<dyn WorkflowDefinitionRepository>,
     /// The builtin definitions the host ships, as `(label, yaml)`.
     builtins: Vec<(&'static str, &'static str)>,
     /// 已经播种过的组织。
@@ -135,7 +135,7 @@ impl WorkflowRegistry {
     /// A registry over `store`, seeding `builtins` when the environment has
     /// no user-visible workflow yet.
     pub fn new(
-        store: Arc<dyn WorkflowDefinitionStore>,
+        store: Arc<dyn WorkflowDefinitionRepository>,
         builtins: Vec<(&'static str, &'static str)>,
     ) -> Self {
         Self {
@@ -147,7 +147,7 @@ impl WorkflowRegistry {
     }
 
     /// The store this registry reads and writes through.
-    pub fn store(&self) -> &dyn WorkflowDefinitionStore {
+    pub fn store(&self) -> &dyn WorkflowDefinitionRepository {
         self.store.as_ref()
     }
 
@@ -361,11 +361,11 @@ mod tests {
 
     /// 一个**按组织分区**的内存存储：多个组织的 workflow 并存于同一份数据。
     #[derive(Default)]
-    struct MemoryStore {
+    struct MemoryRepository {
         records: Mutex<Vec<(OrganizationId, WorkflowDefinitionRecord)>>,
     }
 
-    impl MemoryStore {
+    impl MemoryRepository {
         fn records(&self) -> Vec<(OrganizationId, WorkflowDefinitionRecord)> {
             self.records.lock().expect("store lock").clone()
         }
@@ -376,7 +376,7 @@ mod tests {
         OrganizationScope::new(OrganizationId::new(organization))
     }
 
-    impl WorkflowDefinitionStore for MemoryStore {
+    impl WorkflowDefinitionRepository for MemoryRepository {
         fn get_workflow(
             &self,
             scope: &OrganizationScope,
@@ -476,7 +476,7 @@ mod tests {
     #[tokio::test]
     async fn the_list_excludes_dashboard_hidden_workflows() {
         let scope = scope_of("org-a");
-        let registry = WorkflowRegistry::new(Arc::new(MemoryStore::default()), Vec::new());
+        let registry = WorkflowRegistry::new(Arc::new(MemoryRepository::default()), Vec::new());
         registry
             .save(&scope, &definition("user-1", WorkflowVisibility::User))
             .await
@@ -498,7 +498,7 @@ mod tests {
     #[tokio::test]
     async fn saving_keeps_the_creation_time_of_an_existing_workflow() {
         let scope = scope_of("org-a");
-        let registry = WorkflowRegistry::new(Arc::new(MemoryStore::default()), Vec::new());
+        let registry = WorkflowRegistry::new(Arc::new(MemoryRepository::default()), Vec::new());
         registry
             .save(&scope, &definition("kept", WorkflowVisibility::User))
             .await
@@ -526,7 +526,7 @@ mod tests {
     async fn the_builtin_workflows_are_seeded_once() {
         let scope = scope_of("org-a");
         let yaml = "id: builtin\nname: Builtin\ndescription: d\nsteps: []\n";
-        let store = Arc::new(MemoryStore::default());
+        let store = Arc::new(MemoryRepository::default());
         let registry = WorkflowRegistry::new(store.clone(), vec![("builtin", yaml)]);
         registry.list(&scope).await;
         assert_eq!(store.records().len(), 1);
@@ -541,7 +541,7 @@ mod tests {
         let scope = scope_of("org-a");
         let yaml =
             "id: builtin\nname: Builtin\ndescription: d\nsteps: []\nvisibility: dashboardHidden\n";
-        let store = Arc::new(MemoryStore::default());
+        let store = Arc::new(MemoryRepository::default());
         let registry = WorkflowRegistry::new(store.clone(), vec![("builtin", yaml)]);
         registry.list(&scope).await;
         let records = store.records();
@@ -552,7 +552,7 @@ mod tests {
     #[tokio::test]
     async fn yaml_round_trips_through_the_registry() {
         let scope = scope_of("org-a");
-        let registry = WorkflowRegistry::new(Arc::new(MemoryStore::default()), Vec::new());
+        let registry = WorkflowRegistry::new(Arc::new(MemoryRepository::default()), Vec::new());
         let definition = definition("yaml-1", WorkflowVisibility::User);
         let yaml = encode_definition(&definition).expect("encode");
         let saved = registry.save_yaml(&scope, &yaml).await.expect("save yaml");
@@ -566,7 +566,7 @@ mod tests {
     #[tokio::test]
     async fn invalid_yaml_names_the_problem() {
         let scope = scope_of("org-a");
-        let registry = WorkflowRegistry::new(Arc::new(MemoryStore::default()), Vec::new());
+        let registry = WorkflowRegistry::new(Arc::new(MemoryRepository::default()), Vec::new());
         let error = registry.save_yaml(&scope, "not: [valid").await.unwrap_err();
         assert!(error.starts_with("Invalid workflow YAML:"));
     }
@@ -578,7 +578,7 @@ mod tests {
     async fn the_workflows_of_another_organization_are_not_found() {
         let owner = scope_of("org-a");
         let other = scope_of("org-b");
-        let registry = WorkflowRegistry::new(Arc::new(MemoryStore::default()), Vec::new());
+        let registry = WorkflowRegistry::new(Arc::new(MemoryRepository::default()), Vec::new());
         registry
             .save(&owner, &definition("wf-1", WorkflowVisibility::User))
             .await
@@ -593,7 +593,7 @@ mod tests {
     async fn two_organizations_keep_their_own_workflows_apart() {
         let a = scope_of("org-a");
         let b = scope_of("org-b");
-        let registry = WorkflowRegistry::new(Arc::new(MemoryStore::default()), Vec::new());
+        let registry = WorkflowRegistry::new(Arc::new(MemoryRepository::default()), Vec::new());
         registry
             .save(&a, &definition("shared-id", WorkflowVisibility::User))
             .await
@@ -612,7 +612,7 @@ mod tests {
     async fn a_workflow_of_another_organization_cannot_be_removed() {
         let owner = scope_of("org-a");
         let other = scope_of("org-b");
-        let registry = WorkflowRegistry::new(Arc::new(MemoryStore::default()), Vec::new());
+        let registry = WorkflowRegistry::new(Arc::new(MemoryRepository::default()), Vec::new());
         registry
             .save(&owner, &definition("wf-1", WorkflowVisibility::User))
             .await
@@ -628,7 +628,7 @@ mod tests {
         let a = scope_of("org-a");
         let b = scope_of("org-b");
         let yaml = "id: builtin\nname: Builtin\ndescription: d\nsteps: []\n";
-        let store = Arc::new(MemoryStore::default());
+        let store = Arc::new(MemoryRepository::default());
         let registry = WorkflowRegistry::new(store.clone(), vec![("builtin", yaml)]);
 
         registry.list(&a).await;

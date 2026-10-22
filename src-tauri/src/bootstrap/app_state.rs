@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use crate::commands::AppState;
 use crate::monitor::engine::MonitorEngine;
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::{mcp, redis_flush_gate, workflow};
 use datazen_feature_core::ai::context::SchemaContextBuilder;
@@ -20,14 +20,18 @@ use datazen_runtime::schema_cache::SchemaCache;
 
 use super::helpers::unique_driver_types;
 
-/// Build AppState for the GUI: Store first, then preload drivers used by saved connections.
+/// Build AppState for the GUI: DesktopRepository first, then preload drivers used by saved connections.
 /// Sync adapters / AI / prompts / workflows / history / MCP load on demand.
 pub(super) async fn build_gui_app_state(
     handle: &tauri::AppHandle,
     prompts_dir: Option<PathBuf>,
 ) -> Result<AppState, String> {
     let t_core = Instant::now();
-    let store = Arc::new(Store::init(handle).await.map_err(|e| e.to_string())?);
+    let store = Arc::new(
+        DesktopRepository::init(handle)
+            .await
+            .map_err(|e| e.to_string())?,
+    );
     redis_flush_gate::sync_from_settings(&store.get_settings().await);
     tracing::info!("[startup]   store: {:?}", t_core.elapsed());
 
@@ -53,7 +57,7 @@ pub(super) async fn build_gui_app_state(
 
 /// Build AppState for headless MCP (shells only; AI/prompts/sync load on first use).
 pub(super) async fn build_app_state(
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     prompts_dir: Option<PathBuf>,
 ) -> Result<AppState, String> {
     redis_flush_gate::sync_from_settings(&store.get_settings().await);
@@ -161,7 +165,7 @@ pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<
 }
 
 pub(crate) fn finish_app_state(
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
     sync_adapters: Arc<crate::transfer::adapter_registry::SyncAdapterRegistry>,
     prompts_dir: Option<PathBuf>,
@@ -197,7 +201,9 @@ pub(crate) fn finish_app_state(
     // 桌面身份组装失败时不编造组织身份——该存储不承认任何组织，一切访问按
     // 「不存在」处理（依赖身份的 IPC 调用本来也会明确失败）。
     let schema_diff_reviewed_plans =
-        crate::commands::schema_diff::reviewed_store::desktop_reviewed_plan_store(&platform);
+        crate::commands::schema_diff::reviewed_repository::desktop_reviewed_plan_repository(
+            &platform,
+        );
     // AI 元数据源：共享实现住在 feature-core，桌面只提供两个跨形态件——Runtime
     // 门面与执行宿主。桌面不再有自己的 AI 适配层。
     let schema_source = crate::services::schema_context_source::desktop_schema_context_source(
@@ -219,7 +225,9 @@ pub(crate) fn finish_app_state(
             datazen_feature_core::ai::prompt_resolver::PromptResolver::new(&data_dir, prompts_dir),
         ),
         workflow_registry: Arc::new(workflow::WorkflowRegistry::new(
-            Arc::new(workflow::registry::AppDbWorkflowStore::new(app_db.clone())),
+            Arc::new(workflow::registry::AppDbWorkflowRepository::new(
+                app_db.clone(),
+            )),
             data_dir.clone(),
         )),
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
@@ -245,11 +253,11 @@ pub(crate) fn finish_app_state(
         schema_diff_reviewed_plans,
         // Data Sync 的存储端口实例在组装期创建一次：宿主决定「实例从哪来」，
         // 规则与落盘实现留在共享包里。
-        sync_stores: crate::commands::SyncStorePorts::desktop(),
+        sync_stores: crate::commands::SyncRepositoryPorts::desktop(),
         // Data Transfer 的计划/检查点存储：宿主在组装期创建一个实例并注入。
         // 包内不再有进程级全局，存储的生命周期到这里为止。
         transfer_plans: Arc::new(
-            crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+            crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
         ),
     };
     monitor_engine.attach_app_state(Arc::new(state.clone()));

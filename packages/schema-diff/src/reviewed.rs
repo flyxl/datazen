@@ -3,7 +3,7 @@
 //! # 规则留包，存储走端口
 //!
 //! 本模块保留**评审计划的规则**：身份指纹、目标快照复核、依赖目录比对、计划有效期。
-//! **存储**由 [`ReviewedPlanStore`] 端口抽象，实例由宿主注入。
+//! **存储**由 [`ReviewedPlanRepository`] 端口抽象，实例由宿主注入。
 //!
 //! 包内**不再持有进程级全局可变状态**：计划不再寄居在某个 `static` 里，
 //! 而是寄居在宿主注入的存储实例中，并按组织作用域隔离——多租户宿主里
@@ -27,7 +27,7 @@
 //!
 //! # 存储实现
 //!
-//! 本包随端口一起提供 [`InMemoryReviewedPlanStore`]：形态中立、无副作用、无传输的
+//! 本包随端口一起提供 [`InMemoryReviewedPlanRepository`]：形态中立、无副作用、无传输的
 //! 进程内原语（先例：平台文档 §4 的 `ports::budget::pool_ledger`）。落盘实现由宿主
 //! 另给；桌面在其之上叠加**单租户**收窄。
 use super::{
@@ -56,7 +56,7 @@ pub const REVIEWED_PLAN_MAX_ENTRIES: usize = 128;
 ///
 /// 只表达「存储不可用」；**不**表达「越权」——越组织访问一律按「不存在」处理。
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum ReviewedPlanStoreError {
+pub enum ReviewedPlanRepositoryError {
     #[error("reviewed plan store unavailable: {0}")]
     Unavailable(String),
 }
@@ -70,7 +70,7 @@ pub enum ReviewedPlanStoreError {
 ///   否则会泄漏「存在但无权」（CM-05）。
 /// * `remove` 返回 `false` 表示该计划已被消费，据此保证「一次部署只消费一次」。
 #[async_trait]
-pub trait ReviewedPlanStore: Send + Sync + 'static {
+pub trait ReviewedPlanRepository: Send + Sync + 'static {
     /// 冻结（写入）一份已评审计划。
     ///
     /// `put` 以 `scope` 为**归属键**；越组织写入是**丢弃**还是**落入别组织命名空间**，
@@ -80,21 +80,21 @@ pub trait ReviewedPlanStore: Send + Sync + 'static {
         scope: &OrganizationScope,
         plan_id: &str,
         plan: ReviewedPlan,
-    ) -> Result<(), ReviewedPlanStoreError>;
+    ) -> Result<(), ReviewedPlanRepositoryError>;
 
     /// 读取一份已评审计划（不消费）。缺失或越组织一律返回 `None`。
     async fn get(
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<Option<ReviewedPlan>, ReviewedPlanStoreError>;
+    ) -> Result<Option<ReviewedPlan>, ReviewedPlanRepositoryError>;
 
     /// 消费一份已评审计划（取回并删除）。已被消费返回 `false`。
     async fn remove(
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<bool, ReviewedPlanStoreError>;
+    ) -> Result<bool, ReviewedPlanRepositoryError>;
 }
 
 /// 评审计划在存储里的键：**组织 + 计划 id**。
@@ -124,11 +124,11 @@ struct PlanKey {
 /// * 读取**不**按有效期过滤：过期判定属于规则层（[`validate`] 由
 ///   `consume` 调用），存储层只负责存取。
 #[derive(Default)]
-pub struct InMemoryReviewedPlanStore {
+pub struct InMemoryReviewedPlanRepository {
     plans: Mutex<HashMap<PlanKey, ReviewedPlan>>,
 }
 
-impl InMemoryReviewedPlanStore {
+impl InMemoryReviewedPlanRepository {
     /// 新建一个空存储。
     pub fn new() -> Self {
         Self::default()
@@ -153,13 +153,13 @@ impl InMemoryReviewedPlanStore {
 }
 
 #[async_trait]
-impl ReviewedPlanStore for InMemoryReviewedPlanStore {
+impl ReviewedPlanRepository for InMemoryReviewedPlanRepository {
     async fn put(
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
         plan: ReviewedPlan,
-    ) -> Result<(), ReviewedPlanStoreError> {
+    ) -> Result<(), ReviewedPlanRepositoryError> {
         let mut plans = self.plans.lock().await;
         // 裁剪**已失效**的条目（判定与规则层同一个 `is_expired`）：失效条目对
         // 规则层来说本来就不可用，留着只是占位。按「年龄」裁剪会在**系统时钟
@@ -184,7 +184,7 @@ impl ReviewedPlanStore for InMemoryReviewedPlanStore {
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<Option<ReviewedPlan>, ReviewedPlanStoreError> {
+    ) -> Result<Option<ReviewedPlan>, ReviewedPlanRepositoryError> {
         Ok(self
             .plans
             .lock()
@@ -197,7 +197,7 @@ impl ReviewedPlanStore for InMemoryReviewedPlanStore {
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<bool, ReviewedPlanStoreError> {
+    ) -> Result<bool, ReviewedPlanRepositoryError> {
         Ok(self
             .plans
             .lock()
@@ -314,7 +314,7 @@ pub enum PhysicalDatabaseScope {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn freeze(
-    store: &dyn ReviewedPlanStore,
+    store: &dyn ReviewedPlanRepository,
     scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
@@ -348,7 +348,7 @@ pub async fn freeze(
 
 #[allow(clippy::too_many_arguments)]
 pub async fn freeze_with_dependency_catalog(
-    store: &dyn ReviewedPlanStore,
+    store: &dyn ReviewedPlanRepository,
     scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
@@ -383,7 +383,7 @@ pub async fn freeze_with_dependency_catalog(
 
 #[allow(clippy::too_many_arguments)]
 pub async fn freeze_with_objects(
-    store: &dyn ReviewedPlanStore,
+    store: &dyn ReviewedPlanRepository,
     scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
@@ -412,7 +412,7 @@ pub async fn freeze_with_objects(
 
 #[allow(clippy::too_many_arguments)]
 pub async fn freeze_with_objects_and_mysql_view_context(
-    store: &dyn ReviewedPlanStore,
+    store: &dyn ReviewedPlanRepository,
     scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
@@ -450,7 +450,7 @@ pub async fn freeze_with_objects_and_mysql_view_context(
 /// Deploy re-reads this catalog before executing any statement.
 #[allow(clippy::too_many_arguments)]
 pub async fn freeze_with_unified_catalog(
-    store: &dyn ReviewedPlanStore,
+    store: &dyn ReviewedPlanRepository,
     scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
@@ -492,7 +492,7 @@ pub async fn freeze_with_unified_catalog(
 
 #[allow(clippy::too_many_arguments)]
 async fn freeze_internal(
-    store: &dyn ReviewedPlanStore,
+    store: &dyn ReviewedPlanRepository,
     scope: &OrganizationScope,
     plan: &mut SchemaDiffPlan,
     session: String,
@@ -538,7 +538,7 @@ async fn freeze_internal(
 
 #[allow(clippy::too_many_arguments)]
 pub async fn consume(
-    store: &dyn ReviewedPlanStore,
+    store: &dyn ReviewedPlanRepository,
     scope: &OrganizationScope,
     submitted: &SchemaDiffPlan,
     session: &str,
@@ -780,5 +780,5 @@ pub fn validate_object_snapshot(
 mod tests;
 
 #[cfg(test)]
-#[path = "reviewed_store_tests.rs"]
-mod store_tests;
+#[path = "reviewed_repository_tests.rs"]
+mod repository_tests;

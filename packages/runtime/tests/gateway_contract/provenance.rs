@@ -7,7 +7,7 @@ use crate::gateway_fixtures as fx;
 use datazen_runtime::connection::Counter;
 use datazen_runtime::gateway::{
     EventDisposition, ExecutionEventKind, ExecutionSource, GatewayAction, GatewayError,
-    InMemoryIdempotencyStore, SourceKind,
+    InMemoryIdempotencyRepository, SourceKind,
 };
 // ───────────────── D 授权与来源 ─────────────────
 
@@ -17,7 +17,7 @@ async fn authorization_is_rechecked_before_dispatching_the_driver() {
     let h = fx::harness_with(
         Arc::new(fx::RecordingPort::new(fx::ready_view())),
         authorizer.clone(),
-        InMemoryIdempotencyStore::shared(),
+        InMemoryIdempotencyRepository::shared(),
     );
     let id = fx::accept(&h, fx::request(fx::REVISION)).await;
 

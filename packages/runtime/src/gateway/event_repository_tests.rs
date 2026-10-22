@@ -1,4 +1,4 @@
-//! `EventStore` 的单元测试。
+//! `EventRepository` 的单元测试。
 //!
 //! 从 `events.rs` 里拆出来单独成文件：事件水位是本轨道行数最多的模块，
 //! 把测试留在同一文件会顶破 800 行上限。
@@ -7,7 +7,9 @@
 //! 是事件水位本身的行为，而不是任何测试专用旁路。
 
 use crate::connection::{ContextConfidence, Counter, DbSessionId, ExecutionId, ExecutionState};
-use crate::gateway::events::{EventDisposition, EventStore, ExecutionEvent, ExecutionEventKind};
+use crate::gateway::events::{
+    EventDisposition, EventRepository, ExecutionEvent, ExecutionEventKind,
+};
 use crate::gateway::provenance::{ExecutionSource, SourceKind};
 
 fn event(sequence: u64, kind: ExecutionEventKind) -> ExecutionEvent {
@@ -22,15 +24,15 @@ fn event(sequence: u64, kind: ExecutionEventKind) -> ExecutionEvent {
     }
 }
 
-fn bound_store() -> EventStore {
-    let mut store = EventStore::new();
+fn bound_store() -> EventRepository {
+    let mut store = EventRepository::new();
     store.bind(DbSessionId::new("dbse_a"), Counter::new(5));
     store
 }
 
 #[test]
 fn unbound_store_refuses_everything() {
-    let mut store = EventStore::new();
+    let mut store = EventRepository::new();
     assert!(!store.is_bound());
     assert_eq!(
         store.apply(&event(
@@ -488,7 +490,7 @@ fn a_declared_source_on_an_event_is_counted_and_dropped() {
 
 #[test]
 fn rebinding_the_same_binding_is_idempotent_and_any_rebind_is_refused() {
-    let mut store = EventStore::new();
+    let mut store = EventRepository::new();
     store.bind(DbSessionId::new("dbse_a"), Counter::new(5));
     // 完全相同的绑定重复一次：幂等，不清空水位。
     store.bind(DbSessionId::new("dbse_a"), Counter::new(5));

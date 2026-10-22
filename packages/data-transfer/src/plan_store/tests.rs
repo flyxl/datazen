@@ -25,7 +25,7 @@ fn foreign_scope() -> OrganizationScope {
 /// Issue one plan with an explicit TTL. Every test plan is issued without
 /// tables and without schemas, so the helper only carries the drivers.
 fn issue_plan(
-    store: &InMemoryTransferPlanStore,
+    store: &InMemoryTransferPlanRepository,
     scope: &OrganizationScope,
     job: TransferJob,
     preview: &TransferPreview,
@@ -172,7 +172,7 @@ fn disabled_mappings_are_excluded_from_the_plan_fingerprint_scope() {
 /// the refusal carries no organization detail.
 #[test]
 fn a_plan_of_another_organization_is_not_found_rather_than_forbidden() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let foreign = foreign_scope();
     let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
@@ -236,7 +236,7 @@ fn a_plan_of_another_organization_is_not_found_rather_than_forbidden() {
 /// plan side, and the two refusals are byte for byte the same.
 #[test]
 fn a_checkpoint_of_another_organization_is_not_found_rather_than_forbidden() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let foreign = foreign_scope();
     let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
@@ -294,7 +294,7 @@ fn a_checkpoint_of_another_organization_is_not_found_rather_than_forbidden() {
 /// or resume token.
 #[test]
 fn a_foreign_organization_cannot_mutate_the_owners_plan_or_checkpoint() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let foreign = foreign_scope();
     let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
@@ -396,8 +396,8 @@ fn a_foreign_organization_cannot_mutate_the_owners_plan_or_checkpoint() {
 /// would go red.
 #[test]
 fn two_store_instances_do_not_share_state_so_the_plan_store_is_not_a_global() {
-    let first = InMemoryTransferPlanStore::new();
-    let second = InMemoryTransferPlanStore::new();
+    let first = InMemoryTransferPlanRepository::new();
+    let second = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
@@ -447,7 +447,7 @@ fn two_store_instances_do_not_share_state_so_the_plan_store_is_not_a_global() {
 
 #[test]
 fn expired_plan_is_rejected_and_consumed_plan_is_one_shot() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
@@ -568,7 +568,7 @@ fn source_scope_fingerprint_changes_when_recordset_changes() {
 
 #[test]
 fn sql_file_target_dialect_is_bound_to_the_immutable_plan() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let source = datazen_driver_api::mock_driver::MockDriver::new("postgresql", Default::default());
     let target = datazen_driver_api::mock_driver::MockDriver::new("mysql", Default::default());
@@ -660,7 +660,7 @@ fn test_tester_run_request_rejects_all_client_owned_execution_payloads() {
 
 #[test]
 fn resume_checkpoint_is_opaque_single_flight_and_consumed_on_success() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
@@ -706,7 +706,7 @@ fn resume_checkpoint_is_opaque_single_flight_and_consumed_on_success() {
 
 #[test]
 fn chunk_checkpoint_binds_progress_and_claims_the_token_once() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
@@ -814,7 +814,7 @@ fn chunk_checkpoint_binds_progress_and_claims_the_token_once() {
 
 #[test]
 fn test_tester_concurrent_checkpoint_claim_allows_exactly_one_and_prevents_replay() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
@@ -913,7 +913,7 @@ fn changed_source_digest_rejects_resume_and_session_invalidates_token() {
         can_execute: true,
         block_reason: None,
     };
-    let store = Arc::new(InMemoryTransferPlanStore::new());
+    let store = Arc::new(InMemoryTransferPlanRepository::new());
     let scope = scope();
     let plan_id = issue_plan(
         &store,
@@ -973,7 +973,7 @@ fn changed_source_digest_rejects_resume_and_session_invalidates_token() {
 
 #[test]
 fn checkpoint_ttl_is_independent_from_preview_expiry_and_expires_explicitly() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
     let preview = TransferPreview {
@@ -1036,7 +1036,7 @@ fn run_request_accepts_only_opaque_resume_token_field() {
 }
 
 fn tester_claimed_chunk(
-    store: &InMemoryTransferPlanStore,
+    store: &InMemoryTransferPlanRepository,
     scope: &OrganizationScope,
 ) -> (String, String) {
     let driver = datazen_driver_api::mock_driver::MockDriver::new("fixture", Default::default());
@@ -1083,7 +1083,7 @@ fn tester_claimed_chunk(
 
 #[test]
 fn test_tester_checkpoint_state_matrix_rejects_wrong_owner_regression_and_replay() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let (plan_id, token) = tester_claimed_chunk(&store, &scope);
     store
@@ -1171,7 +1171,7 @@ fn test_tester_checkpoint_state_matrix_rejects_wrong_owner_regression_and_replay
 
 #[test]
 fn test_tester_expired_checkpoint_is_removed_when_claimed() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let (plan_id, token) = tester_claimed_chunk(&store, &scope);
     store
@@ -1192,7 +1192,7 @@ fn test_tester_expired_checkpoint_is_removed_when_claimed() {
 
 #[test]
 fn test_tester_checkpoint_store_fails_closed_on_expiry_and_corruption_boundaries() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let (plan_id, token) = tester_claimed_chunk(&store, &scope);
 
@@ -1334,7 +1334,7 @@ fn test_tester_unfinalized_checkpoint_session_drop_fences_resume_token() {
         can_execute: true,
         block_reason: None,
     };
-    let store = Arc::new(InMemoryTransferPlanStore::new());
+    let store = Arc::new(InMemoryTransferPlanRepository::new());
     let scope = scope();
     let plan_id = issue_plan(
         &store,
@@ -1374,7 +1374,7 @@ fn test_tester_unfinalized_checkpoint_session_drop_fences_resume_token() {
 
 #[test]
 fn test_tester_expired_inflight_checkpoint_is_removed_when_released() {
-    let store = InMemoryTransferPlanStore::new();
+    let store = InMemoryTransferPlanRepository::new();
     let scope = scope();
     let (_plan_id, token) = tester_claimed_chunk(&store, &scope);
     store
@@ -1395,7 +1395,7 @@ fn test_tester_expired_inflight_checkpoint_is_removed_when_released() {
 
 #[test]
 fn test_tester_invalidated_session_cannot_renew_or_advance_without_token() {
-    let store = Arc::new(InMemoryTransferPlanStore::new());
+    let store = Arc::new(InMemoryTransferPlanRepository::new());
     let mut session = TransferCheckpointSession::new(
         store.clone(),
         scope(),

@@ -218,7 +218,7 @@ impl AppSettings {
     ///
     /// The onboarding state is materialized as "not completed" so the first-run
     /// journey is shown. Writing it immediately also keeps the very next launch
-    /// from mistaking this install for an upgrade (see [`crate::store::Store::load_all`]).
+    /// from mistaking this install for an upgrade (see [`crate::store::DesktopRepository::load_all`]).
     pub fn default_for_first_run() -> Self {
         let mut settings = Self::default();
         settings.language = crate::i18n_locale::default_ui_language();

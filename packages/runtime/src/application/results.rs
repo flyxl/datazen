@@ -81,7 +81,10 @@ pub struct RuntimeResultSink(
     pub(super) Arc<Mutex<HashMap<ExecutionId, ExecutionEntry>>>,
     Arc<
         std::sync::OnceLock<
-            Result<Arc<crate::artifact::FileArtifactStore>, datazen_platform_api::error::PortError>,
+            Result<
+                Arc<crate::artifact::FileArtifactRepository>,
+                datazen_platform_api::error::PortError,
+            >,
         >,
     >,
     pub(super) Arc<Mutex<HashMap<SessionHandle, Arc<super::backup::Binding>>>>,
@@ -90,7 +93,7 @@ pub struct RuntimeResultSink(
 impl RuntimeResultSink {
     pub fn with_artifact_store(
         &self,
-        store: Arc<crate::artifact::FileArtifactStore>,
+        store: Arc<crate::artifact::FileArtifactRepository>,
     ) -> Result<(), ApiError> {
         self.1.set(Ok(store)).map_err(|_| {
             ApiError::new(
@@ -99,7 +102,7 @@ impl RuntimeResultSink {
             )
         })
     }
-    fn store(&self) -> Result<Arc<crate::artifact::FileArtifactStore>, ApiError> {
+    fn store(&self) -> Result<Arc<crate::artifact::FileArtifactRepository>, ApiError> {
         self.1
             .get_or_init(|| {
                 let root = std::env::temp_dir().join(format!(
@@ -108,7 +111,7 @@ impl RuntimeResultSink {
                         .generate()
                         .as_str()
                 ));
-                crate::artifact::FileArtifactStore::open(root).map(Arc::new)
+                crate::artifact::FileArtifactRepository::open(root).map(Arc::new)
             })
             .clone()
             .map_err(convert::port)

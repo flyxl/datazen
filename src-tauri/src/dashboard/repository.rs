@@ -2,7 +2,7 @@
 //!
 //! The desktop host keeps the rows in its SQLite store; the rules that
 //! decide what a dashboard contains live in
-//! `datazen_feature_core::dashboard::store`.
+//! `datazen_feature_core::dashboard::repository`.
 //!
 //! ## 组织作用域
 //!
@@ -15,7 +15,7 @@
 use crate::platform::scope::is_local_scope;
 use crate::store::{AppDb, AppDbError, AppSettings};
 use datazen_feature_core::dashboard::records::{DashboardRecord, WidgetRecord};
-use datazen_feature_core::dashboard::store::{DashboardStore, DashboardStoreError};
+use datazen_feature_core::dashboard::repository::{DashboardRepository, DashboardRepositoryError};
 use datazen_feature_core::dashboard::types::{DashboardWorkflowRef, MonitorSettings};
 use datazen_platform_api::ports::scope::OrganizationScope;
 
@@ -24,18 +24,18 @@ pub fn load_monitor_settings(settings: &AppSettings) -> MonitorSettings {
     settings.monitor.clone()
 }
 
-fn store_error(error: AppDbError) -> DashboardStoreError {
+fn store_error(error: AppDbError) -> DashboardRepositoryError {
     match error {
-        AppDbError::NotFound(id) => DashboardStoreError::NotFound(id),
-        other => DashboardStoreError::Db(other.to_string()),
+        AppDbError::NotFound(id) => DashboardRepositoryError::NotFound(id),
+        other => DashboardRepositoryError::Db(other.to_string()),
     }
 }
 
-impl DashboardStore for AppDb {
+impl DashboardRepository for AppDb {
     fn list_dashboard_rows(
         &self,
         scope: &OrganizationScope,
-    ) -> Result<Vec<DashboardRecord>, DashboardStoreError> {
+    ) -> Result<Vec<DashboardRecord>, DashboardRepositoryError> {
         if !is_local_scope(scope) {
             return Ok(Vec::new());
         }
@@ -46,9 +46,9 @@ impl DashboardStore for AppDb {
         &self,
         scope: &OrganizationScope,
         id: &str,
-    ) -> Result<DashboardRecord, DashboardStoreError> {
+    ) -> Result<DashboardRecord, DashboardRepositoryError> {
         if !is_local_scope(scope) {
-            return Err(DashboardStoreError::NotFound(id.to_string()));
+            return Err(DashboardRepositoryError::NotFound(id.to_string()));
         }
         self.get_dashboard(id).map_err(store_error)
     }
@@ -57,9 +57,9 @@ impl DashboardStore for AppDb {
         &self,
         scope: &OrganizationScope,
         row: &DashboardRecord,
-    ) -> Result<(), DashboardStoreError> {
+    ) -> Result<(), DashboardRepositoryError> {
         if !is_local_scope(scope) {
-            return Err(DashboardStoreError::NotFound(row.id.clone()));
+            return Err(DashboardRepositoryError::NotFound(row.id.clone()));
         }
         self.upsert_dashboard(row).map_err(store_error)
     }
@@ -68,9 +68,9 @@ impl DashboardStore for AppDb {
         &self,
         scope: &OrganizationScope,
         id: &str,
-    ) -> Result<(), DashboardStoreError> {
+    ) -> Result<(), DashboardRepositoryError> {
         if !is_local_scope(scope) {
-            return Err(DashboardStoreError::NotFound(id.to_string()));
+            return Err(DashboardRepositoryError::NotFound(id.to_string()));
         }
         self.delete_dashboard(id).map_err(store_error)
     }
@@ -80,9 +80,9 @@ impl DashboardStore for AppDb {
         scope: &OrganizationScope,
         id: &str,
         paused: bool,
-    ) -> Result<(), DashboardStoreError> {
+    ) -> Result<(), DashboardRepositoryError> {
         if !is_local_scope(scope) {
-            return Err(DashboardStoreError::NotFound(id.to_string()));
+            return Err(DashboardRepositoryError::NotFound(id.to_string()));
         }
         self.set_dashboard_refresh_paused(id, paused)
             .map_err(store_error)
@@ -92,7 +92,7 @@ impl DashboardStore for AppDb {
         &self,
         scope: &OrganizationScope,
         dashboard_id: &str,
-    ) -> Result<Vec<WidgetRecord>, DashboardStoreError> {
+    ) -> Result<Vec<WidgetRecord>, DashboardRepositoryError> {
         if !is_local_scope(scope) {
             return Ok(Vec::new());
         }
@@ -103,9 +103,9 @@ impl DashboardStore for AppDb {
         &self,
         scope: &OrganizationScope,
         id: &str,
-    ) -> Result<WidgetRecord, DashboardStoreError> {
+    ) -> Result<WidgetRecord, DashboardRepositoryError> {
         if !is_local_scope(scope) {
-            return Err(DashboardStoreError::NotFound(id.to_string()));
+            return Err(DashboardRepositoryError::NotFound(id.to_string()));
         }
         self.get_widget(id).map_err(store_error)
     }
@@ -114,9 +114,9 @@ impl DashboardStore for AppDb {
         &self,
         scope: &OrganizationScope,
         row: &WidgetRecord,
-    ) -> Result<(), DashboardStoreError> {
+    ) -> Result<(), DashboardRepositoryError> {
         if !is_local_scope(scope) {
-            return Err(DashboardStoreError::NotFound(row.id.clone()));
+            return Err(DashboardRepositoryError::NotFound(row.id.clone()));
         }
         self.upsert_widget(row).map_err(store_error)
     }
@@ -125,9 +125,9 @@ impl DashboardStore for AppDb {
         &self,
         scope: &OrganizationScope,
         id: &str,
-    ) -> Result<(), DashboardStoreError> {
+    ) -> Result<(), DashboardRepositoryError> {
         if !is_local_scope(scope) {
-            return Err(DashboardStoreError::NotFound(id.to_string()));
+            return Err(DashboardRepositoryError::NotFound(id.to_string()));
         }
         self.delete_widget(id).map_err(store_error)
     }
@@ -136,7 +136,7 @@ impl DashboardStore for AppDb {
         &self,
         scope: &OrganizationScope,
         workflow_id: &str,
-    ) -> Result<Vec<DashboardWorkflowRef>, DashboardStoreError> {
+    ) -> Result<Vec<DashboardWorkflowRef>, DashboardRepositoryError> {
         if !is_local_scope(scope) {
             return Ok(Vec::new());
         }

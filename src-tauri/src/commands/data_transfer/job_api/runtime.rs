@@ -315,7 +315,7 @@ impl Drop for WriteGateGuard {
 }
 
 pub(crate) async fn drive(
-    transfer_plans: Arc<dyn crate::data_transfer::plan_store::TransferPlanStorePort>,
+    transfer_plans: Arc<dyn crate::data_transfer::plan_store::TransferPlanRepositoryPort>,
     host: Arc<JobHost>,
     accepted: AcceptedJob,
     plan: DrivePlan,

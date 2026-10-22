@@ -35,12 +35,12 @@ use datazen_runtime::connection::{
     NamespaceTarget, OrganizationId, OwnerRef, PrincipalId, RuntimeError, SessionContext,
     SessionHandle, SessionState, SessionView, StreamId, Timestamp,
 };
-use datazen_runtime::gateway::idempotency::IdempotencyStoreError;
+use datazen_runtime::gateway::idempotency::IdempotencyRepositoryError;
 use datazen_runtime::gateway::{
     AlwaysAllow, AuthorizationDenial, Authorizer, CancelBinding, CancelRequest, ExecutionEvent,
     ExecutionEventKind, ExecutionGateway, ExecutionRequest, ExecutionSource, FixedClock,
-    GatewayAction, GrantRegistry, IdempotencyRecord, IdempotencyScope, IdempotencyStore,
-    InMemoryIdempotencyStore, RequestPrincipal, SourceKind, SubmissionOperation,
+    GatewayAction, GrantRegistry, IdempotencyRecord, IdempotencyRepository, IdempotencyScope,
+    InMemoryIdempotencyRepository, RequestPrincipal, SourceKind, SubmissionOperation,
     SubmissionTokenGuard, TokenKeyring,
 };
 use datazen_runtime::registry::SessionPort;
@@ -382,11 +382,11 @@ impl SessionPort for RecordingPort {
 // ─────────────────────────────── 幂等存储替身 ───────────────────────────────
 
 /// 读不出来的幂等存储：此时**要求核验**，而不是当作没记录重新受理。
-pub struct UnreadableStore {
+pub struct UnreadableRepository {
     pub write_calls: AtomicU64,
 }
 
-impl UnreadableStore {
+impl UnreadableRepository {
     pub fn shared() -> Arc<Self> {
         Arc::new(Self {
             write_calls: AtomicU64::new(0),
@@ -398,21 +398,21 @@ impl UnreadableStore {
     }
 }
 
-impl IdempotencyStore for UnreadableStore {
+impl IdempotencyRepository for UnreadableRepository {
     fn read(
         &self,
         _scope: &IdempotencyScope,
-    ) -> Result<Option<IdempotencyRecord>, IdempotencyStoreError> {
-        Err(IdempotencyStoreError::read("存储不可读"))
+    ) -> Result<Option<IdempotencyRecord>, IdempotencyRepositoryError> {
+        Err(IdempotencyRepositoryError::read("存储不可读"))
     }
 
     fn write(
         &self,
         _scope: &IdempotencyScope,
         _record: IdempotencyRecord,
-    ) -> Result<(), IdempotencyStoreError> {
+    ) -> Result<(), IdempotencyRepositoryError> {
         self.write_calls.fetch_add(1, Ordering::SeqCst);
-        Err(IdempotencyStoreError::write("存储不可写"))
+        Err(IdempotencyRepositoryError::write("存储不可写"))
     }
 }
 
@@ -473,11 +473,11 @@ impl Authorizer for CancelDenyAuthorizer {
 }
 
 /// 读得到（无记录）但写不进去的幂等存储：验证「写失败不得留下半条记录」。
-pub struct WriteFailingStore {
+pub struct WriteFailingRepository {
     pub write_calls: AtomicU64,
 }
 
-impl WriteFailingStore {
+impl WriteFailingRepository {
     pub fn shared() -> Arc<Self> {
         Arc::new(Self {
             write_calls: AtomicU64::new(0),
@@ -489,11 +489,11 @@ impl WriteFailingStore {
     }
 }
 
-impl IdempotencyStore for WriteFailingStore {
+impl IdempotencyRepository for WriteFailingRepository {
     fn read(
         &self,
         _scope: &IdempotencyScope,
-    ) -> Result<Option<IdempotencyRecord>, IdempotencyStoreError> {
+    ) -> Result<Option<IdempotencyRecord>, IdempotencyRepositoryError> {
         Ok(None)
     }
 
@@ -501,9 +501,9 @@ impl IdempotencyStore for WriteFailingStore {
         &self,
         _scope: &IdempotencyScope,
         _record: IdempotencyRecord,
-    ) -> Result<(), IdempotencyStoreError> {
+    ) -> Result<(), IdempotencyRepositoryError> {
         self.write_calls.fetch_add(1, Ordering::SeqCst);
-        Err(IdempotencyStoreError::write("存储不可写"))
+        Err(IdempotencyRepositoryError::write("存储不可写"))
     }
 }
 
@@ -512,15 +512,15 @@ impl IdempotencyStore for WriteFailingStore {
 /// 要断言的是「拒得**够早**」——过期重放不得查询账本、保留期清扫真的删掉了
 /// 记录。这些没法从「返回了什么错误」推出来，只能数动作。
 #[derive(Debug, Default)]
-pub struct CountingStore {
-    inner: InMemoryIdempotencyStore,
+pub struct CountingRepository {
+    inner: InMemoryIdempotencyRepository,
     reads: AtomicU64,
     writes: AtomicU64,
     deletes: AtomicU64,
     read_failures: AtomicU64,
 }
 
-impl CountingStore {
+impl CountingRepository {
     pub fn shared() -> Arc<Self> {
         Arc::new(Self::default())
     }
@@ -553,14 +553,14 @@ impl CountingStore {
     }
 }
 
-impl IdempotencyStore for CountingStore {
+impl IdempotencyRepository for CountingRepository {
     fn read(
         &self,
         scope: &IdempotencyScope,
-    ) -> Result<Option<IdempotencyRecord>, IdempotencyStoreError> {
+    ) -> Result<Option<IdempotencyRecord>, IdempotencyRepositoryError> {
         self.reads.fetch_add(1, Ordering::SeqCst);
         if self.read_failures.load(Ordering::SeqCst) == 1 {
-            return Err(IdempotencyStoreError::read("夹具：账本读不出来"));
+            return Err(IdempotencyRepositoryError::read("夹具：账本读不出来"));
         }
         self.inner.read(scope)
     }
@@ -569,12 +569,12 @@ impl IdempotencyStore for CountingStore {
         &self,
         scope: &IdempotencyScope,
         record: IdempotencyRecord,
-    ) -> Result<(), IdempotencyStoreError> {
+    ) -> Result<(), IdempotencyRepositoryError> {
         self.writes.fetch_add(1, Ordering::SeqCst);
         self.inner.write(scope, record)
     }
 
-    fn delete(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyStoreError> {
+    fn delete(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyRepositoryError> {
         self.deletes.fetch_add(1, Ordering::SeqCst);
         self.inner.delete(scope)
     }
@@ -592,7 +592,7 @@ pub struct Harness {
 /// 「没接令牌层」两条路径的差别。
 pub struct TokenHarness {
     pub harness: Harness,
-    pub store: Arc<CountingStore>,
+    pub store: Arc<CountingRepository>,
     pub tokens: Arc<SubmissionTokenGuard>,
 }
 
@@ -607,7 +607,7 @@ pub const TOKEN_EXPIRES_AT_NANOS: u64 = TOKEN_ISSUED_AT_NANOS + TOKEN_TTL_NANOS;
 
 /// 就绪夹具 + 令牌闸门。
 pub fn token_harness() -> TokenHarness {
-    let store = CountingStore::shared();
+    let store = CountingRepository::shared();
     let clock = FixedClock::shared();
     let port = Arc::new(RecordingPort::new(ready_view()));
     port.attach_clock(clock.clone());
@@ -635,7 +635,7 @@ pub fn token_harness() -> TokenHarness {
 
 /// 同 `token_harness`，但用调用方自带的令牌闸门（密钥环、登记表现场构造）。
 pub fn token_harness_with(tokens: Arc<SubmissionTokenGuard>) -> TokenHarness {
-    let store = CountingStore::shared();
+    let store = CountingRepository::shared();
     let clock = FixedClock::shared();
     let port = Arc::new(RecordingPort::new(ready_view()));
     port.attach_clock(clock.clone());
@@ -680,7 +680,7 @@ pub fn issue_token(tokens: &SubmissionTokenGuard, now_nanos: u64) -> String {
 pub fn harness_with(
     port: Arc<RecordingPort>,
     authorizer: Arc<dyn Authorizer>,
-    store: Arc<dyn IdempotencyStore>,
+    store: Arc<dyn IdempotencyRepository>,
 ) -> Harness {
     let clock = FixedClock::shared();
     port.attach_clock(clock.clone());
@@ -700,7 +700,7 @@ pub fn ready_harness() -> Harness {
     let gateway = ExecutionGateway::new(
         port.clone(),
         Arc::new(AlwaysAllow),
-        InMemoryIdempotencyStore::shared(),
+        InMemoryIdempotencyRepository::shared(),
         clock.clone(),
     );
     Harness {
@@ -711,8 +711,8 @@ pub fn ready_harness() -> Harness {
 }
 
 /// 就绪夹具 + 可断言写入次数的内存存储。
-pub fn counted_harness() -> (Harness, Arc<InMemoryIdempotencyStore>) {
-    let store = InMemoryIdempotencyStore::shared();
+pub fn counted_harness() -> (Harness, Arc<InMemoryIdempotencyRepository>) {
+    let store = InMemoryIdempotencyRepository::shared();
     let clock = FixedClock::shared();
     let port = Arc::new(RecordingPort::new(ready_view()));
     port.attach_clock(clock.clone());

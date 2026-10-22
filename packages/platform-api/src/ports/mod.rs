@@ -61,7 +61,7 @@ pub mod secret;
 pub mod session_directory;
 pub mod token;
 
-pub use artifact::ArtifactStore;
+pub use artifact::ArtifactRepository;
 pub use budget::{
     BudgetCoordinator, ClusterNodeBudgetPort, ControlResourcePort, DriverPoolBudgetPort,
 };

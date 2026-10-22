@@ -8,7 +8,7 @@ use datazen_runtime::connection::capability::PreciseCancel;
 use datazen_runtime::connection::{ExecutionId, ExecutionState, RuntimeError};
 use datazen_runtime::gateway::cancel::binding;
 use datazen_runtime::gateway::{
-    CancelDisposition, GatewayAction, GatewayError, InMemoryIdempotencyStore,
+    CancelDisposition, GatewayAction, GatewayError, InMemoryIdempotencyRepository,
 };
 // ───────────────── E 取消 ─────────────────
 
@@ -135,7 +135,7 @@ async fn cancel_requires_its_own_authorization() {
     let h = fx::harness_with(
         Arc::new(fx::RecordingPort::new(fx::ready_view())),
         Arc::new(fx::CancelDenyAuthorizer),
-        InMemoryIdempotencyStore::shared(),
+        InMemoryIdempotencyRepository::shared(),
     );
     let id = fx::accept(&h, fx::request(fx::REVISION)).await;
 

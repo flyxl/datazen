@@ -15,9 +15,9 @@ pub(crate) use super::{
     cancel_binding_reason, cancel_failed, is_requested, AlwaysAllow, AlwaysDeny,
     AuthorizationDenial, Authorizer, CancelBinding, CancelDisposition, CancelRequest,
     EventDisposition, ExecutionEvent, ExecutionEventKind, ExecutionGateway, ExecutionRequest,
-    ExecutionSource, FixedClock, GatewayAction, GatewayError, IdempotencyRecord, IdempotencyScope,
-    IdempotencyStore, InMemoryIdempotencyStore, RequestPrincipal, SourceKind,
-    UNKNOWN_EXECUTION_REASON,
+    ExecutionSource, FixedClock, GatewayAction, GatewayError, IdempotencyRecord,
+    IdempotencyRepository, IdempotencyScope, InMemoryIdempotencyRepository, RequestPrincipal,
+    SourceKind, UNKNOWN_EXECUTION_REASON,
 };
 // `PreciseCancel` 在 `connection` 门面里是私有导入，直接回转发不出去，这里从定义处引。
 pub(crate) use crate::connection::capability::PreciseCancel;
@@ -26,7 +26,7 @@ pub(crate) use crate::connection::{
     ExecutionReceipt, ExecutionState, OrganizationId, PrincipalId, ResourceId, RuntimeError,
     SessionHandle, SessionState, SessionView, StreamId,
 };
-pub(crate) use crate::gateway::idempotency::IdempotencyStoreError;
+pub(crate) use crate::gateway::idempotency::IdempotencyRepositoryError;
 pub(crate) use crate::registry::SessionPort;
 
 // ─────────────────────────────── 端口替身 ───────────────────────────────
@@ -246,23 +246,23 @@ impl Authorizer for FlippingAuthorizer {
 ///
 /// 自己数写次数。`write` 一旦被调用就直接 panic——这条路径下写库本身就是缺陷，
 /// 而 panic 会让红得比「返回了错误值」更醒目。
-pub(crate) struct UnreadableStore {
+pub(crate) struct UnreadableRepository {
     pub(crate) write_calls: AtomicU64,
 }
 
-impl IdempotencyStore for UnreadableStore {
+impl IdempotencyRepository for UnreadableRepository {
     fn read(
         &self,
         _scope: &IdempotencyScope,
-    ) -> Result<Option<IdempotencyRecord>, IdempotencyStoreError> {
-        Err(IdempotencyStoreError::read("storeUnavailable"))
+    ) -> Result<Option<IdempotencyRecord>, IdempotencyRepositoryError> {
+        Err(IdempotencyRepositoryError::read("storeUnavailable"))
     }
 
     fn write(
         &self,
         _scope: &IdempotencyScope,
         _record: IdempotencyRecord,
-    ) -> Result<(), IdempotencyStoreError> {
+    ) -> Result<(), IdempotencyRepositoryError> {
         self.write_calls.fetch_add(1, Ordering::SeqCst);
         panic!("不可读时绝不写入幂等存储");
     }
@@ -323,14 +323,14 @@ pub(crate) fn ready() -> SessionView {
 pub(crate) struct Harness {
     pub(crate) gateway: ExecutionGateway,
     pub(crate) port: Arc<FakePort>,
-    pub(crate) store: Arc<InMemoryIdempotencyStore>,
+    pub(crate) store: Arc<InMemoryIdempotencyRepository>,
     pub(crate) clock: Arc<FixedClock>,
 }
 
 pub(crate) fn harness_with(
     port: Arc<FakePort>,
     authorizer: Arc<dyn Authorizer>,
-    store: Arc<InMemoryIdempotencyStore>,
+    store: Arc<InMemoryIdempotencyRepository>,
 ) -> Harness {
     let clock = FixedClock::shared();
     port.attach_clock(clock.clone());
@@ -347,7 +347,7 @@ pub(crate) fn harness(port: Arc<FakePort>) -> Harness {
     harness_with(
         port,
         Arc::new(AlwaysAllow),
-        InMemoryIdempotencyStore::shared(),
+        InMemoryIdempotencyRepository::shared(),
     )
 }
 

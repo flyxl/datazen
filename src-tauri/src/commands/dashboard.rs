@@ -10,13 +10,13 @@ use crate::dashboard::create::{
     update_hidden_workflow_sql as update_hidden_workflow_sql_impl, CreateWidgetResult,
 };
 use crate::dashboard::export::{export_dashboard_json, import_dashboard};
-use datazen_feature_core::dashboard::runs::{get_run, list_run_index};
-use datazen_feature_core::dashboard::store::{
+use datazen_feature_core::dashboard::repository::{
     delete_dashboard as store_delete_dashboard, find_workflow_refs,
     get_dashboard as store_get_dashboard, list_dashboards as store_list_dashboards,
     save_dashboard as store_save_dashboard,
     set_dashboard_refresh_paused as store_set_refresh_paused,
 };
+use datazen_feature_core::dashboard::runs::{get_run, list_run_index};
 use datazen_feature_core::dashboard::types::{
     ChartConfig, Dashboard, RunIndexEntry, ViewMode, WidgetRun,
 };

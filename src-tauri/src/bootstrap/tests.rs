@@ -1,6 +1,6 @@
 use super::finish_app_state;
 use super::helpers::*;
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -202,7 +202,7 @@ async fn finish_app_state_wires_core_services() {
 
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        Store::init_with_path(temp.path())
+        DesktopRepository::init_with_path(temp.path())
             .await
             .expect("store init"),
     );
@@ -238,7 +238,7 @@ async fn finish_app_state_shares_one_app_db_between_the_registry_and_the_store()
 
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        Store::init_with_path(temp.path())
+        DesktopRepository::init_with_path(temp.path())
             .await
             .expect("store init"),
     );
@@ -311,7 +311,7 @@ async fn test_tester_finish_app_state_initializes_wapps_and_registry() {
 
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        Store::init_with_path(temp.path())
+        DesktopRepository::init_with_path(temp.path())
             .await
             .expect("store init"),
     );

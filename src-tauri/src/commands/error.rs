@@ -3,13 +3,13 @@
 //! `CommandError` categorises failures while serialising to a plain string
 //! so the frontend receives the same format as the previous `Result<T, String>`.
 
-use crate::store::StoreError;
+use crate::store::DesktopRepositoryError;
 use datazen_ai_api::AiError;
 use datazen_driver_api::DriverError;
 
 #[derive(Debug)]
 pub enum CommandError {
-    Store(StoreError),
+    Store(DesktopRepositoryError),
     Driver(DriverError),
     Ai(AiError),
     Io(std::io::Error),
@@ -69,8 +69,8 @@ impl serde::Serialize for CommandError {
     }
 }
 
-impl From<StoreError> for CommandError {
-    fn from(e: StoreError) -> Self {
+impl From<DesktopRepositoryError> for CommandError {
+    fn from(e: DesktopRepositoryError) -> Self {
         Self::Store(e)
     }
 }
@@ -131,16 +131,16 @@ impl From<crate::data_transfer::TransferError> for CommandError {
     }
 }
 
-impl From<datazen_feature_core::dashboard::store::DashboardStoreError> for CommandError {
-    fn from(e: datazen_feature_core::dashboard::store::DashboardStoreError) -> Self {
+impl From<datazen_feature_core::dashboard::repository::DashboardRepositoryError> for CommandError {
+    fn from(e: datazen_feature_core::dashboard::repository::DashboardRepositoryError) -> Self {
         match e {
-            datazen_feature_core::dashboard::store::DashboardStoreError::NotFound(id) => {
+            datazen_feature_core::dashboard::repository::DashboardRepositoryError::NotFound(id) => {
                 Self::NotFound(id)
             }
-            datazen_feature_core::dashboard::store::DashboardStoreError::Parse(msg) => {
+            datazen_feature_core::dashboard::repository::DashboardRepositoryError::Parse(msg) => {
                 Self::Validation(msg)
             }
-            datazen_feature_core::dashboard::store::DashboardStoreError::Db(msg) => {
+            datazen_feature_core::dashboard::repository::DashboardRepositoryError::Db(msg) => {
                 Self::Internal(msg)
             }
         }
@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn display_and_serialize_variants() {
         let cases: Vec<CommandError> = vec![
-            CommandError::Store(StoreError::ReadError("x".into())),
+            CommandError::Store(DesktopRepositoryError::ReadError("x".into())),
             CommandError::Driver(DriverError::QueryFailed("q".into())),
             CommandError::Ai(AiError::NotConfigured("ai".into())),
             CommandError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file")),

@@ -25,12 +25,12 @@ use datazen_runtime::connection::{
     NamespaceTarget, OrganizationId, OwnerRef, PrincipalId, RuntimeError, SessionContext,
     SessionHandle, SessionState, SessionView, Timestamp,
 };
-use datazen_runtime::gateway::idempotency::IdempotencyStoreError;
+use datazen_runtime::gateway::idempotency::IdempotencyRepositoryError;
 use datazen_runtime::gateway::owner_binding::OwnerMatchAuthorizer;
 use datazen_runtime::gateway::{
     CancelBinding, CancelRequest, ExecutionGateway, ExecutionRequest, ExecutionSource, FixedClock,
-    GatewayError, IdempotencyRecord, IdempotencyScope, IdempotencyStore, InMemoryIdempotencyStore,
-    RequestPrincipal, SourceKind,
+    GatewayError, IdempotencyRecord, IdempotencyRepository, IdempotencyScope,
+    InMemoryIdempotencyRepository, RequestPrincipal, SourceKind,
 };
 use datazen_runtime::registry::SessionPort;
 
@@ -258,16 +258,16 @@ impl SessionPort for ScriptedPort {
 
 /// 会数账本读写次数的幂等存储：证明「不创建会话」时，不能只看内存里
 /// 少了一条记录——还得证明连账本都没写过一行。
-pub struct CountingStore {
-    pub inner: Arc<InMemoryIdempotencyStore>,
+pub struct CountingRepository {
+    pub inner: Arc<InMemoryIdempotencyRepository>,
     pub reads: AtomicU64,
     pub writes: AtomicU64,
 }
 
-impl CountingStore {
+impl CountingRepository {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            inner: InMemoryIdempotencyStore::shared(),
+            inner: InMemoryIdempotencyRepository::shared(),
             reads: AtomicU64::new(0),
             writes: AtomicU64::new(0),
         })
@@ -282,11 +282,11 @@ impl CountingStore {
     }
 }
 
-impl IdempotencyStore for CountingStore {
+impl IdempotencyRepository for CountingRepository {
     fn read(
         &self,
         scope: &IdempotencyScope,
-    ) -> Result<Option<IdempotencyRecord>, IdempotencyStoreError> {
+    ) -> Result<Option<IdempotencyRecord>, IdempotencyRepositoryError> {
         self.reads.fetch_add(1, Ordering::SeqCst);
         self.inner.read(scope)
     }
@@ -295,24 +295,24 @@ impl IdempotencyStore for CountingStore {
         &self,
         scope: &IdempotencyScope,
         record: IdempotencyRecord,
-    ) -> Result<(), IdempotencyStoreError> {
+    ) -> Result<(), IdempotencyRepositoryError> {
         self.writes.fetch_add(1, Ordering::SeqCst);
         self.inner.write(scope, record)
     }
 }
 
 /// 构造被测世界：U1 的编辑器会话、U2 的编辑器会话、U2 的作业会话、O2 的编辑器会话。
-pub fn world() -> (Arc<ScriptedPort>, Arc<CountingStore>) {
+pub fn world() -> (Arc<ScriptedPort>, Arc<CountingRepository>) {
     let port = ScriptedPort::new(vec![
         ready_view(U1_SESSION, editor_owner(ORG_O1, PRINCIPAL_U1)),
         ready_view(U2_EDITOR_SESSION, editor_owner(ORG_O1, PRINCIPAL_U2)),
         ready_view(U2_JOB_SESSION, job_owner(ORG_O1)),
         ready_view(O2_EDITOR_SESSION, editor_owner(ORG_O2, PRINCIPAL_U2)),
     ]);
-    (port, CountingStore::new())
+    (port, CountingRepository::new())
 }
 
-pub fn gateway(port: Arc<ScriptedPort>, store: Arc<CountingStore>) -> ExecutionGateway {
+pub fn gateway(port: Arc<ScriptedPort>, store: Arc<CountingRepository>) -> ExecutionGateway {
     ExecutionGateway::new(
         port,
         Arc::new(OwnerMatchAuthorizer),

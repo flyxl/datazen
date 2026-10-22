@@ -58,7 +58,7 @@ packages/platform-api/src/
 │   ├── job.rs                # JobRepository
 │   ├── session_directory.rs  # SessionDirectory
 │   ├── token.rs              # SubmissionTokenIssuer
-│   ├── artifact.rs           # ArtifactStore
+│   ├── artifact.rs           # ArtifactRepository
 │   ├── event.rs              # EventSink
 │   ├── network.rs            # NetworkProvider
 │   ├── identity.rs           # IdentityResolver
@@ -332,6 +332,42 @@ F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名�
 `ai-providers` 的 `HttpClient::desktop()` 是一份**出网策略预设**（允许内网地址 + 走环境代理），
 端口 `EgressPolicy` 本身形态中立，web 形态可以自带策略。把这三处一并禁掉是误伤，
 不是治理。
+
+### 2.8 存储抽象的命名规约：类型名用 `Repository`，不用 `Store`（已实现）
+
+共享包的端口层一度一半叫 `*Repository`（`ProfileRepository` / `JobRepository` /
+`SettingsRepository`），另一半叫 `*Store`（`ArtifactStore` / `DashboardStore` /
+`IdempotencyStore` / `EventStore` …）。[概要 §6.4](system-overview.md#64-repositories-与环境-ports)
+已经把「repositories」当正式词汇，`Repository` 才是这套契约的既定词汇，`Store` 是异类——
+统一到 `Repository`。
+
+**规约本体**：**存储抽象的类型命名用 `Repository`，不用 `Store`。**
+
+**判据（用于复合型名，可复用到后续同类改造）**：
+
+| 复合型名里嵌的是 | 处置 | 理由 |
+| --- | --- | --- |
+| **被改名的那个型名** | **必须跟改** | 否则仓库里多出一个「指向已不存在型名」的悬挂引用，比改或不改都差 |
+| **泛指名词「存储 / 层」，且该层名保留** | **留着** | 它的指称对象没有消失 |
+
+据此：`ArtifactStoreGuard` → `ArtifactRepositoryGuard`（嵌的是被删的 `ArtifactStore`）、
+`StoreSqlPageSource` → `ComparisonStorageSqlPageSource`（嵌的是被删的「比较存储」）；
+而 `StoreCache` 与 `StoreOwnerMarker` 保留（嵌的是泛指「存储」，其指称的宿主持久化层
+`src-tauri/src/store/` 与落盘格式都还在）。
+
+**留在仓库里的 `Store` 字样是有理由的清单**，不是漏网：
+
+| 名字 | 位置 | 为什么留 |
+| --- | --- | --- |
+| `StoredPlan` / `StoredSyncPlan` / `StoredTransferPlan` / `StoredSelection` | schema-diff / data-sync / data-transfer / 宿主 | `Stored` 是**过去分词**（已存储的**数据**）：它们是装在仓储里的东西，不是仓储本身 |
+| `StoreCache` | `src-tauri/src/store/models.rs` | 缓存类型，不是存储抽象；`Store` 指宿主持久化层（层名保留） |
+| `StoreOwnerMarker` | `packages/data-sync/src/comparison_store/recovery.rs` | 落盘 marker 的**记录载荷**，不是抽象；`store-owner.json` 是冻结的落盘格式 |
+| `CommandError::Store` 等错误**变体** | 宿主 | 变体名不是类型名；错误文案是前端可见的 IPC 错误串，不在本节范围 |
+| `RootCertStore` | rustls | 第三方类型 |
+
+**这一节与 §2.7 是两件事**：§2.7 禁的是**形态名**（desktop / web）焊进共享包；
+本节治的是**存储角色词**在端口层不统一。本节**没有自动闸门**——靠评审守住；
+§2.7 的形态中立闸门不覆盖它。
 
 ## 3. runtime 包内部模块（目标设计，未随 P1 实现）
 
@@ -645,7 +681,7 @@ P9 adapter 的目录 CAS、路由信封、预算 generation 与 expiredHeld 核�
 
 ```rust
 #[async_trait]
-pub trait ArtifactStore: Send + Sync + 'static {
+pub trait ArtifactRepository: Send + Sync + 'static {
     /// create writer：返回可写 artifact 与 writer 句柄；ACL 在 create 时绑定组织/owner。
     async fn create(&self, ctx: &RequestContext, spec: ArtifactSpec)
         -> Result<(ArtifactId, ArtifactWriter), PortError>;
@@ -702,7 +738,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 | `SessionDirectory` | 进程内 `HashMap` + TTL | 同一 port 的单进程实现 | 共享内存目录 + CAS |
 | `BudgetCoordinator` | 进程内许可表，总额 16（[连接 §9.2](connection-management.md#92-可调初始值) 的「桌面总目标连接」，首版配置起点） | 节点额度 + 全局 permit | 全局 permit；失去续约停止新建连接 |
 | `SubmissionTokenIssuer` | 进程内 HMAC 密钥 | 服务端签名密钥 + `keyVersion` 轮换 | 同单进程 |
-| `ArtifactStore` | 文件字节经本机路径与授权对话框；Job Core 仅存 Artifact ID 引用（30 天 TTL），不持有字节或保证内容留存 | 服务端存储 + 授权导出 | 同单进程 |
+| `ArtifactRepository` | 文件字节经本机路径与授权对话框；Job Core 仅存 Artifact ID 引用（30 天 TTL），不持有字节或保证内容留存 | 服务端存储 + 授权导出 | 同单进程 |
 | `EventSink` | Tauri 事件推送 | SSE | SSE + worker 转发 |
 | `Clock` | `SystemClock`（本机 UTC，定宽毫秒） | 同桌面（服务进程本机 UTC） | 各 worker 读各自本机 UTC；跨节点排序只用 `Timestamp` 字典序，不假设同一时钟 |
 
@@ -937,8 +973,8 @@ CM-05 要求跨组织访问按「不存在」处理，而这里是「用错组�
   它什么也没看见）与**等价性**用例（正规入口解析出的组织仍是 `LOCAL_ORGANIZATION_ID`）。
 - 闸门**不引入任何进程级全局状态**：全部是纯函数 + 一个 `const` 白名单。
 
-按组织限定的**存储端口**（共享 feature 层的 `DashboardStore` / `DashboardRunStore` /
-`WorkflowDefinitionStore`）每个方法都带 `scope: &OrganizationScope`：多租户宿主因此能在
+按组织限定的**存储端口**（共享 feature 层的 `DashboardRepository` / `DashboardRunRepository` /
+`WorkflowDefinitionRepository`）每个方法都带 `scope: &OrganizationScope`：多租户宿主因此能在
 **同一个存储实现**上区分「本组织的数据」与「别的组织的数据」，不必退化成
 「每个组织一个存储实例」；越组织访问一律按「不存在」处理（空列表 / `None` / `NotFound`），
 **不返回**「无权限」类错误——后者会泄漏「存在但无权」（CM-05）。
@@ -950,20 +986,20 @@ CM-05 要求跨组织访问按「不存在」处理，而这里是「用错组�
 | | §5.2.1 的「直读常量」 | 本节的 `is_local_scope` |
 | --- | --- | --- |
 | 动作 | **从外部取**组织（回答「我是哪个组织」） | **对传入的 scope 做谓词判断**（回答「这是不是本组织」） |
-| 位置 | 宿主调用点（请求期 / 后台） | 宿主**存储实现**内部（`impl DashboardStore for AppDb` 等） |
+| 位置 | 宿主调用点（请求期 / 后台） | 宿主**存储实现**内部（`impl DashboardRepository for AppDb` 等） |
 | 越权风险 | web 形态下**用错组织查**多租户存储 ⇒ 越组织读写 | 无（它不产生组织身份，只收窄可见性） |
 
 `is_local_scope`（`src-tauri/src/platform/scope.rs`）的语义是**桌面单租户收窄**：
 桌面只有自己那一个组织，因此**非本组织的作用域一律按「不存在」处理**（空列表 /
 `NotFound`），**不返回**「无权限」类错误（CM-05）。
 
-它出现在这些**宿主绑定**里：`src-tauri/src/dashboard/store.rs`、
+它出现在这些**宿主绑定**里：`src-tauri/src/dashboard/repository.rs`、
 `src-tauri/src/dashboard/runs.rs`、`src-tauri/src/dashboard/create.rs`、
 `src-tauri/src/workflow/registry.rs`、`src-tauri/src/commands/workflow.rs`。
 
 **服务端的存储实现必须按传入的 `scope` 过滤，不得复制这条收窄。** 桌面实现之所以能
 「非本组织即不存在」，是因为桌面**真的只有一个组织**；多租户服务端若**照抄**这些绑定
-（例如 `impl DashboardStore for AppDb` → `impl DashboardStore for PostgresStore`），
+（例如 `impl DashboardRepository for AppDb` → `impl DashboardRepository for PostgresRepository`），
 `!is_local_scope(scope)` 对**任何真实租户**都成立 ⇒ 所有非「本机那个组织」的作用域
 一律被判「不存在」⇒ **服务端上的每个真实租户都读不到自己的数据**。
 
@@ -1060,7 +1096,7 @@ restore 任务（组织 = 规范值）与 transfer / schema-diff / sync 任务�
 flowchart TD
     A1[1 DriverRegistry] --> A6
     A2[2 持久化 Store / app_db] --> A3
-    A3[3 repositories 适配<br/>ProfileRepository / JobRepository / ArtifactStore] --> A6
+    A3[3 repositories 适配<br/>ProfileRepository / JobRepository / ArtifactRepository] --> A6
     A4[4 环境适配<br/>SecretProvider / NetworkProvider / PolicyService / IdentityResolver] --> A6
     A5[5 运行时适配<br/>SessionDirectory / BudgetCoordinator / EventSink / SubmissionTokenIssuer] --> A6
     A6[6 Runtime<br/>budget → resource → registry/actor → execution] --> A7

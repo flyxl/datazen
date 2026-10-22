@@ -14,7 +14,7 @@ impl ExecutionGateway {
     pub fn new(
         port: Arc<dyn SessionPort>,
         authorizer: Arc<dyn Authorizer>,
-        store: Arc<dyn IdempotencyStore>,
+        store: Arc<dyn IdempotencyRepository>,
         clock: Arc<dyn MonotonicClock>,
     ) -> Self {
         Self {
@@ -55,7 +55,7 @@ impl ExecutionGateway {
     pub fn with_submission_tokens(
         port: Arc<dyn SessionPort>,
         authorizer: Arc<dyn Authorizer>,
-        store: Arc<dyn IdempotencyStore>,
+        store: Arc<dyn IdempotencyRepository>,
         clock: Arc<dyn MonotonicClock>,
         tokens: Arc<SubmissionTokenGuard>,
     ) -> Self {
@@ -254,7 +254,7 @@ impl ExecutionGateway {
                 }
 
                 state.next_sequence = state.next_sequence.saturating_add(1);
-                let mut events = EventStore::new();
+                let mut events = EventRepository::new();
                 events.bind(handle.db_session_id.clone(), handle.runtime_epoch);
                 let record = ExecutionRecord {
                     execution_id: execution_id.clone(),

@@ -6,8 +6,8 @@
 //!
 //! ## 端口边界
 //!
-//! 计划注册表本身是**端口**（[`SyncPlanStore`），实现随包提供
-//! （[`InMemorySyncPlanStore`]）。宿主在组装期创建实例并注入，调用点按
+//! 计划注册表本身是**端口**（[`SyncPlanRepository`），实现随包提供
+//! （[`InMemorySyncPlanRepository`]）。宿主在组装期创建实例并注入，调用点按
 //! [`OrganizationScope`] 访问；跨组织访问按「不存在」处理（CM-05）。
 //! 本模块过去用 `static STORE` 持有唯一注册表——那是进程级全局可变状态，
 //! 既没法按组织隔离，也没法在测试里换实例，现已移除。
@@ -24,18 +24,18 @@ use sha2::{Digest, Sha256};
 use crate::job::artifact::{ChangeBlock, ChangeSetArtifact};
 pub use datazen_driver_api::driver_protocol_version;
 
-use crate::comparison_store::{ComparisonStore, ComparisonTableMetadata};
+use crate::comparison_store::{ComparisonStorage, ComparisonTableMetadata};
 use crate::{
     ChangeOperation, ComparisonResult, ConflictPolicy, RowChange, SyncOptions, SyncSourceFilter,
     TableMappingStatus, TableResult,
 };
 
-mod store;
-pub use store::{InMemorySyncPlanStore, SyncPlanIssue, SyncPlanStore};
+mod repository;
+pub use repository::{InMemorySyncPlanRepository, SyncPlanIssue, SyncPlanRepository};
 
 pub const SYNC_PLAN_TTL: Duration = Duration::from_secs(15 * 60);
 /// Bounds one page sent over the review IPC. The server still owns the full
-/// comparison and execution always reloads it from `ComparisonStore`.
+/// comparison and execution always reloads it from `ComparisonStorage`.
 pub const SYNC_COMPARISON_PAGE_SIZE: u32 = 100;
 pub const SYNC_COMPARISON_PAGE_MAX_LIMIT: u32 = 500;
 /// SQL preview and execution consume the persisted comparison in bounded
@@ -157,7 +157,7 @@ struct SelectionScopeMatcher {
 
 /// The server-owned selection contract compiled into a bounded row matcher.
 /// It contains only client supplied keys and scope metadata; row payloads
-/// remain in the ComparisonStore and are read one page at a time.
+/// remain in the ComparisonStorage and are read one page at a time.
 #[derive(Debug)]
 pub struct SelectionMatcher {
     explicit_rows: HashSet<String>,
@@ -463,7 +463,7 @@ pub struct StoredSyncPlan {
     pub target_driver_protocol: u32,
     pub source_schema_fingerprint: String,
     pub target_schema_fingerprint: String,
-    pub comparison: ComparisonStore,
+    pub comparison: ComparisonStorage,
     pub options: SyncOptions,
     pub conflict_policy_fingerprint: String,
     pub selection_revision: u64,
@@ -477,7 +477,7 @@ pub struct StoredSyncPlan {
 /// every enabled operation for every matched table in the immutable plan;
 /// the plan registry remains the only source of table and row identities.
 pub fn default_profile_selection(
-    store: &dyn SyncPlanStore,
+    store: &dyn SyncPlanRepository,
     scope: &OrganizationScope,
     plan_id: &str,
     revision: u64,
@@ -519,7 +519,7 @@ pub fn default_profile_selection(
 
 /// Build the review preview of an already-issued plan.
 pub fn preview_for_plan(
-    store: &dyn SyncPlanStore,
+    store: &dyn SyncPlanRepository,
     scope: &OrganizationScope,
     id: &str,
 ) -> Result<SyncComparisonPreview, String> {
@@ -544,7 +544,7 @@ pub fn preview_for_plan(
 /// row frames are still validated by `summaries`/`load_table_page`; only one
 /// bounded page of row payloads is resident while checking membership.
 pub fn validate_selection_streaming(
-    comparison: &ComparisonStore,
+    comparison: &ComparisonStorage,
     selection: &SyncRunSelection,
     options: &SyncOptions,
 ) -> Result<SelectionMatcher, String> {
@@ -672,7 +672,7 @@ pub fn selected_table_page(
 /// use their manifest index and read only the requested table row range;
 /// inline stores slice the in-memory comparison.
 pub fn get_comparison_page(
-    store: &dyn SyncPlanStore,
+    store: &dyn SyncPlanRepository,
     scope: &OrganizationScope,
     request: SyncComparisonPageRequest,
 ) -> Result<SyncComparisonPage, String> {

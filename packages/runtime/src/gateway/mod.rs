@@ -81,7 +81,7 @@ pub(crate) mod testing_support;
 #[cfg(test)]
 mod cancel_event_tests;
 #[cfg(test)]
-mod event_store_tests;
+mod event_repository_tests;
 #[cfg(test)]
 pub(crate) mod facade_support;
 #[cfg(test)]
@@ -101,10 +101,10 @@ pub use cancel::{
 // 网关此前自带一份同名副本并从这里转出，那份副本已被删除；这里转出的是**同一个类型**，
 // 因此 `gateway::CancelDisposition` 这条路径仍然可用，且不再存在两个可各自漂移的定义处。
 pub use crate::connection::port::CancelDisposition;
-pub use events::{EventDisposition, EventStore, ExecutionEvent, ExecutionEventKind};
+pub use events::{EventDisposition, EventRepository, ExecutionEvent, ExecutionEventKind};
 pub use idempotency::{
-    IdempotencyLedger, IdempotencyLookup, IdempotencyRecord, IdempotencyScope, IdempotencyStore,
-    InMemoryIdempotencyStore, RequestFingerprint, StoreFailureKind,
+    IdempotencyLedger, IdempotencyLookup, IdempotencyRecord, IdempotencyRepository,
+    IdempotencyScope, InMemoryIdempotencyRepository, RepositoryFailureKind, RequestFingerprint,
 };
 pub use provenance::{
     AlwaysAllow, AlwaysDeny, AuthorizationDenial, Authorizer, ExecutionSource, GatewayAction,
@@ -140,7 +140,7 @@ pub struct ExecutionRecord {
     /// 一样受理定型，下发只读。
     fingerprint: RequestFingerprint,
     probe: OverheadProbe,
-    events: EventStore,
+    events: EventRepository,
     dispatched: bool,
     last_state: ExecutionState,
 }

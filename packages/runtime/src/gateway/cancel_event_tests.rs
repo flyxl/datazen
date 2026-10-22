@@ -176,7 +176,7 @@ async fn cancel_is_authorized_at_its_own_entry_point() {
     let h = harness_with(
         port.clone(),
         Arc::new(DenyCancel),
-        InMemoryIdempotencyStore::shared(),
+        InMemoryIdempotencyRepository::shared(),
     );
     let id = accept(&h, request(REVISION)).await;
     let error = match cancel_with(&h, &id, PreciseCancel::Supported).await {
@@ -482,7 +482,7 @@ async fn an_unbound_gateway_reports_no_execution() {
     assert_eq!(h.gateway.execution_count().await, 0);
 }
 
-/// 「水位线拒绝改绑」这条不变式属于 `EventStore`；这里补一条门面级别的可见性证明：
+/// 「水位线拒绝改绑」这条不变式属于 `EventRepository`；这里补一条门面级别的可见性证明：
 /// 同一网关内两次受理拿到的是两条独立水位线，互不串台。
 #[tokio::test]
 async fn two_executions_keep_independent_event_watermarks() {

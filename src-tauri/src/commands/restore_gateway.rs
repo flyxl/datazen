@@ -9,13 +9,13 @@ use std::sync::Arc;
 
 pub(super) struct DesktopRestoreGateway {
     pub adapter: Arc<crate::platform::PlatformAdapter>,
-    pub store: Arc<crate::store::Store>,
+    pub store: Arc<crate::store::DesktopRepository>,
     pub driver: Arc<dyn datazen_driver_api::DatabaseDriver>,
     pub profile: String,
 }
 struct Authorization {
     adapter: Arc<crate::platform::PlatformAdapter>,
-    store: Arc<crate::store::Store>,
+    store: Arc<crate::store::DesktopRepository>,
 }
 #[async_trait::async_trait]
 impl RestoreAuthorization for Authorization {

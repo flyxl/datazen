@@ -153,11 +153,12 @@ async fn valid_delegated_execution_reaches_driver_under_service_identity() {
 
 #[tokio::test]
 async fn delegated_results_require_current_policy_and_exact_live_execution_binding() {
-    use datazen_platform_api::ports::artifact::{ArtifactSpec, ArtifactStore, ChunkPayload};
+    use datazen_platform_api::ports::artifact::{ArtifactRepository, ArtifactSpec, ChunkPayload};
     let (service, backend, _, policy) = setup();
     let context = delegated(&policy);
     let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(datazen_runtime::artifact::FileArtifactStore::open(dir.path()).unwrap());
+    let store =
+        Arc::new(datazen_runtime::artifact::FileArtifactRepository::open(dir.path()).unwrap());
     service
         .result_sink()
         .with_artifact_store(store.clone())
@@ -287,7 +288,7 @@ async fn delegated_results_require_current_policy_and_exact_live_execution_bindi
         "result reads never resubmit SQL"
     );
     let recovered =
-        Arc::new(datazen_runtime::artifact::FileArtifactStore::open(dir.path()).unwrap());
+        Arc::new(datazen_runtime::artifact::FileArtifactRepository::open(dir.path()).unwrap());
     assert!(recovered.describe(&owner, artifact.clone()).await.is_err());
     assert!(recovered.describe(&owner, unrelated).await.is_ok());
     let (restarted, restarted_backend, _, restarted_policy) = setup();

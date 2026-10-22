@@ -10,11 +10,11 @@ use datazen_platform_api::{
         artifact::ArtifactLifecycle, idempotency::IdempotentOperation, session::ResourceRelease,
     },
     id::*,
-    ports::artifact::ArtifactStore,
+    ports::artifact::ArtifactRepository,
     target::*,
 };
 use datazen_runtime::{
-    artifact::FileArtifactStore,
+    artifact::FileArtifactRepository,
     job::{JobHandler, StageSpec, StageTerminal},
 };
 use futures_util::FutureExt;
@@ -130,7 +130,7 @@ async fn journey(prefix: &str, driver_id: &str) {
     let _keyring = crate::testing::FileKeyringGuard::set();
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        crate::store::Store::init_with_path(temp.path())
+        crate::store::DesktopRepository::init_with_path(temp.path())
             .await
             .unwrap(),
     );
@@ -246,7 +246,7 @@ async fn journey(prefix: &str, driver_id: &str) {
                 cancel_after_batch,
             });
             let artifacts = Arc::new(
-                FileArtifactStore::open(temp.path().join(if cancel_after_batch {
+                FileArtifactRepository::open(temp.path().join(if cancel_after_batch {
                     "cancel-artifacts"
                 } else {
                     "success-artifacts"
