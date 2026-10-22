@@ -18,7 +18,7 @@
 //!    driver cannot back up stays `Unsupported`/`Unknown`, and an observation
 //!    the provider did not read off the wire is returned `unobserved()`
 //!    rather than filled in from the acquisition request. See
-//!    `docs/architecture/platform/driver-capability-migration.md` §2.1 and §6.1.
+//!    `docs/architecture/platform/connection-management.md` §5.2.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};

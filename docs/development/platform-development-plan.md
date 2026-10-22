@@ -94,13 +94,13 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - 所有实际建连的预算 port，包括 driver pool、集群节点和控制资源。
 - 现有 Command 和迁移接口保持领域语义；资源获得方式通过 adapter 演进。
 - **第一轮只迁移 `basic` 四个驱动**（postgres、mysql、sqlite、redis —— CI 与默认构建实际编译的集合）：先迁移具有真实会话与事务的代表 driver，再迁移该集合内其余驱动；不支持能力明确拒绝。**其余 path/Git 驱动不在 P2 门槛内**，按 P10 补齐；未迁移的驱动必须在能力注册处显式声明未支持，不得静默回退到旧 Command 路径。
-- 修改公共契约时同步 path/Git driver、factory、ReuseDriver、生成选型路径，**同一次交付内全树编译绿**。治理决定（2026-10-21）：仓库无外部驱动，`PROTOCOL_VERSION` 冻结在 6、`MIN` 停在 1，协议兼容门禁族（含规则表与其测试）退役删除；`MIN` 不下调是仍然成立的红线，判据见 [driver-capability-migration.md §5.3](../architecture/platform/driver-capability-migration.md)。
+- 修改公共契约时同步 path/Git driver、factory、ReuseDriver、生成选型路径，**同一次交付内全树编译绿**。治理决定（2026-10-21）：仓库无第三方驱动生态，`PROTOCOL_VERSION` 冻结在 6、`MIN` 停在 1，协议兼容门禁族（含规则表与其测试）退役删除；`MIN` 不下调是仍然成立的红线，判据见 [驱动层 §2.5](../architecture/backend/drivers.md#25-协议版本闸门)。
 
 退出门槛：D 层 CM-07～19、22～26、30、45、48；不同 driver 不共享实现库类型；新增能力缺失不会 no-op 成功。**本门槛只对第一轮四个基本驱动断言**；其余驱动的对应断言属于 P10，不得在 P2 记录为已通过。
 
 回退：过渡 adapter 可以支持旧 driver 的独立受控 Command，但不能开放未证明的 statefulSession。
 
-「协议升级与驱动发布是原子兼容门槛，不允许用下调最低版本掩盖 breaking change」这句回退约定随生态现实收敛（治理决定 2026-10-21）：仓库已无外部驱动，协议版本冻结在 6，上述两个机检门禁（`check-driver-protocol-compat.mjs` / `check-driver-protocol-release.mjs` 及其规则表与测试）**整体退役删除**——逐符号四档机检的维护成本在「零外部驱动」前提下不再划算。保留下来的红线是人工纪律：「不得下调 `MIN_PROTOCOL_VERSION` 掩盖不兼容」（`[MIN, PROTOCOL]` 窗口语义在 `driver_registry/registry.rs:155-181` 与各处 `protocol_version()` 比对中仍然生效）；契约改动改为「同一次交付内全树迁移 + 全树编译绿」。若未来重新出现外部驱动生态，恢复机检前必须先定案 `pv > PROTOCOL_VERSION` 分支的处置再接入（`driver-capability-migration.md` §5.1）。
+「协议升级与驱动发布是原子兼容门槛，不允许用下调最低版本掩盖 breaking change」这句回退约定随生态现实收敛（治理决定 2026-10-21）：仓库已无第三方驱动生态，协议版本冻结在 6，上述两个机检门禁（`check-driver-protocol-compat.mjs` / `check-driver-protocol-release.mjs` 及其规则表与测试）**整体退役删除**——逐符号四档机检的维护成本在「零外部驱动」前提下不再划算。保留下来的红线是人工纪律：「不得下调 `MIN_PROTOCOL_VERSION` 掩盖不兼容」（`[MIN, PROTOCOL]` 窗口语义在 `driver_registry/registry.rs` 的 `register_from_inventory` 与各处 `protocol_version()` 比对中仍然生效）；契约改动改为「同一次交付内全树迁移 + 全树编译绿」。若未来重新出现外部驱动生态，恢复机检前必须先定案 `pv > PROTOCOL_VERSION` 分支的处置再接入（[驱动层 §2.5](../architecture/backend/drivers.md#25-协议版本闸门)）。
 
 ## 7. P3：统一 Session / Lease / Budget / ExecutionGateway
 
@@ -341,7 +341,14 @@ Monitor occurrence 当前状态：周期执行已先受理 SQLite durable `monit
 
 ## 14. P10：扩展性验收、旧路径删除与稳定化
 
-详细验收：[驱动迁移 §10.2](../architecture/platform/driver-capability-migration.md#102-p10-目标通用-contract--driver-矩阵)。实际发布选型覆盖 path 与 Git driver，Git ref 冻结为 SHA，能力声明与逐层运行结果分别记录。
+详细验收按「冻结选型 → 逐驱动验证 → 证据与发布判定」三段执行：
+
+- **冻结选型**：从 `drivers-registry.json` 与 `scripts/resolve-drivers.mjs` 的实际解析结果取得选定 driverId、path/git 来源、版本与 DB entries。Git ref 必须解析为精确 commit SHA；同时冻结 host commit、edition、Driver API 版本、driver crate/features、UI SDK 版本与构建摘要。可移动 branch/tag 不能作为唯一复现依据；驱动子仓库有未提交修改时不计为可复现发布构建。
+- **逐驱动验证**：按 driver 实现记录，并为其暴露的不同 dbType 分别跑适用方言路径；复用同 crate 不代表各服务器产品的事务、取消与上下文行为完全相同。path/Git 来源不改变契约门槛。Git 驱动测试仍落在其独立仓库 `packages/drivers/<id>/` 的实际 crate/tests/ui/e2e 中；Host 不复制方言测试，也不假设所有外部 crate 命名为 `datazen-driver-<id>`。需要修改外部驱动时独立提交该仓库，再更新 registry 钉选版本；宿主提交不能代替外部提交。
+- **证据与发布判定**：每格保存 driver/host 精确版本、服务器产品及版本、能力声明、适用 CM 编号与层、运行入口、测试计数、退出码及限制；结果分为 verified、unsupportedVerified、notRun、failed，能力声明与验证结果分列。unsupportedVerified 要证明调用明确拒绝且没有目标副作用；notRun 仅表示未执行，不能转成 unsupported；failed 阻塞该能力发布，notRun 的能力不得列为已验证支持，发布时禁用或明确收窄支持范围。W1/WN 不能由 H fake 推断，真实驱动恢复不能由单元序列化测试推断。至少选一个冻结 SHA 的 Git driver 跑完整适用路径，并运行每个实际随发布分发的 driver。
+- **测试配置边界**：测试适配使用现有 `ci-private-drivers.md` 与独立驱动指南；程序可读取其合法测试配置，Agent 不读取或回显 `.env` 内容。没有仓库访问或 live 服务时记录未验证，不能编造支持事实。私有 repo URL、认证材料与数据内容不进入公开矩阵。
+
+实际发布选型覆盖 path 与 Git driver，Git ref 冻结为 SHA，能力声明与逐层运行结果分别记录。
 
 **目的**：验证架构目标，而不只验证代表驱动能工作。
 
@@ -452,13 +459,13 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 | --- | --- |
 | P0 | [假资源夹具](../architecture/platform/fake-runtime-fixtures.md) |
 | P1 | [共享边界与端口](../architecture/platform/shared-boundaries-and-ports.md)、[持久化白名单](../architecture/platform/persistence-model.md) |
-| P2 | [驱动能力迁移](../architecture/platform/driver-capability-migration.md) |
+| P2 | [驱动层](../architecture/backend/drivers.md)（协议版本闸门见 §2.5） |
 | P3/P4 | [连接管理](../architecture/platform/connection-management.md)：actor/lease/budget、Gateway 与 §12.1 结果消费 |
 | P5 | [迁移任务](../architecture/platform/data-migration-jobs.md)、持久化 §3.6、共享端口 §4.3 |
 | P6 | [Workflow](../architecture/platform/workflow-resource-model.md)、[消费者接入](../architecture/platform/consumer-adapters.md) |
 | P7/P8 | [团队服务与认证](../architecture/platform/team-server-and-auth.md)、[运维流程](team-service-operations.md)、持久化 §5/§7 |
 | P9 | [多 worker 协议](../architecture/platform/multi-worker-coordination.md)、持久化 §3.11 |
-| P10 | 驱动能力迁移 §10.2；各消费者退役条件与本计划逐层门槛 |
+| P10 | 本计划 §14（P10）的通用 contract × driver 矩阵；各消费者退役条件与本计划逐层门槛 |
 
 本表是设计入口，不是完成进度。目标设计、现有实现和实际运行证据分别标明；阶段完成后同步将对应内容改写为事实。
 

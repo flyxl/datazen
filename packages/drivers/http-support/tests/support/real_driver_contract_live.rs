@@ -404,7 +404,7 @@ async fn cm14_text_containing_the_switch_keyword_never_switches() {
 ///
 /// The dimension is H/D/F and mandatory for every `requiresReplacement` driver, so
 /// the branch is taken from [`crate::Contract::per_database_resource`] rather than
-/// from the driver's name: today that is postgres (`driver-capability-migration.md:516`).
+/// from the driver's name: today that is postgres (`connection-management.md` CM-16).
 /// The failure half is what was missing — a switch against a target that cannot be
 /// bound must not consume, poison or drop the connection, and the original target
 /// must still be readable afterwards.

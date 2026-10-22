@@ -84,7 +84,6 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 - [共享应用边界与端口详细设计](architecture/platform/shared-boundaries-and-ports.md)：包边界与依赖矩阵、runtime 内部模块、端口 trait 签名、请求上下文三来源与 Tauri 组装根。
 - [P0 假资源夹具与基准 harness 详细设计](architecture/platform/fake-runtime-fixtures.md)：transport-neutral fake 的资源契约、F1～F12 故障注入矩阵、CommandJournal、Barrier/DrainBarrier 与 FakeClock。
 - [持久化模型详细设计](architecture/platform/persistence-model.md)：可落盘白名单与禁落盘清单、管理库表的 DDL 与 CHECK、本地 Store ↔ 服务端 DB 映射、schema 版本与 expand/contract。
-- [驱动能力迁移详细设计](architecture/platform/driver-capability-migration.md)：path 能力基线、迁移批次、协议门槛、adapter 退役及 P10 path/Git 发布验收。
 
 补充详细设计与运维流程（P5–P10）：
 

@@ -17,8 +17,10 @@
 # 漂移降级为 advisory 并点名，不影响退出码（见契约 2.6 / BUG-008）。
 #
 # 步骤②的驱动注入与 HOME 沙箱包装：
-#   - 注入：worktree 生成态 capabilities/default.json 含 redis:default，要求
-#     Cargo.toml 插件 feature 注入才能通过 tauri-build ACL 校验。经仓库正规解法
+#   - 注入：worktree 生成态 capabilities/default.json 会并入驱动 ACL 权限项
+#     （形如 `<driver-id>:default`；只有声明了非空 `tauriPlugin.commands` 的驱动才会产出，
+#     当前 drivers-registry.json 里没有满足该条件的驱动），这些权限要求 Cargo.toml
+#     插件 feature 同步注入才能通过 tauri-build ACL 校验。经仓库正规解法
 #     scripts/with-driver-inject.mjs --drivers=basic 执行（注入 → 执行 → 自动还原，
 #     与 .github/workflows/ci.yml 一致）。注入器本身不需要 HOME 包装。
 #   - HOME 包装只包 cargo 这一步：部分用例经 Store::default_app_data_dir() →
@@ -78,7 +80,8 @@ mkdir -p "$SANDBOX_HOME"
 
 # ---------------------------------------------------------------------------
 # 注入周期副作用防护：快照并还原 src-tauri/capabilities/default.json。
-# with-driver-inject 会把 active 插件权限（如 redis:default）合并进该 gitignored
+# with-driver-inject 会把 active 驱动的 ACL 权限项（形如 `<driver-id>:default`，
+# 只有声明了非空 `tauriPlugin.commands` 的驱动才会产出）合并进该 gitignored
 # 生成文件；还原快照可避免污染后续裸 cargo 命令（tauri-build ACL 校验）。
 # Cargo.toml / Cargo.lock 的注入与还原由 driver-file-stash 负责，脚本不做 git 操作。
 # ---------------------------------------------------------------------------

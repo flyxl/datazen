@@ -13,7 +13,7 @@
 //! 2. **A one-connection pool is not a session.** `SqliteDriver::connect` opens
 //!    a pool of size one. That is a scheduling decision, so the descriptor
 //!    reports `SessionContinuity::Leased` and `stateful_session` stays
-//!    `Unsupported` — see `driver-capability-migration.md` §2.1 事实二 and §6.1.
+//!    `Unsupported` — see `connection-management.md` §5.2.
 //! 3. **Nothing is reported that was not observed.** The attached databases come
 //!    from `PRAGMA database_list` on the wire; the transaction state is the
 //!    provider's own bookkeeping and is reported as such. There is no

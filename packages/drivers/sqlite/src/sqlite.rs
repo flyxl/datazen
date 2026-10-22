@@ -720,8 +720,8 @@ impl DatabaseDriver for SqliteDriver {
         // There is no session-wide statement to interrupt here: the pool holds a
         // single in-process connection and no execution is registered against
         // it, so claiming success would invent a cancellation that never
-        // happened. Say so instead — see docs/architecture/platform/
-        // driver-capability-migration.md §7.1.
+        // happened. Say so instead — a fail-closed default must never stay
+        // broken.
         Err(DriverError::Unsupported(
             "sqlite has no session-wide query cancellation; cancel the statement from the caller that owns it"
                 .into(),

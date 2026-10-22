@@ -13,7 +13,7 @@
 //!
 //! ## 为什么不在这里解析 driver-api 的 `CapabilitySet`
 //!
-//! 依赖图 `APP → PA` 是 P1 固化的；`driver-capability-migration.md` §6.2 也把「把端口
+//! 依赖图 `APP → PA` 是 P1 固化的；平台开发计划的 P1/P2 阶段也把「把端口
 //! 接上实现」判给组装层。因此声明来源做成注入闭包 [`Declarations`]，由组装层把
 //! `DatabaseDriverFactory::resource_capabilities()` 桥接进来。本 crate 不认识 SQLx、
 //! Tokio、HTTP 或 Tauri 类型，也不因为某个驱动声明了能力就相信它——桥接方负责把
