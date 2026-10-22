@@ -245,6 +245,22 @@ const VirtualRow = memo(function VirtualRow({
     [cellSelectionEnabled, onRowClick, onRowSelect, vRow.index],
   );
 
+  /**
+   * The row's own keyboard activation — only **without** the cell-selection
+   * contract: with the contract on, `Enter` belongs to the grid (it opens the
+   * editor), and a grid without a focus host has the row as its only way in.
+   */
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (cellSelectionEnabled) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onRowSelect(vRow.index);
+      }
+    },
+    [cellSelectionEnabled, onRowSelect, vRow.index],
+  );
+
   const handleRowDoubleClick = useCallback(() => {
     const first = colNames[0];
     if (first) onCellDoubleClick(vRow.index, first);
@@ -304,9 +320,10 @@ const VirtualRow = memo(function VirtualRow({
   return (
     <div
       key={vRow.key}
-      // Roving tabindex (DB-02 §4.4): the scroll container is the only tab stop of the
-      // grid, the rows are reachable with the arrow keys.
-      tabIndex={-1}
+      // Roving tabindex (DB-02 §4.4): with the cell-selection contract on, the
+      // scroll container is the only tab stop of the grid. Without the contract
+      // there is no focus host at all, so the rows keep their tab stop.
+      tabIndex={cellSelectionEnabled ? -1 : 0}
       role={cellSelectionEnabled ? 'row' : undefined}
       data-dt-row-view={vRow.index}
       data-dt-row-state={dirtyRow?.state ?? undefined}
@@ -330,6 +347,7 @@ const VirtualRow = memo(function VirtualRow({
       )}
       style={{ top: vRow.start, height: rowHeight }}
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
       onDoubleClick={handleRowDoubleClick}
     >
       {isNewRow && (

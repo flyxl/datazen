@@ -482,6 +482,21 @@ describe('DataTable', () => {
     expect(onRowSelect).toHaveBeenCalledWith(0, { multi: false, range: false });
   });
 
+  it('keeps the row keyboard path for a grid without the cell-selection contract', () => {
+    // The grids that activate a row with the keyboard (the process list, the
+    // result grid) have no cell-selection contract, so they have no focus host
+    // either: the row itself has to stay reachable (DB-02 §4.4).
+    const onRowClick = vi.fn();
+    const { container } = render(
+      <DataTable columns={COLS} rows={rows} onRowClick={onRowClick} />,
+    );
+    const row = container.querySelector('[data-dt-row-view]')!;
+    expect(row.getAttribute('tabindex')).toBe('0');
+
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(onRowClick).toHaveBeenCalledWith(0);
+  });
+
   it('deletes selected rows from the toolbar and Delete key', () => {
     const onDeleteRows = vi.fn();
     const { getByTestId, container } = render(

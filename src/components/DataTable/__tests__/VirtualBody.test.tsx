@@ -100,7 +100,7 @@ describe('VirtualBody', () => {
     expect(onCellDoubleClick).toHaveBeenCalledWith(0, 'id');
   });
 
-  it('keeps the row out of the tab order (the scroll container is the tab stop)', () => {
+  it('keeps the row out of the tab order when the cell-selection contract is on', () => {
     const scrollEl = document.createElement('div');
     const { container } = render(
       <VirtualBody
@@ -110,6 +110,7 @@ describe('VirtualBody', () => {
         editingCell={null}
         selectedRows={new Set()}
         scrollElement={scrollEl}
+        cellSelectionEnabled
         onCellDoubleClick={vi.fn()}
         onCellEdit={vi.fn()}
         onCellEditCancel={vi.fn()}
@@ -121,7 +122,7 @@ describe('VirtualBody', () => {
     expect(container.querySelectorAll('[data-dt-row-view][tabindex="-1"]')).toHaveLength(rows.length);
   });
 
-  it('calls onRowSelect exactly once when the row number button is pressed with Enter', () => {
+  it('keeps the row in the tab order and its activation when the contract is off', () => {
     const onRowSelect = vi.fn();
     const scrollEl = document.createElement('div');
     const { container } = render(
@@ -138,10 +139,64 @@ describe('VirtualBody', () => {
         onRowSelect={onRowSelect}
       />,
     );
+    // Without the contract the grid has no focus host: the row itself is the
+    // way in, so it keeps its tab stop and its keyboard activation.
+    expect(container.querySelectorAll('[data-dt-row-view][tabindex="0"]')).toHaveLength(rows.length);
+
+    const rowDiv = container.querySelector('[data-dt-row-view]')!;
+    fireEvent.keyDown(rowDiv, { key: 'Enter' });
+    expect(onRowSelect).toHaveBeenCalledTimes(1);
+    expect(onRowSelect).toHaveBeenCalledWith(0);
+  });
+
+  it('leaves the row activation to the grid when the contract is on', () => {
+    const onRowSelect = vi.fn();
+    const scrollEl = document.createElement('div');
+    const { container } = render(
+      <VirtualBody
+        columns={COLS}
+        rows={rows}
+        rowHeight={40}
+        editingCell={null}
+        selectedRows={new Set()}
+        scrollElement={scrollEl}
+        cellSelectionEnabled
+        onCellDoubleClick={vi.fn()}
+        onCellEdit={vi.fn()}
+        onCellEditCancel={vi.fn()}
+        onRowSelect={onRowSelect}
+      />,
+    );
+    // `Enter` opens the editor through the grid — the row must not select
+    // itself as well (that would be two meanings for one key).
+    const rowDiv = container.querySelector('[data-dt-row-view]')!;
+    fireEvent.keyDown(rowDiv, { key: 'Enter' });
+    expect(onRowSelect).not.toHaveBeenCalled();
+  });
+
+  it('calls onRowSelect exactly once when the row number button is pressed with Enter', () => {
+    const onRowSelect = vi.fn();
+    const scrollEl = document.createElement('div');
+    const { container } = render(
+      <VirtualBody
+        columns={COLS}
+        rows={rows}
+        rowHeight={40}
+        editingCell={null}
+        selectedRows={new Set()}
+        scrollElement={scrollEl}
+        cellSelectionEnabled
+        onCellDoubleClick={vi.fn()}
+        onCellEdit={vi.fn()}
+        onCellEditCancel={vi.fn()}
+        onRowSelect={onRowSelect}
+      />,
+    );
     const rowBtn = container.querySelector('button[type="button"]')!;
-    // The browser turns `Enter` on a focused button into a click. The keydown
-    // must not reach a row handler of its own: the row's `Enter`/`Space`
-    // branch is retired (DB-02 §4.4), so the row would be selected twice.
+    // The browser turns `Enter` on a focused button into a click. With the
+    // cell-selection contract on, the keydown must not reach a row handler of
+    // its own: `Enter` belongs to the grid (it opens the editor), so the row
+    // would be selected twice (DB-02 §4.4).
     fireEvent.keyDown(rowBtn, { key: 'Enter' });
     expect(onRowSelect).not.toHaveBeenCalled();
 

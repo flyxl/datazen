@@ -88,6 +88,8 @@ const RECORDS = [
 
 /** The row deletions the grid asked for (the delete action itself is 06's). */
 const deleteRows = vi.fn();
+/** The cells the editor was opened for — the grid may open it only once. */
+const editStarts: string[] = [];
 /** Every selection the grid wrote back — the counter of the write path. */
 const selectionWrites: GridSelection[] = [];
 
@@ -143,7 +145,10 @@ function StoreGrid({ keyboardNavigation = true }: { keyboardNavigation?: boolean
       keyboardNavigation={keyboardNavigation}
       primaryKeyColumns={['id']}
       editingCell={ts?.editingCell ?? null}
-      onCellDoubleClick={(row, col) => useTableDataStore.getState().startEdit(PANEL, row, col)}
+      onCellDoubleClick={(row, col) => {
+        editStarts.push(`${row}:${col}`);
+        useTableDataStore.getState().startEdit(PANEL, row, col);
+      }}
       cellEditing={{
         panelId: PANEL,
         columnEditorInfo: new Map(),
@@ -186,6 +191,7 @@ function clickCell(
 beforeEach(() => {
   seed();
   deleteRows.mockClear();
+  editStarts.length = 0;
   selectionWrites.length = 0;
   // jsdom has no layout engine: the pointer resolves its target through `elementFromPoint`.
   Object.defineProperty(document, 'elementFromPoint', {
@@ -421,6 +427,21 @@ describe('the grid keyboard at the surface', () => {
 
     expect(fireEvent.keyDown(surface(container), { key: 'Tab' })).toBe(false);
     expect(selectionWrites).toHaveLength(0);
+  });
+
+  it('takes the row out of the tab order and opens the editor exactly once', () => {
+    const { container } = render(<StoreGrid />);
+
+    // Roving tabindex: the scroll container is the only tab stop of the grid.
+    expect(container.querySelector('[data-dt-row-view]')?.getAttribute('tabindex')).toBe('-1');
+
+    clickCell(container, 0, 'name');
+    fireEvent.keyDown(surface(container), { key: 'Enter' });
+
+    // `Enter` opens the editor — once. The row does not select itself as well:
+    // that would be two meanings for one key (DB-02 §4.4).
+    expect(editStarts).toEqual(['0:name']);
+    expect(slice().editingCell).toEqual({ row: 0, col: 'name' });
   });
 
   it('moves the cursor with the arrow keys and writes the selection back', () => {
