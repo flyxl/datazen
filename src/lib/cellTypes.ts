@@ -243,6 +243,8 @@ const INTEGER_TYPE_TOKENS: ReadonlySet<string> = new Set([
   'int16',
   'int32',
   'int64',
+  'int128',
+  'int256',
   'integer',
   'uint',
   'uint8',
