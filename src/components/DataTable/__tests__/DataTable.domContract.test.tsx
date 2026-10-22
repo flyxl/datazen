@@ -96,7 +96,7 @@ function seed(): void {
 function StoreGrid() {
   const ts = useTableDataStore((s) => s.byPanel.get(PANEL));
   const columns = useMemo(
-    () => (ts?.columns ?? []).map((c) => ({ id: c.name, name: c.name, type: c.dataType })),
+    () => (ts?.columns ?? []).map((c) => ({ id: c.name, name: c.name, type: c.dataType, nullable: c.nullable })),
     [ts],
   );
   const rows = useMemo(
@@ -116,6 +116,7 @@ function StoreGrid() {
       editingCell={ts?.editingCell ?? null}
       onCellDoubleClick={(row, col) => useTableDataStore.getState().startEdit(PANEL, row, col)}
       cellEditing={{
+        panelId: 'panel-dom-contract',
         columnEditorInfo,
         readOnlyReason: null,
         onCellValue: (row: number, col: string, value) =>
@@ -185,7 +186,7 @@ describe('the DOM contract of the grid', () => {
           columns={[{ id: 'flag', name: 'flag', type: 'tinyint(1)' }]}
           rows={[[1]]}
           cellTypeHints={mysql}
-          cellEditing={{ columnEditorInfo, readOnlyReason: null }}
+          cellEditing={{ panelId: PANEL, columnEditorInfo, readOnlyReason: null }}
           onCellEditCancel={() => undefined}
         />
       );
@@ -217,7 +218,7 @@ describe('the DOM contract of the grid', () => {
           rows={rows}
           primaryKeyColumns={['id']}
           editingCell={null}
-          cellEditing={{ columnEditorInfo, readOnlyReason: 'view' }}
+          cellEditing={{ panelId: 'panel-dom-contract', columnEditorInfo, readOnlyReason: 'view' }}
           onCellEditCancel={() => undefined}
         />
       );

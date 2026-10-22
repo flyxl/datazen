@@ -100,7 +100,7 @@ function slice(): TableState {
 function StoreGrid() {
   const ts = useTableDataStore((s) => s.byPanel.get(PANEL));
   const columns = useMemo(
-    () => (ts?.columns ?? []).map((c) => ({ id: c.name, name: c.name, type: c.dataType })),
+    () => (ts?.columns ?? []).map((c) => ({ id: c.name, name: c.name, type: c.dataType, nullable: c.nullable })),
     [ts],
   );
   const rows = useMemo(
@@ -116,6 +116,7 @@ function StoreGrid() {
       editingCell={ts?.editingCell ?? null}
       onCellDoubleClick={(row, col) => useTableDataStore.getState().startEdit(PANEL, row, col)}
       cellEditing={{
+        panelId: 'panel-cell-editor-journey',
         columnEditorInfo: new Map(),
         readOnlyReason: null,
         onCellValue: (row: number, col: string, value: Value | null | undefined) =>
@@ -255,6 +256,20 @@ describe('the cell editor journey', () => {
     expect(slice().pendingChanges.size).toBe(0);
     expect(slice().editingCell).toEqual({ row: 0, col: 'id' });
     expect(container.querySelector('[data-dt-editor-error="invalidNumber"]')).not.toBeNull();
+  });
+
+  it('journey: an integer column refuses a fraction', () => {
+    const { container } = render(<StoreGrid />);
+
+    // The grid hands over an **empty** editor map, so the facts come from the
+    // column definitions: the integer check has to survive that fallback.
+    fireEvent.doubleClick(cell(container, 0, 'id'));
+    const input = editorInput(container);
+    fireEvent.change(input, { target: { value: '1.5' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(slice().pendingChanges.size).toBe(0);
+    expect(container.querySelector('[data-dt-editor-error="invalidInteger"]')).not.toBeNull();
   });
 
   it('journey: Set NULL then Set empty string produce different writes', () => {

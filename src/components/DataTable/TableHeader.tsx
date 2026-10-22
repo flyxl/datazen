@@ -8,6 +8,15 @@ export interface ColumnDef {
   id: string;
   name: string;
   type?: string;
+  /**
+   * The column accepts SQL `NULL`.
+   *
+   * It is the one piece of column metadata the editor cannot derive from
+   * the type name: without it, a grid that has no schema behind it would
+   * have to *guess* — and the guess "nullable" turns a `NOT NULL` column
+   * into one that silently accepts an empty input as a `NULL` (05 §7 #3).
+   */
+  nullable?: boolean;
 }
 
 export interface TableHeaderProps {

@@ -405,6 +405,7 @@ const VirtualRow = memo(function VirtualRow({
             }
             editing={isEditing}
             cellType={editorInfo.get(col.name)?.cellType}
+            columnInfo={editorInfo.get(col.name)}
             editor={cellEditing}
             gridSemantics={cellSelectionEnabled}
             onCellDoubleClick={onCellDoubleClick}
@@ -427,6 +428,8 @@ interface DraftRowProps {
   columnWidths?: number[];
   editing: { draftId: string; column: string } | null;
   cellSelectionEnabled: boolean;
+  /** The panel the draft belongs to (the editor registers with the guard). */
+  panelId?: string;
   onDraftCellEdit?: (draftId: string, column: string, value: Value | null | undefined) => void;
   onDraftCellEditStart?: (draftId: string, column: string) => void;
   onDraftCellEditCancel?: () => void;
@@ -451,6 +454,7 @@ const DraftRow = memo(function DraftRow({
   columnWidths,
   editing,
   cellSelectionEnabled,
+  panelId,
   onDraftCellEdit,
   onDraftCellEditStart,
   onDraftCellEditCancel,
@@ -521,6 +525,7 @@ const DraftRow = memo(function DraftRow({
               <EditableCell
                 value={value ?? null}
                 type={(col.type ?? '').toLowerCase()}
+                panelId={panelId}
                 onCommit={(committed) =>
                   onDraftCellEdit?.(
                     draft.draftId,
@@ -733,6 +738,7 @@ export const VirtualBody = memo(function VirtualBody({
             columnWidths={columnWidths}
             editing={editingDraft}
             cellSelectionEnabled={cellSelectionEnabled}
+            panelId={cellEditing?.panelId}
             onDraftCellEdit={onDraftCellEdit}
             onDraftCellEditStart={onDraftCellEditStart}
             onDraftCellEditCancel={onDraftCellEditCancel}

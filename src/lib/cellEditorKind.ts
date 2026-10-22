@@ -502,14 +502,18 @@ export function buildColumnEditorInfo(
  * name.
  */
 export function buildColumnEditorInfoFromDefs(
-  columns: readonly { name: string; type?: string }[],
+  columns: readonly { name: string; type?: string; nullable?: boolean }[],
 ): Map<string, ColumnEditorInfo> {
   const info = new Map<string, ColumnEditorInfo>();
   for (const column of columns) {
     const cellType = resolveCellType(column.type);
     info.set(column.name, {
       cellType,
-      nullable: true,
+      // The column definition knows the nullability when its owner filled it
+      // in; without it the fallback has to assume "nullable", and that
+      // assumption is what lets a `NOT NULL` column accept an empty input
+      // as a `NULL` (05 §7 #3).
+      nullable: column.nullable ?? true,
       integerOnly: isIntegerCellType(column.type),
       readOnlyReason: columnReadOnlyReason(cellType, column.type),
     });
@@ -542,8 +546,16 @@ export interface CellEditingContext {
   readonly columnEditorInfo: ReadonlyMap<string, ColumnEditorInfo>;
   /** The whole grid is read-only, and this is why. */
   readonly readOnlyReason: CellReadOnlyReason | null;
-  /** The panel the grid belongs to. */
-  readonly panelId?: string;
+  /**
+   * The panel the grid belongs to.
+   *
+   * It is **required**: the navigation guard asks the open editor whether it
+   * can write its draft, and it finds the editor through the panel id
+   * (05 §4.4). A grid that offers an editing context without naming its
+   * panel would leave the guard silently disarmed — so the type layer
+   * refuses it instead (05 §4.4 / the panel's own registration).
+   */
+  readonly panelId: string;
   /** Read the candidate values of an enumeration column, on request only. */
   readonly loadCandidates?: (columnName: string) => Promise<readonly string[]>;
   /**

@@ -369,6 +369,9 @@ export function TableView({
         id: c.name,
         name: c.name,
         type: c.dataType,
+        // The editor needs the nullability: a grid that has to guess it
+        // would let a `NOT NULL` column accept an empty input as a `NULL`.
+        nullable: c.nullable,
       })),
     [displayedColumns],
   );

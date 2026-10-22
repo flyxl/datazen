@@ -24,9 +24,16 @@ export interface EditableCellProps {
   type: string;
   onCommit: (value: unknown) => void;
   onCancel: () => void;
+  /**
+   * The panel the cell belongs to.
+   *
+   * The editor registers itself with the navigation guard under this id
+   * (05 §4.4) — without it, a re-read would take the draft with it.
+   */
+  panelId?: string;
 }
 
-export function EditableCell({ value, type, onCommit, onCancel }: EditableCellProps) {
+export function EditableCell({ value, type, onCommit, onCancel, panelId }: EditableCellProps) {
   const cellType = resolveCellType(type);
   const text = toEditString(value);
   const kind = resolveCellEditorKind({
@@ -39,6 +46,7 @@ export function EditableCell({ value, type, onCommit, onCancel }: EditableCellPr
 
   return (
     <CellEditorHost
+      panelId={panelId}
       columnName=""
       dataType={type}
       cellType={cellType}

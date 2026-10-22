@@ -6,7 +6,7 @@ import { Spinner } from '../ui/Spinner';
 import { fkJumpLabel, fkResolvingLabel } from './fkCellText';
 import { cn } from '../../lib/cn';
 import type { CellType } from '../../lib/cellTypes';
-import type { CellEditingContext } from '../../lib/cellEditorKind';
+import type { CellEditingContext, ColumnEditorInfo } from '../../lib/cellEditorKind';
 import type { Value } from '../../types';
 
 /**
@@ -67,6 +67,16 @@ export interface GridCellProps {
    * components.
    */
   editor?: CellEditingContext;
+  /**
+   * The editor facts of **this** column, already resolved by the owner.
+   *
+   * The owner hands over the **resolved** facts, not the raw map: a grid
+   * whose map is empty (or missing a column) falls back to the column
+   * definitions once, and every cell then reads that one answer. Reading
+   * the raw map here would take the nullability and the integer check away
+   * from a cell whose column the map does not know (DB-05 ⑦).
+   */
+  columnInfo?: ColumnEditorInfo;
   /** DOM id, referenced by the grid's `aria-activedescendant`. */
   id?: string;
   /**
@@ -128,11 +138,10 @@ export const GridCell = memo(function GridCell({
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
+  columnInfo,
 }: GridCellProps) {
-  /** The editor facts of this cell's column. */
-  const editorInfo = editor?.columnEditorInfo.get(column.name);
   /** Why the cell cannot be edited, if it cannot. */
-  const readOnlyReason = editor?.readOnlyReason ?? editorInfo?.readOnlyReason ?? null;
+  const readOnlyReason = editor?.readOnlyReason ?? columnInfo?.readOnlyReason ?? null;
   /**
    * The write path of this cell.
    *
@@ -208,8 +217,8 @@ export const GridCell = memo(function GridCell({
           value={value}
           isEditing={editing}
           cellType={cellType}
-          nullable={editorInfo?.nullable ?? true}
-          integerOnly={editorInfo?.integerOnly ?? false}
+          nullable={columnInfo?.nullable ?? true}
+          integerOnly={columnInfo?.integerOnly ?? false}
           panelId={editor?.panelId}
           onCommit={commitValue}
           onCancel={onCellEditCancel}

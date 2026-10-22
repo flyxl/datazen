@@ -305,9 +305,18 @@ export function CellEditorHost({
   }, []);
 
   // The navigation guard asks the open editor to commit before the page
-  // moves under it (05 §4.4).
+  // moves under it (05 §4.4). **Without a panel id the editor is not
+  // registered, and the guard is silently disarmed** — so the omission is
+  // reported instead of being swallowed.
   useEffect(() => {
-    if (!panelId) return;
+    if (!panelId) {
+      if (import.meta.env.DEV) {
+        console.warn(
+          '[grid] the cell editor has no panel id, so it is not registered with the navigation guard',
+        );
+      }
+      return;
+    }
     return registerActiveCellEditor({
       panelId,
       commit: () => {
