@@ -241,7 +241,7 @@ pub struct AppState {
     /// 端口契约住在形态中立的 `packages/tunnel`（那里只留**规则**）；**文件 I/O**
     /// 是形态的事，因此实现留在宿主：桌面读 `{appData}/ssh_known_hosts.json`，
     /// web 形态由服务端 host 实现。
-    pub known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore>,
+    pub known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository>,
     /// 概要 §6.2 第 8 步的窄适配根：桌面身份 + owner 作用域句柄登记表。
     ///
     /// 事务归属和资源生命周期由 Runtime session actor 管理。取不到 adapter 时用

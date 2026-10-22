@@ -8,7 +8,7 @@
 //!    through the SSH session and pipe data bidirectionally.
 //! 5. Return the local port so DB drivers can connect to 127.0.0.1:<local>.
 
-use crate::known_hosts_store::KnownHostsStore;
+use crate::known_hosts_repository::KnownHostsRepository;
 use crate::ssh_known_hosts::{
     host_key_id, known_host_entry_from_key, mismatch_error_message, verify_host_key,
     HostKeyDecision, KnownHostEntry,
@@ -27,7 +27,7 @@ use tokio_util::sync::CancellationToken;
 struct TunnelHandler {
     host_id: String,
     /// 已知主机的**存储**：宿主注入的端口实例（桌面：文件；web：服务端存储）。
-    known_hosts: Arc<dyn KnownHostsStore>,
+    known_hosts: Arc<dyn KnownHostsRepository>,
     /// 本次会话已知的条目。首见即写入存储，因此内存里始终是存储的镜像。
     entries: Arc<Mutex<HashMap<String, KnownHostEntry>>>,
     rejection: Arc<Mutex<Option<String>>>,
@@ -135,7 +135,7 @@ impl SshTunnel {
         ssh: &SshTunnelConfig,
         remote_host: &str,
         remote_port: u16,
-        known_hosts: Arc<dyn KnownHostsStore>,
+        known_hosts: Arc<dyn KnownHostsRepository>,
     ) -> Result<Self, DriverError> {
         if !supported_auth_method(&ssh.auth_method) {
             return Err(DriverError::SshTunnelError(format!(
@@ -423,13 +423,13 @@ mod tests {
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILM+rvN+ot98qgEN796jTiQfZfG1KaT0PtFDJ/XFSqti";
 
     /// 形态中立的进程内 known-hosts 存储：隧道机制的单测**不碰本机文件**
-    /// （文件 I/O 是宿主实现的事，见 `KnownHostsStore`）。
+    /// （文件 I/O 是宿主实现的事，见 `KnownHostsRepository`）。
     #[derive(Default)]
     struct MemoryKnownHosts {
         entries: std::sync::Mutex<HashMap<String, KnownHostEntry>>,
     }
 
-    impl KnownHostsStore for MemoryKnownHosts {
+    impl KnownHostsRepository for MemoryKnownHosts {
         fn load(&self) -> HashMap<String, KnownHostEntry> {
             self.entries
                 .lock()
@@ -440,9 +440,9 @@ mod tests {
         fn save(
             &self,
             entries: &HashMap<String, KnownHostEntry>,
-        ) -> Result<(), crate::known_hosts_store::KnownHostsStoreError> {
+        ) -> Result<(), crate::known_hosts_repository::KnownHostsRepositoryError> {
             let mut guard = self.entries.lock().map_err(|_| {
-                crate::known_hosts_store::KnownHostsStoreError::Unavailable(
+                crate::known_hosts_repository::KnownHostsRepositoryError::Unavailable(
                     "known hosts lock poisoned".into(),
                 )
             })?;
@@ -451,7 +451,7 @@ mod tests {
         }
     }
 
-    fn memory_known_hosts() -> Arc<dyn KnownHostsStore> {
+    fn memory_known_hosts() -> Arc<dyn KnownHostsRepository> {
         Arc::new(MemoryKnownHosts::default())
     }
 

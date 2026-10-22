@@ -302,7 +302,7 @@ host → tunnel，与 F-13 禁止的 tunnel → host 相反；该层的单元测
 > ② SSH known-hosts 存储全仓只被 SSH 隧道使用（无第二消费者），随 `ssh.rs` 一并迁入本层。
 > **它的文件 I/O 已经是端口**（S4 完成）：本层只留**规则**（`KnownHostEntry` / `HostKeyDecision` /
 > `host_key_id` / `verify_host_key` / `mismatch_error_message`）与**存储端口**
-> [`KnownHostsStore`](#43-持久化与授权端口)；读 `{appData}/ssh_known_hosts.json` 的实现搬回宿主
+> [`KnownHostsRepository`](#43-持久化与授权端口)；读 `{appData}/ssh_known_hosts.json` 的实现搬回宿主
 > （`src-tauri/src/platform/known_hosts.rs`），web 形态由服务端 host 实现（服务端存储目录 /
 > 组织级存储）。**共享包不再读本机文件。**
 
@@ -604,9 +604,9 @@ pub trait TunnelRepository: Send + Sync + 'static {
   AES-256-GCM 主密钥。实例在**组装期**创建一次（`bootstrap/app_state.rs`），既进
   `AppState`，也注入会话后端（建连时解引用 `tunnelId`）。**没有进程级全局。**
 
-**`KnownHostsStore`（SSH known-hosts 存储，域名包端口）**：这一条**不在**
+**`KnownHostsRepository`（SSH known-hosts 存储，域名包端口）**：这一条**不在**
 `platform-api` 的端口家族里——它是**领域包端口**，住在需要它的那个包里
-（`packages/tunnel/src/known_hosts_store.rs`），先例：`schema-diff` 的
+（`packages/tunnel/src/known_hosts_repository.rs`），先例：`schema-diff` 的
 `ReviewedPlanRepository`、`data-transfer` 的 `TransferPlanRepositoryPort`、`data-sync` 的
 `ComparisonStorageRoot`。理由有三：
 
@@ -616,7 +616,7 @@ pub trait TunnelRepository: Send + Sync + 'static {
 2. **消费者只有一个**：`SshTunnel` 在协议回调里用它。应用层 / runtime 层从不接触
    「已知主机」这件事，因此它没有理由出现在它们看得见的契约里。
 3. **形状不同**：它是**同步**的（现状就是 `std::fs`，且校验发生在 `russh` 的同步协议
-   回调里），并自带错误类型（`KnownHostsStoreError`）——强行套进 `async_trait` +
+   回调里），并自带错误类型（`KnownHostsRepositoryError`）——强行套进 `async_trait` +
    `PortError` 的家族只会让两处都变形。
 
 能力只有两条：**读出全部条目 / 保存全部条目**。降级语义属于**契约**而不是实现：
@@ -811,7 +811,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 | `SubmissionTokenIssuer` | 进程内 HMAC 密钥 | 服务端签名密钥 + `keyVersion` 轮换 | 同单进程 |
 | `ArtifactRepository` | 文件字节经本机路径与授权对话框；Job Core 仅存 Artifact ID 引用（30 天 TTL），不持有字节或保证内容留存 | 服务端存储 + 授权导出 | 同单进程 |
 | `TunnelRepository` | **已实现**：`src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`。加密落盘 `{appData}/tunnels.json`；名单只给摘要，单条取用给全量；只承认桌面自己那一个组织 | 服务端库上的组织级隧道定义存储（同一端口、另一适配器） | 同单进程 |
-| `KnownHostsStore`（领域包端口） | **已实现**：`src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsStore`，读 `{appData}/ssh_known_hosts.json` | 服务端存储目录 / 组织级存储（本轨不写 web 实现） | 同单进程 |
+| `KnownHostsRepository`（领域包端口） | **已实现**：`src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`，读 `{appData}/ssh_known_hosts.json` | 服务端存储目录 / 组织级存储（本轨不写 web 实现） | 同单进程 |
 | `EventSink` | Tauri 事件推送 | SSE | SSE + worker 转发 |
 | `Clock` | `SystemClock`（本机 UTC，定宽毫秒） | 同桌面（服务进程本机 UTC） | 各 worker 读各自本机 UTC；跨节点排序只用 `Timestamp` 字典序，不假设同一时钟 |
 
@@ -943,7 +943,7 @@ pub trait MigrationProfileReader: Send + Sync + 'static {
 3. **能力事实用值表达**：目标不被支持时端口返回 `TargetResolution::Unsupported { reason_code }` 而不是抛错（§4.1）。
 4. **私有词汇表**：`MonitorGrantScope` / `ExecutionPolicy` / `TargetResolution` / `KeyMaterial` / `MigrationProfileSummary` 各自留在**自己的端口文件**里（§4.1 的「每个端口文件自带它的私有词汇表」），**不进 `dto/`**；将来若要跨边界序列化再各自补 serde。
 
-**单测**：窄端口各自在同文件带 `#[cfg(test)]` 用例，共 22 条。每个端口至少一条钉住「对象安全 + 能以 `Arc<dyn Trait>` 持有并实际调用」（`fn assert_object_safe<T: Send + Sync + 'static + ?Sized>()`），外加各自的源码守卫：只读端口不得出现写方法、端口签名不得出现宿主类型、密钥材料不得经 `Debug` 或 serde 泄漏。
+**单测**：窄端口各自在同文件带 `#[cfg(test)]` 用例。每个端口至少一条钉住「对象安全 + 能以 `Arc<dyn Trait>` 持有并实际调用」（`fn assert_object_safe<T: Send + Sync + 'static + ?Sized>()`），外加各自的源码守卫：只读端口不得出现写方法、端口签名不得出现宿主类型、密钥材料不得经 `Debug` 或 serde 泄漏。
 
 ## 5. RequestContext 的三个构造来源
 

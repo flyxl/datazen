@@ -599,8 +599,8 @@ mod tests {
                 &platform,
             );
         let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
-        let known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore> =
-            crate::platform::known_hosts::desktop_known_hosts_store(store.data_dir());
+        let known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository> =
+            crate::platform::known_hosts::desktop_known_hosts_repository(store.data_dir());
 
         let state = AppState {
             driver_registry: registry,
@@ -690,8 +690,8 @@ mod tests {
                 &platform,
             );
         let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
-        let known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore> =
-            crate::platform::known_hosts::desktop_known_hosts_store(store.data_dir());
+        let known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository> =
+            crate::platform::known_hosts::desktop_known_hosts_repository(store.data_dir());
 
         let state = AppState {
             driver_registry: registry,

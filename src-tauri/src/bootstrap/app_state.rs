@@ -200,8 +200,8 @@ pub(crate) fn finish_app_state(
     // 同一份实例既注入会话后端（建连时解引用 `tunnelId`、启动隧道），也进
     // `AppState`（命令侧取用）：整个进程只有一份，存储的生命周期由宿主决定。
     let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
-    let known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore> =
-        crate::platform::known_hosts::desktop_known_hosts_store(&data_dir);
+    let known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository> =
+        crate::platform::known_hosts::desktop_known_hosts_repository(&data_dir);
     // 平台装配必须**先于**依赖它的功能绑定：共享的元数据源要拿到 Runtime 门面
     // （解析会话归属）与执行宿主（profile / 驱动 / 命令执行），两者都出自装配。
     // 装配失败不崩应用——与既有行为一致——但依赖平台的调用会明确失败。
