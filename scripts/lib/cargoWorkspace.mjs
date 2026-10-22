@@ -261,7 +261,7 @@ export function normalBuildClosure(index, id) {
  *
  * A Cargo key can carry a quoted `cfg()` containing a string literal with a
  * dot in it — `target.'cfg(target_os = "macos")'.dependencies` is the form
- * `src-tauri/Cargo.toml:90` actually uses — so a plain `split('.')` puts
+ * `src-tauri/Cargo.toml:103` actually uses — so a plain `split('.')` puts
  * fragments of the predicate in the wrong place.
  */
 function splitDottedKey(key) {
