@@ -133,9 +133,8 @@ mod tests {
 
     #[tokio::test]
     async fn encrypted_round_trip_filters_invalid_records() {
-        let _keyring = crate::testing::FileKeyringGuard::set();
         let temp = tempfile::tempdir().expect("tempdir");
-        let store = DesktopRepository::init_with_path(temp.path())
+        let store = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
             .await
             .expect("store");
         store
@@ -160,7 +159,7 @@ mod tests {
         tokio::fs::write(temp.path().join(FILE_NAME), encrypted)
             .await
             .expect("write records");
-        let fresh = DesktopRepository::init_with_path(temp.path())
+        let fresh = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
             .await
             .expect("reload store");
         assert_eq!(fresh.get_schema_diff_profiles().await.len(), 1);
@@ -168,9 +167,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_tester_round_trip_preserves_scope_options_and_type_overrides() {
-        let _keyring = crate::testing::FileKeyringGuard::set();
         let temp = tempfile::tempdir().expect("tempdir");
-        let store = DesktopRepository::init_with_path(temp.path())
+        let store = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
             .await
             .expect("store");
         let mut expected = profile("with-override");
@@ -206,7 +204,7 @@ mod tests {
             .save_schema_diff_profile(expected.clone())
             .await
             .expect("save profile");
-        let fresh = DesktopRepository::init_with_path(temp.path())
+        let fresh = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
             .await
             .expect("reload store");
         let actual = fresh

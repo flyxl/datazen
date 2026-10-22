@@ -402,7 +402,7 @@ pub type ConfigRepository = DesktopRepository;
 | **Platform vault** | macOS：`security` CLI → 登录钥匙串，服务 `com.datazen.encryption-key` / 账户 `master-key`；Windows：DPAPI → `.key.dpapi` | macOS **adhoc/未签名** 二进制（`tauri:dev` 等）自动优先，ACL 绑 `/usr/bin/security`，避免每次重链弹钥匙串 ACL |
 | **文件 `.key`** | `{appData}/.key`（base64 主密钥，`chmod 600`） | `DATAZEN_KEYRING=file`（dev / CI / 单测）；钥匙串不可用时的兜底 |
 
-选择逻辑摘要：
+选择逻辑摘要（`store/key_backend.rs` 的 `resolve_key_backend()`）：
 
 ```text
 DATAZEN_KEYRING=file       → File
@@ -416,6 +416,10 @@ unset + macOS 签名 / Linux → Keyring（失败可回退已有 `.key`）
 - 首次启动随机生成主密钥并写入当前后端；已有 `.key` 时可迁移进钥匙串后删除文件。
 - 应用数据 ZIP **不包含** `.key`；跨机恢复密文需另行备份主密钥（设置流程可走 `save_encryption_key_with_dialog`）。
 - 实现入口：`DesktopRepository::get_or_create_encryption_key` → `key_store::load_or_create_master_key`。
+- **后端是启动期事实**：`DATAZEN_KEYRING` 只在启动装配时读一次（GUI：`DesktopRepository::init`；无头 MCP：`bootstrap::run::run_mcp_stdio`），
+  得到的 `KeyBackend` 一路**显式传参**下去（`init_with_path(dir, backend)` → `load_or_create_master_key(dir, backend)`）。
+  请求期不再读进程环境，因此任何线程改写 `DATAZEN_KEYRING` 都无法把运行中的 store 改道到钥匙串。
+  这与「桌面主体是启动期事实，授权基线不得在请求之间漂移」是同一条原则。
 
 ### 单元测试与钥匙串弹窗
 
@@ -424,9 +428,13 @@ crate 与 `security` CLI 都走它们）在钥匙串搜索列表异常时都会�
 `app-encryption-key` 的钥匙串 `login`」模态框，并**阻塞**调用进程直到人工点掉。`cargo test` 一旦命中
 就整条挂死，所以：
 
-- `key_backend()` 在 `cfg(test)` 下恒为 `File`，`load_or_create_from_file` 在测试构建中也不再回探 vault / keychain。
-- 少数需要真正验证钥匙串后端的用例（`keyring_forced_*`、`keyring_creates_and_reloads_master_key`）默认跳过，
-  须显式设 `DATAZEN_TEST_KEYRING=1` 才访问 OS keychain。
+- `cfg(test)` 下后端解析恒为 `File`，`load_or_create_from_file` 在测试构建中也不再回探 vault / keychain。
+- **非 `#[ignore]` 的用例一律不写进程 env**：后端由参数显式传入（`KeyBackend::File`），
+  因此用例之间不存在「谁改了 `DATAZEN_KEYRING`」的跨模块竞态。这条规则由源码扫描守卫
+  `store/key_backend_env_guard_tests.rs` 钉住（钥匙串 env 的写入只允许出现在 `#[ignore]` 用例里）。
+- 少数需要真正验证钥匙串后端的用例（`keyring_forced_*`、`keyring_creates_and_reloads_master_key`、
+  `migrates_dot_key_into_keyring_and_deletes_file`）默认跳过，须显式设 `DATAZEN_TEST_KEYRING=1`
+  才访问 OS keychain；它们带 `#[ignore]`，靠 `cargo test -- --ignored` 单独跑，env 写入因此是安全的。
 - 门禁脚本 `scripts/ci-local.sh` 与 `.github/workflows/ci.yml` 同样导出 `DATAZEN_KEYRING=file`；
   E2E 侧的同类处理见 [E2E — 主密钥与系统钥匙串](../../development/e2e-testing.md)。
 

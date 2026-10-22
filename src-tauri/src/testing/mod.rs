@@ -12,20 +12,40 @@ pub mod mock_ai_provider;
 #[cfg(test)]
 pub mod ai_wiremock;
 
-/// Restores prior `DATAZEN_KEYRING` when dropped (avoids cross-test pollution).
-pub struct FileKeyringGuard {
+/// Process-wide lock for every test that touches the process environment.
+///
+/// `std::env::set_var` / `remove_var` are **process-global**: a writer in one
+/// module races with a reader in another, and the two are usually in different
+/// modules (the keyring backend lives in `store::key_backend`, the opt-in
+/// switch next to it, the store fixtures in `store::tests::fixtures`). Every
+/// env writer **and** env reader in the test binary takes this one mutex, so
+/// there is a single serialization point instead of several per-module ones.
+#[cfg(test)]
+pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Forces `DATAZEN_KEYRING=keyring` and restores the previous value on drop.
+///
+/// Only the `#[ignore]`d keychain tests use this: they run on their own
+/// (`cargo test -- --ignored`), never next to the rest of the suite, so the
+/// process env may be mutated there. The previous value is **restored**
+/// (not overwritten with `file`), so the guard cannot leak a backend into a
+/// later test of the same run.
+#[cfg(test)]
+pub(crate) struct ForceKeyringGuard {
     previous: Option<String>,
 }
 
-impl FileKeyringGuard {
-    pub fn set() -> Self {
+#[cfg(test)]
+impl ForceKeyringGuard {
+    pub(crate) fn new() -> Self {
         let previous = std::env::var("DATAZEN_KEYRING").ok();
-        std::env::set_var("DATAZEN_KEYRING", "file");
+        std::env::set_var("DATAZEN_KEYRING", "keyring");
         Self { previous }
     }
 }
 
-impl Drop for FileKeyringGuard {
+#[cfg(test)]
+impl Drop for ForceKeyringGuard {
     fn drop(&mut self) {
         match &self.previous {
             Some(v) => std::env::set_var("DATAZEN_KEYRING", v),
