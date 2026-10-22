@@ -17,8 +17,9 @@
  *   node scripts/i18n-sync-check.mjs --verbose      # show changed en values
  *
  * The driver-pack scanner (`extractPackKeys`, `findDriverLocalePacks`,
- * `inspectDriverLocalePack`, `checkDriverLocalePacks`, `buildSyncReport`) is
- * exported as pure-ish functions and covered by
+ * `inspectDriverLocalePack`, `checkDriverLocalePacks`, `buildSyncReport`) and
+ * the stale decision (`isSymbolOnlyValue`, `findStaleKeys`) are exported as
+ * pure-ish functions and covered by
  * `scripts/__tests__/i18n-sync-check.test.mjs`; importing this module never
  * runs the CLI (same convention as `check-id-terminology.mjs`).
  */
@@ -226,6 +227,79 @@ export function buildSyncReport({
   };
 }
 
+/**
+ * Placeholder token: `{name}` — braces, an identifier, no whitespace.
+ *
+ * Same shape as `extractPlaceholders` in `scripts/lib/i18nSync.mjs`; it is
+ * duplicated here (not imported) because that shared module is owned by a
+ * parallel track and must not be touched from this one.
+ */
+const PLACEHOLDER_TOKEN_RE = /\{[A-Za-z_][A-Za-z0-9_]*\}/g;
+
+/**
+ * Is this English value *purely symbolic* — i.e. does it carry no word at all
+ * that a translator could have rendered differently?
+ *
+ * The rule is decided **by shape**, never by position:
+ *
+ *   1. strip every `{...}` placeholder token;
+ *   2. what is left must be **non-empty** (an empty or all-whitespace value is
+ *      NOT symbolic — it must not silence a real staleness signal);
+ *   3. what is left must contain **no Unicode letter and no Unicode digit** —
+ *      only symbols, punctuation and whitespace survive.
+ *
+ * So `≈ {count}` and `—` are symbolic, while `Sort`, `— unmapped —` and
+ * `约 {count}` are not (they contain letters).
+ *
+ * Why this matters: a *new* key whose English value is a symbol must not force
+ * the translator to invent a natural-language wording. `≈ {count}` was forced
+ * into `ca. {count}` / `约 {count}` — a *worse* string than the original.
+ *
+ * @param {string} value the English value
+ * @returns {boolean}
+ */
+export function isSymbolOnlyValue(value) {
+  if (typeof value !== 'string') return false;
+  const withoutPlaceholders = value.replace(PLACEHOLDER_TOKEN_RE, '');
+  const rest = withoutPlaceholders.trim();
+  // Empty / whitespace-only ⇒ NOT symbolic (see rule 2 above).
+  if (rest.length === 0) return false;
+  // A single letter or digit left over ⇒ a real word / number ⇒ not symbolic.
+  return !/[\p{L}\p{N}]/u.test(rest);
+}
+
+/**
+ * The stale decision.
+ *
+ * A translation is **stale** when its value is byte-identical to the English
+ * one — the heuristic for "this string was never translated".
+ *
+ * EXCEPTION (the symbol exemption): when the English value is purely
+ * symbolic (`≈ {count}`, `—`), an identical translation is **not** stale.
+ * There is no wording to invent, and demanding one only degrades the value.
+ *
+ * The decision is made **by shape** of the English value
+ * ({@link isSymbolOnlyValue}) — never by a positional heuristic such as
+ * "the previous character is a quote", which is exactly what a previous
+ * attempt at this toolchain did and why it failed.
+ *
+ * @param {Record<string, string>} enKeys English key → value
+ * @param {Record<string, string>} localeKeys locale key → value
+ * @param {Iterable<string>} changedEnKeys keys whose English changed/added
+ * @returns {string[]} the stale keys, in the order of `changedEnKeys`
+ */
+export function findStaleKeys(enKeys, localeKeys, changedEnKeys) {
+  const localeKeySet = new Set(Object.keys(localeKeys));
+  const stale = [];
+  for (const key of changedEnKeys) {
+    if (!localeKeySet.has(key)) continue;
+    if (localeKeys[key] !== enKeys[key]) continue;
+    if (isSymbolOnlyValue(enKeys[key])) continue;
+    stale.push(key);
+  }
+  return stale;
+}
+
 function getEnKeysAtRef(ref) {
   try {
     const paths = execFileSync(
@@ -320,10 +394,7 @@ function runCli() {
     const localeKeySet = new Set(Object.keys(localeKeys));
     const missing = [...enKeySet].filter((k) => !localeKeySet.has(k));
     const extra = [...localeKeySet].filter((k) => !enKeySet.has(k));
-    const stale =
-      changedEnKeys.size > 0
-        ? [...changedEnKeys].filter((k) => localeKeySet.has(k) && localeKeys[k] === enKeys[k])
-        : [];
+    const stale = findStaleKeys(enKeys, localeKeys, changedEnKeys);
 
     if (missing.length === 0 && extra.length === 0 && stale.length === 0) {
       continue;

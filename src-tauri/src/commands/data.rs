@@ -240,6 +240,10 @@ mod test_fixtures;
 #[path = "data/insert_guard_tests.rs"]
 mod insert_guard_tests;
 
+#[cfg(test)]
+#[path = "data/result_write_tests.rs"]
+mod result_write_tests;
+
 #[path = "table_target.rs"]
 mod table_target;
 

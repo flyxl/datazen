@@ -1,7 +1,12 @@
 import { useCallback, useMemo } from 'react';
 import { useResizable } from '../../hooks/useResizable';
 import { useI18n } from '../../hooks/useI18n';
-import { usePanelStore, type Panel } from '../../stores/panelStore';
+import {
+  paneKey,
+  resolveFocusedPaneId,
+  usePanelStore,
+  type Panel,
+} from '../../stores/panelStore';
 import { resultEditKey, useResultEditability } from '../../stores/panelResultEdit';
 import {
   gridReadOnlyMessageKey,
@@ -137,8 +142,19 @@ export function ContentViewDrawers({
   const selectedRows = tableSlice?.selectedRows ?? NO_SELECTED;
   const detailRowIndex = tableSlice?.detailRowIndex ?? null;
 
+  /**
+   * The pane of the active tab that has the focus.
+   *
+   * The drawer draws the row the grid put it on, so it has to read the
+   * **same** pane's execution state the grid shows. Reading the tab's default
+   * pane instead made the drawer judge a different result set than the one on
+   * screen — the read-only reason then came from the wrong verdict key.
+   */
+  const focusedPaneId = usePanelStore((s) => s.focusedPaneId);
   const activeQueryExec = usePanelStore((s) =>
-    activePanel?.type === 'query' ? s.queryExec.get(activePanel.id) : undefined,
+    activePanel?.type === 'query'
+      ? s.queryExec.get(paneKey(activePanel.id, resolveFocusedPaneId(focusedPaneId)))
+      : undefined,
   );
   const updateResultCell = usePanelStore((s) => s.updateResultCell);
   const updateQuerySql = usePanelStore((s) => s.updateSql);

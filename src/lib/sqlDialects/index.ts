@@ -10,6 +10,7 @@ import {
   elasticsearchDialect,
   mongodbDialect,
   genericDialect,
+  oracleDialect,
 } from './extra';
 import { DRIVER_SQL_DIALECTS } from '../../extensions/generated';
 import type { SqlDialectStrategy } from './types';
@@ -24,6 +25,7 @@ const BUILTIN_DIALECTS: Record<string, SqlDialectStrategy> = {
   elasticsearch: elasticsearchDialect,
   mongodb: mongodbDialect,
   generic: genericDialect,
+  oracle: oracleDialect,
 };
 
 const DIALECTS: Record<string, SqlDialectStrategy> = {
@@ -45,5 +47,8 @@ export type {
   SqlDialectFamily,
   TableSqlDialect,
   GeneratedSqlType,
+  RowLimitShape,
 } from './types';
 export { BaseTableSqlGenerator } from './baseTableSql';
+export { buildRowLimitedSelect, LIMIT_ROW_LIMIT } from './rowLimit';
+export type { RowLimitedSelectParts } from './rowLimit';

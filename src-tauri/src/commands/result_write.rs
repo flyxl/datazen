@@ -6,6 +6,7 @@ use datazen_application::{
     sessions::ConnectionUseCases,
 };
 use datazen_driver_api::{ColumnInfo, LegacySqlDialect, SqlDialect, TableSchema, Value};
+use datazen_feature_core::services::result_edit::{read_only_error_code, GridReadOnlyReason};
 use datazen_platform_api::{
     context::RequestContext,
     dto::{
@@ -126,6 +127,13 @@ pub async fn commit_query_result_cell(
     state: State<'_, AppState>,
     request: ResultCellWrite,
 ) -> Result<(), CommandError> {
+    commit_query_result_cell_impl(&state, request).await
+}
+
+pub(crate) async fn commit_query_result_cell_impl(
+    state: &AppState,
+    request: ResultCellWrite,
+) -> Result<(), CommandError> {
     let adapter = state.platform_require().map_err(into_command_error)?;
     let context = adapter.begin_call().context().clone();
     let runtime = adapter.runtime().map_err(into_command_error)?;
@@ -138,6 +146,43 @@ pub async fn commit_query_result_cell(
     {
         return Err(CommandError::Validation(
             "Result requires its original live session".into(),
+        ));
+    }
+    // The connection's own state, read once and up front — before a single
+    // statement of this write is built:
+    //
+    // * the session names the connection the write would go to;
+    // * a **read-only connection refuses every write**, and it says so in the
+    //   grid's own reason code. The narrow mapping verdict says nothing about
+    //   that flag, and the origin verdict is not the only channel that can
+    //   open a cell, so the host has to ask for it itself: the refusal
+    //   happens before anything of the write leaves the process;
+    // * the connection's configuration must still be the one this session was
+    //   opened with.
+    let session = runtime
+        .get_session(&context, request.binding.handle.clone())
+        .await
+        .map_err(into_command_error)?;
+    let (config, profile) = state
+        .store
+        .platform_profile(session.connection_id.as_str())
+        .await
+        .ok_or_else(|| CommandError::NotFound("Connection profile unavailable".into()))?;
+    if config.read_only {
+        // **Which code a refusal carries is a rule, and the rule lives in the
+        // shared layer.** The shell asks `read_only_error_code` for it rather
+        // than writing the code out: `SessionReadOnly` is already one of the
+        // editability reasons, so a read-only connection is refused with the
+        // same code the origin verdict would have used — the two ends of the
+        // same decision agree, and the vocabulary stays in one place.
+        let code = read_only_error_code(GridReadOnlyReason::SessionReadOnly);
+        return Err(CommandError::Validation(format!(
+            "{code}: Connection is read-only; result cells cannot be written back"
+        )));
+    }
+    if !profile.enabled || Counter::new(profile.config_revision) != session.config_revision {
+        return Err(CommandError::Validation(
+            "Result connection configuration changed".into(),
         ));
     }
     let stored = chunks(&runtime, &context, request.binding.execution_id.clone()).await?;
@@ -159,10 +204,6 @@ pub async fn commit_query_result_cell(
         .relation
         .as_ref()
         .ok_or_else(|| CommandError::Validation("Result relation unavailable".into()))?;
-    let session = runtime
-        .get_session(&context, request.binding.handle.clone())
-        .await
-        .map_err(into_command_error)?;
     // Never silently redirect a retained result after USE/search_path/identity changes.
     if session.connection_id != relation.connection_id || session.observed_context != source.context
     {
@@ -251,16 +292,6 @@ pub async fn commit_query_result_cell(
             Ok((key.as_str(), Some(value)))
         })
         .collect::<Result<Vec<_>, CommandError>>()?;
-    let (config, profile) = state
-        .store
-        .platform_profile(relation.connection_id.as_str())
-        .await
-        .ok_or_else(|| CommandError::NotFound("Connection profile unavailable".into()))?;
-    if !profile.enabled || Counter::new(profile.config_revision) != session.config_revision {
-        return Err(CommandError::Validation(
-            "Result connection configuration changed".into(),
-        ));
-    }
     let driver = state
         .driver_registry
         .get_sql_driver_by_name(config.database_type.as_str())

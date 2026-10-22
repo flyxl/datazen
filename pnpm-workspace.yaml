@@ -3,3 +3,20 @@ allowBuilds:
   esbuild: true
   edgedriver: true
   geckodriver: true
+
+# pnpm 在 `run` / `exec` 之前会校验 node_modules 是否与锁文件同步（默认值 install：
+# 不同步就先装一次）。本仓的工作树把 node_modules 软链到主 checkout，pnpm 认不出链接
+# 目标、判定依赖过期，于是每次 `pnpm <script>` 前都先试装一次，而这次安装必然失败：
+#
+#   × installing dependencies
+#     ╰─▶ Failed to create directory at ".../.worktrees/<track>/node_modules":
+#         workspace hoist directory is not a real directory
+#
+# 脚本随后仍会执行（退出码 0），但这段安装报错噪声出现在所有脚本之前，极易被误判成
+# 真失败。pnpm 自己在报错末尾推荐的键就是这一个，故按它关掉。
+#
+# **CI 必须显式打开**：.github/workflows/ci.yml 与 release.yml 的 workflow 级 env 都设
+# `DATAZEN_VERIFY_DEPS_BEFORE_RUN: install`。这样「node_modules 与锁文件不同步」在 CI 里
+# 仍然会被校验；「锁文件与 package.json 不同步」另有 `pnpm install --frozen-lockfile`
+# 直接硬失败。本地需要同步依赖时显式跑 `pnpm install`。
+verifyDepsBeforeRun: ${DATAZEN_VERIFY_DEPS_BEFORE_RUN:-false}

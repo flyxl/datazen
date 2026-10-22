@@ -9,7 +9,10 @@
  *   unit tested at all;
  * - the host never branches on a driver id for SQL. The identifiers are
  *   quoted with the dialect's own quote character, and the caller supplies
- *   it.
+ *   it;
+ * - the row cap is the dialect's own shape too: `LIMIT` is not legal on
+ *   SQL Server or Oracle, so the dialect declares how it caps rows and the
+ *   host asks it.
  *
  * The query is only ever run **after the user asks for it**. Opening an
  * editor never queries anything (05 §4.3 #5): a `DISTINCT` over a big table
@@ -17,6 +20,7 @@
  */
 import type { DatabaseType } from '../types';
 import { escapeIdent } from './databaseTypes';
+import { buildRowLimitedSelect, getSqlDialect } from './sqlDialects';
 
 /** The hard cap on the number of candidates. */
 export const CANDIDATE_VALUE_LIMIT = 200;
@@ -63,5 +67,14 @@ export function buildDistinctCandidatesSql(args: DistinctCandidatesArgs): string
       ? `${escapeIdent(schema, dialect)}.${escapeIdent(table, dialect)}`
       : escapeIdent(table, dialect);
 
-  return `SELECT DISTINCT ${quotedColumn} FROM ${quotedTable} LIMIT ${limit}`;
+  // The cap is the dialect's own shape: `LIMIT` on PostgreSQL and SQLite,
+  // `TOP n` inside the select list on SQL Server, `FETCH FIRST n ROWS ONLY`
+  // on Oracle. `LIMIT` is a syntax error on the latter two, so the host
+  // asks the dialect instead of spelling the cap itself.
+  return buildRowLimitedSelect(dialect ? getSqlDialect(dialect) : null, {
+    distinct: true,
+    columns: [quotedColumn],
+    table: quotedTable,
+    limit,
+  });
 }

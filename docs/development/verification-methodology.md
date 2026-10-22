@@ -159,9 +159,21 @@
 
 ### 7.1 worktree 里的 pnpm 会假失败
 
-worktree 中 `pnpm <script>` 会在**任何脚本运行之前**就中止（`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`），**未改动的脚本同样如此**——这不是接线缺陷。
+**已修（2026-10-22，缺陷甲-7）**。下面是历史形态与现行契约。
 
-⇒ 用 `npx`，或 `pnpm --config.verify-deps-before-run=false`。**禁止** `CI=true` / `confirmModulesPurge=false`。
+历史形态：worktree 中 `pnpm <script>` 会在**任何脚本运行之前**先试装一次依赖。`node_modules` 是软链，
+pnpm 认不出链接目标而判定依赖过期，但那次安装永远装不完：pnpm 11 直接中止
+（`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`），pnpm 12 打印
+`× installing dependencies … workspace hoist directory is not a real directory` 后仍继续执行并以 0 退出。
+两种形态下**未改动的脚本同样如此**——不是接线缺陷，而是 `verifyDepsBeforeRun` 默认值 `install` 在软链
+拓扑下的必然结果。
+
+现行契约：仓内 `pnpm-workspace.yaml` 把该键默认设为 `false`（值取自
+`${DATAZEN_VERIFY_DEPS_BEFORE_RUN:-false}`），CI（`ci.yml` / `release.yml` 的 workflow 级 `env`）用同一
+环境变量设回 `install`。⇒ 裸 `pnpm <script>` 在 worktree 里直接可用，不必再加
+`pnpm --config.verify-deps-before-run=false`，也不必退回 `npx`。**禁止** `CI=true` /
+`confirmModulesPurge=false`：它们**不能**重新打开这个键（实测 `CI=true` 对
+`verifyDepsBeforeRun: false` 无影响），只会把别的 pnpm 行为一起改掉。
 
 ---
 

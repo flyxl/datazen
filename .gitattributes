@@ -1,0 +1,12 @@
+# Whitespace rules per file kind.
+#
+# Markdown uses **two trailing spaces** as a hard line break — that is a
+# rendering feature of CommonMark, not stray whitespace, and deleting the two
+# spaces would change what the document renders as. `git diff --check` would
+# otherwise report every one of them as "trailing whitespace", so the check
+# has to be taught the difference.
+#
+# Only Markdown is exempted: every other file kind keeps the default rules
+# (blank at end of line, blank at end of file, space before tab), so real
+# trailing whitespace is still reported everywhere else.
+*.md whitespace=-blank-at-eol

@@ -10,9 +10,6 @@ use datazen_ai_api::*;
 use datazen_feature_core::ai::budget;
 use datazen_feature_core::ai::safety::redact_for_gate;
 use datazen_feature_core::ai::schema_pipeline::{PromptSeed, SchemaContextPipeline};
-use datazen_feature_core::ai::tools::{
-    classify_tool, is_readonly_db_tool, mcp_needs_confirm, ToolKind, ToolLoopGuard,
-};
 use std::sync::Arc;
 use tauri::{State, WebviewWindow};
 
@@ -365,6 +362,9 @@ pub async fn ai_chat(
 mod tests {
     use super::*;
     use datazen_ai_api::TokenUsage;
+    use datazen_feature_core::ai::tools::{
+        classify_tool, is_readonly_db_tool, mcp_needs_confirm, ToolKind, ToolLoopGuard,
+    };
 
     // ── ToolLoopGuard unit tests [tester] ──
 

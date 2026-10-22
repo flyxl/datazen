@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import type { DatabaseType } from '../../types';
 import {
   CANDIDATE_VALUE_LIMIT,
   buildDistinctCandidatesSql,
 } from '../cellEditorCandidates';
+
+/**
+ * Oracle has no driver in this build yet, but the host's dialect registry
+ * carries the family, so the shape an Oracle driver will get is pinned here.
+ */
+const ORACLE = 'oracle' as unknown as DatabaseType;
 
 describe('buildDistinctCandidatesSql', () => {
   it('quotes identifiers per dialect', () => {
@@ -16,6 +23,26 @@ describe('buildDistinctCandidatesSql', () => {
     // host never hard-codes a dialect.
     expect(buildDistinctCandidatesSql({ table: 'users', column: 'status', dialect: 'sqlite' })).toBe(
       'SELECT DISTINCT "status" FROM "users" LIMIT 200',
+    );
+  });
+
+  it('caps the rows the way the dialect caps them', () => {
+    // `LIMIT` is a syntax error on SQL Server and on Oracle 12c+: SQL Server
+    // wants `TOP n` inside the select list, Oracle wants
+    // `FETCH FIRST n ROWS ONLY` at the end. The shape comes from the dialect's
+    // own declaration, so the host never spells it.
+    expect(
+      buildDistinctCandidatesSql({ table: 'users', column: 'status', dialect: 'sqlserver' }),
+    ).toBe('SELECT DISTINCT TOP 200 [status] FROM [users]');
+    expect(buildDistinctCandidatesSql({ table: 'users', column: 'status', dialect: ORACLE })).toBe(
+      'SELECT DISTINCT "status" FROM "users" FETCH FIRST 200 ROWS ONLY',
+    );
+    // The two dialects that do accept `LIMIT` keep it.
+    expect(
+      buildDistinctCandidatesSql({ table: 'users', column: 'status', dialect: 'postgresql' }),
+    ).toContain('LIMIT 200');
+    expect(buildDistinctCandidatesSql({ table: 'users', column: 'status', dialect: 'sqlite' })).toContain(
+      'LIMIT 200',
     );
   });
 

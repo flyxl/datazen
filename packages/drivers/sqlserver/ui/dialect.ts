@@ -31,6 +31,8 @@ export const sqlserverDialect: SqlDialectStrategy = {
     { id: 'no-owner', label: '--no-owner' },
     { id: 'single-transaction', label: '--single-transaction' },
   ],
+  // SQL Server has no `LIMIT`: the cap is `TOP n` inside the select list.
+  rowLimit: { placement: 'select-list', clause: (limit) => `TOP ${limit}` },
   tableSql: new BaseTableSqlGenerator('"'),
 };
 

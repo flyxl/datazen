@@ -272,5 +272,4 @@ fn gateway_sources_obey_the_locked_invariants() {
             .to_string();
         assert_eq!(previous, "#[cfg(test)]", "{needle} 必须紧跟 #[cfg(test)]");
     }
-
 }
