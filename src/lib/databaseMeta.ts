@@ -6,6 +6,7 @@
 import type { CountStrategy, DatabaseObjectKind, FilterOperator, SslMode } from '../types';
 import type { StructureEditorUiConfig } from './structureEditor/types';
 import type { FunctionEntry } from './sqlFunctionTypes';
+import type { CellTypeHints } from './cellTypes';
 import type {
   SqlDialectStrategy,
   SqlDialectProfile,
@@ -185,6 +186,18 @@ export interface DatabaseTypeMeta {
    * default grid behaviour. See {@link DataGridCapabilities}.
    */
   dataGrid?: DataGridCapabilities;
+  /**
+   * The driver's own column-type rules (DB-05).
+   *
+   * The shared table in `src/lib/cellTypes.ts` carries the common SQL type
+   * names; the traps that belong to one dialect are declared **here**, by
+   * the driver, in its own `ui/meta.ts`. The host never branches on a driver
+   * id for a type.
+   *
+   * Omit it and the shared table alone decides — which is exactly the
+   * behaviour before this field existed (00-contracts R4).
+   */
+  cellTypes?: CellTypeHints;
   /** Default page size for table data; unset uses per-table or global default */
   defaultPageSize?: number;
   /** Connection form variant — extensions can provide custom form identifiers */

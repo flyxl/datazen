@@ -7,16 +7,16 @@
  * a literal. Keeping that as **data** is the point: adding an operator must
  * mean adding one row here, not touching three branches in the JSX.
  *
- * The dispatch key is the column's type family, taken from the host's single
- * type-normalisation source (`classifyDataType`). The type-aware cell types of
- * the editor track (05) refine that source later; when they land, this file
- * changes in exactly one place — {@link OPERATORS_BY_FAMILY} — instead of
- * growing a second, parallel type ladder.
+ * The dispatch key is the column's **normalised cell type** — the host's single
+ * type judgement (`resolveCellType`, `src/lib/cellTypes.ts`). The seven render
+ * families are a projection of it, and dispatching on them would fold `enum` and
+ * `uuid` back into `text`, which offers a `LIKE` on an enumeration column: an
+ * entry the database is guaranteed to reject.
  */
 import type { FilterOperator, Value } from '../types';
 import { SHARED_FILTER_OPERATORS } from '../types';
 import type { DatabaseTypeMeta } from './databaseMeta';
-import { classifyDataType, type DataTypeFamily } from './dataTypeColors';
+import { resolveCellType, type CellType, type CellTypeHints } from './cellTypes';
 
 /**
  * Which control the value of a condition is edited with.
@@ -44,13 +44,16 @@ export interface FilterOperatorMeta {
   /** Which value control the editor renders for it. */
   valueInput: FilterValueInputKind;
   /**
-   * The column type families the operator applies to.
+   * The cell types the operator applies to.
    *
    * A driver whitelist narrows this further, never widens it: an operator the
    * column type does not support is not offered, so the entry point cannot
    * produce a query the database is guaranteed to reject.
+   *
+   * The list is **derived** from {@link OPERATORS_BY_CELL_TYPE}, so the two
+   * can never drift apart.
    */
-  columnFamilies: readonly DataTypeFamily[];
+  cellTypes: readonly CellType[];
   /** Only a driver that declares the operator can render it. */
   dialect: boolean;
   /** UI grouping. */
@@ -67,72 +70,35 @@ export interface FilterOperatorMeta {
   escapesLikePattern: boolean;
 }
 
-const TEXT: readonly DataTypeFamily[] = ['text'];
-const NUMERIC: readonly DataTypeFamily[] = ['number'];
-const TEMPORAL: readonly DataTypeFamily[] = ['datetime'];
-const SIMPLE: readonly DataTypeFamily[] = ['bool', 'json', 'binary', 'null'];
-
 function meta(
   id: FilterOperator,
   valueInput: FilterValueInputKind,
-  columnFamilies: readonly DataTypeFamily[],
   group: FilterOperatorGroup,
   escapesLikePattern = false,
 ): FilterOperatorMeta {
-  return { id, valueInput, columnFamilies, dialect: group === 'dialect', group, escapesLikePattern };
+  return {
+    id,
+    valueInput,
+    cellTypes: cellTypesForOperator(id),
+    dialect: group === 'dialect',
+    group,
+    escapesLikePattern,
+  };
 }
 
 /**
- * The operator table.
+ * The operators each **cell type** offers, in display order.
  *
- * Every one of the 22 operators has an entry; a missing one would make the
- * editor fall back to "a plain text box" for an operator that needs two boxes
- * or a chip list.
- */
-export const FILTER_OPERATOR_META: Record<FilterOperator, FilterOperatorMeta> = {
-  // ── comparison ──────────────────────────────────────────────────────────
-  eq: meta('eq', 'single', [...TEXT, ...NUMERIC, ...TEMPORAL, ...SIMPLE], 'compare'),
-  ne: meta('ne', 'single', [...TEXT, ...NUMERIC, ...TEMPORAL, ...SIMPLE], 'compare'),
-  gt: meta('gt', 'single', [...TEXT, ...NUMERIC, ...TEMPORAL], 'compare'),
-  lt: meta('lt', 'single', [...TEXT, ...NUMERIC, ...TEMPORAL], 'compare'),
-  gte: meta('gte', 'single', [...TEXT, ...NUMERIC, ...TEMPORAL], 'compare'),
-  lte: meta('lte', 'single', [...TEXT, ...NUMERIC, ...TEMPORAL], 'compare'),
-  between: meta('between', 'pair', [...NUMERIC, ...TEMPORAL], 'compare'),
-  notBetween: meta('notBetween', 'pair', [...NUMERIC, ...TEMPORAL], 'compare'),
-
-  // ── patterns ───────────────────────────────────────────────────────────
-  // `like` takes the wildcards from the user; the four below escape them.
-  like: meta('like', 'single', TEXT, 'pattern'),
-  contains: meta('contains', 'single', TEXT, 'pattern', true),
-  notContains: meta('notContains', 'single', TEXT, 'pattern', true),
-  startsWith: meta('startsWith', 'single', TEXT, 'pattern', true),
-  endsWith: meta('endsWith', 'single', TEXT, 'pattern', true),
-
-  // ── membership ─────────────────────────────────────────────────────────
-  in: meta('in', 'tokens', [...TEXT, ...NUMERIC], 'set'),
-  notIn: meta('notIn', 'tokens', [...TEXT, ...NUMERIC], 'set'),
-
-  // ── null / empty ───────────────────────────────────────────────────────
-  isNull: meta('isNull', 'none', [...TEXT, ...NUMERIC, ...TEMPORAL, ...SIMPLE], 'null'),
-  isNotNull: meta('isNotNull', 'none', [...TEXT, ...NUMERIC, ...TEMPORAL, ...SIMPLE], 'null'),
-  isEmpty: meta('isEmpty', 'none', TEXT, 'empty'),
-  isNotEmpty: meta('isNotEmpty', 'none', TEXT, 'empty'),
-
-  // ── dialect specific ───────────────────────────────────────────────────
-  regex: meta('regex', 'single', TEXT, 'dialect'),
-  notRegex: meta('notRegex', 'single', TEXT, 'dialect'),
-  jsonContains: meta('jsonContains', 'single', ['json'], 'dialect'),
-};
-
-/**
- * The operators offered for each column type family, in display order.
- *
- * The relative order of the operators that already shipped is frozen
- * (`eq ne gt lt gte lte like in isNull isNotNull`): the list below keeps that
- * order inside every family, so adding an operator never reshuffles the ones
+ * The order of the operators that already shipped is frozen
+ * (`eq ne gt lt gte lte like in isNull isNotNull`): every list below keeps
+ * that order inside itself, so adding an operator never reshuffles the ones
  * a user already knows.
+ *
+ * `enum` and `uuid` have their own lists instead of sharing the text one:
+ * a `LIKE` against an enumeration column needs an explicit cast in
+ * PostgreSQL, so offering it is offering an entry the database rejects.
  */
-const OPERATORS_BY_FAMILY: Record<DataTypeFamily, readonly FilterOperator[]> = {
+const OPERATORS_BY_CELL_TYPE: Record<CellType, readonly FilterOperator[]> = {
   text: [
     'eq',
     'ne',
@@ -152,30 +118,134 @@ const OPERATORS_BY_FAMILY: Record<DataTypeFamily, readonly FilterOperator[]> = {
     'isEmpty',
     'isNotEmpty',
   ],
+  enum: ['eq', 'ne', 'in', 'notIn', 'isNull', 'isNotNull'],
   number: ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'between', 'notBetween', 'in', 'notIn', 'isNull', 'isNotNull'],
-  datetime: ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'between', 'notBetween', 'isNull', 'isNotNull'],
   bool: ['eq', 'ne', 'isNull', 'isNotNull'],
+  date: ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'between', 'notBetween', 'isNull', 'isNotNull'],
+  time: ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'between', 'notBetween', 'isNull', 'isNotNull'],
+  datetime: ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'between', 'notBetween', 'isNull', 'isNotNull'],
   json: ['eq', 'ne', 'isNull', 'isNotNull'],
-  binary: ['eq', 'ne', 'isNull', 'isNotNull'],
-  null: ['eq', 'ne', 'isNull', 'isNotNull'],
+  bytes: ['eq', 'ne', 'isNull', 'isNotNull'],
+  uuid: ['eq', 'ne', 'in', 'notIn', 'isNull', 'isNotNull'],
+  // An unknown type is handled as text — never as an error.
+  unknown: [
+    'eq',
+    'ne',
+    'gt',
+    'lt',
+    'gte',
+    'lte',
+    'like',
+    'contains',
+    'notContains',
+    'startsWith',
+    'endsWith',
+    'in',
+    'notIn',
+    'isNull',
+    'isNotNull',
+    'isEmpty',
+    'isNotEmpty',
+  ],
 };
-
 /**
  * The dialect operators a column type may use.
  *
  * They are never part of a family's list: they only show up when the driver
  * declares them, and they are appended after the shared ones.
  */
-const DIALECT_OPERATORS_BY_FAMILY: Record<DataTypeFamily, readonly FilterOperator[]> = {
+const DIALECT_OPERATORS_BY_CELL_TYPE: Record<CellType, readonly FilterOperator[]> = {
   text: ['regex', 'notRegex'],
+  unknown: ['regex', 'notRegex'],
   number: [],
-  datetime: [],
+  enum: [],
   bool: [],
+  date: [],
+  time: [],
+  datetime: [],
   json: ['jsonContains'],
-  binary: [],
-  null: [],
+  bytes: [],
+  uuid: [],
 };
 
+/** Every cell type, in the order the matrix lists them. */
+const ALL_CELL_TYPES: readonly CellType[] = [
+  'text',
+  'enum',
+  'number',
+  'bool',
+  'date',
+  'time',
+  'datetime',
+  'json',
+  'bytes',
+  'uuid',
+  'unknown',
+];
+
+/**
+ * The cell types that offer an operator — the inverse of the matrix.
+ *
+ * It is **derived**, never written a second time: the matrix is the only
+ * place that says which operator belongs to which type.
+ */
+function cellTypesForOperator(operator: FilterOperator): readonly CellType[] {
+  return ALL_CELL_TYPES.filter(
+    (cellType) =>
+      OPERATORS_BY_CELL_TYPE[cellType].includes(operator) ||
+      DIALECT_OPERATORS_BY_CELL_TYPE[cellType].includes(operator),
+  );
+}
+
+/**
+ * The operator table.
+ *
+ * Every one of the 22 operators has an entry; a missing one would make the
+ * editor fall back to "a plain text box" for an operator that needs two boxes
+ * or a chip list.
+ */
+export const FILTER_OPERATOR_META: Record<FilterOperator, FilterOperatorMeta> = {
+  // ── comparison ──────────────────────────────────────────────────────────
+  eq: meta('eq', 'single', 'compare'),
+  ne: meta('ne', 'single', 'compare'),
+  gt: meta('gt', 'single', 'compare'),
+  lt: meta('lt', 'single', 'compare'),
+  gte: meta('gte', 'single', 'compare'),
+  lte: meta('lte', 'single', 'compare'),
+  between: meta('between', 'pair', 'compare'),
+  notBetween: meta('notBetween', 'pair', 'compare'),
+
+  // ── patterns ───────────────────────────────────────────────────────────
+  // `like` takes the wildcards from the user; the four below escape them.
+  like: meta('like', 'single', 'pattern'),
+  contains: meta('contains', 'single', 'pattern', true),
+  notContains: meta('notContains', 'single', 'pattern', true),
+  startsWith: meta('startsWith', 'single', 'pattern', true),
+  endsWith: meta('endsWith', 'single', 'pattern', true),
+
+  // ── membership ─────────────────────────────────────────────────────────
+  in: meta('in', 'tokens', 'set'),
+  notIn: meta('notIn', 'tokens', 'set'),
+
+  // ── null / empty ───────────────────────────────────────────────────────
+  isNull: meta('isNull', 'none', 'null'),
+  isNotNull: meta('isNotNull', 'none', 'null'),
+  isEmpty: meta('isEmpty', 'none', 'empty'),
+  isNotEmpty: meta('isNotEmpty', 'none', 'empty'),
+
+  // ── dialect specific ───────────────────────────────────────────────────
+  regex: meta('regex', 'single', 'dialect'),
+  notRegex: meta('notRegex', 'single', 'dialect'),
+  jsonContains: meta('jsonContains', 'single', 'dialect'),
+};
+/**
+ * The operators offered for each column type family, in display order.
+ *
+ * The relative order of the operators that already shipped is frozen
+ * (`eq ne gt lt gte lte like in isNull isNotNull`): the list below keeps that
+ * order inside every family, so adding an operator never reshuffles the ones
+ * a user already knows.
+ */
 /**
  * The operators a driver serves, given what it declared.
  *
@@ -226,11 +296,12 @@ export function likeCaseInsensitiveForMeta(meta: DatabaseTypeMeta | undefined): 
 export function operatorsForColumn(
   dataType: string | undefined,
   supported: readonly FilterOperator[],
+  hints?: CellTypeHints,
 ): FilterOperator[] {
-  const family = classifyDataType(dataType);
+  const cellType = resolveCellType(dataType, hints);
   const candidates = [
-    ...OPERATORS_BY_FAMILY[family],
-    ...DIALECT_OPERATORS_BY_FAMILY[family],
+    ...OPERATORS_BY_CELL_TYPE[cellType],
+    ...DIALECT_OPERATORS_BY_CELL_TYPE[cellType],
   ];
   return candidates.filter((operator) => supported.includes(operator));
 }
@@ -260,17 +331,22 @@ export function normalizeOperatorForColumn(
   current: FilterOperator,
   dataType: string | undefined,
   supported: readonly FilterOperator[],
+  hints?: CellTypeHints,
 ): FilterOperator {
-  const allowed = operatorsForColumn(dataType, supported);
+  const allowed = operatorsForColumn(dataType, supported, hints);
   if (allowed.includes(current)) return current;
   if (allowed.includes('eq')) return 'eq';
   return allowed[0] ?? current;
 }
 
 /** The operator a freshly added condition starts with. */
-export function defaultOperatorForColumn(dataType: string | undefined): FilterOperator {
-  const family = classifyDataType(dataType);
-  return OPERATORS_BY_FAMILY[family].includes('eq') ? 'eq' : OPERATORS_BY_FAMILY[family][0] ?? 'eq';
+export function defaultOperatorForColumn(
+  dataType: string | undefined,
+  hints?: CellTypeHints,
+): FilterOperator {
+  const cellType = resolveCellType(dataType, hints);
+  const operators = OPERATORS_BY_CELL_TYPE[cellType];
+  return operators.includes('eq') ? 'eq' : operators[0] ?? 'eq';
 }
 
 /** The value shape a filter condition carries. */

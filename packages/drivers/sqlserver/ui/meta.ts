@@ -73,4 +73,20 @@ export const sqlserverMeta = {
   sqlDialectStrategy: sqlserverDialect,
   sqlDialectProfile: sqlserverDialectProfile,
   sqlParameterStrategy: sqlserverSqlParameterStrategy,
+  /**
+   * The SQL Server type traps (DB-05).
+   *
+   * `timestamp` is **not** a time in SQL Server: it is the row version, an
+   * 8-byte value the server maintains. Reading it as a timestamp would be
+   * wrong, and editing it in place is impossible. Only the driver knows
+   * that, so the rule lives here.
+   */
+  cellTypes: {
+    overrides: [
+      { match: 'exact', pattern: 'timestamp', cellType: 'bytes' },
+      { match: 'exact', pattern: 'rowversion', cellType: 'bytes' },
+    ],
+    zonedTypes: ['datetimeoffset'],
+    readOnlyTypes: ['timestamp', 'rowversion'],
+  },
 } satisfies DatabaseTypeMeta;

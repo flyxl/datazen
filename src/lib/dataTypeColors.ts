@@ -1,7 +1,13 @@
 /**
  * SQL-ish column type families for themed UI (--dt-* tokens in themes.css).
  * Shared by DataTable CellRenderer, StructureView, DetailPanel, etc.
+ *
+ * The families are a **projection** of the normalised cell type
+ * (`src/lib/cellTypes.ts`), not a second classification: the host has one
+ * type judgement, and the colour is derived from it. The signature of
+ * {@link classifyDataType} did not change — only where the answer comes from.
  */
+import { cellTypeToDataTypeFamily, resolveCellType } from './cellTypes';
 
 export type DataTypeFamily = 'null' | 'bool' | 'number' | 'datetime' | 'json' | 'binary' | 'text';
 
@@ -17,31 +23,7 @@ const FAMILY_CLASS: Record<DataTypeFamily, string> = {
 
 /** Classify a driver-reported column type string (case-insensitive). */
 export function classifyDataType(dataType: string | undefined): DataTypeFamily {
-  const type = (dataType ?? '').toLowerCase();
-  if (!type) return 'text';
-  if (type.includes('bool')) return 'bool';
-  if (
-    type.includes('int') ||
-    type.includes('serial') ||
-    type.includes('double') ||
-    type.includes('numeric') ||
-    type.includes('decimal') ||
-    type.includes('real') ||
-    type.includes('float')
-  ) {
-    return 'number';
-  }
-  if (
-    type.includes('timestamp') ||
-    type.includes('date') ||
-    type.includes('time') ||
-    type.includes('interval')
-  ) {
-    return 'datetime';
-  }
-  if (type.includes('json')) return 'json';
-  if (type.includes('bytea') || type.includes('blob') || type.includes('binary')) return 'binary';
-  return 'text';
+  return cellTypeToDataTypeFamily(resolveCellType(dataType));
 }
 
 /** Tailwind class for a type label (StructureView, ExportDialog, …). */
