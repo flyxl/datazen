@@ -229,7 +229,7 @@ const pack = {
     'Cette base de données ne peut pas estimer le nombre de lignes.',
   'filter.filter': 'Filtre',
   'filter.remove': 'Supprimer le filtre',
-  'filter.clear': 'Clair',
+  'filter.clear': 'Effacer',
   'filter.add': 'Ajouter un filtre',
   'filter.and': 'AND',
   'filter.or': 'OR',

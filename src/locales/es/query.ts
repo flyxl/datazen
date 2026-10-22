@@ -227,7 +227,7 @@ const pack = {
   'pagination.estimateUnavailable': 'Esta base de datos no puede estimar el conteo de filas.',
   'filter.filter': 'Filtrar',
   'filter.remove': 'Quitar filtro',
-  'filter.clear': 'Claro',
+  'filter.clear': 'Borrar',
   'filter.add': 'Agregar filtro',
   'filter.and': 'AND',
   'filter.or': 'OR',

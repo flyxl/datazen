@@ -305,7 +305,7 @@ const pack = {
   'import.largeImportRows':
     '대규모 데이터 세트({count} 행)를 가져오려고 합니다. 시간이 좀 걸릴 수 있습니다.',
   'import.importing': '가져오는 중...',
-  'import.import': '수입',
+  'import.import': '가져오기',
   'import.noData': '가져올 데이터가 없습니다.',
   'import.success': '{count} 행을 {table}(으)로 가져왔습니다.',
   'export.description': '테이블 {table}에서 데이터 내보내기',

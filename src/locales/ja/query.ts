@@ -308,7 +308,7 @@ const pack = {
   'import.largeImportRows':
     '大規模なデータセット ({count} 行) をインポートしようとしています。これには時間がかかる場合があります。',
   'import.importing': 'インポート中…',
-  'import.import': '輸入',
+  'import.import': 'インポート',
   'import.noData': 'インポートするデータがありません',
   'import.success': '{count} 行を {table} にインポートしました',
   'export.description': 'テーブル {table} からデータをエクスポートします',
