@@ -148,6 +148,12 @@ const PRODUCER_PENDING: readonly string[] = [
   'grid.selection.invalid',
   'grid.selection.outOfBounds',
   'grid.selection.stale',
+  // DB-05: the typed editor refuses a value it cannot parse (05 §8.2 row 2).
+  // The refusal happens in the **front end** — the invalid value never
+  // reaches the back end, so there is no Rust producer to wait for. The code
+  // is nevertheless the contract's: the grid classifies the refusal with it,
+  // and the reason it carries is the one the editor refused for.
+  'grid.cell.invalidValue',
 ];
 
 function rustFiles(root: string): string[] {

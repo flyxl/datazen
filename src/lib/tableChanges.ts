@@ -286,6 +286,30 @@ export function valuesEqual(
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
+/**
+ * The last gate in front of the store: turn whatever the interface produced
+ * into one of the three write intents (00-contracts §3).
+ *
+ * - `undefined` stays `undefined` — "do not write this column";
+ * - `null` stays `null` — "write SQL `NULL`";
+ * - a value that cannot survive the round trip (`NaN`, `Infinity`, a
+ *   function) becomes `undefined`, i.e. "do not write".
+ *
+ * `NaN` is the dangerous one: `valuesEqual` compares with `JSON.stringify`,
+ * which serialises `NaN` as `null` — so a `NaN` that reached the store would
+ * be indistinguishable from a `NULL` and would silently write a `NULL`.
+ */
+export function normalizeEditValue(value: unknown): Value | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (Array.isArray(value)) return value as unknown[];
+  if (typeof value === 'object') return value as Record<string, unknown>;
+  // A function, a symbol or a bigint cannot be written to a column.
+  return undefined;
+}
+
 export function clonePendingRowChange(change: PendingRowChange): PendingRowChange {
   return {
     ...(change.rowIndex === undefined ? {} : { rowIndex: change.rowIndex }),
