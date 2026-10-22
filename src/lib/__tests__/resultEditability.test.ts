@@ -171,6 +171,17 @@ describe('resolveResultEditability', () => {
     expect(verdict.writable).toBe(false);
     expect(verdict.writable === false && verdict.reason).toBe('aggregate');
   });
+
+  it('keeps a read-only connection read-only, whichever channel would have opened it', () => {
+    // The narrow verdict is about the mapping, not about the connection: a
+    // read-only connection refuses the write no matter how sure the mapping
+    // is. The cell must be grey, and it must say why.
+    const verdict = resolveResultEditability(true, readOnly('sessionReadOnly'), rows, columns, 0);
+
+    expect(verdict.writable).toBe(false);
+    expect(verdict.writable === false && verdict.reason).toBe('sessionReadOnly');
+    expect(resolveResultWriteBack(true, readOnly('sessionReadOnly'))).toBe(false);
+  });
 });
 
 describe('isColumnEditable', () => {

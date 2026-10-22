@@ -219,11 +219,21 @@ export function originChannelWritable(server: ServerEditability): boolean {
  *   {@link RESULT_ORIGIN_WRITE_BACK_ENABLED}).
  *
  * Neither verdict is recomputed here — both are answers the back end gave.
+ *
+ * **One refusal outranks both**: a read-only connection. The narrow verdict
+ * is about the *mapping* — "this result is a straight copy of that relation"
+ * — and says nothing about whether the connection may be written to at all.
+ * So when the back end reports `sessionReadOnly`, the cell is read-only
+ * whichever channel would have opened it. Every other refusal keeps the
+ * current rule: the origin verdict may only refuse while the release channel
+ * is closed, and a driver that cannot describe the result must not close the
+ * grid (that would turn "I cannot tell" into "no").
  */
 export function resolveResultWriteBack(
   legacyVerified: boolean,
   server: ServerEditability,
 ): boolean {
+  if (!server.writable && server.reason === 'sessionReadOnly') return false;
   if (legacyVerified) return true;
   return originChannelWritable(server);
 }
