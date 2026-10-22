@@ -1,4 +1,6 @@
-use datazen_driver_api::{ConnectionConfig, ConnectionHandle, DatabaseDriver};
+use datazen_driver_api::{
+    ConnectionConfig, ConnectionHandle, DatabaseDriver, TableInfo, TableSchema,
+};
 use datazen_platform_api::settings::ExecutionSettings;
 use std::sync::Arc;
 #[async_trait::async_trait]
@@ -23,52 +25,71 @@ pub trait DatabaseToolHost: Send + Sync {
 pub trait ConnectionCatalog: Send + Sync {
     async fn get_connections(&self) -> Vec<ConnectionConfig>;
 }
+/// The metadata a form-neutral consumer needs to describe a session's database.
+///
+/// Every method here is answered from the session's *identity* — which profile
+/// owns it, and which metadata commands its connection answers — so a source
+/// never has to own a live [`ConnectionHandle`]. The Runtime path addresses
+/// sessions logically and implements this trait in full; it is the port every
+/// metadata consumer depends on.
+///
+/// The trait carries **no** physical-shaped default implementation. A default
+/// built on a connection handle could only ever be inherited by a source that
+/// owns one, and the only source in the tree owns none — so the defaults were
+/// unusable everywhere and had to be overridden one by one. The physical half
+/// lives on [`PhysicalSchemaContextSource`], where it belongs.
 #[async_trait::async_trait]
-pub trait SchemaContextSource: Send + Sync {
-    async fn get_session(
-        &self,
-        session_id: &str,
-    ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String>;
+pub trait LogicalSchemaContextSource: Send + Sync {
+    /// The driver that serves the session's connection.
+    async fn driver_for_session(&self, session_id: &str)
+        -> Result<Arc<dyn DatabaseDriver>, String>;
+    /// The schema configured on the session's connection, if any.
     async fn session_schema(&self, session_id: &str) -> Option<String>;
-    async fn driver_for_session(
-        &self,
-        session_id: &str,
-    ) -> Result<Arc<dyn DatabaseDriver>, String> {
-        Ok(self.get_session(session_id).await?.0)
-    }
+    /// The tables of one `(database, schema)` scope.
     async fn tables(
         &self,
         session_id: &str,
         database: &str,
         schema: Option<&str>,
-    ) -> Result<Vec<datazen_driver_api::TableInfo>, String> {
-        let (driver, handle) = self.get_session(session_id).await?;
-        driver
-            .get_tables(&handle, database, schema)
-            .await
-            .map_err(|error| error.to_string())
-    }
+    ) -> Result<Vec<TableInfo>, String>;
+    /// The full schema of one table.
     async fn table_schema(
         &self,
-        cache: &datazen_runtime::schema_cache::SchemaCache,
         session_id: &str,
         database: &str,
         schema: Option<&str>,
         table: &str,
-    ) -> Result<datazen_driver_api::TableSchema, String> {
-        let (driver, handle) = self.get_session(session_id).await?;
-        cache
-            .get_table_schema(
-                session_id,
-                database,
-                schema,
-                table,
-                &datazen_driver_api::LegacyCatalogReader::new(driver.as_ref()),
-                &handle,
-            )
-            .await
-            .map_err(|error| error.to_string())
-    }
+    ) -> Result<TableSchema, String>;
+}
+
+/// The metadata source of a form that owns live connection handles.
+///
+/// This is the *physical* half of the metadata port: the source answers with
+/// the driver's own handle, so metadata can be read straight against the
+/// connection. The `ConnectionHandle`-based reads are not default methods of
+/// this trait — they need the [`SchemaCache`](datazen_runtime::schema_cache::SchemaCache)
+/// that memoizes them, and the cache belongs to the implementation that owns
+/// the session, not to the caller of the port. They live in
+/// [`PhysicalSchemaContextAdapter`](crate::services::physical_schema_context::PhysicalSchemaContextAdapter),
+/// which presents a physical source through [`LogicalSchemaContextSource`].
+///
+/// A source that addresses sessions logically — the Runtime path — has no
+/// handle to hand out, so it answers this contract with the refusal that
+/// rejects physical-handle exposure. Its own reads live on
+/// [`LogicalSchemaContextSource`], which is the port every consumer uses.
+#[async_trait::async_trait]
+pub trait PhysicalSchemaContextSource: Send + Sync {
+    /// The live driver and physical handle of a session.
+    async fn get_session(
+        &self,
+        session_id: &str,
+    ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String>;
+    /// The schema configured on the session's connection, if any.
+    ///
+    /// The same fact the logical port calls `session_schema`, under a name of
+    /// its own: a source that answers both contracts would otherwise carry two
+    /// identically named methods, and every call on it would be ambiguous.
+    async fn configured_schema(&self, session_id: &str) -> Option<String>;
 }
 
 #[async_trait::async_trait]

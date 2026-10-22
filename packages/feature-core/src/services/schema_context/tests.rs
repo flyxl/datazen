@@ -8,7 +8,7 @@
 //! handle), not the Runtime's own behaviour.
 
 use super::*;
-use crate::services::ports::SchemaContextSource;
+use crate::services::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
 use crate::workflow::error::WorkflowError;
 use crate::workflow::resource_execution::{PreparedExecution, ResourceExecutionHost};
 use async_trait::async_trait;
@@ -599,11 +599,8 @@ async fn a_table_schema_is_read_through_the_shared_execution_gateway() {
         Arc::new(FakeHost::new(fixture.runtime.clone())),
     );
 
-    let cache = datazen_runtime::schema_cache::SchemaCache::new(Arc::new(
-        datazen_runtime::driver_registry::DriverRegistry::new(),
-    ));
     let schema = source
-        .table_schema(&cache, &session, "main", Some("public"), "users")
+        .table_schema(&session, "main", Some("public"), "users")
         .await
         .expect("the fixture backend answers get_table_schema");
     assert_eq!(schema.table_name, "users");
@@ -621,11 +618,8 @@ async fn a_malformed_table_schema_fails_with_the_payload_error() {
         Arc::new(FakeHost::new(fixture.runtime.clone())),
     );
 
-    let cache = datazen_runtime::schema_cache::SchemaCache::new(Arc::new(
-        datazen_runtime::driver_registry::DriverRegistry::new(),
-    ));
     let error = source
-        .table_schema(&cache, &session, "main", None, "users")
+        .table_schema(&session, "main", None, "users")
         .await
         .expect_err("a malformed payload is not a table schema");
     assert!(
