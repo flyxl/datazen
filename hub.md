@@ -308,6 +308,21 @@ Tester 查出：`src/windows/connection/result-workspace/ResultTableView.tsx` �
 - **`grid.cell.invalidValue` 的 `PRODUCER_PENDING` ⇒ (a) 维持现状**（我先前说「不许进例外表」是**错的**：该码由**前端**产生，非法值走不到 Rust，后端没有任何一处会抛它 ⇒ 它**天然**无 Rust 生产者，而守卫要求「要么有 Rust 生产者、要么列进例外表」⇒ 不列则守卫直接红。(b) = 后端编一个它没有的拒绝语义；(c) = 该码形同虚设）。契约 00 §8.2 与 `gridErrors.ts` 骨架注释**协调者已改**。
 - **`FILTER_OPERATOR_META.columnFamilies → cellTypes` 无冲突**：08 册早已落地完成（Wave 5/6），不存在「08 册按契约 §3.5 落地时撞这一处」的情形。
 
+## 轨 B `result-grid` 修复轮（2 提交 `73dce2ba3`）：★ 采纳 (A) 的落地
+
+**★ 的四步落地**：① **定位键列改从目录事实来**（窄写路径本来就在活动目录 `CachedColumns.primary_keys` 上复验身份）：共享层 `evaluate_result_editability(origin, primary_keys, result_columns, session_writable)` 多收参数，新增 `locating_key_columns()`（目录主键列表 × 结果列名按同名匹配；别名情形由来源判定补）；宿主壳请求多带 `table`（窄判定认出的真实关系名 —— 驱动说不出来源时它是拿到源表的**唯一**把手）。② 共享层 `read_only(reason, identity_columns)` **拒绝时不再清空** `identity_columns`（**键列是关于表的事实，不是关于判定的**）。③ 前端抽出**与通道无关**的 `resolveRowAddressability(...)`，**先算页级事实、再与结果级判定 AND**；页级事实**即使结果被拒也会被计算** ⇒ 不再结构性不可达。④ 可构造用例落在 `result-workspace/__tests__/resultGridRealTable.test.tsx`：「窄判定 verified + 被点那行主键为 NULL ⇒ 编辑器不打开、原因不吞、`onCellEdit` 0 次」。
+
+**钉死效果（自证）**：去掉逐行闸 ⇒ 转红（`expected [ <input…> ] to have a length of +0 but got 1`）；共享层又把定位键列清空 ⇒ 转红（`left: [] / right: [IdentityColumn { column: "id", … }]`）。⇒ **上一轮「被遮住」的问题消失。**
+
+**命令壳守卫补成真守卫**：两条规则（壳里出现 `grid.` 任何拼写 ⇒ 红；壳里**点名** `ResultErrorCode` ⇒ 红）+ **出厂那两处已改掉**（改走共享层 `read_only_error_code(reason)` 映射）+ 剥注释换成**认识字符串**的扫描器（块注释提到码**不误报**；URL 里的 `//` 不再把行截短、不再把藏在后面的码漏掉）。
+
+### 两条裁定的落定（协调者）
+
+| # | 事项 | 裁定 |
+| --- | --- | --- |
+| **C1** | **§1.3 第 7 条（行身份在已取到的行内唯一）今天只有前端执行者**，服务端无对应实现 | **接受**。理由：**「已取到的行」只在客户端**；服务端要复验就得把整页行传上去 —— 那是更差的契约。共享层那侧由 `validate_result_cell_request` 兜第 6 条的 NULL 身份值（那条管线仍未接线）。⇒ 登记为「服务端无对应实现，属归属决定而非缺口」 |
+| **C2** | **「定位键列未知时 fail open」**（目录读不到 ⇒ 不拒绝） | **接受**。理由：fail closed 的代价是「目录一读不到 ⇒ 整个网格变灰」；而窄写路径**自己对活动目录的复验仍在后面挡着**，所以放行的后果由那道窄校验兜底。⇒ 记在案，若将来要求 fail closed，须同时给出「目录不可读时的降级路径」 |
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
