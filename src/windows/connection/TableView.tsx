@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Columns3, Info, ShieldAlert } from 'lucide-react';
+import { Columns3, Info } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import { DATA_TABLE_ROW_HEIGHT } from '../../components/DataTable/rowHeight';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -30,6 +30,9 @@ import { useDirtyIndex } from './useDirtyIndex';
 import { PendingPlanDialog } from './PendingPlanDialog';
 import { useTableDraftRows } from './useTableDraftRows';
 import { useNamedViewMenu } from './useNamedViewMenu';
+import { useTableEditing } from './tableEditing';
+import { TableReadOnlyTip } from './TableReadOnlyTip';
+import type { CellReadOnlyReason } from '../../lib/cellEditorKind';
 import { isComposingEvent, isEditableTarget } from '../../lib/gridEventGuards';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import {
@@ -56,6 +59,8 @@ interface TableViewProps {
   databaseType?: string;
   /** Explicit read-only override; if omitted, checked via connection and driver metadata. */
   readOnly?: boolean;
+  /** Why the panel is read-only, when the mount point knows better (DB-05). */
+  readOnlyReason?: CellReadOnlyReason;
   /** Data-export capability, threaded to the table-data export dialog. */
   dataExportCapability?: 'none' | 'loaded_only' | 'full_table';
 }
@@ -69,6 +74,7 @@ export function TableView({
   schema = null,
   databaseType,
   readOnly: readOnlyProp,
+  readOnlyReason: readOnlyReasonProp,
   dataExportCapability,
 }: TableViewProps) {
   const { t } = useI18n();
@@ -168,7 +174,8 @@ export function TableView({
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [readOnlyTipVisible, setReadOnlyTipVisible] = useState(false);
+  /** The reason the last refusal showed (DB-05); `null` = no notice. */
+  const [readOnlyTipReason, setReadOnlyTipReason] = useState<CellReadOnlyReason | null>(null);
   const readOnlyTipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Manual transaction state, controls and pending-change actions live in
@@ -180,33 +187,19 @@ export function TableView({
     };
   }, []);
 
-  const showReadOnlyTip = useCallback(() => {
-    setReadOnlyTipVisible(true);
+  const showReadOnlyTip = useCallback((reason: CellReadOnlyReason) => {
+    setReadOnlyTipReason(reason);
     if (readOnlyTipTimer.current !== null) clearTimeout(readOnlyTipTimer.current);
     readOnlyTipTimer.current = setTimeout(() => {
-      setReadOnlyTipVisible(false);
+      setReadOnlyTipReason(null);
       readOnlyTipTimer.current = null;
     }, 3000);
   }, []);
 
-  const handleCellDoubleClick = useCallback(
-    (row: number, col: string) => {
-      if (!isEditable) {
-        showReadOnlyTip();
-        return;
-      }
-      // A row that is marked for deletion must not be edited: it is on its way
-      // out, and the row-level state says so (06 §4.2).
-      if (selectDirtyRow(dirtyIndex, row)?.state === 'deleted') return;
-      actions.startEdit(row, col);
-    },
-    [actions, dirtyIndex, isEditable, showReadOnlyTip],
-  );
-
   const handleCellEdit = useCallback(
     (row: number, col: string, value: unknown) => {
       if (!isEditable) {
-        showReadOnlyTip();
+        showReadOnlyTip('connectionReadOnly');
         actions.cancelEdit();
         return;
       }
@@ -258,6 +251,32 @@ export function TableView({
   }, [actions, needsLoad, requestRevision]);
 
   const columns = ts?.columns ?? EMPTY_COLUMNS;
+  /**
+   * The editing wiring of the panel (DB-05): the editor facts of every
+   * column, the write path and the "Set Value" entries.
+   */
+  const editing = useTableEditing({
+    panelId, dbSessionId, database, schema, tableName, databaseType, columns,
+    connectionReadOnly: isConnectionReadOnly, mountReason: readOnlyReasonProp,
+  });
+
+  const handleCellDoubleClick = useCallback(
+    (row: number, col: string) => {
+      // The reason comes first: a cell that cannot be edited says **why**
+      // (DB-05), and "read-only" alone leaves the user guessing. A read-only
+      // connection is one of the reasons.
+      const reason = editing.resolveReadOnlyReason(row, col);
+      if (reason) {
+        showReadOnlyTip(reason);
+        return;
+      }
+      // A row that is marked for deletion must not be edited: it is on its way
+      // out, and the row-level state says so (06 §4.2).
+      if (selectDirtyRow(dirtyIndex, row)?.state === 'deleted') return;
+      actions.startEdit(row, col);
+    },
+    [actions, dirtyIndex, editing, showReadOnlyTip],
+  );
   const rows = ts?.rows ?? EMPTY_ROWS;
   const totalRows = ts?.totalRows ?? 0;
   const page = ts?.page ?? 0;
@@ -611,17 +630,7 @@ export function TableView({
         onAddDraftRow={() => drafts.addDraftRow()}
         namedView={namedView}
       />
-      {readOnlyTipVisible && (
-        <div
-          className="flex shrink-0 items-center gap-1.5 border-b border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning"
-          role="status"
-          aria-live="polite"
-          data-testid="table-read-only-tip"
-        >
-          <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
-          {t('tableData.readOnlyEditDisabled')}
-        </div>
-      )}
+      {readOnlyTipReason ? <TableReadOnlyTip reason={readOnlyTipReason} /> : null}
       {noPrimaryKey && (
         <div
           className="flex shrink-0 items-center gap-1.5 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-muted"
@@ -691,6 +700,7 @@ export function TableView({
         onCellDoubleClick={handleCellDoubleClick}
         onCellEdit={isEditable ? handleCellEdit : undefined}
         onCellEditCancel={actions.cancelEdit}
+        cellEditing={editing.cellEditing}
         enableSetNull={isEditable}
         onRowSelect={actions.selectRow}
         onSelectAll={actions.toggleSelectAll}

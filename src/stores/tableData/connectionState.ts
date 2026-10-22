@@ -60,6 +60,7 @@ export function emptyTableState(context: TableChangeContext | null = null): Tabl
     lastSelectedIndex: null,
     gridSelection: EMPTY_GRID_SELECTION,
     editingCell: null,
+    enumCandidates: new Map(),
     detailRowIndex: null,
     loading: false,
     requestRevision: 0,

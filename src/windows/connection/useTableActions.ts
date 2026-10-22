@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { resolvePanelCountStrategy } from '../../stores/tableData/countStrategy';
+import { resolveEditorBeforeNavigation } from './tableEditing';
 import type { GridSelection } from '../../stores/tableData/gridSelection';
 import type {
   CommitPendingChangesResult,
@@ -84,6 +85,14 @@ export function useTableActions({
 }: UseTableActionsOptions): TableActions {
   return useMemo(() => {
     const store = () => useTableDataStore.getState();
+    /**
+     * Whether a navigation may go ahead (DB-05).
+     *
+     * An open editor holds a draft the user typed. Navigating would take it
+     * with it, so the editor is asked to write it first — and a draft that
+     * is not acceptable **stops** the navigation instead of being dropped.
+     */
+    const mayNavigate = () => resolveEditorBeforeNavigation(panelId).ok;
     return {
       load: () => {
         // The "retry" of a failed load re-reads the page, so the notice of the
@@ -96,6 +105,7 @@ export function useTableActions({
         });
       },
       reload: () => {
+        if (!mayNavigate()) return;
         invalidateNotice();
         store().reloadPanel(panelId);
       },
@@ -107,20 +117,24 @@ export function useTableActions({
         store().reloadPanel(panelId, { skipCount: false, countStrategy: 'exact' });
       },
       setDefaultOrderOverride: (override) => {
+        if (!mayNavigate()) return;
         invalidateNotice();
         store().setDefaultOrderOverride(panelId, override);
       },
       setSort: (sort: SortCondition) => {
+        if (!mayNavigate()) return;
         invalidateNotice();
         store().setSort(panelId, sort);
       },
       removeFilter: (index: number) => store().removeFilter(panelId, index),
       clearFilters: () => {
+        if (!mayNavigate()) return;
         invalidateNotice();
         store().clearFilters(panelId);
       },
       addFilter: (filter: FilterCondition) => store().addFilter(panelId, filter),
       setFilters: (filters: FilterCondition[], logic?: 'and' | 'or') => {
+        if (!mayNavigate()) return;
         invalidateNotice();
         store().setFilters(panelId, filters, logic);
       },
@@ -128,6 +142,7 @@ export function useTableActions({
         store().updateFilter(panelId, index, filter),
       setFilterLogic: (logic: 'and' | 'or') => store().setFilterLogic(panelId, logic),
       applyFilters: () => {
+        if (!mayNavigate()) return;
         invalidateNotice();
         store().applyFilters(panelId);
       },
@@ -135,10 +150,12 @@ export function useTableActions({
       setVisibleColumns: (columns: string[] | null) =>
         store().setVisibleColumns(panelId, columns),
       setPage: (page: number) => {
+        if (!mayNavigate()) return;
         invalidateNotice();
         store().setPage(panelId, page);
       },
       setPageSize: (size: number) => {
+        if (!mayNavigate()) return;
         invalidateNotice();
         store().setPageSize(panelId, size);
       },

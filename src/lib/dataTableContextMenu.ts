@@ -1,6 +1,11 @@
 import type { NativeMenuItemDef } from './nativeContextMenu';
 import type { DatabaseType } from '../types';
 import { escapeIdent, getEscapeSqlValue } from './databaseTypes';
+import {
+  resolveSetValueActions,
+  type SetValueActionId,
+  type SetValueState,
+} from './setValueActions';
 
 /** Caller-supplied labels (typically from `t()`). */
 export type DataTableContextMenuLabels = {
@@ -20,6 +25,23 @@ export type DataTableContextMenuLabels = {
   export: string;
   /** "Restore This Row" — offered on a row that is marked for deletion (DB-06). */
   restoreRow: string;
+  /**
+   * The write entries of the "Set Value" submenu (DB-05).
+   *
+   * They are optional so a caller that does not offer the submenu does not
+   * have to invent labels for it — the menu keeps its shape from before
+   * DB-05, with `Set NULL` inside `more-actions`.
+   */
+  /** "Set Value" — the title of the write submenu. */
+  setValue?: string;
+  /** "Set empty string". */
+  setEmpty?: string;
+  /** "Use column default" — a new row. */
+  setDefault?: string;
+  /** "Revert this cell" — an existing row with a staged change. */
+  revertCell?: string;
+  /** "Load candidate values". */
+  loadCandidates?: string;
 };
 
 export type DataTableContextMenuHandlers = {
@@ -38,6 +60,10 @@ export type DataTableContextMenuHandlers = {
   onExport?: () => void;
   /** Undo the delete mark of the right-clicked row (DB-06). */
   onRestoreRow?: () => void;
+  /** Write the cell without opening an editor (DB-05). */
+  onSetValue?: (id: SetValueActionId) => void;
+  /** Read the candidate values of an enumeration column (DB-05). */
+  onLoadCandidates?: () => void;
 };
 
 export type BuildDataTableContextMenuArgs = {
@@ -70,6 +96,12 @@ export type BuildDataTableContextMenuArgs = {
    * keeps today's menu byte for byte.
    */
   canRestoreRow?: boolean;
+  /**
+   * What the "Set Value" submenu may offer for the right-clicked cell
+   * (DB-05). Omitted — or offered without a handler — the menu keeps its
+   * today's shape, with `Set NULL` inside `more-actions`.
+   */
+  setValue?: SetValueState;
 };
 
 function item(
@@ -284,6 +316,60 @@ export function serializeDataTableColumnValues(columnIndex: number, rows: unknow
 }
 
 /**
+ * The label of a "Set Value" entry.
+ *
+ * The rules live in `components/DataTable/editors/setValueMenu.ts`; this
+ * only maps an action to the text the caller supplied.
+ */
+function setValueActionLabel(
+  id: SetValueActionId,
+  labels: DataTableContextMenuLabels,
+): string {
+  switch (id) {
+    case 'setNull':
+      return labels.setNull;
+    case 'setEmpty':
+      return labels.setEmpty ?? '';
+    case 'setDefault':
+      return labels.setDefault ?? '';
+    case 'revertCell':
+      return labels.revertCell ?? '';
+  }
+}
+
+/**
+ * The "Set Value" submenu (DB-05).
+ *
+ * It is built only when the caller offers both the state of the cell and a
+ * handler; otherwise the menu keeps its shape from before DB-05, with
+ * `Set NULL` inside `more-actions` (the result grid still relies on it).
+ */
+function buildSetValueSubmenu(
+  args: BuildDataTableContextMenuArgs,
+): NativeMenuItemDef | null {
+  const { labels, handlers, setValue } = args;
+  if (!setValue || !handlers.onSetValue) return null;
+  const items = resolveSetValueActions(setValue)
+    .map((action) =>
+      item(
+        `set-value-${action.id}`,
+        setValueActionLabel(action.id, labels),
+        () => handlers.onSetValue?.(action.id),
+      ),
+    )
+    .filter((entry): entry is NativeMenuItemDef => entry !== null);
+  if (setValue.canLoadCandidates === true && handlers.onLoadCandidates) {
+    const loadItem = item(
+      'set-value-load-candidates',
+      labels.loadCandidates ?? '',
+      handlers.onLoadCandidates,
+    );
+    if (loadItem) items.push(loadItem);
+  }
+  return submenu('set-value', labels.setValue ?? '', items);
+}
+
+/**
  * TablePlus-style DataTable context menu.
  * With cell context, keep the frequent actions at the root and group the
  * lower-frequency copy/NULL actions under a submenu. Never emit a lonely
@@ -323,6 +409,12 @@ export function buildDataTableContextMenuItems(
   }
 
   if (hasCellContext && !multiRowSelection) {
+    // The "Set Value" submenu (DB-05). It replaces the single "Set NULL"
+    // entry of `more-actions`: offering both would show the same write
+    // twice, under two different names.
+    const setValueMenu = buildSetValueSubmenu(args);
+    const usesSetValueMenu = setValueMenu !== null;
+
     const frequent = push(
       item('copy', labels.copy, handlers.onCopy),
       item('copy-row', labels.copyRow, handlers.onCopyRow),
@@ -348,13 +440,18 @@ export function buildDataTableContextMenuItems(
       item('copy-as-csv', labels.copyAsCsv, handlers.onCopyAsCsv),
       item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),
       item('copy-column-data', labels.copyColumnData, handlers.onCopyColumnData),
-      canSetNull ? item('set-null', labels.setNull, handlers.onSetNull) : null,
+      canSetNull && !usesSetValueMenu
+        ? item('set-null', labels.setNull, handlers.onSetNull)
+        : null,
       hasSelectedRows
         ? item('copy-selected-rows', labels.copySelectedRows, handlers.onCopySelectedRows)
         : null,
     );
 
     let out = frequent;
+    if (setValueMenu) {
+      out = [...out, setValueMenu];
+    }
     const dangerZone = [...danger, ...restore];
     if (dangerZone.length > 0) {
       out = out.length > 0 ? [...out, { kind: 'separator' }, ...dangerZone] : dangerZone;

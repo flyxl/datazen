@@ -39,6 +39,10 @@ import {
   type PendingEditStoreSlice,
 } from './tableData/pendingEditActions';
 import {
+  createEnumCandidateSlice,
+  type EnumCandidateStoreSlice,
+} from './tableData/enumCandidates';
+import {
   AMBIGUOUS_ROW_IDENTITY_ERROR,
   draftsForWire,
   hasPendingWork,
@@ -75,6 +79,7 @@ interface TableDataStore
   extends SelectionStoreSlice,
     DraftStoreSlice,
     PendingEditStoreSlice,
+    EnumCandidateStoreSlice,
     PanelSeedSlice {
   byPanel: Map<string, TableState>;
 
@@ -517,6 +522,9 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     (panelId) => get().byPanel.get(panelId),
     (panelId) => get().reloadPanel(panelId),
   ),
+
+  // The enumeration candidates (DB-05) live in `tableData/enumCandidates`.
+  ...createEnumCandidateSlice((panelId, updater) => patchPanel(get, set, panelId, updater)),
 
   // Draft actions live in `tableData/draftInserts`; the store only wires them.
   ...createDraftSlice(

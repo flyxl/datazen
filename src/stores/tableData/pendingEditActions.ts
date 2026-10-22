@@ -19,6 +19,7 @@
  */
 import { t } from '../../locales/t';
 import { buildRowIdentity, rowIdentityKey } from '../../lib/tableChanges';
+import type { Value } from '../../types';
 import { toCellValue } from './connectionState';
 import {
   AMBIGUOUS_ROW_IDENTITY_ERROR,
@@ -26,12 +27,26 @@ import {
   hasPendingIdentityCollision,
   rowIdentityIsUnique,
 } from './pendingChanges';
-import { computeStageResult, computeUnstageDeleteResult } from './stageEdit';
+import { computeUnstageDeleteResult } from './stageEdit';
+import { computeStageCellValueResult, restoredCellValue } from './stageCellValue';
 import type { TableState } from './types';
 
 export interface PendingEditStoreSlice {
   /** Stage one cell edit; the only entry point that produces a staged change. */
   stageCellChange: (panelId: string, row: number, col: string, value: unknown) => void;
+  /**
+   * Stage one cell edit with an explicit write intent (DB-05).
+   *
+   * `undefined` = do not write this column, `null` = write SQL `NULL`,
+   * anything else = write that value. `stageCellChange` is the thin shell
+   * over it, so the old entry point keeps its behaviour byte for byte.
+   */
+  stageCellValue: (
+    panelId: string,
+    row: number,
+    col: string,
+    value: Value | null | undefined,
+  ) => void;
   /** Stage the same value in one column of many rows (one call per cell). */
   applyColumnToRows: (panelId: string, col: string, value: unknown, rows: number[]) => void;
   /** Mark rows for deletion. */
@@ -49,11 +64,63 @@ export function createPendingEditSlice(
   read: (panelId: string) => TableState | undefined,
   reload: (panelId: string) => void,
 ): PendingEditStoreSlice {
-  const stageCellChange = (
+  /**
+   * Undo the staged change of one column ("revert this cell").
+   *
+   * The column leaves the change list and the cell goes back to the value it
+   * had before the change — the third state of a write (00-contracts §3).
+   */
+  const revertCellValue = (panelId: string, row: number, col: string): void => {
+    const ts = read(panelId);
+    if (!ts) return;
+    const rowObj = ts.rows[row];
+    if (!rowObj) return;
+    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
+    if (pkCols.length === 0) {
+      patch(panelId, () => ({ error: t('tableData.noPrimaryKey') }));
+      return;
+    }
+    const match = findPendingForRow(ts, row, rowObj, pkCols);
+    if (!match) return;
+    if (!match.change.changedColumns.includes(col)) return;
+
+    const staged = computeStageCellValueResult({
+      existing: match.change,
+      column: col,
+      value: undefined,
+      originalValue: match.change.originalValues[col] ?? null,
+      rowIdentity: match.change.rowIdentity,
+      rowIndex: row,
+    });
+
+    const pendingChanges = new Map(ts.pendingChanges);
+    if (staged.change === null) {
+      pendingChanges.delete(match.key);
+    } else {
+      pendingChanges.set(match.key, staged.change);
+    }
+
+    const nextRows = [...ts.rows];
+    nextRows[row] = { ...rowObj, [col]: restoredCellValue(match.change, col) };
+    const rowIdentityAnchors = new Map(ts.rowIdentityAnchors);
+    rowIdentityAnchors.set(row, match.key);
+
+    patch(panelId, () => ({
+      rows: nextRows,
+      pendingChanges,
+      rowIdentityAnchors,
+      previewPlan: null,
+      pendingStatus: 'idle',
+      editingCell: null,
+      error: null,
+    }));
+  };
+
+  const stageCellValue = (
     panelId: string,
     row: number,
     col: string,
-    value: unknown,
+    value: Value | null | undefined,
   ): void => {
     const ts = read(panelId);
     if (!ts) return;
@@ -62,6 +129,12 @@ export function createPendingEditSlice(
     const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
     if (pkCols.length === 0) {
       patch(panelId, () => ({ error: t('tableData.noPrimaryKey') }));
+      return;
+    }
+    // "Do not write this column" is the undo of a staged change, and it has
+    // its own path: there is no value to check against the row identity.
+    if (value === undefined) {
+      revertCellValue(panelId, row, col);
       return;
     }
 
@@ -82,7 +155,7 @@ export function createPendingEditSlice(
     const originalValue = hasOriginalValue
       ? existing.originalValues[col]
       : toCellValue(rowObj[col]);
-    const currentValue = toCellValue(value);
+    const currentValue = value;
     const prospectiveRow = { ...rowObj, [col]: currentValue };
     const prospectiveIdentity = buildRowIdentity(prospectiveRow, pkCols);
     const key = match?.key ?? rowIdentityKey(identity);
@@ -105,12 +178,13 @@ export function createPendingEditSlice(
     // The "next version of the row's staged change" is a pure computation
     // (DB-06 §5 Step 3): it lives in `tableData/stageEdit` so the rule
     // "reverting the only changed column unstages the row" is testable on its
-    // own and shared with the delete-mark undo.
-    const staged = computeStageResult({
+    // own and shared with the delete-mark undo. The three-state variant
+    // lives in `tableData/stageCellValue` (DB-05).
+    const staged = computeStageCellValueResult({
       existing,
       column: col,
+      value: currentValue,
       originalValue,
-      currentValue,
       rowIdentity: identity,
       rowIndex: row,
     });
@@ -136,6 +210,17 @@ export function createPendingEditSlice(
       editingCell: null,
       error: null,
     }));
+  };
+
+  const stageCellChange = (
+    panelId: string,
+    row: number,
+    col: string,
+    value: unknown,
+  ): void => {
+    // The old entry point keeps its behaviour byte for byte: an absent value
+    // was a `NULL`, and it still is.
+    stageCellValue(panelId, row, col, toCellValue(value));
   };
 
   const stageRowDelete = (panelId: string, rowIndices: number | number[]): void => {
@@ -197,6 +282,7 @@ export function createPendingEditSlice(
 
   return {
     stageCellChange,
+    stageCellValue,
 
     applyColumnToRows: (panelId, col, value, rows) => {
       for (const row of rows) stageCellChange(panelId, row, col, value);

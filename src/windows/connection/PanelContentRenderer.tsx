@@ -288,6 +288,9 @@ function SqlPanelContent({
               tableName={(panel as ViewPanel).viewName}
               databaseType={panel.databaseType}
               readOnly={true}
+              // The view panel is read-only because it is a **view**, not
+              // because the connection is (DB-05).
+              readOnlyReason="view"
               dataExportCapability={panelExportScope}
             />
           )}

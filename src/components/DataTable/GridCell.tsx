@@ -1,10 +1,13 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import type { ColumnDef } from './TableHeader';
 import { CellRenderer } from './CellRenderer';
 import { Spinner } from '../ui/Spinner';
 import { fkJumpLabel, fkResolvingLabel } from './fkCellText';
 import { cn } from '../../lib/cn';
+import type { CellType } from '../../lib/cellTypes';
+import type { CellEditingContext } from '../../lib/cellEditorKind';
+import type { Value } from '../../types';
 
 /**
  * One grid cell — the single owner of the cell-level DOM contract.
@@ -52,10 +55,18 @@ export interface GridCellProps {
   editing: boolean;
   /**
    * Normalised type name rendered as `data-dt-cell-type`. The value is computed by the
-   * parent (DB-01 uses `classifyDataType`, DB-05 swaps the source for `resolveCellType`),
-   * this component only renders it — one attribute, one producer.
+   * parent (DB-05 uses `resolveCellType`), this component only renders it — one
+   * attribute, one producer.
    */
-  cellType?: string;
+  cellType?: CellType;
+  /**
+   * The editing context of the grid (DB-05).
+   *
+   * It carries the per-column editor facts, the read-only reason and the
+   * write path — one object, because the grid threads it through three
+   * components.
+   */
+  editor?: CellEditingContext;
   /** DOM id, referenced by the grid's `aria-activedescendant`. */
   id?: string;
   /**
@@ -106,6 +117,7 @@ export const GridCell = memo(function GridCell({
   active = false,
   editing,
   cellType,
+  editor,
   id,
   gridSemantics = false,
   dirty = false,
@@ -117,6 +129,29 @@ export const GridCell = memo(function GridCell({
   onCellEdit,
   onCellEditCancel,
 }: GridCellProps) {
+  /** The editor facts of this cell's column. */
+  const editorInfo = editor?.columnEditorInfo.get(column.name);
+  /** Why the cell cannot be edited, if it cannot. */
+  const readOnlyReason = editor?.readOnlyReason ?? editorInfo?.readOnlyReason ?? null;
+  /**
+   * The write path of this cell.
+   *
+   * It is a stable callback, not an arrow built in the render: an inline
+   * closure would give every cell a new prop identity and defeat `memo`,
+   * which a virtualised grid feels immediately.
+   */
+  const commitValue = useCallback(
+    (next: Value | null | undefined) => {
+      // The tri-state write path wins: the legacy callback cannot carry
+      // "do not write this column".
+      if (editor?.onCellValue) {
+        editor.onCellValue(rowIndex, column.name, next);
+        return;
+      }
+      onCellEdit(rowIndex, column.name, next);
+    },
+    [column.name, editor, onCellEdit, rowIndex],
+  );
   /**
    * The wording of the jump entry.
    *
@@ -135,6 +170,12 @@ export const GridCell = memo(function GridCell({
       {...(selected ? { 'data-dt-selected': 'true' } : {})}
       {...(active ? { 'data-dt-active': 'true' } : {})}
       {...(cellType ? { 'data-dt-cell-type': cellType } : {})}
+      // The three cell attributes DB-05 owns: the editor state, the "this
+      // cell is NULL" marker and the reason a cell cannot be edited. They
+      // are added to the existing ones — never written over them.
+      {...(editing ? { 'data-dt-editing': 'true' } : {})}
+      {...(value === null || value === undefined ? { 'data-dt-null': 'true' } : {})}
+      {...(readOnlyReason ? { 'data-dt-readonly': readOnlyReason } : {})}
       {...(dirty ? { 'data-dt-dirty': 'true' } : {})}
       // The cell belongs to a foreign key, and the **value** of the attribute
       // is the target it points at: `customers.id`, or `sales.parents.(x, y)`
@@ -166,8 +207,13 @@ export const GridCell = memo(function GridCell({
           dataType={column.type}
           value={value}
           isEditing={editing}
-          onCommit={(v) => onCellEdit(rowIndex, column.name, v)}
+          cellType={cellType}
+          nullable={editorInfo?.nullable ?? true}
+          integerOnly={editorInfo?.integerOnly ?? false}
+          panelId={editor?.panelId}
+          onCommit={commitValue}
           onCancel={onCellEditCancel}
+          loadCandidates={editor?.loadCandidates}
         />
       </div>
       {fk?.navigable && !editing && (
