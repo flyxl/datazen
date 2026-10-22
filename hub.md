@@ -246,6 +246,29 @@ Tester 查出：`src/windows/connection/result-workspace/ResultTableView.tsx` �
 
 合流后新增的 en key：named-views **22** + editors **36** + result-grid **19** = **77 条 × 9 语种 = 693**。⚠️ 门禁的 stale 规则**没有符号豁免**（实测把 `'≈ {count}'` / `'—'` 原样写进语种会立刻报 stale）⇒ 纯符号型新 key 会被逼着改用本族措辞 —— 这条盲区值得单独立项（与 `i18n-key-collision-check` 合并考虑）。
 
+## 轨 B `result-grid` 修复轮的结果（3 提交 `008f03e9f`）与两个后续
+
+**两条中危都修完，聚焦复验中**（Tester `aa4164d2`，同一实例）。
+
+### 修完的东西
+
+| 项 | 修法 |
+| --- | --- |
+| 放行闸门 | 单一具名常量 `RESULT_ORIGIN_WRITE_BACK_ENABLED`（今天 `false`）+ 同源入口 `originChannelWritable()`；通道关闭时来源判定**只能拒绝不能放行**（保留后端原因、页级事实不翻案）。注释写死前提：**① 至少一个驱动覆写 `describe_result_origin` ② 前端写走新管线 —— 两者缺一不可**（只落其一就会把「声称可编辑、写入被静默拒绝」放回来） |
+| 目标面（网格本体） | `result-workspace/ResultTableView.tsx` 的 `canEdit` 由判定驱动；只读时 `handleCellDoubleClick` **根本不打开编辑器**；只读时 `data-dt-grid-readonly-reason` **存在且非空** |
+| 判定键 | 统一为「**会话 + 结果序号**」⇒ 网格与行详情抽屉**共享同一份判定**（此前是两套）；请求里的 `connectionId` 去掉，后端从会话反查连接 |
+| 缺陷 2（命令壳纪律） | **变成真能抓的守卫**：`ipc_surface_tests.rs` 新增 `the_command_shell_carries_no_rule_codes` —— 递归扫描 `src-tauri/src/commands/**` 的**生产**源文件（跳过 `*_tests.rs` 与 `tests/` 目录），出现 `"grid.` 字面量即红（报文件名与行号）。**这比「靠阅读保证」值钱得多** —— 它是用户定则「`src-tauri` 只做 command 适配」的第一条可执行守卫 |
+| 缺陷 3 | `assertResultWritable` 补 store 级用例（只读⇒抛；可写⇒放行；没人判定过⇒放行；只判被写的那个结果） |
+| 额外自查发现并修掉 | **判定可能活得比它的行更久**：结果被替换 + 旧请求在途 ⇒ 旧答案会落进新结果。现在请求带**世代号**，结果替换则世代号前进，在途旧答案被丢弃 |
+| 一条**如实报告**的未转红 | 移除网格的**逐行守卫**没有用例转红 —— `canEdit` 与逐行守卫是两道防线、后者被前者遮住。Coder 没有把它说成「抓到了」；已交 Tester 判断（可接受 / 覆盖缺口） |
+
+### 两个后续（已记账）
+
+| # | 事项 | 处置 |
+| --- | --- | --- |
+| **F1** | **放行通道的两个前提都还没到**：① 至少一个驱动覆写 `describe_result_origin`（helper `describe_result_origin_with_catalog` 已就绪，~12 行委派）② 前端写走新管线（`previewResultCellChange` 的 Rust 侧已就绪，前端未接） | **必须同批落地**。这是一个独立的小轨（可作 Wave 10 的第五轨或单独一波）：驱动侧 ~12 行/驱动 + 前端接线 + 把 `RESULT_ORIGIN_WRITE_BACK_ENABLED` 翻成 `true`（届时开关两侧的用例必须改） |
+| **F2** | 行详情抽屉读的是**默认窗格**的 exec（`s.queryExec.get(activePanel.id)`）⇒ 拆分窗格时它与网格显示的结果不是同一个 ⇒ 两边判定键会不同 ⇒ **拆分窗格下的抽屉只读原因会不准**（缺判 ⇒ 退化为 `unknownOrigin`，窄判定仍生效，无回归） | 既有实现的旧账，不在本轮范围。**需要单独一条**（要么让抽屉也按自己窗格读 exec，要么让判定键跨窗格一致） |
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
