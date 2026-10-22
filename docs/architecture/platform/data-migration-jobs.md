@@ -93,6 +93,36 @@ JobState 与 effectOutcome 按 [连接 §10.1.1](connection-management.md#1011-p
 
 启动扫描把旧 Running 终结为 Failed/Unknown，并写入 `pendingVerification`；旧 Queued 以 `notExecuted` / `notDispatchedAfterRestart` 终结为 Failed/NotStarted。后者只是 durable admission 未进入 dispatch 的事实，不是 handler 核验结果；显式 `verify_recovery` 仅接受 PendingVerification，NotExecuted 不能通过 verifier 变成可续跑状态。恢复 verifier 是异步、只读职责，由调用方用新授权的资源提供；host 不自动获取旧 session/lease，也不自动 dispatch。
 
+### 2.4.1 三条链的后台 Job 用的是哪套身份
+
+Schema Diff / Data Sync / Data Transfer 的 prepare/apply 是**后台任务**：它们不接受 IPC
+请求上下文，而是在**受理时**自造一个 `RequestContext`。这三处自造上下文的取值必须逐项
+说清，否则「任务互相看不见」会被当成偶发故障：
+
+| 链 | 受理入口 | 组织 | 主体 | 客户端实例 |
+| --- | --- | --- | --- | --- |
+| Schema Diff | `commands/schema_diff/job.rs::job_ctx()` | 规范常量 `LOCAL_ORGANIZATION_ID` | 字面量 `"datazen-local-user"` | 字面量 `"datazen-local-client"` |
+| Data Transfer | `commands/data_transfer/job_api/runtime.rs::request_context()` | 规范常量 `LOCAL_ORGANIZATION_ID` | 字面量 `"datazen-local-user"` | 字面量 `"datazen-local-client"` |
+| Data Sync | `commands/sync/jobs.rs::durable_context()` | 规范常量 `LOCAL_ORGANIZATION_ID` | 字面量 `"datazen-local-user"` | 字面量 `"datazen-local-client"` |
+| 启动期恢复扫描（第 2 段，不限 kind） | `bootstrap/app_state.rs::recover_desktop_jobs_at_startup()` | 规范常量 `LOCAL_ORGANIZATION_ID` | 字面量 `"datazen-local-user"` | 字面量 `"datazen-local-client"` |
+
+- **组织轴已统一**（2026-10 的一轮修复）：四处此前把组织写死成另一个字面量
+  `"datazen-local"`，与规范值 `"datazen-desktop-local"` 不是同一个字符串 ⇒ 同一列上落着
+  两套组织。现在四处同取 `LOCAL_ORGANIZATION_ID`，已落库的旧行由 `AppDb` 的 **v5 迁移**
+  并回规范值（见[持久化模型 §4.1](persistence-model.md#41-桌面本地持久化现状已实现)）。
+  四处**必须同波一起改**：恢复扫描第 2 段不限 kind，它与三条链的落库组织不一致时，
+  那条链的任务崩溃后就不再被标记待核验。
+- **主体轴仍分裂**：IPC 上下文的主体是 OS 用户名（`platform/identity.rs::local_principal()`），
+  三条链的主体是字面量。落库行按**受理方**的主体存，列举按 `ctx.organization_id` **且**
+  `ctx.principal_id` 过滤（`store/app_db/jobs/access.rs`）⇒ 用 IPC ctx 建的通用任务中心
+  **看不到**这三条链的任务。统一主体是**行为变更**（这批行会突然出现在通用列表里），
+  **单独排期**，不夹带在统一组织这一波。
+- **客户端实例轴不动**：它从不参与列举 / 读取过滤（过滤键只有组织 + 主体），只在认领
+  栅栏上自比自（`store/app_db/jobs/owner.rs` 的 `j.claim_client_instance_id=?8`）；
+  字面量版「跨启动恒定」对后台任务本来就是合理语义。
+
+三根轴的完整口径与防回归闸门见[共享边界 §5.3](shared-boundaries-and-ports.md#53-桌面形态的身份三根轴组织--主体--客户端实例)。
+
 ### 2.5 Restore Apply Job（已接线，驱动执行失败关闭）
 
 `databaseRestoreApply` 已加入 `runtime::job::APPLY_KINDS`：必须携带由 host 生成的 `consumedPlanId`，受理时由现有 durable receipt/plan-consumption 事务保证单次消费。冻结 `RestorePlan` 仅含完整逻辑 target、配置 revision、输入 Artifact ID/字节数/SHA-256 和恢复选项；不含本地路径、SQL 正文、凭据或运行时 session/lease。桌面 SQLite admission 对此 kind 使用独立 typed projection，重新编码并核对完整 payload，拒绝额外/未知嵌套字段，校验 ID、摘要和有界命名空间，并将 consumedPlanId/selectionRevision 分别绑定 planId/configRevision；继续受全局 durable plan 大小限制。

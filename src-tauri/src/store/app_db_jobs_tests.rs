@@ -671,7 +671,7 @@ async fn app_state_reopen_marks_interrupted_job_for_verification_without_dispatc
         None,
     );
     let ctx = RequestContext::new(
-        OrganizationId::new("datazen-local"),
+        OrganizationId::new(crate::platform::LOCAL_ORGANIZATION_ID),
         PrincipalId::new("datazen-local-user"),
         None,
         ClientInstanceId::new("datazen-local-client"),

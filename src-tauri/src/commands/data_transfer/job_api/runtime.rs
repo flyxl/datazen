@@ -117,7 +117,7 @@ pub(crate) fn now_timestamp() -> Timestamp {
 /// Local desktop identity: no remote principal, token, or session handle is stored.
 pub(super) fn request_context() -> RequestContext {
     RequestContext::new(
-        OrganizationId::new("datazen-local"),
+        OrganizationId::new(crate::platform::LOCAL_ORGANIZATION_ID),
         PrincipalId::new("datazen-local-user"),
         None,
         ClientInstanceId::new(LOCAL_CLIENT_INSTANCE),

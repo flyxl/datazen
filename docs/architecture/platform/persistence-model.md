@@ -476,7 +476,7 @@ CREATE TABLE schema_migration_history (
 
 | 位置 | 表 | 版本常量 | 记录形态 |
 | --- | --- | --- | --- |
-| [`store/app_db.rs`](../../../src-tauri/src/store/app_db.rs) | `schema_migrations` | `SCHEMA_VERSION: i32 = 3` | `(version INTEGER PRIMARY KEY, applied_at TEXT)`，只记版本 |
+| [`store/app_db.rs`](../../../src-tauri/src/store/app_db.rs) | `schema_migrations` | `SCHEMA_VERSION: i32 = 5` | `(version INTEGER PRIMARY KEY, applied_at TEXT)`，只记版本 |
 | [`store/history_db/schema.rs`](../../../src-tauri/src/store/history_db/schema.rs) | `schema_version` | 环形 v1→v4 | `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`，只记版本 |
 | 服务端管理库（本文） | `schema_migration_history` | 内嵌于二进制 | 版本 + 文件名 + 校验和 + 耗时 |
 
@@ -589,11 +589,18 @@ expiredHeld 的 `amount - returned_amount` 继续计入 reserved；TTL 到期、
 | `{appData}/settings.json` / `tunnels.json` / `groups.json` | 应用设置、隧道、分组 | 同上（仅凭据字段） | [`store/mod.rs`](../../../src-tauri/src/store/mod.rs) `load_all()` |
 | `{appData}/ai_config.enc` | AI Provider 配置 | 整体密文 | [`store/ai_config.rs`](../../../src-tauri/src/store/ai_config.rs) |
 | `{appData}/history.sqlite` | `query_history`、`workflow_history`、`migration_run_history`（WAL，`PRAGMA foreign_keys = ON`） | **明文**（SQL 文本、错误信息按明文存） | [`store/history_db.rs`](../../../src-tauri/src/store/history_db.rs) |
-| `{appData}/datazen.sqlite` | `schema_migrations`、`workflows`、`dashboards`、`widgets`、`widget_runs`、`widget_latest_run`；v2 增加 `jobs`、`job_idempotency_receipts`、`job_stages`、`job_commit_boundaries`、`job_checkpoints`、`job_result_details`、`job_domain_results`、`job_artifact_refs`；v3 增加 `monitor_schedule_grants` | 明文；Job plan/result 是受限 DTO 投影 | [`store/app_db.rs`](../../../src-tauri/src/store/app_db.rs)、[`store/app_db/jobs/`](../../../src-tauri/src/store/app_db/jobs/) |
+| `{appData}/datazen.sqlite` | `schema_migrations`、`workflows`、`dashboards`、`widgets`、`widget_runs`、`widget_latest_run`；v2 增加 `jobs`、`job_idempotency_receipts`、`job_stages`、`job_commit_boundaries`、`job_checkpoints`、`job_result_details`、`job_domain_results`、`job_artifact_refs`；v3 增加 `monitor_schedule_grants`；v4 给 `jobs` 增加 `claim_client_instance_id`；v5 把历史遗留的桌面本地组织 id 并回规范值（纯数据迁移，无 DDL） | 明文；Job plan/result 是受限 DTO 投影 | [`store/app_db.rs`](../../../src-tauri/src/store/app_db.rs)、[`store/app_db/jobs/`](../../../src-tauri/src/store/app_db/jobs/) |
 | `{appData}/favorites/**/*.sql` | 收藏 SQL（含 front-matter） | 无 | [`store/favorites/`](../../../src-tauri/src/store/mod.rs) |
 | `{appData}/.key` | AES-256 主密钥（仅 file 后端） | base64 明文文件 | [`store/key_store.rs`](../../../src-tauri/src/store/key_store.rs) |
 
-桌面 AppDb 当前 `SCHEMA_VERSION` 为 3；v3 在同一迁移事务中增加 `monitor_schedule_grants`，保存后端签发的调度身份/批准者、固定 workflow revision 和 target/action/readOnly scope、expiry/revocation metadata，绝不存 session/delegation token 或凭据。打开既有 v1 数据库时，保留原 workflows/dashboard 数据，并在一个 SQLite `Immediate` 事务内创建全部 Job v2 表及索引、登记 migration version 2；任一 v2 DDL/登记失败会回滚该迁移事务。Job accept 在一个事务内写 Job、幂等 receipt、consumed plan ID 与初始结果行。SQLite job rows 保存白名单化 plan（最大 1 MiB）、安全进度、状态/error code、commit boundaries、checkpoints、bounded domain results 与 recovery verdict；不保存 `dbSessionId`、session/lease/cursor、worker closure、token、password、任意 SQL 或 driver 自由格式错误文本。运行时 worker/claim 字段属于本机 Job 调度 fencing，不会重建外部资源句柄。
+桌面 AppDb 当前 `SCHEMA_VERSION` 为 5。v3 在同一迁移事务中增加 `monitor_schedule_grants`，保存后端签发的调度身份/批准者、固定 workflow revision 和 target/action/readOnly scope、expiry/revocation metadata，绝不存 session/delegation token 或凭据。v4 给 `jobs` 增加 `claim_client_instance_id` 列（认领栅栏用）。打开既有 v1 数据库时，保留原 workflows/dashboard 数据，并在一个 SQLite `Immediate` 事务内创建全部 Job v2 表及索引、登记 migration version 2；任一 v2 DDL/登记失败会回滚该迁移事务。Job accept 在一个事务内写 Job、幂等 receipt、consumed plan ID 与初始结果行。SQLite job rows 保存白名单化 plan（最大 1 MiB）、安全进度、状态/error code、commit boundaries、checkpoints、bounded domain results 与 recovery verdict；不保存 `dbSessionId`、session/lease/cursor、worker closure、token、password、任意 SQL 或 driver 自由格式错误文本。运行时 worker/claim 字段属于本机 Job 调度 fencing，不会重建外部资源句柄。
+
+**v5：桌面本地组织 id 并回规范值（纯数据迁移，无 DDL）。** 桌面的规范本地组织 id 是 `platform/identity.rs` 的 `LOCAL_ORGANIZATION_ID`（`"datazen-desktop-local"`）；但 2026-10-09 引入 `jobs` 表的那次提交里，迁移三件套与启动期恢复扫描把另一个字面量 `"datazen-local"` 写死成了组织 id。两个值落在 `jobs.organization_id` 的同一列上 ⇒ 同一张表里落着两套组织。v5 在同一个迁移事务内把两张表并回规范值：
+
+- `jobs.organization_id`：落库组织取自**受理方 ctx**（`store/app_db/jobs/admission.rs`），因此受影响的是三条迁移链落下的行。
+- `job_idempotency_receipts.organization_id`：主键含组织，不改就成孤儿（永远查不到）。
+
+`jobs` 上有 `UNIQUE (organization_id, consumed_plan_id)`：若同一 `consumed_plan_id` 在两个组织下都存在，直接 UPDATE 会撞唯一约束 ⇒ 迁移事务失败 ⇒ **应用起不来**。因此 `jobs` 的 UPDATE 带防御谓词，只改「改过去之后不会撞」的行；撞上的行留在原地——它本来就读不出来（列举按组织过滤），不比迁移前更糟。幂等回执侧**本不该**撞主键（幂等哈希把组织算进了进去，见 `store/app_db/jobs/codec.rs::idempotency_hash`），仍加同样的防御谓词，代价为零。三根轴的取值来源与「为什么本波只统一组织」见[共享边界 §5.3](shared-boundaries-and-ports.md#53-桌面形态的身份三根轴组织--主体--客户端实例)。
 
 `job_artifact_refs` 只保存 Artifact ID 与创建/过期时间，不存产物字节；引用 TTL 当前固定为 30 天。Artifact 内容由独立存储管理，AppDb 的引用 TTL 不延长或保证内容留存；调用者读取产物时仍须检查产物是否存在并重新授权。结果 DTO 可保留已过期 Artifact ID 供审计/详情展示，但不能据此宣称字节可下载。
 
