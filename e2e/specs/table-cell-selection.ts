@@ -3,7 +3,10 @@
  *
  * Depends on the DOM wiring that DB-01 Steps 7–9 add to `DataTable`:
  *   - `[data-dt-surface]`               (grid scroll container, keyboard host)
- *   - `[data-dt-selected="true"]`       (per-cell membership)
+ *   - `[data-dt-col][data-dt-selected="true"]`  (per-cell membership — the row
+ *     container carries `data-dt-selected` too since DB-02, so a *cell* locator
+ *     has to name a cell; the symmetric row locator is
+ *     `[data-dt-row-view][data-dt-selected]`)
  *   - `[data-dt-selection-rows|cols|cells]` + `[data-testid="data-table-selection-summary"]`
  *   - `[role="rowheader"] button`       (row gutter, contract §4.4b)
  * plus the store-owned `gridSelection` on `window.__tableDataStore` (landed in this track).
@@ -70,7 +73,9 @@ async function selectionSnapshot(): Promise<SelectionSnapshot | null> {
       anchor: slice.gridSelection.anchor,
       focus: slice.gridSelection.focus,
       extraRanges: slice.gridSelection.extraRanges.length,
-      selectedCells: document.querySelectorAll('[data-dt-selected="true"]').length,
+      // Cells only: DB-02 puts `data-dt-selected` on the row container as well,
+      // so an unscoped count would add one per selected row to this cell count.
+      selectedCells: document.querySelectorAll('[data-dt-col][data-dt-selected="true"]').length,
     };
   });
 }
@@ -249,6 +254,9 @@ describe('单元格与区域选择 (TC-SEL-001~006)', () => {
     const snapshot = await selectionSnapshot();
     expect(snapshot?.mode).toBe('none');
     expect(snapshot?.selectedCells).toBe(0);
+    // Deliberately unscoped: after Escape *nothing* may still read as selected —
+    // neither a cell nor a row container (DB-02). Both attributes are omitted
+    // rather than set to "false", so zero is the only correct count.
     expect(await browser.execute(() => document.querySelectorAll('[data-dt-selected]').length)).toBe(0);
     await captureJourneyStep('table-cell-selection-004');
   });
