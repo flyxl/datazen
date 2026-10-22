@@ -189,11 +189,34 @@ fn build_encrypted_connections_export(
 /// (and dangling references) are logged and exported without a tunnel rather
 /// than silently misrepresented.
 async fn materialize_tunnel_refs(state: &AppState, connections: &mut [ConnectionConfig]) {
+    let scope = match state.organization_scope() {
+        Ok(scope) => scope,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "organization scope unavailable; exporting connections without tunnels"
+            );
+            return;
+        }
+    };
     for conn in connections.iter_mut() {
         let Some(tunnel_id) = conn.tunnel_id.as_deref().filter(|id| !id.is_empty()) else {
             continue;
         };
-        let Some(saved) = state.store.get_tunnel(tunnel_id).await else {
+        // 隧道定义经 `TunnelRepository` 端口取用（单条取用档）。
+        let saved = match state.tunnels.get(&scope, tunnel_id).await {
+            Ok(saved) => saved,
+            Err(error) => {
+                tracing::warn!(
+                    connection_id = %conn.id,
+                    tunnel_id = %tunnel_id,
+                    error = %error,
+                    "referenced tunnel unavailable; exporting connection without a tunnel"
+                );
+                continue;
+            }
+        };
+        let Some(saved) = saved else {
             tracing::warn!(
                 connection_id = %conn.id,
                 tunnel_id = %tunnel_id,

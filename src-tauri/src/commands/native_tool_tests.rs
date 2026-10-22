@@ -38,7 +38,12 @@ fn attach(
     manifest: &serde_json::Value,
 ) -> Result<(), datazen_application::error::ApiError> {
     let mut adapter = PlatformAdapter::new_launch(&uuid::Uuid::new_v4().to_string())?;
-    adapter.inject(state.store.clone(), state.driver_registry.clone())?;
+    adapter.inject(
+        state.store.clone(),
+        state.driver_registry.clone(),
+        state.tunnels.clone(),
+        state.known_hosts.clone(),
+    )?;
     adapter.replace_native_fixture(&manifest.to_string())?;
     state.platform = PlatformEntry::ready(adapter);
     Ok(())
