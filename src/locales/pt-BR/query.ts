@@ -1,6 +1,15 @@
 /** Auto-split domain: query (pt-BR) */
 const pack = {
   'tableView.loadingData': 'Carregando dados da tabela…',
+  'tableView.a11y.gridLabel': 'Grade de dados',
+  'tableView.shortcut.hint': 'As setas movem, Shift+seta estende a seleção, Enter edita',
+  'tableView.shortcut.enterEdit': 'Enter ou F2 edita a célula ativa',
+  'tableView.shortcut.extendSelection': 'Shift+setas estendem a seleção',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown avançam uma tela',
+  'tableView.shortcut.moveToEdge':
+    'Home/End vão ao início ou ao fim da linha; Cmd+Home/End, ao início ou ao fim da grade',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A seleciona todas as linhas',
+  'tableView.shortcut.tabLeavesGrid': 'Tab sai da grade',
   'query.execute': 'Executar',
   'query.run': 'Executar',
   'query.runSelection': 'Executar seleção',
@@ -225,6 +234,24 @@ const pack = {
     'A ordenação decrescente por chave primária composta ainda não é suportada.',
   'defaultSort.none': 'Não ordenar',
   'pagination.estimateUnavailable': 'Este banco de dados não consegue estimar o número de linhas.',
+  'pagination.mode.keyset': 'Paginação rápida',
+  'pagination.mode.offset': 'Paginação por offset',
+  'pagination.hint.driverUnsupported':
+    'Este banco de dados não oferece suporte à paginação rápida.',
+  'pagination.hint.noStableOrder':
+    'Esta tabela não tem chave primária, então as páginas não podem ser lidas em uma ordem estável.',
+  'pagination.hint.nullableKeyColumn':
+    'A paginação rápida não está disponível ao ordenar por uma coluna que pode ser NULL.',
+  'pagination.hint.nullBoundary':
+    'A chave de ordenação desta linha é NULL, então a paginação rápida recomeçou de uma posição exata.',
+  'pagination.hint.predicateUnavailable':
+    'A paginação rápida não está disponível para a ordenação atual.',
+  'pagination.hint.noPaginationClause': 'Este banco de dados não consegue paginar esta consulta.',
+  'pagination.hint.staleCursor':
+    'A ordenação ou o filtro mudou; a paginação recomeçou da primeira página.',
+  'pagination.hint.jumpReanchored': 'A paginação rápida recomeçou da página {page}.',
+  'pagination.hint.drift':
+    'As linhas mudaram durante a paginação; a contagem de linhas foi atualizada.',
   'filter.filter': 'Filtro',
   'filter.remove': 'Remover filtro',
   'filter.clear': 'Limpar',

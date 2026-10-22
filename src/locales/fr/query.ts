@@ -1,6 +1,15 @@
 /** Auto-split domain: query (fr) */
 const pack = {
   'tableView.loadingData': 'Chargement des données du tableau…',
+  'tableView.a11y.gridLabel': 'Grille de données',
+  'tableView.shortcut.hint': 'Les flèches déplacent, Maj+flèche étend la sélection, Entrée modifie',
+  'tableView.shortcut.enterEdit': 'Entrée ou F2 pour modifier la cellule active',
+  'tableView.shortcut.extendSelection': 'Maj+flèches étendent la sélection',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown font défiler d’un écran',
+  'tableView.shortcut.moveToEdge':
+    'Home/End vont au début ou à la fin de la ligne, Cmd+Home/End au début ou à la fin de la grille',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A sélectionne toutes les lignes',
+  'tableView.shortcut.tabLeavesGrid': 'Tab quitte la grille',
   'query.execute': 'Exécuter',
   'query.run': 'Exécuter',
   'query.runSelection': 'Exécuter la sélection',
@@ -227,6 +236,24 @@ const pack = {
   'defaultSort.none': 'Ne pas trier',
   'pagination.estimateUnavailable':
     'Cette base de données ne peut pas estimer le nombre de lignes.',
+  'pagination.mode.keyset': 'Pagination rapide',
+  'pagination.mode.offset': 'Pagination par offset',
+  'pagination.hint.driverUnsupported':
+    'Cette base de données ne prend pas en charge la pagination rapide.',
+  'pagination.hint.noStableOrder':
+    'Cette table n’a pas de clé primaire : les pages ne peuvent donc pas être lues dans un ordre stable.',
+  'pagination.hint.nullableKeyColumn':
+    'La pagination rapide est indisponible lors d’un tri sur une colonne pouvant être NULL.',
+  'pagination.hint.nullBoundary':
+    'La clé de tri de cette ligne est NULL : la pagination rapide a donc repris depuis une position exacte.',
+  'pagination.hint.predicateUnavailable':
+    'La pagination rapide est indisponible pour l’ordre de tri actuel.',
+  'pagination.hint.noPaginationClause': 'Cette base de données ne peut pas paginer cette requête.',
+  'pagination.hint.staleCursor':
+    'Le tri ou le filtre a changé ; la pagination a repris depuis la première page.',
+  'pagination.hint.jumpReanchored': 'La pagination rapide a repris depuis la page {page}.',
+  'pagination.hint.drift':
+    'Les lignes ont changé pendant la pagination ; le nombre de lignes a été actualisé.',
   'filter.filter': 'Filtre',
   'filter.remove': 'Supprimer le filtre',
   'filter.clear': 'Effacer',

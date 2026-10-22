@@ -1,6 +1,15 @@
 /** Auto-split domain: query (ja) */
 const pack = {
   'tableView.loadingData': 'テーブルデータをロード中…',
+  'tableView.a11y.gridLabel': 'データグリッド',
+  'tableView.shortcut.hint': '矢印キーで移動、Shift+矢印で選択範囲を拡張、Enter で編集',
+  'tableView.shortcut.enterEdit': 'Enter または F2 で選択中のセルを編集',
+  'tableView.shortcut.extendSelection': 'Shift+矢印キーで選択範囲を拡張',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown で 1 画面ずつ移動',
+  'tableView.shortcut.moveToEdge':
+    'Home/End で行の先頭・末尾へ、Cmd+Home/End でグリッドの先頭・末尾へ移動',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A で全行を選択',
+  'tableView.shortcut.tabLeavesGrid': 'Tab でグリッドから抜ける',
   'query.execute': '実行する',
   'query.run': '実行',
   'query.runSelection': '選択部分を実行',
@@ -223,6 +232,22 @@ const pack = {
   'defaultSort.primaryKeyDescUnavailable': '複合主キーによる降順はまだサポートされていません。',
   'defaultSort.none': '並べ替えない',
   'pagination.estimateUnavailable': 'このデータベースは行数を推定できません。',
+  'pagination.mode.keyset': '高速ページング',
+  'pagination.mode.offset': 'オフセットページング',
+  'pagination.hint.driverUnsupported': 'このデータベースは高速ページングに対応していません。',
+  'pagination.hint.noStableOrder':
+    'このテーブルには主キーがないため、ページを安定した順序で読み取れません。',
+  'pagination.hint.nullableKeyColumn':
+    'NULL になり得る列で並べ替えている間は、高速ページングを利用できません。',
+  'pagination.hint.nullBoundary':
+    'この行の並べ替えキーが NULL のため、高速ページングは正確な位置から再開しました。',
+  'pagination.hint.predicateUnavailable': '現在の並べ替え順では高速ページングを利用できません。',
+  'pagination.hint.noPaginationClause':
+    'このデータベースはこのクエリをページ単位で処理できません。',
+  'pagination.hint.staleCursor':
+    '並べ替えまたはフィルターが変更されたため、先頭ページからページングを再開しました。',
+  'pagination.hint.jumpReanchored': '高速ページングを {page} ページから再開しました。',
+  'pagination.hint.drift': 'ページング中に行が変更されたため、行数を更新しました。',
   'filter.filter': 'フィルター',
   'filter.remove': 'フィルターを削除する',
   'filter.clear': 'クリア',

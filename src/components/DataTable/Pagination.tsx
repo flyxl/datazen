@@ -314,7 +314,10 @@ export function Pagination({
         )}
         {pagingHint && showPagingLabel(pagingHint, totalRows > pageSize) && (
           <span
-            className="shrink-0 text-fg-tertiary"
+            // `shrink-0` alone would let a long label push the footer's other controls
+            // off-screen; the two notices beside it already cap their width and truncate
+            // (the `title` keeps the full text reachable).
+            className="max-w-[12rem] shrink-0 truncate text-fg-tertiary"
             title={t(pagingLabelKey(pagingHint))}
             data-testid="pagination-paging-mode"
             data-i18n-key={pagingLabelKey(pagingHint)}

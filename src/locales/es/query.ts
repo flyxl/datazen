@@ -1,6 +1,15 @@
 /** Auto-split domain: query (es) */
 const pack = {
   'tableView.loadingData': 'Cargando datos de la tabla…',
+  'tableView.a11y.gridLabel': 'Cuadrícula de datos',
+  'tableView.shortcut.hint': 'Las flechas mueven, Mayús+flecha amplía la selección, Entrar edita',
+  'tableView.shortcut.enterEdit': 'Entrar o F2 edita la celda activa',
+  'tableView.shortcut.extendSelection': 'Mayús+flechas amplían la selección',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown avanzan una pantalla',
+  'tableView.shortcut.moveToEdge':
+    'Home/End van al inicio o al final de la fila; Cmd+Home/End, al inicio o al final de la cuadrícula',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A selecciona todas las filas',
+  'tableView.shortcut.tabLeavesGrid': 'Tab sale de la cuadrícula',
   'query.execute': 'Ejecutar',
   'query.run': 'Ejecutar',
   'query.runSelection': 'Ejecutar selección',
@@ -225,6 +234,23 @@ const pack = {
     'El orden descendente por una clave primaria compuesta todavía no es compatible.',
   'defaultSort.none': 'No ordenar',
   'pagination.estimateUnavailable': 'Esta base de datos no puede estimar el conteo de filas.',
+  'pagination.mode.keyset': 'Paginación rápida',
+  'pagination.mode.offset': 'Paginación por offset',
+  'pagination.hint.driverUnsupported': 'Esta base de datos no admite la paginación rápida.',
+  'pagination.hint.noStableOrder':
+    'Esta tabla no tiene clave primaria, así que las páginas no se pueden leer en un orden estable.',
+  'pagination.hint.nullableKeyColumn':
+    'La paginación rápida no está disponible al ordenar por una columna que puede ser NULL.',
+  'pagination.hint.nullBoundary':
+    'La clave de orden de esta fila es NULL, así que la paginación rápida se reanudó desde una posición exacta.',
+  'pagination.hint.predicateUnavailable':
+    'La paginación rápida no está disponible para el orden actual.',
+  'pagination.hint.noPaginationClause': 'Esta base de datos no puede paginar esta consulta.',
+  'pagination.hint.staleCursor':
+    'El orden o el filtro cambiaron; la paginación se reanudó desde la primera página.',
+  'pagination.hint.jumpReanchored': 'La paginación rápida se reanudó desde la página {page}.',
+  'pagination.hint.drift':
+    'Las filas cambiaron durante la paginación; el conteo de filas se ha actualizado.',
   'filter.filter': 'Filtrar',
   'filter.remove': 'Quitar filtro',
   'filter.clear': 'Borrar',

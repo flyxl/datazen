@@ -1,6 +1,16 @@
 /** Auto-split domain: query (ru) */
 const pack = {
   'tableView.loadingData': 'Загрузка данных таблицы…',
+  'tableView.a11y.gridLabel': 'Сетка данных',
+  'tableView.shortcut.hint':
+    'Стрелки перемещают, Shift+стрелка расширяет выделение, Enter запускает редактирование',
+  'tableView.shortcut.enterEdit': 'Enter или F2 — редактировать текущую ячейку',
+  'tableView.shortcut.extendSelection': 'Shift+стрелки расширяют выделение',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown прокручивают на один экран',
+  'tableView.shortcut.moveToEdge':
+    'Home/End — к началу или концу строки, Cmd+Home/End — к началу или концу сетки',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A выделяет все строки',
+  'tableView.shortcut.tabLeavesGrid': 'Tab выходит из сетки',
   'query.execute': 'Выполнить',
   'query.run': 'Запустить',
   'query.runSelection': 'Выполнить выделение',
@@ -224,6 +234,24 @@ const pack = {
     'Сортировка по составному первичному ключу по убыванию пока не поддерживается.',
   'defaultSort.none': 'Не сортировать',
   'pagination.estimateUnavailable': 'Эта база данных не может оценить число строк.',
+  'pagination.mode.keyset': 'Быстрое листание',
+  'pagination.mode.offset': 'Листание со смещением',
+  'pagination.hint.driverUnsupported':
+    'Эта база данных не поддерживает быстрый переход по страницам.',
+  'pagination.hint.noStableOrder':
+    'В этой таблице нет первичного ключа, поэтому страницы нельзя читать в стабильном порядке.',
+  'pagination.hint.nullableKeyColumn':
+    'Быстрый переход по страницам недоступен при сортировке по столбцу, который может быть NULL.',
+  'pagination.hint.nullBoundary':
+    'Ключ сортировки этой строки — NULL, поэтому быстрый переход по страницам возобновился с точной позиции.',
+  'pagination.hint.predicateUnavailable':
+    'Быстрый переход по страницам недоступен для текущего порядка сортировки.',
+  'pagination.hint.noPaginationClause': 'Эта база данных не может разбить этот запрос на страницы.',
+  'pagination.hint.staleCursor':
+    'Сортировка или фильтр изменились — переход по страницам начат заново с первой страницы.',
+  'pagination.hint.jumpReanchored': 'Быстрый переход по страницам возобновился со страницы {page}.',
+  'pagination.hint.drift':
+    'Строки изменились во время перехода по страницам; число строк обновлено.',
   'filter.filter': 'Фильтр',
   'filter.remove': 'Удалить фильтр',
   'filter.clear': 'Очистить',

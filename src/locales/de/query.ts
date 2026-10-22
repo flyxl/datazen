@@ -1,6 +1,15 @@
 /** Auto-split domain: query (de) */
 const pack = {
   'tableView.loadingData': 'Tabellendaten werden geladen…',
+  'tableView.a11y.gridLabel': 'Datenraster',
+  'tableView.shortcut.hint': 'Pfeiltasten bewegen, Umschalt+Pfeil erweitert, Enter bearbeitet',
+  'tableView.shortcut.enterEdit': 'Enter oder F2 bearbeitet die aktive Zelle',
+  'tableView.shortcut.extendSelection': 'Umschalt+Pfeiltasten erweitern die Auswahl',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown bewegen eine Bildschirmseite weiter',
+  'tableView.shortcut.moveToEdge':
+    'Home/End springen an den Anfang bzw. das Ende der Zeile, Cmd+Home/End an den Anfang bzw. das Ende des Rasters',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A wählt alle Zeilen aus',
+  'tableView.shortcut.tabLeavesGrid': 'Tab verlässt das Raster',
   'query.execute': 'Ausführen',
   'query.run': 'Ausführen',
   'query.runSelection': 'Auswahl ausführen',
@@ -311,6 +320,24 @@ const pack = {
     'Eine absteigende Sortierung nach einem zusammengesetzten Primärschlüssel wird noch nicht unterstützt.',
   'defaultSort.none': 'Nicht sortieren',
   'pagination.estimateUnavailable': 'Diese Datenbank kann Zeilenanzahlen nicht schätzen.',
+  'pagination.mode.keyset': 'Schnelles Blättern',
+  'pagination.mode.offset': 'Offset-Blättern',
+  'pagination.hint.driverUnsupported': 'Diese Datenbank unterstützt kein schnelles Blättern.',
+  'pagination.hint.noStableOrder':
+    'Diese Tabelle hat keinen Primärschlüssel — Seiten lassen sich daher nicht in stabiler Reihenfolge lesen.',
+  'pagination.hint.nullableKeyColumn':
+    'Schnelles Blättern ist nicht verfügbar, solange nach einer Spalte sortiert wird, die NULL sein kann.',
+  'pagination.hint.nullBoundary':
+    'Der Sortierschlüssel dieser Zeile ist NULL — das schnelle Blättern wurde daher an einer exakten Position neu gestartet.',
+  'pagination.hint.predicateUnavailable':
+    'Für die aktuelle Sortierreihenfolge ist schnelles Blättern nicht verfügbar.',
+  'pagination.hint.noPaginationClause':
+    'Diese Datenbank kann diese Abfrage nicht in Seiten aufteilen.',
+  'pagination.hint.staleCursor':
+    'Sortierung oder Filter wurden geändert — das Blättern beginnt wieder auf der ersten Seite.',
+  'pagination.hint.jumpReanchored': 'Schnelles Blättern wurde ab Seite {page} neu gestartet.',
+  'pagination.hint.drift':
+    'Zeilen haben sich während des Blätterns geändert; die Zeilenanzahl wurde aktualisiert.',
   'filter.filter': 'Filter',
   'filter.remove': 'Filter entfernen',
   'filter.clear': 'Zurücksetzen',

@@ -1,6 +1,15 @@
 /** Auto-split domain: query (ko) */
 const pack = {
   'tableView.loadingData': '테이블 데이터 로드 중…',
+  'tableView.a11y.gridLabel': '데이터 그리드',
+  'tableView.shortcut.hint': '방향키로 이동, Shift+방향키로 선택 영역 확장, Enter로 편집',
+  'tableView.shortcut.enterEdit': 'Enter 또는 F2로 선택한 셀 편집',
+  'tableView.shortcut.extendSelection': 'Shift+방향키로 선택 영역 확장',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown으로 한 화면씩 이동',
+  'tableView.shortcut.moveToEdge':
+    'Home/End는 행의 처음·끝으로, Cmd+Home/End는 그리드의 처음·끝으로 이동',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A로 모든 행 선택',
+  'tableView.shortcut.tabLeavesGrid': 'Tab으로 그리드에서 벗어나기',
   'query.execute': '실행하다',
   'query.run': '실행',
   'query.runSelection': '선택 부분 실행',
@@ -221,6 +230,22 @@ const pack = {
   'defaultSort.primaryKeyDescUnavailable': '복합 기본 키 기준 내림차순은 아직 지원되지 않습니다.',
   'defaultSort.none': '정렬 안 함',
   'pagination.estimateUnavailable': '이 데이터베이스는 행 수를 예상할 수 없습니다.',
+  'pagination.mode.keyset': '빠른 페이징',
+  'pagination.mode.offset': '오프셋 페이징',
+  'pagination.hint.driverUnsupported': '이 데이터베이스는 빠른 페이징을 지원하지 않습니다.',
+  'pagination.hint.noStableOrder':
+    '이 테이블에는 기본 키가 없어 페이지를 안정적인 순서로 읽을 수 없습니다.',
+  'pagination.hint.nullableKeyColumn':
+    'NULL이 될 수 있는 열을 기준으로 정렬하는 동안에는 빠른 페이징을 사용할 수 없습니다.',
+  'pagination.hint.nullBoundary':
+    '이 행의 정렬 키가 NULL이어서 빠른 페이징이 정확한 위치에서 다시 시작되었습니다.',
+  'pagination.hint.predicateUnavailable': '현재 정렬 순서에서는 빠른 페이징을 사용할 수 없습니다.',
+  'pagination.hint.noPaginationClause':
+    '이 데이터베이스는 이 쿼리를 페이지 단위로 나눌 수 없습니다.',
+  'pagination.hint.staleCursor':
+    '정렬 또는 필터가 변경되어 첫 페이지에서 페이징이 다시 시작되었습니다.',
+  'pagination.hint.jumpReanchored': '빠른 페이징이 {page} 페이지에서 다시 시작되었습니다.',
+  'pagination.hint.drift': '페이징하는 동안 행이 변경되어 행 수를 새로 고쳤습니다.',
   'filter.filter': '필터',
   'filter.remove': '필터 제거',
   'filter.clear': '필터 지우기',
