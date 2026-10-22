@@ -116,6 +116,24 @@
 
 ⇒ **规**：**契约与实现不一致时以实现为准，并把契约改过来** —— 否则下一个实现者会照着错的字面再写一遍（本轮 Cmd+A 就是这样：照字面写出来的代码会把刚选中的行清掉）。契约是**协作契约**，不是**历史快照**。
 
+## 合流记录（按合并顺序）
+
+| # | 分支 | 合入后 HEAD | 合流门禁（实测） |
+| --- | --- | --- | --- |
+| 1 | `chore/cleanup-known-defects`（9 提交） | `75d9f5118` | cargo 1442/541/417、fmt 0、vitest 7578、i18n 0、diff 0 |
+| 2 | `feature/02-keyboard`（8 提交，复验 RETEST_PASSED） | `b1e7fb173` | cargo 1442/541、fmt 0、vitest **7628**、i18n 0、diff 0 |
+| 3 | `feature/11-keyset`（4 提交） | 待验证 | — |
+| 4 | `fix/narrow-write-path`（P0） | 待验证 | — |
+
+**02 复验的两点值得记**：
+- 差分等价性证明（960 次比较全等），并如实报了纯函数层两处**生产不可达**的非逐字等价（页外光标 / |deltaRow|≥2）。
+- `ae2b3d846` 顺带修好了 R 阶段 4 处 E2E 定位（`[tabindex="0"]` 打的是无契约网格，行拿回 tab stop 后重新命中）⇒ **R 阶段清单从 6 处缩到 2 处**，只剩 `e2e/specs/table-cell-selection.ts:73,252` 的 `[data-dt-selected]` 计数。
+
+**11-keyset 需协调者裁定的三条**：
+1. `pagination.hint.unstableOrderWarning` 它**故意没定义**：同句英文在同域包里已存在为 `pagination.unstablePaging`（`en/query.ts`），再起新名正是契约 K-9 禁止的。⇒ 裁定：**以既有 key 为准**，合流时若 09 册已改名则改一处消费方（本册无消费方）。
+2. `setPageExact` **未落地**：无调用方，且 `setPage` 已覆盖跳页语义（`non_adjacent_page_falls_back_to_offset_and_reanchors` 钉住）。⇒ 裁定：**不扩 store 公开面**。既有守卫 `keeps the store action surface unchanged by the split` 红得有意义，处置正确。
+3. SQL Server 谓词**不用**驱动声明的导出语法（那套把字符串渲染成 `CONVERT(nvarchar(max), 0x…)`，用于 WHERE 会让 seek 变全表扫描），改行内字面量 + 布尔降级。⇒ 裁定：**认可**，理由成立（seek 的目的是避免扫描，导出语法会反噬）。
+
 ## P0：窄写路径从未可达（用户裁定「打通」）
 
 **发现人**：清理轨在给甲-1 造 fixture 时撞出来（初始判断有误，见下）。**根因**：两个长得像的类型之间用 `serde_json` 做往返。
