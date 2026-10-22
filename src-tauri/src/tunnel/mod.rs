@@ -3,27 +3,24 @@
 //! Drivers always connect to `127.0.0.1:<local_port>` when a tunnel is active.
 //! See `docs/architecture/backend/tunnel.md`.
 
-mod http_proxy;
 mod network_provider;
-mod websocket;
 
-pub use http_proxy::HttpProxyTunnel;
-pub use websocket::WebSocketTunnel;
+pub use datazen_tunnel::{HttpProxyTunnel, WebSocketTunnel};
 
 pub use network_provider::{desktop_network_provider, DesktopTunnelHost, DesktopTunnelSource};
 
 /// Upstream-leg probes used by the standalone tunnel connectivity check: the
 /// HTTP-proxy / WebSocket `start` functions are lazy, so these perform the
 /// handshake that actually proves the endpoint is reachable.
-pub(crate) use http_proxy::verify_upstream as verify_http_proxy_upstream;
-pub(crate) use websocket::verify_upstream as verify_websocket_upstream;
+pub(crate) use datazen_tunnel::verify_http_proxy_upstream;
+pub(crate) use datazen_tunnel::verify_websocket_upstream;
 
-use crate::ssh_tunnel::SshTunnel;
 use crate::store::Store;
 use datazen_driver_api::{
     ConnectionConfig, DriverError, HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig,
 };
 use datazen_runtime::driver_registry::registry::DriverRegistry;
+use datazen_tunnel::SshTunnel;
 use std::path::Path;
 use std::time::Instant;
 use tokio::time::Duration;

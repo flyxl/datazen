@@ -377,7 +377,7 @@ impl SchemaDiffJobBackend for AppStateBackend {
 
 pub(super) fn job_ctx() -> RequestContext {
     RequestContext::new(
-        OrganizationId::new("datazen-local"),
+        OrganizationId::new(crate::platform::LOCAL_ORGANIZATION_ID),
         PrincipalId::new("datazen-local-user"),
         None,
         ClientInstanceId::new("datazen-local-client"),
@@ -463,7 +463,8 @@ async fn target_schema_from_config(state: &AppState, session: &str) -> Option<St
 
 pub(super) fn owner_ref(_state_unused: &AppState) -> datazen_platform_api::OwnerRef {
     datazen_platform_api::OwnerRef::ClientSession {
-        client_instance_id: ClientInstanceId::new("desktop"),
+        // 描述性字段：与本链 ctx 的客户端实例取值一致（落在 `owner_json` 里，从不被比对）。
+        client_instance_id: ClientInstanceId::new("datazen-local-client"),
         purpose: "migration".into(),
     }
 }

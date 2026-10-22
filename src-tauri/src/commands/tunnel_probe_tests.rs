@@ -740,9 +740,9 @@ async fn test_tester_websocket_data_path_still_sends_ping_frames() {
 async fn test_tester_test_tunnel_succeeds_against_a_real_ssh_bastion() {
     use std::sync::atomic::Ordering;
 
-    let bastion = crate::ssh_tunnel::test_fixture::spawn_bastion().await;
+    let bastion = super::tunnel_probe_fixture::spawn_bastion().await;
     let dir = tempfile::tempdir().expect("tempdir");
-    let key_path = crate::ssh_tunnel::test_fixture::write_client_key(dir.path());
+    let key_path = super::tunnel_probe_fixture::write_client_key(dir.path());
 
     let test = TestAppState::new().await;
     let mut tunnel = saved_ssh_tunnel_at("t-live-ssh", "127.0.0.1", bastion.port);

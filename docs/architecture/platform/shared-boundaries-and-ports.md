@@ -159,6 +159,7 @@ flowchart TD
 | F-09 | `packages/ai-providers` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 与 F-02 同因：这个包要同时被桌面端与服务端复用，一旦拖进 Tauri 就只能编进桌面进程 |
 | F-11 | `packages/platform-infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
 | F-12 | `packages/feature-core` 的 normal + build 依赖闭包不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`，不依赖桌面宿主层；仅依赖共享 runtime/application/领域包与契约 | Workflow、AI、Monitor、导出与 Workspace App 内核逻辑重新绑定桌面或服务端传输 |
+| F-13 | `packages/tunnel` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 隧道机制（HTTP `CONNECT` 代理 / WebSocket 中继 / SSH 转发）是形态中立件：一旦拖进 Tauri 或宿主 crate，桌面端与将来的 Web 端就无法共用同一份实现 |
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
 这条不是修辞上的严谨，是实测出来的盲点：`packages/drivers/redis/Cargo.toml:27` 的 `tauri = { version = "2", optional = true }` 与 `src-tauri/Cargo.toml:58` 的 `tauri-plugin-webdriver = { version = "0.2", optional = true }` 都不在解析图里，只读闭包的守卫对它们完全失明。判定方式与告警含义见 §8.2 注 3。
@@ -265,13 +266,37 @@ export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages
 
 > **尚未实现**：仓库 `vitest.config.ts` 的 `include` 通配与 `resolve.alias` 未覆盖 `packages/backend-client`（两者都在 CI 轨道的改动范围）。P1 的 40 条前端单测用临时 vitest 配置在本地跑通，合并后需把该包的测试纳入默认 `npx vitest run`。
 
+#### 2.5.2 形态中立隧道层 `packages/tunnel`（已实现）
+
+根 `Cargo.toml` 的 `members` 新增 `packages/tunnel`，crate 名 `datazen-tunnel`。这一层装的是**隧道机制本身**：
+HTTP `CONNECT` 代理隧道、WebSocket 中继隧道、SSH 转发隧道，以及它们依赖的 SSH known-hosts 存储与进程级
+rustls provider 选择。
+
+它**不装**装配：隧道从哪来配置、在哪个会话里存活、存到哪里，由宿主侧决定——`src-tauri/src/tunnel/mod.rs`
+仍然留在宿主（它含 `resolve_tunnel_kind` / `start_for_connection` / `test_tunnel` 与形态相关的接线），
+`network_provider.rs` 里的 `DesktopTunnelHost` 仍是桌面形态专属。
+
+边界由 F-13 断言：normal + build 依赖闭包不含 `tauri*`、不含宿主 crate `datazen`。依赖方向是
+host → tunnel，与 F-13 禁止的 tunnel → host 相反；该层的单元测试由 `run-platform-crate-tests.mjs` 的
+`TESTED_LAYERS` 纳入 CI。
+
+> **两处宿主符号随之改属**：① 进程级 rustls provider 的选择函数 `install_default_crypto_provider`
+> 原本住在 `src-tauri/src/tls.rs`，其**实现体**下移到 `packages/tunnel/src/crypto.rs`——因为 `https://`
+> 代理腿与 `wss://` 中继腿都要建**自动探测**的 `ClientConfig`，这个决策不能留在宿主边界之后。宿主侧
+> `src-tauri/src/tls.rs` 保留模块文档、宿主接线守卫（`main()` 必须在解析 argv 前安装）与全部测试，并以
+> `pub use` 原样再导出该函数，因此 `datazen::install_default_crypto_provider()` 这条对外路径、调用时机与
+> 行为均未变，全仓仍然只有**一个**安装器。宿主 `tls.rs` 本身不能整体搬走：它用
+> `include_str!("main.rs")` / `include_str!("lib.rs")` 做宿主接线守卫，跨 crate 内嵌会破 `cargo package`。
+> ② SSH known-hosts 存储全仓只被 SSH 隧道使用（无第二消费者），随 `ssh.rs` 一并迁入本层（S4 会把它的
+> 文件 I/O 变成端口）。
+
 ### 2.6 待办：runtime 去重（超出 P1 交付范围）
 
 `packages/runtime` 在基线上已自带 `connection/types.rs` 的 ID newtype、`ExecutionTarget`、`ApiError` / `ApiErrorCode`、`CapabilitySnapshot`，与 `platform-api` 的同名类型**是两份互不相同的类型**。F-04 要求 `platform-api` 不反向依赖 runtime，因此去重方向只能是 runtime 改为 `pub use datazen_platform_api::{…}`——这需要改动 `packages/runtime/**`，不在 P1 写范围内。相关形状差异已在本文各节按「以 platform-api 为准」记录（runtime 的 `NamespaceTarget` 四个非 `Option` 字段、`path: String`、`ConfigRevision(pub u64)` 等在迁移时必须丢弃）。
 
 ### 2.7 形态中立：共享包里的名字不得绑死形态（已实现）
 
-F-01…F-12 拦的是**依赖**。还有一类耦合不产生依赖边：**名字**。共享包里一个带形态名的
+F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名字**。共享包里一个带形态名的
 类型 / 常量 / 字面量，会把「只有桌面才成立」的假设焊进代码——桌面形态在场时看不出问题，
 换成 web 形态才发现那一半用不了。
 
@@ -944,6 +969,75 @@ CM-05 要求跨组织访问按「不存在」处理，而这里是「用错组�
 
 一句话：`is_local_scope` 是**桌面绑定的实现细节**，不是共享端口契约的一部分——
 共享端口契约只有「按传入的 `scope` 过滤，越组织按「不存在」处理」这一条。
+### 5.3 桌面形态的身份三根轴（组织 / 主体 / 客户端实例）
+
+`RequestContext` 有六个字段，但桌面上**真正参与落库与过滤**的只有三根轴：组织、主体、
+客户端实例。它们在桌面形态下的取值来源**各不相同**——必须逐根说清，否则「任务互相
+看不见」「认领失败」「恢复扫描漏掉」会被当成偶发故障去查。
+
+| 轴 | 桌面取值 | 取值来源 | 参与什么 |
+| --- | --- | --- | --- |
+| 组织 `organizationId` | **规范常量** `LOCAL_ORGANIZATION_ID`（`"datazen-desktop-local"`） | [`platform/identity.rs`](../../../src-tauri/src/platform/identity.rs) 的进程常量；IPC 上下文与三条迁移链的后台上下文**同值** | 落库进 `jobs.organization_id`；列举 / 恢复扫描按它过滤（[`store/app_db/jobs/access.rs`](../../../src-tauri/src/store/app_db/jobs/access.rs)） |
+| 主体 `principalId` | IPC：**当前 OS 用户名**；三条迁移链：字面量 `"datazen-local-user"` | IPC 走 [`local_principal()`](../../../src-tauri/src/platform/identity.rs)（`DATAZEN_DESKTOP_USER` → OS 用户名；取不到时**失败关闭**，不伪造占位主体）；迁移链写死字面量 | 落库进 `jobs.owner_principal_id`；列举 / 恢复扫描**同时**按它过滤（`WHERE organization_id=?1 AND owner_principal_id=?2`） |
+| 客户端实例 `clientInstanceId` | IPC：每次启动生成的 UUID；三条迁移链：字面量 `"datazen-local-client"` | IPC 走 [`new_client_instance_id()`](../../../src-tauri/src/platform/identity.rs)；迁移链写死字面量 | **不参与**列举 / 读取过滤（过滤键只有组织 + 主体）；只出现在认领栅栏的**自比自**里（[`store/app_db/jobs/owner.rs`](../../../src-tauri/src/store/app_db/jobs/owner.rs) 的 `j.claim_client_instance_id=?8`） |
+
+#### 本波只统一组织轴
+
+2026-10-09 引入 `jobs` 表的那次提交里，四处**生产代码**把组织写死成了另一个字面量
+`"datazen-local"`——它与规范值 `"datazen-desktop-local"` **不是同一个字符串**。两套值
+落在 `jobs.organization_id` 的同一列上 ⇒ 同一张表里落着两套组织。落库组织取自**受理方
+ctx**（[`store/app_db/jobs/admission.rs`](../../../src-tauri/src/store/app_db/jobs/admission.rs)），
+列举则按 `ctx.organization_id` **且** `ctx.principal_id` 过滤 ⇒ monitor / native / file /
+restore 任务（组织 = 规范值）与 transfer / schema-diff / sync 任务（组织 = 旧字面量）
+落在同一列的两个值上。
+
+本波把四处统一到 `crate::platform::LOCAL_ORGANIZATION_ID`
+（`bootstrap/app_state.rs` 的启动期恢复扫描、`commands/schema_diff/job.rs` 的 `job_ctx()`、
+`commands/data_transfer/job_api/runtime.rs` 的 `request_context()`、`commands/sync/jobs.rs`
+的 `durable_context()`），并用 `AppDb` 的 **v5 迁移**把已落库的旧行并回规范值
+（见[持久化模型 §4.1](persistence-model.md#41-桌面本地持久化现状已实现)）。
+
+**四处必须同波一起改**，不是四选一：启动期恢复扫描的第 2 段用**不限 kind** 的全量扫描，
+它必须与三条链的落库组织一致——漏改任一处，该特性的任务崩溃后就不再被标记待核验
+（这是真回归，不是「看不见而已」）。
+
+#### 主体轴为什么延后（更深的一处未修）
+
+组织统一**不等于**三根轴统一。主体轴目前仍然分裂，证据有三条：
+
+1. **列举的主体谓词**：[`store/app_db/jobs/access.rs`](../../../src-tauri/src/store/app_db/jobs/access.rs)
+   的 `WHERE organization_id=?1 AND owner_principal_id=?2`——组织匹配**不够**，主体也要匹配。
+2. **两边的取值不同**：IPC 上下文的主体是 **OS 用户名**
+   （[`local_principal()`](../../../src-tauri/src/platform/identity.rs)），三条迁移链的主体是
+   字面量 `"datazen-local-user"`。因此即使组织统一了，**用 IPC ctx 建的通用任务中心仍看不到
+   这三条链的任务**——它们的主体对不上。
+3. **统一主体是行为变更**：这批行会**突然**出现在通用列表里（可见性变化），并改变启动期
+   恢复扫描第 2 段与三条链之间的「同主体」前提；认领栅栏（`jobs/owner.rs` 的
+   `claim_client_instance_id=?8`）也建立在同一套主体取值上。主体轴一旦动，必须与认领、
+   恢复路径一起评估，**单独排期**，不夹带在「统一组织」这一波里。
+
+（当前可见症状有限：今天唯一以 IPC ctx 列举的路径是
+[`commands/native_tool.rs`](../../../src-tauri/src/commands/native_tool.rs) 的
+`native_tool_list_jobs`，它额外按 `kind` 过滤。但结构性事实不变——主体轴仍分裂。）
+
+#### 客户端实例轴为什么不动
+
+客户端实例 id **从不参与列举 / 读取过滤**（过滤键只有组织 + 主体），只在认领栅栏上
+**自比自**。字面量版「跨启动恒定」对后台任务本来就是合理语义：一条后台任务的 owner
+不随窗口关闭而变。把它改成每次启动新生成的 UUID 只会让认领栅栏更脆，不带来任何收益。
+
+#### 防回归闸门
+
+[`src-tauri/src/platform/org_literal_gate.rs`](../../../src-tauri/src/platform/org_literal_gate.rs)
+（`#[cfg(test)]`，随 `cargo test -p datazen --lib` 跑 ⇒ 进 CI）把「组织 id 被写死成字面量」
+钉成常驻断言：**生产代码**（排除 `#[cfg(test)]` 体与测试专用文件）里不得出现
+`OrganizationId::new("<字符串字面量>")`；取规范常量 `LOCAL_ORGANIZATION_ID` 或取运行时
+变量都**不算**违规。判据刻意只认这一种窄形态——不扫「形如 `datazen-…` 的字面量」，
+那会命中 crate 名与临时目录前缀，噪声大到闸门会被整体关掉。
+
+闸门自带三类用例：kill test（植入违规字面量 ⇒ 转红）、不误伤（`#[cfg(test)]` 夹具里的
+字面量**不**转红，**且必须同时断言扫描器确实看得见它**）、自证（把本波统一的四个站点
+改回字面量 ⇒ 必须转红；另有一条「生产代码里至少扫到 N 处构造调用」的地板）。
 
 ## 6. Tauri adapter 组装根（目标设计，未随 P1 实现）
 
@@ -1113,7 +1207,7 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
 
 逐条核对（第一列是**本节自定义的标题**，不是 §2.4 的行首形状）：`checkSpecConsistency` 的 `findSpecRow` 按 `^\|\s*F-0N\s*\|` 取**第一条**匹配行（`findSpecRow`），所以本表刻意不用 `| F-01 |` 开头，避免被守卫误认成 §2.4 的规则行。
 
-**口径**：本表覆盖 `RULES` 里**当前全部已武装规则**，不按「本节关心的前 7 条」截断——实测 10 条（F-01..F-09、F-11、F-12；F-10 随 Workspace App 内核并入 `packages/feature-core` 而整条删除，见 §2.4）。守卫每轮实跑的规则集与本表一一对应，漏列即说明文档漂移；下表「状态」列的判定一律以 `node scripts/check-platform-crate-boundaries.mjs` 的实跑输出为准。
+**口径**：本表覆盖 `RULES` 里**当前全部已武装规则**，不按「本节关心的前 7 条」截断——实测 11 条（F-01..F-09、F-11、F-12、F-13；F-10 随 Workspace App 内核并入 `packages/feature-core` 而整条删除，见 §2.4）。守卫每轮实跑的规则集与本表一一对应，漏列即说明文档漂移；下表「状态」列的判定一律以 `node scripts/check-platform-crate-boundaries.mjs` 的实跑输出为准。
 
 | 本节条目 | 实现位置 | 判定方式 | 状态 |
 | --- | --- | --- | --- |
@@ -1128,6 +1222,7 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
 | F-09 · `packages/ai-providers` 闭包无 `tauri*`、无 `datazen` 宿主 crate | `RULES` 里的 `F-09` 条目 | `forbiddenLayers:['host']` + `forbiddenCrates:['tauri']` + `specSubsetOnly:true`（§2.4 行里多写的 `datazen` 由 host 层覆盖），与 F-02 同形态 | ✅ 已武装，实测 `ok F-09: datazen-ai-providers`（无真空） |
 | F-11 · `packages/platform-infra` 只依赖自身 | `RULES` 里的 `F-11` 条目 | 反向白名单 `allowedLayers:['platform-infra']`（垫底层不允许依赖任何其它层，新加一层当天即被禁）+ `forbiddenCrates:'spec'`，`specCrates` 与 F-08 同 | ✅ 已武装，实测 `ok F-11: datazen-platform-infra`（无真空） |
 | F-12 · `packages/feature-core` 不依赖桌面宿主层与传输框架 | `RULES` 里的 `F-12` 条目 | 反向白名单 `allowedLayers` 列出 11 个允许层（feature-core / runtime / application / platform-api / platform-infra / driver-api / ai-api / data-transfer / data-sync / schema-diff / migration-common）+ `forbiddenCrates:'spec'`，`specCrates` 同 F-08；宿主层由 `allowedLayers` 挡掉，故不把 `datazen` 当家族 | ✅ 已武装，实测 `ok F-12: datazen-feature-core`（无真空） |
+| F-13 · `packages/tunnel` 闭包无 `tauri*`、无 `datazen` 宿主 crate | `RULES` 里的 `F-13` 条目 | 同 F-02 形态：`forbiddenLayers:['host']` + `forbiddenCrates:['tauri']` + `specSubsetOnly:true`（§2.4 行里多写的 `datazen` 由 host 层覆盖） | ✅ 已武装，实测 `ok F-13: datazen-tunnel`（无真空） |
 
 仍然真空或刻意不判的部分（不要读成 pass）：
 
