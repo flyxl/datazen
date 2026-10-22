@@ -232,6 +232,7 @@ async fn a_caller_that_reuses_the_total_gets_no_kind_at_all() {
 /// caller is told about it.
 mod keyset {
     use super::*;
+    use crate::services::SortCondition;
     use datazen_driver_api::keyset::{CursorValue, KeysetUnavailableReason, PagingMode};
 
     fn keyset_driver() -> MockDriverOptions {
@@ -333,6 +334,75 @@ mod keyset {
         assert!(
             message.starts_with("grid.paging.keysetUnavailable: "),
             "the prefix is part of the contract, got: {message}"
+        );
+    }
+
+    /// A schema whose key column and whose text column are both **not
+    /// nullable**, so that a sort on the text column is a total order once
+    /// the key is appended to it.
+    fn non_nullable_schema() -> datazen_driver_api::TableSchema {
+        datazen_driver_api::TableSchema {
+            table_name: "users".into(),
+            columns: vec![
+                datazen_driver_api::ColumnSchema {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: true,
+                    is_auto_increment: false,
+                },
+                datazen_driver_api::ColumnSchema {
+                    name: "name".into(),
+                    data_type: "text".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: false,
+                    is_auto_increment: false,
+                },
+            ],
+            primary_keys: vec!["id".into()],
+            indexes: Vec::new(),
+            foreign_keys: Vec::new(),
+            check_constraints: Vec::new(),
+            table_options: Default::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_boundary_that_does_not_fit_the_order_is_refused_as_an_invalidated_cursor() {
+        // The boundary has one value; the order in force has two columns
+        // (the user's sort and the appended key). The boundary belongs to
+        // another sort, and using it would locate the wrong rows.
+        let test = TestAppState::with_options(MockDriverOptions {
+            columns: keyset_driver().columns,
+            primary_keys: vec!["id".into()],
+            table_schema: Some(non_nullable_schema()),
+            supports_keyset_pagination: true,
+            count_total: 2,
+            query_rows: rows(),
+            ..Default::default()
+        })
+        .await;
+        let (_, conn_id) = test.save_and_connect("target-read-keyset-stale").await;
+
+        let mut request = request("target-read-keyset-stale", &conn_id);
+        request.sorts = Some(vec![SortCondition {
+            column: "name".into(),
+            descending: false,
+        }]);
+        request.after_key = Some(vec![CursorValue::Integer(1)]);
+        request.require_keyset = Some(true);
+        let error = table_target::read(&test.state, request)
+            .await
+            .expect_err("the read is refused");
+
+        let message = error.to_string();
+        assert!(
+            message.starts_with("grid.paging.cursorInvalidated: "),
+            "a stale cursor is the client's mistake and has its own code, got: {message}"
         );
     }
 

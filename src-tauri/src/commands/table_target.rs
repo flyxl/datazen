@@ -292,6 +292,7 @@ pub async fn read(
         driver.as_ref(),
         &decision,
         request.after_key.as_deref(),
+        request.page,
         &dialect,
         u64::from(request.page_size),
     );
@@ -301,7 +302,6 @@ pub async fn read(
     // too, in the answer.
     if let Some(message) = keyset_refusal(
         &plan,
-        request.after_key.is_some(),
         request.require_keyset.unwrap_or(false),
         request.cursor_depth.unwrap_or(0),
     ) {

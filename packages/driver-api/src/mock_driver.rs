@@ -25,6 +25,28 @@ use crate::{
 /// the estimate statement apart from the count and from the data statement.
 pub const ESTIMATE_COLUMN: &str = "estimated_row_count";
 
+/// The `OFFSET` of a statement, if it has one.
+///
+/// The mock reads the offset so that a test can tell a page that was read
+/// by offset from a page that was read from the top of the table — the two
+/// differ only in the rows themselves.
+fn offset_in_statement(sql: &str) -> Option<u64> {
+    let upper = sql.to_ascii_uppercase();
+    let index = upper.rfind("OFFSET ")?;
+    let rest = &sql[index + "OFFSET ".len()..];
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
+/// The `LIMIT` of a statement, if it has one.
+fn limit_in_statement(sql: &str) -> Option<u64> {
+    let upper = sql.to_ascii_uppercase();
+    let index = upper.rfind("LIMIT ")?;
+    let rest = &sql[index + "LIMIT ".len()..];
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
 /// Models "another task registered its own transaction for the same
 /// `dbSessionId` while this one was being opened".
 ///
@@ -61,6 +83,14 @@ pub struct MockDriverOptions {
     pub column_errors_by_table: HashMap<String, String>,
     pub table_schema: Option<TableSchema>,
     pub query_rows: Vec<Vec<Option<Value>>>,
+    /// The rows are returned **from the statement's `OFFSET`** onwards.
+    ///
+    /// A mock that always returns the same rows cannot tell "the page was
+    /// read by offset" from "the page was read from the top of the table" —
+    /// the two differ only in the rows themselves. With this on, the mock
+    /// behaves like a table that has pages, so a test can assert **which
+    /// rows** a page holds.
+    pub rows_start_at_offset: bool,
     /// Keyset pages after the first are empty for resume-executor tests.
     pub empty_keyset_after_cursor: bool,
     pub count_total: i64,
@@ -197,6 +227,7 @@ impl Default for MockDriverOptions {
             column_errors_by_table: HashMap::new(),
             table_schema: None,
             query_rows: Vec::new(),
+            rows_start_at_offset: false,
             empty_keyset_after_cursor: false,
             count_total: 0,
             databases: Vec::new(),
@@ -849,9 +880,19 @@ impl DatabaseDriver for MockDriver {
                 nullable: c.nullable,
             })
             .collect();
+        let mut rows = self.opts.query_rows.clone();
+        if self.opts.rows_start_at_offset {
+            // A table that has pages: the rows before the offset are not
+            // part of this page, and the page holds at most `LIMIT` rows.
+            let offset = offset_in_statement(sql).unwrap_or(0) as usize;
+            rows = rows.into_iter().skip(offset).collect();
+            if let Some(limit) = limit_in_statement(sql) {
+                rows.truncate(limit as usize);
+            }
+        }
         Ok(QueryResult {
             columns,
-            rows: self.opts.query_rows.clone(),
+            rows,
             rows_affected: None,
             execution_time_ms: 0,
         })

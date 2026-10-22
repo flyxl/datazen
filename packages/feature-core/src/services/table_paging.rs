@@ -76,17 +76,28 @@ pub struct OrderSpec {
 
 /// What the host decided about reading this page by seek.
 #[derive(Debug, Clone, PartialEq)]
-pub enum KeysetDecision {
-    /// The order is a total order and the page can be read by seek. The
-    /// order is the one to write into the `ORDER BY` — it may have the key
-    /// columns appended.
+pub struct KeysetDecision {
+    /// The order the **statement** is written in.
+    ///
+    /// The tie-breaker columns that make an order total are **not** in
+    /// here: they are a property of the seek, not of the read. A page that
+    /// is not read by seek is written in the order the caller asked for —
+    /// byte for byte the statement the read always sent. This is the whole
+    /// point of the "a driver that did not opt in reads exactly as before"
+    /// promise, and it is why the two orders are two fields and not one.
+    pub order: OrderSpec,
+    /// Whether the page can be read by seek, and in which total order.
+    pub seek: KeysetSeek,
+}
+
+/// The seek half of a decision.
+#[derive(Debug, Clone, PartialEq)]
+pub enum KeysetSeek {
+    /// The page can be read by seek, in this total order — the read order
+    /// with the key columns appended.
     Eligible { order: OrderSpec },
-    /// The page cannot be read by seek. The reason is what the caller is
-    /// told; the order is the one that is used anyway.
-    Unavailable {
-        reason: KeysetUnavailableReason,
-        order: OrderSpec,
-    },
+    /// It cannot, for this reason.
+    Unavailable { reason: KeysetUnavailableReason },
 }
 
 /// The order of a read, assembled from what the caller asked and what the
@@ -160,9 +171,11 @@ pub fn resolve_order_spec(
 /// database can hold, and "unknown" is not "safe".
 pub fn keyset_decision(order: OrderSpec, columns: &[ColumnSchema]) -> KeysetDecision {
     if order.unique_key.is_empty() {
-        return KeysetDecision::Unavailable {
-            reason: KeysetUnavailableReason::NoStableOrder,
+        return KeysetDecision {
             order,
+            seek: KeysetSeek::Unavailable {
+                reason: KeysetUnavailableReason::NoStableOrder,
+            },
         };
     }
 
@@ -191,16 +204,25 @@ pub fn keyset_decision(order: OrderSpec, columns: &[ColumnSchema]) -> KeysetDeci
         // page falls back to `OFFSET`, and the statement must be the
         // statement the table read always sent. The appended key columns
         // are a property of the seek, not of the read.
-        return KeysetDecision::Unavailable {
-            reason: KeysetUnavailableReason::NullableKeyColumn,
+        return KeysetDecision {
             order,
+            seek: KeysetSeek::Unavailable {
+                reason: KeysetUnavailableReason::NullableKeyColumn,
+            },
         };
     }
 
-    KeysetDecision::Eligible {
-        order: OrderSpec {
-            columns: columns_in_order,
-            ..order
+    // The order the statement is written in is the one that was asked for;
+    // the appended key columns belong to the seek and are carried by the
+    // seek's own order.
+    let read_order = order.clone();
+    KeysetDecision {
+        order: read_order,
+        seek: KeysetSeek::Eligible {
+            order: OrderSpec {
+                columns: columns_in_order,
+                ..order
+            },
         },
     }
 }
@@ -267,8 +289,8 @@ mod tests {
             unique_key: vec!["id".to_string()],
         };
         let decision = keyset_decision(order, &[key_column("id")]);
-        match decision {
-            KeysetDecision::Eligible { order } => {
+        match decision.seek {
+            KeysetSeek::Eligible { order } => {
                 assert_eq!(order.columns.len(), 1);
                 assert_eq!(order.columns[0].column, "id");
                 assert!(!order.columns[0].descending);
@@ -288,8 +310,8 @@ mod tests {
             unique_key: vec!["id".to_string()],
         };
         let decision = keyset_decision(order, &[key_column("id"), column("created_at", false)]);
-        match decision {
-            KeysetDecision::Eligible { order } => {
+        match decision.seek {
+            KeysetSeek::Eligible { order } => {
                 assert_eq!(order.columns.len(), 2);
                 assert_eq!(order.columns[0].column, "created_at");
                 assert!(order.columns[0].descending, "the user's direction is kept");
@@ -314,8 +336,8 @@ mod tests {
             unique_key: Vec::new(),
         };
         let decision = keyset_decision(order, &[column("name", false)]);
-        match decision {
-            KeysetDecision::Unavailable { reason, .. } => {
+        match decision.seek {
+            KeysetSeek::Unavailable { reason } => {
                 assert_eq!(reason, KeysetUnavailableReason::NoStableOrder);
             }
             other => panic!("expected the first column not to be a total order, got {other:?}"),
@@ -333,8 +355,8 @@ mod tests {
             unique_key: vec!["id".to_string()],
         };
         let decision = keyset_decision(order, &[key_column("id"), column("created_at", true)]);
-        match decision {
-            KeysetDecision::Unavailable { reason, .. } => {
+        match decision.seek {
+            KeysetSeek::Unavailable { reason } => {
                 assert_eq!(reason, KeysetUnavailableReason::NullableKeyColumn);
             }
             other => panic!("expected a nullable column to rule the page out, got {other:?}"),
@@ -359,8 +381,8 @@ mod tests {
                 column("quantity", false),
             ],
         );
-        match decision {
-            KeysetDecision::Eligible { order } => {
+        match decision.seek {
+            KeysetSeek::Eligible { order } => {
                 let names: Vec<&str> = order
                     .columns
                     .iter()

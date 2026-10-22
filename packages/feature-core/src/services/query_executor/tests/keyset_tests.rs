@@ -229,7 +229,7 @@ mod seek_statement {
         let columns = vec![key_column("id"), plain_column("name", false)];
         let order = order_spec(vec![("name".to_string(), false)], vec!["id".to_string()]);
         let decision = crate::services::table_paging::keyset_decision(order, &columns);
-        let KeysetDecision::Eligible { order } = decision else {
+        let crate::services::table_paging::KeysetSeek::Eligible { order } = decision.seek else {
             panic!("the key makes the order total");
         };
         assert_eq!(
@@ -347,6 +347,36 @@ mod executor_paging {
         after_key: Option<&[CursorValue]>,
         sort: Option<OrderBy>,
     ) -> TableDataResult {
+        read_page_at(executor, mock, 0, after_key, sort).await
+    }
+
+    /// A read of a **specific** page.
+    ///
+    /// The page number matters: a page beyond the first, with no boundary,
+    /// is a page the caller could not reach by seek, and it is read by
+    /// offset.
+    async fn read_page_at(
+        executor: &QueryExecutor,
+        mock: &Arc<MockDriver>,
+        page: u32,
+        after_key: Option<&[CursorValue]>,
+        sort: Option<OrderBy>,
+    ) -> TableDataResult {
+        read_page_sized(executor, mock, page, 50, after_key, sort).await
+    }
+
+    /// A read of a specific page, with a specific page size.
+    ///
+    /// The offset of a page is `page × pageSize`, so the page size decides
+    /// which rows a page holds.
+    async fn read_page_sized(
+        executor: &QueryExecutor,
+        mock: &Arc<MockDriver>,
+        page: u32,
+        page_size: u32,
+        after_key: Option<&[CursorValue]>,
+        sort: Option<OrderBy>,
+    ) -> TableDataResult {
         let driver = mock.clone() as Arc<dyn DatabaseDriver>;
         executor
             .get_table_data_page(
@@ -356,8 +386,8 @@ mod executor_paging {
                 "db1",
                 None,
                 "users",
-                1,
-                50,
+                page,
+                page_size,
                 None,
                 sort,
                 true,
@@ -395,8 +425,17 @@ mod executor_paging {
         assert_eq!(next, vec![CursorValue::Integer(2)]);
     }
 
+    /// The promise the whole contract rests on: a driver that did not opt
+    /// in reads **exactly** as it did before the contract existed.
+    ///
+    /// The sort is an **explicit** one, because that is where the promise
+    /// used to break: the seek's tie-breaker columns (the appended primary
+    /// key) were written into the `ORDER BY` of a driver that cannot seek
+    /// at all, so every read of every table with a key changed its query.
+    /// The statement below is the statement the product sent before this
+    /// contract existed, compared as a whole string.
     #[tokio::test]
-    async fn get_table_data_page_reports_offset_when_mock_lacks_capability() {
+    async fn a_driver_without_the_capability_reads_the_baseline_statement_verbatim() {
         let mock = MockDriver::new(
             "postgres",
             MockDriverOptions {
@@ -406,7 +445,42 @@ mod executor_paging {
                 ..Default::default()
             },
         );
-        let result = read_page(&executor(), &mock, None, None).await;
+        let result = read_page_at(
+            &executor(),
+            &mock,
+            1,
+            None,
+            Some(OrderBy {
+                column: "name".to_string(),
+                descending: false,
+            }),
+        )
+        .await;
+
+        let paging = result.paging.expect("the read reports its paging");
+        assert_eq!(paging.mode, PagingMode::Offset);
+        assert_eq!(paging.next_after_key, None);
+        let log = mock.query_log();
+        assert_eq!(
+            log.last().map(String::as_str),
+            Some("SELECT \"id\", \"name\" FROM \"users\" ORDER BY \"name\" ASC LIMIT 50 OFFSET 50"),
+            "a driver that did not opt in must send the statement it always sent"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_driver_without_the_capability_says_so_when_a_page_is_asked_for() {
+        let mock = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                columns: columns(),
+                primary_keys: vec!["id".into()],
+                query_rows: rows(),
+                ..Default::default()
+            },
+        );
+        // Page 1 is a page the caller expects to have been read by seek.
+        let result = read_page_at(&executor(), &mock, 1, None, None).await;
 
         let paging = result.paging.expect("the read reports its paging");
         assert_eq!(paging.mode, PagingMode::Offset);
@@ -415,12 +489,94 @@ mod executor_paging {
             Some(KeysetUnavailableReason::DriverUnsupported)
         );
         assert_eq!(paging.next_after_key, None);
-        // The statement is the one the table read always sent.
+    }
+
+    /// A page the caller could not reach by seek — it sent no boundary and
+    /// asked for a page beyond the first.
+    ///
+    /// It is read by **offset**: the caller's page number is the truth, and
+    /// the rows of that page are the rows of that page. Reading it from the
+    /// top of the table and labelling it "page 7" would be a page of
+    /// **wrong data**, silently.
+    #[tokio::test]
+    async fn a_page_the_caller_cannot_reach_is_read_by_offset() {
+        let mut paged_rows = rows();
+        paged_rows.push(vec![
+            Some(Value::Integer(3)),
+            Some(Value::String("cara".into())),
+        ]);
+        paged_rows.push(vec![
+            Some(Value::Integer(4)),
+            Some(Value::String("dan".into())),
+        ]);
+        let mock = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                columns: columns(),
+                primary_keys: vec!["id".into()],
+                supports_keyset_pagination: true,
+                rows_start_at_offset: true,
+                query_rows: paged_rows,
+                ..Default::default()
+            },
+        );
+        let result = read_page_at(&executor(), &mock, 7, None, None).await;
+
+        let paging = result.paging.expect("the read reports its paging");
+        assert_eq!(paging.mode, PagingMode::Offset);
+        assert_eq!(
+            paging.unavailable_reason,
+            Some(KeysetUnavailableReason::NotAdjacent)
+        );
         let log = mock.query_log();
         assert_eq!(
             log.last().map(String::as_str),
-            Some("SELECT \"id\", \"name\" FROM \"users\" ORDER BY \"id\" ASC LIMIT 50 OFFSET 50")
+            Some("SELECT \"id\", \"name\" FROM \"users\" ORDER BY \"id\" ASC LIMIT 50 OFFSET 350"),
+            "the page number is the truth: the offset is the caller's page"
         );
+        assert!(
+            result.rows.is_empty(),
+            "the mock has four rows and page 7 is at offset 350: the page is empty **because of the offset**. A page read from the top of the table would have held all four rows — that is the bug this case pins."
+        );
+    }
+
+    /// The same page, with rows behind it: the page holds the rows **that
+    /// page** holds.
+    #[tokio::test]
+    async fn a_non_adjacent_page_holds_the_rows_of_that_page() {
+        let mut paged_rows = rows();
+        paged_rows.push(vec![
+            Some(Value::Integer(3)),
+            Some(Value::String("cara".into())),
+        ]);
+        paged_rows.push(vec![
+            Some(Value::Integer(4)),
+            Some(Value::String("dan".into())),
+        ]);
+        let mock = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                columns: columns(),
+                primary_keys: vec!["id".into()],
+                supports_keyset_pagination: true,
+                rows_start_at_offset: true,
+                query_rows: paged_rows,
+                ..Default::default()
+            },
+        );
+        // One row per page, so page 1 is the second row.
+        let result = read_page_sized(&executor(), &mock, 1, 1, None, None).await;
+
+        assert_eq!(result.rows.len(), 1, "page 1 holds one row");
+        // `Value` has no `PartialEq`, so the cell is read by pattern.
+        match result.rows[0][0].as_ref() {
+            Some(Value::Integer(2)) => {}
+            other => panic!("page 1 holds the second row, not the first: {other:?}"),
+        }
+        match result.rows[0][1].as_ref() {
+            Some(Value::String(name)) if name == "bob" => {}
+            other => panic!("the row is the second one, whole: {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -601,6 +757,7 @@ mod refusals {
         PagingPlan {
             mode: PagingMode::Offset,
             order: order_spec(vec![("id".to_string(), false)], vec!["id".to_string()]),
+            seek_order: None,
             predicate: predicate.map(str::to_string),
             unavailable_reason: reason,
         }
@@ -610,7 +767,7 @@ mod refusals {
     fn a_caller_that_does_not_insist_is_never_refused() {
         let plan = plan(Some(KeysetUnavailableReason::DriverUnsupported), None);
         assert_eq!(
-            keyset_refusal(&plan, true, false, 0),
+            keyset_refusal(&plan, false, 0),
             None,
             "degrading is the normal path; an error would be a page the user cannot read"
         );
@@ -619,7 +776,7 @@ mod refusals {
     #[test]
     fn keyset_unavailable_is_refused_when_the_caller_insists() {
         let plan = plan(Some(KeysetUnavailableReason::NoStableOrder), None);
-        let message = keyset_refusal(&plan, false, true, 0).expect("the refusal");
+        let message = keyset_refusal(&plan, true, 0).expect("the refusal");
         assert!(
             message.starts_with("grid.paging.keysetUnavailable: "),
             "the prefix is part of the contract, got: {message}"
@@ -630,12 +787,40 @@ mod refusals {
         );
     }
 
+    /// The cursor is the **client's** mistake, and it is a different
+    /// failure from "this page cannot be read by seek".
+    ///
+    /// The plan here is a **real** one: a boundary of one value sent for an
+    /// order of two columns. A hand-made plan would prove nothing — it
+    /// would only prove that the refusal function reads the field it is
+    /// given.
     #[test]
-    fn cursor_invalidated_is_refused_when_the_boundary_does_not_fit() {
-        // The driver can seek, but the boundary the caller sent does not
-        // belong to the order in force.
-        let plan = plan(None, None);
-        let message = keyset_refusal(&plan, true, true, 0).expect("the refusal");
+    fn a_stale_cursor_is_refused_as_an_invalidated_cursor() {
+        let columns = vec![key_column("id"), plain_column("name", false)];
+        let order = order_spec(vec![("name".to_string(), false)], vec!["id".to_string()]);
+        let decision = crate::services::table_paging::keyset_decision(order, &columns);
+        let stale = vec![CursorValue::Integer(2)];
+        let driver = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                supports_keyset_pagination: true,
+                ..Default::default()
+            },
+        );
+        let plan = resolve_paging(
+            driver.as_ref(),
+            &decision,
+            Some(&stale),
+            1,
+            &crate::services::query_executor::tests::DEFAULT,
+            50,
+        );
+        assert_eq!(
+            plan.unavailable_reason,
+            Some(KeysetUnavailableReason::StaleCursor),
+            "the boundary does not fit the order: that is a stale cursor"
+        );
+        let message = keyset_refusal(&plan, true, 0).expect("the refusal");
         assert!(
             message.starts_with("grid.paging.cursorInvalidated: "),
             "the prefix is part of the contract, got: {message}"
@@ -645,7 +830,7 @@ mod refusals {
     #[test]
     fn cursor_too_deep_is_refused_past_the_chain_limit() {
         let plan = plan(None, Some("(\"id\" > 1)"));
-        let message = keyset_refusal(&plan, true, true, 100_000).expect("the refusal");
+        let message = keyset_refusal(&plan, true, 100_000).expect("the refusal");
         assert!(
             message.starts_with("grid.paging.cursorTooDeep: "),
             "the prefix is part of the contract, got: {message}"
@@ -655,6 +840,6 @@ mod refusals {
     #[test]
     fn a_shallow_chain_is_not_refused() {
         let plan = plan(None, Some("(\"id\" > 1)"));
-        assert_eq!(keyset_refusal(&plan, true, true, 3), None);
+        assert_eq!(keyset_refusal(&plan, true, 3), None);
     }
 }
