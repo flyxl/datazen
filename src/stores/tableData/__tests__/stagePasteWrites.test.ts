@@ -186,6 +186,52 @@ describe('stagePasteWrites (batch path of the clipboard)', () => {
     }
   });
 
+  it('returns the state by reference when every cell was skipped', () => {
+    // The store publishes a paste only when something landed. It decided that by comparing
+    // `pendingChanges` against a fresh `new Map(...)` — always different — so a fully skipped
+    // paste republished the state and re-rendered the grid for nothing. The references have
+    // to come back unchanged for that comparison to mean anything.
+    const before = slice(PASTE_PANEL); // the store's own object, not a copy
+    const beforeRows = before.rows;
+    const result = useTableDataStore
+      .getState()
+      .stagePasteWrites(PASTE_PANEL, [{ rowIndex: 99, columnName: 'name', value: 'x' }]);
+
+    expect(result.staged).toBe(0);
+    expect(result.problems.map((problem) => problem.code)).toEqual(['grid.paste.outOfBounds']);
+    // Same slice object: nothing was published, so nothing will re-render.
+    expect(slice(PASTE_PANEL)).toBe(before);
+    expect(beforeRows).toHaveLength(3);
+  });
+
+  it('refuses a write that would give two staged changes the same row identity', async () => {
+    // Cross-page case, and the reason `hasPendingIdentityCollision` exists: a primary key was
+    // changed on the previous page, so that staged row is no longer in `rows`. Pasting the
+    // same new value here would leave two pending changes with one effective identity, and
+    // the generated UPDATE could not tell them apart.
+    const { stagePasteWritesInto } = await import('../stagePasteWrites');
+    useTableDataStore.getState().stageCellChange(WHO_PANEL, 0, 'id', 9);
+    const ts = slice(WHO_PANEL);
+    const offPage: TableState = {
+      ...ts,
+      // Page 2 starts at the second row: the staged row is not on this page any more.
+      rows: [ts.rows[1] as TableState['rows'][number]],
+      rowIdentityAnchors: new Map<number, string>(),
+    };
+
+    const outcome = stagePasteWritesInto(
+      offPage,
+      [{ rowIndex: 0, columnName: 'id', value: 9 }],
+      ts.columns.filter((column) => column.isPrimaryKey),
+    );
+
+    expect(outcome.staged).toBe(0);
+    expect(outcome.problems.map((problem) => problem.code)).toEqual(['grid.paste.identityChanged']);
+    // Refused means untouched: a second change carrying identity 9 must not exist.
+    expect([...outcome.pendingChanges.entries()]).toEqual([...offPage.pendingChanges.entries()]);
+    expect(outcome.rows[0]).toBe(offPage.rows[0]);
+  });
+
   it('returns the state by reference for an empty write list', () => {
     const before = slice(PASTE_PANEL);
     const result = useTableDataStore.getState().stagePasteWrites(PASTE_PANEL, []);

@@ -95,6 +95,8 @@ export function stagePasteWritesInto(
   };
 
   let staged = 0;
+  /** Did any write actually reach a cell? Nothing else changes the state (`rows` above). */
+  let applied = false;
   const problems: PasteCellProblem[] = [];
 
   for (const write of writes) {
@@ -170,10 +172,23 @@ export function stagePasteWritesInto(
     });
     if (next.change === null) pendingChanges.delete(key);
     else pendingChanges.set(key, next.change);
+    applied = true;
     rows[rowIndex] = { ...rowObject, [columnName]: currentValue };
     rowIdentityAnchors.set(rowIndex, key);
     if (next.change !== null && next.change.changedColumns.includes(columnName)) staged += 1;
   }
 
+  // Every cell was skipped (`applied === false`), so the three copies below are identical to
+  // the inputs. Hand the originals back: the caller decides whether to publish by reference,
+  // and fresh-but-equal maps make it republish and re-render the grid for nothing.
+  if (!applied) {
+    return {
+      rows: ts.rows,
+      pendingChanges: ts.pendingChanges,
+      rowIdentityAnchors: ts.rowIdentityAnchors,
+      staged,
+      problems,
+    };
+  }
   return { rows, pendingChanges, rowIdentityAnchors, staged, problems };
 }
