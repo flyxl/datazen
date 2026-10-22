@@ -8,6 +8,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TableState } from '../types';
+import type { CellPasteWrite } from '../../../lib/tableChanges';
 
 const mockDatabaseCommands = {
   getTableData: vi.fn(),
@@ -126,6 +127,63 @@ describe('stagePasteWrites (batch path of the clipboard)', () => {
     ]);
     expect(comparable(slice(PASTE_PANEL))).toEqual(comparable(slice(WHO_PANEL)));
     expect(slice(PASTE_PANEL).pendingChanges.size).toBe(1);
+  });
+
+  /**
+   * Differential test over generated write sequences.
+   *
+   * The four cases above are hand-picked, and hand-picked cases cannot defend an *equivalence
+   * claim between two implementations*: they pin the branches someone thought of. The batch
+   * path and the single-cell path keep separate copies of the same guard order, so the way
+   * this actually breaks is "one copy was edited, the other was not" — and that shows up in
+   * whichever combination nobody wrote down.
+   *
+   * Seeded on purpose: the sequence is reproducible from the seed alone, so a failure is a
+   * bug report rather than a flake.
+   */
+  it('agrees with stageCellChange on generated write sequences (seeded differential)', async () => {
+    // Park–Miller LCG. A fixed seed makes the run reproducible; the exact generator does not
+    // matter as long as it is stable across runs and platforms.
+    let state = 0x5eed_0300 >>> 0;
+    const random = () => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return state / 0x1_0000_0000;
+    };
+    const pick = <T,>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
+
+    const columnNames = ['id', 'name', 'score'];
+    // The pool deliberately mixes: the original values, `null`, the empty string, values of
+    // the wrong type for the column, and writes that move a primary key (which must be
+    // refused by both paths, and refused *identically*).
+    const values: CellPasteWrite['value'][] = [null, '', 'Alice', 'Bob', 'x', 10, 20, 30, 99, 0];
+
+    for (let round = 0; round < 200; round += 1) {
+      await load(WHO_PANEL);
+      await load(PASTE_PANEL);
+
+      const writes: CellPasteWrite[] = [];
+      const opCount = 1 + Math.floor(random() * 6);
+      for (let index = 0; index < opCount; index += 1) {
+        writes.push({
+          rowIndex: Math.floor(random() * 3),
+          columnName: pick(columnNames),
+          value: pick(values),
+        });
+      }
+
+      for (const write of writes) {
+        useTableDataStore
+          .getState()
+          .stageCellChange(WHO_PANEL, write.rowIndex, write.columnName, write.value);
+      }
+      useTableDataStore.getState().stagePasteWrites(PASTE_PANEL, writes);
+
+      expect({ round, writes, state: comparable(slice(PASTE_PANEL)) }).toEqual({
+        round,
+        writes,
+        state: comparable(slice(WHO_PANEL)),
+      });
+    }
   });
 
   it('returns the state by reference for an empty write list', () => {
