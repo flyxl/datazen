@@ -31,7 +31,8 @@ pub use driver::*;
 
 static SHARED: OnceLock<Arc<RedisDriver>> = OnceLock::new();
 
-/// Process-wide Redis driver instance (shared by host registry and plugin commands).
+/// Process-wide Redis driver instance (shared by the host registry and the
+/// resource provider).
 pub(crate) fn shared_driver() -> Arc<RedisDriver> {
     SHARED.get_or_init(|| Arc::new(RedisDriver::new())).clone()
 }

@@ -1,7 +1,9 @@
 //! Redis Driver Command definitions and dispatch.
 //!
 //! Redis UI, Workflow, generic IPC, and MCP all execute operations through
-//! `execute_command`. The Redis Tauri plugin is setup-only (Pub/Sub events).
+//! `execute_command`. Pub/Sub events leave the driver through the form-neutral
+//! event outlet (`register_event_outlet!`), not through a Tauri plugin — the
+//! plugin channel was deleted with the last of redis's `tauri` edges.
 
 pub(crate) mod exec;
 

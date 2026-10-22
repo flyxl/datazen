@@ -17,8 +17,7 @@ use tauri::Runtime;
 pub fn register_drivers<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     let builder = builder;
 
-    #[cfg(feature = "driver-redis")]
-    let builder = builder.plugin(datazen_driver_redis::init());
+    // No drivers with Tauri commands enabled
 
     builder
 }
