@@ -59,6 +59,7 @@ export function RedisConnectionView({
   panelId,
   onPanelClosed,
   dbSessionId,
+  connectionId,
   connectionName,
   initialDatabase,
   hideSidebar,
@@ -158,6 +159,7 @@ export function RedisConnectionView({
           <RedisWorkbench
             ref={workbenchRef}
             dbSessionId={dbSessionId}
+            connectionId={connectionId}
             initialDatabase={initialDatabase}
             hideSidebar={hideSidebar}
             onDbIndexChange={setDbIndex}

@@ -40,6 +40,11 @@ const RIGHT_TAB_LABEL_KEYS: Record<RightTab, string> = {
 
 export interface RedisRightPanelProps {
   dbSessionId: string;
+  /**
+   * Persisted connection config id (the host's `connectionId`). The Pub/Sub
+   * panel filters the `redis-pubsub-message` stream on it.
+   */
+  connectionId?: string;
   dbIndex: number;
   /** Key currently selected in the left tree. */
   selectedKey: string | null;
@@ -76,6 +81,7 @@ export interface RedisRightPanelProps {
  */
 export function RedisRightPanel({
   dbSessionId,
+  connectionId,
   dbIndex,
   selectedKey,
   detail,
@@ -172,6 +178,7 @@ export function RedisRightPanel({
       <TabContent
         activeTab={activeTab}
         dbSessionId={dbSessionId}
+        connectionId={connectionId}
         panelId={panelId}
         dbIndex={dbIndex}
         selectedKey={selectedKey}
@@ -196,6 +203,7 @@ export function RedisRightPanel({
 function TabContent({
   activeTab,
   dbSessionId,
+  connectionId,
   panelId,
   dbIndex,
   selectedKey,
@@ -211,6 +219,7 @@ function TabContent({
 }: {
   activeTab: RightTab;
   dbSessionId: string;
+  connectionId?: string;
   panelId: string;
   dbIndex: number;
   selectedKey: string | null;
@@ -259,7 +268,7 @@ function TabContent({
     case 'pubsub':
       return (
         <div key="pubsub" className="flex min-h-0 flex-1 flex-col">
-          <PubSubPanel dbSessionId={dbSessionId} />
+          <PubSubPanel dbSessionId={dbSessionId} connectionId={connectionId} />
         </div>
       );
     case 'slowlog':
