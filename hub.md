@@ -116,6 +116,29 @@ Coder 交付 5 提交（`66fc97aae`/`fa0dcfd59`/`c4a8c98b4`/`c6b59dda0`/`89ec12d
 
 **代价（诚实记录）**：宿主日志从此看不到「是哪个视图名冲突了」。前端**本来就看不到**（`describe()` 换成本地化词条 `filter.view.errorNameExists`），所以这个信息对用户没有价值；真要排查，store 层的测试与结构化载荷仍在。
 
+## R 阶段的 E2E 清单（各册都把 E2E 推到了 R 阶段，这里一次列全，别丢）
+
+**新建的 spec 文件（8 个，当前都不存在）**：
+
+| 文件 | 来自哪册 | 要点 |
+| --- | --- | --- |
+| `e2e/specs/table-count-and-order.ts` | 09 | 精确态 / 估算态（≈ 与 Count 按钮）/ 不排序 / 行数未知 / 复合主键；**无主键表打开不失败是回归断言，不得 skip** |
+| `e2e/specs/table-saved-views.ts` | 08 | SV-001 保存并切换 / SV-002 重启后仍在（证明真落盘）/ SV-003 改名删除设默认 / SV-004 导出再导入 / SV-005 跨连接不共享 |
+| `e2e/specs/table-keyboard-nav.ts` | 02 | 键盘旅行（真实浏览器里的 `Meta+A`、焦点、虚拟滚动、行号槽按钮交互） |
+| `e2e/specs/table-keyset-paging.ts` | 11 | 顺序翻页无重复、降级提示 |
+| `e2e/specs/table-clipboard.ts` | 03 | 跨表粘贴、剪贴板失败分支 |
+| `e2e/specs/table-editors.ts` | 05 | 各类型编辑器 |
+| `e2e/specs/result-grid-readonly.spec.ts` | 10 | 结果网格只读判定 |
+| `e2e/specs/journeys/grid-selection-journey.ts` | 01 | 选择 → 键盘扩区 → 复制 → Escape → 暂存改动与回滚（12-testing 的联合旅程骨架） |
+
+**要改的既有 spec**：
+- `e2e/specs/table-batch-ops.ts`：`TC-TABLE-013` **今天三条假绿因素叠加**（选择器匹配不到、无处理函数、无断言）⇒ 必须改成真断言；且 02 册的验收关键步骤是「**把 `Cmd+A` 的处理分支临时注释掉再跑一次，必须变红**」——**不做这步等于没验证**。
+- `e2e/specs/table-filter.ts`：TF-008 改写为「空条件 Apply 显示显式不完整提示且不发查询」；新增 TF-012 BETWEEN / TF-013 IN token / TF-014 Contains 把 `%` 当字面量 / TF-015 SQLite 不出现 regex。
+- `e2e/contract/journeys/run-extended.ts`：加分页 journey（顺序翻页）。
+- `e2e/specs/detail-panel.ts` / `e2e/specs/ops-process-server.ts`：**定位表达式迁移**（焦点裁定后行容器 `tabIndex` 变了 ⇒ 旧选择器会「以选择器为 null 的形式失败」，那种失败最容易被误判成「测试过时」而被随手删掉）。
+
+**E2E 为什么整体推到 R 阶段**：它需要**完整 app 构建**（`pnpm tauri:build:webdriver`，禁止裸 `cargo build`）+ **真实库**（`e2e/.env`）。各轨在开发期只交组件级与 store 级用例；`TC-TABLE-013` 这类「假绿」问题**在 R 阶段一次性处理**。
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
