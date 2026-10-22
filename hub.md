@@ -7,10 +7,34 @@
 
 | 轨 | 分支 | worktree | 状态 |
 | --- | --- | --- | --- |
-| A `count-frontend` | `feature/count-frontend` | `.worktrees/datazen-count-fe` | Coder 交付 5 提交（HEAD `3b23515b0`），**复测中**（Tester `5ef1b3c8`） |
+| A `count-frontend` | `feature/count-frontend` | `.worktrees/datazen-count-fe` | 复测 **TEST_PASSED 但查出 2 个真缺陷**（V-1 估算态页码死循环 / V-2 `auto` 口径只对首读生效），**第 2 轮修复中**（Coder `86ac7c3a`） |
 | B `named-views` | `feature/named-views` | `.worktrees/datazen-named-views` | **实现中**（Coder `29f87132`，08 §3.7/§3.8/§4.6 + Step 12–15） |
 
-集成分支 `feature/data-browsing-prd` HEAD = `8fa1d35e3`（Wave 6 已收尾：hub.md 已删）。
+集成分支 `feature/data-browsing-prd` HEAD = `00e373c4b`。
+
+## 本波中途发生的一件事：并入 origin/main（168 提交）
+
+`origin/main` = `77e6b8652`（PR #82 `ts7-upgrade` + 「存储层端口化」大重构）。合并提交 **`46b85adeb`**，8 个冲突按语义解完（不是机械选边）：
+
+| 冲突 | 解法 | 关键理由 |
+| --- | --- | --- |
+| `src-tauri/src/log_redact.rs`（删改） | 接受删除，2 处调用点改指 `datazen_platform_infra::redaction::*` | main 删了薄壳；我们的 `redact_paths_for_ipc` 在 platform-infra 里，main 没动 |
+| `src-tauri/src/services/mod.rs` | 并集 + 按 main 的新家重指 | `schema_scope` 搬到 feature-core；宿主 query-executor 门面被撤 ⇒ 再导出改指 feature-core |
+| `file_line_cap.rs` 的钉子 | **重新实测 = 1265**（HEAD 1275 / main 1150 **两个都过期**） | 自证：`traits.rs` 加 1 行 ⇒ 守卫红（`1266 lines, over the 1265-line limit`），复原 ⇒ 绿 |
+| `commands/error.rs` | 并集 | `DriverError`(main) + `FilterRejection`(我们)；脱敏 = 先凭据后路径 |
+| `data_browsing/write_exec.rs` | **取共享层版本**（丢弃 main 的宿主本地 `data_session.rs`） | 实为 git 的 rename/rename(1to2) 拆分；按已裁定契约 §9.2「执行在共享层、宿主只留适配层」。**resolver 核对 diff：main 版是我们版的子集**（我们版多了 INSERT、config_revision、stale-plan 守卫、runtime 注入） |
+| `commands/data.rs` | 适配层版本 + 叠加 main 的 `crate::db::*`→`datazen_driver_api::*` 迁移 | main 对该文件的唯一改动是机械迁移 |
+| `commands/schema.rs` / `commands/table_target.rs` | 并集 | 同上的 driver_api 迁移 + 我们的主键来源/默认排序块叠在 main 的 dialect 构造之上 |
+
+**合并后的门禁**（resolver 实测 + 协调者复核）：host 1413 / feature-core 507 / driver-api 396 / sqlserver 230，vitest 694 files / 7208 tests，typecheck 0 error TS，`cargo fmt --check` 0。
+
+**测试计数下降不是丢测试**（逐个核实过）：宿主 1437→1413（117 个随 main 的包迁移进了 `packages/`，1 个改名进 feature-core）；driver-api 403→396（8 个方言 SQL 测试随方言 SQL 搬到各驱动 crate，另加 1 个）。**零测试丢失，只是换了包。**
+
+### 协调者对本波新增事实的裁定
+
+- **`grid.count.*` 错误码域已空**：契约 00 §8.2 第 16 行已标「已删除」，§8.3 域计数表已改 0。代价（诚实记录）：后端真的因「驱动不支持估算」而拒绝时，前端不再有专属分类，落回原始消息展示。
+- **i18n key 也不得占用 `grid.*` 命名空间**：`grid.<域>.<原因>` 是错误码专用 ⇒ 「这个库估不出来」的 i18n key 从 `grid.count.estimateUnavailable` 改名为 `pagination.estimateUnavailable`（渲染在分页器上，`pagination.*` 是那一片的既有命名空间）。契约 00 §8.2 末尾已补这条通则。**命名即事实**。
+- **类型门禁改成只跑 `tsrs`**（用户要求）：提交 `00e373c4b`。本地门禁不再等于发布门禁——发布流水线的 `union-typecheck` 仍跑权威的 `tsc`（TS 7 GA），所以「PR 绿但发版红」是可能的；`pnpm typecheck:tsc` 是逃生口。Windows 上 tsrs 无二进制 ⇒ **回退**到 tsc 并打印回退原因（绝不静默）。
 
 ## 本波的两条决策（协调者裁，优先级高于分册细节）
 
@@ -55,6 +79,11 @@
 | G13 | `data/tests.rs` 曾 782/800 | 已拆 | 已销 |
 | G14 | Web 通路不持久化三个计数设置 | 需 platform-api + backend-client + 桌面映射同改 | 登记 |
 | G15 | `SettingsContent.test.tsx` 1354 行既有超限 | 既有债，本波只加 3 行 fixture | 登记 |
+| G16 | `scripts/__tests__/probe-exclusion.test.ts` 的实现换了：原来读 tsconfig 的**原始** `exclude` 数组（TS 5 的编译器 API），TS 7 删掉了 `typescript` 的编译器 API ⇒ 改成 `tsc --showConfig` 读**编译器解析后的有效** exclude | **协调者已自证仍会红**：把根 tsconfig 的 `**/__uiBoundaryProbe__*` 改掉 ⇒ 精确报 `expected [...] to include '**/__uiBoundaryProbe__*'`；且断言强度不减（多一条「必须恰好是保留的探针名」） | 已销（自证） |
+| G17 | 宿主还剩 6 条 `unused import` 警告（`commands/ai/chat.rs:14`、`commands/ai/util.rs:7`、`commands/ai/tests.rs:10`、`dashboard/execute.rs:9`、`services/migration_endpoint.rs:3`、`commands/connection_import/ipc_tests.rs:3`） | 全在 **main 改过的文件**里，是 main 自己的遗留；动了容易和 main 后续修复打架 | 登记（不修） |
+| G18 | `git diff --check` 报 2 行尾随空白（`docs/features/workflow-guide.en.md:4`、`.zh-CN.md:4`） | 是 main 改的行上的 Markdown 硬换行（两空格），**合并基点里本来就有**同样写法；本次解冲突自身干净 | 登记（不修） |
+| G19 | `pnpm typecheck` 前置的 `verifyDepsBeforeRun` 会尝试 `pnpm install` 并失败（`workspace hoist directory is not a real directory`，因为 node_modules 是软链） | **只是噪声**，typecheck 本身照常执行并全绿 | 登记（worktree 环境特性） |
+| G20 | `packages/driver-api/src/traits.rs` 合并后 **1265** 行（HEAD 1275 / main 1150） | 钉子已重测并自证会红；`traits/**` 下所有文件 ≤ 800（最大 693），800 行上限守卫仍绿 | 已销（自证） |
 
 ## 门禁基线（Wave 6 合流后实测）
 
