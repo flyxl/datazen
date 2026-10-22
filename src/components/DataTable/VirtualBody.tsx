@@ -5,7 +5,11 @@ import type { ColumnDef } from './TableHeader';
 import { GridCell, type FkCellAffordance } from './GridCell';
 import { CellRenderer } from './CellRenderer';
 import { EditableCell } from './EditableCell';
-import { classifyDataType } from '../../lib/dataTypeColors';
+import {
+  buildColumnEditorInfoFromDefs,
+  type CellEditingContext,
+  type ColumnEditorInfo,
+} from '../../lib/cellEditorKind';
 import { dirtyCellAriaLabel, dirtyCellTooltip } from './dirtyCellText';
 import { isFkCellNavigable, type FkGroupAffordance } from '../../lib/fkNavigation';
 import type { CellCoord } from '../../stores/tableData/gridSelection';
@@ -43,6 +47,8 @@ export interface VirtualBodyProps {
   onCellDoubleClick: (row: number, col: string) => void;
   onCellEdit: (row: number, col: string, value: unknown) => void;
   onCellEditCancel: () => void;
+  /** The editing context of the grid (DB-05). */
+  cellEditing?: CellEditingContext;
   onRowSelect: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   /**
    * The cell-selection DOM contract is on: the ARIA grid roles and the `data-dt-*`
@@ -135,7 +141,6 @@ interface VirtualRowProps {
   row: unknown[];
   columns: ColumnDef[];
   colNames: string[];
-  columnTypes: string[];
   rowHeight: number;
   columnWidths?: number[];
   editingCell: { row: number; col: string } | null;
@@ -151,6 +156,9 @@ interface VirtualRowProps {
   onCellDoubleClick: (row: number, col: string) => void;
   onCellEdit: (row: number, col: string, value: unknown) => void;
   onCellEditCancel: () => void;
+  cellEditing?: CellEditingContext;
+  /** The editor facts of every column (DB-05), computed once by the owner. */
+  editorInfo: ReadonlyMap<string, ColumnEditorInfo>;
   onRowSelect: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   onRowGutterSelect?: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   onRowClick?: (index: number) => void;
@@ -178,7 +186,6 @@ const VirtualRow = memo(function VirtualRow({
   row,
   columns,
   colNames,
-  columnTypes,
   rowHeight,
   columnWidths,
   editingCell,
@@ -194,6 +201,8 @@ const VirtualRow = memo(function VirtualRow({
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
+  cellEditing,
+  editorInfo,
   onRowSelect,
   onRowGutterSelect,
   onRowClick,
@@ -395,7 +404,9 @@ const VirtualRow = memo(function VirtualRow({
               activeColumnName === col.name
             }
             editing={isEditing}
-            cellType={columnTypes[colIdx]}
+            cellType={editorInfo.get(col.name)?.cellType}
+            columnInfo={editorInfo.get(col.name)}
+            editor={cellEditing}
             gridSemantics={cellSelectionEnabled}
             onCellDoubleClick={onCellDoubleClick}
             onCellEdit={onCellEdit}
@@ -417,6 +428,8 @@ interface DraftRowProps {
   columnWidths?: number[];
   editing: { draftId: string; column: string } | null;
   cellSelectionEnabled: boolean;
+  /** The panel the draft belongs to (the editor registers with the guard). */
+  panelId?: string;
   onDraftCellEdit?: (draftId: string, column: string, value: Value | null | undefined) => void;
   onDraftCellEditStart?: (draftId: string, column: string) => void;
   onDraftCellEditCancel?: () => void;
@@ -441,6 +454,7 @@ const DraftRow = memo(function DraftRow({
   columnWidths,
   editing,
   cellSelectionEnabled,
+  panelId,
   onDraftCellEdit,
   onDraftCellEditStart,
   onDraftCellEditCancel,
@@ -511,6 +525,7 @@ const DraftRow = memo(function DraftRow({
               <EditableCell
                 value={value ?? null}
                 type={(col.type ?? '').toLowerCase()}
+                panelId={panelId}
                 onCommit={(committed) =>
                   onDraftCellEdit?.(
                     draft.draftId,
@@ -556,6 +571,7 @@ export const VirtualBody = memo(function VirtualBody({
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
+  cellEditing,
   onRowSelect,
   cellSelectionEnabled = false,
   isCellSelected,
@@ -598,8 +614,25 @@ export const VirtualBody = memo(function VirtualBody({
   const newRowLabel = t('tableData.highlightNewRow');
   /** The wording of the gutter dot of a row that is marked for deletion. */
   const deletedRowLabel = t('tableData.dirtyDeletedRow');
-  /** Normalised column type, rendered as `data-dt-cell-type` (DB-05 swaps the source). */
-  const columnTypes = useMemo(() => columns.map((c) => classifyDataType(c.type)), [columns]);
+  /**
+   * The editor facts of every column (DB-05).
+   *
+   * The owner normally computes them once and hands them over; a grid
+   * without schema behind it (the result grid) falls back to the column
+   * definitions. Either way the normalisation happens **once per column**,
+   * never once per cell.
+   *
+   * **An empty map means "the owner knows nothing"**, and it takes the same
+   * fallback as a missing one: `??` would only catch `undefined`, and an
+   * empty map would silently take every column's type away — the cell would
+   * lose its `data-dt-cell-type`, its nullability and its integer check.
+   */
+  const editorInfo = useMemo(() => {
+    const provided = cellEditing?.columnEditorInfo;
+    return provided && provided.size > 0
+      ? provided
+      : buildColumnEditorInfoFromDefs(columns);
+  }, [cellEditing, columns]);
   const cellSelected = useCallback(
     (rowIndex: number, columnName: string) => isCellSelected?.(rowIndex, columnName) ?? false,
     [isCellSelected],
@@ -667,7 +700,6 @@ export const VirtualBody = memo(function VirtualBody({
             row={rows[vRow.index] ?? []}
             columns={columns}
             colNames={colNames}
-            columnTypes={columnTypes}
             rowHeight={rowHeight}
             columnWidths={columnWidths}
             editingCell={editingCell}
@@ -683,6 +715,8 @@ export const VirtualBody = memo(function VirtualBody({
             onCellDoubleClick={onCellDoubleClick}
             onCellEdit={onCellEdit}
             onCellEditCancel={onCellEditCancel}
+            cellEditing={cellEditing}
+            editorInfo={editorInfo}
             onRowSelect={onRowSelect}
             onRowGutterSelect={onRowGutterSelect}
             onRowClick={onRowClick}
@@ -704,6 +738,7 @@ export const VirtualBody = memo(function VirtualBody({
             columnWidths={columnWidths}
             editing={editingDraft}
             cellSelectionEnabled={cellSelectionEnabled}
+            panelId={cellEditing?.panelId}
             onDraftCellEdit={onDraftCellEdit}
             onDraftCellEditStart={onDraftCellEditStart}
             onDraftCellEditCancel={onDraftCellEditCancel}

@@ -24,6 +24,8 @@ import { TableHeader, type ColumnDef } from './TableHeader';
 import { VirtualBody, type DraftRowViewModel } from './VirtualBody';
 import { useDataTableContextMenu } from './useDataTableContextMenu';
 import { DataExportDialog } from './DataExportDialog';
+import type { CellEditingContext } from '../../lib/cellEditorKind';
+import type { CellTypeHints } from '../../lib/cellTypes';
 import { cn } from '../../lib/cn';
 import { Spinner } from '../ui/Spinner';
 import { DATA_TABLE_ROW_HEIGHT } from './rowHeight';
@@ -79,6 +81,15 @@ export interface DataTableProps {
    */
   filterOperators?: readonly FilterOperator[];
   /**
+   * The driver's own column-type rules (`DatabaseTypeMeta.cellTypes`).
+   *
+   * The filter editor needs them for the same reason the cell editor does:
+   * the operator list follows the column type, and a column the driver
+   * calls a boolean must not be filtered with the operators of a number
+   * (08 §3.5, "一处声明、两处生效").
+   */
+  cellTypeHints?: CellTypeHints;
+  /**
    * Whether this database ignores case in `LIKE` under its default collation.
    * Copy only — it never changes the query.
    */
@@ -94,6 +105,15 @@ export interface DataTableProps {
   onCellDoubleClick?: (row: number, col: string) => void;
   onCellEdit?: (row: number, col: string, value: unknown) => void;
   onCellEditCancel?: () => void;
+  /**
+   * The editing context of the grid (DB-05).
+   *
+   * It carries the per-column editor facts, the read-only reason, the write
+   * path and the "Set Value" entries — one object, because the grid threads
+   * it through three components. Omitted → the grid keeps the behaviour it
+   * had before DB-05.
+   */
+  cellEditing?: CellEditingContext;
   /**
    * Show “Set NULL” in the context menu. Defaults to true when `onCellEdit` is set.
    * Pass false for read-only grids that only use `onCellEdit` to dismiss an editor (e.g. query results).
@@ -248,6 +268,7 @@ export function DataTable({
   filterPanelOpen = false,
   onFilterPanelOpenChange,
   filterOperators,
+  cellTypeHints,
   filterLikeCaseInsensitive,
   editingCell,
   selectedRows = EMPTY_SET,
@@ -271,6 +292,7 @@ export function DataTable({
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
+  cellEditing,
   enableSetNull,
   onRowSelect,
   onSelectAll,
@@ -450,6 +472,9 @@ export function DataTable({
     dirtyByRow,
     onRestoreRow,
     onExport: handleExport,
+    setValueState: cellEditing?.setValueState,
+    onSetValue: cellEditing?.onSetValue,
+    onLoadCandidates: cellEditing?.onLoadCandidates,
     t,
   });
 
@@ -492,6 +517,7 @@ export function DataTable({
         <FilterEditor
           columns={columns}
           supportedOperators={filterOperators}
+          cellTypeHints={cellTypeHints}
           likeCaseInsensitive={filterLikeCaseInsensitive}
           appliedFilters={filters}
           appliedLogic={filterLogic}
@@ -610,6 +636,7 @@ export function DataTable({
                   ? (column) => onAddFilter({ column, operator: 'eq', value: '' })
                   : undefined
               }
+              cellTypeHints={cellTypeHints}
             />
             <VirtualBody
               columns={columns}
@@ -623,6 +650,7 @@ export function DataTable({
               onCellDoubleClick={handleCellDoubleClick}
               onCellEdit={handleCellEdit}
               onCellEditCancel={handleCellEditCancel}
+              cellEditing={cellEditing}
               onRowSelect={handleRowClick}
               onRowGutterSelect={handleGutterSelect}
               onRowClick={onRowClick}

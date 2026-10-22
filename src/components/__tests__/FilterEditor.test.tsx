@@ -416,6 +416,25 @@ describe('FilterEditor operators and completeness', () => {
     expect(operatorOptions()).toEqual(operatorsForColumn('text', SHARED_FILTER_OPERATORS));
   });
 
+  it('offers the operators of the type the driver declares (DB-05)', () => {
+    // SQL Server's `timestamp` is a row version, not a time: the driver says
+    // so, and the filter follows the same declaration the editor reads
+    // (08 §3.5, "一处声明、两处生效").
+    const sqlserver = {
+      overrides: [{ match: 'exact' as const, pattern: 'timestamp', cellType: 'bytes' as const }],
+    };
+    renderTyped({
+      columns: [{ name: 'id', type: 'int4' }, { name: 'name', type: 'timestamp' }],
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+      cellTypeHints: sqlserver,
+    });
+    expect(operatorOptions()).toEqual(
+      operatorsForColumn('timestamp', SHARED_FILTER_OPERATORS, sqlserver),
+    );
+    // The bytes set is narrower than the datetime one.
+    expect(operatorOptions()).not.toContain('between');
+  });
+
   it('does not offer the pattern operators for a numeric column', () => {
     renderTyped({
       draftFilters: [{ column: 'id', operator: 'eq', value: '' }],

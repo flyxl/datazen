@@ -24,6 +24,7 @@ export type GridErrorCode =
   | 'grid.cell.noRowIdentity'
   | 'grid.cell.ambiguousIdentity'
   | 'grid.cell.readOnly'
+  | 'grid.cell.invalidValue'
   | 'grid.insert.unknownColumn'
   | 'grid.insert.returningUnavailable'
   | 'grid.fk.shapeMismatch'
@@ -70,6 +71,7 @@ export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.cell.noRowIdentity',
   'grid.cell.ambiguousIdentity',
   'grid.cell.readOnly',
+  'grid.cell.invalidValue',
   'grid.insert.unknownColumn',
   'grid.insert.returningUnavailable',
   'grid.fk.shapeMismatch',

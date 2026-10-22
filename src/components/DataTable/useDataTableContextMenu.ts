@@ -16,6 +16,7 @@ import {
 } from '../../lib/dataTableContextMenu';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import type { DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
+import type { SetValueActionId, SetValueState } from '../../lib/setValueActions';
 
 /**
  * The grid's right-click menu.
@@ -55,6 +56,15 @@ export interface UseDataTableContextMenuOptions {
   onRestoreRow?: (rowIndex: number) => void;
   /** Opens the export dialog. */
   onExport?: () => void;
+  /**
+   * What the "Set Value" menu may offer for the cell under the pointer
+   * (DB-05). Omitted → the menu keeps its shape from before DB-05.
+   */
+  setValueState?: (rowIndex: number, columnName: string) => SetValueState | null;
+  /** Write the cell without opening an editor (DB-05). */
+  onSetValue?: (rowIndex: number, columnName: string, action: SetValueActionId) => void;
+  /** Ask for the candidate values of the right-clicked column (DB-05). */
+  onLoadCandidates?: (rowIndex: number, columnName: string) => void;
   /** i18n translate function. */
   t: (key: string, params?: Record<string, string | number>) => string;
 }
@@ -84,6 +94,9 @@ export function useDataTableContextMenu(
     dirtyByRow,
     onRestoreRow,
     onExport,
+    setValueState,
+    onSetValue,
+    onLoadCandidates,
     t,
   } = options;
 
@@ -143,6 +156,14 @@ export function useDataTableContextMenu(
       const csvRows = actionRow ? [actionRow] : selectedDataRows;
       const canCopyCsv = csvRows.length > 0;
 
+      /**
+       * What the "Set Value" menu may offer for the right-clicked cell
+       * (DB-05). It is asked for at the moment of the click, because the
+       * answer depends on the column (nullable?) and on the row (is there
+       * anything to revert?).
+       */
+      const setValue = hit ? (setValueState?.(hit.rowIndex, hit.columnName) ?? undefined) : undefined;
+
       const copyText = (text: string) => {
         void navigator.clipboard.writeText(text);
       };
@@ -174,6 +195,11 @@ export function useDataTableContextMenu(
                 ? `${t('export.export')} (${t('export.selectedRows')} ${selectedRows.size})`
                 : t('export.export'),
             restoreRow: t('tableData.restoreRow'),
+            setValue: t('cellEditor.setValue'),
+            setEmpty: t('cellEditor.setEmpty'),
+            setDefault: t('cellEditor.setDefault'),
+            revertCell: t('cellEditor.revertCell'),
+            loadCandidates: t('cellEditor.loadCandidates'),
           },
           handlers: {
             onCopy:
@@ -297,6 +323,20 @@ export function useDataTableContextMenu(
                     onRestoreRow?.(hit.rowIndex);
                   }
                 : undefined,
+            // The write entries (DB-05). They need the cell under the
+            // pointer, so they are bound to it here.
+            onSetValue:
+              setValue && hit && onSetValue
+                ? (id: SetValueActionId) => {
+                    onSetValue(hit.rowIndex, hit.columnName, id);
+                  }
+                : undefined,
+            onLoadCandidates:
+              hit && onLoadCandidates
+                ? () => {
+                    onLoadCandidates(hit.rowIndex, hit.columnName);
+                  }
+                : undefined,
           },
           hasCellContext,
           hasHeaderContext: !!hitHeaderCol,
@@ -307,6 +347,7 @@ export function useDataTableContextMenu(
           canSetNull,
           canDelete,
           canRestoreRow,
+          setValue,
         }),
         { x: e.clientX, y: e.clientY },
       );
@@ -328,6 +369,9 @@ export function useDataTableContextMenu(
       onExport,
       dirtyByRow,
       onRestoreRow,
+      setValueState,
+      onSetValue,
+      onLoadCandidates,
     ],
   );
 

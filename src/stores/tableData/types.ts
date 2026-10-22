@@ -68,6 +68,15 @@ export interface TableState {
   /** Cell/region selection. The store is the only writer; `none` is the default. */
   gridSelection: GridSelection;
   editingCell: { row: number; col: string } | null;
+  /**
+   * The candidate values of the enumeration columns, keyed by column name
+   * (DB-05).
+   *
+   * The cache is filled **only** when the user asks for the candidates:
+   * opening an editor must never query anything. It lives in the panel
+   * because the candidates belong to a table.
+   */
+  enumCandidates: Map<string, readonly string[]>;
   /** Row highlighted by the detail drawer. */
   detailRowIndex: number | null;
   loading: boolean;

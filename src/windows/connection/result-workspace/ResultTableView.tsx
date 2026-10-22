@@ -56,7 +56,13 @@ export function ResultTableView({
   ]);
 
   const columnDefs = useMemo<ColumnDef[]>(
-    () => result.columns.map((c) => ({ id: c.name, name: c.name, type: c.dataType })),
+    () =>
+      result.columns.map((c) => ({
+        id: c.name,
+        name: c.name,
+        type: c.dataType,
+        nullable: c.nullable,
+      })),
     [result.columns],
   );
 

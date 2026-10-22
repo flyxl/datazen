@@ -39,6 +39,10 @@ import {
   type PendingEditStoreSlice,
 } from './tableData/pendingEditActions';
 import {
+  createEnumCandidateSlice,
+  type EnumCandidateStoreSlice,
+} from './tableData/enumCandidates';
+import {
   AMBIGUOUS_ROW_IDENTITY_ERROR,
   draftsForWire,
   hasPendingWork,
@@ -75,6 +79,7 @@ interface TableDataStore
   extends SelectionStoreSlice,
     DraftStoreSlice,
     PendingEditStoreSlice,
+    EnumCandidateStoreSlice,
     PanelSeedSlice {
   byPanel: Map<string, TableState>;
 
@@ -369,6 +374,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       // Drafts are staged work too: a panel with only drafts must not be
       // invalidated behind the user's back (04 §3.7 R-4).
       if (hasPendingWork(ts)) continue;
+      // A panel with an **open editor** is in the same situation: the
+      // invalidation drops the rows, the editor unmounts with them, and the
+      // draft the user typed is lost without ever being written (05 §4.4).
+      // The panel keeps its rows until the next real read.
+      if (ts.editingCell) continue;
       if (ts.columns.length === 0 && ts.rows.length === 0) continue;
       next.set(panelId, {
         ...ts,
@@ -517,6 +527,9 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     (panelId) => get().byPanel.get(panelId),
     (panelId) => get().reloadPanel(panelId),
   ),
+
+  // The enumeration candidates (DB-05) live in `tableData/enumCandidates`.
+  ...createEnumCandidateSlice((panelId, updater) => patchPanel(get, set, panelId, updater)),
 
   // Draft actions live in `tableData/draftInserts`; the store only wires them.
   ...createDraftSlice(
