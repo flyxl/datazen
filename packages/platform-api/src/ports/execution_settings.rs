@@ -17,6 +17,20 @@
 //! ——后者全仓只有写入方（`src-tauri/src/store/settings.rs`），**没有任何执行期读取方**。
 //! 它们由 `SettingsRepository` 或各自的窄端口提供。
 //!
+//! ## 同一份事实的**三个**取法（别把它误判成三份重复实现）
+//!
+//! 集成后同一份执行设置有三个取法，**它们是同一份事实的三种投影**，不是三份实现：
+//!
+//! | 取法 | 位置 | 给什么 |
+//! |---|---|---|
+//! | `SettingsRepository::read_settings` | 本包（platform-api） | 整份 `SharedSettings`（含用户偏好）**+ 写方法** |
+//! | `DatabaseToolHost::execution_settings` | `packages/feature-core`（feature-core 层的既有 trait，**不是** platform-api 端口） | 整份 `ExecutionSettings` |
+//! | `ExecutionSettingsReader::read` | 本包（本端口） | 执行期两项的投影，**只读** |
+//!
+//! **收敛方向**是让后两者改为**经本端口取**（feature-core 那条 trait 收窄为注入本端口），
+//! 但那是后续轨的事。这里写下重叠，是为了让集成者知道：**这三者不是三份重复实现，
+//! 而是同一份设置的三种取用宽度**。
+//!
 //! ## 词汇表
 //!
 //! `ExecutionPolicy`：执行期开关的**投影**。它是执行期的开关集合，**不是**授权策略
