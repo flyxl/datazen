@@ -178,7 +178,7 @@ src/stores/settingsStore.ts → 设置 UI
 
 判据不是「它算不算设置」，而是「**它跟着谁走**」。这正是 issue 三层里前两层与第三层的分界。
 
-**待协调者/用户拍板的取舍**：表级覆盖放独立 store（本方案，与命名视图一致；连接 profile 保持「连接怎么连」的纯粹性，导出连接时不带走一堆显示规则）**vs** 放进**连接 profile**（`src-tauri/src/store/connections.rs`；覆盖跟着连接一起导出/迁移）。
+**已裁定（用户，2026-10-22）：表级覆盖放独立 store。** 落点 `{appData}/timestamp_overrides.json` + 宿主 `src-tauri/src/store/timestamp_overrides.rs`（与 `named_views.json` 同族：懒加载 + 逐条容错 + 原子写）+ 三条薄命令 + web 端口。理由：连接 profile 保持「连接怎么连」的纯粹性；导出/迁移连接时不带走一堆显示规则；且与「规则=偏好、覆盖=数据」的归属区分一致。**不是**放进连接 profile（`src-tauri/src/store/connections.rs`）。
 
 ### 保留现状的一条语义（加时区支持时**不许**改）
 
