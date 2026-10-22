@@ -6,9 +6,6 @@ use datazen_ai_providers::*;
 use datazen_feature_core::ai::response::{
     extract_json_boundary, inject_language_hint, strip_markdown_fences, truncate_str,
 };
-use datazen_feature_core::ai::schema_pipeline::{
-    compose_schema_system_suffix, PromptSeed, SchemaContextPipeline,
-};
 use datazen_feature_core::ai::tools::{classify_tool, is_db_tool, ToolKind};
 
 #[test]

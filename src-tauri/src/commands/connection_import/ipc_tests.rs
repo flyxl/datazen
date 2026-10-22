@@ -1,6 +1,5 @@
 //! Tests for the connection import / export IPC surface.
 
-use super::super::*;
 use super::*;
 use datazen_feature_core::connection_import::ImportFormat;
 use std::path::Path;

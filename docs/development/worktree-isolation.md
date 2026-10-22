@@ -235,6 +235,12 @@ grep -c "^extern crate datazen_driver_" src-tauri/src/driver_init.rs
   而门禁退出码必须能被拿到。
 - **`resolve-drivers.mjs` 会按设计弄脏 `Cargo.toml`、`src-tauri/Cargo.toml`、`Cargo.lock`**（第 5 节那三个托管清单文件）。
   要往这棵树上合并的分支，在 `git merge` 前必须 `git checkout --` 复位，否则合并会被拒。
+- **worktree 里第一次跑 `pnpm` 脚本可能会真的装一次**（`Packages: +N -M` 然后继续）。那不是
+  「符号链接造成的噪声」，而是 pnpm 在干正事：合并进来的分支若动过 `package.json` / 锁文件，
+  共享的 `node_modules` 就落后了，它必须补齐一次。**不要用 `verifyDepsBeforeRun=false` 关掉它**
+  ——（1）那会把「依赖真的过期了」这个信号一起关掉；（2）实测 pnpm 11 的 `.npmrc` 里这个键
+  不生效（`pnpm config get verifyDepsBeforeRun` 返回 `undefined`），写进 `pnpm-workspace.yaml`
+  则是**全仓**生效、连 CI 一起关。装完一次之后第二次跑就不再装了，这才是正常状态。
 - **不要用 `pnpm install` 代替 ①**。`node_modules` 是符号链接时裸 `pnpm run` 会以退出码 1 失败
   （依赖校验认不出链接目标），要写成 `pnpm --config.verify-deps-before-run=false <script>`。
 - **`node scripts/platform-arch-selfcheck.mjs` 在脏树上直接退出 2。** 它在运行首尾各取一次 `git status --porcelain` 做自证

@@ -7,7 +7,6 @@
 //! read-only flag, so the host has to ask for it itself.
 
 use super::result_write::{commit_query_result_cell_impl, ResultCellWrite};
-use super::*;
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen_application::{
@@ -56,7 +55,10 @@ fn options() -> MockDriverOptions {
     MockDriverOptions {
         columns: columns(),
         primary_keys: vec!["id".into()],
-        query_rows: vec![vec![Some(Value::Integer(1)), Some(Value::String("alice".into()))]],
+        query_rows: vec![vec![
+            Some(Value::Integer(1)),
+            Some(Value::String("alice".into())),
+        ]],
         ..Default::default()
     }
 }
