@@ -94,6 +94,9 @@ const pack = {
   'newConn.databaseIndex': 'índice de base de datos',
   'newConn.username': 'Nombre de usuario',
   'newConn.password': 'Contraseña',
+  'newConn.clearStoredCredentials': 'Borrar las credenciales guardadas que queden en blanco',
+  'newConn.clearStoredCredentialsHint':
+    'Los campos en blanco conservan sus valores guardados salvo que se active esta opción.',
   'newConn.group': 'Grupo',
   'newConn.noGroup': 'Ningún grupo',
   'newConn.colorTag': 'Etiqueta de color',

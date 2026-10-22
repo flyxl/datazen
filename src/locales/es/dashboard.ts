@@ -16,6 +16,15 @@ const pack = {
   'dashboard.import': 'Importar panel…',
   'dashboard.pauseMonitoring': 'Pausar la actualización del panel',
   'dashboard.resumeMonitoring': 'Reanudar la actualización del panel',
+  'dashboard.scheduleAuthorization': 'Autorización de la actualización programada',
+  'dashboard.scheduleAuthorizationHint':
+    'Autorice las consultas de solo lectura de PostgreSQL/MySQL del flujo guardado con destinos explícitos de conexión y base de datos. Cualquier cambio requiere una nueva autorización.',
+  'dashboard.scheduleAuthorizeHour': 'Autorizar por 1 hora',
+  'dashboard.scheduleRevoke': 'Revocar la autorización',
+  'dashboard.scheduleUnauthorized': 'La actualización programada no está autorizada.',
+  'dashboard.scheduleAuthorizedUntil': 'Autorizado hasta {time}',
+  'dashboard.scheduleSaveFirst':
+    'Guarde los cambios antes de autorizar la actualización programada.',
   'dashboard.widgetEnabled': 'Habilitar informe',
   'dashboard.history': 'Historial',
   'dashboard.widgetTitle': 'Título',
