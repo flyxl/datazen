@@ -78,6 +78,7 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 - [系统概要设计](architecture/platform/system-overview.md)：三种运行方式、模块职责、交互与接口。
 - [连接管理详细设计](architecture/platform/connection-management.md)：数据契约、状态机、算法、验收标准与 74 个测试用例，是接口契约、错误码与验收的唯一权威。
 - [分阶段开发计划](development/platform-development-plan.md)：连接重构、多应用形态、团队服务和多 worker 的依赖与交付门槛，是阶段→补充契约归属的唯一权威。
+- [DDD 分层收敛计划](development/ddd-refactor-plan.md)：按依赖规则收敛分层——断环、领域纯化、编排归位、装配根收敛的实测基线、分期验收与待裁定决策点。
 
 补充详细设计（P0–P2）：
 
