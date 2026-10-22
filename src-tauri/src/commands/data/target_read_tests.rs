@@ -8,9 +8,9 @@
 
 use super::table_target::{self, TableReadRequest};
 use super::*;
-use crate::db::{CountStrategy, Value};
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
+use datazen_driver_api::{CountStrategy, Value};
 
 fn request(connection_id: &str, conn_id: &str) -> TableReadRequest {
     TableReadRequest {

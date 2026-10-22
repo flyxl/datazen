@@ -3,7 +3,9 @@
 use std::path::PathBuf;
 
 /// Collect unique driver type ids from saved connections (stable insertion order).
-pub(crate) fn unique_driver_types(connections: &[crate::db::ConnectionConfig]) -> Vec<String> {
+pub(crate) fn unique_driver_types(
+    connections: &[datazen_driver_api::ConnectionConfig],
+) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     connections
         .iter()

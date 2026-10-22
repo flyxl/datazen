@@ -5,9 +5,11 @@
 //! repository's 800-line budget.
 
 use super::*;
-use crate::db::{ColumnSchema, ForeignKeyDeferrability, ForeignKeyInfo, TableInfo, TableType};
 use crate::schema_diff::types::{PlanStatement, RollbackCompleteness, StatementRisk};
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+use datazen_driver_api::{
+    ColumnSchema, ForeignKeyDeferrability, ForeignKeyInfo, TableInfo, TableType,
+};
 use std::collections::HashMap;
 
 mod catalog;
@@ -26,8 +28,8 @@ fn pg_fk(name: &str) -> ForeignKeyInfo {
     }
 }
 
-fn pg_parent_schema(name: &str) -> crate::db::TableSchema {
-    crate::db::TableSchema {
+fn pg_parent_schema(name: &str) -> datazen_driver_api::TableSchema {
+    datazen_driver_api::TableSchema {
         table_name: name.into(),
         columns: vec![ColumnSchema {
             name: "id".into(),
@@ -46,8 +48,8 @@ fn pg_parent_schema(name: &str) -> crate::db::TableSchema {
     }
 }
 
-fn pg_child_schema(name: &str, include_fk: bool) -> crate::db::TableSchema {
-    crate::db::TableSchema {
+fn pg_child_schema(name: &str, include_fk: bool) -> datazen_driver_api::TableSchema {
+    datazen_driver_api::TableSchema {
         table_name: name.into(),
         columns: vec![
             ColumnSchema {

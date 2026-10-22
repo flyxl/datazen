@@ -3,16 +3,15 @@
 use chrono::{DateTime, Utc};
 
 use crate::commands::AppState;
-use crate::dashboard::runs::write_run;
 use crate::dashboard::store::load_monitor_settings;
-use crate::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
 use crate::store::AppDb;
 use crate::store::AppSettings;
-use crate::workflow::model::WorkflowExecutionResult;
-use crate::workflow::WorkflowExecutor;
+use datazen_feature_core::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
+use datazen_feature_core::workflow::executor::WorkflowExecutor;
+use datazen_feature_core::workflow::model::WorkflowExecutionResult;
+use datazen_platform_api::ports::scope::OrganizationScope;
 
-/// Default per-widget workflow timeout (seconds).
-pub const DEFAULT_QUERY_TIMEOUT_SEC: u64 = 60;
+use datazen_feature_core::dashboard::execute::build_error_run;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DashboardExecuteError {
@@ -20,20 +19,18 @@ pub enum DashboardExecuteError {
     Workflow(String),
 
     #[error("Runs error: {0}")]
-    Runs(#[from] crate::dashboard::runs::DashboardRunsError),
+    Runs(#[from] datazen_feature_core::dashboard::runs::DashboardRunsError),
 
     #[error("Store error: {0}")]
-    Store(#[from] crate::dashboard::store::DashboardStoreError),
+    Store(#[from] datazen_feature_core::dashboard::store::DashboardStoreError),
 }
-
-pub use datazen_feature_core::dashboard::execute::{
-    build_error_run, build_timeout_run, extract_table_from_execution, parse_final_output_as_table,
-    parse_step_result_value,
-};
 
 /// Build and persist an error-status run using monitor retention settings.
 #[allow(dead_code)]
+// 组织作用域是边界参数，不参与「这组入参讲的是同一件事」的语义。
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn persist_error_run(
+    scope: &OrganizationScope,
     app_db: &AppDb,
     settings: &AppSettings,
     dashboard_id: &str,
@@ -52,7 +49,7 @@ pub(crate) fn persist_error_run(
         error,
     );
     let retention = load_monitor_settings(settings);
-    write_run(app_db, &run, &retention)?;
+    datazen_feature_core::dashboard::runs::write_run(scope, app_db, &run, &retention)?;
     Ok(run)
 }
 
@@ -60,6 +57,7 @@ struct DesktopWidgetHost<'a> {
     app_state: &'a AppState,
     app_db: &'a AppDb,
     settings: &'a AppSettings,
+    scope: &'a OrganizationScope,
 }
 #[async_trait::async_trait]
 impl datazen_feature_core::dashboard::execute::WidgetExecutionHost for DesktopWidgetHost<'_> {
@@ -67,17 +65,23 @@ impl datazen_feature_core::dashboard::execute::WidgetExecutionHost for DesktopWi
         let workflow = self
             .app_state
             .workflow_registry
-            .get(id)
+            .get(self.scope, id)
             .await
             .ok_or_else(|| format!("Workflow '{id}' not found"))?;
         WorkflowExecutor::execute(&workflow, self.app_state, None, &serde_json::json!({})).await
     }
     async fn persist_run(&self, run: &WidgetRun) -> Result<(), String> {
-        write_run(self.app_db, run, &load_monitor_settings(self.settings))
-            .map_err(|error| error.to_string())
+        datazen_feature_core::dashboard::runs::write_run(
+            self.scope,
+            self.app_db,
+            run,
+            &load_monitor_settings(self.settings),
+        )
+        .map_err(|error| error.to_string())
     }
 }
 pub async fn execute_widget_once(
+    scope: &OrganizationScope,
     app_state: &AppState,
     app_db: &AppDb,
     settings: &AppSettings,
@@ -89,6 +93,7 @@ pub async fn execute_widget_once(
             app_state,
             app_db,
             settings,
+            scope,
         },
         dashboard_id,
         widget,
@@ -100,10 +105,16 @@ pub async fn execute_widget_once(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dashboard::runs::{get_run, list_run_index};
-    use crate::dashboard::types::{RefreshPolicy, ViewMode, WidgetLayout};
     use crate::store::AppSettings;
-    use crate::workflow::model::{StepExecutionResult, StepStatus, WorkflowExecutionResult};
+    use datazen_feature_core::dashboard::execute::{
+        build_timeout_run, extract_table_from_execution, parse_final_output_as_table,
+        parse_step_result_value, DEFAULT_QUERY_TIMEOUT_SEC,
+    };
+    use datazen_feature_core::dashboard::runs::{get_run, list_run_index};
+    use datazen_feature_core::dashboard::types::{RefreshPolicy, ViewMode, WidgetLayout};
+    use datazen_feature_core::workflow::model::{
+        StepExecutionResult, StepStatus, WorkflowExecutionResult,
+    };
 
     fn sample_widget() -> DashboardWidget {
         DashboardWidget {
@@ -174,6 +185,7 @@ mod tests {
         let settings = AppSettings::default();
 
         let run = persist_error_run(
+            &crate::platform::local_organization_scope(),
             &db,
             &settings,
             "d1",
@@ -186,9 +198,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(run.status, WidgetRunStatus::Error);
-        let index = list_run_index(&db, "d1", "w1", 10).unwrap();
+        let scope = crate::platform::local_organization_scope();
+        let index = list_run_index(&scope, &*db, "d1", "w1", 10).unwrap();
         assert_eq!(index.len(), 1);
-        let loaded = get_run(&db, "d1", "w1", "run-connect-err").unwrap();
+        let loaded = get_run(&scope, &*db, "d1", "w1", "run-connect-err").unwrap();
         assert_eq!(loaded.status, WidgetRunStatus::Error);
     }
 

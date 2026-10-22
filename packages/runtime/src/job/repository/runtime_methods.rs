@@ -1,5 +1,6 @@
-use super::{lock_inner, InMemoryJobRepository};
+use super::{lock_inner, scoped_idempotency_key, InMemoryJobRepository};
 use crate::job::runtime_repository::{safe_result_marker, validate_job_domain_result};
+use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{
     JobDetails, JobDomainResult, JobProgress, JobRecoveryResult, JobRecoveryTarget,
@@ -11,11 +12,12 @@ use datazen_platform_api::id::{ArtifactId, IdempotencyKey, JobId, JobStateVersio
 impl InMemoryJobRepository {
     pub fn record_progress(
         &self,
+        ctx: &RequestContext,
         claim: &datazen_platform_api::dto::job::JobClaim,
         progress: JobProgress,
     ) -> Result<(), PortError> {
         let mut inner = lock_inner(&self.inner)?;
-        Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        Self::check_claim(&inner, ctx, claim, &self.clock.now()).map_err(PortError::from)?;
         let row = inner
             .jobs
             .get_mut(&claim.job_id)
@@ -27,11 +29,12 @@ impl InMemoryJobRepository {
 
     pub fn record_artifacts(
         &self,
+        ctx: &RequestContext,
         claim: &datazen_platform_api::dto::job::JobClaim,
         artifacts: &[ArtifactId],
     ) -> Result<(), PortError> {
         let mut inner = lock_inner(&self.inner)?;
-        Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        Self::check_claim(&inner, ctx, claim, &self.clock.now()).map_err(PortError::from)?;
         let row = inner
             .jobs
             .get_mut(&claim.job_id)
@@ -43,6 +46,7 @@ impl InMemoryJobRepository {
 
     pub fn append_external_artifacts(
         &self,
+        ctx: &RequestContext,
         job_id: &JobId,
         artifacts: &[ArtifactId],
     ) -> Result<(), PortError> {
@@ -50,6 +54,7 @@ impl InMemoryJobRepository {
         let row = inner
             .jobs
             .get_mut(job_id)
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         if !row.record.view.state.is_terminal() {
             return Err(PortError::CasConflict {
@@ -64,6 +69,7 @@ impl InMemoryJobRepository {
 
     pub fn finish(
         &self,
+        ctx: &RequestContext,
         claim: &datazen_platform_api::dto::job::JobClaim,
         expected: JobStateVersion,
         state: JobState,
@@ -78,7 +84,7 @@ impl InMemoryJobRepository {
             ));
         }
         let mut inner = lock_inner(&self.inner)?;
-        Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        Self::check_claim(&inner, ctx, claim, &self.clock.now()).map_err(PortError::from)?;
         let record = {
             let row = inner
                 .jobs
@@ -115,6 +121,7 @@ impl InMemoryJobRepository {
 
     pub fn persist_recovery(
         &self,
+        ctx: &RequestContext,
         job_id: &JobId,
         recovery: JobRecoveryResult,
     ) -> Result<(), PortError> {
@@ -122,6 +129,7 @@ impl InMemoryJobRepository {
         let row = inner
             .jobs
             .get_mut(job_id)
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         row.record.view.updated_at = self.clock.now();
         inner.recovery.insert(job_id.clone(), recovery);
@@ -130,12 +138,13 @@ impl InMemoryJobRepository {
 
     pub fn record_domain_result(
         &self,
+        ctx: &RequestContext,
         claim: &datazen_platform_api::dto::job::JobClaim,
         result: JobDomainResult,
     ) -> Result<(), PortError> {
         validate_job_domain_result(&result)?;
         let mut inner = lock_inner(&self.inner)?;
-        Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        Self::check_claim(&inner, ctx, claim, &self.clock.now()).map_err(PortError::from)?;
         inner
             .domain_results
             .insert((claim.job_id.clone(), result.stage_id.clone()), result);
@@ -144,6 +153,7 @@ impl InMemoryJobRepository {
 
     pub fn persist_recovery_verification(
         &self,
+        ctx: &RequestContext,
         job_id: &JobId,
         expected: JobStateVersion,
         verification: JobRecoveryVerification,
@@ -174,6 +184,7 @@ impl InMemoryJobRepository {
         let current = inner
             .jobs
             .get(job_id)
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         if current.record.state_version != expected
             || current.record.view.state != JobState::Failed
@@ -230,19 +241,30 @@ impl InMemoryJobRepository {
         Ok(())
     }
 
-    pub fn receipt_for(&self, key: &IdempotencyKey) -> Result<Option<JobId>, PortError> {
+    /// 幂等回执查询。回执按 `(组织, 主体, 键)` 作用域：别的组织用同一个键查不到。
+    pub fn receipt_for(
+        &self,
+        ctx: &RequestContext,
+        key: &IdempotencyKey,
+    ) -> Result<Option<JobId>, PortError> {
         let inner = lock_inner(&self.inner)?;
         Ok(inner
             .idempotency
-            .get(key.as_str())
+            .get(&scoped_idempotency_key(ctx, key))
             .map(|receipt| receipt.job_id.clone()))
     }
 
-    pub fn get_details(&self, job_id: JobId) -> Result<JobDetails, PortError> {
+    /// 任务详情读模型。越组织读取按「不存在」处理。
+    pub fn get_details(
+        &self,
+        ctx: &RequestContext,
+        job_id: JobId,
+    ) -> Result<JobDetails, PortError> {
         let inner = lock_inner(&self.inner)?;
         let row = inner
             .jobs
             .get(&job_id)
+            .filter(|row| row.belongs_to(&ctx.organization_id))
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         let payload = &row.record.definition.payload;
         let plan_id = payload

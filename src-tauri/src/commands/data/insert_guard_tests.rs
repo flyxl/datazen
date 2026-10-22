@@ -7,10 +7,10 @@
 //! the repository's 800-line ceiling.
 
 use super::*;
-use crate::db::Value;
 use crate::testing::app_state::{rich_mock_options, TestAppState};
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen_driver_api::ColumnSchema;
+use datazen_driver_api::Value;
 use std::collections::BTreeMap;
 
 fn column(name: &str, primary_key: bool) -> ColumnSchema {

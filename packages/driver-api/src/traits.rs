@@ -74,6 +74,13 @@ pub trait DatabaseDriver: Send + Sync {
         None
     }
 
+    /// Dialect-specific SQL for the shared schema-object commands.
+    ///
+    /// See [`crate::schema_object_sql::SchemaObjectSql`] for the contract.
+    fn schema_object_sql(&self) -> Option<Arc<dyn crate::schema_object_sql::SchemaObjectSql>> {
+        None
+    }
+
     fn migration_capabilities(&self) -> Option<Arc<dyn MigrationCapabilities>> {
         None
     }
@@ -736,24 +743,7 @@ pub trait DatabaseDriver: Send + Sync {
         &self,
         command: &str,
     ) -> Option<crate::namespace::CommandTargetRequirements> {
-        if !self
-            .command_definitions()
-            .iter()
-            .any(|definition| definition.id == command)
-        {
-            return None;
-        }
-
-        let mut requirements = crate::namespace::CommandTargetRequirements::default();
-        match command {
-            "query" | "query_stream" => requirements.allows_object = true,
-            "get_table_schema" | "get_object_ddl" | "get_object_dependencies" => {
-                requirements.allows_object = true;
-                requirements.requires_object = true;
-            }
-            _ => {}
-        }
-        Some(requirements)
+        command_api::target_requirements(self, command)
     }
 
     /// Execute a driver command.

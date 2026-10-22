@@ -6,20 +6,22 @@ use std::panic::AssertUnwindSafe;
 use super::super::error::CommandError;
 use super::super::AppState;
 use super::apply::generate_data_sync_sql_impl;
-use super::comparison_store::{ComparisonStore, ComparisonTableMetadata};
 use super::host::state::StoredSelection;
-use super::plans::{self, SelectionMatcher, StoredSyncPlan, SyncRunRequest, SyncRunSelection};
+use crate::data_sync::comparison_store::{ComparisonStore, ComparisonTableMetadata};
 #[cfg(test)]
 use crate::data_sync::execute_statement_batches_with_policy;
 #[cfg(test)]
 use crate::data_sync::execute_statements;
 use crate::data_sync::job::ApplySpec;
+use crate::data_sync::plan_store::{
+    self as plans, SelectionMatcher, StoredSyncPlan, SyncRunRequest, SyncRunSelection,
+};
 use crate::data_sync::{
     DataSyncError, ExecutionResult, IdentityInsertTarget, StatementBatchSource, StatementExecutor,
     SyncOptions,
 };
-use crate::db::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 use async_trait::async_trait;
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::JobState;
 use futures_util::FutureExt;
@@ -524,7 +526,12 @@ pub(crate) async fn generate_data_sync_sql_for_plan_impl(
     selection: SyncRunSelection,
     options: SyncOptions,
 ) -> Result<Vec<crate::data_sync::SqlStatement>, CommandError> {
-    let plan = plans::peek_plan(&plan_id).map_err(CommandError::Validation)?;
+    let scope = state.organization_scope()?;
+    let plan = state
+        .sync_stores
+        .plan_store
+        .peek(&scope, &plan_id)
+        .map_err(CommandError::Validation)?;
     if selection.revision != plan.selection_revision {
         return Err(CommandError::Validation(
             "selection revision is stale; return to comparison".into(),
@@ -564,7 +571,12 @@ pub(crate) async fn start_data_sync_apply_job_impl(
     {
         return Ok(receipt);
     }
-    let plan = plans::peek_plan(&request.plan_id).map_err(CommandError::Validation)?;
+    let scope = state.organization_scope()?;
+    let plan = state
+        .sync_stores
+        .plan_store
+        .peek(&scope, &request.plan_id)
+        .map_err(CommandError::Validation)?;
     if request.selection.revision != plan.selection_revision {
         return Err(CommandError::Validation(
             "selection revision is stale; return to comparison".into(),
@@ -601,12 +613,12 @@ pub(crate) async fn start_data_sync_apply_job_impl(
         .unwrap_or_else(|| format!("data-sync-{}", uuid::Uuid::new_v4()));
     let requested_job_id = job_id.clone();
     let source_endpoint = crate::data_sync::Endpoint {
-        connection_id: sessions.source_id.clone(),
+        db_session_id: sessions.source_id.clone(),
         database: plan.source_database.clone(),
         schema: plan.source_schema.clone(),
     };
     let target_endpoint = crate::data_sync::Endpoint {
-        connection_id: sessions.target_id.clone(),
+        db_session_id: sessions.target_id.clone(),
         database: plan.target_database.clone(),
         schema: plan.target_schema.clone(),
     };
@@ -666,7 +678,12 @@ pub(crate) async fn start_data_sync_apply_job_impl(
         super::job_api::release_sessions(state, &sessions.ids()).await;
         return Ok(admission.view);
     }
-    if plans::claim_plan(&request.plan_id).is_err() {
+    if state
+        .sync_stores
+        .plan_store
+        .claim(&scope, &request.plan_id)
+        .is_err()
+    {
         let _ = state
             .desktop_job_host
             .repository()
@@ -720,7 +737,10 @@ pub(crate) async fn execute_data_sync_plan_impl(
             "execute_data_sync requires a comparison planId".into(),
         ));
     }
-    let (source_session_id, target_session_id) = plans::peek_plan(&request.plan_id)
+    let (source_session_id, target_session_id) = state
+        .sync_stores
+        .plan_store
+        .peek(&state.organization_scope()?, &request.plan_id)
         .map(|plan| (plan.source_db_session_id, plan.target_db_session_id))
         .unwrap_or_default();
     if request
@@ -853,8 +873,8 @@ pub(crate) async fn execute_data_sync_impl(
 mod tests {
     use super::super::jobs_contract;
     use super::*;
-    use crate::commands::sync::plans::{SyncRunSelection, SyncSelectionMode, SyncTableSelection};
     use crate::data_sync::execute::RecordingExecutor;
+    use crate::data_sync::plan_store::{SyncRunSelection, SyncSelectionMode, SyncTableSelection};
     use crate::data_sync::{
         ChangeOperation, ComparisonResult, ConflictPolicy, RowChange, TableResult,
     };
@@ -879,7 +899,7 @@ mod tests {
             vec![
                 Some(Value::Integer(0)),
                 Some(Value::String("x".repeat(
-                    super::super::comparison_store::COMPARISON_FULL_LOAD_LIMIT as usize + 1,
+                    crate::data_sync::comparison_store::COMPARISON_FULL_LOAD_LIMIT as usize + 1,
                 ))),
             ],
             &options,
@@ -917,8 +937,15 @@ mod tests {
         table.columns = vec!["id".into(), "name".into()];
         table.column_types = vec!["integer".into(), "text".into()];
         table.primary_keys = vec!["id".into()];
-        let comparison = ComparisonStore::from_comparison(ComparisonResult::new(vec![table]))
-            .expect("comparison should persist");
+        let comparison = ComparisonStore::from_comparison(
+            ComparisonResult::new(vec![table]),
+            test.state.sync_stores.comparison_root.as_ref(),
+            &test
+                .state
+                .organization_scope()
+                .expect("桌面组织作用域在测试中总是可用"),
+        )
+        .expect("comparison should persist");
         assert!(comparison.is_spilled());
 
         let selection = SyncRunSelection {
@@ -1072,8 +1099,15 @@ mod tests {
         table.columns = vec!["id".into(), "name".into()];
         table.column_types = vec!["integer".into(), "text".into()];
         table.primary_keys = vec!["id".into()];
-        let comparison =
-            ComparisonStore::from_comparison(ComparisonResult::new(vec![table])).unwrap();
+        let comparison = ComparisonStore::from_comparison(
+            ComparisonResult::new(vec![table]),
+            test.state.sync_stores.comparison_root.as_ref(),
+            &test
+                .state
+                .organization_scope()
+                .expect("桌面组织作用域在测试中总是可用"),
+        )
+        .unwrap();
         let selection = SyncRunSelection {
             revision: 1,
             rows: Vec::new(),
@@ -1176,7 +1210,18 @@ mod tests {
             .unwrap_err();
         assert!(second.to_string().contains("reviewed ChangeSet is empty"));
 
-        assert!(plans::peek_plan(&preview.plan_id).is_ok());
+        assert!(pair
+            .state()
+            .sync_stores
+            .plan_store
+            .peek(
+                &pair
+                    .state()
+                    .organization_scope()
+                    .expect("桌面组织作用域在测试中总是可用"),
+                &preview.plan_id
+            )
+            .is_ok());
         assert_eq!(pair.test.mock.open_transaction_count(), 0);
         assert_eq!(pair.target.open_transaction_count(), 0);
     }

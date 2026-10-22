@@ -8,6 +8,7 @@ pub mod mapping;
 pub mod metadata;
 pub mod model;
 pub mod pairing;
+pub mod plan_store;
 pub mod preview;
 pub mod profile;
 pub mod recordset;

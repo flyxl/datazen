@@ -5,8 +5,8 @@
 //! 800-line guideline (AGENTS.md, "单文件规模与模块拆分").
 
 use super::tunnel::{get_tunnel_usage_impl, test_tunnel_impl};
-use crate::db::{SavedTunnel, SshTunnelConfig, TunnelKind};
 use crate::testing::app_state::{sample_postgres_config, TestAppState};
+use datazen_driver_api::{SavedTunnel, SshTunnelConfig, TunnelKind};
 
 // ── [tester round 2] adversarial re-verification of BUG-001 ──────
 
@@ -27,7 +27,7 @@ fn saved_proxy_tunnel_at(
         name: "Proxy".into(),
         kind: TunnelKind::HttpProxy,
         ssh: None,
-        http_proxy: Some(crate::db::HttpProxyTunnelConfig {
+        http_proxy: Some(datazen_driver_api::HttpProxyTunnelConfig {
             enabled: true,
             host: host.into(),
             port,
@@ -48,7 +48,7 @@ fn saved_websocket_tunnel_at(id: &str, url: &str, mode: &str, timeout: u32) -> S
         kind: TunnelKind::WebSocket,
         ssh: None,
         http_proxy: None,
-        websocket: Some(crate::db::WebSocketTunnelConfig {
+        websocket: Some(datazen_driver_api::WebSocketTunnelConfig {
             enabled: true,
             url: url.into(),
             auth_token: None,
@@ -194,7 +194,7 @@ async fn test_tester_http_proxy_probe_performs_a_real_connect_handshake() {
         "Proxy-Authorization".to_string(),
         "Bearer explicit".to_string(),
     );
-    let proxy = crate::db::HttpProxyTunnelConfig {
+    let proxy = datazen_driver_api::HttpProxyTunnelConfig {
         enabled: true,
         host: "127.0.0.1".into(),
         port,
@@ -261,7 +261,7 @@ async fn test_tester_http_proxy_probe_rejects_non_200_statuses() {
             let _ = stream.shutdown().await;
         });
 
-        let proxy = crate::db::HttpProxyTunnelConfig {
+        let proxy = datazen_driver_api::HttpProxyTunnelConfig {
             enabled: true,
             host: "127.0.0.1".into(),
             port,
@@ -300,7 +300,7 @@ async fn test_tester_http_proxy_probe_rejects_a_malformed_status_line() {
         let _ = stream.shutdown().await;
     });
 
-    let proxy = crate::db::HttpProxyTunnelConfig {
+    let proxy = datazen_driver_api::HttpProxyTunnelConfig {
         enabled: true,
         host: "127.0.0.1".into(),
         port,
@@ -325,7 +325,7 @@ async fn test_tester_http_proxy_probe_rejects_a_malformed_status_line() {
 /// probe rejects an empty host / unsupported scheme with the config error.
 #[tokio::test]
 async fn test_tester_http_proxy_probe_validates_its_config_first() {
-    let empty_host = crate::db::HttpProxyTunnelConfig {
+    let empty_host = datazen_driver_api::HttpProxyTunnelConfig {
         enabled: true,
         host: "   ".into(),
         port: DEAD_PORT,
@@ -340,7 +340,7 @@ async fn test_tester_http_proxy_probe_validates_its_config_first() {
         .expect_err("an empty proxy host must be rejected");
     assert!(err.to_string().contains("host is empty"), "{err}");
 
-    let bad_scheme = crate::db::HttpProxyTunnelConfig {
+    let bad_scheme = datazen_driver_api::HttpProxyTunnelConfig {
         enabled: true,
         host: "127.0.0.1".into(),
         port: DEAD_PORT,
@@ -393,7 +393,7 @@ async fn test_tester_websocket_probe_rejects_a_relay_that_errors_the_open() {
         }
     });
 
-    let cfg = crate::db::WebSocketTunnelConfig {
+    let cfg = datazen_driver_api::WebSocketTunnelConfig {
         enabled: true,
         url: format!("ws://127.0.0.1:{port}/tunnel"),
         auth_token: None,
@@ -437,7 +437,7 @@ async fn test_tester_websocket_probe_is_bounded_when_the_relay_never_acks() {
         }
     });
 
-    let cfg = crate::db::WebSocketTunnelConfig {
+    let cfg = datazen_driver_api::WebSocketTunnelConfig {
         enabled: true,
         url: format!("ws://127.0.0.1:{port}/tunnel"),
         auth_token: None,
@@ -494,7 +494,7 @@ async fn test_tester_raw_binary_probe_verifies_the_ws_handshake_and_carries_the_
         }
     });
 
-    let cfg = crate::db::WebSocketTunnelConfig {
+    let cfg = datazen_driver_api::WebSocketTunnelConfig {
         enabled: true,
         url: format!("ws://127.0.0.1:{port}/tunnel?token=abc&host=stale&port=1"),
         auth_token: None,
@@ -536,7 +536,7 @@ async fn test_tester_raw_binary_probe_rejects_a_non_websocket_endpoint() {
         let _ = stream.shutdown().await;
     });
 
-    let cfg = crate::db::WebSocketTunnelConfig {
+    let cfg = datazen_driver_api::WebSocketTunnelConfig {
         enabled: true,
         url: format!("ws://127.0.0.1:{port}/tunnel"),
         auth_token: None,
@@ -596,7 +596,7 @@ async fn test_tester_connect_proxy_data_path_keeps_auth_priority_and_forwarding(
         "Proxy-Authorization".to_string(),
         "Bearer explicit".to_string(),
     );
-    let config = crate::db::HttpProxyTunnelConfig {
+    let config = datazen_driver_api::HttpProxyTunnelConfig {
         enabled: true,
         host: "127.0.0.1".into(),
         port,
@@ -698,7 +698,7 @@ async fn test_tester_websocket_data_path_still_sends_ping_frames() {
         let _ = tx.send(saw_ping);
     });
 
-    let cfg = crate::db::WebSocketTunnelConfig {
+    let cfg = datazen_driver_api::WebSocketTunnelConfig {
         enabled: true,
         url: format!("ws://127.0.0.1:{port}/tunnel"),
         auth_token: None,
@@ -809,7 +809,7 @@ async fn test_tester_http_proxy_probe_sends_basic_credentials_without_echoing_th
             .expect("respond 200");
     });
 
-    let mut proxy = crate::db::HttpProxyTunnelConfig {
+    let mut proxy = datazen_driver_api::HttpProxyTunnelConfig {
         enabled: true,
         host: "127.0.0.1".into(),
         port,
@@ -904,7 +904,7 @@ async fn test_tester_websocket_probe_sends_the_bearer_token_and_custom_headers()
 
     let mut headers = std::collections::HashMap::new();
     headers.insert("X-Relay".to_string(), "1".to_string());
-    let relay = crate::db::WebSocketTunnelConfig {
+    let relay = datazen_driver_api::WebSocketTunnelConfig {
         enabled: true,
         url: format!("ws://127.0.0.1:{port}/tunnel"),
         auth_token: Some("s3cr3t-ws-token".into()),
@@ -968,7 +968,7 @@ async fn test_tester_websocket_probe_sends_the_bearer_token_and_custom_headers()
 async fn test_tester_websocket_probe_never_echoes_a_url_embedded_token() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let relay_at = |url: String| crate::db::WebSocketTunnelConfig {
+    let relay_at = |url: String| datazen_driver_api::WebSocketTunnelConfig {
         enabled: true,
         url,
         auth_token: None,
@@ -1053,7 +1053,7 @@ async fn test_tester_https_proxy_probe_reports_tls_failure_instead_of_panicking(
         let _ = stream.write_all(b"not a TLS server\r\n").await;
     });
 
-    let proxy = crate::db::HttpProxyTunnelConfig {
+    let proxy = datazen_driver_api::HttpProxyTunnelConfig {
         enabled: true,
         host: "127.0.0.1".into(),
         port,
@@ -1091,7 +1091,7 @@ async fn test_tester_wss_relay_probe_reports_tls_failure_instead_of_panicking() 
         let _ = stream.write_all(b"not a TLS server\r\n").await;
     });
 
-    let relay = crate::db::WebSocketTunnelConfig {
+    let relay = datazen_driver_api::WebSocketTunnelConfig {
         enabled: true,
         url: format!("wss://127.0.0.1:{port}/tunnel"),
         auth_token: None,

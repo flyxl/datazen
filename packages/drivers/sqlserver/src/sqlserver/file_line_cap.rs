@@ -25,16 +25,24 @@ const LINE_LIMIT: usize = 800;
 /// documentation or whole methods out of the declaration, which is a contract
 /// change rather than a layout change.
 ///
-/// **The pin is re-measured, not relaxed.** It used to read 1020 while the file
-/// was already 1160 lines on `main` — the pin had gone stale and the guard had
-/// been red on `main` since then, so it was no longer guarding anything. It now
-/// reads the current measured size (1275), which restores what the guard is
-/// for: the next line added to the declaration makes it fail again. Two data
-/// browsing volumes have already done the work this guard asks for (the method
-/// bodies live in `traits/browsing.rs` and `traits/filter_contract.rs`), and the
-/// remaining gap — splitting the trait declaration itself — is a separate
-/// decision tracked with the `DatabaseDriver` contract, not here.
-const DATABASE_DRIVER_TRAITS_CEILING: usize = 1275;
+/// **The pin is re-measured, not relaxed, and it is a ratchet.** Both numbers
+/// that were in play went stale for the same reason: `driver-api`'s trait
+/// declaration is edited from two directions at once — this branch moves the
+/// browsing contract out into `traits/browsing.rs` and
+/// `traits/filter_contract.rs`, while `main` moves `target_requirements` out
+/// into `traits/command_api.rs` and adds `schema_object_sql`. A pin written
+/// against either side alone therefore measures a file that no longer exists
+/// in that shape, and a stale pin is worse than no pin: it either sits below
+/// the real size and turns every checkout red, or it floats above it and
+/// guards nothing.
+///
+/// The value below is therefore the **measured size of the merged file**
+/// (1265 lines), and it is a ratchet: from here the declaration may shrink,
+/// never grow. One line added to `driver-api/src/traits.rs` makes this guard
+/// fail again, and lowering the pin requires moving documentation or whole
+/// methods out of the declaration — a contract change rather than a layout
+/// change.
+const DATABASE_DRIVER_TRAITS_CEILING: usize = 1265;
 
 /// Path shown in a failure message: `driver-api` is reached by climbing out of
 /// this crate, and a name full of `..` segments is harder to act on than the

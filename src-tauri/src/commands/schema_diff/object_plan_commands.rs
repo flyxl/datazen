@@ -8,7 +8,7 @@ use super::{
     apply_sqlserver_object_scope_gate, build_routine_trigger_migration_plan_with_components,
     build_sequence_migration_plan_with_components, build_type_migration_plan_with_components,
     build_view_migration_plan_with_components, ensure_distinct_schema_scope, fetch_schema_object,
-    fetch_schema_view, list_schema_objects, list_schema_views, normalize_dialect,
+    fetch_schema_view, list_schema_objects, list_schema_views, normalize_dialect, reviewed_scope,
     schema_catalog_scope, select_schema_object_pair, AppState, CommandError, SchemaDiffPlan, State,
 };
 
@@ -148,6 +148,8 @@ pub async fn prepare_schema_view_plan(
         }
     }
     crate::schema_diff::reviewed::freeze_with_objects_and_mysql_view_context(
+        state.schema_diff_reviewed_plans.as_ref(),
+        &reviewed_scope(&state)?,
         &mut plan,
         target_db_session_id,
         &tgt_handle,
@@ -158,7 +160,8 @@ pub async fn prepare_schema_view_plan(
         tgt_config.schema.clone(),
         target_mysql_view_scope_context,
     )
-    .await;
+    .await
+    .map_err(CommandError::Validation)?;
     Ok(plan)
 }
 
@@ -277,6 +280,8 @@ pub async fn prepare_schema_routine_trigger_plan(
         &target_snapshots,
     );
     crate::schema_diff::reviewed::freeze_with_objects(
+        state.schema_diff_reviewed_plans.as_ref(),
+        &reviewed_scope(&state)?,
         &mut plan,
         target_db_session_id,
         &tgt_handle,
@@ -286,7 +291,8 @@ pub async fn prepare_schema_routine_trigger_plan(
         schema_catalog_scope(&tgt_config.database_type, tgt_config.database.as_deref()),
         tgt_config.schema.clone(),
     )
-    .await;
+    .await
+    .map_err(CommandError::Validation)?;
     Ok(plan)
 }
 
@@ -401,6 +407,8 @@ pub async fn prepare_schema_sequence_plan(
         &target_snapshots,
     );
     crate::schema_diff::reviewed::freeze_with_objects(
+        state.schema_diff_reviewed_plans.as_ref(),
+        &reviewed_scope(&state)?,
         &mut plan,
         target_db_session_id,
         &tgt_handle,
@@ -410,7 +418,8 @@ pub async fn prepare_schema_sequence_plan(
         schema_catalog_scope(&tgt_config.database_type, tgt_config.database.as_deref()),
         tgt_config.schema.clone(),
     )
-    .await;
+    .await
+    .map_err(CommandError::Validation)?;
     Ok(plan)
 }
 
@@ -525,6 +534,8 @@ pub async fn prepare_schema_type_plan(
         &target_snapshots,
     );
     crate::schema_diff::reviewed::freeze_with_objects(
+        state.schema_diff_reviewed_plans.as_ref(),
+        &reviewed_scope(&state)?,
         &mut plan,
         target_db_session_id,
         &tgt_handle,
@@ -534,6 +545,7 @@ pub async fn prepare_schema_type_plan(
         schema_catalog_scope(&tgt_config.database_type, tgt_config.database.as_deref()),
         tgt_config.schema.clone(),
     )
-    .await;
+    .await
+    .map_err(CommandError::Validation)?;
     Ok(plan)
 }

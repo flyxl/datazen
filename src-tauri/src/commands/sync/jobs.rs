@@ -1,6 +1,6 @@
 //! Durable Data Sync Job lifecycle.
 //!
-//! Production commands accept and dispatch through `DesktopJobHost`; runtime
+//! Production commands accept and dispatch through `JobHost`; runtime
 //! endpoint refs use the physical identity from `migration_endpoint` and never
 //! include a `dbSessionId`. A bounded in-process receipt fence prevents a
 //! same-process IPC retry from dispatching an accepted Job twice. The legacy
@@ -30,12 +30,12 @@ use futures_util::FutureExt;
 #[cfg(test)]
 use std::sync::atomic::Ordering;
 
-#[cfg(test)]
-use super::plans::SyncRunRequest;
 pub(crate) use crate::data_sync::job::body::{APPLY_KIND, PREPARE_KIND};
 use crate::data_sync::job::host::DataSyncHost;
 #[cfg(test)]
 use crate::data_sync::job::{prepare_payload, ApplySpec, DataSyncHandler, PrepareSpec};
+#[cfg(test)]
+use crate::data_sync::plan_store::SyncRunRequest;
 use crate::data_sync::{Endpoint, SyncSourceFilter};
 
 use super::super::error::CommandError;
@@ -91,6 +91,7 @@ pub(crate) async fn admit_durable(
     let requested_job_id = JobId::new(job_id.to_string());
     let definition = JobDefinition {
         job_id: requested_job_id.clone(),
+        organization_id: ctx.organization_id.clone(),
         kind: kind.to_string(),
         owner: OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new(LOCAL_CLIENT_INSTANCE),
@@ -225,7 +226,7 @@ impl Drop for DispatchClaim {
 }
 
 async fn record_dispatch_failure(
-    host: &datazen_runtime::job::DesktopJobHost,
+    host: &datazen_runtime::job::JobHost,
     ctx: &RequestContext,
     job_id: &JobId,
     _reason: &str,
@@ -310,6 +311,7 @@ pub(crate) async fn list_durable_jobs(state: &AppState) -> Result<Vec<JobView>, 
         .list(
             &ctx,
             datazen_platform_api::dto::job::JobFilter {
+                organization_id: ctx.organization_id.clone(),
                 states: Vec::new(),
                 owner: None,
                 after: None,
@@ -338,6 +340,7 @@ pub(crate) async fn find_apply_receipt_for_plan(
         .list(
             &ctx,
             datazen_platform_api::dto::job::JobFilter {
+                organization_id: ctx.organization_id.clone(),
                 states: Vec::new(),
                 owner: None,
                 after: None,
@@ -476,7 +479,10 @@ pub(crate) async fn submit_apply(
     spec: ApplySpec,
     window_job_id: Option<String>,
 ) -> Result<SyncJobOutcome, CommandError> {
-    let (source_session_id, target_session_id) = super::plans::peek_plan(&spec.plan_id)
+    let (source_session_id, target_session_id) = state
+        .sync_stores
+        .plan_store
+        .peek(&state.organization_scope()?, &spec.plan_id)
         .map(|plan| (plan.source_db_session_id, plan.target_db_session_id))
         .unwrap_or_default();
     let selection = state::confirmed_selection(&spec.plan_id).ok_or_else(|| {
@@ -627,7 +633,7 @@ async fn endpoint_ref(
 ) -> Result<EndpointRef, CommandError> {
     let identity = crate::services::migration_endpoint::session_identity(
         state,
-        &endpoint.connection_id,
+        &endpoint.db_session_id,
         Some((&endpoint.database, endpoint.schema.as_deref())),
     )
     .await?;
@@ -690,6 +696,7 @@ async fn drive(
     );
     let definition = JobDefinition {
         job_id: job_id.clone(),
+        organization_id: ctx.organization_id.clone(),
         kind: kind.to_string(),
         owner: OwnerRef::ClientSession {
             client_instance_id: ctx.client_instance_id.clone(),

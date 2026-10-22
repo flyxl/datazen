@@ -49,13 +49,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::State;
 
-use super::plans::{self, PlanState, StoredTransferPlan};
 use super::AppState;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::data_transfer::job::{
     DataTransferHandler, TransferEndpoints, CHECKPOINT_VERSION, HANDLER_VERSION, PLAN_VERSION,
 };
 use crate::data_transfer::model::{TransferJob, TransferRunSelection};
+use crate::data_transfer::plan_store::{self as plans, PlanState, StoredTransferPlan};
 use crate::data_transfer::TransferPreview;
 use admission::{admit_apply_plan, ApplyPlanRequest, PlanAdmission, PlanAvailability};
 use assembly::FreezeAssembly;
@@ -160,7 +160,10 @@ pub(crate) async fn prepare_data_transfer_job_impl(
         .cmd_err("prepare_data_transfer")?;
     // Re-read the plan from the store: the review is served from the authoritative
     // record, never from anything the caller kept on the client side.
-    let plan = plans::peek_plan(&review.plan_id)?;
+    let plan = state.transfer_plans.peek(
+        super::plan_scope::desktop_organization_scope(),
+        &review.plan_id,
+    )?;
     let digest = plan_digest(&plan)?;
     let assembled = assembly::assemble(state, &plan, &TransferRunSelection::default(), false)
         .await
@@ -245,7 +248,7 @@ pub(crate) async fn apply_detached(
                 cmd = "apply_data_transfer",
                 plan_id = %plan_id,
                 job_id = %job_id,
-                error = %crate::log_redact::redact_secrets_for_log(&error.to_string()),
+                error = %datazen_platform_infra::redaction::redact_secrets_for_log(&error.to_string()),
             );
         }
     });
@@ -269,7 +272,7 @@ pub(crate) struct ApplyDrive {
     plan_digest: String,
     selection_revision: u64,
     sql_file_destination: Option<std::path::PathBuf>,
-    host: Arc<datazen_runtime::job::DesktopJobHost>,
+    host: Arc<datazen_runtime::job::JobHost>,
     run: runtime::BoxedJobRun,
 }
 
@@ -337,7 +340,10 @@ pub(crate) async fn admit_apply(
 ) -> Result<AdmittedApply, CommandError> {
     // `peek_plan_any` also returns claimed/consumed plans, so the refusal can name
     // the real reason ("already consumed") instead of a misleading "unknown plan".
-    let plan = plans::peek_plan_any(&request.plan_id)?;
+    let plan = state.transfer_plans.peek_any(
+        super::plan_scope::desktop_organization_scope(),
+        &request.plan_id,
+    )?;
     scope::enforce_same_backend_scope(&plan.job, Some(&request.backend_scope))?;
     let digest = plan_digest(&plan)?;
     let key = request
@@ -432,7 +438,10 @@ pub(crate) async fn admit_apply(
             drive: None,
         }),
         runtime::Admission::Accepted(accepted) => {
-            if let Err(error) = plans::claim_plan(&request.plan_id) {
+            if let Err(error) = state.transfer_plans.claim(
+                super::plan_scope::desktop_organization_scope(),
+                &request.plan_id,
+            ) {
                 state
                     .desktop_job_host
                     .repository()
@@ -453,6 +462,7 @@ pub(crate) async fn admit_apply(
             );
             let drive_plan = runtime::DrivePlan::from_request(&run_request);
             let host = state.desktop_job_host.clone();
+            let transfer_plans = state.transfer_plans.clone();
             let job_id = accepted.job_id.as_str().to_string();
             Ok(AdmittedApply {
                 view,
@@ -463,7 +473,9 @@ pub(crate) async fn admit_apply(
                     selection_revision: plan.revision,
                     sql_file_destination,
                     host: host.clone(),
-                    run: Box::pin(async move { runtime::drive(host, accepted, drive_plan).await }),
+                    run: Box::pin(async move {
+                        runtime::drive(transfer_plans, host, accepted, drive_plan).await
+                    }),
                 }),
             })
         }

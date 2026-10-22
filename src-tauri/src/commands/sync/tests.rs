@@ -8,7 +8,7 @@ use crate::schema_diff::diff_table_schemas;
 use crate::store::SyncTask;
 use crate::transfer::ir::{IRColumn, IRTable, IRType};
 
-use crate::db::{ColumnSchema, TableSchema, Value};
+use datazen_driver_api::{ColumnSchema, TableSchema, Value};
 
 fn ir_col(name: &str, ir_type: IRType, nullable: bool, is_primary_key: bool) -> IRColumn {
     IRColumn {
@@ -73,6 +73,48 @@ async fn runtime_physical_resource_count(state: &crate::commands::AppState) -> u
         .await
         .expect("Runtime resource snapshot is available")
         .physical_total
+}
+
+/// 组装点的接线不变式：**宿主自己的组织作用域必须被自己注入的比较存储根承认**，
+/// 且该根只承认这一个组织。
+///
+/// 这条断言把「端口」与「宿主接线」缝在一起：端口实现按组织判定是对的（包内有
+/// 断言），但如果组装期把根绑到了别的组织、或者宿主的作用域算出了别的组织，
+/// 比较存储会整体失败关闭。桌面是单租户，但「跨组织按不存在处理」这条契约在
+/// 宿主这一侧也必须真的成立，不能只靠端口实现单方面保证。
+#[tokio::test]
+async fn desktop_sync_store_ports_admit_only_the_local_organization() {
+    use datazen_platform_api::id::OrganizationId;
+    use datazen_platform_api::ports::scope::OrganizationScope;
+
+    let test = crate::testing::app_state::TestAppState::new().await;
+    let scope = test
+        .state
+        .organization_scope()
+        .expect("桌面组织作用域在测试中总是可用");
+    assert_eq!(
+        scope.organization_id().as_str(),
+        crate::platform::identity::LOCAL_ORGANIZATION_ID,
+        "桌面是单租户：组织维度是进程常量"
+    );
+    assert!(
+        test.state
+            .sync_stores
+            .comparison_root
+            .root_for(&scope)
+            .is_some(),
+        "宿主注入的比较存储根必须承认宿主自己的作用域"
+    );
+
+    let foreign = OrganizationScope::new(OrganizationId::new("datazen-other-organization"));
+    assert!(
+        test.state
+            .sync_stores
+            .comparison_root
+            .root_for(&foreign)
+            .is_none(),
+        "宿主注入的比较存储根不得承认别的组织"
+    );
 }
 
 #[tokio::test]
@@ -455,7 +497,7 @@ fn legacy_transfer_ir_compare_ipc_removed() {
 
 #[test]
 fn filter_tables_by_schema_keeps_matching_schema_only() {
-    use crate::db::{TableInfo, TableType};
+    use datazen_driver_api::{TableInfo, TableType};
 
     let tables = vec![
         TableInfo {
@@ -471,14 +513,14 @@ fn filter_tables_by_schema_keeps_matching_schema_only() {
             row_count: None,
         },
     ];
-    let filtered = super::types::filter_tables_by_schema(tables, Some("public"));
+    let filtered = crate::data_sync::api::filter_tables_by_schema(tables, Some("public"));
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].name, "a");
 }
 
 #[test]
 fn is_self_sync_requires_matching_schema_on_same_connection() {
-    assert!(super::types::is_self_sync(
+    assert!(crate::data_sync::api::is_self_sync(
         "c1",
         "c1",
         "db",
@@ -486,7 +528,7 @@ fn is_self_sync_requires_matching_schema_on_same_connection() {
         Some("public"),
         Some("public")
     ));
-    assert!(!super::types::is_self_sync(
+    assert!(!crate::data_sync::api::is_self_sync(
         "c1",
         "c1",
         "db",
@@ -527,17 +569,19 @@ async fn compare_data_sync_returns_an_opaque_server_plan() {
     let target = test.open_runtime_session("tgt-plan").await;
     let preview = super::compare_data_sync_impl(
         &test.state,
-        source,
-        target,
-        Vec::new(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        crate::data_sync::SyncOptions::default(),
-        &[],
-        &std::collections::HashMap::new(),
+        crate::data_sync::api::SyncComparisonRequest {
+            source_db_session_id: source,
+            target_db_session_id: target,
+            tables: Vec::new(),
+            job_id: None,
+            source_database: None,
+            target_database: None,
+            source_schema: None,
+            target_schema: None,
+            options: crate::data_sync::SyncOptions::default(),
+            mappings: Vec::new(),
+            source_filters: std::collections::HashMap::new(),
+        },
     )
     .await
     .unwrap();
@@ -803,17 +847,19 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
     let tgt = test.open_runtime_session("tgt-cmp").await;
     let err = super::compare_data_sync_impl(
         &test.state,
-        src,
-        tgt,
-        vec!["users".into()],
-        None,
-        None,
-        None,
-        None,
-        None,
-        crate::data_sync::SyncOptions::default(),
-        &[],
-        &std::collections::HashMap::new(),
+        crate::data_sync::api::SyncComparisonRequest {
+            source_db_session_id: src,
+            target_db_session_id: tgt,
+            tables: vec!["users".into()],
+            job_id: None,
+            source_database: None,
+            target_database: None,
+            source_schema: None,
+            target_schema: None,
+            options: crate::data_sync::SyncOptions::default(),
+            mappings: Vec::new(),
+            source_filters: std::collections::HashMap::new(),
+        },
     )
     .await
     .unwrap_err();

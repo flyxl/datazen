@@ -15,7 +15,7 @@ use datazen_platform_api::id::{
 use datazen_platform_api::ports::job::JobRepository;
 use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
 use datazen_runtime::job::{
-    CancelToken, DesktopJobHost, FrozenPlan, JobClock, JobHandler, JobRecoveryVerifier, JobRuntime,
+    CancelToken, FrozenPlan, JobClock, JobHandler, JobHost, JobRecoveryVerifier, JobRuntime,
     RecoveryVerdict, SharedClock, StageOutcome, StageSpec, StageTerminal,
 };
 use rusqlite::Connection;
@@ -50,6 +50,7 @@ fn repository(path: &Path, clock: Arc<SharedClock>, claim_ttl_secs: i64) -> Sqli
 fn definition(job_id: &str, plan_id: &str) -> JobDefinition {
     JobDefinition {
         job_id: JobId::new(job_id),
+        organization_id: request_context().organization_id,
         kind: "schemaDiffApply".into(),
         owner: datazen_platform_api::OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("client-local"),
@@ -115,6 +116,7 @@ fn monitor_occurrence_definition(job_id: &str, scheduled_at: i64) -> JobDefiniti
     );
     JobDefinition {
         job_id: JobId::new(job_id),
+        organization_id: request_context().organization_id,
         kind: "monitorOccurrence".into(),
         owner: datazen_platform_api::OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("monitor:grant-1:1"),
@@ -377,7 +379,7 @@ async fn accept_then_restart_before_dispatch_is_durable_not_executed_and_never_r
     let ctx = request_context();
     let id = JobId::new("job-crash-before-dispatch");
     let repo = Arc::new(repository(temp.path(), clock.clone(), 30));
-    let host = DesktopJobHost::new(
+    let host = JobHost::new(
         repo.clone(),
         Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::team_default()))),
         clock.clone(),
@@ -393,7 +395,7 @@ async fn accept_then_restart_before_dispatch_is_durable_not_executed_and_never_r
     drop(repo);
 
     let reopened = Arc::new(repository(temp.path(), clock.clone(), 30));
-    let host = DesktopJobHost::new(
+    let host = JobHost::new(
         reopened.clone(),
         Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::team_default()))),
         clock,
@@ -504,7 +506,7 @@ async fn sqlite_runtime_reopens_unknown_boundary_receipt_and_verifies_without_re
     drop(runtime);
     drop(repo);
     let reopened = Arc::new(repository(temp.path(), clock.clone(), 30));
-    let reopened_host = DesktopJobHost::new(reopened.clone(), ledger, clock_trait);
+    let reopened_host = JobHost::new(reopened.clone(), ledger, clock_trait);
     let candidates = reopened_host
         .mark_restart_candidates_for_verification(&ctx, RecoveryFilter::default())
         .await
@@ -567,7 +569,7 @@ async fn cancel_claim_fencing_and_durable_json_exclude_session_and_idempotency_s
     )
     .await
     .expect("job accepted");
-    let host = DesktopJobHost::new(
+    let host = JobHost::new(
         repo.clone(),
         Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::team_default()))),
         clock.clone(),
@@ -651,9 +653,9 @@ async fn cancel_claim_fencing_and_durable_json_exclude_session_and_idempotency_s
 
 #[tokio::test]
 async fn app_state_reopen_marks_interrupted_job_for_verification_without_dispatch() {
-    use crate::db::registry::DriverRegistry;
     use crate::store::Store;
     use crate::transfer::adapter_registry::SyncAdapterRegistry;
+    use datazen_runtime::driver_registry::registry::DriverRegistry;
 
     let _keyring = crate::testing::FileKeyringGuard::set();
     let temp = tempfile::tempdir().expect("temp directory");
@@ -848,3 +850,6 @@ impl JobRecoveryVerifier for ConfirmReadOnlyVerifier {
 
 #[path = "app_db_job_owner_tests.rs"]
 mod owner_claims;
+
+#[path = "app_db_job_org_tests.rs"]
+mod org_scope;

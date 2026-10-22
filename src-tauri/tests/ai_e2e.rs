@@ -8,9 +8,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use datazen::ai::prompt_resolver::{self, PromptResolver};
 use datazen_ai_api::{ChatMessage, MessageRole};
 use datazen_driver_api::PromptScenario;
+use datazen_feature_core::ai::prompt_resolver::{self, PromptResolver};
 
 async fn system_prompt(
     scenario: PromptScenario,
@@ -140,7 +140,7 @@ mod provider_tests {
     ) -> Box<dyn AiProvider> {
         match provider_type {
             "open_ai" => {
-                let p = datazen::ai::openai::OpenAiProvider::new();
+                let p = datazen_ai_providers::openai::OpenAiProvider::new();
                 let config = AiProviderConfig {
                     provider_type: AiProviderType::OpenAi,
                     api_key: Some(api_key.to_string()),
@@ -153,7 +153,7 @@ mod provider_tests {
                 Box::new(p)
             }
             "deep_seek" => {
-                let p = datazen::ai::deepseek::DeepSeekProvider::new();
+                let p = datazen_ai_providers::deepseek::DeepSeekProvider::new();
                 let config = AiProviderConfig {
                     provider_type: AiProviderType::DeepSeek,
                     api_key: Some(api_key.to_string()),
@@ -911,7 +911,7 @@ mod deepseek_workflow_tests {
             return;
         };
 
-        let provider = datazen::ai::deepseek::DeepSeekProvider::new();
+        let provider = datazen_ai_providers::deepseek::DeepSeekProvider::new();
         let init_config = AiProviderConfig {
             provider_type: AiProviderType::DeepSeek,
             api_key: Some(cfg.api_key.clone()),
@@ -1126,7 +1126,7 @@ mod deepseek_workflow_tests {
             return;
         };
 
-        let provider = datazen::ai::deepseek::DeepSeekProvider::new();
+        let provider = datazen_ai_providers::deepseek::DeepSeekProvider::new();
         let init_config = AiProviderConfig {
             provider_type: AiProviderType::DeepSeek,
             api_key: Some(cfg.api_key.clone()),

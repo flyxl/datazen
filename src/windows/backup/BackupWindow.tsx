@@ -124,7 +124,10 @@ export function BackupWindow() {
 
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        const sessionId = await invoke<string>('connect', { connectionId: conn.id });
+        const session = await invoke<{ dbSessionId: string }>('connect', {
+          connectionId: conn.id,
+        });
+        const sessionId = session.dbSessionId;
         setDbSessionId(sessionId);
 
         try {

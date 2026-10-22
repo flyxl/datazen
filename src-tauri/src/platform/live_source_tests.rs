@@ -437,7 +437,7 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
         provider: Arc::clone(&provider),
         driver: MockDriver::new("test-live", MockDriverOptions::default()),
     }));
-    let registry = Arc::new(crate::db::DriverRegistry::new());
+    let registry = Arc::new(datazen_runtime::driver_registry::DriverRegistry::new());
     // 驱动先注册：`ensure_type` 见 `drivers` 里已有就直接返回，不再走 inventory
     // 扫描（`Box::leak` 出来的工厂不进 inventory，扫不到）。factory 仍要注册——
     // `resource_provider` 只认 factories 这张表，driver 本身不带 provider。
@@ -618,7 +618,7 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
         driver: Arc::clone(&driver),
         provider: CountingProvider::new("test-live-provider"),
     }));
-    let registry = Arc::new(crate::db::DriverRegistry::new());
+    let registry = Arc::new(datazen_runtime::driver_registry::DriverRegistry::new());
     registry
         .register_test_driver("test-live", Arc::clone(&driver) as Arc<dyn DatabaseDriver>)
         .await;

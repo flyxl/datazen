@@ -138,7 +138,7 @@ async fn journey(prefix: &str, driver_id: &str) {
     settings.limit_select_results = true;
     settings.query_result_limit = 32;
     store.save_settings(settings).await.unwrap();
-    let registry = Arc::new(crate::db::DriverRegistry::new());
+    let registry = Arc::new(datazen_runtime::driver_registry::DriverRegistry::new());
     let mut config = crate::testing::app_state::sample_postgres_config("export-live");
     config.database_type = driver_id.into();
     config.host = Some(setting(prefix, "HOST"));
@@ -149,7 +149,7 @@ async fn journey(prefix: &str, driver_id: &str) {
     config.schema = (driver_id == "postgresql").then(|| "public".into());
     config.username = Some(setting(prefix, "USER"));
     config.password = Some(std::env::var(format!("{prefix}PASSWORD")).unwrap_or_default());
-    config.ssl_mode = crate::db::SslMode::Disable;
+    config.ssl_mode = datazen_driver_api::SslMode::Disable;
     store.save_connection(config.clone()).await.unwrap();
     let driver = registry
         .get(&config.database_type)

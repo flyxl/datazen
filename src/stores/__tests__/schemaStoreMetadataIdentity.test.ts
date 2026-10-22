@@ -270,7 +270,7 @@ describe('relationColumnsCacheKey', () => {
 
 describe('activeConnectionStore binds the schema identity', () => {
   it('binds on connect', async () => {
-    mockConnectionCommands.connect.mockResolvedValueOnce(DB_SESSION);
+    mockConnectionCommands.connect.mockResolvedValueOnce({ connectionId: 'cfg-1', dbSessionId: DB_SESSION });
     mockConnectionCommands.testConnection.mockResolvedValueOnce({ version: '16' });
 
     await useActiveConnectionStore.getState().connect({

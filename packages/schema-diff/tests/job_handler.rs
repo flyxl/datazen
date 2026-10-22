@@ -53,6 +53,7 @@ fn ctx() -> RequestContext {
 fn definition(kind: &str, payload: serde_json::Value, job_id: &str) -> JobDefinition {
     JobDefinition {
         job_id: JobId::new(job_id),
+        organization_id: ctx().organization_id,
         kind: kind.into(),
         owner: datazen_platform_api::OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("client-1"),

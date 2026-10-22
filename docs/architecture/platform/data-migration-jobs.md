@@ -1,7 +1,7 @@
 # 迁移三件套与 JobRuntime 平台化详细设计
 
 > 状态：P5 桌面 JobRuntime 与数据迁移三件套已完成（2026-10-09）。Schema Diff、Data Sync、Data Transfer 的 prepare/apply 均接入共享持久化 Job host；三件套独立测试与冒烟测试通过。本文区分当前桌面实现与后续目标设计，不代表 P7 server、完整服务端 ArtifactStore 或跨进程自动续跑已实现。
-> **当前桌面实现**：`packages/runtime/src/job/` 提供 `DesktopJobHost` 与 JobRuntime 仓储；`src-tauri/src/store/app_db.rs` 在既有 `{appData}/datazen.sqlite` 上执行事务化 v2 迁移，保留 workflows 并建立 job、receipt、stage、boundary、checkpoint、result、artifact reference 表。`AppState` 经 bootstrap 注入该 host。三套领域 handler 经 durable accept 与幂等回执后由后台 dispatch 执行。应用重启后，旧 Running 转为待核验，未派发 Queued 标为 `notExecuted`；不会重放旧 worker 或 handler。
+> **当前桌面实现**：`packages/runtime/src/job/` 提供 `JobHost` 与 JobRuntime 仓储；`src-tauri/src/store/app_db.rs` 在既有 `{appData}/datazen.sqlite` 上执行事务化 v2 迁移，保留 workflows 并建立 job、receipt、stage、boundary、checkpoint、result、artifact reference 表。`AppState` 经 bootstrap 注入该 host。三套领域 handler 经 durable accept 与幂等回执后由后台 dispatch 执行。应用重启后，旧 Running 转为待核验，未派发 Queued 标为 `notExecuted`；不会重放旧 worker 或 handler。
 > 本文按用户要求补齐平台演进设计。连接、错误与 CM 用例以 [连接管理](connection-management.md) 为权威，阶段门槛以 [开发计划](../../development/platform-development-plan.md) 为权威；持久化字段以 [持久化模型](persistence-model.md) 为权威。
 
 ## 1. 范围与代码迁移边界
@@ -87,7 +87,7 @@ JobState 与 effectOutcome 按 [连接 §10.1.1](connection-management.md#1011-p
 
 ### 2.4 当前本机 host 边界
 
-`DesktopJobHost` 是 transport-neutral facade，提供 `accept/get/list/details/cancel/recovery_candidates/mark_restart_candidates_for_verification/verify_recovery/dispatch`。`accept` 只返回已 durable 的 Job，不自行派发。调用方必须在 accept 成功后显式调用 `dispatch`；Data Transfer command 把这个 future 放入受控后台任务，因此 IPC 在 admission 后返回，不等待 terminal。handler、endpoint session 与 worker 只在当前进程内提供给 dispatch，不序列化或从仓储恢复。
+`JobHost` 是 transport-neutral facade，提供 `accept/get/list/details/cancel/recovery_candidates/mark_restart_candidates_for_verification/verify_recovery/dispatch`。`accept` 只返回已 durable 的 Job，不自行派发。调用方必须在 accept 成功后显式调用 `dispatch`；Data Transfer command 把这个 future 放入受控后台任务，因此 IPC 在 admission 后返回，不等待 terminal。handler、endpoint session 与 worker 只在当前进程内提供给 dispatch，不序列化或从仓储恢复。
 
 运行中的 Job 可通过 `JobRuntimeRepository` 持久写入 progress、artifact 引用、domain result、checkpoint、commit boundary 与终态。`JobDetails` 是安全读模型，含 planId/digest/revision、精确 commit boundaries、recovery result、bounded domain results、artifact IDs，以及可选 recovery target/fingerprint/policy。domain result 仅允许稳定 code、计数、受限 item ID 和 reason code；不接收自由文本、SQL、driver error 或凭据。
 
@@ -111,7 +111,7 @@ PostgreSQL 的 `packages/drivers/postgres/tests/restore_apply_job.rs` 通过安�
 
 MySQL 的 `packages/drivers/mysql/tests/restore_apply_job.rs` 使用同一安全 launcher、disposable migration gate、私有 ArtifactStore、JobRuntime 与生产 `RuntimeRestoreGateway`，通过 Runtime Session / ExecutionGateway 调用 factory 注册的真实 MysqlResourceProvider。`IMPLICIT_COMMIT` 配合 `single_transaction=false`：成功 CREATE/INSERT 逐句记录执行 ID、目标和语句摘要边界，独立连接读回两行；LOAD DATA、SOURCE、输入摘要不符、冻结目标替换及配置 revision 失效均在资源获取/写入前拒绝，NotStarted、attempted=0，且无表、无执行 ID；各拒绝路径均断言 Runtime resource open 计数不变。另一脚本先建表，再向不存在的表 INSERT，失败立即停止；独立连接证明 DDL 表仍存在、后续 CREATE 未运行，再清理残表。驱动 SQL 错误当前不提供本语句的确定效果证据，因此总体效果保守为 Unknown，同时保留已确认的 CREATE 提交边界及 committed=1，不能宣称跨 DDL/DML 原子性、RolledBack 或确定的 PartiallyApplied。测试宿主替代 Profile/Policy/SessionBackend 接线，不覆盖桌面 picker、Store 与 DesktopSessionBackend。
 
-桌面边界另由 `commands::restore_job::tests` 的 Host 组合旅程核验：原生 picker 之后的生产 `upload_native_input` 将文件复制到私有 staging、分块上传并冻结 owner/组织、target fingerprint、字节数和摘要；源文件随后改写不会改变已上传输入，其他 owner/组织不能读取。旅程使用真实 Store、`PlatformAdapter::inject`、FileArtifactStore、SQLite JobRepository、DesktopJobHost 与 DesktopRestoreGateway，通过实际 DesktopSessionBackend 派发 probe 和 SQL，并检查执行 ID/提交边界、完成状态及重开仓储后的单次 plan 消费；数据库 provider 是专用于宿主接线的 synthetic fixture，不替代驱动 live SQL 证据。空输入及 Store revision/read-only/safe-mode 拒绝也有针对性回归。原生 OS picker、Tauri 事件交付与实际数据库效果仍分别属于 UI/驱动验收范围；该组合旅程不宣称覆盖这些边界。
+桌面边界另由 `commands::restore_job::tests` 的 Host 组合旅程核验：原生 picker 之后的生产 `upload_native_input` 将文件复制到私有 staging、分块上传并冻结 owner/组织、target fingerprint、字节数和摘要；源文件随后改写不会改变已上传输入，其他 owner/组织不能读取。旅程使用真实 Store、`PlatformAdapter::inject`、FileArtifactStore、SQLite JobRepository、JobHost 与 DesktopRestoreGateway，通过实际 DesktopSessionBackend 派发 probe 和 SQL，并检查执行 ID/提交边界、完成状态及重开仓储后的单次 plan 消费；数据库 provider 是专用于宿主接线的 synthetic fixture，不替代驱动 live SQL 证据。空输入及 Store revision/read-only/safe-mode 拒绝也有针对性回归。原生 OS picker、Tauri 事件交付与实际数据库效果仍分别属于 UI/驱动验收范围；该组合旅程不宣称覆盖这些边界。
 
 ## 3. 多端预算、重叠与授权
 
@@ -243,7 +243,7 @@ Web 只能上传/下载授权 Artifact，不接收服务器路径；桌面导出
 
 ## 8. 客户端与接口适配
 
-桌面 `AppState.desktop_job_host` 为三套引擎提供共享 `DesktopJobHost`。Schema Diff、Data Sync 和 Data Transfer 各自提供 Job 接受、取消、列表/详情及结果映射；Transfer 另有 `get_transfer_job_details` 读路径。`JobDetails` 含 `job`、`stateVersion`、可选 `planId/planDigest/selectionRevision`、`commitBoundaries`、`recovery`、`domainResults`、`recoveryTargets`、`targetBeforeFingerprint` 与 `recoveryPolicy`。其中 recovery target 仅是 bounded stable IDs，不包含 SQL、credential、session 或 lease。TypeScript 镜像位于 `packages/backend-client/src/types/jobs.ts`。
+桌面 `AppState.desktop_job_host` 为三套引擎提供共享 `JobHost`。Schema Diff、Data Sync 和 Data Transfer 各自提供 Job 接受、取消、列表/详情及结果映射；Transfer 另有 `get_transfer_job_details` 读路径。`JobDetails` 含 `job`、`stateVersion`、可选 `planId/planDigest/selectionRevision`、`commitBoundaries`、`recovery`、`domainResults`、`recoveryTargets`、`targetBeforeFingerprint` 与 `recoveryPolicy`。其中 recovery target 仅是 bounded stable IDs，不包含 SQL、credential、session 或 lease。TypeScript 镜像位于 `packages/backend-client/src/types/jobs.ts`。
 
 三套引擎的 apply 都先持久化接受记录和幂等 receipt，再由后台 Job 执行；任务窗口关闭不会取消 Job 或释放 Job 正在使用的资源，重新打开后可重新附着并读取持久化状态。Transfer apply 响应丢失可用幂等 receipt 找回原 Job。计划过期、目标漂移或权限变化要求重新准备，不自动重放旧 SQL。应用重启不自动恢复运行中的 handler；运行中任务需只读核验，Queued 且未派发的任务明确标记为未执行。
 

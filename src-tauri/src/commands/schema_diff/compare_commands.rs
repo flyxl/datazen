@@ -7,7 +7,7 @@ use super::{
     fetch_target_table_schema, normalize_dialect, resolve_table_for_dialect,
     schema_catalog_database, AppState, CmdExt, CommandError, State, TableColumnDiff,
 };
-use crate::db::{CatalogReader, LegacyCatalogReader};
+use datazen_driver_api::{CatalogReader, LegacyCatalogReader};
 
 /// Compare column-level schema differences for a single table.
 pub(crate) async fn compare_table_schemas_impl(

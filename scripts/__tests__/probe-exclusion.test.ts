@@ -1,4 +1,8 @@
 /**
+ * @vitest-environment node
+ */
+
+/**
  * The reserved probe files must never enter a TypeScript program.
  *
  * A guard test plants a throwaway probe in the working tree to prove a layer
@@ -20,12 +24,12 @@
  * check belongs to the build itself.
  */
 
-import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import ts from 'typescript';
+import { engineBinPath } from '../typecheck.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -46,23 +50,47 @@ const CONFIGS = [
   'packages/backend-client/tsconfig.json',
 ];
 
-function readExcludePatterns(config: string): string[] {
-  const file = path.join(ROOT, config);
-  const text = fs.readFileSync(file, 'utf8');
-  // tsc's own parser, so the test cannot disagree with the compiler about
-  // what the file says (JSON with comments is valid tsconfig input).
-  const parsed = ts.parseConfigFileTextToJson(config, text);
-  if (parsed.error) {
-    throw new Error(`${config} is not parseable: ${ts.flattenDiagnosticMessageText(parsed.error.messageText, ' ')}`);
+/**
+ * The compiler's own view of a config file.
+ *
+ * TypeScript 7 no longer ships the compiler API: the `typescript` package
+ * resolves to `lib/version`, so `ts.parseConfigFileTextToJson` and
+ * `ts.flattenDiagnosticMessageText` do not exist, and importing them is a
+ * type error rather than a runtime surprise. The remaining way to let a
+ * compiler parse its own config is to ask it — `tsc --showConfig` prints the
+ * resolved configuration as JSON, which is the same parse the build performs
+ * (comments, `extends` and all).
+ *
+ * Reading the *resolved* config is also the more faithful thing to assert:
+ * what matters is which files the compiler keeps out of the program, not
+ * which array a file happens to spell.
+ */
+function resolvedConfig(config: string): { exclude?: unknown } {
+  const bin = engineBinPath(ROOT, 'tsc');
+  if (!bin) {
+    throw new Error('the tsc binary is not installed');
   }
-  const exclude = (parsed.config as { exclude?: unknown }).exclude;
+  const result = spawnSync(process.execPath, [bin, '-p', config, '--showConfig'], {
+    cwd: ROOT,
+    encoding: 'utf-8',
+    shell: false,
+  });
+  if (result.status !== 0) {
+    const detail = (result.stderr || '').trim().split('\n')[0] || `exit ${result.status}`;
+    throw new Error(`${config} is not parseable: ${detail}`);
+  }
+  return JSON.parse(result.stdout) as { exclude?: unknown };
+}
+
+function excludePatterns(config: string): string[] {
+  const exclude = resolvedConfig(config).exclude;
   return Array.isArray(exclude) ? exclude.filter((entry): entry is string => typeof entry === 'string') : [];
 }
 
 describe('probe files never enter a TypeScript program', () => {
   for (const config of CONFIGS) {
     it(`${config} excludes the reserved probe names`, () => {
-      const exclude = readExcludePatterns(config);
+      const exclude = excludePatterns(config);
       for (const pattern of PROBE_EXCLUDES) {
         expect(exclude).toContain(pattern);
       }
@@ -74,7 +102,7 @@ describe('probe files never enter a TypeScript program', () => {
     // sources from the program, which is a worse failure than the one this
     // gate exists to prevent.
     for (const config of CONFIGS) {
-      const exclude = readExcludePatterns(config);
+      const exclude = excludePatterns(config);
       expect(exclude.filter((entry) => !PROBE_EXCLUDES.includes(entry))).toEqual([]);
     }
   });

@@ -6,10 +6,13 @@ use super::{
         StepExecutionResult, StepStatus, UnattendedDestructivePolicy, WorkflowMigrationOperation,
     },
 };
-use datazen_data_sync::SyncProfile;
-use datazen_data_transfer::TransferProfile;
+use datazen_data_sync::api::SyncComparisonRequest;
+use datazen_data_sync::{SyncProfile, SyncSourceFilter};
+use datazen_data_transfer::model::Endpoint as TransferEndpoint;
+use datazen_data_transfer::{SqlFileTarget, TransferJob, TransferProfile};
 use datazen_platform_api::dto::migration::{MigrationProfileRef, MigrationRunRecord};
-use datazen_schema_diff::SchemaDiffProfile;
+use datazen_schema_diff::profile::SchemaDiffProfile;
+use datazen_schema_diff::types::ColumnTypeOverride;
 #[async_trait::async_trait]
 pub trait MigrationHost: Send + Sync {
     async fn transfer_profiles(&self) -> Vec<TransferProfile>;
@@ -54,6 +57,318 @@ pub trait MigrationHost: Send + Sync {
         reference: &MigrationProfileRef,
     ) -> Result<MigrationOutcome, WorkflowError>;
 }
+/// A live database session a migration step owns.
+#[derive(Debug, Clone)]
+pub struct MigrationSession {
+    pub db_session_id: String,
+    pub database: String,
+    pub schema: Option<String>,
+}
+
+/// The environment-specific operations a migration step needs.
+///
+/// The composition — which sessions to open, in which order, how the profile
+/// becomes a plan, and when the sessions are released — belongs to this
+/// crate, so a web host and the desktop host run the same step. The host
+/// only provides the primitives: opening a session on its runtime and
+/// running the plan its wizard owns.
+#[async_trait::async_trait]
+pub trait MigrationRunner: Send + Sync {
+    /// Open a dedicated session for a persisted connection id.
+    async fn open_session(
+        &self,
+        connection_id: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
+        label: &str,
+    ) -> Result<MigrationSession, WorkflowError>;
+
+    /// Release a session opened by [`Self::open_session`].
+    async fn release_session(&self, session: &MigrationSession);
+
+    /// Preview and apply a transfer plan built from the profile.
+    async fn run_transfer(
+        &self,
+        job: TransferJob,
+        destructive_policy: UnattendedDestructivePolicy,
+    ) -> Result<MigrationOutcome, WorkflowError>;
+
+    /// Compare and apply a data sync plan built from the profile.
+    async fn run_sync(
+        &self,
+        request: SyncComparisonRequest,
+    ) -> Result<MigrationOutcome, WorkflowError>;
+
+    /// Plan and deploy a schema diff built from the profile.
+    async fn run_schema(
+        &self,
+        request: SchemaStepRequest,
+        reference: &MigrationProfileRef,
+        destructive_policy: UnattendedDestructivePolicy,
+    ) -> Result<MigrationOutcome, WorkflowError>;
+}
+
+/// Everything a schema diff step needs, built from the profile and the opened
+/// sessions.
+#[derive(Debug, Clone)]
+pub struct SchemaStepRequest {
+    pub source_db_session_id: String,
+    pub target_db_session_id: String,
+    pub tables: Vec<String>,
+    pub target_only_tables: Vec<String>,
+    pub allow_destructive: bool,
+    pub require_rollback: bool,
+    pub include_indexes: bool,
+    pub type_overrides: Vec<ColumnTypeOverride>,
+    pub source_schema: Option<String>,
+    pub target_schema: Option<String>,
+}
+
+/// Run a transfer migration step: open the sessions the profile names, build
+/// the transfer job and hand it to the runner.
+pub async fn run_transfer_step(
+    runner: &dyn MigrationRunner,
+    profile: TransferProfile,
+    sql_file_token_variable: Option<&str>,
+    context: &WorkflowContext,
+    destructive_policy: UnattendedDestructivePolicy,
+) -> Result<MigrationOutcome, WorkflowError> {
+    let source = runner
+        .open_session(
+            &profile.source_connection_id,
+            profile.source_database.as_deref(),
+            profile.source_schema.as_deref(),
+            "transfer source",
+        )
+        .await?;
+    let target = match (
+        profile.destination_mode.as_str(),
+        profile.target_connection_id.as_deref(),
+    ) {
+        ("database", Some(connection_id)) => {
+            match runner
+                .open_session(
+                    connection_id,
+                    profile.target_database.as_deref(),
+                    profile.target_schema.as_deref(),
+                    "transfer target",
+                )
+                .await
+            {
+                Ok(session) => Some(session),
+                Err(error) => {
+                    runner.release_session(&source).await;
+                    return Err(error);
+                }
+            }
+        }
+        ("sqlFile", _) => None,
+        ("database", None) => {
+            runner.release_session(&source).await;
+            return Err(WorkflowError::Validation(
+                "database transfer profile has no target connection".into(),
+            ));
+        }
+        (other, _) => {
+            runner.release_session(&source).await;
+            return Err(WorkflowError::Validation(format!(
+                "unknown transfer destination mode '{other}'"
+            )));
+        }
+    };
+
+    let operation = async {
+        let sql_file_target = if profile.destination_mode == "sqlFile" {
+            let variable = sql_file_token_variable.ok_or_else(|| {
+                WorkflowError::Validation(
+                    "SQL-file workflow migrations require sqlFileTokenVariable".into(),
+                )
+            })?;
+            let token = context.resolve_expression(variable);
+            if token.trim().is_empty() {
+                return Err(WorkflowError::Validation(format!(
+                    "SQL-file workflow migration requires a fresh token in variable '{variable}'"
+                )));
+            }
+            Some(SqlFileTarget {
+                file_token: token,
+                database_type: profile.sql_file_dialect.clone(),
+                database: profile
+                    .sql_file_database
+                    .clone()
+                    .or(profile.target_database.clone()),
+                schema: profile
+                    .sql_file_schema
+                    .clone()
+                    .or(profile.target_schema.clone()),
+                encoding: profile
+                    .sql_file_encoding
+                    .as_deref()
+                    .map(parse_sql_file_encoding)
+                    .transpose()?,
+                compression: profile
+                    .sql_file_compression
+                    .as_deref()
+                    .map(parse_sql_file_compression)
+                    .transpose()?,
+            })
+        } else {
+            None
+        };
+        let job = TransferJob {
+            source: TransferEndpoint {
+                db_session_id: source.db_session_id.clone(),
+                database: source.database.clone(),
+                schema: profile.source_schema.clone().or(source.schema.clone()),
+            },
+            target: target.as_ref().map(|endpoint| TransferEndpoint {
+                db_session_id: endpoint.db_session_id.clone(),
+                database: endpoint.database.clone(),
+                schema: profile.target_schema.clone().or(endpoint.schema.clone()),
+            }),
+            sql_file_target,
+            mode: profile.mode,
+            write_mode: profile.write_mode,
+            tables: profile.tables.clone(),
+            options: profile.options.clone(),
+        };
+        runner.run_transfer(job, destructive_policy).await
+    }
+    .await;
+    runner.release_session(&source).await;
+    if let Some(target) = target.as_ref() {
+        runner.release_session(target).await;
+    }
+    operation
+}
+
+/// Run a data sync migration step: open both sessions and hand the comparison
+/// request to the runner.
+pub async fn run_sync_step(
+    runner: &dyn MigrationRunner,
+    profile: SyncProfile,
+) -> Result<MigrationOutcome, WorkflowError> {
+    let source = runner
+        .open_session(
+            &profile.source_connection_id,
+            profile.source_database.as_deref(),
+            profile.source_schema.as_deref(),
+            "sync source",
+        )
+        .await?;
+    let target = match runner
+        .open_session(
+            &profile.target_connection_id,
+            profile.target_database.as_deref(),
+            profile.target_schema.as_deref(),
+            "sync target",
+        )
+        .await
+    {
+        Ok(session) => session,
+        Err(error) => {
+            runner.release_session(&source).await;
+            return Err(error);
+        }
+    };
+
+    let operation = async {
+        let tables: Vec<String> = profile
+            .tables
+            .iter()
+            .filter(|mapping| mapping.enabled)
+            .map(|mapping| mapping.source_table.clone())
+            .collect();
+        let filters: std::collections::HashMap<String, SyncSourceFilter> = profile
+            .tables
+            .iter()
+            .filter_map(|mapping| {
+                mapping
+                    .source_filter
+                    .clone()
+                    .map(|filter| (mapping.source_table.clone(), filter))
+            })
+            .collect();
+        runner
+            .run_sync(SyncComparisonRequest {
+                source_db_session_id: source.db_session_id.clone(),
+                target_db_session_id: target.db_session_id.clone(),
+                tables,
+                job_id: None,
+                source_database: Some(source.database.clone()),
+                target_database: Some(target.database.clone()),
+                source_schema: profile.source_schema.clone().or(source.schema.clone()),
+                target_schema: profile.target_schema.clone().or(target.schema.clone()),
+                options: profile.options.clone(),
+                mappings: profile.tables.clone(),
+                source_filters: filters,
+            })
+            .await
+    }
+    .await;
+    runner.release_session(&source).await;
+    runner.release_session(&target).await;
+    operation
+}
+
+/// Run a schema diff migration step: open both sessions and hand the plan
+/// request to the runner.
+pub async fn run_schema_step(
+    runner: &dyn MigrationRunner,
+    profile: SchemaDiffProfile,
+    reference: &MigrationProfileRef,
+    destructive_policy: UnattendedDestructivePolicy,
+) -> Result<MigrationOutcome, WorkflowError> {
+    let source = runner
+        .open_session(
+            &profile.source_connection_id,
+            Some(&profile.source_database),
+            profile.source_schema.as_deref(),
+            "schema diff source",
+        )
+        .await?;
+    let target = match runner
+        .open_session(
+            &profile.target_connection_id,
+            Some(&profile.target_database),
+            profile.target_schema.as_deref(),
+            "schema diff target",
+        )
+        .await
+    {
+        Ok(session) => session,
+        Err(error) => {
+            runner.release_session(&source).await;
+            return Err(error);
+        }
+    };
+
+    let operation = async {
+        runner
+            .run_schema(
+                SchemaStepRequest {
+                    source_db_session_id: source.db_session_id.clone(),
+                    target_db_session_id: target.db_session_id.clone(),
+                    tables: profile.tables.clone(),
+                    target_only_tables: profile.target_only_tables.clone(),
+                    allow_destructive: profile.allow_destructive,
+                    require_rollback: profile.require_rollback,
+                    include_indexes: profile.include_indexes,
+                    type_overrides: profile.type_overrides.clone(),
+                    source_schema: profile.source_schema.clone(),
+                    target_schema: profile.target_schema.clone(),
+                },
+                reference,
+                destructive_policy,
+            )
+            .await
+    }
+    .await;
+    runner.release_session(&source).await;
+    runner.release_session(&target).await;
+    operation
+}
+
 pub struct MigrationOutcome {
     pub result: serde_json::Value,
     pub committed: u64,
@@ -464,4 +779,27 @@ pub fn parse_sql_file_encoding(value: &str) -> Result<SqlFileEncoding, WorkflowE
 pub fn parse_sql_file_compression(value: &str) -> Result<SqlFileCompression, WorkflowError> {
     SqlFileCompression::parse_profile(value)
         .map_err(|error| WorkflowError::Validation(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sql_file_formats_accept_the_extended_set() {
+        assert_eq!(
+            parse_sql_file_encoding(" utf16Le ").unwrap(),
+            SqlFileEncoding::Utf16Le
+        );
+        assert_eq!(
+            parse_sql_file_encoding("UTF-16BE").unwrap(),
+            SqlFileEncoding::Utf16Be
+        );
+        assert_eq!(
+            parse_sql_file_compression("gzip").unwrap(),
+            SqlFileCompression::Gzip
+        );
+        assert!(parse_sql_file_encoding("cp936").is_err());
+        assert!(parse_sql_file_compression("brotli").is_err());
+    }
 }

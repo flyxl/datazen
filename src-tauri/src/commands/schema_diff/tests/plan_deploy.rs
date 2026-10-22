@@ -47,8 +47,8 @@ async fn pg_command_test_sessions(
 }
 
 fn pg_mock_options(
-    source_schemas: HashMap<String, crate::db::TableSchema>,
-    target_schemas: HashMap<String, crate::db::TableSchema>,
+    source_schemas: HashMap<String, datazen_driver_api::TableSchema>,
+    target_schemas: HashMap<String, datazen_driver_api::TableSchema>,
 ) -> MockDriverOptions {
     MockDriverOptions {
         has_schema_level: true,

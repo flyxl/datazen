@@ -13,7 +13,6 @@ mod data;
 mod data_transfer;
 pub(crate) mod dialog;
 pub(crate) mod driver_command;
-pub(crate) mod driver_protocol;
 mod encryption_key;
 mod error;
 mod export;
@@ -74,18 +73,23 @@ pub use wapps::*;
 pub use window::*;
 pub use workflow::*;
 
-use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
-use crate::cache::SchemaCache;
-use crate::db::registry::DriverRegistry;
 use crate::mcp::McpClientManager;
-use crate::monitor::MonitorEngine;
+use crate::monitor::engine::MonitorEngine;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
-use crate::wapps::WappManager;
+use crate::workflow::history::WorkflowHistoryManager;
+use crate::workflow::registry::WorkflowRegistry;
 use crate::workflow::scheduler::WorkflowScheduler;
-use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+use datazen_ai_providers::AiProviderRegistry;
 use datazen_application::error::ApiError;
 use datazen_driver_api::QueryExecutionId;
+use datazen_feature_core::ai::context::SchemaContextBuilder;
+use datazen_feature_core::ai::prompt_resolver::PromptResolver;
+use datazen_platform_api::id::OrganizationId;
+use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_runtime::driver_registry::registry::DriverRegistry;
+use datazen_runtime::schema_cache::SchemaCache;
+use datazen_workspace_apps::manager::WappManager;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -154,6 +158,37 @@ impl Default for QueryExecutionRegistry {
     }
 }
 
+/// Data Sync 的存储端口实例（组装期创建一次，之后只读借用）。
+///
+/// 端口的实现留在共享包里：`datazen_data_sync` 仍然拥有「比较落盘」「计划
+/// 认领」的规则，宿主只决定**实例从哪来**——比较存储的根目录与计划注册表本身。
+/// 端口方法都带 [`OrganizationScope`]，跨组织访问按「不存在」处理。
+#[derive(Clone)]
+pub struct SyncStorePorts {
+    /// 计划注册表端口。签发 / 查看 / 绑定端点身份 / 认领。
+    pub plan_store: Arc<dyn datazen_data_sync::plan_store::SyncPlanStore>,
+    /// 比较存储根端口。决定比较结果写到哪个目录。
+    pub comparison_root: Arc<dyn datazen_data_sync::comparison_store::ComparisonStoreRoot>,
+}
+
+impl SyncStorePorts {
+    /// 桌面形态的默认接线：一个本地根 + 一个进程内计划注册表。
+    ///
+    /// 桌面是单租户：比较存储的根只属于本地组织这一个组织。
+    pub fn desktop() -> Self {
+        let organization = OrganizationId::new(crate::platform::identity::LOCAL_ORGANIZATION_ID);
+        Self {
+            plan_store: Arc::new(datazen_data_sync::plan_store::InMemorySyncPlanStore::new()),
+            comparison_root: Arc::new(
+                datazen_data_sync::comparison_store::LocalComparisonStoreRoot::new(
+                    datazen_data_sync::comparison_store::default_comparison_store_root(),
+                    organization,
+                ),
+            ),
+        }
+    }
+}
+
 /// Shared application state injected into every command handler.
 #[derive(Clone)]
 pub struct AppState {
@@ -171,18 +206,44 @@ pub struct AppState {
     pub query_executions: Arc<QueryExecutionRegistry>,
     pub workflow_scheduler: Arc<WorkflowScheduler>,
     pub wapps: Arc<WappManager>,
-    pub cancel_registry: crate::ai::CancellationRegistry,
+    pub cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry,
     /// Owner-bound editor-session grants for AI tool execution (P6 §14.4).
     pub ai_grants: Arc<crate::commands::ai::AiGrantService>,
     /// P5 Wave-1：Schema Diff 的 JobRuntime 基础设施（仓储/预算/计划库）。
     pub schema_diff_jobs: Arc<crate::commands::schema_diff::job::SchemaDiffJobInfra>,
     /// P5 本机持久化 Job facade，所有迁移 Host 共用 `{appData}/datazen.sqlite`。
-    pub desktop_job_host: Arc<datazen_runtime::job::DesktopJobHost>,
+    pub desktop_job_host: Arc<datazen_runtime::job::JobHost>,
+    /// Schema Diff 评审计划的存储实例（宿主在组装期创建并注入）。
+    ///
+    /// 评审计划**不**再寄居在包里的进程级全局变量上：实例由宿主持有，访问按
+    /// 组织作用域隔离——多租户宿主里 A 组织的计划不会被 B 组织读到或顶掉。
+    /// 桌面是单租户，实现见 `commands/schema_diff/reviewed_store.rs`。
+    pub schema_diff_reviewed_plans: Arc<dyn crate::schema_diff::reviewed::ReviewedPlanStore>,
+    /// Data Sync 的存储端口实例：计划注册表 + 比较存储根。
+    ///
+    /// 过去计划注册表是共享包里的 `static STORE`（进程级全局可变状态），
+    /// 现在由组装点创建实例并注入。
+    pub sync_stores: SyncStorePorts,
+    /// Data Transfer 的不可变计划与恢复检查点存储端口。
+    ///
+    /// 端口契约与 HashMap 实现都在 `datazen-data-transfer` 包内；宿主只负责在
+    /// 组装期创建**一个**实例并注入，调用点按组织作用域访问它。这样存储的
+    /// 生命周期由宿主决定，而不是包内的一个进程级全局。
+    pub transfer_plans: Arc<dyn crate::data_transfer::plan_store::TransferPlanStorePort>,
     /// 概要 §6.2 第 8 步的窄适配根：桌面身份 + owner 作用域句柄登记表。
     ///
     /// 事务归属和资源生命周期由 Runtime session actor 管理。取不到 adapter 时用
     /// `AppState::platform_require()`，它返回明确错误而不是 `Option` 兜底。
     pub platform: crate::platform::PlatformEntry,
+    /// 桌面形态的**组织作用域**：**启动期确定一次**，请求期直接取。
+    ///
+    /// 桌面是单租户：一份 app data 就是一个组织。组织的值是**安装级常量**
+    /// （`crate::platform::LOCAL_ORGANIZATION_ID`），与「当前 OS 用户名能不能取到」
+    /// **无关**——后者只决定 `principalId`。因此组织作用域**不依赖** platform
+    /// adapter 是否组装成功：身份不可用时，仪表板 / workflow 命令依然可用。
+    ///
+    /// 作用域只在这里确定一次，请求体里的任何字段都覆盖不了它（INV-01）。
+    pub organization_scope: OrganizationScope,
 }
 
 impl AppState {
@@ -192,6 +253,21 @@ impl AppState {
     /// `is_some()` 判断把失败吞成默认行为。
     pub fn platform_require(&self) -> Result<&Arc<crate::platform::PlatformAdapter>, ApiError> {
         self.platform.require()
+    }
+
+    /// 本次 IPC 调用的**组织作用域**。
+    ///
+    /// 作用域在**启动期**确定一次并存进 [`AppState::organization_scope`]，请求期
+    /// 直接取：命令参数里没有任何字段能覆盖组织身份（INV-01）。
+    ///
+    /// 桌面形态下这个值永远是桌面自己那一个组织（安装级常量），因此本方法
+    /// **不依赖** platform adapter 是否组装成功——「取不到当前 OS 用户名」只影响
+    /// `principalId`，不影响组织边界；仪表板 / workflow 命令不会因此整体不可用。
+    ///
+    /// 保留 `Result` 是因为「作用域从哪来」是宿主形态的自由度：多租户宿主可能
+    /// 按请求解析组织，那一步是可以失败的。桌面形态不会失败。
+    pub fn organization_scope(&self) -> Result<OrganizationScope, CommandError> {
+        Ok(self.organization_scope.clone())
     }
 
     /// Lazily register AI providers + load prompt templates.
@@ -281,11 +357,14 @@ pub mod test_harness {
 
     pub async fn get_connections(
         state: &AppState,
-    ) -> Result<Vec<crate::db::ConnectionConfig>, String> {
+    ) -> Result<Vec<datazen_driver_api::ConnectionConfig>, String> {
         get_connections_impl(state).await.map_err(|e| e.to_string())
     }
 
-    pub async fn connect(state: &AppState, connection_id: String) -> Result<String, String> {
+    pub async fn connect(
+        state: &AppState,
+        connection_id: String,
+    ) -> Result<crate::commands::connection::ConnectionSessionRef, String> {
         connect_impl(state, connection_id)
             .await
             .map_err(|e| e.to_string())
@@ -321,3 +400,7 @@ mod tunnel_probe_tests;
 #[cfg(test)]
 #[path = "tunnel_summary_tests.rs"]
 mod tunnel_summary_tests;
+
+#[cfg(test)]
+#[path = "org_scope_surface_tests.rs"]
+mod org_scope_surface_tests;

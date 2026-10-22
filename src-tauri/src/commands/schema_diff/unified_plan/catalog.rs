@@ -1,11 +1,11 @@
 //! Catalog reads and structured dependency snapshots for the unified plan.
 
 use super::*;
-use crate::db::{CatalogReader, LegacyCatalogReader};
 use crate::schema_diff::object_identity::{
     SchemaObjectDependencySnapshot, SchemaObjectIdentity, SequenceDependencyUsage,
     SequenceDependencyUsageKind, TypeDependencyUsage, TypeDependencyUsageKind,
 };
+use datazen_driver_api::{CatalogReader, LegacyCatalogReader};
 use datazen_driver_api::{DatabaseObject, ObjectKind, TableType};
 use std::collections::HashSet;
 

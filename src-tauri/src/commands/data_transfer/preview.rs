@@ -8,12 +8,12 @@ use super::inspect::inspect_data_transfer_impl;
 use crate::data_transfer::{
     build_preview, enforce_transfer_pairing, TransferJob, TransferPreview, TransferPreviewAdapters,
 };
-use crate::db::{LegacySqlDialect, SqlDialect};
+use datazen_driver_api::{LegacySqlDialect, SqlDialect};
 use datazen_driver_api::{TableSchema, TableType};
 
 async fn count_scoped_source_rows(
-    driver: &dyn crate::db::DatabaseDriver,
-    handle: &crate::db::ConnectionHandle,
+    driver: &dyn datazen_driver_api::DatabaseDriver,
+    handle: &datazen_driver_api::ConnectionHandle,
     endpoint: &crate::data_transfer::model::Endpoint,
     table: &str,
     scope: &crate::data_transfer::recordset::SourceScope,
@@ -42,9 +42,9 @@ async fn count_scoped_source_rows(
         .and_then(Option::as_ref)
         .ok_or_else(|| CommandError::Validation("source count query returned no count".into()))?;
     let count = match value {
-        crate::db::Value::Integer(value) => u64::try_from(*value)
+        datazen_driver_api::Value::Integer(value) => u64::try_from(*value)
             .map_err(|_| CommandError::Validation("source count was negative".into())),
-        crate::db::Value::String(value) => value.parse::<u64>().map_err(|_| {
+        datazen_driver_api::Value::String(value) => value.parse::<u64>().map_err(|_| {
             CommandError::Validation("source count was not an unsigned integer".into())
         }),
         _ => {
@@ -91,7 +91,7 @@ async fn preview_sql_file_target(
     // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
     let src_dialect = LegacySqlDialect::new(src_driver.as_ref());
     let src_handle = src_context.handle.clone();
-    job.source.schema = crate::services::metadata_schema(
+    job.source.schema = datazen_feature_core::services::schema_scope::metadata_schema(
         src_driver.as_ref(),
         job.source.normalized_schema(),
         None,
@@ -424,16 +424,21 @@ async fn preview_sql_file_target(
         }
     }
     let target_schemas: HashMap<String, TableSchema> = HashMap::new();
-    let plan_id = super::plans::issue_plan(
-        job,
-        &preview,
-        src_driver.as_ref(),
-        target_driver.as_ref(),
-        &source_schemas,
-        &target_schemas,
-        false,
-    )
-    .map_err(CommandError::from)?;
+    let plan_id = state
+        .transfer_plans
+        .issue(
+            super::plan_scope::desktop_organization_scope(),
+            crate::data_transfer::plan_store::PlanIssueRequest::new(
+                job,
+                &preview,
+                src_driver.as_ref(),
+                target_driver.as_ref(),
+                &source_schemas,
+                &target_schemas,
+                false,
+            ),
+        )
+        .map_err(CommandError::from)?;
     preview.plan_id = plan_id;
     Ok(preview)
 }
@@ -473,13 +478,13 @@ pub(crate) async fn preview_data_transfer_impl(
     let target_driver = tgt_context.driver.clone();
     let tgt_dialect = LegacySqlDialect::new(target_driver.as_ref());
     let target_handle = tgt_context.handle.clone();
-    job.source.schema = crate::services::metadata_schema(
+    job.source.schema = datazen_feature_core::services::schema_scope::metadata_schema(
         src_driver.as_ref(),
         job.source.normalized_schema(),
         None,
         src_config.schema.as_deref(),
     );
-    target.schema = crate::services::metadata_schema(
+    target.schema = datazen_feature_core::services::schema_scope::metadata_schema(
         target_driver.as_ref(),
         target.normalized_schema(),
         None,
@@ -829,17 +834,23 @@ pub(crate) async fn preview_data_transfer_impl(
         Vec::new()
     };
 
-    let plan_id = super::plans::issue_plan_with_target_dependencies(
-        job,
-        &preview,
-        src_driver.as_ref(),
-        target_driver.as_ref(),
-        &source_schemas_for_plan,
-        &target_schemas,
-        tgt_config.read_only,
-        target_table_dependencies,
-    )
-    .map_err(CommandError::from)?;
+    let plan_id = state
+        .transfer_plans
+        .issue(
+            super::plan_scope::desktop_organization_scope(),
+            crate::data_transfer::plan_store::PlanIssueRequest {
+                job,
+                preview: &preview,
+                source_driver: src_driver.as_ref(),
+                target_driver: target_driver.as_ref(),
+                source_schemas: &source_schemas_for_plan,
+                target_schemas: &target_schemas,
+                target_read_only: tgt_config.read_only,
+                target_table_dependencies,
+                ttl: crate::data_transfer::plan_store::TRANSFER_PLAN_TTL,
+            },
+        )
+        .map_err(CommandError::from)?;
     preview.plan_id = plan_id;
 
     Ok(preview)

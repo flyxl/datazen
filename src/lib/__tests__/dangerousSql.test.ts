@@ -191,6 +191,44 @@ describe('classifyRisk', () => {
     expect(planOnly.classification).toBe('read');
   });
 
+  // Mirrors the Rust sql_guard regression: option keywords can appear in
+  // either order and PostgreSQL accepts the `ANALYSE` spelling; skipping only
+  // the leading ANALYZE used to classify `EXPLAIN ANALYZE VERBOSE <write>` as
+  // a plan-only EXPLAIN while the statement is executed.
+  it('treats EXPLAIN ANALYZE options in any order / spelling as executing', () => {
+    for (const sql of [
+      'EXPLAIN ANALYZE VERBOSE DELETE FROM t',
+      'EXPLAIN VERBOSE ANALYZE DELETE FROM t',
+      'EXPLAIN VERBOSE ANALYSE DELETE FROM t',
+      'EXPLAIN ANALYSE UPDATE t SET a = 1 WHERE id = 1',
+      'EXPLAIN ANALYZE TRUE DELETE FROM t',
+      'EXPLAIN (ANALYSE TRUE, VERBOSE) DELETE FROM t',
+    ]) {
+      const a = classifyRisk(sql);
+      expect(a.classification).toBe('mutation');
+      expect(a.statements[0].strictWrite).toBe(true);
+    }
+
+    const plainExplain = classifyRisk('EXPLAIN VERBOSE DELETE FROM t');
+    expect(plainExplain.classification).toBe('read');
+    expect(plainExplain.statements[0].strictWrite).toBe(false);
+
+    // ANALYZE executes the following statement, so these are may-write
+    // (classified mutation) but not strict writes (not hard-blocked on a
+    // read-only host).
+    const boolPlusRead = classifyRisk('EXPLAIN ANALYZE TRUE SELECT * FROM t');
+    expect(boolPlusRead.classification).toBe('mutation');
+    expect(boolPlusRead.statements[0].strictWrite).toBe(false);
+
+    const analyseRead = classifyRisk('EXPLAIN ANALYSE SELECT * FROM t');
+    expect(analyseRead.classification).toBe('mutation');
+    expect(analyseRead.statements[0].strictWrite).toBe(false);
+
+    const analysePlanOnly = classifyRisk('EXPLAIN (ANALYSE FALSE) DELETE FROM t');
+    expect(analysePlanOnly.classification).toBe('read');
+    expect(analysePlanOnly.statements[0].strictWrite).toBe(false);
+  });
+
   it('returns empty assessment for empty / whitespace-only input', () => {
     expect(classifyRisk('').statements).toHaveLength(0);
     expect(classifyRisk('   ').statements).toHaveLength(0);

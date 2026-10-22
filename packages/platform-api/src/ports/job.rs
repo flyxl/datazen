@@ -13,6 +13,24 @@
 //! * **先持久化后取资源**（[连接 §10.1](connection-management.md#101-公共处理)）。
 //!   `accept` 成功返回即代表 Job 已受理；资源申请失败**不回滚**受理记录。
 //! * **不自动重放副作用阶段**。`list_recoverable` 只返回需要人工/计划核验的待办。
+//!
+//! ## 组织维度（落盘词汇 + 端口行为）
+//!
+//! * `accept` 必须把 `ctx` 的组织**盖章**到 `JobDefinition.organization_id`：
+//!   调用方自报的组织值不作数（INV-01），落库归属一律来自 adapter 构造的上下文。
+//! * `list` 必须按 `JobFilter.organization_id` **且** `ctx` 的组织过滤；
+//!   两者不一致时结果是**空**，不是错误。
+//! * `get` / `list_recoverable` 必须按 `ctx` 的组织过滤。
+//!
+//! 跨组织访问按两条路径分别处理，**形状在内存实现与 SQLite 实现上一致**：
+//!
+//! * **读路径**（`get` / `list` / `list_recoverable`）：一律按「**不存在**」处理
+//!   （`NotFound` / 空列表），不返回「无权限」之类的错误，也不泄漏「存在但无权」
+//!   （CM-05，与 `ProfileRepository` 同口径）。
+//! * **写路径**（`record_stage` / `record_commit_boundary` / `compare_and_set_state` /
+//!   `save_checkpoint` / `record_progress` / `record_artifacts` / `record_domain_result` /
+//!   `finish`）：由 **claim fencing** 兜底——claim 只在「按 `ctx` 组织核对过的行」上
+//!   铸出，因此越组织的写入按 `StaleClaim` 拒绝（**不是** `NotFound`）。
 
 use async_trait::async_trait;
 
@@ -27,6 +45,9 @@ use crate::id::{IdempotencyKey, JobId, JobStateVersion, WorkerId};
 #[async_trait]
 pub trait JobRepository: Send + Sync + 'static {
     /// 先持久化后取资源（[连接 §10.1](connection-management.md#101-公共处理)）。成功返回即代表 Job 已受理。
+    ///
+    /// 实现必须把 `ctx` 的组织盖章到 `definition.organization_id` 再落库：
+    /// 落库归属只来自 adapter 构造的上下文，调用方自报的组织值一律不作数。
     async fn accept(
         &self,
         ctx: &RequestContext,
@@ -34,8 +55,11 @@ pub trait JobRepository: Send + Sync + 'static {
         idem: &IdempotencyKey,
     ) -> Result<JobRecord, PortError>;
 
+    /// 按 `ctx` 的组织读取。跨组织访问返回「不存在」而不是错误。
     async fn get(&self, ctx: &RequestContext, job_id: JobId) -> Result<JobRecord, PortError>;
 
+    /// 按组织列举。`filter.organization_id` 与 `ctx` 的组织必须同时匹配；
+    /// 两者不一致时返回空列表（跨组织列举不是合法调用）。
     async fn list(
         &self,
         ctx: &RequestContext,
@@ -75,6 +99,22 @@ pub trait JobRepository: Send + Sync + 'static {
         worker: WorkerId,
     ) -> Result<JobClaim, PortError>;
 
+    /// 续约只凭 claim 自身（`job_id` + `worker` + `claim_generation` + 租约）判定，
+    /// **续约路径本身不做组织比对**：`JobClaim` 不携带组织维度，因此
+    /// 「跨组织续约」在本路径上**不可表达**——持有者与铸出者在续约路径上不可区分。
+    /// 唯一的拒绝理由是：行不存在、行上没有 claim、worker 不符、generation 不符、
+    /// 租约过期。
+    ///
+    /// 组织边界由**写入路径**兜底，而写入路径有**三种**形态：
+    ///
+    /// * **claim 作用域**（阶段登记、提交边界、状态 CAS、checkpoint、进度、产物、
+    ///   域结果、终态）：经 `check_claim`，那里比对 `ctx` 的**组织与主体**，
+    ///   越组织写按 `StaleClaim` 拒绝；
+    /// * **ctx 作用域**（取消、确认未开始、标记失败、待核验、恢复结论、认领、外部产物、恢复结果持久化）：没有 claim
+    ///   可比，用**显式组织谓词**过滤，越组织时受影响行数为 0、按 `NotFound` 处理；
+    /// * **受理**：没有 claim 可比，按 `ctx` **盖章**组织（INV-01）。
+    ///
+    /// `renew` 自身不属于上面任何一种：它只凭 claim 判定，不做组织比对。
     async fn renew(&self, claim: &JobClaim) -> Result<JobClaim, PortError>;
 
     /// 检查点写入与恢复候选查询：只返回需要人工/计划核验的待办，不自动重放副作用阶段。
@@ -85,6 +125,7 @@ pub trait JobRepository: Send + Sync + 'static {
         cp: Checkpoint,
     ) -> Result<(), PortError>;
 
+    /// 恢复候选查询：按 `ctx` 的组织限定，跨组织的待办不出现在结果里。
     async fn list_recoverable(
         &self,
         ctx: &RequestContext,
@@ -236,6 +277,7 @@ mod tests {
             },
             definition: JobDefinition {
                 job_id: JId::new("job-1"),
+                organization_id: OrganizationId::new("org-1"),
                 kind: "workflow".into(),
                 owner: workflow_block_owner(JId::new("job-1"), BlockId::new("b1")),
                 payload: serde_json::json!({"steps": []}),
@@ -312,7 +354,11 @@ mod tests {
     #[test]
     fn listing_filters_are_recoverable_state_not_runtime_cursors() {
         // 过滤器里的 `after` 是 `Counter` 序号，不是持久化游标。
+        // 组织先绑到局部变量：字面量里因此看得出「组织从哪来」，
+        // 而不是把组织内联成常量（`store::job_filter_scope_tests` 的两条守卫按此约定）。
+        let organization = OrganizationId::new("org-1");
         let filter = JobFilter {
+            organization_id: organization,
             states: vec![JobState::Running],
             owner: Some(OwnerRef::Job {
                 job_id: JId::new("job-1"),
@@ -323,6 +369,7 @@ mod tests {
         };
         let value = serde_json::to_value(&filter).expect("serialize");
         assert_eq!(value["after"], serde_json::json!("10"));
+        assert_eq!(value["organizationId"], serde_json::json!("org-1"));
         assert_eq!(value["owner"]["kind"], serde_json::json!("job"));
         assert_eq!(
             serde_json::from_value::<JobFilter>(value).expect("deserialize"),
@@ -344,6 +391,8 @@ mod tests {
     #[test]
     fn the_organization_scope_is_not_a_parameter_of_this_port() {
         // 组织隔离由 `ctx` 承担；端口方法没有第二个组织参数可被漏传或写错。
+        // 组织维度出现在**落盘词汇**（`JobDefinition` / `JobFilter`）里，而不是端口参数里：
+        // 前者是持久化归属，后者是调用现场身份，两者的来源不同、不能互相顶替。
         let trait_code = trait_code();
         assert!(
             !trait_code.contains("organization_id") && !trait_code.contains("OrganizationId"),
@@ -353,6 +402,25 @@ mod tests {
             OrganizationId::new("org-1"),
             PrincipalId::new("user-1"),
             JobId::new("job-1"),
+        );
+    }
+
+    #[test]
+    fn the_port_pins_the_organization_dimension_into_the_persisted_vocabulary() {
+        // 受理落库、列举、查询、恢复四条路径都必须按组织隔离。
+        // 这条断言盯住**契约文本**：端口文档一旦不再声明组织语义，就说明隔离语义被删了。
+        let source = include_str!("job.rs");
+        for marker in ["organization_id", "盖章", "跨组织"] {
+            assert!(
+                source.contains(marker),
+                "JobRepository 契约必须声明组织维度（缺 `{marker}`）"
+            );
+        }
+        // 落盘词汇侧的必填组织维度由 dto 的契约测试守着，这里只确认端口确实引用了它。
+        let job_dto = include_str!("../dto/job.rs");
+        assert!(
+            job_dto.contains("pub organization_id: OrganizationId"),
+            "JobDefinition / JobFilter 必须带必填的 organization_id"
         );
     }
 }

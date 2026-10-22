@@ -2,7 +2,6 @@
 use super::error::{resolve_override_path, CommandError, OVERRIDE_DISABLED_MSG};
 use super::AppState;
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
-pub use datazen_feature_core::backup::parse_restore_options;
 use std::{path::PathBuf, sync::Arc};
 use tauri::{Emitter, State};
 pub(crate) fn parse_backup_options(
@@ -16,7 +15,7 @@ pub(crate) fn validate_backup_filter_extension(extension: &str) -> Result<String
 #[derive(Clone)]
 struct DesktopBackupSource {
     platform: crate::platform::PlatformEntry,
-    registry: Arc<crate::db::DriverRegistry>,
+    registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
     store: Arc<crate::store::Store>,
 }
 impl DesktopBackupSource {
@@ -211,8 +210,12 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
             .clone()
             .filter(|s| !s.trim().is_empty())
             .or(config.database.clone());
-        let schema =
-            crate::services::metadata_schema(driver.as_ref(), None, None, config.schema.as_deref());
+        let schema = datazen_feature_core::services::schema_scope::metadata_schema(
+            driver.as_ref(),
+            None,
+            None,
+            config.schema.as_deref(),
+        );
         let target = datazen_platform_api::target::ExecutionTarget::new(
             datazen_platform_api::id::ConnectionId::new(connection.as_str()),
             datazen_platform_api::target::NamespaceTarget::new(database, None, schema, vec![]),

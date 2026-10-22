@@ -8,11 +8,11 @@
 //!    through the SSH session and pipe data bidirectionally.
 //! 5. Return the local port so DB drivers can connect to 127.0.0.1:<local>.
 
-use crate::db::{DriverError, SshTunnelConfig};
 use crate::ssh_known_hosts::{
     host_key_id, known_host_entry_from_key, load_known_hosts, mismatch_error_message,
     save_known_hosts, verify_host_key, HostKeyDecision, KnownHostEntry,
 };
+use datazen_driver_api::{DriverError, SshTunnelConfig};
 use russh::client::{self, AuthResult};
 use russh::keys::{self, ssh_key, PrivateKeyWithHashAlg};
 use std::collections::HashMap;
@@ -833,7 +833,7 @@ mod tests {
 /// `host:port`, and exposes counters for live sessions and opened channels.
 #[cfg(test)]
 pub(crate) mod test_fixture {
-    use crate::db::SshTunnelConfig;
+    use datazen_driver_api::SshTunnelConfig;
     use russh::server::{Auth, Config, Msg, Server as _, Session};
     use russh::Channel;
     use std::path::Path;

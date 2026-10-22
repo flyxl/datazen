@@ -5,8 +5,8 @@
 
 use super::test_fixtures::*;
 use super::*;
-use crate::db::Value;
 use crate::testing::app_state::TestAppState;
+use datazen_driver_api::Value;
 use datazen_feature_core::data_browsing::{
     canonicalize_changes, changes_fingerprint, plan_changes,
 };

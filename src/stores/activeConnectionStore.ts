@@ -78,7 +78,7 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
     }));
 
     try {
-      const dbSessionId = await connectionCommands.connect(connectionId);
+      const { dbSessionId } = await connectionCommands.connect(connectionId);
       if (import.meta.env.DEV) {
         console.log('[connect] pool created', dbSessionId);
       }

@@ -18,12 +18,12 @@ pub use network_provider::{desktop_network_provider, DesktopTunnelHost, DesktopT
 pub(crate) use http_proxy::verify_upstream as verify_http_proxy_upstream;
 pub(crate) use websocket::verify_upstream as verify_websocket_upstream;
 
-use crate::db::registry::DriverRegistry;
-use crate::db::{
-    ConnectionConfig, DriverError, HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig,
-};
 use crate::ssh_tunnel::SshTunnel;
 use crate::store::Store;
+use datazen_driver_api::{
+    ConnectionConfig, DriverError, HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig,
+};
+use datazen_runtime::driver_registry::registry::DriverRegistry;
 use std::path::Path;
 use std::time::Instant;
 use tokio::time::Duration;
@@ -119,7 +119,7 @@ pub async fn test_connection(
     store: &Store,
     registry: &DriverRegistry,
     config: ConnectionConfig,
-) -> Result<crate::db::ServerInfo, DriverError> {
+) -> Result<datazen_driver_api::ServerInfo, DriverError> {
     let known_hosts_path = store.data_dir().join("ssh_known_hosts.json");
     let (effective_config, _tunnel) = start_for_connection(
         resolve_saved_tunnel(store, config).await?,
@@ -154,7 +154,7 @@ pub async fn test_tunnel(
         schema: None,
         username: None,
         password: None,
-        ssl_mode: crate::db::SslMode::default(),
+        ssl_mode: datazen_driver_api::SslMode::default(),
         connection_timeout: 30,
         max_pool_size: 10,
         ssh_tunnel: None,
@@ -329,7 +329,7 @@ fn rewrite_to_local(mut config: ConnectionConfig, local_port: u16) -> Connection
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::SshTunnelConfig;
+    use datazen_driver_api::SshTunnelConfig;
 
     fn base_config() -> ConnectionConfig {
         ConnectionConfig {

@@ -302,28 +302,52 @@ function explainAnalyzeStatement(sig: SigTok[]): SigTok[] | null {
     const close = matchingCloseParen(sig, 1);
     if (close == null) return null;
     const options = sig.slice(2, close).filter((token) => token.kind === 'word');
-    const analyzeIndex = options.findIndex((token) => token.word === 'ANALYZE');
-    if (analyzeIndex < 0 || FALSE_SQL_VALUES.has(options[analyzeIndex + 1]?.word ?? '')) {
+    const analyzeIndex = options.findIndex((token) => isAnalyzeKeyword(token.word));
+    if (analyzeIndex < 0 || isFalseValue(options[analyzeIndex + 1]?.word)) {
       return null;
     }
     return sig.slice(close + 1);
   }
 
-  if (sig[1]?.word !== 'ANALYZE') return null;
-  let statementIndex = 2;
-  const analyzeValue = sig[statementIndex]?.word;
-  if (analyzeValue && BOOLEAN_SQL_VALUES.has(analyzeValue)) {
-    if (FALSE_SQL_VALUES.has(analyzeValue)) return null;
-    statementIndex += 1;
-  }
-  if (sig[statementIndex]?.word === 'VERBOSE') {
-    statementIndex += 1;
-    const verboseValue = sig[statementIndex]?.word;
-    if (verboseValue && BOOLEAN_SQL_VALUES.has(verboseValue)) {
+  // The shorthand accepts the option keywords in either order — PostgreSQL's
+  // grammar is `EXPLAIN opt_verbose opt_analyze`, and `EXPLAIN VERBOSE ANALYZE`
+  // is valid too. Skipping only the leading ANALYZE keyword misclassifies
+  // `EXPLAIN ANALYZE VERBOSE <write>` as a plan-only EXPLAIN (first surviving
+  // token VERBOSE is not a write verb) while the statement is executed.
+  let statementIndex = 1;
+  let sawAnalyze = false;
+  while (statementIndex < sig.length) {
+    const token = sig[statementIndex];
+    if (isAnalyzeKeyword(token.word)) {
+      sawAnalyze = true;
       statementIndex += 1;
+      // The optional boolean value after ANALYZE/ANALYSE (the `=` sign itself
+      // is not a word token) is part of the option, never the statement verb.
+      const boolWord = sig[statementIndex]?.word;
+      if (isExplicitBool(boolWord)) {
+        if (isFalseValue(boolWord)) return null;
+        statementIndex += 1;
+      }
+    } else if (token.word === 'VERBOSE') {
+      statementIndex += 1;
+    } else {
+      break;
     }
   }
+  if (!sawAnalyze) return null;
   return sig.slice(statementIndex);
+}
+
+function isAnalyzeKeyword(word: string | undefined): boolean {
+  return word === 'ANALYZE' || word === 'ANALYSE';
+}
+
+function isExplicitBool(word: string | undefined): boolean {
+  return word != null && BOOLEAN_SQL_VALUES.has(word);
+}
+
+function isFalseValue(word: string | undefined): boolean {
+  return word != null && FALSE_SQL_VALUES.has(word);
 }
 
 function hasTopLevelWhere(tokens: SqlToken[]): boolean {

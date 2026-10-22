@@ -100,7 +100,7 @@ async fn load_table_columns(
         Some(&table.driver_type),
     )
     .await?;
-    let catalog = crate::db::LegacyCatalogReader::new(resolved.driver.as_ref());
+    let catalog = datazen_driver_api::LegacyCatalogReader::new(resolved.driver.as_ref());
     let columns = state
         .schema_cache
         .get_columns(

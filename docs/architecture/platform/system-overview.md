@@ -89,30 +89,35 @@ flowchart TD
 
 ### 4.1 目标代码组织
 
-以下目录尚未创建；实施阶段才加入 workspace/build 配置。
+> 状态说明（2026-10-21 复核）：桌面形态的 Rust 共享包**已创建并加入 workspace**（`Cargo.toml` members 实测），本节的 crate 拆分不再是「尚未创建」目标；真正未落地的只剩 `server/` HTTP host 与 `packages/themes/` 的目标主题资源。下面按当前事实标注。
 
 ```text
-packages/application/        Rust 用例、DTO、错误、授权编排
-packages/runtime/            Rust session、lease、资源调度、execution、job
-packages/platform-api/       Rust SessionDirectory/BudgetCoordinator 等 ports 与环境适配
-packages/schema-diff/        共享 Schema Diff 领域引擎（从 src-tauri 分阶段抽取）
-packages/data-sync/          共享 Data Sync 领域引擎（从 src-tauri 分阶段抽取）
-packages/data-transfer/      共享 Data Transfer 领域引擎（从 src-tauri 分阶段抽取）
+packages/application/        Rust 用例、DTO、错误、授权编排        【已落地，workspace member】
+packages/runtime/            Rust session、lease、资源调度、execution、job【已落地，workspace member】
+packages/platform-api/       Rust ports 与环境适配（SessionDirectory/BudgetCoordinator 接口）【已落地】
+packages/platform-infra/     形态中立基础设施原语（脱敏、路径安全）      【已落地】
+packages/schema-diff/        共享 Schema Diff 领域引擎                  【已落地】
+packages/data-sync/          共享 Data Sync 领域引擎                    【已落地】
+packages/data-transfer/      共享 Data Transfer 领域引擎                【已落地】
+packages/migration-common/   迁移引擎共享的 pair/recordset 边界          【已落地】
+packages/feature-core/       共享 feature（Workflow/AI/MCP/Dashboard/导出/备份恢复）【已落地】
+packages/workspace-apps/     Wapp manifest/安装/存储内核                【已落地】
 packages/driver-api/         现有 Driver API 与可选能力
 packages/driver-sdk/         现有驱动前端元数据/方言/Command SDK
 packages/ai-api/             现有 AI Provider trait、工厂与调用协议
+packages/ai-providers/       现有 AI Provider 适配与 wire protocol 实现
 packages/drivers/            现有驱动 crate 与驱动 UI 源码（随驱动选型注入）
 packages/backend-client/     TypeScript DTO/client/transport 契约
 packages/wapp-sdk/           现有 Wapp 受控桥 SDK
 packages/extension-points/   现有桌面特权 EP 契约
 packages/ui/                 现有 @datazen/ui 基础视图组件
-packages/themes/             目标静态主题资源与 schema
-server/                      Rust HTTP host 与服务端 composition root
+packages/themes/             目标静态主题资源与 schema                  【未落地：当前目录仍是旧 v1 ThemePack 存档】
+server/                      Rust HTTP host 与服务端 composition root   【未落地：目标设计】
 src-tauri/                   桌面 host、IPC/文件/窗口 adapter 与遗留命令
 src/                         共享 React 产品与平台桥
 ```
 
-标“现有”的包不在本次新建范围，按现有构建与注入方式复用；`packages/themes` 当前目录仍是旧 v1 ThemePack 存档，目标主题资源与其并存，迁移前不改旧目录。
+`server/` 与 `packages/themes/` 在实施阶段才加入 workspace/build 配置；`packages/themes` 当前目录仍是旧 v1 ThemePack 存档，目标主题资源与其并存，迁移前不改旧目录。桌面 multi-worker 的编排目标（worker 隔离、drain、RuntimeRouter 投入使用）也未落地：当前桌面是单进程组装，依赖方向与下面段落一致。
 
 依赖方向：host → application/runtime/领域包；application/runtime → platform-api/driver-api；driver → driver-api。`SessionDirectory` 与 `BudgetCoordinator` 的接口归 `platform-api`，SessionRegistry/ResourceManager 只依赖这些 port；桌面/单进程先用内存适配，多 worker 再替换目录和全局预算适配。领域引擎归 `packages/schema-diff`、`packages/data-sync`、`packages/data-transfer`；Tauri 命令、窗口与文件选择留在 `src-tauri` adapter。领域包不得反向 import host。JobRuntime 通过注册的 JobHandler 调用领域引擎，避免 runtime 与领域 crate 循环依赖。
 
@@ -257,6 +262,8 @@ interface ArtifactChunk {
 | BudgetCoordinator | 申请节点额度、续期、drain；失联时停止新增资源 |
 
 本表 10 行不含 `IdentityResolver`（它已在 §4 模块职责表中引入）：执行身份解析（`executionIdentityKey` 的生产者）由 `IdentityResolver` 承担，`SecretProvider` 只负责版本化秘密材料的读取与轮换；边界见共享边界详细设计。
+
+`IdentityResolver` 的桌面实现**已落地**（`src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`，装配于 `PlatformAdapter::inject`）：身份键由 `(organizationId, connectionId, policyIsolationKey)` 加一把服务端固定盐（宿主主密钥经 HMAC 域分离派生的子钥）确定性派生，因此同一三元组恒得同一键、凭据轮换只推进 `credentialRevision`；委托走独立入口 `resolve_delegation`，域标签与输入集都与本人路径不同，校验不过失败关闭、不降级为调用者权限（CM-06）；**`resolve` 在委托上下文上一律拒绝**——委托身份只能由 `resolve_delegation` 产出。客户端传入的用户名、角色与 `principal` 不参与派生（CM §4.1）。
 
 Desktop adapters 使用现有 Store/keychain/file 管理能力逐步适配；Server adapters 使用服务端元数据数据库、SecretProvider 与 ArtifactStore。第一版推荐 PostgreSQL 管理组织、配置版本、任务、审计和额度，不与用户业务数据库混用。SSE 用于单向状态通知，取消走 HTTP；有双向交互需要时再引入 WebSocket。
 

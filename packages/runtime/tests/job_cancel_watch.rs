@@ -106,6 +106,7 @@ fn payload(plan_id: &str) -> serde_json::Value {
 fn definition(job_id: &str) -> JobDefinition {
     JobDefinition {
         job_id: JobId::new(job_id),
+        organization_id: org(),
         kind: "schemaDiffApply".into(),
         owner: datazen_platform_api::OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("client-1"),
@@ -467,7 +468,9 @@ async fn mid_stage_cancel_without_prior_boundary_preserves_handler_effect() {
     assert_eq!(result.state, JobState::Cancelled);
     assert_eq!(result.effect_outcome, EffectOutcome::NotStarted);
     assert!(
-        rig.repo.committed_boundaries(&rig.job_id).is_empty(),
+        rig.repo
+            .committed_boundaries(&ctx(), &rig.job_id)
+            .is_empty(),
         "取消不得制造提交边界"
     );
     assert_eq!(
@@ -500,7 +503,7 @@ async fn mid_stage_cancel_keeps_prior_boundary_and_adds_none() {
     let result = run.await.expect("join").expect("run");
     assert_eq!(result.state, JobState::Cancelled);
     assert_eq!(result.effect_outcome, EffectOutcome::PartiallyApplied);
-    let persisted = rig.repo.committed_boundaries(&rig.job_id);
+    let persisted = rig.repo.committed_boundaries(&ctx(), &rig.job_id);
     assert_eq!(
         persisted.len(),
         1,

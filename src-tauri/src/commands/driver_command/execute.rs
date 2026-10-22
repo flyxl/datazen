@@ -1,16 +1,16 @@
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
-use super::access::access_level_for_mode;
 use super::helpers::{
     apply_query_result_limit, inject_sql_target_fields, nonempty, query_rows_affected,
     record_sql_command_outcome, sql_from_input,
 };
 use super::resolve::resolve_command_driver;
 use super::types::ExecuteDriverCommandRequest;
-use crate::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
     check_command_access, validate_command_input, CommandResult, DriverSaveDialogSpec,
 };
+use datazen_feature_core::mcp::permission::McpPermissionMode;
+use datazen_feature_core::services::command_policy::access_level_for_mode;
 
 pub(crate) async fn execute_driver_command_impl(
     state: &AppState,
@@ -94,7 +94,7 @@ pub(crate) async fn execute_driver_command_with_mode(
         }
         if let Some(mode) = permission_mode {
             if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
-                crate::mcp::permission::check_sql_allowed(sql, mode)
+                datazen_feature_core::mcp::permission::check_sql_allowed(sql, mode)
                     .map_err(CommandError::Validation)?;
             }
         }
@@ -110,7 +110,7 @@ pub(crate) async fn execute_driver_command_with_mode(
     );
     if let Some(sql) = sql.as_ref() {
         tracing::debug!(
-            sql_preview = %crate::log_redact::sql_preview_for_log(sql),
+            sql_preview = %datazen_platform_infra::redaction::sql_preview_for_log(sql),
             "execute_driver_command sql"
         );
     }
@@ -153,7 +153,7 @@ pub(crate) async fn execute_driver_command_with_mode(
                         None,
                     )
                     .await;
-                    if crate::cache::sql_may_mutate_schema(sql) {
+                    if datazen_runtime::schema_cache::sql_may_mutate_schema(sql) {
                         if let Some(id) = db_session_id.as_deref() {
                             state.schema_cache.clear_connection(id).await;
                         }

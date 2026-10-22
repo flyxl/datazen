@@ -39,7 +39,7 @@ describe('activeConnectionStore', () => {
   });
 
   it('connect succeeds and marks connected', async () => {
-    mockConnectionCommands.connect.mockResolvedValueOnce('pool-abc');
+    mockConnectionCommands.connect.mockResolvedValueOnce({ connectionId: 'cfg-1', dbSessionId: 'pool-abc' });
     mockConnectionCommands.testConnection.mockResolvedValueOnce({ version: '16' });
     mockConnectionCommands.getConnectionInfo.mockResolvedValueOnce({
       capabilities: {
@@ -104,7 +104,7 @@ describe('activeConnectionStore', () => {
   });
 
   it('disconnect calls backend and removes entry', async () => {
-    mockConnectionCommands.connect.mockResolvedValueOnce('pool-1');
+    mockConnectionCommands.connect.mockResolvedValueOnce({ connectionId: 'cfg-4', dbSessionId: 'pool-1' });
     mockConnectionCommands.testConnection.mockResolvedValueOnce({});
     await useActiveConnectionStore.getState().connect(makeConfig({ id: 'cfg-4' }));
 

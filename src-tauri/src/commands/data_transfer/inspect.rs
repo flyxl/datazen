@@ -10,8 +10,8 @@ use crate::data_transfer::{
     enforce_transfer_pairing, inspect_tables, structure::enrich_create_new_target_types,
     TableInspectResult, TableMapping, TransferMode,
 };
-use crate::services::metadata_schema;
 use datazen_driver_api::TableType;
+use datazen_feature_core::services::schema_scope::metadata_schema;
 
 pub(crate) async fn inspect_data_transfer_impl(
     state: &AppState,
@@ -425,10 +425,10 @@ pub(crate) async fn inspect_sql_file_transfer_impl(
 mod tests {
     use super::*;
     use crate::data_transfer::model::TableMappingStatus;
-    use crate::db::TableInfo;
     use crate::testing::app_state::TestAppState;
     use crate::testing::mock_driver::MockDriverOptions;
     use datazen_driver_api::ColumnSchema;
+    use datazen_driver_api::TableInfo;
 
     fn table(name: &str) -> TableInfo {
         TableInfo {

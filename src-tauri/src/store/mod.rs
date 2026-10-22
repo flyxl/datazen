@@ -21,13 +21,13 @@ mod tunnels;
 
 #[allow(unused_imports)] // public re-exports for IPC / other modules
 pub use app_db::{
-    AppDb, AppDbError, DashboardRecord, DashboardWorkflowRef, WidgetRecord, WidgetRunRecord,
-    WorkflowRecord, WorkflowVisibility, APP_DB_FILE,
+    AppDb, AppDbError, DashboardRecord, WidgetRecord, WidgetRunRecord, WorkflowRecord,
+    WorkflowVisibility, APP_DB_FILE,
 };
 pub(crate) use favorites::NewFavorite;
 pub use history_db::{
-    HistoryDb, HistoryEntry, HistoryListItem, HistoryOrder, HistoryScope, MigrationProfileRef,
-    MigrationRunFilter, MigrationRunPage, MigrationRunRecord, QueryHistoryFilter, QueryHistoryPage,
+    HistoryDb, HistoryOrder, HistoryScope, MigrationProfileRef, MigrationRunFilter,
+    MigrationRunPage, MigrationRunRecord, QueryHistoryFilter, QueryHistoryPage,
 };
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
 // The named-view DTO itself is the shared layer's
@@ -442,6 +442,11 @@ impl Store {
 
 #[cfg(test)]
 mod tests;
+
+/// `JobFilter` 的组织维度必填在全仓的落点守卫（源码扫描，见文件头注释）。
+#[cfg(test)]
+#[path = "job_filter_scope_tests.rs"]
+mod job_filter_scope_tests;
 
 #[async_trait::async_trait]
 impl datazen_platform_api::ports::SettingsRepository for Store {

@@ -8,10 +8,12 @@ use datazen_driver_api::*;
 
 mod duckdb;
 mod resource_provider;
+mod schema_object_sql;
 mod sql_target;
 mod structure;
 mod sync_adapter;
 pub use duckdb::*;
+pub use schema_object_sql::DuckDbSchemaObjectSql;
 pub use sync_adapter::DuckDbSyncAdapter;
 
 /// The one driver every caller shares, and the one provider bound to it.

@@ -1,11 +1,11 @@
 //! DataZen MCP Server — orchestration entry (struct, core helpers, tests).
 
 use crate::commands::AppState;
-use crate::mcp::allowlist;
-use crate::mcp::permission::McpPermissionMode;
 use crate::mcp::session::McpSessionRegistry;
 use crate::mcp::tool_help;
 use crate::platform::identity::{new_request_id, DesktopIdentity};
+use datazen_feature_core::mcp::allowlist;
+use datazen_feature_core::mcp::permission::McpPermissionMode;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::id::ClientInstanceId;
 use rmcp::ErrorData as McpError;
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn test_resolve_query_limit_none_defaults_to_100() {
         assert_eq!(
-            crate::services::db_tools::resolve_query_limit(None),
+            datazen_feature_core::services::db_tools::resolve_query_limit(None),
             Some(100)
         );
     }
@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn test_resolve_query_limit_some_passthrough() {
         assert_eq!(
-            crate::services::db_tools::resolve_query_limit(Some(50)),
+            datazen_feature_core::services::db_tools::resolve_query_limit(Some(50)),
             Some(50)
         );
     }
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn test_resolve_query_limit_some_capped_at_max() {
         assert_eq!(
-            crate::services::db_tools::resolve_query_limit(Some(999_999)),
+            datazen_feature_core::services::db_tools::resolve_query_limit(Some(999_999)),
             Some(50_000)
         );
     }
