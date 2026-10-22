@@ -415,5 +415,6 @@ pub async fn read(
         total_rows_kind,
         page: request.page,
         page_size: request.page_size,
+        paging: None,
     })
 }

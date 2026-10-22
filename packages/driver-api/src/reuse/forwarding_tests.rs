@@ -33,10 +33,11 @@
 //! controls below, so the guard cannot pass by finding nothing.
 
 /// The canonical contract, read as text.
-const TRAITS_RS: &str = include_str!("traits.rs");
+const TRAITS_RS: &str = include_str!("../traits.rs");
 
-/// The wrapper whose forwarding table is under guard.
-const REUSE_RS: &str = include_str!("reuse.rs");
+/// The wrapper whose forwarding table is under guard. The table is one file —
+/// one impl block — and it is read as a whole.
+const REUSE_DRIVER_IMPL_RS: &str = include_str!("driver_impl.rs");
 
 const TRAIT_ANCHOR: &str = "pub trait DatabaseDriver";
 const IMPL_ANCHOR: &str = "impl DatabaseDriver for ReuseDriver";
@@ -45,13 +46,16 @@ const IMPL_ANCHOR: &str = "impl DatabaseDriver for ReuseDriver";
 #[test]
 fn reuse_driver_decides_on_every_database_driver_method() {
     let traits_stripped = strip_comments_and_strings(TRAITS_RS);
-    let reuse_stripped = strip_comments_and_strings(REUSE_RS);
     let trait_body = block_after(&traits_stripped, TRAIT_ANCHOR)
         .expect("guard ran vacuously: `pub trait DatabaseDriver` block not found");
-    let impl_body = block_after(&reuse_stripped, IMPL_ANCHOR)
-        .expect("guard ran vacuously: `impl DatabaseDriver for ReuseDriver` block not found");
 
     let declared = method_names(trait_body);
+
+    // The forwarding table is one impl block in one file, so it is read as
+    // one. A method that is forwarded nowhere shows up as undecided.
+    let reuse_stripped = strip_comments_and_strings(REUSE_DRIVER_IMPL_RS);
+    let impl_body = block_after(&reuse_stripped, IMPL_ANCHOR)
+        .expect("guard ran vacuously: `impl DatabaseDriver for ReuseDriver` block not found");
     let decided = method_names(impl_body);
 
     assert!(

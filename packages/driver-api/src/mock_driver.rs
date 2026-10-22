@@ -175,6 +175,15 @@ pub struct MockDriverOptions {
     /// a primary key. `None` (the default) lets the trait's own default
     /// decide, which is "allowed".
     pub allow_first_column_fallback_order: Option<bool>,
+    /// Whether this mock claims the keyset (seek) paging capability. `false`
+    /// (the default) models a driver that has not opted in, so the host reads
+    /// every page with an `OFFSET`.
+    pub supports_keyset_pagination: bool,
+    /// Whether the mock refuses to render a seek condition even though it
+    /// claims the capability. `false` (the default) renders the portable
+    /// lexicographic condition; `true` models a dialect that cannot express
+    /// this particular order.
+    pub keyset_predicate_returns_none: bool,
 }
 
 impl Default for MockDriverOptions {
@@ -233,6 +242,8 @@ impl Default for MockDriverOptions {
             count_total_value: None,
             default_order_columns: None,
             allow_first_column_fallback_order: None,
+            supports_keyset_pagination: false,
+            keyset_predicate_returns_none: false,
         }
     }
 }
@@ -559,6 +570,24 @@ impl DatabaseDriver for MockDriver {
         self.opts
             .allow_first_column_fallback_order
             .unwrap_or_else(crate::traits::browsing::allow_first_column_fallback_order)
+    }
+
+    fn supports_keyset_pagination(&self) -> bool {
+        self.opts.supports_keyset_pagination
+    }
+
+    fn keyset_predicate_sql(
+        &self,
+        order_columns: &[(String, bool)],
+        boundary: &[(String, Value)],
+    ) -> Option<String> {
+        // A driver that does not claim the capability has no condition to
+        // give: the host never asks one, and asking one anyway must not
+        // produce a condition.
+        if !self.opts.supports_keyset_pagination || self.opts.keyset_predicate_returns_none {
+            return None;
+        }
+        crate::keyset::lexicographic_seek_predicate(self, order_columns, boundary)
     }
 
     async fn close_database(

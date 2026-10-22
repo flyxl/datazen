@@ -565,6 +565,16 @@ pub struct TableDataResult {
     pub total_rows_kind: Option<CountStrategy>,
     pub page: u32,
     pub page_size: u32,
+    /// How this page was paged.
+    ///
+    /// `None` means "the caller was not told" — an older back end, or a
+    /// construction site that has nothing to say — and reads as `OFFSET`
+    /// paging, which is what every read did before this field existed. The
+    /// field is optional so that a caller that does not know about it is not
+    /// broken by it; the *decision* it carries is not optional for the host:
+    /// the host fills it in on every read it performs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paging: Option<crate::keyset::PagePagingInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

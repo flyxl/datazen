@@ -250,6 +250,22 @@ pub(crate) fn build_insert_statement<D: DatabaseDriver + ?Sized>(
     )
 }
 
+/// The dialect clause that makes a new row's primary key available, or `None`
+/// when this dialect cannot return it.
+///
+/// The host appends `Some(clause)` to the insert and reads the returned row.
+/// `Some("")` is the "already inlined" signal: the driver's
+/// `build_insert_statement` placed the clause itself (T-SQL
+/// `OUTPUT INSERTED.*` cannot follow `VALUES`), so the host must not append
+/// anything — not even a space — and must read through the query path.
+/// `None` means the host must not guess: it refreshes the page afterwards.
+///
+/// The default is `None`, which is the pre-existing behaviour: a dialect that
+/// cannot backfill the new key says so instead of the host inventing one.
+pub(crate) fn insert_returning_clause(_columns: &[&str]) -> Option<String> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

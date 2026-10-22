@@ -17,6 +17,7 @@ pub mod dialect;
 mod explain_plan;
 mod factory;
 pub mod filters;
+pub mod keyset;
 pub mod mock_driver;
 pub mod namespace;
 mod query_stream;

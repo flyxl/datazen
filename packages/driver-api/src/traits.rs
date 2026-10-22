@@ -25,6 +25,7 @@ use crate::{
 
 mod command_api;
 mod key_value;
+mod keyset;
 mod result_origin;
 mod schema_target;
 pub(crate) mod sql_text;
@@ -149,6 +150,28 @@ pub trait DatabaseDriver: Send + Sync {
         sql_text::pagination_syntax(self, limit, offset)
     }
 
+    /// Whether this driver can read a page by seek.
+    ///
+    /// `false` — the default — keeps every read on `OFFSET` paging. See
+    /// [`keyset::supports_keyset_pagination`].
+    fn supports_keyset_pagination(&self) -> bool {
+        keyset::supports_keyset_pagination(self)
+    }
+
+    /// The `WHERE` fragment that reads the rows after a boundary, without a
+    /// leading `WHERE`/`AND`.
+    ///
+    /// `None` means the combination cannot be turned into a safe condition;
+    /// the host then falls back to `OFFSET` paging for this request. See
+    /// [`keyset::keyset_predicate_sql`].
+    fn keyset_predicate_sql(
+        &self,
+        order_columns: &[(String, bool)],
+        boundary: &[(String, Value)],
+    ) -> Option<String> {
+        keyset::keyset_predicate_sql(self, order_columns, boundary)
+    }
+
     /// Whether the driver supports EXPLAIN query plan analysis.
     fn supports_explain(&self) -> bool {
         true
@@ -198,44 +221,22 @@ pub trait DatabaseDriver: Send + Sync {
         filter_contract::like_escape_clause(escape_char)
     }
 
-    /// Whether this driver has a **real schema level** in its namespace hierarchy.
-    ///
-    /// `true` for engines whose relations are addressed as `schema.table`
-    /// (PostgreSQL, SQL Server, DuckDB). `false` for engines where the database
-    /// *is* the namespace (MySQL/MariaDB, ClickHouse) or that have no schema
-    /// concept at all (SQLite, Redis, MongoDB, …).
-    ///
-    /// This drives [`validate_schema_target`]: a schema-aware driver **must**
-    /// receive `Some(schema)` (including the default `public`/`dbo`), and a
-    /// schema-less driver **must** receive `None`. Both mismatches are errors —
-    /// there is no implicit fallback, because an implicit schema is exactly the
-    /// kind of hidden session state that produced BUG-003.
+    /// Whether this driver has a **real schema level** in its namespace
+    /// hierarchy. See [`schema_target::has_schema_level`].
     fn has_schema_level(&self) -> bool {
-        false
+        schema_target::has_schema_level()
     }
 
-    /// Whether one connection can address more than one `database`.
-    ///
-    /// Engines that resolve a relation against whatever database the session
-    /// landed on (PostgreSQL silently defaults to `postgres`) need the target
-    /// stated explicitly, because a missing value cannot be told apart from a
-    /// deliberate one. Drivers with a single fixed database return `false`.
+    /// Whether one connection can address more than one `database`. See
+    /// [`schema_target::has_multi_database`].
     fn has_multi_database(&self) -> bool {
-        false
+        schema_target::has_multi_database()
     }
 
     /// Conventional schema this driver resolves unqualified relations in.
-    ///
-    /// Used only as the last resort when a caller has **no** schema to offer
-    /// (a hand-typed MCP table name, a table name scraped out of SQL text) and
-    /// the driver declares [`has_schema_level`](Self::has_schema_level). Every
-    /// caller that already knows the schema — the object tree, the ER diagram,
-    /// schema diff, sync and transfer all carry it on `TableInfo` — must pass
-    /// that real value instead. Keeping the fallback here rather than in the
-    /// host is what stops `public` / `dbo` from being hardcoded per driver
-    /// outside the driver that owns the convention.
+    /// See [`schema_target::default_schema`].
     fn default_schema(&self) -> Option<&'static str> {
-        None
+        schema_target::default_schema()
     }
 
     /// Whether multi-statement DDL can be wrapped in a single transaction.
@@ -316,16 +317,10 @@ pub trait DatabaseDriver: Send + Sync {
     }
 
     /// Dialect clause that makes a new row's primary key available, or `None`
-    /// when this dialect cannot return it.
-    ///
-    /// The host appends `Some(clause)` to the insert and reads the returned row.
-    /// `Some("")` is the "already inlined" signal: the driver's
-    /// [`Self::build_insert_statement`] placed the clause itself (T-SQL
-    /// `OUTPUT INSERTED.*` cannot follow `VALUES`), so the host must not append
-    /// anything — not even a space — and must read through the query path.
-    /// `None` means the host must not guess: it refreshes the page afterwards.
-    fn insert_returning_clause(&self, _columns: &[&str]) -> Option<String> {
-        None
+    /// when this dialect cannot return it. See
+    /// [`sql_text::insert_returning_clause`].
+    fn insert_returning_clause(&self, columns: &[&str]) -> Option<String> {
+        sql_text::insert_returning_clause(columns)
     }
 
     /// The host this driver dials when the connection config leaves `host` unset.

@@ -146,6 +146,7 @@ impl QueryExecutor {
                 total_rows_kind: None,
                 page,
                 page_size,
+                paging: None,
             });
         }
 
@@ -170,6 +171,7 @@ impl QueryExecutor {
                     total_rows_kind: Some(CountStrategy::Unsupported),
                     page,
                     page_size,
+                    paging: None,
                 })
             }
             CountStrategy::Exact => {
@@ -210,6 +212,7 @@ impl QueryExecutor {
                     total_rows_kind: Some(CountStrategy::Exact),
                     page,
                     page_size,
+                    paging: None,
                 })
             }
             CountStrategy::Estimated => {
@@ -272,6 +275,7 @@ impl QueryExecutor {
                     total_rows_kind: Some(kind),
                     page,
                     page_size,
+                    paging: None,
                 })
             }
         }
