@@ -14,8 +14,15 @@ export function TableClipboardStatus({ bridge }: { bridge: TableClipboardBridge 
   const { t } = useI18n();
   const { lastPaste, problems, clear, confirmElement } = bridge;
   const firstProblem = problems[0];
+  // "Pasted N cell(s)" is about cells that moved. Reverting staged edits moves none, so the
+  // two conditions are deliberately separate: folding them together renders "Pasted 0 cell(s)".
   const hasResult = lastPaste !== null && (lastPaste.staged > 0 || lastPaste.skipped > 0);
-  const visible = hasResult || firstProblem !== undefined;
+  // `overwrittenPending` alone is still a real outcome worth a line: pasting the original
+  // values back reverts staged edits without staging or skipping anything (§3.4).
+  const visible =
+    hasResult ||
+    (lastPaste !== null && lastPaste.overwrittenPending > 0) ||
+    firstProblem !== undefined;
 
   return (
     <>

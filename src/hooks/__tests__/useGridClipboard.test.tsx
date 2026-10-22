@@ -295,6 +295,30 @@ describe('useGridClipboard', () => {
     expect(host.current().lastPaste).toMatchObject({ staged: 0, cancelled: true });
   });
 
+  it('claims nothing when the user cancels a cross-table paste', async () => {
+    // The cross-table notice reads "Pasted from another table into X" — a past-tense claim.
+    // It used to be emitted before the question was answered, so cancelling left a line
+    // saying a paste had happened and nothing else to contradict it.
+    const stagePasteWrites = vi.fn(() => ({ staged: 0, skipped: 0, problems: [] }));
+    const host = mount({ stagePasteWrites });
+
+    let pending: Promise<boolean> = Promise.resolve(false);
+    act(() => {
+      // No recorded source: an external paste, which must ask first.
+      pending = host.current().pasteText('x\ty', { rowIndex: 0, columnName: 'name' });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByTestId('confirm-dialog-cancel'));
+    await act(async () => {
+      await pending;
+    });
+
+    expect(host.current().problems).toEqual([]);
+    expect(host.current().lastPaste).toMatchObject({ cancelled: true });
+  });
+
   it('refuses a read-only panel with the tip and consumes the event', async () => {
     const stagePasteWrites = vi.fn(() => ({ staged: 0, skipped: 0, problems: [] }));
     const onReadOnly = vi.fn();
@@ -371,6 +395,34 @@ describe('useGridClipboard', () => {
     const text = host.current().handlers.buildCopyText({ mode: 'row', rowIndices: [] });
     expect(text).toBeNull();
     expect(peekClipboardSource()).toBeNull();
+  });
+
+  it('reports a dropped source column once, with its name', async () => {
+    // The clipboard still holds what we copied, so no confirmation — but the block carries a
+    // column this table does not have. The planner aggregates the dropped names into one
+    // `columnMismatch`; the hook used to report each one again without a `detail`, and that
+    // copy formatted as "0 source column(s) were dropped … : ''" and came first.
+    const stagePasteWrites = vi.fn(() => ({ staged: 1, skipped: 0, problems: [] }));
+    const host = mount({ stagePasteWrites });
+    recordClipboardSource(
+      {
+        tableKey: tableChangeKey(context),
+        columnNames: ['name', 'ghost'],
+        columnTypes: ['text', 'text'],
+      },
+      'Al\tX',
+    );
+
+    await act(async () => {
+      await host.current().pasteText('Al\tX', { rowIndex: 0, columnName: 'name' });
+    });
+
+    const dropped = host.current().problems.filter(
+      (problem) => problem.code === 'grid.paste.columnMismatch',
+    );
+    expect(dropped).toHaveLength(1);
+    // The detail carries the names; without it the sentence names nothing and counts zero.
+    expect(dropped[0]?.detail).toBe('ghost');
   });
 
   it('clears the per-cell marks when a new paste starts', async () => {

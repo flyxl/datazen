@@ -13,6 +13,7 @@ import { classifyDataType } from '../lib/dataTypeColors';
 import {
   GRID_PASTE_CHUNK_CELLS,
   GRID_PASTE_CONFIRM_CELLS,
+  GRID_PASTE_MAX_CELLS,
   buildRowsMatrix,
   buildSelectionMatrix,
   parseClipboardMatrix,
@@ -127,7 +128,9 @@ export function describePasteProblem(
     case 'grid.paste.tooLarge':
       return t('dataTable.pasteTooLarge', {
         cells: problem.detail ?? '0',
-        maxCells: '100000',
+        // From the constant the parser enforces. A literal here drifts silently the day the
+        // limit moves, and the user would be told a number the code does not obey.
+        maxCells: String(GRID_PASTE_MAX_CELLS),
       });
     case 'grid.paste.raggedRow':
       return problem.detail ?? t('dataTable.pasteRaggedRow', { row: '', count: '', expected: '' });
@@ -158,12 +161,13 @@ export function describePasteProblem(
       return t('dataTable.pasteCrossTableNotice', { table: problem.detail ?? '' });
     case 'grid.cell.readOnly':
       // No column ⇒ the whole panel is read-only (the paste never reached a column); with a
-      // column ⇒ one auto-increment column was skipped and the rest was written.
+      // column ⇒ that one column cannot be written and the rest still lands.
+      //
+      // The **column name** is in `column`; `detail` carries the *reason* (`auto-increment`),
+      // not a name list. Reading `detail` as names told the user "cannot be written: for
+      // auto-increment columns" — a sentence that names no column at all.
       return problem.column
-        ? t('dataTable.pasteReadOnlyColumn', {
-            count: problem.detail ? problem.detail.split(', ').length : 1,
-            columns: problem.detail ?? problem.column,
-          })
+        ? t('dataTable.pasteReadOnlyColumn', { count: 1, columns: problem.column })
         : t('dataTable.readOnlyPasteDisabled');
     case 'grid.cell.noRowIdentity':
       return t('dataTable.pasteNoRowIdentity');
@@ -496,22 +500,22 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
         context,
       });
 
-      // Diagnostics first: the user has to know a cross-table block is about to land here
-      // even when the confirmation is skipped, and the dropped columns always.
-      if (plan.crossTable !== false) {
-        report({ code: 'grid.paste.crossTable', row: null, column: null, detail: tableLabel });
-      }
-      for (const dropped of plan.droppedColumns) {
-        report({ code: 'grid.paste.columnMismatch', row: null, column: dropped });
-      }
-      for (const skippedColumn of plan.skippedColumns) {
-        report({ code: 'grid.cell.readOnly', row: null, column: skippedColumn, detail: 'auto-increment' });
-      }
-      for (const problem of plan.problems) {
-        if (problem.code === 'grid.cell.readOnly' && problem.detail === 'auto-increment') continue;
-        report(problem);
-      }
+      // `plan.problems` is the complete diagnostic list: the planner aggregates dropped
+      // columns into one `columnMismatch` (with the names) and reports each unwritable column
+      // with its name. Reporting them here again duplicated the messages — and the copy built
+      // from `plan.droppedColumns` had no `detail`, so it rendered as "0 … : ''".
+      //
+      // Reported **after** the user agrees, because these lines describe what happened. The
+      // cross-table notice in particular reads "Pasted from another table into X", which is a
+      // lie once the user answers "no" — and the dialog already said it before the decision.
+      const reportPlanProblems = () => {
+        if (plan.crossTable !== false) {
+          report({ code: 'grid.paste.crossTable', row: null, column: null, detail: tableLabel });
+        }
+        for (const problem of plan.problems) report(problem);
+      };
       if (plan.writes.length === 0) {
+        reportPlanProblems();
         setLastPaste({
           cells: 0,
           staged: 0,
@@ -540,6 +544,7 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
         }
       }
 
+      reportPlanProblems();
       let staged = 0;
       let skipped = plan.skipped;
       for (let start = 0; start < plan.writes.length; start += GRID_PASTE_CHUNK_CELLS) {

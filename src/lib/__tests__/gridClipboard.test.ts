@@ -465,6 +465,38 @@ describe('planPaste', () => {
     expect(plan.problems.map((problem) => problem.code)).toContain('grid.paste.tooLarge');
   });
 
+  it('keeps a name-aligned paste inside the region in clip mode', () => {
+    // Name alignment matches by *name*, so a two-column block can map to columns that are far
+    // apart (`id` … `score`) even though the user selected a narrow rectangle. `clip` promised
+    // never to leave the rectangle, but the edge check only ran for position alignment — the
+    // write landed outside the selection.
+    const plan = planPaste({
+      ...baseOptions,
+      overflow: 'clip',
+      region: { topRow: 0, bottomRow: 2, leftColumn: 'id', rightColumn: 'name' },
+      matrix: matrixOf([['7', '99']]),
+      anchor: { rowIndex: 0, columnName: 'name' },
+      source: {
+        tableKey: 'users',
+        columnNames: ['id', 'score'],
+        columnTypes: ['number', 'number'],
+      },
+      context: {
+        connectionId: 'c1',
+        dbSessionId: 's1',
+        driverType: 'postgres',
+        database: 'app',
+        schema: null,
+        table: 'users',
+      },
+    });
+
+    expect(plan.alignment).toBe('byName');
+    // `score` is outside the selected rectangle: skipped, not written.
+    expect(plan.writes.map((write) => write.columnName)).toEqual(['id']);
+    expect(plan.skipped).toBe(1);
+  });
+
   it('skips an unknown column and reports it', () => {
     const plan = planPaste({
       ...baseOptions,

@@ -317,12 +317,11 @@ export function planPaste(options: PastePlanOptions): PastePlan {
         continue;
       }
       const columnPosition = columnOrder.indexOf(columnName);
-      // `clip` mode keeps a name-aligned paste inside its rectangle; a position-aligned one
-      // simply runs out of displayed columns.
-      if (
-        columnPosition < 0 ||
-        (alignment === 'byPosition' && overflow === 'clip' && columnPosition > rightEdge)
-      ) {
+      // `clip` mode keeps a paste inside the rectangle **whichever way it was aligned**: a
+      // name-aligned block can map to a column outside the region (it matches by name, not by
+      // distance), and writing there would contradict the promise that `clip` never leaves
+      // the rectangle. Position alignment simply runs out of displayed columns instead.
+      if (columnPosition < 0 || (overflow === 'clip' && columnPosition > rightEdge)) {
         skipped += 1;
         continue;
       }

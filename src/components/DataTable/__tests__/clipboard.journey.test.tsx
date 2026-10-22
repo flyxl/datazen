@@ -333,7 +333,7 @@ describe('DB-03 clipboard journey', () => {
     expect(slice().pendingChanges.size).toBe(1);
   });
 
-  it('cancelling the confirmation writes nothing but reports the cancellation', async () => {
+  it('cancelling the confirmation writes nothing and claims nothing', async () => {
     const { container } = render(<StoreGrid />);
     clickCell(container, 0, 'name');
 
@@ -349,12 +349,11 @@ describe('DB-03 clipboard journey', () => {
 
     expect(slice().rows[0].name).toBe('Alice');
     expect(slice().pendingChanges.size).toBe(0);
-    // Nothing was written and the line says so…
-    const status = screen.getByTestId('table-clipboard-status');
-    expect(status.getAttribute('data-dt-paste-staged')).toBe('0');
-    // …and the cross-table note that opened the dialog is still readable, because it is the
-    // reason the user was asked in the first place.
-    expect(status.textContent).toContain('dataTable.pasteCrossTableNotice');
+    // Nothing was written — and nothing claims otherwise. The cross-table note reads "Pasted
+    // from another table into {table}": after a cancellation that sentence would be the only
+    // thing on screen and it would be false. The dialog already gave the reason; a declined
+    // paste needs no summary line.
+    expect(screen.queryByTestId('table-clipboard-status')).not.toBeInTheDocument();
   });
   it('journey: an external 3x4 block lands, is overwritten in place, and copies back', async () => {
     const { container } = render(<StoreGrid />);
