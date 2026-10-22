@@ -2,53 +2,9 @@
 
 use super::{AppDb, AppDbError};
 use chrono::Utc;
+pub use datazen_feature_core::dashboard::records::{DashboardRecord, WidgetRecord};
+pub use datazen_feature_core::dashboard::types::DashboardWorkflowRef;
 use rusqlite::params;
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct DashboardRecord {
-    pub id: String,
-    pub name: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub layout_cols: u32,
-    pub layout_row_height: u32,
-    pub enabled: bool,
-    pub refresh_paused: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct WidgetRecord {
-    pub id: String,
-    pub dashboard_id: String,
-    pub title: String,
-    pub workflow_id: String,
-    pub view_mode: String,
-    pub chart_config_json: Option<String>,
-    pub layout_x: u32,
-    pub layout_y: u32,
-    pub layout_w: u32,
-    pub layout_h: u32,
-    pub refresh_mode: String,
-    pub refresh_sec: Option<u32>,
-    pub alert_json: Option<String>,
-    pub enabled: bool,
-    pub sort_order: i32,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct DashboardWorkflowRef {
-    pub workflow_id: String,
-    pub dashboard_id: String,
-    pub widget_id: String,
-    pub dashboard_name: String,
-    pub widget_title: String,
-}
 
 impl AppDb {
     pub fn upsert_dashboard(&self, record: &DashboardRecord) -> Result<(), AppDbError> {

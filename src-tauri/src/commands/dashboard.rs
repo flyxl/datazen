@@ -10,18 +10,21 @@ use crate::dashboard::create::{
     update_hidden_workflow_sql as update_hidden_workflow_sql_impl, CreateWidgetResult,
 };
 use crate::dashboard::export::{export_dashboard_json, import_dashboard};
-use crate::dashboard::runs::{get_run, list_run_index, RunIndexEntry};
-use crate::dashboard::store::{
+use datazen_feature_core::dashboard::runs::{get_run, list_run_index};
+use datazen_feature_core::dashboard::store::{
     delete_dashboard as store_delete_dashboard, find_workflow_refs,
     get_dashboard as store_get_dashboard, list_dashboards as store_list_dashboards,
     save_dashboard as store_save_dashboard,
     set_dashboard_refresh_paused as store_set_refresh_paused,
 };
-use crate::dashboard::types::{ChartConfig, Dashboard, ViewMode, WidgetRun};
+use datazen_feature_core::dashboard::types::{
+    ChartConfig, Dashboard, RunIndexEntry, ViewMode, WidgetRun,
+};
 
 pub(crate) async fn list_dashboards_impl(state: &AppState) -> Result<Vec<Dashboard>, CommandError> {
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    store_list_dashboards(&app_db).cmd_err("list_dashboards")
+    store_list_dashboards(&scope, &*app_db).cmd_err("list_dashboards")
 }
 
 pub(crate) async fn get_dashboard_impl(
@@ -29,8 +32,9 @@ pub(crate) async fn get_dashboard_impl(
     id: String,
 ) -> Result<Dashboard, CommandError> {
     tracing::debug!(%id, "get_dashboard");
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    store_get_dashboard(&app_db, &id).cmd_err("get_dashboard")
+    store_get_dashboard(&scope, &*app_db, &id).cmd_err("get_dashboard")
 }
 
 pub(crate) async fn save_dashboard_impl(
@@ -38,15 +42,16 @@ pub(crate) async fn save_dashboard_impl(
     dashboard: Dashboard,
 ) -> Result<Dashboard, CommandError> {
     tracing::info!(id = %dashboard.id, "save_dashboard");
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
     let id = dashboard.id.clone();
-    store_save_dashboard(&app_db, dashboard).cmd_err("save_dashboard")?;
+    store_save_dashboard(&scope, &*app_db, dashboard).cmd_err("save_dashboard")?;
     state
         .monitor_engine
         .reload_from_store()
         .await
         .cmd_err("save_dashboard")?;
-    store_get_dashboard(&app_db, &id).cmd_err("save_dashboard")
+    store_get_dashboard(&scope, &*app_db, &id).cmd_err("save_dashboard")
 }
 
 pub(crate) async fn delete_dashboard_impl(
@@ -54,8 +59,9 @@ pub(crate) async fn delete_dashboard_impl(
     id: String,
 ) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_dashboard");
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    store_delete_dashboard(&app_db, &id).cmd_err("delete_dashboard")?;
+    store_delete_dashboard(&scope, &*app_db, &id).cmd_err("delete_dashboard")?;
     state
         .monitor_engine
         .reload_from_store()
@@ -68,8 +74,10 @@ pub(crate) async fn set_dashboard_refresh_paused_impl(
     id: String,
     paused: bool,
 ) -> Result<(), CommandError> {
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    store_set_refresh_paused(&app_db, &id, paused).cmd_err("set_dashboard_refresh_paused")?;
+    store_set_refresh_paused(&scope, &*app_db, &id, paused)
+        .cmd_err("set_dashboard_refresh_paused")?;
     state
         .monitor_engine
         .reload_from_store()
@@ -80,9 +88,10 @@ pub(crate) async fn set_dashboard_refresh_paused_impl(
 pub(crate) fn find_dashboard_workflow_refs_impl(
     state: &AppState,
     workflow_id: String,
-) -> Result<Vec<crate::dashboard::types::DashboardWorkflowRef>, CommandError> {
+) -> Result<Vec<datazen_feature_core::dashboard::types::DashboardWorkflowRef>, CommandError> {
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    find_workflow_refs(&app_db, &workflow_id).cmd_err("find_dashboard_workflow_refs")
+    find_workflow_refs(&scope, &*app_db, &workflow_id).cmd_err("find_dashboard_workflow_refs")
 }
 
 #[tauri::command]
@@ -124,7 +133,7 @@ pub async fn set_dashboard_refresh_paused(
 pub fn find_dashboard_workflow_refs(
     state: State<'_, AppState>,
     workflow_id: String,
-) -> Result<Vec<crate::dashboard::types::DashboardWorkflowRef>, CommandError> {
+) -> Result<Vec<datazen_feature_core::dashboard::types::DashboardWorkflowRef>, CommandError> {
     find_dashboard_workflow_refs_impl(&state, workflow_id)
 }
 
@@ -134,8 +143,9 @@ pub(crate) async fn list_widget_runs_impl(
     widget_id: String,
     limit: usize,
 ) -> Result<Vec<RunIndexEntry>, CommandError> {
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    list_run_index(&app_db, &dashboard_id, &widget_id, limit).cmd_err("list_widget_runs")
+    list_run_index(&scope, &*app_db, &dashboard_id, &widget_id, limit).cmd_err("list_widget_runs")
 }
 
 pub(crate) async fn get_widget_run_impl(
@@ -144,8 +154,9 @@ pub(crate) async fn get_widget_run_impl(
     widget_id: String,
     run_id: String,
 ) -> Result<WidgetRun, CommandError> {
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    get_run(&app_db, &dashboard_id, &widget_id, &run_id).cmd_err("get_widget_run")
+    get_run(&scope, &*app_db, &dashboard_id, &widget_id, &run_id).cmd_err("get_widget_run")
 }
 
 #[tauri::command]
@@ -174,8 +185,9 @@ pub(crate) async fn run_dashboard_widget_impl(
     widget_id: String,
 ) -> Result<WidgetRun, CommandError> {
     tracing::info!(%dashboard_id, %widget_id, "run_dashboard_widget");
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    let dashboard = store_get_dashboard(&app_db, &dashboard_id)?;
+    let dashboard = store_get_dashboard(&scope, &*app_db, &dashboard_id)?;
     let widget = dashboard
         .widgets
         .iter()
@@ -215,8 +227,10 @@ pub async fn create_widget_from_sql(
     state: State<'_, AppState>,
     params: CreateWidgetFromSqlParams,
 ) -> Result<CreateWidgetResult, CommandError> {
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
     create_widget_from_sql_impl(
+        &scope,
         &app_db,
         &state.workflow_registry,
         &params.dashboard_id,
@@ -253,8 +267,10 @@ pub async fn update_hidden_widget_sql(
     state: State<'_, AppState>,
     params: UpdateHiddenWidgetSqlParams,
 ) -> Result<(), CommandError> {
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
     update_hidden_workflow_sql_impl(
+        &scope,
         &app_db,
         &state.workflow_registry,
         &params.workflow_id,
@@ -270,8 +286,10 @@ pub async fn create_widget_from_workflow(
     state: State<'_, AppState>,
     params: CreateWidgetFromWorkflowParams,
 ) -> Result<CreateWidgetResult, CommandError> {
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
     create_widget_from_workflow_impl(
+        &scope,
         &app_db,
         &params.dashboard_id,
         &params.workflow_id,
@@ -291,8 +309,9 @@ pub async fn export_dashboard_with_dialog(
     dashboard_id: String,
     default_file_name: String,
 ) -> Result<bool, CommandError> {
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    let dashboard = store_get_dashboard(&app_db, &dashboard_id)?;
+    let dashboard = store_get_dashboard(&scope, &*app_db, &dashboard_id)?;
 
     let dest = super::dialog::save_file(
         &app,
@@ -305,7 +324,7 @@ pub async fn export_dashboard_with_dialog(
     };
 
     let json =
-        export_dashboard_json(&app_db, &dashboard).cmd_err("export_dashboard_with_dialog")?;
+        export_dashboard_json(&*app_db, &dashboard).cmd_err("export_dashboard_with_dialog")?;
     tokio::fs::write(&dest, json.as_bytes())
         .await
         .cmd_err("export_dashboard_with_dialog")?;
@@ -331,8 +350,9 @@ pub async fn import_dashboard_with_dialog(
     let bytes = tokio::fs::read(&source)
         .await
         .cmd_err("import_dashboard_with_dialog")?;
+    let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    let dashboard = tokio::task::spawn_blocking(move || import_dashboard(&app_db, &bytes))
+    let dashboard = tokio::task::spawn_blocking(move || import_dashboard(&scope, &*app_db, &bytes))
         .await
         .map_err(|e| CommandError::Internal(format!("import_dashboard_with_dialog task: {e}")))?
         .cmd_err("import_dashboard_with_dialog")?;
@@ -348,11 +368,11 @@ pub async fn import_dashboard_with_dialog(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dashboard::types::{
-        DashboardLayout, DashboardWidget, RefreshMode, RefreshPolicy, WidgetLayout,
-    };
     use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
     use chrono::Utc;
+    use datazen_feature_core::dashboard::types::{
+        DashboardLayout, DashboardWidget, RefreshMode, RefreshPolicy, WidgetLayout,
+    };
 
     fn sample_dashboard(id: &str, workflow_id: &str) -> Dashboard {
         Dashboard {
@@ -406,7 +426,8 @@ mod tests {
     #[test]
     fn unknown_dashboard_maps_to_not_found() {
         let db = AppDb::open_in_memory().unwrap();
-        let err = store_get_dashboard(&db, "missing-id").unwrap_err();
+        let scope = crate::platform::local_organization_scope();
+        let err = store_get_dashboard(&scope, &*db, "missing-id").unwrap_err();
         let cmd_err: CommandError = err.into();
         assert!(matches!(cmd_err, CommandError::NotFound(msg) if msg == "missing-id"));
     }
@@ -447,7 +468,7 @@ mod tests {
     #[tokio::test]
     async fn run_dashboard_widget_with_workflow() {
         use crate::testing::app_state::TestAppState;
-        use crate::workflow::model::{WorkflowDefinition, WorkflowStep};
+        use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
 
         let test = TestAppState::with_tables_and_resource_provider().await;
         test.save_connection("widget-cfg").await;
@@ -479,7 +500,7 @@ mod tests {
         };
         test.state
             .workflow_registry
-            .save_workflow(&workflow)
+            .save_workflow(&crate::platform::local_organization_scope(), &workflow)
             .await
             .unwrap();
 
@@ -490,7 +511,10 @@ mod tests {
             .await
             .unwrap();
         assert!(!run.id.is_empty());
-        assert_eq!(run.status, crate::dashboard::types::WidgetRunStatus::Ok);
+        assert_eq!(
+            run.status,
+            datazen_feature_core::dashboard::types::WidgetRunStatus::Ok
+        );
 
         let runs = list_widget_runs_impl(&test.state, "dash-run".into(), "w1".into(), 10)
             .await
@@ -560,7 +584,8 @@ pub async fn webdriver_monitor_evidence(
     // Reading an existing receipt after revoke is allowed only for its approver.
     let mut tick_accepted = false;
     if tick {
-        let dashboard = store_get_dashboard(&state.store.app_db(), &dashboard_id)
+        let scope = state.organization_scope()?;
+        let dashboard = store_get_dashboard(&scope, &*state.store.app_db(), &dashboard_id)
             .cmd_err("webdriver_monitor_evidence")?;
         let widget = dashboard
             .widgets
@@ -578,8 +603,11 @@ pub async fn webdriver_monitor_evidence(
         .list(
             &grant.context(),
             JobFilter {
+                organization_id: grant.context().organization_id.clone(),
+                states: Vec::new(),
+                owner: None,
+                after: None,
                 limit: Some(100),
-                ..Default::default()
             },
         )
         .await

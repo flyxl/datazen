@@ -2,6 +2,7 @@
 
 use super::super::*;
 use super::*;
+use datazen_feature_core::connection_import::ImportFormat;
 use std::path::Path;
 #[test]
 fn export_rejects_empty_password() {
@@ -41,7 +42,7 @@ fn import_file_filters_match_source_apps() {
 
 #[test]
 fn merge_connections_overwrites_by_id() {
-    use crate::db::{ConnectionConfig, SslMode};
+    use datazen_driver_api::{ConnectionConfig, SslMode};
 
     fn conn(id: &str) -> ConnectionConfig {
         ConnectionConfig {
@@ -91,8 +92,10 @@ fn merge_group_lists_unions_and_counts_new() {
 
 #[test]
 fn encrypt_decrypt_roundtrip() {
-    use super::super::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+    use datazen_feature_core::connection_import::{
+        decrypt_datazen_fields, derive_argon2_key, encrypt_field,
+    };
 
     let salt = [7u8; 16];
     let key = derive_argon2_key("unit-test-password", &salt).unwrap();
@@ -108,8 +111,10 @@ fn encrypt_decrypt_roundtrip() {
 
 #[test]
 fn decrypt_rejects_wrong_password() {
-    use super::super::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+    use datazen_feature_core::connection_import::{
+        decrypt_datazen_fields, derive_argon2_key, encrypt_field,
+    };
 
     let salt = [9u8; 16];
     let key = derive_argon2_key("correct", &salt).unwrap();
@@ -124,7 +129,7 @@ fn decrypt_rejects_wrong_password() {
 
 #[test]
 fn build_encrypted_connections_export_roundtrip() {
-    use crate::db::{ConnectionConfig, SslMode};
+    use datazen_driver_api::{ConnectionConfig, SslMode};
 
     let conn = ConnectionConfig {
         id: "c1".into(),
@@ -189,7 +194,7 @@ fn import_password_option_treats_blank_as_none() {
 
 #[test]
 fn build_import_preview_json_includes_source_format() {
-    use crate::commands::connection_import::{ImportFormat, ParsedImport};
+    use datazen_feature_core::connection_import::{ImportFormat, ParsedImport};
 
     let preview = build_import_preview_json(&ParsedImport {
         connections: vec![],
@@ -204,8 +209,8 @@ fn build_import_preview_json_includes_source_format() {
 
 #[tokio::test]
 async fn apply_connection_import_impl_merges_connections_and_groups() {
-    use crate::db::{ConnectionConfig, SslMode};
     use crate::testing::app_state::TestAppState;
+    use datazen_driver_api::{ConnectionConfig, SslMode};
 
     fn conn(id: &str, group: Option<&str>) -> ConnectionConfig {
         ConnectionConfig {
@@ -303,8 +308,8 @@ async fn merged_connections_export_roundtrips_through_preview_helper() {
 /// inline `ssh_tunnel` locally.
 #[tokio::test]
 async fn export_materializes_referenced_ssh_tunnel() {
-    use crate::db::{SavedTunnel, SshTunnelConfig, TunnelKind};
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use datazen_driver_api::{SavedTunnel, SshTunnelConfig, TunnelKind};
 
     let test = TestAppState::new().await;
     test.store
@@ -369,8 +374,8 @@ async fn export_materializes_referenced_ssh_tunnel() {
 /// degrade to "no tunnel" instead of failing the whole export.
 #[tokio::test]
 async fn export_keeps_connections_whose_tunnel_cannot_be_exported() {
-    use crate::db::{HttpProxyTunnelConfig, SavedTunnel, TunnelKind};
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use datazen_driver_api::{HttpProxyTunnelConfig, SavedTunnel, TunnelKind};
 
     let test = TestAppState::new().await;
     test.store
@@ -434,8 +439,8 @@ async fn export_keeps_connections_whose_tunnel_cannot_be_exported() {
 /// silently rewrite the running connection configs.
 #[tokio::test]
 async fn test_tester_materialize_does_not_pollute_the_live_connection_cache() {
-    use crate::db::{SavedTunnel, SshTunnelConfig, TunnelKind};
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use datazen_driver_api::{SavedTunnel, SshTunnelConfig, TunnelKind};
 
     let test = TestAppState::new().await;
     test.store
@@ -490,8 +495,8 @@ async fn test_tester_materialize_does_not_pollute_the_live_connection_cache() {
 /// connection's own database target.
 #[tokio::test]
 async fn test_tester_materialize_degrades_every_unsupported_branch() {
-    use crate::db::{SavedTunnel, SshTunnelConfig, TunnelKind, WebSocketTunnelConfig};
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use datazen_driver_api::{SavedTunnel, SshTunnelConfig, TunnelKind, WebSocketTunnelConfig};
 
     let test = TestAppState::new().await;
     for tunnel in [
@@ -597,8 +602,8 @@ async fn test_tester_materialize_degrades_every_unsupported_branch() {
 /// and the tunnel involved.
 #[tokio::test]
 async fn test_tester_materialize_warns_on_dangling_and_unsupported_references() {
-    use crate::db::{SavedTunnel, TunnelKind, WebSocketTunnelConfig};
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use datazen_driver_api::{SavedTunnel, TunnelKind, WebSocketTunnelConfig};
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone)]
@@ -709,8 +714,8 @@ async fn test_tester_export_fails_when_the_destination_cannot_be_written() {
 /// about, and not materialized.
 #[tokio::test]
 async fn export_warns_and_skips_a_disabled_ssh_tunnel() {
-    use crate::db::{SavedTunnel, SshTunnelConfig, TunnelKind};
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use datazen_driver_api::{SavedTunnel, SshTunnelConfig, TunnelKind};
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone)]

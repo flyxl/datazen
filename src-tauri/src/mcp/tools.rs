@@ -3,14 +3,17 @@
 use super::server::{DataZenMcpServer, MCP_SESSION_PURPOSE};
 use super::session::{sanitize_ttl, SessionBinding};
 use super::types::*;
-use crate::mcp::allowlist;
-use crate::mcp::permission;
 use crate::mcp::tool_help;
 use datazen_application::dto::requests::{
     CloseMode, CloseSessionRequest, CommandCall, ExecuteInSessionRequest, OpenSessionRequest,
 };
 use datazen_application::identity_policy::IdentityPolicy;
 use datazen_application::sessions::ConnectionUseCases;
+use datazen_feature_core::mcp::allowlist;
+use datazen_feature_core::mcp::permission;
+use datazen_feature_core::workflow::executor::{
+    WorkflowExecuteOptions, WorkflowExecutor, WORKFLOW_QUERY_ROW_LIMIT,
+};
 use datazen_platform_api::context::{OwnerRef, RequestContext};
 use datazen_platform_api::dto::execution::{ExecutionState, ExecutionView};
 use datazen_platform_api::dto::idempotency::IdempotentOperation;
@@ -138,7 +141,7 @@ impl DataZenMcpServer {
             .map_err(|e| tool_help::tool_error("query", &e))?;
         let mut command_input = serde_json::json!({
             "sql": input.sql,
-            "limit": crate::services::db_tools::resolve_query_limit(input.limit),
+            "limit": datazen_feature_core::services::db_tools::resolve_query_limit(input.limit),
         });
         self.app_state
             .store
@@ -225,7 +228,9 @@ impl DataZenMcpServer {
         description = "List all available user-defined workflows. Workflows are reusable AI automations combining prompts and database operations."
     )]
     pub(crate) async fn list_workflows(&self) -> Result<String, McpError> {
-        let workflows = self.app_state.workflow_registry.list().await;
+        // MCP 读的是桌面自己那一个组织的数据。
+        let scope = crate::platform::local_organization_scope();
+        let workflows = self.app_state.workflow_registry.list(&scope).await;
         serde_json::to_string_pretty(&workflows)
             .map_err(|e| McpError::internal_error(e.to_string(), None))
     }
@@ -240,7 +245,10 @@ impl DataZenMcpServer {
         let workflow = self
             .app_state
             .workflow_registry
-            .get(&input.workflow_id)
+            .get(
+                &crate::platform::local_organization_scope(),
+                &input.workflow_id,
+            )
             .await
             .ok_or_else(|| {
                 tool_help::tool_error(
@@ -249,14 +257,14 @@ impl DataZenMcpServer {
                 )
             })?;
 
-        let result = crate::workflow::WorkflowExecutor::execute_with_options(
+        let result = WorkflowExecutor::execute_with_options(
             &workflow,
             self.app_state.as_ref(),
             input.connection_id.as_deref(),
             &input.variables,
-            crate::workflow::WorkflowExecuteOptions {
+            WorkflowExecuteOptions {
                 permission_mode: Some(self.permission_mode),
-                query_row_limit: Some(crate::workflow::WORKFLOW_QUERY_ROW_LIMIT),
+                query_row_limit: Some(WORKFLOW_QUERY_ROW_LIMIT),
             },
         )
         .await

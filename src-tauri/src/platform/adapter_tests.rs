@@ -221,3 +221,67 @@ fn profile_view_defaults_are_placeholders_and_must_not_be_used_on_the_desktop_pa
         .with_credential_revision(Counter::new(3));
     assert_ne!(real.config_revision, real.credential_revision);
 }
+
+/// `inject` 注释写下的失败半径，钉成可执行断言。
+///
+/// `adapter.rs` 里 `inject` 的注释写明：装配失败后，依赖平台的访问器返回的
+/// `ApiError` 码**多数**是 `ServiceUnavailable`——`runtime()` / `profiles()` /
+/// `live_source()` / `artifact_store()` / `identity_resolver()` 这 5 个都是它；
+/// `require_application_services()` 与 `native_tools()` 是 `CapabilityUnsupported`。
+/// 两者在 IPC 表面都收敛成 `CommandError::NotConfigured`
+/// （`platform/error.rs` 的窄适配）。
+///
+/// 这条把那句话从**注释**变成**断言**：改任何一个访问器的错误码、或把窄适配的
+/// 收敛档位改掉，本条都会红。注释本身不��被验，行为才是。
+#[test]
+fn 未注入时各访问器的错误码与注释写的一致() {
+    let adapter = adapter();
+
+    let service_unavailable: Vec<(&str, Result<(), ApiError>)> = vec![
+        ("artifact_store", adapter.artifact_store().map(|_| ())),
+        ("live_source", adapter.live_source().map(|_| ())),
+        ("runtime", adapter.runtime().map(|_| ())),
+        ("profiles", adapter.profiles().map(|_| ())),
+        ("identity_resolver", adapter.identity_resolver().map(|_| ())),
+    ];
+    for (name, result) in service_unavailable {
+        let err = result
+            .err()
+            .unwrap_or_else(|| panic!("{name} 未注入必须报错"));
+        assert_eq!(
+            err.code,
+            ApiErrorCode::ServiceUnavailable,
+            "{name} 未注入时的 ApiError 码必须是 ServiceUnavailable"
+        );
+    }
+
+    let capability_unsupported: Vec<(&str, Result<(), ApiError>)> = vec![
+        (
+            "require_application_services",
+            adapter.require_application_services().map(|_| ()),
+        ),
+        ("native_tools", adapter.native_tools().map(|_| ())),
+    ];
+    for (name, result) in capability_unsupported {
+        let err = result
+            .err()
+            .unwrap_or_else(|| panic!("{name} 未注入必须报错"));
+        assert_eq!(
+            err.code,
+            ApiErrorCode::CapabilityUnsupported,
+            "{name} 未注入时的 ApiError 码必须是 CapabilityUnsupported"
+        );
+    }
+
+    // IPC 表面：两个码都收敛到 `NotConfigured`，前端拿到的分类一致。
+    for code in [
+        ApiErrorCode::ServiceUnavailable,
+        ApiErrorCode::CapabilityUnsupported,
+    ] {
+        let mapped = crate::platform::error::into_command_error(ApiError::new(code, "boom"));
+        assert!(
+            matches!(mapped, crate::commands::CommandError::NotConfigured(_)),
+            "{code:?} 在 IPC 表面必须收敛到 NotConfigured，实际 {mapped:?}"
+        );
+    }
+}

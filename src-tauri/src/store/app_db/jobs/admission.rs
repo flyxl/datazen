@@ -39,6 +39,18 @@ impl SqliteJobRepository {
         let key_hash = idempotency_hash(ctx, idem.as_str());
         let now = self.clock.now();
         definition.created_at = now.clone();
+        // 组织归属只来自 `ctx`：调用方在 `JobDefinition` 里自报的组织值一律作数被覆盖
+        // （INV-01），落库行因此永远属于受理它的那个组织。
+        //
+        // **这一行在本实现里是防御性冗余**：承重处在下面的 INSERT —— 它绑定的
+        // `ctx.organization_id` 才是落进 `jobs.organization_id` 列的值，返回的
+        // `JobRecord` 也由 `read_record` 从该列重建。之所以仍然盖章，是为了让
+        // 「受理即盖章」这条端口契约在两个实现上形状一致（内存实现里 `JobDefinition`
+        // 本身就是落库值，那一行是承重的），避免后来人按「这行没被读」删掉它。
+        // 可观测的不变量（行里的组织 == 受理上下文的组织）由
+        // `store::app_db::job_tests::org_scope::admission_stamps_the_context_organization_onto_the_persisted_row`
+        // 钉住。
+        definition.organization_id = ctx.organization_id.clone();
         let owner_json = encode(&definition.owner)?;
         let payload_json = encode(&payload)?;
         let progress_json = encode(&JobProgress::default())?;

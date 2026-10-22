@@ -1,7 +1,7 @@
 //! Claimed-plan Data Transfer execution and checkpoint finalization.
 
 use super::*;
-use crate::db::{LegacySqlDialect, SqlDialect};
+use datazen_driver_api::{LegacySqlDialect, SqlDialect};
 
 fn validate_structure_selection(
     plan: &StoredTransferPlan,
@@ -48,12 +48,18 @@ pub(crate) async fn execute_data_transfer_impl_with_write_observer(
             "execute_data_transfer requires a preview planId".into(),
         ));
     }
+    let scope = super::super::plan_scope::desktop_organization_scope();
     let (plan, checkpoint) = match request.resume_token.as_deref() {
-        Some(token) => plans::peek_checkpoint(token, &request.plan_id)
+        Some(token) => state
+            .transfer_plans
+            .peek_checkpoint(scope, token, &request.plan_id)
             .map(|(plan, checkpoint)| (plan, Some(checkpoint)))
             .map_err(CommandError::from)?,
         None => (
-            plans::peek_plan(&request.plan_id).map_err(CommandError::from)?,
+            state
+                .transfer_plans
+                .peek(scope, &request.plan_id)
+                .map_err(CommandError::from)?,
             None,
         ),
     };
@@ -133,7 +139,7 @@ pub(crate) async fn execute_data_transfer_impl_with_write_observer(
         Ok(context) => context,
         Err(error) => {
             if let Some(token) = request.resume_token.as_deref() {
-                plans::invalidate_checkpoint(token);
+                state.transfer_plans.invalidate_checkpoint(scope, token);
             }
             return Err(error);
         }
@@ -152,11 +158,16 @@ pub(crate) async fn execute_data_transfer_impl_with_write_observer(
         ));
     }
     let (claimed, claimed_checkpoint) = match request.resume_token.as_deref() {
-        Some(token) => plans::claim_checkpoint(token, &request.plan_id)
+        Some(token) => state
+            .transfer_plans
+            .claim_checkpoint(scope, token, &request.plan_id)
             .map(|(plan, checkpoint)| (plan, Some(checkpoint)))
             .map_err(CommandError::from)?,
         None => (
-            plans::claim_plan(&request.plan_id).map_err(CommandError::from)?,
+            state
+                .transfer_plans
+                .claim(scope, &request.plan_id)
+                .map_err(CommandError::from)?,
             None,
         ),
     };
@@ -181,6 +192,8 @@ pub(crate) async fn execute_data_transfer_impl_with_write_observer(
         .map(|checkpoint| checkpoint.completed_tables.clone())
         .unwrap_or_default();
     let mut checkpoint_session = TransferCheckpointSession::new(
+        state.transfer_plans.clone(),
+        scope.clone(),
         request.plan_id.clone(),
         selected_source_tables(&job, &effective_selection),
         prior_completed.clone(),

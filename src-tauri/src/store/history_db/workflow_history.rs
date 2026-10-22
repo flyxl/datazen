@@ -4,8 +4,9 @@
 //! projected into columns, because what a step did can change shape as the
 //! executor grows and a projection here would have to be migrated every time.
 
-use super::{HistoryDb, HistoryDbError, HistoryEntry, HistoryListItem, MAX_WORKFLOW_HISTORY};
-use crate::workflow::workflows::WorkflowExecutionResult;
+use super::{HistoryDb, HistoryDbError, MAX_WORKFLOW_HISTORY};
+use datazen_feature_core::workflow::history::{WorkflowRunListItem, WorkflowRunRecord};
+use datazen_feature_core::workflow::model::WorkflowExecutionResult;
 use rusqlite::params;
 
 impl HistoryDb {
@@ -42,7 +43,7 @@ impl HistoryDb {
     pub fn list_workflow_history(
         &self,
         workflow_id: Option<&str>,
-    ) -> Result<Vec<HistoryListItem>, HistoryDbError> {
+    ) -> Result<Vec<WorkflowRunListItem>, HistoryDbError> {
         self.with_conn(|conn| {
             let mut items = Vec::new();
             if let Some(wid) = workflow_id {
@@ -74,7 +75,7 @@ impl HistoryDb {
     pub fn get_workflow_history(
         &self,
         history_id: &str,
-    ) -> Result<Option<HistoryEntry>, HistoryDbError> {
+    ) -> Result<Option<WorkflowRunRecord>, HistoryDbError> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, workflow_id, workflow_name, variables_json, result_json, created_at
@@ -84,7 +85,7 @@ impl HistoryDb {
                 let result_json: String = row.get(4)?;
                 let result: WorkflowExecutionResult = serde_json::from_str(&result_json)
                     .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-                Ok(HistoryEntry {
+                Ok(WorkflowRunRecord {
                     id: row.get(0)?,
                     workflow_id: row.get(1)?,
                     workflow_name: row.get(2)?,
@@ -120,11 +121,13 @@ impl HistoryDb {
     }
 }
 
-pub(super) fn map_workflow_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryListItem> {
+pub(super) fn map_workflow_list_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<WorkflowRunListItem> {
     let result_json: String = row.get(3)?;
     let result: WorkflowExecutionResult = serde_json::from_str(&result_json)
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    Ok(HistoryListItem {
+    Ok(WorkflowRunListItem {
         id: row.get(0)?,
         workflow_id: row.get(1)?,
         workflow_name: row.get(2)?,

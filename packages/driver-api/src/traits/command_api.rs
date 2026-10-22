@@ -7,9 +7,39 @@
 //! once and stays readable.
 
 use super::DatabaseDriver;
+use crate::namespace::CommandTargetRequirements;
 use crate::sql_target::SqlTarget;
 use crate::types::{ConnectionHandle, DriverError};
 use crate::{try_execute_schema_catalog_command, CommandResult};
+
+/// The default target rule for the commands a driver registers.
+///
+/// An unregistered command returns `None` so the platform can reject it
+/// before acquiring a resource. Object-addressed commands allow an object
+/// target; the ones that cannot answer without one also require it.
+pub(crate) fn target_requirements<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    command: &str,
+) -> Option<CommandTargetRequirements> {
+    if !driver
+        .command_definitions()
+        .iter()
+        .any(|definition| definition.id == command)
+    {
+        return None;
+    }
+
+    let mut requirements = CommandTargetRequirements::default();
+    match command {
+        "query" | "query_stream" => requirements.allows_object = true,
+        "get_table_schema" | "get_object_ddl" | "get_object_dependencies" => {
+            requirements.allows_object = true;
+            requirements.requires_object = true;
+        }
+        _ => {}
+    }
+    Some(requirements)
+}
 
 pub(crate) async fn execute_command<D: DatabaseDriver + ?Sized>(
     driver: &D,

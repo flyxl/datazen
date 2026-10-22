@@ -224,7 +224,7 @@ async fn success_path_releases_permits_and_persists_both_boundaries() {
         0,
         "成功路径许可已核销"
     );
-    let persisted = repo_for_read.committed_boundaries(&JobId::new("job-e2"));
+    let persisted = repo_for_read.committed_boundaries(&c, &JobId::new("job-e2"));
     assert_eq!(
         persisted.len(),
         2,
@@ -375,7 +375,11 @@ async fn panic_converges_before_return_and_can_be_queried() {
         .await
         .expect("query after panic");
     assert_eq!(queried.view.state, JobState::Failed);
-    assert_eq!(repo.committed_boundaries(&JobId::new("panic-job")).len(), 2);
+    assert_eq!(
+        repo.committed_boundaries(&c, &JobId::new("panic-job"))
+            .len(),
+        2
+    );
     assert!(repo
         .latest_checkpoint(&c, &JobId::new("panic-job"))
         .is_some());
@@ -471,7 +475,7 @@ async fn validation_panic_is_unstarted_failure_and_never_claims_budget() {
         Some("handlerValidationPanicked")
     );
     let details = repo
-        .get_details(JobId::new("validation-job"))
+        .get_details(&c, JobId::new("validation-job"))
         .expect("details");
     assert!(matches!(
         details.recovery.map(|recovery| recovery.verdict),
@@ -524,7 +528,7 @@ async fn validation_error_is_unstarted_failure_without_started_stage() {
         Some("handlerValidationFailed")
     );
     let details = repo
-        .get_details(JobId::new("validation-error-job"))
+        .get_details(&c, JobId::new("validation-error-job"))
         .expect("details");
     assert!(matches!(
         details.recovery.map(|recovery| recovery.verdict),

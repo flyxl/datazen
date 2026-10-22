@@ -49,7 +49,7 @@ INSERT / UPDATE / DELETE / UNCHANGED
 - `src-tauri/src/commands/sync/keyset_source.rs`
 - `packages/data-sync/src/compare.rs`
 
-`jobId` 对应 AppDb 中的 Job 记录与取消意图，可取消长时间 compare。窗口关闭不会取消已接受的 Job；完整比较计划和行级审阅投影仍保存在当前进程。
+`jobId` 对应 AppDb 中的 Job 记录与取消意图，可取消长时间 compare。窗口关闭不会取消已接受的 Job；完整比较计划保存在**宿主注入的进程内实例**里，行级审阅投影在比较存储中——未超过 8 MiB 的比较留在内存内联存储，超过的落盘到**注入根下的私有目录**。
 
 ## 3. Review / ChangeSet / Preview
 
@@ -64,6 +64,19 @@ DELETE 默认不选。
 
 Preview 生成 SQL 展示文本；真正 Execute 使用参数化 SQL，不把 Preview literal SQL 当作执行 SQL。
 
+### 3.1 存储端口边界
+
+Data Sync 的两处存储都是**端口**：规则与实现留在共享包内，宿主在组装期注入实例。
+
+| 端口 | 包内实现 | 宿主注入什么 |
+|---|---|---|
+| `plan_store::SyncPlanStore` | `plan_store::InMemorySyncPlanStore` | 计划注册表实例 |
+| `comparison_store::ComparisonStoreRoot` | `comparison_store::LocalComparisonStoreRoot` | 比较存储的根目录 |
+
+比较结果的落盘实现（私有目录、帧式行文件、索引校验、崩溃回收）留在 `packages/data-sync/src/comparison_store/`：本地文件系统是形态中立的，搬进宿主只会让第二个形态再抄一遍；宿主注入的只有**存储根从哪来**。桌面形态的默认根是 `{temp}/datazen-sync-comparisons/`（`comparison_store::default_comparison_store_root()`），每个比较独占其下的一个私有目录（0700），目录里有一份 owner 标记与一份 SQLite 独占租约；进程退出后租约由 SQLite 释放，下一个进程据此证明 owner 已死并回收这些陈旧目录。
+
+计划注册表过去是包内的 `static STORE`（进程级全局可变状态），现由 `AppState.sync_stores` 持有的实例承担。端口方法都带 `datazen_platform_api::ports::scope::OrganizationScope`：越组织访问按「**不存在**」处理（CM-05），端口返回与「计划不存在」完全一样的措辞，不返回「无权限」。注册表的键是 **(组织, 计划 id)**——组织维度进键，「按组织分区」是结构而不是约定。桌面是单租户——组织维度是进程常量 `LOCAL_ORGANIZATION_ID`。
+
 ## 4. Execute
 
 ```text
@@ -71,7 +84,7 @@ reviewed ChangeSet + selectionRevision
   ↓
 accept dataSyncApply + idempotent receipt + consume planId
   ↓
-DesktopJobHost dispatches handler on job-owned sessions
+JobHost dispatches handler on job-owned sessions
   ↓
 batch transaction / checkpoints / commit boundary
 ```
@@ -111,7 +124,7 @@ Data Sync 与另两个成员的边界：**Data Synchronization 只做同族、�
 Endpoints → Setup → Objects → Compare → Preview → Result
 ```
 
-窗口继续承载端点选择、Compare / Preview / Execute 与行级审阅交互。Job 状态可通过 `jobId` 查询并在重新打开窗口后重附着；计划正文、行值和审阅选择仍为当前进程内状态，重启后需要重新比较。
+窗口继续承载端点选择、Compare / Preview / Execute 与行级审阅交互。Job 状态可通过 `jobId` 查询并在重新打开窗口后重附着；计划正文与审阅选择是**宿主注入的进程内实例**中的状态，行值在比较未超过 8 MiB 时留在内存内联存储、超过时落盘到**注入根下的私有目录**。两者都随进程结束而失效，重启后需要重新比较。
 
 ## 8. Tests
 

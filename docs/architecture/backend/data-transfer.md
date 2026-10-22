@@ -46,11 +46,11 @@ SQL 文件支持 UTF-8、UTF-8 BOM、UTF-16 LE/BE，以及 none/gzip 压缩。�
   → 执行 / Result
 ```
 
-`src-tauri/src/commands/data_transfer/plans.rs` 的 `TransferPlanStore` 使用进程内 Mutex + HashMap 保存计划与恢复信息。计划冻结原始 job、驱动协议、结构/范围/映射指纹、预期 DDL 和目标只读状态，并带有效期。TransferPlanStore 本身不持久化。
+`packages/data-transfer/src/plan_store/` 定义计划存储端口 `TransferPlanStorePort`，包内实现 `InMemoryTransferPlanStore`（进程内 Mutex + HashMap）。宿主在组装期创建一个实例注入 `AppState.transfer_plans`，调用点按组织作用域访问；**计划存储没有进程级全局单例**（包的其它部分另有各自的进程级登记，例如 SQL 文件路径表 `packages/data-transfer/src/sql_file.rs` 的 `PATHS`）。计划冻结原始 job、驱动协议、结构/范围/映射指纹、预期 DDL 和目标只读状态，并带有效期。存储本身不持久化。
 
 peek 不消耗计划；claim 原子将 available 转为 executing 并建立活动执行占用。计划消费后不因失败重新变为 available，避免未知提交结果触发重复执行。执行请求引用 planId，selection 只允许缩小 sourceTables 集合；运行选项只开放破坏性确认，不允许客户端替换冻结映射与 SQL。
 
-公共 Job 生命周期由 `AppState.desktop_job_host` 持有的 `DesktopJobHost` 与 AppDb SQLite 仓储管理。prepare 命令创建并执行 `dataTransferPrepare` Job，完成后返回终态及审阅数据；apply 命令创建新的 `dataTransferApply` Job，在 Job、幂等 receipt 和 consumed plan ID 原子提交后立即返回 queued jobId，并将 handler future 放入 Tauri 后台任务。`get_job`、`list_jobs`、`get_transfer_job_details` 可读取状态；`cancel_data_transfer` 记录 Job cancel intent 并触发 runtime watcher。幂等重放返回原 Job，不重复执行。
+公共 Job 生命周期由 `AppState.desktop_job_host` 持有的 `JobHost` 与 AppDb SQLite 仓储管理。prepare 命令创建并执行 `dataTransferPrepare` Job，完成后返回终态及审阅数据；apply 命令创建新的 `dataTransferApply` Job，在 Job、幂等 receipt 和 consumed plan ID 原子提交后立即返回 queued jobId，并将 handler future 放入 Tauri 后台任务。`get_job`、`list_jobs`、`get_transfer_job_details` 可读取状态；`cancel_data_transfer` 记录 Job cancel intent 并触发 runtime watcher。幂等重放返回原 Job，不重复执行。
 
 持久 Job 不会使计划变成持久：plan body、resume token 和 live handler/endpoints 仍在进程内。进程重启后不恢复旧 session/worker，也不自动 apply；Queued admission 转为 Failed/NotStarted + `notExecuted`，Running 转为 Failed/Unknown + `pendingVerification`。需要重新 prepare 或由新授权的只读 verifier 按 Job details/checkpoint 明确核验。
 

@@ -69,43 +69,43 @@ impl JobRuntimeRepository for InMemoryJobRepository {
 
     async fn record_progress(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         claim: &JobClaim,
         progress: JobProgress,
     ) -> Result<(), PortError> {
-        InMemoryJobRepository::record_progress(self, claim, progress)
+        InMemoryJobRepository::record_progress(self, ctx, claim, progress)
     }
 
     async fn record_artifacts(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         claim: &JobClaim,
         artifacts: &[ArtifactId],
     ) -> Result<(), PortError> {
-        InMemoryJobRepository::record_artifacts(self, claim, artifacts)
+        InMemoryJobRepository::record_artifacts(self, ctx, claim, artifacts)
     }
 
     async fn record_domain_result(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         claim: &JobClaim,
         result: JobDomainResult,
     ) -> Result<(), PortError> {
-        InMemoryJobRepository::record_domain_result(self, claim, result)
+        InMemoryJobRepository::record_domain_result(self, ctx, claim, result)
     }
 
     async fn append_external_artifacts(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         job_id: &JobId,
         artifacts: &[ArtifactId],
     ) -> Result<(), PortError> {
-        InMemoryJobRepository::append_external_artifacts(self, job_id, artifacts)
+        InMemoryJobRepository::append_external_artifacts(self, ctx, job_id, artifacts)
     }
 
     async fn finish(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         claim: &JobClaim,
         expected: JobStateVersion,
         state: JobState,
@@ -116,6 +116,7 @@ impl JobRuntimeRepository for InMemoryJobRepository {
     ) -> Result<JobRecord, PortError> {
         InMemoryJobRepository::finish(
             self,
+            ctx,
             claim,
             expected,
             state,
@@ -128,37 +129,45 @@ impl JobRuntimeRepository for InMemoryJobRepository {
 
     async fn persist_recovery(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         job_id: &JobId,
         recovery: JobRecoveryResult,
     ) -> Result<(), PortError> {
-        InMemoryJobRepository::persist_recovery(self, job_id, recovery)
+        InMemoryJobRepository::persist_recovery(self, ctx, job_id, recovery)
     }
 
     async fn persist_recovery_verification(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         job_id: &JobId,
         expected: JobStateVersion,
         verification: JobRecoveryVerification,
     ) -> Result<(), PortError> {
-        InMemoryJobRepository::persist_recovery_verification(self, job_id, expected, verification)
+        InMemoryJobRepository::persist_recovery_verification(
+            self,
+            ctx,
+            job_id,
+            expected,
+            verification,
+        )
     }
 
     async fn receipt_for(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         key: &IdempotencyKey,
     ) -> Result<Option<JobId>, PortError> {
-        InMemoryJobRepository::receipt_for(self, key)
+        InMemoryJobRepository::receipt_for(self, ctx, key)
     }
 
     async fn committed_boundaries(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         job_id: &JobId,
     ) -> Result<Vec<CommitBoundary>, PortError> {
-        Ok(InMemoryJobRepository::committed_boundaries(self, job_id))
+        Ok(InMemoryJobRepository::committed_boundaries(
+            self, ctx, job_id,
+        ))
     }
 
     async fn latest_checkpoint(
@@ -171,9 +180,9 @@ impl JobRuntimeRepository for InMemoryJobRepository {
 
     async fn get_details(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         job_id: JobId,
     ) -> Result<JobDetails, PortError> {
-        InMemoryJobRepository::get_details(self, job_id)
+        InMemoryJobRepository::get_details(self, ctx, job_id)
     }
 }

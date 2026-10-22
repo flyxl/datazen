@@ -55,6 +55,41 @@ fn read_only_checks_the_statement_executed_by_explain_analyze() {
     assert!(check_sql("EXPLAIN DELETE FROM t", true, false).is_ok());
 }
 
+/// Regression: option keywords may precede the analyzed statement in either
+/// order, and PostgreSQL accepts the `ANALYSE` spelling. Skipping only the
+/// leading ANALYZE keyword used to classify `EXPLAIN ANALYZE VERBOSE <write>`
+/// by its first surviving token VERBOSE (not a write verb), so the write was
+/// allowed on read-only connections even though EXPLAIN ANALYZE executes it.
+#[test]
+fn read_only_blocks_explain_analyze_in_all_option_orders() {
+    for sql in [
+        "EXPLAIN ANALYZE VERBOSE DELETE FROM t",
+        "EXPLAIN VERBOSE ANALYZE DELETE FROM t",
+        "EXPLAIN VERBOSE ANALYSE DELETE FROM t",
+        "EXPLAIN ANALYSE UPDATE t SET a = 1 WHERE id = 1",
+        "EXPLAIN ANALYZE TRUE DELETE FROM t",
+        "EXPLAIN (ANALYSE TRUE, VERBOSE) DELETE FROM t",
+        "EXPLAIN (VERBOSE TRUE, ANALYZE) DELETE FROM t",
+        "EXPLAIN ANALYZE VERBOSE WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d",
+    ] {
+        let error = check_sql(sql, true, false)
+            .err()
+            .unwrap_or_else(|| panic!("expected read-only block for `{sql}`"));
+        assert!(
+            error.contains("read-only") || error.contains("write"),
+            "expected write block for `{sql}`: {error}"
+        );
+    }
+    // The explicit bool after ANALYZE/ANALYSE is consumed as an option, never
+    // mistaken for the statement's main verb.
+    assert!(check_sql("EXPLAIN ANALYZE TRUE SELECT * FROM t", true, false).is_ok());
+    assert!(check_sql("EXPLAIN ANALYSE SELECT * FROM t", true, false).is_ok());
+    assert!(check_sql("EXPLAIN (ANALYSE FALSE) DELETE FROM t", true, false).is_ok());
+    // Plan-only EXPLAIN still allows an appended write statement: nothing
+    // executes.
+    assert!(check_sql("EXPLAIN VERBOSE DELETE FROM t", true, false).is_ok());
+}
+
 #[test]
 fn safe_mode_blocks_update_without_where() {
     let err = check_sql("UPDATE users SET name = 'x'", false, true).unwrap_err();

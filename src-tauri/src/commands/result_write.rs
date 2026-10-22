@@ -1,13 +1,11 @@
 //! Result edits use immutable provenance and the original live runtime resource.
 use super::{AppState, CommandError};
-use crate::{
-    db::{ColumnInfo, LegacySqlDialect, SqlDialect, TableSchema, Value},
-    platform::into_command_error,
-};
+use crate::platform::into_command_error;
 use datazen_application::{
     dto::requests::{CommandCall, ExecuteInSessionRequest},
     sessions::ConnectionUseCases,
 };
+use datazen_driver_api::{ColumnInfo, LegacySqlDialect, SqlDialect, TableSchema, Value};
 use datazen_platform_api::{
     context::RequestContext,
     dto::{

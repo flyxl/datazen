@@ -8,7 +8,7 @@
 
 use super::error::CommandError;
 use super::AppState;
-use crate::db::Value;
+use datazen_driver_api::Value;
 use datazen_feature_core::data_browsing::{
     commit_changes, preview_changes, validate_table_context, ConnectionFacts,
 };
@@ -247,7 +247,7 @@ mod table_target;
 pub async fn get_table_data_at_target(
     state: State<'_, AppState>,
     request: table_target::TableReadRequest,
-) -> Result<crate::db::TableDataResult, CommandError> {
+) -> Result<datazen_driver_api::TableDataResult, CommandError> {
     table_target::read(&state, request).await
 }
 

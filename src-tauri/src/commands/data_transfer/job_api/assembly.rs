@@ -8,22 +8,23 @@
 
 use std::collections::HashMap;
 
-use crate::db::{ConnectionHandle, DatabaseDriver};
+use datazen_driver_api::driver_protocol_version;
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
 use datazen_driver_api::{TableSchema, TableType};
 use sha2::{Digest, Sha256};
 
 use super::super::exec;
 use super::super::inspect::inspect_data_transfer_impl;
-use super::super::plans::{self, StoredTransferPlan};
 use super::super::AppState;
-use super::endpoint_identity::EndpointIdentity;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::data_transfer::job::{TransferEndpoints, TransferFreezeBody};
 use crate::data_transfer::model::{Endpoint, TableInspectResult, TransferRunSelection};
+use crate::data_transfer::plan_store::{self as plans, StoredTransferPlan};
 use crate::data_transfer::{
     enforce_transfer_pairing, validate_no_self_table_overwrite, TransferJob, TransferMode,
     WriteMode,
 };
+use crate::services::migration_endpoint::EndpointIdentity;
 
 /// Everything a `dataTransferPrepare` / `dataTransferApply` Job needs, resolved
 /// once on the host side: the Job never resolves endpoints or schemas itself.
@@ -364,7 +365,7 @@ async fn resolve_sql_file(
     let (driver, handle, mut inspected, mut schemas) =
         exec::load_sql_source_snapshot(state, job).await?;
     if driver.driver_type() != plan.source_driver_type
-        || plans::driver_protocol_version(driver.as_ref()) != plan.source_driver_protocol
+        || driver_protocol_version(driver.as_ref()) != plan.source_driver_protocol
     {
         return Err(CommandError::Validation(
             "source driver contract changed since preview; return to preview".into(),
@@ -379,7 +380,7 @@ async fn resolve_sql_file(
     )
     .map_err(CommandError::from)?;
     if target_driver.driver_type() != plan.target_driver_type
-        || plans::driver_protocol_version(target_driver.as_ref()) != plan.target_driver_protocol
+        || driver_protocol_version(target_driver.as_ref()) != plan.target_driver_protocol
     {
         return Err(CommandError::Validation(
             "SQL-file target dialect contract changed since preview; return to preview".into(),

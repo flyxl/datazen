@@ -4,19 +4,19 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::ai::SchemaContextBuilder;
-use crate::cache::SchemaCache;
 use crate::commands::AppState;
-use crate::db::init_drivers;
-use crate::monitor::MonitorEngine;
+use crate::monitor::engine::MonitorEngine;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::{mcp, redis_flush_gate, wapps, workflow};
+use datazen_feature_core::ai::context::SchemaContextBuilder;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::job::RecoveryFilter;
 use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
+use datazen_runtime::driver_registry::init_drivers;
 use datazen_runtime::job::{JobClock, SystemJobClock};
+use datazen_runtime::schema_cache::SchemaCache;
 
 use super::helpers::unique_driver_types;
 
@@ -78,13 +78,13 @@ pub(super) async fn build_app_state(
 
 pub(crate) fn build_desktop_job_host(
     app_db: Arc<crate::store::AppDb>,
-) -> Arc<datazen_runtime::job::DesktopJobHost> {
+) -> Arc<datazen_runtime::job::JobHost> {
     let clock: Arc<dyn JobClock> = Arc::new(SystemJobClock);
     let repository: Arc<dyn datazen_runtime::job::JobRuntimeRepository> = Arc::new(
         crate::store::app_db::jobs::SqliteJobRepository::new(app_db, clock.clone(), 300),
     );
     let ledger = Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::team_default())));
-    Arc::new(datazen_runtime::job::DesktopJobHost::new(
+    Arc::new(datazen_runtime::job::JobHost::new(
         repository, ledger, clock,
     ))
 }
@@ -162,7 +162,7 @@ pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<
 
 pub(crate) fn finish_app_state(
     store: Arc<Store>,
-    registry: Arc<crate::db::DriverRegistry>,
+    registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
     sync_adapters: Arc<crate::transfer::adapter_registry::SyncAdapterRegistry>,
     prompts_dir: Option<PathBuf>,
 ) -> AppState {
@@ -184,6 +184,11 @@ pub(crate) fn finish_app_state(
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
     let platform = crate::platform::PlatformEntry::launch();
+    // Schema Diff 评审计划的存储：桌面单租户，只承认桌面自己的组织。
+    // 桌面身份组装失败时不编造组织身份——该存储不承认任何组织，一切访问按
+    // 「不存在」处理（依赖身份的 IPC 调用本来也会明确失败）。
+    let schema_diff_reviewed_plans =
+        crate::commands::schema_diff::reviewed_store::desktop_reviewed_plan_store(&platform);
     let schema_source = Arc::new(crate::ai::metadata_source::RuntimeSchemaSource::new(
         registry.clone(),
         store.clone(),
@@ -195,12 +200,17 @@ pub(crate) fn finish_app_state(
         store,
         schema_cache: schema_cache.clone(),
         sync_adapters,
-        ai_registry: Arc::new(crate::ai::AiProviderRegistry::with_http_client(
+        ai_registry: Arc::new(datazen_ai_providers::AiProviderRegistry::with_http_client(
             datazen_ai_providers::http::HttpClient::desktop(),
         )),
         schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_cache, schema_source)),
-        prompt_resolver: Arc::new(crate::ai::PromptResolver::new(&data_dir, prompts_dir)),
-        workflow_registry: Arc::new(workflow::WorkflowRegistry::new(app_db, data_dir.clone())),
+        prompt_resolver: Arc::new(
+            datazen_feature_core::ai::prompt_resolver::PromptResolver::new(&data_dir, prompts_dir),
+        ),
+        workflow_registry: Arc::new(workflow::WorkflowRegistry::new(
+            Arc::new(workflow::registry::AppDbWorkflowStore::new(app_db.clone())),
+            data_dir.clone(),
+        )),
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
         // 概要 §6.2 第 8 步：身份在启动期组装一次。组装失败时把原因存进
@@ -209,10 +219,22 @@ pub(crate) fn finish_app_state(
         query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
         wapps: wapp_manager,
-        cancel_registry: crate::ai::CancellationRegistry::default(),
+        cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry::default(),
         ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
         desktop_job_host,
+        // 组织作用域在**启动期**确定一次：桌面是单租户，组织的值是安装级常量，
+        // 与「当前 OS 用户名能不能取到」无关。请求期直接取这份值（INV-01）。
+        organization_scope: crate::platform::local_organization_scope(),
+        schema_diff_reviewed_plans,
+        // Data Sync 的存储端口实例在组装期创建一次：宿主决定「实例从哪来」，
+        // 规则与落盘实现留在共享包里。
+        sync_stores: crate::commands::SyncStorePorts::desktop(),
+        // Data Transfer 的计划/检查点存储：宿主在组装期创建一个实例并注入。
+        // 包内不再有进程级全局，存储的生命周期到这里为止。
+        transfer_plans: Arc::new(
+            crate::data_transfer::plan_store::InMemoryTransferPlanStore::new(),
+        ),
     };
     if let Ok(adapter) = state.platform.require() {
         if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {

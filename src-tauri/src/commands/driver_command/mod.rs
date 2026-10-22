@@ -1,6 +1,5 @@
 //! Driver Command IPC — discovery, validation, execute, and streaming.
 
-mod access;
 mod discovery;
 mod execute;
 mod helpers;

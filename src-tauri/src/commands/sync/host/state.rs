@@ -1,7 +1,7 @@
 //! Runtime-only Data Sync artifacts and selections.
 //!
 //! Durable Job definitions, state, progress, commit boundaries, and recovery
-//! evidence live in `DesktopJobHost`. This module keeps the row-bearing
+//! evidence live in `JobHost`. This module keeps the row-bearing
 //! ChangeSet and reviewed selection only in process memory; neither contains a
 //! live session id in durable storage. Cancel intent belongs to the Job record.
 
@@ -23,7 +23,7 @@ use datazen_runtime::job::{InMemoryJobRepository, SharedClock};
 
 use crate::data_sync::job::ChangeSetArtifact;
 
-use super::super::plans::SyncRunSelection;
+use crate::data_sync::plan_store::SyncRunSelection;
 use crate::data_sync::SyncOptions;
 
 /// Deterministic clock origin: Job bookkeeping must not depend on wall time.

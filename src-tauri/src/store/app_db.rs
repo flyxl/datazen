@@ -10,7 +10,7 @@ use rusqlite::{params, Connection};
 use thiserror::Error;
 pub const APP_DB_FILE: &str = "datazen.sqlite";
 pub const SCHEMA_VERSION: i32 = 4;
-pub const MAX_RUN_ROWS: usize = 500;
+pub const MAX_RUN_ROWS: usize = datazen_feature_core::dashboard::execute::MAX_RUN_ROWS;
 
 const JOB_SCHEMA_V2: &str = r#"
 CREATE TABLE jobs (
@@ -326,6 +326,6 @@ mod restore_job_tests;
 
 // Re-exported so the paths `app_db::X` keep resolving for `store/mod.rs`
 // and anything else that names these types through this module.
-pub use dashboards::{DashboardRecord, DashboardWorkflowRef, WidgetRecord};
+pub use dashboards::{DashboardRecord, WidgetRecord};
 pub use runs::WidgetRunRecord;
 pub use workflows::{WorkflowRecord, WorkflowVisibility};

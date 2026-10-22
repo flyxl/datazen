@@ -42,7 +42,7 @@ export async function ensureDedicatedSession(
     }
   }
   await releaseDedicatedSession(current?.dbSessionId);
-  const dbSessionId = await connectionCommands.connectDedicated(
+  const { dbSessionId } = await connectionCommands.connectDedicated(
     connectionId,
     databaseOverride ?? undefined,
   );
@@ -73,7 +73,7 @@ export async function listDatabasesDedicated(
   connectionId: string,
   preferredDatabase?: string,
 ): Promise<{ databases: string[]; dbSessionId: string | null }> {
-  const dbSessionId = await connectionCommands.connectDedicated(
+  const { dbSessionId } = await connectionCommands.connectDedicated(
     connectionId,
     preferredDatabase || undefined,
   );

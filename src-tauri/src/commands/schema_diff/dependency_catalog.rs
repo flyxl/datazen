@@ -7,7 +7,7 @@
 use super::{
     normalize_dialect, resolve_table_for_dialect, uses_schema_scope, CommandError, SchemaDiffPlan,
 };
-use crate::db::{CatalogReader, LegacyCatalogReader};
+use datazen_driver_api::{CatalogReader, LegacyCatalogReader};
 use std::collections::{BTreeMap, HashSet};
 
 pub(super) fn is_table_missing_error(msg: &str) -> bool {
@@ -49,7 +49,7 @@ pub(super) async fn fetch_target_table_schema(
     table: &str,
     database: &str,
     schema: Option<&str>,
-) -> Result<crate::db::TableSchema, CommandError> {
+) -> Result<datazen_driver_api::TableSchema, CommandError> {
     // 表结构读取走窄契约，`driver_type()` 仍是驱动专属规则。
     let catalog = LegacyCatalogReader::new(driver);
     let database = schema_catalog_database(&driver.driver_type(), Some(database));
@@ -62,7 +62,7 @@ pub(super) async fn fetch_target_table_schema(
             let msg = e.to_string();
             if is_table_missing_error(&msg) {
                 tracing::info!(%table, "target table does not exist, treating as empty schema");
-                Ok(crate::db::TableSchema {
+                Ok(datazen_driver_api::TableSchema {
                     table_name: table.to_string(),
                     columns: Vec::new(),
                     primary_keys: Vec::new(),
@@ -84,8 +84,8 @@ pub(super) async fn fetch_target_table_dependency_catalog(
     database: &str,
     dialect: &str,
     schema_scope: Option<&str>,
-    selected_snapshots: &[(String, crate::db::TableSchema)],
-) -> Result<Vec<(String, crate::db::TableSchema)>, CommandError> {
+    selected_snapshots: &[(String, datazen_driver_api::TableSchema)],
+) -> Result<Vec<(String, datazen_driver_api::TableSchema)>, CommandError> {
     const CATALOG_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
     let started_at = std::time::Instant::now();
     let metadata_database = schema_catalog_database(dialect, Some(database));
@@ -301,12 +301,12 @@ pub(super) fn has_table_drop_statement(plan: &SchemaDiffPlan) -> bool {
 }
 
 pub(super) fn validate_target_dependency_catalog(
-    reviewed: &[(String, crate::db::TableSchema)],
-    current: &[(String, crate::db::TableSchema)],
+    reviewed: &[(String, datazen_driver_api::TableSchema)],
+    current: &[(String, datazen_driver_api::TableSchema)],
 ) -> Result<(), String> {
     fn catalog_map<'a>(
-        snapshots: &'a [(String, crate::db::TableSchema)],
-    ) -> Result<BTreeMap<&'a str, &'a crate::db::TableSchema>, String> {
+        snapshots: &'a [(String, datazen_driver_api::TableSchema)],
+    ) -> Result<BTreeMap<&'a str, &'a datazen_driver_api::TableSchema>, String> {
         let mut catalog = BTreeMap::new();
         for (identity, snapshot) in snapshots {
             if catalog.insert(identity.as_str(), snapshot).is_some() {

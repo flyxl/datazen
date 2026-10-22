@@ -41,6 +41,7 @@ pub mod error;
 //（rustdoc 仍会在展开后的类型上生效），故在此局部放行。
 #[allow(unused_doc_comments)]
 pub mod id;
+pub mod migration;
 pub mod ports;
 pub mod target;
 
@@ -49,8 +50,8 @@ pub use error::PortError;
 pub use ports::{
     ArtifactStore, BudgetCoordinator, Clock, ClusterNodeBudgetPort, ControlResourcePort,
     DriverPoolBudgetPort, EventSink, FixedClock, IdentityResolver, JobRepository, NetworkProvider,
-    PolicyService, ProfileRepository, SecretProvider, SessionDirectory, SettingsRepository,
-    SubmissionTokenIssuer, SystemClock,
+    OrganizationScope, PolicyService, ProfileRepository, SecretProvider, SessionDirectory,
+    SettingsRepository, SubmissionTokenIssuer, SystemClock,
 };
 
 pub mod settings;

@@ -6,20 +6,20 @@
 //! are.
 
 use super::*;
-use crate::db::Value;
 use crate::testing::app_state::TestAppState;
+use datazen_driver_api::Value;
 
 /// The row count a read reports, and the estimate command beside it.
 mod count_strategy {
     use super::*;
-    use crate::db::CountStrategy;
     use crate::testing::mock_driver::MockDriverOptions;
+    use datazen_driver_api::CountStrategy;
 
     async fn read_with(
         opts: MockDriverOptions,
         count_strategy: Option<CountStrategy>,
         default_order_columns: Option<Vec<String>>,
-    ) -> (crate::db::TableDataResult, TestAppState) {
+    ) -> (datazen_driver_api::TableDataResult, TestAppState) {
         let test = TestAppState::with_options(opts).await;
         let (_, conn_id) = test.save_and_connect_runtime("count-strategy").await;
         let data = get_table_data_impl(
@@ -47,7 +47,7 @@ mod count_strategy {
         let (data, _test) = read_with(
             MockDriverOptions {
                 columns: vec![
-                    crate::db::ColumnSchema {
+                    datazen_driver_api::ColumnSchema {
                         name: "id".into(),
                         data_type: "integer".into(),
                         nullable: false,
@@ -56,7 +56,7 @@ mod count_strategy {
                         is_primary_key: true,
                         is_auto_increment: false,
                     },
-                    crate::db::ColumnSchema {
+                    datazen_driver_api::ColumnSchema {
                         name: "name".into(),
                         data_type: "text".into(),
                         nullable: true,
@@ -83,7 +83,7 @@ mod count_strategy {
     async fn get_table_data_defaults_keep_legacy_shape() {
         let (data, _test) = read_with(
             MockDriverOptions {
-                columns: vec![crate::db::ColumnSchema {
+                columns: vec![datazen_driver_api::ColumnSchema {
                     name: "id".into(),
                     data_type: "integer".into(),
                     nullable: false,
@@ -109,7 +109,7 @@ mod count_strategy {
     #[tokio::test]
     async fn estimate_table_rows_returns_none_when_driver_cannot_estimate() {
         let test = TestAppState::with_options(MockDriverOptions {
-            columns: vec![crate::db::ColumnSchema {
+            columns: vec![datazen_driver_api::ColumnSchema {
                 name: "id".into(),
                 data_type: "integer".into(),
                 nullable: false,
@@ -144,7 +144,7 @@ mod count_strategy {
     #[tokio::test]
     async fn estimate_table_rows_returns_value_when_driver_estimates() {
         let test = TestAppState::with_options(MockDriverOptions {
-            columns: vec![crate::db::ColumnSchema {
+            columns: vec![datazen_driver_api::ColumnSchema {
                 name: "id".into(),
                 data_type: "integer".into(),
                 nullable: false,
@@ -175,7 +175,7 @@ mod count_strategy {
     #[tokio::test]
     async fn estimate_table_rows_returns_none_for_unusable_estimate_value() {
         let test = TestAppState::with_options(MockDriverOptions {
-            columns: vec![crate::db::ColumnSchema {
+            columns: vec![datazen_driver_api::ColumnSchema {
                 name: "id".into(),
                 data_type: "integer".into(),
                 nullable: false,

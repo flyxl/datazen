@@ -1,9 +1,7 @@
 use super::identity::LOCAL_ORGANIZATION_ID;
-use crate::{
-    db::ConnectionConfig,
-    store::{platform_profiles::ProfileMetadata, Store},
-};
+use crate::store::{platform_profiles::ProfileMetadata, Store};
 use async_trait::async_trait;
+use datazen_driver_api::ConnectionConfig;
 use datazen_platform_api::{
     context::RequestContext,
     dto::profile::{ProfileDraft, ProfilePatch},

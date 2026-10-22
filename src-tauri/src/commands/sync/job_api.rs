@@ -183,7 +183,7 @@ pub(crate) async fn release_sessions(state: &AppState, sessions: &[String]) {
 pub(crate) async fn preview_for_durable_job(
     state: &AppState,
     job_id: &str,
-) -> Result<super::plans::SyncComparisonPreview, CommandError> {
+) -> Result<crate::data_sync::plan_store::SyncComparisonPreview, CommandError> {
     let details = jobs::details_durable_job(state, job_id).await?;
     if details.job.kind != super::jobs::PREPARE_KIND {
         return Err(CommandError::Validation(
@@ -206,7 +206,12 @@ pub(crate) async fn preview_for_durable_job(
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
-    super::plans::preview_for_plan(&plan_id).map_err(CommandError::Validation)
+    crate::data_sync::plan_store::preview_for_plan(
+        state.sync_stores.plan_store.as_ref(),
+        &state.organization_scope()?,
+        &plan_id,
+    )
+    .map_err(CommandError::Validation)
 }
 
 #[tauri::command]
@@ -251,7 +256,7 @@ pub async fn get_data_sync_job_details(
 pub async fn get_data_sync_job_preview(
     job_id: String,
     state: State<'_, AppState>,
-) -> Result<super::plans::SyncComparisonPreview, CommandError> {
+) -> Result<crate::data_sync::plan_store::SyncComparisonPreview, CommandError> {
     preview_for_durable_job(&state, &job_id)
         .await
         .cmd_err("get_data_sync_job_preview")

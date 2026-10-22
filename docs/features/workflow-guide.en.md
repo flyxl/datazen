@@ -1,7 +1,7 @@
 # DataZen Workflow Guide
 
 > This document describes the full YAML syntax and usage of DataZen **Workflows**.  
-> Source of truth: `src-tauri/src/workflow/workflows.rs`, in-repo test YAML, and the `workflow_generate` prompt.  
+> Source of truth: `packages/feature-core/src/workflow/`, in-repo test YAML, and the `workflow_generate` prompt.  
 > **On-disk YAML must use snake_case field names** (e.g. `timeout_secs`, `then_steps`, `as_var`). Frontend TypeScript / IPC responses may use camelCase — that is a serialization difference. **Do not write camelCase in hand-authored YAML.**
 
 ---
@@ -898,7 +898,7 @@ output:
 
 | Path | Contents |
 |------|----------|
-| `src-tauri/src/workflow/workflows.rs` | Model, execute, templates, conditions |
+| `packages/feature-core/src/workflow/` | Model, execute, templates, conditions |
 | `scripts/test-cross-db-workflow.yaml` | Cross-DB sample |
 | `src-tauri/tests/workflow_tests.rs` | Integration tests |
 | `packages/feature-core/resources/prompts/workflow_generate.md` | AI generation rules |

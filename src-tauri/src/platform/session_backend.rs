@@ -4,10 +4,11 @@ mod release;
 #[cfg(feature = "webdriver")]
 pub(crate) mod webdriver_dispatch;
 use super::{resource_budget::DesktopResourceBudget, resource_mapping as map};
-use crate::{db::DriverRegistry, store::Store};
+use crate::store::Store;
 use async_trait::async_trait;
 use datazen_driver_api::{resource as dr, session as ds, QueryExecutionId};
 use datazen_platform_api::ports::budget::BudgetCoordinator as _;
+use datazen_runtime::driver_registry::DriverRegistry;
 use datazen_runtime::{
     connection as rc,
     registry::{audit::CapabilityVersions, backend::*},

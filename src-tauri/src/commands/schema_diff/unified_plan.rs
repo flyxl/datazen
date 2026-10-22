@@ -1,6 +1,10 @@
 use super::*;
 mod catalog;
 mod revalidation;
+use crate::schema_diff::object_selection::{
+    catalog_entry_snapshot, object_identity, resolve_object_selectors,
+    table_identities_from_catalog, table_identity_for_target, unique_object_selectors,
+};
 use crate::schema_diff::unified_scope::MySqlViewScopeContext;
 use crate::schema_diff::{
     object_identity::{SchemaObjectDependencySnapshot, SchemaObjectIdentity},
@@ -10,9 +14,7 @@ use crate::schema_diff::{
 };
 pub(super) use catalog::read_target_object_catalog;
 use catalog::{fetch_object_dependency_snapshot, fetch_object_snapshot};
-use datazen_driver_api::{
-    CatalogReader, DatabaseObject, ObjectKind, SchemaMigration, TableInfo, TableType,
-};
+use datazen_driver_api::{CatalogReader, DatabaseObject, ObjectKind, SchemaMigration};
 pub(super) use revalidation::revalidate_source_snapshot;
 use std::collections::BTreeSet;
 
@@ -112,20 +114,14 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
     let target_only_table_names = target_only_table_names.unwrap_or_default();
     let source_objects = source_objects.unwrap_or_default();
     let target_objects = target_objects.unwrap_or_default();
-    if table_names.is_empty()
-        && target_only_table_names.is_empty()
-        && source_objects.is_empty()
-        && target_objects.is_empty()
-    {
-        return Err(CommandError::Validation(
-            "Select at least one table or schema object before preparing a unified plan".into(),
-        ));
-    }
-    if table_names.len() != target_table_names.len() {
-        return Err(CommandError::Validation(
-            "table_names and target_table_names must have the same length".into(),
-        ));
-    }
+    crate::schema_diff::plan_request::validate_plan_selection(
+        &table_names,
+        &target_table_names,
+        &target_only_table_names,
+        &source_objects,
+        &target_objects,
+    )
+    .map_err(|error| CommandError::Validation(error.to_string()))?;
     let source_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &source_db_session_id,
@@ -181,8 +177,10 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
     let target_driver = target_context.driver.clone();
     let target_handle = target_context.handle.clone();
     // 表结构读取走窄契约，而不是整块驱动。
-    let source_catalog_reader = crate::db::LegacyCatalogReader::new(source_driver.as_ref());
-    let target_catalog_reader = crate::db::LegacyCatalogReader::new(target_driver.as_ref());
+    let source_catalog_reader =
+        datazen_driver_api::LegacyCatalogReader::new(source_driver.as_ref());
+    let target_catalog_reader =
+        datazen_driver_api::LegacyCatalogReader::new(target_driver.as_ref());
     let target_dependency_schema_scope = if uses_schema_scope(&target_config.database_type) {
         target_schema_scope.or(target_driver.default_schema())
     } else {
@@ -560,6 +558,8 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
         target_mysql_view_scope_context.as_ref(),
     );
     crate::schema_diff::reviewed::freeze_with_unified_catalog(
+        state.schema_diff_reviewed_plans.as_ref(),
+        &super::reviewed_scope(state)?,
         &mut plan,
         target_db_session_id,
         &target_handle,
@@ -588,51 +588,9 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
         },
         target_mysql_view_scope_context,
     )
-    .await;
+    .await
+    .map_err(CommandError::Validation)?;
     Ok(plan)
-}
-
-fn unique_object_selectors(
-    objects: &[DatabaseObject],
-    side: &str,
-) -> Result<Vec<DatabaseObject>, CommandError> {
-    let mut seen = BTreeSet::new();
-    let mut selectors = Vec::with_capacity(objects.len());
-    for object in objects {
-        let kind = ObjectKind::parse(&object.kind).ok_or_else(|| {
-            CommandError::Validation(format!("Unsupported schema object kind `{}`", object.kind))
-        })?;
-        if object.name.trim().is_empty() {
-            return Err(CommandError::Validation(
-                "Schema object name must not be empty".into(),
-            ));
-        }
-        let identity = object_identity(object);
-        if kind == ObjectKind::Table {
-            return Err(CommandError::Validation(format!(
-                "Table `{}` must be selected through the table list",
-                identity.display_key()
-            )));
-        }
-        if !seen.insert(identity) {
-            return Err(CommandError::Validation(format!(
-                "{side} schema object selection contains a duplicate identity"
-            )));
-        }
-        selectors.push(object.clone());
-    }
-    Ok(selectors)
-}
-
-fn object_identity(object: &DatabaseObject) -> SchemaObjectIdentity {
-    SchemaObjectIdentity {
-        kind: ObjectKind::parse(&object.kind).unwrap_or(ObjectKind::Table),
-        schema: object.schema.clone(),
-        name: object.name.clone(),
-        signature: object.signature.clone(),
-        target_schema: object.target_schema.clone(),
-        target_name: object.target_name.clone(),
-    }
 }
 
 async fn read_selected_object_catalog(
@@ -651,44 +609,6 @@ async fn read_selected_object_catalog(
     Ok(catalog)
 }
 
-fn resolve_object_selectors(
-    selectors: &[DatabaseObject],
-    catalog: &[DatabaseObject],
-    side: &str,
-) -> Result<Vec<DatabaseObject>, CommandError> {
-    let mut selected = Vec::with_capacity(selectors.len());
-    for selector in selectors {
-        let wanted = object_identity(selector);
-        let matches = catalog
-            .iter()
-            .filter(|candidate| object_identity(candidate) == wanted)
-            .collect::<Vec<_>>();
-        if matches.len() != 1 {
-            return Err(CommandError::Validation(format!(
-                "The {side} object `{}` is missing or ambiguous in the live catalog; refresh the selection and compare again",
-                wanted.display_key()
-            )));
-        }
-        selected.push(matches[0].clone());
-    }
-    Ok(selected)
-}
-
-fn catalog_entry_snapshot(entry: &SchemaObjectDependencySnapshot) -> SchemaObjectSnapshot {
-    SchemaObjectSnapshot {
-        kind: entry.identity.kind,
-        schema: entry.identity.schema.clone(),
-        name: entry.identity.name.clone(),
-        signature: entry.identity.signature.clone(),
-        target_schema: entry.identity.target_schema.clone(),
-        target_name: entry.identity.target_name.clone(),
-        definition: String::new(),
-        dependencies: entry.dependencies.clone(),
-        sequence_dependency_usages: entry.sequence_dependency_usages.clone(),
-        mysql_view_metadata: None,
-    }
-}
-
 pub(super) async fn read_target_table_identities(
     driver: &dyn datazen_driver_api::DatabaseDriver,
     handle: &datazen_driver_api::ConnectionHandle,
@@ -698,7 +618,7 @@ pub(super) async fn read_target_table_identities(
 ) -> Result<Vec<SchemaObjectIdentity>, CommandError> {
     let metadata_database = super::schema_catalog_database(dialect, Some(database));
     // 表清单读取走窄契约，而不是整块驱动。
-    let catalog = crate::db::LegacyCatalogReader::new(driver);
+    let catalog = datazen_driver_api::LegacyCatalogReader::new(driver);
     let tables = catalog
         .get_tables(handle, metadata_database, None)
         .await
@@ -709,49 +629,4 @@ pub(super) async fn read_target_table_identities(
         schema_scope,
         Some(metadata_database),
     ))
-}
-
-fn table_identities_from_catalog(
-    tables: &[TableInfo],
-    dialect: &str,
-    schema_scope: Option<&str>,
-    database: Option<&str>,
-) -> Vec<SchemaObjectIdentity> {
-    let mut identities = tables
-        .iter()
-        .filter(|table| matches!(table.table_type, TableType::Table))
-        .map(|table| {
-            let scope = table.schema.as_deref().or_else(|| {
-                if uses_schema_scope(dialect) {
-                    schema_scope
-                } else {
-                    database
-                }
-            });
-            SchemaObjectIdentity::table(scope, &table.name)
-        })
-        .collect::<Vec<_>>();
-    identities.sort();
-    identities.dedup();
-    identities
-}
-
-fn table_identity_for_target(
-    table: &str,
-    dialect: &str,
-    schema_scope: Option<&str>,
-    database: Option<&str>,
-) -> SchemaObjectIdentity {
-    let (schema, name) = table
-        .rsplit_once('.')
-        .map(|(schema, name)| (Some(schema), name))
-        .unwrap_or((None, table));
-    let scope = schema.or_else(|| {
-        if uses_schema_scope(dialect) {
-            schema_scope
-        } else {
-            database
-        }
-    });
-    SchemaObjectIdentity::table(scope, name)
 }

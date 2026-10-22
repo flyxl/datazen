@@ -36,13 +36,13 @@ use crate::data_sync::{
     require_data_sync_family, DataSyncError, Endpoint, RowChange, SqlStatement, SyncOptions,
     SyncSourceFilter, TableMapping,
 };
-use crate::db::LegacySqlDialect;
-use crate::services::metadata_schema;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
+use datazen_driver_api::LegacySqlDialect;
+use datazen_feature_core::services::schema_scope::metadata_schema;
 
 use super::super::{resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas};
 use super::keyset_source::DriverKeysetSource;
-use super::types::resolve_db_name;
+use crate::data_sync::api::resolve_db_name;
 use executor::{HostKeysetSource, HostTargetExecutor};
 
 /// Everything the handler needs to read a relation, cached at
@@ -144,7 +144,7 @@ impl HostDataSync {
         }
         Err(invalid(format!(
             "endpoint {} is not part of this Data Sync plan",
-            endpoint.connection_id
+            endpoint.db_session_id
         )))
     }
 
@@ -263,7 +263,7 @@ impl HostDataSync {
     /// this adapter only retains a driver handle while the stage runs.
     async fn open(&self, endpoint: &Endpoint) -> Result<EndpointSession, DataSyncError> {
         let is_source = self.next_side(endpoint)?;
-        self.open_locked(&endpoint.connection_id, endpoint, is_source)
+        self.open_locked(&endpoint.db_session_id, endpoint, is_source)
             .await
     }
 

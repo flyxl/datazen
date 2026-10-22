@@ -63,8 +63,8 @@ use datazen_runtime::application::{
 };
 
 use super::session_backend::DesktopSessionBackend;
-use crate::db::DriverRegistry;
 use crate::store::Store;
+use datazen_runtime::driver_registry::DriverRegistry;
 
 /// 桌面侧出向端口实现。
 pub struct DesktopLiveConnectionSource {

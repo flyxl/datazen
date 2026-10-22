@@ -5,8 +5,8 @@
 //! needed for a sibling glob import.
 
 use super::*;
-use crate::db::Value;
 use crate::testing::app_state::TestAppState;
+use datazen_driver_api::Value;
 use std::collections::BTreeMap;
 
 pub(super) async fn with_parameterized_driver() -> TestAppState {

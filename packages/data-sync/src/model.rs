@@ -14,19 +14,22 @@ pub type Row = Vec<Option<Value>>;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Endpoint {
-    pub connection_id: String,
+    /// Runtime database session id (`dbSessionId`, in-memory only). The
+    /// persistent connection-config id is resolved separately from the live
+    /// session view (`view.connection_id`), never carried here.
+    pub db_session_id: String,
     pub database: String,
     pub schema: Option<String>,
 }
 
 impl Endpoint {
     pub fn new(
-        connection_id: impl Into<String>,
+        db_session_id: impl Into<String>,
         database: impl Into<String>,
         schema: Option<String>,
     ) -> Self {
         Self {
-            connection_id: connection_id.into(),
+            db_session_id: db_session_id.into(),
             database: database.into(),
             schema,
         }
@@ -39,9 +42,9 @@ impl Endpoint {
             .filter(|s| !s.is_empty())
     }
 
-    /// Same connection + database + schema (self-sync of one database).
+    /// Same session + database + schema (self-sync of one database).
     pub fn same_database_as(&self, other: &Endpoint) -> bool {
-        self.connection_id == other.connection_id
+        self.db_session_id == other.db_session_id
             && self.database == other.database
             && self.normalized_schema() == other.normalized_schema()
     }
@@ -211,11 +214,11 @@ impl SyncTask {
         if self.id.trim().is_empty() {
             return Err(DataSyncError::validation("sync task id is required"));
         }
-        if self.source.connection_id.trim().is_empty()
-            || self.target.connection_id.trim().is_empty()
+        if self.source.db_session_id.trim().is_empty()
+            || self.target.db_session_id.trim().is_empty()
         {
             return Err(DataSyncError::validation(
-                "source and target connection ids are required",
+                "source and target db session ids are required",
             ));
         }
         if self.source.database.trim().is_empty() || self.target.database.trim().is_empty() {

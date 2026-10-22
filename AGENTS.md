@@ -31,16 +31,14 @@ datazen/
 │   └── extensions/              # 自动生成注册文件（generated.ts / generated-locales.ts / generated-pro.ts）
 ├── src-tauri/                   # Rust 后端
 │   ├── src/
-│   │   ├── ai/                  # AI 兼容门面 + 宿主 Runtime/SchemaCache/profile 适配
+│   │   ├── ai/                  # 宿主 AI 适配（Runtime/SchemaCache/profile 元数据绑定）
 │   │   ├── bootstrap/           # AppState、启动与关停装配
 │   │   ├── commands/            # Tauri IPC 命令
 │   │   ├── dashboard/           # Dashboard 宿主存储与执行适配
-│   │   ├── db/                  # DriverRegistry 门面（re-export → packages/runtime）
 │   │   ├── mcp/                 # MCP Server/Client 宿主传输与权限
 │   │   ├── monitor/             # MonitorEngine、授权与 occurrence
 │   │   ├── platform/            # PlatformAdapter、DesktopSessionBackend、身份/策略/仓储
-│   │   ├── services/            # QueryExecutor、Schema metadata、DbTools、JobRegistry
-│   │   ├── cache/               # SchemaCache 门面（re-export → packages/runtime）
+│   │   ├── services/            # Schema metadata、JobRegistry、Runtime 命令源
 │   │   ├── store/               # AES-256-GCM 加密持久化
 │   │   ├── tunnel/ + ssh_tunnel.rs  # 隧道装配
 │   │   ├── wapps/               # Wapp 协议桥与管理器
@@ -118,7 +116,7 @@ DataZen 确立严格正交的四维可扩展架构，依托独立设计系统 `@
 ### AI 模块与 ai-api
 
 - `packages/ai-api` 是 Rust 层的 AI Provider 抽象契约（类比 `driver-api`），定义核心 `AiProvider` trait、请求/流式响应模型与工厂注册，并统一 active → default → first 的 AI Profile 选择回退规则。
-- `packages/ai-providers` 承载具体 provider 适配与 wire protocol 实现：`protocol/{openai_chat,openai_responses,anthropic}.rs` 实现 OpenAI Chat/Responses 与 Anthropic 协议，`{openai,anthropic,deepseek,ollama,custom}.rs` 实现 OpenAI / Anthropic / DeepSeek / Ollama / 自定义端点适配，`registry.rs` 负责注册与配置恢复，`metadata.rs` 提供现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 承载 Provider-neutral 的 Prompt、Schema、Chat/NL2SQL 请求组装、诊断/分析/过滤/文档生成、安全、预算、取消、工具循环与 ownership policy（包括 grant database 绑定和结果 attribution）；`src-tauri/src/ai/` 仅保留兼容 re-export 与 Runtime/SchemaCache/profile 元数据适配，`commands/ai/` 保留 Tauri IPC、Provider/Profile 配置、仓储/会话读取、输入脱敏、context 文件、MCP/Runtime 工具宿主、事件流和取消接线。
+- `packages/ai-providers` 承载具体 provider 适配与 wire protocol 实现：`protocol/{openai_chat,openai_responses,anthropic}.rs` 实现 OpenAI Chat/Responses 与 Anthropic 协议，`{openai,anthropic,deepseek,ollama,custom}.rs` 实现 OpenAI / Anthropic / DeepSeek / Ollama / 自定义端点适配，`registry.rs` 负责注册与配置恢复，`metadata.rs` 提供现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 承载 Provider-neutral 的 Prompt、Schema、Chat/NL2SQL 请求组装、诊断/分析/过滤/文档生成、安全、预算、取消、工具循环与 ownership policy（包括 grant database 绑定和结果 attribution）；`src-tauri/src/ai/` 仅保留 Runtime/SchemaCache/profile 元数据适配（共享类型由调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen_feature_core::ai`），`commands/ai/` 保留 Tauri IPC、Provider/Profile 配置、仓储/会话读取、输入脱敏、context 文件、MCP/Runtime 工具宿主、事件流和取消接线。
 - `PromptResolver` 优先级：用户覆盖 → 驱动覆盖 → 资源文件 → 编译时英文嵌入。
 - 详情参考 [docs/architecture/backend/ai.md](docs/architecture/backend/ai.md)。
 
@@ -179,7 +177,9 @@ pnpm tauri:build:community             # 构建 Community 社区版
 pnpm tauri:build:pro                   # 构建 Pro 增强版
 npx vitest run                         # Host 前端单元测试（不含 packages/drivers）
 pnpm test:unit:drivers                 # Path 驱动 UI 单测（packages/drivers/*/ui）
-pnpm typecheck                         # tsc --noEmit，覆盖 src + packages，**含测试文件**
+pnpm typecheck                         # 双引擎类型检查（tsc = TS 7 GA + tsrs = TS 7.1-dev），覆盖 src + packages，**含测试文件**
+pnpm typecheck:tsc                     # 只跑权威引擎（typescript@7.0.2）
+pnpm typecheck:tsrs                    # 只跑前瞻引擎（tsrs，跟随 TS 7.1 开发线）
 cargo test -p datazen --lib            # Host Rust 单元测试
 cargo test -p datazen-ai-api --lib     # AI API 单元测试
 cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust 测试
@@ -317,6 +317,18 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 - **Capabilities 管理**：`src-tauri/capabilities/default.json.host` 是 git 跟踪的 host 权限源文件；需要添加新 host capability 时直接修改该文件。`default.json` 在构建时自动合并生成，**严禁手动编辑或提交**。
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件。
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件。
+- **TypeScript 7 起 `node_modules/@types` 不再自动发现。** 根 `tsconfig.json` 与五个
+  `packages/<id>/tsconfig.json` 都显式列出了 `types`。根与五个包先是 TS 5.9 自动发现的同一组
+  （dompurify / node / react / react-dom）；五个包另加 `vite/client`，`packages/ui` 再加
+  `@testing-library/jest-dom/vitest`（它自己的测试用的 DOM matcher，根 program 从
+  `src/test/setup.ts` 拿到同一份增强）。**新增 `@types/*` 依赖时必须同步加进这六处**，
+  否则该包提供的全局类型不会生效。失败方向是安全的——漏加会**多**出错误而不是少掉错误。
+  五个包的 config 现在 `extends` 根配置，因此也继承了根的 `paths`（`@datazen/*` 别名）；
+  在此之前它们各自是 standalone program，`@datazen/*` 全部解析失败，五个 program 合计
+  830 个错误，与代码本身无关。
+  门禁是双引擎的：`pnpm typecheck` 同时跑 `tsc`（TS 7 GA，权威）与 `tsrs`（TS 7.1-dev，前瞻），
+  两者输出必须逐字节一致；`tsrs` 在没有 Windows 二进制的平台会被跳过并明确打印跳过原因。
+  详见 [docs/development/ci-test-matrix.md](docs/development/ci-test-matrix.md) §2.1.4。
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中。
 - **本地环境变量文件保护**：任何 Agent（含子代理）不得打开、读取、解析、source 或打印仓库及其 worktree 中 `.env` / `.env.test` 文件的**内容**；不得将凭据写入提示、日志或报告。只允许检查文件是否存在及 Git 忽略状态。
   - **测试程序读 `.env` 是合法的**，不得因此禁止运行测试或驱动 live 套件——集成测试本就需要其中的 `DATABASE_URL` 等配置。被禁的是「把内容读进上下文」，不是「程序读文件」。误把二者混同会逼出「不跑测试」的假禁令，等于放走真实缺陷。

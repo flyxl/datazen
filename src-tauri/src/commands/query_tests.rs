@@ -6,10 +6,11 @@
 //! relative to the file that holds them.
 
 use super::*;
-use crate::db::{ColumnSchema, DriverCapabilities, DriverError, Value};
 use crate::store::AppSettings;
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
+use datazen_driver_api::{ColumnSchema, DriverError, Value};
+use datazen_runtime::driver_registry::DriverCapabilities;
 
 #[tokio::test]
 async fn execute_query_success_records_history() {
