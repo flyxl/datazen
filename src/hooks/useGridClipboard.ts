@@ -22,6 +22,7 @@ import {
 } from '../lib/gridClipboard';
 import {
   peekClipboardSource,
+  sourceForClipboardText,
   pendingCellKey,
   planPaste,
   recordClipboardSource,
@@ -279,13 +280,18 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
   );
 
   const rememberSource = useCallback(
-    (columnNames: readonly string[]) => {
-      recordClipboardSource({
-        tableKey: tableChangeKey(context),
-        columnNames: [...columnNames],
-        // DB-05 will supply the finer `CellType`; the family is what exists in commit order.
-        columnTypes: columnNames.map((name) => classifyDataType(typeByColumn.get(name))),
-      });
+    (columnNames: readonly string[], text: string) => {
+      recordClipboardSource(
+        {
+          tableKey: tableChangeKey(context),
+          columnNames: [...columnNames],
+          // DB-05 will supply the finer `CellType`; the family is what exists in commit order.
+          columnTypes: columnNames.map((name) => classifyDataType(typeByColumn.get(name))),
+        },
+        // The text is stored with the source so a paste can tell whether the clipboard still
+        // holds it. Without it, an Excel copy would leave a source that still claims "from T".
+        text,
+      );
     },
     [context, typeByColumn],
   );
@@ -312,13 +318,13 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
         if (coords.length === 0) return null;
         const matrix = buildSelectionMatrix(rows, coords);
         const text = serializeCells(matrix, { format, columnNames, includeHeader });
-        if (text !== '') rememberSource(columnNames);
+        if (text !== '') rememberSource(columnNames, text);
         return { text, target };
       }
       const matrix = buildRowsMatrix(rows, columnOrder, target.rowIndices);
       if (matrix.length === 0) return null;
       const text = serializeCells(matrix, { format, columnNames: columnOrder, includeHeader });
-      if (text !== '') rememberSource(columnOrder);
+      if (text !== '') rememberSource(columnOrder, text);
       return { text, target };
     },
     [columnOrder, rememberSource, rows],
@@ -484,7 +490,9 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
         pageRowCount: rows.length,
         overflow,
         pendingCellKeys: pendingKeys,
-        source: peekClipboardSource(),
+        // Only a source the clipboard still holds may steer alignment or waive the
+        // confirmation; a stale one is treated exactly like an external paste.
+        source: sourceForClipboardText(text),
         context,
       });
 

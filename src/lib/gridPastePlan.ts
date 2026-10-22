@@ -41,20 +41,52 @@ export interface ClipboardSource {
  * **Module state on purpose**: it describes the system clipboard, not the table state of a
  * session — and it must be readable from a different panel.
  *
- * It is **not** bound to what is on the clipboard right now. Copying in Excel invalidates
- * it, and another DataZen window can overwrite the clipboard without touching this value.
- * It may therefore only **raise** the gate (prove "same table" to skip a confirmation); it
- * must never be used to auto-approve a write or to rewrite the alignment on its own.
+ * On its own it is **not** bound to what is on the clipboard right now: copying in Excel
+ * leaves this value untouched. That is why it is stored next to {@link lastCopiedText} and
+ * only ever read through {@link sourceForClipboardText} at paste time. Two facts, one
+ * decision: "we copied these columns from T" **and** "the clipboard still holds them".
  */
 let lastCopySource: ClipboardSource | null = null;
 
-export function recordClipboardSource(source: ClipboardSource): void {
+/**
+ * The exact text this application put on the clipboard, normalised.
+ *
+ * Without it the source above proves only "the last thing *we* copied came from T" — which
+ * stays "true" after the user overwrites the clipboard in Excel. The pair (source, text) is
+ * what makes the claim verifiable at paste time: if the clipboard no longer holds our text,
+ * the source describes something else and must be discarded, not trusted.
+ *
+ * Normalising CRLF is not cosmetic: Windows rewrites `\n` to `\r\n` when text goes through
+ * the clipboard, so a byte comparison would report "changed" on every Windows round trip and
+ * put a confirmation in front of every same-table paste.
+ */
+let lastCopiedText: string | null = null;
+
+function normalizeClipboardText(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
+export function recordClipboardSource(source: ClipboardSource, text?: string): void {
   lastCopySource = source;
+  // A caller that cannot say what it copied leaves the text unknown, so the source stops
+  // being usable for paste decisions — the failure direction is a confirmation, not a write.
+  lastCopiedText = text === undefined ? null : normalizeClipboardText(text);
 }
 
 /** Read-only probe; tests may also use it. */
 export function peekClipboardSource(): ClipboardSource | null {
   return lastCopySource;
+}
+
+/**
+ * The recorded source **if and only if** the clipboard still holds what we copied.
+ *
+ * This is the function a paste must use. `peekClipboardSource` answers "what did we copy
+ * last", which is a different question and the wrong one to align a write by.
+ */
+export function sourceForClipboardText(text: string): ClipboardSource | null {
+  if (lastCopySource === null || lastCopiedText === null) return null;
+  return normalizeClipboardText(text) === lastCopiedText ? lastCopySource : null;
 }
 
 export function clearClipboardSource(): void {

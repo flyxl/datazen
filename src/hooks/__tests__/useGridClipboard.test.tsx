@@ -9,7 +9,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import { GRID_PASTE_CONFIRM_CELLS } from '../../lib/gridClipboard';
-import { peekClipboardSource, clearClipboardSource } from '../../lib/gridPastePlan';
+import {
+  peekClipboardSource,
+  clearClipboardSource,
+  recordClipboardSource,
+  tableChangeKey,
+} from '../../lib/gridPastePlan';
 import { useGridClipboard, type UseGridClipboardResult } from '../useGridClipboard';
 import type { CellPasteWrite } from '../../lib/tableChanges';
 import type { StagePasteWritesResult } from '../../stores/tableData/pendingEditActions';
@@ -118,6 +123,25 @@ function recordSameTable(host: ReturnType<typeof mount>) {
   expect(text).not.toBeNull();
 }
 
+/**
+ * Record that **this exact text** came from the table under test.
+ *
+ * The record is only usable while the clipboard still holds the text we copied
+ * (`sourceForClipboardText`), so recording a source for *some other* text would describe a
+ * paste that no longer matches — the hook then asks for a confirmation, which is the point
+ * of the binding. A staging test has to say "the clipboard holds what we copied" explicitly.
+ */
+function pretendCopied(text: string) {
+  recordClipboardSource(
+    {
+      tableKey: tableChangeKey(context),
+      columnNames: columnOrder,
+      columnTypes: ['number', 'text'],
+    },
+    text,
+  );
+}
+
 const anchor = { rowIndex: 0, columnName: 'name' };
 
 beforeEach(() => {
@@ -135,7 +159,7 @@ describe('useGridClipboard', () => {
         return { staged: writes.length, skipped: 0, problems: [] };
       },
     });
-    recordSameTable(host);
+    pretendCopied('7\tAlice');
 
     await act(async () => {
       // After a same-table row copy the block aligns **by name**: the first field is the
@@ -161,9 +185,9 @@ describe('useGridClipboard', () => {
         return { staged: writes.length, skipped: 0, problems: [] };
       },
     });
-    recordSameTable(host);
     // 2 601 rows × 2 columns = 5 202 cells → 5 000 + 202.
     const text = Array.from({ length: rowCount }, () => 'x\ty').join('\n');
+    pretendCopied(text);
 
     let pending: Promise<boolean> = Promise.resolve(false);
     act(() => {
@@ -213,6 +237,40 @@ describe('useGridClipboard', () => {
 
     expect(stagePasteWrites).toHaveBeenCalledTimes(1);
     expect(host.current().lastPaste?.staged).toBeGreaterThan(0);
+  });
+
+  it('treats a clipboard that changed since our copy as an external paste', async () => {
+    // The failure this pins: copy a row here, copy a block in Excel, paste here. The stale
+    // record still says "same table", so trusting it would waive the confirmation **and**
+    // align the Excel block by our column names — a silent write into the wrong columns.
+    const stagePasteWrites = vi.fn((writes: readonly CellPasteWrite[]) => ({
+      staged: writes.length,
+      skipped: 0,
+      problems: [],
+    }));
+    const host = mount({ stagePasteWrites });
+    recordSameTable(host);
+
+    let pending: Promise<boolean> = Promise.resolve(false);
+    act(() => {
+      pending = host.current().pasteText('x\ty', { rowIndex: 0, columnName: 'name' });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // It has to ask, exactly as it would for a paste from Excel.
+    expect(stagePasteWrites).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('confirm-dialog-ok'));
+    await act(async () => {
+      await pending;
+    });
+
+    // And it lands **by position** from the cell the user aimed at, not by the stale record's
+    // column names (which would have started at `id`).
+    expect(stagePasteWrites).toHaveBeenCalledTimes(1);
+    const writes = stagePasteWrites.mock.calls[0][0];
+    expect(writes[0]).toEqual({ rowIndex: 0, columnName: 'name', value: 'x' });
   });
 
   it('writes nothing when the user cancels the confirmation', async () => {
@@ -278,7 +336,7 @@ describe('useGridClipboard', () => {
         ],
       }),
     });
-    recordSameTable(host);
+    pretendCopied('x\ty');
 
     await act(async () => {
       await host.current().pasteText('x\ty', anchor);
@@ -327,7 +385,7 @@ describe('useGridClipboard', () => {
         })),
       }),
     });
-    recordSameTable(host);
+    pretendCopied('x\ty');
 
     await act(async () => {
       await host.current().pasteText('x\ty', anchor);

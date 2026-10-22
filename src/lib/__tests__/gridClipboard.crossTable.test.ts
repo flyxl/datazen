@@ -5,6 +5,7 @@ import {
   recordClipboardSource,
   peekClipboardSource,
   clearClipboardSource,
+  sourceForClipboardText,
   tableChangeKey,
   type ClipboardSource,
 } from '../gridPastePlan';
@@ -192,5 +193,48 @@ describe('recorded source', () => {
     recordClipboardSource({ tableKey: '', columnNames: [], columnTypes: [] });
     expect(peekClipboardSource()).toEqual({ tableKey: '', columnNames: [], columnTypes: [] });
     clearClipboardSource();
+  });
+});
+
+describe('the record only counts while the clipboard still holds it', () => {
+  it('hands the source back when the clipboard holds exactly what we copied', () => {
+    const recorded = source(['name']);
+    recordClipboardSource(recorded, 'a\tb');
+    expect(sourceForClipboardText('a\tb')).toEqual(recorded);
+    clearClipboardSource();
+  });
+
+  it('discards the record once another application overwrote the clipboard', () => {
+    // The write this prevents: copy a block from `users`, copy a block in Excel, paste into
+    // `users`. The stale record still claims "same table", which would waive the
+    // confirmation **and** align the Excel block by our column names — a silent write into
+    // columns the user never aimed at.
+    const recorded = source(['name']);
+    recordClipboardSource(recorded, 'a\tb');
+    expect(sourceForClipboardText('x\ty')).toBeNull();
+    clearClipboardSource();
+  });
+
+  it('does not mistake a Windows line-ending rewrite for a changed clipboard', () => {
+    // Windows rewrites `\n` to `\r\n` on the way through the clipboard. Comparing raw
+    // bytes would put a confirmation in front of every same-table paste on that platform.
+    const recorded = source(['name']);
+    recordClipboardSource(recorded, 'a\nb');
+    expect(sourceForClipboardText('a\r\nb')).toEqual(recorded);
+    clearClipboardSource();
+  });
+
+  it('stays unusable when the copier could not say what it copied', () => {
+    // A caller that records a source without the text leaves us unable to verify the claim,
+    // so the paste falls back to "ask" — the safe direction, never a silent write.
+    recordClipboardSource(source(['name']));
+    expect(sourceForClipboardText('a\tb')).toBeNull();
+    clearClipboardSource();
+  });
+
+  it('forgets the text when the record is cleared', () => {
+    recordClipboardSource(source(['name']), 'a\tb');
+    clearClipboardSource();
+    expect(sourceForClipboardText('a\tb')).toBeNull();
   });
 });
