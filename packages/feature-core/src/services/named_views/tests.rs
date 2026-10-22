@@ -224,10 +224,68 @@ async fn save_refuses_a_duplicate_name_in_the_same_scope() {
     let error = save_named_view(&repository, &minter, view("users", "users"))
         .await
         .expect_err("the name is taken");
-    assert!(matches!(error, NamedViewError::NameExists(_)));
+    assert!(matches!(error, NamedViewError::NameExists { .. }));
     assert!(
         error.to_string().starts_with("grid.view.nameExists: "),
         "{error}"
+    );
+}
+
+/// D1: a host message must not quote what the user typed.
+///
+/// The name is whatever the user typed, and a host message reaches the IPC
+/// payload and the host's log lines — where the redactor does not cover free
+/// text. So the message says only what the host knows, and the name stays
+/// structured.
+#[tokio::test]
+async fn a_duplicate_name_message_never_quotes_the_name() {
+    let repository = MemoryRepository::default();
+    let minter = CountingMinter::new();
+    save_named_view(&repository, &minter, view("users", "password=hunter2"))
+        .await
+        .expect("saved");
+
+    let error = save_named_view(&repository, &minter, view("users", "password=hunter2"))
+        .await
+        .expect_err("the name is taken");
+
+    let message = error.to_string();
+    assert!(
+        message.starts_with("grid.view.nameExists: "),
+        "the code stays at the front: {message}"
+    );
+    assert!(
+        !message.contains("hunter2"),
+        "the message must not carry the name: {message}"
+    );
+    assert!(
+        !message.contains("password="),
+        "the message must not carry the name: {message}"
+    );
+
+    // The name is still there — as structured data, for the caller that
+    // wants to say which name was taken.
+    assert_eq!(error.name(), Some("password=hunter2"));
+    assert_eq!(error.code(), Some("grid.view.nameExists"));
+}
+
+/// D1: the same rule for the other free-text field — the filter logic.
+#[tokio::test]
+async fn an_invalid_filter_logic_message_never_quotes_the_value() {
+    let mut record = view("users", "Users");
+    record.filter_logic = "password=hunter2".into();
+    let error = record
+        .validate()
+        .expect_err("a filter logic must be and/or");
+
+    assert!(error.starts_with("the filter logic must be"), "{error}");
+    assert!(
+        !error.contains("hunter2"),
+        "the message must not carry the value: {error}"
+    );
+    assert!(
+        !error.contains("password="),
+        "the message must not carry the value: {error}"
     );
 }
 

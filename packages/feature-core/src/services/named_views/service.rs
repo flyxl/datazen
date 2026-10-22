@@ -68,7 +68,9 @@ pub async fn save_named_view(
             && existing.scope == view.scope
             && view_names_equal(&existing.name, &view.name)
     }) {
-        return Err(NamedViewError::NameExists(conflict.name.clone()));
+        return Err(NamedViewError::NameExists {
+            name: conflict.name.clone(),
+        });
     }
 
     // At most one default per scope: making a view the default clears the

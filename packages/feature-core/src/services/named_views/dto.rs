@@ -85,6 +85,12 @@ impl NamedView {
     ///
     /// The reason is written for a human and never carries a SQL fragment: the
     /// frontend shows it next to the name field.
+    ///
+    /// The reason also never **quotes what the user typed**. A host message
+    /// reaches the IPC payload and the host's log lines, and the redactor does
+    /// not cover free text — it covers the shapes it documents (JSON pairs,
+    /// query strings, bearer tokens, URL userinfo). The rule is what the host
+    /// knows; the offending value stays in the record.
     pub fn validate(&self) -> Result<(), String> {
         if super::rules::normalize_view_name(&self.name).is_empty() {
             return Err("the view name must not be empty".into());
@@ -99,10 +105,7 @@ impl NamedView {
             self.filter_logic.trim().to_ascii_lowercase().as_str(),
             "and" | "or"
         ) {
-            return Err(format!(
-                "the filter logic must be \"and\" or \"or\", got \"{}\"",
-                self.filter_logic
-            ));
+            return Err("the filter logic must be \"and\" or \"or\"".into());
         }
         for filter in &self.filters {
             if filter.column.trim().is_empty() {

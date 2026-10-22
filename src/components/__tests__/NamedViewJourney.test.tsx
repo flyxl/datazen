@@ -191,7 +191,9 @@ describe('the saved-views journey', () => {
   it('shows the classified text when a command fails', async () => {
     const fake = fakeOperations();
     fake.list.mockRejectedValueOnce(
-      new Error('grid.view.nameExists: a saved view named \'Users\' already exists for this table'),
+      new Error(
+        'grid.view.nameExists: a saved view with this name already exists for this table',
+      ),
     );
     render(
       <NamedViewMenu

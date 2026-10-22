@@ -471,11 +471,14 @@ impl From<datazen_feature_core::error::FeatureError> for CommandError {
 /// the first thing in the message: the front end classifies on it. A storage
 /// failure is not a grid rule — the code space is closed — so it carries no
 /// prefix and the front end shows its raw text.
+///
+/// The rule messages carry **no user-supplied text**: what the user typed
+/// must not travel into the IPC payload or the host's log lines (D1).
 impl From<datazen_feature_core::services::named_views::NamedViewError> for CommandError {
     fn from(error: datazen_feature_core::services::named_views::NamedViewError) -> Self {
         use datazen_feature_core::services::named_views::NamedViewError;
         match &error {
-            NamedViewError::NameExists(_) | NamedViewError::Invalid(_) => {
+            NamedViewError::NameExists { .. } | NamedViewError::Invalid(_) => {
                 Self::Validation(error.to_string())
             }
             NamedViewError::Storage(message) => Self::Internal(message.clone()),

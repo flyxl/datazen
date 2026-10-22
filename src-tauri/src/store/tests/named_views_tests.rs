@@ -118,6 +118,44 @@ async fn duplicate_name_in_same_scope_is_rejected() {
     );
 }
 
+/// D1: the message that becomes the IPC payload must not quote the name.
+///
+/// The name is whatever the user typed; the host's redactor covers the shapes
+/// it documents (JSON pairs, query strings, bearer tokens, URL userinfo) and
+/// **not** free text, so a name like `password=hunter2` would travel
+/// verbatim into the payload and into the host's log lines. The message says
+/// only what the host knows; the name stays structured.
+#[tokio::test]
+async fn the_refusal_message_never_quotes_the_view_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = init_store_for_test(dir.path()).await;
+
+    save_named_view(&store, &minter(), view("users", "password=hunter2"))
+        .await
+        .expect("saved");
+
+    let error = save_named_view(&store, &minter(), view("users", "password=hunter2"))
+        .await
+        .expect_err("the name is taken");
+
+    let message = error.to_string();
+    assert!(
+        message.starts_with("grid.view.nameExists: "),
+        "the code stays at the front: {message}"
+    );
+    assert!(
+        !message.contains("hunter2"),
+        "the message must not carry the name: {message}"
+    );
+    assert!(
+        !message.contains("password="),
+        "the message must not carry the name: {message}"
+    );
+    // Structured data still carries it, for the caller that wants to say
+    // which name was taken.
+    assert_eq!(error.name(), Some("password=hunter2"));
+}
+
 #[tokio::test]
 async fn same_name_in_different_scope_is_allowed() {
     let dir = tempfile::tempdir().unwrap();
