@@ -15,6 +15,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
+    "types": ["dompurify", "node", "react", "react-dom"],
     "paths": {
       "@datazen/backend-client": ["./packages/backend-client/src/index.ts"],
       "@datazen/driver-sdk": ["./packages/driver-sdk/src/index.ts"],
