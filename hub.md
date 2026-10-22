@@ -116,6 +116,31 @@
 
 ⇒ **规**：**契约与实现不一致时以实现为准，并把契约改过来** —— 否则下一个实现者会照着错的字面再写一遍（本轮 Cmd+A 就是这样：照字面写出来的代码会把刚选中的行清掉）。契约是**协作契约**，不是**历史快照**。
 
+## P0：窄写路径从未可达（用户裁定「打通」）
+
+**发现人**：清理轨在给甲-1 造 fixture 时撞出来（初始判断有误，见下）。**根因**：两个长得像的类型之间用 `serde_json` 做往返。
+
+```
+execution.rs:331  serde_json::from_value(serde_json::to_value(map::context(context))?)
+runtime      NamespaceTarget { database: String, catalog: String, schema: String, path: String }
+platform-api NamespaceTarget { database: Option<String>, ..., path: Vec<String> }
+             ⇒ path: String → Vec<String> 必失败 ⇒ ProtocolError("context conversion failed")
+```
+
+**触发**：`SELECT * FROM t`（`result_mapping.rs:52` 只认这一种形状）+ 单语句 + 上下文 `Confirmed` + 驱动回 `resolvedTarget`（postgres 要求事务/固定会话，`catalog.rs:542`）+ 表有主键。
+
+**后果三层**：① 事务会话里跑这条 SELECT **直接报错**，用户拿不到数据；② `WritableMapping::Verified` 生产里永远设不上 ⇒ `result_write.rs:193` 的窄写判定永假 ⇒ 结果网格编辑从未生效；③ 三轮没发现是因为既有绿用例**直接注入** `Verified`（`artifact.rs:245`、`application/dto/execution.rs:293`），`execution.rs:331` 无任何测试执行，`resource_mapping.rs` 无 `mod tests`。
+
+**清理轨的判断有两处要纠正**（已核实）：
+- ❌「驱动要 `table`、探针传 `relationSql` ⇒ 探针必然失败」——postgres 明确接受 `relationSql`（`catalog.rs:419/496/536`）。**正因为它能成功，这个 bug 才是活的**。
+- ⚠️ 后果不止「单元格不可编辑」，而是**查询报错**。
+
+**更深一层的设计缺陷**（比类型不匹配更根本）：探针是**能力探测**（best-effort），却用 `?` 让它有权否决整次查询。⇒ 除修换算外，**探针段落必须不可失败**：任何失败降级为「不设 writable_mapping」，查询照常返回。
+
+**修法（用户批准方案 A）**：显式换算 `ds::SessionContext → platform_api::SessionContext`，不经 `rc`（`map::context` 里 `path.join("/")`、`effective_identity`/`autocommit` 的 `unwrap_or_default()`/`unwrap_or(false)` 已有损，把「未知」压成空串/false）。边界：**只打通窄通道**，`RESULT_ORIGIN_WRITE_BACK_ENABLED` 仍为 `false`。
+
+**判据**：成功路径设 `Verified` 且字段逐字段等于输入；失败路径查询仍成功且非 Verified；端到端 verified 能写/非 verified 被拒。轨：`fix/narrow-write-path`。
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
