@@ -258,7 +258,7 @@ impl PlatformAdapter {
     ///
     /// `tunnels` 与 `known_hosts` 是**隧道相关的两个存储端口实例**，由组装根
     /// （`bootstrap/app_state.rs`）创建并传入：隧道定义走 `TunnelRepository`
-    /// （桌面实现是存储层本身），known-hosts 走 `KnownHostsStore`（桌面实现读
+    /// （桌面实现是存储层本身），known-hosts 走 `KnownHostsRepository`（桌面实现读
     /// `{appData}/ssh_known_hosts.json`）。会话后端需要它们来在建连时解引用
     /// `tunnelId` 并启动隧道。
     pub fn inject(
@@ -266,7 +266,7 @@ impl PlatformAdapter {
         store: Arc<crate::store::DesktopRepository>,
         registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
         tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
-        known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore>,
+        known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository>,
     ) -> Result<(), ApiError> {
         if self.services.get().is_some() {
             return Ok(());

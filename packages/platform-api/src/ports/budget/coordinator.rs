@@ -1,4 +1,4 @@
-//! `BudgetCoordinator`：本机多维额度端口（§6.4 第 10 行）。
+//! `BudgetCoordinator`：本机多维额度端口（概要 §6.4 表中的 `BudgetCoordinator` 行）。
 //!
 //! 词汇表（§4.5）：`BudgetRequest`、`BudgetPermit`、`BudgetPermitSet`、`NodeLease`、
 //! `DrainScope`、`DrainStatus`、`ReleaseOutcome`、`BudgetSnapshot`。

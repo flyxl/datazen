@@ -616,7 +616,7 @@ expiredHeld 的 `amount - returned_amount` 继续计入 reserved；TTL 到期、
 | 载体 | 改的是什么 | 没改的是什么 |
 | --- | --- | --- |
 | `{appData}/tunnels.json` | 读写**经** `TunnelRepository` 端口（`src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`） | 文件名、JSON 数组形状、字段名（camelCase）、6 个凭据字段的 AES-256-GCM 逐字段加密、原子写、解密失败降级为 `None` 并 `warn!` |
-| `{appData}/ssh_known_hosts.json` | 文件 I/O **经** `KnownHostsStore` 端口（`src-tauri/src/platform/known_hosts.rs`） | 文件名、`to_string_pretty` 的对象形状、字段名（`public_key` 是 snake_case）、两条 warn 文案（`Ignoring corrupt ssh_known_hosts.json` / `Failed to read ssh_known_hosts.json`）、三条错误文案（`create known hosts dir …` / `serialize ssh_known_hosts.json: …` / `write …`） |
+| `{appData}/ssh_known_hosts.json` | 文件 I/O **经** `KnownHostsRepository` 端口（`src-tauri/src/platform/known_hosts.rs`） | 文件名、`to_string_pretty` 的对象形状、字段名（`public_key` 是 snake_case）、两条 warn 文案（`Ignoring corrupt ssh_known_hosts.json` / `Failed to read ssh_known_hosts.json`）、三条错误文案（`create known hosts dir …` / `serialize ssh_known_hosts.json: …` / `write …`） |
 
 端口层是**内存内明文**语义：加密与落盘在宿主实现侧（主钥匙串在宿主手里）。因此**没有**新增
 落盘点、**没有**改字段、**没有**改迁移判据——已有 `{appData}` 目录照常读写，不需要任何迁移步骤。
@@ -657,7 +657,7 @@ expiredHeld 的 `amount - returned_amount` 继续计入 reserved；TTL 到期、
 
 | 形态 | 主密钥来源 | 连接秘密来源 |
 | --- | --- | --- |
-| 桌面本地模式 | `key_store::key_backend()`：默认 OS 钥匙串（`keyring::v1::Entry::new(APP_IDENTIFIER, "app-encryption-key")`）；`DATAZEN_KEYRING=file` 或 macOS 未签名/adhoc 构建时用 `{appData}/.key`；旧 `.key` 会透明迁入钥匙串后删除 | 本地 `connections.json` 逐字段 AES-256-GCM（nonce 12 字节前置，base64 STANDARD） |
+| 桌面本地模式 | `key_backend::resolve_key_backend()`（**启动期读一次 `DATAZEN_KEYRING`**，得到的 `KeyBackend` 一路显式传下去）：默认 OS 钥匙串（`keyring::v1::Entry::new(APP_IDENTIFIER, "app-encryption-key")`）；`DATAZEN_KEYRING=file` 或 macOS 未签名/adhoc 构建时用 `{appData}/.key`；旧 `.key` 会透明迁入钥匙串后删除 | 本地 `connections.json` 逐字段 AES-256-GCM（nonce 12 字节前置，base64 STANDARD） |
 | 桌面团队模式 | 同上（本地设置仍需加密） | **不下载团队数据库凭据**（[概要 §11 验收 2](system-overview.md#11-系统级验收)）；执行身份由服务端 `SecretProvider` 解析 |
 | 服务端 | 不使用用户钥匙串（无用户钥匙串可访问） | KMS / 外部密钥服务；管理库只存 `secret_ref` |
 

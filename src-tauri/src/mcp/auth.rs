@@ -88,12 +88,15 @@ pub fn verify_stdio_token(data_dir: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, MutexGuard};
+    use std::sync::MutexGuard;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
+    /// Process-wide env lock: `std::env::set_var` is process-global, so every
+    /// env writer **and** reader in the test binary shares one mutex (see
+    /// `crate::testing::ENV_LOCK`).
     fn env_lock() -> MutexGuard<'static, ()> {
-        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+        crate::testing::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     #[test]

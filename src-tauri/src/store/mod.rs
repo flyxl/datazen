@@ -6,6 +6,7 @@ mod connections;
 pub(crate) mod favorites;
 mod history;
 pub(crate) mod history_db;
+pub(crate) mod key_backend;
 mod key_codec;
 mod key_store;
 mod models;
@@ -17,6 +18,11 @@ mod sync_profiles;
 mod sync_tasks;
 mod transfer_profiles;
 mod tunnels;
+
+/// Where the AES master key lives. Resolved **once** at startup
+/// (`key_backend::resolve_key_backend`) and threaded down explicitly — the
+/// backend is a startup-time fact, never a per-call env lookup.
+pub(crate) use key_backend::KeyBackend;
 
 #[allow(unused_imports)] // public re-exports for IPC / other modules
 pub use app_db::{
@@ -123,7 +129,12 @@ impl DesktopRepository {
                 .app_data_dir()
                 .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?,
         };
-        Self::init_with_path(&data_dir).await
+        // Backend selection is a **startup-time fact**: `DATAZEN_KEYRING` is read
+        // exactly once, here, and the result is passed down explicitly. Nothing
+        // on the request path re-reads the process environment, so no other
+        // thread can redirect a running store to the OS keychain.
+        let backend = key_backend::resolve_key_backend();
+        Self::init_with_path(&data_dir, backend).await
     }
 
     /// Where favorites live when `AppSettings::favorites_root` is unset.
@@ -137,12 +148,13 @@ impl DesktopRepository {
 
     pub async fn init_with_path(
         data_dir: &std::path::Path,
+        backend: KeyBackend,
     ) -> Result<Self, DesktopRepositoryError> {
         tokio::fs::create_dir_all(data_dir)
             .await
             .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?;
 
-        let encryption_key = Self::get_or_create_encryption_key(data_dir).await?;
+        let encryption_key = Self::get_or_create_encryption_key(data_dir, backend).await?;
 
         let history_db = HistoryDb::open(data_dir)
             .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?;
@@ -210,11 +222,14 @@ impl DesktopRepository {
 
     async fn get_or_create_encryption_key(
         data_dir: &std::path::Path,
+        backend: KeyBackend,
     ) -> Result<[u8; 32], DesktopRepositoryError> {
         let data_dir = data_dir.to_path_buf();
-        tokio::task::spawn_blocking(move || key_store::load_or_create_master_key(&data_dir))
-            .await
-            .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?
+        tokio::task::spawn_blocking(move || {
+            key_store::load_or_create_master_key(&data_dir, backend)
+        })
+        .await
+        .map_err(|e| DesktopRepositoryError::InitError(e.to_string()))?
     }
 
     /// Base64 encoding of the master encryption key (for user export via S1+ dialog).
@@ -225,8 +240,9 @@ impl DesktopRepository {
     #[cfg(test)]
     pub(crate) async fn get_or_create_encryption_key_for_test(
         data_dir: &std::path::Path,
+        backend: KeyBackend,
     ) -> Result<[u8; 32], DesktopRepositoryError> {
-        Self::get_or_create_encryption_key(data_dir).await
+        Self::get_or_create_encryption_key(data_dir, backend).await
     }
 
     pub(super) fn encrypt(&self, plaintext: &str) -> Result<String, DesktopRepositoryError> {
@@ -450,6 +466,11 @@ mod tests;
 #[cfg(test)]
 #[path = "job_filter_scope_tests.rs"]
 mod job_filter_scope_tests;
+
+/// 只有 `#[ignore]` 的钥匙串用例才允许改钥匙串 env 的落点守卫（源码扫描）。
+#[cfg(test)]
+#[path = "key_backend_env_guard_tests.rs"]
+mod key_backend_env_guard_tests;
 
 #[async_trait::async_trait]
 impl datazen_platform_api::ports::SettingsRepository for DesktopRepository {

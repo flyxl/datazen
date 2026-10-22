@@ -156,9 +156,12 @@ mod tests {
     async fn desktop_policy() -> DesktopPolicy {
         let temp = tempfile::tempdir().expect("临时目录");
         let store = std::sync::Arc::new(
-            crate::store::DesktopRepository::init_with_path(temp.path())
-                .await
-                .expect("store 初始化"),
+            crate::store::DesktopRepository::init_with_path(
+                temp.path(),
+                crate::store::KeyBackend::File,
+            )
+            .await
+            .expect("store 初始化"),
         );
         DesktopPolicy::new(store)
     }

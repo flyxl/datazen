@@ -64,7 +64,7 @@ packages/platform-api/src/
 │   ├── identity.rs           # IdentityResolver
 │   ├── mod.rs                # 子树汇总与 pub use（端口 trait 的 re-export）
 │   ├── clock.rs              # Clock + SystemClock / FixedClock（形态中立的进程内原语，见 §4.9）
-│   └── budget/               # 四个预算端口 + 进程内参考账本
+│   └── budget/               # 预算端口 + 进程内参考账本
 │       ├── mod.rs            # 子树汇总与 pub use
 │       ├── coordinator.rs    # BudgetCoordinator（逻辑许可）
 │       ├── pool.rs           # DriverPoolBudgetPort（物理连接）
@@ -302,7 +302,7 @@ host → tunnel，与 F-13 禁止的 tunnel → host 相反；该层的单元测
 > ② SSH known-hosts 存储全仓只被 SSH 隧道使用（无第二消费者），随 `ssh.rs` 一并迁入本层。
 > **它的文件 I/O 已经是端口**（S4 完成）：本层只留**规则**（`KnownHostEntry` / `HostKeyDecision` /
 > `host_key_id` / `verify_host_key` / `mismatch_error_message`）与**存储端口**
-> [`KnownHostsStore`](#43-持久化与授权端口)；读 `{appData}/ssh_known_hosts.json` 的实现搬回宿主
+> [`KnownHostsRepository`](#43-持久化与授权端口)；读 `{appData}/ssh_known_hosts.json` 的实现搬回宿主
 > （`src-tauri/src/platform/known_hosts.rs`），web 形态由服务端 host 实现（服务端存储目录 /
 > 组织级存储）。**共享包不再读本机文件。**
 
@@ -316,15 +316,15 @@ F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名�
 类型 / 常量 / 字面量，会把「只有桌面才成立」的假设焊进代码——桌面形态在场时看不出问题，
 换成 web 形态才发现那一半用不了。
 
-内核（`packages/runtime`）曾有三处这样的焊点，全部是桌面形态独占的名字：
+内核（`packages/runtime`）里形态中立的名字，以及它们这样定的依据：
 
-| 位置 | 原名 | 现名 | 依据 |
-| --- | --- | --- | --- |
-| `tunnel/route.rs` 的稳定字面码 | `desktopRouteUnknown` 等四个 | `routeUnknown` / `tunnel*` | 与同模块既有的 `tunnelNotShareable` / `tunnelAlreadyHeld` / `tunnelRevisionUnavailable` 同族 |
-| `tunnel/route.rs` 的租约前缀 | `desktop-tunnel/` | `tunnel/` | 同上；租约文本会进错误消息与 trace |
-| `platform-api` 端口的导出目标 | `ExportSink::DesktopDialogHandle` | `ExportSink::HostHandle` | 端口只说「宿主持有句柄」，不规定宿主怎么渲染 |
-| `runtime` 的额度档位 | `DESKTOP_*` / `desktop_default()` | `LOCAL_*` / `local_default()` | 两档按**内核跑在哪**区分：共享部署（`TEAM_*`）与本地客户端（`LOCAL_*`） |
-| `runtime` 的连接夹具字段 | `desktop_total_target_connections` | `local_total_target_connections` | 同上 |
+| 位置 | 现名 | 依据 |
+| --- | --- | --- |
+| `tunnel/route.rs` 的稳定字面码 | `routeUnknown` / `tunnel*` | 与同模块既有的 `tunnelNotShareable` / `tunnelAlreadyHeld` / `tunnelRevisionUnavailable` 同族 |
+| `tunnel/route.rs` 的租约前缀 | `tunnel/` | 同上；租约文本会进错误消息与 trace |
+| `platform-api` 端口的导出目标 | `ExportSink::HostHandle` | 端口只说「宿主持有句柄」，不规定宿主怎么渲染 |
+| `runtime` 的额度档位 | `LOCAL_*` / `local_default()` | 两档按**内核跑在哪**区分：共享部署（`TEAM_*`）与本地客户端（`LOCAL_*`） |
+| `runtime` 的连接夹具字段 | `local_total_target_connections` | 同上 |
 
 **判据是分词后逐词比，不是子串比**：`webhook` / `webdriver` 这类协议复合词不算形态名
 （它们切出来是整词），否则误伤会逼人把合法写法藏起来。
@@ -351,25 +351,20 @@ F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名�
 
 ### 2.8 存储抽象的命名规约：类型名用 `Repository`，不用 `Store`（已实现）
 
-共享包的端口层一度一半叫 `*Repository`（`ProfileRepository` / `JobRepository` /
-`SettingsRepository`），另一半叫 `*Store`（`ArtifactStore` / `DashboardStore` /
-`IdempotencyStore` / `EventStore` …）。[概要 §6.4](system-overview.md#64-repositories-与环境-ports)
-已经把「repositories」当正式词汇，`Repository` 才是这套契约的既定词汇，`Store` 是异类——
-统一到 `Repository`。
-
 **规约本体**：**存储抽象的类型命名用 `Repository`，不用 `Store`。**
+
+`Repository` 是这套契约的既定词汇：[概要 §6.4](system-overview.md#64-repositories-与环境-ports)
+把「repositories」写成正式词汇，端口层与共享包一律照它命名；`Store` 是异类，不在契约词汇里。
+
+**本规约只管存储抽象的类型名**：前端 Zustand / React 的 `*Store`（`useXxxStore`、
+`src/stores/` 下的 `*Store.ts`）属**前端生态约定**，不是存储抽象，不在本规约范围内。
 
 **判据（用于复合型名，可复用到后续同类改造）**：
 
 | 复合型名里嵌的是 | 处置 | 理由 |
 | --- | --- | --- |
-| **被改名的那个型名** | **必须跟改** | 否则仓库里多出一个「指向已不存在型名」的悬挂引用，比改或不改都差 |
-| **泛指名词「存储 / 层」，且该层名保留** | **留着** | 它的指称对象没有消失 |
-
-据此：`ArtifactStoreGuard` → `ArtifactRepositoryGuard`（嵌的是被删的 `ArtifactStore`）、
-`StoreSqlPageSource` → `ComparisonStorageSqlPageSource`（嵌的是被删的「比较存储」）；
-而 `StoreCache` 与 `StoreOwnerMarker` 保留（嵌的是泛指「存储」，其指称的宿主持久化层
-`src-tauri/src/store/` 与落盘格式都还在）。
+| **某个存储抽象的类型名** | **跟改成那个类型现在的名字** | 否则仓库里多出一个「指向已不存在型名」的悬挂引用，比改或不改都差 |
+| **泛指名词「存储 / 层」，且它指称的那一层名保留** | **留着** | 它的指称对象没有消失，名字仍然成立 |
 
 **留在仓库里的 `Store` 字样是有理由的清单**，不是漏网：
 
@@ -380,6 +375,7 @@ F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名�
 | `StoreOwnerMarker` | `packages/data-sync/src/comparison_store/recovery.rs` | 落盘 marker 的**记录载荷**，不是抽象；`store-owner.json` 是冻结的落盘格式 |
 | `CommandError::Store` 等错误**变体** | 宿主 | 变体名不是类型名；错误文案是前端可见的 IPC 错误串，不在本节范围 |
 | `RootCertStore` | rustls | 第三方类型 |
+| 前端 Zustand 的 `*Store`（`useXxxStore`、`src/stores/*.Store.ts`） | 前端 `src/stores/` | **前端生态约定**，不是存储抽象：`useXxxStore` 是 React 社区与 zustand 官方文档的标准叫法，本规约不适用 |
 
 **这一节与 §2.7 是两件事**：§2.7 禁的是**形态名**（desktop / web）焊进共享包；
 本节治的是**存储角色词**在端口层不统一。本节**没有自动闸门**——靠评审守住；
@@ -430,7 +426,7 @@ packages/runtime/src/connection/
 
 ## 4. 端口 trait（已实现于 `packages/platform-api`）
 
-> 落地形态：端口 trait 全部按 §4.1 约定建在 `packages/platform-api/src/ports/`（**确切条数以该模块头 `ports/mod.rs` 的计数为准**，它随实现同步维护，本文不复述数字），`#[async_trait]` + `Send + Sync + 'static` + `Arc<dyn X>` 注入，`PortError` 七个变体只派生 `Debug` 与 `thiserror::Error`（刻意不实现 `Serialize`，用例测试 `the_port_error_has_no_wire_shape_of_its_own` 守住）。`application` 与 `runtime` 通过 `pub use datazen_platform_api::…` 再导出，不重复定义。**端口 trait 本身只定义签名，不含任何实现**——**带副作用或带传输**的实现由端口的提供方 crate 各自承担，不得回填进 `platform-api`（否则契约与实现耦合，`platform-api` 的平台中立性即被破坏），也不得让两个提供方为同一端口各写一份。**例外说明**：只有形态中立、无副作用、无传输的进程内原语实现可以随端口一起提供，因为它没有第二份实现可写（先例 `ports::budget::pool_ledger`，见 §4.9 的 `Clock`）；其余实现一律不得回填。
+> 落地形态：端口 trait 全部按 §4.1 约定建在 `packages/platform-api/src/ports/`（**确切条目见 `packages/platform-api/src/ports/inventory.rs` 的 `PORT_TRAITS`**——**唯一的人工清单**，由 `datazen-platform-api` 的单测核对它与源码里真实的 `pub trait` 声明、[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的端口表、`ports/mod.rs` 模块头的构成说明一致；**本文不复述端口数量**，模块头也不复述——数量由清单派生），`#[async_trait]` + `Send + Sync + 'static` + `Arc<dyn X>` 注入，`PortError` 七个变体只派生 `Debug` 与 `thiserror::Error`（刻意不实现 `Serialize`，用例测试 `the_port_error_has_no_wire_shape_of_its_own` 守住）。`application` 与 `runtime` 通过 `pub use datazen_platform_api::…` 再导出，不重复定义。**端口 trait 本身只定义签名，不含任何实现**——**带副作用或带传输**的实现由端口的提供方 crate 各自承担，不得回填进 `platform-api`（否则契约与实现耦合，`platform-api` 的平台中立性即被破坏），也不得让两个提供方为同一端口各写一份。**例外说明**：只有形态中立、无副作用、无传输的进程内原语实现可以随端口一起提供，因为它没有第二份实现可写（先例 `ports::budget::pool_ledger`，见 §4.9 的 `Clock`）；其余实现一律不得回填。
 
 - 所有 ID 参数使用 `platform-api` 的 newtype（`OrganizationId`、`PrincipalId`、`ConnectionId`、`DbSessionId`、`JobId`、`ExecutionId`、`ArtifactId`、`StreamId`、`RuntimeEpoch`…），**不使用裸 `String` 标识语义**。`connectionId` = 持久化配置 ID，`dbSessionId` = 运行时会话 ID，两者永不混用（[ID 术语规范](../../../AGENTS.md#id-术语规范)）。
 - **`RequestContext` 与全部 ID newtype 定义在 `platform-api`**，无行为、无平台依赖；`application` 与 `runtime` 用 `pub use` 再导出。这样端口签名（`platform-api`）与用例签名（`application`）共用同一份类型定义而不产生依赖倒置（否则 `platform-api` 必须反向依赖 `application`，与 F-04 冲突）。
@@ -472,11 +468,11 @@ pub enum PortError {
 
 ### 4.2 端口方法语义的对齐来源
 
-[概要 §6.4 repositories 与环境 ports](system-overview.md#64-repositories-与环境-ports) 已给出 10 个端口的**方法语义**（谁提供什么、什么不得序列化、什么禁止落盘）。本节的 Rust 签名是那张表的类型化结果：§6.4 的 10 行 + 本文新增的 `IdentityResolver`（§4.3 末）+ P2 新增的三个物理预算端口（§4.6）+ 隧道定义仓储 `TunnelRepository`（§4.3 末）——**确切条数以 `ports/mod.rs` 模块头的计数为准**，因为本节的代码块并不逐条列出全部端口：§6.4 只有 10 行、最后一行是 `BudgetCoordinator`，`IdentityResolver` 不在其中（名字已见于[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者) 的 PoolKey 维度表中 `executionIdentityKey` 一行，但 §6.4 的端口表没有它）；它与 §6.4 的 `SecretProvider` 行还有一处职责再划分，见下方第三条。
+[概要 §6.4 repositories 与环境 ports](system-overview.md#64-repositories-与环境-ports) 已给出那组端口的**方法语义**（谁提供什么、什么不得序列化、什么禁止落盘）。本节的 Rust 签名是那张表的类型化结果：§6.4 表中的那些 + 本文新增的 `IdentityResolver`（§4.3 末）+ P2 新增的物理预算端口（§4.6）+ 隧道定义仓储 `TunnelRepository`（§4.3 末）——**确切条目见 `packages/platform-api/src/ports/inventory.rs` 的 `PORT_TRAITS`**（机器可读清单，由 `datazen-platform-api` 的单测核对它与源码里真实的 `pub trait` 声明、[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的端口表、`ports/mod.rs` 模块头的构成说明一致），因为本节的代码块并不逐条列出全部端口：§6.4 表里最后一行是 `BudgetCoordinator`，`IdentityResolver` 不在其中（名字已见于[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者) 的 PoolKey 维度表中 `executionIdentityKey` 一行，但 §6.4 的端口表没有它）；它与 §6.4 的 `SecretProvider` 行还有一处职责再划分，见下方第三条。
 
 - 签名**不得收窄** [§6.4](system-overview.md#64-repositories-与环境-ports) 列出的语义；该表没写的方法名以本文为准。
 - 端口之间允许协作（如 `ProfileRepository::disable` 后由 `PolicyService` 感知），但**不合并 trait**，以免实现方被迫实现不相关方法。
-- 执行身份解析的归属已**收口**：§6.4 曾把「resolve execution identity」写在 `SecretProvider` 行，本文改判给 `IdentityResolver`（§4.3 末），`SecretProvider` 只提供版本化材料读取与轮换。现行[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的 `SecretProvider` 行与[概要 §4](system-overview.md#4-模块职责与边界) 的 `SecretProvider` 行均已移除「执行身份解析」，并在该表后新增一行说明「本表 10 行不含 `IdentityResolver`：执行身份解析由 `IdentityResolver` 承担」；**§6.4 仍是 10 行**，没有把 `IdentityResolver` 补成第 11 行——它由本文 §4.3 末新增，与 §4.2「§6.4 的 10 行 + 本文新增的 `IdentityResolver`」的口径一致。本文的判读与[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者)（`executionIdentityKey` → `IdentityResolver`）和 [persistence-model §4.3](persistence-model.md#43-只存在于服务端的字段) 的生产者表三方同口径。
+- 执行身份解析的归属已**收口**：§6.4 曾把「resolve execution identity」写在 `SecretProvider` 行，本文改判给 `IdentityResolver`（§4.3 末），`SecretProvider` 只提供版本化材料读取与轮换。现行[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的 `SecretProvider` 行与[概要 §4](system-overview.md#4-模块职责与边界) 的 `SecretProvider` 行均已移除「执行身份解析」，并在该表后新增一行说明该表不含 `IdentityResolver`、执行身份解析由 `IdentityResolver` 承担；`IdentityResolver` 没有被补进 §6.4 的表——它由本文 §4.3 末新增，与 §4.2「§6.4 表中的那些 + 本文新增的 `IdentityResolver`」的口径一致。本文的判读与[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者)（`executionIdentityKey` → `IdentityResolver`）和 [persistence-model §4.3](persistence-model.md#43-只存在于服务端的字段) 的生产者表三方同口径。
 
 ### 4.3 持久化与授权端口
 
@@ -608,9 +604,9 @@ pub trait TunnelRepository: Send + Sync + 'static {
   AES-256-GCM 主密钥。实例在**组装期**创建一次（`bootstrap/app_state.rs`），既进
   `AppState`，也注入会话后端（建连时解引用 `tunnelId`）。**没有进程级全局。**
 
-**`KnownHostsStore`（SSH known-hosts 存储，域名包端口）**：这一条**不在**
+**`KnownHostsRepository`（SSH known-hosts 存储，域名包端口）**：这一条**不在**
 `platform-api` 的端口家族里——它是**领域包端口**，住在需要它的那个包里
-（`packages/tunnel/src/known_hosts_store.rs`），先例：`schema-diff` 的
+（`packages/tunnel/src/known_hosts_repository.rs`），先例：`schema-diff` 的
 `ReviewedPlanRepository`、`data-transfer` 的 `TransferPlanRepositoryPort`、`data-sync` 的
 `ComparisonStorageRoot`。理由有三：
 
@@ -620,7 +616,7 @@ pub trait TunnelRepository: Send + Sync + 'static {
 2. **消费者只有一个**：`SshTunnel` 在协议回调里用它。应用层 / runtime 层从不接触
    「已知主机」这件事，因此它没有理由出现在它们看得见的契约里。
 3. **形状不同**：它是**同步**的（现状就是 `std::fs`，且校验发生在 `russh` 的同步协议
-   回调里），并自带错误类型（`KnownHostsStoreError`）——强行套进 `async_trait` +
+   回调里），并自带错误类型（`KnownHostsRepositoryError`）——强行套进 `async_trait` +
    `PortError` 的家族只会让两处都变形。
 
 能力只有两条：**读出全部条目 / 保存全部条目**。降级语义属于**契约**而不是实现：
@@ -653,7 +649,7 @@ pub trait TunnelRepository: Send + Sync + 'static {
 
 P5 本机 Core 的 `CommitBoundary` 已包含 stageId、operationId/batchId、stable target fingerprint、payload digest、evidence 与 verifiedAt，并与 checkpoint 写入 SQLite；accept 同事务写 Job、幂等 receipt、consumed plan ID 和初始详情。`JobDetails` 额外读取 progress、recovery verdict、bounded domain results、artifact IDs 与安全 recovery target projection。领域 verifier 仍负责外部事实核验，不允许只凭目标指纹宣称某批写入已生效。团队服务仓储仍是目标设计。详见[迁移任务设计](data-migration-jobs.md)。
 
-**本节的三个窄端口**（签名见 §4.10）：`ProfileReader`（`ProfileRepository` 的**只读投影**：写路径只留在 `ProfileRepository`，桌面 `DesktopProfiles` 同时实现两个 trait、事实只有一份）、`MigrationProfileReader`（迁移 profile 的**只读投影**：端口保留，作为三件套自身的读侧边界；它原先是 workflow 迁移 step 的读侧拆分，那个能力移除后不再有桌面实现）、`ExecutionTargetResolver`（目标规范化的**环境部分**：与 §4.3 末的 `IdentityResolver` 分工不同——一个解析执行身份、一个解析执行目标；它存在的首要理由是**打破引用环**，`Application` 绝不能持 `Arc<PlatformAdapter>`）。
+**本节的窄端口**（签名见 §4.10）：`ProfileReader`（`ProfileRepository` 的**只读投影**：写路径只留在 `ProfileRepository`，桌面 `DesktopProfiles` 同时实现 `ProfileRepository` 与 `ProfileReader`、事实只有一份）、`MigrationProfileReader`（迁移 profile 的**只读投影**：端口保留，作为三件套自身的读侧边界；它原先是 workflow 迁移 step 的读侧拆分，那个能力移除后不再有桌面实现）、`ExecutionTargetResolver`（目标规范化的**环境部分**：与 §4.3 末的 `IdentityResolver` 分工不同——一个解析执行身份、一个解析执行目标；它存在的首要理由是**打破引用环**，`Application` 绝不能持 `Arc<PlatformAdapter>`）。
 
 ### 4.4 秘密、网络与执行材料端口
 
@@ -691,7 +687,7 @@ pub trait NetworkProvider: Send + Sync + 'static {
 
 `SecretProvider` 只认 `SecretRef`，不认 `connectionId`；`connectionId` → `SecretRef` 的映射由 `ProfileRecord` 持有（[连接 §4.1](connection-management.md#41-服务接口与补充响应) 的内部 `ConnectionProfile` 同列 `connectionId` 与 `secretRef`）。因此[团队服务 §10.2 `SecretProvider`](team-server-and-auth.md#102-secretprovider) 的「按 `connectionId` + `credentialRevision` 解析执行身份」在端口层拆成三步：`ProfileRepository::get` 由 `connectionId` 取 `secretRef` 与 `configRevision`，`SecretProvider::resolve(ctx, secret_ref, purpose)` 配 `revision(secret_ref)` 取材料与 `CredentialRevision`，执行身份本身由 `IdentityResolver::resolve` 产出（§4.3）。
 
-**本节的两个窄端口**（签名见 §4.10）：`MasterKeyProvider`（**主密钥保管**——主密钥是密钥保管职责而非数据存储职责，因此**不属** `DesktopRepository`；端口只暴露「取主密钥 / 派生子密钥」，材料不可序列化）与 `ExecutionSettingsReader`（**执行期设置项的只读投影**——只给 `safe_mode` 与结果集上限两项，不给 MCP / AI / 驱动私有设置与用户偏好）。后者与 `SettingsRepository`、以及 feature-core 层的 `DatabaseToolHost::execution_settings()` 是**同一份事实的三种取用宽度**，不是三份重复实现；收敛方向是让后两者改为经本端口取。
+**本节的窄端口**（签名见 §4.10）：`MasterKeyProvider`（**主密钥保管**——主密钥是密钥保管职责而非数据存储职责，因此**不属** `DesktopRepository`；端口只暴露「取主密钥 / 派生子密钥」，材料不可序列化）与 `ExecutionSettingsReader`（**执行期设置项的只读投影**——只给 `safe_mode` 与结果集上限两项，不给 MCP / AI / 驱动私有设置与用户偏好）。后者与 `SettingsRepository`、以及 feature-core 层的 `DatabaseToolHost::execution_settings()` 是**同一份事实的多种取用宽度**，不是多份重复实现；收敛方向是让后两者改为经本端口取。
 
 ### 4.5 会话目录、预算与令牌端口
 
@@ -750,7 +746,7 @@ pub trait SubmissionTokenIssuer: Send + Sync + 'static {
 
 P9 adapter 的目录 CAS、路由信封、预算 generation 与 expiredHeld 核销按 [多 worker 协议](multi-worker-coordination.md) 实现。现有 port 是 P1 基础签名；跨节点 operationId/查询与 fencing 字段在 P9 以版本化 DTO 补齐，并同步 fake，不能将当前签名标成完整集群协议。节点分配账允许持久化，物理 ResourceLease 和目录仍只在内存。
 
-**本节的一个窄端口**（签名见 §4.10）：`MonitorGrantReader`（**监控授权单的只读窄端口**——`authorized_target` 与宿主侧的 `DelegationScopeBinding` **同形**，集成时应收敛为一条，否则全仓会留下两个同义形状）。
+**本节的窄端口**（签名见 §4.10）：`MonitorGrantReader`（**监控授权单的只读窄端口**——`authorized_target` 与宿主侧的 `DelegationScopeBinding` **同形**，集成时应收敛为一条，否则全仓会留下两个同义形状）。
 
 ### 4.6 结果与事件端口
 
@@ -815,7 +811,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 | `SubmissionTokenIssuer` | 进程内 HMAC 密钥 | 服务端签名密钥 + `keyVersion` 轮换 | 同单进程 |
 | `ArtifactRepository` | 文件字节经本机路径与授权对话框；Job Core 仅存 Artifact ID 引用（30 天 TTL），不持有字节或保证内容留存 | 服务端存储 + 授权导出 | 同单进程 |
 | `TunnelRepository` | **已实现**：`src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`。加密落盘 `{appData}/tunnels.json`；名单只给摘要，单条取用给全量；只承认桌面自己那一个组织 | 服务端库上的组织级隧道定义存储（同一端口、另一适配器） | 同单进程 |
-| `KnownHostsStore`（领域包端口） | **已实现**：`src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsStore`，读 `{appData}/ssh_known_hosts.json` | 服务端存储目录 / 组织级存储（本轨不写 web 实现） | 同单进程 |
+| `KnownHostsRepository`（领域包端口） | **已实现**：`src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`，读 `{appData}/ssh_known_hosts.json` | 服务端存储目录 / 组织级存储（本轨不写 web 实现） | 同单进程 |
 | `EventSink` | Tauri 事件推送 | SSE | SSE + worker 转发 |
 | `Clock` | `SystemClock`（本机 UTC，定宽毫秒） | 同桌面（服务进程本机 UTC） | 各 worker 读各自本机 UTC；跨节点排序只用 `Timestamp` 字典序，不假设同一时钟 |
 
@@ -847,7 +843,7 @@ flowchart LR
 
 ### 4.9 时基端口 `Clock`（已实现）
 
-`Clock` 是第 15 个端口 trait，实现在 `packages/platform-api/src/ports/clock.rs`，已接入调用方。它**不在** [概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的 10 行里（该表仍是 10 行，与 §4.2 对 `IdentityResolver` 的口径一致）：时刻不是仓库，是一个原语。
+`Clock` 是端口 trait 之一，实现在 `packages/platform-api/src/ports/clock.rs`，已接入调用方。它**不在** [概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的端口表里（与 §4.2 对 `IdentityResolver` 的口径一致）：时刻不是仓库，是一个原语。
 
 ```rust
 // packages/platform-api/src/ports/clock.rs（已实现）
@@ -875,9 +871,9 @@ pub struct FixedClock { /* … */ }    // 测试替身：at(ts) / set(ts)，克�
 
 ### 4.10 窄端口（应用装配用，已实现于 `packages/platform-api/src/ports/`）
 
-共享 `Application` 对象要持有一批注入式 store。它**不该**为「读一点数据」而依赖一个带写能力、或覆盖面过宽的端口，因此本节给出**六个窄端口**：它们与既有端口**读同一份事实**，实现方同时实现两者，**事实只有一份**；消费方按需注入窄的那个，于是「只读」是**类型事实**而不是约定。
+共享 `Application` 对象要持有一批注入式 store。它**不该**为「读一点数据」而依赖一个带写能力、或覆盖面过宽的端口，因此本节给出**一批窄端口**：它们与既有端口**读同一份事实**，实现方同时实现读侧与写侧，**事实只有一份**；消费方按需注入窄的那个，于是「只读」是**类型事实**而不是约定。
 
-**这不违反 §4.2 的「不合并 trait」**：那一条说的是**不把不同聚合并成一个 trait**；本节是**按读写再切一刀**，切出来的两个 trait 仍各自对应一个聚合，实现方不必实现与自己无关的方法。
+**这不违反 §4.2 的「不合并 trait」**：那一条说的是**不把不同聚合成一个 trait**；本节是**按读写再切一刀**，切出来的窄 trait 仍各自对应一个聚合，实现方不必实现与自己无关的方法。
 
 | 端口 | 文件 | 取代的宿主位置（只因「读一点」而持着整个 `Arc<DesktopRepository>`） | 方法 |
 | --- | --- | --- | --- |
@@ -886,7 +882,7 @@ pub struct FixedClock { /* … */ }    // 测试替身：at(ts) / set(ts)，克�
 | `ExecutionSettingsReader` | `ports/execution_settings.rs` | `src-tauri/src/store/mod.rs` 的 `execution_settings()` | `read` |
 | `ExecutionTargetResolver` | `ports/execution_target.rs` | `src-tauri/src/platform/adapter.rs` 的 `PlatformAdapter::resolve_execution_target` | `resolve` |
 | `MasterKeyProvider` | `ports/master_key.rs` | `src-tauri/src/platform/execution_identity.rs` 的 `for_desktop(store, …)` | `master_key` / `derive_subkey` |
-| `MigrationProfileReader` | `ports/migration_profile.rs` | 端口保留（三件套的只读 profile 投影）；桌面侧唯一的实现曾是 workflow 迁移 step 的 `impl MigrationHost for AppState`，该能力已移除，三件套自身经 `Store` 读 profile | `list_transfer_profiles` / `list_sync_profiles` / `list_schema_diff_profiles` |
+| `MigrationProfileReader` | `ports/migration_profile.rs` | 端口保留（三件套的只读 profile 投影）；桌面侧唯一的实现曾是 workflow 迁移 step 的 `impl MigrationHost for AppState`，该能力已移除，三件套自身经 `DesktopRepository` 读 profile | `list_transfer_profiles` / `list_sync_profiles` / `list_schema_diff_profiles` |
 
 ```rust
 // packages/platform-api/src/ports/profile_reader.rs（已实现）
@@ -942,12 +938,12 @@ pub trait MigrationProfileReader: Send + Sync + 'static {
 
 **四条口径**：
 
-1. **不重复，是同一份事实的不同取用宽度**：`ProfileReader` 与 `ProfileRepository` 读同一份档案（**写路径只留在后者**，桌面 `DesktopProfiles` 同时实现两个 trait、事实只有一份）；`MigrationProfileReader` 读同一份迁移 profile（**迁移的写与执行仍属三件套自己的命令路径**，端口只管读）；`ExecutionSettingsReader` 与 `SettingsRepository`、以及 feature-core 层的 `DatabaseToolHost::execution_settings()` 读同一份执行设置——**三者是同一份事实的三种取用宽度**，不是三份重复实现，收敛方向是让后两者经本端口取。`MonitorGrantReader` 的 `authorized_target` 与宿主侧 `DelegationScopeBinding` **同形**，集成时应收敛为一条。
+1. **不重复，是同一份事实的不同取用宽度**：`ProfileReader` 与 `ProfileRepository` 读同一份档案（**写路径只留在后者**，桌面 `DesktopProfiles` 同时实现 `ProfileRepository` 与 `ProfileReader`、事实只有一份）；`MigrationProfileReader` 读同一份迁移 profile（**迁移的写与执行仍属三件套自己的命令路径**，端口只管读）；`ExecutionSettingsReader` 与 `SettingsRepository`、以及 feature-core 层的 `DatabaseToolHost::execution_settings()` 读同一份执行设置——**它们是同一份事实的多种取用宽度**，不是多份重复实现，收敛方向是让后两者经本端口取。`MonitorGrantReader` 的 `authorized_target` 与宿主侧 `DelegationScopeBinding` **同形**，集成时应收敛为一条。
 2. **打破引用环**：`ExecutionTargetResolver` 存在的首要理由是 `Application` **绝不能**持 `Arc<PlatformAdapter>`（`PlatformAdapter` 持 `Arc<ApplicationServices>`），只能持这个窄端口；桌面实现在**宿主侧**实现它，签名里只有 platform-api 自己的类型，桌面 driver registry 与目标元数据缓存一律藏在实现里。
 3. **能力事实用值表达**：目标不被支持时端口返回 `TargetResolution::Unsupported { reason_code }` 而不是抛错（§4.1）。
 4. **私有词汇表**：`MonitorGrantScope` / `ExecutionPolicy` / `TargetResolution` / `KeyMaterial` / `MigrationProfileSummary` 各自留在**自己的端口文件**里（§4.1 的「每个端口文件自带它的私有词汇表」），**不进 `dto/`**；将来若要跨边界序列化再各自补 serde。
 
-**单测**：六个端口各自在同文件带 `#[cfg(test)]` 用例，共 22 条。每个端口至少一条钉住「对象安全 + 能以 `Arc<dyn Trait>` 持有并实际调用」（`fn assert_object_safe<T: Send + Sync + 'static + ?Sized>()`），外加各自的源码守卫：只读端口不得出现写方法、端口签名不得出现宿主类型、密钥材料不得经 `Debug` 或 serde 泄漏。
+**单测**：窄端口各自在同文件带 `#[cfg(test)]` 用例。每个端口至少一条钉住「对象安全 + 能以 `Arc<dyn Trait>` 持有并实际调用」（`fn assert_object_safe<T: Send + Sync + 'static + ?Sized>()`），外加各自的源码守卫：只读端口不得出现写方法、端口签名不得出现宿主类型、密钥材料不得经 `Debug` 或 serde 泄漏。
 
 ## 5. RequestContext 的三个构造来源
 
