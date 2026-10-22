@@ -1,12 +1,10 @@
 //! MCP Server module — exposes DataZen's database capabilities via MCP protocol.
 
-pub mod allowlist;
 pub mod auth;
 pub mod client;
 #[cfg(test)]
 mod contract;
 mod handler;
-pub mod permission;
 mod prompts;
 mod resources;
 mod runtime_schema;

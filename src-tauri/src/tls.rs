@@ -344,7 +344,7 @@ mod tests {
                 let outcome = tokio::time::timeout(
                     std::time::Duration::from_secs(20),
                     crate::tunnel::verify_http_proxy_upstream(
-                        &crate::db::HttpProxyTunnelConfig {
+                        &datazen_driver_api::HttpProxyTunnelConfig {
                             enabled: true,
                             host: "127.0.0.1".into(),
                             port,
@@ -381,7 +381,7 @@ mod tests {
                 let outcome = tokio::time::timeout(
                     std::time::Duration::from_secs(20),
                     crate::tunnel::verify_websocket_upstream(
-                        &crate::db::WebSocketTunnelConfig {
+                        &datazen_driver_api::WebSocketTunnelConfig {
                             enabled: true,
                             url: format!("wss://127.0.0.1:{port}/raw"),
                             auth_token: None,

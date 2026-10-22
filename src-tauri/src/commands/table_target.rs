@@ -1,14 +1,12 @@
 //! Table browsing uses independent target executions; it never borrows a tree/editor handle.
 use super::{AppState, CommandError, RowChangeTableContext};
-use crate::{
-    db::{CountStrategy, TableDataResult, TableSchema, Value},
-    platform::into_command_error,
-    services::{table_browsing, FilterCondition, OrderBy, QueryExecutor, SortCondition},
-};
+use crate::platform::into_command_error;
+use crate::services::{table_browsing, FilterCondition, OrderBy, QueryExecutor, SortCondition};
 use datazen_application::{
     dto::requests::{CommandCall, ExecuteAtTargetRequest},
     sessions::ConnectionUseCases,
 };
+use datazen_driver_api::{CountStrategy, TableDataResult, TableSchema, Value};
 use datazen_platform_api::{
     context::RequestContext,
     dto::{execution::ExecutionState, idempotency::IdempotentOperation},
@@ -232,7 +230,7 @@ pub async fn read(
         .map_err(|_| CommandError::Validation("Invalid table schema result".into()))?;
     // SQL construction depends on the dialect contract only; execution below
     // still goes through the driver's explicit target path.
-    let dialect = crate::db::LegacySqlDialect::new(driver.as_ref());
+    let dialect = datazen_driver_api::LegacySqlDialect::new(driver.as_ref());
     // The primary key has one source: the schema's own normalised list. The
     // column flags are a second, possibly stale, copy of the same fact, and
     // a driver that fills one and not the other used to lose its key here

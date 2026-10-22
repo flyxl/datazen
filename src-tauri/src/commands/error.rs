@@ -3,9 +3,9 @@
 //! `CommandError` categorises failures while serialising to a plain string
 //! so the frontend receives the same format as the previous `Result<T, String>`.
 
-use crate::db::DriverError;
 use crate::store::StoreError;
 use datazen_ai_api::AiError;
+use datazen_driver_api::DriverError;
 use datazen_feature_core::services::FilterRejection;
 
 #[derive(Debug)]
@@ -65,12 +65,12 @@ impl serde::Serialize for CommandError {
             );
         }
         // Redact secrets so IPC payloads never leak credentials (M9/B8).
-        let redacted = crate::log_redact::redact_secrets_for_log(&self.to_string());
+        let redacted = datazen_platform_infra::redaction::redact_secrets_for_log(&self.to_string());
         // …and the absolute paths: an IPC payload is not a log line, and it
         // travels further than the machine it was produced on (AGENTS.md:
         // "全局 IPC 错误 Payload 自动脱敏凭据与绝对路径"). The file name
         // survives; the directories do not.
-        let redacted = crate::log_redact::redact_paths_for_ipc(&redacted);
+        let redacted = datazen_platform_infra::redaction::redact_paths_for_ipc(&redacted);
         serializer.serialize_str(&redacted)
     }
 }
@@ -119,6 +119,12 @@ impl From<serde_json::Error> for CommandError {
     }
 }
 
+impl From<crate::schema_diff::object_selection::ObjectSelectionError> for CommandError {
+    fn from(e: crate::schema_diff::object_selection::ObjectSelectionError) -> Self {
+        CommandError::Validation(e.to_string())
+    }
+}
+
 impl From<crate::data_sync::DataSyncError> for CommandError {
     fn from(e: crate::data_sync::DataSyncError) -> Self {
         match e {
@@ -142,25 +148,34 @@ impl From<crate::data_transfer::TransferError> for CommandError {
     }
 }
 
-impl From<crate::dashboard::store::DashboardStoreError> for CommandError {
-    fn from(e: crate::dashboard::store::DashboardStoreError) -> Self {
+impl From<datazen_feature_core::dashboard::store::DashboardStoreError> for CommandError {
+    fn from(e: datazen_feature_core::dashboard::store::DashboardStoreError) -> Self {
         match e {
-            crate::dashboard::store::DashboardStoreError::NotFound(id) => Self::NotFound(id),
-            crate::dashboard::store::DashboardStoreError::Parse(msg) => Self::Validation(msg),
-            crate::dashboard::store::DashboardStoreError::Db(
-                crate::store::AppDbError::NotFound(id),
-            ) => Self::NotFound(id),
-            crate::dashboard::store::DashboardStoreError::Db(e) => Self::Internal(e.to_string()),
+            datazen_feature_core::dashboard::store::DashboardStoreError::NotFound(id) => {
+                Self::NotFound(id)
+            }
+            datazen_feature_core::dashboard::store::DashboardStoreError::Parse(msg) => {
+                Self::Validation(msg)
+            }
+            datazen_feature_core::dashboard::store::DashboardStoreError::Db(msg) => {
+                Self::Internal(msg)
+            }
         }
     }
 }
 
-impl From<crate::dashboard::runs::DashboardRunsError> for CommandError {
-    fn from(e: crate::dashboard::runs::DashboardRunsError) -> Self {
+impl From<datazen_feature_core::dashboard::runs::DashboardRunsError> for CommandError {
+    fn from(e: datazen_feature_core::dashboard::runs::DashboardRunsError) -> Self {
         match e {
-            crate::dashboard::runs::DashboardRunsError::NotFound(id) => Self::NotFound(id),
-            crate::dashboard::runs::DashboardRunsError::Parse(msg) => Self::Validation(msg),
-            crate::dashboard::runs::DashboardRunsError::Db(e) => Self::Internal(e.to_string()),
+            datazen_feature_core::dashboard::runs::DashboardRunsError::NotFound(id) => {
+                Self::NotFound(id)
+            }
+            datazen_feature_core::dashboard::runs::DashboardRunsError::Parse(msg) => {
+                Self::Validation(msg)
+            }
+            datazen_feature_core::dashboard::runs::DashboardRunsError::Db(msg) => {
+                Self::Internal(msg)
+            }
         }
     }
 }
@@ -224,7 +239,8 @@ impl<T, E: Into<CommandError>> CmdExt<T> for Result<T, E> {
     fn cmd_err(self, cmd: &str) -> Result<T, CommandError> {
         self.map_err(|e| {
             let err: CommandError = e.into();
-            let redacted = crate::log_redact::redact_secrets_for_log(&err.to_string());
+            let redacted =
+                datazen_platform_infra::redaction::redact_secrets_for_log(&err.to_string());
             tracing::error!(cmd, error = %redacted);
             err
         })

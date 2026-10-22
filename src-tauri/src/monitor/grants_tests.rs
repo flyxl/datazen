@@ -6,8 +6,8 @@ use datazen_platform_api::{
     target::{ExecutionTarget, NamespaceTarget},
 };
 use std::sync::Arc;
-fn config() -> crate::db::ConnectionConfig {
-    crate::db::ConnectionConfig {
+fn config() -> datazen_driver_api::ConnectionConfig {
+    datazen_driver_api::ConnectionConfig {
         id: "pg".into(),
         name: "synthetic profile".into(),
         database_type: "postgresql".into(),

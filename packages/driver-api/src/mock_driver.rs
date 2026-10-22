@@ -450,8 +450,35 @@ impl MockDriver {
     }
 }
 
+/// Placeholder dialect SQL for the shared schema-object commands.
+///
+/// The mock answers with SQL that lets the command run; what the tests assert
+/// is the host's parsing of the *reply*, not the dialect's text.
+pub struct MockSchemaObjectSql;
+
+impl crate::schema_object_sql::SchemaObjectSql for MockSchemaObjectSql {
+    fn list_objects_sql(&self, _kind: crate::schema_objects::ObjectKind) -> Option<String> {
+        Some("SELECT 'mock' AS name".to_string())
+    }
+
+    fn object_ddl_sql(
+        &self,
+        _request: &crate::schema_object_sql::ObjectDdlRequest<'_>,
+    ) -> Option<String> {
+        Some("SELECT 'mock' AS ddl".to_string())
+    }
+
+    fn list_privileges_sql(&self) -> Option<String> {
+        Some("SELECT 'mock' AS grantee, '*' AS schema, '*' AS name, 'ALL' AS privilege".to_string())
+    }
+}
+
 #[async_trait]
 impl DatabaseDriver for MockDriver {
+    fn schema_object_sql(&self) -> Option<Arc<dyn crate::schema_object_sql::SchemaObjectSql>> {
+        Some(Arc::new(MockSchemaObjectSql))
+    }
+
     fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
         match self.db_type.to_ascii_lowercase().as_str() {
             "clickhouse" => Some(SqlLiteralDialect::ClickHouse),

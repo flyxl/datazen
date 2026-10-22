@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use crate::data_transfer::model::{TableInspectResult, TableMappingStatus, TransferJob};
 use crate::data_transfer::resume;
-use crate::db::{ConnectionHandle, DatabaseDriver};
 use datazen_driver_api::TableSchema;
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
 
 pub(super) struct ResumePreflight {
     pub(super) table_boundary_reason: Option<String>,

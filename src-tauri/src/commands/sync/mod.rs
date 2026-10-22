@@ -3,9 +3,7 @@
 mod apply;
 mod artifact_view;
 pub(crate) mod compare;
-mod comparison_store;
 mod exec;
-mod filter_validation;
 #[cfg(test)]
 mod filter_validation_tests;
 mod host;
@@ -17,15 +15,20 @@ mod jobs_cancel_contract;
 #[cfg(test)]
 mod jobs_contract;
 mod keyset_source;
-mod plans;
 mod tasks;
-pub(crate) mod types;
 
 #[cfg(test)]
 mod tests;
 
 use super::error::CommandError;
 use super::AppState;
+use crate::data_sync::api::SyncComparisonRequest;
+use crate::data_sync::api::{resolve_options, SyncOptionsInput};
+pub(crate) use crate::data_sync::filter_validation::{
+    resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
+};
+use crate::data_sync::plan_store as plans;
+use crate::data_sync::plan_store::{SyncRunRequest, SyncRunSelection};
 use crate::data_sync::{
     classify_data_sync_pair as classify_data_sync_pair_impl, DataSyncExecutionResponse,
     DataSyncPairingView, SyncProfile, SyncSourceFilter, TableMapping,
@@ -37,21 +40,16 @@ pub(crate) use apply::{apply_data_sync_impl, compare_data_sync_impl, revalidate_
 #[cfg(test)]
 pub(crate) use exec::execute_data_sync_impl;
 pub(crate) use exec::{execute_data_sync_plan_impl, generate_data_sync_sql_for_plan_impl};
-pub(crate) use filter_validation::{
-    resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
-};
 pub(crate) use inspect::inspect_data_sync_impl;
 pub use job_api::*;
 #[cfg(test)]
 pub(crate) use jobs::cancel_job;
-use plans::{SyncRunRequest, SyncRunSelection};
 use std::collections::HashMap;
 pub(crate) use tasks::{
     check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
     save_sync_task_direct_impl,
 };
 use tauri::State;
-use types::{resolve_options, SyncOptionsInput};
 
 /// Execute the default reviewed selection of a freshly-created Sync plan.
 /// Workflow migration steps use this host-owned bridge so they cannot submit
@@ -63,8 +61,15 @@ pub(crate) async fn execute_data_sync_profile_plan_impl(
     selection_revision: u64,
     options: crate::data_sync::SyncOptions,
 ) -> Result<crate::data_sync::ExecutionResult, CommandError> {
-    let selection = plans::default_profile_selection(&plan_id, selection_revision, &options)
-        .map_err(CommandError::Validation)?;
+    let scope = state.organization_scope()?;
+    let selection = plans::default_profile_selection(
+        state.sync_stores.plan_store.as_ref(),
+        &scope,
+        &plan_id,
+        selection_revision,
+        &options,
+    )
+    .map_err(CommandError::Validation)?;
     execute_data_sync_plan_impl(
         state,
         plans::SyncRunRequest {
@@ -227,7 +232,8 @@ pub async fn execute_data_sync(
     };
     if let Some(run) = run.as_mut() {
         run.selected_count = request.selection.rows.len() as u64;
-        if let Ok(plan) = plans::peek_plan(&request.plan_id) {
+        let scope = state.organization_scope()?;
+        if let Ok(plan) = state.sync_stores.plan_store.peek(&scope, &request.plan_id) {
             run.source_connection_id = plan
                 .source_endpoint_identity
                 .as_ref()
@@ -367,17 +373,19 @@ pub async fn compare_data_sync(
 ) -> Result<plans::SyncComparisonPreview, CommandError> {
     compare_data_sync_impl(
         &state,
-        source_db_session_id,
-        target_db_session_id,
-        tables.unwrap_or_default(),
-        job_id,
-        source_database,
-        target_database,
-        source_schema,
-        target_schema,
-        resolve_options(options),
-        &[],
-        &filters.unwrap_or_default(),
+        SyncComparisonRequest {
+            source_db_session_id,
+            target_db_session_id,
+            tables: tables.unwrap_or_default(),
+            job_id,
+            source_database,
+            target_database,
+            source_schema,
+            target_schema,
+            options: resolve_options(options),
+            mappings: Vec::new(),
+            source_filters: filters.unwrap_or_default(),
+        },
     )
     .await
 }
@@ -386,9 +394,12 @@ pub async fn compare_data_sync(
 /// page request carries no SQL, credentials or row values from the client.
 #[tauri::command]
 pub fn get_data_sync_comparison_page(
+    state: State<'_, AppState>,
     request: plans::SyncComparisonPageRequest,
 ) -> Result<plans::SyncComparisonPage, CommandError> {
-    plans::get_comparison_page(request).map_err(CommandError::Validation)
+    let scope = state.organization_scope()?;
+    plans::get_comparison_page(state.sync_stores.plan_store.as_ref(), &scope, request)
+        .map_err(CommandError::Validation)
 }
 
 #[tauri::command]

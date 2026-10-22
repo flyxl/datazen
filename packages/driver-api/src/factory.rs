@@ -96,6 +96,24 @@ pub fn create_driver(driver_id: &str) -> Option<Arc<dyn DatabaseDriver>> {
         .map(|factory| factory.create())
 }
 
+/// Protocol version of the driver behind `driver`.
+///
+/// A migration plan records the protocol version of the driver that produced
+/// it, and the apply path refuses a plan whose driver now speaks a different
+/// protocol. The lookup therefore has to be identical for Data Sync and Data
+/// Transfer — a second copy is a second opinion about the same number.
+///
+/// Falls back to the compiled-in protocol version when the driver is not
+/// registered in this build (an unlinked driver cannot answer for itself).
+pub fn driver_protocol_version(driver: &dyn DatabaseDriver) -> u32 {
+    let driver_type = driver.driver_type();
+    iter_driver_factories()
+        .into_iter()
+        .find(|factory| factory.driver_id() == driver_type)
+        .map(|factory| factory.protocol_version())
+        .unwrap_or(crate::PROTOCOL_VERSION)
+}
+
 /// Fail-closed accessor: the provider or an explicit "not migrated" error.
 ///
 /// This exists so that "the driver has no resource provider" can never be

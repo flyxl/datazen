@@ -2,6 +2,7 @@
 pub mod ai;
 pub mod backup;
 pub mod backup_gateway;
+pub mod connection_import;
 pub mod dashboard;
 pub mod data_browsing;
 pub mod error;

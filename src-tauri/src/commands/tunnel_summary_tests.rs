@@ -6,8 +6,8 @@
 //! `commands/tunnel.rs`.
 
 use super::tunnel::{get_tunnel_summaries_impl, get_tunnel_usage_impl};
-use crate::db::{SavedTunnel, SshTunnelConfig, TunnelKind};
 use crate::testing::app_state::{sample_postgres_config, TestAppState};
+use datazen_driver_api::{SavedTunnel, SshTunnelConfig, TunnelKind};
 
 const SSH_PASSWORD: &str = "ssh-password-secret";
 const SSH_PASSPHRASE: &str = "ssh-passphrase-secret";
@@ -136,7 +136,7 @@ async fn test_tester_summaries_are_empty_for_an_empty_store() {
 
 #[tokio::test]
 async fn test_tester_summaries_keep_store_order_and_drop_secrets_for_every_kind() {
-    use crate::db::{HttpProxyTunnelConfig, WebSocketTunnelConfig};
+    use datazen_driver_api::{HttpProxyTunnelConfig, WebSocketTunnelConfig};
 
     let test = TestAppState::new().await;
     test.store

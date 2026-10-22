@@ -1,17 +1,17 @@
 //! Single-file dashboard import/export (`.datazen-dashboard.json`).
 
-use std::collections::HashSet;
 use std::io;
 
 use chrono::Utc;
 use thiserror::Error;
 
-use super::store::{list_dashboards, save_dashboard, DashboardStoreError};
-use super::types::Dashboard;
 use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
-use crate::workflow::model::{WorkflowDefinition, WorkflowVisibility};
-
-pub use datazen_feature_core::dashboard::archive::FORMAT;
+use datazen_feature_core::dashboard::store::{
+    assign_import_id, list_dashboards, save_dashboard, DashboardStoreError,
+};
+use datazen_feature_core::dashboard::types::Dashboard;
+use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowVisibility};
+use datazen_platform_api::ports::scope::OrganizationScope;
 
 #[derive(Debug, Error)]
 pub enum DashboardExportError {
@@ -81,24 +81,10 @@ fn collect_embedded_workflows(
     app_db: &AppDb,
     dashboard: &Dashboard,
 ) -> Result<Vec<WorkflowDefinition>, DashboardExportError> {
-    let mut seen = HashSet::new();
-    let mut workflows = Vec::new();
-
-    for widget in &dashboard.widgets {
-        if !seen.insert(widget.workflow_id.clone()) {
-            continue;
-        }
-        let record = app_db.get_workflow(&widget.workflow_id)?;
-        let def = record_to_definition(&record)?;
-        // Always embed referenced workflows; hidden ones are required for portability.
-        if def.visibility == WorkflowVisibility::DashboardHidden
-            || def.visibility == WorkflowVisibility::User
-        {
-            workflows.push(def);
-        }
-    }
-
-    Ok(workflows)
+    datazen_feature_core::dashboard::archive::select_embedded_workflows(dashboard, |id| {
+        let record = app_db.get_workflow(id)?;
+        Ok(record_to_definition(&record)?)
+    })
 }
 
 fn parse_dashboard_file_inner(
@@ -128,35 +114,40 @@ pub fn export_dashboard_json(
 }
 
 /// Import a dashboard file; assigns a new id when the id already exists locally.
-pub fn import_dashboard(app_db: &AppDb, bytes: &[u8]) -> Result<Dashboard, DashboardExportError> {
+///
+/// `scope` 限定这次导入落到哪个组织：id 冲突只在**同一组织内**成立。
+pub fn import_dashboard(
+    scope: &OrganizationScope,
+    app_db: &AppDb,
+    bytes: &[u8],
+) -> Result<Dashboard, DashboardExportError> {
     let (mut dashboard, embedded) = parse_dashboard_file_inner(bytes)?;
 
     for wf in &embedded {
         persist_workflow(app_db, wf)?;
     }
 
-    let existing = list_dashboards(app_db)?;
-    if existing.iter().any(|d| d.id == dashboard.id) {
-        dashboard.id = uuid::Uuid::new_v4().to_string();
-    }
+    let existing = list_dashboards(scope, app_db)?;
+    assign_import_id(scope, &mut dashboard, &existing);
 
-    save_dashboard(app_db, dashboard.clone())?;
+    save_dashboard(scope, app_db, dashboard.clone())?;
     Ok(dashboard)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dashboard::store::{
+    use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
+    use chrono::Utc;
+    use datazen_feature_core::dashboard::archive::FORMAT;
+    use datazen_feature_core::dashboard::store::{
         delete_dashboard, get_dashboard, list_dashboards, save_dashboard,
     };
-    use crate::dashboard::types::{
+    use datazen_feature_core::dashboard::types::{
         AlertChannel, AlertMetric, AlertMetricKind, AlertOperator, AlertRule, ChartConfig,
         ChartType, DashboardLayout, DashboardWidget, RefreshMode, RefreshPolicy, ViewMode,
         WidgetLayout,
     };
-    use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
-    use chrono::Utc;
 
     fn open_db() -> std::sync::Arc<AppDb> {
         let db = AppDb::open_in_memory().unwrap();
@@ -193,8 +184,8 @@ mod tests {
                     x_axis: None,
                     y_axes: vec![],
                     group_by: None,
-                    aggregation: crate::dashboard::types::AggregationType::None,
-                    sort_by: crate::dashboard::types::ChartSortBy::None,
+                    aggregation: datazen_feature_core::dashboard::types::AggregationType::None,
+                    sort_by: datazen_feature_core::dashboard::types::ChartSortBy::None,
                     show_legend: true,
                     show_grid: true,
                     show_values: false,
@@ -257,22 +248,24 @@ mod tests {
     #[test]
     fn import_assigns_new_id_on_collision() {
         let db = open_db();
+        let scope = crate::platform::local_organization_scope();
         let dash = sample_dashboard();
-        save_dashboard(&db, dash.clone()).unwrap();
+        save_dashboard(&scope, &*db, dash.clone()).unwrap();
 
         let json = export_dashboard_json(&db, &dash).unwrap();
-        let imported = import_dashboard(&db, json.as_bytes()).unwrap();
+        let imported = import_dashboard(&scope, &db, json.as_bytes()).unwrap();
         assert_ne!(imported.id, dash.id);
-        assert_eq!(list_dashboards(&db).unwrap().len(), 2);
+        assert_eq!(list_dashboards(&scope, &*db).unwrap().len(), 2);
     }
 
     #[test]
     fn import_roundtrip_persists_dashboard_and_workflows() {
         let db = open_db();
+        let scope = crate::platform::local_organization_scope();
         let dash = sample_dashboard();
         let json = export_dashboard_json(&db, &dash).unwrap();
-        let imported = import_dashboard(&db, json.as_bytes()).unwrap();
-        let loaded = get_dashboard(&db, &imported.id).unwrap();
+        let imported = import_dashboard(&scope, &db, json.as_bytes()).unwrap();
+        let loaded = get_dashboard(&scope, &*db, &imported.id).unwrap();
         assert_eq!(loaded.widgets.len(), 1);
         assert!(db.get_workflow("wf-export").is_ok());
     }
@@ -286,7 +279,12 @@ mod tests {
             "version": 1,
             "dashboard": dash,
         });
-        let imported = import_dashboard(&db, v1.to_string().as_bytes()).unwrap();
+        let imported = import_dashboard(
+            &crate::platform::local_organization_scope(),
+            &db,
+            v1.to_string().as_bytes(),
+        )
+        .unwrap();
         assert_eq!(imported.widgets.len(), 1);
     }
 
@@ -309,13 +307,14 @@ mod tests {
 
         let mut dash = sample_dashboard();
         dash.widgets[0].workflow_id = hidden_id.into();
-        save_dashboard(&db, dash.clone()).unwrap();
+        let scope = crate::platform::local_organization_scope();
+        save_dashboard(&scope, &*db, dash.clone()).unwrap();
 
         let json = export_dashboard_json(&db, &dash).unwrap();
-        delete_dashboard(&db, &dash.id).unwrap();
+        delete_dashboard(&scope, &*db, &dash.id).unwrap();
         db.delete_workflow(hidden_id).unwrap();
 
-        let imported = import_dashboard(&db, json.as_bytes()).unwrap();
+        let imported = import_dashboard(&scope, &db, json.as_bytes()).unwrap();
         assert_eq!(imported.widgets[0].workflow_id, hidden_id);
         let record = db.get_workflow(hidden_id).unwrap();
         assert_eq!(record.visibility, WorkflowVisibility::DashboardHidden);

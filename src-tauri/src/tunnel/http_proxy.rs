@@ -1,6 +1,6 @@
 //! HTTP CONNECT tunnel: local TCP listener → HTTP(S) proxy CONNECT → remote DB.
 
-use crate::db::{DriverError, HttpProxyTunnelConfig};
+use datazen_driver_api::{DriverError, HttpProxyTunnelConfig};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};

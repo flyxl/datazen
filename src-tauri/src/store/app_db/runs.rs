@@ -3,32 +3,13 @@
 
 use super::{AppDb, AppDbError};
 use chrono::Utc;
+pub use datazen_feature_core::dashboard::records::WidgetRunRecord;
 use rusqlite::params;
-use serde::{Deserialize, Serialize};
 
-/// Rows kept per widget. `dashboard::runs` declares a constant of the same name
-/// and value; the two must agree, or the dashboard truncates to one number
-/// while the database stores another.
-pub const MAX_RUN_ROWS: usize = 500;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct WidgetRunRecord {
-    pub id: String,
-    pub dashboard_id: String,
-    pub widget_id: String,
-    pub workflow_id: String,
-    pub started_at: String,
-    pub finished_at: String,
-    pub status: String,
-    pub error: Option<String>,
-    pub row_count: u32,
-    pub columns_json: String,
-    pub rows_json: String,
-    pub variables_json: Option<String>,
-    pub alert_fired: Option<bool>,
-    pub alert_value: Option<f64>,
-}
+/// Rows kept per widget. The shared dashboard core declares a constant of the
+/// same name and value; the two must agree, or the dashboard truncates to one
+/// number while the database stores another.
+pub const MAX_RUN_ROWS: usize = datazen_feature_core::dashboard::execute::MAX_RUN_ROWS;
 
 impl AppDb {
     pub fn write_run(

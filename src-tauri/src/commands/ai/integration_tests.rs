@@ -7,10 +7,11 @@ use datazen_driver_api::PromptScenario;
 
 use super::chat::execute_db_tool;
 use super::*;
-use crate::ai::prompt_resolver::PromptOverrideEntry;
 use crate::commands::{workflow_execute_impl, workflow_list_impl};
 use crate::testing::ai_wiremock::WiremockAi;
 use crate::testing::app_state::TestAppState;
+use datazen_feature_core::ai::prompt_resolver::PromptOverrideEntry;
+use datazen_feature_core::ai::tools::{classify_tool, ToolKind};
 
 fn collecting_stream_callback() -> (StreamCallback, Arc<Mutex<Vec<(String, bool)>>>) {
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -123,7 +124,7 @@ async fn ai_parse_filter_normalizes_null_operators() {
     .await
     .unwrap();
 
-    use crate::services::query_executor::FilterOperator;
+    use datazen_feature_core::services::query_executor::FilterOperator;
     assert_eq!(filters.len(), 2);
     assert!(matches!(filters[0].operator, FilterOperator::IsNull));
     assert!(matches!(filters[1].operator, FilterOperator::Gt));
@@ -332,7 +333,7 @@ async fn ai_chat_workflow_scenario_builds_system_prompt() {
 
 #[tokio::test]
 async fn prompt_override_round_trip() {
-    use crate::ai::prompt_resolver::PromptSource;
+    use datazen_feature_core::ai::prompt_resolver::PromptSource;
 
     let test = TestAppState::new().await;
     let entry = PromptOverrideEntry {
@@ -360,10 +361,14 @@ async fn prompt_override_round_trip() {
 
 #[tokio::test]
 async fn workflow_save_list_get_delete() {
-    use crate::workflow::{WorkflowDefinition, WorkflowStep};
+    use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let test = TestAppState::new().await;
-    test.state.workflow_registry.load_all().await.unwrap();
+    test.state
+        .workflow_registry
+        .load_all(&crate::platform::local_organization_scope())
+        .await
+        .unwrap();
     let wf = WorkflowDefinition {
         database: None,
         id: "test-wf".into(),
@@ -389,7 +394,7 @@ async fn workflow_save_list_get_delete() {
 
     test.state
         .workflow_registry
-        .save_workflow(&wf)
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
         .await
         .unwrap();
     let list = workflow_list_impl(&test.state).await.unwrap();
@@ -398,14 +403,14 @@ async fn workflow_save_list_get_delete() {
     let loaded = test
         .state
         .workflow_registry
-        .get("test-wf")
+        .get(&crate::platform::local_organization_scope(), "test-wf")
         .await
         .expect("workflow");
     assert_eq!(loaded.name, "Test Workflow");
 
     test.state
         .workflow_registry
-        .delete_workflow("test-wf")
+        .delete_workflow(&crate::platform::local_organization_scope(), "test-wf")
         .await
         .unwrap();
     let remaining = workflow_list_impl(&test.state).await.unwrap();
@@ -416,7 +421,7 @@ async fn workflow_save_list_get_delete() {
 }
 
 fn many_tables_mock_options() -> crate::testing::mock_driver::MockDriverOptions {
-    use crate::db::{TableInfo, TableType};
+    use datazen_driver_api::{TableInfo, TableType};
     let mut opts = crate::testing::app_state::rich_mock_options();
     opts.tables = (0..35)
         .map(|i| TableInfo {
@@ -909,10 +914,14 @@ data: [DONE]
 
 #[tokio::test]
 async fn workflow_execute_ai_step_with_wiremock() {
-    use crate::workflow::{WorkflowDefinition, WorkflowStep};
+    use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
-    test.state.workflow_registry.load_all().await.unwrap();
+    test.state
+        .workflow_registry
+        .load_all(&crate::platform::local_organization_scope())
+        .await
+        .unwrap();
     mock.mount_chat_completion_text("workflow output").await;
 
     let wf = WorkflowDefinition {
@@ -939,7 +948,7 @@ async fn workflow_execute_ai_step_with_wiremock() {
     };
     test.state
         .workflow_registry
-        .save_workflow(&wf)
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
         .await
         .unwrap();
 
@@ -1043,10 +1052,14 @@ async fn ai_chat_connected_english_schema_message() {
 
 #[tokio::test]
 async fn workflow_history_clear_after_execute() {
-    use crate::workflow::{WorkflowDefinition, WorkflowStep};
+    use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
-    test.state.workflow_registry.load_all().await.unwrap();
+    test.state
+        .workflow_registry
+        .load_all(&crate::platform::local_organization_scope())
+        .await
+        .unwrap();
     mock.mount_chat_completion_text("done").await;
 
     let wf = WorkflowDefinition {
@@ -1073,7 +1086,7 @@ async fn workflow_history_clear_after_execute() {
     };
     test.state
         .workflow_registry
-        .save_workflow(&wf)
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
         .await
         .unwrap();
     workflow_execute_impl(&test.state, "hist-wf".into(), serde_json::json!({}), None)
@@ -1090,10 +1103,16 @@ async fn workflow_history_clear_after_execute() {
 
 #[tokio::test]
 async fn dashboard_hidden_workflow_execute_skips_history() {
-    use crate::workflow::{WorkflowDefinition, WorkflowStep, WorkflowVisibility};
+    use datazen_feature_core::workflow::model::{
+        WorkflowDefinition, WorkflowStep, WorkflowVisibility,
+    };
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
-    test.state.workflow_registry.load_all().await.unwrap();
+    test.state
+        .workflow_registry
+        .load_all(&crate::platform::local_organization_scope())
+        .await
+        .unwrap();
     mock.mount_chat_completion_text("done").await;
 
     let wf = WorkflowDefinition {
@@ -1120,7 +1139,7 @@ async fn dashboard_hidden_workflow_execute_skips_history() {
     };
     test.state
         .workflow_registry
-        .save_workflow(&wf)
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
         .await
         .unwrap();
     workflow_execute_impl(

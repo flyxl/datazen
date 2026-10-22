@@ -8,7 +8,9 @@ use super::*;
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::workflow::workflows::{StepExecutionResult, StepStatus, WorkflowExecutionResult};
+use datazen_feature_core::workflow::model::{
+    StepExecutionResult, StepStatus, WorkflowExecutionResult,
+};
 
 /// A query row `days_ago` in the past, on the default connection.
 pub(super) fn sample_query(sql: &str, days_ago: i64) -> QueryHistoryEntry {

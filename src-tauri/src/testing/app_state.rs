@@ -3,13 +3,13 @@
 use std::sync::{Arc, OnceLock};
 
 use crate::commands::AppState;
-use crate::db::registry::DriverRegistry;
-use crate::db::{ConnectionConfig, SslMode, TableInfo, TableType};
 use crate::store::Store;
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use datazen_driver_api::resource::ResourceProvider;
+use datazen_driver_api::{ConnectionConfig, SslMode, TableInfo, TableType};
 use datazen_driver_api::{DatabaseDriver, DatabaseDriverFactory};
+use datazen_runtime::driver_registry::registry::DriverRegistry;
 
 /// Temp store + mock postgres driver + keyring guard for command tests.
 pub struct TestAppState {
@@ -260,7 +260,7 @@ pub fn sample_postgres_config(id: &str) -> ConnectionConfig {
 }
 
 pub fn rich_mock_options() -> MockDriverOptions {
-    use crate::db::Value;
+    use datazen_driver_api::Value;
 
     MockDriverOptions {
         databases: vec!["app".into()],

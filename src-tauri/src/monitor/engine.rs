@@ -1,14 +1,16 @@
 //! Desktop adapter for the shared monitor scheduler.
 use crate::dashboard::{
     execute::{execute_widget_once, DashboardExecuteError},
-    store::{
-        list_dashboards, load_monitor_settings, set_dashboard_refresh_paused, DashboardStoreError,
-    },
-    types::{Dashboard, DashboardWidget, WidgetRun},
+    store::load_monitor_settings,
 };
 use crate::monitor::channels::{dispatch_notifications, AlertChannelState};
 use crate::{commands::AppState, store::Store};
 use datazen_feature_core::dashboard::monitor::{MonitorEngine as CoreEngine, MonitorHost};
+use datazen_feature_core::dashboard::store::{
+    list_dashboards, set_dashboard_refresh_paused, DashboardStoreError,
+};
+use datazen_feature_core::dashboard::types::{Dashboard, DashboardWidget, WidgetRun};
+use datazen_platform_api::ports::scope::OrganizationScope;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 struct DesktopMonitorHost {
@@ -16,6 +18,11 @@ struct DesktopMonitorHost {
     state: Mutex<Option<Arc<AppState>>>,
     app: Mutex<Option<AppHandle>>,
     channels: tokio::sync::Mutex<AlertChannelState>,
+    /// 桌面 monitor 只跑**桌面自己那一个组织**的数据。
+    ///
+    /// 桌面没有第二个组织，这个作用域的组织 id 与
+    /// `DesktopIdentity::organization_id()` 一致。
+    scope: OrganizationScope,
 }
 pub struct MonitorEngine {
     core: Arc<CoreEngine>,
@@ -28,6 +35,7 @@ impl MonitorEngine {
             state: Mutex::new(None),
             app: Mutex::new(None),
             channels: tokio::sync::Mutex::new(AlertChannelState::new()),
+            scope: crate::platform::local_organization_scope(),
         });
         Arc::new(Self {
             core: CoreEngine::new(host.clone()),
@@ -70,7 +78,7 @@ impl MonitorEngine {
         Ok(())
     }
     pub fn is_paused(&self) -> bool {
-        list_dashboards(&self.host.store.app_db())
+        list_dashboards(&self.host.scope, &*self.host.store.app_db())
             .map(|dashboards| {
                 !dashboards.is_empty()
                     && dashboards.iter().all(|dashboard| dashboard.refresh_paused)
@@ -79,9 +87,11 @@ impl MonitorEngine {
     }
     pub fn set_paused(&self, paused: bool) {
         let db = self.host.store.app_db();
-        if let Ok(dashboards) = list_dashboards(&db) {
+        if let Ok(dashboards) = list_dashboards(&self.host.scope, &*db) {
             for dashboard in dashboards {
-                if let Err(error) = set_dashboard_refresh_paused(&db, &dashboard.id, paused) {
+                if let Err(error) =
+                    set_dashboard_refresh_paused(&self.host.scope, &*db, &dashboard.id, paused)
+                {
                     tracing::warn!(%error, "Unable to update dashboard pause");
                 }
             }
@@ -127,7 +137,7 @@ fn start_core_on_desktop_runtime(core: &Arc<CoreEngine>) {
 #[async_trait::async_trait]
 impl MonitorHost for DesktopMonitorHost {
     async fn dashboards(&self) -> Result<Vec<Dashboard>, String> {
-        list_dashboards(&self.store.app_db()).map_err(|error| error.to_string())
+        list_dashboards(&self.scope, &*self.store.app_db()).map_err(|error| error.to_string())
     }
     async fn max_concurrent_queries(&self) -> usize {
         load_monitor_settings(&self.store.get_settings().await).max_concurrent_queries as usize
@@ -144,6 +154,7 @@ impl MonitorHost for DesktopMonitorHost {
             .clone()
             .ok_or("Monitor app state unavailable")?;
         execute_widget_once(
+            &self.scope,
             &state,
             &self.store.app_db(),
             &self.store.get_settings().await,
@@ -213,7 +224,7 @@ impl MonitorHost for DesktopMonitorHost {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .clone();
-        let name = list_dashboards(&self.store.app_db())
+        let name = list_dashboards(&self.scope, &*self.store.app_db())
             .ok()
             .and_then(|dashboards| {
                 dashboards

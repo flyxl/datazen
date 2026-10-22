@@ -31,6 +31,7 @@ async fn a_cancel_request_lands_on_the_job_repository() {
             &ctx,
             JobDefinition {
                 job_id: queued.clone(),
+                organization_id: ctx.organization_id.clone(),
                 kind: PREPARE_KIND.to_string(),
                 owner: OwnerRef::ClientSession {
                     client_instance_id: ClientInstanceId::new("datazen-local-client"),

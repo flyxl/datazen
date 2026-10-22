@@ -1,8 +1,4 @@
 //! Desktop scheduling adapter. The clock and in-flight lifecycle live in feature-core.
-pub use datazen_feature_core::workflow::scheduler::{
-    clamp_interval_secs, due_decision, is_workflow_due, scheduled_interval_secs, DueDecision,
-    MIN_INTERVAL_SECS,
-};
 use datazen_feature_core::workflow::scheduler::{
     WorkflowScheduleHost, WorkflowScheduler as CoreScheduler,
 };
@@ -31,15 +27,19 @@ fn start_core_on_desktop_runtime(core: &Arc<CoreScheduler>, host: Arc<dyn Workfl
 struct DesktopScheduleHost(tauri::AppHandle);
 #[async_trait::async_trait]
 impl WorkflowScheduleHost for DesktopScheduleHost {
-    async fn list_workflows(&self) -> Result<Vec<super::model::WorkflowDefinition>, String> {
+    async fn list_workflows(
+        &self,
+    ) -> Result<Vec<datazen_feature_core::workflow::model::WorkflowDefinition>, String> {
         let state = self.0.state::<crate::commands::AppState>();
-        state.workflow_registry.ensure_loaded().await?;
-        Ok(state.workflow_registry.list_definitions().await)
+        // 调度器跑的是桌面自己那一个组织的数据。
+        let scope = crate::platform::local_organization_scope();
+        state.workflow_registry.ensure_loaded(&scope).await?;
+        Ok(state.workflow_registry.list_definitions(&scope).await)
     }
     async fn execute_workflow(
         &self,
         id: &str,
-    ) -> Result<super::model::WorkflowExecutionResult, String> {
+    ) -> Result<datazen_feature_core::workflow::model::WorkflowExecutionResult, String> {
         let state = self.0.state::<crate::commands::AppState>();
         crate::commands::workflow_execute_impl(
             state.inner(),
@@ -61,14 +61,16 @@ mod startup_tests {
     impl WorkflowScheduleHost for StartupHost {
         async fn list_workflows(
             &self,
-        ) -> Result<Vec<super::super::model::WorkflowDefinition>, String> {
+        ) -> Result<Vec<datazen_feature_core::workflow::model::WorkflowDefinition>, String>
+        {
             self.0.send(()).map_err(|error| error.to_string())?;
             Ok(Vec::new())
         }
         async fn execute_workflow(
             &self,
             _: &str,
-        ) -> Result<super::super::model::WorkflowExecutionResult, String> {
+        ) -> Result<datazen_feature_core::workflow::model::WorkflowExecutionResult, String>
+        {
             Err("empty startup schedule must not execute workflows".into())
         }
     }

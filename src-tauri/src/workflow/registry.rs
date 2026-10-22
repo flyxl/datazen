@@ -1,28 +1,163 @@
 //! Workflow persistence backed by [`crate::store::AppDb`].
+//!
+//! The registry's rules — which workflows a user sees, how a definition is
+//! encoded, what a saved workflow looks like — live in
+//! `datazen_feature_core::workflow::registry`. This module only binds them to
+//! the desktop store: the rows are handed over as a trait object, so the
+//! shared crate never names the desktop persistence type.
 
-use super::model::{WorkflowDefinition, WorkflowListItem, WorkflowVisibility};
+use crate::platform::scope::is_local_scope;
 use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
-use chrono::Utc;
+use datazen_feature_core::workflow::model::{
+    WorkflowDefinition, WorkflowListItem, WorkflowVisibility,
+};
+use datazen_feature_core::workflow::registry::{
+    WorkflowDefinitionRecord, WorkflowDefinitionStore, WorkflowRegistry as CoreRegistry,
+};
+use datazen_platform_api::ports::scope::OrganizationScope;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
-pub struct WorkflowRegistry {
+/// The builtin workflows the desktop host ships.
+const BUILTIN_DEFINITIONS: &[(&str, &str)] = &[
+    (
+        "hello-query",
+        include_str!("../../resources/builtin-workflows/hello-query.yaml"),
+    ),
+    (
+        "cross-db-sample",
+        include_str!("../../resources/builtin-workflows/cross-db-sample.yaml"),
+    ),
+    (
+        "ai-summarize",
+        include_str!("../../resources/builtin-workflows/ai-summarize.yaml"),
+    ),
+];
+
+/// The desktop rows the shared registry reads and writes.
+///
+/// The host binds this to the local SQLite database and injects it into the
+/// shared registry as a trait object, so the shared crate never names the
+/// desktop persistence type.
+pub(crate) struct AppDbWorkflowStore {
     app_db: Arc<AppDb>,
+}
+
+impl AppDbWorkflowStore {
+    /// Bind the desktop rows to the local SQLite database.
+    pub(crate) fn new(app_db: Arc<AppDb>) -> Self {
+        Self { app_db }
+    }
+}
+
+impl WorkflowDefinitionStore for AppDbWorkflowStore {
+    fn get_workflow(
+        &self,
+        scope: &OrganizationScope,
+        id: &str,
+    ) -> Result<Option<WorkflowDefinitionRecord>, String> {
+        // 桌面是单租户：别的组织的工作流对本组织**不存在**（CM-05）。
+        if !is_local_scope(scope) {
+            return Ok(None);
+        }
+        match self.app_db.get_workflow(id) {
+            Ok(record) => Ok(Some(record_to_definition_record(&record))),
+            Err(AppDbError::NotFound(_)) => Ok(None),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn list_workflows(
+        &self,
+        scope: &OrganizationScope,
+        visibility: WorkflowVisibility,
+    ) -> Result<Vec<WorkflowDefinitionRecord>, String> {
+        if !is_local_scope(scope) {
+            return Ok(Vec::new());
+        }
+        self.app_db
+            .list_workflows(Some(to_db_visibility(visibility)))
+            .map(|rows| rows.iter().map(record_to_definition_record).collect())
+            .map_err(|error| error.to_string())
+    }
+
+    fn upsert_workflow(
+        &self,
+        scope: &OrganizationScope,
+        record: &WorkflowDefinitionRecord,
+    ) -> Result<(), String> {
+        if !is_local_scope(scope) {
+            return Err(format!("workflow {} not found", record.id));
+        }
+        self.app_db
+            .upsert_workflow(&WorkflowRecord {
+                id: record.id.clone(),
+                name: record.name.clone(),
+                description: record.description.clone(),
+                visibility: to_db_visibility(record.visibility),
+                definition_yaml: record.definition_yaml.clone(),
+                created_at: record.created_at.clone(),
+                updated_at: record.updated_at.clone(),
+            })
+            .map_err(|error| error.to_string())
+    }
+
+    fn delete_workflow(&self, scope: &OrganizationScope, id: &str) -> Result<(), String> {
+        // 删除不存在的 id 不是错误：别的组织的工作流对本组织同样「不存在」。
+        // 二者在本契约下不可区分 ⇒ 这里的 `Ok(())` 只说明「没有需要删除的东西」，
+        // **不是**「目标已删除」。见 trait 的契约注释。
+        if !is_local_scope(scope) {
+            return Ok(());
+        }
+        match self.app_db.delete_workflow(id) {
+            Ok(()) => Ok(()),
+            Err(AppDbError::NotFound(_)) => Ok(()),
+            Err(AppDbError::WorkflowInUse(summary)) => Err(format!(
+                "Workflow is still referenced by dashboards: {summary}"
+            )),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+}
+
+fn to_db_visibility(visibility: WorkflowVisibility) -> DbVisibility {
+    match visibility {
+        WorkflowVisibility::User => DbVisibility::User,
+        WorkflowVisibility::DashboardHidden => DbVisibility::DashboardHidden,
+    }
+}
+
+fn record_to_definition_record(record: &WorkflowRecord) -> WorkflowDefinitionRecord {
+    WorkflowDefinitionRecord {
+        id: record.id.clone(),
+        name: record.name.clone(),
+        description: record.description.clone(),
+        visibility: match record.visibility {
+            DbVisibility::User => WorkflowVisibility::User,
+            DbVisibility::DashboardHidden => WorkflowVisibility::DashboardHidden,
+        },
+        definition_yaml: record.definition_yaml.clone(),
+        created_at: record.created_at.clone(),
+        updated_at: record.updated_at.clone(),
+    }
+}
+
+/// The desktop workflow registry: the shared rules over the desktop rows.
+pub struct WorkflowRegistry {
+    core: CoreRegistry,
     /// Legacy path kept for `open_workflows_dir` / diagnostics (may be empty).
     workflows_dir: PathBuf,
-    seeded: AtomicBool,
-    seed_lock: Mutex<()>,
 }
 
 impl WorkflowRegistry {
-    pub fn new(app_db: Arc<AppDb>, data_dir: PathBuf) -> Self {
+    /// The desktop registry over an injected store.
+    ///
+    /// The store arrives as a trait object: the desktop rows stay behind it,
+    /// and the shared registry never learns the desktop persistence type.
+    pub fn new(store: Arc<dyn WorkflowDefinitionStore>, data_dir: PathBuf) -> Self {
         Self {
-            app_db,
+            core: CoreRegistry::new(store, BUILTIN_DEFINITIONS.to_vec()),
             workflows_dir: data_dir.join("workflows"),
-            seeded: AtomicBool::new(false),
-            seed_lock: Mutex::new(()),
         }
     }
 
@@ -30,226 +165,57 @@ impl WorkflowRegistry {
         &self.workflows_dir
     }
 
-    pub fn app_db(&self) -> Arc<AppDb> {
-        self.app_db.clone()
-    }
-
-    async fn ensure_seeded(&self) -> Result<(), String> {
-        if self.seeded.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        let _guard = self.seed_lock.lock().await;
-        if self.seeded.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        self.seed_builtins_if_empty()?;
-        self.seeded.store(true, Ordering::Release);
-        Ok(())
-    }
-
-    fn seed_builtins_if_empty(&self) -> Result<(), String> {
-        let existing = self
-            .app_db
-            .list_workflows(Some(DbVisibility::User))
-            .map_err(|e| e.to_string())?;
-        if !existing.is_empty() {
-            return Ok(());
-        }
-
-        const BUILTINS: &[(&str, &str)] = &[
-            (
-                "hello-query",
-                include_str!("../../resources/builtin-workflows/hello-query.yaml"),
-            ),
-            (
-                "cross-db-sample",
-                include_str!("../../resources/builtin-workflows/cross-db-sample.yaml"),
-            ),
-            (
-                "ai-summarize",
-                include_str!("../../resources/builtin-workflows/ai-summarize.yaml"),
-            ),
-        ];
-
-        for (label, content) in BUILTINS {
-            let mut def: WorkflowDefinition = serde_yaml::from_str(content)
-                .map_err(|e| format!("Failed to parse builtin {label}: {e}"))?;
-            if def.visibility == WorkflowVisibility::DashboardHidden {
-                def.visibility = WorkflowVisibility::User;
-            }
-            Self::validate_id(&def.id)?;
-            self.persist_definition(&def)
-                .map_err(|e| format!("Failed to seed builtin {label}: {e}"))?;
-            tracing::info!("Seeded builtin workflow {} ({})", def.name, def.id);
-        }
-        Ok(())
-    }
-
-    pub fn validate_id(id: &str) -> Result<(), String> {
-        if id.is_empty()
-            || !id
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(format!(
-                "Invalid workflow id: {id}. Only alphanumeric, dash, and underscore are allowed."
-            ));
-        }
-        Ok(())
-    }
-
-    fn to_db_visibility(v: WorkflowVisibility) -> DbVisibility {
-        match v {
-            WorkflowVisibility::User => DbVisibility::User,
-            WorkflowVisibility::DashboardHidden => DbVisibility::DashboardHidden,
-        }
-    }
-
-    fn from_db_visibility(v: DbVisibility) -> WorkflowVisibility {
-        match v {
-            DbVisibility::User => WorkflowVisibility::User,
-            DbVisibility::DashboardHidden => WorkflowVisibility::DashboardHidden,
-        }
-    }
-
-    fn record_to_definition(record: &WorkflowRecord) -> Result<WorkflowDefinition, String> {
-        let mut def: WorkflowDefinition = serde_yaml::from_str(&record.definition_yaml)
-            .map_err(|e| format!("Failed to parse workflow {}: {e}", record.id))?;
-        def.id = record.id.clone();
-        def.name = record.name.clone();
-        def.description = record.description.clone();
-        def.visibility = Self::from_db_visibility(record.visibility);
-        Ok(def)
-    }
-
-    fn persist_definition(&self, workflow: &WorkflowDefinition) -> Result<(), String> {
-        let now = Utc::now().to_rfc3339();
-        let existing = self.app_db.get_workflow(&workflow.id).ok();
-        let created_at = existing
-            .as_ref()
-            .map(|r| r.created_at.clone())
-            .unwrap_or_else(|| now.clone());
-
-        let definition_yaml = serde_yaml::to_string(workflow).map_err(|e| e.to_string())?;
-
-        let record = WorkflowRecord {
-            id: workflow.id.clone(),
-            name: workflow.name.clone(),
-            description: workflow.description.clone(),
-            visibility: Self::to_db_visibility(workflow.visibility),
-            definition_yaml,
-            created_at,
-            updated_at: now,
-        };
-        self.app_db
-            .upsert_workflow(&record)
-            .map_err(|e| e.to_string())
-    }
-
-    pub async fn get(&self, id: &str) -> Option<WorkflowDefinition> {
-        if let Err(e) = self.ensure_seeded().await {
-            tracing::warn!("Failed to seed workflows before get: {e}");
-        }
-        match self.app_db.get_workflow(id) {
-            Ok(record) => match Self::record_to_definition(&record) {
-                Ok(def) => Some(def),
-                Err(e) => {
-                    tracing::warn!("Failed to load workflow {id}: {e}");
-                    None
-                }
-            },
-            Err(AppDbError::NotFound(_)) => None,
-            Err(e) => {
-                tracing::warn!("Failed to get workflow {id}: {e}");
-                None
-            }
-        }
+    pub async fn get(&self, scope: &OrganizationScope, id: &str) -> Option<WorkflowDefinition> {
+        self.core.get(scope, id).await
     }
 
     /// List user-visible workflows only (excludes `dashboardHidden`).
-    pub async fn list(&self) -> Vec<WorkflowListItem> {
-        if let Err(e) = self.ensure_seeded().await {
-            tracing::warn!("Failed to seed workflows before list: {e}");
-            return Vec::new();
-        }
-        match self.app_db.list_workflows(Some(DbVisibility::User)) {
-            Ok(rows) => rows
-                .iter()
-                .filter_map(|r| Self::record_to_definition(r).ok())
-                .map(|s| WorkflowListItem {
-                    id: s.id.clone(),
-                    name: s.name.clone(),
-                    description: s.description.clone(),
-                    variables: s.variables.clone(),
-                    scheduled: s.schedule.as_ref().map(|sc| sc.enabled).unwrap_or(false),
-                })
-                .collect(),
-            Err(e) => {
-                tracing::warn!("Failed to list workflows: {e}");
-                Vec::new()
-            }
-        }
+    pub async fn list(&self, scope: &OrganizationScope) -> Vec<WorkflowListItem> {
+        self.core.list(scope).await
     }
 
     /// Definitions for scheduler: user-visible only (hidden are dashboard-driven).
-    pub async fn list_definitions(&self) -> Vec<WorkflowDefinition> {
-        if let Err(e) = self.ensure_seeded().await {
-            tracing::warn!("Failed to seed workflows before list_definitions: {e}");
-            return Vec::new();
-        }
-        match self.app_db.list_workflows(Some(DbVisibility::User)) {
-            Ok(rows) => rows
-                .iter()
-                .filter_map(|r| Self::record_to_definition(r).ok())
-                .collect(),
-            Err(e) => {
-                tracing::warn!("Failed to list workflow definitions: {e}");
-                Vec::new()
-            }
-        }
+    pub async fn list_definitions(&self, scope: &OrganizationScope) -> Vec<WorkflowDefinition> {
+        self.core.list_definitions(scope).await
     }
 
-    pub async fn save_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), String> {
-        Self::validate_id(&workflow.id)?;
-        let _ = self.ensure_seeded().await;
-        self.persist_definition(workflow)
+    pub async fn save_workflow(
+        &self,
+        scope: &OrganizationScope,
+        workflow: &WorkflowDefinition,
+    ) -> Result<(), String> {
+        self.core.save(scope, workflow).await
     }
 
     /// Save from raw YAML text (dual-mode editor). Parses, validates, persists.
-    pub async fn save_workflow_yaml(&self, yaml: &str) -> Result<WorkflowDefinition, String> {
-        let workflow: WorkflowDefinition =
-            serde_yaml::from_str(yaml).map_err(|e| format!("Invalid workflow YAML: {e}"))?;
-        self.save_workflow(&workflow).await?;
-        Ok(workflow)
+    pub async fn save_workflow_yaml(
+        &self,
+        scope: &OrganizationScope,
+        yaml: &str,
+    ) -> Result<WorkflowDefinition, String> {
+        self.core.save_yaml(scope, yaml).await
     }
 
-    pub async fn delete_workflow(&self, id: &str) -> Result<(), String> {
-        Self::validate_id(id)?;
-        let _ = self.ensure_seeded().await;
-        match self.app_db.delete_workflow(id) {
-            Ok(()) => Ok(()),
-            Err(AppDbError::NotFound(_)) => Ok(()),
-            Err(AppDbError::WorkflowInUse(summary)) => Err(format!(
-                "Workflow is still referenced by dashboards: {summary}"
-            )),
-            Err(e) => Err(e.to_string()),
-        }
+    pub async fn delete_workflow(&self, scope: &OrganizationScope, id: &str) -> Result<(), String> {
+        self.core.delete(scope, id).await
     }
 
     /// Reload is a no-op for DB backend (kept for IPC compatibility).
-    pub async fn load_all(&self) -> Result<(), String> {
-        self.ensure_seeded().await
+    pub async fn load_all(&self, scope: &OrganizationScope) -> Result<(), String> {
+        self.core.load_all(scope).await
     }
 
-    pub async fn ensure_loaded(&self) -> Result<(), String> {
-        self.ensure_seeded().await
+    pub async fn ensure_loaded(&self, scope: &OrganizationScope) -> Result<(), String> {
+        self.core.ensure_loaded(scope).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::model::WorkflowStep;
+    use chrono::Utc;
+    use datazen_feature_core::workflow::model::WorkflowStep;
+    use datazen_platform_api::id::OrganizationId;
 
     fn sample_def(id: &str, visibility: WorkflowVisibility) -> WorkflowDefinition {
         WorkflowDefinition {
@@ -278,18 +244,35 @@ mod tests {
         }
     }
 
+    /// 桌面自己的组织作用域。
+    fn local_scope() -> OrganizationScope {
+        crate::platform::local_organization_scope()
+    }
+
+    /// 别的组织的作用域。
+    fn foreign_scope() -> OrganizationScope {
+        OrganizationScope::new(OrganizationId::new("another-organization"))
+    }
+
     #[tokio::test]
     async fn list_excludes_dashboard_hidden() {
         let db = AppDb::open_in_memory().unwrap();
-        let reg = WorkflowRegistry::new(db, PathBuf::from("/tmp/datazen-wf-test"));
-        reg.save_workflow(&sample_def("user-1", WorkflowVisibility::User))
+        let reg = WorkflowRegistry::new(
+            Arc::new(AppDbWorkflowStore::new(db)),
+            PathBuf::from("/tmp/datazen-wf-test"),
+        );
+        let scope = local_scope();
+        reg.save_workflow(&scope, &sample_def("user-1", WorkflowVisibility::User))
             .await
             .unwrap();
-        reg.save_workflow(&sample_def("hidden-1", WorkflowVisibility::DashboardHidden))
-            .await
-            .unwrap();
+        reg.save_workflow(
+            &scope,
+            &sample_def("hidden-1", WorkflowVisibility::DashboardHidden),
+        )
+        .await
+        .unwrap();
 
-        let list = reg.list().await;
+        let list = reg.list(&scope).await;
         assert!(
             list.iter().any(|w| w.id == "user-1"),
             "user workflow should be listed"
@@ -300,18 +283,22 @@ mod tests {
             list.iter().map(|w| w.id.as_str()).collect::<Vec<_>>()
         );
 
-        assert!(reg.get("hidden-1").await.is_some());
+        assert!(reg.get(&scope, "hidden-1").await.is_some());
     }
 
     #[tokio::test]
     async fn save_yaml_roundtrip() {
         let db = AppDb::open_in_memory().unwrap();
-        let reg = WorkflowRegistry::new(db, PathBuf::from("/tmp/datazen-wf-test2"));
+        let reg = WorkflowRegistry::new(
+            Arc::new(AppDbWorkflowStore::new(db)),
+            PathBuf::from("/tmp/datazen-wf-test2"),
+        );
+        let scope = local_scope();
         let def = sample_def("yaml-1", WorkflowVisibility::User);
         let yaml = serde_yaml::to_string(&def).unwrap();
-        let saved = reg.save_workflow_yaml(&yaml).await.unwrap();
+        let saved = reg.save_workflow_yaml(&scope, &yaml).await.unwrap();
         assert_eq!(saved.id, "yaml-1");
-        let got = reg.get("yaml-1").await.unwrap();
+        let got = reg.get(&scope, "yaml-1").await.unwrap();
         assert_eq!(got.name, "Name yaml-1");
     }
 
@@ -320,8 +307,12 @@ mod tests {
         use crate::store::{DashboardRecord, WidgetRecord};
 
         let db = AppDb::open_in_memory().unwrap();
-        let reg = WorkflowRegistry::new(db.clone(), PathBuf::from("/tmp/datazen-wf-test3"));
-        reg.save_workflow(&sample_def("wf-ref", WorkflowVisibility::User))
+        let reg = WorkflowRegistry::new(
+            Arc::new(AppDbWorkflowStore::new(db.clone())),
+            PathBuf::from("/tmp/datazen-wf-test3"),
+        );
+        let scope = local_scope();
+        reg.save_workflow(&scope, &sample_def("wf-ref", WorkflowVisibility::User))
             .await
             .unwrap();
 
@@ -358,19 +349,74 @@ mod tests {
         })
         .unwrap();
 
-        let err = reg.delete_workflow("wf-ref").await.unwrap_err();
+        let err = reg.delete_workflow(&scope, "wf-ref").await.unwrap_err();
         assert!(err.contains("referenced"));
     }
 
     #[tokio::test]
     async fn seeds_builtins_when_empty() {
         let db = AppDb::open_in_memory().unwrap();
-        let reg = WorkflowRegistry::new(db, PathBuf::from("/tmp/datazen-wf-seed"));
-        let list = reg.list().await;
+        let reg = WorkflowRegistry::new(
+            Arc::new(AppDbWorkflowStore::new(db)),
+            PathBuf::from("/tmp/datazen-wf-seed"),
+        );
+        let list = reg.list(&local_scope()).await;
         assert!(
             list.len() >= 3,
             "expected builtin workflows, got {}",
             list.len()
+        );
+    }
+
+    /// 别的组织读不到本组织的工作流（CM-05：按「不存在」处理，不是「无权限」）。
+    #[tokio::test]
+    async fn the_workflows_of_another_organization_are_not_found() {
+        let db = AppDb::open_in_memory().unwrap();
+        let reg = WorkflowRegistry::new(
+            Arc::new(AppDbWorkflowStore::new(db)),
+            PathBuf::from("/tmp/datazen-wf-isolation"),
+        );
+        let scope = local_scope();
+        let foreign = foreign_scope();
+        reg.save_workflow(&scope, &sample_def("wf-1", WorkflowVisibility::User))
+            .await
+            .unwrap();
+
+        assert!(reg.get(&foreign, "wf-1").await.is_none());
+        assert!(reg
+            .list(&foreign)
+            .await
+            .iter()
+            .all(|item| item.id != "wf-1"));
+    }
+
+    /// 别的组织删不掉本组织的工作流。
+    ///
+    /// 注意这里的**语义歧义**：跨组织删除按「不存在」处理，而「删除不存在的 id
+    /// 不是错误」是 `delete_workflow` 的既有契约 ⇒ 跨组织删除返回 `Ok(())`，
+    /// 调用方拿到「成功」却什么都没删。数据没被删是对的，但「成功」的措辞会
+    /// 让调用方误以为目标已删除。
+    #[tokio::test]
+    async fn a_workflow_of_another_organization_cannot_be_removed() {
+        let db = AppDb::open_in_memory().unwrap();
+        let reg = WorkflowRegistry::new(
+            Arc::new(AppDbWorkflowStore::new(db)),
+            PathBuf::from("/tmp/datazen-wf-isolation-delete"),
+        );
+        let scope = local_scope();
+        reg.save_workflow(&scope, &sample_def("wf-1", WorkflowVisibility::User))
+            .await
+            .unwrap();
+
+        // 跨组织删除返回 Ok（按「不存在」处理，不返回「无权限」）。
+        let before = reg.list(&scope).await.len();
+        reg.delete_workflow(&foreign_scope(), "wf-1").await.unwrap();
+        // 但数据一个字节都没动。
+        assert!(reg.get(&scope, "wf-1").await.is_some());
+        assert_eq!(
+            reg.list(&scope).await.len(),
+            before,
+            "跨组织删除不得影响本组织的工作流"
         );
     }
 }

@@ -188,8 +188,13 @@ impl WidgetExecutionHost for ScheduledWidgetHost<'_> {
         .await
     }
     async fn persist_run(&self, run: &WidgetRun) -> Result<(), String> {
-        crate::dashboard::runs::write_run(
-            &self.state.store.app_db(),
+        // 运行记录落在授予它的那个组织里：作用域取自 grant 自带的请求上下文。
+        let scope = datazen_platform_api::ports::scope::OrganizationScope::from_context(
+            &self.grant.context(),
+        );
+        datazen_feature_core::dashboard::runs::write_run(
+            &scope,
+            &*self.state.store.app_db(),
             run,
             &crate::dashboard::store::load_monitor_settings(&self.state.store.get_settings().await),
         )
@@ -252,6 +257,7 @@ pub(crate) async fn execute(
     });
     let definition = JobDefinition {
         job_id: requested_job_id.clone(),
+        organization_id: context.organization_id.clone(),
         kind: "monitorOccurrence".into(),
         owner: OwnerRef::ClientSession {
             client_instance_id: context.client_instance_id.clone(),

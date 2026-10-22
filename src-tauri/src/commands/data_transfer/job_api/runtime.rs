@@ -1,5 +1,6 @@
-//! Transfer adapter for the shared durable desktop Job host.
+//! Transfer adapter for the shared durable Job host.
 
+#[cfg(test)]
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -16,15 +17,12 @@ use datazen_platform_api::id::{
     Timestamp, WorkerId,
 };
 use datazen_platform_api::{PortError, RequestContext};
-use datazen_runtime::job::{
-    DesktopJobHost, EndpointRef, EndpointRole, JobHandler, RecoveryVerdict,
-};
+use datazen_runtime::job::{EndpointRef, EndpointRole, JobHandler, JobHost, RecoveryVerdict};
 
-use super::super::plans;
-use super::endpoint_identity::EndpointIdentity;
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
 use crate::data_transfer::job::{derive_evidence, DataTransferHandler};
+use crate::services::migration_endpoint::EndpointIdentity;
 
 pub(crate) const PREPARE_KIND: &str = "dataTransferPrepare";
 pub(crate) const APPLY_KIND: &str = "dataTransferApply";
@@ -194,6 +192,7 @@ pub(crate) async fn admit(
     ));
     let definition = JobDefinition {
         job_id: requested_job_id.clone(),
+        organization_id: ctx.organization_id.clone(),
         kind: request.kind.to_string(),
         owner: OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new(LOCAL_CLIENT_INSTANCE),
@@ -306,7 +305,8 @@ impl Drop for WriteGateGuard {
 }
 
 pub(crate) async fn drive(
-    host: Arc<DesktopJobHost>,
+    transfer_plans: Arc<dyn crate::data_transfer::plan_store::TransferPlanStorePort>,
+    host: Arc<JobHost>,
     accepted: AcceptedJob,
     plan: DrivePlan,
 ) -> Result<JobOutcome, CommandError> {
@@ -329,7 +329,12 @@ pub(crate) async fn drive(
         Ok(result) => {
             if result.state == JobState::Succeeded {
                 if let Some(plan_id) = plan.plan_id.as_deref() {
-                    plans::mark_plan_consumed(plan_id).map_err(CommandError::from)?;
+                    transfer_plans
+                        .mark_consumed(
+                            super::super::plan_scope::desktop_organization_scope(),
+                            plan_id,
+                        )
+                        .map_err(CommandError::from)?;
                 }
             }
             let external_artifacts: Vec<ArtifactId> = plan
@@ -411,6 +416,7 @@ pub(crate) async fn run(
         Admission::Replayed(outcome) => Ok(outcome),
         Admission::Accepted(accepted) => {
             drive(
+                state.transfer_plans.clone(),
                 state.desktop_job_host.clone(),
                 accepted,
                 DrivePlan::from_request(&request),
@@ -421,7 +427,7 @@ pub(crate) async fn run(
 }
 
 async fn persist_recovery(
-    host: &DesktopJobHost,
+    host: &JobHost,
     ctx: &RequestContext,
     job_id: &JobId,
     handler: &DataTransferHandler,

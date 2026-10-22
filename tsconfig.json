@@ -1,4 +1,20 @@
 {
+  "$comment": [
+    "TypeScript 7 (the Go port) no longer auto-discovers node_modules/@types.",
+    "Under TypeScript 5.9 this program silently picked up every package in",
+    "node_modules/@types — exactly these four — and the `types` field below",
+    "reproduces that set verbatim, so the program means the same thing under",
+    "both compilers. Measured: with this list, `tsc 5.9.3` and `tsc 7.0.2`",
+    "report identical diagnostics for this program (0 errors each); without it,",
+    "TypeScript 7 reports 109 errors, all of them \"Cannot find name",
+    "'node:fs'\"-shaped, caused by @types/node simply not being loaded.",
+    "",
+    "MAINTENANCE: the list is explicit now, so adding a new @types/*",
+    "dependency means adding it here too. The failure direction is safe — a",
+    "missing entry produces EXTRA errors, never missing ones. The same list",
+    "is repeated in each packages/*/tsconfig.json, which are standalone",
+    "programs and do not inherit this file."
+  ],
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
@@ -15,6 +31,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
+    "types": ["dompurify", "node", "react", "react-dom"],
     "paths": {
       "@datazen/backend-client": ["./packages/backend-client/src/index.ts"],
       "@datazen/driver-sdk": ["./packages/driver-sdk/src/index.ts"],

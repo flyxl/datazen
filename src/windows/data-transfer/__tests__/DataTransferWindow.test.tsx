@@ -628,10 +628,10 @@ describe('DataTransferWindow', () => {
       if (cmd === 'connect_dedicated') {
         const conn = args?.connectionId as string;
         const db = (args?.database as string | null | undefined) ?? 'default';
-        return `dedicated-${conn}-${db}`;
+        return { connectionId: conn as string, dbSessionId: `dedicated-${conn}-${db}` };
       }
       if (cmd === 'release_connection') return false;
-      if (cmd === 'connect') return `live-${args?.connectionId as string}`;
+      if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
       return null;
     });
   });

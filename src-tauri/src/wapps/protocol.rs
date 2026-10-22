@@ -28,8 +28,7 @@ use super::WappManager;
 use crate::commands::AppState;
 
 pub use datazen_workspace_apps::protocol::{
-    content_type_for, parse_datazen_uri, safe_relative_path, DatazenOutcome, QueryMap,
-    WAPPS_OPEN_PAGE_EVENT,
+    parse_datazen_uri, DatazenOutcome, QueryMap, WAPPS_OPEN_PAGE_EVENT,
 };
 pub(crate) fn route_datazen_request(
     manager: &WappManager,
@@ -129,6 +128,7 @@ fn datazen_response(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_workspace_apps::protocol::{content_type_for, safe_relative_path};
     #[cfg(test)]
     use std::fs;
 

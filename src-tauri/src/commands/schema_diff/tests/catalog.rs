@@ -180,7 +180,7 @@ fn reviewed_relation_snapshot_uses_its_own_schema_scope() {
 
 #[test]
 fn complete_target_dependency_catalog_rejects_new_relations_and_changed_foreign_keys() {
-    let table = |name: &str| crate::db::TableSchema {
+    let table = |name: &str| datazen_driver_api::TableSchema {
         table_name: name.into(),
         columns: Vec::new(),
         primary_keys: Vec::new(),
@@ -197,15 +197,17 @@ fn complete_target_dependency_catalog_rejects_new_relations_and_changed_foreign_
 
     let mut reviewed = current;
     let mut changed_child = table("child");
-    changed_child.foreign_keys.push(crate::db::ForeignKeyInfo {
-        name: "fk_child_parent".into(),
-        columns: vec!["parent_id".into()],
-        referenced_table: "public.parent".into(),
-        referenced_columns: vec!["id".into()],
-        on_update: "NO ACTION".into(),
-        on_delete: "NO ACTION".into(),
-        deferrability: crate::db::ForeignKeyDeferrability::NotDeferrable,
-    });
+    changed_child
+        .foreign_keys
+        .push(datazen_driver_api::ForeignKeyInfo {
+            name: "fk_child_parent".into(),
+            columns: vec!["parent_id".into()],
+            referenced_table: "public.parent".into(),
+            referenced_columns: vec!["id".into()],
+            on_update: "NO ACTION".into(),
+            on_delete: "NO ACTION".into(),
+            deferrability: datazen_driver_api::ForeignKeyDeferrability::NotDeferrable,
+        });
     let changed = vec![
         ("public.parent".into(), table("parent")),
         ("public.child".into(), changed_child),

@@ -312,15 +312,15 @@ impl FakeHost {
 impl DataSyncHost for FakeHost {
     async fn open_endpoint(&self, endpoint: &Endpoint) -> Result<EndpointSession, DataSyncError> {
         self.call("open_endpoint");
-        if self.read(|s| s.fail_open.as_deref() == Some(endpoint.connection_id.as_str())) {
+        if self.read(|s| s.fail_open.as_deref() == Some(endpoint.db_session_id.as_str())) {
             return Err(DataSyncError::not_started(format!(
                 "fake host refuses to open {}",
-                endpoint.connection_id
+                endpoint.db_session_id
             )));
         }
         let id = self.write_and_return(|s| {
             s.session_seq += 1;
-            let id = format!("{}-{}", role(&endpoint.connection_id), s.session_seq);
+            let id = format!("{}-{}", role(&endpoint.db_session_id), s.session_seq);
             s.opened.push(id.clone());
             id
         });
@@ -329,7 +329,7 @@ impl DataSyncHost for FakeHost {
             driver,
             handle: ConnectionHandle {
                 id,
-                pool_id: format!("pool-{}", endpoint.connection_id),
+                pool_id: format!("pool-{}", endpoint.db_session_id),
             },
             family: FAMILY.to_string(),
             database: endpoint.database.clone(),

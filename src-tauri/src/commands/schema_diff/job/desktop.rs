@@ -11,7 +11,7 @@ use datazen_platform_api::dto::job::{
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{Counter, IdempotencyKey, JobId, StageId, WorkerId};
-use datazen_runtime::job::{DesktopJobHost, EndpointRef, JobHandler, JobRecoveryVerifier};
+use datazen_runtime::job::{EndpointRef, JobHandler, JobHost, JobRecoveryVerifier};
 use datazen_schema_diff::job::{ApplyRequest, PrepareRequest, SchemaDiffHandler};
 use datazen_schema_diff::types::{DeployStatus, SchemaDiffDeployResult};
 use serde::Serialize;
@@ -268,6 +268,7 @@ pub async fn read_schema_diff_jobs(
         .list(
             &context,
             JobFilter {
+                organization_id: context.organization_id.clone(),
                 states: states.unwrap_or_default(),
                 owner: None,
                 after: None,
@@ -318,6 +319,7 @@ pub async fn run_prepare_job(
     let job_id = JobId::new(format!("schemaDiffPrepare-{}", uuid::Uuid::new_v4()));
     let definition = JobDefinition {
         job_id: job_id.clone(),
+        organization_id: context.organization_id.clone(),
         kind: PREPARE_KIND.into(),
         owner: owner_ref(state),
         payload: prepare_payload(),
@@ -378,6 +380,7 @@ pub async fn run_apply_job(
     apply_request.job_id = Some(job_id.as_str().to_string());
     let definition = JobDefinition {
         job_id: job_id.clone(),
+        organization_id: context.organization_id.clone(),
         kind: APPLY_KIND.into(),
         owner: owner_ref(state),
         payload: apply_payload(&stored, &apply_request)?,
@@ -406,7 +409,7 @@ pub async fn run_apply_job(
 }
 
 fn dispatch_prepare(
-    host: Arc<DesktopJobHost>,
+    host: Arc<JobHost>,
     state: Arc<AppState>,
     infra: Arc<SchemaDiffJobInfra>,
     context: RequestContext,
@@ -430,7 +433,7 @@ fn dispatch_prepare(
 }
 
 fn dispatch_apply(
-    host: Arc<DesktopJobHost>,
+    host: Arc<JobHost>,
     state: Arc<AppState>,
     infra: Arc<SchemaDiffJobInfra>,
     context: RequestContext,
@@ -458,7 +461,7 @@ fn dispatch_apply(
 }
 
 async fn dispatch(
-    host: Arc<DesktopJobHost>,
+    host: Arc<JobHost>,
     context: RequestContext,
     job_id: JobId,
     endpoints: Vec<EndpointRef>,

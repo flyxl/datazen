@@ -147,8 +147,8 @@ pub async fn test_tunnel(
 mod tests {
     use super::*;
     use crate::commands::tunnel_summary_tests::saved_ssh_tunnel;
-    use crate::db::{SshTunnelConfig, TunnelKind};
     use crate::testing::app_state::TestAppState;
+    use datazen_driver_api::{SshTunnelConfig, TunnelKind};
 
     #[tokio::test]
     async fn test_tunnel_rejects_unknown_tunnel_id() {
@@ -269,7 +269,7 @@ mod tests {
                 name: "Local proxy".into(),
                 kind: TunnelKind::HttpProxy,
                 ssh: None,
-                http_proxy: Some(crate::db::HttpProxyTunnelConfig {
+                http_proxy: Some(datazen_driver_api::HttpProxyTunnelConfig {
                     enabled: true,
                     host: "127.0.0.1".into(),
                     port: proxy_port,
@@ -313,7 +313,7 @@ mod tests {
             name: "Proxy".into(),
             kind: TunnelKind::HttpProxy,
             ssh: None,
-            http_proxy: Some(crate::db::HttpProxyTunnelConfig {
+            http_proxy: Some(datazen_driver_api::HttpProxyTunnelConfig {
                 enabled: true,
                 host: "127.0.0.1".into(),
                 port,
@@ -334,7 +334,7 @@ mod tests {
             kind: TunnelKind::WebSocket,
             ssh: None,
             http_proxy: None,
-            websocket: Some(crate::db::WebSocketTunnelConfig {
+            websocket: Some(datazen_driver_api::WebSocketTunnelConfig {
                 enabled: true,
                 url: format!("ws://127.0.0.1:{port}/tunnel"),
                 auth_token: None,

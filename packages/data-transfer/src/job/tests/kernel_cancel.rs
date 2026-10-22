@@ -128,6 +128,7 @@ fn budget() -> BudgetConfig {
 fn job_definition(job_id: &JobId) -> JobDefinition {
     JobDefinition {
         job_id: job_id.clone(),
+        organization_id: org(),
         kind: "dataTransferApply".into(),
         owner: OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("client-1"),
@@ -283,7 +284,7 @@ async fn kernel_cancel_stops_the_data_stage_before_the_first_commit() {
         committed nothing is notStarted, matching the runtime cancel contract"
     );
     assert!(
-        repo.committed_boundaries(&job_id).is_empty(),
+        repo.committed_boundaries(&ctx(), &job_id).is_empty(),
         "cancellation must not create a commit boundary (C4)"
     );
     let target = fixture.target.state.lock().expect("target state");
@@ -406,7 +407,7 @@ async fn run_through_kernel(fixture: RealSqlite, cancel_at_gate: bool) -> RealRu
         outcome: KernelRun {
             state: result.state,
             effect: result.effect_outcome,
-            boundaries: repo.committed_boundaries(&job_id).len(),
+            boundaries: repo.committed_boundaries(&ctx(), &job_id).len(),
             error: result.error,
         },
         target_path: fixture.target_path.clone(),

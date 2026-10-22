@@ -6,7 +6,7 @@
 //! racing on the same store both return `Ok` rather than one losing the file.
 
 use super::fixtures::*;
-use crate::db::ConnectionConfig;
+use datazen_driver_api::ConnectionConfig;
 
 #[tokio::test]
 async fn connection_options_persist_and_reload() {

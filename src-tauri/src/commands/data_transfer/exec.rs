@@ -9,9 +9,11 @@ use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
 use super::inspect::inspect_data_transfer_impl;
 use super::jobs;
-use super::plans::{self, StoredTransferPlan, TransferCheckpointSession};
 use crate::data_transfer::model::TableExecutionOutcome;
 use crate::data_transfer::model::TransferRunSelection;
+use crate::data_transfer::plan_store::{
+    self as plans, StoredTransferPlan, TransferCheckpointSession,
+};
 use crate::data_transfer::resume::TransferResumeCheckpoint;
 use crate::data_transfer::{
     column_ir_types_by_source, create_target_tables_with_write_observer, enforce_transfer_pairing,
@@ -20,6 +22,7 @@ use crate::data_transfer::{
     TransferMode, TransferRunRequest, ValueFormatter,
 };
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
+use datazen_driver_api::driver_protocol_version;
 use datazen_driver_api::TableType;
 
 pub(super) async fn load_sql_source_snapshot(
@@ -27,8 +30,8 @@ pub(super) async fn load_sql_source_snapshot(
     job: &TransferJob,
 ) -> Result<
     (
-        Arc<dyn crate::db::DatabaseDriver>,
-        crate::db::ConnectionHandle,
+        Arc<dyn datazen_driver_api::DatabaseDriver>,
+        datazen_driver_api::ConnectionHandle,
         Vec<crate::data_transfer::TableInspectResult>,
         HashMap<String, datazen_driver_api::TableSchema>,
     ),
@@ -44,7 +47,7 @@ pub(super) async fn load_sql_source_snapshot(
     let handle = context.handle.clone();
     let config = context.config.clone();
     let mut source = job.source.clone();
-    source.schema = crate::services::metadata_schema(
+    source.schema = datazen_feature_core::services::schema_scope::metadata_schema(
         driver.as_ref(),
         source.normalized_schema(),
         None,
@@ -121,7 +124,7 @@ async fn execute_sql_file_target(
     let (driver, handle, mut inspected, mut schemas) =
         load_sql_source_snapshot(state, &validation_job).await?;
     if driver.driver_type() != plan.source_driver_type
-        || plans::driver_protocol_version(driver.as_ref()) != plan.source_driver_protocol
+        || driver_protocol_version(driver.as_ref()) != plan.source_driver_protocol
     {
         return Err(CommandError::Validation(
             "source driver contract changed since preview; return to preview".into(),
@@ -146,7 +149,7 @@ async fn execute_sql_file_target(
     )
     .map_err(CommandError::from)?;
     if target_driver.driver_type() != plan.target_driver_type
-        || plans::driver_protocol_version(target_driver.as_ref()) != plan.target_driver_protocol
+        || driver_protocol_version(target_driver.as_ref()) != plan.target_driver_protocol
     {
         return Err(CommandError::Validation(
             "SQL file target dialect contract changed since preview; return to preview".into(),
@@ -273,7 +276,13 @@ async fn execute_sql_file_target(
             "source schema changed since preview; return to comparison".into(),
         ));
     }
-    let claimed = plans::claim_plan(&request.plan_id).map_err(CommandError::from)?;
+    let claimed = state
+        .transfer_plans
+        .claim(
+            super::plan_scope::desktop_organization_scope(),
+            &request.plan_id,
+        )
+        .map_err(CommandError::from)?;
     let immutable_structure = claimed.sql_file_structure.clone();
     let mut job = claimed.job;
     apply_selection(&mut job, &request.selection);
@@ -393,18 +402,18 @@ pub(super) async fn resolve_transfer_adapters(
 }
 
 pub(super) struct ValidatedTransferContext {
-    pub(super) src_config: crate::db::ConnectionConfig,
-    pub(super) tgt_config: crate::db::ConnectionConfig,
-    pub(super) src_driver: Arc<dyn crate::db::DatabaseDriver>,
-    pub(super) src_handle: crate::db::ConnectionHandle,
-    pub(super) tgt_driver: Arc<dyn crate::db::DatabaseDriver>,
-    pub(super) tgt_handle: crate::db::ConnectionHandle,
+    pub(super) src_config: datazen_driver_api::ConnectionConfig,
+    pub(super) tgt_config: datazen_driver_api::ConnectionConfig,
+    pub(super) src_driver: Arc<dyn datazen_driver_api::DatabaseDriver>,
+    pub(super) src_handle: datazen_driver_api::ConnectionHandle,
+    pub(super) tgt_driver: Arc<dyn datazen_driver_api::DatabaseDriver>,
+    pub(super) tgt_handle: datazen_driver_api::ConnectionHandle,
 }
 
 async fn schema_fingerprint_for_side(
     endpoint: &crate::data_transfer::model::Endpoint,
-    driver: &dyn crate::db::DatabaseDriver,
-    handle: &crate::db::ConnectionHandle,
+    driver: &dyn datazen_driver_api::DatabaseDriver,
+    handle: &datazen_driver_api::ConnectionHandle,
     job: &TransferJob,
     source: bool,
 ) -> Result<String, CommandError> {
@@ -483,8 +492,8 @@ pub(super) async fn validate_plan_context(
 
     if src_driver.driver_type() != plan.source_driver_type
         || tgt_driver.driver_type() != plan.target_driver_type
-        || plans::driver_protocol_version(src_driver.as_ref()) != plan.source_driver_protocol
-        || plans::driver_protocol_version(tgt_driver.as_ref()) != plan.target_driver_protocol
+        || driver_protocol_version(src_driver.as_ref()) != plan.source_driver_protocol
+        || driver_protocol_version(tgt_driver.as_ref()) != plan.target_driver_protocol
     {
         return Err(CommandError::Validation(
             "driver contract changed since preview; return to preview".into(),

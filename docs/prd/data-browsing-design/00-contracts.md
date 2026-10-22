@@ -1064,7 +1064,7 @@ export interface DataGridCapabilities {
 | 13 | `grid.filter.incomplete` | 08 | 筛选条件缺值 | 提示补齐，**不得**静默丢弃后照常查询 |
 | 14 | `grid.view.invalid` | 08 | 命名视图名非法/为空 | 说明命名规则 |
 | 15 | `grid.view.nameExists` | 08 | 命名视图重名 | 提示换名或覆盖 |
-| 16 | `grid.count.estimateUnavailable` | 09 | 请求估算但驱动无该能力 | 回退到 exact 并说明，不静默 |
+| 16 | ~~`grid.count.estimateUnavailable`~~ **已删除**〔契约审计修订 2026-10-22〕Wave 7 轨 A `count-frontend` 实装后确认：它描述的是**前端能力位**（用户要了估算 + 面板已加载 + 答案不是估算），**不是后端拒绝**——后端在「有生效筛选」「驱动无估算语句」等场景都是**降级为精确**而不是拒绝，**没有生产者**。⇒ 走错误码通道是错的通道，且把它留在 `PRODUCER_PENDING` 里只会把门禁的例外列表变成垃圾桶。改为：`Pagination` 新增 `estimateUnavailable` prop **直出**文案（i18n key `pagination.estimateUnavailable`，**刻意不叫** `grid.count.*`——`grid.<域>.<原因>` 是错误码专用命名空间，见 §8.2 末尾的「不属错误码」清单）。**代价（诚实记录）**：后端真的因「驱动不支持估算」而拒绝时，前端不再有专属分类，落回原始消息展示 | — | — |
 | 17 | `grid.paste.tooLarge` | 03 | 粘贴数据超过上限 | 说明上限值与实际大小 |
 | 18 | `grid.paste.raggedRow` | 03 | 各行列数不一致 | 说明不一致的行号 |
 | 19 | `grid.paste.unclosedQuote` | 03 | TSV 内引号未闭合 | 说明无法解析的行列 |
@@ -1135,7 +1135,7 @@ export interface DataGridCapabilities {
 | `grid.insert.*` | 4 | 04 |
 | `grid.filter.*` | 2 | 08 |
 | `grid.view.*` | 2 | 08 |
-| `grid.count.*` | 1 | 09 |
+| ~~`grid.count.*`~~ | **0（已空）** | 09 —— 唯一那条 `grid.count.estimateUnavailable` 于 Wave 7 轨 A 实装后删除（它是前端能力位，不是错误码），见 §8.2 第 16 行 |
 | `grid.paste.*` | 10 | 03 |
 | `grid.clipboard.*` | 3 | 03 |
 | `grid.fk.*` | 5 | 07 |
@@ -1143,6 +1143,8 @@ export interface DataGridCapabilities {
 | `grid.paging.*` | 3 | 11 |
 
 **不属错误码、不得混入本表的同名命名空间**（历史上已被误扫入）：PRD 的埋点事件名（`grid.edit.commit` / `grid.selection.created` / `grid.shortcut.used` / `grid.row.inserted` / `grid.count.mode` / `grid.filter.operator` / `grid.fk.follow` / `grid.default_sort` / `grid.saved_view.used`）、`settings.grid.pasteOverflow*` 这组 i18n key、以及文件名里的 `*-grid.md`。它们与 `GridErrorCode` 无任何关系，`classifyGridError` 不得为其返回任何分支。
+
+> 〔契约审计修订 2026-10-22〕**i18n key 也不得占用这个命名空间**：`grid.<域>.<原因>` 是**错误码专用**的，所以一条**不是**错误码的提示，它的 i18n key 也不能叫 `grid.*`。已发生的实例：Wave 7 轨 A 一度把「这个库估不出来」做成 i18n key `grid.count.estimateUnavailable`，而它既没有生产者、又长得和错误码一模一样 ⇒ 已改名为 `pagination.estimateUnavailable`（渲染在分页器上，`pagination.*` 是那一片的既有命名空间）。**命名即事实**：凡是长得像错误码、实际不是错误码的东西，都要另找一个诚实的命名空间。
 
 **文案纪律**：所有新增用户可见文案**只改英文侧**。注意英文侧不是单个文件，而是**领域包**：真正的词条在 `src/locales/en/<域名>.ts`（现有域名有 `core` / `connection` / `query` / `schema` / `settings` / `sync` / `chart` / `dashboard` / `ai` / `backup` / `mcp` / `onboarding` / `workflows`）。数据浏览相关文案按语义就近放入 `query.ts` 或 `connection.ts`，**不要新建域名**。
 >

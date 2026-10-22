@@ -24,7 +24,7 @@ async fn state(path: &Path) -> AppState {
     let store = Arc::new(crate::store::Store::init_with_path(path).await.unwrap());
     crate::finish_app_state(
         store,
-        Arc::new(crate::db::init_drivers()),
+        Arc::new(datazen_runtime::driver_registry::init_drivers()),
         Arc::new(crate::transfer::adapter_registry::SyncAdapterRegistry::new()),
         None,
     )
@@ -308,6 +308,7 @@ async fn seed(
             ctx,
             JobDefinition {
                 job_id: id.clone(),
+                organization_id: ctx.organization_id.clone(),
                 kind: kind.into(),
                 owner: OwnerRef::Job {
                     job_id: id.clone(),
@@ -465,6 +466,7 @@ async fn native_product_sqlite_projection_refuses_missing_digest_private_and_wro
                 &ctx,
                 JobDefinition {
                     job_id: id.clone(),
+                    organization_id: ctx.organization_id.clone(),
                     kind: kind.into(),
                     owner: OwnerRef::Job {
                         job_id: id,
@@ -481,7 +483,16 @@ async fn native_product_sqlite_projection_refuses_missing_digest_private_and_wro
     assert!(fixture
         .state
         .desktop_job_host
-        .list(&ctx, JobFilter::default())
+        .list(
+            &ctx,
+            JobFilter {
+                organization_id: ctx.organization_id.clone(),
+                states: Vec::new(),
+                owner: None,
+                after: None,
+                limit: None,
+            },
+        )
         .await
         .unwrap()
         .is_empty());

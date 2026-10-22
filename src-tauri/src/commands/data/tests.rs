@@ -1,7 +1,7 @@
 use super::test_fixtures::*;
 use super::*;
-use crate::db::Value;
 use crate::testing::app_state::TestAppState;
+use datazen_driver_api::Value;
 use std::collections::BTreeMap;
 
 #[tokio::test]

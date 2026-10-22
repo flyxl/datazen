@@ -15,7 +15,7 @@
 //! * 本模块**不认识** SSH / HTTP 代理 / WebSocket 任何一种隧道。宿主枚举
 //!   （`driver-api::tunnel_types::TunnelKind` 与 `src-tauri::tunnel::Tunnel`）是
 //!   **宿主实现细节**，决定「用哪种开法」，**不参与共享判定**，也不泄漏进来。
-//! * 桌面 `NetworkProvider` 实现在 [`desktop`]：`ensure_tunnel` / `release_tunnel`
+//! * 路由 `NetworkProvider` 实现在 [`route`]：`ensure_tunnel` / `release_tunnel`
 //!   的共享引用语义由它承接（台账 + 持有者名册），物理开法仍是宿主 [`transport`]
 //!   端口的事。连接配置中的隧道信息必须在资源受理前解析为 `TunnelSpec`；否则
 //!   `acquire_resource` 无法为 SSH / HTTP 代理 / WebSocket 建立对应路由。
@@ -111,14 +111,14 @@
 //!
 //! [`PoolKeyGeneration`]: crate::resource::PoolKeyGeneration
 
-mod desktop;
 mod error;
 mod ledger;
+mod route;
 mod transport;
 
-pub use desktop::{DesktopNetworkProvider, DesktopRouteCatalog};
 pub use error::TunnelError;
 pub use ledger::{TunnelLease, TunnelLedger, TunnelRelease, TunnelState};
+pub use route::{RouteCatalog, RouteNetworkProvider};
 pub use transport::{TunnelFault, TunnelHandle, TunnelTransport};
 
 /// 测试替身：记录式物理端口 + 可注入故障的隧道旅程。与 `resource::harness` 同一形态。

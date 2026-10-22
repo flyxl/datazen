@@ -4,11 +4,15 @@ use super::util::{
     borrow_runtime_session, build_connections_context, resolve_ai, resolve_safety_gate,
     window_stream_callback, StreamCallback,
 };
-use crate::ai::budget;
-use crate::ai::safety::redact_for_gate;
-use crate::ai::*;
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
+use datazen_ai_api::*;
+use datazen_feature_core::ai::budget;
+use datazen_feature_core::ai::safety::redact_for_gate;
+use datazen_feature_core::ai::schema_pipeline::{PromptSeed, SchemaContextPipeline};
+use datazen_feature_core::ai::tools::{
+    classify_tool, is_readonly_db_tool, mcp_needs_confirm, ToolKind, ToolLoopGuard,
+};
 use std::sync::Arc;
 use tauri::{State, WebviewWindow};
 
@@ -39,10 +43,6 @@ pub(crate) async fn mcp_tool_definitions(state: &AppState) -> Vec<ToolDefinition
         })
         .collect()
 }
-
-pub(crate) use datazen_feature_core::ai::tools::{
-    classify_tool, is_db_tool, is_readonly_db_tool, mcp_needs_confirm, ToolKind, ToolLoopGuard,
-};
 
 pub(crate) async fn execute_mcp_tool(
     state: &AppState,

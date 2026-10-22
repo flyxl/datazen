@@ -21,7 +21,10 @@ vi.mock('../../commands/database', () => ({
 describe('ensureDedicatedSession', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(connectionCommands.connectDedicated).mockResolvedValue('sqlite-session');
+    vi.mocked(connectionCommands.connectDedicated).mockResolvedValue({
+      connectionId: 'pinged',
+      dbSessionId: 'sqlite-session',
+    });
     mockGetDatabases.mockResolvedValue(['app', 'other']);
   });
 

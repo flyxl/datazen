@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::ai::{AiModelProfile, AiProviderConfig, AiSettingsConfig};
+use datazen_ai_api::{AiModelProfile, AiProviderConfig, AiSettingsConfig};
 
 use super::{Store, StoreError};
 

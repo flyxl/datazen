@@ -17,9 +17,9 @@ use datazen_runtime::job::{
     detect_endpoint_overlap, EndpointRef, EndpointRole, JobError, MultiEndpointPermits,
 };
 
-use crate::commands::data_transfer::job_api::endpoint_identity::identify;
-use crate::db::{ConnectionConfig, SslMode};
+use crate::services::migration_endpoint::identify;
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+use datazen_driver_api::{ConnectionConfig, SslMode};
 
 fn org() -> OrganizationId {
     OrganizationId::new("org-1")
