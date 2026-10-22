@@ -60,8 +60,9 @@ export type GridErrorCode =
  * classifier does longest-prefix matching, so appenders do not have to keep an order.
  *
  * Every entry here MUST be **reachable** by the front end, i.e. some producer must be able
- * to emit it — otherwise the front end branches on a prefix that can never arrive. See
- * `docs/prd/data-browsing-design/00-contracts.md` §8.2 for the producer inventory.
+ * to emit it — otherwise the front end branches on a prefix that can never arrive. The
+ * producer inventory is this file's sibling test: `gridErrors.registration.test.ts`
+ * (`PRODUCER_PENDING` lists the codes whose producer is the browser itself).
  *
  * "Reachable" is **not** the same as "produced by Rust". Two kinds of codes live here:
  *
