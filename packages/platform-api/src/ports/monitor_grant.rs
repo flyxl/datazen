@@ -2,12 +2,12 @@
 //!
 //! ## 它替代什么
 //!
-//! 桌面侧有**两处**为了读一份授权单而持着整个 `Arc<Store>`：
+//! 桌面侧有**两处**为了读一份授权单而持着整个 `Arc<DesktopRepository>`：
 //!
 //! * `src-tauri/src/monitor/grants.rs` 的 `current(store, ctx)`：读授权单、校验
 //!   有效期与「是否已被新版取代」，并给出它被授权触达的目标；
 //! * `src-tauri/src/platform/execution_identity.rs` 的 `MonitorDelegationScope`：
-//!   持 `Arc<Store>` **只为**从授权单里取那个被授权的目标。
+//!   持 `Arc<DesktopRepository>` **只为**从授权单里取那个被授权的目标。
 //!
 //! 两条路径读的是**同一份事实**，因此收成一个端口。
 //!

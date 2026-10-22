@@ -254,10 +254,19 @@ impl std::fmt::Debug for PlatformAdapter {
     }
 }
 impl PlatformAdapter {
+    /// 注入宿主能力。
+    ///
+    /// `tunnels` 与 `known_hosts` 是**隧道相关的两个存储端口实例**，由组装根
+    /// （`bootstrap/app_state.rs`）创建并传入：隧道定义走 `TunnelRepository`
+    /// （桌面实现是存储层本身），known-hosts 走 `KnownHostsStore`（桌面实现读
+    /// `{appData}/ssh_known_hosts.json`）。会话后端需要它们来在建连时解引用
+    /// `tunnelId` 并启动隧道。
     pub fn inject(
         &self,
         store: Arc<crate::store::DesktopRepository>,
         registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
+        tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
+        known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore>,
     ) -> Result<(), ApiError> {
         if self.services.get().is_some() {
             return Ok(());
@@ -300,6 +309,8 @@ impl PlatformAdapter {
             16,
             self.identity.organization_id().clone(),
             self.identity.principal_id().clone(),
+            tunnels,
+            known_hosts,
         ));
         let native =
             super::native_tool::deployment::NativeDeployment::from_build(backend.physical_budget());

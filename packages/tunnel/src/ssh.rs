@@ -8,16 +8,16 @@
 //!    through the SSH session and pipe data bidirectionally.
 //! 5. Return the local port so DB drivers can connect to 127.0.0.1:<local>.
 
+use crate::known_hosts_store::KnownHostsStore;
 use crate::ssh_known_hosts::{
-    host_key_id, known_host_entry_from_key, load_known_hosts, mismatch_error_message,
-    save_known_hosts, verify_host_key, HostKeyDecision, KnownHostEntry,
+    host_key_id, known_host_entry_from_key, mismatch_error_message, verify_host_key,
+    HostKeyDecision, KnownHostEntry,
 };
 use datazen_driver_api::{DriverError, SshTunnelConfig};
 use russh::client::{self, AuthResult};
 use russh::keys::{self, ssh_key, PrivateKeyWithHashAlg};
 use std::collections::HashMap;
 use std::future::Future;
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -26,8 +26,10 @@ use tokio_util::sync::CancellationToken;
 
 struct TunnelHandler {
     host_id: String,
-    known_hosts_path: std::path::PathBuf,
-    known_hosts: Arc<Mutex<HashMap<String, KnownHostEntry>>>,
+    /// 已知主机的**存储**：宿主注入的端口实例（桌面：文件；web：服务端存储）。
+    known_hosts: Arc<dyn KnownHostsStore>,
+    /// 本次会话已知的条目。首见即写入存储，因此内存里始终是存储的镜像。
+    entries: Arc<Mutex<HashMap<String, KnownHostEntry>>>,
     rejection: Arc<Mutex<Option<String>>>,
 }
 
@@ -39,8 +41,8 @@ impl client::Handler for TunnelHandler {
         key: &ssh_key::PublicKey,
     ) -> impl Future<Output = Result<bool, Self::Error>> + Send {
         let host_id = self.host_id.clone();
-        let known_hosts_path = self.known_hosts_path.clone();
         let known_hosts = self.known_hosts.clone();
+        let entries = self.entries.clone();
         let rejection = self.rejection.clone();
 
         async move {
@@ -56,7 +58,7 @@ impl client::Handler for TunnelHandler {
                 }
             };
 
-            let mut map = match known_hosts.lock() {
+            let mut map = match entries.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
                     tracing::warn!(host = %host_id, "SSH known_hosts lock poisoned; recovering");
@@ -73,7 +75,7 @@ impl client::Handler for TunnelHandler {
                         "SSH host key accepted (TOFU)"
                     );
                     map.insert(host_id, observed);
-                    if let Err(e) = save_known_hosts(&known_hosts_path, &map) {
+                    if let Err(e) = known_hosts.save(&map) {
                         tracing::warn!(error = %e, "Failed to persist SSH known host");
                     }
                     Ok(true)
@@ -126,11 +128,14 @@ pub fn supported_auth_method(method: &str) -> bool {
 impl SshTunnel {
     /// Establish an SSH tunnel that forwards `127.0.0.1:<local_port>` →
     /// `remote_host:remote_port` through the configured SSH jump host.
+    ///
+    /// `known_hosts` 是宿主注入的**存储端口**实例：已知主机存在哪儿由实现方
+    /// 决定（桌面：`{appData}/ssh_known_hosts.json`；web：服务端存储）。
     pub async fn start(
         ssh: &SshTunnelConfig,
         remote_host: &str,
         remote_port: u16,
-        known_hosts_path: &Path,
+        known_hosts: Arc<dyn KnownHostsStore>,
     ) -> Result<Self, DriverError> {
         if !supported_auth_method(&ssh.auth_method) {
             return Err(DriverError::SshTunnelError(format!(
@@ -145,7 +150,7 @@ impl SshTunnel {
                     jump,
                     &ssh.host,
                     ssh.port,
-                    known_hosts_path,
+                    known_hosts.clone(),
                 ))
                 .await?,
             )),
@@ -161,12 +166,12 @@ impl SshTunnel {
         let config = Arc::new(client::Config::default());
         let host_id = host_key_id(&ssh.host, ssh.port);
         let rejection = Arc::new(Mutex::new(None));
-        let known_hosts = Arc::new(Mutex::new(load_known_hosts(known_hosts_path)));
+        let entries = Arc::new(Mutex::new(known_hosts.load()));
 
         let handler = TunnelHandler {
             host_id: host_id.clone(),
-            known_hosts_path: known_hosts_path.to_path_buf(),
             known_hosts,
+            entries,
             rejection: rejection.clone(),
         };
 
@@ -417,6 +422,39 @@ mod tests {
     const SAMPLE_ED25519: &str =
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILM+rvN+ot98qgEN796jTiQfZfG1KaT0PtFDJ/XFSqti";
 
+    /// 形态中立的进程内 known-hosts 存储：隧道机制的单测**不碰本机文件**
+    /// （文件 I/O 是宿主实现的事，见 `KnownHostsStore`）。
+    #[derive(Default)]
+    struct MemoryKnownHosts {
+        entries: std::sync::Mutex<HashMap<String, KnownHostEntry>>,
+    }
+
+    impl KnownHostsStore for MemoryKnownHosts {
+        fn load(&self) -> HashMap<String, KnownHostEntry> {
+            self.entries
+                .lock()
+                .map(|entries| entries.clone())
+                .unwrap_or_default()
+        }
+
+        fn save(
+            &self,
+            entries: &HashMap<String, KnownHostEntry>,
+        ) -> Result<(), crate::known_hosts_store::KnownHostsStoreError> {
+            let mut guard = self.entries.lock().map_err(|_| {
+                crate::known_hosts_store::KnownHostsStoreError::Unavailable(
+                    "known hosts lock poisoned".into(),
+                )
+            })?;
+            *guard = entries.clone();
+            Ok(())
+        }
+    }
+
+    fn memory_known_hosts() -> Arc<dyn KnownHostsStore> {
+        Arc::new(MemoryKnownHosts::default())
+    }
+
     /// Regression for `tunnel-backend-BUG-002`: `SshTunnel` used to hold only a
     /// `JoinHandle`, and dropping a `JoinHandle` *detaches* rather than aborts,
     /// so every probe leaked the forwarder task, the SSH session and the bound
@@ -560,35 +598,20 @@ mod tests {
     }
 
     #[test]
-    fn known_hosts_roundtrip_via_tempfile() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("ssh_known_hosts.json");
-
-        assert!(load_known_hosts(&path).is_empty());
+    fn known_hosts_roundtrip_goes_through_the_store_port() {
+        // 文件 I/O 不再住在共享包里：往返由**端口**保证，宿主实现（桌面：
+        // `{appData}/ssh_known_hosts.json`）另有自己的往返单测。
+        let store = memory_known_hosts();
+        assert!(store.load().is_empty());
 
         let entry = sample_ed25519_entry();
         let mut map = HashMap::new();
         map.insert(host_key_id("host.example", 22), entry.clone());
-        save_known_hosts(&path, &map).expect("save known hosts");
+        store.save(&map).expect("save known hosts");
 
-        let loaded = load_known_hosts(&path);
+        let loaded = store.load();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded.get("host.example:22"), Some(&entry));
-    }
-
-    #[test]
-    fn load_known_hosts_ignores_missing_file() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("missing.json");
-        assert!(load_known_hosts(&path).is_empty());
-    }
-
-    #[test]
-    fn load_known_hosts_ignores_invalid_json() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("ssh_known_hosts.json");
-        std::fs::write(&path, "{ not json").expect("write invalid json");
-        assert!(load_known_hosts(&path).is_empty());
     }
 
     #[test]
@@ -626,11 +649,11 @@ mod tests {
         let bastion = test_fixture::spawn_bastion().await;
         let dir = tempfile::tempdir().expect("tempdir");
         let key_path = test_fixture::write_client_key(dir.path());
-        let known_hosts = dir.path().join("ssh_known_hosts.json");
+        let known_hosts = memory_known_hosts();
         let (echo_port, echo_task) = test_fixture::spawn_echo_target().await;
 
         let ssh = test_fixture::ssh_config(bastion.port, &key_path);
-        let tunnel = SshTunnel::start(&ssh, "127.0.0.1", echo_port, &known_hosts)
+        let tunnel = SshTunnel::start(&ssh, "127.0.0.1", echo_port, known_hosts.clone())
             .await
             .expect("the fixture bastion must accept the tunnel");
         let local_port = tunnel.local_port();
@@ -725,12 +748,12 @@ mod tests {
         let bastion = test_fixture::spawn_bastion().await;
         let dir = tempfile::tempdir().expect("tempdir");
         let key_path = test_fixture::write_client_key(dir.path());
-        let known_hosts = dir.path().join("ssh_known_hosts.json");
+        let known_hosts = memory_known_hosts();
         let ssh = test_fixture::ssh_config(bastion.port, &key_path);
 
         // Port 1 on the bastion host has no listener: the fixture refuses the
         // `direct-tcpip` channel for it, exactly like a real bastion would.
-        let tunnel = SshTunnel::start(&ssh, "127.0.0.1", 1, &known_hosts)
+        let tunnel = SshTunnel::start(&ssh, "127.0.0.1", 1, known_hosts.clone())
             .await
             .expect("bastion reachability + auth is all the SSH probe proves");
         assert_eq!(
@@ -773,7 +796,7 @@ mod tests {
         let target_bastion = test_fixture::spawn_bastion().await;
         let dir = tempfile::tempdir().expect("tempdir");
         let key_path = test_fixture::write_client_key(dir.path());
-        let known_hosts = dir.path().join("ssh_known_hosts.json");
+        let known_hosts = memory_known_hosts();
         let (echo_port, echo_task) = test_fixture::spawn_echo_target().await;
 
         let mut ssh = test_fixture::ssh_config(target_bastion.port, &key_path);
@@ -782,7 +805,7 @@ mod tests {
             &key_path,
         )));
 
-        let tunnel = SshTunnel::start(&ssh, "127.0.0.1", echo_port, &known_hosts)
+        let tunnel = SshTunnel::start(&ssh, "127.0.0.1", echo_port, known_hosts.clone())
             .await
             .expect("the chained tunnel must build through both bastions");
         assert_eq!(jump_bastion.live_sessions.load(Ordering::SeqCst), 1);
