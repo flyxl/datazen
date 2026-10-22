@@ -91,6 +91,9 @@ const pack = {
   'newConn.databaseIndex': '데이터베이스 인덱스',
   'newConn.username': '사용자 이름',
   'newConn.password': '비밀번호',
+  'newConn.clearStoredCredentials': '비워 둔 저장 자격 증명 지우기',
+  'newConn.clearStoredCredentialsHint':
+    '이 옵션을 선택하지 않으면 빈 필드는 저장된 값을 유지합니다.',
   'newConn.group': '그룹',
   'newConn.noGroup': '그룹 없음',
   'newConn.colorTag': '컬러 태그',
