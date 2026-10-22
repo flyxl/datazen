@@ -81,6 +81,7 @@
 
 1. **`Enter` 已被占用**：`VirtualBody` 行容器的 `onKeyDown` 把 `Enter`/`Space` 映射为「选整行」。若把 `Enter` 裁定给「进入编辑」而不处理这处，会出现两个处理器竞争同一个键。
 2. **`Tab` 今天会从行容器逃走**：行 `div` 是 `tabIndex={0}`，`Tab` 只能跳到下一个行 `div`。一旦按焦点裁定改成 `tabIndex={-1}`，行不再是 Tab 停靠点，`Tab` 的语义必须由本册重新定义。
+   〔契约审计修订 2026-10-22〕**这条是 Wave 8 之前的现状**；本册落地后：滚动容器是**唯一**的 Tab 停靠点（roving tabindex），**行容器无条件 `tabIndex={-1}`**（含未开启 cell-selection 契约的网格）。
 3. **`[role="grid"]` 不存在**：任何以它为前提的断言（含 `TC-TABLE-013`）都是空的；本册必须给出一个**真实存在**的容器定位符。
 
 ---
@@ -137,6 +138,8 @@ export type GridKeyCommand =
   | { kind: 'select-all-rows' }
   | { kind: 'begin-edit'; coord: CellCoord }
   | { kind: 'consume' }   // 02 认领并已 preventDefault，但状态不变（边界 no-op、leave-grid）
+  | { kind: 'ignored' }   // 〔契约审计修订 2026-10-22〕§3.2 的表里有这一档，§3.1 的 union 里漏了。
+                        // 「认领但不做」与「不归本册」必须分开，否则实现时会把 pass 写成吞掉。
   | { kind: 'pass' };     // 不归 02：**不得** preventDefault、不得 stopPropagation
 
 /** `row` 模式下的空选择常量：满足 01 的不变量 I2（整行高亮只来自 selectedRows）。 */
@@ -185,7 +188,12 @@ export function resolvePageDelta(viewportRowCount: number): number;
 /** 光标与坐标比较（复用 01 的语义等价判定，避免各处写 `a.rowIndex === b.rowIndex && …`）。 */
 export function gridCursorEquals(a: CellCoord | null, b: CellCoord | null): boolean;
 
-/** 列显隐 / 行集变化后收敛光标：越界或列已隐藏 ⇒ `null`（与 01 的 reconcileGridSelection 同步调用）。 */
+/** 列显隐 / 行集变化后收敛光标（与 01 的 reconcileGridSelection 同步调用）。
+ * 〔契约审计修订 2026-10-22〕**行越界 ⇒ 夹到末行，不是 `null`**：本册的内部实现纪律是
+ * 「边界一律经 01 的 `clampCellCoord`」，而 01 的 `clampCellCoord` **夹取行号**，只有
+ * 「列未知 / 表为空」才返回 `null`。原文字面写「越界 ⇒ null」与这条纪律矛盾，且会让
+ * 光标在末页之后直接消失（用户按一下方向键就掉出网格）。
+ * **列已隐藏 / 未知列 ⇒ `null`**（这一条不变：光标不能落在一个看不见的列上）。 */
 export function clampGridCursor(
   cursor: CellCoord | null,
   rowCount: number,
@@ -319,7 +327,7 @@ export interface DataTableProps {
 | `Enter` | `cell`：对 `focus` 执行 `onCellDoubleClick`（= 进入编辑或只读提示）；`row`：对 `lastSelectedIndex` × `columnOrder[0]` 执行同一调用；`none`：`ignored`（不隐式建立选择） | `pass`：`EditableCell` 已 `preventDefault` + `coerceAndCommit`（§2.3） | **02**（网格态） | **02 赢，但必须删除 `VirtualBody` 行容器的 `Enter`/`Space` → `onRowSelect` 分支**（§5 Step 4）。理由见 §4.2 |
 | `F2` | 与 `Enter` 网格态完全一致（进入编辑） | `pass` | **02** | 今天无占用者 |
 | `Escape` | `pass` → 01 处理（`mode → none` + 清空全部选择；`editingCell !== null` 时 01 直接 return） | `pass`：`EditableCell` 取消编辑（§2.3） | **01** | 01 赢；02 **不注册** `Escape` |
-| `mod+A` | `select-all-rows`：既有 `toggleSelectAll()` + 选区切到 `row` 模式（`EMPTY_ROW_MODE_SELECTION`）；再按一次即清空（`toggleSelectAll` 的既有语义） | `pass`（输入框内是「全选文本」，浏览器原生） | **02** | **裁定：整行全选，不是「当前页全部单元格」**，理由见 §4.6 |
+| `mod+A` | `select-all-rows`：**实现体就是既有 `toggleSelectAll()`**（它自己写 `mode:'row'` + 行集；再按一次即清空，是它的既有语义）。〔契约审计修订 2026-10-22〕**不要**再补一次 `onGridSelectionChange(EMPTY_ROW_MODE_SELECTION)` —— 01 的 `applyGridSelection` 在 `mode==='row'` 时**清空 `selectedRows`**，那样写会把刚选中的行清掉，`Cmd+A` 看起来毫无反应 | `pass`（输入框内是「全选文本」，浏览器原生） | **02** | **裁定：整行全选，不是「当前页全部单元格」**，理由见 §4.6 |
 | `mod+Z` / `mod+shift+Z` | `pass`（**02 不注册**） | `pass`（浏览器原生 input undo 胜出） | **06** | 06 赢。06 未落地前按 `mod+Z` 应当**无任何效果**，不得回退成「清空选区」之类 |
 | `mod+C/X/V` | `pass` | `pass`（浏览器原生文本剪贴板） | **03** | 03 赢 |
 | `Delete` / `Backspace` | `pass` → 既有 `handleDeleteKey`；`cell` 模式下 `selectedRows` 恒空 ⇒ **什么都不做**（§4.2 第 2 条的必然推论） | `pass`（输入框内删字符） | 既有代码 | 语义**不变**；「清空单元格内容」不属本册（K-8） |
@@ -403,7 +411,8 @@ export interface DataTableProps {
 
 ### 4.6 Q5：`Cmd/Ctrl+A` 语义裁定（**结论**）
 
-**裁定：`Cmd/Ctrl+A` = 整行全选，实现体就是既有的 `toggleSelectAll`，并把选区切到 `row` 模式。**
+**裁定：`Cmd/Ctrl+A` = 整行全选，实现体就是既有的 `toggleSelectAll`**（它自己把选区切到 `row` 模式并写行集）。
+〔契约审计修订 2026-10-22〕**不再额外写 `EMPTY_ROW_MODE_SELECTION`** —— 01 的 `applyGridSelection` 在 `mode==='row'` 时会清空 `selectedRows`，照字面写会把刚选中的行清掉。⇒ **实现体只有 `toggleSelectAll()` 一个动作**。
 
 **理由（五条，按权重）**：
 
@@ -478,7 +487,7 @@ it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
 | --- | --- | --- |
 | 焦点离开网格（点击工具栏/侧栏） | **保留** `GridSelection`、`selectedRows`、`lastSelectedIndex`，以及 02 的**光标记忆**（`useGridKeyboardNav` 内部 `useRef<CellCoord \| null>`，随 `activeCoord` 每次渲染刷新） | 01 §4.4 已裁定「焦点离开网格不清空选择」（用户可能去点工具栏的『删除行』『导出』）；本册追加「光标记忆同样保留」 |
 | 重新聚焦容器 | `cell` 模式：光标 = `selection.focus`（store 是唯一真相，**不用**记忆值覆盖）；`row` 模式：光标行 = `lastSelectedIndex`；`none` 模式：光标 = `resolveEntryCursor(记忆值, …)` | 记忆值只在 `none` 模式下使用——这正是 `Escape` 后按方向键重新进入时不该跳回首格的解法 |
-| 记忆值失效（列被隐藏 / 行数变少 / 翻页取数） | `clampGridCursor` 返回 `null` ⇒ 回退首格；翻页时 01 的 `reconcileGridSelection` 已把 `mode` 归 `none`，因此回退路径可覆盖 | 契约 §4.3 推论；与 01 §3.3 `reconcileGridSelection` 同步调用 |
+| 记忆值失效（列被隐藏 / 行数变少 / 翻页取数） | **列被隐藏 ⇒ `clampGridCursor` 返回 `null`** ⇒ 回退首格；**行数变少 ⇒ 夹到末行**（不是 `null`，见 §3.1 该函数的订正）；翻页时 01 的 `reconcileGridSelection` 已把 `mode` 归 `none`，因此回退路径可覆盖 | 契约 §4.3 推论；与 01 §3.3 `reconcileGridSelection` 同步调用 |
 | 窗口失焦（`blur` 到其它窗口） | 同「焦点离开网格」；**不得**在 `blur` 里清选择 | 同上 |
 | `Shift+单击` 后用键盘扩区 | `anchor` **保持不变**（01 §4.2：`Shift+单击` 只改主区另一端），随后 `Shift+↓` 从**原 anchor** 继续扩到新光标 ⇒ 区域连续增长，不会从点击处重新起算 | 这是混合操作最容易写错的一条：若 `Shift+单击` 顺手把 `anchor` 重置成被点格，键盘接手后区域会「跳」 |
 | `Cmd/Ctrl+单击`（`extraRanges`）后用 `Shift+方向键` | `extraRanges` **保留**（与 01 对 `Shift+单击` 的规定一致：只改主区） | 01 §4.2 |
