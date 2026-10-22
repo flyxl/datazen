@@ -374,6 +374,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       // Drafts are staged work too: a panel with only drafts must not be
       // invalidated behind the user's back (04 §3.7 R-4).
       if (hasPendingWork(ts)) continue;
+      // A panel with an **open editor** is in the same situation: the
+      // invalidation drops the rows, the editor unmounts with them, and the
+      // draft the user typed is lost without ever being written (05 §4.4).
+      // The panel keeps its rows until the next real read.
+      if (ts.editingCell) continue;
       if (ts.columns.length === 0 && ts.rows.length === 0) continue;
       next.set(panelId, {
         ...ts,

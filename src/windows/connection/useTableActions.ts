@@ -95,6 +95,11 @@ export function useTableActions({
     const mayNavigate = () => resolveEditorBeforeNavigation(panelId).ok;
     return {
       load: () => {
+        // A re-read drops the open editor: the loaded page has no editing
+        // cell any more, and the editor's unmount never writes (05 §4.4).
+        // The draft is therefore written first, or the navigation is
+        // refused — never silently dropped.
+        if (!mayNavigate()) return;
         // The "retry" of a failed load re-reads the page, so the notice of the
         // previous commit is stale — exactly like a plain reload.
         invalidateNotice();
@@ -112,7 +117,8 @@ export function useTableActions({
       countExact: () => {
         // The exact count is a **full** re-read, not a paged one: the estimate
         // is replaced by the real number, which means the count has to run
-        // again.
+        // again. A re-read drops the open editor, so the draft goes first.
+        if (!mayNavigate()) return;
         invalidateNotice();
         store().reloadPanel(panelId, { skipCount: false, countStrategy: 'exact' });
       },
