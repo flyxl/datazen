@@ -777,3 +777,132 @@ fn every_read_only_reason_maps_to_a_contract_code() {
         "grid.result.originAmbiguous"
     );
 }
+
+/// A session context as one projection spells it.
+fn write_context() -> datazen_platform_api::dto::session::SessionContext {
+    datazen_platform_api::dto::session::SessionContext {
+        namespace: datazen_platform_api::target::NamespaceTarget::new(
+            Some("app".into()),
+            None,
+            Some("public".into()),
+            Vec::new(),
+        ),
+        search_path: Some(vec!["public".into()]),
+        effective_identity: Some("app_user".into()),
+        transaction_state: datazen_platform_api::dto::session::TransactionState::None,
+        autocommit: Some(true),
+        confidence: datazen_platform_api::dto::session::ContextConfidence::Confirmed,
+    }
+}
+
+/// The gate compares **targets**, so the session mode must not take part.
+///
+/// The two sides are captured at different moments (before/after a statement)
+/// and produced by different projections; a statement that opens a transaction
+/// or changes autocommit must not make a verified result unwritable.
+#[test]
+fn write_target_ignores_the_session_mode() {
+    let before = write_context();
+    let after = datazen_platform_api::dto::session::SessionContext {
+        transaction_state: datazen_platform_api::dto::session::TransactionState::Active,
+        autocommit: Some(false),
+        search_path: Some(vec!["public".into(), "other".into()]),
+        confidence: datazen_platform_api::dto::session::ContextConfidence::Partial,
+        ..write_context()
+    };
+    assert_eq!(WriteTarget::of(&before), WriteTarget::of(&after));
+}
+
+/// "No identity was reported" has one meaning under two spellings.
+#[test]
+fn write_target_treats_an_empty_identity_as_absence() {
+    let absent = datazen_platform_api::dto::session::SessionContext {
+        effective_identity: None,
+        ..write_context()
+    };
+    let empty = datazen_platform_api::dto::session::SessionContext {
+        effective_identity: Some(String::new()),
+        ..write_context()
+    };
+    assert_eq!(WriteTarget::of(&absent), WriteTarget::of(&empty));
+
+    let other = datazen_platform_api::dto::session::SessionContext {
+        effective_identity: Some("other_user".into()),
+        ..write_context()
+    };
+    assert_ne!(
+        WriteTarget::of(&absent),
+        WriteTarget::of(&other),
+        "a different identity is a different target"
+    );
+}
+
+/// Where the write goes: every namespace level, and the path segments as they
+/// were reported.
+#[test]
+fn write_target_names_the_namespace() {
+    let base = write_context();
+    for changed in [
+        datazen_platform_api::dto::session::SessionContext {
+            namespace: datazen_platform_api::target::NamespaceTarget::new(
+                Some("other_app".into()),
+                None,
+                Some("public".into()),
+                Vec::new(),
+            ),
+            ..write_context()
+        },
+        datazen_platform_api::dto::session::SessionContext {
+            namespace: datazen_platform_api::target::NamespaceTarget::new(
+                Some("app".into()),
+                None,
+                Some("other_schema".into()),
+                Vec::new(),
+            ),
+            ..write_context()
+        },
+        datazen_platform_api::dto::session::SessionContext {
+            namespace: datazen_platform_api::target::NamespaceTarget::new(
+                None,
+                Some("app_catalog".into()),
+                Some("public".into()),
+                Vec::new(),
+            ),
+            ..write_context()
+        },
+        datazen_platform_api::dto::session::SessionContext {
+            namespace: datazen_platform_api::target::NamespaceTarget::new(
+                Some("app".into()),
+                None,
+                Some("public".into()),
+                vec!["tenant_a".into()],
+            ),
+            ..write_context()
+        },
+    ] {
+        assert_ne!(
+            WriteTarget::of(&base),
+            WriteTarget::of(&changed),
+            "a namespace change is a target change"
+        );
+    }
+}
+
+/// An absent level and a level projected to `""` are the same namespace.
+#[test]
+fn write_target_treats_empty_levels_as_absent() {
+    let absent = datazen_platform_api::dto::session::SessionContext {
+        namespace: datazen_platform_api::target::NamespaceTarget::new(None, None, None, Vec::new()),
+        ..write_context()
+    };
+    let empty = datazen_platform_api::dto::session::SessionContext {
+        namespace: datazen_platform_api::target::NamespaceTarget::new(
+            Some(String::new()),
+            Some(String::new()),
+            Some(String::new()),
+            Vec::new(),
+        ),
+        ..write_context()
+    };
+    assert_eq!(WriteTarget::of(&absent), WriteTarget::of(&empty));
+}

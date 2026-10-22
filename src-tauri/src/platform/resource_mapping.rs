@@ -74,8 +74,13 @@ pub fn platform_context(
 ) -> datazen_platform_api::dto::session::SessionContext {
     datazen_platform_api::dto::session::SessionContext {
         namespace: platform_namespace(&context.namespace),
-        // The platform-api shape spells "no search path observed" as `None`; a
-        // driver always reports a list, so an empty list is an observed value.
+        // The driver shape has no "not observed" spelling for the search path —
+        // it is a plain list — so this boundary cannot tell "observed empty"
+        // from "unobserved". `None` would be a claim no driver made, so the
+        // list projects as `Some(..)` even when it is empty (a MySQL fixed
+        // session reports an empty list; a driver that cannot observe the
+        // search path at all says so through `confidence`, not through this
+        // field).
         search_path: Some(context.search_path.clone()),
         effective_identity: context.effective_identity.clone(),
         transaction_state: match context.transaction_state {

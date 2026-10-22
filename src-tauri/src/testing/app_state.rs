@@ -34,6 +34,8 @@ struct TestMockDriverFactory {
     provider: OnceLock<Arc<dyn ResourceProvider>>,
     /// See [`super::resource_provider::TestResourceProvider::reporting_context`].
     session_context: Option<datazen_driver_api::session::SessionContext>,
+    /// See [`super::resource_provider::TestResourceProvider::reporting_context_after`].
+    session_context_after: Option<datazen_driver_api::session::SessionContext>,
 }
 
 impl TestMockDriverFactory {
@@ -43,6 +45,7 @@ impl TestMockDriverFactory {
             driver,
             provider: OnceLock::new(),
             session_context: None,
+            session_context_after: None,
         }
     }
 }
@@ -68,6 +71,10 @@ impl DatabaseDriverFactory for TestMockDriverFactory {
                         Some(context) => provider.reporting_context(context.clone()),
                         None => provider,
                     };
+                    let provider = match &self.session_context_after {
+                        Some(context) => provider.reporting_context_after(context.clone()),
+                        None => provider,
+                    };
                     Arc::new(provider) as Arc<dyn ResourceProvider>
                 })
                 .clone(),
@@ -81,7 +88,7 @@ impl TestAppState {
     }
 
     pub async fn with_options(opts: MockDriverOptions) -> Self {
-        Self::build(opts, None).await
+        Self::build(opts, None, None).await
     }
 
     /// Build a test state with a resource provider for runtime SQL/ChangeSet
@@ -104,7 +111,7 @@ impl TestAppState {
             .or_insert_with(|| {
                 serde_json::to_value(&opts.explain_plan).expect("serialize mock explain plan")
             });
-        Self::build(opts, None).await
+        Self::build(opts, None, None).await
     }
 
     /// Build a test state whose retained-resource fixture reports `context`
@@ -113,12 +120,24 @@ impl TestAppState {
         opts: MockDriverOptions,
         context: datazen_driver_api::session::SessionContext,
     ) -> Self {
-        Self::build(opts, Some(context)).await
+        Self::build(opts, Some(context), None).await
+    }
+
+    /// Build a test state whose session **mode** changes while a statement
+    /// runs: `before` is observed until the execution completes, `after` is
+    /// what that execution leaves behind.
+    pub async fn with_session_context_change(
+        opts: MockDriverOptions,
+        before: datazen_driver_api::session::SessionContext,
+        after: datazen_driver_api::session::SessionContext,
+    ) -> Self {
+        Self::build(opts, Some(before), Some(after)).await
     }
 
     async fn build(
         opts: MockDriverOptions,
         session_context: Option<datazen_driver_api::session::SessionContext>,
+        session_context_after: Option<datazen_driver_api::session::SessionContext>,
     ) -> Self {
         let keyring = super::FileKeyringGuard::set();
         let temp = tempfile::tempdir().expect("tempdir");
@@ -140,6 +159,7 @@ impl TestAppState {
         let factory: &'static dyn DatabaseDriverFactory =
             Box::leak(Box::new(TestMockDriverFactory {
                 session_context,
+                session_context_after,
                 ..TestMockDriverFactory::new("postgres", driver)
             }));
         registry.register_test_factory("postgres", factory).await;

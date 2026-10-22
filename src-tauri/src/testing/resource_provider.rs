@@ -46,6 +46,9 @@ pub(crate) struct TestResourceProvider {
     /// A fixed observation for tests that need the driver to report more than
     /// the acquisition target carries (for example a multi-segment `path`).
     observed_context: Option<SessionContext>,
+    /// The context a completed execution leaves behind, when a test needs the
+    /// session's *mode* to change while its statement runs.
+    observed_context_after: Option<SessionContext>,
 }
 
 impl TestResourceProvider {
@@ -89,6 +92,7 @@ impl TestResourceProvider {
             targets: Mutex::new(HashMap::new()),
             transactions: Mutex::new(HashMap::new()),
             observed_context: None,
+            observed_context_after: None,
         }
     }
 
@@ -101,6 +105,16 @@ impl TestResourceProvider {
     /// full context here.
     pub(crate) fn reporting_context(mut self, context: SessionContext) -> Self {
         self.observed_context = Some(context);
+        self
+    }
+
+    /// Report `context` as what a completed execution leaves behind.
+    ///
+    /// The session's observed context is the **after** snapshot, so this models
+    /// a statement that changes the session mode (an implicit transaction, a
+    /// different autocommit, another search path) without changing its target.
+    pub(crate) fn reporting_context_after(mut self, context: SessionContext) -> Self {
+        self.observed_context_after = Some(context);
         self
     }
 
@@ -323,7 +337,13 @@ impl ResourceProvider for TestResourceProvider {
     ) -> Result<ExecutionCompletion, ResourceError> {
         let context = self.context(handle)?;
         let statements = self.execute_sql(handle, call, sink).await?;
-        let context_after = self.context(handle)?;
+        let context_after = match &self.observed_context_after {
+            Some(context) => {
+                self.connection(handle)?;
+                context.clone()
+            }
+            None => self.context(handle)?,
+        };
         Ok(ExecutionCompletion {
             completion_status: CompletionStatus::Succeeded,
             effect_outcome: EffectOutcome::Completed,

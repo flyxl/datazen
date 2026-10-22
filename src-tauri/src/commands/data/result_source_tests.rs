@@ -489,3 +489,122 @@ async fn a_probe_that_cannot_answer_degrades_instead_of_failing_the_query() {
         );
     }
 }
+
+/// The write target is **where and as whom**, never the session's mode.
+///
+/// A driver that cannot report autocommit is still a writable target: the two
+/// sides of the gate are captured by different projections, and only one of
+/// them can spell "cannot tell". This must not leave a verified result that
+/// refuses every edit.
+#[tokio::test]
+async fn an_unreported_autocommit_does_not_make_a_verified_result_unwritable() {
+    let mut context = writable_context();
+    context.autocommit = None;
+    let test = TestAppState::with_session_context(options(true), context).await;
+    test.save_connection("narrow-no-autocommit").await;
+    let handle = open_session(&test, "narrow-no-autocommit").await;
+
+    let (binding, chunks) = run_select(&test, &handle, "unreported autocommit").await;
+    let source = statement_source(&chunks);
+    assert_eq!(
+        source.writable_mapping,
+        datazen_platform_api::dto::execution::WritableMapping::Verified
+    );
+    // The context is carried verbatim: "the driver cannot tell" stays unknown.
+    assert_eq!(source.context.autocommit, None);
+
+    commit_query_result_cell_impl(&test.state, cell_write(binding))
+        .await
+        .expect("an unreported autocommit must not make a verified result unwritable");
+}
+
+/// "No identity reported" has one meaning, whatever the projection spells it.
+#[tokio::test]
+async fn an_empty_identity_is_the_same_absence_as_no_identity() {
+    let mut context = writable_context();
+    context.effective_identity = Some(String::new());
+    let test = TestAppState::with_session_context(options(true), context).await;
+    test.save_connection("narrow-empty-identity").await;
+    let handle = open_session(&test, "narrow-empty-identity").await;
+
+    let (binding, chunks) = run_select(&test, &handle, "empty identity").await;
+    let source = statement_source(&chunks);
+    assert_eq!(
+        source.writable_mapping,
+        datazen_platform_api::dto::execution::WritableMapping::Verified
+    );
+    assert_eq!(source.context.effective_identity.as_deref(), Some(""));
+
+    commit_query_result_cell_impl(&test.state, cell_write(binding))
+        .await
+        .expect("an empty identity must not make a verified result unwritable");
+}
+
+/// A statement that opens a transaction changes the session **mode**, not its
+/// target. The source carries the context the statement ran in, while the
+/// session's observed context is the snapshot taken afterwards — the gate must
+/// not mistake one for the other.
+#[tokio::test]
+async fn a_mode_change_during_the_statement_keeps_the_result_writable() {
+    let before = writable_context();
+    let mut after = writable_context();
+    after.transaction_state = TransactionState::Active;
+    after.autocommit = Some(false);
+    after.search_path = vec!["public".into(), "other".into()];
+    let test = TestAppState::with_session_context_change(options(true), before, after).await;
+    test.save_connection("narrow-mode-change").await;
+    let handle = open_session(&test, "narrow-mode-change").await;
+
+    let (binding, chunks) = run_select(&test, &handle, "mode change").await;
+    let source = statement_source(&chunks);
+    assert_eq!(
+        source.writable_mapping,
+        datazen_platform_api::dto::execution::WritableMapping::Verified
+    );
+    assert_eq!(
+        source.context.transaction_state,
+        PlatformTransactionState::None,
+        "the source names the context the statement ran in"
+    );
+    assert_eq!(source.context.autocommit, Some(true));
+
+    commit_query_result_cell_impl(&test.state, cell_write(binding))
+        .await
+        .expect("a mode change must not unpin a verified result");
+}
+
+/// A **real** target change between the statement and the write is still
+/// refused, and it is refused before a single statement of the write leaves
+/// the process.
+#[tokio::test]
+async fn a_real_target_change_refuses_the_write_and_sends_nothing() {
+    let before = writable_context();
+    let mut after = writable_context();
+    after.namespace.database = Some("other_app".into());
+    after.effective_identity = Some("other_user".into());
+    let test = TestAppState::with_session_context_change(options(true), before, after).await;
+    test.save_connection("narrow-target-change").await;
+    let handle = open_session(&test, "narrow-target-change").await;
+
+    let (binding, chunks) = run_select(&test, &handle, "target change").await;
+    assert_eq!(
+        statement_source(&chunks).writable_mapping,
+        datazen_platform_api::dto::execution::WritableMapping::Verified
+    );
+    let calls_before = test.mock.query_calls();
+
+    let error = commit_query_result_cell_impl(&test.state, cell_write(binding))
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        error.contains("Result session context changed"),
+        "a write aimed at another target must be refused; got: {error}"
+    );
+    assert_eq!(
+        test.mock.query_calls(),
+        calls_before,
+        "a refused write must not send a statement"
+    );
+}

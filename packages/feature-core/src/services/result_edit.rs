@@ -389,6 +389,54 @@ pub fn read_only_error_code(reason: GridReadOnlyReason) -> ResultErrorCode {
     }
 }
 
+/// The identity a result-cell write is aimed at.
+///
+/// A session context mixes two kinds of facts, and only one of them is about
+/// the write target:
+///
+/// * **where the write goes and as whom** — the namespace and the effective
+///   identity. These say whether a retained result still names its target.
+/// * **how the session happens to be running** — transaction state, autocommit
+///   and the search path. These change *while a statement runs* (`BEGIN`, an
+///   implicit transaction, `SET search_path`) and say nothing about the target.
+///
+/// The narrow write gate compares two contexts captured at different moments
+/// and produced by different projections, so comparing the contexts themselves
+/// was the same defect as comparing two shapes that merely look alike. This
+/// type is the **single representation of "the same target"**: both sides go
+/// through [`WriteTarget::of`], and only these fields can make the gate refuse.
+/// Mode fields are not here, so they cannot make a result permanently
+/// unwritable by changing on their own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteTarget {
+    pub namespace: datazen_platform_api::target::NamespaceTarget,
+    /// The identity the write executes as. `None` and an empty string are the
+    /// same fact — "the backend reported no identity" — and normalize to
+    /// `None`, because two projections spelled that fact differently.
+    pub identity: Option<String>,
+}
+
+impl WriteTarget {
+    /// The target `context` names.
+    ///
+    /// Empty strings are treated as "not reported": an absent level and a
+    /// level that projected to `""` are the same namespace, not two.
+    pub fn of(context: &datazen_platform_api::dto::session::SessionContext) -> Self {
+        fn value(value: Option<&String>) -> Option<String> {
+            value.filter(|value| !value.is_empty()).cloned()
+        }
+        Self {
+            namespace: datazen_platform_api::target::NamespaceTarget::new(
+                value(context.namespace.database.as_ref()),
+                value(context.namespace.catalog.as_ref()),
+                value(context.namespace.schema.as_ref()),
+                context.namespace.path.clone(),
+            ),
+            identity: value(context.effective_identity.as_ref()),
+        }
+    }
+}
+
 /// One cell edit of a query result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
