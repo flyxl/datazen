@@ -30,9 +30,16 @@
 #   - HOME/CARGO_HOME/RUSTUP_HOME：与 run-regression.sh 相同的沙箱策略——应用数据、
 #     node-gyp 缓存等写入落在仓库内 .regression-home/；工具链仍用真实用户目录
 #     （CARGO_HOME_OVERRIDE / RUSTUP_HOME_OVERRIDE 可覆盖）；PATH 不变。
-#   - npm_config_verify_deps_before_run=false：抑制 pnpm 在 beforeBuildCommand
+#   - DATAZEN_VERIFY_DEPS_BEFORE_RUN=false：抑制 pnpm 在 beforeBuildCommand
 #     （`pnpm build`）前的依赖自动安装——worktree 场景下该检查曾触发全量 install，
-#     违背「跳过任何 install」并在受限环境因 ~/Library/Caches、~/.npm 写入被拒而失败；
+#     违背「跳过任何 install」并在受限环境因 ~/Library/Caches、~/.npm 写入被拒而失败。
+#     这里用的是**唯一两边都对得上**的开关：`pnpm-workspace.yaml` 里的
+#     `verifyDepsBeforeRun: ${DATAZEN_VERIFY_DEPS_BEFORE_RUN:-false}` 会被 pnpm 展开，
+#     CI 用同一个变量（设成 install）把校验显式打开。实测（pnpm 11，`pnpm config get
+#     verifyDepsBeforeRun`）：不设 → false；本变量=install → install；本变量=false →
+#     false。`npm_config_verify_deps_before_run` 对**该**设置无效（实测仍是 false）。
+#     注意仓库默认已是 false，本脚本把变量钉死是为了不让开发者 shell 里继承到的
+#     `=install`（照 CI 抄的）在 e2e 里触发安装。
 #   - npm_config_cache 指向沙箱内目录，同理避免写真实 HOME。
 #
 # 已知副作用（正常瞬态，脚本不做任何 git 操作）：
@@ -134,7 +141,7 @@ BUILD_ENV_PREFIX=(
   "HOME=$SANDBOX_HOME"
   "CARGO_HOME=$CARGO_HOME_WRAPPED"
   "RUSTUP_HOME=$RUSTUP_HOME_WRAPPED"
-  "npm_config_verify_deps_before_run=false"
+  "DATAZEN_VERIFY_DEPS_BEFORE_RUN=false"
   "npm_config_cache=$SANDBOX_HOME/npm-cache"
 )
 
