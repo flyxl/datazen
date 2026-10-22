@@ -3,13 +3,65 @@
  * Strip resolve-drivers injection from tracked managed files while keeping user edits.
  *
  * - Cargo.toml: empty `# <<driver-*>>` (and legacy BEGIN/END) marker bodies
- * - capabilities: drop `kiwi:` / `superset:` / `redis:` permissions; keep windows etc.
+ * - capabilities: drop driver-scoped `<driver-id>:` permissions; keep windows etc.
  *
  * `driver_init.rs` / `generated.ts` are gitignored codegen
  * and are not deinjected — they stay as the last resolve-drivers output.
  */
 
-export const DRIVER_ACL_IDS = ['kiwi', 'superset', 'redis'];
+import { existsSync, readFileSync } from 'fs';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(__dirname, '..');
+const REGISTRY_PATH = resolve(ROOT, 'drivers-registry.json');
+const DEV_OVERRIDE_PATH = resolve(ROOT, '.drivers-dev.json');
+
+/**
+ * Driver ACL ids that can actually appear in the generated Tauri capabilities.
+ *
+ * `resolve-drivers.mjs`'s `syncDriverCapabilities` merges `<tauriPlugin.id>:default`
+ * into `src-tauri/capabilities/default.json` for every active driver whose registry
+ * entry declares a `tauriPlugin` block with **non-empty** `commands`; a driver without
+ * commands ships no ACL permission manifest, so referencing `<id>:default` would fail
+ * the build. The detection list is therefore derived from the same source instead of
+ * being hardcoded — a hardcoded list can only ever match ids that no longer exist.
+ *
+ * @param {string} [registryPath]
+ * @returns {string[]}
+ */
+export function driverAclIds(registryPath = REGISTRY_PATH) {
+  let registry;
+  try {
+    registry = JSON.parse(readFileSync(registryPath, 'utf-8'));
+  } catch {
+    return [];
+  }
+
+  // Mirror `resolve-drivers.mjs`'s `loadRegistry`: a local `.drivers-dev.json`
+  // may add a `tauriPlugin` block to a registry entry, and that block decides
+  // whether the driver gets an ACL permission entry.
+  try {
+    if (existsSync(DEV_OVERRIDE_PATH)) {
+      const overrides = JSON.parse(readFileSync(DEV_OVERRIDE_PATH, 'utf-8'));
+      for (const [name, override] of Object.entries(overrides)) {
+        if (registry[name]) Object.assign(registry[name], override);
+      }
+    }
+  } catch {
+    /* an unreadable override file must not break the detector */
+  }
+
+  const ids = [];
+  for (const meta of Object.values(registry)) {
+    const plugin = meta?.tauriPlugin;
+    if (!plugin?.id) continue;
+    if (!Array.isArray(plugin.commands) || plugin.commands.length === 0) continue;
+    if (!ids.includes(plugin.id)) ids.push(plugin.id);
+  }
+  return ids;
+}
 
 export const FULLY_GENERATED_MANAGED = [
   'src-tauri/src/driver_init.rs',

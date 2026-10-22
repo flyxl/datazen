@@ -125,7 +125,8 @@ pub use types::*;
 ///
 /// [`MIN_PROTOCOL_VERSION`] deliberately stayed at 1: raising it is a product
 /// decision about which old plugins keep loading, not a consequence of this
-/// break, and `driver-capability-migration.md` keeps the two apart.
+/// break, and the protocol gate keeps the two apart (see
+/// `docs/architecture/backend/drivers.md` §2.5).
 pub const PROTOCOL_VERSION: u32 = 6;
 
 /// Minimum protocol version the host still supports.

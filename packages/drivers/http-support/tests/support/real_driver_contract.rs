@@ -15,7 +15,8 @@
 //! ```
 //!
 //! Why `http-support`: it is the one crate under `packages/drivers/` documented as a
-//! *shared helper* rather than a driver (`driver-capability-migration.md` §1.2), so no
+//! *shared helper* rather than a driver (see `docs/development/driver-test-coverage.md`),
+//! so no
 //! driver crate owns the contract and every driver pulls it in as a peer file. `#[path]`
 //! keeps the template inside `tests/**` (AGENTS.md「驱动测试落点」: driver tests never move
 //! to Host) and avoids needing a `[dev-dependencies]` entry in each driver `Cargo.toml`.

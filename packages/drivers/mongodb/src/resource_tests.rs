@@ -360,7 +360,6 @@ async fn cancellation_is_refused_and_never_falls_back_to_a_session_wide_kill() {
 #[tokio::test]
 async fn the_driver_itself_refuses_a_session_wide_cancel() {
     // The provider refuses; the driver must not answer `Ok(())` behind it.
-    // `driver-capability-migration.md` §7.1 names this exact call.
     use datazen_driver_api::DatabaseDriver;
     let driver = crate::MongodbDriver::new();
     let handle = ConnectionHandle {

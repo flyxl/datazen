@@ -622,8 +622,8 @@ impl CancellationOutcome {
 /// 两者**形状相同**（都是 `Clean` / `Discard`），语义逐字对齐，但**刻意不共用符号**：
 ///
 /// * `packages/driver-api/src/session.rs` 那个是**驱动协议的冻结面**。它的增删由
-///   `PROTOCOL_VERSION` 与协议成员闸门治理（见 `docs/architecture/platform/
-///   driver-capability-migration.md` §6），而本类型是宿主资源层的内部端口返回。
+///   `PROTOCOL_VERSION` 与协议成员闸门治理（见 `docs/architecture/backend/
+///   drivers.md` §2.5），而本类型是宿主资源层的内部端口返回。
 ///   共用符号等于让驱动协议的任何一次演进顺着类型别名渗进 `resource/**` 的公开面。
 /// * 本模块的边界声明要求它只收发**账目标识**与自有结论（见 `resource/mod.rs` 模块头），
 ///   而 `DriverCleanVerdict` 的同款处理已经确立了这条惯例：**结论进得来，判定依据进不来**。

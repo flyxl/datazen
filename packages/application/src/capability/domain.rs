@@ -19,12 +19,13 @@
 //!    任何**没被显式声明**的能力都落在「不可用」上，而不是「可用」。
 //! 2. [`CapabilityState::enables_feature`] 只对 [`CapabilityState::Available`] 为真。
 //!    [`CapabilityState::Degraded`] **不**开启功能——降级路径必须由调用方显式接受
-//!    （[`CapabilityRegistry::resolve`]），不接受就是错误。依据 `driver-capability-migration.md`
-//!    §6.1：降级路径「必须在 UI 与 effectOutcome 上标出 partial 或 unknown，不得呈现为成功」。
+//!    （[`CapabilityRegistry::resolve`]），不接受就是错误。依据
+//!    `connection-management.md` §5.2：能力未知时「不开启需要保证的功能」，
+//!    降级路径必须标出 `partial` 或 `unknown`，不得呈现为成功。
 //! 3. [`CapabilityCompletion`] 没有 `Default`，构造它的唯一入口是 [`CapabilityGrant`]。
 //!    没有 Full 授权就写不出 `Full` 完成态。
 //!
-//! 依据：连接 §5.2 能力粒度表、`driver-capability-migration.md` §6.1、计划第 93/99 行。
+//! 依据：连接 §5.2 能力粒度表、计划第 93/99 行。
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -81,7 +82,7 @@ pub enum CapabilityKey {
     // ── session ──
     /// 驱动真的持有会话级物理连接（连接 §5.2 `statefulSession`）。
     ///
-    /// 「池大小为 1」**不是**证据（`driver-capability-migration.md` §6.1 禁止条款）。
+    /// 「池大小为 1」**不是**证据（`connection-management.md` §5.2 禁止条款）。
     StatefulSession,
     /// 能完整读回会话上下文（连接 §5.2 `contextObservation = full`）。
     ContextObservation,
@@ -326,7 +327,7 @@ impl Default for CapabilityState {
 pub enum CapabilityCompletion {
     /// 完整完成。
     Full,
-    /// 部分完成，必须带上原因。依据 `driver-capability-migration.md` §6.1：
+    /// 部分完成，必须带上原因。依据 `connection-management.md` §5.2：
     /// 降级路径要标 `partial` 或 `unknown`，不得呈现为成功。
     Partial(DegradationCause),
 }

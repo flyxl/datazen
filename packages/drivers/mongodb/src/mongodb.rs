@@ -681,9 +681,8 @@ impl DatabaseDriver for MongodbDriver {
         // driver-side cursor that this crate never keeps a handle to, and no
         // execution id is registered against the pool entry. Returning `Ok(())`
         // would tell the caller a cancellation happened when nothing was
-        // signalled — see docs/architecture/platform/driver-capability-migration.md
-        // §7.1, which names this method as a fail-closed default that must not
-        // stay broken. Say what is true instead.
+        // signalled — a fail-closed default must not stay broken. Say what is
+        // true instead.
         Err(DriverError::Unsupported(
             "mongodb has no session-wide query cancellation; a cursor must be closed by the caller that owns it"
                 .into(),
