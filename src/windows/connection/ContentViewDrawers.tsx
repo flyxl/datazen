@@ -9,6 +9,7 @@ import {
   originChannelWritable,
   resolveResultEditability,
   resolveResultWriteBack,
+  resolveRowAddressability,
   type ServerEditability,
 } from '../../lib/resultEditability';
 import { useTableDataStore } from '../../stores/tableDataStore';
@@ -162,6 +163,7 @@ export function ContentViewDrawers({
     schema: activePanel?.type === 'query' ? activePanel.schema ?? null : null,
     sql: activeQueryResult?.sql ?? '',
     resultColumns: activeQueryResult?.columns.map((column) => column.name) ?? [],
+    table: activeQueryResult?.source?.relation?.object?.name ?? null,
   });
 
   /**
@@ -183,9 +185,25 @@ export function ContentViewDrawers({
   /** Why the result on screen cannot be edited, when it cannot. */
   const queryReadOnlyReason = useMemo(() => {
     if (activePanel?.type !== 'query') return null;
-    if (queryResultEditable) return null;
-    return originVerdict?.reason ?? 'unknownOrigin';
-  }, [activePanel?.type, queryResultEditable, originVerdict]);
+    if (!queryResultEditable) return originVerdict?.reason ?? 'unknownOrigin';
+    // The result is writable, but the row on screen may still not be
+    // addressable: its locating key is NULL, or its identity is not unique on
+    // the page. That is the drawer on that row, so it is where the reason
+    // belongs.
+    if (!activeQueryResult || resultDetailRowIndex === null) return null;
+    return resolveRowAddressability(
+      originVerdict?.identityColumns ?? [],
+      activeQueryResult.rows,
+      activeQueryResult.columns,
+      resultDetailRowIndex,
+    );
+  }, [
+    activePanel?.type,
+    activeQueryResult,
+    originVerdict,
+    queryResultEditable,
+    resultDetailRowIndex,
+  ]);
 
   const detailColumnDefs: ColumnDef[] = useMemo(() => {
     if (activePanel?.type === 'table') {
@@ -245,6 +263,10 @@ export function ContentViewDrawers({
         // A column that is not a straight copy of a base column has no source
         // to write back to — the back end would refuse it with
         // `grid.result.writeDenied`.
+        //
+        // §1.3 §5 has **no executor on the narrow channel today**: the origin
+        // channel is closed, so no column list exists to check against. The
+        // guard is in place and starts to bite the moment the channel opens.
         if (
           originChannelWritable(originVerdict ?? UNJUDGED) &&
           !isColumnEditable(originVerdict ?? UNJUDGED, col)

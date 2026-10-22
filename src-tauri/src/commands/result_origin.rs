@@ -18,7 +18,7 @@ use datazen_driver_api::{ConnectionConfig, LegacyCatalogReader, ResultOrigin, Sq
 use datazen_feature_core::data_browsing::RowChangePlan;
 use datazen_feature_core::services::result_edit::{
     build_result_cell_change_plan, evaluate_result_editability, read_only_error_code,
-    GridReadOnlyReason, ResultCellChangeRequest, ResultEditability, ResultErrorCode,
+    GridReadOnlyReason, ResultCellChangeRequest, ResultEditability,
 };
 use datazen_runtime::schema_cache::CachedColumns;
 use serde::{Deserialize, Serialize};
@@ -49,6 +49,14 @@ pub struct ResolveResultOriginRequest {
     pub sql: String,
     /// The column names the executed result reports.
     pub result_columns: Vec<String>,
+    /// The real name of the relation the result was read from, as the narrow
+    /// host-side mapping check named it.
+    ///
+    /// It is what lets the catalog be read on the narrow channel: when the
+    /// driver cannot describe the result, this is the only handle on the
+    /// source table — and the catalog is where the locating key columns come
+    /// from.
+    pub table: Option<String>,
 }
 
 /// Ask where a result came from, and whether it may be written back.
@@ -85,6 +93,7 @@ pub(crate) async fn resolve_result_origin_impl(
         request.database.as_deref(),
         request.schema.as_deref(),
         &origin,
+        request.table.as_deref(),
     )
     .await;
     let primary_keys = columns
@@ -94,8 +103,8 @@ pub(crate) async fn resolve_result_origin_impl(
     Ok(evaluate_result_editability(
         &origin,
         &primary_keys,
+        &request.result_columns,
         !profile.read_only,
-        request.result_columns.len(),
     ))
 }
 
@@ -143,19 +152,20 @@ pub(crate) async fn preview_result_cell_change_impl(
         request.database.as_deref(),
         request.schema.as_deref(),
         &origin,
+        Some(request.table.as_str()),
     )
     .await
     .ok_or_else(|| {
         CommandError::Validation(format!(
             "{}: the source table's columns cannot be read, so the write cannot be verified",
-            ResultErrorCode::OriginUnavailable
+            read_only_error_code(GridReadOnlyReason::UnknownOrigin)
         ))
     })?;
     let verdict = evaluate_result_editability(
         &origin,
         &columns.primary_keys,
+        &request.result_columns,
         !profile.read_only,
-        request.result_columns.len(),
     );
     if !verdict.writable {
         let reason = verdict.reason.unwrap_or(GridReadOnlyReason::UnknownOrigin);
@@ -191,7 +201,7 @@ async fn describe_origin(
         .map_err(|error| {
             CommandError::Validation(format!(
                 "{}: the driver cannot describe where this result came from ({error})",
-                ResultErrorCode::OriginUnavailable
+                read_only_error_code(GridReadOnlyReason::UnknownOrigin)
             ))
         })
 }
@@ -207,8 +217,14 @@ async fn source_table_columns(
     database: Option<&str>,
     schema: Option<&str>,
     origin: &ResultOrigin,
+    narrow_table: Option<&str>,
 ) -> Option<CachedColumns> {
-    let table = origin_table_name(origin)?;
+    // The driver's origin names the relation when it can; the narrow mapping
+    // check names it when it cannot. Either way the catalog is the authority
+    // for the key columns.
+    let table = origin_table_name(origin)
+        .or_else(|| narrow_table.map(str::to_string))
+        .filter(|name| !name.trim().is_empty())?;
     let database = nonblank(database).or_else(|| nonblank(profile.database.as_deref()))?;
     // A driver without a schema level rejects any schema argument instead of
     // ignoring it, so the effective schema comes from the driver's own

@@ -13,6 +13,8 @@ import {
   originChannelWritable,
   resolveResultEditability,
   resolveResultWriteBack,
+  resolveRowAddressability,
+  type GridReadOnlyReason,
   type ServerEditability,
 } from '../../../lib/resultEditability';
 import { useResultVerdict } from '../../../stores/panelResultEdit';
@@ -69,6 +71,14 @@ export function ResultTableView({
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const [editError, setEditError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
+  /**
+   * Why the last clicked row refused to open an editor.
+   *
+   * A row-level refusal is not a silent one: the grid says which row could
+   * not be addressed and why (its locating key is NULL, or its identity is
+   * not unique on the page).
+   */
+  const [rowRefusal, setRowRefusal] = useState<GridReadOnlyReason | null>(null);
 
   const { verdict } = useResultVerdict(writeBackKey);
   const serverVerdict = verdict ?? UNJUDGED;
@@ -164,11 +174,24 @@ export function ResultTableView({
       );
       if (!editability.writable) {
         setEditingCell(null);
+        setRowRefusal(
+          resolveRowAddressability(
+            serverVerdict.identityColumns ?? [],
+            result.rows,
+            result.columns,
+            row,
+          ),
+        );
         return;
       }
+      setRowRefusal(null);
       // A column that is not a straight copy of a base column has no source
       // to write back to — the back end refuses it with
       // `grid.result.writeDenied`.
+      //
+      // §1.3 §5 has **no executor on the narrow channel today**: the origin
+      // channel is closed, so no column list exists to check against. The
+      // guard is in place and starts to bite the moment the channel opens.
       if (originChannelWritable(serverVerdict) && !isColumnEditable(serverVerdict, col)) {
         setEditingCell(null);
         return;
@@ -196,6 +219,14 @@ export function ResultTableView({
           {result.source?.writableMapping === 'verified' && !result.runtimeBinding
             ? t('query.resultEditRequiresRefresh')
             : t(gridReadOnlyMessageKey(readOnlyReason))}
+        </div>
+      )}
+      {rowRefusal && (
+        <div
+          data-dt-grid-row-refusal={rowRefusal}
+          className="p-2 text-xs text-fg-muted"
+        >
+          {t(gridReadOnlyMessageKey(rowRefusal))}
         </div>
       )}
       {editError && (

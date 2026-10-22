@@ -120,7 +120,13 @@ pub struct IdentityColumn {
 pub struct ResultEditability {
     /// Whether the result can be written back at all.
     pub writable: bool,
-    /// The key columns, in both names. Empty when the result is read-only.
+    /// The **locating** key columns, in both names.
+    ///
+    /// They are reported even when the result is read-only: the front end
+    /// needs them to decide whether *a row* can be addressed (the key value
+    /// must not be NULL, and no other row on the page may share the identity),
+    /// and those are page-level facts that do not depend on the result being
+    /// writable.
     pub identity_columns: Vec<IdentityColumn>,
     /// Every column that is a straight copy of a base-table column, in both
     /// names. A cell whose column is missing from this list is not editable —
@@ -134,14 +140,63 @@ pub struct ResultEditability {
 }
 
 /// The verdict for a read-only result.
-fn read_only(reason: GridReadOnlyReason) -> ResultEditability {
+///
+/// The locating key columns are **kept**: they are a fact about the table, not
+/// about the verdict, and the page-level guards need them.
+fn read_only(
+    reason: GridReadOnlyReason,
+    identity_columns: Vec<IdentityColumn>,
+) -> ResultEditability {
     ResultEditability {
         writable: false,
-        identity_columns: Vec::new(),
+        identity_columns,
         editable_columns: Vec::new(),
         table: None,
         reason: Some(reason),
     }
+}
+
+/// The locating key columns of a result, as far as they are known.
+///
+/// They come from the **catalog**, not from the origin verdict: the catalog's
+/// normalised key list is what the narrow write path re-verifies the identity
+/// against, so it is the authority. The origin verdict can only add the
+/// *aliased* case (a key under another name), which the catalog cannot know.
+fn locating_key_columns(
+    origin: &ResultOrigin,
+    primary_keys: &[String],
+    result_columns: &[String],
+) -> Vec<IdentityColumn> {
+    let mapped = match origin {
+        ResultOrigin::Determined(detail) if is_self_consistent(detail, result_columns.len()) => {
+            Some(detail)
+        }
+        _ => None,
+    };
+    let mut identity = Vec::with_capacity(primary_keys.len());
+    for key in primary_keys {
+        if let Some(detail) = mapped {
+            if let Some(column) = detail.columns.iter().find(|column| {
+                column.passthrough && column.source_column.as_deref() == Some(key.as_str())
+            }) {
+                identity.push(IdentityColumn {
+                    column: column.column.clone(),
+                    source_column: key.clone(),
+                });
+                continue;
+            }
+        }
+        // The plain case: the key appears in the result under its own name.
+        // `SELECT *` cannot rename a column, so this is the whole story on the
+        // narrow channel.
+        if result_columns.iter().any(|name| name == key) {
+            identity.push(IdentityColumn {
+                column: key.clone(),
+                source_column: key.clone(),
+            });
+        }
+    }
+    identity
 }
 
 /// Decide whether a result may be written back.
@@ -150,58 +205,66 @@ fn read_only(reason: GridReadOnlyReason) -> ResultEditability {
 /// from the catalog, never a re-derivation from the column flags, because the
 /// two can disagree and the normalised list names the real key.
 ///
-/// `result_column_count` is how many columns the executed result reports. It
-/// is what makes a driver report checkable: a report that does not line up
-/// with the result cannot be trusted at all.
+/// `result_columns` are the column names the executed result reports. They
+/// are what makes a driver report checkable (a report that does not line up
+/// with the result cannot be trusted at all) and what lets the locating key
+/// columns be found on the narrow channel.
 pub fn evaluate_result_editability(
     origin: &ResultOrigin,
     primary_keys: &[String],
+    result_columns: &[String],
     session_writable: bool,
-    result_column_count: usize,
 ) -> ResultEditability {
+    let result_column_count = result_columns.len();
+    // The locating key columns are computed **before** the verdict: a refusal
+    // must not take them away, or the page-level guards would have nothing to
+    // work with.
+    let locating = locating_key_columns(origin, primary_keys, result_columns);
     if !session_writable {
-        return read_only(GridReadOnlyReason::SessionReadOnly);
+        return read_only(GridReadOnlyReason::SessionReadOnly, locating);
     }
     let detail = match origin {
-        ResultOrigin::Undeterminable(_) => return read_only(GridReadOnlyReason::UnknownOrigin),
+        ResultOrigin::Undeterminable(_) => {
+            return read_only(GridReadOnlyReason::UnknownOrigin, locating)
+        }
         ResultOrigin::Determined(detail) => detail,
     };
     if !is_self_consistent(detail, result_column_count) {
-        return read_only(GridReadOnlyReason::AmbiguousOrigin);
+        return read_only(GridReadOnlyReason::AmbiguousOrigin, locating);
     }
     if detail.set_operation.is_some() {
-        return read_only(GridReadOnlyReason::SetOperation);
+        return read_only(GridReadOnlyReason::SetOperation, locating);
     }
     if detail.has_derived_source {
-        return read_only(GridReadOnlyReason::DerivedSource);
+        return read_only(GridReadOnlyReason::DerivedSource, locating);
     }
     if detail.aggregated {
-        return read_only(GridReadOnlyReason::Aggregate);
+        return read_only(GridReadOnlyReason::Aggregate, locating);
     }
     if detail.deduplicated {
-        return read_only(GridReadOnlyReason::Distinct);
+        return read_only(GridReadOnlyReason::Distinct, locating);
     }
     match detail.object_kind {
         ResultObjectKind::BaseTable => {}
         ResultObjectKind::View | ResultObjectKind::MaterializedView => {
-            return read_only(GridReadOnlyReason::View)
+            return read_only(GridReadOnlyReason::View, locating)
         }
         // The driver could not confirm the relation is a base table. That is
         // not the same as "it is a view", so it does not get the view's
         // message.
-        ResultObjectKind::Unknown => return read_only(GridReadOnlyReason::UnknownOrigin),
+        ResultObjectKind::Unknown => return read_only(GridReadOnlyReason::UnknownOrigin, locating),
     }
     if detail.shape == ResultShape::Unknown {
-        return read_only(GridReadOnlyReason::UnknownOrigin);
+        return read_only(GridReadOnlyReason::UnknownOrigin, locating);
     }
     if detail.shape != ResultShape::SingleBaseTable || detail.referenced_tables != 1 {
-        return read_only(GridReadOnlyReason::MultiTable);
+        return read_only(GridReadOnlyReason::MultiTable, locating);
     }
     if primary_keys.is_empty() {
-        return read_only(GridReadOnlyReason::NoPrimaryKey);
+        return read_only(GridReadOnlyReason::NoPrimaryKey, locating);
     }
     let Some(identity) = identity_columns(detail, primary_keys) else {
-        return read_only(GridReadOnlyReason::KeyNotSelected);
+        return read_only(GridReadOnlyReason::KeyNotSelected, locating);
     };
     let editable_columns = detail
         .columns

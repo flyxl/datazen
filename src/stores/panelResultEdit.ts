@@ -47,6 +47,12 @@ export interface ResultOriginRequest {
   schema: string | null;
   sql: string;
   resultColumns: string[];
+  /**
+   * The relation the result was read from, as the narrow mapping check named
+   * it. It is what lets the back end read the catalog — and with it the
+   * locating key columns — when the driver cannot describe the result.
+   */
+  table: string | null;
 }
 
 export interface PanelResultEditState {
@@ -95,6 +101,7 @@ export const usePanelResultEdit = create<PanelResultEditState>((set, get) => ({
         schema: request.schema,
         sql: request.sql,
         resultColumns: request.resultColumns,
+        table: request.table,
       });
       if (get().generations[key] !== generation) return;
       set((state) => ({ verdicts: { ...state.verdicts, [key]: verdict } }));
@@ -174,8 +181,10 @@ export function useResultEditability(options: {
   sql: string;
   /** The column names the result reports. */
   resultColumns: readonly string[];
+  /** The relation the result was read from, as the narrow check named it. */
+  table: string | null;
 }): { verdict: ServerEditability | null; resolving: boolean } {
-  const { key, dbSessionId, database, schema, sql, resultColumns } = options;
+  const { key, dbSessionId, database, schema, sql, resultColumns, table } = options;
   const verdict = usePanelResultEdit((state) => (key ? state.verdicts[key] ?? null : null));
   const resolving = usePanelResultEdit((state) => (key ? state.resolving[key] === true : false));
   // The column list is a dependency of the request, and its identity changes
@@ -189,11 +198,12 @@ export function useResultEditability(options: {
       schema,
       sql,
       resultColumns: JSON.parse(columnsKey) as string[],
+      table,
     });
     return () => {
       usePanelResultEdit.getState().clearForResult(key);
     };
-  }, [key, dbSessionId, database, schema, sql, columnsKey]);
+  }, [key, dbSessionId, database, schema, sql, columnsKey, table]);
   return { verdict, resolving };
 }
 
@@ -201,9 +211,14 @@ export function useResultEditability(options: {
  * Refuse a write to a result the driver has already refused.
  *
  * The interface is not the security boundary: a caller that skipped it must
- * not be able to write through a read-only result either. A result nobody has
- * judged yet is not refused here — the judgement arrives on its own, and the
- * interface stays read-only until it does.
+ * not be able to write through a read-only result either.
+ *
+ * **"Not judged yet" is not "judged read-only".** A result nobody has judged
+ * is *not* refused here: the judgement arrives on its own, and the interface
+ * stays read-only until it does. A caller that skipped the interface can
+ * therefore still enter the write path in that window — what stops it there is
+ * the narrow write path's own re-verification against the live catalog, not
+ * this guard.
  */
 export function assertResultWritable(dbSessionId: string, resultIdx: number): void {
   const verdict = usePanelResultEdit.getState().verdicts[resultEditKey(dbSessionId, resultIdx)];

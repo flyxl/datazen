@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   RESULT_ORIGIN_WRITE_BACK_ENABLED,
+  resolveRowAddressability,
   gridReadOnlyMessageKey,
   isColumnEditable,
   originChannelWritable,
@@ -69,11 +70,14 @@ describe('resolveGridEditability', () => {
     expect(resolveGridEditability(writable, rows, columns, -1).writable).toBe(false);
   });
 
-  it('refuses a result the back end called writable but that names no key column', () => {
+  it('does not refuse a row when no locating key column is known', () => {
+    // An unreadable catalog must not turn a writable result into a grey one:
+    // the narrow write path re-verifies the identity against the live
+    // catalog before it writes.
     const verdict = resolveGridEditability({ ...writable, identityColumns: [] }, rows, columns, 0);
 
-    expect(verdict.writable).toBe(false);
-    expect(verdict.writable === false && verdict.reason).toBe('keyNotSelected');
+    expect(verdict.writable).toBe(true);
+    expect(resolveRowAddressability([], rows, columns, 0)).toBeNull();
   });
 
   it('lets a page with unique, non-NULL keys through', () => {

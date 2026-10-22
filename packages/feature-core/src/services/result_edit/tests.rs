@@ -69,6 +69,11 @@ fn keys() -> Vec<String> {
     vec!["id".to_string()]
 }
 
+/// The column names the executed result reports.
+fn result_columns() -> Vec<String> {
+    vec!["id".to_string(), "total".to_string()]
+}
+
 /// The catalog answer for the source table.
 fn cached_columns() -> CachedColumns {
     CachedColumns {
@@ -117,7 +122,8 @@ fn single_table_detail() -> ResultOriginDetail {
 
 #[test]
 fn evaluate_single_base_table_with_pk_is_writable() {
-    let verdict = evaluate_result_editability(&single_table_origin(), &keys(), true, 2);
+    let verdict =
+        evaluate_result_editability(&single_table_origin(), &keys(), &result_columns(), true);
 
     assert!(verdict.writable);
     assert_eq!(verdict.reason, None);
@@ -342,7 +348,12 @@ fn every_unwritable_shape_has_its_own_reason() {
     ];
 
     for (name, origin, primary_keys, session_writable, expected) in cases {
-        let verdict = evaluate_result_editability(&origin, &primary_keys, session_writable, 2);
+        let verdict = evaluate_result_editability(
+            &origin,
+            &primary_keys,
+            &result_columns(),
+            session_writable,
+        );
         assert!(!verdict.writable, "{name} must not be writable");
         assert_eq!(
             verdict.reason,
@@ -350,10 +361,55 @@ fn every_unwritable_shape_has_its_own_reason() {
             "{name} has the wrong reason"
         );
         assert!(
-            verdict.identity_columns.is_empty(),
-            "{name} must not report identity columns"
+            verdict.editable_columns.is_empty(),
+            "{name} must not report editable columns"
         );
     }
+}
+
+/// The locating key columns survive a refusal.
+///
+/// They are a fact about the table, not about the verdict: the front end needs
+/// them to decide whether a *row* can be addressed (the key value must not be
+/// NULL, and no other row may share the identity), and those facts do not
+/// depend on the result being writable.
+#[test]
+fn a_refused_verdict_still_reports_the_locating_key_columns() {
+    let verdict = evaluate_result_editability(
+        &ResultOrigin::Undeterminable(datazen_driver_api::UndeterminableReason::NotImplemented),
+        &keys(),
+        &result_columns(),
+        true,
+    );
+
+    assert!(!verdict.writable);
+    assert_eq!(
+        verdict.identity_columns,
+        vec![IdentityColumn {
+            column: "id".to_string(),
+            source_column: "id".to_string(),
+        }],
+        "the catalog's key list locates the row even when the driver cannot describe the result"
+    );
+    assert!(verdict.editable_columns.is_empty());
+}
+
+/// A key that is not among the result's columns locates nothing.
+#[test]
+fn a_key_that_is_not_in_the_result_reports_no_locating_column() {
+    let mut columns = result_columns();
+    columns[0] = "other".to_string();
+    let verdict = evaluate_result_editability(
+        &ResultOrigin::Undeterminable(datazen_driver_api::UndeterminableReason::NotImplemented),
+        &keys(),
+        &columns,
+        true,
+    );
+
+    assert!(
+        verdict.identity_columns.is_empty(),
+        "a key the result does not show cannot locate a row"
+    );
 }
 
 #[test]
@@ -383,7 +439,7 @@ fn an_aliased_key_column_is_still_writable() {
         ],
     });
 
-    let verdict = evaluate_result_editability(&origin, &keys(), true, 2);
+    let verdict = evaluate_result_editability(&origin, &keys(), &result_columns(), true);
 
     assert!(verdict.writable);
     assert_eq!(
@@ -398,7 +454,8 @@ fn an_aliased_key_column_is_still_writable() {
 
 #[test]
 fn a_read_only_session_wins_over_every_other_fact() {
-    let verdict = evaluate_result_editability(&single_table_origin(), &keys(), false, 2);
+    let verdict =
+        evaluate_result_editability(&single_table_origin(), &keys(), &result_columns(), false);
     assert_eq!(verdict.reason, Some(GridReadOnlyReason::SessionReadOnly));
 }
 
@@ -557,7 +614,7 @@ fn request() -> ResultCellChangeRequest {
 
 /// The verdict a writable result produces.
 fn writable() -> ResultEditability {
-    evaluate_result_editability(&single_table_origin(), &keys(), true, 2)
+    evaluate_result_editability(&single_table_origin(), &keys(), &result_columns(), true)
 }
 
 #[test]
@@ -659,8 +716,8 @@ fn preview_refuses_a_read_only_result() {
     let verdict = evaluate_result_editability(
         &ResultOrigin::Undeterminable(datazen_driver_api::UndeterminableReason::NotImplemented),
         &keys(),
+        &result_columns(),
         true,
-        2,
     );
 
     let error = build_result_cell_change_plan(&driver, &request(), &verdict, &cached_columns())

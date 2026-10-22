@@ -77,6 +77,14 @@ export interface ResolveResultOriginRequest {
   sql: string;
   /** The column names the executed result reports. */
   resultColumns: string[];
+  /**
+   * The real name of the relation the result was read from, as the narrow
+   * host-side mapping check named it.
+   *
+   * It is what lets the back end read the catalog — and with it the locating
+   * key columns — when the driver cannot describe the result.
+   */
+  table: string | null;
 }
 
 /** One cell edit of a query result. */

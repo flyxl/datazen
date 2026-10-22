@@ -29,6 +29,11 @@ fn keys() -> Vec<String> {
     vec!["id".to_string()]
 }
 
+/// The column names the executed result reports.
+fn result_columns() -> Vec<String> {
+    vec!["id".to_string(), "total".to_string()]
+}
+
 /// The reasons the back end can produce without a driver that implements the
 /// origin contract.
 #[test]
@@ -43,8 +48,8 @@ fn only_two_reasons_are_producible_without_a_determined_origin() {
         let verdict = evaluate_result_editability(
             &ResultOrigin::Undeterminable(reason.clone()),
             &keys(),
+            &result_columns(),
             true,
-            2,
         );
         assert!(!verdict.writable);
         assert_eq!(
@@ -60,8 +65,8 @@ fn only_two_reasons_are_producible_without_a_determined_origin() {
     let verdict = evaluate_result_editability(
         &ResultOrigin::Undeterminable(UndeterminableReason::NotImplemented),
         &keys(),
+        &result_columns(),
         false,
-        2,
     );
     assert!(!verdict.writable);
     assert_eq!(verdict.reason, Some(GridReadOnlyReason::SessionReadOnly));
@@ -108,31 +113,42 @@ fn the_shape_reasons_are_unreachable_while_every_driver_says_undeterminable() {
             },
         ],
     });
-    let verdict = evaluate_result_editability(&determined, &keys(), true, 2);
+    let verdict = evaluate_result_editability(&determined, &keys(), &result_columns(), true);
     assert_eq!(verdict.reason, Some(GridReadOnlyReason::MultiTable));
 
     // ... while the origin every driver actually returns reaches none of them.
     let verdict = evaluate_result_editability(
         &ResultOrigin::Undeterminable(UndeterminableReason::NotImplemented),
         &keys(),
+        &result_columns(),
         true,
-        2,
     );
     assert_ne!(verdict.reason, Some(GridReadOnlyReason::MultiTable));
 }
 
 /// A verdict the back end refuses can never be turned into a writable one by
-/// the page: the page-level reasons are front-end facts and need a writable
-/// back-end verdict in the first place.
+/// the page — but it still reports the **locating** key columns.
+///
+/// The change from the first version of this file is deliberate: the key
+/// columns used to be cleared together with the refusal, which made the
+/// page-level guards (PRD §1.3 §6 and §7) structurally unreachable — the
+/// front end had no key to read the row's identity from. The key columns come
+/// from the **catalog**, so they survive the refusal; only the columns that
+/// may be *written* stay empty.
 #[test]
-fn a_refused_verdict_reports_no_identity_and_no_editable_columns() {
+fn a_refused_verdict_reports_the_locating_key_columns_but_no_editable_columns() {
     let verdict = evaluate_result_editability(
         &ResultOrigin::Undeterminable(UndeterminableReason::NotImplemented),
         &keys(),
+        &result_columns(),
         true,
-        2,
     );
-    assert!(verdict.identity_columns.is_empty());
+    assert_eq!(
+        verdict.identity_columns.len(),
+        1,
+        "the catalog's key list locates the row even when the driver cannot describe the result"
+    );
+    assert_eq!(verdict.identity_columns[0].column, "id");
     assert!(verdict.editable_columns.is_empty());
     assert!(verdict.table.is_none());
 }

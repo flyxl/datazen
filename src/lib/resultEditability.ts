@@ -56,13 +56,73 @@ export type GridEditability =
       writable: true;
       identityColumns: IdentityColumn[];
       editableColumns: IdentityColumn[];
-      table: ResultTableRef;
+      /**
+       * The relation the rows come from — `null` when the verdict that
+       * granted the write-back did not name one (the narrow mapping verdict
+       * does not).
+       */
+      table: ResultTableRef | null;
     }
   | { writable: false; reason: GridReadOnlyReason };
 
 /** The verdict for a result that is read-only, with its reason. */
 function readOnly(reason: GridReadOnlyReason): GridEditability {
   return { writable: false, reason };
+}
+
+/**
+ * Whether one row of the page can be addressed at all.
+ *
+ * Two facts, both pure data, both independent of **which channel** granted
+ * the write-back:
+ *
+ * * the locating key value must not be NULL — a NULL cannot take part in an
+ *   equality comparison, so the row cannot be located by it (PRD §1.3 §6);
+ * * no other row on the page may carry the same identity — two rows with the
+ *   same identity cannot be told apart, so neither of them may be written
+ *   back (PRD §1.3 §7).
+ *
+ * The locating key columns come from the **catalog** (the host's normalised
+ * key list), not from the origin verdict — that is the only way these facts
+ * are computable on the narrow channel, where the driver cannot describe the
+ * result at all.
+ *
+ * Returns the reason the row cannot be addressed, or `null` when it can.
+ */
+export function resolveRowAddressability(
+  identityColumns: ReadonlyArray<IdentityColumn>,
+  rows: ReadonlyArray<ReadonlyArray<unknown>>,
+  columns: ReadonlyArray<{ name: string }>,
+  rowIndex: number,
+): GridReadOnlyReason | null {
+  if (rowIndex < 0 || rowIndex >= rows.length) return 'rowNotFound';
+  if (identityColumns.length === 0) {
+    // No locating key column is known, so the facts cannot be computed. That
+    // is **not** a refusal: the narrow write path re-verifies the identity
+    // against the live catalog before it writes, so an unreadable catalog
+    // must not turn a writable result into a grey one.
+    return null;
+  }
+  const row = rows[rowIndex];
+  const values: unknown[] = [];
+  for (const identity of identityColumns) {
+    const index = columns.findIndex((column) => column.name === identity.column);
+    if (index < 0) return 'rowNotFound';
+    const value = row[index];
+    if (value === null || value === undefined) return 'keyValueNull';
+    values.push(value);
+  }
+  for (let other = 0; other < rows.length; other += 1) {
+    if (other === rowIndex) continue;
+    const candidate = rows[other];
+    const same = identityColumns.every((identity, position) => {
+      const index = columns.findIndex((column) => column.name === identity.column);
+      if (index < 0) return false;
+      return valuesEqual(values[position] as never, candidate[index] as never);
+    });
+    if (same) return 'duplicateIdentity';
+  }
+  return null;
 }
 
 /**
@@ -82,48 +142,18 @@ export function resolveGridEditability(
     // result writable, and it must not invent a different reason for it.
     return readOnly(server.reason ?? 'unknownOrigin');
   }
-  if (rowIndex < 0 || rowIndex >= rows.length) {
-    return readOnly('rowNotFound');
-  }
-  const identityColumns = server.identityColumns ?? [];
-  if (identityColumns.length === 0) {
-    // A writable result without a key column cannot address a row.
-    return readOnly('keyNotSelected');
-  }
-  const row = rows[rowIndex];
-  const values: unknown[] = [];
-  for (const identity of identityColumns) {
-    const index = columns.findIndex((column) => column.name === identity.column);
-    if (index < 0) {
-      return readOnly('rowNotFound');
-    }
-    const value = row[index];
-    if (value === null || value === undefined) {
-      // A NULL cannot take part in an equality comparison, so the row cannot
-      // be located by it.
-      return readOnly('keyValueNull');
-    }
-    values.push(value);
-  }
-  for (let other = 0; other < rows.length; other += 1) {
-    if (other === rowIndex) continue;
-    const candidate = rows[other];
-    const same = identityColumns.every((identity, position) => {
-      const index = columns.findIndex((column) => column.name === identity.column);
-      if (index < 0) return false;
-      return valuesEqual(values[position] as never, candidate[index] as never);
-    });
-    if (same) {
-      // Two rows with the same identity cannot be told apart, so neither of
-      // them may be written back.
-      return readOnly('duplicateIdentity');
-    }
-  }
+  const rowReason = resolveRowAddressability(
+    server.identityColumns ?? [],
+    rows,
+    columns,
+    rowIndex,
+  );
+  if (rowReason) return readOnly(rowReason);
   return {
     writable: true,
-    identityColumns,
+    identityColumns: server.identityColumns ?? [],
     editableColumns: server.editableColumns ?? [],
-    table: server.table as ResultTableRef,
+    table: server.table,
   };
 }
 
@@ -205,18 +235,30 @@ export function resolveResultEditability(
   columns: ReadonlyArray<{ name: string }>,
   rowIndex: number,
 ): GridEditability {
+  // The page-level facts are computed **first** and independently of the
+  // channel: a row whose locating key is NULL, or whose identity is not
+  // unique on the page, cannot be addressed — whichever channel opened the
+  // result. They are computed even when the result is refused, so they are
+  // never structurally unreachable.
+  const rowReason = resolveRowAddressability(
+    server.identityColumns ?? [],
+    rows,
+    columns,
+    rowIndex,
+  );
   if (resolveResultWriteBack(legacyVerified, server)) {
+    if (rowReason) return readOnly(rowReason);
     return {
       writable: true,
       identityColumns: server.identityColumns ?? [],
       editableColumns: server.editableColumns ?? [],
-      table: server.table as ResultTableRef,
+      table: server.table,
     };
   }
   // The release channel is closed, so the origin verdict may only **refuse**.
   // A refusal keeps the back end's reason: the page never invents one, and
   // the page-level facts never turn a refusal into a grant.
-  return resolveGridEditability({ ...server, writable: false }, rows, columns, rowIndex);
+  return readOnly(server.reason ?? 'unknownOrigin');
 }
 
 /**
