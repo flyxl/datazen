@@ -269,6 +269,28 @@ Tester 查出：`src/windows/connection/result-workspace/ResultTableView.tsx` �
 | **F1** | **放行通道的两个前提都还没到**：① 至少一个驱动覆写 `describe_result_origin`（helper `describe_result_origin_with_catalog` 已就绪，~12 行委派）② 前端写走新管线（`previewResultCellChange` 的 Rust 侧已就绪，前端未接） | **必须同批落地**。这是一个独立的小轨（可作 Wave 10 的第五轨或单独一波）：驱动侧 ~12 行/驱动 + 前端接线 + 把 `RESULT_ORIGIN_WRITE_BACK_ENABLED` 翻成 `true`（届时开关两侧的用例必须改） |
 | **F2** | 行详情抽屉读的是**默认窗格**的 exec（`s.queryExec.get(activePanel.id)`）⇒ 拆分窗格时它与网格显示的结果不是同一个 ⇒ 两边判定键会不同 ⇒ **拆分窗格下的抽屉只读原因会不准**（缺判 ⇒ 退化为 `unknownOrigin`，窄判定仍生效，无回归） | 既有实现的旧账，不在本轮范围。**需要单独一条**（要么让抽屉也按自己窗格读 exec，要么让判定键跨窗格一致） |
 
+## Wave 8 两轨的复测裁定
+
+### 轨 A `editors`：TEST_FAILED（1 条必须合流前修）+ 修复轮
+
+**必必修的 7 条**：① **导航守卫漏 `countExact` 与 `load`** ⇒ 编辑器卸载 ⇒ **用户已键入的草稿静默丢弃**（契约 05 §4.4 明令禁止）；② **ClickHouse `UInt*` 退化成 text**（颜色/编辑器/算子集三项全变）；③ CHANGELOG 只记 3 条、实测 **12 类**类型名变了族；④ **G5 的算子矩阵零回归守卫**（把 `enum` 改回 text 全集 ⇒ 全仓 7440 条用例全绿）；⑤ **驱动 hints 到不了筛选算子分派**（08 §3.5 的「一处声明、两处生效」未兑现）；⑥ `classifyDataType` 不接 hints ⇒ **颜色与编辑器分家**；⑦ 空 `columnEditorInfo` 会让 `data-dt-cell-type` **整个消失**。
+
+**协调者已改契约（三处）**：
+- 05 §3.5 **序 19 补 `uint`**（`int` 前缀匹配不到 `uint`；ClickHouse `UInt8…UInt256` / `Nullable(UInt32)`）。
+- 05 §3.4 第 2 条：`classifyDataType` 必须接受**同一份**驱动 hints（**可选、向后兼容**）⇒ 兑现 §3.1「一次判断一次投影」。
+- `src/lib/gridErrors.ts` 的骨架注释同步新语义（`PRODUCER_PENDING` = 「这个码不由 Rust 生产」）。
+
+### 轨 B `result-grid`：TEST_PASSED，但 ★ 被升级为中危 ⇒ 修复轮
+
+**★ 的裁定：采纳 (A)「让它成真」，并补一条关键约束**。Tester 论证逐行守卫是**可证明永远不会拒绝的死代码**（它的谓词与 `canEdit` 是同一个函数；拒绝分支强制 `writable:false` ⇒ `resolveGridEditability` 的第一个分支立刻返回）⇒ **PRD §1.3 第 6/7 条（被编辑行主键值非 NULL / 行身份在已取到的行内唯一）在生产路径上无人执行**，且本轮把可达性从「来源判定可写时会算」**收窄**为「永不可算」。
+
+**约束**：定位键列**不能只来自来源判定**（那正是它算不出来的原因）⇒ **必须来自宿主已有的目录事实**（`CachedColumns.primary_keys`；宿主壳本来就取了目录缓存的归一化主键列表）。四步：① 宿主把目录主键列传给判定入口 ⇒ **窄通道上也有定位键列**；② 共享层**拒绝时也保留** `identity_columns`；③ 前端把页级事实抽成**与通道无关**的独立函数，先算再 AND；④ 给它一个**今天可构造**的单独触发场景（「窄判定 verified 但被点那行主键为 NULL ⇒ 编辑器不得打开」）⇒ 去掉逐行闸的 mutation 才会转红。
+⇒ **不再维持现状**（Tester 原话：「现状是最差的一种：看上去守住了，实际没有」）。
+
+**必修二（低危）**：命令壳守卫只守「拼写形式」——① 块注释里的字面量**误报**；② **拼出**的码绕过它（**而出厂的壳今天就有两处**：`result_origin.rs:151/194` 直接命名 `ResultErrorCode::OriginUnavailable`）；③ 同行含 `//`（URL）会**藏住**字面量。⇒ 加两条规则：禁壳里出现 `ResultErrorCode::`；剥块注释且不被 `//` 截断。补完后它才真正对应「壳里没有规则」这一**不变量**。
+
+**方法论（值得留）**：Tester 把「被另一道闸遮住」从「更细的提示」升级为「**可证明永远不会拒绝**」，靠的是**代码级论证**（同一个谓词 + 拒绝分支强制短路），不是靠感觉。⇒ **一个守卫如果永远不会被单独触发，它就不是守卫。**
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
