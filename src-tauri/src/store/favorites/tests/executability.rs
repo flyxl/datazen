@@ -177,7 +177,7 @@ fn every_front_matter_field_round_trips_without_reordering() {
 
     // Re-rendering reproduces the file exactly — same keys, same order, same
     // body. This is the "a save is a no-op on an untouched file" property.
-    let rendered = FavoritesStore::render_file(&parsed);
+    let rendered = FavoritesRepository::render_file(&parsed);
     assert_eq!(
         rendered, text,
         "the header must not be reordered on rewrite"
@@ -206,15 +206,15 @@ fn every_front_matter_field_round_trips_without_reordering() {
         .into_iter()
         .find(|f| f.id == "01J8XK2MA1C2D3E")
         .unwrap();
-    assert!(!FavoritesStore::render_file(&future).contains("someFutureKey"));
-    assert!(FavoritesStore::render_file(&future).contains("-- title: Future\n"));
+    assert!(!FavoritesRepository::render_file(&future).contains("someFutureKey"));
+    assert!(FavoritesRepository::render_file(&future).contains("-- title: Future\n"));
 
     // And the re-rendered file is still executable.
     let with_table =
         "-- title: t\n-- connectionId: c\nCREATE TABLE t (v INT);\nINSERT INTO t VALUES (7);\n";
     fx.write("01J8XK2MB1C2D3E.sql", with_table);
     store.invalidate_cache();
-    let rerendered = FavoritesStore::render_file(
+    let rerendered = FavoritesRepository::render_file(
         &store
             .list(None)
             .into_iter()

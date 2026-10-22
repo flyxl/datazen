@@ -101,7 +101,7 @@ pub trait DataSyncHost: Send + Sync {
     async fn store_artifact(
         &self,
         artifact: ChangeSetArtifact,
-    ) -> Result<ArtifactStoreGuard, DataSyncError>;
+    ) -> Result<ArtifactRepositoryGuard, DataSyncError>;
     /// apply 加载工件并核验 plan 未过期。
     async fn load_artifact(
         &self,
@@ -163,6 +163,6 @@ pub struct TableSchemaPair {
 }
 
 /// store_artifact 的确认句（保留扩展位）。
-pub struct ArtifactStoreGuard {
+pub struct ArtifactRepositoryGuard {
     pub artifact_id: String,
 }

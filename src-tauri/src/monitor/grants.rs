@@ -1,5 +1,5 @@
 //! Local schedule grants are issued by a desktop user and held as backend metadata.
-use crate::{commands::AppState, store::Store};
+use crate::{commands::AppState, store::DesktopRepository};
 use datazen_feature_core::{
     dashboard::schedule_grant::{MonitorGrant, MonitorScope},
     workflow::{
@@ -17,7 +17,10 @@ pub(crate) fn revision(yaml: &str) -> String {
     format!("{:x}", Sha256::digest(yaml.as_bytes()))
 }
 
-pub(crate) fn current(store: &Store, context: &RequestContext) -> Result<MonitorGrant, String> {
+pub(crate) fn current(
+    store: &DesktopRepository,
+    context: &RequestContext,
+) -> Result<MonitorGrant, String> {
     let id = context
         .delegation_id
         .as_ref()

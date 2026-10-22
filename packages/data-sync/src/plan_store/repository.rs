@@ -5,8 +5,8 @@
 //! 过去计划注册表是 `static STORE`：任何形态的宿主共享同一张表，既没法按组织
 //! 隔离，也没法在测试里换一份干净实例。本模块把它改成**端口 + 宿主注入**：
 //!
-//! * [`SyncPlanStore`] 是端口：签发、查看、绑定端点身份、认领；
-//! * [`InMemorySyncPlanStore`] 是随包提供的进程内实现（规则留在包里）；
+//! * [`SyncPlanRepository`] 是端口：签发、查看、绑定端点身份、认领；
+//! * [`InMemorySyncPlanRepository`] 是随包提供的进程内实现（规则留在包里）；
 //! * 宿主在**组装期**创建实例并注入，调用点按 [`OrganizationScope`] 访问。
 //!
 //! ## 跨组织访问
@@ -65,7 +65,7 @@ pub struct SyncPlanIssue {
     pub source_schema_fingerprint: String,
     pub target_schema_fingerprint: String,
     /// 已冻结的比较存储。
-    pub comparison: super::ComparisonStore,
+    pub comparison: super::ComparisonStorage,
     pub options: SyncOptions,
     pub target_read_only_at_preview: bool,
 }
@@ -74,7 +74,7 @@ pub struct SyncPlanIssue {
 ///
 /// 每个方法都带 [`OrganizationScope`]：作用域只表达**组织维度**，跨组织访问按
 /// 「不存在」处理。端口不抛「无权限」错误。
-pub trait SyncPlanStore: Send + Sync {
+pub trait SyncPlanRepository: Send + Sync {
     /// 签发一份不可变计划并返回摘要预览。
     ///
     /// §2.1：compare 命令在 `dataSyncPrepare` Job 存在**之前**就铸好了计划 id，
@@ -114,11 +114,11 @@ pub trait SyncPlanStore: Send + Sync {
 /// 进程内实现：Mutex + HashMap，带有效期。
 ///
 /// 键是 **(组织, 计划 id)**，见模块头的「组织维度进键」。
-pub struct InMemorySyncPlanStore {
+pub struct InMemorySyncPlanRepository {
     plans: Mutex<HashMap<PlanKey, StoredSyncPlan>>,
 }
 
-impl InMemorySyncPlanStore {
+impl InMemorySyncPlanRepository {
     pub fn new() -> Self {
         Self {
             plans: Mutex::new(HashMap::new()),
@@ -132,13 +132,13 @@ impl InMemorySyncPlanStore {
     }
 }
 
-impl Default for InMemorySyncPlanStore {
+impl Default for InMemorySyncPlanRepository {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SyncPlanStore for InMemorySyncPlanStore {
+impl SyncPlanRepository for InMemorySyncPlanRepository {
     fn issue(
         &self,
         scope: &OrganizationScope,
@@ -275,9 +275,9 @@ fn unknown_plan_message() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::comparison_store::{default_comparison_store_root, LocalComparisonStoreRoot};
+    use crate::comparison_store::{default_comparison_storage_root, LocalComparisonStorageRoot};
     use crate::plan_store::{
-        selected_table_page, validate_selection_streaming, ComparisonStore,
+        selected_table_page, validate_selection_streaming, ComparisonStorage,
         SyncComparisonPageRequest, SyncRunSelection, SyncSelectionMode, SyncTableSelection,
     };
     use crate::{ChangeOperation, ComparisonResult, RowChange, TableResult};
@@ -297,15 +297,15 @@ mod tests {
         OrganizationScope::new(OrganizationId::new("datazen-data-sync-other"))
     }
 
-    fn test_root() -> LocalComparisonStoreRoot {
-        LocalComparisonStoreRoot::new(
-            default_comparison_store_root(),
+    fn test_root() -> LocalComparisonStorageRoot {
+        LocalComparisonStorageRoot::new(
+            default_comparison_storage_root(),
             OrganizationId::new(TEST_ORGANIZATION),
         )
     }
 
-    fn comparison_store(comparison: ComparisonResult) -> ComparisonStore {
-        ComparisonStore::from_comparison(comparison, &test_root(), &test_scope()).unwrap()
+    fn comparison_store(comparison: ComparisonResult) -> ComparisonStorage {
+        ComparisonStorage::from_comparison(comparison, &test_root(), &test_scope()).unwrap()
     }
 
     fn comparison() -> ComparisonResult {
@@ -341,7 +341,7 @@ mod tests {
     }
 
     fn issue(
-        store: &InMemorySyncPlanStore,
+        store: &InMemorySyncPlanRepository,
         source: &MockDriver,
         target: &MockDriver,
         comparison: ComparisonResult,
@@ -352,7 +352,7 @@ mod tests {
 
     /// 在**指定作用域**下签发计划。跨组织用例需要自己指定作用域。
     fn issue_in(
-        store: &InMemorySyncPlanStore,
+        store: &InMemorySyncPlanRepository,
         scope: &OrganizationScope,
         source: &MockDriver,
         target: &MockDriver,
@@ -395,7 +395,7 @@ mod tests {
                 )
             })
             .collect();
-        let store = InMemorySyncPlanStore::new();
+        let store = InMemorySyncPlanRepository::new();
         let preview = issue(
             &store,
             &source,
@@ -482,7 +482,7 @@ mod tests {
     fn comparison_page_rejects_claimed_plan_and_overlarge_limit() {
         let source = MockDriver::new("postgres", MockDriverOptions::default());
         let target = MockDriver::new("postgres", MockDriverOptions::default());
-        let store = InMemorySyncPlanStore::new();
+        let store = InMemorySyncPlanRepository::new();
         let preview = issue(
             &store,
             &source,
@@ -529,7 +529,7 @@ mod tests {
             )))],
             &SyncOptions::default(),
         );
-        let store = InMemorySyncPlanStore::new();
+        let store = InMemorySyncPlanRepository::new();
         let preview = issue(
             &store,
             &source,
@@ -588,7 +588,7 @@ mod tests {
             )
         }));
         let comparison = ComparisonResult::new(vec![TableResult::matched("users", "users", rows)]);
-        let store = InMemorySyncPlanStore::new();
+        let store = InMemorySyncPlanRepository::new();
         let preview = store
             .issue(
                 &test_scope(),
@@ -653,7 +653,7 @@ mod tests {
                 &SyncOptions::default(),
             )],
         )]);
-        let store = InMemorySyncPlanStore::new();
+        let store = InMemorySyncPlanRepository::new();
         let preview = issue(&store, &source, &target, large, None);
         let path = {
             let plan = store.peek(&test_scope(), &preview.plan_id).unwrap();
@@ -686,7 +686,7 @@ mod tests {
                 &SyncOptions::default(),
             )],
         )]);
-        let store = InMemorySyncPlanStore::new();
+        let store = InMemorySyncPlanRepository::new();
         let preview = issue(&store, &source, &target, large, None);
         let claimed = store.claim(&test_scope(), &preview.plan_id).unwrap();
         let path = claimed.comparison.path().unwrap();
@@ -702,7 +702,7 @@ mod tests {
     fn another_organization_sees_no_plan_at_all() {
         let source = MockDriver::new("postgres", MockDriverOptions::default());
         let target = MockDriver::new("postgres", MockDriverOptions::default());
-        let store = InMemorySyncPlanStore::new();
+        let store = InMemorySyncPlanRepository::new();
         let preview = issue(&store, &source, &target, comparison(), None);
 
         let missing = store.peek(&other_scope(), "no-such-plan").unwrap_err();
@@ -734,7 +734,7 @@ mod tests {
     fn two_organizations_issue_the_same_plan_id_without_overwriting_each_other() {
         let source = MockDriver::new("postgres", MockDriverOptions::default());
         let target = MockDriver::new("postgres", MockDriverOptions::default());
-        let store = InMemorySyncPlanStore::new();
+        let store = InMemorySyncPlanRepository::new();
         let shared_id = "shared-plan-id".to_string();
 
         let mine = issue(
@@ -770,7 +770,7 @@ mod tests {
     fn a_second_issue_under_the_same_plan_id_is_refused_instead_of_overwriting() {
         let source = MockDriver::new("postgres", MockDriverOptions::default());
         let target = MockDriver::new("postgres", MockDriverOptions::default());
-        let store = InMemorySyncPlanStore::new();
+        let store = InMemorySyncPlanRepository::new();
         let shared_id = "one-plan-id".to_string();
 
         let first = issue(

@@ -115,7 +115,7 @@ async fn the_same_key_with_a_different_request_is_a_conflict() {
 #[tokio::test]
 async fn an_unreadable_idempotency_record_asks_for_verification_and_writes_nothing() {
     let port = Arc::new(FakePort::new(ready()));
-    let store = Arc::new(UnreadableStore {
+    let store = Arc::new(UnreadableRepository {
         write_calls: AtomicU64::new(0),
     });
     let gateway = ExecutionGateway::new(
@@ -318,7 +318,7 @@ async fn a_driver_failure_keeps_the_dispatch_reservation() {
     let h = harness_with(
         port.clone(),
         Arc::new(AlwaysAllow),
-        InMemoryIdempotencyStore::shared(),
+        InMemoryIdempotencyRepository::shared(),
     );
     let id = accept(&h, request(REVISION)).await;
     let error = match h.gateway.dispatch(&principal(), &id).await {
@@ -343,7 +343,7 @@ async fn a_permission_denied_at_entry_is_not_downgraded_to_accepted() {
     let h = harness_with(
         port.clone(),
         AlwaysDeny::shared("alwaysDeny"),
-        InMemoryIdempotencyStore::shared(),
+        InMemoryIdempotencyRepository::shared(),
     );
     let error = match h.gateway.accept(&principal(), request(REVISION)).await {
         Ok(_) => panic!("入口拒绝绝不能判成已受理"),
@@ -369,7 +369,7 @@ async fn a_permission_revoked_between_accept_and_dispatch_blocks_execution() {
     let h = harness_with(
         port.clone(),
         authorizer.clone(),
-        InMemoryIdempotencyStore::shared(),
+        InMemoryIdempotencyRepository::shared(),
     );
     let id = accept(&h, request(REVISION)).await;
     // 受理之后权限被撤销。

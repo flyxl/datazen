@@ -9,7 +9,7 @@
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 
-use super::StoreError;
+use super::DesktopRepositoryError;
 
 const VAULT_SERVICE: &str = "com.datazen.encryption-key";
 const VAULT_ACCOUNT: &str = "master-key";
@@ -24,7 +24,7 @@ pub mod macos_security {
 
     /// Store key in macOS login keychain via `security` CLI.
     /// ACL binds to `/usr/bin/security` — survives ad-hoc re-signing.
-    pub fn store(key: &[u8; 32]) -> Result<(), StoreError> {
+    pub fn store(key: &[u8; 32]) -> Result<(), DesktopRepositoryError> {
         let b64 = BASE64.encode(key);
         // -U: update if already exists; -T: allow /usr/bin/security to access
         let status = std::process::Command::new("/usr/bin/security")
@@ -43,19 +43,21 @@ pub mod macos_security {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .status()
-            .map_err(|e| StoreError::EncryptionError(format!("security CLI failed: {e}")))?;
+            .map_err(|e| {
+                DesktopRepositoryError::EncryptionError(format!("security CLI failed: {e}"))
+            })?;
 
         if status.success() {
             Ok(())
         } else {
-            Err(StoreError::EncryptionError(format!(
+            Err(DesktopRepositoryError::EncryptionError(format!(
                 "security add-generic-password exited with {status}"
             )))
         }
     }
 
     /// Read key from macOS login keychain via `security` CLI.
-    pub fn load() -> Result<Option<[u8; 32]>, StoreError> {
+    pub fn load() -> Result<Option<[u8; 32]>, DesktopRepositoryError> {
         let output = std::process::Command::new("/usr/bin/security")
             .args([
                 "find-generic-password",
@@ -68,14 +70,16 @@ pub mod macos_security {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output()
-            .map_err(|e| StoreError::EncryptionError(format!("security CLI failed: {e}")))?;
+            .map_err(|e| {
+                DesktopRepositoryError::EncryptionError(format!("security CLI failed: {e}"))
+            })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if stderr.contains("SecKeychainSearchCopyNext") || stderr.contains("not found") {
                 return Ok(None);
             }
-            return Err(StoreError::EncryptionError(format!(
+            return Err(DesktopRepositoryError::EncryptionError(format!(
                 "security find-generic-password failed: {stderr}"
             )));
         }
@@ -137,7 +141,7 @@ pub mod windows_dpapi {
             .join(".key.dpapi")
     }
 
-    fn protect(plaintext: &[u8]) -> Result<Vec<u8>, StoreError> {
+    fn protect(plaintext: &[u8]) -> Result<Vec<u8>, DesktopRepositoryError> {
         unsafe {
             let mut data_in = DataBlob {
                 cb_data: plaintext.len() as u32,
@@ -158,7 +162,7 @@ pub mod windows_dpapi {
                 &mut data_out,
             );
             if ok == 0 {
-                return Err(StoreError::EncryptionError(
+                return Err(DesktopRepositoryError::EncryptionError(
                     "CryptProtectData failed".into(),
                 ));
             }
@@ -169,7 +173,7 @@ pub mod windows_dpapi {
         }
     }
 
-    fn unprotect(encrypted: &[u8]) -> Result<Vec<u8>, StoreError> {
+    fn unprotect(encrypted: &[u8]) -> Result<Vec<u8>, DesktopRepositoryError> {
         unsafe {
             let mut data_in = DataBlob {
                 cb_data: encrypted.len() as u32,
@@ -190,7 +194,7 @@ pub mod windows_dpapi {
                 &mut data_out,
             );
             if ok == 0 {
-                return Err(StoreError::EncryptionError(
+                return Err(DesktopRepositoryError::EncryptionError(
                     "CryptUnprotectData failed".into(),
                 ));
             }
@@ -201,20 +205,20 @@ pub mod windows_dpapi {
         }
     }
 
-    pub fn store(key: &[u8; 32]) -> Result<(), StoreError> {
+    pub fn store(key: &[u8; 32]) -> Result<(), DesktopRepositoryError> {
         let path = dpapi_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+                .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
         }
         let b64 = BASE64.encode(key);
         let protected = protect(b64.as_bytes())?;
         std::fs::write(&path, &protected)
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
         Ok(())
     }
 
-    pub fn load() -> Result<Option<[u8; 32]>, StoreError> {
+    pub fn load() -> Result<Option<[u8; 32]>, DesktopRepositoryError> {
         let path = dpapi_path();
         let Ok(encrypted) = std::fs::read(&path) else {
             return Ok(None);
@@ -249,7 +253,7 @@ pub fn platform_vault_available() -> bool {
 }
 
 /// Try to load key from platform vault.
-pub fn load_from_vault() -> Result<Option<[u8; 32]>, StoreError> {
+pub fn load_from_vault() -> Result<Option<[u8; 32]>, DesktopRepositoryError> {
     #[cfg(target_os = "macos")]
     {
         macos_security::load()
@@ -265,7 +269,7 @@ pub fn load_from_vault() -> Result<Option<[u8; 32]>, StoreError> {
 }
 
 /// Store key to platform vault.
-pub fn store_to_vault(key: &[u8; 32]) -> Result<(), StoreError> {
+pub fn store_to_vault(key: &[u8; 32]) -> Result<(), DesktopRepositoryError> {
     #[cfg(target_os = "macos")]
     {
         macos_security::store(key)
@@ -276,7 +280,7 @@ pub fn store_to_vault(key: &[u8; 32]) -> Result<(), StoreError> {
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        Err(StoreError::EncryptionError(
+        Err(DesktopRepositoryError::EncryptionError(
             "No platform vault available on this OS".into(),
         ))
     }

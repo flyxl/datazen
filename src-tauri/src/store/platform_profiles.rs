@@ -1,4 +1,4 @@
-use super::{Store, StoreError};
+use super::{DesktopRepository, DesktopRepositoryError};
 use datazen_driver_api::ConnectionConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -30,43 +30,48 @@ impl Default for ProfileMetadata {
 pub(super) fn encode_records(
     configs: Vec<ConnectionConfig>,
     metadata: &BTreeMap<String, ProfileMetadata>,
-) -> Result<Vec<serde_json::Value>, StoreError> {
+) -> Result<Vec<serde_json::Value>, DesktopRepositoryError> {
     configs
         .into_iter()
         .map(|config| {
             let id = config.id.clone();
-            let mut value = serde_json::to_value(config)
-                .map_err(|_| StoreError::ParseError("connection serialization failed".into()))?;
+            let mut value = serde_json::to_value(config).map_err(|_| {
+                DesktopRepositoryError::ParseError("connection serialization failed".into())
+            })?;
             value["platformProfile"] =
-                serde_json::to_value(metadata.get(&id).cloned().unwrap_or_default())
-                    .map_err(|_| StoreError::ParseError("profile serialization failed".into()))?;
+                serde_json::to_value(metadata.get(&id).cloned().unwrap_or_default()).map_err(
+                    |_| DesktopRepositoryError::ParseError("profile serialization failed".into()),
+                )?;
             Ok(value)
         })
         .collect()
 }
-impl Store {
+impl DesktopRepository {
     pub(super) async fn load_platform_metadata(
         &self,
-    ) -> Result<BTreeMap<String, ProfileMetadata>, StoreError> {
+    ) -> Result<BTreeMap<String, ProfileMetadata>, DesktopRepositoryError> {
         let path = self.data_dir.join("connections.json");
         if !path.exists() {
             return Ok(BTreeMap::new());
         }
         let bytes = tokio::fs::read(path)
             .await
-            .map_err(|_| StoreError::ReadError("profile read failed".into()))?;
+            .map_err(|_| DesktopRepositoryError::ReadError("profile read failed".into()))?;
         let records: Vec<serde_json::Value> = serde_json::from_slice(&bytes)
-            .map_err(|_| StoreError::ParseError("profile parse failed".into()))?;
+            .map_err(|_| DesktopRepositoryError::ParseError("profile parse failed".into()))?;
         records
             .into_iter()
             .map(|record| {
                 let id = record["id"]
                     .as_str()
-                    .ok_or_else(|| StoreError::ParseError("connection id missing".into()))?
+                    .ok_or_else(|| {
+                        DesktopRepositoryError::ParseError("connection id missing".into())
+                    })?
                     .to_owned();
                 let metadata = match record.get("platformProfile") {
-                    Some(value) => serde_json::from_value(value.clone())
-                        .map_err(|_| StoreError::ParseError("profile metadata invalid".into()))?,
+                    Some(value) => serde_json::from_value(value.clone()).map_err(|_| {
+                        DesktopRepositoryError::ParseError("profile metadata invalid".into())
+                    })?,
                     None => ProfileMetadata::default(),
                 };
                 Ok((id, metadata))

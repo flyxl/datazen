@@ -98,7 +98,7 @@ flowchart TD
     G --> H["DriverRegistry（inventory 注册，随构建期驱动选型）"]
     H --> I["BudgetCoordinator（单实例）与 SessionDirectory（单进程内存）"]
     I --> J["SessionRegistry / ExecutionGateway / JobRuntime / ResourceManager"]
-    J --> K["ArtifactStore（字节存储 + 元数据）"]
+    J --> K["ArtifactRepository（字节存储 + 元数据）"]
     K --> L["PolicyService（ACL/角色/权限版本）"]
     L --> M["http::router 装配中间件链与 handler"]
     M --> N["监听 :8443，暴露 /healthz、/readyz 与 /api/v1"]
@@ -495,7 +495,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 
 **SSE 断开只解除订阅，不直接取消正在执行的 SQL。** 执行的生命周期由其自身状态机与预算/产物配额决定：
 
-- 无订阅者的执行继续按计划运行，结果写入 ArtifactStore；
+- 无订阅者的执行继续按计划运行，结果写入 ArtifactRepository；
 - 结果无人消费时按 [连接与管理 §7.7](connection-management.md#77-结果订阅与放弃消费) 的有界放弃消费政策超期取消；
 - 只有 `cancelExecution` / `POST /api/v1/executions/{id}/cancel` 才是显式取消路径。
 
@@ -584,7 +584,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 | `ProfileRepository` | PostgreSQL，按 `organization_id` 限定查询，`expectedRevision` CAS | 管理库 | 桌面现为 `src-tauri/src/store/connections.rs` 的本地库；服务端多组织隔离且无本地用户边界 |
 | `JobRepository` | PostgreSQL，claim/renew 用条件更新 + 租约 | 管理库 | 桌面 P5 三件套已由 `AppDb` SQLite 持久化 Job / receipt / checkpoint / 结果；服务端 `JobRepository` 尚未接入。桌面重启只把旧 Job 置为 NotExecuted 或 PendingVerification，不重放 handler |
 | `Audit` | 追加写表，应用角色无 UPDATE/DELETE 授权 | 管理库 | 桌面只写本地日志；服务端审计是安全资产 |
-| `ArtifactStore` | 字节存储 + 元数据表 | 对象存储/受控目录 + 管理库 | 桌面走 `src-tauri/src/commands/file.rs` 的本地路径与扩展名白名单；服务端不接受路径（见 §11） |
+| `ArtifactRepository` | 字节存储 + 元数据表 | 对象存储/受控目录 + 管理库 | 桌面走 `src-tauri/src/commands/file.rs` 的本地路径与扩展名白名单；服务端不接受路径（见 §11） |
 | `SecretProvider` | 服务端密钥管理适配 | KMS/外部密钥服务 | 桌面 `src-tauri/src/store/key_store.rs` + `platform_vault.rs` 的 OS 钥匙串路径在服务端**不适用**（无用户钥匙串） |
 | `SessionDirectory` | **单进程内存** | 内存 | 禁止落盘/快照/追加日志；多实例归 P9 |
 | `BudgetCoordinator` | **单实例**实现 | 内存 + 组织/用户/数据库额度取自管理库 | 多 worker 全局预算归 P9 |
@@ -623,7 +623,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 
 ---
 
-## 11. `ArtifactStore` 服务端实现
+## 11. `ArtifactRepository` 服务端实现
 
 ```mermaid
 flowchart LR
@@ -646,7 +646,7 @@ flowchart LR
 | TTL | `expires_at` 到期由清理任务删字节并置元数据终态；读已过期产物在端口层是 `ArtifactExpired`，到 HTTP 层**有意**统一为 404 + `NotFound`（不返回 410），理由见 [§7.1](#71-判定与映射) |
 | ACL 变更 | 组织/连接 ACL 收紧后，旧 artifact 立即不可读；不需要也不能靠「产物已生成」豁免授权 |
 | 共享语义 | 共享 SQL 文件**不授予**结果读取权；结果默认私有 |
-| 路径 | **不接受任何服务器绝对路径**；导出/下载只用 `artifactId`；备份产物由 Job 生成后进 ArtifactStore |
+| 路径 | **不接受任何服务器绝对路径**；导出/下载只用 `artifactId`；备份产物由 Job 生成后进 ArtifactRepository |
 
 受控上传（`POST /api/v1/artifacts/uploads`）的额外约束：扩展名白名单（对齐 `src-tauri/src/commands/file.rs` 的 `ALLOWED_EXTENSIONS` 口径）、组织产物配额、路径遍历防护；上传内容按不可信数据处理，不自动解压执行。
 
@@ -710,7 +710,7 @@ flowchart TB
     P --> S[datazen-server 单进程]
     S --> M[(管理数据库 PostgreSQL，独立于用户业务库)]
     S --> K[SecretProvider / KMS]
-    S --> A[(ArtifactStore 字节存储)]
+    S --> A[(ArtifactRepository 字节存储)]
     S --> W[用户业务数据库（受出站策略约束）]
     X[Web 静态资源] -.同源.-> P
     Y[Wapp 静态资源] -.独立受限 origin.-> P
@@ -775,7 +775,7 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 由此确定 Web 端「安装插件」入口的权限口径：
 
 - 入口是否可见、是否可点是**客户端提示**，不是授权；服务端必须独立判定 `wapp` 资源上的 `write`，未授权按 §7 统一 404（INV-S3）。
-- 安装包来源仍受 §12 `NetworkProvider` 的 SSRF 约束；安装过程**不在服务端自动解压执行**，包体先落 §11 `ArtifactStore`（配额、TTL、扩展名白名单、不接受服务器绝对路径），解压与校验由内核在目标 `wapps_dir` 内完成。
+- 安装包来源仍受 §12 `NetworkProvider` 的 SSRF 约束；安装过程**不在服务端自动解压执行**，包体先落 §11 `ArtifactRepository`（配额、TTL、扩展名白名单、不接受服务器绝对路径），解压与校验由内核在目标 `wapps_dir` 内完成。
 - 卸载或撤权即刻关闭该 Wapp 的桥接订阅（§15.1 末条），并连带作废其存储根目录的读权限。
 
 ---

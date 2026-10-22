@@ -1,6 +1,6 @@
 use super::*;
 use crate::testing::{app_state::TestAppState, mock_driver::MockDriverOptions};
-use datazen_feature_core::dashboard::store::save_dashboard;
+use datazen_feature_core::dashboard::repository::save_dashboard;
 use datazen_feature_core::dashboard::types::*;
 use datazen_platform_api::dto::job::{JobFilter, JobState};
 use std::time::Duration;

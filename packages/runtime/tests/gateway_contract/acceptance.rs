@@ -9,7 +9,7 @@ use datazen_runtime::connection::{
 };
 use datazen_runtime::gateway::idempotency::RequestFingerprint;
 use datazen_runtime::gateway::{
-    GatewayAction, GatewayError, IdempotencyRecord, IdempotencyScope, InMemoryIdempotencyStore,
+    GatewayAction, GatewayError, IdempotencyRecord, IdempotencyScope, InMemoryIdempotencyRepository,
 };
 // ───────────────── A 受理入口 ─────────────────
 
@@ -165,7 +165,7 @@ async fn validation_runs_before_authorization() {
     let h = fx::harness_with(
         Arc::new(fx::RecordingPort::new(fx::ready_view())),
         authorizer,
-        InMemoryIdempotencyStore::shared(),
+        InMemoryIdempotencyRepository::shared(),
     );
 
     let mut request = fx::request(fx::REVISION);
@@ -182,7 +182,7 @@ async fn validation_runs_before_authorization() {
 #[tokio::test(start_paused = true)]
 async fn authorization_runs_before_the_idempotency_lookup() {
     // 存储里已经有这个 key 的记录：若查重先于授权，这里会回放成功。
-    let store = InMemoryIdempotencyStore::shared();
+    let store = InMemoryIdempotencyRepository::shared();
     store.force_insert(
         IdempotencyScope::new(fx::db_session(), Counter::new(1), fx::IDEMPOTENCY_KEY),
         IdempotencyRecord {

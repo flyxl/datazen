@@ -3,7 +3,7 @@
 //! These are the storage vocabulary of the dashboard feature: the desktop
 //! host persists them in SQLite, another host may persist the very same rows
 //! in its own store. The rules that turn a row into a dashboard — and a
-//! dashboard back into rows — live in [`super::store`] and [`super::runs`].
+//! dashboard back into rows — live in [`super::repository`] and [`super::runs`].
 
 use serde::{Deserialize, Serialize};
 

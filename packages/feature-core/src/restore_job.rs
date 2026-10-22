@@ -7,7 +7,7 @@ use datazen_platform_api::{
         job::{Checkpoint, CommitBoundary, JobDomainResult, JobProgress},
     },
     id::{ArtifactId, Counter, ExecutionId, StageId},
-    ports::artifact::ArtifactStore,
+    ports::artifact::ArtifactRepository,
     target::ExecutionTarget,
     RequestContext,
 };
@@ -87,7 +87,7 @@ pub trait RestoreGateway: Send + Sync {
     ) -> RestoreEvidence;
 }
 struct ArtifactInput {
-    store: Arc<dyn ArtifactStore>,
+    store: Arc<dyn ArtifactRepository>,
     context: RequestContext,
     artifact: ArtifactId,
     chunks: u64,
@@ -111,7 +111,7 @@ impl RestoreInput for ArtifactInput {
 pub struct RestoreApplyJob {
     context: RequestContext,
     plan: RestorePlan,
-    artifacts: Arc<dyn ArtifactStore>,
+    artifacts: Arc<dyn ArtifactRepository>,
     gateway: Arc<dyn RestoreGateway>,
     rejection: Mutex<Option<RestoreRejection>>,
 }
@@ -119,7 +119,7 @@ impl RestoreApplyJob {
     pub fn new(
         context: RequestContext,
         plan: RestorePlan,
-        artifacts: Arc<dyn ArtifactStore>,
+        artifacts: Arc<dyn ArtifactRepository>,
         gateway: Arc<dyn RestoreGateway>,
     ) -> Self {
         Self {
@@ -352,7 +352,7 @@ mod tests {
         },
     };
     use datazen_runtime::{
-        artifact::FileArtifactStore,
+        artifact::FileArtifactRepository,
         job::{project_frozen_plan, InMemoryJobRepository, JobClock, SystemJobClock},
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -366,9 +366,9 @@ mod tests {
             None,
         )
     }
-    async fn input() -> (tempfile::TempDir, Arc<FileArtifactStore>, RestorePlan) {
+    async fn input() -> (tempfile::TempDir, Arc<FileArtifactRepository>, RestorePlan) {
         let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(FileArtifactStore::open(dir.path().join("artifacts")).unwrap());
+        let store = Arc::new(FileArtifactRepository::open(dir.path().join("artifacts")).unwrap());
         let bytes = b"CREATE TABLE synthetic_probe(id int);";
         let (artifact, mut writer) = store
             .create(
@@ -511,7 +511,7 @@ mod tests {
     async fn persisted_artifact_describe_returns_creation_target_binding() {
         let (dir, store, plan) = input().await;
         drop(store);
-        let reopened = FileArtifactStore::open(dir.path().join("artifacts")).unwrap();
+        let reopened = FileArtifactRepository::open(dir.path().join("artifacts")).unwrap();
         let metadata = reopened
             .describe(&context("alice"), plan.artifact_id.clone())
             .await
@@ -618,7 +618,7 @@ mod tests {
     fn interrupted_restore_never_authorizes_automatic_replay() {
         let context = context("alice");
         let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(FileArtifactStore::open(dir.path().join("artifacts")).unwrap());
+        let store = Arc::new(FileArtifactRepository::open(dir.path().join("artifacts")).unwrap());
         let plan = RestorePlan {
             plan_id: "plan".into(),
             target: ExecutionTarget::new(

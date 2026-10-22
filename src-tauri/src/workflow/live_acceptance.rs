@@ -2,7 +2,7 @@
 //! Run explicitly through run-live-contract.sh --crate datazen --lib-test
 //! workflow::live_acceptance. Missing/unreachable live prerequisites fail.
 use crate::{
-    store::Store,
+    store::DesktopRepository,
     testing::{
         app_state::{build_app_state, sample_postgres_config},
         FileKeyringGuard,
@@ -31,7 +31,7 @@ async fn cross_driver(first: &str, second: &str) {
     let _keyring = FileKeyringGuard::set();
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        Store::init_with_path(temp.path())
+        DesktopRepository::init_with_path(temp.path())
             .await
             .expect("temporary store"),
     );

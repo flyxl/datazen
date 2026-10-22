@@ -9,7 +9,7 @@
 //! package reaching for a process-wide global.
 //!
 //! The in-memory [`HashMap`](std::collections::HashMap) implementation also stays
-//! in this package ([`super::InMemoryTransferPlanStore`]). A host that wants a
+//! in this package ([`super::InMemoryTransferPlanRepository`]). A host that wants a
 //! durable plan registry only has to provide another implementation of this
 //! trait; it never has to move the rules.
 //!
@@ -119,7 +119,7 @@ impl<'a> PlanIssueRequest<'a> {
 ///
 /// Implementations must be safe to share: the host injects one instance per
 /// process and every apply Job races against the others for the same plan.
-pub trait TransferPlanStorePort: Send + Sync + 'static {
+pub trait TransferPlanRepositoryPort: Send + Sync + 'static {
     /// Mint one immutable plan owned by `scope` and return its opaque id.
     fn issue(
         &self,

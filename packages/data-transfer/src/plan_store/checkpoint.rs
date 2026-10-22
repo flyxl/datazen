@@ -8,7 +8,7 @@ use datazen_platform_api::ports::scope::OrganizationScope;
 use crate::resume::{ResumeTableProgress, TransferResumeCheckpoint as ResumeHook};
 use crate::TransferError;
 
-use super::port::TransferPlanStorePort;
+use super::port::TransferPlanRepositoryPort;
 use super::StoredTransferPlan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,7 +70,7 @@ pub(super) fn unknown_token() -> TransferError {
 /// host's instance, and a session can never touch another organization's
 /// records.
 pub struct TransferCheckpointSession {
-    store: Arc<dyn TransferPlanStorePort>,
+    store: Arc<dyn TransferPlanRepositoryPort>,
     scope: OrganizationScope,
     plan_id: String,
     selected_tables: Vec<String>,
@@ -82,7 +82,7 @@ pub struct TransferCheckpointSession {
 
 impl TransferCheckpointSession {
     pub fn new(
-        store: Arc<dyn TransferPlanStorePort>,
+        store: Arc<dyn TransferPlanRepositoryPort>,
         scope: OrganizationScope,
         plan_id: impl Into<String>,
         selected_tables: Vec<String>,

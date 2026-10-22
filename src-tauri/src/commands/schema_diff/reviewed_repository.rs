@@ -1,11 +1,11 @@
-//! 桌面形态的已评审计划存储（`ReviewedPlanStore` 端口实现）与组织作用域取用。
+//! 桌面形态的已评审计划存储（`ReviewedPlanRepository` 端口实现）与组织作用域取用。
 //!
 //! ## 为什么桌面仍然是「进程内存」
 //!
 //! 评审计划是**一次性**的：准备 → 用户复核 → 部署 → 消费。桌面是单租户形态，
 //! 计划本来就活在进程内；落盘只会把「一次性计划」变成跨会话残留，还得额外处理
 //! 过期清理与并发消费。因此桌面选**进程内存**实现——存储本体是包提供的
-//! `InMemoryReviewedPlanStore`，本模块在其上叠加**单租户**收窄。
+//! `InMemoryReviewedPlanRepository`，本模块在其上叠加**单租户**收窄。
 //!
 //! **与改造前并非「完全一致」**：冻结时刻的时间基准从单调钟（`Instant::elapsed()`，
 //! 免疫系统时钟调整）改成**墙上时钟**（Unix 毫秒）——这是端口化后支持落盘实现的
@@ -32,7 +32,8 @@ use async_trait::async_trait;
 use datazen_platform_api::id::OrganizationId;
 use datazen_platform_api::ports::scope::OrganizationScope;
 use datazen_schema_diff::reviewed::{
-    InMemoryReviewedPlanStore, ReviewedPlan, ReviewedPlanStore, ReviewedPlanStoreError,
+    InMemoryReviewedPlanRepository, ReviewedPlan, ReviewedPlanRepository,
+    ReviewedPlanRepositoryError,
 };
 
 use crate::commands::{AppState, CommandError};
@@ -43,9 +44,11 @@ use crate::platform::PlatformEntry;
 /// 桌面身份可用时只承认**桌面自己的**组织（取自 `DesktopIdentity::organization_id()`）；
 /// 身份组装失败时**不编造**组织身份——该存储不承认任何组织，一切访问按「不存在」
 /// 处理（依赖身份的 IPC 调用本来也会明确失败）。
-pub fn desktop_reviewed_plan_store(platform: &PlatformEntry) -> Arc<dyn ReviewedPlanStore> {
+pub fn desktop_reviewed_plan_repository(
+    platform: &PlatformEntry,
+) -> Arc<dyn ReviewedPlanRepository> {
     match platform.require() {
-        Ok(adapter) => Arc::new(DesktopReviewedPlanStore::new(
+        Ok(adapter) => Arc::new(DesktopReviewedPlanRepository::new(
             adapter.identity().organization_id().clone(),
         )),
         Err(error) => {
@@ -53,27 +56,27 @@ pub fn desktop_reviewed_plan_store(platform: &PlatformEntry) -> Arc<dyn Reviewed
                 code = ?error.code,
                 "桌面身份不可用：Schema Diff 评审计划存储不承认任何组织"
             );
-            Arc::new(DesktopReviewedPlanStore::deny_all())
+            Arc::new(DesktopReviewedPlanRepository::deny_all())
         }
     }
 }
 
 /// 桌面形态的已评审计划存储：进程内存实现 + **单租户**收窄。
 ///
-/// 存储本体是包提供的 [`InMemoryReviewedPlanStore`]（条目按组织分桶）；
+/// 存储本体是包提供的 [`InMemoryReviewedPlanRepository`]（条目按组织分桶）；
 /// 本类型在其上叠加桌面策略：只承认桌面自己的组织。
-pub struct DesktopReviewedPlanStore {
+pub struct DesktopReviewedPlanRepository {
     /// 桌面自己的组织。`None` 表示桌面身份不可用 ⇒ 不承认任何组织。
     organization_id: Option<OrganizationId>,
-    inner: InMemoryReviewedPlanStore,
+    inner: InMemoryReviewedPlanRepository,
 }
 
-impl DesktopReviewedPlanStore {
+impl DesktopReviewedPlanRepository {
     /// 只承认桌面自己的组织。
     pub fn new(organization_id: OrganizationId) -> Self {
         Self {
             organization_id: Some(organization_id),
-            inner: InMemoryReviewedPlanStore::new(),
+            inner: InMemoryReviewedPlanRepository::new(),
         }
     }
 
@@ -81,7 +84,7 @@ impl DesktopReviewedPlanStore {
     pub fn deny_all() -> Self {
         Self {
             organization_id: None,
-            inner: InMemoryReviewedPlanStore::new(),
+            inner: InMemoryReviewedPlanRepository::new(),
         }
     }
 
@@ -92,13 +95,13 @@ impl DesktopReviewedPlanStore {
 }
 
 #[async_trait]
-impl ReviewedPlanStore for DesktopReviewedPlanStore {
+impl ReviewedPlanRepository for DesktopReviewedPlanRepository {
     async fn put(
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
         plan: ReviewedPlan,
-    ) -> Result<(), ReviewedPlanStoreError> {
+    ) -> Result<(), ReviewedPlanRepositoryError> {
         if !self.acknowledges(scope) {
             // 越组织写入按「未发生」处理：不落数据，也不返回「无权限」。
             return Ok(());
@@ -110,7 +113,7 @@ impl ReviewedPlanStore for DesktopReviewedPlanStore {
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<Option<ReviewedPlan>, ReviewedPlanStoreError> {
+    ) -> Result<Option<ReviewedPlan>, ReviewedPlanRepositoryError> {
         if !self.acknowledges(scope) {
             return Ok(None);
         }
@@ -121,7 +124,7 @@ impl ReviewedPlanStore for DesktopReviewedPlanStore {
         &self,
         scope: &OrganizationScope,
         plan_id: &str,
-    ) -> Result<bool, ReviewedPlanStoreError> {
+    ) -> Result<bool, ReviewedPlanRepositoryError> {
         if !self.acknowledges(scope) {
             return Ok(false);
         }
@@ -196,7 +199,8 @@ mod tests {
     /// 桌面只承认自己那一个组织：别的组织**读不到**。
     #[tokio::test]
     async fn desktop_store_hides_plans_from_other_organizations() {
-        let store = DesktopReviewedPlanStore::new(OrganizationId::new("datazen-desktop-local"));
+        let store =
+            DesktopReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
         let owner = scope("datazen-desktop-local");
         let other = scope("other-org");
         store
@@ -217,7 +221,8 @@ mod tests {
     /// 跨组织删除按「不存在」处理：删不掉别人的计划，也不返回「无权限」。
     #[tokio::test]
     async fn desktop_store_refuses_to_remove_other_organizations_plans() {
-        let store = DesktopReviewedPlanStore::new(OrganizationId::new("datazen-desktop-local"));
+        let store =
+            DesktopReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
         let owner = scope("datazen-desktop-local");
         let other = scope("other-org");
         store
@@ -236,7 +241,8 @@ mod tests {
     /// 跨组织写入不落数据：本组织读不到「别的组织写进来」的计划。
     #[tokio::test]
     async fn desktop_store_drops_writes_from_other_organizations() {
-        let store = DesktopReviewedPlanStore::new(OrganizationId::new("datazen-desktop-local"));
+        let store =
+            DesktopReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
         let owner = scope("datazen-desktop-local");
         let other = scope("other-org");
         store
@@ -259,7 +265,8 @@ mod tests {
     /// 本条会红。
     #[tokio::test]
     async fn desktop_store_discards_cross_organization_writes_entirely() {
-        let store = DesktopReviewedPlanStore::new(OrganizationId::new("datazen-desktop-local"));
+        let store =
+            DesktopReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
         let owner = scope("datazen-desktop-local");
         let other = scope("other-org");
         store
@@ -284,7 +291,7 @@ mod tests {
     /// 桌面身份不可用时，存储不承认任何组织：一切访问按「不存在」处理。
     #[tokio::test]
     async fn desktop_store_without_identity_denies_every_organization() {
-        let store = DesktopReviewedPlanStore::deny_all();
+        let store = DesktopReviewedPlanRepository::deny_all();
         let any = scope("datazen-desktop-local");
         store
             .put(&any, "plan-1", plan("plan-1"))
@@ -300,7 +307,8 @@ mod tests {
     /// 一次性消费：同一个计划只能被消费一次。
     #[tokio::test]
     async fn desktop_store_consumes_a_plan_exactly_once() {
-        let store = DesktopReviewedPlanStore::new(OrganizationId::new("datazen-desktop-local"));
+        let store =
+            DesktopReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
         let owner = scope("datazen-desktop-local");
         store
             .put(&owner, "plan-1", plan("plan-1"))
@@ -317,7 +325,7 @@ mod tests {
         );
     }
 
-    /// 【装配路径】平台组装失败 ⇒ `desktop_reviewed_plan_store` 返回**不承认任何
+    /// 【装配路径】平台组装失败 ⇒ `desktop_reviewed_plan_repository` 返回**不承认任何
     /// 组织**的存储。
     ///
     /// 这条走的是真实的组装入口（不是直接构造 `deny_all()`）：平台身份不可用时，
@@ -329,7 +337,7 @@ mod tests {
             datazen_application::error::ApiErrorCode::Unauthenticated,
             "桌面本地身份不可用",
         ));
-        let store = desktop_reviewed_plan_store(&failed);
+        let store = desktop_reviewed_plan_repository(&failed);
         let any = scope("datazen-desktop-local");
         let other = scope("other-org");
 
@@ -362,7 +370,8 @@ mod tests {
     /// 这条钉住的是**容量/过期策略**本身（改造前是 `plans.retain(...)` 的既有魔数）。
     #[tokio::test]
     async fn desktop_store_trims_expired_plans_on_put() {
-        let store = DesktopReviewedPlanStore::new(OrganizationId::new("datazen-desktop-local"));
+        let store =
+            DesktopReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
         let owner = scope("datazen-desktop-local");
         let mut stale = plan("stale");
         stale.created_at_ms = now_ms().saturating_sub(31 * 60 * 1000);
@@ -405,7 +414,8 @@ mod tests {
     /// 淘汰顺序与断言完全不变（index 越小 ⇒ 冻结越早 ⇒ 越先被淘汰）。
     #[tokio::test]
     async fn desktop_store_enforces_max_entries_by_evicting_the_oldest() {
-        let store = DesktopReviewedPlanStore::new(OrganizationId::new("datazen-desktop-local"));
+        let store =
+            DesktopReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
         let owner = scope("datazen-desktop-local");
         let base = now_ms();
         for index in 0..130u64 {
@@ -456,7 +466,8 @@ mod tests {
     /// 由 `reviewed::validate` 报 "Plan expired; compare again"。
     #[tokio::test]
     async fn desktop_store_serves_expired_plans_for_the_rule_layer_to_reject() {
-        let store = DesktopReviewedPlanStore::new(OrganizationId::new("datazen-desktop-local"));
+        let store =
+            DesktopReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
         let owner = scope("datazen-desktop-local");
         let mut stale = plan("stale");
         stale.created_at_ms = now_ms().saturating_sub(31 * 60 * 1000);
@@ -476,12 +487,13 @@ mod tests {
 
     /// 桌面存储 + 规则层的**一次性消费**：并发部署只有一个成功。
     ///
-    /// 这条把生产的存储实现（`DesktopReviewedPlanStore`）与生产的规则层
+    /// 这条把生产的存储实现（`DesktopReviewedPlanRepository`）与生产的规则层
     /// （`reviewed::consume`）接在一起，覆盖「并发只有一个 `remove` 成功」的真实路径，
     /// 而不是只在测试替身上验证。
     #[tokio::test]
     async fn desktop_store_admits_exactly_one_concurrent_consumer() {
-        let store = DesktopReviewedPlanStore::new(OrganizationId::new("datazen-desktop-local"));
+        let store =
+            DesktopReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
         let owner = scope("datazen-desktop-local");
         let cfg: datazen_driver_api::ConnectionConfig = serde_json::from_value(serde_json::json!({
             "id": "target",

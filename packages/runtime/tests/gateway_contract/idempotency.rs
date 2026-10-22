@@ -110,7 +110,7 @@ async fn the_same_key_with_a_different_call_is_a_conflict() {
 
 #[tokio::test(start_paused = true)]
 async fn an_unreadable_record_requires_verification_and_writes_nothing() {
-    let store = fx::UnreadableStore::shared();
+    let store = fx::UnreadableRepository::shared();
     let h = fx::harness_with(
         Arc::new(fx::RecordingPort::new(fx::ready_view())),
         Arc::new(AlwaysAllow),
@@ -132,7 +132,7 @@ async fn an_unreadable_record_requires_verification_and_writes_nothing() {
 
 #[tokio::test(start_paused = true)]
 async fn a_failed_persistence_leaves_no_execution_record() {
-    let store = fx::WriteFailingStore::shared();
+    let store = fx::WriteFailingRepository::shared();
     let h = fx::harness_with(
         Arc::new(fx::RecordingPort::new(fx::ready_view())),
         Arc::new(AlwaysAllow),

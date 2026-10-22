@@ -6,10 +6,12 @@
 
 use datazen_driver_api::SavedTunnel;
 
-use super::{Store, StoreError};
+use super::{DesktopRepository, DesktopRepositoryError};
 
-impl Store {
-    pub(super) async fn load_tunnels_from_disk(&self) -> Result<Vec<SavedTunnel>, StoreError> {
+impl DesktopRepository {
+    pub(super) async fn load_tunnels_from_disk(
+        &self,
+    ) -> Result<Vec<SavedTunnel>, DesktopRepositoryError> {
         let path = self.data_dir.join("tunnels.json");
         if !path.exists() {
             return Ok(Vec::new());
@@ -17,10 +19,10 @@ impl Store {
 
         let content = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| StoreError::ReadError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::ReadError(e.to_string()))?;
 
-        let mut tunnels: Vec<SavedTunnel> =
-            serde_json::from_str(&content).map_err(|e| StoreError::ParseError(e.to_string()))?;
+        let mut tunnels: Vec<SavedTunnel> = serde_json::from_str(&content)
+            .map_err(|e| DesktopRepositoryError::ParseError(e.to_string()))?;
 
         for t in &mut tunnels {
             self.decrypt_tunnel_secrets(t);
@@ -89,7 +91,10 @@ impl Store {
         }
     }
 
-    fn encrypt_tunnel_secrets(&self, t: &SavedTunnel) -> Result<SavedTunnel, StoreError> {
+    fn encrypt_tunnel_secrets(
+        &self,
+        t: &SavedTunnel,
+    ) -> Result<SavedTunnel, DesktopRepositoryError> {
         let mut out = t.clone();
         if let Some(ref mut ssh) = out.ssh {
             if let Some(pw) = &ssh.password {
@@ -132,7 +137,7 @@ impl Store {
         Ok(out)
     }
 
-    async fn persist_tunnels(&self, tunnels: &[SavedTunnel]) -> Result<(), StoreError> {
+    async fn persist_tunnels(&self, tunnels: &[SavedTunnel]) -> Result<(), DesktopRepositoryError> {
         let mut to_disk = Vec::with_capacity(tunnels.len());
         for t in tunnels {
             to_disk.push(self.encrypt_tunnel_secrets(t)?);
@@ -150,7 +155,7 @@ impl Store {
         cache.tunnels.iter().find(|t| t.id == id).cloned()
     }
 
-    pub async fn save_tunnel(&self, tunnel: SavedTunnel) -> Result<(), StoreError> {
+    pub async fn save_tunnel(&self, tunnel: SavedTunnel) -> Result<(), DesktopRepositoryError> {
         let _guard = self.write_lock.lock().await;
 
         {
@@ -173,12 +178,12 @@ impl Store {
             to_disk.push(self.encrypt_tunnel_secrets(t)?);
         }
         let content = serde_json::to_string_pretty(&to_disk)
-            .map_err(|e| StoreError::ParseError(e.to_string()))?;
+            .map_err(|e| DesktopRepositoryError::ParseError(e.to_string()))?;
         let path = self.data_dir.join("tunnels.json");
         Self::write_file_atomic(&path, content).await
     }
 
-    pub async fn delete_tunnel(&self, id: &str) -> Result<(), StoreError> {
+    pub async fn delete_tunnel(&self, id: &str) -> Result<(), DesktopRepositoryError> {
         {
             let mut cache = self.cache.write().await;
             cache.tunnels.retain(|t| t.id != id);

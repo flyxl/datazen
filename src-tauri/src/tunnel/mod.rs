@@ -15,7 +15,7 @@ pub use network_provider::{desktop_network_provider, DesktopTunnelHost, DesktopT
 pub(crate) use datazen_tunnel::verify_http_proxy_upstream;
 pub(crate) use datazen_tunnel::verify_websocket_upstream;
 
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use datazen_driver_api::{
     ConnectionConfig, DriverError, HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig,
 };
@@ -93,7 +93,7 @@ pub async fn start_for_connection(
 
 /// Resolve a persisted tunnel reference without creating a runtime session.
 pub async fn resolve_saved_tunnel(
-    store: &Store,
+    store: &DesktopRepository,
     mut config: ConnectionConfig,
 ) -> Result<ConnectionConfig, DriverError> {
     let Some(tunnel_id) = config.tunnel_id.as_ref().filter(|id| !id.is_empty()) else {
@@ -111,9 +111,9 @@ pub async fn resolve_saved_tunnel(
     Ok(config)
 }
 
-/// Test a connection directly through Store/DriverRegistry, with no db session.
+/// Test a connection directly through DesktopRepository/DriverRegistry, with no db session.
 pub async fn test_connection(
-    store: &Store,
+    store: &DesktopRepository,
     registry: &DriverRegistry,
     config: ConnectionConfig,
 ) -> Result<datazen_driver_api::ServerInfo, DriverError> {
@@ -132,7 +132,7 @@ pub async fn test_connection(
 
 /// Probe a saved tunnel directly, without manufacturing a runtime session id.
 pub async fn test_tunnel(
-    store: &Store,
+    store: &DesktopRepository,
     tunnel_id: &str,
     target_host: &str,
     target_port: u16,

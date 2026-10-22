@@ -33,8 +33,8 @@ impl Fixture {
         self.path().join("favorites")
     }
 
-    fn store(&self) -> FavoritesStore {
-        FavoritesStore::open(&self.root()).unwrap()
+    fn store(&self) -> FavoritesRepository {
+        FavoritesRepository::open(&self.root()).unwrap()
     }
 
     fn write(&self, relative: &str, contents: &str) -> PathBuf {
@@ -55,11 +55,11 @@ fn draft(connection: &str, title: &str, sql: &str) -> NewFavorite {
     }
 }
 
-fn listed_first(store: &FavoritesStore) -> FavoriteQuery {
+fn listed_first(store: &FavoritesRepository) -> FavoriteQuery {
     store.list(None).into_iter().next().unwrap()
 }
 
-fn titles(store: &FavoritesStore, connection: Option<&str>) -> Vec<String> {
+fn titles(store: &FavoritesRepository, connection: Option<&str>) -> Vec<String> {
     store
         .list(connection)
         .into_iter()
@@ -119,7 +119,11 @@ fn a_renamed_title_does_not_rename_the_file() {
     let file = fx.root().join(format!("{}.sql", saved.id));
     let mut favorite = listed_first(&store);
     favorite.title = "After".into();
-    write_atomic(&file, FavoritesStore::render_file(&favorite).as_bytes()).unwrap();
+    write_atomic(
+        &file,
+        FavoritesRepository::render_file(&favorite).as_bytes(),
+    )
+    .unwrap();
 
     // Re-read from disk with a cold store — the file is the source of truth,
     // and the id, not the title, is what names it.
@@ -609,11 +613,11 @@ fn a_root_that_is_a_file_is_reported_as_such() {
     fs::write(&not_a_dir, b"a leftover from the JSON store").unwrap();
 
     assert!(matches!(
-        FavoritesStore::open(&not_a_dir),
+        FavoritesRepository::open(&not_a_dir),
         Err(FavoritesError::RootNotADirectory(_))
     ));
     let good = fx.path().join("elsewhere");
-    let store = FavoritesStore::open(&good).unwrap();
+    let store = FavoritesRepository::open(&good).unwrap();
     assert!(matches!(
         store.set_root(&not_a_dir),
         Err(FavoritesError::RootNotADirectory(_))

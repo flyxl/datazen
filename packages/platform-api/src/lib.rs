@@ -49,7 +49,7 @@ pub mod target;
 pub use context::{DelegationRef, OwnerRef, RequestContext};
 pub use error::PortError;
 pub use ports::{
-    ArtifactStore, BudgetCoordinator, Clock, ClusterNodeBudgetPort, ControlResourcePort,
+    ArtifactRepository, BudgetCoordinator, Clock, ClusterNodeBudgetPort, ControlResourcePort,
     DriverPoolBudgetPort, EventSink, ExecutionSettingsReader, ExecutionTargetResolver, FixedClock,
     IdentityResolver, JobRepository, MasterKeyProvider, MigrationProfileReader, MonitorGrantReader,
     NetworkProvider, OrganizationScope, PolicyService, ProfileReader, ProfileRepository,

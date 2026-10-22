@@ -13,8 +13,8 @@ const CHILD_OWNER_ROOT_ENV: &str = "DATAZEN_TEST_COMPARISON_OWNER_ROOT";
 const TEST_ORGANIZATION: &str = "datazen-data-sync-tests";
 
 /// 包内测试用的存储根端口。
-fn test_root(root: &Path) -> LocalComparisonStoreRoot {
-    LocalComparisonStoreRoot::new(root.to_path_buf(), OrganizationId::new(TEST_ORGANIZATION))
+fn test_root(root: &Path) -> LocalComparisonStorageRoot {
+    LocalComparisonStorageRoot::new(root.to_path_buf(), OrganizationId::new(TEST_ORGANIZATION))
 }
 
 /// 包内测试用的作用域。
@@ -23,17 +23,20 @@ fn test_scope() -> OrganizationScope {
 }
 
 /// 包内测试用的比较存储：根来自默认落盘约定，作用域来自测试组织。
-fn comparison_store_from(comparison: ComparisonResult) -> Result<ComparisonStore, String> {
-    ComparisonStore::from_comparison(
+fn comparison_store_from(comparison: ComparisonResult) -> Result<ComparisonStorage, String> {
+    ComparisonStorage::from_comparison(
         comparison,
-        &test_root(&default_comparison_store_root()),
+        &test_root(&default_comparison_storage_root()),
         &test_scope(),
     )
 }
 
 /// 包内测试用的流式写入器。
-fn test_store_writer() -> Result<StreamingComparisonStoreWriter, String> {
-    StreamingComparisonStoreWriter::new(&test_root(&default_comparison_store_root()), &test_scope())
+fn test_store_writer() -> Result<StreamingComparisonStorageWriter, String> {
+    StreamingComparisonStorageWriter::new(
+        &test_root(&default_comparison_storage_root()),
+        &test_scope(),
+    )
 }
 
 fn inserted_row(key: i64) -> RowChange {
@@ -123,7 +126,7 @@ fn row_bearing_table() -> TableResult {
 
 /// CM-05：越组织访问按「不存在」处理——存储根解析不出来即**失败关闭**。
 ///
-/// 这条断言锁的是「根解析」这一层：端口实现（`LocalComparisonStoreRoot::root_for`）
+/// 这条断言锁的是「根解析」这一层：端口实现（`LocalComparisonStorageRoot::root_for`）
 /// 返回 `None` 之后，比较存储的**两条**入口（内联/落盘构造与流式写入器）都必须
 /// 一致地失败，且失败发生在**触碰文件系统之前**——越组织访问不得在存储根下留下
 /// 任何目录，也不得返回「无权限」形态的措辞（那会泄漏「存在但无权」）。
@@ -134,17 +137,18 @@ fn another_organization_gets_no_comparison_storage_at_all() {
         TEST_ORGANIZATION,
         Uuid::new_v4()
     ));
-    let bound = LocalComparisonStoreRoot::new(root.clone(), OrganizationId::new(TEST_ORGANIZATION));
+    let bound =
+        LocalComparisonStorageRoot::new(root.clone(), OrganizationId::new(TEST_ORGANIZATION));
     let foreign = OrganizationScope::new(OrganizationId::new("datazen-data-sync-other"));
 
-    let error = ComparisonStore::from_comparison(comparison(8), &bound, &foreign)
+    let error = ComparisonStorage::from_comparison(comparison(8), &bound, &foreign)
         .expect_err("越组织访问不得拿到比较存储");
     let lowered = error.to_lowercase();
     assert!(!lowered.contains("permission"));
     assert!(!lowered.contains("forbidden"));
     assert!(!lowered.contains("denied"));
 
-    let writer = StreamingComparisonStoreWriter::new(&bound, &foreign);
+    let writer = StreamingComparisonStorageWriter::new(&bound, &foreign);
     assert!(writer.is_err(), "越组织访问不得拿到比较存储写入器");
 
     assert!(
@@ -153,7 +157,7 @@ fn another_organization_gets_no_comparison_storage_at_all() {
     );
 
     // 同一个根对本组织仍然可用：失败关闭不能误伤合法访问。
-    let store = ComparisonStore::from_comparison(comparison(8), &bound, &test_scope())
+    let store = ComparisonStorage::from_comparison(comparison(8), &bound, &test_scope())
         .expect("本组织应当拿到比较存储");
     assert!(store.summaries().is_ok());
     let _ = fs::remove_dir_all(&root);
@@ -184,7 +188,7 @@ fn one_shot_add_table_preserves_rows_metadata_counts_and_order() {
 
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().join("stores");
-    let mut writer = StreamingComparisonStoreWriter::new_at(&root, None).unwrap();
+    let mut writer = StreamingComparisonStorageWriter::new_at(&root, None).unwrap();
     writer.add_table(expected.clone()).unwrap();
     let store = writer.finish().unwrap();
 
@@ -228,7 +232,7 @@ fn one_shot_add_table_row_write_failures_abort_without_publishing() {
     ] {
         let temporary = tempfile::tempdir().unwrap();
         let root = temporary.path().join("stores");
-        let mut writer = StreamingComparisonStoreWriter::new_at(&root, Some(failure)).unwrap();
+        let mut writer = StreamingComparisonStorageWriter::new_at(&root, Some(failure)).unwrap();
         let directory = writer.directory.clone().unwrap();
 
         let error = writer.add_table(row_bearing_table()).unwrap_err();
@@ -808,7 +812,7 @@ fn partial_row_and_index_write_failures_abort_and_cannot_be_finalized() {
     ] {
         let temporary = tempfile::tempdir().unwrap();
         let root = temporary.path().join("stores");
-        let mut writer = StreamingComparisonStoreWriter::new_at(&root, Some(failure)).unwrap();
+        let mut writer = StreamingComparisonStorageWriter::new_at(&root, Some(failure)).unwrap();
         let directory = writer.directory.clone().unwrap();
         writer
             .begin_table(TableResult::matched("users", "users", Vec::new()))
@@ -833,7 +837,7 @@ fn partial_manifest_write_failure_removes_store_and_publishes_no_plan() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().join("stores");
     let mut writer =
-        StreamingComparisonStoreWriter::new_at(&root, Some(TestWriteFailure::Manifest)).unwrap();
+        StreamingComparisonStorageWriter::new_at(&root, Some(TestWriteFailure::Manifest)).unwrap();
     let directory = writer.directory.clone().unwrap();
     writer
         .begin_table(TableResult::matched("users", "users", Vec::new()))

@@ -102,7 +102,7 @@ impl Ulid {
 
     /// True when `s` is a canonical ULID.
     ///
-    /// **Not** the path-safety gate — that is `FavoritesStore::resolve_file`'s
+    /// **Not** the path-safety gate — that is `FavoritesRepository::resolve_file`'s
     /// `is_safe_stem`, which deliberately accepts a wider set than a ULID so a
     /// favorite the user renamed by hand stays editable. This predicate is
     /// stricter (26 canonical Crockford characters, correct length) and exists

@@ -10,7 +10,7 @@ pub mod host;
 pub mod page_source;
 pub mod rows;
 
-pub use executor::{ExecHook, FakeExecutor, SharedStore, StatementRows, TargetStore};
+pub use executor::{ExecHook, FakeExecutor, SharedRepository, StatementRows, TargetRepository};
 pub use host::{source_endpoint, target_endpoint, FakeHost, SchemaMode, SOURCE_CONN, TARGET_CONN};
 pub use page_source::FakePageSource;
 pub use rows::{

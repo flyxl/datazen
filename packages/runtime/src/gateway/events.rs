@@ -43,8 +43,8 @@ impl ExecutionEventKind {
 ///
 /// `declared_source` 是**对抗性字段**：真实事件流并不携带来源，
 /// 它被放进来是为了让「后来的事件不得改写请求来源」这条规则有一个真实的对手。
-/// [`EventStore::apply`] 会无条件丢弃它并计数（见
-/// [`EventStore::declared_source_events_ignored`]）。
+/// [`EventRepository::apply`] 会无条件丢弃它并计数（见
+/// [`EventRepository::declared_source_events_ignored`]）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionEvent {
     /// 事件归属的执行。**必须显式携带**：同一个会话里可以并发多条执行，
@@ -143,19 +143,19 @@ impl SessionWatermark {
 /// 绑定在**受理**时一次性确定，之后不再改变：一次执行只属于一个
 /// `(dbSessionId, runtimeEpoch)`，任何不匹配的帧都是别的执行的。
 #[derive(Clone)]
-pub struct EventStore {
+pub struct EventRepository {
     watermark: Option<SessionWatermark>,
     /// 最近一次缺口，调用方据此决定补订阅起点。
     resubscribe_from: Option<Counter>,
 }
 
-impl Default for EventStore {
+impl Default for EventRepository {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl EventStore {
+impl EventRepository {
     pub fn new() -> Self {
         Self {
             watermark: None,
@@ -360,9 +360,9 @@ impl EventStore {
     }
 }
 
-impl std::fmt::Debug for EventStore {
+impl std::fmt::Debug for EventRepository {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EventStore")
+        f.debug_struct("EventRepository")
             .field("watermark", &self.watermark)
             .field("resubscribe_from", &self.resubscribe_from)
             .finish()

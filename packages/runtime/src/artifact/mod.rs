@@ -1,7 +1,7 @@
 //! Durable, bounded result storage. Metadata rename is the publication boundary.
 //! Unfinished writers are recovered as truncated; writer capabilities never survive restart.
 mod execution;
-/// Existing aggregate ArtifactStore published-byte quota.
+/// Existing aggregate ArtifactRepository published-byte quota.
 pub const ARTIFACT_BYTE_QUOTA: u64 = 256 * 1024 * 1024;
 
 use async_trait::async_trait;
@@ -59,7 +59,7 @@ struct ExportGrant {
     artifact: Option<ArtifactId>,
     cancelled: Option<Arc<AtomicBool>>,
 }
-pub struct FileArtifactStore {
+pub struct FileArtifactRepository {
     root: PathBuf,
     state: Mutex<State>,
 }
@@ -131,7 +131,7 @@ fn read_block(path: &Path, size: u64) -> Result<Vec<u8>, PortError> {
     }
     Ok(bytes)
 }
-impl FileArtifactStore {
+impl FileArtifactRepository {
     pub fn open(root: impl AsRef<Path>) -> Result<Self, PortError> {
         if fs::symlink_metadata(root.as_ref()).is_ok_and(|m| m.file_type().is_symlink()) {
             return Err(unavailable());
@@ -551,7 +551,7 @@ impl FileArtifactStore {
     }
 }
 #[async_trait]
-impl ArtifactStore for FileArtifactStore {
+impl ArtifactRepository for FileArtifactRepository {
     async fn create(
         &self,
         ctx: &RequestContext,

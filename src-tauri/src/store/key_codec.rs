@@ -8,15 +8,17 @@
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 
-use crate::store::StoreError;
+use crate::store::DesktopRepositoryError;
 
 /// Decode a base64 master key into its 32 raw bytes.
-pub(super) fn decode_key_b64(key_b64: &str) -> Result<[u8; 32], StoreError> {
+pub(super) fn decode_key_b64(key_b64: &str) -> Result<[u8; 32], DesktopRepositoryError> {
     let key_bytes = BASE64
         .decode(key_b64.trim())
-        .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+        .map_err(|e| DesktopRepositoryError::EncryptionError(e.to_string()))?;
     if key_bytes.len() != 32 {
-        return Err(StoreError::EncryptionError("Invalid key length".into()));
+        return Err(DesktopRepositoryError::EncryptionError(
+            "Invalid key length".into(),
+        ));
     }
     let mut key = [0u8; 32];
     key.copy_from_slice(&key_bytes);

@@ -3,7 +3,7 @@
 use std::sync::{Arc, OnceLock};
 
 use crate::commands::AppState;
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use datazen_driver_api::resource::ResourceProvider;
@@ -16,7 +16,7 @@ pub struct TestAppState {
     pub _keyring: super::FileKeyringGuard,
     pub _temp: tempfile::TempDir,
     pub state: AppState,
-    pub store: Arc<Store>,
+    pub store: Arc<DesktopRepository>,
     pub mock: Arc<MockDriver>,
     pub registry: Arc<DriverRegistry>,
 }
@@ -105,7 +105,7 @@ impl TestAppState {
         let keyring = super::FileKeyringGuard::set();
         let temp = tempfile::tempdir().expect("tempdir");
         let store = Arc::new(
-            Store::init_with_path(temp.path())
+            DesktopRepository::init_with_path(temp.path())
                 .await
                 .expect("store init"),
         );
@@ -280,6 +280,6 @@ pub fn rich_mock_options() -> MockDriverOptions {
     }
 }
 
-pub fn build_app_state(store: Arc<Store>, registry: Arc<DriverRegistry>) -> AppState {
+pub fn build_app_state(store: Arc<DesktopRepository>, registry: Arc<DriverRegistry>) -> AppState {
     crate::finish_app_state(store, registry, Arc::new(SyncAdapterRegistry::new()), None)
 }

@@ -4,7 +4,7 @@ mod release;
 #[cfg(feature = "webdriver")]
 pub(crate) mod webdriver_dispatch;
 use super::{resource_budget::DesktopResourceBudget, resource_mapping as map};
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use async_trait::async_trait;
 use datazen_driver_api::{resource as dr, session as ds, QueryExecutionId};
 use datazen_platform_api::ports::budget::BudgetCoordinator as _;
@@ -73,7 +73,7 @@ impl Resource {
 
 pub struct DesktopSessionBackend {
     registry: Arc<DriverRegistry>,
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     budget: Arc<datazen_runtime::budget::InProcessBudgetCoordinator>,
     organization: datazen_platform_api::id::OrganizationId,
     principal: datazen_platform_api::id::PrincipalId,
@@ -100,7 +100,11 @@ impl DesktopSessionBackend {
         self.budget.clone()
     }
 
-    pub fn new(registry: Arc<DriverRegistry>, store: Arc<Store>, physical_limit: u32) -> Self {
+    pub fn new(
+        registry: Arc<DriverRegistry>,
+        store: Arc<DesktopRepository>,
+        physical_limit: u32,
+    ) -> Self {
         Self::new_scoped(
             registry,
             store,
@@ -113,7 +117,7 @@ impl DesktopSessionBackend {
     }
     pub fn new_scoped(
         registry: Arc<DriverRegistry>,
-        store: Arc<Store>,
+        store: Arc<DesktopRepository>,
         physical_limit: u32,
         organization: datazen_platform_api::id::OrganizationId,
         principal: datazen_platform_api::id::PrincipalId,

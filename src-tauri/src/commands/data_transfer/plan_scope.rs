@@ -9,7 +9,7 @@
 //!
 //! That is only correct while the desktop is the *only* shape. The plan
 //! registry is an **organization-partitioned storage port**
-//! ([`TransferPlanStorePort`]: every method takes an `&OrganizationScope`), so
+//! ([`TransferPlanRepositoryPort`]: every method takes an `&OrganizationScope`), so
 //! the scope the caller passes **is** the tenant boundary. Pinning it to the
 //! desktop's install-level constant means a server shape would look up
 //! *"the desktop's organization"* inside a multi-tenant store — the wrong
@@ -28,7 +28,7 @@
 //! * the scope carries **only** the organization — no principal, no
 //!   credential — so it can be used as a storage key.
 //!
-//! [`TransferPlanStorePort`]: crate::data_transfer::plan_store::TransferPlanStorePort
+//! [`TransferPlanRepositoryPort`]: crate::data_transfer::plan_store::TransferPlanRepositoryPort
 
 use std::sync::OnceLock;
 

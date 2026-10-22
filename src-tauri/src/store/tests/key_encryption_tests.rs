@@ -13,10 +13,10 @@ use super::fixtures::*;
 async fn file_backend_creates_and_reloads_key() {
     use_file_key_backend();
     let dir = tempfile::tempdir().unwrap();
-    let k1 = Store::get_or_create_encryption_key_for_test(dir.path())
+    let k1 = DesktopRepository::get_or_create_encryption_key_for_test(dir.path())
         .await
         .unwrap();
-    let k2 = Store::get_or_create_encryption_key_for_test(dir.path())
+    let k2 = DesktopRepository::get_or_create_encryption_key_for_test(dir.path())
         .await
         .unwrap();
     assert_eq!(k1, k2);
@@ -163,9 +163,11 @@ fn decrypt_rejects_short_payload() {
     use_file_key_backend();
     let dir = tempfile::tempdir().unwrap();
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let store = rt.block_on(Store::init_with_path(dir.path())).unwrap();
+    let store = rt
+        .block_on(DesktopRepository::init_with_path(dir.path()))
+        .unwrap();
     let err = store.decrypt_password("AAAA").unwrap_err();
-    assert!(matches!(err, StoreError::EncryptionError(_)));
+    assert!(matches!(err, DesktopRepositoryError::EncryptionError(_)));
 }
 
 #[tokio::test]

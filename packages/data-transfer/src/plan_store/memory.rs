@@ -2,7 +2,7 @@
 //!
 //! The `HashMap` implementation **stays in this package**: the host injects an
 //! instance of it, it does not reimplement it. A different backing store only
-//! has to implement [`TransferPlanStorePort`].
+//! has to implement [`TransferPlanRepositoryPort`].
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -18,7 +18,7 @@ use crate::resume::ResumeTableProgress;
 use crate::TransferError;
 
 use super::checkpoint::{retain_live_checkpoints, unknown_token, ResumeCheckpointState};
-use super::port::{PlanIssueRequest, TransferPlanStorePort};
+use super::port::{PlanIssueRequest, TransferPlanRepositoryPort};
 use super::{
     filter_fingerprint, fingerprint_schemas, source_boundary_fingerprint,
     target_boundary_fingerprint, target_scope_fingerprint, PlanState, StoredTransferPlan,
@@ -38,15 +38,15 @@ pub(super) fn unknown_plan() -> TransferError {
 /// Process-local plan registry.
 ///
 /// One instance per host process, created during assembly and injected as
-/// `Arc<dyn TransferPlanStorePort>`.
-pub struct InMemoryTransferPlanStore {
+/// `Arc<dyn TransferPlanRepositoryPort>`.
+pub struct InMemoryTransferPlanRepository {
     pub(super) plans: Mutex<HashMap<String, StoredTransferPlan>>,
     pub(super) checkpoints: Mutex<HashMap<String, super::TransferResumeCheckpoint>>,
     /// Monotonic plan-revision source, so every issued plan is uniquely ordered.
     revision_seq: AtomicU64,
 }
 
-impl InMemoryTransferPlanStore {
+impl InMemoryTransferPlanRepository {
     pub fn new() -> Self {
         Self {
             plans: Mutex::new(HashMap::new()),
@@ -64,13 +64,13 @@ impl InMemoryTransferPlanStore {
     }
 }
 
-impl Default for InMemoryTransferPlanStore {
+impl Default for InMemoryTransferPlanRepository {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl TransferPlanStorePort for InMemoryTransferPlanStore {
+impl TransferPlanRepositoryPort for InMemoryTransferPlanRepository {
     fn issue(
         &self,
         scope: &OrganizationScope,

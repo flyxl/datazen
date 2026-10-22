@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use datazen_data_sync::error::DataSyncError;
 use datazen_data_sync::filter::SyncSourceFilter;
-use datazen_data_sync::job::host::{ArtifactStoreGuard, TableSchemaPair};
+use datazen_data_sync::job::host::{ArtifactRepositoryGuard, TableSchemaPair};
 use datazen_data_sync::job::{
     ChangeBlock, ChangeSetArtifact, DataSyncHost, EndpointSession, KeysetPageSource,
     RelationIdentity, TargetExecutor, TransactionScope,
@@ -20,7 +20,7 @@ use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TableSchema, Value};
 use datazen_runtime::job::CancelToken;
 
-use super::executor::{ExecHook, FakeExecutor, SharedStore, StatementRows, TargetStore};
+use super::executor::{ExecHook, FakeExecutor, SharedRepository, StatementRows, TargetRepository};
 use super::page_source::FakePageSource;
 use super::rows::{endpoint, key_repr, schema as table_schema, FAMILY, TABLE};
 
@@ -101,7 +101,7 @@ impl Default for HostState {
 
 pub struct FakeHost {
     state: Mutex<HostState>,
-    store: SharedStore,
+    store: SharedRepository,
     plan_rows: StatementRows,
     events: Arc<Mutex<Vec<String>>>,
 }
@@ -116,7 +116,7 @@ impl FakeHost {
     pub fn new() -> Self {
         Self {
             state: Mutex::new(HostState::default()),
-            store: Arc::new(Mutex::new(TargetStore::default())),
+            store: Arc::new(Mutex::new(TargetRepository::default())),
             plan_rows: Arc::new(Mutex::new(HashMap::new())),
             events: Arc::new(Mutex::new(Vec::new())),
         }
@@ -400,13 +400,13 @@ impl DataSyncHost for FakeHost {
     async fn store_artifact(
         &self,
         artifact: ChangeSetArtifact,
-    ) -> Result<ArtifactStoreGuard, DataSyncError> {
+    ) -> Result<ArtifactRepositoryGuard, DataSyncError> {
         self.call("store_artifact");
         let id = format!("artifact-{}", artifact.plan_id);
         self.write(|s| {
             s.artifacts.insert(artifact.plan_id.clone(), artifact);
         });
-        Ok(ArtifactStoreGuard { artifact_id: id })
+        Ok(ArtifactRepositoryGuard { artifact_id: id })
     }
 
     async fn load_artifact(

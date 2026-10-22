@@ -162,7 +162,7 @@ const LEGACY_MAIN_ALIASES = new Set([
 ### 6.2 Store 边界规则
 
 1. **持久化配置 vs 运行时会话**（详见 [naming.md](naming.md)）  
-   - `connectionStore`：持久化 `connectionId` 与连接配置列表（Rust `Store` 落盘）。  
+   - `connectionStore`：持久化 `connectionId` 与连接配置列表（Rust `DesktopRepository` 落盘）。  
    - `activeConnectionStore`：内存态 `dbSessionId` 与连接状态；**永不落盘**。
 
 2. **按连接分区的前端状态**  
@@ -191,7 +191,7 @@ const LEGACY_MAIN_ALIASES = new Set([
 | `datazen:settings-changed` | settings → 全体 | 主题/语言等即时生效 |
 | `menu:open-settings` / `menu:workflow` 等 | Rust 菜单 → main | 主窗内导航，非新 OS 窗口 |
 
-新增跨窗口状态时：优先 **事件 + 最小 payload**，避免在子窗口复制整份 `panelStore`；持久化数据一律经 Rust `Store` IPC，不在窗口间手动 sync 大对象。
+新增跨窗口状态时：优先 **事件 + 最小 payload**，避免在子窗口复制整份 `panelStore`；持久化数据一律经 Rust `DesktopRepository` IPC，不在窗口间手动 sync 大对象。
 
 ### 6.4 相关文档
 

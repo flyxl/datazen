@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use crate::gateway_fixtures as fx;
-use datazen_runtime::gateway::{AlwaysAllow, InMemoryIdempotencyStore, MonotonicClock};
+use datazen_runtime::gateway::{AlwaysAllow, InMemoryIdempotencyRepository, MonotonicClock};
 // ───────────────── G 两段单调耗时 ─────────────────
 
 #[tokio::test(start_paused = true)]
@@ -13,7 +13,7 @@ async fn the_gateway_segment_excludes_the_driver_round_trip() {
     let h = fx::harness_with(
         port,
         Arc::new(AlwaysAllow),
-        InMemoryIdempotencyStore::shared(),
+        InMemoryIdempotencyRepository::shared(),
     );
     assert_eq!(h.clock.now_nanos(), 0);
 

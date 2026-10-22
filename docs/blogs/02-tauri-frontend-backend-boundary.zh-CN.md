@@ -265,7 +265,7 @@ DataZen 用 `CommandError` 统一后端错误来源：
 
 ```rust
 pub enum CommandError {
-    Store(StoreError),
+    Store(DesktopRepositoryError),
     Connection(ConnectionError),
     Driver(DriverError),
     Ai(AiError),

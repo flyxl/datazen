@@ -8,7 +8,7 @@ use datazen_platform_api::{
         job::{JobDefinition, JobState},
     },
     id::{IdempotencyKey, JobId, LeaseId, WorkerId},
-    ports::artifact::{ArtifactStore, ExportSink},
+    ports::artifact::{ArtifactRepository, ExportSink},
 };
 use datazen_runtime::job::{EndpointRef, EndpointRole, JobHandler};
 use std::{

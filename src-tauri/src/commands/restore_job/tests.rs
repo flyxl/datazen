@@ -12,7 +12,7 @@ use datazen_feature_core::restore_job::{RestoreGateway, RestorePlan};
 use datazen_platform_api::{
     dto::{artifact::ArtifactLifecycle, execution::EffectOutcome},
     id::*,
-    ports::{artifact::ArtifactStore, job::JobRepository},
+    ports::{artifact::ArtifactRepository, job::JobRepository},
     RequestContext,
 };
 use datazen_runtime::{
@@ -40,13 +40,13 @@ impl DatabaseDriverFactory for Factory {
 
 async fn host() -> (
     tempfile::TempDir,
-    Arc<crate::store::Store>,
+    Arc<crate::store::DesktopRepository>,
     Arc<crate::platform::PlatformAdapter>,
     &'static Factory,
 ) {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        crate::store::Store::init_with_path(dir.path())
+        crate::store::DesktopRepository::init_with_path(dir.path())
             .await
             .unwrap(),
     );

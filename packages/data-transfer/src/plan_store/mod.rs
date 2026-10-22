@@ -7,7 +7,7 @@
 //!
 //! ## Storage is a port, not a global
 //!
-//! The registry itself is a port ([`TransferPlanStorePort`]): the host creates
+//! The registry itself is a port ([`TransferPlanRepositoryPort`]): the host creates
 //! one instance during assembly and injects it. The **plan store** has no
 //! process-wide global any more — a plan lives in the instance the host handed
 //! to the call site, so the storage lifetime is the host's decision rather
@@ -16,7 +16,7 @@
 //!
 //! The rules (pairing, fingerprints, single-use consumption, resume semantics,
 //! commit boundaries) stay in this package; only the storage is a port. The
-//! in-memory implementation stays here too ([`InMemoryTransferPlanStore`]).
+//! in-memory implementation stays here too ([`InMemoryTransferPlanRepository`]).
 
 use std::time::{Duration, Instant};
 
@@ -28,8 +28,8 @@ mod port;
 mod tests;
 
 pub use checkpoint::{TransferCheckpointSession, TransferResumeCheckpoint};
-pub use memory::InMemoryTransferPlanStore;
-pub use port::{PlanIssueRequest, TransferPlanStorePort};
+pub use memory::InMemoryTransferPlanRepository;
+pub use port::{PlanIssueRequest, TransferPlanRepositoryPort};
 
 use datazen_driver_api::TableSchema;
 use datazen_platform_api::id::OrganizationId;

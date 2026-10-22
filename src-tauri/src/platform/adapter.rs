@@ -117,7 +117,7 @@ pub struct PlatformAdapter {
     /// 漏了显式 `stop`，任务也不会泄漏——这里仍显式停，是为了让停止**发生在一个
     /// 确定的时刻**，而不是等某个不可预测的析构点。
     idle_reclaimer: std::sync::Mutex<Option<datazen_runtime::application::IdleReclaimer>>,
-    artifacts: std::sync::OnceLock<Arc<datazen_runtime::artifact::FileArtifactStore>>,
+    artifacts: std::sync::OnceLock<Arc<datazen_runtime::artifact::FileArtifactRepository>>,
     native: std::sync::OnceLock<Arc<super::native_tool::deployment::NativeDeployment>>,
 }
 
@@ -165,7 +165,7 @@ impl PlatformAdapter {
     /// frontend request paths are never accepted as an ExportSink.
     pub(crate) fn artifact_store(
         &self,
-    ) -> Result<Arc<datazen_runtime::artifact::FileArtifactStore>, ApiError> {
+    ) -> Result<Arc<datazen_runtime::artifact::FileArtifactRepository>, ApiError> {
         self.artifacts.get().cloned().ok_or_else(|| {
             ApiError::new(
                 ApiErrorCode::ServiceUnavailable,
@@ -256,7 +256,7 @@ impl std::fmt::Debug for PlatformAdapter {
 impl PlatformAdapter {
     pub fn inject(
         &self,
-        store: Arc<crate::store::Store>,
+        store: Arc<crate::store::DesktopRepository>,
         registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
     ) -> Result<(), ApiError> {
         if self.services.get().is_some() {
@@ -304,7 +304,7 @@ impl PlatformAdapter {
         let native =
             super::native_tool::deployment::NativeDeployment::from_build(backend.physical_budget());
         let artifacts = Arc::new(
-            datazen_runtime::artifact::FileArtifactStore::open(
+            datazen_runtime::artifact::FileArtifactRepository::open(
                 store.data_dir().join("result-artifacts"),
             )
             .map_err(|_| {

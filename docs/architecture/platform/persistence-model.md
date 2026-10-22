@@ -1,7 +1,7 @@
 # DataZen 持久化模型、可落盘白名单与 Schema 迁移详细设计
 
 > 状态：本文 §3/§5 面向 P7 团队服务 PostgreSQL 管理库，仍属目标设计；§4.1 描述桌面文件与 SQLite 的当前事实，其中 `{appData}/datazen.sqlite` Job 表已在 P5 Core 升为 schema v2，桌面 Monitor grant 元数据在 P6 升为 schema v3。本文其他服务端 schema/迁移内容不代表已经实现。
-> 读者：负责《分阶段开发计划》P1（抽取共享应用边界与持久化白名单）和 P7（服务端 ProfileRepository / JobRepository / Audit / ArtifactStore 与 schema migration）的实现者。本文定义**存什么、存在哪、谁来写、怎么迁**；DTO 形状、会话状态机、错误码取值以[连接管理详细设计](connection-management.md)为权威。
+> 读者：负责《分阶段开发计划》P1（抽取共享应用边界与持久化白名单）和 P7（服务端 ProfileRepository / JobRepository / Audit / ArtifactRepository 与 schema migration）的实现者。本文定义**存什么、存在哪、谁来写、怎么迁**；DTO 形状、会话状态机、错误码取值以[连接管理详细设计](connection-management.md)为权威。
 > 配套：[系统概要](system-overview.md)、[连接管理详细设计](connection-management.md)、[共享应用边界与端口详细设计](shared-boundaries-and-ports.md)、[团队 Web 服务详细设计](team-server-and-auth.md)、[分阶段开发计划](../../development/platform-development-plan.md)。
 > 现状盘点来源：[持久化存储（现状）](../backend/store.md)、[`src-tauri/src/store/`](../../../src-tauri/src/store/mod.rs)。这些是**已实现事实**；本文其余章节为目标设计。
 
@@ -137,7 +137,7 @@ CM-61（[连接 §16.7](connection-management.md#167-补充契约与边界用例
 | `jobs` | `JobRepository` 主记录 | `(organization_id, job_id)` |
 | `job_checkpoints` | `JobRepository.save_checkpoint` | `(organization_id, job_id, checkpoint_version)` |
 | `audit_events` | append-only 审计 | `(organization_id, event_id)` |
-| `artifact_metadata` | `ArtifactStore` 元数据（字节在对象存储/受控目录） | `(organization_id, artifact_id)` |
+| `artifact_metadata` | `ArtifactRepository` 元数据（字节在对象存储/受控目录） | `(organization_id, artifact_id)` |
 | `quota_counters` | `BudgetCoordinator` 的持久额度部分 | `(organization_id, scope, scope_key, resource_kind)` |
 | `schema_migration_history` | 迁移运行器自身状态 | `(version)` |
 | `memberships` | 主体 → 角色基线（§3.10，W15） | `(organization_id, principal_id)` |
@@ -766,7 +766,7 @@ P5/P9 claim 存储：`claim_generation` 在首次认领/接管时原子自增，
 | 类别 | 是否备份 | 说明 |
 | --- | --- | --- |
 | 服务端管理库（13 张表） | 是 | 组织、配置版本、执行记录、任务、审计、额度、迁移历史、登录会话与授权数据（`login_sessions` / `memberships` / `acl_entries` / `permission_versions`） |
-| `ArtifactStore` 字节 | 按 TTL 与额度策略，可选 | 备份必须与 `artifact_metadata` 一起做，否则元数据会指向不存在的字节 |
+| `ArtifactRepository` 字节 | 按 TTL 与额度策略，可选 | 备份必须与 `artifact_metadata` 一起做，否则元数据会指向不存在的字节 |
 | 令牌签名密钥（KMS / 配置） | 是，独立流程 | 保留期 ≥ 已发令牌全部过期时间；恢复后未知 `keyVersion` 仍必须拒绝 |
 | 审计归档（超出在线保留期后卸载的部分） | 是 | append-only 卸载后仍需可追溯 |
 | 桌面 `{appData}` 目录 | 按用户选择 | 包含 `.key` 时的处理见下；`history.sqlite` 明文含 SQL 与错误信息，备份视同敏感审计日志 |
@@ -868,11 +868,11 @@ P5 Job 引用的计划/输入 Artifact 另有保留锁：接受 Job 与建立引
 ## 10. 与既有设计的关系与本文边界
 
 - **不重复定义 DTO 与错误码取值**。`DurableExecutionRecord` 的语义来自 [连接 §4](connection-management.md#4-dto-与字段定义) 与 [§4.4](connection-management.md#44-可落盘来源与运行时绑定)，错误码取值全集见 [连接 §4](connection-management.md#4-dto-与字段定义) 与 [§13](connection-management.md#13-错误重试和事件)；本文只定义持久化投影、列映射与表结构。
-- **不重复定义端口**。`ProfileRepository` / `JobRepository` / `SecretProvider` / `ArtifactStore` / `BudgetCoordinator` 的方法签名以 [共享边界 §4.3](shared-boundaries-and-ports.md#43-持久化与授权端口) 与 [§4.6](shared-boundaries-and-ports.md#46-结果与事件端口) 为准，本文只给服务端实现落到哪张表。
+- **不重复定义端口**。`ProfileRepository` / `JobRepository` / `SecretProvider` / `ArtifactRepository` / `BudgetCoordinator` 的方法签名以 [共享边界 §4.3](shared-boundaries-and-ports.md#43-持久化与授权端口) 与 [§4.6](shared-boundaries-and-ports.md#46-结果与事件端口) 为准，本文只给服务端实现落到哪张表。
 - **不重复定义迁移运行方式**。何时执行、失败是否启动、是否与回退镜像配合由 [团队服务 §13](team-server-and-auth.md#13-schema-migration-运行方式) 定义；本文给版本策略、文件格式、expand/contract 判据与回滚边界，二者必须一致读。
 - **沿用仓库已有先例**：`schema_migrations` / `schema_version` 版本表、`has_column` 探测式升级、legacy JSON 的 rename-aside 导入、`SyncTask` 的 `skip_serializing` 会话 id、收藏迁移的归档表护栏、`migration_run_history` 的禁列名断言。本文是把这些做法推广到服务端管理库，不是发明新机制。
 - **扩展 [持久化存储（现状）](../backend/store.md)**：那份文档描述已实现的桌面本地存储，本地加密文件格式与主密钥后端细节也在那里与 [`store/key_store.rs`](../../../src-tauri/src/store/key_store.rs)；本文描述目标的服务端管理库与两者的映射，两者对同一主题的不同层次不构成冲突。
-- **扩写 [概要 §5 统一领域对象](system-overview.md#5-统一领域对象)** 的"持久化：是/否"列：本文把"是"展开成具体表与列，把"否"展开成禁持久化清单与断言；并补齐 [开发计划](../../development/platform-development-plan.md) P1 与 P7 的交付项——P1 的"所有持久化路径排除运行时句柄"由 §2.2 + §2.5 落地，P7 的"ProfileRepository / JobRepository / Audit / ArtifactStore 的服务端实现和 schema migration"由 §3、§5、§6 落地。
+- **扩写 [概要 §5 统一领域对象](system-overview.md#5-统一领域对象)** 的"持久化：是/否"列：本文把"是"展开成具体表与列，把"否"展开成禁持久化清单与断言；并补齐 [开发计划](../../development/platform-development-plan.md) P1 与 P7 的交付项——P1 的"所有持久化路径排除运行时句柄"由 §2.2 + §2.5 落地，P7 的"ProfileRepository / JobRepository / Audit / ArtifactRepository 的服务端实现和 schema migration"由 §3、§5、§6 落地。
 - **本文不覆盖**：会话、lease、预算的**行为算法**（[连接 §6](connection-management.md#6-状态机与并发) 与 [§9](connection-management.md#9-连接池预算与清理)）；服务端进程形态、中间件链、OIDC、CSRF、404 不可见策略与 SSE 实现细节（[团队服务 §3–§9](team-server-and-auth.md#3-请求中间件链)）；Artifact 字节存储与出站网络策略的具体实现（[团队服务 §11](team-server-and-auth.md#11-artifactstore-服务端实现)、[§12](team-server-and-auth.md#12-出站网络策略)）；包边界、依赖护栏与 CI 门禁（[共享边界 §2](shared-boundaries-and-ports.md#2-包边界与依赖矩阵)、[§8](shared-boundaries-and-ports.md#8-依赖护栏与-ci-门禁)）；fake resource、故障注入与基准 harness（[P0 夹具详细设计](fake-runtime-fixtures.md)）。
 - **产物 TTL 的具体时长**、RPO / RTO 数值、组织级留存策略：权威文档未给出默认值，本文显式不写死常量，交由部署配置与运维策略决定。
 - 任何把 `dbSessionId` 恢复到磁盘、或让恢复出来的记录继续代表物理资源的方案。本文对此的立场是不可协商：落盘的是事实与来源，不是继续执行的资格。

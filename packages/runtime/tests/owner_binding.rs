@@ -49,7 +49,7 @@
 //! | 取消 | 网关 `cancel` | **`PARTIAL`** | 驱动次数已钉（`cancel_calls() == 0`，且有真 owner 的正向对照 `== 1`）；但**存在性预言机未闭合**，见下方 ⚠️ |
 //! | 读取 | 无网关接口；`session_view` 是端口读路径，只被授权器读，不对外暴露 | **`N/A`** | `cm05_the_gateway_action_surface_is_exactly_execute_and_cancel` 编译期钉死动作面 |
 //! | 关闭 | 无网关接口（`SessionPort::close_session` 由注册表演给生命周期管理方，**不经网关鉴权**） | **`N/A`** | 同上；「关闭」在 H 层没有承接口，**不得记作已覆盖** |
-//! | 订阅 | 不存在（订阅属 `ArtifactStore`） | **`P7`** | 验收已豁免 |
+//! | 订阅 | 不存在（订阅属 `ArtifactRepository`） | **`P7`** | 验收已豁免 |
 //! | 下载 | 同上 | **`P7`** | 同上 |
 //!
 //! ⚠️ **`PARTIAL` 的剩余缺口：取消接口残留一条存在性预言机。**
@@ -438,7 +438,7 @@ fn execution_request_fields() -> Vec<String> {
 ///
 /// 穷尽 `match` 是编译期事实：少一个变体编不过，多一个变体也编不过。于是
 /// 「读取 / 关闭 / 订阅 / 下载」不是本层漏测，而是本层根本没有对应闸门；
-/// 其中订阅与下载属 `ArtifactStore`（已豁免到 P7）。
+/// 其中订阅与下载属 `ArtifactRepository`（已豁免到 P7）。
 #[test]
 fn cm05_the_gateway_action_surface_is_exactly_execute_and_cancel() {
     fn label(action: GatewayAction) -> &'static str {

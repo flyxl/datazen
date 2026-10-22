@@ -1,6 +1,6 @@
 //! 目标侧内存库 + `TargetExecutor` 实现。
 //!
-//! `TargetStore` 区分已提交态（`base`）与事务内未提交覆盖（`overlay`），
+//! `TargetRepository` 区分已提交态（`base`）与事务内未提交覆盖（`overlay`），
 //! 因此「批次 1 已提交 / 批次 2 回滚 / 批次 3 未开始」可直接从数据读出。
 
 use std::collections::{BTreeMap, HashMap};
@@ -16,16 +16,16 @@ use datazen_driver_api::Value;
 
 use super::rows::key_repr;
 
-pub type SharedStore = Arc<Mutex<TargetStore>>;
+pub type SharedRepository = Arc<Mutex<TargetRepository>>;
 
 /// 目标表内存态。`overlay` 为事务内未提交改动，`None` 表示删除。
 #[derive(Default)]
-pub struct TargetStore {
+pub struct TargetRepository {
     base: BTreeMap<String, Row>,
     overlay: BTreeMap<String, Option<Row>>,
 }
 
-impl TargetStore {
+impl TargetRepository {
     pub fn new(rows: Vec<(Vec<Value>, Row)>) -> Self {
         let mut base = BTreeMap::new();
         for (key, value) in rows {
@@ -114,7 +114,7 @@ pub struct ExecHook {
 pub struct FakeExecutor {
     /// 绑定的目标 Lease（= `EndpointSession.handle.id`），全流程唯一。
     pub lease: String,
-    store: SharedStore,
+    store: SharedRepository,
     plan_rows: StatementRows,
     events: Arc<Mutex<Vec<String>>>,
     hook: ExecHook,
@@ -128,7 +128,7 @@ pub struct FakeExecutor {
 impl FakeExecutor {
     pub fn new(
         lease: String,
-        store: SharedStore,
+        store: SharedRepository,
         plan_rows: StatementRows,
         events: Arc<Mutex<Vec<String>>>,
         hook: ExecHook,

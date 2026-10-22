@@ -1,7 +1,7 @@
 //! Portable dashboard persistence rules; the host owns the rows.
 //!
 //! A host stores dashboards and their widgets as rows ([`DashboardRecord`]
-//! and [`WidgetRecord`]) and provides them through [`DashboardStore`]. What
+//! and [`WidgetRecord`]) and provides them through [`DashboardRepository`]. What
 //! a dashboard *means* — which widgets it owns, when a widget is removed,
 //! how a refresh policy is normalised before it is written — is decided
 //! here, so every host persists the same dashboard the same way.
@@ -17,7 +17,7 @@ use std::collections::HashSet;
 
 /// Why a dashboard operation failed.
 #[derive(Debug, thiserror::Error)]
-pub enum DashboardStoreError {
+pub enum DashboardRepositoryError {
     #[error("Store error: {0}")]
     Db(String),
 
@@ -41,33 +41,33 @@ pub enum DashboardStoreError {
 ///
 /// 越组织访问一律按「不存在」处理（返回空列表 / `NotFound`），**不得**返回
 /// 「无权限」类错误：后者会泄漏「存在但无权」（CM-05）。
-pub trait DashboardStore: Send + Sync {
+pub trait DashboardRepository: Send + Sync {
     /// Every stored dashboard row of the organization.
     fn list_dashboard_rows(
         &self,
         scope: &OrganizationScope,
-    ) -> Result<Vec<DashboardRecord>, DashboardStoreError>;
+    ) -> Result<Vec<DashboardRecord>, DashboardRepositoryError>;
 
     /// One stored dashboard row of the organization.
     fn dashboard_row(
         &self,
         scope: &OrganizationScope,
         id: &str,
-    ) -> Result<DashboardRecord, DashboardStoreError>;
+    ) -> Result<DashboardRecord, DashboardRepositoryError>;
 
     /// Insert or update a dashboard row.
     fn upsert_dashboard_row(
         &self,
         scope: &OrganizationScope,
         row: &DashboardRecord,
-    ) -> Result<(), DashboardStoreError>;
+    ) -> Result<(), DashboardRepositoryError>;
 
     /// Remove a dashboard row.
     fn delete_dashboard_row(
         &self,
         scope: &OrganizationScope,
         id: &str,
-    ) -> Result<(), DashboardStoreError>;
+    ) -> Result<(), DashboardRepositoryError>;
 
     /// Pause or resume the automatic refresh of a dashboard.
     fn set_dashboard_refresh_paused(
@@ -75,42 +75,42 @@ pub trait DashboardStore: Send + Sync {
         scope: &OrganizationScope,
         id: &str,
         paused: bool,
-    ) -> Result<(), DashboardStoreError>;
+    ) -> Result<(), DashboardRepositoryError>;
 
     /// The widget rows of a dashboard.
     fn list_widget_rows(
         &self,
         scope: &OrganizationScope,
         dashboard_id: &str,
-    ) -> Result<Vec<WidgetRecord>, DashboardStoreError>;
+    ) -> Result<Vec<WidgetRecord>, DashboardRepositoryError>;
 
     /// One stored widget row.
     fn widget_row(
         &self,
         scope: &OrganizationScope,
         id: &str,
-    ) -> Result<WidgetRecord, DashboardStoreError>;
+    ) -> Result<WidgetRecord, DashboardRepositoryError>;
 
     /// Insert or update a widget row.
     fn upsert_widget_row(
         &self,
         scope: &OrganizationScope,
         row: &WidgetRecord,
-    ) -> Result<(), DashboardStoreError>;
+    ) -> Result<(), DashboardRepositoryError>;
 
     /// Remove a widget row.
     fn delete_widget_row(
         &self,
         scope: &OrganizationScope,
         id: &str,
-    ) -> Result<(), DashboardStoreError>;
+    ) -> Result<(), DashboardRepositoryError>;
 
     /// The dashboards and widgets that reference a workflow.
     fn find_workflow_refs(
         &self,
         scope: &OrganizationScope,
         workflow_id: &str,
-    ) -> Result<Vec<DashboardWorkflowRef>, DashboardStoreError>;
+    ) -> Result<Vec<DashboardWorkflowRef>, DashboardRepositoryError>;
 }
 
 /// The stored spelling of a widget's view mode.
@@ -124,13 +124,15 @@ fn refresh_mode_of(refresh: &RefreshPolicy) -> String {
 }
 
 /// Turn a stored widget row back into a widget.
-pub fn widget_from_record(record: &WidgetRecord) -> Result<DashboardWidget, DashboardStoreError> {
+pub fn widget_from_record(
+    record: &WidgetRecord,
+) -> Result<DashboardWidget, DashboardRepositoryError> {
     let chart_config = record
         .chart_config_json
         .as_ref()
         .map(|json| {
             serde_json::from_str::<ChartConfig>(json)
-                .map_err(|e| DashboardStoreError::Parse(e.to_string()))
+                .map_err(|e| DashboardRepositoryError::Parse(e.to_string()))
         })
         .transpose()?;
     let alert = record
@@ -138,7 +140,7 @@ pub fn widget_from_record(record: &WidgetRecord) -> Result<DashboardWidget, Dash
         .as_ref()
         .map(|json| {
             serde_json::from_str::<AlertRule>(json)
-                .map_err(|e| DashboardStoreError::Parse(e.to_string()))
+                .map_err(|e| DashboardRepositoryError::Parse(e.to_string()))
         })
         .transpose()?;
     Ok(DashboardWidget {
@@ -146,7 +148,7 @@ pub fn widget_from_record(record: &WidgetRecord) -> Result<DashboardWidget, Dash
         title: record.title.clone(),
         workflow_id: record.workflow_id.clone(),
         view_mode: parse_view_mode(&record.view_mode).ok_or_else(|| {
-            DashboardStoreError::Parse(format!("invalid view_mode: {}", record.view_mode))
+            DashboardRepositoryError::Parse(format!("invalid view_mode: {}", record.view_mode))
         })?,
         chart_config,
         layout: WidgetLayout {
@@ -157,7 +159,10 @@ pub fn widget_from_record(record: &WidgetRecord) -> Result<DashboardWidget, Dash
         },
         refresh: RefreshPolicy {
             mode: parse_refresh_mode(&record.refresh_mode).ok_or_else(|| {
-                DashboardStoreError::Parse(format!("invalid refresh_mode: {}", record.refresh_mode))
+                DashboardRepositoryError::Parse(format!(
+                    "invalid refresh_mode: {}",
+                    record.refresh_mode
+                ))
             })?,
             refresh_sec: record.refresh_sec,
         },
@@ -235,9 +240,9 @@ pub fn dashboard_from_record(record: &DashboardRecord, widgets: Vec<DashboardWid
 /// The widgets of a dashboard, in their stored order.
 fn widgets_of(
     scope: &OrganizationScope,
-    store: &dyn DashboardStore,
+    store: &dyn DashboardRepository,
     dashboard_id: &str,
-) -> Result<Vec<DashboardWidget>, DashboardStoreError> {
+) -> Result<Vec<DashboardWidget>, DashboardRepositoryError> {
     store
         .list_widget_rows(scope, dashboard_id)?
         .iter()
@@ -248,8 +253,8 @@ fn widgets_of(
 /// Every stored dashboard of the organization, each with its widgets.
 pub fn list_dashboards(
     scope: &OrganizationScope,
-    store: &dyn DashboardStore,
-) -> Result<Vec<Dashboard>, DashboardStoreError> {
+    store: &dyn DashboardRepository,
+) -> Result<Vec<Dashboard>, DashboardRepositoryError> {
     let records = store.list_dashboard_rows(scope)?;
     let mut dashboards = Vec::with_capacity(records.len());
     for record in records {
@@ -262,9 +267,9 @@ pub fn list_dashboards(
 /// One stored dashboard of the organization, with its widgets.
 pub fn get_dashboard(
     scope: &OrganizationScope,
-    store: &dyn DashboardStore,
+    store: &dyn DashboardRepository,
     id: &str,
-) -> Result<Dashboard, DashboardStoreError> {
+) -> Result<Dashboard, DashboardRepositoryError> {
     let record = store.dashboard_row(scope, id)?;
     let widgets = widgets_of(scope, store, id)?;
     Ok(dashboard_from_record(&record, widgets))
@@ -277,9 +282,9 @@ pub fn get_dashboard(
 /// they were first stored with.
 pub fn save_dashboard(
     scope: &OrganizationScope,
-    store: &dyn DashboardStore,
+    store: &dyn DashboardRepository,
     mut dashboard: Dashboard,
-) -> Result<(), DashboardStoreError> {
+) -> Result<(), DashboardRepositoryError> {
     for widget in &mut dashboard.widgets {
         widget.refresh.normalize();
     }
@@ -312,28 +317,28 @@ pub fn save_dashboard(
 /// Remove a stored dashboard.
 pub fn delete_dashboard(
     scope: &OrganizationScope,
-    store: &dyn DashboardStore,
+    store: &dyn DashboardRepository,
     id: &str,
-) -> Result<(), DashboardStoreError> {
+) -> Result<(), DashboardRepositoryError> {
     store.delete_dashboard_row(scope, id)
 }
 
 /// Pause or resume the automatic refresh of a stored dashboard.
 pub fn set_dashboard_refresh_paused(
     scope: &OrganizationScope,
-    store: &dyn DashboardStore,
+    store: &dyn DashboardRepository,
     id: &str,
     paused: bool,
-) -> Result<(), DashboardStoreError> {
+) -> Result<(), DashboardRepositoryError> {
     store.set_dashboard_refresh_paused(scope, id, paused)
 }
 
 /// The dashboards and widgets that reference a workflow.
 pub fn find_workflow_refs(
     scope: &OrganizationScope,
-    store: &dyn DashboardStore,
+    store: &dyn DashboardRepository,
     workflow_id: &str,
-) -> Result<Vec<DashboardWorkflowRef>, DashboardStoreError> {
+) -> Result<Vec<DashboardWorkflowRef>, DashboardRepositoryError> {
     store.find_workflow_refs(scope, workflow_id)
 }
 
@@ -368,12 +373,12 @@ mod tests {
     ///
     /// 这就是多租户宿主需要的形状——**同一个存储实现**上区分「本组织的数据」
     /// 与「别的组织的数据」，而不是每个组织一个存储实例。
-    struct MemoryStore {
+    struct MemoryRepository {
         dashboards: std::sync::Mutex<Vec<(OrganizationId, DashboardRecord)>>,
         widgets: std::sync::Mutex<Vec<(OrganizationId, WidgetRecord)>>,
     }
 
-    impl MemoryStore {
+    impl MemoryRepository {
         fn new() -> Self {
             Self {
                 dashboards: std::sync::Mutex::new(Vec::new()),
@@ -387,11 +392,11 @@ mod tests {
         OrganizationScope::new(OrganizationId::new(organization))
     }
 
-    impl DashboardStore for MemoryStore {
+    impl DashboardRepository for MemoryRepository {
         fn list_dashboard_rows(
             &self,
             scope: &OrganizationScope,
-        ) -> Result<Vec<DashboardRecord>, DashboardStoreError> {
+        ) -> Result<Vec<DashboardRecord>, DashboardRepositoryError> {
             Ok(self
                 .dashboards
                 .lock()
@@ -405,20 +410,20 @@ mod tests {
             &self,
             scope: &OrganizationScope,
             id: &str,
-        ) -> Result<DashboardRecord, DashboardStoreError> {
+        ) -> Result<DashboardRecord, DashboardRepositoryError> {
             self.dashboards
                 .lock()
                 .unwrap()
                 .iter()
                 .find(|(owner, row)| owner == scope.organization_id() && row.id == id)
                 .map(|(_, row)| row.clone())
-                .ok_or_else(|| DashboardStoreError::NotFound(id.to_string()))
+                .ok_or_else(|| DashboardRepositoryError::NotFound(id.to_string()))
         }
         fn upsert_dashboard_row(
             &self,
             scope: &OrganizationScope,
             row: &DashboardRecord,
-        ) -> Result<(), DashboardStoreError> {
+        ) -> Result<(), DashboardRepositoryError> {
             let mut rows = self.dashboards.lock().unwrap();
             match rows
                 .iter_mut()
@@ -433,7 +438,7 @@ mod tests {
             &self,
             scope: &OrganizationScope,
             id: &str,
-        ) -> Result<(), DashboardStoreError> {
+        ) -> Result<(), DashboardRepositoryError> {
             let mut rows = self.dashboards.lock().unwrap();
             rows.retain(|(owner, row)| !(owner == scope.organization_id() && row.id == id));
             Ok(())
@@ -443,12 +448,12 @@ mod tests {
             scope: &OrganizationScope,
             id: &str,
             paused: bool,
-        ) -> Result<(), DashboardStoreError> {
+        ) -> Result<(), DashboardRepositoryError> {
             let mut rows = self.dashboards.lock().unwrap();
             let (_, row) = rows
                 .iter_mut()
                 .find(|(owner, row)| owner == scope.organization_id() && row.id == id)
-                .ok_or_else(|| DashboardStoreError::NotFound(id.to_string()))?;
+                .ok_or_else(|| DashboardRepositoryError::NotFound(id.to_string()))?;
             row.refresh_paused = paused;
             Ok(())
         }
@@ -456,7 +461,7 @@ mod tests {
             &self,
             scope: &OrganizationScope,
             dashboard_id: &str,
-        ) -> Result<Vec<WidgetRecord>, DashboardStoreError> {
+        ) -> Result<Vec<WidgetRecord>, DashboardRepositoryError> {
             Ok(self
                 .widgets
                 .lock()
@@ -472,20 +477,20 @@ mod tests {
             &self,
             scope: &OrganizationScope,
             id: &str,
-        ) -> Result<WidgetRecord, DashboardStoreError> {
+        ) -> Result<WidgetRecord, DashboardRepositoryError> {
             self.widgets
                 .lock()
                 .unwrap()
                 .iter()
                 .find(|(owner, row)| owner == scope.organization_id() && row.id == id)
                 .map(|(_, row)| row.clone())
-                .ok_or_else(|| DashboardStoreError::NotFound(id.to_string()))
+                .ok_or_else(|| DashboardRepositoryError::NotFound(id.to_string()))
         }
         fn upsert_widget_row(
             &self,
             scope: &OrganizationScope,
             row: &WidgetRecord,
-        ) -> Result<(), DashboardStoreError> {
+        ) -> Result<(), DashboardRepositoryError> {
             let mut rows = self.widgets.lock().unwrap();
             match rows
                 .iter_mut()
@@ -500,7 +505,7 @@ mod tests {
             &self,
             scope: &OrganizationScope,
             id: &str,
-        ) -> Result<(), DashboardStoreError> {
+        ) -> Result<(), DashboardRepositoryError> {
             let mut rows = self.widgets.lock().unwrap();
             rows.retain(|(owner, row)| !(owner == scope.organization_id() && row.id == id));
             Ok(())
@@ -509,7 +514,7 @@ mod tests {
             &self,
             _scope: &OrganizationScope,
             _workflow_id: &str,
-        ) -> Result<Vec<DashboardWorkflowRef>, DashboardStoreError> {
+        ) -> Result<Vec<DashboardWorkflowRef>, DashboardRepositoryError> {
             Ok(Vec::new())
         }
     }
@@ -561,7 +566,7 @@ mod tests {
 
     #[test]
     fn save_and_list_dashboard_roundtrip() {
-        let store = MemoryStore::new();
+        let store = MemoryRepository::new();
         let scope = scope_of("org-a");
         let dashboard = sample_dashboard(vec![sample_widget("w1", "wf-1")]);
         save_dashboard(&scope, &store, dashboard.clone()).unwrap();
@@ -573,7 +578,7 @@ mod tests {
 
     #[test]
     fn save_dashboard_removes_the_widgets_that_are_gone() {
-        let store = MemoryStore::new();
+        let store = MemoryRepository::new();
         let scope = scope_of("org-a");
         save_dashboard(
             &scope,
@@ -597,7 +602,7 @@ mod tests {
 
     #[test]
     fn save_dashboard_clamps_interval_refresh_sec() {
-        let store = MemoryStore::new();
+        let store = MemoryRepository::new();
         let scope = scope_of("org-a");
         let mut widget = sample_widget("w1", "wf-1");
         widget.refresh = RefreshPolicy {
@@ -611,7 +616,7 @@ mod tests {
 
     #[test]
     fn set_dashboard_refresh_paused_persists() {
-        let store = MemoryStore::new();
+        let store = MemoryRepository::new();
         let scope = scope_of("org-a");
         save_dashboard(&scope, &store, sample_dashboard(vec![])).unwrap();
         set_dashboard_refresh_paused(&scope, &store, "dash-1", true).unwrap();
@@ -638,7 +643,7 @@ mod tests {
     /// 别的组织的仪表板对本组织**不存在**：列表为空、单条读不到（CM-05）。
     #[test]
     fn a_dashboard_of_another_organization_is_not_found() {
-        let store = MemoryStore::new();
+        let store = MemoryRepository::new();
         let owner = scope_of("org-a");
         let other = scope_of("org-b");
         save_dashboard(
@@ -651,14 +656,14 @@ mod tests {
         assert!(list_dashboards(&other, &store).unwrap().is_empty());
         assert!(matches!(
             get_dashboard(&other, &store, "dash-1"),
-            Err(DashboardStoreError::NotFound(_))
+            Err(DashboardRepositoryError::NotFound(_))
         ));
     }
 
     /// 别的组织的 widget 同样读不到。
     #[test]
     fn the_widgets_of_another_organization_are_not_found() {
-        let store = MemoryStore::new();
+        let store = MemoryRepository::new();
         let owner = scope_of("org-a");
         let other = scope_of("org-b");
         save_dashboard(
@@ -671,14 +676,14 @@ mod tests {
         assert!(store.list_widget_rows(&other, "dash-1").unwrap().is_empty());
         assert!(matches!(
             store.widget_row(&other, "w1"),
-            Err(DashboardStoreError::NotFound(_))
+            Err(DashboardRepositoryError::NotFound(_))
         ));
     }
 
     /// 同一个存储实现上，两个组织各自看到自己的仪表板。
     #[test]
     fn two_organizations_keep_their_own_dashboards_apart() {
-        let store = MemoryStore::new();
+        let store = MemoryRepository::new();
         let a = scope_of("org-a");
         let b = scope_of("org-b");
         save_dashboard(
@@ -705,14 +710,14 @@ mod tests {
     /// 别的组织既改不动也删不掉本组织的仪表板。
     #[test]
     fn a_dashboard_of_another_organization_cannot_be_changed_or_removed() {
-        let store = MemoryStore::new();
+        let store = MemoryRepository::new();
         let owner = scope_of("org-a");
         let other = scope_of("org-b");
         save_dashboard(&owner, &store, sample_dashboard(vec![])).unwrap();
 
         assert!(matches!(
             set_dashboard_refresh_paused(&other, &store, "dash-1", true),
-            Err(DashboardStoreError::NotFound(_))
+            Err(DashboardRepositoryError::NotFound(_))
         ));
         delete_dashboard(&other, &store, "dash-1").unwrap();
         assert!(

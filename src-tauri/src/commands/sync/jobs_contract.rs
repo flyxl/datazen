@@ -132,7 +132,7 @@ pub async fn identical_pair(prefix: &str) -> Pair {
 }
 
 /// Run the production compare command: inspect → key contracts → prepare Job →
-/// planId + `ComparisonStore`.
+/// planId + `ComparisonStorage`.
 pub async fn compare(
     pair: &Pair,
     source_database: Option<String>,

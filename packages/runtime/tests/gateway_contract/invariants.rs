@@ -183,7 +183,7 @@ fn gateway_sources_obey_the_locked_invariants() {
     let mut expected: Vec<String> = [
         // 测试专用：只编进 `#[cfg(test)]`，不碰生产路径扫描。
         "cancel_event_tests.rs",
-        "event_store_tests.rs",
+        "event_repository_tests.rs",
         "facade_support.rs",
         "facade_tests.rs",
         // 负例文件只编进 `#[cfg(doctest)]`，同样不进任何生产二进制。
@@ -218,7 +218,7 @@ fn gateway_sources_obey_the_locked_invariants() {
 
     let test_only = [
         "cancel_event_tests.rs",
-        "event_store_tests.rs",
+        "event_repository_tests.rs",
         "facade_support.rs",
         "facade_tests.rs",
         "request_cm06_negatives.rs",
@@ -255,7 +255,7 @@ fn gateway_sources_obey_the_locked_invariants() {
         ("facade_support", "pub(crate) "),
         ("facade_tests", ""),
         ("cancel_event_tests", ""),
-        ("event_store_tests", ""),
+        ("event_repository_tests", ""),
         ("retention_tests", ""),
         ("token_tests", ""),
     ] {

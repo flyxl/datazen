@@ -100,7 +100,7 @@ impl LegacyInstall {
 fn every_legacy_favorite_survives_the_switch_and_reads_back() {
     let install = LegacyInstall::new(&ROWS);
     let db = install.db();
-    let store = FavoritesStore::open(&install.favorites_root()).unwrap();
+    let store = FavoritesRepository::open(&install.favorites_root()).unwrap();
 
     assert_eq!(
         migrate_legacy_favorites(&db, &store).unwrap(),
@@ -170,7 +170,7 @@ fn a_relaunch_neither_duplicates_nor_re_exports() {
     let install = LegacyInstall::new(&ROWS);
     let root = install.favorites_root();
     let db = install.db();
-    let store = FavoritesStore::open(&root).unwrap();
+    let store = FavoritesRepository::open(&root).unwrap();
 
     assert_eq!(
         migrate_legacy_favorites(&db, &store).unwrap(),
@@ -187,7 +187,7 @@ fn a_relaunch_neither_duplicates_nor_re_exports() {
 
     // Same after a full restart: the archive is not the live table name.
     let db2 = install.db();
-    let store2 = FavoritesStore::open(&root).unwrap();
+    let store2 = FavoritesRepository::open(&root).unwrap();
     assert_eq!(
         migrate_legacy_favorites(&db2, &store2).unwrap(),
         MigrationOutcome::NothingToDo
@@ -201,7 +201,7 @@ fn a_retry_after_a_crash_overwrites_instead_of_duplicating() {
     // root already holds some of the files. Because ids are derived from
     // the row, the retry rewrites exactly those paths.
     let probe = LegacyInstall::new(&ROWS);
-    let probe_store = FavoritesStore::open(&probe.favorites_root()).unwrap();
+    let probe_store = FavoritesRepository::open(&probe.favorites_root()).unwrap();
     let probe_db = probe.db();
     migrate_legacy_favorites(&probe_db, &probe_store).unwrap();
     let ids: Vec<String> = probe_store.list(None).into_iter().map(|f| f.id).collect();
@@ -219,7 +219,7 @@ fn a_retry_after_a_crash_overwrites_instead_of_duplicating() {
     .unwrap();
 
     let db = install.db();
-    let store = FavoritesStore::open(&root).unwrap();
+    let store = FavoritesRepository::open(&root).unwrap();
     assert_eq!(
         migrate_legacy_favorites(&db, &store).unwrap(),
         MigrationOutcome::Migrated { rows: 3 }
@@ -256,7 +256,7 @@ fn a_write_failure_leaves_the_table_for_the_next_launch() {
     {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&root, fs::Permissions::from_mode(0o500)).unwrap();
-        let store = FavoritesStore::open(&root).unwrap();
+        let store = FavoritesRepository::open(&root).unwrap();
         let failed = migrate_legacy_favorites(&db, &store);
         fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
 
@@ -270,7 +270,7 @@ fn a_write_failure_leaves_the_table_for_the_next_launch() {
         assert_eq!(db.read_legacy_favorites().unwrap().unwrap().len(), 3);
 
         // And the retry, once the volume is writable again, lands cleanly.
-        let good = FavoritesStore::open(&root).unwrap();
+        let good = FavoritesRepository::open(&root).unwrap();
         assert_eq!(
             migrate_legacy_favorites(&db, &good).unwrap(),
             MigrationOutcome::Migrated { rows: 3 }
@@ -287,7 +287,7 @@ fn a_fresh_install_migrates_nothing_and_writes_no_marker() {
 
     let db = HistoryDb::open(&data_dir).unwrap();
     let root = data_dir.join("favorites");
-    let store = FavoritesStore::open(&root).unwrap();
+    let store = FavoritesRepository::open(&root).unwrap();
     assert_eq!(
         migrate_legacy_favorites(&db, &store).unwrap(),
         MigrationOutcome::NothingToDo
@@ -305,7 +305,7 @@ fn an_empty_legacy_table_is_left_alone() {
     let install = LegacyInstall::new(&NO_ROWS);
     let db = install.db();
     let root = install.favorites_root();
-    let store = FavoritesStore::open(&root).unwrap();
+    let store = FavoritesRepository::open(&root).unwrap();
 
     assert_eq!(
         migrate_legacy_favorites(&db, &store).unwrap(),
@@ -323,7 +323,7 @@ fn an_empty_legacy_table_is_left_alone() {
 fn migrated_ordering_matches_the_old_created_at_desc() {
     let install = LegacyInstall::new(&ROWS);
     let db = install.db();
-    let store = FavoritesStore::open(&install.favorites_root()).unwrap();
+    let store = FavoritesRepository::open(&install.favorites_root()).unwrap();
     migrate_legacy_favorites(&db, &store).unwrap();
 
     // The panel was ordered `ORDER BY created_at DESC`; a file store that
@@ -351,7 +351,7 @@ fn a_live_table_next_to_the_archive_is_never_re_exported() {
     let install = LegacyInstall::new(&ROWS);
     let root = install.favorites_root();
     let db = install.db();
-    let store = FavoritesStore::open(&root).unwrap();
+    let store = FavoritesRepository::open(&root).unwrap();
     assert_eq!(
         migrate_legacy_favorites(&db, &store).unwrap(),
         MigrationOutcome::Migrated { rows: 3 }
@@ -381,7 +381,7 @@ fn a_live_table_next_to_the_archive_is_never_re_exported() {
     });
     assert!(db.legacy_favorites_archived().unwrap());
 
-    let store = FavoritesStore::open(&root).unwrap();
+    let store = FavoritesRepository::open(&root).unwrap();
     assert_eq!(
         migrate_legacy_favorites(&db, &store).unwrap(),
         MigrationOutcome::NothingToDo,
@@ -401,7 +401,7 @@ fn a_live_table_next_to_the_archive_is_never_re_exported() {
     // And a second launch behaves identically — the state is stable, not a
     // one-launch accident.
     drop(store);
-    let store = FavoritesStore::open(&root).unwrap();
+    let store = FavoritesRepository::open(&root).unwrap();
     assert_eq!(
         migrate_legacy_favorites(&db, &store).unwrap(),
         MigrationOutcome::NothingToDo

@@ -588,9 +588,9 @@ Drop 仅做同步兜底标记并把资源移交 runtime cleanup queue；异步 r
 
 ### 7.7 结果订阅与放弃消费
 
-订阅仅观察已接受执行。结束 AsyncIterable、关闭结果视图或网络断线都不自动 cancelExecution，也不立即释放固定编辑器资源。ResultSink 将数据写入有界内存/ArtifactStore，事件订阅慢不能把无界数据留在内存。每订阅事件队列最大 256 条/1 MiB，先触及任一上限即停止订阅并发 streamResetRequired（无法发送则断开）；客户端读快照，不继续积压。
+订阅仅观察已接受执行。结束 AsyncIterable、关闭结果视图或网络断线都不自动 cancelExecution，也不立即释放固定编辑器资源。ResultSink 将数据写入有界内存/ArtifactRepository，事件订阅慢不能把无界数据留在内存。每订阅事件队列最大 256 条/1 MiB，先触及任一上限即停止订阅并发 streamResetRequired（无法发送则断开）；客户端读快照，不继续积压。
 
-首版每 execution 未消费缓冲上限 8 MiB、无消费者等待 30 秒、放弃后的协议 drain deadline 10 秒，均可配置。ArtifactStore 的每 execution 字节上限必填，桌面默认 256 MiB，团队默认 1 GiB，仍受组织总产物额度限制；达到上限停止写入并按下面流程处理，不能无限 spool。订阅端收到结果截断原因，ExecutionView 记录产物完整性，不把截断产物宣称完整导出。
+首版每 execution 未消费缓冲上限 8 MiB、无消费者等待 30 秒、放弃后的协议 drain deadline 10 秒，均可配置。ArtifactRepository 的每 execution 字节上限必填，桌面默认 256 MiB，团队默认 1 GiB，仍受组织总产物额度限制；达到上限停止写入并按下面流程处理，不能无限 spool。订阅端收到结果截断原因，ExecutionView 记录产物完整性，不把截断产物宣称完整导出。
 
 处理流程：无订阅者时继续在额度内持久化 → 等待期限或产物额度耗尽后，普通查询切换到 bounded discard/drain → 能完成则保留 SQL 终态，结果标为 truncated → 不能在 drain deadline 内结束则请求精确取消 → 等协议终结、观察事务/健康 → 仍未知则关闭/隔离资源。bounded discard 按固定块读取并丢弃，不累计整个结果。流水线导出/迁移由 Job 的背压与任务策略控制，不适用普通结果放弃策略。
 

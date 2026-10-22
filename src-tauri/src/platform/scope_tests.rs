@@ -1,7 +1,7 @@
 //! 桌面组织作用域的**来源**与**可用性**（验证轨道 D）。
 //!
 //! 这组用例盯的不是「跨组织读不到」——那由
-//! [`crate::dashboard::store_tests`] / [`crate::dashboard::runs`] /
+//! [`crate::dashboard::repository_tests`] / [`crate::dashboard::runs`] /
 //! [`crate::workflow::registry`] 各自的闸门用例承担。这里盯的是另一件事：
 //!
 //! * 桌面自己那一个组织的**权威来源**是不是安装级常量
@@ -14,7 +14,7 @@ use super::super::identity::LOCAL_ORGANIZATION_ID;
 use super::super::{DesktopIdentity, PlatformAdapter, PlatformEntry};
 use super::{is_local_scope, local_organization_scope};
 use datazen_application::error::{ApiError, ApiErrorCode};
-use datazen_feature_core::dashboard::store::DashboardStore;
+use datazen_feature_core::dashboard::repository::DashboardRepository;
 use datazen_platform_api::id::OrganizationId;
 use datazen_platform_api::ports::scope::OrganizationScope;
 

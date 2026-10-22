@@ -8,10 +8,10 @@ use datazen_platform_api::{
 };
 
 pub struct DesktopPolicy {
-    store: std::sync::Arc<crate::store::Store>,
+    store: std::sync::Arc<crate::store::DesktopRepository>,
 }
 impl DesktopPolicy {
-    pub fn new(store: std::sync::Arc<crate::store::Store>) -> Self {
+    pub fn new(store: std::sync::Arc<crate::store::DesktopRepository>) -> Self {
         Self { store }
     }
     fn grant(
@@ -156,7 +156,7 @@ mod tests {
     async fn desktop_policy() -> DesktopPolicy {
         let temp = tempfile::tempdir().expect("临时目录");
         let store = std::sync::Arc::new(
-            crate::store::Store::init_with_path(temp.path())
+            crate::store::DesktopRepository::init_with_path(temp.path())
                 .await
                 .expect("store 初始化"),
         );

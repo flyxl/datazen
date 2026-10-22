@@ -12,14 +12,14 @@
 use crate::platform::scope::is_local_scope;
 use crate::store::{AppDb, AppDbError};
 use datazen_feature_core::dashboard::records::WidgetRunRecord;
-use datazen_feature_core::dashboard::runs::{DashboardRunStore, DashboardRunsError};
+use datazen_feature_core::dashboard::runs::{DashboardRunRepository, DashboardRunsError};
 use datazen_platform_api::ports::scope::OrganizationScope;
 
 fn run_error(error: AppDbError) -> DashboardRunsError {
     DashboardRunsError::Db(error.to_string())
 }
 
-impl DashboardRunStore for AppDb {
+impl DashboardRunRepository for AppDb {
     fn write_run_row(
         &self,
         scope: &OrganizationScope,

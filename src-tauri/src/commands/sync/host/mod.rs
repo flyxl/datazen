@@ -28,7 +28,7 @@ use datazen_runtime::job::CancelToken;
 
 use crate::data_sync::job::artifact::{ChangeSetArtifact, RelationIdentity};
 use crate::data_sync::job::host::{
-    ArtifactStoreGuard, DataSyncHost, EndpointSession, KeysetPageSource, TableSchemaPair,
+    ArtifactRepositoryGuard, DataSyncHost, EndpointSession, KeysetPageSource, TableSchemaPair,
     TargetExecutor, TransactionScope,
 };
 use crate::data_sync::pairing::family_of;
@@ -77,7 +77,7 @@ struct Slot {
 pub(crate) struct HostDataSync {
     runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
     call_context: datazen_platform_api::context::RequestContext,
-    store: Arc<crate::store::Store>,
+    store: Arc<crate::store::DesktopRepository>,
     adapters: Arc<SyncAdapterRegistry>,
     source: Endpoint,
     target: Endpoint,
@@ -100,7 +100,7 @@ impl HostDataSync {
     pub(crate) fn new(
         runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
         call_context: datazen_platform_api::context::RequestContext,
-        store: Arc<crate::store::Store>,
+        store: Arc<crate::store::DesktopRepository>,
         adapters: Arc<SyncAdapterRegistry>,
         source: Endpoint,
         target: Endpoint,
@@ -583,7 +583,7 @@ impl DataSyncHost for HostDataSync {
     async fn store_artifact(
         &self,
         artifact: ChangeSetArtifact,
-    ) -> Result<ArtifactStoreGuard, DataSyncError> {
+    ) -> Result<ArtifactRepositoryGuard, DataSyncError> {
         selection::store_artifact(artifact)
     }
 

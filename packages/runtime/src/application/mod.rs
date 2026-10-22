@@ -170,7 +170,7 @@ impl RuntimeConnectionUseCases {
         let gateway = Arc::new(ExecutionGateway::new(
             registry.clone(),
             Arc::new(BoundAuthorizer),
-            Arc::new(InMemoryIdempotencyStore::new()),
+            Arc::new(InMemoryIdempotencyRepository::new()),
             clock.clone(),
         ));
         let secret = DbSessionIdGenerator::new()

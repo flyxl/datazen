@@ -125,48 +125,48 @@ pub struct IdempotencyRecord {
 
 /// 存储故障。**读失败与写失败是两回事**：读失败要求核验，写失败要求重试。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StoreFailureKind {
+pub enum RepositoryFailureKind {
     Read,
     Write,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IdempotencyStoreError {
-    pub kind: StoreFailureKind,
+pub struct IdempotencyRepositoryError {
+    pub kind: RepositoryFailureKind,
     pub message: String,
 }
 
-impl IdempotencyStoreError {
+impl IdempotencyRepositoryError {
     pub fn read(message: impl Into<String>) -> Self {
         Self {
-            kind: StoreFailureKind::Read,
+            kind: RepositoryFailureKind::Read,
             message: message.into(),
         }
     }
 
     pub fn write(message: impl Into<String>) -> Self {
         Self {
-            kind: StoreFailureKind::Write,
+            kind: RepositoryFailureKind::Write,
             message: message.into(),
         }
     }
 }
 
-impl std::fmt::Display for IdempotencyStoreError {
+impl std::fmt::Display for IdempotencyRepositoryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind {
-            StoreFailureKind::Read => write!(f, "idempotency read failed: {}", self.message),
-            StoreFailureKind::Write => write!(f, "idempotency write failed: {}", self.message),
+            RepositoryFailureKind::Read => write!(f, "idempotency read failed: {}", self.message),
+            RepositoryFailureKind::Write => write!(f, "idempotency write failed: {}", self.message),
         }
     }
 }
 
 /// 幂等记录存储。网关**必须**通过它访问幂等记录，不允许绕开。
-pub trait IdempotencyStore: Send + Sync + 'static {
+pub trait IdempotencyRepository: Send + Sync + 'static {
     fn read(
         &self,
         scope: &IdempotencyScope,
-    ) -> Result<Option<IdempotencyRecord>, IdempotencyStoreError>;
+    ) -> Result<Option<IdempotencyRecord>, IdempotencyRepositoryError>;
 
     /// 必须**恰好一次**。同一 `scope` 重复写是调用方 bug，账本不做去重，
     /// 去重会把「重发」和「重复写」这两件事在存储层混成一个。
@@ -174,16 +174,16 @@ pub trait IdempotencyStore: Send + Sync + 'static {
         &self,
         scope: &IdempotencyScope,
         record: IdempotencyRecord,
-    ) -> Result<(), IdempotencyStoreError>;
+    ) -> Result<(), IdempotencyRepositoryError>;
 
     /// 保留期清扫删除一条记录。返回该记录此前是否还在。
     ///
     /// **只允许在令牌已过期之后调用。** 账本层看不到签名，也就无法证明这一点，
     /// 所以默认实现直接拒绝——不装这个能力的 store 会让清扫失败而不是静默
     /// 删掉一个还在被需要的记录。要支持就得显式实现。
-    fn delete(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyStoreError> {
+    fn delete(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyRepositoryError> {
         let _ = scope;
-        Err(IdempotencyStoreError::read("deleteUnsupported"))
+        Err(IdempotencyRepositoryError::read("deleteUnsupported"))
     }
 }
 
@@ -208,12 +208,12 @@ pub enum IdempotencyLookup {
 /// 单进程网关用它就够了：记录的生命周期与网关进程一致。
 /// 需要跨进程共享的部署形态应替换实现，而不是在本类型上叠锁。
 #[derive(Debug, Default)]
-pub struct InMemoryIdempotencyStore {
+pub struct InMemoryIdempotencyRepository {
     inner: Mutex<HashMap<IdempotencyScope, IdempotencyRecord>>,
     write_count: Mutex<u64>,
 }
 
-impl InMemoryIdempotencyStore {
+impl InMemoryIdempotencyRepository {
     pub fn new() -> Self {
         Self::default()
     }
@@ -251,14 +251,14 @@ impl InMemoryIdempotencyStore {
     }
 }
 
-impl IdempotencyStore for InMemoryIdempotencyStore {
+impl IdempotencyRepository for InMemoryIdempotencyRepository {
     fn read(
         &self,
         scope: &IdempotencyScope,
-    ) -> Result<Option<IdempotencyRecord>, IdempotencyStoreError> {
+    ) -> Result<Option<IdempotencyRecord>, IdempotencyRepositoryError> {
         match self.inner.lock() {
             Ok(guard) => Ok(guard.get(scope).cloned()),
-            Err(_) => Err(IdempotencyStoreError::read("store lock poisoned")),
+            Err(_) => Err(IdempotencyRepositoryError::read("store lock poisoned")),
         }
     }
 
@@ -266,10 +266,10 @@ impl IdempotencyStore for InMemoryIdempotencyStore {
         &self,
         scope: &IdempotencyScope,
         record: IdempotencyRecord,
-    ) -> Result<(), IdempotencyStoreError> {
+    ) -> Result<(), IdempotencyRepositoryError> {
         let mut guard = match self.inner.lock() {
             Ok(guard) => guard,
-            Err(_) => return Err(IdempotencyStoreError::write("store lock poisoned")),
+            Err(_) => return Err(IdempotencyRepositoryError::write("store lock poisoned")),
         };
         guard.insert(scope.clone(), record);
         if let Ok(mut count) = self.write_count.lock() {
@@ -280,10 +280,10 @@ impl IdempotencyStore for InMemoryIdempotencyStore {
 
     /// 保留期清扫。**调用方**（[`crate::gateway::retention::GrantRegistry::sweep`]）
     /// 必须已经确认令牌过期——这里看不到签名，只信任上游那道闸。
-    fn delete(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyStoreError> {
+    fn delete(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyRepositoryError> {
         match self.inner.lock() {
             Ok(mut guard) => Ok(guard.remove(scope).is_some()),
-            Err(_) => Err(IdempotencyStoreError::read("store lock poisoned")),
+            Err(_) => Err(IdempotencyRepositoryError::read("store lock poisoned")),
         }
     }
 }
@@ -293,15 +293,15 @@ impl IdempotencyStore for InMemoryIdempotencyStore {
 /// 本身**不做锁**：check-then-write 的原子性由调用方（网关）在受理关键区里保证。
 /// 把锁下沉到账本内部会诱使调用方以为「查过了」就等于「不会被并发插队」。
 pub struct IdempotencyLedger {
-    store: Arc<dyn IdempotencyStore>,
+    store: Arc<dyn IdempotencyRepository>,
 }
 
 impl IdempotencyLedger {
-    pub fn new(store: Arc<dyn IdempotencyStore>) -> Self {
+    pub fn new(store: Arc<dyn IdempotencyRepository>) -> Self {
         Self { store }
     }
 
-    pub fn store(&self) -> &Arc<dyn IdempotencyStore> {
+    pub fn store(&self) -> &Arc<dyn IdempotencyRepository> {
         &self.store
     }
 
@@ -334,13 +334,13 @@ impl IdempotencyLedger {
         &self,
         scope: &IdempotencyScope,
         record: IdempotencyRecord,
-    ) -> Result<(), IdempotencyStoreError> {
+    ) -> Result<(), IdempotencyRepositoryError> {
         self.store.write(scope, record)
     }
 
     /// 保留期清扫删除一条记录。**只在令牌已过期之后调用**——
     /// 调用方（[`crate::gateway::retention`]）那道闸才是真正的防线，这里只是执行。
-    pub fn forget(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyStoreError> {
+    pub fn forget(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyRepositoryError> {
         self.store.delete(scope)
     }
 }
@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn miss_then_hit_returns_the_same_execution_id() {
-        let store = InMemoryIdempotencyStore::shared();
+        let store = InMemoryIdempotencyRepository::shared();
         let ledger = IdempotencyLedger::new(store.clone());
         let fingerprint =
             RequestFingerprint::of(&call("query", json!(1)), Counter::new(2), &source());
@@ -474,7 +474,7 @@ mod tests {
 
     #[test]
     fn reusing_a_key_for_a_different_request_is_a_conflict_not_a_replay() {
-        let store = InMemoryIdempotencyStore::shared();
+        let store = InMemoryIdempotencyRepository::shared();
         let ledger = IdempotencyLedger::new(store);
         let original = RequestFingerprint::of(&call("query", json!(1)), Counter::new(2), &source());
         ledger
@@ -494,24 +494,24 @@ mod tests {
 
     #[test]
     fn an_unreadable_record_is_never_downgraded_to_miss() {
-        struct BrokenStore;
-        impl IdempotencyStore for BrokenStore {
+        struct BrokenRepository;
+        impl IdempotencyRepository for BrokenRepository {
             fn read(
                 &self,
                 _scope: &IdempotencyScope,
-            ) -> Result<Option<IdempotencyRecord>, IdempotencyStoreError> {
-                Err(IdempotencyStoreError::read("connection reset"))
+            ) -> Result<Option<IdempotencyRecord>, IdempotencyRepositoryError> {
+                Err(IdempotencyRepositoryError::read("connection reset"))
             }
             fn write(
                 &self,
                 _scope: &IdempotencyScope,
                 _record: IdempotencyRecord,
-            ) -> Result<(), IdempotencyStoreError> {
+            ) -> Result<(), IdempotencyRepositoryError> {
                 Ok(())
             }
         }
 
-        let ledger = IdempotencyLedger::new(Arc::new(BrokenStore));
+        let ledger = IdempotencyLedger::new(Arc::new(BrokenRepository));
         let fingerprint =
             RequestFingerprint::of(&call("query", json!(1)), Counter::ZERO, &source());
         match ledger.lookup(&scope(), &fingerprint) {
@@ -522,31 +522,31 @@ mod tests {
 
     #[test]
     fn a_write_failure_surfaces_as_a_write_error() {
-        struct FailingStore;
-        impl IdempotencyStore for FailingStore {
+        struct FailingRepository;
+        impl IdempotencyRepository for FailingRepository {
             fn read(
                 &self,
                 _scope: &IdempotencyScope,
-            ) -> Result<Option<IdempotencyRecord>, IdempotencyStoreError> {
+            ) -> Result<Option<IdempotencyRecord>, IdempotencyRepositoryError> {
                 Ok(None)
             }
             fn write(
                 &self,
                 _scope: &IdempotencyScope,
                 _record: IdempotencyRecord,
-            ) -> Result<(), IdempotencyStoreError> {
-                Err(IdempotencyStoreError::write("disk full"))
+            ) -> Result<(), IdempotencyRepositoryError> {
+                Err(IdempotencyRepositoryError::write("disk full"))
             }
         }
 
-        let ledger = IdempotencyLedger::new(Arc::new(FailingStore));
+        let ledger = IdempotencyLedger::new(Arc::new(FailingRepository));
         let fingerprint =
             RequestFingerprint::of(&call("query", json!(1)), Counter::ZERO, &source());
         let err = ledger
             .reserve(&scope(), record(fingerprint, 0))
             .err()
             .unwrap_or_else(|| panic!("写失败必须冒泡"));
-        assert_eq!(err.kind, StoreFailureKind::Write);
+        assert_eq!(err.kind, RepositoryFailureKind::Write);
         assert!(err.to_string().contains("disk full"));
     }
 
@@ -557,7 +557,7 @@ mod tests {
         let s1 = IdempotencyScope::new(DbSessionId::new("d1"), Counter::new(1), "k");
         let s2 = IdempotencyScope::new(DbSessionId::new("d2"), Counter::new(1), "k");
 
-        let store = InMemoryIdempotencyStore::new();
+        let store = InMemoryIdempotencyRepository::new();
         assert!(store.is_empty());
         store.force_insert(s1, record(fingerprint.clone(), 1));
         store.force_insert(s2, record(fingerprint, 2));

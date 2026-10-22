@@ -11,7 +11,7 @@ use tauri::Emitter;
 use tauri::Manager;
 
 use crate::commands::AppState;
-use crate::store::Store;
+use crate::store::DesktopRepository;
 use crate::{driver_init, mcp, theme, tray, wapps};
 
 #[cfg(target_os = "macos")]
@@ -39,13 +39,14 @@ pub fn run_mcp_stdio() {
         .expect("Failed to create tokio runtime");
 
     rt.block_on(async {
-        let data_dir = Store::default_app_data_dir().expect("Cannot determine data dir");
+        let data_dir =
+            DesktopRepository::default_app_data_dir().expect("Cannot determine data dir");
         if let Err(e) = mcp::auth::verify_stdio_token(&data_dir) {
             tracing::error!("{e}");
             std::process::exit(1);
         }
         let store = Arc::new(
-            Store::init_with_path(&data_dir)
+            DesktopRepository::init_with_path(&data_dir)
                 .await
                 .expect("Failed to init store"),
         );

@@ -1,5 +1,5 @@
 //! Shared desktop adapter for read-only commands executed through Runtime.
-use crate::{platform::PlatformEntry, store::Store};
+use crate::{platform::PlatformEntry, store::DesktopRepository};
 use datazen_driver_api::{
     check_command_access, CommandAccessLevel, CommandCatalog, ConnectionConfig, DatabaseDriver,
 };
@@ -14,14 +14,14 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(crate) struct RuntimeCommandSource {
     registry: Arc<DriverRegistry>,
-    store: Arc<Store>,
+    store: Arc<DesktopRepository>,
     platform: PlatformEntry,
 }
 
 impl RuntimeCommandSource {
     pub(crate) fn new(
         registry: Arc<DriverRegistry>,
-        store: Arc<Store>,
+        store: Arc<DesktopRepository>,
         platform: PlatformEntry,
     ) -> Self {
         Self {

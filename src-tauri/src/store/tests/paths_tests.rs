@@ -10,7 +10,7 @@ use super::fixtures::*;
 fn default_app_data_dir_uses_bundle_identifier() {
     let _g = env_lock();
     std::env::remove_var("DATAZEN_DATA_DIR");
-    let dir = Store::default_app_data_dir().unwrap();
+    let dir = DesktopRepository::default_app_data_dir().unwrap();
     assert!(
         dir.ends_with(APP_IDENTIFIER),
         "expected path ending with {APP_IDENTIFIER}, got {}",
@@ -22,7 +22,7 @@ fn default_app_data_dir_uses_bundle_identifier() {
 fn default_app_data_dir_matches_resolve_log_settings_path() {
     let _g = env_lock();
     std::env::remove_var("DATAZEN_DATA_DIR");
-    let store_dir = Store::default_app_data_dir().unwrap();
+    let store_dir = DesktopRepository::default_app_data_dir().unwrap();
     let log_dir = dirs::data_dir()
         .map(|d| d.join(APP_IDENTIFIER))
         .expect("data dir");
@@ -34,7 +34,7 @@ fn data_dir_env_override_wins() {
     let _g = env_lock();
     let override_dir = std::env::temp_dir().join("datazen-e2e-override-test");
     std::env::set_var("DATAZEN_DATA_DIR", &override_dir);
-    let dir = Store::default_app_data_dir().unwrap();
+    let dir = DesktopRepository::default_app_data_dir().unwrap();
     std::env::remove_var("DATAZEN_DATA_DIR");
     assert_eq!(dir, override_dir, "DATAZEN_DATA_DIR must win over default");
 }

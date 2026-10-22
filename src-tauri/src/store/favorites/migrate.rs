@@ -32,7 +32,7 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 use super::ulid::Ulid;
-use super::{FavoriteQuery, FavoritesStore};
+use super::{FavoriteQuery, FavoritesRepository};
 use crate::store::history_db::HistoryDb;
 
 /// Marker file recording a completed export. Its presence is informational;
@@ -66,7 +66,7 @@ pub enum MigrationOutcome {
 /// Export any remaining `favorite_queries` rows into `favorites`.
 pub fn migrate_legacy_favorites(
     history: &HistoryDb,
-    favorites: &FavoritesStore,
+    favorites: &FavoritesRepository,
 ) -> Result<MigrationOutcome, super::FavoritesError> {
     // The guard is the archive rename, checked *before* any row is read.
     //

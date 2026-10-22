@@ -5,7 +5,7 @@
  * the write models and job-owned views that sit next to the connection
  * contracts in `./session`; they live in their own module because they are
  * owned by different backends (`ProfileRepository` and `JobRuntime` /
- * `ArtifactStore`) and carry no connection authorization of their own.
+ * `ArtifactRepository`) and carry no connection authorization of their own.
  */
 
 import { toCounter } from './identity';
