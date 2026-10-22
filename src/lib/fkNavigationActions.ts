@@ -78,38 +78,14 @@ export interface OpenForeignKeyTargetInput {
 /**
  * The message of a failed call, whatever the transport threw.
  *
- * Exported because the trip from the host to the front end is a **contract**:
- * the `grid.*` classification reads the prefix of this text, so it has to be
- * the host's own text and not a wrapper's.
- *
- * The backend client prefixes the message of a failed call with
- * `"<method> failed: "`, and the `grid.*` classification reads the **prefix**
- * of the message — so the original text (the one the host sent, reachable
- * through the cause chain) is the one that is classified and shown.
+ * The function itself lives in `./hostErrorMessage` — it is a pure function
+ * about error text, and a component that needs it must not pull the
+ * navigation stores in with it. It is re-exported here because this is the
+ * path the rest of the code already uses.
  */
-export function hostErrorMessage(error: unknown): string {
-  const messages: string[] = [];
-  let current: unknown = error;
-  for (let depth = 0; depth < 5 && current != null; depth += 1) {
-    if (typeof current === 'string') {
-      messages.push(current);
-      break;
-    }
-    if (current instanceof Error) {
-      messages.push(current.message);
-      current = (current as { cause?: unknown }).cause;
-      continue;
-    }
-    if (typeof current === 'object') {
-      const message = (current as { message?: unknown }).message;
-      if (typeof message === 'string') messages.push(message);
-      break;
-    }
-    break;
-  }
-  const original = messages[messages.length - 1];
-  return original && original.trim() !== '' ? original : String(error);
-}
+export { hostErrorMessage } from './hostErrorMessage';
+
+import { hostErrorMessage } from './hostErrorMessage';
 
 /** The identity of a table, as the panel store and the host both name it. */
 interface TableIdentity {

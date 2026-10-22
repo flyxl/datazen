@@ -30,7 +30,13 @@ pub struct FilterCondition {
     /// Connector to the **previous** condition. `None` (the default) falls back
     /// to the request-wide logical operator, so payloads written before
     /// per-condition connectors existed keep behaving identically.
-    #[serde(default)]
+    ///
+    /// An absent connector is **not written**: the field is skipped rather than
+    /// serialized as `null`, so a stored record carries the connector only
+    /// where the user actually set one (08 §5.2.1, "缺省不写"). A `null` on the
+    /// wire would make the TypeScript side carry a second spelling of "no
+    /// connector" next to the absent key it already has to handle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub connector: Option<FilterConnector>,
 }
 

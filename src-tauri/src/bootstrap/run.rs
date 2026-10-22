@@ -330,6 +330,10 @@ pub fn run() {
             crate::commands::estimate_table_rows,
             crate::commands::resolve_foreign_key_targets,
             crate::commands::commit_query_result_cell,
+            // ── 命名视图（保存的筛选视图） ──
+            crate::commands::list_named_views,
+            crate::commands::save_named_view,
+            crate::commands::delete_named_view,
             // ── 表结构编辑 ──
             // ── 行数据读写 ──
             crate::commands::commit_pending_changes,

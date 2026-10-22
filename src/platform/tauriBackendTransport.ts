@@ -91,7 +91,7 @@ const FLAT_ARGUMENT_METHODS: ReadonlySet<keyof MethodMap> = new Set<keyof Method
 ]);
 
 /**
- * The table-data methods the desktop backend does not serve **yet**.
+ * The table-data methods the desktop backend does not serve.
  *
  * The port registers every method the product has, so a method landing later
  * cannot slip past it unnoticed. This list is the other half of that
@@ -99,26 +99,21 @@ const FLAT_ARGUMENT_METHODS: ReadonlySet<keyof MethodMap> = new Set<keyof Method
  * caller gets an explicit `CapabilityUnsupported` — with the method name and
  * the backend — instead of Tauri's bare "command not found".
  *
- * The names are the Rust commands of 08, which are not registered in
- * `src-tauri/src/bootstrap/run.rs` yet. That file registers exactly seven
- * table-data commands: `get_table_data`, `get_table_data_at_target`,
- * `estimate_table_rows`, `commit_query_result_cell`, `commit_pending_changes`,
- * `preview_pending_changes` and `resolve_foreign_key_targets`.
- * `src/platform/__tests__/tauriBackendTransport.tableData.test.ts`
- * cross-checks this list against that registration, so the day one of these
- * commands is registered, the test fails and asks for this entry to go —
- * which is what happened to `resolve_foreign_key_targets` when 07 landed, and
- * to `estimate_table_rows` when 09 landed.
+ * It is **empty**: the desktop registers every table-data command the port
+ * declares, the three named-view commands of 08 included. A browser build has
+ * no host store and therefore declares the named views itself, as a
+ * `capability` gap — "this form factor can never serve them" is a different
+ * fact from "the desktop has not implemented them yet", and the two must not
+ * be reported as one.
  *
- * `notImplemented` — not `capability`: the desktop *can* serve these methods
- * and does not yet. A browser build's named views are a different fact (a
- * form factor with no host store), and the two must not be reported as one.
+ * `src/platform/__tests__/tauriBackendTransport.tableData.test.ts`
+ * cross-checks this list against the host's registration, so the day a
+ * command is registered, the test fails and asks for this entry to go — which
+ * is what happened to `resolve_foreign_key_targets` when 07 landed, to
+ * `estimate_table_rows` when 09 landed, and to the three named-view commands
+ * when 08 landed.
  */
-const DESKTOP_UNSUPPORTED_METHODS: Partial<Record<keyof MethodMap, UnsupportedMethodKind>> = {
-  listNamedViews: 'notImplemented',
-  saveNamedView: 'notImplemented',
-  deleteNamedView: 'notImplemented',
-};
+const DESKTOP_UNSUPPORTED_METHODS: Partial<Record<keyof MethodMap, UnsupportedMethodKind>> = {};
 
 /**
  * Build the desktop transport.

@@ -273,9 +273,9 @@ export const databaseCommands = {
    * `CapabilityUnsupported` instead of answering with an empty list that reads
    * like "you have no saved views".
    *
-   * **Not wired to any UI yet.** The command belongs to 08, and the desktop
-   * does not register it yet either, so the desktop transport declares it
-   * unsupported. The menu entry arrives with 08.
+   * The desktop registers the three commands (08), so the call reaches the
+   * host; a browser build declares the capability gap and the entry is
+   * hidden rather than offered and refused later.
    */
   listNamedViews: async (scope?: NamedViewScope): Promise<readonly NamedView[]> => {
     const client = useBackendClient();
@@ -284,8 +284,6 @@ export const databaseCommands = {
 
   /**
    * Save a named view; the backend mints the id and stamps the timestamps.
-   *
-   * **Not wired to any UI yet** — see `listNamedViews`.
    */
   saveNamedView: async (view: NamedView): Promise<NamedView> => {
     const client = useBackendClient();
@@ -294,8 +292,6 @@ export const databaseCommands = {
 
   /**
    * Delete a named view; the remaining views come back with the receipt.
-   *
-   * **Not wired to any UI yet** — see `listNamedViews`.
    */
   deleteNamedView: async (id: string): Promise<readonly NamedView[]> => {
     const client = useBackendClient();
@@ -352,3 +348,4 @@ export const databaseCommands = {
   getPrivileges: (dbSessionId: string) =>
     invoke<PrivilegeGrant[]>('get_privileges', { dbSessionId }),
 };
+

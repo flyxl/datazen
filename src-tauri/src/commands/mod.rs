@@ -21,6 +21,7 @@ pub(crate) mod file_jobs;
 mod fk_navigation;
 mod history;
 pub mod mcp;
+mod named_views;
 mod native_tool;
 mod query;
 pub(crate) mod query_favorites;
@@ -58,6 +59,7 @@ pub use file::*;
 pub use fk_navigation::*;
 pub use history::*;
 pub use mcp::*;
+pub use named_views::*;
 pub use native_tool::*;
 pub use query::*;
 pub use query_favorites::*;
@@ -402,3 +404,7 @@ mod tunnel_summary_tests;
 #[cfg(test)]
 #[path = "org_scope_surface_tests.rs"]
 mod org_scope_surface_tests;
+
+#[cfg(test)]
+#[path = "named_views_error_tests.rs"]
+mod named_views_error_tests;

@@ -189,22 +189,53 @@ describe('desktop transport: table-data commands', () => {
     expect(mock.invoke).toHaveBeenLastCalledWith('commit_query_result_cell', { request });
   });
 
-  it('refuses the commands the host does not register, before any IPC leaves', async () => {
-    // The desktop declares the 08 commands unsupported, so a call gets an
-    // explicit failure that names the method and the backend instead of
-    // Tauri's bare "command not found" — and the pipe is never touched.
-    mock.invoke.mockResolvedValue(undefined);
+  it('serves the named-view commands the host registers', async () => {
+    // 08 registered the three named-view commands, so the declaration that
+    // kept them out of the desktop had to go — otherwise the desktop would
+    // refuse a command the host serves.
+    mock.invoke.mockResolvedValue([]);
     const client = createBackendClient('desktop', createDesktopBackendTransport());
+
+    await client.listNamedViews({});
+    expect(mock.invoke).toHaveBeenLastCalledWith('list_named_views', { scope: undefined });
+
+    await client.saveNamedView({ view: { id: 'view-1' } as never });
+    expect(mock.invoke).toHaveBeenLastCalledWith('save_named_view', {
+      view: { id: 'view-1' },
+    });
+
+    await client.deleteNamedView({ id: 'view-1' });
+    expect(mock.invoke).toHaveBeenLastCalledWith('delete_named_view', { id: 'view-1' });
+  });
+
+  it('refuses the named-view commands for a form factor without a host store', async () => {
+    // A browser build has no `{appData}` to write and no desktop `Store`, so
+    // it declares the named views as a **capability** gap. The caller gets an
+    // explicit refusal — never an empty list that reads like "you have no
+    // saved views" — and the pipe is never touched.
+    mock.invoke.mockResolvedValue(undefined);
+    const client = createBackendClient('web', {
+      async call() {
+        throw new Error('the capability check should have refused this call');
+      },
+      unsupportedMethods: {
+        listNamedViews: 'capability',
+        saveNamedView: 'capability',
+        deleteNamedView: 'capability',
+      },
+    });
 
     await expect(client.listNamedViews({})).rejects.toMatchObject({
       code: 'CapabilityUnsupported',
-      unsupportedKind: 'notImplemented',
+      unsupportedKind: 'capability',
     });
     await expect(client.saveNamedView({ view: {} as never })).rejects.toMatchObject({
       code: 'CapabilityUnsupported',
+      unsupportedKind: 'capability',
     });
     await expect(client.deleteNamedView({ id: 'view-1' })).rejects.toMatchObject({
       code: 'CapabilityUnsupported',
+      unsupportedKind: 'capability',
     });
 
     expect(mock.invoke).not.toHaveBeenCalled();
@@ -373,19 +404,35 @@ describe('the desktop declaration against the host command registry', () => {
     expect(registered.has('resolve_foreign_key_targets')).toBe(true);
     expect(registered.has('estimate_table_rows')).toBe(true);
 
-    // And the three it does not are not found — which is what makes the
-    // declaration above necessary rather than redundant.
+    // And the three named-view commands are registered too — which is what
+    // makes the desktop's own declaration unnecessary.
     for (const command of ['list_named_views', 'save_named_view', 'delete_named_view']) {
-      expect(registered.has(command)).toBe(false);
+      expect(registered.has(command)).toBe(true);
     }
   });
 
-  it('declares the gaps as "not implemented", not as a missing capability', () => {
-    // The desktop *can* serve these methods; it has not implemented them
-    // yet. Calling that a capability gap would tell a caller to hide a
-    // feature that is about to arrive.
-    for (const kind of Object.values(declared)) {
-      expect(kind).toBe('notImplemented');
-    }
+  it('declares no gap at all, because the desktop serves every one of them', () => {
+    // Every table-data command the port declares is registered on the host,
+    // so the desktop has nothing to refuse. A gap here would be a gap that
+    // does not exist.
+    expect(Object.keys(declared)).toEqual([]);
+  });
+
+  it('tells a capability gap from a missing implementation', () => {
+    // The two kinds are not interchangeable: a form factor that can never
+    // serve a method and a backend that has not implemented it yet call for
+    // different reactions from the caller (hide the feature vs. say "not
+    // available yet"). The named views are the first case — the browser has
+    // no host store at all.
+    const web = {
+      async call(): Promise<never> {
+        throw new Error('the capability check should have refused this call');
+      },
+      unsupportedMethods: { listNamedViews: 'capability' } as Partial<
+        Record<keyof MethodMap, 'capability' | 'notImplemented'>
+      >,
+    };
+    expect(web.unsupportedMethods.listNamedViews).toBe('capability');
+    expect(web.unsupportedMethods.listNamedViews).not.toBe('notImplemented');
   });
 });

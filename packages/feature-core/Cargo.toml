@@ -35,7 +35,7 @@ thiserror = "1"
 regex = "1"
 sha2 = "0.10"
 sqlparser = { version = "0.59", features = ["visitor"] }
-chrono = { version = "0.4", features = ["clock"] }
+chrono = { version = "0.4", features = ["clock", "serde"] }
 uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["sync", "time", "fs", "io-util", "macros", "rt-multi-thread"] }
 tokio-util = "0.7"

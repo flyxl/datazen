@@ -257,7 +257,7 @@ describe('audit: the transport change does not touch the capability path', () =>
     expect((caught as ApiError).unsupportedKind).toBeUndefined();
   });
 
-  it('leaves the desktop capability refusals untouched', async () => {
+  it('lets the named views reach the host again', async () => {
     const client = createBackendClient(
       DESKTOP_BACKEND_ID,
       createDesktopBackendTransport(),
@@ -265,8 +265,31 @@ describe('audit: the transport change does not touch the capability path', () =>
     setBackendClient(DESKTOP_BACKEND_ID, client);
     selectBackend(DESKTOP_BACKEND_ID);
 
-    // The named views are still declared "notImplemented" by the desktop:
-    // they are the browser form factor's gap, not the row count's.
+    // 08 registered the three named-view commands, so the desktop no longer
+    // declares the method unsupported and the call reaches the wire.
+    mockInvoke.mockResolvedValue([]);
+    await expect(client.listNamedViews({})).resolves.toEqual([]);
+    expect(mockInvoke).toHaveBeenCalledWith('list_named_views', { scope: undefined });
+  });
+
+  it('still refuses the named views for a form factor without a host store', async () => {
+    // The browser form factor has no `{appData}` and no desktop `Store`, so
+    // it declares the named views as a **capability** gap. The refusal never
+    // went through the wire, so it has no cause chain — and the transport
+    // change did not give it one.
+    const client = createBackendClient('web', {
+      async call() {
+        throw new Error('the capability check should have refused this call');
+      },
+      unsupportedMethods: {
+        listNamedViews: 'capability',
+        saveNamedView: 'capability',
+        deleteNamedView: 'capability',
+      },
+    });
+    setBackendClient('web', client);
+    selectBackend('web');
+
     let caught: unknown = null;
     try {
       await client.listNamedViews({});
@@ -277,9 +300,7 @@ describe('audit: the transport change does not touch the capability path', () =>
     expect(caught).toBeInstanceOf(ApiError);
     const apiError = caught as ApiError;
     expect(apiError.code).toBe('CapabilityUnsupported');
-    expect(apiError.unsupportedKind).toBe('notImplemented');
-    // The capability refusal never went through the wire, so it has no cause
-    // chain — and the transport change did not give it one.
+    expect(apiError.unsupportedKind).toBe('capability');
     expect((apiError as { cause?: unknown }).cause).toBeUndefined();
   });
 

@@ -32,7 +32,9 @@ export type GridErrorCode =
   | 'grid.fk.targetUnresolved'
   | 'grid.fk.probeFailed'
   | 'grid.filter.unsupportedOperator'
-  | 'grid.filter.incomplete';
+  | 'grid.filter.incomplete'
+  | 'grid.view.invalid'
+  | 'grid.view.nameExists';
 
 /**
  * Prefix registry. Entries are full message prefixes (`grid.<domain>.<reason>`); the
@@ -62,6 +64,8 @@ export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.fk.probeFailed',
   'grid.filter.unsupportedOperator',
   'grid.filter.incomplete',
+  'grid.view.invalid',
+  'grid.view.nameExists',
 ];
 
 /** Every grid message starts with this namespace; useful for cheap pre-checks. */

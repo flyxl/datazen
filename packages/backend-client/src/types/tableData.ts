@@ -228,6 +228,21 @@ export interface FilterCondition {
   column: string;
   operator: string;
   value?: TableValue;
+  /**
+   * How this condition joins the condition before it.
+   *
+   * The connector hangs on the *current* condition: concatenation runs left
+   * to right, so the first condition has no predecessor and its own connector
+   * is meaningless — the host ignores it. `undefined` falls back to the
+   * request-wide logical operator.
+   *
+   * The host's `FilterCondition` (`src/types/filters.ts`) is the mirror of
+   * this interface, and the two are held in step by a compile-time
+   * assertion (`src/lib/__tests__/namedViews.test.ts`). A saved view carries
+   * the connector with it, so a view that was saved with per-condition logic
+   * restores that logic instead of falling back to the global one.
+   */
+  connector?: 'and' | 'or';
 }
 
 /** One sort key. */
@@ -418,8 +433,15 @@ export interface NamedView {
   isDefault: boolean;
   /** RFC3339. */
   createdAt: string;
-  /** RFC3339. */
-  updatedAt: string;
+  /**
+   * RFC3339, or `null` for a record that was never changed after it was
+   * created.
+   *
+   * The host's field is an optional timestamp, so the wire carries `null`
+   * for "never updated" — and this type says exactly that instead of
+   * claiming a string the host does not always send.
+   */
+  updatedAt: string | null;
 }
 
 /** The request of a named-view listing; omitting `scope` lists every view. */
