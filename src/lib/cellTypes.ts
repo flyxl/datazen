@@ -183,6 +183,11 @@ export const DEFAULT_CELL_TYPE_RULES: readonly CellTypeRule[] = [
 
   // ── numbers ────────────────────────────────────────────────────────────
   { match: 'tokenPrefix', pattern: 'int', cellType: 'number' },
+  // The unsigned integers have their own prefix: `uint8`.startsWith('int')
+  // is false, so without this rule every `UInt*` column fell through to the
+  // catch-all and was treated as text — a numeric column with a text editor
+  // and a text filter (05 §3.5 序 19).
+  { match: 'tokenPrefix', pattern: 'uint', cellType: 'number' },
   { match: 'token', pattern: 'bigint', cellType: 'number' },
   { match: 'token', pattern: 'smallint', cellType: 'number' },
   { match: 'token', pattern: 'tinyint', cellType: 'number' },
@@ -239,6 +244,13 @@ const INTEGER_TYPE_TOKENS: ReadonlySet<string> = new Set([
   'int32',
   'int64',
   'integer',
+  'uint',
+  'uint8',
+  'uint16',
+  'uint32',
+  'uint64',
+  'uint128',
+  'uint256',
   'bigint',
   'smallint',
   'tinyint',

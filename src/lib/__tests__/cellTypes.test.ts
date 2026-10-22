@@ -58,6 +58,18 @@ const DRIVER_TYPES: readonly { type: string; expected: CellType }[] = [
   { type: 'Date32', expected: 'date' },
   { type: 'FixedString(16)', expected: 'bytes' },
   { type: "Enum8('a'=1)", expected: 'enum' },
+  // The unsigned integers: `'uint8'.startsWith('int')` is false, so they
+  // need a rule of their own — without it they fell through to the
+  // catch-all and became text.
+  { type: 'UInt8', expected: 'number' },
+  { type: 'UInt16', expected: 'number' },
+  { type: 'UInt32', expected: 'number' },
+  { type: 'UInt64', expected: 'number' },
+  { type: 'UInt128', expected: 'number' },
+  { type: 'UInt256', expected: 'number' },
+  { type: 'Nullable(UInt32)', expected: 'number' },
+  { type: 'Int128', expected: 'number' },
+  { type: 'Int256', expected: 'number' },
   // DuckDB / SQLite.
   { type: 'INTEGER', expected: 'number' },
   { type: 'TEXT', expected: 'text' },
@@ -243,6 +255,13 @@ describe('isIntegerCellType', () => {
     expect(isIntegerCellType('numeric(10,2)')).toBe(false);
     expect(isIntegerCellType('double precision')).toBe(false);
     expect(isIntegerCellType('text')).toBe(false);
+  });
+
+  it('recognises the unsigned integers', () => {
+    expect(isIntegerCellType('UInt8')).toBe(true);
+    expect(isIntegerCellType('UInt64')).toBe(true);
+    expect(isIntegerCellType('Nullable(UInt32)')).toBe(true);
+    expect(isIntegerCellType('Decimal32(2)')).toBe(false);
   });
 
   it('follows the driver override: a boolean alias is not an integer', () => {
