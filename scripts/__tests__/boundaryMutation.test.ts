@@ -3,7 +3,7 @@
  *
  * Self-healing of the probe lock and the probe sweep.
  *
- * A `mkdir` lock normally outlives its holder: SIGKILL, an OOM kill or a closed
+ * A lock file outlives its holder: SIGKILL, an OOM kill or a closed
  * terminal run no `finally`, so the directory stays, nothing holds it, and every
  * later run waits out the full timeout before failing — from a directory under
  * `node_modules/`, which `git status` never shows. The only available defence is
@@ -14,7 +14,7 @@
  * would break the mutual exclusion every other guard test relies on.
  */
 import { spawn } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -31,19 +31,20 @@ import {
 const DEAD_PID = 0x7fff_fffe;
 
 /**
- * A holder that behaves like a real one caught in the write window: it wins the
- * `mkdir`, announces itself, and then stays alive without ever writing
- * `owner.json`. It exits on its own only if the lock disappears (another run
- * took over) or after 30s, so a parent can kill it at a known state.
+ * A holder that behaves like a real one caught in the write window: it takes
+ * the lock, announces itself, and then stays alive without ever writing its
+ * owner. It exits on its own only if the lock disappears (another run took it
+ * over) or after 30s, so a parent can kill it at a known state.
  */
 const HOLDER_SCRIPT = `
-const { mkdirSync, writeFileSync, existsSync } = require('node:fs');
-const [lockDir, ready] = process.argv.slice(1);
-mkdirSync(lockDir);
+const { openSync, closeSync, writeFileSync, existsSync } = require('node:fs');
+const [lockPath, ready] = process.argv.slice(1);
+const fd = openSync(lockPath, 'wx');
+closeSync(fd);
 writeFileSync(ready, 'held');
 const pause = new Int32Array(new SharedArrayBuffer(4));
 const deadline = Date.now() + 30_000;
-while (existsSync(lockDir) && Date.now() < deadline) Atomics.wait(pause, 0, 0, 20);
+while (existsSync(lockPath) && Date.now() < deadline) Atomics.wait(pause, 0, 0, 20);
 `;
 
 const sandboxes: string[] = [];
@@ -60,17 +61,18 @@ function sandbox() {
  * Plant a lock as if a previous run had been killed while holding it.
  *
  * `ownerPid: null` reproduces the one shape this fix originally missed: a lock
- * whose holder died between winning the `mkdir` and writing `owner.json`, which
- * is exactly what the pre-fix code left behind.
+ * whose holder died between winning the lock and writing its owner into it,
+ * which is exactly what the pre-fix code left behind — a lock that names
+ * nobody.
  */
-function plantLock(lockDir: string, ownerPid: number | null, ageMs = 0) {
-  mkdirSync(lockDir, { recursive: true });
-  if (ownerPid !== null) {
-    writeFileSync(join(lockDir, 'owner.json'), JSON.stringify({ pid: ownerPid, at: Date.now() }));
-  }
+function plantLock(lockPath: string, ownerPid: number | null, ageMs = 0) {
+  writeFileSync(
+    lockPath,
+    ownerPid === null ? '' : JSON.stringify({ pid: ownerPid, at: Date.now() }),
+  );
   if (ageMs > 0) {
     const when = new Date(Date.now() - ageMs);
-    utimesSync(lockDir, when, when);
+    utimesSync(lockPath, when, when);
   }
 }
 
@@ -104,8 +106,9 @@ describe('withProbeLockAt · recovery from a killed run', () => {
 
   it('takes over a lock with no owner file once the write window has passed', () => {
     // The artifact of the very event this recovery was written for: the
-    // pre-fix code never wrote owner.json at all, so every lock it left was
-    // ownerless and unidentifiable. Age is the only signal, so the decision is
+    // pre-fix code never wrote an owner into the lock at all, so every lock it
+    // left was ownerless and unidentifiable. Age is the only signal, so the
+    // decision is
     // a grace period — long enough not to steal a live holder mid-write,
     // short enough to recover inside a run.
     const { lockDir, probeRoot } = sandbox();
@@ -155,9 +158,10 @@ describe('withProbeLockAt · recovery from a killed run', () => {
   it('waits for a live holder that has not written its owner yet, and takes over once it dies', async () => {
     // The reason a grace period exists at all rather than "no owner ⇒ stale".
     //
-    // A *real* holder drives this: a child process that wins the `mkdir` and then
-    // pauses — the state `withProbeLockAt` itself passes through between
-    // `mkdirSync` and `writeFileSync`. Both directions are pinned in one case
+    // A *real* holder drives this: a child process that wins the lock and then
+    // pauses — the state `withProbeLockAt` itself passes through between the
+    // exclusive create and the write of the owner. Both directions are pinned
+    // in one case
     // because they are one decision about one lock:
     //   · holder alive, no owner file → wait. Two processes in the critical
     //     section would collide on the same probe file, which is what the lock
@@ -177,15 +181,17 @@ describe('withProbeLockAt · recovery from a killed run', () => {
       });
 
       // The precondition the earlier version of this case never checked: at the
-      // moment the verdict is taken the holder is running and really has no
-      // owner file, so this cannot quietly degrade into the live-holder case.
-      expect(existsSync(join(lockDir, 'owner.json'))).toBe(false);
+      // moment the verdict is taken the holder is running and really has not
+      // written its owner, so this cannot quietly degrade into the live-holder
+      // case. The lock file exists but names nobody.
+      expect(existsSync(lockDir)).toBe(true);
+      expect(readFileSync(lockDir, 'utf8')).toBe('');
       expect(child.exitCode).toBe(null);
       expect(lockIsStale(lockDir)).toBe(false);
 
       let entered = false;
       expect(() => withProbeLockAt(lockDir, probeRoot, () => (entered = true), 300)).toThrow(
-        /no owner\.json/,
+        /names nobody/,
       );
       expect(entered).toBe(false);
       // Untouched: another run's recovery must not evict a live holder.
@@ -208,10 +214,10 @@ describe('withProbeLockAt · recovery from a killed run', () => {
   });
 
   it('takes over an unreadable owner file once it is too old to be a write window', () => {
-    // Garbage in owner.json is the same as no pid: age decides.
+    // Garbage in the lock is the same as no pid: age decides.
     const { lockDir, probeRoot } = sandbox();
     plantLock(lockDir, process.pid);
-    writeFileSync(join(lockDir, 'owner.json'), 'not json at all');
+    writeFileSync(lockDir, 'not json at all');
     const when = new Date(Date.now() - 11 * 60_000);
     utimesSync(lockDir, when, when);
 
@@ -303,9 +309,38 @@ describe('withProbeLockAt · recovery from a killed run', () => {
     let ownerPid = 0;
     withProbeLockAt(lockDir, probeRoot, () => {
       // Read it the way a competing process would.
-      ownerPid = JSON.parse(readFileSync(join(lockDir, 'owner.json'), 'utf8')).pid;
+      ownerPid = JSON.parse(readFileSync(lockDir, 'utf8')).pid;
     });
     expect(ownerPid).toBe(process.pid);
+  });
+
+  it('does not remove a lock a concurrent acquirer has taken', () => {
+    // The release must remove **its own** lock and nothing else.
+    //
+    // The lock used to be a directory, and removing a directory is not atomic:
+    // it is a read, a set of unlinks and a final `rmdir`, so a release could
+    // destroy a directory a concurrent acquirer had just created. The two were
+    // then inside the critical section at once — and the cost of that is not a
+    // crash but a *false violation*: the probe one of them holds is the
+    // violation the other one reports.
+    //
+    // The lock is a file now, and the release removes it only when it is still
+    // the same file (the inode) the holder created. Here the lock is taken
+    // over from under the holder, and the takeover's lock must survive.
+    const { lockDir, probeRoot } = sandbox();
+    const takeover = JSON.stringify({ pid: process.pid + 1, at: Date.now() });
+    let entered = false;
+    withProbeLockAt(lockDir, probeRoot, () => {
+      entered = true;
+      // The interleaving: somebody else holds the lock by the time this
+      // holder releases it. A takeover replaces the lock — a new file, and so a
+      // new inode — which is exactly what the release has to notice.
+      unlinkSync(lockDir);
+      writeFileSync(lockDir, takeover);
+    });
+    expect(entered).toBe(true);
+    expect(existsSync(lockDir)).toBe(true);
+    expect(readFileSync(lockDir, 'utf8')).toBe(takeover);
   });
 });
 
@@ -320,7 +355,7 @@ describe('the shipped timing constants', () => {
     expect(LOCK_OWNER_GRACE_MS).toBeLessThan(5_000);
     //
     // Lower: the one the design actually rests on. The grace only has to outlast
-    // the `mkdir`→`writeFileSync` gap, measured on this machine at p50 0.12ms,
+    // the create→write gap, measured on this machine at p50 0.12ms,
     // p99 0.33ms and a worst case of 17ms over two runs of 20k samples, plus
     // whatever a loaded machine adds on top. 500ms is ~29x the worst
     // observation, so a later "tighten it" edit cannot land inside the window,

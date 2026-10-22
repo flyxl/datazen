@@ -8,20 +8,35 @@
  * teeth — a guard whose rule table is never exercised against a real file can
  * be green for the wrong reason (wrong directory, wrong root, walk skipped).
  *
- * Vitest runs test *files* in parallel and both guard suites mutate the same
- * `packages/ui/` tree, so every operation that observes or mutates that tree
- * goes through {@link withProbeLock} — an on-disk `mkdir` lock, which is atomic
+ * Vitest runs test *files* in parallel and several guard suites mutate or read
+ * the same trees, so every operation that observes or mutates the real working
+ * tree goes through {@link withProbeLock} — an on-disk lock, which is atomic
  * across processes — instead of a per-process mutex that would not help.
+ *
+ * The lock is a single file, created with `O_CREAT | O_EXCL`: exactly one
+ * process can create it, so exactly one process holds it. It used to be a
+ * *directory*, and a directory is the wrong shape for a lock: "the directory
+ * exists" is a state that a release and an acquisition have to agree on, and
+ * they cannot — removing a directory is not atomic (it is a read, a set of
+ * unlinks and a final `rmdir`), so a release could destroy a directory a
+ * concurrent acquirer had just created. The failure mode is not a crash but a
+ * *broken exclusion*: two processes inside the critical section at once, each
+ * reading the other's probe as a real violation. A file has neither problem:
+ * creating it is one atomic syscall, and removing it is one atomic syscall.
  */
 import {
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   rmdirSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync,
+  writeSync,
 } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -29,12 +44,12 @@ import { fileURLToPath } from 'url';
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 /** Lives under `node_modules/` so it can never end up in `git status`. */
-const LOCK_DIR = join(REPO_ROOT, 'node_modules/.cache/dz-boundary-probe.lock');
+const LOCK_PATH = join(REPO_ROOT, 'node_modules/.cache/dz-boundary-probe.lock');
 export const LOCK_TIMEOUT_MS = 60_000;
 /**
- * How long a lock with no readable owner file is given before it is taken over.
+ * How long a lock whose owner cannot be read is given before it is taken over.
  *
- * The owner file is written synchronously right after the `mkdir` wins, so a
+ * The owner is written synchronously right after the lock is created, so a
  * missing one means either a dead run (the common case: a kill between the two
  * statements, or a write that failed) or the microsecond-wide window of a live
  * holder that has not written it yet. Treating "no owner" as stale outright
@@ -42,14 +57,14 @@ export const LOCK_TIMEOUT_MS = 60_000;
  * which is the collision the lock exists to prevent, so a grace period is
  * required rather than optional.
  *
- * It only has to outlast the mkdir-to-write gap, not a whole critical section
+ * It only has to outlast the create-to-write gap, not a whole critical section
  * (a full-tree boundaries scan measures ~0.32s in process and ~0.42s as a CLI
  * here; ~3.4s was observed under concurrent load and is not reproducible solo),
- * because the owner file is present for the entire rest of the run.
+ * because the owner is written into the lock for the entire rest of the run.
  *
  * That clause is a precondition, not a general truth, and the grace has to be
  * sized against it rather than against the critical section. While a holder is
- * inside the write window it has no owner file at all: `readLockOwnerPid`
+ * inside the write window the lock names nobody at all: `readLockOwnerPid`
  * returns null, the pid check below is unreachable, and this grace is the only
  * thing between that live holder and a second process. The gap measures p50
  * 0.12ms and a worst case of 17ms over two runs of 20k samples, so the shipped
@@ -76,7 +91,7 @@ export const LOCK_OWNER_GRACE_MS = 2_000;
  *
  *   - pid reuse: a killed holder's pid may already belong to an unrelated
  *     process, so `process.kill(pid, 0)` reports "alive" for a dead holder;
- *   - an owner file that exists but cannot be read or parsed, where age is the
+ *   - a lock whose owner cannot be read or parsed, where age is the
  *     only signal there is.
  *
  * It is 10x *above* the 60s wait, not below it, and that is deliberate: pid
@@ -104,8 +119,31 @@ const MAX_STALE_CLEARANCES = 16;
  */
 const PROBE_PREFIXES = ['__boundaryProbe__', '__uiBoundaryProbe__'];
 
-/** The subtree a probe can land in. Everything here is a throwaway test file. */
-const PROBE_ROOT = 'packages/ui';
+/**
+ * Every subtree a mutation probe can land in.
+ *
+ * The probe is always a **real file in the real working tree** — that is the
+ * whole point of it: a guard that has never seen a real file can be green for
+ * the wrong reason (wrong directory, wrong root, walk skipped). So a probe left
+ * behind by a killed run is not harmless debris either: it is a real violation
+ * sitting in the tree, and every guard that scans that tree reads it as one on
+ * the next run.
+ *
+ * Three subtrees, three suites:
+ *
+ *   - `packages/ui` — the design-system probes (`src/`, `dist/`, `coverage/`,
+ *     `node_modules/vendored-lib/`), planted by `check-module-layers.test.ts`
+ *     and `check-driver-import-boundaries.test.mjs`;
+ *   - `packages/backend-client` — the port-rule probe, which is the one F-07's
+ *     subject is scanned for, planted by `check-module-layers.test.ts`;
+ *   - `scripts` — the "an unexercised rule cannot pass" probes.
+ *
+ * The sweep used to know only the first of the three, so a probe left in the
+ * other two survived the next run and turned a killed run into a permanently
+ * red one. The list is the whole inventory, and {@link PROBE_PATHS} is the
+ * matching list of the paths the suites actually write.
+ */
+const PROBE_ROOTS = ['packages/ui', 'packages/backend-client', 'scripts'];
 
 /** Synchronous sleep — the lock must not be awaited away inside a sync test. */
 function sleepSync(ms: number) {
@@ -128,10 +166,10 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/** The pid that created the lock, or `null` if it left no readable owner file. */
-function readLockOwnerPid(lockDir: string): number | null {
+/** The pid that created the lock, or `null` if it left no readable owner. */
+function readLockOwnerPid(lockPath: string): number | null {
   try {
-    const parsed = JSON.parse(readFileSync(join(lockDir, 'owner.json'), 'utf8'));
+    const parsed = JSON.parse(readFileSync(lockPath, 'utf8'));
     return typeof parsed?.pid === 'number' ? parsed.pid : null;
   } catch {
     return null;
@@ -141,23 +179,26 @@ function readLockOwnerPid(lockDir: string): number | null {
 /**
  * Whether a lock left behind by a dead run can be taken over.
  *
- * A `mkdir` lock alone is a lock that outlives its holder: SIGKILL, an OOM kill
- * or a closed terminal runs no `finally`, so the directory stays, nothing holds
- * it, and every later run waits out the full timeout before failing — and the
- * directory is under `node_modules/`, so `git status` never shows it. Recovery
- * therefore has to be the *next* run's job, which is what this decides.
+ * A lock file outlives its holder: SIGKILL, an OOM kill or a closed terminal
+ * runs no `finally`, so the file stays, nothing holds it, and every later run
+ * waits out the full timeout before failing — and the file is under
+ * `node_modules/`, so `git status` never shows it. Recovery therefore has to
+ * be the *next* run's job, which is what this decides.
+ *
+ * No lock file at all is **not** stale: it is free, and the retry that follows
+ * simply takes it.
  */
-export function lockIsStale(lockDir: string, ownerGraceMs: number = LOCK_OWNER_GRACE_MS): boolean {
+export function lockIsStale(lockPath: string, ownerGraceMs: number = LOCK_OWNER_GRACE_MS): boolean {
   let age: number;
   try {
-    age = Date.now() - statSync(lockDir).mtimeMs;
+    age = Date.now() - statSync(lockPath).mtimeMs;
   } catch {
-    return true; // Vanished between the failed mkdir and here — retry will win.
+    return false; // No lock there — it is free, and the retry will take it.
   }
 
-  const ownerPid = readLockOwnerPid(lockDir);
+  const ownerPid = readLockOwnerPid(lockPath);
   if (ownerPid === null) {
-    // No usable owner: a kill between the mkdir and the write, a write that
+    // No usable owner: a kill between the create and the write, a write that
     // failed, an unreadable file — or a holder still inside that gap. Age is
     // the only signal, so the grace period is the whole decision.
     return age > ownerGraceMs;
@@ -171,9 +212,20 @@ export function lockIsStale(lockDir: string, ownerGraceMs: number = LOCK_OWNER_G
  * Delete probes a previous run left behind, then the empty directories they
  * needed. The lock is held, so anything matching a reserved prefix is debris.
  *
+ * With no argument every subtree a probe can land in is swept (see
+ * {@link PROBE_ROOTS}); with an explicit root only that root is.
+ *
  * @returns repo-relative paths removed
  */
-export function sweepStaleProbes(root: string = join(REPO_ROOT, PROBE_ROOT)): string[] {
+export function sweepStaleProbes(root?: string): string[] {
+  const roots = root === undefined ? PROBE_ROOTS.map((rel) => join(REPO_ROOT, rel)) : [root];
+  const removed: string[] = [];
+  for (const one of roots) removed.push(...sweepProbeRoot(one));
+  return removed;
+}
+
+/** {@link sweepStaleProbes}, restricted to one subtree. */
+function sweepProbeRoot(root: string): string[] {
   const removed: string[] = [];
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -202,72 +254,150 @@ export function sweepStaleProbes(root: string = join(REPO_ROOT, PROBE_ROOT)): st
 }
 
 /**
- * Run `fn` with exclusive access to the real `packages/ui/` tree.
+ * Give the lock back, without ever taking it away from somebody else.
  *
- * Self-healing: a lock left by a killed run is detected and taken over rather
- * than waited out, and the probes that run left behind are swept before this
- * run starts.
- *
+ * The removal is one `unlink` — atomic, and it removes exactly the file this
+ * call created. The inode check is what makes "exactly" true even when this
+ * holder was evicted in the meantime and the lock was taken over by somebody
+ * else: a different file has a different inode, and that lock is not ours to
+ * remove.
  */
-export function withProbeLock<T>(fn: () => T): T {
-  return withProbeLockAt(LOCK_DIR, join(REPO_ROOT, PROBE_ROOT), fn);
+function releaseLock(lockPath: string, ino: number): void {
+  try {
+    if (statSync(lockPath).ino !== ino) return; // Taken over — leave it alone.
+    unlinkSync(lockPath);
+  } catch {
+    // Already gone.
+  }
 }
 
 /**
- * The lock + sweep machinery, pointed at a caller-chosen lock and probe root.
+ * Take over a lock whose holder is gone.
+ *
+ * Same rule as the release: only the file the verdict was about may be
+ * removed. The inode is its identity, so a lock that was taken over between
+ * the verdict and this call is left exactly as it is.
+ */
+function evictLock(lockPath: string, ino: number): void {
+  try {
+    if (statSync(lockPath).ino !== ino) return;
+    unlinkSync(lockPath);
+  } catch {
+    // Already gone.
+  }
+}
+
+/**
+ * Remove a lock left behind by the *previous* lock format.
+ *
+ * The lock was a directory until it became a file; a directory left at the
+ * path by an earlier run would make the exclusive create fail with EISDIR
+ * forever, and it lives under `node_modules/`, so `git status` never shows it
+ * and nothing else would ever clear it.
+ */
+function clearLegacyLockDir(lockPath: string): void {
+  try {
+    if (statSync(lockPath).isDirectory()) rmSync(lockPath, { recursive: true, force: true });
+  } catch {
+    // No lock there, or it is already the file format.
+  }
+}
+
+/**
+ * Run `fn` with exclusive access to the real working tree.
+ *
+ * Self-healing: a lock left by a killed run is detected and taken over rather
+ * than waited out, and the probes that run left behind are swept before this
+ * run starts — in **every** subtree a probe can land in, not only the first
+ * one, because a leftover probe is a real violation sitting in the tree and
+ * the next guard that scans that tree would report it as one.
+ */
+export function withProbeLock<T>(fn: () => T): T {
+  return withProbeLockAt(
+    LOCK_PATH,
+    PROBE_ROOTS.map((root) => join(REPO_ROOT, root)),
+    fn,
+  );
+}
+
+/**
+ * The lock + sweep machinery, pointed at a caller-chosen lock and probe roots.
  *
  * The parameters exist so the recovery paths can be tested against a private
- * lock instead of the shared one: a test that plants a fake lock at
- * {@link LOCK_DIR} would break the very mutual exclusion every other guard test
- * depends on.
+ * lock instead of the shared one: a test that planted a fake lock at
+ * {@link LOCK_PATH} would break the very mutual exclusion every other guard
+ * test depends on.
  *
+ * @param {string} lockPath the lock file to take
+ * @param {string | readonly string[]} probeRoots the subtrees to sweep for debris
  * @param {number} [timeoutMs] how long to wait for a *live* holder before failing
  * @param {number} [ownerGraceMs] how long an ownerless lock is left alone
  */
 export function withProbeLockAt<T>(
-  lockDir: string,
-  probeRoot: string,
+  lockPath: string,
+  probeRoots: string | readonly string[],
   fn: () => T,
   timeoutMs: number = LOCK_TIMEOUT_MS,
   ownerGraceMs: number = LOCK_OWNER_GRACE_MS,
 ): T {
-  mkdirSync(dirname(lockDir), { recursive: true });
+  mkdirSync(dirname(lockPath), { recursive: true });
+  clearLegacyLockDir(lockPath);
   const deadline = Date.now() + timeoutMs;
   let cleared = 0;
+  let fd = -1;
   for (;;) {
     try {
-      mkdirSync(lockDir);
+      // `wx` is `O_CREAT | O_EXCL | O_WRONLY`: the file is created only if it
+      // does not exist, and the check and the create are one syscall. Exactly
+      // one process can win it, so exactly one process holds the lock.
+      fd = openSync(lockPath, 'wx');
       break;
     } catch (err) {
       if (!isErrnoException(err) || err.code !== 'EEXIST') throw err;
-      if (cleared < MAX_STALE_CLEARANCES && lockIsStale(lockDir, ownerGraceMs)) {
+      let ino = 0;
+      try {
+        ino = statSync(lockPath).ino;
+      } catch {
+        ino = 0; // Vanished — the retry will win it.
+      }
+      if (cleared < MAX_STALE_CLEARANCES && lockIsStale(lockPath, ownerGraceMs)) {
         cleared += 1;
-        rmSync(lockDir, { recursive: true, force: true });
+        evictLock(lockPath, ino);
         continue; // Retry immediately instead of sleeping on a dead holder.
       }
       if (Date.now() > deadline) {
-        const ownerPid = readLockOwnerPid(lockDir);
+        const ownerPid = readLockOwnerPid(lockPath);
         throw new Error(
-          `withProbeLock: timed out after ${timeoutMs}ms waiting for ${lockDir}` +
+          `withProbeLock: timed out after ${timeoutMs}ms waiting for ${lockPath}` +
             (ownerPid === null
-              ? ' (no owner.json: the holder wrote none before the wait started)'
+              ? ' (the lock names nobody: the holder wrote none before the wait started)'
               : ` (owner pid ${ownerPid} is still running)`),
         );
       }
       sleepSync(25);
     }
   }
+  let ino = 0;
   try {
-    // Written after the mkdir so a lock is never owned by a pid that has not
+    ino = statSync(lockPath).ino;
+  } catch {
+    // The identity is only used to make the release exact; without it the
+    // release still removes the lock, it just cannot prove it is the same one.
+  }
+  try {
+    // Written after the create, so a lock is never owned by a pid that has not
     // claimed it yet; until then the age cap is the only signal.
-    writeFileSync(
-      join(lockDir, 'owner.json'),
-      JSON.stringify({ pid: process.pid, at: Date.now() }),
-    );
-    sweepStaleProbes(probeRoot);
+    writeSync(fd, JSON.stringify({ pid: process.pid, at: Date.now() }));
+  } finally {
+    closeSync(fd);
+  }
+  try {
+    for (const root of typeof probeRoots === 'string' ? [probeRoots] : probeRoots) {
+      sweepStaleProbes(root);
+    }
     return fn();
   } finally {
-    rmSync(lockDir, { recursive: true, force: true });
+    releaseLock(lockPath, ino);
   }
 }
 
@@ -291,6 +421,11 @@ function assertProbePath(rel: string): void {
 /**
  * Every repo-relative path the guard suites write to, for assertions that must
  * hold about all of them at once (see the gitignore check in the suite).
+ *
+ * The list spans all three {@link PROBE_ROOTS}: a probe that is not covered
+ * here is a probe whose gitignore coverage was never asserted, and one that
+ * gitignore does not cover is a `git add -A` away from a committed test
+ * artifact.
  */
 export const PROBE_PATHS = [
   'packages/ui/src/__boundaryProbe__.ts',
@@ -304,6 +439,9 @@ export const PROBE_PATHS = [
   'packages/ui/dist/__boundaryProbe__.js',
   'packages/ui/coverage/__boundaryProbe__.js',
   'packages/ui/node_modules/vendored-lib/__boundaryProbe__.js',
+  'packages/backend-client/src/__boundaryProbe__.ts',
+  'scripts/__boundaryProbe__/bare/__boundaryProbe__.ts',
+  'scripts/__boundaryProbe__/buried/dist/__boundaryProbe__.ts',
 ];
 
 /**
