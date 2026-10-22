@@ -407,6 +407,21 @@ pub fn read_only_error_code(reason: GridReadOnlyReason) -> ResultErrorCode {
 /// through [`WriteTarget::of`], and only these fields can make the gate refuse.
 /// Mode fields are not here, so they cannot make a result permanently
 /// unwritable by changing on their own.
+///
+/// `confidence` is deliberately not part of the target either: it answers "how
+/// much we know", not "where the write points". Note that a degraded
+/// confidence **does not** imply an incomplete namespace — a driver can report
+/// `Partial` while still naming the full namespace (a PostgreSQL transaction
+/// that aborted keeps its last observed namespace; SQLite reads the pragmas
+/// but marks the whole observation `Partial`). So this type does **not** refuse
+/// those writes, and it is not what keeps a redirected write from landing.
+///
+/// That job belongs to the relation re-check performed immediately before the
+/// write: the table/database/schema used for the `UPDATE` (and for qualifying
+/// it) all come from the frozen relation, and they are compared against a
+/// fresh `get_table_schema` answer. Removing that re-check makes a redirected
+/// write land — verified by mutation — so do not treat this type as the guard
+/// against a moved target.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteTarget {
     pub namespace: datazen_platform_api::target::NamespaceTarget,
