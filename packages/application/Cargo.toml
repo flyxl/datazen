@@ -20,6 +20,12 @@ tracing = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# 隧道端口（`datazen_platform_api::ports::TunnelRepository`）的方法签名引用驱动
+# 契约 crate 的隧道类型（`SavedTunnel` / `SavedTunnelSummary` / `TunnelUsage`）。
+# 生产代码只持有 `Arc<dyn TunnelRepository>`，**不点名**那些类型，因此不需要这条
+# 依赖；只有测试里实现该端口的替身时才需要。它是 dev-dependency ⇒ 不进
+# normal/build 依赖闭包，F-02 的判定不受影响。
+datazen-driver-api = { workspace = true }
 # 测试期解析器：模块清单守卫用 syn 取 crate 顶层 items，而不是手写词法分析。
 # 只用 include_str!("lib.rs")，不触碰被测代码；dev-dependency 不进 normal/build 闭包。
 syn = { version = "2", features = ["full"] }
