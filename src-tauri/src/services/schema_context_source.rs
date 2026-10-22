@@ -8,7 +8,7 @@
 use crate::platform::PlatformEntry;
 use crate::services::runtime_command_source::RuntimeCommandSource;
 use crate::store::Store;
-use datazen_feature_core::services::ports::SchemaContextSource;
+use datazen_feature_core::services::ports::LogicalSchemaContextSource;
 use datazen_feature_core::services::schema_context::{
     RuntimeSchemaContextSource, UnavailableSchemaContextSource,
 };
@@ -24,7 +24,7 @@ pub(crate) fn desktop_schema_context_source(
     registry: Arc<DriverRegistry>,
     store: Arc<Store>,
     platform: PlatformEntry,
-) -> Arc<dyn SchemaContextSource> {
+) -> Arc<dyn LogicalSchemaContextSource> {
     let runtime = platform.require().and_then(|adapter| adapter.runtime());
     match runtime {
         Ok(runtime) => Arc::new(RuntimeSchemaContextSource::new(
