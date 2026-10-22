@@ -14,7 +14,15 @@
  * would break the mutual exclusion every other guard test relies on.
  */
 import { execFileSync, spawn } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join, resolve } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -326,23 +334,82 @@ describe('withProbeLockAt · recovery from a killed run', () => {
     // crash but a *false violation*: the probe one of them holds is the
     // violation the other one reports.
     //
-    // The lock is a file now, and the release removes it only when it is still
-    // the same file (the inode) the holder created. Here the lock is taken
-    // over from under the holder, and the takeover's lock must survive.
+    // The lock is a file now, and the release removes it only when the claim
+    // in it is still the one this holder made. Here the lock is taken over
+    // from under the holder, and the takeover's lock must survive.
     const { lockDir, probeRoot } = sandbox();
-    const takeover = JSON.stringify({ pid: process.pid + 1, at: Date.now() });
+    const takeover = JSON.stringify({
+      pid: process.pid + 1,
+      at: Date.now(),
+      token: 'a-claim-that-is-not-ours',
+    });
     let entered = false;
     withProbeLockAt(lockDir, probeRoot, () => {
       entered = true;
       // The interleaving: somebody else holds the lock by the time this
-      // holder releases it. A takeover replaces the lock — a new file, and so a
-      // new inode — which is exactly what the release has to notice.
+      // holder releases it. A takeover replaces the lock — a new file, and so
+      // possibly the very inode number this one freed.
       unlinkSync(lockDir);
       writeFileSync(lockDir, takeover);
     });
     expect(entered).toBe(true);
     expect(existsSync(lockDir)).toBe(true);
     expect(readFileSync(lockDir, 'utf8')).toBe(takeover);
+  });
+
+  it('does not remove a lock that was overwritten in place, inode unchanged', () => {
+    // The inode is **not** an identity, and this is the case that proves it
+    // without depending on the filesystem's inode-reuse timing.
+    //
+    // Two things make an inode useless as an identity:
+    //
+    //   * it does not change when the file is overwritten in place — so
+    //     "same inode" cannot even mean "same content";
+    //   * inode numbers are **reused**: a file that was deleted frees its
+    //     number, and the next file created in that directory can be handed
+    //     the very same one.
+    //
+    // The second is what the Linux CI run of this suite caught. On ext4 the
+    // number is reused immediately, so a release that compared inodes read
+    // "still mine" for a lock that a *different* process had just taken, and
+    // deleted it: the exclusion was gone, silently, and the two processes were
+    // inside the critical section at once. The same code is green on
+    // macOS/APFS, where the reuse does not happen that way — a reminder that
+    // a green local run does not prove a green CI run.
+    //
+    // So the identity is the **token** in the lock's content. Here the lock
+    // is overwritten in place: same inode, different claim. The release must
+    // leave it alone, and it must do so on every filesystem.
+    const { lockDir, probeRoot } = sandbox();
+    const takeover = JSON.stringify({
+      pid: process.pid + 1,
+      at: Date.now(),
+      token: 'a-claim-that-is-not-ours',
+    });
+    let entered = false;
+    withProbeLockAt(lockDir, probeRoot, () => {
+      entered = true;
+      writeFileSync(lockDir, takeover);
+    });
+    expect(entered).toBe(true);
+    expect(existsSync(lockDir)).toBe(true);
+    expect(readFileSync(lockDir, 'utf8')).toBe(takeover);
+  });
+
+  it('claims the lock with a fresh random token every time', () => {
+    // The identity has to be unguessable-by-accident: two claims must never
+    // share one, or a release could mistake a takeover for its own lock.
+    const { lockDir, probeRoot } = sandbox();
+    const tokens: string[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      withProbeLockAt(lockDir, probeRoot, () => {
+        const content = JSON.parse(readFileSync(lockDir, 'utf8')) as { token?: unknown };
+        tokens.push(typeof content.token === 'string' ? content.token : '');
+      });
+    }
+    expect(tokens[0]).not.toBe('');
+    expect(tokens[1]).not.toBe('');
+    expect(tokens[0]).not.toBe(tokens[1]);
   });
 });
 
@@ -442,7 +509,7 @@ describe('the lock is one per working tree', () => {
     return dir;
   }
 
-  it('puts the lock inside the tree\'s own git directory', () => {
+  it("puts the lock inside the tree's own git directory", () => {
     const path = probeLockPath(REPO_ROOT);
     const gitDir = resolve(
       REPO_ROOT,
@@ -494,8 +561,6 @@ describe('the lock is one per working tree', () => {
     expect(probeLockPath(worktree)).toBe(probeLockPath(worktree));
     // And each is inside its own tree's git directory.
     expect(probeLockPath(main)).toBe(join(main, '.git', 'dz-boundary-probe.lock'));
-    expect(probeLockPath(worktree)).toBe(
-      join(worktree, 'elsewhere', 'dz-boundary-probe.lock'),
-    );
+    expect(probeLockPath(worktree)).toBe(join(worktree, 'elsewhere', 'dz-boundary-probe.lock'));
   });
 });

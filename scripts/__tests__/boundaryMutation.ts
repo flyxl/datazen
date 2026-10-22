@@ -38,7 +38,7 @@ import {
   writeFileSync,
   writeSync,
 } from 'fs';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { tmpdir } from 'os';
 import { dirname, isAbsolute, join, resolve } from 'path';
@@ -244,14 +244,44 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+/**
+ * What the lock file says about its holder.
+ *
+ * Both fields are `null` when the file cannot be read or does not parse — a
+ * lock that names nobody, which is what a file caught in the write window (or
+ * a lock written by an older format) looks like.
+ */
+type LockContent = {
+  /** The pid that claimed the lock, or `null` when it names nobody. */
+  pid: number | null;
+  /**
+   * The random token that identifies *this* claim.
+   *
+   * This is the lock's **identity**, and it is deliberately not the inode:
+   * inode numbers are reused (see {@link releaseLock}).
+   */
+  token: string | null;
+};
+
+/** Read the lock's content, tolerating a file that is missing or unreadable. */
+function readLockContent(lockPath: string): LockContent {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(lockPath, 'utf8'));
+  } catch {
+    return { pid: null, token: null };
+  }
+  if (typeof parsed !== 'object' || parsed === null) return { pid: null, token: null };
+  const record = parsed as Record<string, unknown>;
+  return {
+    pid: typeof record.pid === 'number' ? record.pid : null,
+    token: typeof record.token === 'string' ? record.token : null,
+  };
+}
+
 /** The pid that created the lock, or `null` if it left no readable owner. */
 function readLockOwnerPid(lockPath: string): number | null {
-  try {
-    const parsed = JSON.parse(readFileSync(lockPath, 'utf8'));
-    return typeof parsed?.pid === 'number' ? parsed.pid : null;
-  } catch {
-    return null;
-  }
+  return readLockContent(lockPath).pid;
 }
 
 /**
@@ -267,23 +297,63 @@ function readLockOwnerPid(lockPath: string): number | null {
  * simply takes it.
  */
 export function lockIsStale(lockPath: string, ownerGraceMs: number = LOCK_OWNER_GRACE_MS): boolean {
-  let age: number;
-  try {
-    age = Date.now() - statSync(lockPath).mtimeMs;
-  } catch {
-    return false; // No lock there — it is free, and the retry will take it.
-  }
+  const snapshot = snapshotLock(lockPath);
+  if (snapshot === null) return false; // No lock there — it is free, and the retry takes it.
+  return snapshotIsStale(snapshot, ownerGraceMs);
+}
 
-  const ownerPid = readLockOwnerPid(lockPath);
-  if (ownerPid === null) {
+/**
+ * One reading of the lock that is in the way.
+ *
+ * The verdict and the eviction have to be about the **same** lock, so both are
+ * taken from one snapshot. Two readings can be about two different locks: the
+ * file can be released and taken by somebody else between them.
+ */
+type LockSnapshot = {
+  /** The token of the claim, or `null` when the lock names nobody. */
+  token: string | null;
+  /** The pid of the holder, or `null` when the lock names nobody. */
+  pid: number | null;
+  /**
+   * The inode of the lock file.
+   *
+   * A **precondition**, never an identity: inode numbers are reused, so this
+   * cannot tell "the same file" from "a different file that was handed the
+   * number this one freed".
+   */
+  ino: number;
+  /** How long ago the lock file was last modified. */
+  ageMs: number;
+};
+
+/** Read the lock in the way, or `null` when there is none. */
+function snapshotLock(lockPath: string): LockSnapshot | null {
+  let st;
+  try {
+    st = statSync(lockPath);
+  } catch {
+    return null;
+  }
+  const content = readLockContent(lockPath);
+  return {
+    token: content.token,
+    pid: content.pid,
+    ino: st.ino,
+    ageMs: Date.now() - st.mtimeMs,
+  };
+}
+
+/** Whether the lock in this snapshot can be taken over. */
+function snapshotIsStale(snapshot: LockSnapshot, ownerGraceMs: number): boolean {
+  if (snapshot.pid === null) {
     // No usable owner: a kill between the create and the write, a write that
     // failed, an unreadable file — or a holder still inside that gap. Age is
     // the only signal, so the grace period is the whole decision.
-    return age > ownerGraceMs;
+    return snapshot.ageMs > ownerGraceMs;
   }
   // Ours to keep: a re-entrant call must not steal its own lock.
-  if (ownerPid !== process.pid && !isProcessAlive(ownerPid)) return true;
-  return age > LOCK_MAX_AGE_MS;
+  if (snapshot.pid !== process.pid && !isProcessAlive(snapshot.pid)) return true;
+  return snapshot.ageMs > LOCK_MAX_AGE_MS;
 }
 
 /**
@@ -334,15 +404,31 @@ function sweepProbeRoot(root: string): string[] {
 /**
  * Give the lock back, without ever taking it away from somebody else.
  *
- * The removal is one `unlink` — atomic, and it removes exactly the file this
- * call created. The inode check is what makes "exactly" true even when this
- * holder was evicted in the meantime and the lock was taken over by somebody
- * else: a different file has a different inode, and that lock is not ours to
- * remove.
+ * The removal is one `unlink` — atomic. What makes it remove *exactly this
+ * claim* and nothing else is the **token** written into the lock's content at
+ * claim time: the identity of a lock is what its holder put *in* it, not the
+ * number the filesystem happened to hand the file.
+ *
+ * The inode is kept only as a cheap second signal — "the file was not replaced
+ * under me" — and it is never the identity on its own, for two reasons the
+ * suite pins down directly:
+ *
+ *   * overwriting a file in place keeps its inode, so "same inode" cannot even
+ *     mean "same content";
+ *   * inode numbers are **reused** — on Linux ext4 the very next create can be
+ *     handed the number the previous file just freed, so an inode-only release
+ *     reads "still mine" for a lock a different process had taken, deletes it,
+ *     and silently loses mutual exclusion.
+ *
+ * Both checks must pass before the `unlink`; either alone is unsound.
  */
-function releaseLock(lockPath: string, ino: number): void {
+function releaseLock(lockPath: string, token: string, ino: number): void {
   try {
-    if (statSync(lockPath).ino !== ino) return; // Taken over — leave it alone.
+    // The **token** is the identity. The inode is only a second, cheap signal
+    // that the file has not been replaced — it is never the identity on its
+    // own, because inode numbers are REUSED.
+    if (readLockContent(lockPath).token !== token) return; // Somebody else's lock.
+    if (statSync(lockPath).ino !== ino) return; // Replaced — leave it alone.
     unlinkSync(lockPath);
   } catch {
     // Already gone.
@@ -352,13 +438,18 @@ function releaseLock(lockPath: string, ino: number): void {
 /**
  * Take over a lock whose holder is gone.
  *
- * Same rule as the release: only the file the verdict was about may be
- * removed. The inode is its identity, so a lock that was taken over between
- * the verdict and this call is left exactly as it is.
+ * Same rule as the release: only the claim the verdict was about may be
+ * removed. The **token** in the snapshot is that claim's identity; the snapshot
+ * inode only proves the file was not replaced between the verdict and this
+ * call. A lock that was taken over in the meantime carries a different token
+ * (or sits on a different inode), and it is left exactly as it is.
  */
-function evictLock(lockPath: string, ino: number): void {
+function evictLock(lockPath: string, judged: LockSnapshot): void {
   try {
-    if (statSync(lockPath).ino !== ino) return;
+    // Only the claim the verdict was about. A lock that was taken over in
+    // the meantime carries a different token, and it is not ours to remove.
+    if (readLockContent(lockPath).token !== judged.token) return;
+    if (statSync(lockPath).ino !== judged.ino) return;
     unlinkSync(lockPath);
   } catch {
     // Already gone.
@@ -445,15 +536,15 @@ export function withProbeLockAt<T>(
       break;
     } catch (err) {
       if (!isErrnoException(err) || err.code !== 'EEXIST') throw err;
-      let ino = 0;
-      try {
-        ino = statSync(lockPath).ino;
-      } catch {
-        ino = 0; // Vanished — the retry will win it.
-      }
-      if (cleared < MAX_STALE_CLEARANCES && lockIsStale(lockPath, ownerGraceMs)) {
+      // One snapshot, so the verdict and the eviction are about the same lock.
+      const snapshot = snapshotLock(lockPath);
+      if (
+        cleared < MAX_STALE_CLEARANCES &&
+        snapshot !== null &&
+        snapshotIsStale(snapshot, ownerGraceMs)
+      ) {
         cleared += 1;
-        evictLock(lockPath, ino);
+        evictLock(lockPath, snapshot);
         continue; // Retry immediately instead of sleeping on a dead holder.
       }
       if (Date.now() > deadline) {
@@ -468,17 +559,31 @@ export function withProbeLockAt<T>(
       sleepSync(25);
     }
   }
+  // The identity of this claim. Random, so it can never collide with the
+  // token of another claim — including a claim that inherited the inode
+  // number this one freed.
+  const token = randomUUID();
   let ino = 0;
   try {
     ino = statSync(lockPath).ino;
   } catch {
-    // The identity is only used to make the release exact; without it the
-    // release still removes the lock, it just cannot prove it is the same one.
+    // The inode is only a precondition for the release; without it the
+    // release still removes the lock, it just cannot prove the file has not
+    // been replaced.
   }
   try {
     // Written after the create, so a lock is never owned by a pid that has not
     // claimed it yet; until then the age cap is the only signal.
-    writeSync(fd, JSON.stringify({ pid: process.pid, at: Date.now() }));
+    writeSync(fd, JSON.stringify({ pid: process.pid, at: Date.now(), token }));
+  } catch (err) {
+    // The lock cannot be claimed: remove it rather than leave a lock that
+    // names nobody until the grace expires.
+    try {
+      unlinkSync(lockPath);
+    } catch {
+      // Already gone.
+    }
+    throw err;
   } finally {
     closeSync(fd);
   }
@@ -488,7 +593,7 @@ export function withProbeLockAt<T>(
     }
     return fn();
   } finally {
-    releaseLock(lockPath, ino);
+    releaseLock(lockPath, token, ino);
   }
 }
 
