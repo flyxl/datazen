@@ -27,6 +27,7 @@ import {
   sessionKeysOfPanel,
 } from './panelExecCleanup';
 import { createRunningCloseGuard } from './runningExecutionClose';
+import { assertResultWritable } from './panelResultEdit';
 import { DEFAULT_PANE_ID, paneKey } from './paneKeys';
 import { resolveNextActive, resetPanelIdCounter, type Panel } from './panelTypes';
 import { createPanelCloseNotifier } from './panelCloseNotifier';
@@ -634,6 +635,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const exec = get().queryExec.get(key);
     if (!exec) return;
     const original = exec.results[resultIdx];
+    assertResultWritable(panelId, paneId, resultIdx);
     if (!original?.runtimeBinding || original.source?.writableMapping !== 'verified')
       throw new Error('Result is read-only; execute the query again');
     const columnIndex = original.columns.findIndex((column) => column.name === col);

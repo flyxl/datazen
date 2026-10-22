@@ -34,7 +34,12 @@ export type GridErrorCode =
   | 'grid.filter.unsupportedOperator'
   | 'grid.filter.incomplete'
   | 'grid.view.invalid'
-  | 'grid.view.nameExists';
+  | 'grid.view.nameExists'
+  | 'grid.result.originUnavailable'
+  | 'grid.result.originAmbiguous'
+  | 'grid.result.rowNotAddressable'
+  | 'grid.result.multiRowNotAllowed'
+  | 'grid.result.writeDenied';
 
 /**
  * Prefix registry. Entries are full message prefixes (`grid.<domain>.<reason>`); the
@@ -66,6 +71,11 @@ export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.filter.incomplete',
   'grid.view.invalid',
   'grid.view.nameExists',
+  'grid.result.originUnavailable',
+  'grid.result.originAmbiguous',
+  'grid.result.rowNotAddressable',
+  'grid.result.multiRowNotAllowed',
+  'grid.result.writeDenied',
 ];
 
 /** Every grid message starts with this namespace; useful for cheap pre-checks. */

@@ -1,6 +1,13 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useResizable } from '../../hooks/useResizable';
+import { useI18n } from '../../hooks/useI18n';
 import { usePanelStore, type Panel } from '../../stores/panelStore';
+import { resultEditKey, usePanelResultEdit } from '../../stores/panelResultEdit';
+import {
+  gridReadOnlyMessageKey,
+  resolveResultEditability,
+  type ServerEditability,
+} from '../../lib/resultEditability';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { rowToRecord } from '../../lib/rowToRecord';
@@ -17,6 +24,21 @@ import type { KvKeyPropsSidebarBinding } from './useKvWorkspaceSlots';
 const NO_COLUMNS: ColumnSchema[] = [];
 const NO_ROWS: Record<string, unknown>[] = [];
 const NO_SELECTED: Set<number> = new Set();
+
+/**
+ * The verdict of a result nobody has judged yet.
+ *
+ * "Not judged" is read-only: a permission that has not been granted is not a
+ * permission. The reason is "the origin is unknown", which is what the user
+ * is told until the back end answers.
+ */
+const UNJUDGED: ServerEditability = {
+  writable: false,
+  identityColumns: [],
+  editableColumns: [],
+  table: null,
+  reason: 'unknownOrigin',
+};
 
 export interface ContentViewDrawersProps {
   activePanel: Panel | null;
@@ -75,6 +97,7 @@ export function ContentViewDrawers({
   pendingDraftRequest,
   onDraftConsumed,
 }: ContentViewDrawersProps) {
+  const { t } = useI18n();
   const { size: aiSidebarWidth, handleRef: aiHandleRef } = useResizable({
     direction: 'horizontal',
     initialSize: 320,
@@ -122,6 +145,62 @@ export function ContentViewDrawers({
       : null;
   const resultDetailRowIndex = activeQueryExec?.resultDetailRowIndex ?? null;
 
+  // The write-back verdict of the result on screen. It is fetched per result
+  // and dropped again when the result is replaced, so a verdict never outlives
+  // the rows it was made for.
+  const queryResultKey =
+    activePanel?.type === 'query'
+      ? resultEditKey(activePanel.id, undefined, activeQueryExec?.activeResultIdx ?? 0)
+      : '';
+  const originVerdict = usePanelResultEdit((s) =>
+    queryResultKey ? s.verdicts[queryResultKey] : null,
+  );
+  const resolvingOrigin = usePanelResultEdit((s) =>
+    queryResultKey ? s.resolving[queryResultKey] === true : false,
+  );
+
+  useEffect(() => {
+    if (!activePanel || activePanel.type !== 'query' || !activeQueryResult) return;
+    const key = resultEditKey(activePanel.id, undefined, activeQueryExec?.activeResultIdx ?? 0);
+    void usePanelResultEdit.getState().resolveForResult(key, {
+      connectionId: activePanel.connectionId,
+      dbSessionId: activePanel.dbSessionId,
+      database: activePanel.database || null,
+      schema: activePanel.schema ?? null,
+      sql: activeQueryResult.sql,
+      resultColumns: activeQueryResult.columns.map((column) => column.name),
+    });
+    return () => {
+      usePanelResultEdit.getState().clearForResult(key);
+    };
+  }, [activePanel, activeQueryResult, activeQueryExec?.activeResultIdx]);
+
+  /**
+   * Whether the result on screen may be edited at all.
+   *
+   * Two verdicts answer that: the narrow mapping verdict that shipped first
+   * and the driver's own origin verdict. Either one is enough — see
+   * `resolveResultEditability`.
+   */
+  const queryResultEditable = useMemo(() => {
+    if (activePanel?.type !== 'query') return true;
+    if (!activeQueryResult) return false;
+    return resolveResultEditability(
+      activeQueryResult.source?.writableMapping === 'verified',
+      originVerdict ?? UNJUDGED,
+      activeQueryResult.rows,
+      activeQueryResult.columns,
+      0,
+    ).writable;
+  }, [activePanel?.type, activeQueryResult, originVerdict]);
+
+  /** Why the result on screen cannot be edited, when it cannot. */
+  const queryReadOnlyReason = useMemo(() => {
+    if (activePanel?.type !== 'query') return null;
+    if (queryResultEditable) return null;
+    return originVerdict?.reason ?? 'unknownOrigin';
+  }, [activePanel?.type, queryResultEditable, originVerdict]);
+
   const detailColumnDefs: ColumnDef[] = useMemo(() => {
     if (activePanel?.type === 'table') {
       return tableColumns.map((c) => ({ id: c.name, name: c.name, type: c.dataType }));
@@ -164,10 +243,19 @@ export function ContentViewDrawers({
           store.stageCellChange(activePanel.id, row, col, value);
         }
       } else if (activePanel?.type === 'query' && activeQueryExec) {
-        void updateResultCell(activePanel.id, activeQueryExec.activeResultIdx, row, col, value).catch(() => undefined);
+        // A read-only result produces **no write intent at all**: the write
+        // path is not entered, so nothing is staged and nothing is sent.
+        if (!queryResultEditable) return;
+        void updateResultCell(
+          activePanel.id,
+          activeQueryExec.activeResultIdx,
+          row,
+          col,
+          value,
+        ).catch(() => undefined);
       }
     },
-    [activePanel, activeQueryExec, updateResultCell, selectedRows],
+    [activePanel, activeQueryExec, updateResultCell, selectedRows, queryResultEditable],
   );
 
   const Sidebar = keyPropsSidebarSlot?.Component;
@@ -188,19 +276,36 @@ export function ContentViewDrawers({
             <Sidebar {...keyPropsSidebarSlot.props} open={detailOpen} onClose={onCloseDetail} />
           </div>
         ) : (
-          <DetailPanel
-            open={detailOpen}
-            columns={detailColumnDefs}
-            row={detailRow}
-            rowIndex={detailRowIdx}
-            selectedRows={
-              activePanel?.type === 'table' || activePanel?.type === 'view'
-                ? selectedRows
-                : undefined
-            }
-            editable={activePanel?.type !== 'query' || (activeQueryResult?.source?.writableMapping === 'verified' && !!activeQueryResult?.runtimeBinding)}
-            onFieldEdit={handleDetailFieldEdit}
-          />
+          <>
+            {queryReadOnlyReason && (
+              <div
+                data-dt-grid-readonly-reason={queryReadOnlyReason}
+                className="shrink-0 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-muted"
+              >
+                {t(
+                  resolvingOrigin
+                    ? 'query.gridEdit.resolving'
+                    : gridReadOnlyMessageKey(queryReadOnlyReason),
+                )}
+              </div>
+            )}
+            <DetailPanel
+              open={detailOpen}
+              columns={detailColumnDefs}
+              row={detailRow}
+              rowIndex={detailRowIdx}
+              selectedRows={
+                activePanel?.type === 'table' || activePanel?.type === 'view'
+                  ? selectedRows
+                  : undefined
+              }
+              editable={
+                activePanel?.type !== 'query' ||
+                (queryResultEditable && !!activeQueryResult?.runtimeBinding)
+              }
+              onFieldEdit={handleDetailFieldEdit}
+            />
+          </>
         ))}
 
       {aiChatOpen && dbSessionId && (

@@ -548,5 +548,37 @@ const pack = {
   'query.objectTree.tables': 'Tables',
   'query.objectTree.views': 'Views',
   'query.objectTree.noObjects': 'No objects',
+  // ── Result grid write-back (DB-14) ─────────────────────────────────
+  // One message per read-only reason. The key is the contract: the interface
+  // renders the reason code, never a sentence it built itself.
+  'query.gridReadOnly.unknownOrigin':
+    'Cannot determine where this result came from, so it is read-only.',
+  'query.gridReadOnly.ambiguousOrigin':
+    'The driver reported inconsistent column origins for this result.',
+  'query.gridReadOnly.multiTable':
+    'This result joins multiple tables; individual rows cannot be edited.',
+  'query.gridReadOnly.aggregate': 'This result is an aggregate; individual rows cannot be edited.',
+  'query.gridReadOnly.distinct':
+    'This result is de-duplicated; rows cannot be matched back to table rows.',
+  'query.gridReadOnly.setOperation':
+    'This result is a set operation (UNION); rows cannot be edited.',
+  'query.gridReadOnly.derivedSource':
+    'This result comes from a subquery; rows cannot be matched back to table rows.',
+  'query.gridReadOnly.view': 'This result comes from a view; editing views is not supported.',
+  'query.gridReadOnly.noPrimaryKey':
+    'The source table has no primary key, so rows cannot be identified.',
+  'query.gridReadOnly.keyNotSelected':
+    'The primary key columns are not all present in this result.',
+  'query.gridReadOnly.sessionReadOnly': 'The current connection is read-only.',
+  'query.gridReadOnly.keyValueNull':
+    'This row has a NULL primary key value and cannot be located.',
+  'query.gridReadOnly.duplicateIdentity':
+    'This page contains duplicate row identities; editing is disabled.',
+  'query.gridReadOnly.rowNotFound': 'This row is no longer part of the result.',
+  'query.gridReadOnly.tooltip': 'Read-only: {reason}',
+  'query.gridEdit.editHint': 'Double-click to edit this cell',
+  'query.gridEdit.resolving': 'Checking whether this result can be edited…',
+  'query.gridEdit.submitting': 'Saving change…',
+  'query.gridEdit.empty': 'This result has no rows.',
 } as const;
 export default pack;
