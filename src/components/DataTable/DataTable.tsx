@@ -419,7 +419,7 @@ export function DataTable({
     onGridSelectionChange: onGridSelectionChange ?? NOOP,
     onCellDoubleClick: handleCellDoubleClick,
     onRowGutterSelect: handleGutterSelect,
-    onToggleSelectAll: onSelectAll,
+    onToggleSelectAll: onSelectAll ?? NOOP,
     onRequestScrollIntoView,
   });
   /** The cell that carries `data-dt-active` (02): the keyboard cursor. */

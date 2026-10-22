@@ -10,7 +10,6 @@
 import { useCallback, useMemo, useRef, type KeyboardEvent } from 'react';
 import { isComposingEvent, isEditableTarget } from '../lib/gridEventGuards';
 import {
-  EMPTY_ROW_MODE_SELECTION,
   clampGridCursor,
   readGridKeyIntent,
   resolveGridKeyCommand,
@@ -33,10 +32,11 @@ export interface GridKeyboardDispatch {
   /**
    * The existing "select every row" action (01's `toggleSelectAll`).
    *
-   * Optional: a grid without a select-all path has nothing to select, so the
-   * key is claimed without a state change instead of calling a fake action.
+   * **Required**: the action owns the row set *and* the mode together, so the
+   * grid never writes a row-mode selection of its own — that write would
+   * clear the rows the action has just selected (02 §4.6).
    */
-  onToggleSelectAll?: () => void;
+  onToggleSelectAll: () => void;
   /** Volume 10's hook point: scroll the cursor cell into view. */
   onRequestScrollIntoView?: (coord: CellCoord) => void;
 }
@@ -63,6 +63,20 @@ export interface UseGridKeyboardNavResult {
   activeCoord: CellCoord | null;
   /** The row that carries the keyboard cursor (row mode uses the row anchor). */
   activeRowIndex: number | null;
+}
+
+/**
+ * The command the dispatch can carry out.
+ *
+ * `Cmd+A` is the only command that needs an action the grid may not have: a
+ * grid without a select-all path has nothing to select. The key is then
+ * claimed and **nothing is written** — the grid never writes a row-mode
+ * selection of its own (02 §4.6: that write would clear the rows the action
+ * has just selected).
+ */
+function dispatchableCommand(command: GridKeyCommand, hasSelectAll: boolean): GridKeyCommand {
+  if (command.kind === 'select-all-rows' && !hasSelectAll) return { kind: 'ignored' };
+  return command;
 }
 
 export function useGridKeyboardNav(
@@ -154,15 +168,11 @@ export function useGridKeyboardNav(
           return;
         case 'select-all-rows':
           event.preventDefault();
-          // The existing action owns both the row set and the mode (01's
-          // `toggleSelectAll` writes `mode: 'row'` together with the rows).
-          // Writing a row-mode selection afterwards would clear the rows the
-          // action just selected, so the action comes alone.
-          if (onToggleSelectAll) {
-            onToggleSelectAll();
-            return;
-          }
-          onGridSelectionChange(EMPTY_ROW_MODE_SELECTION);
+          // The action owns both the row set and the mode (01's `toggleSelectAll`
+          // writes `mode: 'row'` together with the rows). The grid writes no
+          // selection of its own here: a row-mode write would clear the rows
+          // the action has just selected (02 §4.6).
+          onToggleSelectAll();
           return;
         case 'begin-edit':
           event.preventDefault();
@@ -185,8 +195,12 @@ export function useGridKeyboardNav(
         ? { ...projection, isComposing: true }
         : projection;
       const intent = readGridKeyIntent(keyEvent, context);
-      const command = resolveGridKeyCommand(intent, { ...context, extend: keyEvent.shiftKey }, selection);
-      applyCommand(command, event);
+      const command = resolveGridKeyCommand(
+        intent,
+        { ...context, extend: keyEvent.shiftKey },
+        selection,
+      );
+      applyCommand(dispatchableCommand(command, typeof onToggleSelectAll === 'function'), event);
     },
     [applyCommand, context, enabled, selection],
   );
