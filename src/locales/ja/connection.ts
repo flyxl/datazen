@@ -93,6 +93,9 @@ const pack = {
   'newConn.databaseIndex': 'データベースインデックス',
   'newConn.username': 'ユーザー名',
   'newConn.password': 'パスワード',
+  'newConn.clearStoredCredentials': '空欄のままの保存済み認証情報を消去する',
+  'newConn.clearStoredCredentialsHint':
+    'チェックしない限り、空欄のフィールドは保存済みの値を保持します。',
   'newConn.group': 'グループ',
   'newConn.noGroup': 'グループなし',
   'newConn.colorTag': 'カラータグ',
