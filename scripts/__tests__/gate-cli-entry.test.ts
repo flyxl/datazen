@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { isDirectInvocation } from '../lib/isDirectInvocation.mjs';
+import { withProbeLock } from './boundaryMutation';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const cases = [
@@ -72,9 +73,17 @@ for (const [script, args, marker] of wrapperCases) {
   it(`${script} executes via a symlink inside an isolated fixture`, () => {
     const scratch = mkdtempSync(join(tmpdir(), 'datazen-wrapper-'));
     try {
-      cpSync(join(root, 'scripts'), join(scratch, 'scripts'), {
-        recursive: true, filter: (path) => !path.includes('__tests__'),
-      });
+      // The copy reads the **real** `scripts/` tree, which is where the
+      // boundary-guard suites plant their mutation probes — real files that
+      // live only while that suite holds the lock. `cpSync` lstats every entry
+      // it walks, so a probe that appears or disappears during the copy fails
+      // the copy with ENOENT: a red test about nothing. Same lock as the
+      // probe writers take.
+      withProbeLock(() =>
+        cpSync(join(root, 'scripts'), join(scratch, 'scripts'), {
+          recursive: true, filter: (path) => !path.includes('__tests__'),
+        }),
+      );
       mkdirSync(join(scratch, 'node_modules'));
       cpSync(join(root, 'node_modules/fflate'), join(scratch, 'node_modules/fflate'), { recursive: true, dereference: true });
       copyFileSync(join(root, 'drivers-registry.json'), join(scratch, 'drivers-registry.json'));

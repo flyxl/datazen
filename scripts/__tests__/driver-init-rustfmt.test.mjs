@@ -65,6 +65,7 @@ import { basename, dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 import { resolveDrivers } from '../resolve-drivers.mjs';
+import { withProbeLock } from './boundaryMutation';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../..');
@@ -160,10 +161,17 @@ function expectMatchesGolden(actual, goldenName, label) {
  */
 function stageRepo() {
   const stage = mkdtempSync(join(tmpdir(), 'datazen-driver-init-guard-'));
-  cpSync(REPO, stage, {
-    recursive: true,
-    filter: (src) => src === REPO || !SKIP_DIRS.has(basename(src)),
-  });
+  // The copy reads the **real** working tree, and a mutation probe in it is a
+  // file that exists for as long as the suite that planted it holds the lock.
+  // `cpSync` lstats every entry it walks, so a probe planted or removed while
+  // the copy is running makes it fail with ENOENT — a red test that says
+  // nothing about the guard. The lock is the same one the probe writers take.
+  withProbeLock(() =>
+    cpSync(REPO, stage, {
+      recursive: true,
+      filter: (src) => src === REPO || !SKIP_DIRS.has(basename(src)),
+    }),
+  );
   const nodeModules = join(REPO, 'node_modules');
   if (existsSync(nodeModules)) {
     symlinkSync(nodeModules, join(stage, 'node_modules'), 'dir');
