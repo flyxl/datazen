@@ -341,6 +341,15 @@ Tester 查出：`src/windows/connection/result-workspace/ResultTableView.tsx` �
 1. **集成层是盲区**：所有组件测试都**用 spy 替换** `updateResultCell`，`panelResultEdit.test.ts` 只在**孤立**层面断言守卫会抛 ⇒ **全仓没有任何测试驱动真实的 store 动作**。⇒ 三轮都没抓到那条高危缺陷。**新规（Wave 9 起每轨必须满足）**：**至少一条测试驱动真实的 store 动作**（不走 spy），且必须有一条例外不许被 spy 掉的路径。
 2. **裁决要看全链路，不能只看自己盯着的那一段**：协调者核对了「前端的并集判定」，却没核对「store 守卫会独立否决」—— 两者合起来的结论与只看其中一个**相反**。⇒ 裁「某个设计是否误伤既有功能」时，必须把**从 UI 到落库的每一道否决点**列一遍（谁在什么条件下会抛），而不是只看其中一道。
 
+## Wave 8 合流（`23ca53098`）：两处冲突都是**手工按语义解**的
+
+| 冲突 | 解法 |
+| --- | --- |
+| `src/locales/en/query.ts` | 两轨各在**末尾**追加一段（editors **36** 条 `cellEditor.*`、result-grid **19** 条 `query.gridEdit.*`/`query.gridReadOnly.*`）⇒ **key 集交集为 0**（程序化核对过）⇒ 取**并集 55** 条 |
+| `src/windows/connection/ContentViewDrawers.tsx` | 两轨都改了 `<DetailPanel>` 块 ⇒ 取 **result-grid 的结构**（只读原因横幅 + **判定驱动**的 `editable`）+ **补上 editors 的 `cellTypeHints`** ⇒ **两轨的改动都活着**（已交两位 Tester 在**集成结果**上专项复核） |
+
+**合流后门禁（协调者实测）**：vitest **734 files / 7538 tests**；两轨收编的 9 个验收文件 **34 tests**；tsrs 与 tsc 双引擎 0 error；驱动 UI 套件 88 files / 1005 tests；Rust：host 1440 / feature-core 541（+ 集成 4+9+3+1）/ driver-api 417（+ 集成 5+14+1）/ sqlserver 15 套件全 ok（棘轮在内）；`cargo fmt --check` 0；i18n 缺口 **693 = 77×9**（named-views 22 + editors 36 + result-grid 19）。
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
@@ -400,7 +409,7 @@ Tester 查出：`src/windows/connection/result-workspace/ResultTableView.tsx` �
 | 5 | `fk-navigation-ui` + `filters` | ✅ | — |
 | 6 | `filters-frontend` + `count-backend` | ✅ | `tableDataStore.ts` |
 | 7 | `count-frontend` + `named-views` | ✅ | `en/query.ts`、`gridErrors.ts`、`tauriBackendTransport.ts` |
-| **8** | **05 编辑器 ∥ 10 结果网格** | 🔄 进行中 | 0（两个都是纯追加，预留插入位后可自动合并） |
+| **8** | **05 编辑器 ∥ 10 结果网格** | ✅ **已落地**（`4010d7ae2` + `23ca53098`） | 2 处冲突**手工按语义解**（见下） |
 | 9 | 02 键盘 ∥ 11 键集分页 | ⏳ | 2（`DataTable.tsx`、`TableView.tsx`） |
 | 10 | 03 剪贴板 ∥ 12-testing 的 D1–D8 审计 | ⏳ | 0 |
 | R | 全量回归 + E2E + i18n 收尾 + 契约改写 + 删 `docs/prd/` | ⏳ | — |
