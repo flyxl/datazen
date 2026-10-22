@@ -90,6 +90,32 @@
 - 行数：**不是 CI 门禁**，是 review 的信号；
 - 用例：**会不会在行为变了时报警？** 会 ⇒ 值得；只是把同一件事再测一遍 ⇒ 不值得（纯位移不新增专门单测）。
 
+## Wave 9 轨 A `02-keyboard` 的 13 项裁定
+
+交付 4 提交（`0f7430641`）。**13 项遗留里，4 项是契约本身写错了**（契约的字面写法与 01 册已实现的语义矛盾）⇒ 协调者已改契约（`ad9865786`），不是改实现：
+
+| # | 遗留 | 裁定 |
+| --- | --- | --- |
+| 1 | §4.6 的 Cmd+A 字面写法会**清掉刚选中的行**（01 的 `applyGridSelection` 在 `mode==='row'` 时清空 `selectedRows`） | **接受实现**（只调 `toggleSelectAll()`），契约 §4.6 已按实现订正 |
+| 2 | §3.1/§4.6 的 `clampGridCursor`「行越界 ⇒ null」与本册纪律「边界一律经 01 的 `clampCellCoord`」矛盾（后者**夹取行号**） | **按实现**：列被隐藏 ⇒ `null`；行越界 ⇒ **夹到末行**。契约已订正（原文字面会让光标在末页之后直接消失） |
+| 3 | 给 `GridKeyboardContext` 加可选 `extend` | 接受（§3.1 原本没修饰键位，§4.1 却要求命令层区分移动/扩区） |
+| 4 | `GridKeyCommand` 增 `ignored` 档 | 接受（§3.2 的表里一直有，§3.1 的 union 漏了）；契约 §3.1 已补。**三态必须分开**：`consume`（认领但不做，要 preventDefault）/ `ignored` / `pass`（不 preventDefault） |
+| 5 | `Enter` 在 `none` 模式 ⇒ `ignored`；`Cmd+Enter` ⇒ `pass` | 接受 |
+| 6 | **行容器 `tabIndex` 无条件 `-1`** ⇒ 未开启 cell-selection 契约的网格失去 Tab 停靠点 | 接受（roving tabindex 的必然结果），但已交 Tester **独立核查**：那些网格是否因此失去**唯一的**键盘路径 |
+| 7 | 新增第 3 个 `DataTable` prop `lastSelectedIndex` | 接受（row 模式的光标需要行锚点） |
+| 8 | 容器 `aria-label` 按有无 cell-selection 契约分支 | 接受 |
+| 9 | `activeRowIndex` 已返回但无新 DOM 属性 | 接受（row 模式整行高亮即光标指示） |
+| 10 | **`onRequestScrollIntoView` 只留接口不实现** ⇒ PgUp/PgDn 把光标移出视口 | 已交 Tester 判断（真缺口 / 可接受 / 属别的册） |
+| 11 | `gridKeyboard.ts` **404 行**（预算 250）；`GridKeyboardHints.tsx` 在契约清单外 | 接受（**行数不是 CI 门禁，是 review 的信号**）；已交 Tester 读一遍并给「是否真该拆」的意见 |
+| 12 | 契约 §5 Step 2 的「缺省 `tabIndex === -1`」已过期 | 契约已订正 |
+| 13 | **E2E 第 4 处**定位表达式要迁（`table-cell-selection.ts:73/252` 的 `[data-dt-selected="true"]` 计数会把**行容器**算进去） | 本轨不做 E2E，但必须进 R 阶段清单 ⇒ 已交 Tester 独立复现 |
+
+### 一条方法论（第四次栽在同一类地方）
+
+**契约写的与代码做的不是一件事** —— 这一轮又出现四处（Cmd+A 的字面写法、`clampGridCursor` 的越界语义、`GridKeyCommand` 缺一档、`tabIndex` 缺省）。前几轮同类的事：「契约写的行数是 Wave 8 之前的」「契约指的文件已被 main 撤掉」「契约 §6 的文件清单漏了缺陷本体所在的那个文件」。
+
+⇒ **规**：**契约与实现不一致时以实现为准，并把契约改过来** —— 否则下一个实现者会照着错的字面再写一遍（本轮 Cmd+A 就是这样：照字面写出来的代码会把刚选中的行清掉）。契约是**协作契约**，不是**历史快照**。
+
 ## 跨轨债务台账（Wave 7 之后仍未闭环）
 
 | # | 债务 | 影响 | 归属 |
