@@ -269,6 +269,8 @@ const pack = {
   'filter.incomplete': 'Nécessite une valeur, non appliqué',
   'filter.errorIncomplete':
     'Filtre non appliqué : une condition n’a pas encore de valeur (colonne « {column} »)',
+  'filter.errorUnsupportedOperator':
+    'Cette base de données ne prend pas en charge le filtre « {operator} ». Essayez {alternatives} ou un autre filtre pris en charge.',
   'filter.tokensPlaceholder': 'Saisissez une valeur et appuyez sur Entrée',
   'filter.tokenRemove': 'Supprimer la valeur',
   'filter.betweenInverted':
@@ -279,6 +281,28 @@ const pack = {
   'filter.connectorInherited': 'Utilise la logique de toutes les conditions',
   'filter.likeCaseInsensitiveHint':
     'LIKE ne distingue pas la casse avec le classement par défaut de cette base de données',
+  'filter.view.savedViews': 'Vues enregistrées',
+  'filter.view.save': 'Enregistrer',
+  'filter.view.saveAs': 'Enregistrer comme…',
+  'filter.view.rename': 'Renommer',
+  'filter.view.delete': 'Supprimer',
+  'filter.view.deleteConfirm': 'Supprimer la vue enregistrée « {name} » ?',
+  'filter.view.nameLabel': 'Nom de la vue',
+  'filter.view.namePlaceholder': 'par ex. Commandes ouvertes de cette semaine',
+  'filter.view.empty': 'Aucune vue enregistrée pour ce tableau',
+  'filter.view.nameExists': 'Une vue portant ce nom existe déjà pour ce tableau',
+  'filter.view.overwrite': 'Écraser',
+  'filter.view.setDefault': 'Définir par défaut',
+  'filter.view.defaultBadge': 'Par défaut',
+  'filter.view.draftNotAppliedHint':
+    'Les filtres appliqués seront enregistrés — vous avez encore des modifications non appliquées',
+  'filter.view.applyAnyway': 'Appliquer d’abord',
+  'filter.view.export': 'Exporter…',
+  'filter.view.import': 'Importer…',
+  'filter.view.importDone': '{count} vues importées',
+  'filter.view.importFailed': 'Échec de l’importation : {error}',
+  'filter.view.missingColumn': 'La colonne « {column} » n’existe plus dans ce tableau',
+  'filter.view.errorNameExists': 'Une vue enregistrée portant ce nom existe déjà',
   'import.description': "Importer des données à partir d'un fichier CSV ou JSON",
   'import.selectFile': 'Sélectionnez un fichier',
   'import.targetTable': 'Tableau cible',
@@ -518,5 +542,83 @@ const pack = {
   'query.objectTree.tables': 'Tables',
   'query.objectTree.views': 'Vues',
   'query.objectTree.noObjects': 'Aucun objet',
+  'cellEditor.setValue': 'Définir la valeur',
+  'cellEditor.setEmpty': 'Définir une chaîne vide',
+  'cellEditor.setDefault': 'Utiliser la valeur par défaut de la colonne',
+  'cellEditor.revertCell': 'Abandonner la modification de cette cellule',
+  'cellEditor.loadCandidates': 'Charger les valeurs candidates',
+  'cellEditor.loadingCandidates': 'Chargement des valeurs candidates…',
+  'cellEditor.candidatesEmpty': 'Aucune valeur candidate trouvée',
+  'cellEditor.candidatesFailed': 'Échec du chargement des valeurs candidates',
+  'cellEditor.candidatesTruncated': 'Affichage des {count} premières valeurs distinctes',
+  'cellEditor.commit': 'Appliquer',
+  'cellEditor.formatJson': 'Formater le JSON',
+  'cellEditor.minifyJson': 'Minifier',
+  'cellEditor.ariaLabel': 'Modifier la valeur de la cellule',
+  'cellEditor.invalidNumber': 'Saisissez un nombre valide',
+  'cellEditor.invalidInteger': 'Saisissez un nombre entier',
+  'cellEditor.invalidBoolean': 'Saisissez true ou false',
+  'cellEditor.invalidDate': 'Saisissez une date valide (YYYY-MM-DD)',
+  'cellEditor.invalidTime': 'Saisissez une heure valide (HH:MM:SS)',
+  'cellEditor.invalidDateTime': 'Saisissez une date et une heure valides (YYYY-MM-DDTHH:MM:SS)',
+  'cellEditor.invalidJson': 'JSON non valide — corrigez-le avant d’appliquer',
+  'cellEditor.invalidUuid': 'Saisissez un UUID valide',
+  'cellEditor.notNull': 'Cette colonne n’autorise pas NULL',
+  'cellEditor.valueTooLarge':
+    'Cette valeur est trop grande pour être modifiée dans la table de données',
+  'cellEditor.binaryNotEditable':
+    'Les valeurs binaires ne peuvent pas être modifiées dans la table de données',
+  'cellEditor.discardedUncommitted':
+    'Votre modification a été abandonnée, car la ligne n’est plus affichée',
+  'cellEditor.readOnlyTitle': 'La cellule est en lecture seule',
+  'cellEditor.readOnly.connection':
+    'Cette connexion est en lecture seule, les cellules ne peuvent donc pas être modifiées.',
+  'cellEditor.readOnly.driverCapability':
+    'Ce pilote de base de données ne prend pas en charge l’écriture.',
+  'cellEditor.readOnly.view':
+    'Les vues et les vues matérialisées sont en lecture seule dans la table de données.',
+  'cellEditor.readOnly.noPrimaryKey':
+    'Cette table n’a pas de clé primaire, aucune ligne ne peut donc être identifiée pour une mise à jour.',
+  'cellEditor.readOnly.ambiguousRowIdentity':
+    'Cette ligne ne peut pas être identifiée de manière unique (sa clé est NULL ou dupliquée).',
+  'cellEditor.readOnly.autoIncrement':
+    'Les colonnes auto-incrément ne peuvent pas être modifiées directement.',
+  'cellEditor.readOnly.generated': 'Les colonnes générées ne peuvent pas être modifiées.',
+  'cellEditor.readOnly.typeNotEditable':
+    'Ce type de colonne ne peut pas être modifié directement dans cette base de données.',
+  'cellEditor.readOnly.binaryColumn':
+    'Les colonnes binaires ne peuvent pas être modifiées directement.',
+  'cellEditor.readOnly.largeValue': 'Cette valeur est trop grande pour être modifiée directement.',
+  'query.gridReadOnly.unknownOrigin':
+    'Impossible de déterminer l’origine de ce résultat ; il est donc en lecture seule.',
+  'query.gridReadOnly.ambiguousOrigin':
+    'Le pilote a signalé des origines de colonnes incohérentes pour ce résultat.',
+  'query.gridReadOnly.multiTable':
+    'Ce résultat joint plusieurs tables ; les lignes individuelles ne peuvent pas être modifiées.',
+  'query.gridReadOnly.aggregate':
+    'Ce résultat est une agrégation ; les lignes individuelles ne peuvent pas être modifiées.',
+  'query.gridReadOnly.distinct':
+    'Ce résultat est dédupliqué ; les lignes ne peuvent pas être rapprochées des lignes des tables.',
+  'query.gridReadOnly.setOperation':
+    'Ce résultat est une opération ensembliste (UNION) ; les lignes ne peuvent pas être modifiées.',
+  'query.gridReadOnly.derivedSource':
+    'Ce résultat provient d’une sous-requête ; les lignes ne peuvent pas être rapprochées des lignes des tables.',
+  'query.gridReadOnly.view':
+    'Ce résultat provient d’une vue ; la modification des vues n’est pas prise en charge.',
+  'query.gridReadOnly.noPrimaryKey':
+    'La table source n’a pas de clé primaire ; les lignes ne peuvent donc pas être identifiées.',
+  'query.gridReadOnly.keyNotSelected':
+    'Les colonnes de la clé primaire ne sont pas toutes présentes dans ce résultat.',
+  'query.gridReadOnly.sessionReadOnly': 'La connexion actuelle est en lecture seule.',
+  'query.gridReadOnly.keyValueNull':
+    'Cette ligne a une valeur NULL pour la clé primaire et ne peut pas être localisée.',
+  'query.gridReadOnly.duplicateIdentity':
+    'Cette page contient des identités de ligne en double ; la modification est désactivée.',
+  'query.gridReadOnly.rowNotFound': 'Cette ligne ne fait plus partie du résultat.',
+  'query.gridReadOnly.tooltip': 'Lecture seule : {reason}',
+  'query.gridEdit.editHint': 'Double-cliquez pour modifier cette cellule',
+  'query.gridEdit.resolving': 'Vérification de la possibilité de modifier ce résultat…',
+  'query.gridEdit.submitting': 'Enregistrement de la modification…',
+  'query.gridEdit.empty': 'Ce résultat ne contient aucune ligne.',
 } as const;
 export default pack;

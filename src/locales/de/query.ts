@@ -17,6 +17,82 @@ const pack = {
   'query.objectTree.tables': 'Tabellen',
   'query.objectTree.views': 'Ansichten',
   'query.objectTree.noObjects': 'Keine Objekte',
+  'cellEditor.setValue': 'Wert setzen',
+  'cellEditor.setEmpty': 'Leere Zeichenkette setzen',
+  'cellEditor.setDefault': 'Spaltenstandardwert verwenden',
+  'cellEditor.revertCell': 'Änderung an dieser Zelle verwerfen',
+  'cellEditor.loadCandidates': 'Kandidatenwerte laden',
+  'cellEditor.loadingCandidates': 'Kandidatenwerte werden geladen…',
+  'cellEditor.candidatesEmpty': 'Keine Kandidatenwerte gefunden',
+  'cellEditor.candidatesFailed': 'Kandidatenwerte konnten nicht geladen werden',
+  'cellEditor.candidatesTruncated': 'Es werden die ersten {count} verschiedenen Werte angezeigt',
+  'cellEditor.commit': 'Anwenden',
+  'cellEditor.formatJson': 'JSON formatieren',
+  'cellEditor.minifyJson': 'Minimieren',
+  'cellEditor.ariaLabel': 'Zellwert bearbeiten',
+  'cellEditor.invalidNumber': 'Geben Sie eine gültige Zahl ein',
+  'cellEditor.invalidInteger': 'Geben Sie eine ganze Zahl ein',
+  'cellEditor.invalidBoolean': 'Geben Sie true oder false ein',
+  'cellEditor.invalidDate': 'Geben Sie ein gültiges Datum ein (YYYY-MM-DD)',
+  'cellEditor.invalidTime': 'Geben Sie eine gültige Uhrzeit ein (HH:MM:SS)',
+  'cellEditor.invalidDateTime':
+    'Geben Sie ein gültiges Datum und eine gültige Uhrzeit ein (YYYY-MM-DDTHH:MM:SS)',
+  'cellEditor.invalidJson': 'Ungültiges JSON — korrigieren Sie es vor dem Anwenden',
+  'cellEditor.invalidUuid': 'Geben Sie eine gültige UUID ein',
+  'cellEditor.notNull': 'Diese Spalte lässt NULL nicht zu',
+  'cellEditor.valueTooLarge':
+    'Dieser Wert ist zu groß, um in der Datentabelle bearbeitet zu werden',
+  'cellEditor.binaryNotEditable': 'Binäre Werte können in der Datentabelle nicht bearbeitet werden',
+  'cellEditor.discardedUncommitted':
+    'Ihre Änderung wurde verworfen, da die Zeile nicht mehr angezeigt wird',
+  'cellEditor.readOnlyTitle': 'Zelle ist schreibgeschützt',
+  'cellEditor.readOnly.connection':
+    'Diese Verbindung ist schreibgeschützt, daher können Zellen nicht bearbeitet werden.',
+  'cellEditor.readOnly.driverCapability': 'Dieser Datenbanktreiber unterstützt kein Schreiben.',
+  'cellEditor.readOnly.view':
+    'Ansichten und materialisierte Ansichten sind in der Datentabelle schreibgeschützt.',
+  'cellEditor.readOnly.noPrimaryKey':
+    'Diese Tabelle hat keinen Primärschlüssel, daher kann keine Zeile für eine Aktualisierung identifiziert werden.',
+  'cellEditor.readOnly.ambiguousRowIdentity':
+    'Diese Zeile kann nicht eindeutig identifiziert werden (ihr Schlüssel ist NULL oder doppelt vorhanden).',
+  'cellEditor.readOnly.autoIncrement':
+    'Auto-Increment-Spalten können nicht direkt bearbeitet werden.',
+  'cellEditor.readOnly.generated': 'Generierte Spalten können nicht bearbeitet werden.',
+  'cellEditor.readOnly.typeNotEditable':
+    'Dieser Spaltentyp kann in dieser Datenbank nicht direkt bearbeitet werden.',
+  'cellEditor.readOnly.binaryColumn': 'Binäre Spalten können nicht direkt bearbeitet werden.',
+  'cellEditor.readOnly.largeValue': 'Dieser Wert ist zu groß, um direkt bearbeitet zu werden.',
+  'query.gridReadOnly.unknownOrigin':
+    'Es kann nicht ermittelt werden, woher dieses Ergebnis stammt; daher ist es schreibgeschützt.',
+  'query.gridReadOnly.ambiguousOrigin':
+    'Der Treiber hat für dieses Ergebnis inkonsistente Spaltenherkünfte gemeldet.',
+  'query.gridReadOnly.multiTable':
+    'Dieses Ergebnis verknüpft mehrere Tabellen; einzelne Zeilen können nicht bearbeitet werden.',
+  'query.gridReadOnly.aggregate':
+    'Dieses Ergebnis ist eine Aggregation; einzelne Zeilen können nicht bearbeitet werden.',
+  'query.gridReadOnly.distinct':
+    'Dieses Ergebnis ist dedupliziert; Zeilen können nicht den Tabellenzeilen zugeordnet werden.',
+  'query.gridReadOnly.setOperation':
+    'Dieses Ergebnis ist eine Mengenoperation (UNION); Zeilen können nicht bearbeitet werden.',
+  'query.gridReadOnly.derivedSource':
+    'Dieses Ergebnis stammt aus einer Unterabfrage; Zeilen können nicht den Tabellenzeilen zugeordnet werden.',
+  'query.gridReadOnly.view':
+    'Dieses Ergebnis stammt aus einer Ansicht; das Bearbeiten von Ansichten wird nicht unterstützt.',
+  'query.gridReadOnly.noPrimaryKey':
+    'Die Quelltabelle hat keinen Primärschlüssel, daher können Zeilen nicht identifiziert werden.',
+  'query.gridReadOnly.keyNotSelected':
+    'Die Primärschlüsselspalten sind nicht alle in diesem Ergebnis enthalten.',
+  'query.gridReadOnly.sessionReadOnly': 'Die aktuelle Verbindung ist schreibgeschützt.',
+  'query.gridReadOnly.keyValueNull':
+    'Diese Zeile hat einen NULL-Wert im Primärschlüssel und kann nicht lokalisiert werden.',
+  'query.gridReadOnly.duplicateIdentity':
+    'Diese Seite enthält doppelte Zeilenidentitäten; das Bearbeiten ist deaktiviert.',
+  'query.gridReadOnly.rowNotFound': 'Diese Zeile ist nicht mehr Teil des Ergebnisses.',
+  'query.gridReadOnly.tooltip': 'Schreibgeschützt: {reason}',
+  'query.gridEdit.editHint': 'Doppelklicken Sie, um diese Zelle zu bearbeiten',
+  'query.gridEdit.resolving': 'Prüfung, ob dieses Ergebnis bearbeitet werden kann…',
+  'query.gridEdit.submitting': 'Änderung wird gespeichert…',
+  'query.gridEdit.empty': 'Dieses Ergebnis enthält keine Zeilen.',
   'query.executing': 'Ausführen…',
   'query.running': 'Läuft',
   'query.affectedRows': 'betroffen',
@@ -277,6 +353,8 @@ const pack = {
   'filter.incomplete': 'Benötigt einen Wert, nicht angewendet',
   'filter.errorIncomplete':
     'Filter nicht angewendet: Eine Bedingung hat noch keinen Wert (Spalte „{column}“)',
+  'filter.errorUnsupportedOperator':
+    'Diese Datenbank unterstützt den Filter „{operator}“ nicht. Versuchen Sie {alternatives} oder einen anderen unterstützten Filter.',
   'filter.tokensPlaceholder': 'Geben Sie einen Wert ein und drücken Sie die Eingabetaste',
   'filter.tokenRemove': 'Wert entfernen',
   'filter.betweenInverted':
@@ -287,6 +365,28 @@ const pack = {
   'filter.connectorInherited': 'Verwendet die Logik aller Bedingungen',
   'filter.likeCaseInsensitiveHint':
     'LIKE ist unter der Standardkollation dieser Datenbank nicht Groß-/Kleinschreibungssensitiv',
+  'filter.view.savedViews': 'Gespeicherte Ansichten',
+  'filter.view.save': 'Speichern',
+  'filter.view.saveAs': 'Speichern unter…',
+  'filter.view.rename': 'Umbenennen',
+  'filter.view.delete': 'Löschen',
+  'filter.view.deleteConfirm': 'Gespeicherte Ansicht „{name}“ löschen?',
+  'filter.view.nameLabel': 'Ansichtsname',
+  'filter.view.namePlaceholder': 'z. B. Offene Aufträge dieser Woche',
+  'filter.view.empty': 'Keine gespeicherten Ansichten für diese Tabelle',
+  'filter.view.nameExists': 'Für diese Tabelle existiert bereits eine Ansicht mit diesem Namen',
+  'filter.view.overwrite': 'Überschreiben',
+  'filter.view.setDefault': 'Als Standard festlegen',
+  'filter.view.defaultBadge': 'Standard',
+  'filter.view.draftNotAppliedHint':
+    'Die angewendeten Filter werden gespeichert — es gibt noch nicht angewendete Änderungen',
+  'filter.view.applyAnyway': 'Erst anwenden',
+  'filter.view.export': 'Exportieren…',
+  'filter.view.import': 'Importieren…',
+  'filter.view.importDone': '{count} Ansichten importiert',
+  'filter.view.importFailed': 'Der Import ist fehlgeschlagen: {error}',
+  'filter.view.missingColumn': 'Die Spalte „{column}“ existiert nicht mehr in dieser Tabelle',
+  'filter.view.errorNameExists': 'Eine gespeicherte Ansicht mit diesem Namen existiert bereits',
   'import.description': 'Importieren Sie Daten aus einer CSV- oder JSON-Datei',
   'import.selectFile': 'Datei auswählen',
   'import.targetTable': 'Zieltabelle',

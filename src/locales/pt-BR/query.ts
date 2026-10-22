@@ -267,6 +267,8 @@ const pack = {
   'filter.incomplete': 'Precisa de um valor, não aplicado',
   'filter.errorIncomplete':
     'Filtro não aplicado: uma condição ainda não tem valor (coluna "{column}")',
+  'filter.errorUnsupportedOperator':
+    'Este banco de dados não oferece suporte ao filtro "{operator}". Tente {alternatives} ou outro filtro compatível.',
   'filter.tokensPlaceholder': 'Digite um valor e pressione Enter',
   'filter.tokenRemove': 'Remover valor',
   'filter.betweenInverted':
@@ -277,6 +279,28 @@ const pack = {
   'filter.connectorInherited': 'Usando a lógica de todas as condições',
   'filter.likeCaseInsensitiveHint':
     'LIKE não diferencia maiúsculas de minúsculas na ordenação padrão deste banco de dados',
+  'filter.view.savedViews': 'Visualizações salvas',
+  'filter.view.save': 'Salvar',
+  'filter.view.saveAs': 'Salvar como…',
+  'filter.view.rename': 'Renomear',
+  'filter.view.delete': 'Excluir',
+  'filter.view.deleteConfirm': 'Excluir a visualização salva "{name}"?',
+  'filter.view.nameLabel': 'Nome da visualização',
+  'filter.view.namePlaceholder': 'ex.: Pedidos abertos desta semana',
+  'filter.view.empty': 'Nenhuma visualização salva para esta tabela',
+  'filter.view.nameExists': 'Já existe uma visualização com este nome para esta tabela',
+  'filter.view.overwrite': 'Sobrescrever',
+  'filter.view.setDefault': 'Definir como padrão',
+  'filter.view.defaultBadge': 'Padrão',
+  'filter.view.draftNotAppliedHint':
+    'Salvando os filtros aplicados — você ainda tem alterações não aplicadas',
+  'filter.view.applyAnyway': 'Aplicar primeiro',
+  'filter.view.export': 'Exportar…',
+  'filter.view.import': 'Importar…',
+  'filter.view.importDone': '{count} visualizações importadas',
+  'filter.view.importFailed': 'Falha na importação: {error}',
+  'filter.view.missingColumn': 'A coluna "{column}" não existe mais nesta tabela',
+  'filter.view.errorNameExists': 'Já existe uma visualização salva com este nome',
   'import.description': 'Importe dados de um arquivo CSV ou JSON',
   'import.selectFile': 'Selecione o arquivo',
   'import.targetTable': 'Tabela de destino',
@@ -511,5 +535,80 @@ const pack = {
   'query.objectTree.tables': 'Tabelas',
   'query.objectTree.views': 'Visualizações',
   'query.objectTree.noObjects': 'Nenhum objeto',
+  'cellEditor.setValue': 'Definir valor',
+  'cellEditor.setEmpty': 'Definir string vazia',
+  'cellEditor.setDefault': 'Usar o valor padrão da coluna',
+  'cellEditor.revertCell': 'Reverter esta célula',
+  'cellEditor.loadCandidates': 'Carregar valores candidatos',
+  'cellEditor.loadingCandidates': 'Carregando valores candidatos…',
+  'cellEditor.candidatesEmpty': 'Nenhum valor candidato encontrado',
+  'cellEditor.candidatesFailed': 'Falha ao carregar os valores candidatos',
+  'cellEditor.candidatesTruncated': 'Exibindo os primeiros {count} valores distintos',
+  'cellEditor.commit': 'Aplicar',
+  'cellEditor.formatJson': 'Formatar JSON',
+  'cellEditor.minifyJson': 'Compactar JSON',
+  'cellEditor.ariaLabel': 'Editar o valor da célula',
+  'cellEditor.invalidNumber': 'Insira um número válido',
+  'cellEditor.invalidInteger': 'Insira um número inteiro',
+  'cellEditor.invalidBoolean': 'Insira true ou false',
+  'cellEditor.invalidDate': 'Insira uma data válida (YYYY-MM-DD)',
+  'cellEditor.invalidTime': 'Insira um horário válido (HH:MM:SS)',
+  'cellEditor.invalidDateTime': 'Insira uma data e hora válidas (YYYY-MM-DDTHH:MM:SS)',
+  'cellEditor.invalidJson': 'JSON inválido — corrija-o antes de aplicar',
+  'cellEditor.invalidUuid': 'Insira um UUID válido',
+  'cellEditor.notNull': 'Esta coluna não permite NULL',
+  'cellEditor.valueTooLarge': 'Este valor é grande demais para ser editado na grade de dados',
+  'cellEditor.binaryNotEditable': 'Valores binários não podem ser editados na grade de dados',
+  'cellEditor.discardedUncommitted':
+    'Sua edição foi descartada porque a linha não está mais sendo exibida',
+  'cellEditor.readOnlyTitle': 'A célula é somente leitura',
+  'cellEditor.readOnly.connection':
+    'Esta conexão é somente leitura, portanto as células não podem ser editadas.',
+  'cellEditor.readOnly.driverCapability':
+    'Este driver de banco de dados não oferece suporte a gravação.',
+  'cellEditor.readOnly.view':
+    'Visualizações e visualizações materializadas são somente leitura na grade de dados.',
+  'cellEditor.readOnly.noPrimaryKey':
+    'Esta tabela não possui chave primária, portanto a linha não pode ser identificada para uma atualização.',
+  'cellEditor.readOnly.ambiguousRowIdentity':
+    'Esta linha não pode ser identificada de forma única (a chave é NULL ou está duplicada).',
+  'cellEditor.readOnly.autoIncrement':
+    'Colunas com autoincremento não podem ser editadas no local.',
+  'cellEditor.readOnly.generated': 'Colunas geradas não podem ser editadas.',
+  'cellEditor.readOnly.typeNotEditable':
+    'O tipo desta coluna não pode ser editado no local neste banco de dados.',
+  'cellEditor.readOnly.binaryColumn': 'Colunas binárias não podem ser editadas no local.',
+  'cellEditor.readOnly.largeValue': 'Este valor é grande demais para ser editado no local.',
+  'query.gridReadOnly.unknownOrigin':
+    'Não é possível determinar a origem deste resultado, portanto ele é somente leitura.',
+  'query.gridReadOnly.ambiguousOrigin':
+    'O driver reportou origens de coluna inconsistentes para este resultado.',
+  'query.gridReadOnly.multiTable':
+    'Este resultado une várias tabelas; linhas individuais não podem ser editadas.',
+  'query.gridReadOnly.aggregate':
+    'Este resultado é uma agregação; linhas individuais não podem ser editadas.',
+  'query.gridReadOnly.distinct':
+    'Este resultado está sem duplicidades; as linhas não podem ser correspondidas às linhas da tabela.',
+  'query.gridReadOnly.setOperation':
+    'Este resultado é uma operação de conjunto (UNION); as linhas não podem ser editadas.',
+  'query.gridReadOnly.derivedSource':
+    'Este resultado vem de uma subconsulta; as linhas não podem ser correspondidas às linhas da tabela.',
+  'query.gridReadOnly.view':
+    'Este resultado vem de uma visualização; a edição de visualizações não é suportada.',
+  'query.gridReadOnly.noPrimaryKey':
+    'A tabela de origem não tem chave primária, portanto as linhas não podem ser identificadas.',
+  'query.gridReadOnly.keyNotSelected':
+    'As colunas da chave primária não estão todas presentes neste resultado.',
+  'query.gridReadOnly.sessionReadOnly': 'A conexão atual é somente leitura.',
+  'query.gridReadOnly.keyValueNull':
+    'Esta linha tem um valor de chave primária NULL e não pode ser localizada.',
+  'query.gridReadOnly.duplicateIdentity':
+    'Esta página contém identidades de linha duplicadas; a edição está desabilitada.',
+  'query.gridReadOnly.rowNotFound': 'Esta linha não faz mais parte do resultado.',
+  'query.gridReadOnly.tooltip': 'Somente leitura: {reason}',
+  'query.gridEdit.editHint': 'Clique duas vezes para editar esta célula',
+  'query.gridEdit.resolving': 'Verificando se este resultado pode ser editado…',
+  'query.gridEdit.submitting': 'Salvando alteração…',
+  'query.gridEdit.empty': 'Este resultado não tem linhas.',
 } as const;
 export default pack;

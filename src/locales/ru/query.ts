@@ -266,6 +266,8 @@ const pack = {
   'filter.incomplete': 'Требуется значение, не применено',
   'filter.errorIncomplete':
     'Фильтр не применён: у одного условия пока нет значения (столбец «{column}»)',
+  'filter.errorUnsupportedOperator':
+    'Эта база данных не поддерживает фильтр «{operator}». Попробуйте {alternatives} или другой поддерживаемый фильтр.',
   'filter.tokensPlaceholder': 'Введите значение и нажмите Enter',
   'filter.tokenRemove': 'Удалить значение',
   'filter.betweenInverted': 'Нижняя граница больше верхней — запрос не вернёт ни одной строки',
@@ -275,6 +277,28 @@ const pack = {
   'filter.connectorInherited': 'Используется логика всех условий',
   'filter.likeCaseInsensitiveHint':
     'LIKE не учитывает регистр при стандартных параметрах сортировки этой базы данных',
+  'filter.view.savedViews': 'Сохранённые представления',
+  'filter.view.save': 'Сохранить',
+  'filter.view.saveAs': 'Сохранить как…',
+  'filter.view.rename': 'Переименовать',
+  'filter.view.delete': 'Удалить',
+  'filter.view.deleteConfirm': 'Удалить сохранённое представление «{name}»?',
+  'filter.view.nameLabel': 'Название представления',
+  'filter.view.namePlaceholder': 'например: Открытые заказы за неделю',
+  'filter.view.empty': 'Для этой таблицы нет сохранённых представлений',
+  'filter.view.nameExists': 'Для этой таблицы уже есть представление с таким именем',
+  'filter.view.overwrite': 'Перезаписать',
+  'filter.view.setDefault': 'Задать по умолчанию',
+  'filter.view.defaultBadge': 'По умолчанию',
+  'filter.view.draftNotAppliedHint':
+    'Сохраняются применённые фильтры — у вас остались неприменённые изменения',
+  'filter.view.applyAnyway': 'Сначала применить',
+  'filter.view.export': 'Экспортировать…',
+  'filter.view.import': 'Импортировать…',
+  'filter.view.importDone': 'Импортировано представлений: {count}',
+  'filter.view.importFailed': 'Импорт не удался: {error}',
+  'filter.view.missingColumn': 'Столбец «{column}» больше не существует в этой таблице',
+  'filter.view.errorNameExists': 'Сохранённое представление с таким именем уже существует',
   'import.description': 'Импортируйте данные из файла CSV или JSON.',
   'import.selectFile': 'Выберите файл',
   'import.targetTable': 'Целевая таблица',
@@ -508,5 +532,79 @@ const pack = {
   'query.objectTree.tables': 'Таблицы',
   'query.objectTree.views': 'Представления',
   'query.objectTree.noObjects': 'Нет объектов',
+  'cellEditor.setValue': 'Установить значение',
+  'cellEditor.setEmpty': 'Установить пустую строку',
+  'cellEditor.setDefault': 'Использовать значение столбца по умолчанию',
+  'cellEditor.revertCell': 'Отменить изменение этой ячейки',
+  'cellEditor.loadCandidates': 'Загрузить возможные значения',
+  'cellEditor.loadingCandidates': 'Загрузка возможных значений…',
+  'cellEditor.candidatesEmpty': 'Возможные значения не найдены',
+  'cellEditor.candidatesFailed': 'Не удалось загрузить возможные значения',
+  'cellEditor.candidatesTruncated': 'Показаны первые {count} различных значений',
+  'cellEditor.commit': 'Применить',
+  'cellEditor.formatJson': 'Форматировать JSON',
+  'cellEditor.minifyJson': 'Уплотнить JSON',
+  'cellEditor.ariaLabel': 'Изменение значения ячейки',
+  'cellEditor.invalidNumber': 'Введите допустимое число',
+  'cellEditor.invalidInteger': 'Введите целое число',
+  'cellEditor.invalidBoolean': 'Введите true или false',
+  'cellEditor.invalidDate': 'Введите допустимую дату (YYYY-MM-DD)',
+  'cellEditor.invalidTime': 'Введите допустимое время (HH:MM:SS)',
+  'cellEditor.invalidDateTime': 'Введите допустимую дату и время (YYYY-MM-DDTHH:MM:SS)',
+  'cellEditor.invalidJson': 'Недопустимый JSON — исправьте его перед применением',
+  'cellEditor.invalidUuid': 'Введите допустимый UUID',
+  'cellEditor.notNull': 'Этот столбец не допускает NULL',
+  'cellEditor.valueTooLarge': 'Это значение слишком велико, чтобы редактировать его в сетке',
+  'cellEditor.binaryNotEditable': 'Двоичные значения нельзя редактировать в сетке',
+  'cellEditor.discardedUncommitted':
+    'Ваше изменение было отменено, потому что строка больше не отображается',
+  'cellEditor.readOnlyTitle': 'Ячейка только для чтения',
+  'cellEditor.readOnly.connection':
+    'Это подключение доступно только для чтения, поэтому ячейки нельзя редактировать.',
+  'cellEditor.readOnly.driverCapability': 'Этот драйвер базы данных не поддерживает запись.',
+  'cellEditor.readOnly.view':
+    'Представления и материализованные представления доступны только для чтения в сетке данных.',
+  'cellEditor.readOnly.noPrimaryKey':
+    'В этой таблице нет первичного ключа, поэтому строку нельзя определить для обновления.',
+  'cellEditor.readOnly.ambiguousRowIdentity':
+    'Эту строку нельзя определить однозначно (её ключ — NULL или он повторяется).',
+  'cellEditor.readOnly.autoIncrement': 'Столбцы с автоинкрементом нельзя редактировать напрямую.',
+  'cellEditor.readOnly.generated': 'Сгенерированные столбцы нельзя редактировать.',
+  'cellEditor.readOnly.typeNotEditable':
+    'Тип этого столбца нельзя редактировать напрямую в этой базе данных.',
+  'cellEditor.readOnly.binaryColumn': 'Двоичные столбцы нельзя редактировать напрямую.',
+  'cellEditor.readOnly.largeValue':
+    'Это значение слишком велико, чтобы редактировать его напрямую.',
+  'query.gridReadOnly.unknownOrigin':
+    'Не удаётся определить, откуда получен этот результат, поэтому он доступен только для чтения.',
+  'query.gridReadOnly.ambiguousOrigin':
+    'Драйвер сообщил о несоответствии источников столбцов этого результата.',
+  'query.gridReadOnly.multiTable':
+    'Этот результат объединяет несколько таблиц; отдельные строки нельзя редактировать.',
+  'query.gridReadOnly.aggregate':
+    'Этот результат получен агрегатным запросом; отдельные строки нельзя редактировать.',
+  'query.gridReadOnly.distinct':
+    'В этом результате удалены дубликаты; строки невозможно сопоставить со строками таблицы.',
+  'query.gridReadOnly.setOperation':
+    'Этот результат получен операцией над множествами (UNION); строки нельзя редактировать.',
+  'query.gridReadOnly.derivedSource':
+    'Этот результат получен из подзапроса; строки невозможно сопоставить со строками таблицы.',
+  'query.gridReadOnly.view':
+    'Этот результат получен из представления; редактирование представлений не поддерживается.',
+  'query.gridReadOnly.noPrimaryKey':
+    'В исходной таблице нет первичного ключа, поэтому строки невозможно идентифицировать.',
+  'query.gridReadOnly.keyNotSelected':
+    'Столбцы первичного ключа представлены в этом результате не все.',
+  'query.gridReadOnly.sessionReadOnly': 'Текущее соединение доступно только для чтения.',
+  'query.gridReadOnly.keyValueNull':
+    'В этой строке значение первичного ключа равно NULL, поэтому эту строку невозможно найти.',
+  'query.gridReadOnly.duplicateIdentity':
+    'На этой странице идентификаторы строк повторяются; редактирование отключено.',
+  'query.gridReadOnly.rowNotFound': 'Эта строка больше не входит в результат.',
+  'query.gridReadOnly.tooltip': 'Только для чтения: {reason}',
+  'query.gridEdit.editHint': 'Дважды щёлкните, чтобы отредактировать эту ячейку',
+  'query.gridEdit.resolving': 'Проверка, можно ли редактировать этот результат…',
+  'query.gridEdit.submitting': 'Сохранение изменения…',
+  'query.gridEdit.empty': 'В этом результате нет строк.',
 } as const;
 export default pack;
