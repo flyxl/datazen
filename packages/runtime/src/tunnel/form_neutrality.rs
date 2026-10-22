@@ -61,27 +61,51 @@ fn forbidden_words() -> Vec<String> {
     ]
 }
 
+/// 协议复合词：camelCase 切词后**相邻两段合并**成这些词时，整体不参与形态判定。
+///
+/// 「WebSocket」按 camelCase 切成 `web` + `socket`；`web` 单看是形态名，
+/// 但 `WebSocket` 是**协议名**（WebSocket 隧道是隧道机制的一种物理开法，
+/// 与「哪种形态」无关）。合并机制让这类词整体豁免，同时不影响真的形态名
+/// ——`desktopTunnel` 切出 `desktop` + `tunnel`，合并不是已知复合词，照常判定。
+///
+/// 合并**只在同一个 chunk 内**发生（即 camelCase 相邻段），跨空格的两个词
+/// 不合并：`web socket`（带空格）与 `WebSocket` 不是同一个词形。
+const COMPOUND_WORDS: &[&str] = &["websocket", "webdriver", "webhook", "webassembly"];
+
 /// 判据：把一段文本切成词。
 ///
-/// 切法：先按**非字母数字**切，再按 camelCase 边界（小写/数字 → 大写）切。
+/// 切法：先按**非字母数字**切，再按 camelCase 边界（小写/数字 → 大写）切，
+/// 最后把相邻 camelCase 段合并成 [`COMPOUND_WORDS`] 里的协议复合词。
 /// 纯 ASCII 输入，字节下标与字符下标一致。
 fn words(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
+    let mut out: Vec<String> = Vec::new();
     for chunk in text.split(|c: char| !c.is_ascii_alphanumeric()) {
         if chunk.is_empty() {
             continue;
         }
         let bytes = chunk.as_bytes();
         let mut start = 0usize;
+        let mut segments: Vec<&str> = Vec::new();
         for i in 1..bytes.len() {
             let prev = bytes[i - 1];
             let cur = bytes[i];
             if (prev.is_ascii_lowercase() || prev.is_ascii_digit()) && cur.is_ascii_uppercase() {
-                out.push(chunk[start..i].to_ascii_lowercase());
+                segments.push(&chunk[start..i]);
                 start = i;
             }
         }
-        out.push(chunk[start..].to_ascii_lowercase());
+        segments.push(&chunk[start..]);
+        for segment in segments {
+            let lower = segment.to_ascii_lowercase();
+            if let Some(last) = out.last_mut() {
+                let combined = format!("{last}{lower}");
+                if COMPOUND_WORDS.contains(&combined.as_str()) {
+                    *last = combined;
+                    continue;
+                }
+            }
+            out.push(lower);
+        }
     }
     out
 }
@@ -162,6 +186,14 @@ fn planted_form_code() -> String {
     ["desk", "top"].concat()
 }
 
+/// 拼出**另一个**形态词。同样拆开拼，理由同上。
+///
+/// 函数名与调用处的变量名**都不能含形态词**——闸门扫的是标识符层，
+/// 叫 `planted_web_word` 会被自己点红。
+fn planted_other_form() -> String {
+    ["w", "eb"].concat()
+}
+
 #[test]
 fn the_kernel_has_no_form_name_in_its_code_or_literals() {
     let forbidden = forbidden_words();
@@ -210,12 +242,43 @@ fn the_gate_does_not_flag_a_form_word_that_is_not_a_form_name() {
         violations(&in_comment, &forbidden).is_empty(),
         "闸门把注释里的形态名也点红了 —— 判据必须是**契约**（字面量与标识符），不是散文"
     );
-    // `webhook` / `webdriver` 这类协议复合词不是形态名。
-    for legit in ["webhook", "webdriver", "tauribot"] {
+    // `webhook` / `webdriver` / `WebSocket` 这类协议复合词不是形态名。
+    //
+    // `WebSocket` 是**回归用例**：camelCase 切词把它切成 `web` + `socket`，
+    // `web` 单看在形态词表里 —— 隧道机制里「WebSocket 隧道」是物理开法之一，
+    // 与形态无关。判据若不做复合词合并，搬隧道进共享层的那天这道闸门就会转红，
+    // 且报错原因（「形态名 web」）与真因（协议名）完全对不上。
+    for legit in [
+        "webhook",
+        "webdriver",
+        "WebSocket",
+        "WebSocketTunnel",
+        "Starting WebSocket tunnel",
+    ] {
         let src = format!("fn f() {{ let reason = \"{legit}\"; }}");
         assert!(
             violations(&src, &forbidden).is_empty(),
             "闸门误伤了合法复合词 {legit} —— 误伤会逼人把合法写法藏起来"
+        );
+    }
+    // 复合词豁免**不得**放宽到真的形态名上。
+    //
+    // 这些字面量**也必须拆开拼**：本文件自己被闸门扫，写出完整的形态名
+    // 就会被自己的规则点红（连负控用例也不例外）。变量名同理。
+    let form = planted_form_code();
+    let other = planted_other_form();
+    let mut capital = planted_form_code();
+    capital.replace_range(0..1, &capital[..1].to_ascii_uppercase());
+    for real in [
+        format!("{form}Tunnel"),
+        format!("{capital}Tunnel"),
+        [other.as_str(), capital.as_str(), "Tunnel"].concat(),
+        [other.as_str(), "_", form.as_str(), "_tunnel"].concat(),
+    ] {
+        let src = format!("fn f() {{ let reason = \"{real}\"; }}");
+        assert!(
+            !violations(&src, &forbidden).is_empty(),
+            "闸门漏掉了真形态名 {real} —— 复合词豁免放宽过头了"
         );
     }
 }

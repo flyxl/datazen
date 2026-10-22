@@ -24,10 +24,10 @@ use std::path::Path;
 use serde_json::Value;
 use tauri::{http, Emitter, Manager, Runtime, UriSchemeContext};
 
-use super::WappManager;
 use crate::commands::AppState;
+use datazen_feature_core::workspace_apps::manager::WappManager;
 
-pub use datazen_workspace_apps::protocol::{
+pub use datazen_feature_core::workspace_apps::protocol::{
     parse_datazen_uri, DatazenOutcome, QueryMap, WAPPS_OPEN_PAGE_EVENT,
 };
 pub(crate) fn route_datazen_request(
@@ -36,14 +36,19 @@ pub(crate) fn route_datazen_request(
     path: &str,
     query: &QueryMap,
 ) -> Result<DatazenOutcome, http::StatusCode> {
-    datazen_workspace_apps::protocol::route_datazen_request(manager, wapp_id, path, query).map_err(
-        |error| match error {
-            datazen_workspace_apps::protocol::RouteStatus::NotFound => http::StatusCode::NOT_FOUND,
-            datazen_workspace_apps::protocol::RouteStatus::Forbidden => http::StatusCode::FORBIDDEN,
-        },
+    datazen_feature_core::workspace_apps::protocol::route_datazen_request(
+        manager, wapp_id, path, query,
     )
+    .map_err(|error| match error {
+        datazen_feature_core::workspace_apps::protocol::RouteStatus::NotFound => {
+            http::StatusCode::NOT_FOUND
+        }
+        datazen_feature_core::workspace_apps::protocol::RouteStatus::Forbidden => {
+            http::StatusCode::FORBIDDEN
+        }
+    })
 }
-const ASSET_CSP: &str = datazen_workspace_apps::protocol::ASSET_CSP;
+const ASSET_CSP: &str = datazen_feature_core::workspace_apps::protocol::ASSET_CSP;
 // ---------------------------------------------------------------------------
 // Tauri protocol handler
 // ---------------------------------------------------------------------------
@@ -128,7 +133,7 @@ fn datazen_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_workspace_apps::protocol::{content_type_for, safe_relative_path};
+    use datazen_feature_core::workspace_apps::protocol::{content_type_for, safe_relative_path};
     #[cfg(test)]
     use std::fs;
 
@@ -457,7 +462,7 @@ mod tests {
         let manager = WappManager::new(dir.path().to_path_buf());
         // Register directly: simulates a file dropped into a plugin dir after
         // install-time validation (which itself rejects `.txt` packages).
-        let manifest = super::super::parse_manifest(PAGE_MANIFEST).unwrap();
+        let manifest = datazen_feature_core::workspace_apps::parse_manifest(PAGE_MANIFEST).unwrap();
         manager.register(manifest, true).unwrap();
 
         assert_eq!(

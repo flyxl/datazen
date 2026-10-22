@@ -68,7 +68,6 @@ export const LAYERS = Object.freeze([
   { id: 'application', path: 'packages/application', kind: 'rust' },
   { id: 'runtime', path: 'packages/runtime', kind: 'rust' },
   { id: 'feature-core', path: 'packages/feature-core', kind: 'rust' },
-  { id: 'workspace-apps', path: 'packages/workspace-apps', kind: 'rust' },
   { id: 'platform-api', path: 'packages/platform-api', kind: 'rust' },
   { id: 'platform-infra', path: 'packages/platform-infra', kind: 'rust' },
   { id: 'server', path: 'server', kind: 'rust' },

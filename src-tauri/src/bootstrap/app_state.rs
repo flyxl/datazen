@@ -8,7 +8,7 @@ use crate::commands::AppState;
 use crate::monitor::engine::MonitorEngine;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
-use crate::{mcp, redis_flush_gate, wapps, workflow};
+use crate::{mcp, redis_flush_gate, workflow};
 use datazen_feature_core::ai::context::SchemaContextBuilder;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::job::RecoveryFilter;
@@ -177,7 +177,8 @@ pub(crate) fn finish_app_state(
     // Runtime wapps: scan {appData}/wapps/ for installed packages.
     let wapps_dir = data_dir.join("wapps");
     // Invalid packages are skipped (warn) so one bad install can't break boot.
-    let wapp_manager = Arc::new(wapps::WappManager::new(wapps_dir));
+    let wapp_manager =
+        Arc::new(datazen_feature_core::workspace_apps::manager::WappManager::new(wapps_dir));
     let wapp_count = wapp_manager.load_from_disk();
     tracing::info!("[startup]   ui wapps loaded: {wapp_count}");
 

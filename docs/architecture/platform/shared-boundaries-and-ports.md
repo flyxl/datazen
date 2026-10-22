@@ -156,21 +156,25 @@ flowchart TD
 | F-06 | `server` 的 normal + build 依赖闭包不含 `tauri*` 与 `datazen` 宿主 crate | server 无法独立构建 |
 | F-07 | `packages/backend-client` 不含 `@tauri-apps/` 前缀、`fetch(`、`XMLHttpRequest` 字面量 | 传输无关契约被具体传输污染 |
 | F-08 | `packages/migration-common` 的 normal + build 工作区依赖只允许自身与 driver-api；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共算法反向依赖领域引擎、runtime 或平台传输，重新形成耦合 |
-| F-09 | `packages/ai-providers`、`packages/workspace-apps` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 与 F-02 同因：这两个包要同时被桌面端与服务端复用，一旦拖进 Tauri 就只能编进桌面进程 |
-| F-10 | `packages/workspace-apps` 不含 `axum`、`actix-web`、`warp`、`tonic` 等 HTTP/传输框架 | 内核里一旦出现传输框架，服务端 HTTP 适配器就得改内核签名，桌面与服务端被迫分叉 |
+| F-09 | `packages/ai-providers` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 与 F-02 同因：这个包要同时被桌面端与服务端复用，一旦拖进 Tauri 就只能编进桌面进程 |
 | F-11 | `packages/platform-infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
-| F-12 | `packages/feature-core` 的 normal + build 依赖闭包不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`，不依赖桌面宿主层；仅依赖共享 runtime/application/领域包与契约 | Workflow、AI、Monitor 与导出逻辑重新绑定桌面或服务端传输 |
+| F-12 | `packages/feature-core` 的 normal + build 依赖闭包不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`，不依赖桌面宿主层；仅依赖共享 runtime/application/领域包与契约 | Workflow、AI、Monitor、导出与 Workspace App 内核逻辑重新绑定桌面或服务端传输 |
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
 这条不是修辞上的严谨，是实测出来的盲点：`packages/drivers/redis/Cargo.toml:27` 的 `tauri = { version = "2", optional = true }` 与 `src-tauri/Cargo.toml:45` 的 `tauri-plugin-webdriver = { version = "0.2", optional = true }` 都不在解析图里，只读闭包的守卫对它们完全失明。判定方式与告警含义见 §8.2 注 3。
 
-**F-09 / F-10 的两条实现路径，缺一不可。** 一条是依赖闭包：`forbiddenLayers: ['host']` 与
-`forbiddenCrates`（F-09 写死 `['tauri']`，F-10 用 `'spec'` 直接从 §2.4 的表格行里取 crate 名），
-按 `cargo metadata` 的解析图闭包遍历。另一条是**规范一致性**：`specTokens`（F-09 为 `tauri`、F-10 为
-`axum`）校验的是「§2.4 对应行是否仍然点名这个 token」，守卫与规范一旦漂移即报错；它扫的是本文档，
-不是 crate 源码。由此得到两条实操约束：§2.4 表格里的 `tauri` / `axum` 字面量**必须原样保留**（改写成
-「桌面壳」之类的同义词会让守卫误判为漂移）；而 crate 源码里的边界靠依赖闭包保证，注释中出现框架名本身
-不违反本守卫。
+**F-09 的两条实现路径，缺一不可。** 一条是依赖闭包：`forbiddenLayers: ['host']` 与
+`forbiddenCrates`（F-09 写死 `['tauri']`），按 `cargo metadata` 的解析图闭包遍历。另一条是
+**规范一致性**：`specTokens`（F-09 为 `tauri`）校验的是「§2.4 对应行是否仍然点名这个 token」，
+守卫与规范一旦漂移即报错；它扫的是本文档，不是 crate 源码。由此得到两条实操约束：§2.4 表格里的
+`tauri` 字面量**必须原样保留**（改写成「桌面壳」之类的同义词会让守卫误判为漂移）；而 crate 源码里的
+边界靠依赖闭包保证，注释中出现框架名本身不违反本守卫。
+
+**「禁服务端框架进入内核」由 F-12 承接。** 原 F-10 单独立行约束 `packages/workspace-apps`
+不含 `axum`、`actix-web`、`warp`、`tonic`。该内核已并入 `packages/feature-core`，成为
+`feature_core::workspace_apps` 模块；F-12 以反向 allow-list 钉死 feature-core 只依赖共享层，
+其 `specCrates` 同样点名 `axum`、`actix-web`、`warp`、`tonic`，覆盖范围比原 F-10 更宽
+（连带 `tauri`、`react` 与桌面宿主层）。因此 F-10 整条删除，其断言不被削弱。
 
 ### 2.5 workspace 成员与前端接线（已实现）
 
@@ -196,15 +200,20 @@ datazen-application = { path = "packages/application" }
 
 与本文早期草案的差异：`server` **没有**加进 `members`——`server/` 在仓库中不存在，该 crate 属更晚阶段；`packages/runtime` 本就已在基线的 `members` 中，本次未改动这一行，只补 `platform-api` 与 `application` 两条。`packages/backend-client` 是 TypeScript 包，**不得**加入 Cargo `members`（`scripts/__tests__/check-platform-crate-boundaries.test.ts` 的 fixture 断言 `backend-client` 不在 cargo members 中）。`packages/drivers/*` 的通配与两个 `exclude`（kiwi / superset）保持原样，驱动注入仍由 `scripts/resolve-drivers.mjs` 写入占位段。
 
-Wave-2 在此基础上又新增 `packages/ai-providers` 与 `packages/workspace-apps` 两个成员
-（AI provider 协议适配实现、Workspace App 形态中立内核），两者的边界分别由 F-09 / F-10 断言。
-`packages/ai-providers` **不在** F-10 的作用域内：它按定义就是一个 HTTP *客户端*适配层
-（依赖 `reqwest` 访问各 provider 的端点），F-10 禁的是服务端框架进入内核，不是禁内核发请求。
-这两个包都只依赖第三方 crate（`ai-providers` 另有既有的 `datazen-ai-api`），因此 `[workspace.dependencies]`
-无需新增条目。**接入方式是消费方写显式 `path`**：`src-tauri/Cargo.toml` 顶部以
-`datazen-workspace-apps = { path = "../packages/workspace-apps" }` 引入（与 Wave-1 各平台 crate 同风格，
-不是 `{ workspace = true }`，因为根 `[workspace.dependencies]` 里没有这一条）；根 `Cargo.toml` 的 `members`
-已含 `packages/workspace-apps`，本次未改动根清单。
+Wave-2 在此基础上又新增 `packages/ai-providers` 成员（AI provider 协议适配实现），其边界由
+F-09 断言。`packages/ai-providers` **不在**「禁服务端框架进入内核」的作用域内：它按定义就是一个
+HTTP *客户端*适配层（依赖 `reqwest` 访问各 provider 的端点），那条约束禁的是服务端框架进入内核，
+不是禁内核发请求。**接入方式是消费方写显式 `path`**：`src-tauri/Cargo.toml` 顶部以
+`datazen-ai-providers = { path = "../packages/ai-providers" }` 引入（与 Wave-1 各平台 crate 同风格，
+不是 `{ workspace = true }`，因为根 `[workspace.dependencies]` 里没有这一条）。
+
+Wave-2 原本还新增了 `packages/workspace-apps` 成员（Workspace App 形态中立内核）。**该成员已撤销**：
+Workspace App 本身是一个通用 feature，其内核（manifest 规则、包安装、按 wapp 隔离的键值存储、
+已安装包注册表、URI 语法与路由判定）不再自成一个包，而是并入 `packages/feature-core`，
+成为 `feature_core::workspace_apps` 模块——与其它共享 feature（ai / workflow / dashboard /
+export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages/workspace-apps`，
+`src-tauri/Cargo.toml` 移除 `datazen-workspace-apps = { path = "../packages/workspace-apps" }`，
+改由既有的 `datazen-feature-core` 依赖承接。其边界由 F-12 断言（见 §2.4）。
 
 #### 2.5.1 公共基础设施层 `packages/platform-infra`（已实现）
 
@@ -228,7 +237,7 @@ Wave-2 在此基础上又新增 `packages/ai-providers` 与 `packages/workspace-
 **路径安全**（`path_safety`）：zip 条目名的 zip-slip 守卫与压缩比上限。此前同样是两份逐字节
 相同的实现（`src-tauri/src/app_data_archive.rs` 与 `packages/platform-infra/src/path_safety.rs`），
 各自被自己的测试钉住，单边改动会让安全检查在另一侧继续按旧规则放行。现已收敛为本层唯一实现：
-`workspace-apps` 的 `install` / `manifest` 与宿主 app-data 备份/恢复都调用它，
+`feature_core::workspace_apps` 的 `install` / `manifest` 与宿主 app-data 备份/恢复都调用它，
 宿主 `src-tauri/src/app_data_archive.rs` 退化为同名 `pub use` 薄壳，调用点零改动。
 守卫是纯 `std`（无 IO、无传输、无形态相关状态），且**比两份原件覆盖面更全**：
 错误分支是两份原件的忠实并集 —— 原件只有 2 条错误串，本层 4 条

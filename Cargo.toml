@@ -10,7 +10,6 @@ members = [
     "packages/runtime",
     "packages/feature-core",
     "packages/ai-providers",
-    "packages/workspace-apps",
     "packages/schema-diff",
     "packages/data-sync",
     "packages/migration-common",

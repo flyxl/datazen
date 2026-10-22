@@ -11,7 +11,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::WAPP_API_VERSION;
+use crate::workspace_apps::WAPP_API_VERSION;
 
 /// Total uncompressed package size limit (rule 6).
 pub const MAX_WAPP_UNCOMPRESSED: u64 = 50 * 1024 * 1024;

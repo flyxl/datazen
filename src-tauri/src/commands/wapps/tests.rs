@@ -420,7 +420,7 @@ async fn load_from_disk_restores_registry_with_persisted_enabled_state() {
         .unwrap();
 
     // Simulate a restart: fresh manager over the same app-data dir.
-    let reloaded = datazen_workspace_apps::manager::WappManager::new(
+    let reloaded = datazen_feature_core::workspace_apps::manager::WappManager::new(
         test.state.store.data_dir().join("wapps"),
     );
     reloaded.load_from_disk();
@@ -434,7 +434,7 @@ fn summary_serializes_camel_case_payload() {
     let dir = TempDir::new().unwrap();
     let pack = dir.path().join("acme.demo");
     write_demo_dir(&pack);
-    let manifest = crate::wapps::validate_wapp_dir(&pack).unwrap();
+    let manifest = datazen_feature_core::workspace_apps::validate_wapp_dir(&pack).unwrap();
     let summary = WappSummary::from(&LoadedWapp {
         manifest,
         enabled: true,
