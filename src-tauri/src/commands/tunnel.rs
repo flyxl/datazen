@@ -11,22 +11,12 @@ use tauri::State;
 /// 桌面实现的失败只有一个来源（存储层），端口把它压成
 /// `PortError::BackendUnavailable(<原文>)`；这里把原文原样还回去，因此 IPC 载荷
 /// 与端口化之前**逐字相同**（此前这里是 `DesktopRepositoryError`，其 `Display` 已被端口原样带走）。
-fn tunnel_port_error(error: PortError) -> CommandError {
-    match error {
-        PortError::BackendUnavailable(detail) => CommandError::Internal(detail),
-        PortError::NotFound(entity) => CommandError::NotFound(entity),
-        other => CommandError::Internal(other.to_string()),
-    }
-}
-
-/// 端口调用 → 命令结果：映射之外**照旧记一条 error 日志**（与 `cmd_err` 同形）。
+/// 端口调用 → 命令结果（映射与日志见 [`port_cmd`](crate::commands::port_call::port_cmd)）。
+///
+/// 保留这个同义名，是为了让本文件几十处调用点逐字不变——隧道族的可读性来自
+/// 「`tunnel_cmd(...)` 就是在调隧道端口」。
 fn tunnel_cmd<T>(result: Result<T, PortError>, cmd: &str) -> Result<T, CommandError> {
-    result.map_err(|error| {
-        let err = tunnel_port_error(error);
-        let redacted = datazen_platform_infra::redaction::redact_secrets_for_log(&err.to_string());
-        tracing::error!(cmd, error = %redacted);
-        err
-    })
+    crate::commands::port_call::port_cmd(result, cmd)
 }
 
 pub(crate) async fn get_tunnels_impl(state: &AppState) -> Result<Vec<SavedTunnel>, CommandError> {

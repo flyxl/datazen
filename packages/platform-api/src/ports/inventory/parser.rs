@@ -40,6 +40,10 @@ pub(super) const SOURCE_FILES: &[(&str, &str)] = &[
         include_str!("../budget/pool_ledger/tests.rs"),
     ),
     ("clock.rs", include_str!("../clock.rs")),
+    (
+        "connection_catalog.rs",
+        include_str!("../connection_catalog.rs"),
+    ),
     ("event.rs", include_str!("../event.rs")),
     (
         "execution_settings.rs",

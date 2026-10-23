@@ -254,6 +254,19 @@ flowchart TB
   形态专属用途（组件创建 3、导入导出 2、手工执行 1），由断言
   `the_command_shell_reads_the_aggregate_and_names_the_host_residue` 钉住。
   全仓生产半边计数 101 → 93。
+- **第三条命令族（2026-10-23，连接目录）**：这一族与上两族的差别是**端口住在哪里**。
+  连接配置的形状 `ConnectionConfig` 住在 `datazen-driver-api`（每个形态都已链接的那一份，
+  且是 IPC 载荷与前端表单的唯一形状），所以端口没有进领域包，而是进
+  `datazen_platform_api::ports::connection_catalog`——`platform-api` 本来就依赖 driver-api
+  （`TunnelRepository` 同理），端口里出现 `ConnectionConfig` 不构成新依赖。
+  `ApplicationServices` 增加 `connections: Arc<dyn ConnectionCatalog>`，桌面实现是
+  `DesktopRepository`；`commands/connection.rs` 与 `commands/connection_import/ipc.rs`
+  生产半边 `state.store` 归 0（断言 `the_command_shell_reads_the_aggregate_not_the_host_store`
+  钉住 8 处取聚合、12 处端口调用），全仓生产半边 93 → 84。
+  两条**当时没被写进表格的隐账**在本族被结清：`duplicate_connection_impl` 与
+  `reorder_connections` 的 `state.store` 是跨行书写的，逐行 grep 数不到；真实处数是 11 + 2。
+  另外把「端口调用 → 命令错误」的映射收口成 `commands/port_call.rs::port_cmd`
+  （`tunnel.rs` 的同名助手改为转调它），避免每个命令族各抄一份 `PortError` 映射。
 - **验收**：该 feature 的 `commands` 文件行数下降 ≥50%；`grep state.store.` 在该 feature 目录降为 0；IPC 签名与返回类型不变（用既有前端类型做回归）。
 - **回滚**：按 feature 分批，每批独立 PR。
 - **风险**：双轨期重复逻辑 → 冻结规则：新代码必须进用例层，旧代码只减不增。
