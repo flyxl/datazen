@@ -240,10 +240,36 @@ jobs:
           # 的 fmt 硬门禁从「碰巧能跑」变成「保证能跑」。
           components: rustfmt
 
+      # 为什么缓存 + 超时（2026-10-23 实测三数据点）：同一份代码，run
+      # 39977765626 的本步在 15:23 挂起 >21 分钟、无报错无进展（runner 到
+      # Ubuntu 归档的连接停滞），而相邻两次 run 同一步分别 32s（#123 旧
+      # head 07f944293）与 24s（main 0de838522）。apt 对「已连接但静默」
+      # 的归档连接默认几乎不限时，所以停滞不红、只挂，直到 job 超时。
+      # 两层修法：
+      #   1) 显式 30s 超时 + 5 次重试——停滞要么恢复，要么几分钟内红；
+      #   2) 缓存下载过的 .deb（Dir::Cache::archives 重定向到 runner
+      #      可写目录）——首个绿 run 之后下载段从归档消失，归档抽风日免疫。
+      # 缓存键随本文件哈希：依赖列表一变自动失效，无需手工簿记。
+      - name: Cache apt archives (Tauri Linux system deps)
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-tauri-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            apt-tauri-${{ runner.os }}-
+
       - name: Install Linux system deps (Tauri / webkit2gtk)
         run: |
-          sudo apt-get update
+          sudo apt-get update \
+            -o Acquire::Retries=5 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30
           sudo apt-get install -y \
+            -o Acquire::Retries=5 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 \
+            -o APT::Keep-Downloaded-Packages=1 \
+            -o Dir::Cache::archives=${{ runner.temp }}/apt-archives \
             build-essential \
             pkg-config \
             libglib2.0-dev \
