@@ -18,7 +18,6 @@ hmac = "0.12"
 pbkdf2 = "0.12"
 sha1 = "0.10"
 datazen-schema-diff = { workspace = true }
-datazen-application = { workspace = true }
 datazen-runtime = { path = "../runtime" }
 datazen-driver-api = { workspace = true }
 datazen-ai-api = { path = "../ai-api" }

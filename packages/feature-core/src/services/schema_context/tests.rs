@@ -8,14 +8,16 @@
 //! handle), not the Runtime's own behaviour.
 
 use super::*;
-use crate::services::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
+use crate::services::ports::{
+    LogicalSchemaContextSource, PhysicalSchemaContextSource, SessionConnectionLookup,
+};
 use crate::workflow::error::WorkflowError;
 use crate::workflow::resource_execution::{PreparedExecution, ResourceExecutionHost};
 use async_trait::async_trait;
-use datazen_application::dto::requests::OpenSessionRequest;
-use datazen_application::sessions::ConnectionUseCases;
 use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
+use datazen_platform_api::dto::requests::OpenSessionRequest;
+use datazen_platform_api::use_cases::ConnectionUseCases;
 use datazen_platform_api::{
     context::{DelegationRef, OwnerRef, RequestContext},
     dto::{idempotency::IdempotentOperation, profile::ProfileDraft, profile::ProfilePatch},
@@ -29,6 +31,19 @@ use datazen_runtime::{
     connection as rt,
     registry::{audit::CapabilityVersions, backend::*, SessionBackend},
 };
+/// The test fake answers the consumer-defined lookup with the real facade:
+/// the trait is local to this crate, so the implementor lives here and the
+/// production half never names the runtime facade type.
+impl SessionConnectionLookup for RuntimeConnectionUseCases {
+    fn connection_id_for_session(&self, session_id: &str) -> Option<String> {
+        RuntimeConnectionUseCases::connection_id_for_session(
+            self,
+            &rt::DbSessionId::new(session_id),
+        )
+        .map(|connection| connection.as_str().to_owned())
+    }
+}
+
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

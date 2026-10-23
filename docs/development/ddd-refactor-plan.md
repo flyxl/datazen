@@ -175,9 +175,36 @@ flowchart TB
 
 ### P2 领域纯化（工作量最大且最机械）
 
-- 4 个包共 76 处 `datazen_runtime::` 生产引用改为端口注入：`data-transfer` 34、`feature-core` 32、`schema-diff` 6、`data-sync` 4。
-- **验收**：附录 A.2 输出 0；4 个 `Cargo.toml` 的 `[dependencies]` 无 `datazen-runtime`；`cargo test -p datazen-schema-diff -p datazen-data-sync -p datazen-data-transfer -p datazen-feature-core` 绿。
-- **回滚**：按包分 4 个 PR，逐个可回滚。
+**口径订正（2026-10-23 实测）**：计划写的「4 个包共 76 处」是**含测试半边**的宽口径。
+生产半边的口径是：`*.rs` 里 `#[cfg(test)]` 之前的部分，排除 `tests/` 目录与 `*_tests.rs`，
+按**出现次数**记 `datazen_runtime::<module>`。实测 **50 处**：`feature-core` 32、
+`data-transfer` 8、`schema-diff` 6、`data-sync` 4；按模块 `job` 21、`sql_guard` 12、
+`schema_cache` 10、`application` 5、`artifact` 1、`connection` 1。
+本节的第一个 PR 之后剩 **48 处**（`feature-core` 30：`application` 5 → 4、`connection` → 0）。
+
+- **已落地（2026-10-23，PR「feature-core 只认契约」）**：`feature-core` 的
+  `[dependencies]` **摘掉 `datazen-application`**（12 处引用改指 `platform-api` 的
+  `use_cases::ConnectionUseCases` / `dto::requests` / `error::{ApiError, ApiErrorCode}`）；
+  `services/schema_context/source.rs` 不再命名 `runtime::application::RuntimeConnectionUseCases`
+  与 `runtime::connection::DbSessionId`，改为**消费者定义的端口**
+  `services::ports::SessionConnectionLookup`（trait 在共享层、实现在宿主
+  `src-tauri/src/services/schema_context_source.rs` 的 `RuntimeSessionLookup` 薄壳）；
+  `ARTIFACT_BYTE_QUOTA` 从 `runtime::artifact` 移到 `platform_api::ports::artifact`
+  （契约值），runtime 再导出。门禁：`scripts/check-ddd-layers.mjs` 增一条
+  「`feature-core` 不得直接依赖 `datazen-application`」。
+- **剩下的 36 → 0 分两步走**（各自独立 PR）：
+  1. **runtime 内核拆分**：`job`/`budget`/`sql_guard`/`schema_cache`/`driver_registry`
+     是**机制**而不是应用门面（`job` 只依赖 `budget` 5 处与 `connection` 1 处；`budget`
+     零内部依赖；`sql_guard` 零内部依赖；`schema_cache` 依赖 `driver_registry`）。拆出一个
+     不依赖应用层的内核 crate（暂名 `datazen-kernel`），`runtime` 再导出保持既有调用点。
+  2. **制品与备份用例端口化**：`read_artifact_chunk`（4 处调用）返回的
+     `RuntimeArtifactChunk` 与 `bind_backup_output` 返回的 `BackupOutputBinding`
+     是**运行时内建类型**（前者是 serde DTO、后者是 Drop 型能力对象）。要么把 DTO 归
+     platform-api、把绑定抽象成 `Box<dyn BackupOutputGuard>`，要么承认这两条能力不进
+     形态中立层并保留 2 个逆向引用（届时 R1 需按包名开例外，不得静默）。
+- **验收**：附录 A.2 输出 0；4 个 `Cargo.toml` 的 `[dependencies]` 无 `datazen-runtime`；
+  `cargo test -p datazen-schema-diff -p datazen-data-sync -p datazen-data-transfer -p datazen-feature-core` 绿。
+- **回滚**：按包分 PR，逐个可回滚。
 - **风险**：端口定义反复 → 先冻结端口清单（R3/R8）再改。
 
 ### P3 编排归位（长尾，按 feature 切）

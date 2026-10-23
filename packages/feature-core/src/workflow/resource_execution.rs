@@ -27,11 +27,11 @@ pub trait ResourceExecutionHost: Send + Sync {
     ) -> Result<PreparedExecution, WorkflowError>;
 }
 
-use datazen_application::{
-    dto::requests::{CommandCall, ExecuteAtTargetRequest},
-    sessions::ConnectionUseCases,
-};
 use datazen_driver_api::{check_command_access, validate_command_input, CommandResult};
+use datazen_platform_api::{
+    dto::requests::{CommandCall, ExecuteAtTargetRequest},
+    use_cases::ConnectionUseCases,
+};
 use datazen_platform_api::{
     dto::{execution::ExecutionState, idempotency::IdempotentOperation},
     id::{ConnectionId, Counter},
@@ -290,7 +290,7 @@ async fn execute_bound(
             runtime
                 .execute_in_session(
                     &context,
-                    datazen_application::dto::requests::ExecuteInSessionRequest::new(
+                    datazen_platform_api::dto::requests::ExecuteInSessionRequest::new(
                         handle,
                         CommandCall::new(&step.command, command_input),
                         token.idempotency_key,
@@ -422,7 +422,7 @@ async fn execute_bound(
     // Reading a result does not execute SQL again. Preserve the known effect
     // when storage or transport fails after the statement has completed.
     let result_read_error =
-        |error: datazen_application::error::ApiError| WorkflowError::SqlResultRead {
+        |error: datazen_platform_api::error::ApiError| WorkflowError::SqlResultRead {
             execution_id: receipt.execution_id.as_str().to_owned(),
             effects: format!("{:?}", view.effect_outcome),
             code: format!("{:?}", error.code),

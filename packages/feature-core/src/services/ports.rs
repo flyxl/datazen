@@ -175,3 +175,20 @@ impl<T: ConnectionCatalog + ?Sized> ConnectionCatalog for Arc<T> {
         (**self).get_connections().await
     }
 }
+
+/// Session-to-connection identity offered by the form that owns the sessions.
+///
+/// This is a *consumer-defined* port: the shared layer only knows the question
+/// ("which connection owns this runtime session?"), and the host that owns the
+/// Runtime facade answers it. Defining the trait here — instead of naming
+/// `datazen_runtime::application::RuntimeConnectionUseCases` — keeps the shared
+/// feature layer free of the runtime application facade, whose use-case surface
+/// is already available through [`ConnectionUseCases`](datazen_platform_api::use_cases::ConnectionUseCases).
+///
+/// It is deliberately synchronous and session-id based: metadata reads resolve
+/// identity before any await point and never hold a handle across one.
+pub trait SessionConnectionLookup: Send + Sync {
+    /// The connection that owns `session_id`, or `None` when the session is
+    /// unknown, closed, or no longer attached to its directory entry.
+    fn connection_id_for_session(&self, session_id: &str) -> Option<String>;
+}

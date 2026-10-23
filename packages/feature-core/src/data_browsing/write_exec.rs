@@ -29,8 +29,9 @@ use super::change_set::{
 };
 use super::insert_plan::bound_insert_statement_for_plan;
 use crate::error::FeatureError;
-use datazen_application::{dto::requests::*, sessions::ConnectionUseCases};
 use datazen_driver_api::DatabaseDriver;
+use datazen_platform_api::dto::requests::*;
+use datazen_platform_api::use_cases::ConnectionUseCases;
 use datazen_platform_api::{
     context::{OwnerRef, RequestContext},
     dto::{idempotency::IdempotentOperation, session::SessionHandle},

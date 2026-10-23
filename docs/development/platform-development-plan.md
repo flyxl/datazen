@@ -184,6 +184,21 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 风险（最高的一期）：窄端口的 DTO 一旦与领域包的形状**各写一份**，事实就有两份 ⇒ 窄端口必须只暴露领域包已有的类型；**若某个领域模型无法用 platform-api 的词汇表达，说明该能力本就不该进形态中立层**，此时该窄端口**不应**被创建。这一期也是形态专属的东西最容易漏进中立层的地方——评审必须逐条问「这个方法在 web 形态有对应物吗」。
 
+**第四步的裁定（2026-10-23，P0 落地后）：由「领域包原生端口」取代，不再新建这三个窄端口。**
+
+理由按优先级：
+
+1. **签名里全是领域模型**：`ReviewedPlan`、`StoredSyncPlan`、`ComparisonOptions`、`TransferPlan`、
+   `Checkpoint` 都定义在领域包里，而 F-04 规定 `platform-api` 不得依赖领域包 ⇒ 窄端口只能在
+   `platform-api` 里复制一份 DTO，事实两份——正是本节风险段自己禁止的事。
+2. **P0 断环后这条边已合法**：`ddd-refactor-plan` 的 P0 把 `ApiError`/`ConnectionUseCases`/
+   请求 DTO 归位 `platform-api`，`cargo metadata` 实测 0 环、`application → 领域包` 可行
+   （`scripts/check-ddd-layers.mjs` 守）。聚合直接持有领域包**自己的**端口 trait 即可，
+   宿主不必再写一层转发壳。
+3. **剩余价值另有归属**：本节真正想消灭的是「`AppState` 直读领域端口」那 21 处，这件事改由
+   第六步按命令族完成——命令不再从 `AppState` 取领域端口，而是从聚合取。
+   容器：`SyncRepositoryPorts` 已随第三步改为聚合侧装配。
+
 **第五步——known-hosts 存储端口归位进 platform-api（已落地 2026-10-23）**
 
 搬走：`datazen_tunnel::KnownHostsRepository`（`packages/tunnel/src/known_hosts_repository.rs`）→

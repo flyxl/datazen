@@ -2136,7 +2136,6 @@ dependencies = [
  "cbc 0.1.2",
  "chrono",
  "datazen-ai-api",
- "datazen-application",
  "datazen-driver-api",
  "datazen-platform-api",
  "datazen-platform-infra",

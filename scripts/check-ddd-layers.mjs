@@ -36,6 +36,7 @@ import { execFileSync } from 'node:child_process';
 
 const APPLICATION = 'datazen-application';
 const RUNTIME = 'datazen-runtime';
+const FEATURE_CORE = 'datazen-feature-core';
 
 /**
  * 领域包：D2「领域层只能依赖更内层」的对象。它们今天都（直接或间接）依赖 runtime，
@@ -50,11 +51,15 @@ const DOMAIN_PACKAGES = [
 ];
 
 /**
- * **反方向**的消费者：它们已经（或按 F-12 的 allow-list 允许）依赖 application。
- * `feature-core` 就是 F-12 明文允许 `feature-core → application` 的那一个，所以它不能
- * 进上面的领域包表——那把尺子量的是另一条边。这里断言的是镜像不变量：
+ * **反方向**的消费者：它们依赖 application（宿主与共享 feature 层）。
+ * 它们不能进上面的领域包表——那把尺子量的是另一条边。这里断言的是镜像不变量：
  * application 的闭包里不得出现这些包，否则 `feature-core → application → feature-core`
  * 立刻成环（`datazen` 宿主同理：宿主依赖 application，application 永远不许反向依赖宿主）。
+ *
+ * `feature-core` 从 P2 起**不再直接依赖** application（它只用 platform-api 的契约：
+ * `use_cases::ConnectionUseCases`、`dto::requests`、`error::ApiError`），所以除了镜像
+ * 不变量，还额外断言这条边不存在——否则「共享 feature 层只认契约」会在下次改动里
+ * 悄悄退回去。
  */
 const UPSTREAM_CONSUMERS = ['datazen-feature-core', 'datazen'];
 
@@ -124,6 +129,20 @@ function transitiveDependencies(graph, name) {
   return seen;
 }
 
+/**
+ * P2 断言：共享 feature 层只认 `platform-api` 的契约，不依赖用例聚合包。
+ *
+ * 抽成纯函数是为了能对**合成的**依赖表自证——否则这条断言只会在真实图里跑，
+ * 一旦 `cargo metadata` 退化（feature-core 解析不到），它会静默通过。
+ */
+function featureCoreIndependenceViolations(graph) {
+  if (!graph.get(FEATURE_CORE)?.has(APPLICATION)) return [];
+  return [
+    `P2：${FEATURE_CORE} 直接依赖 ${APPLICATION}——共享 feature 层只认 platform-api 的契约` +
+      '（用例端口、请求 DTO、ApiError），不依赖用例聚合包。',
+  ];
+}
+
 function selfProof() {
   const problems = [];
   const cyclic = new Map([
@@ -140,6 +159,16 @@ function selfProof() {
   ]);
   if (findCycle(acyclic)) {
     problems.push(`自证失败：环检测器在无环图上报了环 ${findCycle(acyclic).join(' → ')}。`);
+  }
+  const withFeatureCoreEdge = new Map([[FEATURE_CORE, new Set([APPLICATION])]]);
+  if (featureCoreIndependenceViolations(withFeatureCoreEdge).length === 0) {
+    problems.push(
+      `自证失败：P2 断言在合成边 ${FEATURE_CORE} → ${APPLICATION} 上没有报警。`,
+    );
+  }
+  const withoutFeatureCoreEdge = new Map([[FEATURE_CORE, new Set([RUNTIME])]]);
+  if (featureCoreIndependenceViolations(withoutFeatureCoreEdge).length > 0) {
+    problems.push('自证失败：P2 断言在 feature-core 不依赖 application 的图上误报了。');
   }
   return problems;
 }
@@ -171,6 +200,8 @@ function main() {
       );
     }
   }
+
+  violations.push(...featureCoreIndependenceViolations(graph));
 
   const applicationClosure = transitiveDependencies(graph, APPLICATION);
   for (const consumer of UPSTREAM_CONSUMERS) {
@@ -207,7 +238,8 @@ function main() {
     `DDD layer gate PASS: ${graph.size} 个 workspace 生产 crate，无环；` +
       `${APPLICATION} ↔ ${RUNTIME} 无直接依赖；` +
       `${DOMAIN_PACKAGES.length} 个领域包的闭包内无 ${APPLICATION}；` +
-      `${APPLICATION} 的闭包内无 ${UPSTREAM_CONSUMERS.join(' / ')}。`,
+      `${APPLICATION} 的闭包内无 ${UPSTREAM_CONSUMERS.join(' / ')}；` +
+      `${FEATURE_CORE} 不依赖 ${APPLICATION}。`,
   );
 }
 
