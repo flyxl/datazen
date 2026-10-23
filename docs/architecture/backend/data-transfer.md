@@ -1,8 +1,8 @@
 # Data Transfer 架构
 
-> 当前实现说明；P5 桌面 JobRuntime 与数据迁移三件套于 2026-10-09 完成并通过独立测试、冒烟测试。Data Transfer 的实现事实见 `packages/data-transfer/`、`src-tauri/src/commands/data_transfer/`、`packages/runtime/src/job/` 与 `src-tauri/src/store/app_db/jobs/`；后续服务端与跨进程恢复边界见[迁移任务详细设计](../platform/data-migration-jobs.md)。
+> 当前实现说明；P5 桌面 JobRuntime 与数据迁移三件套于 2026-10-09 完成并通过独立测试、冒烟测试。Data Transfer 的实现事实见 `packages/data-transfer/`、`src-tauri/src/commands/data_transfer/`、`packages/kernel/src/job/` 与 `src-tauri/src/store/app_db/jobs/`；后续服务端与跨进程恢复边界见[迁移任务详细设计](../platform/data-migration-jobs.md)。
 
-共享边界值规范化、比较与端点配对算法位于 `packages/migration-common/`；SQL 名称处理工具位于 `packages/driver-api/src/sql_identifiers.rs`。Data Sync 与 Data Transfer 直接依赖这些公共实现，Data Transfer 不依赖 Data Sync 领域包。Job 生命周期继续复用 `packages/runtime/src/job/`。
+共享边界值规范化、比较与端点配对算法位于 `packages/migration-common/`；SQL 名称处理工具位于 `packages/driver-api/src/sql_identifiers.rs`。Data Sync 与 Data Transfer 直接依赖这些公共实现，Data Transfer 不依赖 Data Sync 领域包。Job 生命周期继续复用 `packages/kernel/src/job/`。
 
 ## 1. 职责与执行边界
 

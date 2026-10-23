@@ -14,9 +14,9 @@ use std::sync::Arc;
 
 use datazen_data_sync::job::{ApplySpec, DataSyncHandler, DataSyncHost, PrepareSpec};
 use datazen_data_sync::model::{Row, SyncOptions, TableMapping};
+use datazen_kernel::job::{CancelToken, JobHandler, StageOutcome, StageSpec, StageTerminal};
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
 use datazen_platform_api::id::StageId;
-use datazen_runtime::job::{CancelToken, JobHandler, StageOutcome, StageSpec, StageTerminal};
 
 use support::host::{source_endpoint, target_endpoint, FakeHost, TARGET_CONN};
 use support::rows::{int, row, text, PLAN_ID, TABLE};

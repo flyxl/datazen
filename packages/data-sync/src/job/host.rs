@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, SyncKeyValue, TableSchema, Value};
-use datazen_runtime::job::CancelToken;
+use datazen_kernel::job::CancelToken;
 
 use crate::error::DataSyncError;
 use crate::filter::SyncSourceFilter;

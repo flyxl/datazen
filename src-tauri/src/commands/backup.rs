@@ -244,8 +244,11 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
                     .collect(),
             ),
         );
+        let binder =
+            crate::platform::feature_ports::HostBackupBindings::new(runtime.clone()).shared();
         datazen_feature_core::backup_gateway::backup_to_path(
             runtime,
+            binder,
             &context,
             target,
             options,

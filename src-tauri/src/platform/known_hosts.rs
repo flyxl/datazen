@@ -18,7 +18,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use datazen_tunnel::{KnownHostEntry, KnownHostsRepository, KnownHostsRepositoryError};
+use datazen_platform_api::error::PortError;
+use datazen_platform_api::ports::known_hosts::{KnownHostEntry, KnownHostsRepository};
 
 /// 桌面形态的 known-hosts 端口实例（`{appData}/ssh_known_hosts.json`）。
 ///
@@ -77,25 +78,21 @@ impl KnownHostsRepository for DesktopKnownHostsRepository {
     ///
     /// 错误文案逐字保留（`create known hosts dir …` / `serialize ssh_known_hosts.json: …`
     /// / `write …`），调用方把它们原样记进日志。
-    fn save(
-        &self,
-        entries: &HashMap<String, KnownHostEntry>,
-    ) -> Result<(), KnownHostsRepositoryError> {
+    fn save(&self, entries: &HashMap<String, KnownHostEntry>) -> Result<(), PortError> {
         let path = &self.path;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                KnownHostsRepositoryError::Unavailable(format!(
+                PortError::BackendUnavailable(format!(
                     "create known hosts dir {}: {e}",
                     parent.display()
                 ))
             })?;
         }
         let json = serde_json::to_string_pretty(entries).map_err(|e| {
-            KnownHostsRepositoryError::Unavailable(format!("serialize ssh_known_hosts.json: {e}"))
+            PortError::BackendUnavailable(format!("serialize ssh_known_hosts.json: {e}"))
         })?;
-        std::fs::write(path, json).map_err(|e| {
-            KnownHostsRepositoryError::Unavailable(format!("write {}: {e}", path.display()))
-        })
+        std::fs::write(path, json)
+            .map_err(|e| PortError::BackendUnavailable(format!("write {}: {e}", path.display())))
     }
 }
 
@@ -160,10 +157,16 @@ mod tests {
         std::fs::create_dir_all(&path).expect("create dir in place of the file");
         let store = DesktopKnownHostsRepository::new(path.clone());
         let error = store.save(&HashMap::new()).expect_err("write must fail");
+        // 文案是被 `PortError` 包着的（`backend unavailable: …`），但**宿主自己的措辞**
+        // 必须逐字保留：`write <path>: <source>`。这一条是端口改型时最容易丢的东西。
+        assert!(
+            matches!(error, PortError::BackendUnavailable(_)),
+            "写入失败必须收敛成 BackendUnavailable：{error:?}"
+        );
         assert!(
             error
                 .to_string()
-                .starts_with(&format!("write {}: ", path.display())),
+                .contains(&format!("write {}: ", path.display())),
             "unexpected error text: {error}"
         );
     }

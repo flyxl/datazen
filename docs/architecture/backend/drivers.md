@@ -141,7 +141,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 | 闸门 | 位置 | `pv < MIN` | `pv > PROTOCOL_VERSION` | `MIN <= pv < PROTOCOL_VERSION` |
 | --- | --- | --- | --- | --- |
-| 驱动 | `packages/runtime/src/driver_registry/registry.rs` 的 `register_from_inventory` | `return Err`，硬拒绝、不创建驱动 | 只 `tracing::warn!`，照常加载 | `warn!` 提示降级后照常加载 |
+| 驱动 | `packages/kernel/src/driver_registry/registry.rs` 的 `register_from_inventory` | `return Err`，硬拒绝、不创建驱动 | 只 `tracing::warn!`，照常加载 | `warn!` 提示降级后照常加载 |
 | AI Provider | `packages/ai-providers/src/registry.rs` 的 factory 遍历（`AI_PROTOCOL_VERSION` / `MIN_AI_PROTOCOL_VERSION` 是 `packages/ai-api` 的另一套常量） | `tracing::error!` 后 `continue`，跳过注册 | 只 `warn!`，照常注册 | `warn!` 降级提示 |
 
 **降级模式并不真的把能力改写成 `false`**：两处降级分支只打一条日志，消息里回显的是 factory **自己声明**的能力值（驱动侧 `supports_cancel_query` / `supports_explain` / `supports_streaming_results`，Provider 侧 `supports_streaming` / `supports_tools`），驱动随后照常 `create()` 并按自己声明的能力运行。这是 `driver-api` 侧写下的契约承诺与宿主当前实现之间的已知差距。
@@ -326,7 +326,7 @@ Data Sync 的同族结构门闸和 Data Transfer 的 IR pairing 不应混为一�
 
 ## 6. Driver Registry
 
-Driver Registry 实现在 `packages/runtime/src/driver_registry/`（`datazen_runtime::driver_registry`），与 SchemaCache 同处共享 runtime 内核。宿主原 `src-tauri/src/db/` 门面已删除，连接层统一直接引用 `datazen_runtime::driver_registry` 与 `datazen_driver_api`。
+Driver Registry 实现在 `packages/kernel/src/driver_registry/`（`datazen_kernel::driver_registry`；`datazen_runtime::driver_registry` 是同一份的再导出），与 SchemaCache 同处共享机制内核 `datazen-kernel`。宿主原 `src-tauri/src/db/` 门面已删除，连接层统一直接引用 `datazen_runtime::driver_registry`（或 `datazen_kernel::driver_registry`）与 `datazen_driver_api`。
 
 Driver 通过 inventory 在编译期注册。构建时由 registry / build tooling 决定哪些 Driver 被编译进 DataZen。
 

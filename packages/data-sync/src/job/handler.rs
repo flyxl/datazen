@@ -16,15 +16,15 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use datazen_kernel::job::{
+    CancelToken, FrozenPlan, JobError, JobHandler, RecoveryVerdict, StageOutcome, StageSpec,
+    StageTerminal,
+};
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
 use datazen_platform_api::dto::job::{
     Checkpoint, CommitBoundary, JobDomainResult, JobProgress, JobResultCounter,
 };
 use datazen_platform_api::id::StageId;
-use datazen_runtime::job::{
-    CancelToken, FrozenPlan, JobError, JobHandler, RecoveryVerdict, StageOutcome, StageSpec,
-    StageTerminal,
-};
 
 use crate::error::DataSyncError;
 use crate::model::ChangeOperation;

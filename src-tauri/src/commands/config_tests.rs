@@ -101,3 +101,42 @@ async fn get_log_path_honors_custom_log_path_setting() {
     let log_path = get_log_path_impl(&test.state).await.unwrap();
     assert!(log_path.contains("custom-logs"));
 }
+
+/// §5.1.2 第二步的验收断言：设置用例只走应用层聚合。
+///
+/// 这两条命令原来自行拼服务——`SettingsService::new(state.store.as_ref())`。
+/// 那种写法让「设置用例归位到应用层」在源码上根本没发生：命令仍然是服务的
+/// 构造者与持有者，`ApplicationServices::settings` 只是被注入却没人用。
+///
+/// 改成经 `ApplicationServices::settings_service()` 之后，宿主 store 只作为端口
+/// 实现被注入，不再出现在调用点。**这条断言盯的就是「不再出现」**：只要有人
+/// 为了「装配失败时也能读设置」把直连加回来，它就红。
+#[test]
+fn shared_settings_commands_read_the_aggregate_not_the_host_store() {
+    let source = include_str!("config.rs");
+    let production = source
+        .split("#[cfg(test)]")
+        .next()
+        .expect("config.rs 必有生产半边");
+    assert!(
+        !production.contains("SettingsService::new("),
+        "设置命令不得自己拼 SettingsService：应当经 ApplicationServices::settings_service() 取用例"
+    );
+    assert!(
+        !production.contains("state.store.as_ref()"),
+        "设置命令不得直连宿主 store：设置仓储由 ApplicationServices 持有"
+    );
+    assert_eq!(
+        production.matches("settings_service()").count(),
+        2,
+        "读、写两条设置命令都必须经聚合取用例（各一处）"
+    );
+    // 计数是本节验收的旁证：`state.store` 在 config.rs 里由 14 处降到 12 处
+    // （两条设置命令各让出一处直连；其余 12 处服务 `AppSettings` 与路径类命令，
+    // 不在本期范围，第六步按命令族搬迁时再降）。
+    assert_eq!(
+        production.matches("state.store").count(),
+        12,
+        "config.rs 里对宿主 store 的直读应只剩 12 处；新增会说明有人绕开聚合"
+    );
+}

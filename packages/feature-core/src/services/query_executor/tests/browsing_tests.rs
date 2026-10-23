@@ -7,8 +7,8 @@
 //! many rows** it says there are.
 
 use super::*;
-use datazen_runtime::driver_registry::DriverRegistry;
-use datazen_runtime::schema_cache::SchemaCache;
+use datazen_kernel::driver_registry::DriverRegistry;
+use datazen_kernel::schema_cache::SchemaCache;
 
 /// The order of a read whose table has a primary key.
 ///

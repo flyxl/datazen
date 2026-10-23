@@ -40,7 +40,7 @@ Driver / Store / runtime
 
 前端 IPC wrapper 与 Rust command 名称保持显式映射，不在组件中直接拼接后端协议。
 
-进入 `service / domain module` 之前，SQL 会先过安全门网：注释剥离、主关键字分类、只读 / Safe Mode 校验与参数绑定。该门网实现在共享层 `packages/runtime/src/sql_guard/`，宿主 command 以 `datazen_runtime::sql_guard::…` 调用，未来的服务端入口复用同一份实现。
+进入 `service / domain module` 之前，SQL 会先过安全门网：注释剥离、主关键字分类、只读 / Safe Mode 校验与参数绑定。该门网实现在共享层 `packages/kernel/src/sql_guard/`，宿主 command 以 `datazen_runtime::sql_guard::…` 调用，未来的服务端入口复用同一份实现。
 
 ## 3. 连接 ID 参数约定
 

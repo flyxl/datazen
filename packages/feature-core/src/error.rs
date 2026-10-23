@@ -28,9 +28,9 @@ impl From<String> for FeatureError {
 ///
 /// Mirrors the Desktop adapter's mapping buckets so both transports report the
 /// same message and the same class of failure for the same API error.
-impl From<datazen_application::error::ApiError> for FeatureError {
-    fn from(error: datazen_application::error::ApiError) -> Self {
-        use datazen_application::error::ApiErrorCode;
+impl From<datazen_platform_api::error::ApiError> for FeatureError {
+    fn from(error: datazen_platform_api::error::ApiError) -> Self {
+        use datazen_platform_api::error::ApiErrorCode;
 
         let detail = match error.request_id.as_ref() {
             Some(request_id) => format!("（requestId={request_id}）"),

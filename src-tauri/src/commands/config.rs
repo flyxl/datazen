@@ -65,7 +65,12 @@ pub struct SaveSharedSettingsRequest {
 pub async fn get_shared_settings(
     state: State<'_, AppState>,
 ) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
-    datazen_application::settings::SettingsService::new(state.store.as_ref())
+    // 设置用例归位到应用层（§5.1.2 第二步）：仓储由 `ApplicationServices` 持有，
+    // 命令只调用例。这里**不得**再直读宿主 store——宿主直读会把「应用层自己跑
+    // 用例」退化成「宿主替它跑」，并在装配失败时留下第二条事实源。
+    let services = crate::platform::ipc::require_application_services(state.inner())?;
+    services
+        .settings_service()
         .read()
         .await
         .map_err(|_| CommandError::Internal("Unable to read settings".into()))
@@ -76,7 +81,10 @@ pub async fn save_shared_settings(
     state: State<'_, AppState>,
     request: SaveSharedSettingsRequest,
 ) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
-    let saved = datazen_application::settings::SettingsService::new(state.store.as_ref())
+    // 同上：写入也走应用层用例，宿主的 store 只作为端口实现被注入。
+    let services = crate::platform::ipc::require_application_services(state.inner())?;
+    let saved = services
+        .settings_service()
         .save(request.settings)
         .await
         .map_err(|error| match error {

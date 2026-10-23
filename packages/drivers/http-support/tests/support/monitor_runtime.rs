@@ -276,12 +276,34 @@ impl ResourceExecutionHost for Host {
             return Err(WorkflowError::Validation("revision outside grant".into()));
         }
         Ok(PreparedExecution {
-            runtime: self.runtime.clone(),
+            use_cases: self.runtime.clone(),
+            artifacts: Arc::new(NoArtifactChunks),
             context: self.context.clone(),
             target,
         })
     }
 }
+/// 监控类测试不读结果制品；端口存在是为了让派发形状成立。
+struct NoArtifactChunks;
+
+#[async_trait]
+impl datazen_feature_core::services::ports::ArtifactChunkReader for NoArtifactChunks {
+    async fn read_chunk(
+        &self,
+        _ctx: &RequestContext,
+        _artifact: &datazen_platform_api::id::ArtifactId,
+        _index: datazen_platform_api::id::Counter,
+    ) -> Result<
+        datazen_platform_api::dto::execution::ResultChunk,
+        datazen_platform_api::error::ApiError,
+    > {
+        Err(datazen_platform_api::error::ApiError::new(
+            datazen_platform_api::error::ApiErrorCode::CapabilityUnsupported,
+            "monitor test does not read result artifacts",
+        ))
+    }
+}
+
 struct Budget;
 #[async_trait]
 impl dr::BudgetPort for Budget {

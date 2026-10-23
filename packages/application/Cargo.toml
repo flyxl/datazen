@@ -3,7 +3,7 @@ name = "datazen-application"
 version = "0.0.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "DataZen 应用层：用例编排、ApiError、目标计算与身份策略判定顺序"
+description = "DataZen 应用层：用例编排、ApplicationServices 聚合、目标计算与身份策略判定顺序"
 exclude = ["src/testing/**"]
 
 [features]

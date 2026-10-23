@@ -58,7 +58,7 @@ async fn cm49_sql_file_transfer_uses_no_target_connection() {
         },
         None,
     );
-    let spec = datazen_runtime::job::StageSpec {
+    let spec = datazen_kernel::job::StageSpec {
         stage_id: StageId::new("apply"),
         kind: "apply".into(),
         depends_on: vec![],
@@ -69,12 +69,12 @@ async fn cm49_sql_file_transfer_uses_no_target_connection() {
         .expect("stages");
     assert_eq!(stages.len(), 1);
     assert_eq!(stages[0].kind, "apply");
-    let cancel = datazen_runtime::job::CancelToken::new();
+    let cancel = datazen_kernel::job::CancelToken::new();
     let outcome = handler.run_stage(&spec, &cancel).await.expect("stage");
     assert!(
         matches!(
             outcome.terminal,
-            datazen_runtime::job::StageTerminal::Succeeded
+            datazen_kernel::job::StageTerminal::Succeeded
         ),
         "sql file stage: {:?}",
         outcome.terminal
@@ -149,18 +149,15 @@ async fn cm49_structure_objects_without_ir_adapter_fail_explicitly() {
         },
         None,
     );
-    let spec = datazen_runtime::job::StageSpec {
+    let spec = datazen_kernel::job::StageSpec {
         stage_id: StageId::new("apply"),
         kind: "apply".into(),
         depends_on: vec![],
     };
-    let cancel = datazen_runtime::job::CancelToken::new();
+    let cancel = datazen_kernel::job::CancelToken::new();
     let outcome = handler.run_stage(&spec, &cancel).await.expect("stage");
     assert!(
-        matches!(
-            outcome.terminal,
-            datazen_runtime::job::StageTerminal::Failed
-        ),
+        matches!(outcome.terminal, datazen_kernel::job::StageTerminal::Failed),
         "missing IR adapter must fail the stage, got {:?}",
         outcome.terminal
     );

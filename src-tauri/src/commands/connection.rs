@@ -186,10 +186,11 @@ pub(crate) async fn test_connection_impl(
         "test_connection"
     );
     let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
     let result = crate::tunnel::test_connection(
-        &*state.tunnels,
+        &*services.tunnels,
         &scope,
-        &state.known_hosts,
+        &services.known_hosts,
         &state.driver_registry,
         config,
     )

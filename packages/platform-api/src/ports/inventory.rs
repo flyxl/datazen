@@ -56,6 +56,7 @@ pub const PORT_TRAITS: &[&str] = &[
     "ExecutionTargetResolver",
     "IdentityResolver",
     "JobRepository",
+    "KnownHostsRepository",
     "MasterKeyProvider",
     "MigrationProfileReader",
     "MonitorGrantReader",

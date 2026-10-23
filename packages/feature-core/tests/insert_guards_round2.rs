@@ -17,7 +17,7 @@ use datazen_feature_core::data_browsing::{
     build_row_change_plan, changes_fingerprint, plan_changes, PendingRowChange,
     RowChangeTableContext,
 };
-use datazen_runtime::schema_cache::CachedColumns;
+use datazen_kernel::schema_cache::CachedColumns;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::sync::Arc;

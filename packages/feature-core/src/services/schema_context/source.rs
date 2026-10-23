@@ -1,14 +1,14 @@
 //! Runtime-backed metadata source: session identity plus independent metadata reads.
 
-use crate::services::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
+use crate::services::ports::{
+    LogicalSchemaContextSource, PhysicalSchemaContextSource, SessionConnectionLookup,
+};
 use crate::workflow::command::WorkflowCommandStep;
 use crate::workflow::error::WorkflowError;
 use crate::workflow::resource_execution::{self, ResourceExecutionHost};
 use datazen_driver_api::{
     ConnectionConfig, ConnectionHandle, DatabaseDriver, TableInfo, TableSchema,
 };
-use datazen_runtime::application::RuntimeConnectionUseCases;
-use datazen_runtime::connection::DbSessionId;
 use std::sync::Arc;
 
 /// Step id of every metadata read.
@@ -28,20 +28,20 @@ const NO_PHYSICAL_HANDLE: &str =
 /// A metadata source that reads through Runtime sessions and the shared
 /// execution gateway.
 ///
-/// The source owns exactly two dependencies, both form-neutral: the Runtime
-/// facade (for the session-to-connection mapping) and the execution host (for
-/// the profile, the driver and the command itself).
+/// The source owns exactly two dependencies, both form-neutral: a consumer-defined
+/// session lookup (for the session-to-connection mapping) and the execution host
+/// (for the profile, the driver and the command itself).
 pub struct RuntimeSchemaContextSource {
-    runtime: Arc<RuntimeConnectionUseCases>,
+    lookup: Arc<dyn SessionConnectionLookup>,
     host: Arc<dyn ResourceExecutionHost>,
 }
 
 impl RuntimeSchemaContextSource {
     pub fn new(
-        runtime: Arc<RuntimeConnectionUseCases>,
+        lookup: Arc<dyn SessionConnectionLookup>,
         host: Arc<dyn ResourceExecutionHost>,
     ) -> Self {
-        Self { runtime, host }
+        Self { lookup, host }
     }
 
     /// The connection that owns a runtime session.
@@ -49,9 +49,8 @@ impl RuntimeSchemaContextSource {
     /// A closed or unknown session has no owner projection, and neither has a
     /// session that is no longer attached to its directory entry.
     fn connection_for_session(&self, session_id: &str) -> Result<String, String> {
-        self.runtime
-            .connection_id_for_session(&DbSessionId::new(session_id))
-            .map(|connection| connection.as_str().to_owned())
+        self.lookup
+            .connection_id_for_session(session_id)
             .ok_or_else(|| "Runtime session is unavailable".to_owned())
     }
 

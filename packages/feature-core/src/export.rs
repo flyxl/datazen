@@ -365,7 +365,7 @@ pub async fn write_data_file(
     );
 
     let (driver, read_only, safe_mode) = state.resolve_source(&request.db_session_id).await?;
-    datazen_runtime::sql_guard::check_sql(&sql, read_only, safe_mode)
+    datazen_kernel::sql_guard::check_sql(&sql, read_only, safe_mode)
         .map_err(CommandError::Validation)?;
 
     let mut sink = FileSink::create(dest)?;

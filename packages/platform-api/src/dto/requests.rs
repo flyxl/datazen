@@ -8,23 +8,21 @@
 //!
 //! 概要 §5.1 的硬约束一：身份**只能**由 adapter 构造的 `RequestContext` 提供，入口不得
 //! 从请求体读取 `organizationId` / `principalId`。所以本模块每个请求结构体都满足
-//! 「不含身份字段」，用用例签名上的 `&RequestContext` 承载身份（见 [`crate::sessions`]）。
+//! 「不含身份字段」，用用例签名上的 `&RequestContext` 承载身份（见 `datazen_application::ConnectionUseCases`）。
 //! `owner` 是 `OwnerRef`（枚举），不是自由文本：它表达**归属**，并且必须由 adapter 校验
 //! 「当前 client 确实是该 editor 的 owner」「该 job 确实属于已授权的 Job」（概要 §5.1 第三条），
-//! 校验逻辑在 [`crate::identity_policy`]。
+//! 校验逻辑在 `datazen_application::identity_policy`。
 //!
 //! ## 字段校验的边界
 //!
 //! * 字段「存在」：Rust 结构体没有 undefined，因此连接 §4 的「所有 `NamespaceTarget` 字段必传」
 //!   在 Rust 侧退化为「字段不可为空字符串」，见 [`validate_namespace_target`]。
-//! * 目标规范化（别名合并、driver 规范化、操作级要求）不在本模块，见 [`crate::target`]。
+//! * 目标规范化（别名合并、driver 规范化、操作级要求）不在本模块，见 `platform_api::target`。
 
-use datazen_platform_api::context::OwnerRef;
-use datazen_platform_api::dto::session::{SessionHandle, SessionState};
-use datazen_platform_api::id::{
-    AttachmentToken, ConnectionId, Counter, IdempotencyKey, RuntimeEpoch,
-};
-use datazen_platform_api::target::{ExecutionTarget, NamespaceTarget};
+use crate::context::OwnerRef;
+use crate::dto::session::{SessionHandle, SessionState};
+use crate::id::{AttachmentToken, ConnectionId, Counter, IdempotencyKey, RuntimeEpoch};
+use crate::target::{ExecutionTarget, NamespaceTarget};
 
 use crate::error::{ApiError, ApiErrorCode};
 
@@ -40,15 +38,15 @@ use crate::error::{ApiError, ApiErrorCode};
 pub fn validate_namespace_target(target: &NamespaceTarget) -> Result<(), ApiError> {
     for (layer, value) in [
         (
-            datazen_platform_api::target::TargetNamespaceLayer::Database,
+            crate::target::TargetNamespaceLayer::Database,
             target.database.as_ref(),
         ),
         (
-            datazen_platform_api::target::TargetNamespaceLayer::Catalog,
+            crate::target::TargetNamespaceLayer::Catalog,
             target.catalog.as_ref(),
         ),
         (
-            datazen_platform_api::target::TargetNamespaceLayer::Schema,
+            crate::target::TargetNamespaceLayer::Schema,
             target.schema.as_ref(),
         ),
     ] {
@@ -180,7 +178,7 @@ impl OpenSessionRequest {
     }
 
     /// 纯字段校验：connectionId / 命名空间 / 幂等键；`owner` 的可采信性见
-    /// [`crate::identity_policy::check_owner`]。
+    /// [`crate::policy::check_owner`]。
     pub fn validate(&self) -> Result<(), ApiError> {
         validate_connection_id(&self.initial_target.connection_id)?;
         validate_namespace_target(&self.initial_target.namespace)?;
@@ -413,12 +411,12 @@ pub fn ensure_session_executable(state: SessionState) -> Result<(), ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_platform_api::context::{OwnerRef, RequestContext};
-    use datazen_platform_api::id::{
+    use crate::context::{OwnerRef, RequestContext};
+    use crate::id::{
         AuthenticationSessionId, ClientInstanceId, DbSessionId, DelegationId, EditorSessionId,
         OrganizationId, PrincipalId, RequestId,
     };
-    use datazen_platform_api::target::TargetNamespaceLayer;
+    use crate::target::TargetNamespaceLayer;
     use std::collections::BTreeMap;
 
     fn code_only(source: &str) -> String {
@@ -685,8 +683,8 @@ mod tests {
     #[test]
     fn delegated_context_and_job_owner_round_trip() {
         let job_owner = OwnerRef::Job {
-            job_id: datazen_platform_api::id::JobId::new("job-1"),
-            stage_id: datazen_platform_api::id::StageId::new("stage-1"),
+            job_id: crate::id::JobId::new("job-1"),
+            stage_id: crate::id::StageId::new("stage-1"),
         };
         let request = OpenSessionRequest::new(target(), job_owner, IdempotencyKey::new("idem-5"));
         let encoded = serde_json::to_string(&request).expect("encode");

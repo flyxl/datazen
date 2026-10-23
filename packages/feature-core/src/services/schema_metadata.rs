@@ -18,7 +18,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::error::FeatureError as CommandError;
-use datazen_runtime::schema_cache::SchemaCache;
+use datazen_kernel::schema_cache::SchemaCache;
 
 pub fn is_metadata_command(command: &str) -> bool {
     matches!(

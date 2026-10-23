@@ -6,10 +6,12 @@ description = "Data Synchronization domain engine for DataZen: gate, compare, ch
 license = "GPL-3.0-or-later"
 
 [dependencies]
+# 机制内核（job / budget / sql_guard / schema_cache / driver_registry）：领域包只用机制，
+# 不依赖「连接资源运行时」整包（DDD 计划 P2 的落点）。
+datazen-kernel = { workspace = true }
 datazen-driver-api = { workspace = true }
 datazen-migration-common = { workspace = true }
 datazen-platform-api = { workspace = true }
-datazen-runtime = { path = "../runtime" }
 async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }

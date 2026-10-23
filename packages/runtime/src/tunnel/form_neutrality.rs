@@ -143,11 +143,35 @@ fn violations(source: &str, forbidden: &[String]) -> Vec<(String, Vec<String>)> 
     out
 }
 
-/// 磁盘上内核 crate `src/` 里的全部 `.rs` 源码（相对 crate 根，正斜杠分隔）。
+/// 被扫的共享 crate 根：本 crate 与 `datazen-kernel`。
+///
+/// 机制内核（job / budget / sql_guard / schema_cache / driver_registry）从本 crate
+/// 分出去以后，「形态中立」的理由一字未变——它同时服务多种形态。若闸门只扫本 crate，
+/// 拆分就会安静地把那一片移出覆盖范围，而闸门仍然全绿（少扫等于没扫）。
+fn scanned_crates() -> Vec<(&'static str, std::path::PathBuf)> {
+    let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
+    let kernel = here.join("../kernel");
+    vec![("runtime", here), ("kernel", kernel)]
+}
+
+/// 两个共享 crate 的 `src/` 下全部 `.rs` 源码，形如 `runtime:src/job/mod.rs`。
 fn source_files_on_disk() -> Vec<String> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut out = Vec::new();
-    collect_rs(&root.join(SRC), root, &mut out);
+    for (label, root) in scanned_crates() {
+        assert!(
+            root.is_dir(),
+            "闸门找不到 {label} crate 的目录 {root:?} —— 少扫一片比不扫更危险：它还会报绿"
+        );
+        let mut files = Vec::new();
+        collect_rs(&root.join(SRC), &root, &mut files);
+        assert!(
+            !files.is_empty(),
+            "{label} crate 的 src/ 下一个源码文件都没枚举到 —— 递归枚举断了"
+        );
+        for rel in files {
+            out.push(format!("{label}:{rel}"));
+        }
+    }
     out.sort();
     out
 }
@@ -178,6 +202,17 @@ fn read_source(rel: &str) -> String {
         .unwrap_or_else(|err| panic!("读不到 {rel}：{err}（闸门必须真的看见源码）"))
 }
 
+/// 读被扫 crate 里的一处源码：`label` 与 [`scanned_crates`] 的标签一致。
+fn read_scanned(label: &str, rel: &str) -> String {
+    let (_, root) = scanned_crates()
+        .into_iter()
+        .find(|(known, _)| *known == label)
+        .unwrap_or_else(|| panic!("未登记的 crate 标签 {label}"));
+    let path = root.join(rel);
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("读不到 {label}:{rel}：{err}（闸门必须真的看见源码）"))
+}
+
 /// 拼出一个**带形态名**的码。
 ///
 /// 拆开拼的理由与 [`forbidden_words`] 相同：闸门不能在自己的源码里留下完整的
@@ -199,7 +234,7 @@ fn the_kernel_has_no_form_name_in_its_code_or_literals() {
     let forbidden = forbidden_words();
     let mut bad: Vec<String> = Vec::new();
     for rel in source_files_on_disk() {
-        let source = read_source(&rel);
+        let source = read_scanned_file(&rel);
         for (where_, hit) in violations(&source, &forbidden) {
             bad.push(format!("{rel}: {where_} → {hit:?}"));
         }
@@ -314,6 +349,14 @@ fn the_scanner_actually_sees_the_stable_codes() {
     }
 }
 
+/// 按 `label:rel` 读源码。
+fn read_scanned_file(labeled: &str) -> String {
+    let (label, rel) = labeled
+        .split_once(':')
+        .unwrap_or_else(|| panic!("扫描清单里的条目缺 crate 标签：{labeled}"));
+    read_scanned(label, rel)
+}
+
 #[test]
 fn the_scan_covers_the_whole_kernel_crate() {
     // 「没发现问题」必须建立在「确实看了全部文件」之上。
@@ -324,11 +367,15 @@ fn the_scan_covers_the_whole_kernel_crate() {
         files.len()
     );
     for required in [
-        "src/tunnel/route.rs",
-        "src/tunnel/form_neutrality.rs",
-        "src/artifact/mod.rs",
-        "src/budget/quotas.rs",
-        "src/connection/testing/fixtures.rs",
+        // 连接资源运行时（本 crate）
+        "runtime:src/tunnel/route.rs",
+        "runtime:src/tunnel/form_neutrality.rs",
+        "runtime:src/artifact/mod.rs",
+        "runtime:src/connection/testing/fixtures.rs",
+        // 机制内核（`datazen-kernel`）：拆出去的那一片也必须被扫
+        "kernel:src/budget/quotas.rs",
+        "kernel:src/job/host.rs",
+        "kernel:src/sql_guard/mod.rs",
     ] {
         assert!(files.iter().any(|f| f == required), "闸门没覆盖 {required}");
     }

@@ -8,12 +8,12 @@
 //!    through the SSH session and pipe data bidirectionally.
 //! 5. Return the local port so DB drivers can connect to 127.0.0.1:<local>.
 
-use crate::known_hosts_repository::KnownHostsRepository;
 use crate::ssh_known_hosts::{
     host_key_id, known_host_entry_from_key, mismatch_error_message, verify_host_key,
     HostKeyDecision, KnownHostEntry,
 };
 use datazen_driver_api::{DriverError, SshTunnelConfig};
+use datazen_platform_api::ports::known_hosts::KnownHostsRepository;
 use russh::client::{self, AuthResult};
 use russh::keys::{self, ssh_key, PrivateKeyWithHashAlg};
 use std::collections::HashMap;
@@ -440,9 +440,9 @@ mod tests {
         fn save(
             &self,
             entries: &HashMap<String, KnownHostEntry>,
-        ) -> Result<(), crate::known_hosts_repository::KnownHostsRepositoryError> {
+        ) -> Result<(), datazen_platform_api::error::PortError> {
             let mut guard = self.entries.lock().map_err(|_| {
-                crate::known_hosts_repository::KnownHostsRepositoryError::Unavailable(
+                datazen_platform_api::error::PortError::BackendUnavailable(
                     "known hosts lock poisoned".into(),
                 )
             })?;

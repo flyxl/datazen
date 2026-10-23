@@ -21,7 +21,7 @@ use datazen_feature_core::data_browsing::{
     ConnectionFacts, PendingRowChange, RowChangeTableContext, TableColumnSource,
 };
 use datazen_feature_core::error::FeatureError;
-use datazen_runtime::schema_cache::CachedColumns;
+use datazen_kernel::schema_cache::CachedColumns;
 use std::collections::BTreeMap;
 use std::time::Instant;
 
