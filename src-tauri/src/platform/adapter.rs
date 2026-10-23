@@ -41,8 +41,12 @@ pub enum AssemblyState {
     IdentityReady,
     /// 第 6 步（Runtime）已注入，第 7 步尚未注入。
     AwaitingApplicationServices,
-    /// §6.2 九步全部落地：第 7 步的 `ApplicationServices` 已组装，且**持有**注入的
+    /// §6.2 第 7 步已落地：`ApplicationServices` 已组装，且**持有**注入的
     /// 形态中立存储端口（端口是构造参数 ⇒ 不存在「组装了但没注入」这种中间态）。
+    ///
+    /// **不代表第 8 步内部的可选接线全在**：执行身份解析器与结果制品存储可以缺席，
+    /// 它们不进本枚举（那会让 [`AssemblyState::missing_steps`] 重新说谎），而由
+    /// [`PlatformAdapter::degraded_capabilities`] 单独枚举。
     FullyWired,
 }
 
@@ -199,6 +203,42 @@ impl PlatformAdapter {
         }
     }
 
+    /// 装配**降级**项：内核已装（`services` 在），但某项可选接线缺席。
+    ///
+    /// 与 [`Self::assembly_state`] 一样**派生自注入事实**（读 `OnceLock`），不另存
+    /// 一份布尔/错误表：两份事实必然漂移，而这里漂移的代价是「日志说装好了、实际用不了」。
+    ///
+    /// 未跑过 `inject` 时返回空表——「还没装」不是「降级」，两者用
+    /// [`assembly_state`](Self::assembly_state) 区分。
+    ///
+    /// 降级**不**改 `assembly_state()`：那台状态机如实描述 §6.2 第 6/7 步是否落地，
+    /// 而本节描述第 8 步内部哪条可选接线没接上。两件事混进一个枚举，会让
+    /// 「缺哪一步、补完到哪」这张表重新变成谎话（见 [`AssemblyState::missing_steps`]）。
+    pub fn degraded_capabilities(&self) -> Vec<&'static str> {
+        if self.services.get().is_none() {
+            return Vec::new();
+        }
+        let mut degraded = Vec::new();
+        if self.identities.get().is_none() {
+            degraded.push("§6.2-8 执行身份解析器（宿主主密钥不可用）");
+        }
+        if self.artifacts.get().is_none() {
+            degraded.push("§6.2-8 结果制品存储（result-artifacts 不可打开）");
+        }
+        degraded
+    }
+
+    /// 启动期把降级项打出来：缺席能力**必须**可观测，否则只能靠撞一次报错才发现。
+    fn log_degraded_capabilities(&self) {
+        let degraded = self.degraded_capabilities();
+        if !degraded.is_empty() {
+            tracing::warn!(
+                degraded = ?degraded,
+                "平台装配存在降级项：内核（Runtime / ApplicationServices）已可用，缺席项只关闭各自能力"
+            );
+        }
+    }
+
     pub fn identity(&self) -> &DesktopIdentity {
         &self.identity
     }
@@ -267,6 +307,13 @@ impl PlatformAdapter {
     /// （桌面实现是存储层本身），known-hosts 走 `KnownHostsRepository`（桌面实现读
     /// `{appData}/ssh_known_hosts.json`）。会话后端需要它们来在建连时解引用
     /// `tunnelId` 并启动隧道。
+    ///
+    /// ## 返回值只表达「装配冲突」
+    ///
+    /// 可选接线（执行身份解析器、结果制品存储）失败**不再**让本函数返回 `Err`：它们
+    /// 降级为缺席能力，见下方「失败半径」注释与
+    /// [`PlatformAdapter::degraded_capabilities`]。`Err` 只剩「同一进程重复注入不同
+    /// 实例」这类编程错误——启动装配对它记 error 是对的，因为那说明有人装配了两次。
     pub fn inject(
         &self,
         store: Arc<crate::store::DesktopRepository>,
@@ -279,36 +326,48 @@ impl PlatformAdapter {
         }
         let profiles = Arc::new(super::repositories::DesktopProfiles::new(store.clone()));
         let policy = Arc::new(super::policy::DesktopPolicy::new(store.clone()));
-        // 执行身份解析端口（`IdentityResolver`）。派生盐取自宿主主密钥：安装级固定、
-        // 跨重启稳定，客户端拿不到就算不出身份键。
+        // ---- 失败半径：内核 vs 可选接线 --------------------------------------
         //
-        // 取不到主密钥就**不**接线：这里失败关闭，而不是换一个可预测的常量盐。
+        // 本函数装配的东西分两档，两档的失败语义**不同**，改动前先读完这段。
         //
-        // **失败半径要说准**：下面这个 `?` 让 `inject` **整体**返回 `Err`，于是
-        // `profiles` / `identities` / `runtime` / `services` 等**一个都装不上**——
-        // 缺席的不是「仅身份解析能力」，而是**整个平台装配**。启动装配
-        // （`bootstrap/app_state.rs`）对这个错误只 `tracing::error!` 记一条，
-        // 应用不崩，但此后所有依赖平台的调用都会**失败**：IPC 表面统一是
-        // `NotConfigured`（`platform/error.rs` 把 `ServiceUnavailable` 与
-        // `CapabilityUnsupported` 收敛到同一个码），内部 `ApiError` 码**多数**是
-        // `ServiceUnavailable`——`runtime()` / `profiles()` / `live_source()` /
-        // `artifact_store()` / `identity_resolver()` 这 5 个访问器都是它，
-        // 受 `inject` 失败影响的访问器里，`require_application_services()` 与
-        // `native_tools()` 返回 `CapabilityUnsupported`（另有 `require_bridge()` 与
-        // `begin_owned_call()` 也返回该码，但它们不由 `inject` 决定）。
-        let identities = Arc::new(
-            super::execution_identity::DesktopIdentityResolver::for_desktop(
-                store.clone(),
-                profiles.clone(),
-                policy.clone(),
-            )
-            .map_err(|error| {
-                ApiError::new(
-                    ApiErrorCode::ServiceUnavailable,
-                    format!("execution identity resolver unavailable: {error}"),
-                )
-            })?,
-        );
+        // * **能力内核**：`profiles` / `policy` / `backend` / `live` / `runtime` /
+        //   `target_metadata` / `ApplicationServices`。它们**没有失败分支**
+        //   （构造器不返回 `Result`），装不上只可能是「重复注入」这类编程错误。
+        //   内核一装好，`require_application_services()` 就可用——读写设置、列连接、
+        //   建连这些主路径**不再**受下面两项牵连。
+        // * **可选接线**：执行身份解析器（派生盐取自宿主主密钥）与结果制品存储
+        //   （`{dataDir}/result-artifacts`）。两者各自失败时**只关闭自己那一项**：
+        //   对应访问器返回 `ServiceUnavailable`，缺席项由
+        //   [`PlatformAdapter::degraded_capabilities`] 可枚举，启动各记一条 warn。
+        //
+        // ## 为什么不再让它们把整个装配一起拖垮（旧形状的缺陷）
+        //
+        // 早先这两个 `?` 让 `inject` **整体**返回 `Err`：主密钥取不到、或制品目录
+        // 打不开，`profiles` / `runtime` / `services` 就**一个都装不上**，于是
+        // **所有**依赖平台的 IPC 统一变成 `NotConfigured`——包括只是读写设置。
+        // 而实测 `identity_resolver()` 在**生产路径零调用方**（全仓只有
+        // `adapter_tests` 调它）：一条没人用的端口把整个平台拖下水，失败半径与
+        // 实际影响面完全不成比例。制品存储同理——它只影响结果制品的持久化。
+        //
+        // **失败关闭的语义一点没松**：缺哪一项，用哪一项就报哪一项的错（访问器
+        // 逐个报 `ServiceUnavailable`），也**不**给旧共享 session 或任何回落路径开门。
+        // 变成 `Err` 的只剩「同一进程重复注入」这类真正的装配冲突。
+        let identities = match super::execution_identity::DesktopIdentityResolver::for_desktop(
+            store.clone(),
+            profiles.clone(),
+            policy.clone(),
+        ) {
+            // 派生盐取自宿主主密钥：安装级固定、跨重启稳定，客户端拿不到就算不出身份键。
+            // 取不到主密钥就**不**接线：失败关闭，而不是换一个可预测的常量盐。
+            Ok(identities) => Some(Arc::new(identities)),
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    "execution identity resolver unavailable; execution identity unsupported"
+                );
+                None
+            }
+        };
         let backend = Arc::new(super::session_backend::DesktopSessionBackend::new_scoped(
             registry.clone(),
             store.clone(),
@@ -320,17 +379,20 @@ impl PlatformAdapter {
         ));
         let native =
             super::native_tool::deployment::NativeDeployment::from_build(backend.physical_budget());
-        let artifacts = Arc::new(
-            datazen_runtime::artifact::FileArtifactRepository::open(
-                store.data_dir().join("result-artifacts"),
-            )
-            .map_err(|_| {
-                ApiError::new(
-                    ApiErrorCode::ServiceUnavailable,
-                    "artifact storage initialization failed",
-                )
-            })?,
-        );
+        // 制品存储同上：打不开只关闭「结果制品持久化」这一项，会话与设置照常。
+        // 打不开的真实原因通常是 `{dataDir}` 不可写或同名路径不是目录——都是环境事实，
+        // 不是「平台装配坏了」。
+        let artifacts = match datazen_runtime::artifact::FileArtifactRepository::open(
+            store.data_dir().join("result-artifacts"),
+        ) {
+            Ok(artifacts) => Some(Arc::new(artifacts)),
+            Err(_) => {
+                tracing::warn!(
+                    "artifact storage initialization failed; result artifacts unsupported"
+                );
+                None
+            }
+        };
         let live = Arc::new(super::live_source::DesktopLiveConnectionSource::new(
             registry.clone(),
             store.clone(),
@@ -365,13 +427,23 @@ impl PlatformAdapter {
             )
         })?;
         let sink = runtime.result_sink();
-        sink.with_artifact_store(artifacts.clone())?;
-        self.artifacts.set(artifacts).map_err(|_| {
-            ApiError::new(
-                ApiErrorCode::ContextConflict,
-                "artifact storage already injected",
-            )
-        })?;
+        // 制品存储缺席时**不接** sink：接一个「永远拒绝发布」的空壳会让出向端口看起来
+        // 就绪，实际第一次发布才炸。缺席由 `artifact_store()` 报 `ServiceUnavailable`
+        // 与 `degraded_capabilities()` 表达，与是否接 sink 是同一个事实。
+        if let Some(artifacts) = artifacts {
+            sink.with_artifact_store(artifacts.clone()).map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ContextConflict,
+                    "artifact store already attached to the result sink",
+                )
+            })?;
+            self.artifacts.set(artifacts).map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ContextConflict,
+                    "artifact storage already injected",
+                )
+            })?;
+        }
         let export_sink = sink.clone();
         backend
             .set_export_output_authority(Arc::new(move |id| export_sink.has_export_output(id)))
@@ -439,12 +511,14 @@ impl PlatformAdapter {
         self.profiles.set(profiles).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "profiles already injected")
         })?;
-        self.identities.set(identities).map_err(|_| {
-            ApiError::new(
-                ApiErrorCode::ContextConflict,
-                "identity resolver already injected",
-            )
-        })?;
+        if let Some(identities) = identities {
+            self.identities.set(identities).map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ContextConflict,
+                    "identity resolver already injected",
+                )
+            })?;
+        }
         self.driver_registry.set(registry).map_err(|_| {
             ApiError::new(
                 ApiErrorCode::ContextConflict,
@@ -473,6 +547,7 @@ impl PlatformAdapter {
         // 是为了让「装配已 FullyWired」与「回收器已在跑」不出现反序——反序时
         // 会出现一个会话已建、回收器还没起的窗口，而那段时间的空闲判定完全缺失。
         self.start_idle_reclaimer();
+        self.log_degraded_capabilities();
         self.log_runtime_wiring();
         Ok(())
     }

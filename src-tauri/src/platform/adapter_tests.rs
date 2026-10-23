@@ -114,6 +114,79 @@ async fn injection_wires_the_storage_ports_into_the_application_services() {
         Arc::ptr_eq(&services.settings, &expected_settings),
         "应用服务持有的设置仓储必须是宿主注入的那一个实例"
     );
+    // 全部接线成功时没有任何降级项：降级表不是「永远非空」的摆设。
+    assert!(
+        adapter.degraded_capabilities().is_empty(),
+        "顺利装配后不得报降级：{:?}",
+        adapter.degraded_capabilities()
+    );
+    assert!(
+        adapter.identity_resolver().is_ok(),
+        "临时目录 + File keyring 下执行身份解析器必须装配成功"
+    );
+}
+
+/// 降级装配：**可选接线**失败只关闭它自己，内核照常可用。
+///
+/// 失败半径的实测证据：`{dataDir}/result-artifacts` 被同名文件占住时（真实的
+/// 「目录不可用」，不是 mock 出来的错误），`inject` 不得返回 `Err`；
+/// `require_application_services()` 必须仍然可用——设置、连接列表、建连全走它——
+/// 只有 `artifact_store()` 报错，且缺席项在 `degraded_capabilities()` 里可枚举。
+///
+/// 旧形状（`?`）下这里会让**整个**平台装配失败：`profiles` / `runtime` / `services`
+/// 一个都装不上，于是所有依赖平台的 IPC 统一变成 `NotConfigured`——把「制品存不了」
+/// 放大成「什么都用不了」。
+#[tokio::test]
+async fn optional_wiring_failure_degrades_only_its_own_capability() {
+    use crate::store::{DesktopRepository, KeyBackend};
+    use datazen_platform_api::ports::tunnel::TunnelRepository;
+
+    let temp = tempfile::tempdir().expect("临时目录");
+    let store = Arc::new(
+        DesktopRepository::init_with_path(temp.path(), KeyBackend::File)
+            .await
+            .expect("临时存储"),
+    );
+    let tunnels: Arc<dyn TunnelRepository> = store.clone();
+    // `create_dir_all` 撞上同名文件必然失败。
+    std::fs::write(temp.path().join("result-artifacts"), b"not a directory").expect("占位文件");
+
+    let adapter = adapter();
+    adapter
+        .inject(
+            store,
+            Arc::new(datazen_runtime::driver_registry::DriverRegistry::new()),
+            tunnels.clone(),
+            crate::platform::known_hosts::desktop_known_hosts_repository(temp.path()),
+        )
+        .expect("可选接线失败不得让 inject 返回 Err：那是降级，不是装配冲突");
+
+    // 内核在：第 7 步如实落地，应用服务可取。
+    assert_eq!(adapter.assembly_state(), AssemblyState::FullyWired);
+    let services = adapter
+        .require_application_services()
+        .expect("内核必须可用：设置与连接列表都走这里");
+    assert!(Arc::ptr_eq(&services.tunnels, &tunnels));
+
+    // 缺席项可枚举，且只列真正缺席的那一项（身份解析器在场）。
+    assert_eq!(
+        adapter.degraded_capabilities(),
+        vec!["§6.2-8 结果制品存储（result-artifacts 不可打开）"],
+        "降级项必须精确到缺席的那一项，不能把在场项也算进去"
+    );
+    assert!(
+        adapter.identity_resolver().is_ok(),
+        "身份解析器不该被制品存储的失败牵连"
+    );
+
+    // 用哪一项报哪一项的错：内部码不变，IPC 表面仍收敛到 NotConfigured。
+    let err = adapter.artifact_store().err().expect("制品存储必须缺席");
+    assert_eq!(err.code, ApiErrorCode::ServiceUnavailable);
+    let mapped = crate::platform::error::into_command_error(err);
+    assert!(
+        matches!(mapped, crate::commands::CommandError::NotConfigured(_)),
+        "制品存储缺席在 IPC 表面必须收敛到 NotConfigured，实际 {mapped:?}"
+    );
 }
 
 #[test]
@@ -299,17 +372,19 @@ fn profile_view_defaults_are_placeholders_and_must_not_be_used_on_the_desktop_pa
     assert_ne!(real.config_revision, real.credential_revision);
 }
 
-/// `inject` 注释写下的失败半径，钉成可执行断言。
+/// 各访问器在**未装配**状态下的错误码，钉成可执行断言。
 ///
-/// `adapter.rs` 里 `inject` 的注释写明：装配失败后，依赖平台的访问器返回的
-/// `ApiError` 码**多数**是 `ServiceUnavailable`——`runtime()` / `profiles()` /
-/// `live_source()` / `artifact_store()` / `identity_resolver()` 这 5 个都是它；
+/// `adapter.rs` 的访问器逐个报错：`runtime()` / `profiles()` / `live_source()` /
+/// `artifact_store()` / `identity_resolver()` 缺项时是 `ServiceUnavailable`；
 /// `require_application_services()` 与 `native_tools()` 是 `CapabilityUnsupported`。
-/// 两者在 IPC 表面都收敛成 `CommandError::NotConfigured`
-/// （`platform/error.rs` 的窄适配）。
+/// 两者在 IPC 表面都收敛成 `CommandError::NotConfigured`（`platform/error.rs` 的窄适配）。
 ///
-/// 这条把那句话从**注释**变成**断言**：改任何一个访问器的错误码、或把窄适配的
-/// 收敛档位改掉，本条都会红。注释本身不��被验，行为才是。
+/// 这条把错误码从**注释**变成**断言**：改任何一个访问器的错误码、或把窄适配的
+/// 收敛档位改掉，本条都会红。注释本身不被校验，行为才是。
+///
+/// **降级**那一格（同样的 `ServiceUnavailable`，但内核仍在）由
+/// `optional_wiring_failure_degrades_only_its_own_capability` 覆盖——两者是
+/// 不同状态，不能用一个断言代替另一个。
 #[test]
 fn 未注入时各访问器的错误码与注释写的一致() {
     let adapter = adapter();
