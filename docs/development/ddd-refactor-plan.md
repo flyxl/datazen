@@ -116,7 +116,7 @@ flowchart TB
 | R4 | `commands` 不得直读装配对象：只经用例服务或请求上下文 |
 | R5 | 一个聚合一个仓储端口；实现按聚合拆文件，不按落盘文件 |
 | R6 | 接口层不含业务规则：出现分支规则即搬去领域服务 |
-| R7 | 单文件 ≤ 800 行（现为纪律，P5 起转 CI 硬门禁） |
+| R7 | 单文件 ≤ 800 行（**纪律，不转 CI 门禁**——2026-10-23 按 AGENTS.md 订正） |
 | R8 | 新增端口必须有实现或用例引用，否则不入库（治「半截端口」） |
 | R9 | 依赖方向门禁脚本纳入 CI，与现有 boundary 门禁同级 |
 
@@ -233,6 +233,48 @@ flowchart TB
 
 - 顺序建议：连接管理（契约最全、测试最多）→ schema-diff → sync → transfer → ai/workflow。
 - 每个 feature：commands 里抽出用例服务到 `application`，宿主只保留 IPC 壳。
+- **已落地的第一条命令族（2026-10-23，命名视图）**：`ApplicationServices` 增加
+  `named_views: Arc<dyn NamedViewRepository>`，`commands/named_views.rs` 的三处
+  `state.store.as_ref()` 全部改走聚合，**宿主 store 在该文件的生产半边出现 0 次**
+  （新增断言 `the_command_shell_reads_the_aggregate_not_the_host_store` 钉住）。
+  连带的两条结构性事实：
+  - `application` 现在**依赖** `datazen-feature-core`。这不是回摆：P0 断环 + P2 收官之后
+    `APP → feature-core → kernel/platform-api` 是正确方向，而「用例层不得依赖领域包」
+    那条 manifest 禁令的理由（`APP → 领域包 → RT → APP` 的 Cargo 环）已经不存在。
+    该禁令改写成新断言 `the_crate_may_depend_on_the_shared_feature_layer_but_not_on_the_runtime`
+    —— 保留 `datazen-runtime` / `tauri` 两条真禁令，环的判定交给门禁按**当前**图求值。
+  - `scripts/check-ddd-layers.mjs` 的镜像不变量不再硬编码「消费者一定依赖 application」，
+    而是**按当前图求值**（消费者此刻确实依赖 application 时才判环），并补了双向自证
+    （仍互依赖的合成图必须报警、单向图必须不报警）。
+- **第二条命令族（2026-10-23，仪表盘）**：聚合增加
+  `dashboard: Arc<dyn DashboardRepository>` 与 `dashboard_runs: Arc<dyn DashboardRunRepository>`
+  （两个端口都由 `packages/feature-core/src/dashboard/` 定义，桌面实现都是 `AppDb` ⇒
+  端口定义在领域包、实现在宿主，聚合只拿 trait 对象）。`commands/dashboard.rs` 的 14 处
+  `state.store.app_db()` 中 **8 处归位聚合**（仓储 6 + 运行历史 2），残留 6 处**有名字**的
+  形态专属用途（组件创建 3、导入导出 2、手工执行 1），由断言
+  `the_command_shell_reads_the_aggregate_and_names_the_host_residue` 钉住。
+  全仓生产半边计数 101 → 93。
+- **第三条命令族（2026-10-23，连接目录）**：这一族与上两族的差别是**端口住在哪里**。
+  连接配置的形状 `ConnectionConfig` 住在 `datazen-driver-api`（每个形态都已链接的那一份，
+  且是 IPC 载荷与前端表单的唯一形状），所以端口没有进领域包，而是进
+  `datazen_platform_api::ports::connection_catalog`——`platform-api` 本来就依赖 driver-api
+  （`TunnelRepository` 同理），端口里出现 `ConnectionConfig` 不构成新依赖。
+  `ApplicationServices` 增加 `connections: Arc<dyn ConnectionCatalog>`，桌面实现是
+  `DesktopRepository`；`commands/connection.rs` 与 `commands/connection_import/ipc.rs`
+  生产半边 `state.store` 归 0（断言 `the_command_shell_reads_the_aggregate_not_the_host_store`
+  钉住 8 处取聚合、12 处端口调用），全仓生产半边 93 → 84。
+  两条**当时没被写进表格的隐账**在本族被结清：`duplicate_connection_impl` 与
+  `reorder_connections` 的 `state.store` 是跨行书写的，逐行 grep 数不到；真实处数是 11 + 2。
+   另外把「端口调用 → 命令错误」的映射收口成 `commands/port_call.rs::port_cmd`
+   （`tunnel.rs` 的同名助手改为转调它），避免每个命令族各抄一份 `PortError` 映射。
+- **第四条命令族（2026-10-23，设置与分组）**：分组读写复用连接目录聚合的
+  `ConnectionCatalog::groups/save_groups`；完整 `AppSettings` 读写复用设置仓储的 opaque
+  document 方法，typed 的 `SharedSettings` 仍由同一仓储提供。这样主题、键位、执行策略等
+  跨形态字段继续走 `SharedSettings`，而路径、onboarding 等桌面字段不被复制进中立 DTO。
+  `commands/config.rs` 的生产半边 `state.store` **12 → 4**，`app_archive.rs` **3 → 2**，
+  `window.rs` **2 → 0**；保留的六处仅为 §5.1.3 的 `data_dir()`，另有一处钥匙导出仍待
+  宿主密钥门面。全仓生产半边 **84 → 73**。`shared_settings_commands_read_the_aggregate_not_the_host_store`
+  同时钉住设置/分组不得直读 store 与四条设置读写路径必须经过聚合。
 - **验收**：该 feature 的 `commands` 文件行数下降 ≥50%；`grep state.store.` 在该 feature 目录降为 0；IPC 签名与返回类型不变（用既有前端类型做回归）。
 - **回滚**：按 feature 分批，每批独立 PR。
 - **风险**：双轨期重复逻辑 → 冻结规则：新代码必须进用例层，旧代码只减不增。
@@ -243,11 +285,17 @@ flowchart TB
 - **验收**：请求期直读计数下降；`app_state_shape_tests.rs` 的字段不变式随迁移更新。
 - **风险**：`AppState` 被 397 处引用，需按命令模块分批。
 
-### P5 仓储规整 + 规模门禁
+### P5 仓储规整 + 巨型文件按职责拆分
+
+> **R7 的口径在 2026-10-23 改过一次，这里记下为什么改。** 原计划把「单文件 ≤ 800 行」做成
+> CI 行数门禁；后来项目规则（`AGENTS.md`「单文件规模与模块拆分」）明确写了**不设行数门禁**：
+> 超长文件是耦合度信号，属于评审判断，行数硬门禁只会逼出「拆成两个互相补位的大文件」这种
+> 假拆分。因此 R7 保留为**纪律**，P5 的验收改成「按职责拆 + 拆完的模块有独立测试与文档」。
 
 - `DesktopRepository` 按聚合拆（settings / tunnels / history / app_db 各自仓储实现）。
-- 6 个超 800 行文件拆分；`R7` 转 CI 硬门禁。
-- **验收**：`ls src-tauri/src/store/*.rs` 单文件 ≤800；CI 脚本对超标文件失败。
+- 6 个超 800 行文件按职责拆分（最大 `packages/data-sync/src/execute.rs` 1,858 行）。
+- **验收**：`src-tauri/src/store/*.rs` 每个文件只承载一个聚合；拆分后的模块各自有测试，
+  且 `docs/architecture/` 里的职责表述与实际文件一致。**不新增行数门禁脚本**。
 
 ## 6. 不变量与禁区
 

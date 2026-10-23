@@ -127,7 +127,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 搬走：`src-tauri/src/commands/config.rs` 的两处 `SettingsService::new(state.store.as_ref())`（`get_shared_settings` / `save_shared_settings`）改为 `crate::platform::ipc::require_application_services(state.inner())?` + `ApplicationServices::settings_service()`；错误映射逐字不变（`Internal("Unable to read settings")` / `Validation(message)` / `Internal("Unable to persist settings")`）。`save_shared_settings` 尾部的 `redis_flush_gate::sync_from_settings(&state.store.get_settings().await)` **保留**：它读的是宿主 `AppSettings`，不是形态中立的共享设置，不在本期范围。
 
-`AppState` 少掉：**0 个字段**。生产半边的 `state.store.` 计数（口径：`src-tauri/src` 下 `.rs`、排除 `*_tests.rs`、在首个 `#[cfg(test)]` 处截断）从 **115 减到 113**，其中 `commands/config.rs` 由 **14 减到 12**。早先本节写的「145 → 143」是**含测试半边的宽口径**（同一时刻宽口径实测亦为 143），不可与本期数字直接相减。
+`AppState` 少掉：**0 个字段**。生产半边的 `state.store.` 计数（口径：`src-tauri/src` 下 `.rs`、排除 `*_tests.rs`、在首个 `#[cfg(test)]` 处截断）从 **106 减到 104**，其中 `commands/config.rs` 由 **14 减到 12**。早先本节写的「145 → 143」是**含测试半边的宽口径**（同一时刻宽口径实测亦为 143），不可与本期数字直接相减。
 
 独立验收（已实测）：`cargo test -p datazen --lib` **1458 passed / 0 failed**（EXIT=0）；新增 `commands::config::tests::shared_settings_commands_read_the_aggregate_not_the_host_store`——断言生产半边里 `SettingsService::new(` 出现 0 次、`state.store.as_ref()` 出现 0 次、`settings_service()` 出现 2 次、`state.store` 出现 12 次；`src-tauri/src/platform/ipc.rs` 的 15 条 `FROZEN_SIGNATURES` 一字未改。
 
@@ -234,13 +234,70 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 `src-tauri/src/platform/{adapter,session_backend,known_hosts}.rs` 与测试装置）。本机钥匙串 /
 `{appData}/ssh_known_hosts.json` 的文件 I/O 仍在宿主实现里，**不进**中立层。
 
-**第六步——`AppState.store` 的 145 处归位（按命令族分期）**
+**第六步——`AppState.store` 的归位（按命令族分期；基线 145 处，本期开工时生产半边 104 处）**
 
 搬走：`state.store`（`Arc<DesktopRepository>`）的 145 处访问，按命令族分期迁到 application 层的用例上。命令族与当前访问分布（实测，生产文件）：dashboard 16、config 14、ai/* 合计 27（其中 generate.rs 7）、connection 7、connection_import 6、monitor 6（scheduled 3 + grants 3）、history 3、tray 3、mcp/prompts 3、app_archive 3 等。
 
-`AppState` 少掉：**1 个字段**（`store`），字段数 20 → **19**；`state.store` 的访问数从 145 减到 **0**。
+`AppState` 少掉：**1 个字段**（`store`），字段数 23 → **22**；`state.store` 的访问数从 145（含测试的
+宽口径基线）减到 **0**——生产半边口径是 104 → 0（见上「进度」段的计数规则）。
+
+**进度（2026-10-23）**：第三族「连接目录」已落地——新端口
+`datazen_platform_api::ports::ConnectionCatalog`（`list` / `get` / `save` / `delete` /
+`reorder` / `touch_last_connected_at` / `groups` / `save_groups`，全部带
+`OrganizationScope`；词汇表直接复用 `datazen_driver_api::ConnectionConfig`，不另造投影），
+`ApplicationServices` 持 `connections: Arc<dyn ConnectionCatalog>`，桌面实现
+`DesktopRepository`。`commands/connection.rs` 与 `commands/connection_import/ipc.rs`
+的生产半边 `state.store` 归 0（断言 `the_command_shell_reads_the_aggregate_not_the_host_store`），
+全仓生产半边计数 **93 → 84**。同时把 `PortError → CommandError` 的映射与脱敏日志收口到
+`src-tauri/src/commands/port_call.rs`（`tunnel.rs` 的同名助手改为转调）。
+**残留失败面**：与隧道 / known-hosts / 仪表盘同源——聚合拿不到（
+`DesktopIdentity::from_desktop_user` 取不到本机用户名）时，连接列表 / 保存 / 删除 / 导入
+与其它已归位的族一样返回 `NotConfigured`，而不是「这一族还能用」。这是 D1 那一档的既有事实，
+本族只是把范围扩大，**没有**给命令留 `state.store` 后门。
+
+**第四族「设置与分组」（2026-10-23，已落地）**：`commands/config.rs` 的分组读写改走
+`ApplicationServices.connections`（连接目录端口已经把分组定义为同一聚合的整表语义）；完整
+`AppSettings` 的读写改走 `ApplicationServices.settings_service()`。`SettingsRepository` 保留
+`SharedSettings` 的 typed projection，同时增加 opaque full-document 方法——路径、onboarding
+与其他桌面字段仍由宿主的 `AppSettings` 负责反序列化，不把桌面 DTO 复制进中立包。共享设置写入
+后的 Redis gate 同样改为从聚合重新读取完整设置，避免回到 `state.store`。
+
+本族的 `state.store` 生产半边计数 **84 → 73**，其中 `commands/config.rs` **12 → 4**、
+`commands/app_archive.rs` **3 → 2**、`commands/window.rs` **2 → 0**；剩余 6 处全部是
+`data_dir()`，对应 §5.1.3 的 `{appData}` 路径解析，不属于设置内容端口，后续会随宿主路径门面
+收敛。断言 `shared_settings_commands_read_the_aggregate_not_the_host_store`
+现在同时钉住：设置/分组不得调用宿主 store、四条设置读写路径必须经 `settings_service()`，且
+config 文件只保留四处桌面 `data_dir()` 访问。IPC 签名与返回载荷未变。
+
+第一族「命名视图」已落地——`ApplicationServices` 持
+`named_views: Arc<dyn NamedViewRepository>`，`commands/named_views.rs` 生产半边
+`state.store` 归零（断言 `the_command_shell_reads_the_aggregate_not_the_host_store`），
+第二族「仪表盘」（2026-10-23 同日）再减 8 处（仓储 6 + 运行历史 2），
+全仓生产半边计数 **104 → 93**（第一族 104 → 101，第二族 101 → 93）；6 处残留是有名字的
+形态专属用途（见 `the_command_shell_reads_the_aggregate_and_names_the_host_residue`）。口径与 §5.1.2 第二步逐字相同（`src-tauri/src` 下 `.rs`、
+排除 `*_tests.rs` 与 `tests.rs`、在首个 `#[cfg(test)]` 处截断）。**不要用裸 `grep` 复算**：
+行内 `#[cfg(test)] mod tests` 里的断言针脚本身就会命中 `state.store` 字样（实测裸 grep 得
+111，比生产半边多 10）。
+附带一条结构性解锁：`application` 现在依赖 `datazen-feature-core`——P0 断环与 P2 收官后
+这是正确方向，`check-ddd-layers.mjs` 的镜像不变量改为按**当前**图求值。
 
 独立验收：每期一条「该命令族的生产源码里不再出现 `state.store`」的断言 + `cargo test -p datazen --lib` 全绿 + 该命令族的 IPC 载荷冻结断言不变 + E2E。
+
+**剩余 73 处的分布与难度（2026-10-23 实测，生产半边口径；连接目录族与设置族已扣除）**——这张表的作用是防止下一个人
+把「还剩 73 处」误当成「再搬几个文件就好」：
+
+| 类别 | 处数 | 主要文件 | 卡在哪（不是卡在懒，是卡在缺用例） |
+|---|---|---|---|
+| 设置与路径 | ~~12 + 3 + 2~~ **4 + 2 + 0** + 1 | `commands/config.rs`、`app_archive.rs`、`window.rs`、`encryption_key.rs` | 设置/分组已走聚合；`SettingsRepository` 同时提供 typed `SharedSettings` 与 opaque full-document 读写。剩余 `data_dir()`、钥匙串是 §5.1.3 形态专属。 |
+| AI 配置 | 17 | `ai/generate.rs` 7、`ai/util.rs` 3、`ai/config.rs` 3、`ai/chat.rs` 3、`ai/grant.rs` 1 | `ai_config.enc` 是桌面落盘；要抽的是 `AiConfigurationService`（profile 选择回退规则已在 ai-api），而不是把加密文件路径搬进中立层。 |
+| 连接目录 | ~~11~~ **已归零** | `connection.rs`、`connection_import/ipc.rs` | 已落地（`ConnectionCatalog`）。表中的「11」是**逐行 grep 的漏数**：`duplicate_connection_impl` 与 `reorder_connections` 的 `state.store` 跨行书写，真实处数是 11 + 2。端口直接复用 `datazen_driver_api::ConnectionConfig`——`platform-api` 本就依赖 driver-api，所谓「`application` 不得依赖 driver-api」在本族并不成立（聚合只拿 trait 对象）。 |
+| 仪表盘残留 | 6 | `commands/dashboard.rs` | **已有结论，不搬**：组件创建（要 `AppDb::get_workflow` + `WorkflowRegistry`）、导入导出（文件对话框 + `&AppDb` 签名）、手工执行（宿主库重载）。 |
+| 长尾 | 43 | 38 个文件里各 1–3 处 | 逐个看：有的是 §5.1.3 形态专属（`data_dir`、钥匙串、窗口状态），有的只差一个端口方法。 |
+
+结论：**从 73 到 0 不是机械搬迁，而是若干「新用例服务 + 新端口」的设计工作**（
+`AiConfigurationService` 与宿主路径/密钥门面……）。每新增一个端口都要
+同步四处（`PORT_TRAITS` / `SOURCE_FILES` / `ports/mod.rs` 模块头 / `system-overview.md` §6.4），
+并按 R8「新增端口必须有实现或用例引用」先证明有消费者。
 
 风险：这是最大的一期。`DesktopRepository` 里的本地加密落盘、`{appData}` 路径、本机钥匙串都是**桌面专属**，application 层**不能**持有 `DesktopRepository` 本身，只能持有窄端口（如 `SettingsRepository`、`ProfileRepository`、`SecretProvider`、`TunnelRepository`）。每搬一族都要问一句「web 形态这一族有没有对应物」；没有对应物的（如本机钥匙串、桌面 Job 恢复、桌面驱动注册表）就**留在宿主**，不进中立层。
 

@@ -28,6 +28,7 @@ datazen-driver-api = { path = "packages/driver-api" }
 datazen-platform-api = { path = "packages/platform-api" }
 datazen-application = { path = "packages/application" }
 datazen-kernel = { path = "packages/kernel" }
+datazen-feature-core = { path = "packages/feature-core" }
 datazen-schema-diff = { path = "packages/schema-diff" }
 datazen-migration-common = { path = "packages/migration-common" }
 datazen-data-sync = { path = "packages/data-sync" }

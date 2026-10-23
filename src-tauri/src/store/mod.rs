@@ -506,4 +506,31 @@ impl datazen_platform_api::ports::SettingsRepository for DesktopRepository {
         cache.settings = next;
         Ok(result)
     }
+
+    async fn read_app_settings(
+        &self,
+    ) -> Result<serde_json::Value, datazen_platform_api::PortError> {
+        serde_json::to_value(self.get_settings().await).map_err(|error| {
+            datazen_platform_api::PortError::BackendUnavailable(format!(
+                "Unable to serialize settings: {error}"
+            ))
+        })
+    }
+
+    async fn write_app_settings(
+        &self,
+        settings: serde_json::Value,
+    ) -> Result<serde_json::Value, datazen_platform_api::PortError> {
+        let settings: AppSettings = serde_json::from_value(settings).map_err(|error| {
+            datazen_platform_api::PortError::BackendUnavailable(format!(
+                "Unable to parse settings: {error}"
+            ))
+        })?;
+        self.save_settings(settings).await.map_err(|error| {
+            datazen_platform_api::PortError::BackendUnavailable(format!(
+                "Unable to persist settings: {error}"
+            ))
+        })?;
+        self.read_app_settings().await
+    }
 }
