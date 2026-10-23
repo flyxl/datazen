@@ -837,10 +837,7 @@ impl RuntimeConnectionUseCases {
         ctx: &RequestContext,
         connection_id: &ConnectionId,
     ) -> usize {
-        let targets: Vec<(
-            datazen_application::dto::session::SessionHandle,
-            RequestContext,
-        )> = {
+        let targets: Vec<(SessionHandle, RequestContext)> = {
             let sessions = lock(&self.inner.sessions);
             sessions
                 .values()
