@@ -260,6 +260,11 @@ jobs:
 
       - name: Install Linux system deps (Tauri / webkit2gtk)
         run: |
+          # 缓存 miss 时 cache action 不建目录；命中时恢复的目录也不含
+          # partial/。apt 要求两者齐备（2026-10-23 run 39981783597 实测：
+          # E: Archives directory .../apt-archives/partial is missing），
+          # 故每轮显式创建。
+          mkdir -p ${{ runner.temp }}/apt-archives/partial
           sudo apt-get update \
             -o Acquire::Retries=5 \
             -o Acquire::http::Timeout=30 \
