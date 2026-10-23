@@ -601,7 +601,6 @@ mod tests {
             crate::commands::schema_diff::reviewed_repository::desktop_reviewed_plan_repository(
                 &platform,
             );
-        let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
         let known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository> =
             crate::platform::known_hosts::desktop_known_hosts_repository(store.data_dir());
 
@@ -636,7 +635,6 @@ mod tests {
             transfer_plans: Arc::new(
                 crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
             ),
-            tunnels: tunnels.clone(),
             known_hosts: known_hosts.clone(),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
@@ -695,7 +693,6 @@ mod tests {
             crate::commands::schema_diff::reviewed_repository::desktop_reviewed_plan_repository(
                 &platform,
             );
-        let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
         let known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository> =
             crate::platform::known_hosts::desktop_known_hosts_repository(store.data_dir());
 
@@ -730,7 +727,6 @@ mod tests {
             transfer_plans: Arc::new(
                 crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
             ),
-            tunnels: tunnels.clone(),
             known_hosts: known_hosts.clone(),
             platform,
             organization_scope: crate::platform::local_organization_scope(),

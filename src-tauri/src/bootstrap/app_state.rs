@@ -282,8 +282,9 @@ pub(crate) fn finish_app_state(
         transfer_plans: Arc::new(
             crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
         ),
-        // 隧道定义与 SSH known-hosts 的存储端口实例（同一个实例也注给了会话后端）。
-        tunnels,
+        // SSH known-hosts 的存储端口实例（同一个实例也注给了会话后端）。
+        //
+        // `tunnels` 不在这里：它只经 `ApplicationServices::tunnels` 取用（§5.1.2 第三步）。
         known_hosts,
     };
     monitor_engine.attach_app_state(Arc::new(state.clone()));

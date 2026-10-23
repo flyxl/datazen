@@ -148,15 +148,24 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 `require_application_services()` 可用、`degraded_capabilities()` 只列那一项、`artifact_store()` 报
 `ServiceUnavailable` 且 IPC 表面仍收敛到 `NotConfigured`）。
 
-**第三步——隧道定义仓储归位**
+**第三步——隧道定义仓储归位（已落地 2026-10-23）**
 
-搬走：`AppState.tunnels`（`Arc<dyn TunnelRepository>`）→ 由 `ApplicationServices.tunnels` 持有；`src-tauri/src/commands/tunnel.rs`（8 处）、`src-tauri/src/commands/connection.rs`（1 处）、`src-tauri/src/commands/connection_import/ipc.rs`（1 处）、`src-tauri/src/commands/mcp.rs`（1 处）共 **12 处** `state.tunnels`（含 1 处测试）改为经聚合取。
+实际改动（与计划的差异逐条给出）：
 
-`AppState` 少掉：**1 个字段**（25 → 24）；`state.tunnels` 的访问数从 12 减到 **0**。
+| 位置 | 改动 |
+|---|---|
+| `src-tauri/src/commands/tunnel.rs` | 7 个 `*_impl` 各加一行 `require_application_services(state)?`，`state.tunnels` → `services.tunnels`（8 处） |
+| `src-tauri/src/commands/connection.rs` | `test_connection_impl` 同上（1 处） |
+| `src-tauri/src/commands/connection_import/ipc.rs` | `materialize_tunnel_refs` 返回 `()`，**不能** `?`：聚合取不到时按既有风格 `warn!` 后 `return`（与「作用域取不到」同档），只降级本次导出的隧道解引用（1 处） |
+| `src-tauri/src/commands/mcp.rs` | `clone_app_state()` 的字段逐个克隆里删掉 `tunnels`（1 处） |
+| `src-tauri/src/commands/native_tool_tests.rs` | `attach()` 直接 `inject`，原本用 `state.tunnels`；改为 `state.store.clone()`（桌面实现就是存储层本身，与装配根同一做法） |
+| `src-tauri/src/commands/mod.rs` | 删掉 `AppState.tunnels` 字段与其 doc 块（聚合里那份 doc 更完整） |
+| `src-tauri/src/bootstrap/app_state.rs` | `AppState { … }` 不再带 `tunnels`；局部 `let tunnels` 保留（它要喂 `inject`），注释放明「只经 `ApplicationServices::tunnels` 取用」 |
+| `src-tauri/src/commands/app_state_shape_tests.rs` | `BASELINE_FIELD_COUNT` 25 → **24**（守卫自动收紧） |
 
-独立验收：新增断言「生产源码里 `state.tunnels` 出现 0 次」+「`AppState` 的 `pub` 字段数 ≤ 24」；`cargo test -p datazen --lib`；隧道 IPC 的载荷冻结断言不变（名单档只有三个字段，platform-api 已有断言）。
+**实测**：`state.tunnels` 生产与测试源码计数 **1 → 0**（唯一残留是 `native_tool_tests.rs` 的那处，已改为 `state.store`）；`AppState` `pub` 字段 **25 → 24**。
 
-风险：隧道定义的**组织限定**语义（越组织按「不存在」处理，CM-05）不能因为换持有者而变——端口方法自带 `OrganizationScope`，换持有者时不得把 scope 从入参降级成字段。同一个实例必须继续同时喂给会话后端与命令侧（建连时解引用 `tunnelId`），否则出现两份事实。
+**风险不该变的两件事（已逐条核对）**：① 组织限定仍是端口入参（`Scope` 从 `state.organization_scope()` 来，没降级成字段）；② 同一个仓储实例继续同时喂会话后端与命令侧——`finish_app_state` 里 `let tunnels = store.clone()`，`inject` 拿到的和聚合里的是同一个 `Arc`（`storage_ports_tests.rs` 用 `Arc::ptr_eq` 守这条）。
 
 **第四步——领域包端口的窄化**
 

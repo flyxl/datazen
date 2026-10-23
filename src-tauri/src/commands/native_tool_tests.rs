@@ -41,7 +41,8 @@ fn attach(
     adapter.inject(
         state.store.clone(),
         state.driver_registry.clone(),
-        state.tunnels.clone(),
+        // 隧道仓储不再挂在 `AppState` 上：桌面实现就是存储层本身，与装配根同一做法。
+        state.store.clone(),
         state.known_hosts.clone(),
     )?;
     adapter.replace_native_fixture(&manifest.to_string())?;

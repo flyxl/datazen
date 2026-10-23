@@ -11,7 +11,7 @@
 ///
 /// 这是**上限**：本轨的目标就是让 `AppState` 变瘦，所以「等于基线」不该被
 /// 允许、「超过基线」必须变红。
-const BASELINE_FIELD_COUNT: usize = 25;
+const BASELINE_FIELD_COUNT: usize = 24;
 
 /// `AppState` 的定义体（不含 `#[cfg(test)]` 之后的任何东西）。
 fn app_state_definition() -> String {
@@ -86,5 +86,58 @@ fn the_field_names_are_unique_so_a_duplicate_cannot_hide_behind_the_count() {
         fields.len(),
         unique.len(),
         "AppState 的字段名重复了：{fields:?}"
+    );
+}
+
+/// `state.tunnels` 必须为 0：隧道定义仓储归应用层持有（§5.1.2 第三步）。
+///
+/// 这条不是"换个写法也算数"的风格约定——`AppState` 上那份 `Arc<dyn TunnelRepository>`
+/// 删掉之后，任何 `state.tunnels` 都会编译失败；本守卫在**编译器之前**就把这类回摆
+/// 钉红，防止有人为了让命令少一行 `require_application_services` 又把它挂回去。
+///
+/// 扫描整棵 `src-tauri/src`（含测试），唯一豁免是本文件自己——它必须引用这个字符串
+/// 才能断言它不存在。
+#[test]
+fn the_tunnel_repository_is_no_longer_reachable_from_the_host_state() {
+    const NEEDLE: &str = "state.tunnels";
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut hits = Vec::new();
+    let mut stack = vec![root];
+    while let Some(dir) = stack.pop() {
+        let entries = std::fs::read_dir(&dir).expect("AppState 守卫要能读到源码目录");
+        for entry in entries {
+            let path = entry.expect("目录项可读").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+                continue;
+            }
+            if path.file_name().and_then(|name| name.to_str()) == Some("app_state_shape_tests.rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("源码文件是 UTF-8");
+            for (index, line) in text.lines().enumerate() {
+                if line.contains(NEEDLE) {
+                    hits.push(format!("{}:{}", path.display(), index + 1));
+                }
+            }
+        }
+    }
+    hits.sort();
+    assert!(
+        hits.is_empty(),
+        "隧道仓储归 `ApplicationServices::tunnels` 持有（§5.1.2 第三步），宿主态不得再暴露它：{hits:?}"
+    );
+}
+
+/// 定义体里也不许出现 `tunnels` 字段（上面的扫描只看 `state.tunnels` 的调用面）。
+#[test]
+fn app_state_definition_has_no_tunnel_repository_field() {
+    let definition = app_state_definition();
+    assert!(
+        !definition.contains("pub tunnels"),
+        "AppState 不得持有隧道仓储：它由 ApplicationServices 持有"
     );
 }
