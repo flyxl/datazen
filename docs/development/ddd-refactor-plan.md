@@ -180,7 +180,8 @@ flowchart TB
 按**出现次数**记 `datazen_runtime::<module>`。实测 **50 处**：`feature-core` 32、
 `data-transfer` 8、`schema-diff` 6、`data-sync` 4；按模块 `job` 21、`sql_guard` 12、
 `schema_cache` 10、`application` 5、`artifact` 1、`connection` 1。
-本节的第一个 PR 之后剩 **48 处**（`feature-core` 30：`application` 5 → 4、`connection` → 0）。
+第一个 PR 之后剩 **48 处**；内核拆分 PR 之后剩 **8 处**，全部在 `feature-core`
+（`application` 6、`artifact` 1、再 `application` 1 —— 其中一处是文档链接）。
 
 - **已落地（2026-10-23，PR「feature-core 只认契约」）**：`feature-core` 的
   `[dependencies]` **摘掉 `datazen-application`**（12 处引用改指 `platform-api` 的
@@ -192,8 +193,21 @@ flowchart TB
   `ARTIFACT_BYTE_QUOTA` 从 `runtime::artifact` 移到 `platform_api::ports::artifact`
   （契约值），runtime 再导出。门禁：`scripts/check-ddd-layers.mjs` 增一条
   「`feature-core` 不得直接依赖 `datazen-application`」。
-- **剩下的 36 → 0 分两步走**（各自独立 PR）：
-  1. **runtime 内核拆分**：`job`/`budget`/`sql_guard`/`schema_cache`/`driver_registry`
+- **已落地（2026-10-23，PR「runtime 机制内核拆分」）**：新建 `packages/kernel`（`datazen-kernel`），
+  把 `job` / `budget` / `sql_guard` / `schema_cache` / `driver_registry` 整体迁入，`runtime`
+  用 `pub use datazen_kernel::{…}` 再导出**保持 `datazen_runtime::job::…` 等既有路径不变**；
+  `fnv1a64_hex` 一并归位到 `kernel::hash`（Job 内核与连接运行时共用的稳定指纹），
+  `runtime::connection::types` 再导出。领域包改指 `datazen_kernel::…` 并**摘掉 `datazen-runtime`**：
+  `schema-diff` / `data-sync` / `data-transfer` 三个包的 `[dependencies]` 与源码里与 `runtime` 的边
+  **双双归零**（生产半边 `datazen_runtime::` 残留：这三个包 0 处，`feature-core` 8 处）。
+  形态中立闸门 `runtime/src/tunnel/form_neutrality.rs` 扩成**同时扫两个 crate**
+  （`runtime:src/…` / `kernel:src/…`），否则拆分会让那一片悄悄移出覆盖而闸门照旧报绿。
+  门禁同步：`scripts/lib/cargoWorkspace.mjs` 的 `LAYERS` 增 `kernel`，
+  `check-platform-crate-boundaries.mjs` 的 F-02 / F-03 / F-05 主体与 F-12 允许层增 `kernel`，
+  本文 §2.4 与 §2.1 / §2.3 同步。
+- **剩下的 8 → 0 只剩一步**（独立 PR）：
+  1. 已落地（见上）。
+  2. **制品与备份用例端口化**：`job`/`budget`/`sql_guard`/`schema_cache`/`driver_registry`
      是**机制**而不是应用门面（`job` 只依赖 `budget` 5 处与 `connection` 1 处；`budget`
      零内部依赖；`sql_guard` 零内部依赖；`schema_cache` 依赖 `driver_registry`）。拆出一个
      不依赖应用层的内核 crate（暂名 `datazen-kernel`），`runtime` 再导出保持既有调用点。
@@ -202,7 +216,7 @@ flowchart TB
      是**运行时内建类型**（前者是 serde DTO、后者是 Drop 型能力对象）。要么把 DTO 归
      platform-api、把绑定抽象成 `Box<dyn BackupOutputGuard>`，要么承认这两条能力不进
      形态中立层并保留 2 个逆向引用（届时 R1 需按包名开例外，不得静默）。
-- **验收**：附录 A.2 输出 0；4 个 `Cargo.toml` 的 `[dependencies]` 无 `datazen-runtime`；
+- **验收**：附录 A.2 输出 0；4 个 `Cargo.toml` 的 `[dependencies]` 无 `datazen-runtime`（已完成 3 个，`feature-core` 待步骤 2）；
   `cargo test -p datazen-schema-diff -p datazen-data-sync -p datazen-data-transfer -p datazen-feature-core` 绿。
 - **回滚**：按包分 PR，逐个可回滚。
 - **风险**：端口定义反复 → 先冻结端口清单（R3/R8）再改。

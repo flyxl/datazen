@@ -23,7 +23,7 @@
 ### 1.2 Schema 缓存架构
 
 ```rust
-// packages/runtime/src/schema_cache/schema_cache.rs（原先在 src-tauri/src/cache/）
+// packages/kernel/src/schema_cache/schema_cache.rs（原先在 src-tauri/src/cache/）
 
 use crate::driver_registry::DriverRegistry;
 use std::collections::HashMap;
@@ -431,7 +431,7 @@ pub struct TableDataResult {
 
 ### 1.5 缓存失效策略
 
-缓存实现位于 `packages/runtime/src/schema_cache/`（`schema_cache.rs` + `schema_mutate.rs`），
+缓存实现位于 `packages/kernel/src/schema_cache/`（`schema_cache.rs` + `schema_mutate.rs`），
 宿主直接以 `datazen_runtime::schema_cache::{SchemaCache, sql_may_mutate_schema}` 使用，不再保留 re-export 门面。
 
 失效由三条互相独立的机制叠加，**不是**可配置的策略枚举：

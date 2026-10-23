@@ -2,10 +2,10 @@
 //!
 //! 从 `handler.rs` 拆出：handler 已经贴着单文件规模上限，这三类终态没有 handler 状态。
 
+use datazen_kernel::job::{StageOutcome, StageSpec, StageTerminal};
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
 use datazen_platform_api::dto::job::{CommitBoundary, JobProgress};
 use datazen_platform_api::id::Counter;
-use datazen_runtime::job::{StageOutcome, StageSpec, StageTerminal};
 
 use crate::job::pipeline::PIPELINE_INITIAL_BYTES;
 

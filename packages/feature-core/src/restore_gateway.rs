@@ -3,6 +3,7 @@ use crate::restore_job::{
     RestoreEvidence, RestoreGateway, RestoreInput, RestorePlan, RestoreRejection,
 };
 use datazen_driver_api::{restore_sql, DatabaseDriver};
+use datazen_kernel::job::{CancelToken, StageTerminal};
 use datazen_platform_api::{
     context::OwnerRef,
     dto::{
@@ -15,7 +16,6 @@ use datazen_platform_api::{
     RequestContext,
 };
 use datazen_platform_api::{dto::requests::*, use_cases::ConnectionUseCases};
-use datazen_runtime::job::{CancelToken, StageTerminal};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 

@@ -7,10 +7,7 @@ fn cm47_48_source_changed_is_rejected() {
     let ckpt = checkpoint_with(&["source-changed"], "resumeAfterVerify", vec![boundary(10)]);
     let verdict = verify_checkpoint(&ckpt);
     assert!(
-        matches!(
-            verdict,
-            datazen_runtime::job::RecoveryVerdict::Reject { .. }
-        ),
+        matches!(verdict, datazen_kernel::job::RecoveryVerdict::Reject { .. }),
         "source changed must reject, got {verdict:?}"
     );
 }
@@ -21,7 +18,7 @@ fn cm47_48_resume_forbidden_policy_is_rejected() {
     let verdict = verify_checkpoint(&ckpt);
     assert!(matches!(
         verdict,
-        datazen_runtime::job::RecoveryVerdict::Reject { .. }
+        datazen_kernel::job::RecoveryVerdict::Reject { .. }
     ));
 }
 
@@ -32,7 +29,7 @@ fn cm47_48_unknown_commit_requires_target_proof() {
     let verdict = verify_checkpoint(&ckpt);
     assert!(matches!(
         verdict,
-        datazen_runtime::job::RecoveryVerdict::RequireManualReview { .. }
+        datazen_kernel::job::RecoveryVerdict::RequireManualReview { .. }
     ));
     // commit 应答丢失 + 目标已核验 → 补边界后继续。
     let ckpt = checkpoint_with(
@@ -43,7 +40,7 @@ fn cm47_48_unknown_commit_requires_target_proof() {
     let verdict = verify_checkpoint(&ckpt);
     assert!(matches!(
         verdict,
-        datazen_runtime::job::RecoveryVerdict::ResumeAfterVerify { .. }
+        datazen_kernel::job::RecoveryVerdict::ResumeAfterVerify { .. }
     ));
 }
 
@@ -57,7 +54,7 @@ fn cm47_48_checkpoint_missing_but_committed_boundaries_preserved() {
     let verdict = verify_checkpoint(&ckpt);
     assert!(matches!(
         verdict,
-        datazen_runtime::job::RecoveryVerdict::ResumeAfterVerify { .. }
+        datazen_kernel::job::RecoveryVerdict::ResumeAfterVerify { .. }
     ));
 }
 
@@ -71,7 +68,7 @@ fn cm47_48_cleanup_unconfirmed_requires_manual_review() {
     let verdict = verify_checkpoint(&ckpt);
     assert!(matches!(
         verdict,
-        datazen_runtime::job::RecoveryVerdict::RequireManualReview { .. }
+        datazen_kernel::job::RecoveryVerdict::RequireManualReview { .. }
     ));
 }
 
@@ -84,7 +81,7 @@ fn cm47_48_restart_never_resumes_from_bare_fingerprint() {
     assert!(
         matches!(
             verdict,
-            datazen_runtime::job::RecoveryVerdict::RequireManualReview { .. }
+            datazen_kernel::job::RecoveryVerdict::RequireManualReview { .. }
         ),
         "bare checkpoint must not auto-resume, got {verdict:?}"
     );
@@ -93,6 +90,6 @@ fn cm47_48_restart_never_resumes_from_bare_fingerprint() {
     let verdict = verify_checkpoint(&ckpt);
     assert!(matches!(
         verdict,
-        datazen_runtime::job::RecoveryVerdict::ResumeAfterVerify { .. }
+        datazen_kernel::job::RecoveryVerdict::ResumeAfterVerify { .. }
     ));
 }

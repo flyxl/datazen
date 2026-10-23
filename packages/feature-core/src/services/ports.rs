@@ -121,7 +121,7 @@ pub trait LogicalSchemaContextSource: Send + Sync {
 /// This is the *physical* half of the metadata port: the source answers with
 /// the driver's own handle, so metadata can be read straight against the
 /// connection. The `ConnectionHandle`-based reads are not default methods of
-/// this trait — they need the [`SchemaCache`](datazen_runtime::schema_cache::SchemaCache)
+/// this trait — they need the [`SchemaCache`](datazen_kernel::schema_cache::SchemaCache)
 /// that memoizes them, and the cache belongs to the implementation that owns
 /// the session, not to the caller of the port. They live in
 /// [`PhysicalSchemaContextAdapter`](crate::services::physical_schema_context::PhysicalSchemaContextAdapter),

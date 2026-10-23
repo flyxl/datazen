@@ -51,8 +51,8 @@ use datazen_platform_api::id::{
 use datazen_platform_api::ports::budget::ServiceQuota;
 use datazen_platform_api::ports::job::JobRepository;
 
-use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
-use datazen_runtime::job::{
+use datazen_kernel::budget::{BudgetConfig, BudgetLedger};
+use datazen_kernel::job::{
     CancelToken, EndpointRef, EndpointRole, HandlerRegistry, InMemoryJobRepository,
     JobHandler as _, JobRuntime, SharedClock, StageSpec, StageTerminal, CANCEL_POLL_INTERVAL,
 };

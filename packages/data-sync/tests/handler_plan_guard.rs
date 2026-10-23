@@ -17,11 +17,11 @@ use std::sync::Arc;
 use datazen_data_sync::job::body::{apply_payload, prepare_payload, APPLY_KIND, PREPARE_KIND};
 use datazen_data_sync::job::{ApplySpec, DataSyncHandler, DataSyncHost, PrepareSpec};
 use datazen_data_sync::model::{SyncOptions, TableMapping};
-use datazen_platform_api::dto::job::Checkpoint;
-use datazen_platform_api::id::{JobId, JobStateVersion, StageId};
-use datazen_runtime::job::{
+use datazen_kernel::job::{
     project_frozen_plan, CancelToken, FrozenPlan, JobError, JobHandler, RecoveryVerdict, StageSpec,
 };
+use datazen_platform_api::dto::job::Checkpoint;
+use datazen_platform_api::id::{JobId, JobStateVersion, StageId};
 
 use support::host::{source_endpoint, target_endpoint, FakeHost};
 use support::rows::{PLAN_ID, TABLE};

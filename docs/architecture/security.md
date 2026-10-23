@@ -17,7 +17,7 @@
 | **TLS 加密后端** | 进程级 rustls `CryptoProvider` 显式安装（`aws-lc-rs`） | 实现体在 `packages/tunnel/src/crypto.rs`，宿主 `src-tauri/src/tls.rs` 保留接线守卫与再导出 |
 | **CSP** | Content Security Policy | `src-tauri/tauri.conf.json` |
 | **路径遍历防护** | 路径校验 | `src-tauri/src/commands/file.rs` |
-| **SQL 安全（Safe Mode / 只读）** | 启发式语句分类 + 连接级拦截 | `packages/runtime/src/sql_guard`（宿主经 runtime 依赖调用） |
+| **SQL 安全（Safe Mode / 只读）** | 启发式语句分类 + 连接级拦截 | `packages/kernel/src/sql_guard`（宿主经 `datazen_runtime` 再导出或直接依赖 kernel 调用） |
 
 ## 2. 加密存储
 

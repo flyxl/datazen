@@ -176,7 +176,7 @@ pub async fn query(
     }
     let policy = host.execution_settings().await;
     let config = host.profile_config(id).await?;
-    datazen_runtime::sql_guard::check_sql(sql, config.read_only, policy.safe_mode)?;
+    datazen_kernel::sql_guard::check_sql(sql, config.read_only, policy.safe_mode)?;
     let mut input = target_input(host, id, None, None).await?;
     input["sql"] = serde_json::Value::String(sql.into());
     input["limit"] = serde_json::json!(resolve_query_limit(limit));

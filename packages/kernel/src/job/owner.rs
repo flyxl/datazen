@@ -52,7 +52,9 @@ impl StageOwnerPermit {
             .map_err(|_| ApiError::permission_denied("job stage claim is no longer authoritative"))
     }
 
-    pub(crate) async fn verify_native_selection(
+    /// 原生工具选择器与 Job 定义的一致性校验。连接运行时（`native_tool`）消费本方法，
+    /// 因此它是内核的公开面而不是 crate 私有面。
+    pub async fn verify_native_selection(
         &self,
         selection: &NativeToolSelection,
     ) -> Result<(), ApiError> {

@@ -6,6 +6,9 @@ license = "GPL-3.0-or-later"
 description = "Portable workflow, AI, MCP and dashboard application logic"
 
 [dependencies]
+# 机制内核（job / budget / sql_guard / schema_cache / driver_registry）：领域包只用机制，
+# 不依赖「连接资源运行时」整包（DDD 计划 P2 的落点）。
+datazen-kernel = { workspace = true }
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 rand = "0.8"
 dirs = "5"

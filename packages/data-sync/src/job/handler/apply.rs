@@ -7,10 +7,10 @@
 
 use std::sync::Arc;
 
+use datazen_kernel::job::{CancelToken, JobError, StageOutcome, StageTerminal};
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
 use datazen_platform_api::dto::job::{CommitBoundary, JobProgress};
 use datazen_platform_api::id::{ArtifactId, Counter, ExecutionId, StageId, Timestamp};
-use datazen_runtime::job::{CancelToken, JobError, StageOutcome, StageTerminal};
 use sha2::{Digest, Sha256};
 
 use crate::error::DataSyncError;

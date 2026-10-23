@@ -566,8 +566,8 @@ async fn cm46_slow_writer_pauses_source_reader() {
 #[test]
 fn cm46_budget_overrun_keeps_the_confirmed_boundaries() {
     use crate::job::outcome::unbounded_stage;
+    use datazen_kernel::job::{StageSpec, StageTerminal};
     use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
-    use datazen_runtime::job::{StageSpec, StageTerminal};
 
     let spec = StageSpec {
         stage_id: StageId::new("data"),
@@ -595,8 +595,8 @@ fn cm46_budget_overrun_keeps_the_confirmed_boundaries() {
 #[test]
 fn cm46_cancelled_stage_keeps_the_confirmed_boundaries() {
     use crate::job::outcome::cancelled_stage;
+    use datazen_kernel::job::{StageSpec, StageTerminal};
     use datazen_platform_api::dto::execution::EffectOutcome;
-    use datazen_runtime::job::{StageSpec, StageTerminal};
 
     let spec = StageSpec {
         stage_id: StageId::new("data"),

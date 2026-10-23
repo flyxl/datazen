@@ -2,6 +2,7 @@
 //! staging writer. The FileArtifactJob publishes the sole delivered artifact.
 use crate::{backup::BackupEvents, error::FeatureError};
 use datazen_driver_api::{sql_dump::stream::BACKUP_COMMAND, BackupDumpOptions, DumpProgress};
+use datazen_kernel::job::CancelToken;
 use datazen_platform_api::{dto::requests::*, use_cases::ConnectionUseCases};
 use datazen_platform_api::{
     dto::{execution::ExecutionState, idempotency::IdempotentOperation},
@@ -9,7 +10,7 @@ use datazen_platform_api::{
     target::ExecutionTarget,
     OwnerRef, RequestContext,
 };
-use datazen_runtime::{application::RuntimeConnectionUseCases, job::CancelToken};
+use datazen_runtime::application::RuntimeConnectionUseCases;
 use std::{
     io::Write,
     path::{Path, PathBuf},

@@ -1,6 +1,6 @@
 use super::*;
 use datazen_driver_api::{CatalogReader, LegacyCatalogReader};
-use datazen_runtime::schema_cache::CachedColumns;
+use datazen_kernel::schema_cache::CachedColumns;
 use std::{collections::HashMap, time::Instant};
 
 /// Group only exact scopes. The legacy bare-name batch payload is safe within
