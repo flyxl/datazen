@@ -248,6 +248,13 @@ export const GridCell = memo(function GridCell({
           title={fkTitle ?? undefined}
           disabled={fk.resolving}
           className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-surface-raised hover:text-accent disabled:opacity-60"
+          // The rows live in a transform-based virtual window. Focusing a child
+          // button of that window makes the engine scroll the grid surface to
+          // its top, so the arrow silently rewinds the table before the jump —
+          // and the position the tab would return to is already gone. Keeping
+          // the focus where it is (the surface owns it) leaves the scroll
+          // alone; the arrow is still reachable with Tab and Enter.
+          onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
             // The click must not reach the row: a jump and a row selection are
             // two different actions, and a double click on the arrow must not

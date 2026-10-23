@@ -40,6 +40,7 @@ import * as cmCommands from '@codemirror/commands';
 import { useSchemaStore } from './stores/schemaStore';
 import { useTableDataStore } from './stores/tableDataStore';
 import { useFkNavigationStore } from './stores/fkNavigationStore';
+import { usePanelStore } from './stores/panelStore';
 import { getCachedTableSchema } from './lib/schemaCache';
 
 // Expose host shared modules so the dynamically-loaded PRO extension can
@@ -90,12 +91,16 @@ if (import.meta.env.VITE_E2E || import.meta.env.DEV) {
   (
     globalThis as unknown as { __fkNavigationStore?: typeof useFkNavigationStore }
   ).__fkNavigationStore = useFkNavigationStore;
+  // Which tab is in front decides when a stored viewport is consumed, so the
+  // panel store has to be readable from a spec as well.
+  (globalThis as unknown as { __panelStore?: typeof usePanelStore }).__panelStore = usePanelStore;
 } else {
   (globalThis as unknown as { __tableDataStore?: typeof useTableDataStore }).__tableDataStore =
     undefined;
   (
     globalThis as unknown as { __fkNavigationStore?: typeof useFkNavigationStore }
   ).__fkNavigationStore = undefined;
+  (globalThis as unknown as { __panelStore?: typeof usePanelStore }).__panelStore = undefined;
 }
 
 // Seed the shared @datazen/ui i18n engine from the persisted language and

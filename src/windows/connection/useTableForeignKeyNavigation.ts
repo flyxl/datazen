@@ -151,6 +151,34 @@ export function useTableForeignKeyNavigation(
    * The anchor is the focused cell when there is one, and the topmost visible
    * row otherwise — a row that is certainly on the page.
    */
+  /**
+   * The scroll offset the surface had when the pointer went down.
+   *
+   * Focusing a button inside the transform-based virtual window makes the engine
+   * scroll the grid surface to its top *while dispatching that very press*, so by
+   * the time the click handler runs the live offset is 0 and the position the tab
+   * would have returned to is gone. The capture-phase listener runs before that
+   * default action, which makes it the only honest record of where the user was.
+   */
+  const pointerOffsetRef = useRef<number | null>(null);
+  useEffect(() => {
+    const element = scrollElement;
+    if (!element) return;
+    const capture = () => {
+      pointerOffsetRef.current = element.scrollTop;
+    };
+    // Pointer events are the ones a webview actually delivers for a click;
+    // `mousedown`/`touchstart` stay for the engines that dispatch only those.
+    element.addEventListener('pointerdown', capture, true);
+    element.addEventListener('mousedown', capture, true);
+    element.addEventListener('touchstart', capture, true);
+    return () => {
+      element.removeEventListener('pointerdown', capture, true);
+      element.removeEventListener('mousedown', capture, true);
+      element.removeEventListener('touchstart', capture, true);
+    };
+  }, [scrollElement]);
+
   const snapshotViewport = useCallback(
     (source?: HTMLElement | null): GridViewport | null => {
       // The grid the arrow lives in is authoritative. A cached element can belong
@@ -164,7 +192,11 @@ export function useTableForeignKeyNavigation(
             ? scrollElementRef.current
             : null;
       if (!element) return null;
-      const scrollTop = element.scrollTop;
+      // A press may have moved the surface (see `pointerOffsetRef`); the offset
+      // it had when the press started is the one the user saw.
+      const live = element.scrollTop;
+      const pressed = pointerOffsetRef.current;
+      const scrollTop = pressed !== null && pressed > live ? pressed : live;
       // The active cell wins only while it is on screen; a cell the user scrolled
       // past must not drag the tab back to the top on return.
       const { anchorRow, anchorVisible } = pickAnchorRow({
@@ -210,6 +242,7 @@ export function useTableForeignKeyNavigation(
         sourceViewport: snapshotViewport(source),
       })
         .then((outcome) => {
+          pointerOffsetRef.current = null;
           if (!outcome.ok) {
             setError(outcome.error ?? { code: 'unknown', raw: '' });
             return;
@@ -290,10 +323,10 @@ export function useTableForeignKeyNavigation(
     setPendingViewport(viewport);
   }, [panelId]);
   useEffect(() => {
-    // Restoring before the rows exist cannot stick: the surface is clamped to 0
-    // and the frame budget runs out while the data load is still in flight, so
-    // the tab comes back at the top. Wait for the rows, then place the offset.
-    if (!pendingViewport || !scrollElement || rows.length === 0) return;
+    // The rows are part of the dependency list on purpose: entering a tab whose
+    // data is still loading clamps the offset to 0 and burns the frame budget,
+    // so the arrival of the rows restarts the placement with a fresh budget.
+    if (!pendingViewport || !scrollElement) return;
     const target =
       pendingViewport.anchorRow !== null
         ? scrollTopForAnchorRow(pendingViewport.anchorRow, rowHeight)

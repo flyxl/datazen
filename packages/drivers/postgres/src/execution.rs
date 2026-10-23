@@ -439,8 +439,12 @@ impl PostgresDriver {
             }
             execution.cancel_requested = true;
             let Some(backend_pid) = execution.backend_pid else {
+                // Nothing is running on a backend connection yet: the pre-start
+                // check sees the flag and refuses to begin.
+                tracing::debug!("postgres cancel: no backend pid bound yet, flagged for pre-start");
                 return Ok(());
             };
+            tracing::debug!(backend_pid, "postgres cancel: asking the backend to cancel");
             backend_pid
         };
 

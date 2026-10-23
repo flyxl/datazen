@@ -428,12 +428,17 @@ describe('外键跳转与返回栈 (DB-07)', () => {
     // hidden tab and leave the panel under test at 0.
     const arrowIndex = await visibleArrowIndex();
     expect(arrowIndex).toBeGreaterThanOrEqual(0);
+    // The offset has to keep the clicked row on screen. WebDriver scrolls an
+    // element into view before clicking it, so clicking a row that this scroll
+    // pushed out of the viewport silently rewinds the grid to the top *before*
+    // the handler runs — the recorded position would then be 0 for a reason the
+    // product cannot see. Row 2 sits at 56px, so 40 leaves it visible.
     await browser.execute((target: number) => {
       const arrow = document.querySelectorAll(
         '[data-dt-row="2"][data-dt-col="customer_id"] [data-dt-fk-click="true"]',
       )[target];
       const surface = arrow?.closest('[data-dt-surface]');
-      if (surface instanceof HTMLElement) surface.scrollTop = 120;
+      if (surface instanceof HTMLElement) surface.scrollTop = 40;
     }, arrowIndex);
     await browser.pause(500);
     const scrollBefore = await sourceGridScrollTop();
@@ -454,7 +459,19 @@ describe('外键跳转与返回栈 (DB-07)', () => {
     const arrows = await $$(
       '[data-dt-row="2"][data-dt-col="customer_id"] [data-dt-fk-click="true"]',
     );
-    await arrows[arrowIndex].click();
+    // The press is dispatched without moving the focus. The driver's own click
+    // focuses the arrow first, and the engine answers a focus inside the
+    // transform-based virtual window by scrolling the grid (and clearing its
+    // rows) before the handler runs — the recorded position would be 0 for a
+    // reason that has nothing to do with the product. The real press path keeps
+    // the focus on the surface (GridCell suppresses the mouse focus), which the
+    // GridCell unit test covers.
+    await browser.execute((target: number) => {
+      const arrow = document.querySelectorAll(
+        '[data-dt-row="2"][data-dt-col="customer_id"] [data-dt-fk-click="true"]',
+      )[target];
+      arrow?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }, arrowIndex);
     await browser.pause(1500);
     if ((await gridScrollTop()) === scrollBefore) {
       throw new Error(`FK 跳转没有离开源面板: ${JSON.stringify(beforeClick)}`);
@@ -480,19 +497,34 @@ describe('外键跳转与返回栈 (DB-07)', () => {
         }
       ).__fkNavigationStore;
       const snapshot = store
-        ? Array.from(store.getState().viewports.values()).map((v) => v as Record<string, unknown>)
+        ? Array.from(store.getState().viewports.entries()).map(([key, value]) => ({
+            key,
+            value: value as Record<string, unknown>,
+          }))
+        : null;
+      const panels = (
+        globalThis as unknown as {
+          __panelStore?: { getState: () => { panels: unknown[]; activePanelId: string | null } };
+        }
+      ).__panelStore;
+      const panelState = panels
+        ? {
+            activePanelId: panels.getState().activePanelId,
+            ids: (panels.getState().panels as { id: string }[]).map((p) => p.id),
+          }
         : null;
       return {
         surfaces,
         focusedRow: focused?.getAttribute('data-dt-row') ?? null,
         focusedCol: focused?.getAttribute('data-dt-col') ?? null,
         snapshot,
+        panelState,
         hasStore: Boolean(store),
       };
     });
     if (Math.abs(scrollAfter - scrollBefore) > 28) {
       throw new Error(
-        `回退未恢复源面板位置: before=${scrollBefore} after=${scrollAfter} ${JSON.stringify(restoreDiag)}`,
+        `回退未恢复源面板位置: before=${scrollBefore} after=${scrollAfter} ${JSON.stringify(restoreDiag)} click=${JSON.stringify(beforeClick)}`,
       );
     }
   });
