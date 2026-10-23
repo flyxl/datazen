@@ -127,9 +127,15 @@ jobs:
       # `pnpm install`'s prepare hook seeds (ensure-generated-drivers.mjs ->
       # resolve-drivers.mjs default). A driver form `basic` does not register
       # (e.g. `sqlserver`) therefore escapes Host unit coverage entirely.
-      # This step re-runs the same suite under `all` (all registered PATH
-      # drivers: no git driver, so no deploy key and no network needed).
-      # The set lives only in run-unit-driver-set.mjs, never inline here.
+      # This step judges the suite under `all` (all registered PATH drivers:
+      # no git driver, so no deploy key and no network needed), **narrowed at
+      # run time** to the test files whose module graphs execute the
+      # driver-set codegen (`src/extensions/generated.ts`) — everything else
+      # runs byte-identical code under `all` and is already judged by the
+      # `basic` step above. The selection lives in
+      # select-codegen-sensitive-tests.mjs (criterion + fail-closed list) and
+      # the driver set lives only in run-unit-driver-set.mjs, never inline
+      # here.
       #
       # Status: GREEN, not known-red. An earlier revision of this comment
       # claimed two blockers; both were artifacts of a stale base
@@ -281,16 +287,28 @@ jobs:
       - name: Rust formatting
         run: cargo fmt --all -- --check
 
-      # driver-api 与四个 path 驱动均不依赖 --features / 注入产物，合并为一次
-      # cargo 调用，省掉一次 workspace 加载与锁获取。
-      - name: Rust unit tests (driver API + basic path drivers)
-        run: cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
+      # driver-api 不依赖 --features / 注入产物，且没有 tests/ 目录——`--lib`
+      # 就是它的全部测试面。
+      #
+      # 四个 basic path 驱动的 lib 单测不再在这里跑：下面的 `--tests` 步按
+      # cargo 的目标选择语义（lib target 的 test=true 默认开启）同样会编译
+      # 并运行它们的 lib 单测，此前两步让每轮 CI 把同一批 lib 测试函数执行
+      # 两遍（实测合计 936 个）。驱动 lib 单测不读
+      # DATAZEN_CONTRACT_ALLOW_UNVERIFIED——该变量只被 tests/ 下的 live 契约
+      # 模板读取（rg 全仓验证：命中全部位于 */tests/*，无一在 */src/*），所以
+      # 在带豁免的 `--tests` 环境下运行与原来的严格 `--lib` 环境行为一致，
+      # 去重不损失任何信号。
+      - name: Rust unit tests (driver API)
+        run: cargo test --lib -p datazen-driver-api
 
       # ── 驱动集成测试（tests/ 目录）──
       #
-      # 上一条是 `--lib`，它不会编译 `tests/` 目录。basic 四驱动一共有 32 个集成
-      # 测试文件，此前 CI 一个都没编译过：它们是共享模板与各驱动自有逻辑的宿主，
-      # 坏掉时门禁不会响。今天能编译是运气，不是门禁。
+      # 本步用 `--tests`：按 cargo 目标选择语义，它编译并运行每个驱动
+      # test=true 的全部 target——含 lib 单测（这就是上面那条不再列四个
+      # path 驱动的原因）与 tests/ 下的全部集成 target。basic 四驱动一共
+      # 有 32 个集成测试文件，在 `--tests` 步加入之前 CI 一个都没编译过：
+      # 它们是共享模板与各驱动自有逻辑的宿主，坏掉时门禁不会响。
+      # 「今天能编译是运气，不是门禁」的判断仍然成立。
       #
       # 用 `--tests` 而不是逐个 `--test`：`--tests` 编译并运行该 crate 下的全部
       # 集成 target，新加的文件自动进矩阵，不需要有人记得同步名单。
