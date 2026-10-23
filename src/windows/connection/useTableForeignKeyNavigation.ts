@@ -290,7 +290,10 @@ export function useTableForeignKeyNavigation(
     setPendingViewport(viewport);
   }, [panelId]);
   useEffect(() => {
-    if (!pendingViewport || !scrollElement) return;
+    // Restoring before the rows exist cannot stick: the surface is clamped to 0
+    // and the frame budget runs out while the data load is still in flight, so
+    // the tab comes back at the top. Wait for the rows, then place the offset.
+    if (!pendingViewport || !scrollElement || rows.length === 0) return;
     const target =
       pendingViewport.anchorRow !== null
         ? scrollTopForAnchorRow(pendingViewport.anchorRow, rowHeight)
@@ -321,7 +324,7 @@ export function useTableForeignKeyNavigation(
       });
     }
     return () => cancelAnimationFrame(frame);
-  }, [pendingViewport, scrollElement, rowHeight]);
+  }, [pendingViewport, scrollElement, rowHeight, rows.length]);
 
   const breadcrumb = useMemo(() => {
     if (!origin) return null;

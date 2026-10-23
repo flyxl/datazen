@@ -184,6 +184,10 @@ impl DesktopSessionBackend {
             .await
             {
                 Ok(result) => {
+                    tracing::debug!(
+                        command = %call.command,
+                        "host metadata command produced a typed result"
+                    );
                     dr::ResultSink::write_output(
                         &sink,
                         serde_json::json!({"kind":"commandResult","data":result.data}),
@@ -210,9 +214,16 @@ impl DesktopSessionBackend {
                         None,
                     ))
                 }
-                Err(error) => Err(dr::ResourceError::SinkRejected {
-                    reason: crate::platform::diagnostics::safe_message(&error.to_string()),
-                }),
+                Err(error) => {
+                    tracing::warn!(
+                        command = %call.command,
+                        error = %error,
+                        "host metadata command failed"
+                    );
+                    Err(dr::ResourceError::SinkRejected {
+                        reason: crate::platform::diagnostics::safe_message(&error.to_string()),
+                    })
+                }
             }
         } else {
             match call.command.as_str() {
