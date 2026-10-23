@@ -645,6 +645,15 @@ pub trait TunnelRepository: Send + Sync + 'static {
 > `the_aggregate_holds_the_form_neutral_storage_ports` 系列断言）、宿主侧的
 > 「生产半边不再直读 `state.store`」断言（`the_command_shell_reads_the_aggregate_not_the_host_residue`
 > 等），以及 `scripts/check-ddd-layers.mjs` 的层间方向检查。
+>
+> **反例（2026-10-23，连接目录）**：连接目录端口
+> [`ConnectionCatalog`](system-overview.md#64-repositories-与环境-ports) **进了** `platform-api`
+> （`packages/platform-api/src/ports/connection_catalog.rs`），因为它的词汇表是
+> `datazen_driver_api::ConnectionConfig`——驱动契约类型，不是领域模型。上面那条 F-04
+> 的反对理由在这里不成立：`platform-api` 本来就依赖 `driver-api`（`TunnelRepository`
+> 同一口径），端口里出现 `ConnectionConfig` 不新增任何依赖边。**判据是词汇表住在哪，
+> 不是「它是命令族的端口」**：词汇表在 driver-api ⇒ 进 `platform-api`（可清单化）；
+> 词汇表在领域包 ⇒ 留在领域包（由三处盯住）。
 
 两处形状差异**是刻意的，并且写进了模块头**：
 
@@ -846,6 +855,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 | `ArtifactRepository` | 文件字节经本机路径与授权对话框；Job Core 仅存 Artifact ID 引用（30 天 TTL），不持有字节或保证内容留存 | 服务端存储 + 授权导出 | 同单进程 |
 | `TunnelRepository` | **已实现**：`src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`。加密落盘 `{appData}/tunnels.json`；名单只给摘要，单条取用给全量；只承认桌面自己那一个组织 | 服务端库上的组织级隧道定义存储（同一端口、另一适配器） | 同单进程 |
 | `KnownHostsRepository` | **已实现**：`src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`，读 `{appData}/ssh_known_hosts.json`；同步端口、`load` 不失败 | 服务端存储目录 / 组织级存储（本轨不写 web 实现） | 同单进程 |
+| `ConnectionCatalog` | **已实现**：`src-tauri/src/store/connections.rs` 的 `impl ConnectionCatalog for DesktopRepository`。加密落盘 `{appData}/connections.json` + `groups.json`；端口是明文语义，脱敏在 IPC / 日志边界；分词表整表读写、只改时间戳的 `touch_last_connected_at` 避免 lost update | 服务端库上的组织级连接目录（同一端口、另一适配器） | 同单进程 |
 | `EventSink` | Tauri 事件推送 | SSE | SSE + worker 转发 |
 | `Clock` | `SystemClock`（本机 UTC，定宽毫秒） | 同桌面（服务进程本机 UTC） | 各 worker 读各自本机 UTC；跨节点排序只用 `Timestamp` 字典序，不假设同一时钟 |
 

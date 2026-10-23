@@ -241,7 +241,21 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 `AppState` 少掉：**1 个字段**（`store`），字段数 23 → **22**；`state.store` 的访问数从 145（含测试的
 宽口径基线）减到 **0**——生产半边口径是 104 → 0（见上「进度」段的计数规则）。
 
-**进度（2026-10-23）**：第一族「命名视图」已落地——`ApplicationServices` 持
+**进度（2026-10-23）**：第三族「连接目录」已落地——新端口
+`datazen_platform_api::ports::ConnectionCatalog`（`list` / `get` / `save` / `delete` /
+`reorder` / `touch_last_connected_at` / `groups` / `save_groups`，全部带
+`OrganizationScope`；词汇表直接复用 `datazen_driver_api::ConnectionConfig`，不另造投影），
+`ApplicationServices` 持 `connections: Arc<dyn ConnectionCatalog>`，桌面实现
+`DesktopRepository`。`commands/connection.rs` 与 `commands/connection_import/ipc.rs`
+的生产半边 `state.store` 归 0（断言 `the_command_shell_reads_the_aggregate_not_the_host_store`），
+全仓生产半边计数 **93 → 84**。同时把 `PortError → CommandError` 的映射与脱敏日志收口到
+`src-tauri/src/commands/port_call.rs`（`tunnel.rs` 的同名助手改为转调）。
+**残留失败面**：与隧道 / known-hosts / 仪表盘同源——聚合拿不到（
+`DesktopIdentity::from_desktop_user` 取不到本机用户名）时，连接列表 / 保存 / 删除 / 导入
+与其它已归位的族一样返回 `NotConfigured`，而不是「这一族还能用」。这是 D1 那一档的既有事实，
+本族只是把范围扩大，**没有**给命令留 `state.store` 后门。
+
+第一族「命名视图」已落地——`ApplicationServices` 持
 `named_views: Arc<dyn NamedViewRepository>`，`commands/named_views.rs` 生产半边
 `state.store` 归零（断言 `the_command_shell_reads_the_aggregate_not_the_host_store`），
 第二族「仪表盘」（2026-10-23 同日）再减 8 处（仓储 6 + 运行历史 2），
@@ -255,19 +269,19 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 独立验收：每期一条「该命令族的生产源码里不再出现 `state.store`」的断言 + `cargo test -p datazen --lib` 全绿 + 该命令族的 IPC 载荷冻结断言不变 + E2E。
 
-**剩余 93 处的分布与难度（2026-10-23 实测，生产半边口径）**——这张表的作用是防止下一个人
+**剩余 84 处的分布与难度（2026-10-23 实测，生产半边口径；连接目录族归零前的 93 处已扣除）**——这张表的作用是防止下一个人
 把「还剩 93 处」误当成「再搬几个文件就好」：
 
 | 类别 | 处数 | 主要文件 | 卡在哪（不是卡在懒，是卡在缺用例） |
 |---|---|---|---|
 | 设置与路径 | 12 + 3 + 2 + 1 | `commands/config.rs`、`app_archive.rs`、`window.rs`、`encryption_key.rs` | `SettingsRepository` 只有 `SharedSettings`；命令要的是完整 `AppSettings`（主题/键位/执行策略）与 `data_dir()`。前者可扩端口，后者是 §5.1.3 形态专属。 |
 | AI 配置 | 17 | `ai/generate.rs` 7、`ai/util.rs` 3、`ai/config.rs` 3、`ai/chat.rs` 3、`ai/grant.rs` 1 | `ai_config.enc` 是桌面落盘；要抽的是 `AiConfigurationService`（profile 选择回退规则已在 ai-api），而不是把加密文件路径搬进中立层。 |
-| 连接目录 | 11 | `connection.rs` 5、`connection_import/ipc.rs` 6 | 需要 `ConnectionCatalog` 用例：`ProfileRepository` 给的是 `Profile`/`ProfileView`，命令要的是 `ConnectionConfig`（driver-api 类型，`application` 不得依赖）。要么在宿主做映射并让端口返回 `ConnectionConfig` 的形态中立投影，要么新增 `ConnectionGroupRepository`。 |
+| 连接目录 | ~~11~~ **已归零** | `connection.rs`、`connection_import/ipc.rs` | 已落地（`ConnectionCatalog`）。表中的「11」是**逐行 grep 的漏数**：`duplicate_connection_impl` 与 `reorder_connections` 的 `state.store` 跨行书写，真实处数是 11 + 2。端口直接复用 `datazen_driver_api::ConnectionConfig`——`platform-api` 本就依赖 driver-api，所谓「`application` 不得依赖 driver-api」在本族并不成立（聚合只拿 trait 对象）。 |
 | 仪表盘残留 | 6 | `commands/dashboard.rs` | **已有结论，不搬**：组件创建（要 `AppDb::get_workflow` + `WorkflowRegistry`）、导入导出（文件对话框 + `&AppDb` 签名）、手工执行（宿主库重载）。 |
 | 长尾 | 47 | 38 个文件里各 1–3 处 | 逐个看：有的是 §5.1.3 形态专属（`data_dir`、钥匙串、窗口状态），有的只差一个端口方法。 |
 
-结论：**从 93 到 0 不是机械搬迁，而是若干「新用例服务 + 新端口」的设计工作**（`AppSettings` 端口、
-`AiConfigurationService`、`ConnectionCatalog`、`ConnectionGroupRepository`……）。每新增一个端口都要
+结论：**从 84 到 0 不是机械搬迁，而是若干「新用例服务 + 新端口」的设计工作**（`AppSettings` 端口、
+`AiConfigurationService`、`ConnectionGroupRepository`……）。每新增一个端口都要
 同步四处（`PORT_TRAITS` / `SOURCE_FILES` / `ports/mod.rs` 模块头 / `system-overview.md` §6.4），
 并按 R8「新增端口必须有实现或用例引用」先证明有消费者。
 

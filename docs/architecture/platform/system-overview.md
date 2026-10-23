@@ -259,6 +259,7 @@ interface ArtifactChunk {
 | EventSink | 发布带 sequence 的事件、受控订阅；终态可从 repository 重建 |
 | NetworkProvider | 按路由策略建立直连/隧道、端点校验、共享引用 |
 | BudgetCoordinator | 申请节点额度、续期、drain；失联时停止新增资源 |
+| ConnectionCatalog | 连接配置与分组的 list/get/save、只改最后连接时间的 touch；词汇表复用 `ConnectionConfig`，端口为明文语义 |
 
 本表不含 `IdentityResolver`（它已在 §4 模块职责表中引入）：执行身份解析（`executionIdentityKey` 的生产者）由 `IdentityResolver` 承担，`SecretProvider` 只负责版本化秘密材料的读取与轮换；边界见共享边界详细设计。
 
