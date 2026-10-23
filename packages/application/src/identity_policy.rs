@@ -110,73 +110,18 @@ impl IdentityPolicy {
         }
     }
 
-    /// §5.1(3)：`OwnerRef` 可采信性。
+    /// §5.1(3)：`OwnerRef` 可采信性（Editor/ClientSession 比 `clientInstanceId`；
+    /// Job/WorkflowBlock 比 `authorized_job`）。
     ///
-    /// * `Editor` / `ClientSession`：归属的 `clientInstanceId` 必须是**当前**客户端实例。
-    /// * `Job` / `WorkflowBlock`：归属 Job 必须等于 `authorized_job`。
-    ///
-    /// 失败一律是 `PermissionDenied`——不给「是别人的」这种可用于探测的信息。
-    ///
-    /// # 契约债（不要把本函数当成网关归属闸门的兜底）
-    ///
-    /// 1. **本函数当前没有生产调用点。** 全仓只有定义本身、几处文档引用、以及本文件
-    ///    内的单测；`src-tauri` 不调用它。任何「上层已经挡住了」的结论都不成立。
-    /// 2. **这里的 `OwnerRef` 与 `packages/runtime` 里那个同名类型不是同一个东西。**
-    ///    本侧是 `datazen_platform_api::context::OwnerRef`：它的 `Editor` 只有
-    ///    `client_instance_id` / `editor_session_id`，`Job` 只有 `job_id` / `stage_id`
-    ///    （且 `stage_id` 是 `crate::id::StageId`，网关侧同名字段是 `String`）——**两侧都没有
-    ///    `organization_id` / `principal_id`**。因此本函数在结构上**看不到组织与主体**，
-    ///    也不可能校验网关那一侧。
-    /// 3. **两侧没有任何交叉校验**，同一个变体名、同一批字段名，但语义可以各改各的、互不报警。
-    /// 4. 即便接上调用方，这里比的是「调用方显式传入的 `authorized_job` 与 `owner.job_id`
-    ///    是否相等」，这是**这个 job 有没有被授权**，不是**这是不是同一个人**——与
-    ///    CM-06「U1 指向 U2 的 job」的跨用户语义不是同一件事，不能互相顶替。
-    ///
-    /// 两条同名类型由网关侧 `packages/runtime/src/gateway/owner_binding.rs` 的模块头
-    /// 同样登记在案。统一它们是跨 crate 的契约改动，不在网关轨内单方面做。
+    /// **实现在** [`datazen_platform_api::policy::check_owner`]——本入口只为保持宿主与
+    /// runtime 的调用路径不变而保留，行为、错误码与契约债说明都在那一侧（含「看不到
+    /// 组织与主体」「与网关同名类型不互通」「生产调用点只有两处」三条）。
     pub fn check_owner(
         ctx: &RequestContext,
         owner: &OwnerRef,
         authorized_job: Option<&JobId>,
     ) -> Result<(), ApiError> {
-        match owner {
-            OwnerRef::Editor {
-                client_instance_id,
-                editor_session_id: _,
-            } => {
-                if client_instance_id == &ctx.client_instance_id {
-                    return Ok(());
-                }
-                Err(ApiError::permission_denied(
-                    "编辑器会话不属于当前客户端实例",
-                ))
-            }
-            OwnerRef::ClientSession {
-                client_instance_id,
-                purpose: _,
-            } => {
-                if client_instance_id == &ctx.client_instance_id {
-                    return Ok(());
-                }
-                Err(ApiError::permission_denied(
-                    "长驻客户端会话不属于当前客户端实例",
-                ))
-            }
-            OwnerRef::Job {
-                job_id,
-                stage_id: _,
-            } => match authorized_job {
-                Some(job) if job == job_id => Ok(()),
-                _ => Err(ApiError::permission_denied("归属的 Job 未获授权")),
-            },
-            OwnerRef::WorkflowBlock {
-                job_id,
-                block_id: _,
-            } => match authorized_job {
-                Some(job) if job == job_id => Ok(()),
-                _ => Err(ApiError::permission_denied("归属的 Job 未获授权")),
-            },
-        }
+        datazen_platform_api::policy::check_owner(ctx, owner, authorized_job)
     }
 
     /// INV-03：执行位占用。空 ⇒ `Free`；被占 ⇒ `QueuedBehind`，**不是** `ResourceBusy` 错误。

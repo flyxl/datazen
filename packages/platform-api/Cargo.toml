@@ -3,7 +3,7 @@ name = "datazen-platform-api"
 version = "0.0.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "Transport-free platform contracts: ID newtypes, RequestContext, target types, port traits and PortError."
+description = "Transport-free platform contracts: ID newtypes, RequestContext, target types, port traits, cross-boundary errors (PortError/ApiError) and the shared use-case port signatures."
 exclude = ["src/testing/**"]
 
 [features]

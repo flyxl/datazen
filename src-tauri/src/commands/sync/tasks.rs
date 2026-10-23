@@ -91,7 +91,7 @@ async fn resolve_task_endpoint(
     let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
         state,
         connection_id,
-        requested_database,
+        Some(requested_database),
         "syncTask",
     )
     .await

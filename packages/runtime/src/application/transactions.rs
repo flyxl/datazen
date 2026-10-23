@@ -1,11 +1,11 @@
 //! Compatibility transaction controls use the same actor/resource handle ledger
 //! as SQL execution. No driver TransactionHandle escapes into a transport map.
 use super::*;
-use datazen_application::{
-    dto::requests::{CommandCall, ExecuteInSessionRequest},
-    sessions::ConnectionUseCases,
-};
 use datazen_platform_api::dto::idempotency::IdempotentOperation;
+use datazen_platform_api::{
+    dto::requests::{CommandCall, ExecuteInSessionRequest},
+    use_cases::connection::ConnectionUseCases,
+};
 
 #[derive(Clone, Copy)]
 pub enum SessionTransactionOperation {

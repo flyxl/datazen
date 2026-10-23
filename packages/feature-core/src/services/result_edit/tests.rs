@@ -15,7 +15,7 @@ use datazen_driver_api::{
     ResultObjectKind, ResultOrigin, ResultOriginDetail, ResultShape, ResultTableRef, ServerInfo,
     TableInfo, TableSchema, Value,
 };
-use datazen_runtime::schema_cache::CachedColumns;
+use datazen_kernel::schema_cache::CachedColumns;
 
 use super::*;
 

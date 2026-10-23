@@ -516,7 +516,7 @@ pub async fn stream_sql_file_into_session(
 
     let mut session = RestoreSession::new(driver, handle, dialect.new_sql_scanner(), Some(opts))
         .with_statement_guard(Box::new(move |stmt| {
-            datazen_runtime::sql_guard::check_sql(stmt, read_only, safe_mode)
+            datazen_kernel::sql_guard::check_sql(stmt, read_only, safe_mode)
                 .map_err(DriverError::QueryFailed)
         }));
     let mut utf8 = Utf8ChunkDecoder::new();

@@ -110,6 +110,7 @@ impl PortError {
 // （`connection/mod.rs` 与 `application/lib.rs` 都不引用对方），所以共享定义只能落在本包。
 // ────────────────────────────────────────────────────────────────────────────
 
+use crate::id::RequestId;
 use serde::{Deserialize, Serialize};
 
 /// 请求被拒绝的机器可读 code，取值逐字来自连接 §13 的错误表。
@@ -347,6 +348,101 @@ pub enum RetryDisposition {
     CheckExecution,
 }
 
+// ---------------------------------------------------------------------------
+// 用例层失败类型：`ApiError`
+// ---------------------------------------------------------------------------
+//
+// 它为什么在本包（而不是 `application`）：`datazen-runtime` 要实现用例端口
+// `ConnectionUseCases` 并返回 `ApiError`，而 runtime 不得依赖 application
+// （R2：`application` 与 `runtime` 是兄弟，互不依赖，且两者都不许闭成 Cargo 环）。
+// 端口签名里出现的每个类型都只能落在本包——`PortError`、`ApiErrorCode`、
+// `RequestContext`、DTO 都是这个道理，`ApiError` 只是补齐最后一块。
+//
+// 迁移是**类型搬家**，不是行为变更：`application::error` 与 `runtime` 都用
+// `pub use` 再导出，调用点逐字不变（宿主 179 处引用也包括在内）。
+
+/// 用例层的失败类型。跨边界传输时 `code` / `requestId` / `retryDisposition` 全部必填，
+/// `message` 是**脱敏**后的给调用者文案。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiError {
+    /// 机器可读 code（连接 §13）。
+    pub code: ApiErrorCode,
+    /// 脱敏文案：不得包含 driver 原始错误、SQL 片段、绝对路径或凭据。
+    pub message: String,
+    /// 日志关联 id，来自 adapter 构造的 `RequestContext`；便于调用方报障时对齐服务端日志。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<RequestId>,
+    /// 机器可读重试政策。
+    pub retry_disposition: RetryDisposition,
+}
+
+impl ApiError {
+    /// 构造一个不带 requestId 的错误。
+    pub fn new(code: ApiErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            request_id: None,
+            retry_disposition: code.retry_disposition(),
+        }
+    }
+
+    /// 挂上 `RequestContext.request_id`，供 host 写回响应头 / 事件。
+    pub fn with_request_id(mut self, request_id: Option<RequestId>) -> Self {
+        self.request_id = request_id;
+        self
+    }
+
+    /// 构造 DTO/Command schema 不合法。
+    pub fn invalid_argument(message: impl Into<String>) -> Self {
+        Self::new(ApiErrorCode::InvalidArgument, message)
+    }
+
+    /// 构造目标缺失：无法确认时必须返回本错误，不得猜测 schema（例如把未指定的 schema
+    /// 猜成 public，连接 §4.3）。
+    pub fn target_required(message: impl Into<String>) -> Self {
+        Self::new(ApiErrorCode::TargetRequired, message)
+    }
+
+    /// 构造目标冲突：同一层级被重复表达且不一致，或 namespace 内别名规范化后不相等。
+    pub fn target_conflict(message: impl Into<String>) -> Self {
+        Self::new(ApiErrorCode::TargetConflict, message)
+    }
+
+    /// 构造授权拒绝。host 必须把「不可见资源」的 `PermissionDenied` 映射为 404，避免 ID 枚举
+    /// （概要 §6.3），本模块不做这层映射。
+    pub fn permission_denied(message: impl Into<String>) -> Self {
+        Self::new(ApiErrorCode::PermissionDenied, message)
+    }
+
+    /// 构造 CAS 失败（profile configRevision）。
+    pub fn config_revision_mismatch(message: impl Into<String>) -> Self {
+        Self::new(ApiErrorCode::ConfigRevisionMismatch, message)
+    }
+
+    /// 是否为「不可见 / 不存在不可区分」的读取失败。
+    pub fn is_not_found(&self) -> bool {
+        matches!(
+            self.code,
+            ApiErrorCode::NotFound | ApiErrorCode::SessionNotFound
+        )
+    }
+
+    /// 是否允许调用方在不核验执行的前提下重试同一请求。
+    pub fn may_retry_without_checking_execution(&self) -> bool {
+        self.retry_disposition == RetryDisposition::SafeRead
+    }
+}
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for ApiError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -503,7 +599,10 @@ mod tests {
         // 里做 crate 级扫描。后者必须**遍历模块树**（从 `lib.rs` 解析 `mod`，或直接遍历
         // 目录）——**不要手写文件清单**：清单会随新增文件静默过期，守卫照样判绿，而且
         // 过期时没有任何信号，比只读单文件更坏。
-        const ALLOWED: [&str; 2] = ["ApiErrorCode", "RetryDisposition"];
+        // `ApiError` 是**跨边界**错误类型（概要 §6.3：`code` / `message` / `requestId` /
+        // `retryDisposition`），它本来就必须有 wire 形态——本条守卫要钉的是
+        // 「**端口层**的 `PortError` 不得有」，不是「本文件不许出现 serde」。
+        const ALLOWED: [&str; 3] = ["ApiError", "ApiErrorCode", "RetryDisposition"];
         const MARKERS: [&str; 3] = ["Serialize", "Deserialize", "serde_json"];
 
         /// 从一条顶层 item 的声明行里取出它所服务的类型名。
@@ -623,7 +722,7 @@ mod tests {
         const MIN_OWNED: usize = 2;
         assert!(
             owned >= MIN_OWNED,
-            "守卫空转：只归到 {owned} 处 marker，预期至少 {MIN_OWNED} 处（ApiErrorCode 与 RetryDisposition 的 derive）"
+            "守卫空转：只归到 {owned} 处 marker，预期至少 {MIN_OWNED} 处（ApiError / ApiErrorCode / RetryDisposition 的 derive）"
         );
     }
 
@@ -668,5 +767,141 @@ mod tests {
             .filter(|line| !line.trim_start().starts_with("//"))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+}
+
+#[cfg(test)]
+mod api_error_tests {
+    use super::*;
+
+    #[test]
+    fn wire_literals_match_the_spec_table() {
+        assert_eq!(
+            ApiErrorCode::ConfigRevisionMismatch.as_str(),
+            "configRevisionMismatch"
+        );
+        assert_eq!(
+            ApiErrorCode::TransactionResolutionRequired.as_str(),
+            "transactionResolutionRequired"
+        );
+        assert_eq!(
+            ApiErrorCode::TargetConflictRows.as_str(),
+            "targetConflictRows"
+        );
+        assert_eq!(
+            ApiErrorCode::IdempotencyExpired.as_str(),
+            "idempotencyExpired"
+        );
+        assert_eq!(
+            ApiErrorCode::ServiceUnavailable.as_str(),
+            "serviceUnavailable"
+        );
+    }
+
+    #[test]
+    fn all_is_complete_and_unique() {
+        assert_eq!(ApiErrorCode::ALL.len(), 31);
+        let mut literals: Vec<&str> = ApiErrorCode::ALL.iter().map(|c| c.as_str()).collect();
+        literals.sort_unstable();
+        let before = literals.len();
+        literals.dedup();
+        assert_eq!(before, literals.len(), "code 字面值必须互不相同");
+    }
+
+    #[test]
+    fn retry_disposition_follows_the_spec_actions() {
+        // 概要 §6.3：safeRead 仅用于确认无副作用的读取。
+        assert_eq!(
+            ApiErrorCode::NotFound.retry_disposition(),
+            RetryDisposition::SafeRead
+        );
+        assert_eq!(
+            ApiErrorCode::SessionNotFound.retry_disposition(),
+            RetryDisposition::SafeRead
+        );
+        // 连接 §13：outcomeUnknown/idempotencyExpired 都是「核验执行，不自动重发」。
+        assert_eq!(
+            ApiErrorCode::OutcomeUnknown.retry_disposition(),
+            RetryDisposition::CheckExecution
+        );
+        assert_eq!(
+            ApiErrorCode::IdempotencyExpired.retry_disposition(),
+            RetryDisposition::CheckExecution
+        );
+        // 权限/参数/能力/上下文冲突 → 先修复或刷新。
+        for code in [
+            ApiErrorCode::PermissionDenied,
+            ApiErrorCode::InvalidArgument,
+            ApiErrorCode::CapabilityUnsupported,
+            ApiErrorCode::ContextConflict,
+            ApiErrorCode::ConfigRevisionMismatch,
+        ] {
+            assert_eq!(code.retry_disposition(), RetryDisposition::Never, "{code}");
+        }
+    }
+
+    #[test]
+    fn every_code_has_a_disposition() {
+        for code in ApiErrorCode::ALL {
+            let _ = code.retry_disposition();
+        }
+        assert_eq!(ApiErrorCode::ALL.len(), 31);
+    }
+
+    #[test]
+    fn serialized_shape_has_camel_case_keys() {
+        let error = ApiError::new(
+            ApiErrorCode::ConfigRevisionMismatch,
+            "config revision mismatch",
+        )
+        .with_request_id(Some(RequestId::new("req-1")));
+        let json = serde_json::to_value(&error).expect("serialize");
+        assert_eq!(json["code"], "configRevisionMismatch");
+        assert_eq!(json["message"], "config revision mismatch");
+        assert_eq!(json["requestId"], "req-1");
+        assert_eq!(json["retryDisposition"], "never");
+    }
+
+    #[test]
+    fn api_error_round_trips_through_serde() {
+        for code in ApiErrorCode::ALL {
+            let error = ApiError::new(code, "sanitized")
+                .with_request_id(Some(RequestId::new("req-round-trip")));
+            let encoded = serde_json::to_string(&error).expect("serialize");
+            let decoded: ApiError = serde_json::from_str(&encoded).expect("deserialize");
+            assert_eq!(decoded, error, "code {}", code.as_str());
+            assert_eq!(decoded.retry_disposition, code.retry_disposition());
+        }
+    }
+
+    #[test]
+    fn request_id_is_optional_on_the_wire() {
+        let error = ApiError::new(ApiErrorCode::Unauthenticated, "no session");
+        let json = serde_json::to_value(&error).expect("serialize");
+        assert!(json.get("requestId").is_none());
+        let decoded: ApiError = serde_json::from_value(json).expect("deserialize");
+        assert_eq!(decoded, error);
+    }
+
+    #[test]
+    fn not_found_predicate_never_reports_write_rejections() {
+        assert!(ApiError::new(ApiErrorCode::NotFound, "x").is_not_found());
+        assert!(ApiError::new(ApiErrorCode::SessionNotFound, "x").is_not_found());
+        assert!(!ApiError::new(ApiErrorCode::PermissionDenied, "x").is_not_found());
+        assert!(!ApiError::new(ApiErrorCode::TargetConflict, "x").is_not_found());
+    }
+
+    #[test]
+    fn retry_helpers_agree_with_the_disposition() {
+        let unknown = ApiError::new(ApiErrorCode::OutcomeUnknown, "unknown");
+        assert!(!unknown.may_retry_without_checking_execution());
+        let missing = ApiError::new(ApiErrorCode::NotFound, "missing");
+        assert!(missing.may_retry_without_checking_execution());
+    }
+
+    #[test]
+    fn display_is_code_then_message() {
+        let error = ApiError::new(ApiErrorCode::SessionLost, "physical session lost");
+        assert_eq!(error.to_string(), "sessionLost: physical session lost");
     }
 }

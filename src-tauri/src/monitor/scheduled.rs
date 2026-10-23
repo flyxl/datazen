@@ -110,10 +110,13 @@ impl ResourceExecutionHost for ScheduledWorkflowHost<'_> {
                 "scheduled command outside grant scope".into(),
             ));
         }
+        let runtime = adapter
+            .runtime()
+            .map_err(|_| WorkflowError::Validation("runtime unavailable".into()))?;
         Ok(PreparedExecution {
-            runtime: adapter
-                .runtime()
-                .map_err(|_| WorkflowError::Validation("runtime unavailable".into()))?,
+            artifacts: crate::platform::feature_ports::HostArtifactChunks::new(runtime.clone())
+                .shared(),
+            use_cases: runtime,
             context: self.context.clone(),
             target,
         })

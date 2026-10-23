@@ -1,5 +1,9 @@
 //! Restore is an apply Job, with an immutable, authorized Artifact input.
 //! Drivers must implement a real Gateway binding; no legacy-handle fallback exists.
+use datazen_kernel::job::{
+    CancelToken, FrozenPlan, JobError, JobHandler, RecoveryVerdict, StageOutcome, StageSpec,
+    StageTerminal,
+};
 use datazen_platform_api::{
     dto::{
         artifact::ArtifactLifecycle,
@@ -10,10 +14,6 @@ use datazen_platform_api::{
     ports::artifact::ArtifactRepository,
     target::ExecutionTarget,
     RequestContext,
-};
-use datazen_runtime::job::{
-    CancelToken, FrozenPlan, JobError, JobHandler, RecoveryVerdict, StageOutcome, StageSpec,
-    StageTerminal,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -339,6 +339,9 @@ impl RestoreGateway for UnsupportedRestoreGateway {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_kernel::job::{
+        project_frozen_plan, InMemoryJobRepository, JobClock, SystemJobClock,
+    };
     use datazen_platform_api::{
         context::OwnerRef,
         dto::job::JobDefinition,
@@ -351,10 +354,7 @@ mod tests {
             job::JobRepository,
         },
     };
-    use datazen_runtime::{
-        artifact::FileArtifactRepository,
-        job::{project_frozen_plan, InMemoryJobRepository, JobClock, SystemJobClock},
-    };
+    use datazen_runtime::artifact::FileArtifactRepository;
     use std::sync::atomic::{AtomicUsize, Ordering};
     fn context(principal: &str) -> RequestContext {
         RequestContext::new(
@@ -684,10 +684,8 @@ mod tests {
     }
     #[tokio::test]
     async fn durable_restore_job_records_unsupported_under_target_writer_budget() {
-        use datazen_runtime::{
-            budget::{ledger::BudgetLedger, quotas::BudgetConfig},
-            job::{EndpointRef, EndpointRole, JobHost},
-        };
+        use datazen_kernel::budget::{ledger::BudgetLedger, quotas::BudgetConfig};
+        use datazen_kernel::job::{EndpointRef, EndpointRole, JobHost};
         let (_dir, store, plan) = input().await;
         let clock = Arc::new(SystemJobClock);
         let repository = Arc::new(InMemoryJobRepository::new(clock.clone(), 60));

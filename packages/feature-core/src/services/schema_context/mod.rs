@@ -6,8 +6,8 @@
 //! implementation therefore lives here, in the shared feature layer, and a
 //! form only supplies the two cross-form dependencies:
 //!
-//! - [`RuntimeConnectionUseCases`](datazen_runtime::application::RuntimeConnectionUseCases)
-//!   for the session-to-connection mapping, and
+//! - [`SessionConnectionLookup`](crate::services::ports::SessionConnectionLookup)
+//!   for the session-to-connection mapping (a consumer-defined port the host answers), and
 //! - [`ResourceExecutionHost`](crate::workflow::resource_execution::ResourceExecutionHost)
 //!   for the profile, the driver and command execution.
 //!

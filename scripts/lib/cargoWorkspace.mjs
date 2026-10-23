@@ -67,6 +67,7 @@ export const LAYERS = Object.freeze([
   { id: 'host', path: 'src-tauri', kind: 'rust' },
   { id: 'application', path: 'packages/application', kind: 'rust' },
   { id: 'runtime', path: 'packages/runtime', kind: 'rust' },
+  { id: 'kernel', path: 'packages/kernel', kind: 'rust' },
   { id: 'tunnel', path: 'packages/tunnel', kind: 'rust' },
   { id: 'feature-core', path: 'packages/feature-core', kind: 'rust' },
   { id: 'platform-api', path: 'packages/platform-api', kind: 'rust' },

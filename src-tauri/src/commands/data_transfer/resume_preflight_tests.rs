@@ -221,7 +221,7 @@ async fn mysql_bigint_key_keeps_atomic_table_boundary_resume() {
     let source = crate::services::migration_endpoint::open_dedicated_session(
         &test.state,
         "transfer-resume-mysql-bigint-source",
-        "app",
+        Some("app"),
         "data-transfer-test",
     )
     .await

@@ -20,7 +20,7 @@ use super::pipeline::{
 };
 use super::plan::TransferFreezeBody;
 use super::recovery::verify_checkpoint;
-use datazen_runtime::job::JobHandler as _;
+use datazen_kernel::job::JobHandler as _;
 
 /// 把一次性查询结果拆成 §6.2 期望的流式事件序列（单语句、可分批、不截断）。
 fn emit_stream(
@@ -454,8 +454,8 @@ fn inspected_for(names: &[&str]) -> TableInspectResult {
     }
 }
 
-fn frozen_plan_for_apply() -> datazen_runtime::job::FrozenPlan {
-    datazen_runtime::job::FrozenPlan {
+fn frozen_plan_for_apply() -> datazen_kernel::job::FrozenPlan {
+    datazen_kernel::job::FrozenPlan {
         kind: "dataTransferApply".into(),
         is_apply: true,
         consumed_plan_id: Some("plan-1".into()),

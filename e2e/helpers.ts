@@ -4,6 +4,9 @@
  * Centralises common patterns so individual spec files stay focused on
  * feature-specific assertions.
  */
+import { CONNECT_COMMANDS, dbSessionIdOf } from './lib/sessionId.js';
+
+export { dbSessionIdOf };
 import { browser, $, $$, expect } from '@wdio/globals';
 import { t } from './i18n.js';
 import { isScreenshotTraceEnabled, saveJourneyScreenshot } from './lib/screenshotTrace.js';
@@ -785,7 +788,8 @@ export async function invokeBackend<T>(
   cmd: string,
   args: Record<string, unknown> = {},
 ): Promise<T> {
-  return invokeSettings<T>(cmd, args);
+  const result = await invokeSettings<T>(cmd, args);
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 /** Connect by persisted config id (handles legacy `configId` IPC arg on older builds). */

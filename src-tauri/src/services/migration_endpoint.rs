@@ -57,10 +57,27 @@ pub(crate) async fn runtime_session_context(
     })
 }
 
+/// Normalize a caller-supplied database name: missing, blank and padded values
+/// all collapse to "no database requested".
+///
+/// A profile may legitimately leave the database unset (the connection form
+/// does not require it for server-level drivers). In that case the session
+/// opens with an empty namespace and the *driver* resolves its own default —
+/// PostgreSQL falls back to `postgres`, MySQL stays at server level — then
+/// reports the real database through the observed context. The host must not
+/// invent a global "database required" rule: whether a level is required is
+/// declared per driver by its namespace shape.
+pub(crate) fn normalize_database(database: Option<&str>) -> Option<String> {
+    database
+        .map(str::trim)
+        .filter(|database| !database.is_empty())
+        .map(str::to_owned)
+}
+
 pub(crate) async fn open_dedicated_session(
     state: &crate::commands::AppState,
     connection_id: &str,
-    database: &str,
+    database: Option<&str>,
     purpose: &str,
 ) -> Result<String, crate::commands::CommandError> {
     use datazen_application::{dto::requests::OpenSessionRequest, sessions::ConnectionUseCases};
@@ -70,6 +87,7 @@ pub(crate) async fn open_dedicated_session(
         id::ConnectionId,
         target::{ExecutionTarget, NamespaceTarget},
     };
+    let database = normalize_database(database);
     let adapter = state
         .platform_require()
         .map_err(crate::platform::into_command_error)?;
@@ -87,7 +105,7 @@ pub(crate) async fn open_dedicated_session(
             OpenSessionRequest {
                 initial_target: ExecutionTarget::new(
                     ConnectionId::new(connection_id),
-                    NamespaceTarget::new(Some(database.to_owned()), None, None, Vec::new()),
+                    NamespaceTarget::new(database, None, None, Vec::new()),
                 ),
                 owner: OwnerRef::ClientSession {
                     client_instance_id: call.context().client_instance_id.clone(),

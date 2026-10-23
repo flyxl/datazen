@@ -103,11 +103,11 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - 端口是**构造参数**而不是 `Option`：漏注入是**编译错误**，不是运行时的 `None`。构造函数对桌面与将来的 web 形态**完全相同**，只有传入的 `Arc<dyn …>` 实现不同。
 - `ApplicationServices::settings_service()` 让形态中立的设置用例（`packages/application/src/settings.rs` 的 `SettingsService`）直接跑在聚合持有的端口上，不再借用宿主的 store。
 - `AssemblyState::missing_steps()` 里 §6.2-7 的目标状态由 `AwaitingApplicationServices` 改为 `FullyWired`——旧值与当前档位同级，导致「补完第 7 步」在机器上永远不前进。
-- 机器可校验的不变式：`packages/application` 侧 6 条（形状 3 条 + 行为 3 条），宿主侧 5 条（装配状态机 2 条 + `AppState` 形状 3 条）。
+- 机器可校验的不变式：`packages/application` 侧 6 条（形状 3 条 + 行为 3 条），宿主侧 11 条（装配状态机 2 条 + `AppState` 形状 3 条 + 装配降级 2 条 + 第三步与第五步的宿主态收敛守卫 4 条，见 §5.1.2 的 D1 裁定、第三步与第五步）。
 
 **依赖边结论（为什么 application 层不能直接持有领域包端口）**：`datazen-runtime` 依赖 `datazen-application`，而 `datazen-schema-diff` / `datazen-data-sync` / `datazen-data-transfer` 都依赖 `datazen-runtime`。因此 `application → 领域包` 会闭成 Cargo 环（`cargo metadata` 报 `cyclic package dependency`），门禁连跑都跑不起来。F-02/F-03/F-05 只禁宿主、传输框架与前端标识，**不禁**这条边——挡住它的是依赖图本身，不是门禁。F-04 另外禁止 `platform-api` 依赖领域包，因此「把领域端口搬进 `platform-api`」这条路也要靠**新写窄端口**而不是靠依赖。结论：**领域端口只能由宿主在组装期包成 `platform-api` 层的窄端口再注入**。这一条已写成断言（`the_crate_does_not_depend_on_the_domain_packages`）。
 
-**没有做、也不许顺手做的事**：现有 145 处 `state.store.…` 调用点一个都没搬；命令的签名、载荷与错误文案一个都没改；`AppState` 没有新增 `pub` 字段（新增字段数上限由断言钉在 25）。
+**没有做、也不许顺手做的事**：现有 145 处 `state.store.…` 调用点一个都没搬；命令的签名、载荷与错误文案一个都没改；`AppState` 没有新增 `pub` 字段（字段数上限由断言钉住，当前基线 23：25 起，第三步与第五步各 -1）。
 
 #### 5.1.2 下一步分期
 
@@ -123,25 +123,49 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 风险：`ApplicationServices` 多了必填构造参数 ⇒ 将来任何新的形态都必须提供这两个端口的实现；漏了编译不过，这是**期望**的失败面。注入的实例必须与宿主持有的是同一份（`Arc::ptr_eq` 断言已钉住），否则出现两份事实。
 
-**第二步——设置用例归位到 application 层**
+**第二步（已落地 2026-10-23）——设置用例归位到 application 层**
 
-搬走：`src-tauri/src/commands/config.rs` 的两处 `SettingsService::new(state.store.as_ref())`（`get_settings` / `save_settings`）改为经 `ApplicationServices::settings_service()` 取用。
+搬走：`src-tauri/src/commands/config.rs` 的两处 `SettingsService::new(state.store.as_ref())`（`get_shared_settings` / `save_shared_settings`）改为 `crate::platform::ipc::require_application_services(state.inner())?` + `ApplicationServices::settings_service()`；错误映射逐字不变（`Internal("Unable to read settings")` / `Validation(message)` / `Internal("Unable to persist settings")`）。`save_shared_settings` 尾部的 `redis_flush_gate::sync_from_settings(&state.store.get_settings().await)` **保留**：它读的是宿主 `AppSettings`，不是形态中立的共享设置，不在本期范围。
 
-`AppState` 少掉：**0 个字段**；`state.store` 的访问数从 145 减到 **143**。
+`AppState` 少掉：**0 个字段**。生产半边的 `state.store.` 计数（口径：`src-tauri/src` 下 `.rs`、排除 `*_tests.rs`、在首个 `#[cfg(test)]` 处截断）从 **115 减到 113**，其中 `commands/config.rs` 由 **14 减到 12**。早先本节写的「145 → 143」是**含测试半边的宽口径**（同一时刻宽口径实测亦为 143），不可与本期数字直接相减。
 
-独立验收：新增断言「`config.rs` 生产源码里 `state.store.as_ref()` 出现 0 次」；`cargo test -p datazen --lib` 全绿；IPC 签名冻结表（`src-tauri/src/platform/ipc.rs`）不变。
+独立验收（已实测）：`cargo test -p datazen --lib` **1458 passed / 0 failed**（EXIT=0）；新增 `commands::config::tests::shared_settings_commands_read_the_aggregate_not_the_host_store`——断言生产半边里 `SettingsService::new(` 出现 0 次、`state.store.as_ref()` 出现 0 次、`settings_service()` 出现 2 次、`state.store` 出现 12 次；`src-tauri/src/platform/ipc.rs` 的 15 条 `FROZEN_SIGNATURES` 一字未改。
 
-风险（**必须先裁定**）：今天 `config.rs` 走 `state.store`，在 platform 装配失败时仍然可用；改走聚合后，聚合取不到时设置命令会从「可用」变成 `NotConfigured`。因此本期的**前置条件**是先把「platform 装配失败时聚合是否存在」这件事定下来：要么把 `ApplicationServices` 的构造从 `PlatformAdapter::inject` 提到装配根（§6.2 第 7 步本来就排在第 8 步之前），要么由产品裁定这个失败面变化并写进本节。**不得**在本期顺手改失败面。
+失败面：按下面的 D1 裁定，聚合取不到时这两条命令报 `NotConfigured`（此前直读 store 恒可用），残留失败面只有 `DesktopIdentity::from_desktop_user` 失败那一档。
 
-**第三步——隧道定义仓储归位**
+**第二步前置裁定 D1（已落地）：可选接线降级，内核不受牵连**
 
-搬走：`AppState.tunnels`（`Arc<dyn TunnelRepository>`）→ 由 `ApplicationServices.tunnels` 持有；`src-tauri/src/commands/tunnel.rs`（8 处）、`src-tauri/src/commands/connection.rs`（1 处）、`src-tauri/src/commands/connection_import/ipc.rs`（1 处）、`src-tauri/src/commands/mcp.rs`（1 处）共 **12 处** `state.tunnels`（含 1 处测试）改为经聚合取。
+第二期的风险是「设置从可用变 `NotConfigured`」。裁定结果与理由如下——**已实现为事实**，不是待办：
 
-`AppState` 少掉：**1 个字段**（25 → 24）；`state.tunnels` 的访问数从 12 减到 **0**。
+- **做法**：不把 `ApplicationServices` 的构造搬到 `bootstrap/app_state.rs`，而是把 `PlatformAdapter::inject` 里两项**可失败**的接线降级为「缺席能力」：执行身份解析器（`DesktopIdentityResolver::for_desktop`）与结果制品存储（`{dataDir}/result-artifacts`）。它们失败时各自只关闭自己那一项——对应访问器继续报 `ServiceUnavailable`，缺席项由 `PlatformAdapter::degraded_capabilities()` 可枚举，启动各记一条 `warn!`。内核（`profiles` / `policy` / `backend` / `live` / `runtime` / `target_metadata` / `ApplicationServices`）没有失败分支，一装好 `require_application_services()` 就可用。`inject` 的 `Err` 因此只剩「同一进程重复注入」这类装配冲突。
+- **为什么不搬到装配根**：聚合的构造材料（`DesktopIdentity`、`DesktopSessionBackend`、`OnceLock` 安装点、Backend 的 publisher/export 接线）全在 adapter 内；搬到 `finish_app_state` 只是把同一段代码挪到上游再传回来，**不改变任何一个失败分支**。真正决定失败面的是「可失败项是否中止整体装配」，不是构造发生在哪一层。另外，搬过去会诱使把聚合塞进 `AppState`，撞上 `app_state_does_not_hold_the_application_services` 守卫。
+- **实测依据（说明旧形状的失败半径严重超标）**：`identity_resolver()` 在**生产路径零调用方**（全仓只有 `adapter_tests` 调它），而 `master_key_bytes()` 读的是 `store.encryption_key_b64()`——主密钥在 `DesktopRepository::init_with_path` 里已经生成并持有，因此 `for_desktop` 在 store 就绪后**几乎不可失败**；真实可失败的只有制品目录（`create_dir_all` 撞上同名文件或不可写）。旧形状下这两者任一失败都会让 `profiles` / `runtime` / `services` 一个都装不上，把「制品存不了」放大成「所有依赖平台的 IPC 都是 `NotConfigured`」。
+- **残留失败面（写清，不得再悄悄扩大）**：`DesktopIdentity::from_desktop_user` 失败（取不到本机用户名）时没有 adapter，设置命令仍是 `NotConfigured`。这比旧路径（设置直接读 store）多出的**唯一**一档。接受理由：该档里连接列表、建连、工作流、AI 全部 `NotConfigured`，应用实质不可用；为这一档单留一条宿主直读 `store` 的路径，等于重新引入第二事实源。可逆性：将来若产品要求「无身份也能改设置」，正确做法是给聚合增加一条不依赖身份的构造路径（`sessions` 换成惰性端口），而不是回到 `state.store`。
 
-独立验收：新增断言「生产源码里 `state.tunnels` 出现 0 次」+「`AppState` 的 `pub` 字段数 ≤ 24」；`cargo test -p datazen --lib`；隧道 IPC 的载荷冻结断言不变（名单档只有三个字段，platform-api 已有断言）。
+可执行证据：`cargo test -p datazen --lib -- platform::adapter`（17 passed），其中
+`injection_wires_the_storage_ports_into_the_application_services`（顺利装配时降级表为空、身份解析器在场）、
+`optional_wiring_failure_degrades_only_its_own_capability`（制品目录被同名文件占住时：`inject` 返回 `Ok`、
+`require_application_services()` 可用、`degraded_capabilities()` 只列那一项、`artifact_store()` 报
+`ServiceUnavailable` 且 IPC 表面仍收敛到 `NotConfigured`）。
 
-风险：隧道定义的**组织限定**语义（越组织按「不存在」处理，CM-05）不能因为换持有者而变——端口方法自带 `OrganizationScope`，换持有者时不得把 scope 从入参降级成字段。同一个实例必须继续同时喂给会话后端与命令侧（建连时解引用 `tunnelId`），否则出现两份事实。
+**第三步——隧道定义仓储归位（已落地 2026-10-23）**
+
+实际改动（与计划的差异逐条给出）：
+
+| 位置 | 改动 |
+|---|---|
+| `src-tauri/src/commands/tunnel.rs` | 7 个 `*_impl` 各加一行 `require_application_services(state)?`，`state.tunnels` → `services.tunnels`（8 处） |
+| `src-tauri/src/commands/connection.rs` | `test_connection_impl` 同上（1 处） |
+| `src-tauri/src/commands/connection_import/ipc.rs` | `materialize_tunnel_refs` 返回 `()`，**不能** `?`：聚合取不到时按既有风格 `warn!` 后 `return`（与「作用域取不到」同档），只降级本次导出的隧道解引用（1 处） |
+| `src-tauri/src/commands/mcp.rs` | `clone_app_state()` 的字段逐个克隆里删掉 `tunnels`（1 处） |
+| `src-tauri/src/commands/native_tool_tests.rs` | `attach()` 直接 `inject`，原本用 `state.tunnels`；改为 `state.store.clone()`（桌面实现就是存储层本身，与装配根同一做法） |
+| `src-tauri/src/commands/mod.rs` | 删掉 `AppState.tunnels` 字段与其 doc 块（聚合里那份 doc 更完整） |
+| `src-tauri/src/bootstrap/app_state.rs` | `AppState { … }` 不再带 `tunnels`；局部 `let tunnels` 保留（它要喂 `inject`），注释放明「只经 `ApplicationServices::tunnels` 取用」 |
+| `src-tauri/src/commands/app_state_shape_tests.rs` | `BASELINE_FIELD_COUNT` 25 → **24**（守卫自动收紧） |
+
+**实测**：`state.tunnels` 生产与测试源码计数 **1 → 0**（唯一残留是 `native_tool_tests.rs` 的那处，已改为 `state.store`）；`AppState` `pub` 字段 **25 → 24**。
+
+**风险不该变的两件事（已逐条核对）**：① 组织限定仍是端口入参（`Scope` 从 `state.organization_scope()` 来，没降级成字段）；② 同一个仓储实例继续同时喂会话后端与命令侧——`finish_app_state` 里 `let tunnels = store.clone()`，`inject` 拿到的和聚合里的是同一个 `Arc`（`storage_ports_tests.rs` 用 `Arc::ptr_eq` 守这条）。
 
 **第四步——领域包端口的窄化**
 
@@ -160,15 +184,55 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 风险（最高的一期）：窄端口的 DTO 一旦与领域包的形状**各写一份**，事实就有两份 ⇒ 窄端口必须只暴露领域包已有的类型；**若某个领域模型无法用 platform-api 的词汇表达，说明该能力本就不该进形态中立层**，此时该窄端口**不应**被创建。这一期也是形态专属的东西最容易漏进中立层的地方——评审必须逐条问「这个方法在 web 形态有对应物吗」。
 
-**第五步——known-hosts 存储端口归位进 platform-api**
+**第四步的裁定（2026-10-23，P0 落地后）：由「领域包原生端口」取代，不再新建这三个窄端口。**
 
-搬走：`datazen_tunnel::KnownHostsRepository`（`packages/tunnel/src/known_hosts_repository.rs`）→ `datazen_platform_api::ports::known_hosts::KnownHostsRepository`。**改名部分已由 PR #102 完成**（`KnownHostsStore` → `KnownHostsRepository`，含宿主实现与工厂函数）；本步剩下的只有**归位**：端口 trait 从 `packages/tunnel` 搬进 `packages/platform-api/src/ports/`，错误类型从自带的 `KnownHostsRepositoryError` 换成 platform-api 的 `PortError`（端口层的失败类型只有一套），并按第四步的四处清单登记。
+理由按优先级：
 
-`AppState` 少掉：**1 个字段**（`known_hosts`，4 处访问）；字段数 21 → **20**。
+1. **签名里全是领域模型**：`ReviewedPlan`、`StoredSyncPlan`、`ComparisonOptions`、`TransferPlan`、
+   `Checkpoint` 都定义在领域包里，而 F-04 规定 `platform-api` 不得依赖领域包 ⇒ 窄端口只能在
+   `platform-api` 里复制一份 DTO，事实两份——正是本节风险段自己禁止的事。
+2. **P0 断环后这条边已合法**：`ddd-refactor-plan` 的 P0 把 `ApiError`/`ConnectionUseCases`/
+   请求 DTO 归位 `platform-api`，`cargo metadata` 实测 0 环、`application → 领域包` 可行
+   （`scripts/check-ddd-layers.mjs` 守）。聚合直接持有领域包**自己的**端口 trait 即可，
+   宿主不必再写一层转发壳。
+3. **剩余价值另有归属**：本节真正想消灭的是「`AppState` 直读领域端口」那 21 处，这件事改由
+   第六步按命令族完成——命令不再从 `AppState` 取领域端口，而是从聚合取。
+   容器：`SyncRepositoryPorts` 已随第三步改为聚合侧装配。
 
-独立验收：`cargo test -p datazen-platform-api --lib`（清单 ↔ 代码 ↔ 文档三条交叉断言必须仍绿——端口搬家后清单与模块头要点名跟着改）+ `cargo test -p datazen --lib` + 新增断言「仓库里 `datazen_tunnel::KnownHostsRepository` 出现 0 次」。
+**第五步——known-hosts 存储端口归位进 platform-api（已落地 2026-10-23）**
 
-风险：`packages/tunnel` 的公开 trait 换位置是**破坏性 API 变更**，必须一次迁完（含 `packages/tunnel/src/ssh.rs`、`src-tauri/src/tunnel/`、`src-tauri/src/platform/known_hosts.rs`、`session_backend.rs` 等引用点）。本机钥匙串 / `{appData}/ssh_known_hosts.json` 的文件 I/O 留在宿主实现里，**不进**中立层。
+搬走：`datazen_tunnel::KnownHostsRepository`（`packages/tunnel/src/known_hosts_repository.rs`）→
+`datazen_platform_api::ports::known_hosts::{KnownHostsRepository, KnownHostEntry}`。**改名部分已由 PR #102 完成**
+（`KnownHostsStore` → `KnownHostsRepository`），本步做的是**归位 + 错型替换 + 宿主态收敛**：
+
+- **端口搬进契约包**：新文件 `packages/platform-api/src/ports/known_hosts.rs`（trait + 词汇 + 一个内存实现的自证用例）。
+  `packages/tunnel/src/known_hosts_repository.rs` 删除，`packages/tunnel/src/lib.rs` 改为 `pub use` 再导出，
+  因此 `datazen_tunnel::KnownHostsRepository` 这条路径**仍然可用但已降级为转发**，调用点按新路径逐个改正。
+- **错误类型统一**：`KnownHostsRepositoryError` 删除，改用 `PortError`（`save` 失败 → `PortError::BackendUnavailable`；
+  `load` 按契约**不失败**，读不到即空集合）。`packages/tunnel/src/ssh_known_hosts.rs` 与宿主
+  `src-tauri/src/platform/known_hosts.rs` 同步改型；**文件格式、字段名与两条 warn 文案一字未动**。
+- **四处登记**：`ports/inventory.rs` 的 `PORT_TRAITS`（24 → 25）、`ports/inventory/parser.rs` 的 `SOURCE_FILES`、
+  `ports/mod.rs` 模块头点名（含同步与 `load` 不失败两处形状差异）、本文 §5.1.2。
+- **端口实例归应用层**：`ApplicationServices` 增加第 6 个构造参数 `known_hosts: Arc<dyn KnownHostsRepository>`
+  与同名字段；`src-tauri/src/platform/adapter.rs::inject` 用注给会话后端的**同一个实例**构造聚合。
+- **宿主态收敛（本步的字段账）**：`AppState` 的 `known_hosts` 字段删除（构造期仍有局部变量交给 `inject`），
+  命令侧改经 `ApplicationServices::known_hosts`：`commands/tunnel.rs::test_tunnel_impl`、
+  `commands/connection.rs::test_connection_impl`、`commands/mcp.rs::clone_app_state`。字段数 **24 → 23**
+  （`app_state_shape_tests.rs` 的 `BASELINE_FIELD_COUNT` 同步）。
+- **新增守卫**（都在 `commands/app_state_shape_tests.rs`，与第三步的 `state.tunnels` 守卫同形）：
+  1. `the_known_hosts_repository_is_no_longer_reachable_from_the_host_state` —— 全 `src-tauri/src` 扫 `state.known_hosts`，0 命中；
+  2. `the_known_hosts_port_is_declared_in_platform_api_only` —— `packages/tunnel/src` 里不得再出现
+     `pub trait KnownHostsRepository`，且 `known_hosts_repository.rs` 不得回来；
+  3. `app_state_definition_has_no_status_store_fields` —— 定义体里既无 `pub tunnels` 也无 `pub known_hosts`；
+  4. `packages/application/src/lib.rs` 的端口断言表与构造签名表加入 `known_hosts`。
+
+实测：`cargo test -p datazen-platform-api --lib` 257 passed（含端口清单三条交叉断言）、
+`cargo test -p datazen-tunnel` 27 passed、`cargo test -p datazen --lib` 见下方门禁、`cargo check -p datazen --all-targets` EXIT=0。
+
+风险（已发生并处理）：`packages/tunnel` 的公开 trait 换位置是**破坏性 API 变更**，必须一次迁完
+（含 `packages/tunnel/src/ssh.rs`、`src-tauri/src/tunnel/{mod,network_provider}.rs`、
+`src-tauri/src/platform/{adapter,session_backend,known_hosts}.rs` 与测试装置）。本机钥匙串 /
+`{appData}/ssh_known_hosts.json` 的文件 I/O 仍在宿主实现里，**不进**中立层。
 
 **第六步——`AppState.store` 的 145 处归位（按命令族分期）**
 

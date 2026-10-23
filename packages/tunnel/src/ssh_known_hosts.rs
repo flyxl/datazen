@@ -1,25 +1,14 @@
 //! SSH known-hosts 的**纯逻辑**：条目形状、指纹、TOFU 判定与错误文案。
 //!
 //! 这一层是形态中立的：它不知道条目存在哪儿。**存哪儿**是端口
-//! [`crate::known_hosts_repository::KnownHostsRepository`] 的事——桌面实现读
+//! [`datazen_platform_api::ports::known_hosts::KnownHostsRepository`] 的事——桌面实现读
 //! `{appData}/ssh_known_hosts.json`，将来的 web 形态由服务端 host 实现
 //! （服务端存储目录 / 组织级存储）。
 //!
 //! 换句话说：**共享包不再读本机文件**。
 
+pub use datazen_platform_api::ports::known_hosts::KnownHostEntry;
 use russh::keys::ssh_key::{HashAlg, PublicKey};
-use serde::{Deserialize, Serialize};
-
-/// 一条已知主机记录：指纹、算法与 OpenSSH 公钥文本。
-///
-/// 落盘形状（字段名与 JSON 结构）由**实现方**决定，桌面实现沿用
-/// `{appData}/ssh_known_hosts.json` 的既有格式。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct KnownHostEntry {
-    pub fingerprint: String,
-    pub algorithm: String,
-    pub public_key: String,
-}
 
 /// 主机密钥判定结果（TOFU：首次使用即信任，之后必须一致）。
 #[derive(Debug, Clone, PartialEq, Eq)]

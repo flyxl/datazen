@@ -1,3 +1,4 @@
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser } from '@wdio/globals';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -36,7 +37,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as Record<string, unknown>)) {
     throw new Error((result as any).__error);
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 const TMP_DIR = os.tmpdir();

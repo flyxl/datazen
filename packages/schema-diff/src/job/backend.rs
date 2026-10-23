@@ -6,7 +6,7 @@
 
 use async_trait::async_trait;
 
-use datazen_runtime::job::CancelToken;
+use datazen_kernel::job::CancelToken;
 
 use crate::job::plan::{SchemaDiffFrozenPlan, SchemaDiffPlanError};
 use crate::types::SchemaDiffDeployResult;

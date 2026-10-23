@@ -1,9 +1,10 @@
 # DDD 分层收敛计划（PRD）
 
-> 状态：提案，待 §9 决策点裁定后启动 P0。
+> 状态：**P0 已落地**（2026-10-23，见 §5.1）；P1–P5 待推进。
 > 范围：分层归属、依赖方向、依赖环、编排位置、装配根。
 > 关系：[分阶段开发计划](platform-development-plan.md) 仍是「形态演进与端口归属」的唯一权威，本文件只负责「层与依赖」这一轴；两者交叉处在各自正文互引。
-> 基线：`main` = `2a5bef0af`（2026-10-22），#105 第六期计划已入库。
+> 基线：`main` = `2a5bef0af`（2026-10-22），#105 第六期计划已入库；§4 的数字是在该提交上测的。
+> P0 落地基于 `main` = `bbe743e30`（2026-10-23）。§4 的 `Cargo 环` 与 `application → 领域包` 两行已被 P0 改写，见 §5.1 与 §7。
 
 ## 1. 问题陈述
 
@@ -13,7 +14,7 @@
 
 ### 1.2 实测证据
 
-依赖边（`Cargo.toml` 生产依赖，已排除 dev-dependencies）：
+依赖边（`Cargo.toml` 生产依赖，已排除 dev-dependencies）——**P0 前基线**，P0 后 `runtime` 一行已无 `application`（§5.1）：
 
 | 包 | 生产依赖（内部） |
 |---|---|
@@ -139,13 +140,31 @@ flowchart TB
 
 每期一个可独立回滚的 PR 系列；每期只做本期的移动，不夹带行为变更。
 
-### P0 断环（唯一硬阻塞，先做）
+### P0 断环（唯一硬阻塞，先做）——**已落地 2026-10-23**
 
-- 把 `application` 中被 `runtime` 使用的两个类型——错误类型 `ApiError`/`ApiErrorCode` 与端口 `RuntimeConnectionUseCases`——迁到 `platform-api`（它本就是跨形态契约包），`runtime` 改依赖 `platform-api`。
-- `runtime` 不再出现在 `application` 的依赖里；`application` 增加对领域包（首选 `schema-diff`）的依赖以证明环已解。
-- **验收**：附录 A.1 命令 `EXIT=0`；`cargo metadata` 无 `cyclic`；`cargo test -p datazen-platform-api`、`cargo test -p datazen-runtime --lib` 绿。
+实际搬了什么（比原计划多两处，理由逐条给出）：
+
+| 搬走的东西 | 落在哪 | 为什么必须搬 |
+| --- | --- | --- |
+| `ApiError` | `platform-api/src/error.rs` | 用例端口方法签名返回它，实现方是 `runtime` |
+| `ApiErrorCode` / `RetryDisposition` | 同上（此前已在 platform-api） | 同一份 cross-boundary wire 词汇 |
+| 用例端口 **trait** `ConnectionUseCases` | `platform-api/src/use_cases/connection.rs` | 原计划写的是 `RuntimeConnectionUseCases`——那是 `runtime` 侧的**唯一实现**，留在原地；被两端共享的是 trait |
+| 请求 DTO `dto/requests.rs` | `platform-api/src/dto/requests.rs` | 它们出现在端口签名上 |
+| `check_owner` 纯函数 | `platform-api/src/policy.rs` | `runtime` 的请求转换（`packages/runtime/src/application/convert.rs`）要调它；`IdentityPolicy::check_owner` 改成一行委托，宿主既有 5 处调用点逐字不变 |
+| `runtime/Cargo.toml` 的 `datazen-application` | 删除 | 含两个集成测试（`tests/p3_live_port.rs`、`tests/p4_usecase_journeys.rs`）的 import 一并改到 platform-api |
+
+`application` 侧全部留下**再导出壳 + 同类型证明测试**（`error.rs` 的 `the_api_error_is_the_platform_api_type_not_a_local_copy`、`sessions.rs` 的 `the_use_case_trait_is_the_platform_api_type_not_a_local_copy`）：宿主 179 处与 runtime 的引用路径逐字不变，而双向赋值只有在两侧同类型时才编译得过——若哪天有人在 application 里重新定义一份，那两个测试第一时间红。
+
+**口径修正（原计划第 2 条）**：原文要求「`application` 增加对领域包的依赖以证明环已解」。落地时改成**门禁断言**：装饰性的生产依赖会把领域包（进而 `runtime`）拉进 `application` 的依赖闭包，让 `cargo build -p datazen-application` 编出整个运行时却一行不用——用构建成本换一句"证明"。而同一条边是否**加得进去**可以不建边就验证：`scripts/check-ddd-layers.mjs`（`pnpm test:ddd-layers`，已进 rust job）从 `cargo metadata` 派生三条断言：
+
+1. workspace 生产依赖图**无环**（并打印完整环路径，而不是只报 "cyclic package dependency"）；
+2. **R2**：`datazen-application` 与 `datazen-runtime` 互不直接依赖；
+3. **P0 可行性**：5 个领域包（`schema-diff` / `data-sync` / `data-transfer` / `migration-common` / `tunnel`）的传递闭包里没有 `datazen-application` ⇒ 「`application → 领域包`」这条边今天加得进去；另加镜像断言：`application` 的闭包里没有 `datazen-feature-core` / `datazen`（F-12 允许 `feature-core → application`，方向只能单向）。
+   门禁带三处自证（成员数下限、合成环必须报警、合成无环图不得误报），并已实测鉴别力：把 `datazen-application` 加回 `runtime/Cargo.toml` ⇒ 立刻红 4 条（R2 1 条 + 领域包可行性 3 条）。
+
+- **验收（实测）**：`node scripts/check-ddd-layers.mjs` → `PASS: 30 个 workspace 生产 crate，无环…EXIT=0`；`cargo test -p datazen-platform-api --lib` 285 passed；`cargo test -p datazen-application --lib` 95 passed；`cargo test -p datazen-runtime`（含 lib 与全部集成套件）0 failed；`cargo test -p datazen --lib` 见 §7；`cargo check --workspace --all-targets` EXIT=0。
 - **回滚**：单 PR revert，无行为变更。
-- **风险**：`ApiError` 是全仓最被复用的应用层身份（宿主 179 处），迁移是机械改动但面广；用 `cargo check -p datazen` 全量验证。
+- **风险**：已消化——`ApiError` 是全仓最被复用的应用层身份（宿主 179 处），迁移是机械改动但面广；`cargo check --workspace --all-targets` 全量验证通过。
 
 ### P1 `runtime` 拆分（有裁定分支，见 D1）
 
@@ -156,9 +175,58 @@ flowchart TB
 
 ### P2 领域纯化（工作量最大且最机械）
 
-- 4 个包共 76 处 `datazen_runtime::` 生产引用改为端口注入：`data-transfer` 34、`feature-core` 32、`schema-diff` 6、`data-sync` 4。
-- **验收**：附录 A.2 输出 0；4 个 `Cargo.toml` 的 `[dependencies]` 无 `datazen-runtime`；`cargo test -p datazen-schema-diff -p datazen-data-sync -p datazen-data-transfer -p datazen-feature-core` 绿。
-- **回滚**：按包分 4 个 PR，逐个可回滚。
+**口径订正（2026-10-23 实测）**：计划写的「4 个包共 76 处」是**含测试半边**的宽口径。
+生产半边的口径是：`*.rs` 里 `#[cfg(test)]` 之前的部分，排除 `tests/` 目录与 `*_tests.rs`，
+按**出现次数**记 `datazen_runtime::<module>`。实测 **50 处**：`feature-core` 32、
+`data-transfer` 8、`schema-diff` 6、`data-sync` 4；按模块 `job` 21、`sql_guard` 12、
+`schema_cache` 10、`application` 5、`artifact` 1、`connection` 1。
+第一个 PR 之后剩 **48 处**；内核拆分 PR 之后剩 **8 处**，全部在 `feature-core`
+（`application` 6、`artifact` 1、再 `application` 1 —— 其中一处是文档链接）。
+
+- **已落地（2026-10-23，PR「feature-core 只认契约」）**：`feature-core` 的
+  `[dependencies]` **摘掉 `datazen-application`**（12 处引用改指 `platform-api` 的
+  `use_cases::ConnectionUseCases` / `dto::requests` / `error::{ApiError, ApiErrorCode}`）；
+  `services/schema_context/source.rs` 不再命名 `runtime::application::RuntimeConnectionUseCases`
+  与 `runtime::connection::DbSessionId`，改为**消费者定义的端口**
+  `services::ports::SessionConnectionLookup`（trait 在共享层、实现在宿主
+  `src-tauri/src/services/schema_context_source.rs` 的 `RuntimeSessionLookup` 薄壳）；
+  `ARTIFACT_BYTE_QUOTA` 从 `runtime::artifact` 移到 `platform_api::ports::artifact`
+  （契约值），runtime 再导出。门禁：`scripts/check-ddd-layers.mjs` 增一条
+  「`feature-core` 不得直接依赖 `datazen-application`」。
+- **已落地（2026-10-23，PR「runtime 机制内核拆分」）**：新建 `packages/kernel`（`datazen-kernel`），
+  把 `job` / `budget` / `sql_guard` / `schema_cache` / `driver_registry` 整体迁入，`runtime`
+  用 `pub use datazen_kernel::{…}` 再导出**保持 `datazen_runtime::job::…` 等既有路径不变**；
+  `fnv1a64_hex` 一并归位到 `kernel::hash`（Job 内核与连接运行时共用的稳定指纹），
+  `runtime::connection::types` 再导出。领域包改指 `datazen_kernel::…` 并**摘掉 `datazen-runtime`**：
+  `schema-diff` / `data-sync` / `data-transfer` 三个包的 `[dependencies]` 与源码里与 `runtime` 的边
+  **双双归零**（生产半边 `datazen_runtime::` 残留：这三个包 0 处，`feature-core` 8 处）。
+  形态中立闸门 `runtime/src/tunnel/form_neutrality.rs` 扩成**同时扫两个 crate**
+  （`runtime:src/…` / `kernel:src/…`），否则拆分会让那一片悄悄移出覆盖而闸门照旧报绿。
+  门禁同步：`scripts/lib/cargoWorkspace.mjs` 的 `LAYERS` 增 `kernel`，
+  `check-platform-crate-boundaries.mjs` 的 F-02 / F-03 / F-05 主体与 F-12 允许层增 `kernel`，
+  本文 §2.4 与 §2.1 / §2.3 同步。
+- **已落地（2026-10-23，PR「制品与备份用例端口化」）**：P2 生产半边**代码**引用归零。
+  - 结果块 DTO 归契约层：`RuntimeArtifactChunk` 的定义移到
+    `datazen_platform_api::dto::execution::ResultChunk`。它与字节型的
+    `dto::artifact::ArtifactChunk` 是**两个概念**（一个按字节寻址、一个按
+    `published_chunk_count` 分页），不合并。runtime 保留 `RuntimeArtifactChunk` 别名，
+    宿主既有引用逐字不变。
+  - 两条能力改成**消费者定义端口**（`packages/feature-core/src/services/ports.rs`）：
+    `ArtifactChunkReader::read_chunk` 与 `BackupOutputBinder::bind`（返回
+    `Box<dyn BackupOutputGuard>`，drop 即撤销，实现方负责等完 in-flight 写并拒收迟到
+    输出）。宿主实现是薄壳：`src-tauri/src/platform/feature_ports.rs` 的
+    `HostArtifactChunks` / `HostBackupBindings`，逻辑一行不落薄壳。
+  - 连带把「Workflow 派发需要什么」从具体类型改成端口集合：`PreparedExecution`
+    现在持 `use_cases: Arc<dyn ConnectionUseCases>` + `artifacts: Arc<dyn ArtifactChunkReader>`；
+    `commit_changes` / `execute_plan` / `backup_to_path` 同步收口。
+  - `feature-core` 的 `datazen-runtime` 从 `[dependencies]` 移到 `[dev-dependencies]`：
+    **只有测试**可以点名门面（`schema_context` 的行为用例需要真实
+    `RuntimeConnectionUseCases`，fakes 覆盖不了分页与可见性语义）。
+  - 口径：生产半边仍有 3 处**文档链接**写着 `datazen_runtime::application::…`（解释
+    「当初为何被钉住」），是说明不是依赖；验收按**代码引用**为零，不按 grep 行数。
+- **验收**：附录 A.2 输出 0；4 个 `Cargo.toml` 的 `[dependencies]` 无 `datazen-runtime`（4 个全部达成）；
+  `cargo test -p datazen-schema-diff -p datazen-data-sync -p datazen-data-transfer -p datazen-feature-core` 绿。
+- **回滚**：按包分 PR，逐个可回滚。
 - **风险**：端口定义反复 → 先冻结端口清单（R3/R8）再改。
 
 ### P3 编排归位（长尾，按 feature 切）
@@ -171,7 +239,7 @@ flowchart TB
 
 ### P4 装配根收敛
 
-- `AppState` 25 字段 → 请求上下文（context）门面；`store` 145 处直读逐步改为仓储端口调用（与 P3 合并推进）。
+- `AppState` 24 字段（P0 后隧道仓储已移出；P4 前再随命令族搬迁收缩）→ 请求上下文（context）门面；`store` 145 处直读逐步改为仓储端口调用（与 P3 合并推进）。
 - **验收**：请求期直读计数下降；`app_state_shape_tests.rs` 的字段不变式随迁移更新。
 - **风险**：`AppState` 被 397 处引用，需按命令模块分批。
 
@@ -193,8 +261,8 @@ flowchart TB
 
 | 指标 | 基线 | P0 后 | P2 后 | 目标 | 采集 |
 |---|---|---|---|---|---|
-| Cargo 环 | 1 | 0 | 0 | 0 | 附录 A.1 |
-| `application` 依赖领域包 | 0 | ≥1 | ≥1 | ≥3 | `Cargo.toml` |
+| Cargo 环 | 1（试加即 101） | **0**（`pnpm test:ddd-layers` 守；实测 30 crate 无环） | 0 | 0 | 附录 A.1 |
+| `application → 领域包` 这条边的**可行性** | 不可行（环） | **可行**（门禁断言领域包闭包内无 application；不建装饰性边，理由见 P0） | 可行 | 真的用上（≥3） | `pnpm test:ddd-layers` |
 | 领域包 `runtime` 引用 | 76 | 76 | 0 | 0 | 附录 A.2 |
 | `commands` 直读 `state.store.` | 118 | 118 | 118 | 0 | 附录 A.3 |
 | `commands` 行数 | 53,350 | — | — | 降 ≥50% | `wc -l` |
@@ -226,7 +294,11 @@ flowchart TB
 
 ## 10. 开放问题
 
-- `KnownHostsRepository` 归属（`packages/tunnel` 自持 vs `platform-api`）——与 D2 同源。
+- ~~`KnownHostsRepository` 归属（`packages/tunnel` 自持 vs `platform-api`）——与 D2 同源。~~
+  **已裁定并落地（S5，2026-10-23）：归 `platform-api`。** 理由是最初三条理由里唯一可验证的那条
+  输了：留在机制包会让端口族不可清单化（`PORT_TRAITS` 只收 `src/ports/`），「词汇表跟着机制走」
+  却站不住——`KnownHostEntry` 是三个字符串，不依赖 `russh` 类型。搬家只动契约，文件 I/O 仍在
+  宿主；`load` 不失败与同步形状作为契约差异保留并写进模块头。
 - `DesktopRepository` 拆分粒度：按聚合（settings/tunnels/history/app_db）是否引入跨仓储事务问题。
 - `feature-core` 31k 行同时是 domain + 应用协作 + 宿主适配，是否需要按 feature 再拆包。
 - 60+ 处 `AppState` 直读中哪些可立即降级（不依赖 P3 的先行项）。

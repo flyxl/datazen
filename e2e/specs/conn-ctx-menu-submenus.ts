@@ -7,6 +7,7 @@
  *
  * 依赖 wdio.conf.ts 种下的 `本地 PostgreSQL`（conn_e2e_pg）。
  */
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
@@ -41,7 +42,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as object)) {
     throw new Error(String((result as { __error: string }).__error));
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 /** Right-click the first connection item via data-conn-item attribute. */

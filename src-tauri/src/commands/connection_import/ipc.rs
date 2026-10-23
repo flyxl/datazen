@@ -199,12 +199,24 @@ async fn materialize_tunnel_refs(state: &AppState, connections: &mut [Connection
             return;
         }
     };
+    // 隧道仓储改由应用层持有（§5.1.2 第三步）：聚合取不到时与作用域取不到的处置一致——
+    // 只降级本次导出（连接照常导出，只是不带隧道定义），而不是让整次导入失败。
+    let services = match crate::platform::ipc::require_application_services(state) {
+        Ok(services) => services,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "application services unavailable; exporting connections without tunnels"
+            );
+            return;
+        }
+    };
     for conn in connections.iter_mut() {
         let Some(tunnel_id) = conn.tunnel_id.as_deref().filter(|id| !id.is_empty()) else {
             continue;
         };
         // 隧道定义经 `TunnelRepository` 端口取用（单条取用档）。
-        let saved = match state.tunnels.get(&scope, tunnel_id).await {
+        let saved = match services.tunnels.get(&scope, tunnel_id).await {
             Ok(saved) => saved,
             Err(error) => {
                 tracing::warn!(

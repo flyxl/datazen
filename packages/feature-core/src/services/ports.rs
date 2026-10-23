@@ -1,7 +1,14 @@
 use datazen_driver_api::{
     ConnectionConfig, ConnectionHandle, DatabaseDriver, TableInfo, TableSchema,
 };
+use datazen_platform_api::context::RequestContext;
+use datazen_platform_api::dto::artifact::BackupOutput;
+use datazen_platform_api::dto::execution::ResultChunk;
+use datazen_platform_api::dto::session::SessionHandle;
+use datazen_platform_api::error::ApiError;
+use datazen_platform_api::id::{ArtifactId, Counter};
 use datazen_platform_api::settings::ExecutionSettings;
+use datazen_platform_api::target::ExecutionTarget;
 use std::sync::Arc;
 #[async_trait::async_trait]
 pub trait DatabaseToolHost: Send + Sync {
@@ -121,7 +128,7 @@ pub trait LogicalSchemaContextSource: Send + Sync {
 /// This is the *physical* half of the metadata port: the source answers with
 /// the driver's own handle, so metadata can be read straight against the
 /// connection. The `ConnectionHandle`-based reads are not default methods of
-/// this trait — they need the [`SchemaCache`](datazen_runtime::schema_cache::SchemaCache)
+/// this trait — they need the [`SchemaCache`](datazen_kernel::schema_cache::SchemaCache)
 /// that memoizes them, and the cache belongs to the implementation that owns
 /// the session, not to the caller of the port. They live in
 /// [`PhysicalSchemaContextAdapter`](crate::services::physical_schema_context::PhysicalSchemaContextAdapter),
@@ -175,3 +182,57 @@ impl<T: ConnectionCatalog + ?Sized> ConnectionCatalog for Arc<T> {
         (**self).get_connections().await
     }
 }
+
+/// Session-to-connection identity offered by the form that owns the sessions.
+///
+/// This is a *consumer-defined* port: the shared layer only knows the question
+/// ("which connection owns this runtime session?"), and the host that owns the
+/// Runtime facade answers it. Defining the trait here — instead of naming
+/// `datazen_runtime::application::RuntimeConnectionUseCases` — keeps the shared
+/// feature layer free of the runtime application facade, whose use-case surface
+/// is already available through [`ConnectionUseCases`](datazen_platform_api::use_cases::ConnectionUseCases).
+///
+/// It is deliberately synchronous and session-id based: metadata reads resolve
+/// identity before any await point and never hold a handle across one.
+pub trait SessionConnectionLookup: Send + Sync {
+    /// The connection that owns `session_id`, or `None` when the session is
+    /// unknown, closed, or no longer attached to its directory entry.
+    fn connection_id_for_session(&self, session_id: &str) -> Option<String>;
+}
+
+/// 结果块读取（消费者定义端口）。
+///
+/// `ConnectionUseCases` 覆盖会话与执行面，**不**覆盖结果内容：读一块要过授权、
+/// 要按 sink 的发布水位分页，那是 runtime 的内建能力。共享层若直接命名
+/// `datazen_runtime::application::RuntimeConnectionUseCases`，R1 立刻失守；这个
+/// 端口把问题交给**持有 Runtime 门面的那一侧**回答，共享层只认契约类型
+/// [`ResultChunk`]。
+#[async_trait::async_trait]
+pub trait ArtifactChunkReader: Send + Sync + 'static {
+    async fn read_chunk(
+        &self,
+        ctx: &RequestContext,
+        artifact: &ArtifactId,
+        index: Counter,
+    ) -> Result<ResultChunk, ApiError>;
+}
+
+/// 备份输出绑定（消费者定义端口）。
+///
+/// 与 [`ArtifactChunkReader`] 同理：绑定的实现需要 session 归属判定、执行条目
+/// 可见性与 sink 生命周期，这些都在 runtime 内部。返回的守卫是**能力对象**
+/// ——drop 即撤销，实现方负责把 in-flight 的写等完并拒收迟到输出（共享层不认识
+/// 实现的 Drop 逻辑，只依赖这个语义）。
+#[async_trait::async_trait]
+pub trait BackupOutputBinder: Send + Sync + 'static {
+    async fn bind(
+        &self,
+        ctx: &RequestContext,
+        handle: &SessionHandle,
+        target: &ExecutionTarget,
+        callback: BackupOutput,
+    ) -> Result<Box<dyn BackupOutputGuard>, ApiError>;
+}
+
+/// 备份输出守卫：存活期间输出可用，drop 即撤销。
+pub trait BackupOutputGuard: Send + Sync {}

@@ -13,6 +13,7 @@
  * PIH-006  ADB pull saves via the host save dialog through execute_driver_command
  *          (decision 2; source + ADB UI has no path field)
  */
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -48,7 +49,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as object)) {
     throw new Error((result as { __error: string }).__error);
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 async function invokeBackendCatch(

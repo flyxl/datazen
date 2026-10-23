@@ -1,6 +1,6 @@
 //! 冻结 Transfer 计划校验（handler 内复验，§10.1.1：版本、fingerprint、能力）。
 
-use datazen_runtime::job::{FrozenPlan, JobError};
+use datazen_kernel::job::{FrozenPlan, JobError};
 
 use crate::error::TransferError;
 use crate::model::{TransferJob, TransferMode};

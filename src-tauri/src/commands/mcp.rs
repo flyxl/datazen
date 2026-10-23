@@ -49,8 +49,6 @@ fn clone_app_state(state: &AppState) -> Arc<AppState> {
         schema_diff_reviewed_plans: state.schema_diff_reviewed_plans.clone(),
         sync_stores: state.sync_stores.clone(),
         transfer_plans: state.transfer_plans.clone(),
-        tunnels: state.tunnels.clone(),
-        known_hosts: state.known_hosts.clone(),
         platform: state.platform.clone(),
         organization_scope: state.organization_scope.clone(),
     })

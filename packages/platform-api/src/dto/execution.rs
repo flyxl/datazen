@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::dto::session::{SessionContext, SessionHandle};
 use crate::id::{
-    ArtifactId, CapabilityRevision, ConfigRevision, ConnectionId, ExecutionId, OrganizationId,
-    PrincipalId, ResourceId, StreamId, Timestamp,
+    ArtifactId, CapabilityRevision, ConfigRevision, ConnectionId, Counter, ExecutionId,
+    OrganizationId, PrincipalId, ResourceId, StreamId, Timestamp,
 };
 use crate::target::ExecutionTarget;
 
@@ -224,6 +224,32 @@ impl ExecutionView {
 }
 
 /// 事件序号别名。见 [`crate::dto::event::EventSequence`]。
+
+/// 结果块（驱动侧 JSON 行块）。
+///
+/// 与 [`crate::dto::artifact::ArtifactChunk`] 的关系：那个是**字节块**（产物仓储的
+/// 字节寻址单位，服务端/浏览器形态还要做 base64），这个是**语义块**——驱动已经
+/// 把结果解释成列与行，跨边界后仍是 JSON。两者不是同一个概念，也不该合成一个
+/// 类型：一个按字节分页，一个按 `published_chunk_count` 分页。
+///
+/// 它为什么在本包：`ConnectionUseCases::read_artifact_chunk` 的实现方是
+/// `datazen-runtime`，消费方是 feature 层（`datazen-feature-core` 的表格写入与
+/// Workflow 结果组装）。消费方不得依赖 runtime（R1 / R2），所以返回类型只能落在
+/// 两边都允许依赖的契约层。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultChunk {
+    pub artifact_id: ArtifactId,
+    pub chunk_index: Counter,
+    pub byte_offset: Counter,
+    pub columns: serde_json::Value,
+    pub rows: Vec<serde_json::Value>,
+    pub output: Option<serde_json::Value>,
+    pub source: StatementResultSource,
+    pub published_chunk_count: Counter,
+    pub published_byte_length: Counter,
+    pub complete: bool,
+}
 
 #[cfg(test)]
 mod tests {

@@ -1,12 +1,18 @@
 //! Workflow SQL steps use a short, independent resource through the execution gateway.
 use super::{error::WorkflowError, WorkflowCommandStep};
+use crate::services::ports::ArtifactChunkReader;
 use datazen_driver_api::{CommandCatalog, ConnectionConfig, DatabaseDriver};
 use datazen_platform_api::context::RequestContext;
-use datazen_runtime::application::RuntimeConnectionUseCases;
 use std::sync::Arc;
 
+/// 一次派发所需的**端口**集合。
+///
+/// 它曾经直接持有 `datazen_runtime::application::RuntimeConnectionUseCases`——
+/// 那让「Workflow 结果组装」这个纯共享逻辑被钉在连接运行时上（R1）。现在它只
+/// 持有两个消费者定义端口的 trait 对象，具体实例由宿主装配。
 pub struct PreparedExecution {
-    pub runtime: Arc<RuntimeConnectionUseCases>,
+    pub use_cases: Arc<dyn ConnectionUseCases>,
+    pub artifacts: Arc<dyn ArtifactChunkReader>,
     pub context: RequestContext,
     pub target: ExecutionTarget,
 }
@@ -27,11 +33,11 @@ pub trait ResourceExecutionHost: Send + Sync {
     ) -> Result<PreparedExecution, WorkflowError>;
 }
 
-use datazen_application::{
-    dto::requests::{CommandCall, ExecuteAtTargetRequest},
-    sessions::ConnectionUseCases,
-};
 use datazen_driver_api::{check_command_access, validate_command_input, CommandResult};
+use datazen_platform_api::{
+    dto::requests::{CommandCall, ExecuteAtTargetRequest},
+    use_cases::ConnectionUseCases,
+};
 use datazen_platform_api::{
     dto::{execution::ExecutionState, idempotency::IdempotentOperation},
     id::{ConnectionId, Counter},
@@ -40,7 +46,7 @@ use datazen_platform_api::{
 use std::collections::BTreeMap;
 
 struct CancelOnDrop {
-    runtime: std::sync::Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
+    use_cases: std::sync::Arc<dyn ConnectionUseCases>,
     context: datazen_platform_api::context::RequestContext,
     execution: Option<datazen_platform_api::id::ExecutionId>,
 }
@@ -49,11 +55,11 @@ impl Drop for CancelOnDrop {
         let Some(execution) = self.execution.take() else {
             return;
         };
-        let runtime = self.runtime.clone();
+        let use_cases = self.use_cases.clone();
         let context = self.context.clone();
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
-                if let Err(error) = runtime.cancel_execution(&context, execution).await {
+                if let Err(error) = use_cases.cancel_execution(&context, execution).await {
                     tracing::warn!(code = ?error.code, "workflow cancellation could not be confirmed");
                 }
             });
@@ -211,7 +217,7 @@ async fn execute_bound(
             .get("sql")
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| WorkflowError::Validation("SQL input unavailable".into()))?;
-        datazen_runtime::sql_guard::check_sql(
+        datazen_kernel::sql_guard::check_sql(
             sql,
             config.read_only,
             before_dispatch(deadline, state.safe_mode()).await?,
@@ -251,13 +257,14 @@ async fn execute_bound(
         state.prepare(connection_id, revision, &step.command, target),
     )
     .await??;
-    let runtime = prepared.runtime;
+    let use_cases = prepared.use_cases;
+    let artifacts = prepared.artifacts;
     let context = prepared.context;
     let target = prepared.target;
     let (submission_operation, bound_handle) = binding.submission();
     let token = before_dispatch(
         deadline,
-        runtime.issue_submission_token(&context, submission_operation, bound_handle.as_ref()),
+        use_cases.issue_submission_token(&context, submission_operation, bound_handle.as_ref()),
     )
     .await?
     .map_err(|error| WorkflowError::Validation(error.to_string()))?;
@@ -287,10 +294,10 @@ async fn execute_bound(
     }
     let submission = async {
         if let Some(handle) = bound_handle.clone() {
-            runtime
+            use_cases
                 .execute_in_session(
                     &context,
-                    datazen_application::dto::requests::ExecuteInSessionRequest::new(
+                    datazen_platform_api::dto::requests::ExecuteInSessionRequest::new(
                         handle,
                         CommandCall::new(&step.command, command_input),
                         token.idempotency_key,
@@ -298,7 +305,7 @@ async fn execute_bound(
                 )
                 .await
         } else {
-            runtime
+            use_cases
                 .execute_at_target(
                     &context,
                     ExecuteAtTargetRequest::new(
@@ -316,7 +323,7 @@ async fn execute_bound(
         .map_err(|_| submission_unconfirmed("SubmissionReceiptTimeout".into()))?
         .map_err(|error| submission_unconfirmed(format!("Submission:{:?}", error.code)))?;
     let mut cancellation = CancelOnDrop {
-        runtime: runtime.clone(),
+        use_cases: use_cases.clone(),
         context: context.clone(),
         execution: Some(receipt.execution_id.clone()),
     };
@@ -340,7 +347,7 @@ async fn execute_bound(
         } else {
             tokio::time::timeout_at(
                 poll_deadline,
-                runtime.get_execution(&context, receipt.execution_id.clone()),
+                use_cases.get_execution(&context, receipt.execution_id.clone()),
             )
             .await
             .map_err(|_| ())
@@ -373,7 +380,7 @@ async fn execute_bound(
                 // polling until the execution itself confirms a terminal state.
                 let cancelled = tokio::time::timeout(
                     std::time::Duration::from_secs(5),
-                    runtime.cancel_execution(&context, receipt.execution_id.clone()),
+                    use_cases.cancel_execution(&context, receipt.execution_id.clone()),
                 )
                 .await;
                 match cancelled {
@@ -422,7 +429,7 @@ async fn execute_bound(
     // Reading a result does not execute SQL again. Preserve the known effect
     // when storage or transport fails after the statement has completed.
     let result_read_error =
-        |error: datazen_application::error::ApiError| WorkflowError::SqlResultRead {
+        |error: datazen_platform_api::error::ApiError| WorkflowError::SqlResultRead {
             execution_id: receipt.execution_id.as_str().to_owned(),
             effects: format!("{:?}", view.effect_outcome),
             code: format!("{:?}", error.code),
@@ -441,8 +448,8 @@ async fn execute_bound(
         let mut statements = BTreeMap::<u64, serde_json::Value>::new();
         let mut command_output = None;
         for artifact in view.artifact_ids {
-            let first = runtime
-                .read_artifact_chunk(&context, artifact.clone(), Counter::ZERO)
+            let first = artifacts
+                .read_chunk(&context, &artifact, Counter::ZERO)
                 .await
                 .map_err(&result_read_error)?;
             let count = first.published_chunk_count.get();
@@ -453,8 +460,8 @@ async fn execute_bound(
                 let chunk = if index == 0 {
                     first.clone()
                 } else {
-                    runtime
-                        .read_artifact_chunk(&context, artifact.clone(), Counter::new(index))
+                    artifacts
+                        .read_chunk(&context, &artifact, Counter::new(index))
                         .await
                         .map_err(&result_read_error)?
                 };

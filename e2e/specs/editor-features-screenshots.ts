@@ -1,4 +1,5 @@
 import { readCatalog } from '../schema-metadata.js';
+import { dbSessionIdOf } from '../helpers.js';
 /**
  * Editor Features Screenshot Generator.
  *
@@ -309,7 +310,7 @@ describe('SQL Editor Latest Features Screenshots', () => {
       },
     });
 
-    const connId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });
+    const connId = dbSessionIdOf(await invoke('connect', { connectionId: DEMO_PG_CONN_ID }));
     if (typeof connId === 'string' && !connId.startsWith('__error')) {
       await readCatalog({ dbSessionId: connId, database: DEMO_PG_DB });
     }

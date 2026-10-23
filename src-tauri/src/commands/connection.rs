@@ -186,10 +186,11 @@ pub(crate) async fn test_connection_impl(
         "test_connection"
     );
     let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
     let result = crate::tunnel::test_connection(
-        &*state.tunnels,
+        &*services.tunnels,
         &scope,
-        &state.known_hosts,
+        &services.known_hosts,
         &state.driver_registry,
         config,
     )
@@ -210,17 +211,18 @@ pub(crate) async fn connect_impl(
         .get_connection(&connection_id)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("connection '{connection_id}' not found")))?;
-    let database = config
-        .database
-        .clone()
-        .ok_or_else(|| CommandError::Validation("connect requires a configured database".into()))?;
     if let Err(e) = state.store.touch_last_connected_at(&connection_id).await {
         tracing::warn!(%connection_id, error = %e, "failed to persist last_connected_at");
     }
+    // No database is a valid profile: the session opens with an empty
+    // namespace and the driver resolves its own default (PostgreSQL → the
+    // `postgres` database, MySQL → server level), then reports the observed
+    // database back. Requiring one here would contradict the driver-declared
+    // namespace shape and broke profiles saved without a database.
     let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
         state,
         &connection_id,
-        &database,
+        config.database.as_deref(),
         "client",
     )
     .await?;
@@ -239,45 +241,28 @@ pub(crate) async fn connect_dedicated_impl(
 ) -> Result<ConnectionSessionRef, CommandError> {
     log_ipc_identity(state, "connect_dedicated");
     tracing::info!(%connection_id, database = ?database, "connect_dedicated");
-    let database = match database {
-        Some(database) => database,
-        None => state
-            .store
-            .get_connection(&connection_id)
-            .await
-            .and_then(|config| config.database)
-            .ok_or_else(|| {
-                CommandError::Validation("connect_dedicated requires a database".into())
-            })?,
-    };
-    let database = database.trim();
-    if database.is_empty() {
-        return Err(CommandError::Validation(
-            "connect_dedicated requires a database".into(),
-        ));
-    }
+    // An explicit `database` pins the session; otherwise fall back to the
+    // profile. Both may be unset — the driver then resolves its own default,
+    // exactly as on the shared `connect` path.
+    let database =
+        match crate::services::migration_endpoint::normalize_database(database.as_deref()) {
+            Some(database) => Some(database),
+            None => state
+                .store
+                .get_connection(&connection_id)
+                .await
+                .and_then(|config| config.database),
+        };
     if let Err(e) = state.store.touch_last_connected_at(&connection_id).await {
         tracing::warn!(%connection_id, error = %e, "failed to persist last_connected_at");
     }
     let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
         state,
         &connection_id,
-        database,
+        database.as_deref(),
         "clientDedicated",
     )
     .await?;
-
-    if let Some(mut cfg) = state.store.get_connection(&connection_id).await {
-        cfg.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
-        // Best-effort metadata update; failure must not block the connect path.
-        if let Err(e) = state.store.save_connection(cfg).await {
-            tracing::warn!(
-                %connection_id,
-                error = %e,
-                "failed to persist last_connected_at"
-            );
-        }
-    }
 
     tracing::info!(db_session_id = %db_session_id, "connect_dedicated OK");
     Ok(ConnectionSessionRef {
@@ -887,6 +872,79 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn connect_without_configured_database_opens_a_session() {
+        // The connection form does not require a database for server-level
+        // drivers, so "open this profile" must work with the field left blank.
+        // The driver resolves its own default; the host must not reject the
+        // profile with a global "database required" rule.
+        let test = TestAppState::with_tables().await;
+        let mut config = sample_postgres_config("no-db");
+        config.database = None;
+        test.store.save_connection(config).await.unwrap();
+
+        let session = connect_impl(&test.state, "no-db".into())
+            .await
+            .expect("a profile without a database must still open a session");
+        assert_eq!(session.connection_id, "no-db");
+        assert!(!session.db_session_id.is_empty());
+
+        let info = get_connection_info_impl(&test.state, session.db_session_id)
+            .await
+            .unwrap();
+        assert!(info["database"].is_null());
+    }
+
+    #[tokio::test]
+    async fn connect_treats_a_blank_database_as_unset() {
+        let test = TestAppState::with_tables().await;
+        let mut config = sample_postgres_config("blank-db");
+        config.database = Some("   ".into());
+        test.store.save_connection(config).await.unwrap();
+
+        connect_impl(&test.state, "blank-db".into())
+            .await
+            .expect("a whitespace-only database is the same as no database");
+    }
+
+    #[tokio::test]
+    async fn connect_dedicated_without_any_database_opens_a_session() {
+        let test = TestAppState::with_tables().await;
+        let mut config = sample_postgres_config("no-db-dedicated");
+        config.database = None;
+        test.store.save_connection(config).await.unwrap();
+
+        let session = connect_dedicated_impl(&test.state, "no-db-dedicated".into(), None)
+            .await
+            .expect("a dedicated session may open before a database is chosen");
+        assert!(!session.db_session_id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn connect_dedicated_blank_database_falls_back_to_the_profile() {
+        let test = TestAppState::with_tables().await;
+        test.save_connection("blank-dedicated").await;
+
+        let session =
+            connect_dedicated_impl(&test.state, "blank-dedicated".into(), Some("  ".into()))
+                .await
+                .expect("blank means unpinned, so the profile's database applies");
+        assert!(!session.db_session_id.is_empty());
+    }
+
+    #[test]
+    fn normalize_database_collapses_missing_and_blank_values() {
+        use crate::services::migration_endpoint::normalize_database;
+
+        assert_eq!(normalize_database(None), None);
+        assert_eq!(normalize_database(Some("")), None);
+        assert_eq!(normalize_database(Some("   ")), None);
+        assert_eq!(
+            normalize_database(Some("  app_db  ")),
+            Some("app_db".to_owned())
+        );
+    }
+
+    #[tokio::test]
     async fn connect_unknown_config_errors() {
         let test = TestAppState::new().await;
         assert!(connect_impl(&test.state, "missing".into()).await.is_err());
@@ -921,6 +979,14 @@ mod coverage_tests {
     async fn connect_dedicated_opens_separate_session_from_reuse() {
         let test = TestAppState::with_tables().await;
         test.save_connection("d1").await;
+        let revision_before = test
+            .store
+            .platform_profile("d1")
+            .await
+            .expect("the saved profile exists")
+            .1
+            .config_revision;
+
         let shared = connect_impl(&test.state, "d1".into())
             .await
             .unwrap()
@@ -930,9 +996,26 @@ mod coverage_tests {
             .unwrap()
             .db_session_id;
         assert_ne!(shared, dedicated);
-        // The dedicated session is independently owned; release semantics are
-        // covered by `release_connection_decrements_then_tears_down` below.
-        assert!(!ping_connection_impl(&test.state, shared).await.unwrap());
+        // Connecting is metadata-only: `store::save_connection` would bump the
+        // config revision and invalidate every live session on the profile with
+        // "connection configuration changed". `touch_last_connected_at` must not.
+        // Release semantics are covered by
+        // `release_connection_decrements_then_tears_down` below.
+        let revision_after = test
+            .store
+            .platform_profile("d1")
+            .await
+            .expect("the saved profile exists")
+            .1
+            .config_revision;
+        assert_eq!(
+            revision_before, revision_after,
+            "opening a session must not re-save the profile"
+        );
+        assert!(
+            ping_connection_impl(&test.state, shared).await.unwrap(),
+            "the shared session must stay usable after a dedicated session opens"
+        );
     }
 
     #[tokio::test]

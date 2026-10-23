@@ -21,11 +21,12 @@ rustls provider 选择）住在形态中立的共享 crate `packages/tunnel/`（
 | 存什么 | 端口 | 住在哪 | 桌面实现 | web 形态 |
 |---|---|---|---|---|
 | 隧道定义 | `TunnelRepository` | `packages/platform-api/src/ports/tunnel.rs`（跨形态端口家族） | `src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`（加密落盘 `{appData}/tunnels.json`） | 服务端库上的组织级存储（同一端口、另一适配器） |
-| SSH known-hosts | `KnownHostsRepository` | `packages/tunnel/src/known_hosts_repository.rs`（**领域包端口**，与 `ReviewedPlanRepository` / `TransferPlanRepositoryPort` 同形） | `src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`（读 `{appData}/ssh_known_hosts.json`） | 服务端存储目录 / 组织级存储 |
+| SSH known-hosts | `KnownHostsRepository` | `packages/platform-api/src/ports/known_hosts.rs`（跨形态端口；**同步**，`load` 读不到即空集合） | `src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`（读 `{appData}/ssh_known_hosts.json`） | 服务端存储目录 / 组织级存储 |
 
 两者的**规则**都在共享包里（`SavedTunnel` 的形状、TOFU 判定、指纹与错误文案），**文件 I/O 与落盘加密**
-在宿主：**共享包不再读本机文件**。端口实例由宿主在组装期创建一次并注入
-（`bootstrap/app_state.rs`），**不新增进程级全局**。端口清单见
+在宿主：**共享包不再读本机文件**。两个端口实例都由宿主在组装期创建一次，交给
+`ApplicationServices`（`tunnels` / `known_hosts`）并在其后注入会话后端，宿主态不再持有副本，
+**不新增进程级全局**。端口清单见
 [共享边界与端口 §4.3](../platform/shared-boundaries-and-ports.md#43-持久化与授权端口)。
 
 ## 1. 设计前提：为什么不用改驱动

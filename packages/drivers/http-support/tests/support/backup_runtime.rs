@@ -308,3 +308,40 @@ impl SessionBackend for Backend {
         Ok(CloseResourceOutcome::Closed)
     }
 }
+
+/// 备份输出端口（测试宿主实现）。
+///
+/// 桌面宿主的实现（`src-tauri/src/platform/feature_ports.rs` 的
+/// `HostBackupBindings`）只是把这件事转发给 runtime；这里照做——测试要覆盖的是
+/// **真实**的绑定语义（等完 in-flight 写、拒收迟到输出），不是另写一份。
+pub fn backup_binder(
+    runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
+) -> Arc<dyn datazen_feature_core::services::ports::BackupOutputBinder> {
+    struct Binder(Arc<datazen_runtime::application::RuntimeConnectionUseCases>);
+
+    struct Guard(datazen_runtime::application::BackupOutputBinding);
+
+    impl datazen_feature_core::services::ports::BackupOutputGuard for Guard {}
+
+    #[async_trait]
+    impl datazen_feature_core::services::ports::BackupOutputBinder for Binder {
+        async fn bind(
+            &self,
+            ctx: &RequestContext,
+            handle: &datazen_platform_api::dto::session::SessionHandle,
+            target: &datazen_platform_api::target::ExecutionTarget,
+            callback: datazen_platform_api::dto::artifact::BackupOutput,
+        ) -> Result<
+            Box<dyn datazen_feature_core::services::ports::BackupOutputGuard>,
+            datazen_platform_api::error::ApiError,
+        > {
+            let binding = self
+                .0
+                .bind_backup_output(ctx, handle, target, callback)
+                .await?;
+            Ok(Box::new(Guard(binding)))
+        }
+    }
+
+    Arc::new(Binder(runtime))
+}

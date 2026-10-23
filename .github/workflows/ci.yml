@@ -357,6 +357,13 @@ jobs:
       - name: Platform crate dependency boundaries
         run: pnpm test:platform-arch
 
+      # DDD 分层门禁（P0 断环的前向不变量）。同样要读 `cargo metadata`，所以只能落在
+      # rust job；放在边界门禁之后，理由是两者的失败语义不同：边界门禁断"层与层之间
+      # 不许连"，本门禁断"内层之间的环不许回来"，以及"application → 领域包这条边今天
+      # 仍然加得进去"（后者是 P0 的验收口径，见 docs/development/ddd-refactor-plan.md）。
+      - name: DDD layer invariants (no cycle, R2, domain closure)
+        run: pnpm test:ddd-layers
+
       # 新增共享基础设施 crate 的 panic 门禁。同样落在这里，理由和上面那条一样：
       # 它要先解析 `cargo metadata` 才能把显式目标目录认成 workspace member，而
       # frontend job 没有 Rust 工具链；放在 restore 之后，断言的是提交态的清单。

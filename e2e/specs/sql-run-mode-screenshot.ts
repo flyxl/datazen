@@ -1,4 +1,5 @@
 import { readCatalog } from '../schema-metadata.js';
+import { dbSessionIdOf } from '../helpers.js';
 /**
  * 34-sql-run-mode.png — the SQL editor's run mode: which statement to run.
  *
@@ -312,7 +313,7 @@ describe('SQL Run Mode Screenshot', () => {
     // Best effort: without a live session the editor still opens and the scope
     // dialog still opens (the gate asks before it talks to the database), so a
     // dead demo database downgrades this spec to a skip rather than a failure.
-    const dbSessionId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });
+    const dbSessionId = dbSessionIdOf(await invoke('connect', { connectionId: DEMO_PG_CONN_ID }));
     if (typeof dbSessionId === 'string' && !dbSessionId.startsWith('__error')) {
       await readCatalog({ dbSessionId, database: DEMO_PG_DB });
     } else {

@@ -4,6 +4,7 @@ mod diagnostics;
 pub mod error;
 pub mod event_sink;
 pub mod execution_identity;
+pub mod feature_ports;
 pub mod handles;
 pub mod identity;
 pub mod ipc;
