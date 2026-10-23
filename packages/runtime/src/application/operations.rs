@@ -849,7 +849,10 @@ impl RuntimeConnectionUseCases {
                         && entry.initial.connection_id == *connection_id
                         && entry.ctx.organization_id == ctx.organization_id
                         && entry.ctx.principal_id == ctx.principal_id
-                        && entry.ctx.client_instance_id == ctx.client_instance_id
+                    // The revision is profile-wide, so every client
+                    // instance (other window, MCP) is invalidated too.
+                    // Ownership is still the stored context, not this
+                    // caller's identity, and close re-checks it.
                 })
                 .map(|entry| (entry.handle.clone(), entry.ctx.clone()))
                 .collect()
@@ -858,6 +861,34 @@ impl RuntimeConnectionUseCases {
         let mut closed = 0usize;
         for (handle, owner_ctx) in targets {
             let db_session_id = handle.db_session_id.clone();
+            // Read the registry view, not `get_session`: the profile revision
+            // already moved, so the application-level view would report
+            // `connection configuration changed` for every target. The actor's
+            // `View` is answered while an execution is flying, so this check
+            // never waits for the query. Deferring matters twice: save stays
+            // fast, and the in-flight request keeps its old revision (its next
+            // request gets `connection configuration changed`) instead of being
+            // cancelled by a close it never asked for.
+            let active = match convert::handle(&handle) {
+                Ok(registry_handle) => self
+                    .inner
+                    .registry
+                    .session_view(&registry_handle)
+                    .await
+                    .map(|view| view.active_execution_id.is_some())
+                    .unwrap_or(false),
+                // A handle this application opened cannot fail conversion; if
+                // it somehow does, fall through to the close path, which will
+                // report the same fact through its own error.
+                Err(_) => false,
+            };
+            if active {
+                tracing::info!(
+                    db_session_id = db_session_id.as_str(),
+                    "session retirement deferred: execution still in flight"
+                );
+                continue;
+            }
             let request = CloseSessionRequest::new(handle, CloseMode::RollbackAndClose);
             match self.close_session(&owner_ctx, request).await {
                 Ok(_) => closed += 1,
