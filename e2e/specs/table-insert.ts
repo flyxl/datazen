@@ -55,6 +55,7 @@ import {
   switchSubTab,
   waitForTableInSidebar,
 } from '../helpers.js';
+import { t } from '../i18n.js';
 
 const TEST_TABLE = '_e2e_insert_test';
 const NO_PK_TABLE = '_e2e_insert_nopk_test';
@@ -143,13 +144,10 @@ async function writeDraftCell(
 
 /** The draft id of the N-th draft row, read from the DOM contract. */
 async function draftIdOf(index: number): Promise<string | null> {
-  return browser.execute(
-    (rowIndex: number) => {
-      const row = document.querySelector(`[data-testid="draft-row-${rowIndex}"]`);
-      return row?.getAttribute('data-draft-id') ?? null;
-    },
-    index,
-  );
+  return browser.execute((rowIndex: number) => {
+    const row = document.querySelector(`[data-testid="draft-row-${rowIndex}"]`);
+    return row?.getAttribute('data-draft-id') ?? null;
+  }, index);
 }
 
 async function clickInsertRow(): Promise<boolean> {
@@ -197,12 +195,19 @@ async function openTable(tableName: string): Promise<void> {
   await browser.pause(1500);
   // The grid lives on the "data" sub tab of the table panel.
   await switchSubTab('data');
+  // An empty table still opens its grid — it just renders the empty placeholder
+  // instead of cells. Waiting for a cell unconditionally made every "open an
+  // empty table" case time out, so accept either a row cell or the placeholder.
+  const emptyText = t('dataTable.empty');
   await browser.waitUntil(
     async () =>
       browser.execute(
-        () => document.querySelectorAll('[data-testid="data-table-cell"]').length > 0,
+        (emptyLabel: string) =>
+          document.querySelectorAll('[data-testid="data-table-cell"]').length > 0 ||
+          document.body.innerText.includes(emptyLabel),
+        emptyText,
       ),
-    { timeout: 20000, timeoutMsg: `表 ${tableName} 数据行未渲染` },
+    { timeout: 20000, timeoutMsg: `表 ${tableName} 数据区未渲染（既无数据行也无空态）` },
   );
   await browser.pause(500);
 }
@@ -373,7 +378,12 @@ describe('新增行 INSERT (TC-INS-001~007)', () => {
       document
         .querySelector('[data-testid="table-insert-row"]')
         ?.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'i', metaKey: true, bubbles: true, cancelable: true }),
+          new KeyboardEvent('keydown', {
+            key: 'i',
+            metaKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
         );
     });
     await browser.pause(400);
@@ -400,9 +410,9 @@ describe('新增行 INSERT (TC-INS-001~007)', () => {
     expect(removed).toBe(true);
     await browser.pause(300);
 
-    expect(await browser.execute(() => !!document.querySelector('[data-testid="draft-row-1"]'))).toBe(
-      false,
-    );
+    expect(
+      await browser.execute(() => !!document.querySelector('[data-testid="draft-row-1"]')),
+    ).toBe(false);
     expect((await draftSnapshot())?.drafts).toBe(1);
     await captureJourneyStep('table-insert-004');
   });
@@ -426,10 +436,11 @@ describe('新增行 INSERT (TC-INS-001~007)', () => {
     // says "INSERT INTO".
     expect(previewText).toContain('INSERT INTO');
     // The plan lists exactly one insert — the count is asserted, not implied.
-    // The description renders the count once ("1 insert(s)"), and the
-    // separators around it make the segment unambiguous: "11 insert(s)" and
-    // "21 insert(s)" cannot satisfy this.
-    expect(previewText).toContain('· 1 insert(s) ·');
+    // The description renders the count once, and the separators around it make
+    // the segment unambiguous: "11 项插入" and "21 项插入" cannot satisfy this.
+    // The wording comes from the app's locale (the suite runs zh-CN), so ask the
+    // same translation rather than hard-coding one language's string.
+    expect(previewText).toContain(`· ${t('tableData.pendingInserts', { count: 1 })} ·`);
     // And the preview really lists one INSERT statement (the fingerprint is a
     // <code> element too, so the statements are counted, not guessed).
     const insertStatements = await browser.execute(() => {

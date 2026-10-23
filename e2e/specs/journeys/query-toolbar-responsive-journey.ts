@@ -44,8 +44,20 @@ describe('查询工具栏响应式完整用户旅程 (QUERY-TOOLBAR-JOURNEY)', (
   });
 
   it('完整旅程：缩窄窗口 → 工具栏保持纯图标且不溢出 → 执行/历史仍可用 → 恢复窗口', async () => {
-    const narrowWidth = Math.min(880, Math.max(760, originalSize.width - 240));
-    await setWindowSize(narrowWidth, originalSize.height);
+    // `setWindowSize` takes **physical** pixels while every layout assertion here
+    // is in CSS pixels. On a Retina display the old constant 880 meant 440 CSS
+    // pixels — far below the app's minimum window width — so the window never
+    // actually narrowed to the intended 900 CSS pixels and the toolbar
+    // overflowed instead of switching to icons.
+    const viewport = await browser.execute(() => ({
+      devicePixelRatio: window.devicePixelRatio || 1,
+      innerWidth: window.innerWidth,
+    }));
+    const targetCssWidth = Math.min(900, Math.max(760, viewport.innerWidth - 200));
+    await setWindowSize(
+      Math.round(targetCssWidth * viewport.devicePixelRatio),
+      originalSize.height,
+    );
 
     const toolbar = await $('[data-testid="query-editor-toolbar"]');
     await toolbar.waitForDisplayed({ timeout: 10000 });

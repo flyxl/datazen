@@ -508,7 +508,12 @@ impl PostgresResourceProvider {
         match outcome {
             Ok(()) => Ok(TransactionObservation::finished(
                 TransactionState::Idle,
-                if aborted {
+                // A rollback *is* a rollback, even when PostgreSQL was never in
+                // an aborted state: `commit == false` always discards the
+                // transaction, and reporting `Completed` for it made the runtime
+                // answer every ROLLBACK with "transaction control outcome
+                // requires verification".
+                if !commit || aborted {
                     EffectOutcome::RolledBack
                 } else {
                     EffectOutcome::Completed

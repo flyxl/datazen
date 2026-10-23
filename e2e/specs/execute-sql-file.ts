@@ -97,7 +97,12 @@ describe('Execute SQL File (SF)', () => {
         (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
           ?.invoke('restore_sql_file', { dbSessionId: sessionId, overridePath: path })
           .then(done)
-          .catch((e: unknown) => done({ __error: String(e) }));
+          // Rejections carry the structured `ApiError` object, not an `Error`
+          // instance: `String(e)` collapsed it to "[object Object]" and hid the
+          // only information the assertion needed.
+          .catch((e: unknown) =>
+            done({ __error: e instanceof Error ? e.message : JSON.stringify(e) }),
+          );
       },
       dbSessionId,
       p,
@@ -106,9 +111,12 @@ describe('Execute SQL File (SF)', () => {
 
   it('SF-E01: executes a valid file end to end', async () => {
     const file = join(dir, T1 + '.sql');
+    // PostgreSQL restores accept `schema.object` only: an unqualified name could
+    // resolve through `search_path` to `public` while the frozen target lacks the
+    // relation, so the bounded restore format rejects it before the first write.
     const stmts = [
-      'CREATE TABLE ' + T1 + ' (id INT PRIMARY KEY);',
-      'INSERT INTO ' + T1 + ' VALUES (1), (2), (3);',
+      'CREATE TABLE public.' + T1 + ' (id INT PRIMARY KEY);',
+      'INSERT INTO public.' + T1 + ' VALUES (1), (2), (3);',
     ].join('\n');
     writeFileSync(file, stmts);
     const ok = (await withSafeModeOff(() => invokeSqlFile(file))) as { __error?: string };

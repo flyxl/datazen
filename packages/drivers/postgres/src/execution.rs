@@ -48,6 +48,13 @@ impl PostgresDriver {
     /// database inside it would silently read the wrong catalog, so it is an
     /// error rather than a wrong answer. Without an open transaction the
     /// statement simply runs on that database's own pool, so nothing to check.
+    ///
+    /// A retained session keeps its **pinned** connection in `transactions` for
+    /// its whole lifetime, so presence there means "this session is pinned", not
+    /// "a transaction is open". Only the observed `transaction_state` separates
+    /// those two, and mistaking one for the other refused every cross-database
+    /// read on an interactive session (`SELECT 1` pinned to another catalog is a
+    /// legitimate metadata request, not a transaction violation).
     pub(crate) async fn ensure_transaction_reaches(
         &self,
         handle: &ConnectionHandle,
@@ -59,8 +66,23 @@ impl PostgresDriver {
         if self.is_active_database(handle, database).await {
             return Ok(());
         }
-        if !self.transactions.lock().await.contains_key(&handle.id) {
-            return Ok(());
+        let observed = self
+            .fixed_contexts
+            .read()
+            .await
+            .get(&handle.id)
+            .map(|context| context.transaction_state);
+        match observed {
+            // Pinned but idle: the foreign target gets its own pool below.
+            Some(datazen_driver_api::session::TransactionState::Idle) => return Ok(()),
+            // Active, aborted or unobserved: fail closed, the transaction may
+            // not reach the target and a guess silently reads the wrong catalog.
+            Some(_) => {}
+            None => {
+                if !self.transactions.lock().await.contains_key(&handle.id) {
+                    return Ok(());
+                }
+            }
         }
         Err(DriverError::TransactionError(format!(
             "cannot run a statement for database '{database}' inside a transaction: \

@@ -259,10 +259,17 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     await browser.pause(2000);
     await clickNext('transfer-step-objects'); // 触发 inspect → mapping
 
-    // 断言某一步到达 preview 后看到源表/DLL 或行计划
+    // 映射步的列名是输入框的 value，不在 body 文本里：先按稳定 testid 找映射列，
+    // 只有拿不到时才退回整页文本断言。
     await browser.pause(1500);
-    const body = await $('body').getText();
-    expect(body.toLowerCase()).toContain('qty');
+    const mappedColumn = await $('[data-testid="data-transfer-target-col-qty"]');
+    if (await mappedColumn.isExisting()) {
+      expect(await mappedColumn.isDisplayed()).toBe(true);
+      expect(await mappedColumn.getValue()).toBe('qty');
+    } else {
+      const body = await $('body').getText();
+      expect(body.toLowerCase()).toContain('qty');
+    }
   });
 
   it('DTW-X-003: 预览存在后可执行并断言落库行数=3', async () => {

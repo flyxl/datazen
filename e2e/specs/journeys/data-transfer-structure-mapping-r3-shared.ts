@@ -384,8 +384,12 @@ async function enableCreateNewMappings(
       await toggle.waitForDisplayed({ timeout: 8000 });
       if (!(await toggle.isSelected())) await toggle.click();
       const target = await $('[data-testid="data-transfer-target-table-input"]');
-      const targetName = options.renameTables?.[name];
-      if (targetName) await target.setValue(targetName);
+      // Turning "create new table" on deliberately clears the prefilled source
+      // name: the reviewer has to name the table they are about to create, and
+      // the Next gate stays closed until they do. The fixture therefore always
+      // types a name — the source name unless the case renames the table.
+      const targetName = options.renameTables?.[name] ?? name;
+      await target.setValue(targetName);
       await target.click();
       await browser.keys(['Tab']);
       for (const [sourceColumn, targetColumn] of Object.entries(
@@ -477,6 +481,15 @@ export async function executeIfPreviewExists() {
   await execute.click();
   const result = await $('[data-testid="data-transfer-result"]');
   await result.waitForDisplayed({ timeout: 30000 });
+  // The panel exists while the job is still running (`data-completed="false"`),
+  // so reading outcomes on sight reported "no outcomes" as a rejection. Wait for
+  // the verdict to settle before deciding anything.
+  await browser.waitUntil(
+    async () =>
+      (await result.getAttribute('data-completed')) === 'true' ||
+      (await result.getAttribute('data-verdict-severity')) !== 'active',
+    { timeout: 60000, timeoutMsg: 'data transfer verdict never settled' },
+  );
   const resultText = await result.getText();
   const tableResults = await result.$$('[data-testid^="data-transfer-table-result-"]');
   const outcomes: string[] = [];
@@ -486,9 +499,7 @@ export async function executeIfPreviewExists() {
   }
   const errorBlocks = await result.$$('.error-message');
   const rejected =
-    outcomes.length === 0 ||
-    outcomes.some((outcome) => outcome !== 'committed') ||
-    (await errorBlocks.length) > 0;
+    outcomes.some((outcome) => outcome !== 'committed') || (await errorBlocks.length) > 0;
   return { rejected, text: resultText };
 }
 

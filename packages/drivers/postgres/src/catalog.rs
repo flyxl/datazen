@@ -553,17 +553,16 @@ impl PostgresDriver {
             )
             .await;
         }
-        // Admin commands are not in the fixed-session allowlist. Borrowing from
-        // the retained session's max-1 pool here would wait for the checkout the
-        // session itself holds, so fail fast with a readable reason instead.
-        if self.fixed_sessions.read().await.contains_key(&handle.id) {
-            return Err(DriverError::NotSupported(format!(
-                "admin command '{command}' is not available on a retained session"
-            )));
-        }
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-        crate::admin_commands::execute_pg_admin_command(pool, command, input).await
+        // Admin commands run on the **session's own** connection: a retained
+        // session pins the pool's only connection, so borrowing a second one
+        // here would wait for a checkout that never returns. `for_session`
+        // hands back the pinned connection when there is one (and a separate
+        // per-database pool when the command names a foreign database), which
+        // keeps `estimate_table_rows` and the `GRANT`/`CREATE` family scoped to
+        // the database the user is actually looking at.
+        let database = input["database"].as_str().unwrap_or_default().to_owned();
+        let mut conn = crate::session_connection::for_session(self, handle, &database).await?;
+        crate::admin_commands::execute_pg_admin_command(&mut conn, command, input).await
     }
 
     pub(crate) async fn structure_capabilities_impl(

@@ -14,7 +14,17 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
       (window as any).__TAURI_INTERNALS__
         .invoke(c, JSON.parse(a))
         .then((r: any) => done(r))
-        .catch((e: any) => done({ __error: String(e) }));
+        // Command rejections carry a structured payload (code + message +
+        // details); `String(e)` collapsed every one of them to "[object
+        // Object]", which is all a failing restore used to report.
+        .catch((e: any) =>
+          done({
+            __error:
+              e && typeof e === 'object'
+                ? `${String(e.code ?? 'IPC_ERROR')}: ${String(e.message ?? JSON.stringify(e))} :: ${JSON.stringify(e.details ?? null).slice(0, 1200)}`
+                : String(e),
+          }),
+        );
     },
     cmd,
     JSON.stringify(args),

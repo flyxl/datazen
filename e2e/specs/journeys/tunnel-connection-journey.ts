@@ -43,6 +43,11 @@ async function expandTunnelSection(): Promise<void> {
     await toggle.click();
     await browser.pause(300);
   }
+  // Tunnel source is the master control and defaults to "none": the inline
+  // kind/fields only exist once the user starts a new tunnel configuration.
+  await $('[data-testid="new-conn-tunnel-source"]').waitForDisplayed({ timeout: 8000 });
+  await selectDzOptionInWrap('new-conn-tunnel-source', t('newConn.savedTunnelNone'));
+  await $('[data-testid="new-conn-tunnel-kind"]').waitForDisplayed({ timeout: 8000 });
 }
 
 async function selectTunnelKind(optionKey: string): Promise<void> {
@@ -140,7 +145,10 @@ describe('隧道连接完整用户旅程 (TUNNEL-CONNECTION-JOURNEY)', () => {
     await expect(await $('[data-testid="new-conn-ws-fields"]')).not.toBeDisplayed();
     await captureJourneyStep('tunnel-ssh-fields');
 
-    await selectTunnelKind('newConn.tunnelNone');
+    // Back to "no tunnel" — that is a tunnel *source*, not an inline kind: the
+    // inline kinds are ssh / httpProxy / websocket only.
+    await selectDzOptionInWrap('new-conn-tunnel-source', t('newConn.tunnelNone'));
+    await expect(await $('[data-testid="new-conn-tunnel-kind"]')).not.toBeDisplayed();
     await captureJourneyStep('tunnel-none');
   });
 

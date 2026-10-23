@@ -82,6 +82,13 @@ pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortErr
                 | "useTransaction"
                 | "requireRollback"
                 | "profileRevisionDigest"
+                // File-backed output jobs (database backup, table export) carry
+                // the lowercase extension they stage under before the artifact
+                // is committed. It was written by `commands/file_jobs.rs` since
+                // the file-job path landed but was never added to this durable
+                // projection, so every backup/export failed with
+                // "job plan contains a field outside the durable projection".
+                | "fileExtension"
         );
         let monitor_field = key == "monitorOccurrence" && kind == "monitorOccurrence";
         let native_field = key == "nativeToolSelection" && kind == "nativeToolProbe";
@@ -117,6 +124,13 @@ fn validate_plan_value(kind: &str, key: &str, value: &Value) -> Result<(), PortE
         "profileRevisionDigest" => value.as_str().is_some_and(safe_digest),
         "targetBeforeFingerprint" => value.as_str().is_some_and(safe_digest),
         "recoveryPolicy" => value.as_str().is_some_and(safe_identifier),
+        "fileExtension" => value.as_str().is_some_and(|text| {
+            !text.is_empty()
+                && text.len() <= 16
+                && text
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        }),
         "planVersion" | "handlerVersion" | "checkpointVersion" | "selectionRevision" => {
             value.as_u64().is_some()
         }
@@ -686,4 +700,43 @@ fn read_stages(conn: &Connection, job_id: &JobId) -> Result<Vec<StageRecord>, Po
 fn decode_enum<T: DeserializeOwned>(value: &str) -> Result<T, PortError> {
     serde_json::from_value(json!(value))
         .map_err(|_| PortError::BackendUnavailable("stored Job enum is invalid".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::durable_plan;
+    use serde_json::json;
+
+    /// File-backed output jobs stage under a lowercase extension. The plan field
+    /// was written by `commands/file_jobs.rs` before this allowlist knew about
+    /// it, so every backup and table export failed at admit time with
+    /// "job plan contains a field outside the durable projection".
+    #[test]
+    fn file_extension_survives_the_durable_projection() {
+        let payload = json!({
+            "planVersion": 1,
+            "handlerVersion": 1,
+            "checkpointVersion": 1,
+            "fileExtension": "sql",
+        });
+        let projected =
+            durable_plan("databaseBackup", &payload).expect("file extension is durable");
+        assert_eq!(projected["fileExtension"], json!("sql"));
+    }
+
+    #[test]
+    fn file_extension_must_stay_a_lowercase_extension() {
+        for rejected in [json!("SQL"), json!("sql/json"), json!(""), json!("sql;")] {
+            let payload = json!({
+                "planVersion": 1,
+                "handlerVersion": 1,
+                "checkpointVersion": 1,
+                "fileExtension": rejected,
+            });
+            assert!(
+                durable_plan("databaseBackup", &payload).is_err(),
+                "fileExtension {rejected} must be rejected"
+            );
+        }
+    }
 }

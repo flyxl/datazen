@@ -172,21 +172,14 @@ impl MysqlDriver {
             )
             .await;
         }
-        // Admin commands are not in the fixed-session allowlist. Borrowing from
-        // the retained session's max-1 pool here would wait for the checkout the
-        // session itself holds, so fail fast with a readable reason instead.
-        if self.fixed_sessions.read().await.contains_key(&handle.id) {
-            tracing::debug!(
-                command = command,
-                reason = "retained session holds the pool's only connection",
-                "admin command refused on retained MySQL session"
-            );
-            return Err(DriverError::NotSupported(format!(
-                "admin command '{command}' is not available on a retained session"
-            )));
-        }
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-        crate::admin_commands::execute_mysql_admin_command(pool, command, input).await
+        // Admin commands run on the **session's own** connection. A retained
+        // session pins the pool's only connection, so borrowing a second one
+        // here would wait for a checkout that never returns (it timed out after
+        // 30s and surfaced as a bare "pool timed out"). `for_session` hands back
+        // the pinned connection when the session has one and a pooled connection
+        // otherwise, which keeps `estimate_table_rows` and the CREATE/GRANT
+        // family scoped to the database the user is looking at.
+        let mut conn = crate::session_connection::for_session(self, handle).await?;
+        crate::admin_commands::execute_mysql_admin_command(&mut conn, command, input).await
     }
 }

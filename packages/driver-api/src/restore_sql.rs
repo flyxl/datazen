@@ -32,15 +32,35 @@ pub fn prepare(
     statements.extend(scanner.finish());
     let mut prepared = Vec::new();
     for sql in statements {
-        if executable_comment(&sql) {
-            return Err(DriverError::InvalidConfig(
-                "Executable restore comments are unsupported".into(),
-            ));
-        }
-        if is_comment_only_or_empty(&sql) {
-            continue;
-        }
-        let body = leading_body(&sql)?;
+        prepare_statement(&sql, profile, target, overwrite, &mut prepared)
+            .map_err(|error| statement_context(&sql, error))?;
+    }
+    if prepared.is_empty() {
+        return Err(DriverError::InvalidConfig(
+            "Restore input contains no supported statements".into(),
+        ));
+    }
+    Ok(prepared)
+}
+
+/// Validate one scanned statement and append it (plus any overwrite preamble).
+fn prepare_statement(
+    sql: &str,
+    profile: &str,
+    target: &crate::namespace::NamespaceTarget,
+    overwrite: bool,
+    prepared: &mut Vec<String>,
+) -> Result<(), DriverError> {
+    if executable_comment(sql) {
+        return Err(DriverError::InvalidConfig(
+            "Executable restore comments are unsupported".into(),
+        ));
+    }
+    if is_comment_only_or_empty(sql) {
+        return Ok(());
+    }
+    {
+        let body = leading_body(sql)?;
         let words = prefix_words(body)?;
         let first = words.first().map(String::as_str).unwrap_or_default();
         // This is a bounded restore format, not arbitrary client scripting.
@@ -68,7 +88,7 @@ pub fn prepare(
                 "Restore input contains unsupported SQL/client protocol or context control".into(),
             ));
         }
-        crate::restore_sql_target::validate(&sql, profile, target, overwrite)?;
+        crate::restore_sql_target::validate(sql, profile, target, overwrite)?;
         if overwrite && first == "CREATE" {
             let relation_kind = words.get(1).map(String::as_str).unwrap_or_default();
             if matches!(relation_kind, "TABLE" | "VIEW") {
@@ -80,14 +100,18 @@ pub fn prepare(
                 prepared.push(format!("DROP {relation_kind} IF EXISTS {ident}"));
             }
         }
-        prepared.push(sql);
+        prepared.push(sql.to_owned());
     }
-    if prepared.is_empty() {
-        return Err(DriverError::InvalidConfig(
-            "Restore input contains no supported statements".into(),
-        ));
-    }
-    Ok(prepared)
+    Ok(())
+}
+
+/// Prefix a preflight rejection with a bounded excerpt of the statement.
+fn statement_context(sql: &str, error: DriverError) -> DriverError {
+    let excerpt: String = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+    let excerpt: String = excerpt.chars().take(120).collect();
+    DriverError::InvalidConfig(format!(
+        "Restore statement rejected ({error}); statement starts with: {excerpt}"
+    ))
 }
 
 fn leading_body(mut sql: &str) -> Result<&str, DriverError> {

@@ -140,6 +140,14 @@ impl RestoreApplyJob {
             || metadata.lifecycle != ArtifactLifecycle::Complete
             || metadata.published_byte_size != self.plan.input_bytes
         {
+            tracing::warn!(
+                fingerprint_matches = metadata.target_fingerprint
+                    == RestorePlan::target_fingerprint(&self.plan.target),
+                lifecycle = ?metadata.lifecycle,
+                stored_bytes = ?metadata.published_byte_size,
+                plan_bytes = ?self.plan.input_bytes,
+                "restore input rejected: artifact metadata disagrees with the plan"
+            );
             return Err(RestoreRejection::InvalidInput);
         }
         let input = Arc::new(ArtifactInput {
@@ -155,7 +163,14 @@ impl RestoreApplyJob {
             }
             hash.update(input.chunk(Counter::new(index)).await?);
         }
-        if format!("{:x}", hash.finalize()) != self.plan.input_sha256 {
+        let digest = format!("{:x}", hash.finalize());
+        if digest != self.plan.input_sha256 {
+            tracing::warn!(
+                stored_digest = %digest,
+                plan_digest = %self.plan.input_sha256,
+                chunks = input.chunks(),
+                "restore input rejected: artifact digest disagrees with the plan"
+            );
             return Err(RestoreRejection::InvalidInput);
         }
         Ok(input)

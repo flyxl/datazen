@@ -3,6 +3,7 @@ import { closeWorkspacePanels } from '../lib/testDataLifecycle.js';
 import {
   clickTableInSidebar,
   closeExtraWindows,
+  connectSeededPgInWorkspace,
   executeSQLChecked,
   openQueryTab,
   setSafeMode,
@@ -70,10 +71,20 @@ async function dispatchClipboard(type: 'copy' | 'paste', text: string): Promise<
         };
       }
       surface.dispatchEvent(event);
+      // When the grid ignores a gesture it is because one of its shared
+      // preconditions is unmet (no anchor, an edit input still open, an editable
+      // target). Report them with the outcome instead of a bare `false`.
+      const active = document.activeElement;
+      const reason = [
+        `anchor=${surface.hasAttribute('data-dt-anchor')}`,
+        `editing=${!!document.querySelector('[data-testid="table-edit-input"]')}`,
+        `active=${active?.tagName.toLowerCase() ?? 'none'}:${active?.getAttribute('data-testid') ?? ''}`,
+      ].join(' ');
       return {
         ok: true,
         text: eventType === 'copy' ? (store['text/plain'] ?? null) : payload,
         prevented: event.defaultPrevented,
+        reason,
       };
     },
     type,
@@ -84,20 +95,60 @@ async function dispatchClipboard(type: 'copy' | 'paste', text: string): Promise<
 /** The staged-change count the store holds for the open panel, straight from the DEV probe. */
 async function pendingRowCount(): Promise<number> {
   return (await browser.execute(() => {
-    const probe = (window as unknown as {
-      __tableDataStore?: { getState: () => { byPanel: Map<string, { pendingChanges: Map<string, unknown> }> } };
-    }).__tableDataStore;
+    const probe = (
+      window as unknown as {
+        __tableDataStore?: {
+          getState: () => { byPanel: Map<string, { pendingChanges: Map<string, unknown> }> };
+        };
+      }
+    ).__tableDataStore;
     if (!probe) return -1;
     const panels = [...probe.getState().byPanel.values()];
     return panels.reduce((total, panel) => total + panel.pendingChanges.size, 0);
   })) as number;
 }
 
-/** Click one cell by its `data-dt-*` coordinates (never by geometry). */
+/**
+ * Select one cell by its `data-dt-*` coordinates (never by geometry).
+ *
+ * The grid's cell selection is driven by `pointerdown`/`pointerup` on the grid
+ * surface. WebKit's WebDriver "Element Click" dispatches mouse events only, so
+ * `element.click()` left the selection (and therefore the clipboard anchor)
+ * empty; the synthetic `PointerEvent` pair is what a real pointer produces.
+ */
+async function pointerOn(cellSelector: string, type: 'pointerdown' | 'pointerup'): Promise<void> {
+  const ok = await browser.execute(
+    (selector: string, eventType: string) => {
+      const el = document.querySelector(selector);
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      el.dispatchEvent(
+        new PointerEvent(eventType, {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          pointerId: 1,
+          pointerType: 'mouse',
+          isPrimary: true,
+          button: 0,
+          buttons: eventType === 'pointerup' ? 0 : 1,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+        }),
+      );
+      return true;
+    },
+    cellSelector,
+    type,
+  );
+  expect(ok).toBe(true);
+}
+
 async function clickCell(rowIndex: number, columnName: string) {
-  const cell = await $(`[data-dt-row="${rowIndex}"][data-dt-col="${columnName}"]`);
-  await cell.waitForDisplayed({ timeout: 8000 });
-  await cell.click();
+  const selector = `[data-dt-row="${rowIndex}"][data-dt-col="${columnName}"]`;
+  await $(selector).waitForDisplayed({ timeout: 8000 });
+  await pointerOn(selector, 'pointerdown');
+  await pointerOn(selector, 'pointerup');
   await browser.pause(200);
 }
 
@@ -107,17 +158,22 @@ describe('表数据剪贴板复制与粘贴 (DB-03)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await setSafeMode(false);
+
+    // The editor has to exist *before* the first statement: `executeSQLChecked`
+    // types into `sql-editor-content`, and a bare connection (what the WDIO
+    // global hook leaves behind) has no query tab at all. Enter the connection
+    // workspace deterministically instead of inferring it from the tab strip —
+    // a leftover tab from another spec made the "no tabs" probe lie and the
+    // real toolbar never appeared.
+    await connectSeededPgInWorkspace();
+    await waitForNewQueryButton(20000);
+    await openQueryTab();
+    await $('[data-testid="editor-execute-button"]').waitForDisplayed({ timeout: 10000 });
+
     await executeSQLChecked(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
 
     // One query tab owns one retained session; the fixture reuses it, exactly like the
     // table-edit spec does (a fresh tab per statement exhausts the session quota).
-    const tabs = await $$('[data-testid="panel-tab-select"]');
-    if (tabs.length === 0) {
-      await waitForNewQueryButton(20000);
-      await openQueryTab();
-    }
-    await $('[data-testid="editor-execute-button"]').waitForDisplayed({ timeout: 10000 });
-
     await executeSQLChecked(
       `CREATE TABLE ${TEST_TABLE} (
         id SERIAL PRIMARY KEY,
@@ -156,6 +212,9 @@ describe('表数据剪贴板复制与粘贴 (DB-03)', () => {
     expect(await pendingRowCount()).toBe(0);
 
     const outcome = await dispatchClipboard('paste', 'Alicia');
+    // Without the grid's preconditions (anchor / closed editor / non-editable
+    // target) the gesture is silently ignored; name which one was missing.
+    if (!outcome.prevented) throw new Error(`paste was not consumed: ${outcome.reason}`);
     expect(outcome.ok).toBe(true);
     // The grid consumed the gesture: the browser must not also paste into the page.
     expect(outcome.prevented).toBe(true);

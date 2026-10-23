@@ -183,10 +183,29 @@ pub(crate) async fn close_dedicated_session(
     let runtime = adapter
         .runtime()
         .map_err(crate::platform::into_command_error)?;
-    let view = runtime
+    // Closing a session that is already gone is a success, not an error: the
+    // session is retired whenever its profile revision changes (saving the
+    // connection retires every session of that profile), so a window closing
+    // right after a save would otherwise surface "session has been released" to
+    // the user for work the app had already finished. `close_session` itself is
+    // idempotent; only this lookup refused the second call.
+    let view = match runtime
         .get_session_by_id(call.context(), db_session_id)
         .await
-        .map_err(crate::platform::into_command_error)?;
+    {
+        Ok(view) => view,
+        Err(error)
+            if matches!(
+                error.code,
+                datazen_platform_api::error::ApiErrorCode::SessionNotFound
+                    | datazen_platform_api::error::ApiErrorCode::SessionLost
+            ) =>
+        {
+            tracing::info!(%db_session_id, "session already retired before close");
+            return Ok(());
+        }
+        Err(error) => return Err(crate::platform::into_command_error(error)),
+    };
     runtime
         .close_session(
             call.context(),
