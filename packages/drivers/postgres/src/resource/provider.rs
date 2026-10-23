@@ -641,7 +641,23 @@ impl PostgresResourceProvider {
                 .driver
                 .execute_command_impl(&resource.connection, &call.command, call.input.clone())
                 .await
-                .map_err(ResourceError::Driver)?;
+                .map_err(|error| {
+                    // Keep the cause: a failed statement used to surface only as a
+                    // failed execution with no message, which is unactionable for a
+                    // restore of a 5000-line dump.
+                    tracing::warn!(
+                        command = %call.command,
+                        error = %error,
+                        sql = %call
+                            .input
+                            .get("sql")
+                            .and_then(serde_json::Value::as_str)
+                            .map(|sql| sql.chars().take(160).collect::<String>())
+                            .unwrap_or_default(),
+                        "driver command failed"
+                    );
+                    ResourceError::Driver(error)
+                })?;
             if call.command == "execute" {
                 let sql = call
                     .input

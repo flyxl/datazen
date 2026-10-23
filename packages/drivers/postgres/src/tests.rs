@@ -3,7 +3,7 @@
 use super::PostgresDriver;
 use crate::catalog::{
     build_pg_alter_sequence_owned_by, build_pg_create_sequence_sql, build_pg_create_table_ddl,
-    pg_sequence_start, PgColumnDdl, PgSequenceDdl,
+    pg_sequence_start, qualify_regclass_literals, PgColumnDdl, PgSequenceDdl,
 };
 use crate::execution::{PgQueryExecution, PG_BACKEND_PID_SQL, PG_CANCEL_BACKEND_SQL};
 use crate::sql::{apply_select_limit, parse_pg_table_ref};
@@ -448,6 +448,47 @@ async fn query_with_params_requires_pool() {
     assert!(
         matches!(err, DriverError::ConnectionFailed(_)),
         "expected ConnectionFailed, got {err:?}"
+    );
+}
+
+#[test]
+fn pg_dump_qualifies_the_regclass_default_with_the_table_schema() {
+    // The catalog's own text is unqualified: it was written against the dumping
+    // session's search_path. A restore session has a different one, where
+    // `nextval('t_id_seq'::regclass)` resolves to nothing and the CREATE TABLE is
+    // rejected — so the dump has to qualify it.
+    assert_eq!(
+        qualify_regclass_literals("nextval('t_id_seq'::regclass)", Some("\"public\"")),
+        "nextval('\"public\".t_id_seq'::regclass)"
+    );
+    // Already qualified: left untouched.
+    assert_eq!(
+        qualify_regclass_literals("nextval('sales.t_id_seq'::regclass)", Some("\"public\"")),
+        "nextval('sales.t_id_seq'::regclass)"
+    );
+    // Catalog names are only quoted when they need it: `public.t` is the
+    // ordinary case and must qualify just the same.
+    assert_eq!(
+        qualify_regclass_literals("nextval('t_id_seq'::regclass)", Some("public")),
+        "nextval('public.t_id_seq'::regclass)"
+    );
+    // No schema known: nothing to add.
+    assert_eq!(
+        qualify_regclass_literals("nextval('t_id_seq'::regclass)", None),
+        "nextval('t_id_seq'::regclass)"
+    );
+    // Anything that is not a `regclass` literal is untouched.
+    assert_eq!(
+        qualify_regclass_literals("'now'::text", Some("\"public\"")),
+        "'now'::text"
+    );
+    // A literal followed by more text still gets qualified, and the rest survives.
+    assert_eq!(
+        qualify_regclass_literals(
+            "nextval('a_seq'::regclass) + nextval('b_seq'::regclass)",
+            Some("\"app\"")
+        ),
+        "nextval('\"app\".a_seq'::regclass) + nextval('\"app\".b_seq'::regclass)"
     );
 }
 

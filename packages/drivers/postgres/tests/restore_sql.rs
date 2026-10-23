@@ -3,6 +3,42 @@ use datazen_driver_api::{iter_driver_factories, require_resource_provider, resto
 use datazen_driver_postgres::PostgresDriver;
 
 #[test]
+fn postgres_restore_replaces_a_sequence_before_the_table_that_owns_it() {
+    // The dump re-creates the sequence and then the table. In overwrite mode the
+    // table preamble is a `DROP TABLE`, and a sequence still owned by that table
+    // dies with it — so the sequence has to be dropped *first*, not left standing
+    // for the table's `DROP` to take away.
+    let driver = PostgresDriver::new();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
+    let statements = restore_sql::prepare(
+        &dialect,
+        "CREATE SEQUENCE IF NOT EXISTS public.t_id_seq START WITH 2;\n\
+         CREATE TABLE public.t (id integer NOT NULL DEFAULT nextval('public.t_id_seq'::regclass));\n\
+         ALTER SEQUENCE public.t_id_seq OWNED BY public.t.id;",
+        restore_sql::TRANSACTIONAL,
+        true,
+        true,
+        &datazen_driver_api::namespace::NamespaceTarget {
+            database: Some("app".into()),
+            catalog: None,
+            schema: Some("public".into()),
+            path: vec![],
+        },
+    )
+    .unwrap();
+    // Every object is dropped up front, tables before sequences: the table's drop
+    // is what releases the old sequence, and it must happen before the new
+    // sequence is created.
+    assert_eq!(
+        statements[0], "DROP TABLE IF EXISTS public.t",
+        "tables are dropped first: {statements:?}"
+    );
+    assert_eq!(statements[1], "DROP SEQUENCE IF EXISTS public.t_id_seq");
+    assert!(statements[2].starts_with("CREATE SEQUENCE IF NOT EXISTS public.t_id_seq"));
+    assert!(statements[3].starts_with("CREATE TABLE public.t"));
+}
+
+#[test]
 fn postgres_restore_preflights_dollar_quotes_overwrite_and_transaction_policy() {
     let driver = PostgresDriver::new();
     let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);

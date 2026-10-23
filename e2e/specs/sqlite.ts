@@ -40,23 +40,53 @@ describe('SQLite', () => {
     // sidebar content must be polled rather than read once immediately
     // after connecting. The aside element is re-created on re-render —
     // re-fetch it every pass and tolerate transient stale-element errors.
-    await browser.waitUntil(
-      async () => {
-        try {
-          const aside = await connectionNavigatorAside();
-          const text = await aside.getText();
-          return (
-            asideHasSchemaSections(text) &&
-            text.includes('users') &&
-            text.includes('posts') &&
-            text.includes('tags')
-          );
-        } catch {
-          return false;
-        }
-      },
-      { timeout: 20000, interval: 1000, timeoutMsg: '等待 SQLite 侧边栏显示表列表' },
-    );
+    // The category is opened explicitly: what the case is about is that the
+    // sidebar *has* the tables, not whether the tree starts expanded.
+    await expandSchemaCategory('tables', 'main').catch(() => undefined);
+    const tree = await browser.execute(() => {
+      const nav =
+        document.querySelector('[data-testid="connection-navigator-aside"]') ??
+        Array.from(document.querySelectorAll('aside')).find((aside) =>
+          aside.querySelector('[data-conn-item]'),
+        );
+      return Array.from(
+        nav?.querySelectorAll<HTMLElement>('[data-testid="schema-tree-node"]') ?? [],
+      ).map((node) => ({
+        kind: node.dataset.treeNode,
+        name: node.dataset.dbName ?? node.dataset.schemaName ?? null,
+        label: (node.textContent ?? '').trim().slice(0, 40),
+        expanded: node.getAttribute('aria-expanded'),
+      }));
+    });
+    let asideText = '';
+    let asideError = '';
+    await browser
+      .waitUntil(
+        async () => {
+          try {
+            const aside = await connectionNavigatorAside();
+            asideText = await aside.getText();
+            asideError = '';
+            return (
+              asideHasSchemaSections(asideText) &&
+              asideText.includes('users') &&
+              asideText.includes('posts') &&
+              asideText.includes('tags')
+            );
+          } catch (error) {
+            asideError = error instanceof Error ? error.message.slice(0, 200) : String(error);
+            return false;
+          }
+        },
+        { timeout: 20000, interval: 1000 },
+      )
+      .catch(() => {
+        throw new Error(
+          `等待 SQLite 侧边栏显示表列表: asideError=${asideError}; asideText=${JSON.stringify(
+            asideText.slice(0, 600),
+          )}; tree=${JSON.stringify(tree).slice(0, 900)}`,
+        );
+      });
   });
 
   it('should show views in sidebar', async () => {

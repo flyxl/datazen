@@ -119,6 +119,9 @@ function makeScrollElement(): HTMLDivElement {
     writable: true,
     configurable: true,
   });
+  // The viewport is only read from an element that is still in the document —
+  // a detached one belongs to a surface that has already been replaced.
+  document.body.appendChild(element);
   return element;
 }
 
@@ -171,7 +174,10 @@ describe('audit: the return restores the position of the source tab', () => {
     // Put it back, so the restore has something to do.
     useFkNavigationStore
       .getState()
-      .recordViewport(SOURCE_PANEL, snapshot as { scrollTop: number; anchorRow: number; anchorColumn: string | null });
+      .recordViewport(
+        SOURCE_PANEL,
+        snapshot as { scrollTop: number; anchorRow: number; anchorColumn: string | null },
+      );
 
     // The source tab is entered again: the panel is mounted from scratch.
     first.unmount();

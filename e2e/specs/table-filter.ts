@@ -55,9 +55,190 @@ async function openFilterPanel() {
   }
 }
 
+/**
+ * Remove every draft condition, then re-open the panel on an empty draft.
+ *
+ * `filter-clear` drops the *applied* filter but deliberately keeps one blank
+ * editor row, and a blank row blocks `Apply` as an incomplete condition — the
+ * exact state that made every later case wait forever on a disabled Apply.
+ */
+async function clearDraft() {
+  const clearBtn = await $('[data-testid="filter-clear"]');
+  if (await clearBtn.isDisplayed().catch(() => false)) {
+    await clearBtn.click();
+    await browser.pause(600);
+  }
+  for (let guard = 0; guard < 8; guard++) {
+    const removeBtns = await $$(`button[aria-label="${t('filter.remove')}"]`);
+    if (removeBtns.length === 0) break;
+    await removeBtns[removeBtns.length - 1].click();
+    await browser.pause(200);
+  }
+  await browser.waitUntil(async () => (await $$('[data-testid="filter-value"]')).length === 0, {
+    timeout: 8000,
+    timeoutMsg: '清空筛选后仍残留草稿条件',
+  });
+  await openFilterPanel();
+  // Re-opening a panel with an empty draft seeds exactly one condition, so the
+  // first row is index 0 and a later `filter-add` appends index 1. Cases rely on
+  // that order instead of guessing which row is which.
+  await browser.waitUntil(async () => (await conditionCount()) === 1, {
+    timeout: 8000,
+    timeoutMsg: '清空后筛选面板未提供唯一的草稿条件',
+  });
+}
+
+/** Number of distinct draft conditions currently rendered. */
+async function conditionCount(): Promise<number> {
+  return browser.execute(
+    () =>
+      new Set(
+        Array.from(document.querySelectorAll('[data-filter-index]')).map((el) =>
+          el.getAttribute('data-filter-index'),
+        ),
+      ).size,
+  );
+}
+
+/**
+ * Append one draft condition and make sure its editor is expanded.
+ *
+ * A fresh draft can be *complete by default* (a valueless operator such as
+ * `IS NULL`), and a complete condition renders as a collapsed chip without any
+ * input. Treating "no input yet" as failure is what kept every later case from
+ * ever reaching Apply.
+ */
+/** Append one condition and return its index. */
+async function addCondition(): Promise<number> {
+  const before = await conditionCount();
+  await $('[data-testid="filter-add"]').click();
+  await browser.waitUntil(async () => (await conditionCount()) > before, {
+    timeout: 8000,
+    timeoutMsg: '新增筛选条件后行数未增加',
+  });
+  const index = before;
+  const input = await $(`[data-filter-index="${index}"] [data-testid="filter-value"]`);
+  if (!(await input.isExisting().catch(() => false))) {
+    await $(`[data-filter-index="${index}"] button[title="${t('filter.editCondition')}"]`).click();
+    await browser.pause(300);
+  }
+  await $(`[data-filter-index="${index}"] button[aria-haspopup="listbox"]`).waitForDisplayed({
+    timeout: 8000,
+    timeoutMsg: `条件 ${index} 展开后没有列选择器`,
+  });
+  return index;
+}
+
+/**
+ * Set one condition's column through its own row.
+ *
+ * The panel renders the same `data-filter-index` on the chip wrapper and the
+ * expanded editor, so every locator here takes the row as the *prefix* of a
+ * compound selector: the subject stays the input/button that actually lives in
+ * that row.
+ */
+async function setConditionColumn(index: number, column: string) {
+  const row = await $(`[data-filter-index="${index}"]`);
+  const triggers = await row.$$('button[aria-haspopup="listbox"]');
+  if (triggers.length < 2) throw new Error(`条件 ${index} 的下拉触发器不足: ${triggers.length}`);
+  await triggers[0].click();
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() =>
+        Boolean(
+          document.querySelector('[data-testid="select-listbox"]') ??
+            document.querySelector('[id^="dz-select-listbox-"]'),
+        ),
+      ),
+    { timeout: 5000, timeoutMsg: `条件 ${index} 的列下拉未打开` },
+  );
+  await browser.execute((label: string) => {
+    const list =
+      document.querySelector('[data-testid="select-listbox"]') ??
+      document.querySelector('[id^="dz-select-listbox-"]');
+    if (!list) throw new Error('listbox not open');
+    const item = Array.from(list.children).find((el) => (el.textContent ?? '').includes(label));
+    if (!item) throw new Error(`option not found: ${label}`);
+    item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  }, column);
+  await browser.pause(300);
+}
+
+/**
+ * Drop the blank condition the panel seeds when it re-opens on a complete draft.
+ *
+ * Leaving it in place blocks `Apply` as an incomplete condition, which is what
+ * made the chip-editing case wait on a permanently disabled button.
+ */
+async function removeIncompleteRows() {
+  for (let guard = 0; guard < 6; guard++) {
+    const hasIncomplete = await browser.execute(() =>
+      Boolean(document.querySelector('[data-testid="filter-incomplete"]')),
+    );
+    if (!hasIncomplete) return;
+    const removeBtns = await $$(`button[aria-label="${t('filter.remove')}"]`);
+    if (removeBtns.length === 0) return;
+    await removeBtns[removeBtns.length - 1].click();
+    await browser.pause(250);
+  }
+}
+
+/** Fill one condition's value and prove the value actually stuck. */
+async function setConditionValue(index: number, value: string) {
+  const input = await $(`[data-filter-index="${index}"] [data-testid="filter-value"]`);
+  await input.waitForDisplayed({ timeout: 8000 });
+  await input.clearValue();
+  await input.setValue(value);
+  await browser.waitUntil(async () => (await input.getValue()) === value, {
+    timeout: 5000,
+    timeoutMsg: `条件 ${index} 的值未写入: ${value}`,
+  });
+  await browser.pause(200);
+}
+
 async function applyFilter() {
   const applyBtn = await $('[data-testid="filter-apply"]');
-  await applyBtn.waitForEnabled({ timeout: 5000 });
+  try {
+    await applyBtn.waitForEnabled({ timeout: 5000 });
+  } catch (error) {
+    const diag = await browser.execute(() => {
+      const rows = Array.from(document.querySelectorAll('[data-filter-index]')).map((row) => ({
+        index: row.getAttribute('data-filter-index'),
+        triggers: Array.from(row.querySelectorAll('button[aria-haspopup="listbox"]')).map((b) =>
+          (b.textContent ?? '').trim(),
+        ),
+        values: Array.from(row.querySelectorAll('[data-testid="filter-value"]')).map(
+          (i) => (i as HTMLInputElement).value,
+        ),
+        incomplete: Boolean(row.querySelector('[data-testid="filter-incomplete"]')),
+      }));
+      const tree = Array.from(document.querySelectorAll('[data-filter-index]')).map((el) => ({
+        index: el.getAttribute('data-filter-index'),
+        tag: el.tagName,
+        cls: (el.className || '').toString().slice(0, 70),
+        depth: (() => {
+          let d = 0;
+          let cur: Element | null = el;
+          while (cur && cur.parentElement) {
+            if (cur.parentElement.hasAttribute('data-filter-index')) d++;
+            cur = cur.parentElement;
+          }
+          return d;
+        })(),
+        parentIndex:
+          el.parentElement?.closest('[data-filter-index]')?.getAttribute('data-filter-index') ??
+          null,
+      }));
+      return {
+        tree,
+        rows,
+        draftCount: rows.length,
+        banner: document.querySelector('[data-testid="filter-incomplete-error"]')?.textContent,
+        error: document.querySelector('[data-testid="filter-error"]')?.textContent,
+      };
+    });
+    throw new Error(`${error instanceof Error ? error.message : '?'} :: ${JSON.stringify(diag)}`);
+  }
   await applyBtn.click();
   await browser.pause(1200);
 }
@@ -215,46 +396,17 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
 
   it('两条件 OR 应扩大结果集 (TF-004)', async () => {
     await openFilterPanel();
-    // Reset to a clean single incomplete draft
-    const clearBtn = await $('[data-testid="filter-clear"]');
-    if (await clearBtn.isDisplayed().catch(() => false)) {
-      await clearBtn.click();
-      await browser.pause(800);
-      await openFilterPanel();
-    }
-    await $('[data-testid="filter-add"]').click();
-    await browser.pause(300);
-    await setFilterColumn('id', 'name');
-    let valueInputs = await $$('[data-testid="filter-value"]');
-    await valueInputs[0].setValue('alpha');
-    await browser.pause(400);
+    // Build the draft from a known empty state: the previous case cleared the
+    // filter, and appending to whatever was left produced a third, value-less
+    // condition that kept Apply disabled.
+    await clearDraft();
+    await setConditionColumn(0, 'name');
+    await setConditionValue(0, 'alpha');
+    const second = await addCondition();
+    await setConditionColumn(second, 'score');
+    await setConditionValue(second, '20');
 
-    await $('[data-testid="filter-add"]').click();
-    await browser.pause(300);
-    // Set the newest filter's column select (last listbox trigger that still shows id)
-    await browser.execute(() => {
-      const editor = document.querySelector('[data-testid="filter-editor"]');
-      if (!editor) throw new Error('filter-editor missing');
-      const triggers = Array.from(editor.querySelectorAll('button[aria-haspopup="listbox"]'));
-      // Column selects are even indices within each condition (col, op)
-      const colTriggers = triggers.filter((_, i) => i % 2 === 0);
-      const lastCol = colTriggers[colTriggers.length - 1] as HTMLElement | undefined;
-      if (!lastCol) throw new Error('column trigger missing');
-      lastCol.click();
-      const list = document.querySelector('[id^="dz-select-listbox-"]');
-      const score = Array.from(list?.children ?? []).find((el) =>
-        (el.textContent || '').includes('score'),
-      );
-      if (!score) throw new Error('score option missing');
-      score.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-    });
-    await browser.pause(200);
-    valueInputs = await $$('[data-testid="filter-value"]');
-    const valueInputCount = await valueInputs.length;
-    await valueInputs[valueInputCount - 1].setValue('20');
-    await browser.pause(400);
-
-    await $(`button*=${t('filter.or')}`).click();
+    await $('[data-testid="filter-logic-or"]').click();
     await browser.pause(200);
     await applyFilter();
 
@@ -265,7 +417,7 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
   });
 
   it('切换 AND 后结果应变窄 (TF-005)', async () => {
-    await $(`button*=${t('filter.and')}`).click();
+    await $('[data-testid="filter-logic-and"]').click();
     await browser.pause(200);
     await applyFilter();
     const body = await $('body').getText();
@@ -278,18 +430,10 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
 
   it('收起面板后摘要仍可见 (TF-006)', async () => {
     // Re-apply a simple filter so summary is meaningful
-    const clearBtn = await $('[data-testid="filter-clear"]');
-    if (await clearBtn.isDisplayed().catch(() => false)) {
-      await clearBtn.click();
-      await browser.pause(800);
-    }
     await openFilterPanel();
-    await $('[data-testid="filter-add"]').click();
-    await browser.pause(300);
-    await setFilterColumn('id', 'name');
-    const valueInput = await $('[data-testid="filter-value"]');
-    await valueInput.setValue('gamma');
-    await browser.pause(400);
+    await clearDraft();
+    await setConditionColumn(0, 'name');
+    await setConditionValue(0, 'gamma');
     await applyFilter();
 
     await $('[data-testid="filter-collapse"]').click();
@@ -300,18 +444,36 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
   });
 
   it('点击 chip 可再编辑并 Apply (TF-007)', async () => {
-    // Chips are rendered in the expanded filter editor; the previous test
-    // intentionally leaves the summary collapsed after applying.
+    // Seed exactly one *applied* condition through the store, then exercise the
+    // chip → edit → Apply path. Building that state through the panel itself was
+    // ambiguous: re-opening the editor seeds a blank draft row as well, so the
+    // case could never tell the applied chip from the fresh draft.
+    await browser.execute(() => {
+      const store = (
+        globalThis as unknown as {
+          __tableDataStore: { getState: () => Record<string, unknown> };
+        }
+      ).__tableDataStore;
+      const state = store.getState() as unknown as {
+        activePanelId?: string;
+        byPanel: Map<string, unknown>;
+        setFilters: (panelId: string, filters: unknown[], logic: string) => void;
+      };
+      const panelId = state.activePanelId ?? Array.from(state.byPanel.keys()).at(-1);
+      if (!panelId) throw new Error('no active table panel');
+      state.setFilters(panelId, [{ column: 'name', operator: 'eq', value: 'gamma' }], 'and');
+    });
+    await browser.pause(1200);
+
     await openFilterPanel();
     const chip = await $(`button[title="${t('filter.editCondition')}"]`);
-    await chip.waitForDisplayed({ timeout: 5000 });
+    await chip.waitForDisplayed({ timeout: 10000 });
     await chip.click();
     await browser.pause(300);
-    const valueInput = await $('[data-testid="filter-value"]');
-    await valueInput.waitForDisplayed({ timeout: 5000 });
-    await valueInput.clearValue();
-    await valueInput.setValue('beta');
-    await browser.pause(450);
+    await setConditionValue(0, 'beta');
+    // Opening the editor on a complete draft also seeds a blank row; it must go,
+    // otherwise it blocks Apply as an incomplete condition.
+    await removeIncompleteRows();
     await applyFilter();
     const body = await $('body').getText();
     expect(body).toContain('beta');

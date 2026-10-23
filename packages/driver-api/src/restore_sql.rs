@@ -30,26 +30,61 @@ pub fn prepare(
     let mut scanner = dialect.new_sql_scanner();
     let mut statements = scanner.push(input);
     statements.extend(scanner.finish());
-    let mut prepared = Vec::new();
+    let mut bodies = Vec::new();
     for sql in statements {
-        prepare_statement(&sql, profile, target, overwrite, &mut prepared)
+        prepare_statement(&sql, profile, target, overwrite, &mut bodies)
             .map_err(|error| statement_context(&sql, error))?;
     }
-    if prepared.is_empty() {
+    if bodies.is_empty() {
         return Err(DriverError::InvalidConfig(
             "Restore input contains no supported statements".into(),
         ));
     }
+    let mut prepared = Vec::new();
+    if overwrite {
+        // Overwrite drops every object the script is about to create, and it does
+        // so **before the first creation**. Dropping inline cannot work: the dump
+        // re-creates a table's sequence before the table, and a sequence still
+        // owned by the old table can only be removed once that table is gone.
+        // Tables go first for exactly that reason.
+        for body in &bodies {
+            let words = prefix_words(body)?;
+            if !words.first().is_some_and(|word| word == "CREATE") {
+                continue;
+            }
+            let kind = words.get(1).map(String::as_str).unwrap_or_default();
+            if matches!(kind, "TABLE" | "VIEW") {
+                let ident = crate::sql_dump::created_relation_ident(body).ok_or_else(|| {
+                    DriverError::InvalidConfig(
+                        "Restore overwrite requires an explicit relation identifier".into(),
+                    )
+                })?;
+                prepared.push(format!("DROP {kind} IF EXISTS {ident}"));
+            }
+        }
+        for body in &bodies {
+            let words = prefix_words(body)?;
+            if !words.first().is_some_and(|word| word == "CREATE") {
+                continue;
+            }
+            if words.get(1).is_some_and(|kind| kind == "SEQUENCE") {
+                if let Some(ident) = created_sequence_ident(body) {
+                    prepared.push(format!("DROP SEQUENCE IF EXISTS {ident}"));
+                }
+            }
+        }
+    }
+    prepared.extend(bodies);
     Ok(prepared)
 }
 
-/// Validate one scanned statement and append it (plus any overwrite preamble).
+/// Validate one scanned statement and append it to the script body.
 fn prepare_statement(
     sql: &str,
     profile: &str,
     target: &crate::namespace::NamespaceTarget,
     overwrite: bool,
-    prepared: &mut Vec<String>,
+    bodies: &mut Vec<String>,
 ) -> Result<(), DriverError> {
     if executable_comment(sql) {
         return Err(DriverError::InvalidConfig(
@@ -88,21 +123,56 @@ fn prepare_statement(
                 "Restore input contains unsupported SQL/client protocol or context control".into(),
             ));
         }
+        // The drop preambles are assembled by `prepare` once the whole script is
+        // known; validation still needs to know that this is an overwrite.
         crate::restore_sql_target::validate(sql, profile, target, overwrite)?;
-        if overwrite && first == "CREATE" {
-            let relation_kind = words.get(1).map(String::as_str).unwrap_or_default();
-            if matches!(relation_kind, "TABLE" | "VIEW") {
-                let ident = crate::sql_dump::created_relation_ident(body).ok_or_else(|| {
-                    DriverError::InvalidConfig(
-                        "Restore overwrite requires an explicit relation identifier".into(),
-                    )
-                })?;
-                prepared.push(format!("DROP {relation_kind} IF EXISTS {ident}"));
-            }
-        }
-        prepared.push(sql.to_owned());
+        bodies.push(sql.to_owned());
     }
     Ok(())
+}
+
+/// The identifier of a `CREATE [IF NOT EXISTS] SEQUENCE <ident>` statement.
+///
+/// Deliberately narrow: a sequence name cannot be a query, so everything up to
+/// the first separator is the identifier. Quoted names may contain spaces.
+fn created_sequence_ident(sql: &str) -> Option<String> {
+    let mut rest = sql.trim_start();
+    for expected in ["CREATE", "SEQUENCE"] {
+        let (head, tail) = rest.split_once(char::is_whitespace)?;
+        if !head.eq_ignore_ascii_case(expected) {
+            // `CREATE SEQUENCE` is the only shape we handle; `IF NOT EXISTS` may
+            // follow the keyword and is skipped below.
+            if expected == "SEQUENCE" && head.eq_ignore_ascii_case("IF") {
+                continue;
+            }
+            return None;
+        }
+        rest = tail.trim_start();
+    }
+    if rest.to_ascii_uppercase().starts_with("IF NOT EXISTS") {
+        rest = rest["IF NOT EXISTS".len()..].trim_start();
+    } else if rest.to_ascii_uppercase().starts_with("IF") {
+        return None;
+    }
+    let mut chars = rest.char_indices();
+    let quoted = rest.starts_with('"');
+    let mut end = None;
+    let mut in_quotes = false;
+    for (index, ch) in chars.by_ref() {
+        match ch {
+            '"' => in_quotes = !in_quotes,
+            _ if !in_quotes && (ch.is_whitespace() || ch == '(' || ch == ';') => {
+                end = Some(index);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let ident = &rest[..end.unwrap_or(rest.len())];
+    if ident.is_empty() || (quoted && !ident.ends_with('"')) {
+        return None;
+    }
+    Some(ident.to_string())
 }
 
 /// Prefix a preflight rejection with a bounded excerpt of the statement.

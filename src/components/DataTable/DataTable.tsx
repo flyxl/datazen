@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
-import type { CountStrategy, FilterCondition, FilterOperator, SortCondition, Value } from '../../types';
+import type {
+  CountStrategy,
+  FilterCondition,
+  FilterOperator,
+  SortCondition,
+  Value,
+} from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
 import { useGridSelection } from '../../hooks/useGridSelection';
@@ -233,7 +239,7 @@ export interface DataTableProps {
     /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
     resolving?: ReadonlySet<string>;
     /** Follow the foreign key of a cell. */
-    onJump?: (rowIndex: number, columnName: string) => void;
+    onJump?: (rowIndex: number, columnName: string, element: HTMLElement | null) => void;
   };
 
   loading?: boolean;
@@ -447,7 +453,8 @@ export function DataTable({
     onRequestScrollIntoView,
   });
   /** The cell that carries `data-dt-active` (02): the keyboard cursor. */
-  const activeCell = keyboardNav.activeCoord ?? (selection.mode === 'cell' ? selection.focus : null);
+  const activeCell =
+    keyboardNav.activeCoord ?? (selection.mode === 'cell' ? selection.focus : null);
   const { surfaceProps, isCellSelected, activeDescendantId } = useGridSelection({
     columnOrder: columnNames,
     rowCount: rows.length,
@@ -642,7 +649,9 @@ export function DataTable({
         className="min-h-0 flex-1 overflow-auto"
         aria-busy={loading}
         aria-label={hasCellSelection ? t('tableView.a11y.gridLabel') : t('dataTable.tableLabel')}
-        aria-describedby={keyboardNavigation && hasCellSelection ? `${gridIdPrefix}-shortcuts` : undefined}
+        aria-describedby={
+          keyboardNavigation && hasCellSelection ? `${gridIdPrefix}-shortcuts` : undefined
+        }
         onContextMenu={onContextMenu}
         {...clipboardDomHandlers}
         {...surfaceDomProps}
@@ -701,29 +710,29 @@ export function DataTable({
               foreignKeys={foreignKeys}
               cellErrors={cellErrors}
             />
-            {loading ? (
-              gridRow(
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="flex min-h-28 items-center justify-center gap-2 text-xs text-fg-muted"
-                >
-                  <Spinner size="lg" />
-                  {t('dataTable.loading')}
-                </div>,
-              )
-            ) : rows.length === 0 ? (
-              gridRow(
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="flex min-h-28 flex-col items-center justify-center gap-1 px-4 text-center text-xs text-fg-muted"
-                >
-                  <span>{t('dataTable.empty')}</span>
-                  <span className="text-fg-muted/80">{t('dataTable.emptyHint')}</span>
-                </div>,
-              )
-            ) : null}
+            {loading
+              ? gridRow(
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="flex min-h-28 items-center justify-center gap-2 text-xs text-fg-muted"
+                  >
+                    <Spinner size="lg" />
+                    {t('dataTable.loading')}
+                  </div>,
+                )
+              : rows.length === 0
+                ? gridRow(
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex min-h-28 flex-col items-center justify-center gap-1 px-4 text-center text-xs text-fg-muted"
+                    >
+                      <span>{t('dataTable.empty')}</span>
+                      <span className="text-fg-muted/80">{t('dataTable.emptyHint')}</span>
+                    </div>,
+                  )
+                : null}
           </>
         )}
       </div>

@@ -251,7 +251,18 @@ impl RuntimeRestoreGateway {
             }
         }
         let total = statements.len() as u64;
+        let mut dispatch_index = 0u64;
         for statement in statements {
+            dispatch_index += 1;
+            // Which statement the pipeline is on, in the order the dump wrote it:
+            // a restore that fails on "missing relation" can only be understood by
+            // knowing what came before it on the same session.
+            tracing::debug!(
+                index = dispatch_index,
+                total,
+                statement = %statement.chars().take(160).collect::<String>(),
+                "restore statement dispatch"
+            );
             if cancel.is_cancelled() {
                 evidence.terminal = StageTerminal::Cancelled;
                 break;

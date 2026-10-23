@@ -938,6 +938,11 @@ impl PostgresDriver {
     ) -> Result<u64, DriverError> {
         {
             let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+            tracing::debug!(
+                pinned_transaction = pinned.is_some(),
+                sql = %sql.chars().take(80).collect::<String>(),
+                "postgres execute_on"
+            );
 
             if let Some(pinned) = pinned {
                 let mut conn = pinned.lock().await;

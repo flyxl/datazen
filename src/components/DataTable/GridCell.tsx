@@ -117,7 +117,12 @@ export interface GridCellProps {
    * inline closure per cell would give every cell a new prop identity and
    * defeat `memo`, which a virtualised grid feels immediately.
    */
-  onFkActivate?: (rowIndex: number, columnName: string) => void;
+  /**
+   * The arrow was activated. The activating element travels with the call: the
+   * owner needs the grid the click happened in, and this cell knows it while the
+   * owner may only hold a cached element from a previous mount.
+   */
+  onFkActivate?: (rowIndex: number, columnName: string, element: HTMLElement | null) => void;
   onCellDoubleClick: (rowIndex: number, columnName: string) => void;
   onCellEdit: (rowIndex: number, columnName: string, value: unknown) => void;
   onCellEditCancel: () => void;
@@ -200,8 +205,8 @@ export const GridCell = memo(function GridCell({
       // incomplete — the cell belongs to the key either way.
       {...(fk ? { 'data-dt-fk': fk.targetLabel } : {})}
       aria-selected={gridSemantics && selected ? 'true' : undefined}
-      aria-label={dirty ? dirtyAriaLabel : fkTitle ?? undefined}
-      title={dirty ? dirtyTooltip : fkTitle ?? undefined}
+      aria-label={dirty ? dirtyAriaLabel : (fkTitle ?? undefined)}
+      title={dirty ? dirtyTooltip : (fkTitle ?? undefined)}
       className={cn(
         'flex shrink-0 items-center overflow-hidden border-r border-edge/30 px-2',
         // The dirty mark is a *state* channel, kept apart from the value's
@@ -248,7 +253,7 @@ export const GridCell = memo(function GridCell({
             // two different actions, and a double click on the arrow must not
             // open the cell editor either.
             e.stopPropagation();
-            onFkActivate?.(rowIndex, column.name);
+            onFkActivate?.(rowIndex, column.name, e.currentTarget.closest('[data-dt-surface]'));
           }}
           onDoubleClick={(e) => e.stopPropagation()}
         >

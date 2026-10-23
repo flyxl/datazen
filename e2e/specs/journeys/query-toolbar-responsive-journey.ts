@@ -61,19 +61,81 @@ describe('查询工具栏响应式完整用户旅程 (QUERY-TOOLBAR-JOURNEY)', (
 
     const toolbar = await $('[data-testid="query-editor-toolbar"]');
     await toolbar.waitForDisplayed({ timeout: 10000 });
-    await browser.waitUntil(
-      async () =>
-        browser.execute(() => {
-          const root = document.querySelector('[data-testid="query-editor-toolbar"]');
-          if (!root || root.clientWidth >= 920) return false;
+    const readToolbar = () =>
+      browser.execute(() => {
+        const root = document.querySelector('[data-testid="query-editor-toolbar"]');
+        if (!root) return null;
+        const buttons = Array.from(root.querySelectorAll('button'));
+        const withText = buttons
+          .map((btn) => (btn.textContent ?? '').trim())
+          .filter((text) => text.length > 0);
+        // Who took the rest of the window: the toolbar is only as wide as its
+        // parent chain allows, so an overflow here is a layout claim about the
+        // ancestors, not about the buttons.
+        const ancestors: Array<Record<string, unknown>> = [];
+        let node: HTMLElement | null = root.parentElement;
+        for (let depth = 0; node && depth < 6; depth += 1) {
+          const siblings = Array.from(node.children).map((child) => ({
+            tag: child.tagName.toLowerCase(),
+            testid: child.getAttribute('data-testid'),
+            width: Math.round(child.getBoundingClientRect().width),
+            className: (child.className || '').toString().slice(0, 60),
+          }));
+          ancestors.push({
+            tag: node.tagName.toLowerCase(),
+            testid: node.getAttribute('data-testid'),
+            className: (node.className || '').toString().slice(0, 90),
+            width: Math.round(node.getBoundingClientRect().width),
+            siblings,
+          });
+          node = node.parentElement;
+        }
+        // A toolbar that is too narrow for eleven icon buttons may scroll, but
+        // it must not clip: every action stays reachable at either end.
+        const overflowX = getComputedStyle(root).overflowX;
+        const scrollable = overflowX === 'auto' || overflowX === 'scroll';
+        const before = root.scrollLeft;
+        root.scrollLeft = root.scrollWidth;
+        const lastReachable = root.scrollLeft + root.clientWidth >= root.scrollWidth - 1;
+        root.scrollLeft = before;
+        return {
+          clientWidth: root.clientWidth,
+          scrollWidth: root.scrollWidth,
+          buttonCount: buttons.length,
+          texts: withText,
+          innerWidth: window.innerWidth,
+          minWidth: root.getBoundingClientRect().width,
+          overflowX,
+          scrollable,
+          lastReachable,
+          ancestors,
+        };
+      });
+    let toolbarState = await readToolbar();
+    await browser
+      .waitUntil(
+        async () => {
+          toolbarState = await readToolbar();
+          if (!toolbarState) return false;
           // Every action is icon-only: no visible text node inside the buttons…
-          const buttons = Array.from(root.querySelectorAll('button'));
-          const hasVisibleText = buttons.some((btn) => (btn.textContent ?? '').trim().length > 0);
           // …and the row still fits without horizontal overflow.
-          return buttons.length > 0 && !hasVisibleText && root.scrollWidth <= root.clientWidth;
-        }),
-      { timeout: 10000, timeoutMsg: '窄窗口下查询工具栏未保持纯图标或出现横向溢出' },
-    );
+          return (
+            toolbarState.clientWidth < 920 &&
+            toolbarState.buttonCount > 0 &&
+            toolbarState.texts.length === 0 &&
+            // Either everything fits, or the row scrolls and its last action is
+            // still reachable — clipping is what this case forbids.
+            (toolbarState.scrollWidth <= toolbarState.clientWidth ||
+              (toolbarState.scrollable && toolbarState.lastReachable))
+          );
+        },
+        { timeout: 10000 },
+      )
+      .catch(() => {
+        throw new Error(
+          `窄窗口下查询工具栏未保持纯图标或出现横向溢出: ${JSON.stringify(toolbarState)}`,
+        );
+      });
     await expect(await $('[data-testid="editor-execute-button"]')).toBeDisplayed();
     await expect(await $('[data-testid="editor-execution-strategy-button"]')).toBeDisplayed();
     await expect(await $('[data-testid="editor-format-button"]')).toBeDisplayed();
@@ -109,7 +171,10 @@ describe('查询工具栏响应式完整用户旅程 (QUERY-TOOLBAR-JOURNEY)', (
       async () =>
         browser.execute(() => {
           const root = document.querySelector('[data-testid="query-editor-toolbar"]');
-          if (!root || root.clientWidth < 1400) return false;
+          // The toolbar is as wide as the window minus the connection sidebar, so
+          // the "the window is wide again" check is about the window. With that
+          // room every action fits without scrolling.
+          if (!root || window.innerWidth < 1200) return false;
           const execute = root.querySelector('[data-testid="editor-execute-button"]');
           return (
             !!execute &&
