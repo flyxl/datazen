@@ -205,18 +205,26 @@ flowchart TB
   门禁同步：`scripts/lib/cargoWorkspace.mjs` 的 `LAYERS` 增 `kernel`，
   `check-platform-crate-boundaries.mjs` 的 F-02 / F-03 / F-05 主体与 F-12 允许层增 `kernel`，
   本文 §2.4 与 §2.1 / §2.3 同步。
-- **剩下的 8 → 0 只剩一步**（独立 PR）：
-  1. 已落地（见上）。
-  2. **制品与备份用例端口化**：`job`/`budget`/`sql_guard`/`schema_cache`/`driver_registry`
-     是**机制**而不是应用门面（`job` 只依赖 `budget` 5 处与 `connection` 1 处；`budget`
-     零内部依赖；`sql_guard` 零内部依赖；`schema_cache` 依赖 `driver_registry`）。拆出一个
-     不依赖应用层的内核 crate（暂名 `datazen-kernel`），`runtime` 再导出保持既有调用点。
-  2. **制品与备份用例端口化**：`read_artifact_chunk`（4 处调用）返回的
-     `RuntimeArtifactChunk` 与 `bind_backup_output` 返回的 `BackupOutputBinding`
-     是**运行时内建类型**（前者是 serde DTO、后者是 Drop 型能力对象）。要么把 DTO 归
-     platform-api、把绑定抽象成 `Box<dyn BackupOutputGuard>`，要么承认这两条能力不进
-     形态中立层并保留 2 个逆向引用（届时 R1 需按包名开例外，不得静默）。
-- **验收**：附录 A.2 输出 0；4 个 `Cargo.toml` 的 `[dependencies]` 无 `datazen-runtime`（已完成 3 个，`feature-core` 待步骤 2）；
+- **已落地（2026-10-23，PR「制品与备份用例端口化」）**：P2 生产半边**代码**引用归零。
+  - 结果块 DTO 归契约层：`RuntimeArtifactChunk` 的定义移到
+    `datazen_platform_api::dto::execution::ResultChunk`。它与字节型的
+    `dto::artifact::ArtifactChunk` 是**两个概念**（一个按字节寻址、一个按
+    `published_chunk_count` 分页），不合并。runtime 保留 `RuntimeArtifactChunk` 别名，
+    宿主既有引用逐字不变。
+  - 两条能力改成**消费者定义端口**（`packages/feature-core/src/services/ports.rs`）：
+    `ArtifactChunkReader::read_chunk` 与 `BackupOutputBinder::bind`（返回
+    `Box<dyn BackupOutputGuard>`，drop 即撤销，实现方负责等完 in-flight 写并拒收迟到
+    输出）。宿主实现是薄壳：`src-tauri/src/platform/feature_ports.rs` 的
+    `HostArtifactChunks` / `HostBackupBindings`，逻辑一行不落薄壳。
+  - 连带把「Workflow 派发需要什么」从具体类型改成端口集合：`PreparedExecution`
+    现在持 `use_cases: Arc<dyn ConnectionUseCases>` + `artifacts: Arc<dyn ArtifactChunkReader>`；
+    `commit_changes` / `execute_plan` / `backup_to_path` 同步收口。
+  - `feature-core` 的 `datazen-runtime` 从 `[dependencies]` 移到 `[dev-dependencies]`：
+    **只有测试**可以点名门面（`schema_context` 的行为用例需要真实
+    `RuntimeConnectionUseCases`，fakes 覆盖不了分页与可见性语义）。
+  - 口径：生产半边仍有 3 处**文档链接**写着 `datazen_runtime::application::…`（解释
+    「当初为何被钉住」），是说明不是依赖；验收按**代码引用**为零，不按 grep 行数。
+- **验收**：附录 A.2 输出 0；4 个 `Cargo.toml` 的 `[dependencies]` 无 `datazen-runtime`（4 个全部达成）；
   `cargo test -p datazen-schema-diff -p datazen-data-sync -p datazen-data-transfer -p datazen-feature-core` 绿。
 - **回滚**：按包分 PR，逐个可回滚。
 - **风险**：端口定义反复 → 先冻结端口清单（R3/R8）再改。

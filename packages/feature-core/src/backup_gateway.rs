@@ -1,5 +1,6 @@
 //! Production database backups through a Runtime-owned session and a single
 //! staging writer. The FileArtifactJob publishes the sole delivered artifact.
+use crate::services::ports::BackupOutputBinder;
 use crate::{backup::BackupEvents, error::FeatureError};
 use datazen_driver_api::{sql_dump::stream::BACKUP_COMMAND, BackupDumpOptions, DumpProgress};
 use datazen_kernel::job::CancelToken;
@@ -10,7 +11,6 @@ use datazen_platform_api::{
     target::ExecutionTarget,
     OwnerRef, RequestContext,
 };
-use datazen_runtime::application::RuntimeConnectionUseCases;
 use std::{
     io::Write,
     path::{Path, PathBuf},
@@ -24,7 +24,7 @@ struct LimitedFile {
 impl Write for LimitedFile {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         if self.bytes.saturating_add(bytes.len() as u64)
-            > datazen_runtime::artifact::ARTIFACT_BYTE_QUOTA
+            > datazen_platform_api::ports::artifact::ARTIFACT_BYTE_QUOTA
         {
             return Err(std::io::Error::other("backup artifact quota exceeded"));
         }
@@ -74,7 +74,8 @@ fn unavailable() -> FeatureError {
 /// only; no session handle is persisted with the output.
 #[allow(clippy::too_many_arguments)]
 pub async fn backup_to_path(
-    runtime: Arc<RuntimeConnectionUseCases>,
+    runtime: Arc<dyn ConnectionUseCases>,
+    binder: Arc<dyn BackupOutputBinder>,
     ctx: &RequestContext,
     target: ExecutionTarget,
     opts: BackupDumpOptions,
@@ -164,8 +165,8 @@ pub async fn backup_to_path(
             }
             Ok(())
         });
-        let binding = runtime
-            .bind_backup_output(ctx, &handle, &target, callback)
+        let binding = binder
+            .bind(ctx, &handle, &target, callback)
             .await
             .map_err(|_| unavailable())?;
         let token = runtime

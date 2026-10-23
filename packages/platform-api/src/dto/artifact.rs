@@ -253,3 +253,12 @@ mod tests {
         );
     }
 }
+
+/// 备份输出的**接收回调**：runtime 在每次推进备份时调用它，回调把字节写进
+/// 调用方自己的暂存文件。
+///
+/// 它在本包的原因与 [`ResultChunk`](crate::dto::execution::ResultChunk) 相同：
+/// 绑定的生产方是 runtime、消费方是 feature 层（`datazen-feature-core` 的
+/// `backup_gateway`），两边都只允许依赖契约层。
+pub type BackupOutput =
+    std::sync::Arc<dyn Fn(serde_json::Value) -> Result<(), crate::error::ApiError> + Send + Sync>;
