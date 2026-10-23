@@ -21,6 +21,7 @@ use datazen_platform_api::dto::session::{
 };
 use datazen_platform_api::id::{ConnectionId, ExecutionId, StreamId};
 use datazen_platform_api::ports::event::EventSubscription;
+use datazen_platform_api::ports::known_hosts::{KnownHostEntry, KnownHostsRepository};
 use datazen_platform_api::ports::scope::OrganizationScope;
 use datazen_platform_api::ports::{SettingsRepository, TunnelRepository};
 use datazen_platform_api::settings::{
@@ -254,6 +255,36 @@ impl ConnectionUseCases for UnusedConnectionUseCases {
     }
 }
 
+/// 一份内存 known-hosts：端口的 `load` 不失败，`save` 只在本进程内生效。
+///
+/// 用例层不消费这个端口（消费者是 SSH 隧道宿主），它在这里的作用只有一个：
+/// 证明聚合**持有**注入的那一个实例，而不是内部另造一份。
+#[derive(Default)]
+struct MemoryKnownHosts {
+    entries: Mutex<std::collections::HashMap<String, KnownHostEntry>>,
+}
+
+impl KnownHostsRepository for MemoryKnownHosts {
+    fn load(&self) -> std::collections::HashMap<String, KnownHostEntry> {
+        self.entries
+            .lock()
+            .map(|entries| entries.clone())
+            .unwrap_or_default()
+    }
+
+    fn save(
+        &self,
+        entries: &std::collections::HashMap<String, KnownHostEntry>,
+    ) -> Result<(), PortError> {
+        let mut guard = self
+            .entries
+            .lock()
+            .map_err(|_| PortError::BackendUnavailable("known hosts lock poisoned".into()))?;
+        *guard = entries.clone();
+        Ok(())
+    }
+}
+
 // ── 夹具 ───────────────────────────────────────────────────────────────────
 
 /// 一份**合法**的跨形态设置：枚举取值必须过 `SettingsService::normalize`。
@@ -305,6 +336,15 @@ fn services_with(
     settings: Arc<dyn SettingsRepository>,
     tunnels: Arc<dyn TunnelRepository>,
 ) -> ApplicationServices {
+    services_with_known_hosts(settings, tunnels, Arc::new(MemoryKnownHosts::default()))
+}
+
+/// 同上，但 known-hosts 端口由调用方给——用来证明「持有的是注入的那一份」。
+fn services_with_known_hosts(
+    settings: Arc<dyn SettingsRepository>,
+    tunnels: Arc<dyn TunnelRepository>,
+    known_hosts: Arc<dyn KnownHostsRepository>,
+) -> ApplicationServices {
     let metadata: TargetMetadataProvider = Arc::new(
         |_connection: &ConnectionId,
          _command: &str|
@@ -316,6 +356,7 @@ fn services_with(
         Arc::new(UnusedConnectionUseCases),
         settings,
         tunnels,
+        known_hosts,
     )
 }
 
@@ -336,6 +377,25 @@ fn the_aggregate_holds_the_injected_instances_themselves() {
     assert!(
         Arc::ptr_eq(&services.tunnels, &tunnels),
         "聚合必须持有注入的那一个隧道仓储实例"
+    );
+}
+
+/// 第六个端口（known-hosts）同样**必填且被持有**。
+///
+/// 这条在 `lib.rs` 的形状守卫之外补行为证据：`ApplicationServices::new` 的参数
+/// 顺序里它是最后一个，漏传是编译错误；这里证明传进来的那一份就是字段里的那一份。
+#[test]
+fn the_aggregate_holds_the_injected_known_hosts_port() {
+    let known_hosts: Arc<dyn KnownHostsRepository> = Arc::new(MemoryKnownHosts::default());
+    let services = services_with_known_hosts(
+        Arc::new(RecordingSettingsRepository::new(sample_settings())),
+        Arc::new(EmptyTunnelRepository),
+        known_hosts.clone(),
+    );
+
+    assert!(
+        Arc::ptr_eq(&services.known_hosts, &known_hosts),
+        "聚合必须持有注入的那一个 known-hosts 仓储实例"
     );
 }
 

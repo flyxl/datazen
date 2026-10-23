@@ -98,7 +98,7 @@ pub struct DesktopSessionBackend {
     /// 不是打开表单时）。
     tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
     /// SSH known-hosts 的存储端口（宿主注入）。
-    known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository>,
+    known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
 }
 impl DesktopSessionBackend {
     pub(crate) fn physical_budget(
@@ -112,7 +112,7 @@ impl DesktopSessionBackend {
         store: Arc<DesktopRepository>,
         physical_limit: u32,
         tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
-        known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository>,
+        known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
     ) -> Self {
         Self::new_scoped(
             registry,
@@ -134,7 +134,7 @@ impl DesktopSessionBackend {
         organization: datazen_platform_api::id::OrganizationId,
         principal: datazen_platform_api::id::PrincipalId,
         tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
-        known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository>,
+        known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
     ) -> Self {
         Self {
             registry,

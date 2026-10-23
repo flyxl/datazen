@@ -36,10 +36,14 @@ pub(crate) async fn get_tunnels_impl(state: &AppState) -> Result<Vec<SavedTunnel
     // 生产代码没有它的调用方（所有列表路径都走 `get_tunnel_summaries`），但命令的
     // 形状与载荷不变。
     let scope = state.organization_scope()?;
-    let summaries = tunnel_cmd(state.tunnels.list(&scope).await, "get_tunnels")?;
+    let services = crate::platform::ipc::require_application_services(state)?;
+    let summaries = tunnel_cmd(services.tunnels.list(&scope).await, "get_tunnels")?;
     let mut tunnels = Vec::with_capacity(summaries.len());
     for summary in summaries {
-        let Some(tunnel) = tunnel_cmd(state.tunnels.get(&scope, &summary.id).await, "get_tunnels")?
+        let Some(tunnel) = tunnel_cmd(
+            services.tunnels.get(&scope, &summary.id).await,
+            "get_tunnels",
+        )?
         else {
             continue;
         };
@@ -53,7 +57,8 @@ pub(crate) async fn get_tunnel_impl(
     id: String,
 ) -> Result<Option<SavedTunnel>, CommandError> {
     let scope = state.organization_scope()?;
-    tunnel_cmd(state.tunnels.get(&scope, &id).await, "get_tunnel")
+    let services = crate::platform::ipc::require_application_services(state)?;
+    tunnel_cmd(services.tunnels.get(&scope, &id).await, "get_tunnel")
 }
 
 pub(crate) async fn save_tunnel_impl(
@@ -62,13 +67,15 @@ pub(crate) async fn save_tunnel_impl(
 ) -> Result<(), CommandError> {
     tracing::info!(id = %tunnel.id, name = %tunnel.name, kind = ?tunnel.kind, "save_tunnel");
     let scope = state.organization_scope()?;
-    tunnel_cmd(state.tunnels.save(&scope, tunnel).await, "save_tunnel")
+    let services = crate::platform::ipc::require_application_services(state)?;
+    tunnel_cmd(services.tunnels.save(&scope, tunnel).await, "save_tunnel")
 }
 
 pub(crate) async fn delete_tunnel_impl(state: &AppState, id: String) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_tunnel");
     let scope = state.organization_scope()?;
-    tunnel_cmd(state.tunnels.delete(&scope, &id).await, "delete_tunnel")
+    let services = crate::platform::ipc::require_application_services(state)?;
+    tunnel_cmd(services.tunnels.delete(&scope, &id).await, "delete_tunnel")
 }
 
 /// Metadata-only projection of the stored tunnels for the selector.
@@ -79,7 +86,8 @@ pub(crate) async fn get_tunnel_summaries_impl(
     state: &AppState,
 ) -> Result<Vec<SavedTunnelSummary>, CommandError> {
     let scope = state.organization_scope()?;
-    tunnel_cmd(state.tunnels.list(&scope).await, "get_tunnel_summaries")
+    let services = crate::platform::ipc::require_application_services(state)?;
+    tunnel_cmd(services.tunnels.list(&scope).await, "get_tunnel_summaries")
 }
 
 /// Which connections reference `id`. `connection_ids` and `connection_names`
@@ -89,7 +97,11 @@ pub(crate) async fn get_tunnel_usage_impl(
     id: String,
 ) -> Result<TunnelUsage, CommandError> {
     let scope = state.organization_scope()?;
-    tunnel_cmd(state.tunnels.usage(&scope, &id).await, "get_tunnel_usage")
+    let services = crate::platform::ipc::require_application_services(state)?;
+    tunnel_cmd(
+        services.tunnels.usage(&scope, &id).await,
+        "get_tunnel_usage",
+    )
 }
 
 /// Probe a saved tunnel against `target_host:target_port`; returns elapsed ms.
@@ -100,10 +112,11 @@ pub(crate) async fn test_tunnel_impl(
     target_port: u16,
 ) -> Result<u64, CommandError> {
     let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
     let elapsed = crate::tunnel::test_tunnel(
-        &*state.tunnels,
+        &*services.tunnels,
         &scope,
-        &state.known_hosts,
+        &services.known_hosts,
         &id,
         &target_host,
         target_port,

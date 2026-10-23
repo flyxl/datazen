@@ -200,7 +200,7 @@ pub(crate) fn finish_app_state(
     // 同一份实例既注入会话后端（建连时解引用 `tunnelId`、启动隧道），也进
     // `AppState`（命令侧取用）：整个进程只有一份，存储的生命周期由宿主决定。
     let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
-    let known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository> =
+    let known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository> =
         crate::platform::known_hosts::desktop_known_hosts_repository(&data_dir);
     // 平台装配必须**先于**依赖它的功能绑定：共享的元数据源要拿到 Runtime 门面
     // （解析会话归属）与执行宿主（profile / 驱动 / 命令执行），两者都出自装配。
@@ -282,9 +282,8 @@ pub(crate) fn finish_app_state(
         transfer_plans: Arc::new(
             crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
         ),
-        // 隧道定义与 SSH known-hosts 的存储端口实例（同一个实例也注给了会话后端）。
-        tunnels,
-        known_hosts,
+        // `tunnels` 与 `known_hosts` 都不在这里：它们由 `ApplicationServices` 持有
+        // （§5.1.2 第三步与第五步）。局部变量保留，因为要把同一份实例交给 `inject`。
     };
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state

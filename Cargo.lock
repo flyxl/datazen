@@ -2239,6 +2239,7 @@ name = "datazen-tunnel"
 version = "0.0.1"
 dependencies = [
  "datazen-driver-api",
+ "datazen-platform-api",
  "futures-util",
  "russh",
  "serde",
