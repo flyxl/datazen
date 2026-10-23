@@ -8,7 +8,7 @@
 | 层级 | PR CI（`ci.yml`） | Release（`release.yml`） | 本地 / 维护者 |
 |------|-------------------|--------------------------|---------------|
 | 驱动选型 | **`basic` 固定**（postgres, mysql, sqlite, redis）；Host 单测另跑一遍 **`all`** | Basic / All × 四平台 + Akulaku × 三平台（Windows / macOS，无 Linux） | 任意 `--drivers=` / `DATAZEN_DRIVERS` |
-| Host 前端单测 | ✅ `basic`：`pnpm test:unit`；`all`：`pnpm test:unit:driver-set`（硬门禁，理由见 §2.1.1） | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` / `pnpm test:unit:driver-set` |
+| Host 前端单测 | ✅ `basic`：`pnpm test:unit`；`all`：`pnpm test:unit:driver-set`（**收窄至 codegen 敏感文件**，硬门禁，理由见 §2.1.1） | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` / `pnpm test:unit:driver-set` |
 | 驱动 UI 单测 | ✅ `pnpm test:unit:drivers` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit:drivers` |
 | TypeScript | ✅ `pnpm typecheck`（**单引擎**：`tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` **也是**只跑 `tsrs`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
 | Host Rust lib | ✅ `cargo test -p datazen --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen --lib` |
@@ -28,7 +28,7 @@
 **原则**
 
 1. **Basic 必测**：每个 PR 与 `main` push 均跑 basic 四驱动 + Host 三件套（TS 单测 / Host lib / driver-api / ai-api）。
-2. **All 只进 Host 单测，不进编译矩阵**：`resolve-drivers --drivers=all` 的 codegen 让 PR CI 跑一遍全部 path 驱动的 Host 前端单测——前端驱动形态是编译期 codegen，验证它不需要编译 Rust 驱动，因此 `all` 在 PR 上是廉价的；而 `cargo` 侧编译全部 path 驱动仍然只发生在 Release **All** SKU 与本地全量验证（`--drivers=all` 约 5 分钟重编译），不占 PR 流水线。
+2. **All 只进 Host 单测，不进编译矩阵**：`resolve-drivers --drivers=all` 的 codegen 让 PR CI 把 Host 前端单测中**codegen 敏感的那部分**（模块图会执行 `generated.ts` 的测试文件，运行期由 `select-codegen-sensitive-tests.mjs` 选出）在 `all` 下再判一遍——前端驱动形态是编译期 codegen，验证它不需要编译 Rust 驱动，因此 `all` 在 PR 上是廉价的；而 `cargo` 侧编译全部 path 驱动仍然只发生在 Release **All** SKU 与本地全量验证（`--drivers=all` 约 5 分钟重编译），不占 PR 流水线。
 3. **Path 轮转（维护者策略）**：可选 path 驱动（mongodb、clickhouse、duckdb、sqlserver、elasticsearch 等）的 **Rust lib 不在 PR CI 矩阵内**；其 **UI 单测全部进 PR CI**（`pnpm test:unit:drivers` 按文件系统收集 `packages/drivers/*/ui/__tests__/`，与 `--drivers=` 选型无关，因此可选驱动同样被覆盖）。改 Rust 时作者仍须在 PR 说明中列出 `cargo test -p datazen-driver-<id> --lib`（及该 crate 内 E2E）。发版 **All** SKU 是对全部 path 驱动的集成校验。
 4. **契约矩阵**：Host Connection Contract（`e2e/contract/`）验证 PG/MySQL/SQLite 上同一套 Host UI journey；**不进 PR CI**，由维护者在合并前或 R 阶段跑 `pnpm e2e:contract:matrix`；fixtures 单测 `pnpm test:unit:e2e-contract` 可在本地或后续 CI 扩展中启用。
 
@@ -49,7 +49,7 @@
 | 类型 | `pnpm typecheck` | `tsrs --noEmit`（单引擎，见 §2.1.4）。发布侧的 `union-typecheck` **也是只跑 `tsrs`**（§6.2），所以本地绿与发布绿是同一件事 |
 | 守卫 | `check-managed-stubs.mjs`、`check-id-terminology.mjs`、`check-module-layers.mjs` 等 | 防止误提交 inject 产物、ID 术语回退、分层倒置。`check-structure-editor-guardrails.mjs` 已移至发布前，见 §2.1.3 |
 | Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
-| Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**硬门禁**（无 `continue-on-error`），理由见 §2.1.1；重新加回软门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts`（见 §2.1.1 末） |
+| Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → **运行期收窄** → `vitest run <选中文件>`。收窄自同一份 `include` glob：只有模块图**执行** `src/extensions/generated.ts` 的测试文件才可能观察到驱动集（判定口径与 fail-closed 清单见 `scripts/select-codegen-sensitive-tests.mjs`），其余文件在两轮跑的是同一份字节码，由上面的 `basic` 步判过。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**硬门禁**（无 `continue-on-error`），理由见 §2.1.1；重新加回软门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts`（见 §2.1.1 末） |
 | 驱动 UI 单测 | `pnpm test:unit:drivers` | `packages/drivers/*/ui/__tests__/`；与 Host 单测互不收集，两步都必须跑 |
 | Site（条件） | `check-site-seo.mjs` | 仅当 diff 含 `site/`（`fetch-depth: 0` 仅此 job 需要） |
 
@@ -178,6 +178,23 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 两者相差 **37**，且 `5714` 的来源（哪次运行、哪个驱动集）本文没有记录。**在补测之前，
 这两个数只能各自当作"某次运行的记录"看，不能相减、不能互相印证。** 重测时应当重新
 统计一次套件总数并统一两个数字，而不是挑一个信。
+
+**2026-10 收窄：`all` 步不再整套重跑。** 该步此后只运行「codegen 敏感」的测试文件：
+模块图会**执行** `src/extensions/generated.ts` 的用例才可能观察到驱动集，其余文件在
+`basic` 与 `all` 两轮跑的是同一份字节码，由 `basic` 步判过。选择在运行期由
+`scripts/select-codegen-sensitive-tests.mjs` 完成：以文本方式读取 `vitest.config.ts` 的
+`include` / `alias` / `setupFiles`（配置仍是唯一 owner，重排格式会让选择器变红而不是
+静默漂移），对**值边**（会执行目标模块的 import 形态）建反向图，从 codegen 目标反向
+可达即入选；`import type` 与全标 `type` 的具名导入按 esbuild 语义擦除、不算边，仅类型
+位置使用的普通导入因无法静态判定而保守计入——宁可多跑，不可漏跑。退化输入（配置不可
+解析、include 空匹配、setupFiles 触达 codegen、选中为空）一律让该步变红，不退化为
+全量或空跑；守卫见 `scripts/__tests__/select-codegen-sensitive-tests.test.ts`。
+
+实测（双核 4GB 开发机，`--drivers=all`，收窄生效后）：550 个源文件传递执行 codegen；
+755 个收集文件中 316 个敏感（41.9%）。本机受内存所限未能在单轮内完整跑完 316 个
+文件（推进至 250/316 时被资源打断，已完成部分 0 失败），完整绿跑由 CI runner 验证。
+历史依据不变：`7559759b7` 的 555 文件 / 5677 例 / 140s 全绿记录仍钉在 `ci.yml`，
+作为该步晋升硬门禁时的证据。
 
 ### 2.1.2 `check-ci-docs-consistency.mjs` 覆盖什么、不覆盖什么
 

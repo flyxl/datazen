@@ -127,9 +127,15 @@ jobs:
       # `pnpm install`'s prepare hook seeds (ensure-generated-drivers.mjs ->
       # resolve-drivers.mjs default). A driver form `basic` does not register
       # (e.g. `sqlserver`) therefore escapes Host unit coverage entirely.
-      # This step re-runs the same suite under `all` (all registered PATH
-      # drivers: no git driver, so no deploy key and no network needed).
-      # The set lives only in run-unit-driver-set.mjs, never inline here.
+      # This step judges the suite under `all` (all registered PATH drivers:
+      # no git driver, so no deploy key and no network needed), **narrowed at
+      # run time** to the test files whose module graphs execute the
+      # driver-set codegen (`src/extensions/generated.ts`) — everything else
+      # runs byte-identical code under `all` and is already judged by the
+      # `basic` step above. The selection lives in
+      # select-codegen-sensitive-tests.mjs (criterion + fail-closed list) and
+      # the driver set lives only in run-unit-driver-set.mjs, never inline
+      # here.
       #
       # Status: GREEN, not known-red. An earlier revision of this comment
       # claimed two blockers; both were artifacts of a stale base

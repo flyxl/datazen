@@ -31,6 +31,22 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * imports (`generated.ts` and `builtinLocales.ts`), because the test path runs
  * no build step and `pretest:unit` is inert under pnpm >= 7.
  *
+ * ## Scope narrowing (codegen-sensitive files only)
+ *
+ * The vitest leg does NOT re-run the whole suite. A test can only observe the
+ * driver set through `src/extensions/generated.ts`, so the run is narrowed to
+ * the test files whose module graphs execute that file — selected at run time
+ * by `select-codegen-sensitive-tests.mjs` from the same `include` globs this
+ * suite collects. Everything else runs byte-identical code under `all` and is
+ * already judged by the `basic` run.
+ *
+ * Pass explicit test-file arguments to bypass the narrowing and run exactly
+ * those files (usage line below); an explicit list is the caller taking
+ * responsibility for scope, so no selection is bolted on. Selection errors
+ * (unparsable config, empty result, a setup file reaching the codegen) fail
+ * this step rather than degrading to a full or empty run — both would report a
+ * green this gate has not earned.
+ *
  * Usage:
  *   node scripts/run-unit-driver-set.mjs
  *   node scripts/run-unit-driver-set.mjs --drivers=postgres,mysql
@@ -42,6 +58,8 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 import { spawnSync } from 'child_process';
 import { join, resolve } from 'path';
 import { fileURLToPath } from 'url';
+
+import { selectCodegenSensitiveTests } from './select-codegen-sensitive-tests.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -131,9 +149,34 @@ export function runUnitDriverSet(options) {
   return 0;
 }
 
+/**
+ * Decide the vitest argv for a run: explicit test-file arguments pass through
+ * untouched; with none, append the codegen-sensitive selection.
+ *
+ * Exported so the narrowing decision itself is assertable without spawning
+ * vitest. Throws exactly when {@link selectCodegenSensitiveTests} does — see
+ * that module's fail-closed list.
+ *
+ * @param {{ vitestArgs?: string[], root?: string, log?: (s: string) => void }} [options]
+ * @returns {{ vitestArgs: string[], narrowed: boolean }}
+ */
+export function resolveVitestArgs(options = {}) {
+  const vitestArgs = options.vitestArgs ?? [];
+  const root = options.root ?? ROOT;
+  const log = options.log ?? (() => {});
+  const positional = vitestArgs.filter((a) => !a.startsWith('-'));
+  if (positional.length > 0) {
+    log('[unit-driver-set] explicit test-file arguments given — selection skipped');
+    return { vitestArgs, narrowed: false };
+  }
+  const selection = selectCodegenSensitiveTests({ root, log });
+  return { vitestArgs: [...vitestArgs, ...selection.files], narrowed: true };
+}
+
 function main() {
   const { drivers, vitestArgs } = parseUnitDriverSetArgs();
-  process.exit(runUnitDriverSet({ drivers, vitestArgs }));
+  const resolved = resolveVitestArgs({ vitestArgs, log: console.log });
+  process.exit(runUnitDriverSet({ drivers, vitestArgs: resolved.vitestArgs }));
 }
 
 if (isDirectInvocation(import.meta.url)) {
