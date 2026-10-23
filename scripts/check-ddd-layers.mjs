@@ -58,15 +58,19 @@ const DOMAIN_PACKAGES = [
 ];
 
 /**
- * **反方向**的消费者：它们依赖 application（宿主与共享 feature 层）。
- * 它们不能进上面的领域包表——那把尺子量的是另一条边。这里断言的是镜像不变量：
- * application 的闭包里不得出现这些包，否则 `feature-core → application → feature-core`
- * 立刻成环（`datazen` 宿主同理：宿主依赖 application，application 永远不许反向依赖宿主）。
+ * 宿主：它依赖 application，application 永远不许反向依赖宿主。
  *
- * `feature-core` 从 P2 起**不再直接依赖** application（它只用 platform-api 的契约：
- * `use_cases::ConnectionUseCases`、`dto::requests`、`error::ApiError`），所以除了镜像
- * 不变量，还额外断言这条边不存在——否则「共享 feature 层只认契约」会在下次改动里
- * 悄悄退回去。
+ * 这里**不再列 `datazen-feature-core`**，因为 P2 之后它已经不依赖 application
+ * （它只用 platform-api 的契约），而 P3 的方向恰恰是反过来：
+ * `application → feature-core`（用例层编排领域服务）。把那对方向钉成「镜像不变量」
+ * 会在环已经消失之后继续拦住正确的边。
+ *
+ * 保留下来的判定仍然有意义：如果哪天 `datazen` 出现在 application 的闭包里，
+ * 那是真的环（`datazen → application → datazen`）——而这条检查比 `cargo metadata`
+ * 的 cyclic 报错更早、更能指认是谁接回去的。
+ *
+ * 为了让这条判据不依赖「谁当前依赖 application」这种记忆，下面按**当前图**求值：
+ * 只有当消费者此刻确实依赖 application 时，它出现在 application 闭包里才算违规。
  */
 const UPSTREAM_CONSUMERS = ['datazen-feature-core', 'datazen'];
 
@@ -218,6 +222,28 @@ function readDomainSources(domain, log) {
   }));
 }
 
+/**
+ * 镜像不变量：仍在使用 application 的宿主不得出现在 application 的闭包里。
+ *
+ * 抽成纯函数是为了能被**合成图**自证——真实图里一旦 `datazen` 恰好不再依赖
+ * application，这条判据会静默变成永真。
+ */
+function mirrorInvariantViolations(graph, applicationClosure) {
+  const problems = [];
+  for (const consumer of UPSTREAM_CONSUMERS) {
+    // 按当前图求值：消费者已经不再依赖 application 时，`application → 消费者`
+    // 是**正确方向**（P3 的用例层编排领域服务），不该报环。
+    const consumerDependsOnApplication = (graph.get(consumer) ?? new Set()).has(APPLICATION);
+    if (consumerDependsOnApplication && applicationClosure.has(consumer)) {
+      problems.push(
+        `P0 镜像不变量：${APPLICATION} 的传递依赖里出现了 ${consumer}，` +
+          '而它此刻仍依赖 application ⇒ 环。应用层不得反向依赖消费者。',
+      );
+    }
+  }
+  return problems;
+}
+
 function selfProof() {
   const problems = [];
   const cyclic = new Map([
@@ -240,6 +266,22 @@ function selfProof() {
     problems.push(
       `自证失败：P2 断言在合成边 ${FEATURE_CORE} → ${APPLICATION} 上没有报警。`,
     );
+  }
+  // 镜像不变量现在是**按图求值**的：消费者不再依赖 application 时，
+  // `application → 消费者` 是正确方向，必须不报警；消费者仍依赖时才是环。
+  const stillMutual = new Map([
+    [FEATURE_CORE, new Set([APPLICATION])],
+    [APPLICATION, new Set([FEATURE_CORE])],
+  ]);
+  if (mirrorInvariantViolations(stillMutual, transitiveDependencies(stillMutual, APPLICATION)) === 0) {
+    problems.push('自证失败：镜像不变量在「消费者仍依赖 application」的合成图上没有报警。');
+  }
+  const oneWay = new Map([
+    [FEATURE_CORE, new Set()],
+    [APPLICATION, new Set([FEATURE_CORE])],
+  ]);
+  if (mirrorInvariantViolations(oneWay, transitiveDependencies(oneWay, APPLICATION)) > 0) {
+    problems.push('自证失败：镜像不变量在「消费者已不依赖 application」的合成图上误报了。');
   }
   const withoutFeatureCoreEdge = new Map([[FEATURE_CORE, new Set([RUNTIME])]]);
   if (featureCoreIndependenceViolations(withoutFeatureCoreEdge).length > 0) {
@@ -302,14 +344,7 @@ function main() {
   }
 
   const applicationClosure = transitiveDependencies(graph, APPLICATION);
-  for (const consumer of UPSTREAM_CONSUMERS) {
-    if (applicationClosure.has(consumer)) {
-      violations.push(
-        `P0 镜像不变量：${APPLICATION} 的传递依赖里出现了 ${consumer}，` +
-          '而它依赖 application ⇒ 环。应用层不得反向依赖消费者。',
-      );
-    }
-  }
+  violations.push(...mirrorInvariantViolations(graph, applicationClosure));
 
   for (const domain of DOMAIN_PACKAGES) {
     if (!graph.has(domain)) {
@@ -336,7 +371,7 @@ function main() {
     `DDD layer gate PASS: ${graph.size} 个 workspace 生产 crate，无环；` +
       `${APPLICATION} ↔ ${RUNTIME} 无直接依赖；` +
       `${DOMAIN_PACKAGES.length} 个领域包的闭包内无 ${APPLICATION}；` +
-      `${APPLICATION} 的闭包内无 ${UPSTREAM_CONSUMERS.join(' / ')}；` +
+      `${APPLICATION} 不反向依赖仍在使用它的宿主（${UPSTREAM_CONSUMERS.join(' / ')}）；` +
       `${FEATURE_CORE} 不依赖 ${APPLICATION}。`,
   );
 }

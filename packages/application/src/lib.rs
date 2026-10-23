@@ -58,6 +58,10 @@ use std::sync::Arc;
 use datazen_platform_api::ports::known_hosts::KnownHostsRepository;
 use datazen_platform_api::ports::{SettingsRepository, TunnelRepository};
 
+use datazen_feature_core::dashboard::repository::DashboardRepository;
+use datazen_feature_core::dashboard::runs::DashboardRunRepository;
+use datazen_feature_core::services::named_views::NamedViewRepository;
+
 use crate::capability::CapabilityRegistry;
 use crate::identity_policy::IdentityPolicy;
 use crate::sessions::ConnectionUseCases;
@@ -89,6 +93,19 @@ pub struct ApplicationServices {
     /// 形态的事（桌面读 `{appData}/ssh_known_hosts.json`）。事实只有一份：本字段与
     /// 注给会话后端的是同一个实例。
     pub known_hosts: Arc<dyn KnownHostsRepository>,
+    /// 命名视图的存储端口（组装层注入）。
+    ///
+    /// 这是 P3「按命令族搬编排」的第一条领域端口：端口与规则住在
+    /// `datazen_feature_core::services::named_views`，**桌面宿主只提供落盘**。
+    /// 聚合持有它之后，命令壳不再直读宿主 store——形态中立的用例层因此可以在
+    /// 没有 Tauri 的进程里跑同一份规则。
+    pub named_views: Arc<dyn NamedViewRepository>,
+    /// 仪表盘仓储（P3 第二条命令族）：行级读写端口由共享 feature 层定义
+    /// （`datazen_feature_core::dashboard::repository::DashboardRepository`），
+    /// 桌面实现是 `AppDb`（`impl DashboardRepository for AppDb`），落盘在应用库。
+    pub dashboard: Arc<dyn DashboardRepository>,
+    /// 仪表盘运行历史仓储（与上面同一个应用库，但共享层把它定义成**独立**端口）。
+    pub dashboard_runs: Arc<dyn DashboardRunRepository>,
     /// 计划第 93 行的运行时能力注册表。
     ///
     /// 缺省是全不可用的空注册表（[`CapabilityRegistry::new`]）。这意味着
@@ -102,7 +119,9 @@ impl ApplicationServices {
     /// 能力注册表留空（全不可用）。随后用
     /// [`with_capabilities`](Self::with_capabilities) 挂上真实注册表。
     ///
-    /// 存储端口是**必填构造参数**：漏注入是编译错误，而不是运行时的 `None`。
+    /// 端口是**必填构造参数**：漏注入是编译错误，而不是运行时的 `None`。
+    /// 参数会随 P3 的命令族逐步增长；增长到难以阅读时再分组（届时仍保持
+    /// 「漏一个就是编译错误」，不退化成 `Option` 或 builder 的静默默认）。
     /// 桌面与团队两种形态调用的是**同一个**构造函数，只有传入的 `Arc<dyn …>`
     /// 实现不同。
     pub fn new(
@@ -112,6 +131,9 @@ impl ApplicationServices {
         settings: Arc<dyn SettingsRepository>,
         tunnels: Arc<dyn TunnelRepository>,
         known_hosts: Arc<dyn KnownHostsRepository>,
+        named_views: Arc<dyn NamedViewRepository>,
+        dashboard: Arc<dyn DashboardRepository>,
+        dashboard_runs: Arc<dyn DashboardRunRepository>,
     ) -> Self {
         Self {
             target,
@@ -120,6 +142,9 @@ impl ApplicationServices {
             settings,
             tunnels,
             known_hosts,
+            named_views,
+            dashboard,
+            dashboard_runs,
             capabilities: CapabilityRegistry::new("unbound"),
         }
     }
@@ -278,31 +303,34 @@ mod tests {
         );
     }
 
-    /// 本包**不得**依赖领域包（schema-diff / data-sync / data-transfer）。
+    /// 本包**可以**依赖共享 feature 层，但仍不得依赖连接运行时。
     ///
-    /// 理由不是「不喜欢」，而是**依赖图上做不到**：`datazen-runtime` 依赖本包，
-    /// 三个领域包又依赖 `datazen-runtime`，于是 `APP → 领域包 → RT → APP` 是一个
-    /// Cargo 环——`cargo metadata` 会以 `cyclic package dependency` 直接拒绝，
-    /// 门禁连跑都跑不起来。仓库自带的 `scripts/platform-arch-selfcheck.mjs` 的
-    /// M4 探针注释记的是同一个形状（`platform-api → runtime` 闭 `runtime →
-    /// application → platform-api` 的环）。
+    /// 这条断言曾经是反的（「不得依赖任何领域包」），理由确是硬的：那时
+    /// `datazen-runtime` 依赖本包、领域包又依赖 `datazen-runtime`，于是
+    /// `APP → 领域包 → RT → APP` 是一个 Cargo 环，`cargo metadata` 直接拒绝。
     ///
-    /// 因此形态中立的用例层要拿到领域端口，只能由**宿主在组装期**把它包成
-    /// `platform-api` 层的窄端口再注入。这条断言把那个结论钉住：将来有人
-    /// 想「顺手」加一条 `datazen-schema-diff`，这里会先红。
+    /// P0 断环（把端口与 `ApiError` 迁到 platform-api）与 P2 收官（领域包摘掉
+    /// `datazen-runtime`，机制内核拆成 `datazen-kernel`）之后那个前提消失了：
+    /// 现在 `APP → feature-core → kernel/platform-api` 是**正确方向**——用例层
+    /// 编排领域服务，领域服务不认识用例层。P3「按命令族搬编排」正是沿这条边走。
+    ///
+    /// 仍然钉住的是**反向**那条：本包不得把连接运行时拉回来（`datazen-runtime`），
+    /// 也不得依赖宿主形态（`tauri` 与 HTTP 框架）。环的判定交给
+    /// `scripts/check-ddd-layers.mjs`——它按**当前**依赖图求值，而不是靠这条
+    /// manifest 禁令的记忆。
     #[test]
-    fn the_crate_does_not_depend_on_the_domain_packages() {
+    fn the_crate_may_depend_on_the_shared_feature_layer_but_not_on_the_runtime() {
         let manifest = include_str!("../Cargo.toml");
-        for banned in [
-            "datazen-schema-diff",
-            "datazen-data-sync",
-            "datazen-data-transfer",
-        ] {
+        assert!(
+            manifest.contains("datazen-feature-core"),
+            "P3 起用例层要能从共享 feature 层取领域端口；删掉这条依赖等于把编排\
+             又推回宿主命令壳"
+        );
+        for banned in ["datazen-runtime", "tauri"] {
             assert!(
                 !manifest.contains(banned),
-                "APP 不得依赖领域包 {banned}：datazen-runtime 依赖 APP，领域包依赖 \
-                 datazen-runtime，这条边会闭成 Cargo 环。领域端口由宿主在组装期包成 \
-                 platform-api 窄端口后注入。"
+                "APP 不得依赖 {banned}：前者会让「用例层 → 连接运行时」这条边回来，\
+                 后者把形态带进用例层"
             );
         }
     }
@@ -325,6 +353,7 @@ mod tests {
             "SettingsRepository",
             "TunnelRepository",
             "KnownHostsRepository",
+            "NamedViewRepository",
         ] {
             assert!(
                 !code.contains(&format!("pub trait {port}")),
@@ -369,6 +398,8 @@ mod tests {
             "settings: Arc<dyn SettingsRepository>",
             "tunnels: Arc<dyn TunnelRepository>",
             "known_hosts: Arc<dyn KnownHostsRepository>",
+            "dashboard: Arc<dyn DashboardRepository>",
+            "dashboard_runs: Arc<dyn DashboardRunRepository>",
         ] {
             assert!(
                 signature.contains(parameter),
