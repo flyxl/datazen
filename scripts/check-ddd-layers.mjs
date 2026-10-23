@@ -33,9 +33,16 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const APPLICATION = 'datazen-application';
 const RUNTIME = 'datazen-runtime';
+/** crate 名在 Rust 源码里的写法：`datazen-runtime` → `datazen_runtime::`。 */
+const RUNTIME_PATH = `${RUNTIME.replaceAll('-', '_')}::`;
 const FEATURE_CORE = 'datazen-feature-core';
 
 /**
@@ -143,6 +150,74 @@ function featureCoreIndependenceViolations(graph) {
   ];
 }
 
+/**
+ * P2 源码断言：领域包的**生产半边**不点名 `datazen_runtime::`（注释除外）。
+ *
+ * 为什么依赖表不够：`feature-core` 把 `datazen-runtime` 留在 **dev-dependencies**
+ * 里（`schema_context` 的行为用例需要真实门面），这时 crate 级依赖图上根本看不到
+ * 生产代码是否又用回了 runtime —— 一条 `use datazen_runtime::…` 会编译通过、
+ * 依赖表干净、断言全绿。所以这条断言扫源码：**去掉注释**后仍出现该路径即回摆。
+ *
+ * 口径与计划一致（见 `docs/development/ddd-refactor-plan.md` P2）：
+ *  - 只看生产半边：`#[cfg(test)]` 之后的内容属于测试，允许点名门面；
+ *  - 只算代码：行注释与块注释里的解释性提及不算（它们解释「当初为何被钉住」）。
+ */
+function stripRustComments(source) {
+  const withoutBlock = source.replace(/\/\*[\s\S]*?\*\//g, '');
+  return withoutBlock
+    .split('\n')
+    .map((line) => line.replace(/\/\/.*$/, ''))
+    .join('\n');
+}
+
+function productionHalf(source) {
+  const marker = source.indexOf('#[cfg(test)]');
+  return marker === -1 ? source : source.slice(0, marker);
+}
+
+function runtimeSourceViolations(domain, sources) {
+  const problems = [];
+  for (const entry of sources) {
+    const code = stripRustComments(productionHalf(entry.source));
+    if (code.includes(RUNTIME_PATH)) {
+      problems.push(
+        'P2 源码：' + domain + ' 的生产半边 ' + entry.path + ' 仍然引用 ' + RUNTIME_PATH +
+          ' ⇒ 领域包又被钉回连接运行时（注释不算，请把解释留在文档里）。',
+      );
+    }
+  }
+  return problems;
+}
+
+function readDomainSources(domain, log) {
+  const dir = path.join(ROOT, 'packages', domain.replace(/^datazen-/, ''));
+  const files = [];
+  const walk = (current) => {
+    if (!existsSync(current)) return;
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const next = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'tests' || entry.name === 'target') continue;
+        walk(next);
+      } else if (
+        entry.name.endsWith('.rs') &&
+        !entry.name.endsWith('_tests.rs') &&
+        // `tests.rs` 是「整个文件都是测试」的模块（`#[cfg(test)] mod tests;`），
+        // 它的生产半边没有意义，点名 runtime 是为了造真实门面。
+        entry.name !== 'tests.rs'
+      ) {
+        files.push(next);
+      }
+    }
+  };
+  walk(path.join(dir, 'src'));
+  log?.(`${domain}: ${files.length} 个生产源码文件`);
+  return files.map((file) => ({
+    path: path.relative(ROOT, file),
+    source: readFileSync(file, 'utf8'),
+  }));
+}
+
 function selfProof() {
   const problems = [];
   const cyclic = new Map([
@@ -169,6 +244,26 @@ function selfProof() {
   const withoutFeatureCoreEdge = new Map([[FEATURE_CORE, new Set([RUNTIME])]]);
   if (featureCoreIndependenceViolations(withoutFeatureCoreEdge).length > 0) {
     problems.push('自证失败：P2 断言在 feature-core 不依赖 application 的图上误报了。');
+  }
+  // 源码断言的两向自证：真引用必报、纯注释不报。少了任一向，扫源码就可能退化成
+  // 「永远为空」或「永远报警」——两种退化都会让结论不可信。
+  const planted = [
+    {
+      path: 'planted.rs',
+      source: 'use datazen_runtime::application::RuntimeConnectionUseCases;\n',
+    },
+  ];
+  if (runtimeSourceViolations(FEATURE_CORE, planted).length === 0) {
+    problems.push('自证失败：源码断言在合成的 use datazen_runtime::… 上没有报警。');
+  }
+  const commentsOnly = [
+    {
+      path: 'planted.rs',
+      source: '/// 见 `datazen_runtime::application::RuntimeConnectionUseCases`。\n// use datazen_runtime::x;\n',
+    },
+  ];
+  if (runtimeSourceViolations(FEATURE_CORE, commentsOnly).length > 0) {
+    problems.push('自证失败：源码断言把注释里的历史说明当成了依赖。');
   }
   return problems;
 }
@@ -202,6 +297,9 @@ function main() {
   }
 
   violations.push(...featureCoreIndependenceViolations(graph));
+  for (const domain of [...DOMAIN_PACKAGES, FEATURE_CORE]) {
+    violations.push(...runtimeSourceViolations(domain, readDomainSources(domain)));
+  }
 
   const applicationClosure = transitiveDependencies(graph, APPLICATION);
   for (const consumer of UPSTREAM_CONSUMERS) {

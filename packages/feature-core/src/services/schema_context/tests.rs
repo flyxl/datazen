@@ -9,7 +9,8 @@
 
 use super::*;
 use crate::services::ports::{
-    LogicalSchemaContextSource, PhysicalSchemaContextSource, SessionConnectionLookup,
+    ArtifactChunkReader, LogicalSchemaContextSource, PhysicalSchemaContextSource,
+    SessionConnectionLookup,
 };
 use crate::workflow::error::WorkflowError;
 use crate::workflow::resource_execution::{PreparedExecution, ResourceExecutionHost};
@@ -47,6 +48,28 @@ impl SessionConnectionLookup for RuntimeConnectionUseCases {
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+
+/// 测试用结果块读取器：把消费者定义端口转发给真实 Runtime 门面。
+///
+/// 生产实现住在宿主（`src-tauri`），测试实现住在这里——两者都只依赖
+/// `ArtifactChunkReader` 这个本 crate 定义的 trait，所以共享层不必点名门面类型。
+struct RuntimeChunks(Arc<RuntimeConnectionUseCases>);
+#[async_trait::async_trait]
+impl ArtifactChunkReader for RuntimeChunks {
+    async fn read_chunk(
+        &self,
+        ctx: &datazen_platform_api::context::RequestContext,
+        artifact: &datazen_platform_api::id::ArtifactId,
+        index: datazen_platform_api::id::Counter,
+    ) -> Result<
+        datazen_platform_api::dto::execution::ResultChunk,
+        datazen_platform_api::error::ApiError,
+    > {
+        self.0
+            .read_artifact_chunk(ctx, artifact.clone(), index)
+            .await
+    }
+}
 
 const CONNECTION_ID: &str = "conn-1";
 const REVISION: u64 = 1;
@@ -381,7 +404,8 @@ impl ResourceExecutionHost for FakeHost {
         target: ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
         Ok(PreparedExecution {
-            runtime: self.runtime.clone(),
+            use_cases: self.runtime.clone(),
+            artifacts: std::sync::Arc::new(RuntimeChunks(self.runtime.clone())),
             context: context(),
             target,
         })

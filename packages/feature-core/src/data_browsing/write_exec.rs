@@ -29,6 +29,7 @@ use super::change_set::{
 };
 use super::insert_plan::bound_insert_statement_for_plan;
 use crate::error::FeatureError;
+use crate::services::ports::ArtifactChunkReader;
 use datazen_driver_api::DatabaseDriver;
 use datazen_platform_api::dto::requests::*;
 use datazen_platform_api::use_cases::ConnectionUseCases;
@@ -38,11 +39,11 @@ use datazen_platform_api::{
     id::ConnectionId,
     target::{ExecutionTarget, NamespaceTarget},
 };
-use datazen_runtime::application::RuntimeConnectionUseCases;
 use std::sync::Arc;
 
 struct TableSession {
-    runtime: Arc<RuntimeConnectionUseCases>,
+    runtime: Arc<dyn ConnectionUseCases>,
+    artifacts: Arc<dyn ArtifactChunkReader>,
     context: RequestContext,
     handle: Option<SessionHandle>,
 }
@@ -130,20 +131,20 @@ impl TableSession {
         }
         for artifact in view.artifact_ids {
             let first = self
-                .runtime
-                .read_artifact_chunk(
+                .artifacts
+                .read_chunk(
                     &self.context,
-                    artifact.clone(),
+                    &artifact,
                     datazen_platform_api::id::Counter::ZERO,
                 )
                 .await
                 .map_err(FeatureError::from)?;
             for index in 0..first.published_chunk_count.get() {
                 let chunk = self
-                    .runtime
-                    .read_artifact_chunk(
+                    .artifacts
+                    .read_chunk(
                         &self.context,
-                        artifact.clone(),
+                        &artifact,
                         datazen_platform_api::id::Counter::new(index),
                     )
                     .await
@@ -166,7 +167,8 @@ pub async fn execute_plan(
     driver: &dyn DatabaseDriver,
     plan: &RowChangePlan,
     manual_handle: Option<SessionHandle>,
-    runtime: Arc<RuntimeConnectionUseCases>,
+    runtime: Arc<dyn ConnectionUseCases>,
+    artifacts: Arc<dyn ArtifactChunkReader>,
     context: RequestContext,
 ) -> Result<CommitPendingChangesResponse, FeatureError> {
     // Execution order is fixed: new rows first (a child row may reference a
@@ -242,6 +244,7 @@ pub async fn execute_plan(
     };
     let mut session = TableSession {
         runtime,
+        artifacts,
         context,
         handle: Some(opened.handle),
     };

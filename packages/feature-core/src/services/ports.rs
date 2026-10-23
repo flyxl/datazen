@@ -1,7 +1,14 @@
 use datazen_driver_api::{
     ConnectionConfig, ConnectionHandle, DatabaseDriver, TableInfo, TableSchema,
 };
+use datazen_platform_api::context::RequestContext;
+use datazen_platform_api::dto::artifact::BackupOutput;
+use datazen_platform_api::dto::execution::ResultChunk;
+use datazen_platform_api::dto::session::SessionHandle;
+use datazen_platform_api::error::ApiError;
+use datazen_platform_api::id::{ArtifactId, Counter};
 use datazen_platform_api::settings::ExecutionSettings;
+use datazen_platform_api::target::ExecutionTarget;
 use std::sync::Arc;
 #[async_trait::async_trait]
 pub trait DatabaseToolHost: Send + Sync {
@@ -192,3 +199,40 @@ pub trait SessionConnectionLookup: Send + Sync {
     /// unknown, closed, or no longer attached to its directory entry.
     fn connection_id_for_session(&self, session_id: &str) -> Option<String>;
 }
+
+/// 结果块读取（消费者定义端口）。
+///
+/// `ConnectionUseCases` 覆盖会话与执行面，**不**覆盖结果内容：读一块要过授权、
+/// 要按 sink 的发布水位分页，那是 runtime 的内建能力。共享层若直接命名
+/// `datazen_runtime::application::RuntimeConnectionUseCases`，R1 立刻失守；这个
+/// 端口把问题交给**持有 Runtime 门面的那一侧**回答，共享层只认契约类型
+/// [`ResultChunk`]。
+#[async_trait::async_trait]
+pub trait ArtifactChunkReader: Send + Sync + 'static {
+    async fn read_chunk(
+        &self,
+        ctx: &RequestContext,
+        artifact: &ArtifactId,
+        index: Counter,
+    ) -> Result<ResultChunk, ApiError>;
+}
+
+/// 备份输出绑定（消费者定义端口）。
+///
+/// 与 [`ArtifactChunkReader`] 同理：绑定的实现需要 session 归属判定、执行条目
+/// 可见性与 sink 生命周期，这些都在 runtime 内部。返回的守卫是**能力对象**
+/// ——drop 即撤销，实现方负责把 in-flight 的写等完并拒收迟到输出（共享层不认识
+/// 实现的 Drop 逻辑，只依赖这个语义）。
+#[async_trait::async_trait]
+pub trait BackupOutputBinder: Send + Sync + 'static {
+    async fn bind(
+        &self,
+        ctx: &RequestContext,
+        handle: &SessionHandle,
+        target: &ExecutionTarget,
+        callback: BackupOutput,
+    ) -> Result<Box<dyn BackupOutputGuard>, ApiError>;
+}
+
+/// 备份输出守卫：存活期间输出可用，drop 即撤销。
+pub trait BackupOutputGuard: Send + Sync {}
