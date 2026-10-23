@@ -4,7 +4,7 @@ use crate::postgres::PostgresDriver;
 use crate::sql::{collect_named_ddl_column, pg_regclass_name};
 use crate::structure::{caps_for_version, plan_structure_changes_with_caps};
 use datazen_driver_api::*;
-use sqlx::{PgPool, Row};
+use sqlx::Row;
 
 /// One column line for CREATE TABLE assembly (catalog-backed DDL).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,18 +186,6 @@ async fn fetch_pg_table_sequences(
     Ok(sequences)
 }
 
-pub(crate) async fn fetch_pg_table_ddl_from_catalog(
-    pool: &PgPool,
-    table: &str,
-    quote_ident: impl Fn(&str) -> String,
-) -> Result<String, DriverError> {
-    let mut connection = pool
-        .acquire()
-        .await
-        .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-    fetch_pg_table_ddl_on_connection(&mut connection, table, quote_ident).await
-}
-
 pub(crate) async fn fetch_pg_table_ddl_on_connection(
     connection: &mut sqlx::PgConnection,
     table: &str,
@@ -294,8 +282,10 @@ impl PostgresDriver {
         let (schema, bare_table) = crate::sql::resolve_pg_table_schema(table, schema);
         let qualified = pg_regclass_name(schema, bare_table);
         let catalog_result = {
-            let pool = self.pool_for_target(handle, database).await?;
-            fetch_pg_table_ddl_from_catalog(&pool, &qualified, |n| self.quote_ident(n)).await
+            let mut connection =
+                crate::session_connection::for_session(self, handle, database).await?;
+            fetch_pg_table_ddl_on_connection(&mut connection, &qualified, |n| self.quote_ident(n))
+                .await
         };
         match catalog_result {
             Ok(ddl) => Ok(ddl),
@@ -314,10 +304,10 @@ impl PostgresDriver {
     ) -> Result<String, DriverError> {
         let (schema, bare_view) = crate::sql::resolve_pg_table_schema(view, schema);
         let qualified = pg_regclass_name(schema, bare_view);
-        let pool = self.pool_for_target(handle, database).await?;
+        let mut connection = crate::session_connection::for_session(self, handle, database).await?;
         let row = sqlx::query("SELECT pg_get_viewdef($1::regclass, true) AS def")
             .bind(&qualified)
-            .fetch_one(&pool)
+            .fetch_one(&mut *connection)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let def: String = row.try_get("def").unwrap_or_default();
@@ -562,6 +552,14 @@ impl PostgresDriver {
                 input,
             )
             .await;
+        }
+        // Admin commands are not in the fixed-session allowlist. Borrowing from
+        // the retained session's max-1 pool here would wait for the checkout the
+        // session itself holds, so fail fast with a readable reason instead.
+        if self.fixed_sessions.read().await.contains_key(&handle.id) {
+            return Err(DriverError::NotSupported(format!(
+                "admin command '{command}' is not available on a retained session"
+            )));
         }
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;

@@ -20,6 +20,7 @@ mod resource;
 mod resource_stream;
 mod schema;
 mod schema_object_sql;
+mod session_connection;
 mod sql;
 mod sql_target;
 mod structure;
