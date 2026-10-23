@@ -9,10 +9,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use datazen_driver_api::{SyncKeyValue, Value};
+use datazen_kernel::job::{CancelToken, JobError, StageOutcome, StageTerminal};
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
 use datazen_platform_api::dto::job::JobProgress;
 use datazen_platform_api::id::{ArtifactId, Counter, ExecutionId, StageId};
-use datazen_runtime::job::{CancelToken, JobError, StageOutcome, StageTerminal};
 use sha2::{Digest, Sha256};
 
 use crate::compare::{compare_table_pages_to_sink, RowChangeSink, RowPageSource};

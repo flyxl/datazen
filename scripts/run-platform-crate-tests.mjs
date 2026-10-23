@@ -125,6 +125,10 @@ export const PREFIX = '[platform-crate-tests]';
  */
 export const TESTED_LAYERS = Object.freeze([
   'runtime',
+  // 机制内核（job / budget / sql_guard / schema_cache / driver_registry）：从 `runtime`
+  // 分出后**仍是 core crate**，它不进这张表就会从 CI 的测试集里安静消失
+  // ——正是本脚本存在的理由（见文件头的 platform-development-plan.md:269 那条）。
+  'kernel',
   'tunnel',
   'application',
   'platform-api',

@@ -1,8 +1,8 @@
 //! verify_recovery：按 §7 决策表把 checkpoint + 当前证据裁决为
 //! ResumeAfterVerify / Reject / RequireManualReview。
 
+use datazen_kernel::job::RecoveryVerdict;
 use datazen_platform_api::dto::job::{Checkpoint, CommitBoundary};
-use datazen_runtime::job::RecoveryVerdict;
 
 /// 恢复所需证据在 checkpoint.verification_evidence 中的标记协议。
 /// 由准备期/应用期写入；恢复核验只读这些标记与边界载荷摘要。

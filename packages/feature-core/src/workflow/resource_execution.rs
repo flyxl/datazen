@@ -211,7 +211,7 @@ async fn execute_bound(
             .get("sql")
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| WorkflowError::Validation("SQL input unavailable".into()))?;
-        datazen_runtime::sql_guard::check_sql(
+        datazen_kernel::sql_guard::check_sql(
             sql,
             config.read_only,
             before_dispatch(deadline, state.safe_mode()).await?,

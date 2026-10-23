@@ -25,8 +25,9 @@ pub use write_exec::execute_plan;
 use crate::error::FeatureError;
 use async_trait::async_trait;
 use datazen_driver_api::DatabaseDriver;
+use datazen_kernel::schema_cache::CachedColumns;
 use datazen_platform_api::{dto::session::SessionHandle, id::Counter};
-use datazen_runtime::{application::RuntimeConnectionUseCases, schema_cache::CachedColumns};
+use datazen_runtime::application::RuntimeConnectionUseCases;
 use std::sync::Arc;
 
 /// Catalog port: the host answers with the table's columns and primary key.

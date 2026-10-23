@@ -20,7 +20,7 @@
 
 use crate::services::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
 use datazen_driver_api::{DatabaseDriver, TableInfo, TableSchema};
-use datazen_runtime::schema_cache::SchemaCache;
+use datazen_kernel::schema_cache::SchemaCache;
 use std::sync::Arc;
 
 /// Presents a physical metadata source through the logical port.
@@ -95,7 +95,7 @@ mod tests {
         mock_driver::{MockDriver, MockDriverOptions},
         ConnectionHandle, DatabaseDriver, TableInfo, TableType,
     };
-    use datazen_runtime::driver_registry::DriverRegistry;
+    use datazen_kernel::driver_registry::DriverRegistry;
 
     /// A physical source that owns a handle and a driver.
     struct PhysicalSource {

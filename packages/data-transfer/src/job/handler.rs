@@ -20,7 +20,7 @@ use datazen_platform_api::ports::{Clock, SystemClock};
 
 use async_trait::async_trait;
 
-use datazen_runtime::job::{
+use datazen_kernel::job::{
     CancelToken, FrozenPlan, JobError, JobHandler, RecoveryVerdict, StageOutcome, StageSpec,
     StageTerminal,
 };

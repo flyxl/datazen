@@ -68,7 +68,7 @@ pub fn bind_sql_params(input: &mut serde_json::Value) -> Result<(), String> {
         input.get("params"),
         input.get("sql").and_then(serde_json::Value::as_str),
     ) {
-        let bound = datazen_runtime::sql_guard::apply_params(sql, params)?;
+        let bound = datazen_kernel::sql_guard::apply_params(sql, params)?;
         input["sql"] = serde_json::Value::String(bound);
     }
     Ok(())

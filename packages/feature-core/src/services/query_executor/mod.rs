@@ -9,7 +9,7 @@ use datazen_driver_api::{
     ColumnSchema, ConnectionHandle, CountStrategy, DatabaseDriver, DriverError,
     LegacyCatalogReader, LegacySqlDialect, SqlDialect, SqlTarget, TableDataResult, Value,
 };
-use datazen_runtime::schema_cache::SchemaCache;
+use datazen_kernel::schema_cache::SchemaCache;
 use std::sync::Arc;
 
 use crate::services::table_browsing;

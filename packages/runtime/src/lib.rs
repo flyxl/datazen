@@ -9,20 +9,17 @@
 //! 夹具（`connection::testing`）由 `#[cfg(any(test, feature = "test-harness"))]` 门控，
 //! 生产构建默认不含夹具代码；`src-tauri` 的 `datazen` crate 也不依赖它。
 
+// 机制内核已归 `datazen-kernel`（DDD 计划 P2）：域包要用这些机制，而它们与连接
+// 资源运行时无关。这里的 `pub use` 保持 `datazen_runtime::job::…` 等既有路径不变。
+pub use datazen_kernel::{budget, driver_registry, job, schema_cache, sql_guard};
+
 pub mod application;
 pub mod artifact;
-pub mod budget;
 pub mod connection;
 /// 会话目录端口（`SessionDirectory`）的单进程实现：owner / runtimeEpoch / TTL 路由。
 /// 只存路由信息，不存连接、不存凭据、不落盘。
 pub mod directory;
-/// 驱动登记表：把 `DatabaseType` 解析为具体 `DatabaseDriver`，
-/// 并按驱动工厂能力位分发查询/资源访问。自 `src-tauri/src/db/registry.rs` 迁入。
-pub mod driver_registry;
 pub mod gateway;
-/// P5 JobRuntime 内核：接受/幂等 receipt/planId 唯一消费/claim fencing/handler 协议/
-/// 多端原子预算/阶段调度与取消意图/效果结局聚合（data-migration-jobs.md 全文口径）。
-pub mod job;
 /// 门禁开销的测量口径（分位数算法 + 逐请求求和）。
 pub mod latency;
 pub mod native_tool;
@@ -31,18 +28,11 @@ pub mod registry;
 /// 宿主资源台账与生命周期裁决：物理连接表、`PoolKey` 索引、
 /// 租约状态机、归池前的宿主侧检查、候选替换提交闸门。不做驱动 `Clean` 判定，不导出物理句柄。
 pub mod resource;
-/// Schema 元数据缓存：列级 / 表级两层缓存与 schema 世代号失效闸门，
-/// 外加 DDL 前缀判定 `sql_may_mutate_schema`。自 `src-tauri/src/cache/` 迁入。
-pub mod schema_cache;
 /// 隧道共享与引用计数：把 platform-api **已冻结**的
 /// `NetworkProvider::{ensure_tunnel, release_tunnel}` 契约落成实现方。
 /// 共享身份是 `TunnelSpec` 全等值（全系统**唯一**一份引用计数就在 `TunnelLedger`）；
 /// 物理开法是注入式接缝 —— 本模块不认识 SSH / 代理 / WebSocket 任何一种。
 pub mod tunnel;
-
-/// SQL 安全门网：注释剥离扫描、主关键字分类、参数绑定与 Safe Mode / 只读校验。
-/// 宿主与未来的服务端入口共用这一份实现。
-pub mod sql_guard;
 
 /// 夹具门控开关的单一事实源。
 ///

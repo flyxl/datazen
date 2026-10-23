@@ -7,7 +7,7 @@ use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
 use datazen_platform_api::dto::job::JobProgress;
 use datazen_platform_api::id::ArtifactId;
 
-use datazen_runtime::job::{CancelToken, JobError, StageOutcome, StageSpec, StageTerminal};
+use datazen_kernel::job::{CancelToken, JobError, StageOutcome, StageSpec, StageTerminal};
 
 use crate::job::checkpoint::commit_boundary;
 use crate::job::handler::{DataTransferHandler, TransferEndpoints};

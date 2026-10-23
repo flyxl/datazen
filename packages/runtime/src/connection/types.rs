@@ -147,15 +147,9 @@ impl<'de> Deserialize<'de> for ConfigRevision {
     }
 }
 
-/// FNV-1a 64 位哈希，十六进制输出。夹具里所有「稳定指纹」都走它，保证跨运行完全确定。
-pub fn fnv1a64_hex(bytes: &[u8]) -> String {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    format!("{hash:016x}")
-}
+/// FNV-1a 64 位哈希的唯一实现在 `datazen_kernel::hash`（Job 内核与连接运行时共用）。
+/// 这里保留同名再导出，既有 `crate::connection::types::fnv1a64_hex` 调用点零改动。
+pub use datazen_kernel::hash::fnv1a64_hex;
 
 /// 「观测不可判定」时的**结构性占位**常量。
 ///

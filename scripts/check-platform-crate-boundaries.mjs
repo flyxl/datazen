@@ -158,7 +158,7 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-02',
-    subjects: ['application', 'runtime', 'platform-api'],
+    subjects: ['application', 'runtime', 'kernel', 'platform-api'],
     subjectsFromSpec: true,
     forbiddenLayers: ['host'],
     forbiddenCrates: ['tauri'],
@@ -169,7 +169,7 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-03',
-    subjects: ['application', 'runtime'],
+    subjects: ['application', 'runtime', 'kernel'],
     subjectsFromSpec: true,
     forbiddenLayers: [],
     forbiddenCrates: 'spec',
@@ -191,7 +191,7 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-05',
-    subjects: ['application', 'runtime', 'platform-api'],
+    subjects: ['application', 'runtime', 'kernel', 'platform-api'],
     subjectsFromSpec: true,
     forbiddenLayers: [],
     forbiddenCrates: 'spec',
@@ -264,6 +264,7 @@ export const RULES = Object.freeze([
     allowedLayers: [
       'feature-core',
       'runtime',
+      'kernel',
       'application',
       'platform-api',
       'platform-infra',

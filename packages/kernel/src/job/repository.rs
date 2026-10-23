@@ -25,7 +25,7 @@ use datazen_platform_api::id::{
     Counter, IdempotencyKey, JobId, JobStateVersion, OrganizationId, StageId, Timestamp, WorkerId,
 };
 
-use crate::connection::types::fnv1a64_hex;
+use crate::hash::fnv1a64_hex;
 use crate::job::error::JobError;
 use crate::job::plan::project_frozen_plan;
 use crate::job::time::{after_seconds, JobClock};
