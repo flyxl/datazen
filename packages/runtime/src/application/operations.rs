@@ -1,15 +1,15 @@
 use super::*;
 use async_trait::async_trait;
-use datazen_application::{
-    dto::{profile::ProfileView, requests::*},
-    sessions::ConnectionUseCases,
-};
 use datazen_platform_api::{
     dto::{
         event::EventSequence,
         idempotency::{IdempotentOperation, SubmissionToken},
     },
     ports::{event::EventSubscription, profile::ProfileScope, session_directory::CloseDisposition},
+};
+use datazen_platform_api::{
+    dto::{profile::ProfileView, requests::*},
+    use_cases::connection::ConnectionUseCases,
 };
 impl RuntimeConnectionUseCases {
     async fn enqueue(

@@ -38,8 +38,8 @@
 
 | 包 | 一句话职责 | 拥有的概念 | 明确不拥有 |
 | --- | --- | --- | --- |
-| `packages/platform-api` | 无平台依赖的最底层契约：ID newtype、`RequestContext`、全部 port trait、port 错误 | ID 类型、身份上下文、端口签名 | 任何用例逻辑、任何 I/O；实现只允许**形态中立、无副作用、无传输的进程内原语**（现状两处：`ports/clock.rs` 的 `SystemClock` / `FixedClock`、`ports/budget/pool_ledger.rs` 的进程内参考账本，见 §4.9） |
-| `packages/application` | 用例编排：目标解析、授权顺序、DTO 校验、错误归一、前端桥注入端口 | 请求/响应 DTO 的应用侧视图、`ApiError`、用例服务、前端桥窄端口（`FrontendBridge`）与注入缝隙 | 会话状态、物理资源、驱动类型分支、任何具体传输实现 |
+| `packages/platform-api` | 无平台依赖的最底层契约：ID newtype、`RequestContext`、全部 port trait、port 错误、跨边界错误类型与用例端口签名 | ID 类型、身份上下文、端口签名、`PortError` / `ApiError` / `ApiErrorCode` / `RetryDisposition`、请求 DTO（`dto/requests.rs`）、用例端口 `ConnectionUseCases`（`use_cases/`）、归属校验纯函数 `check_owner`（`policy.rs`） | 任何用例逻辑、任何 I/O；实现只允许**形态中立、无副作用、无传输的进程内原语**（现状两处：`ports/clock.rs` 的 `SystemClock` / `FixedClock`、`ports/budget/pool_ledger.rs` 的进程内参考账本，见 §4.9） |
+| `packages/application` | 用例编排：目标解析、授权顺序、DTO 校验、错误归一、前端桥注入端口 | 目标解析（`TargetResolver`）、身份判定顺序（`IdentityPolicy`，其中 `check_owner` 委托 platform-api）、用例服务与 `ApplicationServices`、前端桥窄端口（`FrontendBridge`）与注入缝隙；`ApiError` / 请求 DTO / `ConnectionUseCases` 只做**再导出**（定义在 platform-api） | 会话状态、物理资源、驱动类型分支、任何具体传输实现 |
 | `packages/runtime` | 连接运行时：session actor、资源与 lease、预算记账、execution 登记、事件 | `DbSession`、`ResourceLease`、`Execution`、Job 阶段 runtime 状态 | 权限判定来源、持久化介质、网络出口 |
 | `packages/backend-client` | TypeScript 侧传输无关契约：DTO 镜像、client 接口、transport 接口 | `Id`/`Counter`/`Timestamp` 镜像、`BackendClient` 接口、`PlatformServices` 接口 | Tauri/HTTP/fetch 任何具体实现 |
 
@@ -49,7 +49,8 @@
 packages/platform-api/src/
 ├── id.rs                     # ID newtype（含宏）、Counter、Timestamp
 ├── context.rs                # RequestContext、OwnerRef、DelegationRef
-├── error.rs                  # PortError
+├── error.rs                  # PortError（端口事实）+ ApiError / ApiErrorCode(31) / RetryDisposition（跨边界拒绝）
+├── policy.rs                 # check_owner：OwnerRef 归属校验纯函数（application 的同名入口委托到此）
 ├── target.rs                 # NamespaceTarget/ObjectTarget/CanonicalTarget、namespaceShape 与 targetRequirements
 ├── ports/
 │   ├── profile.rs            # ProfileRepository
@@ -73,18 +74,19 @@ packages/platform-api/src/
 │       ├── dimension.rs      # 维度 / 额度 / 队列取值
 │       └── pool_ledger.rs    # InMemoryDriverPoolBudget（进程内参考账本，见 §4.9 的豁免）
 ├── dto/                      # 连接 §4 的契约词表：session / execution / job / artifact / profile / event / idempotency
+│   └── requests.rs           # 用例入参与纯校验函数（用例端口签名要用，故住本包）
+├── use_cases/connection.rs   # ConnectionUseCases：连接 §4.1 的 13 个方法签名（由 runtime 实现）
 └── lib.rs
 
 packages/application/src/
 ├── dto/
 │   ├── mod.rs                # re-export platform-api 的契约 DTO（不新增字段语义）
-│   ├── requests.rs           # 用例入参与纯校验函数
 │   ├── execution.rs          # DurableExecutionRecord（不可表示运行时绑定）
 │   └── accept.rs             # IdempotencyAcceptRecord、AcceptedSubject、接受记录保留期
-├── error.rs                  # ApiError + ApiErrorCode(31) + RetryDisposition
+├── error.rs                  # 再导出 platform-api 的 ApiError / ApiErrorCode / RetryDisposition
 ├── target.rs                 # CanonicalTarget 计算与 targetRequirements 校验（§4.3 六步纯函数）
-├── identity_policy.rs        # INV-01..INV-03 的判定顺序编排
-├── sessions.rs               # ConnectionUseCases：连接 §4.1 的 13 个方法签名
+├── identity_policy.rs        # INV-01..INV-03 的判定顺序编排（check_owner 委托 platform-api）
+├── sessions.rs               # 再导出 platform-api 的 ConnectionUseCases
 ├── frontend_bridge.rs        # FrontendBridge 窄端口 + BridgeInjection 注入缝隙（失败关闭，§7.4）
 └── lib.rs                    # ApplicationServices（§6.2 装配顺序第 7 步）
 

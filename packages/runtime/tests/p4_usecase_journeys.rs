@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use datazen_application::{dto::requests::*, error::ApiErrorCode, sessions::ConnectionUseCases};
 use datazen_platform_api::{
     context::{OwnerRef, RequestContext},
     dto::{
@@ -11,6 +10,9 @@ use datazen_platform_api::{
     id::*,
     ports::{policy::*, profile::*},
     target::{ExecutionTarget, NamespaceTarget},
+};
+use datazen_platform_api::{
+    dto::requests::*, error::ApiErrorCode, use_cases::connection::ConnectionUseCases,
 };
 use datazen_runtime::{
     application::{RuntimeConnectionUseCases, RuntimeResultSink},

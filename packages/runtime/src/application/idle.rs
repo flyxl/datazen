@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use datazen_application::error::ApiError;
+use datazen_platform_api::error::ApiError;
 use datazen_platform_api::ports::session_directory::{CloseDisposition, SessionDirectory};
 
 use super::convert;

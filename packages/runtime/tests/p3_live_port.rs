@@ -27,7 +27,6 @@
 //! | `会话关闭后不能再借出` | INV-07/INV-08：不得透明重建 |
 
 use async_trait::async_trait;
-use datazen_application::{dto::requests::*, sessions::ConnectionUseCases};
 use datazen_driver_api::{
     mock_driver::{MockDriver, MockDriverOptions},
     ConnectionHandle, DatabaseDriver,
@@ -40,6 +39,7 @@ use datazen_platform_api::{
     ports::{policy::*, profile::*},
     target::{ExecutionTarget, NamespaceTarget},
 };
+use datazen_platform_api::{dto::requests::*, use_cases::connection::ConnectionUseCases};
 use datazen_runtime::{
     application::{
         IdlePolicy, LiveConnection, LiveConnectionError, LiveConnectionRequest,
@@ -627,7 +627,7 @@ async fn 未接线时借出得到服务不可用_且不留登记行() {
 
     assert_eq!(
         err.code,
-        datazen_application::error::ApiErrorCode::ServiceUnavailable
+        datazen_platform_api::error::ApiErrorCode::ServiceUnavailable
     );
     assert_eq!(service.live_connection_rows(), 0);
     assert_eq!(service.live_connection_borrows(), 0);
@@ -650,7 +650,7 @@ async fn 宿主拒绝出借时不留下空登记行() {
 
     assert_eq!(
         err.code,
-        datazen_application::error::ApiErrorCode::ServiceUnavailable
+        datazen_platform_api::error::ApiErrorCode::ServiceUnavailable
     );
     assert_eq!(lock(&host.requests).len(), 1);
     assert_eq!(service.live_connection_rows(), 0);
@@ -750,7 +750,7 @@ async fn 打开失败不留任何登记行() {
         err.code,
         // `SessionNotFound` 而不是 `SessionLost`：后者意味着「曾经活着、后来没了」，
         // 而这一栏压根没立起来。宿主据此区分「重试打开」和「先查会话再决定」。
-        datazen_application::error::ApiErrorCode::SessionNotFound
+        datazen_platform_api::error::ApiErrorCode::SessionNotFound
     );
 
     assert!(service.registered_session_ids().is_empty());
@@ -841,7 +841,7 @@ async fn 会话关闭后不能再借出() {
 
     assert_eq!(
         err.code,
-        datazen_application::error::ApiErrorCode::SessionLost
+        datazen_platform_api::error::ApiErrorCode::SessionLost
     );
     // 端口压根没被问：请求在 runtime 自己的登记上就失败了。
     assert!(lock(&host.requests).is_empty());

@@ -1,7 +1,7 @@
 //! Runtime-issued authority for Job handlers. This capability is minted
 //! only after JobRuntime acquires a fenced claim and is never serialized.
 use super::JobRuntimeRepository;
-use datazen_application::error::ApiError;
+use datazen_platform_api::error::ApiError;
 use datazen_platform_api::{
     context::RequestContext,
     dto::job::JobClaim,

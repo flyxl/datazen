@@ -1,9 +1,10 @@
 # DDD 分层收敛计划（PRD）
 
-> 状态：提案，待 §9 决策点裁定后启动 P0。
+> 状态：**P0 已落地**（2026-10-23，见 §5.1）；P1–P5 待推进。
 > 范围：分层归属、依赖方向、依赖环、编排位置、装配根。
 > 关系：[分阶段开发计划](platform-development-plan.md) 仍是「形态演进与端口归属」的唯一权威，本文件只负责「层与依赖」这一轴；两者交叉处在各自正文互引。
-> 基线：`main` = `2a5bef0af`（2026-10-22），#105 第六期计划已入库。
+> 基线：`main` = `2a5bef0af`（2026-10-22），#105 第六期计划已入库；§4 的数字是在该提交上测的。
+> P0 落地基于 `main` = `bbe743e30`（2026-10-23）。§4 的 `Cargo 环` 与 `application → 领域包` 两行已被 P0 改写，见 §5.1 与 §7。
 
 ## 1. 问题陈述
 
@@ -13,7 +14,7 @@
 
 ### 1.2 实测证据
 
-依赖边（`Cargo.toml` 生产依赖，已排除 dev-dependencies）：
+依赖边（`Cargo.toml` 生产依赖，已排除 dev-dependencies）——**P0 前基线**，P0 后 `runtime` 一行已无 `application`（§5.1）：
 
 | 包 | 生产依赖（内部） |
 |---|---|
@@ -139,13 +140,31 @@ flowchart TB
 
 每期一个可独立回滚的 PR 系列；每期只做本期的移动，不夹带行为变更。
 
-### P0 断环（唯一硬阻塞，先做）
+### P0 断环（唯一硬阻塞，先做）——**已落地 2026-10-23**
 
-- 把 `application` 中被 `runtime` 使用的两个类型——错误类型 `ApiError`/`ApiErrorCode` 与端口 `RuntimeConnectionUseCases`——迁到 `platform-api`（它本就是跨形态契约包），`runtime` 改依赖 `platform-api`。
-- `runtime` 不再出现在 `application` 的依赖里；`application` 增加对领域包（首选 `schema-diff`）的依赖以证明环已解。
-- **验收**：附录 A.1 命令 `EXIT=0`；`cargo metadata` 无 `cyclic`；`cargo test -p datazen-platform-api`、`cargo test -p datazen-runtime --lib` 绿。
+实际搬了什么（比原计划多两处，理由逐条给出）：
+
+| 搬走的东西 | 落在哪 | 为什么必须搬 |
+| --- | --- | --- |
+| `ApiError` | `platform-api/src/error.rs` | 用例端口方法签名返回它，实现方是 `runtime` |
+| `ApiErrorCode` / `RetryDisposition` | 同上（此前已在 platform-api） | 同一份 cross-boundary wire 词汇 |
+| 用例端口 **trait** `ConnectionUseCases` | `platform-api/src/use_cases/connection.rs` | 原计划写的是 `RuntimeConnectionUseCases`——那是 `runtime` 侧的**唯一实现**，留在原地；被两端共享的是 trait |
+| 请求 DTO `dto/requests.rs` | `platform-api/src/dto/requests.rs` | 它们出现在端口签名上 |
+| `check_owner` 纯函数 | `platform-api/src/policy.rs` | `runtime` 的请求转换（`packages/runtime/src/application/convert.rs`）要调它；`IdentityPolicy::check_owner` 改成一行委托，宿主既有 5 处调用点逐字不变 |
+| `runtime/Cargo.toml` 的 `datazen-application` | 删除 | 含两个集成测试（`tests/p3_live_port.rs`、`tests/p4_usecase_journeys.rs`）的 import 一并改到 platform-api |
+
+`application` 侧全部留下**再导出壳 + 同类型证明测试**（`error.rs` 的 `the_api_error_is_the_platform_api_type_not_a_local_copy`、`sessions.rs` 的 `the_use_case_trait_is_the_platform_api_type_not_a_local_copy`）：宿主 179 处与 runtime 的引用路径逐字不变，而双向赋值只有在两侧同类型时才编译得过——若哪天有人在 application 里重新定义一份，那两个测试第一时间红。
+
+**口径修正（原计划第 2 条）**：原文要求「`application` 增加对领域包的依赖以证明环已解」。落地时改成**门禁断言**：装饰性的生产依赖会把领域包（进而 `runtime`）拉进 `application` 的依赖闭包，让 `cargo build -p datazen-application` 编出整个运行时却一行不用——用构建成本换一句"证明"。而同一条边是否**加得进去**可以不建边就验证：`scripts/check-ddd-layers.mjs`（`pnpm test:ddd-layers`，已进 rust job）从 `cargo metadata` 派生三条断言：
+
+1. workspace 生产依赖图**无环**（并打印完整环路径，而不是只报 "cyclic package dependency"）；
+2. **R2**：`datazen-application` 与 `datazen-runtime` 互不直接依赖；
+3. **P0 可行性**：5 个领域包（`schema-diff` / `data-sync` / `data-transfer` / `migration-common` / `tunnel`）的传递闭包里没有 `datazen-application` ⇒ 「`application → 领域包`」这条边今天加得进去；另加镜像断言：`application` 的闭包里没有 `datazen-feature-core` / `datazen`（F-12 允许 `feature-core → application`，方向只能单向）。
+   门禁带三处自证（成员数下限、合成环必须报警、合成无环图不得误报），并已实测鉴别力：把 `datazen-application` 加回 `runtime/Cargo.toml` ⇒ 立刻红 4 条（R2 1 条 + 领域包可行性 3 条）。
+
+- **验收（实测）**：`node scripts/check-ddd-layers.mjs` → `PASS: 30 个 workspace 生产 crate，无环…EXIT=0`；`cargo test -p datazen-platform-api --lib` 285 passed；`cargo test -p datazen-application --lib` 95 passed；`cargo test -p datazen-runtime`（含 lib 与全部集成套件）0 failed；`cargo test -p datazen --lib` 见 §7；`cargo check --workspace --all-targets` EXIT=0。
 - **回滚**：单 PR revert，无行为变更。
-- **风险**：`ApiError` 是全仓最被复用的应用层身份（宿主 179 处），迁移是机械改动但面广；用 `cargo check -p datazen` 全量验证。
+- **风险**：已消化——`ApiError` 是全仓最被复用的应用层身份（宿主 179 处），迁移是机械改动但面广；`cargo check --workspace --all-targets` 全量验证通过。
 
 ### P1 `runtime` 拆分（有裁定分支，见 D1）
 
@@ -193,8 +212,8 @@ flowchart TB
 
 | 指标 | 基线 | P0 后 | P2 后 | 目标 | 采集 |
 |---|---|---|---|---|---|
-| Cargo 环 | 1 | 0 | 0 | 0 | 附录 A.1 |
-| `application` 依赖领域包 | 0 | ≥1 | ≥1 | ≥3 | `Cargo.toml` |
+| Cargo 环 | 1（试加即 101） | **0**（`pnpm test:ddd-layers` 守；实测 30 crate 无环） | 0 | 0 | 附录 A.1 |
+| `application → 领域包` 这条边的**可行性** | 不可行（环） | **可行**（门禁断言领域包闭包内无 application；不建装饰性边，理由见 P0） | 可行 | 真的用上（≥3） | `pnpm test:ddd-layers` |
 | 领域包 `runtime` 引用 | 76 | 76 | 0 | 0 | 附录 A.2 |
 | `commands` 直读 `state.store.` | 118 | 118 | 118 | 0 | 附录 A.3 |
 | `commands` 行数 | 53,350 | — | — | 降 ≥50% | `wc -l` |
