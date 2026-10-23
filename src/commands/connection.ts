@@ -25,6 +25,25 @@ async function waitForE2EConnectDelay(connectionId: string): Promise<void> {
   await new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
 }
 
+/**
+ * Connects in flight, keyed by connectionId. The main window reaches one
+ * connection's session through two independent front-end paths: the tab
+ * (`useConnectionTabs.connectTab`, opened by selection/double-click) and the
+ * store (`activeConnectionStore.connect`, e.g. the navigator's context-menu
+ * "open" / "query history" on a not-yet-open connection). Both funnel through
+ * `connectionCommands.connect`, so joining concurrent callers to the first
+ * in-flight call HERE is the single guarantee of one backend session per
+ * connection, no matter which UI entry point fired first. Without it the two
+ * paths each issue `invoke('connect')`, the backend retires the first session,
+ * and every reader of it fails with `sessionNotFound` (empty schema tree, no
+ * visible error). The store-level dedup cannot see the tab path, and vice
+ * versa; only this shared boundary covers both.
+ *
+ * `connectDedicated` is deliberately NOT deduped: sub-windows intentionally
+ * open additional, isolated sessions.
+ */
+const inFlightConnects = new Map<string, Promise<ConnectionSessionRef>>();
+
 export const connectionCommands = {
   getConnections: () => invoke<ConnectionConfig[]>('get_connections'),
 
@@ -44,10 +63,22 @@ export const connectionCommands = {
   testConnection: (config: ConnectionConfig) =>
     invoke<ServerInfo>('test_connection', { config: toIpcConnectionConfig(config) }),
 
-  /** connectionId = 持久化配置连接 id；返回值携带 connectionId + 运行时 dbSessionId。 */
-  connect: async (connectionId: string): Promise<ConnectionSessionRef> => {
-    await waitForE2EConnectDelay(connectionId);
-    return invoke<ConnectionSessionRef>('connect', { connectionId });
+  /**
+   * connectionId = 持久化配置连接 id；返回值携带 connectionId + 运行时 dbSessionId。
+   * Concurrent calls for the same connectionId join the first in-flight call
+   * (see `inFlightConnects`); a settled call frees the slot for the next one.
+   */
+  connect: (connectionId: string): Promise<ConnectionSessionRef> => {
+    const running = inFlightConnects.get(connectionId);
+    if (running) return running;
+    const attempt = (async () => {
+      await waitForE2EConnectDelay(connectionId);
+      return invoke<ConnectionSessionRef>('connect', { connectionId });
+    })().finally(() => {
+      inFlightConnects.delete(connectionId);
+    });
+    inFlightConnects.set(connectionId, attempt);
+    return attempt;
   },
 
   /** Sub-window only: always opens a new db session, optionally pinned to `database`. */
