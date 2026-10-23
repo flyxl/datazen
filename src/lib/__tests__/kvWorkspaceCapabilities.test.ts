@@ -50,7 +50,7 @@ describe('kvWorkspaceCapabilities', () => {
   });
 
   // [tester] The generator side of the list is pinned against the same union by
-  // `scripts/__tests__/resolve-drivers.test.mjs`; this closes the other direction.
+  // `scripts/__tests__/resolve-drivers.test.ts`; this closes the other direction.
   // `KV_SLOT_NAMES` is typed `readonly KvSlotName[]`, so a slot added to the union
   // but forgotten here would compile fine and silently desync the host slot list
   // from the frozen contract — only a source-text pin can catch it.
