@@ -103,11 +103,11 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - 端口是**构造参数**而不是 `Option`：漏注入是**编译错误**，不是运行时的 `None`。构造函数对桌面与将来的 web 形态**完全相同**，只有传入的 `Arc<dyn …>` 实现不同。
 - `ApplicationServices::settings_service()` 让形态中立的设置用例（`packages/application/src/settings.rs` 的 `SettingsService`）直接跑在聚合持有的端口上，不再借用宿主的 store。
 - `AssemblyState::missing_steps()` 里 §6.2-7 的目标状态由 `AwaitingApplicationServices` 改为 `FullyWired`——旧值与当前档位同级，导致「补完第 7 步」在机器上永远不前进。
-- 机器可校验的不变式：`packages/application` 侧 6 条（形状 3 条 + 行为 3 条），宿主侧 7 条（装配状态机 2 条 + `AppState` 形状 3 条 + 装配降级 2 条，见 §5.1.2 的 D1 裁定）。
+- 机器可校验的不变式：`packages/application` 侧 6 条（形状 3 条 + 行为 3 条），宿主侧 11 条（装配状态机 2 条 + `AppState` 形状 3 条 + 装配降级 2 条 + 第三步与第五步的宿主态收敛守卫 4 条，见 §5.1.2 的 D1 裁定、第三步与第五步）。
 
 **依赖边结论（为什么 application 层不能直接持有领域包端口）**：`datazen-runtime` 依赖 `datazen-application`，而 `datazen-schema-diff` / `datazen-data-sync` / `datazen-data-transfer` 都依赖 `datazen-runtime`。因此 `application → 领域包` 会闭成 Cargo 环（`cargo metadata` 报 `cyclic package dependency`），门禁连跑都跑不起来。F-02/F-03/F-05 只禁宿主、传输框架与前端标识，**不禁**这条边——挡住它的是依赖图本身，不是门禁。F-04 另外禁止 `platform-api` 依赖领域包，因此「把领域端口搬进 `platform-api`」这条路也要靠**新写窄端口**而不是靠依赖。结论：**领域端口只能由宿主在组装期包成 `platform-api` 层的窄端口再注入**。这一条已写成断言（`the_crate_does_not_depend_on_the_domain_packages`）。
 
-**没有做、也不许顺手做的事**：现有 145 处 `state.store.…` 调用点一个都没搬；命令的签名、载荷与错误文案一个都没改；`AppState` 没有新增 `pub` 字段（新增字段数上限由断言钉在 25）。
+**没有做、也不许顺手做的事**：现有 145 处 `state.store.…` 调用点一个都没搬；命令的签名、载荷与错误文案一个都没改；`AppState` 没有新增 `pub` 字段（字段数上限由断言钉住，当前基线 23：25 起，第三步与第五步各 -1）。
 
 #### 5.1.2 下一步分期
 
@@ -184,15 +184,40 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 风险（最高的一期）：窄端口的 DTO 一旦与领域包的形状**各写一份**，事实就有两份 ⇒ 窄端口必须只暴露领域包已有的类型；**若某个领域模型无法用 platform-api 的词汇表达，说明该能力本就不该进形态中立层**，此时该窄端口**不应**被创建。这一期也是形态专属的东西最容易漏进中立层的地方——评审必须逐条问「这个方法在 web 形态有对应物吗」。
 
-**第五步——known-hosts 存储端口归位进 platform-api**
+**第五步——known-hosts 存储端口归位进 platform-api（已落地 2026-10-23）**
 
-搬走：`datazen_tunnel::KnownHostsRepository`（`packages/tunnel/src/known_hosts_repository.rs`）→ `datazen_platform_api::ports::known_hosts::KnownHostsRepository`。**改名部分已由 PR #102 完成**（`KnownHostsStore` → `KnownHostsRepository`，含宿主实现与工厂函数）；本步剩下的只有**归位**：端口 trait 从 `packages/tunnel` 搬进 `packages/platform-api/src/ports/`，错误类型从自带的 `KnownHostsRepositoryError` 换成 platform-api 的 `PortError`（端口层的失败类型只有一套），并按第四步的四处清单登记。
+搬走：`datazen_tunnel::KnownHostsRepository`（`packages/tunnel/src/known_hosts_repository.rs`）→
+`datazen_platform_api::ports::known_hosts::{KnownHostsRepository, KnownHostEntry}`。**改名部分已由 PR #102 完成**
+（`KnownHostsStore` → `KnownHostsRepository`），本步做的是**归位 + 错型替换 + 宿主态收敛**：
 
-`AppState` 少掉：**1 个字段**（`known_hosts`，4 处访问）；字段数 21 → **20**。
+- **端口搬进契约包**：新文件 `packages/platform-api/src/ports/known_hosts.rs`（trait + 词汇 + 一个内存实现的自证用例）。
+  `packages/tunnel/src/known_hosts_repository.rs` 删除，`packages/tunnel/src/lib.rs` 改为 `pub use` 再导出，
+  因此 `datazen_tunnel::KnownHostsRepository` 这条路径**仍然可用但已降级为转发**，调用点按新路径逐个改正。
+- **错误类型统一**：`KnownHostsRepositoryError` 删除，改用 `PortError`（`save` 失败 → `PortError::BackendUnavailable`；
+  `load` 按契约**不失败**，读不到即空集合）。`packages/tunnel/src/ssh_known_hosts.rs` 与宿主
+  `src-tauri/src/platform/known_hosts.rs` 同步改型；**文件格式、字段名与两条 warn 文案一字未动**。
+- **四处登记**：`ports/inventory.rs` 的 `PORT_TRAITS`（24 → 25）、`ports/inventory/parser.rs` 的 `SOURCE_FILES`、
+  `ports/mod.rs` 模块头点名（含同步与 `load` 不失败两处形状差异）、本文 §5.1.2。
+- **端口实例归应用层**：`ApplicationServices` 增加第 6 个构造参数 `known_hosts: Arc<dyn KnownHostsRepository>`
+  与同名字段；`src-tauri/src/platform/adapter.rs::inject` 用注给会话后端的**同一个实例**构造聚合。
+- **宿主态收敛（本步的字段账）**：`AppState` 的 `known_hosts` 字段删除（构造期仍有局部变量交给 `inject`），
+  命令侧改经 `ApplicationServices::known_hosts`：`commands/tunnel.rs::test_tunnel_impl`、
+  `commands/connection.rs::test_connection_impl`、`commands/mcp.rs::clone_app_state`。字段数 **24 → 23**
+  （`app_state_shape_tests.rs` 的 `BASELINE_FIELD_COUNT` 同步）。
+- **新增守卫**（都在 `commands/app_state_shape_tests.rs`，与第三步的 `state.tunnels` 守卫同形）：
+  1. `the_known_hosts_repository_is_no_longer_reachable_from_the_host_state` —— 全 `src-tauri/src` 扫 `state.known_hosts`，0 命中；
+  2. `the_known_hosts_port_is_declared_in_platform_api_only` —— `packages/tunnel/src` 里不得再出现
+     `pub trait KnownHostsRepository`，且 `known_hosts_repository.rs` 不得回来；
+  3. `app_state_definition_has_no_status_store_fields` —— 定义体里既无 `pub tunnels` 也无 `pub known_hosts`；
+  4. `packages/application/src/lib.rs` 的端口断言表与构造签名表加入 `known_hosts`。
 
-独立验收：`cargo test -p datazen-platform-api --lib`（清单 ↔ 代码 ↔ 文档三条交叉断言必须仍绿——端口搬家后清单与模块头要点名跟着改）+ `cargo test -p datazen --lib` + 新增断言「仓库里 `datazen_tunnel::KnownHostsRepository` 出现 0 次」。
+实测：`cargo test -p datazen-platform-api --lib` 257 passed（含端口清单三条交叉断言）、
+`cargo test -p datazen-tunnel` 27 passed、`cargo test -p datazen --lib` 见下方门禁、`cargo check -p datazen --all-targets` EXIT=0。
 
-风险：`packages/tunnel` 的公开 trait 换位置是**破坏性 API 变更**，必须一次迁完（含 `packages/tunnel/src/ssh.rs`、`src-tauri/src/tunnel/`、`src-tauri/src/platform/known_hosts.rs`、`session_backend.rs` 等引用点）。本机钥匙串 / `{appData}/ssh_known_hosts.json` 的文件 I/O 留在宿主实现里，**不进**中立层。
+风险（已发生并处理）：`packages/tunnel` 的公开 trait 换位置是**破坏性 API 变更**，必须一次迁完
+（含 `packages/tunnel/src/ssh.rs`、`src-tauri/src/tunnel/{mod,network_provider}.rs`、
+`src-tauri/src/platform/{adapter,session_backend,known_hosts}.rs` 与测试装置）。本机钥匙串 /
+`{appData}/ssh_known_hosts.json` 的文件 I/O 仍在宿主实现里，**不进**中立层。
 
 **第六步——`AppState.store` 的 145 处归位（按命令族分期）**
 

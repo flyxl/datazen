@@ -190,7 +190,7 @@ pub(crate) async fn test_connection_impl(
     let result = crate::tunnel::test_connection(
         &*services.tunnels,
         &scope,
-        &state.known_hosts,
+        &services.known_hosts,
         &state.driver_registry,
         config,
     )

@@ -305,10 +305,11 @@ host → tunnel，与 F-13 禁止的 tunnel → host 相反；该层的单元测
 > `include_str!("main.rs")` / `include_str!("lib.rs")` 做宿主接线守卫，跨 crate 内嵌会破 `cargo package`。
 > ② SSH known-hosts 存储全仓只被 SSH 隧道使用（无第二消费者），随 `ssh.rs` 一并迁入本层。
 > **它的文件 I/O 已经是端口**（S4 完成）：本层只留**规则**（`KnownHostEntry` / `HostKeyDecision` /
-> `host_key_id` / `verify_host_key` / `mismatch_error_message`）与**存储端口**
-> [`KnownHostsRepository`](#43-持久化与授权端口)；读 `{appData}/ssh_known_hosts.json` 的实现搬回宿主
-> （`src-tauri/src/platform/known_hosts.rs`），web 形态由服务端 host 实现（服务端存储目录 /
+> `host_key_id` / `verify_host_key` / `mismatch_error_message`）；读 `{appData}/ssh_known_hosts.json` 的实现
+> 在宿主（`src-tauri/src/platform/known_hosts.rs`），web 形态由服务端 host 实现（服务端存储目录 /
 > 组织级存储）。**共享包不再读本机文件。**
+> **端口本身已不在本层**（S5，2026-10-23）：`KnownHostsRepository` 与 `KnownHostEntry` 迁入
+> `packages/platform-api/src/ports/known_hosts.rs`，本层只 `pub use` 再导出，见 §4.3 那一条。
 
 ### 2.6 待办：runtime 去重（超出 P1 交付范围）
 
@@ -608,26 +609,35 @@ pub trait TunnelRepository: Send + Sync + 'static {
   AES-256-GCM 主密钥。实例在**组装期**创建一次（`bootstrap/app_state.rs`），既进
   `AppState`，也注入会话后端（建连时解引用 `tunnelId`）。**没有进程级全局。**
 
-**`KnownHostsRepository`（SSH known-hosts 存储，域名包端口）**：这一条**不在**
-`platform-api` 的端口家族里——它是**领域包端口**，住在需要它的那个包里
-（`packages/tunnel/src/known_hosts_repository.rs`），先例：`schema-diff` 的
-`ReviewedPlanRepository`、`data-transfer` 的 `TransferPlanRepositoryPort`、`data-sync` 的
-`ComparisonStorageRoot`。理由有三：
+**`KnownHostsRepository`（SSH known-hosts 存储）**：`packages/platform-api/src/ports/known_hosts.rs`。
+能力只有两条：**读出全部条目 / 保存全部条目**。
 
-1. **词汇表跟着机制走**：`KnownHostEntry` 是 SSH 主机密钥的形状，与
-   `russh` 的 `PublicKey` 天然绑在一起；把它搬进通用契约层只会让契约层背上
-   一个它不认识的词汇。
-2. **消费者只有一个**：`SshTunnel` 在协议回调里用它。应用层 / runtime 层从不接触
-   「已知主机」这件事，因此它没有理由出现在它们看得见的契约里。
-3. **形状不同**：它是**同步**的（现状就是 `std::fs`，且校验发生在 `russh` 的同步协议
-   回调里），并自带错误类型（`KnownHostsRepositoryError`）——强行套进 `async_trait` +
-   `PortError` 的家族只会让两处都变形。
+> **归属改过一次，这里记录为什么改。** 它原先住在 `packages/tunnel`（理由：词汇表跟着机制走、
+> 消费者只有一个、形状不同）。S5（2026-10-23）把它搬进 `platform-api`，因为那三条理由各自
+> 都站不住，而留在机制包里有一笔实打实的代价：
+>
+> - **端口族不可清单化**：`ports/inventory.rs` 只收本包 `src/ports/` 下的 `pub trait`，住在
+>   领域包里的端口既不进 `PORT_TRAITS` 也不进 §6.4 表，于是「有哪些端口、谁实现它」无法机器
+>   核对（附录 A.5 的「无外部实现 12/24」也因此只覆盖本包）。这条代价是**可验证缺口**，
+>   另两条只是措辞：`KnownHostEntry` 本来就是序列化友好的三个字符串（不依赖 `russh` 类型，
+>   协议回调拿到的是 `PublicKey`，落盘的是这三列）；「消费者只有一个」恰恰是端口该住契约层的
+>   理由——消费者会变，契约不该跟着变。
+>
+> **搬走的是契约，不是实现**：文件 I/O 仍在宿主 `src-tauri/src/platform/known_hosts.rs`，
+> 机制包只 `pub use` 再导出。`packages/tunnel` 因此不再因为「要填一个端口」而被宿主依赖。
 
-能力只有两条：**读出全部条目 / 保存全部条目**。降级语义属于**契约**而不是实现：
-`load` **不失败**（读不到一律按空集合处理——TOFU 的语义就是「没有记录 ⇒ 首次使用即
-信任」，坏文件不得阻断隧道启动），`save` 失败必须如实报错。桌面实现读
-`{appData}/ssh_known_hosts.json`（`src-tauri/src/platform/known_hosts.rs`）；**web 形态
-由服务端 host 自己实现**（服务端存储目录 / 组织级存储），本轨不写 web 实现。
+两处形状差异**是刻意的，并且写进了模块头**：
+
+1. **同步**：SSH 主机密钥校验发生在 `russh` 的 `check_server_key` 回调里，现状就是 `std::fs`；
+   改成异步只会让协议回调变形。
+2. **`load` 不失败**：读不到（文件缺失 / 损坏 / 不可读）按**空集合**处理——TOFU 的语义就是
+   「没有记录 ⇒ 首次使用即信任」，坏文件不得阻断隧道启动。实现负责记日志（桌面实现保留既有
+   两条 warn 文案）。`save` 失败**必须**如实报错，统一为 `PortError::BackendUnavailable`：
+   这条端口不表达业务拒绝（条目按 `host:port` 键，越权不存在）。
+
+桌面实现读 `{appData}/ssh_known_hosts.json`（`src-tauri/src/platform/known_hosts.rs`）；**web 形态
+由服务端 host 自己实现**（服务端存储目录 / 组织级存储），本轨不写 web 实现。实例由
+`ApplicationServices::known_hosts` 持有（§5.1.2 第五步），宿主态不再暴露 `state.known_hosts`。
 
 **`IdentityResolver` 的桌面实现（已落地）**：桌面形态的实现是 `src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`（全仓唯一的 `impl IdentityResolver`），装配在 `PlatformAdapter::inject`（§6.2 第 4 步「环境适配」）。它的语义是：
 
@@ -815,7 +825,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 | `SubmissionTokenIssuer` | 进程内 HMAC 密钥 | 服务端签名密钥 + `keyVersion` 轮换 | 同单进程 |
 | `ArtifactRepository` | 文件字节经本机路径与授权对话框；Job Core 仅存 Artifact ID 引用（30 天 TTL），不持有字节或保证内容留存 | 服务端存储 + 授权导出 | 同单进程 |
 | `TunnelRepository` | **已实现**：`src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`。加密落盘 `{appData}/tunnels.json`；名单只给摘要，单条取用给全量；只承认桌面自己那一个组织 | 服务端库上的组织级隧道定义存储（同一端口、另一适配器） | 同单进程 |
-| `KnownHostsRepository`（领域包端口） | **已实现**：`src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`，读 `{appData}/ssh_known_hosts.json` | 服务端存储目录 / 组织级存储（本轨不写 web 实现） | 同单进程 |
+| `KnownHostsRepository` | **已实现**：`src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`，读 `{appData}/ssh_known_hosts.json`；同步端口、`load` 不失败 | 服务端存储目录 / 组织级存储（本轨不写 web 实现） | 同单进程 |
 | `EventSink` | Tauri 事件推送 | SSE | SSE + worker 转发 |
 | `Clock` | `SystemClock`（本机 UTC，定宽毫秒） | 同桌面（服务进程本机 UTC） | 各 worker 读各自本机 UTC；跨节点排序只用 `Timestamp` 字典序，不假设同一时钟 |
 

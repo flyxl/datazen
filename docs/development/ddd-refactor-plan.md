@@ -245,7 +245,11 @@ flowchart TB
 
 ## 10. 开放问题
 
-- `KnownHostsRepository` 归属（`packages/tunnel` 自持 vs `platform-api`）——与 D2 同源。
+- ~~`KnownHostsRepository` 归属（`packages/tunnel` 自持 vs `platform-api`）——与 D2 同源。~~
+  **已裁定并落地（S5，2026-10-23）：归 `platform-api`。** 理由是最初三条理由里唯一可验证的那条
+  输了：留在机制包会让端口族不可清单化（`PORT_TRAITS` 只收 `src/ports/`），「词汇表跟着机制走」
+  却站不住——`KnownHostEntry` 是三个字符串，不依赖 `russh` 类型。搬家只动契约，文件 I/O 仍在
+  宿主；`load` 不失败与同步形状作为契约差异保留并写进模块头。
 - `DesktopRepository` 拆分粒度：按聚合（settings/tunnels/history/app_db）是否引入跨仓储事务问题。
 - `feature-core` 31k 行同时是 domain + 应用协作 + 宿主适配，是否需要按 feature 再拆包。
 - 60+ 处 `AppState` 直读中哪些可立即降级（不依赖 P3 的先行项）。

@@ -11,7 +11,7 @@
 ///
 /// 这是**上限**：本轨的目标就是让 `AppState` 变瘦，所以「等于基线」不该被
 /// 允许、「超过基线」必须变红。
-const BASELINE_FIELD_COUNT: usize = 24;
+const BASELINE_FIELD_COUNT: usize = 23;
 
 /// `AppState` 的定义体（不含 `#[cfg(test)]` 之后的任何东西）。
 fn app_state_definition() -> String {
@@ -92,14 +92,13 @@ fn the_field_names_are_unique_so_a_duplicate_cannot_hide_behind_the_count() {
 /// `state.tunnels` 必须为 0：隧道定义仓储归应用层持有（§5.1.2 第三步）。
 ///
 /// 这条不是"换个写法也算数"的风格约定——`AppState` 上那份 `Arc<dyn TunnelRepository>`
-/// 删掉之后，任何 `state.tunnels` 都会编译失败；本守卫在**编译器之前**就把这类回摆
-/// 钉红，防止有人为了让命令少一行 `require_application_services` 又把它挂回去。
+/// 删掉之后，任何 `state.tunnels` / `state.known_hosts` 都会编译失败；本守卫在
+/// **编译器之前**就把这类回摆钉红，防止有人为了让命令少一行
+/// `require_application_services` 又把它挂回去。
 ///
-/// 扫描整棵 `src-tauri/src`（含测试），唯一豁免是本文件自己——它必须引用这个字符串
-/// 才能断言它不存在。
-#[test]
-fn the_tunnel_repository_is_no_longer_reachable_from_the_host_state() {
-    const NEEDLE: &str = "state.tunnels";
+/// 扫描整棵 `src-tauri/src`（含测试），唯一豁免是本文件自己——它必须引用这些字符串
+/// 才能断言它们不存在。
+fn host_state_needle_hits(needle: &str) -> Vec<String> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut hits = Vec::new();
     let mut stack = vec![root];
@@ -119,25 +118,86 @@ fn the_tunnel_repository_is_no_longer_reachable_from_the_host_state() {
             }
             let text = std::fs::read_to_string(&path).expect("源码文件是 UTF-8");
             for (index, line) in text.lines().enumerate() {
-                if line.contains(NEEDLE) {
+                if line.contains(needle) {
                     hits.push(format!("{}:{}", path.display(), index + 1));
                 }
             }
         }
     }
     hits.sort();
+    hits
+}
+
+#[test]
+fn the_tunnel_repository_is_no_longer_reachable_from_the_host_state() {
+    let hits = host_state_needle_hits("state.tunnels");
     assert!(
         hits.is_empty(),
         "隧道仓储归 `ApplicationServices::tunnels` 持有（§5.1.2 第三步），宿主态不得再暴露它：{hits:?}"
     );
 }
 
-/// 定义体里也不许出现 `tunnels` 字段（上面的扫描只看 `state.tunnels` 的调用面）。
+/// known-hosts 与隧道仓储同理：端口契约在 platform-api，实例由 `ApplicationServices`
+/// 持有（§5.1.2 第五步）。宿主态再暴露一份，就会出现「命令拿 A、会话后端拿 B」的双份事实。
 #[test]
-fn app_state_definition_has_no_tunnel_repository_field() {
-    let definition = app_state_definition();
+fn the_known_hosts_repository_is_no_longer_reachable_from_the_host_state() {
+    let hits = host_state_needle_hits("state.known_hosts");
     assert!(
-        !definition.contains("pub tunnels"),
-        "AppState 不得持有隧道仓储：它由 ApplicationServices 持有"
+        hits.is_empty(),
+        "known-hosts 仓归 `ApplicationServices::known_hosts` 持有（§5.1.2 第五步），宿主态不得再暴露它：{hits:?}"
     );
+}
+
+/// 端口 trait 也不许回到机制包里：它曾住在 `packages/tunnel`，搬进 platform-api 后，
+/// `packages/tunnel` 只保留 re-export。回摆的代价是「宿主为了填端口而依赖机制包」。
+#[test]
+fn the_known_hosts_port_is_declared_in_platform_api_only() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let tunnel_src = manifest_dir
+        .parent()
+        .expect("src-tauri 有上级目录")
+        .join("packages/tunnel/src");
+    let mut offenders = Vec::new();
+    let mut stack = vec![tunnel_src];
+    while let Some(dir) = stack.pop() {
+        let entries = std::fs::read_dir(&dir).expect("mechanism crate 要能读到源码目录");
+        for entry in entries {
+            let path = entry.expect("目录项可读").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("源码文件是 UTF-8");
+            if text.contains("pub trait KnownHostsRepository") {
+                offenders.push(path.display().to_string());
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "KnownHostsRepository 是 platform-api 的端口（§5.1.2 第五步），机制包只许 re-export：{offenders:?}"
+    );
+    assert!(
+        !manifest_dir
+            .parent()
+            .unwrap()
+            .join("packages/tunnel/src/known_hosts_repository.rs")
+            .exists(),
+        "端口文件已搬走，`known_hosts_repository.rs` 不得回到机制包"
+    );
+}
+
+/// 定义体里也不许出现这两个字段（上面的扫描只看调用面）。
+#[test]
+fn app_state_definition_has_no_status_store_fields() {
+    let definition = app_state_definition();
+    for field in ["pub tunnels", "pub known_hosts"] {
+        assert!(
+            !definition.contains(field),
+            "AppState 不得持有 `{field}`：它由 ApplicationServices 持有"
+        );
+    }
 }

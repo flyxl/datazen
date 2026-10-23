@@ -601,8 +601,6 @@ mod tests {
             crate::commands::schema_diff::reviewed_repository::desktop_reviewed_plan_repository(
                 &platform,
             );
-        let known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository> =
-            crate::platform::known_hosts::desktop_known_hosts_repository(store.data_dir());
 
         let state = AppState {
             driver_registry: registry,
@@ -635,7 +633,6 @@ mod tests {
             transfer_plans: Arc::new(
                 crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
             ),
-            known_hosts: known_hosts.clone(),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
         };
@@ -693,8 +690,6 @@ mod tests {
             crate::commands::schema_diff::reviewed_repository::desktop_reviewed_plan_repository(
                 &platform,
             );
-        let known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository> =
-            crate::platform::known_hosts::desktop_known_hosts_repository(store.data_dir());
 
         let state = AppState {
             driver_registry: registry,
@@ -727,7 +722,6 @@ mod tests {
             transfer_plans: Arc::new(
                 crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
             ),
-            known_hosts: known_hosts.clone(),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
         };

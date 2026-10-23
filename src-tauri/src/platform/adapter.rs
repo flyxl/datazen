@@ -319,7 +319,7 @@ impl PlatformAdapter {
         store: Arc<crate::store::DesktopRepository>,
         registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
         tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
-        known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository>,
+        known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
     ) -> Result<(), ApiError> {
         if self.services.get().is_some() {
             return Ok(());
@@ -375,7 +375,7 @@ impl PlatformAdapter {
             self.identity.organization_id().clone(),
             self.identity.principal_id().clone(),
             tunnels.clone(),
-            known_hosts,
+            known_hosts.clone(),
         ));
         let native =
             super::native_tool::deployment::NativeDeployment::from_build(backend.physical_budget());
@@ -504,6 +504,7 @@ impl PlatformAdapter {
             runtime.clone(),
             store.clone(),
             tunnels.clone(),
+            known_hosts.clone(),
         ));
         self.runtime.set(runtime.clone()).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "runtime already injected")

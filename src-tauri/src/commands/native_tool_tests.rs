@@ -41,9 +41,10 @@ fn attach(
     adapter.inject(
         state.store.clone(),
         state.driver_registry.clone(),
-        // 隧道仓储不再挂在 `AppState` 上：桌面实现就是存储层本身，与装配根同一做法。
+        // 隧道仓储与 known-hosts 都不再挂在 `AppState` 上：
+        // 前者桌面实现就是存储层本身，后者在这里按装配根同款就地构造。
         state.store.clone(),
-        state.known_hosts.clone(),
+        crate::platform::known_hosts::desktop_known_hosts_repository(state.store.data_dir()),
     )?;
     adapter.replace_native_fixture(&manifest.to_string())?;
     state.platform = PlatformEntry::ready(adapter);

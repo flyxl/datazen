@@ -116,7 +116,7 @@ pub(crate) async fn test_tunnel_impl(
     let elapsed = crate::tunnel::test_tunnel(
         &*services.tunnels,
         &scope,
-        &state.known_hosts,
+        &services.known_hosts,
         &id,
         &target_host,
         target_port,
