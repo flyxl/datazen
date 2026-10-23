@@ -8,8 +8,8 @@
 //! * 任一边界带 `commitAckLost` 证据但未核验 → RequireManualReview（只读比较后补边界或暂停）；
 //! * 空 checkpoint 且恢复策略未声明 → RequireManualReview。
 
+use datazen_kernel::job::RecoveryVerdict;
 use datazen_platform_api::dto::job::Checkpoint;
-use datazen_runtime::job::RecoveryVerdict;
 
 /// checkpoint 证据标记（由 apply 阶段的 handler 在边界里写入）。
 pub const EVIDENCE_DDL_RESPONSE_LOST: &str = "ddlResponseLost";

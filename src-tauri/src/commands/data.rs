@@ -138,6 +138,8 @@ async fn commit_pending_changes_with_handle(
         config_revision: metadata.config_revision,
     };
     let columns = table_columns::HostTableColumns::new(state);
+    let artifacts =
+        crate::platform::feature_ports::HostArtifactChunks::new(runtime.clone()).shared();
     commit_changes(
         driver.as_ref(),
         request,
@@ -145,6 +147,7 @@ async fn commit_pending_changes_with_handle(
         &columns,
         manual_handle,
         runtime,
+        artifacts,
         context,
     )
     .await

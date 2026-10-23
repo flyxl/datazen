@@ -107,8 +107,8 @@ pub fn validate_read_only_sql(sql: &str) -> Result<(), String> {
         parser::Parser,
     };
     use std::ops::ControlFlow;
-    datazen_runtime::sql_guard::reject_null_bytes(sql)?;
-    datazen_runtime::sql_guard::check_sql(sql, true, false)?;
+    datazen_kernel::sql_guard::reject_null_bytes(sql)?;
+    datazen_kernel::sql_guard::check_sql(sql, true, false)?;
     fn body(query: &SetExpr) -> bool {
         match query {
             SetExpr::Select(select) => select.into.is_none(),

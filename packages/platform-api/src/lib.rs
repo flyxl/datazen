@@ -9,7 +9,9 @@
 //!   是**两个互不兼容的类型**，编译期就不可互换；凭据/策略/网络类 id 的 `Debug` 脱敏。
 //! * 请求身份（`context`）：`RequestContext` 只能由 adapter 构造，没有 `Default`。
 //! * 目标词汇（`target`）：提交目标 → 规范化目标的形状与层次要求。
-//! * 错误词汇（`error`）：`PortError`，端口层的**唯一**失败类型。
+//! * 错误词汇（`error`）：`PortError`（端口层事实）与 `ApiError` / `ApiErrorCode`（跨边界
+//!   业务拒绝）。它们同住一个模块：端口报事实、用例层把事实判定成业务拒绝，而 `runtime`
+//!   要实现用例端口就必须看得见 `ApiError`（R2，见 `error` 模块头）。
 //! * 契约 DTO（`dto`）：跨边界传输的形状（camelCase 序列化）。
 //! * 端口（`ports`）：注入方是 `Arc<dyn X>`；只读窄端口见 `ports::mod` 的模块头与架构文档
 //!   §4.10；时基端口 `Clock` 另带系统时钟 `SystemClock` 与固定时钟 `FixedClock`
@@ -18,7 +20,9 @@
 //!
 //! ## 本包**不**负责什么
 //!
-//! * `ApiError`、用例编排、目标计算顺序、身份策略顺序 → `datazen-application`。
+//! * 用例**编排**（何时读、何时判、按什么顺序）、目标计算顺序、身份策略顺序 →
+//!   `datazen-application`。注意区分：本包承载用例端口的**签名**（`use_cases`），
+//!   不承载编排实现。
 //! * 物理会话、租约、预算的实际执行 → `datazen-runtime`。
 //! * HTTP/Tauri/DB 的具体形态 → server host / desktop host。
 //!
@@ -44,11 +48,13 @@ pub mod error;
 #[allow(unused_doc_comments)]
 pub mod id;
 pub mod migration;
+pub mod policy;
 pub mod ports;
 pub mod target;
+pub mod use_cases;
 
 pub use context::{DelegationRef, OwnerRef, RequestContext};
-pub use error::PortError;
+pub use error::{ApiError, ApiErrorCode, PortError, RetryDisposition};
 pub use ports::{
     ArtifactRepository, BudgetCoordinator, Clock, ClusterNodeBudgetPort, ControlResourcePort,
     DriverPoolBudgetPort, EventSink, ExecutionSettingsReader, ExecutionTargetResolver, FixedClock,
@@ -57,5 +63,6 @@ pub use ports::{
     SecretProvider, SessionDirectory, SettingsRepository, SubmissionTokenIssuer, SystemClock,
     TunnelRepository,
 };
+pub use use_cases::ConnectionUseCases;
 
 pub mod settings;

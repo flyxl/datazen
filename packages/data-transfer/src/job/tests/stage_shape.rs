@@ -10,8 +10,8 @@
 
 use super::*;
 
-fn frozen_plan_for_prepare() -> datazen_runtime::job::FrozenPlan {
-    datazen_runtime::job::FrozenPlan {
+fn frozen_plan_for_prepare() -> datazen_kernel::job::FrozenPlan {
+    datazen_kernel::job::FrozenPlan {
         kind: "dataTransferPrepare".into(),
         is_apply: false,
         consumed_plan_id: None,
@@ -26,7 +26,7 @@ fn frozen_plan_for_prepare() -> datazen_runtime::job::FrozenPlan {
 /// 只断言个数会让「三个阶段换了个顺序」这类改动悄悄通过。
 fn projection(
     handler: &DataTransferHandler,
-    plan: &datazen_runtime::job::FrozenPlan,
+    plan: &datazen_kernel::job::FrozenPlan,
 ) -> Vec<(String, String, Vec<String>)> {
     handler
         .validate_plan(plan)
@@ -268,7 +268,7 @@ async fn structure_only_executes_and_records_foreign_keys_after_tables_and_index
         ],
     );
     let stages = handler.validate_plan(&frozen_plan_for_apply()).unwrap();
-    let token = datazen_runtime::job::CancelToken::new();
+    let token = datazen_kernel::job::CancelToken::new();
     let first = handler.run_stage(&stages[0], &token).await.unwrap();
     assert_eq!(first.commit_boundaries.len(), 2);
     assert_ne!(
@@ -278,7 +278,7 @@ async fn structure_only_executes_and_records_foreign_keys_after_tables_and_index
     let fk = handler.run_stage(&stages[1], &token).await.unwrap();
     assert!(matches!(
         fk.terminal,
-        datazen_runtime::job::StageTerminal::Succeeded
+        datazen_kernel::job::StageTerminal::Succeeded
     ));
     assert_eq!(fk.commit_boundaries.len(), 1);
     assert_eq!(fk.commit_boundaries[0].stage_id.as_str(), "foreignKeys");
@@ -307,7 +307,7 @@ async fn structure_stage_commit_boundaries_read_the_injected_clock() {
 
     let stages = handler.validate_plan(&frozen_plan_for_apply()).unwrap();
     let first = handler
-        .run_stage(&stages[0], &datazen_runtime::job::CancelToken::new())
+        .run_stage(&stages[0], &datazen_kernel::job::CancelToken::new())
         .await
         .unwrap();
 
@@ -335,12 +335,12 @@ async fn failed_index_is_not_credited_with_its_tables_successful_create() {
     );
     let stages = handler.validate_plan(&frozen_plan_for_apply()).unwrap();
     let result = handler
-        .run_stage(&stages[0], &datazen_runtime::job::CancelToken::new())
+        .run_stage(&stages[0], &datazen_kernel::job::CancelToken::new())
         .await
         .unwrap();
     assert!(matches!(
         result.terminal,
-        datazen_runtime::job::StageTerminal::Failed
+        datazen_kernel::job::StageTerminal::Failed
     ));
     assert_eq!(
         result.effect_outcome,

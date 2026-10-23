@@ -3,10 +3,12 @@ import { readFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
+import { selectCodegenSensitiveTests } from '../select-codegen-sensitive-tests.mjs';
 import {
   DEFAULT_DRIVER_SET,
   parseUnitDriverSetArgs,
   planDriverSetCommands,
+  resolveVitestArgs,
 } from '../run-unit-driver-set.mjs';
 const root = resolve(import.meta.dirname, '../..');
 const ciWorkflowRaw = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8');
@@ -125,6 +127,37 @@ describe('run-unit-driver-set driver set resolution', () => {
 
   it('keeps unknown argv for vitest', () => {
     expect(parseUnitDriverSetArgs(['--reporter=json'], {}).vitestArgs).toEqual(['--reporter=json']);
+  });
+});
+
+describe('run-unit-driver-set narrows the vitest leg to codegen-sensitive files', () => {
+  // The narrowing criterion lives in select-codegen-sensitive-tests.mjs and
+  // has its own suite; these assertions pin the *decision* in this runner:
+  // when to narrow, what survives, and that explicit file arguments win.
+  const real = selectCodegenSensitiveTests({ root, log: () => {} });
+
+  it('appends the selection when no test-file argument is given', () => {
+    const resolved = resolveVitestArgs({ root, log: () => {} });
+    expect(resolved.narrowed).toBe(true);
+    expect(resolved.vitestArgs).toEqual(real.files);
+    // The canonical driver-set-sensitive case must be in: its expectations
+    // read DB_REGISTRY quote characters, which `basic` does not register.
+    expect(resolved.vitestArgs).toContain('src/lib/__tests__/cellEditorCandidates.test.ts');
+    // ...and the run stays a strict subset of the collected suite.
+    expect(real.files.length).toBeLessThan(real.testFileCount);
+  });
+
+  it('passes explicit test-file arguments through, taking the caller at their word', () => {
+    const resolved = resolveVitestArgs({ root, vitestArgs: ['src/foo.test.ts'], log: () => {} });
+    expect(resolved.narrowed).toBe(false);
+    expect(resolved.vitestArgs).toEqual(['src/foo.test.ts']);
+  });
+
+  it('still narrows when only flags are given — flags are not a file list', () => {
+    const resolved = resolveVitestArgs({ root, vitestArgs: ['--reporter=json'], log: () => {} });
+    expect(resolved.narrowed).toBe(true);
+    expect(resolved.vitestArgs[0]).toBe('--reporter=json');
+    expect(resolved.vitestArgs.length).toBe(real.files.length + 1);
   });
 });
 

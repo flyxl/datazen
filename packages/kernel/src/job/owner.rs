@@ -1,7 +1,7 @@
 //! Runtime-issued authority for Job handlers. This capability is minted
 //! only after JobRuntime acquires a fenced claim and is never serialized.
 use super::JobRuntimeRepository;
-use datazen_application::error::ApiError;
+use datazen_platform_api::error::ApiError;
 use datazen_platform_api::{
     context::RequestContext,
     dto::job::JobClaim,
@@ -52,7 +52,9 @@ impl StageOwnerPermit {
             .map_err(|_| ApiError::permission_denied("job stage claim is no longer authoritative"))
     }
 
-    pub(crate) async fn verify_native_selection(
+    /// 原生工具选择器与 Job 定义的一致性校验。连接运行时（`native_tool`）消费本方法，
+    /// 因此它是内核的公开面而不是 crate 私有面。
+    pub async fn verify_native_selection(
         &self,
         selection: &NativeToolSelection,
     ) -> Result<(), ApiError> {

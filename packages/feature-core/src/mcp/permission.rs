@@ -1,6 +1,6 @@
 //! MCP permission modes — tool restrictions and lightweight SQL classification.
 
-use datazen_runtime::sql_guard::{
+use datazen_kernel::sql_guard::{
     find_main_verb_index, sql_main_keyword, strip_comments_for_tokenize, tokenize_sql,
 };
 use serde::{Deserialize, Serialize};
@@ -54,8 +54,8 @@ const SAFE_WRITE_BLOCKED_KEYWORDS: &[&str] = &["DROP", "TRUNCATE", "ALTER", "GRA
 /// Returns `Ok(())` when SQL is allowed under the given mode.
 pub fn check_sql_allowed(sql: &str, mode: McpPermissionMode) -> Result<(), String> {
     // Reject null bytes and normalise fullwidth before any classification.
-    datazen_runtime::sql_guard::reject_null_bytes(sql)?;
-    let sql = datazen_runtime::sql_guard::normalize_fullwidth(sql);
+    datazen_kernel::sql_guard::reject_null_bytes(sql)?;
+    let sql = datazen_kernel::sql_guard::normalize_fullwidth(sql);
     match mode {
         McpPermissionMode::HighRiskWrite => Ok(()),
         McpPermissionMode::ReadOnly => {
@@ -139,8 +139,8 @@ pub fn check_tool_call(
             if tool_name == "query" {
                 if let Some(args) = arguments {
                     if let Some(sql) = args.get("sql").and_then(|v| v.as_str()) {
-                        datazen_runtime::sql_guard::reject_null_bytes(sql)?;
-                        let sql = datazen_runtime::sql_guard::normalize_fullwidth(sql);
+                        datazen_kernel::sql_guard::reject_null_bytes(sql)?;
+                        let sql = datazen_kernel::sql_guard::normalize_fullwidth(sql);
                         check_safe_write_sql(&sql)?;
                     }
                 }

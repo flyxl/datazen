@@ -1,6 +1,6 @@
 use crate::connection as rt;
 use crate::registry::epoch::epoch_string;
-use datazen_application::error::{ApiError, ApiErrorCode};
+use datazen_platform_api::error::{ApiError, ApiErrorCode};
 use datazen_platform_api::{
     context::{OwnerRef, RequestContext},
     dto::session as pa,
@@ -92,7 +92,7 @@ pub(super) fn owner(
     connection: &rt::ConnectionId,
     value: &OwnerRef,
 ) -> Result<rt::OwnerRef, ApiError> {
-    datazen_application::identity_policy::IdentityPolicy::check_owner(ctx, value, None)?;
+    datazen_platform_api::policy::check_owner(ctx, value, None)?;
     match value {
         OwnerRef::Editor {
             client_instance_id,

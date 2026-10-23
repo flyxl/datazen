@@ -27,6 +27,12 @@
 //!   truncated）。进程异常退出的 writer 由恢复扫描标记 truncated，**不宣称完整**。
 //! * 常规受控导出仅允许 `complete`；`truncated` 需用户明确确认并保留截断标记。
 
+/// 聚合的已发布字节配额（契约值，不是实现细节）。
+///
+/// 放在端口而不是实现里：它是**契约的一部分**（超配额必须判 `QuotaExceeded`），
+/// 而 `feature-core` 的备份写出路径要按同一配额提前拒绝，否则会先落盘再被回收。
+pub const ARTIFACT_BYTE_QUOTA: u64 = 256 * 1024 * 1024;
+
 use async_trait::async_trait;
 
 use crate::context::RequestContext;

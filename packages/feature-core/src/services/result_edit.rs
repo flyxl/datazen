@@ -25,7 +25,7 @@ use datazen_driver_api::{
     DatabaseDriver, ResultObjectKind, ResultOrigin, ResultOriginDetail, ResultShape,
     ResultTableRef, Value,
 };
-use datazen_runtime::schema_cache::CachedColumns;
+use datazen_kernel::schema_cache::CachedColumns;
 use serde::{Deserialize, Serialize};
 
 use crate::data_browsing::{

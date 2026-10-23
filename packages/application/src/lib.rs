@@ -25,14 +25,14 @@
 //! | [`capability`] | 计划第 93 行的可选能力注册与运行时能力降低机制 |
 //!
 //! [`ApplicationServices`] 按 §6.2 第 7 步的顺序组装：
-//! `target → identity_policy → sessions → settings → tunnels`，能力注册表由
+//! `target → identity_policy → sessions → settings → tunnels → known_hosts`，能力注册表由
 //! [`with_capabilities`](ApplicationServices::with_capabilities) 在其后补挂，
 //! 缺省是**全不可用**的注册表。构造函数对桌面与团队两种形态**完全相同**，
 //! 只有传入的 `Arc<dyn …>` 实现不同——不允许为团队形态另写一套用例。
 //!
 //! ## 注入的存储端口
 //!
-//! `settings` 与 `tunnels` 是**形态中立的存储端口**（契约住在
+//! `settings`、`tunnels` 与 `known_hosts` 是**形态中立的存储端口**（契约住在
 //! `datazen-platform-api` 的 `ports/`）：应用层**持有**它们，而不是反过来
 //! 借用宿主的 store。端口是**构造参数**而不是可选字段——漏注入是**编译错误**，
 //! 不是运行时的 `None`。桌面实现是 `DesktopRepository`（组装期注入同一个实例），
@@ -55,6 +55,7 @@ pub mod target;
 
 use std::sync::Arc;
 
+use datazen_platform_api::ports::known_hosts::KnownHostsRepository;
 use datazen_platform_api::ports::{SettingsRepository, TunnelRepository};
 
 use crate::capability::CapabilityRegistry;
@@ -82,6 +83,12 @@ pub struct ApplicationServices {
     /// 隧道定义是独立聚合：连接侧只存 `tunnelId`，解引用发生在建连时。
     /// 桌面实现同样是 `DesktopRepository`；web 形态由服务端 host 实现。
     pub tunnels: Arc<dyn TunnelRepository>,
+    /// SSH known-hosts 的存储端口（组装层注入）。
+    ///
+    /// 端口与词汇表住在 `datazen_platform_api::ports::known_hosts`；**文件 I/O** 是
+    /// 形态的事（桌面读 `{appData}/ssh_known_hosts.json`）。事实只有一份：本字段与
+    /// 注给会话后端的是同一个实例。
+    pub known_hosts: Arc<dyn KnownHostsRepository>,
     /// 计划第 93 行的运行时能力注册表。
     ///
     /// 缺省是全不可用的空注册表（[`CapabilityRegistry::new`]）。这意味着
@@ -104,6 +111,7 @@ impl ApplicationServices {
         sessions: Arc<dyn ConnectionUseCases>,
         settings: Arc<dyn SettingsRepository>,
         tunnels: Arc<dyn TunnelRepository>,
+        known_hosts: Arc<dyn KnownHostsRepository>,
     ) -> Self {
         Self {
             target,
@@ -111,6 +119,7 @@ impl ApplicationServices {
             sessions,
             settings,
             tunnels,
+            known_hosts,
             capabilities: CapabilityRegistry::new("unbound"),
         }
     }
@@ -312,7 +321,11 @@ mod tests {
             ),
             "存储端口必须直接引 platform-api 的那一份"
         );
-        for port in ["SettingsRepository", "TunnelRepository"] {
+        for port in [
+            "SettingsRepository",
+            "TunnelRepository",
+            "KnownHostsRepository",
+        ] {
             assert!(
                 !code.contains(&format!("pub trait {port}")),
                 "{port} 不得在本包另定义一份：那是两份事实"
@@ -330,6 +343,7 @@ mod tests {
         for field in [
             "pub settings: Arc<dyn SettingsRepository>",
             "pub tunnels: Arc<dyn TunnelRepository>",
+            "pub known_hosts: Arc<dyn KnownHostsRepository>",
         ] {
             assert!(code.contains(field), "聚合必须持有该存储端口字段：{field}");
         }
@@ -341,6 +355,10 @@ mod tests {
             !code.contains("pub tunnels: Option<"),
             "tunnels 端口不得是 Option：漏注入必须是编译错误"
         );
+        assert!(
+            !code.contains("pub known_hosts: Option<"),
+            "known_hosts 端口不得是 Option：漏注入必须是编译错误"
+        );
         // 构造签名必须**要求**这两个端口。
         let signature = code
             .split("pub fn new(")
@@ -350,6 +368,7 @@ mod tests {
         for parameter in [
             "settings: Arc<dyn SettingsRepository>",
             "tunnels: Arc<dyn TunnelRepository>",
+            "known_hosts: Arc<dyn KnownHostsRepository>",
         ] {
             assert!(
                 signature.contains(parameter),

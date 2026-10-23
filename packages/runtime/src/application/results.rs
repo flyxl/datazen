@@ -1,6 +1,6 @@
 use super::convert;
 use crate::registry::backend::ResourceExecution;
-use datazen_application::error::{ApiError, ApiErrorCode};
+use datazen_platform_api::error::{ApiError, ApiErrorCode};
 use datazen_platform_api::{
     context::RequestContext,
     dto::{
@@ -19,20 +19,10 @@ use std::{
 pub(super) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|p| p.into_inner())
 }
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RuntimeArtifactChunk {
-    pub artifact_id: ArtifactId,
-    pub chunk_index: Counter,
-    pub byte_offset: Counter,
-    pub columns: serde_json::Value,
-    pub rows: Vec<serde_json::Value>,
-    pub output: Option<serde_json::Value>,
-    pub source: StatementResultSource,
-    pub published_chunk_count: Counter,
-    pub published_byte_length: Counter,
-    pub complete: bool,
-}
+/// 结果块的**唯一**定义在契约层（`datazen_platform_api::dto::execution::ResultChunk`）：
+/// 消费方是 feature 层，它不得依赖 runtime。这里保留历史名，宿主与 runtime 内部
+/// 的既有引用因此逐字不变。
+pub type RuntimeArtifactChunk = datazen_platform_api::dto::execution::ResultChunk;
 #[derive(Clone)]
 pub(super) struct ExecutionEntry {
     pub ctx: RequestContext,

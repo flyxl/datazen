@@ -9,6 +9,7 @@ description = "Form-neutral tunnel mechanisms (HTTP CONNECT proxy / WebSocket re
 # The tunnel configs and the error type live in the driver contract crate, which
 # every form already links.
 datazen-driver-api = { workspace = true }
+datazen-platform-api = { workspace = true }
 futures-util = "0.3"
 russh = "0.60"
 serde = { version = "1", features = ["derive"] }

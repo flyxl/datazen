@@ -51,6 +51,32 @@ node scripts/with-driver-inject.mjs [--drivers=basic] -- node scripts/e2e-tauri-
 
 ## 2. 一键跑通（推荐）
 
+### 2.0 整包验证默认「一个 spec 一个应用进程」
+
+```bash
+pnpm e2e                    # 完整构建 + 每 spec 独立应用进程（整包默认）
+pnpm e2e:skip-build         # 已有 webdriver 构建时：同上，跳过构建
+pnpm e2e:isolated           # 显式指定隔离模式（等价于整包默认）
+pnpm e2e:isolated:skip-build
+pnpm e2e:skip-build -- --spec e2e/specs/x.ts   # 单 spec 仍是共享进程
+```
+
+不传 `--spec` / `--suite` 时，runner 会把 spec 文件逐个交给 WDIO，**每个 spec 起一次
+应用进程、跑完就关**；指定了 `--spec` / `--suite` 的分组跑法保持原来的共享进程。
+`--isolate-specs` / `--no-isolate-specs` 可显式覆盖该默认。
+
+为什么整包必须隔离：串跑时 159 个 spec 共用同一个 Tauri 进程，运行时会话、连接池、
+`config_revision` 和 WebDriver 会话都会留到下一个 spec。seeded 连接在每个 spec 的
+`before` 钩子里被改写（每轮换一个 worker 数据库 = 一次 `save_connection` = 一次
+`config_revision` 自增），上一轮仍然活着的会话继续占着该连接的资源额度；下一个 spec 的
+`connect` 撞上 `resource admission refused`，命令层报
+`connection runtime operation failed`，失败却记在无辜的 spec 头上。实测同一棵树上：
+串跑 5 passed / 140 failed，隔离跑全绿。
+
+代价是每个 spec 多一次应用启动 + WDIO 启动（约 7–8 s），整包总时长明显变长；这是为
+「失败归属可信」付的钱。定位单个 spec 时继续用 `--spec`，不必付这笔开销。
+
+
 ```bash
 # 首次 / 改过 Rust 或前端后：完整构建 + 跑全部 E2E
 pnpm e2e

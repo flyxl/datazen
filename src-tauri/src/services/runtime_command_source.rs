@@ -208,7 +208,9 @@ impl ResourceExecutionHost for RuntimeCommandSource {
             .await
             .map_err(|error| WorkflowError::Validation(error.message))?;
         Ok(PreparedExecution {
-            runtime,
+            artifacts: crate::platform::feature_ports::HostArtifactChunks::new(runtime.clone())
+                .shared(),
+            use_cases: runtime,
             context: call.context().clone(),
             target: crate::platform::into_execution_target(canonical),
         })

@@ -200,11 +200,16 @@ pub(crate) fn finish_app_state(
     // 同一份实例既注入会话后端（建连时解引用 `tunnelId`、启动隧道），也进
     // `AppState`（命令侧取用）：整个进程只有一份，存储的生命周期由宿主决定。
     let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
-    let known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository> =
+    let known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository> =
         crate::platform::known_hosts::desktop_known_hosts_repository(&data_dir);
     // 平台装配必须**先于**依赖它的功能绑定：共享的元数据源要拿到 Runtime 门面
     // （解析会话归属）与执行宿主（profile / 驱动 / 命令执行），两者都出自装配。
-    // 装配失败不崩应用——与既有行为一致——但依赖平台的调用会明确失败。
+    //
+    // 装配失败不崩应用——与既有行为一致——但依赖平台的调用会明确失败。注意
+    // `inject` 的 `Err` 现在只表示**装配冲突**（同一进程重复注入）：可选接线
+    // （执行身份解析器、结果制品存储）失败是**降级**，已在 `inject` 内部记 warn
+    // 并可通过 `degraded_capabilities()` 枚举；内核（Runtime / ApplicationServices）
+    // 照常可用，因此设置、连接列表、建连这些主路径不受降级牵连。
     if let Ok(adapter) = platform.require() {
         if let Err(error) = adapter.inject(
             store.clone(),
@@ -212,7 +217,7 @@ pub(crate) fn finish_app_state(
             tunnels.clone(),
             known_hosts.clone(),
         ) {
-            tracing::error!(code = ?error.code, "desktop platform injection failed");
+            tracing::error!(code = ?error.code, "desktop platform assembly conflict");
         }
     }
     // Schema Diff 评审计划的存储：桌面单租户，只承认桌面自己的组织。
@@ -277,9 +282,8 @@ pub(crate) fn finish_app_state(
         transfer_plans: Arc::new(
             crate::data_transfer::plan_store::InMemoryTransferPlanRepository::new(),
         ),
-        // 隧道定义与 SSH known-hosts 的存储端口实例（同一个实例也注给了会话后端）。
-        tunnels,
-        known_hosts,
+        // `tunnels` 与 `known_hosts` 都不在这里：它们由 `ApplicationServices` 持有
+        // （§5.1.2 第三步与第五步）。局部变量保留，因为要把同一份实例交给 `inject`。
     };
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state

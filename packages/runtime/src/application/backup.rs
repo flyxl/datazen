@@ -2,7 +2,7 @@
 //! or callbacks are exposed through a transport DTO or persisted artifact.
 use super::*;
 
-pub type BackupOutput = Arc<dyn Fn(serde_json::Value) -> Result<(), ApiError> + Send + Sync>;
+pub use datazen_platform_api::dto::artifact::BackupOutput;
 pub(super) struct Binding {
     ctx: RequestContext,
     target: ExecutionTarget,

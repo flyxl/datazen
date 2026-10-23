@@ -14,8 +14,8 @@
 use super::keyset_refusal;
 use super::*;
 use datazen_driver_api::keyset::{CursorValue, KeysetUnavailableReason, OrderColumn, PagingMode};
-use datazen_runtime::driver_registry::DriverRegistry;
-use datazen_runtime::schema_cache::SchemaCache;
+use datazen_kernel::driver_registry::DriverRegistry;
+use datazen_kernel::schema_cache::SchemaCache;
 
 /// A column that is not nullable — the shape a key column has.
 fn key_column(name: &str) -> ColumnSchema {

@@ -13,7 +13,7 @@ use datazen_platform_api::dto::job::{
 use datazen_platform_api::id::{ArtifactId, Counter, StageId, Timestamp};
 use datazen_platform_api::ports::{Clock, SystemClock};
 
-use datazen_runtime::job::{
+use datazen_kernel::job::{
     CancelToken, JobError, JobHandler, RecoveryVerdict, StageOutcome, StageSpec, StageTerminal,
 };
 
@@ -103,8 +103,8 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
         }
     }
 
-    fn check_versions(plan: &datazen_runtime::job::FrozenPlan) -> Result<(), JobError> {
-        let expected = datazen_runtime::job::SUPPORTED_PLAN_MAJOR;
+    fn check_versions(plan: &datazen_kernel::job::FrozenPlan) -> Result<(), JobError> {
+        let expected = datazen_kernel::job::SUPPORTED_PLAN_MAJOR;
         for got in [
             plan.plan_version,
             plan.handler_version,
@@ -348,7 +348,7 @@ impl<B: SchemaDiffJobBackend> JobHandler for SchemaDiffHandler<B> {
 
     fn validate_plan(
         &self,
-        plan: &datazen_runtime::job::FrozenPlan,
+        plan: &datazen_kernel::job::FrozenPlan,
     ) -> Result<Vec<StageSpec>, JobError> {
         Self::check_versions(plan)?;
         match self.role {

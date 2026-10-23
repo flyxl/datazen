@@ -27,7 +27,11 @@ import {
   parseSpecRow,
   ruleVerdict,
 } from '../check-platform-crate-boundaries.mjs';
-import { classifyMemberDir, declaredDependencies, matchesCrateFamily } from '../lib/cargoWorkspace.mjs';
+import {
+  classifyMemberDir,
+  declaredDependencies,
+  matchesCrateFamily,
+} from '../lib/cargoWorkspace.mjs';
 import { withProbeLock } from './boundaryMutation';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -194,9 +198,12 @@ describe('parseSpecRow', () => {
     expect(matchesCrateFamily('tauri-plugin', f06.crates[0].replace(/\*$/, ''))).toBe(true);
   });
 
-  it('reads F-03 as two subject paths and four crate names', () => {
+  it('reads F-03 as three subject paths and four crate names', () => {
+    // `packages/kernel` 是 2026-10-23 从 `runtime` 分出的机制内核，同属「不得引入
+    // HTTP 框架」的核心层；主体多一个路径，这条断言必须跟着走，否则它就变成
+    // 「只要 spec 不动，多出来的包不会被检查」的免检声明。
     const f03 = parseSpecRow(specRow('F-03'));
-    expect(f03.paths).toEqual(['packages/application', 'packages/runtime']);
+    expect(f03.paths).toEqual(['packages/application', 'packages/runtime', 'packages/kernel']);
     expect(f03.crates).toEqual(['axum', 'actix-web', 'warp', 'tonic']);
   });
 
@@ -224,14 +231,20 @@ describe('ruleVerdict', () => {
   it('says fail for a rule one of whose violations is attributed to it', () => {
     // Both producer shapes: the closure walk and the F-07 scan open with
     // `<id>  `, the spec cross-check with `<id>: `.
-    expect(ruleVerdict('F-11', ['F-11  datazen-platform-infra (packages/platform-infra/Cargo.toml) → x'])).toBe('fail');
+    expect(
+      ruleVerdict('F-11', [
+        'F-11  datazen-platform-infra (packages/platform-infra/Cargo.toml) → x',
+      ]),
+    ).toBe('fail');
     expect(ruleVerdict('F-11', ['F-11: subjects disagree with §2.4'])).toBe('fail');
   });
 
   it('says ok for a rule with no violation of its own', () => {
     expect(ruleVerdict('F-11', [])).toBe('ok');
     // Another rule being red must not smear onto this one.
-    expect(ruleVerdict('F-11', ['F-01  datazen-driver-redis → datazen', 'F-11x: not a rule id'])).toBe('ok');
+    expect(
+      ruleVerdict('F-11', ['F-01  datazen-driver-redis → datazen', 'F-11x: not a rule id']),
+    ).toBe('ok');
   });
 });
 
@@ -254,8 +267,8 @@ describe('checkSpecConsistency', () => {
 
   it('fails when the spec adds a subject the guard does not check', () => {
     const widened = SPEC.replace(
-      '| F-03 | `packages/application`、`packages/runtime` ',
-      '| F-03 | `packages/application`、`packages/runtime`、`packages/server` ',
+      '| F-03 | `packages/application`、`packages/runtime`、`packages/kernel` ',
+      '| F-03 | `packages/application`、`packages/runtime`、`packages/kernel`、`packages/server` ',
     );
     expect(checkSpecConsistency(widened).join('\n')).toContain('F-03');
   });
@@ -360,7 +373,13 @@ describe('checkPlatformCrateBoundaries', () => {
           '[dependencies]\ntauri = { version = "2", optional = true }\n',
       );
       const result = run(
-        fixture([{ name: 'datazen-driver-probe', dir: 'packages/drivers/probe' }], {}, [], {}, root),
+        fixture(
+          [{ name: 'datazen-driver-probe', dir: 'packages/drivers/probe' }],
+          {},
+          [],
+          {},
+          root,
+        ),
       );
       expect(result.violations.join('\n')).toMatch(
         /F-01.*datazen-driver-probe.*declares tauri in \[dependencies\]/,
@@ -370,7 +389,7 @@ describe('checkPlatformCrateBoundaries', () => {
     }
   });
 
-  it('F-01: the host\'s own dormant tauri declaration is not adjudicated by F-01', () => {
+  it("F-01: the host's own dormant tauri declaration is not adjudicated by F-01", () => {
     // The trap this rule must not fall into. `src-tauri/Cargo.toml` declares
     // `tauri-plugin-webdriver` for the macOS silent-E2E feature, and the host
     // is *supposed* to depend on Tauri — F-01's subjects are the `driver`
@@ -441,7 +460,13 @@ describe('checkPlatformCrateBoundaries', () => {
     const root = mkdtempSync(join(tmpdir(), 'datazen-f01-unreadable-'));
     try {
       const result = run(
-        fixture([{ name: 'datazen-driver-ghost', dir: 'packages/drivers/ghost' }], {}, [], {}, root),
+        fixture(
+          [{ name: 'datazen-driver-ghost', dir: 'packages/drivers/ghost' }],
+          {},
+          [],
+          {},
+          root,
+        ),
       );
       expect(result.errors.join('\n')).toMatch(/read\?.*datazen-driver-ghost/);
     } finally {
@@ -525,9 +550,7 @@ describe('F-01 exemptions', () => {
 
   /** The production rule table with F-01's exemption list replaced. */
   function withExemptions(exemptions: Array<{ member: string; family: string; reason: string }>) {
-    return RULES.map((rule) =>
-      rule.id === 'F-01' ? { ...rule, exemptions } : rule,
-    );
+    return RULES.map((rule) => (rule.id === 'F-01' ? { ...rule, exemptions } : rule));
   }
 
   function runWith(
@@ -548,14 +571,14 @@ describe('F-01 exemptions', () => {
   it('suppresses the violation and says so out loud', () => {
     const result = runWith(
       [{ member: 'datazen-driver-redis', family: 'tauri', reason: 'probe exemption' }],
-      fixture(
-        CORE,
-        { ...clean, 'datazen-driver-redis': ['tauri-plugin'] },
-        [{ name: 'tauri-plugin' }],
-      ),
+      fixture(CORE, { ...clean, 'datazen-driver-redis': ['tauri-plugin'] }, [
+        { name: 'tauri-plugin' },
+      ]),
     );
     expect(result.violations.filter((v) => v.includes('tauri-plugin'))).toEqual([]);
-    expect(result.exemptions.join('\n')).toMatch(/datazen-driver-redis.*tauri-plugin.*probe exemption/);
+    expect(result.exemptions.join('\n')).toMatch(
+      /datazen-driver-redis.*tauri-plugin.*probe exemption/,
+    );
   });
 
   it('does not let an exemption cover the host side', () => {
@@ -695,8 +718,7 @@ describe('subject presence', () => {
       if (files) {
         const dir = join(root, 'packages/backend-client/src');
         mkdirSync(dir, { recursive: true });
-        for (const [name, source] of Object.entries(files))
-          writeFileSync(join(dir, name), source);
+        for (const [name, source] of Object.entries(files)) writeFileSync(join(dir, name), source);
       }
       return checkPlatformCrateBoundaries({
         root,
@@ -741,7 +763,9 @@ describe('subject presence', () => {
         specText: SPEC,
         requireLayers: [],
       });
-      expect(result.vacuous.filter((v) => v.rule === 'F-07').map((v) => v.reason)).toEqual(['empty']);
+      expect(result.vacuous.filter((v) => v.rule === 'F-07').map((v) => v.reason)).toEqual([
+        'empty',
+      ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -840,7 +864,13 @@ describe('declaredDependencies — the manifest-side scan', () => {
     expect(
       declaredDependencies('[build-dependencies]\ntauri-plugin = { version = "2" }\n'),
     ).toEqual([
-      { name: 'tauri-plugin', kind: 'build-dependencies', target: null, form: 'inline', renamed: false },
+      {
+        name: 'tauri-plugin',
+        kind: 'build-dependencies',
+        target: null,
+        form: 'inline',
+        renamed: false,
+      },
     ]);
   });
 
@@ -852,7 +882,13 @@ describe('declaredDependencies — the manifest-side scan', () => {
     expect(
       declaredDependencies(`[target.'cfg(target_os = "macos")'.dependencies]\nobjc2 = "0.6.4"\n`),
     ).toEqual([
-      { name: 'objc2', kind: 'dependencies', target: 'cfg(target_os = "macos")', form: 'inline', renamed: false },
+      {
+        name: 'objc2',
+        kind: 'dependencies',
+        target: 'cfg(target_os = "macos")',
+        form: 'inline',
+        renamed: false,
+      },
     ]);
   });
 
@@ -862,15 +898,29 @@ describe('declaredDependencies — the manifest-side scan', () => {
     expect(
       declaredDependencies(`[target.'cfg(windows)'.build-dependencies]\ntauri-build = "2"\n`),
     ).toEqual([
-      { name: 'tauri-build', kind: 'build-dependencies', target: 'cfg(windows)', form: 'inline', renamed: false },
+      {
+        name: 'tauri-build',
+        kind: 'build-dependencies',
+        target: 'cfg(windows)',
+        form: 'inline',
+        renamed: false,
+      },
     ]);
   });
 
   it('reads a dotted cfg predicate without splitting inside the quotes', () => {
     expect(
-      declaredDependencies(`[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]\nobjc2 = "0.6"\n`),
+      declaredDependencies(
+        `[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]\nobjc2 = "0.6"\n`,
+      ),
     ).toEqual([
-      { name: 'objc2', kind: 'dependencies', target: 'cfg(all(target_os = "macos", target_arch = "aarch64"))', form: 'inline', renamed: false },
+      {
+        name: 'objc2',
+        kind: 'dependencies',
+        target: 'cfg(all(target_os = "macos", target_arch = "aarch64"))',
+        form: 'inline',
+        renamed: false,
+      },
     ]);
   });
 
@@ -885,7 +935,9 @@ describe('declaredDependencies — the manifest-side scan', () => {
   it('resolves a renamed dependency to the crate that would actually be linked', () => {
     // The key is an alias; `package` is the real crate. Matching the key would let
     // `tui = { package = "tauri" }` walk straight past a tauri-family check.
-    expect(declaredDependencies('[dependencies]\ntui = { package = "tauri", version = "2" }\n')).toEqual([
+    expect(
+      declaredDependencies('[dependencies]\ntui = { package = "tauri", version = "2" }\n'),
+    ).toEqual([
       { name: 'tauri', kind: 'dependencies', target: null, form: 'inline', renamed: true },
     ]);
   });
@@ -911,25 +963,42 @@ describe('F-08 shared migration algorithms', () => {
   const transfer = { name: 'datazen-data-transfer', dir: 'packages/data-transfer' };
 
   it('allows the driver contract and excludes dev-only domain dependencies', () => {
-    const result = run(fixture([...CORE, common, transfer], {
-      'datazen-migration-common': ['datazen-driver-api', 'datazen-data-transfer'],
-    }, [], { 'datazen-migration-common->datazen-data-transfer': 'dev' }));
+    const result = run(
+      fixture(
+        [...CORE, common, transfer],
+        {
+          'datazen-migration-common': ['datazen-driver-api', 'datazen-data-transfer'],
+        },
+        [],
+        { 'datazen-migration-common->datazen-data-transfer': 'dev' },
+      ),
+    );
     expect(result.violations.filter((v) => v.startsWith('F-08'))).toEqual([]);
     expect(result.evaluated.some((e) => e.rule === 'F-08')).toBe(true);
   });
 
   it('rejects a reverse dependency on a migration domain engine', () => {
-    const result = run(fixture([...CORE, common, transfer], {
-      'datazen-migration-common': ['datazen-data-transfer'],
-    }));
-    expect(result.violations.join('\n')).toMatch(/F-08.*datazen-migration-common.*→ datazen-data-transfer/);
+    const result = run(
+      fixture([...CORE, common, transfer], {
+        'datazen-migration-common': ['datazen-data-transfer'],
+      }),
+    );
+    expect(result.violations.join('\n')).toMatch(
+      /F-08.*datazen-migration-common.*→ datazen-data-transfer/,
+    );
   });
 
   it('rejects transport dependencies reached indirectly through driver-api', () => {
-    const result = run(fixture([...CORE, common], {
-      'datazen-migration-common': ['datazen-driver-api'],
-      'datazen-driver-api': ['tauri'],
-    }, [{ name: 'tauri' }]));
+    const result = run(
+      fixture(
+        [...CORE, common],
+        {
+          'datazen-migration-common': ['datazen-driver-api'],
+          'datazen-driver-api': ['tauri'],
+        },
+        [{ name: 'tauri' }],
+      ),
+    );
     expect(result.violations.join('\n')).toMatch(/F-08.*datazen-migration-common.*→ tauri/);
   });
 });

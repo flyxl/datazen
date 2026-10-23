@@ -8,14 +8,17 @@
 //! handle), not the Runtime's own behaviour.
 
 use super::*;
-use crate::services::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
+use crate::services::ports::{
+    ArtifactChunkReader, LogicalSchemaContextSource, PhysicalSchemaContextSource,
+    SessionConnectionLookup,
+};
 use crate::workflow::error::WorkflowError;
 use crate::workflow::resource_execution::{PreparedExecution, ResourceExecutionHost};
 use async_trait::async_trait;
-use datazen_application::dto::requests::OpenSessionRequest;
-use datazen_application::sessions::ConnectionUseCases;
 use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
+use datazen_platform_api::dto::requests::OpenSessionRequest;
+use datazen_platform_api::use_cases::ConnectionUseCases;
 use datazen_platform_api::{
     context::{DelegationRef, OwnerRef, RequestContext},
     dto::{idempotency::IdempotentOperation, profile::ProfileDraft, profile::ProfilePatch},
@@ -29,9 +32,44 @@ use datazen_runtime::{
     connection as rt,
     registry::{audit::CapabilityVersions, backend::*, SessionBackend},
 };
+/// The test fake answers the consumer-defined lookup with the real facade:
+/// the trait is local to this crate, so the implementor lives here and the
+/// production half never names the runtime facade type.
+impl SessionConnectionLookup for RuntimeConnectionUseCases {
+    fn connection_id_for_session(&self, session_id: &str) -> Option<String> {
+        RuntimeConnectionUseCases::connection_id_for_session(
+            self,
+            &rt::DbSessionId::new(session_id),
+        )
+        .map(|connection| connection.as_str().to_owned())
+    }
+}
+
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+
+/// 测试用结果块读取器：把消费者定义端口转发给真实 Runtime 门面。
+///
+/// 生产实现住在宿主（`src-tauri`），测试实现住在这里——两者都只依赖
+/// `ArtifactChunkReader` 这个本 crate 定义的 trait，所以共享层不必点名门面类型。
+struct RuntimeChunks(Arc<RuntimeConnectionUseCases>);
+#[async_trait::async_trait]
+impl ArtifactChunkReader for RuntimeChunks {
+    async fn read_chunk(
+        &self,
+        ctx: &datazen_platform_api::context::RequestContext,
+        artifact: &datazen_platform_api::id::ArtifactId,
+        index: datazen_platform_api::id::Counter,
+    ) -> Result<
+        datazen_platform_api::dto::execution::ResultChunk,
+        datazen_platform_api::error::ApiError,
+    > {
+        self.0
+            .read_artifact_chunk(ctx, artifact.clone(), index)
+            .await
+    }
+}
 
 const CONNECTION_ID: &str = "conn-1";
 const REVISION: u64 = 1;
@@ -366,7 +404,8 @@ impl ResourceExecutionHost for FakeHost {
         target: ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
         Ok(PreparedExecution {
-            runtime: self.runtime.clone(),
+            use_cases: self.runtime.clone(),
+            artifacts: std::sync::Arc::new(RuntimeChunks(self.runtime.clone())),
             context: context(),
             target,
         })

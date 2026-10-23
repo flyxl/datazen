@@ -25,8 +25,9 @@ pub use write_exec::execute_plan;
 use crate::error::FeatureError;
 use async_trait::async_trait;
 use datazen_driver_api::DatabaseDriver;
+use datazen_kernel::schema_cache::CachedColumns;
+use datazen_platform_api::use_cases::ConnectionUseCases;
 use datazen_platform_api::{dto::session::SessionHandle, id::Counter};
-use datazen_runtime::{application::RuntimeConnectionUseCases, schema_cache::CachedColumns};
 use std::sync::Arc;
 
 /// Catalog port: the host answers with the table's columns and primary key.
@@ -98,7 +99,8 @@ pub async fn commit_changes(
     facts: &ConnectionFacts,
     columns: &dyn TableColumnSource,
     manual_handle: Option<SessionHandle>,
-    runtime: Arc<RuntimeConnectionUseCases>,
+    runtime: Arc<dyn ConnectionUseCases>,
+    artifacts: Arc<dyn crate::services::ports::ArtifactChunkReader>,
     context: datazen_platform_api::context::RequestContext,
 ) -> Result<CommitPendingChangesResponse, FeatureError> {
     validate_table_context(&request.plan.table)?;
@@ -142,7 +144,7 @@ pub async fn commit_changes(
         &request.fingerprint,
         &loaded,
     )?;
-    execute_plan(driver, &plan, manual_handle, runtime, context).await
+    execute_plan(driver, &plan, manual_handle, runtime, artifacts, context).await
 }
 
 #[cfg(test)]
