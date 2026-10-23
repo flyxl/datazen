@@ -820,3 +820,270 @@ fn bound_insert_keeps_mysql_quoting_and_omits_unwritten_columns() {
     // of guessing a primary key.
     assert_eq!(driver.insert_returning_clause(&["id"]), None);
 }
+
+// ---------------------------------------------------------------------------
+// Live pool-accounting regressions (skip, not fail, when no TEST_MYSQL_* env).
+// ---------------------------------------------------------------------------
+
+fn live_mysql_config(id: &str) -> Option<ConnectionConfig> {
+    let host = std::env::var("TEST_MYSQL_HOST").ok()?;
+    let user = std::env::var("TEST_MYSQL_USER").ok()?;
+    let port = std::env::var("TEST_MYSQL_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(3306);
+    let database = std::env::var("TEST_MYSQL_DATABASE").unwrap_or_else(|_| "mysql".to_string());
+    let password = std::env::var("TEST_MYSQL_PASSWORD").ok();
+    let mut config: ConnectionConfig = serde_json::from_value(serde_json::json!({
+        "id": id,
+        "name": "mysql live pool regression",
+        "databaseType": "mysql",
+        "host": host,
+        "port": port,
+        "username": user,
+        "database": database,
+        "sslMode": "disable",
+        "connectionTimeout": 1,
+        "maxPoolSize": 10,
+    }))
+    .ok()?;
+    config.password = password;
+    Some(config)
+}
+
+fn skip_without_live_mysql(test: &str) -> bool {
+    if std::env::var("TEST_MYSQL_HOST").is_ok() && std::env::var("TEST_MYSQL_USER").is_ok() {
+        return false;
+    }
+    eprintln!(
+        "skipped {test}: set TEST_MYSQL_HOST and TEST_MYSQL_USER to run against a disposable MySQL"
+    );
+    true
+}
+
+async fn mysql_pool_counters(
+    driver: &MysqlDriver,
+    handle: &ConnectionHandle,
+) -> Option<(usize, usize)> {
+    let pools = driver.pools.read().await;
+    pools
+        .get(&handle.pool_id)
+        .map(|pool| (pool.size() as usize, pool.num_idle()))
+}
+
+/// A retained session owns the pool's only checkout. Catalog and admin reads
+/// must run on it; borrowing the pool would wait for a checkout that is never
+/// returned before disconnect. The first extra borrow is therefore refused,
+/// not the eleventh.
+#[tokio::test]
+async fn fixed_session_catalog_reads_use_the_pinned_connection() {
+    if skip_without_live_mysql("fixed_session_catalog_reads_use_the_pinned_connection") {
+        return;
+    }
+    let Some(config) = live_mysql_config("mysql-fixed-catalog-live") else {
+        return;
+    };
+    let database = config.database.clone().unwrap_or_else(|| "mysql".into());
+
+    let driver = MysqlDriver::new(false);
+    let handle = driver
+        .connect_fixed_session(&config)
+        .await
+        .expect("fixed MySQL session opens");
+    let baseline = mysql_pool_counters(&driver, &handle)
+        .await
+        .expect("fixed data pool exists");
+    assert_eq!(
+        baseline,
+        (1, 0),
+        "the retained session pins the pool's only connection"
+    );
+
+    let pool = driver
+        .pools
+        .read()
+        .await
+        .get(&handle.pool_id)
+        .cloned()
+        .expect("fixed pool exists");
+    // MySQL never rejects a cross-database catalog read on a pinned session:
+    // `information_schema` is filtered by TABLE_SCHEMA and needs no `USE`.
+    let cross_database_tables = driver
+        .get_tables(&handle, "information_schema", None)
+        .await
+        .expect("a pinned MySQL session can read another database's catalog");
+    assert!(
+        !cross_database_tables.is_empty(),
+        "information_schema should expose its own tables from the pinned session"
+    );
+    assert_eq!(
+        mysql_pool_counters(&driver, &handle).await,
+        Some(baseline),
+        "cross-database catalog read must not borrow a second checkout"
+    );
+
+    let extra_borrow =
+        tokio::time::timeout(std::time::Duration::from_secs(2), pool.acquire()).await;
+    assert!(
+        match extra_borrow {
+            Err(_) | Ok(Err(_)) => true,
+            Ok(Ok(_)) => false,
+        },
+        "a max-1 pool with its only connection pinned cannot lend another checkout"
+    );
+
+    for index in 1..=20u32 {
+        let call = async {
+            match index % 8 {
+                0 => driver.get_databases(&handle).await.map(|_| ()),
+                1 => driver
+                    .get_tables(&handle, &database, None)
+                    .await
+                    .map(|_| ()),
+                2 => driver
+                    .get_columns(&handle, "user", &database, None)
+                    .await
+                    .map(|_| ()),
+                3 => driver
+                    .get_all_columns(&handle, &database, None)
+                    .await
+                    .map(|_| ()),
+                4 => driver
+                    .get_table_schema(&handle, "user", &database, None)
+                    .await
+                    .map(|_| ()),
+                5 => driver.get_server_info(&handle).await.map(|_| ()),
+                6 => driver
+                    .physical_database_identity(&handle, &database)
+                    .await
+                    .map(|_| ()),
+                _ => driver.query(&handle, "SELECT 1").await.map(|_| ()),
+            }
+        };
+        let call = tokio::time::timeout(std::time::Duration::from_secs(3), call)
+            .await
+            .unwrap_or_else(|_| panic!("fixed-session statement {index} timed out"));
+        call.unwrap_or_else(|error| panic!("fixed-session statement {index} failed: {error}"));
+        assert_eq!(
+            mysql_pool_counters(&driver, &handle).await,
+            Some(baseline),
+            "statement {index} changed the fixed pool's checkout state"
+        );
+    }
+
+    let refusal_started = std::time::Instant::now();
+    let refusal = driver
+        .execute_command(&handle, "server_status_snapshot", serde_json::json!({}))
+        .await
+        .expect_err("admin commands are not available on a retained session");
+    assert!(
+        matches!(refusal, DriverError::NotSupported(_)),
+        "fixed admin command must fail fast, got {refusal:?}"
+    );
+    assert!(
+        refusal_started.elapsed() < std::time::Duration::from_secs(2),
+        "fixed admin command waited for the pinned pool instead of refusing"
+    );
+
+    driver
+        .disconnect(handle)
+        .await
+        .expect("fixed session disconnects");
+}
+
+/// Leased sessions (metadata included) may borrow from their pool, but every
+/// statement must return the checkout. Sizes 1 and 10 cover the metadata bound
+/// and the interactive default: a per-statement leak would stall on the second
+/// statement at size 1 and on the eleventh at size 10.
+#[tokio::test]
+async fn leased_catalog_reads_return_every_pool_checkout() {
+    if skip_without_live_mysql("leased_catalog_reads_return_every_pool_checkout") {
+        return;
+    }
+    for max_pool_size in [1u32, 10] {
+        let Some(mut config) = live_mysql_config(&format!("mysql-leased-{max_pool_size}")) else {
+            return;
+        };
+        config.max_pool_size = max_pool_size;
+        let database = config.database.clone().unwrap_or_else(|| "mysql".into());
+
+        let driver = MysqlDriver::new(false);
+        let handle = driver
+            .connect(&config)
+            .await
+            .expect("leased MySQL session opens");
+        driver
+            .get_tables(&handle, &database, None)
+            .await
+            .expect("warm-up listing");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let baseline = mysql_pool_counters(&driver, &handle)
+            .await
+            .expect("data pool exists");
+        assert_eq!(
+            baseline.1, baseline.0,
+            "warm-up returns every checkout at max={max_pool_size}"
+        );
+        assert!(baseline.0 <= max_pool_size as usize);
+
+        let mut first_failure = None;
+        for index in 1..=20u32 {
+            let call = async {
+                match index % 8 {
+                    0 => driver.get_databases(&handle).await.map(|_| ()),
+                    1 => driver
+                        .get_tables(&handle, &database, None)
+                        .await
+                        .map(|_| ()),
+                    2 => driver
+                        .get_columns(&handle, "user", &database, None)
+                        .await
+                        .map(|_| ()),
+                    3 => driver
+                        .get_all_columns(&handle, &database, None)
+                        .await
+                        .map(|_| ()),
+                    4 => driver
+                        .get_table_schema(&handle, "user", &database, None)
+                        .await
+                        .map(|_| ()),
+                    5 => driver.get_server_info(&handle).await.map(|_| ()),
+                    6 => driver
+                        .physical_database_identity(&handle, &database)
+                        .await
+                        .map(|_| ()),
+                    _ => driver.query(&handle, "SELECT 1").await.map(|_| ()),
+                }
+            };
+            let call = tokio::time::timeout(std::time::Duration::from_secs(3), call)
+                .await
+                .unwrap_or_else(|_| panic!("statement {index} timed out at max={max_pool_size}"));
+            if let Err(error) = call {
+                first_failure = Some((index, error.to_string()));
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            let counters = mysql_pool_counters(&driver, &handle)
+                .await
+                .expect("data pool exists");
+            assert_eq!(
+                counters.1, counters.0,
+                "statement {index} kept a pool checkout at max={max_pool_size} (size={}, idle={})",
+                counters.0, counters.1
+            );
+            assert!(
+                counters.0 <= max_pool_size as usize,
+                "pool grew past configured max at max={max_pool_size}: {counters:?}"
+            );
+        }
+        assert_eq!(
+            first_failure, None,
+            "max={max_pool_size}: first failing statement {first_failure:?}"
+        );
+
+        driver
+            .disconnect(handle)
+            .await
+            .expect("leased session disconnects");
+    }
+}

@@ -7,10 +7,9 @@ impl MysqlDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<ServerInfo, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        let mut connection = crate::session_connection::for_session(self, handle).await?;
         let row = sqlx::query("SELECT version()")
-            .fetch_one(pool)
+            .fetch_one(&mut *connection)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let version: String = row.try_get(0).unwrap_or_default();
@@ -30,10 +29,9 @@ impl MysqlDriver {
         handle: &ConnectionHandle,
         _database: &str,
     ) -> Result<Option<String>, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        let mut connection = crate::session_connection::for_session(self, handle).await?;
         let Ok(database_row) = sqlx::query("SELECT DATABASE() AS database_name")
-            .fetch_one(pool)
+            .fetch_one(&mut *connection)
             .await
         else {
             return Ok(None);
@@ -44,7 +42,10 @@ impl MysqlDriver {
         };
 
         let cluster_scope = if self.is_mariadb {
-            let Ok(rows) = sqlx::query("SHOW GLOBAL STATUS").fetch_all(pool).await else {
+            let Ok(rows) = sqlx::query("SHOW GLOBAL STATUS")
+                .fetch_all(&mut *connection)
+                .await
+            else {
                 return Ok(None);
             };
             let mut statuses = HashMap::new();
@@ -69,14 +70,17 @@ impl MysqlDriver {
         } else {
             let Ok(group_row) =
                 sqlx::query("SELECT @@GLOBAL.group_replication_group_name AS group_name")
-                    .fetch_one(pool)
+                    .fetch_one(&mut *connection)
                     .await
             else {
                 // Older or non-GR MySQL builds may not expose the variable at
                 // all. Only fall back when SHOW PLUGINS proves GR is absent or
                 // inactive; an active plugin with an unreadable variable is
                 // ambiguous and must fail closed.
-                let Ok(plugin_rows) = sqlx::query("SHOW PLUGINS").fetch_all(pool).await else {
+                let Ok(plugin_rows) = sqlx::query("SHOW PLUGINS")
+                    .fetch_all(&mut *connection)
+                    .await
+                else {
                     return Ok(None);
                 };
                 let mut plugin_statuses = HashMap::new();
@@ -89,7 +93,10 @@ impl MysqlDriver {
                     plugin_statuses.insert(name.to_ascii_lowercase(), status);
                 }
                 return match mysql_group_replication_plugin_active(Some(&plugin_statuses)) {
-                    Some(false) => self.physical_database_node_identity(pool, &database).await,
+                    Some(false) => {
+                        self.physical_database_node_identity(&mut connection, &database)
+                            .await
+                    }
                     Some(true) | None => Ok(None),
                 };
             };
@@ -106,7 +113,7 @@ impl MysqlDriver {
                 let membership = sqlx::query(
                     "SELECT MEMBER_STATE AS member_state FROM performance_schema.replication_group_members WHERE MEMBER_ID = @@server_uuid",
                 )
-                .fetch_optional(pool)
+                .fetch_optional(&mut *connection)
                 .await;
                 match membership {
                     Ok(None) => mysql_group_replication_scope(Some(group_name), Ok(None)),
@@ -130,7 +137,8 @@ impl MysqlDriver {
             ))),
             ClusterScopeDecision::Unknown => Ok(None),
             ClusterScopeDecision::NodeFallback => {
-                self.physical_database_node_identity(pool, &database).await
+                self.physical_database_node_identity(&mut connection, &database)
+                    .await
             }
         }
     }
