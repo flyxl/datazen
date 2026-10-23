@@ -109,7 +109,12 @@ fn log_ipc_identity(state: &AppState, command: &'static str) {
 pub(crate) async fn get_connections_impl(
     state: &AppState,
 ) -> Result<Vec<ConnectionConfig>, CommandError> {
-    let mut list = state.store.get_connections().await;
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
+    let mut list = crate::commands::port_call::port_cmd(
+        services.connections.list(&scope).await,
+        "get_connections",
+    )?;
     for config in &mut list {
         redact_connection_secrets(config);
     }
@@ -124,17 +129,25 @@ pub(crate) async fn save_connection_impl(
 ) -> Result<(), CommandError> {
     let mut config = config;
     tracing::info!(id = %config.id, name = %config.name, "save_connection");
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
     if !clear_missing_credentials {
-        if let Some(saved) = state.store.get_connection(&config.id).await {
+        // `None` 也是合法输入：新建连接时本来就没有「已保存的那一份」。
+        let saved = crate::commands::port_call::port_cmd(
+            services.connections.get(&scope, &config.id).await,
+            "save_connection",
+        )?;
+        if let Some(saved) = saved {
             merge_missing_connection_secrets(&mut config, saved);
         }
     }
     let connection_id = config.id.clone();
-    state
-        .store
-        .save_connection(config)
-        .await
-        .cmd_err("save_connection")?;
+    crate::commands::port_call::port_cmd(
+        services.connections.save(&scope, config).await,
+        "save_connection",
+    )?;
+    // 保存新配置后让该 profile 的旧会话退休（PR #116 的语义）：端口只负责落盘，
+    // 「旧连接串已经作废」这件事必须由命令层显式触发，否则用户改完密码仍复用旧会话。
     crate::services::migration_endpoint::retire_sessions_for_profile(state, &connection_id).await;
     Ok(())
 }
@@ -145,19 +158,20 @@ pub(crate) async fn duplicate_connection_impl(
     new_id: String,
     new_name: String,
 ) -> Result<(), CommandError> {
-    let mut config = state
-        .store
-        .get_connection(&source_id)
-        .await
-        .ok_or_else(|| CommandError::NotFound(format!("connection '{source_id}' not found")))?;
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
+    let mut config = crate::commands::port_call::port_cmd(
+        services.connections.get(&scope, &source_id).await,
+        "duplicate_connection",
+    )?
+    .ok_or_else(|| CommandError::NotFound(format!("connection '{source_id}' not found")))?;
     config.id = new_id;
     config.name = new_name;
     config.last_connected_at = None;
-    state
-        .store
-        .save_connection(config)
-        .await
-        .cmd_err("duplicate_connection")
+    crate::commands::port_call::port_cmd(
+        services.connections.save(&scope, config).await,
+        "duplicate_connection",
+    )
 }
 
 pub(crate) async fn delete_connection_impl(
@@ -165,11 +179,12 @@ pub(crate) async fn delete_connection_impl(
     id: String,
 ) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_connection");
-    state
-        .store
-        .delete_connection(&id)
-        .await
-        .cmd_err("delete_connection")
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
+    crate::commands::port_call::port_cmd(
+        services.connections.delete(&scope, &id).await,
+        "delete_connection",
+    )
 }
 
 pub(crate) async fn test_connection_impl(
@@ -177,7 +192,13 @@ pub(crate) async fn test_connection_impl(
     config: ConnectionConfig,
 ) -> Result<ServerInfo, CommandError> {
     let mut config = config;
-    if let Some(saved) = state.store.get_connection(&config.id).await {
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
+    let saved = crate::commands::port_call::port_cmd(
+        services.connections.get(&scope, &config.id).await,
+        "test_connection",
+    )?;
+    if let Some(saved) = saved {
         merge_missing_connection_secrets(&mut config, saved);
     }
     tracing::info!(
@@ -188,8 +209,6 @@ pub(crate) async fn test_connection_impl(
         ssh = ?config.ssh_tunnel.as_ref().map(|s| format!("{}@{}:{}", s.username, s.host, s.port)),
         "test_connection"
     );
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
     let result = crate::tunnel::test_connection(
         &*services.tunnels,
         &scope,
@@ -209,12 +228,18 @@ pub(crate) async fn connect_impl(
 ) -> Result<ConnectionSessionRef, CommandError> {
     log_ipc_identity(state, "connect");
     tracing::info!(%connection_id, "connect");
-    let config = state
-        .store
-        .get_connection(&connection_id)
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
+    let config = crate::commands::port_call::port_cmd(
+        services.connections.get(&scope, &connection_id).await,
+        "connect",
+    )?
+    .ok_or_else(|| CommandError::NotFound(format!("connection '{connection_id}' not found")))?;
+    if let Err(e) = services
+        .connections
+        .touch_last_connected_at(&scope, &connection_id)
         .await
-        .ok_or_else(|| CommandError::NotFound(format!("connection '{connection_id}' not found")))?;
-    if let Err(e) = state.store.touch_last_connected_at(&connection_id).await {
+    {
         tracing::warn!(%connection_id, error = %e, "failed to persist last_connected_at");
     }
     // No database is a valid profile: the session opens with an empty
@@ -247,16 +272,24 @@ pub(crate) async fn connect_dedicated_impl(
     // An explicit `database` pins the session; otherwise fall back to the
     // profile. Both may be unset — the driver then resolves its own default,
     // exactly as on the shared `connect` path.
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
     let database =
         match crate::services::migration_endpoint::normalize_database(database.as_deref()) {
             Some(database) => Some(database),
-            None => state
-                .store
-                .get_connection(&connection_id)
-                .await
-                .and_then(|config| config.database),
+            // 取不到配置（越组织 / 已被删除）时保持 `None`：驱动会解析自己的默认库，
+            // 与「配置里没写 database」是同一档语义。
+            None => crate::commands::port_call::port_cmd(
+                services.connections.get(&scope, &connection_id).await,
+                "connect_dedicated",
+            )?
+            .and_then(|config| config.database),
         };
-    if let Err(e) = state.store.touch_last_connected_at(&connection_id).await {
+    if let Err(e) = services
+        .connections
+        .touch_last_connected_at(&scope, &connection_id)
+        .await
+    {
         tracing::warn!(%connection_id, error = %e, "failed to persist last_connected_at");
     }
     let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
@@ -569,11 +602,12 @@ pub async fn reorder_connections(
     ordered_ids: Vec<String>,
 ) -> Result<(), CommandError> {
     tracing::info!(count = ordered_ids.len(), "reorder_connections");
-    state
-        .store
-        .reorder_connections(ordered_ids)
-        .await
-        .cmd_err("reorder_connections")
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(&state)?;
+    crate::commands::port_call::port_cmd(
+        services.connections.reorder(&scope, ordered_ids).await,
+        "reorder_connections",
+    )
 }
 
 #[tauri::command]
@@ -1262,5 +1296,39 @@ mod coverage_tests {
             .map(|c| c.id)
             .collect();
         assert_eq!(order, vec!["c", "a", "b"]);
+    }
+
+    /// 连接目录族（§5.1.2 第六步第三条命令族）的生产半边不直读宿主 store。
+    ///
+    /// 计数而不是「有没有」：这 8 条命令原本各有 1 处 `state.store`，只要有人把
+    /// 某条换回宿主 store，这里会先红。`duplicate_connection_impl` 与
+    /// `connect_dedicated_impl` 里的 `.store` 曾经跨行书写，所以断言不能用「逐行 grep」
+    /// 的口径来写。
+    #[test]
+    fn the_command_shell_reads_the_aggregate_not_the_host_store() {
+        let source = include_str!("connection.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+        assert_eq!(
+            production.matches("state.store").count(),
+            0,
+            "连接目录命令必须走 ApplicationServices 的 ConnectionCatalog 端口"
+        );
+        assert_eq!(
+            production.matches("require_application_services").count(),
+            8,
+            "列表 / 保存 / 复制 / 删除 / 测试连接 / 连接 / 指定库连接 / 重排 各取一次聚合"
+        );
+        // 文本口径：`services.connections` 与 `services\n.connections` 两种排版都算，
+        // 所以这里数的是「端口被取用的次数」而不是「同一行出现次数」。
+        assert_eq!(
+            production.matches("connections.list").count()
+                + production.matches("connections.get").count()
+                + production.matches("connections.save").count()
+                + production.matches("connections.delete").count()
+                + production.matches("connections.reorder").count()
+                + production.matches("connections\n").count(),
+            12,
+            "端口调用点：列表 1、保存 2（取旧配置 + 落盘）、复制 2、删除 1、测试连接 1、             连接 2（取配置 + 记时间戳）、指定库连接 2、重排 1"
+        );
     }
 }

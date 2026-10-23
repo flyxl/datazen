@@ -269,8 +269,16 @@ async fn write_connections_export(
     password: &str,
     dest: PathBuf,
 ) -> Result<u32, CommandError> {
-    let mut connections = state.store.get_connections().await;
-    let groups = state.store.get_groups().await;
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
+    let mut connections = crate::commands::port_call::port_cmd(
+        services.connections.list(&scope).await,
+        "export_connections",
+    )?;
+    let groups = crate::commands::port_call::port_cmd(
+        services.connections.groups(&scope).await,
+        "export_connections",
+    )?;
     let count = connections.len() as u32;
 
     materialize_tunnel_refs(state, &mut connections).await;
@@ -373,17 +381,34 @@ pub(crate) async fn apply_connection_import_impl(
     skipped: Vec<String>,
     source_format: String,
 ) -> Result<ImportConnectionsResult, CommandError> {
-    let existing = state.store.get_connections().await;
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
+    let existing = crate::commands::port_call::port_cmd(
+        services.connections.list(&scope).await,
+        "import_connections",
+    )?;
     let existing_ids: HashSet<String> = existing.iter().map(|c| c.id.clone()).collect();
     let (imported, overwritten) = merge_connection_import_stats(&existing_ids, &incoming);
 
     for conn in incoming {
-        state.store.save_connection(conn).await?;
+        crate::commands::port_call::port_cmd(
+            services.connections.save(&scope, conn).await,
+            "import_connections",
+        )?;
     }
 
-    let existing_groups = state.store.get_groups().await;
+    let existing_groups = crate::commands::port_call::port_cmd(
+        services.connections.groups(&scope).await,
+        "import_connections",
+    )?;
     let (merged_groups, groups_added) = merge_group_lists(&existing_groups, &incoming_groups);
-    state.store.save_groups(merged_groups).await?;
+    crate::commands::port_call::port_cmd(
+        services
+            .connections
+            .save_groups(&scope, merged_groups)
+            .await,
+        "import_connections",
+    )?;
 
     Ok(ImportConnectionsResult {
         imported,
