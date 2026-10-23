@@ -44,9 +44,13 @@ impl DerefMut for SessionConnection {
 /// Borrow the connection a statement for `handle` must run on.
 ///
 /// Pinned wins over the pool: borrowing from a retained session's pool would
-/// wait for the checkout that the retained session itself is holding. A
-/// retained session is also bound to its own database, so a foreign target is
-/// rejected here instead of quietly reading the wrong catalog.
+/// wait for the checkout that the retained session itself is holding.
+///
+/// A retained session is bound to one database, so a **foreign** target cannot
+/// use the pinned connection. It must not be refused either: the host legitimately
+/// reads another database through the same session (the ER diagram does), and
+/// `pool_for_target` already keeps a separate pool per (session, database), so
+/// borrowing there cannot wait on the checkout the session itself holds.
 pub(crate) async fn for_session(
     driver: &PostgresDriver,
     handle: &ConnectionHandle,
@@ -55,12 +59,11 @@ pub(crate) async fn for_session(
     let pinned = driver.transactions.lock().await.get(&handle.id).cloned();
     if let Some(pinned) = pinned {
         let database = database.trim();
-        if !database.is_empty() && !driver.is_active_database(handle, database).await {
-            return Err(DriverError::TransactionError(format!(
-                "cannot read database '{database}' through a session bound to another database"
-            )));
+        // Blank means "wherever the session is"; that is exactly the pinned
+        // connection. A foreign database falls through to its own pool below.
+        if database.is_empty() || driver.is_active_database(handle, database).await {
+            return Ok(SessionConnection::Pinned(pinned.lock_owned().await));
         }
-        return Ok(SessionConnection::Pinned(pinned.lock_owned().await));
     }
 
     let pool = driver.pool_for_target(handle, database).await?;
