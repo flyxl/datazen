@@ -103,7 +103,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - 端口是**构造参数**而不是 `Option`：漏注入是**编译错误**，不是运行时的 `None`。构造函数对桌面与将来的 web 形态**完全相同**，只有传入的 `Arc<dyn …>` 实现不同。
 - `ApplicationServices::settings_service()` 让形态中立的设置用例（`packages/application/src/settings.rs` 的 `SettingsService`）直接跑在聚合持有的端口上，不再借用宿主的 store。
 - `AssemblyState::missing_steps()` 里 §6.2-7 的目标状态由 `AwaitingApplicationServices` 改为 `FullyWired`——旧值与当前档位同级，导致「补完第 7 步」在机器上永远不前进。
-- 机器可校验的不变式：`packages/application` 侧 6 条（形状 3 条 + 行为 3 条），宿主侧 5 条（装配状态机 2 条 + `AppState` 形状 3 条）。
+- 机器可校验的不变式：`packages/application` 侧 6 条（形状 3 条 + 行为 3 条），宿主侧 7 条（装配状态机 2 条 + `AppState` 形状 3 条 + 装配降级 2 条，见 §5.1.2 的 D1 裁定）。
 
 **依赖边结论（为什么 application 层不能直接持有领域包端口）**：`datazen-runtime` 依赖 `datazen-application`，而 `datazen-schema-diff` / `datazen-data-sync` / `datazen-data-transfer` 都依赖 `datazen-runtime`。因此 `application → 领域包` 会闭成 Cargo 环（`cargo metadata` 报 `cyclic package dependency`），门禁连跑都跑不起来。F-02/F-03/F-05 只禁宿主、传输框架与前端标识，**不禁**这条边——挡住它的是依赖图本身，不是门禁。F-04 另外禁止 `platform-api` 依赖领域包，因此「把领域端口搬进 `platform-api`」这条路也要靠**新写窄端口**而不是靠依赖。结论：**领域端口只能由宿主在组装期包成 `platform-api` 层的窄端口再注入**。这一条已写成断言（`the_crate_does_not_depend_on_the_domain_packages`）。
 
@@ -131,7 +131,20 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 独立验收：新增断言「`config.rs` 生产源码里 `state.store.as_ref()` 出现 0 次」；`cargo test -p datazen --lib` 全绿；IPC 签名冻结表（`src-tauri/src/platform/ipc.rs`）不变。
 
-风险（**必须先裁定**）：今天 `config.rs` 走 `state.store`，在 platform 装配失败时仍然可用；改走聚合后，聚合取不到时设置命令会从「可用」变成 `NotConfigured`。因此本期的**前置条件**是先把「platform 装配失败时聚合是否存在」这件事定下来：要么把 `ApplicationServices` 的构造从 `PlatformAdapter::inject` 提到装配根（§6.2 第 7 步本来就排在第 8 步之前），要么由产品裁定这个失败面变化并写进本节。**不得**在本期顺手改失败面。
+#### 前置裁定 D1（已落地）：可选接线降级，内核不受牵连
+
+第二期的风险是「设置从可用变 `NotConfigured`」。裁定结果与理由如下——**已实现为事实**，不是待办：
+
+- **做法**：不把 `ApplicationServices` 的构造搬到 `bootstrap/app_state.rs`，而是把 `PlatformAdapter::inject` 里两项**可失败**的接线降级为「缺席能力」：执行身份解析器（`DesktopIdentityResolver::for_desktop`）与结果制品存储（`{dataDir}/result-artifacts`）。它们失败时各自只关闭自己那一项——对应访问器继续报 `ServiceUnavailable`，缺席项由 `PlatformAdapter::degraded_capabilities()` 可枚举，启动各记一条 `warn!`。内核（`profiles` / `policy` / `backend` / `live` / `runtime` / `target_metadata` / `ApplicationServices`）没有失败分支，一装好 `require_application_services()` 就可用。`inject` 的 `Err` 因此只剩「同一进程重复注入」这类装配冲突。
+- **为什么不搬到装配根**：聚合的构造材料（`DesktopIdentity`、`DesktopSessionBackend`、`OnceLock` 安装点、Backend 的 publisher/export 接线）全在 adapter 内；搬到 `finish_app_state` 只是把同一段代码挪到上游再传回来，**不改变任何一个失败分支**。真正决定失败面的是「可失败项是否中止整体装配」，不是构造发生在哪一层。另外，搬过去会诱使把聚合塞进 `AppState`，撞上 `app_state_does_not_hold_the_application_services` 守卫。
+- **实测依据（说明旧形状的失败半径严重超标）**：`identity_resolver()` 在**生产路径零调用方**（全仓只有 `adapter_tests` 调它），而 `master_key_bytes()` 读的是 `store.encryption_key_b64()`——主密钥在 `DesktopRepository::init_with_path` 里已经生成并持有，因此 `for_desktop` 在 store 就绪后**几乎不可失败**；真实可失败的只有制品目录（`create_dir_all` 撞上同名文件或不可写）。旧形状下这两者任一失败都会让 `profiles` / `runtime` / `services` 一个都装不上，把「制品存不了」放大成「所有依赖平台的 IPC 都是 `NotConfigured`」。
+- **残留失败面（写清，不得再悄悄扩大）**：`DesktopIdentity::from_desktop_user` 失败（取不到本机用户名）时没有 adapter，设置命令仍是 `NotConfigured`。这比旧路径（设置直接读 store）多出的**唯一**一档。接受理由：该档里连接列表、建连、工作流、AI 全部 `NotConfigured`，应用实质不可用；为这一档单留一条宿主直读 `store` 的路径，等于重新引入第二事实源。可逆性：将来若产品要求「无身份也能改设置」，正确做法是给聚合增加一条不依赖身份的构造路径（`sessions` 换成惰性端口），而不是回到 `state.store`。
+
+可执行证据：`cargo test -p datazen --lib -- platform::adapter`（17 passed），其中
+`injection_wires_the_storage_ports_into_the_application_services`（顺利装配时降级表为空、身份解析器在场）、
+`optional_wiring_failure_degrades_only_its_own_capability`（制品目录被同名文件占住时：`inject` 返回 `Ok`、
+`require_application_services()` 可用、`degraded_capabilities()` 只列那一项、`artifact_store()` 报
+`ServiceUnavailable` 且 IPC 表面仍收敛到 `NotConfigured`）。
 
 **第三步——隧道定义仓储归位**
 
