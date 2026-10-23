@@ -754,17 +754,60 @@ if (INSTANCE_COUNT > 1) {
       });
     });
 
-  /** SIGTERM → （必要时）SIGKILL，并等到端口真的释放，避免下一个 spec 连到僵尸进程。 */
+  /**
+   * SIGTERM → （必要时）SIGKILL，并等到端口真的释放。
+   *
+   * 关键不是「发了信号」，而是「下一个 spec 起来时 4445 已经没有别人在听」：
+   * 旧进程只要还占着端口，新进程的 WebDriver 线程就会 bind 失败（AddrInUse），
+   * 于是 WDIO 连到的是**上一个 spec 的旧进程**——串扰原样回来，而且失败会被
+   * 记在当前这个无辜的 spec 头上。
+   */
+  const portOpen = () =>
+    new Promise((resolve) => {
+      const sock = createConnection({ port: WD_PORT, host: '127.0.0.1' }, () => {
+        sock.destroy();
+        resolve(true);
+      });
+      sock.on('error', () => resolve(false));
+    });
+
+  const killPortHolders = () => {
+    // 兜底：进程杀了但端口仍被占时，把监听者找出来杀掉。lsof 不在也只是一条日志。
+    try {
+      const out = execSync(`lsof -nP -iTCP:${WD_PORT} -sTCP:LISTEN -t`, {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+        .toString()
+        .trim();
+      for (const pid of out.split('\n').filter(Boolean)) {
+        log(`port ${WD_PORT} still held by pid ${pid}; killing it`);
+        try {
+          process.kill(Number(pid), 'SIGKILL');
+        } catch {
+          /* already gone */
+        }
+      }
+    } catch {
+      /* lsof missing or nothing to kill */
+    }
+  };
+
   const stopAppInstance = async (proc) => {
     if (!proc || proc.exitCode !== null) return;
-    const closed = new Promise((resolve) => proc.once('close', resolve));
+    const closed = new Promise((resolve) =>
+      proc.once('close', (code, signal) => resolve({ code, signal })),
+    );
     try {
       proc.kill('SIGTERM');
     } catch {
       /* already gone */
     }
-    await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 5000))]);
-    if (proc.exitCode === null) {
+    const outcome = await Promise.race([
+      closed,
+      new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
+    ]);
+    if (outcome === null) {
+      log('app did not exit within 8s of SIGTERM; sending SIGKILL');
       try {
         proc.kill('SIGKILL');
       } catch {
@@ -773,17 +816,52 @@ if (INSTANCE_COUNT > 1) {
       await closed;
     }
     const started = Date.now();
-    while (Date.now() - started < 10000) {
-      const free = await new Promise((resolve) => {
-        const sock = createConnection({ port: WD_PORT, host: '127.0.0.1' }, () => {
-          sock.destroy();
-          resolve(false);
-        });
-        sock.on('error', () => resolve(true));
-      });
-      if (free) return;
+    while (Date.now() - started < 15000) {
+      if (!(await portOpen())) return;
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
+    log(`port ${WD_PORT} is still listening 15s after the app exited`);
+    killPortHolders();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  };
+
+  /**
+   * 起一个应用进程，并确认 WebDriver 端口真的是**这个**进程在听。
+   *
+   * 旧进程没退干净时，新进程会 bind 失败而旧进程继续服务；这种错位必须在这里
+   * 被抓住并重试，不能让整个 spec 悄悄跑在上一轮的进程上。
+   */
+  const startAppVerified = async (label) => {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const proc = startAppInstance({
+        binaryPath: appBinary,
+        dataDir: dataDirs[0],
+        port: WD_PORT,
+        workerIndex: 0,
+        onOutput: (chunk) => {
+          if (chunk.toString().includes('Failed to bind to address')) proc.__bindFailed = true;
+          onAppOutput(chunk);
+        },
+      });
+      appProcesses.push(proc);
+      try {
+        await waitForPort(WD_PORT, '127.0.0.1', 30000);
+      } catch (err) {
+        log(`${label}: app did not open port ${WD_PORT}: ${err.message}`);
+        await stopAppInstance(proc);
+        continue;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      if (!proc.__bindFailed) return proc;
+      log(
+        `${label}: port ${WD_PORT} was still owned by a previous app (attempt ${attempt}); ` +
+          'killing the leftovers and retrying',
+      );
+      killPortHolders();
+      await stopAppInstance(proc);
+    }
+    die(`${label}: could not obtain port ${WD_PORT} for a fresh app process`);
+    return null;
   };
 
   const specs = collectIsolatedSpecs();
@@ -793,20 +871,10 @@ if (INSTANCE_COUNT > 1) {
     const spec = specs[i];
     log(`[${i + 1}/${specs.length}] ${spec}`);
     if (i > 0) resetAppDataDir(dataDirs[0], false);
-    const proc = startAppInstance({
-      binaryPath: appBinary,
-      dataDir: dataDirs[0],
-      port: WD_PORT,
-      workerIndex: 0,
-      onOutput: onAppOutput,
-    });
-    appProcesses.push(proc);
+    const proc = await startAppVerified(spec);
     let code = 1;
     try {
-      await waitForPort(WD_PORT, '127.0.0.1', 30000);
       code = await runWdioOnce(spec);
-    } catch (err) {
-      log(`app did not come up for ${spec}: ${err.message}`);
     } finally {
       await stopAppInstance(proc);
       const idx = appProcesses.indexOf(proc);

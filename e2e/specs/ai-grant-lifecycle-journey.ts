@@ -1,5 +1,5 @@
 import { browser, expect } from '@wdio/globals';
-import { ensureMainWindowForIpc, invokeBackend } from '../helpers.js';
+import { E2E_PG_CONN_NAME, ensureMainWindowForIpc, invokeBackend } from '../helpers.js';
 
 /**
  * P6 §14.4 / CM-53 — the AI editor-session grant lifecycle, driven through the
@@ -30,7 +30,9 @@ interface OpenSessionReceipt {
   attachmentToken: string;
 }
 
-const SEEDED_CONNECTION_NAME = process.env.DATAZEN_E2E_PG_NAME ?? 'E2E Postgres';
+// 共享种子（wdio.conf.ts 的 before → seedDefaultPgConnection）建的是
+// E2E_PG_CONN_NAME；这里跟它对齐，不再假设一个历史上用过的名字。
+const SEEDED_CONNECTION_NAME = process.env.DATAZEN_E2E_PG_NAME ?? E2E_PG_CONN_NAME;
 
 async function seededConnectionId(): Promise<{ id: string; database: string }> {
   const connections =
