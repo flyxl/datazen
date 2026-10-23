@@ -123,15 +123,17 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 风险：`ApplicationServices` 多了必填构造参数 ⇒ 将来任何新的形态都必须提供这两个端口的实现；漏了编译不过，这是**期望**的失败面。注入的实例必须与宿主持有的是同一份（`Arc::ptr_eq` 断言已钉住），否则出现两份事实。
 
-**第二步——设置用例归位到 application 层**
+**第二步（已落地 2026-10-23）——设置用例归位到 application 层**
 
-搬走：`src-tauri/src/commands/config.rs` 的两处 `SettingsService::new(state.store.as_ref())`（`get_settings` / `save_settings`）改为经 `ApplicationServices::settings_service()` 取用。
+搬走：`src-tauri/src/commands/config.rs` 的两处 `SettingsService::new(state.store.as_ref())`（`get_shared_settings` / `save_shared_settings`）改为 `crate::platform::ipc::require_application_services(state.inner())?` + `ApplicationServices::settings_service()`；错误映射逐字不变（`Internal("Unable to read settings")` / `Validation(message)` / `Internal("Unable to persist settings")`）。`save_shared_settings` 尾部的 `redis_flush_gate::sync_from_settings(&state.store.get_settings().await)` **保留**：它读的是宿主 `AppSettings`，不是形态中立的共享设置，不在本期范围。
 
-`AppState` 少掉：**0 个字段**；`state.store` 的访问数从 145 减到 **143**。
+`AppState` 少掉：**0 个字段**。生产半边的 `state.store.` 计数（口径：`src-tauri/src` 下 `.rs`、排除 `*_tests.rs`、在首个 `#[cfg(test)]` 处截断）从 **115 减到 113**，其中 `commands/config.rs` 由 **14 减到 12**。早先本节写的「145 → 143」是**含测试半边的宽口径**（同一时刻宽口径实测亦为 143），不可与本期数字直接相减。
 
-独立验收：新增断言「`config.rs` 生产源码里 `state.store.as_ref()` 出现 0 次」；`cargo test -p datazen --lib` 全绿；IPC 签名冻结表（`src-tauri/src/platform/ipc.rs`）不变。
+独立验收（已实测）：`cargo test -p datazen --lib` **1458 passed / 0 failed**（EXIT=0）；新增 `commands::config::tests::shared_settings_commands_read_the_aggregate_not_the_host_store`——断言生产半边里 `SettingsService::new(` 出现 0 次、`state.store.as_ref()` 出现 0 次、`settings_service()` 出现 2 次、`state.store` 出现 12 次；`src-tauri/src/platform/ipc.rs` 的 15 条 `FROZEN_SIGNATURES` 一字未改。
 
-#### 前置裁定 D1（已落地）：可选接线降级，内核不受牵连
+失败面：按下面的 D1 裁定，聚合取不到时这两条命令报 `NotConfigured`（此前直读 store 恒可用），残留失败面只有 `DesktopIdentity::from_desktop_user` 失败那一档。
+
+**第二步前置裁定 D1（已落地）：可选接线降级，内核不受牵连**
 
 第二期的风险是「设置从可用变 `NotConfigured`」。裁定结果与理由如下——**已实现为事实**，不是待办：
 
