@@ -255,6 +255,22 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 独立验收：每期一条「该命令族的生产源码里不再出现 `state.store`」的断言 + `cargo test -p datazen --lib` 全绿 + 该命令族的 IPC 载荷冻结断言不变 + E2E。
 
+**剩余 93 处的分布与难度（2026-10-23 实测，生产半边口径）**——这张表的作用是防止下一个人
+把「还剩 93 处」误当成「再搬几个文件就好」：
+
+| 类别 | 处数 | 主要文件 | 卡在哪（不是卡在懒，是卡在缺用例） |
+|---|---|---|---|
+| 设置与路径 | 12 + 3 + 2 + 1 | `commands/config.rs`、`app_archive.rs`、`window.rs`、`encryption_key.rs` | `SettingsRepository` 只有 `SharedSettings`；命令要的是完整 `AppSettings`（主题/键位/执行策略）与 `data_dir()`。前者可扩端口，后者是 §5.1.3 形态专属。 |
+| AI 配置 | 17 | `ai/generate.rs` 7、`ai/util.rs` 3、`ai/config.rs` 3、`ai/chat.rs` 3、`ai/grant.rs` 1 | `ai_config.enc` 是桌面落盘；要抽的是 `AiConfigurationService`（profile 选择回退规则已在 ai-api），而不是把加密文件路径搬进中立层。 |
+| 连接目录 | 11 | `connection.rs` 5、`connection_import/ipc.rs` 6 | 需要 `ConnectionCatalog` 用例：`ProfileRepository` 给的是 `Profile`/`ProfileView`，命令要的是 `ConnectionConfig`（driver-api 类型，`application` 不得依赖）。要么在宿主做映射并让端口返回 `ConnectionConfig` 的形态中立投影，要么新增 `ConnectionGroupRepository`。 |
+| 仪表盘残留 | 6 | `commands/dashboard.rs` | **已有结论，不搬**：组件创建（要 `AppDb::get_workflow` + `WorkflowRegistry`）、导入导出（文件对话框 + `&AppDb` 签名）、手工执行（宿主库重载）。 |
+| 长尾 | 47 | 38 个文件里各 1–3 处 | 逐个看：有的是 §5.1.3 形态专属（`data_dir`、钥匙串、窗口状态），有的只差一个端口方法。 |
+
+结论：**从 93 到 0 不是机械搬迁，而是若干「新用例服务 + 新端口」的设计工作**（`AppSettings` 端口、
+`AiConfigurationService`、`ConnectionCatalog`、`ConnectionGroupRepository`……）。每新增一个端口都要
+同步四处（`PORT_TRAITS` / `SOURCE_FILES` / `ports/mod.rs` 模块头 / `system-overview.md` §6.4），
+并按 R8「新增端口必须有实现或用例引用」先证明有消费者。
+
 风险：这是最大的一期。`DesktopRepository` 里的本地加密落盘、`{appData}` 路径、本机钥匙串都是**桌面专属**，application 层**不能**持有 `DesktopRepository` 本身，只能持有窄端口（如 `SettingsRepository`、`ProfileRepository`、`SecretProvider`、`TunnelRepository`）。每搬一族都要问一句「web 形态这一族有没有对应物」；没有对应物的（如本机钥匙串、桌面 Job 恢复、桌面驱动注册表）就**留在宿主**，不进中立层。
 
 #### 5.1.3 形态专属、不得进中立层的东西（清单）
