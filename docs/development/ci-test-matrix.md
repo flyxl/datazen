@@ -16,8 +16,8 @@
 | ai-api | ✅ | 随构建链接 | `cargo test -p datazen-ai-api --lib` |
 | 平台内核 crate（`runtime` / `application` / `platform-api` / `server`） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
 | 平台 crate 架构门禁（全部平台边界规则） | ✅ `pnpm test:platform-arch`，附变异自证 `pnpm test:platform-arch:mutations` | ❌ | `pnpm test:platform-arch` |
-| Basic path 驱动 lib | ✅ 四 crate 并行 | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
-| Basic path 驱动集成测试（`tests/`，32 个文件） | ✅ `--tests` 编译并运行；CI 无数据库，live 层在命令里**显式豁免**（见 §2.2） | Basic SKU 内嵌 | `cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests`；live 层**默认严格**（验不到即失败），本地无数据库时加 `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` 声明豁免，`DATAZEN_CONTRACT_REQUIRE_LIVE=1` 压过豁免、强制严格 |
+| Basic path 驱动 lib | ✅ 四 crate 由 `--tests` 步一并运行（lib + 集成 target，见下行） | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
+| Basic path 驱动集成测试（`tests/`，32 个文件） | ✅ `--tests` 编译并运行（**含四驱动 lib 单测**）；CI 无数据库，live 层在命令里**显式豁免**（见 §2.2） | Basic SKU 内嵌 | `cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests`；live 层**默认严格**（验不到即失败），本地无数据库时加 `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` 声明豁免，`DATAZEN_CONTRACT_REQUIRE_LIVE=1` 压过豁免、强制严格 |
 | 非 basic path 驱动集成测试（19 个文件：sqlserver 11 / clickhouse 3 / duckdb 3 / mongodb 2） | ❌ 未进 PR 矩阵 | **All SKU** 构建时编译链接 | 改这些驱动时本地 `cargo test -p datazen-driver-<id> --tests` |
 | 可选 path 驱动 lib | ❌ | **All SKU** 构建时编译链接 | 改驱动 crate 时本地必跑 |
 | Git 驱动（kiwi/superset） | ❌ | **Akulaku SKU**（需 Deploy Key） | 见 [ci-private-drivers.md](./ci-private-drivers.md) |
@@ -320,15 +320,18 @@ TS 快照进来。两处都用精确版本。
 Rust 测试顺序（与 `ci.yml` 一致）：
 
 ```bash
-# driver-api 与四个 path 驱动合为一次 cargo 调用（不依赖 --features）
-cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
-# 驱动集成测试：--lib 不编译 tests/，所以 basic 四驱动的集成 target 独立成步。
-# live 契约层默认严格（验不到即失败）。CI 全文件没有数据库容器，也没有任何
-# TEST_PG_* / TEST_MYSQL_*，所以显式声明豁免——去掉前缀就会红（实测 42 个）。
-# 要在 CI 里真验 live：先 provision 数据库并注入 TEST_PG_* / TEST_MYSQL_*，再删掉
-# 这个前缀；DATAZEN_CONTRACT_REQUIRE_LIVE=1 压过豁免。
-# （实测：不加前缀 EXIT=101，42 个 live 层测试翻转；命令不带 --no-fail-fast，
-#  cargo 在第一个失败的 binary 就停。）
+# driver-api 没有 tests/ 目录，`--lib` 就是它的全部测试面（不依赖 --features）。
+# 四个 basic path 驱动的 lib 单测不在这里跑：下一条 `--tests` 按 cargo 目标选择
+# 语义同样会编译并运行 lib 的单测 target（此前两步把同一批 936 个 lib 测试
+# 函数每轮执行两遍；驱动 lib 单测不读 ALLOW_UNVERIFIED，去重无信号损失）。
+cargo test --lib -p datazen-driver-api
+# 驱动集成测试 + 四驱动的 lib 单测：`--tests` 覆盖 test=true 的全部 target
+# （含 lib，不含 doc test）。live 契约层默认严格（验不到即失败）。CI 全文件
+# 没有数据库容器，也没有任何 TEST_PG_* / TEST_MYSQL_*，所以显式声明豁免——
+# 去掉前缀就会红（实测 42 个）。要在 CI 里真验 live：先 provision 数据库并
+# 注入 TEST_PG_* / TEST_MYSQL_*，再删掉这个前缀；DATAZEN_CONTRACT_REQUIRE_LIVE=1
+# 压过豁免。（实测：不加前缀 EXIT=101，42 个 live 层测试翻转；命令不带
+# --no-fail-fast，cargo 在第一个失败的 binary 就停。）
 DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
 # datazen 需要 features 选择注入的驱动
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
@@ -358,10 +361,12 @@ feature-resolved 图，而 `dtolnay/rust-toolchain@stable` 只装在 rust job；
 **error** 不是 pass：门禁无法分类的成员，就是没有任何规则覆盖的成员。
 
 `pnpm test:platform-crates`（`scripts/run-platform-crate-tests.mjs`）用同一张 `LAYERS` 表
-发现 `runtime` / `application` / `platform-api` / `server` 四层里真实存在的 crate 并跑
-`cargo test --lib`。它补上的是计划 :269 的空缺：`datazen-runtime` 当时带着 130 个通过的
-Rust 单测，而 CI 里没有任何一步执行它们。`--require-layers=<ids>` 可在某个阶段把「层存在
-但没被测到」从静默变成报错。
+发现 `TESTED_LAYERS` 各层里真实存在的 crate，并跑**不带目标选择器**的
+`cargo test -p …`（lib 单测、bin 单测、全部 `tests/` 集成 target 与 doc test 一次
+覆盖；`EXTRA_TARGETS` 只补 release-only 条目——此前多跑的那次 `--lib` 是它的严格
+子集，实测让 2,537 个测试函数每轮执行两遍）。它补上的是计划 :269 的空缺：
+`datazen-runtime` 当时带着 130 个通过的 Rust 单测，而 CI 里没有任何一步执行它们。
+`--require-layers=<ids>` 可在某个阶段把「层存在但没被测到」从静默变成报错。
 
 **变异自证**：`scripts/platform-arch-selfcheck.mjs` 临时改写 `Cargo.toml` / 新增探针 crate，
 逐条运行门禁并断言退出码非零 + 输出点名了预期规则与 crate，再逐条还原；末尾断言

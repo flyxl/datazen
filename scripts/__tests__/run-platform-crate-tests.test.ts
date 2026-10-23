@@ -247,15 +247,15 @@ function cargoTestInvocationsSeesReorderedArgv(ws: StubWorkspace): string[] {
  * `toEqual([])` assertions do **not** cover this: they filter through
  * `startsWith('test ')`, which cannot see a reordered or non-`test`-first call at
  * all (see `cargoTestInvocationsSeesReorderedArgv`). Measured: under the
- * `--offline test --lib …` reorder, those abort assertions see `[]` for a run
+ * `--offline test …` reorder, those abort assertions see `[]` for a run
  * that did invoke cargo and pass. So this array is the load-bearing assertion,
  * and it fails closed on any missing, extra or reordered call.
  *
- * The order is part of the contract: the `--lib` gate runs first because it is
- * cheapest, and the abort-path tests depend on cargo never being reached.
+ * The order is part of the contract: the selector-free run goes first because
+ * it is the gate (and the cheapest of the two), the release extras follow, and
+ * the abort-path tests depend on cargo never being reached.
  */
 const EXPECTED_CLEAN_INVOCATIONS = [
-  'test --lib -p datazen-runtime --test cm60_pressure_drain',
   'test -p datazen-runtime',
   'test --release -p datazen-runtime --bin cm60-bench',
 ];
@@ -328,7 +328,9 @@ describe('run-platform-crate-tests exit codes', () => {
     // never the primary assertion.
     expect(run.stderr).toContain(UNCLASSIFIABLE.dir);
     // ...and it must not have reached the testing it was told to distrust.
-    expect(cargoInvocations(unclassified)).not.toContain('test --lib -p datazen-runtime');
+    expect(cargoInvocations(unclassified)).not.toContain(
+      'test -p datazen-runtime -p datazen-driver-postgres',
+    );
   });
 
   it('fails closed on --dry-run, the path the original bypass used', () => {
@@ -448,11 +450,14 @@ describe('discoverCoreCrates stays pure about policy', () => {
 });
 
 /**
- * `EXTRA_TARGETS` decides what CI compiles besides `--lib`. Both CM-60 entry
- * points are structurally invisible to `--lib` — one is an integration test
- * target, the other a binary target — so an entry that goes missing from this
- * table removes the gate without turning anything red. These assertions are on
- * the argv itself, because that argv is the whole mechanism.
+ * `EXTRA_TARGETS` decides which targets get a cargo invocation the default
+ * profile cannot provide. Both CM-60 entry points are structurally invisible
+ * to a `--lib`-only run — the pressure half is an integration test target,
+ * the bench half a binary target — and today the no-selector call compiles
+ * the pressure half while the table's release entry compiles the bench half.
+ * An entry that goes missing from this table removes the gate without turning
+ * anything red. These assertions are on the argv itself, because that argv is
+ * the whole mechanism.
  */
 describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
   const crates = [{ name: RUNTIME.name }, { name: DRIVER.name }];
@@ -468,15 +473,24 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
    * whose length is allowed to change is the defect; the assertions below are
    * unchanged and now say what they mean.
    */
-  const debugArgv = invocations.find((argv) => argv.includes('--lib')) ?? [];
+  const debugArgv = invocations.find((argv) => !argv.includes('--release')) ?? [];
   const releaseArgv = invocations.find((argv) => argv.includes('--release')) ?? [];
 
-  it('keeps the whole-crate --lib run and adds the integration test to it', () => {
-    // `--lib` alone cannot reach packages/runtime/tests/cm60_pressure_drain.rs,
-    // so the §11.4 pressure half was never compiled in CI before this.
+  it('keeps the whole-crate run selector-free, which is what reaches the pressure half', () => {
+    // `packages/runtime/tests/cm60_pressure_drain.rs` is an integration test
+    // target: a selector-free `cargo test -p …` compiles and runs every
+    // integration binary, and that structural property — not a target name in
+    // this file — is what puts the §11.4 pressure half behind the gate.
     expect(debugArgv.length).toBeGreaterThan(0); // the find() above failed closed
-    expect(debugArgv).toEqual(expect.arrayContaining(['--lib', '--test', 'cm60_pressure_drain']));
-    for (const { name } of crates) expect(debugArgv).toContain(name);
+    expect(debugArgv).toEqual(['test', '-p', RUNTIME.name, '-p', DRIVER.name]);
+    for (const selector of ['--lib', '--tests', '--test', '--bin'])
+      expect(debugArgv).not.toContain(selector);
+    // The binary the selector-free run is asserted to reach really exists on
+    // disk; without this, the assertion above would hold over a crate whose
+    // tests/ directory had been renamed away.
+    expect(existsSync(join(REPO_ROOT, 'packages', 'runtime', 'tests', 'cm60_pressure_drain.rs'))).toBe(
+      true,
+    );
   });
 
   it('builds the bin unit tests in their own --release invocation', () => {
@@ -491,20 +505,24 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
     // first argv, every core crate's test suite would silently rebuild in
     // release — invisible in the diff, expensive in CI minutes.
     expect(debugArgv).not.toContain('--release');
-    expect(releaseArgv).not.toContain('--lib');
+    // ...and the release invocation names only crates the table has an entry
+    // for: a crate landing here without one would mean the table grew a
+    // whole-crate release run nobody argued for.
+    const RELEASE_TABLE_CRATES = Object.keys(EXTRA_TARGETS);
+    for (const name of releaseArgv.filter((a) => a.startsWith('datazen-')))
+      expect(RELEASE_TABLE_CRATES).toContain(name);
   });
 
   it('leaves a crate with no entry untouched, and never invents a crate', () => {
     // The table is keyed by crate name. A crate that was not discovered has no
     // target to add, and a crate with no entry contributes nothing.
     //
-    // The second invocation is the no-selector one, and it is here for *every*
-    // tested crate, not only the ones with a table entry: its whole job is to
-    // reach the `tests/*.rs` binaries that `EXTRA_TARGETS` does not (and should
-    // not) enumerate, and a driver crate landing in a tested layer later must
-    // not be the first one to miss them.
+    // The first (and, for such a crate, only) invocation is the no-selector
+    // one, and it is here for *every* tested crate, not only the ones with a
+    // table entry: its whole job is to reach the `tests/*.rs` binaries that
+    // `EXTRA_TARGETS` does not (and should not) enumerate, and a driver crate
+    // landing in a tested layer later must not be the first one to miss them.
     expect(buildCargoArgv([{ name: DRIVER.name }])).toEqual([
-      ['test', '--lib', '-p', DRIVER.name],
       ['test', '-p', DRIVER.name],
     ]);
     expect(buildCargoArgv([])).toEqual([]);
@@ -528,15 +546,22 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
     expect(unpinned[0]).toEqual(['test', '-p', RUNTIME.name]);
   });
 
-  it('does not replace the --lib invocation with --tests', () => {
-    // The trap this change walks next to. `--tests` looks like the tidy way to
-    // "run the integration binaries", and adopting it *as a replacement* silently
-    // drops the library's own unit tests — a bigger hole than the one being
-    // closed (measured on datazen-runtime: 383 lib tests vs 180 integration
-    // ones). Pinned so the substitution cannot arrive later as a tidy-up.
+  it('keeps every crate-wide invocation selector-free — neither --lib nor --tests', () => {
+    // The trap this gate sits next to. `--tests` looks like the tidy way to
+    // say "lib plus integration binaries", and per the Cargo Book it does
+    // exactly that ("--tests … by default this includes the library and
+    // binaries built as unittests, and integration tests") — an earlier
+    // revision of this file believed it "silently drops the library's own
+    // unit tests", which is a factual error the guard below used to encode.
+    // What `--tests` actually drops relative to the selector-free call is the
+    // **doc tests**, and `--lib` drops everything except the lib's own unit
+    // tests (datazen-runtime alone carries 383 of those, re-executed twice
+    // per CI run before this shape). Either selector would re-introduce a
+    // narrowing exactly like the one this gate exists to prevent, so both
+    // are pinned out — adopting one must arrive as a deliberate edit here.
     const argv = buildCargoArgv([RUNTIME]).map((a) => a.join(' '));
-    expect(argv).toContain('test --lib -p datazen-runtime --test cm60_pressure_drain');
-    expect(argv.some((line) => line.includes('--tests'))).toBe(false);
+    expect(argv[0]).toBe('test -p datazen-runtime');
+    expect(argv.some((line) => line.includes('--tests') || line.includes('--lib'))).toBe(false);
   });
 
   it('names targets that exist, so the table cannot rot into a no-op', () => {
@@ -606,7 +631,7 @@ describe('run-platform-crate-tests guard negative controls', () => {
     // cannot reach production — but it is the mechanism by which the abort-side
     // `toEqual([])` assertions degenerate into "assert true", and that is the
     // same failure mode round one had, one helper away.
-    const reordered = ['--offline test --lib -p datazen-runtime'];
+    const reordered = ['--offline test -p datazen-runtime'];
 
     // A real file, not `''`: `cargoInvocations` returns `[]` for a missing path,
     // which would make the assertion below pass for the wrong reason and prove
