@@ -222,7 +222,7 @@ impl DesktopSessionBackend {
                     &budget_scope,
                 )
                 .await
-                .map_err(map::error)?;
+                .map_err(|error| self.map_acquire_error(error, &request.connection_id, cost))?;
             (
                 handle,
                 uuid::Uuid::new_v4().to_string(),
@@ -390,5 +390,43 @@ impl DesktopSessionBackend {
                 purpose,
             }),
         );
+    }
+}
+
+impl DesktopSessionBackend {
+    /// Map a driver acquire refusal, keeping physical-capacity refusals actionable.
+    ///
+    /// The budget adapter's reason string is deliberately generic, so the two
+    /// numbers are read back from the ledger here — at the only layer that
+    /// knows both the connection id and the requested cost. If the refusal was
+    /// a queue timeout while capacity was still free, it stays a generic
+    /// `ResourceBusy` (retryable) instead of pretending the user must close
+    /// connections.
+    fn map_acquire_error(
+        &self,
+        error: dr::ResourceError,
+        connection_id: &rc::ConnectionId,
+        requested: u32,
+    ) -> rc::ProviderError {
+        if matches!(error, dr::ResourceError::BudgetDenied { .. }) {
+            let (limit, used) = self.budget.with_ledger(|ledger| {
+                (
+                    ledger.config().service_physical_connections,
+                    ledger.physical(connection_id),
+                )
+            });
+            if used.saturating_add(requested) > limit {
+                tracing::warn!(
+                    source = "physical_admission",
+                    category = "physical_limit",
+                    limit,
+                    used,
+                    requested,
+                    "resource admission refused"
+                );
+                return rc::ProviderError::PhysicalCapacityExceeded { limit, used };
+            }
+        }
+        map::error(error)
     }
 }

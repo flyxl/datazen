@@ -18,6 +18,8 @@ pub enum CommandError {
     NotFound(String),
     NotConfigured(String),
     Validation(String),
+    /// 连接额度已满：消息里带上限与当前用量，是可处置的用户提示而不是内部故障。
+    ResourceBusy(String),
     DataSyncNotStarted(String),
     DataSyncPartiallyApplied(u64),
     DataSyncOutcomeUnknown(String),
@@ -40,6 +42,7 @@ impl std::fmt::Display for CommandError {
             Self::NotFound(msg)
             | Self::NotConfigured(msg)
             | Self::Validation(msg)
+            | Self::ResourceBusy(msg)
             | Self::DataSyncNotStarted(msg)
             | Self::DataSyncOutcomeUnknown(msg)
             | Self::Internal(msg) => {
@@ -507,5 +510,30 @@ impl From<datazen_feature_core::services::fk_navigation::FkNavigationError> for 
                 Self::Internal(message)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod resource_busy_tests {
+    use super::*;
+    use datazen_application::error::{ApiError, ApiErrorCode};
+
+    #[test]
+    fn resource_busy_keeps_the_actionable_message() {
+        let mapped = crate::platform::into_command_error(ApiError::new(
+            ApiErrorCode::ResourceBusy,
+            "连接数已达上限（上限 16，当前 16），请关闭部分连接后重试",
+        ));
+        match &mapped {
+            CommandError::ResourceBusy(message) => {
+                assert!(message.contains("连接数已达上限（上限 16，当前 16）"));
+                assert!(message.contains("请关闭部分连接后重试"));
+            }
+            other => panic!("expected ResourceBusy, got {other:?}"),
+        }
+        assert_eq!(
+            mapped.to_string(),
+            "连接数已达上限（上限 16，当前 16），请关闭部分连接后重试"
+        );
     }
 }

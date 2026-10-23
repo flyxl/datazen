@@ -148,6 +148,15 @@ pub(super) fn session(
     }
 }
 pub(super) fn runtime(error: rt::RuntimeError) -> ApiError {
+    // The admission refusal already carries the two numbers the user can act
+    // on. Keep every other runtime failure collapsed into the fixed category
+    // text: their payloads may carry identifiers and are not caller-facing.
+    if let rt::RuntimeError::PhysicalCapacityExceeded { limit, used } = &error {
+        return ApiError::new(
+            ApiErrorCode::ResourceBusy,
+            format!("连接数已达上限（上限 {limit}，当前 {used}），请关闭部分连接后重试"),
+        );
+    }
     ApiError::new(
         error.api_code().unwrap_or(ApiErrorCode::OutcomeUnknown),
         "connection runtime operation failed",
@@ -189,4 +198,28 @@ pub(super) fn json_convert<T: serde::de::DeserializeOwned, S: serde::Serialize>(
                 "incompatible runtime projection",
             )
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn physical_capacity_refusal_keeps_its_actionable_numbers() {
+        let mapped = runtime(rt::RuntimeError::PhysicalCapacityExceeded {
+            limit: 16,
+            used: 16,
+        });
+        assert_eq!(mapped.code, ApiErrorCode::ResourceBusy);
+        assert_eq!(
+            mapped.message,
+            "连接数已达上限（上限 16，当前 16），请关闭部分连接后重试"
+        );
+    }
+
+    #[test]
+    fn other_runtime_failures_stay_redacted_category_text() {
+        let mapped = runtime(rt::RuntimeError::BudgetExhausted("resourceOpenBusy"));
+        assert_eq!(mapped.message, "connection runtime operation failed");
+    }
 }
