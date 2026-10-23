@@ -7,6 +7,7 @@ import { expect, browser } from '@wdio/globals';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { dbSessionIdOf } from '../lib/sessionId.js';
 import { closeExtraWindows, openSeededPgConnectionWindow, withSafeModeOff } from '../helpers.js';
 
 async function getConnectionConfigId(): Promise<string | null> {
@@ -49,14 +50,17 @@ describe('Execute SQL File (SF)', () => {
     const connectionId = await getConnectionConfigId();
     if (!connectionId) throw new Error('seeded PG connection not found');
     // Persisted config id → live db session id via connect (backup-database pattern).
-    dbSessionId = (await browser.executeAsync((cid: string, done: (r: unknown) => void) => {
+    const connectResult = await browser.executeAsync((cid: string, done: (r: unknown) => void) => {
       (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
         ?.invoke('connect', { connectionId: cid })
         .then(done)
         .catch((e: unknown) => done({ __error: String(e) }));
-    }, connectionId)) as string;
-    if (typeof dbSessionId !== 'string' || !dbSessionId) {
-      throw new Error(`connect(${connectionId}) failed: ${JSON.stringify(dbSessionId)}`);
+    }, connectionId);
+    // `connect` 现在回答 `{ connectionId, dbSessionId }`，不再是裸 id。
+    try {
+      dbSessionId = dbSessionIdOf(connectResult);
+    } catch {
+      throw new Error(`connect(${connectionId}) failed: ${JSON.stringify(connectResult)}`);
     }
     dir = mkdtempSync(join(tmpdir(), 'datazen-sf-'));
   });
