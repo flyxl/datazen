@@ -68,7 +68,7 @@ pub(crate) async fn own_sessions(
     let source_id = crate::services::migration_endpoint::open_dedicated_session(
         state,
         source_identity.connection_id.as_str(),
-        source_database,
+        Some(source_database),
         "dataSyncSource",
     )
     .await
@@ -78,7 +78,7 @@ pub(crate) async fn own_sessions(
     let target_id = match crate::services::migration_endpoint::open_dedicated_session(
         state,
         target_identity.connection_id.as_str(),
-        target_database,
+        Some(target_database),
         "dataSyncTarget",
     )
     .await

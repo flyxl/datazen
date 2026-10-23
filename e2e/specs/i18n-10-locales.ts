@@ -9,6 +9,7 @@
  * Additional locales ship via language extensions; full locale key parity is
  * covered by release workflow (`scripts/i18n-sync-check.mjs` + i18n-sync skill).
  */
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser, $, $$ } from '@wdio/globals';
 
 /** Must match `src/locales/builtin-locales.json` / `BUILTIN_LOCALES`. */
@@ -52,7 +53,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as object)) {
     throw new Error((result as { __error: string }).__error);
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 async function openSettingsWindow() {

@@ -701,7 +701,7 @@ async fn one_saved_connection_two_databases_is_not_a_self_overlap() {
     let source = crate::services::migration_endpoint::open_dedicated_session(
         &test.state,
         "pg-local",
-        "staging",
+        Some("staging"),
         "data-transfer-test",
     )
     .await
@@ -709,7 +709,7 @@ async fn one_saved_connection_two_databases_is_not_a_self_overlap() {
     let target = crate::services::migration_endpoint::open_dedicated_session(
         &test.state,
         "pg-local",
-        "prod",
+        Some("prod"),
         "data-transfer-test",
     )
     .await

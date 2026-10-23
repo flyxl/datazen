@@ -1,6 +1,7 @@
 /**
  * E2E tests for the redesigned homepage, data sync, and drag-and-drop features.
  */
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser, $, $$ } from '@wdio/globals';
 import {
   closeExtraWindows,
@@ -29,7 +30,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as object)) {
     throw new Error((result as { __error: string }).__error);
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 async function ensureConnectionsHome() {

@@ -1,3 +1,4 @@
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser, $, $$ } from '@wdio/globals';
 import * as path from 'node:path';
 import fs from 'node:fs';
@@ -30,7 +31,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as Record<string, unknown>)) {
     throw new Error((result as Record<string, unknown>).__error as string);
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 async function openAiChatPanel() {

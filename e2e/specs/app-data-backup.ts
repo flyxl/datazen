@@ -10,6 +10,7 @@
  * ADB-007  Export button label matches current UI language
  * ADB-008  Exported zip excludes .key (encryption key material)
  */
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser } from '@wdio/globals';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -30,7 +31,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as object)) {
     throw new Error((result as { __error: string }).__error);
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 // export_app_data / import_app_data are merged path/dialog IPCs. Raw paths go

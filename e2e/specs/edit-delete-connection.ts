@@ -1,3 +1,4 @@
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser } from '@wdio/globals';
 import { t } from '../i18n.js';
 
@@ -15,7 +16,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as any)) {
     throw new Error((result as any).__error);
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 interface Conn {
@@ -58,7 +59,11 @@ describe('编辑、复制和删除连接', () => {
     // Clean up: delete the test connection and any copies
     const conns = await invokeBackend<Conn[]>('get_connections');
     for (const c of conns) {
-      if (c.id === TEST_CONN.id || c.name.startsWith('E2E-编辑删除') || c.name.startsWith('E2E-已编辑')) {
+      if (
+        c.id === TEST_CONN.id ||
+        c.name.startsWith('E2E-编辑删除') ||
+        c.name.startsWith('E2E-已编辑')
+      ) {
         await invokeBackend('delete_connection', { id: c.id });
       }
     }

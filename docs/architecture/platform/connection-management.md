@@ -377,7 +377,7 @@ PoolKey 不含密码原文。`driverResourceKey` 由驱动描述 database-bound 
 
 | 用途示例 | 规则 |
 | --- | --- |
-| PostgreSQL session 打开 | database required，schema 可 optional；观察 searchPath 独立于对象身份 |
+| PostgreSQL session 打开 | database/schema 均可 optional：驱动回退到服务端默认库与自身 schema 默认值，真实库名由 observedContext 回传；宿主不得另加全局「database 必填」规则 |
 | PostgreSQL 对象操作 | database/schema/object required，不猜 public |
 | SQLite | 文件由 profile 配置解析；path 不承载文件系统路径 |
 | Redis | db index 的映射、编码与范围由 driver schema 定义，不把它通用定义成 path |
