@@ -43,6 +43,18 @@ describe('SQLite', () => {
     // The category is opened explicitly: what the case is about is that the
     // sidebar *has* the tables, not whether the tree starts expanded.
     await expandSchemaCategory('tables', 'main').catch(() => undefined);
+    const schemaErrors = await browser.execute(() => {
+      const store = (
+        window as unknown as {
+          __schemaStore?: { getState: () => { schemas: Map<string, { error?: string | null }> } };
+        }
+      ).__schemaStore;
+      if (!store) return 'no-store';
+      return Array.from(store.getState().schemas.entries()).map(([id, state]) => ({
+        id,
+        error: state.error ?? null,
+      }));
+    });
     const tree = await browser.execute(() => {
       const nav =
         document.querySelector('[data-testid="connection-navigator-aside"]') ??
@@ -84,7 +96,7 @@ describe('SQLite', () => {
         throw new Error(
           `等待 SQLite 侧边栏显示表列表: asideError=${asideError}; asideText=${JSON.stringify(
             asideText.slice(0, 600),
-          )}; tree=${JSON.stringify(tree).slice(0, 900)}`,
+          )}; tree=${JSON.stringify(tree).slice(0, 900)}; schemaErrors=${JSON.stringify(schemaErrors)}`,
         );
       });
   });

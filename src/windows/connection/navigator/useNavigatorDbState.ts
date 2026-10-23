@@ -82,8 +82,14 @@ export function useNavigatorDbState(
         useSchemaStore
           .getState()
           .setLoadedTables(dbName, all, dbSessionId, { pinCurrentDatabase: false });
-      } catch {
-        // ignore
+      } catch (error) {
+        // A schema load that fails silently is indistinguishable from a database
+        // with no tables: the tree just stays empty. Record it where the sidebar
+        // can show it instead of swallowing it.
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[navigator] list tables failed', dbName, message);
+        useSchemaStore.getState().recordSessionError(dbSessionId, message);
+        setDbTablesMap((prev) => ({ ...prev, [tableKey]: prev[tableKey] ?? [] }));
       }
       // Reading a database is what opens its pool, so the marker is refreshed
       // here rather than only when the user asks for it.
