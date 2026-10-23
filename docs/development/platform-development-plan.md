@@ -244,7 +244,9 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 **进度（2026-10-23）**：第一族「命名视图」已落地——`ApplicationServices` 持
 `named_views: Arc<dyn NamedViewRepository>`，`commands/named_views.rs` 生产半边
 `state.store` 归零（断言 `the_command_shell_reads_the_aggregate_not_the_host_store`），
-全仓生产半边计数 **104 → 101**。口径与 §5.1.2 第二步逐字相同（`src-tauri/src` 下 `.rs`、
+第二族「仪表盘」（2026-10-23 同日）再减 8 处（仓储 6 + 运行历史 2），
+全仓生产半边计数 **104 → 93**（第一族 104 → 101，第二族 101 → 93）；6 处残留是有名字的
+形态专属用途（见 `the_command_shell_reads_the_aggregate_and_names_the_host_residue`）。口径与 §5.1.2 第二步逐字相同（`src-tauri/src` 下 `.rs`、
 排除 `*_tests.rs` 与 `tests.rs`、在首个 `#[cfg(test)]` 处截断）。**不要用裸 `grep` 复算**：
 行内 `#[cfg(test)] mod tests` 里的断言针脚本身就会命中 `state.store` 字样（实测裸 grep 得
 111，比生产半边多 10）。

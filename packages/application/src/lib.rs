@@ -58,6 +58,8 @@ use std::sync::Arc;
 use datazen_platform_api::ports::known_hosts::KnownHostsRepository;
 use datazen_platform_api::ports::{SettingsRepository, TunnelRepository};
 
+use datazen_feature_core::dashboard::repository::DashboardRepository;
+use datazen_feature_core::dashboard::runs::DashboardRunRepository;
 use datazen_feature_core::services::named_views::NamedViewRepository;
 
 use crate::capability::CapabilityRegistry;
@@ -98,6 +100,12 @@ pub struct ApplicationServices {
     /// 聚合持有它之后，命令壳不再直读宿主 store——形态中立的用例层因此可以在
     /// 没有 Tauri 的进程里跑同一份规则。
     pub named_views: Arc<dyn NamedViewRepository>,
+    /// 仪表盘仓储（P3 第二条命令族）：行级读写端口由共享 feature 层定义
+    /// （`datazen_feature_core::dashboard::repository::DashboardRepository`），
+    /// 桌面实现是 `AppDb`（`impl DashboardRepository for AppDb`），落盘在应用库。
+    pub dashboard: Arc<dyn DashboardRepository>,
+    /// 仪表盘运行历史仓储（与上面同一个应用库，但共享层把它定义成**独立**端口）。
+    pub dashboard_runs: Arc<dyn DashboardRunRepository>,
     /// 计划第 93 行的运行时能力注册表。
     ///
     /// 缺省是全不可用的空注册表（[`CapabilityRegistry::new`]）。这意味着
@@ -124,6 +132,8 @@ impl ApplicationServices {
         tunnels: Arc<dyn TunnelRepository>,
         known_hosts: Arc<dyn KnownHostsRepository>,
         named_views: Arc<dyn NamedViewRepository>,
+        dashboard: Arc<dyn DashboardRepository>,
+        dashboard_runs: Arc<dyn DashboardRunRepository>,
     ) -> Self {
         Self {
             target,
@@ -133,6 +143,8 @@ impl ApplicationServices {
             tunnels,
             known_hosts,
             named_views,
+            dashboard,
+            dashboard_runs,
             capabilities: CapabilityRegistry::new("unbound"),
         }
     }
@@ -386,6 +398,8 @@ mod tests {
             "settings: Arc<dyn SettingsRepository>",
             "tunnels: Arc<dyn TunnelRepository>",
             "known_hosts: Arc<dyn KnownHostsRepository>",
+            "dashboard: Arc<dyn DashboardRepository>",
+            "dashboard_runs: Arc<dyn DashboardRunRepository>",
         ] {
             assert!(
                 signature.contains(parameter),

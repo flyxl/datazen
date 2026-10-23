@@ -505,10 +505,14 @@ impl PlatformAdapter {
             store.clone(),
             tunnels.clone(),
             known_hosts.clone(),
-            // 命名视图端口：桌面实现就是同一个 `DesktopRepository`
-            //（`impl NamedViewRepository for DesktopRepository`，落盘
-            // `{appData}/named_views.json`）。P3 第一条领域端口。
+            // 命名视图端口（P3 第一条命令族）：桌面实现就是同一个
+            // `DesktopRepository`（`impl NamedViewRepository for DesktopRepository`，
+            // 落盘 `{appData}/named_views.json`）。
             store.clone(),
+            // 仪表盘仓储与运行历史（P3 第二条命令族）：两者都落在应用库，
+            // 桌面实现都是 `AppDb`（各自有独立的 `impl … for AppDb`）。
+            store.app_db(),
+            store.app_db(),
         ));
         self.runtime.set(runtime.clone()).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "runtime already injected")
