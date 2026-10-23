@@ -16,6 +16,7 @@ pub mod execution;
 pub mod idempotency;
 pub mod job;
 pub mod profile;
+pub mod requests;
 pub mod session;
 
 pub mod migration;

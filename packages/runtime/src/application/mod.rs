@@ -26,7 +26,7 @@ use crate::{
     gateway::*,
     registry::{ContextReplacer, SessionBackend, SessionPort, SessionRegistry},
 };
-use datazen_application::error::{ApiError, ApiErrorCode};
+use datazen_platform_api::error::{ApiError, ApiErrorCode};
 use datazen_platform_api::{
     context::{OwnerRef, RequestContext},
     dto::{execution::*, session::*},

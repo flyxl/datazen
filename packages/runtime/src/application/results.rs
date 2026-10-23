@@ -1,6 +1,6 @@
 use super::convert;
 use crate::registry::backend::ResourceExecution;
-use datazen_application::error::{ApiError, ApiErrorCode};
+use datazen_platform_api::error::{ApiError, ApiErrorCode};
 use datazen_platform_api::{
     context::RequestContext,
     dto::{
