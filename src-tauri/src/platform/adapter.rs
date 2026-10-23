@@ -505,6 +505,10 @@ impl PlatformAdapter {
             store.clone(),
             tunnels.clone(),
             known_hosts.clone(),
+            // 连接目录端口（§5.1.2 第六步）：桌面实现就是同一个 `DesktopRepository`
+            // （`impl ConnectionCatalog for DesktopRepository`，落盘
+            // `{appData}/connections.json` 与 `groups.json`）。
+            store.clone(),
             // 命名视图端口（P3 第一条命令族）：桌面实现就是同一个
             // `DesktopRepository`（`impl NamedViewRepository for DesktopRepository`，
             // 落盘 `{appData}/named_views.json`）。
