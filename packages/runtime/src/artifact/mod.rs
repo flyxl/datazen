@@ -1,8 +1,8 @@
 //! Durable, bounded result storage. Metadata rename is the publication boundary.
 //! Unfinished writers are recovered as truncated; writer capabilities never survive restart.
 mod execution;
-/// Existing aggregate ArtifactRepository published-byte quota.
-pub const ARTIFACT_BYTE_QUOTA: u64 = 256 * 1024 * 1024;
+/// 已发布字节配额：定义在 `datazen_platform_api::ports::artifact`（契约值），此处再导出保持既有调用点。
+pub use datazen_platform_api::ports::artifact::ARTIFACT_BYTE_QUOTA;
 
 use async_trait::async_trait;
 use datazen_platform_api::{

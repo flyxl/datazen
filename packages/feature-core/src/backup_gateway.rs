@@ -1,8 +1,8 @@
 //! Production database backups through a Runtime-owned session and a single
 //! staging writer. The FileArtifactJob publishes the sole delivered artifact.
 use crate::{backup::BackupEvents, error::FeatureError};
-use datazen_application::{dto::requests::*, sessions::ConnectionUseCases};
 use datazen_driver_api::{sql_dump::stream::BACKUP_COMMAND, BackupDumpOptions, DumpProgress};
+use datazen_platform_api::{dto::requests::*, use_cases::ConnectionUseCases};
 use datazen_platform_api::{
     dto::{execution::ExecutionState, idempotency::IdempotentOperation},
     id::ExecutionId,
@@ -133,7 +133,7 @@ pub async fn backup_to_path(
         let writer = output.clone();
         let cancelled = cancel.clone();
         let callback = Arc::new(move |value: serde_json::Value| {
-            use datazen_application::error::{ApiError, ApiErrorCode};
+            use datazen_platform_api::error::{ApiError, ApiErrorCode};
             let failure = || {
                 ApiError::new(
                     ApiErrorCode::ServiceUnavailable,
