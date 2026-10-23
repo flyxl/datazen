@@ -32,6 +32,8 @@ interface ActiveConnectionStore {
   connections: Record<string, ConnectionEntry>;
 
   connect: (config: ConnectionConfig) => Promise<void>;
+  /** The connect itself; `connect` de-duplicates callers around this. */
+  openConnection: (config: ConnectionConfig, connectionId: string) => Promise<void>;
   /** Mark a connection as 'connecting' without triggering IPC. */
   markConnecting: (connectionId: string, database: string | null) => void;
   /** Mark a connection as 'connected' (called from cross-window event). */
@@ -53,11 +55,31 @@ interface ActiveConnectionStore {
  * capabilities), so a direct import back would close a module cycle.
  */
 
+/** Connects in flight, so a second caller joins the first instead of replacing it. */
+const inFlightConnects = new Map<string, Promise<void>>();
+
 export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get) => ({
   connections: {},
 
-  connect: async (config) => {
+  connect: (config) => {
     const connectionId = config.id;
+    // One connect per connection at a time. A double click and the tab it opens
+    // both ask for a session; without this guard the second `connect` replaces
+    // the first session and every reader of the old one fails with
+    // `sessionNotFound` — the schema tree then stays empty with no visible error.
+    const running = inFlightConnects.get(connectionId);
+    if (running) return running;
+    const attempt = get()
+      .openConnection(config, connectionId)
+      .finally(() => {
+        inFlightConnects.delete(connectionId);
+      });
+    inFlightConnects.set(connectionId, attempt);
+    return attempt;
+  },
+
+  openConnection: async (config, request) => {
+    const connectionId = request;
     if (import.meta.env.DEV) {
       console.log('[connect] starting', connectionId, config.name);
     }
