@@ -339,7 +339,13 @@ pub fn run() {
             crate::commands::get_privileges,
             crate::commands::get_table_data,
             crate::commands::get_table_data_at_target,
+            crate::commands::estimate_table_rows,
+            crate::commands::resolve_foreign_key_targets,
             crate::commands::commit_query_result_cell,
+            // ── 命名视图（保存的筛选视图） ──
+            crate::commands::list_named_views,
+            crate::commands::save_named_view,
+            crate::commands::delete_named_view,
             // ── 表结构编辑 ──
             // ── 行数据读写 ──
             crate::commands::commit_pending_changes,
@@ -364,6 +370,9 @@ pub fn run() {
             crate::commands::refresh_favorites,
             crate::commands::rollback_session_transaction,
             crate::commands::session_transaction_status,
+            // ── 查询结果网格的可写回判定 ──
+            crate::commands::preview_result_cell_change,
+            crate::commands::resolve_result_origin,
             // ── 查询历史维护 ──
             crate::commands::purge_history,
             crate::commands::get_migration_run,

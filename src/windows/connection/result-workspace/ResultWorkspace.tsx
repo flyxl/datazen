@@ -6,6 +6,7 @@ import { tid } from '../../../lib/tid';
 import type { StatementResult } from '../../../types';
 import type { ChartConfig } from '../../../types/chart';
 import type { DataExportCapability } from '../../../lib/exportCapability';
+import type { CellTypeHints } from '../../../lib/cellTypes';
 import { cn } from '../../../lib/cn';
 import { CopyableError } from '../../../components/ui/CopyableError';
 import { ResultTableView } from './ResultTableView';
@@ -24,6 +25,17 @@ export interface ResultWorkspaceProps {
   onRowDetail?: (rowIndex: number) => void;
   /** Driver export capability; query results hide export when `none`. */
   dataExportCapability?: DataExportCapability;
+  /**
+   * The key the write-back verdict of this result is stored under. The grid
+   * reads the verdict through it; the drawer fetches it.
+   */
+  writeBackKey?: string | null;
+  /**
+   * The driver's own column-type declaration, read from the same source as the
+   * table panel and the row-detail drawer: `DB_REGISTRY[databaseType]
+   * ?.cellTypes`.
+   */
+  cellTypeHints?: CellTypeHints;
   /**
    * Optional action button(s) rendered on the right side of the view-toggle
    * toolbar row (e.g. export). Placed here so the button shares vertical space
@@ -52,6 +64,8 @@ export function ResultWorkspace({
   onChartConfigChange,
   onRowDetail,
   dataExportCapability,
+  writeBackKey,
+  cellTypeHints,
   headerActions,
   className,
 }: ResultWorkspaceProps) {
@@ -157,6 +171,8 @@ export function ResultWorkspace({
           rowDetailIndex={rowDetailIndex}
           onRowDetail={handleRowDetail}
           dataExportCapability={dataExportCapability}
+          writeBackKey={writeBackKey}
+          cellTypeHints={cellTypeHints}
         />
       ) : (
         <ChartView

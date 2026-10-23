@@ -151,6 +151,14 @@ describe('checkModuleLayers · @datazen/ui must stay a host-free leaf', () => {
   // understood `import … from` would let the dynamic / require / mock ones
   // through, which is precisely how the original `PathInput` regression would
   // have been reintroduced one keystroke after being fixed.
+  //
+  // Every body must also be **valid TypeScript for this package**. A probe
+  // is a file in the working tree, and a probe that does not compile turns a
+  // `tsc` run into a false red that names a file nobody wrote. The tsconfig
+  // `exclude` keeps probes out of the compiler's program; this rule is the
+  // second line of defence, for the program that a future config might still
+  // let them into. The bodies therefore name only modules that are actually
+  // installed, and import what they use.
   const SHAPES: Array<{ what: string; body: string; expectedTarget: string }> = [
     {
       what: 'a static import of a Tauri plugin',
@@ -159,7 +167,10 @@ describe('checkModuleLayers · @datazen/ui must stay a host-free leaf', () => {
     },
     {
       what: 'a dynamic import of a Tauri plugin',
-      body: "export const pick = () => import('@tauri-apps/plugin-fs');\n",
+      // `@tauri-apps/plugin-dialog`, not a package this repo does not depend
+      // on: the probe has to *compile* wherever it lands, and an uninstalled
+      // module is TS2307, which is a false red rather than a guard signal.
+      body: "export const pick = () => import('@tauri-apps/plugin-dialog');\n",
       expectedTarget: '@tauri-apps/…',
     },
     {
@@ -169,7 +180,10 @@ describe('checkModuleLayers · @datazen/ui must stay a host-free leaf', () => {
     },
     {
       what: 'a test-time mock of a host store package',
-      body: "vi.mock('zustand', () => ({}));\nexport const noop = true;\n",
+      // `vi` is imported rather than assumed: a probe that calls `vi.mock`
+      // without importing it is TS2304, and the shape under test is the mock
+      // of a forbidden package, not a missing global.
+      body: "import { vi } from 'vitest';\nvi.mock('zustand', () => ({}));\nexport const noop = true;\n",
       expectedTarget: 'zustand…',
     },
     {
@@ -208,7 +222,7 @@ describe('checkModuleLayers · @datazen/ui must stay a host-free leaf', () => {
         "import { FolderOpen } from 'lucide-react';",
         "import { twMerge } from 'tailwind-merge';",
         "import { Button } from './Button';",
-        "import { cn } from '../cn';",
+        "import { cn } from './cn';",
         "import { PathInput } from './PathInput';",
         '// A comment naming @tauri-apps/plugin-dialog must not count.',
         '/* Nor may a block comment: import "zustand" */',

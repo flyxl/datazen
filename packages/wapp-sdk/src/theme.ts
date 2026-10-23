@@ -60,6 +60,11 @@ export const DEFAULT_THEME_TOKENS: Record<string, string> = {
   '--dt-json': '#67e8f9',
   '--dt-text': '#8b94a7',
   '--dt-binary': '#fb7185',
+  // Uncommitted-change marks (DB-06): a state channel, never a value colour.
+  '--dt-dirty-border': '#c084fc',
+  '--dt-dirty-bg': 'rgba(192, 132, 252, 0.14)',
+  '--dt-dirty-mark': '#c084fc',
+  '--dt-deleted-fg': '#ff7b72',
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

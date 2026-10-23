@@ -12,7 +12,8 @@
 //! braces has a dummy inner span. That blindness is precisely how the contract
 //! sitting after these tests came to be reported nowhere, so the braces are kept to
 //! put the lint back in charge of this file's layout, and this file keeps the bulk
-//! out of line so `traits.rs` stays inside `DATABASE_DRIVER_TRAITS_CEILING`.
+//! out of line so `traits.rs` stays readable. (There is no line-count ceiling on
+//! it any more: file size is a coupling signal for code review, not a CI gate.)
 
 use super::super::*;
 use crate::ReuseDriver;
@@ -491,5 +492,255 @@ mod validate_schema_target_tests {
             validate_schema_target(&SchemaAware, "app", Some(" "), SchemaScope::ExactSchema)
                 .is_err()
         );
+    }
+}
+
+/// The filter half of the contract: a driver that overrides nothing must keep
+/// the behaviour it had before the filter contract existed — no dialect
+/// operator, no `LIKE` escaping — while the whitelist it reports is the
+/// shared set the host can render on its own.
+mod filter_defaults {
+    use super::*;
+    use crate::filters::{FilterOperator, DIALECT_FILTER_OPERATORS, SHARED_FILTER_OPERATORS};
+    use crate::mock_driver::{MockDriver, MockDriverOptions};
+
+    fn mock() -> std::sync::Arc<MockDriver> {
+        MockDriver::new("sqlite", MockDriverOptions::default())
+    }
+
+    #[test]
+    fn default_supported_filter_operators_is_shared_set() {
+        assert_eq!(mock().supported_filter_operators(), SHARED_FILTER_OPERATORS);
+    }
+
+    #[test]
+    fn default_filter_operator_sql_is_none() {
+        let driver = mock();
+        for operator in DIALECT_FILTER_OPERATORS {
+            assert!(
+                driver
+                    .filter_operator_sql(*operator, "\"name\"", "'^a'")
+                    .is_none(),
+                "{operator:?} must not be renderable without a driver implementation"
+            );
+        }
+    }
+
+    #[test]
+    fn default_like_is_case_sensitive_flag_is_false() {
+        assert!(!mock().like_is_case_insensitive());
+    }
+
+    #[test]
+    fn default_like_escape_configuration_is_off() {
+        let driver = mock();
+        assert_eq!(driver.like_pattern_escape(), None);
+        assert_eq!(driver.like_escape_clause('!'), None);
+    }
+
+    #[test]
+    fn dialect_operators_are_absent_from_the_shared_whitelist() {
+        for operator in DIALECT_FILTER_OPERATORS {
+            assert!(
+                !SHARED_FILTER_OPERATORS.contains(operator),
+                "{operator:?} must be declared explicitly by a driver"
+            );
+        }
+        assert_eq!(mock().supported_filter_operators().len(), 19);
+        assert!(!mock()
+            .supported_filter_operators()
+            .contains(&FilterOperator::Regex));
+    }
+}
+
+/// The browsing half of the contract: a driver that overrides nothing must
+/// keep the behaviour it had before the count strategy and the default order
+/// existed — an exact count, no estimate, the primary key (or the first
+/// column) as the order.
+/// The keyset half of the contract, as a **default**.
+///
+/// The driver used here does not implement the two keyset methods, so what
+/// it answers is the trait's own default — not a mock's option, and not a
+/// driver's choice. That is the whole point: a test that goes through
+/// `MockDriver` cannot see the default at all, because the mock overrides
+/// both methods, and a default that was flipped to `true` would leave every
+/// suite green.
+mod keyset_defaults {
+    use super::*;
+    use crate::traits::keyset;
+
+    #[test]
+    fn a_driver_that_says_nothing_cannot_seek() {
+        let driver = StubDriver;
+        assert!(
+            !driver.supports_keyset_pagination(),
+            "the capability must be off by default: a driver that did not opt in must keep reading pages by OFFSET"
+        );
+    }
+
+    #[test]
+    fn a_driver_that_says_nothing_has_no_condition() {
+        let driver = StubDriver;
+        assert_eq!(
+            driver.keyset_predicate_sql(
+                &[("id".to_string(), false)],
+                &[("id".to_string(), crate::types::Value::Integer(42))],
+            ),
+            None,
+            "a driver that did not opt in must never be asked for a condition"
+        );
+    }
+
+    #[test]
+    fn the_default_bodies_themselves_are_off() {
+        // The two assertions above go through the trait; these go straight
+        // to the bodies, so the default is pinned even if a driver starts
+        // overriding it.
+        let driver = StubDriver;
+        assert!(!keyset::supports_keyset_pagination(&driver));
+        assert_eq!(
+            keyset::keyset_predicate_sql(
+                &driver,
+                &[("id".to_string(), false)],
+                &[("id".to_string(), crate::types::Value::Integer(42))],
+            ),
+            None
+        );
+    }
+}
+
+mod browsing_defaults {
+    use super::*;
+    use crate::mock_driver::{MockDriver, MockDriverOptions};
+    use crate::types::CountStrategy;
+    use std::sync::Arc;
+
+    fn mock(options: MockDriverOptions) -> Arc<MockDriver> {
+        MockDriver::new("sqlite", options)
+    }
+
+    fn column(name: &str, is_primary_key: bool) -> ColumnSchema {
+        ColumnSchema {
+            name: name.to_string(),
+            data_type: "text".to_string(),
+            nullable: true,
+            default_value: None,
+            comment: None,
+            is_primary_key,
+            is_auto_increment: false,
+        }
+    }
+
+    #[test]
+    fn count_strategy_defaults_to_exact_when_skip_count_query_is_false() {
+        let driver = mock(MockDriverOptions::default());
+        assert_eq!(driver.count_strategy(), CountStrategy::Exact);
+    }
+
+    #[test]
+    fn count_strategy_defaults_to_unsupported_when_skip_count_query_is_true() {
+        // The compatibility argument of the whole contract: a driver that
+        // skips the count keeps skipping it, and every other driver keeps
+        // counting exactly.
+        let driver = mock(MockDriverOptions {
+            skip_count_query: true,
+            ..Default::default()
+        });
+        assert!(driver.skip_count_query());
+        assert_eq!(driver.count_strategy(), CountStrategy::Unsupported);
+    }
+
+    #[test]
+    fn count_estimate_sql_defaults_to_none() {
+        let driver = mock(MockDriverOptions::default());
+        assert_eq!(driver.count_estimate_sql("app", None, "orders"), None);
+        assert_eq!(
+            driver.count_estimate_sql("app", Some("public"), "orders"),
+            None
+        );
+    }
+
+    #[test]
+    fn default_order_columns_prefers_the_primary_keys_argument() {
+        // The primary keys arrive normalised, so a column without the flag
+        // still orders by the real key.
+        let driver = mock(MockDriverOptions::default());
+        let columns = vec![column("col_a", false), column("col_b", false)];
+        assert_eq!(
+            driver.default_order_columns(&columns, &["id".to_string()]),
+            vec!["id".to_string()]
+        );
+    }
+
+    #[test]
+    fn default_order_columns_falls_back_to_the_first_column() {
+        let driver = mock(MockDriverOptions::default());
+        let columns = vec![column("col_a", false), column("col_b", false)];
+        assert_eq!(
+            driver.default_order_columns(&columns, &[]),
+            vec!["col_a".to_string()]
+        );
+    }
+
+    #[test]
+    fn default_order_is_empty_when_columns_are_empty() {
+        let driver = mock(MockDriverOptions::default());
+        assert!(driver.default_order_columns(&[], &[]).is_empty());
+    }
+
+    #[test]
+    fn allow_first_column_fallback_order_defaults_to_true() {
+        assert!(mock(MockDriverOptions::default()).allow_first_column_fallback_order());
+    }
+
+    #[test]
+    fn allow_first_column_fallback_order_can_be_switched_off() {
+        // The switch the host's gate reads: a driver that forbids the
+        // fallback has to be able to say so.
+        let driver = mock(MockDriverOptions {
+            allow_first_column_fallback_order: Some(false),
+            ..Default::default()
+        });
+        assert!(!driver.allow_first_column_fallback_order());
+    }
+
+    /// The wrapper must not lose the wrapped driver's rules: a reuse alias
+    /// that quietly fell back to the trait default would drop the estimate
+    /// and the default order of the engine it stands in for.
+    ///
+    /// The expectations are **written out**, not compared with the inner
+    /// driver's own answers. A comparison of "wrapper == inner" proves
+    /// nothing here: the inner driver answers the *trait defaults* unless it
+    /// is told otherwise, so a wrapper that did not forward at all would
+    /// still answer the same thing. The inner driver therefore overrides
+    /// every method of the contract, and the wrapper has to carry those
+    /// overrides over.
+    #[test]
+    fn reuse_driver_forwards_browsing_strategy_methods() {
+        use crate::ReuseDriver;
+
+        let inner = mock(MockDriverOptions {
+            skip_count_query: false,
+            count_strategy: Some(CountStrategy::Estimated),
+            count_estimate_rows: Some(4242),
+            default_order_columns: Some(vec!["wrapped_order".to_string()]),
+            allow_first_column_fallback_order: Some(false),
+            ..Default::default()
+        });
+        let wrapper = ReuseDriver::new(inner, "alias");
+
+        // Every answer below differs from the trait default, so a wrapper
+        // that stopped forwarding would answer something else and the test
+        // would fail.
+        assert_eq!(wrapper.count_strategy(), CountStrategy::Estimated);
+        assert_eq!(
+            wrapper.count_estimate_sql("app", Some("public"), "orders"),
+            Some("SELECT estimated_row_count FROM \"orders\"".to_string())
+        );
+        assert_eq!(
+            wrapper.default_order_columns(&[], &[]),
+            vec!["wrapped_order".to_string()]
+        );
+        assert!(!wrapper.allow_first_column_fallback_order());
     }
 }

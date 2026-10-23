@@ -133,7 +133,11 @@ export interface AiChatSession {
   /** Qualified MCP tool name (mcp/server/tool) shown during streaming tool execution. */
   streamMcpToolName: string | null;
   requestId: string | null;
-  /** Non-secret attribution of the last run started from this session. */
+  /**
+   * Non-secret attribution of the last run started from this session: which
+   * target it claimed, and (for a shared run) the grant id. Never the runtime
+   * handle itself.
+   */
   attribution?:
     | { kind: 'independent' }
     | { kind: 'editorGrant'; grantId: string; editorSessionId: string }

@@ -83,6 +83,9 @@ impl DatabaseDriverFactory for SqliteFactory {
 datazen_driver_api::register_driver!(&SqliteFactory);
 
 #[cfg(test)]
+mod keyset_paging_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

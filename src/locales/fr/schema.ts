@@ -147,6 +147,12 @@ const pack = {
   'privileges.allPrivileges': 'tous les privilèges',
   'schema.loadDbFailed': 'Échec du chargement des bases de données',
   'schema.loadTablesFailed': 'Échec du chargement des tables',
+  'metadata.temporaryResultInvalidated':
+    'Résultat temporaire invalidé : sa session d’exécution ou sa configuration a changé.',
+  'metadata.staleResultProvenance':
+    'Ce résultat a été produit avec une autre connexion, une autre révision de configuration ou une autre cible.',
+  'metadata.cacheBucketIsolated':
+    'Les entrées du cache de métadonnées sont isolées par connexion, révision de configuration et cible.',
   'objectFilter.hideSystemSchemas': 'Masquer les schémas et bases de données système',
   'objectFilter.include': 'Inclusion des noms de table',
   'objectFilter.exclude': 'Exclusion des noms de table',
@@ -296,6 +302,25 @@ const pack = {
   'fk.localColumn': 'Colonne',
   'fk.refTable': 'Tableau de référence',
   'fk.refColumn': 'Colonne de référence',
+  'fkNav.jumpTo': 'Aller à {target}',
+  'fkNav.jumpToComposite': 'Aller à {table} ({columns})',
+  'fkNav.resolving': 'Résolution de la clé étrangère…',
+  'fkNav.breadcrumbFrom': 'Depuis {source}',
+  'fkNav.backToSource': 'Retour à {table}',
+  'fkNav.back': 'Retour',
+  'fkNav.forward': 'Suivant',
+  'fkNav.stackTruncated': 'Les étapes de navigation précédentes ont été abandonnées',
+  'fkNav.targetMissing': 'La ligne référencée n’existe plus',
+  'fkNav.notUniqueWarning':
+    '{columns} n’est ni une clé primaire ni une clé unique : le saut peut renvoyer plusieurs lignes',
+  'fkNav.error.shapeMismatch': 'Les colonnes de cette clé étrangère ne correspondent pas',
+  'fkNav.error.unknownConstraint':
+    'La clé étrangère a changé ; actualisez la structure de la table',
+  'fkNav.error.valueNull': 'Une partie de la clé composite est NULL',
+  'fkNav.error.targetUnresolved':
+    'Impossible d’atteindre {target} ; la table est peut-être absente, dans une autre base de données ou illisible',
+  'fkNav.error.probeFailed': 'La table cible a été trouvée, mais elle n’a pas pu être lue',
+  'fkNav.error.unknown': 'La navigation par clé étrangère a échoué',
   'schemaTree.generateSql': 'Générer du SQL',
   'schemaTree.generateSelect': 'Générer SELECT',
   'schemaTree.generateInsert': 'Générer INSERT',

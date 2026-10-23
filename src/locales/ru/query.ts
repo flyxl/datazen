@@ -1,6 +1,16 @@
 /** Auto-split domain: query (ru) */
 const pack = {
   'tableView.loadingData': 'Загрузка данных таблицы…',
+  'tableView.a11y.gridLabel': 'Сетка данных',
+  'tableView.shortcut.hint':
+    'Стрелки перемещают, Shift+стрелка расширяет выделение, Enter запускает редактирование',
+  'tableView.shortcut.enterEdit': 'Enter или F2 — редактировать текущую ячейку',
+  'tableView.shortcut.extendSelection': 'Shift+стрелки расширяют выделение',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown прокручивают на один экран',
+  'tableView.shortcut.moveToEdge':
+    'Home/End — к началу или концу строки, Cmd+Home/End — к началу или концу сетки',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A выделяет все строки',
+  'tableView.shortcut.tabLeavesGrid': 'Tab выходит из сетки',
   'query.execute': 'Выполнить',
   'query.run': 'Запустить',
   'query.runSelection': 'Выполнить выделение',
@@ -22,6 +32,12 @@ const pack = {
   'query.cancelFailed': 'Не удалось отменить запрос; он всё ещё может выполняться',
   'query.streamingRows': 'Загружено {n} строк…',
   'query.result': 'Результат',
+  'query.artifactExport.action': 'Экспорт опубликованного результата (.jsonl)',
+  'query.artifactExport.numberedAction': 'Экспорт опубликованного результата {index} (.jsonl)',
+  'query.artifactExport.partial': 'Частичный результат; требуется подтверждение',
+  'query.artifactExport.saving': 'Сохранение опубликованного результата…',
+  'query.artifactExport.saved': 'Опубликованный результат сохранён',
+  'query.artifactExport.failed': 'Не удалось экспортировать опубликованный результат',
   'query.shortcutHint': 'Нажмите ⌘+Enter, чтобы выполнить',
   'query.historyTitle': 'История запросов',
   'query.noHistory': 'Пока нет истории',
@@ -73,6 +89,27 @@ const pack = {
   'query.tab': 'Запрос {n}',
   'query.notConnected': 'Не подключено',
   'query.cancelled': 'Запрос отменен',
+  'query.session.closeBlocked':
+    'Не удалось закрыть сеанс. Завершите его транзакцию или выполняющееся выполнение, затем закройте его снова.',
+  'query.session.transactionSwitchConfirm':
+    'Активна транзакция. Откатить и переключить базу данных?',
+  'query.session.revisionConflict':
+    'Контекст изменился с момента начала. Перезагрузите актуальное состояние и повторите попытку.',
+  'query.session.switchFailed': 'Не удалось переключить базу данных: {message}',
+  'query.session.closeTabActiveExecution': 'На этой вкладке выполняется запрос. Всё равно закрыть?',
+  'query.session.closeTabActiveExecutionTitle': 'Закрыть вкладку с выполняющимся запросом?',
+  'query.session.closeTabActiveExecutionConfirm': 'Остановить и закрыть',
+  'query.session.closeTabActiveExecutionMany':
+    'На этой вкладке выполняется {count} запросов. Всё равно закрыть?',
+  'query.resultEditRequiresRefresh':
+    'Выполните запрос ещё раз перед редактированием этого сохранённого результата.',
+  'query.session.openNew': 'Открыть новый сеанс',
+  'query.session.disconnected': 'Соединение потеряно. Откройте сеанс заново, чтобы продолжить.',
+  'query.session.executionFailed': 'Запрос завершился ошибкой: {message}',
+  'query.session.editorQuotaExceeded':
+    'Достигнут предел одновременно подключённых сеансов редактора для этого подключения. Закройте другие вкладки запросов, использующие его; если их нет, переподключитесь или перезапустите DataZen, чтобы освободить устаревшие сеансы редактора.',
+  'query.session.cancelledRetry': 'Запрос был отменён. Его можно выполнить снова.',
+  'query.session.recovered': 'Соединение восстановлено; доступны частичные результаты.',
   'query.explainError': 'Объяснить ошибку',
   'query.fixSql': 'Исправить SQL',
   'query.retry': 'Повторить',
@@ -121,6 +158,13 @@ const pack = {
   'tableData.pendingChanges': '{count} несохранённых изменений',
   'tableData.pendingUpdates': '{count} обновлений',
   'tableData.pendingDeletes': '{count} удалений',
+  'tableData.pendingCells': 'Изменено ячеек: {count}',
+  'tableData.pendingOffPage': 'Изменено ещё ячеек: {count} (на других страницах)',
+  'tableData.dirtyCellAria': 'Изменённая ячейка: {original} → {next}',
+  'tableData.dirtyValueNull': 'Пустое значение (NULL)',
+  'tableData.dirtyValueEmpty': '(пустая строка)',
+  'tableData.dirtyDeletedRow': 'Помечена к удалению',
+  'tableData.restoreRow': 'Восстановить эту строку',
   'tableData.safeModeEditDisabled': 'Безопасный режим запрещает редактирование ячеек таблицы.',
   'tableData.preview': 'Предпросмотр',
   'tableData.commit': 'Зафиксировать',
@@ -150,6 +194,52 @@ const pack = {
   'dataTable.empty': 'Нет строк для отображения',
   'dataTable.emptyHint': 'Этот запрос не вернул ни одной строки.',
   'dataTable.tableLabel': 'Таблица данных',
+  'dataTable.selectionSummary': 'Строк: {rows} × столбцов: {cols}',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': 'Копировать выделенные ячейки',
+  'dataTable.copySelectedCellsAs': 'Копировать выделенные ячейки как…',
+  'dataTable.copySelectedCellsAsTsv': 'Копировать как TSV',
+  'dataTable.copySelectedCellsAsTsvWithHeader': 'Копировать как TSV с заголовками',
+  'dataTable.copySelectedCellsAsCsv': 'Копировать как CSV',
+  'dataTable.copySelectedCellsAsJson': 'Копировать как JSON (двумерный массив)',
+  'dataTable.pasteSelectedCells': 'Вставить в выделенные ячейки',
+  'dataTable.pasteRows': 'Вставить строки',
+  'dataTable.copyFailed': 'Не удалось скопировать: буфер обмена недоступен.',
+  'dataTable.pasteReadFailed':
+    'Не удалось прочитать буфер обмена. Нажмите {shortcut} ещё раз или разрешите доступ к буферу обмена.',
+  'dataTable.pasteEmpty': 'Буфер обмена пуст — вставлять нечего.',
+  'dataTable.pasteTooLarge':
+    'В буфере обмена ячеек: {cells}, а вставка ограничена {maxCells}. Ничего не вставлено.',
+  'dataTable.pasteRaggedRow':
+    'В строке {row} полей: {count}, а в первой строке — {expected}. Исправьте исходные данные и скопируйте снова. Ничего не вставлено.',
+  'dataTable.pasteUnclosedQuote': 'Значение в кавычках не закрыто; оно прочитано как одна ячейка.',
+  'dataTable.pasteClippedToPage':
+    'Пропущено ячеек: {count} — вставка вышла бы за пределы этой страницы. Перейдите на следующую страницу и вставьте остаток там.',
+  'dataTable.pasteNoWritableColumn': 'Ни один столбец из выделения нельзя записать.',
+  'dataTable.readOnlyPasteDisabled':
+    'Нельзя вставить ячейки: подключение или драйвер доступен только для чтения.',
+  'dataTable.pasteReadOnlyColumn':
+    'Пропущено столбцов, которые нельзя записать: {count} — {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    'В строке {row} у столбца {column} пустое значение, а этот столбец NOT NULL. Эта ячейка пропущена.',
+  'dataTable.pasteIdentityChanged':
+    'Строка {row}, столбец {column}: запись сделала бы строку неоднозначной. Эта ячейка пропущена.',
+  'dataTable.pasteNoRowIdentity':
+    'В этой таблице нет первичного ключа, поэтому вставленные значения не удаётся сопоставить со строками.',
+  'dataTable.pasteDroppedColumns':
+    'Столбцов источника отброшено: {count} (здесь такого столбца нет) — {names}',
+  'dataTable.pasteCrossTableTitle': 'Вставить в другую таблицу?',
+  'dataTable.pasteCrossTableNotice': 'Вставлено из другой таблицы в {table}',
+  'dataTable.pasteCrossTableBody':
+    'Буфер обмена скопирован из другой таблицы. Его столбцы сопоставляются по имени с {target} (совпало {matched} из {total}); столбцы без соответствия отбрасываются.',
+  'dataTable.pasteUnknownSourceBody':
+    'Буфер обмена скопирован не из этой таблицы, поэтому столбцы сопоставляются с {target} по позиции: столбцов — {total}.',
+  'dataTable.pasteConfirmTitle': 'Вставить ячеек: {cells}?',
+  'dataTable.pasteConfirmMessage':
+    'Будет записано строк: {rows} × столбцов: {cols}, перезаписано ожидающих изменений: {overwritten}. Ничего не фиксируется до коммита.',
+  'dataTable.pasteToSelectedCells': 'Вставить',
+  'dataTable.pasteResult': 'Вставлено ячеек: {count} · пропущено: {skipped}',
+  'dataTable.pasteOverwrotePending': 'Перезаписано ожидающих изменений: {count}',
   'detail.title': 'Подробности',
   'detail.show': 'Показать панель сведений',
   'detail.hide': 'Скрыть панель сведений',
@@ -167,6 +257,46 @@ const pack = {
   'pagination.next': 'Следующий',
   'pagination.page': 'Страница',
   'pagination.pageOf': '',
+  'pagination.rowCountEstimated': 'прибл. {count}',
+  'pagination.rowCountUnknown': 'неизвестно',
+  'pagination.rowsUnknown': 'Число строк недоступно',
+  'pagination.estimateTooltip':
+    'Оценочное число строк — фактическое значение может отличаться. Используйте "Подсчитать" для получения точного значения.',
+  'pagination.countExact': 'Подсчитать',
+  'pagination.counting': 'Подсчёт…',
+  'pagination.pageOnly': 'Страница {page}',
+  'pagination.unstablePaging':
+    'Порядок сортировки не задан — при переходе между страницами строки могут повторяться или пропускаться.',
+  'pagination.estimatedLessThanActual':
+    'Эта страница пуста. Фактическое число строк может быть меньше оценки — проверьте с помощью "Подсчитать".',
+  'defaultSort.noPrimaryKey': 'Первичного ключа нет — строки упорядочиваются по первому столбцу.',
+  'defaultSort.custom': 'Пользовательский порядок',
+  'defaultSort.panelLabel': 'Сортировать',
+  'defaultSort.inherit': 'Следовать настройке',
+  'defaultSort.primaryKeyAsc': 'Первичный ключ ↑',
+  'defaultSort.primaryKeyDesc': 'Первичный ключ ↓',
+  'defaultSort.primaryKeyDescUnavailable':
+    'Сортировка по составному первичному ключу по убыванию пока не поддерживается.',
+  'defaultSort.none': 'Не сортировать',
+  'pagination.estimateUnavailable': 'Эта база данных не может оценить число строк.',
+  'pagination.mode.keyset': 'Быстрое листание',
+  'pagination.mode.offset': 'Листание со смещением',
+  'pagination.hint.driverUnsupported':
+    'Эта база данных не поддерживает быстрый переход по страницам.',
+  'pagination.hint.noStableOrder':
+    'В этой таблице нет первичного ключа, поэтому страницы нельзя читать в стабильном порядке.',
+  'pagination.hint.nullableKeyColumn':
+    'Быстрый переход по страницам недоступен при сортировке по столбцу, который может быть NULL.',
+  'pagination.hint.nullBoundary':
+    'Ключ сортировки этой строки — NULL, поэтому быстрый переход по страницам возобновился с точной позиции.',
+  'pagination.hint.predicateUnavailable':
+    'Быстрый переход по страницам недоступен для текущего порядка сортировки.',
+  'pagination.hint.noPaginationClause': 'Эта база данных не может разбить этот запрос на страницы.',
+  'pagination.hint.staleCursor':
+    'Сортировка или фильтр изменились — переход по страницам начат заново с первой страницы.',
+  'pagination.hint.jumpReanchored': 'Быстрый переход по страницам возобновился со страницы {page}.',
+  'pagination.hint.drift':
+    'Строки изменились во время перехода по страницам; число строк обновлено.',
   'filter.filter': 'Фильтр',
   'filter.remove': 'Удалить фильтр',
   'filter.clear': 'Очистить',
@@ -186,14 +316,62 @@ const pack = {
   'filter.lt': '<',
   'filter.gte': '≥',
   'filter.lte': '≤',
-  'filter.like': 'содержит',
+  'filter.like': 'соответствует шаблону',
   'filter.in': 'входит в',
   'filter.isNull': 'равно NULL',
   'filter.isNotNull': 'не равно NULL',
+  'filter.notIn': 'не входит в',
+  'filter.between': 'между',
+  'filter.notBetween': 'не между',
+  'filter.contains': 'включает',
+  'filter.notContains': 'не включает',
+  'filter.startsWith': 'начинается с',
+  'filter.endsWith': 'заканчивается на',
+  'filter.isEmpty': 'является пустой строкой',
+  'filter.isNotEmpty': 'не является пустой строкой',
+  'filter.regex': 'соответствует regex',
+  'filter.notRegex': 'не соответствует regex',
+  'filter.jsonContains': 'JSON содержит',
   'filter.quickPlaceholder': "Быстрый фильтр: status = 'open'",
   'filter.invalidExpression': 'Фильтр не применён: {error}',
-  'filter.mixedLogic':
-    'Фильтр не применён: используйте один логический оператор или редактор фильтра.',
+  'filter.nestedLogic':
+    'Фильтр не применён: это выражение группирует AND и OR в скобках. Запишите условия подряд или измените их в редакторе фильтров.',
+  'filter.incomplete': 'Требуется значение, не применено',
+  'filter.errorIncomplete':
+    'Фильтр не применён: у одного условия пока нет значения (столбец «{column}»)',
+  'filter.errorUnsupportedOperator':
+    'Эта база данных не поддерживает фильтр «{operator}». Попробуйте {alternatives} или другой поддерживаемый фильтр.',
+  'filter.tokensPlaceholder': 'Введите значение и нажмите Enter',
+  'filter.tokenRemove': 'Удалить значение',
+  'filter.betweenInverted': 'Нижняя граница больше верхней — запрос не вернёт ни одной строки',
+  'filter.connectorReset': 'Использовать {logic} для всех',
+  'filter.globalLogicDisabledHint':
+    'Используется логика для каждого условия — очистите настройки отдельных условий, чтобы изменить логику для всех',
+  'filter.connectorInherited': 'Используется логика всех условий',
+  'filter.likeCaseInsensitiveHint':
+    'LIKE не учитывает регистр при стандартных параметрах сортировки этой базы данных',
+  'filter.view.savedViews': 'Сохранённые представления',
+  'filter.view.save': 'Сохранить',
+  'filter.view.saveAs': 'Сохранить как…',
+  'filter.view.rename': 'Переименовать',
+  'filter.view.delete': 'Удалить',
+  'filter.view.deleteConfirm': 'Удалить сохранённое представление «{name}»?',
+  'filter.view.nameLabel': 'Название представления',
+  'filter.view.namePlaceholder': 'например: Открытые заказы за неделю',
+  'filter.view.empty': 'Для этой таблицы нет сохранённых представлений',
+  'filter.view.nameExists': 'Для этой таблицы уже есть представление с таким именем',
+  'filter.view.overwrite': 'Перезаписать',
+  'filter.view.setDefault': 'Задать по умолчанию',
+  'filter.view.defaultBadge': 'По умолчанию',
+  'filter.view.draftNotAppliedHint':
+    'Сохраняются применённые фильтры — у вас остались неприменённые изменения',
+  'filter.view.applyAnyway': 'Сначала применить',
+  'filter.view.export': 'Экспортировать…',
+  'filter.view.import': 'Импортировать…',
+  'filter.view.importDone': 'Импортировано представлений: {count}',
+  'filter.view.importFailed': 'Импорт не удался: {error}',
+  'filter.view.missingColumn': 'Столбец «{column}» больше не существует в этой таблице',
+  'filter.view.errorNameExists': 'Сохранённое представление с таким именем уже существует',
   'import.description': 'Импортируйте данные из файла CSV или JSON.',
   'import.selectFile': 'Выберите файл',
   'import.targetTable': 'Целевая таблица',
@@ -365,6 +543,37 @@ const pack = {
   'tableData.selectedCount': 'Выбрано {selected}/{total}',
   'tableData.noColumnsFound': 'Подходящих полей не найдено',
   'tableData.allColumnsHidden': 'Все поля скрыты',
+  'tableData.shortTxDefault': 'Короткая транзакция на каждое сохранение',
+  'tableData.inManualTx': 'Открыта ручная транзакция',
+  'tableData.txManualHint':
+    'Фиксации присоединяются к открытой ручной транзакции до её завершения.',
+  'tableData.beginTx': 'Начать транзакцию',
+  'tableData.commitTx': 'Зафиксировать транзакцию',
+  'tableData.rollbackTx': 'Откатить транзакцию',
+  'tableData.txBeginFailed': 'Не удалось начать транзакцию',
+  'tableData.txCommitFailed': 'Не удалось зафиксировать транзакцию',
+  'tableData.txRollbackFailed': 'Не удалось откатить транзакцию',
+  'tableData.errorPendingHint':
+    'Несохранённые изменения остаются в ожидании. Повторите попытку, измените фильтр или откатите изменения, прежде чем закрыть эту вкладку.',
+  'tableData.insertRow': 'Вставить строку',
+  'tableData.insertRowHint': 'Вставить строку ({shortcut})',
+  'tableData.duplicateDraftRow': 'Дублировать строку',
+  'tableData.removeDraftRow': 'Отменить строку',
+  'tableData.draftRowBadge': 'НОВЫЙ',
+  'tableData.draftRowUnsaved': 'Новая строка (ещё не сохранена)',
+  'tableData.insertDefault': 'Значение по умолчанию',
+  'tableData.insertSetNull': 'Установить NULL',
+  'tableData.pendingInserts': 'Вставок: {count}',
+  'tableData.confirmCommitWithInserts':
+    'Зафиксировать вставок: {inserts}, обновлений: {updates}, удалений: {deletes}?',
+  'tableData.insertFailed': 'Не удалось вставить строки',
+  'tableData.insertNoWritableColumn': 'Заполните хотя бы один столбец: {columns} требует значения.',
+  'tableData.insertUnknownColumn': 'Столбец {column} не входит в состав этой таблицы.',
+  'tableData.insertReturningUnavailable':
+    'Не удалось автоматически определить первичный ключ новой строки; страница обновлена.',
+  'tableData.insertSchemaUnavailable':
+    'Метаданные столбцов недоступны; эту строку проверит база данных.',
+  'tableData.highlightNewRow': 'Новая строка',
   'dataTable.copyColumnData': 'Копировать данные столбца',
   'query.addToDashboard': 'Добавить на дашборд',
   'query.dashboard.defaultName': 'Новый дашборд',
@@ -396,5 +605,79 @@ const pack = {
   'query.objectTree.tables': 'Таблицы',
   'query.objectTree.views': 'Представления',
   'query.objectTree.noObjects': 'Нет объектов',
+  'cellEditor.setValue': 'Установить значение',
+  'cellEditor.setEmpty': 'Установить пустую строку',
+  'cellEditor.setDefault': 'Использовать значение столбца по умолчанию',
+  'cellEditor.revertCell': 'Отменить изменение этой ячейки',
+  'cellEditor.loadCandidates': 'Загрузить возможные значения',
+  'cellEditor.loadingCandidates': 'Загрузка возможных значений…',
+  'cellEditor.candidatesEmpty': 'Возможные значения не найдены',
+  'cellEditor.candidatesFailed': 'Не удалось загрузить возможные значения',
+  'cellEditor.candidatesTruncated': 'Показаны первые {count} различных значений',
+  'cellEditor.commit': 'Применить',
+  'cellEditor.formatJson': 'Форматировать JSON',
+  'cellEditor.minifyJson': 'Уплотнить JSON',
+  'cellEditor.ariaLabel': 'Изменение значения ячейки',
+  'cellEditor.invalidNumber': 'Введите допустимое число',
+  'cellEditor.invalidInteger': 'Введите целое число',
+  'cellEditor.invalidBoolean': 'Введите true или false',
+  'cellEditor.invalidDate': 'Введите допустимую дату (YYYY-MM-DD)',
+  'cellEditor.invalidTime': 'Введите допустимое время (HH:MM:SS)',
+  'cellEditor.invalidDateTime': 'Введите допустимую дату и время (YYYY-MM-DDTHH:MM:SS)',
+  'cellEditor.invalidJson': 'Недопустимый JSON — исправьте его перед применением',
+  'cellEditor.invalidUuid': 'Введите допустимый UUID',
+  'cellEditor.notNull': 'Этот столбец не допускает NULL',
+  'cellEditor.valueTooLarge': 'Это значение слишком велико, чтобы редактировать его в сетке',
+  'cellEditor.binaryNotEditable': 'Двоичные значения нельзя редактировать в сетке',
+  'cellEditor.discardedUncommitted':
+    'Ваше изменение было отменено, потому что строка больше не отображается',
+  'cellEditor.readOnlyTitle': 'Ячейка только для чтения',
+  'cellEditor.readOnly.connection':
+    'Это подключение доступно только для чтения, поэтому ячейки нельзя редактировать.',
+  'cellEditor.readOnly.driverCapability': 'Этот драйвер базы данных не поддерживает запись.',
+  'cellEditor.readOnly.view':
+    'Представления и материализованные представления доступны только для чтения в сетке данных.',
+  'cellEditor.readOnly.noPrimaryKey':
+    'В этой таблице нет первичного ключа, поэтому строку нельзя определить для обновления.',
+  'cellEditor.readOnly.ambiguousRowIdentity':
+    'Эту строку нельзя определить однозначно (её ключ — NULL или он повторяется).',
+  'cellEditor.readOnly.autoIncrement': 'Столбцы с автоинкрементом нельзя редактировать напрямую.',
+  'cellEditor.readOnly.generated': 'Сгенерированные столбцы нельзя редактировать.',
+  'cellEditor.readOnly.typeNotEditable':
+    'Тип этого столбца нельзя редактировать напрямую в этой базе данных.',
+  'cellEditor.readOnly.binaryColumn': 'Двоичные столбцы нельзя редактировать напрямую.',
+  'cellEditor.readOnly.largeValue':
+    'Это значение слишком велико, чтобы редактировать его напрямую.',
+  'query.gridReadOnly.unknownOrigin':
+    'Не удаётся определить, откуда получен этот результат, поэтому он доступен только для чтения.',
+  'query.gridReadOnly.ambiguousOrigin':
+    'Драйвер сообщил о несоответствии источников столбцов этого результата.',
+  'query.gridReadOnly.multiTable':
+    'Этот результат объединяет несколько таблиц; отдельные строки нельзя редактировать.',
+  'query.gridReadOnly.aggregate':
+    'Этот результат получен агрегатным запросом; отдельные строки нельзя редактировать.',
+  'query.gridReadOnly.distinct':
+    'В этом результате удалены дубликаты; строки невозможно сопоставить со строками таблицы.',
+  'query.gridReadOnly.setOperation':
+    'Этот результат получен операцией над множествами (UNION); строки нельзя редактировать.',
+  'query.gridReadOnly.derivedSource':
+    'Этот результат получен из подзапроса; строки невозможно сопоставить со строками таблицы.',
+  'query.gridReadOnly.view':
+    'Этот результат получен из представления; редактирование представлений не поддерживается.',
+  'query.gridReadOnly.noPrimaryKey':
+    'В исходной таблице нет первичного ключа, поэтому строки невозможно идентифицировать.',
+  'query.gridReadOnly.keyNotSelected':
+    'Столбцы первичного ключа представлены в этом результате не все.',
+  'query.gridReadOnly.sessionReadOnly': 'Текущее соединение доступно только для чтения.',
+  'query.gridReadOnly.keyValueNull':
+    'В этой строке значение первичного ключа равно NULL, поэтому эту строку невозможно найти.',
+  'query.gridReadOnly.duplicateIdentity':
+    'На этой странице идентификаторы строк повторяются; редактирование отключено.',
+  'query.gridReadOnly.rowNotFound': 'Эта строка больше не входит в результат.',
+  'query.gridReadOnly.tooltip': 'Только для чтения: {reason}',
+  'query.gridEdit.editHint': 'Дважды щёлкните, чтобы отредактировать эту ячейку',
+  'query.gridEdit.resolving': 'Проверка, можно ли редактировать этот результат…',
+  'query.gridEdit.submitting': 'Сохранение изменения…',
+  'query.gridEdit.empty': 'В этом результате нет строк.',
 } as const;
 export default pack;

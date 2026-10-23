@@ -20,6 +20,51 @@ export interface PendingRowChange {
   currentValues: Record<string, Value | null>;
   changedColumns: string[];
   deleteMarked: boolean;
+  /**
+   * Marks this entry as a **new row draft** rather than a change to an existing
+   * row. Such a row has no identity yet, so `changedColumns` is the exact
+   * INSERT column list and a column absent from it keeps the database default
+   * (auto-increment, generated, `DEFAULT now()`). `null` in `currentValues`
+   * still means SQL `NULL`. The host never serializes `false`, which keeps
+   * fingerprints of insert-free plans byte-identical.
+   */
+  insertMarked?: boolean;
+}
+
+/**
+ * One new-row draft (front-end UI shape; it never goes on the wire).
+ *
+ * The write intent of a column lives in the **membership** of the key, not in a
+ * separate tri-state enum:
+ *
+ * - key present with a value → the column is written with that value;
+ * - key present with `null` → the column is written as SQL `NULL`;
+ * - key absent → the column is **not written** and the database keeps its own
+ *   default (auto-increment, generated column, `DEFAULT now()`, trigger).
+ *
+ * "Not written" and "written as NULL" are different statements, so clearing a
+ * draft cell removes the key instead of storing `null`; and the columns that
+ * are not written must never be "filled up" with `NULL` — that would break
+ * auto-increment and generated columns (00-contracts §3).
+ */
+export interface PendingInsert {
+  /** UI association key: React key plus the draft row's `data-draft-id`. */
+  draftId: string;
+  /** Per-column write intent. A present key means "written"; `null` means SQL NULL. */
+  values: Record<string, Value | null>;
+}
+
+/**
+ * The exact INSERT column list of a draft: the **sorted** names of the columns
+ * the user actually wrote.
+ *
+ * The order is the column order of the generated statement, so it has to be
+ * deterministic — the same draft must always produce the same plan and the same
+ * bound parameters. A column the user cleared is absent from `values` and
+ * therefore absent here as well.
+ */
+export function draftWriteColumns(values: Record<string, Value | null>): string[] {
+  return Object.keys(values).sort();
 }
 
 export interface PlannedStatement {
@@ -46,6 +91,16 @@ export interface RowChangePlan {
   table: TableChangeContext;
   updates: PlannedStatement[];
   deletes: PlannedStatement[];
+  /**
+   * New-row statements in request order: insertion order decides auto-increment.
+   *
+   * **Always present.** The host declares the field with `#[serde(default)]`
+   * (a tolerance for *deserializing* a plan that does not carry it) and
+   * serializes it unconditionally — a plan without inserts carries an empty
+   * list, never a missing key. The mirror therefore has to be required too: an
+   * optional field would let a caller claim a shape the host never produces.
+   */
+  inserts: PlannedStatement[];
   warnings: ChangeWarning[];
 }
 
@@ -78,7 +133,7 @@ export function tableChangeContextKey(context: TableChangeContext): string {
 }
 
 export interface CommitStatementResult {
-  operation: 'update' | 'delete';
+  operation: 'insert' | 'update' | 'delete';
   rowIdentity: RowIdentity;
   affectedRows: number;
 }
@@ -92,12 +147,27 @@ export interface CommitPendingChangesResponse {
 
 export type PendingStatus = 'idle' | 'previewing' | 'committing';
 
+/**
+ * Where the row inserted by a commit ended up.
+ *
+ * - `located` — the new row was found on the refreshed page (by its row
+ *   identity, or by the single-column maximum-primary-key candidate);
+ * - `unavailable` — the commit succeeded, but the new row could not be located.
+ *   The page is refreshed and the UI says so; it must **not** claim that the new
+ *   row was highlighted (04 §4.1, the RETURNING backfill is not implemented in
+ *   this batch, so this is the regular path, not an error);
+ * - `not-applicable` — the commit contained no insert at all.
+ */
+export type InsertLocation = 'located' | 'unavailable' | 'not-applicable';
+
 export interface CommitPendingChangesResult extends CommitPendingChangesResponse {
   status: 'committed' | 'failed' | 'noop';
   refreshed: boolean;
   refreshRequired: boolean;
   refreshStatus?: 'completed' | 'failed';
   error?: string;
+  /** Front-end only: where the inserted row ended up after the refresh. */
+  insertLocation?: InsertLocation;
 }
 
 function valueForColumn(row: Record<string, unknown>, column: string): Value | null {
@@ -216,13 +286,96 @@ export function valuesEqual(
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
+/**
+ * The last gate in front of the store: turn whatever the interface produced
+ * into one of the three write intents (00-contracts §3).
+ *
+ * - `undefined` stays `undefined` — "do not write this column";
+ * - `null` stays `null` — "write SQL `NULL`";
+ * - a value that cannot survive the round trip (`NaN`, `Infinity`, a
+ *   function) becomes `undefined`, i.e. "do not write".
+ *
+ * `NaN` is the dangerous one: `valuesEqual` compares with `JSON.stringify`,
+ * which serialises `NaN` as `null` — so a `NaN` that reached the store would
+ * be indistinguishable from a `NULL` and would silently write a `NULL`.
+ */
+export function normalizeEditValue(value: unknown): Value | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (Array.isArray(value)) return value as unknown[];
+  if (typeof value === 'object') return value as Record<string, unknown>;
+  // A function, a symbol or a bigint cannot be written to a column.
+  return undefined;
+}
+
 export function clonePendingRowChange(change: PendingRowChange): PendingRowChange {
   return {
     ...(change.rowIndex === undefined ? {} : { rowIndex: change.rowIndex }),
+    // The insert flag decides whether the row is a new-row draft or a change
+    // to an existing one, so a clone that drops it turns an INSERT into an
+    // UPDATE of a row that does not exist. It is copied only when it is
+    // there: `insertMarked: undefined` would put the key into the JSON, and
+    // the backend must keep receiving no key at all for a plan without
+    // inserts (that is what keeps an insert-free fingerprint byte-identical).
+    ...(change.insertMarked === undefined ? {} : { insertMarked: change.insertMarked }),
     rowIdentity: { ...change.rowIdentity },
     originalValues: { ...change.originalValues },
     currentValues: { ...change.currentValues },
     changedColumns: [...change.changedColumns],
     deleteMarked: change.deleteMarked,
   };
+}
+
+// ── Clipboard paste (DB-03) ────────────────────────────────────────────────
+
+/**
+ * One cell a paste wants to write.
+ *
+ * There is **no tri-state enum**: the three write intents are expressed by two carriers,
+ * exactly as `PendingInsert.values` and the Rust `&[(&str, Option<Value>)]` slice do it
+ * (00-contracts §3, landing correction):
+ *
+ * - the cell **appears** in the `writes` sequence → the column goes into the statement;
+ * - `value === null` → the column is written as SQL `NULL` (`Option::None`);
+ * - the cell is **absent** from the sequence → the column is **not written at all**
+ *   (UPDATE keeps its value, INSERT keeps the database default).
+ *
+ * "Not written" and "written as NULL" are different actions, so a paste never emits a
+ * `null` write for a cell it does not cover — that would clear cells the user never
+ * selected.
+ */
+export interface CellPasteWrite {
+  /** 0-based row index inside the current page. Render-only: never used to build SQL. */
+  rowIndex: number;
+  /** **Column name**, not index: indices drift when columns are hidden or reordered. */
+  columnName: string;
+  /** The value to write; `null` means SQL `NULL`. */
+  value: Value | null;
+}
+
+/** Whether a column may be written by a **paste**. */
+export interface ColumnWritability {
+  writable: boolean;
+  /** Why not, when `writable === false`. `null` when writable. */
+  reason: 'auto-increment' | 'unknown-column' | null;
+}
+
+/**
+ * Column-level gate for pasting.
+ *
+ * Deliberately **not** wired into the single-cell editing path: a double-click edit is an
+ * explicit per-column action by the user, and adding a gate there would change behaviour
+ * that already ships (00-contracts R4). A paste is a bulk action the user did not aim at
+ * one column, so an auto-increment column is skipped wholesale (03 §3.1, U-3).
+ *
+ * `ColumnSchema` has no `isGenerated` yet, so a generated column cannot be told apart from
+ * an ordinary one with a default value; using `defaultValue != null` instead would mark
+ * perfectly writable columns read-only (03 §11 U-3).
+ */
+export function columnWritability(column: ColumnSchema | undefined): ColumnWritability {
+  if (!column) return { writable: false, reason: 'unknown-column' };
+  if (column.isAutoIncrement === true) return { writable: false, reason: 'auto-increment' };
+  return { writable: true, reason: null };
 }

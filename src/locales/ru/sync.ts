@@ -4,6 +4,84 @@ const pack = {
     'Предыдущий план больше не действителен: истёк срок его действия, структура цели изменилась или изменились права. Подготовьте новый план перед применением.',
   'migrationJob.pendingVerificationHint':
     'Предыдущее задание ожидает проверки. Откройте центр заданий и согласуйте состояние, прежде чем применять новые изменения.',
+  'migrationJob.notExecutedHint':
+    'Задание синхронизации данных, стоявшее в очереди, не запустилось после перезапуска. Оно не было повторено — выполните новое сравнение перед применением.',
+  'migrationJob.notExecutedJob': 'Не выполнено после перезапуска',
+  'migrationJob.verifyRecovery': 'Проверить восстановление',
+  'migrationJob.verifyingRecovery': 'Проверка…',
+  'migrationJob.cancelJob': 'Отменить задание',
+  'migrationJob.cancellingJob': 'Отмена…',
+  'migrationJob.recoveryEndpointMismatch':
+    'Перед проверкой восстановления выберите те же подключения к источнику и цели, что и у этого задания.',
+  'migrationJob.recoverySelectEndpoints':
+    'Перед проверкой восстановления выберите и подключите обе конечные точки.',
+  'migrationJob.recoveryManualReview':
+    'Зафиксированы доказательства восстановления. Сравните текущие данные перед применением чего-либо.',
+  'migrationJob.recoveryRecorded':
+    'Зафиксированы доказательства восстановления. Выполните новое сравнение перед применением чего-либо.',
+  'migration.verdict.ok': 'Завершено',
+  'migration.verdict.partial': 'Применено частично',
+  'migration.verdict.uncertain': 'Результат неопределённый',
+  'migration.verdict.failed': 'Не применено',
+  'migration.verdict.committedRows': 'Подтверждённые строки',
+  'migration.verdict.replayedReceipt':
+    'Этот ответ получен из сохранённой квитанции уже выполненного запуска. Ничего не записывалось повторно.',
+  'migration.verdict.noBoundaries':
+    'Граница записи не зафиксирована, поэтому ничто нельзя считать подтверждённым.',
+  'migration.verdict.recoveryLabel': 'Вердикт восстановления',
+  'migration.verdict.notExecuted': 'Не выполнено',
+  'migration.verdict.notDispatchedAfterRestart':
+    'Приложение перезапустилось после принятия этого задания, но до его запуска, поэтому миграция не выполнялась. Подготовьте новый план, чтобы повторить попытку.',
+  'migration.verdict.requiresReconcile':
+    'Сверьте цель с зафиксированными границами, прежде чем применять что-либо ещё.',
+  'migration.verdict.resumeThrough': 'Восстановление может продолжиться до границы №',
+  'migration.verdict.rereview': 'Проверить новый план',
+  'migration.verdict.rereviewBlocked':
+    'Этот запуск ещё нужно сопоставить с целью, прежде чем что-либо можно будет записывать снова. Проверьте его только на чтение, затем закройте и снова откройте это окно, чтобы изучить новый план.',
+  'migration.boundary.verified': 'Зафиксировано с доказательством',
+  'migration.boundary.unverified': 'Зафиксировано без доказательства — не проверено',
+  'migration.progress.counts':
+    'Прочитано / преобразовано / предпринято / зафиксировано / неизвестно',
+  'migration.cancel.none': 'Отмена не запрашивалась.',
+  'migration.cancel.notStarted': 'Отмена запрошена до запуска; ничего не записано.',
+  'migration.cancel.requestedInFlight':
+    'Отмена запрошена во время выполнения. Точка остановки пока неизвестна — проверьте вердикт ниже.',
+  'migration.cancel.settledPartially':
+    'Отмена запрошена во время выполнения. Часть границ зафиксирована, остальное не применено.',
+  'migration.cancel.settledRolledBack':
+    'Отмена запрошена во время выполнения. Выполнение откатили, а зафиксированные границы отменили.',
+  'migration.cancel.settledCompleted':
+    'Отмена запрошена, но запись уже завершилась. Выполнение завершилось, а не было отменено.',
+  'migration.cancel.settledUnknown':
+    'Отмена запрошена во время выполнения, и определить, где оно остановилось, не удалось.',
+  'migration.cancel.unknownJob':
+    'В бэкенде нет задания для этого запуска, поэтому запросу отмены не на что было нацелиться. Ничего не отменено.',
+  'migration.failure.backendScope.title': 'Область действия бэкенда отклонена',
+  'migration.failure.backendScope.body':
+    'Конечные точки не смогли подтвердить, что они — локальный настольный бэкенд, поэтому миграция была отклонена, а не выполнена в непроверенной области. Ничего не записано. Заново выберите обе конечные точки и изучите новый план.',
+  'migration.failure.pipelineBudget.title': 'Бюджет конвейера отклонил этот запуск',
+  'migration.failure.pipelineBudget.body':
+    'Запуск превысил бюджет конвейера в 8 МиБ, и бэкенд намеренно остановил его до применения этого этапа. Это намеренное ограничение безопасности, а не сбой — сузьте выбор или размер пакета и изучите новый план.',
+  'migration.failure.planConsumed.title': 'Этот план уже применён',
+  'migration.failure.planConsumed.body':
+    'План можно применить только один раз, и предыдущий запуск уже израсходовал его. Ничего не записано повторно. Изучите новый план, чтобы продолжить.',
+  'migration.failure.stalePlan.title': 'План устарел',
+  'migration.failure.stalePlan.body':
+    'План истёк, цель изменилась или поменялись права доступа. Он отбрасывается, а не используется повторно — изучите новый план.',
+  'migration.failure.other.title': 'Миграция отклонена',
+  'migration.failure.other.body':
+    'Бэкенд отказался выполнять миграцию. Ничто нельзя считать подтверждённым — ознакомьтесь с подробностями ниже.',
+  'migration.failure.reReview': 'Проверить новый план',
+  'migration.uncertainty.noCheckpoint':
+    'Контрольная точка не зафиксирована, поэтому восстановить, где остановился этот запуск, невозможно.',
+  'migration.uncertainty.recoveryRejected':
+    'Восстановление отклонено, поэтому этот запуск нельзя продолжить — его нужно проверить вручную.',
+  'migration.uncertainty.effectOutcomeUnknown':
+    'База данных не подтвердила, был ли записанный результат зафиксирован или откатан.',
+  'migration.uncertainty.missingEvidence':
+    'Как минимум у одной зафиксированной границы нет доказательства, поэтому она отмечена как непроверенная.',
+  'migration.uncertainty.manualReviewRequired':
+    'Бэкенд требует ручной проверки перед применением чего-либо ещё.',
   // --- Data Sync ---
   'sync.source': 'Источник',
   'sync.target': 'Цель',
@@ -158,6 +236,13 @@ const pack = {
   'transfer.executing': 'Выполнение переноса…',
   'transfer.executingProgress': 'Перенос таблиц: {count}…',
   'transfer.cancel': 'Отмена',
+  'transfer.job.attachedTitle': 'Задания передачи данных уже выполняются',
+  'transfer.job.restoredTitle': 'Результат предыдущей передачи данных',
+  'transfer.job.detailsLoading': 'Загрузка сохранённого отчёта о передаче…',
+  'transfer.job.detailsUnavailable':
+    'Сохранённый отчёт недоступен; проверьте цель перед повторной попыткой.',
+  'transfer.job.queued': 'Передача поставлена в очередь',
+  'transfer.job.running': 'Передача выполняется',
   'transfer.back': 'Назад',
   'transfer.next': 'Далее',
   'transfer.error': 'Ошибка передачи',
@@ -186,6 +271,10 @@ const pack = {
   'transfer.mapping.autoMatch': 'Автосопоставление по имени',
   'transfer.mapping.clearUnmapped': 'Очистить несопоставленные',
   'transfer.mapping.unmappedTargetWarning': 'Несопоставленные столбцы цели: {columns}',
+  'transfer.mapping.gateLost':
+    'Таблицы изменились во время подготовки плана, поэтому ни один столбец больше не сопоставлен. Проверьте сопоставление заново и повторите попытку.',
+  'transfer.mapping.targetNameRequired':
+    'Укажите имя таблицы, которую создаст это сопоставление, прежде чем продолжить. На цели пока ничего нет, поэтому и запасного имени нет.',
   'transfer.mapping.sourceType': 'Тип источника',
   'transfer.mapping.targetType': 'Тип цели',
   'transfer.limitations.title': 'Текущие ограничения',
@@ -278,6 +367,39 @@ const pack = {
   'schemaDiff.confirmDeploy': 'Введите {token} для подтверждения разрушительного развёртывания',
   'schemaDiff.deploy': 'Развернуть на цель',
   'schemaDiff.deploying': 'Развёртывание…',
+  'schemaDiff.prepareJob': 'Задание планирования',
+  'schemaDiff.applyJob': 'Задание применения',
+  'schemaDiff.jobUnknown': 'Статус недоступен',
+  'schemaDiff.jobQueued': 'Принято; ожидает запуска',
+  'schemaDiff.jobRunning': 'Выполняется',
+  'schemaDiff.jobSucceeded': 'Завершено',
+  'schemaDiff.jobFailed': 'Ошибка',
+  'schemaDiff.jobCancelled': 'Отменено',
+  'schemaDiff.jobProgress':
+    'Предпринято {attempted}; зафиксировано {committed}; неизвестно {unknown}',
+  'schemaDiff.requestCancel': 'Запросить отмену',
+  'schemaDiff.cancelRequested': 'Отмена запрошена; ожидается результат задания.',
+  'schemaDiff.cancelUnavailable': 'Запрос отмены не дошёл до этого задания.',
+  'schemaDiff.planUnavailableAfterRestart':
+    'После перезапуска изученный план недоступен. Сравните заново перед применением.',
+  'schemaDiff.notDispatchedAfterRestart':
+    'Это принятое задание не было запущено до перезапуска. Оно не повторялось — сравните заново, чтобы создать новое задание.',
+  'schemaDiff.notExecuted':
+    'Это задание не запустилось. Его работа не была повторена — сравните заново, чтобы отправить новое задание.',
+  'schemaDiff.recoveryPending':
+    'Цели требуется явная проверка только на чтение. Это задание не возобновится автоматически.',
+  'schemaDiff.recoveryIdentityUnavailable':
+    'Идентификация цели недоступна для автоматической проверки; требуется ручная проверка.',
+  'schemaDiff.verifyRecovery': 'Проверить состояние цели',
+  'schemaDiff.verifyingRecovery': 'Проверка состояния цели…',
+  'schemaDiff.recoveryUnchanged':
+    'Отпечаток цели не изменился. Это не доказывает, что операторы не выполнялись — сравните заново перед применением.',
+  'schemaDiff.recoveryChanged':
+    'Отпечаток цели изменился. Проверьте базу данных вручную, прежде чем создавать новый план.',
+  'schemaDiff.recoveryManualReview':
+    'Проверка только на чтение не смогла определить результат. Проверьте цель вручную, прежде чем продолжить.',
+  'schemaDiff.lastApplyReport': 'Последний отчёт о применении',
+  'schemaDiff.recoveryCode': 'Код восстановления: {code}',
   'schemaDiff.deployStatus': 'Статус развёртывания',
   'schemaDiff.executed': 'выполнено',
   'schemaDiff.missingOnTarget': 'Нет на цели (ADD)',

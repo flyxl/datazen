@@ -185,6 +185,49 @@ pub fn build_delete_statement(
     })
 }
 
+/// Build an `INSERT` whose values stay bound.
+///
+/// `columns` is the exact write list. A column that must keep the database
+/// default (auto-increment, generated, `DEFAULT now()`, a trigger) is simply
+/// absent; `None` as a value writes SQL `NULL`, which is a different intent.
+/// An empty list is a legal single-row insert where every column takes its
+/// default and renders `INSERT INTO t DEFAULT VALUES` — a spelling some
+/// dialects do not share, so their drivers override the builder.
+///
+/// Same budget contract as [`build_update_statement`]: `max_parameters` is the
+/// binding capability the caller established, and exceeding it fails before any
+/// SQL is returned.
+pub fn build_insert_statement(
+    dialect: &dyn SqlDialect,
+    max_parameters: usize,
+    table: &str,
+    columns: &[(&str, Option<Value>)],
+) -> Result<BoundSqlStatement, DriverError> {
+    let mut parameters = Vec::new();
+    let mut names = Vec::with_capacity(columns.len());
+    let mut values = Vec::with_capacity(columns.len());
+    for (column, value) in columns {
+        names.push(dialect.quote_ident(column));
+        values.push(bind_parameter(
+            dialect,
+            max_parameters,
+            &mut parameters,
+            value,
+        )?);
+    }
+    let sql = if names.is_empty() {
+        format!("INSERT INTO {} DEFAULT VALUES", dialect.quote_ident(table))
+    } else {
+        format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            dialect.quote_ident(table),
+            names.join(", "),
+            values.join(", ")
+        )
+    };
+    Ok(BoundSqlStatement { sql, parameters })
+}
+
 fn bind_parameter(
     dialect: &dyn SqlDialect,
     max_parameters: usize,
@@ -326,6 +369,142 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(error, DriverError::Unsupported(_)));
+    }
+
+    #[test]
+    fn insert_statement_lists_written_columns_and_binds_each_value() {
+        let dialect = dialect();
+        let insert = build_insert_statement(
+            &dialect,
+            10,
+            "rows",
+            &[
+                ("text", Some(Value::String("x'\\y".into()))),
+                ("nullable", None),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            insert.sql,
+            "INSERT INTO `rows` (`text`, `nullable`) VALUES (?1, ?2)"
+        );
+        assert_eq!(insert.parameters.len(), 2);
+        assert!(
+            matches!(&insert.parameters[0], Value::String(value) if value == "x'\\y"),
+            "the raw value must travel as a bound parameter, not as SQL text"
+        );
+        assert!(matches!(&insert.parameters[1], Value::Null));
+
+        // The same table name renders exactly as the sibling builders do, so a
+        // driver that changes `quote_ident` changes all three at once.
+        let update = build_update_statement(
+            &dialect,
+            10,
+            "rows",
+            &[("text", Some(Value::Integer(1)))],
+            &[("id", Some(Value::Integer(1)))],
+        )
+        .unwrap();
+        let delete =
+            build_delete_statement(&dialect, 10, "rows", &[("id", Some(Value::Integer(1)))])
+                .unwrap();
+        assert!(insert.sql.contains("`rows`"));
+        assert!(update.sql.contains("`rows`"));
+        assert!(delete.sql.contains("`rows`"));
+    }
+
+    #[test]
+    fn insert_statement_with_no_written_columns_is_default_values() {
+        let insert = build_insert_statement(&dialect(), 10, "rows", &[]).unwrap();
+        assert_eq!(insert.sql, "INSERT INTO `rows` DEFAULT VALUES");
+        assert!(insert.parameters.is_empty());
+    }
+
+    #[test]
+    fn insert_statement_exceeding_the_parameter_budget_fails() {
+        let error = build_insert_statement(
+            &dialect(),
+            1,
+            "rows",
+            &[("a", Some(Value::Integer(1))), ("b", None)],
+        )
+        .unwrap_err();
+        assert!(matches!(error, DriverError::Unsupported(_)));
+    }
+
+    #[test]
+    fn insert_statement_preserves_column_order_and_keeps_null_vs_unset_apart() {
+        let insert = build_insert_statement(
+            &dialect(),
+            10,
+            "rows",
+            &[
+                ("z_last", Some(Value::Integer(3))),
+                ("a_first", Some(Value::String("v".into()))),
+                ("m_null", None),
+            ],
+        )
+        .unwrap();
+
+        // The write list is the caller's order; the builder must not sort it.
+        assert_eq!(
+            insert.sql,
+            "INSERT INTO `rows` (`z_last`, `a_first`, `m_null`) VALUES (?1, ?2, ?3)"
+        );
+        assert_eq!(insert.parameters.len(), 3);
+        assert!(matches!(&insert.parameters[2], Value::Null));
+        // `id` is not in the write list, so it is Unset (DEFAULT) — it must not
+        // appear as a column name nor be smuggled in as a NULL value.
+        assert!(!insert.sql.contains("id"));
+    }
+
+    #[test]
+    fn insert_statement_escapes_identifier_quotes_like_the_sibling_builders() {
+        let insert = build_insert_statement(
+            &dialect(),
+            10,
+            "we`ird",
+            &[("co`l", Some(Value::Integer(1)))],
+        )
+        .unwrap();
+        assert_eq!(insert.sql, "INSERT INTO `we``ird` (`co``l`) VALUES (?1)");
+
+        let update = build_update_statement(
+            &dialect(),
+            10,
+            "we`ird",
+            &[("co`l", Some(Value::Integer(1)))],
+            &[("id", Some(Value::Integer(1)))],
+        )
+        .unwrap();
+        assert!(
+            update.sql.starts_with("UPDATE `we``ird` SET `co``l`"),
+            "identifier escaping must match the update builder: {}",
+            update.sql
+        );
+    }
+
+    #[test]
+    fn insert_statement_accepts_exactly_the_binding_budget_and_rejects_one_over() {
+        let columns = [("a", Some(Value::Integer(1))), ("b", None)];
+
+        let exact = build_insert_statement(&dialect(), 2, "rows", &columns).unwrap();
+        assert_eq!(exact.parameters.len(), 2);
+        assert!(
+            exact.sql.contains("`b`"),
+            "the last column must not be dropped"
+        );
+
+        let over = build_insert_statement(&dialect(), 1, "rows", &columns).unwrap_err();
+        assert!(matches!(over, DriverError::Unsupported(_)));
+        assert!(over.to_string().contains("more than 1 bound parameters"));
+    }
+
+    #[test]
+    fn insert_statement_with_a_single_column_has_no_separator_artifacts() {
+        let insert = build_insert_statement(&dialect(), 1, "rows", &[("only", None)]).unwrap();
+        assert_eq!(insert.sql, "INSERT INTO `rows` (`only`) VALUES (?1)");
+        assert_eq!(insert.parameters.len(), 1);
     }
 
     #[test]

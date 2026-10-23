@@ -1,6 +1,15 @@
 /** Auto-split domain: query (en) */
 const pack = {
   'tableView.loadingData': 'Loading table data…',
+  // DB-02: the keyboard hints of the result grid.
+  'tableView.a11y.gridLabel': 'Data grid',
+  'tableView.shortcut.hint': 'Arrow keys move, Shift+Arrow extends, Enter edits',
+  'tableView.shortcut.enterEdit': 'Enter or F2 to edit the focused cell',
+  'tableView.shortcut.extendSelection': 'Shift+Arrow keys extend the selection',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown move one screen',
+  'tableView.shortcut.moveToEdge': 'Home/End go to row edge, Cmd+Home/End to grid edge',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A selects all rows',
+  'tableView.shortcut.tabLeavesGrid': 'Tab leaves the grid',
   'query.execute': 'Execute',
   'query.run': 'Run',
   'query.runSelection': 'Run Selection',
@@ -271,9 +280,17 @@ const pack = {
   'tableData.noPrimaryKey': 'Cannot commit: table has no primary key',
   'tableData.commitFailed': 'Failed to commit changes',
   'tableData.deleteFailed': 'Failed to delete rows',
-  'tableData.pendingChanges': '{count} unsaved changes',
+  'tableData.pendingChanges': '{count} rows with unsaved changes',
   'tableData.pendingUpdates': '{count} updates',
   'tableData.pendingDeletes': '{count} deletes',
+  // ── Uncommitted cells (DB-06) ─────────────────────────────────
+  'tableData.pendingCells': '{count} cells changed',
+  'tableData.pendingOffPage': '{count} more cells changed on other pages',
+  'tableData.dirtyCellAria': 'Changed cell: {original} → {next}',
+  'tableData.dirtyValueNull': 'NULL',
+  'tableData.dirtyValueEmpty': '(empty string)',
+  'tableData.dirtyDeletedRow': 'Marked for deletion',
+  'tableData.restoreRow': 'Restore This Row',
   'tableData.safeModeEditDisabled': 'Safe Mode prevents editing table cells.',
   'tableData.readOnlyEditDisabled': 'Cannot edit cells: connection or driver is read-only.',
   'tableData.preview': 'Preview',
@@ -306,6 +323,26 @@ const pack = {
   'tableData.txRollbackFailed': 'Failed to roll back transaction',
   'tableData.errorPendingHint':
     'Unsaved changes remain staged. Retry, adjust the filter, or roll back before closing this tab.',
+  // ── New rows (DB-04) ──────────────────────────────────────────
+  'tableData.insertRow': 'Insert Row',
+  'tableData.insertRowHint': 'Insert Row ({shortcut})',
+  'tableData.duplicateDraftRow': 'Duplicate Row',
+  'tableData.removeDraftRow': 'Discard Row',
+  'tableData.draftRowBadge': 'NEW',
+  'tableData.draftRowUnsaved': 'New row (not yet saved)',
+  'tableData.insertDefault': 'DEFAULT',
+  'tableData.insertSetNull': 'Set NULL',
+  'tableData.pendingInserts': '{count} insert(s)',
+  'tableData.confirmCommitWithInserts':
+    'Commit {inserts} inserts, {updates} updates and {deletes} deletes?',
+  'tableData.insertFailed': 'Failed to insert rows',
+  'tableData.insertNoWritableColumn': 'Fill at least one column: {columns} requires a value.',
+  'tableData.insertUnknownColumn': 'Column {column} is not part of this table.',
+  'tableData.insertReturningUnavailable':
+    "The new row's primary key could not be located automatically; the page was refreshed.",
+  'tableData.insertSchemaUnavailable':
+    'Column metadata is unavailable; the database will validate this row.',
+  'tableData.highlightNewRow': 'New row',
   'dataTable.selected': 'Selected',
   'dataTable.sort': 'Sort',
   'dataTable.selectRow': 'Select Row',
@@ -325,6 +362,50 @@ const pack = {
   'dataTable.empty': 'No rows to display',
   'dataTable.emptyHint': 'This query returned no rows.',
   'dataTable.tableLabel': 'Data table',
+  'dataTable.selectionSummary': '{rows} rows × {cols} columns',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': 'Copy Selected Cells',
+  'dataTable.copySelectedCellsAs': 'Copy Selected Cells As…',
+  'dataTable.copySelectedCellsAsTsv': 'Copy as TSV',
+  'dataTable.copySelectedCellsAsTsvWithHeader': 'Copy as TSV with header',
+  'dataTable.copySelectedCellsAsCsv': 'Copy as CSV',
+  'dataTable.copySelectedCellsAsJson': 'Copy as JSON (2D array)',
+  'dataTable.pasteSelectedCells': 'Paste to Selected Cells',
+  'dataTable.pasteRows': 'Paste Rows',
+  'dataTable.copyFailed': 'Could not copy; the clipboard is unavailable.',
+  'dataTable.pasteReadFailed':
+    'Could not read the clipboard. Press {shortcut} again, or grant clipboard access.',
+  'dataTable.pasteEmpty': 'The clipboard is empty — nothing to paste.',
+  'dataTable.pasteTooLarge':
+    'The clipboard holds {cells} cells; pasting is limited to {maxCells}. Nothing was pasted.',
+  'dataTable.pasteRaggedRow':
+    'Row {row} has {count} field(s) while the first row has {expected}; fix the source and copy again. Nothing was pasted.',
+  'dataTable.pasteUnclosedQuote': 'A quoted value is not closed; it was read as one cell.',
+  'dataTable.pasteClippedToPage':
+    '{count} cell(s) were skipped because the paste would leave this page. Go to the next page and paste the rest there.',
+  'dataTable.pasteNoWritableColumn': 'None of the columns in the selection can be written.',
+  'dataTable.readOnlyPasteDisabled': 'Cannot paste cells: connection or driver is read-only.',
+  'dataTable.pasteReadOnlyColumn': '{count} column(s) cannot be written and were skipped: {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    'Row {row} has an empty value for {column}, which is NOT NULL. That cell was skipped.',
+  'dataTable.pasteIdentityChanged':
+    'Row {row}, column {column}: the write would make the row identity ambiguous. That cell was skipped.',
+  'dataTable.pasteNoRowIdentity':
+    'This table has no primary key, so pasted values cannot be mapped to rows.',
+  'dataTable.pasteDroppedColumns':
+    '{count} source column(s) were dropped (no such column here): {names}',
+  'dataTable.pasteCrossTableTitle': 'Paste into another table?',
+  'dataTable.pasteCrossTableNotice': 'Pasted from another table into {table}',
+  'dataTable.pasteCrossTableBody':
+    'The clipboard was copied from another table. Its columns will be matched by name against {target} ({matched} of {total} matched); unmatched columns are dropped.',
+  'dataTable.pasteUnknownSourceBody':
+    'The clipboard was not copied from this table, so its columns are matched to {target} by position: {total} column(s).',
+  'dataTable.pasteConfirmTitle': 'Paste {cells} cells?',
+  'dataTable.pasteConfirmMessage':
+    'This writes {rows} row(s) × {cols} column(s) and overwrites {overwritten} pending change(s). Nothing is committed until you commit.',
+  'dataTable.pasteToSelectedCells': 'Paste',
+  'dataTable.pasteResult': 'Pasted {count} cell(s) · {skipped} skipped',
+  'dataTable.pasteOverwrotePending': '{count} pending change(s) overwritten',
   'detail.title': 'Details',
   'detail.show': 'Show detail panel',
   'detail.hide': 'Hide detail panel',
@@ -342,6 +423,36 @@ const pack = {
   'pagination.next': 'Next',
   'pagination.page': 'Page',
   'pagination.pageOf': '',
+  // The three states of a row count. The "about" sign is part of the text,
+  // not a decoration: an estimate must never look like a fact.
+  'pagination.rowCountEstimated': '≈ {count}',
+  'pagination.rowCountUnknown': '—',
+  'pagination.rowsUnknown': 'Row count unavailable',
+  'pagination.estimateTooltip':
+    'Estimated row count — the real number may differ. Use Count for the exact value.',
+  'pagination.countExact': 'Count',
+  'pagination.counting': 'Counting…',
+  'pagination.pageOnly': 'Page {page}',
+  'pagination.unstablePaging':
+    'No sort order is set — rows across pages may repeat or be skipped.',
+  'pagination.estimatedLessThanActual':
+    'This page is empty. The real row count may be lower than the estimate — use Count to check.',
+  // The default order of a table read, and the panel's temporary override.
+  'defaultSort.noPrimaryKey': 'No primary key — ordering by the first column.',
+  'defaultSort.custom': 'Custom order',
+  'defaultSort.panelLabel': 'Sort',
+  'defaultSort.inherit': 'Follow setting',
+  'defaultSort.primaryKeyAsc': 'Primary key ↑',
+  'defaultSort.primaryKeyDesc': 'Primary key ↓',
+  'defaultSort.primaryKeyDescUnavailable':
+    'Descending by a composite primary key is not supported yet.',
+  'defaultSort.none': 'Do not sort',
+  // The "cannot estimate" notice is an i18n key, **not** an error code: the
+  // `grid.<domain>.<reason>` namespace belongs to messages the back end
+  // raises, and this one the grid renders on its own (the driver's
+  // declaration, the answer in `totalRowsKind`). It lives with the pager
+  // because that is where it is shown.
+  'pagination.estimateUnavailable': 'This database cannot estimate row counts.',
   'filter.filter': 'Filter',
   'filter.remove': 'Remove filter',
   'filter.clear': 'Clear',
@@ -361,13 +472,64 @@ const pack = {
   'filter.lt': '<',
   'filter.gte': '≥',
   'filter.lte': '≤',
-  'filter.like': 'contains',
+  'filter.like': 'matches pattern',
   'filter.in': 'in',
   'filter.isNull': 'is null',
   'filter.isNotNull': 'is not null',
+  'filter.notIn': 'not in',
+  'filter.between': 'between',
+  'filter.notBetween': 'not between',
+  'filter.contains': 'contains',
+  'filter.notContains': 'does not contain',
+  'filter.startsWith': 'starts with',
+  'filter.endsWith': 'ends with',
+  'filter.isEmpty': 'is empty string',
+  'filter.isNotEmpty': 'is not empty string',
+  'filter.regex': 'matches regex',
+  'filter.notRegex': 'does not match regex',
+  'filter.jsonContains': 'json contains',
   'filter.quickPlaceholder': "Quick filter: status = 'open'",
   'filter.invalidExpression': 'Filter not applied: {error}',
-  'filter.mixedLogic': 'Filter not applied: use one logical operator or the Filter editor.',
+  'filter.nestedLogic':
+    'Filter not applied: this expression groups AND and OR in parentheses. Write the conditions one after another, or edit them in the Filter editor.',
+  'filter.incomplete': 'Needs a value, not applied',
+  'filter.errorIncomplete':
+    'Filter not applied: one condition has no value yet (column "{column}")',
+  'filter.errorUnsupportedOperator':
+    'This database does not support the "{operator}" filter. Try {alternatives}.',
+  'filter.tokensPlaceholder': 'Type a value, press Enter',
+  'filter.tokenRemove': 'Remove value',
+  'filter.betweenInverted':
+    'The lower bound is greater than the upper bound — this returns no rows',
+  'filter.connectorReset': 'Use {logic} for all',
+  'filter.globalLogicDisabledHint':
+    'Per-condition logic is in use — clear the per-condition settings to change the logic for all',
+  'filter.connectorInherited': 'Using the logic of all conditions',
+  'filter.likeCaseInsensitiveHint':
+    "LIKE is case-insensitive under this database's default collation",
+  // ── Named views (saved filter views) ──────────────────────────────
+  'filter.view.savedViews': 'Saved views',
+  'filter.view.save': 'Save',
+  'filter.view.saveAs': 'Save as…',
+  'filter.view.rename': 'Rename',
+  'filter.view.delete': 'Delete',
+  'filter.view.deleteConfirm': 'Delete the saved view "{name}"?',
+  'filter.view.nameLabel': 'View name',
+  'filter.view.namePlaceholder': 'e.g. Open orders this week',
+  'filter.view.empty': 'No saved views for this table',
+  'filter.view.nameExists': 'A view with this name already exists for this table',
+  'filter.view.overwrite': 'Overwrite',
+  'filter.view.setDefault': 'Set as default',
+  'filter.view.defaultBadge': 'Default',
+  'filter.view.draftNotAppliedHint':
+    'Saving the applied filters — you still have unapplied changes',
+  'filter.view.applyAnyway': 'Apply first',
+  'filter.view.export': 'Export…',
+  'filter.view.import': 'Import…',
+  'filter.view.importDone': '{count} views imported',
+  'filter.view.importFailed': 'Import failed: {error}',
+  'filter.view.missingColumn': 'Column "{column}" no longer exists on this table',
+  'filter.view.errorNameExists': 'A saved view with this name already exists',
   'import.description': 'Import data from CSV or JSON file',
   'import.selectFile': 'Select File',
   'import.targetTable': 'Target Table',
@@ -438,5 +600,104 @@ const pack = {
   'query.objectTree.tables': 'Tables',
   'query.objectTree.views': 'Views',
   'query.objectTree.noObjects': 'No objects',
+  // ── Cell editor (DB-05) ─────────────────────────────────────────
+  // The write entries of the right-click menu. "Set empty string" and
+  // "Set NULL" are different writes, and so is "leave the column alone".
+  'cellEditor.setValue': 'Set Value',
+  'cellEditor.setEmpty': 'Set empty string',
+  'cellEditor.setDefault': 'Use column default',
+  'cellEditor.revertCell': 'Revert this cell',
+  'cellEditor.loadCandidates': 'Load candidate values',
+  'cellEditor.loadingCandidates': 'Loading candidate values…',
+  'cellEditor.candidatesEmpty': 'No candidate values found',
+  'cellEditor.candidatesFailed': 'Failed to load candidate values',
+  'cellEditor.candidatesTruncated': 'Showing the first {count} distinct values',
+  'cellEditor.commit': 'Apply',
+  'cellEditor.formatJson': 'Format JSON',
+  'cellEditor.minifyJson': 'Minify',
+  'cellEditor.ariaLabel': 'Edit cell value',
+  // The refusals. Each one says what was expected, not just "invalid".
+  'cellEditor.invalidNumber': 'Enter a valid number',
+  'cellEditor.invalidInteger': 'Enter a whole number',
+  'cellEditor.invalidBoolean': 'Enter true or false',
+  'cellEditor.invalidDate': 'Enter a valid date (YYYY-MM-DD)',
+  'cellEditor.invalidTime': 'Enter a valid time (HH:MM:SS)',
+  'cellEditor.invalidDateTime': 'Enter a valid date and time (YYYY-MM-DDTHH:MM:SS)',
+  'cellEditor.invalidJson': 'Invalid JSON — fix it before applying',
+  'cellEditor.invalidUuid': 'Enter a valid UUID',
+  'cellEditor.notNull': 'This column does not allow NULL',
+  'cellEditor.valueTooLarge': 'This value is too large to edit in the grid',
+  'cellEditor.binaryNotEditable': 'Binary values cannot be edited in the grid',
+  'cellEditor.discardedUncommitted':
+    'Your edit was discarded because the row is no longer displayed',
+  'cellEditor.readOnlyTitle': 'Cell is read-only',
+  // One sentence per reason — "read-only" on its own tells the user nothing.
+  'cellEditor.readOnly.connection': 'This connection is read-only, so cells cannot be edited.',
+  'cellEditor.readOnly.driverCapability': 'This database driver does not support writing.',
+  'cellEditor.readOnly.view':
+    'Views and materialized views are read-only in the data grid.',
+  'cellEditor.readOnly.noPrimaryKey':
+    'This table has no primary key, so a row cannot be identified for an update.',
+  'cellEditor.readOnly.ambiguousRowIdentity':
+    'This row cannot be identified uniquely (its key is NULL or duplicated).',
+  'cellEditor.readOnly.autoIncrement': 'Auto-increment columns cannot be edited in place.',
+  'cellEditor.readOnly.generated': 'Generated columns cannot be edited.',
+  'cellEditor.readOnly.typeNotEditable':
+    'This column type cannot be edited in place in this database.',
+  'cellEditor.readOnly.binaryColumn': 'Binary columns cannot be edited in place.',
+  'cellEditor.readOnly.largeValue': 'This value is too large to edit in place.',
+  // ── Result grid write-back (DB-14) ─────────────────────────────────
+  // One message per read-only reason. The key is the contract: the interface
+  // renders the reason code, never a sentence it built itself.
+  'query.gridReadOnly.unknownOrigin':
+    'Cannot determine where this result came from, so it is read-only.',
+  'query.gridReadOnly.ambiguousOrigin':
+    'The driver reported inconsistent column origins for this result.',
+  'query.gridReadOnly.multiTable':
+    'This result joins multiple tables; individual rows cannot be edited.',
+  'query.gridReadOnly.aggregate': 'This result is an aggregate; individual rows cannot be edited.',
+  'query.gridReadOnly.distinct':
+    'This result is de-duplicated; rows cannot be matched back to table rows.',
+  'query.gridReadOnly.setOperation':
+    'This result is a set operation (UNION); rows cannot be edited.',
+  'query.gridReadOnly.derivedSource':
+    'This result comes from a subquery; rows cannot be matched back to table rows.',
+  'query.gridReadOnly.view': 'This result comes from a view; editing views is not supported.',
+  'query.gridReadOnly.noPrimaryKey':
+    'The source table has no primary key, so rows cannot be identified.',
+  'query.gridReadOnly.keyNotSelected':
+    'The primary key columns are not all present in this result.',
+  'query.gridReadOnly.sessionReadOnly': 'The current connection is read-only.',
+  'query.gridReadOnly.keyValueNull':
+    'This row has a NULL primary key value and cannot be located.',
+  'query.gridReadOnly.duplicateIdentity':
+    'This page contains duplicate row identities; editing is disabled.',
+  'query.gridReadOnly.rowNotFound': 'This row is no longer part of the result.',
+  'query.gridReadOnly.tooltip': 'Read-only: {reason}',
+  'query.gridEdit.editHint': 'Double-click to edit this cell',
+  'query.gridEdit.resolving': 'Checking whether this result can be edited…',
+  'query.gridEdit.submitting': 'Saving change…',
+  'query.gridEdit.empty': 'This result has no rows.',
+  // ── Keyset (seek) paging (DB-18) ─────────────────────────────────────
+  // The state of the pager. "Fast paging" means the page was read from a
+  // value boundary instead of an offset; the reasons say why a page could
+  // not be read that way. Every one of them is a **degradation**, not an
+  // error: the page was read, by offset.
+  'pagination.mode.keyset': 'Fast paging',
+  'pagination.mode.offset': 'Offset paging',
+  'pagination.hint.driverUnsupported': 'This database does not support fast paging.',
+  'pagination.hint.noStableOrder':
+    'This table has no primary key, so pages cannot be read with a stable order.',
+  'pagination.hint.nullableKeyColumn':
+    'Fast paging is unavailable while sorting by a column that can be NULL.',
+  'pagination.hint.nullBoundary':
+    "This row's sort key is NULL, so fast paging restarted from an exact position.",
+  'pagination.hint.predicateUnavailable':
+    'Fast paging is unavailable for the current sort order.',
+  'pagination.hint.noPaginationClause': 'This database cannot paginate this query.',
+  'pagination.hint.staleCursor':
+    'Sort or filter changed; paging restarted from the first page.',
+  'pagination.hint.jumpReanchored': 'Fast paging restarted from page {page}.',
+  'pagination.hint.drift': 'Rows changed while paging; the row count has been refreshed.',
 } as const;
 export default pack;

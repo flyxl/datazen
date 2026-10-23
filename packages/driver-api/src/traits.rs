@@ -12,8 +12,9 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::dialect::LegacySqlDialect;
+use crate::filters::FilterOperator;
 use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
+use crate::result_origin::ResultOrigin;
 use crate::schema_migration::{MigrationCapabilities, MigrationRenderer, TypeNormalizer};
 use crate::sql_target::SqlTarget;
 use crate::types::*;
@@ -24,9 +25,14 @@ use crate::{
 
 mod command_api;
 mod key_value;
+mod keyset;
+mod result_origin;
 mod schema_target;
 pub(crate) mod sql_text;
 mod streaming;
+
+pub mod browsing;
+pub mod filter_contract;
 
 pub use command_api::execute_standard_sql_command;
 pub use key_value::KeyValueDriver;
@@ -97,6 +103,35 @@ pub trait DatabaseDriver: Send + Sync {
         false
     }
 
+    /// How trustworthy this driver's row count is. See [`browsing::count_strategy`].
+    fn count_strategy(&self) -> CountStrategy {
+        browsing::count_strategy(self.skip_count_query())
+    }
+
+    /// The estimate statement, if any. See [`browsing::count_estimate_sql`].
+    fn count_estimate_sql(
+        &self,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Option<String> {
+        browsing::count_estimate_sql(database, schema, table)
+    }
+
+    /// The default ordering columns. See [`browsing::default_order_columns`].
+    fn default_order_columns(
+        &self,
+        columns: &[ColumnSchema],
+        primary_keys: &[String],
+    ) -> Vec<String> {
+        browsing::default_order_columns(columns, primary_keys)
+    }
+
+    /// Whether the first-column fallback is allowed. See [`browsing`].
+    fn allow_first_column_fallback_order(&self) -> bool {
+        browsing::allow_first_column_fallback_order()
+    }
+
     /// Whether the driver's SQL dialect supports `OFFSET` in pagination.
     /// Drivers that don't (e.g. Presto/Hive via Superset) should return `false`.
     fn supports_offset(&self) -> bool {
@@ -115,49 +150,93 @@ pub trait DatabaseDriver: Send + Sync {
         sql_text::pagination_syntax(self, limit, offset)
     }
 
+    /// Whether this driver can read a page by seek.
+    ///
+    /// `false` — the default — keeps every read on `OFFSET` paging. See
+    /// [`keyset::supports_keyset_pagination`].
+    fn supports_keyset_pagination(&self) -> bool {
+        keyset::supports_keyset_pagination(self)
+    }
+
+    /// The `WHERE` fragment that reads the rows after a boundary, without a
+    /// leading `WHERE`/`AND`.
+    ///
+    /// `None` means the combination cannot be turned into a safe condition;
+    /// the host then falls back to `OFFSET` paging for this request. See
+    /// [`keyset::keyset_predicate_sql`].
+    fn keyset_predicate_sql(
+        &self,
+        order_columns: &[(String, bool)],
+        boundary: &[(String, Value)],
+    ) -> Option<String> {
+        keyset::keyset_predicate_sql(self, order_columns, boundary)
+    }
+
     /// Whether the driver supports EXPLAIN query plan analysis.
     fn supports_explain(&self) -> bool {
         true
     }
 
-    /// Whether this driver has a **real schema level** in its namespace hierarchy.
+    /// The filter operators this driver accepts.
     ///
-    /// `true` for engines whose relations are addressed as `schema.table`
-    /// (PostgreSQL, SQL Server, DuckDB). `false` for engines where the database
-    /// *is* the namespace (MySQL/MariaDB, ClickHouse) or that have no schema
-    /// concept at all (SQLite, Redis, MongoDB, …).
-    ///
-    /// This drives [`validate_schema_target`]: a schema-aware driver **must**
-    /// receive `Some(schema)` (including the default `public`/`dbo`), and a
-    /// schema-less driver **must** receive `None`. Both mismatches are errors —
-    /// there is no implicit fallback, because an implicit schema is exactly the
-    /// kind of hidden session state that produced BUG-003.
-    fn has_schema_level(&self) -> bool {
-        false
+    /// Default: the shared operator set. See
+    /// [`filter_contract::supported_filter_operators`] for why the shared set
+    /// and not the ten operators that shipped before the extension.
+    fn supported_filter_operators(&self) -> &'static [FilterOperator] {
+        filter_contract::supported_filter_operators()
     }
 
-    /// Whether one connection can address more than one `database`.
+    /// Render a dialect-specific filter operator.
     ///
-    /// Engines that resolve a relation against whatever database the session
-    /// landed on (PostgreSQL silently defaults to `postgres`) need the target
-    /// stated explicitly, because a missing value cannot be told apart from a
-    /// deliberate one. Drivers with a single fixed database return `false`.
+    /// Default: `None`, so the host rejects the operator instead of dropping
+    /// the condition. See [`filter_contract::filter_operator_sql`].
+    fn filter_operator_sql(
+        &self,
+        operator: FilterOperator,
+        column_expr: &str,
+        literal: &str,
+    ) -> Option<String> {
+        filter_contract::filter_operator_sql(operator, column_expr, literal)
+    }
+
+    /// Whether this driver's `LIKE` is case-insensitive under its default
+    /// collation. UI hint only; it never changes the rendered SQL.
+    fn like_is_case_insensitive(&self) -> bool {
+        filter_contract::like_is_case_insensitive()
+    }
+
+    /// The escape character this driver uses for `LIKE` patterns.
+    ///
+    /// Default: `None` — no escaping, which is what the host did before this
+    /// method existed. Must be configured together with
+    /// [`Self::like_escape_clause`].
+    fn like_pattern_escape(&self) -> Option<char> {
+        filter_contract::like_pattern_escape()
+    }
+
+    /// The `ESCAPE '<char>'` clause this dialect accepts, if any.
+    ///
+    /// Must be configured together with [`Self::like_pattern_escape`].
+    fn like_escape_clause(&self, escape_char: char) -> Option<&'static str> {
+        filter_contract::like_escape_clause(escape_char)
+    }
+
+    /// Whether this driver has a **real schema level** in its namespace
+    /// hierarchy. See [`schema_target::has_schema_level`].
+    fn has_schema_level(&self) -> bool {
+        schema_target::has_schema_level()
+    }
+
+    /// Whether one connection can address more than one `database`. See
+    /// [`schema_target::has_multi_database`].
     fn has_multi_database(&self) -> bool {
-        false
+        schema_target::has_multi_database()
     }
 
     /// Conventional schema this driver resolves unqualified relations in.
-    ///
-    /// Used only as the last resort when a caller has **no** schema to offer
-    /// (a hand-typed MCP table name, a table name scraped out of SQL text) and
-    /// the driver declares [`has_schema_level`](Self::has_schema_level). Every
-    /// caller that already knows the schema — the object tree, the ER diagram,
-    /// schema diff, sync and transfer all carry it on `TableInfo` — must pass
-    /// that real value instead. Keeping the fallback here rather than in the
-    /// host is what stops `public` / `dbo` from being hardcoded per driver
-    /// outside the driver that owns the convention.
+    /// See [`schema_target::default_schema`].
     fn default_schema(&self) -> Option<&'static str> {
-        None
+        schema_target::default_schema()
     }
 
     /// Whether multi-statement DDL can be wrapped in a single transaction.
@@ -195,17 +274,12 @@ pub trait DatabaseDriver: Send + Sync {
         set_columns: &[(&str, Option<Value>)],
         pk_columns: &[(&str, Option<Value>)],
     ) -> String {
-        crate::sql_builder::build_update_sql(
-            &LegacySqlDialect::new(self),
-            table,
-            set_columns,
-            pk_columns,
-        )
+        sql_text::build_update_sql(self, table, set_columns, pk_columns)
     }
 
     /// Build `DELETE FROM … WHERE pk…` for row-level deletes (mirrors `build_update_sql`).
     fn build_delete_sql(&self, table: &str, pk_columns: &[(&str, Option<Value>)]) -> String {
-        crate::sql_builder::build_delete_sql(&LegacySqlDialect::new(self), table, pk_columns)
+        sql_text::build_delete_sql(self, table, pk_columns)
     }
 
     /// Build an UPDATE with driver placeholders and values kept out of SQL.
@@ -215,18 +289,7 @@ pub trait DatabaseDriver: Send + Sync {
         set_columns: &[(&str, Option<Value>)],
         pk_columns: &[(&str, Option<Value>)],
     ) -> Result<BoundSqlStatement, DriverError> {
-        if !self.supports_bound_writes() {
-            return Err(DriverError::Unsupported(
-                "parameterized row writes are not supported".into(),
-            ));
-        }
-        crate::sql_builder::build_update_statement(
-            &LegacySqlDialect::new(self),
-            self.max_bound_parameters(),
-            table,
-            set_columns,
-            pk_columns,
-        )
+        sql_text::build_update_statement(self, table, set_columns, pk_columns)
     }
 
     /// Build a DELETE with driver placeholders and values kept out of SQL.
@@ -235,17 +298,29 @@ pub trait DatabaseDriver: Send + Sync {
         table: &str,
         pk_columns: &[(&str, Option<Value>)],
     ) -> Result<BoundSqlStatement, DriverError> {
-        if !self.supports_bound_writes() {
-            return Err(DriverError::Unsupported(
-                "parameterized row writes are not supported".into(),
-            ));
-        }
-        crate::sql_builder::build_delete_statement(
-            &LegacySqlDialect::new(self),
-            self.max_bound_parameters(),
-            table,
-            pk_columns,
-        )
+        sql_text::build_delete_statement(self, table, pk_columns)
+    }
+
+    /// Build an INSERT with driver placeholders and values kept out of SQL.
+    ///
+    /// `values` is the exact write list: a column that must keep the database
+    /// default (auto-increment, generated, `DEFAULT now()`, a trigger) is
+    /// simply absent, while `None` writes SQL `NULL`. An empty list is a legal
+    /// one-row insert of defaults and renders `INSERT INTO t DEFAULT VALUES`;
+    /// dialects that spell that differently override this method.
+    fn build_insert_statement(
+        &self,
+        table: &str,
+        values: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        sql_text::build_insert_statement(self, table, values)
+    }
+
+    /// Dialect clause that makes a new row's primary key available, or `None`
+    /// when this dialect cannot return it. See
+    /// [`sql_text::insert_returning_clause`].
+    fn insert_returning_clause(&self, columns: &[&str]) -> Option<String> {
+        sql_text::insert_returning_clause(columns)
     }
 
     /// The host this driver dials when the connection config leaves `host` unset.
@@ -389,6 +464,33 @@ pub trait DatabaseDriver: Send + Sync {
         sql: &str,
         limit: Option<u32>,
     ) -> Result<MultiQueryResult, DriverError>;
+
+    /// Say where the rows of a statement came from.
+    ///
+    /// The host never parses SQL, so every fact a "may this cell be written
+    /// back?" decision needs comes from here: which relation the rows come
+    /// from, whether that relation is a base table, and which result column
+    /// is a straight copy of which base column.
+    ///
+    /// `result_columns` are the column names the **executed** result reports.
+    /// They are needed because `SELECT *` names no column: only the result
+    /// knows how many columns the star expanded to.
+    ///
+    /// The default answers "I cannot tell"
+    /// ([`crate::result_origin::UndeterminableReason::NotImplemented`]), which
+    /// keeps every result grid read-only — the behaviour that existed before
+    /// this contract. See [`crate::result_origin`] for the whole contract and
+    /// [`crate::result_origin::describe_result_origin_with_catalog`] for the
+    /// helper a driver calls to answer it.
+    async fn describe_result_origin(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+        result_columns: &[String],
+        sql: &str,
+    ) -> Result<ResultOrigin, DriverError> {
+        result_origin::describe_result_origin(self, handle, target, result_columns, sql).await
+    }
 
     /// Stream query results as row batches.
     ///

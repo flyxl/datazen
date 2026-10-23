@@ -85,6 +85,15 @@
   --dt-json: #2b70a8;
   --dt-text: #26364d;
   --dt-binary: #e05252;
+
+  /* Uncommitted-change marks (DB-06). They are a *state* channel, not a type
+     channel: they only ever drive border / background / decoration colours and
+     never `color`, so the cell value keeps its type colour. Third-party theme
+     packs that do not declare them fall back to these base values. */
+  --dt-dirty-border: #8b3fd0;
+  --dt-dirty-bg: rgba(139, 63, 208, 0.10);
+  --dt-dirty-mark: #8b3fd0;
+  --dt-deleted-fg: #e05252;
 }
 
 .dark {
@@ -158,4 +167,10 @@
   --dt-json: #67e8f9;
   --dt-text: #8b94a7;
   --dt-binary: #ff7b72;
+
+  /* Uncommitted-change marks (DB-06) — see the light-theme block for the rules. */
+  --dt-dirty-border: #c084fc;
+  --dt-dirty-bg: rgba(192, 132, 252, 0.14);
+  --dt-dirty-mark: #c084fc;
+  --dt-deleted-fg: #ff7b72;
 }

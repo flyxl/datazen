@@ -46,6 +46,46 @@ pub(crate) fn resolve_pg_table_schema<'a>(
     (explicit.or(embedded), bare)
 }
 
+/// The statement that estimates how many rows a table has.
+///
+/// PostgreSQL keeps the planner's row estimate in `pg_class.reltuples`. It is
+/// a catalog statistic rather than a count: it is close to the truth once the
+/// planner has looked at the table, and `-1` for a table that was never
+/// analysed — a value the host reads as "no estimate available" rather than
+/// as a row count.
+///
+/// The relation is located by its schema and its name, both written as
+/// escaped literals. It is deliberately **not** located by a session
+/// dependent function (`current_database()`, `DATABASE()`): the session may
+/// sit on another database than the one that was asked for. In PostgreSQL the
+/// database dimension of a target is the pool the statement runs on, which
+/// the host resolves before the statement is sent — so the statement itself
+/// only has to name the relation.
+///
+/// The catalog relations are written fully qualified (`pg_catalog.pg_class`)
+/// because the driver qualifies every unqualified relation reference with the
+/// target schema, which would turn them into `"public"."pg_class"`.
+pub(crate) fn count_estimate_sql(
+    table: &str,
+    schema: Option<&str>,
+    quote_literal: &dyn Fn(&str) -> String,
+) -> Option<String> {
+    let (schema, table) = resolve_pg_table_schema(table, schema);
+    let table_literal = quote_literal(table);
+    let schema_clause = match schema {
+        Some(schema) => {
+            let literal = quote_literal(schema);
+            format!(" AND n.nspname = {literal}")
+        }
+        None => String::new(),
+    };
+    Some(format!(
+        "SELECT c.reltuples::bigint FROM pg_catalog.pg_class c \
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+         WHERE c.relname = {table_literal}{schema_clause}"
+    ))
+}
+
 pub(crate) fn is_pg_result_query(sql: &str) -> bool {
     let upper = sql.trim().to_ascii_uppercase();
     upper.starts_with("SELECT")
@@ -272,5 +312,91 @@ mod tests {
             resolve_pg_table_schema("orders", Some("   ")),
             (None, "orders")
         );
+    }
+
+    /// The literal formatter of the driver, so the tests exercise the same
+    /// escaping the statement really uses.
+    fn quote_literal(value: &str) -> String {
+        match &datazen_driver_api::Value::String(value.to_string()) {
+            datazen_driver_api::Value::String(text) => format!("'{}'", text.replace('\'', "''")),
+            _ => unreachable!("a string stays a string"),
+        }
+    }
+
+    #[test]
+    fn count_estimate_sql_names_the_relation_it_estimates() {
+        let sql = count_estimate_sql("orders", Some("public"), &quote_literal)
+            .expect("the driver has an estimate");
+        assert!(sql.contains("pg_catalog.pg_class"), "{sql}");
+        assert!(sql.contains("c.relname = 'orders'"), "{sql}");
+        assert!(sql.contains("n.nspname = 'public'"), "{sql}");
+        assert!(sql.contains("reltuples"), "{sql}");
+    }
+
+    #[test]
+    fn count_estimate_sql_escapes_the_names_it_writes() {
+        let sql = count_estimate_sql("or'ders", Some("pub'lic"), &quote_literal)
+            .expect("the driver has an estimate");
+        assert!(sql.contains("c.relname = 'or''ders'"), "{sql}");
+        assert!(sql.contains("n.nspname = 'pub''lic'"), "{sql}");
+        // No bare quote survives: the statement cannot be broken out of.
+        assert!(!sql.contains("or'ders"), "{sql}");
+    }
+
+    #[test]
+    fn count_estimate_sql_does_not_ask_the_session_which_database_it_is_on() {
+        let sql = count_estimate_sql("orders", Some("public"), &quote_literal)
+            .expect("the driver has an estimate");
+        // The database dimension of a PostgreSQL target is the pool the
+        // statement runs on; a session-dependent function would answer for
+        // whatever database the session happens to sit on.
+        for probe in ["current_database()", "DATABASE()", "DB_NAME()"] {
+            assert!(!sql.contains(probe), "{probe} must not appear in: {sql}");
+        }
+    }
+
+    #[test]
+    fn count_estimate_sql_keeps_the_catalog_relations_qualified() {
+        // The driver qualifies every unqualified relation reference with the
+        // target schema, so a bare `pg_class` would become
+        // `"public"."pg_class"`.
+        let sql = count_estimate_sql("orders", Some("public"), &quote_literal)
+            .expect("the driver has an estimate");
+        assert!(sql.contains("pg_catalog.pg_class"), "{sql}");
+        assert!(sql.contains("pg_catalog.pg_namespace"), "{sql}");
+    }
+
+    #[test]
+    fn count_estimate_sql_survives_the_schema_qualification() {
+        let sql = count_estimate_sql("orders", Some("public"), &quote_literal)
+            .expect("the driver has an estimate");
+        let qualified = crate::sql_target::qualify_sql(&sql, Some("app"), Some("public"));
+        // The rewrite may restate the statement, but it must not move the
+        // catalog relations into the target schema: that would name a table
+        // that does not exist.
+        assert!(
+            qualified.contains("pg_catalog.pg_class"),
+            "the catalog relation was moved: {qualified}"
+        );
+        assert!(
+            qualified.contains("pg_catalog.pg_namespace"),
+            "the catalog relation was moved: {qualified}"
+        );
+        assert!(
+            !qualified.contains("\"public\".\"pg_class\""),
+            "the catalog relation was moved: {qualified}"
+        );
+        assert!(
+            qualified.contains("c.relname = 'orders'"),
+            "the relation was lost: {qualified}"
+        );
+    }
+
+    #[test]
+    fn count_estimate_sql_without_a_schema_names_only_the_table() {
+        let sql =
+            count_estimate_sql("orders", None, &quote_literal).expect("the driver has an estimate");
+        assert!(sql.contains("c.relname = 'orders'"), "{sql}");
+        assert!(!sql.contains("nspname"), "{sql}");
     }
 }

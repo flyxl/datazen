@@ -22,6 +22,7 @@ pub mod event_sink;
 mod explain_plan;
 mod factory;
 pub mod filters;
+pub mod keyset;
 pub mod mock_driver;
 pub mod namespace;
 mod query_stream;
@@ -29,6 +30,7 @@ pub mod resource;
 pub mod resource_adapter;
 pub mod restore_sql;
 mod restore_sql_target;
+pub mod result_origin;
 mod reuse;
 pub mod schema_catalog_commands;
 pub mod schema_dependencies;
@@ -70,6 +72,10 @@ pub use query_stream::{
     append_select_limit, emit_execute_statement, emit_multi_query_as_stream, stream_decoded_rows,
     QueryRowBatcher, QueryStreamCallback, QueryStreamEvent, QUERY_STREAM_BATCH_SIZE,
 };
+pub use result_origin::{
+    ResultColumnOrigin, ResultObjectKind, ResultOrigin, ResultOriginDetail, ResultShape,
+    ResultTableRef, SetOperation, UndeterminableReason,
+};
 pub use reuse::ReuseDriver;
 pub use schema_catalog_commands::{
     execute_schema_catalog_command, is_schema_catalog_command, parse_databases_from_command,
@@ -103,6 +109,7 @@ pub use sync::{
     SyncKeyNullPolicy, SyncKeyValue, SyncSourceAdapter, SyncTargetAdapter,
 };
 pub use sync_taxonomy::{normalize_driver_id, sync_category_of, sync_family_of};
+pub use traits::filter_contract;
 pub use traits::*;
 pub use tunnel_types::{
     HttpProxyTunnelConfig, SavedTunnel, SavedTunnelSummary, TunnelKind, TunnelUsage,

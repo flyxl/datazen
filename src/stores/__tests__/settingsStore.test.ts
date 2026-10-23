@@ -286,4 +286,47 @@ describe('settingsStore', () => {
     expect(useSettingsStore.getState().settings.editorCompletionQuotePolicy).toBe('both');
     expect(mockSettingsCommands.saveSettings).toHaveBeenCalled();
   });
+
+  it('new settings default to the legacy behaviour', async () => {
+    // The three settings a table read consults must not change what a read
+    // does for an existing installation: nobody forces a count strategy, the
+    // driver decides; nobody forces an order, the driver decides.
+    const settings = useSettingsStore.getState().settings;
+    expect(settings.rowCountMode).toBe('auto');
+    expect(settings.rowCountEstimateThreshold).toBe(200000);
+    expect(settings.defaultTableSort).toBe('primaryKeyAsc');
+  });
+
+  it('a settings file without the new keys keeps the legacy behaviour', async () => {
+    // An installation written before these settings existed must read back
+    // with the same defaults, not with `undefined`.
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+    });
+
+    await useSettingsStore.getState().loadSettings();
+
+    const settings = useSettingsStore.getState().settings;
+    expect(settings.rowCountMode).toBe('auto');
+    expect(settings.rowCountEstimateThreshold).toBe(200000);
+    expect(settings.defaultTableSort).toBe('primaryKeyAsc');
+  });
+
+  it('stores the three count settings when they are changed', async () => {
+    applyThemePack.mockResolvedValue({ ok: true });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    await useSettingsStore.getState().updateSettings({
+      rowCountMode: 'estimated',
+      rowCountEstimateThreshold: 1000,
+      defaultTableSort: 'none',
+    });
+
+    const settings = useSettingsStore.getState().settings;
+    expect(settings.rowCountMode).toBe('estimated');
+    expect(settings.rowCountEstimateThreshold).toBe(1000);
+    expect(settings.defaultTableSort).toBe('none');
+    expect(mockSettingsCommands.saveSettings).toHaveBeenCalled();
+  });
 });

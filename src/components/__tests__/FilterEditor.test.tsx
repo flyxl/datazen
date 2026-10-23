@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, screen, act } from '@testing-library/react';
-import type { ComponentProps } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { FILTER_VALUE_DEBOUNCE_MS, FilterEditor } from '../FilterEditor';
-import type { FilterCondition } from '../../types';
+import type { FilterCondition, FilterOperator } from '../../types';
+import { SHARED_FILTER_OPERATORS } from '../../types';
+import { operatorsForColumn } from '../../lib/filterOperators';
 
 vi.mock('../../hooks/useI18n', () => ({
   useI18n: () => ({
@@ -378,5 +380,370 @@ describe('FilterEditor', () => {
     expect(idleRemoveButton).not.toBeDisabled();
     fireEvent.click(idleRemoveButton);
     expect(idleProps.onRemove).toHaveBeenCalledWith(0);
+  });
+});
+
+// ── 08 Step 10: the operators follow the column type, and an incomplete
+// condition is marked and blocks Apply instead of being dropped silently.
+describe('FilterEditor operators and completeness', () => {
+  const typedColumns = [
+    { name: 'id', type: 'int4' },
+    { name: 'name', type: 'text' },
+  ];
+
+  function renderTyped(
+    overrides: Partial<ComponentProps<typeof FilterEditor>> = {},
+  ): ReturnType<typeof renderEditor> {
+    return renderEditor({ columns: typedColumns, ...overrides });
+  }
+
+  /** Open the first collapsed condition, so its controls exist in the DOM. */
+  function expandFirstChip(): void {
+    fireEvent.click(screen.getAllByTitle('filter.editCondition')[0]);
+  }
+
+  /** The values of the operator select of the expanded condition. */
+  function operatorOptions(): string[] {
+    const selects = screen.getAllByRole('combobox');
+    const operatorSelect = selects[1] as HTMLSelectElement;
+    return Array.from(operatorSelect.options).map((option) => option.value);
+  }
+
+  it('offers the operators of the column type in the designed order', () => {
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+    });
+    expect(operatorOptions()).toEqual(operatorsForColumn('text', SHARED_FILTER_OPERATORS));
+  });
+
+  it('offers the operators of the type the driver declares (DB-05)', () => {
+    // SQL Server's `timestamp` is a row version, not a time: the driver says
+    // so, and the filter follows the same declaration the editor reads
+    // (08 §3.5, "一处声明、两处生效").
+    const sqlserver = {
+      overrides: [{ match: 'exact' as const, pattern: 'timestamp', cellType: 'bytes' as const }],
+    };
+    renderTyped({
+      columns: [{ name: 'id', type: 'int4' }, { name: 'name', type: 'timestamp' }],
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+      cellTypeHints: sqlserver,
+    });
+    expect(operatorOptions()).toEqual(
+      operatorsForColumn('timestamp', SHARED_FILTER_OPERATORS, sqlserver),
+    );
+    // The bytes set is narrower than the datetime one.
+    expect(operatorOptions()).not.toContain('between');
+  });
+
+  it('does not offer the pattern operators for a numeric column', () => {
+    renderTyped({
+      draftFilters: [{ column: 'id', operator: 'eq', value: '' }],
+    });
+    const options = operatorOptions();
+    expect(options).toEqual(operatorsForColumn('int4', SHARED_FILTER_OPERATORS));
+    expect(options).not.toContain('like');
+    expect(options).not.toContain('contains');
+  });
+
+  it('hides a dialect operator the driver does not declare', () => {
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+    });
+    expect(operatorOptions()).not.toContain('regex');
+
+    cleanup();
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+      supportedOperators: [...SHARED_FILTER_OPERATORS, 'regex'],
+    });
+    expect(operatorOptions()).toContain('regex');
+  });
+
+  it('marks an incomplete condition and blocks Apply', () => {
+    const props = renderTyped({
+      appliedFilters: [],
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+    });
+
+    expect(screen.getByTestId('filter-incomplete')).toHaveTextContent('filter.incomplete');
+    expect(screen.getByTestId('filter-incomplete-error')).toHaveTextContent(
+      'filter.errorIncomplete',
+    );
+    expect(screen.getByTestId('filter-apply')).toBeDisabled();
+    expect(props.onApply).not.toHaveBeenCalled();
+  });
+
+  it('keeps the draft value when the operator changes to one without a value', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'name', operator: 'eq', value: 'alice' }],
+    });
+    expandFirstChip();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'isNull' } });
+    expect(props.onChange).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({ operator: 'isNull', value: 'alice' }),
+    );
+  });
+
+  it('seeds the lower bound and leaves the upper bound empty when switching to between', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'id', operator: 'eq', value: '50' }],
+    });
+    expandFirstChip();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'between' } });
+    expect(props.onChange).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({ operator: 'between', value: ['50', ''] }),
+    );
+  });
+
+  it('renders two value inputs for a between condition', () => {
+    renderTyped({
+      draftFilters: [{ column: 'id', operator: 'between', value: ['10', '20'] }],
+    });
+    expandFirstChip();
+    expect(screen.getAllByTestId('filter-value')).toHaveLength(2);
+    const inputs = screen.getAllByTestId('filter-value') as HTMLInputElement[];
+    expect(inputs[0].value).toBe('10');
+    expect(inputs[1].value).toBe('20');
+  });
+
+  it('warns about inverted bounds without blocking them', () => {
+    renderTyped({
+      draftFilters: [{ column: 'id', operator: 'between', value: ['20', '10'] }],
+    });
+    expandFirstChip();
+    expect(screen.getByTestId('filter-between-inverted')).toHaveTextContent(
+      'filter.betweenInverted',
+    );
+  });
+
+  it('renders a token input and turns Enter into a token', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'name', operator: 'in', value: [] }],
+    });
+    const field = screen.getByTestId('filter-token-field');
+    fireEvent.change(field, { target: { value: 'paid' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(props.onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: ['paid'] }));
+  });
+
+  it('does not turn the Enter of an IME composition into a token', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'name', operator: 'in', value: [] }],
+    });
+    const field = screen.getByTestId('filter-token-field');
+    fireEvent.compositionStart(field);
+    fireEvent.change(field, { target: { value: 'huan' } });
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
+    expect(props.onChange).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(field);
+    // The composition flag is cleared in the next animation frame: the Enter
+    // that confirms a candidate belongs to the composition and must not commit.
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(props.onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: ['huan'] }));
+  });
+
+  it('removes a token when its remove button is clicked', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'name', operator: 'in', value: ['paid', 'open'] }],
+    });
+    expandFirstChip();
+    fireEvent.click(screen.getAllByTestId('filter-token-remove')[0]);
+    expect(props.onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: ['open'] }));
+  });
+
+  it('converges the operator when the column changes to one that cannot take it', () => {
+    const props = renderTyped({
+      draftFilters: [{ column: 'name', operator: 'contains', value: 'a' }],
+    });
+    expandFirstChip();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: 'id' } });
+    expect(props.onChange).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({ column: 'id', operator: 'eq', value: 'a' }),
+    );
+  });
+
+  it('reads a comma separated value of an older draft as a token list', () => {
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'in', value: 'paid, open' }],
+    });
+    expandFirstChip();
+    expect(screen.getAllByTestId('filter-token')).toHaveLength(2);
+  });
+
+  it('reads a comma separated value of an older draft as the two bounds', () => {
+    renderTyped({
+      draftFilters: [{ column: 'id', operator: 'between', value: '10,20' }],
+    });
+    expandFirstChip();
+    const inputs = screen.getAllByTestId('filter-value') as HTMLInputElement[];
+    expect(inputs[0].value).toBe('10');
+    expect(inputs[1].value).toBe('20');
+  });
+
+  it('hints that LIKE ignores case only when the driver says so', () => {
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'like', value: '' }],
+    });
+    expect(screen.queryByTestId('filter-like-case-insensitive')).not.toBeInTheDocument();
+
+    cleanup();
+    renderTyped({
+      draftFilters: [{ column: 'name', operator: 'like', value: '' }],
+      likeCaseInsensitive: true,
+    });
+    expect(screen.getByTestId('filter-like-case-insensitive')).toHaveTextContent(
+      'filter.likeCaseInsensitiveHint',
+    );
+  });
+
+  it('shows the comma separated form of a range in the collapsed summary', () => {
+    // An older draft carries the range as "10,20". The editor reads it (the
+    // bounds are in the two inputs); the collapsed chip has to show the same
+    // value, or the row reads as if the value were lost.
+    renderTyped({
+      draftFilters: [{ column: 'score', operator: 'between', value: '10,20' }],
+    });
+    expect(screen.getAllByText(/score filter\.between 10, 20/).length).toBeGreaterThan(0);
+  });
+
+  it('renders a condition whose operator this build does not know', () => {
+    // A persisted condition may name an operator that is not in the contract.
+    // The panel must degrade, not throw while it renders.
+    const legacy = {
+      column: 'name',
+      operator: 'legacyOperator' as unknown as FilterOperator,
+      value: 'alice',
+    };
+    expect(() =>
+      renderTyped({
+        draftFilters: [legacy],
+      }),
+    ).not.toThrow();
+    // The chip is readable and the operator stays visible.
+    expect(screen.getAllByText(/name filter\.legacyOperator alice/).length).toBeGreaterThan(0);
+  });
+
+  it('gives every condition row its index', () => {
+    renderTyped({
+      draftFilters: [
+        { column: 'id', operator: 'eq', value: '1' },
+        { column: 'name', operator: 'eq', value: 'a' },
+      ],
+    });
+    // The connector badge carries the index too; the row containers are the
+    // ones without a test id.
+    const rows = document.querySelectorAll('[data-filter-index]:not([data-testid])');
+    expect(Array.from(rows).map((row) => row.getAttribute('data-filter-index'))).toEqual([
+      '0',
+      '1',
+    ]);
+  });
+});
+
+// ── 08 Step 11: the connector of one condition (逐条 AND/OR).
+describe('FilterEditor per-condition connectors', () => {
+  const twoRows: FilterCondition[] = [
+    { column: 'id', operator: 'eq', value: '1' },
+    { column: 'name', operator: 'eq', value: 'alice' },
+  ];
+
+  /**
+   * The panel is controlled: the badge only changes when the parent writes the
+   * new draft back. The harness does that, like the store does.
+   */
+  function StatefulEditor({ initial }: { initial: FilterCondition[] }) {
+    const [draft, setDraft] = useState(initial);
+    return (
+      <FilterEditor
+        columns={columns}
+        appliedFilters={[]}
+        appliedLogic="and"
+        draftFilters={draft}
+        draftLogic="and"
+        open
+        onOpenChange={vi.fn()}
+        onLogicChange={vi.fn()}
+        onChange={(index, next) =>
+          setDraft((previous) => previous.map((filter, position) => (position === index ? next : filter)))
+        }
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+        onApply={vi.fn()}
+        onClear={vi.fn()}
+      />
+    );
+  }
+
+  it('starts without a connector of its own and keeps the global switch usable', () => {
+    render(<StatefulEditor initial={twoRows} />);
+    // The first condition has no predecessor, so it has no badge.
+    expect(screen.queryAllByTestId('filter-connector')).toHaveLength(1);
+    expect(screen.getByTestId('filter-connector')).toHaveAttribute('data-connector', 'and');
+    expect(screen.getByTestId('filter-logic-and')).not.toBeDisabled();
+    expect(screen.queryByTestId('filter-connector-reset')).not.toBeInTheDocument();
+  });
+
+  it('takes the global logic out of the picture when a row gets its own connector', () => {
+    const props = renderEditor({ draftFilters: twoRows });
+    fireEvent.click(screen.getByTestId('filter-connector-or'));
+    expect(props.onChange).toHaveBeenCalledWith(1, { ...twoRows[1], connector: 'or' });
+
+    cleanup();
+    render(<StatefulEditor initial={twoRows} />);
+    fireEvent.click(screen.getByTestId('filter-connector-or'));
+    expect(screen.getByTestId('filter-connector-or')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('filter-logic-and')).toBeDisabled();
+    expect(screen.getByTestId('filter-connector-reset')).toBeInTheDocument();
+  });
+
+  it('drops every own connector when the reset is used', () => {
+    const props = renderEditor({
+      draftFilters: [twoRows[0], { ...twoRows[1], connector: 'or' }],
+    });
+    fireEvent.click(screen.getByTestId('filter-connector-reset'));
+    expect(props.onChange).toHaveBeenCalledWith(1, { column: 'name', operator: 'eq', value: 'alice' });
+
+    cleanup();
+    render(<StatefulEditor initial={[twoRows[0], { ...twoRows[1], connector: 'or' }]} />);
+    fireEvent.click(screen.getByTestId('filter-connector-reset'));
+    expect(screen.getByTestId('filter-logic-and')).not.toBeDisabled();
+    expect(screen.queryByTestId('filter-connector-reset')).not.toBeInTheDocument();
+    expect(screen.getByTestId('filter-connector')).toHaveAttribute('data-connector', 'and');
+  });
+
+  it('keeps the key order of a condition when it gets a connector', () => {
+    const props = renderEditor({ draftFilters: twoRows });
+    fireEvent.click(screen.getByTestId('filter-connector-or'));
+    const onChangeMock = props.onChange as ReturnType<typeof vi.fn>;
+    const [, next] = onChangeMock.mock.calls[0];
+    expect(Object.keys(next)).toEqual(['column', 'operator', 'value', 'connector']);
+  });
+
+  it('summarizes the applied filters with the connector that is in effect', () => {
+    renderEditor({
+      appliedFilters: [
+        { column: 'id', operator: 'eq', value: '1' },
+        { column: 'name', operator: 'eq', value: 'a', connector: 'or' },
+      ],
+    });
+    // The summary must not read a mixed list as if every condition shared the
+    // request wide logic.
+    expect(screen.getByText('id filter.eq 1 OR name filter.eq a')).toBeInTheDocument();
+  });
+
+  it('shows the badge of a collapsed condition too', () => {
+    renderEditor({ draftFilters: twoRows });
+    expect(screen.getAllByTestId('filter-connector')).toHaveLength(1);
+    expect(screen.getAllByTitle('filter.editCondition')).toHaveLength(2);
   });
 });

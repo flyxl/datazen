@@ -22,6 +22,31 @@ impl DatabaseDriver for MysqlDriver {
         true
     }
 
+    /// MySQL has no `DEFAULT VALUES`; an all-default row is spelled with an
+    /// empty column/value list. Non-empty inserts keep the shared
+    /// parameterized rendering (backtick identifiers, positional `?`).
+    fn build_insert_statement(
+        &self,
+        table: &str,
+        values: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        if !values.is_empty() {
+            return datazen_driver_api::sql_builder::build_insert_statement(
+                &datazen_driver_api::LegacySqlDialect::new(self),
+                self.max_bound_parameters(),
+                table,
+                values,
+            );
+        }
+        Ok(BoundSqlStatement {
+            sql: format!(
+                "INSERT INTO {} () VALUES ()",
+                MysqlDriver::quote_identifier(table)
+            ),
+            parameters: Vec::new(),
+        })
+    }
+
     fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
         Some(SqlLiteralDialect::MySql)
     }
@@ -64,6 +89,23 @@ impl DatabaseDriver for MysqlDriver {
 
     fn ddl_atomicity(&self) -> DdlAtomicity {
         DdlAtomicity::AutoCommitPerStatement
+    }
+
+    fn supports_keyset_pagination(&self) -> bool {
+        true
+    }
+
+    /// The seek condition for one page boundary.
+    ///
+    /// MySQL compares row values, so a one-direction order is a single
+    /// `(a, b) > (1, 2)` the index can answer directly. A mixed order, and a
+    /// boundary that holds a `NULL`, fall back to the lexicographic spelling.
+    fn keyset_predicate_sql(
+        &self,
+        order_columns: &[(String, bool)],
+        boundary: &[(String, super::Value)],
+    ) -> Option<String> {
+        datazen_driver_api::keyset::row_value_seek_predicate(self, order_columns, boundary)
     }
 
     fn sync_family(&self) -> String {

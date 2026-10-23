@@ -9,6 +9,16 @@
 export type { Counter, Id, Timestamp } from './identity';
 export { toCounter, toId, toTimestamp } from './identity';
 
+export type { CountStrategy } from './tableData';
+
+export type {
+  CursorValue,
+  KeysetUnavailableReason,
+  OrderColumn,
+  PagePagingInfo,
+  PagingMode,
+} from './tableData';
+
 export type {
   AttachmentRequest,
   AttachmentState,
@@ -67,3 +77,43 @@ export type {
   ResultCompleteness,
 } from './jobs';
 export { emptyJobProgress } from './jobs';
+
+export type {
+  ChangeWarning,
+  CommitOperation,
+  CommitPendingChangesRequest,
+  CommitPendingChangesResponse,
+  CommitStatementResult,
+  DeleteNamedViewRequest,
+  EstimateTableRowsRequest,
+  FilterCondition,
+  ForeignKeyTargetRef,
+  ForeignKeyTargetResolution,
+  ListNamedViewsRequest,
+  NamedView,
+  NamedViewScope,
+  PendingRowChange,
+  PlannedStatement,
+  PreviewPendingChangesRequest,
+  ResolveForeignKeyTargetsRequest,
+  ResultCellWrite,
+  RowChangePlan,
+  RowIdentity,
+  SaveNamedViewRequest,
+  SortCondition,
+  TableChangeContext,
+  TableColumnSchema,
+  TableDataRequest,
+  TableDataResult,
+  TableValue,
+} from './tableData';
+export { toTableValue } from './tableData';
+
+export type {
+  GridReadOnlyReason,
+  IdentityColumn,
+  ResolveResultOriginRequest,
+  ResultCellChangeRequest,
+  ResultEditability,
+  ResultTableRef,
+} from './resultOrigin';

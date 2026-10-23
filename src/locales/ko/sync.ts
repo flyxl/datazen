@@ -4,6 +4,83 @@ const pack = {
     '이전 계획은 더 이상 유효하지 않습니다(만료되었거나, 대상이 변경되었거나, 권한이 바뀌었습니다). 적용하기 전에 계획을 다시 준비하세요.',
   'migrationJob.pendingVerificationHint':
     '이전 작업이 확인을 기다리고 있습니다. 새 변경 사항을 적용하기 전에 작업 센터를 열고 상태를 대조하세요.',
+  'migrationJob.notExecutedHint':
+    '대기 중인 데이터 동기화 작업이 재시작 후 시작되지 않았습니다. 다시 실행되지 않았으므로, 적용하기 전에 새로 비교하세요.',
+  'migrationJob.notExecutedJob': '재시작 후 실행되지 않음',
+  'migrationJob.verifyRecovery': '복구 확인',
+  'migrationJob.verifyingRecovery': '확인 중…',
+  'migrationJob.cancelJob': '작업 취소',
+  'migrationJob.cancellingJob': '취소하는 중…',
+  'migrationJob.recoveryEndpointMismatch':
+    '복구를 확인하기 전에 이 작업과 동일한 소스 및 대상 연결을 선택하세요.',
+  'migrationJob.recoverySelectEndpoints':
+    '복구를 확인하기 전에 두 엔드포인트를 선택하고 연결하세요.',
+  'migrationJob.recoveryManualReview':
+    '복구 근거가 기록되었습니다. 적용하기 전에 현재 데이터를 비교하세요.',
+  'migrationJob.recoveryRecorded': '복구 근거가 기록되었습니다. 적용하기 전에 새로 비교하세요.',
+  'migration.verdict.ok': '완료됨',
+  'migration.verdict.partial': '부분적으로 적용됨',
+  'migration.verdict.uncertain': '결과 불확실',
+  'migration.verdict.failed': '적용되지 않음',
+  'migration.verdict.committedRows': '확인된 행',
+  'migration.verdict.replayedReceipt':
+    '이 응답은 이미 실행된 작업의 기록된 영수증에서 나온 것입니다. 아무것도 두 번 기록되지 않았습니다.',
+  'migration.verdict.noBoundaries':
+    '쓰기 경계가 기록되지 않아 확정된 것으로 보고할 수 있는 항목이 없습니다.',
+  'migration.verdict.recoveryLabel': '복구 판정',
+  'migration.verdict.notExecuted': '실행되지 않음',
+  'migration.verdict.notDispatchedAfterRestart':
+    '이 작업이 승인된 후 시작되기 전에 애플리케이션이 재시작되어 마이그레이션 작업이 실행되지 않았습니다. 다시 시도하려면 새 계획을 준비하세요.',
+  'migration.verdict.requiresReconcile':
+    '다른 것을 적용하기 전에 기록된 경계와 대조하여 대상을 확인하세요.',
+  'migration.verdict.resumeThrough': '복구는 경계 #까지 재개할 수 있습니다',
+  'migration.verdict.rereview': '새 계획 검토',
+  'migration.verdict.rereviewBlocked':
+    '이 실행은 다시 기록하기 전에 대상과 대조해야 합니다. 읽기 전용으로 확인한 다음 이 창을 닫았다가 다시 열어 새 계획을 검토하세요.',
+  'migration.boundary.verified': '근거를 바탕으로 커밋됨',
+  'migration.boundary.unverified': '근거 없이 커밋됨 — 검증되지 않음',
+  'migration.progress.counts': '읽음 / 변환 / 시도 / 커밋 / 알 수 없음',
+  'migration.cancel.none': '취소가 요청되지 않았습니다.',
+  'migration.cancel.notStarted':
+    '실행이 시작되기 전에 취소가 요청되어 아무것도 기록되지 않았습니다.',
+  'migration.cancel.requestedInFlight':
+    '실행 중에 취소가 요청되었습니다. 중단 지점은 아직 알 수 없습니다 — 아래 판정을 확인하세요.',
+  'migration.cancel.settledPartially':
+    '실행 중에 취소가 요청되었습니다. 일부 경계는 커밋되었고 나머지는 적용되지 않았습니다.',
+  'migration.cancel.settledRolledBack':
+    '실행 중에 취소가 요청되었습니다. 실행이 롤백되어 커밋된 경계도 되돌려졌습니다.',
+  'migration.cancel.settledCompleted':
+    '취소가 요청되었지만 쓰기는 이미 끝났습니다. 실행은 취소되지 않고 완료되었습니다.',
+  'migration.cancel.settledUnknown':
+    '실행 중에 취소가 요청되었지만 중단 지점을 확인할 수 없습니다.',
+  'migration.cancel.unknownJob':
+    '이 실행에 해당하는 작업이 백엔드에 없어 취소 요청 대상이 없었습니다. 아무것도 취소되지 않았습니다.',
+  'migration.failure.backendScope.title': '백엔드 범위가 거부되었습니다',
+  'migration.failure.backendScope.body':
+    '엔드포인트가 로컬 데스크톱 백엔드임을 증명할 수 없어 검증되지 않은 범위에서 실행하는 대신 마이그레이션이 거부되었습니다. 아무것도 기록되지 않았습니다. 두 엔드포인트를 다시 선택하고 새 계획을 검토하세요.',
+  'migration.failure.pipelineBudget.title': '파이프라인 예산으로 이 실행이 거부되었습니다',
+  'migration.failure.pipelineBudget.body':
+    '실행이 8 MiB 파이프라인 예산을 초과하여 백엔드가 해당 단계가 적용되기 전에 의도적으로 중단했습니다. 이는 의도적인 안전 한계이며 오류가 아닙니다 — 선택 범위나 배치 크기를 줄인 뒤 새 계획을 검토하세요.',
+  'migration.failure.planConsumed.title': '이 계획은 이미 적용되었습니다',
+  'migration.failure.planConsumed.body':
+    '계획은 한 번만 적용할 수 있으며 이전 실행에서 이미 사용되었습니다. 아무것도 두 번 기록되지 않았습니다. 계속하려면 새 계획을 검토하세요.',
+  'migration.failure.stalePlan.title': '계획이 오래되었습니다',
+  'migration.failure.stalePlan.body':
+    '계획이 만료되었거나 대상이 변경되었거나 권한이 바뀌었습니다. 재사용되지 않고 폐기됩니다 — 새 계획을 검토하세요.',
+  'migration.failure.other.title': '마이그레이션이 거부되었습니다',
+  'migration.failure.other.body':
+    '백엔드가 실행을 거부했습니다. 확정된 것으로 보고할 수 있는 항목이 없습니다 — 아래 세부 정보를 확인하세요.',
+  'migration.failure.reReview': '새 계획 검토',
+  'migration.uncertainty.noCheckpoint':
+    '체크포인트가 기록되지 않아 이 실행이 어디에서 중단되었는지 재구성할 수 없습니다.',
+  'migration.uncertainty.recoveryRejected':
+    '복구가 거부되어 이 실행은 재개할 수 없으며 수동으로 확인해야 합니다.',
+  'migration.uncertainty.effectOutcomeUnknown':
+    '데이터베이스가 쓰기가 커밋되었는지 롤백되었는지 확인하지 않았습니다.',
+  'migration.uncertainty.missingEvidence':
+    '커밋된 경계 중 하나 이상이 근거가 없어 검증되지 않은 것으로 보고됩니다.',
+  'migration.uncertainty.manualReviewRequired':
+    '백엔드는 다른 내용을 적용하기 전에 수동 검토를 요구합니다.',
   // --- Data Sync ---
   'sync.source': '원천',
   'sync.target': '목표',
@@ -152,6 +229,13 @@ const pack = {
   'transfer.executing': '전송 실행 중…',
   'transfer.executingProgress': '{count}개 테이블 전송 중…',
   'transfer.cancel': '취소',
+  'transfer.job.attachedTitle': '데이터 전송 작업이 이미 실행 중입니다',
+  'transfer.job.restoredTitle': '이전 데이터 전송 결과',
+  'transfer.job.detailsLoading': '저장된 전송 보고서를 불러오는 중…',
+  'transfer.job.detailsUnavailable':
+    '저장된 보고서를 사용할 수 없습니다. 다시 시도하기 전에 대상을 확인하세요.',
+  'transfer.job.queued': '전송이 대기열에 추가되었습니다',
+  'transfer.job.running': '전송 실행 중',
   'transfer.back': '뒤로',
   'transfer.next': '다음',
   'transfer.error': 'Transfer 오류',
@@ -179,6 +263,10 @@ const pack = {
   'transfer.mapping.autoMatch': '이름으로 자동 매칭',
   'transfer.mapping.clearUnmapped': '매핑되지 않은 항목 지우기',
   'transfer.mapping.unmappedTargetWarning': '매핑되지 않은 대상 열: {columns}',
+  'transfer.mapping.gateLost':
+    '계획을 준비하는 동안 테이블이 변경되어 열 매핑이 모두 해제되었습니다. 매핑을 다시 확인한 후 다시 시도하세요.',
+  'transfer.mapping.targetNameRequired':
+    '계속하기 전에 이 매핑으로 생성될 테이블의 이름을 지정하세요. 대상에는 아직 아무것도 없으므로 대체할 이름이 없습니다.',
   'transfer.mapping.sourceType': '소스 유형',
   'transfer.mapping.targetType': '대상 유형',
   'transfer.limitations.title': '현재 제한 사항',
@@ -265,6 +353,38 @@ const pack = {
   'schemaDiff.confirmDeploy': '파괴적 배포는 {token} 입력으로 확인',
   'schemaDiff.deploy': '대상에 배포',
   'schemaDiff.deploying': '배포 중…',
+  'schemaDiff.prepareJob': '계획 작업',
+  'schemaDiff.applyJob': '적용 작업',
+  'schemaDiff.jobUnknown': '상태를 알 수 없음',
+  'schemaDiff.jobQueued': '수락됨. 시작을 기다리는 중',
+  'schemaDiff.jobRunning': '실행 중',
+  'schemaDiff.jobSucceeded': '완료됨',
+  'schemaDiff.jobFailed': '실패함',
+  'schemaDiff.jobCancelled': '취소됨',
+  'schemaDiff.jobProgress': '시도 {attempted}개, 커밋 {committed}개, 알 수 없음 {unknown}개',
+  'schemaDiff.requestCancel': '취소 요청',
+  'schemaDiff.cancelRequested': '취소가 요청되었습니다. 작업 결과를 기다리는 중입니다.',
+  'schemaDiff.cancelUnavailable': '취소 요청이 이 작업에 전달되지 않았습니다.',
+  'schemaDiff.planUnavailableAfterRestart':
+    '재시작 후 검토한 계획을 사용할 수 없습니다. 적용하기 전에 다시 비교하세요.',
+  'schemaDiff.notDispatchedAfterRestart':
+    '이 승인된 작업은 재시작 전에 시작되지 않았습니다. 다시 실행되지 않았으므로 새 작업을 만들려면 다시 비교하세요.',
+  'schemaDiff.notExecuted':
+    '이 작업은 시작되지 않았습니다. 작업이 다시 실행되지 않았으므로 새 작업을 제출하려면 다시 비교하세요.',
+  'schemaDiff.recoveryPending':
+    '대상에 명시적인 읽기 전용 확인이 필요합니다. 이 작업은 자동으로 재개되지 않습니다.',
+  'schemaDiff.recoveryIdentityUnavailable':
+    '자동 확인을 위한 대상 식별 정보를 사용할 수 없어 수동 검토가 필요합니다.',
+  'schemaDiff.verifyRecovery': '대상 상태 확인',
+  'schemaDiff.verifyingRecovery': '대상 상태를 확인하는 중…',
+  'schemaDiff.recoveryUnchanged':
+    '대상 지문이 변경되지 않았습니다. 다만 이것이 문장이 실행되지 않았다는 증거는 아니므로, 적용하기 전에 다시 비교하세요.',
+  'schemaDiff.recoveryChanged':
+    '대상 지문이 변경되었습니다. 새 계획을 만들기 전에 데이터베이스를 수동으로 검토하세요.',
+  'schemaDiff.recoveryManualReview':
+    '읽기 전용 확인으로 결과를 알 수 없습니다. 계속하기 전에 대상을 수동으로 검토하세요.',
+  'schemaDiff.lastApplyReport': '최근 적용 보고서',
+  'schemaDiff.recoveryCode': '복구 코드: {code}',
   'schemaDiff.deployStatus': '배포 상태',
   'schemaDiff.executed': '실행됨',
   'schemaDiff.missingOnTarget': '대상에 없음(ADD)',

@@ -8,6 +8,8 @@ use datazen_driver_api::*;
 
 mod admin_commands;
 mod capability_evidence;
+#[cfg(test)]
+mod keyset_paging_tests;
 mod metadata;
 mod migration;
 mod parameters;

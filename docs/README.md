@@ -27,6 +27,7 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 - [Schema Diff](features/schema-diff-guide.zh-CN.md) / [English](features/schema-diff-guide.en.md)（[Deploy 索引](features/schema-diff-deploy.md)）
 - [Data Sync](features/data-sync-guide.zh-CN.md)
 - [Data Transfer](features/data-transfer-guide.zh-CN.md)
+- [数据浏览](features/data-browsing-guide.zh-CN.md)：表数据与查询结果网格的选择、键盘、复制、编辑、插入行、筛选排序、翻页、外键跳转与只读原因
 - [Ops Dashboard](features/ops-dashboard-guide.zh-CN.md) / [English](features/ops-dashboard-guide.en.md)
 - [Tunnel](features/tunnel-guide.zh-CN.md)
 - [Published query result export](features/published-result-export.md)
@@ -53,12 +54,14 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 - [Data Transfer](architecture/backend/data-transfer.md)
 - [Data Sync](architecture/backend/data-sync.md)
 - [Schema Diff](architecture/backend/schema-diff.md)
+- [Result Write](architecture/backend/result-write.md)（查询结果写回：两条通道、判定顺序、写入守卫）
 - [Wapps](architecture/backend/wapps.md)（含主题应用；旧 `theme.md` 已合并至此）
 
 ### 前端
 
 - [State](architecture/frontend/state.md)
 - [Components](architecture/frontend/components.md)
+- [Data Table](architecture/frontend/data-table.md)（数据网格：虚拟化、`data-dt-*` 契约、选择、键盘、编辑、分页与外键跳转）
 - [AI](architecture/frontend/ai.md)
 - [Extensibility](architecture/frontend/extensibility.md)
 

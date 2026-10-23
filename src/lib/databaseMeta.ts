@@ -3,9 +3,10 @@
  * Extracted to avoid circular deps between types/index.ts ↔ plugins/generated.ts.
  */
 
-import type { DatabaseObjectKind, SslMode } from '../types';
+import type { CountStrategy, DatabaseObjectKind, FilterOperator, SslMode } from '../types';
 import type { StructureEditorUiConfig } from './structureEditor/types';
 import type { FunctionEntry } from './sqlFunctionTypes';
+import type { CellTypeHints } from './cellTypes';
 import type {
   SqlDialectStrategy,
   SqlDialectProfile,
@@ -37,6 +38,57 @@ export interface KvWorkspaceCapabilities {
   keyPropsSidebar?: boolean;
   /** Take over the connected landing screen (no panel open) with a KV overview. */
   home?: boolean;
+}
+
+/**
+ * What the data grid may do on this database.
+ *
+ * Same shape as {@link KvWorkspaceCapabilities}: every flag is optional and
+ * defaults to the behaviour of the host *before* the flag existed, so a driver
+ * that declares nothing keeps today's grid bit for bit.
+ *
+ * The back end stays the authority (00-contracts §7): these flags let the front
+ * end hide an entry the database cannot serve, while a refusal that still
+ * happens is reported by the back end (`grid.filter.unsupportedOperator`).
+ */
+export interface DataGridCapabilities {
+  /**
+   * Table level writes. **Defaults to true** — the grid is editable unless a
+   * driver says otherwise. A default of `false` would turn every driver that
+   * never declared the flag read-only overnight, which is a regression and not
+   * a conservative choice.
+   */
+  editable?: boolean;
+  /** The database can fill the new row's primary key back after an insert. */
+  insertReturning?: boolean;
+  /**
+   * The filter operators this database serves. Defaults to the shared set
+   * (the existing ten plus the nine ANSI extensions); the three dialect
+   * operators (`regex` / `notRegex` / `jsonContains`) only appear when a
+   * driver names them here.
+   */
+  filterOperators?: FilterOperator[];
+  /**
+   * `LIKE` is case-insensitive under this database's default collation.
+   *
+   * Copy only — it never changes the SQL. Defaults to `false`, and `false`
+   * means "say nothing": a driver-level default says nothing about a column
+   * level `COLLATE`.
+   */
+  likeCaseInsensitive?: boolean;
+  /**
+   * The row-count strategy this database serves (00-contracts §7).
+   *
+   * Unset means `'exact'`, which is the branch every read took before the
+   * three states existed: a driver that says nothing still counts exactly.
+   *
+   * The declaration is a **hint, not the authority**: the back end still
+   * refuses to count against the driver's own `count_strategy()`, and the
+   * response carries the strategy that was actually used
+   * (`TableDataResult.totalRowsKind`). The grid renders that answer, never
+   * this one.
+   */
+  countStrategy?: CountStrategy;
 }
 
 export interface DatabaseTypeMeta {
@@ -128,6 +180,24 @@ export interface DatabaseTypeMeta {
    * See {@link KvWorkspaceCapabilities}.
    */
   kvWorkspace?: KvWorkspaceCapabilities;
+  /**
+   * Data-grid capabilities of this driver: write access, the filter operators
+   * it serves, whether `LIKE` ignores case. Omit entirely to keep the host's
+   * default grid behaviour. See {@link DataGridCapabilities}.
+   */
+  dataGrid?: DataGridCapabilities;
+  /**
+   * The driver's own column-type rules (DB-05).
+   *
+   * The shared table in `src/lib/cellTypes.ts` carries the common SQL type
+   * names; the traps that belong to one dialect are declared **here**, by
+   * the driver, in its own `ui/meta.ts`. The host never branches on a driver
+   * id for a type.
+   *
+   * Omit it and the shared table alone decides — which is exactly the
+   * behaviour before this field existed (00-contracts R4).
+   */
+  cellTypes?: CellTypeHints;
   /** Default page size for table data; unset uses per-table or global default */
   defaultPageSize?: number;
   /** Connection form variant — extensions can provide custom form identifiers */

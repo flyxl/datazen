@@ -146,6 +146,12 @@ const pack = {
   'privileges.allPrivileges': 'все привилегии',
   'schema.loadDbFailed': 'Не удалось загрузить базы данных',
   'schema.loadTablesFailed': 'Не удалось загрузить таблицы.',
+  'metadata.temporaryResultInvalidated':
+    'Временный результат признан недействительным: изменился его сеанс выполнения или конфигурация.',
+  'metadata.staleResultProvenance':
+    'Этот результат получен при другом подключении, ревизии конфигурации или цели.',
+  'metadata.cacheBucketIsolated':
+    'Записи кэша метаданных разделены по подключению, ревизии конфигурации и цели.',
   'objectFilter.hideSystemSchemas': 'Скрыть системные схемы и базы данных',
   'objectFilter.include': 'Включить имя таблицы',
   'objectFilter.exclude': 'Исключить имя таблицы',
@@ -294,6 +300,24 @@ const pack = {
   'fk.localColumn': 'Столбец',
   'fk.refTable': 'Справочная таблица',
   'fk.refColumn': 'Ссылочный столбец',
+  'fkNav.jumpTo': 'Перейти к {target}',
+  'fkNav.jumpToComposite': 'Перейти к {table} ({columns})',
+  'fkNav.resolving': 'Определение внешнего ключа…',
+  'fkNav.breadcrumbFrom': 'Из {source}',
+  'fkNav.backToSource': 'Назад к {table}',
+  'fkNav.back': 'Назад',
+  'fkNav.forward': 'Вперёд',
+  'fkNav.stackTruncated': 'Ранее выполненные шаги навигации были отброшены',
+  'fkNav.targetMissing': 'Указанная строка больше не существует',
+  'fkNav.notUniqueWarning':
+    '{columns} не является ни первичным, ни уникальным ключом — переход может вернуть много строк',
+  'fkNav.error.shapeMismatch': 'Столбцы этого внешнего ключа не совпадают',
+  'fkNav.error.unknownConstraint': 'Внешний ключ изменился; обновите структуру таблицы',
+  'fkNav.error.valueNull': 'Часть составного ключа — NULL',
+  'fkNav.error.targetUnresolved':
+    'Не удалось перейти к {target}; объект может отсутствовать, находиться в другой базе данных или быть недоступным для чтения',
+  'fkNav.error.probeFailed': 'Целевая таблица найдена, но не может быть прочитана',
+  'fkNav.error.unknown': 'Переход по внешнему ключу не удался',
   'schemaTree.generateSql': 'Сгенерировать SQL',
   'schemaTree.generateSelect': 'Сгенерировать SELECT',
   'schemaTree.generateInsert': 'Сгенерировать INSERT',

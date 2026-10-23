@@ -4,6 +4,7 @@ import { toId } from '@datazen/backend-client';
 import type { StatementResult } from '../../../../types';
 import type { DataExportCapability } from '../../../../lib/exportCapability';
 import { ResultTableView } from '../ResultTableView';
+import { usePanelResultEdit } from '../../../../stores/panelResultEdit';
 
 const dataTableMock = vi.hoisted(() => ({
   render: vi.fn(),
@@ -93,6 +94,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   settingsState.safeMode = false;
+  usePanelResultEdit.setState({ verdicts: {}, resolving: {}, errors: {}, generations: {} });
 });
 
 describe('ResultTableView', () => {
@@ -176,6 +178,49 @@ describe('ResultTableView', () => {
     expect(dataTableMock.render).toHaveBeenLastCalledWith(
       expect.objectContaining({ editingCell: null }),
     );
+  });
+
+  it('refuses to open an editor when the write-back verdict refuses the result, and says why', () => {
+    // The narrow host-side check did not verify the mapping and the driver's
+    // origin verdict refuses the result: the grid must not enter edit mode,
+    // and it must say why — a read-only grid that says nothing is the
+    // "unresponsive grey cell" the contract forbids.
+    usePanelResultEdit.setState({
+      verdicts: {
+        'session-1#0': {
+          writable: false,
+          identityColumns: [],
+          editableColumns: [],
+          table: null,
+          reason: 'multiTable',
+        },
+      },
+      resolving: {},
+      errors: {},
+      generations: {},
+    });
+    const onRowDetail = vi.fn();
+    const { container } = render(
+      <ResultTableView
+        result={result([[1]])}
+        writeBackKey="session-1#0"
+        onCellEdit={vi.fn().mockResolvedValue(undefined)}
+        onRowDetail={onRowDetail}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'edit result cell' }));
+
+    // The row detail still opens; the editor must not.
+    expect(onRowDetail).toHaveBeenCalledWith(0);
+    expect(dataTableMock.render).toHaveBeenLastCalledWith(
+      expect.objectContaining({ editingCell: null }),
+    );
+    expect(
+      container
+        .querySelector('[data-dt-grid-readonly-reason]')
+        ?.getAttribute('data-dt-grid-readonly-reason'),
+    ).toBe('multiTable');
   });
 
   it('does not enter edit mode for result cells when Safe Mode is on', () => {

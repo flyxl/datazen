@@ -1,4 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
+import { useBackendClient } from '@datazen/backend-client';
+import type { ResolveResultOriginRequest, ResultCellChangeRequest } from '@datazen/backend-client';
 import type {
   FavoriteQuery,
   HistorySort,
@@ -138,4 +140,23 @@ export const queryCommands = {
 
   sessionTransactionStatus: (dbSessionId: string) =>
     invoke<boolean>('session_transaction_status', { dbSessionId }),
+
+  /**
+   * Ask where a result came from, and whether it may be written back.
+   *
+   * The verdict is the back end's answer: only the driver knows the
+   * provenance of the rows, so the interface renders the verdict and never
+   * recomputes it. A failed call means "read-only", never "writable".
+   */
+  resolveResultOrigin: (request: ResolveResultOriginRequest) =>
+    useBackendClient().resolveResultOrigin(request),
+
+  /**
+   * The change plan for one edited cell of a query result.
+   *
+   * The preview renders the statement and executes nothing; the commit is a
+   * separate step, guarded by the plan's fingerprint.
+   */
+  previewResultCellChange: (request: ResultCellChangeRequest) =>
+    useBackendClient().previewResultCellChange(request),
 };

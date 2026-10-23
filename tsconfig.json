@@ -1,19 +1,29 @@
 {
   "$comment": [
     "TypeScript 7 (the Go port) no longer auto-discovers node_modules/@types.",
-    "Under TypeScript 5.9 this program silently picked up every package in",
-    "node_modules/@types — exactly these four — and the `types` field below",
-    "reproduces that set verbatim, so the program means the same thing under",
-    "both compilers. Measured: with this list, `tsc 5.9.3` and `tsc 7.0.2`",
-    "report identical diagnostics for this program (0 errors each); without it,",
-    "TypeScript 7 reports 109 errors, all of them \"Cannot find name",
-    "'node:fs'\"-shaped, caused by @types/node simply not being loaded.",
-    "",
-    "MAINTENANCE: the list is explicit now, so adding a new @types/*",
-    "dependency means adding it here too. The failure direction is safe — a",
-    "missing entry produces EXTRA errors, never missing ones. The same list",
-    "is repeated in each packages/*/tsconfig.json, which are standalone",
-    "programs and do not inherit this file."
+        "Under TypeScript 5.9 this program silently picked up every package in",
+        "node_modules/@types — exactly these four — and the `types` field below",
+        "reproduces that set verbatim, so the program means the same thing under",
+        "both compilers. Measured: with this list, `tsc 5.9.3` and `tsc 7.0.2`",
+        "report identical diagnostics for this program (0 errors each); without it,",
+        "TypeScript 7 reports 109 errors, all of them \"Cannot find name",
+        "'node:fs'\"-shaped, caused by @types/node simply not being loaded.",
+        "",
+        "MAINTENANCE: the list is explicit now, so adding a new @types/*",
+        "dependency means adding it here too. The failure direction is safe — a",
+        "missing entry produces EXTRA errors, never missing ones. The same list",
+        "is repeated in each packages/*/tsconfig.json, which are standalone",
+        "programs and do not inherit this file.",
+        "The exclude above keeps the reserved probe files out of this program.",
+        "A guard test plants a throwaway probe in the working tree to prove a",
+        "layer rule is armed, and deletes it again. If tsc's program contains such",
+        "a file, two things go wrong: the probe's body is not necessarily valid",
+        "TypeScript (it names modules the package does not depend on), and the",
+        "probe can be deleted between tsc listing the file and reading it, which",
+        "is TS6053. Both failures belong to the probe, not to the tree.",
+        "packages/ui/tsconfig.json and packages/backend-client/tsconfig.json carry",
+        "the same exclude: fixing only the root config leaves the per-package",
+        "programs able to see a probe."
   ],
   "compilerOptions": {
     "target": "ES2022",
@@ -64,5 +74,7 @@
     "packages/drivers/vector/ui",
     "packages/drivers/victoriametrics/ui"
   ],
+  "exclude": ["**/__boundaryProbe__*", "**/__uiBoundaryProbe__*"],
+  
   "references": [{ "path": "./tsconfig.node.json" }]
 }

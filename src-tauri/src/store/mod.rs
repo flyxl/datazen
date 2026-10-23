@@ -10,6 +10,7 @@ pub(crate) mod key_backend;
 mod key_codec;
 mod key_store;
 mod models;
+mod named_views;
 pub(crate) mod platform_profiles;
 mod platform_vault;
 mod schema_diff_profiles;
@@ -35,6 +36,10 @@ pub use history_db::{
     MigrationRunPage, MigrationRunRecord, QueryHistoryFilter, QueryHistoryPage,
 };
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
+// The named-view DTO itself is the shared layer's
+// (`datazen_feature_core::services::named_views`); the store only contributes
+// the persistence and the id minter.
+pub use named_views::HostViewIdMinter;
 pub use settings::{AppSettings, OnboardingState};
 
 use aes_gcm::aead::{Aead, KeyInit};

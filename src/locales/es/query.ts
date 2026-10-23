@@ -1,6 +1,15 @@
 /** Auto-split domain: query (es) */
 const pack = {
   'tableView.loadingData': 'Cargando datos de la tabla…',
+  'tableView.a11y.gridLabel': 'Cuadrícula de datos',
+  'tableView.shortcut.hint': 'Las flechas mueven, Mayús+flecha amplía la selección, Entrar edita',
+  'tableView.shortcut.enterEdit': 'Entrar o F2 edita la celda activa',
+  'tableView.shortcut.extendSelection': 'Mayús+flechas amplían la selección',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown avanzan una pantalla',
+  'tableView.shortcut.moveToEdge':
+    'Home/End van al inicio o al final de la fila; Cmd+Home/End, al inicio o al final de la cuadrícula',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A selecciona todas las filas',
+  'tableView.shortcut.tabLeavesGrid': 'Tab sale de la cuadrícula',
   'query.execute': 'Ejecutar',
   'query.run': 'Ejecutar',
   'query.runSelection': 'Ejecutar selección',
@@ -21,6 +30,12 @@ const pack = {
   'query.cancelFailed': 'No se pudo cancelar la consulta; puede seguir en ejecución',
   'query.streamingRows': '{n} filas cargadas…',
   'query.result': 'Resultado',
+  'query.artifactExport.action': 'Exportar el resultado publicado (.jsonl)',
+  'query.artifactExport.numberedAction': 'Exportar el resultado publicado {index} (.jsonl)',
+  'query.artifactExport.partial': 'Resultado parcial; se requiere confirmación',
+  'query.artifactExport.saving': 'Guardando el resultado publicado…',
+  'query.artifactExport.saved': 'Resultado publicado guardado',
+  'query.artifactExport.failed': 'No se pudo exportar el resultado publicado',
   'query.shortcutHint': 'Presione ⌘+Entrar para ejecutar',
   'query.historyTitle': 'Historial de consultas',
   'query.noHistory': 'Aún no hay historial',
@@ -71,6 +86,28 @@ const pack = {
   'query.tab': 'Consulta {n}',
   'query.notConnected': 'No conectado',
   'query.cancelled': 'Consulta cancelada',
+  'query.session.closeBlocked':
+    'No se pudo cerrar la sesión. Resuelva su transacción o la ejecución en curso y vuelva a cerrarla.',
+  'query.session.transactionSwitchConfirm':
+    'Hay una transacción activa. ¿Revertirla y cambiar de base de datos?',
+  'query.session.revisionConflict':
+    'El contexto cambió desde que empezó. Recargue el estado más reciente e inténtelo de nuevo.',
+  'query.session.switchFailed': 'No se pudo cambiar de base de datos: {message}',
+  'query.session.closeTabActiveExecution':
+    'Esta pestaña tiene una consulta en curso. ¿Cerrarla de todos modos?',
+  'query.session.closeTabActiveExecutionTitle': '¿Cerrar una pestaña con una consulta en curso?',
+  'query.session.closeTabActiveExecutionConfirm': 'Detener y cerrar',
+  'query.session.closeTabActiveExecutionMany':
+    'Esta pestaña tiene {count} consultas en curso. ¿Cerrarla de todos modos?',
+  'query.resultEditRequiresRefresh':
+    'Ejecute la consulta de nuevo antes de editar este resultado conservado.',
+  'query.session.openNew': 'Abrir una sesión nueva',
+  'query.session.disconnected': 'Se perdió la conexión. Vuelva a abrir una sesión para continuar.',
+  'query.session.executionFailed': 'La consulta falló: {message}',
+  'query.session.editorQuotaExceeded':
+    'Se alcanzó el límite de sesiones de editor conectadas simultáneamente para esta conexión. Cierre las demás pestañas de consulta que la usen; si no hay ninguna abierta, vuelva a conectar la conexión o reinicie DataZen para liberar las sesiones de editor obsoletas.',
+  'query.session.cancelledRetry': 'La consulta se canceló. Puede volver a ejecutarla.',
+  'query.session.recovered': 'Conexión recuperada; hay resultados parciales disponibles.',
   'query.explainError': 'Explicar',
   'query.fixSql': 'Corregir SQL',
   'query.retry': 'Reintentar',
@@ -120,6 +157,13 @@ const pack = {
   'tableData.pendingChanges': '{count} cambios sin guardar',
   'tableData.pendingUpdates': '{count} actualizaciones',
   'tableData.pendingDeletes': '{count} eliminaciones',
+  'tableData.pendingCells': '{count} celdas modificadas',
+  'tableData.pendingOffPage': '{count} celdas más modificadas en otras páginas',
+  'tableData.dirtyCellAria': 'Celda modificada: {original} → {next}',
+  'tableData.dirtyValueNull': 'Valor nulo',
+  'tableData.dirtyValueEmpty': '(cadena vacía)',
+  'tableData.dirtyDeletedRow': 'Marcada para eliminación',
+  'tableData.restoreRow': 'Restaurar esta fila',
   'tableData.safeModeEditDisabled': 'El Modo seguro impide editar celdas de la tabla.',
   'tableData.preview': 'Vista previa',
   'tableData.commit': 'Commit',
@@ -132,7 +176,7 @@ const pack = {
   'tableData.previewWarnings': 'Advertencias',
   'tableData.noPendingChanges': 'No hay cambios pendientes',
   'dataTable.selected': 'Seleccionado',
-  'dataTable.sort': 'Clasificar',
+  'dataTable.sort': 'Ordenar',
   'dataTable.selectRow': 'Seleccionar fila',
   'dataTable.copyRow': 'Copiar fila',
   'dataTable.moreActions': 'Más acciones',
@@ -150,6 +194,53 @@ const pack = {
   'dataTable.empty': 'No hay filas para mostrar',
   'dataTable.emptyHint': 'Esta consulta no devolvió ninguna fila.',
   'dataTable.tableLabel': 'Tabla de datos',
+  'dataTable.selectionSummary': '{rows} filas × {cols} columnas',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': 'Copiar celdas seleccionadas',
+  'dataTable.copySelectedCellsAs': 'Copiar celdas seleccionadas como…',
+  'dataTable.copySelectedCellsAsTsv': 'Copiar como TSV',
+  'dataTable.copySelectedCellsAsTsvWithHeader': 'Copiar como TSV con encabezado',
+  'dataTable.copySelectedCellsAsCsv': 'Copiar como CSV',
+  'dataTable.copySelectedCellsAsJson': 'Copiar como JSON (matriz 2D)',
+  'dataTable.pasteSelectedCells': 'Pegar en las celdas seleccionadas',
+  'dataTable.pasteRows': 'Pegar filas',
+  'dataTable.copyFailed': 'No se pudo copiar; el portapapeles no está disponible.',
+  'dataTable.pasteReadFailed':
+    'No se pudo leer el portapapeles. Pulse {shortcut} de nuevo o permita el acceso al portapapeles.',
+  'dataTable.pasteEmpty': 'El portapapeles está vacío: no hay nada que pegar.',
+  'dataTable.pasteTooLarge':
+    'El portapapeles contiene {cells} celdas; solo se pueden pegar {maxCells}. No se pegó nada.',
+  'dataTable.pasteRaggedRow':
+    'La fila {row} tiene {count} campo(s) y la primera fila tiene {expected}; corrija el origen de datos y vuelva a copiar. No se pegó nada.',
+  'dataTable.pasteUnclosedQuote':
+    'Un valor entre comillas no está cerrado; se leyó como una sola celda.',
+  'dataTable.pasteClippedToPage':
+    'Se omitieron {count} celda(s) porque el pegado saldría de esta página. Vaya a la página siguiente y pegue allí el resto.',
+  'dataTable.pasteNoWritableColumn': 'Ninguna de las columnas de la selección se puede escribir.',
+  'dataTable.readOnlyPasteDisabled':
+    'No se pueden pegar celdas: la conexión o el controlador es de solo lectura.',
+  'dataTable.pasteReadOnlyColumn':
+    '{count} columna(s) no se pueden escribir y se omitieron: {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    'La fila {row} tiene un valor vacío en {column}, que es NOT NULL. Esa celda se omitió.',
+  'dataTable.pasteIdentityChanged':
+    'Fila {row}, columna {column}: la escritura haría ambigua la identidad de la fila. Esa celda se omitió.',
+  'dataTable.pasteNoRowIdentity':
+    'Esta tabla no tiene clave principal, así que los valores pegados no se pueden asignar a filas.',
+  'dataTable.pasteDroppedColumns':
+    'Se descartaron {count} columna(s) de origen (aquí no existe esa columna): {names}',
+  'dataTable.pasteCrossTableTitle': '¿Pegar en otra tabla?',
+  'dataTable.pasteCrossTableNotice': 'Pegado desde otra tabla en {table}',
+  'dataTable.pasteCrossTableBody':
+    'El portapapeles se copió de otra tabla. Sus columnas se emparejarán por nombre con {target} ({matched} de {total} emparejadas); las columnas sin coincidencia se descartan.',
+  'dataTable.pasteUnknownSourceBody':
+    'El portapapeles no se copió de esta tabla, así que sus columnas se asignan a {target} por posición: {total} columna(s).',
+  'dataTable.pasteConfirmTitle': '¿Pegar {cells} celdas?',
+  'dataTable.pasteConfirmMessage':
+    'Esto escribe {rows} fila(s) × {cols} columna(s) y sobrescribe {overwritten} cambio(s) pendiente(s). Nada se confirma hasta que confirme los cambios.',
+  'dataTable.pasteToSelectedCells': 'Pegar',
+  'dataTable.pasteResult': '{count} celda(s) pegadas · {skipped} omitidas',
+  'dataTable.pasteOverwrotePending': '{count} cambio(s) pendiente(s) sobrescrito(s)',
   'detail.title': 'Detalles',
   'detail.show': 'Mostrar panel de detalles',
   'detail.hide': 'Ocultar panel de detalles',
@@ -167,9 +258,48 @@ const pack = {
   'pagination.next': 'Próximo',
   'pagination.page': 'Página',
   'pagination.pageOf': '',
+  'pagination.rowCountEstimated': 'aprox. {count}',
+  'pagination.rowCountUnknown': 'desconocido',
+  'pagination.rowsUnknown': 'Conteo de filas no disponible',
+  'pagination.estimateTooltip':
+    'Conteo estimado de filas — el número real puede ser diferente. Use "Contar" para el valor exacto.',
+  'pagination.countExact': 'Contar',
+  'pagination.counting': 'Contando…',
+  'pagination.pageOnly': 'Página {page}',
+  'pagination.unstablePaging':
+    'No hay ningún orden de clasificación definido — las filas pueden repetirse u omitirse entre páginas.',
+  'pagination.estimatedLessThanActual':
+    'Esta página está vacía. El conteo real de filas puede ser menor que la estimación — use "Contar" para comprobarlo.',
+  'defaultSort.noPrimaryKey': 'Sin clave primaria — el orden se basa en la primera columna.',
+  'defaultSort.custom': 'Orden personalizado',
+  'defaultSort.panelLabel': 'Ordenar',
+  'defaultSort.inherit': 'Seguir la configuración',
+  'defaultSort.primaryKeyAsc': 'Clave primaria ↑',
+  'defaultSort.primaryKeyDesc': 'Clave primaria ↓',
+  'defaultSort.primaryKeyDescUnavailable':
+    'El orden descendente por una clave primaria compuesta todavía no es compatible.',
+  'defaultSort.none': 'No ordenar',
+  'pagination.estimateUnavailable': 'Esta base de datos no puede estimar el conteo de filas.',
+  'pagination.mode.keyset': 'Paginación rápida',
+  'pagination.mode.offset': 'Paginación por offset',
+  'pagination.hint.driverUnsupported': 'Esta base de datos no admite la paginación rápida.',
+  'pagination.hint.noStableOrder':
+    'Esta tabla no tiene clave primaria, así que las páginas no se pueden leer en un orden estable.',
+  'pagination.hint.nullableKeyColumn':
+    'La paginación rápida no está disponible al ordenar por una columna que puede ser NULL.',
+  'pagination.hint.nullBoundary':
+    'La clave de orden de esta fila es NULL, así que la paginación rápida se reanudó desde una posición exacta.',
+  'pagination.hint.predicateUnavailable':
+    'La paginación rápida no está disponible para el orden actual.',
+  'pagination.hint.noPaginationClause': 'Esta base de datos no puede paginar esta consulta.',
+  'pagination.hint.staleCursor':
+    'El orden o el filtro cambiaron; la paginación se reanudó desde la primera página.',
+  'pagination.hint.jumpReanchored': 'La paginación rápida se reanudó desde la página {page}.',
+  'pagination.hint.drift':
+    'Las filas cambiaron durante la paginación; el conteo de filas se ha actualizado.',
   'filter.filter': 'Filtrar',
   'filter.remove': 'Quitar filtro',
-  'filter.clear': 'Claro',
+  'filter.clear': 'Borrar',
   'filter.add': 'Agregar filtro',
   'filter.and': 'AND',
   'filter.or': 'OR',
@@ -186,14 +316,63 @@ const pack = {
   'filter.lt': '<',
   'filter.gte': '≥',
   'filter.lte': '≤',
-  'filter.like': 'contiene',
+  'filter.like': 'coincide con el patrón',
   'filter.in': 'en',
   'filter.isNull': 'es NULL',
   'filter.isNotNull': 'no es NULL',
+  'filter.notIn': 'no en',
+  'filter.between': 'entre',
+  'filter.notBetween': 'fuera de',
+  'filter.contains': 'incluye',
+  'filter.notContains': 'no incluye',
+  'filter.startsWith': 'empieza con',
+  'filter.endsWith': 'termina con',
+  'filter.isEmpty': 'es cadena vacía',
+  'filter.isNotEmpty': 'no es cadena vacía',
+  'filter.regex': 'coincide con regex',
+  'filter.notRegex': 'no coincide con regex',
+  'filter.jsonContains': 'JSON contiene',
   'filter.quickPlaceholder': "Filtro rápido: status = 'open'",
   'filter.invalidExpression': 'Filtro no aplicado: {error}',
-  'filter.mixedLogic':
-    'Filtro no aplicado: utilice un solo operador lógico o el editor de filtros.',
+  'filter.nestedLogic':
+    'Filtro no aplicado: esta expresión agrupa AND y OR entre paréntesis. Escriba las condiciones una tras otra o edítelas en el editor de filtros.',
+  'filter.incomplete': 'Necesita un valor, no aplicado',
+  'filter.errorIncomplete':
+    'Filtro no aplicado: una condición todavía no tiene valor (columna "{column}")',
+  'filter.errorUnsupportedOperator':
+    'Esta base de datos no admite el filtro "{operator}". Pruebe con {alternatives} u otro filtro compatible.',
+  'filter.tokensPlaceholder': 'Escriba un valor y pulse Enter',
+  'filter.tokenRemove': 'Quitar valor',
+  'filter.betweenInverted':
+    'El límite inferior es mayor que el superior: no se devolverá ninguna fila',
+  'filter.connectorReset': 'Usar {logic} para todo',
+  'filter.globalLogicDisabledHint':
+    'Se usa una lógica por condición: borre los ajustes por condición para cambiar la lógica de todas',
+  'filter.connectorInherited': 'Se usa la lógica de todas las condiciones',
+  'filter.likeCaseInsensitiveHint':
+    'LIKE no distingue mayúsculas y minúsculas con la intercalación predeterminada de esta base de datos',
+  'filter.view.savedViews': 'Vistas guardadas',
+  'filter.view.save': 'Guardar',
+  'filter.view.saveAs': 'Guardar como…',
+  'filter.view.rename': 'Cambiar nombre',
+  'filter.view.delete': 'Borrar',
+  'filter.view.deleteConfirm': '¿Borrar la vista guardada "{name}"?',
+  'filter.view.nameLabel': 'Nombre de la vista',
+  'filter.view.namePlaceholder': 'p. ej. Pedidos abiertos de esta semana',
+  'filter.view.empty': 'No hay vistas guardadas para esta tabla',
+  'filter.view.nameExists': 'Ya existe una vista con este nombre para esta tabla',
+  'filter.view.overwrite': 'Sobrescribir',
+  'filter.view.setDefault': 'Establecer como predeterminada',
+  'filter.view.defaultBadge': 'Predeterminada',
+  'filter.view.draftNotAppliedHint':
+    'Se guardarán los filtros aplicados — todavía hay cambios sin aplicar',
+  'filter.view.applyAnyway': 'Aplicar primero',
+  'filter.view.export': 'Exportar…',
+  'filter.view.import': 'Importar…',
+  'filter.view.importDone': '{count} vistas importadas',
+  'filter.view.importFailed': 'Importación fallida: {error}',
+  'filter.view.missingColumn': 'La columna "{column}" ya no existe en esta tabla',
+  'filter.view.errorNameExists': 'Ya existe una vista guardada con este nombre',
   'import.description': 'Importar datos desde un archivo CSV o JSON',
   'import.selectFile': 'Seleccionar archivo',
   'import.targetTable': 'Tabla de objetivos',
@@ -365,6 +544,37 @@ const pack = {
   'tableData.selectedCount': '{selected}/{total} seleccionado(s)',
   'tableData.noColumnsFound': 'No se encontraron campos coincidentes',
   'tableData.allColumnsHidden': 'Todos los campos están ocultos',
+  'tableData.shortTxDefault': 'Transacción corta por guardado',
+  'tableData.inManualTx': 'Transacción manual abierta',
+  'tableData.txManualHint':
+    'Las confirmaciones se incorporan a la transacción manual abierta hasta que finaliza.',
+  'tableData.beginTx': 'Iniciar transacción',
+  'tableData.commitTx': 'Confirmar transacción',
+  'tableData.rollbackTx': 'Revertir transacción',
+  'tableData.txBeginFailed': 'No se pudo iniciar la transacción',
+  'tableData.txCommitFailed': 'No se pudo confirmar la transacción',
+  'tableData.txRollbackFailed': 'No se pudo revertir la transacción',
+  'tableData.errorPendingHint':
+    'Quedan cambios sin guardar en espera. Reinténtelo, ajuste el filtro o revierta antes de cerrar esta pestaña.',
+  'tableData.insertRow': 'Insertar fila',
+  'tableData.insertRowHint': 'Insertar fila ({shortcut})',
+  'tableData.duplicateDraftRow': 'Duplicar fila',
+  'tableData.removeDraftRow': 'Descartar fila',
+  'tableData.draftRowBadge': 'NUEVO',
+  'tableData.draftRowUnsaved': 'Fila nueva (aún no guardada)',
+  'tableData.insertDefault': 'Valor por defecto',
+  'tableData.insertSetNull': 'Establecer NULL',
+  'tableData.pendingInserts': '{count} inserción(es)',
+  'tableData.confirmCommitWithInserts':
+    '¿Confirmar {inserts} inserciones, {updates} actualizaciones y {deletes} eliminaciones?',
+  'tableData.insertFailed': 'No se pudieron insertar las filas',
+  'tableData.insertNoWritableColumn': 'Rellene al menos una columna: {columns} requiere un valor.',
+  'tableData.insertUnknownColumn': 'La columna {column} no forma parte de esta tabla.',
+  'tableData.insertReturningUnavailable':
+    'No se pudo localizar automáticamente la clave principal de la fila nueva; la página se ha refrescado.',
+  'tableData.insertSchemaUnavailable':
+    'Los metadatos de las columnas no están disponibles; la base de datos validará esta fila.',
+  'tableData.highlightNewRow': 'Fila nueva',
   'dataTable.copyColumnData': 'Copiar datos de la columna',
   'query.addToDashboard': 'Agregar al panel',
   'query.dashboard.defaultName': 'Nuevo panel',
@@ -394,5 +604,79 @@ const pack = {
   'query.objectTree.tables': 'Tablas',
   'query.objectTree.views': 'Vistas',
   'query.objectTree.noObjects': 'Sin objetos',
+  'cellEditor.setValue': 'Establecer valor',
+  'cellEditor.setEmpty': 'Establecer cadena vacía',
+  'cellEditor.setDefault': 'Usar el valor por defecto de la columna',
+  'cellEditor.revertCell': 'Descartar el cambio de esta celda',
+  'cellEditor.loadCandidates': 'Cargar valores candidatos',
+  'cellEditor.loadingCandidates': 'Cargando valores candidatos…',
+  'cellEditor.candidatesEmpty': 'No se encontraron valores candidatos',
+  'cellEditor.candidatesFailed': 'No se pudieron cargar los valores candidatos',
+  'cellEditor.candidatesTruncated': 'Se muestran los primeros {count} valores distintos',
+  'cellEditor.commit': 'Aplicar',
+  'cellEditor.formatJson': 'Formatear JSON',
+  'cellEditor.minifyJson': 'Minificar',
+  'cellEditor.ariaLabel': 'Editar el valor de la celda',
+  'cellEditor.invalidNumber': 'Introduzca un número válido',
+  'cellEditor.invalidInteger': 'Introduzca un número entero',
+  'cellEditor.invalidBoolean': 'Introduzca true o false',
+  'cellEditor.invalidDate': 'Introduzca una fecha válida (YYYY-MM-DD)',
+  'cellEditor.invalidTime': 'Introduzca una hora válida (HH:MM:SS)',
+  'cellEditor.invalidDateTime': 'Introduzca una fecha y una hora válidas (YYYY-MM-DDTHH:MM:SS)',
+  'cellEditor.invalidJson': 'JSON no válido — corríjalo antes de aplicar',
+  'cellEditor.invalidUuid': 'Introduzca un UUID válido',
+  'cellEditor.notNull': 'Esta columna no permite NULL',
+  'cellEditor.valueTooLarge': 'Este valor es demasiado grande para editarlo en la tabla de datos',
+  'cellEditor.binaryNotEditable': 'Los valores binarios no se pueden editar en la tabla de datos',
+  'cellEditor.discardedUncommitted': 'Su edición se descartó porque la fila ya no se muestra',
+  'cellEditor.readOnlyTitle': 'La celda es de solo lectura',
+  'cellEditor.readOnly.connection':
+    'Esta conexión es de solo lectura, por lo que no se pueden editar celdas.',
+  'cellEditor.readOnly.driverCapability':
+    'Este controlador de base de datos no admite la escritura.',
+  'cellEditor.readOnly.view':
+    'Las vistas y las vistas materializadas son de solo lectura en la tabla de datos.',
+  'cellEditor.readOnly.noPrimaryKey':
+    'Esta tabla no tiene clave principal, por lo que no se puede identificar una fila para actualizarla.',
+  'cellEditor.readOnly.ambiguousRowIdentity':
+    'Esta fila no se puede identificar de forma única (su clave es NULL o está duplicada).',
+  'cellEditor.readOnly.autoIncrement':
+    'Las columnas autoincrement no se pueden editar directamente.',
+  'cellEditor.readOnly.generated': 'Las columnas generadas no se pueden editar.',
+  'cellEditor.readOnly.typeNotEditable':
+    'Este tipo de columna no se puede editar directamente en esta base de datos.',
+  'cellEditor.readOnly.binaryColumn': 'Las columnas binarias no se pueden editar directamente.',
+  'cellEditor.readOnly.largeValue': 'Este valor es demasiado grande para editarlo directamente.',
+  'query.gridReadOnly.unknownOrigin':
+    'No se puede determinar de dónde procede este resultado, por lo que es de solo lectura.',
+  'query.gridReadOnly.ambiguousOrigin':
+    'El controlador informó de orígenes de columna inconsistentes para este resultado.',
+  'query.gridReadOnly.multiTable':
+    'Este resultado une varias tablas; las filas individuales no se pueden editar.',
+  'query.gridReadOnly.aggregate':
+    'Este resultado es una agregación; las filas individuales no se pueden editar.',
+  'query.gridReadOnly.distinct':
+    'Este resultado está desduplicado; las filas no se pueden asociar con las filas de las tablas.',
+  'query.gridReadOnly.setOperation':
+    'Este resultado es una operación de conjuntos (UNION); las filas no se pueden editar.',
+  'query.gridReadOnly.derivedSource':
+    'Este resultado procede de una subconsulta; las filas no se pueden asociar con las filas de las tablas.',
+  'query.gridReadOnly.view':
+    'Este resultado procede de una vista; no se admite la edición de vistas.',
+  'query.gridReadOnly.noPrimaryKey':
+    'La tabla de origen no tiene clave principal, por lo que no se pueden identificar las filas.',
+  'query.gridReadOnly.keyNotSelected':
+    'Las columnas de la clave principal no están todas presentes en este resultado.',
+  'query.gridReadOnly.sessionReadOnly': 'La conexión actual es de solo lectura.',
+  'query.gridReadOnly.keyValueNull':
+    'Esta fila tiene un valor NULL en la clave principal y no se puede localizar.',
+  'query.gridReadOnly.duplicateIdentity':
+    'Esta página contiene identidades de fila duplicadas; la edición está deshabilitada.',
+  'query.gridReadOnly.rowNotFound': 'Esta fila ya no forma parte del resultado.',
+  'query.gridReadOnly.tooltip': 'Solo lectura: {reason}',
+  'query.gridEdit.editHint': 'Haga doble clic para editar esta celda',
+  'query.gridEdit.resolving': 'Comprobando si este resultado se puede editar…',
+  'query.gridEdit.submitting': 'Guardando el cambio…',
+  'query.gridEdit.empty': 'Este resultado no tiene filas.',
 } as const;
 export default pack;

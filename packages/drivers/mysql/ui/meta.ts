@@ -53,6 +53,20 @@ const mysqlDialectSpread = {
 } as const;
 
 /**
+ * The MySQL type traps (DB-05).
+ *
+ * MySQL's `BOOLEAN` is an alias for `tinyint(1)`, and the column metadata
+ * reports it as such — only the driver knows that the column is a boolean
+ * and not a one-digit number. The host has no MySQL branch; the rule lives
+ * here, in the driver's own metadata.
+ */
+const mysqlCellTypes = {
+  overrides: [{ match: 'exact', pattern: 'tinyint(1)', cellType: 'bool' }],
+} satisfies NonNullable<DatabaseTypeMeta['cellTypes']>;
+
+const mysqlCellTypesSpread = { cellTypes: mysqlCellTypes } as const;
+
+/**
  * MySQL/MariaDB use backslash as an escape character in string literals.
  * This escaper applies three passes in order:
  *   1. `\` → `\\`  — preserve literal backslashes (must come first)
@@ -96,6 +110,7 @@ export const mysqlMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlCellTypesSpread,
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
@@ -130,6 +145,7 @@ export const mariadbMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlCellTypesSpread,
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
@@ -164,6 +180,7 @@ export const dorisMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlCellTypesSpread,
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
@@ -198,6 +215,7 @@ export const starrocksMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlCellTypesSpread,
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
@@ -232,6 +250,7 @@ export const manticoreMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlCellTypesSpread,
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
@@ -266,6 +285,7 @@ export const obOracleMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlCellTypesSpread,
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,

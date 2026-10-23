@@ -2,11 +2,21 @@ import { ArrowDown, ArrowUp, Filter } from 'lucide-react';
 import type { SortCondition } from '../../types';
 import { cn } from '../../lib/cn';
 import { dataTypeTextClass } from '../../lib/dataTypeColors';
+import type { CellTypeHints } from '../../lib/cellTypes';
 
 export interface ColumnDef {
   id: string;
   name: string;
   type?: string;
+  /**
+   * The column accepts SQL `NULL`.
+   *
+   * It is the one piece of column metadata the editor cannot derive from
+   * the type name: without it, a grid that has no schema behind it would
+   * have to *guess* — and the guess "nullable" turns a `NOT NULL` column
+   * into one that silently accepts an empty input as a `NULL` (05 §7 #3).
+   */
+  nullable?: boolean;
 }
 
 export interface TableHeaderProps {
@@ -17,6 +27,21 @@ export interface TableHeaderProps {
   onResizeStart?: (colIndex: number, startX: number) => void;
   sortable?: boolean;
   onFilterColumn?: (column: string) => void;
+  /**
+   * The driver's own column-type rules (`DatabaseTypeMeta.cellTypes`).
+   *
+   * The **same** declaration the cells read: the type label of a header and
+   * the value of a cell must not give two different answers for the same
+   * column (05 §3.1). Omitted → the shared table alone decides, exactly as
+   * before.
+   */
+  cellTypeHints?: CellTypeHints;
+  /**
+   * The header belongs to an ARIA grid: the header row becomes `role="row"` and its cells
+   * `role="columnheader"`. A `row` may only contain cell children, so the roles are added
+   * together with the grid itself (00-contracts §4.4).
+   */
+  gridSemantics?: boolean;
 }
 
 export function TableHeader({
@@ -27,12 +52,20 @@ export function TableHeader({
   onResizeStart,
   sortable = true,
   onFilterColumn,
+  cellTypeHints,
+  gridSemantics = false,
 }: TableHeaderProps) {
   const active = sorts[0];
 
   return (
-    <div className="sticky top-0 z-10 flex min-w-max border-b border-edge bg-surface-alt">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center border-r border-edge text-xs text-fg-muted">
+    <div
+      role={gridSemantics ? 'row' : undefined}
+      className="sticky top-0 z-10 flex min-w-max border-b border-edge bg-surface-alt"
+    >
+      <div
+        role={gridSemantics ? 'columnheader' : undefined}
+        className="flex h-10 w-10 shrink-0 items-center justify-center border-r border-edge text-xs text-fg-muted"
+      >
         #
       </div>
       {columns.map((col, colIdx) => {
@@ -43,6 +76,7 @@ export function TableHeader({
         return (
           <div
             key={col.id}
+            role={gridSemantics ? 'columnheader' : undefined}
             data-col-header={col.name}
             className="relative flex h-10 shrink-0 items-center justify-between gap-2 border-r border-edge px-3"
             style={{ width }}
@@ -59,7 +93,10 @@ export function TableHeader({
               </div>
               {col.type ? (
                 <div
-                  className={cn('truncate font-mono text-[11px]', dataTypeTextClass(col.type))}
+                  className={cn(
+                    'truncate font-mono text-[11px]',
+                    dataTypeTextClass(col.type, cellTypeHints),
+                  )}
                   title={col.type}
                 >
                   {col.type}

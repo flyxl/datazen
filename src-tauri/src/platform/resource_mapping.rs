@@ -45,6 +45,75 @@ pub fn context(context: &ds::SessionContext) -> rc::SessionContext {
         },
     }
 }
+/// Project a driver-observed namespace into the platform-api shape.
+///
+/// Both sides mean the same thing by every field, so this is a straight carry:
+/// `path` is a **sequence of path segments** on both sides, and an absent level
+/// stays absent. Nothing is joined, defaulted or guessed here.
+pub fn platform_namespace(
+    target: &dn::NamespaceTarget,
+) -> datazen_platform_api::target::NamespaceTarget {
+    datazen_platform_api::target::NamespaceTarget {
+        database: target.database.clone(),
+        catalog: target.catalog.clone(),
+        schema: target.schema.clone(),
+        path: target.path.clone(),
+    }
+}
+
+/// Project a driver-observed session context into the platform-api shape.
+///
+/// Read from the **driver observation** (`ds`), not from the runtime kernel's
+/// `rc::SessionContext`: the kernel shape is a scalar projection that joins
+/// `path` segments with `/` and turns `None` levels into empty strings, so it
+/// loses information this contract can represent. This function is total and
+/// field-by-field on purpose — the compiler holds the two shapes together, and
+/// no serializer performs the conversion behind its back.
+pub fn platform_context(
+    context: &ds::SessionContext,
+) -> datazen_platform_api::dto::session::SessionContext {
+    datazen_platform_api::dto::session::SessionContext {
+        namespace: platform_namespace(&context.namespace),
+        // The driver shape has no "not observed" spelling for the search path —
+        // it is a plain list — so this boundary cannot tell "observed empty"
+        // from "unobserved". `None` would be a claim no driver made, so the
+        // list projects as `Some(..)` even when it is empty (a MySQL fixed
+        // session reports an empty list; a driver that cannot observe the
+        // search path at all says so through `confidence`, not through this
+        // field).
+        search_path: Some(context.search_path.clone()),
+        effective_identity: context.effective_identity.clone(),
+        transaction_state: match context.transaction_state {
+            ds::TransactionState::Idle => {
+                datazen_platform_api::dto::session::TransactionState::None
+            }
+            ds::TransactionState::Active => {
+                datazen_platform_api::dto::session::TransactionState::Active
+            }
+            ds::TransactionState::Aborted => {
+                datazen_platform_api::dto::session::TransactionState::Aborted
+            }
+            ds::TransactionState::Unknown => {
+                datazen_platform_api::dto::session::TransactionState::Unknown
+            }
+            ds::TransactionState::Unsupported => {
+                datazen_platform_api::dto::session::TransactionState::Unsupported
+            }
+        },
+        autocommit: context.autocommit,
+        confidence: match context.confidence {
+            ds::ObservationConfidence::Confirmed => {
+                datazen_platform_api::dto::session::ContextConfidence::Confirmed
+            }
+            ds::ObservationConfidence::Partial => {
+                datazen_platform_api::dto::session::ContextConfidence::Partial
+            }
+            ds::ObservationConfidence::Unknown => {
+                datazen_platform_api::dto::session::ContextConfidence::Unknown
+            }
+        },
+    }
+}
 pub fn effect(effect: ds::EffectOutcome) -> rc::EffectOutcome {
     match effect {
         ds::EffectOutcome::NotStarted => rc::EffectOutcome::NotStarted,
@@ -129,4 +198,72 @@ pub fn handles(
             closed: handle.closed,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_platform_api::dto::session as pa;
+
+    /// A complete driver observation: every level present, two path segments.
+    fn observed() -> ds::SessionContext {
+        ds::SessionContext {
+            namespace: dn::NamespaceTarget {
+                database: Some("app".into()),
+                catalog: Some("app_catalog".into()),
+                schema: Some("public".into()),
+                path: vec!["tenant_a".into(), "shard_1".into()],
+            },
+            search_path: vec!["public".into(), "extra".into()],
+            effective_identity: Some("app_user".into()),
+            transaction_state: ds::TransactionState::Active,
+            autocommit: Some(false),
+            confidence: ds::ObservationConfidence::Confirmed,
+        }
+    }
+
+    /// The kernel projection is known to be lossy; this is the fact that makes
+    /// the platform-api projection read the driver observation directly.
+    #[test]
+    fn the_runtime_kernel_projection_joins_path_segments() {
+        assert_eq!(context(&observed()).namespace.path, "tenant_a/shard_1");
+    }
+
+    #[test]
+    fn platform_context_carries_every_observed_field() {
+        let platform = platform_context(&observed());
+        assert_eq!(
+            platform.namespace,
+            datazen_platform_api::target::NamespaceTarget {
+                database: Some("app".into()),
+                catalog: Some("app_catalog".into()),
+                schema: Some("public".into()),
+                path: vec!["tenant_a".into(), "shard_1".into()],
+            }
+        );
+        assert_eq!(
+            platform.search_path,
+            Some(vec!["public".into(), "extra".into()])
+        );
+        assert_eq!(platform.effective_identity.as_deref(), Some("app_user"));
+        assert_eq!(platform.transaction_state, pa::TransactionState::Active);
+        assert_eq!(platform.autocommit, Some(false));
+        assert_eq!(platform.confidence, pa::ContextConfidence::Confirmed);
+    }
+
+    #[test]
+    fn platform_context_keeps_absent_levels_absent() {
+        let platform = platform_context(&ds::SessionContext::unobserved());
+        assert_eq!(platform.namespace.database, None);
+        assert_eq!(platform.namespace.catalog, None);
+        assert_eq!(platform.namespace.schema, None);
+        assert_eq!(platform.namespace.path, Vec::<String>::new());
+        assert_eq!(platform.effective_identity, None);
+        // "the driver cannot tell" is not the same as `false`.
+        assert_eq!(platform.autocommit, None);
+        assert_eq!(platform.transaction_state, pa::TransactionState::Unknown);
+        assert_eq!(platform.confidence, pa::ContextConfidence::Unknown);
+        // A driver always reports a list; empty means observed-empty.
+        assert_eq!(platform.search_path, Some(Vec::new()));
+    }
 }

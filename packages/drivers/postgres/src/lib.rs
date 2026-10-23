@@ -177,6 +177,9 @@ postgres_alias_factory!(
 );
 
 #[cfg(test)]
+mod keyset_paging_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

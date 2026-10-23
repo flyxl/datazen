@@ -235,8 +235,17 @@ grep -c "^extern crate datazen_driver_" src-tauri/src/driver_init.rs
   而门禁退出码必须能被拿到。
 - **`resolve-drivers.mjs` 会按设计弄脏 `Cargo.toml`、`src-tauri/Cargo.toml`、`Cargo.lock`**（第 5 节那三个托管清单文件）。
   要往这棵树上合并的分支，在 `git merge` 前必须 `git checkout --` 复位，否则合并会被拒。
-- **不要用 `pnpm install` 代替 ①**。`node_modules` 是符号链接时裸 `pnpm run` 会以退出码 1 失败
-  （依赖校验认不出链接目标），要写成 `pnpm --config.verify-deps-before-run=false <script>`。
+- **worktree 里裸 `pnpm <script>` 现在直接可用**（2026-10-22 起，缺陷甲-7）。此前每个脚本之前都会先
+  试装一次依赖：`node_modules` 是软链，pnpm 认不出链接目标、判定依赖过期，而那次安装必然以
+  `workspace hoist directory is not a real directory` 失败（pnpm 12 打印安装报错后仍以 0 继续；pnpm 11
+  更直接，`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 中止）。它**不会**「装完一次就好」——软链拓扑下
+  那次安装永远装不完，噪声会一直重复。修法落在 `pnpm-workspace.yaml` 的 `verifyDepsBeforeRun`：仓内
+  默认 `false`（值取自 `${DATAZEN_VERIFY_DEPS_BEFORE_RUN:-false}`），CI 用同一环境变量显式设成
+  `install`。**不要再逐个命令加 `--config.verify-deps-before-run=false`，也不要把它写成裸 `false`
+  而不给 CI 打开**——那才会连 CI 一起关掉，「node_modules 与锁文件不同步」就没人发现。
+- **依赖同步靠显式 `pnpm install`**：仓内关掉的只是「脚本前自动装一次」，不是依赖检查本身。锁文件与
+  `package.json` 不一致由 CI 的 `pnpm install --frozen-lockfile` 硬失败兜住；`node_modules` 与锁文件
+  不同步由 CI 里打开的 `verifyDepsBeforeRun: install` 兜住。
 - **`node scripts/platform-arch-selfcheck.mjs` 在脏树上直接退出 2。** 它在运行首尾各取一次 `git status --porcelain` 做自证
   （`scripts/platform-arch-selfcheck.mjs:538` / `:576`），树一脏就不跑。而 `resolve-drivers` 按设计会把托管清单弄脏，
   ⇒ **在刚建好的 worktree 里直接跑自检必然失败**。先 `git checkout -- Cargo.lock src-tauri/Cargo.toml` 复位再跑。

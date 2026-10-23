@@ -16,6 +16,17 @@ export type {
   TunnelUsage,
 } from './tunnel';
 
+// The filter contract lives in its own file; it is re-exported here so every
+// caller keeps importing the filter types from the aggregate.
+export * from './filters';
+export type {
+  CursorValue,
+  KeysetUnavailableReason,
+  OrderColumn,
+  PagePagingInfo,
+  PagingMode,
+} from './keyset';
+
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 
 export interface SshTunnelConfig {
@@ -263,6 +274,10 @@ export type {
 } from '@datazen/backend-client';
 
 import type { UserPreferences, ExecutionSettings } from '@datazen/backend-client';
+import type { DefaultTableSort, RowCountMode } from './settings';
+import type { PagePagingInfo } from './keyset';
+
+export type { DefaultTableSort, RowCountMode } from './settings';
 
 export interface AppSettings extends UserPreferences, ExecutionSettings {
   sqlSyntaxTheme?: string;
@@ -285,24 +300,22 @@ export interface AppSettings extends UserPreferences, ExecutionSettings {
   mcpClientServers?: McpServerConfig[];
   /** Onboarding wizard state. `undefined` or `version < 1` → show wizard. */
   onboarding?: { completed: boolean; version: number };
-}
-
-export type FilterOperator =
-  | 'eq'
-  | 'ne'
-  | 'gt'
-  | 'lt'
-  | 'gte'
-  | 'lte'
-  | 'like'
-  | 'in'
-  | 'isNull'
-  | 'isNotNull';
-
-export interface FilterCondition {
-  column: string;
-  operator: FilterOperator;
-  value?: Value;
+  /**
+   * How a table read obtains its row count. `auto` leaves the decision to the
+   * driver, which is what every read did before this setting existed.
+   */
+  rowCountMode: RowCountMode;
+  /**
+   * The row count above which the `auto` mode asks for an estimate instead of
+   * counting. Only the `auto` mode reads it; `<= 0` means "always count".
+   */
+  rowCountEstimateThreshold: number;
+  /**
+   * The order a table read uses when the user did not ask for one.
+   * `primaryKeyAsc` is the driver's own default, which is what every read did
+   * before this setting existed.
+   */
+  defaultTableSort: DefaultTableSort;
 }
 
 export interface SortCondition {
@@ -333,174 +346,47 @@ export interface KeyDetail {
   value: unknown;
 }
 
+/**
+ * How much the row count of a table read may be trusted.
+ *
+ * The mirror of the host's `CountStrategy` enum, in its camelCase form. The
+ * count used to be a boolean on the request side, which cannot say *how* the
+ * number was obtained: a driver that can only estimate and a driver that
+ * cannot count at all are both "no exact count", and the interface has to
+ * tell them apart.
+ */
+export type CountStrategy = 'exact' | 'estimated' | 'unsupported';
+
 /** Raw backend response — rows are 2D arrays. */
 export interface TableDataResult {
   columns: ColumnSchema[];
   rows: (Value | null)[][];
-  totalRows?: number;
+  /** The row count, or `null` when the backend could not count. */
+  totalRows?: number | null;
+  /**
+   * How much `totalRows` may be trusted. `null` (or a missing key) means
+   * "this response carries no fresh row count" — the caller asked to reuse
+   * the one it had, or the backend is older than this field — and the caller
+   * keeps its own value. It is not the same as `'unsupported'`, which says
+   * the count was attempted and this database cannot provide one.
+   */
+  totalRowsKind?: CountStrategy | null;
   page: number;
   pageSize: number;
-}
-
-// ── AI Types ──
-
-export type AiProviderType = 'open_ai' | 'deep_seek' | 'ollama' | 'custom';
-
-export type AiDataEgressLevel = 'strict' | 'sample_masked' | 'unrestricted';
-
-export type AiToolPermissionPolicy = 'disabled' | 'read_only' | 'require_confirm' | 'unrestricted';
-
-export interface AiSafetyGateConfig {
-  redactCredentials: boolean;
-  dataEgressLevel: AiDataEgressLevel;
-  maxSampleRows: number;
-  dbToolPolicy: AiToolPermissionPolicy;
-  mcpToolPolicy: AiToolPermissionPolicy;
-  requireSqlConfirm: boolean;
-  maxContextBytes: number;
-}
-
-export interface AiModelProfile {
-  id: string;
-  name: string;
-  providerType: AiProviderType;
-  apiKey?: string;
-  endpoint?: string;
-  model: string;
-  maxTokens?: number;
-  extra?: Record<string, unknown>;
-  safetyGate: AiSafetyGateConfig;
-  isDefault?: boolean;
-}
-
-export interface AiSettingsConfig {
-  activeProfileId: string;
-  profiles: AiModelProfile[];
-}
-
-export interface AiProviderConfig {
-  providerType: AiProviderType;
-  apiKey?: string;
-  endpoint?: string;
-  model: string;
-  maxTokens?: number;
-  extra?: Record<string, unknown>;
-}
-
-export interface ModelInfo {
-  id: string;
-  displayName: string;
-  contextWindow: number;
-  supportsStreaming: boolean;
-  supportsTools: boolean;
-}
-
-export interface ProviderListItem {
-  providerType: AiProviderType;
-  displayName: string;
-  supportsStreaming: boolean;
-  supportsTools: boolean;
-  defaultEndpoint: string;
-  defaultProtocol: string;
-}
-
-export interface DiagnosisResult {
-  explanation: string;
-  suggestedSql: string | null;
-  changes: string[];
-}
-
-export interface ExplainAnalysis {
-  summary: string;
-  bottlenecks: Bottleneck[];
-  suggestions: ExplainSuggestion[];
-}
-
-export interface Bottleneck {
-  node: string;
-  description: string;
-  severity: 'high' | 'medium' | 'low';
-}
-
-export interface ExplainSuggestion {
-  description: string;
-  sql: string | null;
-  impact: string;
-}
-
-export interface AiQuestionOption {
-  id: string;
-  label: string;
-}
-
-export interface AiQuestion {
-  id: string;
-  prompt: string;
-  options: AiQuestionOption[];
-  allowMultiple?: boolean;
-}
-
-export interface AiToolCall {
-  id: string;
-  name: string;
-  arguments: string;
-}
-
-export interface AiToolResult {
-  toolCallId: string;
-  content: string;
-}
-
-export interface AiChatMessage {
-  /** Unique message identifier for stable React keys. */
-  id?: string;
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
-  reasoning?: string;
-  questions?: AiQuestion[];
-  toolCalls?: AiToolCall[];
-  toolCallId?: string;
-  /** Terminal marker: the run ended because the user cancelled it. */
-  cancelled?: boolean;
-}
-
-export interface AiChatSession {
-  id: string;
-  /** Session isolation key used for localStorage persistence. */
-  sessionKey: string;
-  messages: AiChatMessage[];
-  isStreaming: boolean;
-  streamContent: string;
-  streamReasoning: string;
-  /** Qualified MCP tool name (mcp/server/tool) shown during streaming tool execution. */
-  streamMcpToolName: string | null;
-  requestId: string | null;
   /**
-   * Non-secret attribution of the last run started from this session: which
-   * target it claimed, and (for a shared run) the grant id. Never the runtime
-   * handle itself.
+   * How the page was paged.
+   *
+   * A missing key means the back end is older than this field — the page was
+   * read by offset, which is what every read did before it existed. A
+   * `null` value says the same thing; both are "this response carries no
+   * paging decision".
    */
-  attribution?:
-    | { kind: 'independent' }
-    | { kind: 'editorGrant'; grantId: string; editorSessionId: string }
-    | null;
+  paging?: PagePagingInfo | null;
 }
 
-export interface StreamChunkPayload {
-  requestId: string;
-  content: string;
-  reasoning?: string;
-  done: boolean;
-  /** `done && cancelled` is the terminal chunk of a cancelled run. */
-  cancelled?: boolean;
-  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
-  toolCalls?: AiToolCall[];
-}
-
-export interface StreamErrorPayload {
-  requestId: string;
-  error: string;
-}
+// The AI contract lives in its own file; it is re-exported here so every
+// caller keeps importing the AI types from the aggregate.
+export * from './ai';
 
 // ── Workflow types ──
 

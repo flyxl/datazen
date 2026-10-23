@@ -176,9 +176,9 @@ pnpm tauri:build:community             # 构建 Community 社区版
 pnpm tauri:build:pro                   # 构建 Pro 增强版
 npx vitest run                         # Host 前端单元测试（不含 packages/drivers）
 pnpm test:unit:drivers                 # Path 驱动 UI 单测（packages/drivers/*/ui）
-pnpm typecheck                         # 双引擎类型检查（tsc = TS 7 GA + tsrs = TS 7.1-dev），覆盖 src + packages，**含测试文件**
-pnpm typecheck:tsc                     # 只跑权威引擎（typescript@7.0.2）
-pnpm typecheck:tsrs                    # 只跑前瞻引擎（tsrs，跟随 TS 7.1 开发线）
+pnpm typecheck                         # 单引擎类型检查（tsrs，跟随 TS 7.1 开发线），覆盖 src + packages，**含测试文件**
+pnpm typecheck:tsc                     # 跑权威引擎（typescript@7.0.2）——与发布门禁同一个编译器
+pnpm typecheck:tsrs                    # 同 `pnpm typecheck`（显式写法）
 cargo test -p datazen --lib            # Host Rust 单元测试
 cargo test -p datazen-ai-api --lib     # AI API 单元测试
 cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust 测试
@@ -240,6 +240,7 @@ cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust �
 - 仓库只维护三类长期文档：功能使用（`docs/features/`）、代码架构（`docs/architecture/`）、开发流程（`docs/development/`）；另有公开发布的 `docs/blogs/`，以及仅记录**已核实复现、本轮明确不修**缺陷的 `docs/bugs/`。索引见 [docs/README.md](docs/README.md)。
 - **不新增** PRD、设计稿、原型图、实施规范、开发进度、Bug List、评审记录类文档；这些是一次性过程产物，已交付即失效。缺陷结论优先变成代码、测试与正式文档；只有核实复现且明确不修的缺陷才按 `docs/bugs/` 的单文件规则登记。唯一例外是并行开发期间的进度台账（分支根目录 `progress.md` / 集成分支根目录 `hub.md`）——见上文「进度台账：开发期间允许，交付即销毁」：开发期间它存在于分支而非 `docs/`，**验收合并时必须删除**，因而同样满足「已交付即失效」。
 - 用户明确要求并已入库的 [桌面 / Web 平台演进设计](docs/README.md) 是本纪律的窄范围例外；其中标为「目标设计」的概要、详细设计和开发计划只在该明确授权范围内维护，落地后逐节改写为已实现事实。该例外不授权新增其他方案、评审记录或进度文档。
+- 数据浏览的竞品对标 PRD 与 11 个技术设计分册曾经是第二条窄范围例外（一次性方案，按用户明确要求保存）。**该例外已经关闭**：方案落地后逐节改写为已实现事实，分别进入 [数据表格架构](docs/architecture/frontend/data-table.md)、[结果写回架构](docs/architecture/backend/result-write.md) 与 [数据浏览使用指南](docs/features/data-browsing-guide.zh-CN.md)，`docs/prd/` 整个目录已删除。它**不再**授权新增任何 PRD、分册或评审记录。
 - 需要长期留存的设计结论，**改写为「已实现」的事实**并入对应架构文档，而不是保留方案原文。
 - 引用文件路径、命令、IPC 名称、驱动数量等事实前先核对代码；删除或重构代码时同步删除失效引用。
 - 写完文档自查链接可达：`pnpm exec` 下的脚本与 CI 不会校验 Markdown 链接，失效引用只能靠人工/代理检查。
@@ -271,13 +272,17 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 
 ## i18n 国际化规则
 
-- **开发期间**：只修改 `en.ts`（英文），不要同时修改其他语言文件。
+- **开发期间**：只加英文的**领域包** `src/locales/en/<domain>.ts`，不要同时修改其他语言文件。
+  ⚠️ **不是 `src/locales/en.ts`** —— 那只是 2 行的向后兼容 re-export shim
+  （`export { default } from './en/index';`），往里加 key 不产生任何效果。
+  动手前先按 key 前缀定位领域包（见 [src/locales/README.md](src/locales/README.md) 的领域清单）。
 - **发布前（硬阻断）**：`node scripts/i18n-sync-check.mjs` 已在 `.github/workflows/release.yml`
   的 `pre-release-guards` 中作为**发布硬门禁**——翻译不完整，发布构建根本不启动。
   **发布出去的版本不允许只有英文**；`bump-version` skill 触发重建时必须一并跑该检查。
-  缺失的 key 用 i18n-sync skill 补齐（只补翻译，不改 `en.ts`）。
-- `en.ts` 是唯一的翻译 source of truth，其他语言文件必须保持相同的 key 集合。
-- 采用领域包（Domain Packs）结构，子窗口与深层功能通过 `useLocaleDomains` 按需惰性（Lazy）加载。
+  缺失的 key 用 i18n-sync skill 补齐（只补翻译，不改英文领域包 `src/locales/en/<domain>.ts`）。
+- `src/locales/en/<domain>.ts` 是唯一的翻译 source of truth（该目录下全部领域包合起来），其他语言必须保持相同的 key 集合。
+- 采用领域包（Domain Packs）结构，**全部 10 种语言**（`de` / `en` / `es` / `fr` / `ja` / `ko` / `pt-BR` / `ru` / `zh-CN` / `zh-TW`）都按领域拆分；`<locale>.ts` 一律是 shim。
+  子窗口与深层功能通过 `useLocaleDomains` 按需惰性（Lazy）加载。
 
 ## 代码风格
 
@@ -286,7 +291,7 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 - **组织作用域一律走宿主入口**：请求周期内用 `OrganizationScope::from_context(&ctx)`（有请求上下文）或 `state.organization_scope()`（有 `AppState`）；**不得**在宿主生产代码里直读桌面的安装级组织常量（`local_organization_scope()` / `desktop_organization_scope()`）——那是「拿桌面的组织去查服务端的多租户存储」，属于越组织读写。确有桌面专有理由的，在该行**紧邻上方**写 `// scope-gate: <id>` 并登记进 `src-tauri/src/platform/scope_gate.rs` 的白名单（该闸门随 `cargo test -p datazen --lib` 跑，违规即红）。详见 [docs/architecture/platform/shared-boundaries-and-ports.md](docs/architecture/platform/shared-boundaries-and-ports.md) §5.2。
 - TypeScript：严格模式，无 `any`（除 generated 文件），absolute imports。
 - CSS：Tailwind utility classes，暗色主题默认。
-- **单文件规模与模块拆分**：严格限制单源码文件大小（推荐单文件不超过 800 行，严禁出现超大单文件）；大型模块必须按职责拆分为高内聚、低耦合的子组件与子模块。
+- **单文件规模与模块拆分**：**超长文件是耦合度的信号**——它属于 code review 的判断（评审时决定要不要拆、怎么拆），**不要把行数上限做成 CI 门禁**：占一次 CI 运行时间，却不产生新信号。大型模块仍应按职责拆分为高内聚、低耦合的子组件与子模块；新增代码不要往已经很长的文件里继续堆。
 - 安全：CSP、AES-256-GCM、路径遍历防护、文件扩展名白名单。
 
 ## 交互与补全开发原则（防回归规范）
@@ -321,8 +326,13 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
   五个包的 config 现在 `extends` 根配置，因此也继承了根的 `paths`（`@datazen/*` 别名）；
   在此之前它们各自是 standalone program，`@datazen/*` 全部解析失败，五个 program 合计
   830 个错误，与代码本身无关。
-  门禁是双引擎的：`pnpm typecheck` 同时跑 `tsc`（TS 7 GA，权威）与 `tsrs`（TS 7.1-dev，前瞻），
-  两者输出必须逐字节一致；`tsrs` 在没有 Windows 二进制的平台会被跳过并明确打印跳过原因。
+  门禁是**单引擎**的：`pnpm typecheck` 只跑 `tsrs`（TS 7.1-dev，前瞻、快约 2 倍）；
+  发布流水线的 `union-typecheck` **也是**只跑 `tsrs` ⇒ **一个编译器，全流程一致**
+  （「本地绿」与「发布绿」指的是同一件事）。
+  `tsrs` 领先 GA 一个版本 ⇒ 它只会比 GA 多报、不会少报（GA 独有的诊断它可能没有）；
+  这道缺口由 `pnpm build` 里的 `tsc --noEmit` 兜住（发布构建仍会抓住），需要权威结论时跑
+  `pnpm typecheck:tsc`。`tsrs` 在没有 Windows 二进制的平台会**回退到 `tsc`** 并明确打印
+  回退原因（绝不静默）⇒ 门禁背后始终有编译器。
   详见 [docs/development/ci-test-matrix.md](docs/development/ci-test-matrix.md) §2.1.4。
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中。
 - **本地环境变量文件保护**：任何 Agent（含子代理）不得打开、读取、解析、source 或打印仓库及其 worktree 中 `.env` / `.env.test` 文件的**内容**；不得将凭据写入提示、日志或报告。只允许检查文件是否存在及 Git 忽略状态。

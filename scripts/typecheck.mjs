@@ -6,30 +6,36 @@ import { fileURLToPath } from 'node:url';
 import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 
 /**
- * typecheck.mjs — the repository's typecheck gate, run under BOTH compilers.
+ * typecheck.mjs — the repository's typecheck gate, run under ONE compiler.
  *
- * WHY TWO COMPILERS
+ * WHY ONE COMPILER
  *
  * The repository is on TypeScript 7. Two implementations of that compiler are
  * installed, and they are not the same thing:
- *
- *   tsc    — `typescript` (npm `typescript@7.0.2`), the official Go port.
- *            This is the AUTHORITATIVE gate: it is the version that ships as
- *            `latest`, and the release pipeline's `union-typecheck` job runs
- *            exactly this binary (scripts/ci-union-typecheck.mjs). A PR that
- *            passes here cannot fail the release gate for a type error.
  *
  *   tsrs   — `tsrs` (npm `tsrs@0.18.0-ts7.1.0-dev.20260929`), the Rust port
  *            by oxc-project. It tracks the 7.1 development line, i.e. it is
  *            AHEAD of the released compiler, and it is roughly 2x faster and
  *            uses about a third of the memory on this repository.
  *
- * Running both is what makes the second one safe to keep: tsrs is a second
- * independent opinion on the same source, and it surfaces the next TypeScript
- * release's diagnostics before that release ships. It is NOT the authority —
- * `tsc` is — so a tsrs-only diagnostic can never turn a green release gate
- * red, and a tsc diagnostic can never be silently dropped by tsrs being
- * "more permissive".
+ *   tsc    — `typescript` (npm `typescript@7.0.2`), the official Go port.
+ *            This is the version that ships as `latest`, and the release
+ *            pipeline's `union-typecheck` job runs exactly this binary
+ *            (scripts/ci-union-typecheck.mjs).
+ *
+ * **The gate runs `tsrs` alone.** It used to run both, on the reasoning that
+ * a second compiler on the same source is a second opinion, and that the
+ * authoritative one has to be in the local gate for a PR which passes here to
+ * be unable to fail the release gate. That reasoning bought two things: the
+ * tsrs diagnostics of the *next* TypeScript release, and the guarantee above.
+ * The first is kept — `tsrs` alone already reports the 7.1 diagnostics. The
+ * second is given up deliberately: the release gate still runs `tsc`
+ * (`scripts/ci-union-typecheck.mjs`), so the authoritative compiler is not
+ * gone from the pipeline, it is only gone from the *fast* local gate. The
+ * honest consequence is that a PR can now pass `pnpm typecheck` and still
+ * fail the release gate on a type error `tsc` reports and `tsrs` does not.
+ * `pnpm typecheck:tsc` is kept as the escape hatch for anyone who needs the
+ * authoritative compiler locally.
  *
  * MEASURED (this repository, `main` at the time of writing, 1845 TS files)
  *
@@ -38,21 +44,20 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  *   tsrs   0.18.0   1.0-1.3 s for the three programs   0.35 GB peak RSS
  *
  * The 10x drop from 5.9.3 to 7.0.2 is the compiler rewrite, not this script.
- * tsrs's remaining 2x is why it is worth a second process; it is NOT worth
- * replacing the authoritative compiler with.
+ * tsrs's remaining 2x is what the single-engine gate now takes.
  *
  * PLATFORM
  *
  * tsrs 0.18.0 ships no win32 binary (the upstream project lists it as
- * "configured for the next release"). The gate therefore degrades to the
- * `tsc` engine alone on Windows rather than failing: the release matrix
- * builds and signs Windows artifacts, and a typecheck gate that cannot run
- * on the platform it ships to is a worse gate. The skip is announced on
+ * "configured for the next release"). The gate therefore falls back to the
+ * `tsc` engine on Windows rather than failing: the release matrix builds and
+ * signs Windows artifacts, and a typecheck gate that cannot run on the
+ * platform it ships to is a worse gate. The fallback is announced on
  * stdout, never silent.
  *
  * The same probe makes the gate self-healing: when tsrs publishes a Windows
  * build, the next `pnpm install` picks it up and the tsrs engine starts
- * running without any change to this file.
+ * running there without any change to this file.
  */
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -87,13 +92,24 @@ export const TYPECHECK_ENGINES = [
 export const ENGINE_ORDER = ['tsc', 'tsrs'];
 
 /**
+ * The engine the gate runs when nothing is asked for.
+ *
+ * `tsrs` is the one: it is the faster of the two, it is the one that reports
+ * the next TypeScript release's diagnostics, and the authoritative compiler is
+ * still in the pipeline through the release gate
+ * (`scripts/ci-union-typecheck.mjs`). `pnpm typecheck:tsc` runs the other one
+ * on demand.
+ */
+export const DEFAULT_ENGINE = 'tsrs';
+
+/**
  * Parse `--engine=tsc|tsrs|both`. Unknown values are an error rather than a
  * silent fallback: a typo in a gate's arguments must not quietly reduce the
  * gate to one compiler.
  */
 export function parseEngineSelection(argv = []) {
   const flag = argv.find((arg) => arg.startsWith('--engine='));
-  const value = flag ? flag.slice('--engine='.length) : 'both';
+  const value = flag ? flag.slice('--engine='.length) : DEFAULT_ENGINE;
   if (!['tsc', 'tsrs', 'both'].includes(value)) {
     throw new Error(`unknown --engine=${value} (expected tsc, tsrs or both)`);
   }
@@ -148,10 +164,10 @@ export function probeEngine(root, engineId) {
 
 /**
  * The full command list for the requested engines. Programs run in the
- * order above, engines in the order above: the authoritative compiler first
- * so its diagnostics are the first thing on screen.
+ * order above, engines in the order above: the requested compiler first so
+ * its diagnostics are the first thing on screen.
  */
-export function planTypecheckCommands(root = ROOT, engineIds = ENGINE_ORDER) {
+export function planTypecheckCommands(root = ROOT, engineIds = [DEFAULT_ENGINE]) {
   const commands = [];
   for (const engineId of engineIds) {
     const bin = engineBinPath(root, engineId);
@@ -172,7 +188,7 @@ export function planTypecheckCommands(root = ROOT, engineIds = ENGINE_ORDER) {
  * Run the gate. Fails at the first failing command — a typecheck gate that
  * prints three compilers' worth of the same errors is noise, not signal.
  */
-export function runTypecheck({ root = ROOT, engineIds = ENGINE_ORDER, log = console.log } = {}) {
+export function runTypecheck({ root = ROOT, engineIds = [DEFAULT_ENGINE], log = console.log } = {}) {
   const commands = planTypecheckCommands(root, engineIds);
   if (commands.length === 0) {
     throw new Error('no typecheck engine is installed — run `pnpm install` first');
@@ -201,10 +217,18 @@ export function runTypecheck({ root = ROOT, engineIds = ENGINE_ORDER, log = cons
  * Resolve which engines will run, and say out loud which ones will not.
  * A skipped engine is announced, never silent: "tsrs was not run" is
  * information a reviewer needs.
+ *
+ * **The fallback.** A single requested engine that cannot run *here* falls
+ * back to the other one. tsrs has no win32 binary yet, and a typecheck gate
+ * that cannot run on the platform the product ships to is a worse gate than a
+ * gate that runs the other compiler. The fallback is recorded on the skipped
+ * entry (`fellBackTo`), so the caller announces it — it is never silent, and
+ * it never pretends the requested engine ran.
  */
-export function resolveEngines(root = ROOT, selection = 'both') {
+export function resolveEngines(root = ROOT, selection = DEFAULT_ENGINE) {
   const requested = selection === 'both' ? ENGINE_ORDER : [selection];
   const engines = [];
+  /** @type {Array<{ engine: string, reason: string | null, fellBackTo?: string }>} */
   const skipped = [];
   for (const engineId of requested) {
     const probe = probeEngine(root, engineId);
@@ -212,6 +236,15 @@ export function resolveEngines(root = ROOT, selection = 'both') {
       engines.push(engineId);
     } else {
       skipped.push({ engine: engineId, reason: probe.reason });
+    }
+  }
+  if (engines.length === 0 && selection !== 'both') {
+    const fallback = ENGINE_ORDER.find((id) => id !== selection);
+    const probe = fallback ? probeEngine(root, fallback) : null;
+    if (fallback && probe && probe.available) {
+      engines.push(fallback);
+      const entry = skipped.find((item) => item.engine === selection);
+      if (entry) entry.fellBackTo = fallback;
     }
   }
   return { engines, skipped };
@@ -227,8 +260,12 @@ function main() {
   }
 
   const { engines, skipped } = resolveEngines(ROOT, selection);
-  for (const { engine, reason } of skipped) {
-    console.log(`[typecheck] SKIPPING ${engine}: ${reason}`);
+  for (const { engine, reason, fellBackTo } of skipped) {
+    console.log(
+      fellBackTo
+        ? `[typecheck] ${engine} is unavailable here (${reason}) — falling back to ${fellBackTo}`
+        : `[typecheck] SKIPPING ${engine}: ${reason}`,
+    );
   }
   if (engines.length === 0) {
     console.error('[typecheck] no usable typecheck engine — run `pnpm install` first');

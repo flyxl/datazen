@@ -19,6 +19,10 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   DATAZEN_KEYRING: file
+  # 仓内默认关闭 pnpm 的 run 前依赖校验（工作树的 node_modules 是软链，那次安装必然
+  # 失败，见 pnpm-workspace.yaml）。CI 必须在这里显式打开，否则「node_modules 与锁文件
+  # 不同步」就没有任何环节会发现。缺失时 verifyDepsBeforeRun 会取文件里的默认值 false。
+  DATAZEN_VERIFY_DEPS_BEFORE_RUN: install
 
 jobs:
   # Run only the CI half changed since the last successful run for this PR or

@@ -4,6 +4,85 @@ const pack = {
     'Der vorherige Plan ist nicht mehr gültig (er ist abgelaufen, das Ziel ist abgewichen oder die Berechtigungen haben sich geändert). Erstellen Sie vor der Anwendung erneut einen aktuellen Plan.',
   'migrationJob.pendingVerificationHint':
     'Ein früherer Auftrag wartet auf eine Überprüfung. Öffnen Sie die Auftragsübersicht und gleichen Sie den Stand ab, bevor Sie neue Änderungen anwenden.',
+  'migrationJob.notExecutedHint':
+    'Ein eingereihtes Data-Sync-Job wurde nach dem Neustart nicht gestartet. Es wurde nicht erneut ausgeführt; führen Sie vor dem Anwenden einen neuen Vergleich aus.',
+  'migrationJob.notExecutedJob': 'Nach dem Neustart nicht ausgeführt',
+  'migrationJob.verifyRecovery': 'Wiederherstellung prüfen',
+  'migrationJob.verifyingRecovery': 'Wird geprüft…',
+  'migrationJob.cancelJob': 'Job abbrechen',
+  'migrationJob.cancellingJob': 'Wird abgebrochen…',
+  'migrationJob.recoveryEndpointMismatch':
+    'Wählen Sie dieselben Quell- und Zielverbindungen wie in diesem Job aus, bevor Sie die Wiederherstellung prüfen.',
+  'migrationJob.recoverySelectEndpoints':
+    'Wählen Sie beide Endpunkte aus und stellen Sie die Verbindung her, bevor Sie die Wiederherstellung prüfen.',
+  'migrationJob.recoveryManualReview':
+    'Wiederherstellungsnachweise wurden erfasst. Vergleichen Sie die aktuellen Daten, bevor Sie etwas anwenden.',
+  'migrationJob.recoveryRecorded':
+    'Wiederherstellungsnachweise wurden erfasst. Führen Sie einen neuen Vergleich aus, bevor Sie etwas anwenden.',
+  'migration.verdict.ok': 'Abgeschlossen',
+  'migration.verdict.partial': 'Teilweise angewendet',
+  'migration.verdict.uncertain': 'Ergebnis ungewiss',
+  'migration.verdict.failed': 'Nicht angewendet',
+  'migration.verdict.committedRows': 'Bestätigte Zeilen',
+  'migration.verdict.replayedReceipt':
+    'Diese Antwort stammt aus dem gespeicherten Beleg eines bereits abgeschlossenen Laufs. Es wurde nichts ein zweites Mal geschrieben.',
+  'migration.verdict.noBoundaries':
+    'Es wurde keine Schreibgrenze erfasst, daher kann nichts als übernommen gemeldet werden.',
+  'migration.verdict.recoveryLabel': 'Wiederherstellungsergebnis',
+  'migration.verdict.notExecuted': 'Nicht ausgeführt',
+  'migration.verdict.notDispatchedAfterRestart':
+    'Die Anwendung wurde neu gestartet, nachdem dieser Job angenommen, aber noch nicht gestartet wurde, sodass keine Migrationsarbeit lief. Bereiten Sie einen neuen Plan vor, um es erneut zu versuchen.',
+  'migration.verdict.requiresReconcile':
+    'Prüfen Sie das Ziel anhand der erfassten Grenzen, bevor Sie etwas anderes anwenden.',
+  'migration.verdict.resumeThrough':
+    'Die Wiederherstellung kann bis zur Grenze # fortgesetzt werden',
+  'migration.verdict.rereview': 'Neuen Plan prüfen',
+  'migration.verdict.rereviewBlocked':
+    'Dieser Lauf muss noch mit dem Ziel abgeglichen werden, bevor erneut etwas geschrieben werden darf. Prüfen Sie ihn schreibgeschützt und schließen Sie dieses Fenster dann wieder, um einen neuen Plan zu prüfen.',
+  'migration.boundary.verified': 'Mit Nachweis übernommen',
+  'migration.boundary.unverified': 'Ohne Nachweis übernommen — ungeprüft',
+  'migration.progress.counts': 'Gelesen / konvertiert / versucht / übernommen / unbekannt',
+  'migration.cancel.none': 'Es wurde kein Abbruch angefordert.',
+  'migration.cancel.notStarted':
+    'Der Abbruch wurde angefordert, bevor der Lauf begann; es wurde nichts geschrieben.',
+  'migration.cancel.requestedInFlight':
+    'Der Abbruch wurde während des Laufs angefordert. Der Stopppunkt ist noch nicht bekannt – prüfen Sie das Ergebnis unten.',
+  'migration.cancel.settledPartially':
+    'Der Abbruch wurde während des Laufs angefordert. Einige Grenzen sind übernommen, der Rest ist nicht angewendet.',
+  'migration.cancel.settledRolledBack':
+    'Der Abbruch wurde während des Laufs angefordert. Der Lauf wurde zurückgerollt und die übernommenen Grenzen wurden rückgängig gemacht.',
+  'migration.cancel.settledCompleted':
+    'Der Abbruch wurde angefordert, der Schreibvorgang war jedoch bereits abgeschlossen. Der Lauf wurde abgeschlossen und nicht abgebrochen.',
+  'migration.cancel.settledUnknown':
+    'Der Abbruch wurde während des Laufs angefordert, und der Stopppunkt konnte nicht ermittelt werden.',
+  'migration.cancel.unknownJob':
+    'Das Backend hat keinen Job für diesen Lauf, daher hatte der Abbruch kein Ziel. Es wurde nichts abgebrochen.',
+  'migration.failure.backendScope.title': 'Backend-Geltungsbereich abgelehnt',
+  'migration.failure.backendScope.body':
+    'Die Endpunkte konnten nicht belegen, dass sie das lokale Desktop-Backend sind, daher wurde die Migration abgelehnt, statt in einem ungeprüften Bereich ausgeführt zu werden. Es wurde nichts geschrieben. Wählen Sie beide Endpunkte erneut aus und prüfen Sie einen neuen Plan.',
+  'migration.failure.pipelineBudget.title': 'Pipeline-Budget hat diesen Lauf abgelehnt',
+  'migration.failure.pipelineBudget.body':
+    'Der Lauf hat das Pipeline-Budget von 8 MiB überschritten und das Backend hat ihn bewusst gestoppt, bevor dieser Schritt angewendet wurde. Dies ist eine bewusste Sicherheitsgrenze, kein Fehler – verringern Sie die Auswahl oder die Batch-Größe und prüfen Sie einen neuen Plan.',
+  'migration.failure.planConsumed.title': 'Dieser Plan wurde bereits angewendet',
+  'migration.failure.planConsumed.body':
+    'Ein Plan kann nur einmal angewendet werden, und ein früherer Lauf hat ihn bereits verbraucht. Es wurde nichts ein zweites Mal geschrieben. Prüfen Sie einen neuen Plan, um fortzufahren.',
+  'migration.failure.stalePlan.title': 'Der Plan ist veraltet',
+  'migration.failure.stalePlan.body':
+    'Der Plan ist abgelaufen, das Ziel hat sich verändert oder die Berechtigungen wurden geändert. Er wird verworfen statt wiederverwendet – prüfen Sie einen neuen Plan.',
+  'migration.failure.other.title': 'Migration abgelehnt',
+  'migration.failure.other.body':
+    'Das Backend hat die Ausführung abgelehnt. Es kann nichts als übernommen gemeldet werden – lesen Sie die Details unten.',
+  'migration.failure.reReview': 'Neuen Plan prüfen',
+  'migration.uncertainty.noCheckpoint':
+    'Es wurde kein Prüfpunkt erfasst, daher kann nicht rekonstruiert werden, wo dieser Lauf stoppte.',
+  'migration.uncertainty.recoveryRejected':
+    'Die Wiederherstellung wurde abgelehnt, daher kann dieser Lauf nicht fortgesetzt werden und muss manuell geprüft werden.',
+  'migration.uncertainty.effectOutcomeUnknown':
+    'Die Datenbank hat nicht bestätigt, ob die Änderung übernommen oder zurückgerollt wurde.',
+  'migration.uncertainty.missingEvidence':
+    'Mindestens eine übernommene Grenze hat keinen Nachweis und wird daher als ungeprüft gemeldet.',
+  'migration.uncertainty.manualReviewRequired':
+    'Das Backend verlangt eine manuelle Prüfung, bevor etwas anderes angewendet wird.',
   // --- Data Sync ---
   'sync.source': 'Quelle',
   'sync.target': 'Ziel',
@@ -160,6 +239,13 @@ const pack = {
   'transfer.executing': 'Transfer wird ausgeführt…',
   'transfer.executingProgress': '{count} Tabelle(n) werden übertragen…',
   'transfer.cancel': 'Abbrechen',
+  'transfer.job.attachedTitle': 'Es laufen bereits Data-Transfer-Aufträge',
+  'transfer.job.restoredTitle': 'Ergebnis des vorherigen Datentransfers',
+  'transfer.job.detailsLoading': 'Gespeicherter Transferbericht wird geladen…',
+  'transfer.job.detailsUnavailable':
+    'Der gespeicherte Bericht ist nicht verfügbar; prüfen Sie das Ziel, bevor Sie es erneut versuchen.',
+  'transfer.job.queued': 'Transfer eingereiht',
+  'transfer.job.running': 'Transfer wird ausgeführt',
   'transfer.back': 'Zurück',
   'transfer.next': 'Weiter',
   'transfer.error': 'Transferfehler',
@@ -187,6 +273,10 @@ const pack = {
   'transfer.mapping.autoMatch': 'Automatisch nach Name zuordnen',
   'transfer.mapping.clearUnmapped': 'Nicht zugeordnete löschen',
   'transfer.mapping.unmappedTargetWarning': 'Nicht zugeordnete Zielspalten: {columns}',
+  'transfer.mapping.gateLost':
+    'Die Tabellen haben sich geändert, während der Plan vorbereitet wurde, daher ist keine Spalte mehr zugeordnet. Prüfen Sie die Zuordnung erneut und versuchen Sie es noch einmal.',
+  'transfer.mapping.targetNameRequired':
+    'Benennen Sie die Tabelle, die diese Zuordnung erstellt, bevor Sie fortfahren. Am Ziel existiert noch nichts, daher gibt es keinen Namen, auf den zurückgefallen werden könnte.',
   'transfer.mapping.sourceType': 'Quellentyp',
   'transfer.mapping.targetType': 'Zieltyp',
   'transfer.limitations.title': 'Aktuelle Einschränkungen',
@@ -283,6 +373,39 @@ const pack = {
   'schemaDiff.confirmDeploy': 'Tippen Sie {token} zur Bestätigung destruktiver Deploys',
   'schemaDiff.deploy': 'Auf Ziel deployen',
   'schemaDiff.deploying': 'Wird deployt…',
+  'schemaDiff.prepareJob': 'Planungsauftrag',
+  'schemaDiff.applyJob': 'Anwendungsauftrag',
+  'schemaDiff.jobUnknown': 'Status nicht verfügbar',
+  'schemaDiff.jobQueued': 'Angenommen; wartet auf den Start',
+  'schemaDiff.jobRunning': 'Läuft',
+  'schemaDiff.jobSucceeded': 'Abgeschlossen',
+  'schemaDiff.jobFailed': 'Fehlgeschlagen',
+  'schemaDiff.jobCancelled': 'Abgebrochen',
+  'schemaDiff.jobProgress': 'Versucht {attempted}; übernommen {committed}; unbekannt {unknown}',
+  'schemaDiff.requestCancel': 'Abbruch anfordern',
+  'schemaDiff.cancelRequested':
+    'Der Abbruch wurde angefordert; es wird auf das Ergebnis des Auftrags gewartet.',
+  'schemaDiff.cancelUnavailable': 'Die Abbruchanfrage hat diesen Auftrag nicht erreicht.',
+  'schemaDiff.planUnavailableAfterRestart':
+    'Der geprüfte Plan ist nach dem Neustart nicht verfügbar. Vergleichen Sie erneut, bevor Sie anwenden.',
+  'schemaDiff.notDispatchedAfterRestart':
+    'Dieser angenommene Auftrag wurde vor dem Neustart nicht gestartet. Er wurde nicht erneut ausgeführt; vergleichen Sie erneut, um einen neuen Auftrag zu erstellen.',
+  'schemaDiff.notExecuted':
+    'Dieser Auftrag wurde nicht gestartet. Seine Arbeit wurde nicht erneut ausgeführt; vergleichen Sie erneut, um einen neuen Auftrag zu übermitteln.',
+  'schemaDiff.recoveryPending':
+    'Das Ziel benötigt eine ausdrückliche schreibgeschützte Prüfung. Dieser Auftrag wird nicht automatisch fortgesetzt.',
+  'schemaDiff.recoveryIdentityUnavailable':
+    'Die Identität des Ziels ist für die automatische Prüfung nicht verfügbar; eine manuelle Prüfung ist erforderlich.',
+  'schemaDiff.verifyRecovery': 'Zielzustand prüfen',
+  'schemaDiff.verifyingRecovery': 'Zielzustand wird geprüft…',
+  'schemaDiff.recoveryUnchanged':
+    'Der Fingerabdruck des Ziels ist unverändert. Das belegt nicht, dass die Anweisungen nicht ausgeführt wurden; vergleichen Sie erneut, bevor Sie anwenden.',
+  'schemaDiff.recoveryChanged':
+    'Der Fingerabdruck des Ziels hat sich geändert. Prüfen Sie die Datenbank manuell, bevor Sie einen neuen Plan erstellen.',
+  'schemaDiff.recoveryManualReview':
+    'Die schreibgeschützte Prüfung konnte das Ergebnis nicht ermitteln. Prüfen Sie das Ziel manuell, bevor Sie fortfahren.',
+  'schemaDiff.lastApplyReport': 'Letzter Anwendungsbericht',
+  'schemaDiff.recoveryCode': 'Wiederherstellungscode: {code}',
   'schemaDiff.deployStatus': 'Deploy-Status',
   'schemaDiff.executed': 'ausgeführt',
   'schemaDiff.missingOnTarget': 'Fehlt am Ziel (ADD)',

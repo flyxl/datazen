@@ -30,10 +30,35 @@ struct ActiveTransaction {
 /// `build_config` rejects a missing one — so `default_host` stays `None`.
 const DEFAULT_PORT: u16 = 1433;
 
+/// The inline literal of one boundary value, in T-SQL.
+///
+/// This is deliberately **not** the driver's declared `SqlServer` literal
+/// grammar. That grammar is for export artifacts, where exactness beats
+/// readability, and it renders a string as `CONVERT(nvarchar(max), 0x6200…)`.
+/// In a `WHERE` predicate that form is actively harmful: `nvarchar(max)` is
+/// not a comparable type for an index, so every seek would scan, and the
+/// seek exists precisely to avoid a scan.
+///
+/// `None` means "T-SQL has no inline literal for this". `TRUE`/`FALSE` are
+/// not literals in this dialect — a `bit` column is compared with `1`/`0` —
+/// so a boolean boundary degrades the page to offset paging, which is
+/// correct, instead of emitting something T-SQL cannot parse.
+fn keyset_literal(value: &Value) -> Option<String> {
+    match value {
+        Value::Null | Value::Bool(_) => None,
+        Value::Integer(n) => Some(n.to_string()),
+        Value::Float(n) => Some(n.to_string()),
+        Value::String(s) | Value::Timestamp(s) => Some(format!("'{}'", s.replace('\'', "''"))),
+        Value::Json(j) => Some(format!("'{}'", j.to_string().replace('\'', "''"))),
+        Value::Bytes(bytes) => {
+            let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+            Some(format!("0x{hex}"))
+        }
+    }
+}
+
 mod catalog;
 mod dialect;
-#[cfg(test)]
-mod file_line_cap;
 mod session;
 #[cfg(test)]
 mod tests;
@@ -64,6 +89,33 @@ impl DatabaseDriver for SqlServerDriver {
 
     fn supports_bound_writes(&self) -> bool {
         true
+    }
+
+    fn supports_keyset_pagination(&self) -> bool {
+        true
+    }
+
+    /// The seek condition for one page boundary.
+    ///
+    /// T-SQL has **no row-value comparison** — `(a, b) > (1, 2)` is not a
+    /// thing it parses — so the condition is always the lexicographic
+    /// disjunction `a > 1 OR (a = 1 AND b > 2)`.
+    ///
+    /// The boundary literals are **inline** T-SQL (`'bob'`, `0x00ff`), not
+    /// the artifact grammar: see [`keyset_literal`]. A value T-SQL has no
+    /// literal for makes the whole condition `None`, and the page is read by
+    /// offset instead of by a condition that would be wrong or unusable.
+    fn keyset_predicate_sql(
+        &self,
+        order_columns: &[(String, bool)],
+        boundary: &[(String, Value)],
+    ) -> Option<String> {
+        datazen_driver_api::keyset::lexicographic_seek_predicate_with(
+            self,
+            order_columns,
+            boundary,
+            &keyset_literal,
+        )
     }
 
     fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {

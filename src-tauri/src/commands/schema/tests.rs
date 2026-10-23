@@ -58,6 +58,8 @@ async fn schema_commands_with_connected_mock() {
         None,
         None,
         None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -160,6 +162,8 @@ async fn get_table_data_with_query_rows() {
         None,
         None,
         Some(true),
+        None,
+        None,
         None,
         None,
         None,
@@ -385,16 +389,20 @@ async fn get_table_data_joins_filters_with_or() {
                 column: "id".into(),
                 operator: FilterOperator::Eq,
                 value: Value::Integer(1),
+                connector: None,
             },
             FilterCondition {
                 column: "status".into(),
                 operator: FilterOperator::Eq,
                 value: Value::String("a".into()),
+                connector: None,
             },
         ]),
         None,
         Some(true),
         Some("or".into()),
+        None,
+        None,
         None,
         None,
     )
@@ -421,6 +429,8 @@ async fn get_table_data_reads_the_target_database_without_switching() {
         Some(true),
         None,
         Some("analytics".into()),
+        None,
+        None,
         None,
     )
     .await
@@ -615,4 +625,114 @@ async fn read_definition(
     let result: datazen_driver_api::schema_metadata::RelationSchema =
         serde_json::from_value(data["value"].clone())?;
     Ok(result.definition)
+}
+
+/// The host must refuse a filter the shared layer refuses, and it must say so
+/// with the contract prefix the frontend classifies on.
+#[tokio::test]
+async fn get_table_data_rejects_incomplete_filter_with_prefix() {
+    use datazen_driver_api::{TableInfo, TableType};
+    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
+
+    let opts = MockDriverOptions {
+        databases: vec!["app".into()],
+        tables: vec![TableInfo {
+            name: "items".into(),
+            schema: None,
+            table_type: TableType::Table,
+            row_count: None,
+        }],
+        columns: vec![col("id"), col("status")],
+        primary_keys: vec!["id".into()],
+        ..Default::default()
+    };
+    let test = TestAppState::with_options(opts).await;
+    let (_, conn_id) = test.save_and_connect_runtime("filter-incomplete").await;
+    let error = get_table_data_impl(
+        &test.state,
+        conn_id,
+        "items".into(),
+        0,
+        50,
+        Some(vec![FilterCondition {
+            column: "status".into(),
+            operator: FilterOperator::Eq,
+            value: Value::String(String::new()),
+            connector: None,
+        }]),
+        None,
+        Some(true),
+        Some("and".into()),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect_err("an incomplete filter must be refused");
+    match error {
+        CommandError::Validation(message) => {
+            assert!(
+                message.starts_with("grid.filter.incomplete: "),
+                "got: {message}"
+            );
+            assert!(message.contains("\"status\""), "got: {message}");
+        }
+        other => panic!("expected a validation error, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn get_table_data_rejects_unsupported_operator_with_prefix() {
+    use datazen_driver_api::{TableInfo, TableType};
+    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
+
+    let opts = MockDriverOptions {
+        databases: vec!["app".into()],
+        tables: vec![TableInfo {
+            name: "items".into(),
+            schema: None,
+            table_type: TableType::Table,
+            row_count: None,
+        }],
+        columns: vec![col("id"), col("status")],
+        primary_keys: vec!["id".into()],
+        ..Default::default()
+    };
+    let test = TestAppState::with_options(opts).await;
+    let (_, conn_id) = test.save_and_connect_runtime("filter-unsupported").await;
+    // The mock driver declares the shared operator set, which does not carry
+    // the dialect-only operators.
+    let error = get_table_data_impl(
+        &test.state,
+        conn_id,
+        "items".into(),
+        0,
+        50,
+        Some(vec![FilterCondition {
+            column: "status".into(),
+            operator: FilterOperator::Regex,
+            value: Value::String("^a".into()),
+            connector: None,
+        }]),
+        None,
+        Some(true),
+        Some("and".into()),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect_err("an operator outside the driver whitelist must be refused");
+    match error {
+        CommandError::Validation(message) => {
+            assert!(
+                message.starts_with("grid.filter.unsupportedOperator: "),
+                "got: {message}"
+            );
+            assert!(message.contains("'regex'"), "got: {message}");
+        }
+        other => panic!("expected a validation error, got: {other:?}"),
+    }
 }

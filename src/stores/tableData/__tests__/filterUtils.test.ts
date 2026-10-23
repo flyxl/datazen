@@ -44,3 +44,47 @@ describe('[tester] tableData/filterUtils', () => {
     ).toBe(false);
   });
 });
+
+// ── 08 Step 10: the operators that arrived with the extension (08 §9.2).
+describe('isCompleteFilter for the extended operators', () => {
+  it('treats the operators without a value as complete', () => {
+    expect(isCompleteFilter({ column: 'name', operator: 'isNull' })).toBe(true);
+    expect(isCompleteFilter({ column: 'name', operator: 'isNotNull' })).toBe(true);
+    expect(isCompleteFilter({ column: 'name', operator: 'isEmpty' })).toBe(true);
+    expect(isCompleteFilter({ column: 'name', operator: 'isNotEmpty' })).toBe(true);
+  });
+
+  it('needs a value for the operators that compare against one', () => {
+    expect(isCompleteFilter({ column: 'name', operator: 'contains' })).toBe(false);
+    expect(isCompleteFilter({ column: 'name', operator: 'contains', value: '' })).toBe(false);
+    expect(isCompleteFilter({ column: 'name', operator: 'contains', value: 'a' })).toBe(true);
+    expect(isCompleteFilter({ column: 'name', operator: 'regex', value: '^a' })).toBe(true);
+  });
+
+  it('needs at least one value for the set operators', () => {
+    expect(isCompleteFilter({ column: 'name', operator: 'in', value: [] })).toBe(false);
+    expect(isCompleteFilter({ column: 'name', operator: 'notIn', value: [] })).toBe(false);
+    expect(isCompleteFilter({ column: 'name', operator: 'in', value: ['a'] })).toBe(true);
+    expect(isCompleteFilter({ column: 'name', operator: 'notIn', value: 'a' })).toBe(true);
+    expect(isCompleteFilter({ column: 'name', operator: 'in', value: ' , ' })).toBe(false);
+  });
+
+  it('needs exactly two bounds for the range operators', () => {
+    expect(isCompleteFilter({ column: 'score', operator: 'between', value: ['1'] })).toBe(false);
+    expect(isCompleteFilter({ column: 'score', operator: 'between', value: ['1', ''] })).toBe(false);
+    expect(isCompleteFilter({ column: 'score', operator: 'between', value: ['1', '2'] })).toBe(true);
+    // A blank bound is a missing bound — the same rule the shared layer
+    // applies to the array form (`between_bounds`).
+    expect(isCompleteFilter({ column: 'score', operator: 'between', value: ['1', '  '] })).toBe(
+      false,
+    );
+    expect(isCompleteFilter({ column: 'score', operator: 'between', value: [null, '2'] })).toBe(
+      false,
+    );
+    expect(isCompleteFilter({ column: 'score', operator: 'notBetween', value: ['1', '2'] })).toBe(
+      true,
+    );
+    expect(isCompleteFilter({ column: 'score', operator: 'between', value: '1,2' })).toBe(true);
+    expect(isCompleteFilter({ column: 'score', operator: 'between', value: '1' })).toBe(false);
+  });
+});

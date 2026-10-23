@@ -16,6 +16,15 @@ const pack = {
   'dashboard.import': 'Импортировать дашборд…',
   'dashboard.pauseMonitoring': 'Приостановить обновление дашборда',
   'dashboard.resumeMonitoring': 'Возобновить обновление дашборда',
+  'dashboard.scheduleAuthorization': 'Авторизация запланированного обновления',
+  'dashboard.scheduleAuthorizationHint':
+    'Авторизуйте запросы только на чтение PostgreSQL/MySQL для сохранённого рабочего процесса с явными целями подключения и базы данных. Изменения требуют новой авторизации.',
+  'dashboard.scheduleAuthorizeHour': 'Авторизовать на 1 час',
+  'dashboard.scheduleRevoke': 'Отозвать авторизацию',
+  'dashboard.scheduleUnauthorized': 'Запланированное обновление не авторизовано.',
+  'dashboard.scheduleAuthorizedUntil': 'Авторизовано до {time}',
+  'dashboard.scheduleSaveFirst':
+    'Сохраните изменения, прежде чем авторизовать запланированное обновление.',
   'dashboard.widgetEnabled': 'Включить отчёт',
   'dashboard.history': 'История',
   'dashboard.widgetTitle': 'Заголовок',

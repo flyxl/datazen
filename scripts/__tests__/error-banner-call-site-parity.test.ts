@@ -161,9 +161,11 @@ const SITES: readonly Site[] = [
   },
   {
     // `plain` + `basis-full px-1 py-1` — layout only, no colour override.
+    // Two call sites since 08 Step 10: the caller's apply error and the
+    // "condition has no value" reason that blocks Apply. Same class set.
     label: 'FilterEditor',
     file: 'src/components/FilterEditor.tsx',
-    count: 1,
+    count: 2,
     base: 'basis-full px-1 py-1 text-xs text-red-400',
     colour: 'text-danger',
   },
@@ -183,7 +185,11 @@ const SITES: readonly Site[] = [
     // call site's and drops the variant's — `/30` must win, and the expected
     // set below proves the `/20` is gone rather than merely outranked.
     label: 'TableView quick-filter',
-    file: 'src/windows/connection/TableView.tsx',
+    // The quick filter moved out of `TableView` into `TableToolbar` (DB-06
+    // track, GC budget), and the filter half of that toolbar moved again
+    // into `TableFilterToolbar` (08, named views). The call site was moved
+    // verbatim — class set included — so only the file it lives in changed.
+    file: 'src/windows/connection/TableFilterToolbar.tsx',
     count: 1,
     base: 'border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400',
     colour: 'bg-danger/10 border-danger/30 text-danger',
@@ -277,9 +283,9 @@ function renderTag(tag: string): string[] {
 }
 
 describe('ErrorBanner call-site class-set parity', () => {
-  it('covers exactly the 14 production call sites', () => {
+  it('covers exactly the 15 production call sites', () => {
     // 11 files, some of which hold more than one call site.
-    expect(SITES.reduce((n, s) => n + s.count, 0)).toBe(14);
+    expect(SITES.reduce((n, s) => n + s.count, 0)).toBe(15);
   });
 
   for (const site of SITES) {

@@ -111,8 +111,49 @@ impl DatabaseDriver for PostgresDriver {
         DdlAtomicity::Transactional
     }
 
+    /// PostgreSQL keeps a row estimate for every relation, so the grid can
+    /// show a row count before the exact count has been paid for.
+    fn count_strategy(&self) -> CountStrategy {
+        CountStrategy::Estimated
+    }
+
+    /// The statement that estimates the row count of a table.
+    ///
+    /// The table name and the schema are the **unquoted** names the caller
+    /// asked about; the driver writes them itself, escaped, and it locates
+    /// the relation by name rather than by a session-dependent function.
+    fn count_estimate_sql(
+        &self,
+        _database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Option<String> {
+        crate::sql::count_estimate_sql(table, schema, &|value: &str| {
+            self.format_sql_literal(&Some(Value::String(value.to_string())))
+        })
+    }
+
     fn sync_family(&self) -> String {
         "postgresql".into()
+    }
+
+    fn supports_keyset_pagination(&self) -> bool {
+        true
+    }
+
+    /// The seek condition for one page boundary.
+    ///
+    /// PostgreSQL compares **row values**, so an order that runs in one
+    /// direction is a single `(a, b) > (1, 2)` instead of a disjunction of
+    /// `OR`ed predicates — one comparison the planner can answer from the
+    /// index instead of a filter over a union. A mixed order (`a ASC, b
+    /// DESC`) has no row-value form, and is spelled out lexicographically.
+    fn keyset_predicate_sql(
+        &self,
+        order_columns: &[(String, bool)],
+        boundary: &[(String, Value)],
+    ) -> Option<String> {
+        datazen_driver_api::keyset::row_value_seek_predicate(self, order_columns, boundary)
     }
 
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
@@ -657,5 +698,29 @@ impl DatabaseDriver for PostgresDriver {
         input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
         Self::execute_command_impl(self, handle, command, input).await
+    }
+}
+
+#[cfg(test)]
+mod count_estimate_tests {
+    use super::*;
+
+    fn driver() -> PostgresDriver {
+        PostgresDriver::new()
+    }
+
+    #[test]
+    fn postgres_declares_estimated_strategy() {
+        assert_eq!(driver().count_strategy(), CountStrategy::Estimated);
+    }
+
+    #[test]
+    fn postgres_estimate_names_the_requested_relation() {
+        let sql = driver()
+            .count_estimate_sql("app", Some("public"), "orders")
+            .expect("the driver has an estimate");
+        assert!(sql.contains("pg_catalog.pg_class"), "{sql}");
+        assert!(sql.contains("c.relname = 'orders'"), "{sql}");
+        assert!(sql.contains("n.nspname = 'public'"), "{sql}");
     }
 }

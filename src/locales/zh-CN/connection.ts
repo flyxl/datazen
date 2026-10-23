@@ -85,6 +85,8 @@ const pack = {
   'newConn.databaseIndex': '数据库索引',
   'newConn.username': '用户名',
   'newConn.password': '密码',
+  'newConn.clearStoredCredentials': '清除留空的已保存凭据',
+  'newConn.clearStoredCredentialsHint': '未勾选此项时，留空字段将保留已保存的值。',
   'newConn.group': '分组',
   'newConn.noGroup': '无分组',
   'newConn.colorTag': '颜色标签',

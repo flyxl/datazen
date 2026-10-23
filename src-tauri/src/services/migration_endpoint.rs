@@ -1,6 +1,6 @@
 //! Desktop session identity binding for portable migration admission rules.
+pub(crate) use datazen_feature_core::services::migration_endpoint::EndpointIdentity;
 use datazen_feature_core::services::migration_endpoint::{checked_identify, normalized};
-pub(crate) use datazen_feature_core::services::migration_endpoint::{identify, EndpointIdentity};
 
 pub(crate) struct RuntimeSessionContext {
     pub(crate) view: datazen_platform_api::dto::session::SessionView,

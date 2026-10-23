@@ -94,6 +94,9 @@ const pack = {
   'newConn.databaseIndex': 'Índice de banco de dados',
   'newConn.username': 'Nome de usuário',
   'newConn.password': 'Senha',
+  'newConn.clearStoredCredentials': 'Limpar as credenciais salvas deixadas em branco',
+  'newConn.clearStoredCredentialsHint':
+    'Os campos em branco mantêm os valores salvos, a menos que esta opção esteja marcada.',
   'newConn.group': 'Grupo',
   'newConn.noGroup': 'Nenhum grupo',
   'newConn.colorTag': 'Etiqueta de cor',

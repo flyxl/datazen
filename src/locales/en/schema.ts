@@ -302,5 +302,25 @@ const pack = {
   'fk.localColumn': 'Column',
   'fk.refTable': 'Ref Table',
   'fk.refColumn': 'Ref Column',
+  // ── Foreign-key navigation (DB-07) ───────────────────────────
+  // The jump entry of a cell, the breadcrumb of the tab it opened and the
+  // classified reasons a jump can be refused for. They live next to the
+  // `fk.*` words of the structure tab: the vocabulary is the same one.
+  'fkNav.jumpTo': 'Jump to {target}',
+  'fkNav.jumpToComposite': 'Jump to {table} ({columns})',
+  'fkNav.resolving': 'Resolving foreign key…',
+  'fkNav.breadcrumbFrom': 'From {source}',
+  'fkNav.backToSource': 'Back to {table}',
+  'fkNav.back': 'Back',
+  'fkNav.forward': 'Forward',
+  'fkNav.stackTruncated': 'Earlier navigation steps were dropped',
+  'fkNav.targetMissing': 'The referenced row no longer exists',
+  'fkNav.notUniqueWarning': '{columns} is not a primary or unique key; the jump may return many rows',
+  'fkNav.error.shapeMismatch': "This foreign key's columns do not line up",
+  'fkNav.error.unknownConstraint': 'The foreign key changed; refresh the table structure',
+  'fkNav.error.valueNull': 'Part of the composite key is NULL',
+  'fkNav.error.targetUnresolved': 'Cannot reach {target}; it may be missing, in another database, or not readable',
+  'fkNav.error.probeFailed': 'The target table was found but could not be read',
+  'fkNav.error.unknown': 'Foreign key navigation failed',
 } as const;
 export default pack;

@@ -6,6 +6,7 @@
 use crate::store::DesktopRepositoryError;
 use datazen_ai_api::AiError;
 use datazen_driver_api::DriverError;
+use datazen_feature_core::services::FilterRejection;
 
 #[derive(Debug)]
 pub enum CommandError {
@@ -65,6 +66,11 @@ impl serde::Serialize for CommandError {
         }
         // Redact secrets so IPC payloads never leak credentials (M9/B8).
         let redacted = datazen_platform_infra::redaction::redact_secrets_for_log(&self.to_string());
+        // …and the absolute paths: an IPC payload is not a log line, and it
+        // travels further than the machine it was produced on (AGENTS.md:
+        // "全局 IPC 错误 Payload 自动脱敏凭据与绝对路径"). The file name
+        // survives; the directories do not.
+        let redacted = datazen_platform_infra::redaction::redact_paths_for_ipc(&redacted);
         serializer.serialize_str(&redacted)
     }
 }
@@ -81,6 +87,17 @@ impl From<DriverError> for CommandError {
             DriverError::NotSupported(msg) => Self::Validation(msg),
             other => Self::Driver(other),
         }
+    }
+}
+
+/// A filter the shared layer refused becomes a validation error.
+///
+/// The shared layer owns the judgement and the message; the host only says
+/// which kind of failure it is. The message keeps its `grid.filter.*` prefix,
+/// so the frontend can tell a filter problem from any other failure.
+impl From<FilterRejection> for CommandError {
+    fn from(rejection: FilterRejection) -> Self {
+        Self::Validation(rejection.contract_message())
     }
 }
 
@@ -382,6 +399,32 @@ mod tests {
         );
     }
 
+    /// FKU-D5: the IPC payload must not carry an absolute path either.
+    ///
+    /// The credential redaction has always been part of the payload; the path
+    /// was not, and it only stayed invisible because the front end dropped the
+    /// whole message. Now that the message reaches the UI, the path has to be
+    /// masked at the point where the payload is produced.
+    #[test]
+    fn cmd_ext_redacts_absolute_paths_in_ipc_payload() {
+        let err: CommandError = CommandError::Validation(
+            "cannot open /Users/alice/code/datazen/app.db for reading".into(),
+        );
+        // The log-side text keeps the path: a log line is read on the machine
+        // that produced it, and the path is what the reader needs.
+        assert!(err.to_string().contains("/Users/alice"));
+        // The IPC payload does not.
+        let ipc_json = serde_json::to_string(&err).unwrap();
+        assert!(
+            !ipc_json.contains("/Users/alice"),
+            "IPC must not contain an absolute path: {ipc_json}"
+        );
+        assert!(
+            ipc_json.contains("app.db"),
+            "IPC must keep the file name: {ipc_json}"
+        );
+    }
+
     #[test]
     fn resolve_override_path_gates_without_webdriver_feature() {
         // Decision 3: the merged commands' `override_path` replaces the old
@@ -412,10 +455,57 @@ impl From<datazen_feature_core::error::FeatureError> for CommandError {
         match error {
             FeatureError::Ai(error) => Self::Ai(error),
             FeatureError::Validation(message) => Self::Validation(message),
+            FeatureError::NotFound(message) => Self::NotFound(message),
+            FeatureError::NotConfigured(message) => Self::NotConfigured(message),
             FeatureError::Internal(message) => Self::Internal(message),
             FeatureError::Driver(error) => Self::from(error),
             FeatureError::Io(error) => Self::Io(error),
             FeatureError::Json(error) => Self::Json(error),
+        }
+    }
+}
+
+/// Map a named-view rejection onto the IPC envelope.
+///
+/// The two rule failures keep their `grid.view.*` prefix, and the prefix is
+/// the first thing in the message: the front end classifies on it. A storage
+/// failure is not a grid rule — the code space is closed — so it carries no
+/// prefix and the front end shows its raw text.
+///
+/// The rule messages carry **no user-supplied text**: what the user typed
+/// must not travel into the IPC payload or the host's log lines (D1).
+impl From<datazen_feature_core::services::named_views::NamedViewError> for CommandError {
+    fn from(error: datazen_feature_core::services::named_views::NamedViewError) -> Self {
+        use datazen_feature_core::services::named_views::NamedViewError;
+        match &error {
+            NamedViewError::NameExists { .. } | NamedViewError::Invalid(_) => {
+                Self::Validation(error.to_string())
+            }
+            NamedViewError::Storage(message) => Self::Internal(message.clone()),
+        }
+    }
+}
+
+/// Map a foreign-key navigation rejection onto the IPC envelope.
+///
+/// The `grid.fk.*` codes are a **prefix of the message**: the front end
+/// classifies on that prefix and then shows the reason behind it, so the code
+/// must stay the first thing in the string. A session failure is not a
+/// navigation rule failure and therefore carries no grid prefix.
+impl From<datazen_feature_core::services::fk_navigation::FkNavigationError> for CommandError {
+    fn from(error: datazen_feature_core::services::fk_navigation::FkNavigationError) -> Self {
+        use datazen_feature_core::services::fk_navigation::FkNavigationError;
+        use datazen_feature_core::services::ports::FkSessionError;
+        match error {
+            FkNavigationError::Coded { code, message } => {
+                Self::Validation(format!("{code}: {message}"))
+            }
+            FkNavigationError::Session(FkSessionError::NotFound(message)) => {
+                Self::NotFound(message)
+            }
+            FkNavigationError::Session(FkSessionError::Unavailable(message)) => {
+                Self::Internal(message)
+            }
         }
     }
 }

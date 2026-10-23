@@ -10,8 +10,19 @@
  * transport; everything above this line is backend-agnostic.
  */
 
-export type { ApiErrorCode, ApiErrorOptions, ApiErrorPayload, RetryDisposition } from './errors';
-export { ApiError, API_ERROR_CODES, defaultRetryDisposition, deserializeApiError } from './errors';
+export type {
+  ApiErrorCode,
+  ApiErrorOptions,
+  ApiErrorPayload,
+  RetryDisposition,
+  UnsupportedMethodKind,
+} from './errors';
+export {
+  ApiError,
+  API_ERROR_CODES,
+  defaultRetryDisposition,
+  deserializeApiError,
+} from './errors';
 
 export type { ConnectionEventStream, EventStream, EventStreamSource } from './streams';
 export { createEventStream, toEventStream } from './streams';
@@ -48,6 +59,8 @@ export {
   setBackendClient,
   useBackendClient,
 } from './client';
+
+export type { BackendGuard, TableDataClient } from './tableDataClient';
 
 export * from './types';
 

@@ -14,11 +14,38 @@ use crate::{
     DriverCommandDefinition, SchemaScope, SqlLiteralDialect,
 };
 use crate::{
-    ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType,
-    DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult, ServerInfo,
-    StatementResult, StructureChangePlan, StructureChangeRequest, TableInfo, TableSchema,
-    TransactionHandle, Value,
+    ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, CountStrategy, DatabaseDriver,
+    DatabaseType, DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult,
+    ServerInfo, StatementResult, StructureChangePlan, StructureChangeRequest, TableInfo,
+    TableSchema, TransactionHandle, Value,
 };
+
+/// The column the mock's estimate statement selects. The mock answers a
+/// statement that mentions it with the configured estimate, so a test can tell
+/// the estimate statement apart from the count and from the data statement.
+pub const ESTIMATE_COLUMN: &str = "estimated_row_count";
+
+/// The `OFFSET` of a statement, if it has one.
+///
+/// The mock reads the offset so that a test can tell a page that was read
+/// by offset from a page that was read from the top of the table — the two
+/// differ only in the rows themselves.
+fn offset_in_statement(sql: &str) -> Option<u64> {
+    let upper = sql.to_ascii_uppercase();
+    let index = upper.rfind("OFFSET ")?;
+    let rest = &sql[index + "OFFSET ".len()..];
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
+/// The `LIMIT` of a statement, if it has one.
+fn limit_in_statement(sql: &str) -> Option<u64> {
+    let upper = sql.to_ascii_uppercase();
+    let index = upper.rfind("LIMIT ")?;
+    let rest = &sql[index + "LIMIT ".len()..];
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
 
 /// Models "another task registered its own transaction for the same
 /// `dbSessionId` while this one was being opened".
@@ -56,6 +83,19 @@ pub struct MockDriverOptions {
     pub column_errors_by_table: HashMap<String, String>,
     pub table_schema: Option<TableSchema>,
     pub query_rows: Vec<Vec<Option<Value>>>,
+    /// Affected-row count reported for a **contiguous mutation** sent through
+    /// `query` (an `UPDATE`/`INSERT`/`DELETE` statement). `None` (the default)
+    /// keeps the historical answer: the mock returns the configured read rows
+    /// with no affected-row count, whatever the statement text says.
+    pub query_rows_affected: Option<u64>,
+    /// The rows are returned **from the statement's `OFFSET`** onwards.
+    ///
+    /// A mock that always returns the same rows cannot tell "the page was
+    /// read by offset" from "the page was read from the top of the table" —
+    /// the two differ only in the rows themselves. With this on, the mock
+    /// behaves like a table that has pages, so a test can assert **which
+    /// rows** a page holds.
+    pub rows_start_at_offset: bool,
     /// Keyset pages after the first are empty for resume-executor tests.
     pub empty_keyset_after_cursor: bool,
     pub count_total: i64,
@@ -82,6 +122,10 @@ pub struct MockDriverOptions {
     /// The default remains unsupported so tests that exercise capability
     /// gating keep their original behavior.
     pub parameterized_writes: bool,
+    /// Returning clause reported by [`DatabaseDriver::insert_returning_clause`].
+    /// `None` (the default) models a dialect that cannot backfill the new row's
+    /// primary key; `Some("")` models the "already inlined" signal.
+    pub insert_returning_clause: Option<String>,
     /// Fail the selected commit call to model a lost acknowledgement. When
     /// `commit_error_after_effect` is true, the transaction is removed before
     /// returning the error; otherwise it remains open and unapplied.
@@ -138,6 +182,43 @@ pub struct MockDriverOptions {
     /// pure equality read (`… = ?1`, no `>` seek) is filtered, so a test opts
     /// in exactly for the keyed-read shape it needs to prove.
     pub filter_rows_by_key_equality: bool,
+    /// Whether this mock skips the row count, the way a driver that cannot
+    /// count at all does. The default (`false`) keeps the exact count.
+    pub skip_count_query: bool,
+    /// The row count the mock's **estimate** statement reports. `None` (the
+    /// default) models a driver without an estimate statement; `Some(n)` makes
+    /// the mock answer an estimate of `n` rows, and a negative value models
+    /// an estimate that is not usable.
+    pub count_estimate_rows: Option<i64>,
+    /// The error the mock's estimate statement fails with. `None` (the
+    /// default) lets the estimate succeed.
+    pub count_estimate_error: Option<String>,
+    /// The row-count strategy this mock declares. `None` (the default) lets
+    /// the trait's own default derive it from [`Self::skip_count_query`].
+    pub count_strategy: Option<CountStrategy>,
+    /// The error the mock's `COUNT(*)` statement fails with. `None` (the
+    /// default) lets the count succeed.
+    pub count_error: Option<String>,
+    /// The value the mock's `COUNT(*)` statement reports. `None` (the
+    /// default) reports [`Self::count_total`] as an integer; a value of
+    /// another shape models a count that did not come back as a number.
+    pub count_total_value: Option<Value>,
+    /// The columns this mock reports as its default order. `None` (the
+    /// default) lets the trait's own default decide.
+    pub default_order_columns: Option<Vec<String>>,
+    /// Whether this mock allows the first-column fallback on a table without
+    /// a primary key. `None` (the default) lets the trait's own default
+    /// decide, which is "allowed".
+    pub allow_first_column_fallback_order: Option<bool>,
+    /// Whether this mock claims the keyset (seek) paging capability. `false`
+    /// (the default) models a driver that has not opted in, so the host reads
+    /// every page with an `OFFSET`.
+    pub supports_keyset_pagination: bool,
+    /// Whether the mock refuses to render a seek condition even though it
+    /// claims the capability. `false` (the default) renders the portable
+    /// lexicographic condition; `true` models a dialect that cannot express
+    /// this particular order.
+    pub keyset_predicate_returns_none: bool,
 }
 
 impl Default for MockDriverOptions {
@@ -151,6 +232,7 @@ impl Default for MockDriverOptions {
             column_errors_by_table: HashMap::new(),
             table_schema: None,
             query_rows: Vec::new(),
+            rows_start_at_offset: false,
             empty_keyset_after_cursor: false,
             count_total: 0,
             databases: Vec::new(),
@@ -167,10 +249,12 @@ impl Default for MockDriverOptions {
             server_version: String::new(),
             extra_commands: Vec::new(),
             command_results: HashMap::new(),
+            query_rows_affected: None,
             query_error: None,
             cancel_error: None,
             execute_rows_affected: 0,
             parameterized_writes: false,
+            insert_returning_clause: None,
             commit_error_on_call: None,
             commit_error_after_effect: false,
             rollback_error_on_call: None,
@@ -187,6 +271,16 @@ impl Default for MockDriverOptions {
             default_schema: None,
             open_databases: Vec::new(),
             filter_rows_by_key_equality: false,
+            skip_count_query: false,
+            count_estimate_rows: None,
+            count_estimate_error: None,
+            count_strategy: None,
+            count_error: None,
+            count_total_value: None,
+            default_order_columns: None,
+            allow_first_column_fallback_order: None,
+            supports_keyset_pagination: false,
+            keyset_predicate_returns_none: false,
         }
     }
 }
@@ -204,9 +298,16 @@ pub struct MockDriver {
     commit_calls: AtomicU32,
     rollback_calls: AtomicU32,
     execute_calls: AtomicU32,
+    execute_with_params_calls: AtomicU32,
     cancel_query_calls: AtomicU32,
     precise_cancel_query_calls: AtomicU32,
     last_query_limit: Mutex<Option<Option<u32>>>,
+    /// The statements this mock was asked to run, in call order.
+    ///
+    /// A statement is the only way to see what a host actually sent, and
+    /// "the statement is exactly this" is the assertion that keeps a
+    /// refactor from quietly changing every query the product sends.
+    query_log: Mutex<Vec<String>>,
     open_txs: Mutex<HashSet<String>>,
     /// Regression tripwire: the driver contract no longer has `use_database`,
     /// so this can only ever be empty. Host tests assert it stays empty to
@@ -234,9 +335,11 @@ impl MockDriver {
             commit_calls: AtomicU32::new(0),
             rollback_calls: AtomicU32::new(0),
             execute_calls: AtomicU32::new(0),
+            execute_with_params_calls: AtomicU32::new(0),
             cancel_query_calls: AtomicU32::new(0),
             precise_cancel_query_calls: AtomicU32::new(0),
             last_query_limit: Mutex::new(None),
+            query_log: Mutex::new(Vec::new()),
             open_txs: Mutex::new(HashSet::new()),
             use_database_calls: Mutex::new(Vec::new()),
             qualify_calls: Mutex::new(Vec::new()),
@@ -306,6 +409,15 @@ impl MockDriver {
         self.last_query_limit.lock().ok().and_then(|g| *g)
     }
 
+    /// The statements this mock was asked to run, in call order.
+    pub fn query_log(&self) -> Vec<String> {
+        self.query_log
+            .lock()
+            .ok()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+
     pub fn get_columns_calls(&self) -> u32 {
         self.get_columns_calls.load(Ordering::Relaxed)
     }
@@ -339,6 +451,12 @@ impl MockDriver {
 
     pub fn execute_calls(&self) -> u32 {
         self.execute_calls.load(Ordering::Relaxed)
+    }
+
+    /// Bound-DML executions (`execute_with_params`), counted separately from
+    /// the unparameterized [`Self::execute_calls`] path.
+    pub fn execute_with_params_calls(&self) -> u32 {
+        self.execute_with_params_calls.load(Ordering::Relaxed)
     }
 
     pub fn cancel_query_calls(&self) -> u32 {
@@ -467,6 +585,62 @@ impl DatabaseDriver for MockDriver {
 
     fn default_schema(&self) -> Option<&'static str> {
         self.opts.default_schema
+    }
+
+    fn skip_count_query(&self) -> bool {
+        self.opts.skip_count_query
+    }
+
+    fn count_strategy(&self) -> CountStrategy {
+        self.opts
+            .count_strategy
+            .unwrap_or_else(|| crate::traits::browsing::count_strategy(self.opts.skip_count_query))
+    }
+
+    fn count_estimate_sql(
+        &self,
+        _database: &str,
+        _schema: Option<&str>,
+        table: &str,
+    ) -> Option<String> {
+        self.opts
+            .count_estimate_rows
+            .map(|_| format!("SELECT {ESTIMATE_COLUMN} FROM {}", self.quote_ident(table)))
+    }
+
+    fn default_order_columns(
+        &self,
+        columns: &[ColumnSchema],
+        primary_keys: &[String],
+    ) -> Vec<String> {
+        match &self.opts.default_order_columns {
+            Some(order) => order.clone(),
+            None => crate::traits::browsing::default_order_columns(columns, primary_keys),
+        }
+    }
+
+    fn allow_first_column_fallback_order(&self) -> bool {
+        self.opts
+            .allow_first_column_fallback_order
+            .unwrap_or_else(crate::traits::browsing::allow_first_column_fallback_order)
+    }
+
+    fn supports_keyset_pagination(&self) -> bool {
+        self.opts.supports_keyset_pagination
+    }
+
+    fn keyset_predicate_sql(
+        &self,
+        order_columns: &[(String, bool)],
+        boundary: &[(String, Value)],
+    ) -> Option<String> {
+        // A driver that does not claim the capability has no condition to
+        // give: the host never asks one, and asking one anyway must not
+        // produce a condition.
+        if !self.opts.supports_keyset_pagination || self.opts.keyset_predicate_returns_none {
+            return None;
+        }
+        crate::keyset::lexicographic_seek_predicate(self, order_columns, boundary)
     }
 
     async fn close_database(
@@ -617,7 +791,23 @@ impl DatabaseDriver for MockDriver {
         let schema = self
             .get_table_schema(handle, table, database, schema)
             .await?;
-        Ok((schema.columns, schema.primary_keys))
+        let mut columns = schema.columns;
+        // The column-tier fixture also advertises a nullable `note` column so
+        // an insert draft can model "write SQL NULL" against a column the
+        // catalog really has. `get_table_schema` keeps the historical id/name
+        // shape because plan/projection fixtures pin it.
+        if columns.iter().all(|column| column.name != "note") {
+            columns.push(ColumnSchema {
+                name: "note".into(),
+                data_type: "text".into(),
+                nullable: true,
+                default_value: None,
+                comment: None,
+                is_primary_key: false,
+                is_auto_increment: false,
+            });
+        }
+        Ok((columns, schema.primary_keys))
     }
 
     async fn query(
@@ -626,17 +816,64 @@ impl DatabaseDriver for MockDriver {
         sql: &str,
     ) -> Result<QueryResult, DriverError> {
         self.query_calls.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut log) = self.query_log.lock() {
+            log.push(sql.to_string());
+        }
         if let Some(msg) = &self.opts.query_error {
             return Err(DriverError::QueryFailed(msg.clone()));
         }
+        // A mutation sent down the `query` channel reports an affected-row
+        // count, not the configured read rows. Opt-in, so the historical mock
+        // answer (rows for any SQL) stays the default.
+        if let Some(rows_affected) = self.opts.query_rows_affected {
+            let verb = sql.trim_start().split_whitespace().next().unwrap_or("");
+            if ["UPDATE", "INSERT", "DELETE"]
+                .iter()
+                .any(|mutation| verb.eq_ignore_ascii_case(mutation))
+            {
+                return Ok(QueryResult {
+                    columns: Vec::new(),
+                    rows: Vec::new(),
+                    rows_affected: Some(rows_affected),
+                    execution_time_ms: 0,
+                });
+            }
+        }
+        // The estimate statement is answered on its own, so a test can tell it
+        // apart from the count and from the data statement — and can make it
+        // fail without taking the data statement down with it.
+        if sql.contains(ESTIMATE_COLUMN) {
+            if let Some(msg) = &self.opts.count_estimate_error {
+                return Err(DriverError::QueryFailed(msg.clone()));
+            }
+            let estimate = self.opts.count_estimate_rows.unwrap_or_default();
+            return Ok(QueryResult {
+                columns: vec![ColumnInfo {
+                    name: ESTIMATE_COLUMN.into(),
+                    data_type: "bigint".into(),
+                    nullable: true,
+                }],
+                rows: vec![vec![Some(Value::Integer(estimate))]],
+                rows_affected: None,
+                execution_time_ms: 0,
+            });
+        }
         if sql.contains("COUNT(*)") {
+            if let Some(msg) = &self.opts.count_error {
+                return Err(DriverError::QueryFailed(msg.clone()));
+            }
+            let value = self
+                .opts
+                .count_total_value
+                .clone()
+                .unwrap_or(Value::Integer(self.opts.count_total));
             return Ok(QueryResult {
                 columns: vec![ColumnInfo {
                     name: "count".into(),
                     data_type: "bigint".into(),
                     nullable: false,
                 }],
-                rows: vec![vec![Some(Value::Integer(self.opts.count_total))]],
+                rows: vec![vec![Some(value)]],
                 rows_affected: None,
                 execution_time_ms: 0,
             });
@@ -666,9 +903,19 @@ impl DatabaseDriver for MockDriver {
                 nullable: c.nullable,
             })
             .collect();
+        let mut rows = self.opts.query_rows.clone();
+        if self.opts.rows_start_at_offset {
+            // A table that has pages: the rows before the offset are not
+            // part of this page, and the page holds at most `LIMIT` rows.
+            let offset = offset_in_statement(sql).unwrap_or(0) as usize;
+            rows = rows.into_iter().skip(offset).collect();
+            if let Some(limit) = limit_in_statement(sql) {
+                rows.truncate(limit as usize);
+            }
+        }
         Ok(QueryResult {
             columns,
-            rows: self.opts.query_rows.clone(),
+            rows,
             rows_affected: None,
             execution_time_ms: 0,
         })
@@ -737,12 +984,18 @@ impl DatabaseDriver for MockDriver {
         }
     }
 
+    fn insert_returning_clause(&self, _columns: &[&str]) -> Option<String> {
+        self.opts.insert_returning_clause.clone()
+    }
+
     async fn execute_with_params(
         &self,
         _handle: &ConnectionHandle,
         _sql: &str,
         _params: &[Value],
     ) -> Result<u64, DriverError> {
+        self.execute_with_params_calls
+            .fetch_add(1, Ordering::Relaxed);
         if let Some(error) = self.opts.execute_with_params_error.as_ref() {
             return Err(DriverError::QueryFailed(error.clone()));
         }

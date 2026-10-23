@@ -92,6 +92,9 @@ const pack = {
   'newConn.databaseIndex': 'Индекс базы данных',
   'newConn.username': 'Имя пользователя',
   'newConn.password': 'Пароль',
+  'newConn.clearStoredCredentials': 'Очистить сохранённые учётные данные, оставленные пустыми',
+  'newConn.clearStoredCredentialsHint':
+    'Пустые поля сохраняют сохранённые значения, если этот флажок не установлен.',
   'newConn.group': 'Группа',
   'newConn.noGroup': 'Нет группы',
   'newConn.colorTag': 'Цветная бирка',

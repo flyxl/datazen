@@ -10,7 +10,7 @@
 | 驱动选型 | **`basic` 固定**（postgres, mysql, sqlite, redis）；Host 单测另跑一遍 **`all`** | Basic / All × 四平台 + Akulaku × 三平台（Windows / macOS，无 Linux） | 任意 `--drivers=` / `DATAZEN_DRIVERS` |
 | Host 前端单测 | ✅ `basic`：`pnpm test:unit`；`all`：`pnpm test:unit:driver-set`（硬门禁，理由见 §2.1.1） | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` / `pnpm test:unit:driver-set` |
 | 驱动 UI 单测 | ✅ `pnpm test:unit:drivers` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit:drivers` |
-| TypeScript | ✅ `pnpm typecheck`（**双引擎**：`tsc` = TS 7.0.2 + `tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` 只跑 `tsc`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
+| TypeScript | ✅ `pnpm typecheck`（**单引擎**：`tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` **也是**只跑 `tsrs`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
 | Host Rust lib | ✅ `cargo test -p datazen --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen --lib` |
 | driver-api | ✅ | 随构建链接 | `cargo test -p datazen-driver-api --lib` |
 | ai-api | ✅ | 随构建链接 | `cargo test -p datazen-ai-api --lib` |
@@ -46,7 +46,7 @@
 |------|-------------|------|
 | 依赖 | `pnpm install --frozen-lockfile` | Node **24**、pnpm **11**（与 workflow 一致） |
 | 代码生成 | `node scripts/generate-builtin-locales.mjs` | `builtinLocales.ts` 为 gitignore codegen |
-| 类型 | `pnpm typecheck` | `tsc --noEmit` + `tsrs --noEmit`（双引擎，见 §2.1.4） |
+| 类型 | `pnpm typecheck` | `tsrs --noEmit`（单引擎，见 §2.1.4）。发布侧的 `union-typecheck` **也是只跑 `tsrs`**（§6.2），所以本地绿与发布绿是同一件事 |
 | 守卫 | `check-managed-stubs.mjs`、`check-id-terminology.mjs`、`check-module-layers.mjs` 等 | 防止误提交 inject 产物、ID 术语回退、分层倒置。`check-structure-editor-guardrails.mjs` 已移至发布前，见 §2.1.3 |
 | Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
 | Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**硬门禁**（无 `continue-on-error`），理由见 §2.1.1；重新加回软门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts`（见 §2.1.1 末） |
@@ -224,18 +224,22 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 是把一笔被掩盖的债显性化。`bump-version` skill 触发重建时必须一并跑
 `node scripts/i18n-sync-check.mjs`，缺失的 key 用 i18n-sync skill 补齐（只补翻译，不改 `en.ts`）。
 
-### 2.1.4 类型门禁为什么跑两个编译器
+### 2.1.4 类型门禁跑哪个编译器
 
-`pnpm typecheck` 现在跑**两个** TypeScript 7 实现：
+`pnpm typecheck` 跑**一个** TypeScript 7 实现：
 
 | 引擎 | 包 | 上游 | 角色 |
 |------|----|------|------|
-| `tsc` | `typescript@7.0.2`（精确锁定） | TypeScript 7 GA（Go 移植） | **权威门禁**。发布流水线的 `union-typecheck` 跑的就是这个二进制，PR 过了这里就不会在发版时因类型错误翻车。 |
-| `tsrs` | `tsrs@0.18.0-ts7.1.0-dev.20260929`（精确锁定） | TypeScript **7.1 开发线** | **前瞻检查**。比 GA 领先一个版本，提前暴露下一版的新诊断；同一份源码的第二个独立意见。 |
+| `tsrs` | `tsrs@0.18.0-ts7.1.0-dev.20260929`（精确锁定） | TypeScript **7.1 开发线** | **门禁本体**。比 GA 领先一个版本，提前暴露下一版的新诊断；比 `tsc` 快约 2 倍、峰值内存少约 3.6 倍。 |
+| `tsc` | `typescript@7.0.2`（精确锁定） | TypeScript 7 GA（Go 移植） | **逃生口 + 构建内的那道**。它不再是**类型检查环节**的一部分（本地与发布都用 `tsrs`），但 `pnpm build` 里仍有 `tsc --noEmit` ⇒ GA 独有的诊断仍会在发布构建里被抓住。`pnpm typecheck:tsc` 可在本地按需单跑它。 |
 
-**为什么两个都要。** 只有一个时，"用哪个"就是一次没有依据的取舍：选 GA 就丢掉下一版的
-提前预警，选 dev 线就等于让一个尚未发布的编译器当发布门禁。两个都跑，这个取舍就不存在了——
-`tsc` 保证"发版不会红"，`tsrs` 保证"下个版本的红现在就能看见"。两者都不是对方的备份。
+**一个编译器，全流程一致。** 本地门禁（`pnpm typecheck`）与发布门禁（`union-typecheck`）
+**都只跑 `tsrs`**（用户裁定）：这样「本地绿」与「发布绿」指的是同一件事，不需要在两处维护
+两套语义。`tsrs` 快约 2 倍、且唯一会报出**下一个 TS 版本**诊断的那个。
+
+**代价（明写，不藏）**：`tsrs` 领先 GA 一个版本 ⇒ **它只会比 GA 多报，不会少报；反过来不成立**
+——GA 独有的诊断 `tsrs` 可能没有。这道缺口由 `pnpm build` 里的 `tsc --noEmit` 兜住（发布构建
+仍跑它），本地需要权威结论时跑 `pnpm typecheck:tsc`。
 
 **实测（本仓库，1845 个 TS 文件，三个 program）**：
 
@@ -245,19 +249,20 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 | `tsc` 7.0.2 | 2.4–2.6 s | 1.25 GB |
 | `tsrs` 0.18.0 | 1.0–1.3 s | 0.35 GB |
 
-5.9.3 → 7.0.2 的 10 倍来自编译器重写本身，不是本次改动。`tsrs` 再快 2 倍、内存少 3.6 倍，
-这是它值得多一个进程的理由；**它不值得取代**权威编译器。
+5.9.3 → 7.0.2 的 10 倍来自编译器重写本身，不是本次改动。单引擎门禁现在取的是 `tsrs`
+那一档：**约 1 秒、约 0.35 GB**。
 
-**两者输出必须一致，实测一致。** `tsc 7.0.2` 与 `tsrs 0.18.0` 在三个门禁 program 上的
-诊断输出**逐字节相同**（不是"错误数相同"，是 diff 为空）。这是双引擎能共存的前提：
-若两者分歧，`tsrs` 的输出会被当作噪声而不是信号。
+**两个引擎的输出实测逐字节相同。** `tsc 7.0.2` 与 `tsrs 0.18.0` 在三个门禁 program 上的
+诊断输出**逐字节相同**（不是"错误数相同"，是 diff 为空）。这是把 `tsrs` 单独当门禁的
+前提：两者在当时的源码上分歧为零，所以换引擎不会让门禁变松也不会变紧。
 
-**Windows 上 `tsrs` 会被跳过，并明确告知。** `tsrs@0.18.0` 没有发布 win32 二进制
-（上游列为"下次发布配置"）。`scripts/typecheck.mjs` 用 `--version` 探测启动器能否真正
-运行——这是唯一诚实的探测方式，因为它走的是真实运行时的同一条解析路径。探测失败就只跑
-`tsc`，并打印 `[typecheck] SKIPPING tsrs: ...`，**绝不静默**。发版矩阵要构建并签名
-Windows 产物，一个在出货平台上跑不起来的类型门禁是更差的门禁。该探测同时是自愈的：
-上游一旦发布 Windows 版，下次 `pnpm install` 装上即自动启用，无需改代码。
+**Windows 上 `tsrs` 跑不了，门禁回退到 `tsc` 并明确告知。** `tsrs@0.18.0` 没有发布
+win32 二进制（上游列为"下次发布配置"）。`scripts/typecheck.mjs` 用 `--version` 探测
+启动器能否真正运行——这是唯一诚实的探测方式，因为它走的是真实运行时的同一条解析路径。
+探测失败就回退到 `tsc`，并打印 `[typecheck] tsrs is unavailable here (...) — falling
+back to tsc`，**绝不静默**。发版矩阵要构建并签名 Windows 产物，一个在出货平台上跑不起来
+的类型门禁是更差的门禁。该探测同时是自愈的：上游一旦发布 Windows 版，下次
+`pnpm install` 装上即自动启用，无需改代码。
 
 **版本必须精确锁定，不能用 `^`。** `tsrs` 的版本号里编码了上游 TypeScript 的 commit
 （`0.18.0-ts7.1.0-dev.20260929` → `7.1.0-dev.20260929`）。`^7.0.2` 会在 7.1.0 转
@@ -700,16 +705,19 @@ feature 集变化。但实测证明它一分钱不省：
 ### 6.2 union 类型检查：保留
 
 `union-typecheck` 是独立的一个 job，对 union（`all,kiwi,superset`，即 basic / all / akulaku
-的超集）做**一次** `tsc --noEmit`。11 个 variant job 通过 workflow 级
-`DATAZEN_CI_TYPECHECK_ONCE=1` 跳过自己的 tsc，改走 `pnpm build:bundle`（codegen + Vite）。
+的超集）做**一次**类型检查。11 个 variant job 通过 workflow 级
+`DATAZEN_CI_TYPECHECK_ONCE=1` 跳过自己的类型检查，改走 `pnpm build:bundle`（codegen + Vite）。
 
-**它只跑 `tsc`，不跑 `tsrs`。** `scripts/ci-union-typecheck.mjs` 直接调用
-`node_modules/typescript/bin/tsc`（即 TS 7.0.2 GA），没有走 `pnpm typecheck` 的双引擎
-入口，这是有意的：发布门禁应当由**已发布**的编译器裁决，而不是由一个跟随开发线的
-`tsrs` 裁决。同时这一条命令在该 job 里几乎没有成本——它的墙钟由 `pnpm install` 主导，
-把 `tsc` 换成 `tsrs` 只省约 1 秒，却要多承担一层"两个编译器可能分歧"的风险。
-PR 侧的 `pnpm typecheck` 已经同时跑两个引擎（§2.1.4），因此"PR 绿但发版红"在这一层
-被覆盖不到：`tsc` 在两处都在跑。
+**它只跑 `tsrs`**（用户裁定），与本地门禁 `pnpm typecheck` **同一个引擎**。
+`scripts/ci-union-typecheck.mjs` 调 `node_modules/tsrs/bin/tsrs --noEmit`，跑在同一份 union 上。
+
+为什么本地与发布用同一个编译器：「本地绿」与「发布绿」指的是**同一件事**，不必在两处维护两套
+语义，也省掉一次「为什么本地绿、发布红」的争论。`tsrs` 领先 GA 一个版本（它只会比 GA 多报，
+不会少报；GA 独有的诊断它可能没有）⇒ 这道缺口由 `pnpm build` 里的 `tsc --noEmit` 兜住，
+发布构建仍会抓住 GA 独有的诊断。
+
+`tsrs` 没有 win32 二进制：该 job 跑不到它时**回退到 `tsc` 并明确打印原因**（绝不静默）
+⇒ 门禁背后**始终有编译器**。
 
 单列一个 job 的理由是它与 target 无关：一条 runner 就能覆盖全部 4 个
 `(platform, target)` 组合，放在预热里则要么重复 4 次，要么落在最慢那条的关键路径上。

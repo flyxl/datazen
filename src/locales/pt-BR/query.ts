@@ -1,6 +1,15 @@
 /** Auto-split domain: query (pt-BR) */
 const pack = {
   'tableView.loadingData': 'Carregando dados da tabela…',
+  'tableView.a11y.gridLabel': 'Grade de dados',
+  'tableView.shortcut.hint': 'As setas movem, Shift+seta estende a seleção, Enter edita',
+  'tableView.shortcut.enterEdit': 'Enter ou F2 edita a célula ativa',
+  'tableView.shortcut.extendSelection': 'Shift+setas estendem a seleção',
+  'tableView.shortcut.moveByPage': 'PageUp/PageDown avançam uma tela',
+  'tableView.shortcut.moveToEdge':
+    'Home/End vão ao início ou ao fim da linha; Cmd+Home/End, ao início ou ao fim da grade',
+  'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A seleciona todas as linhas',
+  'tableView.shortcut.tabLeavesGrid': 'Tab sai da grade',
   'query.execute': 'Executar',
   'query.run': 'Executar',
   'query.runSelection': 'Executar seleção',
@@ -21,6 +30,12 @@ const pack = {
   'query.cancelFailed': 'Não foi possível cancelar a consulta; ela ainda pode estar em execução',
   'query.streamingRows': '{n} linhas carregadas…',
   'query.result': 'Resultado',
+  'query.artifactExport.action': 'Exportar resultado publicado (.jsonl)',
+  'query.artifactExport.numberedAction': 'Exportar resultado publicado {index} (.jsonl)',
+  'query.artifactExport.partial': 'Resultado parcial; confirmação necessária',
+  'query.artifactExport.saving': 'Salvando o resultado publicado…',
+  'query.artifactExport.saved': 'Resultado publicado salvo',
+  'query.artifactExport.failed': 'Não foi possível exportar o resultado publicado',
   'query.shortcutHint': 'Pressione ⌘+Enter para executar',
   'query.historyTitle': 'Histórico de consultas',
   'query.noHistory': 'Ainda não há histórico',
@@ -71,6 +86,28 @@ const pack = {
   'query.tab': 'Consulta {n}',
   'query.notConnected': 'Não conectado',
   'query.cancelled': 'Consulta cancelada',
+  'query.session.closeBlocked':
+    'Não foi possível fechar a sessão. Resolva a transação ou a execução em andamento e feche-a novamente.',
+  'query.session.transactionSwitchConfirm':
+    'Há uma transação ativa. Reverter e trocar de banco de dados?',
+  'query.session.revisionConflict':
+    'O contexto mudou desde que você começou. Recarregue o estado mais recente e tente novamente.',
+  'query.session.switchFailed': 'Não foi possível trocar de banco de dados: {message}',
+  'query.session.closeTabActiveExecution':
+    'Esta aba tem uma consulta em execução. Fechar mesmo assim?',
+  'query.session.closeTabActiveExecutionTitle': 'Fechar uma aba com uma consulta em execução?',
+  'query.session.closeTabActiveExecutionConfirm': 'Parar e fechar',
+  'query.session.closeTabActiveExecutionMany':
+    'Esta aba tem {count} consultas em execução. Fechar mesmo assim?',
+  'query.resultEditRequiresRefresh':
+    'Execute a consulta novamente antes de editar este resultado retido.',
+  'query.session.openNew': 'Abrir nova sessão',
+  'query.session.disconnected': 'A conexão foi perdida. Reabra uma sessão para continuar.',
+  'query.session.executionFailed': 'A consulta falhou: {message}',
+  'query.session.editorQuotaExceeded':
+    'O limite de sessões de editor conectadas simultaneamente para esta conexão foi atingido. Feche as outras abas de consulta que a usam; se nenhuma estiver aberta, reconecte a conexão ou reinicie o DataZen para liberar sessões de editor obsoletas.',
+  'query.session.cancelledRetry': 'A consulta foi cancelada. Você pode executá-la novamente.',
+  'query.session.recovered': 'Conexão recuperada; resultados parciais estão disponíveis.',
   'query.explainError': 'Explicar',
   'query.fixSql': 'Corrigir SQL',
   'query.retry': 'Tentar novamente',
@@ -120,6 +157,13 @@ const pack = {
   'tableData.pendingChanges': '{count} alterações não salvas',
   'tableData.pendingUpdates': '{count} atualizações',
   'tableData.pendingDeletes': '{count} exclusões',
+  'tableData.pendingCells': '{count} células alteradas',
+  'tableData.pendingOffPage': 'Mais {count} células alteradas em outras páginas',
+  'tableData.dirtyCellAria': 'Célula alterada: {original} → {next}',
+  'tableData.dirtyValueNull': 'Valor nulo',
+  'tableData.dirtyValueEmpty': '(string vazio)',
+  'tableData.dirtyDeletedRow': 'Marcada para exclusão',
+  'tableData.restoreRow': 'Restaurar esta linha',
   'tableData.safeModeEditDisabled': 'O Modo seguro impede a edição de células da tabela.',
   'tableData.preview': 'Pré-visualizar',
   'tableData.commit': 'Confirmar',
@@ -150,6 +194,53 @@ const pack = {
   'dataTable.empty': 'Nenhuma linha para exibir',
   'dataTable.emptyHint': 'Esta consulta não retornou nenhuma linha.',
   'dataTable.tableLabel': 'Tabela de dados',
+  'dataTable.selectionSummary': '{rows} linhas × {cols} colunas',
+  // ── Clipboard: copy / paste (DB-03) ──────────────────────────────────
+  'dataTable.copySelectedCells': 'Copiar células selecionadas',
+  'dataTable.copySelectedCellsAs': 'Copiar células selecionadas como…',
+  'dataTable.copySelectedCellsAsTsv': 'Copiar como TSV',
+  'dataTable.copySelectedCellsAsTsvWithHeader': 'Copiar como TSV com cabeçalho',
+  'dataTable.copySelectedCellsAsCsv': 'Copiar como CSV',
+  'dataTable.copySelectedCellsAsJson': 'Copiar como JSON (matriz 2D)',
+  'dataTable.pasteSelectedCells': 'Colar nas células selecionadas',
+  'dataTable.pasteRows': 'Colar linhas',
+  'dataTable.copyFailed': 'Não foi possível copiar; a área de transferência não está disponível.',
+  'dataTable.pasteReadFailed':
+    'Não foi possível ler a área de transferência. Pressione {shortcut} novamente ou permita o acesso à área de transferência.',
+  'dataTable.pasteEmpty': 'A área de transferência está vazia — não há nada para colar.',
+  'dataTable.pasteTooLarge':
+    'A área de transferência contém {cells} células; a colagem é limitada a {maxCells}. Nada foi colado.',
+  'dataTable.pasteRaggedRow':
+    'A linha {row} tem {count} campo(s), enquanto a primeira linha tem {expected}; corrija a origem e copie novamente. Nada foi colado.',
+  'dataTable.pasteUnclosedQuote':
+    'Um valor entre aspas não está fechado; ele foi lido como uma única célula.',
+  'dataTable.pasteClippedToPage':
+    '{count} célula(s) foram ignoradas porque a colagem sairia desta página. Vá para a próxima página e cole o restante lá.',
+  'dataTable.pasteNoWritableColumn': 'Nenhuma coluna da seleção aceita escrita.',
+  'dataTable.readOnlyPasteDisabled':
+    'Não é possível colar células: conexão ou driver é somente leitura.',
+  'dataTable.pasteReadOnlyColumn':
+    '{count} coluna(s) não aceitam escrita e foram ignoradas: {columns}',
+  'dataTable.pasteNotAllowedEmpty':
+    'A linha {row} tem um valor vazio em {column}, que é NOT NULL. Essa célula foi ignorada.',
+  'dataTable.pasteIdentityChanged':
+    'Linha {row}, coluna {column}: a gravação tornaria a identidade da linha ambígua. Essa célula foi ignorada.',
+  'dataTable.pasteNoRowIdentity':
+    'Esta tabela não tem chave primária, então os valores colados não podem ser associados a linhas.',
+  'dataTable.pasteDroppedColumns':
+    '{count} coluna(s) de origem foram descartadas (essa coluna não existe aqui): {names}',
+  'dataTable.pasteCrossTableTitle': 'Colar em outra tabela?',
+  'dataTable.pasteCrossTableNotice': 'Colado de outra tabela em {table}',
+  'dataTable.pasteCrossTableBody':
+    'A área de transferência foi copiada de outra tabela. As colunas serão associadas por nome a {target} ({matched} de {total} associadas); colunas sem correspondência são descartadas.',
+  'dataTable.pasteUnknownSourceBody':
+    'A área de transferência não foi copiada desta tabela, então as colunas são associadas a {target} por posição: {total} coluna(s).',
+  'dataTable.pasteConfirmTitle': 'Colar {cells} células?',
+  'dataTable.pasteConfirmMessage':
+    'Isso grava {rows} linha(s) × {cols} coluna(s) e sobrescreve {overwritten} alteração(ões) pendente(s). Nada é efetivado até você confirmar.',
+  'dataTable.pasteToSelectedCells': 'Colar',
+  'dataTable.pasteResult': '{count} célula(s) colada(s) · {skipped} ignorada(s)',
+  'dataTable.pasteOverwrotePending': '{count} alteração(ões) pendente(s) sobrescrita(s)',
   'detail.title': 'Detalhes',
   'detail.show': 'Mostrar painel de detalhes',
   'detail.hide': 'Ocultar painel de detalhes',
@@ -167,6 +258,46 @@ const pack = {
   'pagination.next': 'Próximo',
   'pagination.page': 'Página',
   'pagination.pageOf': '',
+  'pagination.rowCountEstimated': 'aprox. {count}',
+  'pagination.rowCountUnknown': 'desconhecido',
+  'pagination.rowsUnknown': 'Número de linhas indisponível',
+  'pagination.estimateTooltip':
+    'Número de linhas estimado — o valor real pode ser diferente. Use "Contar" para obter o valor exato.',
+  'pagination.countExact': 'Contar',
+  'pagination.counting': 'Contando…',
+  'pagination.pageOnly': 'Página {page}',
+  'pagination.unstablePaging':
+    'Nenhuma ordenação definida — as linhas podem se repetir ou ser omitidas entre as páginas.',
+  'pagination.estimatedLessThanActual':
+    'Esta página está vazia. O número real de linhas pode ser menor que a estimativa — use "Contar" para verificar.',
+  'defaultSort.noPrimaryKey': 'Sem chave primária — a ordenação usa a primeira coluna.',
+  'defaultSort.custom': 'Ordem personalizada',
+  'defaultSort.panelLabel': 'Ordenar',
+  'defaultSort.inherit': 'Seguir configuração',
+  'defaultSort.primaryKeyAsc': 'Chave primária ↑',
+  'defaultSort.primaryKeyDesc': 'Chave primária ↓',
+  'defaultSort.primaryKeyDescUnavailable':
+    'A ordenação decrescente por chave primária composta ainda não é suportada.',
+  'defaultSort.none': 'Não ordenar',
+  'pagination.estimateUnavailable': 'Este banco de dados não consegue estimar o número de linhas.',
+  'pagination.mode.keyset': 'Paginação rápida',
+  'pagination.mode.offset': 'Paginação por offset',
+  'pagination.hint.driverUnsupported':
+    'Este banco de dados não oferece suporte à paginação rápida.',
+  'pagination.hint.noStableOrder':
+    'Esta tabela não tem chave primária, então as páginas não podem ser lidas em uma ordem estável.',
+  'pagination.hint.nullableKeyColumn':
+    'A paginação rápida não está disponível ao ordenar por uma coluna que pode ser NULL.',
+  'pagination.hint.nullBoundary':
+    'A chave de ordenação desta linha é NULL, então a paginação rápida recomeçou de uma posição exata.',
+  'pagination.hint.predicateUnavailable':
+    'A paginação rápida não está disponível para a ordenação atual.',
+  'pagination.hint.noPaginationClause': 'Este banco de dados não consegue paginar esta consulta.',
+  'pagination.hint.staleCursor':
+    'A ordenação ou o filtro mudou; a paginação recomeçou da primeira página.',
+  'pagination.hint.jumpReanchored': 'A paginação rápida recomeçou da página {page}.',
+  'pagination.hint.drift':
+    'As linhas mudaram durante a paginação; a contagem de linhas foi atualizada.',
   'filter.filter': 'Filtro',
   'filter.remove': 'Remover filtro',
   'filter.clear': 'Limpar',
@@ -186,13 +317,63 @@ const pack = {
   'filter.lt': '<',
   'filter.gte': '≥',
   'filter.lte': '≤',
-  'filter.like': 'contém',
+  'filter.like': 'corresponde ao padrão',
   'filter.in': 'em',
   'filter.isNull': 'é NULL',
   'filter.isNotNull': 'não é NULL',
+  'filter.notIn': 'não em',
+  'filter.between': 'entre',
+  'filter.notBetween': 'não entre',
+  'filter.contains': 'inclui',
+  'filter.notContains': 'não inclui',
+  'filter.startsWith': 'começa com',
+  'filter.endsWith': 'termina com',
+  'filter.isEmpty': 'é string vazio',
+  'filter.isNotEmpty': 'não é string vazio',
+  'filter.regex': 'corresponde à regex',
+  'filter.notRegex': 'não corresponde à regex',
+  'filter.jsonContains': 'JSON contém',
   'filter.quickPlaceholder': "Filtro rápido: status = 'open'",
   'filter.invalidExpression': 'Filtro não aplicado: {error}',
-  'filter.mixedLogic': 'Filtro não aplicado: use um único operador lógico ou o editor de Filtro.',
+  'filter.nestedLogic':
+    'Filtro não aplicado: esta expressão agrupa AND e OR entre parênteses. Escreva as condições uma após a outra ou edite-as no editor de filtros.',
+  'filter.incomplete': 'Precisa de um valor, não aplicado',
+  'filter.errorIncomplete':
+    'Filtro não aplicado: uma condição ainda não tem valor (coluna "{column}")',
+  'filter.errorUnsupportedOperator':
+    'Este banco de dados não oferece suporte ao filtro "{operator}". Tente {alternatives} ou outro filtro compatível.',
+  'filter.tokensPlaceholder': 'Digite um valor e pressione Enter',
+  'filter.tokenRemove': 'Remover valor',
+  'filter.betweenInverted':
+    'O limite inferior é maior que o superior — isso não retorna nenhuma linha',
+  'filter.connectorReset': 'Usar {logic} para tudo',
+  'filter.globalLogicDisabledHint':
+    'Está em uso uma lógica por condição — limpe as configurações por condição para alterar a lógica de todas',
+  'filter.connectorInherited': 'Usando a lógica de todas as condições',
+  'filter.likeCaseInsensitiveHint':
+    'LIKE não diferencia maiúsculas de minúsculas na ordenação padrão deste banco de dados',
+  'filter.view.savedViews': 'Visualizações salvas',
+  'filter.view.save': 'Salvar',
+  'filter.view.saveAs': 'Salvar como…',
+  'filter.view.rename': 'Renomear',
+  'filter.view.delete': 'Excluir',
+  'filter.view.deleteConfirm': 'Excluir a visualização salva "{name}"?',
+  'filter.view.nameLabel': 'Nome da visualização',
+  'filter.view.namePlaceholder': 'ex.: Pedidos abertos desta semana',
+  'filter.view.empty': 'Nenhuma visualização salva para esta tabela',
+  'filter.view.nameExists': 'Já existe uma visualização com este nome para esta tabela',
+  'filter.view.overwrite': 'Sobrescrever',
+  'filter.view.setDefault': 'Definir como padrão',
+  'filter.view.defaultBadge': 'Padrão',
+  'filter.view.draftNotAppliedHint':
+    'Salvando os filtros aplicados — você ainda tem alterações não aplicadas',
+  'filter.view.applyAnyway': 'Aplicar primeiro',
+  'filter.view.export': 'Exportar…',
+  'filter.view.import': 'Importar…',
+  'filter.view.importDone': '{count} visualizações importadas',
+  'filter.view.importFailed': 'Falha na importação: {error}',
+  'filter.view.missingColumn': 'A coluna "{column}" não existe mais nesta tabela',
+  'filter.view.errorNameExists': 'Já existe uma visualização salva com este nome',
   'import.description': 'Importe dados de um arquivo CSV ou JSON',
   'import.selectFile': 'Selecione o arquivo',
   'import.targetTable': 'Tabela de destino',
@@ -365,6 +546,37 @@ const pack = {
   'tableData.selectedCount': '{selected}/{total} selecionado(s)',
   'tableData.noColumnsFound': 'Nenhum campo correspondente encontrado',
   'tableData.allColumnsHidden': 'Todos os campos estão ocultos',
+  'tableData.shortTxDefault': 'Transação curta por salvamento',
+  'tableData.inManualTx': 'Transação manual aberta',
+  'tableData.txManualHint':
+    'As confirmações entram na transação manual aberta até que ela termine.',
+  'tableData.beginTx': 'Iniciar transação',
+  'tableData.commitTx': 'Confirmar transação',
+  'tableData.rollbackTx': 'Reverter transação',
+  'tableData.txBeginFailed': 'Falha ao iniciar a transação',
+  'tableData.txCommitFailed': 'Falha ao confirmar a transação',
+  'tableData.txRollbackFailed': 'Falha ao reverter a transação',
+  'tableData.errorPendingHint':
+    'Há alterações não salvas em espera. Tente novamente, ajuste o filtro ou reverta antes de fechar esta aba.',
+  'tableData.insertRow': 'Inserir linha',
+  'tableData.insertRowHint': 'Inserir linha ({shortcut})',
+  'tableData.duplicateDraftRow': 'Duplicar linha',
+  'tableData.removeDraftRow': 'Descartar linha',
+  'tableData.draftRowBadge': 'NOVO',
+  'tableData.draftRowUnsaved': 'Nova linha (ainda não salva)',
+  'tableData.insertDefault': 'Valor padrão',
+  'tableData.insertSetNull': 'Definir NULL',
+  'tableData.pendingInserts': '{count} inserção(ões)',
+  'tableData.confirmCommitWithInserts':
+    'Confirmar {inserts} inserções, {updates} atualizações e {deletes} exclusões?',
+  'tableData.insertFailed': 'Falha ao inserir linhas',
+  'tableData.insertNoWritableColumn': 'Preencha ao menos uma coluna: {columns} exige um valor.',
+  'tableData.insertUnknownColumn': 'A coluna {column} não faz parte desta tabela.',
+  'tableData.insertReturningUnavailable':
+    'Não foi possível localizar automaticamente a chave primária da nova linha; a página foi recarregada.',
+  'tableData.insertSchemaUnavailable':
+    'Os metadados das colunas não estão disponíveis; o banco de dados validará esta linha.',
+  'tableData.highlightNewRow': 'Nova linha',
   'dataTable.copyColumnData': 'Copiar dados da coluna',
   'query.addToDashboard': 'Adicionar ao Painel',
   'query.dashboard.defaultName': 'Novo Painel',
@@ -396,5 +608,80 @@ const pack = {
   'query.objectTree.tables': 'Tabelas',
   'query.objectTree.views': 'Visualizações',
   'query.objectTree.noObjects': 'Nenhum objeto',
+  'cellEditor.setValue': 'Definir valor',
+  'cellEditor.setEmpty': 'Definir string vazia',
+  'cellEditor.setDefault': 'Usar o valor padrão da coluna',
+  'cellEditor.revertCell': 'Reverter esta célula',
+  'cellEditor.loadCandidates': 'Carregar valores candidatos',
+  'cellEditor.loadingCandidates': 'Carregando valores candidatos…',
+  'cellEditor.candidatesEmpty': 'Nenhum valor candidato encontrado',
+  'cellEditor.candidatesFailed': 'Falha ao carregar os valores candidatos',
+  'cellEditor.candidatesTruncated': 'Exibindo os primeiros {count} valores distintos',
+  'cellEditor.commit': 'Aplicar',
+  'cellEditor.formatJson': 'Formatar JSON',
+  'cellEditor.minifyJson': 'Compactar JSON',
+  'cellEditor.ariaLabel': 'Editar o valor da célula',
+  'cellEditor.invalidNumber': 'Insira um número válido',
+  'cellEditor.invalidInteger': 'Insira um número inteiro',
+  'cellEditor.invalidBoolean': 'Insira true ou false',
+  'cellEditor.invalidDate': 'Insira uma data válida (YYYY-MM-DD)',
+  'cellEditor.invalidTime': 'Insira um horário válido (HH:MM:SS)',
+  'cellEditor.invalidDateTime': 'Insira uma data e hora válidas (YYYY-MM-DDTHH:MM:SS)',
+  'cellEditor.invalidJson': 'JSON inválido — corrija-o antes de aplicar',
+  'cellEditor.invalidUuid': 'Insira um UUID válido',
+  'cellEditor.notNull': 'Esta coluna não permite NULL',
+  'cellEditor.valueTooLarge': 'Este valor é grande demais para ser editado na grade de dados',
+  'cellEditor.binaryNotEditable': 'Valores binários não podem ser editados na grade de dados',
+  'cellEditor.discardedUncommitted':
+    'Sua edição foi descartada porque a linha não está mais sendo exibida',
+  'cellEditor.readOnlyTitle': 'A célula é somente leitura',
+  'cellEditor.readOnly.connection':
+    'Esta conexão é somente leitura, portanto as células não podem ser editadas.',
+  'cellEditor.readOnly.driverCapability':
+    'Este driver de banco de dados não oferece suporte a gravação.',
+  'cellEditor.readOnly.view':
+    'Visualizações e visualizações materializadas são somente leitura na grade de dados.',
+  'cellEditor.readOnly.noPrimaryKey':
+    'Esta tabela não possui chave primária, portanto a linha não pode ser identificada para uma atualização.',
+  'cellEditor.readOnly.ambiguousRowIdentity':
+    'Esta linha não pode ser identificada de forma única (a chave é NULL ou está duplicada).',
+  'cellEditor.readOnly.autoIncrement':
+    'Colunas com autoincremento não podem ser editadas no local.',
+  'cellEditor.readOnly.generated': 'Colunas geradas não podem ser editadas.',
+  'cellEditor.readOnly.typeNotEditable':
+    'O tipo desta coluna não pode ser editado no local neste banco de dados.',
+  'cellEditor.readOnly.binaryColumn': 'Colunas binárias não podem ser editadas no local.',
+  'cellEditor.readOnly.largeValue': 'Este valor é grande demais para ser editado no local.',
+  'query.gridReadOnly.unknownOrigin':
+    'Não é possível determinar a origem deste resultado, portanto ele é somente leitura.',
+  'query.gridReadOnly.ambiguousOrigin':
+    'O driver reportou origens de coluna inconsistentes para este resultado.',
+  'query.gridReadOnly.multiTable':
+    'Este resultado une várias tabelas; linhas individuais não podem ser editadas.',
+  'query.gridReadOnly.aggregate':
+    'Este resultado é uma agregação; linhas individuais não podem ser editadas.',
+  'query.gridReadOnly.distinct':
+    'Este resultado está sem duplicidades; as linhas não podem ser correspondidas às linhas da tabela.',
+  'query.gridReadOnly.setOperation':
+    'Este resultado é uma operação de conjunto (UNION); as linhas não podem ser editadas.',
+  'query.gridReadOnly.derivedSource':
+    'Este resultado vem de uma subconsulta; as linhas não podem ser correspondidas às linhas da tabela.',
+  'query.gridReadOnly.view':
+    'Este resultado vem de uma visualização; a edição de visualizações não é suportada.',
+  'query.gridReadOnly.noPrimaryKey':
+    'A tabela de origem não tem chave primária, portanto as linhas não podem ser identificadas.',
+  'query.gridReadOnly.keyNotSelected':
+    'As colunas da chave primária não estão todas presentes neste resultado.',
+  'query.gridReadOnly.sessionReadOnly': 'A conexão atual é somente leitura.',
+  'query.gridReadOnly.keyValueNull':
+    'Esta linha tem um valor de chave primária NULL e não pode ser localizada.',
+  'query.gridReadOnly.duplicateIdentity':
+    'Esta página contém identidades de linha duplicadas; a edição está desabilitada.',
+  'query.gridReadOnly.rowNotFound': 'Esta linha não faz mais parte do resultado.',
+  'query.gridReadOnly.tooltip': 'Somente leitura: {reason}',
+  'query.gridEdit.editHint': 'Clique duas vezes para editar esta célula',
+  'query.gridEdit.resolving': 'Verificando se este resultado pode ser editado…',
+  'query.gridEdit.submitting': 'Salvando alteração…',
+  'query.gridEdit.empty': 'Este resultado não tem linhas.',
 } as const;
 export default pack;

@@ -1,5 +1,7 @@
 import type { ColumnSchema, Value } from '../../types';
 import type { TableChangeContext } from '../../lib/tableChanges';
+import { EMPTY_GRID_SELECTION } from './gridSelection';
+import { emptyKeysetPagingState } from '../../lib/keysetPaging';
 import type { TableState } from './types';
 
 export function rowsToRecords(
@@ -13,10 +15,6 @@ export function rowsToRecords(
     });
     return record;
   });
-}
-
-export function editKey(rowIndex: number, columnName: string) {
-  return `${rowIndex}:${columnName}`;
 }
 
 export function toCellValue(val: unknown): Value | null {
@@ -40,22 +38,34 @@ export function emptyTableState(context: TableChangeContext | null = null): Tabl
     columns: [],
     rows: [],
     totalRows: 0,
+    // A panel that has never read a row has no count to doubt yet: the
+    // first response says how much of it may be trusted.
+    totalRowsKind: 'exact',
+    defaultOrderOverride: 'inherit',
     page: 0,
     pageSize: 50,
+    // A panel that has never paged by seek reads by offset — which is what
+    // every read did before the keyset contract existed.
+    keyset: emptyKeysetPagingState,
+    driftRecountPage: null,
     filters: [],
     filterLogic: 'and',
     draftFilters: [],
     draftFilterLogic: 'and',
     filterPanelOpen: false,
     sorts: [],
-    editBuffer: new Map(),
     pendingChanges: new Map(),
+    draftInserts: new Map(),
+    draftInsertOrder: [],
+    highlightedNewRowKey: null,
     rowIdentityAnchors: new Map(),
     previewPlan: null,
     pendingStatus: 'idle',
     selectedRows: new Set(),
     lastSelectedIndex: null,
+    gridSelection: EMPTY_GRID_SELECTION,
     editingCell: null,
+    enumCandidates: new Map(),
     detailRowIndex: null,
     loading: false,
     requestRevision: 0,

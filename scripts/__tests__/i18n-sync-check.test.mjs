@@ -17,7 +17,9 @@ import {
   extractHostKeysFromSources,
   extractPackKeys,
   findDriverLocalePacks,
+  findStaleKeys,
   inspectDriverLocalePack,
+  isSymbolOnlyValue,
 } from '../i18n-sync-check.mjs';
 
 /** Dictionary source in the shape driver packs actually ship. */
@@ -40,6 +42,72 @@ describe('extractHostKeysFromSources', () => {
         "const sync = {\n  'sync.compare': 'Compare',\n};",
       ]),
     ).toEqual({ 'common.save': 'Save', 'sync.compare': 'Compare' });
+  });
+});
+
+describe('i18n-sync-check stale decision', () => {
+  /**
+   * The stale decision under test: one changed English key, one locale.
+   * @param {string} enValue
+   * @param {string} localeValue
+   */
+  const staleFor = (enValue, localeValue) =>
+    findStaleKeys({ k: enValue }, { k: localeValue }, new Set(['k']));
+
+  it('does not report an identical purely symbolic translation as stale', () => {
+    // `≈ {count}` carries no word, so it must not force the translator to
+    // invent one (`ca. {count}` / `约 {count}` are worse than the original).
+    expect(staleFor('≈ {count}', '≈ {count}')).toEqual([]);
+  });
+
+  it('still reports an identical real word as stale', () => {
+    expect(staleFor('Sort', 'Sort')).toEqual(['k']);
+  });
+
+  it('treats a bare symbol as symbolic', () => {
+    expect(staleFor('—', '—')).toEqual([]);
+  });
+
+  it('keeps a symbol mixed with a word stale', () => {
+    expect(staleFor('— unmapped —', '— unmapped —')).toEqual(['k']);
+  });
+
+  it('keeps an empty or whitespace-only English value stale', () => {
+    expect(staleFor('', '')).toEqual(['k']);
+    expect(staleFor('   ', '   ')).toEqual(['k']);
+  });
+
+  it('reports a genuinely translated value as not stale', () => {
+    expect(staleFor('≈ {count}', 'ca. {count}')).toEqual([]);
+    expect(staleFor('Sort', 'Sortieren')).toEqual([]);
+  });
+
+  it('ignores keys the locale does not have', () => {
+    expect(findStaleKeys({ k: 'Sort' }, {}, new Set(['k']))).toEqual([]);
+  });
+
+  describe('isSymbolOnlyValue', () => {
+    it('accepts symbols with and without placeholders', () => {
+      expect(isSymbolOnlyValue('≈ {count}')).toBe(true);
+      expect(isSymbolOnlyValue('—')).toBe(true);
+      expect(isSymbolOnlyValue('...')).toBe(true);
+    });
+
+    it('rejects a value that is nothing but a placeholder', () => {
+      expect(isSymbolOnlyValue('{count}')).toBe(false);
+    });
+
+    it('rejects values that contain a word or a number', () => {
+      expect(isSymbolOnlyValue('Sort')).toBe(false);
+      expect(isSymbolOnlyValue('— unmapped —')).toBe(false);
+      expect(isSymbolOnlyValue('约 {count}')).toBe(false);
+      expect(isSymbolOnlyValue('100')).toBe(false);
+    });
+
+    it('rejects an empty or whitespace-only value', () => {
+      expect(isSymbolOnlyValue('')).toBe(false);
+      expect(isSymbolOnlyValue('  \t ')).toBe(false);
+    });
   });
 });
 
@@ -252,7 +320,7 @@ describe('i18n-sync-check driver locale packs', () => {
       });
       expect(report.exitCode).toBe(1);
       expect(report.lines[0].trim()).toBe(
-        'Summary: 3 missing key(s), 0 stale translation(s) across 8 host locales; 0 driver pack issue(s) across 2 driver locale pack(s).',
+        'Summary: 3 missing key(s), 0 stale translation(s) across 9 host locales; 0 driver pack issue(s) across 2 driver locale pack(s).',
       );
     });
 

@@ -1,12 +1,44 @@
 import { describe, expect, it } from 'vitest';
+import type { Value } from '../../types';
 import {
   buildRowIdentity,
+  columnWritability,
   duplicateRowIdentityKeys,
+  draftWriteColumns,
   isCompleteTableChangeContext,
   rowIdentityKey,
   tableChangeContextKey,
   valuesEqual,
+  type PendingRowChange,
+  type RowChangePlan,
 } from '../tableChanges';
+
+/**
+ * `true` only when the key `K` of `T` is **optional**.
+ *
+ * The parity assertion in `packages/backend-client/__tests__/tableData.test.ts`
+ * compares the key **sets**, not their optionality: a field that is optional
+ * on one side and required on the other has the same keys and stays assignable
+ * in both directions. That gap matters here — the host omits `insertMarked`
+ * when it is false, so a mirror that declared the flag as required would
+ * claim a key the wire does not carry, and no other assertion would notice.
+ */
+type IsOptional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
+
+/** Fails to compile when the checked condition is not `true`. */
+type Assert<T extends true> = T;
+
+/**
+ * The insert flag stays optional in the **desktop** mirror.
+ *
+ * Fail-closed: making the flag required turns this into `false` and the
+ * program red (the type assertion, not a runtime one — the runtime half of
+ * the property is pinned by `pendingChangesForWire`, which is exercised in
+ * `src/stores/tableData/__tests__/`).
+ */
+export type InsertMarkedStaysOptional = Assert<
+  IsOptional<PendingRowChange, 'insertMarked'>
+>;
 
 const primaryKey = (name: string) => ({
   name,
@@ -79,5 +111,86 @@ describe('tableChanges', () => {
     }
     expect(isCompleteTableChangeContext({ ...context, database: null })).toBe(false);
     expect(isCompleteTableChangeContext({ ...context, connectionId: null })).toBe(false);
+  });
+
+  it('lists the written columns of a draft in a stable, sorted order', () => {
+    // The key membership is the write intent: a present key is written, an
+    // absent key is not written at all.
+    expect(draftWriteColumns({ name: 'ab', note: null })).toEqual(['name', 'note']);
+    // The order is the column order of the statement, so it must not depend
+    // on the order the user typed the columns in.
+    expect(draftWriteColumns({ zeta: 'z', alpha: 'a', mid: 'm' })).toEqual([
+      'alpha',
+      'mid',
+      'zeta',
+    ]);
+    // Falsy values are values, not "not filled".
+    expect(draftWriteColumns({ n: 0, b: false, s: '' })).toEqual(['b', 'n', 's']);
+    // A cleared cell loses its key and therefore leaves the column list.
+    const values: Record<string, Value | null> = { name: 'ab' };
+    delete values.name;
+    expect(draftWriteColumns(values)).toEqual([]);
+  });
+
+  it('requires the insert list on a plan, because the host always sends it', () => {
+    // Fail-closed: the host declares `inserts` with `#[serde(default)]` — a
+    // tolerance for *deserializing* a plan that does not carry the field — and
+    // serializes it unconditionally. A mirror that made the field optional
+    // would describe a shape the host never produces, so the requirement is
+    // pinned here: making the field optional again turns the directive below
+    // into an unused one (TS2578) and the typecheck goes red.
+    const plan: RowChangePlan = {
+      planId: 'plan-1',
+      fingerprint: 'fingerprint-1',
+      table: {
+        connectionId: 'connection-1',
+        dbSessionId: 'session-1',
+        driverType: 'postgresql',
+        database: 'app',
+        schema: 'public',
+        table: 'users',
+      },
+      updates: [],
+      deletes: [],
+      warnings: [],
+      // @ts-expect-error `inserts` is required: the host always serializes it.
+      inserts: undefined,
+    };
+
+    // A plan without inserts carries an **empty list**, not a missing key.
+    const empty: RowChangePlan = { ...plan, inserts: [] };
+    expect(JSON.parse(JSON.stringify(empty)).inserts).toEqual([]);
+  });
+});
+
+describe('columnWritability (DB-03 paste)', () => {
+  it('skips an auto-increment column', () => {
+    expect(
+      columnWritability({ name: 'id', dataType: 'integer', nullable: false, isAutoIncrement: true }),
+    ).toEqual({ writable: false, reason: 'auto-increment' });
+  });
+
+  it('rejects a column the record does not have', () => {
+    expect(columnWritability(undefined)).toEqual({ writable: false, reason: 'unknown-column' });
+  });
+
+  it('allows a primary key: a paste may rewrite a row identity', () => {
+    // The planner still refuses the *ambiguous* outcome (`grid.paste.identityChanged`), but
+    // the writability check itself must not block the PK — copying rows between tables
+    // depends on writing it.
+    expect(
+      columnWritability({ name: 'id', dataType: 'integer', nullable: false, isPrimaryKey: true }),
+    ).toEqual({ writable: true, reason: null });
+  });
+
+  it('allows an ordinary nullable and a NOT NULL column alike', () => {
+    expect(columnWritability({ name: 'a', dataType: 'text', nullable: true })).toEqual({
+      writable: true,
+      reason: null,
+    });
+    expect(columnWritability({ name: 'b', dataType: 'text', nullable: false })).toEqual({
+      writable: true,
+      reason: null,
+    });
   });
 });

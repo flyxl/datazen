@@ -10,8 +10,9 @@
 //! is the default body of the trait method that carries the same name.
 
 use super::DatabaseDriver;
+use crate::dialect::LegacySqlDialect;
 use crate::sql_target::SqlTarget;
-use crate::types::{DriverError, PaginationSyntax, SqlLiteralDialect, Value};
+use crate::types::{BoundSqlStatement, DriverError, PaginationSyntax, SqlLiteralDialect, Value};
 
 /// Lowercase hexadecimal encoding used by the default literal formatter.
 ///
@@ -156,6 +157,115 @@ pub(crate) fn split_restore_sql<D: DatabaseDriver + ?Sized>(driver: &D, sql: &st
     out
 }
 
+// ── The row-write statement builders ─────────────────────────────────
+//
+// These are the default bodies of the trait methods with the same names.
+// They live here because they are SQL text: the rules (which dialect quotes
+// how, how many parameters a statement may bind, when a driver may not write
+// at all) are one story, and the trait declaration stays a one-liner.
+//
+// The bodies are unchanged by living here — they are the same statements the
+// trait produced before, byte for byte.
+
+/// The legacy inline-value `UPDATE`.
+pub(crate) fn build_update_sql<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    set_columns: &[(&str, Option<Value>)],
+    pk_columns: &[(&str, Option<Value>)],
+) -> String {
+    crate::sql_builder::build_update_sql(
+        &LegacySqlDialect::new(driver),
+        table,
+        set_columns,
+        pk_columns,
+    )
+}
+
+/// The legacy inline-value `DELETE`.
+pub(crate) fn build_delete_sql<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    pk_columns: &[(&str, Option<Value>)],
+) -> String {
+    crate::sql_builder::build_delete_sql(&LegacySqlDialect::new(driver), table, pk_columns)
+}
+
+/// The parameterized `UPDATE`: values stay out of the SQL text.
+pub(crate) fn build_update_statement<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    set_columns: &[(&str, Option<Value>)],
+    pk_columns: &[(&str, Option<Value>)],
+) -> Result<BoundSqlStatement, DriverError> {
+    if !driver.supports_bound_writes() {
+        return Err(DriverError::Unsupported(
+            "parameterized row writes are not supported".into(),
+        ));
+    }
+    crate::sql_builder::build_update_statement(
+        &LegacySqlDialect::new(driver),
+        driver.max_bound_parameters(),
+        table,
+        set_columns,
+        pk_columns,
+    )
+}
+
+/// The parameterized `DELETE`: values stay out of the SQL text.
+pub(crate) fn build_delete_statement<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    pk_columns: &[(&str, Option<Value>)],
+) -> Result<BoundSqlStatement, DriverError> {
+    if !driver.supports_bound_writes() {
+        return Err(DriverError::Unsupported(
+            "parameterized row writes are not supported".into(),
+        ));
+    }
+    crate::sql_builder::build_delete_statement(
+        &LegacySqlDialect::new(driver),
+        driver.max_bound_parameters(),
+        table,
+        pk_columns,
+    )
+}
+
+/// The parameterized `INSERT`: values stay out of the SQL text.
+pub(crate) fn build_insert_statement<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    values: &[(&str, Option<Value>)],
+) -> Result<BoundSqlStatement, DriverError> {
+    if !driver.supports_bound_writes() {
+        return Err(DriverError::Unsupported(
+            "parameterized row writes are not supported".into(),
+        ));
+    }
+    crate::sql_builder::build_insert_statement(
+        &LegacySqlDialect::new(driver),
+        driver.max_bound_parameters(),
+        table,
+        values,
+    )
+}
+
+/// The dialect clause that makes a new row's primary key available, or `None`
+/// when this dialect cannot return it.
+///
+/// The host appends `Some(clause)` to the insert and reads the returned row.
+/// `Some("")` is the "already inlined" signal: the driver's
+/// `build_insert_statement` placed the clause itself (T-SQL
+/// `OUTPUT INSERTED.*` cannot follow `VALUES`), so the host must not append
+/// anything — not even a space — and must read through the query path.
+/// `None` means the host must not guess: it refreshes the page afterwards.
+///
+/// The default is `None`, which is the pre-existing behaviour: a dialect that
+/// cannot backfill the new key says so instead of the host inventing one.
+pub(crate) fn insert_returning_clause(_columns: &[&str]) -> Option<String> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,6 +368,83 @@ mod tests {
         assert_eq!(
             crate::sql_builder::format_sql_literal_ansi(&Some(Value::String("a\\b".into()))),
             "'a\\b'"
+        );
+    }
+
+    fn parameterized_mock(
+        extra: impl FnOnce(&mut MockDriverOptions),
+    ) -> std::sync::Arc<MockDriver> {
+        let mut options = MockDriverOptions::default();
+        options.parameterized_writes = true;
+        extra(&mut options);
+        MockDriver::new("sqlite", options)
+    }
+
+    #[test]
+    fn parameterized_insert_distinguishes_null_from_an_unwritten_column() {
+        let driver = parameterized_mock(|_| {});
+        let insert = driver
+            .build_insert_statement(
+                "rows",
+                &[
+                    ("name", Some(Value::String("O'Brien".into()))),
+                    ("note", None),
+                ],
+            )
+            .unwrap();
+
+        // `id` is absent: it is Unset (DEFAULT), not NULL.
+        assert_eq!(
+            insert.sql,
+            "INSERT INTO \"rows\" (\"name\", \"note\") VALUES (?1, ?2)"
+        );
+        assert_eq!(insert.parameters.len(), 2);
+        assert!(matches!(&insert.parameters[0], Value::String(value) if value == "O'Brien"));
+        assert!(matches!(&insert.parameters[1], Value::Null));
+        assert!(!insert.sql.contains("id"));
+    }
+
+    #[test]
+    fn parameterized_insert_of_only_defaults_uses_default_values() {
+        let driver = parameterized_mock(|_| {});
+        let insert = driver.build_insert_statement("rows", &[]).unwrap();
+        assert_eq!(insert.sql, "INSERT INTO \"rows\" DEFAULT VALUES");
+        assert!(insert.parameters.is_empty());
+    }
+
+    #[test]
+    fn parameterized_insert_refuses_drivers_without_binding_support() {
+        let driver = MockDriver::new("sqlite", MockDriverOptions::default());
+        let result = driver.build_insert_statement("rows", &[("name", None)]);
+        assert!(matches!(result, Err(DriverError::Unsupported(_))));
+        // The returning seam defaults to "cannot backfill", so the host takes
+        // the degradation path instead of guessing a primary key.
+        assert_eq!(driver.insert_returning_clause(&["id"]), None);
+    }
+
+    #[test]
+    fn reuse_driver_forwards_insert_builders() {
+        let options = MockDriverOptions {
+            parameterized_writes: true,
+            insert_returning_clause: Some("RETURNING \"id\"".into()),
+            ..MockDriverOptions::default()
+        };
+        let inner: std::sync::Arc<dyn DatabaseDriver> = MockDriver::new("postgres", options);
+        let wrapper = crate::ReuseDriver::new(inner.clone(), "questdb");
+        let columns: &[(&str, Option<Value>)] =
+            &[("name", Some(Value::String("a".into()))), ("note", None)];
+
+        let direct = inner.build_insert_statement("rows", columns).unwrap();
+        let forwarded = wrapper.build_insert_statement("rows", columns).unwrap();
+        assert_eq!(forwarded.sql, direct.sql);
+        assert_eq!(forwarded.parameters.len(), direct.parameters.len());
+        assert!(forwarded
+            .sql
+            .starts_with("INSERT INTO \"rows\" (\"name\", \"note\")"));
+        assert_eq!(
+            wrapper.insert_returning_clause(&["id"]),
+            Some("RETURNING \"id\"".into()),
+            "a wrapper that stops forwarding hides the inner driver's RETURNING support"
         );
     }
 }

@@ -167,6 +167,143 @@ describe('tableDataStore (panel-scoped)', () => {
     expect(slice('missing-panel')).toBeUndefined();
   });
 
+  it('stores the count kind the response reports', async () => {
+    mockDatabaseCommands.getTableData.mockResolvedValueOnce({
+      ...sampleResponse,
+      totalRows: 1_200_000,
+      totalRowsKind: 'estimated',
+    });
+    await loadTable();
+    expect(loaded().totalRowsKind).toBe('estimated');
+    expect(loaded().totalRows).toBe(1_200_000);
+  });
+
+  it('keeps the previous count kind when the response omits it', async () => {
+    mockDatabaseCommands.getTableData.mockResolvedValueOnce({
+      ...sampleResponse,
+      totalRowsKind: 'estimated',
+    });
+    await loadTable();
+    expect(loaded().totalRowsKind).toBe('estimated');
+
+    // A paged re-read reuses the cached total, so the response carries no
+    // kind — and the panel keeps the one it had.
+    mockDatabaseCommands.getTableData.mockResolvedValueOnce({
+      ...sampleResponse,
+      totalRowsKind: undefined,
+    });
+    useTableDataStore.getState().setPage(PANEL, 1);
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+    expect(loaded().totalRowsKind).toBe('estimated');
+  });
+
+  it('records the unsupported count kind as such', async () => {
+    mockDatabaseCommands.getTableData.mockResolvedValueOnce({
+      ...sampleResponse,
+      totalRows: null,
+      totalRowsKind: 'unsupported',
+    });
+    await loadTable();
+    expect(loaded().totalRowsKind).toBe('unsupported');
+  });
+
+  it('sends the count strategy the caller asked for', async () => {
+    await useTableDataStore.getState().loadTableData({
+      panelId: PANEL,
+      dbSessionId: 'conn-1',
+      table: 'users',
+      countStrategy: 'exact',
+    });
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ countStrategy: 'exact' }),
+    );
+  });
+
+  it('keeps the "do not count" mode across a re-read', async () => {
+    // The setting is a promise about every read, not only about the first
+    // one: a filter change must not quietly bring the count back.
+    const { useSettingsStore } = await import('../settingsStore');
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, rowCountMode: 'none' },
+    }));
+    try {
+      await loadTable();
+      mockDatabaseCommands.getTableData.mockClear();
+      useTableDataStore.getState().setPage(PANEL, 1);
+      await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+      expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+        expect.objectContaining({ countStrategy: 'unsupported' }),
+      );
+    } finally {
+      useSettingsStore.setState((state) => ({
+        settings: { ...state.settings, rowCountMode: 'auto' },
+      }));
+    }
+  });
+
+  it('leaves the strategy to the driver in the automatic mode', async () => {
+    // Without a size to weigh, the automatic mode has no opinion: the driver
+    // declares what it can do.
+    await loadTable();
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ countStrategy: undefined }),
+    );
+  });
+
+  it('asks for the same strategy on the first read and on a re-read', async () => {
+    // The automatic mode weighs the size the catalog knows, and **every** read
+    // has to weigh it: a table below the threshold asks for an exact count at
+    // first, and it has to keep asking. A re-read that sent nothing would let
+    // the driver decide — and for an estimating driver that turns the
+    // panel's number into an estimate on the first refresh.
+    const { useSchemaStore } = await import('../schemaStore');
+    const { createEmptyConnectionSchema } = await import('../schemaStoreState');
+    useSchemaStore.setState((state) => {
+      const schemas = new Map(state.schemas);
+      schemas.set(
+        'conn-1',
+        Object.assign(createEmptyConnectionSchema(), {
+          tables: [
+            { name: 'users', schema: null, tableType: 'table' as const, rowCount: 100 },
+          ],
+        }),
+      );
+      return { schemas };
+    });
+
+    await loadTable();
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ countStrategy: 'exact' }),
+    );
+
+    mockDatabaseCommands.getTableData.mockClear();
+    useTableDataStore.getState().reloadPanel(PANEL);
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ countStrategy: 'exact' }),
+    );
+  });
+
+  it('asks for no order at all when the panel overrides the default order', async () => {
+    await loadTable();
+    mockDatabaseCommands.getTableData.mockClear();
+    useTableDataStore.getState().setDefaultOrderOverride(PANEL, 'none');
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultOrderColumns: [] }),
+    );
+  });
+
+  it('leaves the order to the host while the panel follows the setting', async () => {
+    await loadTable();
+    mockDatabaseCommands.getTableData.mockClear();
+    useTableDataStore.getState().setDefaultOrderOverride(PANEL, 'inherit');
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultOrderColumns: undefined }),
+    );
+  });
+
   it('setPage triggers reload with skipCount', async () => {
     await loadTable();
     mockDatabaseCommands.getTableData.mockClear();
@@ -312,18 +449,56 @@ describe('tableDataStore (panel-scoped)', () => {
     expect(mockDatabaseCommands.getTableData).not.toHaveBeenCalled();
   });
 
-  it('loadTableData omits incomplete applied filters from the request', async () => {
+  // 08 §4.5: the front end no longer strips an incomplete condition from the
+  // request. Dropping it would make the query answer a question the user did
+  // not ask (the result set would be wider than the filter list on screen);
+  // the host refuses such a condition with `grid.filter.incomplete`, which is
+  // a visible error instead of a silent widening.
+  it('loadTableData keeps incomplete applied filters on the wire', async () => {
     await loadTable();
-    useTableDataStore.getState().addFilter(PANEL, { column: 'id', operator: 'eq', value: '' });
-    useTableDataStore.getState().addFilter(PANEL, { column: 'name', operator: 'eq', value: 'Bob' });
-    useTableDataStore.getState().applyFilters(PANEL);
+    useTableDataStore.getState().setFilters(PANEL, [
+      { column: 'id', operator: 'eq', value: '' },
+      { column: 'name', operator: 'eq', value: 'Bob' },
+    ]);
     await vi.waitFor(() =>
       expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
         expect.objectContaining({
-          filters: [{ column: 'name', operator: 'eq', value: 'Bob' }],
+          filters: [
+            { column: 'id', operator: 'eq', value: '' },
+            { column: 'name', operator: 'eq', value: 'Bob' },
+          ],
         }),
       ),
     );
+  });
+
+  it('applyFilters with an incomplete draft does not change the applied state', async () => {
+    await loadTable();
+    mockDatabaseCommands.getTableData.mockClear();
+    useTableDataStore.getState().addFilter(PANEL, { column: 'id', operator: 'eq', value: '' });
+    const before = loaded();
+    useTableDataStore.getState().applyFilters(PANEL);
+    expect(loaded().filters).toEqual(before.filters);
+    expect(loaded().requestRevision).toBe(before.requestRevision);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mockDatabaseCommands.getTableData).not.toHaveBeenCalled();
+  });
+
+  // 08 §7: removing a row must not shift the connector of another row onto
+  // it. The connector belongs to the condition, not to its position.
+  it('keeps a per-condition connector on its own condition when a row is removed', async () => {
+    await loadTable();
+    useTableDataStore.getState().setFilters(PANEL, [
+      { column: 'id', operator: 'eq', value: '1' },
+      { column: 'name', operator: 'eq', value: 'a', connector: 'or' },
+      { column: 'region', operator: 'eq', value: 'eu', connector: 'and' },
+    ]);
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+
+    useTableDataStore.getState().removeFilter(PANEL, 1);
+    const draft = loaded().draftFilters;
+    expect(draft.map((filter) => filter.column)).toEqual(['id', 'region']);
+    expect(draft.map((filter) => filter.connector)).toEqual([undefined, 'and']);
   });
 
   it('setSort triggers reload', async () => {
@@ -530,7 +705,7 @@ describe('tableDataStore (panel-scoped)', () => {
     expect(loaded().rows.map((row) => row.name)).toEqual(['Same', 'Same']);
   });
 
-  it('deleteRows selects indices then stages deletes', async () => {
+  it('deleteRows stages deletes from explicit indices without touching the row set', async () => {
     await loadTable();
     useTableDataStore.getState().deleteRows(PANEL, [1]);
     expect([...loaded().pendingChanges.values()]).toEqual([

@@ -1,33 +1,38 @@
-import { useCallback, useMemo, useState, type KeyboardEvent } from 'react';
-import { tid } from '../../lib/tid';
-import { Download, Trash2 } from 'lucide-react';
-import type { DatabaseType, FilterCondition, SortCondition } from '../../types';
-import type { CellEdit } from '../../stores/tableData/types';
+import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
+import type { CountStrategy, FilterCondition, FilterOperator, SortCondition, Value } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
+import { useGridSelection } from '../../hooks/useGridSelection';
+import { useGridKeyboardNav } from '../../hooks/useGridKeyboardNav';
 import {
-  buildDataTableContextMenuItems,
-  formatRowAsSqlInsert,
-  formatRowAsSqlUpdate,
-  formatRowsAsSqlInsert,
-  formatRowsAsSqlUpdate,
-  resolveDataTableCellFromEvent,
-  resolveDataTableHeaderColFromEvent,
-  rowToNamedRecord,
-  serializeDataTableColumnValues,
-  serializeDataTableRowsAsCsv,
-  serializeDataTableRowsAsJson,
-  serializeDataTableRowsAsTsv,
-} from '../../lib/dataTableContextMenu';
-import { showNativeContextMenu } from '../../lib/nativeContextMenu';
+  EMPTY_GRID_SELECTION,
+  columnsCoveredBySelection,
+  gridSelectionCellCount,
+  rowsCoveredBySelection,
+  type CellCoord,
+  type GridSelection,
+} from '../../stores/tableData/gridSelection';
+import type { GridClipboardHandlers } from './gridClipboardBridge';
+import { useDataTableClipboardDom } from './useDataTableClipboardDom';
+import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
+import type { DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
+import type { FkGroupAffordance } from '../../lib/fkNavigation';
 import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
-import { Pagination } from './Pagination';
+import { Pagination, type PagingHint } from './Pagination';
+import { DefaultOrderSelect } from './DefaultOrderSelect';
+import type { DefaultOrderOverride } from '../../lib/defaultSort';
 import { TableHeader, type ColumnDef } from './TableHeader';
-import { VirtualBody } from './VirtualBody';
+import { VirtualBody, type DraftRowViewModel } from './VirtualBody';
+import { GridKeyboardHints } from './GridKeyboardHints';
+import { useDataTableContextMenu } from './useDataTableContextMenu';
 import { DataExportDialog } from './DataExportDialog';
+import { DataTableSelectionBar } from './DataTableSelectionBar';
+import type { CellEditingContext } from '../../lib/cellEditorKind';
+import type { CellTypeHints } from '../../lib/cellTypes';
 import { cn } from '../../lib/cn';
 import { Spinner } from '../ui/Spinner';
+import { DATA_TABLE_ROW_HEIGHT } from './rowHeight';
 
 export interface DataTableProps {
   columns: ColumnDef[];
@@ -38,6 +43,39 @@ export interface DataTableProps {
   pageSize?: number;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (size: number) => void;
+  /**
+   * How much the row count may be trusted: exact, estimated or unavailable.
+   *
+   * The grid renders the state the back end reported, never a guess of its
+   * own — an estimate is shown as "about N" and a database that cannot count
+   * says so instead of showing zero.
+   */
+  totalRowsKind?: CountStrategy | null;
+  /** Ask for the exact count. Offered in the estimated state only. */
+  onCountExact?: () => void;
+  /** An exact count is being fetched right now. */
+  counting?: boolean;
+  /** No order is in force: rows across pages may repeat or be skipped. */
+  unstablePaging?: boolean;
+  /**
+   * The user asked for an estimate and this database cannot give one.
+   *
+   * The grid knows it on its own — the driver declared it, or the answer came
+   * back without an estimate — so it says so directly instead of waiting for
+   * an error message that would never arrive.
+   */
+  estimateUnavailable?: boolean;
+  /**
+   * What the back end said about the paging of this page.
+   *
+   * A degradation is not an error: the page was read by offset, and this
+   * says why. The grid renders the reason the back end gave.
+   */
+  pagingHint?: PagingHint;
+  /** The panel's temporary override of the global default order. */
+  defaultOrderOverride?: DefaultOrderOverride;
+  /** Change the panel's temporary override of the global default order. */
+  onDefaultOrderOverrideChange?: (value: DefaultOrderOverride) => void;
 
   sorts?: SortCondition[];
   onSort?: (sort: SortCondition) => void;
@@ -48,6 +86,25 @@ export interface DataTableProps {
   draftFilterLogic?: 'and' | 'or';
   filterPanelOpen?: boolean;
   onFilterPanelOpenChange?: (open: boolean) => void;
+  /**
+   * The filter operators this database serves. Omit it and the shared set is
+   * used; a driver that declares fewer operators only offers those.
+   */
+  filterOperators?: readonly FilterOperator[];
+  /**
+   * The driver's own column-type rules (`DatabaseTypeMeta.cellTypes`).
+   *
+   * The filter editor needs them for the same reason the cell editor does:
+   * the operator list follows the column type, and a column the driver
+   * calls a boolean must not be filtered with the operators of a number
+   * (08 §3.5, "一处声明、两处生效").
+   */
+  cellTypeHints?: CellTypeHints;
+  /**
+   * Whether this database ignores case in `LIKE` under its default collation.
+   * Copy only — it never changes the query.
+   */
+  filterLikeCaseInsensitive?: boolean;
   onRemoveFilter?: (index: number) => void;
   onClearFilters?: () => void;
   onAddFilter?: (filter: FilterCondition) => void;
@@ -56,10 +113,18 @@ export interface DataTableProps {
   onApplyFilters?: () => void;
 
   editingCell?: { row: number; col: string } | null;
-  editBuffer?: Map<string, CellEdit>;
   onCellDoubleClick?: (row: number, col: string) => void;
   onCellEdit?: (row: number, col: string, value: unknown) => void;
   onCellEditCancel?: () => void;
+  /**
+   * The editing context of the grid (DB-05).
+   *
+   * It carries the per-column editor facts, the read-only reason, the write
+   * path and the "Set Value" entries — one object, because the grid threads
+   * it through three components. Omitted → the grid keeps the behaviour it
+   * had before DB-05.
+   */
+  cellEditing?: CellEditingContext;
   /**
    * Show “Set NULL” in the context menu. Defaults to true when `onCellEdit` is set.
    * Pass false for read-only grids that only use `onCellEdit` to dismiss an editor (e.g. query results).
@@ -70,11 +135,106 @@ export interface DataTableProps {
   onRowSelect?: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   onSelectAll?: () => void;
 
+  /**
+   * Cell/region selection (controlled). Omit it and the grid keeps today's DOM: no
+   * `data-dt-surface`, no ARIA grid roles, no selection attributes (01-selection §3.8).
+   */
+  gridSelection?: GridSelection;
+  /** Selection write-back. Paired with `gridSelection`; without it the grid only renders. */
+  onGridSelectionChange?: (next: GridSelection) => void;
+  /** Keyboard navigation (DB-02). Omitted ⇒ no key is intercepted at all. */
+  keyboardNavigation?: boolean;
+  /**
+   * The clipboard bridge (DB-03).
+   *
+   * **Omitted ⇒ the grid binds no `copy` / `paste` listener at all**, which is exactly
+   * today's behaviour; every consumer that does not opt in keeps byte-identical behaviour.
+   */
+  clipboard?: GridClipboardHandlers;
+  /**
+   * Cells the owner wants marked as rejected, keyed `${rowIndex}:${columnName}`.
+   *
+   * Rendered as `data-dt-cell-error`; omitted ⇒ no attribute (today's DOM).
+   */
+  cellErrors?: ReadonlySet<string>;
+  /** Scroll the cursor cell into view (volume 10's hook point). */
+  onRequestScrollIntoView?: (coord: CellCoord) => void;
+  /** The anchor of the row selection (`TableState.lastSelectedIndex`), read-only. */
+  lastSelectedIndex?: number | null;
+
   /** Row clicked (single click) — used by parent to track detail panel row */
   onRowClick?: (index: number) => void;
 
   /** Highlighted row index (e.g. for detail panel) */
   highlightedRow?: number | null;
+
+  /**
+   * New-row drafts, rendered after the real rows. They are derived rows: they
+   * are not part of `rows` and never reach the selection model (04 §3.7 R-5).
+   */
+  draftRows?: DraftRowViewModel[];
+  /** Write one cell of a draft. `undefined` clears the column (do not write it). */
+  onDraftCellEdit?: (draftId: string, column: string, value: Value | null | undefined) => void;
+  /** Start editing a draft cell. */
+  onDraftCellEditStart?: (draftId: string, column: string) => void;
+  /** Leave the draft cell editor without writing anything. */
+  onDraftCellEditCancel?: () => void;
+  /** Drop a draft row. */
+  onDraftRowRemove?: (draftId: string) => void;
+  /** The draft row the pointer focus is on. */
+  onDraftRowActivate?: (draftId: string) => void;
+  /** Append a new draft row — the "empty area below the last row" entry. */
+  onAddDraftRow?: () => void;
+  /** The draft cell that is being edited right now. */
+  editingDraft?: { draftId: string; column: string } | null;
+  /**
+   * The row the last insert produced; it gets a marker with a word on it.
+   *
+   * A separate channel from `highlightedRow` (that one is shared with the
+   * detail panel). `null` — the default — renders no marker, so a grid that
+   * does not use the feature keeps today's DOM.
+   */
+  newRowIndex?: number | null;
+
+  /**
+   * The dirty state of the current page, keyed by row index (DB-06).
+   *
+   * Omitted / `null` = no dirty marks at all: the grid renders exactly what
+   * it rendered before the dirty state existed (00-contracts R4).
+   */
+  dirtyByRow?: ReadonlyMap<number, DirtyRowEntry> | null;
+  /**
+   * "Restore This Row" — undo the delete mark of a row. Omitted = the context
+   * menu does not offer it.
+   */
+  onRestoreRow?: (rowIndex: number) => void;
+
+  /**
+   * The foreign keys of the table (DB-07).
+   *
+   * Omitted = the table has no foreign keys (or the metadata could not be
+   * read): the grid renders exactly what it rendered before.
+   *
+   * It is **one object** and not four loose props because the pieces belong
+   * together: the arrow of a composite key is decided by the values of
+   * **all** of its members — including a member the user has hidden — and
+   * only the **full** row records carry those values (07 §7 #14). A grid that
+   * got the index but not the records would silently lose the arrow of every
+   * composite key with a hidden member, so the type makes that combination
+   * impossible to write (FKU-D1).
+   */
+  foreignKeys?: {
+    /** The columns that take part in a foreign key, mapped to their group. */
+    index: ReadonlyMap<string, FkGroupAffordance>;
+    /** The **full** row records (every column of the table), by row index. */
+    rows: readonly Record<string, unknown>[];
+    /** The displayed column names, in render order. */
+    visibleColumns: readonly string[];
+    /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
+    resolving?: ReadonlySet<string>;
+    /** Follow the foreign key of a cell. */
+    onJump?: (rowIndex: number, columnName: string) => void;
+  };
 
   loading?: boolean;
   statusBar?: React.ReactNode;
@@ -108,6 +268,15 @@ export interface DataTableProps {
    * When omitted, uses the right-clicked cell value (preferred) or `window.getSelection()`.
    */
   getContextCellText?: () => string | null | undefined;
+
+  /**
+   * The scroll container of the grid, handed to its owner (DB-07).
+   *
+   * The owner needs it to snapshot the viewport when the tab is left and to
+   * restore it when the tab is entered again. It is a callback and not a ref
+   * because the element only exists after the first render.
+   */
+  onScrollElementChange?: (element: HTMLDivElement | null) => void;
 }
 
 const NOOP = () => {};
@@ -128,7 +297,12 @@ export function DataTable({
   draftFilterLogic = 'and',
   filterPanelOpen = false,
   onFilterPanelOpenChange,
+  filterOperators,
+  cellTypeHints,
+  filterLikeCaseInsensitive,
   editingCell,
+  clipboard,
+  cellErrors,
   selectedRows = EMPTY_SET,
   loading,
   onSort,
@@ -140,16 +314,37 @@ export function DataTable({
   onApplyFilters,
   onPageChange,
   onPageSizeChange,
+  totalRowsKind,
+  onCountExact,
+  counting,
+  unstablePaging,
+  estimateUnavailable,
+  pagingHint,
+  defaultOrderOverride,
+  onDefaultOrderOverrideChange,
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
+  cellEditing,
   enableSetNull,
   onRowSelect,
   onSelectAll,
   onRowClick,
   highlightedRow,
+  draftRows,
+  onDraftCellEdit,
+  onDraftCellEditStart,
+  onDraftCellEditCancel,
+  onDraftRowRemove,
+  onDraftRowActivate,
+  onAddDraftRow,
+  editingDraft,
+  newRowIndex,
+  dirtyByRow,
+  onRestoreRow,
+  foreignKeys,
   statusBar,
-  rowHeight = 28,
+  rowHeight = DATA_TABLE_ROW_HEIGHT,
   exportTableName,
   databaseType,
   dbSessionId,
@@ -160,10 +355,22 @@ export function DataTable({
   emptyPlaceholder,
   className,
   getContextCellText,
+  gridSelection,
+  onGridSelectionChange,
+  keyboardNavigation,
+  onRequestScrollIntoView,
+  lastSelectedIndex,
+  onScrollElementChange,
 }: DataTableProps) {
   const { t } = useI18n();
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+
+  // The owner of the grid keeps the viewport (DB-07): it has to know where the
+  // user was when the tab was left.
+  useEffect(() => {
+    onScrollElementChange?.(scrollEl);
+  }, [scrollEl, onScrollElementChange]);
 
   const colMeta = useMemo(() => columns.map((c) => ({ name: c.name, type: c.type })), [columns]);
   const { columnWidths: baseWidths, onResizeStart } = useColumnResize({
@@ -178,10 +385,29 @@ export function DataTable({
 
   const handleRowClick = useCallback(
     (index: number, opts?: { multi?: boolean; range?: boolean }) => {
+      // A click on the row background selects the whole row — and only that. The grid
+      // never invents a row-mode selection here: a consumer that owns the row set must
+      // keep owning it, or `setGridSelection` would clear the consumer's own rows.
       onRowClick?.(index);
       onRowSelect?.(index, opts);
     },
     [onRowClick, onRowSelect],
+  );
+
+  const handleGutterSelect = useCallback(
+    (index: number, opts?: { multi?: boolean; range?: boolean }) => {
+      onRowClick?.(index);
+      if (onRowSelect) {
+        // The consumer owns the row-mode transition: the store writes the mode and the row
+        // set together (00-contracts §4.2), so the grid must not write a second one.
+        onRowSelect(index, opts);
+        return;
+      }
+      // No consumer-side row path: the grid owns the mode, and `row` mode carries no
+      // geometry at all (00-contracts §4.2, I2).
+      onGridSelectionChange?.(ROW_MODE_GRID_SELECTION);
+    },
+    [onGridSelectionChange, onRowClick, onRowSelect],
   );
 
   const handleCellDoubleClick = useCallback(
@@ -196,236 +422,130 @@ export function DataTable({
 
   const exportEnabled = !!exportTableName && rows.length > 0 && dataExportCapability !== 'none';
   const columnNames = useMemo(() => columns.map((c) => c.name), [columns]);
-
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const hit = resolveDataTableCellFromEvent(e.target);
-      const hitHeaderCol = !hit ? resolveDataTableHeaderColFromEvent(e.target) : null;
-      const effectiveColName = hit ? hit.columnName : hitHeaderCol;
-      const effectiveColIdx = effectiveColName ? columnNames.indexOf(effectiveColName) : -1;
-      const hitRow = hit ? rows[hit.rowIndex] : undefined;
-      const hitColIdx = hit ? columnNames.indexOf(hit.columnName) : -1;
-      const hitCellValue = hitRow && hitColIdx >= 0 ? (hitRow[hitColIdx] ?? null) : undefined;
-
-      const fromProp = getContextCellText?.() ?? '';
-      const fromSelection = window.getSelection()?.toString() ?? '';
-      const cellTextForCopy =
-        hitCellValue !== undefined
-          ? hitCellValue == null
-            ? ''
-            : String(hitCellValue)
-          : fromProp || fromSelection;
-
-      const selectedIndices = Array.from(selectedRows).sort((a, b) => a - b);
-      const selectedDataRows = selectedIndices
-        .map((i) => rows[i])
-        .filter((r): r is unknown[] => Array.isArray(r));
-      const hasSelectedRows = selectedDataRows.length > 0;
-      const hasCellContext = hit != null && Array.isArray(hitRow);
-      /**
-       * The right-click landed inside a selection of more than one row: the menu
-       * must act on the whole selection, not just the clicked row, so every
-       * single-row / single-cell action is dropped below.
-       */
-      const multiRowSelection =
-        hasCellContext && hit != null && selectedRows.size > 1 && selectedRows.has(hit.rowIndex);
-      /** Row the cell-scoped actions operate on; null in selection mode. */
-      const actionRow = hasCellContext && hitRow && !multiRowSelection ? hitRow : null;
-      /** Rows the selection-scoped actions operate on. */
-      const selectionRowActions = multiRowSelection || !hasCellContext ? selectedDataRows : [];
-      const canFilterByValue = !loading && hasCellContext && !!onAddFilter && !!hit;
-      const setNullAllowed = enableSetNull ?? !!onCellEdit;
-      const canSetNull = hasCellContext && setNullAllowed && !!onCellEdit && !!hit;
-      const deleteIndices = hasSelectedRows ? selectedIndices : hit != null ? [hit.rowIndex] : [];
-      const canDelete =
-        !!onDeleteRows && (primaryKeyColumns?.length ?? 0) > 0 && deleteIndices.length > 0;
-
-      const csvRows = actionRow ? [actionRow] : selectedDataRows;
-      const canCopyCsv = csvRows.length > 0;
-
-      const copyText = (text: string) => {
-        void navigator.clipboard.writeText(text);
-      };
-
-      void showNativeContextMenu(
-        buildDataTableContextMenuItems({
-          labels: {
-            copy: t('common.copy'),
-            copyRow: t('dataTable.copyRow'),
-            moreActions: t('dataTable.moreActions'),
-            copyAsJson: t('dataTable.copyAsJson'),
-            copyAsSqlInsert: t('dataTable.copyAsSqlInsert'),
-            copyAsUpdate: t('dataTable.copyAsUpdate'),
-            copyAsCsv: t('dataTable.copyAsCsv'),
-            copyColumnName: t('dataTable.copyColumnName'),
-            copyColumnData: t('dataTable.copyColumnData'),
-            setNull: t('dataTable.setNull'),
-            filterByValue: t('dataTable.filterByValue'),
-            copySelectedRows:
-              selectedRows.size > 1
-                ? `${t('common.copy')} ${t('export.selectedRows')} (${selectedRows.size})`
-                : `${t('common.copy')} ${t('export.selectedRows')}`,
-            deleteRow:
-              deleteIndices.length > 1
-                ? `${t('dataTable.deleteRow')} (${deleteIndices.length})`
-                : t('dataTable.deleteRow'),
-            export:
-              selectedRows.size > 0
-                ? `${t('export.export')} (${t('export.selectedRows')} ${selectedRows.size})`
-                : t('export.export'),
-          },
-          handlers: {
-            onCopy:
-              hasCellContext && !multiRowSelection
-                ? () => {
-                    copyText(cellTextForCopy);
-                  }
-                : undefined,
-            onCopyRow: actionRow
-              ? () => {
-                  copyText(serializeDataTableRowsAsTsv([actionRow]));
-                }
-              : undefined,
-            onCopyAsJson: actionRow
-              ? () => {
-                  copyText(JSON.stringify(rowToNamedRecord(columnNames, actionRow), null, 2));
-                }
-              : selectionRowActions.length > 0
-                ? () => {
-                    copyText(serializeDataTableRowsAsJson(columnNames, selectionRowActions));
-                  }
-                : undefined,
-            onCopyAsSqlInsert: actionRow
-              ? () => {
-                  copyText(
-                    formatRowAsSqlInsert(
-                      exportTableName || 'table',
-                      columnNames,
-                      actionRow,
-                      databaseType as DatabaseType,
-                    ),
-                  );
-                }
-              : selectionRowActions.length > 0
-                ? () => {
-                    copyText(
-                      formatRowsAsSqlInsert(
-                        exportTableName || 'table',
-                        columnNames,
-                        selectionRowActions,
-                        databaseType as DatabaseType,
-                      ),
-                    );
-                  }
-                : undefined,
-            onCopyAsUpdate: actionRow
-              ? () => {
-                  copyText(
-                    formatRowAsSqlUpdate(
-                      exportTableName || 'table',
-                      columnNames,
-                      actionRow,
-                      primaryKeyColumns,
-                      databaseType as DatabaseType,
-                    ),
-                  );
-                }
-              : selectionRowActions.length > 0
-                ? () => {
-                    copyText(
-                      formatRowsAsSqlUpdate(
-                        exportTableName || 'table',
-                        columnNames,
-                        selectionRowActions,
-                        primaryKeyColumns,
-                        databaseType as DatabaseType,
-                      ),
-                    );
-                  }
-                : undefined,
-            onCopyAsCsv: canCopyCsv
-              ? () => {
-                  copyText(serializeDataTableRowsAsCsv(columnNames, csvRows));
-                }
-              : undefined,
-            onCopyColumnName: effectiveColName
-              ? () => {
-                  copyText(effectiveColName);
-                }
-              : undefined,
-            onCopyColumnData:
-              effectiveColIdx >= 0
-                ? () => {
-                    copyText(serializeDataTableColumnValues(effectiveColIdx, rows));
-                  }
-                : undefined,
-            onSetNull:
-              canSetNull && !multiRowSelection && hit
-                ? () => {
-                    onCellEdit?.(hit.rowIndex, hit.columnName, null);
-                  }
-                : undefined,
-            onFilterByValue:
-              canFilterByValue && hit
-                ? () => {
-                    onAddFilter?.({
-                      column: hit.columnName,
-                      operator: 'eq',
-                      value: hitCellValue == null ? '' : String(hitCellValue),
-                    });
-                  }
-                : undefined,
-            onCopySelectedRows: hasSelectedRows
-              ? () => {
-                  copyText(serializeDataTableRowsAsTsv(selectedDataRows));
-                }
-              : undefined,
-            onDeleteRow: canDelete
-              ? () => {
-                  onDeleteRows?.(deleteIndices);
-                }
-              : undefined,
-            onExport: exportEnabled
-              ? () => {
-                  setExportOpen(true);
-                }
-              : undefined,
-          },
-          hasCellContext,
-          hasHeaderContext: !!hitHeaderCol,
-          hasSelectedRows,
-          multiRowSelection,
-          exportEnabled,
-          canFilterByValue,
-          canSetNull,
-          canDelete,
-        }),
-        { x: e.clientX, y: e.clientY },
-      );
-    },
-    [
-      columnNames,
-      exportEnabled,
-      exportTableName,
-      getContextCellText,
-      onAddFilter,
-      onCellEdit,
-      enableSetNull,
-      onDeleteRows,
-      primaryKeyColumns,
-      rows,
-      selectedRows,
-      t,
-      loading,
-    ],
+  const hasSelection = onSelectAll != null && onRowSelect != null;
+  /** Cell selection is a controlled pair: both props or neither (01-selection §3.8). */
+  const hasCellSelection = gridSelection != null && onGridSelectionChange != null;
+  const selection = gridSelection ?? EMPTY_GRID_SELECTION;
+  /** Prefix of the cell ids the grid's `aria-activedescendant` points at. */
+  const gridIdPrefix = useId();
+  /** The rows one screen holds; the keyboard hook never measures the viewport (02 §K-10). */
+  const viewportRowCount = scrollEl
+    ? Math.max(1, Math.floor(scrollEl.clientHeight / rowHeight))
+    : 1;
+  const keyboardNav = useGridKeyboardNav({
+    columnOrder: columnNames,
+    rowCount: rows.length,
+    selection,
+    lastSelectedIndex: lastSelectedIndex ?? null,
+    editing: editingCell != null,
+    viewportRowCount,
+    enabled: keyboardNavigation === true && hasCellSelection,
+    onGridSelectionChange: onGridSelectionChange ?? NOOP,
+    onCellDoubleClick: handleCellDoubleClick,
+    onRowGutterSelect: handleGutterSelect,
+    onToggleSelectAll: onSelectAll ?? NOOP,
+    onRequestScrollIntoView,
+  });
+  /** The cell that carries `data-dt-active` (02): the keyboard cursor. */
+  const activeCell = keyboardNav.activeCoord ?? (selection.mode === 'cell' ? selection.focus : null);
+  const { surfaceProps, isCellSelected, activeDescendantId } = useGridSelection({
+    columnOrder: columnNames,
+    rowCount: rows.length,
+    selection,
+    onChange: onGridSelectionChange ?? NOOP,
+    scrollElement: scrollEl,
+    enabled: hasCellSelection,
+    editingCell: editingCell ?? null,
+    idPrefix: gridIdPrefix,
+    onKeyboardNav: keyboardNav.handleKeyDown,
+  });
+  /**
+   * The grid surface. The scroll container is the ARIA grid host and the keyboard focus
+   * owner (00-contracts §4.4); the row count includes the header row and the column count
+   * includes the row-number column, exactly like the rendered header.
+   *
+   * Rendered only when the cell-selection contract is on, so a grid without it keeps
+   * today's DOM.
+   */
+  const gridRowCount = emptyPlaceholder
+    ? 1
+    : rows.length + 1 + (loading || rows.length === 0 ? 1 : 0);
+  const surfaceDomProps = hasCellSelection
+    ? {
+        'data-dt-surface': '',
+        role: 'grid' as const,
+        tabIndex: 0,
+        'aria-rowcount': gridRowCount,
+        'aria-colcount': columnNames.length + 1,
+        'aria-activedescendant': activeDescendantId ?? undefined,
+      }
+    : {};
+  /**
+   * Wrap non-row content (the status overlays, the caller-provided empty placeholder) in a
+   * row + gridcell: an ARIA grid may only contain rows, so a bare `role="status"` or a
+   * placeholder div would be invalid content. The live-region semantics of the status
+   * layer stay untouched inside the cell — a screen reader still announces it.
+   */
+  const gridRow = (content: React.ReactNode) => (
+    <div role={hasCellSelection ? 'row' : undefined}>
+      <div role={hasCellSelection ? 'gridcell' : undefined}>{content}</div>
+    </div>
   );
+  /** The `copy` / `paste` binding; `{}` when the owner passed no bridge (DB-03). */
+  const clipboardDomHandlers = useDataTableClipboardDom({
+    clipboard,
+    editingCell: editingCell ?? null,
+    enabled: hasCellSelection,
+    columnNames,
+    selection,
+    selectedRows,
+  });
+  /**
+   * Rows a cell selection covers. Derived, never written back into `selectedRows`
+   * (00-contracts §4.2, rule 3): in cell mode the row set is empty by contract.
+   */
+  const coveredRows = useMemo(() => {
+    if (!hasCellSelection || selection.mode !== 'cell') return null;
+    return Array.from(rowsCoveredBySelection({ ...selection, selectedRows })).sort((a, b) => a - b);
+  }, [hasCellSelection, selectedRows, selection]);
+  const coveredColumns = useMemo(
+    () => (hasCellSelection ? columnsCoveredBySelection(selection, columnNames) : 0),
+    [columnNames, hasCellSelection, selection],
+  );
+  const coveredCells = useMemo(
+    () => (hasCellSelection ? gridSelectionCellCount(selection, columnNames) : 0),
+    [columnNames, hasCellSelection, selection],
+  );
+  /** Row indices a delete action acts on: the covered rows in cell mode, else the row set. */
+  const deleteRowIndices = coveredRows ?? Array.from(selectedRows).sort((a, b) => a - b);
+  const deleteRowCount = coveredRows?.length ?? selectedRows.size;
+
+  const handleExport = useCallback(() => setExportOpen(true), []);
+  const { onContextMenu } = useDataTableContextMenu({
+    columnNames,
+    rows,
+    selectedRows,
+    loading,
+    exportTableName,
+    exportEnabled,
+    databaseType,
+    primaryKeyColumns,
+    enableSetNull,
+    getContextCellText,
+    onAddFilter,
+    onCellEdit,
+    onDeleteRows,
+    dirtyByRow,
+    onRestoreRow,
+    onExport: handleExport,
+    setValueState: cellEditing?.setValueState,
+    onSetValue: cellEditing?.onSetValue,
+    onLoadCandidates: cellEditing?.onLoadCandidates,
+    t,
+  });
 
   const hasPagination =
     page != null && pageSize != null && totalRows != null && onPageChange && onPageSizeChange;
-  const hasSelection = onSelectAll != null && onRowSelect != null;
   const hasFilters = filters.length > 0 && onRemoveFilter && onClearFilters;
   const hasFilterEditor =
     onAddFilter &&
@@ -441,6 +561,9 @@ export function DataTable({
       if (editingCell) return;
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       if (!onDeleteRows || (primaryKeyColumns?.length ?? 0) === 0) return;
+      // Cell mode keeps `selectedRows` empty on purpose, so the Delete key stays a
+      // whole-row action (01-selection §4.3). The toolbar button is the explicit way to
+      // delete the rows a cell region covers.
       if (selectedRows.size === 0) return;
       e.preventDefault();
       onDeleteRows(Array.from(selectedRows).sort((a, b) => a - b));
@@ -459,6 +582,9 @@ export function DataTable({
       {hasFilterEditor ? (
         <FilterEditor
           columns={columns}
+          supportedOperators={filterOperators}
+          cellTypeHints={cellTypeHints}
+          likeCaseInsensitive={filterLikeCaseInsensitive}
           appliedFilters={filters}
           appliedLogic={filterLogic}
           draftFilters={draftFilters}
@@ -482,67 +608,48 @@ export function DataTable({
         />
       ) : null}
 
-      {hasSelection && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-surface px-2 py-1.5">
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-secondary hover:text-fg">
-            <input
-              type="checkbox"
-              className="accent-accent"
-              checked={rows.length > 0 && selectedRows.size === rows.length}
-              ref={(el) => {
-                if (el) el.indeterminate = selectedRows.size > 0 && selectedRows.size < rows.length;
-              }}
-              onChange={onSelectAll}
-            />
-            {t('common.selectAll')}
-          </label>
-          {selectedRows.size > 0 && (
-            <span className="text-xs text-fg-muted">
-              {t('dataTable.selected')} {selectedRows.size} / {rows.length} {t('common.rows')}
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-1.5">
-            {headerActions}
-            {onDeleteRows && selectedRows.size > 0 && (primaryKeyColumns?.length ?? 0) > 0 && (
-              <button
-                type="button"
-                data-testid="data-table-delete-rows"
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-danger hover:bg-surface-raised hover:text-danger"
-                onClick={() => onDeleteRows(Array.from(selectedRows).sort((a, b) => a - b))}
-                title={t('dataTable.deleteRow')}
-              >
-                <Trash2 className="h-3 w-3" />
-                {t('dataTable.deleteRow')}
-              </button>
-            )}
-            {exportEnabled && (
-              <button
-                type="button"
-                {...tid('data-table-export')}
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-secondary hover:bg-surface-raised hover:text-fg"
-                onClick={() => setExportOpen(true)}
-                title={t('export.export')}
-              >
-                <Download className="h-3 w-3" />
-                {t('export.export')}
-              </button>
-            )}
-          </div>
-          {loading ? <span className="text-xs text-fg-muted">{t('common.loading')}</span> : null}
-        </div>
+      {(hasSelection || hasCellSelection) && (
+        <DataTableSelectionBar
+          hasSelection={hasSelection}
+          hasCellSelection={hasCellSelection}
+          selection={selection}
+          selectedRows={selectedRows}
+          rowCount={rows.length}
+          coveredRows={coveredRows}
+          coveredColumns={coveredColumns}
+          coveredCells={coveredCells}
+          onSelectAll={onSelectAll ?? NOOP}
+          headerActions={headerActions}
+          onDeleteRows={onDeleteRows}
+          deleteRowIndices={deleteRowIndices}
+          deleteRowCount={deleteRowCount}
+          primaryKeyColumns={primaryKeyColumns}
+          exportEnabled={exportEnabled}
+          onExport={() => setExportOpen(true)}
+          loading={loading}
+          t={t}
+        />
       )}
 
       {statusBar}
+
+      {keyboardNavigation && hasCellSelection ? (
+        <GridKeyboardHints id={`${gridIdPrefix}-shortcuts`} />
+      ) : null}
 
       <div
         ref={setScrollEl}
         className="min-h-0 flex-1 overflow-auto"
         aria-busy={loading}
-        aria-label={t('dataTable.tableLabel')}
-        onContextMenu={handleContextMenu}
+        aria-label={hasCellSelection ? t('tableView.a11y.gridLabel') : t('dataTable.tableLabel')}
+        aria-describedby={keyboardNavigation && hasCellSelection ? `${gridIdPrefix}-shortcuts` : undefined}
+        onContextMenu={onContextMenu}
+        {...clipboardDomHandlers}
+        {...surfaceDomProps}
+        {...(hasCellSelection ? surfaceProps : {})}
       >
         {emptyPlaceholder ? (
-          emptyPlaceholder
+          gridRow(emptyPlaceholder)
         ) : (
           <>
             <TableHeader
@@ -552,11 +659,13 @@ export function DataTable({
               columnWidths={columnWidths}
               onResizeStart={onResizeStart}
               sortable={onSort != null}
+              gridSemantics={hasCellSelection}
               onFilterColumn={
                 onAddFilter
                   ? (column) => onAddFilter({ column, operator: 'eq', value: '' })
                   : undefined
               }
+              cellTypeHints={cellTypeHints}
             />
             <VirtualBody
               columns={columns}
@@ -570,26 +679,50 @@ export function DataTable({
               onCellDoubleClick={handleCellDoubleClick}
               onCellEdit={handleCellEdit}
               onCellEditCancel={handleCellEditCancel}
+              cellEditing={cellEditing}
+              cellTypeHints={cellTypeHints}
               onRowSelect={handleRowClick}
+              onRowGutterSelect={handleGutterSelect}
+              onRowClick={onRowClick}
+              cellSelectionEnabled={hasCellSelection}
+              isCellSelected={isCellSelected}
+              activeCell={activeCell}
+              cellIdPrefix={hasCellSelection ? gridIdPrefix : undefined}
+              draftRows={draftRows}
+              onDraftCellEdit={onDraftCellEdit}
+              onDraftCellEditStart={onDraftCellEditStart}
+              onDraftCellEditCancel={onDraftCellEditCancel}
+              onDraftRowRemove={onDraftRowRemove}
+              onDraftRowActivate={onDraftRowActivate}
+              onAddDraftRow={onAddDraftRow}
+              editingDraft={editingDraft}
+              newRowIndex={newRowIndex ?? null}
+              dirtyByRow={dirtyByRow}
+              foreignKeys={foreignKeys}
+              cellErrors={cellErrors}
             />
             {loading ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex min-h-28 items-center justify-center gap-2 text-xs text-fg-muted"
-              >
-                <Spinner size="lg" />
-                {t('dataTable.loading')}
-              </div>
+              gridRow(
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex min-h-28 items-center justify-center gap-2 text-xs text-fg-muted"
+                >
+                  <Spinner size="lg" />
+                  {t('dataTable.loading')}
+                </div>,
+              )
             ) : rows.length === 0 ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex min-h-28 flex-col items-center justify-center gap-1 px-4 text-center text-xs text-fg-muted"
-              >
-                <span>{t('dataTable.empty')}</span>
-                <span className="text-fg-muted/80">{t('dataTable.emptyHint')}</span>
-              </div>
+              gridRow(
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex min-h-28 flex-col items-center justify-center gap-1 px-4 text-center text-xs text-fg-muted"
+                >
+                  <span>{t('dataTable.empty')}</span>
+                  <span className="text-fg-muted/80">{t('dataTable.emptyHint')}</span>
+                </div>,
+              )
             ) : null}
           </>
         )}
@@ -603,6 +736,23 @@ export function DataTable({
           onPageChange={onPageChange}
           onPageSizeChange={onPageSizeChange}
           loading={loading}
+          totalRowsKind={totalRowsKind}
+          rowCount={rows.length}
+          hasMore={rows.length === pageSize}
+          onCountExact={onCountExact}
+          counting={counting}
+          unstablePaging={unstablePaging}
+          estimateUnavailable={estimateUnavailable}
+          pagingHint={pagingHint}
+          footerExtras={
+            onDefaultOrderOverrideChange ? (
+              <DefaultOrderSelect
+                value={defaultOrderOverride ?? 'inherit'}
+                onChange={onDefaultOrderOverrideChange}
+                primaryKeyCount={primaryKeyColumns?.length ?? 0}
+              />
+            ) : undefined
+          }
         />
       )}
 
@@ -626,3 +776,4 @@ export function DataTable({
 }
 
 export type { ColumnDef };
+export type { GridClipboardHandlers, GridCopyTarget } from './gridClipboardBridge';

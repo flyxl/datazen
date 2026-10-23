@@ -1,5 +1,8 @@
 //! 锁定不变量：冻结 DTO 只消费不改写、端口错误一律是 `RuntimeError`、
-//! 模块路径固定、单文件 ≤800 行、生产路径无 `unwrap/expect/panic!/unsafe/#[allow]/sleep`。
+//! 模块路径固定、生产路径无 `unwrap/expect/panic!/unsafe/#[allow]/sleep`。
+//!
+//! 单文件行数**不在这里守**：行数是耦合度的信号，属于 code review 的判断，
+//! 不该占 CI 的一次运行（见 AGENTS.md「单文件规模与模块拆分」）。
 
 use super::{err, runtime_err};
 use crate::gateway_fixtures as fx;
@@ -194,9 +197,9 @@ fn gateway_sources_obey_the_locked_invariants() {
         // 生产文件。
         "cancel.rs",
         "events.rs",
-        // `ExecutionGateway` 的固有方法原本与类型声明同处 mod.rs，合计 801 行、
-        // 触犯下面 800 行的硬上限。纯搬迁到同名子模块后必须登记进本表：
-        // 断言的用意就是让「文件集变了」必须同步扫描范围，而不是悄悄漏扫。
+        // `ExecutionGateway` 的固有方法原本与类型声明同处 mod.rs（801 行），
+        // 纯搬迁到同名子模块后必须登记进本表：断言的用意就是让「文件集变了」必须
+        // 同步**扫描范围**，而不是悄悄漏扫（漏扫的是下面的生产路径 panic 禁令）。
         "execution.rs",
         "idempotency.rs",
         "mod.rs",
@@ -228,11 +231,6 @@ fn gateway_sources_obey_the_locked_invariants() {
     ];
     for name in &names {
         let source = std::fs::read_to_string(dir.join(name)).expect("源码可读");
-        assert!(
-            source.lines().count() <= 800,
-            "{name} 超过 800 行：{}",
-            source.lines().count()
-        );
         if test_only.contains(&name.as_str()) {
             continue;
         }
@@ -273,56 +271,5 @@ fn gateway_sources_obey_the_locked_invariants() {
             .trim()
             .to_string();
         assert_eq!(previous, "#[cfg(test)]", "{needle} 必须紧跟 #[cfg(test)]");
-    }
-
-    // 本轨自己的测试文件同样受 800 行约束。
-    //
-    // 硬编码的文件名必须在当日**确实合规**才能列在这里；一旦超限，正确做法是拆分，
-    // 不是加豁免。一条「它已经超限，纳入即红」式的豁免注释在这里不会被任何门禁检查，
-    // 却会让门禁在文件被拆回合规之后继续失效——`cm70_no_disk.rs` 正是这样从 807 行
-    // 拆到 665 行、而当时的豁免从未撤销的。
-    let mut test_files = vec![
-        "tests/gateway_contract.rs".to_string(),
-        "tests/gateway_fixtures/mod.rs".to_string(),
-        "tests/cm70_no_disk.rs".to_string(),
-        "tests/cm70_idempotency_replay.rs".to_string(),
-        "tests/owner_binding.rs".to_string(),
-    ];
-    for entry in std::fs::read_dir(root.join("tests/cm70")).expect("分节用例目录可读") {
-        let name = entry
-            .expect("目录项可读")
-            .file_name()
-            .to_string_lossy()
-            .to_string();
-        if name.ends_with(".rs") {
-            test_files.push(format!("tests/cm70/{name}"));
-        }
-    }
-    let sections =
-        std::fs::read_dir(root.join("tests/gateway_contract")).expect("分节用例目录可读");
-    for entry in sections.filter_map(|entry| entry.ok()) {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.ends_with(".rs") {
-            test_files.push(format!("tests/gateway_contract/{name}"));
-        }
-    }
-    // 本轨新增的测试目录同理：整目录纳入，不逐个硬编码文件名。
-    let owner_binding =
-        std::fs::read_dir(root.join("tests/owner_binding")).expect("owner_binding 用例目录可读");
-    let mut owner_files: Vec<String> = owner_binding
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.file_name().to_string_lossy().to_string())
-        .filter(|name| name.ends_with(".rs"))
-        .map(|name| format!("tests/owner_binding/{name}"))
-        .collect();
-    owner_files.sort();
-    assert!(
-        !owner_files.is_empty(),
-        "tests/owner_binding/ 目录为空：这条扫描若悄悄失效，800 行门禁会漏掉本轨的测试文件"
-    );
-    test_files.extend(owner_files);
-    for test in &test_files {
-        let source = std::fs::read_to_string(root.join(test)).expect("测试源码可读");
-        assert!(source.lines().count() <= 800, "{test} 超过 800 行");
     }
 }

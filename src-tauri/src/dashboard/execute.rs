@@ -6,7 +6,7 @@ use crate::commands::AppState;
 use crate::dashboard::repository::load_monitor_settings;
 use crate::store::AppDb;
 use crate::store::AppSettings;
-use datazen_feature_core::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
+use datazen_feature_core::dashboard::types::{DashboardWidget, WidgetRun};
 use datazen_feature_core::workflow::executor::WorkflowExecutor;
 use datazen_feature_core::workflow::model::WorkflowExecutionResult;
 use datazen_platform_api::ports::scope::OrganizationScope;
@@ -111,7 +111,9 @@ mod tests {
         parse_step_result_value, DEFAULT_QUERY_TIMEOUT_SEC,
     };
     use datazen_feature_core::dashboard::runs::{get_run, list_run_index};
-    use datazen_feature_core::dashboard::types::{RefreshPolicy, ViewMode, WidgetLayout};
+    use datazen_feature_core::dashboard::types::{
+        RefreshPolicy, ViewMode, WidgetLayout, WidgetRunStatus,
+    };
     use datazen_feature_core::workflow::model::{
         StepExecutionResult, StepStatus, WorkflowExecutionResult,
     };

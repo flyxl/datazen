@@ -5,6 +5,15 @@ import {
   metadataTarget,
 } from '../lib/session/targetCommand';
 import { invoke } from '@tauri-apps/api/core';
+import { useBackendClient } from '@datazen/backend-client';
+import type {
+  CountStrategy,
+  CursorValue,
+  ForeignKeyTargetResolution,
+  NamedView,
+  NamedViewScope,
+  ResolveForeignKeyTargetsRequest,
+} from '@datazen/backend-client';
 import type {
   FilterCondition,
   SortCondition,
@@ -145,7 +154,14 @@ export const databaseCommands = {
     return schemas;
   },
 
-  getTableData: (params: {
+  /**
+   * Read one page of a table.
+   *
+   * The read goes through the bound `BackendClient`, so the desktop and a
+   * browser build take the same command path; the request shape the backend
+   * sees is unchanged.
+   */
+  getTableData: async (params: {
     dbSessionId: string;
     context: TableChangeContext;
     manualHandle?: import('@datazen/backend-client').SessionHandle | null;
@@ -160,37 +176,138 @@ export const databaseCommands = {
     database?: string | null;
     /** Explicit target schema for schema-aware engines. */
     schema?: string | null;
-  }) =>
-    invoke<TableDataResult>('get_table_data_at_target', {
-      request: {
-        context: params.context,
-        manualHandle: params.manualHandle ?? null,
-        page: params.page,
-        pageSize: params.pageSize,
-        filters: params.filters,
-        sorts: params.sorts,
-        skipCount: params.skipCount,
-        filterLogic: params.filterLogic,
-      },
-    }),
+    /**
+     * The row-count strategy to use. Omitted means "the driver decides";
+     * the host never counts against the driver's own declaration.
+     */
+    countStrategy?: CountStrategy;
+    /**
+     * The columns to order by when the caller did not ask for an order. An
+     * empty array means "do not order at all"; omitted means "the driver's
+     * default order".
+     */
+    defaultOrderColumns?: string[];
+    /**
+     * The boundary of the page: the key values the back end reported for the
+     * previous page, sent back verbatim.
+     *
+     * Omitted means "the first page of a read". The values are never
+     * computed on this side — a boundary derived from a page number locates
+     * the wrong rows, silently.
+     */
+    afterKey?: CursorValue[];
+  }): Promise<TableDataResult> => {
+    const client = useBackendClient();
+    return client.getTableData({
+      context: params.context,
+      manualHandle: params.manualHandle ?? null,
+      page: params.page,
+      pageSize: params.pageSize,
+      filters: params.filters,
+      sorts: params.sorts,
+      skipCount: params.skipCount,
+      filterLogic: params.filterLogic,
+      countStrategy: params.countStrategy,
+      defaultOrderColumns: params.defaultOrderColumns,
+      afterKey: params.afterKey,
+    });
+  },
 
   executeSQL: (dbSessionId: string, sql: string) => queryCommands.executeQuery(dbSessionId, sql),
 
   /** Generate a serialisable plan only; the backend does not execute SQL. */
-  previewPendingChanges: (params: PreviewPendingChangesRequest) =>
-    invoke<RowChangePlan>('preview_pending_changes', {
+  previewPendingChanges: async (params: PreviewPendingChangesRequest): Promise<RowChangePlan> => {
+    const client = useBackendClient();
+    return client.previewPendingChanges({
       context: params.context,
       changes: params.changes,
-    }),
+    });
+  },
 
   /** Commit the exact plan returned by preview, guarded by its fingerprint. */
-  commitPendingChanges: (params: CommitPendingChangesRequest) =>
-    invoke<CommitPendingChangesResponse>('commit_pending_changes', {
+  commitPendingChanges: async (
+    params: CommitPendingChangesRequest,
+  ): Promise<CommitPendingChangesResponse> => {
+    const client = useBackendClient();
+    return client.commitPendingChanges({
       dbSessionId: params.dbSessionId,
       plan: params.plan,
       manualHandle: params.manualHandle ?? null,
       fingerprint: params.fingerprint,
-    }),
+    });
+  },
+
+  /**
+   * The estimated row count of a table, or `null` when the driver cannot
+   * estimate it. `null` is an answer, not a failure: falling back to an exact
+   * count is the caller's decision.
+   *
+   * **Not wired to any UI yet.** The command belongs to 09 (count strategy),
+   * and the desktop does not register it yet, so the desktop transport
+   * declares it unsupported and this call fails with
+   * `CapabilityUnsupported`. The wrapper exists because the port registers
+   * the method and a wrapper that does not exist cannot be called by mistake;
+   * the UI entry point arrives with 09, and this call then starts working.
+   */
+  estimateTableRows: async (
+    dbSessionId: string,
+    table: string,
+    database?: string | null,
+    schema?: string | null,
+  ): Promise<number | null> => {
+    const client = useBackendClient();
+    return client.estimateTableRows({ dbSessionId, table, database, schema });
+  },
+
+  /**
+   * Resolve the foreign key a local column points at, and whether the
+   * referenced row still exists.
+   *
+   * The desktop **does** register the command (07), so this call reaches the
+   * host. The UI entry point is the grid's foreign-key arrow: it calls
+   * `openForeignKeyTarget` (`src/lib/fkNavigationActions.ts`), which resolves
+   * the target through this method before it opens the target tab.
+   */
+  resolveForeignKeyTargets: async (
+    params: ResolveForeignKeyTargetsRequest,
+  ): Promise<ForeignKeyTargetResolution> => {
+    const client = useBackendClient();
+    return client.resolveForeignKeyTargets(params);
+  },
+
+  /**
+   * The saved views of one scope (or of every scope when `scope` is omitted).
+   *
+   * Named views are **desktop-only** for now: their storage is the desktop
+   * host's persistent store, which a browser build has no counterpart for. A
+   * backend that cannot serve them fails this call with
+   * `CapabilityUnsupported` instead of answering with an empty list that reads
+   * like "you have no saved views".
+   *
+   * The desktop registers the three commands (08), so the call reaches the
+   * host; a browser build declares the capability gap and the entry is
+   * hidden rather than offered and refused later.
+   */
+  listNamedViews: async (scope?: NamedViewScope): Promise<readonly NamedView[]> => {
+    const client = useBackendClient();
+    return client.listNamedViews({ scope });
+  },
+
+  /**
+   * Save a named view; the backend mints the id and stamps the timestamps.
+   */
+  saveNamedView: async (view: NamedView): Promise<NamedView> => {
+    const client = useBackendClient();
+    return client.saveNamedView({ view });
+  },
+
+  /**
+   * Delete a named view; the remaining views come back with the receipt.
+   */
+  deleteNamedView: async (id: string): Promise<readonly NamedView[]> => {
+    const client = useBackendClient();
+    return client.deleteNamedView({ id });
+  },
 
   getDatabaseObjects: async (
     dbSessionId: string,
@@ -242,3 +359,4 @@ export const databaseCommands = {
   getPrivileges: (dbSessionId: string) =>
     invoke<PrivilegeGrant[]>('get_privileges', { dbSessionId }),
 };
+

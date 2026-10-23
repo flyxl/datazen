@@ -4,7 +4,6 @@ use crate::commands::error::CommandError;
 use crate::commands::AppState;
 use datazen_ai_api::AiProviderConfig;
 use datazen_ai_api::*;
-use datazen_feature_core::ai::response::{find_first_balanced_json, repair_json};
 use datazen_platform_api::dto::session::SessionView;
 use datazen_runtime::application::{LiveConnectionLease, LivePurpose};
 use std::sync::Arc;
@@ -163,7 +162,9 @@ pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_feature_core::ai::response::strip_fences_all;
+    use datazen_feature_core::ai::response::{
+        find_first_balanced_json, repair_json, strip_fences_all,
+    };
 
     // ── find_first_balanced_json ──
 

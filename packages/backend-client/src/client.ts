@@ -12,11 +12,18 @@ import type { SharedSettings } from './settings';
  *
  * Backend selection happens *here*, by binding a different instance under a
  * different `backendId` (§7.3). It never happens by passing an id to a method.
+ *
+ * The facade is composed of two halves: the kernel surface below and the
+ * table-data surface in `./tableDataClient`. A consumer sees one object either
+ * way — `BackendClient` extends `TableDataClient` — but each half keeps its
+ * own file, because the table-data half is a distinct domain with its own
+ * wire shapes and its own capability rules.
  */
 
 import { ApiError, deserializeApiError } from './errors';
 import { createEventStream, toEventStream, type ConnectionEventStream } from './streams';
-import type { BackendTransport } from './transport';
+import type { BackendTransport, MethodMap } from './transport';
+import { createTableDataMethods, type TableDataClient } from './tableDataClient';
 import { emptyJobProgress, toCounter, toId } from './types';
 import type {
   ArtifactChunk,
@@ -38,6 +45,7 @@ import type {
   JobView,
   OpenSessionReceipt,
   OpenSessionRequest,
+  OwnerRef,
   ProfileDraft,
   ProfilePatch,
   ProfileView,
@@ -46,11 +54,10 @@ import type {
   SetSessionContextRequest,
   SubmissionToken,
   SubscribeEventsRequest,
-  OwnerRef,
   Timestamp,
 } from './types';
 
-export interface BackendClient {
+export interface BackendClient extends TableDataClient {
   getSettings(): Promise<SharedSettings>;
   saveSettings(settings: SharedSettings): Promise<SharedSettings>;
 
@@ -171,8 +178,42 @@ export interface BackendClient {
  * object cannot leak an unrecognized error type to consumers.
  */
 export function createBackendClient(backendId: string, transport: BackendTransport): BackendClient {
-  /** Delegation plus error normalization, applied to every kernel method. */
-  const guard = async <T>(method: string, run: () => Promise<T>): Promise<T> => {
+  /**
+   * The methods this backend cannot serve, and the kind of each gap.
+   *
+   * A capability gap is a property of the backend, not of the call site, so it
+   * is declared once by the adapter and enforced here.
+   */
+  const unsupportedMethods = transport.unsupportedMethods ?? {};
+
+  /**
+   * Delegation plus error normalization, applied to every kernel method.
+   *
+   * An unsupported method fails here, on *use* rather than on bind: a backend
+   * that cannot serve named views is still a perfectly good backend for
+   * everything else, and binding it must not fail. The code comes from the §13
+   * table (`CapabilityUnsupported`), so a caller can branch on it instead of
+   * on a message — and it is the same code this package already uses when a
+   * backend has no event subscription.
+   *
+   * The two kinds of gap get different wording on purpose. A form factor
+   * that can *never* serve a method and a backend that simply has not
+   * implemented it yet are different facts, and a caller that hides a
+   * "coming soon" feature or offers a "never possible" one is misreading the
+   * port. The kind also travels on the error, so the caller can branch on it
+   * without reading the message.
+   */
+  const guard = async <T>(method: keyof MethodMap, run: () => Promise<T>): Promise<T> => {
+    const kind = unsupportedMethods[method];
+    if (kind !== undefined) {
+      throw new ApiError(
+        'CapabilityUnsupported',
+        kind === 'capability'
+          ? `${method} is not supported by the ${backendId} backend.`
+          : `${method} is not implemented by the ${backendId} backend yet.`,
+        { unsupportedKind: kind },
+      );
+    }
     try {
       return await run();
     } catch (error) {
@@ -332,6 +373,12 @@ export function createBackendClient(backendId: string, transport: BackendTranspo
       guard('issueSubmissionToken', () =>
         transport.call('issueSubmissionToken', { operation, handle, ...scope }),
       ),
+
+    // The table-data half of the facade. It is built the same way as the
+    // methods above — through the same `guard`, over the same transport — so
+    // a capability gap and a malformed rejection behave identically on both
+    // halves.
+    ...createTableDataMethods(transport, guard),
   };
 }
 

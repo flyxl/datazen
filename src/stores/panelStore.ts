@@ -1,5 +1,5 @@
 import { useTableDataStore } from './tableDataStore';
-import { invoke } from '@tauri-apps/api/core';
+import { useBackendClient, toTableValue } from '@datazen/backend-client';
 import { tableSessionKey } from '../lib/session/tableSession';
 import { getQueryPanelSessionRegistry } from '../lib/session/queryPanelSessionRoot';
 import { create } from 'zustand';
@@ -30,6 +30,7 @@ import { createRunningCloseGuard } from './runningExecutionClose';
 import { DEFAULT_PANE_ID, paneKey } from './paneKeys';
 import { resolveNextActive, resetPanelIdCounter, type Panel } from './panelTypes';
 import { createPanelCloseNotifier } from './panelCloseNotifier';
+import { syncPaneFocus } from './paneFocus';
 
 const resultWriteInflight = new Set<string>();
 
@@ -210,41 +211,6 @@ interface PanelActions {
   toggleFavorites: () => void;
 
   reset: () => void;
-}
-
-/** The two focus fields an action has to write, plus the new activation. */
-type PaneFocusPatch = Pick<PanelState, 'focusedPaneIdByPanel' | 'focusedPaneId' | 'activePanelId'>;
-
-/**
- * The one writer of pane focus.
- *
- * It drops entries whose tab is gone (a pane cannot outlive its panel), applies
- * `paneId` to `panelId` when given, and re-derives the `focusedPaneId` mirror
- * from whichever tab ends up active. Routing the mirror through the map — rather
- * than letting each action assign it — is what keeps a tab from inheriting
- * another tab's pane id, and what keeps closing a pane in one tab from stealing
- * the focus of another.
- *
- * `paneId` of `null` / `undefined` means "this tab's default pane": the entry is
- * removed rather than stored, so an unsplit tab is simply absent from the map.
- */
-function syncPaneFocus(
-  prev: Pick<PanelState, 'focusedPaneIdByPanel'>,
-  panels: Panel[],
-  activePanelId: string | null,
-  focus?: { panelId: string; paneId: string | null },
-): PaneFocusPatch {
-  const live = new Set(panels.map((p) => p.id));
-  const next: Record<string, string> = {};
-  for (const [panelId, paneId] of Object.entries(prev.focusedPaneIdByPanel)) {
-    if (live.has(panelId) && panelId !== focus?.panelId) next[panelId] = paneId;
-  }
-  if (focus?.paneId) next[focus.panelId] = focus.paneId;
-  return {
-    focusedPaneIdByPanel: next,
-    focusedPaneId: activePanelId ? (next[activePanelId] ?? null) : null,
-    activePanelId,
-  };
 }
 
 export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
@@ -629,27 +595,33 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     }));
   },
 
+  /** The **narrow** channel's write path — see `panelResultEdit` for the channels. */
   updateResultCell: async (panelId, resultIdx, row, col, value, paneId) => {
     const key = paneKey(panelId, paneId);
     const exec = get().queryExec.get(key);
     if (!exec) return;
     const original = exec.results[resultIdx];
-    if (!original?.runtimeBinding || original.source?.writableMapping !== 'verified')
-      throw new Error('Result is read-only; execute the query again');
-    const columnIndex = original.columns.findIndex((column) => column.name === col);
-    if (columnIndex < 0 || !original.rows[row]) throw new Error('Result cell unavailable');
-    if (JSON.stringify(original.rows[row][columnIndex]) === JSON.stringify(value)) return;
     if (resultWriteInflight.has(key)) throw new Error('A result edit is already in progress');
     resultWriteInflight.add(key);
     try {
-      await invoke('commit_query_result_cell', {
-        request: {
-          binding: original.runtimeBinding,
-          statementIndex: original.source.statementIndex,
-          rowIndex: row,
-          column: col,
-          value,
-        },
+      // Refusals go through the error handler below, so they reach the user.
+      if (!original?.runtimeBinding || original.source?.writableMapping !== 'verified')
+        throw new Error('Result is read-only; execute the query again');
+      const columnIndex = original.columns.findIndex((column) => column.name === col);
+      if (columnIndex < 0 || !original.rows[row]) throw new Error('Result cell unavailable');
+      if (JSON.stringify(original.rows[row][columnIndex]) === JSON.stringify(value)) return;
+      // The write goes through the bound `BackendClient` so the desktop and a
+      // browser build take the same command path. The binding travels with the
+      // request: the backend refuses a result whose runtime resource is gone
+      // instead of writing through some other handle.
+      const cellValue = toTableValue(value);
+      if (cellValue === undefined) throw new Error('Result cell value is not sendable');
+      await useBackendClient().commitQueryResultCell({
+        binding: original.runtimeBinding,
+        statementIndex: original.source.statementIndex,
+        rowIndex: row,
+        column: col,
+        value: cellValue,
       });
     } catch (error) {
       set((state) => ({

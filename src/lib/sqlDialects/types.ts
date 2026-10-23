@@ -115,4 +115,33 @@ export interface SqlDialectStrategy {
   getTruncateTableSql?: (quotedName: string) => string;
   /** Table template SQL generator for this dialect (SELECT, INSERT, UPDATE, DELETE). */
   tableSql?: TableSqlDialect;
+  /**
+   * How this dialect caps the rows a statement returns.
+   *
+   * Absent means the standard `LIMIT n` at the end of the statement — the
+   * shape most dialects use. A dialect that spells the cap differently
+   * declares it here, so the host never has to know a driver name.
+   */
+  rowLimit?: RowLimitShape;
+}
+
+/**
+ * How a dialect caps the number of rows a statement returns.
+ *
+ * The cap is not one shape. Most dialects end the statement with `LIMIT n`;
+ * SQL Server puts `TOP n` into the select list; Oracle 12c+ ends the
+ * statement with `FETCH FIRST n ROWS ONLY`. `LIMIT` on SQL Server or Oracle
+ * is a syntax error, so the cap belongs to the dialect, never to the caller.
+ */
+export interface RowLimitShape {
+  /**
+   * Where the cap goes.
+   *
+   * - `trailing`: the cap ends the statement (`… FETCH FIRST 10 ROWS ONLY`);
+   * - `select-list`: the cap sits right behind `SELECT [DISTINCT]`
+   *   (`SELECT DISTINCT TOP 10 …`).
+   */
+  readonly placement: 'trailing' | 'select-list';
+  /** The cap for the given number of rows. */
+  readonly clause: (limit: number) => string;
 }

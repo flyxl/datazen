@@ -10,6 +10,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use datazen_feature_core::services::migration_endpoint::identify;
 use datazen_platform_api::id::{ConnectionId, OrganizationId, PrincipalId};
 use datazen_platform_api::ports::budget::ResourceClass;
 use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
@@ -17,7 +18,6 @@ use datazen_runtime::job::{
     detect_endpoint_overlap, EndpointRef, EndpointRole, JobError, MultiEndpointPermits,
 };
 
-use crate::services::migration_endpoint::identify;
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{ConnectionConfig, SslMode};
 

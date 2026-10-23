@@ -26,6 +26,9 @@ concurrency:
 env:
   DATAZEN_KEYRING: file
   DATAZEN_CI_TYPECHECK_ONCE: '1'
+  # 同 ci.yml：仓内默认关闭 pnpm 的 run 前依赖校验（见 pnpm-workspace.yaml），发布流水线
+  # 必须显式打开，否则「node_modules 与锁文件不同步」在发版路径上无人发现。
+  DATAZEN_VERIFY_DEPS_BEFORE_RUN: install
 
 jobs:
   # Build + sign the SQL Editor Pro extension ONCE and hand it to every variant

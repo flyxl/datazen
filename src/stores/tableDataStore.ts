@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { tableManualHandle } from '../lib/session/tableSession';
 import { databaseCommands } from '../commands/database';
 import { t } from '../locales/t';
-import type { DatabaseType, FilterCondition, SortCondition } from '../types';
+import type { CountStrategy } from '@datazen/backend-client';
+import type { ColumnSchema, DatabaseType, FilterCondition, SortCondition } from '../types';
 import { DB_REGISTRY } from '../lib/databaseTypes';
 import {
   buildRowIdentity,
@@ -10,12 +11,14 @@ import {
   isCompleteTableChangeContext,
   rowIdentityKey,
   tableChangeContextKey,
-  valuesEqual,
   type CommitPendingChangesResult,
   type RowChangePlan,
   type TableChangeContext,
 } from '../lib/tableChanges';
 import { useSettingsStore } from './settingsStore';
+import { resolveDefaultTableSort } from '../lib/defaultSort';
+import { resolvePanelCountStrategy } from './tableData/countStrategy';
+import { DEFAULT_TABLE_SORT, type DefaultTableSort } from '../types/settings';
 import type { TableState } from './tableData/types';
 import { cloneFilters, filterDraftEqualsApplied, isCompleteFilter } from './tableData/filterUtils';
 import {
@@ -23,19 +26,45 @@ import {
   emptyTableState,
   extractErrorMessage,
   rowsToRecords,
-  toCellValue,
   type TableTarget,
 } from './tableData/connectionState';
 import {
+  createSelectionSlice,
+  panelColumnOrder,
+  rowIndexSelectionReset,
+  type SelectionStoreSlice,
+} from './tableData/selectionActions';
+import {
+  createPendingEditSlice,
+  type PendingEditStoreSlice,
+} from './tableData/pendingEditActions';
+import {
+  createEnumCandidateSlice,
+  type EnumCandidateStoreSlice,
+} from './tableData/enumCandidates';
+import {
   AMBIGUOUS_ROW_IDENTITY_ERROR,
-  findPendingForRow,
-  hasPendingIdentityCollision,
+  draftsForWire,
+  hasPendingWork,
   overlayPendingRows,
   pendingChangesForWire,
-  pendingChangesSignature,
-  rebuildEditBuffer,
-  rowIdentityIsUnique,
+  pendingWorkSignature,
 } from './tableData/pendingChanges';
+import {
+  createDraftSlice,
+  type DraftStoreSlice,
+} from './tableData/draftInserts';
+import {
+  createPanelSeedSlice,
+  type PanelSeedSlice,
+} from './tableData/panelSeed';
+import { locateInsertedRow } from './tableData/insertLocation';
+import {
+  applyKeysetResult,
+  invalidatedKeyset,
+  keysetRequestFor,
+  type KeysetRequest,
+} from './tableData/keysetActions';
 
 // ── Store ─────────────────────────────────────────────────────────
 
@@ -44,15 +73,25 @@ export interface LoadTableDataParams extends TableTarget {
   panelId: string;
   /** Reuse the cached total instead of running COUNT(*) (pagination/sort re-reads). */
   skipCount?: boolean;
+  /**
+   * The row-count strategy to ask the host for. Omitted means "the host
+   * decides" — which is what the driver declares.
+   */
+  countStrategy?: CountStrategy;
 }
 
 /** Every action is scoped to one table/view panel, like `panelStore`'s queryExec map. */
-interface TableDataStore {
+interface TableDataStore
+  extends SelectionStoreSlice,
+    DraftStoreSlice,
+    PendingEditStoreSlice,
+    EnumCandidateStoreSlice,
+    PanelSeedSlice {
   byPanel: Map<string, TableState>;
 
   loadTableData: (params: LoadTableDataParams) => Promise<void>;
   /** Re-run the load a panel last performed, keeping its page/filters/sorts. */
-  reloadPanel: (panelId: string, opts?: { skipCount?: boolean }) => void;
+  reloadPanel: (panelId: string, opts?: { skipCount?: boolean; countStrategy?: CountStrategy }) => void;
   /** Drop a panel's slice entirely — called when the tab closes. */
   removePanel: (panelId: string) => void;
   /**
@@ -75,17 +114,21 @@ interface TableDataStore {
   setFilterPanelOpen: (panelId: string, open: boolean) => void;
   setVisibleColumns: (panelId: string, columns: string[] | null) => void;
   setSort: (panelId: string, sort: SortCondition) => void;
+  /** Change the panel's temporary default-order override. */
+  setDefaultOrderOverride: (
+    panelId: string,
+    override: TableState['defaultOrderOverride'],
+  ) => void;
   setDetailRow: (panelId: string, index: number | null) => void;
 
   startEdit: (panelId: string, row: number, col: string) => void;
   cancelEdit: (panelId: string) => void;
-  selectRow: (panelId: string, index: number, opts?: { multi?: boolean; range?: boolean }) => void;
-  toggleSelectAll: (panelId: string) => void;
-  stageCellChange: (panelId: string, row: number, col: string, value: unknown) => void;
-  applyColumnToRows: (panelId: string, col: string, value: unknown, rows: number[]) => void;
-  stageRowDelete: (panelId: string, rowIndices: number | number[]) => void;
-  deleteRows: (panelId: string, rowIndices: number[]) => void;
-  rollbackPendingChanges: (panelId: string) => void;
+  /**
+   * Clear the "new row" highlight. It expires on its own (the row is
+   * highlighted for a moment after the commit) and it is cleared when the
+   * page, the filters or the sort change (04 §7 #17).
+   */
+  clearHighlightedNewRow: (panelId: string) => void;
   previewPendingChanges: (panelId: string) => Promise<RowChangePlan | null>;
   commitPendingChanges: (panelId: string) => Promise<CommitPendingChangesResult>;
 }
@@ -116,8 +159,47 @@ function patchPanelForReload(
 ): void {
   patchPanel(get, set, panelId, (ts) => ({
     ...updater(ts),
+    ...rowIndexSelectionReset(),
+    // Paging, filtering or sorting moves the new row out of sight: the
+    // highlight would point at a row that is no longer on the page (04 §7 #17).
+    highlightedNewRowKey: null,
     requestRevision: ts.requestRevision + 1,
+    // A new question: the drift guard of the old page does not carry over.
+    driftRecountPage: null,
   }));
+}
+
+/**
+ * The order a request asks for.
+ *
+ * The request's `defaultOrderColumns` carries column names but no direction,
+ * so "the primary key, descending" is an **explicit sort** rather than a
+ * default order. An explicit sort the user made always wins; a composite
+ * primary key cannot be expressed by the one-column sort channel at all, so
+ * the descending override is left to the interface, which explains why it is
+ * greyed out there.
+ *
+ * The panel's temporary override beats the global setting; the global setting
+ * beats the driver's own default, which is what every read asked for before
+ * the setting existed.
+ */
+function orderRequest(
+  override: TableState['defaultOrderOverride'],
+  columns: ColumnSchema[],
+  sorts: SortCondition[],
+  setting: DefaultTableSort,
+): { defaultOrderColumns?: string[]; sorts: SortCondition[] } {
+  const order = resolveDefaultTableSort(override, setting);
+  if (order === 'none') {
+    return { defaultOrderColumns: [], sorts };
+  }
+  if (order === 'primaryKeyDesc' && sorts.length === 0) {
+    const keyColumns = columns.filter((column) => column.isPrimaryKey);
+    if (keyColumns.length === 1) {
+      return { sorts: [{ column: keyColumns[0].name, descending: true }] };
+    }
+  }
+  return { sorts };
 }
 
 function targetOf(context: TableChangeContext): TableTarget {
@@ -139,6 +221,7 @@ function commitFetchedPage(
   context: TableChangeContext,
   requestRevision: number,
   res: Awaited<ReturnType<typeof databaseCommands.getTableData>>,
+  keysetRequest: KeysetRequest,
 ): void {
   const current = get().byPanel.get(panelId);
   if (!current) return; // panel closed while the request was in flight
@@ -171,29 +254,39 @@ function commitFetchedPage(
       sanitizedVisible && sanitizedVisible.length === res.columns.length ? null : sanitizedVisible,
     rows: rowsWithPending,
     totalRows: res.totalRows ?? current.totalRows,
+    // The page whose count was recomputed after a drift.
+    driftRecountPage: res.paging?.driftSuspected ? res.page : current.driftRecountPage,
+    // A response that carries no kind says nothing about the count — the
+    // panel keeps the value it had. Only a kind that is actually reported
+    // replaces it.
+    totalRowsKind: res.totalRowsKind ?? current.totalRowsKind,
     page: res.page,
     pageSize: res.pageSize,
+    // The back end's word about the paging is the authority.
+    keyset: applyKeysetResult(current, res, keysetRequest),
     context,
     rowIdentityAnchors: anchors,
     loading: false,
     loadingRevision: null,
-    selectedRows: new Set(),
-    editBuffer: rebuildEditBuffer({
-      ...current,
-      columns: res.columns,
-      rows: rowsWithPending,
-      rowIdentityAnchors: anchors,
-    }),
+    ...rowIndexSelectionReset(),
     editingCell: null,
     error: duplicateIdentityKeys.length > 0 ? AMBIGUOUS_ROW_IDENTITY_ERROR : null,
   });
   set({ byPanel: next });
+
+  // Rows were deleted while the user was paging: the count on the panel is
+  // stale, and a stale count is not a note — it is read again. The read is
+  // a full one (`skipCount: false`), once per page: a table that keeps
+  // shrinking must not make the panel read itself in a loop.
+  if (res.paging?.driftSuspected && current.driftRecountPage !== res.page) {
+    get().reloadPanel(panelId, { skipCount: false });
+  }
 }
 
 export const useTableDataStore = create<TableDataStore>((set, get) => ({
   byPanel: new Map(),
 
-  loadTableData: async ({ panelId, skipCount, ...target }) => {
+  loadTableData: async ({ panelId, skipCount, countStrategy, ...target }) => {
     const context = buildTableContext(target);
     const existing = get().byPanel.get(panelId) ?? emptyTableState(context);
     const requestRevision = existing.requestRevision;
@@ -219,6 +312,14 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     set({ byPanel: states });
 
     try {
+      const order = orderRequest(
+        existing.defaultOrderOverride,
+        existing.columns,
+        sorts,
+        useSettingsStore.getState().settings.defaultTableSort ?? DEFAULT_TABLE_SORT,
+      );
+      // The boundary of the page, or nothing: an unvisited page has none.
+      const keysetRequest = keysetRequestFor(existing, page);
       const res = await databaseCommands.getTableData({
         context,
         manualHandle: tableManualHandle(panelId),
@@ -226,23 +327,44 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         table: context.table,
         page,
         pageSize,
-        filters: filters.filter(isCompleteFilter),
-        sorts,
+        // The applied filters go on the wire as they are. Stripping the
+        // incomplete ones here would make the query answer a question the
+        // user did not ask — the result set would be *wider* than the filter
+        // list on screen. The host refuses an incomplete condition with
+        // `grid.filter.incomplete`, which is a visible, actionable error
+        // instead of a silent widening.
+        filters,
+        // The default order override ("primary key, descending") is an
+        // **explicit sort** — `defaultOrderColumns` carries no direction — so
+        // the request must carry `order.sorts`, not the raw list.
+        sorts: order.sorts,
         skipCount,
         filterLogic,
+        // The caller's strategy wins; without one the shared resolution
+        // decides — the same answer the panel's first read got, so the number
+        // cannot change shape on a refresh.
+        countStrategy: countStrategy ?? resolvePanelCountStrategy(context),
+        defaultOrderColumns: order.defaultOrderColumns,
+        afterKey: keysetRequest.afterKey,
         database: context.database,
         // The table's own schema, not a guess: without it the host falls back
         // to the connection default and a table outside it reads as missing.
         schema: context.schema ?? null,
       });
-      commitFetchedPage(get, set, panelId, context, requestRevision, res);
+      commitFetchedPage(get, set, panelId, context, requestRevision, res, keysetRequest);
     } catch (e) {
+      // Fourth convergence point (00-contracts §4 needs the sync): a *failed* fetch must
+      // drop row-indexed selection exactly like a successful one. `patchPanelForReload`
+      // already covers the six transition actions, but a bare `reloadPanel` / toolbar
+      // refresh / post-commit reload has no such transition, so without this the old rows
+      // stay highlighted under an error banner for a page the user can no longer see.
       patchPanel(get, set, panelId, (ts) =>
         ts.requestRevision === requestRevision && ts.loadingRevision === requestRevision
           ? {
               loading: false,
               loadingRevision: null,
               error: extractErrorMessage(e, t('tableData.loadFailed')),
+              ...rowIndexSelectionReset(),
             }
           : {},
       );
@@ -252,7 +374,12 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   reloadPanel: (panelId, opts) => {
     const context = get().byPanel.get(panelId)?.context;
     if (!context) return;
-    void get().loadTableData({ panelId, ...targetOf(context), skipCount: opts?.skipCount });
+    void get().loadTableData({
+      panelId,
+      ...targetOf(context),
+      skipCount: opts?.skipCount,
+      countStrategy: opts?.countStrategy,
+    });
   },
 
   removePanel: (panelId) => {
@@ -268,15 +395,21 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     for (const [panelId, ts] of next) {
       if (ts.context?.dbSessionId !== dbSessionId) continue;
       if (tableName && ts.context?.table !== tableName) continue;
-      if (ts.pendingChanges.size > 0) continue;
+      // Drafts are staged work too: a panel with only drafts must not be
+      // invalidated behind the user's back (04 §3.7 R-4).
+      if (hasPendingWork(ts)) continue;
+      // A panel with an **open editor** is in the same situation: the
+      // invalidation drops the rows, the editor unmounts with them, and the
+      // draft the user typed is lost without ever being written (05 §4.4).
+      // The panel keeps its rows until the next real read.
+      if (ts.editingCell) continue;
       if (ts.columns.length === 0 && ts.rows.length === 0) continue;
       next.set(panelId, {
         ...ts,
         columns: [],
         rows: [],
         totalRows: 0,
-        selectedRows: new Set(),
-        editBuffer: new Map(),
+        ...rowIndexSelectionReset(),
         editingCell: null,
         // Bump the revision so an in-flight (or late) response can never commit.
         requestRevision: ts.requestRevision + 1,
@@ -295,7 +428,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   setPageSize: (panelId, size) => {
-    patchPanelForReload(get, set, panelId, () => ({ pageSize: size, page: 0 }));
+    patchPanelForReload(get, set, panelId, (ts) => ({
+      pageSize: size,
+      page: 0,
+      keyset: invalidatedKeyset(ts.keyset),
+    }));
     get().reloadPanel(panelId, { skipCount: true });
   },
 
@@ -308,13 +445,14 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   setFilters: (panelId, filters, logic = 'and') => {
     const next = cloneFilters(filters);
-    patchPanelForReload(get, set, panelId, () => ({
+    patchPanelForReload(get, set, panelId, (ts) => ({
       filters: next,
       draftFilters: cloneFilters(next),
       filterLogic: logic,
       draftFilterLogic: logic,
       page: 0,
       filterPanelOpen: true,
+      keyset: invalidatedKeyset(ts.keyset),
     }));
     get().reloadPanel(panelId);
   },
@@ -336,12 +474,13 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   clearFilters: (panelId) => {
-    patchPanelForReload(get, set, panelId, () => ({
+    patchPanelForReload(get, set, panelId, (ts) => ({
       filters: [],
       draftFilters: [],
       filterLogic: 'and',
       draftFilterLogic: 'and',
       page: 0,
+      keyset: invalidatedKeyset(ts.keyset),
     }));
     get().reloadPanel(panelId);
   },
@@ -354,10 +493,19 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     ) {
       return;
     }
+    // An incomplete condition is refused, not skipped. Applying it would send
+    // a condition the host rejects (`grid.filter.incomplete`), and dropping it
+    // on the way would quietly widen the result set beyond what the user
+    // asked for. The editor marks the condition and blocks the button; this
+    // is the second gate for every other caller.
+    if (ts.draftFilters.some((filter) => !isCompleteFilter(filter))) {
+      return;
+    }
     patchPanelForReload(get, set, panelId, (cur) => ({
       filters: cloneFilters(cur.draftFilters),
       filterLogic: cur.draftFilterLogic,
       page: 0,
+      keyset: invalidatedKeyset(cur.keyset),
     }));
     get().reloadPanel(panelId);
   },
@@ -368,10 +516,29 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   setVisibleColumns: (panelId, columns) => {
     patchPanel(get, set, panelId, () => ({ visibleColumns: columns }));
+    const ts = get().byPanel.get(panelId);
+    // Hiding a column must converge the selection now, or hidden cells stay "selected".
+    if (ts) get().reconcileGridSelectionForColumns(panelId, panelColumnOrder(ts));
   },
 
   setSort: (panelId, sort) => {
-    patchPanelForReload(get, set, panelId, () => ({ sorts: [sort], page: 0 }));
+    patchPanelForReload(get, set, panelId, (ts) => ({
+      sorts: [sort],
+      page: 0,
+      keyset: invalidatedKeyset(ts.keyset),
+    }));
+    get().reloadPanel(panelId, { skipCount: true });
+  },
+
+  setDefaultOrderOverride: (panelId, override) => {
+    patchPanelForReload(get, set, panelId, (ts) => ({
+      defaultOrderOverride: override,
+      // The override replaces the default order, so an explicit sort the
+      // user made is no longer the only ordering in force.
+      sorts: [],
+      page: 0,
+      keyset: invalidatedKeyset(ts.keyset),
+    }));
     get().reloadPanel(panelId, { skipCount: true });
   },
 
@@ -387,225 +554,44 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     patchPanel(get, set, panelId, () => ({ editingCell: null }));
   },
 
-  selectRow: (panelId, index, opts) => {
-    patchPanel(get, set, panelId, (ts) => {
-      if (opts?.range && ts.lastSelectedIndex !== null) {
-        const lo = Math.min(ts.lastSelectedIndex, index);
-        const hi = Math.max(ts.lastSelectedIndex, index);
-        const next = new Set(ts.selectedRows);
-        for (let i = lo; i <= hi; i += 1) next.add(i);
-        return { selectedRows: next, lastSelectedIndex: index };
-      }
-      if (opts?.multi) {
-        const next = new Set(ts.selectedRows);
-        if (next.has(index)) next.delete(index);
-        else next.add(index);
-        return { selectedRows: next, lastSelectedIndex: index };
-      }
-      // Plain click: select the row, or — when it already is the only selected
-      // row — clear the selection, so a second click undoes the first.
-      if (!opts?.range && ts.selectedRows.size === 1 && ts.selectedRows.has(index)) {
-        return { selectedRows: new Set(), lastSelectedIndex: null };
-      }
-      return { selectedRows: new Set([index]), lastSelectedIndex: index };
-    });
-  },
+  // Whole-row + cell selection actions live in `tableData/selectionActions`.
+  ...createSelectionSlice((panelId, updater) => patchPanel(get, set, panelId, updater)),
 
-  toggleSelectAll: (panelId) => {
-    patchPanel(get, set, panelId, (ts) => {
-      const allSelected = ts.selectedRows.size === ts.rows.length && ts.rows.length > 0;
-      if (allSelected) return { selectedRows: new Set(), lastSelectedIndex: null };
-      const next = new Set<number>();
-      for (let i = 0; i < ts.rows.length; i += 1) next.add(i);
-      return { selectedRows: next, lastSelectedIndex: null };
-    });
-  },
+  // The staged-edit actions live in `tableData/pendingEditActions`; the store only wires them.
+  ...createPendingEditSlice(
+    (panelId, updater) => patchPanel(get, set, panelId, updater),
+    (panelId) => get().byPanel.get(panelId),
+    (panelId) => get().reloadPanel(panelId),
+  ),
 
-  stageCellChange: (panelId, row, col, value) => {
-    const ts = get().byPanel.get(panelId);
-    if (!ts) return;
-    const rowObj = ts.rows[row];
-    if (!rowObj) return;
-    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
-    if (pkCols.length === 0) {
-      patchPanel(get, set, panelId, () => ({ error: t('tableData.noPrimaryKey') }));
-      return;
-    }
+  // The enumeration candidates (DB-05) live in `tableData/enumCandidates`.
+  ...createEnumCandidateSlice((panelId, updater) => patchPanel(get, set, panelId, updater)),
 
-    const rowIdentity = buildRowIdentity(rowObj, pkCols);
-    if (!rowIdentity || !rowIdentityIsUnique(ts, row, rowIdentity, pkCols)) {
-      patchPanel(get, set, panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
-      return;
-    }
-    const match = findPendingForRow(ts, row, rowObj, pkCols);
-    const identity = match?.change.rowIdentity ?? rowIdentity;
-    if (!identity) {
-      patchPanel(get, set, panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
-      return;
-    }
-    const existing = match?.change;
-    const hasOriginalValue =
-      existing !== undefined && Object.prototype.hasOwnProperty.call(existing.originalValues, col);
-    const originalValue = hasOriginalValue
-      ? existing.originalValues[col]
-      : toCellValue(rowObj[col]);
-    const currentValue = toCellValue(value);
-    const prospectiveRow = { ...rowObj, [col]: currentValue };
-    const prospectiveIdentity = buildRowIdentity(prospectiveRow, pkCols);
-    const key = match?.key ?? rowIdentityKey(identity);
-    if (
-      !prospectiveIdentity ||
-      !rowIdentityIsUnique(
-        {
-          ...ts,
-          rows: ts.rows.map((candidate, index) => (index === row ? prospectiveRow : candidate)),
-        },
-        row,
-        prospectiveIdentity,
-        pkCols,
-      ) ||
-      hasPendingIdentityCollision(ts, key, prospectiveIdentity, pkCols)
-    ) {
-      patchPanel(get, set, panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
-      return;
-    }
-    const originalValues = { ...(existing?.originalValues ?? {}) };
-    const currentValues = { ...(existing?.currentValues ?? {}) };
-    let changedColumns = [...(existing?.changedColumns ?? [])];
+  // Draft actions live in `tableData/draftInserts`; the store only wires them.
+  ...createDraftSlice(
+    (panelId, updater) => patchPanel(get, set, panelId, updater),
+    (panelId) => get().byPanel.get(panelId),
+  ),
 
-    if (valuesEqual(originalValue, currentValue)) {
-      delete originalValues[col];
-      delete currentValues[col];
-      changedColumns = changedColumns.filter((column) => column !== col);
-    } else {
-      originalValues[col] = originalValue;
-      currentValues[col] = currentValue;
-      if (!changedColumns.includes(col)) changedColumns.push(col);
-    }
+  // The first-frame seed of a panel (a foreign-key jump) lives in
+  // `tableData/panelSeed`; the store only wires it. It writes the whole slice
+  // because the panel may not have one yet — that is the whole point of it.
+  ...createPanelSeedSlice((panelId, state) => {
+    const next = new Map(get().byPanel);
+    next.set(panelId, state);
+    set({ byPanel: next });
+  }),
 
-    const pendingChanges = new Map(ts.pendingChanges);
-    if (changedColumns.length === 0 && !existing?.deleteMarked) {
-      pendingChanges.delete(key);
-    } else {
-      pendingChanges.set(key, {
-        rowIndex: row,
-        rowIdentity: { ...identity },
-        originalValues,
-        currentValues,
-        changedColumns,
-        deleteMarked: existing?.deleteMarked ?? false,
-      });
-    }
-
-    const nextRows = [...ts.rows];
-    nextRows[row] = { ...rowObj, [col]: currentValue };
-    const rowIdentityAnchors = new Map(ts.rowIdentityAnchors);
-    rowIdentityAnchors.set(row, key);
-
-    patchPanel(get, set, panelId, () => ({
-      rows: nextRows,
-      pendingChanges,
-      rowIdentityAnchors,
-      previewPlan: null,
-      pendingStatus: 'idle',
-      editBuffer: rebuildEditBuffer({ ...ts, rows: nextRows, pendingChanges }),
-      editingCell: null,
-      error: null,
-    }));
-  },
-
-  applyColumnToRows: (panelId, col, value, rows) => {
-    for (const row of rows) get().stageCellChange(panelId, row, col, value);
-  },
-
-  stageRowDelete: (panelId, rowIndices) => {
-    const ts = get().byPanel.get(panelId);
-    if (!ts) return;
-    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
-    if (pkCols.length === 0) {
-      patchPanel(get, set, panelId, () => ({ error: t('tableData.noPrimaryKey') }));
-      return;
-    }
-
-    const indices = [
-      ...new Set(
-        (Array.isArray(rowIndices) ? rowIndices : [rowIndices]).filter(
-          (index) => Number.isInteger(index) && index >= 0,
-        ),
-      ),
-    ].sort((left, right) => left - right);
-    if (indices.length === 0) return;
-
-    const pendingChanges = new Map(ts.pendingChanges);
-    const rowIdentityAnchors = new Map(ts.rowIdentityAnchors);
-    for (const rowIndex of indices) {
-      const row = ts.rows[rowIndex];
-      if (!row) continue;
-      const rowIdentity = buildRowIdentity(row, pkCols);
-      if (!rowIdentity || !rowIdentityIsUnique(ts, rowIndex, rowIdentity, pkCols)) {
-        patchPanel(get, set, panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
-        return;
-      }
-      const match = findPendingForRow(ts, rowIndex, row, pkCols);
-      const identity = match?.change.rowIdentity ?? rowIdentity;
-      const key = match?.key ?? rowIdentityKey(identity);
-      if (hasPendingIdentityCollision(ts, key, rowIdentity, pkCols)) {
-        patchPanel(get, set, panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
-        return;
-      }
-      const existing = match?.change;
-      pendingChanges.set(key, {
-        rowIndex,
-        rowIdentity: { ...identity },
-        originalValues: { ...(existing?.originalValues ?? {}) },
-        currentValues: { ...(existing?.currentValues ?? {}) },
-        changedColumns: [...(existing?.changedColumns ?? [])],
-        deleteMarked: true,
-      });
-      rowIdentityAnchors.set(rowIndex, key);
-    }
-
-    patchPanel(get, set, panelId, () => ({
-      pendingChanges,
-      rowIdentityAnchors,
-      previewPlan: null,
-      pendingStatus: 'idle',
-      editBuffer: rebuildEditBuffer({ ...ts, pendingChanges }),
-      editingCell: null,
-      error: null,
-    }));
-  },
-
-  deleteRows: (panelId, rowIndices) => {
-    const ts = get().byPanel.get(panelId);
-    if (!ts) return;
-    const unique = [...new Set(rowIndices.filter((i) => Number.isInteger(i) && i >= 0))];
-    if (unique.length === 0) return;
-    patchPanel(get, set, panelId, () => ({
-      selectedRows: new Set(unique),
-      lastSelectedIndex: unique[unique.length - 1] ?? null,
-    }));
-    get().stageRowDelete(panelId, unique);
-  },
-
-  rollbackPendingChanges: (panelId) => {
-    const ts = get().byPanel.get(panelId);
-    if (!ts) return;
-    patchPanel(get, set, panelId, () => ({
-      pendingChanges: new Map(),
-      previewPlan: null,
-      pendingStatus: 'idle',
-      editBuffer: new Map(),
-      editingCell: null,
-      error: null,
-    }));
-    get().reloadPanel(panelId);
+  clearHighlightedNewRow: (panelId) => {
+    patchPanel(get, set, panelId, (ts) =>
+      ts.highlightedNewRowKey === null ? {} : { highlightedNewRowKey: null },
+    );
   },
 
   previewPendingChanges: async (panelId) => {
     const ts = get().byPanel.get(panelId);
     if (!ts) return null;
-    if (ts.pendingChanges.size === 0) return null;
+    if (!hasPendingWork(ts)) return null;
     if (!ts.context || !isCompleteTableChangeContext(ts.context)) {
       patchPanel(get, set, panelId, () => ({
         pendingStatus: 'idle',
@@ -614,16 +600,18 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       return null;
     }
 
-    const signature = pendingChangesSignature(ts.pendingChanges);
+    const signature = pendingWorkSignature(ts);
     const context = ts.context;
     patchPanel(get, set, panelId, () => ({ pendingStatus: 'previewing', error: null }));
     try {
       const plan = await databaseCommands.previewPendingChanges({
         context,
-        changes: pendingChangesForWire(ts.pendingChanges),
+        // The drafts ride along in the same `changes` array as the staged
+        // edits: the request shape does not change (04 §3.6).
+        changes: [...pendingChangesForWire(ts.pendingChanges), ...draftsForWire(ts)],
       });
       const latest = get().byPanel.get(panelId);
-      if (latest && pendingChangesSignature(latest.pendingChanges) === signature) {
+      if (latest && pendingWorkSignature(latest) === signature) {
         patchPanel(get, set, panelId, () => ({
           previewPlan: plan,
           pendingStatus: 'idle',
@@ -652,7 +640,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     };
     const initial = get().byPanel.get(panelId);
     if (!initial) return emptyResult;
-    if (initial.pendingChanges.size === 0) return emptyResult;
+    if (!hasPendingWork(initial)) return emptyResult;
     if (!initial.context || !isCompleteTableChangeContext(initial.context)) {
       return {
         ...emptyResult,
@@ -662,7 +650,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     }
     const context = initial.context;
 
-    const signature = pendingChangesSignature(initial.pendingChanges);
+    const signature = pendingWorkSignature(initial);
     let plan = initial.previewPlan;
     if (!plan || tableChangeContextKey(plan.table) !== tableChangeContextKey(context)) {
       plan = await get().previewPendingChanges(panelId);
@@ -678,6 +666,9 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
     patchPanel(get, set, panelId, () => ({ pendingStatus: 'committing', error: null }));
     try {
+      // The rows as they are *before* the commit: the "where did the new row
+      // end up" rule compares the page after the refresh with this one.
+      const previousRows = get().byPanel.get(panelId)?.rows ?? [];
       const response = await databaseCommands.commitPendingChanges({
         dbSessionId: context.dbSessionId,
         plan,
@@ -685,25 +676,35 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         fingerprint: plan.fingerprint,
       });
       const latest = get().byPanel.get(panelId);
-      if (latest && pendingChangesSignature(latest.pendingChanges) === signature) {
+      if (latest && pendingWorkSignature(latest) === signature) {
         patchPanel(get, set, panelId, () => ({
           pendingChanges: new Map(),
+          draftInserts: new Map(),
+          draftInsertOrder: [],
           previewPlan: null,
           pendingStatus: 'idle',
-          editBuffer: new Map(),
           editingCell: null,
+          highlightedNewRowKey: null,
           error: null,
         }));
       }
 
       await get().loadTableData({ panelId, ...targetOf(context) });
       const refreshed = get().byPanel.get(panelId);
+      const location = locateInsertedRow(
+        previousRows,
+        refreshed?.rows ?? [],
+        refreshed?.columns.filter((column) => column.isPrimaryKey) ?? [],
+        response.statements,
+      );
+      patchPanel(get, set, panelId, () => ({ highlightedNewRowKey: location.key }));
       const result: CommitPendingChangesResult = {
         ...response,
         status: 'committed',
         refreshed: !refreshed?.error,
         refreshRequired: true,
         refreshStatus: refreshed?.error ? 'failed' : 'completed',
+        insertLocation: location.status,
       };
       patchPanel(get, set, panelId, () => ({ pendingStatus: 'idle' }));
       return result;
@@ -723,7 +724,3 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     }
   },
 }));
-
-if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>).__tableDataStore = useTableDataStore;
-}

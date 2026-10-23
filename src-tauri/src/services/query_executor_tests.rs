@@ -35,6 +35,7 @@ mod host_tests {
         let result = executor
             .get_table_data(
                 &driver, &handle, "conn1", "db1", None, "users", 0, 50, None, None, false, None,
+                None, None,
             )
             .await
             .unwrap();

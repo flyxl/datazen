@@ -4,6 +4,84 @@ const pack = {
     'O plano anterior não é mais válido (expirou, o destino mudou ou as permissões foram alteradas). Prepare um novo plano antes de aplicar qualquer coisa.',
   'migrationJob.pendingVerificationHint':
     'Um trabalho anterior está aguardando verificação. Abra o centro de trabalhos e reconcilie a situação antes de aplicar novas alterações.',
+  'migrationJob.notExecutedHint':
+    'Um trabalho de Sincronização de dados na fila não iniciou após a reinicialização. Não foi repetido; execute uma nova comparação antes de aplicar.',
+  'migrationJob.notExecutedJob': 'Não executado após a reinicialização',
+  'migrationJob.verifyRecovery': 'Verificar a recuperação',
+  'migrationJob.verifyingRecovery': 'Verificando…',
+  'migrationJob.cancelJob': 'Cancelar trabalho',
+  'migrationJob.cancellingJob': 'Cancelando…',
+  'migrationJob.recoveryEndpointMismatch':
+    'Selecione as mesmas conexões de origem e destino usadas por este trabalho antes de verificar a recuperação.',
+  'migrationJob.recoverySelectEndpoints':
+    'Selecione e conecte as duas pontas antes de verificar a recuperação.',
+  'migrationJob.recoveryManualReview':
+    'A evidência de recuperação foi registrada. Compare os dados atuais antes de aplicar qualquer coisa.',
+  'migrationJob.recoveryRecorded':
+    'A evidência de recuperação foi registrada. Execute uma nova comparação antes de aplicar qualquer coisa.',
+  'migration.verdict.ok': 'Concluído',
+  'migration.verdict.partial': 'Aplicado parcialmente',
+  'migration.verdict.uncertain': 'Resultado incerto',
+  'migration.verdict.failed': 'Não aplicado',
+  'migration.verdict.committedRows': 'Linhas confirmadas',
+  'migration.verdict.replayedReceipt':
+    'Esta resposta veio do recibo registrado de uma execução que já aconteceu. Nada foi gravado uma segunda vez.',
+  'migration.verdict.noBoundaries':
+    'Nenhum limite de gravação foi registrado, portanto nada pode ser informado como confirmado.',
+  'migration.verdict.recoveryLabel': 'Veredito da recuperação',
+  'migration.verdict.notExecuted': 'Não executado',
+  'migration.verdict.notDispatchedAfterRestart':
+    'O aplicativo reiniciou depois que este trabalho foi aceito, mas antes de ser iniciado, então nenhuma migração foi executada. Prepare um novo plano para tentar novamente.',
+  'migration.verdict.requiresReconcile':
+    'Verifique o destino contra os limites registrados antes de aplicar qualquer outra coisa.',
+  'migration.verdict.resumeThrough': 'A recuperação pode retomar até o limite nº',
+  'migration.verdict.rereview': 'Revisar um novo plano',
+  'migration.verdict.rereviewBlocked':
+    'Esta execução ainda precisa ser conciliada com o destino antes que algo possa ser gravado novamente. Verifique-a somente leitura e depois feche e reabra esta janela para revisar um novo plano.',
+  'migration.boundary.verified': 'Confirmado com evidências',
+  'migration.boundary.unverified': 'Confirmado sem evidências — não verificado',
+  'migration.progress.counts': 'Lidos / convertidos / tentados / confirmados / desconhecidos',
+  'migration.cancel.none': 'Nenhum cancelamento foi solicitado.',
+  'migration.cancel.notStarted':
+    'O cancelamento foi solicitado antes do início da execução; nada foi gravado.',
+  'migration.cancel.requestedInFlight':
+    'O cancelamento foi solicitado enquanto a execução estava em andamento. O ponto de parada ainda é desconhecido — verifique o veredito abaixo.',
+  'migration.cancel.settledPartially':
+    'O cancelamento foi solicitado enquanto a execução estava em andamento. Alguns limites foram confirmados e o restante não foi aplicado.',
+  'migration.cancel.settledRolledBack':
+    'O cancelamento foi solicitado enquanto a execução estava em andamento. A execução foi revertida e os limites confirmados foram desfeitos.',
+  'migration.cancel.settledCompleted':
+    'O cancelamento foi solicitado, mas a gravação já havia terminado. A execução foi concluída em vez de cancelada.',
+  'migration.cancel.settledUnknown':
+    'O cancelamento foi solicitado enquanto a execução estava em andamento e não foi possível determinar onde ela parou.',
+  'migration.cancel.unknownJob':
+    'O backend não tem nenhum trabalho para esta execução, então a solicitação de cancelamento não tinha alvo. Nada foi cancelado.',
+  'migration.failure.backendScope.title': 'Escopo do backend rejeitado',
+  'migration.failure.backendScope.body':
+    'As pontas não conseguiram provar que são o backend local da área de trabalho, então a migração foi recusada em vez de ser executada em um escopo não verificado. Nada foi gravado. Selecione as duas pontas novamente e revise um novo plano.',
+  'migration.failure.pipelineBudget.title': 'O orçamento do pipeline recusou esta execução',
+  'migration.failure.pipelineBudget.body':
+    'A execução excedeu o orçamento de pipeline de 8 MiB e o backend a interrompeu de propósito, antes de aplicar essa etapa. Este é um limite de segurança deliberado, não uma falha — restrinja a seleção ou o tamanho do lote e revise um novo plano.',
+  'migration.failure.planConsumed.title': 'Este plano já foi aplicado',
+  'migration.failure.planConsumed.body':
+    'Um plano só pode ser aplicado uma vez, e uma execução anterior já o consumiu. Nada foi gravado uma segunda vez. Revise um plano novo para continuar.',
+  'migration.failure.stalePlan.title': 'O plano está desatualizado',
+  'migration.failure.stalePlan.body':
+    'O plano expirou, o alvo divergiu ou as permissões mudaram. Ele é descartado em vez de reutilizado — revise um plano novo.',
+  'migration.failure.other.title': 'Migração recusada',
+  'migration.failure.other.body':
+    'O backend se recusou a executar. Nada pode ser informado como confirmado — leia o detalhe abaixo.',
+  'migration.failure.reReview': 'Revisar um novo plano',
+  'migration.uncertainty.noCheckpoint':
+    'Nenhum checkpoint foi registrado, então não é possível reconstruir onde esta execução parou.',
+  'migration.uncertainty.recoveryRejected':
+    'A recuperação foi recusada, então esta execução não pode ser retomada e precisa ser verificada manualmente.',
+  'migration.uncertainty.effectOutcomeUnknown':
+    'O banco de dados não confirmou se a gravação foi confirmada ou revertida.',
+  'migration.uncertainty.missingEvidence':
+    'Pelo menos um limite confirmado não tem evidências, por isso é informado como não verificado.',
+  'migration.uncertainty.manualReviewRequired':
+    'O backend exige uma revisão manual antes que qualquer outra coisa seja aplicada.',
   // --- Data Sync ---
   'sync.source': 'Fonte',
   'sync.target': 'Alvo',
@@ -159,6 +237,13 @@ const pack = {
   'transfer.executing': 'Executando transferência…',
   'transfer.executingProgress': 'Transferindo {count} tabela(s)…',
   'transfer.cancel': 'Cancelar',
+  'transfer.job.attachedTitle': 'Já há trabalhos de Transferência de dados em execução',
+  'transfer.job.restoredTitle': 'Resultado da Transferência de dados anterior',
+  'transfer.job.detailsLoading': 'Carregando o relatório de transferência salvo…',
+  'transfer.job.detailsUnavailable':
+    'O relatório salvo não está disponível; verifique o destino antes de tentar novamente.',
+  'transfer.job.queued': 'Transferência na fila',
+  'transfer.job.running': 'Transferência em execução',
   'transfer.back': 'Voltar',
   'transfer.next': 'Próximo',
   'transfer.error': 'Erro de transferência',
@@ -186,6 +271,10 @@ const pack = {
   'transfer.mapping.autoMatch': 'Correspondência automática por nome',
   'transfer.mapping.clearUnmapped': 'Limpar não mapeados',
   'transfer.mapping.unmappedTargetWarning': 'Colunas de destino não mapeadas: {columns}',
+  'transfer.mapping.gateLost':
+    'As tabelas mudaram enquanto o plano era preparado, então nenhuma coluna está mapeada. Verifique o mapeamento novamente e tente de novo.',
+  'transfer.mapping.targetNameRequired':
+    'Dê um nome à tabela que este mapeamento criará antes de continuar. Nada existe no alvo ainda, portanto não há nome para usar como alternativa.',
   'transfer.mapping.sourceType': 'Tipo de origem',
   'transfer.mapping.targetType': 'Tipo de destino',
   'transfer.limitations.title': 'Limitações atuais',
@@ -280,6 +369,40 @@ const pack = {
   'schemaDiff.confirmDeploy': 'Digite {token} para confirmar implantação destrutiva',
   'schemaDiff.deploy': 'Implantar no destino',
   'schemaDiff.deploying': 'Implantando…',
+  'schemaDiff.prepareJob': 'Trabalho de planejamento',
+  'schemaDiff.applyJob': 'Trabalho de aplicação',
+  'schemaDiff.jobUnknown': 'Status indisponível',
+  'schemaDiff.jobQueued': 'Aceito; aguardando o início',
+  'schemaDiff.jobRunning': 'Em execução',
+  'schemaDiff.jobSucceeded': 'Concluído',
+  'schemaDiff.jobFailed': 'Falhou',
+  'schemaDiff.jobCancelled': 'Cancelado',
+  'schemaDiff.jobProgress':
+    'Tentadas {attempted}; confirmadas {committed}; desconhecidas {unknown}',
+  'schemaDiff.requestCancel': 'Solicitar cancelamento',
+  'schemaDiff.cancelRequested':
+    'O cancelamento foi solicitado; aguardando o resultado do trabalho.',
+  'schemaDiff.cancelUnavailable': 'A solicitação de cancelamento não chegou a este trabalho.',
+  'schemaDiff.planUnavailableAfterRestart':
+    'O plano revisado não está disponível após a reinicialização. Compare novamente antes de aplicar.',
+  'schemaDiff.notDispatchedAfterRestart':
+    'Este trabalho aceito não foi iniciado antes da reinicialização. Não foi repetido; compare novamente para criar um novo trabalho.',
+  'schemaDiff.notExecuted':
+    'Este trabalho não iniciou. O trabalho dele não foi repetido; compare novamente para enviar um trabalho novo.',
+  'schemaDiff.recoveryPending':
+    'O destino precisa de uma verificação explícita somente leitura. Este trabalho não será retomado automaticamente.',
+  'schemaDiff.recoveryIdentityUnavailable':
+    'A identidade do destino não está disponível para verificação automática; é necessária uma revisão manual.',
+  'schemaDiff.verifyRecovery': 'Verificar o estado do alvo',
+  'schemaDiff.verifyingRecovery': 'Verificando o estado do alvo…',
+  'schemaDiff.recoveryUnchanged':
+    'A assinatura do alvo não mudou. Isso não prova que as instruções não foram executadas — compare novamente antes de aplicar.',
+  'schemaDiff.recoveryChanged':
+    'A assinatura do alvo mudou. Revise o banco de dados manualmente antes de criar um novo plano.',
+  'schemaDiff.recoveryManualReview':
+    'A verificação somente leitura não conseguiu determinar o resultado. Revise o destino manualmente antes de continuar.',
+  'schemaDiff.lastApplyReport': 'Último relatório de aplicação',
+  'schemaDiff.recoveryCode': 'Código de recuperação: {code}',
   'schemaDiff.deployStatus': 'Status da implantação',
   'schemaDiff.executed': 'executados',
   'schemaDiff.missingOnTarget': 'Ausente no destino (ADD)',

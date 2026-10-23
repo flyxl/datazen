@@ -52,6 +52,18 @@ const pack = {
   'settings.langEn': 'English',
   'settings.dataBrowsing': 'Navegação de dados',
   'settings.defaultPageSize': 'Tamanho de página padrão',
+  'settings.rowCountMode': 'Modo de contagem de linhas',
+  'settings.rowCountMode.auto': 'Automático',
+  'settings.rowCountMode.exact': 'Sempre exato',
+  'settings.rowCountMode.estimated': 'Estimar quando possível',
+  'settings.rowCountMode.none': 'Não contar',
+  'settings.rowCountEstimateThreshold': 'Estimar acima deste número de linhas',
+  'settings.defaultTableSort': 'Ordenação padrão da tabela',
+  'settings.defaultTableSort.primaryKeyAsc': 'Chave primária, crescente',
+  'settings.defaultTableSort.primaryKeyDesc': 'Chave primária, decrescente',
+  'settings.defaultTableSort.none': 'Não ordenar',
+  'settings.defaultTableSort.hint':
+    '"Não ordenar" torna a paginação mais rápida em tabelas grandes, mas as linhas podem se repetir ou ser omitidas entre as páginas.',
   'settings.connectionPoolSize': 'Tamanho do pool de conexões',
   'settings.connectionPoolSizeHint':
     'Número máximo de conexões mantidas por conexão de banco de dados.',

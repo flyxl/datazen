@@ -47,6 +47,18 @@ const pack = {
   'settings.langEn': 'English',
   'settings.dataBrowsing': 'Durchsuchen von Daten',
   'settings.defaultPageSize': 'Standardseitengröße',
+  'settings.rowCountMode': 'Modus für Zeilenanzahl',
+  'settings.rowCountMode.auto': 'Automatisch',
+  'settings.rowCountMode.exact': 'Immer exakt',
+  'settings.rowCountMode.estimated': 'Schätzen, wenn möglich',
+  'settings.rowCountMode.none': 'Nicht zählen',
+  'settings.rowCountEstimateThreshold': 'Ab dieser Zeilenanzahl schätzen',
+  'settings.defaultTableSort': 'Standardsortierung für Tabellen',
+  'settings.defaultTableSort.primaryKeyAsc': 'Primärschlüssel, aufsteigend',
+  'settings.defaultTableSort.primaryKeyDesc': 'Primärschlüssel, absteigend',
+  'settings.defaultTableSort.none': 'Nicht sortieren',
+  'settings.defaultTableSort.hint':
+    '"Nicht sortieren" macht das Blättern bei großen Tabellen schneller, aber Zeilen können über Seiten hinweg wiederholt oder übersprungen werden.',
   'settings.connectionPoolSize': 'Verbindungspool-Größe',
   'settings.connectionPoolSizeHint':
     'Maximale Anzahl gehaltener Verbindungen pro Datenbankverbindung.',

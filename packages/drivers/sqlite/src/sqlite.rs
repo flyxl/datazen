@@ -245,6 +245,26 @@ impl DatabaseDriver for SqliteDriver {
         DdlAtomicity::Transactional
     }
 
+    fn supports_keyset_pagination(&self) -> bool {
+        true
+    }
+
+    /// The seek condition for one page boundary.
+    ///
+    /// SQLite gets the **portable** lexicographic expansion —
+    /// `a > 1 OR (a = 1 AND b > 2)` — and says so explicitly rather than
+    /// inheriting the "not opted in" default of `None`. Row-value comparison
+    /// does exist (3.15+), but the analyser only turns a row value into an
+    /// index range when the whole row runs one way, while each disjunct here
+    /// is already an index range of its own.
+    fn keyset_predicate_sql(
+        &self,
+        order_columns: &[(String, bool)],
+        boundary: &[(String, Value)],
+    ) -> Option<String> {
+        datazen_driver_api::keyset::lexicographic_seek_predicate(self, order_columns, boundary)
+    }
+
     fn sync_family(&self) -> String {
         "sqlite".into()
     }

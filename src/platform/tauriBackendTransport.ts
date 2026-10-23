@@ -30,6 +30,7 @@ import {
   type PlatformServices,
   type SaveBinaryInput,
   type SaveTextInput,
+  type UnsupportedMethodKind,
 } from '@datazen/backend-client';
 
 /**
@@ -58,12 +59,61 @@ function toCommandName(method: keyof MethodMap): string {
     updateConnection: 'platform_update_profile',
     disableConnection: 'platform_disable_profile',
     readArtifact: 'read_artifact_chunk',
+    // The table read is the *target-bound* command: it carries its own
+    // context and manual handle instead of borrowing a session. The
+    // session-scoped `get_table_data` still exists on the Rust side, but the
+    // grid reads through the target-bound one, and the port has to name the
+    // command the grid actually uses.
+    getTableData: 'get_table_data_at_target',
   };
   if (commandOverrides[method]) return commandOverrides[method];
   return method.includes('_')
     ? method
     : method.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
+
+/**
+ * Methods whose payload *is* the command's argument bag.
+ *
+ * The kernel-surface commands take a single `request` argument, so their
+ * payload is nested under `request`. The commands below take **named**
+ * arguments instead (`context`, `changes`, `plan`, `scope`, ...), so their
+ * payload is the bag itself and nesting it would make the Rust side look for
+ * a `request` field that does not exist.
+ */
+const FLAT_ARGUMENT_METHODS: ReadonlySet<keyof MethodMap> = new Set<keyof MethodMap>([
+  'previewPendingChanges',
+  'commitPendingChanges',
+  'estimateTableRows',
+  'listNamedViews',
+  'saveNamedView',
+  'deleteNamedView',
+]);
+
+/**
+ * The table-data methods the desktop backend does not serve.
+ *
+ * The port registers every method the product has, so a method landing later
+ * cannot slip past it unnoticed. This list is the other half of that
+ * arrangement: it says which of them the *desktop* cannot serve today, so a
+ * caller gets an explicit `CapabilityUnsupported` — with the method name and
+ * the backend — instead of Tauri's bare "command not found".
+ *
+ * It is **empty**: the desktop registers every table-data command the port
+ * declares, the three named-view commands of 08 included. A browser build has
+ * no host store and therefore declares the named views itself, as a
+ * `capability` gap — "this form factor can never serve them" is a different
+ * fact from "the desktop has not implemented them yet", and the two must not
+ * be reported as one.
+ *
+ * `src/platform/__tests__/tauriBackendTransport.tableData.test.ts`
+ * cross-checks this list against the host's registration, so the day a
+ * command is registered, the test fails and asks for this entry to go — which
+ * is what happened to `resolve_foreign_key_targets` when 07 landed, to
+ * `estimate_table_rows` when 09 landed, and to the three named-view commands
+ * when 08 landed.
+ */
+const DESKTOP_UNSUPPORTED_METHODS: Partial<Record<keyof MethodMap, UnsupportedMethodKind>> = {};
 
 /**
  * Build the desktop transport.
@@ -78,6 +128,7 @@ function toCommandName(method: keyof MethodMap): string {
  */
 export function createDesktopBackendTransport(): BackendTransport {
   return {
+    unsupportedMethods: DESKTOP_UNSUPPORTED_METHODS,
     async call<K extends keyof MethodMap>(
       method: K,
       payload: MethodMap[K]['request'],
@@ -86,18 +137,35 @@ export function createDesktopBackendTransport(): BackendTransport {
       const args =
         method === 'getPlatformIdentity'
           ? {}
-          : method.includes('_') || method === 'getJob' || method === 'listJobs'
+          : method.includes('_') ||
+              method === 'getJob' ||
+              method === 'listJobs' ||
+              FLAT_ARGUMENT_METHODS.has(method)
             ? payload
             : { request: payload ?? {} };
       // The request's own fields are the command's named arguments, so this
       // cast is a widening to Tauri's argument bag, not a shape change: the
       // object handed to `invoke` is the same object `call` received.
-      const response = await invoke(command, args as Record<string, unknown>);
+      //
+      // A command that fails with a **plain string** — the shape
+      // `CommandError::Serialize` produces — keeps its message here: the
+      // backend client turns an unreadable payload into a generic sentence,
+      // and the `grid.*` classification reads the prefix of that message. The
+      // host is the only place where the raw value still exists.
+      let response: MethodMap[K]['response'];
+      try {
+        response = (await invoke(
+          command,
+          args as Record<string, unknown>,
+        )) as MethodMap[K]['response'];
+      } catch (error) {
+        throw typeof error === 'string' ? new Error(error) : error;
+      }
       if (method === 'readArtifact' && response && typeof response === 'object') {
         const chunk = response as { bytes?: number[] | Uint8Array };
         if (Array.isArray(chunk.bytes)) chunk.bytes = new Uint8Array(chunk.bytes);
       }
-      return response as MethodMap[K]['response'];
+      return response;
     },
     subscribe(_method, request) {
       return {

@@ -1,70 +1,8 @@
+use super::test_fixtures::*;
 use super::*;
 use crate::testing::app_state::TestAppState;
-
-async fn with_parameterized_driver() -> TestAppState {
-    let mut options = crate::testing::app_state::rich_mock_options();
-    options.parameterized_writes = true;
-    TestAppState::with_options(options).await
-}
-
-fn table_context(connection_id: &str, db_session_id: &str) -> RowChangeTableContext {
-    RowChangeTableContext {
-        connection_id: connection_id.into(),
-        db_session_id: db_session_id.into(),
-        driver_type: "postgres".into(),
-        database: Some("app".into()),
-        schema: None,
-        table: "users".into(),
-    }
-}
-
-fn update_change(id: i64, original: &str, current: &str) -> PendingRowChange {
-    PendingRowChange {
-        row_identity: BTreeMap::from([("id".into(), Some(Value::Integer(id)))]),
-        original_values: BTreeMap::from([("name".into(), Some(Value::String(original.into())))]),
-        current_values: BTreeMap::from([("name".into(), Some(Value::String(current.into())))]),
-        changed_columns: vec!["name".into()],
-        delete_marked: false,
-    }
-}
-
-fn delete_change(id: i64) -> PendingRowChange {
-    PendingRowChange {
-        row_identity: BTreeMap::from([("id".into(), Some(Value::Integer(id)))]),
-        original_values: BTreeMap::new(),
-        current_values: BTreeMap::new(),
-        changed_columns: Vec::new(),
-        delete_marked: true,
-    }
-}
-
-fn composite_update_change(tenant_id: i64, id: i64, next_id: Option<i64>) -> PendingRowChange {
-    let mut current_values =
-        BTreeMap::from([("name".into(), Some(Value::String("Updated".into())))]);
-    let mut changed_columns = vec!["name".into()];
-    if let Some(next_id) = next_id {
-        current_values.insert("id".into(), Some(Value::Integer(next_id)));
-        changed_columns.push("id".into());
-    }
-    PendingRowChange {
-        row_identity: BTreeMap::from([
-            ("tenant_id".into(), Some(Value::Integer(tenant_id))),
-            ("id".into(), Some(Value::Integer(id))),
-        ]),
-        original_values: BTreeMap::new(),
-        current_values,
-        changed_columns,
-        delete_marked: false,
-    }
-}
-
-fn assert_legacy_write_disabled(error: crate::commands::error::CommandError) {
-    assert!(matches!(
-        error,
-        crate::commands::error::CommandError::Validation(message)
-            if message.contains("Legacy row writes are disabled")
-    ));
-}
+use datazen_driver_api::Value;
+use std::collections::BTreeMap;
 
 #[tokio::test]
 async fn preview_builds_driver_sql_without_opening_a_transaction() {
@@ -168,59 +106,13 @@ async fn preview_rejects_changes_without_primary_key_identity() {
             )]),
             changed_columns: vec!["name".into()],
             delete_marked: false,
+            insert_marked: false,
         }],
     )
     .await
     .unwrap_err();
 
     assert!(error.to_string().contains("primary-key"));
-}
-
-#[test]
-fn canonicalize_rejects_null_and_duplicate_composite_identities() {
-    let null_identity = PendingRowChange {
-        row_identity: BTreeMap::from([
-            ("tenant_id".into(), Some(Value::Integer(1))),
-            ("id".into(), None),
-        ]),
-        original_values: BTreeMap::new(),
-        current_values: BTreeMap::from([("name".into(), Some(Value::String("Updated".into())))]),
-        changed_columns: vec!["name".into()],
-        delete_marked: false,
-    };
-    let error = canonicalize_changes(&[null_identity]).unwrap_err();
-    assert!(error.to_string().contains("non-NULL"));
-
-    let duplicate = composite_update_change(1, 9, None);
-    let error = canonicalize_changes(&[duplicate.clone(), duplicate]).unwrap_err();
-    assert!(error.to_string().contains("duplicate"));
-}
-
-#[test]
-fn canonicalize_rejects_composite_current_identity_collision() {
-    let first = composite_update_change(1, 9, Some(11));
-    let second = composite_update_change(1, 10, Some(11));
-    let error = canonicalize_changes(&[first, second]).unwrap_err();
-    assert!(error.to_string().contains("collision"));
-}
-
-/// [tester] Regression: sort-by-identity uses validated keys without panicking.
-#[test]
-fn test_tester_canonicalize_sorts_by_identity_key() {
-    let changes = vec![
-        update_change(3, "c", "c"),
-        update_change(1, "a", "a"),
-        update_change(2, "b", "b"),
-    ];
-    let canonical = canonicalize_changes(&changes).unwrap();
-    let ids: Vec<i64> = canonical
-        .iter()
-        .map(|change| match change.row_identity.get("id") {
-            Some(Some(Value::Integer(id))) => *id,
-            other => panic!("expected integer id, got {other:?}"),
-        })
-        .collect();
-    assert_eq!(ids, vec![1, 2, 3]);
 }
 
 #[tokio::test]
@@ -470,4 +362,193 @@ async fn commit_row_deletes_rejects_legacy_write_before_pk_validation() {
     .await
     .unwrap_err();
     assert_legacy_write_disabled(err);
+}
+
+#[tokio::test]
+async fn empty_identity_is_rejected_before_any_sql_is_generated() {
+    // `parameterized_writes` stays false: every builder call is unsupported.
+    let test = TestAppState::with_options(crate::testing::app_state::rich_mock_options()).await;
+    let (_, conn_id) = test.save_and_connect("guard-before-sql").await;
+
+    let mut delete = delete_change(1);
+    delete.row_identity = BTreeMap::new();
+    let error = preview_pending_changes_impl(
+        &test.state,
+        table_context("guard-before-sql", &conn_id),
+        vec![delete],
+    )
+    .await
+    .unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("DELETE requires"), "got: {message}");
+    assert!(
+        !message.contains("parameterized row writes are not supported"),
+        "SQL was generated before the identity guard ran: {message}"
+    );
+    assert_eq!(test.mock.execute_calls(), 0);
+    assert!(
+        !crate::commands::session_transaction_status_impl(&test.state, conn_id)
+            .await
+            .unwrap(),
+        "a rejected plan must not open a transaction"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// [tester round-4] The four `commit_changes` refusals that now carry a code.
+// Each asserts the code is at position zero while the descriptive tail the
+// pre-round-4 message had is still present, so substring callers keep working.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_stale_config_revision_is_refused_with_the_stale_plan_code() {
+    let mut options = crate::testing::app_state::rich_mock_options();
+    options.execute_rows_affected = 1;
+    options.parameterized_writes = true;
+    let test = TestAppState::with_options(options).await;
+    let (_, conn_id) = test.save_and_connect("r4-config-revision").await;
+    let mut plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("r4-config-revision", &conn_id),
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+    plan.config_revision = Some(plan.config_revision.unwrap().saturating_increment());
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.starts_with("grid.commit.stalePlan: "), "got: {error}");
+    assert!(
+        error.contains("Connection configuration changed; preview the changes again"),
+        "got: {error}"
+    );
+    assert_eq!(test.mock.execute_with_params_calls(), 0);
+}
+
+#[tokio::test]
+async fn a_database_context_drift_is_refused_with_the_stale_plan_code() {
+    let mut options = crate::testing::app_state::rich_mock_options();
+    options.execute_rows_affected = 1;
+    options.parameterized_writes = true;
+    let test = TestAppState::with_options(options).await;
+    let (_, conn_id) = test.save_and_connect("r4-db-drift").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        RowChangeTableContext {
+            database: Some("other_db".into()),
+            ..table_context("r4-db-drift", &conn_id)
+        },
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.starts_with("grid.commit.stalePlan: "), "got: {error}");
+    assert!(
+        error.contains("Database context changed; preview the changes again"),
+        "got: {error}"
+    );
+    assert!(test.mock.use_database_calls().is_empty());
+}
+
+#[tokio::test]
+async fn a_schema_context_drift_is_refused_with_the_stale_plan_code() {
+    let mut options = crate::testing::app_state::rich_mock_options();
+    options.execute_rows_affected = 1;
+    options.parameterized_writes = true;
+    let test = TestAppState::with_options(options).await;
+    let mut config = crate::testing::app_state::sample_postgres_config("r4-schema-drift");
+    config.schema = Some("private".into());
+    test.store.save_connection(config).await.unwrap();
+    let conn_id = test.connect_config("r4-schema-drift").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        RowChangeTableContext {
+            schema: Some("public".into()),
+            ..table_context("r4-schema-drift", &conn_id)
+        },
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.starts_with("grid.commit.stalePlan: "), "got: {error}");
+    assert!(
+        error.contains("Schema context changed; preview the changes again"),
+        "got: {error}"
+    );
+}
+
+#[tokio::test]
+async fn a_read_only_connection_is_refused_with_the_read_only_code() {
+    let mut options = crate::testing::app_state::rich_mock_options();
+    options.execute_rows_affected = 1;
+    options.parameterized_writes = true;
+    let test = TestAppState::with_options(options).await;
+    let mut config = crate::testing::app_state::sample_postgres_config("r4-read-only");
+    config.read_only = true;
+    test.store.save_connection(config).await.unwrap();
+    let conn_id = test.connect_config("r4-read-only").await;
+    let plan = preview_pending_changes_impl(
+        &test.state,
+        table_context("r4-read-only", &conn_id),
+        vec![update_change(1, "Alice", "Updated")],
+    )
+    .await
+    .unwrap();
+
+    let error = commit_pending_changes_impl(
+        &test.state,
+        CommitPendingChangesRequest {
+            db_session_id: conn_id,
+            fingerprint: plan.fingerprint.clone(),
+            plan,
+        },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.starts_with("grid.cell.readOnly: "), "got: {error}");
+    assert!(
+        error.contains("Connection is read-only; row changes are not allowed"),
+        "got: {error}"
+    );
+    assert_eq!(test.mock.execute_with_params_calls(), 0);
 }
