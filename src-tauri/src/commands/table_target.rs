@@ -323,7 +323,7 @@ pub async fn read(
         )?
         .sql;
     let caller_skip_count = request.skip_count.unwrap_or(false);
-    let count_plan = if caller_skip_count {
+    let mut count_plan = if caller_skip_count {
         CountPlan::Reuse
     } else {
         match table_browsing::resolve_count_strategy(
@@ -340,20 +340,23 @@ pub async fn read(
             CountStrategy::Estimated => CountPlan::Estimated,
         }
     };
+    // The statement that counts exactly. Built once: the batch below and the
+    // fallback that rescues an unusable estimate must ask the same question.
+    let count_statement = || {
+        QueryExecutor::build_count_sql(
+            &schema.table_name,
+            &schema.columns,
+            &request.filters,
+            &dialect,
+            request.filter_logic.as_deref(),
+        )
+    };
+    let exact_count_batch = || count_statement().map(|count| format!("{count};\n{select}"));
     // The count travels in the same statement batch as the rows, so a read
     // still costs one round trip.
     let sql = match count_plan {
         CountPlan::Reuse | CountPlan::Unsupported => select.clone(),
-        CountPlan::Exact => {
-            let count = QueryExecutor::build_count_sql(
-                &schema.table_name,
-                &schema.columns,
-                &request.filters,
-                &dialect,
-                request.filter_logic.as_deref(),
-            )?;
-            format!("{count};\n{select}")
-        }
+        CountPlan::Exact => exact_count_batch()?,
         CountPlan::Estimated => {
             let estimate = driver
                 .count_estimate_sql(
@@ -451,6 +454,45 @@ pub async fn read(
             }
         } else if index == rows_at {
             rows.extend(result_rows);
+        }
+    }
+    // An unusable estimate is the absence of a fact, not a fact.
+    //
+    // PostgreSQL answers `-1` for a relation the planner never looked at, and
+    // that is exactly the state of a table created and filled moments ago —
+    // the common case for "open the table I just made". Reporting "the count
+    // is unavailable" there is worse than paying one `COUNT(*)`: the rows are
+    // already in hand, the table is small by construction, and the same read
+    // already counts exactly whenever the driver cannot estimate at all.
+    if count_plan == CountPlan::Estimated && total_rows.is_none() {
+        let counted = execute(
+            adapter,
+            &runtime,
+            &context,
+            &target,
+            revision,
+            request.manual_handle.as_ref(),
+            "query",
+            json!({"sql": count_statement()?}),
+        )
+        .await;
+        if let Ok(outputs) = counted {
+            for output in outputs {
+                if output["kind"] != "rows" {
+                    continue;
+                }
+                let result_rows: Vec<Vec<Option<Value>>> =
+                    serde_json::from_value(output["rows"].clone()).unwrap_or_default();
+                let cell = result_rows
+                    .first()
+                    .and_then(|row| row.first())
+                    .and_then(Option::as_ref);
+                if let Some(count) = cell.and_then(table_browsing::target_count_cell) {
+                    total_rows = Some(count);
+                    count_plan = CountPlan::Exact;
+                    break;
+                }
+            }
         }
     }
     let total_rows_kind = match count_plan {

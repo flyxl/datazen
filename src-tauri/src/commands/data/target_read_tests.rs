@@ -112,14 +112,17 @@ async fn a_failed_estimate_still_returns_the_rows() {
         .await
         .expect("a failed estimate must not fail the read");
 
+    // The estimate died, so the batch cost a second round trip for the rows —
+    // and a third for the exact count that replaces the number nobody could
+    // estimate. "The rows survive" is not the same as "the number does not".
     assert_eq!(
         test.mock.query_calls() - before,
-        2,
-        "the failure path costs one more round trip — and only that path"
+        3,
+        "rows on their own, then one exact count"
     );
     assert_eq!(data.rows.len(), 1, "the rows survive the failed estimate");
-    assert_eq!(data.total_rows, None);
-    assert_eq!(data.total_rows_kind, Some(CountStrategy::Unsupported));
+    assert_eq!(data.total_rows, Some(2), "the exact count answered instead");
+    assert_eq!(data.total_rows_kind, Some(CountStrategy::Exact));
 }
 
 #[tokio::test]
@@ -178,9 +181,13 @@ async fn a_driver_that_cannot_count_says_unsupported() {
 ///
 /// Both entry points now read the number through the shared layer's gate
 /// (`table_browsing::estimated_count_cell`), so an unusable number cannot
-/// travel as a row count whichever door the read came through.
+/// travel as a row count whichever door the read came through — and an
+/// unusable estimate is then **rescued** by an exact count rather than
+/// shown to the user as "unavailable": a table the planner never looked at
+/// is a table created moments ago, which is precisely when the user is
+/// looking at its rows.
 #[tokio::test]
-async fn a_negative_estimate_is_not_a_row_count() {
+async fn a_negative_estimate_is_rescued_by_an_exact_count() {
     let test = TestAppState::with_options(MockDriverOptions {
         count_total: 2,
         count_strategy: Some(CountStrategy::Estimated),
@@ -198,10 +205,15 @@ async fn a_negative_estimate_is_not_a_row_count() {
     .await
     .expect("the read succeeds");
 
-    assert_eq!(data.total_rows_kind, Some(CountStrategy::Unsupported));
     assert_eq!(
-        data.total_rows, None,
-        "a negative estimate must not travel as a row count"
+        data.total_rows_kind,
+        Some(CountStrategy::Exact),
+        "the rescue reports the exact count it actually took"
+    );
+    assert_eq!(
+        data.total_rows,
+        Some(2),
+        "no -1 on the wire: the exact count replaced the unusable estimate"
     );
 }
 

@@ -95,8 +95,7 @@ export function ResultTableView({
   const serverVerdict = verdict ?? UNJUDGED;
   // The narrow host-side mapping verdict: it recognises `SELECT * FROM
   // <relation>` and the write path re-verifies it against the live catalog.
-  const legacyVerified =
-    result.source?.writableMapping === 'verified' && !!result.runtimeBinding;
+  const legacyVerified = result.source?.writableMapping === 'verified' && !!result.runtimeBinding;
   // The grid is editable when **either** verdict says so. The origin verdict
   // may only grant write-back while the release channel is open — see
   // `resolveResultWriteBack`.
@@ -228,63 +227,69 @@ export function ResultTableView({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" {...tid('result-workspace-table')}>
-      {readOnlyReason && (
-        <div
-          data-dt-grid-readonly-reason={readOnlyReason}
-          className="p-2 text-xs text-fg-muted"
-        >
-          {result.source?.writableMapping === 'verified' && !result.runtimeBinding
-            ? t('query.resultEditRequiresRefresh')
-            : t(gridReadOnlyMessageKey(readOnlyReason))}
-        </div>
-      )}
-      {rowRefusal && (
-        <div
-          data-dt-grid-row-refusal={rowRefusal}
-          className="p-2 text-xs text-fg-muted"
-        >
-          {t(gridReadOnlyMessageKey(rowRefusal))}
-        </div>
-      )}
-      {editError && (
-        <div role="alert" className="p-2 text-sm text-red-400">
-          {editError}
-        </div>
-      )}
-      <DataTable
-        columns={columnDefs}
-        rows={result.rows}
-        cellTypeHints={cellTypeHints}
-        statusBar={statusBar}
-        rowHeight={32}
-        editingCell={canEdit ? editingCell : null}
-        onCellDoubleClick={handleCellDoubleClick}
-        onCellEdit={(row, column, value) => {
-          if (!canEdit) {
-            setEditingCell(null);
-            return;
-          }
-          setEditError(null);
-          void onCellEdit?.(row, column, value)
-            .then(() => setEditingCell(null))
-            .catch((error: unknown) => {
+      {/* The notices above the grid are chrome the pane's height estimate does
+          not know about: it measures the header, one row and the status bar,
+          so a result that grows a banner squeezes the grid's scroll container
+          to zero and the virtualizer renders no rows at all — the data is on
+          screen nowhere while the status bar says "1 row". The grid therefore
+          keeps a floor and the column scrolls when the pane is too short: a
+          notice may cost the user a scroll, never the rows. */}
+      <div
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+        data-testid="result-grid-scroll"
+      >
+        {readOnlyReason && (
+          <div data-dt-grid-readonly-reason={readOnlyReason} className="p-2 text-xs text-fg-muted">
+            {result.source?.writableMapping === 'verified' && !result.runtimeBinding
+              ? t('query.resultEditRequiresRefresh')
+              : t(gridReadOnlyMessageKey(readOnlyReason))}
+          </div>
+        )}
+        {rowRefusal && (
+          <div data-dt-grid-row-refusal={rowRefusal} className="p-2 text-xs text-fg-muted">
+            {t(gridReadOnlyMessageKey(rowRefusal))}
+          </div>
+        )}
+        {editError && (
+          <div role="alert" className="p-2 text-sm text-red-400">
+            {editError}
+          </div>
+        )}
+        <DataTable
+          columns={columnDefs}
+          rows={result.rows}
+          cellTypeHints={cellTypeHints}
+          statusBar={statusBar}
+          rowHeight={32}
+          editingCell={canEdit ? editingCell : null}
+          onCellDoubleClick={handleCellDoubleClick}
+          onCellEdit={(row, column, value) => {
+            if (!canEdit) {
               setEditingCell(null);
-              setEditError(error instanceof Error ? error.message : String(error));
-            });
-        }}
-        onCellEditCancel={() => setEditingCell(null)}
-        enableSetNull={false}
-        onRowClick={onRowDetail}
-        highlightedRow={rowDetailIndex}
-        exportTableName="query_result"
-        dataExportCapability={dataExportCapability}
-        className="mr-1 rounded-b-md rounded-t-none border-x border-b border-t-0"
-      />
-      {result.rows.length === 0 && (
-        <div className="flex shrink-0 items-center justify-center border-t border-edge px-3 py-3 text-sm text-fg-muted">
-          {t('sqlFile.noResults')}
-        </div>
-      )}
+              return;
+            }
+            setEditError(null);
+            void onCellEdit?.(row, column, value)
+              .then(() => setEditingCell(null))
+              .catch((error: unknown) => {
+                setEditingCell(null);
+                setEditError(error instanceof Error ? error.message : String(error));
+              });
+          }}
+          onCellEditCancel={() => setEditingCell(null)}
+          enableSetNull={false}
+          onRowClick={onRowDetail}
+          highlightedRow={rowDetailIndex}
+          exportTableName="query_result"
+          dataExportCapability={dataExportCapability}
+          className="mr-1 min-h-[9rem] rounded-b-md rounded-t-none border-x border-b border-t-0"
+        />
+        {result.rows.length === 0 && (
+          <div className="flex shrink-0 items-center justify-center border-t border-edge px-3 py-3 text-sm text-fg-muted">
+            {t('sqlFile.noResults')}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

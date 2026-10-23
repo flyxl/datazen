@@ -46,6 +46,32 @@ const ROW_COUNT = 60;
 
 async function stageValue(cellText: string, value: string) {
   await doubleClickCellByText(cellText);
+  await commitStagedValue(cellText, value);
+}
+
+/**
+ * Stage a value into one cell addressed by row/column.
+ *
+ * Text addressing cannot tell `id` from `score` here: the fixture's id and score
+ * columns both hold 1…60, and `doubleClickCellByText('2')` landed on the primary
+ * key cell — whose editor the grid keeps open (a key change needs its own
+ * confirmation), so the next stage never found a closed editor.
+ */
+async function stageCell(rowIndex: number, columnName: string, value: string) {
+  const selector = `[data-dt-row="${rowIndex}"][data-dt-col="${columnName}"]`;
+  await $(selector).waitForDisplayed({ timeout: 8000 });
+  await browser.execute((sel: string) => {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    el.dispatchEvent(
+      new MouseEvent('dblclick', { bubbles: true, cancelable: true, composed: true }),
+    );
+  }, selector);
+  await browser.pause(500);
+  await commitStagedValue(`${columnName}[${rowIndex}]`, value);
+}
+
+async function commitStagedValue(cellText: string, value: string) {
   const input = await waitForEditInput();
   await input.clearValue();
   await input.setValue(value);
@@ -54,9 +80,19 @@ async function stageValue(cellText: string, value: string) {
     const editor = document.querySelector(
       '[data-testid="table-edit-input"]',
     ) as HTMLInputElement | null;
-    editor?.blur();
+    if (!editor) return;
+    // React commits on the bubbling `focusout`, and `blur()` alone does not
+    // always reach it from script in this WebView.
+    editor.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    editor.blur();
   });
-  await browser.pause(400);
+  // Commit is asynchronous: opening the next editor before this one closed made
+  // the previous value vanish, so every case counted one staged cell less.
+  await browser.waitUntil(async () => !(await $('[data-testid="table-edit-input"]').isExisting()), {
+    timeout: 8000,
+    timeoutMsg: `等待编辑框提交并关闭超时（单元格「${cellText}」→「${value}」）`,
+  });
+  await browser.pause(300);
 }
 
 /** The number of cells the grid paints as dirty. */
@@ -82,10 +118,7 @@ async function tablePanelId(): Promise<string | null> {
 function slateBlueTokens(): string {
   const candidates = [
     resolve(process.cwd(), 'packages/wapps/community.slate-blue/themes/slate-blue/tokens.css'),
-    resolve(
-      process.cwd(),
-      '../packages/wapps/community.slate-blue/themes/slate-blue/tokens.css',
-    ),
+    resolve(process.cwd(), '../packages/wapps/community.slate-blue/themes/slate-blue/tokens.css'),
   ];
   const found = candidates.find((path) => existsSync(path));
   if (!found) {
@@ -128,10 +161,10 @@ describe('表数据脏单元高亮 (DB-06)', () => {
     await browser.pause(1500);
     await switchSubTab('data');
     await browser.pause(1200);
-    await browser.waitUntil(
-      async () => (await $('body').getText()).includes('Row1'),
-      { timeout: 15000, timeoutMsg: 'Timed out waiting for table data to load' },
-    );
+    await browser.waitUntil(async () => (await $('body').getText()).includes('Row1'), {
+      timeout: 15000,
+      timeoutMsg: 'Timed out waiting for table data to load',
+    });
   });
 
   after(async () => {
@@ -148,7 +181,7 @@ describe('表数据脏单元高亮 (DB-06)', () => {
 
   it('改 3 格后网格高亮与计数一致', async () => {
     await stageValue('Row1', 'Row1-edited');
-    await stageValue('2', '22');
+    await stageCell(1, 'score', '22');
     await stageValue('Row3', 'Row3-edited');
 
     expect(await dirtyCellCount()).toBe(3);

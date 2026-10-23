@@ -20,7 +20,10 @@ const MARKER_A = 'SELECT 123 AS qh_marker_a';
 const MARKER_B = 'SELECT 456 AS qh_marker_b';
 
 async function openHistorySidebar() {
-  const btn = await $(`button*=${t('query.history')}`);
+  // The toolbar collapses to icon-only on narrow panels, so the label lives in
+  // `title` / `aria-label` instead of the button text — match the stable test id.
+  const btn = await $('[data-testid="editor-history-toggle"]');
+  await btn.waitForClickable({ timeout: 10000 });
   await btn.click();
   await browser.pause(500);
 }

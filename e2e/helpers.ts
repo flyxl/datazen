@@ -1469,14 +1469,30 @@ export async function executeSQLChecked(sql: string) {
 async function executeSqlInEditor(sql: string, requireCompletion = false) {
   await setEditorContent(sql);
   // Stable E2E locator (vite-gated data-testid, see src/lib/tid.ts) — survives i18n switching.
-  const execBtn = await $('[data-testid="editor-execute-button"]');
   const queryPanel = await $('[data-testid="query-panel"]');
   const previousExecutionSeq = Number((await queryPanel.getAttribute('data-execution-seq')) ?? '0');
+  // A widened window, a re-render or an i18n switch replaces the button node;
+  // a captured handle then throws `stale element reference` on click and the
+  // query silently never starts (the callers only ever see their own timeout).
+  // Re-resolve the button at click time and retry the click itself.
+  const clickExecute = async () => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const button = await $('[data-testid="editor-execute-button"]');
+      try {
+        await button.waitForDisplayed({ timeout: 5000 });
+        await button.click();
+        return;
+      } catch (error) {
+        if (attempt === 3) throw error;
+        await browser.pause(200);
+      }
+    }
+  };
   const prevTotal = await browser.execute(() => {
     const spans = Array.from(document.querySelectorAll('span'));
     return spans.find((s) => s.textContent?.includes('总耗时'))?.textContent ?? '';
   });
-  await execBtn.click();
+  await clickExecute();
   const started = Date.now();
   await browser.waitUntil(
     async () => {
@@ -1559,11 +1575,19 @@ async function executeSqlInEditor(sql: string, requireCompletion = false) {
       // while a query runs, so the button's *existence* is the idle signal — it
       // is never rendered with `disabled`, and getAttribute on the absent node
       // throws for exactly the window this branch polls.
-      if (elapsed > 900 && curTotal && (await execBtn.isExisting())) return true;
+      if (
+        elapsed > 900 &&
+        curTotal &&
+        (await $('[data-testid="editor-execute-button"]')).isExisting()
+      )
+        return true;
       if (elapsed > 1200 && /\d+\s*(行|rows?)\b/i.test(body)) return true;
       return false;
     },
-    { timeout: 15000, timeoutMsg: `等待 SQL 执行完成超时: ${sql.slice(0, 60)}` },
+    {
+      timeout: 15000,
+      timeoutMsg: `等待 SQL 执行完成超时: ${sql.slice(0, 60)}`,
+    },
   );
   // Auto-chart can hide grid column headers; switch back to table when present.
   const tableView = await $('button*=表格');

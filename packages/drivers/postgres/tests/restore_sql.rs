@@ -3,6 +3,42 @@ use datazen_driver_api::{iter_driver_factories, require_resource_provider, resto
 use datazen_driver_postgres::PostgresDriver;
 
 #[test]
+fn postgres_restore_replaces_a_sequence_before_the_table_that_owns_it() {
+    // The dump re-creates the sequence and then the table. In overwrite mode the
+    // table preamble is a `DROP TABLE`, and a sequence still owned by that table
+    // dies with it — so the sequence has to be dropped *first*, not left standing
+    // for the table's `DROP` to take away.
+    let driver = PostgresDriver::new();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
+    let statements = restore_sql::prepare(
+        &dialect,
+        "CREATE SEQUENCE IF NOT EXISTS public.t_id_seq START WITH 2;\n\
+         CREATE TABLE public.t (id integer NOT NULL DEFAULT nextval('public.t_id_seq'::regclass));\n\
+         ALTER SEQUENCE public.t_id_seq OWNED BY public.t.id;",
+        restore_sql::TRANSACTIONAL,
+        true,
+        true,
+        &datazen_driver_api::namespace::NamespaceTarget {
+            database: Some("app".into()),
+            catalog: None,
+            schema: Some("public".into()),
+            path: vec![],
+        },
+    )
+    .unwrap();
+    // Every object is dropped up front, tables before sequences: the table's drop
+    // is what releases the old sequence, and it must happen before the new
+    // sequence is created.
+    assert_eq!(
+        statements[0], "DROP TABLE IF EXISTS public.t",
+        "tables are dropped first: {statements:?}"
+    );
+    assert_eq!(statements[1], "DROP SEQUENCE IF EXISTS public.t_id_seq");
+    assert!(statements[2].starts_with("CREATE SEQUENCE IF NOT EXISTS public.t_id_seq"));
+    assert!(statements[3].starts_with("CREATE TABLE public.t"));
+}
+
+#[test]
 fn postgres_restore_preflights_dollar_quotes_overwrite_and_transaction_policy() {
     let driver = PostgresDriver::new();
     let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
@@ -490,4 +526,57 @@ fn postgres_three_part_overwrite_names_are_rejected_before_drop_generation() {
     )
     .unwrap();
     assert_eq!(qualified[0], "DROP TABLE IF EXISTS custom.probe");
+}
+
+/// The product's own dump defers `OWNED BY` to a separate `ALTER SEQUENCE`
+/// statement; the pinned sqlparser cannot parse that form, so the restore
+/// preflight verifies it directly. A dump containing a serial column used to be
+/// unrestorable because of exactly this statement.
+#[test]
+fn postgres_restore_accepts_deferred_sequence_ownership_inside_the_frozen_scope() {
+    let driver = PostgresDriver::new();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
+    let target = datazen_driver_api::namespace::NamespaceTarget {
+        database: Some("app".into()),
+        catalog: None,
+        schema: Some("public".into()),
+        path: vec![],
+    };
+    let script = concat!(
+        "CREATE TABLE public.orders (id bigint NOT NULL);\n",
+        "CREATE SEQUENCE public.orders_id_seq AS bigint START WITH 1;\n",
+        "ALTER SEQUENCE public.orders_id_seq OWNED BY public.orders.id;\n",
+    );
+    let statements = restore_sql::prepare(
+        &dialect,
+        script,
+        restore_sql::TRANSACTIONAL,
+        false,
+        false,
+        &target,
+    )
+    .expect("deferred sequence ownership is part of the restore format");
+    assert_eq!(statements.len(), 3);
+
+    for foreign in [
+        // Another schema is outside the frozen target.
+        "ALTER SEQUENCE other.orders_id_seq OWNED BY public.orders.id",
+        "ALTER SEQUENCE public.orders_id_seq OWNED BY other.orders.id",
+        // Any other ALTER SEQUENCE form must stay rejected.
+        "ALTER SEQUENCE public.orders_id_seq RESTART WITH 1000",
+    ] {
+        let script = format!("CREATE TABLE public.orders (id bigint NOT NULL); {foreign};");
+        assert!(
+            restore_sql::prepare(
+                &dialect,
+                &script,
+                restore_sql::TRANSACTIONAL,
+                false,
+                false,
+                &target
+            )
+            .is_err(),
+            "{foreign} must be rejected"
+        );
+    }
 }

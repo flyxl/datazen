@@ -44,9 +44,14 @@ export function SchemaDiffDeployPanel({
   const txSupported = dialectSupportsTransactionalDdl(plan.targetDialect);
   const transactionRequired = plan.statements.some((statement) => statement.requiresTransaction);
   const transactionEnabled = transactionRequired || (useTransaction && txSupported);
+  // Same rule as the wizard footer: `Backfill` is a post-deploy follow-up (the
+  // column is added nullable), only `Unsupported` makes the plan deployless.
+  const hasUnsupportedRequirement = (plan.requirements ?? []).some(
+    (requirement) => requirement.kind === 'Unsupported',
+  );
   const canRun =
     !result &&
-    !plan.requirements?.length &&
+    !hasUnsupportedRequirement &&
     (!transactionRequired || (txSupported && transactionEnabled)) &&
     (!requireRollback || (txSupported && transactionEnabled)) &&
     canRunDeploy({

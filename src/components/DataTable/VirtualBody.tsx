@@ -146,7 +146,7 @@ export interface VirtualBodyProps {
     /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
     resolving?: ReadonlySet<string>;
     /** Follow the foreign key of a cell. */
-    onJump?: (rowIndex: number, columnName: string) => void;
+    onJump?: (rowIndex: number, columnName: string, element: HTMLElement | null) => void;
   };
 }
 
@@ -429,9 +429,7 @@ const VirtualRow = memo(function VirtualRow({
             onFkActivate={foreignKeys?.onJump}
             selected={cellSelectionEnabled && isCellSelected(vRow.index, col.name)}
             active={
-              cellSelectionEnabled &&
-              activeRow === vRow.index &&
-              activeColumnName === col.name
+              cellSelectionEnabled && activeRow === vRow.index && activeColumnName === col.name
             }
             editing={isEditing}
             cellType={editorInfo.get(col.name)?.cellType}

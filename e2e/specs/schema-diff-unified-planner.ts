@@ -177,9 +177,15 @@ async function runMysqlCatalogSmokeJourney(fixture: MysqlCatalogFixture) {
         >('get_database_objects', { dbSessionId: session, kind });
         const matches = objects.filter((object) => object.name === name);
         expect(matches).toHaveLength(1);
-        expect(matches[0]?.schema).toBe('datazen_sync_mysql_src');
+        // MySQL has no schema layer inside a database: `information_schema.*_SCHEMA`
+        // columns name databases, and the driver lists only the current database
+        // (`WHERE ROUTINE_SCHEMA = DATABASE()`), projecting `NULL AS schema`.
+        // Object ownership therefore lives in the selected database, and the
+        // unified planner resolves the configured scope from it — an object is
+        // never addressed as `db.object` through this field.
+        expect(matches[0]?.schema).toBeNull();
         if (kind === 'trigger') {
-          expect(matches[0]?.targetSchema).toBe('datazen_sync_mysql_src');
+          expect([null, 'datazen_sync_mysql_src']).toContain(matches[0]?.targetSchema ?? null);
           expect(matches[0]?.targetName).toBe(fixture.triggerTable);
         }
         console.log(

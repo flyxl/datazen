@@ -558,12 +558,13 @@ export const ConnectionNavigatorTree = forwardRef<
         sectionGroup,
       };
       setExpandedConnections(new Set([connectionExpandKey(sectionGroup, conn.id)]));
+      // Opening the tab connects it (`useConnectionTabs`). Connecting here as
+      // well opened a **second** session for the same profile: the tab kept the
+      // first one, the sidebar the second, and every schema read on the orphan
+      // failed with `sessionNotFound` (an empty tree, no visible error).
       onSelectConnection(conn.id);
-      if (status !== 'connecting') {
-        void connect(conn);
-      }
     },
-    [activeConnections, connect, onSelectConnection],
+    [activeConnections, onSelectConnection],
   );
 
   const [debouncedSearch, setDebouncedSearch] = useState('');

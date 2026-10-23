@@ -1092,6 +1092,15 @@ fn fixed_purpose(purpose: datazen_driver_api::resource::ResourcePurpose) -> bool
 /// pool, so it is charged the pool bound. Either way the driver-internal control
 /// connection is not charged — it is shared per (connection identity, database)
 /// and never runs user SQL.
+///
+/// Metadata inspection is its own case: it is short-lived and runs one command
+/// at a time, so it needs **one** connection and must be charged one. Charging
+/// the pool bound (10 by default) let a single Schema Diff metadata read claim
+/// more than half of the host's 16-connection physical budget; with a few
+/// connections open the read was then refused outright, and the migration
+/// windows reported nothing but an empty object list. PostgreSQL charges this
+/// purpose one connection (`METADATA_POOL_CONNECTIONS`); the two drivers must
+/// price the same contract the same way.
 fn resource_connection_cost(
     config: &ConnectionConfig,
     purpose: datazen_driver_api::resource::ResourcePurpose,
@@ -1101,10 +1110,21 @@ fn resource_connection_cost(
         ConnectionCostPolicy::PoolBounded {
             max_physical_connections: FIXED_SESSION_CONNECTIONS,
         }
+    } else if matches!(
+        purpose,
+        datazen_driver_api::resource::ResourcePurpose::MetadataInspection
+    ) {
+        ConnectionCostPolicy::PoolBounded {
+            max_physical_connections: METADATA_POOL_CONNECTIONS,
+        }
     } else {
         mysql_connection_cost(config)
     }
 }
+
+/// Physical connections a metadata-inspection MySQL resource holds. Matches the
+/// PostgreSQL driver: one command at a time, one connection, one unit of budget.
+const METADATA_POOL_CONNECTIONS: u32 = 1;
 
 /// Physical connections a fixed (session-scoped) MySQL resource holds.
 const FIXED_SESSION_CONNECTIONS: u32 = 1;

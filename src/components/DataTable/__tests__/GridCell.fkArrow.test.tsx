@@ -104,9 +104,23 @@ describe('GridCell foreign-key entry', () => {
     fireEvent.click(arrow);
 
     expect(onFkActivate).toHaveBeenCalledTimes(1);
-    expect(onFkActivate).toHaveBeenCalledWith(0, 'customer_id');
+    expect(onFkActivate).toHaveBeenCalledWith(0, 'customer_id', null);
     // A jump is not an edit.
     expect(onCellDoubleClick).not.toHaveBeenCalled();
+  });
+
+  it('does not take the focus, so the grid keeps its scroll position', () => {
+    // Focusing a button inside the transform-based virtual window makes the
+    // engine scroll the grid surface to the top: the arrow would silently
+    // rewind the table before the jump. The mouse must not move the focus.
+    const { container } = renderCell({ fk: fk(), onFkActivate: vi.fn() });
+
+    const arrow = container.querySelector('[data-dt-fk-click="true"]') as HTMLElement;
+    const notCancelled = fireEvent.mouseDown(arrow);
+
+    // `fireEvent` returns false when the default was prevented.
+    expect(notCancelled).toBe(false);
+    expect(document.activeElement).not.toBe(arrow);
   });
 
   it('does not let a double click on the arrow open the editor', () => {

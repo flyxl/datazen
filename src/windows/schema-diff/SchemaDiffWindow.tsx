@@ -18,7 +18,11 @@ import {
   type SchemaDiffObjectIdentity,
   type SchemaDiffPlan,
 } from '../../commands/schemaDiff';
-import { discoverSchemaDiffObjects, discoveryFailure, SchemaObjectDiscoveryError } from './schemaDiffObjectDiscovery';
+import {
+  discoverSchemaDiffObjects,
+  discoveryFailure,
+  SchemaObjectDiscoveryError,
+} from './schemaDiffObjectDiscovery';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { useLocaleDomains } from '../../hooks/useLocaleDomains';
@@ -213,7 +217,11 @@ export function SchemaDiffWindow() {
       return true;
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
-      setDiscoveryDiagnostic(error instanceof SchemaObjectDiscoveryError ? error.diagnostic : discoveryFailure('object-catalog', error));
+      setDiscoveryDiagnostic(
+        error instanceof SchemaObjectDiscoveryError
+          ? error.diagnostic
+          : discoveryFailure('object-catalog', error),
+      );
       setTablePicks([]);
       return false;
     } finally {
@@ -383,10 +391,22 @@ export function SchemaDiffWindow() {
     plan?.statements.some((statement) => statement.requiresTransaction),
   );
   const transactionEnabled = transactionRequired || useTransaction;
+  /**
+   * Only `Unsupported` requirements block the deploy.
+   *
+   * `Backfill` is the plan being safe: a NOT NULL column without a default is
+   * added nullable, and the requirement asks the user to populate existing rows
+   * before enforcing NOT NULL. Counting it as a blocker left the plan
+   * permanently undeployable — preparing again cannot clear it because the
+   * statement is already the safe one.
+   */
+  const blockingRequirements = (plan?.requirements ?? []).filter(
+    (requirement) => requirement.kind === 'Unsupported',
+  );
   const deployAllowed = Boolean(
     plan &&
       !deployResult &&
-      !plan.requirements?.length &&
+      blockingRequirements.length === 0 &&
       (!transactionRequired ||
         (transactionEnabled && dialectSupportsTransactionalDdl(plan.targetDialect))) &&
       (!requireRollback ||
@@ -510,7 +530,7 @@ export function SchemaDiffWindow() {
       return;
     }
     if (next === 'objects' && tablePicks.length === 0) {
-      if (!await loadSourceTables()) return;
+      if (!(await loadSourceTables())) return;
     }
     if (next) setStep(next);
   }, [

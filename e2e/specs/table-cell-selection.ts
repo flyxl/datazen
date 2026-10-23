@@ -31,6 +31,7 @@ import {
   setSafeMode,
   waitForTableInSidebar,
 } from '../helpers.js';
+import { t } from '../i18n.js';
 
 const TEST_TABLE = 'e2e_grid_selection_test';
 const FIRST_COL = 'id';
@@ -64,7 +65,9 @@ async function selectionSnapshot(): Promise<SelectionSnapshot | null> {
       }
     ).__tableDataStore;
     if (!store) return null;
-    const slice = [...store.getState().byPanel.values()].find((candidate) => candidate.rows.length > 0);
+    const slice = [...store.getState().byPanel.values()].find(
+      (candidate) => candidate.rows.length > 0,
+    );
     if (!slice) return null;
     return {
       mode: slice.gridSelection.mode,
@@ -131,7 +134,12 @@ async function clickNextPage(): Promise<boolean> {
     const next = Array.from(document.querySelectorAll('button')).find((button) => {
       const aria = button.getAttribute('aria-label') ?? '';
       const text = button.textContent ?? '';
-      return aria.includes('Next') || aria.includes('下一页') || text.includes('Next') || text.includes('下一页');
+      return (
+        aria.includes('Next') ||
+        aria.includes('下一页') ||
+        text.includes('Next') ||
+        text.includes('下一页')
+      );
     });
     if (!next || next.disabled) return false;
     next.click();
@@ -159,7 +167,9 @@ describe('单元格与区域选择 (TC-SEL-001~006)', () => {
     `);
     await executeSQLChecked(`
       INSERT INTO ${TEST_TABLE} (code, name)
-      SELECT 'code_' || g, 'row_' || g FROM generate_series(1, 30) g
+      -- 60 rows, not 30: the default page size is 50, so a 30-row fixture has no
+      -- second page and TC-SEL-006's "turn the page" case could only ever fail.
+      SELECT 'code_' || g, 'row_' || g FROM generate_series(1, 60) g
     `);
     await waitForTableInSidebar(TEST_TABLE, 30000);
     await clickTableInSidebar(TEST_TABLE);
@@ -218,7 +228,7 @@ describe('单元格与区域选择 (TC-SEL-001~006)', () => {
     expect(summary?.rows).toBe('4');
     expect(summary?.cols).toBe('3');
     expect(summary?.cells).toBe('12');
-    expect(summary?.text).toContain('4 rows × 3 columns');
+    expect(summary?.text).toContain(t('dataTable.selectionSummary', { rows: 4, cols: 3 }));
     const snapshot = await selectionSnapshot();
     expect(snapshot?.anchor).toEqual({ rowIndex: 2, columnName: 'id' });
     expect(snapshot?.focus).toEqual({ rowIndex: 5, columnName: 'name' });
@@ -257,7 +267,9 @@ describe('单元格与区域选择 (TC-SEL-001~006)', () => {
     // Deliberately unscoped: after Escape *nothing* may still read as selected —
     // neither a cell nor a row container (DB-02). Both attributes are omitted
     // rather than set to "false", so zero is the only correct count.
-    expect(await browser.execute(() => document.querySelectorAll('[data-dt-selected]').length)).toBe(0);
+    expect(
+      await browser.execute(() => document.querySelectorAll('[data-dt-selected]').length),
+    ).toBe(0);
     await captureJourneyStep('table-cell-selection-004');
   });
 

@@ -15,6 +15,71 @@ pub(crate) struct PgColumnDdl {
     pub default_expr: Option<String>,
 }
 
+/// The schema part of a qualified name, quoted or bare.
+///
+/// `quote_ident` only quotes what needs quoting, so the catalog hands back
+/// `public.t` for an ordinary table and `"My Schema".t` otherwise; both are
+/// split at the first dot that is outside quotes.
+fn schema_of(qualified_name: &str) -> Option<&str> {
+    let mut quoted = false;
+    for (index, ch) in qualified_name.char_indices() {
+        match ch {
+            '"' => quoted = !quoted,
+            '.' if !quoted => return Some(&qualified_name[..index]),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Qualify the `regclass` literal inside a default expression.
+///
+/// `nextval('t_id_seq'::regclass)` becomes `nextval('"public"."t_id_seq"'::regclass)`
+/// when the table lives in `public` and the literal carries no schema of its
+/// own. A literal that is already schema-qualified (`public.t_id_seq`) is left
+/// alone, and so is every other default expression.
+pub(crate) fn qualify_regclass_literals(expression: &str, schema: Option<&str>) -> String {
+    const MARKER: &str = "::regclass";
+    let Some(schema) = schema else {
+        return expression.to_string();
+    };
+    let parts: Vec<&str> = expression.split(MARKER).collect();
+    if parts.len() == 1 {
+        return expression.to_string();
+    }
+    let mut out = String::with_capacity(expression.len() + schema.len() + 4);
+    for (index, part) in parts.iter().enumerate() {
+        if index > 0 {
+            out.push_str(MARKER);
+        }
+        // Only the segment that ends in a `regclass` cast has a literal to
+        // qualify, and only when it is a bare name directly inside a call:
+        // `nextval('<literal>'` → the trailing quote closes it, so the name is
+        // what sits between the quote before it and that closer.
+        let literal = if index + 1 < parts.len() {
+            part.trim_end().strip_suffix('\'').and_then(|body| {
+                let (head, literal) = body.rsplit_once('\'')?;
+                (!literal.is_empty() && !literal.contains('.') && head.trim_end().ends_with('('))
+                    .then_some((head, literal))
+            })
+        } else {
+            None
+        };
+        match literal {
+            Some((head, literal)) => {
+                out.push_str(head);
+                out.push('\'');
+                out.push_str(schema);
+                out.push('.');
+                out.push_str(literal);
+                out.push('\'');
+            }
+            None => out.push_str(part),
+        }
+    }
+    out
+}
+
 /// Build `CREATE TABLE schema.table (...)` from catalog-derived column metadata.
 pub(crate) fn build_pg_create_table_ddl(
     qualified_name: &str,
@@ -31,7 +96,17 @@ pub(crate) fn build_pg_create_table_ddl(
             }
             if let Some(ref def) = c.default_expr {
                 if !def.is_empty() {
-                    line.push_str(&format!(" DEFAULT {def}"));
+                    // `pg_get_expr` returns the catalog's own text, whose
+                    // `nextval('x'::regclass)` is written against the *dumping*
+                    // session's `search_path`. A restore runs with a different
+                    // one (often none), where that unqualified name resolves to
+                    // nothing and the whole `CREATE TABLE` is rejected. Qualify
+                    // the literal with the table's own schema, the way a real
+                    // `pg_dump` does.
+                    line.push_str(&format!(
+                        " DEFAULT {}",
+                        qualify_regclass_literals(def, schema_of(qualified_name))
+                    ));
                 }
             }
             line
@@ -553,17 +628,16 @@ impl PostgresDriver {
             )
             .await;
         }
-        // Admin commands are not in the fixed-session allowlist. Borrowing from
-        // the retained session's max-1 pool here would wait for the checkout the
-        // session itself holds, so fail fast with a readable reason instead.
-        if self.fixed_sessions.read().await.contains_key(&handle.id) {
-            return Err(DriverError::NotSupported(format!(
-                "admin command '{command}' is not available on a retained session"
-            )));
-        }
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-        crate::admin_commands::execute_pg_admin_command(pool, command, input).await
+        // Admin commands run on the **session's own** connection: a retained
+        // session pins the pool's only connection, so borrowing a second one
+        // here would wait for a checkout that never returns. `for_session`
+        // hands back the pinned connection when there is one (and a separate
+        // per-database pool when the command names a foreign database), which
+        // keeps `estimate_table_rows` and the `GRANT`/`CREATE` family scoped to
+        // the database the user is actually looking at.
+        let database = input["database"].as_str().unwrap_or_default().to_owned();
+        let mut conn = crate::session_connection::for_session(self, handle, &database).await?;
+        crate::admin_commands::execute_pg_admin_command(&mut conn, command, input).await
     }
 
     pub(crate) async fn structure_capabilities_impl(

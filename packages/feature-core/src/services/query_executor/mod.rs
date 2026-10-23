@@ -342,23 +342,14 @@ impl QueryExecutor {
                 );
                 let data_res = data_res?;
 
-                let (total_rows, kind) = match estimate_res {
+                let estimated = match estimate_res {
                     Ok(result) => {
                         let cell = result
                             .rows
                             .first()
                             .and_then(|row| row.first())
                             .and_then(|cell| cell.as_ref());
-                        match cell.and_then(table_browsing::estimated_count_cell) {
-                            Some(count) => (Some(count), CountStrategy::Estimated),
-                            None => {
-                                tracing::warn!(
-                                    %table,
-                                    "query_executor: the estimate is not a usable row count"
-                                );
-                                (None, CountStrategy::Unsupported)
-                            }
-                        }
+                        cell.and_then(table_browsing::estimated_count_cell)
                     }
                     Err(error) => {
                         tracing::warn!(
@@ -366,7 +357,55 @@ impl QueryExecutor {
                             %error,
                             "query_executor: the estimate failed; the rows are unaffected"
                         );
-                        (None, CountStrategy::Unsupported)
+                        None
+                    }
+                };
+                // An unusable estimate is the absence of a fact, not a fact:
+                // `-1` is what PostgreSQL says about a relation the planner
+                // never looked at, which is exactly the state of a table
+                // created moments ago. Rescue it with an exact count instead
+                // of telling the user the number does not exist — the same
+                // answer this read gives when the driver cannot estimate at
+                // all. The rows are already in hand; only the number costs a
+                // statement.
+                let (total_rows, kind) = match estimated {
+                    Some(count) => (Some(count), CountStrategy::Estimated),
+                    None => {
+                        tracing::warn!(
+                            %table,
+                            "query_executor: the estimate is not a usable row count; counting"
+                        );
+                        let count_sql = Self::build_count_sql(
+                            &cached.table_name,
+                            &cached.columns,
+                            &filters,
+                            &dialect,
+                            filter_logic,
+                        )
+                        .map_err(|rejection| {
+                            DriverError::NotSupported(rejection.contract_message())
+                        })?;
+                        match driver.query_at(handle, &count_sql, target).await {
+                            Ok(result) => {
+                                let cell = result
+                                    .rows
+                                    .first()
+                                    .and_then(|row| row.first())
+                                    .and_then(|cell| cell.as_ref());
+                                match cell.and_then(table_browsing::target_count_cell) {
+                                    Some(count) => (Some(count), CountStrategy::Exact),
+                                    None => (None, CountStrategy::Unsupported),
+                                }
+                            }
+                            Err(error) => {
+                                tracing::warn!(
+                                    %table,
+                                    %error,
+                                    "query_executor: the exact count failed too"
+                                );
+                                (None, CountStrategy::Unsupported)
+                            }
+                        }
                     }
                 };
 

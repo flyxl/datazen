@@ -39,6 +39,8 @@ import * as cmLanguage from '@codemirror/language';
 import * as cmCommands from '@codemirror/commands';
 import { useSchemaStore } from './stores/schemaStore';
 import { useTableDataStore } from './stores/tableDataStore';
+import { useFkNavigationStore } from './stores/fkNavigationStore';
+import { usePanelStore } from './stores/panelStore';
 import { getCachedTableSchema } from './lib/schemaCache';
 
 // Expose host shared modules so the dynamically-loaded PRO extension can
@@ -84,9 +86,21 @@ import { getCachedTableSchema } from './lib/schemaCache';
 if (import.meta.env.VITE_E2E || import.meta.env.DEV) {
   (globalThis as unknown as { __tableDataStore?: typeof useTableDataStore }).__tableDataStore =
     useTableDataStore;
+  // The FK navigation snapshot is the only record of "where the user was" across a
+  // jump the panel unmounts for; E2E has to be able to see whether it was taken.
+  (
+    globalThis as unknown as { __fkNavigationStore?: typeof useFkNavigationStore }
+  ).__fkNavigationStore = useFkNavigationStore;
+  // Which tab is in front decides when a stored viewport is consumed, so the
+  // panel store has to be readable from a spec as well.
+  (globalThis as unknown as { __panelStore?: typeof usePanelStore }).__panelStore = usePanelStore;
 } else {
   (globalThis as unknown as { __tableDataStore?: typeof useTableDataStore }).__tableDataStore =
     undefined;
+  (
+    globalThis as unknown as { __fkNavigationStore?: typeof useFkNavigationStore }
+  ).__fkNavigationStore = undefined;
+  (globalThis as unknown as { __panelStore?: typeof usePanelStore }).__panelStore = undefined;
 }
 
 // Seed the shared @datazen/ui i18n engine from the persisted language and

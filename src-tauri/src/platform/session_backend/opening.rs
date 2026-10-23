@@ -94,7 +94,15 @@ impl DesktopSessionBackend {
             .resource_provider(&config.database_type)
             .await
             .map_err(|_| rc::ProviderError::CapabilityUnsupported)?;
-        if !metadata_only {
+        // 编辑器会话要按会话保持状态（事务、临时表、SET），因此它向驱动索要
+        // 一个**有状态**的物理会话；驱动不声明就拒绝，绝不拿无状态池顶替。
+        //
+        // 其余 owner（`ClientSession`：工作区的 `connect`、MCP、迁移端点）只要求
+        // 「一次真实的物理会话」，不要求会话级连续性：把这条门禁套到它们头上会
+        // 让声明 `stateful_session = Unsupported` 的驱动（SQLite 明示如此）根本
+        // 连不上——连不上比「租约会话」糟得多。租约型资源在下面已经按
+        // `PoolPolicy::stateless()` 处理，不会被钉住状态。
+        if !metadata_only && requires_stateful_session(&request.owner) {
             provider
                 .capabilities()
                 .require_stateful_session()
@@ -428,5 +436,41 @@ impl DesktopSessionBackend {
             }
         }
         map::error(error)
+    }
+}
+
+/// Whether an owner demands a session-scoped physical connection.
+///
+/// Only editor sessions do: they hold transactions, temporary tables and `SET`
+/// state across statements. A `ClientSession` (the workspace `connect`, MCP, the
+/// migration endpoints) needs a real physical session but not session continuity,
+/// and a driver that declares `stateful_session = Unsupported` (SQLite does, on
+/// purpose) must still be connectable for those callers — refusing it made the
+/// whole driver unusable, while the lease policy already keeps such a resource
+/// unparked and stateless.
+fn requires_stateful_session(owner: &rc::OwnerRef) -> bool {
+    matches!(owner, rc::OwnerRef::Editor { .. })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_runtime::connection::OwnerRef;
+
+    #[test]
+    fn only_editor_sessions_demand_session_state() {
+        let editor = OwnerRef::Editor {
+            organization_id: datazen_platform_api::id::OrganizationId::new("org"),
+            principal_id: datazen_platform_api::id::PrincipalId::new("user"),
+            connection_id: datazen_platform_api::id::ConnectionId::new("conn"),
+            client_instance_id: datazen_platform_api::id::ClientInstanceId::new("client"),
+            editor_session_id: datazen_platform_api::id::EditorSessionId::new("editor"),
+        };
+        assert!(requires_stateful_session(&editor));
+
+        let client = OwnerRef::ClientSession {
+            client_instance_id: datazen_platform_api::id::ClientInstanceId::new("client"),
+        };
+        assert!(!requires_stateful_session(&client));
     }
 }

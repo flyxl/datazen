@@ -166,10 +166,7 @@ export function buildFkFilters(
  * The schema is part of the key: `public.orders` and `audit.orders` are two
  * different targets, and treating them as one would call a round trip a cycle.
  */
-export function fkNavKey(
-  target: FkNavTargetIdentity,
-  values: readonly Value[],
-): string {
+export function fkNavKey(target: FkNavTargetIdentity, values: readonly Value[]): string {
   return JSON.stringify([
     target.database,
     target.schema,
@@ -201,6 +198,33 @@ export function findForeignKey(
         foreignKey.columns.every((column, index) => column === columns[index]),
     ) ?? null
   );
+}
+
+/**
+ * The row a returning tab should be anchored on.
+ *
+ * The active cell is the best anchor **only while it is on screen**: the grid
+ * keeps its active cell when the user scrolls, so a cell that scrolled out of
+ * the viewport says nothing about what the user was looking at — restoring to
+ * it would jump the tab back to the top and lose the position the jump started
+ * from. When the active cell is off screen the first visible row is the anchor
+ * instead.
+ */
+export function pickAnchorRow(input: {
+  scrollTop: number;
+  rowHeight: number;
+  viewportHeight: number;
+  activeRow: number | null;
+}): { anchorRow: number; anchorVisible: boolean } {
+  const rowHeight = Math.max(1, input.rowHeight);
+  const firstVisible = Math.max(0, Math.floor(input.scrollTop / rowHeight));
+  const visibleRows = Math.max(1, Math.floor(input.viewportHeight / rowHeight));
+  const lastVisible = firstVisible + visibleRows - 1;
+  const activeRow = input.activeRow;
+  if (activeRow !== null && activeRow >= firstVisible && activeRow <= lastVisible) {
+    return { anchorRow: activeRow, anchorVisible: true };
+  }
+  return { anchorRow: firstVisible, anchorVisible: false };
 }
 
 /**

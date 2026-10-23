@@ -1,12 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useResizable } from '../../hooks/useResizable';
 import { useI18n } from '../../hooks/useI18n';
-import {
-  paneKey,
-  resolveFocusedPaneId,
-  usePanelStore,
-  type Panel,
-} from '../../stores/panelStore';
+import { paneKey, resolveFocusedPaneId, usePanelStore, type Panel } from '../../stores/panelStore';
 import { resultEditKey, useResultEditability } from '../../stores/panelResultEdit';
 import {
   gridReadOnlyMessageKey,
@@ -176,7 +171,7 @@ export function ContentViewDrawers({
     key: queryResultKey,
     dbSessionId: activePanel?.type === 'query' ? activePanel.dbSessionId : '',
     database: activePanel?.type === 'query' ? activePanel.database || null : null,
-    schema: activePanel?.type === 'query' ? activePanel.schema ?? null : null,
+    schema: activePanel?.type === 'query' ? (activePanel.schema ?? null) : null,
     sql: activeQueryResult?.sql ?? '',
     resultColumns: activeQueryResult?.columns.map((column) => column.name) ?? [],
     table: activeQueryResult?.source?.relation?.object?.name ?? null,
@@ -327,37 +322,43 @@ export function ContentViewDrawers({
           </div>
         ) : (
           <>
-            {queryReadOnlyReason && (
-              <div
-                data-dt-grid-readonly-reason={queryReadOnlyReason}
-                className="shrink-0 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-muted"
-              >
-                {t(
-                  resolvingOrigin
-                    ? 'query.gridEdit.resolving'
-                    : gridReadOnlyMessageKey(queryReadOnlyReason),
-                )}
-              </div>
-            )}
-            <DetailPanel
-              open={detailOpen}
-              columns={detailColumnDefs}
-              row={detailRow}
-              rowIndex={detailRowIdx}
-              selectedRows={
-                activePanel?.type === 'table' || activePanel?.type === 'view'
-                  ? selectedRows
-                  : undefined
-              }
-              editable={
-                activePanel?.type !== 'query' ||
-                (queryResultEditable && !!activeQueryResult?.runtimeBinding)
-              }
-              // The drawer shows the same columns as the grid next to it, so it
-              // reads the same driver declaration (05 §3.1).
-              cellTypeHints={databaseType ? DB_REGISTRY[databaseType]?.cellTypes : undefined}
-              onFieldEdit={handleDetailFieldEdit}
-            />
+            {/* The reason belongs to the drawer on this row, so it is stacked on
+                top of the drawer — not next to the grid. As a sibling of the grid
+                it took 220px of the row for itself and squeezed the editor's
+                toolbar into overflow at a narrow window. */}
+            <div className="flex min-h-0 shrink-0 flex-col border-l border-edge">
+              {queryReadOnlyReason && detailOpen && (
+                <div
+                  data-dt-grid-readonly-reason={queryReadOnlyReason}
+                  className="shrink-0 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-muted"
+                >
+                  {t(
+                    resolvingOrigin
+                      ? 'query.gridEdit.resolving'
+                      : gridReadOnlyMessageKey(queryReadOnlyReason),
+                  )}
+                </div>
+              )}
+              <DetailPanel
+                open={detailOpen}
+                columns={detailColumnDefs}
+                row={detailRow}
+                rowIndex={detailRowIdx}
+                selectedRows={
+                  activePanel?.type === 'table' || activePanel?.type === 'view'
+                    ? selectedRows
+                    : undefined
+                }
+                editable={
+                  activePanel?.type !== 'query' ||
+                  (queryResultEditable && !!activeQueryResult?.runtimeBinding)
+                }
+                // The drawer shows the same columns as the grid next to it, so it
+                // reads the same driver declaration (05 §3.1).
+                cellTypeHints={databaseType ? DB_REGISTRY[databaseType]?.cellTypes : undefined}
+                onFieldEdit={handleDetailFieldEdit}
+              />
+            </div>
           </>
         ))}
 

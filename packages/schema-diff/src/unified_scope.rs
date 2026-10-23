@@ -1,7 +1,9 @@
 //! Driver-owned schema-object mapping into the target database/schema scope.
 
 use super::{
-    object_identity::SchemaObjectIdentity, objects::SchemaObjectSnapshot, types::PlanRequirement,
+    object_identity::SchemaObjectIdentity,
+    objects::SchemaObjectSnapshot,
+    types::{uses_schema_scope, PlanRequirement},
 };
 use datazen_driver_api::TableSchema;
 use datazen_driver_api::{
@@ -30,6 +32,13 @@ pub(super) fn map_source_objects_for_target_scope(
     if !matches!(target_dialect, "mysql" | "postgresql" | "sqlserver") {
         return (source.to_vec(), requirements);
     }
+    // Whether this dialect has a schema layer *inside* the database. MySQL does
+    // not: its `*_SCHEMA` columns name databases, so its object snapshots carry
+    // no schema at all (`NULL AS schema`) and the configured scope **is** the
+    // database they were listed from. Comparing an absent schema against that
+    // scope refused every MySQL object with "scope `` does not match", which
+    // made cross-database object plans（视图/例程）permanently undeployable.
+    let schema_scoped = uses_schema_scope(target_dialect);
     for object in source {
         let Some(source_scope) = configured_source_scope else {
             if target_scope.is_some() {
@@ -41,7 +50,7 @@ pub(super) fn map_source_objects_for_target_scope(
             mapped.push(object.clone());
             continue;
         };
-        if object.schema.as_deref() != Some(source_scope) {
+        if !scope_matches(object.schema.as_deref(), source_scope, schema_scoped) {
             requirements.push(unsupported(
                 object,
                 format!(
@@ -99,6 +108,7 @@ pub(super) fn map_source_objects_for_target_scope(
             table_pairs,
             source_scope,
             target_scope,
+            schema_scoped,
             target_view_context,
             renderer,
         ) {
@@ -117,6 +127,7 @@ fn map_mysql_view(
     table_pairs: &[(String, TableSchema, TableSchema)],
     source_scope: &str,
     target_scope: &str,
+    scoped: bool,
     target_view_context: Option<&MySqlViewScopeContext>,
     renderer: &dyn MigrationRenderer,
 ) -> Result<SchemaObjectSnapshot, String> {
@@ -144,7 +155,7 @@ fn map_mysql_view(
                 dependency.display_key()
             ));
         }
-        let target = if dependency.schema.as_deref() == Some(source_scope) {
+        let target = if scope_matches(dependency.schema.as_deref(), source_scope, scoped) {
             let target_name = if dependency.kind == ObjectKind::Table {
                 let matches = table_pairs
                     .iter()
@@ -291,5 +302,18 @@ fn unsupported(object: &SchemaObjectSnapshot, reason: impl Into<String>) -> Plan
     PlanRequirement::Unsupported {
         operation: object.identity().display_key(),
         reason: reason.into(),
+    }
+}
+
+/// Does an object (or dependency) belong to the configured scope?
+///
+/// A schema-scoped dialect must report the exact schema. A dialect with no
+/// schema layer reports no schema and identifies its objects by database alone;
+/// ownership there is established by the listing query, and the configured
+/// scope is that same database.
+fn scope_matches(schema: Option<&str>, scope: &str, schema_scoped: bool) -> bool {
+    match schema {
+        Some(schema) => schema == scope,
+        None => !schema_scoped,
     }
 }
