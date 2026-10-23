@@ -259,9 +259,14 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     await browser.pause(2000);
     await clickNext('transfer-step-objects'); // 触发 inspect → mapping
 
+    // 映射步要等 inspect 返回才出现，固定 pause 会随机抢跑：等步骤本身出现。
+    await browser.waitUntil(
+      async () => await $('[data-testid="data-transfer-mapping-step"]').isExisting(),
+      { timeout: 30000, timeoutMsg: '跳转后未出现映射步骤' },
+    );
+
     // 映射步的列名是输入框的 value，不在 body 文本里：先按稳定 testid 找映射列，
     // 只有拿不到时才退回整页文本断言。
-    await browser.pause(1500);
     const mappedColumn = await $('[data-testid="data-transfer-target-col-qty"]');
     if (await mappedColumn.isExisting()) {
       expect(await mappedColumn.isDisplayed()).toBe(true);

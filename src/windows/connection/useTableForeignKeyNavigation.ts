@@ -339,11 +339,16 @@ export function useTableForeignKeyNavigation(
     let frame = 0;
     const apply = () => {
       scrollElement.scrollTop = target;
-      if (Math.abs(scrollElement.scrollTop - target) <= 1 || frames >= MAX_RESTORE_FRAMES) {
+      if (Math.abs(scrollElement.scrollTop - target) <= 1) {
         setPendingViewport(null);
         return;
       }
+      // Out of frames is not a failure: the surface this tab comes back on may
+      // still be the one that is about to be replaced, or the rows may not be
+      // there yet. The snapshot is kept, and the next change of the surface or
+      // of the rows restarts the placement.
       frames += 1;
+      if (frames >= MAX_RESTORE_FRAMES) return;
       frame = requestAnimationFrame(apply);
     };
     frame = requestAnimationFrame(apply);
