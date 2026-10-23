@@ -106,6 +106,7 @@ pub async fn run(
     let path = dir.path().join("backup.sql.gz");
     let result = backup_to_path(
         runtime.clone(),
+        host::backup_binder(runtime.clone()),
         &ctx,
         target.clone(),
         BackupDumpOptions {
@@ -227,6 +228,7 @@ pub async fn run(
     let cancelled_path = dir.path().join("cancelled.sql");
     assert!(backup_to_path(
         runtime.clone(),
+        host::backup_binder(runtime.clone()),
         &ctx,
         target.clone(),
         Default::default(),
@@ -254,6 +256,7 @@ pub async fn run(
     let oversized_path = dir.path().join("oversized.sql.gz");
     assert!(backup_to_path(
         runtime.clone(),
+        host::backup_binder(runtime.clone()),
         &ctx,
         target,
         Default::default(),
