@@ -110,7 +110,7 @@ pub async fn save_shared_settings(
             }
             _ => CommandError::Internal("Unable to persist settings".into()),
         })?;
-    let full_settings = get_settings_impl(state).await?;
+    let full_settings = get_settings_impl(state.inner()).await?;
     crate::redis_flush_gate::sync_from_settings(&full_settings);
     Ok(saved)
 }
