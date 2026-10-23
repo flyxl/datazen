@@ -1,5 +1,6 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
+import { dbSessionIdOf } from '../lib/sessionId.js';
 import {
   closeExtraWindows,
   captureJourneyStep,
@@ -369,7 +370,9 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
     await invokeSync<unknown>(cmd, args);
   }
   async function dSyncConnect(id: string) {
-    return invokeSync<string>('connect', { connectionId: id });
+    // `connect` 现在回答 `{ connectionId, dbSessionId }`；后续 execute_query
+    // 要的是 session id 字符串，不归一化就会报 `invalid type: map`。
+    return dbSessionIdOf(await invokeSync<unknown>('connect', { connectionId: id }));
   }
   async function dSyncSql(dbSessionId: string, sql: string) {
     const run = () => invokeSync('execute_query', { dbSessionId, sql });
