@@ -769,3 +769,263 @@ mod inactive_database_reap {
         assert!(cache.contains_key(&("other-pool".into(), "idle_db".into())));
     }
 }
+
+/// A retained session checks out its pool's only connection for its lifetime.
+/// Catalog reads therefore must run on that pinned connection; borrowing from
+/// the max-1 pool waits for a checkout that cannot return before disconnect
+/// and fails only after the pool acquire timeout.
+///
+/// Regression: before the pinned-aware helper, `get_databases`, `get_tables`,
+/// `get_schemas`, `get_columns` and `get_all_columns` all borrowed from the
+/// pool. With `connectionTimeout: 1` they timed out here.
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL: TEST_PG_HOST/PORT/USER"]
+async fn fixed_session_catalog_reads_use_the_pinned_connection() {
+    let host = std::env::var("TEST_PG_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+    let port = std::env::var("TEST_PG_PORT")
+        .expect("disposable test port")
+        .parse::<u16>()
+        .expect("numeric TEST_PG_PORT");
+    let user = std::env::var("TEST_PG_USER").expect("disposable test user");
+    let password = std::env::var("TEST_PG_PASSWORD").ok();
+    let database = std::env::var("TEST_PG_DATABASE").unwrap_or_else(|_| "postgres".to_string());
+    let mut config: ConnectionConfig = serde_json::from_value(serde_json::json!({
+        "id": "fixed-catalog-live",
+        "name": "fixed catalog live",
+        "databaseType": "postgresql",
+        "host": host,
+        "port": port,
+        "username": user,
+        "database": database,
+        "sslMode": "disable",
+        "connectionTimeout": 1,
+        "maxPoolSize": 1,
+    }))
+    .expect("live test config");
+    config.password = password;
+
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect_fixed_session(&config)
+        .await
+        .expect("fixed session opens");
+    let database = config.database.clone().unwrap_or_else(|| "postgres".into());
+
+    let baseline = pool_counters(&driver, &handle)
+        .await
+        .expect("fixed data pool exists");
+    assert_eq!(
+        baseline,
+        (1, 0),
+        "the session pins the pool's only connection"
+    );
+
+    // This is the removed failure mode in one statement: the retained session
+    // already holds the pool's only connection, so the **first** extra borrow
+    // waits for the acquire timeout. There is no 10-statement threshold here.
+    let pool = driver
+        .pools
+        .read()
+        .await
+        .get(&handle.pool_id)
+        .cloned()
+        .expect("fixed pool exists");
+    let extra_borrow =
+        tokio::time::timeout(std::time::Duration::from_secs(2), pool.acquire()).await;
+    let refused = match extra_borrow {
+        // Our outer guard fired, or sqlx's own acquire timeout did.
+        Err(_) | Ok(Err(_)) => true,
+        Ok(Ok(_)) => false,
+    };
+    assert!(
+        refused,
+        "a max-1 pool with its only connection pinned cannot lend another checkout"
+    );
+
+    for index in 1..=20u32 {
+        let call = async {
+            match index % 7 {
+                0 => driver.get_databases(&handle).await.map(|_| ()),
+                1 => driver
+                    .get_tables(&handle, &database, Some("public"))
+                    .await
+                    .map(|_| ()),
+                2 => driver.get_schemas(&handle, &database).await.map(|_| ()),
+                3 => driver
+                    .get_columns(&handle, "pg_class", &database, Some("pg_catalog"))
+                    .await
+                    .map(|_| ()),
+                4 => driver
+                    .get_all_columns(&handle, &database, Some("public"))
+                    .await
+                    .map(|_| ()),
+                5 => driver.query(&handle, "SELECT 1").await.map(|_| ()),
+                _ => driver
+                    .query_multi(&handle, "SELECT 1; SELECT 2", None)
+                    .await
+                    .map(|_| ()),
+            }
+        };
+        let call = tokio::time::timeout(std::time::Duration::from_secs(3), call)
+            .await
+            .unwrap_or_else(|_| panic!("fixed-session statement {index} timed out"));
+        call.expect("catalog read uses the pinned connection");
+        assert_eq!(
+            pool_counters(&driver, &handle).await,
+            Some(baseline),
+            "statement {index} changed the fixed pool's checkout state"
+        );
+    }
+
+    let databases = driver.get_databases(&handle).await.expect("databases list");
+    assert!(!databases.is_empty(), "pg_database is never empty");
+
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    let control = control_counters(&driver, &config)
+        .await
+        .expect("fixed session has a control pool");
+    assert_eq!(
+        control.1, control.0,
+        "control checkouts returned after 20 statements: {control:?}"
+    );
+
+    driver
+        .disconnect(handle)
+        .await
+        .expect("fixed session disconnects");
+}
+
+/// Pool counters are the leak判据: a statement that returns its checkout leaves
+/// `num_idle() == size()`; a leaked checkout leaves `num_idle() < size()`.
+#[cfg(test)]
+async fn pool_counters(
+    driver: &PostgresDriver,
+    handle: &ConnectionHandle,
+) -> Option<(usize, usize)> {
+    let pools = driver.pools.read().await;
+    pools
+        .get(&handle.pool_id)
+        .map(|pool| (pool.size() as usize, pool.num_idle()))
+}
+
+#[cfg(test)]
+async fn control_counters(
+    driver: &PostgresDriver,
+    config: &ConnectionConfig,
+) -> Option<(usize, usize)> {
+    let pools = driver.control_pools.read().await;
+    pools
+        .get(&PostgresDriver::control_pool_key(config))
+        .and_then(|entry| entry.pool_for_test())
+        .map(|pool| (pool.size() as usize, pool.num_idle()))
+}
+
+/// Run 20 catalog statements through a **leased** (non-retained) session and
+/// prove every checkout returns. Sizes 1 and 10 cover the metadata pool bound
+/// and the interactive default: if each statement leaked one connection, the
+/// size-10 case would stall on statement 11 while the size-1 case would stall
+/// on statement 2.
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL: TEST_PG_HOST/PORT/USER"]
+async fn leased_catalog_reads_return_every_pool_checkout() {
+    let host = std::env::var("TEST_PG_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+    let port = std::env::var("TEST_PG_PORT")
+        .expect("disposable test port")
+        .parse::<u16>()
+        .expect("numeric TEST_PG_PORT");
+    let user = std::env::var("TEST_PG_USER").expect("disposable test user");
+    let password = std::env::var("TEST_PG_PASSWORD").ok();
+    let database = std::env::var("TEST_PG_DATABASE").unwrap_or_else(|_| "postgres".to_string());
+
+    for max_pool_size in [1, 10] {
+        let mut config: ConnectionConfig = serde_json::from_value(serde_json::json!({
+            "id": format!("leased-catalog-{max_pool_size}"),
+            "name": "leased catalog live",
+            "databaseType": "postgresql",
+            "host": host,
+            "port": port,
+            "username": user,
+            "database": database,
+            "sslMode": "disable",
+            "connectionTimeout": 1,
+            "maxPoolSize": max_pool_size,
+        }))
+        .expect("live test config");
+        config.password = password.clone();
+
+        let driver = PostgresDriver::new();
+        let handle = driver
+            .connect_with_control(&config, &config, None)
+            .await
+            .expect("leased session opens");
+        let database = config.database.clone().unwrap_or_else(|| "postgres".into());
+
+        // Warm the pool once, then the baseline is the size nothing may exceed.
+        driver
+            .get_tables(&handle, &database, Some("public"))
+            .await
+            .expect("warm-up listing");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let baseline = pool_counters(&driver, &handle)
+            .await
+            .expect("data pool exists");
+        assert_eq!(baseline.1, baseline.0, "warm-up returns its checkout");
+
+        let mut first_failure = None;
+        for index in 1..=20u32 {
+            let call = async {
+                match index % 5 {
+                    0 => driver.get_databases(&handle).await.map(|_| ()),
+                    1 => driver
+                        .get_tables(&handle, &database, Some("public"))
+                        .await
+                        .map(|_| ()),
+                    2 => driver.get_schemas(&handle, &database).await.map(|_| ()),
+                    3 => driver
+                        .get_columns(&handle, "pg_class", &database, Some("pg_catalog"))
+                        .await
+                        .map(|_| ()),
+                    _ => driver
+                        .get_all_columns(&handle, &database, Some("public"))
+                        .await
+                        .map(|_| ()),
+                }
+            };
+            let call = tokio::time::timeout(std::time::Duration::from_secs(3), call)
+                .await
+                .unwrap_or_else(|_| panic!("statement {index} timed out"));
+            if let Err(error) = call {
+                first_failure = Some((index, error.to_string()));
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            let counters = pool_counters(&driver, &handle)
+                .await
+                .expect("data pool exists");
+            assert_eq!(
+                counters.1, counters.0,
+                "statement {index} kept a pool checkout (size={}, idle={})",
+                counters.0, counters.1
+            );
+            assert!(
+                counters.0 <= max_pool_size,
+                "pool grew past configured max at statement {index}: {counters:?}"
+            );
+        }
+        assert_eq!(
+            first_failure, None,
+            "max_pool_size={max_pool_size}: first failing statement {first_failure:?}"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        let control = control_counters(&driver, &config)
+            .await
+            .expect("control pool exists");
+        assert_eq!(control.1, control.0, "control checkout returned");
+
+        driver
+            .disconnect(handle)
+            .await
+            .expect("leased session disconnects");
+    }
+}

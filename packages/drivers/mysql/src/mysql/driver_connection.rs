@@ -154,11 +154,10 @@ impl MysqlDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<Vec<String>, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        let mut connection = crate::session_connection::for_session(self, handle).await?;
 
         let rows = sqlx::query("SHOW DATABASES")
-            .fetch_all(pool)
+            .fetch_all(&mut *connection)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -169,10 +168,9 @@ impl MysqlDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<bool, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        let mut connection = crate::session_connection::for_session(self, handle).await?;
         let rows = sqlx::query("SHOW GRANTS FOR CURRENT_USER()")
-            .fetch_all(pool)
+            .fetch_all(&mut *connection)
             .await
             .map_err(|error| DriverError::QueryFailed(error.to_string()))?;
         let grants = rows
@@ -190,8 +188,7 @@ impl MysqlDriver {
     ) -> Result<Vec<TableInfo>, DriverError> {
         // MySQL's "schema" *is* the database, so a schema argument is a caller bug.
         validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        let mut connection = crate::session_connection::for_session(self, handle).await?;
 
         let rows = sqlx::query(
             r#"
@@ -202,7 +199,7 @@ impl MysqlDriver {
             "#,
         )
         .bind(database)
-        .fetch_all(pool)
+        .fetch_all(&mut *connection)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -215,7 +212,7 @@ impl MysqlDriver {
                 "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?",
             )
             .bind(database)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *connection)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
             if known.is_none() {
@@ -252,13 +249,8 @@ impl MysqlDriver {
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
         validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         let db = self.effective_database(handle, database).await;
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-        let mut conn = pool
-            .acquire()
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-        // `information_schema` is filtered by TABLE_SCHEMA, so the borrowed
+        let mut conn = crate::session_connection::for_session(self, handle).await?;
+        // `information_schema` is filtered by TABLE_SCHEMA, so the session
         // connection keeps whatever default schema it was born with.
         Self::fetch_columns_with_db(&mut *conn, &db, Self::bare_table_name(table)).await
     }
@@ -271,15 +263,7 @@ impl MysqlDriver {
     ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
         validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
         let db = self.effective_database(handle, database).await;
-        // Clone the pool (cheap Arc) so no lock is held across the query.
-        let pool = {
-            let pools = self.pools.read().await;
-            Self::get_pool(&pools, handle)?.clone()
-        };
-        let mut conn = pool
-            .acquire()
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        let mut conn = crate::session_connection::for_session(self, handle).await?;
         // The batch query is filtered by TABLE_SCHEMA: an explicit per-call
         // database is honoured and no `USE` is issued, so a stale session
         // default can never leak into the result.
@@ -294,32 +278,20 @@ impl MysqlDriver {
         schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
         validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
-        let pinned = self.transactions.lock().await.get(&handle.id).cloned();
-
-        if let Some(pinned) = pinned {
-            let mut conn = pinned.lock().await;
-            let db = if database.trim().is_empty() {
+        let mut conn = crate::session_connection::for_session(self, handle).await?;
+        let db = if database.trim().is_empty() {
+            if conn.is_pinned() {
                 sqlx::query_scalar::<_, Option<String>>("SELECT DATABASE()")
-                    .fetch_one(&mut **conn)
+                    .fetch_one(&mut *conn)
                     .await
                     .map_err(|e| DriverError::QueryFailed(e.to_string()))?
                     .ok_or_else(|| DriverError::InvalidConfig("database is required".into()))?
             } else {
-                database.to_string()
-            };
-            return self
-                .table_schema_on_connection(&mut **conn, table, &db)
-                .await;
-        }
-        let db = self.effective_database(handle, database).await;
-        let pool = {
-            let pools = self.pools.read().await;
-            Self::get_pool(&pools, handle)?.clone()
+                self.effective_database(handle, database).await
+            }
+        } else {
+            database.to_string()
         };
-        let mut conn = pool
-            .acquire()
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
         self.table_schema_on_connection(&mut *conn, table, &db)
             .await
     }

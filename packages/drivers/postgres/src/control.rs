@@ -16,6 +16,14 @@ pub(crate) struct ControlPoolEntry {
     budget: Option<(Arc<dyn BudgetPort>, BudgetPermit)>,
 }
 
+#[cfg(test)]
+impl ControlPoolEntry {
+    /// Read-only access for live pool-accounting regressions.
+    pub(crate) fn pool_for_test(&self) -> Option<&PgPool> {
+        self.pool.as_ref()
+    }
+}
+
 impl PostgresDriver {
     pub(crate) fn control_pool_key(config: &ConnectionConfig) -> String {
         // Escaped quoted fields prevent ambiguous profile/host/user separators.

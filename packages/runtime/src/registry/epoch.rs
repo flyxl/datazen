@@ -151,7 +151,9 @@ pub fn fold_exit(fact: ExitFact<'_>) -> ExitProjection {
             RuntimeError::BudgetExhausted("sessionQuota") => {
                 ExitProjection::Code(ApiErrorCode::SessionQuotaExceeded)
             }
-            RuntimeError::BudgetExhausted(_) => ExitProjection::Code(ApiErrorCode::ResourceBusy),
+            RuntimeError::BudgetExhausted(_) | RuntimeError::PhysicalCapacityExceeded { .. } => {
+                ExitProjection::Code(ApiErrorCode::ResourceBusy)
+            }
             RuntimeError::CloseRejected(_) => {
                 ExitProjection::Code(ApiErrorCode::TransactionResolutionRequired)
             }

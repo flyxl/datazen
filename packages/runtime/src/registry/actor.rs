@@ -612,6 +612,9 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
             // An admission budget refusal is retryable before execution.
             // Preserve its classification: UnknownSession would become
             // SessionNotFound and prevent the caller's bounded busy retry.
+            if let ProviderError::PhysicalCapacityExceeded { limit, used } = cause {
+                return Err(RuntimeError::PhysicalCapacityExceeded { limit, used });
+            }
             if matches!(cause, ProviderError::ResourceBusy(_)) {
                 return Err(RuntimeError::BudgetExhausted("resourceOpenBusy"));
             }

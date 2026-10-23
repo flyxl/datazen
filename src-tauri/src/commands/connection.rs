@@ -129,11 +129,14 @@ pub(crate) async fn save_connection_impl(
             merge_missing_connection_secrets(&mut config, saved);
         }
     }
+    let connection_id = config.id.clone();
     state
         .store
         .save_connection(config)
         .await
-        .cmd_err("save_connection")
+        .cmd_err("save_connection")?;
+    crate::services::migration_endpoint::retire_sessions_for_profile(state, &connection_id).await;
+    Ok(())
 }
 
 pub(crate) async fn duplicate_connection_impl(

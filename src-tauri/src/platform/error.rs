@@ -54,9 +54,12 @@ pub fn into_command_error(error: ApiError) -> CommandError {
         | ApiErrorCode::UnsupportedPlan
         | ApiErrorCode::ServiceUnavailable => CommandError::NotConfigured(message),
 
+        // 连接额度已满：保留可处置文案（上限 / 当前用量），不要降级成
+        // 「connection runtime operation failed」这类内部故障。
+        ApiErrorCode::ResourceBusy => CommandError::ResourceBusy(message),
+
         // 其余一律收敛到 Internal：不新增变体，也不让新 code 改变既有 IPC 外观。
-        ApiErrorCode::ResourceBusy
-        | ApiErrorCode::QueueFull
+        ApiErrorCode::QueueFull
         | ApiErrorCode::SessionQuotaExceeded
         | ApiErrorCode::RateLimited
         | ApiErrorCode::QuotaExceeded
