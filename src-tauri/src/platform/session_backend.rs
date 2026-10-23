@@ -425,3 +425,7 @@ impl DesktopSessionBackend {
             .retain(|_, bound| bound != resource_id);
     }
 }
+
+#[cfg(test)]
+#[path = "session_backend/tests.rs"]
+mod tests;

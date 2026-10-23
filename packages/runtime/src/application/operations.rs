@@ -818,3 +818,69 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         self.inner.sink.subscribe(ctx, &stream, after, None)
     }
 }
+
+impl RuntimeConnectionUseCases {
+    /// Close every live session opened on one persistent profile.
+    ///
+    /// `save_connection` bumps the profile's `config_revision`; sessions that
+    /// survive the save keep their leases and physical connections until a tab
+    /// closes them. This retires them right after the revision moved, so the
+    /// quota returns to zero and a reconnect starts from the new profile.
+    ///
+    /// Owner checks still come from each session's **stored** request context:
+    /// this is cleanup, not an ownership bypass. Sessions that are already
+    /// closed are skipped, and one failing session does not stop the rest — the
+    /// save must not fail because cleanup did. Counting is deliberately
+    /// best-effort; the caller treats the number as diagnostic only.
+    pub async fn close_sessions_for_connection(
+        &self,
+        ctx: &RequestContext,
+        connection_id: &ConnectionId,
+    ) -> usize {
+        let targets: Vec<(
+            datazen_application::dto::session::SessionHandle,
+            RequestContext,
+        )> = {
+            let sessions = lock(&self.inner.sessions);
+            sessions
+                .values()
+                .filter(|entry| {
+                    entry.closed.is_none()
+                        && entry.initial.connection_id == *connection_id
+                        && entry.ctx.organization_id == ctx.organization_id
+                        && entry.ctx.principal_id == ctx.principal_id
+                        && entry.ctx.client_instance_id == ctx.client_instance_id
+                })
+                .map(|entry| (entry.handle.clone(), entry.ctx.clone()))
+                .collect()
+        };
+
+        let mut closed = 0usize;
+        for (handle, owner_ctx) in targets {
+            let db_session_id = handle.db_session_id.clone();
+            let request = CloseSessionRequest::new(handle, CloseMode::RollbackAndClose);
+            match self.close_session(&owner_ctx, request).await {
+                Ok(_) => closed += 1,
+                Err(error)
+                    if matches!(
+                        error.code,
+                        ApiErrorCode::SessionNotFound | ApiErrorCode::SessionLost
+                    ) =>
+                {
+                    // Another path won the close race; the resource is already
+                    // accounted as gone, so this is not a cleanup failure.
+                    closed += 1;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        %connection_id,
+                        db_session_id = db_session_id.as_str(),
+                        code = error.code.as_str(),
+                        "session retirement after configuration change failed"
+                    );
+                }
+            }
+        }
+        closed
+    }
+}
