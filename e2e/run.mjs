@@ -96,6 +96,19 @@ const isCaptureRun = () =>
   screenshotTrace ||
   args.some((a) => /demo-recording|screenshot/i.test(a));
 const keepAppData = args.includes('--keep-app-data');
+/**
+ * 每个 spec 文件独占一次应用进程（见下方 isolated 分支）。整包串跑时 spec 之间会
+ * 共享运行时会话、连接池和 config_revision：前一个 spec 留下的会话会让后一个
+ * spec 的 `connect` 撞上连接额度（"connection runtime operation failed"），
+ * 串扰会掩盖真实的 UI 回归，所以整包验证默认走隔离模式。
+ */
+const isolateSpecs = args.includes('--isolate-specs')
+  ? true
+  : args.includes('--no-isolate-specs')
+    ? false
+    : process.env.E2E_ISOLATE_SPECS === '1'
+      ? true
+      : !args.includes('--spec') && !args.includes('--suite');
 const portArg = args.find((a, i) => args[i - 1] === '--port');
 const instancesArg = args.find((a, i) => args[i - 1] === '--instances');
 const WD_PORT = portArg ? parseInt(portArg, 10) : parseInt(process.env.E2E_WD_PORT || '4445', 10);
@@ -180,6 +193,9 @@ const wdioArgs = [];
       a !== '--screenshot' &&
       a !== '--capture' &&
       a !== '--keep-app-data' &&
+      a !== '--isolate-specs' &&
+      a !== '--no-isolate-specs' &&
+      !a.startsWith('--spec-timeout=') &&
       a !== '--attach' &&
       a !== '--hold' &&
       a !== '--pro' &&
@@ -664,6 +680,151 @@ if (INSTANCE_COUNT > 1) {
         : `Some workers failed (codes: ${exitCodes.join(', ')})`),
   );
   process.exit(maxCode);
+} else if (isolateSpecs) {
+  // 隔离模式：一个 spec 文件 = 一次应用进程 + 一次 WDIO 会话。
+  //
+  // 串跑（同一进程跑全部 spec）会把前一个 spec 的运行时会话、连接池、
+  // config_revision 和 WebDriver 会话留给下一个 spec：seeded 连接在 spec 之间
+  // 被改写后，旧会话仍占着连接额度，后一个 spec 的 `connect` 直接收到
+  // "connection runtime operation failed"，失败被记在无辜的 spec 头上。
+  // 隔离后失败只属于当前 spec，整包结果才有判读价值。
+  const collectIsolatedSpecs = () => {
+    const fromArgs = [];
+    for (let i = 0; i < wdioArgs.length; i++) {
+      if (wdioArgs[i] === '--spec' && wdioArgs[i + 1]) fromArgs.push(wdioArgs[i + 1]);
+    }
+    if (fromArgs.length > 0) return [...new Set(fromArgs)];
+    const out = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
+          out.push(path.relative(ROOT, full));
+        }
+      }
+    };
+    walk(path.join(ROOT, 'e2e', 'specs'));
+    return out.sort();
+  };
+
+  const otherWdioArgs = [];
+  for (let i = 0; i < wdioArgs.length; i++) {
+    if (wdioArgs[i] === '--spec') {
+      i++;
+      continue;
+    }
+    otherWdioArgs.push(wdioArgs[i]);
+  }
+
+  const baseEnv = {
+    ...process.env,
+    DATAZEN_DATA_DIR: dataDirs[0],
+    E2E_WD_PORT: String(WD_PORT),
+    E2E_WORKER_INDEX: '0',
+    E2E_WORKER_SCHEMA: process.env.E2E_WORKER_SCHEMA || 'e2e_worker_0',
+  };
+
+  // 单个 spec 的超时上限：挂了就杀掉，记 FAIL 继续下一个，否则一个卡死的 spec
+  // 会把整包验证拖成无限等待。
+  const SPEC_TIMEOUT_MS = Number(
+    process.env.E2E_SPEC_TIMEOUT_MS || args.find((a) => a.startsWith('--spec-timeout='))?.split('=')[1],
+  ) || 4 * 60 * 1000;
+
+  const runWdioOnce = (spec) =>
+    new Promise((resolve) => {
+      const proc = spawn(
+        'npx',
+        ['wdio', 'run', 'e2e/wdio.conf.ts', ...otherWdioArgs, '--spec', spec],
+        { stdio: 'inherit', cwd: ROOT, env: baseEnv },
+      );
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        log(`spec timed out after ${Math.round(SPEC_TIMEOUT_MS / 1000)}s, killing: ${spec}`);
+        try {
+          proc.kill('SIGKILL');
+        } catch {
+          /* already gone */
+        }
+      }, SPEC_TIMEOUT_MS);
+      proc.on('close', (code) => {
+        clearTimeout(timer);
+        resolve(timedOut ? 1 : (code ?? 1));
+      });
+    });
+
+  /** SIGTERM → （必要时）SIGKILL，并等到端口真的释放，避免下一个 spec 连到僵尸进程。 */
+  const stopAppInstance = async (proc) => {
+    if (!proc || proc.exitCode !== null) return;
+    const closed = new Promise((resolve) => proc.once('close', resolve));
+    try {
+      proc.kill('SIGTERM');
+    } catch {
+      /* already gone */
+    }
+    await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 5000))]);
+    if (proc.exitCode === null) {
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        /* already gone */
+      }
+      await closed;
+    }
+    const started = Date.now();
+    while (Date.now() - started < 10000) {
+      const free = await new Promise((resolve) => {
+        const sock = createConnection({ port: WD_PORT, host: '127.0.0.1' }, () => {
+          sock.destroy();
+          resolve(false);
+        });
+        sock.on('error', () => resolve(true));
+      });
+      if (free) return;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  };
+
+  const specs = collectIsolatedSpecs();
+  log(`Isolated mode: ${specs.length} spec file(s), one app process each`);
+  const failures = [];
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
+    log(`[${i + 1}/${specs.length}] ${spec}`);
+    if (i > 0) resetAppDataDir(dataDirs[0], false);
+    const proc = startAppInstance({
+      binaryPath: appBinary,
+      dataDir: dataDirs[0],
+      port: WD_PORT,
+      workerIndex: 0,
+      onOutput: onAppOutput,
+    });
+    appProcesses.push(proc);
+    let code = 1;
+    try {
+      await waitForPort(WD_PORT, '127.0.0.1', 30000);
+      code = await runWdioOnce(spec);
+    } catch (err) {
+      log(`app did not come up for ${spec}: ${err.message}`);
+    } finally {
+      await stopAppInstance(proc);
+      const idx = appProcesses.indexOf(proc);
+      if (idx >= 0) appProcesses.splice(idx, 1);
+    }
+    if (code !== 0) failures.push(spec);
+    log(`[${i + 1}/${specs.length}] ${code === 0 ? 'PASS' : 'FAIL'} ${spec}`);
+  }
+
+  cleanup();
+  runEnvTeardown();
+  if (failures.length === 0) {
+    log(`All ${specs.length} isolated spec files passed!`);
+    process.exit(0);
+  }
+  log(`${specs.length - failures.length}/${specs.length} isolated spec files passed; failing:`);
+  for (const spec of failures) log(`  - ${spec}`);
+  process.exit(1);
 } else {
   // Single-instance: standard WDIO run
   const wdioEnv = {
