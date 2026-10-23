@@ -89,6 +89,17 @@ impl SettingsRepository for RecordingSettingsRepository {
         *stored = settings.clone();
         Ok(settings)
     }
+
+    async fn read_app_settings(&self) -> Result<serde_json::Value, PortError> {
+        Ok(serde_json::json!({}))
+    }
+
+    async fn write_app_settings(
+        &self,
+        settings: serde_json::Value,
+    ) -> Result<serde_json::Value, PortError> {
+        Ok(settings)
+    }
 }
 
 // ── 隧道仓储替身 ───────────────────────────────────────────────────────────

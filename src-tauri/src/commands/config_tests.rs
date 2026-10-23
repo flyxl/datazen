@@ -102,7 +102,7 @@ async fn get_log_path_honors_custom_log_path_setting() {
     assert!(log_path.contains("custom-logs"));
 }
 
-/// §5.1.2 第二步的验收断言：设置用例只走应用层聚合。
+/// §5.1.2 设置命令族的验收断言：设置与分组只走应用层聚合。
 ///
 /// 这两条命令原来自行拼服务——`SettingsService::new(state.store.as_ref())`。
 /// 那种写法让「设置用例归位到应用层」在源码上根本没发生：命令仍然是服务的
@@ -128,15 +128,19 @@ fn shared_settings_commands_read_the_aggregate_not_the_host_store() {
     );
     assert_eq!(
         production.matches("settings_service()").count(),
-        2,
-        "读、写两条设置命令都必须经聚合取用例（各一处）"
+        4,
+        "完整设置读写与共享设置读写都必须经聚合取用例"
     );
-    // 计数是本节验收的旁证：`state.store` 在 config.rs 里由 14 处降到 12 处
-    // （两条设置命令各让出一处直连；其余 12 处服务 `AppSettings` 与路径类命令，
-    // 不在本期范围，第六步按命令族搬迁时再降）。
+    assert!(
+        !production.contains("state.store.get_settings")
+            && !production.contains("state.store.get_groups")
+            && !production.contains("state.store.save_groups"),
+        "设置与分组不得直读/直写宿主 store"
+    );
+    // `data_dir()` 仍是 §5.1.3 的桌面路径能力，本族只把设置内容本身移入聚合。
     assert_eq!(
         production.matches("state.store").count(),
-        12,
-        "config.rs 里对宿主 store 的直读应只剩 12 处；新增会说明有人绕开聚合"
+        4,
+        "config.rs 里只允许保留 4 处桌面 data_dir() 路径访问"
     );
 }

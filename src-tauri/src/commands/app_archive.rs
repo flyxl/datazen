@@ -24,7 +24,7 @@ pub(super) async fn export_app_data_to_dest(
     state: &AppState,
     dest: PathBuf,
 ) -> Result<(), CommandError> {
-    let settings = state.store.get_settings().await;
+    let settings = super::config::get_settings_impl(state).await?;
     let data_dir = state.store.data_dir().clone();
     let options = export_options_from_settings(&settings);
     tokio::task::spawn_blocking(move || {

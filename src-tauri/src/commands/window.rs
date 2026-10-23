@@ -112,7 +112,7 @@ pub fn docs_url(language: &str, section: Option<&str>) -> String {
 /// Open official help docs in the system browser (native Help menu).
 pub async fn open_docs_window(app: AppHandle, section: Option<&str>) -> Result<(), CommandError> {
     let state = app.state::<AppState>();
-    let settings = state.store.get_settings().await;
+    let settings = crate::commands::config::get_settings_impl(state.inner()).await?;
     let url = docs_url(&settings.language, section);
     open::that(&url).map_err(|e| CommandError::Internal(format!("open_docs_window: {e}")))
 }
@@ -497,7 +497,7 @@ pub async fn open_migration_sub_window(
     kind: MigrationSubWindow,
 ) -> Result<(), CommandError> {
     let state = app.state::<AppState>();
-    let settings = state.store.get_settings().await;
+    let settings = crate::commands::config::get_settings_impl(state.inner()).await?;
     let menu_title = crate::menu_label(&settings.language, kind.menu_title_key());
     let title = format!("{menu_title} - DataZen");
     let (label, url, width, height, min_width, min_height) = kind.spec();
@@ -649,6 +649,25 @@ mod tests {
     fn docs_url_ignores_unknown_sections() {
         assert_eq!(docs_url("en", Some("getting-started")), DOCS_BASE_EN);
         assert_eq!(docs_url("en", Some("  ")), DOCS_BASE_EN);
+    }
+
+    #[test]
+    fn window_commands_read_settings_through_the_application_services() {
+        let production = include_str!("window.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .expect("window.rs 必须有生产半边");
+        assert_eq!(
+            production
+                .matches("config::get_settings_impl(state.inner())")
+                .count(),
+            2,
+            "帮助窗口与迁移子窗口都必须经设置用例读取"
+        );
+        assert!(
+            !production.contains("state.store"),
+            "窗口命令不得直读宿主 store"
+        );
     }
 
     #[test]

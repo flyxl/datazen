@@ -255,6 +255,20 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 与其它已归位的族一样返回 `NotConfigured`，而不是「这一族还能用」。这是 D1 那一档的既有事实，
 本族只是把范围扩大，**没有**给命令留 `state.store` 后门。
 
+**第四族「设置与分组」（2026-10-23，已落地）**：`commands/config.rs` 的分组读写改走
+`ApplicationServices.connections`（连接目录端口已经把分组定义为同一聚合的整表语义）；完整
+`AppSettings` 的读写改走 `ApplicationServices.settings_service()`。`SettingsRepository` 保留
+`SharedSettings` 的 typed projection，同时增加 opaque full-document 方法——路径、onboarding
+与其他桌面字段仍由宿主的 `AppSettings` 负责反序列化，不把桌面 DTO 复制进中立包。共享设置写入
+后的 Redis gate 同样改为从聚合重新读取完整设置，避免回到 `state.store`。
+
+本族的 `state.store` 生产半边计数 **84 → 73**，其中 `commands/config.rs` **12 → 4**、
+`commands/app_archive.rs` **3 → 2**、`commands/window.rs` **2 → 0**；剩余 6 处全部是
+`data_dir()`，对应 §5.1.3 的 `{appData}` 路径解析，不属于设置内容端口，后续会随宿主路径门面
+收敛。断言 `shared_settings_commands_read_the_aggregate_not_the_host_store`
+现在同时钉住：设置/分组不得调用宿主 store、四条设置读写路径必须经 `settings_service()`，且
+config 文件只保留四处桌面 `data_dir()` 访问。IPC 签名与返回载荷未变。
+
 第一族「命名视图」已落地——`ApplicationServices` 持
 `named_views: Arc<dyn NamedViewRepository>`，`commands/named_views.rs` 生产半边
 `state.store` 归零（断言 `the_command_shell_reads_the_aggregate_not_the_host_store`），
@@ -269,19 +283,19 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 独立验收：每期一条「该命令族的生产源码里不再出现 `state.store`」的断言 + `cargo test -p datazen --lib` 全绿 + 该命令族的 IPC 载荷冻结断言不变 + E2E。
 
-**剩余 84 处的分布与难度（2026-10-23 实测，生产半边口径；连接目录族归零前的 93 处已扣除）**——这张表的作用是防止下一个人
-把「还剩 93 处」误当成「再搬几个文件就好」：
+**剩余 73 处的分布与难度（2026-10-23 实测，生产半边口径；连接目录族与设置族已扣除）**——这张表的作用是防止下一个人
+把「还剩 73 处」误当成「再搬几个文件就好」：
 
 | 类别 | 处数 | 主要文件 | 卡在哪（不是卡在懒，是卡在缺用例） |
 |---|---|---|---|
-| 设置与路径 | 12 + 3 + 2 + 1 | `commands/config.rs`、`app_archive.rs`、`window.rs`、`encryption_key.rs` | `SettingsRepository` 只有 `SharedSettings`；命令要的是完整 `AppSettings`（主题/键位/执行策略）与 `data_dir()`。前者可扩端口，后者是 §5.1.3 形态专属。 |
+| 设置与路径 | ~~12 + 3 + 2~~ **4 + 2 + 0** + 1 | `commands/config.rs`、`app_archive.rs`、`window.rs`、`encryption_key.rs` | 设置/分组已走聚合；`SettingsRepository` 同时提供 typed `SharedSettings` 与 opaque full-document 读写。剩余 `data_dir()`、钥匙串是 §5.1.3 形态专属。 |
 | AI 配置 | 17 | `ai/generate.rs` 7、`ai/util.rs` 3、`ai/config.rs` 3、`ai/chat.rs` 3、`ai/grant.rs` 1 | `ai_config.enc` 是桌面落盘；要抽的是 `AiConfigurationService`（profile 选择回退规则已在 ai-api），而不是把加密文件路径搬进中立层。 |
 | 连接目录 | ~~11~~ **已归零** | `connection.rs`、`connection_import/ipc.rs` | 已落地（`ConnectionCatalog`）。表中的「11」是**逐行 grep 的漏数**：`duplicate_connection_impl` 与 `reorder_connections` 的 `state.store` 跨行书写，真实处数是 11 + 2。端口直接复用 `datazen_driver_api::ConnectionConfig`——`platform-api` 本就依赖 driver-api，所谓「`application` 不得依赖 driver-api」在本族并不成立（聚合只拿 trait 对象）。 |
 | 仪表盘残留 | 6 | `commands/dashboard.rs` | **已有结论，不搬**：组件创建（要 `AppDb::get_workflow` + `WorkflowRegistry`）、导入导出（文件对话框 + `&AppDb` 签名）、手工执行（宿主库重载）。 |
-| 长尾 | 47 | 38 个文件里各 1–3 处 | 逐个看：有的是 §5.1.3 形态专属（`data_dir`、钥匙串、窗口状态），有的只差一个端口方法。 |
+| 长尾 | 43 | 38 个文件里各 1–3 处 | 逐个看：有的是 §5.1.3 形态专属（`data_dir`、钥匙串、窗口状态），有的只差一个端口方法。 |
 
-结论：**从 84 到 0 不是机械搬迁，而是若干「新用例服务 + 新端口」的设计工作**（`AppSettings` 端口、
-`AiConfigurationService`、`ConnectionGroupRepository`……）。每新增一个端口都要
+结论：**从 73 到 0 不是机械搬迁，而是若干「新用例服务 + 新端口」的设计工作**（
+`AiConfigurationService` 与宿主路径/密钥门面……）。每新增一个端口都要
 同步四处（`PORT_TRAITS` / `SOURCE_FILES` / `ports/mod.rs` 模块头 / `system-overview.md` §6.4），
 并按 R8「新增端口必须有实现或用例引用」先证明有消费者。
 
