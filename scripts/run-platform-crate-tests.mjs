@@ -146,55 +146,37 @@ export const TESTED_LAYERS = Object.freeze([
 ]);
 
 /**
- * Cargo target selectors that must also be tested, per crate, **on top of `--lib`**.
+ * Cargo target selectors that must also be tested, per crate, in a profile the
+ * default invocation does not build.
  *
- * ## Why this table exists
+ * ## Why this table now only holds `release: true` entries
  *
- * `cargo test --lib` cannot reach either CM-60 entry point, and that is a
- * structural fact about cargo rather than an oversight anyone can spot by
- * reading a CI log:
+ * `cargo test -p <crate>` with no target selector already builds and runs,
+ * per the Cargo Book's target-selection rules for `cargo test`:
  *
- * - `packages/runtime/tests/cm60_pressure_drain.rs` is an **integration** test
- *   target. `--lib` selects the library's unit-test binary and nothing else, so
- *   the whole §11.4 pressure half — the resource-pressure and drain assertions
- *   CM-60 is written as — was never compiled in CI at all.
- * - `packages/runtime/src/bin/cm60-bench/` is a **binary** target. Its unit
- *   tests live in the bin's own test binary, again outside `--lib`, and they
- *   additionally **have to** be built `--release`: `cm60-bench/main.rs` refuses
- *   to run under `debug_assertions` and exits 2, which is a deliberate guard
- *   against a debug-profile benchmark quietly becoming the measurement.
+ *   - the lib target **as a unit test** (its `test = true` default),
+ *   - every bin target as unit tests (`test = true` default),
+ *   - every `tests/*.rs` integration binary, and
+ *   - the lib's doc tests.
  *
- * A test that CI never compiles is not a test, and the failure mode is silent
- * in the worst way: the green `cargo test --lib` line is exactly the line a
- * reader skims.
+ * A debug-profile extra bolted onto that run can therefore only ever RE-RUN a
+ * target the no-selector invocation already covers. The one thing the default
+ * invocation structurally cannot reach is a target whose assertions refuse the
+ * debug profile:
  *
- * ## Why the integration binaries also do not need to be listed here
+ * - `packages/runtime/src/bin/cm60-bench/` is a **binary** target whose unit
+ *   tests live in the bin's own test binary — that much `cargo test -p …`
+ * *does* reach — but `cm60-bench/main.rs` **has to** be built and run
+ * `--release`: it exits 2 under `debug_assertions`, which is a deliberate
+ * guard against a debug-profile benchmark quietly becoming the measurement.
+ *   A profile flag is a property of the whole invocation, so the release run
+ *   gets its own invocation built by {@link buildCargoArgv} rather than a flag
+ *   folded onto the shared argv.
  *
- * A no-selector invocation runs every integration binary. It is unconditional
- * in `buildCargoArgv` — a literal element of the returned array, not guarded by
- * this table — which is the property that makes them safe to leave unnamed.
- *
- * Had this table been the place to close the integration-binary gap, every
- * future `tests/*.rs` would have to be added here too — and the day someone
- * forgets, the test still "exists", it just never compiles in CI, which is the
- * failure mode this section exists to prevent. Cargo already knows the target
- * list; this file must not keep a second copy of it.
- *
- * ## Why `release` is per-entry instead of a global `--release`
- *
- * `--release` is a profile flag for the **whole invocation**, not for the target
- * it happens to sit next to. Folding `['--bin','cm60-bench','--release']` into
- * the shared argv would silently rebuild every core crate's test suite in
- * release, roughly doubling the compile time of the gate this script exists to
- * keep cheap — and the cost would be invisible in the diff, because the flag
- * looks like it belongs to the bin target. Release extras therefore get their
- * own invocation, built by {@link buildCargoArgv}.
- *
- * The actual benchmark **run** (as opposed to its unit tests) is not here:
- * running it is a separate CI step in `.github/workflows/ci.yml`, because it
- * needs `--out target/bench` and a `rustc --version` captured into
- * `DZ_CM60_RUSTC_VERSION`, and because a benchmark that takes ~100 s should be
- * visible in the CI UI as its own step rather than hidden inside a test script.
+ * The debug `--test cm60_pressure_drain` entry this table used to carry was
+ * removed for the reason above: the §11.4 pressure half is an integration
+ * binary, the no-selector call compiles and runs every integration binary
+ * unconditionally, and the old placement only guaranteed it executed twice.
  *
  * ## Adding an entry
  *
@@ -205,8 +187,6 @@ export const TESTED_LAYERS = Object.freeze([
  */
 export const EXTRA_TARGETS = Object.freeze({
   'datazen-runtime': Object.freeze([
-    // §11.4 pressure half: resource pressure + drain, deterministic, no timing.
-    Object.freeze({ release: false, args: Object.freeze(['--test', 'cm60_pressure_drain']) }),
     // §11.3 latency half: the bench binary's own unit tests, release only.
     Object.freeze({ release: true, args: Object.freeze(['--bin', 'cm60-bench']) }),
   ]),
@@ -215,11 +195,44 @@ export const EXTRA_TARGETS = Object.freeze({
 /**
  * Build the full list of `cargo` invocations for a discovered crate set.
  *
- * Pure and exported so the argv can be asserted on directly. Up to three
- * invocations: the `--lib` run, a no-selector run that reaches every
- * integration binary, and a single `--release` one for the release extras.
- * Returns an empty list only when there is nothing at all to run, which
- * `runCli` already guards against.
+ * Pure and exported so the argv can be asserted on directly. Up to two
+ * invocations: a no-selector run that reaches every target of every crate,
+ * and a single `--release` one for the release extras. Returns an empty list
+ * only when there is nothing at all to run, which `runCli` already guards
+ * against.
+ *
+ * ## Why there is no `--lib` (or `--tests`) invocation any more
+ *
+ * The previous shape was [`--lib` + extras, no-selector, `--release` extras].
+ * The first element was a strict subset of the second — `cargo test --lib`
+ * selects only the lib's own unit-test target, while the no-selector call
+ * builds and runs that same target plus bins, integration binaries and doc
+ * tests — so every lib test executed twice per CI run. Measured on the
+ * current main, before this change: **2,537 test functions** re-executed
+ * across the tested layers, plus the cm60 pressure binary, per run.
+ *
+ * The redundancy was recorded as deliberate at the time ("bounded and
+ * compile-shared"), but the invariant it was defending — "the lib run must
+ * not become conditional on the extras table" — is held by the no-selector
+ * call itself, which is unconditional and reads no table. What removing the
+ * `--lib` call changes in coverage: nothing. What it changes in the gate's
+ * resistance to table edits: nothing, for the same reason.
+ *
+ * The rejected alternatives, recorded because each looks like a tidy-up:
+ *   * **`--tests` instead of the no-selector call** would keep every `test =
+ *     true` target (the lib included — the Cargo Book's target-selection
+ *     section: "--tests … by default this includes the library and binaries
+ *     built as unittests, and integration tests") but silently drop the lib's
+ *     **doc tests**, which only the no-selector form runs. An earlier
+ *     revision of the comment here believed `--tests` "drops the library's
+ *     own unit tests"; that was a factual error, and the guard that encoded
+ *     it is gone with it.
+ *   * **Naming one `--test <name>` per integration binary** would put a
+ *     target list in this file that `Cargo.toml` owns: a new `tests/*.rs`
+ *     would join the crate silently and stay untested. Cargo already knows
+ *     the list; the gate should not keep a second one.
+ * So: keep the no-selector call exactly as it was, keep the release extras,
+ * and drop the invocation that only re-ran what the second one covers.
  *
  * @param {ReadonlyArray<{ name: string }>} crates
  * @returns {string[][]}
@@ -227,57 +240,17 @@ export const EXTRA_TARGETS = Object.freeze({
 export function buildCargoArgv(crates) {
   if (crates.length === 0) return [];
   const names = crates.map((c) => c.name);
-  const shared = [];
   const releaseEntries = [];
   for (const name of names) {
     for (const entry of EXTRA_TARGETS[name] ?? []) {
       if (entry.release) releaseEntries.push([name, entry.args]);
-      else shared.push(...entry.args);
     }
   }
   return [
-    // Unconditional: the whole-crate `--lib` run is this script's reason to
-    // exist. It must not become conditional on the extras table being non-empty
-    // — that coupling is what makes a table edit able to delete the gate.
-    ['test', '--lib', ...names.flatMap((n) => ['-p', n]), ...shared],
-    // Unconditional, and for the same reason. `--lib` selects the library's own
-    // unit-test target **only**: every `tests/*.rs` integration binary is a
-    // separate target that `--lib` silently skips, and `--test <name>` names
-    // exactly one of them. A script that reads as "tests the platform core
-    // crates" while naming targets one at a time is the same overstatement this
-    // file already guards against twice elsewhere ("PASS — N core crate(s)
-    // tested" over an incomplete set), so the full target set runs too.
-    //
-    // The exact argv matters, and the rejected alternatives are recorded here
-    // because each one is defensible-looking and wrong:
-    //   * **Replacing** the `--lib` invocation with `['test','--tests',…]`.
-    //     `--tests` is strictly stronger than `--lib`: same targets, same
-    //     tests, except that `--tests` also drops the doc tests. So the swap
-    //     would not open a hole in the library, it would
-    //     trade doc-test coverage for a re-run of targets already covered — and
-    //     `--tests` is fine as an *addition*. Either way the `--lib` call above
-    //     stays exactly as it was.
-    //   * **Replacing** it with a bare no-selector call (i.e. dropping `--lib`
-    //     entirely) would cover everything — but it would also delete the
-    //     invariant the `--lib` branch is there to hold, and make the debug gate
-    //     depend on the extras table staying shaped the way it is today.
-    //   * Naming one `--test <name>` per binary would avoid the re-run, but it
-    //     puts a target list in this file that `Cargo.toml` owns: a new
-    //     `tests/*.rs` would join the crate silently and stay untested. Cargo
-    //     already knows the list; the gate should not keep a second one.
-    // So: keep `--lib`, keep the extras, **add** a no-selector call. What it
-    // repeats from the first is only the two targets that call names; the doc
-    // tests are new coverage here, not a repeat of anything above. That
-    // redundancy is still paid for deliberately: it is bounded and
-    // compile-shared, while a drifting duplicate target list is not.
-    //
-    // It also picks up `cm60-bench`'s own unit tests in **debug**, which the
-    // `--release` call below runs properly and which is the run that counts —
-    // `cm60-bench/main.rs` exits 2 under `debug_assertions` by design. Measured
-    // green in debug, so it is recorded rather than worked around: suppressing
-    // it would mean putting a `--bin` exclusion into the one call whose whole
-    // property is "names no target", and a debug-profile unit test failing later
-    // is a real signal.
+    // Unconditional, and reads no table: this is the invocation the gate's
+    // "a table edit cannot delete the run" invariant now rests on. It reaches
+    // lib unit tests, bin unit tests, every tests/*.rs integration binary and
+    // the lib doc tests, with no target list maintained on this side.
     ['test', ...names.flatMap((n) => ['-p', n])],
     ...(releaseEntries.length > 0
       ? [

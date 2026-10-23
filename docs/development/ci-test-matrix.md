@@ -8,7 +8,7 @@
 | 层级 | PR CI（`ci.yml`） | Release（`release.yml`） | 本地 / 维护者 |
 |------|-------------------|--------------------------|---------------|
 | 驱动选型 | **`basic` 固定**（postgres, mysql, sqlite, redis）；Host 单测另跑一遍 **`all`** | Basic / All × 四平台 + Akulaku × 三平台（Windows / macOS，无 Linux） | 任意 `--drivers=` / `DATAZEN_DRIVERS` |
-| Host 前端单测 | ✅ `basic`：`pnpm test:unit`；`all`：`pnpm test:unit:driver-set`（硬门禁，理由见 §2.1.1） | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` / `pnpm test:unit:driver-set` |
+| Host 前端单测 | ✅ `basic`：`pnpm test:unit`；`all`：`pnpm test:unit:driver-set`（**收窄至 codegen 敏感文件**，硬门禁，理由见 §2.1.1） | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` / `pnpm test:unit:driver-set` |
 | 驱动 UI 单测 | ✅ `pnpm test:unit:drivers` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit:drivers` |
 | TypeScript | ✅ `pnpm typecheck`（**单引擎**：`tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` **也是**只跑 `tsrs`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
 | Host Rust lib | ✅ `cargo test -p datazen --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen --lib` |
@@ -16,8 +16,8 @@
 | ai-api | ✅ | 随构建链接 | `cargo test -p datazen-ai-api --lib` |
 | 平台内核 crate（`runtime` / `application` / `platform-api` / `server`） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
 | 平台 crate 架构门禁（全部平台边界规则） | ✅ `pnpm test:platform-arch`，附变异自证 `pnpm test:platform-arch:mutations` | ❌ | `pnpm test:platform-arch` |
-| Basic path 驱动 lib | ✅ 四 crate 并行 | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
-| Basic path 驱动集成测试（`tests/`，32 个文件） | ✅ `--tests` 编译并运行；CI 无数据库，live 层在命令里**显式豁免**（见 §2.2） | Basic SKU 内嵌 | `cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests`；live 层**默认严格**（验不到即失败），本地无数据库时加 `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` 声明豁免，`DATAZEN_CONTRACT_REQUIRE_LIVE=1` 压过豁免、强制严格 |
+| Basic path 驱动 lib | ✅ 四 crate 由 `--tests` 步一并运行（lib + 集成 target，见下行） | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
+| Basic path 驱动集成测试（`tests/`，32 个文件） | ✅ `--tests` 编译并运行（**含四驱动 lib 单测**）；CI 无数据库，live 层在命令里**显式豁免**（见 §2.2） | Basic SKU 内嵌 | `cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests`；live 层**默认严格**（验不到即失败），本地无数据库时加 `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` 声明豁免，`DATAZEN_CONTRACT_REQUIRE_LIVE=1` 压过豁免、强制严格 |
 | 非 basic path 驱动集成测试（19 个文件：sqlserver 11 / clickhouse 3 / duckdb 3 / mongodb 2） | ❌ 未进 PR 矩阵 | **All SKU** 构建时编译链接 | 改这些驱动时本地 `cargo test -p datazen-driver-<id> --tests` |
 | 可选 path 驱动 lib | ❌ | **All SKU** 构建时编译链接 | 改驱动 crate 时本地必跑 |
 | Git 驱动（kiwi/superset） | ❌ | **Akulaku SKU**（需 Deploy Key） | 见 [ci-private-drivers.md](./ci-private-drivers.md) |
@@ -28,7 +28,7 @@
 **原则**
 
 1. **Basic 必测**：每个 PR 与 `main` push 均跑 basic 四驱动 + Host 三件套（TS 单测 / Host lib / driver-api / ai-api）。
-2. **All 只进 Host 单测，不进编译矩阵**：`resolve-drivers --drivers=all` 的 codegen 让 PR CI 跑一遍全部 path 驱动的 Host 前端单测——前端驱动形态是编译期 codegen，验证它不需要编译 Rust 驱动，因此 `all` 在 PR 上是廉价的；而 `cargo` 侧编译全部 path 驱动仍然只发生在 Release **All** SKU 与本地全量验证（`--drivers=all` 约 5 分钟重编译），不占 PR 流水线。
+2. **All 只进 Host 单测，不进编译矩阵**：`resolve-drivers --drivers=all` 的 codegen 让 PR CI 把 Host 前端单测中**codegen 敏感的那部分**（模块图会执行 `generated.ts` 的测试文件，运行期由 `select-codegen-sensitive-tests.mjs` 选出）在 `all` 下再判一遍——前端驱动形态是编译期 codegen，验证它不需要编译 Rust 驱动，因此 `all` 在 PR 上是廉价的；而 `cargo` 侧编译全部 path 驱动仍然只发生在 Release **All** SKU 与本地全量验证（`--drivers=all` 约 5 分钟重编译），不占 PR 流水线。
 3. **Path 轮转（维护者策略）**：可选 path 驱动（mongodb、clickhouse、duckdb、sqlserver、elasticsearch 等）的 **Rust lib 不在 PR CI 矩阵内**；其 **UI 单测全部进 PR CI**（`pnpm test:unit:drivers` 按文件系统收集 `packages/drivers/*/ui/__tests__/`，与 `--drivers=` 选型无关，因此可选驱动同样被覆盖）。改 Rust 时作者仍须在 PR 说明中列出 `cargo test -p datazen-driver-<id> --lib`（及该 crate 内 E2E）。发版 **All** SKU 是对全部 path 驱动的集成校验。
 4. **契约矩阵**：Host Connection Contract（`e2e/contract/`）验证 PG/MySQL/SQLite 上同一套 Host UI journey；**不进 PR CI**，由维护者在合并前或 R 阶段跑 `pnpm e2e:contract:matrix`；fixtures 单测 `pnpm test:unit:e2e-contract` 可在本地或后续 CI 扩展中启用。
 
@@ -49,7 +49,7 @@
 | 类型 | `pnpm typecheck` | `tsrs --noEmit`（单引擎，见 §2.1.4）。发布侧的 `union-typecheck` **也是只跑 `tsrs`**（§6.2），所以本地绿与发布绿是同一件事 |
 | 守卫 | `check-managed-stubs.mjs`、`check-id-terminology.mjs`、`check-module-layers.mjs` 等 | 防止误提交 inject 产物、ID 术语回退、分层倒置。`check-structure-editor-guardrails.mjs` 已移至发布前，见 §2.1.3 |
 | Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
-| Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**硬门禁**（无 `continue-on-error`），理由见 §2.1.1；重新加回软门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts`（见 §2.1.1 末） |
+| Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → **运行期收窄** → `vitest run <选中文件>`。收窄自同一份 `include` glob：只有模块图**执行** `src/extensions/generated.ts` 的测试文件才可能观察到驱动集（判定口径与 fail-closed 清单见 `scripts/select-codegen-sensitive-tests.mjs`），其余文件在两轮跑的是同一份字节码，由上面的 `basic` 步判过。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**硬门禁**（无 `continue-on-error`），理由见 §2.1.1；重新加回软门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts`（见 §2.1.1 末） |
 | 驱动 UI 单测 | `pnpm test:unit:drivers` | `packages/drivers/*/ui/__tests__/`；与 Host 单测互不收集，两步都必须跑 |
 | Site（条件） | `check-site-seo.mjs` | 仅当 diff 含 `site/`（`fetch-depth: 0` 仅此 job 需要） |
 
@@ -178,6 +178,23 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 两者相差 **37**，且 `5714` 的来源（哪次运行、哪个驱动集）本文没有记录。**在补测之前，
 这两个数只能各自当作"某次运行的记录"看，不能相减、不能互相印证。** 重测时应当重新
 统计一次套件总数并统一两个数字，而不是挑一个信。
+
+**2026-10 收窄：`all` 步不再整套重跑。** 该步此后只运行「codegen 敏感」的测试文件：
+模块图会**执行** `src/extensions/generated.ts` 的用例才可能观察到驱动集，其余文件在
+`basic` 与 `all` 两轮跑的是同一份字节码，由 `basic` 步判过。选择在运行期由
+`scripts/select-codegen-sensitive-tests.mjs` 完成：以文本方式读取 `vitest.config.ts` 的
+`include` / `alias` / `setupFiles`（配置仍是唯一 owner，重排格式会让选择器变红而不是
+静默漂移），对**值边**（会执行目标模块的 import 形态）建反向图，从 codegen 目标反向
+可达即入选；`import type` 与全标 `type` 的具名导入按 esbuild 语义擦除、不算边，仅类型
+位置使用的普通导入因无法静态判定而保守计入——宁可多跑，不可漏跑。退化输入（配置不可
+解析、include 空匹配、setupFiles 触达 codegen、选中为空）一律让该步变红，不退化为
+全量或空跑；守卫见 `scripts/__tests__/select-codegen-sensitive-tests.test.ts`。
+
+实测（双核 4GB 开发机，`--drivers=all`，收窄生效后）：550 个源文件传递执行 codegen；
+755 个收集文件中 316 个敏感（41.9%）。本机受内存所限未能在单轮内完整跑完 316 个
+文件（推进至 250/316 时被资源打断，已完成部分 0 失败），完整绿跑由 CI runner 验证。
+历史依据不变：`7559759b7` 的 555 文件 / 5677 例 / 140s 全绿记录仍钉在 `ci.yml`，
+作为该步晋升硬门禁时的证据。
 
 ### 2.1.2 `check-ci-docs-consistency.mjs` 覆盖什么、不覆盖什么
 
@@ -320,15 +337,18 @@ TS 快照进来。两处都用精确版本。
 Rust 测试顺序（与 `ci.yml` 一致）：
 
 ```bash
-# driver-api 与四个 path 驱动合为一次 cargo 调用（不依赖 --features）
-cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
-# 驱动集成测试：--lib 不编译 tests/，所以 basic 四驱动的集成 target 独立成步。
-# live 契约层默认严格（验不到即失败）。CI 全文件没有数据库容器，也没有任何
-# TEST_PG_* / TEST_MYSQL_*，所以显式声明豁免——去掉前缀就会红（实测 42 个）。
-# 要在 CI 里真验 live：先 provision 数据库并注入 TEST_PG_* / TEST_MYSQL_*，再删掉
-# 这个前缀；DATAZEN_CONTRACT_REQUIRE_LIVE=1 压过豁免。
-# （实测：不加前缀 EXIT=101，42 个 live 层测试翻转；命令不带 --no-fail-fast，
-#  cargo 在第一个失败的 binary 就停。）
+# driver-api 没有 tests/ 目录，`--lib` 就是它的全部测试面（不依赖 --features）。
+# 四个 basic path 驱动的 lib 单测不在这里跑：下一条 `--tests` 按 cargo 目标选择
+# 语义同样会编译并运行 lib 的单测 target（此前两步把同一批 936 个 lib 测试
+# 函数每轮执行两遍；驱动 lib 单测不读 ALLOW_UNVERIFIED，去重无信号损失）。
+cargo test --lib -p datazen-driver-api
+# 驱动集成测试 + 四驱动的 lib 单测：`--tests` 覆盖 test=true 的全部 target
+# （含 lib，不含 doc test）。live 契约层默认严格（验不到即失败）。CI 全文件
+# 没有数据库容器，也没有任何 TEST_PG_* / TEST_MYSQL_*，所以显式声明豁免——
+# 去掉前缀就会红（实测 42 个）。要在 CI 里真验 live：先 provision 数据库并
+# 注入 TEST_PG_* / TEST_MYSQL_*，再删掉这个前缀；DATAZEN_CONTRACT_REQUIRE_LIVE=1
+# 压过豁免。（实测：不加前缀 EXIT=101，42 个 live 层测试翻转；命令不带
+# --no-fail-fast，cargo 在第一个失败的 binary 就停。）
 DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
 # datazen 需要 features 选择注入的驱动
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
@@ -358,10 +378,12 @@ feature-resolved 图，而 `dtolnay/rust-toolchain@stable` 只装在 rust job；
 **error** 不是 pass：门禁无法分类的成员，就是没有任何规则覆盖的成员。
 
 `pnpm test:platform-crates`（`scripts/run-platform-crate-tests.mjs`）用同一张 `LAYERS` 表
-发现 `runtime` / `application` / `platform-api` / `server` 四层里真实存在的 crate 并跑
-`cargo test --lib`。它补上的是计划 :269 的空缺：`datazen-runtime` 当时带着 130 个通过的
-Rust 单测，而 CI 里没有任何一步执行它们。`--require-layers=<ids>` 可在某个阶段把「层存在
-但没被测到」从静默变成报错。
+发现 `TESTED_LAYERS` 各层里真实存在的 crate，并跑**不带目标选择器**的
+`cargo test -p …`（lib 单测、bin 单测、全部 `tests/` 集成 target 与 doc test 一次
+覆盖；`EXTRA_TARGETS` 只补 release-only 条目——此前多跑的那次 `--lib` 是它的严格
+子集，实测让 2,537 个测试函数每轮执行两遍）。它补上的是计划 :269 的空缺：
+`datazen-runtime` 当时带着 130 个通过的 Rust 单测，而 CI 里没有任何一步执行它们。
+`--require-layers=<ids>` 可在某个阶段把「层存在但没被测到」从静默变成报错。
 
 **变异自证**：`scripts/platform-arch-selfcheck.mjs` 临时改写 `Cargo.toml` / 新增探针 crate，
 逐条运行门禁并断言退出码非零 + 输出点名了预期规则与 crate，再逐条还原；末尾断言
