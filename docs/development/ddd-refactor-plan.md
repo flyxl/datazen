@@ -233,6 +233,19 @@ flowchart TB
 
 - 顺序建议：连接管理（契约最全、测试最多）→ schema-diff → sync → transfer → ai/workflow。
 - 每个 feature：commands 里抽出用例服务到 `application`，宿主只保留 IPC 壳。
+- **已落地的第一条命令族（2026-10-23，命名视图）**：`ApplicationServices` 增加
+  `named_views: Arc<dyn NamedViewRepository>`，`commands/named_views.rs` 的三处
+  `state.store.as_ref()` 全部改走聚合，**宿主 store 在该文件的生产半边出现 0 次**
+  （新增断言 `the_command_shell_reads_the_aggregate_not_the_host_store` 钉住）。
+  连带的两条结构性事实：
+  - `application` 现在**依赖** `datazen-feature-core`。这不是回摆：P0 断环 + P2 收官之后
+    `APP → feature-core → kernel/platform-api` 是正确方向，而「用例层不得依赖领域包」
+    那条 manifest 禁令的理由（`APP → 领域包 → RT → APP` 的 Cargo 环）已经不存在。
+    该禁令改写成新断言 `the_crate_may_depend_on_the_shared_feature_layer_but_not_on_the_runtime`
+    —— 保留 `datazen-runtime` / `tauri` 两条真禁令，环的判定交给门禁按**当前**图求值。
+  - `scripts/check-ddd-layers.mjs` 的镜像不变量不再硬编码「消费者一定依赖 application」，
+    而是**按当前图求值**（消费者此刻确实依赖 application 时才判环），并补了双向自证
+    （仍互依赖的合成图必须报警、单向图必须不报警）。
 - **验收**：该 feature 的 `commands` 文件行数下降 ≥50%；`grep state.store.` 在该 feature 目录降为 0；IPC 签名与返回类型不变（用既有前端类型做回归）。
 - **回滚**：按 feature 分批，每批独立 PR。
 - **风险**：双轨期重复逻辑 → 冻结规则：新代码必须进用例层，旧代码只减不增。

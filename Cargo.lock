@@ -1778,6 +1778,7 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
+ "datazen-feature-core",
  "datazen-platform-api",
  "proc-macro2",
  "serde",

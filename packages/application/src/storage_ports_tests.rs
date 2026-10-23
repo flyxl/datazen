@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
+use datazen_feature_core::services::named_views::{NamedView, NamedViewError, NamedViewRepository};
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::event::EventSequence;
 use datazen_platform_api::dto::execution::{ExecutionReceipt, ExecutionView};
@@ -329,6 +330,24 @@ fn sample_settings() -> SharedSettings {
     }
 }
 
+/// 空集合的命名视图存储。
+///
+/// 本模块只证明「聚合持有的是注入的那一份」，所以这个 fake 只需要存在，
+/// 行为在 `feature-core` 的用例测试里覆盖。
+#[derive(Default)]
+struct EmptyNamedViews;
+
+#[async_trait::async_trait]
+impl NamedViewRepository for EmptyNamedViews {
+    async fn load_views(&self) -> Result<Vec<NamedView>, NamedViewError> {
+        Ok(Vec::new())
+    }
+
+    async fn save_views(&self, _views: &[NamedView]) -> Result<(), NamedViewError> {
+        Ok(())
+    }
+}
+
 /// 组装一个带注入端口的聚合。
 ///
 /// 目标解析器的元数据供给恒为 `None`——本模块不测目标计算。
@@ -357,6 +376,7 @@ fn services_with_known_hosts(
         settings,
         tunnels,
         known_hosts,
+        Arc::new(EmptyNamedViews),
     )
 }
 
