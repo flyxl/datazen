@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
+use datazen_feature_core::services::named_views::{NamedView, NamedViewError, NamedViewRepository};
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::event::EventSequence;
 use datazen_platform_api::dto::execution::{ExecutionReceipt, ExecutionView};
@@ -329,6 +330,24 @@ fn sample_settings() -> SharedSettings {
     }
 }
 
+/// 空集合的命名视图存储。
+///
+/// 本模块只证明「聚合持有的是注入的那一份」，所以这个 fake 只需要存在，
+/// 行为在 `feature-core` 的用例测试里覆盖。
+#[derive(Default)]
+struct EmptyNamedViews;
+
+#[async_trait::async_trait]
+impl NamedViewRepository for EmptyNamedViews {
+    async fn load_views(&self) -> Result<Vec<NamedView>, NamedViewError> {
+        Ok(Vec::new())
+    }
+
+    async fn save_views(&self, _views: &[NamedView]) -> Result<(), NamedViewError> {
+        Ok(())
+    }
+}
+
 /// 组装一个带注入端口的聚合。
 ///
 /// 目标解析器的元数据供给恒为 `None`——本模块不测目标计算。
@@ -357,6 +376,9 @@ fn services_with_known_hosts(
         settings,
         tunnels,
         known_hosts,
+        Arc::new(EmptyNamedViews),
+        Arc::new(EmptyDashboards),
+        Arc::new(EmptyDashboardRuns),
     )
 }
 
@@ -450,4 +472,145 @@ async fn the_settings_use_case_validates_before_it_writes_to_the_port() {
         "非法取值必须以校验错误失败：{error:?}"
     );
     assert_eq!(repository.writes(), 0, "校验失败不得落盘");
+}
+
+/// 仪表盘仓储的空实现：本文件的断言只碰设置、隧道与 known-hosts。
+///
+/// 不做「返回空列表」这类温和替身——那样会让别的测试误以为仪表盘可用；
+/// 一旦有测试真的走到这里，应当立刻失败并露出「该测试需要自己的仓储」。
+struct EmptyDashboards;
+
+impl datazen_feature_core::dashboard::repository::DashboardRepository for EmptyDashboards {
+    fn list_dashboard_rows(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+    ) -> Result<
+        Vec<datazen_feature_core::dashboard::records::DashboardRecord>,
+        datazen_feature_core::dashboard::repository::DashboardRepositoryError,
+    > {
+        unimplemented!("storage_ports_tests 不应读写仪表盘")
+    }
+
+    fn dashboard_row(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _id: &str,
+    ) -> Result<
+        datazen_feature_core::dashboard::records::DashboardRecord,
+        datazen_feature_core::dashboard::repository::DashboardRepositoryError,
+    > {
+        unimplemented!("storage_ports_tests 不应读写仪表盘")
+    }
+
+    fn upsert_dashboard_row(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _row: &datazen_feature_core::dashboard::records::DashboardRecord,
+    ) -> Result<(), datazen_feature_core::dashboard::repository::DashboardRepositoryError> {
+        unimplemented!("storage_ports_tests 不应读写仪表盘")
+    }
+
+    fn delete_dashboard_row(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _id: &str,
+    ) -> Result<(), datazen_feature_core::dashboard::repository::DashboardRepositoryError> {
+        unimplemented!("storage_ports_tests 不应读写仪表盘")
+    }
+
+    fn set_dashboard_refresh_paused(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _id: &str,
+        _paused: bool,
+    ) -> Result<(), datazen_feature_core::dashboard::repository::DashboardRepositoryError> {
+        unimplemented!("storage_ports_tests 不应读写仪表盘")
+    }
+
+    fn list_widget_rows(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _dashboard_id: &str,
+    ) -> Result<
+        Vec<datazen_feature_core::dashboard::records::WidgetRecord>,
+        datazen_feature_core::dashboard::repository::DashboardRepositoryError,
+    > {
+        unimplemented!("storage_ports_tests 不应读写仪表盘")
+    }
+
+    fn widget_row(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _id: &str,
+    ) -> Result<
+        datazen_feature_core::dashboard::records::WidgetRecord,
+        datazen_feature_core::dashboard::repository::DashboardRepositoryError,
+    > {
+        unimplemented!("storage_ports_tests 不应读写仪表盘")
+    }
+
+    fn upsert_widget_row(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _row: &datazen_feature_core::dashboard::records::WidgetRecord,
+    ) -> Result<(), datazen_feature_core::dashboard::repository::DashboardRepositoryError> {
+        unimplemented!("storage_ports_tests 不应读写仪表盘")
+    }
+
+    fn delete_widget_row(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _id: &str,
+    ) -> Result<(), datazen_feature_core::dashboard::repository::DashboardRepositoryError> {
+        unimplemented!("storage_ports_tests 不应读写仪表盘")
+    }
+
+    fn find_workflow_refs(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _workflow_id: &str,
+    ) -> Result<
+        Vec<datazen_feature_core::dashboard::types::DashboardWorkflowRef>,
+        datazen_feature_core::dashboard::repository::DashboardRepositoryError,
+    > {
+        unimplemented!("storage_ports_tests 不应读写仪表盘")
+    }
+}
+
+/// 运行历史仓储的空实现：理由同 [`EmptyDashboards`]。
+struct EmptyDashboardRuns;
+
+impl datazen_feature_core::dashboard::runs::DashboardRunRepository for EmptyDashboardRuns {
+    fn write_run_row(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _run: datazen_feature_core::dashboard::records::WidgetRunRecord,
+        _retention_count: u32,
+        _retention_days: u32,
+    ) -> Result<(), datazen_feature_core::dashboard::runs::DashboardRunsError> {
+        unimplemented!("storage_ports_tests 不应读写运行历史")
+    }
+
+    fn list_run_rows(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _widget_id: &str,
+        _limit: u32,
+    ) -> Result<
+        Vec<datazen_feature_core::dashboard::records::WidgetRunRecord>,
+        datazen_feature_core::dashboard::runs::DashboardRunsError,
+    > {
+        unimplemented!("storage_ports_tests 不应读写运行历史")
+    }
+
+    fn run_row(
+        &self,
+        _scope: &datazen_platform_api::ports::scope::OrganizationScope,
+        _run_id: &str,
+    ) -> Result<
+        datazen_feature_core::dashboard::records::WidgetRunRecord,
+        datazen_feature_core::dashboard::runs::DashboardRunsError,
+    > {
+        unimplemented!("storage_ports_tests 不应读写运行历史")
+    }
 }

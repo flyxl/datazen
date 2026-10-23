@@ -633,6 +633,19 @@ pub trait TunnelRepository: Send + Sync + 'static {
 > **搬走的是契约，不是实现**：文件 I/O 仍在宿主 `src-tauri/src/platform/known_hosts.rs`，
 > 机制包只 `pub use` 再导出。`packages/tunnel` 因此不再因为「要填一个端口」而被宿主依赖。
 
+> **同一笔缺口在 P3 里被有意识地留着**（2026-10-23）：`NamedViewRepository`、
+> `DashboardRepository`、`DashboardRunRepository` 三个端口由领域包
+> （`packages/feature-core` 的 `services::named_views` / `dashboard::repository` /
+> `dashboard::runs`）定义，被 `ApplicationServices` 持有，宿主 `DesktopRepository` /
+> `AppDb` 实现。它们**不进** `PORT_TRAITS`，因为把它们搬进 `platform-api` 会违反 F-04
+> （`platform-api` 不得依赖领域包，而端口签名里全是领域模型：`DashboardRecord`、
+> `WidgetRunRecord`……）——那正是 §5.1.2 第四步被「领域包原生端口」取代的同一条理由。
+> 代价（不可清单化）因此**必须换一种方式**盯住，实际落点有三处：
+> 聚合字段的构造参数不变式（`packages/application/src/lib.rs` 的
+> `the_aggregate_holds_the_form_neutral_storage_ports` 系列断言）、宿主侧的
+> 「生产半边不再直读 `state.store`」断言（`the_command_shell_reads_the_aggregate_not_the_host_residue`
+> 等），以及 `scripts/check-ddd-layers.mjs` 的层间方向检查。
+
 两处形状差异**是刻意的，并且写进了模块头**：
 
 1. **同步**：SSH 主机密钥校验发生在 `russh` 的 `check_server_key` 回调里，现状就是 `std::fs`；

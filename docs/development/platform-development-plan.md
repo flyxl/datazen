@@ -127,7 +127,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 搬走：`src-tauri/src/commands/config.rs` 的两处 `SettingsService::new(state.store.as_ref())`（`get_shared_settings` / `save_shared_settings`）改为 `crate::platform::ipc::require_application_services(state.inner())?` + `ApplicationServices::settings_service()`；错误映射逐字不变（`Internal("Unable to read settings")` / `Validation(message)` / `Internal("Unable to persist settings")`）。`save_shared_settings` 尾部的 `redis_flush_gate::sync_from_settings(&state.store.get_settings().await)` **保留**：它读的是宿主 `AppSettings`，不是形态中立的共享设置，不在本期范围。
 
-`AppState` 少掉：**0 个字段**。生产半边的 `state.store.` 计数（口径：`src-tauri/src` 下 `.rs`、排除 `*_tests.rs`、在首个 `#[cfg(test)]` 处截断）从 **115 减到 113**，其中 `commands/config.rs` 由 **14 减到 12**。早先本节写的「145 → 143」是**含测试半边的宽口径**（同一时刻宽口径实测亦为 143），不可与本期数字直接相减。
+`AppState` 少掉：**0 个字段**。生产半边的 `state.store.` 计数（口径：`src-tauri/src` 下 `.rs`、排除 `*_tests.rs`、在首个 `#[cfg(test)]` 处截断）从 **106 减到 104**，其中 `commands/config.rs` 由 **14 减到 12**。早先本节写的「145 → 143」是**含测试半边的宽口径**（同一时刻宽口径实测亦为 143），不可与本期数字直接相减。
 
 独立验收（已实测）：`cargo test -p datazen --lib` **1458 passed / 0 failed**（EXIT=0）；新增 `commands::config::tests::shared_settings_commands_read_the_aggregate_not_the_host_store`——断言生产半边里 `SettingsService::new(` 出现 0 次、`state.store.as_ref()` 出现 0 次、`settings_service()` 出现 2 次、`state.store` 出现 12 次；`src-tauri/src/platform/ipc.rs` 的 15 条 `FROZEN_SIGNATURES` 一字未改。
 
@@ -234,11 +234,24 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 `src-tauri/src/platform/{adapter,session_backend,known_hosts}.rs` 与测试装置）。本机钥匙串 /
 `{appData}/ssh_known_hosts.json` 的文件 I/O 仍在宿主实现里，**不进**中立层。
 
-**第六步——`AppState.store` 的 145 处归位（按命令族分期）**
+**第六步——`AppState.store` 的归位（按命令族分期；基线 145 处，本期开工时生产半边 104 处）**
 
 搬走：`state.store`（`Arc<DesktopRepository>`）的 145 处访问，按命令族分期迁到 application 层的用例上。命令族与当前访问分布（实测，生产文件）：dashboard 16、config 14、ai/* 合计 27（其中 generate.rs 7）、connection 7、connection_import 6、monitor 6（scheduled 3 + grants 3）、history 3、tray 3、mcp/prompts 3、app_archive 3 等。
 
-`AppState` 少掉：**1 个字段**（`store`），字段数 20 → **19**；`state.store` 的访问数从 145 减到 **0**。
+`AppState` 少掉：**1 个字段**（`store`），字段数 23 → **22**；`state.store` 的访问数从 145（含测试的
+宽口径基线）减到 **0**——生产半边口径是 104 → 0（见上「进度」段的计数规则）。
+
+**进度（2026-10-23）**：第一族「命名视图」已落地——`ApplicationServices` 持
+`named_views: Arc<dyn NamedViewRepository>`，`commands/named_views.rs` 生产半边
+`state.store` 归零（断言 `the_command_shell_reads_the_aggregate_not_the_host_store`），
+第二族「仪表盘」（2026-10-23 同日）再减 8 处（仓储 6 + 运行历史 2），
+全仓生产半边计数 **104 → 93**（第一族 104 → 101，第二族 101 → 93）；6 处残留是有名字的
+形态专属用途（见 `the_command_shell_reads_the_aggregate_and_names_the_host_residue`）。口径与 §5.1.2 第二步逐字相同（`src-tauri/src` 下 `.rs`、
+排除 `*_tests.rs` 与 `tests.rs`、在首个 `#[cfg(test)]` 处截断）。**不要用裸 `grep` 复算**：
+行内 `#[cfg(test)] mod tests` 里的断言针脚本身就会命中 `state.store` 字样（实测裸 grep 得
+111，比生产半边多 10）。
+附带一条结构性解锁：`application` 现在依赖 `datazen-feature-core`——P0 断环与 P2 收官后
+这是正确方向，`check-ddd-layers.mjs` 的镜像不变量改为按**当前**图求值。
 
 独立验收：每期一条「该命令族的生产源码里不再出现 `state.store`」的断言 + `cargo test -p datazen --lib` 全绿 + 该命令族的 IPC 载荷冻结断言不变 + E2E。
 

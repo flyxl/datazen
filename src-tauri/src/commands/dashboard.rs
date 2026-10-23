@@ -10,6 +10,7 @@ use crate::dashboard::create::{
     update_hidden_workflow_sql as update_hidden_workflow_sql_impl, CreateWidgetResult,
 };
 use crate::dashboard::export::{export_dashboard_json, import_dashboard};
+use crate::platform::ipc::require_application_services;
 use datazen_feature_core::dashboard::repository::{
     delete_dashboard as store_delete_dashboard, find_workflow_refs,
     get_dashboard as store_get_dashboard, list_dashboards as store_list_dashboards,
@@ -23,7 +24,7 @@ use datazen_feature_core::dashboard::types::{
 
 pub(crate) async fn list_dashboards_impl(state: &AppState) -> Result<Vec<Dashboard>, CommandError> {
     let scope = state.organization_scope()?;
-    let app_db = state.store.app_db();
+    let app_db = require_application_services(state)?.dashboard.clone();
     store_list_dashboards(&scope, &*app_db).cmd_err("list_dashboards")
 }
 
@@ -33,7 +34,7 @@ pub(crate) async fn get_dashboard_impl(
 ) -> Result<Dashboard, CommandError> {
     tracing::debug!(%id, "get_dashboard");
     let scope = state.organization_scope()?;
-    let app_db = state.store.app_db();
+    let app_db = require_application_services(state)?.dashboard.clone();
     store_get_dashboard(&scope, &*app_db, &id).cmd_err("get_dashboard")
 }
 
@@ -43,7 +44,7 @@ pub(crate) async fn save_dashboard_impl(
 ) -> Result<Dashboard, CommandError> {
     tracing::info!(id = %dashboard.id, "save_dashboard");
     let scope = state.organization_scope()?;
-    let app_db = state.store.app_db();
+    let app_db = require_application_services(state)?.dashboard.clone();
     let id = dashboard.id.clone();
     store_save_dashboard(&scope, &*app_db, dashboard).cmd_err("save_dashboard")?;
     state
@@ -60,7 +61,7 @@ pub(crate) async fn delete_dashboard_impl(
 ) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_dashboard");
     let scope = state.organization_scope()?;
-    let app_db = state.store.app_db();
+    let app_db = require_application_services(state)?.dashboard.clone();
     store_delete_dashboard(&scope, &*app_db, &id).cmd_err("delete_dashboard")?;
     state
         .monitor_engine
@@ -75,7 +76,7 @@ pub(crate) async fn set_dashboard_refresh_paused_impl(
     paused: bool,
 ) -> Result<(), CommandError> {
     let scope = state.organization_scope()?;
-    let app_db = state.store.app_db();
+    let app_db = require_application_services(state)?.dashboard.clone();
     store_set_refresh_paused(&scope, &*app_db, &id, paused)
         .cmd_err("set_dashboard_refresh_paused")?;
     state
@@ -90,7 +91,7 @@ pub(crate) fn find_dashboard_workflow_refs_impl(
     workflow_id: String,
 ) -> Result<Vec<datazen_feature_core::dashboard::types::DashboardWorkflowRef>, CommandError> {
     let scope = state.organization_scope()?;
-    let app_db = state.store.app_db();
+    let app_db = require_application_services(state)?.dashboard.clone();
     find_workflow_refs(&scope, &*app_db, &workflow_id).cmd_err("find_dashboard_workflow_refs")
 }
 
@@ -144,7 +145,7 @@ pub(crate) async fn list_widget_runs_impl(
     limit: usize,
 ) -> Result<Vec<RunIndexEntry>, CommandError> {
     let scope = state.organization_scope()?;
-    let app_db = state.store.app_db();
+    let app_db = require_application_services(state)?.dashboard_runs.clone();
     list_run_index(&scope, &*app_db, &dashboard_id, &widget_id, limit).cmd_err("list_widget_runs")
 }
 
@@ -155,7 +156,7 @@ pub(crate) async fn get_widget_run_impl(
     run_id: String,
 ) -> Result<WidgetRun, CommandError> {
     let scope = state.organization_scope()?;
-    let app_db = state.store.app_db();
+    let app_db = require_application_services(state)?.dashboard_runs.clone();
     get_run(&scope, &*app_db, &dashboard_id, &widget_id, &run_id).cmd_err("get_widget_run")
 }
 
@@ -186,6 +187,8 @@ pub(crate) async fn run_dashboard_widget_impl(
 ) -> Result<WidgetRun, CommandError> {
     tracing::info!(%dashboard_id, %widget_id, "run_dashboard_widget");
     let scope = state.organization_scope()?;
+    // scope-gate: 导出走桌面文件对话框与 `AppDb` 具体类型（`export_dashboard_json`
+    // 的签名就是 `&AppDb`），属 §5.1.3 形态专属清单，不进中立层。
     let app_db = state.store.app_db();
     let dashboard = store_get_dashboard(&scope, &*app_db, &dashboard_id)?;
     let widget = dashboard
@@ -310,6 +313,8 @@ pub async fn export_dashboard_with_dialog(
     default_file_name: String,
 ) -> Result<bool, CommandError> {
     let scope = state.organization_scope()?;
+    // 导出/导入走桌面文件对话框与 `AppDb` 具体类型（§5.1.3 形态专属清单），
+    // 不进中立层；因此这里读的是宿主 store，而不是聚合的仪表盘端口。
     let app_db = state.store.app_db();
     let dashboard = store_get_dashboard(&scope, &*app_db, &dashboard_id)?;
 
@@ -368,6 +373,38 @@ pub async fn import_dashboard_with_dialog(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 仪表盘命令族的宿主残留必须**有名字**。
+    ///
+    /// P3 把 8 处仓储调用搬到了聚合（仪表盘 6 + 运行历史 2）；剩下 6 处是
+    /// 两类形态专属用途，保留在宿主 store 上：
+    /// - 组件创建（3 处）：`WidgetCreationHost` 的实现要读 `AppDb::get_workflow`
+    ///   这个**具体**记录接口，与 `WorkflowRegistry` 一起才会成型；
+    /// - 导入/导出（2 处）：走桌面文件对话框，且 `export_dashboard_json` /
+    ///   `import_dashboard` 的签名就是 `&AppDb`；
+    /// - 手工执行（1 处）：`monitor_engine` 的重载路径读的是宿主库。
+    ///
+    /// 这条断言的作用不是「少几个数字」，而是让任何人想再动这里时必须先
+    /// 说明自己搬的是哪一类——数字变了而理由没变，就是偷偷把形态专属
+    /// 的东西塞进了中立层。
+    #[test]
+    fn the_command_shell_reads_the_aggregate_and_names_the_host_residue() {
+        let source = include_str!("dashboard.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+        assert_eq!(
+            production
+                .matches("require_application_services(state)")
+                .count(),
+            8,
+            "仪表盘 6 处 + 运行历史 2 处都应从聚合取端口"
+        );
+        assert_eq!(
+            production.matches("state.store").count(),
+            6,
+            "宿主残留只允许组件创建(3)/导入导出(2)/手工执行(1)"
+        );
+    }
+
     use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
     use chrono::Utc;
     use datazen_feature_core::dashboard::types::{
