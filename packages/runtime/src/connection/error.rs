@@ -88,6 +88,12 @@ pub enum ProviderError {
     /// 预算不足 / 队列已满，可重试。
     #[error("resource busy: {0}")]
     ResourceBusy(&'static str),
+    /// 物理连接额度已被占满：等待不会释放，只有调用方归还自己的连接才能腾出空位。
+    ///
+    /// 与 [`ProviderError::QuotaExceeded`] 不同，这里的数字是**物理连接**口径；宿主
+    /// 用它生成可处置的用户文案（上限 / 当前用量），而不是只报「操作失败」。
+    #[error("physical connection capacity exceeded: limit {limit}, in use {used}")]
+    PhysicalCapacityExceeded { limit: u32, used: u32 },
     /// 额度已耗尽：同时连接的编辑器数或逻辑 session 数达上限。
     ///
     /// 与 [`ProviderError::ResourceBusy`] 的区别是**等待不会释放**：没有别的请求
@@ -132,7 +138,9 @@ impl ProviderError {
             ProviderError::TargetUnsupported(_) => ApiErrorCode::TargetUnsupported,
             ProviderError::TargetRequired(_) => ApiErrorCode::TargetRequired,
             ProviderError::TargetConflict(_) => ApiErrorCode::TargetConflict,
-            ProviderError::ResourceBusy(_) => ApiErrorCode::ResourceBusy,
+            ProviderError::ResourceBusy(_) | ProviderError::PhysicalCapacityExceeded { .. } => {
+                ApiErrorCode::ResourceBusy
+            }
             ProviderError::QuotaExceeded(_) => ApiErrorCode::SessionQuotaExceeded,
             ProviderError::SessionNotFound(_) => ApiErrorCode::SessionNotFound,
             ProviderError::SessionLost(_) => ApiErrorCode::SessionLost,
@@ -188,6 +196,9 @@ pub enum RuntimeError {
     /// 的调用者动作是「等待或用户取消；不得创建额外连接」）。
     #[error("budget exhausted: {0}")]
     BudgetExhausted(&'static str),
+    /// 物理连接额度已被占满；数字由宿主在准入边界读出，消息由用例层生成。
+    #[error("physical connection capacity exceeded: limit {limit}, in use {used}")]
+    PhysicalCapacityExceeded { limit: u32, used: u32 },
 
     /// 会话已被隔离：清理未确认、写入结果不可判定。**不可重试**，也不得再次 acquire
     /// 同一物理资源（`CleanupFailed` 的调用者动作是「隔离连接、报告真实结果」）。
@@ -225,6 +236,7 @@ impl RuntimeError {
             Self::SessionLost(_) => "sessionLost",
             Self::ContextRevisionMismatch { .. } => "contextRevisionMismatch",
             Self::BudgetExhausted(_) => "budgetExhausted",
+            Self::PhysicalCapacityExceeded { .. } => "physicalCapacityExceeded",
             Self::SessionQuarantined(_) => "sessionQuarantined",
             Self::CancelFailed(_) => "cancelFailed",
             Self::CloseRejected(_) => "closeRejected",
@@ -255,7 +267,9 @@ impl RuntimeError {
             // 额度用满（同时连接的编辑器数 / 逻辑 session 数），排队等不出空位，
             // 只能由调用方回收或用户关闭编辑器；其余预算拒绝仍是有界的忙碌。
             Self::BudgetExhausted("sessionQuota") => Some(ApiErrorCode::SessionQuotaExceeded),
-            Self::BudgetExhausted(_) => Some(ApiErrorCode::ResourceBusy),
+            Self::BudgetExhausted(_) | Self::PhysicalCapacityExceeded { .. } => {
+                Some(ApiErrorCode::ResourceBusy)
+            }
             Self::CloseRejected(_) => Some(ApiErrorCode::TransactionResolutionRequired),
             Self::CancelFailed(_) | Self::InvariantBroken(_) => None,
         }

@@ -5,12 +5,12 @@ use super::*;
 impl MysqlDriver {
     pub(crate) async fn physical_database_node_identity(
         &self,
-        pool: &MySqlPool,
+        connection: &mut sqlx::MySqlConnection,
         database: &str,
     ) -> Result<Option<String>, DriverError> {
         let driver = if self.is_mariadb { "mariadb" } else { "mysql" };
         if let Ok(row) = sqlx::query("SELECT @@server_uuid AS server_uuid")
-            .fetch_one(pool)
+            .fetch_one(&mut *connection)
             .await
         {
             if let Ok(server_uuid) = row.try_get::<String, _>("server_uuid") {
@@ -29,7 +29,7 @@ impl MysqlDriver {
         let Ok(row) = sqlx::query(
             "SELECT @@hostname AS server_host, CAST(@@port AS CHAR) AS server_port, CAST(@@server_id AS CHAR) AS server_id",
         )
-        .fetch_one(pool)
+        .fetch_one(&mut *connection)
         .await
         else {
             return Ok(None);

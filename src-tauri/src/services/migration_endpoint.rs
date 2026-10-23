@@ -119,6 +119,55 @@ pub(crate) async fn open_dedicated_session(
     Ok(receipt.session.handle.db_session_id.as_str().to_owned())
 }
 
+/// Best-effort retirement of sessions that the saved profile just invalidated.
+///
+/// The store bumps `config_revision` before this runs; every surviving session
+/// on that profile is now unusable (its next request gets
+/// `connection configuration changed`) but still holds a lease and a physical
+/// connection. Closing it here returns that quota immediately instead of
+/// waiting for the tab to close.
+///
+/// Cleanup is deliberately not part of the save result: the profile is already
+/// persisted, and a close that fails stays retryable on the next save/tab
+/// close. Failures are logged, never promoted to `CommandError`.
+pub(crate) async fn retire_sessions_for_profile(
+    state: &crate::commands::AppState,
+    connection_id: &str,
+) {
+    let adapter = match state.platform_require() {
+        Ok(adapter) => adapter,
+        Err(error) => {
+            tracing::warn!(
+                %connection_id,
+                code = error.code.as_str(),
+                "session retirement skipped: platform unavailable"
+            );
+            return;
+        }
+    };
+    let runtime = match adapter.runtime() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            tracing::warn!(
+                %connection_id,
+                code = error.code.as_str(),
+                "session retirement skipped: runtime unavailable"
+            );
+            return;
+        }
+    };
+    let call = adapter.begin_call();
+    let closed = runtime
+        .close_sessions_for_connection(
+            call.context(),
+            &datazen_platform_api::id::ConnectionId::new(connection_id),
+        )
+        .await;
+    if closed > 0 {
+        tracing::info!(%connection_id, sessions = closed, "invalidated sessions retired");
+    }
+}
+
 pub(crate) async fn close_dedicated_session(
     state: &crate::commands::AppState,
     db_session_id: &str,

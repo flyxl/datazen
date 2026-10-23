@@ -27,6 +27,7 @@ mod resource;
 mod resource_capabilities;
 mod schema_object_sql;
 mod schema_scope_mapping;
+mod session_connection;
 mod sql_target;
 mod structure;
 mod sync_adapter;

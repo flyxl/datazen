@@ -6,7 +6,7 @@ mod table;
 use crate::postgres::PostgresDriver;
 use crate::sql::{pg_regclass_name, resolve_pg_table_schema};
 use datazen_driver_api::*;
-use sqlx::{PgPool, Row};
+use sqlx::Row;
 use std::collections::HashMap;
 
 /// Relation kinds that own columns (mirrors the table listing query).
@@ -29,7 +29,7 @@ fn relation_supports_consistent_snapshot(
 /// genuinely exists but whose columns are privilege-filtered still resolves
 /// here, so a real (if unusual) zero-column table keeps its old behavior.
 async fn ensure_pg_relation_exists(
-    pool: &PgPool,
+    connection: &mut sqlx::PgConnection,
     schema: Option<&str>,
     table: &str,
     display: &str,
@@ -43,7 +43,7 @@ async fn ensure_pg_relation_exists(
     ))
     .bind(table)
     .bind(schema)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *connection)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -62,7 +62,7 @@ async fn ensure_pg_relation_exists(
          ORDER BY n.nspname"
     ))
     .bind(table)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .unwrap_or_default();
     if !elsewhere.is_empty() {
@@ -75,7 +75,7 @@ async fn ensure_pg_relation_exists(
     }
 
     let database: String = sqlx::query_scalar("SELECT current_database()")
-        .fetch_one(pool)
+        .fetch_one(&mut *connection)
         .await
         .unwrap_or_default();
     Err(DriverError::QueryFailed(format!(
@@ -93,7 +93,7 @@ impl PostgresDriver {
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
         validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         let (schema, bare_table) = resolve_pg_table_schema(table, schema);
-        let pool = self.pool_for_target(handle, database).await?;
+        let mut connection = crate::session_connection::for_session(self, handle, database).await?;
         let regclass = pg_regclass_name(schema, bare_table);
 
         let cols = sqlx::query(
@@ -108,7 +108,7 @@ impl PostgresDriver {
         )
         .bind(bare_table)
         .bind(schema)
-        .fetch_all(&pool)
+        .fetch_all(&mut *connection)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -116,7 +116,7 @@ impl PostgresDriver {
         // for a table of another database (or a dropped one). Report it instead
         // of handing out an empty column list.
         if cols.is_empty() {
-            ensure_pg_relation_exists(&pool, schema, bare_table, table).await?;
+            ensure_pg_relation_exists(&mut connection, schema, bare_table, table).await?;
         }
 
         // `quote_ident($1)::regclass` fails when the table is not on search_path.
@@ -130,7 +130,7 @@ impl PostgresDriver {
                     "#,
         )
         .bind(&regclass)
-        .fetch_all(&pool)
+        .fetch_all(&mut *connection)
         .await
         .unwrap_or_default();
 
@@ -166,22 +166,8 @@ impl PostgresDriver {
         schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
         validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
-        self.ensure_transaction_reaches(handle, SqlTarget::new(Some(database), schema))
-            .await?;
-        let pinned = self.transactions.lock().await.get(&handle.id).cloned();
-
-        if let Some(pinned) = pinned {
-            let mut conn = pinned.lock().await;
-            return self
-                .table_schema_on_connection(&mut **conn, table, schema)
-                .await;
-        }
-        let pool = self.pool_for_target(handle, database).await?;
-        let mut conn = pool
-            .acquire()
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-        self.table_schema_on_connection(&mut *conn, table, schema)
+        let mut connection = crate::session_connection::for_session(self, handle, database).await?;
+        self.table_schema_on_connection(&mut connection, table, schema)
             .await
     }
 
@@ -192,7 +178,7 @@ impl PostgresDriver {
         schema: Option<&str>,
     ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
         validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
-        let pool = self.pool_for_target(handle, database).await?;
+        let mut connection = crate::session_connection::for_session(self, handle, database).await?;
         let schema_ref = schema.map(str::trim).filter(|s| !s.is_empty());
 
         // `$1 IS NULL` means "every user schema", matching `get_tables` so the
@@ -228,7 +214,7 @@ impl PostgresDriver {
             "#,
         )
         .bind(schema_ref)
-        .fetch_all(&pool)
+        .fetch_all(&mut *connection)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 

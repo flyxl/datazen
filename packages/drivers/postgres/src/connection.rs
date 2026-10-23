@@ -129,8 +129,8 @@ impl PostgresDriver {
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
     }
 
-    pub(crate) async fn fetch_tables_from_pool(
-        pool: &PgPool,
+    pub(crate) async fn fetch_tables_from_connection(
+        connection: &mut sqlx::PgConnection,
         schema_filter: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
         let filter_clause = match schema_filter {
@@ -173,7 +173,7 @@ impl PostgresDriver {
         );
 
         let rows = sqlx::query(&sql)
-            .fetch_all(pool)
+            .fetch_all(&mut *connection)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -587,13 +587,12 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<Vec<String>, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        let mut connection = crate::session_connection::for_session(self, handle, "").await?;
 
         let rows = sqlx::query(
             "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
         )
-        .fetch_all(pool)
+        .fetch_all(&mut *connection)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -609,18 +608,18 @@ impl PostgresDriver {
         validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
         // A blank or self-referential name means "the database this handle is
         // connected to"; anything else selects (or opens) that database's pool.
-        let pool = self.pool_for_target(handle, database).await?;
-        Self::fetch_tables_from_pool(&pool, schema).await
+        // A retained session's pinned connection wins over that pool.
+        let mut connection = crate::session_connection::for_session(self, handle, database).await?;
+        Self::fetch_tables_from_connection(&mut connection, schema).await
     }
 
     pub(crate) async fn get_server_info_impl(
         &self,
         handle: &ConnectionHandle,
     ) -> Result<ServerInfo, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        let mut connection = crate::session_connection::for_session(self, handle, "").await?;
         let row = sqlx::query("SELECT version()")
-            .fetch_one(pool)
+            .fetch_one(&mut *connection)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let version: String = row.try_get(0).unwrap_or_default();
@@ -635,11 +634,11 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         database: &str,
     ) -> Result<Option<String>, DriverError> {
-        let pool = self.pool_for_target(handle, database).await?;
+        let mut connection = crate::session_connection::for_session(self, handle, database).await?;
         let Ok(row) = sqlx::query(
             "SELECT system_identifier::text AS system_identifier, current_database() AS database_name FROM pg_control_system()",
         )
-        .fetch_one(&pool)
+        .fetch_one(&mut *connection)
         .await
         else {
             // The postmaster start time identifies one running node, not a

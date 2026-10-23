@@ -32,10 +32,19 @@ impl DesktopResourceBudget {
             permits: Mutex::new(HashMap::new()),
         }
     }
-    fn denied(requested: u32) -> ResourceError {
+    fn capacity(&self) -> (u32, u32) {
+        self.coordinator.with_ledger(|ledger| {
+            (
+                ledger.config().service_physical_connections,
+                ledger.physical(&self.claim.connection_id),
+            )
+        })
+    }
+    fn denied(&self, requested: u32) -> ResourceError {
+        let (limit, used) = self.capacity();
         ResourceError::BudgetDenied {
             requested,
-            reason: "physical budget refused".into(),
+            reason: format!("physical connection limit {limit}, in use {used}"),
         }
     }
 }
@@ -49,7 +58,7 @@ impl BudgetPort for DesktopResourceBudget {
             .coordinator
             .acquire_claim_with(&claim, 10_000)
             .await
-            .map_err(|_| Self::denied(1))?;
+            .map_err(|_| self.denied(1))?;
         let id = uuid::Uuid::new_v4().to_string();
         match self.permits.lock() {
             Ok(mut permits) => {
@@ -57,7 +66,7 @@ impl BudgetPort for DesktopResourceBudget {
             }
             Err(_) => {
                 self.coordinator.release_permit(&record, false);
-                return Err(Self::denied(1));
+                return Err(self.denied(1));
             }
         }
         Ok(BudgetPermit {
@@ -71,8 +80,9 @@ impl BudgetPort for DesktopResourceBudget {
         requested: u32,
     ) -> Result<BudgetPermit, ResourceError> {
         if requested == 0 || requested != self.expected_cost {
-            tracing::warn!(source = "physical_scope", category = "cost_mismatch", requested, expected = self.expected_cost, class = ?self.claim.class, "resource admission refused");
-            return Err(Self::denied(requested));
+            let (limit, used) = self.capacity();
+            tracing::warn!(source = "physical_scope", category = "cost_mismatch", requested, expected = self.expected_cost, limit, used, class = ?self.claim.class, "resource admission refused");
+            return Err(self.denied(requested));
         }
         let records = if requested == 1 {
             vec![self
@@ -80,31 +90,36 @@ impl BudgetPort for DesktopResourceBudget {
                 .acquire_claim_with(&self.claim, 10_000)
                 .await
                 .map_err(|_| {
-                    tracing::warn!(source = "physical_scope", category = "single_claim_unknown", requested, class = ?self.claim.class, "resource admission refused");
-                    Self::denied(requested)
+                    let (limit, used) = self.capacity();
+                    tracing::warn!(source = "physical_scope", category = "single_claim_unknown", requested, limit, used, class = ?self.claim.class, "resource admission refused");
+                    self.denied(requested)
                 })?]
         } else {
             self.coordinator
                 .acquire_cost_now(&self.claim)
                 .map_err(|_| {
-                    tracing::warn!(source = "physical_scope", category = "atomic_claim", requested, class = ?self.claim.class, "resource admission refused");
-                    Self::denied(requested)
+                    let (limit, used) = self.capacity();
+                    tracing::warn!(source = "physical_scope", category = "atomic_claim", requested, limit, used, class = ?self.claim.class, "resource admission refused");
+                    self.denied(requested)
                 })?
         };
         let id = uuid::Uuid::new_v4().to_string();
         let mut permits = match self.permits.lock() {
             Ok(permits) => permits,
             Err(_) => {
+                let (limit, used) = self.capacity();
                 tracing::warn!(
                     source = "physical_scope",
                     category = "permit_storage_unavailable",
                     requested,
+                    limit,
+                    used,
                     "resource admission refused"
                 );
                 for record in &records {
                     self.coordinator.release_permit(record, false);
                 }
-                return Err(Self::denied(requested));
+                return Err(self.denied(requested));
             }
         };
         permits.insert(id.clone(), (requested, records));
@@ -117,16 +132,16 @@ impl BudgetPort for DesktopResourceBudget {
         &self,
         permit: &BudgetPermit,
     ) -> Result<(), ResourceError> {
-        let mut permits = self.permits.lock().map_err(|_| Self::denied(0))?;
+        let mut permits = self.permits.lock().map_err(|_| self.denied(0))?;
         if let Some((count, record)) = permits.get(&permit.permit_id) {
             if *count != permit.physical_connections {
-                return Err(Self::denied(0));
+                return Err(self.denied(0));
             }
             for permit in record {
                 match self.coordinator.release_permit(permit, true) {
                     datazen_runtime::budget::ReleaseResult::Released { .. }
                     | datazen_runtime::budget::ReleaseResult::AlreadyReleased { .. } => {}
-                    _ => return Err(Self::denied(0)),
+                    _ => return Err(self.denied(0)),
                 }
             }
             permits.remove(&permit.permit_id);

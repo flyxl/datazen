@@ -818,3 +818,97 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         self.inner.sink.subscribe(ctx, &stream, after, None)
     }
 }
+
+impl RuntimeConnectionUseCases {
+    /// Close every live session opened on one persistent profile.
+    ///
+    /// `save_connection` bumps the profile's `config_revision`; sessions that
+    /// survive the save keep their leases and physical connections until a tab
+    /// closes them. This retires them right after the revision moved, so the
+    /// quota returns to zero and a reconnect starts from the new profile.
+    ///
+    /// Owner checks still come from each session's **stored** request context:
+    /// this is cleanup, not an ownership bypass. Sessions that are already
+    /// closed are skipped, and one failing session does not stop the rest — the
+    /// save must not fail because cleanup did. Counting is deliberately
+    /// best-effort; the caller treats the number as diagnostic only.
+    pub async fn close_sessions_for_connection(
+        &self,
+        ctx: &RequestContext,
+        connection_id: &ConnectionId,
+    ) -> usize {
+        let targets: Vec<(SessionHandle, RequestContext)> = {
+            let sessions = lock(&self.inner.sessions);
+            sessions
+                .values()
+                .filter(|entry| {
+                    entry.closed.is_none()
+                        && entry.initial.connection_id == *connection_id
+                        && entry.ctx.organization_id == ctx.organization_id
+                        && entry.ctx.principal_id == ctx.principal_id
+                    // The revision is profile-wide, so every client
+                    // instance (other window, MCP) is invalidated too.
+                    // Ownership is still the stored context, not this
+                    // caller's identity, and close re-checks it.
+                })
+                .map(|entry| (entry.handle.clone(), entry.ctx.clone()))
+                .collect()
+        };
+
+        let mut closed = 0usize;
+        for (handle, owner_ctx) in targets {
+            let db_session_id = handle.db_session_id.clone();
+            // Read the registry view, not `get_session`: the profile revision
+            // already moved, so the application-level view would report
+            // `connection configuration changed` for every target. The actor's
+            // `View` is answered while an execution is flying, so this check
+            // never waits for the query. Deferring matters twice: save stays
+            // fast, and the in-flight request keeps its old revision (its next
+            // request gets `connection configuration changed`) instead of being
+            // cancelled by a close it never asked for.
+            let active = match convert::handle(&handle) {
+                Ok(registry_handle) => self
+                    .inner
+                    .registry
+                    .session_view(&registry_handle)
+                    .await
+                    .map(|view| view.active_execution_id.is_some())
+                    .unwrap_or(false),
+                // A handle this application opened cannot fail conversion; if
+                // it somehow does, fall through to the close path, which will
+                // report the same fact through its own error.
+                Err(_) => false,
+            };
+            if active {
+                tracing::info!(
+                    db_session_id = db_session_id.as_str(),
+                    "session retirement deferred: execution still in flight"
+                );
+                continue;
+            }
+            let request = CloseSessionRequest::new(handle, CloseMode::RollbackAndClose);
+            match self.close_session(&owner_ctx, request).await {
+                Ok(_) => closed += 1,
+                Err(error)
+                    if matches!(
+                        error.code,
+                        ApiErrorCode::SessionNotFound | ApiErrorCode::SessionLost
+                    ) =>
+                {
+                    // Another path won the close race; the resource is already
+                    // accounted as gone, so this is not a cleanup failure.
+                    closed += 1;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        %connection_id,
+                        db_session_id = db_session_id.as_str(),
+                        code = error.code.as_str(),
+                        "session retirement after configuration change failed"
+                    );
+                }
+            }
+        }
+        closed
+    }
+}

@@ -333,10 +333,10 @@ impl DatabaseDriver for PostgresDriver {
         handle: &ConnectionHandle,
         database: &str,
     ) -> Result<Option<Vec<String>>, DriverError> {
-        let pool = self.pool_for_target(handle, database).await?;
+        let mut connection = crate::session_connection::for_session(self, handle, database).await?;
         let schemas = sqlx::query_scalar::<_, String>(
             "SELECT nspname::text FROM pg_namespace WHERE nspname NOT IN ('pg_catalog', 'information_schema') AND nspname NOT LIKE 'pg_toast%' AND nspname NOT LIKE 'pg_temp_%' AND has_schema_privilege(oid, 'USAGE') ORDER BY nspname"
-        ).fetch_all(&pool).await.map_err(|error| DriverError::QueryFailed(error.to_string()))?;
+        ).fetch_all(&mut *connection).await.map_err(|error| DriverError::QueryFailed(error.to_string()))?;
         Ok(Some(schemas))
     }
 
