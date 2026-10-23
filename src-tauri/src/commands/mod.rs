@@ -23,6 +23,7 @@ mod history;
 pub mod mcp;
 mod named_views;
 mod native_tool;
+mod port_call;
 mod query;
 pub(crate) mod query_favorites;
 mod restore_gateway;

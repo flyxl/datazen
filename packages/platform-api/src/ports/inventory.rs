@@ -49,6 +49,7 @@ pub const PORT_TRAITS: &[&str] = &[
     "BudgetCoordinator",
     "Clock",
     "ClusterNodeBudgetPort",
+    "ConnectionCatalog",
     "ControlResourcePort",
     "DriverPoolBudgetPort",
     "EventSink",
