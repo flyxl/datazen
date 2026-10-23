@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { DatabaseType } from '../../types';
 import {
   CANDIDATE_VALUE_LIMIT,
@@ -6,10 +7,23 @@ import {
 } from '../cellEditorCandidates';
 
 /**
- * Oracle has no driver in this build yet, but the host's dialect registry
- * carries the family, so the shape an Oracle driver will get is pinned here.
+ * `DatabaseType` is a **codegen** union: it only contains the drivers the build
+ * injects. The per-PR CI typechecks the `basic` set (postgres, mysql, sqlite,
+ * redis) while the release typecheck injects every path driver, so a bare
+ * `'sqlserver'` literal compiles locally and fails on CI — which is exactly how
+ * this file broke the gate once. Naming a driver outside `basic` therefore goes
+ * through an explicit assertion: the host's dialect table carries the family, so
+ * the shape such a driver will get is still pinned here.
  */
 const ORACLE = 'oracle' as unknown as DatabaseType;
+const SQLSERVER = 'sqlserver' as unknown as DatabaseType;
+
+/**
+ * Whether this build injected the SQL Server driver. `DB_REGISTRY` is generated
+ * codegen, so the check is a membership test rather than a property read: under the
+ * `basic` driver set the key simply is not there.
+ */
+const SQLSERVER_INJECTED = 'sqlserver' in DB_REGISTRY;
 
 describe('buildDistinctCandidatesSql', () => {
   it('quotes identifiers per dialect', () => {
@@ -30,10 +44,11 @@ describe('buildDistinctCandidatesSql', () => {
     // `LIMIT` is a syntax error on SQL Server and on Oracle 12c+: SQL Server
     // wants `TOP n` inside the select list, Oracle wants
     // `FETCH FIRST n ROWS ONLY` at the end. The shape comes from the dialect's
-    // own declaration, so the host never spells it.
+    // own declaration, so the host never spells it — and it is host-side, so it
+    // does not depend on which drivers this build injected.
     expect(
-      buildDistinctCandidatesSql({ table: 'users', column: 'status', dialect: 'sqlserver' }),
-    ).toBe('SELECT DISTINCT TOP 200 [status] FROM [users]');
+      buildDistinctCandidatesSql({ table: 'users', column: 'status', dialect: SQLSERVER }),
+    ).toMatch(/^SELECT DISTINCT TOP 200 /);
     expect(buildDistinctCandidatesSql({ table: 'users', column: 'status', dialect: ORACLE })).toBe(
       'SELECT DISTINCT "status" FROM "users" FETCH FIRST 200 ROWS ONLY',
     );
@@ -90,6 +105,19 @@ describe('buildDistinctCandidatesSql', () => {
     expect(buildDistinctCandidatesSql({ table: 'users', column: '' })).toBeNull();
     expect(buildDistinctCandidatesSql({ table: 'users', column: '   ' })).toBeNull();
   });
+
+  // The bracket style is the **driver's** metadata (`quoteChar`), read through
+  // `DB_REGISTRY`; a build that does not inject the driver falls back to `"`. Pin the
+  // real statement only where the driver exists — skipped is honest, silently weaker
+  // is not.
+  it.skipIf(!SQLSERVER_INJECTED)(
+    'quotes identifiers with the SQL Server bracket style',
+    () => {
+      expect(
+        buildDistinctCandidatesSql({ table: 'users', column: 'status', dialect: SQLSERVER }),
+      ).toBe('SELECT DISTINCT TOP 200 [status] FROM [users]');
+    },
+  );
 
   it('refuses an empty table name', () => {
     expect(buildDistinctCandidatesSql({ table: '', column: 'status' })).toBeNull();
