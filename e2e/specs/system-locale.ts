@@ -6,6 +6,7 @@
  * SYS-003  Switching to a supported language persists across refresh
  * SYS-004  Unsupported stored language still renders English UI fallback
  */
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser, $, $$ } from '@wdio/globals';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -22,7 +23,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as object)) {
     throw new Error((result as { __error: string }).__error);
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 interface AppSettings {
@@ -43,25 +44,14 @@ interface AppSettings {
   contextDir?: string;
 }
 
-const SUPPORTED = [
-  'en',
-  'zh-CN',
-  'zh-TW',
-  'es',
-  'fr',
-  'de',
-  'ja',
-  'pt-BR',
-  'ru',
-  'ko',
-] as const;
+const SUPPORTED = ['en', 'zh-CN', 'zh-TW', 'es', 'fr', 'de', 'ja', 'pt-BR', 'ru', 'ko'] as const;
 
 async function openMain() {
   await browser.url('tauri://localhost');
-  await browser.waitUntil(
-    async () => (await $$('input')).length > 0,
-    { timeout: 20000, timeoutMsg: 'main window not ready' },
-  );
+  await browser.waitUntil(async () => (await $$('input')).length > 0, {
+    timeout: 20000,
+    timeoutMsg: 'main window not ready',
+  });
   await browser.pause(400);
 }
 

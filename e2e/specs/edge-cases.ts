@@ -1,6 +1,7 @@
 /**
  * Edge-case E2E (TC-EDGE-001/002/004/008).
  */
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser, $ } from '@wdio/globals';
 import {
   closeExtraWindows,
@@ -27,7 +28,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as object)) {
     throw new Error((result as { __error: string }).__error);
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 describe('边缘用例 (TC-EDGE-001/002/004/008)', () => {

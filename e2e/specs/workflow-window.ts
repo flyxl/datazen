@@ -1,3 +1,4 @@
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { closeExtraWindows, captureJourneyStep, switchWorkspaceNav } from '../helpers.js';
 import { t } from '../i18n.js';
@@ -19,7 +20,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as any)) {
     throw new Error((result as any).__error);
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 const TEST_WORKFLOW_ID = 'e2e-wf-tab-test';

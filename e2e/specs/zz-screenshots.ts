@@ -1,4 +1,5 @@
 import { readCatalog } from '../schema-metadata.js';
+import { dbSessionIdOf } from '../helpers.js';
 /**
  * Site screenshot generator (temporary tooling, not a regression spec).
  * Drives the webdriver-enabled app and captures marketing screenshots
@@ -785,7 +786,7 @@ async function selectQueryPanelDatabase(dbName: string) {
  * switched lazily by query/stream/explain carrying `database`).
  */
 async function pinDemoPgDatabase() {
-  const connId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });
+  const connId = dbSessionIdOf(await invoke('connect', { connectionId: DEMO_PG_CONN_ID }));
   if (typeof connId !== 'string' || connId.startsWith('__error')) {
     throw new Error(`connect(${DEMO_PG_CONN_NAME}) failed: ${JSON.stringify(connId)}`);
   }
@@ -1362,7 +1363,7 @@ describe('site screenshots', () => {
     await invoke('save_dashboard', { dashboard: buildDemoDashboard(now) });
     await browser.pause(300);
 
-    const connId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });
+    const connId = dbSessionIdOf(await invoke('connect', { connectionId: DEMO_PG_CONN_ID }));
     if (typeof connId !== 'string' || connId.startsWith('__error')) {
       throw new Error(`connect(${DEMO_PG_CONN_NAME}) failed: ${JSON.stringify(connId)}`);
     }
@@ -2473,7 +2474,9 @@ describe('site screenshots', () => {
   it('15-redis: KV browser with seeded demo keys', async () => {
     // Connect the Redis demo connection directly. The local dev instance may
     // require a password — fall back to E2E_REDIS_PASSWORD from e2e/.env.
-    let connId: unknown = await invoke<string>('connect', { connectionId: DEMO_REDIS_CONN_ID });
+    let connId: unknown = dbSessionIdOf(
+      await invoke('connect', { connectionId: DEMO_REDIS_CONN_ID }),
+    );
     if (typeof connId !== 'string' || String(connId).startsWith('__error')) {
       const config: Record<string, unknown> = {
         id: DEMO_REDIS_CONN_ID,
@@ -2489,7 +2492,7 @@ describe('site screenshots', () => {
       if (saved && typeof saved === 'object' && '__error' in (saved as object)) {
         throw new Error(`connect(${DEMO_REDIS_CONN_ID}) failed: ${JSON.stringify(connId)}`);
       }
-      connId = await invoke<string>('connect', { connectionId: DEMO_REDIS_CONN_ID });
+      connId = dbSessionIdOf(await invoke('connect', { connectionId: DEMO_REDIS_CONN_ID }));
       if (typeof connId !== 'string' || String(connId).startsWith('__error')) {
         throw new Error(`connect(${DEMO_REDIS_CONN_ID}) failed: ${JSON.stringify(connId)}`);
       }

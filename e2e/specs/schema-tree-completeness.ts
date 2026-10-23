@@ -4,6 +4,7 @@
  *
  * Covers: TC-TREE-001 ~ TC-TREE-006
  */
+import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser, $ } from '@wdio/globals';
 import {
   captureJourneyStep,
@@ -33,7 +34,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   if (result && typeof result === 'object' && '__error' in (result as object)) {
     throw new Error((result as { __error: string }).__error);
   }
-  return result as T;
+  return (CONNECT_COMMANDS.has(cmd) ? dbSessionIdOf(result) : result) as T;
 }
 
 async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
