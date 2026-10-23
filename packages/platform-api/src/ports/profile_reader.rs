@@ -8,8 +8,8 @@
 //! 带写能力的端口——写能力一旦出现在依赖面上，「只读」就只是约定，不是类型事实。
 //!
 //! 因此这里给出**同一份事实的只读投影**：两个方法、零写路径。**写路径只留在
-//! `ProfileRepository`**；实现方（桌面的 `DesktopProfiles`）**同时实现两个 trait**，
-//! 事实仍然只有一份；消费方按需注入窄的那个。这正是 `ports/mod.rs` 模块头那条
+//! `ProfileRepository`**；实现方（桌面的 `DesktopProfiles`）**同时实现 `ProfileRepository`
+//! 与 `ProfileReader`**，事实仍然只有一份；消费方按需注入窄的那个。这正是 `ports/mod.rs` 模块头那条
 //! 「repositories 是一张表，不是一个合并 trait」的同一原则：按**聚合**拆，
 //! **按读写再切一刀也不合并**。
 //!

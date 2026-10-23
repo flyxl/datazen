@@ -41,7 +41,8 @@ pub enum AssemblyState {
     IdentityReady,
     /// 第 6 步（Runtime）已注入，第 7 步尚未注入。
     AwaitingApplicationServices,
-    /// §6.2 九步全部落地。
+    /// §6.2 九步全部落地：第 7 步的 `ApplicationServices` 已组装，且**持有**注入的
+    /// 形态中立存储端口（端口是构造参数 ⇒ 不存在「组装了但没注入」这种中间态）。
     FullyWired,
 }
 
@@ -49,19 +50,24 @@ impl AssemblyState {
     /// §6.2 中**尚未**落地的步骤，按顺序。供日志与启动自检打印，避免"为什么不能用"。
     ///
     /// 每项的第二个元素是"补上这一步之后"的 [`AssemblyState`]。
+    ///
+    /// ## 「补上之后」必须真的往前走
+    ///
+    /// 这张表以前把 §6.2-7 的目标状态写成 [`AssemblyState::AwaitingApplicationServices`]——
+    /// 与它自己同一档。于是「补完第 7 步」在机器上**永远不前进**：第 7 步落地了，
+    /// 表仍然说它没落地。现在第 7 步的目标状态是 [`AssemblyState::FullyWired`]，
+    /// 而第 7 步**包含**「`ApplicationServices` 持有注入的形态中立存储端口」
+    /// ——端口是构造参数，漏注入是编译错误，因此 `services` 一旦存在，
+    /// 端口就一定在。
     pub fn missing_steps(self) -> &'static [(&'static str, AssemblyState)] {
         match self {
             AssemblyState::IdentityReady => &[
                 ("§6.2-6 Runtime", AssemblyState::AwaitingApplicationServices),
-                (
-                    "§6.2-7 ApplicationServices",
-                    AssemblyState::AwaitingApplicationServices,
-                ),
+                ("§6.2-7 ApplicationServices", AssemblyState::FullyWired),
             ],
-            AssemblyState::AwaitingApplicationServices => &[(
-                "§6.2-7 ApplicationServices",
-                AssemblyState::AwaitingApplicationServices,
-            )],
+            AssemblyState::AwaitingApplicationServices => {
+                &[("§6.2-7 ApplicationServices", AssemblyState::FullyWired)]
+            }
             AssemblyState::FullyWired => &[],
         }
     }
@@ -258,7 +264,7 @@ impl PlatformAdapter {
     ///
     /// `tunnels` 与 `known_hosts` 是**隧道相关的两个存储端口实例**，由组装根
     /// （`bootstrap/app_state.rs`）创建并传入：隧道定义走 `TunnelRepository`
-    /// （桌面实现是存储层本身），known-hosts 走 `KnownHostsStore`（桌面实现读
+    /// （桌面实现是存储层本身），known-hosts 走 `KnownHostsRepository`（桌面实现读
     /// `{appData}/ssh_known_hosts.json`）。会话后端需要它们来在建连时解引用
     /// `tunnelId` 并启动隧道。
     pub fn inject(
@@ -266,7 +272,7 @@ impl PlatformAdapter {
         store: Arc<crate::store::DesktopRepository>,
         registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
         tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
-        known_hosts: Arc<dyn datazen_tunnel::KnownHostsStore>,
+        known_hosts: Arc<dyn datazen_tunnel::KnownHostsRepository>,
     ) -> Result<(), ApiError> {
         if self.services.get().is_some() {
             return Ok(());
@@ -309,7 +315,7 @@ impl PlatformAdapter {
             16,
             self.identity.organization_id().clone(),
             self.identity.principal_id().clone(),
-            tunnels,
+            tunnels.clone(),
             known_hosts,
         ));
         let native =
@@ -409,10 +415,23 @@ impl PlatformAdapter {
             })?;
         let target_metadata = Arc::new(std::sync::RwLock::new(std::collections::HashMap::new()));
         let target = super::target_metadata::resolver(target_metadata.clone());
+        // §6.2 第 7 步：**形态中立的存储端口在这里注入**。
+        //
+        // * `settings`：跨形态设置仓储。桌面实现是存储层本身——`DesktopRepository`
+        //   同时实现 `SettingsRepository`（`store/mod.rs`）与 `TunnelRepository`
+        //   （`store/tunnels.rs`）。
+        // * `tunnels`：隧道定义的存储端口。实例与会话后端用的是**同一个**
+        //   （建连时解引用 `tunnelId` 要读它），所以这里传 `clone` 而不是新建。
+        //
+        // 两个端口都是**构造参数**（不是 `Option`）：漏注入是编译错误，而不是
+        // 运行时的 `None`。将来的 web 形态把这两个实现换成服务端 host 的版本，
+        // **用例代码一行不改**。
         let services = Arc::new(ApplicationServices::new(
             target,
             datazen_application::identity_policy::IdentityPolicy::new(),
             runtime.clone(),
+            store.clone(),
+            tunnels.clone(),
         ));
         self.runtime.set(runtime.clone()).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "runtime already injected")

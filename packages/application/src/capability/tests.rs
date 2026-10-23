@@ -2,10 +2,11 @@
 //!
 //! ## 每条断言对应的真实缺陷
 //!
-//! `driver-capability-migration.md` §7 记录了现存缺陷：「13 of 15 drivers report a
-//! successful no-op cancel today」；§6.1 的禁止条款是「**不得因为『驱动没实现』就把
-//! `Unsupported` 翻译成成功**」。下面每条测试都对应其中一种具体翻车方式，
-//! 不是覆盖率凑数。
+//! 现存缺陷：仍有驱动把「没法取消」报成取消成功——`hbase` 与 `vector` 的
+//! `cancel_query` 至今返回 `Ok(())`，其余 13 个 path 驱动都返回
+//! `Err(DriverError::Unsupported(..))`；禁止条款是「**不得因为『驱动没实现』就把
+//! `Unsupported` 翻译成成功**」（`connection-management.md` §5.2）。下面每条测试都
+//! 对应其中一种具体翻车方式，不是覆盖率凑数。
 
 use std::collections::BTreeSet;
 use std::sync::Arc;

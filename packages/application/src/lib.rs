@@ -25,10 +25,24 @@
 //! | [`capability`] | 计划第 93 行的可选能力注册与运行时能力降低机制 |
 //!
 //! [`ApplicationServices`] 按 §6.2 第 7 步的顺序组装：
-//! `target → identity_policy → sessions`，能力注册表由
+//! `target → identity_policy → sessions → settings → tunnels`，能力注册表由
 //! [`with_capabilities`](ApplicationServices::with_capabilities) 在其后补挂，
 //! 缺省是**全不可用**的注册表。构造函数对桌面与团队两种形态**完全相同**，
 //! 只有传入的 `Arc<dyn …>` 实现不同——不允许为团队形态另写一套用例。
+//!
+//! ## 注入的存储端口
+//!
+//! `settings` 与 `tunnels` 是**形态中立的存储端口**（契约住在
+//! `datazen-platform-api` 的 `ports/`）：应用层**持有**它们，而不是反过来
+//! 借用宿主的 store。端口是**构造参数**而不是可选字段——漏注入是**编译错误**，
+//! 不是运行时的 `None`。桌面实现是 `DesktopRepository`（组装期注入同一个实例），
+//! 将来的 web 形态换成服务端 host 的实现，**用例代码一行不改**。
+//!
+//! 端口契约只能来自 `datazen-platform-api`：领域包（schema-diff / data-sync /
+//! data-transfer）的端口**进不来**——`datazen-runtime` 依赖本包，领域包又依赖
+//! `datazen-runtime`，本包一旦依赖领域包就是 Cargo 环（`cargo metadata` 直接
+//! 报 `cyclic package dependency`）。需要领域端口时由宿主在**组装期**把它包成
+//! `platform-api` 层的窄端口再注入。
 
 pub mod capability;
 pub mod dto;
@@ -41,9 +55,12 @@ pub mod target;
 
 use std::sync::Arc;
 
+use datazen_platform_api::ports::{SettingsRepository, TunnelRepository};
+
 use crate::capability::CapabilityRegistry;
 use crate::identity_policy::IdentityPolicy;
 use crate::sessions::ConnectionUseCases;
+use crate::settings::SettingsService;
 use crate::target::TargetResolver;
 
 /// 用例层服务聚合。字段顺序即 §6.2 第 7 步的组装顺序。
@@ -55,6 +72,16 @@ pub struct ApplicationServices {
     pub identity_policy: IdentityPolicy,
     /// 连接用例面（实现在组装层注入）。
     pub sessions: Arc<dyn ConnectionUseCases>,
+    /// 跨形态设置仓储端口（组装层注入）。
+    ///
+    /// 桌面实现是 `DesktopRepository`（加密落盘 `{appData}`）；将来的 web 形态
+    /// 由服务端 host 实现。**事实只有一份**：本字段与宿主持有的必须是同一个实例。
+    pub settings: Arc<dyn SettingsRepository>,
+    /// 隧道定义的存储端口（组装层注入）。
+    ///
+    /// 隧道定义是独立聚合：连接侧只存 `tunnelId`，解引用发生在建连时。
+    /// 桌面实现同样是 `DesktopRepository`；web 形态由服务端 host 实现。
+    pub tunnels: Arc<dyn TunnelRepository>,
     /// 计划第 93 行的运行时能力注册表。
     ///
     /// 缺省是全不可用的空注册表（[`CapabilityRegistry::new`]）。这意味着
@@ -67,15 +94,23 @@ pub struct ApplicationServices {
 impl ApplicationServices {
     /// 能力注册表留空（全不可用）。随后用
     /// [`with_capabilities`](Self::with_capabilities) 挂上真实注册表。
+    ///
+    /// 存储端口是**必填构造参数**：漏注入是编译错误，而不是运行时的 `None`。
+    /// 桌面与团队两种形态调用的是**同一个**构造函数，只有传入的 `Arc<dyn …>`
+    /// 实现不同。
     pub fn new(
         target: TargetResolver,
         identity_policy: IdentityPolicy,
         sessions: Arc<dyn ConnectionUseCases>,
+        settings: Arc<dyn SettingsRepository>,
+        tunnels: Arc<dyn TunnelRepository>,
     ) -> Self {
         Self {
             target,
             identity_policy,
             sessions,
+            settings,
+            tunnels,
             capabilities: CapabilityRegistry::new("unbound"),
         }
     }
@@ -84,6 +119,15 @@ impl ApplicationServices {
     pub fn with_capabilities(mut self, capabilities: CapabilityRegistry) -> Self {
         self.capabilities = capabilities;
         self
+    }
+
+    /// 跨形态设置用例入口。
+    ///
+    /// 仓库由本聚合**持有**（不是借用宿主的 store），因此设置用例可以在没有
+    /// Tauri 的进程里跑。桌面与将来的 web 形态走**同一个**入口，只有注入的
+    /// [`SettingsRepository`] 实现不同。
+    pub fn settings_service(&self) -> SettingsService<'_> {
+        SettingsService::new(self.settings.as_ref())
     }
 }
 
@@ -225,6 +269,96 @@ mod tests {
         );
     }
 
+    /// 本包**不得**依赖领域包（schema-diff / data-sync / data-transfer）。
+    ///
+    /// 理由不是「不喜欢」，而是**依赖图上做不到**：`datazen-runtime` 依赖本包，
+    /// 三个领域包又依赖 `datazen-runtime`，于是 `APP → 领域包 → RT → APP` 是一个
+    /// Cargo 环——`cargo metadata` 会以 `cyclic package dependency` 直接拒绝，
+    /// 门禁连跑都跑不起来。仓库自带的 `scripts/platform-arch-selfcheck.mjs` 的
+    /// M4 探针注释记的是同一个形状（`platform-api → runtime` 闭 `runtime →
+    /// application → platform-api` 的环）。
+    ///
+    /// 因此形态中立的用例层要拿到领域端口，只能由**宿主在组装期**把它包成
+    /// `platform-api` 层的窄端口再注入。这条断言把那个结论钉住：将来有人
+    /// 想「顺手」加一条 `datazen-schema-diff`，这里会先红。
+    #[test]
+    fn the_crate_does_not_depend_on_the_domain_packages() {
+        let manifest = include_str!("../Cargo.toml");
+        for banned in [
+            "datazen-schema-diff",
+            "datazen-data-sync",
+            "datazen-data-transfer",
+        ] {
+            assert!(
+                !manifest.contains(banned),
+                "APP 不得依赖领域包 {banned}：datazen-runtime 依赖 APP，领域包依赖 \
+                 datazen-runtime，这条边会闭成 Cargo 环。领域端口由宿主在组装期包成 \
+                 platform-api 窄端口后注入。"
+            );
+        }
+    }
+
+    /// 注入的存储端口必须是 `platform-api` 的**那一份**，不是本包另抄的一份。
+    ///
+    /// 另抄一份端口 = 另抄一份事实：桌面实现与 web 实现各实现一套形状，差异
+    /// 只在运行期暴露。所以这里断言两件事——端口类型来自
+    /// `datazen_platform_api::ports`，且本包**没有**自己定义同名 trait。
+    #[test]
+    fn the_storage_ports_are_the_platform_api_ones_not_a_local_copy() {
+        let code = crate_root_code();
+        assert!(
+            code.contains(
+                "use datazen_platform_api::ports::{SettingsRepository, TunnelRepository};"
+            ),
+            "存储端口必须直接引 platform-api 的那一份"
+        );
+        for port in ["SettingsRepository", "TunnelRepository"] {
+            assert!(
+                !code.contains(&format!("pub trait {port}")),
+                "{port} 不得在本包另定义一份：那是两份事实"
+            );
+        }
+    }
+
+    /// 聚合**持有**注入的存储端口：字段是 `Arc<dyn …>`，不是 `Option`。
+    ///
+    /// `Option` 会让「忘记注入」变成运行时的 `None`，而调用点会照样编译通过、
+    /// 在第一次取用时才炸。必填构造参数把它变成**编译错误**。
+    #[test]
+    fn the_aggregate_holds_the_form_neutral_storage_ports() {
+        let code = crate_root_code();
+        for field in [
+            "pub settings: Arc<dyn SettingsRepository>",
+            "pub tunnels: Arc<dyn TunnelRepository>",
+        ] {
+            assert!(code.contains(field), "聚合必须持有该存储端口字段：{field}");
+        }
+        assert!(
+            !code.contains("pub settings: Option<"),
+            "settings 端口不得是 Option：漏注入必须是编译错误"
+        );
+        assert!(
+            !code.contains("pub tunnels: Option<"),
+            "tunnels 端口不得是 Option：漏注入必须是编译错误"
+        );
+        // 构造签名必须**要求**这两个端口。
+        let signature = code
+            .split("pub fn new(")
+            .nth(1)
+            .and_then(|rest| rest.split(") -> Self").next())
+            .expect("必须能取到 new 的参数表");
+        for parameter in [
+            "settings: Arc<dyn SettingsRepository>",
+            "tunnels: Arc<dyn TunnelRepository>",
+        ] {
+            assert!(
+                signature.contains(parameter),
+                "构造参数必须要求注入端口：{parameter}（实际：{}）",
+                signature.split_whitespace().collect::<Vec<_>>().join(" ")
+            );
+        }
+    }
+
     #[test]
     fn the_module_list_is_exactly_the_seven_documented_units() {
         let declarations =
@@ -251,8 +385,8 @@ mod tests {
         );
         assert_eq!(
             declarations.non_public,
-            ["tests"],
-            "顶层非 pub 模块只允许 `#[cfg(test)] mod tests`：私有 `mod x;` 或 `pub(crate) mod x;` \
+            ["storage_ports_tests", "tests"],
+            "顶层非 pub 模块只允许 `#[cfg(test)]` 模块：私有 `mod x;` 或 `pub(crate) mod x;` \
              同样会改变 crate 的模块结构，必须显式表态"
         );
     }
@@ -484,3 +618,14 @@ mod tests {
         assert_eq!(error.code, crate::error::ApiErrorCode::TargetRequired);
     }
 }
+
+/// 注入的存储端口的**行为**证据（形状证据在 `mod tests` 里）。
+///
+/// 单独成文件是为了不把 `lib.rs` 顶成超大单文件；它只在测试期存在，
+/// 因此不进入对外模块面。
+///
+/// 位置在文件**末尾**是有意的：`mod tests` 里的 `crate_root_code()` 按第一个
+/// `#[cfg(test)]` 截断源码来取生产半边，这个声明若排在它前面，生产半边会被
+/// 从中间砍断。
+#[cfg(test)]
+mod storage_ports_tests;

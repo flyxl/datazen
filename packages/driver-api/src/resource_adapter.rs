@@ -2,7 +2,10 @@
 //!
 //! Source of truth: plan line 95 — 「现有 Command 和迁移接口保持领域语义；
 //! 资源获得方式通过 adapter 演进」, plus
-//! `driver-capability-migration.md` §6.1 / §6.2 / §7.1.
+//! `docs/architecture/platform/connection-management.md` §5.2 (the fail-closed
+//! capability rules) and the P2 stage of
+//! `docs/development/platform-development-plan.md` (the adapter's retirement
+//! condition).
 //!
 //! # What this adapter is for
 //!
@@ -35,7 +38,7 @@
 //! # Session continuity
 //!
 //! `session_continuity` is never declared `Fixed`. A pool of size one is not a
-//! fixed session (`driver-capability-migration.md` §6.1) and `DatabaseDriver`
+//! fixed session (`connection-management.md` §5.2) and `DatabaseDriver`
 //! exposes no way to prove otherwise, so the adapter reports
 //! `SessionContinuity::Unknown`, which `is_fixed()` treats exactly like
 //! `Leased` (`CM-19`).
@@ -267,7 +270,7 @@ impl LegacyResourceAdapter {
             provider_id: self.driver_id.clone(),
             resource_key: format!("{}#{:?}", self.driver_id, request.purpose),
             // Never `Fixed`: `DatabaseDriver` cannot prove a session-scoped
-            // physical connection (`driver-capability-migration.md` §6.1).
+            // physical connection (`connection-management.md` §5.2).
             session_continuity: SessionContinuity::Unknown,
             // No verified reset-to-baseline, so a resource must be re-acquired
             // rather than reused (`CM-19`).

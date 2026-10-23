@@ -117,9 +117,10 @@ pub fn driver_protocol_version(driver: &dyn DatabaseDriver) -> u32 {
 /// Fail-closed accessor: the provider or an explicit "not migrated" error.
 ///
 /// This exists so that "the driver has no resource provider" can never be
-/// mistaken for "the driver has nothing to do" — the defect that lets 13 of 15
-/// drivers report a successful no-op cancel today
-/// (`driver-capability-migration.md` §7.1).
+/// mistaken for "the driver has nothing to do" — the defect that lets a driver
+/// report a successful no-op cancel. As of this writing only `hbase` and
+/// `vector` still answer `Ok(())` there; the other 13 path drivers answer
+/// `Err(DriverError::Unsupported(..))`.
 pub fn require_resource_provider(
     factory: &dyn DatabaseDriverFactory,
 ) -> Result<Arc<dyn ResourceProvider>, ResourceProviderMissing> {

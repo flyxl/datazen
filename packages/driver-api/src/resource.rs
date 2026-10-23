@@ -4,9 +4,9 @@
 //! (DTOs and target validation order), §5.1 (the nine operation rows, which the
 //! [`ResourceProvider`] trait below spells out as 11 async methods plus 3
 //! required accessors), §6.5 (per-handle close, the twelfth async method), §5.2
-//! (capabilities) and
-//! `docs/architecture/platform/driver-capability-migration.md`
-//! §6 (degraded legacy paths, retirement preconditions).
+//! (capabilities) and the P2 stage of
+//! `docs/development/platform-development-plan.md`
+//! (degraded legacy paths, retirement preconditions).
 //!
 //! # Why the handle is opaque
 //!

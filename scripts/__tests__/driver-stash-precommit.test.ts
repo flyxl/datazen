@@ -7,12 +7,13 @@ import {
   hasInjectedCapabilities,
   fileHasInjection,
   runDriverStashPrecommit,
+  driverAclIds,
 } from '../driver-stash-precommit.mjs';
-import { createDriverFileStash, MANAGED_FILES } from '../driver-file-stash.mjs';
+import { createDriverFileStash, MANAGED_FILES, ROOT } from '../driver-file-stash.mjs';
 import { mkdtempSync, existsSync, unlinkSync, readFileSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import {
   CLEAN_CONTENTS,
   INJECTED_CONTENTS,
@@ -20,6 +21,17 @@ import {
   readManaged,
   resetDir,
 } from './fixture';
+
+/**
+ * The part of `drivers-registry.json` this file reads.
+ *
+ * `JSON.parse` hands back `any`; narrowing it to the shape the registry
+ * actually has is what lets the derivation below stay type-checked instead of
+ * riding on an untyped value.
+ */
+interface RegistryEntry {
+  tauriPlugin?: { id?: string; commands?: string[] };
+}
 
 describe('injection detectors', () => {
   it('detects cargo marker injection and ignores empty markers', () => {
@@ -42,11 +54,32 @@ describe('injection detectors', () => {
     expect(hasInjectedGeneratedTs(INJECTED_CONTENTS['src/extensions/generated.ts'])).toBe(true);
   });
 
-  it('detects capabilities plugin ACL entries', () => {
-    expect(hasInjectedCapabilities(`"permissions": ["core:default"]`)).toBe(false);
-    expect(hasInjectedCapabilities(`"permissions": ["kiwi:default"]`)).toBe(true);
-    expect(hasInjectedCapabilities(`"permissions": ["redis:default"]`)).toBe(true);
-    expect(hasInjectedCapabilities(`"permissions": ["superset:allow-login"]`)).toBe(true);
+  it('detects capabilities plugin ACL entries for the given driver ids', () => {
+    expect(hasInjectedCapabilities(`"permissions": ["core:default"]`, ['kiwi'])).toBe(false);
+    expect(hasInjectedCapabilities(`"permissions": ["kiwi:default"]`, ['kiwi'])).toBe(true);
+    expect(hasInjectedCapabilities(`"permissions": ["redis:default"]`, ['redis'])).toBe(true);
+    expect(
+      hasInjectedCapabilities(`"permissions": ["superset:allow-login"]`, ['kiwi', 'superset']),
+    ).toBe(true);
+  });
+
+  it('derives the default ACL id list from drivers-registry.json', () => {
+    const registry = JSON.parse(
+      readFileSync(resolve(ROOT, 'drivers-registry.json'), 'utf-8'),
+    ) as Record<string, RegistryEntry>;
+    const expected = Object.values(registry).flatMap((meta) => {
+      const plugin = meta.tauriPlugin;
+      if (!plugin?.id || (plugin.commands ?? []).length === 0) return [];
+      return [plugin.id];
+    });
+    expect(driverAclIds()).toEqual(expected);
+    // Only a driver that declares non-empty `tauriPlugin.commands` ships an ACL
+    // permission manifest, so only its id can show up in the generated
+    // capabilities file. The list used to be hardcoded to
+    // ['kiwi', 'superset', 'redis'], none of which can produce such an entry.
+    expect(driverAclIds()).toEqual([]);
+    expect(hasInjectedCapabilities(`"permissions": ["kiwi:default"]`)).toBe(false);
+    expect(hasInjectedCapabilities(`"permissions": ["redis:default"]`)).toBe(false);
   });
 
   it('fileHasInjection routes by path', () => {

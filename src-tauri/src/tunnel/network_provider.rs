@@ -42,7 +42,7 @@ use datazen_platform_api::ports::network::{NetworkProvider, TunnelSpec};
 use datazen_runtime::tunnel::{
     RouteCatalog, RouteNetworkProvider, TunnelError, TunnelFault, TunnelHandle, TunnelTransport,
 };
-use datazen_tunnel::KnownHostsStore;
+use datazen_tunnel::KnownHostsRepository;
 use tracing::{debug, warn};
 
 use crate::tunnel::{start_for_connection, Tunnel};
@@ -154,7 +154,7 @@ fn open_fault(spec: &TunnelSpec, detail: impl std::fmt::Display) -> TunnelError 
 fn start_tunnel_blocking(
     spec: &TunnelSpec,
     config: ConnectionConfig,
-    known_hosts: Arc<dyn KnownHostsStore>,
+    known_hosts: Arc<dyn KnownHostsRepository>,
 ) -> Result<Option<Tunnel>, TunnelError> {
     let Ok(handle) = tokio::runtime::Handle::try_current() else {
         return Err(open_fault(
@@ -191,7 +191,7 @@ fn start_tunnel_blocking(
 pub struct DesktopTunnelHost {
     source: Arc<dyn DesktopTunnelSource>,
     /// 已知主机的**存储端口**实例（宿主注入）：桌面读 `{appData}/ssh_known_hosts.json`。
-    known_hosts: Arc<dyn KnownHostsStore>,
+    known_hosts: Arc<dyn KnownHostsRepository>,
     /// 存活的隧道。`std::sync::Mutex` 而非 `tokio::sync::Mutex`：
     /// 临界区里没有任何 `.await`，开隧道那段耗时全部在锁**之外**。
     live: Mutex<Roster<Tunnel>>,
@@ -200,7 +200,7 @@ pub struct DesktopTunnelHost {
 impl DesktopTunnelHost {
     pub fn new(
         source: Arc<dyn DesktopTunnelSource>,
-        known_hosts: Arc<dyn KnownHostsStore>,
+        known_hosts: Arc<dyn KnownHostsRepository>,
     ) -> Self {
         Self {
             source,
@@ -331,7 +331,7 @@ fn local_endpoint(local_port: u16) -> String {
 /// `src-tauri/src/platform/`（平台轨），本轨不越界改它。
 pub fn desktop_network_provider(
     source: Arc<dyn DesktopTunnelSource>,
-    known_hosts: Arc<dyn KnownHostsStore>,
+    known_hosts: Arc<dyn KnownHostsRepository>,
 ) -> Arc<dyn NetworkProvider> {
     let host = Arc::new(DesktopTunnelHost::new(source, known_hosts));
     let catalog: Arc<dyn RouteCatalog> = host.clone();

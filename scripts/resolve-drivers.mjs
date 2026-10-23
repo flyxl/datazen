@@ -1202,7 +1202,8 @@ function injectCargoToml(drivers, registry) {
 
   // Enable injected drivers by default so `tauri build --features webdriver` (and
   // other builds that only pass extra flags) still compile plugin crates and register
-  // their Tauri ACL manifests (e.g. redis:default).
+  // their Tauri ACL manifests — the `<driver-id>:default` capability entries that
+  // `syncDriverCapabilities` merges for drivers declaring non-empty `tauriPlugin.commands`.
   const defaultFeatureNames = featureLines.map((line) => line.split('=')[0].trim());
   content = content.replace(
     /^default = \[[^\]]*\]/m,

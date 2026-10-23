@@ -26,9 +26,9 @@ import {
   MANAGED_FILES,
   ROOT,
 } from './driver-file-stash.mjs';
-import { DRIVER_ACL_IDS } from './driver-deinject.mjs';
+import { driverAclIds } from './driver-deinject.mjs';
 
-export { DRIVER_ACL_IDS };
+export { driverAclIds };
 
 export function hasInjectedCargoContent(content) {
   if (!content) return false;
@@ -66,9 +66,21 @@ export function hasInjectedGeneratedTs(content) {
   return !/=\s*never\b/.test(typeLine);
 }
 
-export function hasInjectedCapabilities(content, driverIds = DRIVER_ACL_IDS) {
+/**
+ * Detect driver-scoped permission entries in a generated capabilities file.
+ *
+ * The ids come from the driver registry (see `driverAclIds`), i.e. exactly the
+ * drivers whose `tauriPlugin` block declares commands — the only ones
+ * `resolve-drivers.mjs` can write a `<driver-id>:default` entry for.
+ *
+ * @param {string} content
+ * @param {string[]} [driverIds]
+ */
+export function hasInjectedCapabilities(content, driverIds = driverAclIds()) {
   if (!content) return false;
-  const re = new RegExp(`"(${driverIds.map(escapeRegex).join('|')}):`);
+  const ids = driverIds.filter(Boolean);
+  if (ids.length === 0) return false;
+  const re = new RegExp(`"(${ids.map(escapeRegex).join('|')}):`);
   return re.test(content);
 }
 
@@ -81,7 +93,7 @@ function escapeRegex(s) {
  * @param {string} content
  * @param {string[]} [driverIds]
  */
-export function fileHasInjection(relPath, content, driverIds = DRIVER_ACL_IDS) {
+export function fileHasInjection(relPath, content, driverIds = driverAclIds()) {
   if (relPath.endsWith('Cargo.toml')) return hasInjectedCargoContent(content);
   if (relPath.endsWith('driver_init.rs')) return hasInjectedDriverInit(content);
   if (relPath.endsWith('generated.ts')) return hasInjectedGeneratedTs(content);

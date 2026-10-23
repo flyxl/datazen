@@ -105,15 +105,39 @@ function layerIdOf(dir: string): string {
   return result.id;
 }
 
-function run(metadata: object, specText = SPEC) {
-  // The lock is not optional here. `root: REPO_ROOT` makes the F-07 rule
-  // scan the *real* `packages/backend-client/src`, and a guard test running in
-  // parallel plants a throwaway probe in that very subtree — a probe that
-  // contains `@tauri-apps/` on purpose, because that is what proves the rule
-  // is armed. Without the lock this run can see that probe and report an
-  // F-07 violation that belongs to nobody.
+/**
+ * Run the guard against the **real** working tree, under the shared probe lock.
+ *
+ * This suite does not use throwaway trees for the crate-graph rules: `root` is
+ * the repository itself, so F-07 reads the real `packages/backend-client`
+ * sources and the declared-edge scan reads the real `Cargo.toml` files. That is
+ * the point of the suite — a guard proven only against a synthetic tree can be
+ * green for the wrong reason.
+ *
+ * It is also the point of the lock. `check-module-layers.test.ts` proves its
+ * port rules by planting a **real violating file** in the very same directory —
+ * `packages/backend-client/src/__boundaryProbe__.ts` — and the file lives in the
+ * tree for as long as that suite's critical section lasts. A scan of the real
+ * tree that runs at that moment reads the probe as a genuine F-07 violation:
+ *
+ *     F-07  packages/backend-client/src:1 contains `fetch(` — packages/backend-client
+ *     must reach the backend through the platform client, not through Tauri IPC or
+ *     the network directly.
+ *
+ * The two suites are in different worker **processes** (Vitest's default pool
+ * is `forks`, and `fileParallelism` is on), so a per-process mutex would not
+ * have helped; the shared lock is an on-disk file created with `O_EXCL`, which
+ * is atomic across processes, and every operation that observes or mutates the
+ * real tree takes it. Without it the failure is a coin flip on timing — a green
+ * suite locally,
+ * a red one in CI — and it moves to whichever unguarded scan runs next.
+ *
+ * The lock is not re-entrant, so it is taken exactly once per call here and
+ * never around a call that already holds it.
+ */
+function run(metadata: object, specText = SPEC, options: { requireLayers?: string[] } = {}) {
   return withProbeLock(() =>
-    checkPlatformCrateBoundaries({ root: REPO_ROOT, metadata, specText }),
+    checkPlatformCrateBoundaries({ root: REPO_ROOT, metadata, specText, ...options }),
   );
 }
 
@@ -477,14 +501,7 @@ describe('checkPlatformCrateBoundaries', () => {
   });
 
   it('--require-layers turns a vacuous rule into an error', () => {
-    // Same reason as `run`: a real-root scan must not overlap a probe.
-    const result = withProbeLock(() =>
-      checkPlatformCrateBoundaries({
-        root: REPO_ROOT,
-        metadata: fixture(CORE, clean),
-        requireLayers: ['server'],
-      }),
-    );
+    const result = run(fixture(CORE, clean), SPEC, { requireLayers: ['server'] });
     expect(result.errors.join('\n')).toContain('server');
   });
 });
@@ -517,12 +534,15 @@ describe('F-01 exemptions', () => {
     exemptions: Array<{ member: string; family: string; reason: string }>,
     metadata: object,
   ) {
-    return checkPlatformCrateBoundaries({
-      root: REPO_ROOT,
-      metadata,
-      specText: SPEC,
-      rules: withExemptions(exemptions),
-    });
+    // Real tree, so the same lock as `run` — see the note there.
+    return withProbeLock(() =>
+      checkPlatformCrateBoundaries({
+        root: REPO_ROOT,
+        metadata,
+        specText: SPEC,
+        rules: withExemptions(exemptions),
+      }),
+    );
   }
 
   it('suppresses the violation and says so out loud', () => {

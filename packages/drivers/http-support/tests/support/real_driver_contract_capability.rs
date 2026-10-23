@@ -22,7 +22,7 @@ use super::{optional_env, required_env, FIXTURE_PREFIX};
 // Declared-capability vocabulary
 // ---------------------------------------------------------------------------
 
-/// Per-capability verdict, mirroring the `driver-capability-migration.md` §5.2
+/// Per-capability verdict, mirroring the `connection-management.md` §5.2
 /// vocabulary. `Unsupported` and `Unknown` are deliberately distinct: conflating
 /// them is exactly the "silently skipped, then claimed as verified" failure mode
 /// `fake-runtime-fixtures.md` §10.4 forbids.

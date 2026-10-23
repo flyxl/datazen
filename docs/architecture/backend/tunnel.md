@@ -21,7 +21,7 @@ rustls provider 选择）住在形态中立的共享 crate `packages/tunnel/`（
 | 存什么 | 端口 | 住在哪 | 桌面实现 | web 形态 |
 |---|---|---|---|---|
 | 隧道定义 | `TunnelRepository` | `packages/platform-api/src/ports/tunnel.rs`（跨形态端口家族） | `src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`（加密落盘 `{appData}/tunnels.json`） | 服务端库上的组织级存储（同一端口、另一适配器） |
-| SSH known-hosts | `KnownHostsStore` | `packages/tunnel/src/known_hosts_store.rs`（**领域包端口**，与 `ReviewedPlanRepository` / `TransferPlanRepositoryPort` 同形） | `src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsStore`（读 `{appData}/ssh_known_hosts.json`） | 服务端存储目录 / 组织级存储 |
+| SSH known-hosts | `KnownHostsRepository` | `packages/tunnel/src/known_hosts_repository.rs`（**领域包端口**，与 `ReviewedPlanRepository` / `TransferPlanRepositoryPort` 同形） | `src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`（读 `{appData}/ssh_known_hosts.json`） | 服务端存储目录 / 组织级存储 |
 
 两者的**规则**都在共享包里（`SavedTunnel` 的形状、TOFU 判定、指纹与错误文案），**文件 I/O 与落盘加密**
 在宿主：**共享包不再读本机文件**。端口实例由宿主在组装期创建一次并注入
@@ -163,8 +163,8 @@ connection id**：隧道定义是独立聚合，连接侧只存 `tunnelId`。
 读取后由 `load_tunnels_from_disk`（`tunnels.rs:12`）在应用启动时（`store/mod.rs:205`）一次性加载并解密进内存缓存。**解密失败降级为 `None` 并 `warn!`**，不让单条坏记录阻断整份加载。
 
 已知主机校验文件为 `{appData}/ssh_known_hosts.json`（桌面实现：`src-tauri/src/platform/known_hosts.rs`
-的 `DesktopKnownHostsStore`），采用 TOFU 策略：首次接受并记录指纹，不匹配则拒绝并回传精确错误（`ssh_tunnel.rs:37-95`）。
-**文件 I/O 是端口**（`KnownHostsStore`，见[共享边界与端口 §4.3](../platform/shared-boundaries-and-ports.md#43-持久化与授权端口)），
+的 `DesktopKnownHostsRepository`），采用 TOFU 策略：首次接受并记录指纹，不匹配则拒绝并回传精确错误（`ssh_tunnel.rs:37-95`）。
+**文件 I/O 是端口**（`KnownHostsRepository`，见[共享边界与端口 §4.3](../platform/shared-boundaries-and-ports.md#43-持久化与授权端口)），
 **规则**（`KnownHostEntry` / `HostKeyDecision` / `verify_host_key` / `mismatch_error_message`）留在
 `packages/tunnel`；端口的降级语义属于契约：`load` **不失败**（读不到一律按空集合处理），
 `save` 失败如实报错。落盘格式（文件、JSON 形状、字段名 `public_key`、两条 warn 文案、三条错误文案）

@@ -13,6 +13,7 @@ import type { Dirent } from 'node:fs';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { SKIP_DIR_NAMES, isSkippedPath, readScannedIfPresent } from '../lib/scanTargets.mjs';
+import { withProbeLock } from './boundaryMutation';
 
 // The extension is deliberate. Extensionless, this resolves through Vite's
 // `resolve.extensions` where `.js` precedes `.ts` — so it silently loaded
@@ -258,7 +259,24 @@ function projectColourKeys(): Set<string> {
   return keys;
 }
 
-const files = SCAN_ROOTS.flatMap((root) => walk(root));
+/**
+ * The real tree, read under the shared probe lock.
+ *
+ * `SCAN_ROOTS` includes `packages/`, which is where the boundary-guard suites
+ * plant their mutation probes — a **real violating file** in the real working
+ * tree, which lives there for as long as that suite's critical section lasts.
+ * This guard's verdict is a pure function of what it reads, so a probe that
+ * happened to name a colour utility would be reported here as a dead class in
+ * this repository's own source. Today no probe body does; the lock is what
+ * makes that true rather than lucky, and it is the same lock the probe writers
+ * take (an on-disk file created with `O_EXCL`, atomic across the worker
+ * processes Vitest runs
+ * test files in).
+ *
+ * The enumeration and the read happen in one pass (see `walk`), so the snapshot
+ * this file reasons over is the tree as it was under the lock.
+ */
+const files = withProbeLock(() => SCAN_ROOTS.flatMap((root) => walk(root)));
 
 /** Tokens declared straight in CSS (`--color-foo`) — a valid colour source. */
 function cssColourKeys(): Set<string> {

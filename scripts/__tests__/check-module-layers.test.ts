@@ -32,7 +32,7 @@ function run() {
  * A tree scan that must not observe another process's probe files.
  *
  * `withTempSourceFile(s)` plants probes into the real source tree while holding an
- * on-disk `mkdir` lock. Vitest runs test files across parallel worker processes, so
+ * on-disk lock file. Vitest runs test files across parallel worker processes, so
  * an unlocked `run()` here can scan the tree while a sibling worker has probes
  * planted in it, and report findings that do not exist in the tree being scanned.
  * That is how the two `driver-sdk-no-direct-tauri` assertions below came to fail
@@ -416,7 +416,7 @@ describe('checkModuleLayers watches the same file set as the driver boundary gua
      * Plant the file, prove it landed, then run the guard.
      *
      * The lock is taken by `withTempSourceFile` itself. `withProbeLock` is a
-     * plain `mkdir` lock and is deliberately not re-entrant — nesting a second
+     * plain lock file and is deliberately not re-entrant — nesting a second
      * acquisition around the helper makes the inner one spin the full 60s
      * timeout against its own pid before failing, so wrapping it here would
      * turn every case in this block into a 60s hang.
@@ -454,14 +454,25 @@ describe('checkModuleLayers watches the same file set as the driver boundary gua
 
     describe('driver-sdk-no-direct-tauri (advisory, known debt)', () => {
       it('reports every file that imports Tauri, and none that does not', () => {
-        const expected = filesImportingTauri('packages/driver-sdk/src');
-        const { advisories, violations } = collectModuleLayerFindings();
-        expect(advisories.map((a) => a.file).sort()).toEqual(expected);
-        // The point of the grader: these findings exist and the tree is still
-        // green. Asserting the debt is reported *and* not enforced is what keeps
-        // the day the migration lands from looking like a regression.
-        expect(violations.filter((v) => v.rule === 'driver-sdk-no-direct-tauri')).toEqual([]);
-        expect(runLocked().code).toBe(0);
+        // One acquisition around all three reads of the **real** tree: the
+        // direct walk, the guard's own findings, and the guard's verdict.
+        // Without it, a probe a sibling suite has planted right now would be
+        // read as part of the debt — and the assertion below is about the
+        // tree's own files.
+        //
+        // The lock is not re-entrant, so the plain `run()` is used inside it:
+        // `runLocked()` would nest and spin the full timeout against its own
+        // pid.
+        withProbeLock(() => {
+          const expected = filesImportingTauri('packages/driver-sdk/src');
+          const { advisories, violations } = collectModuleLayerFindings();
+          expect(advisories.map((a) => a.file).sort()).toEqual(expected);
+          // The point of the grader: these findings exist and the tree is still
+          // green. Asserting the debt is reported *and* not enforced is what keeps
+          // the day the migration lands from looking like a regression.
+          expect(violations.filter((v) => v.rule === 'driver-sdk-no-direct-tauri')).toEqual([]);
+          expect(run().code).toBe(0);
+        });
       });
 
       it('says out loud that its findings are non-blocking', () => {
@@ -471,9 +482,13 @@ describe('checkModuleLayers watches the same file set as the driver boundary gua
       });
 
       it('keeps the findings out of every blocking bucket', () => {
-        const { errors, vacuous } = collectModuleLayerFindings();
-        expect(errors).toEqual([]);
-        expect(vacuous.map((v) => v.rule)).not.toContain('driver-sdk-no-direct-tauri');
+        // Reads the real tree, so it takes the lock like every other read of
+        // it.
+        withProbeLock(() => {
+          const { errors, vacuous } = collectModuleLayerFindings();
+          expect(errors).toEqual([]);
+          expect(vacuous.map((v) => v.rule)).not.toContain('driver-sdk-no-direct-tauri');
+        });
       });
     });
 
@@ -699,16 +714,22 @@ describe('checkModuleLayers watches the same file set as the driver boundary gua
     });
 
     it('refuses to pass when a blocking rule has no subject directory', () => {
-      const { code } = withTempRule(
-        {
-          name: '__probe-absent-subject',
-          from: `${PROBE_DIR}/gone`,
-          forbiddenPackages: ['@tauri-apps/'],
-          blocking: true,
-        },
-        run,
-      );
-      expect(code).toBe(2);
+      // The verdict is a verdict on the **real** tree, so it is taken under
+      // the probe lock like every other one (the rule's subject is absent, so
+      // no probe is planted here — but the scan that reaches that verdict
+      // still reads the tree).
+      withProbeLock(() => {
+        const { code } = withTempRule(
+          {
+            name: '__probe-absent-subject',
+            from: `${PROBE_DIR}/gone`,
+            forbiddenPackages: ['@tauri-apps/'],
+            blocking: true,
+          },
+          run,
+        );
+        expect(code).toBe(2);
+      });
     });
 
     it('still reports an absent advisory rule as a report, not a failure', () => {

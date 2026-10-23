@@ -3,7 +3,7 @@
 //! # 这一层为什么在宿主
 //!
 //! 共享 crate `packages/tunnel` 只留**规则**（指纹、TOFU 判定、错误文案）与
-//! **存储端口** [`KnownHostsStore`]；**文件 I/O** 是形态的事，因此住在宿主：
+//! **存储端口** [`KnownHostsRepository`]；**文件 I/O** 是形态的事，因此住在宿主：
 //! 桌面读 `{appData}/ssh_known_hosts.json`，将来的 web 形态由服务端 host 实现
 //! （服务端存储目录 / 组织级存储）。
 //!
@@ -18,13 +18,13 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use datazen_tunnel::{KnownHostEntry, KnownHostsStore, KnownHostsStoreError};
+use datazen_tunnel::{KnownHostEntry, KnownHostsRepository, KnownHostsRepositoryError};
 
 /// 桌面形态的 known-hosts 端口实例（`{appData}/ssh_known_hosts.json`）。
 ///
 /// 组装根用它创建那**一份**实例，再注入会话后端与 `AppState`。
-pub fn desktop_known_hosts_store(data_dir: &Path) -> Arc<dyn KnownHostsStore> {
-    Arc::new(DesktopKnownHostsStore::new(
+pub fn desktop_known_hosts_repository(data_dir: &Path) -> Arc<dyn KnownHostsRepository> {
+    Arc::new(DesktopKnownHostsRepository::new(
         data_dir.join("ssh_known_hosts.json"),
     ))
 }
@@ -33,11 +33,11 @@ pub fn desktop_known_hosts_store(data_dir: &Path) -> Arc<dyn KnownHostsStore> {
 ///
 /// 实例由宿主在**组装期**创建一次并注入（不新增进程级全局）：隧道机制在每次
 /// 建连时读它，在首次接受主机密钥时写它。
-pub struct DesktopKnownHostsStore {
+pub struct DesktopKnownHostsRepository {
     path: PathBuf,
 }
 
-impl DesktopKnownHostsStore {
+impl DesktopKnownHostsRepository {
     /// 指向 `{appData}/ssh_known_hosts.json`。
     pub fn new(path: PathBuf) -> Self {
         Self { path }
@@ -49,7 +49,7 @@ impl DesktopKnownHostsStore {
     }
 }
 
-impl KnownHostsStore for DesktopKnownHostsStore {
+impl KnownHostsRepository for DesktopKnownHostsRepository {
     /// 读出全部条目。
     ///
     /// **读不到一律按空集合处理**：文件缺失不记日志（那是「还没记过」），文件损坏
@@ -77,21 +77,24 @@ impl KnownHostsStore for DesktopKnownHostsStore {
     ///
     /// 错误文案逐字保留（`create known hosts dir …` / `serialize ssh_known_hosts.json: …`
     /// / `write …`），调用方把它们原样记进日志。
-    fn save(&self, entries: &HashMap<String, KnownHostEntry>) -> Result<(), KnownHostsStoreError> {
+    fn save(
+        &self,
+        entries: &HashMap<String, KnownHostEntry>,
+    ) -> Result<(), KnownHostsRepositoryError> {
         let path = &self.path;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                KnownHostsStoreError::Unavailable(format!(
+                KnownHostsRepositoryError::Unavailable(format!(
                     "create known hosts dir {}: {e}",
                     parent.display()
                 ))
             })?;
         }
         let json = serde_json::to_string_pretty(entries).map_err(|e| {
-            KnownHostsStoreError::Unavailable(format!("serialize ssh_known_hosts.json: {e}"))
+            KnownHostsRepositoryError::Unavailable(format!("serialize ssh_known_hosts.json: {e}"))
         })?;
         std::fs::write(path, json).map_err(|e| {
-            KnownHostsStoreError::Unavailable(format!("write {}: {e}", path.display()))
+            KnownHostsRepositoryError::Unavailable(format!("write {}: {e}", path.display()))
         })
     }
 }
@@ -112,7 +115,7 @@ mod tests {
     fn the_roundtrip_keeps_the_frozen_on_disk_shape() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("ssh_known_hosts.json");
-        let store = DesktopKnownHostsStore::new(path.clone());
+        let store = DesktopKnownHostsRepository::new(path.clone());
 
         assert!(store.load().is_empty(), "a missing file reads as empty");
 
@@ -136,7 +139,7 @@ mod tests {
     #[test]
     fn a_missing_file_reads_as_empty_without_a_warning() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = DesktopKnownHostsStore::new(dir.path().join("missing.json"));
+        let store = DesktopKnownHostsRepository::new(dir.path().join("missing.json"));
         assert!(store.load().is_empty());
     }
 
@@ -145,7 +148,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("ssh_known_hosts.json");
         std::fs::write(&path, "{ not json").expect("write invalid json");
-        let store = DesktopKnownHostsStore::new(path);
+        let store = DesktopKnownHostsRepository::new(path);
         assert!(store.load().is_empty());
     }
 
@@ -155,7 +158,7 @@ mod tests {
         // 目录本身当文件写：写入必然失败，错误文案必须仍是「write <path>: …」。
         let path = dir.path().join("ssh_known_hosts.json");
         std::fs::create_dir_all(&path).expect("create dir in place of the file");
-        let store = DesktopKnownHostsStore::new(path.clone());
+        let store = DesktopKnownHostsRepository::new(path.clone());
         let error = store.save(&HashMap::new()).expect_err("write must fail");
         assert!(
             error

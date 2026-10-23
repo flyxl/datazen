@@ -1,10 +1,10 @@
 //! The declared capability surface and namespace shape of the sqlite driver,
-//! matching `docs/architecture/platform/driver-capability-migration.md` §2.1.
+//! matching `docs/architecture/platform/connection-management.md` §5.2.
 //!
 //! Kept apart from the provider itself so the declarations can be read — and
 //! tested — without wading through the connection plumbing. Every cell below is
 //! either read off the driver's own code or explicitly refused; see
-//! `driver-capability-migration.md` §6.1 for the cells that may never be
+//! `connection-management.md` §5.2 for the cells that may never be
 //! opened on the strength of a pool size.
 
 use std::collections::BTreeMap;

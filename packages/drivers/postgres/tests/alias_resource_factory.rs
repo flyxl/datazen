@@ -1,6 +1,6 @@
 //! Reuse aliases (questdb / cloudberry) must reach the resource contract.
 //!
-//! `driver-capability-migration.md` §6.2 makes "every namespace API call site
+//! The P2 stage of the platform development plan makes "every namespace API call site
 //! on the host migrated" the retirement condition for the legacy adapter, and
 //! the platform session backend opens every resource through
 //! `DriverRegistry::resource_provider(database_type)`. A PostgreSQL alias

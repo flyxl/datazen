@@ -47,7 +47,6 @@
 - [共享 feature 服务边界](platform/feature-core.md)
 - [假资源夹具与基准](platform/fake-runtime-fixtures.md)
 - [持久化模型](platform/persistence-model.md)
-- [驱动能力迁移与发布矩阵](platform/driver-capability-migration.md)
 - [迁移三件套与 JobRuntime](platform/data-migration-jobs.md)
 - [Workflow 资源模型](platform/workflow-resource-model.md)
 - [AI/MCP/Wapp 与辅助任务接入](platform/consumer-adapters.md)

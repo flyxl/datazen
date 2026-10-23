@@ -2,8 +2,8 @@
 //!
 //! Source of truth: `docs/architecture/platform/connection-management.md` §5.2
 //! (capability enums) and §4 (`CapabilitySnapshot` DTO), plus
-//! `docs/architecture/platform/driver-capability-migration.md` §5.3
-//! (breaking-change table) and §6.1 (fail-closed rules).
+//! `docs/architecture/backend/drivers.md` §2.5 (the criteria for changing a
+//! public contract).
 //!
 //! # Fail-closed design
 //!
@@ -17,7 +17,7 @@
 //!
 //! * `SessionContinuity::Fixed` may only be declared when the driver really
 //!   owns a session-scoped physical connection. A pool of size one is **not**
-//!   evidence of a fixed session (`driver-capability-migration.md` §6.1).
+//!   evidence of a fixed session (`connection-management.md` §5.2).
 //! * An `Unsupported` / `Unknown` capability must be turned into an explicit
 //!   error by [`CapabilityRegistry::require_*`]; it must never be mapped onto a
 //!   successful no-op.
@@ -282,7 +282,7 @@ pub enum SessionContinuity {
 impl SessionContinuity {
     /// Only `Fixed` supports session-scoped guarantees. `Unknown` is treated
     /// exactly like `Leased`; a pool of size one is not a fixed session
-    /// (`driver-capability-migration.md` §6.1).
+    /// (`connection-management.md` §5.2).
     pub fn is_fixed(self) -> bool {
         matches!(self, Self::Fixed)
     }
@@ -709,7 +709,7 @@ impl ProtocolCompatibility {
 /// window this crate can honour. It exists so that no code path can quietly
 /// lower `MIN_PROTOCOL_VERSION` or drop capabilities to make an
 /// incompatible driver load
-/// (`driver-capability-migration.md` §5.4).
+/// (`docs/architecture/backend/drivers.md` §2.5).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ProtocolGateError {
     #[error(
@@ -725,7 +725,8 @@ pub enum ProtocolGateError {
 /// [`check_protocol_compatibility`] is the fail-closed wrapper; this function
 /// exposes the raw classification so a host gate can apply its own decision
 /// for [`ProtocolCompatibility::AheadOfHost`] without this crate pre-empting
-/// that choice (`driver-capability-migration.md` §5.4 item H).
+/// that choice (`docs/architecture/backend/drivers.md` §2.5 — the
+/// `pv > PROTOCOL_VERSION` branch is the host gate's own decision).
 pub fn classify_protocol_version(declared: u32) -> ProtocolCompatibility {
     if declared < MIN_PROTOCOL_VERSION {
         ProtocolCompatibility::BelowMinimum

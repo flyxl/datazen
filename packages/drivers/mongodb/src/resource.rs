@@ -19,7 +19,7 @@
 //!    names its database explicitly. So the descriptor reports
 //!    `SessionContinuity::Leased`, `stateful_session` stays `Unsupported`, and
 //!    `change_context` refuses outright instead of pretending it moved
-//!    something. See `driver-capability-migration.md` §2.1 事实二 and §6.1.
+//!    something. See `connection-management.md` §5.2.
 //! 3. **Nothing is reported that was not observed.** There is no session
 //!    context to read back, no transaction this driver opened, and no cursor
 //!    handle to interrupt, so `observe_session` reports `Unknown` rather than a

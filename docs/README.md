@@ -81,13 +81,13 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 - [系统概要设计](architecture/platform/system-overview.md)：三种运行方式、模块职责、交互与接口。
 - [连接管理详细设计](architecture/platform/connection-management.md)：数据契约、状态机、算法、验收标准与 74 个测试用例，是接口契约、错误码与验收的唯一权威。
 - [分阶段开发计划](development/platform-development-plan.md)：连接重构、多应用形态、团队服务和多 worker 的依赖与交付门槛，是阶段→补充契约归属的唯一权威。
+- [DDD 分层收敛计划](development/ddd-refactor-plan.md)：按依赖规则收敛分层——断环、领域纯化、编排归位、装配根收敛的实测基线、分期验收与待裁定决策点。
 
 补充详细设计（P0–P2）：
 
 - [共享应用边界与端口详细设计](architecture/platform/shared-boundaries-and-ports.md)：包边界与依赖矩阵、runtime 内部模块、端口 trait 签名、请求上下文三来源与 Tauri 组装根。
 - [P0 假资源夹具与基准 harness 详细设计](architecture/platform/fake-runtime-fixtures.md)：transport-neutral fake 的资源契约、F1～F12 故障注入矩阵、CommandJournal、Barrier/DrainBarrier 与 FakeClock。
 - [持久化模型详细设计](architecture/platform/persistence-model.md)：可落盘白名单与禁落盘清单、管理库表的 DDL 与 CHECK、本地 Store ↔ 服务端 DB 映射、schema 版本与 expand/contract。
-- [驱动能力迁移详细设计](architecture/platform/driver-capability-migration.md)：path 能力基线、迁移批次、协议门槛、adapter 退役及 P10 path/Git 发布验收。
 
 补充详细设计与运维流程（P5–P10）：
 

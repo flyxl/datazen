@@ -18,7 +18,7 @@
 
 **五个驱动领域契约**（`datazen-driver-api` 0.0.13 → 0.0.19）：`SqlDialect`（方言文本规则 + 共享 SQL builder）、`CatalogReader`（目录读取）、`CommandCatalog`（命令描述）、`SchemaMigration`（结构迁移规则）、`BackupDialect`（备份文件规则）。每个契约都配一个**借用适配器**（`LegacySqlDialect` / `LegacyCatalogReader` / `LegacyCommandCatalog` / `LegacySchemaMigration` / `LegacyBackupDialect`），适配器单向委托给旧 trait 方法——新增契约是 additive，外部驱动无需重新编译即可继续工作。宿主侧的 schema cache 与 SQL builder 已不再依赖驱动的目录/方言实现，运行时执行路径收敛到 `ResourceProvider`，per-database 池维护收敛到 runtime 会话层用例（宿主不再直接调用驱动）。
 
-`PROTOCOL_VERSION` 保持 **6**（2026-10-21 起冻结；兼容门禁族一并退役），详见 [driver-capability-migration.md](docs/architecture/platform/driver-capability-migration.md) §5。
+`PROTOCOL_VERSION` 保持 **6**（2026-10-21 起冻结；兼容门禁族一并退役），详见 [驱动层 §2.5](docs/architecture/backend/drivers.md#25-协议版本闸门)。
 
 ### 🗑️ 移除（Removed）
 

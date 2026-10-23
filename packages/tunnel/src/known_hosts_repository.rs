@@ -1,4 +1,4 @@
-//! `KnownHostsStore`：SSH known-hosts 的**存储端口**。
+//! `KnownHostsRepository`：SSH known-hosts 的**存储端口**。
 //!
 //! # 为什么是端口，而不是共享包里的一个函数
 //!
@@ -24,12 +24,12 @@
 //!
 //! # 降级语义属于契约，不属于实现
 //!
-//! [`KnownHostsStore::load`] **不失败**：读不到（文件缺失 / 损坏 / 不可读）一律
+//! [`KnownHostsRepository::load`] **不失败**：读不到（文件缺失 / 损坏 / 不可读）一律
 //! 按**空集合**处理。TOFU 的语义就是「没有记录 ⇒ 首次使用即信任」，一份坏文件
 //! 不得阻断隧道启动。实现负责把这件事**记进日志**（桌面实现记的是既有那两条
 //! warn 文案）。
 //!
-//! 反过来，[`KnownHostsStore::save`] 失败**必须**如实报错：它意味着「这台主机的
+//! 反过来，[`KnownHostsRepository::save`] 失败**必须**如实报错：它意味着「这台主机的
 //! 指纹没能记下来」，下一次连接会被当成首次使用。
 
 use std::collections::HashMap;
@@ -40,7 +40,7 @@ use crate::ssh_known_hosts::KnownHostEntry;
 ///
 /// 只有一种含义：**存不下**。文案由实现给出，调用方原样记进日志。
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum KnownHostsStoreError {
+pub enum KnownHostsRepositoryError {
     #[error("{0}")]
     Unavailable(String),
 }
@@ -49,14 +49,17 @@ pub enum KnownHostsStoreError {
 ///
 /// 实现必须能安全共享：宿主在组装期创建**一个**实例并注入，SSH 隧道在每次建连
 /// 时读它、在首次接受主机密钥时写它。
-pub trait KnownHostsStore: Send + Sync + 'static {
+pub trait KnownHostsRepository: Send + Sync + 'static {
     /// 读出全部条目（键是 `host:port`）。
     ///
     /// **不失败**：读不到一律按空集合返回（见模块头的「降级语义属于契约」）。
     fn load(&self) -> HashMap<String, KnownHostEntry>;
 
     /// 保存全部条目。
-    fn save(&self, entries: &HashMap<String, KnownHostEntry>) -> Result<(), KnownHostsStoreError>;
+    fn save(
+        &self,
+        entries: &HashMap<String, KnownHostEntry>,
+    ) -> Result<(), KnownHostsRepositoryError>;
 }
 
 #[cfg(test)]
@@ -70,7 +73,7 @@ mod tests {
         entries: std::sync::Mutex<HashMap<String, KnownHostEntry>>,
     }
 
-    impl KnownHostsStore for MemoryKnownHosts {
+    impl KnownHostsRepository for MemoryKnownHosts {
         fn load(&self) -> HashMap<String, KnownHostEntry> {
             self.entries
                 .lock()
@@ -81,9 +84,9 @@ mod tests {
         fn save(
             &self,
             entries: &HashMap<String, KnownHostEntry>,
-        ) -> Result<(), KnownHostsStoreError> {
+        ) -> Result<(), KnownHostsRepositoryError> {
             let mut guard = self.entries.lock().map_err(|_| {
-                KnownHostsStoreError::Unavailable("known hosts lock poisoned".into())
+                KnownHostsRepositoryError::Unavailable("known hosts lock poisoned".into())
             })?;
             *guard = entries.clone();
             Ok(())
@@ -114,7 +117,7 @@ mod tests {
 
     #[test]
     fn the_store_error_carries_the_hosts_own_message() {
-        let error = KnownHostsStoreError::Unavailable("write /tmp/x.json: boom".into());
+        let error = KnownHostsRepositoryError::Unavailable("write /tmp/x.json: boom".into());
         assert_eq!(error.to_string(), "write /tmp/x.json: boom");
     }
 }
