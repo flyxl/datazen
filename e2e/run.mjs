@@ -694,14 +694,34 @@ if (INSTANCE_COUNT > 1) {
       if (wdioArgs[i] === '--spec' && wdioArgs[i + 1]) fromArgs.push(wdioArgs[i + 1]);
     }
     if (fromArgs.length > 0) return [...new Set(fromArgs)];
+    // 只收「真的有用例」的 spec 文件，规则与 wdio.conf.ts 的 exclude 对齐：
+    // 截图/录屏 spec 是刻意不进默认套件的（会重写 site/ 下已提交的截图二进制，
+    // 还需要人工摆好的窗口与种子数据），把它们的「0 个用例」当成失败毫无意义。
+    const capture = Boolean(process.env.E2E_CAPTURE);
+    const excluded = capture
+      ? []
+      : [
+          /\/specs\/zz-screenshots\.ts$/,
+          /\/specs\/demo-recording[^/]*\.ts$/,
+          /\/specs\/zz-diag\.ts$/,
+          /\/specs\/[^/]*screenshot[^/]*\.ts$/,
+        ];
     const out = [];
     const walk = (dir) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) walk(full);
-        else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
-          out.push(path.relative(ROOT, full));
+        if (entry.isDirectory()) {
+          walk(full);
+          continue;
         }
+        if (!entry.name.endsWith('.ts') || entry.name.endsWith('.d.ts')) continue;
+        const rel = path.relative(ROOT, full);
+        if (excluded.some((re) => re.test(rel))) continue;
+        // 纯 helper 文件（journeys/*Helpers.ts 这类）不是 spec，跑它只会得到
+        // 「0 个用例」；按内容判别比按文件名猜更可靠。
+        const source = fs.readFileSync(full, 'utf8');
+        if (!/\b(describe|it)\s*\(/.test(source)) continue;
+        out.push(rel);
       }
     };
     walk(path.join(ROOT, 'e2e', 'specs'));
