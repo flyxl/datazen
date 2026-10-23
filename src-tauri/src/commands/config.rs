@@ -6,7 +6,9 @@ use std::path::PathBuf;
 use tauri::State;
 
 pub(crate) async fn get_groups_impl(state: &AppState) -> Result<Vec<String>, CommandError> {
-    Ok(state.store.get_groups().await)
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
+    crate::commands::port_call::port_cmd(services.connections.groups(&scope).await, "get_groups")
 }
 
 pub(crate) async fn save_groups_impl(
@@ -14,11 +16,23 @@ pub(crate) async fn save_groups_impl(
     groups: Vec<String>,
 ) -> Result<(), CommandError> {
     tracing::info!(count = groups.len(), "save_groups");
-    state.store.save_groups(groups).await.cmd_err("save_groups")
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
+    crate::commands::port_call::port_cmd(
+        services.connections.save_groups(&scope, groups).await,
+        "save_groups",
+    )
 }
 
 pub(crate) async fn get_settings_impl(state: &AppState) -> Result<AppSettings, CommandError> {
-    Ok(state.store.get_settings().await)
+    let services = crate::platform::ipc::require_application_services(state)?;
+    let value = services
+        .settings_service()
+        .read_app_settings()
+        .await
+        .map_err(|_| CommandError::Internal("Unable to read settings".into()))?;
+    serde_json::from_value(value)
+        .map_err(|_| CommandError::Internal("Unable to read settings".into()))
 }
 
 pub(crate) async fn save_settings_impl(
@@ -32,11 +46,14 @@ pub(crate) async fn save_settings_impl(
         .apply_shared_settings(shared)
         .map_err(CommandError::Validation)?;
     tracing::debug!(theme_mode = %settings.theme.mode, "save_settings");
-    state
-        .store
-        .save_settings(settings.clone())
+    let services = crate::platform::ipc::require_application_services(state)?;
+    let value = serde_json::to_value(&settings)
+        .map_err(|_| CommandError::Internal("Unable to persist settings".into()))?;
+    services
+        .settings_service()
+        .save_app_settings(value)
         .await
-        .cmd_err("save_settings")?;
+        .map_err(|_| CommandError::Internal("Unable to persist settings".into()))?;
     crate::redis_flush_gate::sync_from_settings(&settings);
     state
         .monitor_engine
@@ -93,12 +110,13 @@ pub async fn save_shared_settings(
             }
             _ => CommandError::Internal("Unable to persist settings".into()),
         })?;
-    crate::redis_flush_gate::sync_from_settings(&state.store.get_settings().await);
+    let full_settings = get_settings_impl(state.inner()).await?;
+    crate::redis_flush_gate::sync_from_settings(&full_settings);
     Ok(saved)
 }
 
 pub(crate) async fn get_log_path_impl(state: &AppState) -> Result<String, CommandError> {
-    let settings = state.store.get_settings().await;
+    let settings = get_settings_impl(state).await?;
     let data_dir = state.store.data_dir();
     let log_dir = crate::resolve_log_dir(data_dir, &settings.log_path);
     Ok(log_dir.to_string_lossy().to_string())
@@ -168,7 +186,7 @@ fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(), CommandE
 /// Open the application log directory (path resolved server-side).
 #[tauri::command]
 pub async fn open_log_dir(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let settings = state.store.get_settings().await;
+    let settings = get_settings_impl(state.inner()).await?;
     let data_dir = state.store.data_dir();
     let log_dir = crate::resolve_log_dir(data_dir, &settings.log_path);
     std::fs::create_dir_all(&log_dir).map_err(CommandError::from)?;
@@ -186,7 +204,7 @@ pub async fn open_workflows_dir(state: State<'_, AppState>) -> Result<(), Comman
 /// Open the configured AI context directory (path resolved server-side).
 #[tauri::command]
 pub async fn open_context_dir(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let settings = state.store.get_settings().await;
+    let settings = get_settings_impl(state.inner()).await?;
     let data_dir = state.store.data_dir();
     let context_dir = crate::resolve_context_dir(data_dir, &settings.context_dir);
     std::fs::create_dir_all(&context_dir).map_err(CommandError::from)?;
@@ -220,7 +238,7 @@ pub(crate) async fn open_path_impl(state: &AppState, path: String) -> Result<(),
         .map_err(|e| CommandError::Validation(format!("Cannot resolve path: {e}")))?;
     let data_canon = data_dir.canonicalize().unwrap_or(data_dir.clone());
 
-    let settings = state.store.get_settings().await;
+    let settings = get_settings_impl(state).await?;
     let context_root = crate::resolve_context_dir(&data_dir, &settings.context_dir);
     let context_canon = context_root.canonicalize().ok();
 

@@ -1,6 +1,25 @@
 //! Tests for the app-data ZIP archive commands.
 
 use super::*;
+
+#[test]
+fn app_archive_reads_settings_through_the_application_services() {
+    let production = include_str!("app_archive.rs")
+        .split("#[cfg(test)]")
+        .next()
+        .expect("app_archive.rs 必须有生产半边");
+    assert!(
+        production.contains("get_settings_impl(state)")
+            && !production.contains("state.store.get_settings"),
+        "归档选项必须经设置用例读取，不能直读宿主 store"
+    );
+    assert_eq!(
+        production.matches("state.store").count(),
+        2,
+        "归档命令只允许保留 export/import 的 data_dir() 宿主路径访问"
+    );
+}
+
 #[test]
 fn export_options_from_settings_reflects_monitor_flag() {
     use crate::store::AppSettings;

@@ -23,6 +23,24 @@ impl<'a> SettingsService<'a> {
             .write_settings(Self::normalize(settings)?)
             .await?)
     }
+
+    /// Read the host-owned full settings document through the injected port.
+    ///
+    /// The application layer deliberately keeps this payload opaque: the
+    /// desktop-only `AppSettings` type contains paths and onboarding state that
+    /// must not become a second cross-shape DTO. The host deserializes it at the
+    /// IPC boundary after the storage call returns.
+    pub async fn read_app_settings(&self) -> Result<serde_json::Value, SettingsError> {
+        Ok(self.repository.read_app_settings().await?)
+    }
+
+    /// Persist the host-owned full settings document through the injected port.
+    pub async fn save_app_settings(
+        &self,
+        settings: serde_json::Value,
+    ) -> Result<serde_json::Value, SettingsError> {
+        Ok(self.repository.write_app_settings(settings).await?)
+    }
     pub fn normalize(mut settings: SharedSettings) -> Result<SharedSettings, SettingsError> {
         let p = &settings.preferences;
         let valid = matches!(p.theme.mode.as_str(), "light" | "dark" | "system")

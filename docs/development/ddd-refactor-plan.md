@@ -265,8 +265,16 @@ flowchart TB
   钉住 8 处取聚合、12 处端口调用），全仓生产半边 93 → 84。
   两条**当时没被写进表格的隐账**在本族被结清：`duplicate_connection_impl` 与
   `reorder_connections` 的 `state.store` 是跨行书写的，逐行 grep 数不到；真实处数是 11 + 2。
-  另外把「端口调用 → 命令错误」的映射收口成 `commands/port_call.rs::port_cmd`
-  （`tunnel.rs` 的同名助手改为转调它），避免每个命令族各抄一份 `PortError` 映射。
+   另外把「端口调用 → 命令错误」的映射收口成 `commands/port_call.rs::port_cmd`
+   （`tunnel.rs` 的同名助手改为转调它），避免每个命令族各抄一份 `PortError` 映射。
+- **第四条命令族（2026-10-23，设置与分组）**：分组读写复用连接目录聚合的
+  `ConnectionCatalog::groups/save_groups`；完整 `AppSettings` 读写复用设置仓储的 opaque
+  document 方法，typed 的 `SharedSettings` 仍由同一仓储提供。这样主题、键位、执行策略等
+  跨形态字段继续走 `SharedSettings`，而路径、onboarding 等桌面字段不被复制进中立 DTO。
+  `commands/config.rs` 的生产半边 `state.store` **12 → 4**，`app_archive.rs` **3 → 2**，
+  `window.rs` **2 → 0**；保留的六处仅为 §5.1.3 的 `data_dir()`，另有一处钥匙导出仍待
+  宿主密钥门面。全仓生产半边 **84 → 73**。`shared_settings_commands_read_the_aggregate_not_the_host_store`
+  同时钉住设置/分组不得直读 store 与四条设置读写路径必须经过聚合。
 - **验收**：该 feature 的 `commands` 文件行数下降 ≥50%；`grep state.store.` 在该 feature 目录降为 0；IPC 签名与返回类型不变（用既有前端类型做回归）。
 - **回滚**：按 feature 分批，每批独立 PR。
 - **风险**：双轨期重复逻辑 → 冻结规则：新代码必须进用例层，旧代码只减不增。
