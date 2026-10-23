@@ -104,7 +104,7 @@ describe('GridCell foreign-key entry', () => {
     fireEvent.click(arrow);
 
     expect(onFkActivate).toHaveBeenCalledTimes(1);
-    expect(onFkActivate).toHaveBeenCalledWith(0, 'customer_id');
+    expect(onFkActivate).toHaveBeenCalledWith(0, 'customer_id', null);
     // A jump is not an edit.
     expect(onCellDoubleClick).not.toHaveBeenCalled();
   });
