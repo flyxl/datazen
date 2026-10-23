@@ -736,9 +736,21 @@ if (INSTANCE_COUNT > 1) {
       const proc = spawn(
         'npx',
         ['wdio', 'run', 'e2e/wdio.conf.ts', ...otherWdioArgs, '--spec', spec],
-        { stdio: 'inherit', cwd: ROOT, env: baseEnv },
+        { stdio: ['ignore', 'pipe', 'pipe'], cwd: ROOT, env: baseEnv },
       );
       let timedOut = false;
+      // 有些 spec 文件只在专项开关下才有用例（例如截图 spec）。WDIO 对「一个用例
+      // 都没跑」仍返回非零，那等于把「跳过」记成「失败」，会把整包结论搞脏。
+      let zeroTests = false;
+      let tail = '';
+      const forward = (chunk, stream) => {
+        const text = chunk.toString();
+        stream.write(chunk);
+        tail = (tail + text).slice(-4000);
+        if (/Spec Files:\s+0 passed, 0 total/.test(tail)) zeroTests = true;
+      };
+      proc.stdout.on('data', (chunk) => forward(chunk, process.stdout));
+      proc.stderr.on('data', (chunk) => forward(chunk, process.stderr));
       const timer = setTimeout(() => {
         timedOut = true;
         log(`spec timed out after ${Math.round(SPEC_TIMEOUT_MS / 1000)}s, killing: ${spec}`);
@@ -750,7 +762,8 @@ if (INSTANCE_COUNT > 1) {
       }, SPEC_TIMEOUT_MS);
       proc.on('close', (code) => {
         clearTimeout(timer);
-        resolve(timedOut ? 1 : (code ?? 1));
+        if (timedOut) return resolve({ code: 1, skipped: false });
+        resolve({ code: code ?? 1, skipped: zeroTests && code !== 0 });
       });
     });
 
@@ -867,25 +880,29 @@ if (INSTANCE_COUNT > 1) {
   const specs = collectIsolatedSpecs();
   log(`Isolated mode: ${specs.length} spec file(s), one app process each`);
   const failures = [];
+  const skipped = [];
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
     log(`[${i + 1}/${specs.length}] ${spec}`);
     if (i > 0) resetAppDataDir(dataDirs[0], false);
     const proc = await startAppVerified(spec);
-    let code = 1;
+    let result = { code: 1, skipped: false };
     try {
-      code = await runWdioOnce(spec);
+      result = await runWdioOnce(spec);
     } finally {
       await stopAppInstance(proc);
       const idx = appProcesses.indexOf(proc);
       if (idx >= 0) appProcesses.splice(idx, 1);
     }
-    if (code !== 0) failures.push(spec);
-    log(`[${i + 1}/${specs.length}] ${code === 0 ? 'PASS' : 'FAIL'} ${spec}`);
+    if (result.skipped) skipped.push(spec);
+    else if (result.code !== 0) failures.push(spec);
+    const label = result.skipped ? 'SKIP' : result.code === 0 ? 'PASS' : 'FAIL';
+    log(`[${i + 1}/${specs.length}] ${label} ${spec}`);
   }
 
   cleanup();
   runEnvTeardown();
+  if (skipped.length > 0) log(`${skipped.length} spec file(s) had no runnable case (skipped)`);
   if (failures.length === 0) {
     log(`All ${specs.length} isolated spec files passed!`);
     process.exit(0);
