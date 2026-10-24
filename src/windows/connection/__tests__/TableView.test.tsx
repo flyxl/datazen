@@ -28,8 +28,7 @@ vi.mock('../../../stores/settingsStore', () => ({
   // The store is read both as a hook and as a plain snapshot (the read path
   // asks for the count strategy outside of React), so the mock carries both.
   useSettingsStore: Object.assign(
-    (sel: (s: { settings: typeof settingsState }) => unknown) =>
-      sel({ settings: settingsState }),
+    (sel: (s: { settings: typeof settingsState }) => unknown) => sel({ settings: settingsState }),
     { getState: () => ({ settings: settingsState }) },
   ),
 }));
@@ -67,7 +66,9 @@ vi.mock('../../../lib/databaseTypes', () => ({
 
 const tableController = vi.hoisted(() => ({
   snapshot: { state: 'ready' },
-  refresh: vi.fn().mockResolvedValue({ state: 'ready', observedContext: { transactionState: 'none' } }),
+  refresh: vi
+    .fn()
+    .mockResolvedValue({ state: 'ready', observedContext: { transactionState: 'none' } }),
   execute: vi.fn().mockResolvedValue({ executionId: 'table-tx' }),
   getExecution: vi.fn().mockResolvedValue({ state: 'succeeded' }),
 }));
@@ -301,7 +302,10 @@ describe('TableView', () => {
     fireEvent.click(screen.getByTestId('table-tx-begin'));
 
     await vi.waitFor(() =>
-      expect(tableController.execute).toHaveBeenCalledWith({ command: 'platform.beginTransaction', input: { defersCommit: true } }),
+      expect(tableController.execute).toHaveBeenCalledWith({
+        command: 'platform.beginTransaction',
+        input: { defersCommit: true },
+      }),
     );
   });
 
@@ -470,5 +474,96 @@ describe('TableView', () => {
     }).not.toThrow();
 
     expect(screen.getByTestId('mock-data-table')).toBeInTheDocument();
+  });
+});
+
+describe('TableView no-primary-key escape hatch (DB-16)', () => {
+  /** Seed a loaded, PK-less page — the state every DB-16 case starts from. */
+  function seedNoPkPanel() {
+    seedPanel(contextOf(), {
+      columns: [{ name: 'token', dataType: 'text', nullable: true, isPrimaryKey: false }],
+      rows: [{ token: 'a1' }],
+      totalRows: 1,
+    });
+  }
+
+  it('keeps the pre-DB-16 banner byte-for-byte when no handler is threaded', () => {
+    seedNoPkPanel();
+
+    renderTable();
+
+    // The order footnote only — no banner button, no editability claim.
+    expect(screen.getByText('defaultSort.noPrimaryKey')).toBeInTheDocument();
+    expect(screen.queryByTestId('table-no-primary-key-edit-in-sql')).toBeNull();
+    expect(screen.queryByText('tableNoPk.editBanner')).toBeNull();
+  });
+
+  it('swaps the footnote for the editability banner with a working action', () => {
+    seedNoPkPanel();
+    const onEditInSql = vi.fn();
+
+    render(
+      <TableView
+        panelId={PANEL}
+        dbSessionId="c1"
+        database="app"
+        tableName="users"
+        databaseType="postgresql"
+        onEditInSql={onEditInSql}
+      />,
+    );
+
+    expect(screen.getByText('tableNoPk.editBanner')).toBeInTheDocument();
+    expect(screen.queryByText('defaultSort.noPrimaryKey')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('table-no-primary-key-edit-in-sql'));
+    expect(onEditInSql).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the editability banner even when the user has chosen a custom order', () => {
+    seedNoPkPanel();
+    // A user pick (or a named view) switches the effective order to 'none' —
+    // the old footnote would disappear, but "cannot edit here" stays true.
+    tableStore.byPanel.set(PANEL, {
+      ...emptyTableState(contextOf()),
+      columns: [{ name: 'token', dataType: 'text', nullable: true, isPrimaryKey: false }],
+      rows: [{ token: 'a1' }],
+      totalRows: 1,
+      sorts: [{ column: 'token', descending: true }],
+    });
+
+    render(
+      <TableView
+        panelId={PANEL}
+        dbSessionId="c1"
+        database="app"
+        tableName="users"
+        databaseType="postgresql"
+        onEditInSql={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('tableNoPk.editBanner')).toBeInTheDocument();
+  });
+
+  it('falls back to the footnote banner on a read-only connection', () => {
+    seedNoPkPanel();
+
+    render(
+      <TableView
+        panelId={PANEL}
+        dbSessionId="c1"
+        database="app"
+        tableName="users"
+        databaseType="postgresql"
+        readOnly={true}
+        onEditInSql={vi.fn()}
+      />,
+    );
+
+    // Read-only is a connection-wide fact with its own tip; the no-PK banner
+    // must not promise an escape hatch the connection refuses to honor.
+    expect(screen.getByText('defaultSort.noPrimaryKey')).toBeInTheDocument();
+    expect(screen.queryByTestId('table-no-primary-key-edit-in-sql')).toBeNull();
   });
 });

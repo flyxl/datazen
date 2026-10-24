@@ -219,6 +219,16 @@
 | 此列类型无法在此数据库中就地编辑。 | 该库不支持对这种类型的原地更新 |
 | 二进制列无法就地编辑。 / 此值过大，无法就地编辑。 | 内容不适合内联编辑 |
 
+没有主键的表（连接本身可写时）数据标签页顶部会显示一条横幅：**「该表没有主键——无法安全定位行，网格为只读。」** 右侧的**「用 SQL 编辑」**按钮会打开一个新的查询页签，预填一段带注释的模板：
+
+```sql
+-- This table has no primary key: the grid cannot safely address a row.
+-- Select the rows first, then write the UPDATE/DELETE against the same predicate.
+SELECT * FROM "schema"."table" WHERE /* e.g. id = 123 */;
+```
+
+思路是「先读后写」：先把想改的行用 `WHERE` 条件选出来确认，再对着同一个条件写 `UPDATE` / `DELETE`——网格不敢替你定位行，但条件是你自己写的，行由你来框定。模板不会自动执行，改完需要自己点运行。只读连接上不显示这个按钮（连接本来就不允许写，横幅只保留默认排序的说明）。
+
 查询结果网格的原因（显示在网格上方的提示条或只读单元格的悬停提示里）：
 
 | 提示 | 含义 |

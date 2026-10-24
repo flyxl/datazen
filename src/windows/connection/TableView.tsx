@@ -15,10 +15,7 @@ import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { buildRowIdentity, rowIdentityKey, tableChangeContextKey } from '../../lib/tableChanges';
 import type { TableChangeContext } from '../../lib/tableChanges';
 import { Button } from '../../components/ui/Button';
-import {
-  TablePendingChangesBar,
-  TableTransactionControls,
-} from './TablePendingChangesBar';
+import { TablePendingChangesBar, TableTransactionControls } from './TablePendingChangesBar';
 import { TableClipboardStatus } from './TableClipboardStatus';
 import { TableNoPrimaryKeyTip } from './TableNoPrimaryKeyTip';
 import { TableLoadErrorState } from './TableLoadErrorState';
@@ -38,10 +35,7 @@ import { TableReadOnlyTip } from './TableReadOnlyTip';
 import type { CellReadOnlyReason } from '../../lib/cellEditorKind';
 import { isComposingEvent, isEditableTarget } from '../../lib/gridEventGuards';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
-import {
-  likeCaseInsensitiveForMeta,
-  supportedOperatorsForMeta,
-} from '../../lib/filterOperators';
+import { likeCaseInsensitiveForMeta, supportedOperatorsForMeta } from '../../lib/filterOperators';
 import type { ColumnSchema, DatabaseType } from '../../types';
 import { resolveDefaultTableSort } from '../../lib/defaultSort';
 import { DEFAULT_ROW_COUNT_MODE, DEFAULT_TABLE_SORT } from '../../types/settings';
@@ -66,6 +60,13 @@ interface TableViewProps {
   readOnlyReason?: CellReadOnlyReason;
   /** Data-export capability, threaded to the table-data export dialog. */
   dataExportCapability?: 'none' | 'loaded_only' | 'full_table';
+  /**
+   * Escape hatch of a table without a primary key (DB-16): opens a query tab
+   * with a `SELECT … WHERE` draft. Absent — e.g. on a view panel, or wherever
+   * the mount point cannot open a query tab — the banner keeps the shape it
+   * shipped before DB-16.
+   */
+  onEditInSql?: () => void;
 }
 
 export function TableView({
@@ -79,6 +80,7 @@ export function TableView({
   readOnly: readOnlyProp,
   readOnlyReason: readOnlyReasonProp,
   dataExportCapability,
+  onEditInSql,
 }: TableViewProps) {
   const { t } = useI18n();
   const savedConnection = useConnectionStore((s) =>
@@ -259,8 +261,15 @@ export function TableView({
    * column, the write path and the "Set Value" entries.
    */
   const editing = useTableEditing({
-    panelId, dbSessionId, database, schema, tableName, databaseType, columns,
-    connectionReadOnly: isConnectionReadOnly, mountReason: readOnlyReasonProp,
+    panelId,
+    dbSessionId,
+    database,
+    schema,
+    tableName,
+    databaseType,
+    columns,
+    connectionReadOnly: isConnectionReadOnly,
+    mountReason: readOnlyReasonProp,
   });
 
   const handleCellDoubleClick = useCallback(
@@ -305,16 +314,11 @@ export function TableView({
    * it directly — there is no error to classify here, and nothing failed.
    */
   const estimateUnavailable =
-    rowCountMode === 'estimated' &&
-    (ts?.columns.length ?? 0) > 0 &&
-    totalRowsKind !== 'estimated';
+    rowCountMode === 'estimated' && (ts?.columns.length ?? 0) > 0 && totalRowsKind !== 'estimated';
   /** The panel's temporary override of the global default order. */
   const defaultOrderOverride = ts?.defaultOrderOverride ?? 'inherit';
   /** The order this read actually uses. */
-  const effectiveOrder = resolveDefaultTableSort(
-    defaultOrderOverride,
-    defaultTableSortSetting,
-  );
+  const effectiveOrder = resolveDefaultTableSort(defaultOrderOverride, defaultTableSortSetting);
   /**
    * Without an order the rows of two pages may repeat or be skipped. The grid
    * has to say so — an explicit sort the user made is stable again.
@@ -348,6 +352,19 @@ export function TableView({
     columns.length > 0 &&
     columns.every((column) => !column.isPrimaryKey) &&
     effectiveOrder !== 'none';
+
+  /**
+   * A table whose grid cannot address rows, on an otherwise editable
+   * connection (DB-16). This outranks the order hint above: "you cannot edit
+   * this here, but here is the way out" is actionable, "ordered by the first
+   * column" is a footnote — and the footnote stays reachable from the pager's
+   * sort dropdown.
+   */
+  const noPkEditBlocked =
+    onEditInSql != null &&
+    isEditable &&
+    columns.length > 0 &&
+    columns.every((column) => !column.isPrimaryKey);
 
   /** The saved-views menu, or nothing when this backend cannot serve it. */
   const namedView = useNamedViewMenu({
@@ -613,7 +630,9 @@ export function TableView({
   // Keep the table chrome (filters etc.) visible after a failed reload so the
   // user can clear/fix the bad filter instead of being stuck on a blank error page.
   if (error && columns.length === 0) {
-    return <TableLoadErrorState error={error} retryLabel={t('common.retry')} onRetry={actions.load} />;
+    return (
+      <TableLoadErrorState error={error} retryLabel={t('common.retry')} onRetry={actions.load} />
+    );
   }
 
   return (
@@ -658,7 +677,14 @@ export function TableView({
         namedView={namedView}
       />
       {readOnlyTipReason ? <TableReadOnlyTip reason={readOnlyTipReason} /> : null}
-      {noPrimaryKey && <TableNoPrimaryKeyTip message={t('defaultSort.noPrimaryKey')} />}
+      {noPkEditBlocked ? (
+        <TableNoPrimaryKeyTip
+          message={t('tableNoPk.editBanner')}
+          action={{ label: t('tableNoPk.editInSql'), onClick: onEditInSql }}
+        />
+      ) : (
+        noPrimaryKey && <TableNoPrimaryKeyTip message={t('defaultSort.noPrimaryKey')} />
+      )}
       <TableClipboardStatus bridge={clipboard} />
       <TableTransactionControls
         panelId={panelId}

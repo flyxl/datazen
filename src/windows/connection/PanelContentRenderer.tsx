@@ -13,6 +13,7 @@ import { onPanelClosed } from '../../stores/panelStore';
 import {
   type Panel,
   type SubTabId,
+  type TablePanel,
   type ViewPanel,
   type ErDiagramPanel,
   type RedisDbPanel,
@@ -22,6 +23,7 @@ import {
   type ProcessesPanel,
   type ProcessListCacheData,
 } from '../../stores/panelStore';
+import { noPrimaryKeyEditSpec, type TableContextInput } from '../../lib/tableSqlActions';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { getSubTabs, getViewSubTabs } from './contentViewHelpers';
 import { StructureView } from './StructureView';
@@ -153,6 +155,36 @@ interface SqlPanelContentProps {
   callbacks?: ContentViewCallbacks;
 }
 
+/**
+ * The "Edit in SQL" escape-hatch click of a table panel whose grid cannot
+ * address rows (DB-16). Returns `undefined` when this mount cannot open a
+ * query tab (no callbacks threaded) — `TableView` then keeps the exact
+ * pre-DB-16 banner shape.
+ *
+ * The handler goes through the generic `openSqlEditorForTable` callback so
+ * the created query tab gets the same database/schema binding as the
+ * schema-tree SELECT/INSERT actions: one code path, one context contract.
+ */
+function tablePanelEditInSql(
+  panel: TablePanel,
+  currentDatabase: string | null,
+  callbacks?: ContentViewCallbacks,
+): (() => void) | undefined {
+  const open = callbacks?.openSqlEditorForTable;
+  if (!open) return undefined;
+  const input: TableContextInput = {
+    connectionId: panel.connectionId,
+    dbSessionId: panel.dbSessionId,
+    databaseType: panel.databaseType,
+    database: panel.database ?? currentDatabase ?? '',
+    schema: panel.tableSchema ?? null,
+    tableSchema: panel.tableSchema ?? null,
+    viewSchema: null,
+    tableName: panel.tableName,
+  };
+  return () => open(input, noPrimaryKeyEditSpec(input));
+}
+
 function SqlPanelContent({
   panel,
   focusedPaneId,
@@ -202,6 +234,7 @@ function SqlPanelContent({
               databaseType={panel.databaseType}
               readOnly={panelIsReadOnly}
               dataExportCapability={panelExportScope}
+              onEditInSql={tablePanelEditInSql(panel, currentDatabase, callbacks)}
             />
           )}
           {panel.subTab === 'structure' &&

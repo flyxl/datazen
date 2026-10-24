@@ -385,7 +385,8 @@ const pack = {
     '{count} cell(s) were skipped because the paste would leave this page. Go to the next page and paste the rest there.',
   'dataTable.pasteNoWritableColumn': 'None of the columns in the selection can be written.',
   'dataTable.readOnlyPasteDisabled': 'Cannot paste cells: connection or driver is read-only.',
-  'dataTable.pasteReadOnlyColumn': '{count} column(s) cannot be written and were skipped: {columns}',
+  'dataTable.pasteReadOnlyColumn':
+    '{count} column(s) cannot be written and were skipped: {columns}',
   'dataTable.pasteNotAllowedEmpty':
     'Row {row} has an empty value for {column}, which is NOT NULL. That cell was skipped.',
   'dataTable.pasteIdentityChanged':
@@ -433,12 +434,14 @@ const pack = {
   'pagination.countExact': 'Count',
   'pagination.counting': 'Counting…',
   'pagination.pageOnly': 'Page {page}',
-  'pagination.unstablePaging':
-    'No sort order is set — rows across pages may repeat or be skipped.',
+  'pagination.unstablePaging': 'No sort order is set — rows across pages may repeat or be skipped.',
   'pagination.estimatedLessThanActual':
     'This page is empty. The real row count may be lower than the estimate — use Count to check.',
   // The default order of a table read, and the panel's temporary override.
   'defaultSort.noPrimaryKey': 'No primary key — ordering by the first column.',
+  'tableNoPk.editBanner':
+    'This table has no primary key — rows cannot be safely addressed, so the grid is read-only.',
+  'tableNoPk.editInSql': 'Edit in SQL',
   'defaultSort.custom': 'Custom order',
   'defaultSort.panelLabel': 'Sort',
   'defaultSort.inherit': 'Follow setting',
@@ -634,8 +637,7 @@ const pack = {
   // One sentence per reason — "read-only" on its own tells the user nothing.
   'cellEditor.readOnly.connection': 'This connection is read-only, so cells cannot be edited.',
   'cellEditor.readOnly.driverCapability': 'This database driver does not support writing.',
-  'cellEditor.readOnly.view':
-    'Views and materialized views are read-only in the data grid.',
+  'cellEditor.readOnly.view': 'Views and materialized views are read-only in the data grid.',
   'cellEditor.readOnly.noPrimaryKey':
     'This table has no primary key, so a row cannot be identified for an update.',
   'cellEditor.readOnly.ambiguousRowIdentity':
@@ -668,8 +670,7 @@ const pack = {
   'query.gridReadOnly.keyNotSelected':
     'The primary key columns are not all present in this result.',
   'query.gridReadOnly.sessionReadOnly': 'The current connection is read-only.',
-  'query.gridReadOnly.keyValueNull':
-    'This row has a NULL primary key value and cannot be located.',
+  'query.gridReadOnly.keyValueNull': 'This row has a NULL primary key value and cannot be located.',
   'query.gridReadOnly.duplicateIdentity':
     'This page contains duplicate row identities; editing is disabled.',
   'query.gridReadOnly.rowNotFound': 'This row is no longer part of the result.',
@@ -692,11 +693,9 @@ const pack = {
     'Fast paging is unavailable while sorting by a column that can be NULL.',
   'pagination.hint.nullBoundary':
     "This row's sort key is NULL, so fast paging restarted from an exact position.",
-  'pagination.hint.predicateUnavailable':
-    'Fast paging is unavailable for the current sort order.',
+  'pagination.hint.predicateUnavailable': 'Fast paging is unavailable for the current sort order.',
   'pagination.hint.noPaginationClause': 'This database cannot paginate this query.',
-  'pagination.hint.staleCursor':
-    'Sort or filter changed; paging restarted from the first page.',
+  'pagination.hint.staleCursor': 'Sort or filter changed; paging restarted from the first page.',
   'pagination.hint.jumpReanchored': 'Fast paging restarted from page {page}.',
   'pagination.hint.drift': 'Rows changed while paging; the row count has been refreshed.',
 } as const;
