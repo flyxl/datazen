@@ -97,6 +97,18 @@ export interface UseDataTableContextMenuOptions {
   onRemoveSort?: (column: string) => void;
   /** Drop the whole sort list. */
   onClearSorts?: () => void;
+  /* ── Frozen columns (DB-12). Omitted ⇒ no freeze entries in the header
+     menu — driver grids are unaffected. ── */
+  /** How many leading columns are currently frozen; `0` = none. */
+  frozenColumns?: number;
+  /** Freeze through the right-clicked column (that many leading columns). */
+  onFreezeThrough?: (throughIndex: number) => void;
+  /** Unfreeze every column. */
+  onUnfreezeColumns?: () => void;
+  /* ── Column statistics (DB-12). Omitted ⇒ no stats entry in the header
+     menu — driver grids are unaffected. ── */
+  /** Ask for the server-side aggregates of the right-clicked column. */
+  onColumnStats?: (column: string) => void;
   /** i18n translate function. */
   t: (key: string, params?: Record<string, string | number>) => string;
 }
@@ -142,6 +154,10 @@ export function useDataTableContextMenu(
     onAddSort,
     onRemoveSort,
     onClearSorts,
+    frozenColumns,
+    onFreezeThrough,
+    onUnfreezeColumns,
+    onColumnStats,
     t,
   } = options;
 
@@ -155,6 +171,15 @@ export function useDataTableContextMenu(
       // The multi-column sort block (DB-11) is bound to the right-clicked
       // header column; a click on a cell never offers it.
       const headerSort = hitHeaderCol && sorts ? { column: hitHeaderCol, sorts } : undefined;
+      // The freeze block (DB-12) needs the right-clicked column's position
+      // among the displayed columns and the freeze state in force.
+      const headerFreeze =
+        hitHeaderCol && (frozenColumns != null || onFreezeThrough || onUnfreezeColumns)
+          ? { index: columnNames.indexOf(hitHeaderCol), frozen: frozenColumns ?? 0 }
+          : undefined;
+      // The stats entry (DB-12) is bound to the right-clicked header column;
+      // a click on a cell never offers it.
+      const headerStats = hitHeaderCol && onColumnStats ? { column: hitHeaderCol } : undefined;
       const effectiveColName = hit ? hit.columnName : hitHeaderCol;
       const effectiveColIdx = effectiveColName ? columnNames.indexOf(effectiveColName) : -1;
       const hitRow = hit ? rows[hit.rowIndex] : undefined;
@@ -279,6 +304,9 @@ export function useDataTableContextMenu(
             sortDescending: t('dataTable.sortDescending'),
             removeSortColumn: t('dataTable.removeSortColumn'),
             clearSorts: t('dataTable.clearSorts'),
+            freezeThrough: t('dataTable.freezeThrough'),
+            unfreezeColumns: t('dataTable.unfreezeColumns'),
+            columnStats: t('dataTable.columnStats'),
           },
           handlers: {
             onCopy:
@@ -428,10 +456,15 @@ export function useDataTableContextMenu(
               : undefined,
             onRemoveSort,
             onClearSorts,
+            onFreezeThrough,
+            onUnfreezeColumns,
+            onColumnStats,
           },
           hasCellContext,
           hasHeaderContext: !!hitHeaderCol,
           headerSort,
+          headerFreeze,
+          headerStats,
           hasSelectedRows,
           multiRowSelection,
           exportEnabled,
@@ -481,6 +514,10 @@ export function useDataTableContextMenu(
       onAddSort,
       onRemoveSort,
       onClearSorts,
+      frozenColumns,
+      onFreezeThrough,
+      onUnfreezeColumns,
+      onColumnStats,
     ],
   );
 

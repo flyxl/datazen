@@ -82,6 +82,8 @@ const STORE_ACTIONS = [
   // DB-07: the first-frame seed of a tab that was opened by a foreign-key jump.
   'seedPanel',
   'selectRow',
+  // DB-12: the column tools — render-only, no re-read.
+  'setColumnOrder',
   'setDefaultOrderOverride',
   'setDetailRow',
   'setDraftValue',
@@ -89,6 +91,8 @@ const STORE_ACTIONS = [
   'setFilterLogic',
   'setFilterPanelOpen',
   'setFilters',
+  // DB-12: the freeze half of the column tools.
+  'setFrozenColumnCount',
   'setGridSelection',
   'setPage',
   'setPageSize',

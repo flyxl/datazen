@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ArrowDown, ArrowUp, Filter } from 'lucide-react';
 import type { SortCondition } from '../../types';
 import { cn } from '../../lib/cn';
@@ -42,6 +43,17 @@ export interface TableHeaderProps {
    * together with the grid itself (00-contracts §4.4).
    */
   gridSemantics?: boolean;
+  /**
+   * Reorder by dragging a header onto another one (DB-12): the callback gets
+   * the displayed indexes, `from` → `to`. Omitted ⇒ headers are not
+   * draggable, exactly as before.
+   */
+  onReorderColumns?: (from: number, to: number) => void;
+  /**
+   * How many leading columns are frozen (DB-12). `0`/omitted freezes
+   * nothing — the header renders byte for byte as before.
+   */
+  frozenColumns?: number;
 }
 
 export function TableHeader({
@@ -54,7 +66,24 @@ export function TableHeader({
   onFilterColumn,
   cellTypeHints,
   gridSemantics = false,
+  onReorderColumns,
+  frozenColumns = 0,
 }: TableHeaderProps) {
+  /** Where a drag came from and where it currently hovers (DB-12). */
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+
+  // The left offsets of the frozen headers (DB-12): the row-number gutter
+  // pins at 0 and each frozen column pins right after the one before it.
+  const frozenLefts: number[] = [];
+  if (frozenColumns > 0) {
+    let left = 40; // the `#` gutter is `w-10`
+    for (let i = 0; i < columns.length; i += 1) {
+      frozenLefts[i] = left;
+      if (i < frozenColumns) left += columnWidths?.[i] ?? 160;
+    }
+  }
+
   return (
     <div
       role={gridSemantics ? 'row' : undefined}
@@ -62,7 +91,10 @@ export function TableHeader({
     >
       <div
         role={gridSemantics ? 'columnheader' : undefined}
-        className="flex h-10 w-10 shrink-0 items-center justify-center border-r border-edge text-xs text-fg-muted"
+        className={cn(
+          'flex h-10 w-10 shrink-0 items-center justify-center border-r border-edge text-xs text-fg-muted',
+          frozenColumns > 0 && 'sticky left-0 z-20 bg-surface-alt',
+        )}
       >
         #
       </div>
@@ -74,14 +106,63 @@ export function TableHeader({
         const mine = sortPosition >= 0 ? sorts[sortPosition] : undefined;
         const sorted = mine ? (mine.descending ? 'desc' : 'asc') : ('none' as const);
         const width = columnWidths?.[colIdx] ?? 160;
+        const frozen = frozenColumns > colIdx;
+        const lastFrozen = frozen && colIdx === frozenColumns - 1;
 
         return (
           <div
             key={col.id}
             role={gridSemantics ? 'columnheader' : undefined}
             data-col-header={col.name}
-            className="relative flex h-10 shrink-0 items-center justify-between gap-2 border-r border-edge px-3"
-            style={{ width }}
+            draggable={onReorderColumns != null}
+            onDragStart={(e) => {
+              if (onReorderColumns == null) return;
+              setDragIndex(colIdx);
+              setDropIndex(null);
+              // `dataTransfer` can be null (a synthetic event in a test, an
+              // engine without a drag clipboard): the drag itself still moves
+              // the column, only the drag image keeps the default.
+              if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                // Without a payload some engines cancel the drag immediately.
+                e.dataTransfer.setData('text/plain', col.name);
+              }
+            }}
+            onDragOver={(e) => {
+              if (onReorderColumns == null || dragIndex == null) return;
+              e.preventDefault();
+              if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+              setDropIndex(colIdx);
+            }}
+            onDragLeave={() => {
+              if (dropIndex === colIdx) setDropIndex(null);
+            }}
+            onDrop={(e) => {
+              if (onReorderColumns == null || dragIndex == null) return;
+              e.preventDefault();
+              if (dragIndex !== colIdx) onReorderColumns(dragIndex, colIdx);
+              setDragIndex(null);
+              setDropIndex(null);
+            }}
+            onDragEnd={() => {
+              setDragIndex(null);
+              setDropIndex(null);
+            }}
+            className={cn(
+              'relative flex h-10 shrink-0 items-center justify-between gap-2 border-r border-edge px-3',
+              // The frozen edge (DB-12): the last pinned column needs a
+              // visible seam so the scroll boundary reads as intentional.
+              lastFrozen && 'border-r-2 border-r-accent/40',
+              // The drop target of a header drag shows where the column
+              // will land (DB-12).
+              dropIndex === colIdx && dragIndex != null && dragIndex !== colIdx
+                ? 'border-l-2 border-l-accent'
+                : undefined,
+            )}
+            style={{
+              width,
+              ...(frozen ? { position: 'sticky', left: frozenLefts[colIdx], zIndex: 20 } : {}),
+            }}
             onDoubleClick={() => {
               if (!sortable) return;
               if (sorted === 'none') onSort({ column: col.name, descending: false });

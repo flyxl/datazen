@@ -157,3 +157,68 @@ describe('TableHeader multi-column sort badges (DB-11)', () => {
     expect(onSort).toHaveBeenCalledWith({ column: 'id', descending: false });
   });
 });
+
+describe('TableHeader drag reorder (DB-12)', () => {
+  it('fires onReorderColumns when a header is dragged onto another one', () => {
+    const onReorderColumns = vi.fn();
+    const { container } = render(
+      <TableHeader
+        columns={COLS}
+        sorts={[]}
+        onSort={() => {}}
+        sortable
+        onReorderColumns={onReorderColumns}
+      />,
+    );
+    const headers = container.querySelectorAll('[data-col-header]');
+    fireEvent.dragStart(headers[2]);
+    fireEvent.dragOver(headers[0]);
+    fireEvent.drop(headers[0]);
+    expect(onReorderColumns).toHaveBeenCalledWith(2, 0);
+  });
+
+  it('headers are not draggable without the reorder handler', () => {
+    const { container } = render(
+      <TableHeader columns={COLS} sorts={[]} onSort={() => {}} sortable />,
+    );
+    const headers = container.querySelectorAll('[data-col-header]');
+    // `draggable` is an enumerated attribute: false renders as "false".
+    expect(headers[0].getAttribute('draggable')).toBe('false');
+  });
+});
+
+describe('TableHeader frozen columns (DB-12)', () => {
+  it('pins the frozen headers at cumulative offsets', () => {
+    const { container } = render(
+      <TableHeader
+        columns={COLS}
+        sorts={[]}
+        onSort={() => {}}
+        sortable
+        frozenColumns={2}
+        columnWidths={[100, 120, 140]}
+      />,
+    );
+    const headers = [...container.querySelectorAll<HTMLElement>('[data-col-header]')];
+    const idHeader = headers.find((h) => h.getAttribute('data-col-header') === 'id')!;
+    const nameHeader = headers.find((h) => h.getAttribute('data-col-header') === 'name')!;
+    const priceHeader = headers.find((h) => h.getAttribute('data-col-header') === 'price')!;
+    // The gutter is 40px wide: id pins at 40, name right after it.
+    expect(idHeader.style.position).toBe('sticky');
+    expect(idHeader.style.left).toBe('40px');
+    expect(nameHeader.style.position).toBe('sticky');
+    expect(nameHeader.style.left).toBe('140px');
+    // The unfrozen column renders exactly as before.
+    expect(priceHeader.style.position).toBe('');
+    // The frozen edge carries the visible seam.
+    expect(nameHeader.className).toContain('border-r-2');
+  });
+
+  it('freezes nothing by default', () => {
+    const { container } = render(
+      <TableHeader columns={COLS} sorts={[]} onSort={() => {}} sortable />,
+    );
+    const headers = [...container.querySelectorAll<HTMLElement>('[data-col-header]')];
+    expect(headers[0].style.position).toBe('');
+  });
+});

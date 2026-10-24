@@ -352,6 +352,25 @@ const pack = {
   'dataTable.sortDescending': 'Descending',
   'dataTable.removeSortColumn': 'Remove from Sort',
   'dataTable.clearSorts': 'Clear All Sorting',
+  // Column tools (DB-12). New keys land in en only; the other nine
+  // locales resolve them through the en fallback until the next release.
+  'dataTable.freezeThrough': 'Freeze through This Column',
+  'dataTable.unfreezeColumns': 'Unfreeze Columns',
+  'dataTable.columnStats': 'Column Stats',
+  // The column-stats dialog (DB-12): six server-side aggregates of one
+  // column, opened from the header menu. en only; same fallback as above.
+  'columnStats.title': 'Column Stats',
+  'columnStats.rows': 'Total rows',
+  'columnStats.nonNull': 'Non-null values',
+  'columnStats.nulls': 'NULL values',
+  'columnStats.distinct': 'Distinct values',
+  'columnStats.min': 'Minimum',
+  'columnStats.max': 'Maximum',
+  'columnStats.avg': 'Average',
+  'columnStats.loading': 'Computing on the server…',
+  'columnStats.error': 'The column stats query failed.',
+  'columnStats.avgUnsupported':
+    'Average is not computed for this column type (only numeric types can be averaged).',
   'dataTable.selectRow': 'Select Row',
   'dataTable.copyRow': 'Copy Row',
   'dataTable.moreActions': 'More actions',

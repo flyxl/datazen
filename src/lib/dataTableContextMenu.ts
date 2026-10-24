@@ -73,6 +73,14 @@ export type DataTableContextMenuLabels = {
   removeSortColumn?: string;
   /** "Clear all sorting". */
   clearSorts?: string;
+  /* ── Frozen columns (DB-12). All optional: a caller that does not offer
+     the freeze block keeps its exact previous menu. ── */
+  /** "Freeze through this column". */
+  freezeThrough?: string;
+  /** "Unfreeze columns". */
+  unfreezeColumns?: string;
+  /** "Column Stats" — the server-side aggregates of one column (DB-12). */
+  columnStats?: string;
 };
 
 export type DataTableContextMenuHandlers = {
@@ -115,6 +123,14 @@ export type DataTableContextMenuHandlers = {
   onRemoveSort?: (column: string) => void;
   /** Drop the whole sort list. */
   onClearSorts?: () => void;
+  /* ── Frozen columns (DB-12). ── */
+  /** Freeze through the right-clicked column (that many leading columns). */
+  onFreezeThrough?: (throughIndex: number) => void;
+  /** Unfreeze every column. */
+  onUnfreezeColumns?: () => void;
+  /* ── Column statistics (DB-12). ── */
+  /** Ask for the six server-side aggregates of the right-clicked column. */
+  onColumnStats?: (column: string) => void;
 };
 
 export type BuildDataTableContextMenuArgs = {
@@ -134,6 +150,24 @@ export type BuildDataTableContextMenuArgs = {
     column: string;
     /** The sorts in force, in `ORDER BY` order. */
     sorts: SortCondition[];
+  };
+  /**
+   * The freeze block of the header menu (DB-12). Omitted — or given without
+   * handlers — the header menu keeps its pre-DB-12 shape.
+   */
+  headerFreeze?: {
+    /** The displayed index of the right-clicked column. */
+    index: number;
+    /** How many leading columns are currently frozen; `0` = none. */
+    frozen: number;
+  };
+  /**
+   * The column-statistics entry of the header menu (DB-12). Omitted — or
+   * given without the handler — the header menu keeps its exact shape.
+   */
+  headerStats?: {
+    /** The name of the right-clicked column. */
+    column: string;
   };
   /** One or more rows are selected. */
   hasSelectedRows?: boolean;
@@ -556,10 +590,41 @@ export function buildDataTableContextMenuItems(
       );
       return push(menu, clear);
     };
-    const sorts = sortBlock();
+    // The freeze block (DB-12): "Freeze through this column" is a no-op when
+    // exactly those columns are already frozen, so it is disabled then;
+    // "Unfreeze" is disabled when nothing is frozen.
+    const freezeBlock = (): NativeMenuItemDef[] => {
+      const hf = args.headerFreeze;
+      if (!hf) return [];
+      return push(
+        enabledItem(
+          'freeze-through',
+          labels.freezeThrough ?? '',
+          handlers.onFreezeThrough ? () => handlers.onFreezeThrough?.(hf.index) : undefined,
+          hf.index + 1 !== hf.frozen,
+        ),
+        enabledItem(
+          'unfreeze-columns',
+          labels.unfreezeColumns ?? '',
+          handlers.onUnfreezeColumns,
+          hf.frozen > 0,
+        ),
+      );
+    };
+    const sorts = [...sortBlock(), ...freezeBlock()];
     const headerItems = push(
       ...sorts,
       ...(sorts.length > 0 ? [{ kind: 'separator' } as NativeMenuItemDef] : []),
+      // The stats entry (DB-12) sits with the column inspections — an
+      // "ask about this column" next to "copy this column", after the
+      // column-*arrangement* blocks.
+      item(
+        'column-stats',
+        labels.columnStats ?? '',
+        args.headerStats && handlers.onColumnStats
+          ? () => handlers.onColumnStats?.(args.headerStats!.column)
+          : undefined,
+      ),
       item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),
       item('copy-column-data', labels.copyColumnData, handlers.onCopyColumnData),
     );

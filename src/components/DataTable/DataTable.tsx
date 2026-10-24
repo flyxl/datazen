@@ -93,6 +93,25 @@ export interface DataTableProps {
   onRemoveSort?: (column: string) => void;
   /** Drop the whole sort list, from the header menu. */
   onClearSorts?: () => void;
+  /* ── Column tools (DB-12). Omitted ⇒ the grid renders and behaves exactly
+     as before — drag, freeze and width persistence all opt in. ── */
+  /** Reorder columns by dragging a header onto another one (displayed indexes). */
+  onReorderColumns?: (from: number, to: number) => void;
+  /** How many leading columns are pinned while the grid scrolls. */
+  frozenColumns?: number;
+  /** Freeze through the right-clicked column (that many leading columns). */
+  onFreezeThrough?: (throughIndex: number) => void;
+  /** Unfreeze every column. */
+  onUnfreezeColumns?: () => void;
+  /** Ask for the server-side aggregates of the right-clicked column (DB-12). */
+  onColumnStats?: (column: string) => void;
+  /**
+   * The widths this table was last left with, by column name: they seed the
+   * grid so a resized column keeps its width across reorders and restarts.
+   */
+  persistedColumnWidths?: Record<string, number> | null;
+  /** Persist the effective column widths, by name, after a resize drag. */
+  onColumnWidthsCommit?: (widths: Record<string, number>) => void;
 
   filters?: FilterCondition[];
   filterLogic?: 'and' | 'or';
@@ -323,6 +342,13 @@ export function DataTable({
   onAddSort,
   onRemoveSort,
   onClearSorts,
+  onReorderColumns,
+  frozenColumns = 0,
+  onFreezeThrough,
+  onUnfreezeColumns,
+  onColumnStats,
+  persistedColumnWidths,
+  onColumnWidthsCommit,
   onRemoveFilter,
   onClearFilters,
   onAddFilter,
@@ -394,6 +420,10 @@ export function DataTable({
     count: columns.length,
     columns: colMeta,
     rows,
+    // DB-12: widths belong to columns, so they are seeded by name and
+    // reported back by name after a drag.
+    persistedWidths: persistedColumnWidths,
+    onWidthsCommit: onColumnWidthsCommit,
   });
   const columnWidths = useMemo(
     () => adjustWidthsForSort(baseWidths, columns, sorts),
@@ -564,6 +594,11 @@ export function DataTable({
     onAddSort,
     onRemoveSort,
     onClearSorts,
+    // DB-12: the freeze entries and the stats entry of the header menu.
+    frozenColumns,
+    onFreezeThrough,
+    onUnfreezeColumns,
+    onColumnStats,
     t,
   });
 
@@ -685,6 +720,9 @@ export function DataTable({
               onResizeStart={onResizeStart}
               sortable={onSort != null}
               gridSemantics={hasCellSelection}
+              // DB-12: drag-to-reorder and the freeze are opt-in.
+              onReorderColumns={onReorderColumns}
+              frozenColumns={frozenColumns}
               onFilterColumn={
                 onAddFilter
                   ? (column) => onAddFilter({ column, operator: 'eq', value: '' })
@@ -701,6 +739,7 @@ export function DataTable({
               highlightedRow={highlightedRow}
               scrollElement={scrollEl}
               columnWidths={columnWidths}
+              frozenColumns={frozenColumns}
               onCellDoubleClick={handleCellDoubleClick}
               onCellEdit={handleCellEdit}
               onCellEditCancel={handleCellEditCancel}

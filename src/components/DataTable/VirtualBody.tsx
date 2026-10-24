@@ -148,6 +148,11 @@ export interface VirtualBodyProps {
     /** Follow the foreign key of a cell. */
     onJump?: (rowIndex: number, columnName: string, element: HTMLElement | null) => void;
   };
+  /**
+   * How many leading columns are pinned while the grid scrolls (DB-12).
+   * `0`/omitted pins nothing — the grid renders byte for byte as before.
+   */
+  frozenColumns?: number;
 }
 
 interface VirtualRowProps {
@@ -195,6 +200,11 @@ interface VirtualRowProps {
   fkNavigable?: ReadonlySet<string>;
   /** Columns of this row a refused paste reported a problem for (DB-03). */
   errorColumns?: ReadonlySet<string>;
+  /**
+   * How many leading columns are pinned while the grid scrolls (DB-12);
+   * `0` pins nothing.
+   */
+  frozenColumns?: number;
 }
 
 const VirtualRow = memo(function VirtualRow({
@@ -229,6 +239,7 @@ const VirtualRow = memo(function VirtualRow({
   foreignKeys,
   fkNavigable,
   errorColumns,
+  frozenColumns = 0,
 }: VirtualRowProps) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -301,6 +312,29 @@ const VirtualRow = memo(function VirtualRow({
     return map;
   }, [dirtyRow]);
   const rowDeleted = dirtyRow?.state === 'deleted';
+  /**
+   * The row's own translucent tints (DB-12): they are repainted *inside* every
+   * pinned cell, over an opaque base, so a frozen column keeps the exact
+   * striping / selection look while the scrolled content moves behind it.
+   */
+  const rowTintClass = cn(
+    vRow.index % 2 === 1 ? 'bg-surface-raised/50' : '',
+    selected
+      ? 'bg-accent/15 dark:bg-accent/20'
+      : highlighted
+        ? 'bg-accent/8 dark:bg-accent/12'
+        : '',
+  );
+  // The left offsets of the pinned cells: the row-number gutter pins at 0
+  // and each pinned column pins right after the one before it.
+  const frozenLefts: number[] = [];
+  if (frozenColumns > 0) {
+    let left = 40; // the `#` gutter is `w-10`
+    for (let i = 0; i < columns.length; i += 1) {
+      frozenLefts[i] = left;
+      if (i < frozenColumns) left += columnWidths?.[i] ?? 160;
+    }
+  }
   const rowDirty = dirtyRow?.state === 'dirty';
 
   /**
@@ -372,6 +406,9 @@ const VirtualRow = memo(function VirtualRow({
         className={cn(
           'flex w-10 shrink-0 items-center border-r border-edge/30',
           (rowDirty || rowDeleted) && 'relative',
+          // Pinned with its columns (DB-12): the gutter never scrolls away.
+          frozenColumns > 0 && 'sticky left-0 z-20 bg-surface',
+          frozenColumns > 0 && rowTintClass,
         )}
       >
         <button
@@ -407,6 +444,12 @@ const VirtualRow = memo(function VirtualRow({
         const cellId = cellIdPrefix ? `${cellIdPrefix}-r${vRow.index}c${colIdx}` : undefined;
         const dirtyCell = dirtyCells.get(col.name);
         const fk = fkAffordances?.get(col.name) ?? null;
+        // Pinned cells carry their left offset and the row's tint (DB-12);
+        // unpinned cells render exactly as before.
+        const sticky =
+          frozenColumns > colIdx && frozenColumns > 0
+            ? { left: frozenLefts[colIdx], bgClass: rowTintClass }
+            : null;
         return (
           <GridCell
             key={col.id}
@@ -415,6 +458,7 @@ const VirtualRow = memo(function VirtualRow({
             column={col}
             value={value}
             width={colW}
+            sticky={sticky}
             dirty={dirtyCell !== undefined}
             error={errorColumns?.has(col.name) === true}
             dirtyTooltip={
@@ -479,6 +523,7 @@ export const VirtualBody = memo(function VirtualBody({
   dirtyByRow = null,
   cellErrors,
   foreignKeys,
+  frozenColumns = 0,
 }: VirtualBodyProps) {
   const { t } = useI18n();
   /**
@@ -641,6 +686,7 @@ export const VirtualBody = memo(function VirtualBody({
             foreignKeys={foreignKeys}
             fkNavigable={fkNavigableByRow.get(vRow.index)}
             errorColumns={errorColumnsByRow.get(vRow.index)}
+            frozenColumns={frozenColumns}
           />
         ) : (
           <DraftRow

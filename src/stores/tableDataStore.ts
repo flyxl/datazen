@@ -54,6 +54,10 @@ import {
   type KeysetRequest,
 } from './tableData/keysetActions';
 import { readPersistedTableSorts, persistTableSorts } from './tableData/tableSortPreferences';
+import {
+  readPersistedColumnLayout,
+  persistColumnOrder,
+} from './tableData/tableColumnLayoutPreferences';
 
 // ── Store ─────────────────────────────────────────────────────────
 
@@ -116,6 +120,17 @@ interface TableDataStore
   removeSort: (panelId: string, column: string) => void;
   /** Drop the whole multi-column sort (DB-11). */
   clearSorts: (panelId: string) => void;
+  /**
+   * Set the panel's explicit column render order (DB-12): `null` resets to
+   * the schema order. Render-only — no re-read: the rows on the page do not
+   * change, only where their columns sit.
+   */
+  setColumnOrder: (panelId: string, order: string[] | null) => void;
+  /**
+   * Freeze the first `count` displayed columns (DB-12). Render-only — no
+   * re-read, and panel-scoped: the freeze posture does not persist.
+   */
+  setFrozenColumnCount: (panelId: string, count: number) => void;
   /** Change the panel's temporary default-order override. */
   setDefaultOrderOverride: (panelId: string, override: TableState['defaultOrderOverride']) => void;
   setDetailRow: (panelId: string, index: number | null) => void;
@@ -270,6 +285,10 @@ function commitFetchedPage(
   const sanitizedVisible = current.visibleColumns
     ? current.visibleColumns.filter((c) => validColumnNames.has(c))
     : null;
+  // A stored order may name columns the schema dropped; the names that
+  // survive keep their relative order, and an order that names nothing is
+  // no order at all.
+  const sanitizedOrder = current.columnOrder?.filter((name) => validColumnNames.has(name)) ?? null;
 
   const next = new Map(get().byPanel);
   next.set(panelId, {
@@ -277,6 +296,7 @@ function commitFetchedPage(
     columns: res.columns,
     visibleColumns:
       sanitizedVisible && sanitizedVisible.length === res.columns.length ? null : sanitizedVisible,
+    columnOrder: sanitizedOrder && sanitizedOrder.length > 0 ? sanitizedOrder : null,
     rows: rowsWithPending,
     totalRows: res.totalRows ?? current.totalRows,
     // The page whose count was recomputed after a drift.
@@ -313,13 +333,15 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   loadTableData: async ({ panelId, skipCount, countStrategy, ...target }) => {
     const context = buildTableContext(target);
-    // A brand-new panel starts from the sorts the table was last left with
-    // (DB-11): the sort is a property of the table, not of this tab. A panel
-    // that already loaded keeps its own sorts — the slice is the truth while
-    // the tab is open.
+    // A brand-new panel starts from the state the table was last left in:
+    // its sorts (DB-11) and its column order (DB-12) are properties of the
+    // table, not of this tab. A panel that already loaded keeps its own —
+    // the slice is the truth while the tab is open.
+    const persistedLayout = get().byPanel.has(panelId) ? null : readPersistedColumnLayout(context);
     const existing = get().byPanel.get(panelId) ?? {
       ...emptyTableState(context),
       sorts: readPersistedTableSorts(context),
+      columnOrder: persistedLayout?.order ?? null,
     };
     const requestRevision = existing.requestRevision;
     if (existing.loading && existing.loadingRevision === requestRevision) return;
@@ -591,6 +613,20 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     }));
     persistSortsOf(get, panelId);
     get().reloadPanel(panelId, { skipCount: true });
+  },
+
+  setColumnOrder: (panelId, order) => {
+    // Render-only (DB-12): the page is not re-read. The order is a permutation
+    // of *displayed* columns — names the resolver does not know are ignored.
+    patchPanel(get, set, panelId, () => ({ columnOrder: order }));
+    const ts = get().byPanel.get(panelId);
+    if (ts?.context) persistColumnOrder(ts.context, order);
+  },
+
+  setFrozenColumnCount: (panelId, count) => {
+    // Render-only, and clamped: a freeze beyond the displayed columns would
+    // pin nothing and read as a bug.
+    patchPanel(get, set, panelId, () => ({ frozenColumnCount: Math.max(0, Math.floor(count)) }));
   },
 
   setDefaultOrderOverride: (panelId, override) => {

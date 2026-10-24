@@ -56,6 +56,9 @@ const tableStore = vi.hoisted(() => {
     addSort: record('addSort'),
     removeSort: record('removeSort'),
     clearSorts: record('clearSorts'),
+    // DB-12: the render-only column tools.
+    setColumnOrder: record('setColumnOrder'),
+    setFrozenColumnCount: record('setFrozenColumnCount'),
     removeFilter: record('removeFilter'),
     clearFilters: record('clearFilters'),
     addFilter: record('addFilter'),
@@ -119,11 +122,14 @@ const ACTION_NAMES = [
   'removeSort',
   'rollbackPendingChanges',
   'selectRow',
+  // DB-12: the render-only column tools.
+  'setColumnOrder',
   'setDefaultOrderOverride',
   'setDetailRow',
   'setFilterLogic',
   'setFilterPanelOpen',
   'setFilters',
+  'setFrozenColumnCount',
   'setGridSelection',
   'setPage',
   'setPageSize',
@@ -227,6 +233,19 @@ const BINDING_CASES: readonly BindingCase[] = [
     method: 'clearSorts',
     args: [],
     trigger: (actions) => actions.clearSorts(),
+  },
+  {
+    // DB-12: render-only column tools — no navigation guard, no notice.
+    action: 'setColumnOrder',
+    method: 'setColumnOrder',
+    args: [['name', 'id']],
+    trigger: (actions) => actions.setColumnOrder(['name', 'id']),
+  },
+  {
+    action: 'setFrozenColumnCount',
+    method: 'setFrozenColumnCount',
+    args: [2],
+    trigger: (actions) => actions.setFrozenColumnCount(2),
   },
   {
     action: 'removeFilter',

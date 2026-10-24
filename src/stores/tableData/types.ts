@@ -61,6 +61,20 @@ export interface TableState {
   draftFilterLogic: 'and' | 'or';
   filterPanelOpen: boolean;
   sorts: SortCondition[];
+  /**
+   * The panel's explicit column **render order** (DB-12): `null` follows
+   * the schema order. It is a permutation hint over the *displayed* columns
+   * — membership stays with `visibleColumns`, so the two never answer the
+   * same question twice. Columns missing from the list keep their schema
+   * position at the end; names that no longer exist are ignored.
+   */
+  columnOrder: string[] | null;
+  /**
+   * How many leading displayed columns are frozen (DB-12): they stay put
+   * while the grid scrolls horizontally. `0` — the default — freezes
+   * nothing. Panel-scoped on purpose: only widths and order persist.
+   */
+  frozenColumnCount: number;
   /** Changes staged against this table; the map key is the stable PK identity. */
   pendingChanges: Map<string, PendingRowChange>;
   /**

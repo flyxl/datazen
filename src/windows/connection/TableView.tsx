@@ -8,6 +8,11 @@ import { useTableDataStore } from '../../stores/tableDataStore';
 import { EMPTY_GRID_SELECTION } from '../../stores/tableData/gridSelection';
 import { hasPendingWork } from '../../stores/tableData/pendingChanges';
 import { selectDirtyRow } from '../../stores/tableData/dirtyIndex';
+import { displayedColumnNames } from '../../stores/tableData/selectionActions';
+import {
+  readPersistedColumnLayout,
+  persistColumnWidths,
+} from '../../stores/tableData/tableColumnLayoutPreferences';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -35,6 +40,8 @@ import { TableReadOnlyTip } from './TableReadOnlyTip';
 import type { CellReadOnlyReason } from '../../lib/cellEditorKind';
 import { isComposingEvent, isEditableTarget } from '../../lib/gridEventGuards';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { useColumnStats } from '../../hooks/useColumnStats';
+import { ColumnStatsDialog } from '../../components/DataTable/ColumnStatsDialog';
 import { likeCaseInsensitiveForMeta, supportedOperatorsForMeta } from '../../lib/filterOperators';
 import type { ColumnSchema, DatabaseType } from '../../types';
 import { resolveDefaultTableSort } from '../../lib/defaultSort';
@@ -382,10 +389,14 @@ export function TableView({
   });
 
   const displayedColumns = useMemo(() => {
-    if (visibleColumns === null) return columns;
-    const set = new Set(visibleColumns);
-    return columns.filter((c) => set.has(c.name));
-  }, [columns, visibleColumns]);
+    // DB-12: the panel's explicit order (drag, persisted) is a permutation of
+    // the *displayed* names — the same resolver the selection uses.
+    const names = displayedColumnNames(columns, visibleColumns, ts?.columnOrder ?? null);
+    const byName = new Map(columns.map((c) => [c.name, c]));
+    return names
+      .map((name) => byName.get(name))
+      .filter((c): c is (typeof columns)[number] => c != null);
+  }, [columns, visibleColumns, ts?.columnOrder]);
 
   /** The foreign-key navigation of this tab (DB-07): arrows, jump, breadcrumb, keyboard, viewport. */
   const fkNavigation = useTableForeignKeyNavigation({
@@ -418,6 +429,68 @@ export function TableView({
   const rowArrays: unknown[][] = useMemo(
     () => rows.map((record) => displayedColumns.map((col) => record[col.name] ?? null)),
     [rows, displayedColumns],
+  );
+
+  /* ── Column tools (DB-12): reorder, freeze, width persistence. ── */
+  const handleReorderColumns = useCallback(
+    (from: number, to: number) => {
+      // The drag is over the displayed columns; the stored order is that
+      // whole list, reordered, and the store resolver keeps anything the
+      // panel did not name in its schema position behind it.
+      const names = displayedColumns.map((c) => c.name);
+      if (from < 0 || from >= names.length || to < 0 || to >= names.length) return;
+      const [moved] = names.splice(from, 1);
+      names.splice(to, 0, moved);
+      actions.setColumnOrder(names);
+    },
+    [displayedColumns, actions],
+  );
+
+  /** The widths this table was last left with — read once per table identity. */
+  const tableIdentityKey = ts?.context ? tableChangeContextKey(ts.context) : null;
+  const persistedColumnWidths = useMemo(() => {
+    const context = ts?.context ?? null;
+    return context ? readPersistedColumnLayout(context).widths : null;
+    // The identity key is the stable string of the table; the context object
+    // itself is rebuilt by every load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableIdentityKey]);
+  const handleColumnWidthsCommit = useCallback(
+    (widths: Record<string, number>) => {
+      if (ts?.context) persistColumnWidths(ts.context, widths);
+    },
+    [ts?.context],
+  );
+
+  const frozenColumnCount = ts?.frozenColumnCount ?? 0;
+  const handleFreezeThrough = useCallback(
+    (throughIndex: number) => actions.setFrozenColumnCount(throughIndex + 1),
+    [actions],
+  );
+  const handleUnfreezeColumns = useCallback(() => actions.setFrozenColumnCount(0), [actions]);
+
+  /* ── Column statistics (DB-12): server-side aggregates from the header
+     menu. The numbers never come from the loaded page. ── */
+  const {
+    state: columnStatsState,
+    open: openColumnStats,
+    dismiss: dismissColumnStats,
+  } = useColumnStats();
+  const handleColumnStats = useCallback(
+    (column: string) => {
+      openColumnStats(
+        {
+          dbSessionId,
+          database: database || '',
+          databaseType: databaseType as DatabaseType,
+          schema,
+          tableName,
+        },
+        column,
+        displayedColumns.find((c) => c.name === column)?.dataType ?? null,
+      );
+    },
+    [openColumnStats, dbSessionId, database, databaseType, schema, tableName, displayedColumns],
   );
 
   /**
@@ -745,6 +818,14 @@ export function TableView({
         onAddSort={actions.addSort}
         onRemoveSort={actions.removeSort}
         onClearSorts={actions.clearSorts}
+        // DB-12: reorder, freeze and width persistence.
+        onReorderColumns={handleReorderColumns}
+        frozenColumns={frozenColumnCount}
+        onFreezeThrough={handleFreezeThrough}
+        onUnfreezeColumns={handleUnfreezeColumns}
+        onColumnStats={handleColumnStats}
+        persistedColumnWidths={persistedColumnWidths}
+        onColumnWidthsCommit={handleColumnWidthsCommit}
         onRemoveFilter={actions.removeFilter}
         onClearFilters={actions.clearFilters}
         onPageChange={actions.setPage}
@@ -818,6 +899,7 @@ export function TableView({
         open={previewOpen && previewPlan != null}
         onClose={() => setPreviewOpen(false)}
       />
+      <ColumnStatsDialog state={columnStatsState} onClose={dismissColumnStats} />
     </div>
   );
 }

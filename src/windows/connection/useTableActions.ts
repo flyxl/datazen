@@ -40,6 +40,11 @@ export interface TableActions {
   removeSort: (column: string) => void;
   /** Drop the whole sort list. */
   clearSorts: () => void;
+  /* ── Column tools (DB-12). ── */
+  /** Set the panel's explicit column render order; `null` resets it. */
+  setColumnOrder: (order: string[] | null) => void;
+  /** Freeze the first `count` displayed columns (`0` unfreezes). */
+  setFrozenColumnCount: (count: number) => void;
   removeFilter: (index: number) => void;
   clearFilters: () => void;
   addFilter: (filter: FilterCondition) => void;
@@ -159,6 +164,14 @@ export function useTableActions({
         if (!mayNavigate()) return;
         invalidateNotice();
         store().clearSorts(panelId);
+      },
+      // DB-12: render-only column tools — they do not move the page, so they
+      // take no navigation guard and drop no notice.
+      setColumnOrder: (order: string[] | null) => {
+        store().setColumnOrder(panelId, order);
+      },
+      setFrozenColumnCount: (count: number) => {
+        store().setFrozenColumnCount(panelId, count);
       },
       removeFilter: (index: number) => store().removeFilter(panelId, index),
       clearFilters: () => {

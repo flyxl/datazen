@@ -845,3 +845,166 @@ describe('buildDataTableContextMenuItems header sort block (DB-11)', () => {
     expect(ids(items)).toEqual(['copy-column-name', 'copy-column-data']);
   });
 });
+
+describe('buildDataTableContextMenuItems freeze block (DB-12)', () => {
+  const freezeLabels: DataTableContextMenuLabels = {
+    ...labels,
+    freezeThrough: 'Freeze through This Column',
+    unfreezeColumns: 'Unfreeze Columns',
+  };
+
+  it('offers the freeze entries between the sort block and the copy entries', () => {
+    const onFreezeThrough = vi.fn();
+    const onUnfreezeColumns = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels: freezeLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onFreezeThrough,
+        onUnfreezeColumns,
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerFreeze: { index: 1, frozen: 0 },
+    });
+    expect(
+      items.map((i) => (i.kind === 'item' || i.kind === 'submenu' ? i.id : 'separator')),
+    ).toEqual([
+      'freeze-through',
+      'unfreeze-columns',
+      'separator',
+      'copy-column-name',
+      'copy-column-data',
+    ]);
+    const freezeItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> =>
+        i.kind === 'item' && i.id === 'freeze-through',
+    );
+    freezeItem?.action();
+    expect(onFreezeThrough).toHaveBeenCalledWith(1);
+  });
+
+  it('disables the no-op freeze and the freezeless unfreeze', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: freezeLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onFreezeThrough: vi.fn(),
+        onUnfreezeColumns: vi.fn(),
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      // Freezing through column 1 when exactly one column is frozen is the
+      // state in force — nothing to do; and there is nothing to unfreeze.
+      headerFreeze: { index: 0, frozen: 1 },
+    });
+    const freezeItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> =>
+        i.kind === 'item' && i.id === 'freeze-through',
+    );
+    expect(freezeItem?.enabled).toBe(false);
+    const unfreezeItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> =>
+        i.kind === 'item' && i.id === 'unfreeze-columns',
+    );
+    expect(unfreezeItem?.enabled).toBeUndefined();
+  });
+
+  it('without headerFreeze the header menu keeps its exact pre-DB-12 shape', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: freezeLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onFreezeThrough: vi.fn(),
+        onUnfreezeColumns: vi.fn(),
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+    });
+    expect(ids(items)).toEqual(['copy-column-name', 'copy-column-data']);
+  });
+});
+
+describe('buildDataTableContextMenuItems column stats entry (DB-12)', () => {
+  const statsLabels: DataTableContextMenuLabels = {
+    ...labels,
+    columnStats: 'Column Stats',
+  };
+
+  it('offers the stats entry after the column-arrangement blocks', () => {
+    const onColumnStats = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels: statsLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onFreezeThrough: vi.fn(),
+        onUnfreezeColumns: vi.fn(),
+        onColumnStats,
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerFreeze: { index: 0, frozen: 0 },
+      headerStats: { column: 'price' },
+    });
+    expect(ids(items)).toEqual([
+      'freeze-through',
+      'unfreeze-columns',
+      'separator',
+      'column-stats',
+      'copy-column-name',
+      'copy-column-data',
+    ]);
+    const statsItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> => i.kind === 'item' && i.id === 'column-stats',
+    );
+    statsItem?.action();
+    expect(onColumnStats).toHaveBeenCalledWith('price');
+  });
+
+  it('the stats entry carries the right-clicked column, not a position', () => {
+    const onColumnStats = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels: statsLabels,
+      handlers: { onCopyColumnName: vi.fn(), onColumnStats },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerStats: { column: 'note' },
+    });
+    const statsItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> => i.kind === 'item' && i.id === 'column-stats',
+    );
+    statsItem?.action();
+    expect(onColumnStats).toHaveBeenCalledWith('note');
+  });
+
+  it('without the handler the header menu keeps its exact pre-DB-12 shape', () => {
+    // The host may still report the context; without a handler the entry is
+    // not offered at all — a driver grid keeps its previous menu.
+    const items = buildDataTableContextMenuItems({
+      labels: statsLabels,
+      handlers: { onCopyColumnName: vi.fn(), onCopyColumnData: vi.fn() },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerStats: { column: 'price' },
+    });
+    expect(ids(items)).toEqual(['copy-column-name', 'copy-column-data']);
+  });
+
+  it('a cell click never offers the column stats entry', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: statsLabels,
+      handlers: {
+        onCopy: vi.fn(),
+        onColumnStats: vi.fn(),
+      },
+      hasHeaderContext: false,
+      hasCellContext: true,
+      headerStats: { column: 'price' },
+    });
+    expect(rootItemIds(items)).not.toContain('column-stats');
+  });
+});

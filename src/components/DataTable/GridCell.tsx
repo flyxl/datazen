@@ -47,6 +47,14 @@ export interface GridCellProps {
   value: unknown;
   /** Rendered width in pixels. */
   width: number;
+  /**
+   * The cell is pinned (DB-12): it stays at this left offset while the grid
+   * scrolls horizontally. `bgClass` is the **row's own** background classes —
+   * they are painted on an overlay above an opaque base, because the row's
+   * tints are translucent and a translucent sticky cell would let the
+   * scrolled content show through.
+   */
+  sticky?: { left: number; bgClass: string } | null;
   /** The cell is inside the current cell selection. */
   selected: boolean;
   /**
@@ -133,6 +141,7 @@ export const GridCell = memo(function GridCell({
   column,
   value,
   width,
+  sticky = null,
   selected,
   error = false,
   active = false,
@@ -215,13 +224,22 @@ export const GridCell = memo(function GridCell({
         // A selected cell keeps the selection background — the dirty channel
         // is the border and the corner mark there (06 §11 D-8).
         dirty && !selected && 'bg-dt-dirty-bg',
+        // The opaque base of a pinned cell (DB-12); the row's tint goes on an
+        // overlay inside, above it.
+        sticky && 'relative bg-surface',
       )}
-      style={{ width }}
+      style={{ width, ...(sticky ? { position: 'sticky', left: sticky.left, zIndex: 2 } : {}) }}
       onDoubleClick={(e) => {
         e.stopPropagation();
         onCellDoubleClick(rowIndex, column.name);
       }}
     >
+      {sticky && (
+        // The row's own background, painted inside the pinned cell so the
+        // striping / selection tint keeps its exact look over the opaque
+        // base (DB-12).
+        <div aria-hidden className={cn('pointer-events-none absolute inset-0', sticky.bgClass)} />
+      )}
       <div className="min-w-0 flex-1">
         <CellRenderer
           columnName={column.name}
