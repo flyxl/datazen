@@ -323,6 +323,9 @@ impl DatabaseDriver for FakeSqlite {
 #[derive(Default)]
 pub(crate) struct RecordingSink {
     pub(crate) chunks: Mutex<Vec<ResultChunk>>,
+    /// Typed outputs (`commandResult`, statement summaries). A driver command's
+    /// payload belongs here; pretending it is a row is what the host rejects.
+    pub(crate) outputs: Mutex<Vec<serde_json::Value>>,
     pub(crate) completed: AtomicUsize,
 }
 
@@ -333,6 +336,14 @@ impl ResultSink for RecordingSink {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .push(chunk);
+        Ok(())
+    }
+
+    async fn write_output(&self, output: serde_json::Value) -> Result<(), ResourceError> {
+        self.outputs
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .push(output);
         Ok(())
     }
 

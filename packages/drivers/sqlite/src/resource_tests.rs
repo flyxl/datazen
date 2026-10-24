@@ -241,7 +241,14 @@ async fn a_command_the_provider_does_not_know_is_dispatched_to_the_driver() {
         fake.read(|wire| wire.commands.first().cloned()),
         Some(("list_tables".to_string(), "{}".to_string()))
     );
-    assert_eq!(sink.chunks.lock().unwrap().len(), 1);
+    // The payload arrives as typed output. Carrying it as a row made every
+    // metadata command look empty to the host (`Typed command result unavailable`).
+    assert_eq!(
+        sink.chunks.lock().unwrap().len(),
+        0,
+        "a command payload is not a result set"
+    );
+    assert_eq!(sink.outputs.lock().unwrap()[0]["kind"], "commandResult");
 }
 
 #[tokio::test]
@@ -480,4 +487,50 @@ async fn close_handle_refuses_a_foreign_ref_even_on_a_closed_resource() {
         ),
         "expected an ownership mismatch, got {error:?}"
     );
+}
+
+#[tokio::test]
+async fn a_driver_command_answers_as_typed_output_not_as_a_row() {
+    // The host's typed-command callers read `kind: commandResult` out of the
+    // execution's output. Carrying the payload as a single JSON row makes every
+    // metadata command look like "Typed command result unavailable" — the whole
+    // sqlite navigator (databases, tables, structure) goes blank with no error.
+    let (provider, fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+    let sink = RecordingSink::default();
+    provider
+        .execute_on_resource(
+            &handle,
+            &QueryExecutionId::new("exec-command"),
+            &CommandCall::new("list_databases", serde_json::json!({})),
+            &sink,
+        )
+        .await
+        .expect("a catalog command should run");
+
+    let outputs = sink
+        .outputs
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    assert_eq!(
+        outputs.len(),
+        1,
+        "one typed output, not a rows chunk: {:?}",
+        outputs
+    );
+    assert_eq!(outputs[0]["kind"], "commandResult");
+    assert_eq!(
+        outputs[0]["data"]["echo"], "list_databases",
+        "the driver's own answer is carried through unchanged: {:?}",
+        outputs[0]
+    );
+    assert!(
+        sink.chunks
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .is_empty(),
+        "a command payload must not be disguised as row data"
+    );
+    // The command really reached the driver.
+    assert!(fake.read(|wire| wire.statements.clone()).is_empty());
 }
