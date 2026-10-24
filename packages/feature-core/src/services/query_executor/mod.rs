@@ -392,10 +392,9 @@ impl QueryExecutor {
                                     .first()
                                     .and_then(|row| row.first())
                                     .and_then(|cell| cell.as_ref());
-                                match cell.and_then(table_browsing::target_count_cell) {
-                                    Some(count) => (Some(count), CountStrategy::Exact),
-                                    None => (None, CountStrategy::Unsupported),
-                                }
+                                table_browsing::rescued_exact_count(
+                                    cell.and_then(table_browsing::target_count_cell),
+                                )
                             }
                             Err(error) => {
                                 tracing::warn!(
