@@ -54,6 +54,12 @@ export interface TableHeaderProps {
    * nothing — the header renders byte for byte as before.
    */
   frozenColumns?: number;
+  /**
+   * The row-number gutter (DB-17). `true`/omitted renders the `#` slot,
+   * exactly as before; `false` drops it and the frozen columns pin from the
+   * grid's left edge instead of behind the gutter.
+   */
+  showRowNumbers?: boolean;
 }
 
 export function TableHeader({
@@ -68,16 +74,18 @@ export function TableHeader({
   gridSemantics = false,
   onReorderColumns,
   frozenColumns = 0,
+  showRowNumbers = true,
 }: TableHeaderProps) {
   /** Where a drag came from and where it currently hovers (DB-12). */
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
-  // The left offsets of the frozen headers (DB-12): the row-number gutter
-  // pins at 0 and each frozen column pins right after the one before it.
+  // The left offsets of the frozen headers (DB-12): whatever pins first
+  // (the `#` gutter, or the first column itself when the gutter is off,
+  // DB-17) pins at 0 and each frozen column pins right after the one before it.
   const frozenLefts: number[] = [];
   if (frozenColumns > 0) {
-    let left = 40; // the `#` gutter is `w-10`
+    let left = showRowNumbers ? 40 : 0; // the `#` gutter is `w-10`
     for (let i = 0; i < columns.length; i += 1) {
       frozenLefts[i] = left;
       if (i < frozenColumns) left += columnWidths?.[i] ?? 160;
@@ -89,15 +97,17 @@ export function TableHeader({
       role={gridSemantics ? 'row' : undefined}
       className="sticky top-0 z-10 flex min-w-max border-b border-edge bg-surface-alt"
     >
-      <div
-        role={gridSemantics ? 'columnheader' : undefined}
-        className={cn(
-          'flex h-10 w-10 shrink-0 items-center justify-center border-r border-edge text-xs text-fg-muted',
-          frozenColumns > 0 && 'sticky left-0 z-20 bg-surface-alt',
-        )}
-      >
-        #
-      </div>
+      {showRowNumbers && (
+        <div
+          role={gridSemantics ? 'columnheader' : undefined}
+          className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center border-r border-edge text-xs text-fg-muted',
+            frozenColumns > 0 && 'sticky left-0 z-20 bg-surface-alt',
+          )}
+        >
+          #
+        </div>
+      )}
       {columns.map((col, colIdx) => {
         // DB-11: every column carries its own sort, not just the first one —
         // the list order is the ORDER BY order, so the badge is the

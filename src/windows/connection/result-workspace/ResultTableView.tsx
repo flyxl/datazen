@@ -4,6 +4,13 @@ import { DataTable } from '../../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../../components/DataTable/TableHeader';
 import { useI18n } from '../../../hooks/useI18n';
 import { useSettingsStore } from '../../../stores/settingsStore';
+import {
+  DEFAULT_GRID_ALTERNATING_ROWS,
+  DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
+  DEFAULT_GRID_DENSITY,
+  DEFAULT_GRID_ROW_NUMBERS,
+} from '../../../types/settings';
+import { rowHeightForDensity } from '../../../components/DataTable/rowHeight';
 import type { StatementResult } from '../../../types';
 import type { DataExportCapability } from '../../../lib/exportCapability';
 import type { CellTypeHints } from '../../../lib/cellTypes';
@@ -80,6 +87,20 @@ export function ResultTableView({
   const { t } = useI18n();
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
+  /* ── Grid appearance (DB-17), same four as the table grid. The result grid's
+     own default is 32px — the density shifts it, `standard` leaves it be. ── */
+  const gridDensity = useSettingsStore((s) => s.settings.gridDensity ?? DEFAULT_GRID_DENSITY);
+  const gridAlternatingRows = useSettingsStore(
+    (s) => s.settings.gridAlternatingRows ?? DEFAULT_GRID_ALTERNATING_ROWS,
+  );
+  const gridRowNumbers = useSettingsStore(
+    (s) => s.settings.gridRowNumbers ?? DEFAULT_GRID_ROW_NUMBERS,
+  );
+  const gridAutoHideScrollbar = useSettingsStore(
+    (s) => s.settings.gridAutoHideScrollbar ?? DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
+  );
+  /** The result grid's row height under the density setting: 32 + delta. */
+  const gridRowHeight = rowHeightForDensity(32, gridDensity);
   const [editError, setEditError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
   /**
@@ -260,7 +281,11 @@ export function ResultTableView({
           rows={result.rows}
           cellTypeHints={cellTypeHints}
           statusBar={statusBar}
-          rowHeight={32}
+          rowHeight={gridRowHeight}
+          // The grid-appearance settings (DB-17): density above, the rest here.
+          alternatingRows={gridAlternatingRows}
+          showRowNumbers={gridRowNumbers}
+          scrollbarAutoHide={gridAutoHideScrollbar}
           editingCell={canEdit ? editingCell : null}
           onCellDoubleClick={handleCellDoubleClick}
           onCellEdit={(row, column, value) => {

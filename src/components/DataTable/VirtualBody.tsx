@@ -153,6 +153,19 @@ export interface VirtualBodyProps {
    * `0`/omitted pins nothing — the grid renders byte for byte as before.
    */
   frozenColumns?: number;
+  /**
+   * Alternating row backgrounds (DB-17). `true`/omitted keeps the tinted odd
+   * rows the grid has always had; `false` renders every row on the same
+   * background. Selection, highlight and hover tints are their own channel
+   * and stay untouched either way.
+   */
+  alternatingRows?: boolean;
+  /**
+   * The row-number gutter (DB-17). `true`/omitted renders it, exactly as
+   * before; `false` drops the gutter and its click-to-select button, and the
+   * pinned columns pin from the grid's left edge instead of behind it.
+   */
+  showRowNumbers?: boolean;
 }
 
 interface VirtualRowProps {
@@ -205,6 +218,10 @@ interface VirtualRowProps {
    * `0` pins nothing.
    */
   frozenColumns?: number;
+  /** Alternating row backgrounds (DB-17); see `VirtualBodyProps`. */
+  alternatingRows?: boolean;
+  /** The row-number gutter (DB-17); see `VirtualBodyProps`. */
+  showRowNumbers?: boolean;
 }
 
 const VirtualRow = memo(function VirtualRow({
@@ -240,6 +257,8 @@ const VirtualRow = memo(function VirtualRow({
   fkNavigable,
   errorColumns,
   frozenColumns = 0,
+  alternatingRows = true,
+  showRowNumbers = true,
 }: VirtualRowProps) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -318,18 +337,22 @@ const VirtualRow = memo(function VirtualRow({
    * striping / selection look while the scrolled content moves behind it.
    */
   const rowTintClass = cn(
-    vRow.index % 2 === 1 ? 'bg-surface-raised/50' : '',
+    // The stripe (DB-17): odd rows carry the tint the grid has always had,
+    // unless the appearance setting turned the striping off. Selection and
+    // highlight stay their own channel either way.
+    alternatingRows && vRow.index % 2 === 1 ? 'bg-surface-raised/50' : '',
     selected
       ? 'bg-accent/15 dark:bg-accent/20'
       : highlighted
         ? 'bg-accent/8 dark:bg-accent/12'
         : '',
   );
-  // The left offsets of the pinned cells: the row-number gutter pins at 0
-  // and each pinned column pins right after the one before it.
+  // The left offsets of the pinned cells: whatever pins first (the row-number
+  // gutter, or the first column itself when the gutter is off, DB-17) pins at
+  // 0 and each pinned column pins right after the one before it.
   const frozenLefts: number[] = [];
   if (frozenColumns > 0) {
-    let left = 40; // the `#` gutter is `w-10`
+    let left = showRowNumbers ? 40 : 0; // the `#` gutter is `w-10`
     for (let i = 0; i < columns.length; i += 1) {
       frozenLefts[i] = left;
       if (i < frozenColumns) left += columnWidths?.[i] ?? 160;
@@ -375,7 +398,7 @@ const VirtualRow = memo(function VirtualRow({
       className={cn(
         'absolute left-0 flex w-full cursor-pointer outline-none',
         selected && nextSelected ? 'border-b border-accent/10' : 'border-b border-edge/30',
-        vRow.index % 2 === 1 ? 'bg-surface-raised/50' : 'bg-surface',
+        vRow.index % 2 === 1 && alternatingRows ? 'bg-surface-raised/50' : 'bg-surface',
         selected
           ? 'bg-accent/15 dark:bg-accent/20'
           : highlighted
@@ -400,43 +423,48 @@ const VirtualRow = memo(function VirtualRow({
         </span>
       )}
       {/* The row-number slot is the row header: a `row` may only contain gridcell /
-          rowheader / columnheader children, so the bare button has to be wrapped. */}
-      <div
-        role={cellSelectionEnabled ? 'rowheader' : undefined}
-        className={cn(
-          'flex w-10 shrink-0 items-center border-r border-edge/30',
-          (rowDirty || rowDeleted) && 'relative',
-          // Pinned with its columns (DB-12): the gutter never scrolls away.
-          frozenColumns > 0 && 'sticky left-0 z-20 bg-surface',
-          frozenColumns > 0 && rowTintClass,
-        )}
-      >
-        <button
-          type="button"
-          tabIndex={-1}
+          rowheader / columnheader children, so the bare button has to be wrapped.
+          The slot itself is the setting's to drop (DB-17) — and with it the
+          gutter's click-to-select button and the row dots, which live nowhere
+          else (the row's own border and strike-through still tell the story). */}
+      {showRowNumbers && (
+        <div
+          role={cellSelectionEnabled ? 'rowheader' : undefined}
           className={cn(
-            'flex h-full w-full items-center justify-center text-xs text-fg-muted',
-            selected && 'border-l-2 border-l-accent text-accent',
+            'flex w-10 shrink-0 items-center border-r border-edge/30',
+            (rowDirty || rowDeleted) && 'relative',
+            // Pinned with its columns (DB-12): the gutter never scrolls away.
+            frozenColumns > 0 && 'sticky left-0 z-20 bg-surface',
+            frozenColumns > 0 && rowTintClass,
           )}
-          onClick={handleSelectButtonClick}
-          title={selectRowLabel}
         >
-          {vRow.index + 1}
-        </button>
-        {(rowDirty || rowDeleted) && (
-          // The row-level dot: the gutter says *that* row has something
-          // pending, the cell marks say *which* cells.
-          <span
-            data-testid={rowDeleted ? 'row-deleted-dot' : 'row-dirty-dot'}
-            title={rowDeleted ? deletedRowLabel : undefined}
-            aria-hidden={rowDeleted ? undefined : 'true'}
+          <button
+            type="button"
+            tabIndex={-1}
             className={cn(
-              'pointer-events-none absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full',
-              rowDeleted ? 'bg-danger' : 'bg-dt-dirty-mark',
+              'flex h-full w-full items-center justify-center text-xs text-fg-muted',
+              selected && 'border-l-2 border-l-accent text-accent',
             )}
-          />
-        )}
-      </div>
+            onClick={handleSelectButtonClick}
+            title={selectRowLabel}
+          >
+            {vRow.index + 1}
+          </button>
+          {(rowDirty || rowDeleted) && (
+            // The row-level dot: the gutter says *that* row has something
+            // pending, the cell marks say *which* cells.
+            <span
+              data-testid={rowDeleted ? 'row-deleted-dot' : 'row-dirty-dot'}
+              title={rowDeleted ? deletedRowLabel : undefined}
+              aria-hidden={rowDeleted ? undefined : 'true'}
+              className={cn(
+                'pointer-events-none absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full',
+                rowDeleted ? 'bg-danger' : 'bg-dt-dirty-mark',
+              )}
+            />
+          )}
+        </div>
+      )}
       {columns.map((col, colIdx) => {
         const value = row[colIdx];
         const isEditing = editingCell?.row === vRow.index && editingCell.col === col.name;
@@ -524,6 +552,8 @@ export const VirtualBody = memo(function VirtualBody({
   cellErrors,
   foreignKeys,
   frozenColumns = 0,
+  alternatingRows = true,
+  showRowNumbers = true,
 }: VirtualBodyProps) {
   const { t } = useI18n();
   /**
@@ -687,6 +717,8 @@ export const VirtualBody = memo(function VirtualBody({
             fkNavigable={fkNavigableByRow.get(vRow.index)}
             errorColumns={errorColumnsByRow.get(vRow.index)}
             frozenColumns={frozenColumns}
+            alternatingRows={alternatingRows}
+            showRowNumbers={showRowNumbers}
           />
         ) : (
           <DraftRow

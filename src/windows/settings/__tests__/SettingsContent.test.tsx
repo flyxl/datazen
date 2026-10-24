@@ -69,6 +69,10 @@ const {
     rowCountMode: 'auto',
     rowCountEstimateThreshold: 200000,
     defaultTableSort: 'primaryKeyAsc',
+    gridDensity: 'standard',
+    gridAlternatingRows: true,
+    gridRowNumbers: true,
+    gridAutoHideScrollbar: false,
   };
 
   const aiState = {
@@ -504,7 +508,9 @@ describe('SettingsContent', () => {
     goToSection('settings.dataBrowsing');
 
     expect(screen.getByText('settings.maxRows')).toBeInTheDocument();
-    const limitSwitch = screen.getAllByRole('switch')[0];
+    // The grid-appearance toggles (DB-17) render in this section too, so the
+    // limit switch is located by its accessible name, not by index.
+    const limitSwitch = screen.getByRole('switch', { name: 'settings.limitSelect' });
     fireEvent.click(limitSwitch);
     expect(screen.queryByText('settings.maxRows')).not.toBeInTheDocument();
     await waitFor(() =>

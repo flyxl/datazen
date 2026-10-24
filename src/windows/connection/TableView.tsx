@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Columns3 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
-import { DATA_TABLE_ROW_HEIGHT } from '../../components/DataTable/rowHeight';
+import { DATA_TABLE_ROW_HEIGHT, rowHeightForDensity } from '../../components/DataTable/rowHeight';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { TableColumnFilter } from './TableColumnFilter';
 import { useTableDataStore } from '../../stores/tableDataStore';
@@ -45,7 +45,14 @@ import { ColumnStatsDialog } from '../../components/DataTable/ColumnStatsDialog'
 import { likeCaseInsensitiveForMeta, supportedOperatorsForMeta } from '../../lib/filterOperators';
 import type { ColumnSchema, DatabaseType } from '../../types';
 import { resolveDefaultTableSort } from '../../lib/defaultSort';
-import { DEFAULT_ROW_COUNT_MODE, DEFAULT_TABLE_SORT } from '../../types/settings';
+import {
+  DEFAULT_GRID_ALTERNATING_ROWS,
+  DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
+  DEFAULT_GRID_DENSITY,
+  DEFAULT_GRID_ROW_NUMBERS,
+  DEFAULT_ROW_COUNT_MODE,
+  DEFAULT_TABLE_SORT,
+} from '../../types/settings';
 import { Spinner } from '../../components/ui/Spinner';
 
 /** Stable empty fallbacks: a fresh array per render would defeat the memos below. */
@@ -183,6 +190,21 @@ export function TableView({
   );
   /** How the user wants the row count obtained. */
   const rowCountMode = useSettingsStore((s) => s.settings.rowCountMode ?? DEFAULT_ROW_COUNT_MODE);
+  /* ── Grid appearance (DB-17), all four with the pre-setting default as the
+     fallback: a settings file written before the keys existed keeps the grid
+     exactly as it was. ── */
+  const gridDensity = useSettingsStore((s) => s.settings.gridDensity ?? DEFAULT_GRID_DENSITY);
+  const gridAlternatingRows = useSettingsStore(
+    (s) => s.settings.gridAlternatingRows ?? DEFAULT_GRID_ALTERNATING_ROWS,
+  );
+  const gridRowNumbers = useSettingsStore(
+    (s) => s.settings.gridRowNumbers ?? DEFAULT_GRID_ROW_NUMBERS,
+  );
+  const gridAutoHideScrollbar = useSettingsStore(
+    (s) => s.settings.gridAutoHideScrollbar ?? DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
+  );
+  /** The table grid's row height under the density setting (DB-17). */
+  const gridRowHeight = rowHeightForDensity(DATA_TABLE_ROW_HEIGHT, gridDensity);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -409,7 +431,7 @@ export function TableView({
     databaseType: databaseType ?? null,
     rows,
     displayedColumns,
-    rowHeight: DATA_TABLE_ROW_HEIGHT,
+    rowHeight: gridRowHeight,
     activeCell: ts?.gridSelection?.focus ?? null,
   });
 
@@ -844,7 +866,11 @@ export function TableView({
         onRestoreRow={actions.unstageRowDelete}
         // The foreign-key jump (DB-07): the arrows and the callback.
         foreignKeys={fkNavigation.foreignKeys}
-        rowHeight={DATA_TABLE_ROW_HEIGHT}
+        rowHeight={gridRowHeight}
+        // The grid-appearance settings (DB-17): density above, the rest here.
+        alternatingRows={gridAlternatingRows}
+        showRowNumbers={gridRowNumbers}
+        scrollbarAutoHide={gridAutoHideScrollbar}
         onScrollElementChange={fkNavigation.onScrollElementChange}
         // The marker of the inserted row is its own channel: the background
         // highlight above is shared with the detail panel, so only a marker

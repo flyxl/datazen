@@ -99,6 +99,15 @@ export interface DataTableProps {
   onReorderColumns?: (from: number, to: number) => void;
   /** How many leading columns are pinned while the grid scrolls. */
   frozenColumns?: number;
+  /* ── Grid appearance (DB-17). Every prop defaults to the grid's behaviour
+     before the setting existed, so a host that passes none keeps today's DOM
+     byte for byte. ── */
+  /** Alternating row backgrounds; default `true` (odd rows tinted, as always). */
+  alternatingRows?: boolean;
+  /** The row-number gutter; default `true` (the `#` column, as always). */
+  showRowNumbers?: boolean;
+  /** Scrollbars appear only while the grid is hovered; default `false`. */
+  scrollbarAutoHide?: boolean;
   /** Freeze through the right-clicked column (that many leading columns). */
   onFreezeThrough?: (throughIndex: number) => void;
   /** Unfreeze every column. */
@@ -344,6 +353,9 @@ export function DataTable({
   onClearSorts,
   onReorderColumns,
   frozenColumns = 0,
+  alternatingRows = true,
+  showRowNumbers = true,
+  scrollbarAutoHide = false,
   onFreezeThrough,
   onUnfreezeColumns,
   onColumnStats,
@@ -697,7 +709,11 @@ export function DataTable({
 
       <div
         ref={setScrollEl}
-        className="min-h-0 flex-1 overflow-auto"
+        className={cn(
+          'min-h-0 flex-1 overflow-auto',
+          // DB-17: the bars appear only while the grid is hovered/focused.
+          scrollbarAutoHide && 'dt-scrollbar-autohide',
+        )}
         aria-busy={loading}
         aria-label={hasCellSelection ? t('tableView.a11y.gridLabel') : t('dataTable.tableLabel')}
         aria-describedby={
@@ -723,6 +739,8 @@ export function DataTable({
               // DB-12: drag-to-reorder and the freeze are opt-in.
               onReorderColumns={onReorderColumns}
               frozenColumns={frozenColumns}
+              // DB-17: the gutter is the setting's to drop.
+              showRowNumbers={showRowNumbers}
               onFilterColumn={
                 onAddFilter
                   ? (column) => onAddFilter({ column, operator: 'eq', value: '' })
@@ -740,6 +758,9 @@ export function DataTable({
               scrollElement={scrollEl}
               columnWidths={columnWidths}
               frozenColumns={frozenColumns}
+              // DB-17: the two row-appearance settings, threaded through.
+              alternatingRows={alternatingRows}
+              showRowNumbers={showRowNumbers}
               onCellDoubleClick={handleCellDoubleClick}
               onCellEdit={handleCellEdit}
               onCellEditCancel={handleCellEditCancel}

@@ -222,3 +222,41 @@ describe('TableHeader frozen columns (DB-12)', () => {
     expect(headers[0].style.position).toBe('');
   });
 });
+
+describe('TableHeader row-number gutter (DB-17)', () => {
+  it('renders the # gutter by default', () => {
+    const { container } = render(
+      <TableHeader columns={COLS} sorts={[]} onSort={() => {}} sortable />,
+    );
+    // The gutter is the only child that is not a column header.
+    expect(container.textContent).toContain('#');
+  });
+
+  it('drops the gutter when showRowNumbers is false', () => {
+    const { container } = render(
+      <TableHeader columns={COLS} sorts={[]} onSort={() => {}} sortable showRowNumbers={false} />,
+    );
+    expect(container.textContent).not.toContain('#');
+    // ...and the columns are all still there.
+    expect(container.querySelectorAll('[data-col-header]')).toHaveLength(COLS.length);
+  });
+
+  it('pins the frozen columns from the grid edge when the gutter is off', () => {
+    const { container } = render(
+      <TableHeader
+        columns={COLS}
+        sorts={[]}
+        onSort={() => {}}
+        sortable
+        frozenColumns={1}
+        columnWidths={[100, 120, 140]}
+        showRowNumbers={false}
+      />,
+    );
+    const headers = [...container.querySelectorAll<HTMLElement>('[data-col-header]')];
+    const idHeader = headers.find((h) => h.getAttribute('data-col-header') === 'id')!;
+    // Behind the 40px gutter the first column pins at 40; without it, at 0.
+    expect(idHeader.style.position).toBe('sticky');
+    expect(idHeader.style.left).toBe('0px');
+  });
+});
