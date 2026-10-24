@@ -993,9 +993,11 @@ CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 
 
 **CM-19 driver 无状态能力（H/D）**
 
-- 前置：statefulSession 为 unsupported/unknown。
-- 步骤：请求固定 SQL session；执行支持的受控目标操作。
-- 断言：前者 CapabilityUnsupported，后者按能力可成功；不把单连接池假装成固定资源。
+- 前置：statefulSession 能力位不可用，且描述符给出 `SessionContinuity::Fixed` 或 `Leased`。
+- 步骤：请求编辑器会话（`OwnerRef::Editor`）；执行支持的受控目标操作。
+- 断言：**放行**，且租约型资源按 `PoolPolicy::stateless()` 处理；不把单连接池假装成固定资源（不声明 `Fixed`）。
+- 判据是**两个信号都说不行才拒**：能力位可用即放行；能力位不可用时描述符必须给出具体答案（`Fixed` 等价于会话级保证，`Leased` 是答案而非缺失）；只有能力位不可用**且**描述符为 `Unknown` 才返回 CapabilityUnsupported。
+- 只看描述符会挡掉 `LegacyResourceAdapter` 与自报 `Unknown` 的 ClickHouse / InfluxDB / Turso / rqlite（能力位为 supported，编辑器一直可用）；只看能力位会挡掉 SQLite（它有意声明 `statefulSession: unsupported` + `SessionContinuity::Leased`，单连接池不等于钉住的状态），后者会让查询标签页一条语句也执行不了。
 
 ### 16.3 并发、预算、资源清理与取消
 

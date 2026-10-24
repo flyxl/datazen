@@ -99,9 +99,12 @@ export interface TableForeignKeyNavigation {
 
 const EMPTY_RESOLVING: ReadonlySet<string> = new Set();
 
-/// ~1s of frames: the restoring tab has to fetch its first page over IPC, and
-/// until that page lands the virtual body has nothing to scroll.
-const MAX_RESTORE_FRAMES = 60;
+/// How often a placement that could not land yet is retried...
+const RESTORE_RETRY_MS = 50;
+/// ...and for how long. The restoring tab may have to fetch its first page over
+/// IPC before its body has anything to scroll, so a frame budget (about a
+/// second) is too short: five seconds covers the IPC round trip and the render.
+const MAX_RESTORE_ATTEMPTS = 100;
 
 export function useTableForeignKeyNavigation(
   options: UseTableForeignKeyNavigationOptions,
@@ -317,41 +320,55 @@ export function useTableForeignKeyNavigation(
    * scroll, so focusing first would put the focus on a row that is about to
    * move.
    */
+  const isActive = usePanelStore((state) => state.activePanelId === panelId);
   const [pendingViewport, setPendingViewport] = useState<GridViewport | null>(null);
+  // The snapshot is *peeked*, not taken: re-entering the tab remounts this
+  // panel, and the mount that first reads it may be the one that never gets a
+  // surface to place the offset on. It is consumed below, once the offset
+  // actually stuck.
   useEffect(() => {
-    const viewport = useFkNavigationStore.getState().takeViewport(panelId);
-    setPendingViewport(viewport);
-  }, [panelId]);
+    // A tab that is not in front cannot place an offset, and reading its own
+    // snapshot while hidden would consume the very position "back" restores:
+    // the tab the jump leaves stays mounted, so it must not read here.
+    if (!isActive) return;
+    const peeked = useFkNavigationStore.getState().peekViewport(panelId);
+    setPendingViewport(peeked);
+  }, [panelId, isActive, rows.length]);
   useEffect(() => {
     // The rows are part of the dependency list on purpose: entering a tab whose
     // data is still loading clamps the offset to 0 and burns the frame budget,
     // so the arrival of the rows restarts the placement with a fresh budget.
-    if (!pendingViewport || !scrollElement) return;
+    if (!pendingViewport || !scrollElement || !isActive) return;
     const target =
       pendingViewport.anchorRow !== null
         ? scrollTopForAnchorRow(pendingViewport.anchorRow, rowHeight)
         : pendingViewport.scrollTop;
-    // The body is virtualised: the moment the tab is entered the surface exists
-    // but its rows do not yet, so the assignment is clamped to 0 and the
-    // position is silently lost. Retry over a few frames and only drop the
-    // snapshot once the offset actually stuck.
-    let frames = 0;
-    let frame = 0;
+    // The body is virtualised, so the surface can be present and still refuse
+    // the offset for a while: a tab that comes back loading renders no spacer,
+    // its scroll height equals its client height, and the assignment is clamped
+    // to 0. That is a *state* to wait out, not a failure — and the row count
+    // does not change while it happens, so nothing would restart a frame loop
+    // that gave up. Retry on a timer until the offset sticks, and only drop the
+    // snapshot once it does.
+    let attempts = 0;
+    let timer = 0;
     const apply = () => {
-      scrollElement.scrollTop = target;
+      if (scrollElement.clientHeight > 0) {
+        scrollElement.scrollTop = target;
+      }
       if (Math.abs(scrollElement.scrollTop - target) <= 1) {
+        useFkNavigationStore.getState().takeViewport(panelId);
         setPendingViewport(null);
         return;
       }
-      // Out of frames is not a failure: the surface this tab comes back on may
-      // still be the one that is about to be replaced, or the rows may not be
-      // there yet. The snapshot is kept, and the next change of the surface or
-      // of the rows restarts the placement.
-      frames += 1;
-      if (frames >= MAX_RESTORE_FRAMES) return;
-      frame = requestAnimationFrame(apply);
+      attempts += 1;
+      // Out of attempts is not a failure either: the surface may have been
+      // replaced under us. The snapshot is kept, so entering the tab again
+      // starts another placement.
+      if (attempts >= MAX_RESTORE_ATTEMPTS) return;
+      timer = window.setTimeout(apply, RESTORE_RETRY_MS);
     };
-    frame = requestAnimationFrame(apply);
+    apply();
     const { anchorRow, anchorColumn } = pendingViewport;
     if (anchorRow !== null && anchorColumn) {
       requestAnimationFrame(() => {
@@ -361,8 +378,11 @@ export function useTableForeignKeyNavigation(
         if (cell instanceof HTMLElement) cell.focus();
       });
     }
-    return () => cancelAnimationFrame(frame);
-  }, [pendingViewport, scrollElement, rowHeight, rows.length]);
+    return () => window.clearTimeout(timer);
+    // A tab that is not in front is remounted hidden and only becomes the
+    // scrolling surface once it is selected again; the placement has to restart
+    // at that point, not at mount.
+  }, [pendingViewport, scrollElement, rowHeight, rows.length, isActive]);
 
   const breadcrumb = useMemo(() => {
     if (!origin) return null;

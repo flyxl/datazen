@@ -23,7 +23,14 @@ impl DesktopSessionBackend {
             .store
             .platform_profile(request.connection_id.as_str())
             .await
-            .ok_or_else(|| rc::ProviderError::SessionNotFound("profile unavailable".into()))?;
+            .ok_or_else(|| {
+                tracing::warn!(
+                    connection_id = %request.connection_id.as_str(),
+                    command = command,
+                    "open_resource: profile not found in the persisted store"
+                );
+                rc::ProviderError::SessionNotFound("profile unavailable".into())
+            })?;
         if !metadata.enabled || metadata.config_revision != request.config_revision.0 {
             return Err(rc::ProviderError::HostRejected(
                 "profile disabled or revision changed".into(),
@@ -94,20 +101,6 @@ impl DesktopSessionBackend {
             .resource_provider(&config.database_type)
             .await
             .map_err(|_| rc::ProviderError::CapabilityUnsupported)?;
-        // 编辑器会话要按会话保持状态（事务、临时表、SET），因此它向驱动索要
-        // 一个**有状态**的物理会话；驱动不声明就拒绝，绝不拿无状态池顶替。
-        //
-        // 其余 owner（`ClientSession`：工作区的 `connect`、MCP、迁移端点）只要求
-        // 「一次真实的物理会话」，不要求会话级连续性：把这条门禁套到它们头上会
-        // 让声明 `stateful_session = Unsupported` 的驱动（SQLite 明示如此）根本
-        // 连不上——连不上比「租约会话」糟得多。租约型资源在下面已经按
-        // `PoolPolicy::stateless()` 处理，不会被钉住状态。
-        if !metadata_only && requires_stateful_session(&request.owner) {
-            provider
-                .capabilities()
-                .require_stateful_session()
-                .map_err(|_| rc::ProviderError::CapabilityUnsupported)?;
-        }
         // Both editors and explicit-target callers can execute arbitrary SQL.
         // A short logical lifetime does not waive physical-session continuity.
         let purpose = if metadata_only {
@@ -126,6 +119,35 @@ impl DesktopSessionBackend {
             })
             .await
             .map_err(map::error)?;
+        // 编辑器会话要按会话保持状态（事务、临时表、SET）。拒绝的判据是
+        // **两个信号都说不行**，而不是任一个含糊：
+        //
+        // - 能力寄存器声明 `stateful_session` 可用 ⇒ 驱动自己担保，放行；
+        // - 否则描述符必须给出一个具体答案；`Fixed` 与会话级保证等价，
+        //   `Leased` 是**答案**而不是缺失（SQLite 有意声明租约——单连接池不等于
+        //   钉住的状态，但池里借来的后端仍可执行语句）。旧门禁只读能力位，于是
+        //   SQLite 连编辑器都开不出来，查询标签页一条语句也执行不了；
+        // - 只有能力位不可用、描述符又是 `Unknown`（连自己是什么都答不出）才拒绝。
+        //
+        // 只看描述符会把 `LegacyResourceAdapter` 与 ClickHouse / InfluxDB /
+        // Turso / rqlite 这类自报 `Unknown` 连续性的提供方一起挡在门外：它们
+        // 的能力位是 `Supported`，编辑器一直可用。`ClientSession` 类 owner（工作
+        // 区 `connect`、MCP、迁移端点）只要求一次真实物理会话，不受此门禁约束；
+        // 租约型资源在下面按 `PoolPolicy::stateless()` 处理。
+        if !metadata_only
+            && requires_stateful_session(&request.owner)
+            && provider.capabilities().require_stateful_session().is_err()
+            && !descriptor.is_fixed_session()
+            && !descriptor.declares_leased_session()
+        {
+            tracing::warn!(
+                source = "descriptor_continuity",
+                category = "unknown_continuity",
+                connection_id = %request.connection_id.as_str(),
+                "editor session refused: neither the capability registry nor the descriptor answers how the session continues"
+            );
+            return Err(rc::ProviderError::CapabilityUnsupported);
+        }
         let cost = match descriptor.connection_cost_policy {
             dr::ConnectionCostPolicy::PoolBounded {
                 max_physical_connections,

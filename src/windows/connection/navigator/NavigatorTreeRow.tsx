@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   Braces,
   ChevronDown,
   ChevronRight,
@@ -601,6 +602,23 @@ export function NavigatorTreeRow({
         >
           <Spinner size="sm" />
           {t('common.loading')}
+        </div>
+      );
+
+    case 'db-error':
+      return (
+        <div
+          {...itemProps}
+          className="flex items-center gap-2 py-1 text-xs text-red-400"
+          style={{ paddingLeft: depthPadding(row.depth) }}
+          data-testid="db-load-error"
+          title={row.message}
+        >
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          <span className="selectable min-w-0 truncate">
+            {t('schema.loadTablesFailed')}
+            <span className="text-fg-muted"> — {row.message}</span>
+          </span>
         </div>
       );
 

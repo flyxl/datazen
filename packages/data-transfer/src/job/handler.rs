@@ -483,11 +483,37 @@ impl DataTransferHandler {
                 let mut any_failed = false;
                 let mut any_cancelled = false;
                 let mut checkpoint = InMemoryTransferCheckpoint::new();
-                for table in self
+                // Foreign keys are enforced as each table's rows land, so the
+                // data stage has to write parents before children. Source order
+                // is alphabetical, which puts `*_child` ahead of `*_parent` and
+                // made every imported child row violate its parent reference.
+                let data_order = match crate::sql_structure::structure_table_order(
+                    &self.inspected,
+                    &self.source_schemas,
+                    &self.freeze.job,
+                ) {
+                    Ok(order) => order,
+                    Err(error) => return Ok(failed_stage(spec, error.to_string())),
+                };
+                let data_position: HashMap<&str, usize> = data_order
+                    .iter()
+                    .enumerate()
+                    .map(|(index, table)| (table.as_str(), index))
+                    .collect();
+                let mut data_tables: Vec<&TableInspectResult> = self
                     .inspected
                     .iter()
                     .filter(|t| crate::structure::table_eligible_for_data(t, &self.freeze.job))
-                {
+                    .collect();
+                // Stable sort: tables missing from the dependency order keep
+                // their inspected order instead of vanishing.
+                data_tables.sort_by_key(|table| {
+                    data_position
+                        .get(table.source_table.as_str())
+                        .copied()
+                        .unwrap_or(usize::MAX)
+                });
+                for table in data_tables {
                     if self.cancel_requested(cancel) {
                         any_cancelled = true;
                         break;
@@ -610,6 +636,15 @@ impl DataTransferHandler {
                                 "bounded pipeline peak buffer"
                             );
                             if !o.result.result.success {
+                                // The run only reports "a stage terminated"; the table and
+                                // the reason are what make the failure actionable.
+                                tracing::warn!(
+                                    source_table = table.source_table.as_str(),
+                                    target_table = table.target_table.as_str(),
+                                    rows_inserted = ?o.result.result.rows_inserted,
+                                    reason = o.result.result.error.as_deref().unwrap_or(""),
+                                    "data transfer table failed"
+                                );
                                 any_failed = true;
                             }
                             if o.result.cancelled {

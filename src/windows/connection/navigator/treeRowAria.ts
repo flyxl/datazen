@@ -51,6 +51,7 @@ export function navigatorRowAria(row: UnifiedRow): VirtualTreeItemAria | null {
     case 'object':
     case 'kv-db':
     case 'db-loading':
+    case 'db-error':
       return { role: 'treeitem', 'aria-level': ariaLevelOf(row) };
 
     case 'empty-group':

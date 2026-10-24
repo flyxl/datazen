@@ -183,6 +183,13 @@ impl std::hash::Hasher for FileIdentityHasher {
 
 #[async_trait]
 impl DatabaseDriver for SqliteDriver {
+    /// A SQLite config's `database` is the file: the location, not a namespace.
+    /// Endpoint identity must keep the path — the observed namespace is the
+    /// synthetic `main` for every file, which would make two files one endpoint.
+    fn database_names_location(&self) -> bool {
+        true
+    }
+
     /// This driver's own dialect SQL for the shared schema-object commands.
     fn schema_object_sql(
         &self,
@@ -1176,7 +1183,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Endpoint identity asks the driver whether `database` is a location. A
+    /// file-backed answer keeps two different files apart; the synthetic
+    /// `main` namespace would otherwise collapse them into one endpoint.
     #[test]
+    fn the_config_database_is_the_file_location_not_a_namespace() {
+        assert!(SqliteDriver::new().database_names_location());
+    }
+
     fn effective_database_rejects_file_paths_but_keeps_attached_aliases() {
         // A connection config's `database` is a path for SQLite; hosts forward
         // it, and interpolating it as a catalog produced

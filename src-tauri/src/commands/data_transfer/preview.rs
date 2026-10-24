@@ -268,6 +268,24 @@ async fn preview_sql_file_target(
         )
         .map_err(CommandError::from)?;
     }
+    // A rejection names one table and one property; which mode the request was
+    // made in decides whether that property was even relevant, so both travel
+    // with the log line.
+    tracing::debug!(
+        mode = ?job.mode,
+        write_mode = ?job.write_mode,
+        use_target_default_collation = job.options.use_target_default_collation,
+        tables = ?inspected
+            .iter()
+            .map(|table| (
+                table.source_table.as_str(),
+                table.status,
+                table.create_new,
+                table.enabled,
+            ))
+            .collect::<Vec<_>>(),
+        "data transfer preview request"
+    );
     if let Some((source_adapter, target_adapter)) = structure_adapters.as_ref() {
         crate::data_transfer::structure::enrich_create_new_target_types(
             &mut inspected,

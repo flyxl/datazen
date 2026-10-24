@@ -10,14 +10,25 @@ import {
 } from '../../helpers.js';
 
 async function expectResultCell(column: string, value: string): Promise<void> {
-  await browser.waitUntil(async () => {
-    const actual = await browser.execute(() => {
-      const table = document.querySelector('[data-testid="result-workspace-table"]');
-      return { headers: Array.from(table?.querySelectorAll('[data-col-header]') ?? []).map((cell) => cell.getAttribute('data-col-header')),
-        cells: Array.from(table?.querySelectorAll('[data-testid="data-table-cell"]') ?? []).map((cell) => cell.textContent?.trim()) };
-    });
-    return actual.headers.includes(column) && actual.cells.length === 1 && actual.cells[0] === value;
-  }, { timeout: 15000, timeoutMsg: `真实结果列/单元格未出现: ${column}` });
+  await browser.waitUntil(
+    async () => {
+      const actual = await browser.execute(() => {
+        const table = document.querySelector('[data-testid="result-workspace-table"]');
+        return {
+          headers: Array.from(table?.querySelectorAll('[data-col-header]') ?? []).map((cell) =>
+            cell.getAttribute('data-col-header'),
+          ),
+          cells: Array.from(table?.querySelectorAll('[data-testid="data-table-cell"]') ?? []).map(
+            (cell) => cell.textContent?.trim(),
+          ),
+        };
+      });
+      return (
+        actual.headers.includes(column) && actual.cells.length === 1 && actual.cells[0] === value
+      );
+    },
+    { timeout: 15000, timeoutMsg: `真实结果列/单元格未出现: ${column}` },
+  );
 }
 
 describe('SQL 查询边界完整用户旅程 (QUERY-EDGE-JOURNEY, TC-QUERY-006, TC-QUERY-009~012)', () => {
@@ -47,12 +58,16 @@ describe('SQL 查询边界完整用户旅程 (QUERY-EDGE-JOURNEY, TC-QUERY-006, 
     await captureJourneyStep('query-edge-running');
     await stopButton.click();
 
+    // The statement is `pg_sleep(10)`, so it ends on its own at ten seconds even
+    // if the cancel is refused (the host only knows the execution id once the
+    // stream has started). The window must outlast the statement: a shorter one
+    // turns "cancel took a while" into "the editor never recovered".
     await browser.waitUntil(
       async () =>
         await $('[data-testid="editor-execute-button"]')
           .isDisplayed()
           .catch(() => false),
-      { timeout: 10000, timeoutMsg: '取消查询后执行按钮未恢复' },
+      { timeout: 30000, timeoutMsg: '取消查询后执行按钮未恢复' },
     );
     await executeSQL('SELECT 99 AS cancel_recovered_value');
     await expectResultCell('cancel_recovered_value', '99');

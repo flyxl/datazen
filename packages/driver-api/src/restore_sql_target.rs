@@ -247,10 +247,11 @@ fn validate_alter_sequence_owned_by(
     while cursor < tokens.len() {
         match &tokens[cursor] {
             Token::Word(w) if w.value.eq_ignore_ascii_case("OWNED") => break,
+            // An identifier is a word here: sqlparser folds quoted identifiers
+            // into `Word`. A single-quoted string is never an identifier in any
+            // engine this gates — accepting it made this fail-closed verifier
+            // looser than the engines it sits in front of.
             Token::Word(w) => sequence.push(w.value.clone()),
-            Token::DoubleQuotedString(text) | Token::SingleQuotedString(text) => {
-                sequence.push(text.clone())
-            }
             Token::Period => {}
             _ => return Some(Err(invalid())),
         }
@@ -266,9 +267,6 @@ fn validate_alter_sequence_owned_by(
     for token in &tokens[cursor + 2..] {
         match token {
             Token::Word(w) => owner.push(w.value.clone()),
-            Token::DoubleQuotedString(text) | Token::SingleQuotedString(text) => {
-                owner.push(text.clone())
-            }
             Token::Period => {}
             _ => return Some(Err(invalid())),
         }

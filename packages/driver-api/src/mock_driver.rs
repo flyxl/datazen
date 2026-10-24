@@ -74,6 +74,10 @@ pub struct MockDriverOptions {
     /// ("this driver applies no implicit host"), which is what a mock standing
     /// in for e.g. SQLite should say.
     pub default_host: Option<&'static str>,
+    /// Whether the mock's `database` is a physical location (a file), reported
+    /// by `DatabaseDriver::database_names_location`. Lets a test stand in for a
+    /// file-backed driver such as SQLite without depending on its crate.
+    pub database_names_location: bool,
     /// Port this mock declares as its implicit default, reported by
     /// `DatabaseDriver::default_port`.
     pub default_port: Option<u16>,
@@ -226,6 +230,7 @@ impl Default for MockDriverOptions {
         Self {
             category: DriverCategory::Sql,
             default_host: None,
+            database_names_location: false,
             default_port: None,
             columns: Vec::new(),
             primary_keys: Vec::new(),
@@ -569,6 +574,10 @@ impl DatabaseDriver for MockDriver {
 
     fn default_host(&self) -> Option<&'static str> {
         self.opts.default_host
+    }
+
+    fn database_names_location(&self) -> bool {
+        self.opts.database_names_location
     }
 
     fn default_port(&self) -> Option<u16> {
