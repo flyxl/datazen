@@ -265,6 +265,18 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
       { timeout: 30000, timeoutMsg: '跳转后未出现映射步骤' },
     );
 
+    // 映射明细比步骤本身晚一步：步骤容器出现时表清单和列还在渲染，固定断言
+    // 会读到空文本（本轮实测 `Received string: ""`）。等到「列输入框」或
+    // 「正文出现列名」任一成立再判定，两条证据都不猜。
+    await browser.waitUntil(
+      async () => {
+        if (await $('[data-testid="data-transfer-target-col-qty"]').isExisting()) return true;
+        const body = await $('body').getText();
+        return body.toLowerCase().includes('qty');
+      },
+      { timeout: 20000, timeoutMsg: 'ID:data-transfer-window|映射明细未渲染' },
+    );
+
     // 映射步的列名是输入框的 value，不在 body 文本里：先按稳定 testid 找映射列，
     // 只有拿不到时才退回整页文本断言。
     const mappedColumn = await $('[data-testid="data-transfer-target-col-qty"]');
