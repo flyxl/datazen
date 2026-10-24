@@ -78,55 +78,6 @@ impl QueryExecutor {
             .await
     }
 
-    /// Read one page of a table.
-    ///
-    /// `count_strategy` and `default_order_columns` are the caller's wishes;
-    /// `None` for either means "the driver decides". `skip_count` is a
-    /// different thing entirely: it says "reuse the total you already have",
-    /// so not a single count statement is sent and the answer carries no
-    /// count kind at all.
-    ///
-    /// This is the read **without** a boundary: the first page of a table, or
-    /// a read that falls back to `OFFSET`. [`Self::get_table_data_page`] is
-    /// the same read with one.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn get_table_data(
-        &self,
-        driver: &Arc<dyn DatabaseDriver>,
-        handle: &ConnectionHandle,
-        db_session_id: &str,
-        database: &str,
-        schema: Option<&str>,
-        table: &str,
-        page: u32,
-        page_size: u32,
-        filters: Option<Vec<FilterCondition>>,
-        order_by: Option<OrderBy>,
-        skip_count: bool,
-        filter_logic: Option<&str>,
-        count_strategy: Option<CountStrategy>,
-        default_order_columns: Option<Vec<String>>,
-    ) -> Result<TableDataResult, DriverError> {
-        self.get_table_data_page(
-            driver,
-            handle,
-            db_session_id,
-            database,
-            schema,
-            table,
-            page,
-            page_size,
-            filters,
-            order_by,
-            skip_count,
-            filter_logic,
-            count_strategy,
-            default_order_columns,
-            None,
-        )
-        .await
-    }
-
     /// Read one page of a table, by offset or by seek.
     ///
     /// `after_key` is the boundary of the page — the key values of the last

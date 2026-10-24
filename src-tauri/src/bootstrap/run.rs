@@ -337,7 +337,6 @@ pub fn run() {
             crate::commands::get_er_data,
             crate::commands::get_object_ddl,
             crate::commands::get_privileges,
-            crate::commands::get_table_data,
             crate::commands::get_table_data_at_target,
             crate::commands::estimate_table_rows,
             crate::commands::resolve_foreign_key_targets,

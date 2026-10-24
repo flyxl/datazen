@@ -688,7 +688,7 @@ mod executor_paging {
         );
         let driver = mock.clone() as Arc<dyn DatabaseDriver>;
         let result = executor()
-            .get_table_data(
+            .get_table_data_page(
                 &driver,
                 &handle(),
                 "conn1",
@@ -700,6 +700,7 @@ mod executor_paging {
                 None,
                 None,
                 true,
+                None,
                 None,
                 None,
                 None,

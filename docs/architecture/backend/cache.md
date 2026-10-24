@@ -276,7 +276,7 @@ impl QueryExecutor {
     }
 
     /// 获取表数据（带缓存）
-    pub async fn get_table_data(
+    pub async fn get_table_data_page(
         &self,
         driver: &Arc<dyn DatabaseDriver>,
         handle: &ConnectionHandle,

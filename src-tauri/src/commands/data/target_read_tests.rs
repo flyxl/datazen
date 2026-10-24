@@ -240,6 +240,127 @@ async fn a_caller_that_reuses_the_total_gets_no_kind_at_all() {
     assert_eq!(data.total_rows_kind, None);
 }
 
+/// The caller's count strategy travels verbatim (volume 09): an explicit ask
+/// beats the driver's own declared default, so the panel's explicit "count
+/// exactly" on an estimating driver still counts exactly. Migrated from the
+/// retired session-bound `get_table_data` command, whose forwarding it pinned.
+#[tokio::test]
+async fn the_callers_count_strategy_overrides_the_drivers_default() {
+    let test = TestAppState::with_options(MockDriverOptions {
+        count_total: 7,
+        count_strategy: Some(CountStrategy::Estimated),
+        count_estimate_rows: Some(4242),
+        query_rows: rows(),
+        ..Default::default()
+    })
+    .await;
+    let (_, conn_id) = test.save_and_connect("target-read-forward").await;
+
+    let mut request = request("target-read-forward", &conn_id);
+    request.count_strategy = Some(CountStrategy::Exact);
+    let data = table_target::read(&test.state, request)
+        .await
+        .expect("the read succeeds");
+
+    assert_eq!(data.total_rows, Some(7));
+    assert_eq!(data.total_rows_kind, Some(CountStrategy::Exact));
+}
+
+/// Regression (BUG-002), migrated from the retired session-bound read: the
+/// request's own database is read, and the shared session is never re-pointed
+/// at it — the target binding replaces `USE`, so the read cannot disturb any
+/// other tab that shares the session.
+#[tokio::test]
+async fn the_request_database_is_read_without_switching_the_session() {
+    let test = TestAppState::with_tables().await;
+    let (_, conn_id) = test.save_and_connect("target-read-pin-db").await;
+    let before = test.mock.use_database_calls();
+
+    let mut request = request("target-read-pin-db", &conn_id);
+    request.context.database = Some("analytics".into());
+    let data = table_target::read(&test.state, request)
+        .await
+        .expect("the read succeeds");
+
+    assert_eq!(data.rows.len(), 1, "the requested database is the one read");
+    assert_eq!(
+        test.mock.use_database_calls(),
+        before,
+        "the read must not switch the session's database"
+    );
+    // The session keeps its own configured database; the request target is
+    // per-call.
+    let config = test.state.store.get_connection("target-read-pin-db").await;
+    assert_eq!(
+        config.expect("the profile exists").database.as_deref(),
+        Some("app")
+    );
+}
+
+/// The filter gates, migrated from the retired session-bound read: the host
+/// must refuse a filter the shared layer refuses, and it must say so with
+/// the contract prefix the frontend classifies on.
+#[tokio::test]
+async fn a_read_rejects_an_incomplete_filter_with_the_contract_prefix() {
+    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
+
+    let test = TestAppState::with_tables().await;
+    let (_, conn_id) = test.save_and_connect("target-read-filter-incomplete").await;
+
+    let mut request = request("target-read-filter-incomplete", &conn_id);
+    request.filters = Some(vec![FilterCondition {
+        column: "name".into(),
+        operator: FilterOperator::Eq,
+        value: Value::String(String::new()),
+        connector: None,
+    }]);
+    let error = table_target::read(&test.state, request)
+        .await
+        .expect_err("an incomplete filter must be refused");
+    match error {
+        CommandError::Validation(message) => {
+            assert!(
+                message.starts_with("grid.filter.incomplete: "),
+                "got: {message}"
+            );
+            assert!(message.contains("\"name\""), "got: {message}");
+        }
+        other => panic!("expected a validation error, got: {other:?}"),
+    }
+}
+
+/// The dialect-only operators are refused with their own prefix — the mock
+/// declares the shared operator set, which does not carry them.
+#[tokio::test]
+async fn a_read_rejects_an_unsupported_operator_with_the_contract_prefix() {
+    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
+
+    let test = TestAppState::with_tables().await;
+    let (_, conn_id) = test
+        .save_and_connect("target-read-filter-unsupported")
+        .await;
+
+    let mut request = request("target-read-filter-unsupported", &conn_id);
+    request.filters = Some(vec![FilterCondition {
+        column: "name".into(),
+        operator: FilterOperator::Regex,
+        value: Value::String("^a".into()),
+        connector: None,
+    }]);
+    let error = table_target::read(&test.state, request)
+        .await
+        .expect_err("an unsupported operator must be refused");
+    match error {
+        CommandError::Validation(message) => {
+            assert!(
+                message.starts_with("grid.filter.unsupportedOperator: "),
+                "got: {message}"
+            );
+        }
+        other => panic!("expected a validation error, got: {other:?}"),
+    }
+}
+
 /// The paging half of the target read: what a page is read by, and what the
 /// caller is told about it.
 mod keyset {

@@ -70,8 +70,8 @@ describe('desktop transport: table-data commands', () => {
       filterLogic: undefined,
     });
 
-    // `get_table_data` also exists on the Rust side, but the grid reads
-    // through the target-bound one; the port has to name the command the
+    // The session-scoped `get_table_data` has been retired; the grid reads
+    // through the target-bound command, and the port names the command the
     // grid actually uses.
     expect(mock.invoke).toHaveBeenLastCalledWith('get_table_data_at_target', {
       request: {

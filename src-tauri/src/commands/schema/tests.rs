@@ -2,7 +2,6 @@ use super::*;
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen_driver_api::Value;
-use datazen_feature_core::services::query_executor::SortCondition;
 use std::collections::HashMap;
 
 #[tokio::test]
@@ -42,28 +41,6 @@ async fn schema_commands_with_connected_mock() {
     .unwrap();
     assert_eq!(schema.table_name, "users");
     assert_eq!(schema.columns.len(), 2);
-
-    let data = get_table_data_impl(
-        &test.state,
-        conn_id.clone(),
-        "users".into(),
-        0,
-        10,
-        None,
-        Some(vec![SortCondition {
-            column: "id".into(),
-            descending: false,
-        }]),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-    assert_eq!(data.total_rows, Some(2));
 
     let er = get_er_data_impl(&test.state, conn_id, "app".into(), None)
         .await
@@ -124,55 +101,6 @@ async fn schema_commands_error_when_not_connected() {
             .is_err()
     );
 }
-
-#[tokio::test]
-async fn get_table_data_with_query_rows() {
-    use datazen_driver_api::{ColumnSchema, TableInfo, TableType};
-
-    let opts = MockDriverOptions {
-        databases: vec!["app".into()],
-        tables: vec![TableInfo {
-            name: "items".into(),
-            schema: None,
-            table_type: TableType::Table,
-            row_count: None,
-        }],
-        columns: vec![ColumnSchema {
-            name: "id".into(),
-            data_type: "integer".into(),
-            nullable: false,
-            default_value: None,
-            comment: None,
-            is_primary_key: true,
-            is_auto_increment: false,
-        }],
-        primary_keys: vec!["id".into()],
-        count_total: 1,
-        query_rows: vec![vec![Some(Value::Integer(1))]],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("data-cfg").await;
-    let data = get_table_data_impl(
-        &test.state,
-        conn_id,
-        "items".into(),
-        0,
-        50,
-        None,
-        None,
-        Some(true),
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-    assert_eq!(data.rows.len(), 1);
-}
-
 fn col(name: &str) -> datazen_driver_api::ColumnSchema {
     datazen_driver_api::ColumnSchema {
         name: name.into(),
@@ -352,105 +280,6 @@ async fn privileges_map_grantee_and_skip_incomplete_rows() {
     assert_eq!(grants[0].object_name, "users");
     assert_eq!(grants[0].privilege, "SELECT");
 }
-
-#[tokio::test]
-async fn get_table_data_joins_filters_with_or() {
-    use datazen_driver_api::{TableInfo, TableType};
-    use datazen_feature_core::services::query_executor::FilterCondition;
-    use datazen_feature_core::services::query_executor::FilterOperator;
-
-    let opts = MockDriverOptions {
-        databases: vec!["app".into()],
-        tables: vec![TableInfo {
-            name: "items".into(),
-            schema: None,
-            table_type: TableType::Table,
-            row_count: None,
-        }],
-        columns: vec![col("id"), col("status")],
-        primary_keys: vec!["id".into()],
-        count_total: 1,
-        query_rows: vec![vec![
-            Some(Value::Integer(1)),
-            Some(Value::String("a".into())),
-        ]],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("filter-or").await;
-    let data = get_table_data_impl(
-        &test.state,
-        conn_id,
-        "items".into(),
-        0,
-        50,
-        Some(vec![
-            FilterCondition {
-                column: "id".into(),
-                operator: FilterOperator::Eq,
-                value: Value::Integer(1),
-                connector: None,
-            },
-            FilterCondition {
-                column: "status".into(),
-                operator: FilterOperator::Eq,
-                value: Value::String("a".into()),
-                connector: None,
-            },
-        ]),
-        None,
-        Some(true),
-        Some("or".into()),
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-    assert_eq!(data.rows.len(), 1);
-}
-
-#[tokio::test]
-async fn get_table_data_reads_the_target_database_without_switching() {
-    let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("tdata-pin-db").await;
-    // Sample config pins database = "app"; opening a table that lives in
-    // another database must read *that* database (BUG-002) — via the
-    // explicit argument, never by re-pointing the shared session.
-    let data = get_table_data_impl(
-        &test.state,
-        conn_id.clone(),
-        "users".into(),
-        0,
-        50,
-        None,
-        None,
-        Some(true),
-        None,
-        Some("analytics".into()),
-        None,
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-    assert_eq!(data.rows.len(), 1);
-    assert!(
-        test.mock.use_database_calls().is_empty(),
-        "get_table_data must not switch the session's database"
-    );
-    // The session keeps its own configured database; the request target is
-    // per-call.
-    let config = test
-        .state
-        .store
-        .get_connection("tdata-pin-db")
-        .await
-        .unwrap();
-    assert_eq!(config.database.as_deref(), Some("app"));
-}
-
 /// Regression (BUG-003): `get_er_data` listed the requested database's
 /// tables but read every table's schema against whatever catalog the shared
 /// session sat on. That produced a successful but column-less schema, which
@@ -625,114 +454,4 @@ async fn read_definition(
     let result: datazen_driver_api::schema_metadata::RelationSchema =
         serde_json::from_value(data["value"].clone())?;
     Ok(result.definition)
-}
-
-/// The host must refuse a filter the shared layer refuses, and it must say so
-/// with the contract prefix the frontend classifies on.
-#[tokio::test]
-async fn get_table_data_rejects_incomplete_filter_with_prefix() {
-    use datazen_driver_api::{TableInfo, TableType};
-    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
-
-    let opts = MockDriverOptions {
-        databases: vec!["app".into()],
-        tables: vec![TableInfo {
-            name: "items".into(),
-            schema: None,
-            table_type: TableType::Table,
-            row_count: None,
-        }],
-        columns: vec![col("id"), col("status")],
-        primary_keys: vec!["id".into()],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("filter-incomplete").await;
-    let error = get_table_data_impl(
-        &test.state,
-        conn_id,
-        "items".into(),
-        0,
-        50,
-        Some(vec![FilterCondition {
-            column: "status".into(),
-            operator: FilterOperator::Eq,
-            value: Value::String(String::new()),
-            connector: None,
-        }]),
-        None,
-        Some(true),
-        Some("and".into()),
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .expect_err("an incomplete filter must be refused");
-    match error {
-        CommandError::Validation(message) => {
-            assert!(
-                message.starts_with("grid.filter.incomplete: "),
-                "got: {message}"
-            );
-            assert!(message.contains("\"status\""), "got: {message}");
-        }
-        other => panic!("expected a validation error, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn get_table_data_rejects_unsupported_operator_with_prefix() {
-    use datazen_driver_api::{TableInfo, TableType};
-    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
-
-    let opts = MockDriverOptions {
-        databases: vec!["app".into()],
-        tables: vec![TableInfo {
-            name: "items".into(),
-            schema: None,
-            table_type: TableType::Table,
-            row_count: None,
-        }],
-        columns: vec![col("id"), col("status")],
-        primary_keys: vec!["id".into()],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("filter-unsupported").await;
-    // The mock driver declares the shared operator set, which does not carry
-    // the dialect-only operators.
-    let error = get_table_data_impl(
-        &test.state,
-        conn_id,
-        "items".into(),
-        0,
-        50,
-        Some(vec![FilterCondition {
-            column: "status".into(),
-            operator: FilterOperator::Regex,
-            value: Value::String("^a".into()),
-            connector: None,
-        }]),
-        None,
-        Some(true),
-        Some("and".into()),
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .expect_err("an operator outside the driver whitelist must be refused");
-    match error {
-        CommandError::Validation(message) => {
-            assert!(
-                message.starts_with("grid.filter.unsupportedOperator: "),
-                "got: {message}"
-            );
-            assert!(message.contains("'regex'"), "got: {message}");
-        }
-        other => panic!("expected a validation error, got: {other:?}"),
-    }
 }
