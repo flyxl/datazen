@@ -411,8 +411,6 @@ const pack = {
   'pagination.unstablePaging': '未设置排序——跨页的行可能重复或被跳过。',
   'pagination.estimatedLessThanActual': '当前页为空。实际行数可能低于估算值——使用「计数」核实。',
   'defaultSort.noPrimaryKey': '没有主键——按第一列排序。',
-  'tableNoPk.editBanner': '该表没有主键——无法安全定位行，网格为只读。',
-  'tableNoPk.editInSql': '用 SQL 编辑',
   'defaultSort.custom': '自定义排序',
   'defaultSort.panelLabel': '排序',
   'defaultSort.inherit': '跟随设置',

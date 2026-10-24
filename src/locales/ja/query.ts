@@ -269,9 +269,6 @@ const pack = {
   'pagination.estimatedLessThanActual':
     'このページは空です。実際の行数は推定値より少ない可能性があります — "カウント" で確認してください。',
   'defaultSort.noPrimaryKey': '主キーがありません — 最初の列で並べ替えます。',
-  'tableNoPk.editBanner':
-    'このテーブルには主キーがなく、行を安全に特定できないため、グリッドは読み取り専用です。',
-  'tableNoPk.editInSql': 'SQL で編集',
   'defaultSort.custom': 'カスタム順',
   'defaultSort.panelLabel': '並べ替え',
   'defaultSort.inherit': '設定に従う',

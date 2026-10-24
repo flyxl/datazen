@@ -254,8 +254,6 @@ const pack = {
   'pagination.estimatedLessThanActual':
     '此頁面沒有資料列。實際資料列數可能低於估算值 — 請使用「計數」確認。',
   'defaultSort.noPrimaryKey': '沒有主鍵 — 依第一個欄位排序。',
-  'tableNoPk.editBanner': '此表沒有主鍵——無法安全定位資料列，網格為唯讀。',
-  'tableNoPk.editInSql': '用 SQL 編輯',
   'defaultSort.custom': '自訂順序',
   'defaultSort.panelLabel': '排序',
   'defaultSort.inherit': '依設定',

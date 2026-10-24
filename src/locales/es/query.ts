@@ -271,9 +271,6 @@ const pack = {
   'pagination.estimatedLessThanActual':
     'Esta página está vacía. El conteo real de filas puede ser menor que la estimación — use "Contar" para comprobarlo.',
   'defaultSort.noPrimaryKey': 'Sin clave primaria — el orden se basa en la primera columna.',
-  'tableNoPk.editBanner':
-    'Esta tabla no tiene clave primaria: no se pueden identificar filas de forma segura y la cuadrícula es de solo lectura.',
-  'tableNoPk.editInSql': 'Editar en SQL',
   'defaultSort.custom': 'Orden personalizado',
   'defaultSort.panelLabel': 'Ordenar',
   'defaultSort.inherit': 'Seguir la configuración',
