@@ -187,6 +187,27 @@ pub async fn execute_bounded_table(
     let mut budget = PipelineBudget::new();
     let mut progress = JobProgress::default();
 
+    // 显式写入的 identity / 自增值不会推进目标序列：导入 (41, 42) 后下一次
+    // 自增插入会拿到 1，与已提交的 id 撞车。列清单与目标 schema 在这里算一次，
+    // 每个成功批次在自己的事务里推进（与 `execute/dispatcher.rs` 的收敛点一致）。
+    let identity_schema = context
+        .job
+        .database_target()
+        .map(|target| target.schema.clone())
+        .unwrap_or_default();
+    let explicit_identity_columns: Vec<String> = context
+        .columns
+        .iter()
+        .filter(|mapping| {
+            context
+                .target_schema
+                .columns
+                .iter()
+                .any(|column| column.name == mapping.target_column && column.is_auto_increment)
+        })
+        .map(|mapping| mapping.target_column.clone())
+        .collect();
+
     // 源快照证明：打不开快照/指纹取证失败都禁止续写（§6.3）。
     let (snapshot, source_fingerprint) = {
         let snapshot = context
@@ -530,6 +551,25 @@ pub async fn execute_bounded_table(
                     }
                     budget.release(converted_bytes + param_bytes);
                     break;
+                }
+                if !explicit_identity_columns.is_empty() {
+                    if let Err(error) = context
+                        .target_driver
+                        .advance_transfer_identity_sequences(
+                            context.target_handle,
+                            identity_schema.as_deref(),
+                            &context.table.target_table,
+                            &explicit_identity_columns,
+                        )
+                        .await
+                    {
+                        terminal_error = Some(format!(
+                            "cannot safely synchronize generated identity values: {error}"
+                        ));
+                        let _ = context.target_driver.rollback(tx).await;
+                        budget.release(converted_bytes + param_bytes);
+                        break;
+                    }
                 }
                 if let Err(error) = context.target_driver.commit(tx).await {
                     context.checkpoint.invalidate();

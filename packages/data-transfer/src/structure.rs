@@ -710,6 +710,16 @@ pub fn mapped_create_ddl(
             )));
         }
     }
+    // Which table is being rendered, and under which mode, is the whole answer
+    // when a data-only run reports a structure property it never writes.
+    tracing::debug!(
+        mode = ?job.mode,
+        write_mode = ?job.write_mode,
+        source_table = %table.source_table,
+        target_table = %table.target_table,
+        create_new = table.create_new,
+        "rendering target CREATE DDL for a source table"
+    );
     let use_target_default_collation = job.options.use_target_default_collation;
     let mut source_table_options = schema.table_options.clone();
     if use_target_default_collation {
