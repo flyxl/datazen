@@ -31,7 +31,7 @@ mod count_strategy {
             ..Default::default()
         })
         .await;
-        let (_, conn_id) = test.save_and_connect_runtime("estimate-none").await;
+        let (_, conn_id) = test.save_and_connect("estimate-none").await;
         let calls = test.mock.query_calls();
         let estimate = estimate_table_rows_impl(
             &test.state,
@@ -68,7 +68,7 @@ mod count_strategy {
             ..Default::default()
         })
         .await;
-        let (_, conn_id) = test.save_and_connect_runtime("estimate-value").await;
+        let (_, conn_id) = test.save_and_connect("estimate-value").await;
         let estimate = estimate_table_rows_impl(
             &test.state,
             conn_id,
@@ -99,7 +99,7 @@ mod count_strategy {
             ..Default::default()
         })
         .await;
-        let (_, conn_id) = test.save_and_connect_runtime("estimate-bad").await;
+        let (_, conn_id) = test.save_and_connect("estimate-bad").await;
         let estimate = estimate_table_rows_impl(
             &test.state,
             conn_id,
