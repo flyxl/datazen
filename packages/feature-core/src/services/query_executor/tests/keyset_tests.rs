@@ -119,10 +119,10 @@ mod offset_statement_is_unchanged {
             "users",
             &columns,
             None,
-            Some(OrderBy {
+            Some(vec![OrderBy {
                 column: "name".to_string(),
                 descending: true,
-            }),
+            }]),
             &[],
             &DEFAULT,
             50,
@@ -345,9 +345,9 @@ mod executor_paging {
         executor: &QueryExecutor,
         mock: &Arc<MockDriver>,
         after_key: Option<&[CursorValue]>,
-        sort: Option<OrderBy>,
+        sorts: Option<Vec<OrderBy>>,
     ) -> TableDataResult {
-        read_page_at(executor, mock, 0, after_key, sort).await
+        read_page_at(executor, mock, 0, after_key, sorts).await
     }
 
     /// A read of a **specific** page.
@@ -360,9 +360,9 @@ mod executor_paging {
         mock: &Arc<MockDriver>,
         page: u32,
         after_key: Option<&[CursorValue]>,
-        sort: Option<OrderBy>,
+        sorts: Option<Vec<OrderBy>>,
     ) -> TableDataResult {
-        read_page_sized(executor, mock, page, 50, after_key, sort).await
+        read_page_sized(executor, mock, page, 50, after_key, sorts).await
     }
 
     /// A read of a specific page, with a specific page size.
@@ -375,7 +375,7 @@ mod executor_paging {
         page: u32,
         page_size: u32,
         after_key: Option<&[CursorValue]>,
-        sort: Option<OrderBy>,
+        sorts: Option<Vec<OrderBy>>,
     ) -> TableDataResult {
         let driver = mock.clone() as Arc<dyn DatabaseDriver>;
         executor
@@ -389,7 +389,7 @@ mod executor_paging {
                 page,
                 page_size,
                 None,
-                sort,
+                sorts,
                 true,
                 None,
                 None,
@@ -450,10 +450,10 @@ mod executor_paging {
             &mock,
             1,
             None,
-            Some(OrderBy {
+            Some(vec![OrderBy {
                 column: "name".to_string(),
                 descending: false,
-            }),
+            }]),
         )
         .await;
 
@@ -608,6 +608,66 @@ mod executor_paging {
         );
     }
 
+    /// DB-11: a multi-column sort is a first-class order. The total order the
+    /// seek runs in is the caller's list (positions kept, directions kept)
+    /// with the key appended as the tie-breaker, and a boundary carrying one
+    /// value per column of that total order is accepted — not treated as a
+    /// stale cursor from another sort.
+    #[tokio::test]
+    async fn multi_column_sort_seeks_in_the_caller_order_with_the_key_appended() {
+        let mock = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                columns: vec![
+                    key_column("id"),
+                    plain_column("age", false),
+                    plain_column("score", false),
+                ],
+                primary_keys: vec!["id".into()],
+                supports_keyset_pagination: true,
+                query_rows: rows(),
+                ..Default::default()
+            },
+        );
+        // The boundary of the total order (age DESC, score ASC, id ASC).
+        let boundary = vec![
+            CursorValue::Integer(30),
+            CursorValue::Integer(5),
+            CursorValue::Integer(2),
+        ];
+        let result = read_page(
+            &executor(),
+            &mock,
+            Some(&boundary),
+            Some(vec![
+                OrderBy {
+                    column: "age".to_string(),
+                    descending: true,
+                },
+                OrderBy {
+                    column: "score".to_string(),
+                    descending: false,
+                },
+            ]),
+        )
+        .await;
+
+        let paging = result.paging.expect("the read reports its paging");
+        assert_eq!(paging.mode, PagingMode::Keyset);
+        let log = mock.query_log();
+        let statement = log.last().expect("a statement was sent");
+        assert!(
+            statement.contains("ORDER BY \"age\" DESC, \"score\" ASC, \"id\" ASC"),
+            "the seek runs in the caller's order with the key appended, got: {statement}"
+        );
+        assert!(
+            statement.contains(
+                "(((\"age\" < 30) OR (\"age\" = 30 AND \"score\" > 5) OR (\"age\" = 30 AND \"score\" = 5 AND \"id\" > 2)))"
+            ),
+            "each column seeks with its own direction, got: {statement}"
+        );
+    }
+
     #[tokio::test]
     async fn get_table_data_page_ignores_cursor_when_decision_is_unavailable() {
         // A table without a key has no total order, so the boundary cannot
@@ -658,10 +718,10 @@ mod executor_paging {
             &executor(),
             &mock,
             Some(&boundary),
-            Some(OrderBy {
+            Some(vec![OrderBy {
                 column: "name".to_string(),
                 descending: false,
-            }),
+            }]),
         )
         .await;
 

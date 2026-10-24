@@ -34,14 +34,8 @@ import {
   rowIndexSelectionReset,
   type SelectionStoreSlice,
 } from './tableData/selectionActions';
-import {
-  createPendingEditSlice,
-  type PendingEditStoreSlice,
-} from './tableData/pendingEditActions';
-import {
-  createEnumCandidateSlice,
-  type EnumCandidateStoreSlice,
-} from './tableData/enumCandidates';
+import { createPendingEditSlice, type PendingEditStoreSlice } from './tableData/pendingEditActions';
+import { createEnumCandidateSlice, type EnumCandidateStoreSlice } from './tableData/enumCandidates';
 import {
   AMBIGUOUS_ROW_IDENTITY_ERROR,
   draftsForWire,
@@ -50,14 +44,8 @@ import {
   pendingChangesForWire,
   pendingWorkSignature,
 } from './tableData/pendingChanges';
-import {
-  createDraftSlice,
-  type DraftStoreSlice,
-} from './tableData/draftInserts';
-import {
-  createPanelSeedSlice,
-  type PanelSeedSlice,
-} from './tableData/panelSeed';
+import { createDraftSlice, type DraftStoreSlice } from './tableData/draftInserts';
+import { createPanelSeedSlice, type PanelSeedSlice } from './tableData/panelSeed';
 import { locateInsertedRow } from './tableData/insertLocation';
 import {
   applyKeysetResult,
@@ -65,6 +53,7 @@ import {
   keysetRequestFor,
   type KeysetRequest,
 } from './tableData/keysetActions';
+import { readPersistedTableSorts, persistTableSorts } from './tableData/tableSortPreferences';
 
 // ── Store ─────────────────────────────────────────────────────────
 
@@ -91,7 +80,10 @@ interface TableDataStore
 
   loadTableData: (params: LoadTableDataParams) => Promise<void>;
   /** Re-run the load a panel last performed, keeping its page/filters/sorts. */
-  reloadPanel: (panelId: string, opts?: { skipCount?: boolean; countStrategy?: CountStrategy }) => void;
+  reloadPanel: (
+    panelId: string,
+    opts?: { skipCount?: boolean; countStrategy?: CountStrategy },
+  ) => void;
   /** Drop a panel's slice entirely — called when the tab closes. */
   removePanel: (panelId: string) => void;
   /**
@@ -114,11 +106,18 @@ interface TableDataStore
   setFilterPanelOpen: (panelId: string, open: boolean) => void;
   setVisibleColumns: (panelId: string, columns: string[] | null) => void;
   setSort: (panelId: string, sort: SortCondition) => void;
+  /**
+   * Add (or re-aim) one column of the multi-column sort (DB-11): a column
+   * already in the list keeps its position and only changes direction; a new
+   * column is appended — nothing the user sorted before is lost.
+   */
+  addSort: (panelId: string, sort: SortCondition) => void;
+  /** Remove one column from the multi-column sort (DB-11). */
+  removeSort: (panelId: string, column: string) => void;
+  /** Drop the whole multi-column sort (DB-11). */
+  clearSorts: (panelId: string) => void;
   /** Change the panel's temporary default-order override. */
-  setDefaultOrderOverride: (
-    panelId: string,
-    override: TableState['defaultOrderOverride'],
-  ) => void;
+  setDefaultOrderOverride: (panelId: string, override: TableState['defaultOrderOverride']) => void;
   setDetailRow: (panelId: string, index: number | null) => void;
 
   startEdit: (panelId: string, row: number, col: string) => void;
@@ -202,6 +201,7 @@ function orderRequest(
   return { sorts };
 }
 
+/** The target a table read goes to, rebuilt from the panel's context. */
 function targetOf(context: TableChangeContext): TableTarget {
   return {
     dbSessionId: context.dbSessionId,
@@ -211,6 +211,31 @@ function targetOf(context: TableChangeContext): TableTarget {
     database: context.database,
     schema: context.schema,
   };
+}
+
+/**
+ * One column of the multi-column sort (DB-11): a column already sorted keeps
+ * its position and only changes direction; a column new to the list is
+ * appended after the ones already there. The list order is the `ORDER BY`
+ * order, so positions are part of what the user asked for.
+ */
+function upsertSort(sorts: SortCondition[], sort: SortCondition): SortCondition[] {
+  const index = sorts.findIndex((entry) => entry.column === sort.column);
+  if (index === -1) return [...sorts, sort];
+  const next = [...sorts];
+  next[index] = sort;
+  return next;
+}
+
+/**
+ * Keep the persisted sort list in step with the panel's, after a sort change.
+ * A panel whose table has no stable identity (no configured connection)
+ * simply does not persist — the sort still works for the session.
+ */
+function persistSortsOf(get: Getter, panelId: string): void {
+  const ts = get().byPanel.get(panelId);
+  if (!ts?.context) return;
+  persistTableSorts(ts.context, ts.sorts);
 }
 
 /** Apply a successful page fetch to the panel slice, unless it was superseded meanwhile. */
@@ -288,7 +313,14 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   loadTableData: async ({ panelId, skipCount, countStrategy, ...target }) => {
     const context = buildTableContext(target);
-    const existing = get().byPanel.get(panelId) ?? emptyTableState(context);
+    // A brand-new panel starts from the sorts the table was last left with
+    // (DB-11): the sort is a property of the table, not of this tab. A panel
+    // that already loaded keeps its own sorts — the slice is the truth while
+    // the tab is open.
+    const existing = get().byPanel.get(panelId) ?? {
+      ...emptyTableState(context),
+      sorts: readPersistedTableSorts(context),
+    };
     const requestRevision = existing.requestRevision;
     if (existing.loading && existing.loadingRevision === requestRevision) return;
 
@@ -527,6 +559,37 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       page: 0,
       keyset: invalidatedKeyset(ts.keyset),
     }));
+    persistSortsOf(get, panelId);
+    get().reloadPanel(panelId, { skipCount: true });
+  },
+
+  addSort: (panelId, sort) => {
+    patchPanelForReload(get, set, panelId, (ts) => ({
+      sorts: upsertSort(ts.sorts, sort),
+      page: 0,
+      keyset: invalidatedKeyset(ts.keyset),
+    }));
+    persistSortsOf(get, panelId);
+    get().reloadPanel(panelId, { skipCount: true });
+  },
+
+  removeSort: (panelId, column) => {
+    patchPanelForReload(get, set, panelId, (ts) => ({
+      sorts: ts.sorts.filter((entry) => entry.column !== column),
+      page: 0,
+      keyset: invalidatedKeyset(ts.keyset),
+    }));
+    persistSortsOf(get, panelId);
+    get().reloadPanel(panelId, { skipCount: true });
+  },
+
+  clearSorts: (panelId) => {
+    patchPanelForReload(get, set, panelId, (ts) => ({
+      sorts: [],
+      page: 0,
+      keyset: invalidatedKeyset(ts.keyset),
+    }));
+    persistSortsOf(get, panelId);
     get().reloadPanel(panelId, { skipCount: true });
   },
 
@@ -539,6 +602,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       page: 0,
       keyset: invalidatedKeyset(ts.keyset),
     }));
+    persistSortsOf(get, panelId);
     get().reloadPanel(panelId, { skipCount: true });
   },
 
@@ -711,8 +775,12 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     } catch (e) {
       let error = extractErrorMessage(e, t('tableData.commitFailed'));
       try {
-        if (tableManualHandle(panelId)) error += ' Some changes may remain in the current transaction. Inspect or roll back before retrying.';
-      } catch { /* Preserve the original failure when the owner was lost. */ }
+        if (tableManualHandle(panelId))
+          error +=
+            ' Some changes may remain in the current transaction. Inspect or roll back before retrying.';
+      } catch {
+        /* Preserve the original failure when the owner was lost. */
+      }
       patchPanel(get, set, panelId, () => ({ pendingStatus: 'idle', error }));
       return {
         ...emptyResult,

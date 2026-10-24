@@ -228,7 +228,7 @@ fn explicit_sort_overrides_default_pk_order() {
         "users",
         &columns,
         None,
-        Some(order),
+        Some(vec![order]),
         &default_order,
         &DEFAULT,
         50,
@@ -243,6 +243,53 @@ fn explicit_sort_overrides_default_pk_order() {
     assert!(
         !sql.contains("\"id\" ASC"),
         "Should not contain default PK ordering when explicit sort is given, got: {sql}"
+    );
+}
+
+#[test]
+fn multi_column_sort_builds_order_by_in_caller_order() {
+    // The DB-11 acceptance: three columns, mixed directions, and the
+    // statement must carry them in the order the caller listed them —
+    // the list positions are the ORDER BY positions.
+    let columns = vec![
+        make_column("id", true),
+        make_column("name", false),
+        make_column("age", false),
+        make_column("created_at", false),
+    ];
+    let sql = QueryExecutor::build_select_sql(
+        "users",
+        &columns,
+        None,
+        Some(vec![
+            OrderBy {
+                column: "name".to_string(),
+                descending: false,
+            },
+            OrderBy {
+                column: "age".to_string(),
+                descending: true,
+            },
+            OrderBy {
+                column: "created_at".to_string(),
+                descending: false,
+            },
+        ]),
+        // An explicit sort wins; the default order is not consulted.
+        &[],
+        &DEFAULT,
+        50,
+        0,
+        None,
+    )
+    .unwrap();
+    assert!(
+        sql.contains("ORDER BY \"name\" ASC, \"age\" DESC, \"created_at\" ASC"),
+        "the ORDER BY must carry the caller's list in order, got: {sql}"
+    );
+    assert!(
+        sql.ends_with("ORDER BY \"name\" ASC, \"age\" DESC, \"created_at\" ASC LIMIT 50 OFFSET 0"),
+        "the order ends with the last requested column — the key is not silently appended, got: {sql}"
     );
 }
 

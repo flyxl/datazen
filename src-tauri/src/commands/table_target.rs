@@ -1,7 +1,7 @@
 //! Table browsing uses independent target executions; it never borrows a tree/editor handle.
 use super::{AppState, CommandError, RowChangeTableContext};
 use crate::platform::into_command_error;
-use crate::services::{table_browsing, FilterCondition, OrderBy, QueryExecutor, SortCondition};
+use crate::services::{table_browsing, FilterCondition, QueryExecutor, SortCondition};
 use datazen_application::{
     dto::requests::{CommandCall, ExecuteAtTargetRequest},
     sessions::ConnectionUseCases,
@@ -9,7 +9,7 @@ use datazen_application::{
 use datazen_driver_api::keyset::CursorValue;
 use datazen_driver_api::{CountStrategy, TableDataResult, TableSchema, Value};
 use datazen_feature_core::services::query_executor::{keyset_refusal, paging_info, resolve_paging};
-use datazen_feature_core::services::table_paging::{keyset_decision, resolve_order_spec};
+use datazen_feature_core::services::table_paging::{keyset_decision, resolve_order_spec_multi};
 use datazen_platform_api::{
     context::RequestContext,
     dto::{execution::ExecutionState, idempotency::IdempotentOperation},
@@ -273,20 +273,21 @@ pub async fn read(
     // The order of this read, and whether it is a total order. The decision
     // is made once, here: the statement, the boundary and the answer to the
     // caller all read it from the same place.
-    let explicit_sort = request
+    //
+    // The caller's explicit sort list is ordered (DB-11): its positions are
+    // the ORDER BY positions, and a one-entry list resolves to the exact
+    // single-column order this path always built. This is the IPC edge that
+    // used to truncate `sorts` to its first entry — every column after the
+    // first silently disappeared here, which is why the grid could not sort
+    // by more than one column even with a plural contract on the wire.
+    let explicit_sorts: Vec<(&str, bool)> = request
         .sorts
-        .and_then(|sorts| sorts.into_iter().next())
-        .map(|sort| OrderBy {
-            column: sort.column,
-            descending: sort.descending,
-        });
-    let order = resolve_order_spec(
-        explicit_sort
-            .as_ref()
-            .map(|sort| (sort.column.as_str(), sort.descending)),
-        &default_order,
-        &primary_keys,
-    );
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .map(|sort| (sort.column.as_str(), sort.descending))
+        .collect();
+    let order = resolve_order_spec_multi(&explicit_sorts, &default_order, &primary_keys);
     let decision = keyset_decision(order, &schema.columns);
     let plan = resolve_paging(
         driver.as_ref(),

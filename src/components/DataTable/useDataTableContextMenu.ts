@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { DatabaseType, FilterCondition } from '../../types';
+import type { DatabaseType, FilterCondition, SortCondition } from '../../types';
 import {
   buildDataTableContextMenuItems,
   formatRowAsSqlInsert,
@@ -87,6 +87,16 @@ export interface UseDataTableContextMenuOptions {
   onPasteRows?: () => void;
   /** A clipboard write failed (the menu copy has no synchronous gesture to rely on). */
   onCopyProblem?: (problem: PasteProblem) => void;
+  /* ── Multi-column sort (DB-11). Omitted ⇒ the header menu keeps its
+     pre-DB-11 shape — the result grid and driver grids are unaffected. ── */
+  /** The sorts in force, in `ORDER BY` order. */
+  sorts?: SortCondition[];
+  /** Add (or re-aim) one column of the sort list. */
+  onAddSort?: (sort: SortCondition) => void;
+  /** Remove one column from the sort list. */
+  onRemoveSort?: (column: string) => void;
+  /** Drop the whole sort list. */
+  onClearSorts?: () => void;
   /** i18n translate function. */
   t: (key: string, params?: Record<string, string | number>) => string;
 }
@@ -128,6 +138,10 @@ export function useDataTableContextMenu(
     onPasteSelectedCells,
     onPasteRows,
     onCopyProblem,
+    sorts,
+    onAddSort,
+    onRemoveSort,
+    onClearSorts,
     t,
   } = options;
 
@@ -138,6 +152,9 @@ export function useDataTableContextMenu(
 
       const hit = resolveDataTableCellFromEvent(e.target);
       const hitHeaderCol = !hit ? resolveDataTableHeaderColFromEvent(e.target) : null;
+      // The multi-column sort block (DB-11) is bound to the right-clicked
+      // header column; a click on a cell never offers it.
+      const headerSort = hitHeaderCol && sorts ? { column: hitHeaderCol, sorts } : undefined;
       const effectiveColName = hit ? hit.columnName : hitHeaderCol;
       const effectiveColIdx = effectiveColName ? columnNames.indexOf(effectiveColName) : -1;
       const hitRow = hit ? rows[hit.rowIndex] : undefined;
@@ -201,7 +218,9 @@ export function useDataTableContextMenu(
        * answer depends on the column (nullable?) and on the row (is there
        * anything to revert?).
        */
-      const setValue = hit ? (setValueState?.(hit.rowIndex, hit.columnName) ?? undefined) : undefined;
+      const setValue = hit
+        ? (setValueState?.(hit.rowIndex, hit.columnName) ?? undefined)
+        : undefined;
 
       /**
        * The menu callback runs after an async IPC round trip, so the synchronous user
@@ -255,6 +274,11 @@ export function useDataTableContextMenu(
             copySelectedCellsAsJson: t('dataTable.copySelectedCellsAsJson'),
             pasteSelectedCells: t('dataTable.pasteSelectedCells'),
             pasteRows: t('dataTable.pasteRows'),
+            sortMulti: t('dataTable.sortMulti'),
+            sortAscending: t('dataTable.sortAscending'),
+            sortDescending: t('dataTable.sortDescending'),
+            removeSortColumn: t('dataTable.removeSortColumn'),
+            clearSorts: t('dataTable.clearSorts'),
           },
           handlers: {
             onCopy:
@@ -392,9 +416,22 @@ export function useDataTableContextMenu(
                     onLoadCandidates(hit.rowIndex, hit.columnName);
                   }
                 : undefined,
+            onSortAscending: onAddSort
+              ? (column: string) => {
+                  onAddSort({ column, descending: false });
+                }
+              : undefined,
+            onSortDescending: onAddSort
+              ? (column: string) => {
+                  onAddSort({ column, descending: true });
+                }
+              : undefined,
+            onRemoveSort,
+            onClearSorts,
           },
           hasCellContext,
           hasHeaderContext: !!hitHeaderCol,
+          headerSort,
           hasSelectedRows,
           multiRowSelection,
           exportEnabled,
@@ -440,6 +477,10 @@ export function useDataTableContextMenu(
       onPasteSelectedCells,
       onPasteRows,
       onCopyProblem,
+      sorts,
+      onAddSort,
+      onRemoveSort,
+      onClearSorts,
     ],
   );
 

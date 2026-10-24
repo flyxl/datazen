@@ -76,14 +76,18 @@ pub fn build_select_sql(
     table_name: &str,
     columns: &[ColumnSchema],
     filters: Option<Vec<super::FilterCondition>>,
-    order_by: Option<super::OrderBy>,
+    sorts: Option<Vec<super::OrderBy>>,
     default_order: &[String],
     dialect: &dyn SqlDialect,
     limit: u64,
     offset: u64,
     filter_logic: Option<&str>,
 ) -> Result<String, FilterRejection> {
-    let order = super::order_spec_of(order_by.as_ref(), default_order);
+    // The explicit sort list is ordered (DB-11); its positions are the ORDER
+    // BY positions. An empty list falls back to the driver's default order,
+    // exactly as `None` always did.
+    let explicit = sorts.unwrap_or_default();
+    let order = super::order_spec_of(&explicit, default_order);
     let paged = build_paged_select_sql(
         table_name,
         columns,

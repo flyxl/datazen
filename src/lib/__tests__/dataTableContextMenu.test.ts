@@ -242,7 +242,10 @@ describe('cell-selection clipboard block (DB-03)', () => {
     });
     const byId = new Map(
       items
-        .filter((entry): entry is Extract<(typeof items)[number], { kind: 'item' }> => entry.kind === 'item')
+        .filter(
+          (entry): entry is Extract<(typeof items)[number], { kind: 'item' }> =>
+            entry.kind === 'item',
+        )
         .map((entry) => [entry.id, entry]),
     );
     // `NativeMenuItemDef` expresses "enabled" by **omitting** the flag, so the enabled item
@@ -715,5 +718,130 @@ describe('buildDataTableContextMenuItems', () => {
     });
     const sub = findSubmenu(items, 'more-actions');
     expect(sub?.items.some((i) => i.kind === 'item' && i.id === 'copy-column-data')).toBe(true);
+  });
+});
+
+describe('buildDataTableContextMenuItems header sort block (DB-11)', () => {
+  const sortLabels: DataTableContextMenuLabels = {
+    ...labels,
+    sortMulti: 'Sort (multi-column)',
+    sortAscending: 'Ascending',
+    sortDescending: 'Descending',
+    removeSortColumn: 'Remove from Sort',
+    clearSorts: 'Clear All Sorting',
+  };
+
+  it('without headerSort, the header menu keeps its exact pre-DB-11 shape', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: sortLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onSortAscending: vi.fn(),
+        onSortDescending: vi.fn(),
+        onRemoveSort: vi.fn(),
+        onClearSorts: vi.fn(),
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+    });
+    // The sort handlers exist, but no sorts context was offered: byte for
+    // byte the two copy entries and nothing else.
+    expect(ids(items)).toEqual(['copy-column-name', 'copy-column-data']);
+  });
+
+  it('offers the sort submenu and clear-all before the copy entries', () => {
+    const onSortAscending = vi.fn();
+    const onSortDescending = vi.fn();
+    const onRemoveSort = vi.fn();
+    const onClearSorts = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels: sortLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onSortAscending,
+        onSortDescending,
+        onRemoveSort,
+        onClearSorts,
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerSort: {
+        column: 'age',
+        sorts: [
+          { column: 'name', descending: false },
+          { column: 'age', descending: true },
+        ],
+      },
+    });
+    expect(
+      items.map((i) => (i.kind === 'item' || i.kind === 'submenu' ? i.id : 'separator')),
+    ).toEqual(['sort-multi', 'clear-sorts', 'separator', 'copy-column-name', 'copy-column-data']);
+    const sortMenu = findSubmenu(items, 'sort-multi');
+    expect(
+      sortMenu?.items.map((i) => (i.kind === 'item' || i.kind === 'submenu' ? i.id : i.kind)),
+    ).toEqual(['sort-ascending', 'sort-descending', 'remove-sort-column']);
+    // The right-clicked column is in the sort list, so removal is offered enabled.
+    const removeItem = sortMenu?.items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> =>
+        i.kind === 'item' && i.id === 'remove-sort-column',
+    );
+    expect(removeItem?.enabled).toBeUndefined();
+    // The actions are bound to the right-clicked column.
+    for (const i of sortMenu?.items ?? []) {
+      if (i.kind === 'item') i.action();
+    }
+    expect(onSortAscending).toHaveBeenCalledWith('age');
+    expect(onSortDescending).toHaveBeenCalledWith('age');
+    expect(onRemoveSort).toHaveBeenCalledWith('age');
+    const clearItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> => i.kind === 'item' && i.id === 'clear-sorts',
+    );
+    clearItem?.action();
+    expect(onClearSorts).toHaveBeenCalledOnce();
+  });
+
+  it('disables remove on a column that is not sorted and clear when no sorts exist', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: sortLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onSortAscending: vi.fn(),
+        onSortDescending: vi.fn(),
+        onRemoveSort: vi.fn(),
+        onClearSorts: vi.fn(),
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerSort: { column: 'age', sorts: [] },
+    });
+    const sortMenu = findSubmenu(items, 'sort-multi');
+    const removeItem = sortMenu?.items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> =>
+        i.kind === 'item' && i.id === 'remove-sort-column',
+    );
+    expect(removeItem?.enabled).toBe(false);
+    const clearItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> => i.kind === 'item' && i.id === 'clear-sorts',
+    );
+    expect(clearItem?.enabled).toBe(false);
+  });
+
+  it('drops the whole sort block when the caller offers no sort handlers', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: sortLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerSort: { column: 'age', sorts: [{ column: 'name', descending: false }] },
+    });
+    // headerSort without handlers is inert: no submenu, no clear entry, no
+    // separator — the header menu keeps its pre-DB-11 shape.
+    expect(ids(items)).toEqual(['copy-column-name', 'copy-column-data']);
   });
 });

@@ -345,6 +345,13 @@ const pack = {
   'tableData.highlightNewRow': 'New row',
   'dataTable.selected': 'Selected',
   'dataTable.sort': 'Sort',
+  // Multi-column sort (DB-11). New keys land in en only; the other nine
+  // locales resolve them through the en fallback until the next release.
+  'dataTable.sortMulti': 'Sort (multi-column)',
+  'dataTable.sortAscending': 'Ascending',
+  'dataTable.sortDescending': 'Descending',
+  'dataTable.removeSortColumn': 'Remove from Sort',
+  'dataTable.clearSorts': 'Clear All Sorting',
   'dataTable.selectRow': 'Select Row',
   'dataTable.copyRow': 'Copy Row',
   'dataTable.moreActions': 'More actions',

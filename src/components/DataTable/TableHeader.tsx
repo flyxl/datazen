@@ -55,8 +55,6 @@ export function TableHeader({
   cellTypeHints,
   gridSemantics = false,
 }: TableHeaderProps) {
-  const active = sorts[0];
-
   return (
     <div
       role={gridSemantics ? 'row' : undefined}
@@ -69,8 +67,12 @@ export function TableHeader({
         #
       </div>
       {columns.map((col, colIdx) => {
-        const sorted =
-          active?.column === col.name ? (active.descending ? 'desc' : 'asc') : ('none' as const);
+        // DB-11: every column carries its own sort, not just the first one —
+        // the list order is the ORDER BY order, so the badge is the
+        // column's position in it.
+        const sortPosition = sorts.findIndex((sort) => sort.column === col.name);
+        const mine = sortPosition >= 0 ? sorts[sortPosition] : undefined;
+        const sorted = mine ? (mine.descending ? 'desc' : 'asc') : ('none' as const);
         const width = columnWidths?.[colIdx] ?? 160;
 
         return (
@@ -115,6 +117,15 @@ export function TableHeader({
               >
                 <Filter className="h-3.5 w-3.5" />
               </button>
+            )}
+            {sortable && sorted !== 'none' && sorts.length > 1 && (
+              <span
+                data-sort-badge
+                title={`#${sortPosition + 1}`}
+                className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-sm bg-accent/15 px-1 font-mono text-[10px] leading-none text-accent"
+              >
+                {sortPosition + 1}
+              </span>
             )}
             {sortable && sorted !== 'none' && (
               <button

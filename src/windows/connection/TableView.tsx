@@ -741,6 +741,10 @@ export function TableView({
         lastSelectedIndex={ts?.lastSelectedIndex ?? null}
         loading={loading}
         onSort={actions.setSort}
+        // DB-11: the multi-column sort actions of the header context menu.
+        onAddSort={actions.addSort}
+        onRemoveSort={actions.removeSort}
+        onClearSorts={actions.clearSorts}
         onRemoveFilter={actions.removeFilter}
         onClearFilters={actions.clearFilters}
         onPageChange={actions.setPage}

@@ -1,5 +1,5 @@
 import type { NativeMenuItemDef } from './nativeContextMenu';
-import type { DatabaseType } from '../types';
+import type { DatabaseType, SortCondition } from '../types';
 import { escapeIdent, getEscapeSqlValue } from './databaseTypes';
 import { rowToNamedRecord as clipboardNamedRecord, serializeCells } from './gridClipboard';
 import {
@@ -61,6 +61,18 @@ export type DataTableContextMenuLabels = {
   pasteSelectedCells?: string;
   /** "Paste Rows" — the row-level entry DB-04 fills in; DB-03 only reserves the slot. */
   pasteRows?: string;
+  /* ── Multi-column sort (DB-11). All optional: a caller that does not offer
+     the header sort block keeps its exact previous menu. ── */
+  /** "Sort (multi-column)" — the submenu title of the header sort block. */
+  sortMulti?: string;
+  /** "Ascending" — the column joins the sort list ascending. */
+  sortAscending?: string;
+  /** "Descending" — the column joins the sort list descending. */
+  sortDescending?: string;
+  /** "Remove this column (from the sort)" — offered on a sorted column. */
+  removeSortColumn?: string;
+  /** "Clear all sorting". */
+  clearSorts?: string;
 };
 
 export type DataTableContextMenuHandlers = {
@@ -86,11 +98,23 @@ export type DataTableContextMenuHandlers = {
   /** Copy the selected region as TSV (DB-03). */
   onCopySelectedCells?: () => void;
   /** Copy the selected region in an explicit format (DB-03). */
-  onCopySelectedCellsAs?: (format: 'tsv' | 'csv' | 'json', options?: { includeHeader?: boolean }) => void;
+  onCopySelectedCellsAs?: (
+    format: 'tsv' | 'csv' | 'json',
+    options?: { includeHeader?: boolean },
+  ) => void;
   /** Paste the system clipboard into the selected region (DB-03). */
   onPasteSelectedCells?: () => void;
   /** Paste whole rows (DB-04 owns the handler). */
   onPasteRows?: () => void;
+  /* ── Multi-column sort (DB-11). ── */
+  /** Add the right-clicked column to the sort list, ascending. */
+  onSortAscending?: (column: string) => void;
+  /** Add the right-clicked column to the sort list, descending. */
+  onSortDescending?: (column: string) => void;
+  /** Remove the right-clicked column from the sort list. */
+  onRemoveSort?: (column: string) => void;
+  /** Drop the whole sort list. */
+  onClearSorts?: () => void;
 };
 
 export type BuildDataTableContextMenuArgs = {
@@ -100,6 +124,17 @@ export type BuildDataTableContextMenuArgs = {
   hasCellContext?: boolean;
   /** Right-clicked a column header (column resolved). */
   hasHeaderContext?: boolean;
+  /**
+   * The multi-column sort block of the header menu (DB-11). Omitted — or
+   * given without handlers — the header menu keeps its shape from before
+   * DB-11, byte for byte.
+   */
+  headerSort?: {
+    /** The right-clicked column. */
+    column: string;
+    /** The sorts in force, in `ORDER BY` order. */
+    sorts: SortCondition[];
+  };
   /** One or more rows are selected. */
   hasSelectedRows?: boolean;
   /**
@@ -364,10 +399,7 @@ export function serializeDataTableColumnValues(columnIndex: number, rows: unknow
  * The rules live in `components/DataTable/editors/setValueMenu.ts`; this
  * only maps an action to the text the caller supplied.
  */
-function setValueActionLabel(
-  id: SetValueActionId,
-  labels: DataTableContextMenuLabels,
-): string {
+function setValueActionLabel(id: SetValueActionId, labels: DataTableContextMenuLabels): string {
   switch (id) {
     case 'setNull':
       return labels.setNull;
@@ -387,17 +419,13 @@ function setValueActionLabel(
  * handler; otherwise the menu keeps its shape from before DB-05, with
  * `Set NULL` inside `more-actions` (the result grid still relies on it).
  */
-function buildSetValueSubmenu(
-  args: BuildDataTableContextMenuArgs,
-): NativeMenuItemDef | null {
+function buildSetValueSubmenu(args: BuildDataTableContextMenuArgs): NativeMenuItemDef | null {
   const { labels, handlers, setValue } = args;
   if (!setValue || !handlers.onSetValue) return null;
   const items = resolveSetValueActions(setValue)
     .map((action) =>
-      item(
-        `set-value-${action.id}`,
-        setValueActionLabel(action.id, labels),
-        () => handlers.onSetValue?.(action.id),
+      item(`set-value-${action.id}`, setValueActionLabel(action.id, labels), () =>
+        handlers.onSetValue?.(action.id),
       ),
     )
     .filter((entry): entry is NativeMenuItemDef => entry !== null);
@@ -453,8 +481,10 @@ export function buildDataTableContextMenuItems(
         item('copy-selected-cells-as-tsv', labels.copySelectedCellsAsTsv ?? '', () =>
           handlers.onCopySelectedCellsAs?.('tsv'),
         ),
-        item('copy-selected-cells-as-tsv-header', labels.copySelectedCellsAsTsvWithHeader ?? '', () =>
-          handlers.onCopySelectedCellsAs?.('tsv', { includeHeader: true }),
+        item(
+          'copy-selected-cells-as-tsv-header',
+          labels.copySelectedCellsAsTsvWithHeader ?? '',
+          () => handlers.onCopySelectedCellsAs?.('tsv', { includeHeader: true }),
         ),
         item('copy-selected-cells-as-csv', labels.copySelectedCellsAsCsv ?? '', () =>
           handlers.onCopySelectedCellsAs?.('csv'),
@@ -486,7 +516,50 @@ export function buildDataTableContextMenuItems(
   };
 
   if (hasHeaderContext && !hasCellContext) {
+    // The multi-column sort block (DB-11). "Remove" is visible but disabled
+    // on a column that is not sorted — the entry answers "how do I undo
+    // this", and a column that never took part in the sort has nothing to
+    // undo. "Clear all" is offered the same way when a sort exists at all.
+    const sortBlock = (): NativeMenuItemDef[] => {
+      const hs = args.headerSort;
+      if (!hs) return [];
+      const columnInSorts = hs.sorts.some((sort) => sort.column === hs.column);
+      // Every entry is offered only when its handler is: a caller that offers
+      // no sort action keeps its exact pre-DB-11 header menu.
+      const menu = submenu(
+        'sort-multi',
+        labels.sortMulti ?? '',
+        push(
+          item(
+            'sort-ascending',
+            labels.sortAscending ?? '',
+            handlers.onSortAscending ? () => handlers.onSortAscending?.(hs.column) : undefined,
+          ),
+          item(
+            'sort-descending',
+            labels.sortDescending ?? '',
+            handlers.onSortDescending ? () => handlers.onSortDescending?.(hs.column) : undefined,
+          ),
+          enabledItem(
+            'remove-sort-column',
+            labels.removeSortColumn ?? '',
+            handlers.onRemoveSort ? () => handlers.onRemoveSort?.(hs.column) : undefined,
+            columnInSorts,
+          ),
+        ),
+      );
+      const clear = enabledItem(
+        'clear-sorts',
+        labels.clearSorts ?? '',
+        handlers.onClearSorts,
+        hs.sorts.length > 0,
+      );
+      return push(menu, clear);
+    };
+    const sorts = sortBlock();
     const headerItems = push(
+      ...sorts,
+      ...(sorts.length > 0 ? [{ kind: 'separator' } as NativeMenuItemDef] : []),
       item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),
       item('copy-column-data', labels.copyColumnData, handlers.onCopyColumnData),
     );
@@ -534,9 +607,7 @@ export function buildDataTableContextMenuItems(
       item('copy-as-csv', labels.copyAsCsv, handlers.onCopyAsCsv),
       item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),
       item('copy-column-data', labels.copyColumnData, handlers.onCopyColumnData),
-      canSetNull && !usesSetValueMenu
-        ? item('set-null', labels.setNull, handlers.onSetNull)
-        : null,
+      canSetNull && !usesSetValueMenu ? item('set-null', labels.setNull, handlers.onSetNull) : null,
       hasSelectedRows
         ? item('copy-selected-rows', labels.copySelectedRows, handlers.onCopySelectedRows)
         : null,

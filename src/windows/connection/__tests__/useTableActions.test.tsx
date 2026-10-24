@@ -52,6 +52,10 @@ const tableStore = vi.hoisted(() => {
     loadTableData: record('loadTableData'),
     reloadPanel: record('reloadPanel'),
     setSort: record('setSort'),
+    // DB-11: the multi-column sort actions of the header context menu.
+    addSort: record('addSort'),
+    removeSort: record('removeSort'),
+    clearSorts: record('clearSorts'),
     removeFilter: record('removeFilter'),
     clearFilters: record('clearFilters'),
     addFilter: record('addFilter'),
@@ -99,9 +103,12 @@ const CONTEXT: TableChangeContext = {
 /** Every binding the panel owns. A new chapter adds its entry here. */
 const ACTION_NAMES = [
   'addFilter',
+  // DB-11: the multi-column sort actions of the header context menu.
+  'addSort',
   'applyFilters',
   'cancelEdit',
   'clearFilters',
+  'clearSorts',
   'commitPendingChanges',
   'countExact',
   'deleteRows',
@@ -109,6 +116,7 @@ const ACTION_NAMES = [
   'previewPendingChanges',
   'reload',
   'removeFilter',
+  'removeSort',
   'rollbackPendingChanges',
   'selectRow',
   'setDefaultOrderOverride',
@@ -134,8 +142,10 @@ const ACTION_NAMES = [
  * user is looking at a different set of rows than the notice talks about.
  */
 const NOTICE_INVALIDATING = [
+  'addSort',
   'applyFilters',
   'clearFilters',
+  'clearSorts',
   'countExact',
   'load',
   'reload',
@@ -145,6 +155,7 @@ const NOTICE_INVALIDATING = [
   'setPage',
   'setPageSize',
   'setSort',
+  'removeSort',
 ];
 
 const SORT: SortCondition = { column: 'name', descending: true };
@@ -196,6 +207,26 @@ const BINDING_CASES: readonly BindingCase[] = [
     method: 'setSort',
     args: [SORT],
     trigger: (actions) => actions.setSort(SORT),
+  },
+  {
+    // DB-11: the header-menu sort actions. Same guards as `setSort` — they
+    // change what the next page reads.
+    action: 'addSort',
+    method: 'addSort',
+    args: [SORT],
+    trigger: (actions) => actions.addSort(SORT),
+  },
+  {
+    action: 'removeSort',
+    method: 'removeSort',
+    args: ['name'],
+    trigger: (actions) => actions.removeSort('name'),
+  },
+  {
+    action: 'clearSorts',
+    method: 'clearSorts',
+    args: [],
+    trigger: (actions) => actions.clearSorts(),
   },
   {
     action: 'removeFilter',

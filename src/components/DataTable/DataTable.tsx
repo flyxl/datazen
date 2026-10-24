@@ -85,6 +85,14 @@ export interface DataTableProps {
 
   sorts?: SortCondition[];
   onSort?: (sort: SortCondition) => void;
+  /* ── Multi-column sort (DB-11). Omitted ⇒ the header context menu keeps
+     its pre-DB-11 shape — the result grids and driver grids are unaffected. ── */
+  /** Add (or re-aim) one column of the sort list, from the header menu. */
+  onAddSort?: (sort: SortCondition) => void;
+  /** Remove one column from the sort list, from the header menu. */
+  onRemoveSort?: (column: string) => void;
+  /** Drop the whole sort list, from the header menu. */
+  onClearSorts?: () => void;
 
   filters?: FilterCondition[];
   filterLogic?: 'and' | 'or';
@@ -312,6 +320,9 @@ export function DataTable({
   selectedRows = EMPTY_SET,
   loading,
   onSort,
+  onAddSort,
+  onRemoveSort,
+  onClearSorts,
   onRemoveFilter,
   onClearFilters,
   onAddFilter,
@@ -548,6 +559,11 @@ export function DataTable({
     setValueState: cellEditing?.setValueState,
     onSetValue: cellEditing?.onSetValue,
     onLoadCandidates: cellEditing?.onLoadCandidates,
+    // DB-11: the sorts in force and their header-menu actions.
+    sorts,
+    onAddSort,
+    onRemoveSort,
+    onClearSorts,
     t,
   });
 
