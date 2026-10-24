@@ -180,9 +180,12 @@ describe('audit: the return restores the position of the source tab', () => {
     expect(snapshot?.scrollTop).toBe(140);
     expect(snapshot?.anchorRow).toBe(5);
 
-    // The source tab is entered again: the panel is mounted from scratch.
+    // The source tab is entered again: the panel is mounted from scratch and is
+    // the tab in front, which is the only state that may place an offset (a
+    // hidden tab that placed one would consume the position "back" restores).
     first.unmount();
     scrollEl.scrollTop = 0;
+    usePanelStore.getState().setActivePanel(SOURCE_PANEL);
     render(<Harness panelId={SOURCE_PANEL} scrollEl={scrollEl} />);
 
     await waitFor(() => expect(scrollEl.scrollTop).toBe(140));
