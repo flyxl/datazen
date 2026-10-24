@@ -506,7 +506,15 @@ async fn dispatch(
         }
         _ => {}
     }
-    tracing::error!(job_id = %job_id.as_str(), reason_code, "schema diff Job dispatch failed");
+    // `reason_code` is the caller-facing class; the cause is what makes the line
+    // actionable (a missing capability reads exactly like a lost worker without
+    // it). Job errors carry codes and ids, never credentials.
+    tracing::error!(
+        job_id = %job_id.as_str(),
+        reason_code,
+        cause = ?error,
+        "schema diff Job dispatch failed"
+    );
 }
 
 fn prepare_endpoints(request: &PrepareRequest) -> (String, String, Vec<String>) {

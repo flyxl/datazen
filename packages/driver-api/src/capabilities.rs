@@ -286,6 +286,11 @@ impl SessionContinuity {
     pub fn is_fixed(self) -> bool {
         matches!(self, Self::Fixed)
     }
+
+    /// The driver answered "a pooled lease", which is a fact rather than a gap.
+    pub fn is_leased(self) -> bool {
+        matches!(self, Self::Leased)
+    }
 }
 
 impl Default for SessionContinuity {
@@ -931,6 +936,16 @@ mod tests {
         assert!(!SessionContinuity::default().is_fixed());
         assert!(!SessionContinuity::Leased.is_fixed());
         assert!(SessionContinuity::Fixed.is_fixed());
+    }
+
+    /// `Leased` is an answer — a pooled lease — while `Unknown` is a gap. The
+    /// host admits an editor session on the former and refuses it on the latter,
+    /// so the two must not collapse into one predicate.
+    #[test]
+    fn only_a_leased_session_is_an_answer_that_is_not_fixed() {
+        assert!(!SessionContinuity::default().is_leased());
+        assert!(!SessionContinuity::Fixed.is_leased());
+        assert!(SessionContinuity::Leased.is_leased());
     }
 
     #[test]

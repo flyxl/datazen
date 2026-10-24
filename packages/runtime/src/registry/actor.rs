@@ -598,6 +598,16 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
     let opened = match opened {
         Ok(opened) => opened,
         Err(cause) => {
+            // Everything below is collapsed into `UnknownSession` for the caller,
+            // which surfaces as `sessionNotFound` and hides the real reason: a
+            // profile revision mismatch and a driver refusal look identical. Keep
+            // the cause observable at debug level.
+            tracing::debug!(
+                db_session_id = %request.db_session_id.as_str(),
+                connection_id = %request.connection_id.as_str(),
+                cause = ?cause,
+                "open_resource failed; reporting unknown session"
+            );
             state.view.state = SessionState::New;
             emit(
                 state,
