@@ -221,6 +221,32 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     await openDataTransferWindow();
   }
 
+  /** 对象步骤只勾本用例自己那张表。
+   *
+   * 源库 `datazen_sync_src` 是多个 spec 共用的，整包跑到这里时里面已经堆了几十
+   * 张别人留下的表（实测映射步第一屏是 `dz_sync_uncertain_*`）。默认全选会把
+   * 它们一起带进映射步，本用例的表被挤到虚拟列表外，`qty` 列自然读不到——单跑
+   * 时库里干净，所以只在整包跑里红。 */
+  async function selectOnlyOwnTable(): Promise<void> {
+    await browser.waitUntil(
+      async () => (await $$('[data-testid="data-transfer-table-row"]')).length > 0,
+      { timeout: 30000, timeoutMsg: 'ID:data-transfer-window|对象步骤没有表行' },
+    );
+    const rows = await $$('[data-testid="data-transfer-table-row"]');
+    let matched = false;
+    for (const row of rows) {
+      const text = await row.getText();
+      const checkbox = await row.$('input[type="checkbox"]');
+      const shouldSelect = text.includes(TABLE);
+      if (shouldSelect) matched = true;
+      const selected = await checkbox.isSelected().catch(() => false);
+      if (selected && !shouldSelect) await checkbox.click();
+      if (!selected && shouldSelect) await checkbox.click();
+    }
+    if (!matched) throw new Error(`对象步骤里没有本用例的表 ${TABLE}`);
+    await browser.pause(500);
+  }
+
   it('DT-CL-001: 选择两端点并进入下一步', async () => {
     await openFreshTransferWindow();
     await selectTransferEndpoints();
@@ -267,8 +293,9 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
 
     // 默认 mode = data，直接 Next 经过 setup
     await clickNext('transfer-step-setup'); // setup → objects
-    // Objects 步：Next 触发 inspect
-    await browser.pause(2000);
+    // Objects 步：只勾本用例的表，再把无关的残留表挡在映射之外
+    await browser.pause(1000);
+    await selectOnlyOwnTable();
     await clickNext('transfer-step-objects'); // 触发 inspect → mapping
 
     // 映射步要等 inspect 返回才出现，固定 pause 会随机抢跑：等步骤本身出现。
@@ -328,13 +355,16 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     await openFreshTransferWindow();
     await selectTransferEndpoints();
 
-    // 兜底：若尚未到 preview/execute，持续推进
+    // 兜底：若尚未到 preview/execute，持续推进。对象步骤先只勾本用例的表——源库
+    // 与别的 spec 共用，默认全选会把残留表一起搬走（与 DTW-X-002 同一处坑）。
     for (let i = 0; i < 8; i++) {
       const stepExecute = await $('[data-testid="data-transfer-execute"]');
       if (await stepExecute.isExisting().catch(() => false)) break;
       const next = await $('[data-testid="data-transfer-next"]');
       const disabled = (await next.getAttribute('disabled')) === 'true';
       if (disabled) await browser.pause(1000);
+      const tableRows = await $$('[data-testid="data-transfer-table-row"]');
+      if (tableRows.length > 0) await selectOnlyOwnTable();
       await clickNext();
     }
 
