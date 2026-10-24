@@ -65,6 +65,8 @@ export interface BuildNavigatorFlatRowsParams {
   activeConnectionId: string | null;
   schemas: Map<string, ConnectionSchemaState>;
   dbTablesMap: Record<string, TableInfo[]>;
+  /** Per-`${dbSessionId}::${dbName}` load failures, for the tree's error row. */
+  dbErrors: Record<string, string>;
   dbObjectsMap: Record<string, DatabaseObject[]>;
   loadingDbs: Set<string>;
   /** Per-session set of databases with an open backend resource. */
@@ -86,6 +88,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
     activeConnectionId,
     schemas,
     dbTablesMap,
+    dbErrors,
     dbObjectsMap,
     loadingDbs,
     openDbs,
@@ -431,6 +434,19 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
           }
 
           const allItems = dbTablesMap[tableKey] ?? [];
+          // A database that shows no tables AND carries a load failure is a
+          // failed read, not an empty one — the error replaces the silent
+          // empty list it used to be indistinguishable from.
+          const loadError = dbErrors[tableKey];
+          if (allItems.length === 0 && loadError) {
+            rows.push({
+              type: 'db-error',
+              ...levels(DATABASE_CHILD_DEPTH),
+              ownerKey: `db:${conn.id}::${dbName}`,
+              message: loadError,
+            });
+            continue;
+          }
           const dbSchemaNames = [
             ...new Set(allItems.map((i) => i.schema).filter((s): s is string => !!s)),
           ];
@@ -524,6 +540,17 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
         }
 
         const allItems = [...schemaData.tables, ...schemaData.views];
+        // Same distinction as the per-database branch above, reading the
+        // session-level error a single-database connection records instead.
+        if (allItems.length === 0 && schemaData.error) {
+          rows.push({
+            type: 'db-error',
+            ...levels(DATABASE_CHILD_DEPTH),
+            ownerKey: `db:${conn.id}::${dbName}`,
+            message: schemaData.error,
+          });
+          continue;
+        }
         const schemaGroups = groupBySchema(allItems, schemaData.schemaNames);
 
         if (schemaGroups) {

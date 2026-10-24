@@ -266,6 +266,8 @@ export function getUnifiedRowKey(row: UnifiedRow): string {
       return `kv:${row.connectionId}:${row.dbName}`;
     case 'db-loading':
       return `loading:${row.ownerKey}`;
+    case 'db-error':
+      return `error:${row.ownerKey}`;
     case 'namespace-node':
       return `ns:${row.key}`;
     case 'empty-group':
