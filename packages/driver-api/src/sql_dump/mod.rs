@@ -20,3 +20,8 @@ pub use crate::sql_split::{
 pub use dump::*;
 pub use parser::created_relation_ident;
 pub use restore::*;
+
+// The keyword/identifier scanners behind `created_relation_ident`, shared with
+// `restore_sql`'s sequence preamble so both overwrite preambles parse names
+// with the same rules instead of growing two hand-rolled tokenizers.
+pub(crate) use parser::{strip_kw, strip_opt_kw, take_qualified_sql_ident};

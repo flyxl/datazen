@@ -133,46 +133,88 @@ fn prepare_statement(
 
 /// The identifier of a `CREATE [IF NOT EXISTS] SEQUENCE <ident>` statement.
 ///
-/// Deliberately narrow: a sequence name cannot be a query, so everything up to
-/// the first separator is the identifier. Quoted names may contain spaces.
+/// Mirrors `created_relation_ident` so both overwrite preambles read names the
+/// same way: leading comment lines are skipped, keywords are stripped by the
+/// same helpers, and `IF NOT EXISTS` is matched as a whole keyword. The old
+/// hand-rolled scanner treated any unqualified name starting with `if`
+/// (`ifog`, `if_x`) as the qualifier, and a leading comment line blinded it
+/// entirely — both silently skipped the `DROP SEQUENCE` preamble, leaving the
+/// old sequence standing under overwrite.
 fn created_sequence_ident(sql: &str) -> Option<String> {
-    let mut rest = sql.trim_start();
-    for expected in ["CREATE", "SEQUENCE"] {
-        let (head, tail) = rest.split_once(char::is_whitespace)?;
-        if !head.eq_ignore_ascii_case(expected) {
-            // `CREATE SEQUENCE` is the only shape we handle; `IF NOT EXISTS` may
-            // follow the keyword and is skipped below.
-            if expected == "SEQUENCE" && head.eq_ignore_ascii_case("IF") {
-                continue;
-            }
-            return None;
-        }
-        rest = tail.trim_start();
+    let line = sql
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with("--") && !l.starts_with("/*"))
+        .unwrap_or("");
+    let rest = crate::sql_dump::strip_kw(line, "CREATE")?;
+    let rest = crate::sql_dump::strip_kw(rest, "SEQUENCE")?;
+    let rest = crate::sql_dump::strip_opt_kw(rest, "IF NOT EXISTS");
+    crate::sql_dump::take_qualified_sql_ident(rest)
+}
+
+#[cfg(test)]
+mod sequence_ident_tests {
+    use super::created_sequence_ident;
+
+    #[test]
+    fn reads_plain_and_schema_qualified_names() {
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE public.t_id_seq START WITH 2"),
+            Some("public.t_id_seq".into())
+        );
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE t_id_seq"),
+            Some("t_id_seq".into())
+        );
     }
-    if rest.to_ascii_uppercase().starts_with("IF NOT EXISTS") {
-        rest = rest["IF NOT EXISTS".len()..].trim_start();
-    } else if rest.to_ascii_uppercase().starts_with("IF") {
-        return None;
+
+    #[test]
+    fn strips_the_if_not_exists_qualifier_as_a_whole_keyword() {
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE IF NOT EXISTS public.t_id_seq AS bigint"),
+            Some("public.t_id_seq".into())
+        );
     }
-    let mut chars = rest.char_indices();
-    let quoted = rest.starts_with('"');
-    let mut end = None;
-    let mut in_quotes = false;
-    for (index, ch) in chars.by_ref() {
-        match ch {
-            '"' => in_quotes = !in_quotes,
-            _ if !in_quotes && (ch.is_whitespace() || ch == '(' || ch == ';') => {
-                end = Some(index);
-                break;
-            }
-            _ => {}
-        }
+
+    #[test]
+    fn a_sequence_really_named_if_something_is_a_name_not_a_qualifier() {
+        // The old scanner saw `IF…` and bailed, silently skipping the
+        // overwrite preamble for exactly these names.
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE ifog START WITH 1"),
+            Some("ifog".into())
+        );
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE \"IF NOT EXISTS\" START WITH 1"),
+            Some("\"IF NOT EXISTS\"".into())
+        );
     }
-    let ident = &rest[..end.unwrap_or(rest.len())];
-    if ident.is_empty() || (quoted && !ident.ends_with('"')) {
-        return None;
+
+    #[test]
+    fn quoted_names_with_spaces_and_skipped_comment_lines_parse_like_the_relation_parser() {
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE \"my seq\" START WITH 1"),
+            Some("\"my seq\"".into())
+        );
+        assert_eq!(
+            created_sequence_ident("-- emitted by the dump\nCREATE SEQUENCE public.orders_id_seq"),
+            Some("public.orders_id_seq".into())
+        );
     }
-    Some(ident.to_string())
+
+    #[test]
+    fn other_shapes_stay_unrecognized() {
+        assert_eq!(
+            created_sequence_ident("CREATE TABLE public.t (id int)"),
+            None
+        );
+        // `CREATE IF NOT EXISTS SEQUENCE s` is not a shape any engine accepts;
+        // the old scanner mis-parsed it to the identifier `SEQUENCE`.
+        assert_eq!(
+            created_sequence_ident("CREATE IF NOT EXISTS SEQUENCE s"),
+            None
+        );
+    }
 }
 
 /// Prefix a preflight rejection with a bounded excerpt of the statement.
