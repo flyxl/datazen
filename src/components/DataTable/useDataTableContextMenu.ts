@@ -297,6 +297,10 @@ export function useDataTableContextMenu(
             copySelectedCellsAsTsvWithHeader: t('dataTable.copySelectedCellsAsTsvWithHeader'),
             copySelectedCellsAsCsv: t('dataTable.copySelectedCellsAsCsv'),
             copySelectedCellsAsJson: t('dataTable.copySelectedCellsAsJson'),
+            // The DB-10 formats: plain text, a text/html table, a pipe table.
+            copySelectedCellsAsPlain: t('dataTable.copySelectedCellsAsPlain'),
+            copySelectedCellsAsHtml: t('dataTable.copySelectedCellsAsHtml'),
+            copySelectedCellsAsMarkdown: t('dataTable.copySelectedCellsAsMarkdown'),
             pasteSelectedCells: t('dataTable.pasteSelectedCells'),
             pasteRows: t('dataTable.pasteRows'),
             sortMulti: t('dataTable.sortMulti'),

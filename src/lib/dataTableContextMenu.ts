@@ -53,10 +53,16 @@ export type DataTableContextMenuLabels = {
   copySelectedCellsAsTsv?: string;
   /** "Copy as TSV with Header". */
   copySelectedCellsAsTsvWithHeader?: string;
-  /** "Copy as CSV". */
+  /** "Copy as CSV" — with a header line (DB-10's "CSV+Header"). */
   copySelectedCellsAsCsv?: string;
   /** "Copy as JSON (2D array)". */
   copySelectedCellsAsJson?: string;
+  /** "Copy as Plain Text" — unquoted tab/newline only (DB-10). */
+  copySelectedCellsAsPlain?: string;
+  /** "Copy as HTML Table" — the `text/html` clipboard flavor (DB-10). */
+  copySelectedCellsAsHtml?: string;
+  /** "Copy as Markdown Table" — a GitHub-style pipe table (DB-10). */
+  copySelectedCellsAsMarkdown?: string;
   /** "Paste to Selected Cells". */
   pasteSelectedCells?: string;
   /** "Paste Rows" — the row-level entry DB-04 fills in; DB-03 only reserves the slot. */
@@ -105,9 +111,10 @@ export type DataTableContextMenuHandlers = {
   onLoadCandidates?: () => void;
   /** Copy the selected region as TSV (DB-03). */
   onCopySelectedCells?: () => void;
-  /** Copy the selected region in an explicit format (DB-03). */
+  /** Copy the selected region in an explicit format (DB-03; the three
+   *  DB-10 formats extend the union). */
   onCopySelectedCellsAs?: (
-    format: 'tsv' | 'csv' | 'json',
+    format: 'tsv' | 'csv' | 'json' | 'plain' | 'html' | 'markdown',
     options?: { includeHeader?: boolean },
   ) => void;
   /** Paste the system clipboard into the selected region (DB-03). */
@@ -525,6 +532,17 @@ export function buildDataTableContextMenuItems(
         ),
         item('copy-selected-cells-as-json', labels.copySelectedCellsAsJson ?? '', () =>
           handlers.onCopySelectedCellsAs?.('json'),
+        ),
+        // The three DB-10 formats: unquoted plain text, a text/html table for
+        // Notion / Excel / Google Sheets, and a GitHub-style pipe table.
+        item('copy-selected-cells-as-plain', labels.copySelectedCellsAsPlain ?? '', () =>
+          handlers.onCopySelectedCellsAs?.('plain'),
+        ),
+        item('copy-selected-cells-as-html', labels.copySelectedCellsAsHtml ?? '', () =>
+          handlers.onCopySelectedCellsAs?.('html'),
+        ),
+        item('copy-selected-cells-as-markdown', labels.copySelectedCellsAsMarkdown ?? '', () =>
+          handlers.onCopySelectedCellsAs?.('markdown'),
         ),
       ),
     ]);

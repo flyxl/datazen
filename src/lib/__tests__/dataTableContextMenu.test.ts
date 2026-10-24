@@ -168,6 +168,9 @@ describe('cell-selection clipboard block (DB-03)', () => {
     copySelectedCellsAsTsvWithHeader: 'Copy as TSV with header',
     copySelectedCellsAsCsv: 'Copy as CSV',
     copySelectedCellsAsJson: 'Copy as JSON',
+    copySelectedCellsAsPlain: 'Copy as Plain Text',
+    copySelectedCellsAsHtml: 'Copy as HTML Table',
+    copySelectedCellsAsMarkdown: 'Copy as Markdown Table',
     pasteSelectedCells: 'Paste to Selected Cells',
   };
 
@@ -226,7 +229,28 @@ describe('cell-selection clipboard block (DB-03)', () => {
       ['tsv', { includeHeader: true }],
       ['csv'],
       ['json'],
+      // The DB-10 formats ride the same submenu after the established ones.
+      ['plain'],
+      ['html'],
+      ['markdown'],
     ]);
+  });
+
+  it('offers the three DB-10 formats in the copy-as submenu', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: clipboardLabels,
+      handlers: baseHandlers(),
+      hasCellContext: true,
+      hasCellRange: true,
+      canCopySelection: true,
+    });
+    const copyAs = findSubmenu(items, 'copy-selected-cells-as');
+    const ids = (copyAs?.items ?? [])
+      .filter((entry) => entry.kind === 'item')
+      .map((entry) => (entry as { id: string }).id);
+    expect(ids).toContain('copy-selected-cells-as-plain');
+    expect(ids).toContain('copy-selected-cells-as-html');
+    expect(ids).toContain('copy-selected-cells-as-markdown');
   });
 
   it('keeps an unavailable entry visible but disabled', () => {

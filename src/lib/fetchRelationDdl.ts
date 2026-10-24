@@ -109,3 +109,51 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 
   return false;
 }
+
+/**
+ * Rich-text clipboard copy (DB-10): a `text/html` flavor plus a plain-text
+ * fallback, so "Copy as HTML Table" pastes a real table into Notion / Excel /
+ * Google Sheets, and a plain-text target still gets a tab-separated table.
+ *
+ * The chain mirrors `copyToClipboard`'s three steps, because the reason that
+ * chain exists (an async context-menu callback has lost the user gesture on
+ * WKWebView) applies to the ClipboardItem path just as much as to writeText:
+ *
+ * 1. `navigator.clipboard.write` with a `ClipboardItem` of both flavors.
+ * 2. Tauri's `write_clipboard_html` (writes text/html where the OS has one).
+ * 3. The plain-text fallback of `copyToClipboard` — a table as text beats
+ *    markup source as text.
+ */
+export async function copyRichTextToClipboard(html: string, text: string): Promise<boolean> {
+  if (!html) return copyToClipboard(text);
+
+  // 1. Modern Clipboard API with both flavors
+  try {
+    if (
+      typeof navigator !== 'undefined' &&
+      typeof ClipboardItem !== 'undefined' &&
+      navigator.clipboard?.write
+    ) {
+      const item = new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+      });
+      await navigator.clipboard.write([item]);
+      return true;
+    }
+  } catch {
+    // NotAllowedError (no user gesture) or unsupported flavors — fall through
+  }
+
+  // 2. Tauri native backend IPC
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('write_clipboard_html', { html, altText: text });
+    return true;
+  } catch {
+    // Fall back to plain text
+  }
+
+  // 3. Plain text, the same way every other copy lands
+  return copyToClipboard(text);
+}

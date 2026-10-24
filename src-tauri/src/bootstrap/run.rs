@@ -402,6 +402,7 @@ pub fn run() {
             // ── 剪贴板 ──
             crate::commands::read_clipboard,
             crate::commands::write_clipboard,
+            crate::commands::write_clipboard_html,
             // ── MCP ──
             crate::commands::mcp_client_call_tool,
             crate::commands::mcp_client_connect,

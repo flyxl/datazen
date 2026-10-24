@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { ColumnSchema, DatabaseType } from '../types';
 import { escapeIdent, getEscapeSqlValue } from './databaseTypes';
+import { serializeCells, escapeCsvField, escapeMarkdownField } from './gridClipboard';
 
 export type ExportFormat =
   | 'csv'
@@ -31,18 +32,16 @@ interface ExportOptions {
 }
 
 export function escapeCSV(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-    return `"${str.replaceAll('"', '""')}"`;
-  }
-  return str;
+  // Delegates to the one serializer's field escaper (DB-10: copy and export
+  // must share the escaping rules); the wrapper keeps the historical
+  // single-value signature for the callers that format one cell at a time.
+  return escapeCsvField(value);
 }
 
 export function escapeMarkdownCell(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
-  return str.replaceAll('|', '\\|').replaceAll('\n', ' ').replaceAll('\r', '');
+  // The single-cell escaper of the one serializer's Markdown branch (DB-10):
+  // a pipe would end the cell, a line break would end the row.
+  return escapeMarkdownField(value);
 }
 
 export function escapeSQLValue(value: unknown, dbType?: string): string {
@@ -163,14 +162,16 @@ export function generateExport(options: ExportOptions): ExportResult {
     }
 
     case 'markdown': {
-      const header = `| ${cols.join(' | ')} |`;
-      const separator = `| ${cols.map(() => '---').join(' | ')} |`;
-      const body = dataRows.map(
-        (row) => `| ${cols.map((col) => escapeMarkdownCell(row[col])).join(' | ')} |`,
-      );
+      // The one serializer's Markdown branch (DB-10): same escaping as the
+      // clipboard's "Copy as Markdown Table" — one kernel, no drift.
+      const matrix = dataRows.map((row) => cols.map((col) => row[col]));
+      const content = serializeCells(matrix, {
+        format: 'markdown',
+        columnNames: cols,
+      });
       return {
         kind: 'text',
-        content: [header, separator, ...body].join('\n'),
+        content,
         extension: 'md',
         mimeType: 'text/markdown',
       };

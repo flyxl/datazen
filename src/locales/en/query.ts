@@ -396,6 +396,11 @@ const pack = {
   'dataTable.copySelectedCellsAsTsvWithHeader': 'Copy as TSV with header',
   'dataTable.copySelectedCellsAsCsv': 'Copy as CSV',
   'dataTable.copySelectedCellsAsJson': 'Copy as JSON (2D array)',
+  // The DB-10 copy formats. New keys land in en only; the other nine locales
+  // resolve them through the en fallback until the next release.
+  'dataTable.copySelectedCellsAsPlain': 'Copy as Plain Text',
+  'dataTable.copySelectedCellsAsHtml': 'Copy as HTML Table',
+  'dataTable.copySelectedCellsAsMarkdown': 'Copy as Markdown Table',
   'dataTable.pasteSelectedCells': 'Paste to Selected Cells',
   'dataTable.pasteRows': 'Paste Rows',
   'dataTable.copyFailed': 'Could not copy; the clipboard is unavailable.',

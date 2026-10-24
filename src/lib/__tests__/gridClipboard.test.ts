@@ -3,6 +3,8 @@ import {
   GRID_PASTE_MAX_CELLS,
   buildRowsMatrix,
   buildSelectionMatrix,
+  escapeCsvField,
+  escapeMarkdownField,
   parseClipboardMatrix,
   serializeCells,
   sniffClipboardDelimiter,
@@ -171,7 +173,9 @@ describe('parseClipboardMatrix', () => {
 
   it('rejects more than the cell limit', () => {
     const width = GRID_PASTE_MAX_CELLS / 2 + 1;
-    const rows = Array.from({ length: 2 }, () => Array.from({ length: width }, () => 'a').join('\t'));
+    const rows = Array.from({ length: 2 }, () =>
+      Array.from({ length: width }, () => 'a').join('\t'),
+    );
     const result = parseClipboardMatrix(rows.join('\n'));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('grid.paste.tooLarge');
@@ -219,9 +223,7 @@ describe('serializeCells', () => {
     // The point of the case is JSON-vs-`String(obj)`; the surrounding quotes come from the
     // escaping rule above (a value with a `"` in it is quoted and its quotes are doubled),
     // so the text a spreadsheet reads back is still exactly `{"a":1}`.
-    expect(serializeCells([[{ a: 1 }]], { format: 'tsv', columnNames: ['x'] })).toBe(
-      '"{""a"":1}"',
-    );
+    expect(serializeCells([[{ a: 1 }]], { format: 'tsv', columnNames: ['x'] })).toBe('"{""a"":1}"');
   });
 
   it('omits the header by default for tsv', () => {
@@ -321,7 +323,10 @@ describe('buildSelectionMatrix / buildRowsMatrix', () => {
   });
 
   it('builds a row matrix in ascending row order over the given columns', () => {
-    const rows = [{ a: 'A2', b: 'B2' }, { a: 'A1', b: 'B1' }];
+    const rows = [
+      { a: 'A2', b: 'B2' },
+      { a: 'A1', b: 'B1' },
+    ];
     // `rowIndices` is sorted ascending: row 0 is `{ a: 'A2', b: 'B2' }`.
     expect(buildRowsMatrix(rows, ['b', 'a'], [1, 0])).toEqual([
       ['B2', 'A2'],
@@ -385,10 +390,7 @@ describe('planPaste', () => {
   it('skips auto-increment columns entirely', () => {
     const plan = planPaste({
       ...baseOptions,
-      columns: [
-        column('id', { isPrimaryKey: true, isAutoIncrement: true }),
-        column('name'),
-      ],
+      columns: [column('id', { isPrimaryKey: true, isAutoIncrement: true }), column('name')],
       columnOrder: ['id', 'name'],
       matrix: matrixOf([['99', 'Alice']]),
       anchor: { rowIndex: 0, columnName: 'id' },
@@ -459,7 +461,9 @@ describe('planPaste', () => {
   it('rejects the whole batch when over the cell limit', () => {
     const width = 10;
     const height = Math.ceil(GRID_PASTE_MAX_CELLS / width) + 1;
-    const matrix = matrixOf(Array.from({ length: height }, () => Array.from({ length: width }, () => 'x')));
+    const matrix = matrixOf(
+      Array.from({ length: height }, () => Array.from({ length: width }, () => 'x')),
+    );
     const plan = planPaste({ ...baseOptions, matrix, anchor: { rowIndex: 0, columnName: 'name' } });
     expect(plan.writes).toEqual([]);
     expect(plan.problems.map((problem) => problem.code)).toContain('grid.paste.tooLarge');
@@ -527,7 +531,13 @@ describe('tableChangeKey', () => {
 
   it('ignores the runtime session id and folds case', () => {
     expect(tableChangeKey(context)).toBe(
-      tableChangeKey({ ...context, dbSessionId: 'sess-b', connectionId: 'conn-1', database: 'app', table: 'users' }),
+      tableChangeKey({
+        ...context,
+        dbSessionId: 'sess-b',
+        connectionId: 'conn-1',
+        database: 'app',
+        table: 'users',
+      }),
     );
   });
 
@@ -544,5 +554,110 @@ describe('tableChangeKey', () => {
 
   it('returns an empty key for an unknown context', () => {
     expect(tableChangeKey(null)).toBe('');
+  });
+});
+
+describe('serializeCells DB-10 formats (plain / html / markdown)', () => {
+  const COLS = ['id', 'note'];
+  const ROWS: unknown[][] = [
+    [1, 'plain value'],
+    [2, null],
+  ];
+
+  it('plain joins with tab and newline and never quotes anything', () => {
+    const out = serializeCells(
+      [
+        [1, 'a"b'],
+        [2, 'x\ty'],
+      ],
+      { format: 'plain', columnNames: COLS },
+    );
+    // The quote and the tab inside the values are kept verbatim — that is
+    // the point of the format ("what you see is what you get").
+    expect(out).toBe('1\ta"b\n2\tx\ty');
+  });
+
+  it('plain writes the header only when asked', () => {
+    expect(serializeCells(ROWS, { format: 'plain', columnNames: COLS })).not.toContain('id');
+    expect(serializeCells(ROWS, { format: 'plain', columnNames: COLS, includeHeader: true })).toBe(
+      'id\tnote\n1\tplain value\n2\t',
+    );
+  });
+
+  it('html renders thead th + tbody td, always with the header', () => {
+    const out = serializeCells(ROWS, { format: 'html', columnNames: COLS });
+    expect(out).toContain('<table>');
+    expect(out).toContain('<thead><tr><th>id</th><th>note</th></tr></thead>');
+    expect(out).toContain('<tbody>');
+    expect(out).toContain('<tr><td>1</td><td>plain value</td></tr>');
+    // NULL is an empty td, never the string "null".
+    expect(out).toContain('<tr><td>2</td><td></td></tr>');
+    expect(out).toContain('</tbody>');
+    expect(out).toContain('</table>');
+    expect(out.endsWith('</table>')).toBe(true);
+  });
+
+  it('html escapes the three characters that would break out of a text node', () => {
+    const out = serializeCells([['<b>&amp;</b>', '5 > 3 && 2 < 4']], {
+      format: 'html',
+      columnNames: ['expr', 'cmp'],
+    });
+    expect(out).toContain('&lt;b&gt;&amp;amp;&lt;/b&gt;');
+    expect(out).toContain('5 &gt; 3 &amp;&amp; 2 &lt; 4');
+    // Quotes stay literal in a text node — `&quot;` would be visible noise.
+    expect(serializeCells([['say "hi"']], { format: 'html', columnNames: ['q'] })).toContain(
+      '<td>say "hi"</td>',
+    );
+  });
+
+  it('markdown renders header, separator and rows', () => {
+    const out = serializeCells(ROWS, { format: 'markdown', columnNames: COLS });
+    const lines = out.split('\n');
+    expect(lines[0]).toBe('| id | note |');
+    expect(lines[1]).toBe('| --- | --- |');
+    expect(lines[2]).toBe('| 1 | plain value |');
+    expect(lines[3]).toBe('| 2 |  |');
+  });
+
+  it('markdown escapes a pipe and turns a line break into <br>', () => {
+    const out = serializeCells(
+      [
+        ['a|b', 'first\nsecond'],
+        ['back\\slash', 'crlf\r\nend'],
+      ],
+      { format: 'markdown', columnNames: ['p', 'n'] },
+    );
+    expect(out).toContain('| a\\|b | first<br>second |');
+    expect(out).toContain('| back\\\\slash | crlf<br>end |');
+  });
+
+  it('markdown renders a separator even without column names', () => {
+    const out = serializeCells([[1, 2]], { format: 'markdown', columnNames: [] });
+    const lines = out.split('\n');
+    // Without names the header is blank cells, but the separator stays — it
+    // is what makes GitHub treat the block as a table at all.
+    expect(lines[0]).toBe('|  |  |');
+    expect(lines[1]).toBe('| --- | --- |');
+    expect(lines[2]).toBe('| 1 | 2 |');
+  });
+
+  it('object values still serialize as JSON in every new format', () => {
+    const row = [[{ a: 1 }]];
+    expect(serializeCells(row, { format: 'plain', columnNames: ['j'] })).toBe('{"a":1}');
+    expect(serializeCells(row, { format: 'html', columnNames: ['j'] })).toContain(
+      '<td>{"a":1}</td>',
+    );
+    expect(serializeCells(row, { format: 'markdown', columnNames: ['j'] })).toContain(
+      '| {"a":1} |',
+    );
+  });
+
+  it('exposes the single-field escapers the exporters delegate to', () => {
+    expect(escapeCsvField('a,b')).toBe('"a,b"');
+    expect(escapeCsvField('plain')).toBe('plain');
+    expect(escapeCsvField(null)).toBe('');
+    expect(escapeMarkdownField('x|y')).toBe('x\\|y');
+    expect(escapeMarkdownField('l1\nl2')).toBe('l1<br>l2');
+    expect(escapeMarkdownField(null)).toBe('');
   });
 });
