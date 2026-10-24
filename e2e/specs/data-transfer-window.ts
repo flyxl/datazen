@@ -209,8 +209,20 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     await captureJourneyStep(label);
   }
 
-  it('DT-CL-001: 选择两端点并进入下一步', async () => {
+  /** 每个用例都用一扇**干净的**迁移窗口。
+   *
+   * 用例之间不关窗口时，上一轮的迁移窗口还活着：`$('[data-testid=...]')` 命中
+   * 的是当前窗口里的第一个匹配，而当前窗口可能停在上一轮的对象步骤上。全量跑
+   * 时 DTW-X-002 就因此读到空正文（`Received string: ""`），单独复跑却正常——
+   * 差别只在前面累积了几扇窗口。 */
+  async function openFreshTransferWindow(): Promise<void> {
+    await closeExtraWindows(mainWindow);
+    await browser.switchToWindow(mainWindow);
     await openDataTransferWindow();
+  }
+
+  it('DT-CL-001: 选择两端点并进入下一步', async () => {
+    await openFreshTransferWindow();
     await selectTransferEndpoints();
 
     await expect(await $('[data-testid="data-transfer-source-database"]')).toBeDisplayed();
@@ -220,7 +232,7 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
   });
 
   it('DTW-X-002: 选择 data 模式并推进到对象/数据迁移', async () => {
-    await openDataTransferWindow();
+    await openFreshTransferWindow();
     await selectTransferEndpoints();
 
     const sourceSession = await invokeBackend<string>('connect', { connectionId: SRC_ID });
@@ -268,14 +280,37 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     // 映射明细比步骤本身晚一步：步骤容器出现时表清单和列还在渲染，固定断言
     // 会读到空文本（本轮实测 `Received string: ""`）。等到「列输入框」或
     // 「正文出现列名」任一成立再判定，两条证据都不猜。
-    await browser.waitUntil(
-      async () => {
-        if (await $('[data-testid="data-transfer-target-col-qty"]').isExisting()) return true;
-        const body = await $('body').getText();
-        return body.toLowerCase().includes('qty');
-      },
-      { timeout: 20000, timeoutMsg: 'ID:data-transfer-window|映射明细未渲染' },
-    );
+    // 全量跑时 `datazen_sync_src` 里堆积了前面所有 spec 留下的表，对象步骤的
+    // inspect 明显更慢，20s 仍会抢跑（整包实测超时，单跑却通过）。60s 之外
+    // 把失败现场一起抛出来：步骤正文、对象面板、错误块。
+    await browser
+      .waitUntil(
+        async () => {
+          if (await $('[data-testid="data-transfer-target-col-qty"]').isExisting()) return true;
+          const body = await $('body').getText();
+          return body.toLowerCase().includes('qty');
+        },
+        {
+          timeout: 60000,
+          timeoutMsg: 'ID:data-transfer-window|映射明细未渲染',
+        },
+      )
+      .catch(async (error: unknown) => {
+        const detail = await browser.execute(() => {
+          const pick = (selector: string) =>
+            Array.from(document.querySelectorAll(selector))
+              .map((node) => `${selector}: ${(node.textContent ?? '').slice(0, 160)}`)
+              .join(' | ');
+          return [
+            pick('[data-testid="data-transfer-mapping-step"]'),
+            pick('[data-testid="data-transfer-objects-step"]'),
+            pick('[data-testid="data-transfer-preview-error"]'),
+          ]
+            .filter(Boolean)
+            .join(' || ');
+        });
+        throw new Error(`${(error as Error).message} :: ${detail || '(无相关节点文本)'}`);
+      });
 
     // 映射步的列名是输入框的 value，不在 body 文本里：先按稳定 testid 找映射列，
     // 只有拿不到时才退回整页文本断言。
@@ -290,7 +325,7 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
   });
 
   it('DTW-X-003: 预览存在后可执行并断言落库行数=3', async () => {
-    await openDataTransferWindow();
+    await openFreshTransferWindow();
     await selectTransferEndpoints();
 
     // 兜底：若尚未到 preview/execute，持续推进
