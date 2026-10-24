@@ -190,11 +190,13 @@ pub async fn execute_bounded_table(
     // 显式写入的 identity / 自增值不会推进目标序列：导入 (41, 42) 后下一次
     // 自增插入会拿到 1，与已提交的 id 撞车。列清单与目标 schema 在这里算一次，
     // 每个成功批次在自己的事务里推进（与 `execute/dispatcher.rs` 的收敛点一致）。
-    let identity_schema = context
+    // 目标 schema 取不到时留 `None`：驱动按自己的默认 schema 解析，而
+    // `database_target()` 在数据阶段缺失早已在上游被拒。
+    let identity_schema: Option<String> = context
         .job
         .database_target()
-        .map(|target| target.schema.clone())
-        .unwrap_or_default();
+        .ok()
+        .and_then(|target| target.schema.clone());
     let explicit_identity_columns: Vec<String> = context
         .columns
         .iter()
