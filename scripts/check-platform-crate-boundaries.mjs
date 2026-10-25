@@ -184,7 +184,7 @@ export const RULES = Object.freeze([
     subjects: ['platform-api'],
     // Same allow-list inversion as F-01; §2.3 draws platform-api depending on
     // the driver API and the AI API and nothing else.
-    allowedLayers: ['platform-api', 'driver-api', 'ai-api'],
+    allowedLayers: ['platform-api', 'driver-api', 'ai-api', 'modules'],
     forbiddenCrates: [],
     specTokens: ['packages/platform-api', 'src-tauri'],
     note: 'platform-api points at ports, not at the implementation',
@@ -274,6 +274,7 @@ export const RULES = Object.freeze([
       'data-sync',
       'schema-diff',
       'migration-common',
+      'modules',
     ],
     forbiddenCrates: 'spec',
     specTokens: ['packages/feature-core'],
@@ -294,6 +295,15 @@ export const RULES = Object.freeze([
     specTokens: ['tauri'],
     note: 'the shared tunnel mechanisms stay form-neutral, so desktop and web link the same code',
   },
+  {
+    id: 'F-14',
+    subjects: ['modules'],
+    subjectsFromSpec: true,
+    forbiddenLayers: ['host', 'runtime', 'kernel', 'feature-core', 'platform-api'],
+    forbiddenCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'reqwest'],
+    specTokens: ['modules', 'tauri'],
+    note: 'feature modules stay independent of host, legacy runtime, and transport layers',
+  },
 ]);
 
 /**
@@ -311,7 +321,7 @@ export const RULES = Object.freeze([
  * package a missing layer. `server` stays unarmed on purpose: `datazen-server`
  * has not landed, and F-06 remains honestly vacuous until it does.
  */
-export const DEFAULT_REQUIRED_LAYERS = ['backend-client'];
+export const DEFAULT_REQUIRED_LAYERS = ['backend-client', 'modules'];
 
 function specLayerId(pathToken) {
   const normalised = pathToken.replace(/\/\*$/, '/*');
@@ -337,7 +347,7 @@ export function parseSpecRow(row) {
   for (const match of row.matchAll(/`([^`]+)`/g)) {
     const token = match[1].trim();
     if (token === '') continue;
-    if (/^(packages\/|src-tauri$|server$)/.test(token)) paths.push(token);
+    if (/^(packages\/|src-tauri$|server$|modules$)/.test(token)) paths.push(token);
     else if (token.includes('@') || token.includes('(') || token.includes('.'))
       frontend.push(token);
     else crates.push(token);

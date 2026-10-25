@@ -489,8 +489,8 @@ impl PlatformAdapter {
         let target = super::target_metadata::resolver(target_metadata.clone());
         // §6.2 第 7 步：**形态中立的存储端口在这里注入**。
         //
-        // * `settings`：跨形态设置仓储。桌面实现是存储层本身——`DesktopRepository`
-        //   同时实现 `SettingsRepository`（`store/mod.rs`）与 `TunnelRepository`
+        // * `settings`：跨形态设置仓储。桌面实现是本宿主的
+        //   `DesktopSettingsRepository`，内部复用同一个 `DesktopRepository`。
         //   （`store/tunnels.rs`）。
         // * `tunnels`：隧道定义的存储端口。实例与会话后端用的是**同一个**
         //   （建连时解引用 `tunnelId` 要读它），所以这里传 `clone` 而不是新建。
@@ -498,11 +498,14 @@ impl PlatformAdapter {
         // 两个端口都是**构造参数**（不是 `Option`）：漏注入是编译错误，而不是
         // 运行时的 `None`。将来的 web 形态把这两个实现换成服务端 host 的版本，
         // **用例代码一行不改**。
+        let settings = Arc::new(super::settings::DesktopSettingsRepository::new(
+            store.clone(),
+        ));
         let services = Arc::new(ApplicationServices::new(
             target,
             datazen_application::identity_policy::IdentityPolicy::new(),
             runtime.clone(),
-            store.clone(),
+            settings,
             tunnels.clone(),
             known_hosts.clone(),
             // 连接目录端口（§5.1.2 第六步）：桌面实现就是同一个 `DesktopRepository`

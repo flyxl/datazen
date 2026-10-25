@@ -86,12 +86,11 @@ async fn injection_wires_the_storage_ports_into_the_application_services() {
             .expect("临时存储"),
     );
     let tunnels: Arc<dyn TunnelRepository> = store.clone();
-    let expected_settings: Arc<dyn datazen_platform_api::ports::SettingsRepository> = store.clone();
 
     let adapter = adapter();
     adapter
         .inject(
-            store,
+            store.clone(),
             Arc::new(datazen_runtime::driver_registry::DriverRegistry::new()),
             tunnels.clone(),
             crate::platform::known_hosts::desktop_known_hosts_repository(temp.path()),
@@ -110,9 +109,15 @@ async fn injection_wires_the_storage_ports_into_the_application_services() {
         Arc::ptr_eq(&services.tunnels, &tunnels),
         "应用服务持有的隧道仓储必须是宿主注入的那一个实例"
     );
-    assert!(
-        Arc::ptr_eq(&services.settings, &expected_settings),
-        "应用服务持有的设置仓储必须是宿主注入的那一个实例"
+    let shared = services
+        .settings
+        .read_settings()
+        .await
+        .expect("应用服务持有的设置仓储必须可读");
+    assert_eq!(
+        shared,
+        store.get_settings().await.shared_settings(),
+        "设置端口必须读取同一个 DesktopRepository 事实"
     );
     // 全部接线成功时没有任何降级项：降级表不是「永远非空」的摆设。
     assert!(

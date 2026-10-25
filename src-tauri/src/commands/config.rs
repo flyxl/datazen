@@ -39,9 +39,8 @@ pub(crate) async fn save_settings_impl(
     state: &AppState,
     mut settings: AppSettings,
 ) -> Result<(), CommandError> {
-    let shared =
-        datazen_application::settings::SettingsService::normalize(settings.shared_settings())
-            .map_err(|error| CommandError::Validation(error.to_string()))?;
+    let shared = datazen_modules::settings::SettingsService::normalize(settings.shared_settings())
+        .map_err(|error| CommandError::Validation(error.to_string()))?;
     settings
         .apply_shared_settings(shared)
         .map_err(CommandError::Validation)?;
@@ -82,10 +81,16 @@ pub struct SaveSharedSettingsRequest {
 pub async fn get_shared_settings(
     state: State<'_, AppState>,
 ) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
+    get_shared_settings_impl(state.inner()).await
+}
+
+pub(crate) async fn get_shared_settings_impl(
+    state: &AppState,
+) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
     // 设置用例归位到应用层（§5.1.2 第二步）：仓储由 `ApplicationServices` 持有，
     // 命令只调用例。这里**不得**再直读宿主 store——宿主直读会把「应用层自己跑
     // 用例」退化成「宿主替它跑」，并在装配失败时留下第二条事实源。
-    let services = crate::platform::ipc::require_application_services(state.inner())?;
+    let services = crate::platform::ipc::require_application_services(state)?;
     services
         .settings_service()
         .read()
@@ -98,19 +103,26 @@ pub async fn save_shared_settings(
     state: State<'_, AppState>,
     request: SaveSharedSettingsRequest,
 ) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
+    save_shared_settings_impl(state.inner(), request.settings).await
+}
+
+pub(crate) async fn save_shared_settings_impl(
+    state: &AppState,
+    settings: datazen_platform_api::settings::SharedSettings,
+) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
     // 同上：写入也走应用层用例，宿主的 store 只作为端口实现被注入。
-    let services = crate::platform::ipc::require_application_services(state.inner())?;
+    let services = crate::platform::ipc::require_application_services(state)?;
     let saved = services
         .settings_service()
-        .save(request.settings)
+        .save(settings)
         .await
         .map_err(|error| match error {
-            datazen_application::settings::SettingsError::Validation(message) => {
+            datazen_modules::settings::SettingsError::Validation(message) => {
                 CommandError::Validation(message)
             }
             _ => CommandError::Internal("Unable to persist settings".into()),
         })?;
-    let full_settings = get_settings_impl(state.inner()).await?;
+    let full_settings = get_settings_impl(state).await?;
     crate::redis_flush_gate::sync_from_settings(&full_settings);
     Ok(saved)
 }

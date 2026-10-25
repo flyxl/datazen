@@ -20,7 +20,7 @@
 //! 端口契约的**全集** = [概要 §6.4](system-overview.md#64-repositories-与环境-ports)
 //! 表中列出的那些 + 本模块新增的 `IdentityResolver` + P2 新增的物理预算端口
 //! （`DriverPoolBudgetPort` / `ControlResourcePort` / `ClusterNodeBudgetPort`，见 [`budget`]）
-//! + `SettingsRepository`（跨形态设置仓储）
+//! 设置仓储已迁入 `datazen-modules::settings`；本包保留兼容导出。
 //! + `NativeToolPort`（受控原生版本探针与清理事实）
 //! + 隧道定义仓储 `TunnelRepository`（见 [`tunnel`]；隧道定义是独立聚合，
 //!   名单不带密钥，单条取用才给全量）

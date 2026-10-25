@@ -124,6 +124,7 @@ export const PREFIX = '[platform-crate-tests]';
  * virtue of the directory it lives in, not by its name.
  */
 export const TESTED_LAYERS = Object.freeze([
+  'modules',
   'runtime',
   // 机制内核（job / budget / sql_guard / schema_cache / driver_registry）：从 `runtime`
   // 分出后**仍是 core crate**，它不进这张表就会从 CI 的测试集里安静消失
@@ -193,11 +194,20 @@ export const EXTRA_TARGETS = Object.freeze({
 });
 
 /**
+ * Feature profiles that must be exercised in addition to each crate's default
+ * unit-test invocation. D1's settings slice is optional by design, so a default
+ * test alone would compile only the empty module root and miss the real service.
+ */
+export const FEATURE_TESTS = Object.freeze({
+  'datazen-modules': Object.freeze(['settings']),
+});
+
+/**
  * Build the full list of `cargo` invocations for a discovered crate set.
  *
- * Pure and exported so the argv can be asserted on directly. Up to two
- * invocations: a no-selector run that reaches every target of every crate,
- * and a single `--release` one for the release extras. Returns an empty list
+ * Pure and exported so the argv can be asserted on directly. It returns a
+ * no-selector run that reaches every target of every crate, one invocation for
+ * each required feature profile, and a single `--release` one for release extras. Returns an empty list
  * only when there is nothing at all to run, which `runCli` already guards
  * against.
  *
@@ -240,6 +250,19 @@ export const EXTRA_TARGETS = Object.freeze({
 export function buildCargoArgv(crates) {
   if (crates.length === 0) return [];
   const names = crates.map((c) => c.name);
+  const featureInvocations = [];
+  for (const name of names) {
+    for (const features of FEATURE_TESTS[name] ?? []) {
+      featureInvocations.push([
+        'test',
+        '--no-default-features',
+        '--features',
+        features,
+        '-p',
+        name,
+      ]);
+    }
+  }
   const releaseEntries = [];
   for (const name of names) {
     for (const entry of EXTRA_TARGETS[name] ?? []) {
@@ -252,6 +275,7 @@ export function buildCargoArgv(crates) {
     // lib unit tests, bin unit tests, every tests/*.rs integration binary and
     // the lib doc tests, with no target list maintained on this side.
     ['test', ...names.flatMap((n) => ['-p', n])],
+    ...featureInvocations,
     ...(releaseEntries.length > 0
       ? [
           [

@@ -614,6 +614,20 @@ Controller 将既有 wire 请求映射为 `table_browsing::application` 的读�
 
 **退出**：能实际读写设置；旧/新 import 指向同一类型；禁止依赖的合成样例会失败；扫描目标或测试模块为空时不能报告全绿。
 
+**已核实的 D1 设置小切片（2026-10-25）**：`datazen-modules::settings` 已拥有
+`SharedSettings`、`AppSettings` 的 opaque 读写契约、枚举校验与连接池大小归一化，
+Desktop 的 `get_shared_settings` / `save_shared_settings` 以及完整设置读写命令均经
+`SettingsService` 执行。`src-tauri/src/platform/settings.rs` 是 Desktop 仓储适配器，
+复用既有 `DesktopRepository` 的缓存、JSON 格式、原子写入和错误边界；Redis 刷新、
+monitor reload 与 tray 同步仍由原命令路径执行。
+
+兼容边界：`datazen_platform_api::settings::*` 与
+`datazen_platform_api::ports::SettingsRepository`、`datazen_application::settings::*`
+目前仅是指向 `datazen-modules::settings` 的过渡导出；`ApplicationServices` 仍保留
+设置聚合门面供现有命令装配使用。D1 后续清理阶段应删除这些旧路径和门面字段，
+不再新增其消费者。本条只完成 Desktop settings vertical slice，不代表 D1 的其余
+模块或整个 DDD 计划已完成。
+
 **回滚**：revert 本切片恢复旧入口，设置文件格式不变。
 
 ### D2：连接领域与宿主仓储

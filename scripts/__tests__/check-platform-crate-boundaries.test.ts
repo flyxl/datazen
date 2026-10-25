@@ -95,6 +95,7 @@ function fixture(
 const CORE = [
   { name: 'datazen', dir: 'src-tauri' },
   { name: 'datazen-driver-api', dir: 'packages/driver-api' },
+  { name: 'datazen-modules', dir: 'modules' },
   { name: 'datazen-runtime', dir: 'packages/runtime' },
   { name: 'datazen-driver-redis', dir: 'packages/drivers/redis' },
 ];
@@ -150,9 +151,10 @@ describe('classifyMemberDir', () => {
     for (const dir of [
       'src-tauri',
       'server',
-      'packages/application',
-      'packages/runtime',
-      'packages/platform-api',
+       'packages/application',
+       'packages/runtime',
+       'packages/platform-api',
+       'modules',
     ]) {
       expect(classifyMemberDir(dir).unclassified).toBeUndefined();
     }
@@ -307,6 +309,20 @@ describe('checkPlatformCrateBoundaries', () => {
   it('F-01: a driver reaching the host crate is a violation', () => {
     const result = run(fixture(CORE, { ...clean, 'datazen-driver-redis': ['datazen'] }));
     expect(result.violations.join('\n')).toMatch(/F-01.*datazen-driver-redis.*→ datazen/);
+  });
+
+  it('F-14: modules reaching platform-api are rejected', () => {
+    const result = run(
+      fixture(
+        [...CORE, { name: 'datazen-platform-api', dir: 'packages/platform-api' }],
+        { ...clean, 'datazen-modules': ['datazen-platform-api'] },
+      ),
+      SPEC,
+      { requireLayers: ['modules'] },
+    );
+    expect(result.violations.join('\n')).toMatch(
+      /F-14.*datazen-modules.*datazen-platform-api/,
+    );
   });
 
   it('F-01: a driver reaching datazen-runtime is a violation', () => {

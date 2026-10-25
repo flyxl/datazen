@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use datazen_driver_api::{ConnectionConfig, SavedTunnel, SavedTunnelSummary, TunnelUsage};
 use datazen_feature_core::services::named_views::{NamedView, NamedViewError, NamedViewRepository};
+use datazen_modules::settings::{SettingsRepository, SettingsRepositoryError};
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::event::EventSequence;
 use datazen_platform_api::dto::execution::{ExecutionReceipt, ExecutionView};
@@ -24,9 +25,7 @@ use datazen_platform_api::id::{ConnectionId, ExecutionId, StreamId};
 use datazen_platform_api::ports::event::EventSubscription;
 use datazen_platform_api::ports::known_hosts::{KnownHostEntry, KnownHostsRepository};
 use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_platform_api::ports::{
-    ConnectionCatalog, MigrationProfileReader, SettingsRepository, TunnelRepository,
-};
+use datazen_platform_api::ports::{ConnectionCatalog, MigrationProfileReader, TunnelRepository};
 use datazen_platform_api::settings::{
     ExecutionSettings, PortableThemePreference, SharedSettings, SqlFormatOptions, UserPreferences,
 };
@@ -76,33 +75,36 @@ impl RecordingSettingsRepository {
 
 #[async_trait::async_trait]
 impl SettingsRepository for RecordingSettingsRepository {
-    async fn read_settings(&self) -> Result<SharedSettings, PortError> {
+    async fn read_settings(&self) -> Result<SharedSettings, SettingsRepositoryError> {
         self.reads.fetch_add(1, Ordering::SeqCst);
         let stored = self
             .stored
             .lock()
-            .map_err(|_| PortError::BackendUnavailable("测试仓储锁已中毒".into()))?;
+            .map_err(|_| SettingsRepositoryError::BackendUnavailable("测试仓储锁已中毒".into()))?;
         Ok(stored.clone())
     }
 
-    async fn write_settings(&self, settings: SharedSettings) -> Result<SharedSettings, PortError> {
+    async fn write_settings(
+        &self,
+        settings: SharedSettings,
+    ) -> Result<SharedSettings, SettingsRepositoryError> {
         self.writes.fetch_add(1, Ordering::SeqCst);
         let mut stored = self
             .stored
             .lock()
-            .map_err(|_| PortError::BackendUnavailable("测试仓储锁已中毒".into()))?;
+            .map_err(|_| SettingsRepositoryError::BackendUnavailable("测试仓储锁已中毒".into()))?;
         *stored = settings.clone();
         Ok(settings)
     }
 
-    async fn read_app_settings(&self) -> Result<serde_json::Value, PortError> {
+    async fn read_app_settings(&self) -> Result<serde_json::Value, SettingsRepositoryError> {
         Ok(serde_json::json!({}))
     }
 
     async fn write_app_settings(
         &self,
         settings: serde_json::Value,
-    ) -> Result<serde_json::Value, PortError> {
+    ) -> Result<serde_json::Value, SettingsRepositoryError> {
         Ok(settings)
     }
 }

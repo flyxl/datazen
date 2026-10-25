@@ -44,6 +44,15 @@ const RUNTIME = 'datazen-runtime';
 /** crate 名在 Rust 源码里的写法：`datazen-runtime` → `datazen_runtime::`。 */
 const RUNTIME_PATH = `${RUNTIME.replaceAll('-', '_')}::`;
 const FEATURE_CORE = 'datazen-feature-core';
+const MODULES = 'datazen-modules';
+const MODULES_FORBIDDEN = [
+  'datazen-application',
+  'datazen-runtime',
+  'datazen-kernel',
+  'datazen-feature-core',
+  'datazen-platform-api',
+  'datazen',
+];
 
 /**
  * 领域包：D2「领域层只能依赖更内层」的对象。它们今天都（直接或间接）依赖 runtime，
@@ -339,6 +348,19 @@ function main() {
   }
 
   violations.push(...featureCoreIndependenceViolations(graph));
+  if (!graph.has(MODULES)) {
+    violations.push(`${MODULES} 不在 workspace 生产图里：D1 模块成员已过时，请同步 Cargo workspace。`);
+  } else {
+    const modulesClosure = transitiveDependencies(graph, MODULES);
+    for (const forbidden of MODULES_FORBIDDEN) {
+      if (modulesClosure.has(forbidden)) {
+        violations.push(
+          `D1 模块边界：${MODULES} 的传递依赖里出现了 ${forbidden}，` +
+            'settings modules 不得反向依赖宿主、旧横向层或 platform-api。',
+        );
+      }
+    }
+  }
   for (const domain of [...DOMAIN_PACKAGES, FEATURE_CORE]) {
     violations.push(...runtimeSourceViolations(domain, readDomainSources(domain)));
   }
@@ -372,7 +394,7 @@ function main() {
       `${APPLICATION} ↔ ${RUNTIME} 无直接依赖；` +
       `${DOMAIN_PACKAGES.length} 个领域包的闭包内无 ${APPLICATION}；` +
       `${APPLICATION} 不反向依赖仍在使用它的宿主（${UPSTREAM_CONSUMERS.join(' / ')}）；` +
-      `${FEATURE_CORE} 不依赖 ${APPLICATION}。`,
+      `${FEATURE_CORE} 不依赖 ${APPLICATION}；${MODULES} 模块边界通过。`,
   );
 }
 

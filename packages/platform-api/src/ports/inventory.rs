@@ -68,7 +68,6 @@ pub const PORT_TRAITS: &[&str] = &[
     "ProfileRepository",
     "SecretProvider",
     "SessionDirectory",
-    "SettingsRepository",
     "SubmissionTokenIssuer",
     "TunnelRepository",
 ];

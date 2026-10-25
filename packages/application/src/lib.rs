@@ -34,16 +34,18 @@
 //!
 //! ## 注入的存储端口
 //!
-//! `settings`、`tunnels`、`known_hosts` 与 `connections` 是**形态中立的存储端口**
-//! （契约住在 `datazen-platform-api` 的 `ports/`）：应用层**持有**它们，而不是反过来
+//! `settings`、`tunnels`、`known_hosts` 与 `connections` 是**形态中立的存储端口**。
+//! 设置端口由 `datazen-modules::settings` 所属功能拥有，其余共享端口住在
+//! `datazen-platform-api::ports`：应用层**持有**它们，而不是反过来
 //! 借用宿主的 store。端口是**构造参数**而不是可选字段——漏注入是**编译错误**，
-//! 不是运行时的 `None`。桌面实现是 `DesktopRepository`（组装期注入同一个实例），
+//! 不是运行时的 `None`。桌面由宿主 adapter 注入同一个持久化事实，
 //! 将来的 web 形态换成服务端 host 的实现，**用例代码一行不改**。
 //!
 //! 端口契约有两个合法来源，**不是**「只能来自 platform-api」：
 //!
-//! * 形态中立的**存储端口**住在 `datazen-platform-api::ports`（设置、隧道、known-hosts、
-//!   连接目录、制品、预算……）。
+//! * 形态中立的**存储端口**按功能拥有者分布（设置在
+//!   `datazen-modules::settings`，隧道、known-hosts、连接目录、制品、预算等在
+//!   `datazen-platform-api::ports`）。
 //! * P3 起，命令族的**领域端口**住在领域包自己那里（如
 //!   `datazen_feature_core::services::named_views::NamedViewRepository` 与仪表盘的两个仓储）。
 //!
@@ -66,10 +68,9 @@ pub mod target;
 
 use std::sync::Arc;
 
+use datazen_modules::settings::{SettingsRepository, SettingsService};
 use datazen_platform_api::ports::known_hosts::KnownHostsRepository;
-use datazen_platform_api::ports::{
-    ConnectionCatalog, MigrationProfileReader, SettingsRepository, TunnelRepository,
-};
+use datazen_platform_api::ports::{ConnectionCatalog, MigrationProfileReader, TunnelRepository};
 
 use datazen_feature_core::dashboard::repository::DashboardRepository;
 use datazen_feature_core::dashboard::runs::DashboardRunRepository;
@@ -79,7 +80,6 @@ use datazen_schema_diff::SchemaDiffProfileRepository;
 use crate::capability::CapabilityRegistry;
 use crate::identity_policy::IdentityPolicy;
 use crate::sessions::ConnectionUseCases;
-use crate::settings::SettingsService;
 use crate::target::TargetResolver;
 
 /// 用例层服务聚合。字段顺序即 §6.2 第 7 步的组装顺序。
@@ -91,10 +91,10 @@ pub struct ApplicationServices {
     pub identity_policy: IdentityPolicy,
     /// 连接用例面（实现在组装层注入）。
     pub sessions: Arc<dyn ConnectionUseCases>,
-    /// 跨形态设置仓储端口（组装层注入）。
+    /// D1 设置模块的跨形态仓储端口（组装层注入）。
     ///
-    /// 桌面实现是 `DesktopRepository`（加密落盘 `{appData}`）；将来的 web 形态
-    /// 由服务端 host 实现。**事实只有一份**：本字段与宿主持有的必须是同一个实例。
+    /// 桌面实现是宿主的 `DesktopSettingsRepository`（加密落盘 `{appData}`）；将来的
+    /// web 形态由服务端 host 实现。**事实只有一份**：本字段与宿主持有的必须是同一个实例。
     pub settings: Arc<dyn SettingsRepository>,
     /// 隧道定义的存储端口（组装层注入）。
     ///
@@ -185,7 +185,7 @@ impl ApplicationServices {
         self
     }
 
-    /// 跨形态设置用例入口。
+    /// D1 跨形态设置用例入口。
     ///
     /// 仓库由本聚合**持有**（不是借用宿主的 store），因此设置用例可以在没有
     /// Tauri 的进程里跑。桌面与将来的 web 形态走**同一个**入口，只有注入的
@@ -365,21 +365,22 @@ mod tests {
         }
     }
 
-    /// 注入的存储端口必须是 `platform-api` 的**那一份**，不是本包另抄的一份。
+    /// 注入的存储端口必须是其拥有模块的**那一份**，不是本包另抄的一份。
     ///
     /// 另抄一份端口 = 另抄一份事实：桌面实现与 web 实现各实现一套形状，差异
-    /// 只在运行期暴露。所以这里断言两件事——端口类型来自
-    /// `datazen_platform_api::ports`，且本包**没有**自己定义同名 trait。
+    /// 只在运行期暴露。所以这里断言两件事——端口类型来自各自拥有模块，且本包
+    /// **没有**自己定义同名 trait。
     #[test]
-    fn the_storage_ports_are_the_platform_api_ones_not_a_local_copy() {
+    fn the_storage_ports_come_from_their_owner_modules_not_a_local_copy() {
         let code = crate_root_code();
         assert!(
             code.contains("use datazen_platform_api::ports")
+                && code.contains("use datazen_modules::settings")
                 && code.contains("ConnectionCatalog")
                 && code.contains("SettingsRepository")
                 && code.contains("TunnelRepository")
                 && code.contains("MigrationProfileReader"),
-            "存储端口必须直接引 platform-api 的那一份"
+            "存储端口必须直接引其拥有模块的那一份"
         );
         for port in [
             "SettingsRepository",

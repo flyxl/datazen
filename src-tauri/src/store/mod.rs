@@ -463,6 +463,52 @@ impl DesktopRepository {
 
         self.save_json_file("settings.json", &snapshot).await
     }
+
+    /// Read the shape-neutral settings projection for the module-owned
+    /// settings repository boundary.
+    pub async fn read_shared_settings(
+        &self,
+    ) -> Result<datazen_modules::settings::SharedSettings, DesktopRepositoryError> {
+        Ok(self.get_settings().await.shared_settings())
+    }
+
+    /// Atomically apply and persist the shape-neutral settings projection.
+    /// Validation of enum values belongs to `datazen-modules`; this method only
+    /// preserves the desktop-only fields while writing the shared projection.
+    pub async fn write_shared_settings(
+        &self,
+        settings: datazen_modules::settings::SharedSettings,
+    ) -> Result<datazen_modules::settings::SharedSettings, DesktopRepositoryError> {
+        let mut cache = self.cache.write().await;
+        let mut next = cache.settings.clone();
+        next.apply_shared_settings(settings)
+            .map_err(DesktopRepositoryError::WriteError)?;
+        self.save_json_file("settings.json", &next).await?;
+        let result = next.shared_settings();
+        cache.settings = next;
+        Ok(result)
+    }
+
+    /// Read the host-owned full settings document without exposing `AppSettings`
+    /// through the module crate.
+    pub async fn read_app_settings_value(
+        &self,
+    ) -> Result<serde_json::Value, DesktopRepositoryError> {
+        serde_json::to_value(self.get_settings().await)
+            .map_err(|error| DesktopRepositoryError::ParseError(error.to_string()))
+    }
+
+    /// Parse and persist the host-owned full settings document, preserving the
+    /// existing on-disk JSON format and atomic write behavior.
+    pub async fn write_app_settings_value(
+        &self,
+        settings: serde_json::Value,
+    ) -> Result<serde_json::Value, DesktopRepositoryError> {
+        let settings: AppSettings = serde_json::from_value(settings)
+            .map_err(|error| DesktopRepositoryError::ParseError(error.to_string()))?;
+        self.save_settings(settings).await?;
+        self.read_app_settings_value().await
+    }
 }
 
 #[cfg(test)]
@@ -477,61 +523,3 @@ mod job_filter_scope_tests;
 #[cfg(test)]
 #[path = "key_backend_env_guard_tests.rs"]
 mod key_backend_env_guard_tests;
-
-#[async_trait::async_trait]
-impl datazen_platform_api::ports::SettingsRepository for DesktopRepository {
-    async fn read_settings(
-        &self,
-    ) -> Result<datazen_platform_api::settings::SharedSettings, datazen_platform_api::PortError>
-    {
-        Ok(self.get_settings().await.shared_settings())
-    }
-    async fn write_settings(
-        &self,
-        settings: datazen_platform_api::settings::SharedSettings,
-    ) -> Result<datazen_platform_api::settings::SharedSettings, datazen_platform_api::PortError>
-    {
-        // Serialize read/modify/persist to avoid dropping local-only values during a shared write.
-        let mut cache = self.cache.write().await;
-        let mut next = cache.settings.clone();
-        next.apply_shared_settings(settings)
-            .map_err(datazen_platform_api::PortError::BackendUnavailable)?;
-        self.save_json_file("settings.json", &next)
-            .await
-            .map_err(|_| {
-                datazen_platform_api::PortError::BackendUnavailable(
-                    "Unable to persist settings".into(),
-                )
-            })?;
-        let result = next.shared_settings();
-        cache.settings = next;
-        Ok(result)
-    }
-
-    async fn read_app_settings(
-        &self,
-    ) -> Result<serde_json::Value, datazen_platform_api::PortError> {
-        serde_json::to_value(self.get_settings().await).map_err(|error| {
-            datazen_platform_api::PortError::BackendUnavailable(format!(
-                "Unable to serialize settings: {error}"
-            ))
-        })
-    }
-
-    async fn write_app_settings(
-        &self,
-        settings: serde_json::Value,
-    ) -> Result<serde_json::Value, datazen_platform_api::PortError> {
-        let settings: AppSettings = serde_json::from_value(settings).map_err(|error| {
-            datazen_platform_api::PortError::BackendUnavailable(format!(
-                "Unable to parse settings: {error}"
-            ))
-        })?;
-        self.save_settings(settings).await.map_err(|error| {
-            datazen_platform_api::PortError::BackendUnavailable(format!(
-                "Unable to persist settings: {error}"
-            ))
-        })?;
-        self.read_app_settings().await
-    }
-}

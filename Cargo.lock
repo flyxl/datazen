@@ -1684,6 +1684,7 @@ dependencies = [
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
  "datazen-feature-core",
+ "datazen-modules",
  "datazen-platform-api",
  "datazen-platform-infra",
  "datazen-runtime",
@@ -1779,6 +1780,7 @@ dependencies = [
  "async-trait",
  "datazen-driver-api",
  "datazen-feature-core",
+ "datazen-modules",
  "datazen-platform-api",
  "datazen-schema-diff",
  "proc-macro2",
@@ -2194,12 +2196,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "datazen-modules"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "datazen-platform-api"
 version = "0.0.1"
 dependencies = [
  "async-trait",
  "chrono",
  "datazen-driver-api",
+ "datazen-modules",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

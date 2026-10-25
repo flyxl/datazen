@@ -16,6 +16,7 @@ members = [
     "packages/data-sync",
     "packages/migration-common",
     "packages/data-transfer",
+    "modules",
     "packages/drivers/*",
 ]
 exclude = [
@@ -33,6 +34,7 @@ datazen-schema-diff = { path = "packages/schema-diff" }
 datazen-migration-common = { path = "packages/migration-common" }
 datazen-data-sync = { path = "packages/data-sync" }
 datazen-data-transfer = { path = "packages/data-transfer" }
+datazen-modules = { path = "modules", default-features = false }
 
 [profile.dev]
 incremental = true

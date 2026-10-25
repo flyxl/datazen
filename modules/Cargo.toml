@@ -1,0 +1,19 @@
+[package]
+name = "datazen-modules"
+version = "0.0.1"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "DataZen feature modules: domain vocabulary, repository boundaries, and application use cases"
+
+[features]
+default = []
+settings = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:thiserror"]
+
+[dependencies]
+async-trait = { version = "0.1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+thiserror = { version = "1", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

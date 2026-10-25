@@ -22,6 +22,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # 在契约层再抄一份（两份摘要类型只会在两处之间慢慢漂移）。
 # F-04 允许这条边：`application` / `runtime` / 领域包 / `src-tauri` 一律不许依赖。
 datazen-driver-api = { workspace = true }
+datazen-modules = { workspace = true, features = ["settings"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
