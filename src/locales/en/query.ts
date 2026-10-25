@@ -495,6 +495,21 @@ const pack = {
   'filter.or': 'OR',
   'filter.value': 'Value',
   'filter.apply': 'Apply',
+  // DB-15: the SQL preview and the filtered export of the filter panel.
+  'filter.exportFiltered': 'Export…',
+  'filter.exportFilteredHint':
+    'Export the current filter results (entire table, streamed) directly',
+  'filter.previewSqlHint': 'Show the SQL statements this read would send',
+  'filter.previewSqlTitle': 'SQL preview',
+  'filter.previewSqlDescription':
+    'Exactly the statements the product sends — assembled by the same code that executes them.',
+  'filter.previewSqlData': 'Data statement',
+  'filter.previewSqlCount': 'Count statement',
+  'filter.previewSqlExactCount': 'Exact COUNT of the filtered table',
+  'filter.previewSqlLoading': 'Assembling the statements…',
+  'filter.previewSqlKind.exact': 'exact',
+  'filter.previewSqlKind.estimated': 'estimated',
+  'filter.previewSqlKind.unsupported': 'not counted by this driver',
   'filter.collapse': 'Hide',
   'filter.activeCount': '{count} active',
   'filter.noActive': 'No filters',
@@ -583,6 +598,10 @@ const pack = {
   'export.currentPage': 'Current Page',
   'export.selectedRows': 'Selected Rows',
   'export.entireTable': 'Entire Table',
+  // DB-15: the scope the filter panel's "Export…" exit preselects.
+  'export.filteredTable': 'Current filter results (entire table, streamed)',
+  'export.filteredScopeUnavailable':
+    'The filtered export statement could not be built; the page or the entire table remain available.',
   'export.selectColumns': 'Select Columns',
   'export.willExport': 'Will export {rows} rows, {cols} columns',
   'export.formatAs': 'as',

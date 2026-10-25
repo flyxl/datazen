@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import type {
   CountStrategy,
   FilterCondition,
@@ -297,6 +305,33 @@ export interface DataTableProps {
   /** Delete rows by page-row indices (requires primary keys). */
   onDeleteRows?: (rowIndices: number[]) => void;
 
+  /**
+   * Show the statements this read would send (DB-15). Absent — a panel that
+   * cannot reach the backend's preview — no `SQL` button appears in the filter
+   * panel.
+   */
+  onPreviewSql?: () => void;
+  /**
+   * The filter panel's direct exit to the export dialog with "current filter
+   * results" preselected (DB-15). Absent — a panel whose filtered export
+   * cannot be built — no `Export…` button appears there.
+   */
+  onExportFiltered?: () => void;
+  /**
+   * The builder of the filtered full-table export statement (DB-15).
+   *
+   * Forwarded to the export dialog; when it exists the "current filter
+   * results" scope is offered. The statement is the backend's own preview —
+   * the export streams what the filters really select.
+   */
+  onBuildFilteredExportSql?: () => Promise<string>;
+  /**
+   * Request opening the export dialog from outside (DB-15): a counter, not a
+   * boolean — each increment opens the dialog once, with the filtered scope
+   * preselected.
+   */
+  exportOpenSignal?: number;
+
   /** Extra action buttons shown on the right side of the selection toolbar, next to export. */
   headerActions?: React.ReactNode;
   /** Custom empty content when columns are hidden or table has custom empty state. */
@@ -406,6 +441,10 @@ export function DataTable({
   dataExportCapability,
   primaryKeyColumns,
   onDeleteRows,
+  onPreviewSql,
+  onExportFiltered,
+  onBuildFilteredExportSql,
+  exportOpenSignal,
   headerActions,
   emptyPlaceholder,
   className,
@@ -420,6 +459,24 @@ export function DataTable({
   const { t } = useI18n();
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  /**
+   * The scope the dialog opens with (DB-15): the filter panel's direct exit
+   * preselects "current filter results"; the toolbar's own button opens the
+   * dialog the way it always did.
+   */
+  const [exportInitialScope, setExportInitialScope] = useState<
+    'current_page' | 'filtered_table' | undefined
+  >(undefined);
+  const signalSeenRef = useRef(0);
+
+  // The counter is a signal, not state: each increment opens the dialog once,
+  // and a replayed old value never re-opens it.
+  useEffect(() => {
+    if (exportOpenSignal == null || exportOpenSignal <= signalSeenRef.current) return;
+    signalSeenRef.current = exportOpenSignal;
+    setExportInitialScope(onBuildFilteredExportSql ? 'filtered_table' : undefined);
+    setExportOpen(true);
+  }, [exportOpenSignal, onBuildFilteredExportSql]);
 
   // The owner of the grid keeps the viewport (DB-07): it has to know where the
   // user was when the tab was left.
@@ -668,6 +725,8 @@ export function DataTable({
           onApply={onApplyFilters}
           onClear={onClearFilters}
           loading={loading}
+          onPreviewSql={onPreviewSql}
+          onExportFiltered={onExportFiltered}
         />
       ) : hasFilters ? (
         <FilterBar
@@ -853,6 +912,8 @@ export function DataTable({
           dbSessionId={dbSessionId}
           totalRows={totalRows}
           primaryKeyColumns={primaryKeyColumns}
+          initialScope={exportInitialScope}
+          onBuildFilteredExportSql={onBuildFilteredExportSql}
           dataExportCapability={dataExportCapability}
         />
       )}

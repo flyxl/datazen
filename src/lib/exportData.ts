@@ -11,7 +11,7 @@ export type ExportFormat =
   | 'xlsx'
   | 'sql_insert'
   | 'sql_update';
-export type ExportScope = 'current_page' | 'selected' | 'entire_table';
+export type ExportScope = 'current_page' | 'selected' | 'entire_table' | 'filtered_table';
 
 /** Multi-row INSERT batch size (TablePlus-style). */
 export const SQL_INSERT_BATCH_SIZE = 500;

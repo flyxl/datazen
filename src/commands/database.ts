@@ -13,6 +13,7 @@ import type {
   NamedView,
   NamedViewScope,
   ResolveForeignKeyTargetsRequest,
+  TableReadPreviewSql,
 } from '@datazen/backend-client';
 import type {
   FilterCondition,
@@ -213,6 +214,50 @@ export const databaseCommands = {
     });
   },
 
+  /**
+   * Show the statements a table read would send, without sending them (DB-15).
+   *
+   * The statements come from the backend's own assembly — the same code a
+   * real read executes — so the preview cannot drift from what runs. An
+   * `unbounded` request drops the paging frame; the filtered full-table
+   * export streams that statement instead of building a `SELECT` of its own.
+   */
+  previewTableReadSql: async (params: {
+    dbSessionId: string;
+    context: TableChangeContext;
+    manualHandle?: import('@datazen/backend-client').SessionHandle | null;
+    table: string;
+    page: number;
+    pageSize: number;
+    filters?: FilterCondition[];
+    sorts?: SortCondition[];
+    filterLogic?: 'and' | 'or';
+    /** Explicit target database; the host reads it without switching the session. */
+    database?: string | null;
+    /** Explicit target schema for schema-aware engines. */
+    schema?: string | null;
+    countStrategy?: CountStrategy;
+    defaultOrderColumns?: string[];
+    afterKey?: CursorValue[];
+    /** Omit the paging frame: the whole filtered table. */
+    unbounded?: boolean;
+  }): Promise<TableReadPreviewSql> => {
+    const client = useBackendClient();
+    return client.previewTableReadSql({
+      context: params.context,
+      manualHandle: params.manualHandle ?? null,
+      page: params.page,
+      pageSize: params.pageSize,
+      filters: params.filters,
+      sorts: params.sorts,
+      filterLogic: params.filterLogic,
+      countStrategy: params.countStrategy,
+      defaultOrderColumns: params.defaultOrderColumns,
+      afterKey: params.afterKey,
+      unbounded: params.unbounded,
+    });
+  },
+
   executeSQL: (dbSessionId: string, sql: string) => queryCommands.executeQuery(dbSessionId, sql),
 
   /** Generate a serialisable plan only; the backend does not execute SQL. */
@@ -359,4 +404,3 @@ export const databaseCommands = {
   getPrivileges: (dbSessionId: string) =>
     invoke<PrivilegeGrant[]>('get_privileges', { dbSessionId }),
 };
-

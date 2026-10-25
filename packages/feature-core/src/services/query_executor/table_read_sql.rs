@@ -131,14 +131,106 @@ pub fn build_paged_select_sql(
     offset: u64,
     filter_logic: Option<&str>,
 ) -> Result<PagedSelectSql, FilterRejection> {
-    let qi = |name: &str| dialect.quote_ident(name);
     let by_seek = mode == PagingMode::Keyset;
+    // A seek reads the rows after the boundary: there is nothing to skip.
+    let pagination = dialect.pagination_syntax(limit, if by_seek { 0 } else { offset });
+    let (mut sql, has_order_by) = select_body(
+        table_name,
+        columns,
+        filters.as_deref(),
+        Some(order),
+        predicate_sql,
+        dialect,
+        filter_logic,
+    )?;
+
+    // Dialects whose pagination clause is only legal after `ORDER BY`
+    // (T-SQL `OFFSET … FETCH`) supply their own neutral ordering. Gated on
+    // `requires_order_by` so a dialect that merely offers a fallback is not
+    // forced into an ordering it did not ask for.
+    if !has_order_by && pagination.requires_order_by {
+        if let Some(fallback) = pagination.order_by_fallback {
+            sql.push_str(&format!(" ORDER BY {fallback}"));
+        }
+    }
+
+    // The clause belongs to the dialect: `LIMIT … OFFSET …` on PostgreSQL,
+    // `OFFSET … ROWS FETCH NEXT … ROWS ONLY` on SQL Server.
+    if !pagination.clause.is_empty() {
+        sql.push(' ');
+        sql.push_str(&pagination.clause);
+    }
+
+    Ok(PagedSelectSql {
+        sql,
+        mode,
+        order_columns: order.columns.clone(),
+        unavailable_reason: None,
+    })
+}
+
+/// The statement that reads the **whole** filtered table, without a paging
+/// frame (DB-15).
+///
+/// It is the same statement a page read sends — the same column list, the
+/// same `WHERE`, the same `ORDER BY`, assembled by the same code — minus
+/// `LIMIT`/`OFFSET`. Two consumers read it:
+///
+/// * the **SQL preview** of the filter panel, so what the user is shown is
+///   byte-for-byte what the product sends;
+/// * the **filtered full-table export**, which streams this statement
+///   instead of building a second, drifting `SELECT` of its own.
+///
+/// The order is kept: an export in the order the grid showed is the least
+/// surprising export. The paging frame is dropped because a stream must not
+/// be capped by a page size it never asked about.
+pub fn build_unbounded_select_sql(
+    table_name: &str,
+    columns: &[ColumnSchema],
+    filters: Option<Vec<super::FilterCondition>>,
+    order: &OrderSpec,
+    dialect: &dyn SqlDialect,
+    filter_logic: Option<&str>,
+) -> Result<String, FilterRejection> {
+    let (sql, _has_order_by) = select_body(
+        table_name,
+        columns,
+        filters.as_deref(),
+        Some(order),
+        // No page boundary exists here: the statement has no `WHERE pk > …`
+        // condition to place next to the user's filters.
+        None,
+        dialect,
+        filter_logic,
+    )?;
+    Ok(sql)
+}
+
+/// The `SELECT … FROM … [WHERE …] [ORDER BY …]` both page reads and
+/// unbounded reads are assembled from.
+///
+/// Returns the text built so far and whether it carries an `ORDER BY`. The
+/// paging clause is **not** appended here: the page read appends the
+/// dialect's own clause, the unbounded read appends nothing.
+///
+/// `order` is optional only so a caller with no order at all can say so with
+/// a `None` instead of an empty spec — `build_unbounded_select_sql` keeps
+/// taking an `&OrderSpec` because its callers resolve one anyway.
+#[allow(clippy::too_many_arguments)]
+fn select_body(
+    table_name: &str,
+    columns: &[ColumnSchema],
+    filters: Option<&[super::FilterCondition]>,
+    order: Option<&OrderSpec>,
+    predicate_sql: Option<&str>,
+    dialect: &dyn SqlDialect,
+    filter_logic: Option<&str>,
+) -> Result<(String, bool), FilterRejection> {
+    let qi = |name: &str| dialect.quote_ident(name);
     // The filters are only grouped when a condition is placed next to them:
     // without one there is nothing to bind, and the statement stays the
     // statement the table read always sent.
     let with_predicate = predicate_sql.is_some();
-    // A seek reads the rows after the boundary: there is nothing to skip.
-    let pagination = dialect.pagination_syntax(limit, if by_seek { 0 } else { offset });
 
     let mut sql = String::new();
     sql.push_str("SELECT ");
@@ -158,7 +250,7 @@ pub fn build_paged_select_sql(
 
     let mut has_filters = false;
     if let Some(conditions) = filters {
-        let parts = filter_sql::render_filter_parts(&conditions, dialect)?;
+        let parts = filter_sql::render_filter_parts(conditions, dialect)?;
         if !parts.is_empty() {
             has_filters = true;
             sql.push_str(" WHERE ");
@@ -186,45 +278,25 @@ pub fn build_paged_select_sql(
     }
 
     let mut has_order_by = false;
-    if !order.columns.is_empty() {
-        let parts: Vec<String> = order
-            .columns
-            .iter()
-            .map(|column| {
-                format!(
-                    "{} {}",
-                    qi(&column.column),
-                    if column.descending { "DESC" } else { "ASC" }
-                )
-            })
-            .collect();
-        sql.push_str(&format!(" ORDER BY {}", parts.join(", ")));
-        has_order_by = true;
-    }
-
-    // Dialects whose pagination clause is only legal after `ORDER BY`
-    // (T-SQL `OFFSET … FETCH`) supply their own neutral ordering. Gated on
-    // `requires_order_by` so a dialect that merely offers a fallback is not
-    // forced into an ordering it did not ask for.
-    if !has_order_by && pagination.requires_order_by {
-        if let Some(fallback) = pagination.order_by_fallback {
-            sql.push_str(&format!(" ORDER BY {fallback}"));
+    if let Some(order) = order {
+        if !order.columns.is_empty() {
+            let parts: Vec<String> = order
+                .columns
+                .iter()
+                .map(|column| {
+                    format!(
+                        "{} {}",
+                        qi(&column.column),
+                        if column.descending { "DESC" } else { "ASC" }
+                    )
+                })
+                .collect();
+            sql.push_str(&format!(" ORDER BY {}", parts.join(", ")));
+            has_order_by = true;
         }
     }
 
-    // The clause belongs to the dialect: `LIMIT … OFFSET …` on PostgreSQL,
-    // `OFFSET … ROWS FETCH NEXT … ROWS ONLY` on SQL Server.
-    if !pagination.clause.is_empty() {
-        sql.push(' ');
-        sql.push_str(&pagination.clause);
-    }
-
-    Ok(PagedSelectSql {
-        sql,
-        mode,
-        order_columns: order.columns.clone(),
-        unavailable_reason: None,
-    })
+    Ok((sql, has_order_by))
 }
 
 /// The boundary of a page, as the driver contract speaks it.

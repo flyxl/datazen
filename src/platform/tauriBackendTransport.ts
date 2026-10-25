@@ -64,6 +64,8 @@ function toCommandName(method: keyof MethodMap): string {
     // reads through it — the retired session-scoped `get_table_data` no
     // longer exists — so the port has to name the command the grid uses.
     getTableData: 'get_table_data_at_target',
+    // The DB-15 SQL preview: same target-bound shape, never executed.
+    previewTableReadSql: 'preview_table_read_sql',
   };
   if (commandOverrides[method]) return commandOverrides[method];
   return method.includes('_')

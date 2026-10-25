@@ -29,12 +29,23 @@ export const ARRAY_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string }
 
 export function buildExportScopeOptions(
   t: (
-    key: 'export.currentPage' | 'export.selectedRows' | 'export.entireTable' | 'common.rows',
+    key:
+      | 'export.currentPage'
+      | 'export.selectedRows'
+      | 'export.entireTable'
+      | 'export.filteredTable'
+      | 'common.rows',
     params?: Record<string, string | number>,
   ) => string,
   rowCount: number,
   selectedCount: number,
   entireTable?: { totalRows?: number } | false,
+  /**
+   * Offer "the current filter results, streamed" (DB-15). Passed only when a
+   * builder for the filtered statement exists — the scope must never appear
+   * for a table whose filtered statement cannot be built.
+   */
+  filteredTable?: boolean,
 ): { value: ExportScope; label: string; disabled?: boolean }[] {
   const options: { value: ExportScope; label: string; disabled?: boolean }[] = [
     {
@@ -47,6 +58,12 @@ export function buildExportScopeOptions(
       disabled: selectedCount === 0,
     },
   ];
+  if (filteredTable) {
+    options.push({
+      value: 'filtered_table',
+      label: t('export.filteredTable'),
+    });
+  }
   if (entireTable) {
     const total = entireTable.totalRows;
     options.push({

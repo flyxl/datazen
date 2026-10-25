@@ -74,12 +74,19 @@ const tableController = vi.hoisted(() => ({
 }));
 vi.mock('../../../lib/session/tableSession', () => ({
   tableSessionController: vi.fn().mockResolvedValue(tableController),
+  // DB-15: the preview request carries the panel's manual handle; none here.
+  tableManualHandle: () => null,
+}));
+
+// DB-15: the SQL preview goes through the real command — the mock only pins
+// its answer, so the request the test asserts is the request the panel sends.
+const databaseCommandsMock = vi.hoisted(() => ({
+  useDatabase: vi.fn().mockResolvedValue(undefined),
+  previewTableReadSql: vi.fn(),
 }));
 
 vi.mock('../../../commands/database', () => ({
-  databaseCommands: {
-    useDatabase: vi.fn().mockResolvedValue(undefined),
-  },
+  databaseCommands: databaseCommandsMock,
 }));
 
 vi.mock('../../../components/DataTable/DataTable', () => ({
@@ -91,6 +98,9 @@ vi.mock('../../../components/DataTable/DataTable', () => ({
     onCellEdit?: unknown;
     enableSetNull?: boolean;
     onDeleteRows?: unknown;
+    onPreviewSql?: () => void;
+    onExportFiltered?: () => void;
+    exportOpenSignal?: number;
   }) => (
     <div data-testid="mock-data-table">
       <div data-testid="mock-data-table-columns">{props.columns?.map((c) => c.name).join(',')}</div>
@@ -103,6 +113,21 @@ vi.mock('../../../components/DataTable/DataTable', () => ({
         data-set-null={props.enableSetNull ? 'on' : 'off'}
         data-delete-rows={props.onDeleteRows != null ? 'on' : 'off'}
       />
+      {/* DB-15: the filter panel's exits, as clickable probes plus the signal. */}
+      <div
+        data-testid="mock-data-table-db15"
+        data-export-signal={String(props.exportOpenSignal ?? 0)}
+      />
+      {props.onPreviewSql && (
+        <button type="button" data-testid="mock-preview-sql-click" onClick={props.onPreviewSql} />
+      )}
+      {props.onExportFiltered && (
+        <button
+          type="button"
+          data-testid="mock-export-filtered-click"
+          onClick={props.onExportFiltered}
+        />
+      )}
       {props.emptyPlaceholder}
       <button
         type="button"
@@ -145,11 +170,17 @@ const tableStore = vi.hoisted(() => ({
   setDetailRow: vi.fn(),
 }));
 
-vi.mock('../../../stores/tableDataStore', () => ({
-  useTableDataStore: Object.assign((sel: (s: typeof tableStore) => unknown) => sel(tableStore), {
-    getState: () => tableStore,
-  }),
-}));
+vi.mock('../../../stores/tableDataStore', async (importOriginal) => {
+  // DB-15: `orderRequest` is a real pure function the preview mirrors — keep
+  // the real one, replace only the reactive store.
+  const actual = await importOriginal<typeof import('../../../stores/tableDataStore')>();
+  return {
+    ...actual,
+    useTableDataStore: Object.assign((sel: (s: typeof tableStore) => unknown) => sel(tableStore), {
+      getState: () => tableStore,
+    }),
+  };
+});
 
 const PANEL = 'panel-users';
 const TARGET = {
@@ -631,5 +662,93 @@ describe('TableView no-primary-key escape hatch (DB-16)', () => {
     expect(gates).toHaveAttribute('data-cell-edit', 'off');
     expect(gates).toHaveAttribute('data-set-null', 'off');
     expect(gates).toHaveAttribute('data-delete-rows', 'off');
+  });
+});
+
+// DB-15: the SQL preview and the filtered export of the filter panel.
+describe('TableView SQL preview (DB-15)', () => {
+  it('previews the statements the next read would send, with the read\u2019s own parameters', async () => {
+    seedPanel(contextOf(), {
+      columns: [
+        { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true },
+        { name: 'status', dataType: 'varchar', nullable: true, isPrimaryKey: false },
+      ],
+      rows: [{ id: 1, status: 'active' }],
+      totalRows: 1,
+      page: 2,
+      pageSize: 50,
+      filters: [{ column: 'status', operator: 'eq', value: 'active' }],
+      sorts: [{ column: 'id', descending: true }],
+    });
+    databaseCommandsMock.previewTableReadSql.mockResolvedValue({
+      dataSql:
+        'SELECT "id", "status" FROM "users" WHERE "status" = \'active\' ORDER BY "id" DESC LIMIT 50 OFFSET 100;',
+      countSql: 'SELECT COUNT(*) FROM "users" WHERE "status" = \'active\';',
+      exactCountSql: 'SELECT COUNT(*) FROM "users" WHERE "status" = \'active\';',
+      countKind: 'exact',
+    });
+
+    renderTable();
+
+    fireEvent.click(screen.getByTestId('mock-preview-sql-click'));
+
+    await vi.waitFor(() => expect(databaseCommandsMock.previewTableReadSql).toHaveBeenCalledOnce());
+    // The request mirrors what `loadTableData` sends: same filters, same
+    // sorts, same page — the shown statement is the executed one.
+    const request = databaseCommandsMock.previewTableReadSql.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
+    expect(request.page).toBe(2);
+    expect(request.pageSize).toBe(50);
+    expect(request.filters).toEqual([{ column: 'status', operator: 'eq', value: 'active' }]);
+    expect(request.sorts).toEqual([{ column: 'id', descending: true }]);
+    expect(request.unbounded).toBeUndefined();
+
+    // The dialog appears with the statements once the (micro-task) answer lands.
+    await vi.waitFor(() =>
+      expect(screen.getByTestId('filter-sql-preview-data')).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('filter-sql-preview-data').textContent).toContain(
+      'ORDER BY "id" DESC LIMIT 50 OFFSET 100',
+    );
+    expect(screen.getByTestId('filter-sql-preview-count').textContent).toContain(
+      'SELECT COUNT(*) FROM "users"',
+    );
+  });
+
+  it('shows the preview error instead of statements when the backend refuses', async () => {
+    seedPanel(contextOf(), {
+      columns: [{ name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true }],
+      rows: [{ id: 1 }],
+      totalRows: 1,
+    });
+    databaseCommandsMock.previewTableReadSql.mockRejectedValue(new Error('operator not supported'));
+
+    renderTable();
+
+    fireEvent.click(screen.getByTestId('mock-preview-sql-click'));
+
+    await vi.waitFor(() =>
+      expect(screen.getByTestId('filter-sql-preview-error')).toHaveTextContent(
+        'operator not supported',
+      ),
+    );
+    expect(screen.queryByTestId('filter-sql-preview-data')).toBeNull();
+  });
+
+  it('bumps the export signal when the filter panel\u2019s export exit is used', () => {
+    seedPanel(contextOf(), {
+      columns: [{ name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true }],
+      rows: [{ id: 1 }],
+      totalRows: 1,
+    });
+
+    renderTable();
+
+    const probe = screen.getByTestId('mock-data-table-db15');
+    expect(probe).toHaveAttribute('data-export-signal', '0');
+    fireEvent.click(screen.getByTestId('mock-export-filtered-click'));
+    expect(probe).toHaveAttribute('data-export-signal', '1');
   });
 });

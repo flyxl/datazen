@@ -356,6 +356,117 @@ fn build_count_sql_with_eq_filter() {
     assert!(sql.contains("WHERE \"status\" = 'active'"));
 }
 
+// DB-15: the unbounded read — what the SQL preview shows and the filtered
+// full-table export streams. The contract is byte identity with the paged
+// read minus the paging frame: same columns, same WHERE, same ORDER BY.
+mod unbounded_select_sql {
+    use super::*;
+    use crate::services::table_paging::OrderSource;
+    use datazen_driver_api::keyset::OrderColumn;
+
+    fn order_spec(columns: Vec<(&str, bool)>) -> OrderSpec {
+        OrderSpec {
+            columns: columns
+                .into_iter()
+                .map(|(column, descending)| OrderColumn {
+                    column: column.to_string(),
+                    descending,
+                })
+                .collect(),
+            source: OrderSource::ExplicitSort,
+            unique_key: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn drops_the_paging_frame_and_keeps_everything_else() {
+        let columns = vec![make_column("id", true), make_column("status", false)];
+        let filters = vec![FilterCondition {
+            column: "status".into(),
+            operator: FilterOperator::Eq,
+            value: Value::String("active".into()),
+            connector: None,
+        }];
+        let order = order_spec(vec![("id", true)]);
+        let unbounded = table_read_sql::build_unbounded_select_sql(
+            "users",
+            &columns,
+            Some(filters.clone()),
+            &order,
+            &DEFAULT,
+            None,
+        )
+        .unwrap();
+        let paged = table_read_sql::build_paged_select_sql(
+            "users",
+            &columns,
+            Some(filters),
+            &order,
+            PagingMode::Offset,
+            None,
+            &DEFAULT,
+            50,
+            100,
+            None,
+        )
+        .unwrap()
+        .sql;
+
+        // The unbounded statement is the paged one without its paging frame —
+        // byte identity after the strip is the whole contract.
+        assert_eq!(
+            unbounded,
+            paged.strip_suffix(" LIMIT 50 OFFSET 100").unwrap(),
+            "paged: {paged}\nunbounded: {unbounded}"
+        );
+        assert!(
+            unbounded.contains("WHERE \"status\" = 'active'"),
+            "got: {unbounded}"
+        );
+        assert!(
+            unbounded.contains("ORDER BY \"id\" DESC"),
+            "got: {unbounded}"
+        );
+        assert!(!unbounded.contains("LIMIT"), "got: {unbounded}");
+        assert!(!unbounded.contains("OFFSET"), "got: {unbounded}");
+    }
+
+    #[test]
+    fn tsql_dialect_adds_no_fetch_and_no_fallback_ordering() {
+        // A dialect whose paging clause demands an `ORDER BY` (T-SQL) must not
+        // smuggle that requirement into an unbounded read: no clause, no
+        // fallback ordering, nothing.
+        let columns = vec![make_column("id", true)];
+        let sql = table_read_sql::build_unbounded_select_sql(
+            "users",
+            &columns,
+            None,
+            &order_spec(vec![]),
+            &TSQL,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            sql, "SELECT \"id\" FROM \"users\"",
+            "the unbounded read must be exactly the columns and the table, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn empty_column_list_selects_star_like_the_paged_read() {
+        let sql = table_read_sql::build_unbounded_select_sql(
+            "users",
+            &[],
+            None,
+            &order_spec(vec![]),
+            &DEFAULT,
+            None,
+        )
+        .unwrap();
+        assert_eq!(sql, "SELECT * FROM \"users\"");
+    }
+}
+
 #[test]
 fn build_select_sql_joins_filters_with_or() {
     let columns = vec![make_column("status", false), make_column("role", false)];

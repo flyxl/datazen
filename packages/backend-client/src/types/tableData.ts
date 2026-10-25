@@ -560,3 +560,55 @@ export interface ResultCellWrite {
   column: string;
   value: TableValue;
 }
+
+/**
+ * The request of a SQL preview (DB-15): the query shape of a page read,
+ * plus the one switch only a preview makes sense of.
+ *
+ * The shape deliberately mirrors {@link TableDataRequest} minus the fields a
+ * preview has no use for (`skipCount`: a preview always shows the count
+ * statements, it never "reuses a total") — the backend assembles through the
+ * same code a real read executes, so what this returns is what the product
+ * would send.
+ */
+export interface TableReadPreviewRequest {
+  context: TableChangeContext;
+  manualHandle?: SessionHandle | null;
+  page: number;
+  pageSize: number;
+  filters?: FilterCondition[];
+  sorts?: SortCondition[];
+  filterLogic?: 'and' | 'or';
+  countStrategy?: CountStrategy;
+  defaultOrderColumns?: string[];
+  afterKey?: CursorValue[];
+  /**
+   * Read the whole filtered table instead of one page: the paging frame
+   * (`LIMIT`/`OFFSET` and the seek predicate) is dropped.
+   *
+   * The filtered full-table export streams this statement — the export and
+   * the grid read the same builder, so the exported rows are the rows the
+   * filters really select.
+   */
+  unbounded?: boolean;
+}
+
+/**
+ * The answer of a SQL preview (DB-15): the statements a read would send.
+ *
+ * Every field is text the backend assembled — the frontend never builds SQL
+ * of its own for the preview, so the preview cannot drift from what runs.
+ */
+export interface TableReadPreviewSql {
+  /** The statement that reads the rows (paged, or unbounded on request). */
+  dataSql: string;
+  /** The statement that counts the rows, when one runs with the read. */
+  countSql: string | null;
+  /**
+   * The exact `COUNT(*)` of the filtered table, always present — an
+   * estimate falls back to this, and the preview shows both facts.
+   */
+  exactCountSql: string;
+  /** How the count would be read: `exact`, `estimated` or `unsupported`. */
+  countKind: CountStrategy;
+}

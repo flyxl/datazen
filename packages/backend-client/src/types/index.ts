@@ -105,6 +105,8 @@ export type {
   TableColumnSchema,
   TableDataRequest,
   TableDataResult,
+  TableReadPreviewRequest,
+  TableReadPreviewSql,
   TableValue,
 } from './tableData';
 export { toTableValue } from './tableData';

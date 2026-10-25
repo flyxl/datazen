@@ -4,7 +4,13 @@ import { DataTable } from '../../components/DataTable/DataTable';
 import { DATA_TABLE_ROW_HEIGHT, rowHeightForDensity } from '../../components/DataTable/rowHeight';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { TableColumnFilter } from './TableColumnFilter';
-import { useTableDataStore } from '../../stores/tableDataStore';
+import { useTableDataStore, orderRequest } from '../../stores/tableDataStore';
+import { keysetRequestFor } from '../../stores/tableData/keysetActions';
+import { resolvePanelCountStrategy } from '../../stores/tableData/countStrategy';
+import { tableManualHandle } from '../../lib/session/tableSession';
+import { databaseCommands } from '../../commands/database';
+import { FilterSqlPreviewDialog } from '../../components/filter/FilterSqlPreviewDialog';
+import type { TableReadPreviewSql } from '@datazen/backend-client';
 import { EMPTY_GRID_SELECTION } from '../../stores/tableData/gridSelection';
 import { hasPendingWork } from '../../stores/tableData/pendingChanges';
 import { selectDirtyRow } from '../../stores/tableData/dirtyIndex';
@@ -208,6 +214,19 @@ export function TableView({
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
+  /**
+   * The SQL preview dialog of the filter panel (DB-15): the statements the
+   * next read of this panel would send, straight from the backend's own
+   * assembly. The request mirrors the exact parameters `loadTableData`
+   * sends, so the shown statement is the executed one.
+   */
+  const [sqlPreview, setSqlPreview] = useState<{
+    open: boolean;
+    preview: TableReadPreviewSql | null;
+    error: string | null;
+  }>({ open: false, preview: null, error: null });
+  /** The filter panel's "Export…" exit opens the export dialog via a signal (DB-15). */
+  const [exportSignal, setExportSignal] = useState(0);
   /** The reason the last refusal showed (DB-05); `null` = no notice. */
   const [readOnlyTipReason, setReadOnlyTipReason] = useState<CellReadOnlyReason | null>(null);
   const readOnlyTipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -300,6 +319,75 @@ export function TableView({
     connectionReadOnly: isConnectionReadOnly,
     mountReason: readOnlyReasonProp,
   });
+
+  /**
+   * The request parameters of this panel's next read (DB-15) — mirrored from
+   * what `loadTableData` sends, so the previewed statement is the executed
+   * one. `unbounded` drops the paging frame (the filtered export streams it).
+   */
+  const buildPreviewRequest = useCallback(
+    (unbounded?: boolean) => {
+      if (!ts) return null;
+      const order = orderRequest(
+        ts.defaultOrderOverride,
+        ts.columns,
+        ts.sorts,
+        defaultTableSortSetting,
+      );
+      const keyset = keysetRequestFor(ts, ts.page);
+      return {
+        dbSessionId,
+        context,
+        manualHandle: tableManualHandle(panelId),
+        table: tableName,
+        page: ts.page,
+        pageSize: ts.pageSize,
+        filters: ts.filters,
+        sorts: order.sorts,
+        filterLogic: ts.filterLogic,
+        countStrategy: resolvePanelCountStrategy(context),
+        defaultOrderColumns: order.defaultOrderColumns,
+        afterKey: keyset.afterKey,
+        database,
+        schema,
+        ...(unbounded ? { unbounded } : {}),
+      };
+    },
+    [context, database, dbSessionId, defaultTableSortSetting, panelId, schema, tableName, ts],
+  );
+
+  /** Show the statements the next read would send (DB-15). */
+  const handleFilterPreviewSql = useCallback(() => {
+    const request = buildPreviewRequest();
+    if (!request) return;
+    setSqlPreview({ open: true, preview: null, error: null });
+    void databaseCommands
+      .previewTableReadSql(request)
+      .then((preview) => setSqlPreview({ open: true, preview, error: null }))
+      .catch((error: unknown) =>
+        setSqlPreview({
+          open: true,
+          preview: null,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+  }, [buildPreviewRequest]);
+
+  /**
+   * The statement the filtered full-table export streams (DB-15): the same
+   * assembly the preview shows, without the paging frame.
+   */
+  const buildFilteredExportSql = useCallback(async () => {
+    const request = buildPreviewRequest(true);
+    if (!request) throw new Error('Panel state unavailable');
+    const preview = await databaseCommands.previewTableReadSql(request);
+    return preview.dataSql;
+  }, [buildPreviewRequest]);
+
+  /** The filter panel's direct exit to the export dialog (DB-15). */
+  const handleFilterExportFiltered = useCallback(() => {
+    setExportSignal((value) => value + 1);
+  }, []);
 
   const handleCellDoubleClick = useCallback(
     (row: number, col: string) => {
@@ -905,6 +993,10 @@ export function TableView({
         dataExportCapability={dataExportCapability}
         primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
         onDeleteRows={cellWritesEnabled ? handleDeleteRows : undefined}
+        onPreviewSql={handleFilterPreviewSql}
+        onExportFiltered={handleFilterExportFiltered}
+        onBuildFilteredExportSql={buildFilteredExportSql}
+        exportOpenSignal={exportSignal}
         headerActions={
           <TableColumnFilter
             columns={columns}
@@ -939,6 +1031,12 @@ export function TableView({
         plan={previewPlan}
         open={previewOpen && previewPlan != null}
         onClose={() => setPreviewOpen(false)}
+      />
+      <FilterSqlPreviewDialog
+        open={sqlPreview.open}
+        onClose={() => setSqlPreview((state) => ({ ...state, open: false }))}
+        preview={sqlPreview.preview}
+        error={sqlPreview.error}
       />
       <ColumnStatsDialog state={columnStatsState} onClose={dismissColumnStats} />
     </div>

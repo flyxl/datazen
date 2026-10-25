@@ -197,7 +197,7 @@ function patchPanelForReload(
  * beats the driver's own default, which is what every read asked for before
  * the setting existed.
  */
-function orderRequest(
+export function orderRequest(
   override: TableState['defaultOrderOverride'],
   columns: ColumnSchema[],
   sorts: SortCondition[],

@@ -60,6 +60,8 @@ import type {
   SubmissionToken,
   TableDataRequest,
   TableDataResult,
+  TableReadPreviewRequest,
+  TableReadPreviewSql,
   CommitPendingChangesRequest,
   CommitPendingChangesResponse,
 } from './types';
@@ -142,6 +144,17 @@ export interface MethodMap {
    * pins.
    */
   getTableData: { request: TableDataRequest; response: TableDataResult };
+  /**
+   * The SQL preview of a table read (DB-15).
+   *
+   * The backend assembles through the same code a real read executes, so the
+   * statements it returns are the statements the product would send — the
+   * frontend never builds preview SQL of its own.
+   */
+  previewTableReadSql: {
+    request: TableReadPreviewRequest;
+    response: TableReadPreviewSql;
+  };
   /**
    * The change preview. It produces a serialisable plan and executes nothing:
    * the backend renders SQL, the frontend never does.
