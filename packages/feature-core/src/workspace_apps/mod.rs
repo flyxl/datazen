@@ -17,7 +17,7 @@
 //! 框架）、**零桌面壳依赖**。二者均由
 //! `scripts/check-platform-crate-boundaries.mjs` 的 F-12 强制（feature-core 的
 //! 反向 allow-list + 禁 `tauri` / `axum` / `actix-web` / `warp` / `tonic` /
-//! `react`）；HTTP *客户端* 是 `ai-providers` 的职责，本模块两者都不引入。
+//! `react`）；HTTP *客户端* 是 `modules::ai::providers` 的职责，本模块两者都不引入。
 
 pub mod install;
 pub mod manifest;

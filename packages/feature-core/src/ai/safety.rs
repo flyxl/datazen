@@ -12,7 +12,7 @@ use regex::Regex;
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
-use datazen_ai_providers::{AiDataEgressLevel, AiSafetyGateConfig};
+use datazen_modules::ai::{AiDataEgressLevel, AiSafetyGateConfig};
 
 const MAX_AI_TEXT_BYTES: usize = 4_000;
 pub const MAX_JSON_DEPTH: usize = 4;
@@ -341,7 +341,7 @@ pub fn redact_for_gate(value: &str, gate: &AiSafetyGateConfig) -> String {
 
 /// Global execution policy can tighten a model profile's egress level.
 pub fn effective_safety_gate(
-    settings: &datazen_ai_providers::AiSettingsConfig,
+    settings: &datazen_modules::ai::AiSettingsConfig,
     policy: &datazen_modules::settings::ExecutionSettings,
 ) -> AiSafetyGateConfig {
     let mut gate = settings

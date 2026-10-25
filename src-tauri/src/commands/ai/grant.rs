@@ -256,7 +256,7 @@ impl AiToolLoopHost for AiRequestHost<'_> {
         AiToolLoopHost::egress_summary(self.state).await
     }
 
-    async fn execute_db_tool(&self, call: &datazen_ai_providers::ToolCall) -> String {
+    async fn execute_db_tool(&self, call: &datazen_modules::ai::ToolCall) -> String {
         let raw =
             datazen_feature_core::ai::tools::execute_db_tool(self, self.state.store.as_ref(), call)
                 .await;

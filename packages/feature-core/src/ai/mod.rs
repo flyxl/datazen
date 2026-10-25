@@ -5,7 +5,7 @@ pub mod ctx_yaml;
 pub mod filter;
 pub mod prompt_resolver;
 pub mod safety;
-pub use datazen_ai_providers::{AiDataEgressLevel, AiSafetyGateConfig};
+pub use datazen_modules::ai::{AiDataEgressLevel, AiSafetyGateConfig};
 pub mod context;
 pub mod ownership;
 pub mod response;

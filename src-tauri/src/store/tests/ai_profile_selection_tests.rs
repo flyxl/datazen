@@ -1,6 +1,6 @@
 //! The encrypted desktop adapter uses the shared profile fallback on save and reload.
 use super::fixtures::init_store_for_test;
-use datazen_ai_providers::{AiModelProfile, AiProviderConfig, AiProviderType, AiSettingsConfig};
+use datazen_modules::ai::{AiModelProfile, AiProviderConfig, AiProviderType, AiSettingsConfig};
 
 fn profile(id: &str, is_default: bool) -> AiModelProfile {
     let mut profile = AiModelProfile::from(&AiProviderConfig {

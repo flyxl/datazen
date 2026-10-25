@@ -1,6 +1,6 @@
 //! AI Provider registry — resolves `AiProviderType` to a concrete `AiProvider`.
 
-use crate::*;
+use crate::ai::*;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use super::ollama::OllamaProvider;
 use super::openai::OpenAiProvider;
 
 pub struct AiProviderRegistry {
-    http_client: crate::http::HttpClient,
+    http_client: crate::ai::http::HttpClient,
     providers: Arc<RwLock<HashMap<AiProviderType, Arc<dyn AiProvider>>>>,
     registered: AtomicBool,
     register_lock: Mutex<()>,
@@ -21,10 +21,10 @@ pub struct AiProviderRegistry {
 
 impl AiProviderRegistry {
     pub fn new() -> Self {
-        Self::with_http_client(crate::http::HttpClient::default())
+        Self::with_http_client(crate::ai::http::HttpClient::default())
     }
 
-    pub fn with_http_client(http_client: crate::http::HttpClient) -> Self {
+    pub fn with_http_client(http_client: crate::ai::http::HttpClient) -> Self {
         Self {
             http_client,
             providers: Arc::new(RwLock::new(HashMap::new())),
@@ -114,7 +114,7 @@ mod tests {
         let registry = AiProviderRegistry::new();
         registry
             .register(Arc::new(OpenAiProvider::with_http_client(
-                crate::http::HttpClient::desktop(),
+                crate::ai::http::HttpClient::desktop(),
             )))
             .await;
 
@@ -130,12 +130,12 @@ mod tests {
         let registry = AiProviderRegistry::new();
         registry
             .register(Arc::new(OpenAiProvider::with_http_client(
-                crate::http::HttpClient::desktop(),
+                crate::ai::http::HttpClient::desktop(),
             )))
             .await;
         registry
             .register(Arc::new(OpenAiProvider::with_http_client(
-                crate::http::HttpClient::desktop(),
+                crate::ai::http::HttpClient::desktop(),
             )))
             .await;
 
@@ -147,7 +147,7 @@ mod tests {
         let registry = AiProviderRegistry::new();
         registry
             .register(Arc::new(OpenAiProvider::with_http_client(
-                crate::http::HttpClient::desktop(),
+                crate::ai::http::HttpClient::desktop(),
             )))
             .await;
         registry.register(Arc::new(AnthropicProvider::new())).await;
@@ -220,7 +220,7 @@ mod tests {
         let registry = AiProviderRegistry::new();
         registry
             .register(Arc::new(OpenAiProvider::with_http_client(
-                crate::http::HttpClient::desktop(),
+                crate::ai::http::HttpClient::desktop(),
             )))
             .await;
         registry
@@ -246,7 +246,7 @@ mod tests {
         let registry = AiProviderRegistry::new();
         registry
             .register(Arc::new(OpenAiProvider::with_http_client(
-                crate::http::HttpClient::desktop(),
+                crate::ai::http::HttpClient::desktop(),
             )))
             .await;
         // No API key -> initialize() fails -> the failure is logged, not propagated,

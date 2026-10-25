@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use datazen_ai_providers::{AiProviderConfig, AiProviderType};
+use datazen_modules::ai::{AiProviderConfig, AiProviderType};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -152,7 +152,7 @@ impl TestAppState {
     pub async fn with_wiremock_ai_options(
         opts: super::mock_driver::MockDriverOptions,
     ) -> (Self, WiremockAi) {
-        use datazen_ai_providers::register_ai_providers;
+        use datazen_modules::ai::register_ai_providers;
 
         let mock = WiremockAi::start().await;
         mock.mount_models_list().await;

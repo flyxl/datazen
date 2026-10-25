@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use datazen_ai_providers::AiProviderConfig;
+use datazen_modules::ai::AiProviderConfig;
 use datazen_driver_api::{ConnectionConfig, SavedTunnel};
 
 use super::settings::AppSettings;
@@ -203,6 +203,6 @@ pub(crate) struct StoreCache {
     pub(super) named_views: Vec<datazen_feature_core::services::named_views::NamedView>,
     pub(super) named_views_loaded: bool,
     pub(super) ai_config: Option<AiProviderConfig>,
-    pub(super) ai_settings_config: Option<datazen_ai_providers::AiSettingsConfig>,
+    pub(super) ai_settings_config: Option<datazen_modules::ai::AiSettingsConfig>,
     pub(super) ai_config_loaded: bool,
 }

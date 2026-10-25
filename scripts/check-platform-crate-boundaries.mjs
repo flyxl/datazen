@@ -184,7 +184,7 @@ export const RULES = Object.freeze([
     subjects: ['platform-api'],
     // Same allow-list inversion as F-01; §2.3 draws platform-api depending on
     // the driver API and the AI API and nothing else.
-    allowedLayers: ['platform-api', 'driver-api', 'ai-providers', 'modules'],
+    allowedLayers: ['platform-api', 'driver-api', 'modules', 'platform-infra'],
     forbiddenCrates: [],
     specTokens: ['packages/platform-api', 'src-tauri'],
     note: 'platform-api points at ports, not at the implementation',
@@ -232,16 +232,6 @@ export const RULES = Object.freeze([
     note: 'shared migration algorithms cannot depend on domain engines, runtime or transports',
   },
   {
-    id: 'F-09',
-    subjects: ['ai-providers'],
-    subjectsFromSpec: true,
-    forbiddenLayers: ['host'],
-    forbiddenCrates: ['tauri'],
-    specSubsetOnly: true,
-    specTokens: ['tauri'],
-    note: 'the shared AI provider cores stay webview-free',
-  },
-  {
     id: 'F-11',
     subjects: ['platform-infra'],
     subjectsFromSpec: true,
@@ -269,7 +259,6 @@ export const RULES = Object.freeze([
       'platform-api',
       'platform-infra',
       'driver-api',
-      'ai-providers',
       'data-transfer',
       'data-sync',
       'schema-diff',
@@ -300,7 +289,10 @@ export const RULES = Object.freeze([
     subjects: ['modules'],
     subjectsFromSpec: true,
     forbiddenLayers: ['host', 'runtime', 'kernel', 'feature-core', 'platform-api'],
-    forbiddenCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'reqwest'],
+    // D1.5（2026-10-26）：AI Provider 适配（含 reqwest 出站 HTTP）随 ai feature
+    // 并入 modules::ai::providers，reqwest 不再对 modules 全 crate 禁用；
+    // Web 框架与 Tauri 仍禁止。
+    forbiddenCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic'],
     specTokens: ['modules', 'tauri'],
     note: 'feature modules stay independent of host, legacy runtime, and transport layers',
   },

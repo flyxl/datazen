@@ -169,19 +169,19 @@ flowchart TD
 
 | 编号 | 断言 | 违背后果 |
 | --- | --- | --- |
-| F-01 | `packages/drivers/*` 的 crate 依赖闭包不含 `datazen`、`datazen-runtime`、`datazen-application`、`datazen-platform-api`、`datazen-ai-api`，且不含任何 `tauri*` crate；闭包侧与声明边侧任一出现即违规，**已武装为阻断门禁** | 驱动反向引用宿主或宿主框架，Web 端与宿主无关的构建被拖垮 |
+| F-01 | `packages/drivers/*` 的 crate 依赖闭包不含 `datazen`、`datazen-runtime`、`datazen-application`、`datazen-platform-api`、`datazen-modules`（AI 契约自 D1.5 起住在 modules），且不含任何 `tauri*` crate；闭包侧与声明边侧任一出现即违规，**已武装为阻断门禁** | 驱动反向引用宿主或宿主框架，Web 端与宿主无关的构建被拖垮 |
 | F-02 | `packages/application`、`packages/runtime`、`packages/kernel`、`packages/platform-api` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 内核无法在没有 Tauri 的进程（测试、server worker）中编译 |
 | F-03 | `packages/application`、`packages/runtime`、`packages/kernel` 不含 `axum`、`actix-web`、`warp`、`tonic` 等 HTTP/传输框架 | 传输策略渗入业务内核 |
-| F-04 | `packages/platform-api` 不依赖 `application` / `runtime` / 领域包 / `src-tauri`；D1 期间允许依赖功能模块的兼容导出层 `modules` | ports 与用例循环依赖 |
+| F-04 | `packages/platform-api` 不依赖 `application` / `runtime` / 领域包 / `src-tauri`；D1 期间允许依赖功能模块的兼容导出层 `modules`，以及垫底的无业务工具层 `platform-infra`（workspace 统一 feature 解析下经 `modules` 的 ai feature 传递出现） | ports 与用例循环依赖 |
 | F-05 | `packages/application`、`packages/runtime`、`packages/kernel`、`packages/platform-api` 不出现 `react`、`@tauri-apps/api` 等前端标识（Rust 侧通过 crate 名与 `build.rs` 依赖检查，前端侧由 §7 的字符串扫描补齐） | UI 运行时进入后端依赖图 |
 | F-06 | `server` 的 normal + build 依赖闭包不含 `tauri*` 与 `datazen` 宿主 crate | server 无法独立构建 |
 | F-07 | `packages/backend-client` 不含 `@tauri-apps/` 前缀、`fetch(`、`XMLHttpRequest` 字面量 | 传输无关契约被具体传输污染 |
 | F-08 | `packages/migration-common` 的 normal + build 工作区依赖只允许自身与 driver-api；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共算法反向依赖领域引擎、runtime 或平台传输，重新形成耦合 |
-| F-09 | `packages/ai-providers` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 与 F-02 同因：这个包要同时被桌面端与服务端复用，一旦拖进 Tauri 就只能编进桌面进程 |
+| F-09 | ~~已退役（2026-10-26，D1.5）~~：`ai-api` 并入 `ai-providers` 后整体并入 `modules::ai`，主体不复存在；「AI 代码不得拖入 `tauri*` 或宿主」的约束由 F-14 对 `modules` 的断言继续承担 | 主体消失后规则空转，保留只会掩盖真正的边界 |
 | F-11 | `packages/platform-infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
 | F-12 | `packages/feature-core` 的 normal + build 依赖闭包不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`，不依赖桌面宿主层；仅依赖共享 runtime/application/领域包、契约与 D1 功能模块兼容导出层 | Workflow、AI、Monitor、导出与 Workspace App 内核逻辑重新绑定桌面或服务端传输 |
 | F-13 | `packages/tunnel` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 隧道机制（HTTP `CONNECT` 代理 / WebSocket 中继 / SSH 转发）是形态中立件：一旦拖进 Tauri 或宿主 crate，桌面端与将来的 Web 端就无法共用同一份实现 |
-| F-14 | `modules` 的 normal + build 依赖闭包不含 src-tauri、`datazen-runtime`、`datazen-kernel`、`datazen-feature-core`、`datazen-platform-api`，也不含 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`、`reqwest` | 功能模块必须由自身 domain/application 契约承载，不能把桌面宿主、旧横向运行时或传输实现带回模块 crate |
+| F-14 | `modules` 的 normal + build 依赖闭包不含 src-tauri、`datazen-runtime`、`datazen-kernel`、`datazen-feature-core`、`datazen-platform-api`，也不含 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`；`reqwest` 自 D1.5 起豁免——AI Provider 适配（出站 HTTP 客户端）随 ai feature 住在 `modules::ai::providers`，这是 2026-10-26 的用户决策，不是传输框架渗入 | 功能模块必须由自身 domain/application 契约承载，不能把桌面宿主、旧横向运行时或传输实现带回模块 crate |
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
 **F-01 两侧都已是阻断判定；主体是 `packages/drivers/*`，两侧都按主体范围判定。** 宿主 `datazen` 自己声明 `tauri-plugin-webdriver`（Tauri 自己的 webdriver 插件，宿主本来就该有）是**合法的**：它不在 `packages/drivers/*` 里，因此声明边那一侧只把它报成 advisory，不判 violation。驱动的豁免必须是**显式**的：规则表里的 `exemptions` 列表（成员 + 家族 + 理由）为空即无豁免，且过期条目（成员不是本规则主体、或家族不是本规则禁的）直接报 **error**——它什么也没保护，却看起来像在保护。
@@ -254,7 +254,7 @@ export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages
 `redact_url_for_log` 只清洗 URL、`sql_preview_for_log` 截断 SQL 预览；覆盖面是凭据 userinfo、
 整段查询串、`Bearer`、`password` 字段。本层是唯一实现，实测全仓 19 处调用点都经过它：
 宿主 18 处直接引 `datazen_platform_infra::redaction::*`（原 `src-tauri/src/log_redact.rs` 薄壳已删除），
-`packages/ai-providers/src/custom.rs:20` 同样直接引本层。
+`modules/src/ai/providers/custom.rs` 同样直接引垫底层（自 D1.5 起）。
 此前只有宿主那一份；Wave-2 抽取 `ai-providers` 时因跨 crate 不可见，它在 `protocol/mod.rs` 里
 手写了第二份更弱的实现（只处理 userinfo 与整段 query，漏掉 `Bearer`、`?token=`、`"password":`）。
 该重复已删除。

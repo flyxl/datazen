@@ -5,7 +5,7 @@ use crate::ai::context::SchemaContextBuilder;
 use crate::ai::prompt_resolver::PromptResolver;
 use crate::ai::response::{inject_language_hint, strip_markdown_fences};
 use crate::error::FeatureError;
-use datazen_ai_providers::{AiProvider, ChatMessage, CompletionRequest, MessageRole};
+use datazen_modules::ai::{AiProvider, ChatMessage, CompletionRequest, MessageRole};
 use datazen_driver_api::{DatabaseDriver, PromptScenario};
 use std::collections::HashMap;
 

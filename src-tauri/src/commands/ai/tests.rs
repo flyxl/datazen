@@ -1,8 +1,8 @@
 use super::*;
 use crate::commands::workflow_list_impl;
-use datazen_ai_providers::AiProviderType;
-use datazen_ai_providers::*;
-use datazen_ai_providers::*;
+use datazen_modules::ai::AiProviderType;
+use datazen_modules::ai::*;
+use datazen_modules::ai::*;
 use datazen_feature_core::ai::response::{
     extract_json_boundary, inject_language_hint, strip_markdown_fences, truncate_str,
 };
@@ -387,8 +387,8 @@ fn test_emit_stream_chunk_builds_payload_via_callback() {
 #[tokio::test]
 async fn ai_providers_config_prompt_workflow_impl() {
     use crate::testing::app_state::TestAppState;
-    use datazen_ai_providers::AiProviderConfig;
-    use datazen_ai_providers::AiProviderType;
+    use datazen_modules::ai::AiProviderConfig;
+    use datazen_modules::ai::AiProviderType;
 
     let test = TestAppState::new().await;
     assert!(ai_get_config_impl(&test.state).await.unwrap().is_none());
@@ -434,8 +434,8 @@ async fn ai_fetch_remote_models_rejects_unknown_protocol() {
 #[tokio::test]
 async fn ai_validate_config_rejects_missing_api_key() {
     use crate::testing::app_state::TestAppState;
-    use datazen_ai_providers::AiProviderConfig;
-    use datazen_ai_providers::AiProviderType;
+    use datazen_modules::ai::AiProviderConfig;
+    use datazen_modules::ai::AiProviderType;
 
     let test = TestAppState::new().await;
     let cfg = AiProviderConfig {

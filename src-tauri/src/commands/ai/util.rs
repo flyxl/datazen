@@ -2,8 +2,8 @@
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
-use datazen_ai_providers::AiProviderConfig;
-use datazen_ai_providers::*;
+use datazen_modules::ai::AiProviderConfig;
+use datazen_modules::ai::*;
 use datazen_platform_api::dto::session::SessionView;
 use datazen_runtime::application::{LiveConnectionLease, LivePurpose};
 use std::sync::Arc;

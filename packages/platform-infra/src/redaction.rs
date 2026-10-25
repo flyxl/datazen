@@ -1,7 +1,7 @@
 //! Redact secrets before writing them to application logs.
 //!
 //! Why this capability is a cross-form primitive rather than a host-private
-//! helper: the `packages/ai-providers` extraction is the proof. The host
+//! helper: the extraction into the AI module (now `modules/src/ai`) is the proof. The host
 //! already shipped this exact implementation in `src-tauri/src/log_redact.rs`,
 //! but a crate outside `src-tauri` cannot see a private host module, so during
 //! that extraction the package hand-wrote a *second* implementation in its

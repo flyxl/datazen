@@ -7,7 +7,7 @@ use super::util::{
 };
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
-use datazen_ai_providers::*;
+use datazen_modules::ai::*;
 use datazen_feature_core::ai::budget;
 use datazen_feature_core::ai::safety::redact_for_gate;
 use datazen_feature_core::ai::schema_pipeline::{

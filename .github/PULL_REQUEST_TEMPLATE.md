@@ -8,7 +8,7 @@
 
 - [ ] `pnpm test:unit`
 - [ ] `cargo test -p datazen --lib`
-- [ ] `cargo test -p datazen-ai-providers --lib`
+- [ ] `cargo test -p datazen-modules --features ai --lib`
 - [ ] `node scripts/check-site-seo.mjs`
 - [ ] Manual / E2E checks (describe, if applicable):
 

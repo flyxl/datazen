@@ -128,7 +128,7 @@ step "9/11 Restore managed files (driver-file-stash restore)"
 node scripts/driver-file-stash.mjs restore || fail "driver-file-stash restore"
 
 # --------------------------------------------------------------------------
-step "10/11 Rust unit tests (datazen-ai-providers --lib)"
-cargo test -p datazen-ai-providers --lib || fail "cargo test ai-providers"
+step "10/11 Rust unit tests (datazen-modules --features ai --lib)"
+cargo test -p datazen-modules --features ai --lib || fail "cargo test modules ai"
 
 printf '\n\033[1;32m[ci-local] 全部 CI 检查通过 ✔\033[0m\n'

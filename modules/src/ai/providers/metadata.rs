@@ -1,6 +1,6 @@
 //! Provider metadata shared by host configuration surfaces.
 
-use crate::AiProviderType;
+use crate::ai::AiProviderType;
 
 /// Return the built-in endpoint and protocol defaults displayed for a provider.
 /// This describes existing providers only; it does not affect provider registration.

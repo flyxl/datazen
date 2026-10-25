@@ -4,7 +4,7 @@ use crate::ai::prompt_resolver::PromptResolver;
 use crate::ai::response::inject_language_hint;
 use crate::ai::safety::redact_for_gate;
 use crate::ai::schema_pipeline::{compose_schema_system_suffix, PromptSeed};
-use datazen_ai_providers::{
+use datazen_modules::ai::{
     AiSafetyGateConfig, ChatMessage, CompletionRequest, MessageRole, ToolDefinition,
 };
 use datazen_driver_api::{DatabaseDriver, PromptScenario};

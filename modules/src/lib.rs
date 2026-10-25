@@ -1,8 +1,14 @@
 //! `datazen-modules` owns feature-oriented domain vocabulary and application use cases.
 //!
 //! The crate intentionally has no dependency on a host, runtime, kernel,
-//! `platform-api`, Tauri, or an HTTP framework. Hosts provide the repository
-//! implementations declared by the enabled feature modules.
+//! `platform-api`, or Tauri. Hosts provide the repository implementations
+//! declared by the enabled feature modules. The `ai` feature additionally
+//! carries the AI provider adapters (merged 2026-10-26, D1.5): their outbound
+//! HTTP client (`reqwest`) and the bottom-layer `platform-infra` utilities are
+//! deliberate, user-decided exceptions recorded in the refactor plan.
+
+#[cfg(feature = "ai")]
+pub mod ai;
 
 #[cfg(feature = "settings")]
 pub mod settings;

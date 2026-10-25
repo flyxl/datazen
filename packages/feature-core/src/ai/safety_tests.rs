@@ -547,7 +547,7 @@ fn global_strict_policy_tightens_an_unconfigured_profile_gate() {
         driver_settings: serde_json::Map::new(),
         ai_strict_egress: true,
     };
-    let config = datazen_ai_providers::AiSettingsConfig::default();
+    let config = datazen_modules::ai::AiSettingsConfig::default();
     assert_eq!(
         effective_safety_gate(&config, &policy).data_egress_level,
         AiDataEgressLevel::Strict

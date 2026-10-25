@@ -240,8 +240,8 @@ pub(crate) fn finish_app_state(
         store,
         schema_cache,
         sync_adapters,
-        ai_registry: Arc::new(datazen_ai_providers::AiProviderRegistry::with_http_client(
-            datazen_ai_providers::http::HttpClient::desktop(),
+        ai_registry: Arc::new(datazen_modules::ai::AiProviderRegistry::with_http_client(
+            datazen_modules::ai::http::HttpClient::desktop(),
         )),
         schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_source)),
         prompt_resolver: Arc::new(

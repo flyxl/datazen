@@ -8,12 +8,40 @@ description = "DataZen feature modules: domain vocabulary, repository boundaries
 [features]
 default = []
 settings = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:thiserror"]
+# D1.5：AI Provider 契约与适配整体并入（原 datazen-ai-api → datazen-ai-providers）。
+# 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
+# （如仅契约不带 reqwest），届时再拆，不提前建空档。
+ai = [
+    "dep:async-trait",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:inventory",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:futures-util",
+    "dep:reqwest",
+    "dep:tracing",
+    "dep:datazen-platform-infra",
+]
 
 [dependencies]
 async-trait = { version = "0.1", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 thiserror = { version = "1", optional = true }
+# ai feature：契约层链接期工厂注册
+inventory = { version = "0.3", optional = true }
+# ai feature：providers 的并发与流式传输
+tokio = { version = "1", features = ["rt", "sync", "time", "macros", "net"], optional = true }
+tokio-util = { version = "0.7", features = ["rt"], optional = true }
+futures-util = { version = "0.3", optional = true }
+reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"], optional = true }
+tracing = { version = "0.1", optional = true }
+# ai feature：URL 脱敏等跨形态工具（P2 改名 datazen-infra 后同步更新此边）
+datazen-platform-infra = { path = "../packages/platform-infra", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"
+tracing-subscriber = "0.3"

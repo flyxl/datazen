@@ -1,8 +1,8 @@
 //! OpenAI AI provider — delegates to `protocol::openai_chat`.
 
-use crate::http::HttpClient;
+use crate::ai::http::HttpClient;
 use async_trait::async_trait;
-use crate::*;
+use crate::ai::*;
 use tokio::sync::{mpsc, RwLock};
 
 use super::protocol::{self, ProtocolConfig};

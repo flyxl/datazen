@@ -1,8 +1,8 @@
 //! Ollama provider — OpenAI-compatible local endpoint (default `http://127.0.0.1:11434/v1`).
 
-use crate::http::HttpClient;
+use crate::ai::http::HttpClient;
 use async_trait::async_trait;
-use crate::*;
+use crate::ai::*;
 use tokio::sync::{mpsc, RwLock};
 
 use super::protocol::{self, ProtocolConfig};

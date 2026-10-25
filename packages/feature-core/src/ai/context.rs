@@ -6,7 +6,7 @@
 //! comments.
 
 use crate::services::ports::LogicalSchemaContextSource;
-use datazen_ai_providers::SqlGenerationContext;
+use datazen_modules::ai::SqlGenerationContext;
 use datazen_driver_api::TableSchema;
 use std::sync::Arc;
 

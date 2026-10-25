@@ -4,7 +4,7 @@ use super::{
     tools::{classify_tool, is_readonly_db_tool, ToolKind, ToolLoopGuard},
 };
 use crate::error::FeatureError as CommandError;
-use datazen_ai_providers::*;
+use datazen_modules::ai::*;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 pub type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send + Sync>;

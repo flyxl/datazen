@@ -56,7 +56,7 @@ cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-dri
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
 cargo test -p datazen --lib --features "$FEATURES"
 node scripts/driver-file-stash.mjs restore
-cargo test -p datazen-ai-providers --lib
+cargo test -p datazen-modules --features ai --lib
 ```
 
 If you changed `site/`: `node scripts/check-site-seo.mjs`.

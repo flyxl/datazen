@@ -1674,7 +1674,6 @@ dependencies = [
  "base64 0.22.1",
  "cbc 0.1.2",
  "chrono",
- "datazen-ai-providers",
  "datazen-application",
  "datazen-data-sync",
  "datazen-data-transfer",
@@ -1739,25 +1738,6 @@ dependencies = [
  "webpki-roots 0.26.11",
  "wiremock",
  "zip 2.4.2",
-]
-
-[[package]]
-name = "datazen-ai-providers"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "datazen-platform-infra",
- "futures-util",
- "inventory",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "wiremock",
 ]
 
 [[package]]
@@ -2125,7 +2105,6 @@ dependencies = [
  "base64 0.22.1",
  "cbc 0.1.2",
  "chrono",
- "datazen-ai-providers",
  "datazen-driver-api",
  "datazen-kernel",
  "datazen-modules",
@@ -2187,10 +2166,18 @@ name = "datazen-modules"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "datazen-platform-infra",
+ "futures-util",
+ "inventory",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "wiremock",
 ]
 
 [[package]]

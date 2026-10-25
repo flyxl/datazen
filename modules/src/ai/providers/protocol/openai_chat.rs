@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use crate::*;
+use crate::ai::*;
 use futures_util::StreamExt;
 use serde::Deserialize;
 use tokio::sync::mpsc;

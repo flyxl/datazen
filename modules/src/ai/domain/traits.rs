@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use crate::types::*;
+use super::types::*;
 
 /// Core trait for AI providers.
 ///

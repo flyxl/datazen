@@ -135,7 +135,6 @@ export const TESTED_LAYERS = Object.freeze([
   'platform-api',
   'platform-infra',
   'server',
-  'ai-providers',
   // The Workspace App kernel used to be the standalone `workspace-apps` layer.
   // It now lives in `feature-core` as the `feature_core::workspace_apps`
   // module, so its unit tests travel with that layer.
@@ -199,7 +198,7 @@ export const EXTRA_TARGETS = Object.freeze({
  * test alone would compile only the empty module root and miss the real service.
  */
 export const FEATURE_TESTS = Object.freeze({
-  'datazen-modules': Object.freeze(['settings']),
+  'datazen-modules': Object.freeze(['settings', 'ai']),
 });
 
 /**

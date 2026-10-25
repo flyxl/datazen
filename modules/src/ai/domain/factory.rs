@@ -5,8 +5,7 @@
 //! - `register_ai_provider!` replaces `register_driver!`
 //! - `iter_ai_provider_factories` replaces `iter_driver_factories`
 
-use crate::AiProvider;
-use crate::AI_PROTOCOL_VERSION;
+use crate::ai::{AiProvider, AI_PROTOCOL_VERSION};
 use std::sync::Arc;
 
 /// Factory that creates AI provider instances.
@@ -42,7 +41,7 @@ inventory::collect!(&'static dyn AiProviderFactory);
 #[macro_export]
 macro_rules! register_ai_provider {
     ($factory:expr) => {
-        $crate::inventory::submit!($factory as &'static dyn $crate::AiProviderFactory);
+        $crate::ai::inventory::submit!($factory as &'static dyn $crate::ai::AiProviderFactory);
     };
 }
 

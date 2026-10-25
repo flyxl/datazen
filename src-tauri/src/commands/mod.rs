@@ -85,7 +85,7 @@ use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::workflow::history::WorkflowHistoryManager;
 use crate::workflow::registry::WorkflowRegistry;
 use crate::workflow::scheduler::WorkflowScheduler;
-use datazen_ai_providers::AiProviderRegistry;
+use datazen_modules::ai::AiProviderRegistry;
 use datazen_application::error::ApiError;
 use datazen_driver_api::QueryExecutionId;
 use datazen_feature_core::ai::context::SchemaContextBuilder;

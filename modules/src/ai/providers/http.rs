@@ -1,5 +1,5 @@
 //! AI HTTP egress boundary, separate from database route/tunnel resolution.
-use crate::AiError;
+use crate::ai::AiError;
 use reqwest::{Method, Response, Url};
 use serde::Serialize;
 use std::{
@@ -293,7 +293,7 @@ mod tests {
     }
     #[tokio::test]
     async fn all_protocol_entry_points_apply_injected_policy() {
-        use crate::{
+        use crate::ai::{
             custom::{fetch_remote_models_with_client, CustomProtocol},
             protocol::{self, ProtocolConfig},
         };

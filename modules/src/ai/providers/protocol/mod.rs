@@ -9,8 +9,8 @@ pub mod openai_responses;
 
 use std::time::Duration;
 
-use crate::http::HttpClient;
-use crate::CompletionRequest;
+use crate::ai::http::HttpClient;
+use crate::ai::CompletionRequest;
 use serde::Serialize;
 
 /// Shared configuration for protocol-level calls.
@@ -82,14 +82,14 @@ pub(crate) fn normalize_base_url(endpoint: &str) -> String {
 /// `retry_after_secs` if available, otherwise a 60s default is used.
 /// For 400 responses, the user-facing message is extracted and sanitized
 /// so that raw API error payloads are never exposed to the caller.
-pub(crate) fn map_http_error(status: reqwest::StatusCode, body: &str) -> crate::AiError {
+pub(crate) fn map_http_error(status: reqwest::StatusCode, body: &str) -> crate::ai::AiError {
     match status.as_u16() {
-        401 => crate::AiError::InvalidApiKey,
-        400 => crate::AiError::RequestFailed(sanitize_400_error(body)),
-        429 => crate::AiError::RateLimited {
+        401 => crate::ai::AiError::InvalidApiKey,
+        400 => crate::ai::AiError::RequestFailed(sanitize_400_error(body)),
+        429 => crate::ai::AiError::RateLimited {
             retry_after_secs: parse_retry_after(body).unwrap_or(60),
         },
-        _ => crate::AiError::RequestFailed(format!(
+        _ => crate::ai::AiError::RequestFailed(format!(
             "HTTP {status}: provider request failed (response body omitted; {} bytes)",
             body.len()
         )),
@@ -180,23 +180,23 @@ pub(crate) fn parse_retry_after(body: &str) -> Option<u64> {
 pub(crate) async fn retry_with_backoff<F, Fut, T>(
     retry: &RetryConfig,
     mut op: F,
-) -> Result<T, crate::AiError>
+) -> Result<T, crate::ai::AiError>
 where
     F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<T, crate::AiError>>,
+    Fut: std::future::Future<Output = Result<T, crate::ai::AiError>>,
 {
     let mut attempt: u32 = 0;
     loop {
         match op().await {
             Ok(val) => return Ok(val),
-            Err(crate::AiError::RateLimited { retry_after_secs }) => {
+            Err(crate::ai::AiError::RateLimited { retry_after_secs }) => {
                 if attempt >= retry.max_retries {
                     tracing::warn!(
                         attempt,
                         max = retry.max_retries,
                         "retry_with_backoff: max retries exhausted"
                     );
-                    return Err(crate::AiError::RateLimited { retry_after_secs });
+                    return Err(crate::ai::AiError::RateLimited { retry_after_secs });
                 }
                 let delay = compute_backoff_delay(retry, attempt, retry_after_secs);
                 tracing::info!(
@@ -298,7 +298,7 @@ pub(crate) mod test_support;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AiError;
+    use crate::ai::AiError;
     use std::sync::Arc;
 
     #[test]
@@ -397,11 +397,11 @@ mod tests {
         let request = CompletionRequest {
             request_id: "request-1".into(),
             model: "test-model".into(),
-            messages: vec![crate::ChatMessage {
-                role: crate::MessageRole::User,
+            messages: vec![crate::ai::ChatMessage {
+                role: crate::ai::MessageRole::User,
                 content: prompt_secret.into(),
                 reasoning: None,
-                tool_calls: Some(vec![crate::ToolCall {
+                tool_calls: Some(vec![crate::ai::ToolCall {
                     id: "call-1".into(),
                     name: "lookup".into(),
                     arguments: tool_args_secret.into(),

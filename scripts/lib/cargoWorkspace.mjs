@@ -75,7 +75,6 @@ export const LAYERS = Object.freeze([
   { id: 'platform-infra', path: 'packages/platform-infra', kind: 'rust' },
   { id: 'server', path: 'server', kind: 'rust' },
   { id: 'driver-api', path: 'packages/driver-api', kind: 'rust' },
-  { id: 'ai-providers', path: 'packages/ai-providers', kind: 'rust' },
   { id: 'driver', path: 'packages/drivers/*', kind: 'rust' },
   { id: 'schema-diff', path: 'packages/schema-diff', kind: 'rust' },
   { id: 'migration-common', path: 'packages/migration-common', kind: 'rust' },

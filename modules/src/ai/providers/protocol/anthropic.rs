@@ -2,7 +2,7 @@
 //!
 //! Used by both `AnthropicProvider` and `CustomProvider(AnthropicCompatible)`.
 
-use crate::*;
+use crate::ai::*;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
@@ -718,7 +718,7 @@ pub async fn probe(cfg: &ProtocolConfig, model: &str) -> Result<(), AiError> {
 mod tests {
     use super::super::test_support::{collect_stream, protocol_config_anthropic, sample_request};
     use super::*;
-    use crate::AiError;
+    use crate::ai::AiError;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

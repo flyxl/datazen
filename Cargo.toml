@@ -10,7 +10,6 @@ members = [
     "packages/kernel",
     "packages/tunnel",
     "packages/feature-core",
-    "packages/ai-providers",
     "packages/schema-diff",
     "packages/data-sync",
     "packages/migration-common",

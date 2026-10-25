@@ -570,7 +570,7 @@ mod tests {
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::history::WorkflowHistoryManager;
         use crate::workflow::registry::{AppDbWorkflowRepository, WorkflowRegistry};
-        use datazen_ai_providers::AiProviderRegistry;
+        use datazen_modules::ai::AiProviderRegistry;
         use datazen_feature_core::ai::context::SchemaContextBuilder;
         use datazen_feature_core::ai::prompt_resolver::PromptResolver;
         use datazen_runtime::driver_registry::DriverRegistry;
@@ -651,7 +651,7 @@ mod tests {
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::history::WorkflowHistoryManager;
         use crate::workflow::registry::{AppDbWorkflowRepository, WorkflowRegistry};
-        use datazen_ai_providers::AiProviderRegistry;
+        use datazen_modules::ai::AiProviderRegistry;
         use datazen_feature_core::ai::context::SchemaContextBuilder;
         use datazen_feature_core::ai::prompt_resolver::PromptResolver;
         use datazen_runtime::driver_registry::DriverRegistry;

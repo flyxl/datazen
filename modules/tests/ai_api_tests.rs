@@ -1,4 +1,7 @@
-use datazen_ai_providers::*;
+// 仅在 ai feature 下编译：modules 的集成测试按 feature 矩阵收集。
+#![cfg(feature = "ai")]
+
+use datazen_modules::ai::*;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 
