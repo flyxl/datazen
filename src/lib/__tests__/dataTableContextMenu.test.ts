@@ -168,6 +168,9 @@ describe('cell-selection clipboard block (DB-03)', () => {
     copySelectedCellsAsTsvWithHeader: 'Copy as TSV with header',
     copySelectedCellsAsCsv: 'Copy as CSV',
     copySelectedCellsAsJson: 'Copy as JSON',
+    copySelectedCellsAsPlain: 'Copy as Plain Text',
+    copySelectedCellsAsHtml: 'Copy as HTML Table',
+    copySelectedCellsAsMarkdown: 'Copy as Markdown Table',
     pasteSelectedCells: 'Paste to Selected Cells',
   };
 
@@ -226,7 +229,28 @@ describe('cell-selection clipboard block (DB-03)', () => {
       ['tsv', { includeHeader: true }],
       ['csv'],
       ['json'],
+      // The DB-10 formats ride the same submenu after the established ones.
+      ['plain'],
+      ['html'],
+      ['markdown'],
     ]);
+  });
+
+  it('offers the three DB-10 formats in the copy-as submenu', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: clipboardLabels,
+      handlers: baseHandlers(),
+      hasCellContext: true,
+      hasCellRange: true,
+      canCopySelection: true,
+    });
+    const copyAs = findSubmenu(items, 'copy-selected-cells-as');
+    const ids = (copyAs?.items ?? [])
+      .filter((entry) => entry.kind === 'item')
+      .map((entry) => (entry as { id: string }).id);
+    expect(ids).toContain('copy-selected-cells-as-plain');
+    expect(ids).toContain('copy-selected-cells-as-html');
+    expect(ids).toContain('copy-selected-cells-as-markdown');
   });
 
   it('keeps an unavailable entry visible but disabled', () => {
@@ -242,7 +266,10 @@ describe('cell-selection clipboard block (DB-03)', () => {
     });
     const byId = new Map(
       items
-        .filter((entry): entry is Extract<(typeof items)[number], { kind: 'item' }> => entry.kind === 'item')
+        .filter(
+          (entry): entry is Extract<(typeof items)[number], { kind: 'item' }> =>
+            entry.kind === 'item',
+        )
         .map((entry) => [entry.id, entry]),
     );
     // `NativeMenuItemDef` expresses "enabled" by **omitting** the flag, so the enabled item
@@ -715,5 +742,293 @@ describe('buildDataTableContextMenuItems', () => {
     });
     const sub = findSubmenu(items, 'more-actions');
     expect(sub?.items.some((i) => i.kind === 'item' && i.id === 'copy-column-data')).toBe(true);
+  });
+});
+
+describe('buildDataTableContextMenuItems header sort block (DB-11)', () => {
+  const sortLabels: DataTableContextMenuLabels = {
+    ...labels,
+    sortMulti: 'Sort (multi-column)',
+    sortAscending: 'Ascending',
+    sortDescending: 'Descending',
+    removeSortColumn: 'Remove from Sort',
+    clearSorts: 'Clear All Sorting',
+  };
+
+  it('without headerSort, the header menu keeps its exact pre-DB-11 shape', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: sortLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onSortAscending: vi.fn(),
+        onSortDescending: vi.fn(),
+        onRemoveSort: vi.fn(),
+        onClearSorts: vi.fn(),
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+    });
+    // The sort handlers exist, but no sorts context was offered: byte for
+    // byte the two copy entries and nothing else.
+    expect(ids(items)).toEqual(['copy-column-name', 'copy-column-data']);
+  });
+
+  it('offers the sort submenu and clear-all before the copy entries', () => {
+    const onSortAscending = vi.fn();
+    const onSortDescending = vi.fn();
+    const onRemoveSort = vi.fn();
+    const onClearSorts = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels: sortLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onSortAscending,
+        onSortDescending,
+        onRemoveSort,
+        onClearSorts,
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerSort: {
+        column: 'age',
+        sorts: [
+          { column: 'name', descending: false },
+          { column: 'age', descending: true },
+        ],
+      },
+    });
+    expect(
+      items.map((i) => (i.kind === 'item' || i.kind === 'submenu' ? i.id : 'separator')),
+    ).toEqual(['sort-multi', 'clear-sorts', 'separator', 'copy-column-name', 'copy-column-data']);
+    const sortMenu = findSubmenu(items, 'sort-multi');
+    expect(
+      sortMenu?.items.map((i) => (i.kind === 'item' || i.kind === 'submenu' ? i.id : i.kind)),
+    ).toEqual(['sort-ascending', 'sort-descending', 'remove-sort-column']);
+    // The right-clicked column is in the sort list, so removal is offered enabled.
+    const removeItem = sortMenu?.items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> =>
+        i.kind === 'item' && i.id === 'remove-sort-column',
+    );
+    expect(removeItem?.enabled).toBeUndefined();
+    // The actions are bound to the right-clicked column.
+    for (const i of sortMenu?.items ?? []) {
+      if (i.kind === 'item') i.action();
+    }
+    expect(onSortAscending).toHaveBeenCalledWith('age');
+    expect(onSortDescending).toHaveBeenCalledWith('age');
+    expect(onRemoveSort).toHaveBeenCalledWith('age');
+    const clearItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> => i.kind === 'item' && i.id === 'clear-sorts',
+    );
+    clearItem?.action();
+    expect(onClearSorts).toHaveBeenCalledOnce();
+  });
+
+  it('disables remove on a column that is not sorted and clear when no sorts exist', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: sortLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onSortAscending: vi.fn(),
+        onSortDescending: vi.fn(),
+        onRemoveSort: vi.fn(),
+        onClearSorts: vi.fn(),
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerSort: { column: 'age', sorts: [] },
+    });
+    const sortMenu = findSubmenu(items, 'sort-multi');
+    const removeItem = sortMenu?.items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> =>
+        i.kind === 'item' && i.id === 'remove-sort-column',
+    );
+    expect(removeItem?.enabled).toBe(false);
+    const clearItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> => i.kind === 'item' && i.id === 'clear-sorts',
+    );
+    expect(clearItem?.enabled).toBe(false);
+  });
+
+  it('drops the whole sort block when the caller offers no sort handlers', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: sortLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerSort: { column: 'age', sorts: [{ column: 'name', descending: false }] },
+    });
+    // headerSort without handlers is inert: no submenu, no clear entry, no
+    // separator — the header menu keeps its pre-DB-11 shape.
+    expect(ids(items)).toEqual(['copy-column-name', 'copy-column-data']);
+  });
+});
+
+describe('buildDataTableContextMenuItems freeze block (DB-12)', () => {
+  const freezeLabels: DataTableContextMenuLabels = {
+    ...labels,
+    freezeThrough: 'Freeze through This Column',
+    unfreezeColumns: 'Unfreeze Columns',
+  };
+
+  it('offers the freeze entries between the sort block and the copy entries', () => {
+    const onFreezeThrough = vi.fn();
+    const onUnfreezeColumns = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels: freezeLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onFreezeThrough,
+        onUnfreezeColumns,
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerFreeze: { index: 1, frozen: 0 },
+    });
+    expect(
+      items.map((i) => (i.kind === 'item' || i.kind === 'submenu' ? i.id : 'separator')),
+    ).toEqual([
+      'freeze-through',
+      'unfreeze-columns',
+      'separator',
+      'copy-column-name',
+      'copy-column-data',
+    ]);
+    const freezeItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> =>
+        i.kind === 'item' && i.id === 'freeze-through',
+    );
+    freezeItem?.action();
+    expect(onFreezeThrough).toHaveBeenCalledWith(1);
+  });
+
+  it('disables the no-op freeze and the freezeless unfreeze', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: freezeLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onFreezeThrough: vi.fn(),
+        onUnfreezeColumns: vi.fn(),
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      // Freezing through column 1 when exactly one column is frozen is the
+      // state in force — nothing to do; and there is nothing to unfreeze.
+      headerFreeze: { index: 0, frozen: 1 },
+    });
+    const freezeItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> =>
+        i.kind === 'item' && i.id === 'freeze-through',
+    );
+    expect(freezeItem?.enabled).toBe(false);
+    const unfreezeItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> =>
+        i.kind === 'item' && i.id === 'unfreeze-columns',
+    );
+    expect(unfreezeItem?.enabled).toBeUndefined();
+  });
+
+  it('without headerFreeze the header menu keeps its exact pre-DB-12 shape', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: freezeLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onFreezeThrough: vi.fn(),
+        onUnfreezeColumns: vi.fn(),
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+    });
+    expect(ids(items)).toEqual(['copy-column-name', 'copy-column-data']);
+  });
+});
+
+describe('buildDataTableContextMenuItems column stats entry (DB-12)', () => {
+  const statsLabels: DataTableContextMenuLabels = {
+    ...labels,
+    columnStats: 'Column Stats',
+  };
+
+  it('offers the stats entry after the column-arrangement blocks', () => {
+    const onColumnStats = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels: statsLabels,
+      handlers: {
+        onCopyColumnName: vi.fn(),
+        onCopyColumnData: vi.fn(),
+        onFreezeThrough: vi.fn(),
+        onUnfreezeColumns: vi.fn(),
+        onColumnStats,
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerFreeze: { index: 0, frozen: 0 },
+      headerStats: { column: 'price' },
+    });
+    expect(ids(items)).toEqual([
+      'freeze-through',
+      'unfreeze-columns',
+      'separator',
+      'column-stats',
+      'copy-column-name',
+      'copy-column-data',
+    ]);
+    const statsItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> => i.kind === 'item' && i.id === 'column-stats',
+    );
+    statsItem?.action();
+    expect(onColumnStats).toHaveBeenCalledWith('price');
+  });
+
+  it('the stats entry carries the right-clicked column, not a position', () => {
+    const onColumnStats = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels: statsLabels,
+      handlers: { onCopyColumnName: vi.fn(), onColumnStats },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerStats: { column: 'note' },
+    });
+    const statsItem = items.find(
+      (i): i is Extract<typeof i, { kind: 'item' }> => i.kind === 'item' && i.id === 'column-stats',
+    );
+    statsItem?.action();
+    expect(onColumnStats).toHaveBeenCalledWith('note');
+  });
+
+  it('without the handler the header menu keeps its exact pre-DB-12 shape', () => {
+    // The host may still report the context; without a handler the entry is
+    // not offered at all — a driver grid keeps its previous menu.
+    const items = buildDataTableContextMenuItems({
+      labels: statsLabels,
+      handlers: { onCopyColumnName: vi.fn(), onCopyColumnData: vi.fn() },
+      hasHeaderContext: true,
+      hasCellContext: false,
+      headerStats: { column: 'price' },
+    });
+    expect(ids(items)).toEqual(['copy-column-name', 'copy-column-data']);
+  });
+
+  it('a cell click never offers the column stats entry', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: statsLabels,
+      handlers: {
+        onCopy: vi.fn(),
+        onColumnStats: vi.fn(),
+      },
+      hasHeaderContext: false,
+      hasCellContext: true,
+      headerStats: { column: 'price' },
+    });
+    expect(rootItemIds(items)).not.toContain('column-stats');
   });
 });

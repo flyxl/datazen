@@ -372,13 +372,33 @@ export function buildRowsMatrix(
 
 // ── Serialization (the single kernel) ────────────────────────────────────────────────
 
-export type ClipboardFormat = 'tsv' | 'csv' | 'json';
+/**
+ * The formats the one serializer speaks (DB-03's three + DB-10's three).
+ *
+ * - `tsv` / `csv` — delimited with RFC 4180 quoting (a delimiter, a quote or
+ *   a line break inside a value quotes the field and doubles inner quotes).
+ * - `json` — positional arrays or named records.
+ * - `plain` — tab/newline joined with **no quoting at all**: what you see is
+ *   what you get, for targets that would show the quotes as characters.
+ * - `html` — a `<table>` (optionally with a `<thead>`), HTML-escaped; meant
+ *   for the `text/html` clipboard flavor Notion/Excel/Google Sheets render
+ *   as a real table.
+ * - `markdown` — a GitHub-style pipe table; `\|` escapes a pipe, `<br>`
+ *   stands in for a line break (GitHub and Notion both render it).
+ */
+export type ClipboardFormat = 'tsv' | 'csv' | 'json' | 'plain' | 'html' | 'markdown';
 
 export interface SerializeCellsOptions {
   format: ClipboardFormat;
   /** Column names, in the order of the selection. */
   columnNames: readonly string[];
-  /** tsv/csv: write a header row. Default `false` for tsv (Excel alignment), `true` for csv. */
+  /**
+   * tsv/csv/plain: write a header row. Default `false` for tsv and plain
+   * (Excel alignment), `true` for csv. html/markdown always write one — a
+   * Markdown table without a header separator is not a table, and an HTML
+   * table without `<thead>` still renders, but the caller that asked for a
+   * *table* asked for the names too.
+   */
   includeHeader?: boolean;
   /** Text used for NULL. Default `''`; pass `'NULL'` to keep NULL distinguishable from `''`. */
   nullLiteral?: string;
@@ -441,10 +461,58 @@ export function rowToNamedRecord(
 }
 
 /**
+ * Escape one HTML text node: `&`, `<` and `>` (DB-10).
+ *
+ * Quotes are not escaped — the value never lands in an attribute, and
+ * `&quot;` in a text node is noise a Markdown/Notion paste would show
+ * verbatim.
+ */
+export function escapeHtmlCell(text: string): string {
+  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+/**
+ * Escape one Markdown table cell (DB-10): a pipe would end the cell, a line
+ * break would end the **row**. `\|` and `<br>` are what GitHub and Notion
+ * both render back into the original characters.
+ */
+export function escapeMarkdownCellText(text: string): string {
+  return text
+    .replaceAll('\\', '\\\\')
+    .replaceAll('|', '\\|')
+    .replaceAll('\r\n', '\n')
+    .replaceAll('\r', '\n')
+    .replaceAll('\n', '<br>');
+}
+
+/**
+ * One value as an escaped CSV field — the single-field face of the kernel
+ * (DB-10), for callers that format one cell at a time instead of a matrix.
+ */
+export function escapeCsvField(value: unknown): string {
+  return escapeDelimited(cellToText(value, ''), ',');
+}
+
+/**
+ * One value as an escaped Markdown table cell — the single-field face of the
+ * kernel (DB-10), same contract as `escapeCsvField`.
+ */
+export function escapeMarkdownField(value: unknown): string {
+  return escapeMarkdownCellText(cellToText(value, ''));
+}
+
+/** The width a serialized table spans: the column list, or the widest row. */
+function tableWidth(rows: readonly (readonly unknown[])[], columnNames: readonly string[]): number {
+  if (columnNames.length > 0) return columnNames.length;
+  return rows.reduce((widest, row) => Math.max(widest, row.length), 0);
+}
+
+/**
  * Positional matrix → clipboard text. **The one serializer of the repository.**
  *
- * The eight helpers in `dataTableContextMenu` keep their names and signatures and delegate
- * here, so there is no second escaping strategy to drift from (§5 Step 9).
+ * The helpers in `dataTableContextMenu` and the exporters in `exportData`
+ * keep their names and signatures and delegate here, so there is no second
+ * escaping strategy to drift from (§5 Step 9, DB-10).
  */
 export function serializeCells(
   rows: readonly (readonly unknown[])[],
@@ -461,14 +529,67 @@ export function serializeCells(
     return JSON.stringify(payload, null, options.jsonIndent ?? 0);
   }
 
+  const width = tableWidth(rows, columnNames);
+  const cellsOf = (row: readonly unknown[]): string[] => {
+    const cells: string[] = [];
+    for (let index = 0; index < width; index += 1) {
+      cells.push(cellToText(row[index], nullLiteral));
+    }
+    return cells;
+  };
+
+  if (format === 'plain') {
+    // No quoting at all (DB-10): the tab and the newline are the only
+    // structure, exactly as a "paste as plain text" target expects.
+    const lines: string[] = [];
+    if (options.includeHeader === true && columnNames.length > 0) {
+      lines.push([...columnNames].join('\t'));
+    }
+    for (const row of rows) lines.push(cellsOf(row).join('\t'));
+    return lines.join('\n');
+  }
+
+  if (format === 'html') {
+    // A `<table>` for the `text/html` clipboard flavor (DB-10). The header is
+    // not optional here the way it is for tsv: a caller asking for a *table*
+    // asked for the column names too, and Notion/Excel render `<th>` bold.
+    const lines: string[] = ['<table>'];
+    if (columnNames.length > 0) {
+      const head = columnNames.map((name) => `<th>${escapeHtmlCell(name)}</th>`).join('');
+      lines.push(`<thead><tr>${head}</tr></thead>`);
+    }
+    if (rows.length > 0) {
+      lines.push('<tbody>');
+      for (const row of rows) {
+        const tds = cellsOf(row)
+          .map((cell) => `<td>${escapeHtmlCell(cell)}</td>`)
+          .join('');
+        lines.push(`<tr>${tds}</tr>`);
+      }
+      lines.push('</tbody>');
+    }
+    lines.push('</table>');
+    return lines.join('\n');
+  }
+
+  if (format === 'markdown') {
+    // A GitHub-style pipe table (DB-10). The header row and its separator
+    // are the syntax — without them GitHub renders prose, not a table.
+    const head = columnNames.length > 0 ? columnNames : Array.from({ length: width }, () => '');
+    const headCells = head.map((name) => escapeMarkdownCellText(name));
+    const separator = head.map(() => '---');
+    const lines = [`| ${headCells.join(' | ')} |`, `| ${separator.join(' | ')} |`];
+    for (const row of rows) {
+      const cells = cellsOf(row).map((cell) => escapeMarkdownCellText(cell));
+      lines.push(`| ${cells.join(' | ')} |`);
+    }
+    return lines.join('\n');
+  }
+
   const delimiter = format === 'csv' ? ',' : '\t';
   const includeHeader = options.includeHeader ?? format === 'csv';
   // A caller that has no column list (whole-row copy over positional arrays) still needs the
   // widest row as the width; an empty header must not collapse every row to a blank line.
-  const width =
-    columnNames.length > 0
-      ? columnNames.length
-      : rows.reduce((widest, row) => Math.max(widest, row.length), 0);
   const lines: string[] = [];
   if (includeHeader) {
     const header: string[] = [];

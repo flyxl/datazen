@@ -37,6 +37,9 @@ vi.mock('@tauri-apps/api/core', () => ({
 const schemaReads = vi.hoisted(() => ({ count: 0 }));
 
 vi.mock('../../../lib/schemaCache', () => ({
+  // The reverse catalog (DB-20) subscribes at module load; a no-op keeps
+  // this audit focused on the jump's own reads.
+  subscribeSchemaInvalidation: () => () => undefined,
   getCachedTableSchema: async () => {
     schemaReads.count += 1;
     return {

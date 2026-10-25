@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Plus, Terminal } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FilterCondition, FilterOperator } from '../types';
 import { SHARED_FILTER_OPERATORS } from '../types';
@@ -67,6 +67,17 @@ export interface FilterEditorProps {
   loading?: boolean;
   /** Caller-owned parse/apply error; this editor does not execute requests. */
   applyError?: string | null;
+  /**
+   * Show the statements this panel's read would send (DB-15). Absent — a
+   * panel that cannot reach the backend's preview — no button is rendered.
+   */
+  onPreviewSql?: () => void;
+  /**
+   * The direct exit to the export dialog with "current filter results"
+   * preselected (DB-15). Absent — a panel whose filtered export cannot be
+   * built — no button is rendered.
+   */
+  onExportFiltered?: () => void;
 }
 
 export function FilterEditor({
@@ -88,6 +99,8 @@ export function FilterEditor({
   onClear,
   loading = false,
   applyError = null,
+  onPreviewSql,
+  onExportFiltered,
 }: FilterEditorProps) {
   const { t } = useI18n();
 
@@ -315,6 +328,32 @@ export function FilterEditor({
               {t('filter.add')}
             </Button>
             <div className="ml-auto flex shrink-0 items-center gap-1.5">
+              {onExportFiltered && (
+                <Button
+                  variant="ghost"
+                  className="h-6 shrink-0 gap-1 px-2 text-xs"
+                  onClick={onExportFiltered}
+                  disabled={loading}
+                  data-testid="filter-export-filtered"
+                  title={t('filter.exportFilteredHint')}
+                >
+                  <Download className="h-3 w-3" />
+                  {t('filter.exportFiltered')}
+                </Button>
+              )}
+              {onPreviewSql && (
+                <Button
+                  variant="ghost"
+                  className="h-6 shrink-0 gap-1 px-2 font-mono text-xs"
+                  onClick={onPreviewSql}
+                  disabled={loading}
+                  data-testid="filter-preview-sql"
+                  title={t('filter.previewSqlHint')}
+                >
+                  <Terminal className="h-3 w-3" />
+                  SQL
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 className="h-6 px-2 text-xs"
@@ -329,7 +368,9 @@ export function FilterEditor({
                 disabled={!dirty || loading || incomplete !== undefined}
                 data-testid="filter-apply"
                 title={
-                  incomplete ? t('filter.errorIncomplete', { column: incomplete.column }) : undefined
+                  incomplete
+                    ? t('filter.errorIncomplete', { column: incomplete.column })
+                    : undefined
                 }
                 onClick={() => {
                   setEditingIndex(null);
@@ -353,10 +394,7 @@ export function FilterEditor({
               </ErrorBanner>
             )}
             {incomplete && (
-              <ErrorBanner
-                className="basis-full px-1 py-1"
-                data-testid="filter-incomplete-error"
-              >
+              <ErrorBanner className="basis-full px-1 py-1" data-testid="filter-incomplete-error">
                 {t('filter.errorIncomplete', { column: incomplete.column })}
               </ErrorBanner>
             )}

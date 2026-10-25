@@ -29,7 +29,7 @@ async fn reads_deduplicate_exact_identities_and_cache_distinct_schemas() {
         ..Default::default()
     })
     .await;
-    let (_, session) = test.save_and_connect_runtime("metadata-identities").await;
+    let (_, session) = test.save_and_connect("metadata-identities").await;
     let input = json!({ "relations": [
         { "database": "app", "schema": "public", "name": "users" },
         { "database": "app", "schema": "archive", "name": "users" },
@@ -55,7 +55,7 @@ async fn invalid_target_fails_preflight_before_any_relation_read() {
         ..Default::default()
     })
     .await;
-    let (_, session) = test.save_and_connect_runtime("metadata-preflight").await;
+    let (_, session) = test.save_and_connect("metadata-preflight").await;
     let error = run(
         &test,
         &session,
@@ -95,7 +95,7 @@ async fn catalog_includes_empty_schemas_without_fake_relations() {
         ..Default::default()
     })
     .await;
-    let (_, session) = test.save_and_connect_runtime("metadata-catalog").await;
+    let (_, session) = test.save_and_connect("metadata-catalog").await;
     let result = run(
         &test,
         &session,
@@ -113,7 +113,7 @@ async fn catalog_includes_empty_schemas_without_fake_relations() {
 #[tokio::test]
 async fn full_schema_populates_columns_tier_for_the_same_identity() {
     let test = TestAppState::with_tables().await;
-    let (_, session) = test.save_and_connect_runtime("metadata-full").await;
+    let (_, session) = test.save_and_connect("metadata-full").await;
     let relation = json!({ "database": "app", "schema": null, "name": "users" });
     let result = run(
         &test,
@@ -138,7 +138,7 @@ async fn full_schema_populates_columns_tier_for_the_same_identity() {
 #[tokio::test]
 async fn metadata_envelope_target_is_rejected_instead_of_ignored() {
     let test = TestAppState::with_tables().await;
-    let (_, session) = test.save_and_connect_runtime("metadata-envelope").await;
+    let (_, session) = test.save_and_connect("metadata-envelope").await;
     let error = execute_driver_command_impl(
         &test.state,
         ExecuteDriverCommandRequest {
@@ -165,7 +165,7 @@ async fn a_batch_preserves_successes_and_redacts_per_relation_failures() {
         ..Default::default()
     })
     .await;
-    let (_, session) = test.save_and_connect_runtime("metadata-partial").await;
+    let (_, session) = test.save_and_connect("metadata-partial").await;
     let result = run(
         &test,
         &session,
@@ -191,7 +191,7 @@ async fn relation_refresh_invalidates_only_the_exact_schema_identity() {
         ..Default::default()
     })
     .await;
-    let (_, session) = test.save_and_connect_runtime("metadata-refresh").await;
+    let (_, session) = test.save_and_connect("metadata-refresh").await;
     let input = json!({ "relations": [
         { "database": "app", "schema": "public", "name": "users" },
         { "database": "app", "schema": "archive", "name": "users" }
@@ -224,9 +224,7 @@ async fn catalog_preserves_driver_owned_list_tables_command_results() {
             "tables": [{ "name": "custom_collection", "schema": null, "tableType": "table", "rowCount": null }]
         }))]), ..Default::default()
     }).await;
-    let (_, session) = test
-        .save_and_connect_runtime("metadata-driver-catalog")
-        .await;
+    let (_, session) = test.save_and_connect("metadata-driver-catalog").await;
     let result = run(
         &test,
         &session,
@@ -294,7 +292,7 @@ async fn schema_aware(name: &str) -> (TestAppState, String) {
         ..Default::default()
     })
     .await;
-    let (_, session) = test.save_and_connect_runtime(name).await;
+    let (_, session) = test.save_and_connect(name).await;
     (test, session)
 }
 
@@ -559,7 +557,7 @@ async fn cm01_null_namespace_follows_the_declared_shape() {
 
     // 另一半：无 schema 层级的驱动上，同一个 null 是它唯一合法的形状。
     let schemaless = TestAppState::with_tables().await;
-    let (_, flat_session) = schemaless.save_and_connect_runtime("cm01-null-flat").await;
+    let (_, flat_session) = schemaless.save_and_connect("cm01-null-flat").await;
     run(
         &schemaless,
         &flat_session,

@@ -41,19 +41,40 @@ export const ROW_MODE_GRID_SELECTION: GridSelection = Object.freeze({
 /**
  * Resolve the displayed column order of a panel, which is what every range comparison uses.
  * `visibleColumns === null` means "all columns"; otherwise the original order is preserved.
+ *
+ * `columnOrder` (DB-12) is an explicit **order** over the result — it never
+ * adds or removes a column (that stays with `visibleColumns`): the names it
+ * lists come first in that order, the remaining displayed columns keep their
+ * schema position behind them, and names that are not displayed are ignored.
+ * `null` — the default — follows the schema order exactly as before.
  */
 export function displayedColumnNames(
   columns: readonly { name: string }[],
   visibleColumns: readonly string[] | null,
+  columnOrder: readonly string[] | null = null,
 ): string[] {
-  if (visibleColumns === null) return columns.map((column) => column.name);
-  const visible = new Set(visibleColumns);
-  return columns.filter((column) => visible.has(column.name)).map((column) => column.name);
+  if (visibleColumns === null && columnOrder === null) {
+    return columns.map((column) => column.name);
+  }
+  const visible = new Set(visibleColumns ?? columns.map((column) => column.name));
+  const schemaOrder = columns
+    .filter((column) => visible.has(column.name))
+    .map((column) => column.name);
+  if (columnOrder === null) return schemaOrder;
+  const explicit = new Set<string>();
+  const ordered: string[] = [];
+  for (const name of columnOrder) {
+    if (visible.has(name) && !explicit.has(name)) {
+      explicit.add(name);
+      ordered.push(name);
+    }
+  }
+  return [...ordered, ...schemaOrder.filter((name) => !explicit.has(name))];
 }
 
 /** Displayed column order of a whole panel slice (the order the grid actually renders). */
 export function panelColumnOrder(ts: TableState): string[] {
-  return displayedColumnNames(ts.columns, ts.visibleColumns);
+  return displayedColumnNames(ts.columns, ts.visibleColumns, ts.columnOrder);
 }
 
 /**
@@ -215,7 +236,9 @@ export function createSelectionSlice(
       })),
     setRowModeSelection: (panelId, rowIndex, opts) =>
       patch(panelId, (ts) =>
-        rowIndex === null ? applyClearGridSelection(ts) : applyRowModeTransition(ts, rowIndex, opts),
+        rowIndex === null
+          ? applyClearGridSelection(ts)
+          : applyRowModeTransition(ts, rowIndex, opts),
       ),
     setGridSelection: (panelId, selection) =>
       patch(panelId, (ts) => applyGridSelection(ts, selection)),

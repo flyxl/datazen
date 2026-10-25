@@ -19,6 +19,13 @@ import type { CellCoord } from '../../stores/tableData/gridSelection';
 import { getActiveCellEditor } from '../../components/DataTable/editors/activeEditor';
 import { buildDistinctCandidatesSql } from '../../lib/cellEditorCandidates';
 import {
+  candidatesToPickerOptions,
+  FK_SELECTOR_CANDIDATE_LIMIT,
+  type FkCandidateSource,
+} from '../../lib/fkSelector';
+import { databaseCommands } from '../../commands/database';
+import { t } from '../../locales/t';
+import {
   buildColumnEditorInfo,
   resolveCellEditable,
   type CellEditability,
@@ -99,10 +106,7 @@ export function buildPanelColumnEditorInfo(
  * The answer is a **cell-independent** one: the row-level facts (a unique
  * row identity) are checked by the store when the value is written.
  */
-export function resolvePanelCellEditable(
-  panelId: string,
-  columnName: string,
-): CellEditability {
+export function resolvePanelCellEditable(panelId: string, columnName: string): CellEditability {
   const context = contexts.get(panelId);
   if (!context) {
     return {
@@ -188,6 +192,14 @@ export interface CandidateValuesLoaderArgs {
   readonly database?: string | null;
   /** The dialect whose quote character is used. */
   readonly dialect?: DatabaseType;
+  /**
+   * The single-column foreign keys of the table, keyed by the grid column
+   * that carries them (DB-20).
+   *
+   * A column with an entry here loads its candidates from the **target**
+   * table (browse mode) instead of a `SELECT DISTINCT` of its own values.
+   */
+  readonly fkSources?: ReadonlyMap<string, FkCandidateSource>;
 }
 
 /**
@@ -196,11 +208,19 @@ export interface CandidateValuesLoaderArgs {
  * It runs **one** statement — a `SELECT DISTINCT … LIMIT 200` — and only
  * when the user asks for it. Opening an editor never queries anything
  * (05 §4.3 #5).
+ *
+ * A single-column foreign-key column (DB-20) takes the other branch: its
+ * candidates are the **target** table's referenced values, browsed through
+ * the same resolution the jump uses — and a target whose referenced columns
+ * are not unique refuses to offer candidates, because picking one would
+ * write an ambiguous reference (07 §7 rule 12).
  */
 export function createCandidateValuesLoader(
   args: CandidateValuesLoaderArgs,
 ): (columnName: string) => Promise<readonly string[]> {
   return async (columnName: string): Promise<readonly string[]> => {
+    const fkSource = args.fkSources?.get(columnName);
+    if (fkSource) return loadFkCandidates(args, fkSource);
     const sql = buildDistinctCandidatesSql({
       table: args.table,
       column: columnName,
@@ -225,6 +245,43 @@ export function createCandidateValuesLoader(
     }
     return values;
   };
+}
+
+/**
+ * Browse one foreign key's target for the in-cell selector (DB-20).
+ *
+ * The request carries no key values — the selector opens before anything is
+ * picked — and one `limit`, capped at the resolver's own hard cap. The
+ * candidates are the target rows' referenced-column values, in the
+ * statement's own order.
+ *
+ * The uniqueness verdict travels with the resolution, and it is the one
+ * refusal the loader raises on its own: a target whose referenced columns
+ * are not covered by a primary key or a unique index would make a pick an
+ * ambiguous write (07 §7 rule 12), so the picker is disabled with a reason
+ * instead of offering rows.
+ */
+async function loadFkCandidates(
+  args: CandidateValuesLoaderArgs,
+  source: FkCandidateSource,
+): Promise<readonly string[]> {
+  const resolution = await databaseCommands.resolveForeignKeyTargets({
+    dbSessionId: args.dbSessionId,
+    database: args.database ?? null,
+    schema: args.schema ?? null,
+    table: args.table,
+    columns: [source.localColumn],
+    constraintName: source.constraintName,
+    // A browse ignores the values; the wire type keeps them required, so the
+    // request carries the empty list.
+    values: [],
+    limit: FK_SELECTOR_CANDIDATE_LIMIT,
+    browse: true,
+  });
+  if (!resolution.target.unique) {
+    throw new Error(t('fkSelector.notUnique'));
+  }
+  return candidatesToPickerOptions(resolution.candidates);
 }
 
 /** The reason the whole grid is read-only, if it is. */
@@ -332,6 +389,11 @@ export interface UseTableEditingOptions {
   readonly mountReason?: CellReadOnlyReason;
   /** The columns of the table. */
   readonly columns: readonly ColumnSchema[];
+  /**
+   * The single-column foreign keys of the table, keyed by their grid column
+   * (DB-20). `undefined` keeps every column on the enum candidate path.
+   */
+  readonly fkSources?: ReadonlyMap<string, FkCandidateSource>;
 }
 
 export interface TableEditing {
@@ -372,11 +434,10 @@ export function useTableEditing(options: UseTableEditingOptions): TableEditing {
     connectionReadOnly,
     mountReason,
     columns,
+    fkSources,
   } = options;
 
-  const driverMeta = databaseType
-    ? DB_REGISTRY[databaseType as DatabaseType]
-    : undefined;
+  const driverMeta = databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined;
   const hints: CellTypeHints | undefined = driverMeta?.cellTypes;
   const capabilityEditable = driverMeta?.dataGrid?.editable;
 
@@ -392,14 +453,7 @@ export function useTableEditing(options: UseTableEditingOptions): TableEditing {
       columns,
       hints,
     }),
-    [
-      capabilityEditable,
-      columns,
-      connectionReadOnly,
-      hints,
-      mountReason,
-      panelId,
-    ],
+    [capabilityEditable, columns, connectionReadOnly, hints, mountReason, panelId],
   );
 
   // The context is registered so that the entry points (`requestEdit`, the
@@ -417,8 +471,9 @@ export function useTableEditing(options: UseTableEditingOptions): TableEditing {
         schema,
         database,
         dialect: databaseType as DatabaseType | undefined,
+        fkSources,
       }),
-    [database, databaseType, dbSessionId, schema, tableName],
+    [database, databaseType, dbSessionId, fkSources, schema, tableName],
   );
 
   const loadCandidates = useCallback(

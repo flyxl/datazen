@@ -295,8 +295,8 @@ mod tests {
         use crate::testing::app_state::TestAppState;
         use datazen_runtime::job::{detect_endpoint_overlap, EndpointRef, EndpointRole};
         let test = TestAppState::new().await;
-        let (_, source) = test.save_and_connect_runtime("source-alias").await;
-        let (_, target) = test.save_and_connect_runtime("target-alias").await;
+        let (_, source) = test.save_and_connect("source-alias").await;
+        let (_, target) = test.save_and_connect("target-alias").await;
         let source_identity = session_identity(&test.state, &source, None).await.unwrap();
         let target_identity = session_identity(&test.state, &target, None).await.unwrap();
         let mut endpoints = vec![

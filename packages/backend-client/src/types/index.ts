@@ -89,6 +89,12 @@ export type {
   FilterCondition,
   ForeignKeyTargetRef,
   ForeignKeyTargetResolution,
+  InboundForeignKeyCatalog,
+  InboundForeignKeyRef,
+  ListInboundForeignKeysRequest,
+  SearchTableValuesRequest,
+  SearchTableValuesResult,
+  ValueSearchMode,
   ListNamedViewsRequest,
   NamedView,
   NamedViewScope,
@@ -105,6 +111,8 @@ export type {
   TableColumnSchema,
   TableDataRequest,
   TableDataResult,
+  TableReadPreviewRequest,
+  TableReadPreviewSql,
   TableValue,
 } from './tableData';
 export { toTableValue } from './tableData';

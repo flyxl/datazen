@@ -45,6 +45,8 @@ vi.mock('@tauri-apps/api/core', () => ({
 const schemaState = vi.hoisted(() => ({ foreignKeys: [] as unknown[] }));
 
 vi.mock('../../../lib/schemaCache', () => ({
+  // `fkReferencedBy` 在模块作用域调用它注册失效回调；返回退订空函数即可。
+  subscribeSchemaInvalidation: () => () => undefined,
   getCachedTableSchema: async () => ({
     tableName: 'orders',
     columns: [],
@@ -137,11 +139,7 @@ const DEFAULT_VISIBLE_COLUMNS = ['id', 'customer_id'] as const;
  * would hide the bug where a hidden foreign-key member looks like a member
  * without a value (07 §7 #14).
  */
-function FkGrid({
-  rows,
-  visibleColumns = DEFAULT_VISIBLE_COLUMNS,
-  columns = COLUMNS,
-}: GridProps) {
+function FkGrid({ rows, visibleColumns = DEFAULT_VISIBLE_COLUMNS, columns = COLUMNS }: GridProps) {
   const navigation = useTableForeignKeyNavigation({
     panelId: SOURCE_PANEL,
     dbSessionId: 'session-1',
@@ -151,10 +149,7 @@ function FkGrid({
     connectionId: 'conn-1',
     databaseType: 'postgresql',
     rows,
-    displayedColumns: useMemo(
-      () => visibleColumns.map((name) => ({ name })),
-      [visibleColumns],
-    ),
+    displayedColumns: useMemo(() => visibleColumns.map((name) => ({ name })), [visibleColumns]),
     rowHeight: 28,
     activeCell: null,
   });
@@ -171,11 +166,7 @@ function FkGrid({
     [rows, shownColumns],
   );
   return (
-    <div
-      data-testid="fk-root"
-      tabIndex={0}
-      onKeyDown={navigation.onKeyDown}
-    >
+    <div data-testid="fk-root" tabIndex={0} onKeyDown={navigation.onKeyDown}>
       {navigation.breadcrumb && (
         <div data-testid="fk-breadcrumb">{navigation.breadcrumb.origin.sourceTable}</div>
       )}
@@ -245,7 +236,12 @@ afterEach(cleanup);
 describe('journey: foreign-key navigation', () => {
   it('shows the arrow on the cell of the foreign key and nowhere else', async () => {
     const { container } = render(
-      <FkGrid rows={[{ id: 1, customer_id: 7 }, { id: 2, customer_id: null }]} />,
+      <FkGrid
+        rows={[
+          { id: 1, customer_id: 7 },
+          { id: 2, customer_id: null },
+        ]}
+      />,
     );
 
     await waitFor(() => expect(arrows(container)).toHaveLength(1));
@@ -372,7 +368,12 @@ describe('journey: foreign-key navigation', () => {
 
   it('refuses a jump whose group has a missing member, without asking the host', async () => {
     const { container } = render(
-      <FkGrid rows={[{ id: 1, customer_id: 7 }, { id: 2, customer_id: null }]} />,
+      <FkGrid
+        rows={[
+          { id: 1, customer_id: 7 },
+          { id: 2, customer_id: null },
+        ]}
+      />,
     );
     await waitFor(() => expect(arrows(container)).toHaveLength(1));
 

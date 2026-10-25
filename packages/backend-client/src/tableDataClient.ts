@@ -22,6 +22,10 @@ import type {
   DeleteNamedViewRequest,
   EstimateTableRowsRequest,
   ForeignKeyTargetResolution,
+  InboundForeignKeyCatalog,
+  ListInboundForeignKeysRequest,
+  SearchTableValuesRequest,
+  SearchTableValuesResult,
   ListNamedViewsRequest,
   NamedView,
   PreviewPendingChangesRequest,
@@ -34,6 +38,8 @@ import type {
   SaveNamedViewRequest,
   TableDataRequest,
   TableDataResult,
+  TableReadPreviewRequest,
+  TableReadPreviewSql,
 } from './types';
 
 /**
@@ -42,10 +48,7 @@ import type {
  * It normalizes a rejection into an `ApiError` and refuses a method the bound
  * backend declared it cannot serve.
  */
-export type BackendGuard = <T>(
-  method: keyof MethodMap,
-  run: () => Promise<T>,
-) => Promise<T>;
+export type BackendGuard = <T>(method: keyof MethodMap, run: () => Promise<T>) => Promise<T>;
 
 /** The table-data methods of the `BackendClient` facade. */
 export interface TableDataClient {
@@ -57,6 +60,17 @@ export interface TableDataClient {
    * editor's session, so a grid read cannot be steered by an unrelated query.
    */
   getTableData(request: TableDataRequest): Promise<TableDataResult>;
+  /**
+   * Show the statements a table read would send, without sending them
+   * (DB-15).
+   *
+   * The statements are assembled by the same backend code a real read
+   * executes through — the schema round trip, the filter validation and the
+   * paging decision are all real — so the preview is what the product sends,
+   * not a description of it. An `unbounded` request drops the paging frame and
+   * is what the filtered full-table export streams.
+   */
+  previewTableReadSql(request: TableReadPreviewRequest): Promise<TableReadPreviewSql>;
   /**
    * Preview a staged change set.
    *
@@ -71,9 +85,7 @@ export interface TableDataClient {
    * The fingerprint travels with the request and is re-checked by the
    * backend; a plan that no longer matches is refused rather than applied.
    */
-  commitPendingChanges(
-    request: CommitPendingChangesRequest,
-  ): Promise<CommitPendingChangesResponse>;
+  commitPendingChanges(request: CommitPendingChangesRequest): Promise<CommitPendingChangesResponse>;
   /**
    * Estimate the row count of a table.
    *
@@ -89,6 +101,10 @@ export interface TableDataClient {
   resolveForeignKeyTargets(
     request: ResolveForeignKeyTargetsRequest,
   ): Promise<ForeignKeyTargetResolution>;
+  /** The reverse foreign-key catalog: the constraints of other tables that reference one table. */
+  listInboundForeignKeys(request: ListInboundForeignKeysRequest): Promise<InboundForeignKeyCatalog>;
+  /** Count the rows of one table whose searchable columns match a value (DB-19). */
+  searchTableValues(request: SearchTableValuesRequest): Promise<SearchTableValuesResult>;
   /**
    * The named views of one scope, or of every scope when `scope` is omitted.
    *
@@ -135,6 +151,9 @@ export function createTableDataMethods(
   return {
     getTableData: (request) => guard('getTableData', () => transport.call('getTableData', request)),
 
+    previewTableReadSql: (request) =>
+      guard('previewTableReadSql', () => transport.call('previewTableReadSql', request)),
+
     previewPendingChanges: (request) =>
       guard('previewPendingChanges', () => transport.call('previewPendingChanges', request)),
 
@@ -147,9 +166,17 @@ export function createTableDataMethods(
     resolveForeignKeyTargets: (request) =>
       guard('resolveForeignKeyTargets', () => transport.call('resolveForeignKeyTargets', request)),
 
-    listNamedViews: (request) => guard('listNamedViews', () => transport.call('listNamedViews', request)),
+    listInboundForeignKeys: (request) =>
+      guard('listInboundForeignKeys', () => transport.call('listInboundForeignKeys', request)),
 
-    saveNamedView: (request) => guard('saveNamedView', () => transport.call('saveNamedView', request)),
+    searchTableValues: (request) =>
+      guard('searchTableValues', () => transport.call('searchTableValues', request)),
+
+    listNamedViews: (request) =>
+      guard('listNamedViews', () => transport.call('listNamedViews', request)),
+
+    saveNamedView: (request) =>
+      guard('saveNamedView', () => transport.call('saveNamedView', request)),
 
     deleteNamedView: (request) =>
       guard('deleteNamedView', () => transport.call('deleteNamedView', request)),

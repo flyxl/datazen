@@ -13,6 +13,8 @@
  * - Conflict (existing non-empty textarea): non-modal replace/append/cancel choice.
  */
 
+import type { TableContextInput, TableSqlActionSpec } from '../../../lib/tableSqlActions';
+
 export type AiChatDraftSource = 'query-error';
 
 export interface AiChatDraftRequest {
@@ -46,4 +48,10 @@ export interface ContentViewCallbacks {
   ) => void;
   /** Request an AI chat draft to be prefilled into the AiChatPanel. */
   openAiChatDraft: (request: AiChatDraftRequest) => void;
+  /**
+   * Open a query tab with the SQL draft of a table action (DB-16's
+   * "Edit in SQL" uses it to hand the no-primary-key `SELECT … WHERE`
+   * template to the editor). Absent on mounts that cannot open one.
+   */
+  openSqlEditorForTable?: (input: TableContextInput, spec: TableSqlActionSpec) => void;
 }

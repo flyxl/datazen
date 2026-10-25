@@ -33,6 +33,18 @@ export interface TableActions {
   /** Change the panel's temporary override of the default order. */
   setDefaultOrderOverride: (override: DefaultOrderOverride) => void;
   setSort: (sort: SortCondition) => void;
+  /* ── Multi-column sort (DB-11): the header-menu actions. ── */
+  /** Add (or re-aim) one column — a sorted column keeps its position. */
+  addSort: (sort: SortCondition) => void;
+  /** Remove one column from the sort list. */
+  removeSort: (column: string) => void;
+  /** Drop the whole sort list. */
+  clearSorts: () => void;
+  /* ── Column tools (DB-12). ── */
+  /** Set the panel's explicit column render order; `null` resets it. */
+  setColumnOrder: (order: string[] | null) => void;
+  /** Freeze the first `count` displayed columns (`0` unfreezes). */
+  setFrozenColumnCount: (count: number) => void;
   removeFilter: (index: number) => void;
   clearFilters: () => void;
   addFilter: (filter: FilterCondition) => void;
@@ -136,6 +148,31 @@ export function useTableActions({
         invalidateNotice();
         store().setSort(panelId, sort);
       },
+      // DB-11: the multi-column sort actions of the header context menu.
+      // Same guards as `setSort` — they change what the next page reads.
+      addSort: (sort: SortCondition) => {
+        if (!mayNavigate()) return;
+        invalidateNotice();
+        store().addSort(panelId, sort);
+      },
+      removeSort: (column: string) => {
+        if (!mayNavigate()) return;
+        invalidateNotice();
+        store().removeSort(panelId, column);
+      },
+      clearSorts: () => {
+        if (!mayNavigate()) return;
+        invalidateNotice();
+        store().clearSorts(panelId);
+      },
+      // DB-12: render-only column tools — they do not move the page, so they
+      // take no navigation guard and drop no notice.
+      setColumnOrder: (order: string[] | null) => {
+        store().setColumnOrder(panelId, order);
+      },
+      setFrozenColumnCount: (count: number) => {
+        store().setFrozenColumnCount(panelId, count);
+      },
       removeFilter: (index: number) => store().removeFilter(panelId, index),
       clearFilters: () => {
         if (!mayNavigate()) return;
@@ -157,8 +194,7 @@ export function useTableActions({
         store().applyFilters(panelId);
       },
       setFilterPanelOpen: (open: boolean) => store().setFilterPanelOpen(panelId, open),
-      setVisibleColumns: (columns: string[] | null) =>
-        store().setVisibleColumns(panelId, columns),
+      setVisibleColumns: (columns: string[] | null) => store().setVisibleColumns(panelId, columns),
       setPage: (page: number) => {
         if (!mayNavigate()) return;
         invalidateNotice();
@@ -180,8 +216,7 @@ export function useTableActions({
         store().setRowModeSelection(panelId, index, opts),
       toggleSelectAll: () => store().toggleSelectAll(panelId),
       // Cell/region selection (DB-01): the store owns the mode, the grid only reports.
-      setGridSelection: (selection: GridSelection) =>
-        store().setGridSelection(panelId, selection),
+      setGridSelection: (selection: GridSelection) => store().setGridSelection(panelId, selection),
       deleteRows: (rowIndices: number[]) => store().deleteRows(panelId, rowIndices),
       // Restoring a row is not a page move: the notice of the previous commit
       // still describes the rows the user is looking at.

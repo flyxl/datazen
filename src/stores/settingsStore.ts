@@ -5,6 +5,10 @@ import { emitCrossWindow } from '../lib/crossWindowBus';
 import { resolveUiLanguage } from '../lib/resolveUiLanguage';
 import type { AppSettings } from '../types';
 import {
+  DEFAULT_GRID_ALTERNATING_ROWS,
+  DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
+  DEFAULT_GRID_DENSITY,
+  DEFAULT_GRID_ROW_NUMBERS,
   DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD,
   DEFAULT_ROW_COUNT_MODE,
   DEFAULT_TABLE_SORT,
@@ -59,6 +63,13 @@ const DEFAULT_SETTINGS: AppSettings = {
   rowCountMode: DEFAULT_ROW_COUNT_MODE,
   rowCountEstimateThreshold: DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD,
   defaultTableSort: DEFAULT_TABLE_SORT,
+  // The grid-appearance settings (DB-17). Their defaults are the grids'
+  // behaviour before they existed: a zero density delta, striped odd rows,
+  // the `#` gutter, always-visible scrollbars.
+  gridDensity: DEFAULT_GRID_DENSITY,
+  gridAlternatingRows: DEFAULT_GRID_ALTERNATING_ROWS,
+  gridRowNumbers: DEFAULT_GRID_ROW_NUMBERS,
+  gridAutoHideScrollbar: DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';

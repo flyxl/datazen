@@ -56,7 +56,7 @@ async fn mock_provider_save_get_delete_config() {
 #[tokio::test]
 async fn mock_provider_diagnose_error_parses_json() {
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("mock-diag").await;
+    let (_, conn_id) = test.save_and_connect("mock-diag").await;
 
     mock.push_text(
         r#"{"explanation":"bad column","suggestedSql":"SELECT id FROM users","changes":[]}"#,
@@ -97,7 +97,7 @@ async fn mock_provider_diagnose_error_parses_json() {
 #[tokio::test]
 async fn mock_provider_analyze_explain() {
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("mock-explain").await;
+    let (_, conn_id) = test.save_and_connect("mock-explain").await;
 
     mock.push_text(
         r#"{"summary":"Seq scan","bottlenecks":[{"node":"Seq Scan","description":"full scan","severity":"high"}],"suggestions":[{"description":"Add index","sql":"CREATE INDEX ON users(id)","impact":"high"}]}"#,
@@ -129,7 +129,7 @@ async fn mock_provider_analyze_explain() {
 #[tokio::test]
 async fn mock_provider_parse_filter() {
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("mock-filter").await;
+    let (_, conn_id) = test.save_and_connect("mock-filter").await;
 
     mock.push_text(r#"[{"column":"id","operator":"gt","value":1}]"#);
 
@@ -151,7 +151,7 @@ async fn mock_provider_parse_filter() {
 #[tokio::test]
 async fn mock_provider_schema_doc_and_connection_diag() {
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("mock-schema").await;
+    let (_, conn_id) = test.save_and_connect("mock-schema").await;
 
     mock.push_text("# Users\n\nTable docs");
     let doc = ai_generate_schema_doc_impl(&test.state, conn_id, "app".into())
@@ -176,7 +176,7 @@ async fn mock_provider_schema_doc_and_connection_diag() {
 #[tokio::test]
 async fn mock_provider_analyze_queries() {
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("mock-hist").await;
+    let (_, conn_id) = test.save_and_connect("mock-hist").await;
 
     test.state
         .store
@@ -208,7 +208,7 @@ async fn mock_provider_analyze_queries() {
 #[tokio::test]
 async fn mock_provider_generate_sql_stream() {
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("mock-nl2sql").await;
+    let (_, conn_id) = test.save_and_connect("mock-nl2sql").await;
     mock.push_stream_text("SELECT COUNT(*) FROM users");
 
     let (cb, log) = collecting_stream_callback();
@@ -235,7 +235,7 @@ async fn mock_provider_generate_sql_stream() {
 #[tokio::test]
 async fn mock_provider_chat_stream() {
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("mock-chat").await;
+    let (_, conn_id) = test.save_and_connect("mock-chat").await;
     mock.push_stream_text("Hello from mock LLM");
 
     let (cb, _) = collecting_stream_callback();

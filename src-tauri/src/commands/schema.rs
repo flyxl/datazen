@@ -1,115 +1,10 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::services::{
-    embedded_schema_of, metadata_schema, FilterCondition, OrderBy, QueryExecutor, SortCondition,
-};
+use crate::services::{embedded_schema_of, metadata_schema, QueryExecutor};
 use datazen_driver_api::schema_objects::{DatabaseObject, ObjectKind, PrivilegeGrant};
-use datazen_driver_api::{CountStrategy, TableDataResult, TableSchema};
+use datazen_driver_api::TableSchema;
 use std::time::Instant;
 use tauri::State;
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn get_table_data_impl(
-    state: &AppState,
-    db_session_id: String,
-    table: String,
-    page: u32,
-    page_size: u32,
-    filters: Option<Vec<FilterCondition>>,
-    sorts: Option<Vec<SortCondition>>,
-    skip_count: Option<bool>,
-    filter_logic: Option<String>,
-    database: Option<String>,
-    schema: Option<String>,
-    count_strategy: Option<CountStrategy>,
-    default_order_columns: Option<Vec<String>>,
-) -> Result<TableDataResult, CommandError> {
-    let start = Instant::now();
-    tracing::info!(%db_session_id, %table, page, page_size, "get_table_data");
-    let resolved =
-        super::driver_command::resolve_command_driver(state, Some(&db_session_id), None).await?;
-    let driver = &resolved.driver;
-    let handle = &resolved.handle;
-
-    // The filter list is checked before anything is built or fetched: a filter
-    // this database cannot serve, or one that is missing a value, has to fail
-    // before the statement is assembled and before the connection is used.
-    // The shared layer owns the judgement; the host only maps the refusal.
-    datazen_feature_core::services::validate_filters(
-        driver.supported_filter_operators(),
-        filters.as_deref().unwrap_or_default(),
-    )?;
-
-    // The caller's explicit target wins; the session's configured database is
-    // only a fallback for callers that pass none. Reading `config.database`
-    // unconditionally (the old behavior) silently ignored the request and
-    // resolved columns against whatever database the session sat on.
-    let config = resolved
-        .session
-        .as_ref()
-        .ok_or_else(|| CommandError::NotFound("DB session is unavailable".into()))?;
-    let config = state
-        .store
-        .get_connection(config.connection_id.as_str())
-        .await
-        .ok_or_else(|| CommandError::NotFound("connection profile is unavailable".into()))?;
-    let database = database
-        .as_deref()
-        .map(str::trim)
-        .filter(|db| !db.is_empty())
-        .or(config.database.as_deref())
-        .unwrap_or("default");
-    let schema = metadata_schema(
-        driver.as_ref(),
-        schema.as_deref(),
-        embedded_schema_of(&table),
-        config.schema.as_deref(),
-    );
-    // Mirrors the target the driver will read, so a "table does not exist"
-    // report can be told apart from a mis-resolved target.
-    tracing::info!(
-        %db_session_id,
-        %table,
-        %database,
-        resolved_schema = ?schema,
-        "get_table_data target"
-    );
-
-    let order = sorts
-        .and_then(|list| list.into_iter().next())
-        .map(|s| OrderBy {
-            column: s.column,
-            descending: s.descending,
-        });
-
-    // "Reuse the total you already have" and "this database cannot count"
-    // are two different facts. The caller says the first; the driver says
-    // the second, and the driver decides it on its own.
-    let caller_skip_count = skip_count.unwrap_or(false);
-
-    let executor = QueryExecutor::new(state.schema_cache.clone());
-    let result = executor
-        .get_table_data(
-            &driver,
-            &handle,
-            &db_session_id,
-            database,
-            schema.as_deref(),
-            &table,
-            page,
-            page_size,
-            filters,
-            order,
-            caller_skip_count,
-            filter_logic.as_deref(),
-            count_strategy,
-            default_order_columns,
-        )
-        .await
-        .cmd_err("get_table_data")?;
-    tracing::info!(%db_session_id, %table, rows = result.rows.len(), ms = start.elapsed().as_millis() as u64, "get_table_data OK");
-    Ok(result)
-}
 
 pub(crate) async fn get_er_data_impl(
     state: &AppState,
@@ -347,40 +242,6 @@ pub async fn get_privileges(
     db_session_id: String,
 ) -> Result<Vec<PrivilegeGrant>, CommandError> {
     get_privileges_impl(&state, db_session_id).await
-}
-
-#[tauri::command]
-pub async fn get_table_data(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    table: String,
-    page: u32,
-    page_size: u32,
-    filters: Option<Vec<FilterCondition>>,
-    sorts: Option<Vec<SortCondition>>,
-    skip_count: Option<bool>,
-    filter_logic: Option<String>,
-    database: Option<String>,
-    schema: Option<String>,
-    count_strategy: Option<CountStrategy>,
-    default_order_columns: Option<Vec<String>>,
-) -> Result<TableDataResult, CommandError> {
-    get_table_data_impl(
-        &state,
-        db_session_id,
-        table,
-        page,
-        page_size,
-        filters,
-        sorts,
-        skip_count,
-        filter_logic,
-        database,
-        schema,
-        count_strategy,
-        default_order_columns,
-    )
-    .await
 }
 
 /// The estimated number of rows in a table.

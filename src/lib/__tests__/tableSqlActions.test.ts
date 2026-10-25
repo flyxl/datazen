@@ -11,11 +11,13 @@ vi.mock('../databaseTypes', () => ({
 }));
 
 import {
+  buildNoPrimaryKeyEditTemplate,
   buildQueryOpenContext,
   buildSafeTableSqlTemplate,
   buildTableContext,
   buildTableSqlAction,
   buildTableSqlActions,
+  noPrimaryKeyEditSpec,
   quoteTableIdentifier,
 } from '../tableSqlActions';
 
@@ -110,5 +112,41 @@ describe('tableSqlActions', () => {
       }),
     ).toThrow(/cannot produce a table context/);
     expect(() => buildTableContext({ ...tableInput, tableName: '  ' })).toThrow(/tableName/);
+  });
+
+  describe('no-primary-key escape hatch (DB-16)', () => {
+    it('builds a read-first SELECT … WHERE draft for a table without a primary key', () => {
+      const template = buildNoPrimaryKeyEditTemplate(buildTableContext(tableInput));
+
+      // A quoted target, an explicit WHERE placeholder, and a leading comment
+      // pair — the draft tells the user *why* the grid refused to edit before
+      // handing over the predicate they must supply.
+      expect(template).toContain('SELECT * FROM `sales`.`order``items` WHERE');
+      expect(template).toContain('primary key');
+      expect(template).toMatch(/^-- .*no primary key.*\n-- .*UPDATE\/DELETE/s);
+      expect(template.endsWith(';')).toBe(true);
+      // Read-first contract: no UPDATE/DELETE/INSERT keyword outside comments.
+      expect(template.replace(/^--.*$/gm, '')).not.toMatch(/\b(UPDATE|DELETE|INSERT)\b/);
+    });
+
+    it('keeps the escape hatch a select draft focused on the editor', () => {
+      const spec = noPrimaryKeyEditSpec(tableInput);
+
+      expect(spec.kind).toBe('select');
+      expect(spec.source).toBe('table-action');
+      expect(spec.focus).toBe('editor');
+      expect(spec.initialSql).toBe(buildNoPrimaryKeyEditTemplate(buildTableContext(tableInput)));
+    });
+
+    it('buildQueryOpenContext keeps the supplied draft instead of the generic SELECT', () => {
+      const context = buildQueryOpenContext(tableInput, noPrimaryKeyEditSpec(tableInput));
+
+      expect(context.action).toBe('select');
+      expect(context.initialSql).toContain('WHERE');
+      // The generic SELECT template has no WHERE clause; the escape hatch must
+      // not silently degrade to it.
+      expect(context.initialSql).not.toBe(buildSafeTableSqlTemplate(context, 'select'));
+      expect(context.focus).toBe('editor');
+    });
   });
 });

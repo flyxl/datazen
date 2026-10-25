@@ -217,7 +217,7 @@ mod count_strategy_execution {
     ) -> TableDataResult {
         let driver = mock.clone() as Arc<dyn DatabaseDriver>;
         executor
-            .get_table_data(
+            .get_table_data_page(
                 &driver,
                 &handle(),
                 "conn1",
@@ -232,6 +232,7 @@ mod count_strategy_execution {
                 None,
                 count_strategy,
                 default_order_columns,
+                None,
             )
             .await
             .expect("the read succeeds")
@@ -472,7 +473,7 @@ mod count_strategy_execution {
 
         let driver = mock.clone() as Arc<dyn DatabaseDriver>;
         let error = executor
-            .get_table_data(
+            .get_table_data_page(
                 &driver,
                 &handle(),
                 "conn1",
@@ -484,6 +485,7 @@ mod count_strategy_execution {
                 None,
                 None,
                 false,
+                None,
                 None,
                 None,
                 None,

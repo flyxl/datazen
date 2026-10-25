@@ -1,15 +1,20 @@
 //! Table browsing uses independent target executions; it never borrows a tree/editor handle.
 use super::{AppState, CommandError, RowChangeTableContext};
 use crate::platform::into_command_error;
-use crate::services::{table_browsing, FilterCondition, OrderBy, QueryExecutor, SortCondition};
+use crate::services::{table_browsing, FilterCondition, QueryExecutor, SortCondition};
 use datazen_application::{
     dto::requests::{CommandCall, ExecuteAtTargetRequest},
     sessions::ConnectionUseCases,
 };
 use datazen_driver_api::keyset::CursorValue;
-use datazen_driver_api::{CountStrategy, TableDataResult, TableSchema, Value};
-use datazen_feature_core::services::query_executor::{keyset_refusal, paging_info, resolve_paging};
-use datazen_feature_core::services::table_paging::{keyset_decision, resolve_order_spec};
+use datazen_driver_api::{
+    CountStrategy, DatabaseDriver, SqlDialect, TableDataResult, TableSchema, Value,
+};
+use datazen_feature_core::services::query_executor::table_read_sql::build_unbounded_select_sql;
+use datazen_feature_core::services::query_executor::{
+    keyset_refusal, paging_info, resolve_paging, PagingPlan,
+};
+use datazen_feature_core::services::table_paging::{keyset_decision, resolve_order_spec_multi};
 use datazen_platform_api::{
     context::RequestContext,
     dto::{execution::ExecutionState, idempotency::IdempotentOperation},
@@ -71,6 +76,178 @@ enum CountPlan {
     Unsupported,
     Exact,
     Estimated,
+}
+
+/// The query-shape half of a read request (DB-15).
+///
+/// Everything the statement assembly needs, independent of where the request
+/// came from: a real page read and a preview differ only in whether the
+/// assembled statements are executed, never in how they are built.
+struct ReadQueryShape<'a> {
+    page: u32,
+    page_size: u32,
+    filters: Option<&'a [FilterCondition]>,
+    sorts: Option<&'a [SortCondition]>,
+    filter_logic: Option<&'a str>,
+    count_strategy: Option<CountStrategy>,
+    default_order_columns: Option<&'a [String]>,
+    after_key: Option<&'a [CursorValue]>,
+    require_keyset: bool,
+    cursor_depth: u32,
+    /// The caller already holds a total and wants no count statement.
+    skip_count: bool,
+}
+
+/// The statements a read (or a preview) would run, before anything runs.
+struct AssembledStatements {
+    /// The statement that reads the rows of the page.
+    select: String,
+    /// The statement that counts the rows, when one runs with the read —
+    /// the exact `COUNT(*)` for an exact plan, the driver's estimate for an
+    /// estimated plan, `None` when no count runs at all.
+    count_statement: Option<String>,
+    /// The exact `COUNT(*)` of the filtered table, whatever the plan is.
+    ///
+    /// A read that asked for an estimate still falls back to this statement
+    /// when the estimate comes back unusable, and a preview shows it — the
+    /// fallback and the plan must ask the same question.
+    exact_count_statement: String,
+    /// How the count is obtained.
+    count_plan: CountPlan,
+    /// The paging plan the select was built with.
+    plan: PagingPlan,
+}
+
+/// Assemble the statements of a table read without executing anything.
+///
+/// This is the single place the read's SQL exists (DB-15): the preview shows
+/// what this builds, the filtered export streams what this builds, and a
+/// page read executes what this builds — one builder, no drift. The byte
+/// identity of the offset statement is the contract the tests pin.
+fn assemble_statements(
+    driver: &dyn DatabaseDriver,
+    dialect: &dyn SqlDialect,
+    schema: &TableSchema,
+    database: &str,
+    schema_name: Option<&str>,
+    table: &str,
+    shape: ReadQueryShape<'_>,
+) -> Result<AssembledStatements, CommandError> {
+    // The primary key has one source: the schema's own normalised list. The
+    // column flags are a second, possibly stale, copy of the same fact, and
+    // a driver that fills one and not the other used to lose its key here
+    // and order by the first column instead.
+    let primary_keys = schema.effective_primary_keys();
+    table_browsing::report_pk_source_disagreement(
+        &schema.table_name,
+        &schema.columns,
+        &primary_keys,
+    );
+    let default_order = table_browsing::resolve_default_order(
+        driver,
+        &schema.columns,
+        &primary_keys,
+        shape.default_order_columns,
+    );
+    // The order of this read, and whether it is a total order. The decision
+    // is made once, here: the statement, the boundary and the answer to the
+    // caller all read it from the same place.
+    //
+    // The caller's explicit sort list is ordered (DB-11): its positions are
+    // the ORDER BY positions, and a one-entry list resolves to the exact
+    // single-column order this path always built. This is the IPC edge that
+    // used to truncate `sorts` to its first entry — every column after the
+    // first silently disappeared here, which is why the grid could not sort
+    // by more than one column even with a plural contract on the wire.
+    let explicit_sorts: Vec<(&str, bool)> = shape
+        .sorts
+        .unwrap_or_default()
+        .iter()
+        .map(|sort| (sort.column.as_str(), sort.descending))
+        .collect();
+    let order = resolve_order_spec_multi(&explicit_sorts, &default_order, &primary_keys);
+    let decision = keyset_decision(order, &schema.columns);
+    let plan = resolve_paging(
+        driver,
+        &decision,
+        shape.after_key,
+        shape.page,
+        dialect,
+        u64::from(shape.page_size),
+    );
+
+    // A caller that needs keyset paging and cannot have it is told so; a
+    // caller that does not care reads the page by offset and is told that
+    // too, in the answer.
+    if let Some(message) = keyset_refusal(&plan, shape.require_keyset, shape.cursor_depth) {
+        return Err(CommandError::Validation(message));
+    }
+
+    let select =
+        datazen_feature_core::services::query_executor::table_read_sql::build_paged_select_sql(
+            &schema.table_name,
+            &schema.columns,
+            shape.filters.map(<[FilterCondition]>::to_vec),
+            &plan.order,
+            plan.mode,
+            plan.predicate.as_deref(),
+            dialect,
+            u64::from(shape.page_size),
+            u64::from(shape.page).saturating_mul(u64::from(shape.page_size)),
+            shape.filter_logic,
+        )?
+        .sql;
+
+    let count_plan = if shape.skip_count {
+        CountPlan::Reuse
+    } else {
+        match table_browsing::resolve_count_strategy(
+            driver,
+            shape.count_strategy,
+            false,
+            table_browsing::has_effective_filters(shape.filters),
+            database,
+            schema_name,
+            table,
+        ) {
+            CountStrategy::Unsupported => CountPlan::Unsupported,
+            CountStrategy::Exact => CountPlan::Exact,
+            CountStrategy::Estimated => CountPlan::Estimated,
+        }
+    };
+    // The exact `COUNT(*)` is always built (DB-15): the preview shows it, and
+    // a read whose estimate came back unusable falls back to it — the fallback
+    // and the plan must ask the same question, so the statement exists in
+    // exactly one place.
+    let exact_count_statement = QueryExecutor::build_count_sql(
+        &schema.table_name,
+        &schema.columns,
+        &shape.filters.map(<[FilterCondition]>::to_vec),
+        dialect,
+        shape.filter_logic,
+    )?;
+    let count_statement = match count_plan {
+        CountPlan::Exact => Some(exact_count_statement.clone()),
+        CountPlan::Estimated => Some(
+            driver
+                .count_estimate_sql(database, schema_name, table)
+                .ok_or_else(|| {
+                    CommandError::Internal(
+                        "the driver declared an estimated row count but produced no statement"
+                            .into(),
+                    )
+                })?,
+        ),
+        CountPlan::Reuse | CountPlan::Unsupported => None,
+    };
+
+    Ok(AssembledStatements {
+        select,
+        count_statement,
+        exact_count_statement,
+        count_plan,
+        plan,
+    })
 }
 
 async fn execute(
@@ -180,6 +357,43 @@ async fn execute(
     Ok(outputs)
 }
 
+/// Fetch the typed schema a read (or a preview) assembles against.
+///
+/// One round trip; the statement assembly is local. Shared by the page read
+/// and the DB-15 preview so the two cannot build against different schemas.
+#[allow(clippy::too_many_arguments)]
+async fn fetch_table_schema(
+    adapter: &crate::platform::PlatformAdapter,
+    runtime: &RuntimeConnectionUseCases,
+    call_context: &RequestContext,
+    target: &ExecutionTarget,
+    revision: Counter,
+    manual_handle: Option<&datazen_platform_api::dto::session::SessionHandle>,
+    table: &str,
+    database: &str,
+    schema: Option<&str>,
+) -> Result<TableSchema, CommandError> {
+    let outputs = execute(
+        adapter,
+        runtime,
+        call_context,
+        target,
+        revision,
+        manual_handle,
+        "get_table_schema",
+        json!({"table": table, "database": database, "schema": schema}),
+    )
+    .await?;
+    let definition = outputs
+        .iter()
+        .find(|output| output["kind"] == "commandResult")
+        .and_then(|output| output.get("data"))
+        .and_then(|data| data.get("schema"))
+        .ok_or_else(|| CommandError::Validation("Typed table schema result unavailable".into()))?;
+    serde_json::from_value(definition.clone())
+        .map_err(|_| CommandError::Validation("Invalid table schema result".into()))
+}
+
 pub async fn read(
     state: &AppState,
     request: TableReadRequest,
@@ -230,146 +444,65 @@ pub async fn read(
         .database
         .as_deref()
         .ok_or_else(|| CommandError::Validation("Table database required".into()))?;
-    let outputs = execute(
+    let schema = fetch_table_schema(
         adapter,
         &runtime,
         &context,
         &target,
         revision,
         request.manual_handle.as_ref(),
-        "get_table_schema",
-        json!({
-            "table": request.context.table, "database": database, "schema": request.context.schema,
-        }),
+        &request.context.table,
+        database,
+        request.context.schema.as_deref(),
     )
     .await?;
-    let definition = outputs
-        .iter()
-        .find(|output| output["kind"] == "commandResult")
-        .and_then(|output| output.get("data"))
-        .and_then(|data| data.get("schema"))
-        .ok_or_else(|| CommandError::Validation("Typed table schema result unavailable".into()))?;
-    let schema: TableSchema = serde_json::from_value(definition.clone())
-        .map_err(|_| CommandError::Validation("Invalid table schema result".into()))?;
     // SQL construction depends on the dialect contract only; execution below
     // still goes through the driver's explicit target path.
     let dialect = datazen_driver_api::LegacySqlDialect::new(driver.as_ref());
-    // The primary key has one source: the schema's own normalised list. The
-    // column flags are a second, possibly stale, copy of the same fact, and
-    // a driver that fills one and not the other used to lose its key here
-    // and order by the first column instead.
-    let primary_keys = schema.effective_primary_keys();
-    table_browsing::report_pk_source_disagreement(
-        &schema.table_name,
-        &schema.columns,
-        &primary_keys,
-    );
-    let default_order = table_browsing::resolve_default_order(
+    // One assembly for everything (DB-15): the page statement, the count
+    // statement and the count plan are built in the one place a preview can
+    // reach, so what runs is what a preview would have shown.
+    let assembled = assemble_statements(
         driver.as_ref(),
-        &schema.columns,
-        &primary_keys,
-        request.default_order_columns.as_deref(),
-    );
-    // The order of this read, and whether it is a total order. The decision
-    // is made once, here: the statement, the boundary and the answer to the
-    // caller all read it from the same place.
-    let explicit_sort = request
-        .sorts
-        .and_then(|sorts| sorts.into_iter().next())
-        .map(|sort| OrderBy {
-            column: sort.column,
-            descending: sort.descending,
-        });
-    let order = resolve_order_spec(
-        explicit_sort
-            .as_ref()
-            .map(|sort| (sort.column.as_str(), sort.descending)),
-        &default_order,
-        &primary_keys,
-    );
-    let decision = keyset_decision(order, &schema.columns);
-    let plan = resolve_paging(
-        driver.as_ref(),
-        &decision,
-        request.after_key.as_deref(),
-        request.page,
         &dialect,
-        u64::from(request.page_size),
-    );
-
-    // A caller that needs keyset paging and cannot have it is told so; a
-    // caller that does not care reads the page by offset and is told that
-    // too, in the answer.
-    if let Some(message) = keyset_refusal(
-        &plan,
-        request.require_keyset.unwrap_or(false),
-        request.cursor_depth.unwrap_or(0),
-    ) {
-        return Err(CommandError::Validation(message));
-    }
-
-    let select =
-        datazen_feature_core::services::query_executor::table_read_sql::build_paged_select_sql(
-            &schema.table_name,
-            &schema.columns,
-            request.filters.clone(),
-            &plan.order,
-            plan.mode,
-            plan.predicate.as_deref(),
-            &dialect,
-            u64::from(request.page_size),
-            u64::from(request.page).saturating_mul(u64::from(request.page_size)),
-            request.filter_logic.as_deref(),
-        )?
-        .sql;
-    let caller_skip_count = request.skip_count.unwrap_or(false);
-    let mut count_plan = if caller_skip_count {
-        CountPlan::Reuse
-    } else {
-        match table_browsing::resolve_count_strategy(
-            driver.as_ref(),
-            request.count_strategy,
-            false,
-            table_browsing::has_effective_filters(request.filters.as_deref()),
-            database,
-            request.context.schema.as_deref(),
-            &request.context.table,
-        ) {
-            CountStrategy::Unsupported => CountPlan::Unsupported,
-            CountStrategy::Exact => CountPlan::Exact,
-            CountStrategy::Estimated => CountPlan::Estimated,
-        }
-    };
-    // The statement that counts exactly. Built once: the batch below and the
-    // fallback that rescues an unusable estimate must ask the same question.
-    let count_statement = || {
-        QueryExecutor::build_count_sql(
-            &schema.table_name,
-            &schema.columns,
-            &request.filters,
-            &dialect,
-            request.filter_logic.as_deref(),
-        )
-    };
-    let exact_count_batch = || count_statement().map(|count| format!("{count};\n{select}"));
+        &schema,
+        database,
+        request.context.schema.as_deref(),
+        &request.context.table,
+        ReadQueryShape {
+            page: request.page,
+            page_size: request.page_size,
+            filters: request.filters.as_deref(),
+            sorts: request.sorts.as_deref(),
+            filter_logic: request.filter_logic.as_deref(),
+            count_strategy: request.count_strategy,
+            default_order_columns: request.default_order_columns.as_deref(),
+            after_key: request.after_key.as_deref(),
+            require_keyset: request.require_keyset.unwrap_or(false),
+            cursor_depth: request.cursor_depth.unwrap_or(0),
+            skip_count: request.skip_count.unwrap_or(false),
+        },
+    )?;
+    let select = assembled.select;
+    let mut count_plan = assembled.count_plan;
     // The count travels in the same statement batch as the rows, so a read
     // still costs one round trip.
     let sql = match count_plan {
         CountPlan::Reuse | CountPlan::Unsupported => select.clone(),
-        CountPlan::Exact => exact_count_batch()?,
+        // The statement is assembled already; the batch is the only way the
+        // count and the rows share one round trip.
+        CountPlan::Exact => {
+            let count = assembled.count_statement.ok_or_else(|| {
+                CommandError::Internal("Exact count statement unavailable".into())
+            })?;
+            format!("{count};\n{select}")
+        }
         CountPlan::Estimated => {
-            let estimate = driver
-                .count_estimate_sql(
-                    database,
-                    request.context.schema.as_deref(),
-                    &request.context.table,
+            let estimate = assembled.count_statement.ok_or_else(|| {
+                CommandError::Internal(
+                    "the driver declared an estimated row count but produced no statement".into(),
                 )
-                .ok_or_else(|| {
-                    CommandError::Internal(
-                        "the driver declared an estimated row count but produced no statement"
-                            .into(),
-                    )
-                })?;
+            })?;
             format!("{estimate};\n{select}")
         }
     };
@@ -473,7 +606,7 @@ pub async fn read(
             revision,
             request.manual_handle.as_ref(),
             "query",
-            json!({"sql": count_statement()?}),
+            json!({"sql": assembled.exact_count_statement.clone()}),
         )
         .await;
         if let Ok(outputs) = counted {
@@ -509,7 +642,7 @@ pub async fn read(
         },
     };
     let paging = paging_info(
-        &plan,
+        &assembled.plan,
         &schema.columns,
         &rows,
         request.page,
@@ -524,5 +657,171 @@ pub async fn read(
         page: request.page,
         page_size: request.page_size,
         paging: Some(paging),
+    })
+}
+
+/// The request of a DB-15 preview: the query shape of a page read, plus the
+/// one switch that only a preview makes sense of.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableReadPreviewRequest {
+    pub manual_handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    pub context: RowChangeTableContext,
+    pub page: u32,
+    pub page_size: u32,
+    pub filters: Option<Vec<FilterCondition>>,
+    pub sorts: Option<Vec<SortCondition>>,
+    pub filter_logic: Option<String>,
+    pub count_strategy: Option<CountStrategy>,
+    pub default_order_columns: Option<Vec<String>>,
+    pub after_key: Option<Vec<CursorValue>>,
+    pub require_keyset: Option<bool>,
+    pub cursor_depth: Option<u32>,
+    /// Read the whole filtered table instead of one page: the paging frame
+    /// (`LIMIT`/`OFFSET` and the seek predicate) is dropped.
+    ///
+    /// The filtered full-table export streams this statement — the export and
+    /// the grid read the same builder, so the exported rows are the rows the
+    /// filters really select (DB-15).
+    pub unbounded: Option<bool>,
+}
+
+/// The answer of a DB-15 preview: the statements a read would send.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableReadPreviewSql {
+    /// The statement that reads the rows.
+    ///
+    /// Paged by default; the whole filtered table when the request asked for
+    /// `unbounded`.
+    pub data_sql: String,
+    /// The statement that counts the rows, when one runs with the read.
+    ///
+    /// `None` when no count runs (the strategy is unsupported, or the caller
+    /// of a real read would reuse a total it already holds — a preview never
+    /// says "reuse": it shows the count statement the database would answer).
+    pub count_sql: Option<String>,
+    /// The exact `COUNT(*)` of the filtered table, always present.
+    ///
+    /// A preview that asked for an estimate still shows this: the estimate is
+    /// what would run, the count is what the estimate falls back to.
+    pub exact_count_sql: String,
+    /// How the count would be read: `exact`, `estimated` or `unsupported`.
+    pub count_kind: CountStrategy,
+}
+
+/// Show the statements a table read would send, without sending them (DB-15).
+///
+/// The preview assembles through the same code a real read executes
+/// through — the schema round trip, the filter validation, the order and the
+/// paging decision are all the real ones — so what the user is shown is the
+/// statement the product actually sends, not a description of it.
+pub async fn preview(
+    state: &AppState,
+    request: TableReadPreviewRequest,
+) -> Result<TableReadPreviewSql, CommandError> {
+    super::validate_table_context(&request.context)?;
+    if request.page_size == 0 || request.page_size > 10000 {
+        return Err(CommandError::Validation("Invalid table page size".into()));
+    }
+    let (config, metadata) = state
+        .store
+        .platform_profile(&request.context.connection_id)
+        .await
+        .ok_or_else(|| CommandError::NotFound("Connection profile unavailable".into()))?;
+    if !metadata.enabled || config.database_type != request.context.driver_type {
+        return Err(CommandError::Validation(
+            "Table connection context changed".into(),
+        ));
+    }
+    let driver = state
+        .driver_registry
+        .get_sql_driver_by_name(config.database_type.as_str())
+        .await
+        .ok_or_else(|| CommandError::NotConfigured("SQL driver unavailable".into()))?;
+    // The same refusal a real read gives: a preview of a statement this
+    // database would refuse is a lie, not a preview.
+    datazen_feature_core::services::validate_filters(
+        driver.supported_filter_operators(),
+        request.filters.as_deref().unwrap_or_default(),
+    )?;
+    let adapter = state.platform_require().map_err(into_command_error)?;
+    let context = adapter.begin_call().context().clone();
+    let runtime = adapter.runtime().map_err(into_command_error)?;
+    let target = ExecutionTarget::new(
+        ConnectionId::new(&request.context.connection_id),
+        NamespaceTarget::new(
+            request.context.database.clone(),
+            None,
+            request.context.schema.clone(),
+            Vec::new(),
+        ),
+    )
+    .with_object(ObjectTarget::new("table", request.context.table.clone()));
+    let revision = Counter::new(metadata.config_revision);
+    let database = request
+        .context
+        .database
+        .as_deref()
+        .ok_or_else(|| CommandError::Validation("Table database required".into()))?;
+    let schema = fetch_table_schema(
+        adapter,
+        &runtime,
+        &context,
+        &target,
+        revision,
+        request.manual_handle.as_ref(),
+        &request.context.table,
+        database,
+        request.context.schema.as_deref(),
+    )
+    .await?;
+    let dialect = datazen_driver_api::LegacySqlDialect::new(driver.as_ref());
+    let shape = ReadQueryShape {
+        page: request.page,
+        page_size: request.page_size,
+        filters: request.filters.as_deref(),
+        sorts: request.sorts.as_deref(),
+        filter_logic: request.filter_logic.as_deref(),
+        count_strategy: request.count_strategy,
+        default_order_columns: request.default_order_columns.as_deref(),
+        after_key: request.after_key.as_deref(),
+        require_keyset: request.require_keyset.unwrap_or(false),
+        cursor_depth: request.cursor_depth.unwrap_or(0),
+        // A preview never "reuses" a total: its job is to show the statements,
+        // and the reuse decision is a caller's optimisation, not a statement.
+        skip_count: false,
+    };
+    let assembled = assemble_statements(
+        driver.as_ref(),
+        &dialect,
+        &schema,
+        database,
+        request.context.schema.as_deref(),
+        &request.context.table,
+        shape,
+    )?;
+    let data_sql = if request.unbounded.unwrap_or(false) {
+        build_unbounded_select_sql(
+            &schema.table_name,
+            &schema.columns,
+            request.filters,
+            &assembled.plan.order,
+            &dialect,
+            request.filter_logic.as_deref(),
+        )?
+    } else {
+        assembled.select
+    };
+    let count_kind = match assembled.count_plan {
+        CountPlan::Reuse | CountPlan::Unsupported => CountStrategy::Unsupported,
+        CountPlan::Exact => CountStrategy::Exact,
+        CountPlan::Estimated => CountStrategy::Estimated,
+    };
+    Ok(TableReadPreviewSql {
+        data_sql,
+        count_sql: assembled.count_statement,
+        exact_count_sql: assembled.exact_count_statement,
+        count_kind,
     })
 }

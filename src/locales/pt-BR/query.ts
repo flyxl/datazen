@@ -271,6 +271,9 @@ const pack = {
   'pagination.estimatedLessThanActual':
     'Esta página está vazia. O número real de linhas pode ser menor que a estimativa — use "Contar" para verificar.',
   'defaultSort.noPrimaryKey': 'Sem chave primária — a ordenação usa a primeira coluna.',
+  'tableNoPk.editBanner':
+    'Esta tabela não tem chave primária — não é possível endereçar linhas com segurança; a grade é somente leitura.',
+  'tableNoPk.editInSql': 'Editar em SQL',
   'defaultSort.custom': 'Ordem personalizada',
   'defaultSort.panelLabel': 'Ordenar',
   'defaultSort.inherit': 'Seguir configuração',

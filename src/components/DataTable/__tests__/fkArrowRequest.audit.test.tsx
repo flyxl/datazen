@@ -38,6 +38,8 @@ vi.mock('@tauri-apps/api/core', () => ({
 const schemaState = vi.hoisted(() => ({ foreignKeys: [] as unknown[] }));
 
 vi.mock('../../../lib/schemaCache', () => ({
+  // `fkReferencedBy` 在模块作用域调用它注册失效回调；返回退订空函数即可。
+  subscribeSchemaInvalidation: () => () => undefined,
   getCachedTableSchema: async () => ({
     tableName: 'orders',
     columns: [],
@@ -122,13 +124,7 @@ function FkGrid({ rows }: { rows: Record<string, unknown>[] }) {
     () => rows.map((row) => COLUMNS.map((column) => row[column.name] ?? null)),
     [rows],
   );
-  return (
-    <DataTable
-      columns={COLUMNS}
-      rows={rowArrays}
-      foreignKeys={navigation.foreignKeys}
-    />
-  );
+  return <DataTable columns={COLUMNS} rows={rowArrays} foreignKeys={navigation.foreignKeys} />;
 }
 
 function arrowOf(container: HTMLElement, rowIndex: number, columnName: string): HTMLElement | null {
@@ -177,11 +173,14 @@ afterEach(cleanup);
 describe('audit: the request carries the row that was clicked', () => {
   it('carries the columns and the values of the clicked row', async () => {
     const { container } = render(
-      <FkGrid rows={[{ id: 1, customer_id: 7 }, { id: 2, customer_id: 9 }]} />,
+      <FkGrid
+        rows={[
+          { id: 1, customer_id: 7 },
+          { id: 2, customer_id: 9 },
+        ]}
+      />,
     );
-    await waitFor(() =>
-      expect(arrowOf(container, 1, 'customer_id')).not.toBeNull(),
-    );
+    await waitFor(() => expect(arrowOf(container, 1, 'customer_id')).not.toBeNull());
 
     // The **second** row is the one that is clicked.
     fireEvent.click(arrowOf(container, 1, 'customer_id') as HTMLElement);
@@ -196,9 +195,7 @@ describe('audit: the request carries the row that was clicked', () => {
 
   it('carries both members of a composite key, in pairing order', async () => {
     schemaState.foreignKeys = [COMPOSITE];
-    const { container } = render(
-      <FkGrid rows={[{ id: 1, parent_a: 3, parent_b: 4 }]} />,
-    );
+    const { container } = render(<FkGrid rows={[{ id: 1, parent_a: 3, parent_b: 4 }]} />);
     await waitFor(() => expect(arrowOf(container, 0, 'parent_a')).not.toBeNull());
 
     fireEvent.click(arrowOf(container, 0, 'parent_a') as HTMLElement);
@@ -211,13 +208,9 @@ describe('audit: the request carries the row that was clicked', () => {
 
   it('never sends a NULL member, and never asks for IS NULL', async () => {
     schemaState.foreignKeys = [COMPOSITE];
-    const { container } = render(
-      <FkGrid rows={[{ id: 1, parent_a: 3, parent_b: null }]} />,
-    );
+    const { container } = render(<FkGrid rows={[{ id: 1, parent_a: 3, parent_b: null }]} />);
     // The group is incomplete: there is no arrow at all.
-    await waitFor(() =>
-      expect(container.querySelector('[data-dt-fk]')).not.toBeNull(),
-    );
+    await waitFor(() => expect(container.querySelector('[data-dt-fk]')).not.toBeNull());
     expect(container.querySelectorAll('[data-dt-fk-click="true"]')).toHaveLength(0);
 
     // And nothing was asked of the host.

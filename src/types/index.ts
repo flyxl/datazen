@@ -274,10 +274,10 @@ export type {
 } from '@datazen/backend-client';
 
 import type { UserPreferences, ExecutionSettings } from '@datazen/backend-client';
-import type { DefaultTableSort, RowCountMode } from './settings';
+import type { DefaultTableSort, GridDensity, RowCountMode } from './settings';
 import type { PagePagingInfo } from './keyset';
 
-export type { DefaultTableSort, RowCountMode } from './settings';
+export type { DefaultTableSort, GridDensity, RowCountMode } from './settings';
 
 export interface AppSettings extends UserPreferences, ExecutionSettings {
   sqlSyntaxTheme?: string;
@@ -316,6 +316,28 @@ export interface AppSettings extends UserPreferences, ExecutionSettings {
    * before this setting existed.
    */
   defaultTableSort: DefaultTableSort;
+  /**
+   * The row density of the data grids (DB-17): a **delta** each grid applies
+   * to its own default row height. `standard` is a delta of zero — the
+   * behaviour of every grid before this setting existed, and the default.
+   */
+  gridDensity: GridDensity;
+  /**
+   * Alternating row backgrounds in the data grids (DB-17). Default `true`:
+   * odd rows have been tinted since the grids exist — off is the opt-in.
+   */
+  gridAlternatingRows: boolean;
+  /**
+   * The row-number gutter of the data grids (DB-17). Default `true`: the `#`
+   * column has always been there — off is the opt-in, and it trades the
+   * gutter's click-to-select affordance for one more column of data.
+   */
+  gridRowNumbers: boolean;
+  /**
+   * Auto-hide grid scrollbars (DB-17): visible only while the grid is
+   * hovered. Default `false` — scrollbars stay visible, as they always were.
+   */
+  gridAutoHideScrollbar: boolean;
 }
 
 export interface SortCondition {

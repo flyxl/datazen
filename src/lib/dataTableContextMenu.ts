@@ -1,5 +1,5 @@
 import type { NativeMenuItemDef } from './nativeContextMenu';
-import type { DatabaseType } from '../types';
+import type { DatabaseType, SortCondition } from '../types';
 import { escapeIdent, getEscapeSqlValue } from './databaseTypes';
 import { rowToNamedRecord as clipboardNamedRecord, serializeCells } from './gridClipboard';
 import {
@@ -27,6 +27,11 @@ export type DataTableContextMenuLabels = {
   /** "Restore This Row" — offered on a row that is marked for deletion (DB-06). */
   restoreRow: string;
   /**
+   * "Rows referencing this row" (DB-20). Optional: a caller that does not
+   * offer the reverse jump keeps the menu it had before DB-20.
+   */
+  referencedBy?: string;
+  /**
    * The write entries of the "Set Value" submenu (DB-05).
    *
    * They are optional so a caller that does not offer the submenu does not
@@ -53,14 +58,40 @@ export type DataTableContextMenuLabels = {
   copySelectedCellsAsTsv?: string;
   /** "Copy as TSV with Header". */
   copySelectedCellsAsTsvWithHeader?: string;
-  /** "Copy as CSV". */
+  /** "Copy as CSV" — with a header line (DB-10's "CSV+Header"). */
   copySelectedCellsAsCsv?: string;
   /** "Copy as JSON (2D array)". */
   copySelectedCellsAsJson?: string;
+  /** "Copy as Plain Text" — unquoted tab/newline only (DB-10). */
+  copySelectedCellsAsPlain?: string;
+  /** "Copy as HTML Table" — the `text/html` clipboard flavor (DB-10). */
+  copySelectedCellsAsHtml?: string;
+  /** "Copy as Markdown Table" — a GitHub-style pipe table (DB-10). */
+  copySelectedCellsAsMarkdown?: string;
   /** "Paste to Selected Cells". */
   pasteSelectedCells?: string;
   /** "Paste Rows" — the row-level entry DB-04 fills in; DB-03 only reserves the slot. */
   pasteRows?: string;
+  /* ── Multi-column sort (DB-11). All optional: a caller that does not offer
+     the header sort block keeps its exact previous menu. ── */
+  /** "Sort (multi-column)" — the submenu title of the header sort block. */
+  sortMulti?: string;
+  /** "Ascending" — the column joins the sort list ascending. */
+  sortAscending?: string;
+  /** "Descending" — the column joins the sort list descending. */
+  sortDescending?: string;
+  /** "Remove this column (from the sort)" — offered on a sorted column. */
+  removeSortColumn?: string;
+  /** "Clear all sorting". */
+  clearSorts?: string;
+  /* ── Frozen columns (DB-12). All optional: a caller that does not offer
+     the freeze block keeps its exact previous menu. ── */
+  /** "Freeze through this column". */
+  freezeThrough?: string;
+  /** "Unfreeze columns". */
+  unfreezeColumns?: string;
+  /** "Column Stats" — the server-side aggregates of one column (DB-12). */
+  columnStats?: string;
 };
 
 export type DataTableContextMenuHandlers = {
@@ -79,18 +110,41 @@ export type DataTableContextMenuHandlers = {
   onExport?: () => void;
   /** Undo the delete mark of the right-clicked row (DB-06). */
   onRestoreRow?: () => void;
+  /** Open the tabs of the rows that reference the right-clicked row (DB-20). */
+  onShowReferencingRows?: () => void;
   /** Write the cell without opening an editor (DB-05). */
   onSetValue?: (id: SetValueActionId) => void;
   /** Read the candidate values of an enumeration column (DB-05). */
   onLoadCandidates?: () => void;
   /** Copy the selected region as TSV (DB-03). */
   onCopySelectedCells?: () => void;
-  /** Copy the selected region in an explicit format (DB-03). */
-  onCopySelectedCellsAs?: (format: 'tsv' | 'csv' | 'json', options?: { includeHeader?: boolean }) => void;
+  /** Copy the selected region in an explicit format (DB-03; the three
+   *  DB-10 formats extend the union). */
+  onCopySelectedCellsAs?: (
+    format: 'tsv' | 'csv' | 'json' | 'plain' | 'html' | 'markdown',
+    options?: { includeHeader?: boolean },
+  ) => void;
   /** Paste the system clipboard into the selected region (DB-03). */
   onPasteSelectedCells?: () => void;
   /** Paste whole rows (DB-04 owns the handler). */
   onPasteRows?: () => void;
+  /* ── Multi-column sort (DB-11). ── */
+  /** Add the right-clicked column to the sort list, ascending. */
+  onSortAscending?: (column: string) => void;
+  /** Add the right-clicked column to the sort list, descending. */
+  onSortDescending?: (column: string) => void;
+  /** Remove the right-clicked column from the sort list. */
+  onRemoveSort?: (column: string) => void;
+  /** Drop the whole sort list. */
+  onClearSorts?: () => void;
+  /* ── Frozen columns (DB-12). ── */
+  /** Freeze through the right-clicked column (that many leading columns). */
+  onFreezeThrough?: (throughIndex: number) => void;
+  /** Unfreeze every column. */
+  onUnfreezeColumns?: () => void;
+  /* ── Column statistics (DB-12). ── */
+  /** Ask for the six server-side aggregates of the right-clicked column. */
+  onColumnStats?: (column: string) => void;
 };
 
 export type BuildDataTableContextMenuArgs = {
@@ -100,6 +154,35 @@ export type BuildDataTableContextMenuArgs = {
   hasCellContext?: boolean;
   /** Right-clicked a column header (column resolved). */
   hasHeaderContext?: boolean;
+  /**
+   * The multi-column sort block of the header menu (DB-11). Omitted — or
+   * given without handlers — the header menu keeps its shape from before
+   * DB-11, byte for byte.
+   */
+  headerSort?: {
+    /** The right-clicked column. */
+    column: string;
+    /** The sorts in force, in `ORDER BY` order. */
+    sorts: SortCondition[];
+  };
+  /**
+   * The freeze block of the header menu (DB-12). Omitted — or given without
+   * handlers — the header menu keeps its pre-DB-12 shape.
+   */
+  headerFreeze?: {
+    /** The displayed index of the right-clicked column. */
+    index: number;
+    /** How many leading columns are currently frozen; `0` = none. */
+    frozen: number;
+  };
+  /**
+   * The column-statistics entry of the header menu (DB-12). Omitted — or
+   * given without the handler — the header menu keeps its exact shape.
+   */
+  headerStats?: {
+    /** The name of the right-clicked column. */
+    column: string;
+  };
   /** One or more rows are selected. */
   hasSelectedRows?: boolean;
   /**
@@ -364,10 +447,7 @@ export function serializeDataTableColumnValues(columnIndex: number, rows: unknow
  * The rules live in `components/DataTable/editors/setValueMenu.ts`; this
  * only maps an action to the text the caller supplied.
  */
-function setValueActionLabel(
-  id: SetValueActionId,
-  labels: DataTableContextMenuLabels,
-): string {
+function setValueActionLabel(id: SetValueActionId, labels: DataTableContextMenuLabels): string {
   switch (id) {
     case 'setNull':
       return labels.setNull;
@@ -387,17 +467,13 @@ function setValueActionLabel(
  * handler; otherwise the menu keeps its shape from before DB-05, with
  * `Set NULL` inside `more-actions` (the result grid still relies on it).
  */
-function buildSetValueSubmenu(
-  args: BuildDataTableContextMenuArgs,
-): NativeMenuItemDef | null {
+function buildSetValueSubmenu(args: BuildDataTableContextMenuArgs): NativeMenuItemDef | null {
   const { labels, handlers, setValue } = args;
   if (!setValue || !handlers.onSetValue) return null;
   const items = resolveSetValueActions(setValue)
     .map((action) =>
-      item(
-        `set-value-${action.id}`,
-        setValueActionLabel(action.id, labels),
-        () => handlers.onSetValue?.(action.id),
+      item(`set-value-${action.id}`, setValueActionLabel(action.id, labels), () =>
+        handlers.onSetValue?.(action.id),
       ),
     )
     .filter((entry): entry is NativeMenuItemDef => entry !== null);
@@ -453,14 +529,27 @@ export function buildDataTableContextMenuItems(
         item('copy-selected-cells-as-tsv', labels.copySelectedCellsAsTsv ?? '', () =>
           handlers.onCopySelectedCellsAs?.('tsv'),
         ),
-        item('copy-selected-cells-as-tsv-header', labels.copySelectedCellsAsTsvWithHeader ?? '', () =>
-          handlers.onCopySelectedCellsAs?.('tsv', { includeHeader: true }),
+        item(
+          'copy-selected-cells-as-tsv-header',
+          labels.copySelectedCellsAsTsvWithHeader ?? '',
+          () => handlers.onCopySelectedCellsAs?.('tsv', { includeHeader: true }),
         ),
         item('copy-selected-cells-as-csv', labels.copySelectedCellsAsCsv ?? '', () =>
           handlers.onCopySelectedCellsAs?.('csv'),
         ),
         item('copy-selected-cells-as-json', labels.copySelectedCellsAsJson ?? '', () =>
           handlers.onCopySelectedCellsAs?.('json'),
+        ),
+        // The three DB-10 formats: unquoted plain text, a text/html table for
+        // Notion / Excel / Google Sheets, and a GitHub-style pipe table.
+        item('copy-selected-cells-as-plain', labels.copySelectedCellsAsPlain ?? '', () =>
+          handlers.onCopySelectedCellsAs?.('plain'),
+        ),
+        item('copy-selected-cells-as-html', labels.copySelectedCellsAsHtml ?? '', () =>
+          handlers.onCopySelectedCellsAs?.('html'),
+        ),
+        item('copy-selected-cells-as-markdown', labels.copySelectedCellsAsMarkdown ?? '', () =>
+          handlers.onCopySelectedCellsAs?.('markdown'),
         ),
       ),
     ]);
@@ -486,7 +575,81 @@ export function buildDataTableContextMenuItems(
   };
 
   if (hasHeaderContext && !hasCellContext) {
+    // The multi-column sort block (DB-11). "Remove" is visible but disabled
+    // on a column that is not sorted — the entry answers "how do I undo
+    // this", and a column that never took part in the sort has nothing to
+    // undo. "Clear all" is offered the same way when a sort exists at all.
+    const sortBlock = (): NativeMenuItemDef[] => {
+      const hs = args.headerSort;
+      if (!hs) return [];
+      const columnInSorts = hs.sorts.some((sort) => sort.column === hs.column);
+      // Every entry is offered only when its handler is: a caller that offers
+      // no sort action keeps its exact pre-DB-11 header menu.
+      const menu = submenu(
+        'sort-multi',
+        labels.sortMulti ?? '',
+        push(
+          item(
+            'sort-ascending',
+            labels.sortAscending ?? '',
+            handlers.onSortAscending ? () => handlers.onSortAscending?.(hs.column) : undefined,
+          ),
+          item(
+            'sort-descending',
+            labels.sortDescending ?? '',
+            handlers.onSortDescending ? () => handlers.onSortDescending?.(hs.column) : undefined,
+          ),
+          enabledItem(
+            'remove-sort-column',
+            labels.removeSortColumn ?? '',
+            handlers.onRemoveSort ? () => handlers.onRemoveSort?.(hs.column) : undefined,
+            columnInSorts,
+          ),
+        ),
+      );
+      const clear = enabledItem(
+        'clear-sorts',
+        labels.clearSorts ?? '',
+        handlers.onClearSorts,
+        hs.sorts.length > 0,
+      );
+      return push(menu, clear);
+    };
+    // The freeze block (DB-12): "Freeze through this column" is a no-op when
+    // exactly those columns are already frozen, so it is disabled then;
+    // "Unfreeze" is disabled when nothing is frozen.
+    const freezeBlock = (): NativeMenuItemDef[] => {
+      const hf = args.headerFreeze;
+      if (!hf) return [];
+      return push(
+        enabledItem(
+          'freeze-through',
+          labels.freezeThrough ?? '',
+          handlers.onFreezeThrough ? () => handlers.onFreezeThrough?.(hf.index) : undefined,
+          hf.index + 1 !== hf.frozen,
+        ),
+        enabledItem(
+          'unfreeze-columns',
+          labels.unfreezeColumns ?? '',
+          handlers.onUnfreezeColumns,
+          hf.frozen > 0,
+        ),
+      );
+    };
+    const sorts = [...sortBlock(), ...freezeBlock()];
     const headerItems = push(
+      ...sorts,
+      ...(sorts.length > 0 ? [{ kind: 'separator' } as NativeMenuItemDef] : []),
+      // The stats entry (DB-12) sits with the column inspections — an
+      // "ask about this column" next to "copy this column", after the
+      // column-*arrangement* blocks.
+      item(
+        'column-stats',
+        labels.columnStats ?? '',
+        args.headerStats && handlers.onColumnStats
+          ? () => handlers.onColumnStats?.(args.headerStats!.column)
+          : undefined,
+      ),
       item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),
       item('copy-column-data', labels.copyColumnData, handlers.onCopyColumnData),
     );
@@ -526,6 +689,13 @@ export function buildDataTableContextMenuItems(
     const restore = canRestoreRow
       ? push(item('restore-row', labels.restoreRow, handlers.onRestoreRow))
       : [];
+    // The reverse jump (DB-20): "who references this row?" — offered next to
+    // the row's own actions, before the danger zone.
+    const referencedBy = handlers.onShowReferencingRows
+      ? push(
+          item('show-referencing-rows', labels.referencedBy ?? '', handlers.onShowReferencingRows),
+        )
+      : [];
 
     const moreActions = push(
       item('copy-as-json', labels.copyAsJson, handlers.onCopyAsJson),
@@ -534,9 +704,7 @@ export function buildDataTableContextMenuItems(
       item('copy-as-csv', labels.copyAsCsv, handlers.onCopyAsCsv),
       item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),
       item('copy-column-data', labels.copyColumnData, handlers.onCopyColumnData),
-      canSetNull && !usesSetValueMenu
-        ? item('set-null', labels.setNull, handlers.onSetNull)
-        : null,
+      canSetNull && !usesSetValueMenu ? item('set-null', labels.setNull, handlers.onSetNull) : null,
       hasSelectedRows
         ? item('copy-selected-rows', labels.copySelectedRows, handlers.onCopySelectedRows)
         : null,
@@ -546,7 +714,7 @@ export function buildDataTableContextMenuItems(
     if (setValueMenu) {
       out = [...out, setValueMenu];
     }
-    const dangerZone = [...danger, ...restore];
+    const dangerZone = [...referencedBy, ...danger, ...restore];
     if (dangerZone.length > 0) {
       out = out.length > 0 ? [...out, { kind: 'separator' }, ...dangerZone] : dangerZone;
     }
@@ -577,6 +745,12 @@ export function buildDataTableContextMenuItems(
       : null,
   );
 
+  // The reverse jump on a selection (DB-20): the right-clicked row is the
+  // one the referencing rows point at, even when others are selected too.
+  const referencedBy = handlers.onShowReferencingRows
+    ? push(item('show-referencing-rows', labels.referencedBy ?? '', handlers.onShowReferencingRows))
+    : [];
+
   const danger =
     canDelete && hasSelectedRows
       ? push(item('delete-row', labels.deleteRow, handlers.onDeleteRow))
@@ -592,6 +766,9 @@ export function buildDataTableContextMenuItems(
   );
 
   let out = frequent;
+  if (referencedBy.length > 0) {
+    out = out.length > 0 ? [...out, ...referencedBy] : referencedBy;
+  }
   if (danger.length > 0) {
     out = out.length > 0 ? [...out, { kind: 'separator' }, ...danger] : danger;
   }

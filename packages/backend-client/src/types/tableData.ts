@@ -479,6 +479,72 @@ export interface ResolveForeignKeyTargetsRequest {
   /** The local column values, positionally paired with `columns`. */
   values: TableValue[];
   limit?: number;
+  /**
+   * Browse mode (DB-20): the in-cell selector asks for what the target table
+   * **offers** — the first `limit + 1` rows of the referenced columns —
+   * instead of looking the current value up. The key `values` are ignored on
+   * this path, so the selector may open before anything is picked.
+   */
+  browse?: boolean;
+}
+
+/** How the search value must match a column's value (DB-19). */
+export type ValueSearchMode = 'contains' | 'exact' | 'prefix' | 'suffix';
+
+/** The request of one table's value search (DB-19). */
+export interface SearchTableValuesRequest {
+  dbSessionId: string;
+  /** The table to scan. */
+  table: string;
+  /** The columns to search — the caller picks them by type; the host never guesses. */
+  columns: string[];
+  /** The value to look for. */
+  value: string;
+  /** How the value must match; `contains` when omitted. */
+  mode?: ValueSearchMode;
+  database?: string | null;
+  schema?: string | null;
+}
+
+/** The answer of one table's value search (DB-19). */
+export interface SearchTableValuesResult {
+  table: string;
+  /** The columns the statement actually searched. */
+  searchedColumns: string[];
+  /** The rows matching at least one column. */
+  matches: number;
+}
+
+/** The request of a reverse foreign-key catalog: who references this table? */
+export interface ListInboundForeignKeysRequest {
+  dbSessionId: string;
+  database?: string | null;
+  schema?: string | null;
+  /** The table the references point at. */
+  table: string;
+  qualifiedTable?: string | null;
+}
+
+/** One referencing constraint, as the reverse jump needs it. */
+export interface InboundForeignKeyRef {
+  /** The referencing table, in the driver's own naming. */
+  table: string;
+  schema: string | null;
+  constraintName: string;
+  /** The referencing table's own columns that carry the reference. */
+  columns: string[];
+  /** The referenced columns of **this** table, in pairing order. */
+  referencedColumns: string[];
+}
+
+/** The catalog: every inbound constraint the scan found, plus how far it got. */
+export interface InboundForeignKeyCatalog {
+  table: string;
+  database: string;
+  references: InboundForeignKeyRef[];
+  scannedTables: number;
+  /** The scan hit its cap before the table list ran out. */
+  truncated: boolean;
 }
 
 /**
@@ -559,4 +625,56 @@ export interface ResultCellWrite {
   rowIndex: number;
   column: string;
   value: TableValue;
+}
+
+/**
+ * The request of a SQL preview (DB-15): the query shape of a page read,
+ * plus the one switch only a preview makes sense of.
+ *
+ * The shape deliberately mirrors {@link TableDataRequest} minus the fields a
+ * preview has no use for (`skipCount`: a preview always shows the count
+ * statements, it never "reuses a total") — the backend assembles through the
+ * same code a real read executes, so what this returns is what the product
+ * would send.
+ */
+export interface TableReadPreviewRequest {
+  context: TableChangeContext;
+  manualHandle?: SessionHandle | null;
+  page: number;
+  pageSize: number;
+  filters?: FilterCondition[];
+  sorts?: SortCondition[];
+  filterLogic?: 'and' | 'or';
+  countStrategy?: CountStrategy;
+  defaultOrderColumns?: string[];
+  afterKey?: CursorValue[];
+  /**
+   * Read the whole filtered table instead of one page: the paging frame
+   * (`LIMIT`/`OFFSET` and the seek predicate) is dropped.
+   *
+   * The filtered full-table export streams this statement — the export and
+   * the grid read the same builder, so the exported rows are the rows the
+   * filters really select.
+   */
+  unbounded?: boolean;
+}
+
+/**
+ * The answer of a SQL preview (DB-15): the statements a read would send.
+ *
+ * Every field is text the backend assembled — the frontend never builds SQL
+ * of its own for the preview, so the preview cannot drift from what runs.
+ */
+export interface TableReadPreviewSql {
+  /** The statement that reads the rows (paged, or unbounded on request). */
+  dataSql: string;
+  /** The statement that counts the rows, when one runs with the read. */
+  countSql: string | null;
+  /**
+   * The exact `COUNT(*)` of the filtered table, always present — an
+   * estimate falls back to this, and the preview shows both facts.
+   */
+  exactCountSql: string;
+  /** How the count would be read: `exact`, `estimated` or `unsupported`. */
+  countKind: CountStrategy;
 }

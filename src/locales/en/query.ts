@@ -277,6 +277,19 @@ const pack = {
     'The SQL file may contain statements that delete tables or rows (e.g. DROP, DELETE, TRUNCATE). Continue executing against the selected database?',
   'sqlFile.executeSuccess': 'SQL file executed successfully',
   'tableData.loadFailed': 'Failed to load table data',
+  // DB-13: the shared JSON / binary viewers (packages/ui), host-registered.
+  'jsonViewer.mode.tree': 'Tree',
+  'jsonViewer.mode.raw': 'Raw',
+  'jsonViewer.mode.pretty': 'Pretty',
+  'jsonViewer.mode.minify': 'Minify',
+  'jsonViewer.invalid': 'Not valid JSON',
+  'jsonViewer.expand': 'Expand',
+  'jsonViewer.collapse': 'Collapse',
+  'binaryViewer.bytes': '{count} bytes',
+  'binaryViewer.saveAsFile': 'Save as file…',
+  'binaryViewer.imagePreview': 'Embedded image preview',
+  'binaryViewer.hexTruncated':
+    'Showing {shown} of {total} hex rows; save as file to inspect the rest',
   'tableData.noPrimaryKey': 'Cannot commit: table has no primary key',
   'tableData.commitFailed': 'Failed to commit changes',
   'tableData.deleteFailed': 'Failed to delete rows',
@@ -345,6 +358,32 @@ const pack = {
   'tableData.highlightNewRow': 'New row',
   'dataTable.selected': 'Selected',
   'dataTable.sort': 'Sort',
+  // Multi-column sort (DB-11). New keys land in en only; the other nine
+  // locales resolve them through the en fallback until the next release.
+  'dataTable.sortMulti': 'Sort (multi-column)',
+  'dataTable.sortAscending': 'Ascending',
+  'dataTable.sortDescending': 'Descending',
+  'dataTable.removeSortColumn': 'Remove from Sort',
+  'dataTable.clearSorts': 'Clear All Sorting',
+  // Column tools (DB-12). New keys land in en only; the other nine
+  // locales resolve them through the en fallback until the next release.
+  'dataTable.freezeThrough': 'Freeze through This Column',
+  'dataTable.unfreezeColumns': 'Unfreeze Columns',
+  'dataTable.columnStats': 'Column Stats',
+  // The column-stats dialog (DB-12): six server-side aggregates of one
+  // column, opened from the header menu. en only; same fallback as above.
+  'columnStats.title': 'Column Stats',
+  'columnStats.rows': 'Total rows',
+  'columnStats.nonNull': 'Non-null values',
+  'columnStats.nulls': 'NULL values',
+  'columnStats.distinct': 'Distinct values',
+  'columnStats.min': 'Minimum',
+  'columnStats.max': 'Maximum',
+  'columnStats.avg': 'Average',
+  'columnStats.loading': 'Computing on the server…',
+  'columnStats.error': 'The column stats query failed.',
+  'columnStats.avgUnsupported':
+    'Average is not computed for this column type (only numeric types can be averaged).',
   'dataTable.selectRow': 'Select Row',
   'dataTable.copyRow': 'Copy Row',
   'dataTable.moreActions': 'More actions',
@@ -356,6 +395,7 @@ const pack = {
   'dataTable.copyColumnData': 'Copy Column Data',
   'dataTable.setNull': 'Set NULL',
   'dataTable.filterByValue': 'Filter by This Value',
+  'dataTable.referencedBy': 'Rows referencing this row',
   'dataTable.deleteRow': 'Delete Row',
   'dataTable.confirmDeleteRows': 'Delete {count} selected row(s)? This cannot be undone.',
   'dataTable.loading': 'Loading rows…',
@@ -370,6 +410,11 @@ const pack = {
   'dataTable.copySelectedCellsAsTsvWithHeader': 'Copy as TSV with header',
   'dataTable.copySelectedCellsAsCsv': 'Copy as CSV',
   'dataTable.copySelectedCellsAsJson': 'Copy as JSON (2D array)',
+  // The DB-10 copy formats. New keys land in en only; the other nine locales
+  // resolve them through the en fallback until the next release.
+  'dataTable.copySelectedCellsAsPlain': 'Copy as Plain Text',
+  'dataTable.copySelectedCellsAsHtml': 'Copy as HTML Table',
+  'dataTable.copySelectedCellsAsMarkdown': 'Copy as Markdown Table',
   'dataTable.pasteSelectedCells': 'Paste to Selected Cells',
   'dataTable.pasteRows': 'Paste Rows',
   'dataTable.copyFailed': 'Could not copy; the clipboard is unavailable.',
@@ -385,7 +430,8 @@ const pack = {
     '{count} cell(s) were skipped because the paste would leave this page. Go to the next page and paste the rest there.',
   'dataTable.pasteNoWritableColumn': 'None of the columns in the selection can be written.',
   'dataTable.readOnlyPasteDisabled': 'Cannot paste cells: connection or driver is read-only.',
-  'dataTable.pasteReadOnlyColumn': '{count} column(s) cannot be written and were skipped: {columns}',
+  'dataTable.pasteReadOnlyColumn':
+    '{count} column(s) cannot be written and were skipped: {columns}',
   'dataTable.pasteNotAllowedEmpty':
     'Row {row} has an empty value for {column}, which is NOT NULL. That cell was skipped.',
   'dataTable.pasteIdentityChanged':
@@ -433,12 +479,14 @@ const pack = {
   'pagination.countExact': 'Count',
   'pagination.counting': 'Counting…',
   'pagination.pageOnly': 'Page {page}',
-  'pagination.unstablePaging':
-    'No sort order is set — rows across pages may repeat or be skipped.',
+  'pagination.unstablePaging': 'No sort order is set — rows across pages may repeat or be skipped.',
   'pagination.estimatedLessThanActual':
     'This page is empty. The real row count may be lower than the estimate — use Count to check.',
   // The default order of a table read, and the panel's temporary override.
   'defaultSort.noPrimaryKey': 'No primary key — ordering by the first column.',
+  'tableNoPk.editBanner':
+    'This table has no primary key — rows cannot be safely addressed, so the grid is read-only.',
+  'tableNoPk.editInSql': 'Edit in SQL',
   'defaultSort.custom': 'Custom order',
   'defaultSort.panelLabel': 'Sort',
   'defaultSort.inherit': 'Follow setting',
@@ -461,6 +509,21 @@ const pack = {
   'filter.or': 'OR',
   'filter.value': 'Value',
   'filter.apply': 'Apply',
+  // DB-15: the SQL preview and the filtered export of the filter panel.
+  'filter.exportFiltered': 'Export…',
+  'filter.exportFilteredHint':
+    'Export the current filter results (entire table, streamed) directly',
+  'filter.previewSqlHint': 'Show the SQL statements this read would send',
+  'filter.previewSqlTitle': 'SQL preview',
+  'filter.previewSqlDescription':
+    'Exactly the statements the product sends — assembled by the same code that executes them.',
+  'filter.previewSqlData': 'Data statement',
+  'filter.previewSqlCount': 'Count statement',
+  'filter.previewSqlExactCount': 'Exact COUNT of the filtered table',
+  'filter.previewSqlLoading': 'Assembling the statements…',
+  'filter.previewSqlKind.exact': 'exact',
+  'filter.previewSqlKind.estimated': 'estimated',
+  'filter.previewSqlKind.unsupported': 'not counted by this driver',
   'filter.collapse': 'Hide',
   'filter.activeCount': '{count} active',
   'filter.noActive': 'No filters',
@@ -549,6 +612,10 @@ const pack = {
   'export.currentPage': 'Current Page',
   'export.selectedRows': 'Selected Rows',
   'export.entireTable': 'Entire Table',
+  // DB-15: the scope the filter panel's "Export…" exit preselects.
+  'export.filteredTable': 'Current filter results (entire table, streamed)',
+  'export.filteredScopeUnavailable':
+    'The filtered export statement could not be built; the page or the entire table remain available.',
   'export.selectColumns': 'Select Columns',
   'export.willExport': 'Will export {rows} rows, {cols} columns',
   'export.formatAs': 'as',
@@ -634,8 +701,7 @@ const pack = {
   // One sentence per reason — "read-only" on its own tells the user nothing.
   'cellEditor.readOnly.connection': 'This connection is read-only, so cells cannot be edited.',
   'cellEditor.readOnly.driverCapability': 'This database driver does not support writing.',
-  'cellEditor.readOnly.view':
-    'Views and materialized views are read-only in the data grid.',
+  'cellEditor.readOnly.view': 'Views and materialized views are read-only in the data grid.',
   'cellEditor.readOnly.noPrimaryKey':
     'This table has no primary key, so a row cannot be identified for an update.',
   'cellEditor.readOnly.ambiguousRowIdentity':
@@ -668,8 +734,7 @@ const pack = {
   'query.gridReadOnly.keyNotSelected':
     'The primary key columns are not all present in this result.',
   'query.gridReadOnly.sessionReadOnly': 'The current connection is read-only.',
-  'query.gridReadOnly.keyValueNull':
-    'This row has a NULL primary key value and cannot be located.',
+  'query.gridReadOnly.keyValueNull': 'This row has a NULL primary key value and cannot be located.',
   'query.gridReadOnly.duplicateIdentity':
     'This page contains duplicate row identities; editing is disabled.',
   'query.gridReadOnly.rowNotFound': 'This row is no longer part of the result.',
@@ -692,12 +757,57 @@ const pack = {
     'Fast paging is unavailable while sorting by a column that can be NULL.',
   'pagination.hint.nullBoundary':
     "This row's sort key is NULL, so fast paging restarted from an exact position.",
-  'pagination.hint.predicateUnavailable':
-    'Fast paging is unavailable for the current sort order.',
+  'pagination.hint.predicateUnavailable': 'Fast paging is unavailable for the current sort order.',
   'pagination.hint.noPaginationClause': 'This database cannot paginate this query.',
-  'pagination.hint.staleCursor':
-    'Sort or filter changed; paging restarted from the first page.',
+  'pagination.hint.staleCursor': 'Sort or filter changed; paging restarted from the first page.',
   'pagination.hint.jumpReanchored': 'Fast paging restarted from page {page}.',
   'pagination.hint.drift': 'Rows changed while paging; the row count has been refreshed.',
+  // The full-database value search (DB-19): the cockpit vocabulary of the
+  // dialog the navigator's toolbar opens.
+  'valueSearch.title': 'Search in Database',
+  'valueSearch.description': 'Find which table holds a value',
+  'valueSearch.placeholder': 'Value to look for…',
+  'valueSearch.toolbarEntry': 'Search values in this database',
+  'valueSearch.modeLabel': 'Match mode',
+  'valueSearch.mode.contains': 'Contains',
+  'valueSearch.mode.exact': 'Equals',
+  'valueSearch.mode.prefix': 'Starts with',
+  'valueSearch.mode.suffix': 'Ends with',
+  'valueSearch.start': 'Search',
+  'valueSearch.pause': 'Pause',
+  'valueSearch.resume': 'Resume',
+  'valueSearch.costNote':
+    'Runs one query on each of the {count} tables of this database, which can take a while and adds load to the server.',
+  'valueSearch.scanning': 'Searching {table}…',
+  'valueSearch.status.running': 'Searching…',
+  'valueSearch.status.paused': 'Paused — resume to continue',
+  'valueSearch.status.done': 'Done',
+  'valueSearch.status.cancelled': 'Cancelled',
+  'valueSearch.status.idle': '',
+  'valueSearch.mostLikely': 'Most likely tables',
+  'valueSearch.noHits': 'No table holds this value.',
+  'valueSearch.errors': '{count} table(s) could not be searched',
+  'valueSearch.noTables': 'This database shows no tables to search.',
+  // The in-result find and replace (DB-14): the bar's own vocabulary.
+  'resultFind.open': 'Find in results',
+  'resultFind.openLabel': 'Find',
+  'resultFind.placeholder': 'Find in loaded rows…',
+  'resultFind.columnLabel': 'Column',
+  'resultFind.anyColumn': 'Any column',
+  'resultFind.operatorLabel': 'Match',
+  'resultFind.operator.contains': 'Contains',
+  'resultFind.operator.notContains': 'Does not contain',
+  'resultFind.operator.prefix': 'Has prefix',
+  'resultFind.operator.suffix': 'Has suffix',
+  'resultFind.matchCase': 'Match case',
+  'resultFind.matchCount': '{matched} of {total} rows',
+  'resultFind.close': 'Close find',
+  'resultFind.replacementPlaceholder': 'Replace with…',
+  'resultFind.planCount': '{count} cell(s) match',
+  'resultFind.replaceNext': 'Replace',
+  'resultFind.replaceAll': 'All',
+  'resultFind.noRows': 'No loaded row matches the filter.',
+  'resultFind.notWritable': 'This result cannot be written back, so nothing can be replaced',
+  'resultFind.safeMode': 'Safe Mode is on: query results cannot be written back',
 } as const;
 export default pack;
