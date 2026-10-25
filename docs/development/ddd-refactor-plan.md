@@ -273,8 +273,23 @@ flowchart TB
   跨形态字段继续走 `SharedSettings`，而路径、onboarding 等桌面字段不被复制进中立 DTO。
   `commands/config.rs` 的生产半边 `state.store` **12 → 4**，`app_archive.rs` **3 → 2**，
   `window.rs` **2 → 0**；保留的六处仅为 §5.1.3 的 `data_dir()`，另有一处钥匙导出仍待
-  宿主密钥门面。全仓生产半边 **84 → 73**。`shared_settings_commands_read_the_aggregate_not_the_host_store`
-  同时钉住设置/分组不得直读 store 与四条设置读写路径必须经过聚合。
+   宿主密钥门面。全仓生产半边 **84 → 73**。`shared_settings_commands_read_the_aggregate_not_the_host_store`
+   同时钉住设置/分组不得直读 store 与四条设置读写路径必须经过聚合。
+- **第五条命令族（Schema Diff profile 与 owner 配置读取）**：Schema Diff 领域包新增
+  `SchemaDiffProfileRepository`，端口与 `SchemaDiffProfile` 词汇同住
+  `packages/schema-diff`；`ApplicationServices` 持有该端口，桌面实现仍是同一个加密
+  `DesktopRepository`。`profile_commands.rs` 的 profile 增删查、部署前的持久化只读检查、
+  Job capability / target database / target schema 的 owner 配置读取统一经
+  `ApplicationServices.connections`，`commands/schema_diff/` 生产半边的 `state.store`
+  直读由 **4 → 0**（以当前命令源码中 `state.store` 直接引用计数），本次全仓同口径
+  计数 **79 → 75**。本族额外保留作用域测试：非桌面组织的读取按空集合处理，写入按
+  NotFound 失败关闭；领域端口与桌面实现的 round-trip 由
+  `schema_diff_profiles` 仓储测试覆盖。
+- **迁移历史 revision 校验也已收口**：既有 `platform-api::MigrationProfileReader` 补齐
+  `updated_at` revision 投影并由桌面 `DesktopRepository` 实现，`history.rs` 的三类
+  profile 查找改走 `ApplicationServices.migration_profiles`；命令壳不再点名
+  `get_sync_profiles` / `get_transfer_profiles` / `get_schema_diff_profiles`，并保留
+  「缺 profile / revision 不一致」的原有阻断语义。
 - **验收**：该 feature 的 `commands` 文件行数下降 ≥50%；`grep state.store.` 在该 feature 目录降为 0；IPC 签名与返回类型不变（用既有前端类型做回归）。
 - **回滚**：按 feature 分批，每批独立 PR。
 - **风险**：双轨期重复逻辑 → 冻结规则：新代码必须进用例层，旧代码只减不增。

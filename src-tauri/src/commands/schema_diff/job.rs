@@ -104,9 +104,13 @@ async fn current_capability_hash(
     target_db_session_id: &str,
 ) -> Result<String, CommandError> {
     let owner = owner_connection_id(state, target_db_session_id).await?;
-    let config = state.store.get_connection(&owner).await.ok_or_else(|| {
-        CommandError::Validation("Migration connection owner is unavailable".into())
-    })?;
+    let config = crate::commands::schema_diff::persisted_connection(
+        state,
+        &owner,
+        "schema_diff_current_capability_hash",
+    )
+    .await?
+    .ok_or_else(|| CommandError::Validation("Migration connection owner is unavailable".into()))?;
     let read_only = config.read_only;
     Ok(fnv_hex_of_json(&serde_json::json!({
         "databaseType": config.database_type,
@@ -438,10 +442,10 @@ pub(super) fn prepare_payload() -> serde_json::Value {
 
 async fn target_database_from_config(state: &AppState, session: &str) -> Option<String> {
     let owner = owner_connection_id(state, session).await.ok()?;
-    state
-        .store
-        .get_connection(&owner)
+    crate::commands::schema_diff::persisted_connection(state, &owner, "schema_diff_target_database")
         .await
+        .ok()
+        .flatten()
         .and_then(|c| c.database)
 }
 
@@ -458,7 +462,11 @@ async fn target_schema_from_config(state: &AppState, session: &str) -> Option<St
         return observed;
     }
     let owner = owner_connection_id(state, session).await.ok()?;
-    state.store.get_connection(&owner).await?.schema
+    crate::commands::schema_diff::persisted_connection(state, &owner, "schema_diff_target_schema")
+        .await
+        .ok()
+        .flatten()
+        .and_then(|c| c.schema)
 }
 
 pub(super) fn owner_ref(_state_unused: &AppState) -> datazen_platform_api::OwnerRef {

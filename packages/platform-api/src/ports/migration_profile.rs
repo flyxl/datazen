@@ -35,7 +35,7 @@ use async_trait::async_trait;
 
 use crate::context::RequestContext;
 use crate::error::PortError;
-use crate::id::ConnectionId;
+use crate::id::{ConnectionId, Timestamp};
 
 /// 迁移 profile 的只读投影。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +56,8 @@ pub struct MigrationProfileSummary {
     pub source_schema: Option<String>,
     /// 目标端 schema。
     pub target_schema: Option<String>,
+    /// Revision used to block execution of a profile that changed after plan preparation.
+    pub updated_at: Timestamp,
 }
 
 /// 迁移 profile 的只读窄端口。
@@ -122,6 +124,7 @@ mod tests {
             target_database: Some("app".into()),
             source_schema: Some("public".into()),
             target_schema: None,
+            updated_at: Timestamp::new("2026-01-01T00:00:00Z"),
         }
     }
 
@@ -168,6 +171,10 @@ mod tests {
         assert_eq!(
             profiles[0].target_connection_id,
             Some(ConnectionId::new("conn-dst"))
+        );
+        assert_eq!(
+            profiles[0].updated_at,
+            Timestamp::new("2026-01-01T00:00:00Z")
         );
         assert!(reader
             .list_sync_profiles(&context())

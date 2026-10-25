@@ -40,6 +40,7 @@ Host 不直接拼接 PostgreSQL/MySQL/SQLite 的 DDL。方言实现位于 Driver
 | `packages/schema-diff/src/plan.rs` | 能力检查、DDL 渲染、计划生成 |
 | `packages/schema-diff/src/deploy.rs` | 目标库部署及事务/部分失败结果 |
 | `packages/schema-diff/src/types.rs` | Snapshot、Diff、Plan DTO |
+| `packages/schema-diff/src/profile_repository.rs` | 持久化 Schema Diff profile 的领域存储端口 |
 | `packages/schema-diff/src/reviewed.rs` | 评审计划的**规则**（身份指纹、目标快照复核、依赖目录比对）与存储端口 `ReviewedPlanRepository` |
 | `src-tauri/src/commands/schema_diff/` | Tauri IPC 与桌面 Job adapter |
 
@@ -50,7 +51,7 @@ Host 侧 `src-tauri/src/commands/schema_diff.rs` 只是模块门面（模块声�
 |---|---|
 | `src-tauri/src/commands/schema_diff.rs` | 门面：模块声明、命令 re-export、共享 helper 导入 |
 | `src-tauri/src/commands/schema_diff/object_scope.rs` | schema scope 门闸与 schema 对象选择 |
-| `src-tauri/src/commands/schema_diff/profile_commands.rs` | Schema Diff profile 的增删查 |
+| `src-tauri/src/commands/schema_diff/profile_commands.rs` | Schema Diff profile 的增删查；经 `ApplicationServices` 访问领域 profile 端口与连接目录 |
 | `src-tauri/src/commands/schema_diff/dependency_catalog.rs` | 目标库外键依赖目录读取与复核 |
 | `src-tauri/src/commands/schema_diff/plan_commands.rs` | 表级迁移计划生成 |
 | `src-tauri/src/commands/schema_diff/object_plan_commands.rs` | 视图 / 存储过程 / 序列 / 类型计划生成 |

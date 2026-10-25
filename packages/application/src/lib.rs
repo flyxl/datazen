@@ -27,7 +27,7 @@
 //!
 //! [`ApplicationServices`] 按 §6.2 第 7 步的顺序组装：
 //! `target → identity_policy → sessions → settings → tunnels → known_hosts → connections →
-//! named_views → dashboard → dashboard_runs`，能力注册表由
+//! named_views → dashboard → dashboard_runs → schema_diff_profiles`，能力注册表由
 //! [`with_capabilities`](ApplicationServices::with_capabilities) 在其后补挂，
 //! 缺省是**全不可用**的注册表。构造函数对桌面与团队两种形态**完全相同**，
 //! 只有传入的 `Arc<dyn …>` 实现不同——不允许为团队形态另写一套用例。
@@ -67,11 +67,14 @@ pub mod target;
 use std::sync::Arc;
 
 use datazen_platform_api::ports::known_hosts::KnownHostsRepository;
-use datazen_platform_api::ports::{ConnectionCatalog, SettingsRepository, TunnelRepository};
+use datazen_platform_api::ports::{
+    ConnectionCatalog, MigrationProfileReader, SettingsRepository, TunnelRepository,
+};
 
 use datazen_feature_core::dashboard::repository::DashboardRepository;
 use datazen_feature_core::dashboard::runs::DashboardRunRepository;
 use datazen_feature_core::services::named_views::NamedViewRepository;
+use datazen_schema_diff::SchemaDiffProfileRepository;
 
 use crate::capability::CapabilityRegistry;
 use crate::identity_policy::IdentityPolicy;
@@ -123,6 +126,10 @@ pub struct ApplicationServices {
     pub dashboard: Arc<dyn DashboardRepository>,
     /// 仪表盘运行历史仓储（与上面同一个应用库，但共享层把它定义成**独立**端口）。
     pub dashboard_runs: Arc<dyn DashboardRunRepository>,
+    /// Schema Diff profile 仓储（P3 第五条命令族：端口与 profile 词汇住在领域包）。
+    pub schema_diff_profiles: Arc<dyn SchemaDiffProfileRepository>,
+    /// 三件套历史只读 profile 投影（执行前 revision 校验共用一份端口）。
+    pub migration_profiles: Arc<dyn MigrationProfileReader>,
     /// 计划第 93 行的运行时能力注册表。
     ///
     /// 缺省是全不可用的空注册表（[`CapabilityRegistry::new`]）。这意味着
@@ -152,6 +159,8 @@ impl ApplicationServices {
         named_views: Arc<dyn NamedViewRepository>,
         dashboard: Arc<dyn DashboardRepository>,
         dashboard_runs: Arc<dyn DashboardRunRepository>,
+        schema_diff_profiles: Arc<dyn SchemaDiffProfileRepository>,
+        migration_profiles: Arc<dyn MigrationProfileReader>,
     ) -> Self {
         Self {
             target,
@@ -164,6 +173,8 @@ impl ApplicationServices {
             named_views,
             dashboard,
             dashboard_runs,
+            schema_diff_profiles,
+            migration_profiles,
             capabilities: CapabilityRegistry::new("unbound"),
         }
     }
@@ -363,9 +374,11 @@ mod tests {
     fn the_storage_ports_are_the_platform_api_ones_not_a_local_copy() {
         let code = crate_root_code();
         assert!(
-            code.contains(
-                "use datazen_platform_api::ports::{ConnectionCatalog, SettingsRepository, TunnelRepository};"
-            ),
+            code.contains("use datazen_platform_api::ports")
+                && code.contains("ConnectionCatalog")
+                && code.contains("SettingsRepository")
+                && code.contains("TunnelRepository")
+                && code.contains("MigrationProfileReader"),
             "存储端口必须直接引 platform-api 的那一份"
         );
         for port in [
@@ -373,6 +386,8 @@ mod tests {
             "TunnelRepository",
             "KnownHostsRepository",
             "NamedViewRepository",
+            "SchemaDiffProfileRepository",
+            "MigrationProfileReader",
         ] {
             assert!(
                 !code.contains(&format!("pub trait {port}")),
@@ -421,6 +436,8 @@ mod tests {
             "connections: Arc<dyn ConnectionCatalog>",
             "dashboard: Arc<dyn DashboardRepository>",
             "dashboard_runs: Arc<dyn DashboardRunRepository>",
+            "schema_diff_profiles: Arc<dyn SchemaDiffProfileRepository>",
+            "migration_profiles: Arc<dyn MigrationProfileReader>",
         ] {
             assert!(
                 signature.contains(parameter),

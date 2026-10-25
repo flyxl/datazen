@@ -1,5 +1,7 @@
 use super::{DesktopRepository, DesktopRepositoryError};
 use crate::schema_diff::SchemaDiffProfile;
+use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_schema_diff::{SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError};
 use serde_json::Value;
 
 const FILE_NAME: &str = "schema_diff_profiles.enc";
@@ -98,6 +100,59 @@ impl DesktopRepository {
             .map_err(|error| DesktopRepositoryError::ParseError(error.to_string()))?;
         let encrypted = self.encrypt(&json)?;
         Self::write_file_atomic(&self.data_dir.join(FILE_NAME), encrypted).await
+    }
+}
+
+fn repository_error(error: DesktopRepositoryError) -> SchemaDiffProfileRepositoryError {
+    match error {
+        DesktopRepositoryError::ParseError(detail) => {
+            SchemaDiffProfileRepositoryError::Invalid(detail)
+        }
+        other => SchemaDiffProfileRepositoryError::Unavailable(other.to_string()),
+    }
+}
+
+/// The desktop encrypted store implements the domain-owned Schema Diff profile port.
+#[async_trait::async_trait]
+impl SchemaDiffProfileRepository for DesktopRepository {
+    async fn list(
+        &self,
+        scope: &OrganizationScope,
+    ) -> Result<Vec<datazen_schema_diff::SchemaDiffProfile>, SchemaDiffProfileRepositoryError> {
+        if !crate::platform::is_local_scope(scope) {
+            return Ok(Vec::new());
+        }
+        Ok(self.get_schema_diff_profiles().await)
+    }
+
+    async fn save(
+        &self,
+        scope: &OrganizationScope,
+        profile: datazen_schema_diff::SchemaDiffProfile,
+    ) -> Result<(), SchemaDiffProfileRepositoryError> {
+        if !crate::platform::is_local_scope(scope) {
+            return Err(SchemaDiffProfileRepositoryError::NotFound(
+                "schema diff profile".into(),
+            ));
+        }
+        self.save_schema_diff_profile(profile)
+            .await
+            .map_err(repository_error)
+    }
+
+    async fn delete(
+        &self,
+        scope: &OrganizationScope,
+        profile_id: &str,
+    ) -> Result<(), SchemaDiffProfileRepositoryError> {
+        if !crate::platform::is_local_scope(scope) {
+            return Err(SchemaDiffProfileRepositoryError::NotFound(
+                "schema diff profile".into(),
+            ));
+        }
+        self.delete_schema_diff_profile(profile_id)
+            .await
+            .map_err(repository_error)
     }
 }
 
@@ -214,5 +269,53 @@ mod tests {
             .find(|item| item.id == expected.id)
             .expect("profile survives reload");
         assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn domain_profile_port_round_trips_and_deletes_in_the_local_scope() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let store = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
+            .await
+            .expect("store");
+        let expected = profile("port-round-trip");
+        let scope = crate::platform::local_organization_scope();
+
+        SchemaDiffProfileRepository::save(&store, &scope, expected.clone())
+            .await
+            .expect("save through domain port");
+        assert_eq!(
+            SchemaDiffProfileRepository::list(&store, &scope)
+                .await
+                .expect("list through domain port"),
+            vec![expected]
+        );
+
+        SchemaDiffProfileRepository::delete(&store, &scope, "port-round-trip")
+            .await
+            .expect("delete through domain port");
+        assert!(SchemaDiffProfileRepository::list(&store, &scope)
+            .await
+            .expect("list after delete through domain port")
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn domain_profile_port_fails_closed_for_a_foreign_scope() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let store = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
+            .await
+            .expect("store");
+        let foreign = datazen_platform_api::ports::scope::OrganizationScope::new(
+            datazen_platform_api::id::OrganizationId::new("foreign-org"),
+        );
+
+        assert!(SchemaDiffProfileRepository::list(&store, &foreign)
+            .await
+            .expect("foreign reads are treated as empty")
+            .is_empty());
+        assert!(matches!(
+            SchemaDiffProfileRepository::save(&store, &foreign, profile("foreign")).await,
+            Err(SchemaDiffProfileRepositoryError::NotFound(_))
+        ));
     }
 }

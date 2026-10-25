@@ -74,3 +74,22 @@ use object_scope::{
     fetch_schema_view, list_schema_objects, list_schema_views, select_schema_object_pair,
 };
 pub(crate) use reviewed_repository::reviewed_scope;
+
+/// Read one persisted connection through the application aggregate.
+///
+/// Schema Diff commands often start from a runtime session and then need the
+/// persisted connection configuration for read-only/capability checks. Keep
+/// that owner lookup in one host-neutral port path instead of reaching into the
+/// desktop store from each command subtree.
+pub(crate) async fn persisted_connection(
+    state: &AppState,
+    connection_id: &str,
+    command: &str,
+) -> Result<Option<datazen_driver_api::ConnectionConfig>, CommandError> {
+    let scope = state.organization_scope()?;
+    let services = crate::platform::ipc::require_application_services(state)?;
+    crate::commands::port_call::port_cmd(
+        services.connections.get(&scope, connection_id).await,
+        command,
+    )
+}
