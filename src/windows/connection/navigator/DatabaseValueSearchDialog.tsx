@@ -10,6 +10,7 @@ import {
   type ValueSearchTableResult,
 } from '../../../lib/valueSearch';
 import { Dialog } from '../../../components/ui/Dialog';
+import { Select, type SelectOption } from '@datazen/ui';
 import { Button } from '../../../components/ui/Button';
 import type { ValueSearchMode } from '@datazen/backend-client';
 import type { TableInfo } from '../../../types';
@@ -164,20 +165,17 @@ export function DatabaseValueSearchDialog({
               }}
             />
           </div>
-          <select
-            data-testid="value-search-mode"
-            className="h-7 rounded-md border border-edge bg-surface px-1 text-xs text-fg"
+          <Select
+            triggerDataAttrs={{ 'data-testid': 'value-search-mode' }}
+            className="h-7 text-xs"
             value={mode}
+            options={MODES.map(
+              (entry): SelectOption => ({ value: entry.id, label: t(entry.labelKey) }),
+            )}
             disabled={busy}
-            onChange={(event) => setMode(event.target.value as ValueSearchMode)}
-            aria-label={t('valueSearch.modeLabel')}
-          >
-            {MODES.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {t(entry.labelKey)}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setMode(value as ValueSearchMode)}
+            title={t('valueSearch.modeLabel')}
+          />
           {!busy && (
             <Button
               data-testid="value-search-start"

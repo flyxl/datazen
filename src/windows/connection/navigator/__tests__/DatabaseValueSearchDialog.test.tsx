@@ -21,6 +21,30 @@ vi.mock('../../../../hooks/useI18n', () => ({
   }),
 }));
 
+// The ui Select is the production picker; a plain select here keeps the
+// assertion about the four modes simple (the guard against native selects
+// excludes __tests__).
+vi.mock('@datazen/ui', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/ui')>()),
+  Select: (props: {
+    value: string;
+    options: { value: string }[];
+    onChange: (value: string) => void;
+  }) => (
+    <select
+      data-testid="value-search-mode"
+      value={props.value}
+      onChange={(event) => props.onChange(event.target.value)}
+    >
+      {props.options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.value}
+        </option>
+      ))}
+    </select>
+  ),
+}));
+
 vi.mock('../../../../lib/valueSearch', () => ({
   ValueSearchDriver: class {
     constructor() {
@@ -103,6 +127,8 @@ describe('DatabaseValueSearchDialog (DB-19)', () => {
     const mode = screen.getByTestId('value-search-mode') as HTMLSelectElement;
     const options = [...mode.querySelectorAll('option')].map((option) => option.value);
     expect(options).toEqual(['contains', 'exact', 'prefix', 'suffix']);
+    fireEvent.change(mode, { target: { value: 'exact' } });
+    expect(mode.value).toBe('exact');
   });
 
   it('renders nothing when closed', () => {
