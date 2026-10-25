@@ -47,6 +47,8 @@ import type {
   ProfilePatch,
   ProfileView,
   ResolveForeignKeyTargetsRequest,
+  SearchTableValuesRequest,
+  SearchTableValuesResult,
   ResolveResultOriginRequest,
   ResultCellChangeRequest,
   ResultCellWrite,
@@ -193,6 +195,10 @@ export interface MethodMap {
   listInboundForeignKeys: {
     request: ListInboundForeignKeysRequest;
     response: InboundForeignKeyCatalog;
+  };
+  searchTableValues: {
+    request: SearchTableValuesRequest;
+    response: SearchTableValuesResult;
   };
   /**
    * The named views of one scope (or of every scope when `scope` is omitted).

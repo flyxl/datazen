@@ -488,6 +488,33 @@ export interface ResolveForeignKeyTargetsRequest {
   browse?: boolean;
 }
 
+/** How the search value must match a column's value (DB-19). */
+export type ValueSearchMode = 'contains' | 'exact' | 'prefix' | 'suffix';
+
+/** The request of one table's value search (DB-19). */
+export interface SearchTableValuesRequest {
+  dbSessionId: string;
+  /** The table to scan. */
+  table: string;
+  /** The columns to search — the caller picks them by type; the host never guesses. */
+  columns: string[];
+  /** The value to look for. */
+  value: string;
+  /** How the value must match; `contains` when omitted. */
+  mode?: ValueSearchMode;
+  database?: string | null;
+  schema?: string | null;
+}
+
+/** The answer of one table's value search (DB-19). */
+export interface SearchTableValuesResult {
+  table: string;
+  /** The columns the statement actually searched. */
+  searchedColumns: string[];
+  /** The rows matching at least one column. */
+  matches: number;
+}
+
 /** The request of a reverse foreign-key catalog: who references this table? */
 export interface ListInboundForeignKeysRequest {
   dbSessionId: string;

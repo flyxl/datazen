@@ -342,6 +342,7 @@ pub fn run() {
             crate::commands::estimate_table_rows,
             crate::commands::resolve_foreign_key_targets,
             crate::commands::list_inbound_foreign_keys,
+            crate::commands::search_table_values,
             crate::commands::commit_query_result_cell,
             // ── 命名视图（保存的筛选视图） ──
             crate::commands::list_named_views,

@@ -23,7 +23,7 @@
 
 use std::sync::Arc;
 
-use datazen_driver_api::{DatabaseDriver, TableSchema};
+use datazen_driver_api::TableSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::services::fk_navigation::{driver_error_note, FkNavigationError};

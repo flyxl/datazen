@@ -762,5 +762,31 @@ const pack = {
   'pagination.hint.staleCursor': 'Sort or filter changed; paging restarted from the first page.',
   'pagination.hint.jumpReanchored': 'Fast paging restarted from page {page}.',
   'pagination.hint.drift': 'Rows changed while paging; the row count has been refreshed.',
+  // The full-database value search (DB-19): the cockpit vocabulary of the
+  // dialog the navigator's toolbar opens.
+  'valueSearch.title': 'Search in Database',
+  'valueSearch.description': 'Find which table holds a value',
+  'valueSearch.placeholder': 'Value to look for…',
+  'valueSearch.toolbarEntry': 'Search values in this database',
+  'valueSearch.modeLabel': 'Match mode',
+  'valueSearch.mode.contains': 'Contains',
+  'valueSearch.mode.exact': 'Equals',
+  'valueSearch.mode.prefix': 'Starts with',
+  'valueSearch.mode.suffix': 'Ends with',
+  'valueSearch.start': 'Search',
+  'valueSearch.pause': 'Pause',
+  'valueSearch.resume': 'Resume',
+  'valueSearch.costNote':
+    'Runs one query on each of the {count} tables of this database, which can take a while and adds load to the server.',
+  'valueSearch.scanning': 'Searching {table}…',
+  'valueSearch.status.running': 'Searching…',
+  'valueSearch.status.paused': 'Paused — resume to continue',
+  'valueSearch.status.done': 'Done',
+  'valueSearch.status.cancelled': 'Cancelled',
+  'valueSearch.status.idle': '',
+  'valueSearch.mostLikely': 'Most likely tables',
+  'valueSearch.noHits': 'No table holds this value.',
+  'valueSearch.errors': '{count} table(s) could not be searched',
+  'valueSearch.noTables': 'This database shows no tables to search.',
 } as const;
 export default pack;

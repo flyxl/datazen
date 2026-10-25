@@ -12,6 +12,8 @@ import type {
   ForeignKeyTargetResolution,
   InboundForeignKeyCatalog,
   ListInboundForeignKeysRequest,
+  SearchTableValuesRequest,
+  SearchTableValuesResult,
   NamedView,
   NamedViewScope,
   ResolveForeignKeyTargetsRequest,
@@ -336,6 +338,20 @@ export const databaseCommands = {
   ): Promise<InboundForeignKeyCatalog> => {
     const client = useBackendClient();
     return client.listInboundForeignKeys(params);
+  },
+
+  /**
+   * Count the rows of one table whose searchable columns match a value
+   * (DB-19).
+   *
+   * One command per table: the front end drives the scan — that is what
+   * makes pause and resume real. The value is bound wherever the dialect
+   * owns a bound-parameter vocabulary; it never reaches the SQL text on
+   * such a driver.
+   */
+  searchTableValues: async (params: SearchTableValuesRequest): Promise<SearchTableValuesResult> => {
+    const client = useBackendClient();
+    return client.searchTableValues(params);
   },
 
   /**

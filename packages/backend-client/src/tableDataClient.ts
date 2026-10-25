@@ -24,6 +24,8 @@ import type {
   ForeignKeyTargetResolution,
   InboundForeignKeyCatalog,
   ListInboundForeignKeysRequest,
+  SearchTableValuesRequest,
+  SearchTableValuesResult,
   ListNamedViewsRequest,
   NamedView,
   PreviewPendingChangesRequest,
@@ -101,6 +103,8 @@ export interface TableDataClient {
   ): Promise<ForeignKeyTargetResolution>;
   /** The reverse foreign-key catalog: the constraints of other tables that reference one table. */
   listInboundForeignKeys(request: ListInboundForeignKeysRequest): Promise<InboundForeignKeyCatalog>;
+  /** Count the rows of one table whose searchable columns match a value (DB-19). */
+  searchTableValues(request: SearchTableValuesRequest): Promise<SearchTableValuesResult>;
   /**
    * The named views of one scope, or of every scope when `scope` is omitted.
    *
@@ -164,6 +168,9 @@ export function createTableDataMethods(
 
     listInboundForeignKeys: (request) =>
       guard('listInboundForeignKeys', () => transport.call('listInboundForeignKeys', request)),
+
+    searchTableValues: (request) =>
+      guard('searchTableValues', () => transport.call('searchTableValues', request)),
 
     listNamedViews: (request) =>
       guard('listNamedViews', () => transport.call('listNamedViews', request)),

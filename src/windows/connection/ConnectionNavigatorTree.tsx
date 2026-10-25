@@ -32,6 +32,7 @@ import { VirtualTree } from '@datazen/ui';
 import type { ConnectionConfig } from '../../types';
 import { buildNavigatorFlatRows } from './navigator/buildFlatRows';
 import { NavigatorDialogs } from './navigator/NavigatorDialogs';
+import { DatabaseValueSearchDialog } from './navigator/DatabaseValueSearchDialog';
 import { NavigatorToolbar } from './navigator/NavigatorToolbar';
 import { NavigatorTreeRow } from './navigator/NavigatorTreeRow';
 
@@ -97,6 +98,7 @@ export const ConnectionNavigatorTree = forwardRef<
   );
 
   const [newGroupDialogOpen, setNewGroupDialogOpen] = useState(false);
+  const [valueSearchOpen, setValueSearchOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -628,6 +630,27 @@ export const ConnectionNavigatorTree = forwardRef<
     [activeConnections, t],
   );
 
+  /**
+   * The full-database value search's session (DB-19): the active connection's
+   * live session, the database the navigator shows for it, and the table list
+   * of that scope. A connection that is still connecting has no session, so
+   * the toolbar entry waits until one exists.
+   */
+  const valueSearchSession = useMemo(() => {
+    const entry = activeConnectionId ? activeConnections[activeConnectionId] : undefined;
+    if (!entry || !entry.dbSessionId) return null;
+    const connection = connections.find((item) => item.id === activeConnectionId);
+    if (!connection) return null;
+    const schema = useSchemaStore.getState().schemas.get(entry.dbSessionId);
+    const database = schema?.currentDatabase ?? connection.database ?? '';
+    return {
+      dbSessionId: entry.dbSessionId,
+      connectionId: connection.id,
+      database,
+      tables: schema?.tables ?? [],
+    };
+  }, [activeConnections, activeConnectionId, connections]);
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-surface select-none">
       <NavigatorToolbar
@@ -644,6 +667,7 @@ export const ConnectionNavigatorTree = forwardRef<
           setNewGroupDialogOpen(true);
         }}
         onCollapseAll={collapseAll}
+        onSearchValues={valueSearchSession ? () => setValueSearchOpen(true) : undefined}
       />
 
       <VirtualTree
@@ -762,6 +786,20 @@ export const ConnectionNavigatorTree = forwardRef<
         confirmDropRelationDialog={confirmDropRelationDialog}
         confirmTruncateTableDialog={confirmTruncateTableDialog}
       />
+
+      {valueSearchSession && (
+        <DatabaseValueSearchDialog
+          open={valueSearchOpen}
+          onClose={() => setValueSearchOpen(false)}
+          dbSessionId={valueSearchSession.dbSessionId}
+          connectionId={valueSearchSession.connectionId}
+          database={valueSearchSession.database}
+          tables={valueSearchSession.tables}
+          onOpenTable={(tableName, schema) =>
+            onSelectTable(tableName, schema, valueSearchSession.database)
+          }
+        />
+      )}
     </div>
   );
 });
