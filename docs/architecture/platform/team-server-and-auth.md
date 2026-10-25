@@ -4,6 +4,8 @@
 > 读者：负责《分阶段开发计划》P7 的实现者。本文定义**怎么组、怎么鉴权、怎么限流、怎么映射错误**；连接 DTO 与错误码表以[连接与会话管理](connection-management.md)为权威，管理库表结构以[持久化模型](persistence-model.md)为权威，出现时一律以链接为准。
 > 配套：[系统概要设计](system-overview.md)（分层、领域对象、v1 HTTP 路由表、安全总纲）、[连接与会话管理](connection-management.md)（DTO、错误表、幂等、CM-01～74）、[持久化模型](persistence-model.md)（管理库表结构与迁移策略）、[共享应用边界与端口](shared-boundaries-and-ports.md)（端口签名与装配差异）、[P0 runtime fake 夹具](fake-runtime-fixtures.md)（transport-neutral fake 资源、故障/竞态注入与 CM-60 基准 harness）、[分阶段开发计划 §11 P7](../../development/platform-development-plan.md#11-p7单实例团队-web-服务)（阶段交付与退出门槛）。
 
+> **2026-10-24 装配目标更新**：按 [DDD 模块化指南](../../development/ddd-refactor-plan.md)，本文旧称 `server/` / `datazen-server` 的目标宿主统一采用 `web/` / `datazen-web`，目前仍未实现。Web 直接使用各功能的 `datazen_modules::<功能>::application`，实现相应领域 Repository 并自行选择功能；不再依赖一个全量独立 application crate，也不另建与 web 并存的 server 宿主。本文认证、授权、隔离、限流、错误和恢复要求不变。
+
 ---
 
 ## 1. 本文解决的问题与不变量

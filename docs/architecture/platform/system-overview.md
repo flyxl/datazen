@@ -4,6 +4,8 @@
 > 本文按用户明确要求保存设计文档，不把规划表述为当前功能。实现后逐节改写为事实，删除已失效的过渡约定。基线复核：§2 引用文件的连接/调用语义变化、`PROTOCOL_VERSION` 变化、任一阶段开始落地时，必须重新核对相关事实与跨文档契约。
 > 配套：[连接管理详细设计](connection-management.md)、[分阶段开发计划](../../development/platform-development-plan.md)。
 
+> **2026-10-24 目标代码组织更新**：以 [DDD 模块化指南](../../development/ddd-refactor-plan.md) 替代本文旧的横向 crate 拆分目标：共享业务收敛到单一 modules crate，功能内含 application/domain，执行机制位于 execution/runtime，桌面与 `web/` 宿主分别实现基础设施并按需装配。三种产品形态、协议与安全目标不变；以下旧包图不能作为新布局已落地的证明。
+
 ## 1. 目标与范围
 
 同一套 React 产品和 Rust 业务内核支持三种方式：

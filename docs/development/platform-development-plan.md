@@ -3,6 +3,8 @@
 > 状态：P4、P5 已完成（P4 于 2026-10-16、P5 于 2026-10-09）；P6 已启动但尚未关闭（共享 feature 抽取已落地，真实驱动旅程仍待验收）；P7–P10 仍为计划。当前基线：`main`，`c84f21237`（共享层下沉 PR #68 的合并提交，2026-10-16；P6 从此提交起算）。本文按用户明确要求入库，不记录每日进度。
 > 设计依据：[系统概要](../architecture/platform/system-overview.md)、[连接管理详细设计](../architecture/platform/connection-management.md)。
 
+> **2026-10-24 代码组织目标更新**：包布局、接口归属和后续重构顺序以已确认的 [DDD 模块化指南](ddd-refactor-plan.md) 为准：单一 modules crate、功能内 application/domain、execution 私有 runtime、宿主按需装配，目标 Web 宿主为 `web/`。本文的 P0–P10 继续管理产品形态与功能交付，不把旧 application/platform-api/runtime 分包安排当作最终结构。既有协议、安全与恢复门槛不变，新目标尚未完成实现。
+
 ## 1. 交付目标与实施原则
 
 最终交付桌面本地、浏览器团队、桌面团队三种方式，共享 Rust 业务内核和 React 产品。连接管理对用户、会话、物理资源和任务分别建模；新增已有能力的 driver 不要求修改宿主业务流程。
@@ -191,10 +193,10 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 1. **签名里全是领域模型**：`ReviewedPlan`、`StoredSyncPlan`、`ComparisonOptions`、`TransferPlan`、
    `Checkpoint` 都定义在领域包里，而 F-04 规定 `platform-api` 不得依赖领域包 ⇒ 窄端口只能在
    `platform-api` 里复制一份 DTO，事实两份——正是本节风险段自己禁止的事。
-2. **P0 断环后这条边已合法**：`ddd-refactor-plan` 的 P0 把 `ApiError`/`ConnectionUseCases`/
+2. **旧布局的 P0 断环后这条边已合法**：2026-10-23 的已实现迁移把 `ApiError`/`ConnectionUseCases`/
    请求 DTO 归位 `platform-api`，`cargo metadata` 实测 0 环、`application → 领域包` 可行
    （`scripts/check-ddd-layers.mjs` 守）。聚合直接持有领域包**自己的**端口 trait 即可，
-   宿主不必再写一层转发壳。
+   宿主不必再写一层转发壳。这是当时分包的历史依据；后续接口迁入功能模块，见新版 DDD 指南。
 3. **剩余价值另有归属**：本节真正想消灭的是「`AppState` 直读领域端口」那 21 处，这件事改由
    第六步按命令族完成——命令不再从 `AppState` 取领域端口，而是从聚合取。
    容器：`SyncRepositoryPorts` 已随第三步改为聚合侧装配。

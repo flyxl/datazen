@@ -8,6 +8,8 @@
 > 读者：本文只定义包边界、端口签名、组装方式和护栏；DTO 语义、会话状态机、资源预算算法以既有文档为权威，本文不重复定义。标为「目标设计」的段落仍是契约，未随 P1 实现。
 > 配套：[系统概要](system-overview.md)、[连接管理详细设计](connection-management.md)、[分阶段开发计划](../../development/platform-development-plan.md)。
 
+> **2026-10-24 目标布局替代说明**：后续包组织以 [DDD 模块化指南](../../development/ddd-refactor-plan.md) 为准：application 位于各功能模块内部，领域拥有 Repository trait，具体实现在 src-tauri/web；platform-api 按拥有者拆散，runtime 机制归入 execution，Job 等归属各自模块。本文现有包路径用于理解迁移基线，旧分包矩阵不再是最终目标；DTO、身份、错误、资源等行为契约仍须保留。代码迁移后逐节更新事实，不在本轮伪装为已实现。
+
 ## 1. 本文定位与配套契约
 
 | 本文负责 | 权威文档（不重复定义） |
