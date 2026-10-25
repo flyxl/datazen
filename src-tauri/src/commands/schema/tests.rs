@@ -2,13 +2,12 @@ use super::*;
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen_driver_api::Value;
-use datazen_feature_core::services::query_executor::SortCondition;
 use std::collections::HashMap;
 
 #[tokio::test]
 async fn schema_commands_with_connected_mock() {
     let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("schema-cfg").await;
+    let (_, conn_id) = test.save_and_connect("schema-cfg").await;
 
     let dbs = read_databases(&test.state, conn_id.clone()).await.unwrap();
     assert_eq!(dbs, vec!["app"]);
@@ -43,28 +42,6 @@ async fn schema_commands_with_connected_mock() {
     assert_eq!(schema.table_name, "users");
     assert_eq!(schema.columns.len(), 2);
 
-    let data = get_table_data_impl(
-        &test.state,
-        conn_id.clone(),
-        "users".into(),
-        0,
-        10,
-        None,
-        Some(vec![SortCondition {
-            column: "id".into(),
-            descending: false,
-        }]),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-    assert_eq!(data.total_rows, Some(2));
-
     let er = get_er_data_impl(&test.state, conn_id, "app".into(), None)
         .await
         .unwrap();
@@ -89,7 +66,7 @@ async fn get_er_data_errors_when_no_table_metadata_is_readable() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("er-all-fail").await;
+    let (_, conn_id) = test.save_and_connect("er-all-fail").await;
     // When tables exist but every per-table column read fails, an empty Vec
     // would be rendered as "this database has no tables". Fail loudly instead.
     let err = get_er_data_impl(&test.state, conn_id, "app".into(), None)
@@ -124,55 +101,6 @@ async fn schema_commands_error_when_not_connected() {
             .is_err()
     );
 }
-
-#[tokio::test]
-async fn get_table_data_with_query_rows() {
-    use datazen_driver_api::{ColumnSchema, TableInfo, TableType};
-
-    let opts = MockDriverOptions {
-        databases: vec!["app".into()],
-        tables: vec![TableInfo {
-            name: "items".into(),
-            schema: None,
-            table_type: TableType::Table,
-            row_count: None,
-        }],
-        columns: vec![ColumnSchema {
-            name: "id".into(),
-            data_type: "integer".into(),
-            nullable: false,
-            default_value: None,
-            comment: None,
-            is_primary_key: true,
-            is_auto_increment: false,
-        }],
-        primary_keys: vec!["id".into()],
-        count_total: 1,
-        query_rows: vec![vec![Some(Value::Integer(1))]],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("data-cfg").await;
-    let data = get_table_data_impl(
-        &test.state,
-        conn_id,
-        "items".into(),
-        0,
-        50,
-        None,
-        None,
-        Some(true),
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-    assert_eq!(data.rows.len(), 1);
-}
-
 fn col(name: &str) -> datazen_driver_api::ColumnSchema {
     datazen_driver_api::ColumnSchema {
         name: name.into(),
@@ -188,7 +116,7 @@ fn col(name: &str) -> datazen_driver_api::ColumnSchema {
 #[tokio::test]
 async fn unknown_object_kind_is_validation_error() {
     let test = TestAppState::new().await;
-    let (_, conn_id) = test.save_and_connect_runtime("obj-bad-kind").await;
+    let (_, conn_id) = test.save_and_connect("obj-bad-kind").await;
     let err = get_database_objects_impl(&test.state, conn_id, "invalid_kind".into(), None)
         .await
         .unwrap_err();
@@ -203,7 +131,7 @@ async fn lists_database_objects_returns_empty_when_query_has_no_rows_and_no_colu
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("obj-empty").await;
+    let (_, conn_id) = test.save_and_connect("obj-empty").await;
     let rows = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
         .await
         .unwrap();
@@ -227,7 +155,7 @@ async fn lists_database_objects_from_name_column() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("obj-list").await;
+    let (_, conn_id) = test.save_and_connect("obj-list").await;
     let rows = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
         .await
         .unwrap();
@@ -257,7 +185,7 @@ async fn lists_database_objects_preserves_signature_and_trigger_target() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("obj-identity").await;
+    let (_, conn_id) = test.save_and_connect("obj-identity").await;
     let rows = get_database_objects_impl(&test.state, conn_id, "trigger".into(), None)
         .await
         .unwrap();
@@ -277,7 +205,7 @@ async fn object_ddl_reads_named_or_second_column() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("obj-ddl").await;
+    let (_, conn_id) = test.save_and_connect("obj-ddl").await;
     let ddl = get_object_ddl_impl(
         &test.state,
         conn_id,
@@ -298,7 +226,7 @@ async fn object_ddl_missing_object_fails_closed() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("obj-missing-ddl").await;
+    let (_, conn_id) = test.save_and_connect("obj-missing-ddl").await;
     let error = get_object_ddl_with_metadata_impl(
         &test.state,
         conn_id,
@@ -322,7 +250,7 @@ async fn object_catalog_preserves_permission_query_errors() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("obj-permission").await;
+    let (_, conn_id) = test.save_and_connect("obj-permission").await;
     let error = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
         .await
         .unwrap_err();
@@ -345,112 +273,13 @@ async fn privileges_map_grantee_and_skip_incomplete_rows() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("priv-list").await;
+    let (_, conn_id) = test.save_and_connect("priv-list").await;
     let grants = get_privileges_impl(&test.state, conn_id).await.unwrap();
     assert_eq!(grants.len(), 1);
     assert_eq!(grants[0].grantee, "alice");
     assert_eq!(grants[0].object_name, "users");
     assert_eq!(grants[0].privilege, "SELECT");
 }
-
-#[tokio::test]
-async fn get_table_data_joins_filters_with_or() {
-    use datazen_driver_api::{TableInfo, TableType};
-    use datazen_feature_core::services::query_executor::FilterCondition;
-    use datazen_feature_core::services::query_executor::FilterOperator;
-
-    let opts = MockDriverOptions {
-        databases: vec!["app".into()],
-        tables: vec![TableInfo {
-            name: "items".into(),
-            schema: None,
-            table_type: TableType::Table,
-            row_count: None,
-        }],
-        columns: vec![col("id"), col("status")],
-        primary_keys: vec!["id".into()],
-        count_total: 1,
-        query_rows: vec![vec![
-            Some(Value::Integer(1)),
-            Some(Value::String("a".into())),
-        ]],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("filter-or").await;
-    let data = get_table_data_impl(
-        &test.state,
-        conn_id,
-        "items".into(),
-        0,
-        50,
-        Some(vec![
-            FilterCondition {
-                column: "id".into(),
-                operator: FilterOperator::Eq,
-                value: Value::Integer(1),
-                connector: None,
-            },
-            FilterCondition {
-                column: "status".into(),
-                operator: FilterOperator::Eq,
-                value: Value::String("a".into()),
-                connector: None,
-            },
-        ]),
-        None,
-        Some(true),
-        Some("or".into()),
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-    assert_eq!(data.rows.len(), 1);
-}
-
-#[tokio::test]
-async fn get_table_data_reads_the_target_database_without_switching() {
-    let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("tdata-pin-db").await;
-    // Sample config pins database = "app"; opening a table that lives in
-    // another database must read *that* database (BUG-002) — via the
-    // explicit argument, never by re-pointing the shared session.
-    let data = get_table_data_impl(
-        &test.state,
-        conn_id.clone(),
-        "users".into(),
-        0,
-        50,
-        None,
-        None,
-        Some(true),
-        None,
-        Some("analytics".into()),
-        None,
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-    assert_eq!(data.rows.len(), 1);
-    assert!(
-        test.mock.use_database_calls().is_empty(),
-        "get_table_data must not switch the session's database"
-    );
-    // The session keeps its own configured database; the request target is
-    // per-call.
-    let config = test
-        .state
-        .store
-        .get_connection("tdata-pin-db")
-        .await
-        .unwrap();
-    assert_eq!(config.database.as_deref(), Some("app"));
-}
-
 /// Regression (BUG-003): `get_er_data` listed the requested database's
 /// tables but read every table's schema against whatever catalog the shared
 /// session sat on. That produced a successful but column-less schema, which
@@ -496,7 +325,7 @@ async fn get_er_data_reads_each_tables_own_schema_and_never_caches_empty() {
     };
     let test = TestAppState::with_options(opts).await;
     // Sample config pins database = "app"; the ER view targets "analytics".
-    let (_, conn_id) = test.save_and_connect_runtime("er-pin-db").await;
+    let (_, conn_id) = test.save_and_connect("er-pin-db").await;
 
     let schemas = get_er_data_impl(&test.state, conn_id.clone(), "analytics".into(), None)
         .await
@@ -625,114 +454,4 @@ async fn read_definition(
     let result: datazen_driver_api::schema_metadata::RelationSchema =
         serde_json::from_value(data["value"].clone())?;
     Ok(result.definition)
-}
-
-/// The host must refuse a filter the shared layer refuses, and it must say so
-/// with the contract prefix the frontend classifies on.
-#[tokio::test]
-async fn get_table_data_rejects_incomplete_filter_with_prefix() {
-    use datazen_driver_api::{TableInfo, TableType};
-    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
-
-    let opts = MockDriverOptions {
-        databases: vec!["app".into()],
-        tables: vec![TableInfo {
-            name: "items".into(),
-            schema: None,
-            table_type: TableType::Table,
-            row_count: None,
-        }],
-        columns: vec![col("id"), col("status")],
-        primary_keys: vec!["id".into()],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("filter-incomplete").await;
-    let error = get_table_data_impl(
-        &test.state,
-        conn_id,
-        "items".into(),
-        0,
-        50,
-        Some(vec![FilterCondition {
-            column: "status".into(),
-            operator: FilterOperator::Eq,
-            value: Value::String(String::new()),
-            connector: None,
-        }]),
-        None,
-        Some(true),
-        Some("and".into()),
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .expect_err("an incomplete filter must be refused");
-    match error {
-        CommandError::Validation(message) => {
-            assert!(
-                message.starts_with("grid.filter.incomplete: "),
-                "got: {message}"
-            );
-            assert!(message.contains("\"status\""), "got: {message}");
-        }
-        other => panic!("expected a validation error, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn get_table_data_rejects_unsupported_operator_with_prefix() {
-    use datazen_driver_api::{TableInfo, TableType};
-    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
-
-    let opts = MockDriverOptions {
-        databases: vec!["app".into()],
-        tables: vec![TableInfo {
-            name: "items".into(),
-            schema: None,
-            table_type: TableType::Table,
-            row_count: None,
-        }],
-        columns: vec![col("id"), col("status")],
-        primary_keys: vec!["id".into()],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("filter-unsupported").await;
-    // The mock driver declares the shared operator set, which does not carry
-    // the dialect-only operators.
-    let error = get_table_data_impl(
-        &test.state,
-        conn_id,
-        "items".into(),
-        0,
-        50,
-        Some(vec![FilterCondition {
-            column: "status".into(),
-            operator: FilterOperator::Regex,
-            value: Value::String("^a".into()),
-            connector: None,
-        }]),
-        None,
-        Some(true),
-        Some("and".into()),
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .expect_err("an operator outside the driver whitelist must be refused");
-    match error {
-        CommandError::Validation(message) => {
-            assert!(
-                message.starts_with("grid.filter.unsupportedOperator: "),
-                "got: {message}"
-            );
-            assert!(message.contains("'regex'"), "got: {message}");
-        }
-        other => panic!("expected a validation error, got: {other:?}"),
-    }
 }

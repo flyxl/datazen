@@ -4,6 +4,7 @@ import { usePanelHandlers } from '../usePanelHandlers';
 import { usePanelStore } from '../../../stores/panelStore';
 import { useActiveConnectionStore } from '../../../stores/activeConnectionStore';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
+import { noPrimaryKeyEditSpec } from '../../../lib/tableSqlActions';
 import type { DatabaseType } from '../../../types';
 import type { ConnectionContext } from '../../../stores/panelStore';
 
@@ -410,5 +411,71 @@ describe('usePanelHandlers.handleOpenErDiagram binds the database and inherits t
     const panel = usePanelStore.getState().panels.find((p) => p.type === 'er-diagram');
     expect(panel?.database).toBe('app');
     expect(panel?.focusTable).toBe('orders');
+  });
+});
+
+describe('usePanelHandlers.handleOpenTableAction accepts a full spec (DB-16 escape hatch)', () => {
+  const noPkInput = {
+    connectionId: 'conn-1',
+    dbSessionId: 'sess-1',
+    databaseType: 'postgresql' as DatabaseType,
+    database: 'db_a',
+    schema: 'public',
+    tableSchema: 'public',
+    viewSchema: null,
+    tableName: 'import_log',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    usePanelStore.getState().reset();
+    useActiveConnectionStore.getState().reset();
+  });
+
+  it('opens a query tab prefilled with the SELECT … WHERE draft, bound to the table database', async () => {
+    const { result } = renderHandler('postgresql', 'db_a');
+
+    await act(async () => {
+      result.current.handleOpenTableAction(noPkInput, noPrimaryKeyEditSpec(noPkInput));
+    });
+
+    const panel = usePanelStore.getState().panels.find((p) => p.type === 'query');
+    expect(panel).toBeDefined();
+    // Same binding the schema-tree actions get: the table's own database and
+    // schema travel onto the tab, not the store-wide pointer.
+    expect(panel?.database).toBe('db_a');
+    expect(panel?.schema).toBe('public');
+    // The default pane is keyed by the bare panel id (paneKeys invariant).
+    const sql = usePanelStore.getState().queryExec.get(panel!.id)?.sql;
+    expect(sql).toContain('SELECT * FROM "public"."import_log" WHERE');
+    expect(sql).toContain('no primary key');
+  });
+
+  it('keeps the generic bare-kind draft byte-for-byte for string actions', async () => {
+    const { result } = renderHandler('postgresql', 'db_a');
+
+    await act(async () => {
+      result.current.handleOpenTableAction(noPkInput, 'select');
+    });
+
+    const panel = usePanelStore.getState().panels.find((p) => p.type === 'query');
+    expect(panel).toBeDefined();
+    const sql = usePanelStore.getState().queryExec.get(panel!.id)?.sql;
+    // The generic SELECT has no WHERE placeholder — DB-16's spec path must not
+    // leak into the legacy bare-kind path.
+    expect(sql).toBe('SELECT * FROM "public"."import_log";');
+  });
+
+  it('still ignores actions arriving for a different connection', async () => {
+    const { result } = renderHandler('postgresql', 'db_a');
+
+    await act(async () => {
+      result.current.handleOpenTableAction(
+        { ...noPkInput, connectionId: 'conn-2' },
+        noPrimaryKeyEditSpec({ ...noPkInput, connectionId: 'conn-2' }),
+      );
+    });
+
+    expect(usePanelStore.getState().panels.find((p) => p.type === 'query')).toBeUndefined();
   });
 });

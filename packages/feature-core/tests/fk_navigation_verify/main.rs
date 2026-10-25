@@ -179,6 +179,7 @@ fn request(columns: &[&str], values: Vec<Value>) -> ResolveForeignKeyTargetsRequ
         constraint_name: None,
         values,
         limit: None,
+        browse: false,
     }
 }
 

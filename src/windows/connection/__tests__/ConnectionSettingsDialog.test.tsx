@@ -43,6 +43,10 @@ const baseSettings: AppSettings = {
   rowCountMode: 'auto',
   rowCountEstimateThreshold: 200000,
   defaultTableSort: 'primaryKeyAsc',
+  gridDensity: 'standard',
+  gridAlternatingRows: true,
+  gridRowNumbers: true,
+  gridAutoHideScrollbar: false,
 };
 
 vi.mock('../../../hooks/useI18n', () => ({

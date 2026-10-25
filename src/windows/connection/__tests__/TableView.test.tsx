@@ -28,8 +28,7 @@ vi.mock('../../../stores/settingsStore', () => ({
   // The store is read both as a hook and as a plain snapshot (the read path
   // asks for the count strategy outside of React), so the mock carries both.
   useSettingsStore: Object.assign(
-    (sel: (s: { settings: typeof settingsState }) => unknown) =>
-      sel({ settings: settingsState }),
+    (sel: (s: { settings: typeof settingsState }) => unknown) => sel({ settings: settingsState }),
     { getState: () => ({ settings: settingsState }) },
   ),
 }));
@@ -67,18 +66,27 @@ vi.mock('../../../lib/databaseTypes', () => ({
 
 const tableController = vi.hoisted(() => ({
   snapshot: { state: 'ready' },
-  refresh: vi.fn().mockResolvedValue({ state: 'ready', observedContext: { transactionState: 'none' } }),
+  refresh: vi
+    .fn()
+    .mockResolvedValue({ state: 'ready', observedContext: { transactionState: 'none' } }),
   execute: vi.fn().mockResolvedValue({ executionId: 'table-tx' }),
   getExecution: vi.fn().mockResolvedValue({ state: 'succeeded' }),
 }));
 vi.mock('../../../lib/session/tableSession', () => ({
   tableSessionController: vi.fn().mockResolvedValue(tableController),
+  // DB-15: the preview request carries the panel's manual handle; none here.
+  tableManualHandle: () => null,
+}));
+
+// DB-15: the SQL preview goes through the real command — the mock only pins
+// its answer, so the request the test asserts is the request the panel sends.
+const databaseCommandsMock = vi.hoisted(() => ({
+  useDatabase: vi.fn().mockResolvedValue(undefined),
+  previewTableReadSql: vi.fn(),
 }));
 
 vi.mock('../../../commands/database', () => ({
-  databaseCommands: {
-    useDatabase: vi.fn().mockResolvedValue(undefined),
-  },
+  databaseCommands: databaseCommandsMock,
 }));
 
 vi.mock('../../../components/DataTable/DataTable', () => ({
@@ -87,10 +95,39 @@ vi.mock('../../../components/DataTable/DataTable', () => ({
     onCellDoubleClick?: (row: number, col: string) => void;
     headerActions?: React.ReactNode;
     emptyPlaceholder?: React.ReactNode;
+    onCellEdit?: unknown;
+    enableSetNull?: boolean;
+    onDeleteRows?: unknown;
+    onPreviewSql?: () => void;
+    onExportFiltered?: () => void;
+    exportOpenSignal?: number;
   }) => (
     <div data-testid="mock-data-table">
       <div data-testid="mock-data-table-columns">{props.columns?.map((c) => c.name).join(',')}</div>
       <div data-testid="mock-data-table-actions">{props.headerActions}</div>
+      {/* DB-16 entrance gates, exposed as attributes so the assertion can be
+          string-level: "was the callback withdrawn at the entrance?" */}
+      <div
+        data-testid="mock-data-table-gates"
+        data-cell-edit={props.onCellEdit != null ? 'on' : 'off'}
+        data-set-null={props.enableSetNull ? 'on' : 'off'}
+        data-delete-rows={props.onDeleteRows != null ? 'on' : 'off'}
+      />
+      {/* DB-15: the filter panel's exits, as clickable probes plus the signal. */}
+      <div
+        data-testid="mock-data-table-db15"
+        data-export-signal={String(props.exportOpenSignal ?? 0)}
+      />
+      {props.onPreviewSql && (
+        <button type="button" data-testid="mock-preview-sql-click" onClick={props.onPreviewSql} />
+      )}
+      {props.onExportFiltered && (
+        <button
+          type="button"
+          data-testid="mock-export-filtered-click"
+          onClick={props.onExportFiltered}
+        />
+      )}
       {props.emptyPlaceholder}
       <button
         type="button"
@@ -133,11 +170,17 @@ const tableStore = vi.hoisted(() => ({
   setDetailRow: vi.fn(),
 }));
 
-vi.mock('../../../stores/tableDataStore', () => ({
-  useTableDataStore: Object.assign((sel: (s: typeof tableStore) => unknown) => sel(tableStore), {
-    getState: () => tableStore,
-  }),
-}));
+vi.mock('../../../stores/tableDataStore', async (importOriginal) => {
+  // DB-15: `orderRequest` is a real pure function the preview mirrors — keep
+  // the real one, replace only the reactive store.
+  const actual = await importOriginal<typeof import('../../../stores/tableDataStore')>();
+  return {
+    ...actual,
+    useTableDataStore: Object.assign((sel: (s: typeof tableStore) => unknown) => sel(tableStore), {
+      getState: () => tableStore,
+    }),
+  };
+});
 
 const PANEL = 'panel-users';
 const TARGET = {
@@ -301,7 +344,10 @@ describe('TableView', () => {
     fireEvent.click(screen.getByTestId('table-tx-begin'));
 
     await vi.waitFor(() =>
-      expect(tableController.execute).toHaveBeenCalledWith({ command: 'platform.beginTransaction', input: { defersCommit: true } }),
+      expect(tableController.execute).toHaveBeenCalledWith({
+        command: 'platform.beginTransaction',
+        input: { defersCommit: true },
+      }),
     );
   });
 
@@ -470,5 +516,239 @@ describe('TableView', () => {
     }).not.toThrow();
 
     expect(screen.getByTestId('mock-data-table')).toBeInTheDocument();
+  });
+});
+
+describe('TableView no-primary-key escape hatch (DB-16)', () => {
+  /** Seed a loaded, PK-less page — the state every DB-16 case starts from. */
+  function seedNoPkPanel() {
+    seedPanel(contextOf(), {
+      columns: [{ name: 'token', dataType: 'text', nullable: true, isPrimaryKey: false }],
+      rows: [{ token: 'a1' }],
+      totalRows: 1,
+    });
+  }
+
+  it('keeps the pre-DB-16 banner byte-for-byte when no handler is threaded', () => {
+    seedNoPkPanel();
+
+    renderTable();
+
+    // The order footnote only — no banner button, no editability claim.
+    expect(screen.getByText('defaultSort.noPrimaryKey')).toBeInTheDocument();
+    expect(screen.queryByTestId('table-no-primary-key-edit-in-sql')).toBeNull();
+    expect(screen.queryByText('tableNoPk.editBanner')).toBeNull();
+  });
+
+  it('swaps the footnote for the editability banner with a working action', () => {
+    seedNoPkPanel();
+    const onEditInSql = vi.fn();
+
+    render(
+      <TableView
+        panelId={PANEL}
+        dbSessionId="c1"
+        database="app"
+        tableName="users"
+        databaseType="postgresql"
+        onEditInSql={onEditInSql}
+      />,
+    );
+
+    expect(screen.getByText('tableNoPk.editBanner')).toBeInTheDocument();
+    expect(screen.queryByText('defaultSort.noPrimaryKey')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('table-no-primary-key-edit-in-sql'));
+    expect(onEditInSql).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the editability banner even when the user has chosen a custom order', () => {
+    seedNoPkPanel();
+    // A user pick (or a named view) switches the effective order to 'none' —
+    // the old footnote would disappear, but "cannot edit here" stays true.
+    tableStore.byPanel.set(PANEL, {
+      ...emptyTableState(contextOf()),
+      columns: [{ name: 'token', dataType: 'text', nullable: true, isPrimaryKey: false }],
+      rows: [{ token: 'a1' }],
+      totalRows: 1,
+      sorts: [{ column: 'token', descending: true }],
+    });
+
+    render(
+      <TableView
+        panelId={PANEL}
+        dbSessionId="c1"
+        database="app"
+        tableName="users"
+        databaseType="postgresql"
+        onEditInSql={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('tableNoPk.editBanner')).toBeInTheDocument();
+  });
+
+  it('falls back to the footnote banner on a read-only connection', () => {
+    seedNoPkPanel();
+
+    render(
+      <TableView
+        panelId={PANEL}
+        dbSessionId="c1"
+        database="app"
+        tableName="users"
+        databaseType="postgresql"
+        readOnly={true}
+        onEditInSql={vi.fn()}
+      />,
+    );
+
+    // Read-only is a connection-wide fact with its own tip; the no-PK banner
+    // must not promise an escape hatch the connection refuses to honor.
+    expect(screen.getByText('defaultSort.noPrimaryKey')).toBeInTheDocument();
+    expect(screen.queryByTestId('table-no-primary-key-edit-in-sql')).toBeNull();
+  });
+
+  it('withdraws the in-place write entrances on a writable keyless table (no click-then-fail paths)', () => {
+    seedNoPkPanel();
+
+    renderTable();
+
+    // DB-16 entrance hardening: cell edits, "Set NULL" and row deletes are
+    // withdrawn even without the SQL exit threaded — the data cannot be
+    // addressed, so no entrance may look usable and fail at stage time.
+    const gates = screen.getByTestId('mock-data-table-gates');
+    expect(gates).toHaveAttribute('data-cell-edit', 'off');
+    expect(gates).toHaveAttribute('data-set-null', 'off');
+    expect(gates).toHaveAttribute('data-delete-rows', 'off');
+  });
+
+  it('keeps the write entrances live on a writable table that has a primary key', () => {
+    seedPanel(contextOf(), {
+      columns: [{ name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true }],
+      rows: [{ id: 1 }],
+      totalRows: 1,
+    });
+
+    renderTable();
+
+    const gates = screen.getByTestId('mock-data-table-gates');
+    expect(gates).toHaveAttribute('data-cell-edit', 'on');
+    expect(gates).toHaveAttribute('data-set-null', 'on');
+    expect(gates).toHaveAttribute('data-delete-rows', 'on');
+  });
+
+  it('keeps the write entrances withdrawn on a read-only connection with a primary key', () => {
+    seedPanel(contextOf(), {
+      columns: [{ name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true }],
+      rows: [{ id: 1 }],
+      totalRows: 1,
+    });
+
+    render(
+      <TableView
+        panelId={PANEL}
+        dbSessionId="c1"
+        database="app"
+        tableName="users"
+        databaseType="postgresql"
+        readOnly={true}
+      />,
+    );
+
+    // The pre-existing read-only wiring, re-pinned so the keyless hardening
+    // cannot regress the plain read-only path.
+    const gates = screen.getByTestId('mock-data-table-gates');
+    expect(gates).toHaveAttribute('data-cell-edit', 'off');
+    expect(gates).toHaveAttribute('data-set-null', 'off');
+    expect(gates).toHaveAttribute('data-delete-rows', 'off');
+  });
+});
+
+// DB-15: the SQL preview and the filtered export of the filter panel.
+describe('TableView SQL preview (DB-15)', () => {
+  it('previews the statements the next read would send, with the read\u2019s own parameters', async () => {
+    seedPanel(contextOf(), {
+      columns: [
+        { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true },
+        { name: 'status', dataType: 'varchar', nullable: true, isPrimaryKey: false },
+      ],
+      rows: [{ id: 1, status: 'active' }],
+      totalRows: 1,
+      page: 2,
+      pageSize: 50,
+      filters: [{ column: 'status', operator: 'eq', value: 'active' }],
+      sorts: [{ column: 'id', descending: true }],
+    });
+    databaseCommandsMock.previewTableReadSql.mockResolvedValue({
+      dataSql:
+        'SELECT "id", "status" FROM "users" WHERE "status" = \'active\' ORDER BY "id" DESC LIMIT 50 OFFSET 100;',
+      countSql: 'SELECT COUNT(*) FROM "users" WHERE "status" = \'active\';',
+      exactCountSql: 'SELECT COUNT(*) FROM "users" WHERE "status" = \'active\';',
+      countKind: 'exact',
+    });
+
+    renderTable();
+
+    fireEvent.click(screen.getByTestId('mock-preview-sql-click'));
+
+    await vi.waitFor(() => expect(databaseCommandsMock.previewTableReadSql).toHaveBeenCalledOnce());
+    // The request mirrors what `loadTableData` sends: same filters, same
+    // sorts, same page — the shown statement is the executed one.
+    const request = databaseCommandsMock.previewTableReadSql.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
+    expect(request.page).toBe(2);
+    expect(request.pageSize).toBe(50);
+    expect(request.filters).toEqual([{ column: 'status', operator: 'eq', value: 'active' }]);
+    expect(request.sorts).toEqual([{ column: 'id', descending: true }]);
+    expect(request.unbounded).toBeUndefined();
+
+    // The dialog appears with the statements once the (micro-task) answer lands.
+    await vi.waitFor(() =>
+      expect(screen.getByTestId('filter-sql-preview-data')).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('filter-sql-preview-data').textContent).toContain(
+      'ORDER BY "id" DESC LIMIT 50 OFFSET 100',
+    );
+    expect(screen.getByTestId('filter-sql-preview-count').textContent).toContain(
+      'SELECT COUNT(*) FROM "users"',
+    );
+  });
+
+  it('shows the preview error instead of statements when the backend refuses', async () => {
+    seedPanel(contextOf(), {
+      columns: [{ name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true }],
+      rows: [{ id: 1 }],
+      totalRows: 1,
+    });
+    databaseCommandsMock.previewTableReadSql.mockRejectedValue(new Error('operator not supported'));
+
+    renderTable();
+
+    fireEvent.click(screen.getByTestId('mock-preview-sql-click'));
+
+    await vi.waitFor(() =>
+      expect(screen.getByTestId('filter-sql-preview-error')).toHaveTextContent(
+        'operator not supported',
+      ),
+    );
+    expect(screen.queryByTestId('filter-sql-preview-data')).toBeNull();
+  });
+
+  it('bumps the export signal when the filter panel\u2019s export exit is used', () => {
+    seedPanel(contextOf(), {
+      columns: [{ name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true }],
+      rows: [{ id: 1 }],
+      totalRows: 1,
+    });
+
+    renderTable();
+
+    const probe = screen.getByTestId('mock-data-table-db15');
+    expect(probe).toHaveAttribute('data-export-signal', '0');
+    fireEvent.click(screen.getByTestId('mock-export-filtered-click'));
+    expect(probe).toHaveAttribute('data-export-signal', '1');
   });
 });

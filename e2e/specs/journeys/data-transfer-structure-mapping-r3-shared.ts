@@ -500,7 +500,24 @@ export async function executeIfPreviewExists() {
   const errorBlocks = await result.$$('.error-message');
   const rejected =
     outcomes.some((outcome) => outcome !== 'committed') || (await errorBlocks.length) > 0;
-  return { rejected, text: resultText };
+  // A verdict without the per-table reason cannot be acted on: name every table
+  // and what the run decided for it, next to the block texts.
+  const tableDetails: string[] = [];
+  for (const tableResult of tableResults) {
+    tableDetails.push(
+      `${await tableResult.getAttribute('data-testid')}=${await tableResult.getAttribute(
+        'data-outcome',
+      )}: ${(await tableResult.getText()).replace(/\s+/g, ' ').slice(0, 240)}`,
+    );
+  }
+  const blockDetails: string[] = [];
+  for (const block of errorBlocks) {
+    blockDetails.push((await block.getText()).replace(/\s+/g, ' ').slice(0, 240));
+  }
+  return {
+    rejected,
+    text: `${resultText}\ntables: ${tableDetails.join(' | ')}\nerrors: ${blockDetails.join(' | ')}`,
+  };
 }
 
 export async function inspectStructurePreview(source: Fixture, target: Fixture, table: string) {
@@ -605,11 +622,17 @@ export async function assertMysqlToPgObjectsRowsAndSequence() {
       `SELECT COUNT(*) AS c FROM pg_indexes WHERE schemaname = current_schema()
        AND tablename = '${mysqlTables.child}' AND indexname = 'ix_${prefix}_my_label'`,
     );
+    // PostgreSQL has no `referenced_table_name` in key_column_usage (that is a
+    // MySQL column); the catalog constraint graph is the portable answer.
     const fks = await sql(
       target,
-      `SELECT COUNT(*) AS c FROM information_schema.key_column_usage
-       WHERE table_schema = current_schema() AND table_name = '${mysqlTables.child}'
-       AND referenced_table_name = '${mysqlTables.parent}'`,
+      `SELECT COUNT(*) AS c FROM pg_constraint c
+       JOIN pg_class child ON child.oid = c.conrelid
+       JOIN pg_class parent ON parent.oid = c.confrelid
+       JOIN pg_namespace ns ON ns.oid = child.relnamespace
+       WHERE c.contype = 'f' AND ns.nspname = current_schema()
+       AND child.relname = '${mysqlTables.child}'
+       AND parent.relname = '${mysqlTables.parent}'`,
     );
     const identities = await sql(
       target,
@@ -621,9 +644,12 @@ export async function assertMysqlToPgObjectsRowsAndSequence() {
     expect(queryScalar(indexes, 'c')).toBe(1);
     expect(queryScalar(fks, 'c')).toBe(1);
     expect(queryScalar(identities, 'c')).toBe(2);
+    // `execute_query` reports writes as an affected-row count, so the identity
+    // evidence has to be read back instead of taken from RETURNING.
+    await sql(target, `INSERT INTO ${mysqlTables.child} (parent_id, label) VALUES (31, 'later')`);
     const next = await sql(
       target,
-      `INSERT INTO ${mysqlTables.child} (parent_id, label) VALUES (31, 'later') RETURNING id`,
+      `SELECT MAX(id) AS id FROM ${mysqlTables.child} WHERE label = 'later'`,
     );
     expect(queryScalar(next, 'id')).toBeGreaterThan(42);
   } finally {

@@ -15,7 +15,7 @@ use datazen_runtime::driver_registry::DriverCapabilities;
 #[tokio::test]
 async fn execute_query_success_records_history() {
     let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("q-cfg").await;
+    let (_, conn_id) = test.save_and_connect("q-cfg").await;
     let result = execute_query_impl(&test.state, conn_id, "SELECT 1".into(), None)
         .await
         .unwrap();
@@ -36,7 +36,7 @@ async fn execute_query_respects_result_limit_setting() {
     settings.query_result_limit = 5;
     test.state.store.save_settings(settings).await.unwrap();
 
-    let (_, conn_id) = test.save_and_connect_runtime("limit-cfg").await;
+    let (_, conn_id) = test.save_and_connect("limit-cfg").await;
     execute_query_impl(&test.state, conn_id, "SELECT * FROM users".into(), None)
         .await
         .unwrap();
@@ -49,7 +49,7 @@ async fn cancel_query_rejects_when_driver_capability_is_unknown_without_calling_
         ..Default::default()
     })
     .await;
-    let (_, conn_id) = test.save_and_connect_runtime("cancel-unknown").await;
+    let (_, conn_id) = test.save_and_connect("cancel-unknown").await;
     let execution_id = QueryExecutionId::new("exec-unknown");
     test.state
         .query_executions
@@ -77,7 +77,7 @@ async fn cancel_query_rejects_when_driver_capability_is_unknown_without_calling_
 #[tokio::test]
 async fn cancel_query_rejects_when_driver_capability_is_disabled() {
     let test = TestAppState::new().await;
-    let (_, conn_id) = test.save_and_connect_runtime("cancel-unsupported").await;
+    let (_, conn_id) = test.save_and_connect("cancel-unsupported").await;
     let execution_id = QueryExecutionId::new("exec-unsupported");
     test.state
         .query_executions
@@ -118,9 +118,7 @@ async fn cancel_query_surfaces_driver_unsupported_without_claiming_success() {
         ..Default::default()
     })
     .await;
-    let (_, conn_id) = test
-        .save_and_connect_runtime("cancel-driver-unsupported")
-        .await;
+    let (_, conn_id) = test.save_and_connect("cancel-driver-unsupported").await;
     let execution_id = QueryExecutionId::new("exec-driver-unsupported");
     test.state
         .query_executions
@@ -171,7 +169,7 @@ async fn execute_query_not_connected_errors() {
 #[tokio::test]
 async fn clear_query_history() {
     let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("hist-cfg").await;
+    let (_, conn_id) = test.save_and_connect("hist-cfg").await;
     execute_query_impl(&test.state, conn_id, "SELECT 1".into(), None)
         .await
         .unwrap();
@@ -198,7 +196,7 @@ async fn execute_query_with_columns_returns_rows() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("rows-cfg").await;
+    let (_, conn_id) = test.save_and_connect("rows-cfg").await;
     let result = execute_query_impl(&test.state, conn_id, "SELECT id FROM t".into(), None)
         .await
         .unwrap();
@@ -209,7 +207,7 @@ async fn execute_query_with_columns_returns_rows() {
 async fn execute_query_stream_does_not_apply_limit_when_switch_off() {
     let test = TestAppState::with_tables().await;
     assert!(!test.state.store.get_settings().await.limit_select_results);
-    let (_, conn_id) = test.save_and_connect_runtime("stream-nolimit").await;
+    let (_, conn_id) = test.save_and_connect("stream-nolimit").await;
     let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let events_cb = std::sync::Arc::clone(&events);
     let cb: QueryStreamCallback = std::sync::Arc::new(move |ev| {
@@ -247,7 +245,7 @@ async fn execute_query_stream_respects_limit_select_setting() {
     settings.query_result_limit = 5;
     test.state.store.save_settings(settings).await.unwrap();
 
-    let (_, conn_id) = test.save_and_connect_runtime("stream-limit").await;
+    let (_, conn_id) = test.save_and_connect("stream-limit").await;
     let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
     execute_query_stream_impl(
         &test.state,
@@ -270,7 +268,7 @@ async fn execute_query_stream_can_skip_result_limit_for_export() {
     settings.query_result_limit = 5;
     test.state.store.save_settings(settings).await.unwrap();
 
-    let (_, conn_id) = test.save_and_connect_runtime("stream-export").await;
+    let (_, conn_id) = test.save_and_connect("stream-export").await;
     let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
     execute_query_stream_impl(
         &test.state,
@@ -299,7 +297,7 @@ async fn execute_query_stream_failure_records_history() {
         ..Default::default()
     };
     let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect_runtime("stream-fail").await;
+    let (_, conn_id) = test.save_and_connect("stream-fail").await;
     let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
     let err = execute_query_stream_impl(
         &test.state,
@@ -345,7 +343,7 @@ async fn execute_query_stream_not_connected_errors() {
 #[tokio::test]
 async fn execute_query_never_switches_the_session_database() {
     let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("switch-db-cfg").await;
+    let (_, conn_id) = test.save_and_connect("switch-db-cfg").await;
 
     let result = execute_query_impl(
         &test.state,
@@ -376,7 +374,7 @@ async fn execute_query_never_switches_the_session_database() {
 #[tokio::test]
 async fn execute_query_never_switches_for_same_blank_or_absent_pin() {
     let test = TestAppState::with_tables().await;
-    let (_, conn_id) = test.save_and_connect_runtime("no-switch-db-cfg").await;
+    let (_, conn_id) = test.save_and_connect("no-switch-db-cfg").await;
 
     for pin in [None, Some("app".to_string()), Some("   ".to_string())] {
         execute_query_impl(&test.state, conn_id.clone(), "SELECT 1".into(), pin)

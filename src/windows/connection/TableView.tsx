@@ -1,13 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Columns3 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
-import { DATA_TABLE_ROW_HEIGHT } from '../../components/DataTable/rowHeight';
+import { DATA_TABLE_ROW_HEIGHT, rowHeightForDensity } from '../../components/DataTable/rowHeight';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { TableColumnFilter } from './TableColumnFilter';
-import { useTableDataStore } from '../../stores/tableDataStore';
+import { useTableDataStore, orderRequest } from '../../stores/tableDataStore';
+import { keysetRequestFor } from '../../stores/tableData/keysetActions';
+import { resolvePanelCountStrategy } from '../../stores/tableData/countStrategy';
+import { tableManualHandle } from '../../lib/session/tableSession';
+import { databaseCommands } from '../../commands/database';
+import { FilterSqlPreviewDialog } from '../../components/filter/FilterSqlPreviewDialog';
+import type { TableReadPreviewSql } from '@datazen/backend-client';
 import { EMPTY_GRID_SELECTION } from '../../stores/tableData/gridSelection';
 import { hasPendingWork } from '../../stores/tableData/pendingChanges';
 import { selectDirtyRow } from '../../stores/tableData/dirtyIndex';
+import { displayedColumnNames } from '../../stores/tableData/selectionActions';
+import {
+  readPersistedColumnLayout,
+  persistColumnWidths,
+} from '../../stores/tableData/tableColumnLayoutPreferences';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -15,10 +26,7 @@ import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { buildRowIdentity, rowIdentityKey, tableChangeContextKey } from '../../lib/tableChanges';
 import type { TableChangeContext } from '../../lib/tableChanges';
 import { Button } from '../../components/ui/Button';
-import {
-  TablePendingChangesBar,
-  TableTransactionControls,
-} from './TablePendingChangesBar';
+import { TablePendingChangesBar, TableTransactionControls } from './TablePendingChangesBar';
 import { TableClipboardStatus } from './TableClipboardStatus';
 import { TableNoPrimaryKeyTip } from './TableNoPrimaryKeyTip';
 import { TableLoadErrorState } from './TableLoadErrorState';
@@ -29,6 +37,8 @@ import { TableFkBreadcrumb } from './TableFkBreadcrumb';
 import { TableFkErrorBanner } from './TableFkErrorBanner';
 import { useTableActions } from './useTableActions';
 import { useTableForeignKeyNavigation } from './useTableForeignKeyNavigation';
+import { useTableForeignKeys } from '../../hooks/useTableForeignKeys';
+import { indexFkCandidateSources } from '../../lib/fkSelector';
 import { useDirtyIndex } from './useDirtyIndex';
 import { PendingPlanDialog } from './PendingPlanDialog';
 import { useTableDraftRows } from './useTableDraftRows';
@@ -38,13 +48,19 @@ import { TableReadOnlyTip } from './TableReadOnlyTip';
 import type { CellReadOnlyReason } from '../../lib/cellEditorKind';
 import { isComposingEvent, isEditableTarget } from '../../lib/gridEventGuards';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
-import {
-  likeCaseInsensitiveForMeta,
-  supportedOperatorsForMeta,
-} from '../../lib/filterOperators';
+import { useColumnStats } from '../../hooks/useColumnStats';
+import { ColumnStatsDialog } from '../../components/DataTable/ColumnStatsDialog';
+import { likeCaseInsensitiveForMeta, supportedOperatorsForMeta } from '../../lib/filterOperators';
 import type { ColumnSchema, DatabaseType } from '../../types';
 import { resolveDefaultTableSort } from '../../lib/defaultSort';
-import { DEFAULT_ROW_COUNT_MODE, DEFAULT_TABLE_SORT } from '../../types/settings';
+import {
+  DEFAULT_GRID_ALTERNATING_ROWS,
+  DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
+  DEFAULT_GRID_DENSITY,
+  DEFAULT_GRID_ROW_NUMBERS,
+  DEFAULT_ROW_COUNT_MODE,
+  DEFAULT_TABLE_SORT,
+} from '../../types/settings';
 import { Spinner } from '../../components/ui/Spinner';
 
 /** Stable empty fallbacks: a fresh array per render would defeat the memos below. */
@@ -66,6 +82,13 @@ interface TableViewProps {
   readOnlyReason?: CellReadOnlyReason;
   /** Data-export capability, threaded to the table-data export dialog. */
   dataExportCapability?: 'none' | 'loaded_only' | 'full_table';
+  /**
+   * Escape hatch of a table without a primary key (DB-16): opens a query tab
+   * with a `SELECT … WHERE` draft. Absent — e.g. on a view panel, or wherever
+   * the mount point cannot open a query tab — the banner keeps the shape it
+   * shipped before DB-16.
+   */
+  onEditInSql?: () => void;
 }
 
 export function TableView({
@@ -79,6 +102,7 @@ export function TableView({
   readOnly: readOnlyProp,
   readOnlyReason: readOnlyReasonProp,
   dataExportCapability,
+  onEditInSql,
 }: TableViewProps) {
   const { t } = useI18n();
   const savedConnection = useConnectionStore((s) =>
@@ -174,9 +198,37 @@ export function TableView({
   );
   /** How the user wants the row count obtained. */
   const rowCountMode = useSettingsStore((s) => s.settings.rowCountMode ?? DEFAULT_ROW_COUNT_MODE);
+  /* ── Grid appearance (DB-17), all four with the pre-setting default as the
+     fallback: a settings file written before the keys existed keeps the grid
+     exactly as it was. ── */
+  const gridDensity = useSettingsStore((s) => s.settings.gridDensity ?? DEFAULT_GRID_DENSITY);
+  const gridAlternatingRows = useSettingsStore(
+    (s) => s.settings.gridAlternatingRows ?? DEFAULT_GRID_ALTERNATING_ROWS,
+  );
+  const gridRowNumbers = useSettingsStore(
+    (s) => s.settings.gridRowNumbers ?? DEFAULT_GRID_ROW_NUMBERS,
+  );
+  const gridAutoHideScrollbar = useSettingsStore(
+    (s) => s.settings.gridAutoHideScrollbar ?? DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
+  );
+  /** The table grid's row height under the density setting (DB-17). */
+  const gridRowHeight = rowHeightForDensity(DATA_TABLE_ROW_HEIGHT, gridDensity);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
+  /**
+   * The SQL preview dialog of the filter panel (DB-15): the statements the
+   * next read of this panel would send, straight from the backend's own
+   * assembly. The request mirrors the exact parameters `loadTableData`
+   * sends, so the shown statement is the executed one.
+   */
+  const [sqlPreview, setSqlPreview] = useState<{
+    open: boolean;
+    preview: TableReadPreviewSql | null;
+    error: string | null;
+  }>({ open: false, preview: null, error: null });
+  /** The filter panel's "Export…" exit opens the export dialog via a signal (DB-15). */
+  const [exportSignal, setExportSignal] = useState(0);
   /** The reason the last refusal showed (DB-05); `null` = no notice. */
   const [readOnlyTipReason, setReadOnlyTipReason] = useState<CellReadOnlyReason | null>(null);
   const readOnlyTipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -255,13 +307,103 @@ export function TableView({
 
   const columns = ts?.columns ?? EMPTY_COLUMNS;
   /**
+   * The foreign keys of the table (DB-20): the in-cell selector needs the
+   * single-column keys to route its candidate loads. The navigation hook
+   * below reads the same schema — the cache makes the second read free.
+   */
+  const fkMeta = useTableForeignKeys({
+    dbSessionId,
+    tableName,
+    database,
+    schema: schema ?? null,
+    connectionId: connectionId ?? null,
+  });
+  const fkSources = useMemo(() => indexFkCandidateSources(fkMeta.index.entries()), [fkMeta.index]);
+  /**
    * The editing wiring of the panel (DB-05): the editor facts of every
    * column, the write path and the "Set Value" entries.
    */
   const editing = useTableEditing({
-    panelId, dbSessionId, database, schema, tableName, databaseType, columns,
-    connectionReadOnly: isConnectionReadOnly, mountReason: readOnlyReasonProp,
+    panelId,
+    dbSessionId,
+    database,
+    schema,
+    tableName,
+    databaseType,
+    columns,
+    connectionReadOnly: isConnectionReadOnly,
+    mountReason: readOnlyReasonProp,
+    fkSources,
   });
+
+  /**
+   * The request parameters of this panel's next read (DB-15) — mirrored from
+   * what `loadTableData` sends, so the previewed statement is the executed
+   * one. `unbounded` drops the paging frame (the filtered export streams it).
+   */
+  const buildPreviewRequest = useCallback(
+    (unbounded?: boolean) => {
+      if (!ts) return null;
+      const order = orderRequest(
+        ts.defaultOrderOverride,
+        ts.columns,
+        ts.sorts,
+        defaultTableSortSetting,
+      );
+      const keyset = keysetRequestFor(ts, ts.page);
+      return {
+        dbSessionId,
+        context,
+        manualHandle: tableManualHandle(panelId),
+        table: tableName,
+        page: ts.page,
+        pageSize: ts.pageSize,
+        filters: ts.filters,
+        sorts: order.sorts,
+        filterLogic: ts.filterLogic,
+        countStrategy: resolvePanelCountStrategy(context),
+        defaultOrderColumns: order.defaultOrderColumns,
+        afterKey: keyset.afterKey,
+        database,
+        schema,
+        ...(unbounded ? { unbounded } : {}),
+      };
+    },
+    [context, database, dbSessionId, defaultTableSortSetting, panelId, schema, tableName, ts],
+  );
+
+  /** Show the statements the next read would send (DB-15). */
+  const handleFilterPreviewSql = useCallback(() => {
+    const request = buildPreviewRequest();
+    if (!request) return;
+    setSqlPreview({ open: true, preview: null, error: null });
+    void databaseCommands
+      .previewTableReadSql(request)
+      .then((preview) => setSqlPreview({ open: true, preview, error: null }))
+      .catch((error: unknown) =>
+        setSqlPreview({
+          open: true,
+          preview: null,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+  }, [buildPreviewRequest]);
+
+  /**
+   * The statement the filtered full-table export streams (DB-15): the same
+   * assembly the preview shows, without the paging frame.
+   */
+  const buildFilteredExportSql = useCallback(async () => {
+    const request = buildPreviewRequest(true);
+    if (!request) throw new Error('Panel state unavailable');
+    const preview = await databaseCommands.previewTableReadSql(request);
+    return preview.dataSql;
+  }, [buildPreviewRequest]);
+
+  /** The filter panel's direct exit to the export dialog (DB-15). */
+  const handleFilterExportFiltered = useCallback(() => {
+    setExportSignal((value) => value + 1);
+  }, []);
 
   const handleCellDoubleClick = useCallback(
     (row: number, col: string) => {
@@ -305,16 +447,11 @@ export function TableView({
    * it directly — there is no error to classify here, and nothing failed.
    */
   const estimateUnavailable =
-    rowCountMode === 'estimated' &&
-    (ts?.columns.length ?? 0) > 0 &&
-    totalRowsKind !== 'estimated';
+    rowCountMode === 'estimated' && (ts?.columns.length ?? 0) > 0 && totalRowsKind !== 'estimated';
   /** The panel's temporary override of the global default order. */
   const defaultOrderOverride = ts?.defaultOrderOverride ?? 'inherit';
   /** The order this read actually uses. */
-  const effectiveOrder = resolveDefaultTableSort(
-    defaultOrderOverride,
-    defaultTableSortSetting,
-  );
+  const effectiveOrder = resolveDefaultTableSort(defaultOrderOverride, defaultTableSortSetting);
   /**
    * Without an order the rows of two pages may repeat or be skipped. The grid
    * has to say so — an explicit sort the user made is stable again.
@@ -349,6 +486,32 @@ export function TableView({
     columns.every((column) => !column.isPrimaryKey) &&
     effectiveOrder !== 'none';
 
+  /**
+   * A table whose grid cannot address rows, on an otherwise editable
+   * connection (DB-16). This outranks the order hint above: "you cannot edit
+   * this here, but here is the way out" is actionable, "ordered by the first
+   * column" is a footnote — and the footnote stays reachable from the pager's
+   * sort dropdown.
+   */
+  const noPkEditBlocked =
+    onEditInSql != null &&
+    isEditable &&
+    columns.length > 0 &&
+    columns.every((column) => !column.isPrimaryKey);
+
+  /**
+   * DB-16 (entrance hardening): a keyless table cannot address existing rows,
+   * so every write that targets one — cell edits, row deletes, pastes into
+   * loaded rows — is withdrawn at the **entrance** instead of failing at
+   * stage time (PRD DB-16: no path may look clickable and then fail).
+   * This is a fact about the data, not about the SQL exit: it holds even
+   * when no `onEditInSql` handler is threaded. Draft inserts stay enabled —
+   * an INSERT needs no row locator.
+   */
+  const noPkWriteBlocker = columns.length > 0 && columns.every((column) => !column.isPrimaryKey);
+  /** In-place writes need both a writable connection and a locatable row identity. */
+  const cellWritesEnabled = isEditable && !noPkWriteBlocker;
+
   /** The saved-views menu, or nothing when this backend cannot serve it. */
   const namedView = useNamedViewMenu({
     connectionId,
@@ -365,10 +528,14 @@ export function TableView({
   });
 
   const displayedColumns = useMemo(() => {
-    if (visibleColumns === null) return columns;
-    const set = new Set(visibleColumns);
-    return columns.filter((c) => set.has(c.name));
-  }, [columns, visibleColumns]);
+    // DB-12: the panel's explicit order (drag, persisted) is a permutation of
+    // the *displayed* names — the same resolver the selection uses.
+    const names = displayedColumnNames(columns, visibleColumns, ts?.columnOrder ?? null);
+    const byName = new Map(columns.map((c) => [c.name, c]));
+    return names
+      .map((name) => byName.get(name))
+      .filter((c): c is (typeof columns)[number] => c != null);
+  }, [columns, visibleColumns, ts?.columnOrder]);
 
   /** The foreign-key navigation of this tab (DB-07): arrows, jump, breadcrumb, keyboard, viewport. */
   const fkNavigation = useTableForeignKeyNavigation({
@@ -381,7 +548,7 @@ export function TableView({
     databaseType: databaseType ?? null,
     rows,
     displayedColumns,
-    rowHeight: DATA_TABLE_ROW_HEIGHT,
+    rowHeight: gridRowHeight,
     activeCell: ts?.gridSelection?.focus ?? null,
   });
 
@@ -403,6 +570,68 @@ export function TableView({
     [rows, displayedColumns],
   );
 
+  /* ── Column tools (DB-12): reorder, freeze, width persistence. ── */
+  const handleReorderColumns = useCallback(
+    (from: number, to: number) => {
+      // The drag is over the displayed columns; the stored order is that
+      // whole list, reordered, and the store resolver keeps anything the
+      // panel did not name in its schema position behind it.
+      const names = displayedColumns.map((c) => c.name);
+      if (from < 0 || from >= names.length || to < 0 || to >= names.length) return;
+      const [moved] = names.splice(from, 1);
+      names.splice(to, 0, moved);
+      actions.setColumnOrder(names);
+    },
+    [displayedColumns, actions],
+  );
+
+  /** The widths this table was last left with — read once per table identity. */
+  const tableIdentityKey = ts?.context ? tableChangeContextKey(ts.context) : null;
+  const persistedColumnWidths = useMemo(() => {
+    const context = ts?.context ?? null;
+    return context ? readPersistedColumnLayout(context).widths : null;
+    // The identity key is the stable string of the table; the context object
+    // itself is rebuilt by every load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableIdentityKey]);
+  const handleColumnWidthsCommit = useCallback(
+    (widths: Record<string, number>) => {
+      if (ts?.context) persistColumnWidths(ts.context, widths);
+    },
+    [ts?.context],
+  );
+
+  const frozenColumnCount = ts?.frozenColumnCount ?? 0;
+  const handleFreezeThrough = useCallback(
+    (throughIndex: number) => actions.setFrozenColumnCount(throughIndex + 1),
+    [actions],
+  );
+  const handleUnfreezeColumns = useCallback(() => actions.setFrozenColumnCount(0), [actions]);
+
+  /* ── Column statistics (DB-12): server-side aggregates from the header
+     menu. The numbers never come from the loaded page. ── */
+  const {
+    state: columnStatsState,
+    open: openColumnStats,
+    dismiss: dismissColumnStats,
+  } = useColumnStats();
+  const handleColumnStats = useCallback(
+    (column: string) => {
+      openColumnStats(
+        {
+          dbSessionId,
+          database: database || '',
+          databaseType: databaseType as DatabaseType,
+          schema,
+          tableName,
+        },
+        column,
+        displayedColumns.find((c) => c.name === column)?.dataType ?? null,
+      );
+    },
+    [openColumnStats, dbSessionId, database, databaseType, schema, tableName, displayedColumns],
+  );
+
   /**
    * The clipboard bridge (DB-03): ⌘C / ⌘V on the grid, the "Copy Selected Cells As …"
    * menu, and the paste confirmation. `displayedColumns` is the render order, which is the
@@ -412,10 +641,12 @@ export function TableView({
     panelId,
     ts,
     actions,
-    isEditable,
+    isEditable: cellWritesEnabled,
     columnOrder: displayedColumns.map((column) => column.name),
     tableLabel: tableName,
-    onReadOnlyPaste: () => showReadOnlyTip('connectionReadOnly'),
+    // A refused paste has one of two panel-level reasons; the tip must say which.
+    onReadOnlyPaste: () =>
+      showReadOnlyTip(noPkWriteBlocker ? 'noPrimaryKey' : 'connectionReadOnly'),
   });
   const editingCell = ts?.editingCell ?? null;
   const detailRowIndex = ts?.detailRowIndex ?? null;
@@ -486,8 +717,8 @@ export function TableView({
   }, [panelId, ts?.highlightedNewRowKey]);
 
   useEffect(() => {
-    if (!isEditable && editingCell) actions.cancelEdit();
-  }, [actions, editingCell, isEditable]);
+    if (!cellWritesEnabled && editingCell) actions.cancelEdit();
+  }, [actions, editingCell, cellWritesEnabled]);
 
   const handlePreviewPendingChanges = useCallback(async () => {
     if (driverReadOnly || pendingBusy || !hasWork) return;
@@ -613,7 +844,9 @@ export function TableView({
   // Keep the table chrome (filters etc.) visible after a failed reload so the
   // user can clear/fix the bad filter instead of being stuck on a blank error page.
   if (error && columns.length === 0) {
-    return <TableLoadErrorState error={error} retryLabel={t('common.retry')} onRetry={actions.load} />;
+    return (
+      <TableLoadErrorState error={error} retryLabel={t('common.retry')} onRetry={actions.load} />
+    );
   }
 
   return (
@@ -658,7 +891,14 @@ export function TableView({
         namedView={namedView}
       />
       {readOnlyTipReason ? <TableReadOnlyTip reason={readOnlyTipReason} /> : null}
-      {noPrimaryKey && <TableNoPrimaryKeyTip message={t('defaultSort.noPrimaryKey')} />}
+      {noPkEditBlocked ? (
+        <TableNoPrimaryKeyTip
+          message={t('tableNoPk.editBanner')}
+          action={{ label: t('tableNoPk.editInSql'), onClick: onEditInSql }}
+        />
+      ) : (
+        noPrimaryKey && <TableNoPrimaryKeyTip message={t('defaultSort.noPrimaryKey')} />
+      )}
       <TableClipboardStatus bridge={clipboard} />
       <TableTransactionControls
         panelId={panelId}
@@ -715,25 +955,43 @@ export function TableView({
         lastSelectedIndex={ts?.lastSelectedIndex ?? null}
         loading={loading}
         onSort={actions.setSort}
+        // DB-11: the multi-column sort actions of the header context menu.
+        onAddSort={actions.addSort}
+        onRemoveSort={actions.removeSort}
+        onClearSorts={actions.clearSorts}
+        // DB-12: reorder, freeze and width persistence.
+        onReorderColumns={handleReorderColumns}
+        frozenColumns={frozenColumnCount}
+        onFreezeThrough={handleFreezeThrough}
+        onUnfreezeColumns={handleUnfreezeColumns}
+        onColumnStats={handleColumnStats}
+        persistedColumnWidths={persistedColumnWidths}
+        onColumnWidthsCommit={handleColumnWidthsCommit}
         onRemoveFilter={actions.removeFilter}
         onClearFilters={actions.clearFilters}
         onPageChange={actions.setPage}
         onPageSizeChange={actions.setPageSize}
         onCellDoubleClick={handleCellDoubleClick}
-        onCellEdit={isEditable ? handleCellEdit : undefined}
+        onCellEdit={cellWritesEnabled ? handleCellEdit : undefined}
         onCellEditCancel={actions.cancelEdit}
         cellEditing={editing.cellEditing}
         cellTypeHints={editing.cellTypeHints}
-        enableSetNull={isEditable}
+        enableSetNull={cellWritesEnabled}
         onRowSelect={actions.selectRow}
         onSelectAll={actions.toggleSelectAll}
         onRowClick={actions.setDetailRow}
         highlightedRow={detailRowIndex ?? highlightedNewRowIndex}
         dirtyByRow={dirtyIndex.byRowIndex}
         onRestoreRow={actions.unstageRowDelete}
+        // The reverse foreign-key jump (DB-20): the row menu's referencing-rows entry.
+        onShowReferencingRows={fkNavigation.onShowReferencingRows}
         // The foreign-key jump (DB-07): the arrows and the callback.
         foreignKeys={fkNavigation.foreignKeys}
-        rowHeight={DATA_TABLE_ROW_HEIGHT}
+        rowHeight={gridRowHeight}
+        // The grid-appearance settings (DB-17): density above, the rest here.
+        alternatingRows={gridAlternatingRows}
+        showRowNumbers={gridRowNumbers}
+        scrollbarAutoHide={gridAutoHideScrollbar}
         onScrollElementChange={fkNavigation.onScrollElementChange}
         // The marker of the inserted row is its own channel: the background
         // highlight above is shared with the detail panel, so only a marker
@@ -752,7 +1010,11 @@ export function TableView({
         dbSessionId={dbSessionId}
         dataExportCapability={dataExportCapability}
         primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
-        onDeleteRows={isEditable ? handleDeleteRows : undefined}
+        onDeleteRows={cellWritesEnabled ? handleDeleteRows : undefined}
+        onPreviewSql={handleFilterPreviewSql}
+        onExportFiltered={handleFilterExportFiltered}
+        onBuildFilteredExportSql={buildFilteredExportSql}
+        exportOpenSignal={exportSignal}
         headerActions={
           <TableColumnFilter
             columns={columns}
@@ -788,6 +1050,13 @@ export function TableView({
         open={previewOpen && previewPlan != null}
         onClose={() => setPreviewOpen(false)}
       />
+      <FilterSqlPreviewDialog
+        open={sqlPreview.open}
+        onClose={() => setSqlPreview((state) => ({ ...state, open: false }))}
+        preview={sqlPreview.preview}
+        error={sqlPreview.error}
+      />
+      <ColumnStatsDialog state={columnStatsState} onClose={dismissColumnStats} />
     </div>
   );
 }

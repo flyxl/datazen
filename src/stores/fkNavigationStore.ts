@@ -92,6 +92,8 @@ export interface FkNavigationActions {
   rewindTo: (entryId: string) => void;
   /** Record the viewport a tab left behind; only the latest one is kept. */
   recordViewport: (panelId: string, viewport: GridViewport) => void;
+  /** The viewport snapshot of a tab, if one was recorded; reading it keeps it. */
+  peekViewport: (panelId: string) => GridViewport | null;
   /** Take the viewport snapshot of a tab; taking it consumes it. */
   takeViewport: (panelId: string) => GridViewport | null;
   /** The entry id of a jump with this key, or `null`. */
@@ -114,113 +116,116 @@ export function resetFkNavigationEntryIds(): void {
   entryCounter = 0;
 }
 
-export const useFkNavigationStore = create<FkNavigationState & FkNavigationActions>(
-  (set, get) => ({
-    back: [],
-    forward: [],
-    truncated: false,
-    viewports: new Map(),
+export const useFkNavigationStore = create<FkNavigationState & FkNavigationActions>((set, get) => ({
+  back: [],
+  forward: [],
+  truncated: false,
+  viewports: new Map(),
 
-    push: (entry) => {
-      const created: FkNavEntry = { ...entry, id: nextEntryId() };
-      const back = [...get().back, created];
-      // The depth limit drops the **oldest** entry; the breadcrumb says so
-      // instead of pretending the history is complete.
-      if (back.length > FK_NAV_MAX_DEPTH) {
-        back.shift();
-        set({ back, forward: [], truncated: true });
-        return created;
-      }
-      set({ back, forward: [] });
+  push: (entry) => {
+    const created: FkNavEntry = { ...entry, id: nextEntryId() };
+    const back = [...get().back, created];
+    // The depth limit drops the **oldest** entry; the breadcrumb says so
+    // instead of pretending the history is complete.
+    if (back.length > FK_NAV_MAX_DEPTH) {
+      back.shift();
+      set({ back, forward: [], truncated: true });
       return created;
-    },
+    }
+    set({ back, forward: [] });
+    return created;
+  },
 
-    goBack: (existingPanelIds) => {
-      const { back, forward } = get();
-      // Skip (and drop) the entries whose tab the user closed meanwhile.
-      let index = back.length - 1;
-      while (index >= 0 && !existingPanelIds.has(back[index].panelId)) index -= 1;
-      if (index < 0) {
-        if (back.length > 0) set({ back: [], forward });
-        return null;
-      }
-      const entry = back[index];
-      // `slice(0, index)` drops the dead entries above the one we return to.
-      set({
-        back: back.slice(0, index),
-        // The entry that was just left goes **on top** of the forward stack:
-        // the top is the last element, so "forward" continues where "back"
-        // stopped (the browser's own rule).
-        forward: [...forward, entry],
-      });
-      return entry;
-    },
-
-    goForward: (existingPanelIds) => {
-      const { back, forward } = get();
-      let index = forward.length - 1;
-      while (index >= 0 && !existingPanelIds.has(forward[index].panelId)) index -= 1;
-      if (index < 0) {
-        if (forward.length > 0) set({ back, forward: [] });
-        return null;
-      }
-      const entry = forward[index];
-      const nextBack = [...back, entry];
-      set({
-        back: nextBack.length > FK_NAV_MAX_DEPTH ? nextBack.slice(nextBack.length - FK_NAV_MAX_DEPTH) : nextBack,
-        forward: forward.slice(0, index),
-      });
-      return entry;
-    },
-
-    rewindTo: (entryId) => {
-      const { back } = get();
-      const index = back.findIndex((entry) => entry.id === entryId);
-      if (index < 0) return;
-      // Everything after the entry is cut away: the cycle A → B → A keeps the
-      // tab of A open but forgets the detour through B.
-      set({ back: back.slice(0, index + 1), forward: [] });
-    },
-
-    recordViewport: (panelId, viewport) => {
-      const viewports = new Map(get().viewports);
-      // Only the latest snapshot of a tab is kept: two jumps out of the same
-      // tab must not restore two different scroll positions.
-      viewports.set(panelId, viewport);
-      set({ viewports });
-    },
-
-    takeViewport: (panelId) => {
-      const viewports = get().viewports;
-      const viewport = viewports.get(panelId);
-      if (!viewport) return null;
-      // Taking the snapshot consumes it: a tab that is entered twice does not
-      // restore the same scroll position twice.
-      const next = new Map(viewports);
-      next.delete(panelId);
-      set({ viewports: next });
-      return viewport;
-    },
-
-    findEntryIdByNavKey: (navKey) => {
-      const { back } = get();
-      for (let index = back.length - 1; index >= 0; index -= 1) {
-        if (back[index].navKey === navKey) return back[index].id;
-      }
+  goBack: (existingPanelIds) => {
+    const { back, forward } = get();
+    // Skip (and drop) the entries whose tab the user closed meanwhile.
+    let index = back.length - 1;
+    while (index >= 0 && !existingPanelIds.has(back[index].panelId)) index -= 1;
+    if (index < 0) {
+      if (back.length > 0) set({ back: [], forward });
       return null;
-    },
+    }
+    const entry = back[index];
+    // `slice(0, index)` drops the dead entries above the one we return to.
+    set({
+      back: back.slice(0, index),
+      // The entry that was just left goes **on top** of the forward stack:
+      // the top is the last element, so "forward" continues where "back"
+      // stopped (the browser's own rule).
+      forward: [...forward, entry],
+    });
+    return entry;
+  },
 
-    prune: (existingPanelIds) => {
-      const { back, forward } = get();
-      const keep = (entries: FkNavEntry[]): FkNavEntry[] =>
-        entries.filter((entry) => existingPanelIds.has(entry.panelId));
-      const viewports = new Map(get().viewports);
-      for (const panelId of [...viewports.keys()]) {
-        if (!existingPanelIds.has(panelId)) viewports.delete(panelId);
-      }
-      set({ back: keep(back), forward: keep(forward), viewports });
-    },
+  goForward: (existingPanelIds) => {
+    const { back, forward } = get();
+    let index = forward.length - 1;
+    while (index >= 0 && !existingPanelIds.has(forward[index].panelId)) index -= 1;
+    if (index < 0) {
+      if (forward.length > 0) set({ back, forward: [] });
+      return null;
+    }
+    const entry = forward[index];
+    const nextBack = [...back, entry];
+    set({
+      back:
+        nextBack.length > FK_NAV_MAX_DEPTH
+          ? nextBack.slice(nextBack.length - FK_NAV_MAX_DEPTH)
+          : nextBack,
+      forward: forward.slice(0, index),
+    });
+    return entry;
+  },
 
-    reset: () => set({ back: [], forward: [], truncated: false, viewports: new Map() }),
-  }),
-);
+  rewindTo: (entryId) => {
+    const { back } = get();
+    const index = back.findIndex((entry) => entry.id === entryId);
+    if (index < 0) return;
+    // Everything after the entry is cut away: the cycle A → B → A keeps the
+    // tab of A open but forgets the detour through B.
+    set({ back: back.slice(0, index + 1), forward: [] });
+  },
+
+  recordViewport: (panelId, viewport) => {
+    const viewports = new Map(get().viewports);
+    // Only the latest snapshot of a tab is kept: two jumps out of the same
+    // tab must not restore two different scroll positions.
+    viewports.set(panelId, viewport);
+    set({ viewports });
+  },
+
+  peekViewport: (panelId) => get().viewports.get(panelId) ?? null,
+
+  takeViewport: (panelId) => {
+    const viewports = get().viewports;
+    const viewport = viewports.get(panelId);
+    if (!viewport) return null;
+    // Taking the snapshot consumes it: a tab that is entered twice does not
+    // restore the same scroll position twice.
+    const next = new Map(viewports);
+    next.delete(panelId);
+    set({ viewports: next });
+    return viewport;
+  },
+
+  findEntryIdByNavKey: (navKey) => {
+    const { back } = get();
+    for (let index = back.length - 1; index >= 0; index -= 1) {
+      if (back[index].navKey === navKey) return back[index].id;
+    }
+    return null;
+  },
+
+  prune: (existingPanelIds) => {
+    const { back, forward } = get();
+    const keep = (entries: FkNavEntry[]): FkNavEntry[] =>
+      entries.filter((entry) => existingPanelIds.has(entry.panelId));
+    const viewports = new Map(get().viewports);
+    for (const panelId of [...viewports.keys()]) {
+      if (!existingPanelIds.has(panelId)) viewports.delete(panelId);
+    }
+    set({ back: keep(back), forward: keep(forward), viewports });
+  },
+
+  reset: () => set({ back: [], forward: [], truncated: false, viewports: new Map() }),
+}));

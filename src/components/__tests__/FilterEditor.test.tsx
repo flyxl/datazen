@@ -424,7 +424,10 @@ describe('FilterEditor operators and completeness', () => {
       overrides: [{ match: 'exact' as const, pattern: 'timestamp', cellType: 'bytes' as const }],
     };
     renderTyped({
-      columns: [{ name: 'id', type: 'int4' }, { name: 'name', type: 'timestamp' }],
+      columns: [
+        { name: 'id', type: 'int4' },
+        { name: 'name', type: 'timestamp' },
+      ],
       draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
       cellTypeHints: sqlserver,
     });
@@ -674,7 +677,9 @@ describe('FilterEditor per-condition connectors', () => {
         onOpenChange={vi.fn()}
         onLogicChange={vi.fn()}
         onChange={(index, next) =>
-          setDraft((previous) => previous.map((filter, position) => (position === index ? next : filter)))
+          setDraft((previous) =>
+            previous.map((filter, position) => (position === index ? next : filter)),
+          )
         }
         onAdd={vi.fn()}
         onRemove={vi.fn()}
@@ -711,7 +716,11 @@ describe('FilterEditor per-condition connectors', () => {
       draftFilters: [twoRows[0], { ...twoRows[1], connector: 'or' }],
     });
     fireEvent.click(screen.getByTestId('filter-connector-reset'));
-    expect(props.onChange).toHaveBeenCalledWith(1, { column: 'name', operator: 'eq', value: 'alice' });
+    expect(props.onChange).toHaveBeenCalledWith(1, {
+      column: 'name',
+      operator: 'eq',
+      value: 'alice',
+    });
 
     cleanup();
     render(<StatefulEditor initial={[twoRows[0], { ...twoRows[1], connector: 'or' }]} />);
@@ -745,5 +754,32 @@ describe('FilterEditor per-condition connectors', () => {
     renderEditor({ draftFilters: twoRows });
     expect(screen.getAllByTestId('filter-connector')).toHaveLength(1);
     expect(screen.getAllByTitle('filter.editCondition')).toHaveLength(2);
+  });
+
+  // DB-15: the SQL preview and the filtered export of the panel.
+  describe('DB-15 SQL preview and filtered export exits', () => {
+    it('renders the SQL and export buttons only when their handlers are threaded', () => {
+      renderEditor();
+      // No handler, no exit: the panel stays exactly as it was.
+      expect(screen.queryByTestId('filter-preview-sql')).toBeNull();
+      expect(screen.queryByTestId('filter-export-filtered')).toBeNull();
+
+      cleanup();
+      renderEditor({ onPreviewSql: vi.fn(), onExportFiltered: vi.fn() });
+      expect(screen.getByTestId('filter-preview-sql')).toBeInTheDocument();
+      expect(screen.getByTestId('filter-export-filtered')).toBeInTheDocument();
+    });
+
+    it('hands a click on either exit to its handler', () => {
+      const onPreviewSql = vi.fn();
+      const onExportFiltered = vi.fn();
+      renderEditor({ onPreviewSql, onExportFiltered });
+
+      fireEvent.click(screen.getByTestId('filter-preview-sql'));
+      expect(onPreviewSql).toHaveBeenCalledOnce();
+
+      fireEvent.click(screen.getByTestId('filter-export-filtered'));
+      expect(onExportFiltered).toHaveBeenCalledOnce();
+    });
   });
 });

@@ -1,6 +1,8 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
+use crate::commands::port_call::port_cmd;
 use crate::data_sync::{DataSyncExecutionResponse, ExecutionOutcome};
+use crate::platform::ipc::require_application_services;
 use crate::store::MigrationProfileRef;
 use crate::store::{HistoryScope, MigrationRunFilter, MigrationRunPage, MigrationRunRecord};
 use chrono::Utc;
@@ -213,28 +215,42 @@ pub(crate) async fn validate_migration_profile_ref(
     let Some(reference) = reference else {
         return Ok(());
     };
+    let adapter = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = adapter.begin_call();
+    let services = require_application_services(state)?;
     let actual = match operation {
-        "dataSync" => state
-            .store
-            .get_sync_profiles()
-            .await
-            .into_iter()
-            .find(|profile| profile.id == reference.id)
-            .map(|profile| profile.updated_at.to_rfc3339()),
-        "dataTransfer" => state
-            .store
-            .get_transfer_profiles()
-            .await
-            .into_iter()
-            .find(|profile| profile.id == reference.id)
-            .map(|profile| profile.updated_at.to_rfc3339()),
-        "schemaDiff" => state
-            .store
-            .get_schema_diff_profiles()
-            .await
-            .into_iter()
-            .find(|profile| profile.id == reference.id)
-            .map(|profile| profile.updated_at.to_rfc3339()),
+        "dataSync" => port_cmd(
+            services
+                .migration_profiles
+                .list_sync_profiles(call.context())
+                .await,
+            "validate_migration_profile_ref",
+        )?
+        .into_iter()
+        .find(|profile| profile.id == reference.id)
+        .map(|profile| profile.updated_at.as_str().to_owned()),
+        "dataTransfer" => port_cmd(
+            services
+                .migration_profiles
+                .list_transfer_profiles(call.context())
+                .await,
+            "validate_migration_profile_ref",
+        )?
+        .into_iter()
+        .find(|profile| profile.id == reference.id)
+        .map(|profile| profile.updated_at.as_str().to_owned()),
+        "schemaDiff" => port_cmd(
+            services
+                .migration_profiles
+                .list_schema_diff_profiles(call.context())
+                .await,
+            "validate_migration_profile_ref",
+        )?
+        .into_iter()
+        .find(|profile| profile.id == reference.id)
+        .map(|profile| profile.updated_at.as_str().to_owned()),
         _ => None,
     };
     let revisions_match = |actual: &str, expected: &str| {
@@ -259,6 +275,25 @@ mod tests {
     use crate::testing::app_state::TestAppState;
     use chrono::Utc;
     use uuid::Uuid;
+
+    #[test]
+    fn profile_revision_validation_uses_the_injected_read_port() {
+        let production = include_str!("history.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap_or_default();
+        assert!(production.contains("migration_profiles"));
+        for forbidden in [
+            "state.store.get_sync_profiles",
+            "state.store.get_transfer_profiles",
+            "state.store.get_schema_diff_profiles",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "history profile revision validation must not use {forbidden}"
+            );
+        }
+    }
 
     fn sample_entry(sql: &str) -> QueryHistoryEntry {
         QueryHistoryEntry {

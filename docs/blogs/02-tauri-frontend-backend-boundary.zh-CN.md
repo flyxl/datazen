@@ -176,7 +176,7 @@ pub struct ExecuteDriverCommandRequest {
 
 ## 从专用命令到 Driver Command Runtime
 
-DataZen 仍保留了领域清晰的 IPC 封装，例如 `get_table_data`、`get_explain` 和 `cancel_query`。但查询和驱动能力的统一执行路径是 `execute_driver_command`：
+DataZen 仍保留了领域清晰的 IPC 封装，例如 `get_table_data_at_target`、`get_explain` 和 `cancel_query`。但查询和驱动能力的统一执行路径是 `execute_driver_command`：
 
 ```typescript
 export interface ExecuteDriverCommandRequest {

@@ -266,6 +266,14 @@ impl ResourceDescriptor {
     pub fn is_fixed_session(&self) -> bool {
         self.session_continuity.is_fixed()
     }
+
+    /// True when the provider honestly answers "leased" — a pooled lease whose
+    /// successive operations may land on different connections. That is an
+    /// answer, not a gap: an editor session may use it (it just cannot promise
+    /// cross-statement state), whereas `Unknown` must be refused.
+    pub fn declares_leased_session(&self) -> bool {
+        self.session_continuity.is_leased()
+    }
 }
 
 /// Who is asking for a resource and what it is for.

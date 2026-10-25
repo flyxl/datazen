@@ -60,11 +60,12 @@ function toCommandName(method: keyof MethodMap): string {
     disableConnection: 'platform_disable_profile',
     readArtifact: 'read_artifact_chunk',
     // The table read is the *target-bound* command: it carries its own
-    // context and manual handle instead of borrowing a session. The
-    // session-scoped `get_table_data` still exists on the Rust side, but the
-    // grid reads through the target-bound one, and the port has to name the
-    // command the grid actually uses.
+    // context and manual handle instead of borrowing a session. The grid
+    // reads through it — the retired session-scoped `get_table_data` no
+    // longer exists — so the port has to name the command the grid uses.
     getTableData: 'get_table_data_at_target',
+    // The DB-15 SQL preview: same target-bound shape, never executed.
+    previewTableReadSql: 'preview_table_read_sql',
   };
   if (commandOverrides[method]) return commandOverrides[method];
   return method.includes('_')

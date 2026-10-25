@@ -137,7 +137,9 @@ fn map_foreign_key_columns(
     })
 }
 
-fn structure_table_order(
+/// Parents before children, so a data write can satisfy the target's foreign
+/// keys in the same order the structure plan creates the tables in.
+pub(crate) fn structure_table_order(
     inspected: &[TableInspectResult],
     schemas: &HashMap<String, TableSchema>,
     job: &TransferJob,

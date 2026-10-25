@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { DatabaseType, FilterCondition } from '../../types';
+import type { DatabaseType, FilterCondition, SortCondition } from '../../types';
 import {
   buildDataTableContextMenuItems,
   formatRowAsSqlInsert,
@@ -57,6 +57,12 @@ export interface UseDataTableContextMenuOptions {
   dirtyByRow?: ReadonlyMap<number, DirtyRowEntry> | null;
   /** Undo the delete mark of a row (DB-06). */
   onRestoreRow?: (rowIndex: number) => void;
+  /**
+   * Open the tabs of the rows that reference the right-clicked row (DB-20).
+   * Omitted ⇒ the row menu keeps its pre-DB-20 shape — result grids and
+   * driver grids are unaffected.
+   */
+  onShowReferencingRows?: (rowIndex: number) => void;
   /** Opens the export dialog. */
   onExport?: () => void;
   /**
@@ -87,6 +93,28 @@ export interface UseDataTableContextMenuOptions {
   onPasteRows?: () => void;
   /** A clipboard write failed (the menu copy has no synchronous gesture to rely on). */
   onCopyProblem?: (problem: PasteProblem) => void;
+  /* ── Multi-column sort (DB-11). Omitted ⇒ the header menu keeps its
+     pre-DB-11 shape — the result grid and driver grids are unaffected. ── */
+  /** The sorts in force, in `ORDER BY` order. */
+  sorts?: SortCondition[];
+  /** Add (or re-aim) one column of the sort list. */
+  onAddSort?: (sort: SortCondition) => void;
+  /** Remove one column from the sort list. */
+  onRemoveSort?: (column: string) => void;
+  /** Drop the whole sort list. */
+  onClearSorts?: () => void;
+  /* ── Frozen columns (DB-12). Omitted ⇒ no freeze entries in the header
+     menu — driver grids are unaffected. ── */
+  /** How many leading columns are currently frozen; `0` = none. */
+  frozenColumns?: number;
+  /** Freeze through the right-clicked column (that many leading columns). */
+  onFreezeThrough?: (throughIndex: number) => void;
+  /** Unfreeze every column. */
+  onUnfreezeColumns?: () => void;
+  /* ── Column statistics (DB-12). Omitted ⇒ no stats entry in the header
+     menu — driver grids are unaffected. ── */
+  /** Ask for the server-side aggregates of the right-clicked column. */
+  onColumnStats?: (column: string) => void;
   /** i18n translate function. */
   t: (key: string, params?: Record<string, string | number>) => string;
 }
@@ -113,6 +141,7 @@ export function useDataTableContextMenu(
     onAddFilter,
     onCellEdit,
     onDeleteRows,
+    onShowReferencingRows,
     dirtyByRow,
     onRestoreRow,
     onExport,
@@ -128,6 +157,14 @@ export function useDataTableContextMenu(
     onPasteSelectedCells,
     onPasteRows,
     onCopyProblem,
+    sorts,
+    onAddSort,
+    onRemoveSort,
+    onClearSorts,
+    frozenColumns,
+    onFreezeThrough,
+    onUnfreezeColumns,
+    onColumnStats,
     t,
   } = options;
 
@@ -138,6 +175,18 @@ export function useDataTableContextMenu(
 
       const hit = resolveDataTableCellFromEvent(e.target);
       const hitHeaderCol = !hit ? resolveDataTableHeaderColFromEvent(e.target) : null;
+      // The multi-column sort block (DB-11) is bound to the right-clicked
+      // header column; a click on a cell never offers it.
+      const headerSort = hitHeaderCol && sorts ? { column: hitHeaderCol, sorts } : undefined;
+      // The freeze block (DB-12) needs the right-clicked column's position
+      // among the displayed columns and the freeze state in force.
+      const headerFreeze =
+        hitHeaderCol && (frozenColumns != null || onFreezeThrough || onUnfreezeColumns)
+          ? { index: columnNames.indexOf(hitHeaderCol), frozen: frozenColumns ?? 0 }
+          : undefined;
+      // The stats entry (DB-12) is bound to the right-clicked header column;
+      // a click on a cell never offers it.
+      const headerStats = hitHeaderCol && onColumnStats ? { column: hitHeaderCol } : undefined;
       const effectiveColName = hit ? hit.columnName : hitHeaderCol;
       const effectiveColIdx = effectiveColName ? columnNames.indexOf(effectiveColName) : -1;
       const hitRow = hit ? rows[hit.rowIndex] : undefined;
@@ -201,7 +250,9 @@ export function useDataTableContextMenu(
        * answer depends on the column (nullable?) and on the row (is there
        * anything to revert?).
        */
-      const setValue = hit ? (setValueState?.(hit.rowIndex, hit.columnName) ?? undefined) : undefined;
+      const setValue = hit
+        ? (setValueState?.(hit.rowIndex, hit.columnName) ?? undefined)
+        : undefined;
 
       /**
        * The menu callback runs after an async IPC round trip, so the synchronous user
@@ -242,6 +293,7 @@ export function useDataTableContextMenu(
                 ? `${t('export.export')} (${t('export.selectedRows')} ${selectedRows.size})`
                 : t('export.export'),
             restoreRow: t('tableData.restoreRow'),
+            referencedBy: t('dataTable.referencedBy'),
             setValue: t('cellEditor.setValue'),
             setEmpty: t('cellEditor.setEmpty'),
             setDefault: t('cellEditor.setDefault'),
@@ -253,8 +305,20 @@ export function useDataTableContextMenu(
             copySelectedCellsAsTsvWithHeader: t('dataTable.copySelectedCellsAsTsvWithHeader'),
             copySelectedCellsAsCsv: t('dataTable.copySelectedCellsAsCsv'),
             copySelectedCellsAsJson: t('dataTable.copySelectedCellsAsJson'),
+            // The DB-10 formats: plain text, a text/html table, a pipe table.
+            copySelectedCellsAsPlain: t('dataTable.copySelectedCellsAsPlain'),
+            copySelectedCellsAsHtml: t('dataTable.copySelectedCellsAsHtml'),
+            copySelectedCellsAsMarkdown: t('dataTable.copySelectedCellsAsMarkdown'),
             pasteSelectedCells: t('dataTable.pasteSelectedCells'),
             pasteRows: t('dataTable.pasteRows'),
+            sortMulti: t('dataTable.sortMulti'),
+            sortAscending: t('dataTable.sortAscending'),
+            sortDescending: t('dataTable.sortDescending'),
+            removeSortColumn: t('dataTable.removeSortColumn'),
+            clearSorts: t('dataTable.clearSorts'),
+            freezeThrough: t('dataTable.freezeThrough'),
+            unfreezeColumns: t('dataTable.unfreezeColumns'),
+            columnStats: t('dataTable.columnStats'),
           },
           handlers: {
             onCopy:
@@ -378,6 +442,14 @@ export function useDataTableContextMenu(
                     onRestoreRow?.(hit.rowIndex);
                   }
                 : undefined,
+            // The reverse jump (DB-20) is bound to the row under the pointer:
+            // the referencing rows are the ones pointing at **this** row.
+            onShowReferencingRows:
+              hit && onShowReferencingRows
+                ? () => {
+                    onShowReferencingRows(hit.rowIndex);
+                  }
+                : undefined,
             // The write entries (DB-05). They need the cell under the
             // pointer, so they are bound to it here.
             onSetValue:
@@ -392,9 +464,27 @@ export function useDataTableContextMenu(
                     onLoadCandidates(hit.rowIndex, hit.columnName);
                   }
                 : undefined,
+            onSortAscending: onAddSort
+              ? (column: string) => {
+                  onAddSort({ column, descending: false });
+                }
+              : undefined,
+            onSortDescending: onAddSort
+              ? (column: string) => {
+                  onAddSort({ column, descending: true });
+                }
+              : undefined,
+            onRemoveSort,
+            onClearSorts,
+            onFreezeThrough,
+            onUnfreezeColumns,
+            onColumnStats,
           },
           hasCellContext,
           hasHeaderContext: !!hitHeaderCol,
+          headerSort,
+          headerFreeze,
+          headerStats,
           hasSelectedRows,
           multiRowSelection,
           exportEnabled,
@@ -440,6 +530,14 @@ export function useDataTableContextMenu(
       onPasteSelectedCells,
       onPasteRows,
       onCopyProblem,
+      sorts,
+      onAddSort,
+      onRemoveSort,
+      onClearSorts,
+      frozenColumns,
+      onFreezeThrough,
+      onUnfreezeColumns,
+      onColumnStats,
     ],
   );
 

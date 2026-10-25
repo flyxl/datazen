@@ -1780,6 +1780,7 @@ dependencies = [
  "datazen-driver-api",
  "datazen-feature-core",
  "datazen-platform-api",
+ "datazen-schema-diff",
  "proc-macro2",
  "serde",
  "serde_json",

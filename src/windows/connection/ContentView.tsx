@@ -353,8 +353,13 @@ export function ContentView({
     () => ({
       openRelation: handleSelectTableWithSchema,
       openAiChatDraft,
+      // The generic "open a query tab for this table action" entry
+      // (aiDraftBridge contract). DB-16's "Edit in SQL" is its first consumer;
+      // it delegates to the same handler the schema-tree actions use, so the
+      // query tab gets identical context binding and initialSql handling.
+      openSqlEditorForTable: handlers.handleOpenTableAction,
     }),
-    [handleSelectTableWithSchema, openAiChatDraft],
+    [handleSelectTableWithSchema, openAiChatDraft, handlers.handleOpenTableAction],
   );
 
   const exportableTableNames = useMemo(() => schemaTables.map((tbl) => tbl.name), [schemaTables]);

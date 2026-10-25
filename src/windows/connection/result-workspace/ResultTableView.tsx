@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Search } from 'lucide-react';
 import { DataTable } from '../../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../../components/DataTable/TableHeader';
 import { useI18n } from '../../../hooks/useI18n';
 import { useSettingsStore } from '../../../stores/settingsStore';
+import {
+  DEFAULT_GRID_ALTERNATING_ROWS,
+  DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
+  DEFAULT_GRID_DENSITY,
+  DEFAULT_GRID_ROW_NUMBERS,
+} from '../../../types/settings';
+import { rowHeightForDensity } from '../../../components/DataTable/rowHeight';
 import type { StatementResult } from '../../../types';
 import type { DataExportCapability } from '../../../lib/exportCapability';
 import type { CellTypeHints } from '../../../lib/cellTypes';
@@ -21,6 +28,13 @@ import {
 import { useResultVerdict } from '../../../stores/panelResultEdit';
 import { isMutationExecution } from './isMutationExecution';
 import { ExecutionSummaryCard } from './ExecutionSummaryCard';
+import { ResultFindBar } from './ResultFindBar';
+import {
+  EMPTY_RESULT_FIND_QUERY,
+  filterResultRows,
+  planResultReplacements,
+  type ResultFindQuery,
+} from '../../../lib/resultFindReplace';
 
 /**
  * The verdict of a result nobody has judged yet.
@@ -80,8 +94,27 @@ export function ResultTableView({
   const { t } = useI18n();
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
+  /* ── Grid appearance (DB-17), same four as the table grid. The result grid's
+     own default is 32px — the density shifts it, `standard` leaves it be. ── */
+  const gridDensity = useSettingsStore((s) => s.settings.gridDensity ?? DEFAULT_GRID_DENSITY);
+  const gridAlternatingRows = useSettingsStore(
+    (s) => s.settings.gridAlternatingRows ?? DEFAULT_GRID_ALTERNATING_ROWS,
+  );
+  const gridRowNumbers = useSettingsStore(
+    (s) => s.settings.gridRowNumbers ?? DEFAULT_GRID_ROW_NUMBERS,
+  );
+  const gridAutoHideScrollbar = useSettingsStore(
+    (s) => s.settings.gridAutoHideScrollbar ?? DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
+  );
+  /** The result grid's row height under the density setting: 32 + delta. */
+  const gridRowHeight = rowHeightForDensity(32, gridDensity);
   const [editError, setEditError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
+  /* ── The in-result find and replace (DB-14). The bar filters the loaded
+     rows; a replacement writes through the result's own per-cell path. ── */
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState<ResultFindQuery>(EMPTY_RESULT_FIND_QUERY);
+  const [findReplacement, setFindReplacement] = useState('');
   /**
    * Why the last clicked row refused to open an editor.
    *
@@ -117,6 +150,9 @@ export function ResultTableView({
   useEffect(() => {
     setEditingCell(null);
     setEditError(null);
+    // The find is a view over loaded rows: a new result is new rows, so the
+    // query resets rather than silently filtering data it never saw.
+    setFindQuery(EMPTY_RESULT_FIND_QUERY);
   }, [
     canEdit,
     result.runtimeBinding?.executionId,
@@ -134,6 +170,42 @@ export function ResultTableView({
         nullable: c.nullable,
       })),
     [result.columns],
+  );
+
+  /**
+   * The find bar's view of the loaded rows (DB-14): the rows the filter
+   * keeps, in the statement's own order — and the map back to the
+   * statement's coordinates, because a write always names the row it means,
+   * never the filtered view's.
+   */
+  const columnNames = useMemo(() => result.columns.map((column) => column.name), [result.columns]);
+  const originalIndexes = useMemo(
+    () => filterResultRows(result.rows, columnNames, findQuery),
+    [columnNames, findQuery, result.rows],
+  );
+  const findFiltering = findOpen && findQuery.needle !== '';
+  const viewRows = useMemo(
+    () => (findFiltering ? originalIndexes.map((index) => result.rows[index]) : result.rows),
+    [findFiltering, originalIndexes, result.rows],
+  );
+  const toOriginal = useCallback(
+    (viewIndex: number) => (findFiltering ? (originalIndexes[viewIndex] ?? viewIndex) : viewIndex),
+    [findFiltering, originalIndexes],
+  );
+  const fromOriginal = useCallback(
+    (originalIndex: number | null) => {
+      if (originalIndex == null) return null;
+      if (!findFiltering) return originalIndex;
+      const at = originalIndexes.indexOf(originalIndex);
+      return at < 0 ? null : at;
+    },
+    [findFiltering, originalIndexes],
+  );
+  /** The cells a replace-all would write; empty when the result cannot write. */
+  const replacePlan = useMemo(
+    () =>
+      canEdit ? planResultReplacements(result.rows, columnNames, findQuery, findReplacement) : [],
+    [canEdit, columnNames, findQuery, findReplacement, result.rows],
   );
 
   const statusBar = useMemo(
@@ -165,9 +237,22 @@ export function ResultTableView({
             </span>
           </>
         )}
+        <span className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            data-testid="result-find-toggle"
+            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-fg-muted hover:bg-surface-raised hover:text-fg"
+            title={t('resultFind.open')}
+            aria-pressed={findOpen}
+            onClick={() => setFindOpen((open) => !open)}
+          >
+            <Search className="h-3 w-3" />
+            {t('resultFind.openLabel')}
+          </button>
+        </span>
       </div>
     ),
-    [queryResultLimit, result, t],
+    [findOpen, queryResultLimit, result, t],
   );
 
   const handleCellDoubleClick = useCallback(
@@ -179,6 +264,9 @@ export function ResultTableView({
         setEditingCell(null);
         return;
       }
+      // The grid's row is the filtered view's row; every decision below
+      // names the statement's own row.
+      const originalRow = toOriginal(row);
       // The page-level guards are decided for **the row being clicked**: a
       // NULL key value or a duplicate identity makes that row unaddressable.
       const editability = resolveResultEditability(
@@ -186,7 +274,7 @@ export function ResultTableView({
         serverVerdict,
         result.rows,
         result.columns,
-        row,
+        originalRow,
       );
       if (!editability.writable) {
         setEditingCell(null);
@@ -212,9 +300,9 @@ export function ResultTableView({
         setEditingCell(null);
         return;
       }
-      setEditingCell({ row, col });
+      setEditingCell({ row: originalRow, col });
     },
-    [onRowDetail, canEdit, legacyVerified, serverVerdict, result],
+    [onRowDetail, canEdit, legacyVerified, serverVerdict, result, toOriginal],
   );
 
   if (isMutationExecution(result)) {
@@ -234,9 +322,39 @@ export function ResultTableView({
           screen nowhere while the status bar says "1 row". The grid therefore
           keeps a floor and the column scrolls when the pane is too short: a
           notice may cost the user a scroll, never the rows. */}
+      {findOpen && (
+        <ResultFindBar
+          columns={columnNames}
+          query={findQuery}
+          onQueryChange={setFindQuery}
+          replacement={findReplacement}
+          onReplacementChange={setFindReplacement}
+          matchedRows={originalIndexes.length}
+          totalRows={result.rows.length}
+          plan={replacePlan}
+          onApplyReplacement={(item) => {
+            if (!onCellEdit) return Promise.reject(new Error(t('resultFind.notWritable')));
+            return onCellEdit(item.row, item.column, item.value);
+          }}
+          canReplace={canEdit}
+          replaceReason={safeMode ? t('resultFind.safeMode') : t('resultFind.notWritable')}
+          onClose={() => {
+            setFindOpen(false);
+            setFindQuery(EMPTY_RESULT_FIND_QUERY);
+          }}
+        />
+      )}
       <div
         className="flex min-h-0 flex-1 flex-col overflow-y-auto"
         data-testid="result-grid-scroll"
+        onKeyDown={(event) => {
+          // ⌘/Ctrl+F opens the bar from the grid: the find is a view over the
+          // loaded rows, and the hands should not leave the grid to start it.
+          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+            event.preventDefault();
+            setFindOpen(true);
+          }
+        }}
       >
         {readOnlyReason && (
           <div data-dt-grid-readonly-reason={readOnlyReason} className="p-2 text-xs text-fg-muted">
@@ -257,11 +375,21 @@ export function ResultTableView({
         )}
         <DataTable
           columns={columnDefs}
-          rows={result.rows}
+          rows={viewRows}
           cellTypeHints={cellTypeHints}
           statusBar={statusBar}
-          rowHeight={32}
-          editingCell={canEdit ? editingCell : null}
+          rowHeight={gridRowHeight}
+          // The grid-appearance settings (DB-17): density above, the rest here.
+          alternatingRows={gridAlternatingRows}
+          showRowNumbers={gridRowNumbers}
+          scrollbarAutoHide={gridAutoHideScrollbar}
+          editingCell={
+            canEdit && editingCell
+              ? // The stored row is the statement's own; the grid shows the
+                // filtered view, so the cell travels back as the view's row.
+                { row: fromOriginal(editingCell.row) ?? editingCell.row, col: editingCell.col }
+              : null
+          }
           onCellDoubleClick={handleCellDoubleClick}
           onCellEdit={(row, column, value) => {
             if (!canEdit) {
@@ -269,7 +397,7 @@ export function ResultTableView({
               return;
             }
             setEditError(null);
-            void onCellEdit?.(row, column, value)
+            void onCellEdit?.(toOriginal(row), column, value)
               .then(() => setEditingCell(null))
               .catch((error: unknown) => {
                 setEditingCell(null);
@@ -278,8 +406,8 @@ export function ResultTableView({
           }}
           onCellEditCancel={() => setEditingCell(null)}
           enableSetNull={false}
-          onRowClick={onRowDetail}
-          highlightedRow={rowDetailIndex}
+          onRowClick={(row) => onRowDetail?.(toOriginal(row))}
+          highlightedRow={fromOriginal(rowDetailIndex)}
           exportTableName="query_result"
           dataExportCapability={dataExportCapability}
           className="mr-1 min-h-[9rem] rounded-b-md rounded-t-none border-x border-b border-t-0"
@@ -287,6 +415,14 @@ export function ResultTableView({
         {result.rows.length === 0 && (
           <div className="flex shrink-0 items-center justify-center border-t border-edge px-3 py-3 text-sm text-fg-muted">
             {t('sqlFile.noResults')}
+          </div>
+        )}
+        {findFiltering && viewRows.length === 0 && result.rows.length > 0 && (
+          <div
+            data-testid="result-find-no-matches"
+            className="flex shrink-0 items-center justify-center border-t border-edge px-3 py-3 text-sm text-fg-muted"
+          >
+            {t('resultFind.noRows')}
           </div>
         )}
       </div>

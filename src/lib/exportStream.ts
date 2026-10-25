@@ -307,6 +307,13 @@ export async function streamTableExportToSaveDialog(opts: {
   format: StreamableExportFormat;
   databaseType?: string;
   pkName?: string;
+  /**
+   * The statement to stream, when the caller has one the product built
+   * (DB-15: the filtered full-table export streams the backend's own
+   * `previewTableReadSql` statement). Absent, the plain `SELECT` of the
+   * visible columns runs.
+   */
+  sql?: string;
   streamQuery?: StreamQueryFn;
   saveSession?: SaveSessionApi;
 }): Promise<'saved' | 'cancelled'> {
@@ -336,7 +343,7 @@ export async function streamTableExportToSaveDialog(opts: {
   try {
     await streamQueryIntoExporter({
       dbSessionId: opts.dbSessionId,
-      sql: buildTableSelectSql(opts.tableName, opts.columns, opts.databaseType),
+      sql: opts.sql ?? buildTableSelectSql(opts.tableName, opts.columns, opts.databaseType),
       streamer,
       write: async (chunk) => {
         if (!chunk) return;

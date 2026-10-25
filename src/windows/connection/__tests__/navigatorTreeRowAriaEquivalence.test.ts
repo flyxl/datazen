@@ -66,6 +66,8 @@ function rowKeyLabel(row: UnifiedRow): string {
       return `${row.obj.name}#${row.catId}`;
     case 'db-loading':
       return row.ownerKey;
+    case 'db-error':
+      return row.message;
     case 'namespace-node':
       return row.key;
     case 'empty-group':
@@ -473,6 +475,7 @@ function params(
     activeConnectionId: 'c1',
     schemas: new Map([['s1', schemaState()]]),
     dbTablesMap: { 's1::db1': [] },
+    dbErrors: {},
     dbObjectsMap: {},
     loadingDbs: new Set(),
     openDbs: {},

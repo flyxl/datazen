@@ -234,6 +234,23 @@ pub fn estimated_count_cell(cell: &Value) -> Option<i64> {
     }
 }
 
+/// The verdict of rescuing an unusable estimate with one exact `COUNT(*)`.
+///
+/// The rescue rule is a policy, not an implementation detail, and it used to
+/// be written out independently in two host layers — the shared executor and
+/// the target-bound command path — which is exactly how the same event could
+/// have drifted into two different `(count, kind)` answers. Spelling it once
+/// here pins both: the count either came back, and the read then reports
+/// `Exact`, or the answer stays "the rows are there, the number is not"
+/// (`Unsupported`). A rescue never reports `Estimated` — the estimate
+/// already said it did not know.
+pub fn rescued_exact_count(count: Option<i64>) -> (Option<i64>, CountStrategy) {
+    match count {
+        Some(count) => (Some(count), CountStrategy::Exact),
+        None => (None, CountStrategy::Unsupported),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -420,5 +437,23 @@ mod tests {
         assert_eq!(estimated_count_cell(&Value::Integer(7)), Some(7));
         assert_eq!(estimated_count_cell(&Value::Integer(-1)), None);
         assert_eq!(estimated_count_cell(&Value::Null), None);
+    }
+
+    #[test]
+    fn a_rescued_count_reports_exact_or_nothing() {
+        assert_eq!(
+            rescued_exact_count(Some(42)),
+            (Some(42), CountStrategy::Exact)
+        );
+        assert_eq!(
+            rescued_exact_count(Some(0)),
+            (Some(0), CountStrategy::Exact)
+        );
+        // A rescue answers a question the estimate already failed to answer;
+        // it can never come back as "estimated".
+        assert_eq!(
+            rescued_exact_count(None),
+            (None, CountStrategy::Unsupported)
+        );
     }
 }

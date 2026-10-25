@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Maximize2, Search, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { BinaryViewer, JsonViewer } from '@datazen/ui';
 import type { ColumnDef } from './TableHeader';
 import { toEditString } from './EditableCell';
 import { formatCell } from '../../lib/formatters';
 import { dataTypeTextClass } from '../../lib/dataTypeColors';
+import { fileCommands } from '../../commands/file';
 import type { CellTypeHints } from '../../lib/cellTypes';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
@@ -32,6 +34,41 @@ export interface DetailPanelProps {
 const EMPTY_SET = new Set<number>();
 
 const BLOB_TYPE_KEYWORDS = ['blob', 'binary', 'bytea', 'image', 'raw'];
+
+/**
+ * The raw JSON text of a value (DB-13): an object serialises compactly, a
+ * string passes through untouched — the JsonViewer's `raw` mode is exactly
+ * what the cell held, not a re-format of it.
+ */
+function rawJsonText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  return JSON.stringify(value) ?? '';
+}
+
+/**
+ * The bytes of a binary value, when they are bytes (DB-13).
+ *
+ * The wire carries binary as an untagged array of numbers; a driver that
+ * reports a blob as a string (an escaped `\x…` text, say) is left to the
+ * text rendering — guessing an encoding here would invent bytes that are not
+ * in the cell.
+ */
+function binaryValueBytes(value: unknown): Uint8Array | null {
+  if (Array.isArray(value) && value.every((item) => typeof item === 'number')) {
+    return new Uint8Array(value);
+  }
+  return null;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
 
 function isBlobType(type: string): boolean {
   return BLOB_TYPE_KEYWORDS.some((k) => type.includes(k));
@@ -271,13 +308,27 @@ function QuickLookDialog({
   const { t } = useI18n();
   const pretty = prettyJson(value);
   const [local, setLocal] = useState(pretty ?? toEditString(value));
+  const type = (column.type ?? '').toLowerCase();
+  const isJson = type.includes('json') || isJsonValue(value);
+  const blobBytes = isBlobType(type) ? binaryValueBytes(value) : null;
+  const canEdit = editable === true && onCommit !== undefined;
 
   useEffect(() => {
     if (open) setLocal(pretty ?? toEditString(value));
   }, [open, value, pretty]);
 
-  const canEdit = editable === true && onCommit !== undefined;
-  const type = (column.type ?? '').toLowerCase();
+  /** The save exit of the binary viewer (DB-13): the host owns the file dialog. */
+  const saveBlobAsFile = useCallback((bytes: Uint8Array, suggestedName: string) => {
+    const extension = suggestedName.includes('.')
+      ? (suggestedName.split('.').pop() ?? 'bin')
+      : 'bin';
+    void fileCommands.saveBase64WithDialog(
+      bytesToBase64(bytes),
+      suggestedName,
+      extension.toUpperCase(),
+      [extension],
+    );
+  }, []);
 
   const handleSave = useCallback(() => {
     if (!onCommit) return;
@@ -340,6 +391,17 @@ function QuickLookDialog({
           rows={12}
           wrap="off"
         />
+      ) : blobBytes != null ? (
+        <BinaryViewer
+          bytes={blobBytes}
+          fileName={column.name}
+          onSaveAsFile={saveBlobAsFile}
+          testId="detail-quick-look-binary"
+        />
+      ) : isJson ? (
+        // DB-13: the structured read — tree / raw / pretty / minify, from the
+        // same raw text the cell holds. The edit path above keeps its editor.
+        <JsonViewer text={rawJsonText(value)} testId="detail-quick-look-json" />
       ) : (
         <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-all rounded-md border border-edge bg-surface p-3 font-mono text-xs text-fg">
           {local || 'NULL'}

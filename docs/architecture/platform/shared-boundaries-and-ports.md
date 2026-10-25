@@ -636,10 +636,12 @@ pub trait TunnelRepository: Send + Sync + 'static {
 > 机制包只 `pub use` 再导出。`packages/tunnel` 因此不再因为「要填一个端口」而被宿主依赖。
 
 > **同一笔缺口在 P3 里被有意识地留着**（2026-10-23）：`NamedViewRepository`、
-> `DashboardRepository`、`DashboardRunRepository` 三个端口由领域包
+> `DashboardRepository`、`DashboardRunRepository` 与 Schema Diff 的
+> `SchemaDiffProfileRepository` 四个端口由领域包
 > （`packages/feature-core` 的 `services::named_views` / `dashboard::repository` /
-> `dashboard::runs`）定义，被 `ApplicationServices` 持有，宿主 `DesktopRepository` /
-> `AppDb` 实现。它们**不进** `PORT_TRAITS`，因为把它们搬进 `platform-api` 会违反 F-04
+> `dashboard::runs` / `packages/schema-diff::profile_repository`）定义，被
+> `ApplicationServices` 持有，宿主 `DesktopRepository` / `AppDb` 实现。
+> 它们**不进** `PORT_TRAITS`，因为把它们搬进 `platform-api` 会违反 F-04
 > （`platform-api` 不得依赖领域包，而端口签名里全是领域模型：`DashboardRecord`、
 > `WidgetRunRecord`……）——那正是 §5.1.2 第四步被「领域包原生端口」取代的同一条理由。
 > 代价（不可清单化）因此**必须换一种方式**盯住，实际落点有三处：
@@ -694,7 +696,7 @@ pub trait TunnelRepository: Send + Sync + 'static {
 
 P5 本机 Core 的 `CommitBoundary` 已包含 stageId、operationId/batchId、stable target fingerprint、payload digest、evidence 与 verifiedAt，并与 checkpoint 写入 SQLite；accept 同事务写 Job、幂等 receipt、consumed plan ID 和初始详情。`JobDetails` 额外读取 progress、recovery verdict、bounded domain results、artifact IDs 与安全 recovery target projection。领域 verifier 仍负责外部事实核验，不允许只凭目标指纹宣称某批写入已生效。团队服务仓储仍是目标设计。详见[迁移任务设计](data-migration-jobs.md)。
 
-**本节的窄端口**（签名见 §4.10）：`ProfileReader`（`ProfileRepository` 的**只读投影**：写路径只留在 `ProfileRepository`，桌面 `DesktopProfiles` 同时实现 `ProfileRepository` 与 `ProfileReader`、事实只有一份）、`MigrationProfileReader`（迁移 profile 的**只读投影**：端口保留，作为三件套自身的读侧边界；它原先是 workflow 迁移 step 的读侧拆分，那个能力移除后不再有桌面实现）、`ExecutionTargetResolver`（目标规范化的**环境部分**：与 §4.3 末的 `IdentityResolver` 分工不同——一个解析执行身份、一个解析执行目标；它存在的首要理由是**打破引用环**，`Application` 绝不能持 `Arc<PlatformAdapter>`）。
+**本节的窄端口**（签名见 §4.10）：`ProfileReader`（`ProfileRepository` 的**只读投影**：写路径只留在 `ProfileRepository`，桌面 `DesktopProfiles` 同时实现 `ProfileRepository` 与 `ProfileReader`、事实只有一份）、`MigrationProfileReader`（迁移 profile 的**只读投影**：桌面 `DesktopRepository` 同时实现三件套的读投影，历史 revision 校验经 `ApplicationServices` 注入，事实只有一份）、`ExecutionTargetResolver`（目标规范化的**环境部分**：与 §4.3 末的 `IdentityResolver` 分工不同——一个解析执行身份、一个解析执行目标；它存在的首要理由是**打破引用环**，`Application` 绝不能持 `Arc<PlatformAdapter>`）。
 
 ### 4.4 秘密、网络与执行材料端口
 
@@ -928,7 +930,7 @@ pub struct FixedClock { /* … */ }    // 测试替身：at(ts) / set(ts)，克�
 | `ExecutionSettingsReader` | `ports/execution_settings.rs` | `src-tauri/src/store/mod.rs` 的 `execution_settings()` | `read` |
 | `ExecutionTargetResolver` | `ports/execution_target.rs` | `src-tauri/src/platform/adapter.rs` 的 `PlatformAdapter::resolve_execution_target` | `resolve` |
 | `MasterKeyProvider` | `ports/master_key.rs` | `src-tauri/src/platform/execution_identity.rs` 的 `for_desktop(store, …)` | `master_key` / `derive_subkey` |
-| `MigrationProfileReader` | `ports/migration_profile.rs` | 端口保留（三件套的只读 profile 投影）；桌面侧唯一的实现曾是 workflow 迁移 step 的 `impl MigrationHost for AppState`，该能力已移除，三件套自身经 `DesktopRepository` 读 profile | `list_transfer_profiles` / `list_sync_profiles` / `list_schema_diff_profiles` |
+| `MigrationProfileReader` | `ports/migration_profile.rs` | 三件套的只读 profile 投影；桌面实现为 `src-tauri/src/store/migration_profile_reader.rs` 的 `DesktopRepository`，由 `ApplicationServices::migration_profiles` 注入历史 revision 校验 | `list_transfer_profiles` / `list_sync_profiles` / `list_schema_diff_profiles` |
 
 ```rust
 // packages/platform-api/src/ports/profile_reader.rs（已实现）

@@ -445,12 +445,14 @@ impl ResourceProvider for SqliteResourceProvider {
                     .execute_command(&connection, other, call.input.clone())
                     .await
                     .map_err(ResourceError::Driver)?;
-                sink.write(ResultChunk {
-                    statement_index: 0,
-                    sql: other.to_string(),
-                    rows: vec![vec![Some(Value::Json(result.data))]],
-                    rows_affected: None,
-                })
+                // A driver command's payload is typed output, not a table: the
+                // host's typed-command callers read `kind: commandResult` and
+                // reject a rows chunk ("Typed command result unavailable").
+                // Postgres and MySQL already answer this way.
+                sink.write_output(serde_json::json!({
+                    "kind": "commandResult",
+                    "data": result.data,
+                }))
                 .await?;
                 self.completion(handle, Vec::new(), self.effect_outcome(handle))
             }

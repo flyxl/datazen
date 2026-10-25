@@ -24,12 +24,17 @@ use datazen_platform_api::id::{ConnectionId, ExecutionId, StreamId};
 use datazen_platform_api::ports::event::EventSubscription;
 use datazen_platform_api::ports::known_hosts::{KnownHostEntry, KnownHostsRepository};
 use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_platform_api::ports::{ConnectionCatalog, SettingsRepository, TunnelRepository};
+use datazen_platform_api::ports::{
+    ConnectionCatalog, MigrationProfileReader, SettingsRepository, TunnelRepository,
+};
 use datazen_platform_api::settings::{
     ExecutionSettings, PortableThemePreference, SharedSettings, SqlFormatOptions, UserPreferences,
 };
 use datazen_platform_api::target::{TargetNamespaceShape, TargetRequirements};
 use datazen_platform_api::PortError;
+use datazen_schema_diff::{
+    SchemaDiffProfile, SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError,
+};
 
 use crate::dto::profile::ProfileView;
 use crate::dto::requests::{
@@ -422,6 +427,63 @@ impl ConnectionCatalog for EmptyConnectionCatalog {
     }
 }
 
+/// Schema Diff profile repository: this module only exercises construction of
+/// the aggregate, so reaching this port is a test failure rather than a benign
+/// empty result.
+struct EmptySchemaDiffProfiles;
+
+#[async_trait::async_trait]
+impl SchemaDiffProfileRepository for EmptySchemaDiffProfiles {
+    async fn list(
+        &self,
+        _scope: &OrganizationScope,
+    ) -> Result<Vec<SchemaDiffProfile>, SchemaDiffProfileRepositoryError> {
+        unimplemented!("storage_ports_tests 不应读写 Schema Diff profile")
+    }
+
+    async fn save(
+        &self,
+        _scope: &OrganizationScope,
+        _profile: SchemaDiffProfile,
+    ) -> Result<(), SchemaDiffProfileRepositoryError> {
+        unimplemented!("storage_ports_tests 不应写入 Schema Diff profile")
+    }
+
+    async fn delete(
+        &self,
+        _scope: &OrganizationScope,
+        _profile_id: &str,
+    ) -> Result<(), SchemaDiffProfileRepositoryError> {
+        unimplemented!("storage_ports_tests 不应删除 Schema Diff profile")
+    }
+}
+
+struct EmptyMigrationProfiles;
+
+#[async_trait::async_trait]
+impl MigrationProfileReader for EmptyMigrationProfiles {
+    async fn list_transfer_profiles(
+        &self,
+        _context: &RequestContext,
+    ) -> Result<Vec<datazen_platform_api::ports::MigrationProfileSummary>, PortError> {
+        unimplemented!("storage_ports_tests 不应读取迁移 profile 投影")
+    }
+
+    async fn list_sync_profiles(
+        &self,
+        _context: &RequestContext,
+    ) -> Result<Vec<datazen_platform_api::ports::MigrationProfileSummary>, PortError> {
+        unimplemented!("storage_ports_tests 不应读取迁移 profile 投影")
+    }
+
+    async fn list_schema_diff_profiles(
+        &self,
+        _context: &RequestContext,
+    ) -> Result<Vec<datazen_platform_api::ports::MigrationProfileSummary>, PortError> {
+        unimplemented!("storage_ports_tests 不应读取迁移 profile 投影")
+    }
+}
+
 /// 组装一个带注入端口的聚合。
 ///
 /// 目标解析器的元数据供给恒为 `None`——本模块不测目标计算。
@@ -454,6 +516,8 @@ fn services_with_known_hosts(
         Arc::new(EmptyNamedViews),
         Arc::new(EmptyDashboards),
         Arc::new(EmptyDashboardRuns),
+        Arc::new(EmptySchemaDiffProfiles),
+        Arc::new(EmptyMigrationProfiles),
     )
 }
 

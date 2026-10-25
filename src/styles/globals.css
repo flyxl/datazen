@@ -189,6 +189,30 @@ div.text-danger,
   height: 0;
 }
 
+/* Auto-hide grid scrollbar (DB-17): the bars appear only while the scroll
+   container is hovered or keyboard-focused. Both engine families are served:
+   `scrollbar-width` (standard) and `::-webkit-scrollbar` (Chromium/WebKit).
+   The :hover rules must repeat the global 9px — the class rule above them is
+   more specific than the global `::-webkit-scrollbar`, so the width would
+   otherwise stay 0 after the un-hide. */
+.dt-scrollbar-autohide {
+  scrollbar-width: none;
+}
+.dt-scrollbar-autohide::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+.dt-scrollbar-autohide:hover,
+.dt-scrollbar-autohide:focus-visible {
+  scrollbar-width: auto;
+}
+.dt-scrollbar-autohide:hover::-webkit-scrollbar,
+.dt-scrollbar-autohide:focus-visible::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
 /* ── Demo step transition (startup-journey style) ── */
 @keyframes dz-step-in {
   from {

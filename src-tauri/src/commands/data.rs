@@ -262,6 +262,15 @@ pub async fn get_table_data_at_target(
     table_target::read(&state, request).await
 }
 
+/// Show the statements a table read would send, without sending them (DB-15).
+#[tauri::command]
+pub async fn preview_table_read_sql(
+    state: State<'_, AppState>,
+    request: table_target::TableReadPreviewRequest,
+) -> Result<table_target::TableReadPreviewSql, CommandError> {
+    table_target::preview(&state, request).await
+}
+
 #[path = "result_mapping.rs"]
 mod result_mapping;
 pub(crate) use result_mapping::{result_relation_candidate, verify_result_mapping};

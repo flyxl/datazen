@@ -146,17 +146,18 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
     let config = target_context.config.clone();
     let owner = target_context.view.connection_id.as_str().to_owned();
     history_run.target_connection_id = Some(owner.clone());
-    let persisted = match state.store.get_connection(&owner).await {
-        Some(value) => value,
-        None => {
-            return fail_schema_diff_deploy(
-                &state,
-                history_run,
-                CommandError::Validation("Target connection was removed".into()),
-            )
-            .await;
-        }
-    };
+    let persisted =
+        match super::persisted_connection(&state, &owner, "execute_schema_diff_deploy").await? {
+            Some(value) => value,
+            None => {
+                return fail_schema_diff_deploy(
+                    &state,
+                    history_run,
+                    CommandError::Validation("Target connection was removed".into()),
+                )
+                .await;
+            }
+        };
     if config.read_only || persisted.read_only {
         return fail_schema_diff_deploy(
             &state,

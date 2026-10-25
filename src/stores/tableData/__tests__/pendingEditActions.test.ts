@@ -52,6 +52,8 @@ const NO_PK_PANEL = 'panel-no-pk';
 const STORE_ACTIONS = [
   'addDraftRow',
   'addFilter',
+  // DB-11: add (or re-aim) one column of the multi-column sort.
+  'addSort',
   'applyColumnToRows',
   'applyFilters',
   'beginCellSelection',
@@ -60,6 +62,8 @@ const STORE_ACTIONS = [
   'clearFilters',
   'clearGridSelection',
   'clearHighlightedNewRow',
+  // DB-11: drop the whole multi-column sort.
+  'clearSorts',
   'commitPendingChanges',
   'deleteRows',
   'duplicateDraftRow',
@@ -71,11 +75,15 @@ const STORE_ACTIONS = [
   'removeDraftRow',
   'removeFilter',
   'removePanel',
+  // DB-11: drop one column from the multi-column sort.
+  'removeSort',
   'reset',
   'rollbackPendingChanges',
   // DB-07: the first-frame seed of a tab that was opened by a foreign-key jump.
   'seedPanel',
   'selectRow',
+  // DB-12: the column tools — render-only, no re-read.
+  'setColumnOrder',
   'setDefaultOrderOverride',
   'setDetailRow',
   'setDraftValue',
@@ -83,6 +91,8 @@ const STORE_ACTIONS = [
   'setFilterLogic',
   'setFilterPanelOpen',
   'setFilters',
+  // DB-12: the freeze half of the column tools.
+  'setFrozenColumnCount',
   'setGridSelection',
   'setPage',
   'setPageSize',

@@ -47,6 +47,18 @@ describe('generateExport markdown', () => {
     expect(result.content).toContain('| 2 | Bob\\|Smith |');
   });
 
+  it('turns a line break into <br> — the same rule as the clipboard copy (DB-10)', () => {
+    // The exporter delegates to the one serializer's Markdown branch now, so
+    // the escaping cannot drift from "Copy as Markdown Table" again.
+    const result = generateExport({
+      ...baseOptions,
+      rows: [{ id: 1, name: 'line one\nline two' }],
+    });
+    expect(result.kind).toBe('text');
+    if (result.kind !== 'text') return;
+    expect(result.content).toContain('| 1 | line one<br>line two |');
+  });
+
   it('renders null cells as empty', () => {
     const result = generateExport(baseOptions);
     expect(result.kind).toBe('text');

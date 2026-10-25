@@ -166,6 +166,44 @@ export function buildSafeTableSqlTemplate(
   }
 }
 
+/**
+ * The SQL draft the "Edit in SQL" escape hatch of a table without a primary
+ * key opens (DB-16).
+ *
+ * The grid refuses to edit such a table — it cannot safely address a row — so
+ * the user needs a way out that does **not** silently drop them into an empty
+ * editor. The template is a `SELECT` with an explicit WHERE placeholder: read
+ * the rows first, then write the `UPDATE`/`DELETE` against the predicate that
+ * identifies them. It stays a draft (`execution: 'draft-only'`); nothing here
+ * executes anything.
+ */
+export function buildNoPrimaryKeyEditTemplate(context: TableContext): string {
+  const quotedTable = quoteTableIdentifier(context);
+  return [
+    `-- This table has no primary key: the grid cannot safely address a row.`,
+    `-- Select the rows first, then write the UPDATE/DELETE against the same predicate.`,
+    `SELECT * FROM ${quotedTable} WHERE /* e.g. id = 123 */;`,
+  ].join('\n');
+}
+
+/**
+ * The full action spec of the "Edit in SQL" escape hatch (DB-16).
+ *
+ * `kind: 'select'` keeps it a read draft — the user runs the `SELECT`, confirms
+ * which rows they mean, and only then writes the mutation. The grid never
+ * hands over a mutation template it cannot target. Callers hand over the
+ * same structural input the other table actions take; the template is built
+ * from the normalized table context here, so no second quoting path exists.
+ */
+export function noPrimaryKeyEditSpec(input: TableContextInput): TableSqlActionSpec {
+  return {
+    kind: 'select',
+    source: 'table-action',
+    initialSql: buildNoPrimaryKeyEditTemplate(buildTableContext(input)),
+    focus: 'editor',
+  };
+}
+
 function normalizeAction(action: TableSqlActionKind | TableSqlActionSpec): TableSqlActionSpec {
   return typeof action === 'string' ? { kind: action } : action;
 }

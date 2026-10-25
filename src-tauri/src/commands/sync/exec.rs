@@ -888,7 +888,7 @@ mod tests {
             ..rich_mock_options()
         })
         .await;
-        test.save_and_connect_runtime("sync-stream-target").await;
+        test.save_and_connect("sync-stream-target").await;
         let target_db_session_id = test.open_runtime_session("sync-stream-target").await;
 
         let mut options = SyncOptions::default();
@@ -1080,7 +1080,7 @@ mod tests {
             ..rich_mock_options()
         })
         .await;
-        test.save_and_connect_runtime("sync-preview-target").await;
+        test.save_and_connect("sync-preview-target").await;
         let target_db_session_id = test.open_runtime_session("sync-preview-target").await;
         let options = SyncOptions::default();
         let rows = (1..=2)

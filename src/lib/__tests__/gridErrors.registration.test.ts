@@ -22,8 +22,7 @@ import { GRID_ERROR_CODES, classifyGridError } from '../gridErrors';
 const PRODUCED_MESSAGES: readonly { code: string; message: string }[] = [
   {
     code: 'grid.commit.stalePlan',
-    message:
-      'grid.commit.stalePlan: Row change plan fingerprint is stale or was modified',
+    message: 'grid.commit.stalePlan: Row change plan fingerprint is stale or was modified',
   },
   {
     code: 'grid.commit.stalePlan',
@@ -40,7 +39,7 @@ const PRODUCED_MESSAGES: readonly { code: string; message: string }[] = [
   },
   {
     code: 'grid.cell.noRowIdentity',
-    message: 'grid.cell.noRowIdentity: UPDATE requires the table\'s primary-key identity',
+    message: "grid.cell.noRowIdentity: UPDATE requires the table's primary-key identity",
   },
   {
     code: 'grid.cell.ambiguousIdentity',
@@ -61,7 +60,7 @@ const PRODUCED_MESSAGES: readonly { code: string; message: string }[] = [
   {
     code: 'grid.filter.unsupportedOperator',
     message:
-      'grid.filter.unsupportedOperator: this database does not support the \'regex\' filter on column "name"; try \'like\' or \'contains\' instead',
+      "grid.filter.unsupportedOperator: this database does not support the 'regex' filter on column \"name\"; try 'like' or 'contains' instead",
   },
 ];
 
@@ -167,6 +166,10 @@ const PRODUCER_PENDING: readonly string[] = [
   'grid.paste.columnMismatch',
   'grid.clipboard.writeFailed',
   'grid.clipboard.readFailed',
+  // DB-20: "no table references this row" is the **front end's** answer to
+  // the reverse catalog — an empty catalog is a successful scan, not a Rust
+  // rejection, so no producer on the host will ever raise it.
+  'grid.fk.noReferences',
 ];
 
 function rustFiles(root: string): string[] {
@@ -254,9 +257,7 @@ describe('the scan of the back-end sources', () => {
 
   it('registers every code the back-end sources raise', () => {
     const registered = new Set<string>(GRID_ERROR_CODES);
-    const missing = [...producedCodes()]
-      .filter((code) => !registered.has(code))
-      .sort();
+    const missing = [...producedCodes()].filter((code) => !registered.has(code)).sort();
     expect(missing).toEqual([]);
   });
 

@@ -31,6 +31,8 @@ import type { FkGroupAffordance } from '../../../lib/fkNavigation';
 afterEach(cleanup);
 
 vi.mock('../../../lib/schemaCache', () => ({
+  // `fkReferencedBy` 在模块作用域调用它注册失效回调；返回退订空函数即可。
+  subscribeSchemaInvalidation: () => () => undefined,
   getCachedTableSchema: async () => ({
     tableName: 'orders',
     columns: [],
@@ -142,9 +144,9 @@ describe('audit: the foreignKeys object', () => {
     expect(before).toBeDefined();
 
     // A re-render of the owner must not produce a new object.
-    view.container.querySelector('[data-testid="rerender"]')?.dispatchEvent(
-      new MouseEvent('click', { bubbles: true }),
-    );
+    view.container
+      .querySelector('[data-testid="rerender"]')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     const after = seen[seen.length - 1];
 
@@ -179,7 +181,9 @@ describe('audit: the grid takes the affordances as one object', () => {
     );
     expect(container.querySelectorAll('[data-dt-fk-click="true"]')).toHaveLength(1);
     expect(
-      container.querySelector('[data-dt-row="0"][data-dt-col="customer_id"]')?.getAttribute('data-dt-fk'),
+      container
+        .querySelector('[data-dt-row="0"][data-dt-col="customer_id"]')
+        ?.getAttribute('data-dt-fk'),
     ).toBe('customers.id');
   });
 });

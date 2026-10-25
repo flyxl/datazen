@@ -44,7 +44,7 @@ use datazen_driver_api::session::{
     TransactionState,
 };
 use datazen_driver_api::{
-    ConnectionHandle, DatabaseDriver, QueryExecutionId, SqlTarget, Value, PROTOCOL_VERSION,
+    ConnectionHandle, DatabaseDriver, QueryExecutionId, SqlTarget, PROTOCOL_VERSION,
 };
 
 use crate::resource_capabilities::{mongodb_capability_set, mongodb_namespace_shape};
@@ -389,12 +389,14 @@ impl ResourceProvider for MongodbResourceProvider {
                     .execute_command(&connection, other, call.input.clone())
                     .await
                     .map_err(ResourceError::Driver)?;
-                sink.write(ResultChunk {
-                    statement_index: 0,
-                    sql: other.to_string(),
-                    rows: vec![vec![Some(Value::Json(result.data))]],
-                    rows_affected: None,
-                })
+                // A driver command's payload is typed output, not a table: the
+                // host's typed-command callers read `kind: commandResult` and
+                // reject a rows chunk ("Typed command result unavailable").
+                // Postgres and MySQL already answer this way.
+                sink.write_output(serde_json::json!({
+                    "kind": "commandResult",
+                    "data": result.data,
+                }))
                 .await?;
                 self.completion(Vec::new())
             }

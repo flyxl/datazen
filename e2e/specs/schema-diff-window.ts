@@ -34,13 +34,25 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
     await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
   });
 
+  /** 用例之间窗口不关，上一轮的结构对比窗口会继续持有源/目标会话：到第 10 个
+   * 用例时物理连接预算（`physical_limit=16`）已经见底，`schema-diff-objects-panel`
+   * 因为准入被拒而永远不显示。每个用例先回到主窗口、关掉其余窗口，再开一扇
+   * 干净的窗口——单跑时前面没有累积，所以这个缺陷只在整包跑里出现。 */
+  async function openFreshSchemaDiffWindow(
+    opts: { dismissLimitations?: boolean; clearLimitationsPref?: boolean } = {},
+  ): Promise<void> {
+    await closeExtraWindows(mainWindow);
+    await browser.switchToWindow(mainWindow);
+    await openSchemaDiffWindow(opts);
+  }
+
   after(async () => {
     await closeExtraWindows(mainWindow);
     await browser.switchToWindow(mainWindow);
   });
 
   it('SD-001: 应能通过 URL 打开结构对比窗口', async () => {
-    await openSchemaDiffWindow();
+    await openFreshSchemaDiffWindow();
     await expect(await $('[data-testid="schema-diff-window"]')).toBeDisplayed();
     const body = await $('body').getText();
     expect(body).toContain(t('common.schemaDiff'));
@@ -50,7 +62,7 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
   });
 
   it('SD-002: 应显示向导步骤与下一步导航', async () => {
-    await openSchemaDiffWindow();
+    await openFreshSchemaDiffWindow();
     await expect(await $('[data-testid="schema-diff-next"]')).toBeDisplayed();
     await expect(await $('[data-testid="schema-diff-step-compare"]')).toBeDisplayed();
     const body = await $('body').getText();
@@ -59,7 +71,7 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
 
   it('SD-003: 未选表点下一步应提示必填', async () => {
     await seedSecondPgConnection(browser);
-    await openSchemaDiffWindow();
+    await openFreshSchemaDiffWindow();
     await selectSchemaDiffEndpoints('本地 PostgreSQL', 'E2E-PG-目标');
     await clickSchemaDiffNext();
     const objectsPanel = await $('[data-testid="schema-diff-objects-panel"]');
@@ -82,7 +94,7 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
   });
 
   it('SD-004: 应通过弹窗显示当前版本限制说明', async () => {
-    await openSchemaDiffWindow({ dismissLimitations: false });
+    await openFreshSchemaDiffWindow({ dismissLimitations: false });
     const dialog = await $('[data-testid="schema-diff-limitations-dialog"]');
     await dialog.waitForDisplayed({ timeout: 8000 });
     const panel = await dialog.$('[data-testid="schema-diff-limitations"]');
@@ -92,7 +104,7 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
   });
 
   it('SD-LIM-001: 勾选「不再显示」后再次打开不应弹出限制说明', async () => {
-    await openSchemaDiffWindow({ dismissLimitations: false });
+    await openFreshSchemaDiffWindow({ dismissLimitations: false });
     const dialog = await $('[data-testid="schema-diff-limitations-dialog"]');
     await dialog.waitForDisplayed({ timeout: 8000 });
 
@@ -105,16 +117,14 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
       timeoutMsg: '等待限制说明弹窗关闭超时',
     });
 
-    await closeExtraWindows(mainWindow);
-    await browser.switchToWindow(mainWindow);
-    await openSchemaDiffWindow({ dismissLimitations: false, clearLimitationsPref: false });
+    await openFreshSchemaDiffWindow({ dismissLimitations: false, clearLimitationsPref: false });
 
     const dialogAgain = await $('[data-testid="schema-diff-limitations-dialog"]');
     expect(await dialogAgain.isExisting().catch(() => false)).toBe(false);
   });
 
   it('SD-005: 同一连接不同数据库应允许进入下一步', async () => {
-    await openSchemaDiffWindow();
+    await openFreshSchemaDiffWindow();
     await selectDzOptionInWrap('schema-diff-source', E2E_PG_CONN_NAME);
     await selectDzOptionInWrap('schema-diff-target', E2E_PG_CONN_NAME);
     await selectDzOptionInWrap('schema-diff-source-database', 'datazen_sync_src');
@@ -125,7 +135,7 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
 
   it('SD-006: 进入计划步骤应自动生成部署脚本', async () => {
     await seedSecondPgConnection(browser);
-    await openSchemaDiffWindow();
+    await openFreshSchemaDiffWindow();
     await selectSchemaDiffEndpoints(E2E_PG_CONN_NAME, 'E2E-PG-目标');
     await clickSchemaDiffNext();
     await clickSchemaDiffCompare();
@@ -136,7 +146,7 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
 
   it('SD-007: 复制 SQL 应显示已复制反馈', async () => {
     await seedSecondPgConnection(browser);
-    await openSchemaDiffWindow();
+    await openFreshSchemaDiffWindow();
     await selectSchemaDiffEndpoints(E2E_PG_CONN_NAME, 'E2E-PG-目标');
     await clickSchemaDiffNext();
     await clickSchemaDiffCompare();
@@ -159,7 +169,7 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
 
   it('SD-008: 导入配置应打开对话框而非系统粘贴菜单', async () => {
     await seedSecondPgConnection(browser);
-    await openSchemaDiffWindow();
+    await openFreshSchemaDiffWindow();
     await selectSchemaDiffEndpoints(E2E_PG_CONN_NAME, 'E2E-PG-目标');
     await clickSchemaDiffNext();
     await clickSchemaDiffCompare();
@@ -178,7 +188,7 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
 
   it('SD-009: 导出配置应通过保存对话框写入 JSON 文件', async () => {
     await seedSecondPgConnection(browser);
-    await openSchemaDiffWindow();
+    await openFreshSchemaDiffWindow();
     await selectSchemaDiffEndpoints(E2E_PG_CONN_NAME, 'E2E-PG-目标');
     await clickSchemaDiffNext();
     await clickSchemaDiffCompare();
@@ -211,7 +221,7 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
 
   it('SD-010: 保存并加载 profile 应恢复范围并触发新的对象检查', async () => {
     await seedSecondPgConnection(browser);
-    await openSchemaDiffWindow();
+    await openFreshSchemaDiffWindow();
     await selectSchemaDiffEndpoints(E2E_PG_CONN_NAME, 'E2E-PG-目标');
     await clickSchemaDiffNext();
     await clickSchemaDiffCompare();

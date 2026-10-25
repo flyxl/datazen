@@ -558,12 +558,32 @@ fn postgres_restore_accepts_deferred_sequence_ownership_inside_the_frozen_scope(
     .expect("deferred sequence ownership is part of the restore format");
     assert_eq!(statements.len(), 3);
 
+    // Quoted identifiers are legal names — the tokenizer folds them into
+    // words, so a dump that quotes its names still restores.
+    let quoted = concat!(
+        "CREATE TABLE public.orders (id bigint NOT NULL);\n",
+        "ALTER SEQUENCE \"public\".\"orders_id_seq\" OWNED BY \"public\".\"orders\".id;\n",
+    );
+    restore_sql::prepare(
+        &dialect,
+        quoted,
+        restore_sql::TRANSACTIONAL,
+        false,
+        false,
+        &target,
+    )
+    .expect("quoted identifiers within the frozen namespace restore fine");
+
     for foreign in [
         // Another schema is outside the frozen target.
         "ALTER SEQUENCE other.orders_id_seq OWNED BY public.orders.id",
         "ALTER SEQUENCE public.orders_id_seq OWNED BY other.orders.id",
         // Any other ALTER SEQUENCE form must stay rejected.
         "ALTER SEQUENCE public.orders_id_seq RESTART WITH 1000",
+        // A single-quoted string is never an identifier in any engine this
+        // gates; the verifier must not be looser than the engines.
+        "ALTER SEQUENCE 'public'.orders_id_seq OWNED BY public.orders.id",
+        "ALTER SEQUENCE public.orders_id_seq OWNED BY public.'orders'.id",
     ] {
         let script = format!("CREATE TABLE public.orders (id bigint NOT NULL); {foreign};");
         assert!(
@@ -579,4 +599,31 @@ fn postgres_restore_accepts_deferred_sequence_ownership_inside_the_frozen_scope(
             "{foreign} must be rejected"
         );
     }
+}
+
+/// The overwrite preamble for a sequence must appear even when a comment line
+/// leads the statement: the old name scanner started at the raw text and read
+/// `--` as the identifier, silently skipping the `DROP SEQUENCE`.
+#[test]
+fn postgres_overwrite_drops_a_sequence_whose_statement_leads_with_a_comment() {
+    let driver = PostgresDriver::new();
+    let dialect = datazen_driver_api::LegacyBackupDialect::new(&driver);
+    let statements = restore_sql::prepare(
+        &dialect,
+        "-- emitted by the dump\nCREATE SEQUENCE public.orders_id_seq START WITH 1;",
+        restore_sql::TRANSACTIONAL,
+        false,
+        true,
+        &datazen_driver_api::namespace::NamespaceTarget {
+            database: Some("app".into()),
+            catalog: None,
+            schema: Some("public".into()),
+            path: vec![],
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        statements[0], "DROP SEQUENCE IF EXISTS public.orders_id_seq",
+        "the sequence preamble must survive a leading comment: {statements:?}"
+    );
 }

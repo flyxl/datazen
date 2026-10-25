@@ -308,7 +308,12 @@ async fn a_command_the_provider_does_not_know_is_dispatched_to_the_driver() {
         fake.read(|wire| wire.commands.first().cloned()),
         Some(("list_collections".to_string(), "{}".to_string()))
     );
-    assert_eq!(sink.chunks.lock().unwrap().len(), 1);
+    // The payload is typed output: as a row it looked empty to the host
+    // (`Typed command result unavailable`).
+    assert_eq!(sink.chunks.lock().unwrap().len(), 0);
+    let outputs = sink.outputs.lock().unwrap();
+    assert_eq!(outputs[0]["kind"], "commandResult");
+    assert_eq!(outputs[0]["data"]["command"], "list_collections");
 }
 
 #[tokio::test]

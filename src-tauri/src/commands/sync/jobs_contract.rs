@@ -109,9 +109,7 @@ pub async fn gated_pair(
     target_config.database_type = "postgresql".into();
     target_config.host = Some("target.example.invalid".into());
     test.store.save_connection(target_config).await.unwrap();
-    let (_, source_session) = test
-        .save_and_connect_runtime(&format!("{prefix}-source"))
-        .await;
+    let (_, source_session) = test.save_and_connect(&format!("{prefix}-source")).await;
     let target_session = test.open_runtime_session(&format!("{prefix}-target")).await;
     Pair {
         test,

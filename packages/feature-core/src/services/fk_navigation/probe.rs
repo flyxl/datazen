@@ -40,6 +40,55 @@ impl ProbeStatement {
     }
 }
 
+/// Build the browse statement of the in-cell selector (DB-20): the first
+/// `limit + 1` rows of the target table, in the referenced columns only.
+///
+/// No `WHERE` — the selector is a picker, not a lookup: the user browses what
+/// the target table offers and picks one row. The `+ 1` row is the same
+/// truncation sentinel the existence probe uses, so the selector can say
+/// "there are more" without a `COUNT(*)`.
+///
+/// No values travel, so the statement is always safe to inline.
+pub(super) fn build_candidates_statement(
+    dialect: &dyn SqlDialect,
+    target_table: &str,
+    referenced_columns: &[ColumnSchema],
+    limit: u32,
+) -> Result<ProbeStatement, DriverError> {
+    let quote = |name: &str| dialect.quote_ident(name);
+    let columns = referenced_columns
+        .iter()
+        .map(|column| quote(&column.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut sql = format!("SELECT {columns} FROM {}", quote(target_table));
+
+    // The same ordering rule as the probe: an ordering is added **only** when
+    // the dialect's pagination clause is illegal without one (07 U-8).
+    let pagination = dialect.pagination_syntax(u64::from(limit) + 1, 0);
+    if pagination.requires_order_by {
+        let order = pagination
+            .order_by_fallback
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                referenced_columns
+                    .iter()
+                    .map(|column| format!("{} ASC", quote(&column.name)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            });
+        if !order.is_empty() {
+            sql.push_str(&format!(" ORDER BY {order}"));
+        }
+    }
+    if !pagination.clause.is_empty() {
+        sql.push(' ');
+        sql.push_str(&pagination.clause);
+    }
+
+    Ok(ProbeStatement::Inlined { sql })
+}
+
 /// Build the existence probe: one `SELECT … LIMIT limit + 1` and no
 /// `COUNT(*)`, because the existence check must not cost a full-table count.
 ///

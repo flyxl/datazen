@@ -544,8 +544,8 @@ async fn inspect_data_sync_returns_matched_tables() {
     use crate::testing::app_state::TestAppState;
 
     let test = TestAppState::with_tables().await;
-    test.save_and_connect_runtime("src-ins").await;
-    test.save_and_connect_runtime("tgt-ins").await;
+    test.save_and_connect("src-ins").await;
+    test.save_and_connect("tgt-ins").await;
     let src = test.open_runtime_session("src-ins").await;
     let tgt = test.open_runtime_session("tgt-ins").await;
     let results = super::inspect_data_sync_impl(&test.state, src, tgt, None, None, None, None, &[])
@@ -561,7 +561,7 @@ async fn compare_data_sync_returns_an_opaque_server_plan() {
     use crate::testing::app_state::TestAppState;
 
     let test = TestAppState::new().await;
-    test.save_and_connect_runtime("src-plan").await;
+    test.save_and_connect("src-plan").await;
     let mut target_config = test.save_connection("tgt-plan").await;
     target_config.host = Some("target.example.invalid".into());
     test.store.save_connection(target_config).await.unwrap();
@@ -839,7 +839,7 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
         ..rich_mock_options()
     })
     .await;
-    test.save_and_connect_runtime("src-cmp").await;
+    test.save_and_connect("src-cmp").await;
     let mut target_config = test.save_connection("tgt-cmp").await;
     target_config.host = Some("target.example.invalid".into());
     test.store.save_connection(target_config).await.unwrap();
@@ -947,8 +947,8 @@ async fn legacy_apply_rejects_unreviewed_recomparison() {
     use crate::testing::app_state::TestAppState;
 
     let test = TestAppState::with_tables().await;
-    test.save_and_connect_runtime("src-ap").await;
-    test.save_and_connect_runtime("tgt-ap").await;
+    test.save_and_connect("src-ap").await;
+    test.save_and_connect("tgt-ap").await;
     let src = test.open_runtime_session("src-ap").await;
     let tgt = test.open_runtime_session("tgt-ap").await;
     let err = super::apply_data_sync_impl(
