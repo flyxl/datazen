@@ -23,7 +23,7 @@
 //! This file is the permanent lock for that rule on the Rust side, at the
 //! point where the message becomes the payload that actually leaves the host.
 use super::error::CommandError;
-use datazen_feature_core::services::named_views::{NamedView, NamedViewError, NamedViewScope};
+use datazen_modules::named_views::{NamedView, NamedViewError, NamedViewScope};
 
 /// The payload the desktop receives: a plain string, not an object.
 fn ipc_payload(error: CommandError) -> String {

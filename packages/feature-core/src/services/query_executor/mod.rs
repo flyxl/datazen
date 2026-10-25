@@ -22,17 +22,12 @@ pub mod table_read_sql;
 mod tests;
 
 pub use crate::services::table_paging::{KeysetDecision, KeysetSeek, OrderSource, OrderSpec};
-pub use datazen_driver_api::filters::{FilterCondition, FilterConnector, FilterOperator};
+pub use datazen_driver_api::filters::{
+    FilterCondition, FilterConnector, FilterOperator, SortCondition,
+};
 pub use filter_sql::{FilterRejection, MAX_REGEX_PATTERN_LENGTH};
 pub use table_read_sql::PagedSelectSql;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SortCondition {
-    pub column: String,
-    #[serde(default)]
-    pub descending: bool,
-}
 
 #[derive(Debug, Clone)]
 pub struct OrderBy {

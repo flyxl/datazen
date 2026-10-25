@@ -198,7 +198,7 @@ export const EXTRA_TARGETS = Object.freeze({
  * test alone would compile only the empty module root and miss the real service.
  */
 export const FEATURE_TESTS = Object.freeze({
-  'datazen-modules': Object.freeze(['settings', 'ai']),
+  'datazen-modules': Object.freeze(['settings', 'ai', 'connection', 'named_views']),
 });
 
 /**

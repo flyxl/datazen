@@ -44,8 +44,8 @@
 //! * 形态中立的**存储端口**按功能拥有者分布（隧道、known-hosts、连接目录、
 //!   制品、预算等在 `datazen-platform-api::ports`；设置已由
 //!   `datazen-modules::settings` 拥有，宿主直接消费，不再经本 crate 转发）。
-//! * P3 起，命令族的**领域端口**住在领域包自己那里（如
-//!   `datazen_feature_core::services::named_views::NamedViewRepository` 与仪表盘的两个仓储）。
+//! * P3 起，命令族的**领域端口**住在领域包自己那里（如仪表盘的两个仓储）；
+//!   已归位模块的端口（settings、connection、named_views）不再经本 crate 转发。
 //!
 //! 后者在 P0 之前确实进不来：当时 `datazen-runtime` 依赖本包、领域包又依赖
 //! `datazen-runtime`，本包一旦依赖领域包就是 Cargo 环。P0（断环）+ P2（内核拆
@@ -70,7 +70,6 @@ use datazen_platform_api::ports::{MigrationProfileReader, TunnelRepository};
 
 use datazen_feature_core::dashboard::repository::DashboardRepository;
 use datazen_feature_core::dashboard::runs::DashboardRunRepository;
-use datazen_feature_core::services::named_views::NamedViewRepository;
 use datazen_schema_diff::SchemaDiffProfileRepository;
 
 use crate::capability::CapabilityRegistry;
@@ -106,10 +105,9 @@ pub struct ApplicationServices {
     /// 命名视图的存储端口（组装层注入）。
     ///
     /// 这是 P3「按命令族搬编排」的第一条领域端口：端口与规则住在
-    /// `datazen_feature_core::services::named_views`，**桌面宿主只提供落盘**。
+    /// `datazen-modules::named_views`（D6 item 1 迁入），**桌面宿主只提供落盘**。
     /// 聚合持有它之后，命令壳不再直读宿主 store——形态中立的用例层因此可以在
     /// 没有 Tauri 的进程里跑同一份规则。
-    pub named_views: Arc<dyn NamedViewRepository>,
     /// 仪表盘仓储（P3 第二条命令族）：行级读写端口由共享 feature 层定义
     /// （`datazen_feature_core::dashboard::repository::DashboardRepository`），
     /// 桌面实现是 `AppDb`（`impl DashboardRepository for AppDb`），落盘在应用库。
@@ -144,7 +142,6 @@ impl ApplicationServices {
         sessions: Arc<dyn ConnectionUseCases>,
         tunnels: Arc<dyn TunnelRepository>,
         known_hosts: Arc<dyn KnownHostsRepository>,
-        named_views: Arc<dyn NamedViewRepository>,
         dashboard: Arc<dyn DashboardRepository>,
         dashboard_runs: Arc<dyn DashboardRunRepository>,
         schema_diff_profiles: Arc<dyn SchemaDiffProfileRepository>,
@@ -156,7 +153,6 @@ impl ApplicationServices {
             sessions,
             tunnels,
             known_hosts,
-            named_views,
             dashboard,
             dashboard_runs,
             schema_diff_profiles,
@@ -387,6 +383,8 @@ mod tests {
             "pub tunnels: Arc<dyn TunnelRepository>",
             "pub known_hosts: Arc<dyn KnownHostsRepository>",
         ] {
+            // D6 item 1 后：named_views 端口已归 `datazen-modules::named_views`
+            // 拥有，本包不再持有该字段。
             assert!(code.contains(field), "聚合必须持有该存储端口字段：{field}");
         }
         assert!(

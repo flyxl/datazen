@@ -11,8 +11,11 @@ use std::sync::Mutex;
 use chrono::{DateTime, Utc};
 use datazen_driver_api::filters::{FilterCondition, FilterConnector, FilterOperator};
 
-use super::{
-    delete_named_view, list_named_views, normalize_view_name, resolve_import_name, save_named_view,
+use super::application::{
+    delete_named_view, list_named_views, save_named_view,
+};
+use super::domain::{
+    normalize_view_name, resolve_import_name,
     scope_key, view_names_equal, NamedView, NamedViewError, NamedViewIdMinter, NamedViewRepository,
     NamedViewScope,
 };

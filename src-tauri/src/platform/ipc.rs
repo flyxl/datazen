@@ -142,6 +142,17 @@ pub fn require_connection_service(
         .map_err(into_command_error)
 }
 
+/// D6 item 1 后的命名视图用例入口。
+pub fn require_named_views_service(
+    state: &AppState,
+) -> Result<Arc<datazen_modules::named_views::NamedViewService>, CommandError> {
+    state
+        .platform_require()
+        .map_err(into_command_error)?
+        .require_named_views_service()
+        .map_err(into_command_error)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

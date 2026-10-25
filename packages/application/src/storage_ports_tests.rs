@@ -10,7 +10,6 @@
 use std::sync::{Arc, Mutex};
 
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
-use datazen_feature_core::services::named_views::{NamedView, NamedViewError, NamedViewRepository};
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::event::EventSequence;
 use datazen_platform_api::dto::execution::{ExecutionReceipt, ExecutionView};
@@ -238,25 +237,6 @@ impl KnownHostsRepository for MemoryKnownHosts {
 
 // ── 夹具 ───────────────────────────────────────────────────────────────────
 
-/// 空集合的命名视图存储。
-///
-/// 本模块只证明「聚合持有的是注入的那一份」，所以这个 fake 只需要存在，
-/// 行为在 `feature-core` 的用例测试里覆盖。
-#[derive(Default)]
-struct EmptyNamedViews;
-
-#[async_trait::async_trait]
-impl NamedViewRepository for EmptyNamedViews {
-    async fn load_views(&self) -> Result<Vec<NamedView>, NamedViewError> {
-        Ok(Vec::new())
-    }
-
-    async fn save_views(&self, _views: &[NamedView]) -> Result<(), NamedViewError> {
-        Ok(())
-    }
-}
-
-
 /// Schema Diff profile repository: this module only exercises construction of
 /// the aggregate, so reaching this port is a test failure rather than a benign
 /// empty result.
@@ -337,7 +317,6 @@ fn services_with_known_hosts(
         Arc::new(UnusedConnectionUseCases),
         tunnels,
         known_hosts,
-        Arc::new(EmptyNamedViews),
         Arc::new(EmptyDashboards),
         Arc::new(EmptyDashboardRuns),
         Arc::new(EmptySchemaDiffProfiles),

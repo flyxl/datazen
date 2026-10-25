@@ -13,6 +13,9 @@ pub mod ai;
 #[cfg(feature = "connection")]
 pub mod connection;
 
+#[cfg(feature = "named_views")]
+pub mod named_views;
+
 #[cfg(feature = "settings")]
 pub mod settings;
 

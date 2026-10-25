@@ -477,9 +477,9 @@ impl From<datazen_feature_core::error::FeatureError> for CommandError {
 ///
 /// The rule messages carry **no user-supplied text**: what the user typed
 /// must not travel into the IPC payload or the host's log lines (D1).
-impl From<datazen_feature_core::services::named_views::NamedViewError> for CommandError {
-    fn from(error: datazen_feature_core::services::named_views::NamedViewError) -> Self {
-        use datazen_feature_core::services::named_views::NamedViewError;
+impl From<datazen_modules::named_views::NamedViewError> for CommandError {
+    fn from(error: datazen_modules::named_views::NamedViewError) -> Self {
+        use datazen_modules::named_views::NamedViewError;
         match &error {
             NamedViewError::NameExists { .. } | NamedViewError::Invalid(_) => {
                 Self::Validation(error.to_string())

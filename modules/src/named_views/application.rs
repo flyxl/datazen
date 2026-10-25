@@ -5,12 +5,14 @@
 //! id minting and the order of the list. The host contributes two things only:
 //! where the views are stored (the repository) and how a new id is minted.
 
+use std::sync::Arc;
+
 use chrono::Utc;
 
-use super::dto::{NamedView, NamedViewScope};
-use super::error::NamedViewError;
-use super::repository::{NamedViewIdMinter, NamedViewRepository};
-use super::rules::view_names_equal;
+use super::domain::dto::{NamedView, NamedViewScope};
+use super::domain::error::NamedViewError;
+use super::domain::repository::{NamedViewIdMinter, NamedViewRepository};
+use super::domain::rules::view_names_equal;
 
 /// The views of one scope, or of every scope when `scope` is `None`.
 ///
@@ -110,6 +112,38 @@ pub async fn delete_named_view(
     Ok(views)
 }
 
+/// Host-assembled use-case facade: holds the repository and the id minter so
+/// commands do not have to source them separately (the same shape as
+/// `SettingsService` / `ConnectionService`).
+pub struct NamedViewService {
+    repository: Arc<dyn NamedViewRepository>,
+    minter: Arc<dyn NamedViewIdMinter>,
+}
+
+impl NamedViewService {
+    pub fn new(repository: Arc<dyn NamedViewRepository>, minter: Arc<dyn NamedViewIdMinter>) -> Self {
+        Self { repository, minter }
+    }
+
+    /// The views of one scope, or of every scope when `scope` is `None`.
+    pub async fn list(
+        &self,
+        scope: Option<&NamedViewScope>,
+    ) -> Result<Vec<NamedView>, NamedViewError> {
+        list_named_views(self.repository.as_ref(), scope).await
+    }
+
+    /// Save a view and return the record as it was stored.
+    pub async fn save(&self, view: NamedView) -> Result<NamedView, NamedViewError> {
+        save_named_view(self.repository.as_ref(), self.minter.as_ref(), view).await
+    }
+
+    /// Delete a view (idempotent) and return the remaining ones.
+    pub async fn delete(&self, id: &str) -> Result<Vec<NamedView>, NamedViewError> {
+        delete_named_view(self.repository.as_ref(), id).await
+    }
+}
+
 /// The order the menu shows: the default first, then by name.
 ///
 /// The name comparison is the same case-insensitive one the uniqueness rule
@@ -121,8 +155,8 @@ fn sort_views(views: &mut [NamedView]) {
             .is_default
             .cmp(&left.is_default)
             .then_with(|| {
-                super::rules::normalized_name_key(&left.name)
-                    .cmp(&super::rules::normalized_name_key(&right.name))
+                super::domain::rules::normalized_name_key(&left.name)
+                    .cmp(&super::domain::rules::normalized_name_key(&right.name))
             })
             .then_with(|| left.name.cmp(&right.name))
             .then_with(|| left.id.cmp(&right.id))

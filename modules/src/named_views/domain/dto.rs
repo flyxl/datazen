@@ -12,7 +12,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::services::query_executor::{FilterCondition, SortCondition};
+use datazen_driver_api::filters::{FilterCondition, SortCondition};
 
 /// The scope a named view belongs to.
 ///

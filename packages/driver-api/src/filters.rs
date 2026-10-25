@@ -356,3 +356,16 @@ mod tests {
         .is_err());
     }
 }
+
+/// A sort clause of a request: the column and the direction.
+///
+/// The wire twin of a saved view's `sorts` entry (camelCase), shared by the
+/// query executor and the named-view payload (D6 item 1 moved it here so the
+/// named-view vocabulary does not depend on a feature package).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SortCondition {
+    pub column: String,
+    #[serde(default)]
+    pub descending: bool,
+}

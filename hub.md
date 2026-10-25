@@ -7,7 +7,7 @@
 
 ## 全局状态
 
-- 当前阶段：**D2 进行中**（连接目录第一切片已落地：modules::connection + DesktopConnectionStore + 旧端口删除；剩余 Profile/revision 统一）。
+- 当前阶段：**D2 目录切片完成 + D6 item 1（named_views）完成**；下一步 D3 Execution 拆分或 D2 剩余（Profile/revision，依赖 ID 词汇先行迁移 modules::shared）。
 - 阶段与 PR 粒度：计划按 **D0–D8 九个阶段**推进（无 "wave" 概念，wave 仅是 coordinator 的
   并行批次术语）；每阶段可拆多个小 PR，每 PR 必须可构建、有真实消费者和测试。预估全程
   ~15–25 个 PR（D5 三件套各一个、D6 每功能族单独交付）。

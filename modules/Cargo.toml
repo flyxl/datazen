@@ -16,6 +16,16 @@ connection = [
     "dep:serde_json",
     "dep:datazen-driver-api",
 ]
+# D6 item 1：命名视图（保存的筛选视图）。规则与端口自 feature-core 迁入；
+# driver-api 提供 filters 词汇（NamedView 的载荷）。
+named_views = [
+    "dep:async-trait",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:chrono",
+    "dep:datazen-driver-api",
+]
 # D1.5：AI Provider 契约与适配整体并入（原 datazen-ai-api → datazen-ai-providers）。
 # 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
 # （如仅契约不带 reqwest），届时再拆，不提前建空档。
@@ -49,8 +59,10 @@ tracing = { version = "0.1", optional = true }
 # ai feature：URL 脱敏等工具，来自垫底的 datazen-infra（drivers/modules/web/desktop 共用）
 datazen-infra = { path = "../packages/infra", optional = true }
 
-# connection feature：连接配置形状（driver 契约 crate，允许的依赖边）
+# connection / named_views features：连接配置形状与 filters 词汇（driver 契约 crate，允许的依赖边）
 datazen-driver-api = { path = "../packages/driver-api", optional = true }
+# named_views feature：created_at / updated_at 时间戳
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

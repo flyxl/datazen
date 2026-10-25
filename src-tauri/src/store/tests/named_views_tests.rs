@@ -9,7 +9,7 @@
 use super::super::*;
 use super::fixtures::*;
 use chrono::Utc;
-use datazen_feature_core::services::named_views::{
+use datazen_modules::named_views::{
     delete_named_view, list_named_views, save_named_view, NamedView, NamedViewScope,
 };
 use datazen_feature_core::services::query_executor::FilterCondition;

@@ -109,6 +109,10 @@ pub struct PlatformAdapter {
     /// 桌面仓储是 `DesktopConnectionStore`（复用同一个 `DesktopRepository`
     /// 的缓存、写锁与密钥）。
     connection_service: std::sync::OnceLock<Arc<datazen_modules::connection::ConnectionService>>,
+    /// D6 item 1 后的命名视图用例：`datazen-modules::named_views` 由宿主直接消费。
+    /// 桌面仓储是同一个 `DesktopRepository`（`impl NamedViewRepository for
+    /// DesktopRepository`），id 由 `HostViewIdMinter` 铸造。
+    named_views_service: std::sync::OnceLock<Arc<datazen_modules::named_views::NamedViewService>>,
     runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
     profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
     /// 执行身份解析器（`IdentityResolver` 端口的桌面实现）。
@@ -147,6 +151,7 @@ impl PlatformAdapter {
             services: std::sync::OnceLock::new(),
             settings_service: std::sync::OnceLock::new(),
             connection_service: std::sync::OnceLock::new(),
+            named_views_service: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
             identities: std::sync::OnceLock::new(),
@@ -168,6 +173,7 @@ impl PlatformAdapter {
             services: std::sync::OnceLock::new(),
             settings_service: std::sync::OnceLock::new(),
             connection_service: std::sync::OnceLock::new(),
+            named_views_service: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
             identities: std::sync::OnceLock::new(),
@@ -299,6 +305,26 @@ impl PlatformAdapter {
     /// `datazen-modules::connection`，宿主直接消费。
     pub fn connection_service(&self) -> Option<Arc<datazen_modules::connection::ConnectionService>> {
         self.connection_service.get().cloned()
+    }
+
+    /// D6 item 1 后的命名视图用例入口。
+    pub fn named_views_service(
+        &self,
+    ) -> Option<Arc<datazen_modules::named_views::NamedViewService>> {
+        self.named_views_service.get().cloned()
+    }
+
+    /// 需要命名视图用例时调用；未注入 ⇒ 明确报错，不回落旧路径。
+    pub fn require_named_views_service(
+        &self,
+    ) -> Result<Arc<datazen_modules::named_views::NamedViewService>, ApiError> {
+        self.named_views_service().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "NamedViewService 未注入：启动装配尚未调用 PlatformAdapter::inject，\
+                 或在注入完成前就发起了命名视图用例调用；此处不做回落，也不得直读宿主 store",
+            )
+        })
     }
 
     /// 需要连接目录用例时调用；未注入 ⇒ 明确报错，不回落旧路径。
@@ -557,16 +583,17 @@ impl PlatformAdapter {
             super::connections::DesktopConnectionStore::new(store.clone()),
         )));
         let _ = self.connection_service.set(connections);
+        let named_views = Arc::new(datazen_modules::named_views::NamedViewService::new(
+            store.clone(),
+            Arc::new(crate::store::HostViewIdMinter),
+        ));
+        let _ = self.named_views_service.set(named_views);
         let services = Arc::new(ApplicationServices::new(
             target,
             datazen_application::identity_policy::IdentityPolicy::new(),
             runtime.clone(),
             tunnels.clone(),
             known_hosts.clone(),
-            // 命名视图端口（P3 第一条命令族）：桌面实现就是同一个
-            // `DesktopRepository`（`impl NamedViewRepository for DesktopRepository`，
-            // 落盘 `{appData}/named_views.json`）。
-            store.clone(),
             // 仪表盘仓储与运行历史（P3 第二条命令族）：两者都落在应用库，
             // 桌面实现都是 `AppDb`（各自有独立的 `impl … for AppDb`）。
             store.app_db(),

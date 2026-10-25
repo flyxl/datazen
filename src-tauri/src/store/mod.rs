@@ -38,7 +38,7 @@ pub use history_db::{
 };
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
 // The named-view DTO itself is the shared layer's
-// (`datazen_feature_core::services::named_views`); the store only contributes
+// (`datazen-modules::named_views`); the store only contributes
 // the persistence and the id minter.
 pub use named_views::HostViewIdMinter;
 pub use settings::{AppSettings, OnboardingState};
