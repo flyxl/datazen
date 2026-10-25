@@ -4,6 +4,7 @@ import { useFkNavigationShortcuts } from '../../hooks/useFkNavigationShortcuts';
 import { useFkNavigationStore } from '../../stores/fkNavigationStore';
 import { usePanelStore } from '../../stores/panelStore';
 import { openForeignKeyTarget } from '../../lib/fkNavigationActions';
+import { openReferencingRows } from '../../lib/fkReferencedBy';
 import {
   pickAnchorRow,
   scrollTopForAnchorRow,
@@ -91,6 +92,11 @@ export interface TableForeignKeyNavigation {
   onBack: () => void;
   /** Go forward one jump. */
   onForward: () => void;
+  /**
+   * Open the tabs of the rows that reference one row (DB-20). The refusals
+   * land on the same error channel as a refused jump.
+   */
+  onShowReferencingRows: (rowIndex: number) => void;
   /** The keyboard of the navigation; bind it to the grid container. */
   onKeyDown: (event: React.KeyboardEvent) => void;
   /** The grid's scroll container, handed over by the grid. */
@@ -274,6 +280,43 @@ export function useTableForeignKeyNavigation(
     ],
   );
 
+  const handleShowReferencingRows = useCallback(
+    (rowIndex: number) => {
+      const row = rows[rowIndex];
+      if (!row) return;
+      void openReferencingRows({
+        sourcePanelId: panelId,
+        sourceTable: tableName,
+        dbSessionId,
+        database,
+        schema,
+        connectionId: connectionId ?? null,
+        driverType: databaseType ?? null,
+        row,
+        sourceViewport: snapshotViewport(),
+      })
+        .then((outcome) => {
+          if (!outcome.ok) {
+            setError(outcome.error ?? { code: 'unknown', raw: '' });
+            return;
+          }
+          setError(null);
+        })
+        .catch(() => undefined);
+    },
+    [
+      rows,
+      panelId,
+      tableName,
+      dbSessionId,
+      database,
+      schema,
+      connectionId,
+      databaseType,
+      snapshotViewport,
+    ],
+  );
+
   /**
    * The stack of this tab: the breadcrumb of the tab, and the two moves.
    *
@@ -420,6 +463,7 @@ export function useTableForeignKeyNavigation(
     breadcrumb,
     onBack: goBack,
     onForward: goForward,
+    onShowReferencingRows: handleShowReferencingRows,
     onKeyDown,
     onScrollElementChange,
   };

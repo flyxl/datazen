@@ -35,7 +35,9 @@ import type {
   ExecutionReceipt,
   ExecutionView,
   ForeignKeyTargetResolution,
+  InboundForeignKeyCatalog,
   JobView,
+  ListInboundForeignKeysRequest,
   ListNamedViewsRequest,
   NamedView,
   OpenSessionReceipt,
@@ -187,6 +189,10 @@ export interface MethodMap {
   resolveForeignKeyTargets: {
     request: ResolveForeignKeyTargetsRequest;
     response: ForeignKeyTargetResolution;
+  };
+  listInboundForeignKeys: {
+    request: ListInboundForeignKeysRequest;
+    response: InboundForeignKeyCatalog;
   };
   /**
    * The named views of one scope (or of every scope when `scope` is omitted).

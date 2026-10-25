@@ -22,6 +22,8 @@ import type {
   DeleteNamedViewRequest,
   EstimateTableRowsRequest,
   ForeignKeyTargetResolution,
+  InboundForeignKeyCatalog,
+  ListInboundForeignKeysRequest,
   ListNamedViewsRequest,
   NamedView,
   PreviewPendingChangesRequest,
@@ -97,6 +99,8 @@ export interface TableDataClient {
   resolveForeignKeyTargets(
     request: ResolveForeignKeyTargetsRequest,
   ): Promise<ForeignKeyTargetResolution>;
+  /** The reverse foreign-key catalog: the constraints of other tables that reference one table. */
+  listInboundForeignKeys(request: ListInboundForeignKeysRequest): Promise<InboundForeignKeyCatalog>;
   /**
    * The named views of one scope, or of every scope when `scope` is omitted.
    *
@@ -157,6 +161,9 @@ export function createTableDataMethods(
 
     resolveForeignKeyTargets: (request) =>
       guard('resolveForeignKeyTargets', () => transport.call('resolveForeignKeyTargets', request)),
+
+    listInboundForeignKeys: (request) =>
+      guard('listInboundForeignKeys', () => transport.call('listInboundForeignKeys', request)),
 
     listNamedViews: (request) =>
       guard('listNamedViews', () => transport.call('listNamedViews', request)),

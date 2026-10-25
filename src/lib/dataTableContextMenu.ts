@@ -27,6 +27,11 @@ export type DataTableContextMenuLabels = {
   /** "Restore This Row" — offered on a row that is marked for deletion (DB-06). */
   restoreRow: string;
   /**
+   * "Rows referencing this row" (DB-20). Optional: a caller that does not
+   * offer the reverse jump keeps the menu it had before DB-20.
+   */
+  referencedBy?: string;
+  /**
    * The write entries of the "Set Value" submenu (DB-05).
    *
    * They are optional so a caller that does not offer the submenu does not
@@ -105,6 +110,8 @@ export type DataTableContextMenuHandlers = {
   onExport?: () => void;
   /** Undo the delete mark of the right-clicked row (DB-06). */
   onRestoreRow?: () => void;
+  /** Open the tabs of the rows that reference the right-clicked row (DB-20). */
+  onShowReferencingRows?: () => void;
   /** Write the cell without opening an editor (DB-05). */
   onSetValue?: (id: SetValueActionId) => void;
   /** Read the candidate values of an enumeration column (DB-05). */
@@ -682,6 +689,13 @@ export function buildDataTableContextMenuItems(
     const restore = canRestoreRow
       ? push(item('restore-row', labels.restoreRow, handlers.onRestoreRow))
       : [];
+    // The reverse jump (DB-20): "who references this row?" — offered next to
+    // the row's own actions, before the danger zone.
+    const referencedBy = handlers.onShowReferencingRows
+      ? push(
+          item('show-referencing-rows', labels.referencedBy ?? '', handlers.onShowReferencingRows),
+        )
+      : [];
 
     const moreActions = push(
       item('copy-as-json', labels.copyAsJson, handlers.onCopyAsJson),
@@ -700,7 +714,7 @@ export function buildDataTableContextMenuItems(
     if (setValueMenu) {
       out = [...out, setValueMenu];
     }
-    const dangerZone = [...danger, ...restore];
+    const dangerZone = [...referencedBy, ...danger, ...restore];
     if (dangerZone.length > 0) {
       out = out.length > 0 ? [...out, { kind: 'separator' }, ...dangerZone] : dangerZone;
     }
@@ -731,6 +745,12 @@ export function buildDataTableContextMenuItems(
       : null,
   );
 
+  // The reverse jump on a selection (DB-20): the right-clicked row is the
+  // one the referencing rows point at, even when others are selected too.
+  const referencedBy = handlers.onShowReferencingRows
+    ? push(item('show-referencing-rows', labels.referencedBy ?? '', handlers.onShowReferencingRows))
+    : [];
+
   const danger =
     canDelete && hasSelectedRows
       ? push(item('delete-row', labels.deleteRow, handlers.onDeleteRow))
@@ -746,6 +766,9 @@ export function buildDataTableContextMenuItems(
   );
 
   let out = frequent;
+  if (referencedBy.length > 0) {
+    out = out.length > 0 ? [...out, ...referencedBy] : referencedBy;
+  }
   if (danger.length > 0) {
     out = out.length > 0 ? [...out, { kind: 'separator' }, ...danger] : danger;
   }

@@ -395,6 +395,7 @@ const pack = {
   'dataTable.copyColumnData': 'Copy Column Data',
   'dataTable.setNull': 'Set NULL',
   'dataTable.filterByValue': 'Filter by This Value',
+  'dataTable.referencedBy': 'Rows referencing this row',
   'dataTable.deleteRow': 'Delete Row',
   'dataTable.confirmDeleteRows': 'Delete {count} selected row(s)? This cannot be undone.',
   'dataTable.loading': 'Loading rows…',

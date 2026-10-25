@@ -57,6 +57,12 @@ export interface UseDataTableContextMenuOptions {
   dirtyByRow?: ReadonlyMap<number, DirtyRowEntry> | null;
   /** Undo the delete mark of a row (DB-06). */
   onRestoreRow?: (rowIndex: number) => void;
+  /**
+   * Open the tabs of the rows that reference the right-clicked row (DB-20).
+   * Omitted ⇒ the row menu keeps its pre-DB-20 shape — result grids and
+   * driver grids are unaffected.
+   */
+  onShowReferencingRows?: (rowIndex: number) => void;
   /** Opens the export dialog. */
   onExport?: () => void;
   /**
@@ -135,6 +141,7 @@ export function useDataTableContextMenu(
     onAddFilter,
     onCellEdit,
     onDeleteRows,
+    onShowReferencingRows,
     dirtyByRow,
     onRestoreRow,
     onExport,
@@ -286,6 +293,7 @@ export function useDataTableContextMenu(
                 ? `${t('export.export')} (${t('export.selectedRows')} ${selectedRows.size})`
                 : t('export.export'),
             restoreRow: t('tableData.restoreRow'),
+            referencedBy: t('dataTable.referencedBy'),
             setValue: t('cellEditor.setValue'),
             setEmpty: t('cellEditor.setEmpty'),
             setDefault: t('cellEditor.setDefault'),
@@ -432,6 +440,14 @@ export function useDataTableContextMenu(
               canRestoreRow && hit
                 ? () => {
                     onRestoreRow?.(hit.rowIndex);
+                  }
+                : undefined,
+            // The reverse jump (DB-20) is bound to the row under the pointer:
+            // the referencing rows are the ones pointing at **this** row.
+            onShowReferencingRows:
+              hit && onShowReferencingRows
+                ? () => {
+                    onShowReferencingRows(hit.rowIndex);
                   }
                 : undefined,
             // The write entries (DB-05). They need the cell under the

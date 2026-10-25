@@ -258,6 +258,11 @@ export interface DataTableProps {
    * menu does not offer it.
    */
   onRestoreRow?: (rowIndex: number) => void;
+  /**
+   * Open the tabs of the rows that reference the right-clicked row (DB-20).
+   * Omitted ⇒ the row menu keeps its pre-DB-20 shape.
+   */
+  onShowReferencingRows?: (rowIndex: number) => void;
 
   /**
    * The foreign keys of the table (DB-07).
@@ -432,6 +437,7 @@ export function DataTable({
   newRowIndex,
   dirtyByRow,
   onRestoreRow,
+  onShowReferencingRows,
   foreignKeys,
   statusBar,
   rowHeight = DATA_TABLE_ROW_HEIGHT,
@@ -654,6 +660,7 @@ export function DataTable({
     onDeleteRows,
     dirtyByRow,
     onRestoreRow,
+    onShowReferencingRows,
     onExport: handleExport,
     setValueState: cellEditing?.setValueState,
     onSetValue: cellEditing?.onSetValue,

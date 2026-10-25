@@ -11,6 +11,9 @@ use super::AppState;
 use datazen_feature_core::services::fk_navigation::{
     ForeignKeyTargetResolution, ResolveForeignKeyTargetsRequest,
 };
+use datazen_feature_core::services::referenced_by::{
+    InboundForeignKeyCatalog, ListInboundForeignKeysRequest,
+};
 use datazen_feature_core::services::ports::{
     FkSessionBinding, FkSessionError, ForeignKeyNavigationSource,
 };
@@ -89,6 +92,35 @@ pub async fn resolve_foreign_key_targets(
     request: ResolveForeignKeyTargetsRequest,
 ) -> Result<ForeignKeyTargetResolution, CommandError> {
     resolve_foreign_key_targets_impl(&state, request).await
+}
+
+/// List the constraints of other tables that reference one table (DB-20).
+pub(crate) async fn list_inbound_foreign_keys_impl(
+    state: &AppState,
+    request: ListInboundForeignKeysRequest,
+) -> Result<InboundForeignKeyCatalog, CommandError> {
+    if request.db_session_id.trim().is_empty() {
+        return Err(CommandError::Validation("dbSessionId is required".into()));
+    }
+    if request.table.trim().is_empty() {
+        return Err(CommandError::Validation("table is required".into()));
+    }
+    let source = HostNavigationSource { state };
+    datazen_feature_core::services::referenced_by::list_inbound_foreign_keys(&source, &request)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// List the constraints of other tables that reference one table (DB-20).
+///
+/// The scan is bounded and `truncated` says when it stopped early; the front
+/// end renders the partial answer, never a silent one.
+#[tauri::command]
+pub async fn list_inbound_foreign_keys(
+    state: State<'_, AppState>,
+    request: ListInboundForeignKeysRequest,
+) -> Result<InboundForeignKeyCatalog, CommandError> {
+    list_inbound_foreign_keys_impl(&state, request).await
 }
 
 #[cfg(test)]

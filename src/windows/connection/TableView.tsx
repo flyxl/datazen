@@ -983,6 +983,8 @@ export function TableView({
         highlightedRow={detailRowIndex ?? highlightedNewRowIndex}
         dirtyByRow={dirtyIndex.byRowIndex}
         onRestoreRow={actions.unstageRowDelete}
+        // The reverse foreign-key jump (DB-20): the row menu's referencing-rows entry.
+        onShowReferencingRows={fkNavigation.onShowReferencingRows}
         // The foreign-key jump (DB-07): the arrows and the callback.
         foreignKeys={fkNavigation.foreignKeys}
         rowHeight={gridRowHeight}

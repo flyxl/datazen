@@ -42,7 +42,7 @@ pub const MAX_CANDIDATE_LIMIT: u32 = 200;
 ///
 /// This mirrors the host's own table-reading path so a foreign-key target and
 /// the grid it came from resolve to the same database.
-const DEFAULT_DATABASE: &str = "default";
+pub(crate) const DEFAULT_DATABASE: &str = "default";
 
 /// The `grid.fk.*` rejection codes (00-contracts §8.2).
 ///
@@ -97,7 +97,7 @@ pub enum FkNavigationError {
 }
 
 impl FkNavigationError {
-    fn coded(code: FkErrorCode, message: impl Into<String>) -> Self {
+    pub(crate) fn coded(code: FkErrorCode, message: impl Into<String>) -> Self {
         Self::Coded {
             code,
             message: message.into(),
@@ -764,7 +764,7 @@ async fn probe_target(
 /// The content can quote a user value; the kind cannot, and the kind is all
 /// a rejection message and a log line need to say "the probe failed because
 /// the statement was refused" or "because the connection is gone".
-fn driver_error_kind(error: &DriverError) -> &'static str {
+pub(crate) fn driver_error_kind(error: &DriverError) -> &'static str {
     match error {
         DriverError::SessionLost => "sessionLost",
         DriverError::ConnectionFailed(_) => "connectionFailed",
@@ -783,7 +783,7 @@ fn driver_error_kind(error: &DriverError) -> &'static str {
 /// The driver-error part of a rejection message: the **kind**, never the
 /// text. The text is the one place a user value can leak (a server-side type
 /// error quotes the value it choked on), so it is not part of any message.
-fn driver_error_note(error: &DriverError) -> String {
+pub(crate) fn driver_error_note(error: &DriverError) -> String {
     format!("driver error kind: {}", driver_error_kind(error))
 }
 

@@ -10,6 +10,8 @@ import type {
   CountStrategy,
   CursorValue,
   ForeignKeyTargetResolution,
+  InboundForeignKeyCatalog,
+  ListInboundForeignKeysRequest,
   NamedView,
   NamedViewScope,
   ResolveForeignKeyTargetsRequest,
@@ -318,6 +320,22 @@ export const databaseCommands = {
   ): Promise<ForeignKeyTargetResolution> => {
     const client = useBackendClient();
     return client.resolveForeignKeyTargets(params);
+  },
+
+  /**
+   * The reverse foreign-key catalog (DB-20): the constraints of other tables
+   * that reference one table.
+   *
+   * The scan is bounded and `truncated` says when it stopped early. The UI
+   * entry point is the row context menu's "referencing rows" entry: it calls
+   * `openReferencingRows` (`src/lib/fkReferencedBy.ts`), which reads the
+   * catalog through this method before it opens the referencing tab.
+   */
+  listInboundForeignKeys: async (
+    params: ListInboundForeignKeysRequest,
+  ): Promise<InboundForeignKeyCatalog> => {
+    const client = useBackendClient();
+    return client.listInboundForeignKeys(params);
   },
 
   /**

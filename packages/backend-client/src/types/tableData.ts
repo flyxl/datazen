@@ -488,6 +488,38 @@ export interface ResolveForeignKeyTargetsRequest {
   browse?: boolean;
 }
 
+/** The request of a reverse foreign-key catalog: who references this table? */
+export interface ListInboundForeignKeysRequest {
+  dbSessionId: string;
+  database?: string | null;
+  schema?: string | null;
+  /** The table the references point at. */
+  table: string;
+  qualifiedTable?: string | null;
+}
+
+/** One referencing constraint, as the reverse jump needs it. */
+export interface InboundForeignKeyRef {
+  /** The referencing table, in the driver's own naming. */
+  table: string;
+  schema: string | null;
+  constraintName: string;
+  /** The referencing table's own columns that carry the reference. */
+  columns: string[];
+  /** The referenced columns of **this** table, in pairing order. */
+  referencedColumns: string[];
+}
+
+/** The catalog: every inbound constraint the scan found, plus how far it got. */
+export interface InboundForeignKeyCatalog {
+  table: string;
+  database: string;
+  references: InboundForeignKeyRef[];
+  scannedTables: number;
+  /** The scan hit its cap before the table list ran out. */
+  truncated: boolean;
+}
+
 /**
  * The scope a named view belongs to.
  *

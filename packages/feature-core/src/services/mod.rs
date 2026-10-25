@@ -6,6 +6,7 @@ pub mod named_views;
 pub mod physical_schema_context;
 pub mod ports;
 pub mod query_executor;
+pub mod referenced_by;
 pub mod result_edit;
 pub mod schema_context;
 pub mod schema_metadata;

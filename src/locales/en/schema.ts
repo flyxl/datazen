@@ -326,6 +326,7 @@ const pack = {
   'fkNav.error.targetUnresolved':
     'Cannot reach {target}; it may be missing, in another database, or not readable',
   'fkNav.error.probeFailed': 'The target table was found but could not be read',
+  'fkNav.error.noReferences': 'No table references this row',
   'fkNav.error.unknown': 'Foreign key navigation failed',
   // The in-cell foreign-key selector (DB-20): the dropdown that writes a
   // referenced value into a foreign-key cell. The words are the selector's,
