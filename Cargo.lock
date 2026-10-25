@@ -1682,9 +1682,9 @@ dependencies = [
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
  "datazen-feature-core",
+ "datazen-infra",
  "datazen-modules",
  "datazen-platform-api",
- "datazen-platform-infra",
  "datazen-runtime",
  "datazen-schema-diff",
  "datazen-tunnel",
@@ -2106,10 +2106,10 @@ dependencies = [
  "cbc 0.1.2",
  "chrono",
  "datazen-driver-api",
+ "datazen-infra",
  "datazen-kernel",
  "datazen-modules",
  "datazen-platform-api",
- "datazen-platform-infra",
  "datazen-runtime",
  "datazen-schema-diff",
  "dirs 5.0.1",
@@ -2133,6 +2133,14 @@ dependencies = [
  "tracing",
  "uuid",
  "zip 2.4.2",
+]
+
+[[package]]
+name = "datazen-infra"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "url",
 ]
 
 [[package]]
@@ -2166,7 +2174,7 @@ name = "datazen-modules"
 version = "0.0.1"
 dependencies = [
  "async-trait",
- "datazen-platform-infra",
+ "datazen-infra",
  "futures-util",
  "inventory",
  "reqwest",
@@ -2192,14 +2200,6 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
-]
-
-[[package]]
-name = "datazen-platform-infra"
-version = "0.1.0"
-dependencies = [
- "regex",
- "url",
 ]
 
 [[package]]

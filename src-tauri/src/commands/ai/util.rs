@@ -46,7 +46,7 @@ pub(crate) async fn resolve_ai(
     let safe_endpoint = config
         .endpoint
         .as_deref()
-        .map(datazen_platform_infra::redaction::redact_url_for_log);
+        .map(datazen_infra::redaction::redact_url_for_log);
     tracing::debug!(
         provider = %config.provider_type,
         model = %config.model,

@@ -20,7 +20,7 @@ use crate::workspace_apps::manifest::{
     allowed_wapp_file_ext, parse_manifest, validate_manifest, validate_wapp_dir, WappManifest,
     MAX_WAPP_FILES, MAX_WAPP_UNCOMPRESSED,
 };
-use datazen_platform_infra::path_safety::{validate_theme_zip_path, MAX_COMPRESSION_RATIO};
+use datazen_infra::path_safety::{validate_theme_zip_path, MAX_COMPRESSION_RATIO};
 
 const STAGING_PREFIX: &str = ".staging-";
 const BACKUP_SUFFIX: &str = ".old.bak";
@@ -289,7 +289,7 @@ fn extract_wapp_zip_with_limits(
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
         let entry_name = entry.name().to_string();
         validate_theme_zip_path(&entry_name)?;
-        let rel = datazen_platform_infra::path_safety::validate_zip_entry_path(&entry_name)
+        let rel = datazen_infra::path_safety::validate_zip_entry_path(&entry_name)
             .map_err(|e| e.to_string())?;
         let out_path = dest.join(&rel);
 

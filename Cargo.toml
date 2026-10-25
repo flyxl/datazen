@@ -4,7 +4,7 @@ members = [
     "src-tauri",
     "packages/driver-api",
     "packages/platform-api",
-    "packages/platform-infra",
+    "packages/infra",
     "packages/application",
     "packages/runtime",
     "packages/kernel",

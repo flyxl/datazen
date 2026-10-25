@@ -111,7 +111,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
     );
     tracing::debug!(
         db_session_id,
-        sql_preview = %datazen_platform_infra::redaction::sql_preview_for_log(&sql),
+        sql_preview = %datazen_infra::redaction::sql_preview_for_log(&sql),
         "execute_driver_command_stream sql"
     );
 

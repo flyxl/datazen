@@ -79,6 +79,19 @@ monitor reload 与 tray 同步仍由原命令路径执行。
 出现在生产依赖；infra 改名后全仓构建与门禁通过；被收拢的工具在原消费者处只剩
 单一 import，无重复实现。
 
+**已完成事实（2026-10-26）**：
+1. `ai-api` → `ai-providers`（`46dc15ba6`）：契约三文件随迁，导出面等价。
+2. `ai-providers` → `modules/src/ai/`（`e02d60d2c`）：domain 契约 + providers 适配
+   + registry + 集成测试（`#![cfg(feature = "ai")]` 门控）；F-09 退役、F-14 豁免
+   reqwest、F-04 允许垫底层传递边；feature-core / src-tauri 经
+   `datazen-modules` 的 `ai` feature 消费。
+3. `platform-infra` → `infra`（本提交）：目录、crate 名（`datazen-infra`）、
+   LAYERS/F-11/F-04/F-12、TESTED_LAYERS、panic-policy 目标、CI 文档全部同步。
+4. 共享审计结论：`redaction`（feature-core / modules::ai / desktop 三类消费）、
+   `path_safety`（feature-core / desktop 两类）已在本层；`drivers/http-support`
+   仅驱动单类消费，按「单消费者留原处」规则不迁移；驱动无凭据日志路径，
+   无需新增 redaction 消费；web 宿主 D7 落地后再按同一规则审计。
+
 **回滚**：整体 revert 恢复三个 crate；不涉及持久化格式变更。
 
 ## D2：连接领域与宿主仓储

@@ -7,10 +7,10 @@ use std::path::{Component, Path};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
-/// Zip-slip guards live in `datazen-platform-infra` (`path_safety.rs`); the
+/// Zip-slip guards live in `datazen-infra` (`path_safety.rs`); the
 /// host re-exports them so `crate::app_data_archive::validate_zip_entry_path`
 /// and every in-file caller keep resolving without a second implementation.
-pub use datazen_platform_infra::path_safety::{validate_zip_entry_path, MAX_COMPRESSION_RATIO};
+pub use datazen_infra::path_safety::{validate_zip_entry_path, MAX_COMPRESSION_RATIO};
 
 /// True when any path component is the encryption key file `.key`.
 fn has_key_component(rel_path: &Path) -> bool {

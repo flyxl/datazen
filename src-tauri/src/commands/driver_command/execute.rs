@@ -110,7 +110,7 @@ pub(crate) async fn execute_driver_command_with_mode(
     );
     if let Some(sql) = sql.as_ref() {
         tracing::debug!(
-            sql_preview = %datazen_platform_infra::redaction::sql_preview_for_log(sql),
+            sql_preview = %datazen_infra::redaction::sql_preview_for_log(sql),
             "execute_driver_command sql"
         );
     }

@@ -80,7 +80,7 @@ export const RULE_ID = 'PN-01';
  * workspace — or present on disk but unclassifiable — is an **error**, so the
  * list can never silently degrade into a green scan over nothing.
  */
-export const TARGET_CRATES = Object.freeze(['packages/platform-infra']);
+export const TARGET_CRATES = Object.freeze(['packages/infra']);
 
 /**
  * Attributes whose annotated item is test-only code.

@@ -184,7 +184,7 @@ export const RULES = Object.freeze([
     subjects: ['platform-api'],
     // Same allow-list inversion as F-01; §2.3 draws platform-api depending on
     // the driver API and the AI API and nothing else.
-    allowedLayers: ['platform-api', 'driver-api', 'modules', 'platform-infra'],
+    allowedLayers: ['platform-api', 'driver-api', 'modules', 'infra'],
     forbiddenCrates: [],
     specTokens: ['packages/platform-api', 'src-tauri'],
     note: 'platform-api points at ports, not at the implementation',
@@ -233,17 +233,17 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-11',
-    subjects: ['platform-infra'],
+    subjects: ['infra'],
     subjectsFromSpec: true,
-    // Inverted allow-list on purpose. platform-infra is the shared
+    // Inverted allow-list on purpose. infra is the shared
     // infrastructure kernel: redaction, path safety, clock, transport
     // policy. The moment it may depend on ANY other layer it stops being
     // a foundation and becomes the coupling hub every form must link,
     // which is exactly the `common` crate this repo must not grow. A
     // deny-list would silently permit every layer added from now on.
-    allowedLayers: ['platform-infra'],
+    allowedLayers: ['infra'],
     forbiddenCrates: 'spec',
-    specTokens: ['packages/platform-infra'],
+    specTokens: ['packages/infra'],
     specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
     note: 'the infrastructure kernel depends on no other layer and no platform transport',
   },
@@ -257,7 +257,7 @@ export const RULES = Object.freeze([
       'kernel',
       'application',
       'platform-api',
-      'platform-infra',
+      'infra',
       'driver-api',
       'data-transfer',
       'data-sync',

@@ -247,7 +247,7 @@ pub(crate) async fn apply_detached(
                 cmd = "apply_data_transfer",
                 plan_id = %plan_id,
                 job_id = %job_id,
-                error = %datazen_platform_infra::redaction::redact_secrets_for_log(&error.to_string()),
+                error = %datazen_infra::redaction::redact_secrets_for_log(&error.to_string()),
             );
         }
     });

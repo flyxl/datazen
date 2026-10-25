@@ -19,7 +19,7 @@
 //! character is a colon, so it is part of a URL" plus a path body that stopped
 //! at the first blank — let them through.
 
-use datazen_platform_infra::redaction::{redact_paths_for_ipc, redact_secrets_for_log};
+use datazen_infra::redaction::{redact_paths_for_ipc, redact_secrets_for_log};
 
 #[test]
 fn masks_the_directory_and_keeps_the_file_name() {

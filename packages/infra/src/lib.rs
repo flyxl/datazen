@@ -1,4 +1,4 @@
-//! Cross-form platform infrastructure primitives.
+//! Shared infrastructure utilities (renamed from `platform-infra`, D1.5).
 //!
 //! Mechanism, not policy and not domain logic: credential redaction and
 //! archive path safety are the same operation on desktop, on the web build

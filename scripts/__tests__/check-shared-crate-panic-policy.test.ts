@@ -203,7 +203,7 @@ describe('analyzeRustSource', () => {
       '    Ok(v + n)',
       '}',
     ].join('\n');
-    const result = analyzeRustSource(src, 'packages/platform-infra/src/clean.rs');
+    const result = analyzeRustSource(src, 'packages/infra/src/clean.rs');
 
     expect(result.violations).toEqual([]);
     expect(result.exemptCalls).toBe(0);
@@ -211,10 +211,10 @@ describe('analyzeRustSource', () => {
 
   it('reports a bare unwrap() on a production path with rule id and line', () => {
     const src = ['pub fn probe(v: Option<u32>) -> u32 {', '    v.unwrap()', '}'].join('\n');
-    const result = analyzeRustSource(src, 'packages/platform-infra/src/dirty.rs');
+    const result = analyzeRustSource(src, 'packages/infra/src/dirty.rs');
 
     expect(result.violations).toEqual([
-      { rule: RULE_ID, file: 'packages/platform-infra/src/dirty.rs', line: 2 },
+      { rule: RULE_ID, file: 'packages/infra/src/dirty.rs', line: 2 },
     ]);
   });
 
@@ -232,7 +232,7 @@ describe('analyzeRustSource', () => {
       '    }',
       '}',
     ].join('\n');
-    const result = analyzeRustSource(src, 'packages/platform-infra/src/tested.rs');
+    const result = analyzeRustSource(src, 'packages/infra/src/tested.rs');
 
     expect(result.violations).toEqual([]);
     // Not vacuous: the file really does contain a bare unwrap(), and the gate
@@ -378,7 +378,7 @@ function makeWorkspace(id: string, sources: Record<string, string>): StubWorkspa
     join(root, 'Cargo.toml'),
     ['[workspace]', 'resolver = "2"', `members = ["${CRATE_DIR}"]`, ''].join('\n'),
   );
-  writeCrate(root, CRATE_DIR, 'datazen-platform-infra', sources);
+  writeCrate(root, CRATE_DIR, 'datazen-infra', sources);
   return { root, cargoLog: join(sandbox, `${id}.cargo-invocations`) };
 }
 
@@ -439,7 +439,7 @@ function runWithCrateDirs(ws: StubWorkspace, crateDirs: readonly string[]): CliR
 describe('scanCrateSources', () => {
   it('walks the whole src tree and reports file count and path of each finding', () => {
     const root = join(sandbox, 'scan-tree');
-    writeCrate(root, CRATE_DIR, 'datazen-platform-infra', {
+    writeCrate(root, CRATE_DIR, 'datazen-infra', {
       'lib.rs': CLEAN_SOURCE,
       'nested/deep.rs': DIRTY_SOURCE,
     });
@@ -465,7 +465,7 @@ describe('runCli exit codes', () => {
 
     expect(run.code).toBe(0);
     expect(run.stdout).toContain('PASS');
-    expect(run.stdout).toContain('ok datazen-platform-infra: packages/platform-infra (1 file(s))');
+    expect(run.stdout).toContain('ok datazen-infra: packages/infra (1 file(s))');
     expect(run.stdout).toContain('1 crate(s) scanned, 1 file(s)');
     expect(run.stderr).toBe('');
   });

@@ -17,7 +17,7 @@
 //! them is visible in a diff — and it probes the rules the new shape opens
 //! up, not only the ones it closes.
 
-use datazen_platform_infra::redaction::{redact_paths_for_ipc, redact_secrets_for_log};
+use datazen_infra::redaction::{redact_paths_for_ipc, redact_secrets_for_log};
 
 #[test]
 fn masks_the_directory_and_keeps_the_file_name() {

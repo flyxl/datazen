@@ -1,8 +1,8 @@
 [package]
-name = "datazen-platform-infra"
+name = "datazen-infra"
 version = "0.1.0"
 edition = "2021"
-description = "Cross-form platform infrastructure primitives for DataZen: credential redaction and archive path safety"
+description = "Shared infrastructure utilities for DataZen (renamed from platform-infra on 2026-10-26, D1.5): credential redaction and archive path safety for every consumer class (drivers / modules / web / desktop)"
 
 [dependencies]
 # Deliberately zero datazen-* dependencies: this crate is the bottom of the

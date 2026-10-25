@@ -56,7 +56,7 @@ pub(super) async fn read(
                 Ok(batch) => batch,
                 Err(DriverError::Unsupported(_) | DriverError::NotSupported(_)) => HashMap::new(),
                 Err(error) => {
-                    let message = datazen_platform_infra::redaction::redact_secrets_for_log(
+                    let message = datazen_infra::redaction::redact_secrets_for_log(
                         &error.to_string(),
                     );
                     for relation in missing {
@@ -111,7 +111,7 @@ pub(super) async fn read(
                             }
                             _ => MetadataReadErrorCode::ReadFailed,
                         },
-                        message: datazen_platform_infra::redaction::redact_secrets_for_log(
+                        message: datazen_infra::redaction::redact_secrets_for_log(
                             &error.to_string(),
                         ),
                     })
@@ -212,7 +212,7 @@ pub(super) async fn read_on_runtime_resource(
                         } else {
                             MetadataReadErrorCode::ReadFailed
                         },
-                        message: datazen_platform_infra::redaction::redact_secrets_for_log(
+                        message: datazen_infra::redaction::redact_secrets_for_log(
                             &error.to_string(),
                         ),
                     },

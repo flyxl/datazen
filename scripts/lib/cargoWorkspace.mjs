@@ -72,7 +72,7 @@ export const LAYERS = Object.freeze([
   { id: 'tunnel', path: 'packages/tunnel', kind: 'rust' },
   { id: 'feature-core', path: 'packages/feature-core', kind: 'rust' },
   { id: 'platform-api', path: 'packages/platform-api', kind: 'rust' },
-  { id: 'platform-infra', path: 'packages/platform-infra', kind: 'rust' },
+  { id: 'infra', path: 'packages/infra', kind: 'rust' },
   { id: 'server', path: 'server', kind: 'rust' },
   { id: 'driver-api', path: 'packages/driver-api', kind: 'rust' },
   { id: 'driver', path: 'packages/drivers/*', kind: 'rust' },

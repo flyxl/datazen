@@ -4,7 +4,7 @@
 //! `platform-api`, or Tauri. Hosts provide the repository implementations
 //! declared by the enabled feature modules. The `ai` feature additionally
 //! carries the AI provider adapters (merged 2026-10-26, D1.5): their outbound
-//! HTTP client (`reqwest`) and the bottom-layer `platform-infra` utilities are
+//! HTTP client (`reqwest`) and the bottom-layer `datazen-infra` utilities are
 //! deliberate, user-decided exceptions recorded in the refactor plan.
 
 #[cfg(feature = "ai")]

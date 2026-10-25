@@ -235,7 +235,7 @@ describe('ruleVerdict', () => {
     // `<id>  `, the spec cross-check with `<id>: `.
     expect(
       ruleVerdict('F-11', [
-        'F-11  datazen-platform-infra (packages/platform-infra/Cargo.toml) → x',
+        'F-11  datazen-infra (packages/infra/Cargo.toml) → x',
       ]),
     ).toBe('fail');
     expect(ruleVerdict('F-11', ['F-11: subjects disagree with §2.4'])).toBe('fail');

@@ -133,7 +133,7 @@ export const TESTED_LAYERS = Object.freeze([
   'tunnel',
   'application',
   'platform-api',
-  'platform-infra',
+  'infra',
   'server',
   // The Workspace App kernel used to be the standalone `workspace-apps` layer.
   // It now lives in `feature-core` as the `feature_core::workspace_apps`

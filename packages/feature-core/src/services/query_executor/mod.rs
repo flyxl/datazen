@@ -239,7 +239,7 @@ impl QueryExecutor {
                 tracing::info!(%table, "query_executor: count query");
                 tracing::debug!(
                     %table,
-                    count_sql = %datazen_platform_infra::redaction::sql_preview_for_log(&count_sql),
+                    count_sql = %datazen_infra::redaction::sql_preview_for_log(&count_sql),
                     "query_executor: count sql"
                 );
 
@@ -288,7 +288,7 @@ impl QueryExecutor {
                 tracing::info!(%table, "query_executor: estimate query");
                 tracing::debug!(
                     %table,
-                    estimate_sql = %datazen_platform_infra::redaction::sql_preview_for_log(&estimate_sql),
+                    estimate_sql = %datazen_infra::redaction::sql_preview_for_log(&estimate_sql),
                     "query_executor: estimate sql"
                 );
 

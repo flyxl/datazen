@@ -22,7 +22,7 @@ pub(crate) async fn execute_query_impl(
     tracing::info!(%db_session_id, sql_len = sql.len(), "execute_query");
     tracing::debug!(
         %db_session_id,
-        sql_preview = %datazen_platform_infra::redaction::sql_preview_for_log(&sql),
+        sql_preview = %datazen_infra::redaction::sql_preview_for_log(&sql),
         "execute_query sql"
     );
     let result = super::driver_command::execute_driver_command_impl(

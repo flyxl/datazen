@@ -172,13 +172,13 @@ flowchart TD
 | F-01 | `packages/drivers/*` 的 crate 依赖闭包不含 `datazen`、`datazen-runtime`、`datazen-application`、`datazen-platform-api`、`datazen-modules`（AI 契约自 D1.5 起住在 modules），且不含任何 `tauri*` crate；闭包侧与声明边侧任一出现即违规，**已武装为阻断门禁** | 驱动反向引用宿主或宿主框架，Web 端与宿主无关的构建被拖垮 |
 | F-02 | `packages/application`、`packages/runtime`、`packages/kernel`、`packages/platform-api` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 内核无法在没有 Tauri 的进程（测试、server worker）中编译 |
 | F-03 | `packages/application`、`packages/runtime`、`packages/kernel` 不含 `axum`、`actix-web`、`warp`、`tonic` 等 HTTP/传输框架 | 传输策略渗入业务内核 |
-| F-04 | `packages/platform-api` 不依赖 `application` / `runtime` / 领域包 / `src-tauri`；D1 期间允许依赖功能模块的兼容导出层 `modules`，以及垫底的无业务工具层 `platform-infra`（workspace 统一 feature 解析下经 `modules` 的 ai feature 传递出现） | ports 与用例循环依赖 |
+| F-04 | `packages/platform-api` 不依赖 `application` / `runtime` / 领域包 / `src-tauri`；D1 期间允许依赖功能模块的兼容导出层 `modules`，以及垫底的无业务工具层 `infra`（workspace 统一 feature 解析下经 `modules` 的 ai feature 传递出现） | ports 与用例循环依赖 |
 | F-05 | `packages/application`、`packages/runtime`、`packages/kernel`、`packages/platform-api` 不出现 `react`、`@tauri-apps/api` 等前端标识（Rust 侧通过 crate 名与 `build.rs` 依赖检查，前端侧由 §7 的字符串扫描补齐） | UI 运行时进入后端依赖图 |
 | F-06 | `server` 的 normal + build 依赖闭包不含 `tauri*` 与 `datazen` 宿主 crate | server 无法独立构建 |
 | F-07 | `packages/backend-client` 不含 `@tauri-apps/` 前缀、`fetch(`、`XMLHttpRequest` 字面量 | 传输无关契约被具体传输污染 |
 | F-08 | `packages/migration-common` 的 normal + build 工作区依赖只允许自身与 driver-api；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共算法反向依赖领域引擎、runtime 或平台传输，重新形成耦合 |
 | F-09 | ~~已退役（2026-10-26，D1.5）~~：`ai-api` 并入 `ai-providers` 后整体并入 `modules::ai`，主体不复存在；「AI 代码不得拖入 `tauri*` 或宿主」的约束由 F-14 对 `modules` 的断言继续承担 | 主体消失后规则空转，保留只会掩盖真正的边界 |
-| F-11 | `packages/platform-infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
+| F-11 | `packages/infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`。改名与定位扩展见 §2.5.1 | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
 | F-12 | `packages/feature-core` 的 normal + build 依赖闭包不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`，不依赖桌面宿主层；仅依赖共享 runtime/application/领域包、契约与 D1 功能模块兼容导出层 | Workflow、AI、Monitor、导出与 Workspace App 内核逻辑重新绑定桌面或服务端传输 |
 | F-13 | `packages/tunnel` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 隧道机制（HTTP `CONNECT` 代理 / WebSocket 中继 / SSH 转发）是形态中立件：一旦拖进 Tauri 或宿主 crate，桌面端与将来的 Web 端就无法共用同一份实现 |
 | F-14 | `modules` 的 normal + build 依赖闭包不含 src-tauri、`datazen-runtime`、`datazen-kernel`、`datazen-feature-core`、`datazen-platform-api`，也不含 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`；`reqwest` 自 D1.5 起豁免——AI Provider 适配（出站 HTTP 客户端）随 ai feature 住在 `modules::ai::providers`，这是 2026-10-26 的用户决策，不是传输框架渗入 | 功能模块必须由自身 domain/application 契约承载，不能把桌面宿主、旧横向运行时或传输实现带回模块 crate |
@@ -242,9 +242,13 @@ export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages
 `src-tauri/Cargo.toml` 移除 `datazen-workspace-apps = { path = "../packages/workspace-apps" }`，
 改由既有的 `datazen-feature-core` 依赖承接。其边界由 F-12 断言（见 §2.4）。
 
-#### 2.5.1 公共基础设施层 `packages/platform-infra`（已实现）
+#### 2.5.1 公共基础设施层 `packages/infra`（已实现；2026-10-26 由 `platform-infra` 改名，D1.5）
 
-根 `Cargo.toml` 的 `members` 新增 `packages/platform-infra`，同样**不**进 `[workspace.dependencies]`
+> 改名同时扩展定位：本层收拢 **drivers / modules / web / desktop 四类消费者中任意两者
+> 共用**的无业务工具；仅单消费者使用的实现留在消费者处（详见
+> `docs/development/ddd-refactor/02-legacy-crate-migration.md` §5.4）。
+
+根 `Cargo.toml` 的 `members` 含 `packages/infra`（成员路径随改名更新），同样**不**进 `[workspace.dependencies]`
 （它没有任何 `datazen-*` 依赖，加进去只会诱发 `src-tauri` 侧改用 `{ workspace = true }`，
 而新 crate 的依赖必须写在 `# <<driver-dependencies>>` 占位段之外）。
 
@@ -262,7 +266,7 @@ export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages
 凭据原样进日志。这是从宿主原实现逐字继承的，尚未修复。
 
 **路径安全**（`path_safety`）：zip 条目名的 zip-slip 守卫与压缩比上限。此前同样是两份逐字节
-相同的实现（`src-tauri/src/app_data_archive.rs` 与 `packages/platform-infra/src/path_safety.rs`），
+相同的实现（`src-tauri/src/app_data_archive.rs` 与 `packages/infra/src/path_safety.rs`），
 各自被自己的测试钉住，单边改动会让安全检查在另一侧继续按旧规则放行。现已收敛为本层唯一实现：
 `feature_core::workspace_apps` 的 `install` / `manifest` 与宿主 app-data 备份/恢复都调用它，
 宿主 `src-tauri/src/app_data_archive.rs` 退化为同名 `pub use` 薄壳，调用点零改动。
@@ -279,7 +283,7 @@ export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages
 
 **为什么它仍然不能叫 `common`。** 本仓库已有一个叫 `migration-common` 的 crate，
 它之所以健康，正因为名字里写着领域、依赖面极窄（504 行，只依赖 `datazen-driver-api`，两个消费者）。
-`platform-infra` 同理：名字点明「平台基础设施」，F-11 用反向 allow-list 钉死
+`infra` 同理：名字点明「基础设施」，F-11 用反向 allow-list 钉死
 「它不得依赖任何其它层」——这一条一旦破掉，它就退化成耦合中枢，而这正是要避免的 `common`。
 新加入 `LAYERS` 的层会自动进入 F-11 的禁止集，不需要改规则文件。
 前端侧接线的不是 pnpm workspace：`pnpm-workspace.yaml` 只有 `allowBuilds:`、**没有 `packages:` 通配**，`pnpm-lock.yaml` 也只有根一个 importer，因此 `packages/*` 下的前端包并不通过 pnpm 链接进 `node_modules`。既有 `packages/driver-sdk`、`packages/ui`、`packages/wapp-sdk`、`packages/extension-points` 靠三处显式配置生效，`packages/backend-client` 已同样补齐三处：

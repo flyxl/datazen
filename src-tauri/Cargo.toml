@@ -26,7 +26,7 @@ datazen-modules = { workspace = true, features = ["settings", "ai"] }
 datazen-runtime = { path = "../packages/runtime" }
 datazen-application = { path = "../packages/application" }
 # 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖（F-11 反向 allow-list 兜底）。
-datazen-platform-infra = { path = "../packages/platform-infra" }
+datazen-infra = { path = "../packages/infra" }
 # 迁移三件套各自以 Job 受理 prepare/apply，host 只做 adapter。
 datazen-schema-diff = { path = "../packages/schema-diff" }
 datazen-data-sync = { path = "../packages/data-sync" }

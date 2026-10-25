@@ -7,7 +7,7 @@
 //! 之所以抽成一处而不是每个命令族各写一份：映射表本身就是约定（`NotFound` 必须
 //! 保留成 `NotFound`，否则前端「连接已被删除」的提示会退化成「内部错误」），
 //! 复制几份之后必然有一份先漂移。日志的脱敏走
-//! [`redact_secrets_for_log`](datazen_platform_infra::redaction::redact_secrets_for_log)，
+//! [`redact_secrets_for_log`](datazen_infra::redaction::redact_secrets_for_log)，
 //! 与全局 IPC 错误载荷同一条规则。
 
 use datazen_platform_api::error::PortError;
@@ -30,7 +30,7 @@ pub(crate) fn port_error_to_command(error: PortError) -> CommandError {
 pub(crate) fn port_cmd<T>(result: Result<T, PortError>, cmd: &str) -> Result<T, CommandError> {
     result.map_err(|error| {
         let err = port_error_to_command(error);
-        let redacted = datazen_platform_infra::redaction::redact_secrets_for_log(&err.to_string());
+        let redacted = datazen_infra::redaction::redact_secrets_for_log(&err.to_string());
         tracing::error!(cmd, error = %redacted);
         err
     })

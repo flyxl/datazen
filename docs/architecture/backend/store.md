@@ -440,7 +440,7 @@ crate 与 `security` CLI 都走它们）在钥匙串搜索列表异常时都会�
 
 ### 1.3 查询历史（明文）
 
-`{appData}/history.sqlite`（`history_db.rs`）持久化 SQL 查询与 Workflow 执行历史。**SQL 文本、错误信息与库/schema 上下文以明文存储**，未像 `connections.json` / `ai_config.enc` 那样 AES 加密。语句中可能含字面量或片段性敏感数据；备份/同步 app data 目录时需视同敏感审计日志。日志路径已用 `datazen_platform_infra::redaction` 脱敏；history 落盘加密留作后续加固项。
+`{appData}/history.sqlite`（`history_db.rs`）持久化 SQL 查询与 Workflow 执行历史。**SQL 文本、错误信息与库/schema 上下文以明文存储**，未像 `connections.json` / `ai_config.enc` 那样 AES 加密。语句中可能含字面量或片段性敏感数据；备份/同步 app data 目录时需视同敏感审计日志。日志路径已用 `datazen_infra::redaction` 脱敏；history 落盘加密留作后续加固项。
 
 ### 1.4 收藏（文件优先）
 

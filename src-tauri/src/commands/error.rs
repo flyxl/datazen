@@ -68,12 +68,12 @@ impl serde::Serialize for CommandError {
             );
         }
         // Redact secrets so IPC payloads never leak credentials (M9/B8).
-        let redacted = datazen_platform_infra::redaction::redact_secrets_for_log(&self.to_string());
+        let redacted = datazen_infra::redaction::redact_secrets_for_log(&self.to_string());
         // …and the absolute paths: an IPC payload is not a log line, and it
         // travels further than the machine it was produced on (AGENTS.md:
         // "全局 IPC 错误 Payload 自动脱敏凭据与绝对路径"). The file name
         // survives; the directories do not.
-        let redacted = datazen_platform_infra::redaction::redact_paths_for_ipc(&redacted);
+        let redacted = datazen_infra::redaction::redact_paths_for_ipc(&redacted);
         serializer.serialize_str(&redacted)
     }
 }
@@ -243,7 +243,7 @@ impl<T, E: Into<CommandError>> CmdExt<T> for Result<T, E> {
         self.map_err(|e| {
             let err: CommandError = e.into();
             let redacted =
-                datazen_platform_infra::redaction::redact_secrets_for_log(&err.to_string());
+                datazen_infra::redaction::redact_secrets_for_log(&err.to_string());
             tracing::error!(cmd, error = %redacted);
             err
         })

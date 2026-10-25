@@ -25,7 +25,7 @@ datazen-driver-api = { workspace = true }
 datazen-platform-api = { workspace = true }
 # 设置词汇（ExecutionSettings 等）自 D1 起由 datazen-modules::settings 拥有。
 datazen-modules = { workspace = true, features = ["settings", "ai"] }
-datazen-platform-infra = { path = "../platform-infra" }
+datazen-infra = { path = "../infra" }
 async-trait = "0.1"
 futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }

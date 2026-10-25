@@ -402,7 +402,7 @@ jobs:
       # 与上面那条边界门禁的分工：边界门禁的结论行已被 R 阶段全量回归记录在案，
       # 因此本轮策略是「只约束新增 crate」（决策 c 方案 3），不追溯既有代码，也不
       # 改动那条门禁。所以本门禁的范围由脚本里的显式 TARGET_CRATES 列表决定
-      # （当前仅 packages/platform-infra），而不是由 workspace 路径推导。
+      # （当前仅 packages/infra），而不是由 workspace 路径推导。
       #
       # 只禁裸 unwrap()：expect("…") 一律放行（AGENTS.md 禁的是「裸」）。#[cfg(test)]
       # item 与 #[test] / #[tokio::test] 函数按语法整段剔除，不按文件名。目标 crate
