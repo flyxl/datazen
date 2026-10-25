@@ -4,6 +4,8 @@
 >
 > **两项已确认决策**：application 是 `modules::<功能>::application`，最终不保留独立 application crate；数据库执行机制主要进入 `modules::execution::runtime`，Job 等机制分别归属自己的功能模块。
 >
+> **三项追加决策（2026-10-26）**：① `ai-api` 并入 `ai-providers` 后整体并入 `modules::ai`，不保留独立 AI crate；② `platform-infra` 改名 `infra`，四类消费者（drivers/modules/web/desktop）中任意两者共用的无业务工具收拢进去；③ Repository trait 定义在模块 domain 层，具体实现由 web/desktop 宿主提供。详见 [02 §5.4](ddd-refactor/02-legacy-crate-migration.md) 与 [01 §3.2](ddd-refactor/01-target-architecture.md)。
+>
 > 本方案整体替代此前以横向 application / platform-api / runtime crate 为长期目标的方案，不是在旧方案后面追加另一套规则。旧代码仍存在不代表目标变回旧结构；目标已经确认也不代表代码已经迁移。
 >
 > **文档结构（2026-10-26 起拆分）**：本文是总纲，只保留阅读路线、文档权威、完成边界、细节文件地图与阶段总览；实施细节按主题放在 [`ddd-refactor/`](ddd-refactor/) 目录下的细节文件。细节文件保留原 §2–§14 章节编号，代码注释、其他文档与历史讨论中的「§N.M」引用继续对号入座，不需要批量改写。
@@ -60,7 +62,8 @@
 | 阶段 | 目标 | 状态（2026-10-26） |
 |---|---|---|
 | D0 | 建立可信基线 | 已完成：基线核对见文首状态行 |
-| D1 | 新 modules 与第一条可运行小切片 | 进行中：settings 切片已落地（详见 07-stages.md D1 小节）；其余模块与旧导出清理待做 |
+| D1 | 新 modules 与第一条可运行小切片 | 已完成：settings 切片 + 收尾清理（旧过渡导出已删，详见 07-stages.md D1 小节） |
+| D1.5 | AI crate 收拢与 infra 改名（2026-10-26 追加） | 进行中 |
 | D2 | 连接领域与宿主仓储 | 未开始 |
 | D3 | Execution 拆分与资源机制归位 | 未开始 |
 | D4 | Schema、表读写与 SQL 消费者 | 未开始 |

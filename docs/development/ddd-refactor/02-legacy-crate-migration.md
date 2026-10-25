@@ -50,7 +50,19 @@
 
 `tunnel` 的配置/known-hosts 归 domain，用例归 application，形态中立的 SSH/代理机制可作为本模块私有实现；网络出口、密钥读取、文件持久化由宿主提供。它与 execution 的接线用注入接口，避免相互 import。
 
-`ai-api` / `ai-providers` 继续作为独立 Provider 契约和适配实现；`modules::ai` 不把 Provider 协议实现复制一份。`platform-infra` 现有无业务原语也不因减 crate 数而强迁。前端 `backend-client` / SDK / UI 不参与 Rust modules 合包。
+**AI crate 收拢（2026-10-26 决策，替代此前"继续独立"的表述）**：`ai-api` 先并入
+`ai-providers`，合并后的整体再并入 `modules/src/ai/`——Provider 契约（trait、类型、
+工厂注册）归 `modules::ai` 的契约层，具体 Provider 适配（openai / anthropic / ollama /
+deepseek / custom 及共享 HTTP 机制）作为 `modules::ai` 的内部实现，不再保留独立
+AI crate。`modules::ai` 因此持有唯一一份 Provider 协议与实现；外部插件经
+`datazen-modules` 的 ai feature 实现契约。
+
+**platform-infra 改名 infra（2026-10-26 决策）**：`packages/platform-infra` 改名为
+`packages/infra`（crate 名 `datazen-infra`），定位为 **drivers / modules / web /
+desktop 四类消费者中任意两者共用**的无业务基础设施工具的家：凡是被其中两方及以上
+使用的工具代码（路径安全、凭据脱敏、原子写入等）收拢进 infra，提高复用率、防止
+各消费者各抄一份。仅单消费者使用的基础设施代码留在该消费者处，不预先进 infra。
+前端 `backend-client` / SDK / UI 不参与 Rust modules 合包。
 
 ## 5.5 防止迁移中产生 Cargo 环
 

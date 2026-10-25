@@ -52,14 +52,15 @@ Java `interface` 和 Rust `trait` 是语言提供的接口机制；Port 描述�
 
 实施者必须再次核对自己的 HEAD；不要把其他 worktree 的未合并代码、旧对话里的测试结果计入当前分支。
 
-### 3.2 四类核心组织单元
+### 3.2 五类核心组织单元
 
 1. **driver-api**：保留 `packages/driver-api` 的独立驱动契约地位，本轮不为目录整齐搬它。
-2. **modules**：新增根目录 `modules/`，Cargo package 目标名 `datazen-modules`，Rust 路径 `datazen_modules`。它是**一个 crate**，内部按功能划分。
+2. **modules**：新增根目录 `modules/`，Cargo package 目标名 `datazen-modules`，Rust 路径 `datazen_modules`。它是**一个 crate**，内部按功能划分。AI Provider 契约与适配实现也并入本 crate 的 `ai` 模块（2026-10-26 决策，见[§5.4](02-legacy-crate-migration.md)）。
 3. **src-tauri**：桌面宿主，保留现有 crate 名和入口，承载 IPC、桌面适配与装配。
 4. **web**：目标 Rust Web 后端目录 `web/`，目标 package 名 `datazen-web`；不是 React 前端目录，也不是桌面的子模块。
+5. **infra**：`packages/infra`（由 `platform-infra` 改名，crate 名 `datazen-infra`），**无业务的基础设施工具 crate**：凡被 drivers / modules / web / desktop 四类消费者中任意两者共用的工具代码（路径安全、凭据脱敏、原子写入等）放这里，提高复用率；仅单消费者使用的留在消费者处。
 
-“四类”不是强制全仓只剩四个 crate。具体数据库驱动、具有独立插件协议的 AI Provider 契约/实现、前端 SDK 和无业务的基础设施工具仍可独立存在；不能把它们塞进 driver-api。独立扩展的许可证、构建和协议边界保持不变。
+“五类”不是强制全仓只剩五个 crate。具体数据库驱动、前端 SDK 等具有独立许可证、构建或插件协议边界的包仍可独立存在；不能把它们塞进 driver-api。独立扩展的许可证、构建和协议边界保持不变。
 
 ### 3.3 最终目录示意
 
@@ -68,6 +69,7 @@ Java `interface` 和 Rust `trait` 是语言提供的接口机制；Port 描述�
 ```text
 packages/driver-api/                  # 保留：驱动契约
 packages/drivers/<id>/                # 保留：驱动实现与专属测试
+packages/infra/                       # datazen-infra：四类消费者共用的无业务工具（改名自 platform-infra）
 modules/
   Cargo.toml                         # datazen-modules
   src/
@@ -102,6 +104,9 @@ modules/
     dashboard/
     workflow/
     ai/
+      application/                   # Provider-neutral 业务（会话、工具循环、安全策略）
+      domain/                        # Provider 契约：AiProvider trait、类型、工厂注册
+      providers/                     # openai/anthropic/ollama/deepseek/custom 适配与共享 HTTP 机制
     mcp/                             # 工具业务分发；传输和登录在宿主
     monitor/
     export/
@@ -118,7 +123,7 @@ web/
   src/
     controllers/
     middleware/
-    infrastructure/
+    infrastructure/                  # web 形态的 Repository 实现（与桌面各自实现同一 domain trait）
     bootstrap/
 ```
 
@@ -140,7 +145,7 @@ web/
 
 ### 4.1 编译依赖与运行调用不是同一张图
 
-目标编译依赖：宿主依赖 `datazen-modules`；modules 使用 driver-api 和必要的中立库；具体驱动实现 driver-api。modules、driver-api 均不反向依赖宿主。宿主只在驱动装配边界链接具体驱动，Controller 不按数据库种类分支。
+目标编译依赖：宿主依赖 `datazen-modules`；modules 使用 driver-api、infra（共用工具）和必要的中立库；具体驱动实现 driver-api，可用 infra。modules、driver-api、infra 均不反向依赖宿主。宿主只在驱动装配边界链接具体驱动，Controller 不按数据库种类分支。infra 不依赖 modules / driver-api / 宿主——它只提供无业务工具，保持在依赖图最底层。
 
 模块内部约束：
 
@@ -148,7 +153,7 @@ web/
 2. `application` 依赖自己的 domain、外部能力接口，以及其他模块显式公开的应用契约。
 3. `execution::runtime` 实现 execution 的内部机制接口，可以引用其 application 中的**依赖接口和关联 DTO**，不能调用具体应用服务反向发起业务。
 4. 应用服务不直接 new 私有 runtime。模块根装配代码同时认识二者，把实现注入应用服务，避免 application 与 runtime 的实现相互引用。
-5. Repository 实现位于宿主 infrastructure，依赖拥有者模块的 domain；domain 不知道实现类。
+5. Repository 实现位于宿主 infrastructure（web / desktop 各自实现），依赖拥有者模块的 domain；domain 不知道实现类。Repository **trait 定义永远在 domain 层**（`modules::<功能>::domain`），不落在 platform-api、application 或宿主里。
 6. `shared` 不依赖任何功能模块，不收纳所有功能的错误、DTO、配置和仓储。
 
 一次请求运行时会从应用服务调用 trait 对象，进入宿主仓储或执行机制。这不意味着应用层在编译时依赖宿主。

@@ -56,6 +56,31 @@ monitor reload 与 tray 同步仍由原命令路径执行。
 
 **回滚**：revert 本切片恢复旧入口，设置文件格式不变。
 
+## D1.5：AI crate 收拢与 infra 改名（2026-10-26 追加决策）
+
+> 本阶段由用户三条架构原则追加（详见[§5.4](02-legacy-crate-migration.md)与[§3.2](01-target-architecture.md)），
+> 在 D2 之前执行，避免后续阶段对着即将消失的 crate 布线。
+
+**输入**：D1；ai-api / ai-providers / platform-infra 的消费者清单。
+
+**工作**：
+
+1. `ai-api` 并入 `ai-providers`：trait、类型、工厂注册移入后者（保持 `datazen-ai-api`
+   的导出路径语义由 `datazen-ai-providers` 统一承担），更新全部消费者 import。
+2. 合并后的 `ai-providers` 整体并入 `modules/src/ai/`：契约（trait/类型/工厂）入
+   `ai` 契约层，Provider 适配与共享 HTTP 机制入 `ai` 内部 providers 实现；
+   删除 `packages/ai-api`、`packages/ai-providers` 两个 crate 与 workspace 成员。
+3. `packages/platform-infra` 改名 `packages/infra`（crate 名 `datazen-infra`），
+   更新 workspace、消费者与门禁脚本中的名字。
+4. 审计 drivers / modules / web / desktop 四类消费者：任意两者共用的无业务工具
+   （路径安全、凭据脱敏、原子写入等）收拢进 infra；仅单消费者使用的留在原处。
+
+**退出**：AI Provider 契约与实现只有 `datazen-modules::ai` 一份；旧 crate 名不再
+出现在生产依赖；infra 改名后全仓构建与门禁通过；被收拢的工具在原消费者处只剩
+单一 import，无重复实现。
+
+**回滚**：整体 revert 恢复三个 crate；不涉及持久化格式变更。
+
 ## D2：连接领域与宿主仓储
 
 **输入**：D1；Profile / ConnectionCatalog 现有契约和调用方清单。
@@ -129,7 +154,7 @@ monitor reload 与 tray 同步仍由原命令路径执行。
 1. Settings 剩余路径、Named Views、History：共享业务进各模块；窗口位置、桌面路径等仍是宿主专属配置。
 2. Dashboard：保存/组件创建/运行历史/导入导出规则进入 application/domain，管理库实现留宿主。文件对话框留宿主交互层，应用服务接收已选择的内容/受控文件能力，不能把 GUI 对话框作为 Web 必填依赖。
 3. Workflow：保留 step/session/transaction block 的资源边界，调用 execution 与 jobs。
-4. AI / MCP：Provider-neutral 业务进入模块；认证/stdio/HTTP/事件传输在宿主，授权数据库工具走同一执行入口。
+4. AI / MCP：Provider 契约与适配已在 D1.5 并入 `modules::ai`；本阶段迁入的是 feature-core 中 Provider-neutral 的业务（会话编排、工具循环、安全策略）与 MCP 业务分发；认证/stdio/HTTP 登录/事件传输在宿主，授权数据库工具走同一执行入口。
 5. Monitor、Export、Backup/Restore、Wapps、Tunnel：按各自模型迁移，保留 grant、文件安全、恢复锁、沙箱桥与网络限制。
 
 每个功能的验收都包含取消/失败、宿主依赖缺失、当前协议兼容和一次用户旅程。最后移除 DesktopRepository 的领域业务方法；它若只剩装配与基础设施，改为用途明确的宿主对象或删除。
