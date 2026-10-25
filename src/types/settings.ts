@@ -52,3 +52,39 @@ export const DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD = 200_000;
 
 /** The default order: the driver's own default, which is the primary key ascending. */
 export const DEFAULT_TABLE_SORT: DefaultTableSort = 'primaryKeyAsc';
+
+/**
+ * The row density of the data grids (DB-17).
+ *
+ * - `compact` — tighter rows, more of the table on screen.
+ * - `standard` — what every grid did before this setting existed; the default.
+ * - `relaxed` — taller rows, easier to read across.
+ *
+ * The setting is a **delta**, not an absolute height: each grid keeps its own
+ * default row height (the table grid and the query-result grid differ), and
+ * the density shifts it. `standard` is a delta of zero, so the default changes
+ * nothing anywhere — the PRD's "do not change defaults" holds per grid.
+ */
+export type GridDensity = 'compact' | 'standard' | 'relaxed';
+
+/** The default density: a delta of zero, the behaviour before the setting existed. */
+export const DEFAULT_GRID_DENSITY: GridDensity = 'standard';
+
+/**
+ * Alternating row backgrounds (DB-17). Default `true`: the grid has striped
+ * odd rows since it exists — turning it off is the opt-in.
+ */
+export const DEFAULT_GRID_ALTERNATING_ROWS = true;
+
+/**
+ * The row-number gutter (DB-17). Default `true`: the `#` column has been
+ * there since the grid exists. Turning it off trades the gutter's
+ * click-to-select affordance for one more column of data.
+ */
+export const DEFAULT_GRID_ROW_NUMBERS = true;
+
+/**
+ * Auto-hide grid scrollbars (DB-17). Default `false`: scrollbars stay visible —
+ * the pre-setting behaviour. On, they appear only while the grid is hovered.
+ */
+export const DEFAULT_GRID_AUTO_HIDE_SCROLLBAR = false;

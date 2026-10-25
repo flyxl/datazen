@@ -168,8 +168,17 @@ async fn file_job_identity(
     let _ = metadata;
     Ok(identity)
 }
-fn unavailable(_: datazen_platform_api::PortError) -> CommandError {
-    CommandError::Internal("file job storage or dispatch unavailable".into())
+/// Keep the port's own reason.
+///
+/// Collapsing every port failure into one constant string made every file job
+/// error read "storage or dispatch unavailable" — the user (and the log) could
+/// not tell a missing file-job host from a rejected path or a backend that is
+/// genuinely down, and the E2E suite could not either. The port error is
+/// already sanitized (`PortError` carries no credentials), so pass it through
+/// with the file-job prefix instead of discarding it.
+fn unavailable(error: datazen_platform_api::PortError) -> CommandError {
+    tracing::warn!(%error, "file job port failure");
+    CommandError::Internal(format!("file job storage or dispatch unavailable: {error}"))
 }
 
 /// Job IDs remain opaque; organization/principal identity comes from the IPC adapter.

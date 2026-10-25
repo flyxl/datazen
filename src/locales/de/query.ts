@@ -357,6 +357,9 @@ const pack = {
   'pagination.estimatedLessThanActual':
     'Diese Seite ist leer. Die tatsächliche Zeilenanzahl kann niedriger als die Schätzung sein — verwenden Sie „Zählen“, um dies zu prüfen.',
   'defaultSort.noPrimaryKey': 'Kein Primärschlüssel — es wird nach der ersten Spalte sortiert.',
+  'tableNoPk.editBanner':
+    'Diese Tabelle hat keinen Primärschlüssel — Zeilen können nicht sicher adressiert werden, das Raster ist schreibgeschützt.',
+  'tableNoPk.editInSql': 'In SQL bearbeiten',
   'defaultSort.custom': 'Benutzerdefinierte Reihenfolge',
   'defaultSort.panelLabel': 'Sortieren',
   'defaultSort.inherit': 'Einstellung verwenden',

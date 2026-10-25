@@ -112,14 +112,17 @@ async fn a_failed_estimate_still_returns_the_rows() {
         .await
         .expect("a failed estimate must not fail the read");
 
+    // The estimate died, so the batch cost a second round trip for the rows —
+    // and a third for the exact count that replaces the number nobody could
+    // estimate. "The rows survive" is not the same as "the number does not".
     assert_eq!(
         test.mock.query_calls() - before,
-        2,
-        "the failure path costs one more round trip — and only that path"
+        3,
+        "rows on their own, then one exact count"
     );
     assert_eq!(data.rows.len(), 1, "the rows survive the failed estimate");
-    assert_eq!(data.total_rows, None);
-    assert_eq!(data.total_rows_kind, Some(CountStrategy::Unsupported));
+    assert_eq!(data.total_rows, Some(2), "the exact count answered instead");
+    assert_eq!(data.total_rows_kind, Some(CountStrategy::Exact));
 }
 
 #[tokio::test]
@@ -178,9 +181,13 @@ async fn a_driver_that_cannot_count_says_unsupported() {
 ///
 /// Both entry points now read the number through the shared layer's gate
 /// (`table_browsing::estimated_count_cell`), so an unusable number cannot
-/// travel as a row count whichever door the read came through.
+/// travel as a row count whichever door the read came through — and an
+/// unusable estimate is then **rescued** by an exact count rather than
+/// shown to the user as "unavailable": a table the planner never looked at
+/// is a table created moments ago, which is precisely when the user is
+/// looking at its rows.
 #[tokio::test]
-async fn a_negative_estimate_is_not_a_row_count() {
+async fn a_negative_estimate_is_rescued_by_an_exact_count() {
     let test = TestAppState::with_options(MockDriverOptions {
         count_total: 2,
         count_strategy: Some(CountStrategy::Estimated),
@@ -198,10 +205,15 @@ async fn a_negative_estimate_is_not_a_row_count() {
     .await
     .expect("the read succeeds");
 
-    assert_eq!(data.total_rows_kind, Some(CountStrategy::Unsupported));
     assert_eq!(
-        data.total_rows, None,
-        "a negative estimate must not travel as a row count"
+        data.total_rows_kind,
+        Some(CountStrategy::Exact),
+        "the rescue reports the exact count it actually took"
+    );
+    assert_eq!(
+        data.total_rows,
+        Some(2),
+        "no -1 on the wire: the exact count replaced the unusable estimate"
     );
 }
 
@@ -226,6 +238,133 @@ async fn a_caller_that_reuses_the_total_gets_no_kind_at_all() {
     assert_eq!(data.total_rows, None);
     // Not "unsupported": the caller keeps the total it already had.
     assert_eq!(data.total_rows_kind, None);
+}
+
+/// The caller's count strategy travels verbatim (volume 09): an explicit ask
+/// beats the driver's own declared default, so the panel's explicit "count
+/// exactly" on an estimating driver still counts exactly. Migrated from the
+/// retired session-bound `get_table_data` command, whose forwarding it pinned.
+#[tokio::test]
+async fn the_callers_count_strategy_overrides_the_drivers_default() {
+    let test = TestAppState::with_options(MockDriverOptions {
+        count_total: 7,
+        count_strategy: Some(CountStrategy::Estimated),
+        count_estimate_rows: Some(4242),
+        query_rows: rows(),
+        ..Default::default()
+    })
+    .await;
+    let (_, conn_id) = test.save_and_connect("target-read-forward").await;
+
+    let mut request = request("target-read-forward", &conn_id);
+    request.count_strategy = Some(CountStrategy::Exact);
+    let data = table_target::read(&test.state, request)
+        .await
+        .expect("the read succeeds");
+
+    assert_eq!(data.total_rows, Some(7));
+    assert_eq!(data.total_rows_kind, Some(CountStrategy::Exact));
+}
+
+/// Regression (BUG-002), migrated from the retired session-bound read: the
+/// request's own database is read, and the shared session is never re-pointed
+/// at it — the target binding replaces `USE`, so the read cannot disturb any
+/// other tab that shares the session.
+#[tokio::test]
+async fn the_request_database_is_read_without_switching_the_session() {
+    let test = TestAppState::with_tables().await;
+    let (_, conn_id) = test.save_and_connect("target-read-pin-db").await;
+    let before = test.mock.use_database_calls();
+
+    let mut request = request("target-read-pin-db", &conn_id);
+    request.context.database = Some("analytics".into());
+    // The mock answers a whole statement batch as one `COUNT(*)` result (it
+    // never splits batches), so a batched exact count would swallow the data
+    // statement this test must see. Skipping the count leaves the single
+    // SELECT this regression locks on; the count plan is not what BUG-002
+    // is about.
+    request.skip_count = Some(true);
+    let data = table_target::read(&test.state, request)
+        .await
+        .expect("the read succeeds");
+
+    assert_eq!(data.rows.len(), 1, "the requested database is the one read");
+    assert_eq!(
+        test.mock.use_database_calls(),
+        before,
+        "the read must not switch the session's database"
+    );
+    // The session keeps its own configured database; the request target is
+    // per-call.
+    let config = test.state.store.get_connection("target-read-pin-db").await;
+    assert_eq!(
+        config.expect("the profile exists").database.as_deref(),
+        Some("app")
+    );
+}
+
+/// The filter gates, migrated from the retired session-bound read: the host
+/// must refuse a filter the shared layer refuses, and it must say so with
+/// the contract prefix the frontend classifies on.
+#[tokio::test]
+async fn a_read_rejects_an_incomplete_filter_with_the_contract_prefix() {
+    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
+
+    let test = TestAppState::with_tables().await;
+    let (_, conn_id) = test.save_and_connect("target-read-filter-incomplete").await;
+
+    let mut request = request("target-read-filter-incomplete", &conn_id);
+    request.filters = Some(vec![FilterCondition {
+        column: "name".into(),
+        operator: FilterOperator::Eq,
+        value: Value::String(String::new()),
+        connector: None,
+    }]);
+    let error = table_target::read(&test.state, request)
+        .await
+        .expect_err("an incomplete filter must be refused");
+    match error {
+        CommandError::Validation(message) => {
+            assert!(
+                message.starts_with("grid.filter.incomplete: "),
+                "got: {message}"
+            );
+            assert!(message.contains("\"name\""), "got: {message}");
+        }
+        other => panic!("expected a validation error, got: {other:?}"),
+    }
+}
+
+/// The dialect-only operators are refused with their own prefix — the mock
+/// declares the shared operator set, which does not carry them.
+#[tokio::test]
+async fn a_read_rejects_an_unsupported_operator_with_the_contract_prefix() {
+    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
+
+    let test = TestAppState::with_tables().await;
+    let (_, conn_id) = test
+        .save_and_connect("target-read-filter-unsupported")
+        .await;
+
+    let mut request = request("target-read-filter-unsupported", &conn_id);
+    request.filters = Some(vec![FilterCondition {
+        column: "name".into(),
+        operator: FilterOperator::Regex,
+        value: Value::String("^a".into()),
+        connector: None,
+    }]);
+    let error = table_target::read(&test.state, request)
+        .await
+        .expect_err("an unsupported operator must be refused");
+    match error {
+        CommandError::Validation(message) => {
+            assert!(
+                message.starts_with("grid.filter.unsupportedOperator: "),
+                "got: {message}"
+            );
+        }
+        other => panic!("expected a validation error, got: {other:?}"),
+    }
 }
 
 /// The paging half of the target read: what a page is read by, and what the

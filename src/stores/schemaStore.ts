@@ -60,6 +60,12 @@ export interface SchemaStore {
   /** Runtime DB session id of the active session. */
   activeDbSessionId: string | null;
 
+  /**
+   * Record something the sidebar could not do for this session (a failed table
+   * load, for example). Silent failures read as "this database has no tables".
+   */
+  recordSessionError: (dbSessionId: string, message: string) => void;
+
   loadForConnection: (dbSessionId: string, options?: LoadForConnectionOptions) => Promise<void>;
   loadTables: (database: string, dbSessionId: string) => Promise<void>;
   /**
@@ -430,6 +436,10 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
           });
         }
       }
+    },
+
+    recordSessionError: (dbSessionId, message) => {
+      commitConnectionPatch(dbSessionId, { error: message });
     },
 
     setLoadedTables: (database, all, dbSessionId, options) => {

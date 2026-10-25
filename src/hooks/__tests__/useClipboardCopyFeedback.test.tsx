@@ -157,6 +157,52 @@ describe('useClipboardCopyFeedback', () => {
     expect(result.current.copied).toBe(true);
   });
 
+  it('writes both clipboard flavors when an html payload is given (DB-10)', async () => {
+    // jsdom has no ClipboardItem, so the rich write lands on the Tauri
+    // command — exactly the WKWebView-shaped path it exists for.
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn() },
+    });
+    const { result } = renderTimed();
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.copy('a\tb', { html: '<table></table>' });
+    });
+
+    expect(ok).toBe(true);
+    // The rich command carries the markup **and** the plain-text fallback.
+    expect(invoke).toHaveBeenCalledWith('write_clipboard_html', {
+      html: '<table></table>',
+      altText: 'a\tb',
+    });
+    expect(result.current.copied).toBe(true);
+  });
+
+  it('falls back to the plain write when the rich command is unavailable', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: vi.fn(() => Promise.resolve()),
+      },
+    });
+    invoke.mockRejectedValueOnce(new Error('unknown command'));
+    const { result } = renderTimed();
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.copy('plain text', { html: '<table></table>' });
+    });
+
+    // The chain's last step: a table as plain text beats markup source as text.
+    expect(ok).toBe(true);
+    expect(invoke).toHaveBeenCalledWith('write_clipboard_html', {
+      html: '<table></table>',
+      altText: 'plain text',
+    });
+  });
+
   it('treats empty text as a failure without lighting up', async () => {
     installControlledClipboard();
     const { result } = renderTimed();

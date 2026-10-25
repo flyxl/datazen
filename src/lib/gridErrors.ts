@@ -29,6 +29,7 @@ export type GridErrorCode =
   | 'grid.fk.valueNull'
   | 'grid.fk.targetUnresolved'
   | 'grid.fk.probeFailed'
+  | 'grid.fk.noReferences'
   | 'grid.filter.unsupportedOperator'
   | 'grid.filter.incomplete'
   | 'grid.view.invalid'
@@ -102,6 +103,7 @@ export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.fk.valueNull',
   'grid.fk.targetUnresolved',
   'grid.fk.probeFailed',
+  'grid.fk.noReferences',
   'grid.filter.unsupportedOperator',
   'grid.filter.incomplete',
   'grid.view.invalid',

@@ -5,6 +5,11 @@
 //! bytes: non-UTF-8 / undecodable input degrades to a lossy rendering plus an
 //! `invalidUtf8` flag or a structured `error` variant.
 
+// DB-13: the hex rows come from the shared `@datazen/ui` renderer — the same
+// code the host's BinaryViewer draws — so the two hex dumps of one payload
+// cannot drift apart. The local type stays as an alias for the wire shape.
+import { hexRows, type HexRow } from '@datazen/ui';
+
 /** Full view list rendered by the view button group. */
 export const VIEWS = [
   'utf8',
@@ -20,11 +25,7 @@ export const VIEWS = [
 
 export type ViewMode = (typeof VIEWS)[number];
 
-export interface HexRow {
-  offset: number;
-  hex: string;
-  ascii: string;
-}
+export type { HexRow };
 
 export type RenderedView =
   | { kind: 'text'; text: string; invalidUtf8: boolean }
@@ -34,7 +35,6 @@ export type RenderedView =
 /** Max rows rendered for hex / binary views (keeps the DOM bounded). */
 export const MAX_VIEW_ROWS = 4096;
 
-const BYTES_PER_HEX_ROW = 16;
 const BYTES_PER_BIN_ROW = 8;
 
 function decodeUtf8(bytes: Uint8Array): { text: string; invalid: boolean } {
@@ -53,25 +53,7 @@ function asciiGutter(byte: number): string {
 }
 
 export function renderHex(bytes: Uint8Array, maxRows = MAX_VIEW_ROWS): RenderedView {
-  const rows: HexRow[] = [];
-  const rowCount = Math.ceil(bytes.length / BYTES_PER_HEX_ROW);
-  const limit = Math.min(rowCount, maxRows);
-  for (let r = 0; r < limit; r++) {
-    const start = r * BYTES_PER_HEX_ROW;
-    const slice = bytes.subarray(start, start + BYTES_PER_HEX_ROW);
-    let hex = '';
-    let ascii = '';
-    for (let i = 0; i < BYTES_PER_HEX_ROW; i++) {
-      if (i < slice.length) {
-        hex += slice[i].toString(16).padStart(2, '0') + ' ';
-        ascii += asciiGutter(slice[i]);
-      } else {
-        hex += '   ';
-      }
-    }
-    rows.push({ offset: start, hex: hex.trimEnd(), ascii });
-  }
-  return { kind: 'hex', rows, totalBytes: bytes.length };
+  return { kind: 'hex', rows: hexRows(bytes, maxRows), totalBytes: bytes.length };
 }
 
 export function renderBinary(bytes: Uint8Array, maxRows = MAX_VIEW_ROWS): RenderedView {

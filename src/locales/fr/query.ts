@@ -275,6 +275,9 @@ const pack = {
   'pagination.estimatedLessThanActual':
     "Cette page est vide. Le nombre réel de lignes peut être inférieur à l'estimation — utilisez « Compter » pour le vérifier.",
   'defaultSort.noPrimaryKey': 'Aucune clé primaire — le tri se fait sur la première colonne.',
+  'tableNoPk.editBanner':
+    "Cette table n'a pas de clé primaire — les lignes ne peuvent pas être identifiées sans risque ; la grille est en lecture seule.",
+  'tableNoPk.editInSql': 'Modifier en SQL',
   'defaultSort.custom': 'Ordre personnalisé',
   'defaultSort.panelLabel': 'Trier',
   'defaultSort.inherit': 'Suivre le paramètre',

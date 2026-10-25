@@ -37,6 +37,9 @@ vi.mock('@tauri-apps/api/core', () => ({
 const schemaReads = vi.hoisted(() => ({ count: 0 }));
 
 vi.mock('../../../lib/schemaCache', () => ({
+  // The reverse catalog (DB-20) subscribes at module load; a no-op keeps
+  // this audit focused on the jump's own reads.
+  subscribeSchemaInvalidation: () => () => undefined,
   getCachedTableSchema: async () => {
     schemaReads.count += 1;
     return {
@@ -119,6 +122,12 @@ function makeScrollElement(): HTMLDivElement {
     writable: true,
     configurable: true,
   });
+  // The viewport is only read from an element that is still in the document —
+  // a detached one belongs to a surface that has already been replaced.
+  document.body.appendChild(element);
+  // jsdom has no layout: a real surface reports the height it occupies, which
+  // is how the hook tells the grid on screen from an inactive pane's.
+  Object.defineProperty(element, 'clientHeight', { value: 375, configurable: true });
   return element;
 }
 
@@ -130,6 +139,9 @@ beforeEach(() => {
   useTableDataStore.getState().reset();
   useFkNavigationStore.getState().reset();
   usePanelStore.getState().addPanel(sourcePanel());
+  // Panels stay mounted behind the front tab, so the snapshot is consumed on
+  // activation: the tab under test has to be the active one.
+  usePanelStore.getState().setActivePanel(SOURCE_PANEL);
   setBackendClient(
     DESKTOP_BACKEND_ID,
     createBackendClient(DESKTOP_BACKEND_ID, createDesktopBackendTransport()),
@@ -165,20 +177,41 @@ describe('audit: the return restores the position of the source tab', () => {
     // The jump happened: the target tab is open and the source position was
     // snapshotted.
     await waitFor(() => expect(usePanelStore.getState().panels).toHaveLength(2));
-    const snapshot = useFkNavigationStore.getState().takeViewport(SOURCE_PANEL);
+    // Read the snapshot without consuming it: the mount that follows is the one
+    // allowed to take it.
+    const snapshot = useFkNavigationStore.getState().viewports.get(SOURCE_PANEL);
     expect(snapshot?.scrollTop).toBe(140);
     expect(snapshot?.anchorRow).toBe(5);
-    // Put it back, so the restore has something to do.
-    useFkNavigationStore
-      .getState()
-      .recordViewport(SOURCE_PANEL, snapshot as { scrollTop: number; anchorRow: number; anchorColumn: string | null });
 
-    // The source tab is entered again: the panel is mounted from scratch.
+    // The source tab is entered again: the panel is mounted from scratch and is
+    // the tab in front, which is the only state that may place an offset (a
+    // hidden tab that placed one would consume the position "back" restores).
     first.unmount();
     scrollEl.scrollTop = 0;
+    usePanelStore.getState().setActivePanel(SOURCE_PANEL);
     render(<Harness panelId={SOURCE_PANEL} scrollEl={scrollEl} />);
 
     await waitFor(() => expect(scrollEl.scrollTop).toBe(140));
+  });
+
+  it('keeps the offset the press started from when the engine rewinds the grid', async () => {
+    const scrollEl = makeScrollElement();
+    scrollEl.scrollTop = 140;
+    // Focusing a button inside the virtual window makes the engine scroll the
+    // surface to its top while the press is dispatched. The snapshot has to be
+    // the offset the user saw before that happened.
+    const view = render(<Harness panelId={SOURCE_PANEL} scrollEl={scrollEl} />);
+    await waitFor(() => expect(schemaReads.count).toBeGreaterThan(0));
+    const jump = view.container.querySelector('[data-testid="jump"]') as HTMLElement;
+    // The press starts on the grid, which is what the capture listener sees.
+    fireEvent.mouseDown(scrollEl);
+    // ...and the engine rewinds the surface before the click is dispatched.
+    scrollEl.scrollTop = 0;
+    fireEvent.click(jump);
+
+    await waitFor(() => expect(usePanelStore.getState().panels).toHaveLength(2));
+    const snapshot = useFkNavigationStore.getState().takeViewport(SOURCE_PANEL);
+    expect(snapshot?.scrollTop).toBe(140);
   });
 
   it('activates the source tab on back and the target tab on forward', async () => {

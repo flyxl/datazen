@@ -1,9 +1,10 @@
 import { memo, useCallback } from 'react';
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, ChevronDown } from 'lucide-react';
 import type { ColumnDef } from './TableHeader';
 import { CellRenderer } from './CellRenderer';
 import { Spinner } from '../ui/Spinner';
 import { fkJumpLabel, fkResolvingLabel } from './fkCellText';
+import { fkSelectorLabel } from './fkSelectorText';
 import { cn } from '../../lib/cn';
 import type { CellType } from '../../lib/cellTypes';
 import type { CellEditingContext, ColumnEditorInfo } from '../../lib/cellEditorKind';
@@ -36,6 +37,13 @@ export interface FkCellAffordance {
   navigable: boolean;
   /** A resolution for this target is in flight. */
   resolving: boolean;
+  /**
+   * This cell offers the in-cell selector (DB-20): a single-column key on a
+   * cell the grid can write. It is column-level, not row-level — the picker
+   * exists precisely to fill a cell whose key has no value yet. Absent means
+   * the cell was built before the selector existed: not pickable.
+   */
+  pickable?: boolean;
 }
 
 export interface GridCellProps {
@@ -47,6 +55,14 @@ export interface GridCellProps {
   value: unknown;
   /** Rendered width in pixels. */
   width: number;
+  /**
+   * The cell is pinned (DB-12): it stays at this left offset while the grid
+   * scrolls horizontally. `bgClass` is the **row's own** background classes —
+   * they are painted on an overlay above an opaque base, because the row's
+   * tints are translucent and a translucent sticky cell would let the
+   * scrolled content show through.
+   */
+  sticky?: { left: number; bgClass: string } | null;
   /** The cell is inside the current cell selection. */
   selected: boolean;
   /**
@@ -117,7 +133,12 @@ export interface GridCellProps {
    * inline closure per cell would give every cell a new prop identity and
    * defeat `memo`, which a virtualised grid feels immediately.
    */
-  onFkActivate?: (rowIndex: number, columnName: string) => void;
+  /**
+   * The arrow was activated. The activating element travels with the call: the
+   * owner needs the grid the click happened in, and this cell knows it while the
+   * owner may only hold a cached element from a previous mount.
+   */
+  onFkActivate?: (rowIndex: number, columnName: string, element: HTMLElement | null) => void;
   onCellDoubleClick: (rowIndex: number, columnName: string) => void;
   onCellEdit: (rowIndex: number, columnName: string, value: unknown) => void;
   onCellEditCancel: () => void;
@@ -128,6 +149,7 @@ export const GridCell = memo(function GridCell({
   column,
   value,
   width,
+  sticky = null,
   selected,
   error = false,
   active = false,
@@ -175,6 +197,8 @@ export const GridCell = memo(function GridCell({
    * that it goes somewhere.
    */
   const fkTitle = fk ? (fk.resolving ? fkResolvingLabel() : fkJumpLabel(fk.targetLabel)) : null;
+  /** The wording of the pick entry: where the dropdown's values come from. */
+  const pickTitle = fk ? fkSelectorLabel(fk.targetLabel) : null;
   return (
     <div
       id={id}
@@ -200,8 +224,8 @@ export const GridCell = memo(function GridCell({
       // incomplete — the cell belongs to the key either way.
       {...(fk ? { 'data-dt-fk': fk.targetLabel } : {})}
       aria-selected={gridSemantics && selected ? 'true' : undefined}
-      aria-label={dirty ? dirtyAriaLabel : fkTitle ?? undefined}
-      title={dirty ? dirtyTooltip : fkTitle ?? undefined}
+      aria-label={dirty ? dirtyAriaLabel : (fkTitle ?? undefined)}
+      title={dirty ? dirtyTooltip : (fkTitle ?? undefined)}
       className={cn(
         'flex shrink-0 items-center overflow-hidden border-r border-edge/30 px-2',
         // The dirty mark is a *state* channel, kept apart from the value's
@@ -210,13 +234,22 @@ export const GridCell = memo(function GridCell({
         // A selected cell keeps the selection background — the dirty channel
         // is the border and the corner mark there (06 §11 D-8).
         dirty && !selected && 'bg-dt-dirty-bg',
+        // The opaque base of a pinned cell (DB-12); the row's tint goes on an
+        // overlay inside, above it.
+        sticky && 'relative bg-surface',
       )}
-      style={{ width }}
+      style={{ width, ...(sticky ? { position: 'sticky', left: sticky.left, zIndex: 2 } : {}) }}
       onDoubleClick={(e) => {
         e.stopPropagation();
         onCellDoubleClick(rowIndex, column.name);
       }}
     >
+      {sticky && (
+        // The row's own background, painted inside the pinned cell so the
+        // striping / selection tint keeps its exact look over the opaque
+        // base (DB-12).
+        <div aria-hidden className={cn('pointer-events-none absolute inset-0', sticky.bgClass)} />
+      )}
       <div className="min-w-0 flex-1">
         <CellRenderer
           columnName={column.name}
@@ -230,6 +263,10 @@ export const GridCell = memo(function GridCell({
           onCommit={commitValue}
           onCancel={onCellEditCancel}
           loadCandidates={editor?.loadCandidates}
+          // The selector's editor (DB-20): a pickable foreign-key cell edits
+          // as a candidates dropdown, not as a plain input — the same editor
+          // the enumeration columns take, fed from the target table.
+          editorKindOverride={editing && fk?.pickable ? 'enum' : undefined}
         />
       </div>
       {fk?.navigable && !editing && (
@@ -243,16 +280,45 @@ export const GridCell = memo(function GridCell({
           title={fkTitle ?? undefined}
           disabled={fk.resolving}
           className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-surface-raised hover:text-accent disabled:opacity-60"
+          // The rows live in a transform-based virtual window. Focusing a child
+          // button of that window makes the engine scroll the grid surface to
+          // its top, so the arrow silently rewinds the table before the jump —
+          // and the position the tab would return to is already gone. Keeping
+          // the focus where it is (the surface owns it) leaves the scroll
+          // alone; the arrow is still reachable with Tab and Enter.
+          onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
             // The click must not reach the row: a jump and a row selection are
             // two different actions, and a double click on the arrow must not
             // open the cell editor either.
             e.stopPropagation();
-            onFkActivate?.(rowIndex, column.name);
+            onFkActivate?.(rowIndex, column.name, e.currentTarget.closest('[data-dt-surface]'));
           }}
           onDoubleClick={(e) => e.stopPropagation()}
         >
           {fk.resolving ? <Spinner size="xs" /> : <ArrowUpRight className="h-3 w-3" />}
+        </button>
+      )}
+      {fk?.pickable && !editing && (
+        // The in-cell selector's entry (DB-20): opens the cell editor, which
+        // for a pickable key is the candidates dropdown fed from the target
+        // table. It shares the double-click path — one way to open an editor,
+        // whatever opens it — and needs no value in the cell, because filling
+        // an empty key is its whole point.
+        <button
+          type="button"
+          data-dt-fk-pick="true"
+          aria-label={pickTitle ?? undefined}
+          title={pickTitle ?? undefined}
+          className="ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-surface-raised hover:text-accent"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCellDoubleClick(rowIndex, column.name);
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <ChevronDown className="h-3 w-3" />
         </button>
       )}
       {dirty && (

@@ -266,6 +266,9 @@ const pack = {
   'pagination.estimatedLessThanActual':
     '이 페이지는 비어 있습니다. 실제 행 수는 예상보다 적을 수 있습니다 — "카운트"로 확인하세요.',
   'defaultSort.noPrimaryKey': '기본 키가 없습니다 — 첫 번째 열로 정렬합니다.',
+  'tableNoPk.editBanner':
+    '이 테이블에는 기본 키가 없어 행을 안전하게 식별할 수 없습니다. 그리드는 읽기 전용입니다.',
+  'tableNoPk.editInSql': 'SQL로 편집',
   'defaultSort.custom': '사용자 지정 순서',
   'defaultSort.panelLabel': '정렬',
   'defaultSort.inherit': '설정 따르기',

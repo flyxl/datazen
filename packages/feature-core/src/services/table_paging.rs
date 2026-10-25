@@ -114,24 +114,31 @@ pub enum KeysetSeek {
 /// The order of a read, assembled from what the caller asked and what the
 /// table's key is.
 ///
-/// `order_by` is the user's explicit sort (at most one column — the browsing
-/// surface sorts by one column), `default_order` is the order the driver
-/// declared for a read without a sort, and `primary_keys` is the table's
-/// key.
+/// `sorts` is the user's explicit sort — an **ordered, possibly empty** list
+/// of `(column, descending)` pairs (DB-11: the browsing surface sorts by
+/// several columns; the list order is the `ORDER BY` order), `default_order`
+/// is the order the driver declared for a read without a sort, and
+/// `primary_keys` is the table's key.
 ///
-/// The three are mutually exclusive by construction: an explicit sort wins,
-/// and the default order is only consulted when there is none.
-pub fn resolve_order_spec(
-    order_by: Option<(&str, bool)>,
+/// The two are mutually exclusive by construction: an explicit sort wins,
+/// and the default order is only consulted when the list is empty. A list of
+/// exactly one sort produces the byte-for-byte [`OrderSpec`] the single-sort
+/// world always built — the delegation below keeps that promise, and the
+/// four default-order evidence tests in `query_executor` keep it locked.
+pub fn resolve_order_spec_multi(
+    sorts: &[(&str, bool)],
     default_order: &[String],
     primary_keys: &[String],
 ) -> OrderSpec {
-    if let Some((column, descending)) = order_by {
+    if !sorts.is_empty() {
         return OrderSpec {
-            columns: vec![OrderColumn {
-                column: column.to_string(),
-                descending,
-            }],
+            columns: sorts
+                .iter()
+                .map(|(column, descending)| OrderColumn {
+                    column: column.to_string(),
+                    descending: *descending,
+                })
+                .collect(),
             source: OrderSource::ExplicitSort,
             unique_key: primary_keys.to_vec(),
         };
@@ -440,5 +447,65 @@ mod tests {
             cursor_from_row(&[Some(Value::Null)], &columns, &order).is_none(),
             "a NULL key value cannot locate the next page"
         );
+    }
+
+    // ── resolve_order_spec_multi (DB-11) ────────────────────────────
+
+    /// The caller's list order *is* the `ORDER BY` order, and each entry keeps
+    /// its own direction — this is the "3 列排序 SQL 顺序正确" acceptance in
+    /// one place, before any SQL is written.
+    #[test]
+    fn resolve_order_spec_multi_keeps_the_caller_order_and_directions() {
+        let order = resolve_order_spec_multi(
+            &[("name", false), ("age", true), ("created_at", false)],
+            &["id".to_string()],
+            &["id".to_string()],
+        );
+        assert_eq!(order.source, OrderSource::ExplicitSort);
+        let rendered: Vec<(&str, bool)> = order
+            .columns
+            .iter()
+            .map(|column| (column.column.as_str(), column.descending))
+            .collect();
+        assert_eq!(
+            rendered,
+            vec![("name", false), ("age", true), ("created_at", false)],
+            "the list positions are the ORDER BY positions"
+        );
+        assert_eq!(order.unique_key, vec!["id".to_string()]);
+    }
+
+    /// A one-entry list must be the spec the single-sort world built, entry
+    /// for entry — the pluralisation must not change what one sort means.
+    #[test]
+    fn resolve_order_spec_multi_single_entry_is_the_single_sort_spec() {
+        let order = resolve_order_spec_multi(&[("name", true)], &[], &["id".to_string()]);
+        assert_eq!(order.source, OrderSource::ExplicitSort);
+        assert_eq!(order.columns.len(), 1);
+        assert_eq!(order.columns[0].column, "name");
+        assert!(order.columns[0].descending);
+        // The key travels along, as it always did.
+        assert_eq!(order.unique_key, vec!["id".to_string()]);
+    }
+
+    /// An empty list is "no explicit sort": the default order decides, and
+    /// the sources the default can come from are unchanged.
+    #[test]
+    fn resolve_order_spec_multi_empty_list_consults_the_default_order() {
+        let default = vec!["id".to_string()];
+        let order = resolve_order_spec_multi(&[], &default, &default);
+        assert_eq!(order.source, OrderSource::PrimaryKeyInjection);
+        assert_eq!(order.columns.len(), 1);
+        assert_eq!(order.columns[0].column, "id");
+        assert!(!order.columns[0].descending);
+    }
+
+    /// No sorts and no default order is the "no order at all" answer, not an
+    /// error: a caller that declines both still gets a readable spec.
+    #[test]
+    fn resolve_order_spec_multi_empty_list_and_no_default_order() {
+        let order = resolve_order_spec_multi(&[], &[], &["id".to_string()]);
+        assert_eq!(order.source, OrderSource::None);
+        assert!(order.columns.is_empty());
     }
 }

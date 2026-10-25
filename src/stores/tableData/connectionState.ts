@@ -54,6 +54,8 @@ export function emptyTableState(context: TableChangeContext | null = null): Tabl
     draftFilterLogic: 'and',
     filterPanelOpen: false,
     sorts: [],
+    columnOrder: null,
+    frozenColumnCount: 0,
     pendingChanges: new Map(),
     draftInserts: new Map(),
     draftInsertOrder: [],

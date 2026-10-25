@@ -108,6 +108,17 @@ type DepthBearing =
       ownerKey: string;
     }
   | {
+      type: 'db-error';
+      depth: number;
+      /** Same identity contract as the loading spinner's ownerKey. */
+      ownerKey: string;
+      /**
+       * Why the database's load failed — shown in place of an empty table list
+       * so a failed read is never indistinguishable from "no tables".
+       */
+      message: string;
+    }
+  | {
       type: 'namespace-node';
       name: string;
       depth: number;

@@ -106,6 +106,12 @@ export interface CellEditorControlProps {
   readonly candidatesLoading?: boolean;
   /** The candidates could not be fetched. */
   readonly candidatesFailed?: boolean;
+  /**
+   * **Why** they could not be fetched, when the loader said so (DB-20): the
+   * selector's uniqueness refusal is a reason, not a failure, and a reason
+   * deserves its own sentence instead of the generic one.
+   */
+  readonly candidatesMessage?: string | null;
   readonly onKeyDown: (event: KeyboardEvent) => void;
   readonly onBlur: (event: FocusEvent) => void;
   readonly onCompositionStart: () => void;
@@ -165,6 +171,7 @@ export function CellEditorHost({
   const [candidates, setCandidates] = useState<readonly string[] | undefined>(undefined);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [candidatesFailed, setCandidatesFailed] = useState(false);
+  const [candidatesMessage, setCandidatesMessage] = useState<string | null>(null);
   /** The editor is done: it must not write twice. */
   const done = useRef(false);
   /** An IME composition is running. */
@@ -330,14 +337,18 @@ export function CellEditorHost({
     if (!loadCandidates) return;
     setCandidatesLoading(true);
     setCandidatesFailed(false);
+    setCandidatesMessage(null);
     void loadCandidates()
       .then((values) => {
         setCandidates(values);
         setCandidatesLoading(false);
       })
-      .catch(() => {
+      .catch((cause: unknown) => {
         setCandidatesFailed(true);
         setCandidatesLoading(false);
+        // A loader that explains itself (the selector's uniqueness refusal,
+        // DB-20) is quoted; a silent one keeps the generic wording.
+        setCandidatesMessage(cause instanceof Error ? cause.message : null);
       });
   }, [loadCandidates]);
 
@@ -362,6 +373,7 @@ export function CellEditorHost({
       onLoadCandidates: handleLoadCandidates,
       candidatesLoading,
       candidatesFailed,
+      candidatesMessage,
       onKeyDown: handleKeyDown,
       onBlur: handleBlur,
       onCompositionStart: handleCompositionStart,
@@ -371,6 +383,7 @@ export function CellEditorHost({
       candidates,
       candidatesFailed,
       candidatesLoading,
+      candidatesMessage,
       draft,
       error,
       nullable,

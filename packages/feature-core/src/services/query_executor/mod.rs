@@ -13,7 +13,7 @@ use datazen_kernel::schema_cache::SchemaCache;
 use std::sync::Arc;
 
 use crate::services::table_browsing;
-use crate::services::table_paging::{cursor_from_row, keyset_decision, resolve_order_spec};
+use crate::services::table_paging::{cursor_from_row, keyset_decision, resolve_order_spec_multi};
 
 pub mod filter_sql;
 pub mod table_read_sql;
@@ -46,12 +46,16 @@ pub struct OrderBy {
 /// The key is not known here — the caller of [`Self::build_select_sql`] has
 /// it — so this is the *shape* of the order only. The paging decision builds
 /// its own [`OrderSpec`] with the key in it.
-pub(crate) fn order_spec_of(order_by: Option<&OrderBy>, default_order: &[String]) -> OrderSpec {
-    resolve_order_spec(
-        order_by.map(|order| (order.column.as_str(), order.descending)),
-        default_order,
-        &[],
-    )
+///
+/// `sorts` is the caller's explicit sort list, in `ORDER BY` order (DB-11):
+/// empty means "no explicit sort", one entry produces the exact spec the
+/// single-sort world built.
+pub(crate) fn order_spec_of(sorts: &[OrderBy], default_order: &[String]) -> OrderSpec {
+    let borrowed: Vec<(&str, bool)> = sorts
+        .iter()
+        .map(|order| (order.column.as_str(), order.descending))
+        .collect();
+    resolve_order_spec_multi(&borrowed, default_order, &[])
 }
 
 /// Executes queries with optional schema cache integration.
@@ -78,55 +82,6 @@ impl QueryExecutor {
             .await
     }
 
-    /// Read one page of a table.
-    ///
-    /// `count_strategy` and `default_order_columns` are the caller's wishes;
-    /// `None` for either means "the driver decides". `skip_count` is a
-    /// different thing entirely: it says "reuse the total you already have",
-    /// so not a single count statement is sent and the answer carries no
-    /// count kind at all.
-    ///
-    /// This is the read **without** a boundary: the first page of a table, or
-    /// a read that falls back to `OFFSET`. [`Self::get_table_data_page`] is
-    /// the same read with one.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn get_table_data(
-        &self,
-        driver: &Arc<dyn DatabaseDriver>,
-        handle: &ConnectionHandle,
-        db_session_id: &str,
-        database: &str,
-        schema: Option<&str>,
-        table: &str,
-        page: u32,
-        page_size: u32,
-        filters: Option<Vec<FilterCondition>>,
-        order_by: Option<OrderBy>,
-        skip_count: bool,
-        filter_logic: Option<&str>,
-        count_strategy: Option<CountStrategy>,
-        default_order_columns: Option<Vec<String>>,
-    ) -> Result<TableDataResult, DriverError> {
-        self.get_table_data_page(
-            driver,
-            handle,
-            db_session_id,
-            database,
-            schema,
-            table,
-            page,
-            page_size,
-            filters,
-            order_by,
-            skip_count,
-            filter_logic,
-            count_strategy,
-            default_order_columns,
-            None,
-        )
-        .await
-    }
-
     /// Read one page of a table, by offset or by seek.
     ///
     /// `after_key` is the boundary of the page — the key values of the last
@@ -147,7 +102,7 @@ impl QueryExecutor {
         page: u32,
         page_size: u32,
         filters: Option<Vec<FilterCondition>>,
-        order_by: Option<OrderBy>,
+        sorts: Option<Vec<OrderBy>>,
         skip_count: bool,
         filter_logic: Option<&str>,
         count_strategy: Option<CountStrategy>,
@@ -190,11 +145,15 @@ impl QueryExecutor {
 
         // The order of this read, and whether it is a total order. The
         // decision is made once, here: the statement, the boundary and the
-        // answer to the caller all read it from the same place.
-        let order = resolve_order_spec(
-            order_by
-                .as_ref()
-                .map(|order| (order.column.as_str(), order.descending)),
+        // answer to the caller all read it from the same place. The explicit
+        // sort list is ordered (DB-11): its positions are the ORDER BY
+        // positions, and a one-entry list is byte-for-byte the single sort.
+        let explicit_sorts = sorts.clone().unwrap_or_default();
+        let order = resolve_order_spec_multi(
+            &explicit_sorts
+                .iter()
+                .map(|sort| (sort.column.as_str(), sort.descending))
+                .collect::<Vec<_>>(),
             &default_order,
             &cached.primary_keys,
         );
@@ -342,23 +301,14 @@ impl QueryExecutor {
                 );
                 let data_res = data_res?;
 
-                let (total_rows, kind) = match estimate_res {
+                let estimated = match estimate_res {
                     Ok(result) => {
                         let cell = result
                             .rows
                             .first()
                             .and_then(|row| row.first())
                             .and_then(|cell| cell.as_ref());
-                        match cell.and_then(table_browsing::estimated_count_cell) {
-                            Some(count) => (Some(count), CountStrategy::Estimated),
-                            None => {
-                                tracing::warn!(
-                                    %table,
-                                    "query_executor: the estimate is not a usable row count"
-                                );
-                                (None, CountStrategy::Unsupported)
-                            }
-                        }
+                        cell.and_then(table_browsing::estimated_count_cell)
                     }
                     Err(error) => {
                         tracing::warn!(
@@ -366,7 +316,54 @@ impl QueryExecutor {
                             %error,
                             "query_executor: the estimate failed; the rows are unaffected"
                         );
-                        (None, CountStrategy::Unsupported)
+                        None
+                    }
+                };
+                // An unusable estimate is the absence of a fact, not a fact:
+                // `-1` is what PostgreSQL says about a relation the planner
+                // never looked at, which is exactly the state of a table
+                // created moments ago. Rescue it with an exact count instead
+                // of telling the user the number does not exist — the same
+                // answer this read gives when the driver cannot estimate at
+                // all. The rows are already in hand; only the number costs a
+                // statement.
+                let (total_rows, kind) = match estimated {
+                    Some(count) => (Some(count), CountStrategy::Estimated),
+                    None => {
+                        tracing::warn!(
+                            %table,
+                            "query_executor: the estimate is not a usable row count; counting"
+                        );
+                        let count_sql = Self::build_count_sql(
+                            &cached.table_name,
+                            &cached.columns,
+                            &filters,
+                            &dialect,
+                            filter_logic,
+                        )
+                        .map_err(|rejection| {
+                            DriverError::NotSupported(rejection.contract_message())
+                        })?;
+                        match driver.query_at(handle, &count_sql, target).await {
+                            Ok(result) => {
+                                let cell = result
+                                    .rows
+                                    .first()
+                                    .and_then(|row| row.first())
+                                    .and_then(|cell| cell.as_ref());
+                                table_browsing::rescued_exact_count(
+                                    cell.and_then(table_browsing::target_count_cell),
+                                )
+                            }
+                            Err(error) => {
+                                tracing::warn!(
+                                    %table,
+                                    %error,
+                                    "query_executor: the exact count failed too"
+                                );
+                                (None, CountStrategy::Unsupported)
+                            }
+                        }
                     }
                 };
 
@@ -448,6 +445,10 @@ impl QueryExecutor {
     /// that has no boundary sends, and it is byte for byte what it has
     /// always been.
     ///
+    /// `sorts` is the caller's explicit sort list in ORDER BY order (DB-11):
+    /// `None`/empty falls back to `default_order`, one entry is the single
+    /// sort this statement always carried.
+    ///
     /// The text lives in [`table_read_sql`]; this is the address the rest of
     /// the tree already uses.
     #[allow(clippy::too_many_arguments)]
@@ -455,7 +456,7 @@ impl QueryExecutor {
         table_name: &str,
         columns: &[ColumnSchema],
         filters: Option<Vec<FilterCondition>>,
-        order_by: Option<OrderBy>,
+        sorts: Option<Vec<OrderBy>>,
         default_order: &[String],
         dialect: &dyn SqlDialect,
         limit: u64,
@@ -466,7 +467,7 @@ impl QueryExecutor {
             table_name,
             columns,
             filters,
-            order_by,
+            sorts,
             default_order,
             dialect,
             limit,

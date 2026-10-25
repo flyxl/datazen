@@ -98,6 +98,25 @@ async function setReactTextareaValue(text: string) {
   expect(ok).toBe(true);
 }
 
+/**
+ * The nested Tables list is filled by an asynchronous read, so it renders a
+ * loading row first. Counting items the moment the category opens counts that
+ * spinner instead of the list.
+ */
+async function waitForTablesListed() {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const picker = document.querySelector('[data-testid="context-picker"]');
+        if (!picker) return false;
+        const loading = picker.querySelector('.animate-spin');
+        const items = picker.querySelectorAll('[data-testid="context-item"][data-kind="table"]');
+        return !loading && items.length > 0;
+      }),
+    { timeout: 15000, timeoutMsg: 'picker table list did not finish loading' },
+  );
+}
+
 async function selectFirstTableItem() {
   await $('[data-testid="context-cat-tables"]').click();
   await browser.waitUntil(
@@ -198,6 +217,7 @@ describe('AI context tables (CTX-T01~T06)', () => {
     await $('[data-testid="context-cat-tables"]').click();
     await expect($('[data-testid="context-picker-back"]')).toBeExisting();
 
+    await waitForTablesListed();
     const before = await $$('[data-testid="context-item"][data-kind="table"]');
     expect(before.length).toBeGreaterThan(1);
 
@@ -208,6 +228,7 @@ describe('AI context tables (CTX-T01~T06)', () => {
     await expect($('[data-testid="context-cat-tables"]')).toBeExisting();
     await $('[data-testid="context-cat-tables"]').click();
     await expect($('[data-testid="context-picker-back"]')).toBeExisting();
+    await waitForTablesListed();
 
     const items = await $$('[data-testid="context-item"][data-kind="table"]');
     expect(items.length).toBeGreaterThan(0);

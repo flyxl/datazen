@@ -209,15 +209,10 @@ impl TestAppState {
         self.open_runtime_session(connection_id).await
     }
 
+    /// Persist a profile and open it through the Runtime session boundary
+    /// used by production paths, returning both halves for tests that need
+    /// the config as well as the session.
     pub async fn save_and_connect(&self, id: &str) -> (ConnectionConfig, String) {
-        // Keep the historical fixture name, but make it exercise the Runtime
-        // session boundary used by migrated command paths.
-        self.save_and_connect_runtime(id).await
-    }
-
-    /// Persist a profile and open it through the Runtime session boundary.
-    /// Opens a session through the Runtime boundary used by production paths.
-    pub async fn save_and_connect_runtime(&self, id: &str) -> (ConnectionConfig, String) {
         let config = self.save_connection(id).await;
         let session = self.open_runtime_session(id).await;
         (config, session)

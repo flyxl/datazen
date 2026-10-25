@@ -1,6 +1,7 @@
 //! Schema Diff deploy execution and cancellation.
 
 use datazen_driver_api::SchemaMigration as _;
+use datazen_schema_diff::types::PlanRequirement;
 
 use super::job;
 use super::unified_plan;
@@ -192,15 +193,35 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
         )
         .await;
     }
-    if !plan.requirements.is_empty() {
+    // Only `Unsupported` blocks deployment. `Backfill` is a follow-up the plan
+    // performed *safely*: a NOT NULL column without a default is added nullable
+    // and the requirement tells the user to populate existing rows before
+    // enforcing NOT NULL. Refusing the deploy on it left the plan permanently
+    // undeployable — preparing again cannot clear it, because the statement is
+    // already the safe one.
+    if plan
+        .requirements
+        .iter()
+        .any(|requirement| matches!(requirement, PlanRequirement::Unsupported { .. }))
+    {
         return fail_schema_diff_deploy(
             &state,
             history_run,
             CommandError::Validation(
-                "Resolve plan requirements and prepare again before deploying".into(),
+                "Resolve unsupported plan requirements and prepare again before deploying".into(),
             ),
         )
         .await;
+    }
+    if plan
+        .requirements
+        .iter()
+        .any(|requirement| matches!(requirement, PlanRequirement::Backfill { .. }))
+    {
+        tracing::warn!(
+            requirements = plan.requirements.len(),
+            "deploying a plan with pending backfills; the added columns stay nullable"
+        );
     }
     if plan_has_destructive(&plan) {
         let token = confirm_destructive.as_deref().unwrap_or("");

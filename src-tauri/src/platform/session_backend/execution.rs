@@ -161,15 +161,28 @@ impl DesktopSessionBackend {
             .protocol_drained
             .store(false, std::sync::atomic::Ordering::Release);
         let result = if crate::services::schema_metadata::is_metadata_command(&call.command) {
-            let driver = self
-                .registry
-                .get(&config.database_type)
-                .await
-                .ok_or(rc::ProviderError::CapabilityUnsupported)?;
-            let handle = resource
-                .provider
-                .connection_handle(&resource.handle)
-                .map_err(map::error)?;
+            tracing::debug!(command = %call.command, "host metadata command: dispatching");
+            let driver = match self.registry.get(&config.database_type).await {
+                Some(driver) => driver,
+                None => {
+                    tracing::warn!(
+                        driver = %config.database_type,
+                        "host metadata command: driver unavailable"
+                    );
+                    return Err(rc::ProviderError::CapabilityUnsupported);
+                }
+            };
+            let handle = match resource.provider.connection_handle(&resource.handle) {
+                Ok(handle) => handle,
+                Err(error) => {
+                    tracing::warn!(
+                        command = %call.command,
+                        error = ?error,
+                        "host metadata command: no connection handle"
+                    );
+                    return Err(map::error(error));
+                }
+            };
             let before = resource
                 .provider
                 .observe_session(&resource.handle)
@@ -184,6 +197,10 @@ impl DesktopSessionBackend {
             .await
             {
                 Ok(result) => {
+                    tracing::debug!(
+                        command = %call.command,
+                        "host metadata command produced a typed result"
+                    );
                     dr::ResultSink::write_output(
                         &sink,
                         serde_json::json!({"kind":"commandResult","data":result.data}),
@@ -210,9 +227,16 @@ impl DesktopSessionBackend {
                         None,
                     ))
                 }
-                Err(error) => Err(dr::ResourceError::SinkRejected {
-                    reason: crate::platform::diagnostics::safe_message(&error.to_string()),
-                }),
+                Err(error) => {
+                    tracing::warn!(
+                        command = %call.command,
+                        error = %error,
+                        "host metadata command failed"
+                    );
+                    Err(dr::ResourceError::SinkRejected {
+                        reason: crate::platform::diagnostics::safe_message(&error.to_string()),
+                    })
+                }
             }
         } else {
             match call.command.as_str() {

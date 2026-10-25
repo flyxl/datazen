@@ -30,17 +30,72 @@ pub fn prepare(
     let mut scanner = dialect.new_sql_scanner();
     let mut statements = scanner.push(input);
     statements.extend(scanner.finish());
-    let mut prepared = Vec::new();
+    let mut bodies = Vec::new();
     for sql in statements {
-        if executable_comment(&sql) {
-            return Err(DriverError::InvalidConfig(
-                "Executable restore comments are unsupported".into(),
-            ));
+        prepare_statement(&sql, profile, target, overwrite, &mut bodies)
+            .map_err(|error| statement_context(&sql, error))?;
+    }
+    if bodies.is_empty() {
+        return Err(DriverError::InvalidConfig(
+            "Restore input contains no supported statements".into(),
+        ));
+    }
+    let mut prepared = Vec::new();
+    if overwrite {
+        // Overwrite drops every object the script is about to create, and it does
+        // so **before the first creation**. Dropping inline cannot work: the dump
+        // re-creates a table's sequence before the table, and a sequence still
+        // owned by the old table can only be removed once that table is gone.
+        // Tables go first for exactly that reason.
+        for body in &bodies {
+            let words = prefix_words(body)?;
+            if !words.first().is_some_and(|word| word == "CREATE") {
+                continue;
+            }
+            let kind = words.get(1).map(String::as_str).unwrap_or_default();
+            if matches!(kind, "TABLE" | "VIEW") {
+                let ident = crate::sql_dump::created_relation_ident(body).ok_or_else(|| {
+                    DriverError::InvalidConfig(
+                        "Restore overwrite requires an explicit relation identifier".into(),
+                    )
+                })?;
+                prepared.push(format!("DROP {kind} IF EXISTS {ident}"));
+            }
         }
-        if is_comment_only_or_empty(&sql) {
-            continue;
+        for body in &bodies {
+            let words = prefix_words(body)?;
+            if !words.first().is_some_and(|word| word == "CREATE") {
+                continue;
+            }
+            if words.get(1).is_some_and(|kind| kind == "SEQUENCE") {
+                if let Some(ident) = created_sequence_ident(body) {
+                    prepared.push(format!("DROP SEQUENCE IF EXISTS {ident}"));
+                }
+            }
         }
-        let body = leading_body(&sql)?;
+    }
+    prepared.extend(bodies);
+    Ok(prepared)
+}
+
+/// Validate one scanned statement and append it to the script body.
+fn prepare_statement(
+    sql: &str,
+    profile: &str,
+    target: &crate::namespace::NamespaceTarget,
+    overwrite: bool,
+    bodies: &mut Vec<String>,
+) -> Result<(), DriverError> {
+    if executable_comment(sql) {
+        return Err(DriverError::InvalidConfig(
+            "Executable restore comments are unsupported".into(),
+        ));
+    }
+    if is_comment_only_or_empty(sql) {
+        return Ok(());
+    }
+    {
+        let body = leading_body(sql)?;
         let words = prefix_words(body)?;
         let first = words.first().map(String::as_str).unwrap_or_default();
         // This is a bounded restore format, not arbitrary client scripting.
@@ -68,26 +123,107 @@ pub fn prepare(
                 "Restore input contains unsupported SQL/client protocol or context control".into(),
             ));
         }
-        crate::restore_sql_target::validate(&sql, profile, target, overwrite)?;
-        if overwrite && first == "CREATE" {
-            let relation_kind = words.get(1).map(String::as_str).unwrap_or_default();
-            if matches!(relation_kind, "TABLE" | "VIEW") {
-                let ident = crate::sql_dump::created_relation_ident(body).ok_or_else(|| {
-                    DriverError::InvalidConfig(
-                        "Restore overwrite requires an explicit relation identifier".into(),
-                    )
-                })?;
-                prepared.push(format!("DROP {relation_kind} IF EXISTS {ident}"));
-            }
-        }
-        prepared.push(sql);
+        // The drop preambles are assembled by `prepare` once the whole script is
+        // known; validation still needs to know that this is an overwrite.
+        crate::restore_sql_target::validate(sql, profile, target, overwrite)?;
+        bodies.push(sql.to_owned());
     }
-    if prepared.is_empty() {
-        return Err(DriverError::InvalidConfig(
-            "Restore input contains no supported statements".into(),
-        ));
+    Ok(())
+}
+
+/// The identifier of a `CREATE [IF NOT EXISTS] SEQUENCE <ident>` statement.
+///
+/// Mirrors `created_relation_ident` so both overwrite preambles read names the
+/// same way: leading comment lines are skipped, keywords are stripped by the
+/// same helpers, and `IF NOT EXISTS` is matched as a whole keyword. The old
+/// hand-rolled scanner treated any unqualified name starting with `if`
+/// (`ifog`, `if_x`) as the qualifier, and a leading comment line blinded it
+/// entirely — both silently skipped the `DROP SEQUENCE` preamble, leaving the
+/// old sequence standing under overwrite.
+fn created_sequence_ident(sql: &str) -> Option<String> {
+    let line = sql
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with("--") && !l.starts_with("/*"))
+        .unwrap_or("");
+    let rest = crate::sql_dump::strip_kw(line, "CREATE")?;
+    let rest = crate::sql_dump::strip_kw(rest, "SEQUENCE")?;
+    let rest = crate::sql_dump::strip_opt_kw(rest, "IF NOT EXISTS");
+    crate::sql_dump::take_qualified_sql_ident(rest)
+}
+
+#[cfg(test)]
+mod sequence_ident_tests {
+    use super::created_sequence_ident;
+
+    #[test]
+    fn reads_plain_and_schema_qualified_names() {
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE public.t_id_seq START WITH 2"),
+            Some("public.t_id_seq".into())
+        );
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE t_id_seq"),
+            Some("t_id_seq".into())
+        );
     }
-    Ok(prepared)
+
+    #[test]
+    fn strips_the_if_not_exists_qualifier_as_a_whole_keyword() {
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE IF NOT EXISTS public.t_id_seq AS bigint"),
+            Some("public.t_id_seq".into())
+        );
+    }
+
+    #[test]
+    fn a_sequence_really_named_if_something_is_a_name_not_a_qualifier() {
+        // The old scanner saw `IF…` and bailed, silently skipping the
+        // overwrite preamble for exactly these names.
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE ifog START WITH 1"),
+            Some("ifog".into())
+        );
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE \"IF NOT EXISTS\" START WITH 1"),
+            Some("\"IF NOT EXISTS\"".into())
+        );
+    }
+
+    #[test]
+    fn quoted_names_with_spaces_and_skipped_comment_lines_parse_like_the_relation_parser() {
+        assert_eq!(
+            created_sequence_ident("CREATE SEQUENCE \"my seq\" START WITH 1"),
+            Some("\"my seq\"".into())
+        );
+        assert_eq!(
+            created_sequence_ident("-- emitted by the dump\nCREATE SEQUENCE public.orders_id_seq"),
+            Some("public.orders_id_seq".into())
+        );
+    }
+
+    #[test]
+    fn other_shapes_stay_unrecognized() {
+        assert_eq!(
+            created_sequence_ident("CREATE TABLE public.t (id int)"),
+            None
+        );
+        // `CREATE IF NOT EXISTS SEQUENCE s` is not a shape any engine accepts;
+        // the old scanner mis-parsed it to the identifier `SEQUENCE`.
+        assert_eq!(
+            created_sequence_ident("CREATE IF NOT EXISTS SEQUENCE s"),
+            None
+        );
+    }
+}
+
+/// Prefix a preflight rejection with a bounded excerpt of the statement.
+fn statement_context(sql: &str, error: DriverError) -> DriverError {
+    let excerpt: String = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+    let excerpt: String = excerpt.chars().take(120).collect();
+    DriverError::InvalidConfig(format!(
+        "Restore statement rejected ({error}); statement starts with: {excerpt}"
+    ))
 }
 
 fn leading_body(mut sql: &str) -> Result<&str, DriverError> {

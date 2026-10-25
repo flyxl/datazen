@@ -62,6 +62,68 @@ async function openQueryTabWithConnection(): Promise<void> {
   await openQueryTab();
 }
 
+/**
+ * Re-open the fixture editor instead of adding another query tab.
+ *
+ * Every query tab is its own retained editor session and the connected-editor
+ * budget is 5, so the later cases used to open a tab that had no usable session
+ * — the execute click then did nothing and the assertion only saw an empty pane.
+ */
+async function reuseQueryTab(): Promise<void> {
+  const tabs = await $$('[data-testid="panel-tab-select"]');
+  if (tabs.length > 0) {
+    await tabs[0].click();
+    await browser.pause(400);
+    await $('[data-testid="editor-execute-button"]').waitForDisplayed({ timeout: 10000 });
+    return;
+  }
+  await openQueryTabWithConnection();
+}
+
+/**
+ * Persist the row-limit settings so the very next query uses them.
+ *
+ * `save_settings` over raw IPC writes the backend, but the renderer keeps the
+ * settings store it booted with — the UI's own save path is what refreshes it.
+ * Re-entering Settings re-hydrates that store, otherwise the next query still
+ * applies the previous limit and the truncation banner reports the old number.
+ */
+async function applyRowLimitSettings(limitSelectResults: boolean, queryResultLimit: number) {
+  await invokeBackend('save_settings', {
+    settings: {
+      theme: { mode: 'dark', packId: null },
+      // Keep the UI in the language this journey's `t()` helper resolves
+      // (e2e/i18n.ts is zh-CN). Once the Settings round-trip below actually
+      // applies the saved settings, a different language flips every label the
+      // assertions look for.
+      language: 'zh-CN',
+      limitSelectResults,
+      queryResultLimit,
+      editorFontSize: 13,
+      editorFontFamily: 'Menlo',
+      confirmOnDelete: true,
+      autoCommit: true,
+      safeMode: false,
+      defaultPageSize: 50,
+      connectionPoolSize: 10,
+    },
+  });
+  await browser.pause(400);
+  await openSettingsInMainWindow('dataBrowsing');
+  await browser.pause(400);
+  await backFromSettingsInMainWindow();
+  await browser.pause(400);
+}
+
+/** Wait until the body text contains `needle` (large result sets arrive in batches). */
+async function waitForBodyText(needle: string, timeout: number): Promise<void> {
+  await browser.waitUntil(async () => (await $('body').getText()).includes(needle), {
+    timeout,
+    interval: 500,
+    timeoutMsg: `等待页面出现「${needle}」超时`,
+  });
+}
+
 describe('数据查询行数限制 Journey（QLIMIT-001~QLIMIT-006）', () => {
   let mainWindow: string;
 
@@ -175,22 +237,7 @@ describe('数据查询行数限制 Journey（QLIMIT-001~QLIMIT-006）', () => {
 
   it('QLIMIT-003: 查询结果未超过限制时不应显示截断警告', async () => {
     // Set limit to 1000
-    await invokeBackend('save_settings', {
-      settings: {
-        theme: { mode: 'dark', packId: null },
-        language: 'en',
-        limitSelectResults: true,
-        queryResultLimit: 1000,
-        editorFontSize: 13,
-        editorFontFamily: 'Menlo',
-        confirmOnDelete: true,
-        autoCommit: true,
-        safeMode: true,
-        defaultPageSize: 50,
-        connectionPoolSize: 10,
-      },
-    });
-    await browser.pause(500);
+    await applyRowLimitSettings(true, 1000);
 
     // Query a small subset — well within the 1000-row limit
     await openQueryTabWithConnection();
@@ -210,26 +257,15 @@ describe('数据查询行数限制 Journey（QLIMIT-001~QLIMIT-006）', () => {
 
   it('QLIMIT-004: 查询结果超过限制时应显示截断警告', async () => {
     // Lower the limit to 500 so the 2000-row table triggers truncation
-    await invokeBackend('save_settings', {
-      settings: {
-        theme: { mode: 'dark', packId: null },
-        language: 'en',
-        limitSelectResults: true,
-        queryResultLimit: 500,
-        editorFontSize: 13,
-        editorFontFamily: 'Menlo',
-        confirmOnDelete: true,
-        autoCommit: true,
-        safeMode: true,
-        defaultPageSize: 50,
-        connectionPoolSize: 10,
-      },
-    });
-    await browser.pause(500);
+    await applyRowLimitSettings(true, 500);
 
-    await openQueryTabWithConnection();
+    // Reuse the fixture editor: a new tab is a new retained session, and the
+    // connected-editor budget is smaller than this journey's tab count.
+    await reuseQueryTab();
+    // An unbounded SELECT is refused by Safe Mode, so the guard is off above:
+    // this case is about the row limit, not about blocking.
     await executeSQL(`SELECT * FROM ${TEST_TABLE}`);
-    await browser.pause(2000);
+    await waitForBodyText(t('query.resultTruncated', { limit: 500 }), 30000);
 
     const body = await $('body').getText();
     // Should show truncation warning with the configured limit
@@ -241,28 +277,12 @@ describe('数据查询行数限制 Journey（QLIMIT-001~QLIMIT-006）', () => {
   // ── QLIMIT-005: Toggle limit off ──
 
   it('QLIMIT-005: 关闭限制后查询不应截断', async () => {
-    // Disable limit entirely
-    await invokeBackend('save_settings', {
-      settings: {
-        theme: { mode: 'dark', packId: null },
-        language: 'en',
-        limitSelectResults: false,
-        queryResultLimit: 500,
-        editorFontSize: 13,
-        editorFontFamily: 'Menlo',
-        confirmOnDelete: true,
-        autoCommit: true,
-        safeMode: true,
-        defaultPageSize: 50,
-        connectionPoolSize: 10,
-      },
-    });
-    await browser.pause(500);
+    await applyRowLimitSettings(false, 500);
 
-    await openQueryTabWithConnection();
+    await reuseQueryTab();
     // Query all 2000 rows — limit is off so no truncation
     await executeSQL(`SELECT * FROM ${TEST_TABLE}`);
-    await browser.pause(2000);
+    await waitForBodyText(`2000 ${t('common.rows')}`, 30000);
 
     const body = await $('body').getText();
     // Should show all 2000 rows

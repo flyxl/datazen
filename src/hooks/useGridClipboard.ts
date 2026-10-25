@@ -32,11 +32,7 @@ import {
   type PastePlan,
 } from '../lib/gridPastePlan';
 import type { PasteProblem } from '../lib/gridErrors';
-import type {
-  CellPasteWrite,
-  PendingRowChange,
-  TableChangeContext,
-} from '../lib/tableChanges';
+import type { CellPasteWrite, PendingRowChange, TableChangeContext } from '../lib/tableChanges';
 import { requirePlatformServices } from '@datazen/backend-client';
 import {
   cellCoordsInRange,
@@ -254,9 +250,7 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
   /** The normalized main region of the selection, if there is one. */
   const selectionRange = useMemo(
     () =>
-      gridSelection.mode === 'cell'
-        ? normalizeSelectionRange(gridSelection, columnOrder)
-        : null,
+      gridSelection.mode === 'cell' ? normalizeSelectionRange(gridSelection, columnOrder) : null,
     [columnOrder, gridSelection],
   );
   /** Rows the row-level actions act on — derived, never written back into `selectedRows`. */
@@ -300,12 +294,9 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
     [context, typeByColumn],
   );
 
-  const buildText = useCallback(
-    (
-      target: GridCopyTarget,
-      format: ClipboardFormat,
-      includeHeader?: boolean,
-    ): { text: string; target: GridCopyTarget } | null => {
+  /** The matrix + column names a copy target spans, before any serialization. */
+  const buildMatrix = useCallback(
+    (target: GridCopyTarget): { matrix: unknown[][]; columnNames: string[] } | null => {
       if (target.mode === 'cell') {
         const { range } = target;
         const left = columnOrder.indexOf(range.leftColumn);
@@ -321,17 +312,32 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
         );
         if (coords.length === 0) return null;
         const matrix = buildSelectionMatrix(rows, coords);
-        const text = serializeCells(matrix, { format, columnNames, includeHeader });
-        if (text !== '') rememberSource(columnNames, text);
-        return { text, target };
+        return { matrix, columnNames };
       }
       const matrix = buildRowsMatrix(rows, columnOrder, target.rowIndices);
       if (matrix.length === 0) return null;
-      const text = serializeCells(matrix, { format, columnNames: columnOrder, includeHeader });
-      if (text !== '') rememberSource(columnOrder, text);
+      return { matrix, columnNames: [...columnOrder] };
+    },
+    [columnOrder, rows],
+  );
+
+  const buildText = useCallback(
+    (
+      target: GridCopyTarget,
+      format: ClipboardFormat,
+      includeHeader?: boolean,
+    ): { text: string; target: GridCopyTarget } | null => {
+      const built = buildMatrix(target);
+      if (!built) return null;
+      const text = serializeCells(built.matrix, {
+        format,
+        columnNames: built.columnNames,
+        includeHeader,
+      });
+      if (text !== '') rememberSource(built.columnNames, text);
       return { text, target };
     },
-    [columnOrder, rememberSource, rows],
+    [buildMatrix, rememberSource],
   );
 
   const buildCopyText = useCallback(
@@ -371,6 +377,27 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
           ? { mode: 'row', rowIndices: [...coveredRows].sort((left, right) => left - right) }
           : null;
       if (!target) return false;
+      // HTML is the one format whose clipboard text is not what a paste reads
+      // back (DB-10): the rich flavor carries the `<table>`, the plain flavor
+      // — and the paste-back alignment source — is the TSV of the same cells.
+      if (format === 'html') {
+        const built = buildMatrix(target);
+        if (!built) return false;
+        const html = serializeCells(built.matrix, {
+          format: 'html',
+          columnNames: built.columnNames,
+          includeHeader: copyOptions?.includeHeader,
+        });
+        const plain = serializeCells(built.matrix, {
+          format: 'tsv',
+          columnNames: built.columnNames,
+          includeHeader: copyOptions?.includeHeader,
+        });
+        if (plain !== '') rememberSource(built.columnNames, plain);
+        const ok = await copyFeedback.copy(plain, { html });
+        if (!ok) report({ code: 'grid.clipboard.writeFailed', row: null, column: null });
+        return ok;
+      }
       // The name-alignment bookkeeping has to see the same columns the text does.
       const built = buildText(target, format, copyOptions?.includeHeader);
       if (!built) return false;
@@ -378,7 +405,7 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
       if (!ok) report({ code: 'grid.clipboard.writeFailed', row: null, column: null });
       return ok;
     },
-    [buildText, copyFeedback, coveredRows, report, selectionRange],
+    [buildMatrix, buildText, copyFeedback, coveredRows, rememberSource, report, selectionRange],
   );
 
   const pendingKeys = useMemo(() => {
@@ -396,9 +423,8 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
   const confirmOptionsFor = useCallback(
     (plan: PastePlan) => {
       const rowsWritten = plan.bounds ? plan.bounds.bottomRow - plan.bounds.topRow + 1 : 0;
-      const columnsWritten = plan.droppedColumns.length > 0
-        ? plan.matchedColumns
-        : plan.totalColumns;
+      const columnsWritten =
+        plan.droppedColumns.length > 0 ? plan.matchedColumns : plan.totalColumns;
       const source = peekClipboardSource();
       const body =
         plan.crossTable === null

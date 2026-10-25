@@ -25,6 +25,7 @@ import {
   buildQueryOpenContext,
   type TableContextInput,
   type TableSqlActionKind,
+  type TableSqlActionSpec,
 } from '../../lib/tableSqlActions';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { splitPathHierarchyDatabasePin } from '../../lib/queryContextPath';
@@ -60,7 +61,10 @@ export interface PanelHandlers {
     context?: Pick<TableContextInput, 'database' | 'schema'>,
     title?: string,
   ) => boolean;
-  handleOpenTableAction: (context: TableContextInput, action: TableSqlActionKind) => void;
+  handleOpenTableAction: (
+    context: TableContextInput,
+    action: TableSqlActionKind | TableSqlActionSpec,
+  ) => void;
   handleOpenQueryHistory: () => void;
   handleClosePanel: (panelId: string) => void;
   handleCloseOtherPanels: (keepPanelId: string) => void;
@@ -527,10 +531,17 @@ export function usePanelHandlers({
   );
 
   const handleOpenTableAction = useCallback(
-    (input: TableContextInput, action: TableSqlActionKind) => {
+    (input: TableContextInput, action: TableSqlActionKind | TableSqlActionSpec) => {
       if (!sidebarConnCtx || input.connectionId !== sidebarConnCtx.connectionId) return;
-      const context = buildQueryOpenContext(input, { kind: action, source: 'table-action' });
-      if (action === 'openData') {
+      // A bare kind keeps the exact `{ kind, source }` context the action always
+      // built; a full spec (DB-16's "Edit in SQL" template) keeps its own
+      // initialSql and focus.
+      const spec: TableSqlActionSpec =
+        typeof action === 'string'
+          ? { kind: action, source: 'table-action' }
+          : { source: 'table-action', ...action };
+      const context = buildQueryOpenContext(input, spec);
+      if (context.action === 'openData') {
         handleSelectTable(context.tableName, context.schema, context.database);
         return;
       }

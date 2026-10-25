@@ -326,19 +326,19 @@ pub fn build_admin_sql(command: &str, input: &serde_json::Value) -> Result<Strin
 }
 
 pub async fn execute_mysql_admin_command(
-    pool: &sqlx::MySqlPool,
+    conn: &mut sqlx::MySqlConnection,
     command: &str,
     input: serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
     match command {
-        "server_status_snapshot" => fetch_mysql_server_status(pool).await,
-        "estimate_table_rows" => estimate_mysql_table_rows(pool, &input).await,
-        "list_processes" => fetch_mysql_process_list(pool).await,
-        "kill_process" => kill_mysql_process(pool, &input).await,
+        "server_status_snapshot" => fetch_mysql_server_status(conn).await,
+        "estimate_table_rows" => estimate_mysql_table_rows(conn, &input).await,
+        "list_processes" => fetch_mysql_process_list(conn).await,
+        "kill_process" => kill_mysql_process(conn, &input).await,
         _ => {
             let sql = build_admin_sql(command, &input)?;
             sqlx::query(&sql)
-                .execute(pool)
+                .execute(&mut *conn)
                 .await
                 .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
             Ok(CommandResult {
@@ -348,20 +348,22 @@ pub async fn execute_mysql_admin_command(
     }
 }
 
-async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResult, DriverError> {
+async fn fetch_mysql_server_status(
+    conn: &mut sqlx::MySqlConnection,
+) -> Result<CommandResult, DriverError> {
     let version: String = sqlx::query_scalar("SELECT VERSION()")
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
     let database: Option<String> = sqlx::query_scalar("SELECT DATABASE()")
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
     let status_rows = sqlx::query(
         "SHOW GLOBAL STATUS WHERE Variable_name IN ('Uptime', 'Threads_connected', 'Threads_running', 'Questions', 'Threads_created', 'Slow_queries', 'Bytes_received', 'Bytes_sent', 'Com_select', 'Com_insert', 'Com_update', 'Com_delete')",
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -404,14 +406,14 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
     };
 
     let max_connections: i64 = sqlx::query_scalar("SELECT @@GLOBAL.max_connections")
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await
         .unwrap_or(0);
 
     let database_size_mb: Option<f64> = sqlx::query_scalar(
         "SELECT CAST(ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS DOUBLE) FROM information_schema.tables WHERE table_schema = DATABASE()",
     )
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -424,7 +426,7 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
     // 返回完整列表（与其它 DB 管理软件一致，通常 ~500 项）；仅跳过 Rsa_public_key
     // 这一个超长二进制块，避免把仪表盘明细撑爆。
     let all_status = sqlx::query("SHOW GLOBAL STATUS")
-        .fetch_all(pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
     let mut status_variables: Vec<serde_json::Value> = Vec::new();
@@ -449,7 +451,7 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
     let innodb_read_requests: Option<i64> = sqlx::query_scalar::<_, String>(
         "SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Innodb_buffer_pool_read_requests'",
     )
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
     .ok()
     .flatten()
@@ -457,7 +459,7 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
     let innodb_reads: Option<i64> = sqlx::query_scalar::<_, String>(
         "SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Innodb_buffer_pool_reads'",
     )
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
     .ok()
     .flatten()
@@ -498,7 +500,7 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
 }
 
 async fn estimate_mysql_table_rows(
-    pool: &sqlx::MySqlPool,
+    conn: &mut sqlx::MySqlConnection,
     input: &serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
     let table = input["table"]
@@ -512,7 +514,7 @@ async fn estimate_mysql_table_rows(
         )
         .bind(db)
         .bind(table)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?
     } else {
@@ -520,7 +522,7 @@ async fn estimate_mysql_table_rows(
             "SELECT TABLE_ROWS FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?",
         )
         .bind(table)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?
     };
@@ -530,7 +532,9 @@ async fn estimate_mysql_table_rows(
     })
 }
 
-async fn fetch_mysql_process_list(pool: &sqlx::MySqlPool) -> Result<CommandResult, DriverError> {
+async fn fetch_mysql_process_list(
+    conn: &mut sqlx::MySqlConnection,
+) -> Result<CommandResult, DriverError> {
     let rows = sqlx::query(
         r#"
         SELECT
@@ -545,7 +549,7 @@ async fn fetch_mysql_process_list(pool: &sqlx::MySqlPool) -> Result<CommandResul
         ORDER BY TIME DESC
         "#,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -570,7 +574,7 @@ async fn fetch_mysql_process_list(pool: &sqlx::MySqlPool) -> Result<CommandResul
 }
 
 async fn kill_mysql_process(
-    pool: &sqlx::MySqlPool,
+    conn: &mut sqlx::MySqlConnection,
     input: &serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
     let pid = input["pid"]
@@ -583,7 +587,7 @@ async fn kill_mysql_process(
         format!("KILL QUERY {pid}")
     };
     sqlx::query(&sql)
-        .execute(pool)
+        .execute(&mut *conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
     Ok(CommandResult {
@@ -709,7 +713,14 @@ mod tests {
             }
         };
 
-        let pl = fetch_mysql_process_list(&pool).await;
+        let mut conn = match pool.acquire().await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("skip live mysql: {e}");
+                return;
+            }
+        };
+        let pl = fetch_mysql_process_list(&mut conn).await;
         eprintln!("MYSQL list_processes -> {pl:?}");
         let pl_data = pl.unwrap().data;
         let procs = pl_data["processes"].as_array().cloned().unwrap_or_default();
@@ -718,7 +729,7 @@ mod tests {
             "MYSQL process list is EMPTY — bug! got {pl_data}"
         );
 
-        let ss = fetch_mysql_server_status(&pool).await;
+        let ss = fetch_mysql_server_status(&mut conn).await;
         let ss_data = ss.unwrap().data;
         let vars = ss_data["statusVariables"]
             .as_array()

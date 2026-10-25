@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { render, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, fireEvent, cleanup, waitFor, screen } from '@testing-library/react';
 import { DetailPanel } from '../DetailPanel';
 import type { ColumnDef } from '../TableHeader';
 
@@ -30,9 +30,7 @@ describe('DetailPanel', () => {
   });
 
   it('shows no selection message when row is null', () => {
-    const { getByText } = render(
-      <DetailPanel open columns={COLS} row={null} rowIndex={null} />,
-    );
+    const { getByText } = render(<DetailPanel open columns={COLS} row={null} rowIndex={null} />);
     expect(getByText('detail.noSelection')).toBeInTheDocument();
     expect(getByText('detail.title')).toBeInTheDocument();
   });
@@ -134,5 +132,47 @@ describe('DetailPanel', () => {
     fireEvent.change(input, { target: { value: '' } });
     fireEvent.blur(input);
     expect(onFieldEdit).toHaveBeenCalledWith(1, 'name', null);
+  });
+
+  // DB-13: the shared viewers behind the quick-look of a structured value.
+  describe('quick-look viewers (DB-13)', () => {
+    it('opens a JSON document in the shared tree viewer, read-only', () => {
+      const { getByTitle } = render(
+        <DetailPanel
+          open
+          columns={[{ id: 'meta', name: 'meta', type: 'jsonb' }]}
+          row={{ meta: '{"user":"ada"}' }}
+          rowIndex={0}
+        />,
+      );
+
+      fireEvent.click(getByTitle('detail.quickLook'));
+
+      // The tree mode is the default; the mode bar names the four views.
+      expect(screen.getByTestId('detail-quick-look-json-tree')).toHaveTextContent('user');
+      expect(screen.getByTestId('detail-quick-look-json-mode-tree')).toBeInTheDocument();
+      expect(screen.getByTestId('detail-quick-look-json-mode-minify')).toBeInTheDocument();
+    });
+
+    it('opens binary bytes in the shared hex viewer with a save exit', () => {
+      const { getByTitle } = render(
+        <DetailPanel
+          open
+          columns={[{ id: 'avatar', name: 'avatar', type: 'bytea' }]}
+          row={{ avatar: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }}
+          rowIndex={0}
+        />,
+      );
+
+      fireEvent.click(getByTitle('detail.quickLook'));
+
+      // A PNG payload: the sniffed kind, the image preview and the hex dump.
+      expect(screen.getByTestId('detail-quick-look-binary-kind')).toHaveTextContent('image/png');
+      expect(screen.getByTestId('detail-quick-look-binary-image')).toBeInTheDocument();
+      expect(screen.getByTestId('detail-quick-look-binary-hex-bytes')).toHaveTextContent(
+        '89 50 4e 47',
+      );
+      expect(screen.getByTestId('detail-quick-look-binary-save')).toBeInTheDocument();
+    });
   });
 });

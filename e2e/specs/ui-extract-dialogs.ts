@@ -241,11 +241,13 @@ describe('UIX — @datazen/ui 抽取后的对话框与复制行为', () => {
   });
 
   it('UIX-005: ResultMessageDialog（成功）—— 无复制按钮且关闭按钮文案已本地化', async () => {
-    await emitCrossWindowEvent('menu:export-config');
+    // Queue the save-dialog answer *before* triggering the export: emitting
+    // first lets the native dialog open (and wait) before any answer exists,
+    // and resetting the queue afterwards then threw that pending request away —
+    // the export never finished, so the success dialog never appeared.
     await resetDialogQueue();
-    // The app-data export opens a native save dialog; injecting a path under
-    // the isolated app-data dir keeps the journey DB-free and self-cleaning.
     await injectDialogPath(`${process.env.DATAZEN_DATA_DIR ?? '.'}/uix-export.zip`);
+    await emitCrossWindowEvent('menu:export-config');
 
     const okBtn = await $('[data-testid="result-message-ok"]');
     await okBtn.waitForDisplayed({ timeout: 20000 });
@@ -275,19 +277,32 @@ describe('UIX — @datazen/ui 抽取后的对话框与复制行为', () => {
   });
 
   it('UIX-006: 确认备份密钥的 ConfirmDialog → 第二个 ResultMessageDialog（成功）', async () => {
-    // The app-data export journey immediately asks a second ConfirmDialog
-    // whether to persist the backup encryption key. Confirming it drives a
-    // second ResultMessageDialog, covering both dialog types back to back.
+    // Drive the export again here instead of relying on whatever UIX-005 left
+    // behind: the key prompt only appears *after* the export-success dialog is
+    // dismissed, and a case that starts mid-flow cannot tell "not reached yet"
+    // from "never shown".
+    await resetDialogQueue();
+    await injectDialogPath(`${process.env.DATAZEN_DATA_DIR ?? '.'}/uix-export-key.zip`);
+    await emitCrossWindowEvent('menu:export-config');
+
+    const successOk = await $('[data-testid="result-message-ok"]');
+    await successOk.waitForDisplayed({ timeout: 20000 });
+    await successOk.click();
+    await browser.waitUntil(async () => !(await successOk.isExisting().catch(() => false)), {
+      timeout: 8000,
+      timeoutMsg: '导出成功弹窗未关闭',
+    });
+
     const okBtn = await $('[data-testid="confirm-dialog-ok"]');
     await okBtn.waitForDisplayed({ timeout: 15000 });
-    await expect($('[data-testid="confirm-dialog-ok"]')).toHaveText(
-      expect.stringContaining(t('common.save')),
-    );
+    await expect(okBtn).toHaveText(expect.stringContaining(t('common.save')));
     expect(await headerCloseLabel()).toBe(t('common.close'));
 
-    await okBtn.click();
+    // Same ordering rule as UIX-005: answer the key-file save dialog before the
+    // click that opens it.
     await resetDialogQueue();
     await injectDialogPath(`${process.env.DATAZEN_DATA_DIR ?? '.'}/uix-datazen.key`);
+    await okBtn.click();
 
     const savedOk = await $('[data-testid="result-message-ok"]');
     await savedOk.waitForDisplayed({ timeout: 20000 });
@@ -302,7 +317,7 @@ describe('UIX — @datazen/ui 抽取后的对话框与复制行为', () => {
     await savedOk.click();
     await browser.waitUntil(async () => !(await savedOk.isExisting().catch(() => false)), {
       timeout: 8000,
-      timeoutMsg: '备份密钥结果弹窗未关闭',
+      timeoutMsg: '备份密钥保存成功弹窗未关闭',
     });
   });
 });

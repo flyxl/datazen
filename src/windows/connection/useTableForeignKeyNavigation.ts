@@ -4,7 +4,9 @@ import { useFkNavigationShortcuts } from '../../hooks/useFkNavigationShortcuts';
 import { useFkNavigationStore } from '../../stores/fkNavigationStore';
 import { usePanelStore } from '../../stores/panelStore';
 import { openForeignKeyTarget } from '../../lib/fkNavigationActions';
+import { openReferencingRows } from '../../lib/fkReferencedBy';
 import {
+  pickAnchorRow,
   scrollTopForAnchorRow,
   type FkGroupAffordance,
   type GridViewport,
@@ -73,7 +75,7 @@ export interface TableForeignKeyNavigation {
     /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
     resolving: ReadonlySet<string>;
     /** Follow the foreign key of a cell. */
-    onJump: (rowIndex: number, columnName: string) => void;
+    onJump: (rowIndex: number, columnName: string, element?: HTMLElement | null) => void;
   };
   /** Why the last jump was refused; `null` when there was no refusal. */
   error: { code: GridErrorCode | 'unknown'; raw: string } | null;
@@ -90,6 +92,11 @@ export interface TableForeignKeyNavigation {
   onBack: () => void;
   /** Go forward one jump. */
   onForward: () => void;
+  /**
+   * Open the tabs of the rows that reference one row (DB-20). The refusals
+   * land on the same error channel as a refused jump.
+   */
+  onShowReferencingRows: (rowIndex: number) => void;
   /** The keyboard of the navigation; bind it to the grid container. */
   onKeyDown: (event: React.KeyboardEvent) => void;
   /** The grid's scroll container, handed over by the grid. */
@@ -97,6 +104,13 @@ export interface TableForeignKeyNavigation {
 }
 
 const EMPTY_RESOLVING: ReadonlySet<string> = new Set();
+
+/// How often a placement that could not land yet is retried...
+const RESTORE_RETRY_MS = 50;
+/// ...and for how long. The restoring tab may have to fetch its first page over
+/// IPC before its body has anything to scroll, so a frame budget (about a
+/// second) is too short: five seconds covers the IPC round trip and the render.
+const MAX_RESTORE_ATTEMPTS = 100;
 
 export function useTableForeignKeyNavigation(
   options: UseTableForeignKeyNavigationOptions,
@@ -146,19 +160,68 @@ export function useTableForeignKeyNavigation(
    * The anchor is the focused cell when there is one, and the topmost visible
    * row otherwise — a row that is certainly on the page.
    */
-  const snapshotViewport = useCallback((): GridViewport | null => {
-    const element = scrollElementRef.current;
-    if (!element) return null;
-    const scrollTop = element.scrollTop;
-    const anchorRow = activeCell
-      ? activeCell.rowIndex
-      : Math.max(0, Math.floor(scrollTop / Math.max(1, rowHeight)));
-    const anchorColumn = activeCell ? activeCell.columnName : null;
-    return { scrollTop, anchorRow, anchorColumn };
-  }, [activeCell, rowHeight]);
+  /**
+   * The scroll offset the surface had when the pointer went down.
+   *
+   * Focusing a button inside the transform-based virtual window makes the engine
+   * scroll the grid surface to its top *while dispatching that very press*, so by
+   * the time the click handler runs the live offset is 0 and the position the tab
+   * would have returned to is gone. The capture-phase listener runs before that
+   * default action, which makes it the only honest record of where the user was.
+   */
+  const pointerOffsetRef = useRef<number | null>(null);
+  useEffect(() => {
+    const element = scrollElement;
+    if (!element) return;
+    const capture = () => {
+      pointerOffsetRef.current = element.scrollTop;
+    };
+    // Pointer events are the ones a webview actually delivers for a click;
+    // `mousedown`/`touchstart` stay for the engines that dispatch only those.
+    element.addEventListener('pointerdown', capture, true);
+    element.addEventListener('mousedown', capture, true);
+    element.addEventListener('touchstart', capture, true);
+    return () => {
+      element.removeEventListener('pointerdown', capture, true);
+      element.removeEventListener('mousedown', capture, true);
+      element.removeEventListener('touchstart', capture, true);
+    };
+  }, [scrollElement]);
+
+  const snapshotViewport = useCallback(
+    (source?: HTMLElement | null): GridViewport | null => {
+      // The grid the arrow lives in is authoritative. A cached element can belong
+      // to a surface that has since been replaced (the tab re-mounted while its
+      // panel kept its identity), and reading that one would record 0 — the
+      // restore would then send the user back to the top of the table.
+      const element =
+        source instanceof HTMLElement && source.isConnected
+          ? source
+          : scrollElementRef.current instanceof HTMLElement && scrollElementRef.current.isConnected
+            ? scrollElementRef.current
+            : null;
+      if (!element) return null;
+      // A press may have moved the surface (see `pointerOffsetRef`); the offset
+      // it had when the press started is the one the user saw.
+      const live = element.scrollTop;
+      const pressed = pointerOffsetRef.current;
+      const scrollTop = pressed !== null && pressed > live ? pressed : live;
+      // The active cell wins only while it is on screen; a cell the user scrolled
+      // past must not drag the tab back to the top on return.
+      const { anchorRow, anchorVisible } = pickAnchorRow({
+        scrollTop,
+        rowHeight,
+        viewportHeight: element.clientHeight,
+        activeRow: activeCell ? activeCell.rowIndex : null,
+      });
+      const anchorColumn = anchorVisible && activeCell ? activeCell.columnName : null;
+      return { scrollTop, anchorRow, anchorColumn };
+    },
+    [activeCell, rowHeight],
+  );
 
   const handleFkJump = useCallback(
-    (rowIndex: number, columnName: string) => {
+    (rowIndex: number, columnName: string, source?: HTMLElement | null) => {
       const group = fkIndex.get(columnName);
       if (!group) return;
       const row = rows[rowIndex];
@@ -185,9 +248,10 @@ export function useTableForeignKeyNavigation(
         driverType: databaseType ?? null,
         foreignKey,
         values,
-        sourceViewport: snapshotViewport(),
+        sourceViewport: snapshotViewport(source),
       })
         .then((outcome) => {
+          pointerOffsetRef.current = null;
           if (!outcome.ok) {
             setError(outcome.error ?? { code: 'unknown', raw: '' });
             return;
@@ -204,6 +268,43 @@ export function useTableForeignKeyNavigation(
     },
     [
       fkIndex,
+      rows,
+      panelId,
+      tableName,
+      dbSessionId,
+      database,
+      schema,
+      connectionId,
+      databaseType,
+      snapshotViewport,
+    ],
+  );
+
+  const handleShowReferencingRows = useCallback(
+    (rowIndex: number) => {
+      const row = rows[rowIndex];
+      if (!row) return;
+      void openReferencingRows({
+        sourcePanelId: panelId,
+        sourceTable: tableName,
+        dbSessionId,
+        database,
+        schema,
+        connectionId: connectionId ?? null,
+        driverType: databaseType ?? null,
+        row,
+        sourceViewport: snapshotViewport(),
+      })
+        .then((outcome) => {
+          if (!outcome.ok) {
+            setError(outcome.error ?? { code: 'unknown', raw: '' });
+            return;
+          }
+          setError(null);
+        })
+        .catch(() => undefined);
+    },
+    [
       rows,
       panelId,
       tableName,
@@ -262,27 +363,69 @@ export function useTableForeignKeyNavigation(
    * scroll, so focusing first would put the focus on a row that is about to
    * move.
    */
+  const isActive = usePanelStore((state) => state.activePanelId === panelId);
   const [pendingViewport, setPendingViewport] = useState<GridViewport | null>(null);
+  // The snapshot is *peeked*, not taken: re-entering the tab remounts this
+  // panel, and the mount that first reads it may be the one that never gets a
+  // surface to place the offset on. It is consumed below, once the offset
+  // actually stuck.
   useEffect(() => {
-    const viewport = useFkNavigationStore.getState().takeViewport(panelId);
-    setPendingViewport(viewport);
-  }, [panelId]);
+    // A tab that is not in front cannot place an offset, and reading its own
+    // snapshot while hidden would consume the very position "back" restores:
+    // the tab the jump leaves stays mounted, so it must not read here.
+    if (!isActive) return;
+    const peeked = useFkNavigationStore.getState().peekViewport(panelId);
+    setPendingViewport(peeked);
+  }, [panelId, isActive, rows.length]);
   useEffect(() => {
-    if (!pendingViewport || !scrollElement) return;
-    setPendingViewport(null);
-    scrollElement.scrollTop =
+    // The rows are part of the dependency list on purpose: entering a tab whose
+    // data is still loading clamps the offset to 0 and burns the frame budget,
+    // so the arrival of the rows restarts the placement with a fresh budget.
+    if (!pendingViewport || !scrollElement || !isActive) return;
+    const target =
       pendingViewport.anchorRow !== null
         ? scrollTopForAnchorRow(pendingViewport.anchorRow, rowHeight)
         : pendingViewport.scrollTop;
+    // The body is virtualised, so the surface can be present and still refuse
+    // the offset for a while: a tab that comes back loading renders no spacer,
+    // its scroll height equals its client height, and the assignment is clamped
+    // to 0. That is a *state* to wait out, not a failure — and the row count
+    // does not change while it happens, so nothing would restart a frame loop
+    // that gave up. Retry on a timer until the offset sticks, and only drop the
+    // snapshot once it does.
+    let attempts = 0;
+    let timer = 0;
+    const apply = () => {
+      if (scrollElement.clientHeight > 0) {
+        scrollElement.scrollTop = target;
+      }
+      if (Math.abs(scrollElement.scrollTop - target) <= 1) {
+        useFkNavigationStore.getState().takeViewport(panelId);
+        setPendingViewport(null);
+        return;
+      }
+      attempts += 1;
+      // Out of attempts is not a failure either: the surface may have been
+      // replaced under us. The snapshot is kept, so entering the tab again
+      // starts another placement.
+      if (attempts >= MAX_RESTORE_ATTEMPTS) return;
+      timer = window.setTimeout(apply, RESTORE_RETRY_MS);
+    };
+    apply();
     const { anchorRow, anchorColumn } = pendingViewport;
-    if (anchorRow === null || !anchorColumn) return;
-    requestAnimationFrame(() => {
-      const cell = document.querySelector(
-        `[data-dt-row="${anchorRow}"][data-dt-col="${anchorColumn}"]`,
-      );
-      if (cell instanceof HTMLElement) cell.focus();
-    });
-  }, [pendingViewport, scrollElement, rowHeight]);
+    if (anchorRow !== null && anchorColumn) {
+      requestAnimationFrame(() => {
+        const cell = document.querySelector(
+          `[data-dt-row="${anchorRow}"][data-dt-col="${anchorColumn}"]`,
+        );
+        if (cell instanceof HTMLElement) cell.focus();
+      });
+    }
+    return () => window.clearTimeout(timer);
+    // A tab that is not in front is remounted hidden and only becomes the
+    // scrolling surface once it is selected again; the placement has to restart
+    // at that point, not at mount.
+  }, [pendingViewport, scrollElement, rowHeight, rows.length, isActive]);
 
   const breadcrumb = useMemo(() => {
     if (!origin) return null;
@@ -320,6 +463,7 @@ export function useTableForeignKeyNavigation(
     breadcrumb,
     onBack: goBack,
     onForward: goForward,
+    onShowReferencingRows: handleShowReferencingRows,
     onKeyDown,
     onScrollElementChange,
   };

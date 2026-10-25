@@ -21,6 +21,21 @@ export {
 export { splitDataAttrs, type DataAttrProps, type SplitDataAttrs } from './dataAttrs';
 export { Dialog, type DialogProps } from './Dialog';
 export { Tabs, type TabItem, type TabRenderContext, type TabsProps } from './Tabs';
+// DB-13: the shared value viewers — the host grid and the driver UIs read the
+// same bytes and the same JSON through the same renderers.
+export {
+  JsonViewer,
+  type JsonViewerProps,
+  type JsonDisplayMode,
+  JSON_DISPLAY_MODES,
+} from './JsonViewer';
+export {
+  BinaryViewer,
+  type BinaryViewerProps,
+  type HexRow,
+  hexRows,
+  MAX_HEX_ROWS,
+} from './BinaryViewer';
 export { Badge, type BadgeProps } from './Badge';
 export { Label, type LabelProps } from './Label';
 // The one loading indicator. Replaces ~100 hand-written `animate-spin` call

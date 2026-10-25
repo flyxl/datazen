@@ -56,7 +56,7 @@ describe('SQL Editor 安全模式与高危确认 (SE-SAFETY)', () => {
   /** Run `sql` in the editor and return the text of the first result-grid data cell (null if it errored). */
   async function editorFirstCell(sql: string): Promise<string | null> {
     await dismissAnyOpenDialog();
-    await openQueryTab();
+    await focusQueryTab();
     await setEditorContent(sql);
     await browser.pause(300);
     await clickExec();
@@ -119,6 +119,25 @@ describe('SQL Editor 安全模式与高危确认 (SE-SAFETY)', () => {
     await dismissAnyOpenDialog();
   }
 
+  /**
+   * Focus the one query tab this spec uses.
+   *
+   * Each query tab is its own retained editor session and the runtime's
+   * connected-editor budget is 5. Opening a tab per case meant the later cases got
+   * a tab with no usable session: the execute click did nothing and the follow-up
+   * `SELECT COUNT(*)` verification timed out with an empty result pane.
+   */
+  async function focusQueryTab(): Promise<void> {
+    const tabs = await $$('[data-testid="panel-tab-select"]');
+    if (tabs.length > 0) {
+      await tabs[0].click();
+      await browser.pause(300);
+      await $('[data-testid="editor-execute-button"]').waitForDisplayed({ timeout: 10000 });
+      return;
+    }
+    await openQueryTab();
+  }
+
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await invokeBackend('save_connection', {
@@ -146,7 +165,7 @@ describe('SQL Editor 安全模式与高危确认 (SE-SAFETY)', () => {
     await expandConnectedConnectionInNavigator(connName);
     await browser.pause(1000);
     await setSafeModeAndConfirm(true, true);
-    await openQueryTab();
+    await focusQueryTab();
     await dismissAnyOpenDialog();
   });
 
@@ -170,7 +189,7 @@ describe('SQL Editor 安全模式与高危确认 (SE-SAFETY)', () => {
     await executeSQL('CREATE TABLE IF NOT EXISTS _e2e_safety_drop (id SERIAL PRIMARY KEY)');
     await dismissAnyOpenDialog();
 
-    await openQueryTab();
+    await focusQueryTab();
     await setEditorContent('DROP TABLE _e2e_safety_drop');
     await browser.pause(300);
     await clickExec();
@@ -192,7 +211,7 @@ describe('SQL Editor 安全模式与高危确认 (SE-SAFETY)', () => {
     await executeSQL('INSERT INTO _e2e_safety_delete VALUES (1), (2), (3)');
     await dismissAnyOpenDialog();
 
-    await openQueryTab();
+    await focusQueryTab();
     await setEditorContent('DELETE FROM _e2e_safety_delete');
     await browser.pause(300);
     await clickExec();
@@ -215,7 +234,7 @@ describe('SQL Editor 安全模式与高危确认 (SE-SAFETY)', () => {
     await executeSQL("INSERT INTO _e2e_safety_update (val) VALUES ('a'), ('b')");
     await dismissAnyOpenDialog();
 
-    await openQueryTab();
+    await focusQueryTab();
     await setEditorContent("UPDATE _e2e_safety_update SET val = 'changed'");
     await browser.pause(300);
     await clickExec();
@@ -236,7 +255,7 @@ describe('SQL Editor 安全模式与高危确认 (SE-SAFETY)', () => {
     await executeSQL('INSERT INTO _e2e_safety_truncate VALUES (1)');
     await dismissAnyOpenDialog();
 
-    await openQueryTab();
+    await focusQueryTab();
     await setEditorContent('TRUNCATE TABLE _e2e_safety_truncate');
     await browser.pause(300);
     await clickExec();
@@ -262,7 +281,7 @@ describe('SQL Editor 安全模式与高危确认 (SE-SAFETY)', () => {
     );
     await dismissAnyOpenDialog();
 
-    await openQueryTab();
+    await focusQueryTab();
     await setEditorContent('DROP TABLE _e2e_safety_confirm_cancel');
     await browser.pause(300);
     await clickExec();
@@ -286,7 +305,7 @@ describe('SQL Editor 安全模式与高危确认 (SE-SAFETY)', () => {
     await executeSQL('CREATE TABLE IF NOT EXISTS _e2e_safety_confirm_ok (id SERIAL PRIMARY KEY)');
     await dismissAnyOpenDialog();
 
-    await openQueryTab();
+    await focusQueryTab();
     await setEditorContent('DROP TABLE _e2e_safety_confirm_ok');
     await browser.pause(300);
     await clickExec();
@@ -307,7 +326,7 @@ describe('SQL Editor 安全模式与高危确认 (SE-SAFETY)', () => {
     await executeSQL('CREATE TABLE IF NOT EXISTS _e2e_safety_direct (id SERIAL PRIMARY KEY)');
     await dismissAnyOpenDialog();
 
-    await openQueryTab();
+    await focusQueryTab();
     await setEditorContent('DROP TABLE _e2e_safety_direct');
     await browser.pause(300);
     await clickExec();

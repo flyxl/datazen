@@ -60,6 +60,10 @@ const mockSettings: AppSettings = {
   rowCountMode: 'auto',
   rowCountEstimateThreshold: 200000,
   defaultTableSort: 'primaryKeyAsc',
+  gridDensity: 'standard',
+  gridAlternatingRows: true,
+  gridRowNumbers: true,
+  gridAutoHideScrollbar: false,
 };
 
 describe('SqlSnippetsCard', () => {

@@ -27,7 +27,7 @@ fn query(session: &str) -> ExecuteDriverCommandRequest {
 #[tokio::test]
 async fn repeated_statements_do_not_accumulate_physical_resources() {
     let test = TestAppState::with_resource_provider(rich_mock_options()).await;
-    let (_config, session) = test.save_and_connect_runtime("resource-flat").await;
+    let (_config, session) = test.save_and_connect("resource-flat").await;
 
     let adapter = test.state.platform_require().expect("platform ready");
     let runtime = adapter.runtime().expect("runtime ready");

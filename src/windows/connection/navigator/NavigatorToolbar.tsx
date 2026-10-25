@@ -6,6 +6,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  TextSearch,
   Upload,
 } from 'lucide-react';
 import type { I18nKey } from '../../../locales';
@@ -21,6 +22,8 @@ export interface NavigatorToolbarProps {
   onCollapseSidebar?: () => void;
   onNewGroup: () => void;
   onCollapseAll: () => void;
+  /** Open the full-database value search (DB-19). Optional: a navigator without it keeps its toolbar. */
+  onSearchValues?: () => void;
 }
 
 export function NavigatorToolbar({
@@ -34,6 +37,7 @@ export function NavigatorToolbar({
   onCollapseSidebar,
   onNewGroup,
   onCollapseAll,
+  onSearchValues,
 }: NavigatorToolbarProps) {
   return (
     <>
@@ -120,7 +124,7 @@ export function NavigatorToolbar({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center border-b border-edge px-2 py-1">
+      <div className="flex shrink-0 items-center gap-1 border-b border-edge px-2 py-1">
         <div className="relative flex-1">
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted" />
           <input
@@ -132,6 +136,18 @@ export function NavigatorToolbar({
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+        {onSearchValues && (
+          <button
+            type="button"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
+            onClick={onSearchValues}
+            title={t('valueSearch.toolbarEntry')}
+            aria-label={t('valueSearch.toolbarEntry')}
+            data-testid="navigator-search-values"
+          >
+            <TextSearch className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </>
   );

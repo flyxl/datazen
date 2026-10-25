@@ -32,7 +32,11 @@ function tableState(overrides: Partial<TableState> = {}): TableState {
       { name: 'name', dataType: 'text', nullable: true, isPrimaryKey: false },
       { name: 'note', dataType: 'text', nullable: true, isPrimaryKey: false },
     ],
-    rows: [{ id: 1, name: 'Alice', note: null }, { id: 2, name: 'Bob', note: 'x' }, { id: 3, name: 'Cara', note: null }],
+    rows: [
+      { id: 1, name: 'Alice', note: null },
+      { id: 2, name: 'Bob', note: 'x' },
+      { id: 3, name: 'Cara', note: null },
+    ],
     ...overrides,
   };
 }
@@ -45,7 +49,11 @@ describe('applyRowSelect (moved verbatim from the store)', () => {
   });
 
   it('clears the selection when the only selected row is clicked again', () => {
-    const next = applyRowSelect(tableState({ selectedRows: new Set([1]), lastSelectedIndex: 1 }), 1, undefined);
+    const next = applyRowSelect(
+      tableState({ selectedRows: new Set([1]), lastSelectedIndex: 1 }),
+      1,
+      undefined,
+    );
     expect(next.selectedRows).toEqual(new Set());
     expect(next.lastSelectedIndex).toBeNull();
   });
@@ -199,7 +207,9 @@ describe('cell/row mode transitions', () => {
   });
 
   it('clearGridSelection drops geometry, rows and the anchor together', () => {
-    const next = applyClearGridSelection(tableState({ selectedRows: new Set([1]), lastSelectedIndex: 1 }));
+    const next = applyClearGridSelection(
+      tableState({ selectedRows: new Set([1]), lastSelectedIndex: 1 }),
+    );
     expect(next.gridSelection).toBe(EMPTY_GRID_SELECTION);
     expect(next.selectedRows).toEqual(new Set());
     expect(next.lastSelectedIndex).toBeNull();
@@ -352,5 +362,44 @@ describe('createSelectionSlice', () => {
       selectedRows: new Set(),
       lastSelectedIndex: null,
     });
+  });
+});
+
+describe('displayedColumnNames with an explicit column order (DB-12)', () => {
+  const orderedColumns = [{ name: 'id' }, { name: 'name' }, { name: 'note' }];
+
+  it('reorders the displayed columns and keeps the rest behind', () => {
+    expect(displayedColumnNames(orderedColumns, null, ['note', 'id'])).toEqual([
+      'note',
+      'id',
+      'name',
+    ]);
+  });
+
+  it('ignores order entries that are not displayed', () => {
+    expect(displayedColumnNames(orderedColumns, ['id', 'name'], ['note', 'id'])).toEqual([
+      'id',
+      'name',
+    ]);
+  });
+
+  it('ignores duplicate order entries', () => {
+    expect(displayedColumnNames(orderedColumns, null, ['name', 'name', 'id'])).toEqual([
+      'name',
+      'id',
+      'note',
+    ]);
+  });
+
+  it('a null order keeps the schema order exactly', () => {
+    expect(displayedColumnNames(orderedColumns, null, null)).toEqual(['id', 'name', 'note']);
+  });
+
+  it('panelColumnOrder reads the order the slice carries', () => {
+    expect(panelColumnOrder(tableState({ columnOrder: ['name', 'id'] }))).toEqual([
+      'name',
+      'id',
+      'note',
+    ]);
   });
 });

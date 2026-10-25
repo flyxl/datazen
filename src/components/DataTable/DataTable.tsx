@@ -1,5 +1,19 @@
-import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
-import type { CountStrategy, FilterCondition, FilterOperator, SortCondition, Value } from '../../types';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
+import type {
+  CountStrategy,
+  FilterCondition,
+  FilterOperator,
+  SortCondition,
+  Value,
+} from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
 import { useGridSelection } from '../../hooks/useGridSelection';
@@ -79,6 +93,42 @@ export interface DataTableProps {
 
   sorts?: SortCondition[];
   onSort?: (sort: SortCondition) => void;
+  /* ── Multi-column sort (DB-11). Omitted ⇒ the header context menu keeps
+     its pre-DB-11 shape — the result grids and driver grids are unaffected. ── */
+  /** Add (or re-aim) one column of the sort list, from the header menu. */
+  onAddSort?: (sort: SortCondition) => void;
+  /** Remove one column from the sort list, from the header menu. */
+  onRemoveSort?: (column: string) => void;
+  /** Drop the whole sort list, from the header menu. */
+  onClearSorts?: () => void;
+  /* ── Column tools (DB-12). Omitted ⇒ the grid renders and behaves exactly
+     as before — drag, freeze and width persistence all opt in. ── */
+  /** Reorder columns by dragging a header onto another one (displayed indexes). */
+  onReorderColumns?: (from: number, to: number) => void;
+  /** How many leading columns are pinned while the grid scrolls. */
+  frozenColumns?: number;
+  /* ── Grid appearance (DB-17). Every prop defaults to the grid's behaviour
+     before the setting existed, so a host that passes none keeps today's DOM
+     byte for byte. ── */
+  /** Alternating row backgrounds; default `true` (odd rows tinted, as always). */
+  alternatingRows?: boolean;
+  /** The row-number gutter; default `true` (the `#` column, as always). */
+  showRowNumbers?: boolean;
+  /** Scrollbars appear only while the grid is hovered; default `false`. */
+  scrollbarAutoHide?: boolean;
+  /** Freeze through the right-clicked column (that many leading columns). */
+  onFreezeThrough?: (throughIndex: number) => void;
+  /** Unfreeze every column. */
+  onUnfreezeColumns?: () => void;
+  /** Ask for the server-side aggregates of the right-clicked column (DB-12). */
+  onColumnStats?: (column: string) => void;
+  /**
+   * The widths this table was last left with, by column name: they seed the
+   * grid so a resized column keeps its width across reorders and restarts.
+   */
+  persistedColumnWidths?: Record<string, number> | null;
+  /** Persist the effective column widths, by name, after a resize drag. */
+  onColumnWidthsCommit?: (widths: Record<string, number>) => void;
 
   filters?: FilterCondition[];
   filterLogic?: 'and' | 'or';
@@ -208,6 +258,11 @@ export interface DataTableProps {
    * menu does not offer it.
    */
   onRestoreRow?: (rowIndex: number) => void;
+  /**
+   * Open the tabs of the rows that reference the right-clicked row (DB-20).
+   * Omitted ⇒ the row menu keeps its pre-DB-20 shape.
+   */
+  onShowReferencingRows?: (rowIndex: number) => void;
 
   /**
    * The foreign keys of the table (DB-07).
@@ -233,7 +288,7 @@ export interface DataTableProps {
     /** The cells whose resolution is in flight, keyed `${rowIndex}:${columnName}`. */
     resolving?: ReadonlySet<string>;
     /** Follow the foreign key of a cell. */
-    onJump?: (rowIndex: number, columnName: string) => void;
+    onJump?: (rowIndex: number, columnName: string, element: HTMLElement | null) => void;
   };
 
   loading?: boolean;
@@ -254,6 +309,33 @@ export interface DataTableProps {
   primaryKeyColumns?: string[];
   /** Delete rows by page-row indices (requires primary keys). */
   onDeleteRows?: (rowIndices: number[]) => void;
+
+  /**
+   * Show the statements this read would send (DB-15). Absent — a panel that
+   * cannot reach the backend's preview — no `SQL` button appears in the filter
+   * panel.
+   */
+  onPreviewSql?: () => void;
+  /**
+   * The filter panel's direct exit to the export dialog with "current filter
+   * results" preselected (DB-15). Absent — a panel whose filtered export
+   * cannot be built — no `Export…` button appears there.
+   */
+  onExportFiltered?: () => void;
+  /**
+   * The builder of the filtered full-table export statement (DB-15).
+   *
+   * Forwarded to the export dialog; when it exists the "current filter
+   * results" scope is offered. The statement is the backend's own preview —
+   * the export streams what the filters really select.
+   */
+  onBuildFilteredExportSql?: () => Promise<string>;
+  /**
+   * Request opening the export dialog from outside (DB-15): a counter, not a
+   * boolean — each increment opens the dialog once, with the filtered scope
+   * preselected.
+   */
+  exportOpenSignal?: number;
 
   /** Extra action buttons shown on the right side of the selection toolbar, next to export. */
   headerActions?: React.ReactNode;
@@ -306,6 +388,19 @@ export function DataTable({
   selectedRows = EMPTY_SET,
   loading,
   onSort,
+  onAddSort,
+  onRemoveSort,
+  onClearSorts,
+  onReorderColumns,
+  frozenColumns = 0,
+  alternatingRows = true,
+  showRowNumbers = true,
+  scrollbarAutoHide = false,
+  onFreezeThrough,
+  onUnfreezeColumns,
+  onColumnStats,
+  persistedColumnWidths,
+  onColumnWidthsCommit,
   onRemoveFilter,
   onClearFilters,
   onAddFilter,
@@ -342,6 +437,7 @@ export function DataTable({
   newRowIndex,
   dirtyByRow,
   onRestoreRow,
+  onShowReferencingRows,
   foreignKeys,
   statusBar,
   rowHeight = DATA_TABLE_ROW_HEIGHT,
@@ -351,6 +447,10 @@ export function DataTable({
   dataExportCapability,
   primaryKeyColumns,
   onDeleteRows,
+  onPreviewSql,
+  onExportFiltered,
+  onBuildFilteredExportSql,
+  exportOpenSignal,
   headerActions,
   emptyPlaceholder,
   className,
@@ -365,6 +465,24 @@ export function DataTable({
   const { t } = useI18n();
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  /**
+   * The scope the dialog opens with (DB-15): the filter panel's direct exit
+   * preselects "current filter results"; the toolbar's own button opens the
+   * dialog the way it always did.
+   */
+  const [exportInitialScope, setExportInitialScope] = useState<
+    'current_page' | 'filtered_table' | undefined
+  >(undefined);
+  const signalSeenRef = useRef(0);
+
+  // The counter is a signal, not state: each increment opens the dialog once,
+  // and a replayed old value never re-opens it.
+  useEffect(() => {
+    if (exportOpenSignal == null || exportOpenSignal <= signalSeenRef.current) return;
+    signalSeenRef.current = exportOpenSignal;
+    setExportInitialScope(onBuildFilteredExportSql ? 'filtered_table' : undefined);
+    setExportOpen(true);
+  }, [exportOpenSignal, onBuildFilteredExportSql]);
 
   // The owner of the grid keeps the viewport (DB-07): it has to know where the
   // user was when the tab was left.
@@ -377,6 +495,10 @@ export function DataTable({
     count: columns.length,
     columns: colMeta,
     rows,
+    // DB-12: widths belong to columns, so they are seeded by name and
+    // reported back by name after a drag.
+    persistedWidths: persistedColumnWidths,
+    onWidthsCommit: onColumnWidthsCommit,
   });
   const columnWidths = useMemo(
     () => adjustWidthsForSort(baseWidths, columns, sorts),
@@ -447,7 +569,8 @@ export function DataTable({
     onRequestScrollIntoView,
   });
   /** The cell that carries `data-dt-active` (02): the keyboard cursor. */
-  const activeCell = keyboardNav.activeCoord ?? (selection.mode === 'cell' ? selection.focus : null);
+  const activeCell =
+    keyboardNav.activeCoord ?? (selection.mode === 'cell' ? selection.focus : null);
   const { surfaceProps, isCellSelected, activeDescendantId } = useGridSelection({
     columnOrder: columnNames,
     rowCount: rows.length,
@@ -537,10 +660,21 @@ export function DataTable({
     onDeleteRows,
     dirtyByRow,
     onRestoreRow,
+    onShowReferencingRows,
     onExport: handleExport,
     setValueState: cellEditing?.setValueState,
     onSetValue: cellEditing?.onSetValue,
     onLoadCandidates: cellEditing?.onLoadCandidates,
+    // DB-11: the sorts in force and their header-menu actions.
+    sorts,
+    onAddSort,
+    onRemoveSort,
+    onClearSorts,
+    // DB-12: the freeze entries and the stats entry of the header menu.
+    frozenColumns,
+    onFreezeThrough,
+    onUnfreezeColumns,
+    onColumnStats,
     t,
   });
 
@@ -598,6 +732,8 @@ export function DataTable({
           onApply={onApplyFilters}
           onClear={onClearFilters}
           loading={loading}
+          onPreviewSql={onPreviewSql}
+          onExportFiltered={onExportFiltered}
         />
       ) : hasFilters ? (
         <FilterBar
@@ -639,10 +775,16 @@ export function DataTable({
 
       <div
         ref={setScrollEl}
-        className="min-h-0 flex-1 overflow-auto"
+        className={cn(
+          'min-h-0 flex-1 overflow-auto',
+          // DB-17: the bars appear only while the grid is hovered/focused.
+          scrollbarAutoHide && 'dt-scrollbar-autohide',
+        )}
         aria-busy={loading}
         aria-label={hasCellSelection ? t('tableView.a11y.gridLabel') : t('dataTable.tableLabel')}
-        aria-describedby={keyboardNavigation && hasCellSelection ? `${gridIdPrefix}-shortcuts` : undefined}
+        aria-describedby={
+          keyboardNavigation && hasCellSelection ? `${gridIdPrefix}-shortcuts` : undefined
+        }
         onContextMenu={onContextMenu}
         {...clipboardDomHandlers}
         {...surfaceDomProps}
@@ -660,6 +802,11 @@ export function DataTable({
               onResizeStart={onResizeStart}
               sortable={onSort != null}
               gridSemantics={hasCellSelection}
+              // DB-12: drag-to-reorder and the freeze are opt-in.
+              onReorderColumns={onReorderColumns}
+              frozenColumns={frozenColumns}
+              // DB-17: the gutter is the setting's to drop.
+              showRowNumbers={showRowNumbers}
               onFilterColumn={
                 onAddFilter
                   ? (column) => onAddFilter({ column, operator: 'eq', value: '' })
@@ -676,6 +823,10 @@ export function DataTable({
               highlightedRow={highlightedRow}
               scrollElement={scrollEl}
               columnWidths={columnWidths}
+              frozenColumns={frozenColumns}
+              // DB-17: the two row-appearance settings, threaded through.
+              alternatingRows={alternatingRows}
+              showRowNumbers={showRowNumbers}
               onCellDoubleClick={handleCellDoubleClick}
               onCellEdit={handleCellEdit}
               onCellEditCancel={handleCellEditCancel}
@@ -701,29 +852,29 @@ export function DataTable({
               foreignKeys={foreignKeys}
               cellErrors={cellErrors}
             />
-            {loading ? (
-              gridRow(
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="flex min-h-28 items-center justify-center gap-2 text-xs text-fg-muted"
-                >
-                  <Spinner size="lg" />
-                  {t('dataTable.loading')}
-                </div>,
-              )
-            ) : rows.length === 0 ? (
-              gridRow(
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="flex min-h-28 flex-col items-center justify-center gap-1 px-4 text-center text-xs text-fg-muted"
-                >
-                  <span>{t('dataTable.empty')}</span>
-                  <span className="text-fg-muted/80">{t('dataTable.emptyHint')}</span>
-                </div>,
-              )
-            ) : null}
+            {loading
+              ? gridRow(
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="flex min-h-28 items-center justify-center gap-2 text-xs text-fg-muted"
+                  >
+                    <Spinner size="lg" />
+                    {t('dataTable.loading')}
+                  </div>,
+                )
+              : rows.length === 0
+                ? gridRow(
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex min-h-28 flex-col items-center justify-center gap-1 px-4 text-center text-xs text-fg-muted"
+                    >
+                      <span>{t('dataTable.empty')}</span>
+                      <span className="text-fg-muted/80">{t('dataTable.emptyHint')}</span>
+                    </div>,
+                  )
+                : null}
           </>
         )}
       </div>
@@ -768,6 +919,8 @@ export function DataTable({
           dbSessionId={dbSessionId}
           totalRows={totalRows}
           primaryKeyColumns={primaryKeyColumns}
+          initialScope={exportInitialScope}
+          onBuildFilteredExportSql={onBuildFilteredExportSql}
           dataExportCapability={dataExportCapability}
         />
       )}

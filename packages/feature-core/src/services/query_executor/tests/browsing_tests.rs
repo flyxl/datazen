@@ -217,7 +217,7 @@ mod count_strategy_execution {
     ) -> TableDataResult {
         let driver = mock.clone() as Arc<dyn DatabaseDriver>;
         executor
-            .get_table_data(
+            .get_table_data_page(
                 &driver,
                 &handle(),
                 "conn1",
@@ -232,6 +232,7 @@ mod count_strategy_execution {
                 None,
                 count_strategy,
                 default_order_columns,
+                None,
             )
             .await
             .expect("the read succeeds")
@@ -360,14 +361,20 @@ mod count_strategy_execution {
 
         let result = read(&executor, &mock, false, None, None, None).await;
         assert_eq!(result.rows.len(), 1, "the rows survive a failed estimate");
-        assert_eq!(result.total_rows, None);
-        assert_eq!(result.total_rows_kind, Some(CountStrategy::Unsupported));
-        // Two statements, not three: the estimate is not retried as a count.
-        assert_eq!(mock.query_calls(), 2, "estimate + data queries");
+        // A number nobody could estimate is not the same as no number: the
+        // read falls back to an exact count, which is what it does when the
+        // driver cannot estimate at all.
+        assert_eq!(result.total_rows, Some(99));
+        assert_eq!(result.total_rows_kind, Some(CountStrategy::Exact));
+        assert_eq!(
+            mock.query_calls(),
+            3,
+            "estimate + data + the exact count that replaced it"
+        );
     }
 
     #[tokio::test]
-    async fn estimated_branch_reports_unsupported_when_estimate_value_is_unusable() {
+    async fn estimated_branch_rescues_an_unusable_estimate_with_a_count() {
         let (executor, mock) = executor(MockDriverOptions {
             columns: columns(),
             primary_keys: vec!["id".into()],
@@ -381,9 +388,13 @@ mod count_strategy_execution {
 
         let result = read(&executor, &mock, false, None, None, None).await;
         assert_eq!(result.rows.len(), 1);
-        assert_eq!(result.total_rows, None);
-        assert_eq!(result.total_rows_kind, Some(CountStrategy::Unsupported));
-        assert_eq!(mock.query_calls(), 2, "the count is not run instead");
+        assert_eq!(
+            result.total_rows,
+            Some(99),
+            "`-1` means the planner never looked, so the exact count answers"
+        );
+        assert_eq!(result.total_rows_kind, Some(CountStrategy::Exact));
+        assert_eq!(mock.query_calls(), 3, "estimate + data + count");
     }
 
     #[tokio::test]
@@ -462,7 +473,7 @@ mod count_strategy_execution {
 
         let driver = mock.clone() as Arc<dyn DatabaseDriver>;
         let error = executor
-            .get_table_data(
+            .get_table_data_page(
                 &driver,
                 &handle(),
                 "conn1",
@@ -474,6 +485,7 @@ mod count_strategy_execution {
                 None,
                 None,
                 false,
+                None,
                 None,
                 None,
                 None,

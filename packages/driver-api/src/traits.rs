@@ -346,6 +346,23 @@ pub trait DatabaseDriver: Send + Sync {
         None
     }
 
+    /// Whether the config's `database` is the **physical location** (a file)
+    /// rather than a namespace on a server.
+    ///
+    /// Endpoint identity asks the session what namespace it observed and
+    /// prefers that answer, because a server can be pointed at another
+    /// database at runtime. For a file-backed driver the observed namespace is
+    /// a synthetic name (`sqlite` reports `main` for any file), so preferring
+    /// it collapses two different files into one endpoint — the transfer and
+    /// schema-diff self-overwrite guards then reject a perfectly legal
+    /// migration between two files. File-backed drivers opt in here and the
+    /// location stays the configured path.
+    ///
+    /// Defaults to `false`: the config's `database` is a namespace.
+    fn database_names_location(&self) -> bool {
+        false
+    }
+
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError>;
 
     /// Open and retain one physical session. A lost session must never be

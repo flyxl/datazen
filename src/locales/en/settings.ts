@@ -68,6 +68,22 @@ const pack = {
   'settings.defaultTableSort.none': 'Do not sort',
   'settings.defaultTableSort.hint':
     '"Do not sort" makes paging faster on large tables, but rows across pages may repeat or be skipped.',
+  // Grid appearance (DB-17). New keys land in en only; the other nine locales
+  // resolve them through the en fallback until the next release.
+  'settings.gridDensity': 'Grid density',
+  'settings.gridDensity.hint':
+    'Row height of the data grids. Compact fits more rows on screen; relaxed is easier to read across.',
+  'settings.gridDensity.compact': 'Compact',
+  'settings.gridDensity.standard': 'Standard',
+  'settings.gridDensity.relaxed': 'Relaxed',
+  'settings.gridAlternatingRows': 'Alternating row backgrounds',
+  'settings.gridAlternatingRows.hint': 'Tint every other row of the data grids.',
+  'settings.gridRowNumbers': 'Row numbers',
+  'settings.gridRowNumbers.hint':
+    'The # gutter of the data grids. Turning it off also removes its click-to-select button; row selection still works by clicking rows.',
+  'settings.gridAutoHideScrollbar': 'Auto-hide grid scrollbars',
+  'settings.gridAutoHideScrollbar.hint':
+    'Scrollbars appear only while a grid is hovered or focused.',
   'settings.connectionPoolSize': 'Connection Pool Size',
   'settings.connectionPoolSizeHint': 'Maximum connections kept per database connection.',
   'settings.limitSelect': 'Limit SELECT Results',

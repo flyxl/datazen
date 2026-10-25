@@ -57,6 +57,10 @@ describe('settingsExport', () => {
     rowCountMode: 'auto',
     rowCountEstimateThreshold: 200000,
     defaultTableSort: 'primaryKeyAsc',
+    gridDensity: 'standard',
+    gridAlternatingRows: true,
+    gridRowNumbers: true,
+    gridAutoHideScrollbar: false,
   };
 
   it('exports only whitelisted safe editor and snippet properties', () => {

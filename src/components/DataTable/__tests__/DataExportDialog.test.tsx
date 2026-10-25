@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
-import { render, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, fireEvent, waitFor, cleanup, screen } from '@testing-library/react';
 import { DataExportDialog } from '../DataExportDialog';
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -28,11 +28,26 @@ vi.mock('../../ui/Select', () => ({
 
 const saveTextWithDialog = vi.fn();
 const saveBase64WithDialog = vi.fn();
+const beginSaveWithDialog = vi.fn();
+const appendSaveText = vi.fn();
+const finishSave = vi.fn();
+const abortSave = vi.fn();
+const executeQueryStream = vi.fn();
 
 vi.mock('../../../commands/file', () => ({
   fileCommands: {
     saveTextWithDialog: (...args: unknown[]) => saveTextWithDialog(...args),
     saveBase64WithDialog: (...args: unknown[]) => saveBase64WithDialog(...args),
+    beginSaveWithDialog: (...args: unknown[]) => beginSaveWithDialog(...args),
+    appendSaveText: (...args: unknown[]) => appendSaveText(...args),
+    finishSave: (...args: unknown[]) => finishSave(...args),
+    abortSave: (...args: unknown[]) => abortSave(...args),
+  },
+}));
+
+vi.mock('../../../commands/query', () => ({
+  queryCommands: {
+    executeQueryStream: (...args: unknown[]) => executeQueryStream(...args),
   },
 }));
 
@@ -47,6 +62,18 @@ beforeEach(() => {
   vi.clearAllMocks();
   saveTextWithDialog.mockResolvedValue(true);
   saveBase64WithDialog.mockResolvedValue(true);
+  // The streaming save session: a file token, chunks appended, then done.
+  beginSaveWithDialog.mockResolvedValue('save-token');
+  appendSaveText.mockResolvedValue(undefined);
+  finishSave.mockResolvedValue(undefined);
+  abortSave.mockResolvedValue(undefined);
+  // The stream query: immediately end-of-stream, no rows.
+  executeQueryStream.mockImplementation(
+    (_dbSessionId: string, _sql: string, onData: (event: unknown) => void) => {
+      onData({ type: 'end' });
+      return Promise.resolve();
+    },
+  );
 });
 
 describe('DataExportDialog', () => {
@@ -227,5 +254,82 @@ describe('DataExportDialog export capability', () => {
     const btn = document.querySelectorAll('button')[1] as HTMLButtonElement;
     fireEvent.click(btn);
     expect(saveTextWithDialog).not.toHaveBeenCalled();
+  });
+});
+
+describe('DataExportDialog filtered scope (DB-15)', () => {
+  it('offers the filtered scope exactly when its statement builder is threaded', () => {
+    const { rerender } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+      />,
+    );
+    let range = document.querySelectorAll('select')[1]!;
+    expect(Array.from(range.options).map((o) => o.value)).not.toContain('filtered_table');
+
+    rerender(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        onBuildFilteredExportSql={vi.fn().mockResolvedValue('SELECT 1;')}
+      />,
+    );
+    range = document.querySelectorAll('select')[1]!;
+    expect(Array.from(range.options).map((o) => o.value)).toContain('filtered_table');
+  });
+
+  it('opens with the filtered scope preselected and streams its statement', async () => {
+    const filteredSql = 'SELECT "id" FROM "users" WHERE "status" = \'active\';';
+    const onBuildFilteredExportSql = vi.fn().mockResolvedValue(filteredSql);
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        initialScope="filtered_table"
+        onBuildFilteredExportSql={onBuildFilteredExportSql}
+      />,
+    );
+    const range = document.querySelectorAll('select')[1]!;
+    expect(range).toHaveValue('filtered_table');
+
+    fireEvent.click(screen.getByText('export.export'));
+
+    await waitFor(() => {
+      expect(onBuildFilteredExportSql).toHaveBeenCalledOnce();
+      expect(executeQueryStream).toHaveBeenCalledOnce();
+    });
+    // The streamed statement is the backend's own filtered read, not a
+    // SELECT the exporter built on its own.
+    expect((executeQueryStream.mock.calls[0] as unknown[])[1]).toBe(filteredSql);
+    await waitFor(() => expect(finishSave).toHaveBeenCalled());
+  });
+
+  it('falls back to the page scope when the preferred filtered scope cannot be served', () => {
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        initialScope="filtered_table"
+      />,
+    );
+    // No dbSessionId and no builder: the scope must not point at a missing option.
+    const range = document.querySelectorAll('select')[1]!;
+    expect(range).toHaveValue('current_page');
   });
 });

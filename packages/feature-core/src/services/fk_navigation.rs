@@ -30,7 +30,7 @@ use crate::services::schema_scope::{embedded_schema_of, metadata_schema};
 
 mod probe;
 
-use probe::{build_probe_statement, ProbeStatement};
+use probe::{build_candidates_statement, build_probe_statement, ProbeStatement};
 
 /// Default number of candidate rows returned for one navigation target.
 pub const DEFAULT_CANDIDATE_LIMIT: u32 = 50;
@@ -42,7 +42,7 @@ pub const MAX_CANDIDATE_LIMIT: u32 = 200;
 ///
 /// This mirrors the host's own table-reading path so a foreign-key target and
 /// the grid it came from resolve to the same database.
-const DEFAULT_DATABASE: &str = "default";
+pub(crate) const DEFAULT_DATABASE: &str = "default";
 
 /// The `grid.fk.*` rejection codes (00-contracts §8.2).
 ///
@@ -97,7 +97,7 @@ pub enum FkNavigationError {
 }
 
 impl FkNavigationError {
-    fn coded(code: FkErrorCode, message: impl Into<String>) -> Self {
+    pub(crate) fn coded(code: FkErrorCode, message: impl Into<String>) -> Self {
         Self::Coded {
             code,
             message: message.into(),
@@ -142,10 +142,24 @@ pub struct ResolveForeignKeyTargetsRequest {
     #[serde(default)]
     pub constraint_name: Option<String>,
     /// The current value of every local column, same length and order.
+    ///
+    /// A **browse** request (`browse = true`) does not need them: it lists
+    /// what the target table offers instead of looking one row up. The field
+    /// stays required on the wire so the jump request cannot silently lose
+    /// its values; the browse path simply ignores them.
     pub values: Vec<Value>,
     /// How many candidate rows to return; clamped to the hard cap.
     #[serde(default)]
     pub limit: Option<u32>,
+    /// The in-cell selector's mode (DB-20): list the first rows of the target
+    /// table instead of looking the current value up.
+    ///
+    /// The jump (DB-07) and the selector share one command on purpose — the
+    /// target resolution is identical — but their statements are not: the
+    /// jump probes *one* row by equality, the selector browses what the
+    /// target offers (07 §11 U-8). `false` (the default) keeps the probe.
+    #[serde(default)]
+    pub browse: bool,
 }
 
 /// The normalized target of a foreign key.
@@ -362,19 +376,38 @@ pub async fn resolve_foreign_key_targets(
         .limit
         .unwrap_or(DEFAULT_CANDIDATE_LIMIT)
         .clamp(1, MAX_CANDIDATE_LIMIT);
-    let rows = probe_target(
-        &driver,
-        &binding,
-        &database,
-        target_schema.as_deref(),
-        &target_table,
-        &referenced_columns,
-        &fk.referenced_columns,
-        &request.values,
-        limit,
-    )
-    .await?;
+    // The jump probes **one** row by equality; the selector (DB-20) browses
+    // what the target offers. The resolution shape is the same — only the
+    // statement differs.
+    let rows = if request.browse {
+        browse_target(
+            &driver,
+            &binding,
+            &database,
+            target_schema.as_deref(),
+            &target_table,
+            &referenced_columns,
+            limit,
+        )
+        .await?
+    } else {
+        probe_target(
+            &driver,
+            &binding,
+            &database,
+            target_schema.as_deref(),
+            &target_table,
+            &referenced_columns,
+            &fk.referenced_columns,
+            &request.values,
+            limit,
+        )
+        .await?
+    };
 
+    // In browse mode `exists` answers "does the target offer any row at all",
+    // which is what the selector's empty state needs; the equality sense of
+    // the flag belongs to the probe.
     let exists = !rows.is_empty();
     let truncated = rows.len() as u32 > limit;
     let candidates = rows.into_iter().take(limit as usize).collect();
@@ -398,7 +431,18 @@ pub async fn resolve_foreign_key_targets(
 
 /// Reject a request whose shape cannot describe a key at all.
 fn validate_request(request: &ResolveForeignKeyTargetsRequest) -> Result<(), FkNavigationError> {
-    if request.columns.is_empty() || request.values.is_empty() {
+    if request.columns.is_empty() {
+        return Err(FkNavigationError::coded(
+            FkErrorCode::ShapeMismatch,
+            "a foreign key needs at least one local column and one value",
+        ));
+    }
+    // A browse request (DB-20) carries no key values — it lists what the
+    // target offers. The value rules below are the probe's rules.
+    if request.browse {
+        return Ok(());
+    }
+    if request.values.is_empty() {
         return Err(FkNavigationError::coded(
             FkErrorCode::ShapeMismatch,
             "a foreign key needs at least one local column and one value",
@@ -584,6 +628,66 @@ fn collect_referenced_columns(
     Ok(columns)
 }
 
+/// Browse the target table for the in-cell selector (DB-20): the first
+/// `limit + 1` rows of the referenced columns, no `WHERE`.
+///
+/// The selector is a picker, not a lookup — the user chooses from what the
+/// target table offers, so no value of the request reaches this statement and
+/// `exists` only means "the target has at least one row".
+async fn browse_target(
+    driver: &Arc<dyn DatabaseDriver>,
+    binding: &FkSessionBinding,
+    database: &str,
+    target_schema: Option<&str>,
+    target_table: &str,
+    referenced_columns: &[ColumnSchema],
+    limit: u32,
+) -> Result<Vec<Vec<Option<Value>>>, FkNavigationError> {
+    let dialect = LegacySqlDialect::new(driver.as_ref());
+    let statement = build_candidates_statement(&dialect, target_table, referenced_columns, limit)
+        .map_err(|error| {
+        tracing::warn!(
+            table = %target_table,
+            error_kind = driver_error_kind(&error),
+            "foreign key browse statement could not be built"
+        );
+        FkNavigationError::coded(
+            FkErrorCode::ProbeFailed,
+            format!(
+                "browsing target table '{target_table}' cannot be expressed ({})",
+                driver_error_note(&error)
+            ),
+        )
+    })?;
+    let target = SqlTarget::new(Some(database), target_schema);
+    // The browse statement never carries values, so it is always the inlined
+    // shape — but matching the enum keeps the two paths symmetric.
+    let ProbeStatement::Inlined { sql } = statement else {
+        return Err(FkNavigationError::coded(
+            FkErrorCode::ProbeFailed,
+            format!("browsing target table '{target_table}' produced an unexpected statement"),
+        ));
+    };
+    driver
+        .query_at(&binding.handle, &sql, target)
+        .await
+        .map_err(|error| {
+            tracing::warn!(
+                table = %target_table,
+                error_kind = driver_error_kind(&error),
+                "foreign key browse failed"
+            );
+            FkNavigationError::coded(
+                FkErrorCode::ProbeFailed,
+                format!(
+                    "browsing target table '{target_table}' failed ({})",
+                    driver_error_note(&error)
+                ),
+            )
+        })
+        .map(|result| result.rows)
+}
+
 /// Probe the target table for rows that satisfy the equality conditions.
 ///
 /// One `SELECT … LIMIT limit + 1` and no `COUNT(*)`: the existence check must
@@ -660,7 +764,7 @@ async fn probe_target(
 /// The content can quote a user value; the kind cannot, and the kind is all
 /// a rejection message and a log line need to say "the probe failed because
 /// the statement was refused" or "because the connection is gone".
-fn driver_error_kind(error: &DriverError) -> &'static str {
+pub(crate) fn driver_error_kind(error: &DriverError) -> &'static str {
     match error {
         DriverError::SessionLost => "sessionLost",
         DriverError::ConnectionFailed(_) => "connectionFailed",
@@ -679,7 +783,7 @@ fn driver_error_kind(error: &DriverError) -> &'static str {
 /// The driver-error part of a rejection message: the **kind**, never the
 /// text. The text is the one place a user value can leak (a server-side type
 /// error quotes the value it choked on), so it is not part of any message.
-fn driver_error_note(error: &DriverError) -> String {
+pub(crate) fn driver_error_note(error: &DriverError) -> String {
     format!("driver error kind: {}", driver_error_kind(error))
 }
 

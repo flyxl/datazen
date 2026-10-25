@@ -139,6 +139,10 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.default_port()
     }
 
+    fn database_names_location(&self) -> bool {
+        self.inner.database_names_location()
+    }
+
     fn skip_count_query(&self) -> bool {
         self.inner.skip_count_query()
     }

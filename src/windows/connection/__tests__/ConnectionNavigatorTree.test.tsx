@@ -1307,7 +1307,7 @@ describe('ConnectionNavigatorTree connection row interactions', () => {
     expect(onSelectConnection).toHaveBeenCalledWith('cfg-mysql');
   });
 
-  it('double-click connects idle rows but is a no-op for connecting/connected rows', async () => {
+  it('double-click opens the connection tab and starts no session of its own', async () => {
     connectionsState.connections = [
       MYSQL_CONN,
       makeConn({ id: 'cfg-idle', name: 'Idle Conn' }),
@@ -1320,16 +1320,19 @@ describe('ConnectionNavigatorTree connection row interactions', () => {
     const { container } = render(<ConnectionNavigatorTree {...baseProps} />);
     await waitFor(() => connRow(container, 'Idle Conn'));
 
+    // One session per profile: the tab the double click opens connects itself, so
+    // the row must not start a second one. Two sessions left the sidebar reading
+    // the orphan and its schema tree empty.
     fireEvent.doubleClick(connRow(container, 'Idle Conn'));
-    expect(mockConnect).toHaveBeenCalledTimes(1);
-    expect(mockConnect.mock.calls[0]?.[0]).toMatchObject({ id: 'cfg-idle' });
+    expect(baseProps.onSelectConnection).toHaveBeenCalledWith('cfg-idle');
+    expect(mockConnect).not.toHaveBeenCalled();
 
     fireEvent.doubleClick(connRow(container, 'Busy Conn'));
     fireEvent.doubleClick(connRow(container, 'Local MySQL'));
-    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(mockConnect).not.toHaveBeenCalled();
   });
 
-  it('chevron toggles expansion for connected rows and connects idle ones', async () => {
+  it('chevron toggles expansion for connected rows and opens idle ones', async () => {
     const view = render(<ConnectionNavigatorTree {...baseProps} />);
     await view.findByText('db_a');
     const chevron = connRow(view.container, 'Local MySQL').querySelector('button')!;
@@ -1346,7 +1349,9 @@ describe('ConnectionNavigatorTree connection row interactions', () => {
     await waitFor(() => connRow(view.container, 'Idle Conn'));
     const idleChevron = connRow(view.container, 'Idle Conn').querySelector('button')!;
     fireEvent.click(idleChevron);
-    expect(mockConnect).toHaveBeenCalledWith(expect.objectContaining({ id: 'cfg-idle' }));
+    // The chevron opens the same tab as the row: the session comes from there.
+    expect(baseProps.onSelectConnection).toHaveBeenCalledWith('cfg-idle');
+    expect(mockConnect).not.toHaveBeenCalled();
   });
 
   it('scopes expansion to the clicked section and keeps only one connection expanded', async () => {

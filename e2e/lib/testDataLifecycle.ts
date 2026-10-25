@@ -130,6 +130,23 @@ END $$;
 }
 
 /**
+ * Run one SQL statement **outside** the app, against a database of this worker.
+ *
+ * A spec that drops a constraint through the app cannot test a stale-client
+ * path: the app invalidates its whole schema cache after every executed
+ * statement, so the grid immediately re-reads the truth. Going through `psql`
+ * leaves the app's cache untouched, which is the only way to reproduce "the
+ * grid believes in a constraint the host does not have any more".
+ */
+export function runPsql(database: string, sql: string): void {
+  const { host, port, user, password } = pgConn();
+  execSync(
+    `psql -h ${host} -p ${port} -U ${user} -d ${qIdent(database)} -v ON_ERROR_STOP=1 -c ${qLiteral(sql)}`,
+    { env: { ...process.env, PGPASSWORD: password }, stdio: 'pipe' },
+  );
+}
+
+/**
  * Drop a worker database (best-effort, called in global after hook).
  */
 export function dropWorkerDatabase(db: string): void {

@@ -384,8 +384,12 @@ async function enableCreateNewMappings(
       await toggle.waitForDisplayed({ timeout: 8000 });
       if (!(await toggle.isSelected())) await toggle.click();
       const target = await $('[data-testid="data-transfer-target-table-input"]');
-      const targetName = options.renameTables?.[name];
-      if (targetName) await target.setValue(targetName);
+      // Turning "create new table" on deliberately clears the prefilled source
+      // name: the reviewer has to name the table they are about to create, and
+      // the Next gate stays closed until they do. The fixture therefore always
+      // types a name — the source name unless the case renames the table.
+      const targetName = options.renameTables?.[name] ?? name;
+      await target.setValue(targetName);
       await target.click();
       await browser.keys(['Tab']);
       for (const [sourceColumn, targetColumn] of Object.entries(
@@ -477,6 +481,15 @@ export async function executeIfPreviewExists() {
   await execute.click();
   const result = await $('[data-testid="data-transfer-result"]');
   await result.waitForDisplayed({ timeout: 30000 });
+  // The panel exists while the job is still running (`data-completed="false"`),
+  // so reading outcomes on sight reported "no outcomes" as a rejection. Wait for
+  // the verdict to settle before deciding anything.
+  await browser.waitUntil(
+    async () =>
+      (await result.getAttribute('data-completed')) === 'true' ||
+      (await result.getAttribute('data-verdict-severity')) !== 'active',
+    { timeout: 60000, timeoutMsg: 'data transfer verdict never settled' },
+  );
   const resultText = await result.getText();
   const tableResults = await result.$$('[data-testid^="data-transfer-table-result-"]');
   const outcomes: string[] = [];
@@ -486,10 +499,25 @@ export async function executeIfPreviewExists() {
   }
   const errorBlocks = await result.$$('.error-message');
   const rejected =
-    outcomes.length === 0 ||
-    outcomes.some((outcome) => outcome !== 'committed') ||
-    (await errorBlocks.length) > 0;
-  return { rejected, text: resultText };
+    outcomes.some((outcome) => outcome !== 'committed') || (await errorBlocks.length) > 0;
+  // A verdict without the per-table reason cannot be acted on: name every table
+  // and what the run decided for it, next to the block texts.
+  const tableDetails: string[] = [];
+  for (const tableResult of tableResults) {
+    tableDetails.push(
+      `${await tableResult.getAttribute('data-testid')}=${await tableResult.getAttribute(
+        'data-outcome',
+      )}: ${(await tableResult.getText()).replace(/\s+/g, ' ').slice(0, 240)}`,
+    );
+  }
+  const blockDetails: string[] = [];
+  for (const block of errorBlocks) {
+    blockDetails.push((await block.getText()).replace(/\s+/g, ' ').slice(0, 240));
+  }
+  return {
+    rejected,
+    text: `${resultText}\ntables: ${tableDetails.join(' | ')}\nerrors: ${blockDetails.join(' | ')}`,
+  };
 }
 
 export async function inspectStructurePreview(source: Fixture, target: Fixture, table: string) {
@@ -594,11 +622,17 @@ export async function assertMysqlToPgObjectsRowsAndSequence() {
       `SELECT COUNT(*) AS c FROM pg_indexes WHERE schemaname = current_schema()
        AND tablename = '${mysqlTables.child}' AND indexname = 'ix_${prefix}_my_label'`,
     );
+    // PostgreSQL has no `referenced_table_name` in key_column_usage (that is a
+    // MySQL column); the catalog constraint graph is the portable answer.
     const fks = await sql(
       target,
-      `SELECT COUNT(*) AS c FROM information_schema.key_column_usage
-       WHERE table_schema = current_schema() AND table_name = '${mysqlTables.child}'
-       AND referenced_table_name = '${mysqlTables.parent}'`,
+      `SELECT COUNT(*) AS c FROM pg_constraint c
+       JOIN pg_class child ON child.oid = c.conrelid
+       JOIN pg_class parent ON parent.oid = c.confrelid
+       JOIN pg_namespace ns ON ns.oid = child.relnamespace
+       WHERE c.contype = 'f' AND ns.nspname = current_schema()
+       AND child.relname = '${mysqlTables.child}'
+       AND parent.relname = '${mysqlTables.parent}'`,
     );
     const identities = await sql(
       target,
@@ -610,9 +644,12 @@ export async function assertMysqlToPgObjectsRowsAndSequence() {
     expect(queryScalar(indexes, 'c')).toBe(1);
     expect(queryScalar(fks, 'c')).toBe(1);
     expect(queryScalar(identities, 'c')).toBe(2);
+    // `execute_query` reports writes as an affected-row count, so the identity
+    // evidence has to be read back instead of taken from RETURNING.
+    await sql(target, `INSERT INTO ${mysqlTables.child} (parent_id, label) VALUES (31, 'later')`);
     const next = await sql(
       target,
-      `INSERT INTO ${mysqlTables.child} (parent_id, label) VALUES (31, 'later') RETURNING id`,
+      `SELECT MAX(id) AS id FROM ${mysqlTables.child} WHERE label = 'later'`,
     );
     expect(queryScalar(next, 'id')).toBeGreaterThan(42);
   } finally {

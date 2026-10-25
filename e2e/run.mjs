@@ -305,11 +305,23 @@ function assertBinaryReady(binaryPath) {
   }
 }
 
+/**
+ * The app-data directory each instance owns.
+ *
+ * The port is part of the name whenever the run is not on the default port:
+ * two runs on different ports are two runs, and sharing `.app-data` between
+ * them would have one wipe the other's settings mid-spec. `--instances` keeps
+ * the older `.app-data-<i>` names so existing scratch dirs stay where they are.
+ */
 function resolveDataDirs(count) {
+  const suffix = WD_PORT === 4445 ? '' : `-port${WD_PORT}`;
   if (count <= 1) {
-    return [path.join(ROOT, 'e2e', '.app-data')];
+    return [path.join(ROOT, 'e2e', `.app-data${suffix}`)];
   }
-  return Array.from({ length: count }, (_, i) => path.join(ROOT, 'e2e', `.app-data-${i}`));
+  return Array.from(
+    { length: count },
+    (_, i) => path.join(ROOT, 'e2e', `.app-data${suffix}-${i}`),
+  );
 }
 
 function resolvePorts(basePort, count) {

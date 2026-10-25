@@ -381,7 +381,10 @@ export function QueryEditorSection({
     <>
       <ToolbarShell
         ref={toolbarRef}
-        className="scrollbar-hide h-9 flex-nowrap overflow-x-hidden px-3"
+        // Actions are never clipped: at a narrow window the row scrolls instead
+        // of hiding its tail behind `overflow-x-hidden`, which left the last
+        // buttons unreachable.
+        className="scrollbar-hide h-9 flex-nowrap overflow-x-auto px-3"
         {...tid('query-editor-toolbar')}
       >
         {hasContextSelectors && (

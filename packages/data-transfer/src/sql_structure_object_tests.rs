@@ -606,3 +606,50 @@ fn a_prefix_length_index_is_reported_as_a_missing_mapping_when_columns_are_mappe
         "the message hides the prefix-index cause: {message}"
     );
 }
+
+/// The data stage writes rows in the order this helper returns, so a child must
+/// never land before the row it references. Source tables arrive in catalog
+/// order, where `my_child` sorts ahead of `my_parent`; a data-only run into an
+/// existing target then failed every child insert on the target's foreign key
+/// while the parent was still empty.
+#[test]
+fn data_order_puts_the_referenced_table_before_its_child() {
+    let mut child = schema("my_child", &[("id", true), ("parent_id", false)]);
+    child.foreign_keys.push(ForeignKeyInfo {
+        name: "fk_my_child_parent".into(),
+        columns: vec!["parent_id".into()],
+        referenced_table: "public.my_parent".into(),
+        referenced_columns: vec!["id".into()],
+        on_update: "NO ACTION".into(),
+        on_delete: "NO ACTION".into(),
+        deferrability: ForeignKeyDeferrability::NotDeferrable,
+    });
+    let parent = schema("my_parent", &[("id", true)]);
+    let schemas = HashMap::from([("my_child".into(), child), ("my_parent".into(), parent)]);
+    let mappings = vec![
+        mapping(
+            "my_child",
+            "my_child",
+            &[("id", "id"), ("parent_id", "parent_id")],
+        ),
+        mapping("my_parent", "my_parent", &[("id", "id")]),
+    ];
+    // Exactly the catalog order that produced the failing run.
+    let inspected = vec![
+        inspected(
+            "my_child",
+            "my_child",
+            &[("id", "id"), ("parent_id", "parent_id")],
+        ),
+        inspected("my_parent", "my_parent", &[("id", "id")]),
+    ];
+
+    let order = super::sql_structure::structure_table_order(&inspected, &schemas, &job(mappings))
+        .expect("a single foreign key must order the tables");
+
+    assert_eq!(
+        order,
+        vec!["my_parent".to_string(), "my_child".to_string()],
+        "the referenced table has to be written first"
+    );
+}

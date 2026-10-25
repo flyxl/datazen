@@ -470,16 +470,16 @@ pub fn build_admin_sql(command: &str, input: &serde_json::Value) -> Result<Strin
 }
 
 pub async fn execute_pg_admin_command(
-    pool: &sqlx::PgPool,
+    conn: &mut sqlx::PgConnection,
     command: &str,
     input: serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
     match command {
-        "server_status_snapshot" => fetch_pg_server_status(pool).await,
-        "estimate_table_rows" => estimate_pg_table_rows(pool, &input).await,
-        "list_processes" => fetch_pg_process_list(pool).await,
-        "kill_process" => kill_pg_process(pool, &input).await,
-        _ => execute_pg_admin_sql(pool, command, input).await,
+        "server_status_snapshot" => fetch_pg_server_status(conn).await,
+        "estimate_table_rows" => estimate_pg_table_rows(conn, &input).await,
+        "list_processes" => fetch_pg_process_list(conn).await,
+        "kill_process" => kill_pg_process(conn, &input).await,
+        _ => execute_pg_admin_sql(conn, command, input).await,
     }
 }
 
@@ -487,8 +487,8 @@ pub async fn execute_pg_admin_command(
 ///
 /// `DROP DATABASE` fails if the target is the currently-open database or if any
 /// backend is still connected to it. Unlike other admin commands this therefore
-/// can't run on the handle's own pool when that pool is attached to the target:
-/// we pick a safe sentinel database, move the handle's pool onto it if needed,
+/// can't run on the handle's own conn when that conn is attached to the target:
+/// we pick a safe sentinel database, move the handle's conn onto it if needed,
 /// terminate any remaining backends on the target, and only then drop it.
 pub(crate) async fn drop_database_impl(
     driver: &PostgresDriver,
@@ -505,31 +505,48 @@ pub(crate) async fn drop_database_impl(
     // pooled connection is always allowed to query pg_database regardless of the
     // target, so no reconnect is needed just to choose the sentinel.
     let sentinel = {
-        let pools = driver.pools.read().await;
-        let pool = PostgresDriver::get_pool(&pools, handle)?;
+        // Pinned wins: a retained session already holds the pool's only
+        // connection, so borrowing a second one for this catalog read waits for
+        // a checkout that never returns. `pg_database` is server-global, so the
+        // session's own connection answers it whatever database it is attached to.
+        let mut conn = crate::session_connection::for_session(driver, handle, "").await?;
         let rows = sqlx::query(
             "SELECT datname FROM pg_database \
              WHERE datallowconn AND datname <> $1 \
              ORDER BY (datname = 'postgres') DESC, datname",
         )
         .bind(name)
-        .fetch_all(pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        rows.first()
-            .and_then(|r| r.try_get::<String, _>(0).ok())
-            .ok_or_else(|| {
-                DriverError::QueryFailed(
-                    "No other database available to run DROP DATABASE from \
-                     (switch to a different database first or connect to `postgres`)"
-                        .to_string(),
-                )
-            })?
+        // Skip the session's **own** database. `pool_for_target` answers the
+        // primary pool for it, and that pool's only connection is the pinned one
+        // this session is holding — dropping from there waits for a checkout
+        // that never returns (30s, then "pool timed out"). Any other database
+        // gets its own short-lived pool below.
+        let mut chosen = None;
+        for row in &rows {
+            let Ok(candidate) = row.try_get::<String, _>(0) else {
+                continue;
+            };
+            if driver.is_active_database(handle, &candidate).await {
+                continue;
+            }
+            chosen = Some(candidate);
+            break;
+        }
+        chosen.ok_or_else(|| {
+            DriverError::QueryFailed(
+                "No other database available to run DROP DATABASE from \
+                 (switch to a different database first or connect to `postgres`)"
+                    .to_string(),
+            )
+        })?
     };
 
-    // Run the drop from a pool attached to the sentinel — never by re-pointing
+    // Run the drop from a conn attached to the sentinel — never by re-pointing
     // the handle's own session (that is what used to leave every later read
-    // resolving against the wrong catalog, see BUG-003). The sentinel pool is
+    // resolving against the wrong catalog, see BUG-003). The sentinel conn is
     // released again below so we do not hold a connection to a database the user
     // may drop next.
     let sentinel_is_primary = driver.is_active_database(handle, &sentinel).await;
@@ -550,9 +567,9 @@ pub(crate) async fn drop_database_impl(
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
     if !sentinel_is_primary {
-        // Best effort: a failure to close only leaks one idle pool.
+        // Best effort: a failure to close only leaks one idle conn.
         if let Err(error) = driver.close_database_pool(handle, &sentinel).await {
-            tracing::warn!(%error, database = %sentinel, "failed to close sentinel pool");
+            tracing::warn!(%error, database = %sentinel, "failed to close sentinel conn");
         }
     }
 
@@ -561,7 +578,9 @@ pub(crate) async fn drop_database_impl(
     })
 }
 
-async fn fetch_pg_process_list(pool: &sqlx::PgPool) -> Result<CommandResult, DriverError> {
+async fn fetch_pg_process_list(
+    conn: &mut sqlx::PgConnection,
+) -> Result<CommandResult, DriverError> {
     let rows = sqlx::query(
         r#"
         SELECT
@@ -581,7 +600,7 @@ async fn fetch_pg_process_list(pool: &sqlx::PgPool) -> Result<CommandResult, Dri
         ORDER BY query_start NULLS LAST
         "#,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -606,7 +625,7 @@ async fn fetch_pg_process_list(pool: &sqlx::PgPool) -> Result<CommandResult, Dri
 }
 
 async fn kill_pg_process(
-    pool: &sqlx::PgPool,
+    conn: &mut sqlx::PgConnection,
     input: &serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
     use sqlx::Executor;
@@ -620,7 +639,7 @@ async fn kill_pg_process(
         "pg_cancel_backend"
     };
     let sql = format!("SELECT {fn_name}({pid})");
-    pool.execute(sql.as_str())
+    conn.execute(sql.as_str())
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
     Ok(CommandResult {
@@ -628,9 +647,11 @@ async fn kill_pg_process(
     })
 }
 
-async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, DriverError> {
+async fn fetch_pg_server_status(
+    conn: &mut sqlx::PgConnection,
+) -> Result<CommandResult, DriverError> {
     let max_connections: i64 = sqlx::query_scalar("SELECT current_setting('max_connections')::int")
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await
         .unwrap_or(0);
 
@@ -645,7 +666,7 @@ async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, Dr
             pg_size_pretty(pg_database_size(current_database())) AS database_size
         "#,
     )
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -672,7 +693,7 @@ async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, Dr
         WHERE datname = current_database()
         "#,
     )
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
     .ok()
     .flatten();
@@ -752,7 +773,7 @@ async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, Dr
     // 当前 WAL 字节数（累积）：pg_current_wal_lsn − '0/0'。无该函数（旧 PG < 10）时为 None。
     let wal_bytes: Option<i64> =
         sqlx::query_scalar("SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')::bigint")
-            .fetch_optional(pool)
+            .fetch_optional(&mut *conn)
             .await
             .ok()
             .flatten();
@@ -767,7 +788,7 @@ async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, Dr
         FROM pg_stat_activity
         "#,
     )
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .ok();
     let (session_total, session_active, session_idle) = match session_stats {
@@ -783,7 +804,7 @@ async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, Dr
     let new_sessions: Option<i64> = sqlx::query_scalar(
         "SELECT sessions::bigint FROM pg_stat_database WHERE datname = current_database()",
     )
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
     .ok()
     .flatten();
@@ -804,7 +825,7 @@ async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, Dr
     let pg_settings = sqlx::query(
         "SELECT name, setting FROM pg_settings WHERE unit IS NOT NULL OR source = 'configuration file' ORDER BY name LIMIT 150",
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await;
     let status_variables: Vec<serde_json::Value> = match pg_settings {
         Ok(rows) => rows
@@ -874,7 +895,7 @@ async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, Dr
 }
 
 async fn estimate_pg_table_rows(
-    pool: &sqlx::PgPool,
+    conn: &mut sqlx::PgConnection,
     input: &serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
     let table = input["table"]
@@ -894,7 +915,7 @@ async fn estimate_pg_table_rows(
     )
     .bind(table)
     .bind(schema)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -906,7 +927,7 @@ async fn estimate_pg_table_rows(
 }
 
 async fn execute_pg_admin_sql(
-    pool: &sqlx::PgPool,
+    conn: &mut sqlx::PgConnection,
     command: &str,
     input: serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
@@ -917,7 +938,7 @@ async fn execute_pg_admin_sql(
         if s.is_empty() {
             continue;
         }
-        pool.execute(s)
+        conn.execute(s)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
     }
@@ -1127,7 +1148,14 @@ mod tests {
             }
         };
 
-        let pl = fetch_pg_process_list(&pool).await;
+        let mut conn = match pool.acquire().await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("skip live pg: {e}");
+                return;
+            }
+        };
+        let pl = fetch_pg_process_list(&mut conn).await;
         eprintln!("PG list_processes -> {pl:?}");
         let procs = pl.unwrap().data["processes"]
             .as_array()
@@ -1135,7 +1163,7 @@ mod tests {
             .unwrap_or_default();
         assert!(!procs.is_empty(), "PG process list EMPTY — bug!");
 
-        let ss = fetch_pg_server_status(&pool).await;
+        let ss = fetch_pg_server_status(&mut conn).await;
         let ss_data = ss.unwrap().data;
         let vars = ss_data["statusVariables"]
             .as_array()

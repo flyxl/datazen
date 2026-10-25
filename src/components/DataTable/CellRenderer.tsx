@@ -4,7 +4,7 @@ import { cellValueTextClassFor } from '../../lib/dataTypeColors';
 import { cn } from '../../lib/cn';
 import { CellEditorHost } from './editors/CellEditorHost';
 import { countCodePoints, toEditString } from './editors/toEditString';
-import { resolveCellEditorKind } from '../../lib/cellEditorKind';
+import { resolveCellEditorKind, type CellEditorKind } from '../../lib/cellEditorKind';
 import {
   cellTypeToDataTypeFamily,
   isZonedCellType,
@@ -32,6 +32,12 @@ export interface CellRendererProps {
   onCancel: () => void;
   /** Read the candidate values of an enumeration column, on request only. */
   loadCandidates?: (columnName: string) => Promise<readonly string[]>;
+  /**
+   * The editor kind the cell must edit with, when the cell's own type is not
+   * the whole answer (DB-20): a pickable foreign-key cell edits as a
+   * candidates dropdown even though its type says number or text.
+   */
+  editorKindOverride?: CellEditorKind;
 }
 
 export const CellRenderer = memo(function CellRenderer({
@@ -47,6 +53,7 @@ export const CellRenderer = memo(function CellRenderer({
   onCellValue,
   onCancel,
   loadCandidates,
+  editorKindOverride,
 }: CellRendererProps) {
   /**
    * The editor control of this cell.
@@ -56,6 +63,7 @@ export const CellRenderer = memo(function CellRenderer({
    * table (`src/lib/cellTypes.ts`).
    */
   const editorKind = useMemo(() => {
+    if (editorKindOverride) return editorKindOverride;
     const resolved = cellType ?? resolveCellType(dataType);
     const text = toEditString(value);
     return resolveCellEditorKind({
@@ -65,7 +73,7 @@ export const CellRenderer = memo(function CellRenderer({
       valueCodePoints: countCodePoints(text),
       hasLineBreak: text.includes('\n') || text.includes('\r'),
     });
-  }, [cellType, dataType, value]);
+  }, [cellType, dataType, editorKindOverride, value]);
 
   const loadCandidatesForColumn = useCallback(
     () => (loadCandidates ? loadCandidates(columnName) : Promise.resolve([])),

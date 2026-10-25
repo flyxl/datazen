@@ -94,7 +94,9 @@ interface TableIdentity {
   table: string;
 }
 
-function identityOfTarget(target: Pick<ForeignKeyTargetRef, 'database' | 'schema' | 'table'>): TableIdentity {
+function identityOfTarget(
+  target: Pick<ForeignKeyTargetRef, 'database' | 'schema' | 'table'>,
+): TableIdentity {
   return { database: target.database, schema: target.schema ?? null, table: target.table };
 }
 
@@ -109,9 +111,7 @@ function identityOfPanel(panel: Panel): TableIdentity | null {
 
 function sameIdentity(left: TableIdentity, right: TableIdentity): boolean {
   return (
-    left.database === right.database &&
-    left.schema === right.schema &&
-    left.table === right.table
+    left.database === right.database && left.schema === right.schema && left.table === right.table
   );
 }
 
@@ -213,6 +213,10 @@ export async function openForeignKeyTarget(
   }
 
   const target = resolution.target;
+  // The position the jump leaves is recorded **before** anything activates the
+  // target tab: an activation consumes the snapshot, so recording afterwards
+  // would leave the source tab without one and "back" would return to the top.
+  recordSourceViewport(input);
   const navKey = fkNavKey(target, input.values);
   const panelStore = usePanelStore.getState();
   const panels = panelStore.panels;
@@ -228,7 +232,6 @@ export async function openForeignKeyTarget(
     const nav = useFkNavigationStore.getState();
     nav.rewindTo(reusable.entryId);
     panelStore.setActivePanel(reusable.panelId);
-    recordSourceViewport(input);
     return {
       ok: true,
       panelId: reusable.panelId,
@@ -307,8 +310,6 @@ export async function openForeignKeyTarget(
       navEntryId: entry.id,
     },
   });
-  recordSourceViewport(input);
-
   // 9. The referenced row may be gone: that is a **successful** jump with an
   //    empty result, not an error.
   return { ok: true, panelId, targetMissing: !resolution.exists };

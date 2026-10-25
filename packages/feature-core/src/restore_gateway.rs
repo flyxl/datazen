@@ -55,7 +55,10 @@ impl RuntimeRestoreGateway {
         let token = runtime
             .issue_submission_token(ctx, IdempotentOperation::ExecuteInSession, Some(session))
             .await
-            .map_err(|_| CommandFailure::NotSubmitted)?;
+            .map_err(|error| {
+                tracing::warn!(%error, "restore submission token was refused");
+                CommandFailure::NotSubmitted
+            })?;
         let receipt = runtime
             .execute_in_session(
                 ctx,
@@ -66,7 +69,10 @@ impl RuntimeRestoreGateway {
                 ),
             )
             .await
-            .map_err(|_| CommandFailure::NotSubmitted)?;
+            .map_err(|error| {
+                tracing::warn!(%error, %command, "restore submission was refused");
+                CommandFailure::NotSubmitted
+            })?;
         executions.push(receipt.execution_id.clone());
         let mut cancel_sent = false;
         loop {
@@ -102,17 +108,22 @@ impl RuntimeRestoreGateway {
                 return None;
             }
             let Ok(chunk) = input.chunk(Counter::new(index)).await else {
+                tracing::warn!(
+                    chunk = index,
+                    "restore gateway could not read the staged input"
+                );
                 return None;
             };
             bytes.extend(chunk);
         }
         let Ok(sql) = String::from_utf8(bytes) else {
+            tracing::warn!("restore gateway rejected a non-UTF-8 restore script");
             return None;
         };
         // Preflight text rules come from the backup-dialect contract; the
         // driver stays in the gateway for execution and authorization.
         let dialect = datazen_driver_api::LegacyBackupDialect::new(self.driver.as_ref());
-        let Ok(statements) = restore_sql::prepare(
+        let prepared = restore_sql::prepare(
             &dialect,
             &sql,
             &self.profile,
@@ -124,8 +135,24 @@ impl RuntimeRestoreGateway {
                 schema: plan.target.namespace.schema.clone(),
                 path: plan.target.namespace.path.clone(),
             },
-        ) else {
-            return None;
+        );
+        let statements = match prepared {
+            Ok(statements) => statements,
+            Err(error) => {
+                // The script failed the backup-dialect preflight (unsupported
+                // statement, ownership/`CREATE DATABASE` intent, or a split that
+                // cannot be replayed). Without this branch every such rejection
+                // surfaced only as `restoreInvalidInput` with no cause.
+                tracing::warn!(
+                    bytes = sql.len(),
+                    profile = %self.profile,
+                    single_transaction = plan.single_transaction,
+                    overwrite = plan.overwrite,
+                    %error,
+                    "restore gateway rejected the script in preflight"
+                );
+                return None;
+            }
         };
         if self.validate(ctx, plan).await.is_err() {
             evidence.rejection = Some(RestoreRejection::NotAuthorized);
@@ -224,7 +251,18 @@ impl RuntimeRestoreGateway {
             }
         }
         let total = statements.len() as u64;
+        let mut dispatch_index = 0u64;
         for statement in statements {
+            dispatch_index += 1;
+            // Which statement the pipeline is on, in the order the dump wrote it:
+            // a restore that fails on "missing relation" can only be understood by
+            // knowing what came before it on the same session.
+            tracing::debug!(
+                index = dispatch_index,
+                total,
+                statement = %statement.chars().take(160).collect::<String>(),
+                "restore statement dispatch"
+            );
             if cancel.is_cancelled() {
                 evidence.terminal = StageTerminal::Cancelled;
                 break;
@@ -259,6 +297,12 @@ impl RuntimeRestoreGateway {
                     }
                 }
                 Ok(view) => {
+                    tracing::warn!(
+                        statement = %statement.chars().take(120).collect::<String>(),
+                        state = ?view.state,
+                        effect = ?view.effect_outcome,
+                        "restore statement did not succeed"
+                    );
                     evidence.terminal = if view.state == ExecutionState::Cancelled {
                         StageTerminal::Cancelled
                     } else {
@@ -274,16 +318,24 @@ impl RuntimeRestoreGateway {
                     };
                     break;
                 }
-                Err(CommandFailure::NotSubmitted) => {
-                    if previous_effect == EffectOutcome::NotStarted {
-                        evidence.rejection = Some(RestoreRejection::AdmissionRejected);
+                Err(failure) => {
+                    tracing::warn!(
+                        statement = %statement.chars().take(120).collect::<String>(),
+                        submission_unknown = matches!(failure, CommandFailure::OutcomeUnknown),
+                        "restore statement did not reach a succeeded state"
+                    );
+                    match failure {
+                        CommandFailure::NotSubmitted => {
+                            if previous_effect == EffectOutcome::NotStarted {
+                                evidence.rejection = Some(RestoreRejection::AdmissionRejected);
+                            }
+                            evidence.effects = previous_effect;
+                            evidence.terminal = StageTerminal::Failed;
+                        }
+                        CommandFailure::OutcomeUnknown => {
+                            evidence.terminal = StageTerminal::Unknown;
+                        }
                     }
-                    evidence.effects = previous_effect;
-                    evidence.terminal = StageTerminal::Failed;
-                    break;
-                }
-                Err(CommandFailure::OutcomeUnknown) => {
-                    evidence.terminal = StageTerminal::Unknown;
                     break;
                 }
             }

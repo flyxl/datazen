@@ -38,6 +38,13 @@ export function useNavigatorDbState(
   ensureNamespacePath: (segments: string[], dbSessionId: string) => Promise<void>,
 ) {
   const [dbTablesMap, setDbTablesMap] = useState<Record<string, TableInfo[]>>({});
+  /**
+   * Per-`${dbSessionId}::${dbName}` load failures. Keyed like `dbTablesMap`
+   * because a failure is only meaningful next to the (empty) list it left
+   * behind — the tree turns it into a visible error row instead of a silent
+   * "this database has no tables".
+   */
+  const [dbErrors, setDbErrors] = useState<Record<string, string>>({});
   const [dbObjectsMap, setDbObjectsMap] = useState<Record<string, DatabaseObject[]>>({});
   const [loadingDbs, setLoadingDbs] = useState<Set<string>>(new Set());
   /**
@@ -77,13 +84,26 @@ export function useNavigatorDbState(
           owner?.connectionId,
         );
         setDbTablesMap((prev) => ({ ...prev, [tableKey]: all }));
+        setDbErrors((prev) => {
+          if (!(tableKey in prev)) return prev;
+          const next = { ...prev };
+          delete next[tableKey];
+          return next;
+        });
         // Background cache fills stay neutral: the pointer is owned by the
         // user's last tree click, not by whichever fan-out finishes last.
         useSchemaStore
           .getState()
           .setLoadedTables(dbName, all, dbSessionId, { pinCurrentDatabase: false });
-      } catch {
-        // ignore
+      } catch (error) {
+        // A schema load that fails silently is indistinguishable from a database
+        // with no tables: the tree just stays empty. Record it where the sidebar
+        // can show it instead of swallowing it.
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[navigator] list tables failed', dbName, message);
+        useSchemaStore.getState().recordSessionError(dbSessionId, message);
+        setDbTablesMap((prev) => ({ ...prev, [tableKey]: prev[tableKey] ?? [] }));
+        setDbErrors((prev) => ({ ...prev, [tableKey]: message }));
       }
       // Reading a database is what opens its pool, so the marker is refreshed
       // here rather than only when the user asks for it.
@@ -121,6 +141,12 @@ export function useNavigatorDbState(
       });
       const tableKey = `${_dbSessionId}::${dbName}`;
       setDbTablesMap((prev) => {
+        if (!(tableKey in prev)) return prev;
+        const next = { ...prev };
+        delete next[tableKey];
+        return next;
+      });
+      setDbErrors((prev) => {
         if (!(tableKey in prev)) return prev;
         const next = { ...prev };
         delete next[tableKey];
@@ -370,6 +396,7 @@ export function useNavigatorDbState(
 
   return {
     dbTablesMap,
+    dbErrors,
     openDbs,
     refreshOpenDatabases,
     setDbTablesMap,

@@ -29,6 +29,7 @@ pub(crate) async fn runtime_session_context(
     let connection = lease
         .connection()
         .map_err(|error| crate::commands::CommandError::NotFound(error.to_string()))?;
+    let driver = std::sync::Arc::clone(connection.driver());
     let mut config = state
         .store
         .get_connection(view.connection_id.as_str())
@@ -36,12 +37,18 @@ pub(crate) async fn runtime_session_context(
         .ok_or_else(|| {
             crate::commands::CommandError::NotFound("connection profile is unavailable".into())
         })?;
-    config.database = view
-        .observed_context
-        .namespace
-        .database
-        .clone()
-        .or(config.database);
+    // A file-backed driver reports a synthetic namespace (`sqlite` answers
+    // `main` for any file), so its observation must not replace the configured
+    // path: two different files would collapse into one physical endpoint and
+    // the self-overwrite guard would reject a legal migration.
+    if !driver.database_names_location() {
+        config.database = view
+            .observed_context
+            .namespace
+            .database
+            .clone()
+            .or(config.database);
+    }
     config.schema = view
         .observed_context
         .namespace
@@ -50,7 +57,7 @@ pub(crate) async fn runtime_session_context(
         .or(config.schema);
     Ok(RuntimeSessionContext {
         view,
-        driver: std::sync::Arc::clone(connection.driver()),
+        driver,
         handle: connection.handle().clone(),
         config,
         _lease: lease,
@@ -183,10 +190,29 @@ pub(crate) async fn close_dedicated_session(
     let runtime = adapter
         .runtime()
         .map_err(crate::platform::into_command_error)?;
-    let view = runtime
+    // Closing a session that is already gone is a success, not an error: the
+    // session is retired whenever its profile revision changes (saving the
+    // connection retires every session of that profile), so a window closing
+    // right after a save would otherwise surface "session has been released" to
+    // the user for work the app had already finished. `close_session` itself is
+    // idempotent; only this lookup refused the second call.
+    let view = match runtime
         .get_session_by_id(call.context(), db_session_id)
         .await
-        .map_err(crate::platform::into_command_error)?;
+    {
+        Ok(view) => view,
+        Err(error)
+            if matches!(
+                error.code,
+                datazen_platform_api::error::ApiErrorCode::SessionNotFound
+                    | datazen_platform_api::error::ApiErrorCode::SessionLost
+            ) =>
+        {
+            tracing::info!(%db_session_id, "session already retired before close");
+            return Ok(());
+        }
+        Err(error) => return Err(crate::platform::into_command_error(error)),
+    };
     runtime
         .close_session(
             call.context(),
@@ -215,12 +241,19 @@ pub(crate) async fn session_identity(
     let owner = view.connection_id.as_str().to_owned();
     let driver = &context.driver;
     let mut config = context.config;
-    config.database = view
-        .observed_context
-        .namespace
-        .database
-        .clone()
-        .or(config.database);
+    // The observed namespace wins normally: a server can be pointed at another
+    // database after connect, and the identity has to follow. A file-backed
+    // driver reports a synthetic name instead (`sqlite` answers `main` for any
+    // file), so taking its answer would make two different files look like one
+    // endpoint and the self-overwrite guard would reject a legal migration.
+    if !driver.database_names_location() {
+        config.database = view
+            .observed_context
+            .namespace
+            .database
+            .clone()
+            .or(config.database);
+    }
     config.schema = view
         .observed_context
         .namespace
@@ -239,7 +272,19 @@ pub(crate) async fn session_identity(
         );
     }
     config.id = owner;
-    checked_identify(&config, driver.as_ref()).map_err(Into::into)
+    let identity = checked_identify(&config, driver.as_ref())?;
+    // Two endpoints that answer the same key are treated as one physical
+    // location and a migration between them is refused. When that refusal is
+    // wrong, these three facts are what say why.
+    tracing::debug!(
+        connection_id = %identity.connection_id.as_str(),
+        file_backed = driver.database_names_location(),
+        database = ?config.database,
+        schema = ?config.schema,
+        service_key = %identity.service_key,
+        "migration endpoint identity"
+    );
+    Ok(identity)
 }
 
 #[cfg(test)]
@@ -250,8 +295,8 @@ mod tests {
         use crate::testing::app_state::TestAppState;
         use datazen_runtime::job::{detect_endpoint_overlap, EndpointRef, EndpointRole};
         let test = TestAppState::new().await;
-        let (_, source) = test.save_and_connect_runtime("source-alias").await;
-        let (_, target) = test.save_and_connect_runtime("target-alias").await;
+        let (_, source) = test.save_and_connect("source-alias").await;
+        let (_, target) = test.save_and_connect("target-alias").await;
         let source_identity = session_identity(&test.state, &source, None).await.unwrap();
         let target_identity = session_identity(&test.state, &target, None).await.unwrap();
         let mut endpoints = vec![
